@@ -38,8 +38,7 @@ impl SessionManager {
         session_id: &str,
         entry: &SessionEntry,
     ) -> Result<(), XySessionStoreError> {
-        if self.legacy_session_path(session_id).exists()
-            && !self.manifest_path(session_id).exists()
+        if self.legacy_session_path(session_id).exists() && !self.manifest_path(session_id).exists()
         {
             self.migrate_legacy_session(session_id).await?;
         }
@@ -107,14 +106,16 @@ impl SessionManager {
             .write_segment_atomically(session_id, &active_segment, &active_entries_after)
             .await
         {
-            self.remove_segment_if_present(session_id, &cold_segment).await;
+            self.remove_segment_if_present(session_id, &cold_segment)
+                .await;
             return Err(error);
         }
         if let Err(error) = self
             .write_manifest_atomically(session_id, &next_manifest)
             .await
         {
-            self.remove_segment_if_present(session_id, &cold_segment).await;
+            self.remove_segment_if_present(session_id, &cold_segment)
+                .await;
             self.remove_segment_if_present(session_id, &active_segment)
                 .await;
             return Err(error);

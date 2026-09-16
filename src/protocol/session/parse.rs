@@ -58,9 +58,7 @@ pub fn enforce_session_version(entries: &[SessionEntry]) -> Result<(), XySession
 }
 
 /// Validate the one legacy format that may be lazily migrated to the current format.
-pub fn enforce_legacy_session_version(
-    entries: &[SessionEntry],
-) -> Result<(), XySessionStoreError> {
+pub fn enforce_legacy_session_version(entries: &[SessionEntry]) -> Result<(), XySessionStoreError> {
     let version = entries.iter().find_map(|e| match e {
         SessionEntry::Header(h) => Some(h.version),
         _ => None,

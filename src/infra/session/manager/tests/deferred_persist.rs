@@ -265,7 +265,11 @@ async fn write_entries_to_disk_rewrites_without_tmp_leftover() {
     assert!(
         std::fs::read_dir(sessions.join(sid))
             .unwrap()
-            .all(|entry| !entry.unwrap().file_name().to_string_lossy().contains(".tmp")),
+            .all(|entry| !entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains(".tmp")),
         "no tmp leftovers"
     );
 }

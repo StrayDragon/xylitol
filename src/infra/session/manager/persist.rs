@@ -425,8 +425,7 @@ impl SessionManager {
             self.flush_pending_to_disk(session_id).await?;
         }
 
-        if self.legacy_session_path(session_id).exists()
-            && !self.manifest_path(session_id).exists()
+        if self.legacy_session_path(session_id).exists() && !self.manifest_path(session_id).exists()
         {
             self.migrate_legacy_session(session_id).await?;
         }

@@ -19,8 +19,7 @@ impl SessionManager {
             return self.read_entries(session_id).await;
         }
 
-        if self.legacy_session_path(session_id).exists()
-            && !self.manifest_path(session_id).exists()
+        if self.legacy_session_path(session_id).exists() && !self.manifest_path(session_id).exists()
         {
             self.migrate_legacy_session(session_id).await?;
         }
@@ -35,9 +34,7 @@ impl SessionManager {
         let mut leaf = leaf_hint
             .map(str::to_owned)
             .or_else(|| self.get_leaf(session_id))
-            .or_else(|| {
-                crate::protocol::session::transcript_leaf_anchor(&active_entries, None)
-            });
+            .or_else(|| crate::protocol::session::transcript_leaf_anchor(&active_entries, None));
         if leaf.is_none() {
             leaf = manifest.leaf_entry_id.clone();
         }
@@ -72,11 +69,8 @@ impl SessionManager {
                 for index in (0..manifest.sealed_segments.len()).rev() {
                     if sealed_entries[index].is_none() {
                         sealed_entries[index] = Some(
-                            self.read_segment(
-                                session_id,
-                                &manifest.sealed_segments[index],
-                            )
-                            .await?,
+                            self.read_segment(session_id, &manifest.sealed_segments[index])
+                                .await?,
                         );
                     }
                     if let Some(entry) = sealed_entries[index].as_ref().and_then(|entries| {
@@ -96,8 +90,7 @@ impl SessionManager {
             if let SessionEntry::Compaction(compaction) = &current {
                 compaction_cut = Some(compaction.first_kept_entry_id.clone());
             }
-            let reached_compaction_cut =
-                compaction_cut.as_deref() == Some(current_id.as_str());
+            let reached_compaction_cut = compaction_cut.as_deref() == Some(current_id.as_str());
             leaf = current.parent_id().map(str::to_owned);
             if reached_compaction_cut {
                 stopped_at_compaction_cut = true;
@@ -257,7 +250,12 @@ impl SessionManager {
         for entry in &entries {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
-            if entry.file_type().await.map(|ty| ty.is_dir()).unwrap_or(false) {
+            if entry
+                .file_type()
+                .await
+                .map(|ty| ty.is_dir())
+                .unwrap_or(false)
+            {
                 let manifest = entry.path().join("manifest.json");
                 if manifest.exists() {
                     let modified = entry

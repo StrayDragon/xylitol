@@ -34,9 +34,12 @@ async fn persisted_session_uses_manifest_and_active_segment() {
     assert!(session_dir.join("manifest.json").is_file());
     assert!(!sessions.join(format!("{sid}.jsonl")).exists());
 
-    let manifest: SessionManifest =
-        serde_json::from_slice(&tokio::fs::read(session_dir.join("manifest.json")).await.unwrap())
-            .unwrap();
+    let manifest: SessionManifest = serde_json::from_slice(
+        &tokio::fs::read(session_dir.join("manifest.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
     assert_eq!(manifest.format_version, SESSION_VERSION);
     assert!(manifest.sealed_segments.is_empty());
     assert!(session_dir.join(&manifest.active_segment.path).is_file());
@@ -66,12 +69,9 @@ async fn v6_file_migrates_once_and_marks_policy_unknown() {
         "firstKeptEntryId": "message-1",
         "tokensBefore": 10
     });
-    tokio::fs::write(
-        &legacy,
-        format!("{header}\n{compaction}\n"),
-    )
-    .await
-    .unwrap();
+    tokio::fs::write(&legacy, format!("{header}\n{compaction}\n"))
+        .await
+        .unwrap();
 
     let mgr = SessionManager::new(sessions.clone());
     let entries = mgr.load(sid).await.unwrap();
@@ -131,10 +131,7 @@ async fn compaction_seals_prefix_and_leaves_tail_active() {
             details: None,
             from_hook: None,
             policy: Some(crate::protocol::session::CompactionPolicySnapshot::current(
-                32_768,
-                1_024,
-                20_000,
-                "test",
+                32_768, 1_024, 20_000, "test",
             )),
         }),
     )
@@ -161,7 +158,10 @@ async fn compaction_seals_prefix_and_leaves_tail_active() {
     assert_eq!(cold_before, tokio::fs::read(&cold_path).await.unwrap());
 
     let logical = mgr.load(sid).await.unwrap();
-    let ids: Vec<_> = logical.iter().filter_map(|entry| entry.entry_id()).collect();
+    let ids: Vec<_> = logical
+        .iter()
+        .filter_map(|entry| entry.entry_id())
+        .collect();
     assert!(ids.contains(&"u1"));
     assert!(ids.contains(&"u2"));
     assert!(ids.iter().any(|id| id != &"u1" && id != &"u2"));
@@ -251,9 +251,12 @@ async fn leaf_branch_stops_at_compaction_cut_before_older_segment() {
     .await
     .unwrap();
     let kept_path = session_dir.join("segments/00000000000000000001-sealed.jsonl");
-    tokio::fs::write(&kept_path, format!("{}\n", serde_json::to_string(&kept).unwrap()))
-        .await
-        .unwrap();
+    tokio::fs::write(
+        &kept_path,
+        format!("{}\n", serde_json::to_string(&kept).unwrap()),
+    )
+    .await
+    .unwrap();
 
     let manifest = SessionManifest {
         format_version: SESSION_VERSION,
@@ -318,7 +321,11 @@ async fn unreferenced_segment_does_not_affect_load() {
     assert!(entries.iter().any(|entry| {
         matches!(entry, SessionEntry::Message(message) if message.message.get("content").is_some())
     }));
-    assert!(!entries.iter().any(|entry| entry.entry_id() == Some("orphan")));
+    assert!(
+        !entries
+            .iter()
+            .any(|entry| entry.entry_id() == Some("orphan"))
+    );
 }
 
 #[tokio::test]
