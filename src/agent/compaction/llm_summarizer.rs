@@ -104,20 +104,13 @@ pub(super) async fn generate_complete(
     messages: Vec<LlmMessage>,
     max_tokens: u32,
     obs_parent: Option<fastrace::prelude::SpanContext>,
-    obs_session: &xylitol_ai_bridge::ObsSessionContext,
+    base_options: &crate::protocol::ports::XyGenerateOptions,
 ) -> Result<String> {
+    let mut options = base_options.clone();
+    options.max_output_tokens = Some(max_tokens);
+    options.obs_parent = obs_parent;
     let mut stream = model
-        .generate_stream(
-            messages,
-            &[],
-            false,
-            crate::protocol::ports::XyGenerateOptions {
-                max_output_tokens: Some(max_tokens),
-                obs_parent,
-                obs_session: obs_session.clone(),
-                ..Default::default()
-            },
-        )
+        .generate_stream(messages, &[], false, options)
         .await
         .map_err(|e| anyhow::anyhow!("summarization model error: {e}"))?;
 
@@ -224,7 +217,7 @@ pub async fn generate_summary(
     previous_summary: Option<&str>,
     custom_instructions: Option<&str>,
     obs_parent: Option<fastrace::prelude::SpanContext>,
-    obs_session: &xylitol_ai_bridge::ObsSessionContext,
+    generate_options: &crate::protocol::ports::XyGenerateOptions,
 ) -> Result<String> {
     let conversation_text = serialize_conversation(messages);
 
@@ -251,7 +244,7 @@ pub async fn generate_summary(
         summarization_messages,
         max_tokens.max(256),
         obs_parent,
-        obs_session,
+        generate_options,
     )
     .await
 }
@@ -262,7 +255,7 @@ pub async fn generate_turn_prefix_summary(
     model: &dyn XyModel,
     _reserve_tokens: u64,
     obs_parent: Option<fastrace::prelude::SpanContext>,
-    obs_session: &xylitol_ai_bridge::ObsSessionContext,
+    generate_options: &crate::protocol::ports::XyGenerateOptions,
 ) -> Result<String> {
     let conversation_text = serialize_conversation(messages);
     let prompt_text = format!(
@@ -276,7 +269,7 @@ pub async fn generate_turn_prefix_summary(
         summarization_messages,
         max_tokens.max(256),
         obs_parent,
-        obs_session,
+        generate_options,
     )
     .await
 }
@@ -307,6 +300,7 @@ mod tests {
     struct CaptureModel {
         last: Mutex<Option<String>>,
         last_max_tokens: Mutex<Option<u32>>,
+        last_thinking: Mutex<Option<String>>,
     }
 
     #[async_trait]
@@ -329,6 +323,7 @@ mod tests {
                 .join("\n");
             *self.last.lock().expect("last") = Some(text);
             *self.last_max_tokens.lock().expect("max") = options.max_output_tokens;
+            *self.last_thinking.lock().expect("think") = Some(options.thinking_level.clone());
             Ok(Box::pin(futures::stream::iter(vec![
                 Ok(XyChunk::TextDelta("ok".into())),
                 Ok(XyChunk::Done {
@@ -344,6 +339,7 @@ mod tests {
         let model = CaptureModel {
             last: Mutex::new(None),
             last_max_tokens: Mutex::new(None),
+            last_thinking: Mutex::new(None),
         };
         let msgs = vec![AgentMessage::user("hello")];
         let _ = generate_summary(
@@ -353,7 +349,7 @@ mod tests {
             None,
             Some("prioritize API errors"),
             None,
-            &Default::default(),
+            &XyGenerateOptions::default(),
         )
         .await
         .unwrap();
@@ -369,9 +365,14 @@ mod tests {
         let model = CaptureModel {
             last: Mutex::new(None),
             last_max_tokens: Mutex::new(None),
+            last_thinking: Mutex::new(None),
         };
         let msgs = vec![AgentMessage::user("hello")];
-        let _ = generate_summary(&msgs, &model, 1024, None, None, None, &Default::default())
+        let opts = XyGenerateOptions {
+            thinking_level: "high".into(),
+            ..Default::default()
+        };
+        let _ = generate_summary(&msgs, &model, 1024, None, None, None, &opts)
             .await
             .unwrap();
         // c2810 附带收口：reserve × 0.8 预算必须真正进入请求 options。
@@ -379,7 +380,36 @@ mod tests {
             model.last_max_tokens.lock().expect("max").unwrap(),
             (1024.0 * 0.8) as u32
         );
+        assert_eq!(
+            model.last_thinking.lock().expect("think").as_deref(),
+            Some("high")
+        );
         let prompt = model.last.lock().expect("last").clone().expect("captured");
         assert!(!prompt.contains("Additional focus:"));
+    }
+
+    #[tokio::test]
+    async fn generate_summary_default_options_still_off_when_explicit() {
+        let model = CaptureModel {
+            last: Mutex::new(None),
+            last_max_tokens: Mutex::new(None),
+            last_thinking: Mutex::new(None),
+        };
+        let msgs = vec![AgentMessage::user("hello")];
+        let _ = generate_summary(
+            &msgs,
+            &model,
+            1024,
+            None,
+            None,
+            None,
+            &XyGenerateOptions::default(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            model.last_thinking.lock().expect("think").as_deref(),
+            Some("off")
+        );
     }
 }

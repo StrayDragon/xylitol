@@ -43,17 +43,17 @@ pub(crate) async fn comp_run_compact(
         enabled: true,
         reserve_tokens: 1024,
         keep_recent_tokens,
+        ..Default::default()
     };
     let result = compact_session(
         &mgr,
         sid,
-        model.as_ref(),
+        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
         &settings,
         None,
         0,
         None,
         None,
-        &xylitol_ai_bridge::ObsSessionContext::default(),
     )
     .await;
     match result {
@@ -161,6 +161,7 @@ pub(crate) fn _w_comp_check(agent: &AgentState) {
         enabled: agent.compaction_enabled.get(),
         reserve_tokens: agent.compaction_reserve_tokens.get(),
         keep_recent_tokens: agent.compaction_keep_tokens.get(),
+        ..Default::default()
     };
     // c2: floor-aware threshold — overhead defaults to 0 (degenerate reserve formula)
     // unless a 固定请求开销 given step injected one.

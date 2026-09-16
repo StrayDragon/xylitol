@@ -21,6 +21,7 @@ pub(crate) mod error;
 pub(crate) mod lifecycle;
 pub(crate) mod message;
 pub(crate) mod model;
+pub(crate) mod model_entry;
 pub(crate) mod resource;
 pub(crate) mod session;
 pub(crate) mod source_info;

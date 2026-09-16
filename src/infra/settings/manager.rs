@@ -198,6 +198,9 @@ fn merge_compaction(
         enabled: o.enabled.or(b.enabled),
         reserve_tokens: o.reserve_tokens.or(b.reserve_tokens),
         keep_recent_tokens: o.keep_recent_tokens.or(b.keep_recent_tokens),
+        // rc15: task model + thinking override are config.yaml-only.
+        model: None,
+        thinking_level: None,
     });
 }
 
@@ -239,6 +242,8 @@ mod tests {
                 enabled: Some(true),
                 reserve_tokens: Some(16384),
                 keep_recent_tokens: Some(20000),
+                model: None,
+                thinking_level: None,
             }),
             ..Default::default()
         };
@@ -247,19 +252,25 @@ mod tests {
                 enabled: Some(false),
                 reserve_tokens: None,
                 keep_recent_tokens: None,
+                model: Some(crate::protocol::model_entry::XyModelEntryConfig {
+                    provider: crate::protocol::model::XyModelKind::Fake,
+                    model: "ignored".into(),
+                    ..Default::default()
+                }),
+                thinking_level: Some("high".into()),
             }),
             ..Default::default()
         };
 
         let merged = SettingsManager::deep_merge(&base, &overrides);
-        assert_eq!(merged.compaction.as_ref().unwrap().enabled, Some(false));
-        assert_eq!(
-            merged.compaction.as_ref().unwrap().reserve_tokens,
-            Some(16384)
-        );
-        assert_eq!(
-            merged.compaction.as_ref().unwrap().keep_recent_tokens,
-            Some(20000)
+        let comp = merged.compaction.as_ref().unwrap();
+        assert_eq!(comp.enabled, Some(false));
+        assert_eq!(comp.reserve_tokens, Some(16384));
+        assert_eq!(comp.keep_recent_tokens, Some(20000));
+        assert!(comp.model.is_none(), "settings merge must drop model");
+        assert!(
+            comp.thinking_level.is_none(),
+            "settings merge must drop thinking_level"
         );
     }
 

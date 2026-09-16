@@ -137,6 +137,11 @@ pub struct AgentState {
     /// When set, injected as `XyHookBus` for library-seam wiring BDD (c990).
     pub(crate) wiring_hook_log: RefCell<Option<Arc<WiringHookLog>>>,
     pub(crate) last_op_error: RefCell<Option<String>>,
+    pub compaction_task_model: RefCell<Option<crate::protocol::model_entry::XyModelEntryConfig>>,
+    pub compaction_thinking_level: RefCell<Option<String>>,
+    pub compaction_binding:
+        RefCell<Option<crate::agent::model::task_model::CompactionSummaryBinding>>,
+    pub compaction_notice_count: Cell<u32>,
 }
 impl AgentState {
     fn new() -> Self {
@@ -156,6 +161,10 @@ impl AgentState {
             last_hook_stdin: RefCell::new(None),
             wiring_hook_log: RefCell::new(None),
             last_op_error: RefCell::new(None),
+            compaction_task_model: RefCell::new(None),
+            compaction_thinking_level: RefCell::new(None),
+            compaction_binding: RefCell::new(None),
+            compaction_notice_count: Cell::new(0),
         }
     }
 

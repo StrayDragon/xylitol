@@ -155,6 +155,21 @@ hooks:
 #   # Omit / null = open-end (no product default max_iterations).
 #   max_turns: 200
 
+# Optional compaction overrides (config.yaml only; settings.json ignores model/thinkingLevel).
+# Share a models entry via YAML anchor/alias instead of duplicating fields:
+# models:
+#   models:
+#     cheap: &cheap-summary
+#       provider: openai
+#       model: gpt-4o-mini
+#       api_key: "{{ secret.OPENAI_API_KEY }}"
+# compaction:
+#   enabled: true
+#   reserveTokens: 16384
+#   keepRecentTokens: 20000
+#   model: *cheap-summary
+#   thinkingLevel: high
+
 # mcp_servers:  # YAML list (not Cursor-style mcpServers object)
 #   # stdio (prefer PATH command name; or "{{ vars.home }}/…" for home-relative)
 #   - name: "my-server"

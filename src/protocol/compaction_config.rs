@@ -10,6 +10,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::protocol::model_entry::XyModelEntryConfig;
+
 /// Compaction settings as loaded from YAML/JSON files (all-optional form).
 ///
 /// Mapped to the runtime `CompactionSettings` (in `agent::compaction::settings`)
@@ -23,4 +25,8 @@ pub struct XyCompactionSettingsConfig {
     pub reserve_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keep_recent_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<XyModelEntryConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_level: Option<String>,
 }

@@ -265,17 +265,17 @@ pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionSto
         enabled: true,
         reserve_tokens: 1024,
         keep_recent_tokens: 80,
+        ..Default::default()
     };
     let result = compact_session(
         &mgr,
         &sid,
-        model.as_ref(),
+        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
         &settings,
         None,
         0,
         None,
         None,
-        &xylitol_ai_bridge::ObsSessionContext::default(),
     )
     .await;
     agent.last_result.replace(Some(
@@ -330,17 +330,17 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
         enabled: true,
         reserve_tokens: 1024,
         keep_recent_tokens: 200,
+        ..Default::default()
     };
     let entry = compact_session(
         &mgr,
         sid,
-        model.as_ref(),
+        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
         &settings,
         None,
         0,
         None,
         None,
-        &xylitol_ai_bridge::ObsSessionContext::default(),
     )
     .await
     .expect("compact");
@@ -622,6 +622,7 @@ pub(crate) fn w_comp_turn_end_check(agent: &AgentState) {
         enabled: agent.compaction_enabled.get(),
         reserve_tokens: agent.compaction_reserve_tokens.get(),
         keep_recent_tokens: 20_000,
+        ..Default::default()
     };
     let aborted = result_ok_str(&agent.last_result).contains("aborted:true");
     // c2 floor-aware threshold: overhead defaults to 0 unless a given injected one
@@ -632,6 +633,7 @@ pub(crate) fn w_comp_turn_end_check(agent: &AgentState) {
             enabled: true,
             reserve_tokens: agent.compaction_reserve_tokens.get(),
             keep_recent_tokens: agent.compaction_keep_tokens.get(),
+            ..Default::default()
         };
         projected_post_compact_tokens(
             &settings,
@@ -688,6 +690,7 @@ pub(crate) fn w_comp_force_path(agent: &AgentState) {
         enabled: true,
         reserve_tokens: agent.compaction_reserve_tokens.get(),
         keep_recent_tokens: 1_000,
+        ..Default::default()
     };
     let tokens: u64 = 40_000;
     let window = agent.context_window.get();
@@ -817,6 +820,7 @@ pub(crate) async fn w_comp_prepare_on_leaf(agent: &AgentState, sess: &XySessionS
         enabled: true,
         reserve_tokens: 1024,
         keep_recent_tokens: 20_000,
+        ..Default::default()
     };
     let prep_all = prepare_compaction(&all, &settings, 0, 0);
     let prep_branch = prepare_compaction(&branch, &settings, 0, 0);
@@ -913,17 +917,17 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
         enabled: true,
         reserve_tokens: 1024,
         keep_recent_tokens: 4_000,
+        ..Default::default()
     };
     let result = compact_session(
         &mgr,
         sid,
-        model.as_ref(),
+        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
         &settings,
         None,
         0,
         None,
         None,
-        &xylitol_ai_bridge::ObsSessionContext::default(),
     )
     .await;
     agent.last_result.replace(Some(
@@ -1028,7 +1032,7 @@ Edit src/file5.rs and update Cargo.toml
         None,
         None,
         None,
-        &xylitol_ai_bridge::ObsSessionContext::default(),
+        &crate::protocol::ports::XyGenerateOptions::default(),
     )
     .await;
     agent
@@ -1096,17 +1100,17 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
         enabled: true,
         reserve_tokens: 1024,
         keep_recent_tokens: 4_000,
+        ..Default::default()
     };
     let result = compact_session(
         &mgr,
         sid,
-        model.as_ref(),
+        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
         &settings,
         None,
         0,
         None,
         None,
-        &xylitol_ai_bridge::ObsSessionContext::default(),
     )
     .await;
     agent.last_result.replace(Some(
@@ -1257,7 +1261,7 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
         prev.as_deref(),
         None,
         None,
-        &xylitol_ai_bridge::ObsSessionContext::default(),
+        &crate::protocol::ports::XyGenerateOptions::default(),
     )
     .await;
     agent
@@ -1433,6 +1437,7 @@ pub(crate) fn g_comp_split_ready(agent: &AgentState) {
         enabled: true,
         reserve_tokens: 10_000,
         keep_recent_tokens: 20_000,
+        ..Default::default()
     };
     // pi: tokens > window - reserve → 90_001 > 90_000
     agent
@@ -1457,4 +1462,198 @@ pub(crate) fn t_comp_split_ok(agent: &AgentState, sess: &XySessionStore) {
             .iter()
             .any(|e| matches!(e, SessionEntry::Compaction(_)))
     );
+}
+
+// ── domain-compaction: summary model + thinking (c7 / c2811) ───────
+
+fn c2811_session_meta(id: &str, levels: &[&str]) -> XyModelMeta {
+    XyModelMeta {
+        id: id.into(),
+        config: XyModelConfig {
+            kind: XyModelKind::Fake,
+            api_key: String::new(),
+            model: id.into(),
+            base_url: None,
+            api: None,
+            compat: None,
+        },
+        display_name: id.into(),
+        thinking: true,
+        context_window: 128_000,
+        api: String::new(),
+        provider: "fake".into(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: levels.iter().map(|s| (*s).to_string()).collect(),
+        thinking_level_map: Default::default(),
+    }
+}
+
+fn c2811_model_manager(levels: &[&str]) -> crate::agent::model::ModelManager {
+    use std::sync::Arc;
+
+    let mut reg = ModelRegistry::new();
+    reg.register(c2811_session_meta("main-wire", levels));
+    let mut mm = crate::agent::model::ModelManager::new(
+        reg,
+        Arc::new(crate::infra::provider::factory::build_provider),
+    );
+    mm.select_model("main-wire").expect("select session model");
+    mm
+}
+
+async fn c2811_run_compact_summary(agent: &AgentState, sess: &XySessionStore, levels: &[&str]) {
+    use crate::agent::compaction::{CompactionSettings, compact_session};
+    use crate::agent::model::task_model::resolve_compaction_summary;
+
+    reset_fake_state();
+    set_fake_text(
+        "## Goal\nSummary task\n\n## Progress\n### Done\n- [x] ok\n\n## Next Steps\n1. Continue\n",
+    );
+    let mm = c2811_model_manager(levels);
+    let session_model = mm.build_current_model().expect("session model");
+    let settings = CompactionSettings {
+        model: agent.compaction_task_model.borrow().clone(),
+        thinking_level: agent.compaction_thinking_level.borrow().clone(),
+        enabled: true,
+        reserve_tokens: 1024,
+        keep_recent_tokens: 4_000,
+    };
+    let binding =
+        resolve_compaction_summary(&settings, &mm, &Default::default()).expect("resolve binding");
+    if let Some(notice) = binding.attribution.notice_message() {
+        agent
+            .compaction_notice_count
+            .set(agent.compaction_notice_count.get() + 1);
+        agent
+            .last_result
+            .replace(Some(Ok(format!("notice:{}", notice))));
+    }
+    agent.compaction_binding.replace(Some(binding.clone()));
+
+    sess.ensure_mgr();
+    let sid = "c2811-summary";
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let _ = mgr.create(sid, Some("."), None).await;
+    for i in 0..20 {
+        let e = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("msg-{i}"),
+                parent_id: None,
+                timestamp: 1704067200000,
+            },
+            message: serde_json::json!({
+                "role": if i % 2 == 0 { "user" } else { "assistant" },
+                "content": [{ "type": "text", "text": format!("line {i}") }],
+            }),
+        });
+        let _ = mgr.append(sid, &e).await;
+    }
+    let result = compact_session(&mgr, sid, &binding, &settings, None, 0, None, None).await;
+    agent.last_result.replace(Some(
+        result
+            .map(|e| {
+                format!(
+                    "compacted:{};session_ptr={:p};summary_ptr={:p}",
+                    e.summary.len(),
+                    Arc::as_ptr(&session_model),
+                    Arc::as_ptr(&binding.model),
+                )
+            })
+            .map_err(|e| XyDriverError::from(e.to_string())),
+    ));
+    sess.current_id.replace(Some(sid.to_string()));
+}
+
+#[given("compaction 配置了任务模型条目且该条目可构建")]
+pub(crate) fn g_c7_task_model_ok(agent: &AgentState) {
+    agent
+        .compaction_task_model
+        .replace(Some(crate::protocol::model_entry::XyModelEntryConfig {
+            provider: XyModelKind::Fake,
+            model: "summary-task".into(),
+            thinking: false,
+            ..Default::default()
+        }));
+}
+
+#[given("compaction 配置了任务模型条目且该条目构建失败")]
+pub(crate) fn g_c7_task_model_fail(agent: &AgentState) {
+    agent
+        .compaction_task_model
+        .replace(Some(crate::protocol::model_entry::XyModelEntryConfig {
+            provider: XyModelKind::Fake,
+            model: "bad-summary".into(),
+            thinking: true,
+            thinking_levels: Some(vec!["".into()]),
+            ..Default::default()
+        }));
+}
+
+#[given("所用模型支持集为 off 与 high")]
+pub(crate) fn g_c7_thinking_levels(agent: &AgentState) {
+    agent.compaction_task_model.replace(None);
+    agent.compaction_thinking_level.replace(None);
+}
+
+#[given("compaction thinking_level 覆盖为 max")]
+pub(crate) fn g_c7_thinking_override(agent: &AgentState) {
+    agent.compaction_thinking_level.replace(Some("max".into()));
+}
+
+#[when("执行 compact 摘要")]
+pub(crate) async fn w_c7_compact_summary(agent: &AgentState, sess: &XySessionStore) {
+    c2811_run_compact_summary(agent, sess, &["off", "high"]).await;
+}
+
+#[then("摘要请求使用该条目构建的独立模型实例且非当前会话模型实例")]
+pub(crate) fn t_c7_independent_model(agent: &AgentState) {
+    let binding = agent.compaction_binding.borrow();
+    let binding = binding.as_ref().expect("binding");
+    assert_eq!(binding.attribution.actual_model, "summary-task");
+    assert!(!binding.attribution.fallback);
+    let text = result_ok_str(&agent.last_result);
+    let session_ptr = text
+        .split("session_ptr=")
+        .nth(1)
+        .and_then(|s| s.split(';').next())
+        .expect("session ptr");
+    let summary_ptr = text.split("summary_ptr=").nth(1).expect("summary ptr");
+    assert_ne!(
+        session_ptr, summary_ptr,
+        "summary model must be a distinct instance"
+    );
+}
+
+#[then("摘要请求回退当前会话模型")]
+pub(crate) fn t_c7_fallback_session_model(agent: &AgentState) {
+    let binding = agent.compaction_binding.borrow();
+    let binding = binding.as_ref().expect("binding");
+    assert_eq!(binding.attribution.actual_model, "main-wire");
+    assert!(binding.attribution.fallback);
+}
+
+#[then("归因标注 fallback 且通知至多一次")]
+pub(crate) fn t_c7_fallback_notice(agent: &AgentState) {
+    let binding = agent.compaction_binding.borrow();
+    let binding = binding.as_ref().expect("binding");
+    assert!(binding.attribution.fallback);
+    assert!(binding.attribution.notice_message().is_some());
+    let obs = binding.attribution.enrich_obs(&Default::default());
+    assert_eq!(obs.compaction_model_fallback, Some(true));
+    assert_eq!(agent.compaction_notice_count.get(), 1);
+}
+
+#[then("摘要请求 thinking 回退继承档且可观测")]
+pub(crate) fn t_c7_thinking_inherit(agent: &AgentState) {
+    let binding = agent.compaction_binding.borrow();
+    let binding = binding.as_ref().expect("binding");
+    assert_eq!(binding.generate_options.thinking_level, "high");
+    assert!(binding.attribution.thinking_rejected);
+    let obs = binding.attribution.enrich_obs(&Default::default());
+    assert_eq!(obs.compaction_thinking_rejected, Some(true));
 }

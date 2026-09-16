@@ -151,8 +151,6 @@ impl ModelRegistry {
     }
 }
 
-pub use crate::protocol::model::default_context_window_for;
-
 #[cfg(test)]
 mod tests {
     use super::*;

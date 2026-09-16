@@ -82,6 +82,30 @@ fn g_rc_compaction(rc_snap: &RcSnap) {
         Err(e) => panic!("compaction yaml: {e}"),
     }
 }
+#[given("config.yaml 的 compaction.model 经 YAML 别名引用与 models 条目同源的锚点")]
+fn g_rc_compaction_anchor(rc_snap: &RcSnap, tokenizer_bdd: &TokenizerBdd) {
+    let yaml = "models:\n  models:\n    main: &main\n      provider: fake\n      model: anchor-model\ncompaction:\n  model: *main\n";
+    let cfg = parse_app_config_yaml(yaml).expect("anchor yaml");
+    rc_snap.app_config.replace(Some(cfg.clone()));
+    tokenizer_bdd.config.replace(cfg);
+    tokenizer_bdd.cfg_ok.set(true);
+}
+#[given("settings.json 的 compaction 块含 model 或 thinkingLevel 键")]
+fn g_rc_compaction_settings_ignored(rc_snap: &RcSnap) {
+    rc_snap.settings.borrow_mut().compaction = Some(
+        crate::protocol::compaction_config::XyCompactionSettingsConfig {
+            enabled: Some(true),
+            reserve_tokens: Some(1024),
+            keep_recent_tokens: Some(2048),
+            model: Some(crate::protocol::model_entry::XyModelEntryConfig {
+                provider: crate::protocol::model::XyModelKind::Fake,
+                model: "ignored".into(),
+                ..Default::default()
+            }),
+            thinking_level: Some("high".into()),
+        },
+    );
+}
 #[given("Settings.default_thinking_level 为 high 且模型支持集为 off 与 high 与 max")]
 fn g_rc_thinking_default(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().default_thinking_level = Some("high".into());
@@ -351,6 +375,27 @@ fn t_rc_no_prompts_field(rc_snap: &RcSnap) {
         !legacy_v.get("prompts").is_some_and(|p| !p.is_null()),
         "legacy prompts key must not take effect"
     );
+}
+#[then("compaction 任务模型条目与该锚点条目字段一致")]
+fn t_rc_compaction_anchor(rc_snap: &RcSnap) {
+    let cfg = rc_snap.app_config.borrow().clone().expect("app config");
+    let entry = cfg
+        .compaction
+        .as_ref()
+        .and_then(|c| c.model.as_ref())
+        .expect("compaction model");
+    assert_eq!(entry.model, "anchor-model");
+}
+#[then("两键被忽略且不进入运行时 CompactionSettings")]
+fn t_rc_compaction_settings_ignored(rc_snap: &RcSnap) {
+    let merged = crate::agent::compaction::settings::merge_compaction_runtime(
+        None,
+        rc_snap.settings.borrow().compaction.as_ref(),
+    );
+    assert!(merged.model.is_none());
+    assert!(merged.thinking_level.is_none());
+    assert_eq!(merged.reserve_tokens, 1024);
+    assert_eq!(merged.keep_recent_tokens, 2048);
 }
 #[then("compaction_settings.keep_recent_tokens 等于 YAML 中设置的值")]
 fn t_rc_compaction(rc_snap: &RcSnap) {

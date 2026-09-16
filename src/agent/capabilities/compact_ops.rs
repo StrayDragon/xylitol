@@ -31,7 +31,14 @@ impl AgentCapabilities {
             .session_id()
             .ok_or(CompactionError::from(XySessionError::NoActiveSession))?;
 
-        let model = self.build_current_model()?;
+        let obs_session = self.obs_session_snapshot_from_store().await;
+        let summary = self.with_models(|mm| {
+            crate::agent::model::task_model::resolve_compaction_summary(
+                self.compaction_orchestrator.settings(),
+                mm,
+                &obs_session,
+            )
+        })?;
 
         let ctx_window = self
             .current_model()
@@ -43,12 +50,13 @@ impl AgentCapabilities {
             observe_hook(bus, ty, phase, ctx).await;
         }
 
+        let mut fallback_notice_emitted = false;
         let compacted = self
             .compaction_orchestrator
             .maybe_auto_compact(
                 self.store.as_ref(),
                 sid,
-                model.as_ref(),
+                &summary,
                 self.sink.as_ref(),
                 ctx_window,
                 estimate_opts,
@@ -56,7 +64,7 @@ impl AgentCapabilities {
                 None,
                 Some(&self.fixed_request_context()),
                 None,
-                &self.obs_session_snapshot_from_store().await,
+                &mut fallback_notice_emitted,
                 // Library path holds no session-scoped c28 flag → no diagnostic.
                 None,
             )
@@ -76,23 +84,31 @@ impl AgentCapabilities {
             .session_id()
             .ok_or(CompactionError::from(XySessionError::NoActiveSession))?;
 
-        let model = self.build_current_model()?;
+        let obs_session = self.obs_session_snapshot_from_store().await;
+        let summary = self.with_models(|mm| {
+            crate::agent::model::task_model::resolve_compaction_summary(
+                self.compaction_orchestrator.settings(),
+                mm,
+                &obs_session,
+            )
+        })?;
 
         if let Some(bus) = &self.hook_bus {
             let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_compact();
             observe_hook(bus, ty, phase, ctx).await;
         }
 
+        let mut fallback_notice_emitted = false;
         self.compaction_orchestrator
             .compact(
                 self.store.as_ref(),
                 sid,
-                model.as_ref(),
+                &summary,
                 self.sink.as_ref(),
                 instructions,
                 self.current_model().map(|m| m.context_window).unwrap_or(0),
                 Some(&self.fixed_request_context()),
-                &self.obs_session_snapshot_from_store().await,
+                &mut fallback_notice_emitted,
             )
             .await?;
 

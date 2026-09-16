@@ -119,3 +119,15 @@ fn test_rc_absent_key_ok(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
     name = "config-local-not-merged"
 )]
 fn test_rc_local_not_merged(tokenizer_bdd: TokenizerBdd, rc_snap: RcSnap) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "compaction-model-anchor-alias"
+)]
+fn test_rc_compaction_anchor(rc_snap: RcSnap, tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "compaction-model-settings-ignored"
+)]
+fn test_rc_compaction_settings_ignored(rc_snap: RcSnap) {}

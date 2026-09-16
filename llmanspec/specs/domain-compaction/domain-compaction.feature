@@ -30,7 +30,7 @@
 
   @req:c7 @human
   场景: LLM 摘要
-    - Compaction MUST 调用配置的 LLM 生成结构化摘要，格式：## Goal / ## Constraints & Preferences / ## Progress (Done, In Progress, Blocked) / ## Key Decisions / ## Next Steps / ## Critical Context。
+    - Compaction MUST 调用配置的 LLM 生成结构化摘要，格式：## Goal / ## Constraints & Preferences / ## Progress (Done, In Progress, Blocked) / ## Key Decisions / ## Next Steps / ## Critical Context。摘要请求 MUST 经任务级模型解析入口（runtime-model-registry m18）取模型：配置了任务模型条目时 MUST 用该条目构建的独立实例发起摘要；条目解析或构建失败时 MUST 回退当前会话模型且 MUST NOT 静默换模型——回退经归因标注与每次 compaction 至多一次的通知可观测，manual force 路径同样适用。摘要请求的 thinking 档位缺省 MUST 继承所用模型的对话同款默认档（可调模型=支持集末项，仅 off/不可调=off）；compaction 配置的 thinking_level 覆盖值精确匹配所用模型支持集时 MUST 覆盖；不在支持集时 MUST 回退继承档并可观测，MUST NOT 静默接受变体或使 compaction 失败。摘要格式骨架不变。
 
   @req:c8 @human
   场景: 切点
@@ -58,7 +58,7 @@
 
   @req:c14 @human
   场景: 单一配置来源
-    - Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens / keep_recent_tokens）；MUST NOT 再保留 compaction_threshold 或重复 CompactionConfig 定义。
+    - Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens / keep_recent_tokens / model / thinking_level；model 为可选任务模型条目对象，thinking_level 为可选档名覆盖）；MUST NOT 再保留 compaction_threshold 或重复 CompactionConfig 定义。
 
   @req:c15 @human
   场景: token 使用量类型统一与来源标注
@@ -197,6 +197,26 @@
     假如 会话有 30 轮 user+assistant 含文件编辑
     当 调用 generate_summary
     那么 响应含 Goal、Progress、Next Steps 节及具体文件路径
+
+  @executable @req:c7
+  场景: summary-model-entry
+    假如 compaction 配置了任务模型条目且该条目可构建
+    当 执行 compact 摘要
+    那么 摘要请求使用该条目构建的独立模型实例且非当前会话模型实例
+
+  @executable @req:c7
+  场景: summary-model-fallback-notice
+    假如 compaction 配置了任务模型条目且该条目构建失败
+    当 执行 compact 摘要
+    那么 摘要请求回退当前会话模型
+    并且 归因标注 fallback 且通知至多一次
+
+  @executable @req:c7
+  场景: summary-thinking-override-out-of-set
+    假如 所用模型支持集为 off 与 high
+    并且 compaction thinking_level 覆盖为 max
+    当 执行 compact 摘要
+    那么 摘要请求 thinking 回退继承档且可观测
 
   @executable @req:c8
   场景: find-cut

@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2811-add-compact-model-selection
+base_sha: d0500c921353614e5d67fff29f41568648a3a07c
+base_branch: main
 ---
 
 # compact 摘要请求的模型与 thinking 可配——缺省继承，配置覆盖，任务级解析 seam

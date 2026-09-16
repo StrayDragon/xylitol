@@ -19,7 +19,7 @@
 
   @req:rc15 @human
   场景: compaction 配置映射
-    - 运行时配置 MUST 定义从 YAML 加载期 compaction 表面（enabled / reserveTokens / keepRecentTokens）到规范运行时 CompactionSettings 的单一文档化映射，无并行重复类型；MUST NOT 暴露或映射 compaction_threshold / 百分比阈值字段。
+    - 运行时配置 MUST 定义从 YAML 加载期 compaction 表面（enabled / reserveTokens / keepRecentTokens / model / thinkingLevel）到规范运行时 CompactionSettings 的单一文档化映射，无并行重复类型；MUST NOT 暴露或映射 compaction_threshold / 百分比阈值字段。model 为与 models 条目字段形状兼容的内嵌对象，跨条目共享 MUST 靠 YAML 锚点/别名原生能力，MUST NOT 引入字符串别名引用语义；model 与 thinkingLevel 仅 config.yaml 加载面生效，Settings.json 的 compaction 块 MUST NOT 接线这两键（出现即忽略，对齐 rc12 遗留键纪律）。
 
   @req:rc1 @human
   场景: ConfigValue 在 infra
@@ -114,6 +114,18 @@
     假如 config.yaml 含 compaction 节及 keepRecentTokens
     当 加载配置并解析为运行时 settings
     那么 compaction_settings.keep_recent_tokens 等于 YAML 中设置的值
+
+  @executable @req:rc15
+  场景: compaction-model-anchor-alias
+    假如 config.yaml 的 compaction.model 经 YAML 别名引用与 models 条目同源的锚点
+    当 加载配置
+    那么 compaction 任务模型条目与该锚点条目字段一致
+
+  @executable @req:rc15
+  场景: compaction-model-settings-ignored
+    假如 settings.json 的 compaction 块含 model 或 thinkingLevel 键
+    当 加载 settings
+    那么 两键被忽略且不进入运行时 CompactionSettings
 
   @executable @req:rc9
   场景: field
