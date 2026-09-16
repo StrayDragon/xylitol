@@ -2,7 +2,7 @@
 name: "llman-sdd-research"
 description: "以后台 agent 委托外部文献调研。当用户需要针对某个问题查阅官方文档/API/源码等一手资料、或想把阅读文献的活委托给后台 agent 时使用。"
 metadata:
-  version: "0.0.78"
+  version: "0.1.3"
 ---
 
 # LLMAN SDD Research
@@ -40,12 +40,12 @@ metadata:
 
 `llman-sdd-wayfinder` 的查资料 ticket 委托本 skill 后台解决；解决后回写 ticket proposal 并在 map 的 Decisions-so-far 记一行要点。
 
-> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
-> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。
+> 命令细节用 `llman-sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman-sdd list --specs` / `llman-sdd show <capability>` 查全文。
 
 ## Context
-- 先查状态再动手：change/spec 状态以 `llman sdd show/list/validate` 输出为准。
-- 读 spec 全文前先用 `llman sdd context --task --paths` 定位相关 specs。
+- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准。
+- 读 spec 全文前先用 `llman-sdd context --task --paths` 定位相关 specs。
 
 ## Goal
 - 本节命令达成一个可验证结果；结果路径与校验状态随报告输出。
@@ -55,8 +55,8 @@ metadata:
 - 改动保持最小；已知校验错误禁止强行继续。
 
 ## Workflow
-- 每步以 `llman sdd` 命令结果为事实来源；改动工件后必跑 `llman sdd validate`。
-- 命令细节见下方生成式命令参考或 `llman sdd <cmd> --help`。
+- 每步以 `llman-sdd` 命令结果为事实来源；改动工件后必跑 `llman-sdd validate`。
+- 命令细节见下方生成式命令参考或 `llman-sdd <cmd> --help`。
 
 ## Decision Policy
 - 高影响歧义先澄清再继续；事实自己查证，只有决策问用户。
@@ -67,6 +67,6 @@ metadata:
 ## Ethics Governance
 - `ethics.risk_level`：low——仅读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时从其声明。
 - `ethics.prohibited_actions`：违反正文「硬约束」的动作；未经用户明确要求的 push / PR / 外部上传。
-- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman sdd validate` 为准。
+- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman-sdd validate` 为准。
 - `ethics.refusal_contract`：门禁 CRITICAL 未清零 → 拒绝进入下一阶段；自修复达上限 → 报告 blocker。
 - `ethics.escalation_policy`：改动 SDD 合约/模板或执行不可逆动作前，暂停并请用户确认。

@@ -1,6 +1,12 @@
+<!-- LLMANSPEC:START -->
 # llmanspec AGENTS.md
 
-此文件由根目录的 `AGENTS.md` 托管块引用，存放 **llman SDD 工作流在本项目的专属规则**：
+此文件由根目录的 `AGENTS.md` 托管块引用。可在此添加项目特定的规则、
+上下文或约定，以便 AI 代理遵守。
+
+<!-- 在此行下方添加你的规则 -->
+<!-- LLMANSPEC:END -->
+
 change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层、seam、Xy\*）真源在
 `src/AGENTS.md`，不在此重复；BDD 配置真源在 `llmanspec/config.yaml` 的 `bdd:` 段。
 
