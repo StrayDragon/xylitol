@@ -47,6 +47,95 @@ async fn persisted_session_uses_manifest_and_active_segment() {
 }
 
 #[tokio::test]
+async fn ordinary_append_refreshes_manifest_leaf_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    let sessions = dir.path().join("sessions");
+    let mgr = SessionManager::new(sessions.clone());
+    let sid = "manifest-fresh";
+
+    mgr.create(sid, Some("."), None).await.unwrap();
+    mgr.append(sid, &message("", None, "user", "hello"))
+        .await
+        .unwrap();
+    mgr.append(sid, &message("", None, "assistant", "world"))
+        .await
+        .unwrap();
+
+    let entries = mgr.load(sid).await.unwrap();
+    let leaf_id = entries.last().and_then(SessionEntry::entry_id).unwrap();
+    let manifest: SessionManifest = serde_json::from_slice(
+        &tokio::fs::read(sessions.join(sid).join("manifest.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        manifest.active_segment.last_entry_id.as_deref(),
+        Some(leaf_id)
+    );
+    assert_eq!(manifest.leaf_entry_id.as_deref(), Some(leaf_id));
+}
+
+#[tokio::test]
+async fn invalid_manifest_rejects_append_without_creating_orphan_segment() {
+    let dir = tempfile::tempdir().unwrap();
+    let sessions = dir.path().join("sessions");
+    let mgr = SessionManager::new(sessions.clone());
+    let sid = "invalid-manifest";
+
+    mgr.create(sid, Some("."), None).await.unwrap();
+    for entry in [
+        message("old", None, "user", "old"),
+        message("keep", Some("old"), "assistant", "keep"),
+    ] {
+        mgr.append_with_id(sid, &entry).await.unwrap();
+    }
+    mgr.commit_compaction(
+        sid,
+        &SessionEntry::Compaction(CompactionEntry {
+            base: EntryBase {
+                entry_type: "compaction".into(),
+                id: "input-id".into(),
+                parent_id: None,
+                timestamp: 3,
+            },
+            summary: "summary".into(),
+            first_kept_entry_id: "keep".into(),
+            tokens_before: 10,
+            details: None,
+            from_hook: None,
+            policy: None,
+        }),
+    )
+    .await
+    .unwrap();
+
+    let session_dir = sessions.join(sid);
+    let manifest_path = session_dir.join("manifest.json");
+    let manifest: SessionManifest =
+        serde_json::from_slice(&tokio::fs::read(&manifest_path).await.unwrap()).unwrap();
+    let active_path = session_dir.join(&manifest.active_segment.path);
+    let active_before = tokio::fs::read(&active_path).await.unwrap();
+    tokio::fs::write(&manifest_path, b"{not-json")
+        .await
+        .unwrap();
+
+    let error = mgr
+        .append_with_id(
+            sid,
+            &message("new", Some("keep"), "user", "must not persist"),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("invalid session manifest"));
+    assert_eq!(active_before, tokio::fs::read(&active_path).await.unwrap());
+    assert!(
+        !session_dir.join("active-0.jsonl").exists(),
+        "invalid manifest must not route writes to the fallback segment"
+    );
+}
+
+#[tokio::test]
 async fn v6_file_migrates_once_and_marks_policy_unknown() {
     let dir = tempfile::tempdir().unwrap();
     let sessions = dir.path().join("sessions");
@@ -211,6 +300,19 @@ async fn ordinary_append_keeps_compaction_append_only() {
         .await
         .unwrap();
     assert!(active.contains("\"type\":\"compaction\""));
+    let leaf_id = mgr
+        .load(sid)
+        .await
+        .unwrap()
+        .last()
+        .and_then(SessionEntry::entry_id)
+        .unwrap()
+        .to_owned();
+    assert_eq!(
+        manifest.active_segment.last_entry_id.as_deref(),
+        Some(leaf_id.as_str())
+    );
+    assert_eq!(manifest.leaf_entry_id.as_deref(), Some(leaf_id.as_str()));
 }
 
 #[tokio::test]

@@ -150,6 +150,8 @@ impl SessionManager {
         file.sync_all()
             .await
             .map_err(|e| XySessionStoreError::io("sync active session segment", e))?;
+        self.update_manifest_after_append(session_id, manifest.clone(), entry)
+            .await?;
         Ok(())
     }
 
