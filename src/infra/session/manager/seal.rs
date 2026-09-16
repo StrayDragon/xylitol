@@ -99,9 +99,7 @@ impl SessionManager {
         let cold_result = self
             .write_segment_atomically(session_id, &cold_segment, prefix)
             .await;
-        if let Err(error) = cold_result {
-            return Err(error);
-        }
+        cold_result?;
         if let Err(error) = self
             .write_segment_atomically(session_id, &active_segment, &active_entries_after)
             .await

@@ -153,7 +153,7 @@ impl SessionManager {
         });
 
         match &self.backend {
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 if self.manifest_path(id).exists() {
                     // Corrupt / headerless segmented storage: prepend a header through
                     // the same manifest commit path.
@@ -189,7 +189,7 @@ impl SessionManager {
 
     async fn session_has_header(&self, session_id: &str) -> bool {
         match &self.backend {
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 if self.manifest_path(session_id).exists() {
                     let path = self.current_active_path(session_id);
                     if let Ok(content) = tokio::fs::read_to_string(&path).await {
@@ -243,7 +243,7 @@ impl SessionManager {
         let entry_with_ids = self.inject_ids(session_id, entry);
 
         match &self.backend {
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 if self.legacy_session_path(session_id).exists()
                     && !self.manifest_path(session_id).exists()
                 {

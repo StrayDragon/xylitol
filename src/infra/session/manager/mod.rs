@@ -103,7 +103,7 @@ impl SessionManager {
     }
 
     fn session_file_exists(&self, session_id: &str) -> bool {
-        matches!(&self.backend, SessionBackend::Persisted { .. })
+        matches!(&self.backend, SessionBackend::Persisted)
             && (self.manifest_path(session_id).exists()
                 || self.legacy_session_path(session_id).exists())
     }
@@ -113,7 +113,7 @@ impl SessionManager {
     /// Get the active JSONL path for a persisted session.
     pub(super) fn session_path(&self, id: &str) -> PathBuf {
         match &self.backend {
-            SessionBackend::Persisted { .. } => self.current_active_path(id),
+            SessionBackend::Persisted => self.current_active_path(id),
             SessionBackend::InMemory => PathBuf::from("/dev/null"),
         }
     }
@@ -125,7 +125,7 @@ impl SessionManager {
     #[allow(dead_code)] // BDD @executable contract, not product-called
     pub fn get_session_file(&self, id: &str) -> Option<PathBuf> {
         match &self.backend {
-            SessionBackend::Persisted { .. } => Some(self.session_path(id)),
+            SessionBackend::Persisted => Some(self.session_path(id)),
             SessionBackend::InMemory => None,
         }
     }
@@ -133,7 +133,7 @@ impl SessionManager {
     /// Check if a session exists.
     pub fn exists(&self, id: &str) -> bool {
         match &self.backend {
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 self.session_file_exists(id)
                     || lock_rwlock_read(&self.pending_store).contains_key(id)
             }

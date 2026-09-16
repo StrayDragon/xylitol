@@ -241,12 +241,12 @@ impl SessionManager {
         let new_manifest = self.commit_entries(session_id, entries, generation).await?;
 
         if let Some(old) = old_manifest {
-            let mut old_paths = old
+            let old_paths = old
                 .sealed_segments
                 .into_iter()
                 .map(|segment| segment.path)
                 .chain(std::iter::once(old.active_segment.path));
-            while let Some(path) = old_paths.next() {
+            for path in old_paths {
                 if path != new_manifest.active_segment.path
                     && let Ok(path) = self.resolve_segment_path(session_id, &path)
                 {
@@ -273,12 +273,9 @@ impl SessionManager {
         for entry in &mut migrated {
             match entry {
                 SessionEntry::Header(header) => header.version = SESSION_VERSION,
-                SessionEntry::Compaction(compaction) => {
-                    if compaction.policy.is_none() {
-                        compaction.policy = Some(
-                            crate::protocol::session::CompactionPolicySnapshot::legacy_unknown(),
-                        );
-                    }
+                SessionEntry::Compaction(compaction) if compaction.policy.is_none() => {
+                    compaction.policy =
+                        Some(crate::protocol::session::CompactionPolicySnapshot::legacy_unknown());
                 }
                 _ => {}
             }

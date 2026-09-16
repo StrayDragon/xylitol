@@ -95,7 +95,7 @@ impl SessionManager {
     ) -> Result<(), XySessionError> {
         use crate::protocol::session::{ForkPosition, is_assistant_message, is_user_message};
 
-        if matches!(&self.backend, SessionBackend::Persisted { .. })
+        if matches!(&self.backend, SessionBackend::Persisted)
             && !self.session_file_exists(parent_id)
         {
             return Err(XySessionStoreError::validation(Self::UNFLUSHED_FORK_ERR).into());
@@ -196,7 +196,7 @@ impl SessionManager {
         let has_assistant = child_body.iter().any(is_assistant_message);
 
         match &self.backend {
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 if has_assistant {
                     // Path includes assistant → write immediately (pi _rewriteFile).
                     self.flush_pending_to_disk(child_id).await?;
