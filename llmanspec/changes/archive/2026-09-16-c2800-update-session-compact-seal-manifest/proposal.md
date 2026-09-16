@@ -2,6 +2,9 @@
 depends_on:
 - c25-fix-compact-overflow-placeholder
 needs_specs_change: true
+branch: sdd/c2800-update-session-compact-seal-manifest
+base_sha: 1cd80374f951f17aee2fb146db3731e3d6f45fd1
+base_branch: main
 ---
 
 # Session JSONL 分段冷备与 compaction seal（manifest + 活跃段，v7）

@@ -246,18 +246,28 @@ async fn write_entries_to_disk_rewrites_without_tmp_leftover() {
     mgr.append(sid, &user_message("one")).await.unwrap();
     mgr.append(sid, &assistant_message("two")).await.unwrap();
 
-    let file = sessions.join(format!("{sid}.jsonl"));
-    let before = tokio::fs::read_to_string(&file).await.unwrap();
+    let file = mgr.get_session_file(sid).unwrap();
+    let before = tokio::fs::read_to_string(&file)
+        .await
+        .unwrap_or_else(|error| panic!("read {}: {error}", file.display()));
     let entries = mgr.load(sid).await.unwrap();
     mgr.write_entries_to_disk(sid, &entries).await.unwrap();
-    let after = tokio::fs::read_to_string(&file).await.unwrap();
+    let after = tokio::fs::read_to_string(mgr.get_session_file(sid).unwrap())
+        .await
+        .unwrap();
     assert_eq!(before, after, "rewrite must be content-preserving");
 
-    let names: Vec<String> = std::fs::read_dir(&sessions)
-        .unwrap()
-        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
-        .collect();
-    assert_eq!(names, vec![format!("{sid}.jsonl")], "no tmp leftovers");
+    assert!(sessions.join(sid).is_dir(), "session directory exists");
+    assert!(
+        !sessions.join(format!("{sid}.jsonl")).exists(),
+        "v6 single-file layout must not remain"
+    );
+    assert!(
+        std::fs::read_dir(sessions.join(sid))
+            .unwrap()
+            .all(|entry| !entry.unwrap().file_name().to_string_lossy().contains(".tmp")),
+        "no tmp leftovers"
+    );
 }
 
 #[tokio::test]
@@ -273,20 +283,22 @@ async fn write_entries_to_disk_failure_keeps_original_intact() {
     mgr.append(sid, &user_message("one")).await.unwrap();
     mgr.append(sid, &assistant_message("two")).await.unwrap();
 
-    let file = sessions.join(format!("{sid}.jsonl"));
+    let file = mgr.get_session_file(sid).unwrap();
     let original = tokio::fs::read_to_string(&file).await.unwrap();
 
-    // Read-only dir makes tmp creation fail; the original must stay intact.
-    let mut perms = std::fs::metadata(&sessions).unwrap().permissions();
+    // Read-only session root makes the generation replacement fail; the
+    // manifest and active segment must stay intact.
+    let session_root = sessions.join(sid);
+    let mut perms = std::fs::metadata(&session_root).unwrap().permissions();
     perms.set_mode(0o555);
-    std::fs::set_permissions(&sessions, perms).unwrap();
+    std::fs::set_permissions(&session_root, perms).unwrap();
 
     let entries = mgr.load(sid).await.unwrap();
     let result = mgr.write_entries_to_disk(sid, &entries).await;
 
-    let mut perms = std::fs::metadata(&sessions).unwrap().permissions();
+    let mut perms = std::fs::metadata(&session_root).unwrap().permissions();
     perms.set_mode(0o755);
-    std::fs::set_permissions(&sessions, perms).unwrap();
+    std::fs::set_permissions(&session_root, perms).unwrap();
 
     assert!(result.is_err(), "tmp creation must fail in read-only dir");
     let after = tokio::fs::read_to_string(&file).await.unwrap();

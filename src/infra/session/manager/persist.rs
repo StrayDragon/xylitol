@@ -6,56 +6,18 @@ use crate::protocol::error::XySessionStoreError;
 use crate::protocol::message::now_ms;
 use crate::utils::{lock_rwlock_read, lock_rwlock_write};
 
-/// Write `content` to `tmp_path`, sync, then atomically rename over `path`.
-async fn write_session_file_atomically(
-    path: &std::path::Path,
-    tmp_path: &std::path::Path,
-    content: &str,
-) -> Result<(), XySessionStoreError> {
-    use tokio::io::AsyncWriteExt;
-
-    let mut tmp = tokio::fs::File::create(tmp_path)
-        .await
-        .map_err(|e| XySessionStoreError::io("create session tmp file", e))?;
-    tmp.write_all(content.as_bytes())
-        .await
-        .map_err(|e| XySessionStoreError::io("write session tmp file", e))?;
-    tmp.sync_all()
-        .await
-        .map_err(|e| XySessionStoreError::io("sync session tmp file", e))?;
-    tokio::fs::rename(tmp_path, path)
-        .await
-        .map_err(|e| XySessionStoreError::io("rename session file", e))
-}
-
 impl SessionManager {
     pub(super) async fn write_entries_to_disk(
         &self,
         session_id: &str,
         entries: &[SessionEntry],
     ) -> Result<(), XySessionStoreError> {
-        let path = self.session_path(session_id);
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| XySessionStoreError::io("create sessions dir", e))?;
+        self.replace_entries(session_id, entries).await?;
+        let legacy = self.legacy_session_path(session_id);
+        if legacy.exists() {
+            let _ = tokio::fs::remove_file(legacy).await;
         }
-
-        let mut content = String::new();
-        for entry in entries {
-            let line = serde_json::to_string(entry).map_err(XySessionStoreError::from)?;
-            content.push_str(&line);
-            content.push('\n');
-        }
-
-        // Crash-atomic replace (s7): a sibling tmp file + rename means a crash
-        // can never leave an existing session file truncated.
-        let tmp_path = path.with_extension("jsonl.tmp");
-        let write_result = write_session_file_atomically(&path, &tmp_path, &content).await;
-        if write_result.is_err() {
-            let _ = tokio::fs::remove_file(&tmp_path).await;
-        }
-        write_result
+        Ok(())
     }
 
     /// Record the fork cut on the child header created by [`Self::create`] (s23).
@@ -96,13 +58,25 @@ impl SessionManager {
             })?
         };
 
-        // `append_with_id` may have already created the JSONL (body rows) while the
+        // `append_with_id` may have already created the active segment while the
         // header was still pending. Blind overwrite would clobber those rows.
-        if self.session_file_exists(session_id) {
-            let path = self.session_path(session_id);
+        if self.manifest_path(session_id).exists() {
+            let disk = self.load(session_id).await?;
+            let merged = Self::merge_pending_ahead_of_disk(pending, disk);
+            self.write_entries_to_disk(session_id, &merged).await
+        } else if self.legacy_session_path(session_id).exists() {
+            self.migrate_legacy_session(session_id).await?;
+            let disk = self.load(session_id).await?;
+            let merged = Self::merge_pending_ahead_of_disk(pending, disk);
+            self.write_entries_to_disk(session_id, &merged).await
+        } else if self.current_active_path(session_id).exists() {
+            // An explicit append can materialize body rows before the pending
+            // header is flushed. Treat that unreferenced active file like the
+            // old JSONL body and fold it into the first manifest commit.
+            let path = self.current_active_path(session_id);
             let content = tokio::fs::read_to_string(&path)
                 .await
-                .map_err(|e| XySessionStoreError::io("read session before pending merge", e))?;
+                .map_err(|e| XySessionStoreError::io("read orphan active segment", e))?;
             let (disk, _) = crate::protocol::session::parse_session_jsonl_lines(&content);
             let merged = Self::merge_pending_ahead_of_disk(pending, disk);
             self.write_entries_to_disk(session_id, &merged).await
@@ -180,17 +154,19 @@ impl SessionManager {
 
         match &self.backend {
             SessionBackend::Persisted { .. } => {
-                if self.session_file_exists(id) {
-                    // Corrupt / headerless JSONL: prepend header on disk.
-                    let path = self.session_path(id);
-                    let content = tokio::fs::read_to_string(&path).await.map_err(|e| {
-                        XySessionStoreError::io("read session before header repair", e)
-                    })?;
-                    let (disk, _) = crate::protocol::session::parse_session_jsonl_lines(&content);
+                if self.manifest_path(id).exists() {
+                    // Corrupt / headerless segmented storage: prepend a header through
+                    // the same manifest commit path.
+                    let disk = self.load(id).await?;
                     let mut merged = Vec::with_capacity(disk.len() + 1);
                     merged.push(header);
                     merged.extend(disk);
                     self.write_entries_to_disk(id, &merged).await?;
+                } else if self.legacy_session_path(id).exists() {
+                    // A valid v6 file is migrated lazily on first load. A
+                    // malformed/headerless legacy file is repaired through the
+                    // current segmented layout.
+                    self.migrate_legacy_session(id).await?;
                 } else {
                     let mut store = lock_rwlock_write(&self.pending_store);
                     let entries = store.entry(id.to_string()).or_default();
@@ -214,9 +190,27 @@ impl SessionManager {
     async fn session_has_header(&self, session_id: &str) -> bool {
         match &self.backend {
             SessionBackend::Persisted { .. } => {
-                if self.session_file_exists(session_id) {
-                    let path = self.session_path(session_id);
+                if self.manifest_path(session_id).exists() {
+                    let path = self.current_active_path(session_id);
                     if let Ok(content) = tokio::fs::read_to_string(&path).await {
+                        let (entries, _) =
+                            crate::protocol::session::parse_session_jsonl_lines(&content);
+                        if entries.iter().any(|e| matches!(e, SessionEntry::Header(_))) {
+                            return true;
+                        }
+                        // The header is sealed after the first compaction.
+                        if let Ok(manifest) = self.read_manifest(session_id).await
+                            && let Ok(entries) = self.load_entries(session_id, &manifest).await
+                        {
+                            return entries.iter().any(|e| matches!(e, SessionEntry::Header(_)));
+                        }
+                    }
+                    return false;
+                }
+                if self.legacy_session_path(session_id).exists() {
+                    if let Ok(content) =
+                        tokio::fs::read_to_string(self.legacy_session_path(session_id)).await
+                    {
                         let (entries, _) =
                             crate::protocol::session::parse_session_jsonl_lines(&content);
                         return entries.iter().any(|e| matches!(e, SessionEntry::Header(_)));
@@ -250,8 +244,13 @@ impl SessionManager {
 
         match &self.backend {
             SessionBackend::Persisted { .. } => {
-                if self.session_file_exists(session_id) {
-                    let path = self.session_path(session_id);
+                if self.legacy_session_path(session_id).exists()
+                    && !self.manifest_path(session_id).exists()
+                {
+                    self.migrate_legacy_session(session_id).await?;
+                }
+                if self.manifest_path(session_id).exists() {
+                    let path = self.current_active_path(session_id);
                     let line = serde_json::to_string(&entry_with_ids)
                         .map_err(XySessionStoreError::from)?;
                     let content = format!("{line}\n");
@@ -268,6 +267,9 @@ impl SessionManager {
                     file.flush()
                         .await
                         .map_err(|e| XySessionStoreError::io("flush entry", e))?;
+                    file.sync_all()
+                        .await
+                        .map_err(|e| XySessionStoreError::io("sync entry", e))?;
                 } else {
                     let is_assistant =
                         crate::protocol::session::is_assistant_message(&entry_with_ids);
@@ -311,7 +313,7 @@ impl SessionManager {
     }
 
     /// Inject auto-generated id and parent_id into an entry.
-    fn inject_ids(&self, session_id: &str, entry: &SessionEntry) -> SessionEntry {
+    pub(super) fn inject_ids(&self, session_id: &str, entry: &SessionEntry) -> SessionEntry {
         let new_id = Uuid::new_v4().to_string();
         let parent_id = self.get_leaf(session_id);
         let now = now_ms();
@@ -354,6 +356,7 @@ impl SessionManager {
                 tokens_before: c.tokens_before,
                 details: c.details.clone(),
                 from_hook: c.from_hook,
+                policy: c.policy.clone(),
             }),
             SessionEntry::BranchSummary(b) => SessionEntry::BranchSummary(BranchSummaryEntry {
                 base,
@@ -403,6 +406,17 @@ impl SessionManager {
         session_id: &str,
         entry: &SessionEntry,
     ) -> Result<(), XySessionStoreError> {
+        if matches!(&self.backend, SessionBackend::InMemory) {
+            lock_rwlock_write(&self.in_memory_store)
+                .entry(session_id.to_string())
+                .or_default()
+                .push(entry.clone());
+            if let Some(new_id) = entry.entry_id() {
+                self.set_leaf(session_id, Some(new_id.to_string()));
+            }
+            return Ok(());
+        }
+
         // Flush deferred header (and any pending rows) before writing the file
         // directly — otherwise `load` ignores pending once the file exists, and a
         // later `flush_pending_to_disk` can overwrite body rows with header-only.
@@ -411,7 +425,17 @@ impl SessionManager {
             self.flush_pending_to_disk(session_id).await?;
         }
 
-        let path = self.session_path(session_id);
+        if self.legacy_session_path(session_id).exists()
+            && !self.manifest_path(session_id).exists()
+        {
+            self.migrate_legacy_session(session_id).await?;
+        }
+        if !self.manifest_path(session_id).exists() {
+            self.create(session_id, Some("."), None).await?;
+            self.flush_pending_to_disk(session_id).await?;
+        }
+
+        let path = self.current_active_path(session_id);
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await

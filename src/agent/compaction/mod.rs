@@ -78,7 +78,7 @@ impl From<&str> for CompactionError {
     }
 }
 
-/// unix-ms timestamp for new compaction entries (v6 disk basis).
+/// Unix-ms timestamp for new compaction entries persisted to session storage.
 fn timestamp_now() -> u64 {
     crate::protocol::message::now_ms()
 }
@@ -416,10 +416,16 @@ pub async fn compact_session(
             "modifiedFiles": modified_files,
         })),
         from_hook: Some(false),
+        policy: Some(crate::protocol::session::CompactionPolicySnapshot::current(
+            context_window,
+            settings.reserve_tokens,
+            settings.keep_recent_tokens,
+            crate::agent::compaction::token_estimator::ESTIMATOR_VERSION,
+        )),
     };
 
     store
-        .append_session_entry(session_id, &SessionEntry::Compaction(entry.clone()))
+        .commit_compaction(session_id, &SessionEntry::Compaction(entry.clone()))
         .await?;
 
     // c1906: after cut, leaf context may lack session_env — ensure + persist.
@@ -587,6 +593,7 @@ mod tests {
             tokens_before: 0,
             details: None,
             from_hook: None,
+            policy: None,
         })
     }
 

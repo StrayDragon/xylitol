@@ -28,6 +28,7 @@ mod tools_ops;
 
 pub use self::hook_bus::HookBlockedError;
 pub(crate) use self::hook_bus::{cancel_hook, observe_hook, observe_hook_sync};
+pub(crate) use self::session_ops::load_conversation_history_from_store;
 pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats};
 pub use self::stats::SessionStats;
 // Test-support re-export (in-crate tests import via this facade).

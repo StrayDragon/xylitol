@@ -379,7 +379,7 @@ async fn fork_strips_path_labels_and_rebuilds_at_end() {
 }
 
 #[tokio::test]
-async fn create_writes_session_version_five() {
+async fn create_writes_session_version_seven() {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.path().join("sessions"));
     let sid = format!("ver-{}", uuid::Uuid::new_v4());
@@ -395,7 +395,7 @@ async fn create_writes_session_version_five() {
         .await
         .unwrap();
     assert!(
-        raw.contains("\"version\":6") || raw.contains("\"version\": 6"),
+        raw.contains("\"version\":7") || raw.contains("\"version\": 7"),
         "{raw}"
     );
     assert!(!raw.contains("\"type\":\"bashExecution\""));

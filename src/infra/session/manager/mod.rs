@@ -1,4 +1,4 @@
-//! SessionManager — JSONL file-based session storage.
+//! SessionManager — manifest-backed JSONL segment storage.
 //!
 //! Handles create, append, load, list, exists, tree navigation,
 //! and build_session_context for sessions (latest SESSION_VERSION only).
@@ -13,6 +13,8 @@ use crate::utils::{lock_rwlock_read, lock_rwlock_write};
 mod context;
 mod load;
 mod persist;
+mod seal;
+mod segments;
 mod store;
 mod tree;
 
@@ -44,9 +46,7 @@ impl Default for SessionManager {
     fn default() -> Self {
         Self {
             sessions_dir: PathBuf::from("."),
-            backend: SessionBackend::Persisted {
-                sessions_dir: PathBuf::from("."),
-            },
+            backend: SessionBackend::Persisted,
             leaf_ids: Arc::new(RwLock::new(HashMap::new())),
             active_session: Arc::new(RwLock::new(None)),
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
@@ -60,9 +60,7 @@ impl SessionManager {
     pub fn new(sessions_dir: PathBuf) -> Self {
         Self {
             sessions_dir: sessions_dir.clone(),
-            backend: SessionBackend::Persisted {
-                sessions_dir: sessions_dir.clone(),
-            },
+            backend: SessionBackend::Persisted,
             leaf_ids: Arc::new(RwLock::new(HashMap::new())),
             active_session: Arc::new(RwLock::new(None)),
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
@@ -106,15 +104,16 @@ impl SessionManager {
 
     fn session_file_exists(&self, session_id: &str) -> bool {
         matches!(&self.backend, SessionBackend::Persisted { .. })
-            && self.session_path(session_id).exists()
+            && (self.manifest_path(session_id).exists()
+                || self.legacy_session_path(session_id).exists())
     }
 
     // ── CRUD ────────────────────────────────────────────────────
 
-    /// Get the file path for a session.
-    fn session_path(&self, id: &str) -> PathBuf {
+    /// Get the active JSONL path for a persisted session.
+    pub(super) fn session_path(&self, id: &str) -> PathBuf {
         match &self.backend {
-            SessionBackend::Persisted { sessions_dir } => sessions_dir.join(format!("{id}.jsonl")),
+            SessionBackend::Persisted { .. } => self.current_active_path(id),
             SessionBackend::InMemory => PathBuf::from("/dev/null"),
         }
     }

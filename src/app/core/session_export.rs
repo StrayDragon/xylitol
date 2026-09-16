@@ -10,7 +10,11 @@ use serde_json::Value;
 use crate::app::core::driver_error::XyDriverError;
 use crate::protocol::error::XySessionStoreError;
 use crate::protocol::ports::{XyExportIo, XySessionStore};
-use crate::protocol::session::{MessageEntry, SessionEntry, message_role};
+use crate::protocol::session::{
+    CompactionPolicySnapshot, MessageEntry, SESSION_VERSION, SessionEntry,
+    enforce_legacy_session_version, enforce_session_version, message_role,
+    parse_session_jsonl_lines,
+};
 use crate::utils::xml_escape;
 
 /// Format a unix-ms session timestamp as RFC3339 for display (v6: RFC3339 is
@@ -229,7 +233,20 @@ pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyDriverError> {
 pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, XyDriverError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|e| XyDriverError::invalid_input(format!("jsonl is not utf-8: {e}")))?;
-    let entries = crate::protocol::session::parse_session_jsonl(text)?;
+    let entries = match crate::protocol::session::parse_session_jsonl(text) {
+        Ok(entries) => entries,
+        Err(current_error) => {
+            let (mut entries, _) = parse_session_jsonl_lines(text);
+            if enforce_session_version(&entries).is_ok() {
+                entries
+            } else if enforce_legacy_session_version(&entries).is_ok() {
+                normalize_import_entries(&mut entries);
+                entries
+            } else {
+                return Err(current_error.into());
+            }
+        }
+    };
     if entries.is_empty() {
         return Err(XyDriverError::invalid_input("jsonl contained no entries"));
     }
@@ -241,6 +258,18 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, XyDriverError> {
         )));
     }
     Ok(entries)
+}
+
+fn normalize_import_entries(entries: &mut [SessionEntry]) {
+    for entry in entries {
+        match entry {
+            SessionEntry::Header(header) => header.version = SESSION_VERSION,
+            SessionEntry::Compaction(compaction) if compaction.policy.is_none() => {
+                compaction.policy = Some(CompactionPolicySnapshot::legacy_unknown());
+            }
+            _ => {}
+        }
+    }
 }
 
 #[cfg(test)]
@@ -326,9 +355,30 @@ mod tests {
     }
 
     #[test]
+    fn jsonl_import_normalizes_supported_legacy_entries() {
+        let legacy = r#"{"type":"session","version":6,"id":"legacy","timestamp":1,"cwd":"."}
+{"type":"compaction","id":"c1","parentId":null,"timestamp":2,"summary":"old","firstKeptEntryId":"m1","tokensBefore":10}
+"#;
+        let entries = parse_jsonl(legacy.as_bytes()).unwrap();
+        assert!(matches!(
+            entries.first(),
+            Some(SessionEntry::Header(header)) if header.version == SESSION_VERSION
+        ));
+        assert!(matches!(
+            entries.get(1),
+            Some(SessionEntry::Compaction(compaction))
+                if compaction
+                    .policy
+                    .as_ref()
+                    .and_then(|policy| policy.status.as_deref())
+                    == Some("legacy/unknown")
+        ));
+    }
+
+    #[test]
     fn jsonl_rejects_v5_disk_import() {
         // c2260: old v5 disk must not be imported. A real v5 file carries string
-        // timestamps, so its header fails v6 deserialization → refused (no header).
+        // timestamps, so its header fails current deserialization → refused (no header).
         let v5 = r#"{"type":"session","version":5,"id":"old-s1","timestamp":"2024-01-01T00:00:00Z","cwd":"/tmp"}
 {"type":"message","id":"m1","parentId":null,"timestamp":"2024-01-01T00:00:01Z","message":{"role":"user","content":[{"type":"text","text":"hi"}],"timestamp":1704067200000}}
 "#;
@@ -340,13 +390,13 @@ mod tests {
         );
 
         // A version-tagged header that still parses (numeric ms) is refused with
-        // `require 6` — the actionable message.
+        // `require 7` — the actionable message.
         let v5_numeric = r#"{"type":"session","version":5,"id":"old-s2","timestamp":1704067200000,"cwd":"/tmp"}
 "#;
         let err = parse_jsonl(v5_numeric.as_bytes()).unwrap_err();
         let msg = err.to_string();
         assert!(
-            msg.contains("require 6"),
+            msg.contains("require 7"),
             "must name current version: {msg}"
         );
     }

@@ -1,6 +1,6 @@
 //! Session JSONL parse and version enforcement.
 
-use super::entries::{SESSION_VERSION, SessionEntry};
+use super::entries::{LEGACY_SESSION_VERSION, SESSION_VERSION, SessionEntry};
 use crate::protocol::error::XySessionStoreError;
 
 /// Parse session JSONL content: skip unparseable / non-SSOT lines with warn≤3 then `...`.
@@ -57,22 +57,27 @@ pub fn enforce_session_version(entries: &[SessionEntry]) -> Result<(), XySession
     }
 }
 
+/// Validate the one legacy format that may be lazily migrated to the current format.
+pub fn enforce_legacy_session_version(
+    entries: &[SessionEntry],
+) -> Result<(), XySessionStoreError> {
+    let version = entries.iter().find_map(|e| match e {
+        SessionEntry::Header(h) => Some(h.version),
+        _ => None,
+    });
+    match version {
+        Some(v) if v == LEGACY_SESSION_VERSION => Ok(()),
+        Some(v) => Err(XySessionStoreError::validation(format!(
+            "session header version {v} cannot be migrated (only v{LEGACY_SESSION_VERSION} is supported)"
+        ))),
+        None => Err(XySessionStoreError::validation(
+            "session has no header entry",
+        )),
+    }
+}
+
 fn unsupported_session_version_msg(v: u32) -> String {
     format!(
         "session header version {v} is not supported (require {SESSION_VERSION}); refusing legacy migrate"
     )
-}
-
-/// First JSONL object's session-header version (listing fast-path; no full parse).
-pub fn peek_session_header_version(content: &str) -> Option<u32> {
-    for line in content.lines() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        return match serde_json::from_str::<SessionEntry>(line) {
-            Ok(SessionEntry::Header(h)) => Some(h.version),
-            _ => None,
-        };
-    }
-    None
 }

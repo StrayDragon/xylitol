@@ -4,10 +4,129 @@ use crate::protocol::error::XySessionStoreError;
 use crate::utils::{lock_rwlock_read, lock_rwlock_write};
 
 impl SessionManager {
-    /// Load all entries from a session (latest [`SESSION_VERSION`] only).
-    /// For persisted sessions, reads from the JSONL file or pending memory.
-    /// For in-memory sessions, returns from the in-memory store.
-    pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+    /// Load only the segments needed to resolve the requested leaf ancestry.
+    ///
+    /// The active segment is always hot. Sealed segments are opened from newest
+    /// to oldest only when a missing parent id requires them; full logical
+    /// loading remains available through [`Self::load`]. When the current
+    /// branch reaches a compaction, ancestry stops at its first kept entry.
+    pub(super) async fn load_branch_entries(
+        &self,
+        session_id: &str,
+        leaf_hint: Option<&str>,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        if matches!(&self.backend, SessionBackend::InMemory) {
+            return self.read_entries(session_id).await;
+        }
+
+        if self.legacy_session_path(session_id).exists()
+            && !self.manifest_path(session_id).exists()
+        {
+            self.migrate_legacy_session(session_id).await?;
+        }
+        if !self.manifest_path(session_id).exists() {
+            return self.read_entries(session_id).await;
+        }
+        let manifest = self.read_manifest(session_id).await?;
+        let active_entries = self
+            .read_segment(session_id, &manifest.active_segment)
+            .await?;
+
+        let mut leaf = leaf_hint
+            .map(str::to_owned)
+            .or_else(|| self.get_leaf(session_id))
+            .or_else(|| {
+                crate::protocol::session::transcript_leaf_anchor(&active_entries, None)
+            });
+        if leaf.is_none() {
+            leaf = manifest.leaf_entry_id.clone();
+        }
+        let resolved_leaf = leaf.clone();
+        let mut sealed_entries: Vec<Option<Vec<SessionEntry>>> =
+            vec![None; manifest.sealed_segments.len()];
+        let mut visited = std::collections::HashSet::new();
+        let mut compaction_cut = None;
+        let mut stopped_at_compaction_cut = false;
+
+        while let Some(current_id) = leaf.clone() {
+            if !visited.insert(current_id.clone()) {
+                break;
+            }
+            let current = active_entries
+                .iter()
+                .find(|entry| entry.entry_id() == Some(current_id.as_str()))
+                .cloned()
+                .or_else(|| {
+                    sealed_entries.iter().flatten().find_map(|entries| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.entry_id() == Some(current_id.as_str()))
+                            .cloned()
+                    })
+                });
+
+            let current = if let Some(current) = current {
+                current
+            } else {
+                let mut found = None;
+                for index in (0..manifest.sealed_segments.len()).rev() {
+                    if sealed_entries[index].is_none() {
+                        sealed_entries[index] = Some(
+                            self.read_segment(
+                                session_id,
+                                &manifest.sealed_segments[index],
+                            )
+                            .await?,
+                        );
+                    }
+                    if let Some(entry) = sealed_entries[index].as_ref().and_then(|entries| {
+                        entries
+                            .iter()
+                            .find(|entry| entry.entry_id() == Some(current_id.as_str()))
+                    }) {
+                        found = Some(entry.clone());
+                        break;
+                    }
+                }
+                let Some(current) = found else {
+                    break;
+                };
+                current
+            };
+            if let SessionEntry::Compaction(compaction) = &current {
+                compaction_cut = Some(compaction.first_kept_entry_id.clone());
+            }
+            let reached_compaction_cut =
+                compaction_cut.as_deref() == Some(current_id.as_str());
+            leaf = current.parent_id().map(str::to_owned);
+            if reached_compaction_cut {
+                stopped_at_compaction_cut = true;
+                break;
+            }
+        }
+
+        let mut entries = Vec::new();
+        for segment_entries in sealed_entries.into_iter().flatten() {
+            entries.extend(segment_entries);
+        }
+        entries.extend(active_entries);
+        if stopped_at_compaction_cut
+            && let Some(cut_id) = compaction_cut
+            && let Some(cut_index) = entries
+                .iter()
+                .position(|entry| entry.entry_id() == Some(cut_id.as_str()))
+        {
+            entries.drain(..cut_index);
+        }
+        self.set_leaf(session_id, resolved_leaf);
+        Ok(entries)
+    }
+
+    /// Read all entries without changing the current leaf.
+    pub(super) async fn read_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
         let entries = match &self.backend {
             SessionBackend::InMemory => {
                 let entries = lock_rwlock_read(&self.in_memory_store)
@@ -18,12 +137,13 @@ impl SessionManager {
                 entries
             }
             SessionBackend::Persisted { .. } => {
-                if self.session_file_exists(session_id) {
-                    let path = self.session_path(session_id);
-                    let content = tokio::fs::read_to_string(&path)
-                        .await
-                        .map_err(|e| XySessionStoreError::io("read session", e))?;
-                    crate::protocol::session::parse_session_jsonl(&content)?
+                if self.manifest_path(session_id).exists() {
+                    let manifest = self.read_manifest(session_id).await?;
+                    self.load_entries(session_id, &manifest).await?
+                } else if self.legacy_session_path(session_id).exists() {
+                    self.migrate_legacy_session(session_id).await?;
+                    let manifest = self.read_manifest(session_id).await?;
+                    self.load_entries(session_id, &manifest).await?
                 } else {
                     let entries = lock_rwlock_read(&self.pending_store)
                         .get(session_id)
@@ -34,7 +154,15 @@ impl SessionManager {
                 }
             }
         };
+        Ok(entries)
+    }
 
+    /// Load all entries from a session (latest [`SESSION_VERSION`] only).
+    /// For persisted sessions, reads from the JSONL file or pending memory.
+    /// For in-memory sessions, returns from the in-memory store and updates
+    /// the leaf to the final logical entry.
+    pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        let entries = self.read_entries(session_id).await?;
         if let Some(last) = entries.last() {
             if let Some(id) = last.entry_id() {
                 self.set_leaf(session_id, Some(id.to_string()));
@@ -81,11 +209,17 @@ impl SessionManager {
                 Ok(())
             }
             SessionBackend::Persisted { .. } => {
-                let path = self.session_path(session_id);
-                if path.exists() {
-                    tokio::fs::remove_file(&path)
+                let session_dir = self.session_dir_path(session_id);
+                if session_dir.exists() {
+                    tokio::fs::remove_dir_all(&session_dir)
                         .await
-                        .map_err(|e| XySessionStoreError::io("delete session file", e))?;
+                        .map_err(|e| XySessionStoreError::io("delete session directory", e))?;
+                }
+                let legacy = self.legacy_session_path(session_id);
+                if legacy.exists() {
+                    tokio::fs::remove_file(&legacy)
+                        .await
+                        .map_err(|e| XySessionStoreError::io("delete legacy session file", e))?;
                 }
                 Ok(())
             }
@@ -94,7 +228,7 @@ impl SessionManager {
 
     /// List all session IDs with metadata.
     ///
-    /// Includes on-disk `.jsonl` sessions and not-yet-flushed pending sessions
+    /// Includes on-disk session directories, legacy files and not-yet-flushed pending sessions
     /// (created / user-only before first assistant flush).
     pub async fn list(&self) -> Result<Vec<String>, XySessionStoreError> {
         let dir = match tokio::fs::read_dir(&self.sessions_dir).await {
@@ -123,8 +257,22 @@ impl SessionManager {
         for entry in &entries {
             let name = entry.file_name();
             let name_str = name.to_string_lossy();
-            if name_str.ends_with(".jsonl") {
+            if entry.file_type().await.map(|ty| ty.is_dir()).unwrap_or(false) {
+                let manifest = entry.path().join("manifest.json");
+                if manifest.exists() {
+                    let modified = entry
+                        .metadata()
+                        .await
+                        .map(|m| m.modified().ok())
+                        .ok()
+                        .flatten();
+                    files.push((name_str.into_owned(), modified));
+                }
+            } else if name_str.ends_with(".jsonl") {
                 let id = name_str.trim_end_matches(".jsonl").to_string();
+                if self.session_dir_path(&id).join("manifest.json").exists() {
+                    continue;
+                }
                 let modified = entry
                     .metadata()
                     .await
@@ -175,40 +323,29 @@ impl SessionManager {
         &self,
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
-        use crate::protocol::session::{
-            SESSION_VERSION, enforce_session_version, parse_session_jsonl,
-            peek_session_header_version,
-        };
-
         match &self.backend {
             SessionBackend::InMemory => {
                 let entries = lock_rwlock_read(&self.in_memory_store)
                     .get(session_id)
                     .cloned()
                     .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
-                enforce_session_version(&entries)?;
+                crate::protocol::session::enforce_session_version(&entries)?;
                 Ok(entries)
             }
             SessionBackend::Persisted { .. } => {
-                if self.session_file_exists(session_id) {
-                    let path = self.session_path(session_id);
-                    let content = tokio::fs::read_to_string(&path)
-                        .await
-                        .map_err(|e| XySessionStoreError::io("read session", e))?;
-                    if let Some(v) = peek_session_header_version(&content)
-                        && v != SESSION_VERSION
-                    {
-                        return Err(XySessionStoreError::validation(format!(
-                            "session header version {v} is not supported (require {SESSION_VERSION}); refusing legacy migrate"
-                        )));
-                    }
-                    parse_session_jsonl(&content)
+                if self.manifest_path(session_id).exists() {
+                    let manifest = self.read_manifest(session_id).await?;
+                    self.load_entries(session_id, &manifest).await
+                } else if self.legacy_session_path(session_id).exists() {
+                    self.migrate_legacy_session(session_id).await?;
+                    let manifest = self.read_manifest(session_id).await?;
+                    self.load_entries(session_id, &manifest).await
                 } else {
                     let entries = lock_rwlock_read(&self.pending_store)
                         .get(session_id)
                         .cloned()
                         .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
-                    enforce_session_version(&entries)?;
+                    crate::protocol::session::enforce_session_version(&entries)?;
                     Ok(entries)
                 }
             }

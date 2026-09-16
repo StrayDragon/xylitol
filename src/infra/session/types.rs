@@ -3,8 +3,6 @@
 //! Prefer `crate::protocol::session` for entry types in new code.
 //! [`SessionBackend`] is an infra storage detail used by `manager.rs`.
 
-use std::path::PathBuf;
-
 pub use crate::protocol::session::{
     BranchSummaryEntry, CompactionEntry, CustomEntry, CustomMessageEntry, EntryBase, LabelEntry,
     MessageEntry, ModelChangeEntry, SESSION_VERSION, SessionContext, SessionEntry, SessionHeader,
@@ -14,8 +12,8 @@ pub use crate::protocol::session::{
 /// Storage backend for a session.
 #[derive(Debug, Clone)]
 pub enum SessionBackend {
-    /// Persisted to a JSONL file in a directory.
-    Persisted { sessions_dir: PathBuf },
+    /// Persisted to a manifest-backed session directory.
+    Persisted,
     /// In-memory only (no disk writes).
     InMemory,
 }

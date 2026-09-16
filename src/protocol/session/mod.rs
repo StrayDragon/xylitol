@@ -6,16 +6,19 @@
 
 mod entries;
 mod helpers;
+mod manifest;
 mod parse;
 mod todo;
 mod tree;
 
 pub use entries::{
-    BranchSummaryEntry, CompactionEntry, CustomEntry, CustomMessageEntry, EntryBase, ForkPosition,
-    LabelEntry, MessageEntry, ModelChangeEntry, SESSION_VERSION, SessionContext, SessionEntry,
-    SessionHeader, SessionInfoEntry, ThinkingLevelChangeEntry, build_context_entries,
-    done_bash_ids, fold_interrupted_bash_rows,
+    BranchSummaryEntry, CompactionEntry, CompactionPolicySnapshot, CustomEntry,
+    CustomMessageEntry, EntryBase, ForkPosition, LabelEntry, MessageEntry, ModelChangeEntry,
+    SESSION_VERSION, SessionContext, SessionEntry, SessionHeader,
+    SessionInfoEntry, ThinkingLevelChangeEntry, build_context_entries, done_bash_ids,
+    fold_interrupted_bash_rows,
 };
+pub use manifest::{SessionManifest, SessionSegment};
 pub use helpers::{
     bash_execution_message_entry, count_tool_calls, fixture_message_json, is_assistant_message,
     is_env_custom_message, is_tool_call_part, is_user_message, message_custom_type, message_parts,
@@ -23,8 +26,8 @@ pub use helpers::{
     transcript_ancestry_ids, transcript_leaf_anchor,
 };
 pub use parse::{
-    enforce_session_version, parse_session_jsonl, parse_session_jsonl_lines,
-    peek_session_header_version,
+    enforce_legacy_session_version, enforce_session_version, parse_session_jsonl,
+    parse_session_jsonl_lines,
 };
 #[cfg(test)]
 pub use todo::TodoItem;
@@ -106,7 +109,7 @@ mod session_tree_tests {
             fork_at_entry_id: None,
         });
         let v = serde_json::to_value(&header).unwrap();
-        assert_eq!(v["version"], 6);
+        assert_eq!(v["version"], 7);
         assert_eq!(v["parentSession"], "p");
         assert!(v.get("forkAtEntryId").is_none());
 
@@ -122,7 +125,7 @@ mod session_tree_tests {
         let v = serde_json::to_value(&with_cut).unwrap();
         assert_eq!(v["forkAtEntryId"], "u6");
 
-        let old = r#"{"type":"session","version":6,"id":"s1","timestamp":0,"cwd":"/tmp","parentSession":"p"}"#;
+        let old = r#"{"type":"session","version":7,"id":"s1","timestamp":0,"cwd":"/tmp","parentSession":"p"}"#;
         let parsed: SessionEntry = serde_json::from_str(old).unwrap();
         let SessionEntry::Header(h) = parsed else {
             panic!("header");
@@ -285,14 +288,14 @@ mod session_tree_tests {
     }
 
     #[test]
-    fn parse_session_jsonl_rejects_v5_with_require_6_message() {
-        // c2260: v5 disk is refused (no migration / dual-read); the version
-        // message must report the const (now 6).
+    fn parse_session_jsonl_rejects_v5_with_require_7_message() {
+        // v5 disk is refused (only v6 receives the one-time migration); the
+        // version message must report the current format.
         let content = r#"{"type":"session","version":5,"id":"s1","timestamp":0,"cwd":"/tmp"}
 "#;
         let err = parse_session_jsonl(content).unwrap_err();
         assert!(
-            err.to_string().contains("require 6")
+            err.to_string().contains("require 7")
                 || err.to_string().contains("require {SESSION_VERSION}"),
             "v5 refusal must carry current version: {err}"
         );
@@ -303,7 +306,7 @@ mod session_tree_tests {
     }
 
     #[test]
-    fn v6_entry_round_trip_keeps_unix_ms_timestamps() {
+    fn current_entry_round_trip_keeps_unix_ms_timestamps() {
         // s22: header + entry shell timestamps are u64 unix-ms on the wire.
         let header = SessionEntry::Header(SessionHeader {
             entry_type: "session".into(),
@@ -320,7 +323,7 @@ mod session_tree_tests {
             "header must serialize timestamp as u64 ms: {raw_header}"
         );
         let parsed: Vec<SessionEntry> =
-            parse_session_jsonl(&format!("{raw_header}\n")).expect("v6 round-trip");
+            parse_session_jsonl(&format!("{raw_header}\n")).expect("current-format round-trip");
         let SessionEntry::Header(h) = &parsed[0] else {
             panic!("expected header");
         };
@@ -348,6 +351,7 @@ mod session_tree_tests {
             tokens_before: 1000,
             details: None,
             from_hook: None,
+            policy: None,
         })
     }
 
@@ -541,6 +545,7 @@ mod as_agent_message_tests {
             tokens_before: 100,
             details: None,
             from_hook: None,
+            policy: None,
         });
         let msg = e.as_agent_message().expect("compaction");
         assert_eq!(msg.role_name(), "compactionSummary");

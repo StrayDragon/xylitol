@@ -77,6 +77,20 @@ pub trait XySessionStore: Send + Sync {
         session_id: &str,
         entry: &SessionEntry,
     ) -> Result<(), XySessionStoreError>;
+
+    /// Commit a compaction entry and its storage-specific seal transaction.
+    ///
+    /// The default is append-only so lightweight stores and test doubles keep
+    /// their existing semantics. Persisted stores may override this to publish
+    /// new segments atomically.
+    async fn commit_compaction(
+        &self,
+        session_id: &str,
+        entry: &SessionEntry,
+    ) -> Result<(), XySessionStoreError> {
+        self.append_session_entry(session_id, entry).await
+    }
+
     /// Build the full session context (messages, thinking level, model).
     ///
     /// # Errors

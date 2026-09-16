@@ -22,6 +22,7 @@
 ├── active-<generation>.jsonl
 └── segments/
     ├── <generation>-<segment-id>.jsonl
+    ├── <generation>-<segment-id>.index.json
     └── ...
 ```
 
@@ -30,7 +31,7 @@ manifest 至少记录：
 - `formatVersion`、`sessionId`；
 - 当前 `activeSegment`；
 - 按逻辑顺序排列的 sealed segment 描述（相对路径、generation、首尾 entry id、
-  是否包含 session header）；
+  是否包含 session header、可选的 immutable index 路径）；
 - 当前 `leafEntryId`，以及供 resume 列表使用的轻量 header/mtime 元数据。
 
 manifest 中的路径只能是 session 目录内的相对路径。首个 active 段含 session header；
@@ -74,6 +75,33 @@ CompactionEntry 投影规则裁切；不得把所有 cold 段无条件反序列�
 需要 session-wide bash 完成配对时，store 使用 manifest 的轻量索引定位相关段，按需
 加载命中的段；不能为了 done 集合重新扫描全部冷历史。完整导出、诊断 inspect 和显式
 历史统计可以请求全量逻辑条目，并明确属于冷路径。
+
+### Cold resolver index 与 done-bash 索引
+
+sealed 段使用与段文件同 generation 的 immutable sidecar index；manifest 只保存
+`indexPath`，不把全部 entry id 或 bash id 直接膨胀进 manifest。sidecar 的最小形状为：
+
+```text
+{
+  "entryIds": ["..."],
+  "doneBashIds": ["..."]
+}
+```
+
+- `entryIds` 是该 sealed 段内所有条目的精确 id 集合，用于先定位可能包含
+  `parentId` 的段；UUID 不构成可比较区间，不能用 `firstEntryId` / `lastEntryId`
+  代替。
+- `doneBashIds` 只收录该段中状态为 done 的 bash id；active 段仍直接读取，避免每次
+  普通 append 都重写 manifest 或 sidecar。
+- seal 必须在 manifest rename 前完成 JSONL 与 sidecar 的写入、`fsync` 和命名；只有
+  被新 manifest 引用的二者才是事实，孤儿 sidecar 与孤儿段同样忽略。
+- resolver 先读 sidecar；缺失、损坏或旧 manifest 没有 `indexPath` 时回退扫描被引用
+  的段，不能因为索引缺失产生 false negative。
+- session-wide done 集合由所有引用的 sidecar `doneBashIds` 与 active 扫描结果合并；
+  因而 running 在 active、done 在 cold 时仍不会被误判为 interrupted。
+
+该设计先解决“打开哪些 cold 段”的边界，不承诺段内随机 seek；需要进一步降低单段
+解析成本时，再在 sidecar 中增加偏移量字段并保持上述回退语义。
 
 ### Fork / tree
 

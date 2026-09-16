@@ -613,15 +613,8 @@ async fn load_history(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
 ) -> Result<Vec<AgentMessage>, XyError> {
-    let entries = store
-        .load_leaf_branch(session_id)
+    crate::agent::capabilities::load_conversation_history_from_store(store.as_ref(), session_id)
         .await
-        .map_err(XyError::from)?;
-    let entries = crate::protocol::session::build_context_entries(&entries);
-    Ok(entries
-        .iter()
-        .filter_map(|e| e.as_agent_message())
-        .collect())
 }
 
 struct LiveReactArgs {
