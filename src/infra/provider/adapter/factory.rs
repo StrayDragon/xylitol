@@ -88,22 +88,22 @@ mod tests {
 
     #[test]
     fn model_entry_allows_compat_forbids_extra_policy_yaml() {
-        let src = include_str!("../../config/types.rs");
+        let src = include_str!("../../../protocol/model_entry.rs");
         let entry = src
-            .split("pub struct ModelEntry")
+            .split("pub struct XyModelEntryConfig")
             .nth(1)
-            .and_then(|s| s.split("pub struct ").next())
-            .expect("ModelEntry block");
+            .and_then(|s| s.split("\n\nimpl ").next())
+            .expect("XyModelEntryConfig block");
         assert!(
             entry.lines().any(|l| l.trim().starts_with("pub compat")),
-            "ModelEntry must expose named compat (c1940)"
+            "XyModelEntryConfig must expose named compat (c1940)"
         );
         assert!(
             !entry.lines().any(|l| {
                 let t = l.trim();
                 t.starts_with("pub extra_policy") || t.starts_with("extra_policy:")
             }),
-            "ModelEntry must not grow free-form extra_policy YAML"
+            "XyModelEntryConfig must not grow free-form extra_policy YAML"
         );
     }
 }

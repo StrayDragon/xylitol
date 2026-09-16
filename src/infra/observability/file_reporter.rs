@@ -61,6 +61,13 @@ impl Reporter for FileTraceReporter {
             let span_turn_id = prop(&span.properties, "turn_id");
             let span_tool_name = prop(&span.properties, "tool_name");
             let span_tool_id = prop(&span.properties, "tool_id");
+            let span_compaction_requested =
+                prop(&span.properties, "xylitol.compaction.requested_model");
+            let span_compaction_actual = prop(&span.properties, "xylitol.compaction.actual_model");
+            let span_compaction_fallback =
+                prop(&span.properties, "xylitol.compaction.model_fallback");
+            let span_compaction_thinking_rejected =
+                prop(&span.properties, "xylitol.compaction.thinking_rejected");
 
             for ev in &span.events {
                 let kind = prop(&ev.properties, "kind").unwrap_or(ev.name.as_ref());
@@ -106,8 +113,33 @@ impl Reporter for FileTraceReporter {
                     "error.kind",
                     "where",
                     "message",
+                    "xylitol.compaction.requested_model",
+                    "xylitol.compaction.actual_model",
+                    "xylitol.compaction.model_fallback",
+                    "xylitol.compaction.thinking_rejected",
                 ] {
                     if let Some(v) = prop(&ev.properties, key) {
+                        obj.insert(key.into(), Value::String(v.into()));
+                    }
+                }
+                for (key, value) in [
+                    (
+                        "xylitol.compaction.requested_model",
+                        span_compaction_requested,
+                    ),
+                    ("xylitol.compaction.actual_model", span_compaction_actual),
+                    (
+                        "xylitol.compaction.model_fallback",
+                        span_compaction_fallback,
+                    ),
+                    (
+                        "xylitol.compaction.thinking_rejected",
+                        span_compaction_thinking_rejected,
+                    ),
+                ] {
+                    if !obj.contains_key(key)
+                        && let Some(v) = value
+                    {
                         obj.insert(key.into(), Value::String(v.into()));
                     }
                 }

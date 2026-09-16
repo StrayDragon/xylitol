@@ -414,12 +414,12 @@ pub fn resolve_assembly_with(
         let mut missing_key_providers = std::collections::BTreeSet::new();
         for (alias, entry) in &cfg.model.models {
             // m17: explicit YAML aliases always register; missing key → empty (no kind-env fallback).
-            let api_key = resolve_entry_api_key(entry);
+            let api_key = entry.normalized_api_key();
             if api_key.is_empty() {
                 missing_key_providers.insert(entry.provider.provider_name().to_string());
             }
 
-            match build_model_meta(alias, entry, api_key) {
+            match entry.to_model_meta(alias).map_err(|e| e.to_string()) {
                 Ok(meta) => model_registry.register(meta),
                 Err(e) => {
                     warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
@@ -569,11 +569,16 @@ pub fn resolve_assembly_with(
             &agent_dir,
             project_trusted,
         );
-        let compaction = settings_mgr
-            .get_settings()
-            .compaction
-            .as_ref()
-            .map(|c| crate::agent::compaction::CompactionSettings::from(c.clone()));
+        let compaction = {
+            let from_settings = settings_mgr.get_settings().compaction.as_ref();
+            let from_config = app_config.as_ref().and_then(|c| c.compaction.as_ref());
+            Some(
+                crate::agent::compaction::settings::merge_compaction_runtime(
+                    from_config,
+                    from_settings,
+                ),
+            )
+        };
         let steering_mode = queue_mode_from_settings(settings_mgr.get_steering_mode());
         let follow_up_mode = queue_mode_from_settings(settings_mgr.get_follow_up_mode());
         let default_thinking_level = settings_mgr.get_settings().default_thinking_level.clone();
@@ -817,57 +822,6 @@ pub fn reload_prompt_context(
     };
     driver.apply_prompt_resources(context_files, system_prompt, append_system_prompt);
     report
-}
-
-/// Per-model `api_key` after config/secret render.
-/// Omit or empty → empty string. MUST NOT fall back to kind-level env (m17).
-fn resolve_entry_api_key(entry: &crate::infra::config::types::ModelEntry) -> String {
-    match &entry.api_key {
-        Some(k) if !k.is_empty() => k.clone(),
-        _ => String::new(),
-    }
-}
-
-/// One YAML `models.<alias>` entry → its [`XyModelMeta`]. Err = skip with a
-/// `ModelEntrySkipped` warning (thinking-config resolution failure).
-fn build_model_meta(
-    alias: &str,
-    entry: &crate::infra::config::types::ModelEntry,
-    api_key: String,
-) -> Result<XyModelMeta, String> {
-    let context_window = if entry.context_window > 0 {
-        entry.context_window
-    } else {
-        crate::agent::model::registry::default_context_window_for(entry.provider)
-    };
-
-    let (thinking_levels, thinking_level_map) =
-        entry.resolve_thinking_config().map_err(|e| e.to_string())?;
-
-    Ok(XyModelMeta {
-        id: alias.to_string(),
-        config: crate::protocol::model::XyModelConfig {
-            kind: entry.provider,
-            api_key,
-            model: entry.model.clone(),
-            base_url: entry.base_url.clone(),
-            // c1598: honor YAML `models.*.api`; None → infra default_for
-            api: entry.api.clone(),
-            compat: entry.compat.clone(),
-        },
-        display_name: alias.to_string(),
-        thinking: entry.thinking,
-        context_window,
-        api: entry.api.clone().unwrap_or_default(),
-        provider: entry.provider.provider_name().to_string(),
-        cost_input: 0.0,
-        cost_output: 0.0,
-        cost_cache_read: 0.0,
-        cost_cache_write: 0.0,
-        max_tokens: 0,
-        thinking_levels,
-        thinking_level_map,
-    })
 }
 
 fn queue_mode_from_settings(

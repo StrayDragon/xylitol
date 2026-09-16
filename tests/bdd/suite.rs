@@ -56,6 +56,7 @@ mod steps_sandbox;
 mod steps_server;
 mod steps_session;
 mod steps_shared_thens;
+mod steps_task_model;
 mod steps_tokenizer;
 mod steps_tools;
 mod steps_workspace;

@@ -213,3 +213,21 @@ fn test_comp_overflow_wrong_model(agent: AgentState, ws: Workspace) {}
     name = "reason-overflow"
 )]
 fn test_comp_reason_overflow(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "summary-model-entry"
+)]
+async fn test_c7_summary_model_entry(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "summary-model-fallback-notice"
+)]
+async fn test_c7_summary_fallback(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "summary-thinking-override-out-of-set"
+)]
+async fn test_c7_thinking_override(agent: AgentState, sess: XySessionStore, ws: Workspace) {}

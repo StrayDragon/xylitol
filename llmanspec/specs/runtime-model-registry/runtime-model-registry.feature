@@ -69,6 +69,10 @@
   场景: explicit-model-entry-auth
     - AppConfig ModelsConfig 中每个显式模型别名条目 MUST 在 bootstrap 注册进 ModelRegistry（供 --list-models 与选模），MUST NOT 因 API key 缺失或未解析而跳过注册。条目 api_key 省略或空串时注册 key MUST 为空；MUST NOT 回落 provider kind 级环境变量（OPENAI_API_KEY / OPENAI_KEY / ANTHROPIC_API_KEY / ANTHROPIC_KEY）。真发请求时缺 key MUST 失败并走鉴权引导（m7/ux4）。由单测覆盖，MUST NOT 为静态边界单独扩 BDD step。
 
+  @req:m18 @human
+  场景: 任务级模型解析
+    - System MUST 提供按任务用途解析模型的单一入口：给定任务模型条目（provider/model 等连接字段），经注入的 provider 构建器产出独立 XyModel 实例；条目缺失、解析或构建失败时 MUST 回退当前会话模型，且回退 MUST 可观测（归因标注 + 受控频率通知）；任务条目 MUST NOT 注册进 ModelRegistry（不占 --list-models 与模型循环）；MUST NOT 为每个任务角色复制解析逻辑。compact 摘要是第一个消费者（domain-compaction c7）；后续同类旁路任务复用同一入口，不预建未落地任务的抽象。
+
   @executable @req:m10
   场景: reject-unsupported
     假如 当前模型支持集为 off 与 high
@@ -80,3 +84,15 @@
     假如 当前模型支持集为 off 与 high
     当 set_thinking_level 为 HIGH
     那么 失败且当前 level 不变
+
+  @executable @req:m18
+  场景: task-model-resolves-independent
+    假如 任务模型条目可构建
+    当 经任务级解析入口取模型
+    那么 返回独立实例且其模型标识与条目一致
+
+  @executable @req:m18
+  场景: task-model-build-failure-falls-back
+    假如 任务模型条目构建失败
+    当 经任务级解析入口取模型
+    那么 回退当前会话模型且回退态可观测

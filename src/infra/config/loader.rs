@@ -274,6 +274,117 @@ mod tests {
     }
 
     #[test]
+    fn compaction_model_inline_entry_parses() {
+        use crate::infra::config::types::AppConfig;
+
+        let cfg: AppConfig = yaml_serde::from_str(
+            r"
+models: {}
+compaction:
+  enabled: true
+  model:
+    provider: fake
+    model: inline-summary
+  thinkingLevel: high
+",
+        )
+        .expect("inline compaction model");
+        let comp = cfg.compaction.expect("compaction section");
+        let model = comp.model.expect("task model entry");
+        assert_eq!(model.model, "inline-summary");
+        assert_eq!(comp.thinking_level.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn compaction_model_yaml_anchor_snake_case_fields() {
+        use crate::infra::config::types::AppConfig;
+
+        let cfg: AppConfig = yaml_serde::from_str(
+            r"
+models:
+  models:
+    shared: &shared
+      provider: fake
+      model: anchor-wire
+      base_url: https://summary.example/v1
+      api_key: sk-anchor
+compaction:
+  model: *shared
+",
+        )
+        .expect("snake_case anchor compaction model");
+        let model = cfg.compaction.expect("compaction").model.expect("model");
+        assert_eq!(model.model, "anchor-wire");
+        assert_eq!(
+            model.base_url.as_deref(),
+            Some("https://summary.example/v1")
+        );
+        assert_eq!(model.api_key.as_deref(), Some("sk-anchor"));
+    }
+
+    #[test]
+    fn compaction_model_yaml_anchor_alias() {
+        use crate::infra::config::types::AppConfig;
+
+        let cfg: AppConfig = yaml_serde::from_str(
+            r"
+models:
+  models:
+    shared: &shared
+      provider: fake
+      model: anchor-wire
+compaction:
+  model: *shared
+",
+        )
+        .expect("anchor alias compaction model");
+        assert_eq!(
+            cfg.compaction
+                .expect("compaction")
+                .model
+                .expect("model")
+                .model,
+            "anchor-wire"
+        );
+    }
+
+    #[test]
+    fn compaction_model_anchor_with_secret_render() {
+        use crate::infra::config::secret_env::SecretMap;
+        use crate::infra::config::template::render_config_template;
+        use crate::infra::config::types::AppConfig;
+
+        let mut secrets = SecretMap::new();
+        secrets.insert("SUMMARY_KEY".into(), "sk-summary".into());
+        let raw = r#"
+models:
+  models:
+    sum: &sum
+      provider: fake
+      model: summary-bot
+      api_key: "{{ secret.SUMMARY_KEY }}"
+compaction:
+  model: *sum
+"#;
+        let rendered = render_config_template(raw, std::path::Path::new("config.yaml"), &secrets)
+            .expect("render secret into anchor entry");
+        assert!(
+            rendered.contains("sk-summary"),
+            "rendered yaml must contain secret value: {rendered}"
+        );
+        let cfg: AppConfig = yaml_serde::from_str(&rendered).expect("parse rendered yaml");
+        assert_eq!(
+            cfg.compaction
+                .expect("compaction")
+                .model
+                .expect("model")
+                .api_key
+                .as_deref(),
+            Some("sk-summary")
+        );
+    }
+
+    #[test]
     fn ignores_config_local_yaml() {
         let home = tempfile::tempdir().unwrap();
         let project_root = home.path().join("proj");

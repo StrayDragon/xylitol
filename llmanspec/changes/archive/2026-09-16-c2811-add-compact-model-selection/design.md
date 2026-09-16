@@ -9,7 +9,7 @@ propose 深挖裁决于 2026-09-15，事实基础均经代码核实（引用见�
 | 案 | 形态 | 弃/取因 |
 |---|---|---|
 | 字符串引用 | `compaction.model: <models 键>` | 要发明一套引用解析语义；专用摘要模型必须进 models map（被 m17 注册 → 占 `--list-models`） |
-| **内嵌条目（取）** | `compaction.model:` 完整对象，共享靠锚点 | YAML 原生复用，零新语法；条目不进 models map 即不注册——专用摘要模型不占模型循环（副产品收益）；未来加字符串引用是纯扩展（开闭友好） |
+| **内嵌条目（取）** | `compaction.model:` 完整对象，共享靠锚点 | YAML 原生复用，零新语法；条目与 `models` 共用 `XyModelEntryConfig`（`snake_case` 键）；不进 models map 即不注册——专用摘要模型不占模型循环；未来加字符串引用是纯扩展 |
 | 双收 | 字符串 ∨ 对象 | 两条解析路径都进合约与测试，contract 面翻倍，与「用 YAML 原生能力」的裁决理由重复 |
 
 落地面（用户已确认）：
@@ -38,17 +38,18 @@ compaction:
     model: claude-haiku-latest
 ```
 
-## D2 类型落点：protocol 持 serde 形状，infra 转换，agent 只经构建器
+## D2 类型落点：protocol SSOT，infra 别名，agent 只经构建器
 
+- **SSOT**：`XyModelEntryConfig`（`src/protocol/model_entry.rs`）为 YAML 模型条目
+  wire 唯一真源（`snake_case`，无 `rename_all`）；`models.models.*` 与
+  `compaction.model` 共用此类型，锚点/alias 零转换复用。
 - `XyCompactionSettingsConfig`（`src/protocol/compaction_config.rs`，c14 单一
-  serde 面）新增 `model: Option<XyTaskModelConfig>` 与
-  `thinking_level: Option<String>`；`XyTaskModelConfig` 为 protocol 新 serde
-  类型，字段形状与 infra `ModelEntry` 兼容（serde 未知名忽略 → 锚点复用同一
-  YAML 映射到两面都合法）。
-- infra 侧负责 `XyTaskModelConfig → ModelEntry`（补默认）或直接装配，复用
-  protocol 既有 `resolve_configured_levels` / `validate_thinking_level_map`
-  （thinking 三件套校验逻辑已在 protocol，见 `ModelEntry::resolve_thinking_config`
-  的 import 路径）。
+  serde 面）新增 `model: Option<XyModelEntryConfig>` 与
+  `thinking_level: Option<String>`；父级 compaction 键保持 `camelCase`
+  （`reserveTokens` 等），嵌套 `model` 条目与 `ModelEntry` 同形。
+- infra `ModelEntry` = `type ModelEntry = XyModelEntryConfig`（`types.rs`），
+  无第二份 struct；`to_model_config` / `resolve_thinking_config` /
+  `to_model_meta` 均在 protocol 实现，bootstrap 与 `resolve_model_meta` 共用。
 - 实例构建只经注入的 `XyModelBuilder`（composition root 供；`XyModelConfig`
   是纯数据 struct，provider 构造在 agent/infra 可及处）。agent 层解析 seam
   消费「条目 → 构建器」产物，不自己 new provider。

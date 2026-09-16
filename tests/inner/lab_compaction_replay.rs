@@ -79,6 +79,7 @@ async fn lab_compaction_replay_floor_invariants() {
             enabled: true,
             reserve_tokens: RESERVE,
             keep_recent_tokens: KEEP_RECENT,
+            ..Default::default()
         },
     );
     let fixed = crate::agent::compaction::FixedRequestContext {
@@ -97,15 +98,16 @@ async fn lab_compaction_replay_floor_invariants() {
             "## Goal\nreplayed summary",
         )],
     );
+    let mut fallback_notice = false;
     orch.compact(
         &mgr,
         sid,
-        model.as_ref(),
+        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "lab-replay"),
         sink.as_ref(),
         None,
         WINDOW,
         Some(&fixed),
-        &Default::default(),
+        &mut fallback_notice,
     )
     .await
     .expect("replay force compact");
@@ -154,6 +156,7 @@ async fn lab_compaction_replay_floor_invariants() {
     // Convergence: APPEND_TURNS of fixed synthetic content must compact a bounded
     // number of times (floor-aware threshold), not once per turn-end.
     let mut flag = false;
+    let mut fallback_notice = false;
     let mut rounds = 0usize;
     for i in 0..APPEND_TURNS {
         for (id, role, body) in [
@@ -190,7 +193,10 @@ async fn lab_compaction_replay_floor_invariants() {
             .maybe_auto_compact(
                 &mgr,
                 sid,
-                model.as_ref(),
+                &crate::agent::model::task_model::CompactionSummaryBinding::for_test(
+                    model,
+                    "lab-replay",
+                ),
                 sink.as_ref(),
                 WINDOW,
                 &opts,
@@ -198,7 +204,7 @@ async fn lab_compaction_replay_floor_invariants() {
                 None,
                 Some(&fixed),
                 None,
-                &Default::default(),
+                &mut fallback_notice,
                 Some(&mut flag),
             )
             .await

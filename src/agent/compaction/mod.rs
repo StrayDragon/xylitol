@@ -42,7 +42,7 @@ use anyhow::Result;
 use serde_json::json;
 
 use crate::protocol::error::{XyError, XySessionError, XySessionStoreError};
-use crate::protocol::ports::{XyModel, XySessionStore};
+use crate::protocol::ports::XySessionStore;
 use crate::protocol::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
 
 /// Compaction failures: store IO vs product-copy policy gates.
@@ -234,14 +234,15 @@ pub fn prepare_compaction(
 pub async fn compact_session(
     store: &dyn XySessionStore,
     session_id: &str,
-    model: &dyn XyModel,
+    summary: &crate::agent::model::task_model::CompactionSummaryBinding,
     settings: &CompactionSettings,
     custom_instructions: Option<&str>,
     context_window: u64,
     fixed_context: Option<&FixedRequestContext>,
     obs_parent: Option<fastrace::prelude::SpanContext>,
-    obs_session: &xylitol_ai_bridge::ObsSessionContext,
 ) -> Result<CompactionEntry, CompactionError> {
+    let model = summary.model.as_ref();
+    let generate_options = &summary.generate_options;
     if !settings.enabled {
         return Err("compaction disabled".into());
     }
@@ -339,7 +340,7 @@ pub async fn compact_session(
                 previous_summary,
                 custom_instructions,
                 obs_parent,
-                obs_session,
+                generate_options,
             )
             .await
             {
@@ -358,7 +359,7 @@ pub async fn compact_session(
             model,
             settings.reserve_tokens,
             obs_parent,
-            obs_session,
+            generate_options,
         )
         .await
         {
@@ -377,7 +378,7 @@ pub async fn compact_session(
             previous_summary,
             custom_instructions,
             obs_parent,
-            obs_session,
+            generate_options,
         )
         .await
         {
@@ -911,6 +912,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 1024,
             keep_recent_tokens: 5_000,
+            ..Default::default()
         };
         prepare_compaction(&entries, &settings, 0, 0).expect("should have history to compact");
     }
@@ -954,6 +956,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 16_384,
             keep_recent_tokens: 20_000,
+            ..Default::default()
         };
         let window = 32_768u64;
         let overhead = 6_500u64; // system prompt + tool schemas, chars/4
@@ -1072,6 +1075,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 1024,
             keep_recent_tokens: 20_000,
+            ..Default::default()
         };
         assert!(
             prepare_compaction(&all, &settings, 0, 0).is_ok(),
@@ -1278,17 +1282,17 @@ mod tests {
             enabled: true,
             reserve_tokens: 1024,
             keep_recent_tokens: 80,
+            ..Default::default()
         };
         let entry = compact_session(
             &mgr,
             sid,
-            model.as_ref(),
+            &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "sum"),
             &settings,
             None,
             0,
             None,
             None,
-            &Default::default(),
         )
         .await
         .expect("compact");

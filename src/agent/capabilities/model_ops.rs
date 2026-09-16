@@ -34,6 +34,7 @@ impl AgentCapabilities {
     }
 
     /// Build the selected model instance.
+    #[allow(dead_code)] // retained for callers outside compaction path
     pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, XyError> {
         self.with_models(|mm| mm.build_current_model())
     }

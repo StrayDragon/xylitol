@@ -293,67 +293,8 @@ pub struct ModelsConfig {
     pub models: HashMap<String, ModelEntry>,
 }
 
-/// A single model alias entry.
-///
-/// References [`XyModelKind`](crate::protocol::model::XyModelKind) for the provider;
-/// the kind's serde representation is the YAML wire format. Schema uses a string
-/// twin so protocol stays free of schemars (c510).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-pub struct ModelEntry {
-    #[schemars(with = "String")]
-    pub provider: crate::protocol::model::XyModelKind,
-    pub model: String,
-    /// Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.
-    #[serde(default)]
-    pub base_url: Option<String>,
-    /// Optional adapter API type: `openai-responses` | `openai-completions` | `anthropic-messages`.
-    #[serde(default)]
-    pub api: Option<String>,
-    /// Named wire/thinking dialect (`generic` | `deepseek`). Omit → generic WirePolicy.
-    /// Free-form `extra_policy` YAML is not accepted — profiles live in bridge.
-    #[serde(default)]
-    pub compat: Option<String>,
-    /// Optional per-model API key (supports `{{ secret.* }}` after config render).
-    /// Omit or empty → empty key at register time; MUST NOT fall back to kind-level
-    /// `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` (c2010 / m17).
-    #[serde(default)]
-    pub api_key: Option<String>,
-    /// Optional fallback model ID (must be another key in `models`).
-    #[serde(default)]
-    pub fallback: Option<String>,
-    /// Whether this model supports thinking/reasoning. Default: true for all.
-    #[serde(default = "default_thinking")]
-    pub thinking: bool,
-    /// Ordered, vendor-declared thinking level names. Empty tokens fail load.
-    #[serde(default)]
-    pub thinking_levels: Option<Vec<String>>,
-    /// Optional level → provider effort/budget string map (`null` value = omit that level).
-    /// Keys must be declared by this model's `thinking_levels` support list.
-    #[serde(default)]
-    pub thinking_level_map: Option<std::collections::HashMap<String, Option<String>>>,
-    /// Context window size in tokens. Default: 0 (auto-detect from provider).
-    #[serde(default)]
-    pub context_window: u64,
-    /// Tokenizer ref: named entry in top-level `tokenizers`, HF `owner/repo`,
-    /// local path, or `builtin` (c1380; pre-1.0 string-only).
-    #[serde(default)]
-    pub tokenizer: Option<String>,
-}
-
-impl ModelEntry {
-    /// Resolve and validate this model's freeform thinking configuration once.
-    pub fn resolve_thinking_config(
-        &self,
-    ) -> Result<(Vec<String>, crate::protocol::model::ThinkingLevelMap), LoadError> {
-        let levels = crate::protocol::model::resolve_configured_levels(
-            self.thinking,
-            self.thinking_levels.as_deref(),
-        )?;
-        let map = self.thinking_level_map.clone().unwrap_or_default();
-        crate::protocol::model::validate_thinking_level_map(&map, &levels)?;
-        Ok((levels, map))
-    }
-}
+/// YAML wire model alias entry — SSOT [`XyModelEntryConfig`](crate::protocol::model_entry::XyModelEntryConfig).
+pub type ModelEntry = crate::protocol::model_entry::XyModelEntryConfig;
 
 /// Shared tokenizer definition under top-level `tokenizers:` (c1380).
 ///
@@ -438,10 +379,6 @@ pub fn resolve_tokenizer_ref(
     Err(LoadError::validation(format!(
         "unknown tokenizer `{s}`: use a name from tokenizers:, HF owner/repo, path, or builtin"
     )))
-}
-
-fn default_thinking() -> bool {
-    true
 }
 
 // ---------------------------------------------------------------------------
@@ -575,28 +512,12 @@ impl AppConfig {
         &self,
         model_id: &str,
     ) -> Result<crate::protocol::model::XyModelConfig, LoadError> {
-        use crate::protocol::model::XyModelConfig;
-
         let entry = self.model.models.get(model_id).ok_or_else(|| {
             LoadError::validation(format!(
                 "unknown model alias `{model_id}`: add it under models.models in config.yaml"
             ))
         })?;
-
-        let api_key = match &entry.api_key {
-            Some(k) if !k.is_empty() => k.clone(),
-            // Explicit empty or omitted → empty (no kind-env fallback; c2010 / m17).
-            Some(_) | None => String::new(),
-        };
-
-        Ok(XyModelConfig {
-            kind: entry.provider,
-            api_key,
-            model: entry.model.clone(),
-            base_url: entry.base_url.clone(),
-            api: entry.api.clone(),
-            compat: entry.compat.clone(),
-        })
+        Ok(entry.to_model_config())
     }
 
     /// Resolve a model alias to [`XyModelMeta`](crate::protocol::model::XyModelMeta) for the registry.
@@ -607,41 +528,12 @@ impl AppConfig {
         &self,
         model_id: &str,
     ) -> Result<crate::protocol::model::XyModelMeta, LoadError> {
-        use crate::protocol::model::XyModelMeta;
-        use crate::protocol::model::default_context_window_for;
-
-        let model_config = self.resolve_model(model_id)?;
-        let entry = self.model.models.get(model_id);
-
-        let thinking = entry.map(|e| e.thinking).unwrap_or(true);
-        let context_window = entry
-            .and_then(|e| (e.context_window > 0).then_some(e.context_window))
-            .unwrap_or_else(|| default_context_window_for(model_config.kind));
-
-        let (thinking_levels, thinking_level_map) = match entry {
-            Some(entry) => entry.resolve_thinking_config()?,
-            None => (
-                vec![crate::protocol::model::THINKING_OFF.into()],
-                Default::default(),
-            ),
-        };
-
-        Ok(XyModelMeta {
-            id: model_id.to_string(),
-            config: model_config.clone(),
-            display_name: model_id.to_string(),
-            thinking,
-            context_window,
-            api: model_config.api.clone().unwrap_or_default(),
-            provider: model_config.kind.provider_name().to_string(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels,
-            thinking_level_map,
-        })
+        let entry = self.model.models.get(model_id).ok_or_else(|| {
+            LoadError::validation(format!(
+                "unknown model alias `{model_id}`: add it under models.models in config.yaml"
+            ))
+        })?;
+        entry.to_model_meta(model_id).map_err(LoadError::validation)
     }
 
     /// Resolve a named agent profile to a [`crate::protocol::model::ResolvedProfile`].

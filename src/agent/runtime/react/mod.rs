@@ -906,6 +906,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             parent_session_id,
             fork_at_entry_id,
             llm_gateway_session_id: None,
+            ..Default::default()
         };
         let agent_turn_span = super::obs::AgentTurnSpan::start_with_session(
             Some(user_preview.as_str()),

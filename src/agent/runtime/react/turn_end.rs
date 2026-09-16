@@ -208,7 +208,7 @@ pub(crate) async fn try_turn_end_compaction(
         return false;
     };
 
-    let (model, ctx_window, model_id, provider) = {
+    let (summary, ctx_window, model_id, provider) = {
         let mm = crate::utils::lock_mutex(model_manager);
         let meta = match mm.current_model() {
             Some(m) => m,
@@ -217,23 +217,28 @@ pub(crate) async fn try_turn_end_compaction(
         let ctx_window = meta.context_window;
         let model_id = meta.config.model.clone();
         let provider = meta.config.provider_name().to_string();
-        let model = match mm.build_current_model() {
-            Ok(m) => m,
+        let summary = match crate::agent::model::task_model::resolve_compaction_summary(
+            settings,
+            &mm,
+            obs_session,
+        ) {
+            Ok(s) => s,
             Err(e) => {
                 log::warn!("turn-end compaction: no model: {e}");
                 return false;
             }
         };
-        (model, ctx_window, model_id, provider)
+        (summary, ctx_window, model_id, provider)
     };
 
     let orch = CompactionOrchestrator::new(settings.clone());
+    let mut fallback_notice_emitted = false;
 
     match orch
         .maybe_overflow_compact(
             store.as_ref(),
             session_id,
-            model.as_ref(),
+            &summary,
             event_sink.as_ref(),
             ctx_window,
             &last_assistant,
@@ -242,7 +247,7 @@ pub(crate) async fn try_turn_end_compaction(
             *overflow_recovery_attempted,
             Some(fixed_context),
             turn_obs_parent,
-            obs_session,
+            &mut fallback_notice_emitted,
             Some(&mut *floor_notice_emitted),
         )
         .await
@@ -305,7 +310,7 @@ pub(crate) async fn try_turn_end_compaction(
         .maybe_auto_compact(
             store.as_ref(),
             session_id,
-            model.as_ref(),
+            &summary,
             event_sink.as_ref(),
             ctx_window,
             &opts,
@@ -313,7 +318,7 @@ pub(crate) async fn try_turn_end_compaction(
             precomputed,
             Some(fixed_context),
             turn_obs_parent,
-            obs_session,
+            &mut fallback_notice_emitted,
             Some(&mut *floor_notice_emitted),
         )
         .await

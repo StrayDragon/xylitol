@@ -119,6 +119,32 @@ pub fn langfuse_session_properties_from(ctx: &ObsSessionContext) -> Vec<(String,
     if let Some(name) = ctx.session_name.clone().filter(|s| !s.is_empty()) {
         out.push(("langfuse.trace.metadata.session_name".into(), name));
     }
+    if let Some(model) = ctx
+        .compaction_requested_model
+        .clone()
+        .filter(|s| !s.is_empty())
+    {
+        out.push(("xylitol.compaction.requested_model".into(), model));
+    }
+    if let Some(model) = ctx
+        .compaction_actual_model
+        .clone()
+        .filter(|s| !s.is_empty())
+    {
+        out.push(("xylitol.compaction.actual_model".into(), model));
+    }
+    if let Some(fallback) = ctx.compaction_model_fallback {
+        out.push((
+            "xylitol.compaction.model_fallback".into(),
+            fallback.to_string(),
+        ));
+    }
+    if let Some(rejected) = ctx.compaction_thinking_rejected {
+        out.push((
+            "xylitol.compaction.thinking_rejected".into(),
+            rejected.to_string(),
+        ));
+    }
     out
 }
 
@@ -283,6 +309,25 @@ mod tests {
                 .any(|(k, _)| k == "xylitol.session.llm_gateway_session_id")
         );
         assert!(!g.iter().any(|(_, v)| v == "process-wrong"));
+    }
+
+    #[test]
+    fn compaction_attribution_properties_emitted() {
+        let snap = ObsSessionContext {
+            compaction_requested_model: Some("summary-task".into()),
+            compaction_actual_model: Some("main-wire".into()),
+            compaction_model_fallback: Some(true),
+            compaction_thinking_rejected: Some(true),
+            ..Default::default()
+        };
+        let p = langfuse_session_properties_from(&snap);
+        assert!(p.contains(&(
+            "xylitol.compaction.requested_model".into(),
+            "summary-task".into(),
+        )));
+        assert!(p.contains(&("xylitol.compaction.actual_model".into(), "main-wire".into(),)));
+        assert!(p.contains(&("xylitol.compaction.model_fallback".into(), "true".into(),)));
+        assert!(p.contains(&("xylitol.compaction.thinking_rejected".into(), "true".into(),)));
     }
 
     #[test]

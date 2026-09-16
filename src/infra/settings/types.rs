@@ -78,6 +78,8 @@ mod tests {
                 enabled: Some(false),
                 reserve_tokens: None,
                 keep_recent_tokens: Some(32768),
+                model: None,
+                thinking_level: None,
             }),
             ..Default::default()
         };

@@ -12,9 +12,10 @@ use crate::agent::compaction::token_estimator::{EstimateOpts, FixedRequestContex
 use crate::agent::compaction::{
     CompactionError, CompactionSettings, compact_session, prepare_compaction,
 };
+use crate::agent::model::task_model::CompactionSummaryBinding;
 use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason};
-use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore};
+use crate::protocol::ports::{XyEventSink, XySessionStore};
 use crate::protocol::session::SessionEntry;
 
 /// Outcome of overflow Case1 auto-compact.
@@ -52,13 +53,14 @@ impl CompactionOrchestrator {
         &self,
         store: &dyn XySessionStore,
         sid: &str,
-        model: &dyn XyModel,
+        summary: &CompactionSummaryBinding,
         event_sink: &dyn XyEventSink,
         instructions: Option<String>,
         context_window: u64,
         fixed_context: Option<&FixedRequestContext>,
-        obs_session: &xylitol_ai_bridge::ObsSessionContext,
+        fallback_notice_emitted: &mut bool,
     ) -> Result<(), CompactionError> {
+        let obs_session = &summary.generate_options.obs_session;
         event_sink
             .emit(&XyEvent::CompactionStart {
                 reason: "manual".to_string(),
@@ -97,13 +99,12 @@ impl CompactionOrchestrator {
         let result = compact_session(
             store,
             sid,
-            model,
+            summary,
             &force_settings,
             instructions.as_deref(),
             context_window,
             fixed_context,
             llm_parent,
-            obs_session,
         )
         .await;
 
@@ -116,10 +117,11 @@ impl CompactionOrchestrator {
         }
         if result.is_ok() {
             // c26/c28: settle BEFORE the end event so CompactionEnd can carry
-            // tokens_after; manual never carries a c28 notice.
+            // tokens_after; manual never carries a c28 floor notice.
             let settled =
                 compute_after_compaction_settlement(store, sid, fixed_context, None, obs_session)
                     .await;
+            let notice = take_fallback_notice(summary, fallback_notice_emitted, None);
             event_sink
                 .emit(&XyEvent::CompactionEnd {
                     result: result.as_ref().ok().map(|_| "ok".to_string()),
@@ -133,7 +135,7 @@ impl CompactionOrchestrator {
                     summary: result.as_ref().ok().map(|e| e.summary.clone()),
                     tokens_before: result.as_ref().ok().map(|e| e.tokens_before),
                     tokens_after: settled.as_ref().map(|s| s.estimate.tokens),
-                    notice: None,
+                    notice,
                 })
                 .await;
             if let Some(settled) = settled {
@@ -151,7 +153,7 @@ impl CompactionOrchestrator {
         &self,
         store: &dyn XySessionStore,
         sid: &str,
-        model: &dyn XyModel,
+        summary: &CompactionSummaryBinding,
         event_sink: &dyn XyEventSink,
         context_window: u64,
         last_assistant: &AgentMessage,
@@ -160,7 +162,7 @@ impl CompactionOrchestrator {
         overflow_recovery_attempted: bool,
         fixed_context: Option<&FixedRequestContext>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-        obs_session: &xylitol_ai_bridge::ObsSessionContext,
+        fallback_notice_emitted: &mut bool,
         floor_notice_emitted: Option<&mut bool>,
     ) -> Result<OverflowCompactOutcome, CompactionError> {
         if !self.settings.enabled {
@@ -195,7 +197,7 @@ impl CompactionOrchestrator {
                 .run_auto_compaction(
                     store,
                     sid,
-                    model,
+                    summary,
                     event_sink,
                     "overflow",
                     false,
@@ -203,7 +205,7 @@ impl CompactionOrchestrator {
                     &entries,
                     fixed_context,
                     turn_obs_parent,
-                    obs_session,
+                    fallback_notice_emitted,
                     floor_notice_emitted,
                 )
                 .await
@@ -236,7 +238,7 @@ impl CompactionOrchestrator {
         self.run_auto_compaction(
             store,
             sid,
-            model,
+            summary,
             event_sink,
             "overflow",
             true,
@@ -244,7 +246,7 @@ impl CompactionOrchestrator {
             &entries,
             fixed_context,
             turn_obs_parent,
-            obs_session,
+            fallback_notice_emitted,
             floor_notice_emitted,
         )
         .await
@@ -266,7 +268,7 @@ impl CompactionOrchestrator {
         &self,
         store: &dyn XySessionStore,
         sid: &str,
-        model: &dyn XyModel,
+        summary: &CompactionSummaryBinding,
         event_sink: &dyn XyEventSink,
         context_window: u64,
         estimate_opts: &EstimateOpts,
@@ -274,7 +276,7 @@ impl CompactionOrchestrator {
         precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
         fixed_context: Option<&FixedRequestContext>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-        obs_session: &xylitol_ai_bridge::ObsSessionContext,
+        fallback_notice_emitted: &mut bool,
         floor_notice_emitted: Option<&mut bool>,
     ) -> Result<bool, CompactionError> {
         if !self.settings.enabled {
@@ -329,7 +331,7 @@ impl CompactionOrchestrator {
         self.run_auto_compaction(
             store,
             sid,
-            model,
+            summary,
             event_sink,
             &reason,
             false,
@@ -337,7 +339,7 @@ impl CompactionOrchestrator {
             &entries,
             fixed_context,
             turn_obs_parent,
-            obs_session,
+            fallback_notice_emitted,
             floor_notice_emitted,
         )
         .await
@@ -348,7 +350,7 @@ impl CompactionOrchestrator {
         &self,
         store: &dyn XySessionStore,
         sid: &str,
-        model: &dyn XyModel,
+        summary_binding: &CompactionSummaryBinding,
         event_sink: &dyn XyEventSink,
         reason: &str,
         will_retry: bool,
@@ -356,9 +358,10 @@ impl CompactionOrchestrator {
         entries: &[SessionEntry],
         fixed_context: Option<&FixedRequestContext>,
         turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-        obs_session: &xylitol_ai_bridge::ObsSessionContext,
+        fallback_notice_emitted: &mut bool,
         floor_notice_emitted: Option<&mut bool>,
     ) -> Result<bool, CompactionError> {
+        let obs_session = &summary_binding.generate_options.obs_session;
         let overhead = fixed_context.map_or(0, FixedRequestContext::overhead_tokens);
         if let Err(err) = prepare_compaction(entries, &self.settings, context_window, overhead) {
             // otel27: auto path stays event-silent but leaves an obs trace.
@@ -377,16 +380,15 @@ impl CompactionOrchestrator {
         let result = compact_session(
             store,
             sid,
-            model,
+            summary_binding,
             &self.settings,
             None,
             context_window,
             fixed_context,
             llm_parent,
-            obs_session,
         )
         .await;
-        let (ok_result, err_msg, summary, tokens_before) = match &result {
+        let (ok_result, err_msg, summary_text, tokens_before) = match &result {
             Ok(entry) => (
                 Some("ok".to_string()),
                 None,
@@ -421,7 +423,7 @@ impl CompactionOrchestrator {
         // carries tokens_after + the one-shot c28 notice, then the settlement
         // event goes out (order preserved: end → settlement).
         let mut tokens_after = None;
-        let mut notice = None;
+        let mut floor_notice = None;
         let mut settled_event = None;
         if result.is_ok()
             && let Some(settled) = compute_after_compaction_settlement(
@@ -440,13 +442,14 @@ impl CompactionOrchestrator {
                 && !*flag
             {
                 *flag = true;
-                notice = Some(floor_diagnostic_notice(
+                floor_notice = Some(floor_diagnostic_notice(
                     settled.estimate.tokens,
                     context_window,
                 ));
             }
             settled_event = Some(settled);
         }
+        let notice = take_fallback_notice(summary_binding, fallback_notice_emitted, floor_notice);
 
         event_sink
             .emit(&XyEvent::CompactionEnd {
@@ -455,7 +458,7 @@ impl CompactionOrchestrator {
                 reason: end_reason,
                 will_retry: will_retry_end,
                 error_message: err_msg,
-                summary,
+                summary: summary_text,
                 tokens_before,
                 tokens_after,
                 notice,
@@ -470,6 +473,26 @@ impl CompactionOrchestrator {
             Ok(_) => Ok(true),
             Err(e) => Err(e),
         }
+    }
+}
+
+fn take_fallback_notice(
+    summary_binding: &CompactionSummaryBinding,
+    fallback_notice_emitted: &mut bool,
+    floor_notice: Option<String>,
+) -> Option<String> {
+    let fallback = if !*fallback_notice_emitted {
+        summary_binding.attribution.notice_message()
+    } else {
+        None
+    };
+    if fallback.is_some() {
+        *fallback_notice_emitted = true;
+    }
+    match (fallback, floor_notice) {
+        (Some(fb), Some(fl)) => Some(format!("{fb}\n{fl}")),
+        (Some(fb), None) => Some(fb),
+        (None, fl) => fl,
     }
 }
 
@@ -610,9 +633,12 @@ mod tests {
     use async_trait::async_trait;
     use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
 
+    use std::sync::Arc;
+
+    use crate::agent::model::task_model::CompactionSummaryBinding;
     use crate::protocol::error::{XyError, XySessionStoreError};
     use crate::protocol::model::XyToolSchema;
-    use crate::protocol::ports::{XyGenerateOptions, XyStream};
+    use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
     use crate::protocol::session::{ForkPosition, SessionContext};
 
     /// Empty leaf → `prepare_compaction` early-exit; model MUST NOT be touched.
@@ -779,20 +805,22 @@ mod tests {
             enabled: true,
             reserve_tokens: 16_384,
             keep_recent_tokens: 20_000,
+            ..Default::default()
         });
         let fixed = FixedRequestContext {
             system_prompt: Some("S".repeat(26_000)), // ≈6.5k chars/4 overhead
             tool_schemas: Vec::new(),
         };
+        let mut fallback_notice = false;
         orch.compact(
             &mgr,
             sid,
-            model.as_ref(),
+            &CompactionSummaryBinding::for_test(model, "sum"),
             sink.as_ref(),
             None,
             32_768,
             Some(&fixed),
-            &Default::default(),
+            &mut fallback_notice,
         )
         .await
         .expect("force compact succeeds under clamp");
@@ -838,7 +866,6 @@ mod tests {
         use crate::infra::provider::{ScenarioStep, fake_xy_model};
         use crate::infra::session::SessionManager;
         use crate::protocol::lifecycle::XyEvent as Ev;
-        use crate::protocol::message::AgentMessage;
 
         // window 3000 / reserve 512 / keep 2000 / overhead 3000 tokens.
         // clamp saturates to 0; floor = 3000+0+2048 = 5048; threshold ≈ 6310.
@@ -856,6 +883,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 512,
             keep_recent_tokens: 2_000,
+            ..Default::default()
         });
         let fixed = FixedRequestContext {
             system_prompt: Some("S".repeat((overhead_tokens * 4) as usize)),
@@ -866,6 +894,7 @@ mod tests {
             ..Default::default()
         };
         let mut flag = false;
+        let mut fallback_notice = false;
 
         for i in 0..100 {
             append_turn(&mgr, sid, i).await;
@@ -874,7 +903,7 @@ mod tests {
         orch.maybe_auto_compact(
             &mgr,
             sid,
-            model.as_ref(),
+            &CompactionSummaryBinding::for_test(model, "sum"),
             sink.as_ref(),
             window,
             &opts,
@@ -882,7 +911,7 @@ mod tests {
             None,
             Some(&fixed),
             None,
-            &Default::default(),
+            &mut fallback_notice,
             Some(&mut flag),
         )
         .await
@@ -895,7 +924,7 @@ mod tests {
         orch.maybe_auto_compact(
             &mgr,
             sid,
-            model.as_ref(),
+            &CompactionSummaryBinding::for_test(model, "sum"),
             sink.as_ref(),
             window,
             &opts,
@@ -903,7 +932,7 @@ mod tests {
             None,
             Some(&fixed),
             None,
-            &Default::default(),
+            &mut fallback_notice,
             Some(&mut flag),
         )
         .await
@@ -938,7 +967,6 @@ mod tests {
     async fn floor_threshold_bounds_compaction_frequency() {
         use crate::infra::provider::{ScenarioStep, fake_xy_model};
         use crate::infra::session::SessionManager;
-        use crate::protocol::message::AgentMessage;
 
         let window: u64 = 32_768;
         let overhead_tokens: u64 = 9_000;
@@ -951,6 +979,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 16_384,
             keep_recent_tokens: 20_000,
+            ..Default::default()
         });
         let fixed = FixedRequestContext {
             system_prompt: Some("S".repeat((overhead_tokens * 4) as usize)),
@@ -961,6 +990,7 @@ mod tests {
             ..Default::default()
         };
         let mut flag = false;
+        let mut fallback_notice = false;
 
         let mut compactions = 0usize;
         for i in 0..240 {
@@ -970,7 +1000,7 @@ mod tests {
                 .maybe_auto_compact(
                     &mgr,
                     sid,
-                    model.as_ref(),
+                    &CompactionSummaryBinding::for_test(model, "sum"),
                     sink.as_ref(),
                     window,
                     &opts,
@@ -978,7 +1008,7 @@ mod tests {
                     None,
                     Some(&fixed),
                     None,
-                    &Default::default(),
+                    &mut fallback_notice,
                     Some(&mut flag),
                 )
                 .await
@@ -1003,16 +1033,17 @@ mod tests {
         let collect = SpanCollectScope::enter();
 
         let orch = CompactionOrchestrator::new(CompactionSettings::default());
+        let mut fallback_notice = false;
         let err = orch
             .compact(
                 &EmptyLeafStore,
                 "sid",
-                &PanicModel,
+                &CompactionSummaryBinding::for_test(Arc::new(PanicModel), "panic-model"),
                 &NoopSink,
                 None,
                 0,
                 None,
-                &Default::default(),
+                &mut fallback_notice,
             )
             .await
             .expect_err("empty session must fail prepare");
@@ -1089,6 +1120,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 16_384,
             keep_recent_tokens: 20_000,
+            ..Default::default()
         };
         let floor = crate::agent::compaction::projected_post_compact_tokens(
             &s,
@@ -1109,6 +1141,7 @@ mod tests {
             enabled: true,
             reserve_tokens: 16_384,
             keep_recent_tokens: 20_000,
+            ..Default::default()
         };
         assert!(!should_compact(16_384, 32_768, &s, 0));
         assert!(should_compact(16_385, 32_768, &s, 0));

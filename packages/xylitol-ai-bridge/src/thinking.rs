@@ -22,6 +22,14 @@ pub struct ObsSessionContext {
     /// Session identity actually presented on the LLM channel for this request.
     /// Omit when the request did not send one (do not fill with `session_id` as a placeholder).
     pub llm_gateway_session_id: Option<String>,
+    /// Compaction summary: configured task model wire id (c2811).
+    pub compaction_requested_model: Option<String>,
+    /// Compaction summary: actual model wire id used for the request.
+    pub compaction_actual_model: Option<String>,
+    /// Compaction summary: true when task entry build failed and current model was used.
+    pub compaction_model_fallback: Option<bool>,
+    /// Compaction summary: true when thinking_level override was outside the support set.
+    pub compaction_thinking_rejected: Option<bool>,
 }
 
 /// Optional Settings-style budget overrides for Anthropic.
