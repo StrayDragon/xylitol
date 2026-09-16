@@ -1162,6 +1162,7 @@ mod tests {
             tokens_before: 1_000,
             details: None,
             from_hook: None,
+            policy: None,
         };
         let entries = vec![SessionEntry::Compaction(entry)];
         assert_eq!(

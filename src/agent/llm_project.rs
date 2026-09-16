@@ -942,6 +942,7 @@ mod tests {
                 tokens_before: 9000,
                 details: None,
                 from_hook: None,
+                policy: None,
             }),
             msg(
                 "u_new",

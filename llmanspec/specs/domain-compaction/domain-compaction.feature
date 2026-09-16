@@ -22,7 +22,7 @@
 
   @req:c4 @human
   场景: compact 会话
-    - Compaction MUST 将 CompactionEntry 持久化到会话文件并更新会话树。
+    - Compaction MUST 将 CompactionEntry 持久化到 session 的逻辑条目流并更新会话树；当切点前存在非空可摘要前缀时 MUST 将该前缀 seal 为不可变 cold 段，active 段 MUST 只保留 firstKeptEntryId 起的尾部与新 CompactionEntry，且 manifest 提交前后 MUST 保持可恢复。
 
   @req:c5 @human
   场景: 分支摘要
@@ -46,11 +46,11 @@
 
   @req:c11 @human
   场景: compact 条目
-    - Compaction MUST 产出含 summary 字符串、firstKeptEntryId（切点后首条保留条目）、tokensBefore 计数及含 readFiles 与 modifiedFiles 列表的 details 对象的 CompactionEntry。
+    - Compaction MUST 产出含 summary 字符串、firstKeptEntryId（切点后首条保留条目）、tokensBefore 计数及含 readFiles 与 modifiedFiles 列表的 details 对象的 CompactionEntry；新写入条目 MUST 额外带完整 policy 快照（contextWindow、reserveTokens、keepRecentTokens、estimatorVersion），迁移来的旧条目可带 legacy/unknown 标记但 MUST NOT 伪造当前 policy。
 
   @req:c12 @human
   场景: agent 集成
-    - System MUST 提供会话压缩入口（compact_current_session 或等价）：估计上下文用量、找切点、调用 LLM 摘要、写入 CompactionEntry、重载会话状态。
+    - System MUST 提供会话压缩入口（compact_current_session 或等价）：估计上下文用量、找切点、调用 LLM 摘要、写入带 policy 快照的 CompactionEntry、以 manifest/active/cold 逻辑流原子 seal 并重载会话状态。
 
   @req:c13 @human
   场景: 模块拆分
@@ -115,6 +115,10 @@
   @req:c28 @human
   场景: 压后地板一次性诊断
     - auto 路径（threshold / overflow）compaction 成功且其 AfterCompaction settlement tokens ≥ contextWindow（压后仍无可用窗口，固定开销吃满窗口的退化形态）时，System MUST 经 CompactionEnd 载荷（notice 或等价）发一条可行动诊断（建议：调低 keepRecentTokens / 调高 contextWindow / 精简工具面），每个会话运行（run）至多一次（对齐 c22 每 run 一次 overflow recovery 的作用域纪律）；manual force 路径 MUST NOT 发诊断；地板阈值本身不构成诊断条件（地板 + 迟滞 ∈ (window − reserve, window) 的受控频繁模式 MUST NOT 触发诊断）。
+
+  @req:c29 @human
+  场景: policy 指纹
+    - CompactionEntry 的 policy 快照 MUST 记录产生该摘要时的 contextWindow、reserveTokens、keepRecentTokens 与 estimatorVersion；后续 resume、inspect 或诊断 MUST 能区分完整当前快照与迁移 legacy/unknown 标记，MUST NOT 将缺失快照静默解释为当前配置。
   @executable @req:c2
   场景: need-compact
     假如 会话消息估算使用 90000 个 token

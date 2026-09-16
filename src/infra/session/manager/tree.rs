@@ -29,7 +29,7 @@ impl SessionManager {
         session_id: &str,
         leaf_id: Option<&str>,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
-        let entries = self.load(session_id).await?;
+        let entries = self.load_branch_entries(session_id, leaf_id).await?;
         let id_map: HashMap<&str, &SessionEntry> = entries
             .iter()
             .filter_map(|e| e.entry_id().map(|id| (id, e)))

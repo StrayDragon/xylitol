@@ -1,7 +1,6 @@
 use super::SessionManager;
 use crate::infra::session::types::*;
 use crate::protocol::error::{XySessionError, XySessionStoreError};
-use crate::protocol::ports::XySessionStore as _;
 
 impl SessionManager {
     /// Build session context from the stored entries.
@@ -37,7 +36,7 @@ impl SessionManager {
             .iter()
             .filter_map(|e| e.as_agent_message())
             .collect();
-        if let Ok(all) = self.load_entries(session_id).await {
+        if let Ok(all) = self.read_entries(session_id).await {
             let done = crate::protocol::session::done_bash_ids(&all);
             msgs = crate::protocol::session::fold_interrupted_bash_rows(msgs, &done);
         }

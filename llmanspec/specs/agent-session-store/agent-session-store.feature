@@ -15,7 +15,7 @@
 
   @req:s1 @human
   场景: JSONL 存储
-    - SessionManager MUST 将会话持久化为 JSONL 文件（每行一个带版本标签的 JSON 对象），位于 ~/.xylitol/sessions/。
+    - SessionManager MUST 将会话持久化为 v7 会话目录（位于 ~/.xylitol/sessions/），目录 MUST 由 manifest 提交指针、一个 active JSONL 段与零个或多个 sealed cold JSONL 段组成；每行仍是一个带版本标签的 JSON 对象，manifest MUST 是恢复时的 SSOT。
 
   @req:s2 @human
   场景: 条目类型
@@ -39,11 +39,11 @@
 
   @req:s7 @human
   场景: 写入安全
-    - SessionManager 写会话文件 MUST 满足崩溃原子性：进程任意时点终止后，盘上会话文件要么保持旧完整内容、要么呈现新完整内容，MUST NOT 出现截断或半行混合状态。系统以单进程单写者为并发假设（同一会话至多一个进程写入），MUST NOT 声称提供跨进程文件锁互斥。
+    - SessionManager 写 v7 会话 MUST 以 manifest 原子切换作为 seal 提交点：进程任意时点终止后，旧 manifest 仍 MUST 指向可恢复的旧段，或新 manifest MUST 只指向完整的新段；MUST NOT 将未提交的 orphan/临时段拼入会话。系统以单进程单写者为并发假设（同一会话至多一个进程写入），MUST NOT 声称提供跨进程文件锁互斥。
 
   @req:s9 @human
   场景: 会话 fork
-    - SessionManager MUST 支持 fork(parent_id, child_id, at_entry_id)，将父条目复制到切点至新子会话文件并 append branch_summary 条目。
+    - SessionManager MUST 支持 fork(parent_id, child_id, at_entry_id)，将父当前 leaf 路径（需要时按需读取 cold 段）复制到新子会话的 v7 active 段并 append branch_summary 条目；子会话 MUST NOT 保存对父 session 段文件的跨目录引用。
 
   @req:s10 @human
   场景: 分支摘要实现
@@ -57,13 +57,25 @@
   场景: fork-header-cut-entry
     - fork 创建子会话时，子会话头 MUST 记录父会话 id，且 MUST 记录切点条目 id（fork 时所选条目，含 Before 切位时未拷入子会话的那条）；非 fork 创建的会话头 MUST NOT 写入切点字段。加载缺少该切点字段的旧会话文件时 MUST 视为无切点，MUST NOT 因此失败。
 
+  @req:s24 @human
+  场景: v7 manifest 提交
+    - v7 manifest MUST 只引用 session 目录内的完整段文件并记录 active 段与 sealed 段的逻辑顺序；compaction seal 成功后已引用的 cold 段 MUST NOT 再被改写，未被 manifest 引用的临时或 orphan 段 MUST NOT 影响 load、resume 或 list。
+
+  @req:s25 @human
+  场景: 冷段按需恢复
+    - resume、load_leaf_branch 与 session context 构造 MUST 先读取 manifest 与 active 段，仅在当前 leaf 的 parentId/分支或会话级配对需要时按需读取命中的 cold 段；MUST NOT 为普通 resume 无条件解析全部 cold 段。完整导出或 inspect 可显式读取完整逻辑条目流。
+
+  @req:s26 @human
+  场景: v6 一次性迁移
+    - 首次访问仅有 v6 单文件 `{id}.jsonl` 且无 v7 manifest 的会话时，System MUST 幂等地迁移为 v7 目录并在 manifest 提交成功后清理旧文件；迁移失败 MUST 保留旧文件并返回可操作错误；v5 及更早或未知版本 MUST 拒绝，MUST NOT 建立长期双读兼容路径。
+
   @req:s16 @human
   场景: 会话 CWD 校验
     - 从磁盘加载会话时 SessionManager MUST 校验存储 CWD 存在且可访问；不可用时返回可操作错误信息。
 
   @req:s18 @human
-  场景: session-entry-camelcase-v5
-    - Session persisted JSONL MUST 以 camelCase 为唯一磁盘格式 SSOT（JS/TS favor；非 pi snake entry type）：外壳字段含 parentId、parentSession、firstKeptEntryId 等；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash MUST 使用 type=message 且 message.role=bashExecution，MUST NOT 再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version MUST 等于 SESSION_VERSION（6）。MUST NOT 再写出 parent_id 或 version≤5 作为新会话真源。MUST NOT 提供 serde alias、静默 v3/v4/v5 migrate、或将旧顶层 bash 提升为合法上下文。
+  场景: session-entry-camelcase-v7
+    - Session persisted JSONL MUST 以 camelCase 为唯一磁盘格式 SSOT（JS/TS favor；非 pi snake entry type）：v7 段外壳字段含 parentId、parentSession、firstKeptEntryId 等；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash MUST 使用 type=message 且 message.role=bashExecution，MUST NOT 再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version MUST 等于 SESSION_VERSION（7），manifest 的 formatVersion MUST 同为 7。MUST NOT 再写出 parent_id 或 version≤5 作为新会话真源。v6 只允许经 s26 一次性迁移；MUST NOT 提供长期 serde alias 或旧顶层 bash 升格为合法上下文。
 
   @req:s19 @human
   场景: tool-result-tool-call-id
@@ -71,11 +83,11 @@
 
   @req:s20 @human
   场景: session-load-skip-warn
-    - load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 MUST 跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn MUST 至多 3 条，超出后 MUST 以单条省略标记（如 ...）收敛，MUST NOT 刷屏。header.version 不等于 SESSION_VERSION（6）时 MUST 拒绝将该文件视为合法最新会话（返回可操作错误），MUST NOT 静默 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager MUST 共用此策略。
+    - load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 MUST 跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn MUST 至多 3 条，超出后 MUST 以单条省略标记（如 ...）收敛，MUST NOT 刷屏。v7 manifest/header version 不等于 SESSION_VERSION（7）时 MUST 拒绝将其视为合法最新会话（返回可操作错误）；仅 v6 遗留单文件可先按 s26 完成迁移，MUST NOT 静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager MUST 共用此策略。
 
   @req:s21 @human
   场景: list-sessions-resilient
-    - list_sessions（或等价枚举）遇到单个会话文件不可读/非最新/解析失败时 MUST 跳过该文件（或给出占位诊断）并继续枚举其余会话，MUST NOT 因单文件失败而使整表 list/resume 面板失败。
+    - list_sessions（或等价枚举）遇到单个 v7 manifest/段不可读、非最新或解析失败时 MUST 跳过该 session（或给出占位诊断）并继续枚举其余会话；发现 v6 遗留单文件时 MUST 按 s26 识别或迁移，MUST NOT 因单 session 失败而使整表 list/resume 面板失败。
 
   @req:ex1 @human
   场景: 导出 HTML

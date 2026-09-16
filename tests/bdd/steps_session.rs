@@ -582,7 +582,7 @@ fn _t_grep_exact_matches(ws: &Workspace, n: u32) {
 
 // ---- agent-session-store 转写批（s9 / s10 / s11 / s12 / s21 / s22）----
 
-fn session_file(dir: &std::path::Path, id: &str) -> std::path::PathBuf {
+fn legacy_session_file(dir: &std::path::Path, id: &str) -> std::path::PathBuf {
     dir.join(format!("{id}.jsonl"))
 }
 
@@ -591,6 +591,15 @@ fn sess_dir(sess: &XySessionStore) -> std::path::PathBuf {
         .borrow()
         .clone()
         .expect("sessions dir captured by ensure_mgr")
+}
+
+fn active_session_file(sess: &XySessionStore, id: &str) -> std::path::PathBuf {
+    sess.mgr
+        .borrow()
+        .as_ref()
+        .expect("session manager captured by ensure_mgr")
+        .get_session_file(id)
+        .expect("persisted session active segment path")
 }
 
 async fn append_typed_message(sess: &XySessionStore, role: &str, msg: &str) {
@@ -626,17 +635,21 @@ async fn when_append_assistant_msg(sess: &XySessionStore, msg: String) {
 
 #[then("会话 {id:string} 的磁盘 JSONL 尚不存在")]
 async fn then_disk_absent(sess: &XySessionStore, id: String) {
-    let p = session_file(&sess_dir(sess), &id);
+    let p = active_session_file(sess, &id);
+    let session_dir = sess_dir(sess).join(&id);
+    let legacy = legacy_session_file(&sess_dir(sess), &id);
     assert!(
-        !p.exists(),
-        "s12: header/entries must stay deferred before first append, found {}",
-        p.display()
+        !p.exists() && !session_dir.exists() && !legacy.exists(),
+        "s12: header/entries must stay deferred before first append, found active={}, dir={}, legacy={}",
+        p.display(),
+        session_dir.display(),
+        legacy.display()
     );
 }
 
 #[then("会话 {id:string} 的磁盘 JSONL 已存在且包含 {text:string}")]
 async fn then_disk_contains(sess: &XySessionStore, id: String, text: String) {
-    let p = session_file(&sess_dir(sess), &id);
+    let p = active_session_file(sess, &id);
     assert!(p.exists(), "s12: disk jsonl must exist, {}", p.display());
     let body = std::fs::read_to_string(&p).unwrap();
     assert!(body.contains(&text), "{text} missing in:\n{body}");
@@ -696,13 +709,13 @@ async fn then_summary_mentions(sess: &XySessionStore, id: String, text: String) 
 
 #[when("目录中植入损坏的会话文件 broken.jsonl")]
 fn when_plant_corrupt_file(sess: &XySessionStore) {
-    let p = session_file(&sess_dir(sess), "broken");
+    let p = legacy_session_file(&sess_dir(sess), "broken");
     std::fs::write(&p, "{ not json\n").expect("plant corrupt file");
 }
 
 #[then("会话 {id:string} 的 JSONL 时间戳均为 u64 毫秒")]
 async fn then_timestamps_u64_ms(sess: &XySessionStore, id: String) {
-    let p = session_file(&sess_dir(sess), &id);
+    let p = active_session_file(sess, &id);
     let body = std::fs::read_to_string(&p).unwrap();
     for (i, line) in body.lines().enumerate() {
         let v: serde_json::Value =
@@ -894,7 +907,7 @@ async fn when_append_tool_result(sess: &XySessionStore, call_id: String, text: S
 
 #[then("会话 {id:string} 的磁盘行含 toolCallId 且不含 toolUseId")]
 async fn then_tool_call_id_key(sess: &XySessionStore, id: String) {
-    let p = session_file(&sess_dir(sess), &id);
+    let p = active_session_file(sess, &id);
     let body = std::fs::read_to_string(&p).unwrap();
     let hit = body
         .lines()

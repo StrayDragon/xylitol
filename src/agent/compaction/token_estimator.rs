@@ -10,6 +10,9 @@ use crate::agent::llm_project::project_for_llm;
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
 use crate::protocol::model::{ContextTokenEstimate, XyToolSchema};
 
+/// Stable identifier for the estimate algorithm recorded in compaction history.
+pub const ESTIMATOR_VERSION: &str = "context-estimate-v1";
+
 /// Fixed per-request context outside the session transcript (c25 / c16).
 ///
 /// System prompt + tool schemas ride every provider call but live outside the
@@ -457,6 +460,7 @@ mod tests {
             tokens_before: 90_000,
             details: None,
             from_hook: None,
+            policy: None,
         });
         let entries = vec![
             msg_entry("a_kept", None, &kept, 100),

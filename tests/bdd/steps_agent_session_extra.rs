@@ -96,6 +96,7 @@ pub(crate) async fn g_sess_bang(sess: &XySessionStore) {
         tokens_before: 5000,
         details: None,
         from_hook: None,
+        policy: None,
     });
     let _ = mgr.append(sid, &compaction).await;
     sess.current_id.replace(Some(sid.to_string()));

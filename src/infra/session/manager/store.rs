@@ -16,7 +16,7 @@ impl XySessionStore for SessionManager {
         &self,
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
-        SessionManager::load(self, session_id).await
+        SessionManager::read_entries(self, session_id).await
     }
 
     async fn load_leaf_branch(
@@ -32,7 +32,15 @@ impl XySessionStore for SessionManager {
         session_id: &str,
         entry: &SessionEntry,
     ) -> Result<(), XySessionStoreError> {
-        SessionManager::append(self, session_id, entry).await
+        SessionManager::append_session_entry(self, session_id, entry).await
+    }
+
+    async fn commit_compaction(
+        &self,
+        session_id: &str,
+        entry: &SessionEntry,
+    ) -> Result<(), XySessionStoreError> {
+        SessionManager::commit_compaction(self, session_id, entry).await
     }
 
     async fn build_session_context(
@@ -80,7 +88,11 @@ impl XySessionStore for SessionManager {
         let mut skipped = 0usize;
         let mut skip_examples: Vec<String> = Vec::new();
         for id in ids {
-            let path = self.session_path(&id);
+            let path = if self.manifest_path(&id).exists() {
+                self.session_dir_path(&id)
+            } else {
+                self.legacy_session_path(&id)
+            };
             let path_str = if path.exists() {
                 Some(path.to_string_lossy().into_owned())
             } else {
@@ -137,7 +149,11 @@ impl XySessionStore for SessionManager {
                 }
             }
             if modified_unix.is_none() {
-                let path = self.sessions_dir.join(format!("{id}.jsonl"));
+                let path = if self.manifest_path(&id).exists() {
+                    self.session_dir_path(&id)
+                } else {
+                    self.legacy_session_path(&id)
+                };
                 if let Ok(meta) = tokio::fs::metadata(&path).await
                     && let Ok(modified) = meta.modified()
                     && let Ok(dur) = modified.duration_since(UNIX_EPOCH)

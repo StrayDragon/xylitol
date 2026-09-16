@@ -11,6 +11,37 @@ use crate::protocol::ports::XySessionStore;
 
 use super::{AgentCapabilities, SessionStats, observe_hook};
 
+pub(crate) async fn load_conversation_history_from_store(
+    store: &dyn XySessionStore,
+    session_id: &str,
+) -> Result<Vec<AgentMessage>, XyError> {
+    let entries = store
+        .load_leaf_branch(session_id)
+        .await
+        .map_err(XyError::from)?;
+    let entries = crate::protocol::session::build_context_entries(&entries);
+    let messages: Vec<AgentMessage> = entries
+        .iter()
+        .filter_map(|entry| entry.as_agent_message())
+        .collect();
+
+    match store.load_entries(session_id).await {
+        Ok(all) => {
+            let done = crate::protocol::session::done_bash_ids(&all);
+            Ok(crate::protocol::session::fold_interrupted_bash_rows(
+                messages, &done,
+            ))
+        }
+        Err(error) => {
+            log::warn!(
+                target: "xylitol::session",
+                "interrupted-bash fold skipped: load_entries failed error={error}"
+            );
+            Ok(messages)
+        }
+    }
+}
+
 impl AgentCapabilities {
     // ── Session management ────────────────────────────────────────
 
@@ -101,31 +132,7 @@ impl AgentCapabilities {
         &self,
         session_id: &str,
     ) -> Result<Vec<AgentMessage>, XyError> {
-        let entries = self
-            .store
-            .load_leaf_branch(session_id)
-            .await
-            .map_err(XyError::from)?;
-        let entries = crate::protocol::session::build_context_entries(&entries);
-        let messages: Vec<AgentMessage> = entries
-            .iter()
-            .filter_map(|e| e.as_agent_message())
-            .collect();
-        match self.store.load_entries(session_id).await {
-            Ok(all) => {
-                let done = crate::protocol::session::done_bash_ids(&all);
-                Ok(crate::protocol::session::fold_interrupted_bash_rows(
-                    messages, &done,
-                ))
-            }
-            Err(e) => {
-                log::warn!(
-                    target: "xylitol::session",
-                    "interrupted-bash fold skipped: load_entries failed error={e}"
-                );
-                Ok(messages)
-            }
-        }
+        load_conversation_history_from_store(self.store.as_ref(), session_id).await
     }
 
     /// Shared session store handle (same instance as XyDriver uses).
@@ -184,5 +191,67 @@ impl AgentCapabilities {
             .session_id()
             .ok_or(XyError::from(XySessionError::NoActiveSession))?;
         crate::agent::capabilities::stats::compute(self.store.as_ref(), sid).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infra::session::SessionManager;
+    use crate::protocol::ports::XySessionStore;
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+
+    fn message(id: &str, parent_id: Option<&str>, role: &str, text: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: parent_id.map(str::to_owned),
+                timestamp: 1,
+            },
+            message: crate::protocol::session::fixture_message_json(role, text),
+        })
+    }
+
+    #[tokio::test]
+    async fn history_read_does_not_move_travelled_leaf() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = SessionManager::new(dir.path().join("sessions"));
+        let sid = "travel-history";
+        mgr.create(sid, Some("."), None).await.unwrap();
+        for entry in [
+            message("u1", None, "user", "root"),
+            message("a1", Some("u1"), "assistant", "root answer"),
+            message("u2", Some("a1"), "user", "latest"),
+            message("a2", Some("u2"), "assistant", "latest answer"),
+        ] {
+            mgr.append_with_id(sid, &entry).await.unwrap();
+        }
+
+        <SessionManager as XySessionStore>::set_leaf(&mgr, sid, Some("u1"));
+        load_conversation_history_from_store(&mgr, sid)
+            .await
+            .unwrap();
+        assert_eq!(
+            <SessionManager as XySessionStore>::leaf_id(&mgr, sid).as_deref(),
+            Some("u1")
+        );
+
+        mgr.append(sid, &message("", None, "assistant", "continued"))
+            .await
+            .unwrap();
+        let entries = mgr.load(sid).await.unwrap();
+        let continued = entries
+            .iter()
+            .find(|entry| {
+                matches!(
+                    entry,
+                    SessionEntry::Message(message)
+                        if crate::protocol::session::message_text(&message.message)
+                            == "continued"
+                )
+            })
+            .expect("continued message");
+        assert_eq!(continued.parent_id(), Some("u1"));
     }
 }

@@ -10,7 +10,9 @@ use crate::protocol::message::{AgentMessage, BashExecutionStatus, EnvMessage};
 /// v4: tree-aware with id/parentId (snake_case / untagged AgentPart era)
 /// v5: camelCase entry shell + tagged AgentPart content (c646 / pi-aligned)
 /// v6: v5 semantics + shell/header timestamps are u64 unix-ms; no serde aliases
-pub const SESSION_VERSION: u32 = 6;
+/// Current storage: manifest + active/sealed JSONL segments
+pub const SESSION_VERSION: u32 = 7;
+pub const LEGACY_SESSION_VERSION: u32 = 6;
 
 /// Where a session fork cuts the parent tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -70,6 +72,64 @@ pub struct MessageEntry {
 
 // ── Compaction entry ───────────────────────────────────────────────
 
+/// The policy snapshot captured when a compaction summary was produced.
+///
+/// Current entries carry all four values. Migrated v6 entries use
+/// `status = "legacy/unknown"` and leave the values absent so diagnostics
+/// cannot mistake them for the current runtime policy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionPolicySnapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reserve_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keep_recent_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimator_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+}
+
+impl CompactionPolicySnapshot {
+    pub fn current(
+        context_window: u64,
+        reserve_tokens: u64,
+        keep_recent_tokens: u64,
+        estimator_version: impl Into<String>,
+    ) -> Self {
+        Self {
+            context_window: Some(context_window),
+            reserve_tokens: Some(reserve_tokens),
+            keep_recent_tokens: Some(keep_recent_tokens),
+            estimator_version: Some(estimator_version.into()),
+            status: None,
+        }
+    }
+
+    pub fn legacy_unknown() -> Self {
+        Self {
+            context_window: None,
+            reserve_tokens: None,
+            keep_recent_tokens: None,
+            estimator_version: None,
+            status: Some("legacy/unknown".into()),
+        }
+    }
+
+    pub fn is_complete_current(&self) -> bool {
+        self.context_window.is_some()
+            && self.reserve_tokens.is_some()
+            && self.keep_recent_tokens.is_some()
+            && self
+                .estimator_version
+                .as_deref()
+                .is_some_and(|version| !version.trim().is_empty())
+            && self.status.is_none()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionEntry {
@@ -82,6 +142,8 @@ pub struct CompactionEntry {
     pub details: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub from_hook: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub policy: Option<CompactionPolicySnapshot>,
 }
 
 // ── Branch summary entry ───────────────────────────────────────────

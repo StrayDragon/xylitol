@@ -442,6 +442,7 @@ mod tests {
             tokens_before: 0,
             details: None,
             from_hook: None,
+            policy: None,
         })
     }
     fn label_entry() -> SessionEntry {
@@ -669,6 +670,7 @@ mod tests {
             tokens_before: 0,
             details: None,
             from_hook: None,
+            policy: None,
         });
         assert_eq!(estimate_tokens_entry(&compaction), 2);
         let message = SessionEntry::Message(MessageEntry {
