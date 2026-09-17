@@ -35,7 +35,7 @@ fn msg(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
 /// ```
 async fn seeded_sibling_tree(mgr: &SessionManager, sid: &str) {
     mgr.create(sid, Some("."), None).await.unwrap();
-    if matches!(&mgr.backend, SessionBackend::Persisted { .. }) {
+    if matches!(&mgr.backend, SessionBackend::Persisted) {
         mgr.flush_pending_to_disk(sid).await.unwrap();
     }
     for e in [
@@ -50,7 +50,7 @@ async fn seeded_sibling_tree(mgr: &SessionManager, sid: &str) {
         msg("u_right", Some("a_right"), "user", "fork me"),
     ] {
         match &mgr.backend {
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 mgr.append_with_id(sid, &e).await.unwrap();
             }
             SessionBackend::InMemory => {

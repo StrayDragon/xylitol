@@ -34,7 +34,7 @@ fn parentless_model_change(id: &str) -> SessionEntry {
 
 async fn seed_session_with_trailing_model_change(mgr: &SessionManager, sid: &str) {
     mgr.create(sid, Some("."), None).await.unwrap();
-    if matches!(&mgr.backend, SessionBackend::Persisted { .. }) {
+    if matches!(&mgr.backend, SessionBackend::Persisted) {
         mgr.flush_pending_to_disk(sid).await.unwrap();
     }
     for e in [
@@ -47,7 +47,7 @@ async fn seed_session_with_trailing_model_change(mgr: &SessionManager, sid: &str
         parentless_model_change("mc_tail"),
     ] {
         match &mgr.backend {
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 mgr.append_with_id(sid, &e).await.unwrap();
             }
             SessionBackend::InMemory => {
@@ -101,7 +101,7 @@ async fn get_branch_splices_seam_when_messages_chain_through_parentless_bookkeep
     let mgr = SessionManager::in_memory();
     let sid = "s-anchor-seam";
     mgr.create(sid, Some("."), None).await.unwrap();
-    if matches!(&mgr.backend, SessionBackend::Persisted { .. }) {
+    if matches!(&mgr.backend, SessionBackend::Persisted) {
         mgr.flush_pending_to_disk(sid).await.unwrap();
     }
     for e in [
@@ -114,7 +114,7 @@ async fn get_branch_splices_seam_when_messages_chain_through_parentless_bookkeep
         msg("a2", Some("u2"), "assistant", "reply two"),
     ] {
         match &mgr.backend {
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 mgr.append_with_id(sid, &e).await.unwrap();
             }
             SessionBackend::InMemory => {

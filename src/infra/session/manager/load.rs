@@ -129,7 +129,7 @@ impl SessionManager {
                 crate::protocol::session::enforce_session_version(&entries)?;
                 entries
             }
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 if self.manifest_path(session_id).exists() {
                     let manifest = self.read_manifest(session_id).await?;
                     self.load_entries(session_id, &manifest).await?
@@ -201,7 +201,7 @@ impl SessionManager {
                 store.remove(session_id);
                 Ok(())
             }
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 let session_dir = self.session_dir_path(session_id);
                 if session_dir.exists() {
                     tokio::fs::remove_dir_all(&session_dir)
@@ -284,7 +284,7 @@ impl SessionManager {
         files.sort_by_key(|(_, m)| std::cmp::Reverse(*m));
         let mut ids: Vec<String> = files.into_iter().map(|(id, _)| id).collect();
 
-        if matches!(&self.backend, SessionBackend::Persisted { .. }) {
+        if matches!(&self.backend, SessionBackend::Persisted) {
             let pending = lock_rwlock_read(&self.pending_store);
             for id in pending.keys() {
                 if !ids.iter().any(|existing| existing == id) {
@@ -330,7 +330,7 @@ impl SessionManager {
                 crate::protocol::session::enforce_session_version(&entries)?;
                 Ok(entries)
             }
-            SessionBackend::Persisted { .. } => {
+            SessionBackend::Persisted => {
                 if self.manifest_path(session_id).exists() {
                     let manifest = self.read_manifest(session_id).await?;
                     self.load_entries(session_id, &manifest).await
