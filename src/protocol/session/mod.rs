@@ -23,7 +23,7 @@ pub use helpers::{
     message_role, message_text, session_fork_edge, tool_call_name, tool_file_paths,
     transcript_ancestry_ids, transcript_leaf_anchor,
 };
-pub use manifest::{SessionManifest, SessionSegment};
+pub use manifest::{SealedIndex, SessionManifest, SessionSegment};
 pub use parse::{
     enforce_legacy_session_version, enforce_session_version, parse_session_jsonl,
     parse_session_jsonl_lines,

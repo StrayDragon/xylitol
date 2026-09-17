@@ -12,7 +12,7 @@ use super::SessionManager;
 use crate::infra::session::types::SessionEntry;
 use crate::protocol::error::XySessionStoreError;
 use crate::protocol::session::{
-    SESSION_VERSION, SessionManifest, SessionSegment, enforce_session_version,
+    SESSION_VERSION, SealedIndex, SessionManifest, SessionSegment, enforce_session_version,
     parse_session_jsonl_lines,
 };
 
@@ -67,6 +67,65 @@ impl SessionManager {
         Ok(self.session_dir_path(session_id).join(relative))
     }
 
+    /// Resolve an optional sidecar `indexPath`, validating it stays inside the
+    /// session root (same rule as segment paths).
+    pub(super) fn resolve_index_path(
+        &self,
+        session_id: &str,
+        index_path: &str,
+    ) -> Result<PathBuf, XySessionStoreError> {
+        self.resolve_segment_path(session_id, index_path)
+    }
+
+    /// Build the conventional sidecar filename for a sealed segment path.
+    ///
+    /// `segments/0000...-sealed.jsonl` → `segments/0000...-sealed.index.json`.
+    pub(super) fn sidecar_path_for(segment_path: &str) -> String {
+        let Some(stem) = segment_path.strip_suffix(".jsonl") else {
+            return format!("{segment_path}.index.json");
+        };
+        format!("{stem}.index.json")
+    }
+
+    /// Atomically write a sealed sidecar next to its sealed segment.
+    pub(super) async fn write_sealed_index_atomically(
+        &self,
+        session_id: &str,
+        index_path: &str,
+        index: &SealedIndex,
+    ) -> Result<(), XySessionStoreError> {
+        let path = self.resolve_index_path(session_id, index_path)?;
+        let content = serde_json::to_string_pretty(index)
+            .map_err(|e| XySessionStoreError::validation(format!("serialize sealed index: {e}")))?;
+        write_file_atomically(&path, &format!("{content}\n")).await
+    }
+
+    /// Best-effort read of a sealed sidecar; `Ok(None)` on missing/corrupt.
+    ///
+    /// Callers MUST treat `None` as "scan the sealed segment" — never as a
+    /// negative result (no false negatives from a bad index).
+    pub(super) async fn read_sealed_index_opt(
+        &self,
+        session_id: &str,
+        index_path: &str,
+    ) -> Option<SealedIndex> {
+        let path = match self.resolve_index_path(session_id, index_path) {
+            Ok(p) => p,
+            Err(_) => return None,
+        };
+        let raw = tokio::fs::read(&path).await.ok()?;
+        match serde_json::from_slice::<SealedIndex>(&raw) {
+            Ok(index) => Some(index),
+            Err(error) => {
+                log::warn!(
+                    target: "xylitol::session",
+                    "sealed sidecar {index_path} unreadable, falling back to scan: {error}"
+                );
+                None
+            }
+        }
+    }
+
     pub(super) async fn read_manifest(
         &self,
         session_id: &str,
@@ -101,6 +160,7 @@ impl SessionManager {
         }
 
         let mut paths = std::collections::HashSet::new();
+        let mut index_paths = std::collections::HashSet::new();
         for segment in manifest
             .sealed_segments
             .iter()
@@ -111,6 +171,19 @@ impl SessionManager {
                 return Err(XySessionStoreError::validation(
                     "session manifest references a segment more than once",
                 ));
+            }
+            if let Some(index_path) = &segment.index_path {
+                let resolved = self.resolve_index_path(session_id, index_path)?;
+                if paths.contains(&resolved) {
+                    return Err(XySessionStoreError::validation(
+                        "session manifest index path collides with a segment path",
+                    ));
+                }
+                if !index_paths.insert(resolved) {
+                    return Err(XySessionStoreError::validation(
+                        "session manifest references a sidecar index more than once",
+                    ));
+                }
             }
         }
         Ok(())
@@ -187,6 +260,7 @@ impl SessionManager {
             includes_header: entries
                 .iter()
                 .any(|entry| matches!(entry, SessionEntry::Header(_))),
+            index_path: None,
         }
     }
 
@@ -261,11 +335,18 @@ impl SessionManager {
         let new_manifest = self.commit_entries(session_id, entries, generation).await?;
 
         if let Some(old) = old_manifest {
-            let old_paths = old
+            let mut old_paths: Vec<String> = old
                 .sealed_segments
-                .into_iter()
-                .map(|segment| segment.path)
-                .chain(std::iter::once(old.active_segment.path));
+                .iter()
+                .map(|segment| segment.path.clone())
+                .collect();
+            old_paths.push(old.active_segment.path.clone());
+            // Sealed segments carry an optional sidecar; remove it alongside.
+            old_paths.extend(
+                old.sealed_segments
+                    .iter()
+                    .filter_map(|segment| segment.index_path.clone()),
+            );
             for path in old_paths {
                 if path != new_manifest.active_segment.path
                     && let Ok(path) = self.resolve_segment_path(session_id, &path)
@@ -277,43 +358,25 @@ impl SessionManager {
         }
         Ok(())
     }
+}
 
-    pub(super) async fn migrate_legacy_session(
-        &self,
-        session_id: &str,
-    ) -> Result<(), XySessionStoreError> {
-        let legacy_path = self.legacy_session_path(session_id);
-        let content = tokio::fs::read_to_string(&legacy_path)
-            .await
-            .map_err(|e| XySessionStoreError::io("read v6 session for migration", e))?;
-        let entries = parse_legacy_entries(&content)?;
-        crate::protocol::session::enforce_legacy_session_version(&entries)?;
-
-        let mut migrated = entries;
-        for entry in &mut migrated {
-            match entry {
-                SessionEntry::Header(header) => header.version = SESSION_VERSION,
-                SessionEntry::Compaction(compaction) if compaction.policy.is_none() => {
-                    compaction.policy =
-                        Some(crate::protocol::session::CompactionPolicySnapshot::legacy_unknown());
-                }
-                _ => {}
-            }
-        }
-
-        self.commit_entries(session_id, &migrated, INITIAL_GENERATION)
-            .await?;
-        // The manifest is the visible commit point. A failed cleanup is
-        // harmless: the next access prefers the committed layout and retries
-        // the removal.
-        if let Err(error) = tokio::fs::remove_file(&legacy_path).await {
-            log::warn!(
-                target: "xylitol::session",
-                "v6 session {session_id} migrated but legacy cleanup failed: {error}"
-            );
-        }
-        Ok(())
-    }
+/// Actionable error for a legacy-only session (zero-compat boundary).
+///
+/// No migration, no headerless repair, no background cleanup: the old file is
+/// preserved so an explicit `delete_session` still works, and list skips the
+/// entry after recording limited diagnostics. The returned `Unsupported`
+/// carries a static, actionable `op` with an explanatory message in
+/// `Validation`-style detail where needed.
+pub(super) fn legacy_unsupported_error(session_id: &str) -> XySessionStoreError {
+    // `Unsupported` maps to a stable `kind()` for logs while the message stays
+    // actionable for the user (export from an older version, then import).
+    log::warn!(
+        target: "xylitol::session",
+        "legacy session {session_id} rejected: no v7 manifest, no automatic migration (zero-compat)"
+    );
+    XySessionStoreError::unsupported(
+        "legacy session storage; export it from an older version and import into a v7 session",
+    )
 }
 
 pub(super) fn serialize_entries(entries: &[SessionEntry]) -> Result<String, XySessionStoreError> {
@@ -371,21 +434,4 @@ async fn sync_parent_dir(parent: &Path) {
     if let Ok(dir) = tokio::fs::File::open(parent).await {
         let _ = dir.sync_all().await;
     }
-}
-
-fn parse_legacy_entries(content: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
-    let mut entries = Vec::new();
-    for (line_number, line) in content.lines().enumerate() {
-        if line.trim().is_empty() {
-            continue;
-        }
-        let entry = serde_json::from_str::<SessionEntry>(line).map_err(|error| {
-            XySessionStoreError::validation(format!(
-                "v6 migration rejected line {}: {error}",
-                line_number + 1
-            ))
-        })?;
-        entries.push(entry);
-    }
-    Ok(entries)
 }

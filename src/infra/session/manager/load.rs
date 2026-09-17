@@ -19,9 +19,11 @@ impl SessionManager {
             return self.read_entries(session_id).await;
         }
 
+        // Zero-compat legacy boundary: a legacy-only file is rejected with an
+        // actionable error and preserved (no migration, no repair).
         if self.legacy_session_path(session_id).exists() && !self.manifest_path(session_id).exists()
         {
-            self.migrate_legacy_session(session_id).await?;
+            return Err(super::segments::legacy_unsupported_error(session_id));
         }
         if !self.manifest_path(session_id).exists() {
             return self.read_entries(session_id).await;
@@ -66,7 +68,24 @@ impl SessionManager {
                 current
             } else {
                 let mut found = None;
-                for index in (0..manifest.sealed_segments.len()).rev() {
+                let sealed_count = manifest.sealed_segments.len();
+
+                // Phase 1 — index screen: open only segments whose intact sidecar
+                // nominates the id. Segments without a sidecar (old manifest /
+                // missing / corrupt) stay unread so they fall through to phase 2.
+                let mut candidates: Vec<usize> = Vec::new();
+                for index in (0..sealed_count).rev() {
+                    let segment = &manifest.sealed_segments[index];
+                    let Some(index_path) = segment.index_path.as_deref() else {
+                        continue;
+                    };
+                    if let Some(sidecar) = self.read_sealed_index_opt(session_id, index_path).await
+                        && sidecar.contains_entry(current_id.as_str())
+                    {
+                        candidates.push(index);
+                    }
+                }
+                for index in candidates {
                     if sealed_entries[index].is_none() {
                         sealed_entries[index] = Some(
                             self.read_segment(session_id, &manifest.sealed_segments[index])
@@ -80,6 +99,30 @@ impl SessionManager {
                     }) {
                         found = Some(entry.clone());
                         break;
+                    }
+                }
+
+                // Phase 2 — fallback scan: full newest→oldest sweep over segments
+                // not yet read (no sidecar / bad index / screened miss), so an
+                // index failure never produces a false negative. Already-read
+                // segments are skipped.
+                if found.is_none() {
+                    for index in (0..sealed_count).rev() {
+                        if sealed_entries[index].is_some() {
+                            continue;
+                        }
+                        sealed_entries[index] = Some(
+                            self.read_segment(session_id, &manifest.sealed_segments[index])
+                                .await?,
+                        );
+                        if let Some(entry) = sealed_entries[index].as_ref().and_then(|entries| {
+                            entries
+                                .iter()
+                                .find(|entry| entry.entry_id() == Some(current_id.as_str()))
+                        }) {
+                            found = Some(entry.clone());
+                            break;
+                        }
                     }
                 }
                 let Some(current) = found else {
@@ -134,9 +177,7 @@ impl SessionManager {
                     let manifest = self.read_manifest(session_id).await?;
                     self.load_entries(session_id, &manifest).await?
                 } else if self.legacy_session_path(session_id).exists() {
-                    self.migrate_legacy_session(session_id).await?;
-                    let manifest = self.read_manifest(session_id).await?;
-                    self.load_entries(session_id, &manifest).await?
+                    return Err(super::segments::legacy_unsupported_error(session_id));
                 } else {
                     let entries = lock_rwlock_read(&self.pending_store)
                         .get(session_id)
@@ -271,13 +312,14 @@ impl SessionManager {
                 if self.session_dir_path(&id).join("manifest.json").exists() {
                     continue;
                 }
-                let modified = entry
-                    .metadata()
-                    .await
-                    .map(|m| m.modified().ok())
-                    .ok()
-                    .flatten();
-                files.push((id, modified));
+                // Zero-compat (c2810): legacy-only files are not resumable v7
+                // sessions, so they must not appear in the list (s21, r1099);
+                // the file is preserved and explicit delete still works.
+                log::debug!(
+                    target: "xylitol::session",
+                    "list skips legacy-only session {id} (no v7 manifest, zero-compat)"
+                );
+                continue;
             }
         }
 
@@ -335,9 +377,9 @@ impl SessionManager {
                     let manifest = self.read_manifest(session_id).await?;
                     self.load_entries(session_id, &manifest).await
                 } else if self.legacy_session_path(session_id).exists() {
-                    self.migrate_legacy_session(session_id).await?;
-                    let manifest = self.read_manifest(session_id).await?;
-                    self.load_entries(session_id, &manifest).await
+                    // Zero-compat: list callers (XySessionStore::list_sessions)
+                    // treat this Err as "skip this session with diagnostics".
+                    Err(super::segments::legacy_unsupported_error(session_id))
                 } else {
                     let entries = lock_rwlock_read(&self.pending_store)
                         .get(session_id)

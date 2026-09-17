@@ -713,6 +713,23 @@ fn when_plant_corrupt_file(sess: &XySessionStore) {
     std::fs::write(&p, "{ not json\n").expect("plant corrupt file");
 }
 
+#[when("目录中植入旧格式会话文件 {id:string}")]
+fn when_plant_legacy_session_file(sess: &XySessionStore, id: String) {
+    // A v6-style single-file session with no v7 manifest (zero-compat boundary).
+    sess.ensure_mgr();
+    let dir = sess_dir(sess);
+    std::fs::create_dir_all(&dir).ok();
+    let p = legacy_session_file(&dir, &id);
+    let header = serde_json::json!({
+        "type": "session",
+        "version": 6,
+        "id": id,
+        "timestamp": 1,
+        "cwd": "."
+    });
+    std::fs::write(&p, format!("{header}\n")).expect("plant legacy session file");
+}
+
 #[then("会话 {id:string} 的 JSONL 时间戳均为 u64 毫秒")]
 async fn then_timestamps_u64_ms(sess: &XySessionStore, id: String) {
     let p = active_session_file(sess, &id);

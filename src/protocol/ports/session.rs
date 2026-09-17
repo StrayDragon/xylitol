@@ -91,6 +91,25 @@ pub trait XySessionStore: Send + Sync {
         self.append_session_entry(session_id, entry).await
     }
 
+    /// Load the session-wide set of done bash ids (c2770 pairing).
+    ///
+    /// ReAct history seeding and `build_session_context` call this instead of
+    /// a full `load_entries` just to compute the done set. The default is a
+    /// full-load fallback so lightweight stores and test doubles keep their
+    /// existing semantics; persisted stores may override to use sealed sidecars.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::load_entries`]. Callers MUST treat an `Err` as "fold
+    /// skipped" (no false interrupted notices), mirroring today's behavior.
+    async fn load_done_bash_ids(
+        &self,
+        session_id: &str,
+    ) -> Result<std::collections::HashSet<String>, XySessionStoreError> {
+        let entries = self.load_entries(session_id).await?;
+        Ok(crate::protocol::session::done_bash_ids(&entries))
+    }
+
     /// Build the full session context (messages, thinking level, model).
     ///
     /// # Errors

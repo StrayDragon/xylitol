@@ -1,6 +1,9 @@
 ---
 depends_on: []
 needs_specs_change: true
+branch: sdd/c2810-fix-session-cold-resume-legacy-boundary
+base_branch: main
+base_sha: 68acbc34b8c7cbec98482e126630fb8f09ffe08e
 ---
 
 # Session 冷段按需索引与旧格式边界
