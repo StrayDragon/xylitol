@@ -2,7 +2,7 @@
 name: "llman-sdd-arch-review"
 description: "扫描 codebase 的薄模块（接口几乎等于实现），找出可以加深（藏更多行为到更小接口后）的候选。当用户想做架构审查、寻找模块加深机会、或想改善代码可测性与 AI 可导航性时使用。"
 metadata:
-  version: "0.0.78"
+  version: "0.1.3"
 ---
 
 # LLMAN SDD Architecture Review
@@ -59,12 +59,12 @@ metadata:
 ## 输出
 候选清单（文本；可选 HTML 报告写 OS temp dir 不落 repo）+ 用户选定后的逐问深挖决策记录（回写 proposal；合约变更须经 Specs landing 才回写 live `<capability>.feature`）。
 
-> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
-> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。
+> 命令细节用 `llman-sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman-sdd list --specs` / `llman-sdd show <capability>` 查全文。
 
 ## Context
-- 先查状态再动手：change/spec 状态以 `llman sdd show/list/validate` 输出为准。
-- 读 spec 全文前先用 `llman sdd context --task --paths` 定位相关 specs。
+- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准。
+- 读 spec 全文前先用 `llman-sdd context --task --paths` 定位相关 specs。
 
 ## Goal
 - 本节命令达成一个可验证结果；结果路径与校验状态随报告输出。
@@ -74,8 +74,8 @@ metadata:
 - 改动保持最小；已知校验错误禁止强行继续。
 
 ## Workflow
-- 每步以 `llman sdd` 命令结果为事实来源；改动工件后必跑 `llman sdd validate`。
-- 命令细节见下方生成式命令参考或 `llman sdd <cmd> --help`。
+- 每步以 `llman-sdd` 命令结果为事实来源；改动工件后必跑 `llman-sdd validate`。
+- 命令细节见下方生成式命令参考或 `llman-sdd <cmd> --help`。
 
 ## Decision Policy
 - 高影响歧义先澄清再继续；事实自己查证，只有决策问用户。
@@ -86,6 +86,6 @@ metadata:
 ## Ethics Governance
 - `ethics.risk_level`：low——仅读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时从其声明。
 - `ethics.prohibited_actions`：违反正文「硬约束」的动作；未经用户明确要求的 push / PR / 外部上传。
-- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman sdd validate` 为准。
+- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman-sdd validate` 为准。
 - `ethics.refusal_contract`：门禁 CRITICAL 未清零 → 拒绝进入下一阶段；自修复达上限 → 报告 blocker。
 - `ethics.escalation_policy`：改动 SDD 合约/模板或执行不可逆动作前，暂停并请用户确认。

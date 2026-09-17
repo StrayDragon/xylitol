@@ -2,14 +2,14 @@
 name: "llman-sdd-wayfinder"
 description: "人类主动触发。把大型、一团乱的工作（超出单个 agent 会话容量）拆成一张决策地图，逐个解决决策直到路径清晰。仅手动触发，agent 禁止自动启用。"
 metadata:
-  version: "0.0.78"
+  version: "0.1.3"
 ---
 
 # LLMAN SDD Wayfinder
 
 一个又大又乱的工作来了——大到单个 agent 会话装不下，还裹着一团迷雾：从现在到**目的地**的路还看不见。这个 skill 不急着动手，而是先把路找出来。
 
-它把路径画成 llman SDD 的 **change 依赖图**（`llman sdd graph`）：每个子工作（ticket）解决一个**决策**而非交付一块代码，逐个解决直到路径清晰。
+它把路径画成 llman SDD 的 **change 依赖图**（`llman-sdd graph`）：每个子工作（ticket）解决一个**决策**而非交付一块代码，逐个解决直到路径清晰。
 
 ## Pipeline 位置
 
@@ -25,7 +25,7 @@ metadata:
 
 ## 地图结构
 
-地图本身是一个 change（总纲 proposal），它的子决策是 `depends_on` 的子 change。用 `llman sdd graph <map-id> --scope active` 可视化当前**可着手项**。
+地图本身是一个 change（总纲 proposal），它的子决策是 `depends_on` 的子 change。用 `llman-sdd graph <map-id> --scope active` 可视化当前**可着手项**。
 
 地图的 `proposal.md` 结构：
 
@@ -66,8 +66,8 @@ metadata:
 ### 画地图
 1. **命名目的地**：用 `llman-sdd-explore` 的逐问深挖分支钉死这趟地图要通往哪里。
 2. **广度优先扫可着手项**：再次逐问深挖，扇开而非深挖一条，把开放决策和现在能迈的第一步浮出来。若**没有模糊点浮出**——路径已清晰、整个工作一个会话能装下——那就不需要地图，停下问用户想怎么做。
-3. **创建地图**（总纲 change）：`llman sdd change new <map-id>`，填 Destination/Notes，Decisions-so-far 留空，模糊点写进尚未清晰区。
-4. **创建现在能说清的 ticket**为子 change，然后用 `llman sdd graph` 接依赖边（第二步：先有 id 才能互引）。
+3. **创建地图**（总纲 change）：`llman-sdd change new <map-id>`，填 Destination/Notes，Decisions-so-far 留空，模糊点写进尚未清晰区。
+4. **创建现在能说清的 ticket**为子 change，然后用 `llman-sdd graph` 接依赖边（第二步：先有 id 才能互引）。
 5. 为每个查资料 ticket 启动 `llman-sdd-research` 后台 subagent。
 6. 停——画图是单个会话的活，不要顺手解决任何决策。
 
@@ -79,14 +79,14 @@ metadata:
 5. 新增 ticket（先建再接线）；把答案让模糊点变清晰、升级成 ticket 的，从尚未清晰区移除。若答案揭示某 ticket 越过目的地，归入范围外而非在路径上解决。
 
 ## 输出
-地图 change + 子决策 change 的依赖图（`llman sdd graph`）。路径清晰后建议进入 `llman-sdd-propose`（含 Branch binding → Specs landing，至 `readyToImplement=true`）把决策收拢为可实施计划。
+地图 change + 子决策 change 的依赖图（`llman-sdd graph`）。路径清晰后建议进入 `llman-sdd-propose`（含 Branch binding → Specs landing，至 `readyToImplement=true`）把决策收拢为可实施计划。
 
-> 命令细节用 `llman sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
-> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman sdd list --specs` / `llman sdd show <capability>` 查全文。
+> 命令细节用 `llman-sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman-sdd list --specs` / `llman-sdd show <capability>` 查全文。
 
 ## Context
-- 先查状态再动手：change/spec 状态以 `llman sdd show/list/validate` 输出为准。
-- 读 spec 全文前先用 `llman sdd context --task --paths` 定位相关 specs。
+- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准。
+- 读 spec 全文前先用 `llman-sdd context --task --paths` 定位相关 specs。
 
 ## Goal
 - 本节命令达成一个可验证结果；结果路径与校验状态随报告输出。
@@ -96,8 +96,8 @@ metadata:
 - 改动保持最小；已知校验错误禁止强行继续。
 
 ## Workflow
-- 每步以 `llman sdd` 命令结果为事实来源；改动工件后必跑 `llman sdd validate`。
-- 命令细节见下方生成式命令参考或 `llman sdd <cmd> --help`。
+- 每步以 `llman-sdd` 命令结果为事实来源；改动工件后必跑 `llman-sdd validate`。
+- 命令细节见下方生成式命令参考或 `llman-sdd <cmd> --help`。
 
 ## Decision Policy
 - 高影响歧义先澄清再继续；事实自己查证，只有决策问用户。
@@ -108,6 +108,6 @@ metadata:
 ## Ethics Governance
 - `ethics.risk_level`：low——仅读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时从其声明。
 - `ethics.prohibited_actions`：违反正文「硬约束」的动作；未经用户明确要求的 push / PR / 外部上传。
-- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman sdd validate` 为准。
+- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman-sdd validate` 为准。
 - `ethics.refusal_contract`：门禁 CRITICAL 未清零 → 拒绝进入下一阶段；自修复达上限 → 报告 blocker。
 - `ethics.escalation_policy`：改动 SDD 合约/模板或执行不可逆动作前，暂停并请用户确认。
