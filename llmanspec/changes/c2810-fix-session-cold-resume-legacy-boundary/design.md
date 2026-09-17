@@ -81,10 +81,26 @@ active 时仍保持 session-wide 配对，同时不再为了 done 集合全量�
 - 不调用 migration、headerless repair 或 cleanup retry；
 - 不创建一个同 id 的新 v7 session 覆盖旧文件；
 - 不在后台删除旧文件；`delete_session` 这类用户显式删除操作仍可清理它；
-- list 可跳过该条目并记录有限诊断，不得把它当作已可 resume 的 v7 session。
+- list 直接跳过该条目并记录有限诊断，不得把它当作已可 resume 的 v7 session，
+  也不得为展示而解析 legacy 内容。
 
 保留协议层的 v6 JSONL 解析/导入能力时，必须明确它只服务于显式 import，不构成
 SessionManager 的长期双读或 lazy migration 路径。
+
+## Resume / list 语义（zero-compat 拍板）
+
+- **恢复只走可解析 v7 的 latest leaf**：`resume`/`context` 以 manifest + 最新 leaf
+  分支为唯一恢复入口；legacy、缺失 manifest、版本不符一律拒绝自动恢复，不降级到
+  “尽力迁移”。
+- **LLM API 信息投影保持**：`build_session_context` 返回的 `thinkingLevel` 与
+  `model`（来自 leaf 分支上的 `modelChange` / `thinkingLevelChange` 条目）恢复时如实
+  投影，不做钳制、不追加抵消条目。`load_done_bash_ids` 与 sidecar 只优化 bash done
+  配对的数据来源，MUST NOT 破坏该投影的既有可观察语义；产品恢复路径（bootstrap /
+  switch_session）继续原样还原 thinking_level，model 投影保持现状语义。
+- **list 跳过不可解析条目**：`list_sessions` 对无 v7 manifest 的 legacy 文件、读取失败
+  或段损坏的 session 直接跳过（不迁移、不修复、不解析展示），单条失败不拖垮整表；
+  仅记录有限诊断（≤3 例 + 省略标记），与 s21 现有弹性语义对齐并收紧：v6 不再“识别或
+  迁移”，一律跳过。
 
 ## 失败恢复与兼容矩阵
 
@@ -103,3 +119,8 @@ SessionManager 的长期双读或 lazy migration 路径。
 `tests/features` 的 agent-session-store seam，不新建平行存储 runner。纯 infra
 单测负责 sidecar 序列化、manifest path、失败清理与 resolver fallback；BDD/集成
 场景负责 resume/context、legacy boundary 和逻辑可观察结果。
+
+**既有迁移测试改断言方向**：`v6_file_migrates_once_and_marks_policy_unknown`、
+`v5_migration_is_rejected_without_deleting_legacy_file` 等在 zero-compat 下
+**不得再断言迁移成功**；改为断言「返回不支持错误 / 文件保留 / list 跳过 / 显式
+delete 仍可清理」。新增 legacy boundary 正反向回归，不复用迁移 harness。
