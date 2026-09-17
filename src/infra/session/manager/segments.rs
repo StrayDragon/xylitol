@@ -224,6 +224,26 @@ impl SessionManager {
         Ok(manifest)
     }
 
+    pub(super) async fn update_manifest_after_append(
+        &self,
+        session_id: &str,
+        mut manifest: SessionManifest,
+        entry: &SessionEntry,
+    ) -> Result<(), XySessionStoreError> {
+        if let Some(entry_id) = entry.entry_id() {
+            let entry_id = entry_id.to_owned();
+            if manifest.active_segment.first_entry_id.is_none() {
+                manifest.active_segment.first_entry_id = Some(entry_id.clone());
+            }
+            manifest.active_segment.last_entry_id = Some(entry_id.clone());
+            manifest.leaf_entry_id = Some(entry_id);
+        }
+        if matches!(entry, SessionEntry::Header(_)) {
+            manifest.active_segment.includes_header = true;
+        }
+        self.write_manifest_atomically(session_id, &manifest).await
+    }
+
     pub(super) async fn replace_entries(
         &self,
         session_id: &str,

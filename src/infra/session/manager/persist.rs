@@ -191,7 +191,14 @@ impl SessionManager {
         match &self.backend {
             SessionBackend::Persisted => {
                 if self.manifest_path(session_id).exists() {
-                    let path = self.current_active_path(session_id);
+                    let Ok(manifest) = self.read_manifest(session_id).await else {
+                        return false;
+                    };
+                    let Ok(path) =
+                        self.resolve_segment_path(session_id, &manifest.active_segment.path)
+                    else {
+                        return false;
+                    };
                     if let Ok(content) = tokio::fs::read_to_string(&path).await {
                         let (entries, _) =
                             crate::protocol::session::parse_session_jsonl_lines(&content);
@@ -199,9 +206,7 @@ impl SessionManager {
                             return true;
                         }
                         // The header is sealed after the first compaction.
-                        if let Ok(manifest) = self.read_manifest(session_id).await
-                            && let Ok(entries) = self.load_entries(session_id, &manifest).await
-                        {
+                        if let Ok(entries) = self.load_entries(session_id, &manifest).await {
                             return entries.iter().any(|e| matches!(e, SessionEntry::Header(_)));
                         }
                     }
@@ -250,7 +255,9 @@ impl SessionManager {
                     self.migrate_legacy_session(session_id).await?;
                 }
                 if self.manifest_path(session_id).exists() {
-                    let path = self.current_active_path(session_id);
+                    let manifest = self.read_manifest(session_id).await?;
+                    let path =
+                        self.resolve_segment_path(session_id, &manifest.active_segment.path)?;
                     let line = serde_json::to_string(&entry_with_ids)
                         .map_err(XySessionStoreError::from)?;
                     let content = format!("{line}\n");
@@ -270,6 +277,8 @@ impl SessionManager {
                     file.sync_all()
                         .await
                         .map_err(|e| XySessionStoreError::io("sync entry", e))?;
+                    self.update_manifest_after_append(session_id, manifest, &entry_with_ids)
+                        .await?;
                 } else {
                     let is_assistant =
                         crate::protocol::session::is_assistant_message(&entry_with_ids);
@@ -434,7 +443,8 @@ impl SessionManager {
             self.flush_pending_to_disk(session_id).await?;
         }
 
-        let path = self.current_active_path(session_id);
+        let manifest = self.read_manifest(session_id).await?;
+        let path = self.resolve_segment_path(session_id, &manifest.active_segment.path)?;
         if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -456,7 +466,12 @@ impl SessionManager {
         file.flush()
             .await
             .map_err(|e| XySessionStoreError::io("flush entry", e))?;
+        file.sync_all()
+            .await
+            .map_err(|e| XySessionStoreError::io("sync entry", e))?;
 
+        self.update_manifest_after_append(session_id, manifest, entry)
+            .await?;
         if let Some(new_id) = entry.entry_id() {
             self.set_leaf(session_id, Some(new_id.to_string()));
         }
