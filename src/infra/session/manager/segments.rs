@@ -177,7 +177,9 @@ impl SessionManager {
         SessionSegment {
             path: path.into(),
             generation,
-            first_entry_id: entries.iter().find_map(|entry| entry.entry_id().map(str::to_owned)),
+            first_entry_id: entries
+                .iter()
+                .find_map(|entry| entry.entry_id().map(str::to_owned)),
             last_entry_id: entries
                 .iter()
                 .rev()
@@ -215,8 +217,8 @@ impl SessionManager {
         self.write_segment_atomically(session_id, &active, entries)
             .await?;
         if let Err(error) = self.write_manifest_atomically(session_id, &manifest).await {
-            let _ = tokio::fs::remove_file(self.resolve_segment_path(session_id, &active.path)?)
-                .await;
+            let _ =
+                tokio::fs::remove_file(self.resolve_segment_path(session_id, &active.path)?).await;
             return Err(error);
         }
         Ok(manifest)
@@ -236,9 +238,7 @@ impl SessionManager {
             .as_ref()
             .map(Self::next_generation)
             .unwrap_or(INITIAL_GENERATION);
-        let new_manifest = self
-            .commit_entries(session_id, entries, generation)
-            .await?;
+        let new_manifest = self.commit_entries(session_id, entries, generation).await?;
 
         if let Some(old) = old_manifest {
             let mut old_paths = old
@@ -299,9 +299,7 @@ impl SessionManager {
     }
 }
 
-pub(super) fn serialize_entries(
-    entries: &[SessionEntry],
-) -> Result<String, XySessionStoreError> {
+pub(super) fn serialize_entries(entries: &[SessionEntry]) -> Result<String, XySessionStoreError> {
     let mut content = String::new();
     for entry in entries {
         let line = serde_json::to_string(entry).map_err(XySessionStoreError::from)?;
@@ -315,9 +313,9 @@ pub(super) async fn write_file_atomically(
     path: &Path,
     content: &str,
 ) -> Result<(), XySessionStoreError> {
-    let parent = path.parent().ok_or_else(|| {
-        XySessionStoreError::validation("session file has no parent directory")
-    })?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| XySessionStoreError::validation("session file has no parent directory"))?;
     tokio::fs::create_dir_all(parent)
         .await
         .map_err(|e| XySessionStoreError::io("create session file directory", e))?;
