@@ -5,34 +5,34 @@
 
 功能: package-tui-testing
 
-  @req:tt01 @human
+  @req:r1661 @human
   场景: 四层测试架构
     - TUI 测试 harness MUST 组织为四层互不重叠：第 1 层按键序列→状态断言（以字节序列驱动 Component::handle_input 并断言模型状态，仿 helix test_key_sequence）；第 2 层 insta 快照黄金（经 assert_snapshot! 断言整屏 viewport 输出）；第 3 层时序基础设施（可注入 Clock trait 用于同步逻辑如 paste-burst，tokio start_paused 用于异步逻辑如 debounce）；第 4 层端到端终端集成（portable-pty 为主驱动 + tmux 真终端兼容冒烟）。每层 MUST 职责 distinct 互不重叠：1-3 层经现有 VirtualTerminal 单元格网格 oracle 进程内运行；第 4 层 spawn 真实二进制。
 
-  @req:tt02 @human
+  @req:r1662 @human
   场景: 按键序列辅助
     - TUI 测试支持 MUST 提供通用按键序列驱动：接受终端输入字节串，经组件输入入口分发，并暴露状态断言（assert_text、assert_cursor、assert_screen_contains）。MutableComponent 模式（Rc<RefCell> 注入为 Component）MUST 收敛为包级共享辅助（而非每测手写），使任意测试可挂载 widget、驱动按键并在多帧断言。测试辅助 MUST 原地变更同一实例，MUST NOT 重建第二实例观察后续帧。
 
-  @req:tt03 @human
+  @req:r1663 @human
   场景: insta 快照黄金
     - TUI 测试 harness MUST 用 insta（assert_snapshot!）做整屏渲染回归：VirtualTerminal::viewport() 输出（或单元格网格人类可读渲染）送入 assert_snapshot!，快照经 cargo insta review 审查，布局/颜色/换行变更以 diff 呈现。结构断言（精确单元格内容、特定单元格 SGR 样式）MUST 继续用显式 assert_eq 保精度。两种断言风格 MUST 共存（快照广度回归、assert_eq  pinpoint 正确性）。
 
-  @req:tt04 @human
+  @req:r1664 @human
   场景: 可注入 Clock 的时序
     - 时序相关 TUI 逻辑（paste-burst 检测、autocomplete debounce、loader spinner 帧调度）MUST 可无真实 wall-clock sleep 确定性测试。同步时序逻辑 MUST 接受注入 Clock trait（now() 返回可控 Instant）使测试逐步推进时间；异步时序逻辑 MUST 在 #[tokio::test(start_paused = true)] 下用 tokio::time::advance 测试。测试 MUST NOT 用 thread::sleep 或 std::thread::sleep 等待时序效果（天然 flaky）。paste-burst 窗口边界（刚好在 8ms 字符间或 120ms enter 抑制窗口内/外）MUST 显式覆盖。
 
-  @req:tt05 @human
+  @req:r1665 @human
   场景: portable-pty E2E 主驱动
     - 端到端 TUI 测试 MUST 以 portable-pty 为主集成驱动：以 PTY 子进程 spawn 真实二进制，经 writer 注入按键序列（时序重要时键间显式 sleep），从 reader 读原始字节流，送入现有 VirtualTerminal（vte 单元格解析器），断言结果网格（单元格内容、SGR 样式、光标位置）。PTY 驱动 MUST 支持选择 spawn 哪个 example 或二进制表面，使冒烟测试可跟随包单一主 example 表面。该层 MUST 覆盖 crossterm 真实多字节序列事件解析（Ctrl+arrow、Alt+arrow、bracketed paste 标记），进程内 handle_input 无法演练。portable-pty 测试位于工作区 tests/tui_e2e/（非 packages/xylitol-tui/tests/），因测试组装二进制而非 crate。
 
-  @req:tt06 @human
+  @req:r1666 @human
   场景: tmux 真终端冒烟
     - TUI 测试 harness MUST 含少量（3-5 例）经 tmux 驱动的真终端冒烟测试（用手写薄包装 std::process::Command，非 tmux 绑定 crate）：创建 detached 会话（tmux new-session -d -s <name> -x <w> -y <h>），经 tmux send-keys 注入按键（支持 C-Left/M-Right/Escape/Enter 特殊键），经 tmux capture-pane -e -p 抓屏（保留 SGR 转义），经字符串包含 + insta 快照断言（过滤易变部分）。tmux 测试 MUST 标 #[ignore] 并经专用 justfile 目标（test-tui-e2e）运行，非主测试矩阵，因慢（每例 1-3s）且依赖真实 tmux 二进制与 TERM=xterm-256color。若屏幕内容轮询不可靠，MAY 添加渲染就绪信号（env XYLITOL_TEST_RENDER_SIGNAL=1 向 stderr 写 RENDER_DONE <frame_id>）以减少抓屏 flaky。
 
-  @req:tt07 @human
+  @req:r1667 @human
   场景: 单一主 example 表面
     - xylitol-tui 包 MUST 保留代表假 coding-agent 工作流的单一主 example 表面，而非多个重叠 showcase demo。验收与 E2E 测试 MUST 瞄准该主 example。主 example MUST 覆盖 transcript history、tool activity、侧栏或状态表面、可编辑输入区，且 MUST 在 realistic submit 流程中不违反 engine 宽度合约。
 
-  @req:tt08 @human
+  @req:r1668 @human
   场景: 无头帧挂载面
     - 主 crate MUST 经 `xylitol::app::tui` 导出无头产品帧挂载面（SceneBuilder 流式脚本 + render(width) 返回剥离 ANSI 的纯文本帧与语义 dump），供 BDD 与集成测试直驱真实产品渲染；该面为测试支撑合约，MUST NOT 被产品运行时路径反向依赖。

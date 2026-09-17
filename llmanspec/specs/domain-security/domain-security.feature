@@ -45,11 +45,11 @@
   场景: 网络权限检查
     - Bash 执行 SHALL 对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时）不在允许列表时，执行 SHALL 被阻止。
 
-  @req:s13 @human
+  @req:r1423 @human
   场景: Permission trait
     - System MUST 提供 protocol::XyPermission trait（自 XySandboxEngine 重命名），含 check_read(path)、check_write(path)、check_network(domain)、check_process(path)，返回 XyPermissionVerdict（自 XySandboxVerdict 重命名）。该 trait 为 ReAct 循环在工具分发前消费的进程内建议性 permission 门控，非安全边界。具体后端（禁用时 AllowAllPermission、配置模式匹配 GlobPolicy）位于 infra/。
 
-  @req:s14 @human
+  @req:r1424 @human
   场景: Permission 默认拒绝未列出
     - permission.filesystem.read_allowed 非空时，任何不匹配允许 pattern 的路径 SHALL 视为拒绝（默认拒绝）。permission.network.allowed_domains 非空时，任何不匹配允许 pattern 的域 SHALL 视为拒绝。
 
@@ -77,7 +77,7 @@
   场景: 信任命令接线
     - 信任相关产品命令（如 /trust）MUST 经 Driver/composition（或等价应用缝）调用 TrustManager/端口持久化决策；MUST NOT 从应用面 reach-in infra::trust 具体类型。会话中运行信任命令 MUST 为当前项目 CWD 持久化决策；写盘成功后本会话 MUST NOT 自动重载项目 skills/MCP/context（用户显式 /reload 或重启除外）。
 
-  @req:s15 @human
+  @req:r1425 @human
   场景: Permission 非安全边界
     - 文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。
   @executable @req:r61
@@ -140,13 +140,13 @@
     当 加载安全配置
     那么 write_denied 字段含 .env 且配置键来自 security.permission 非 security.sandbox
 
-  @executable @req:s13
+  @executable @req:r1423
   场景: permission-trait
     假如 permission 后端实例已构造
     当 调用 check_read("/tmp/test")
     那么 返回 XyPermissionVerdict 且默认后端为 AllowAllPermission
 
-  @executable @req:s14
+  @executable @req:r1424
   场景: default-deny-read
     假如 permission.filesystem.read_allowed=['/home/user/project']
     当 read 工具读取 /etc/passwd

@@ -1,6 +1,9 @@
 ---
 depends_on: []
 needs_specs_change: false
+branch: sdd/c2815-refactor-spec-req-id-prefix
+base_branch: main
+base_sha: df88c92a315c1d1058fde2a90e228225ed7fca20
 ---
 
 # 全仓 spec @req 前缀迁移为 r<数字>（llman-sdd 0.1.3 validate gate 收紧）
