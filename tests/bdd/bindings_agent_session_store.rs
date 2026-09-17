@@ -79,6 +79,12 @@ async fn test_s21_list_resilient(ws: Workspace, sess: XySessionStore) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "list-skips-legacy-only-session"
+)]
+async fn test_s26_list_skips_legacy(ws: Workspace, sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
     name = "timestamps-u64-ms"
 )]
 async fn test_s22_timestamps(sess: XySessionStore) {}

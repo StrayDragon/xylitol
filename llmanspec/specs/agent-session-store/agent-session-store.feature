@@ -63,11 +63,19 @@
 
   @req:r1103 @human
   场景: 冷段按需恢复
-    - resume、load_leaf_branch 与 session context 构造 MUST 先读取 manifest 与 active 段，仅在当前 leaf 的 parentId/分支或会话级配对需要时按需读取命中的 cold 段；MUST NOT 为普通 resume 无条件解析全部 cold 段。完整导出或 inspect 可显式读取完整逻辑条目流。
+    - resume、load_leaf_branch 与 session context 构造 MUST 先读取 manifest 与 active 段，仅在当前 leaf 的 parentId/分支或会话级配对需要时按需读取命中的 cold 段；MUST NOT 为普通 resume 无条件解析全部 cold 段。被 manifest 引用且带合法 sidecar 的 sealed 段 MUST 以 sidecar 索引（entryIds / doneBashIds）先筛候选段；sidecar 缺失、损坏或候选未命中时 MUST 回退读取未读 sealed 段，MUST NOT 因索引漏报（false negative）截断 leaf 分支或误报 interrupted bash。完整导出或 inspect 可显式读取完整逻辑条目流。
+
+  @req:r1900 @human
+  场景: sealed-sidecar-index
+    - 每个被 v7 manifest 引入的 sealed 段 MAY 生成不可变 JSON sidecar index，记录该段全部非空 entryId 与状态为 done 的 bash id（输出稳定排序去重）；manifest 的 sealed segment 描述 SHALL 支持可选 camelCase `indexPath` 引用它。若 sidecar 存在，则侧载构建 MUST 与 seal 的同一批 prefix 条目一致，MUST NOT 改变逻辑 JSONL export/import 输出形状；旧 manifest 无 `indexPath`、sidecar 缺失或损坏时 MUST 回退读取对应 sealed JSONL，MUST NOT 因索引损坏产生 false negative。
+
+  @req:r1901 @human
+  场景: resume-projection-llm-api
+    - resume/context 只从可解析 v7 session 的最新 leaf 分支恢复，MUST NOT 为 legacy 或不可解析存储降级恢复路径；构建的 session context MUST 继续投影 LLM API 相关信息（thinkingLevel 与 model 选择，来自 leaf 分支上的 modelChange / thinkingLevelChange 条目）且不做钳制、不追加抵消条目；sidecar 与 done-bash 端口只优化 bash 配对数据来源，MUST NOT 破坏投影的既有可观察语义。
 
   @req:r1104 @human
-  场景: v6 一次性迁移
-    - 首次访问仅有 v6 单文件 `{id}.jsonl` 且无 v7 manifest 的会话时，System MUST 幂等地迁移为 v7 目录并在 manifest 提交成功后清理旧文件；迁移失败 MUST 保留旧文件并返回可操作错误；v5 及更早或未知版本 MUST 拒绝，MUST NOT 建立长期双读兼容路径。
+  场景: 旧格式边界
+    - 仅存在旧 v6/v5 或未知单文件 `{id}.jsonl` 且无 v7 manifest 时，System MUST NOT 自动迁移、MUST NOT 静默删除、MUST NOT 创建同 id 的新 v7 session 覆盖旧文件；自动恢复与写入入口 MUST 返回可操作的不支持错误并保留源文件；用户显式 delete 仍可清理；list MUST 跳过该条目并记录有限诊断，MUST NOT 把它当作可 resume 的 v7 session。
 
   @req:r1094 @human
   场景: 会话 CWD 校验
@@ -75,7 +83,7 @@
 
   @req:r1095 @human
   场景: session-entry-camelcase-v7
-    - Session persisted JSONL MUST 以 camelCase 为唯一磁盘格式 SSOT（JS/TS favor；非 pi snake entry type）：v7 段外壳字段含 parentId、parentSession、firstKeptEntryId 等；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash MUST 使用 type=message 且 message.role=bashExecution，MUST NOT 再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version MUST 等于 SESSION_VERSION（7），manifest 的 formatVersion MUST 同为 7。MUST NOT 再写出 parent_id 或 version≤5 作为新会话真源。v6 只允许经 s26 一次性迁移；MUST NOT 提供长期 serde alias 或旧顶层 bash 升格为合法上下文。
+    - Session persisted JSONL MUST 以 camelCase 为唯一磁盘格式 SSOT（JS/TS favor；非 pi snake entry type）：v7 段外壳字段含 parentId、parentSession、firstKeptEntryId 等；SessionEntry type 判别为 message、compaction、branchSummary、modelChange、thinkingLevelChange、custom、customMessage、label、sessionInfo。新写入的 bang-bash MUST 使用 type=message 且 message.role=bashExecution，MUST NOT 再写出顶层 type=bashExecution 或 bash_execution。新写入的 header.version MUST 等于 SESSION_VERSION（7），manifest 的 formatVersion MUST 同为 7。MUST NOT 再写出 parent_id 或 version≤5 作为新会话真源。旧格式文件 MUST NOT 被自动迁移为 v7（见 s26 旧格式边界）、MUST NOT 提供长期 serde alias 或旧顶层 bash 升格为合法上下文。
 
   @req:r1096 @human
   场景: tool-result-tool-call-id
@@ -83,11 +91,11 @@
 
   @req:r1098 @human
   场景: session-load-skip-warn
-    - load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 MUST 跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn MUST 至多 3 条，超出后 MUST 以单条省略标记（如 ...）收敛，MUST NOT 刷屏。v7 manifest/header version 不等于 SESSION_VERSION（7）时 MUST 拒绝将其视为合法最新会话（返回可操作错误）；仅 v6 遗留单文件可先按 s26 完成迁移，MUST NOT 静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager MUST 共用此策略。
+    - load（及同源逐行解析）遇到无法按最新 SSOT 解析的行（坏 JSON、未知 type、非 SSOT snake type 如 bash_execution、旧 untagged content 导致无法投影）时 MUST 跳过该行并记录可观测 warn；同一 load/list 操作内明文 warn MUST 至多 3 条，超出后 MUST 以单条省略标记（如 ...）收敛，MUST NOT 刷屏。v7 manifest/header version 不等于 SESSION_VERSION（7）时 MUST 拒绝将其视为合法最新会话（返回可操作错误）；旧格式单文件不再自动迁移（见 s26 旧格式边界），MUST NOT 静默把 v5 及更早版本 migrate 后当成功。TUI resume、print/CLI --session 与 SessionManager MUST 共用此策略。
 
   @req:r1099 @human
   场景: list-sessions-resilient
-    - list_sessions（或等价枚举）遇到单个 v7 manifest/段不可读、非最新或解析失败时 MUST 跳过该 session（或给出占位诊断）并继续枚举其余会话；发现 v6 遗留单文件时 MUST 按 s26 识别或迁移，MUST NOT 因单 session 失败而使整表 list/resume 面板失败。
+    - list_sessions（或等价枚举）遇到单个 v7 manifest/段不可读、非最新或解析失败时 MUST 直接跳过该 session（不迁移、不修复、不解析展示）并继续枚举其余会话；发现旧格式 `{id}.jsonl`（无 v7 manifest）时 MUST 直接跳过并记录有限诊断，MUST NOT 尝试识别或迁移；MUST NOT 因单 session 失败而使整表 list/resume 面板失败。
 
   @req:r1085 @human
   场景: 导出 HTML
@@ -245,6 +253,13 @@
     当 目录中植入损坏的会话文件 broken.jsonl
     当 列出所有会话
     那么 结果包含 "good"
+
+  @req:r1104 @executable
+  场景: list-skips-legacy-only-session
+    假如 会话存储目录已初始化
+    当 目录中植入旧格式会话文件 "legacy-only"
+    当 列出所有会话
+    那么 结果不包含 "legacy-only"
 
   @req:r1100 @executable
   场景: timestamps-u64-ms

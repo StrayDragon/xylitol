@@ -13,10 +13,8 @@ impl SessionManager {
         entries: &[SessionEntry],
     ) -> Result<(), XySessionStoreError> {
         self.replace_entries(session_id, entries).await?;
-        let legacy = self.legacy_session_path(session_id);
-        if legacy.exists() {
-            let _ = tokio::fs::remove_file(legacy).await;
-        }
+        // Zero-compat: never silently delete a legacy file in the background.
+        // Legacy cleanup is only done through the user's explicit `delete_session`.
         Ok(())
     }
 
@@ -65,10 +63,7 @@ impl SessionManager {
             let merged = Self::merge_pending_ahead_of_disk(pending, disk);
             self.write_entries_to_disk(session_id, &merged).await
         } else if self.legacy_session_path(session_id).exists() {
-            self.migrate_legacy_session(session_id).await?;
-            let disk = self.load(session_id).await?;
-            let merged = Self::merge_pending_ahead_of_disk(pending, disk);
-            self.write_entries_to_disk(session_id, &merged).await
+            Err(super::segments::legacy_unsupported_error(session_id))
         } else if self.current_active_path(session_id).exists() {
             // An explicit append can materialize body rows before the pending
             // header is flushed. Treat that unreferenced active file like the
@@ -163,10 +158,8 @@ impl SessionManager {
                     merged.extend(disk);
                     self.write_entries_to_disk(id, &merged).await?;
                 } else if self.legacy_session_path(id).exists() {
-                    // A valid v6 file is migrated lazily on first load. A
-                    // malformed/headerless legacy file is repaired through the
-                    // current segmented layout.
-                    self.migrate_legacy_session(id).await?;
+                    // Zero-compat: never migrate a legacy-only session.
+                    return Err(super::segments::legacy_unsupported_error(id));
                 } else {
                     let mut store = lock_rwlock_write(&self.pending_store);
                     let entries = store.entry(id.to_string()).or_default();
@@ -212,16 +205,8 @@ impl SessionManager {
                     }
                     return false;
                 }
-                if self.legacy_session_path(session_id).exists() {
-                    if let Ok(content) =
-                        tokio::fs::read_to_string(self.legacy_session_path(session_id)).await
-                    {
-                        let (entries, _) =
-                            crate::protocol::session::parse_session_jsonl_lines(&content);
-                        return entries.iter().any(|e| matches!(e, SessionEntry::Header(_)));
-                    }
-                    return false;
-                }
+                // Legacy-only sessions are not supported (zero-compat) and
+                // never take the create path, so no header probe here.
                 lock_rwlock_read(&self.pending_store)
                     .get(session_id)
                     .is_some_and(|entries| {
@@ -252,7 +237,7 @@ impl SessionManager {
                 if self.legacy_session_path(session_id).exists()
                     && !self.manifest_path(session_id).exists()
                 {
-                    self.migrate_legacy_session(session_id).await?;
+                    return Err(super::segments::legacy_unsupported_error(session_id));
                 }
                 if self.manifest_path(session_id).exists() {
                     let manifest = self.read_manifest(session_id).await?;
@@ -436,7 +421,7 @@ impl SessionManager {
 
         if self.legacy_session_path(session_id).exists() && !self.manifest_path(session_id).exists()
         {
-            self.migrate_legacy_session(session_id).await?;
+            return Err(super::segments::legacy_unsupported_error(session_id));
         }
         if !self.manifest_path(session_id).exists() {
             self.create(session_id, Some("."), None).await?;

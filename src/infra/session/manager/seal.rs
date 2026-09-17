@@ -40,7 +40,7 @@ impl SessionManager {
     ) -> Result<(), XySessionStoreError> {
         if self.legacy_session_path(session_id).exists() && !self.manifest_path(session_id).exists()
         {
-            self.migrate_legacy_session(session_id).await?;
+            return Err(super::segments::legacy_unsupported_error(session_id));
         }
         if !self.manifest_path(session_id).exists() {
             // Compaction normally follows an assistant flush. Keep the seam
@@ -84,38 +84,49 @@ impl SessionManager {
         let generation = Self::next_generation(&manifest);
         let cold_path = format!("segments/{generation:020}-sealed.jsonl");
         let active_path = format!("active-{generation}.jsonl");
-        let cold_segment = Self::segment_descriptor(cold_path, generation, prefix);
+        let mut cold_segment = Self::segment_descriptor(cold_path, generation, prefix);
+        // Sealed segments carry an immutable sidecar index for cold lookups.
+        cold_segment.index_path = Some(Self::sidecar_path_for(&cold_segment.path));
+        let index_path = cold_segment.index_path.clone().expect("just set");
 
         let mut active_entries_after = active_entries[first_kept_index..].to_vec();
         active_entries_after.push(compaction.clone());
         let active_segment =
-            Self::segment_descriptor(active_path, generation, &active_entries_after);
+            Self::segment_descriptor(active_path.clone(), generation, &active_entries_after);
 
         let mut next_manifest = manifest.clone();
         next_manifest.sealed_segments.push(cold_segment.clone());
         next_manifest.active_segment = active_segment.clone();
         next_manifest.leaf_entry_id = compaction.entry_id().map(str::to_owned);
 
+        // Seal transaction (design T3): cold JSONL → sidecar → new active →
+        // manifest last. Any failure cleans up this round's orphans; the
+        // manifest remains the only commit point.
+        let sealed_index = crate::protocol::session::SealedIndex::from_entries(prefix);
         let cold_result = self
             .write_segment_atomically(session_id, &cold_segment, prefix)
             .await;
         cold_result?;
+        let cleanups: Vec<&str> = vec![&cold_segment.path, &index_path, &active_path];
+        if let Err(error) = self
+            .write_sealed_index_atomically(session_id, &index_path, &sealed_index)
+            .await
+        {
+            remove_paths(session_id, &self.sessions_dir, &cleanups[..2]).await;
+            return Err(error);
+        }
         if let Err(error) = self
             .write_segment_atomically(session_id, &active_segment, &active_entries_after)
             .await
         {
-            self.remove_segment_if_present(session_id, &cold_segment)
-                .await;
+            remove_paths(session_id, &self.sessions_dir, &cleanups).await;
             return Err(error);
         }
         if let Err(error) = self
             .write_manifest_atomically(session_id, &next_manifest)
             .await
         {
-            self.remove_segment_if_present(session_id, &cold_segment)
-                .await;
-            self.remove_segment_if_present(session_id, &active_segment)
-                .await;
+            remove_paths(session_id, &self.sessions_dir, &cleanups).await;
             return Err(error);
         }
 
@@ -169,5 +180,23 @@ impl SessionManager {
         if let Some(id) = entry.entry_id() {
             self.set_leaf(session_id, Some(id.to_string()));
         }
+    }
+}
+
+/// Remove one or more session-relative paths best-effort (seal cleanup path).
+async fn remove_paths(session_id: &str, sessions_dir: &std::path::Path, paths: &[&str]) {
+    let session_root = sessions_dir.join(session_id);
+    for relative in paths {
+        // Mirrors the manager's resolve rule: refuse absolute / parent-dir
+        // escapes before touching the filesystem.
+        let path = std::path::Path::new(relative);
+        if path.is_absolute()
+            || path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            continue;
+        }
+        let _ = tokio::fs::remove_file(session_root.join(path)).await;
     }
 }

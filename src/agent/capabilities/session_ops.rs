@@ -25,17 +25,14 @@ pub(crate) async fn load_conversation_history_from_store(
         .filter_map(|entry| entry.as_agent_message())
         .collect();
 
-    match store.load_entries(session_id).await {
-        Ok(all) => {
-            let done = crate::protocol::session::done_bash_ids(&all);
-            Ok(crate::protocol::session::fold_interrupted_bash_rows(
-                messages, &done,
-            ))
-        }
+    match store.load_done_bash_ids(session_id).await {
+        Ok(done) => Ok(crate::protocol::session::fold_interrupted_bash_rows(
+            messages, &done,
+        )),
         Err(error) => {
             log::warn!(
                 target: "xylitol::session",
-                "interrupted-bash fold skipped: load_entries failed error={error}"
+                "interrupted-bash fold skipped: load_done_bash_ids failed error={error}"
             );
             Ok(messages)
         }

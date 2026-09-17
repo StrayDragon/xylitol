@@ -1,6 +1,6 @@
 use super::SessionManager;
 use super::load::session_display_name_from_entries;
-use crate::infra::session::types::SessionEntry;
+use crate::infra::session::types::{SessionBackend, SessionEntry};
 use crate::protocol::error::{XySessionError, XySessionStoreError};
 use crate::protocol::ports::XySessionStore;
 
@@ -33,6 +33,60 @@ impl XySessionStore for SessionManager {
         entry: &SessionEntry,
     ) -> Result<(), XySessionStoreError> {
         SessionManager::append_session_entry(self, session_id, entry).await
+    }
+
+    async fn load_done_bash_ids(
+        &self,
+        session_id: &str,
+    ) -> Result<std::collections::HashSet<String>, XySessionStoreError> {
+        if matches!(&self.backend, SessionBackend::InMemory) {
+            // In-memory sessions have no segments to skip — compute directly.
+            let entries = XySessionStore::load_entries(self, session_id).await?;
+            return Ok(crate::protocol::session::done_bash_ids(&entries));
+        }
+        // Active segment scanned directly; sealed segments prefer the immutable
+        // sidecar, falling back to scanning when absent/corrupt/old-manifest.
+        if !self.manifest_path(session_id).exists() {
+            // Legacy-only session: no auto migration (zero-compat) — surface as
+            // unsupported rather than silently treating it as empty.
+            if self.legacy_session_path(session_id).exists() {
+                return Err(super::segments::legacy_unsupported_error(session_id));
+            }
+            // No manifest and no legacy file: pending-only session.
+            let entries = self.read_entries(session_id).await?;
+            return Ok(crate::protocol::session::done_bash_ids(&entries));
+        }
+        let manifest = self.read_manifest(session_id).await?;
+        let mut done = self
+            .read_segment(session_id, &manifest.active_segment)
+            .await
+            .map(|entries| crate::protocol::session::done_bash_ids(&entries))?;
+        for segment in &manifest.sealed_segments {
+            // Old manifests / missing or corrupt sidecars fall back to scanning
+            // the sealed JSONL so pairing never produces false negatives.
+            let segment_done: std::collections::HashSet<String> =
+                match segment.index_path.as_deref() {
+                    Some(index_path) => {
+                        match self.read_sealed_index_opt(session_id, index_path).await {
+                            Some(index) => index.done_bash_ids.into_iter().collect(),
+                            None => self
+                                .read_segment(session_id, segment)
+                                .await
+                                .map(|entries| crate::protocol::session::done_bash_ids(&entries))?
+                                .into_iter()
+                                .collect(),
+                        }
+                    }
+                    None => self
+                        .read_segment(session_id, segment)
+                        .await
+                        .map(|entries| crate::protocol::session::done_bash_ids(&entries))?
+                        .into_iter()
+                        .collect(),
+                };
+            done.extend(segment_done);
+        }
+        Ok(done)
     }
 
     async fn commit_compaction(
