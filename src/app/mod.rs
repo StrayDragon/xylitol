@@ -22,7 +22,7 @@ pub(crate) mod cli;
 
 pub(crate) mod server;
 
-// Test-support contract (spec `package-tui-testing` @req:tt08): headless frame
+// Test-support contract (spec `package-tui-testing` @req:r1668): headless frame
 // mounting for BDD / integration tests driving real product rendering.
 #[cfg(feature = "tui")]
 pub mod tui;

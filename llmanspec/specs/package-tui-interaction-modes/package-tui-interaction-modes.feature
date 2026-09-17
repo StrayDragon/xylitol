@@ -5,97 +5,97 @@
 
 功能: package-tui-interaction-modes
 
-  @req:ptim01 @human
+  @req:r1626 @human
   场景: dual-mode-seam
     - xylitol-tui MUST 支持两种交互模式：Inline（主屏差分 / 终端 scrollback 与终端原生选区）与 ApplicationOwned（应用自管视口 + 应用内选区）。库 MUST 提供可观察的**构造期**模式入口；一次会话 MUST 只有一个主模式。MUST NOT 在同一渲染栈上混用终端原生选区与应用内选区。产品 host MUST NOT 提供运行中热切（改模式 = 新建 TUI/HostSession 或结束进程）；库 API MUST NOT 把「改标志」包装成无感热切。
 
-  @req:ptim02 @human
+  @req:r1627 @human
   场景: mode-b-alt-viewport
     - ApplicationOwned MUST 使用应用自管视口承载 transcript（滚轮与程序滚动归应用）。ApplicationOwned 进入路径 SHOULD 经终端 alt-buffer（如 CSI ?1049h 或等价）；无论是否经 alt-buffer，退出/teardown MUST 恢复进入前的缓冲与光标可见性约定，且 MUST 关闭本模式启用的 mouse capture。ApplicationOwned 退出后 SHOULD 将 transcript（及末帧 dock）转储到主屏 scrollback，便于用户上翻会话（库默认开启，MAY 可配置关闭）。
 
-  @req:ptim03 @human
+  @req:r1628 @human
   场景: mode-b-drag-select
     - ApplicationOwned 在 mouse capture 开启且应用会话已 begin 时 MUST 将未修饰左键拖选接到应用内选区：按下记录锚点、拖动更新焦点、选区高亮出现在绘出的 transcript 可见行上。空选（锚点与焦点重合）MUST NOT 触发复制成功路径。
 
-  @req:ptim04 @human
+  @req:r1629 @human
   场景: mode-b-edge-autoscroll
     - ApplicationOwned 拖选过程中，当指针贴近视口顶或底边缘时 MUST 自动滚动 transcript 并扩展选区，使选区可跨出当前可见页（越界续选）。自动滚动 MUST 与应用视口共用同一滚动机制，MUST NOT 依赖终端 scrollback 完成续选。引擎 idle/tick 路径 MUST 能推进该自动滚动。
 
-  @req:ptim05 @human
+  @req:r1630 @human
   场景: mode-b-copy-on-release
     - ApplicationOwned 在左键松开且选区非空时 MUST 默认将选中纯文本写入剪贴板。缺省路径 MUST 能发出 OSC52（经 Terminal::write，且在差分 batch 外），并 MAY 同时或回退到本地剪贴板后端。该默认 MUST 可配置关闭。空选 MUST NOT 发出复制。
 
-  @req:ptim06 @human
+  @req:r1631 @human
   场景: mode-b-input-exclude
     - ApplicationOwned 布局 MUST 将主输入面（Editor/Input 或等价 dock）置于 transcript 选区坐标系之外：绘出帧的底部 dock 行 MUST NOT 进入 transcript 选区文本抽取；指针在 dock 内按下时 MUST NOT 以 dock 文本作为 transcript 拖选起点。
 
-  @req:ptim07 @human
+  @req:r1632 @human
   场景: mode-b-reuses-mouse-pipe
     - ApplicationOwned MUST 复用既有 opt-in mouse 管道（Enable/Disable mouse capture 与 InputEvent::Mouse 扇入），MUST NOT 另建平行的第二套鼠标事件源。默认路径下无态变的 Moved MUST NOT 强制整帧重绘。本要求 MUST NOT 规定折叠点击或 Inline 产品默认开鼠标。
 
-  @req:ptim08 @human
+  @req:r1633 @human
   场景: mode-a-preserves-emulator-selection
     - Inline MUST 保持今日主屏差分与终端 scrollback 路径作为默认产品取向的库能力；Inline MUST NOT 承诺「开启 mouse capture 后仍完整保留终端原生选区，同时又提供无修饰应用内点选」。Inline 文档与 API 说明 MUST 不暗示该组合可行。
 
-  @req:ptim09 @human
+  @req:r1634 @human
   场景: mode-b-fixed-viewport-paint
     - ApplicationOwned 应用会话激活时，每帧绘出的行数 MUST 不超过终端高度；transcript 历史 MUST 由应用 ScrollView（或等价）持有，绘出仅可见窗口加底部 dock。ApplicationOwned MUST NOT 通过向终端主缓冲追加行来滚动历史（即 MUST NOT 依赖终端 scrollback 保存 ApplicationOwned transcript）。
 
-  @req:ptim10 @human
+  @req:r1635 @human
   场景: mode-b-wheel-app-scroll
     - ApplicationOwned 应用会话激活时，落在 transcript 视口内的滚轮事件 MUST 滚动应用视口且在后续帧保持视口位置（非强制 follow-end），MUST NOT 依赖终端 scrollback 滚历史。用户滚回底部后 MAY 恢复跟随最新内容。
 
-  @req:ptim11 @human
+  @req:r1636 @human
   场景: mode-b-suspend-restores-session
     - ApplicationOwned 应用会话激活期间若经 suspend/resume 终端（如外部编辑器），resume 后 MUST 重新进入 ApplicationOwned 会话所持有的 alt-buffer（若使用）与 mouse capture，使 application_session_active 与终端实际状态一致。
 
-  @req:ptim12 @human
+  @req:r1637 @human
   场景: mode-b-dock-drag-clamp
     - ApplicationOwned 在 transcript 拖选进行中，指针移入 dock 矩形时 MUST 将焦点夹到 transcript 视口底边（或等价）并继续扩展选区，MUST NOT 因此清除选区或提前触发复制取消；松手在 dock 内时 MUST 按正常松手路径结束选区（含默认复制）。已完成（非拖动中）的 transcript 选区在指针移过 dock 时 MUST NOT 被自动清除。按下始于 dock 时仍适用 ptim06（不启 transcript 选区）。
 
-  @req:ptim13 @human
+  @req:r1638 @human
   场景: mode-b-editor-selection
     - ApplicationOwned 下主输入面（Editor 或等价）MUST 提供与 transcript 选区相互独立的应用内选区：未修饰拖选 MUST 能覆盖 Editor 缓冲中的多行；高亮与复制 MUST 仅作用于输入缓冲文本，MUST NOT 写入 transcript 选区状态。按下始于 dock/Editor 时，transcript 选区 MAY 被清除以让出交互。库 MUST 提供可测的 Editor 选区 seam（包级单测），供产品 TUI 下游接线。
 
-  @req:ptim14 @human
+  @req:r1639 @human
   场景: mode-b-library-host-seam
     - xylitol-tui MUST 将 ApplicationOwned 作为可复用库基础暴露给下游 host：至少包括构造期模式入口/begin/end、dock 行登记、视口投影、选区与 OSC52、复制成功短提示信号、退出主屏 dump 的可观察行为。产品 app host MUST 能在不 fork 引擎的前提下于启动时接入 ApplicationOwned。库仍可暴露 Inline 构造入口。产品默认面见 ath30；本要求不规定运行中热切，也不规定折叠点击。
 
-  @req:ptim15 @human
+  @req:r1640 @human
   场景: mode-b-copy-notice
     - ApplicationOwned 在松手复制成功（非空选且实际发出复制路径）后 MUST 发出可观察的短时 copy-notice 信号（pending 标志、回调或等价），供 host/demo 展示用户可见提醒。空选、复制关闭或未发出复制时 MUST NOT 发出该信号。提示展示 MUST NOT 写入 transcript / ScrollNotice；展示 TTL SHOULD 约 1.5–3 秒后自动消失。库本身 MAY 只提供信号而不强制绘出文案；若库内绘出，落点 SHOULD 在 dock 带内（输入面上方）单行。
 
-  @executable @req:ptim01
+  @executable @req:r1626
   场景: default-mode-a-inline
     假如 新建默认 TUI
     当 查询交互模式
     那么 模式为 Inline 且应用会话未激活
 
-  @executable @req:ptim05
+  @executable @req:r1630
   场景: copy-on-release-osc52
     假如 ApplicationOwned 应用会话已 begin 且 transcript 有可拖选文本
     当 未修饰左键拖选非空范围并松开
     那么 发出 OSC52 剪贴板序列
 
-  @executable @req:ptim12
+  @executable @req:r1637
   场景: dock-drag-clamp-keeps-selection
     假如 transcript 拖选进行中
     当 指针拖入 dock 矩形
     那么 选区仍在且焦点夹在 transcript 底边
 
-  @executable @req:ptim10
+  @executable @req:r1635
   场景: wheel-sticky-viewport
     假如 ApplicationOwned 视口已 follow 到底
     当 在 transcript 内滚轮向上并重绘
     那么 scroll_top 不回到底部
 
-  @executable @req:ptim15
+  @executable @req:r1640
   场景: copy-notice-after-success
     假如 ApplicationOwned 应用会话已 begin
     当 松手复制成功
     那么 copy-notice 信号可观察且空选不发
 
-  @executable @req:ptim13
+  @executable @req:r1638
   场景: editor-multiline-selection
     假如 ApplicationOwned 下 Editor 有多行缓冲
     当 在 Editor 内未修饰拖选跨行并松开

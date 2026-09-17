@@ -5,18 +5,18 @@
 
 功能: user-experience
 
-  @req:ux1 @human
+  @req:r1838 @human
   场景: login-help
     - System MUST 提供登录引导消息（或等价入口），返回引用 /login 与文档路径的引导。
 
-  @req:ux2 @human
+  @req:r1839 @human
   场景: no-models
     - 无可用模型时，System MUST 提供无模型提示消息（或等价入口）。
 
-  @req:ux3 @human
+  @req:r1840 @human
   场景: no-model-selected
     - 未选择模型时，System MUST 提供未选模型提示消息（或等价入口）。
 
-  @req:ux4 @human
+  @req:r1841 @human
   场景: no-api-key
     - System MUST 提供无 API key 提示消息（或等价入口），含 provider 名称。
