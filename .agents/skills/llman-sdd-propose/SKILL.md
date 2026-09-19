@@ -2,7 +2,7 @@
 name: "llman-sdd-propose"
 description: "创建带规划工件（proposal/tasks；先 `change start`/`attach` 完成 Branch binding，再在绑定分支编辑 live specs/feature）的 llman SDD 变更提案。用于 MUST/SHALL 行为合约变更。"
 metadata:
-  version: "0.2.0"
+  version: "0.3.1"
 ---
 
 # LLMAN SDD Propose
@@ -172,7 +172,7 @@ flowchart LR
 2）tag 语法（`@human constraint scenario must carry an @req:<req_id> tag` / `orphan acceptance scenario`）：
 - 规则：`@req:<id> @human` —— statement 放场景描述（须含 MUST/SHALL）。
 - 验收：`@executable` 且至少一个 `@req:<id>` 挂到规则。
-- `@manual` 须与 `@human` 同用；禁止 `@human` 与 `@executable` 同场景。
+- 禁止 `@human` 与 `@executable` 同场景；`@manual` 已在 0.3.0 移除——残留会被报迁移 ERROR，删掉该 tag 即可（`@human` 本身已承载人工判定语义）。
 
 3）遗留 `spec.toon`（`legacy spec.toon found ... run ... toon2features`）：
 运行 `llman-sdd project migrate --kind toon2features --yes`，审阅 diff 后提交。

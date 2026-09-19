@@ -2,7 +2,7 @@
 name: "llman-sdd-specs-compact"
 description: "人类主动触发的维护工具。压缩去重 llman SDD specs——在归档积累较多后合并冗余 requirement/scenario，保留所有规范行为不变。不属于日常 pipeline：仅在用户明确要求压缩 specs 时才运行。"
 metadata:
-  version: "0.2.0"
+  version: "0.3.1"
 ---
 
 # LLMAN SDD Specs Compact
@@ -75,7 +75,7 @@ flowchart LR
 2）tag 语法（`@human constraint scenario must carry an @req:<req_id> tag` / `orphan acceptance scenario`）：
 - 规则：`@req:<id> @human` —— statement 放场景描述（须含 MUST/SHALL）。
 - 验收：`@executable` 且至少一个 `@req:<id>` 挂到规则。
-- `@manual` 须与 `@human` 同用；禁止 `@human` 与 `@executable` 同场景。
+- 禁止 `@human` 与 `@executable` 同场景；`@manual` 已在 0.3.0 移除——残留会被报迁移 ERROR，删掉该 tag 即可（`@human` 本身已承载人工判定语义）。
 
 3）遗留 `spec.toon`（`legacy spec.toon found ... run ... toon2features`）：
 运行 `llman-sdd project migrate --kind toon2features --yes`，审阅 diff 后提交。

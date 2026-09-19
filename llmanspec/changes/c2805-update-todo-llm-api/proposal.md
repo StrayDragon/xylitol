@@ -4,7 +4,7 @@ depends_on: []
 
 ## Why
 
-外部 harness 常见的模式（见会话截图）：LLM 每推进一小步就把整张 checklist 原样
+外部 harness 常见的模式：LLM 每推进一小步就把整张 checklist 原样
 重发一遍。xylitol 现行 todo 工具面（`src/infra/tools/todo.rs`）已有 `todo_update`
 （单条改 status/content），但仍有结构性短板：
 
