@@ -6,4 +6,4 @@
 - [ ] 实现 feature flag 门控（feature = "dap"）
 - [ ] 编写 trait 编译测试（无外部 dap 后端依赖）
 - [ ] `just fmt && just lint && just test`
-- [ ] `llman sdd validate c85-add-dap-layer --strict --no-interactive`
+- [ ] `llman-sdd validate c85-add-dap-layer --strict --no-interactive`

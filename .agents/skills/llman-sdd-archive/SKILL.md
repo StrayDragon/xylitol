@@ -2,7 +2,7 @@
 name: "llman-sdd-archive"
 description: "归档已完成的 llman SDD 变更。自动合并回基准分支（squash 缺省），再将 change 文档改名到 archive/。在 verify 报告全绿后运行。"
 metadata:
-  version: "0.1.3"
+  version: "0.2.0"
 ---
 
 # LLMAN SDD 归档

@@ -150,7 +150,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 ### 5.3 Lab：session 前缀幂等 × resume/import（c1930 · 2026-08-06）
 
-> 维护脚本：`cargo run -p xylitol-ai-bridge --example lab_session_prefix_idempotency`（**不进 qa**）。规划/证据：`c1930` `landing.tmp.md` §5（c1930 已冻入 `llmanspec/changes/archive/freezed_changes.7z.archived`，经 `llman sdd archive freeze --list` 检索）。
+> 维护脚本：`cargo run -p xylitol-ai-bridge --example lab_session_prefix_idempotency`（**不进 qa**）。规划/证据：`c1930` `landing.tmp.md` §5（c1930 已冻入 `llmanspec/changes/archive/freezed_changes.7z.archived`，经 `llman-sdd archive freeze --list` 检索）。
 
 **主钉**：resume/import 后 Responses `input`（+tools）前缀与同进程续跑在固定旋钮下规范化相等；**本波不做**状态栏。
 
@@ -179,7 +179,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 ## 7. 与后续 draft change 的映射
 
-> 开发顺序以各提案 `depends_on` 为准，用 `llman sdd graph` 查看；**不**在本文维护波次表。
+> 开发顺序以各提案 `depends_on` 为准，用 `llman-sdd graph` 查看；**不**在本文维护波次表。
 > 下表用**工程提案标题/方向**对齐 draft（非把 live specs 翻译成书语）；书中概念对照见下表后术语表。
 
 | 方向（工程） | change（草案） | `depends_on` 摘要 |
@@ -188,7 +188,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 | Responses cache usage 诚实透出 | `c1885`（已归档） | `[]` |
 | ContextPolicy + ResponsesAssembler | `c1890`（已归档） | `c1880` |
 | Thinking/reasoning 回放保真（JSONL→input） | `c1925`（frozen-7z） | `c1880`+`c1890` |
-| Session SSOT ↔ Provider view · **本波** | `c1930`（frozen-7z，经 `llman sdd archive freeze --list` 检索；§5.3 lab） | `c1890` |
+| Session SSOT ↔ Provider view · **本波** | `c1930`（frozen-7z，经 `llman-sdd archive freeze --list` 检索；§5.3 lab） | `c1890` |
 | Assembler 布局决策可观测（**deferred**） | [`delayed c1935`](../../llmanspec/delayed-changes/c1935-add-assembler-layout-observability/proposal.md) | `c1890` |
 | Agent Todo（**deferred**；扩展后置） | `c1955` | — |
 | Agent 状态栏族（**deferred**） | [`delayed c1895`](../../llmanspec/delayed-changes/next-todo/c1895-add-agent-status-bar-subsystem/proposal.md)（+ c1896/97/98） | 升格待 Todo/事件 |

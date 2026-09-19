@@ -4,7 +4,7 @@
 > **闭环规则** → [`docs/AGENTS.md`](../AGENTS.md)。本目录是**统一优先级的候选板**，不是进度表。
 > 某篇全部兑现后：**删除该文件**并更新本索引，不留占位。
 
-现状对齐：2026-09-12。追溯归档 change：`llman sdd archive freeze --list`；产品文尽量不钉 change id。
+现状对齐：2026-09-12。追溯归档 change：`llman-sdd archive freeze --list`；产品文尽量不钉 change id。
 
 ## 闭环
 

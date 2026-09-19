@@ -6,12 +6,12 @@
 ## 1. Branch binding 与合约落地
 
 - [ ] 1.1 清理并确认默认分支工作区；在用户允许进入实现阶段后运行
-  `llman sdd change start c1770-add-worktree-snapshot`，不得在默认分支落 live spec。
+  `llman-sdd change start c1770-add-worktree-snapshot`，不得在默认分支落 live spec。
 - [ ] 1.2 [blocked-by: 1.1] 新建 `infra-worktree-snapshot` live capability，写明
   Git-only availability、baseline/capture、untracked 策略、tree-to-tree
   changeset 与 stale/foreign error；按 BDD-on Partitioned SSOT 放置场景。
 - [ ] 1.3 [blocked-by: 1.2] 运行该 capability 与 change 的
-  `llman sdd validate --strict --no-interactive`，确认没有 dual-write、
+  `llman-sdd validate --strict --no-interactive`，确认没有 dual-write、
   空 `valid_scope` 或未解析依赖。
 
 ## 2. Port seam

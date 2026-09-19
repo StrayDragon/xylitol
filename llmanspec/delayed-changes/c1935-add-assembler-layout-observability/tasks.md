@@ -12,7 +12,7 @@
       body-hash 后置决定；以 `design.md` §3 为准。
 - [x] 0.2 确认 `c1890-add-responses-context-policy-assembler` 已归档，且本 change
       不重新实现 ContextPolicy / WirePolicy / Responses body。
-- [ ] 0.3 Branch binding 后复核工作树与 `llman sdd show` 状态；若依赖未归档或
+- [ ] 0.3 Branch binding 后复核工作树与 `llman-sdd show` 状态；若依赖未归档或
       change id/范围发生漂移，停止 apply 并先修正文档。
 
 ## 1. Specs landing（绑定分支后）
@@ -80,7 +80,7 @@
 
 ## 5. Gate and handoff
 
-- [ ] 5.1 `llman sdd validate c1935-add-assembler-layout-observability --strict
+- [ ] 5.1 `llman-sdd validate c1935-add-assembler-layout-observability --strict
       --no-interactive` 通过，且 `valid_scope` / feature 绑定无缺失。
 - [ ] 5.2 对照 `design.md` 的决策表逐项检查：没有新配置面、第二 tracing 栈、
       chain/thinking 实现、body hash 或 UI scope creep。

@@ -7,7 +7,7 @@
 
 对齐源路径（历史参考）：`../pi/packages/coding-agent`（interactive / tree / travel）。
 
-会话 slash 迁移调研工件（c1005 / c1010 / c1015 的 `design.md`）：已随冷归档进 `llmanspec/changes/archive/freezed_changes.7z.archived`（`llman sdd archive freeze --list` 可列）；上游 pi 的计划报告 `_PLAN_REPORT.md` 已不在 `../pi` checkout，历史结论以本表为准。
+会话 slash 迁移调研工件（c1005 / c1010 / c1015 的 `design.md`）：已随冷归档进 `llmanspec/changes/archive/freezed_changes.7z.archived`（`llman-sdd archive freeze --list` 可列）；上游 pi 的计划报告 `_PLAN_REPORT.md` 已不在 `../pi` checkout，历史结论以本表为准。
 
 ---
 

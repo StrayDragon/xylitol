@@ -146,7 +146,7 @@ harness。start 后按 BDD-on 规则落 live spec；本次 pre-start 不编辑
 仍需满足 llman 的 Branch binding 门禁后才能执行后续任务：
 
 1. 工作区回到干净状态且位于默认分支；
-2. 运行 `llman sdd change start c1770-add-worktree-snapshot`；
+2. 运行 `llman-sdd change start c1770-add-worktree-snapshot`；
 3. 仅在新分支上落 `infra-worktree-snapshot` live spec（BDD-on 下按
    Partitioned SSOT 放置可执行场景），再进入 apply。
 

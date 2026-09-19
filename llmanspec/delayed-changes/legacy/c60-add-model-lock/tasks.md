@@ -7,4 +7,4 @@
 - [ ] 实现 SchedulerHint（任务声明资源占用）
 - [ ] 编写测试（状态机转换、抢占恢复、死锁防护）
 - [ ] `just fmt && just lint && just test`
-- [ ] `llman sdd validate c60-add-model-lock --strict --no-interactive`
+- [ ] `llman-sdd validate c60-add-model-lock --strict --no-interactive`
