@@ -118,4 +118,4 @@ MCP settle ──► 内部 Registry（core ∪ armed MCP）──► BM25 索�
 | Branch binding / Specs landing | **未做**（本波硬禁止 `change start`） |
 | 代码 | **未做** |
 
-**下一步（人工触发）**：干净树默认分支 → `llman sdd change start c1960-add-tool-search-mcp-discovery` → Specs landing（`package-ai-bridge` / `agent-runtime` / `infra-mcp` 等）→ `readyToImplement` → apply。
+**下一步（人工触发）**：干净树默认分支 → `llman-sdd change start c1960-add-tool-search-mcp-discovery` → Specs landing（`package-ai-bridge` / `agent-runtime` / `infra-mcp` 等）→ `readyToImplement` → apply。

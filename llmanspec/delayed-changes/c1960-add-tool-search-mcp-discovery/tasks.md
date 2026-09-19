@@ -10,11 +10,11 @@
 
 ## 1. Branch binding + Specs landing
 
-- [ ] 1.1 `llman sdd change start c1960-add-tool-search-mcp-discovery`（干净树 + 默认分支）
+- [ ] 1.1 `llman-sdd change start c1960-add-tool-search-mcp-discovery`（干净树 + 默认分支）
 - [ ] 1.2 live specs：`package-ai-bridge` — `tool_search_wire` 在 WirePolicy（**非** ExtraPolicy）；三态出线；默认轮廓
 - [ ] 1.3 live specs：`agent-runtime` / `infra-mcp` — `tools_mode=Search`：顶栏=core+meta；MCP Deferred；门闸冻顶栏；禁 settle 扩顶栏
 - [ ] 1.4 Partitioned：可执行 `.feature` 或 `feature: false` 文档场景按需；轨 A 默认不变
-- [ ] 1.5 commit Specs landing；`llman sdd validate c1960-add-tool-search-mcp-discovery --strict --no-interactive`；确认 `readyToImplement=true`
+- [ ] 1.5 commit Specs landing；`llman-sdd validate c1960-add-tool-search-mcp-discovery --strict --no-interactive`；确认 `readyToImplement=true`
 
 ## 2. Wire 声明 + forge
 

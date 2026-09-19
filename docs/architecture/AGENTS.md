@@ -42,4 +42,4 @@
 | [进程内观测.md](./进程内观测.md) | 写：多总线边界、fastrace 能/不能、发射→消费心智、span 目录、理想 vs 现状。不写：Collector yaml 百科、自研检视台。 |
 
 实现与变更：`llmanspec/`。未兑现方向（统一候选）：[`docs/roadmaps/`](../roadmaps/README.md)。
-文档里尽量不钉 change id；需要追溯时用 `llman sdd archive freeze --list`（冷归档 id → slug 清单）或 `llmanspec/changes/archive/`。
+文档里尽量不钉 change id；需要追溯时用 `llman-sdd archive freeze --list`（冷归档 id → slug 清单）或 `llmanspec/changes/archive/`。
