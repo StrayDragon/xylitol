@@ -1,6 +1,6 @@
 //! Product page layout — slot machine over package components.
 //!
-//! Owns the fixed shell order (scrollback → queue → status → editor slot → footer)
+//! Owns the fixed shell order (scrollback → queue → 待办栏 → toast → status → editor slot → footer)
 //! and product theme wiring. Atomic widgets live in [`crate::app::tui::widgets`];
 //! generic Editor/Markdown/TreeSelector stay in `xylitol_tui`.
 

@@ -20,7 +20,7 @@ pub enum ExploreKind {
 /// One middle's contribution to a cluster header.
 ///
 /// Counting is encoded in the variant: unique paths (Edit / Explore), call
-/// count (Run / Used), omit (Noise / Projection).
+/// count (Run / Used), omit (Noise).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActivityAtom {
     Edit {
@@ -45,8 +45,6 @@ pub enum ActivityAtom {
     Compaction,
     /// Envelope / scaffold rows (User, Assistant, notices, bang Bash). Omitted.
     Noise,
-    /// Todo checklist is a projection of `todo_*` results, not a Used call.
-    Projection,
 }
 
 impl ActivityAtom {
@@ -103,7 +101,6 @@ pub fn activity_atom(entry: &UiEntry) -> ActivityAtom {
         UiEntry::Thinking { id, .. } => ActivityAtom::Think { id: id.clone() },
         UiEntry::Ask { id, .. } => ActivityAtom::Ask { id: id.clone() },
         UiEntry::Compaction { .. } => ActivityAtom::Compaction,
-        UiEntry::Todo { .. } => ActivityAtom::Projection,
         UiEntry::Bash { .. }
         | UiEntry::User { .. }
         | UiEntry::Assistant { .. }
@@ -292,13 +289,6 @@ mod tests {
             },
             |a| matches!(a, ActivityAtom::Compaction),
         );
-        assert_atom(
-            UiEntry::Todo {
-                summary: "Todo".into(),
-                detail_lines: vec![],
-            },
-            |a| matches!(a, ActivityAtom::Projection),
-        );
         assert_atom(UiEntry::ScrollNotice { text: "n".into() }, |a| {
             matches!(a, ActivityAtom::Noise)
         });
@@ -331,17 +321,10 @@ mod tests {
     }
 
     #[test]
-    fn todo_tools_are_used_checklist_is_projection() {
+    fn todo_tools_are_used_not_a_transcript_row() {
         assert!(matches!(
             activity_atom(&tool("todo_update", None)),
             ActivityAtom::Used { .. }
-        ));
-        assert!(matches!(
-            activity_atom(&UiEntry::Todo {
-                summary: "Todo".into(),
-                detail_lines: vec![],
-            }),
-            ActivityAtom::Projection
         ));
     }
 }

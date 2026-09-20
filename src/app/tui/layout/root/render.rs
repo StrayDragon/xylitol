@@ -28,6 +28,36 @@ impl UiRoot {
         )
     }
 
+    pub(super) fn render_todo_bar_slot(&mut self, width: usize) -> Vec<String> {
+        if self.ui_model.todo.is_empty() {
+            self.todo_scroll = 0;
+            self.last_todo_hits.clear();
+            self.last_todo_plain.clear();
+            self.todo_selection.clear();
+            return Vec::new();
+        }
+        let max_rows = crate::app::tui::widgets::todo_bar_max_rows(self.term_rows);
+        let mut frame = crate::app::tui::widgets::render_todo_bar(
+            self.theme,
+            self.glyphs,
+            crate::app::tui::widgets::TodoBarParams {
+                list: &self.ui_model.todo,
+                doing_open: self.todo_doing_open,
+                past_open: self.todo_past_open,
+                pending_open: self.todo_pending_open,
+                scroll: self.todo_scroll,
+                width,
+                max_rows,
+            },
+        );
+        self.last_todo_hits = frame.hits;
+        self.last_todo_plain = frame.plain;
+        if self.todo_selection.has_selection() || self.todo_selection.is_dragging() {
+            self.todo_selection.apply_highlight(&mut frame.lines, 0);
+        }
+        frame.lines
+    }
+
     pub(super) fn render_toast_notice_slot(&mut self, width: usize) -> Vec<String> {
         let Some((body, _, kind)) = self.toast_notice.as_ref() else {
             return Vec::new();
@@ -182,29 +212,34 @@ impl Component for UiRoot {
         // live in the ApplicationOwned ScrollView or short sessions pin it under
         // the startup card with a pad of empty rows (Inline stuck-to-bottom feel).
         let queue = self.render_queue_slot(width);
+        let todo = self.render_todo_bar_slot(width);
         let toast = self.render_toast_notice_slot(width);
         let status = self.render_status_slot(width);
         // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
         // Do NOT wrap with a second outer border pair.
-        self.apply_fixed_zone_footprint();
+        self.apply_fixed_zone_footprint(todo.len());
         let editor = self.render_editor_slot(width);
         let footer = if width == 0 {
             self.footer.text().to_string()
         } else {
             truncate_to_width(self.footer.text(), width, "...", true)
         };
-        // ApplicationOwned dock = queue + toast + status + editor + footer (ath30).
+        // ApplicationOwned dock = queue + 待办栏 + toast + status + editor + footer.
+        self.last_queue_rows = queue.len();
+        self.last_todo_rows = todo.len();
         self.last_toast_rows = toast.len();
         self.last_status_rows = status.len();
         self.last_editor_rows = editor.len();
         self.last_dock_rows = queue
             .len()
+            .saturating_add(todo.len())
             .saturating_add(toast.len())
             .saturating_add(status.len())
             .saturating_add(editor.len())
             .saturating_add(1);
         self.sync_editor_screen_origin();
         lines.extend(queue);
+        lines.extend(todo);
         lines.extend(toast);
         lines.extend(status);
         lines.extend(editor);
@@ -217,7 +252,9 @@ impl Component for UiRoot {
     }
 
     fn take_pending_clipboard(&mut self) -> Vec<String> {
-        self.editor.take_pending_clipboard()
+        let mut seqs = self.editor.take_pending_clipboard();
+        seqs.append(&mut self.todo_clipboard);
+        seqs
     }
 
     fn invalidate(&mut self) {
@@ -242,6 +279,12 @@ impl Component for UiRoot {
     }
 
     fn clear_pointer_selection(&mut self) -> bool {
-        Component::clear_pointer_selection(&mut self.editor)
+        let editor = Component::clear_pointer_selection(&mut self.editor);
+        let todo = self.todo_selection.has_selection() || self.todo_selection.is_dragging();
+        if todo {
+            self.todo_selection.clear();
+            self.todo_pointer_dirty = true;
+        }
+        editor || todo
     }
 }

@@ -1,0 +1,33 @@
+id: todo-bar.all-pending
+cols: 80
+must_contain:
+  - "▾ 0 doing"
+  - "▾ 4 pending"
+  - "[ ] alpha"
+  - "[ ] beta"
+  - "[ ] gamma"
+  - "[ ] delta"
+  - "─── ↓ 1 more ───────────────────────────────────"
+must_not_contain:
+  - "[~]"
+  - "Todo ·"
+  - "done "
+  - "todo "
+  - "…"
+lines:
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────", token: muted }
+  -
+    - { text: "▾ 0 doing", token: muted }
+  -
+    - { text: "▾ 4 pending", token: muted }
+  -
+    - { text: "[ ] alpha", token: muted }
+  -
+    - { text: "[ ] beta", token: muted }
+  -
+    - { text: "[ ] gamma", token: muted }
+  -
+    - { text: "[ ] delta", token: muted }
+  -
+    - { text: "─── ↓ 1 more ───────────────────────────────────────────────────────────────────", token: muted }

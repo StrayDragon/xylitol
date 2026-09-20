@@ -22,10 +22,17 @@ import {
   type ResolvedRegion,
   type ShellTheme,
 } from "./shell";
-import type { ModulePreview, TodoItem } from "./types";
+import {
+  layoutTodoBar,
+  todoBarScenario,
+  TODO_BAR_MAX_ROWS,
+} from "./todo-bar-layout";
+import type { ModulePreview, StateDoc, TodoItem } from "./types";
 
 const modules = loadModules();
-const labModules = modules.filter((m) => m.surface === "tui-lab");
+const labModules = modules.filter(
+  (m) => m.surface === "tui-lab" || m.id === "todo-bar",
+);
 const titleEl = document.getElementById("module-title") as HTMLElement;
 const specEl = document.getElementById("module-spec") as HTMLElement;
 const chipsEl = document.getElementById("state-chips") as HTMLElement;
@@ -59,6 +66,9 @@ let labStateId = "";
 let frame = 0;
 let playing = false;
 let playTimer = 0;
+let labLiveCols: number | null = null;
+let termResizeObserver: ResizeObserver | null = null;
+let applyingTermSize = false;
 
 function isLabMode(): boolean {
   return Boolean(lab);
@@ -98,7 +108,7 @@ function routeNow(): Route | null {
 }
 
 function applyRoute(partial: ReturnType<typeof parseLocation>): void {
-  if ((partial.surface ?? "tui") === "tui-lab") {
+  if ((partial.surface ?? "tui") === "tui-lab" || partial.id === "todo-bar") {
     const hit =
       labModules.find((m) => m.id === partial.id) ??
       labModules.find((m) => m.surface === "tui-lab") ??
@@ -590,6 +600,7 @@ function paintLabChips(): void {
       lastAction = `selected state chip: ${labStateId} → ${id}`;
       labStateId = id;
       frame = 0;
+      labLiveCols = null;
       setPlaying(false);
       paint("push");
     });
@@ -602,15 +613,53 @@ function paintLabStageBar(): void {
   const st = lab?.states[labStateId];
   const hint = document.createElement("p");
   hint.className = "stage-hint";
-  hint.textContent = "上方按钮切换固定态；spinner 动画用播放/暂停；格子文本可框选复制";
+  if (lab?.id === "todo-bar") {
+    hint.textContent =
+      "拖终端右下角或用滑条改列宽：≥100 三栏、更窄竖叠。待办栏最多 6 行，超出在栏内滚动。切 chip 回到该固定态。";
+  } else {
+    hint.textContent = "上方按钮切换固定态；spinner 动画用播放/暂停；格子文本可框选复制";
+  }
   stageBarEl.appendChild(hint);
+  if (lab?.id === "todo-bar" && todoBarScenario(labStateId)) {
+    const cols = labLiveCols ?? st?.cols ?? 80;
+    const live = layoutTodoBar(labStateId, cols, TODO_BAR_MAX_ROWS);
+    const wrap = document.createElement("div");
+    wrap.className = "frame-controls";
+    const label = document.createElement("label");
+    label.className = "vis-form-label";
+    const name = document.createElement("span");
+    name.textContent = "列宽";
+    const out = document.createElement("output");
+    out.id = "todo-cols-out";
+    const mode = live?.mode === "columns" ? "三栏" : "竖叠";
+      const extra = live?.overflow ? " · more" : "";
+    out.textContent = `${cols} · ${mode} · ${live?.rows ?? 0}/${TODO_BAR_MAX_ROWS}${extra}`;
+    const range = document.createElement("input");
+    range.type = "range";
+    range.min = "60";
+    range.max = "160";
+    range.step = "1";
+    range.value = String(cols);
+    range.addEventListener("input", () => {
+      labLiveCols = Number(range.value);
+      lastAction = `resized terminal → ${labLiveCols} cols`;
+      const painted = layoutTodoBar(labStateId, labLiveCols, TODO_BAR_MAX_ROWS);
+      const mode = painted?.mode === "columns" ? "三栏" : "竖叠";
+      const extra = painted?.overflow ? " · more" : "";
+      out.textContent = `${labLiveCols} · ${mode} · ${painted?.rows ?? 0}/${TODO_BAR_MAX_ROWS}${extra}`;
+      paintLabStage();
+    });
+    label.append(name, out, range);
+    wrap.append(label);
+    stageBarEl.appendChild(wrap);
+  }
   if (!st || !hasSpin(st)) return;
   const n = spinFrames(st).length;
-  const wrap = document.createElement("div");
-  wrap.className = "frame-controls";
-  const label = document.createElement("span");
-  label.id = "frame-label";
-  label.textContent = `frame ${frame + 1}/${n}`;
+  const spinWrap = document.createElement("div");
+  spinWrap.className = "frame-controls";
+  const frameLabel = document.createElement("span");
+  frameLabel.id = "frame-label";
+  frameLabel.textContent = `frame ${frame + 1}/${n}`;
   const prev = document.createElement("button");
   prev.type = "button";
   prev.textContent = "上一帧";
@@ -625,35 +674,105 @@ function paintLabStageBar(): void {
   play.setAttribute("aria-pressed", String(playing));
   play.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    const next = !playing;
-    lastAction = next ? "clicked play" : "clicked pause";
-    setPlaying(next);
+    const nextPlay = !playing;
+    lastAction = nextPlay ? "clicked play" : "clicked pause";
+    setPlaying(nextPlay);
     paint("replace");
   });
-  const next = document.createElement("button");
-  next.type = "button";
-  next.textContent = "下一帧";
-  next.addEventListener("click", (ev) => {
+  const nextBtn = document.createElement("button");
+  nextBtn.type = "button";
+  nextBtn.textContent = "下一帧";
+  nextBtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
     lastAction = "clicked next frame";
     stepFrame(1);
   });
-  wrap.append(prev, play, next, label);
-  stageBarEl.appendChild(wrap);
+  spinWrap.append(prev, play, nextBtn, frameLabel);
+  stageBarEl.appendChild(spinWrap);
+}
+
+function measureCh(el: HTMLElement): number {
+  const probe = document.createElement("span");
+  probe.textContent = "0000000000";
+  probe.style.cssText = "font: inherit; visibility: hidden; position: absolute; white-space: pre;";
+  el.appendChild(probe);
+  const w = probe.offsetWidth / 10;
+  probe.remove();
+  return w || 8;
+}
+
+function bindTermResize(term: HTMLElement, snapshotCols: number): void {
+  termResizeObserver?.disconnect();
+  termResizeObserver = new ResizeObserver(() => {
+    if (applyingTermSize) return;
+    if (!lab || lab.id !== "todo-bar") return;
+    const ch = measureCh(term);
+    const pad =
+      Number.parseFloat(getComputedStyle(term).paddingLeft) +
+      Number.parseFloat(getComputedStyle(term).paddingRight);
+    const next = Math.min(160, Math.max(60, Math.round((term.clientWidth - pad) / ch)));
+    const current = labLiveCols ?? snapshotCols;
+    if (next === current) return;
+    labLiveCols = next;
+    lastAction = `dragged terminal → ${next} cols`;
+    const out = document.getElementById("todo-cols-out");
+    const painted = layoutTodoBar(labStateId, next, TODO_BAR_MAX_ROWS);
+    if (out) {
+      const mode = painted?.mode === "columns" ? "三栏" : "竖叠";
+      const extra = painted?.overflow ? " · more" : "";
+      out.textContent = `${next} · ${mode} · ${painted?.rows ?? 0}/${TODO_BAR_MAX_ROWS}${extra}`;
+    }
+    const range = stageBarEl.querySelector("input[type='range']") as HTMLInputElement | null;
+    if (range) range.value = String(next);
+    paintLabStage();
+  });
+  termResizeObserver.observe(term);
 }
 
 function paintLabStage(): void {
+  applyingTermSize = true;
+  const done = () => {
+    requestAnimationFrame(() => {
+      applyingTermSize = false;
+    });
+  };
   stageEl.replaceChildren();
   const state = lab?.states[labStateId];
   if (!state) {
     stageEl.textContent = "无固定态";
+    done();
     return;
   }
   const term = document.createElement("div");
   term.className = "term-frame";
   term.setAttribute("aria-label", "设计稿预览");
-  term.appendChild(renderGrid(applyFrame(state, frame)));
+  const liveCols = labLiveCols;
+  const canLive = lab?.id === "todo-bar" && todoBarScenario(labStateId);
+  if (canLive && liveCols != null) {
+    const painted = layoutTodoBar(labStateId, liveCols, TODO_BAR_MAX_ROWS);
+    if (painted) {
+      term.classList.add("is-resizable");
+      term.style.setProperty("--term-cols", String(liveCols));
+      const liveState: StateDoc = {
+        id: `${state.id}.live`,
+        cols: liveCols,
+        lines: painted.lines,
+      };
+      term.appendChild(renderGrid(liveState, liveCols));
+      stageEl.appendChild(term);
+      bindTermResize(term, liveCols);
+      done();
+      return;
+    }
+  }
+  if (canLive) {
+    term.classList.add("is-resizable");
+    term.style.setProperty("--term-cols", String(state.cols ?? 80));
+  }
+  term.appendChild(renderGrid(applyFrame(state, frame), state.cols ?? 80));
   stageEl.appendChild(term);
+  if (canLive) bindTermResize(term, state.cols ?? 80);
+  done();
 }
 
 // --- 右栏（共用：区域文档 / lab 模块文档） ---

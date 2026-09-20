@@ -27,7 +27,7 @@
 - **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（Command/Event 是载荷）。硬边界：`src/AGENTS.md`；产品叙事：`docs/architecture/库与多客户端.md`。
 - **跨端公共体验**（TUI ↔ gpui 桌面）：动作语义一套学习成本；唯一约束板 `docs/roadmaps/跨端同源.md`。
 - 产品架构总览：`docs/architecture/`；候选方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
-- TUI 信息呈现固定词（滚动提示、通知条、尾插…）：`docs/architecture/TUI信息呈现与固定区词汇.md`（端约束见 `src/app/tui/AGENTS.md`）。
+- TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`docs/architecture/TUI信息呈现与固定区词汇.md`（端约束见 `src/app/tui/AGENTS.md`）。新文只用表内词；固定区旧称 chrome / 壳层仅允许出现在该表「弃用」对照行。
 - 交互设计稿：仓库顶层 `designing/`（`just open-designing`）；运行时真值、tui-lab SOP 与快捷键约定见 `designing/AGENTS.md`。
 
 ## 工作原则

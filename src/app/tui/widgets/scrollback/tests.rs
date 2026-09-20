@@ -50,11 +50,8 @@ fn ask_header_paints_accent_ask_and_keeps_full_body() {
 
 #[test]
 fn todo_checklist_defaults_to_summary_line() {
-    let mut model = UiModel::default();
-    model.entries.push(UiEntry::Todo {
-        summary: "Todo · 2/5".into(),
-        detail_lines: vec!["[x] done".into(), "[ ] next".into()],
-    });
+    // 待办栏 lives in the dock, not scrollback.
+    let model = UiModel::default();
     let theme = LayoutTheme::product_dark();
     let lines = render_scrollback(
         &model,
@@ -67,46 +64,9 @@ fn todo_checklist_defaults_to_summary_line() {
         &mut FoldHitTable::default(),
     );
     let plain = strip_ansi_codes(&lines.join("\n"));
-    assert!(plain.contains("Todo · 2/5"), "missing summary: {plain}");
     assert!(
-        plain.contains("(Alt+E)") && !plain.contains("((Alt+E))"),
-        "folded hint MUST be a single pair of parens: {plain}"
-    );
-    assert!(
-        !plain.contains("[x] done"),
-        "detail must stay folded: {plain}"
-    );
-    assert!(
-        !plain.to_lowercase().contains("plan"),
-        "must not render Plan side scaffold: {plain}"
-    );
-}
-
-#[test]
-fn todo_checklist_expands_with_fold() {
-    let mut model = UiModel::default();
-    model.entries.push(UiEntry::Todo {
-        summary: "Todo · 1/2".into(),
-        detail_lines: vec!["[x] done".into(), "[~] wip".into()],
-    });
-    let theme = LayoutTheme::product_dark();
-    let lines = render_scrollback(
-        &model,
-        GlyphSet::from_env(),
-        theme,
-        &ScrollbackFold {
-            todo_expanded: true,
-            ..ScrollbackFold::default()
-        },
-        &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
-        80,
-        &mut ScrollbackPaintCache::default(),
-        &mut FoldHitTable::default(),
-    );
-    let plain = strip_ansi_codes(&lines.join("\n"));
-    assert!(
-        plain.contains("[x] done") && plain.contains("[~] wip"),
-        "{plain}"
+        !plain.contains("Todo ·"),
+        "transcript MUST NOT paint the 待办栏: {plain}"
     );
 }
 

@@ -12,7 +12,7 @@ use crate::app::tui::bridge::{
 pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
         XyEvent::TodoUpdated { list } => {
-            // atd13: checklist projection rides the typed event — clients never
+            // atd13: 待办栏 rides the typed event — clients never
             // re-parse tool-result strings to stay current.
             sync_todo_checklist(model, list.clone());
             true

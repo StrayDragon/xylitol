@@ -19,13 +19,14 @@ impl UiRoot {
     }
 
     /// Apply term-aware `max_visible` to the live flex list/tree slot (atc23).
-    pub(crate) fn apply_fixed_zone_footprint(&mut self) {
+    pub(crate) fn apply_fixed_zone_footprint(&mut self, todo_lines: usize) {
         let queue_lines = queue_strip_line_count(
             self.ui_model.pending_steer.len(),
             self.ui_model.pending_follow_up.len(),
         );
         let toast_present = self.toast_notice.is_some();
-        let reserved = reserved_lower_fixed_zone(self.status_busy, queue_lines, toast_present);
+        let reserved =
+            reserved_lower_fixed_zone(self.status_busy, queue_lines, todo_lines, toast_present);
         let rows = self.term_rows;
 
         match &mut self.slot {

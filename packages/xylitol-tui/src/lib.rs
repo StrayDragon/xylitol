@@ -106,6 +106,7 @@ pub use tui::{
 pub use utils::{
     ExtractedSegments, TruncateFrom, VisualTruncateResult, apply_background_to_line,
     extract_ansi_code, extract_segments, is_punctuation_char, is_whitespace_char,
-    normalize_terminal_output, slice_by_column, slice_by_column_strict, strip_ansi_codes,
-    truncate_to_visual_lines, truncate_to_width, visible_width, wrap_text_with_ansi,
+    normalize_terminal_output, overflow_more_border, slice_by_column, slice_by_column_strict,
+    strip_ansi_codes, truncate_to_visual_lines, truncate_to_width, visible_width,
+    wrap_text_with_ansi,
 };

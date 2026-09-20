@@ -21,7 +21,7 @@
   场景: tool-rail-via-package-helper
     - rail 行绘制 MUST 复用 packages/xylitol-tui 的 paint_left_rail_line（或等价包 API：轨+gutter+内容宽）；MUST NOT 在应用面手写第二套轨/gutter/宽预算逻辑。
 
-  @req:r1370 @human @manual
+  @req:r1370 @human
   场景: no-codex-transcript-view
     - 产品 TUI MUST NOT 实现 Codex 风格的独立 transcript 浏览面或专用 TranscriptView 作为主 UX；历史/分支 travel MUST 经双 Esc 会话树（app-tui session-tree / package TreeSelector）。
 
@@ -91,7 +91,7 @@
 
   @req:r1353 @human
   场景: activity-nested-envelope-cluster
-    - 产品 MUST 将 live scrollback 中间活动按嵌套 Activity 管理：信封（一轮）套簇套块。信封折叠可见 MUST 为 User + 一行 Worked for + 该轮最后一段助手正文；中间助手正文与 Todo、Compaction、工具与 thinking 一并收纳。ScrollNotice 与 Error MUST NOT 进信封。信封展开 MUST 仍画出夹在簇之间的中间助手正文，且 MUST 留下 Worked for 头行与展开标记以便再折。簇展开后块级折叠 MUST 仍服从 att20/att21。每信封与每簇 MUST 有稳定 id，且 live 与 travel/fork/resume 重建 MUST 同构。展开任一级 MUST 留下该级头行与展开标记（att19），以便再折；例外：一簇的中间活动全部为 Compaction 时 MUST NOT 再画簇摘要头，信封展开 MUST 直接露出既有 Compaction 块。信封头、簇头与块头 MUST 与未折叠细账同一列展示；MUST NOT 用前导缩进表达嵌套层级。
+    - 产品 MUST 将 live scrollback 中间活动按嵌套 Activity 管理：信封（一轮）套簇套块。信封折叠可见 MUST 为 User + 一行 Worked for + 该轮最后一段助手正文；中间助手正文与 Compaction、工具与 thinking 一并收纳。待办栏（checklist 投影）MUST NOT 进信封。ScrollNotice 与 Error MUST NOT 进信封。信封展开 MUST 仍画出夹在簇之间的中间助手正文，且 MUST 留下 Worked for 头行与展开标记以便再折。簇展开后块级折叠 MUST 仍服从 att20/att21。每信封与每簇 MUST 有稳定 id，且 live 与 travel/fork/resume 重建 MUST 同构。展开任一级 MUST 留下该级头行与展开标记（att19），以便再折；例外：一簇的中间活动全部为 Compaction 时 MUST NOT 再画簇摘要头，信封展开 MUST 直接露出既有 Compaction 块。信封头、簇头与块头 MUST 与未折叠细账同一列展示；MUST NOT 用前导缩进表达嵌套层级。
 
   @req:r1354 @human
   场景: cluster-summary-envelope-worked-for
@@ -135,7 +135,7 @@
 
   @req:r1365 @human
   场景: cluster-split-assistant-body
-    - 簇边界 MUST 以已可展示的助手正文划分：正文第一个非空白字符 MUST 封口上一打开簇。Thinking、工具、Ask、Diff、Todo MUST NOT 单独切簇；Compaction 例外：MUST 封口当前打开簇并自成单例簇独立成块（簇头呈现遵守 att23），其后中间活动 MUST 另起新簇；连续多条 Compaction 各自成块。同一轮中途再思考仍留在打开簇内，簇头措辞见 att24。同一条目序下 live 与 resume/rebuild 切分 MUST 同构。
+    - 簇边界 MUST 以已可展示的助手正文划分：正文第一个非空白字符 MUST 封口上一打开簇。Thinking、工具、Ask、Diff MUST NOT 单独切簇；Compaction 例外：MUST 封口当前打开簇并自成单例簇独立成块（簇头呈现遵守 att23），其后中间活动 MUST 另起新簇；连续多条 Compaction 各自成块。同一轮中途再思考仍留在打开簇内，簇头措辞见 att24。同一条目序下 live 与 resume/rebuild 切分 MUST 同构。待办栏不在对话条目中，MUST NOT 参与切簇。
 
   @req:r1365 @executable
   场景: compaction-seals-cluster-headless

@@ -46,3 +46,19 @@ depends_on: []
   渲染）。
 - 兼容性红线：会话 JSONL 旧 `agent_todo` 快照、compact 快照保留（atd10）、export
   展示（atd12）必须继续可读。
+
+## Intake（2026-09-20，从 c2795 转来）
+
+呈现搬家不吃这些，本 change propose 时裁决（content ≤80 标量已由
+`c2795-update-todo-projection-fixed-zone` 写入 r1842，勿再开一轮字数上限）：
+
+- 条目可绑定 message id，用来评估「哪些 todo 覆盖哪段数据处理范围」。
+- 可嵌套。
+- 默认绑定最新 message。
+- 转为 completed 时自动记录该绑定。
+
+## Open Questions
+
+- 绑定的是用户消息、助手消息，还是一轮 turn？
+- 嵌套是父子树，还是按 message 范围分组？
+- 「自动记录」写进 `agent_todo` 快照字段，还是另写 Custom？

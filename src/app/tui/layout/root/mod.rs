@@ -41,7 +41,7 @@ use crate::app::tui::activity_fold::{ActivityFoldState, AutoTrigger, ingest_rebu
 use crate::app::tui::bridge::UiModel;
 use crate::app::tui::session_resume::SessionResumePanel;
 use crate::app::tui::widgets::{
-    FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold, ScrollbackPaintCache,
+    FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold, ScrollbackPaintCache, TodoBarHit, TodoWing,
     footer_thinking_label, format_footer_text,
 };
 use crate::protocol::error::XyToolError;
@@ -122,6 +122,17 @@ pub struct UiRoot {
     last_toast_rows: usize,
     last_status_rows: usize,
     last_editor_rows: usize,
+    last_queue_rows: usize,
+    last_todo_rows: usize,
+    todo_doing_open: bool,
+    todo_past_open: bool,
+    todo_pending_open: bool,
+    todo_scroll: usize,
+    last_todo_hits: Vec<TodoBarHit>,
+    last_todo_plain: Vec<String>,
+    todo_selection: xylitol_tui::SelectionController,
+    todo_clipboard: Vec<String>,
+    todo_pointer_dirty: bool,
     /// ApplicationOwned copy-success cue (`Copied`, ~2s). Not toast-notice / ScrollNotice.
     copy_notice_until: Option<Instant>,
     /// Test/obs: how many times upper (loaded+scrollback+queue) was rebuilt.
@@ -190,6 +201,17 @@ impl UiRoot {
             last_toast_rows: 0,
             last_status_rows: 1,
             last_editor_rows: 3,
+            last_queue_rows: 0,
+            last_todo_rows: 0,
+            todo_doing_open: true,
+            todo_past_open: true,
+            todo_pending_open: true,
+            todo_scroll: 0,
+            last_todo_hits: Vec::new(),
+            last_todo_plain: Vec::new(),
+            todo_selection: xylitol_tui::SelectionController::new(),
+            todo_clipboard: Vec::new(),
+            todo_pointer_dirty: false,
             copy_notice_until: None,
             #[cfg(test)]
             upper_rebuild_count: 0,
@@ -432,11 +454,11 @@ impl UiRoot {
     /// the single toggle pipeline shared by the host hit-priority wiring and
     /// BDD mouse injection (att20 / att22 / att29–att32).
     pub fn click_fold_at(&mut self, col: u16, row: u16) -> bool {
-        let Some(target) = self.fold_hits.hit(col, row) else {
-            return false;
-        };
-        self.toggle_fold_target(target);
-        true
+        if let Some(target) = self.fold_hits.hit(col, row) {
+            self.toggle_fold_target(target);
+            return true;
+        }
+        self.click_todo_bar_at(col, row)
     }
 
     /// Product input routing for a decoded key event (chord →
@@ -463,9 +485,6 @@ impl UiRoot {
             FoldTarget::Thinking(id) => {
                 self.fold.toggle_thinking(&id);
             }
-            FoldTarget::Todo => {
-                self.fold.todo_expanded = !self.fold.todo_expanded;
-            }
             FoldTarget::Compaction => {
                 self.fold.compaction_expanded = !self.fold.compaction_expanded;
             }
@@ -481,9 +500,88 @@ impl UiRoot {
             FoldTarget::LiveTail => {
                 let _ = self.activity.expand_live_cluster(&self.ui_model.entries);
             }
+            FoldTarget::TodoDoing => {
+                self.todo_doing_open = !self.todo_doing_open;
+                self.fold_dirty = true;
+                return;
+            }
+            FoldTarget::TodoPast => {
+                self.todo_past_open = !self.todo_past_open;
+                self.fold_dirty = true;
+                return;
+            }
+            FoldTarget::TodoPending => {
+                self.todo_pending_open = !self.todo_pending_open;
+                self.fold_dirty = true;
+                return;
+            }
         }
         self.fold_dirty = true;
         self.bump_upper_gen();
+    }
+
+    /// Screen-coordinate hit on 待办栏 wing triangles (dock, not transcript).
+    pub fn click_todo_bar_at(&mut self, col: u16, screen_row: u16) -> bool {
+        if self.last_todo_rows == 0 {
+            return false;
+        }
+        let dock = self.last_dock_rows.max(1).min(self.term_rows);
+        let dock_top = self.term_rows.saturating_sub(dock);
+        let todo_top = dock_top.saturating_add(self.last_queue_rows);
+        let todo_end = todo_top.saturating_add(self.last_todo_rows);
+        let row = screen_row as usize;
+        if row < todo_top || row >= todo_end {
+            return false;
+        }
+        self.click_todo_bar_local(col as usize, row - todo_top)
+    }
+
+    fn scroll_todo_bar_at(&mut self, screen_row: u16, delta: isize) -> bool {
+        if self.last_todo_rows == 0 || delta == 0 {
+            return false;
+        }
+        let dock = self.last_dock_rows.max(1).min(self.term_rows);
+        let dock_top = self.term_rows.saturating_sub(dock);
+        let todo_top = dock_top.saturating_add(self.last_queue_rows);
+        let todo_end = todo_top.saturating_add(self.last_todo_rows);
+        let row = screen_row as usize;
+        if row < todo_top || row >= todo_end {
+            return false;
+        }
+        if delta < 0 {
+            self.todo_scroll = self.todo_scroll.saturating_sub(delta.unsigned_abs());
+        } else {
+            self.todo_scroll = self.todo_scroll.saturating_add(delta as usize);
+        }
+        self.fold_dirty = true;
+        true
+    }
+
+    fn click_todo_bar_local(&mut self, col: usize, row_in_bar: usize) -> bool {
+        let Some(hit) = self
+            .last_todo_hits
+            .iter()
+            .find(|h| h.row == row_in_bar && col >= h.col_start && col < h.col_end)
+            .copied()
+        else {
+            return false;
+        };
+        self.toggle_fold_target(match hit.wing {
+            TodoWing::Doing => FoldTarget::TodoDoing,
+            TodoWing::Past => FoldTarget::TodoPast,
+            TodoWing::Pending => FoldTarget::TodoPending,
+        });
+        true
+    }
+
+    #[cfg(test)]
+    pub fn click_todo_bar_local_for_test(&mut self, col: usize, row_in_bar: usize) -> bool {
+        self.click_todo_bar_local(col, row_in_bar)
+    }
+
+    #[cfg(test)]
+    pub fn todo_bar_hits_for_test(&self) -> &[TodoBarHit] {
+        &self.last_todo_hits
     }
 
     /// Consume fold-dirty edge so the host can `mark_ao_components_stale`.
@@ -498,7 +596,7 @@ impl UiRoot {
 
     /// Mouse/key paint policy for the focused editor (ApplicationOwned selection / typing).
     pub(crate) fn editor_wants_rerender(&self, event: &xylitol_tui::InputEvent) -> bool {
-        Component::input_wants_rerender(&self.editor, event)
+        self.todo_pointer_dirty || Component::input_wants_rerender(&self.editor, event)
     }
 
     /// Arm ApplicationOwned «Copied» fixed-zone cue (~2s). Must not use Error: toast (ath31).
@@ -534,9 +632,26 @@ impl UiRoot {
             // Steering/Follow-up lines + Alt+Up hint (see render_queue_strip).
             self.ui_model.pending_steer.len() + self.ui_model.pending_follow_up.len() + 1
         };
+        let todo_rows = if self.ui_model.todo.is_empty() {
+            0
+        } else {
+            crate::app::tui::widgets::todo_bar_line_count(
+                self.glyphs,
+                crate::app::tui::widgets::TodoBarParams {
+                    list: &self.ui_model.todo,
+                    doing_open: self.todo_doing_open,
+                    past_open: self.todo_past_open,
+                    pending_open: self.todo_pending_open,
+                    scroll: 0,
+                    width: 80,
+                    max_rows: crate::app::tui::widgets::todo_bar_max_rows(self.term_rows),
+                },
+            )
+        };
         crate::app::tui::layout::reserved_lower_fixed_zone(
             self.status_busy,
             queue_rows,
+            todo_rows,
             self.toast_notice.is_some(),
         )
         .saturating_add(4) // editor borders + body floor
@@ -927,6 +1042,13 @@ impl UiRoot {
         ));
     }
 
+    #[cfg(test)]
+    pub fn todo_bar_fold_for_test(&mut self, past_open: bool, pending_open: bool) {
+        self.todo_doing_open = true;
+        self.todo_past_open = past_open;
+        self.todo_pending_open = pending_open;
+    }
+
     /// Informational toast (muted, no `Error: ` prefix) — session-switch tips
     /// and other transient notices that are not failures.
     pub fn push_toast_info_notice(&mut self, body: impl Into<String>) {
@@ -987,7 +1109,10 @@ impl UiRoot {
         let (row, col) = xylitol_tui::editor_screen_origin(
             self.term_rows.min(u16::MAX as usize) as u16,
             self.last_dock_rows,
-            self.last_toast_rows.saturating_add(self.last_status_rows),
+            self.last_queue_rows
+                .saturating_add(self.last_todo_rows)
+                .saturating_add(self.last_toast_rows)
+                .saturating_add(self.last_status_rows),
         );
         self.editor.set_screen_origin(row, col);
     }
@@ -1199,6 +1324,114 @@ mod tests {
         assert!(
             frame.contains("✓ 已选 dark"),
             "Enter must flag the confirmed theme row: {frame}"
+        );
+    }
+
+    #[test]
+    fn todo_bar_sits_in_dock_wraps_without_ellipsis() {
+        use crate::app::tui::bridge::UiModel;
+        use crate::protocol::session::{TodoItem, TodoList, TodoStatus};
+        use xylitol_tui::utils::strip_ansi_codes;
+
+        let mut root = UiRoot::new();
+        let mut model = UiModel::new();
+        model.todo = TodoList::new(vec![
+            TodoItem {
+                id: "a".into(),
+                content: "read glossary".into(),
+                status: TodoStatus::Completed,
+            },
+            TodoItem {
+                id: "b".into(),
+                content: "Keep the live checklist in the lower dock and wrap long titles not clipping them".into(),
+                status: TodoStatus::InProgress,
+            },
+            TodoItem {
+                id: "c".into(),
+                content: "paint lab states".into(),
+                status: TodoStatus::Pending,
+            },
+        ]);
+        model.enqueue_steer_strip("steer me".into());
+        root.apply_ui_model(&model);
+        root.push_toast_notice("boom");
+        let plain = strip_ansi_codes(&root.render(80).join("\n"));
+        let steer_at = plain.find("steer me").expect("queue");
+        let todo_at = plain.find("Keep the live").expect("待办栏 current");
+        let toast_at = plain.find("boom").expect("toast");
+        assert!(
+            steer_at < todo_at && todo_at < toast_at,
+            "dock order queue → 待办栏 → toast:\n{plain}"
+        );
+        assert!(
+            !plain.contains("Todo ·"),
+            "no unlabeled N/M chrome: {plain}"
+        );
+        assert!(!plain.contains('…'), "must wrap, not ellipsize: {plain}");
+        assert!(
+            plain.contains("clipping them") || plain.contains("not clipping"),
+            "full title after wrap: {plain}"
+        );
+        assert!(plain.contains("1 completed"), "{plain}");
+        assert!(plain.contains("1 pending"), "{plain}");
+        assert!(plain.contains("1 doing"), "{plain}");
+        assert!(
+            plain.contains("[x] read glossary"),
+            "past body expanded by default: {plain}"
+        );
+        assert!(!plain.contains("[~]"), "doing MUST NOT use [~]: {plain}");
+    }
+
+    #[test]
+    fn todo_bar_wing_triangle_toggles_past_body() {
+        use crate::app::tui::bridge::UiModel;
+        use crate::app::tui::widgets::TodoWing;
+        use crate::protocol::session::{TodoItem, TodoList, TodoStatus};
+        use xylitol_tui::utils::strip_ansi_codes;
+
+        let mut root = UiRoot::new();
+        let mut model = UiModel::new();
+        model.todo = TodoList::new(vec![
+            TodoItem {
+                id: "a".into(),
+                content: "read glossary".into(),
+                status: TodoStatus::Completed,
+            },
+            TodoItem {
+                id: "b".into(),
+                content: "write todo-bar copy".into(),
+                status: TodoStatus::InProgress,
+            },
+            TodoItem {
+                id: "c".into(),
+                content: "paint lab states".into(),
+                status: TodoStatus::Pending,
+            },
+        ]);
+        root.apply_ui_model(&model);
+        let _ = root.render(80);
+        let past = root
+            .todo_bar_hits_for_test()
+            .iter()
+            .find(|h| h.wing == TodoWing::Past)
+            .copied()
+            .expect("past wing triangle");
+        assert!(
+            root.click_todo_bar_local_for_test(past.col_start, past.row),
+            "triangle click must consume"
+        );
+        assert!(
+            !root.click_todo_bar_local_for_test(past.col_end, past.row),
+            "text column must not toggle"
+        );
+        let plain = strip_ansi_codes(&root.render(80).join("\n"));
+        assert!(
+            !plain.contains("[x] read glossary"),
+            "past wing folded after triangle click: {plain}"
+        );
+        assert!(
+            plain.contains("[ ] paint lab states"),
+            "pending stays expanded: {plain}"
         );
     }
 }

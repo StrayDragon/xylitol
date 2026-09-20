@@ -1,5 +1,6 @@
 //! UI-only model types and methods (c1170).
 
+use crate::protocol::session::TodoList;
 use crate::utils::ThoughtClock;
 
 /// Decode complete UTF-8 prefix from `buf`, leaving a trailing incomplete sequence.
@@ -169,12 +170,6 @@ pub enum UiEntry {
         /// Short failure / abort detail when not Complete.
         detail: Option<String>,
     },
-    /// Session Todo checklist (c1955) — default one-line summary; expand for items.
-    Todo {
-        summary: String,
-        /// Full checklist lines (status glyph + content), shown when expanded.
-        detail_lines: Vec<String>,
-    },
     ScrollNotice {
         text: String,
     },
@@ -254,6 +249,8 @@ pub struct UiModel {
     pub(crate) current_role: Option<String>,
     /// Incomplete UTF-8 bytes across bang stream chunks (c669).
     bash_utf8_pending: Vec<u8>,
+    /// Latest-wins Todo list for the lower-dock 待办栏 (not a transcript row).
+    pub todo: TodoList,
 }
 
 impl Default for UiModel {
@@ -277,6 +274,7 @@ impl UiModel {
             thought_clock: ThoughtClock::new(),
             current_role: None,
             bash_utf8_pending: Vec::new(),
+            todo: TodoList::default(),
         }
     }
 
@@ -430,15 +428,6 @@ impl UiModel {
                         );
                     }
                 },
-                UiEntry::Todo {
-                    summary,
-                    detail_lines,
-                } => {
-                    lines.push(summary.clone());
-                    for line in detail_lines {
-                        lines.push(line.clone());
-                    }
-                }
                 UiEntry::ScrollNotice { text } => lines.push(format!("scroll_notice: {text}")),
                 UiEntry::Error { text } => lines.push(format!("error: {text}")),
             }

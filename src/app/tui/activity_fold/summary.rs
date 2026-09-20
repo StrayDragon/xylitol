@@ -176,7 +176,7 @@ fn counts_from_atoms(atoms: impl IntoIterator<Item = ActivityAtom>) -> ActivityC
             }
             ActivityAtom::Ask { .. } => c.asks += 1,
             ActivityAtom::Compaction => c.compaction += 1,
-            ActivityAtom::Noise | ActivityAtom::Projection => {}
+            ActivityAtom::Noise => {}
         }
     }
 
@@ -623,12 +623,8 @@ mod tests {
             tool("todo_update", None),
             tool("todo_update", None),
             tool("todo_update", None),
-            UiEntry::Todo {
-                summary: "Todo · 10/10".into(),
-                detail_lines: vec![],
-            },
         ];
-        let c = count_middles(&entries, &[0, 1, 2, 3, 4, 5]);
+        let c = count_middles(&entries, &[0, 1, 2, 3, 4]);
         assert_eq!(format_l2_body(&c), "Used 4 tools");
         assert_eq!(c.used_calls, 4);
         assert_eq!(c.used_names.as_slice(), ["todo_update"]);

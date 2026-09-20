@@ -775,53 +775,6 @@ pub(super) fn paint_compaction_block(
     (lines, block_hits)
 }
 
-/// Todo checklist row: one-line summary + optional items (c1955).
-pub(super) fn paint_todo_block(
-    summary: &str,
-    detail_lines: &[String],
-    ctx: PaintCtx,
-) -> (Vec<String>, Vec<CachedFoldHit>) {
-    let PaintCtx {
-        fold,
-        glyphs,
-        theme,
-        width,
-    } = ctx;
-    let inner = rail_inner_width(width);
-    let expanded = fold.todo_expanded;
-    let marker = if expanded {
-        glyphs.unfold()
-    } else {
-        glyphs.fold()
-    };
-    let mw = marker_cols(marker);
-    let hint = if expanded {
-        String::new()
-    } else {
-        format!("  {}", key_hint("Alt+E"))
-    };
-    let header = format!("{marker} {summary}{hint}");
-    let mut block = vec![fit(&theme.paint_muted(&header), inner)];
-    let block_hits = vec![CachedFoldHit {
-        row_offset: 0,
-        col_start: RAILED_MARKER_COL,
-        col_end: RAILED_MARKER_COL + mw,
-        target: FoldTarget::Todo,
-    }];
-    if expanded {
-        for line in detail_lines {
-            block.push(fit(&theme.paint_muted(line), inner));
-        }
-    }
-    let rail = {
-        let p = theme.palette();
-        mix_rgb(p.surface, p.muted, 0.72)
-    };
-    let mut lines = Vec::new();
-    push_railed(&mut lines, &block, width, rail);
-    (lines, block_hits)
-}
-
 /// Scroll notice row (trailing / navigation instant hints).
 pub(super) fn paint_scroll_notice_block(
     text: &str,

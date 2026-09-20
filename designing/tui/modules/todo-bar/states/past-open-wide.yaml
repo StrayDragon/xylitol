@@ -1,0 +1,35 @@
+id: todo-bar.past-open-wide
+cols: 100
+must_contain:
+  - "▾ 1 doing                         ▸ 3 pending"
+  - "write todo-bar copy"
+  - "[-] skip overlay slot"
+must_not_contain:
+  - "[~]"
+  - "Todo ·"
+  - "done "
+  - "todo "
+  - "…"
+lines:
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────────────────────────", token: muted }
+  -
+    - { text: "▾ 1 doing                       ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "▸ 3 pending                     ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "▾ 1 completed · 1 cancelled     ", token: muted }
+  -
+    - { text: "write todo-bar copy             ", token: on-surface }
+    - { text: "  ", token: muted }
+    - { text: "                                ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "[x] read glossary               ", token: muted }
+  -
+    - { text: "                                ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "                                ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "[-] skip overlay slot           ", token: muted }
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────────────────────────", token: muted }

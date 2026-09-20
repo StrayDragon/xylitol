@@ -1,0 +1,33 @@
+id: todo-bar.no-focus
+cols: 80
+must_contain:
+  - "▾ 0 doing"
+  - "▾ 3 pending"
+  - "[ ] paint lab states"
+  - "[ ] graduate to product"
+  - "[ ] wire lower fixed zone"
+  - "▾ 1 completed · 1 cancelled"
+  - "─── ↓ 2 more ───────────────────────────────────"
+must_not_contain:
+  - "[~]"
+  - "Todo ·"
+  - "done "
+  - "todo "
+  - "…"
+lines:
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────", token: muted }
+  -
+    - { text: "▾ 0 doing", token: muted }
+  -
+    - { text: "▾ 3 pending", token: muted }
+  -
+    - { text: "[ ] paint lab states", token: muted }
+  -
+    - { text: "[ ] graduate to product", token: muted }
+  -
+    - { text: "[ ] wire lower fixed zone", token: muted }
+  -
+    - { text: "▾ 1 completed · 1 cancelled", token: muted }
+  -
+    - { text: "─── ↓ 2 more ───────────────────────────────────────────────────────────────────", token: muted }

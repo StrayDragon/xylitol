@@ -1,0 +1,42 @@
+id: todo-bar.both-open-wide
+cols: 100
+must_contain:
+  - "▾ 1 doing                         ▾ 3 pending"
+  - "Keep the live checklist in the    [ ] paint lab"
+  - "lower dock and wrap long titles   [ ] graduate t"
+  - "not clipping them                 [ ] wire lower"
+must_not_contain:
+  - "[~]"
+  - "Todo ·"
+  - "done "
+  - "todo "
+  - "…"
+lines:
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────────────────────────", token: muted }
+  -
+    - { text: "▾ 1 doing                       ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "▾ 3 pending                     ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "▾ 1 completed · 1 cancelled     ", token: muted }
+  -
+    - { text: "Keep the live checklist in the  ", token: on-surface }
+    - { text: "  ", token: muted }
+    - { text: "[ ] paint lab states            ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "[x] read glossary               ", token: muted }
+  -
+    - { text: "lower dock and wrap long titles ", token: on-surface }
+    - { text: "  ", token: muted }
+    - { text: "[ ] graduate to product         ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "[-] skip overlay slot           ", token: muted }
+  -
+    - { text: "not clipping them               ", token: on-surface }
+    - { text: "  ", token: muted }
+    - { text: "[ ] wire lower fixed zone       ", token: muted }
+    - { text: "  ", token: muted }
+    - { text: "                                ", token: muted }
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────────────────────────", token: muted }

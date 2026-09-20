@@ -1,0 +1,33 @@
+id: todo-bar.all-done
+cols: 80
+must_contain:
+  - "▾ 0 doing"
+  - "▾ 0 pending"
+  - "▾ 5 completed"
+  - "[x] one"
+  - "[x] two"
+  - "[x] three"
+  - "─── ↓ 2 more ───────────────────────────────────"
+must_not_contain:
+  - "[~]"
+  - "Todo ·"
+  - "done "
+  - "todo "
+  - "…"
+lines:
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────", token: muted }
+  -
+    - { text: "▾ 0 doing", token: muted }
+  -
+    - { text: "▾ 0 pending", token: muted }
+  -
+    - { text: "▾ 5 completed", token: muted }
+  -
+    - { text: "[x] one", token: muted }
+  -
+    - { text: "[x] two", token: muted }
+  -
+    - { text: "[x] three", token: muted }
+  -
+    - { text: "─── ↓ 2 more ───────────────────────────────────────────────────────────────────", token: muted }

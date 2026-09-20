@@ -919,6 +919,30 @@ enum Segment {
     Grapheme(String),
 }
 
+/// Overflow cue on a `─` rule: `─── ↑ N more ───` (editor and 待办栏 share this).
+///
+/// When `width` cannot fit the decorative dashes, the cue is kept and the line
+/// is truncated. `width == 0` yields an empty string.
+pub fn overflow_more_border(width: usize, up: bool, count: usize) -> String {
+    let arrow = if up { '↑' } else { '↓' };
+    let core = format!(" {arrow} {count} more ");
+    let core_w = visible_width(&core);
+    if width == 0 {
+        return String::new();
+    }
+    if width <= core_w {
+        return truncate_to_width(&core, width, "…", false);
+    }
+    let lead = "───";
+    let lead_w = visible_width(lead);
+    if lead_w + core_w <= width {
+        let rest = width - lead_w - core_w;
+        format!("{lead}{core}{}", "─".repeat(rest))
+    } else {
+        truncate_to_width(&format!("─{core}"), width, "…", false)
+    }
+}
+
 /// Truncate text to fit within a maximum visible width.
 pub fn truncate_to_width(text: &str, max_width: usize, ellipsis: &str, pad: bool) -> String {
     if max_width == 0 {
@@ -1264,5 +1288,17 @@ mod visible_width_tests {
         let out = normalize_terminal_output(s);
         assert!(out.contains("\u{0e4d}\u{0e32}"));
         assert!(!out.contains('\u{0e33}'));
+    }
+
+    #[test]
+    fn overflow_more_border_keeps_cue_then_fills_dashes() {
+        let line = overflow_more_border(80, false, 3);
+        assert!(line.contains("↓ 3 more"), "{line}");
+        assert!(line.starts_with("───"), "{line}");
+        assert_eq!(visible_width(&line), 80);
+        assert_eq!(overflow_more_border(0, true, 1), "");
+        let narrow = overflow_more_border(8, true, 12);
+        assert!(!narrow.is_empty());
+        assert_eq!(visible_width(&narrow), 8);
     }
 }

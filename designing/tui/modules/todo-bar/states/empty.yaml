@@ -1,0 +1,12 @@
+id: todo-bar.empty
+cols: 80
+must_contain: []
+must_not_contain:
+  - "done"
+  - "todo"
+  - "completed"
+  - "pending"
+  - "Todo ·"
+lines:
+  -
+    - { text: " ", token: muted }

@@ -6,10 +6,10 @@ export function flattenLines(state: StateDoc): string {
     .join("\n");
 }
 
-export function renderGrid(state: StateDoc): HTMLElement {
+export function renderGrid(state: StateDoc, cols = state.cols ?? 80): HTMLElement {
   const grid = document.createElement("div");
   grid.className = "cell-grid";
-  grid.style.setProperty("--cols", String(state.cols ?? 80));
+  grid.style.setProperty("--cols", String(cols));
   for (const row of state.lines) {
     const line = document.createElement("div");
     line.className = "cell-row";

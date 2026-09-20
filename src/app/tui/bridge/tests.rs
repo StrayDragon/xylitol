@@ -148,11 +148,8 @@ fn todo_block_humanized_and_checklist_rides_typed_event() {
     let (_, output) = tool(&model);
     assert_eq!(output, "[~] one\n[ ] two");
     assert!(
-        model
-            .entries
-            .iter()
-            .all(|e| !matches!(e, UiEntry::Todo { .. })),
-        "atd13: End alone MUST NOT upsert the checklist row"
+        model.todo.is_empty(),
+        "atd13: End alone MUST NOT upsert the 待办栏"
     );
 
     apply_xy_event(
@@ -172,22 +169,12 @@ fn todo_block_humanized_and_checklist_rides_typed_event() {
             ]),
         },
     );
-    let todo = model.entries.iter().find_map(|e| match e {
-        UiEntry::Todo {
-            summary,
-            detail_lines,
-        } => Some((summary.clone(), detail_lines.clone())),
-        _ => None,
-    });
-    assert_eq!(
-        todo,
-        Some((
-            "Todo · 0/2".into(),
-            vec!["[~] one".to_string(), "[ ] two".to_string()]
-        ))
-    );
+    assert_eq!(model.todo.items.len(), 2);
+    assert_eq!(model.todo.items[0].content, "one");
+    assert_eq!(model.todo.items[0].status, TodoStatus::InProgress);
+    assert_eq!(model.todo.items[1].content, "two");
 
-    // Empty list clears the projection row (rewrite-to-empty semantics).
+    // Empty list clears the 待办栏 (rewrite-to-empty semantics).
     apply_xy_event(
         &mut model,
         &XyEvent::TodoUpdated {
@@ -195,11 +182,8 @@ fn todo_block_humanized_and_checklist_rides_typed_event() {
         },
     );
     assert!(
-        model
-            .entries
-            .iter()
-            .all(|e| !matches!(e, UiEntry::Todo { .. })),
-        "empty TodoUpdated MUST remove the checklist row"
+        model.todo.is_empty(),
+        "empty TodoUpdated MUST clear the 待办栏"
     );
 }
 

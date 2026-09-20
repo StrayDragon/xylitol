@@ -335,6 +335,20 @@ main h2 {
   padding: 0.15rem 0.45rem;
   cursor: pointer;
 }
+.frame-controls label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+.frame-controls output {
+  font-variant-numeric: tabular-nums;
+  color: var(--on-surface);
+  min-width: 14rem;
+}
+.frame-controls input[type="range"] {
+  width: 14rem;
+}
 .frame-controls button[aria-pressed="true"],
 .frame-controls button:hover {
   color: var(--on-surface);
@@ -517,10 +531,18 @@ pre.notes {
   max-width: 72rem;
   min-height: 12rem;
 }
+.term-frame.is-resizable {
+  resize: horizontal;
+  min-width: 60ch;
+  width: calc(var(--term-cols, 80) * 1ch + 1.4rem);
+  max-width: 100%;
+}
 .cell-grid {
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.25;
+  width: calc(var(--cols) * 1ch);
+  overflow: hidden;
 }
 .cell-row {
   white-space: pre;

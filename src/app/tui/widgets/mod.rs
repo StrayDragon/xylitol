@@ -8,6 +8,7 @@ mod glyphs;
 mod loaded_resources;
 mod queue;
 mod scrollback;
+mod todo_bar;
 
 pub use fold_hit::{FoldHitTable, FoldTarget};
 pub use glyphs::GlyphSet;
@@ -17,6 +18,9 @@ pub use queue::render_queue_strip;
 pub use scrollback::find_stable_markdown_prefix_end;
 pub(crate) use scrollback::format_token_count;
 pub use scrollback::{ScrollbackFold, ScrollbackPaintCache, render_scrollback};
+pub use todo_bar::{
+    TodoBarHit, TodoBarParams, TodoWing, render_todo_bar, todo_bar_line_count, todo_bar_max_rows,
+};
 
 use crate::protocol::model::{THINKING_OFF, TokenProvenance};
 

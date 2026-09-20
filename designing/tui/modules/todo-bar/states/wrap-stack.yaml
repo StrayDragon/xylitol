@@ -1,0 +1,26 @@
+id: todo-bar.wrap-stack
+cols: 80
+must_contain:
+  - "▾ 1 doing"
+  - "Keep the live checklist in the lower dock and wr"
+  - "▸ 3 pending"
+  - "▸ 1 completed · 1 cancelled"
+must_not_contain:
+  - "[~]"
+  - "Todo ·"
+  - "done "
+  - "todo "
+  - "…"
+lines:
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────", token: muted }
+  -
+    - { text: "▾ 1 doing", token: muted }
+  -
+    - { text: "Keep the live checklist in the lower dock and wrap long titles not clipping them", token: on-surface }
+  -
+    - { text: "▸ 3 pending", token: muted }
+  -
+    - { text: "▸ 1 completed · 1 cancelled", token: muted }
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────", token: muted }

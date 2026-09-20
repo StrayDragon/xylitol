@@ -7,7 +7,7 @@ use xylitol_tui::{ASK_HEADER_A_MAX, ASK_HEADER_Q_MAX, ellipsize_ask_frag};
 
 use crate::protocol::session::{TodoList, TodoStatus};
 
-/// Shared todo status glyph — checklist projection row and todo_* block body
+/// Shared todo status glyph — 待办栏 items and todo_* tool-block body
 /// MUST use this one table (att36).
 pub(crate) fn todo_status_glyph(status: TodoStatus) -> &'static str {
     match status {

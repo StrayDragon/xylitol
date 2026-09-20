@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: app-tui-fixed-zone
-# purpose: 主题 token、glyph、status、footer、通知条等固定区（非滚动 layout 壳）行为。
+# purpose: 主题 token、glyph、status、footer、通知条、待办栏等固定区（非滚动 layout 壳）行为。
 # scope: src/app/tui/
 
 功能: app-tui-fixed-zone
@@ -91,7 +91,7 @@
 
   @req:r1228 @human
   场景: fixed-zone-footprint-term-budget
-    - 产品 TUI MUST 维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / 通知条各按其实际行计入）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 MUST = term_rows 减去上述 reserved 与槽头行后的预算且 MUST ≥ 1；MUST NOT 以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 MUST 仍能看到 status lead（Working 或等价 spinner 短词）。MUST NOT 为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
+    - 产品 TUI MUST 维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / 通知条 / 待办栏各按其实际行计入）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 MUST = term_rows 减去上述 reserved 与槽头行后的预算且 MUST ≥ 1；MUST NOT 以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 MUST 仍能看到 status lead（Working 或等价 spinner 短词）。MUST NOT 为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
 
   @req:r1229 @human
   场景: footer-used-compact-count
@@ -103,8 +103,18 @@
 
   @req:r1231 @human
   场景: fixed-zone-no-extra-undocumented
-    - 产品 TUI 固定区（footer / status / 队列条 / 通知条等）可观察文案与徽章 MUST 仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；MUST NOT 另加 SSOT 未声明或已废弃的冗余展示（避免用户疑惑）；队列可见性 SSOT 为中间队列条（Steering:/Follow-up:，见 ati11），MUST NOT 再在 footer/status 重复队列计数徽章。
+    - 产品 TUI 固定区（footer / status / 队列条 / 通知条 / 待办栏等）可观察文案与徽章 MUST 仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；MUST NOT 另加 SSOT 未声明或已废弃的冗余展示（避免用户疑惑）；队列可见性 SSOT 为中间队列条（Steering:/Follow-up:，见 ati11），MUST NOT 再在 footer/status 重复队列计数徽章。
 
   @req:r1232 @human
   场景: tool-header-timeout-note
     - 命令类工具（bash/grep/find）的模型显式 timeout 请求 MUST 在工具行 header 的按键提示 (Alt+E) 前以 muted 文本显示 (timeout {N}s)（N 为钳制后的生效秒数）；省略（走工具默认）时 MUST NOT 显示。注记为静态文本，MUST NOT 做倒计时或运行中改写。
+
+  @req:r21 @human
+  场景: todo-bar-dock-member
+    - 产品 TUI 待办栏 MUST 为下缘固定区成员：有 Todo 条目时驻留于队列条与通知条之间，通知条仍紧贴 status、status 仍紧贴 editor；空表 MUST 占 0 行。待办栏 MUST NOT 写入对话条目，MUST NOT 冒充 status、footer、通知条或队列条。折叠/展开/换行续行与上下轮廓（含 `↑ N more` / `↓ N more` 边框）MUST 计入 Fixed-Zone Footprint 实际行（可见行，含高度上限后的内容视口高加轮廓，不含未滚入内容）。
+
+  @executable @req:r21
+  场景: todo-bar-sits-between-queue-and-toast
+    当 产品 TUI 同时存在非空待办栏、队列条与通知条
+    那么 从上到下 MUST 为队列条、待办栏、通知条、status、editor
+    并且 空表时待办栏 MUST 占 0 行

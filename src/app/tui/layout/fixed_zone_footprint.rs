@@ -67,10 +67,11 @@ pub fn queue_strip_line_count(steer: usize, follow_up: usize) -> usize {
     }
 }
 
-/// Lower fixed zone reserved (queue + toast + status + footer). Upper scrollback is not reserved.
+/// Lower fixed zone reserved (queue + 待办栏 + toast + status + footer). Upper scrollback is not reserved.
 pub fn reserved_lower_fixed_zone(
     status_busy: bool,
     queue_lines: usize,
+    todo_lines: usize,
     toast_present: bool,
 ) -> usize {
     let status = if status_busy {
@@ -80,6 +81,7 @@ pub fn reserved_lower_fixed_zone(
     };
     let toast = usize::from(toast_present);
     queue_lines
+        .saturating_add(todo_lines)
         .saturating_add(toast)
         .saturating_add(status)
         .saturating_add(FOOTER_ROWS)
@@ -100,7 +102,7 @@ mod tests {
     #[test]
     fn short_terminal_resume_budget_keeps_status_room() {
         // 16 rows: reserved busy+footer(+no queue/toast)=3; resume overhead=5 → body ≤ 8
-        let reserved = reserved_lower_fixed_zone(true, 0, false);
+        let reserved = reserved_lower_fixed_zone(true, 0, 0, false);
         assert_eq!(reserved, 3);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
         assert_eq!(body, 8);
@@ -112,11 +114,19 @@ mod tests {
     fn toast_and_queue_shrink_resume_body_so_lower_stack_fits() {
         // 1 steer → spacer + msg + hint = 3 queue lines; + toast 1 → reserved 7
         assert_eq!(queue_strip_line_count(1, 0), 3);
-        let reserved = reserved_lower_fixed_zone(true, 3, true);
+        let reserved = reserved_lower_fixed_zone(true, 3, 0, true);
         assert_eq!(reserved, 7);
         let body = slot_body_budget(16, reserved, RESUME_SLOT);
         assert_eq!(body, 4);
         // queue(3)+toast(1)+status(2)+header(4)+body(4)+trailer(1)+footer(1) == 16
         assert_eq!(3 + 1 + 2 + RESUME_SLOT.overhead() + body + 1, 16);
+    }
+
+    #[test]
+    fn todo_bar_rows_count_in_lower_reserved() {
+        let reserved = reserved_lower_fixed_zone(true, 0, 3, false);
+        assert_eq!(reserved, 6);
+        let body = slot_body_budget(16, reserved, RESUME_SLOT);
+        assert_eq!(body, 5);
     }
 }

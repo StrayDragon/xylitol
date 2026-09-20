@@ -13,6 +13,9 @@ use super::entries::{CustomEntry, EntryBase, SessionEntry};
 /// Wire discriminator for Todo Custom snapshots.
 pub const CUSTOM_TYPE_AGENT_TODO: &str = "agent_todo";
 
+/// Max Unicode scalars in a trimmed item `content` (write reject, no clip).
+pub const TODO_CONTENT_MAX_CHARS: usize = 80;
+
 /// Closed status set for Todo items.
 ///
 /// `IntoStaticStr` keeps one snake_case SSOT shared by [`Self::as_str`] and the
@@ -107,9 +110,8 @@ impl std::fmt::Display for TodoValidationError {
 impl std::error::Error for TodoValidationError {}
 
 /// Validate domain rules: non-empty trimmed content, closed status set (via
-/// deserialize), at most one `in_progress`.
+/// deserialize), content length cap.
 pub fn validate_todo_list(list: &TodoList) -> Result<(), TodoValidationError> {
-    let mut in_progress = 0usize;
     for (idx, item) in list.items.iter().enumerate() {
         if item.id.trim().is_empty() {
             return Err(TodoValidationError(format!(
@@ -122,14 +124,12 @@ pub fn validate_todo_list(list: &TodoList) -> Result<(), TodoValidationError> {
                 item.id
             )));
         }
-        if item.status == TodoStatus::InProgress {
-            in_progress += 1;
+        if item.content.trim().chars().count() > TODO_CONTENT_MAX_CHARS {
+            return Err(TodoValidationError(format!(
+                "todo item '{}': content must be at most {TODO_CONTENT_MAX_CHARS} Unicode scalars after trim",
+                item.id
+            )));
         }
-    }
-    if in_progress > 1 {
-        return Err(TodoValidationError(
-            "at most one todo item may be in_progress".into(),
-        ));
     }
     Ok(())
 }
@@ -255,19 +255,33 @@ mod tests {
     }
 
     #[test]
-    fn dual_in_progress_rejects() {
+    fn dual_in_progress_is_allowed() {
         let list = TodoList::new(vec![
             item("1", "a", TodoStatus::InProgress),
             item("2", "b", TodoStatus::InProgress),
         ]);
-        let err = validate_todo_list(&list).unwrap_err();
-        assert!(err.0.contains("in_progress"));
+        assert!(validate_todo_list(&list).is_ok());
     }
 
     #[test]
     fn empty_content_rejects() {
         let list = TodoList::new(vec![item("1", "  ", TodoStatus::Pending)]);
         assert!(validate_todo_list(&list).is_err());
+    }
+
+    #[test]
+    fn content_over_eighty_scalars_rejects() {
+        let too_long = "a".repeat(TODO_CONTENT_MAX_CHARS + 1);
+        let list = TodoList::new(vec![item("1", &too_long, TodoStatus::Pending)]);
+        let err = validate_todo_list(&list).unwrap_err();
+        assert!(err.0.contains("80"), "{err}");
+    }
+
+    #[test]
+    fn content_exactly_eighty_scalars_ok() {
+        let exact = "你".repeat(TODO_CONTENT_MAX_CHARS);
+        let list = TodoList::new(vec![item("1", &exact, TodoStatus::Pending)]);
+        assert!(validate_todo_list(&list).is_ok());
     }
 
     #[test]

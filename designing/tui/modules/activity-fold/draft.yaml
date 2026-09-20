@@ -6,7 +6,7 @@ summary: 调用活动折叠：低级操作收进簇（簇=同一轮的多条过�
 alignment:
   fixed: 主滚动区段/簇/信封，不是块级 expandable
   item: Todo/Compaction 可进信封；ScrollNotice / Error 不进
-  todo-bar: 簇内 Todo 行，不另起浏览界面
+  todo-bar: 待办栏投影不进信封/簇；todo_* 工具块仍在时间线
 todos:
   - { done: true, text: "词表 Thinking / Thought Ns / Used N / 禁止 Planning next moves" }
   - { done: true, text: "collapsed / envelope / expanded 三态对照走 YAML" }

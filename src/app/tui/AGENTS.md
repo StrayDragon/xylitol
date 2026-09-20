@@ -19,7 +19,7 @@
 
 运行时真值：本目录产品代码。交互设计稿：[`designing/`](../../../designing/)（对照辅助）——阅读顺序、索引、tui-lab SOP 与快捷键约定见 [`designing/AGENTS.md`](../../../designing/AGENTS.md)；**默认忽略** `designing/app/`。改固定态跑 `scripts/check_tui_designing.py`（入 `just qa`）与 `check-tui-tokens`。现行词「固定区」= layout/widgets；勿用 `shell`/`scene` 命名。
 
-**信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`docs/architecture/TUI信息呈现与固定区词汇.md`](../../../docs/architecture/TUI信息呈现与固定区词汇.md) 表内词——尤其 **滚动提示**、**通知条**、**尾插 / 顶插**；弃用词（挂账 / Status trail / system 消息等）以该表「弃用」节为准，勿再引入已退役的换模预告。
+**信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`docs/architecture/TUI信息呈现与固定区词汇.md`](../../../docs/architecture/TUI信息呈现与固定区词汇.md) 表内词——尤其 **滚动提示**、**通知条**、**待办栏**、**尾插 / 顶插**；弃用词（挂账 / Status trail / chrome / 壳层 / system 消息等）以该表「弃用」节为准，勿再引入已退役的换模预告。
 
 **与 `agent_demo` 分界**：包引擎演示，不是本端 SSOT、不是 designing。硬边界见 `packages/xylitol-tui/AGENTS.md`。
 

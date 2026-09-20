@@ -7,8 +7,12 @@ pub enum FoldTarget {
     Diff(String),
     Ask(String),
     Thinking(String),
-    /// Session Todo checklist block (c1955).
-    Todo,
+    /// 待办栏 doing 列翼头（in_progress）。
+    TodoDoing,
+    /// 待办栏 pending 列翼头。
+    TodoPending,
+    /// 待办栏 completed 列翼头（completed / cancelled）。
+    TodoPast,
     /// Global `compaction_expanded` (Wave A / att29).
     Compaction,
     /// Per-block output-viewport fold (Ctrl+O semantics; att30); id = block fold

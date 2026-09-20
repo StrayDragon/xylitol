@@ -5002,10 +5002,6 @@ fn activity_fold_repeated_unknown_tools_count_calls() {
             done: true,
         });
     }
-    model.entries.push(super::bridge::UiEntry::Todo {
-        summary: "Todo · 10/10".into(),
-        detail_lines: vec![],
-    });
     model.entries.push(super::bridge::UiEntry::Thinking {
         id: "th".into(),
         text: "done".into(),

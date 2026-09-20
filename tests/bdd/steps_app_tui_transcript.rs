@@ -1719,18 +1719,8 @@ fn then_todo_block_bodies_agree(transcript_bdd: &TranscriptBdd) {
             })
             .expect("todo tool row")
     }
-    fn checklist(model: &UiModel) -> (String, Vec<String>) {
-        model
-            .entries
-            .iter()
-            .find_map(|e| match e {
-                UiEntry::Todo {
-                    summary,
-                    detail_lines,
-                } => Some((summary.clone(), detail_lines.clone())),
-                _ => None,
-            })
-            .expect("checklist projection row")
+    fn checklist(model: &UiModel) -> crate::protocol::session::TodoList {
+        model.todo.clone()
     }
 
     let (rebuilt_preview, rebuilt_body) = todo_tool(&models[0]);
@@ -1752,13 +1742,185 @@ fn then_todo_block_bodies_agree(transcript_bdd: &TranscriptBdd) {
         );
     }
 
-    // checklist projection row：latest-wins、同字形、两路径一致。
-    let (rebuilt_summary, rebuilt_lines) = checklist(&models[0]);
-    let (live_summary, live_lines) = checklist(&models[1]);
-    assert_eq!(rebuilt_summary, live_summary);
-    assert_eq!(rebuilt_summary, "Todo · 0/2");
-    assert_eq!(rebuilt_lines, live_lines);
-    assert_eq!(rebuilt_lines, vec!["[~] 检查环境", "[ ] 写清单"]);
+    // 待办栏：latest-wins、两路径一致（不进对话区）。
+    let rebuilt_list = checklist(&models[0]);
+    let live_list = checklist(&models[1]);
+    assert_eq!(rebuilt_list, live_list);
+    assert_eq!(rebuilt_list.items.len(), 2);
+    assert_eq!(rebuilt_list.items[0].content, "检查环境");
+    assert_eq!(rebuilt_list.items[1].content, "写清单");
+}
+
+fn paint_model(model: &UiModel) -> String {
+    crate::app::tui::InteractionBdd::from_model(model.clone()).render_plain(80)
+}
+
+#[when("以场景构建器回放含一条 in_progress 与前后翼条目的 TodoUpdated")]
+fn when_todo_bar_three_zone(transcript_bdd: &TranscriptBdd) {
+    use crate::protocol::session::{TodoItem, TodoList, TodoStatus};
+    let mut model = UiModel::new();
+    apply_xy_event(
+        &mut model,
+        &crate::app::core::driver::XyEvent::TodoUpdated {
+            list: TodoList::new(vec![
+                TodoItem {
+                    id: "1".into(),
+                    content: "read glossary".into(),
+                    status: TodoStatus::Completed,
+                },
+                TodoItem {
+                    id: "2".into(),
+                    content: "write todo-bar copy".into(),
+                    status: TodoStatus::InProgress,
+                },
+                TodoItem {
+                    id: "3".into(),
+                    content: "paint lab states".into(),
+                    status: TodoStatus::Pending,
+                },
+            ]),
+        },
+    );
+    *transcript_bdd.plain_frame.borrow_mut() = Some(paint_model(&model));
+    *transcript_bdd.models.borrow_mut() = vec![model];
+}
+
+#[then("待办栏默认展开当前任务与两翼条目")]
+fn then_todo_bar_shows_current(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .expect("painted frame");
+    assert!(
+        plain.contains("write todo-bar copy"),
+        "current task: {plain}"
+    );
+    assert!(plain.contains("doing"), "doing header: {plain}");
+    assert!(
+        !plain.contains("[~] write todo-bar copy"),
+        "doing MUST NOT use [~]: {plain}"
+    );
+    assert!(
+        plain.contains("[x] read glossary"),
+        "past body expanded by default: {plain}"
+    );
+    assert!(
+        plain.contains("[ ] paint lab states"),
+        "pending body expanded by default: {plain}"
+    );
+}
+
+#[then("对话条目中 MUST NOT 出现 checklist 投影行")]
+fn then_no_transcript_checklist(transcript_bdd: &TranscriptBdd) {
+    let models = transcript_bdd.models.borrow();
+    let model = models.first().expect("model");
+    assert!(!model.todo.is_empty(), "待办栏 holds the list, not entries");
+    let dump = model
+        .entries
+        .iter()
+        .map(|e| format!("{e:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !dump.contains("Todo ·"),
+        "no checklist row in entries: {dump}"
+    );
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .unwrap_or_else(|| paint_model(model));
+    assert!(
+        !plain.contains("Todo ·"),
+        "no unlabeled N/M in frame: {plain}"
+    );
+}
+
+#[then("翼头 MUST 分别标注 completed 与 pending 且 MUST NOT 出现 done/todo 行或无标签 N/M")]
+fn then_todo_bar_wing_headers(transcript_bdd: &TranscriptBdd) {
+    let plain = transcript_bdd
+        .plain_frame
+        .borrow()
+        .clone()
+        .expect("painted frame");
+    assert!(plain.contains("doing"), "doing column: {plain}");
+    assert!(plain.contains("completed"), "past wing: {plain}");
+    assert!(plain.contains("pending"), "pending wing: {plain}");
+    assert!(!plain.contains("Todo ·"), "{plain}");
+    assert!(
+        !plain.lines().any(|l| {
+            let t = l.trim();
+            t == "done" || t.starts_with("done ") || t == "todo" || t.starts_with("todo ")
+        }),
+        "no done/todo counter lines: {plain}"
+    );
+}
+
+fn dock_todo_rows(frame: &str) -> Vec<String> {
+    let lines: Vec<&str> = frame.lines().map(str::trim_end).collect();
+    let start = lines.iter().position(|t| {
+        (t.starts_with("▸ ") || t.starts_with("▾ "))
+            && (t.contains("doing") || t.contains("pending") || t.contains("completed"))
+    });
+    let Some(start) = start else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for t in &lines[start..] {
+        if t.chars().all(|c| c == '─') || t.contains(" more ") {
+            break;
+        }
+        if !t.is_empty() {
+            out.push((*t).to_string());
+        }
+    }
+    out
+}
+
+#[then("两种路径的待办栏默认露出 MUST 一致且同源自 SSOT")]
+fn then_todo_bar_resume_matches_live(transcript_bdd: &TranscriptBdd) {
+    let models = transcript_bdd.models.borrow();
+    assert!(models.len() >= 2, "need rebuilt + live");
+    assert_eq!(models[0].todo, models[1].todo);
+    let rebuilt = paint_model(&models[0]);
+    let live = paint_model(&models[1]);
+    let rebuilt_bar = dock_todo_rows(&rebuilt);
+    let live_bar = dock_todo_rows(&live);
+    assert_eq!(
+        rebuilt_bar, live_bar,
+        "待办栏 default fold must match (tool-block body is att36, not the bar):\nrebuilt={rebuilt}\nlive={live}"
+    );
+    assert!(
+        rebuilt_bar
+            .iter()
+            .any(|l| l.contains("检查环境") && !l.contains("[~]")),
+        "current task without [~]: {rebuilt_bar:?}"
+    );
+    assert!(
+        rebuilt_bar.iter().any(|l| l.contains("pending")),
+        "pending wing header: {rebuilt_bar:?}"
+    );
+    assert!(
+        rebuilt_bar.iter().any(|l| l.contains("[ ] 写清单")),
+        "pending body expanded by default: {rebuilt_bar:?}"
+    );
+}
+
+#[then("todo_* 工具块 body MUST 仍为清单行形态")]
+fn then_todo_tool_body_still_checklist(transcript_bdd: &TranscriptBdd) {
+    let models = transcript_bdd.models.borrow();
+    for model in models.iter() {
+        let body = model.entries.iter().find_map(|e| match e {
+            UiEntry::Tool { output, .. } if output.contains("[~]") => Some(output.as_str()),
+            _ => None,
+        });
+        assert_eq!(
+            body,
+            Some("[~] 检查环境\n[ ] 写清单"),
+            "tool block body: {body:?}"
+        );
+    }
 }
 
 // ---- att13/att36：todo_* 空态（fix-todo-empty-state） ----

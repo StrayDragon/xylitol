@@ -38,8 +38,8 @@ use live::{
 use paint::{
     PaintCtx, inter_block_spacer, key_hint, paint_ask_block, paint_assistant_block,
     paint_bash_block, paint_compaction_block, paint_diff_block, paint_error_block,
-    paint_scroll_notice_block, paint_streaming_assistant, paint_thinking_block, paint_todo_block,
-    paint_tool_block, paint_user_block, push_wrapped,
+    paint_scroll_notice_block, paint_streaming_assistant, paint_thinking_block, paint_tool_block,
+    paint_user_block, push_wrapped,
 };
 
 /// Fold defaults + per-block overrides (att7 / att20 / att21). Not `Copy` — holds maps.
@@ -55,8 +55,6 @@ pub struct ScrollbackFold {
     pub output_overrides: HashMap<String, bool>,
     /// Alt+E — compaction summary (default collapsed; shares chord with tools).
     pub compaction_expanded: bool,
-    /// Alt+E — Todo checklist (default collapsed one-line summary; c1955).
-    pub todo_expanded: bool,
     /// Per-block tools-family overrides (Tool / Diff / Ask); prefer over [`Self::tools_expanded`].
     pub tools_overrides: HashMap<String, bool>,
     /// Per-id thinking overrides; prefer over [`Self::thinking_expanded`].
@@ -73,8 +71,6 @@ impl Default for ScrollbackFold {
             output_overrides: HashMap::new(),
             // Product default: compaction summary collapsed (c1730 / pi).
             compaction_expanded: false,
-            // Product default: Todo checklist collapsed to summary line (c1955).
-            todo_expanded: false,
             tools_overrides: HashMap::new(),
             thinking_overrides: HashMap::new(),
         }
@@ -83,9 +79,9 @@ impl Default for ScrollbackFold {
 
 /// Defaults that MAY full-clear the paint cache on change.
 ///
-/// `tools_output_expanded` / `compaction_expanded` / `todo_expanded` MUST stay
+/// `tools_output_expanded` / `compaction_expanded` MUST stay
 /// out of this key (ath25 / att29–att30): entry fingerprints already carry them,
-/// so Compaction / Ctrl+O / Todo toggles only re-paint affected blocks.
+/// so Compaction / Ctrl+O toggles only re-paint affected blocks.
 pub type ScrollbackFoldDefaultsKey = (bool, bool);
 
 impl ScrollbackFold {
@@ -429,10 +425,6 @@ pub fn render_scrollback(
                 detail.as_deref(),
                 paint_ctx,
             ),
-            UiEntry::Todo {
-                summary,
-                detail_lines,
-            } => paint_todo_block(summary, detail_lines, paint_ctx),
             UiEntry::ScrollNotice { text } => paint_scroll_notice_block(text, paint_ctx),
             UiEntry::Error { text } => paint_error_block(text, paint_ctx),
         };

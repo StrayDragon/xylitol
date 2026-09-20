@@ -142,6 +142,12 @@ impl InteractionBdd {
         strip_ansi_live_window(&self.render_lines(width).join("\n"))
     }
 
+    /// Product toast slot (status 之上). Same seam as host `push_toast_notice`.
+    pub fn push_toast_notice(&mut self, body: impl Into<String>) -> &mut Self {
+        self.root.push_toast_notice(body);
+        self
+    }
+
     /// Live model entries for identity checks (`UiEntry` shapes).
     pub fn entries(&self) -> &[UiEntry] {
         &self.model.entries

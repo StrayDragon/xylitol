@@ -27,7 +27,9 @@ impl Component for SharedUiRoot {
     }
 
     fn input_wants_rerender(&self, event: &InputEvent) -> bool {
-        self.0.borrow().editor_wants_rerender(event)
+        let mut root = self.0.borrow_mut();
+        let todo = std::mem::take(&mut root.todo_pointer_dirty);
+        todo || root.editor_wants_rerender(event)
     }
 
     fn take_pending_clipboard(&mut self) -> Vec<String> {
@@ -39,11 +41,12 @@ impl Component for SharedUiRoot {
     }
 
     fn wants_pointer_motion(&self) -> bool {
-        self.0.borrow().editor.is_selection_dragging()
+        let root = self.0.borrow();
+        root.editor.is_selection_dragging() || root.todo_selection.is_dragging()
     }
 
     fn clear_pointer_selection(&mut self) -> bool {
-        Component::clear_pointer_selection(&mut self.0.borrow_mut().editor)
+        Component::clear_pointer_selection(&mut *self.0.borrow_mut())
     }
 
     fn invalidate(&mut self) {

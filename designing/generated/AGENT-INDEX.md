@@ -28,6 +28,7 @@
 | tui | status | idle：**1 行空白**呼吸距，无 spinner / Ready。busy：`spinner + 短词` 紧贴左。 | busy, idle | `/tui/status` |
 | tui | theme | **产品 host 默认 dark**。本稿预览默认 light 只为审色，不是产品默认。 | list | `/tui/theme` |
 | tui | toast-notice | status / spinner **上方**恰好 1 行通知条。不是滚动提示，不是错误行。 | busy-resume-deny | `/tui/toast-notice` |
+| tui | todo-bar | 下缘待办栏。三区是视图，不改 SSOT 顺序。空表不渲染。 | all-done, all-pending, both-open, both-open-wide, capped, empty, focus, focus-wide, no-focus, no-focus-wide, past-open, past-open-wide, pending-open, pending-open-wide, wrap-stack, wrap-wide | `/tui/todo-bar` |
 | tui | tool | tool / bash / diff：**1-cell 轨 + gutter + 内容**（与 expandable 同源）。 | success | `/tui/tool` |
 | tui | transcript | 当前轮写入 scrollback。不是 Codex 独立浏览界面。 | mixed | `/tui/transcript` |
 | tui | widgets | 列表槽、空态、窄宽。静图槽一律平等，禁止「(包)」置灰表达实现分层。 | empty | `/tui/widgets` |

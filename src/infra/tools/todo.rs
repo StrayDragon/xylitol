@@ -469,10 +469,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn dual_in_progress_rejects() {
-        let (gw, _, _) = bound_gw().await;
+    async fn dual_in_progress_rewrite_persists() {
+        let (gw, store, sid) = bound_gw().await;
         let tool = TodoRewriteTool::new(gw);
-        let err = tool
+        let out = tool
             .execute(
                 &XyToolCtx::new("c"),
                 json!({
@@ -483,8 +483,21 @@ mod tests {
                 }),
             )
             .await
-            .unwrap_err();
-        assert!(err.to_string().contains("in_progress"));
+            .unwrap();
+        let v: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["items"].as_array().unwrap().len(), 2);
+        assert_eq!(v["items"][0]["status"], "in_progress");
+        assert_eq!(v["items"][1]["status"], "in_progress");
+        let branch = store.load_leaf_branch(&sid).await.unwrap();
+        let customs: Vec<_> = branch
+            .iter()
+            .filter_map(|e| match e {
+                SessionEntry::Custom(c) if c.custom_type == CUSTOM_TYPE_AGENT_TODO => Some(c),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(customs.len(), 1);
+        assert_eq!(customs[0].data["items"], v["items"]);
     }
 
     #[tokio::test]

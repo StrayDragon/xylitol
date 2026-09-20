@@ -6,7 +6,7 @@ summary: scrollback 与 status 之间的 Steering / Follow-up 条。
 alignment:
   fixed: scrollback → 队列条 → 通知条 → status
   item: 注入后变普通 User 条目
-  todo-bar: 本条即 steer/follow-up 可见性 SSOT
+  todo-bar: 待办栏在队列条与通知条之间；本条仍是 steer/follow-up 可见性 SSOT
 todos:
   - { done: true, text: "禁止 footer/status 队列徽章" }
 keys:

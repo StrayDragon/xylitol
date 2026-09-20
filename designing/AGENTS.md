@@ -50,7 +50,7 @@ intent.md 只写 **可观察 MUST**（词表、禁止滑入、轨/flush、跨端
 | 静图 UI 无「(包)」分层样式；无顶栏快捷键墙 | 把包分层样式当产品表达 |
 | **无独立快捷键设计**：组件自己的键写在该模块 `draft.yaml` `keys:`（仅当非空时页面展示） | 另立快捷键设计 / 在散文里钉键位 |
 | `agent_demo` 不是产品 playground / 固定区真值（硬边界见 `packages/xylitol-tui/AGENTS.md`） | 拿 demo 当产品定稿 |
-| 信息呈现用词：[`docs/architecture/TUI信息呈现与固定区词汇.md`](../docs/architecture/TUI信息呈现与固定区词汇.md) | 发明第二套同义词 |
+| 信息呈现用词：[`docs/architecture/TUI信息呈现与固定区词汇.md`](../docs/architecture/TUI信息呈现与固定区词汇.md)；固定区旧称 chrome / 壳层只留在该表弃用对照 | 发明第二套同义词；在 intent / 注释里复读 chrome |
 | `packages/xylitol-tui` **不**平行维护 design HTML | 在包里另起 design 文档树 |
 | shell 帧是产品渲染导出；要改设计先改产品或先立 change | 在 `shell-frame.json` / regions 锚点里手改视觉内容来「修设计」 |
 

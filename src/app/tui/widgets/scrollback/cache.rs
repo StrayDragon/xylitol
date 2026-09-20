@@ -151,14 +151,6 @@ pub(super) fn entry_fingerprint(entry: &UiEntry, fold: &ScrollbackFold) -> u64 {
             detail.hash(&mut h);
             fold.compaction_expanded.hash(&mut h);
         }
-        UiEntry::Todo {
-            summary,
-            detail_lines,
-        } => {
-            summary.hash(&mut h);
-            detail_lines.hash(&mut h);
-            fold.todo_expanded.hash(&mut h);
-        }
     }
     h.finish()
 }

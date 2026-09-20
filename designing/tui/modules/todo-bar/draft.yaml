@@ -1,0 +1,18 @@
+id: todo-bar
+title: 待办栏
+surface: tui
+summary: "下缘三区待办栏：doing|pending|completed，默认展开可折；≥100 分栏 / 更窄竖叠；doing 不用 [~]；栏内可划选复制；内容行≤6，上下 ─ 轮廓，超出 ↑/↓ N more。"
+alignment:
+  fixed: "队列条 → 待办栏 → 通知条 → status → editor；空表 0 行；换行计入实际行"
+  item: 不进对话条目 / 信封；todo_* 工具块仍在时间线
+  todo-bar: 本模块即待办栏
+todos:
+  - { done: true, text: "计数在翼头：n completed / n pending；不用 done/todo 行" }
+  - { done: true, text: "≥100 三栏 / <100 竖叠；content≤80 换行不截断" }
+  - { done: true, text: "可见行 ≤ min(6, term_rows/4)，超出栏内滚动" }
+  - { done: true, text: "有表上下 ─ 轮廓；溢出边框 ↑ N more / ↓ N more，不替换末字" }
+  - { done: true, text: "人类目检 stack/wide/wrap/capped 与列宽拖拽后再晋级产品模块" }
+keys: []
+notes: |
+  断点 ≡ DESIGN spacing.diff-side-by-side-min-cols。
+  对照 `/tui/todo-bar/<state>`；列宽滑条可试断点。

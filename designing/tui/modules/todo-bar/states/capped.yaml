@@ -1,0 +1,33 @@
+id: todo-bar.capped
+cols: 80
+must_contain:
+  - "▾ 1 doing"
+  - "write todo-bar copy"
+  - "▾ 5 pending"
+  - "[ ] paint lab states"
+  - "[ ] graduate to product"
+  - "[ ] wire lower fixed zone"
+  - "─── ↓ 4 more ───────────────────────────────────"
+must_not_contain:
+  - "[~]"
+  - "Todo ·"
+  - "done "
+  - "todo "
+  - "…"
+lines:
+  -
+    - { text: "────────────────────────────────────────────────────────────────────────────────", token: muted }
+  -
+    - { text: "▾ 1 doing", token: muted }
+  -
+    - { text: "write todo-bar copy", token: on-surface }
+  -
+    - { text: "▾ 5 pending", token: muted }
+  -
+    - { text: "[ ] paint lab states", token: muted }
+  -
+    - { text: "[ ] graduate to product", token: muted }
+  -
+    - { text: "[ ] wire lower fixed zone", token: muted }
+  -
+    - { text: "─── ↓ 4 more ───────────────────────────────────────────────────────────────────", token: muted }

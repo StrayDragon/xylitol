@@ -86,23 +86,9 @@ pub fn sync_todo_checklist_from_entries(ui_model: &mut UiModel, entries: &[Sessi
     sync_todo_checklist(ui_model, latest_agent_todo(entries).unwrap_or_default());
 }
 
-/// Upsert / remove Todo checklist from a parsed list (tool End or resume).
+/// Latest-wins 待办栏 list (tool End or resume). Empty table occupies 0 dock rows.
 pub fn sync_todo_checklist(ui_model: &mut UiModel, list: TodoList) {
-    ui_model
-        .entries
-        .retain(|e| !matches!(e, UiEntry::Todo { .. }));
-    if list.is_empty() {
-        return;
-    }
-    ui_model.entries.push(todo_list_to_ui_entry(&list));
-}
-
-/// Latest-wins checklist row (summary + shared-glyph body, atd8 / att36).
-fn todo_list_to_ui_entry(list: &TodoList) -> UiEntry {
-    UiEntry::Todo {
-        summary: list.summary_line(),
-        detail_lines: crate::app::tui::bridge::todo_list_body_lines(list),
-    }
+    ui_model.todo = list;
 }
 
 /// Merge a persisted toolResult into scrollback (att12): same End semantics as live.
@@ -1186,10 +1172,6 @@ mod tests {
                     } => format!(
                         "tool[preview={args_preview:?} body={output:?} done={done} err={is_error}]"
                     ),
-                    UiEntry::Todo {
-                        summary,
-                        detail_lines,
-                    } => format!("todo[{summary} {detail_lines:?}]"),
                     UiEntry::User { text } => format!("user[{text}]"),
                     other => format!("other[{other:?}]"),
                 })
@@ -1205,10 +1187,14 @@ mod tests {
             vec![
                 "user[plan it]".to_string(),
                 "tool[preview=\"2 items · 1 in progress\" body=\"[~] 检查环境\\n[ ] 写清单\" done=true err=false]".to_string(),
-                "todo[Todo · 0/2 [\"[~] 检查环境\", \"[ ] 写清单\"]]".to_string(),
             ],
-            "att13/att36: humanized preview, checklist body, typed projection row"
+            "att13/att36: humanized preview + checklist body on the tool row"
         );
+        assert_eq!(
+            rebuilt.todo, live.todo,
+            "待办栏 list must match live/resume"
+        );
+        assert_eq!(live.todo.items.len(), 2);
     }
 
     #[test]

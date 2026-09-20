@@ -325,22 +325,7 @@ impl super::Editor {
 
     /// Paint ↑/↓ more chrome; prefer the cue text over decorative dashes when narrow.
     pub(super) fn render_more_border(&self, width: usize, up: bool, count: usize) -> String {
-        let arrow = if up { '↑' } else { '↓' };
-        let core = format!(" {arrow} {count} more ");
-        let core_w = visible_width(&core);
-        if width == 0 {
-            return String::new();
-        }
-        if width <= core_w {
-            return (self.theme.border_color)(&truncate_to_width(&core, width, "…", false));
-        }
-        let lead = "───".to_string();
-        let lead_w = visible_width(&lead);
-        if lead_w + core_w <= width {
-            let rest = width - lead_w - core_w;
-            return (self.theme.border_color)(&format!("{lead}{core}{}", "─".repeat(rest)));
-        }
-        (self.theme.border_color)(&truncate_to_width(&format!("─{core}"), width, "…", false))
+        (self.theme.border_color)(&crate::utils::overflow_more_border(width, up, count))
     }
 }
 
