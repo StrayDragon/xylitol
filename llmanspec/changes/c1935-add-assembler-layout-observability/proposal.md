@@ -1,13 +1,12 @@
 ---
-depends_on:
-  - c1890-add-responses-context-policy-assembler
+depends_on: []
 ---
 
 # Assembler 布局决策可观测
 > **一句话**：记录 Assembler 布局决策（按什么规则组装），排障可复现发出去的规则集
 
 
-> **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/`，未进活跃 graph。2026-08-10「移入 active 待处理队列 / 排序 #16」作废。
+> **Unparked 2026-09-21**：从 `delayed-changes/` 迁回 `changes/`。Assembler（历史 c1890）已在树内，不再用已撤 id 卡 `depends_on`。
 
 
 > **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md)（术语对照 §7）
