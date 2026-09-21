@@ -117,7 +117,7 @@
   场景: config-max-turns-via-should-stop
     - 当运行时配置 session.max_turns（正整数 N）存在时，组合根 MUST 在装配后安装 should_stop_after_turn：于 Settle 的 TurnEnd 后若 settle 次数 >= N 则返回 true 结束 run；缺省或未配置时 MUST NOT 安装该步数钩子（开放结束，见 ar24）。MUST NOT 把工具续跑的 iteration TurnEnd 计入额度，MUST NOT 使用 max_iterations 字段名。该行为 MUST 有可执行 BDD 或等价单测场景。
 
-  @req:r1061 @human
+  @req:r1843 @human
   场景: iteration-close-vs-settle
     - 一次用户触发的 run（观测根 agent.turn，AgentStart…AgentEnd）内，每一轮模型 generate 及其工具批是一次 iteration（观测 agent.iteration，XyEvent TurnStart/TurnEnd 成对）。本轮仍有 tool_calls、将再 generate 时 MUST 以 ContinueTools 关闭 iteration：发 TurnEnd 配成对，MUST NOT ContextTokenSettlement、MUST NOT auto-compact 预检、MUST NOT should_stop_after_turn。本轮不再要工具时 MUST Settle：TurnEnd + settlement + threshold/overflow 预检 + should_stop。generate 失败走 overflow Case1 的收尾仍为 Settle。MUST NOT 用「跳过 TurnEnd」或「导出侧去重 skipped」代替这组穷举。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。
 
