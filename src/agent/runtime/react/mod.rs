@@ -24,7 +24,8 @@ use support::{
     persist_agent_message_with_thought_elapsed, prepare_turn_binding,
 };
 use turn_end::{
-    FinishTurnOutcome, drain_queue, finish_turn, queue_counts, try_turn_end_compaction,
+    FinishTurnOutcome, IterationClose, close_iteration, drain_queue, queue_counts,
+    try_turn_end_compaction,
 };
 
 use std::pin::Pin;
@@ -1360,7 +1361,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         .rev()
                         .find(|m| m.role_name() == "assistant")
                         .cloned();
-                    let finished = finish_turn(
+                    let finished = close_iteration(
                         &store,
                         &session_id,
                         &model_manager,
@@ -1381,6 +1382,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         turn_obs_parent,
                         &obs_session,
                         &cwd,
+                        IterationClose::Settle,
                     )
                     .await;
                     for event in finished.events {
@@ -1541,7 +1543,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                 }
 
-                let finished = finish_turn(
+                let finished = close_iteration(
                     &store,
                     &session_id,
                     &model_manager,
@@ -1562,6 +1564,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     turn_obs_parent,
                     &obs_session,
                     &cwd,
+                    IterationClose::ContinueTools,
                 )
                 .await;
                 for event in finished.events {

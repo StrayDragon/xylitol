@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2820-refactor-iteration-settle
+base_branch: main
+base_sha: f98700c0826c193aa0e84cc3c30c854213285d7b
 ---
 
 # 把 ReAct iteration 结束与 user-run 收尾拆开

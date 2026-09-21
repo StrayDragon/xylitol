@@ -159,4 +159,4 @@
 
   @req:r1485 @human
   场景: otel-compaction-skipped-span
-    - 当低频观测 span 激活且会话 compaction 的 prepare_compaction 门闸早退（无可摘要历史 / Already compacted 等；auto 静默路径与 manual 路径皆然）且会话身份已知时，MUST 导出名为 agent.compaction.skipped 的轻量 span：MUST 携带跳过原因（skip_reason）与该会话的 langfuse.session.id / xylitol.session.id；MUST NOT 使用 agent.compaction 名（otel19 保留予过 prepare 的尝试），MUST NOT 携带 xylitol.obs.lane=llm，MUST NOT 伪装 LLM 语义（otel22）；auto 早退 MUST NOT 因此发出 CompactionEnd；存在活跃 agent.turn 时 MAY 为其子 span；无活跃会话（无可附的会话身份）MAY 省略；观测闸关闭时 MUST 为零/近零开销。由单测（CollectingReporter）覆盖，MUST NOT 为静态存在性单独扩 BDD step。
+    - 当低频观测 span 激活且会话 compaction 的 prepare_compaction 门闸早退（无可摘要历史 / Already compacted 等；auto 静默路径与 manual 路径皆然）且会话身份已知时，MUST 导出名为 agent.compaction.skipped 的轻量 span：MUST 携带跳过原因（skip_reason）与该会话的 langfuse.session.id / xylitol.session.id；MUST NOT 使用 agent.compaction 名（otel19 保留予过 prepare 的尝试），MUST NOT 携带 xylitol.obs.lane=llm，MUST NOT 伪装 LLM 语义（otel22）；auto 早退 MUST NOT 因此发出 CompactionEnd；auto 预检 MUST 仅发生在 Settle（或 overflow 错误收尾），MUST NOT 在工具续跑的 iteration 关闭时导出 skipped；存在活跃 agent.turn 时 MAY 为其子 span；无活跃会话（无可附的会话身份）MAY 省略；观测闸关闭时 MUST 为零/近零开销。由单测（CollectingReporter）覆盖，MUST NOT 为静态存在性单独扩 BDD step。

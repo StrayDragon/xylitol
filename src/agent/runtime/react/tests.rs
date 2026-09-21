@@ -1365,11 +1365,13 @@ async fn tool_call_then_continuation_round_reaches_final_text() {
     let mut saw_tool = false;
     let mut saw_final_text = false;
     let mut turn_end_count = 0;
+    let mut settlements = 0;
     while let Some(evt) = stream.next().await {
         match evt {
             XyEvent::ToolExecutionEnd { .. } => saw_tool = true,
             XyEvent::TextDelta(t) if t.contains("the answer is 42") => saw_final_text = true,
             XyEvent::TurnEnd { .. } => turn_end_count += 1,
+            XyEvent::ContextTokenSettlement { .. } => settlements += 1,
             _ => {}
         }
     }
@@ -1381,6 +1383,112 @@ async fn tool_call_then_continuation_round_reaches_final_text() {
     assert_eq!(
         turn_end_count, 2,
         "two ReAct iterations → two TurnEnd events"
+    );
+    assert_eq!(
+        settlements, 1,
+        "ContinueTools must not settle; only the no-tool round settles"
+    );
+}
+
+#[tokio::test]
+async fn tool_continuation_does_not_invoke_should_stop_until_settle() {
+    use crate::protocol::lifecycle::XyEvent;
+    use futures::StreamExt;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let done_stop = || crate::protocol::model::XyChunk::Done {
+        finish_reason: crate::protocol::message::XyStopReason::Stop,
+        usage: None,
+    };
+    let rounds = vec![
+        vec![
+            crate::protocol::model::XyChunk::ToolCallEnd {
+                id: "call-1".into(),
+                name: "mock_tool".into(),
+                args: serde_json::json!({"input": "x"}),
+            },
+            done_stop(),
+        ],
+        vec![
+            crate::protocol::model::XyChunk::TextDelta("the answer is 42".into()),
+            done_stop(),
+        ],
+    ];
+    let mut agent = make_agent_with_rounds(
+        rounds,
+        ToolSet::from_iter(vec![
+            Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
+        ]),
+    );
+    let calls = std::sync::Arc::new(AtomicUsize::new(0));
+    let calls_hook = calls.clone();
+    agent.set_should_stop_after_turn(Some(std::sync::Arc::new(move |_| {
+        calls_hook.fetch_add(1, Ordering::SeqCst);
+        false
+    })));
+
+    let mut stream = run_agent(&mut agent, "go").await;
+    let mut saw_final_text = false;
+    while let Some(evt) = stream.next().await {
+        if let XyEvent::TextDelta(t) = evt
+            && t.contains("the answer is 42")
+        {
+            saw_final_text = true;
+        }
+    }
+    assert!(saw_final_text);
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "should_stop fires on Settle only, not ContinueTools"
+    );
+}
+
+#[tokio::test]
+async fn max_turns_one_allows_tool_continuation() {
+    use crate::protocol::lifecycle::XyEvent;
+    use futures::StreamExt;
+
+    let done_stop = || crate::protocol::model::XyChunk::Done {
+        finish_reason: crate::protocol::message::XyStopReason::Stop,
+        usage: None,
+    };
+    let rounds = vec![
+        vec![
+            crate::protocol::model::XyChunk::ToolCallEnd {
+                id: "call-1".into(),
+                name: "mock_tool".into(),
+                args: serde_json::json!({"input": "x"}),
+            },
+            done_stop(),
+        ],
+        vec![
+            crate::protocol::model::XyChunk::TextDelta("the answer is 42".into()),
+            done_stop(),
+        ],
+    ];
+    let mut agent = make_agent_with_rounds(
+        rounds,
+        ToolSet::from_iter(vec![
+            Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
+        ]),
+    );
+    agent.set_should_stop_after_turn(Some(crate::agent::max_turns_stop_hook(1)));
+
+    let mut stream = run_agent(&mut agent, "go").await;
+    let mut saw_tool = false;
+    let mut saw_final_text = false;
+    while let Some(evt) = stream.next().await {
+        match evt {
+            XyEvent::ToolExecutionEnd { .. } => saw_tool = true,
+            XyEvent::TextDelta(t) if t.contains("the answer is 42") => saw_final_text = true,
+            _ => {}
+        }
+    }
+    assert!(saw_tool);
+    assert!(
+        saw_final_text,
+        "max_turns=1 must not stop the run after the first tool batch"
     );
 }
 

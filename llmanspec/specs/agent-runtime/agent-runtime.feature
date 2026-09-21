@@ -15,7 +15,7 @@
 
   @req:r1047 @human
   场景: 工具批后继续
-    - 同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。
+    - 同一模型响应中的全部工具调用 MUST 在下一轮模型调用前执行完毕（可并行或串行）；MUST NOT 因流结束 Done 而提前结束含 tool_calls 的回合。该续跑 MUST 关闭本 iteration（与 TurnStart 成对的 TurnEnd），MUST NOT 因此做 ContextTokenSettlement、auto-compact 预检或 should_stop_after_turn。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。
 
   @req:r1038 @human
   场景: tool-intent-before-execution
@@ -91,7 +91,7 @@
 
   @req:r1041 @human
   场景: should-stop-after-turn
-    - ReAct MUST 在每次 TurnEnd 之后、轮询 steer/follow-up 或开始下一模型调用之前，调用可选的单槽 should_stop_after_turn（对齐 pi shouldStopAfterTurn）；返回 true 时 MUST 发射 AgentEnd 并结束本 run，MUST NOT 为此新增专用停闸 XyEvent 变体，MUST NOT abort 本 turn 已完成的助手消息或工具。未注册时 MUST 不因步数上限停止。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。
+    - ReAct MUST 在 Settle（本轮模型调用不再续跑工具）的 TurnEnd 之后、轮询 steer/follow-up 或开始下一模型调用之前，调用可选的单槽 should_stop_after_turn（对齐 pi shouldStopAfterTurn）；返回 true 时 MUST 发射 AgentEnd 并结束本 run，MUST NOT 为此新增专用停闸 XyEvent 变体，MUST NOT abort 本 turn 已完成的助手消息或工具。工具续跑的 iteration TurnEnd（ContinueTools）MUST NOT 调用该钩子。未注册时 MUST 不因步数上限停止。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。
 
   @req:r1042 @human
   场景: next-turn-refresh-model-thinking
@@ -115,15 +115,19 @@
 
   @req:r1048 @human
   场景: config-max-turns-via-should-stop
-    - 当运行时配置 session.max_turns（正整数 N）存在时，组合根 MUST 在装配后安装 should_stop_after_turn：于 TurnEnd 后若 turn_index+1 >= N 则返回 true 结束 run；缺省或未配置时 MUST NOT 安装该步数钩子（开放结束，见 ar24）。MUST NOT 使用 max_iterations 字段名。该行为 MUST 有可执行 BDD 或等价单测场景。
+    - 当运行时配置 session.max_turns（正整数 N）存在时，组合根 MUST 在装配后安装 should_stop_after_turn：于 Settle 的 TurnEnd 后若 settle 次数 >= N 则返回 true 结束 run；缺省或未配置时 MUST NOT 安装该步数钩子（开放结束，见 ar24）。MUST NOT 把工具续跑的 iteration TurnEnd 计入额度，MUST NOT 使用 max_iterations 字段名。该行为 MUST 有可执行 BDD 或等价单测场景。
+
+  @req:r1061 @human
+  场景: iteration-close-vs-settle
+    - 一次用户触发的 run（观测根 agent.turn，AgentStart…AgentEnd）内，每一轮模型 generate 及其工具批是一次 iteration（观测 agent.iteration，XyEvent TurnStart/TurnEnd 成对）。本轮仍有 tool_calls、将再 generate 时 MUST 以 ContinueTools 关闭 iteration：发 TurnEnd 配成对，MUST NOT ContextTokenSettlement、MUST NOT auto-compact 预检、MUST NOT should_stop_after_turn。本轮不再要工具时 MUST Settle：TurnEnd + settlement + threshold/overflow 预检 + should_stop。generate 失败走 overflow Case1 的收尾仍为 Settle。MUST NOT 用「跳过 TurnEnd」或「导出侧去重 skipped」代替这组穷举。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。
 
   @req:r1049 @human
   场景: turn-end-threshold-compaction
-    - ReAct 或 session 编排在非 abort 的 assistant 回合落定后 MUST 调用 threshold auto-compact 检查（domain-compaction c2 地板感知有效触发阈值 + c17/c18）；CompactionSettings.enabled 为 false、未超有效阈值、abort、或 stale 守卫命中时 MUST NOT compact；MUST NOT 仅依赖 TUI host 轮询触发。该行为 MUST 有可执行 BDD 或等价单测场景。
+    - ReAct 或 session 编排在 Settle（本轮不再续跑工具、非 abort）后 MUST 调用 threshold auto-compact 检查（domain-compaction c2 地板感知有效触发阈值 + c17/c18）；ContinueTools、CompactionSettings.enabled 为 false、未超有效阈值、abort、或 stale 守卫命中时 MUST NOT compact；MUST NOT 仅依赖 TUI host 轮询触发。该行为 MUST 有可执行 BDD 或等价单测场景。
 
   @req:r1050 @human
   场景: turn-end-overflow-compact-retry
-    - ReAct 在非 abort 的 assistant 回合落定后 MUST 先于 threshold（ar31）评估 overflow Case1（domain-compaction c21–c23）：sameModel 且 is_context_overflow 时执行一次 compact-and-retry；willRetry 为 true 时 MUST 从 store 重载与 as45 同源的 compaction-aware 工作 history（含摘掉错误 assistant 的效果，因 error/aborted 投影跳过或重载不含未裁切旧链）并继续本 run 的下一模型调用；MUST NOT 仅 pop 错误行却继续握持 firstKept 之前的膨胀 history；二次 overflow MUST 失败并结束 recovery；overflow MUST NOT 走 AutoRetry 瞬态重试。该行为 MUST 有可执行 BDD 场景（见 domain-compaction.feature 锚点）。
+    - ReAct 在 Settle（或 generate 失败走 overflow Case1 的收尾）后 MUST 先于 threshold（ar31）评估 overflow Case1（domain-compaction c21–c23）。ContinueTools MUST NOT 做该预检。sameModel 且 is_context_overflow 时执行一次 compact-and-retry；willRetry 为 true 时 MUST 从 store 重载与 as45 同源的 compaction-aware 工作 history（含摘掉错误 assistant 的效果，因 error/aborted 投影跳过或重载不含未裁切旧链）并继续本 run 的下一模型调用；MUST NOT 仅 pop 错误行却继续握持 firstKept 之前的膨胀 history；二次 overflow MUST 失败并结束 recovery；overflow MUST NOT 走 AutoRetry 瞬态重试。该行为 MUST 有可执行 BDD 场景（见 domain-compaction.feature 锚点）。
 
   @req:r1051 @human
   场景: context-policy-responses-assembler

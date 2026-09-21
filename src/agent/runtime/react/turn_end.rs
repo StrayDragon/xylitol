@@ -43,9 +43,18 @@ pub(crate) struct FinishTurnResult {
     pub(crate) outcome: FinishTurnOutcome,
 }
 
-/// Shared turn-end: settle → TurnEnd → hook → compaction → stop/steer poll.
+/// How this iteration closes (c2820). Exhaustive: do not add a third "quiet skip".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum IterationClose {
+    /// Tool calls remain; the inner loop will generate again. Pair `TurnEnd` only.
+    ContinueTools,
+    /// No further tools (or overflow-error recovery). Settlement + precheck + should_stop.
+    Settle,
+}
+
+/// Close one iteration. [`IterationClose::Settle`] is the historical `finish_turn` body.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn finish_turn(
+pub(crate) async fn close_iteration(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
@@ -66,17 +75,23 @@ pub(crate) async fn finish_turn(
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     obs_session: &xylitol_ai_bridge::ObsSessionContext,
     cwd: &str,
+    kind: IterationClose,
 ) -> FinishTurnResult {
     let turn_index = turn as u32;
-    let settlement = settle_turn_context(
-        store,
-        session_id,
-        model_manager,
-        fixed_context,
-        turn_obs_parent,
-        obs_session,
-    )
-    .await;
+    let settlement = match kind {
+        IterationClose::Settle => {
+            settle_turn_context(
+                store,
+                session_id,
+                model_manager,
+                fixed_context,
+                turn_obs_parent,
+                obs_session,
+            )
+            .await
+        }
+        IterationClose::ContinueTools => None,
+    };
     let mut events = Vec::new();
     if let Some(s) = &settlement {
         events.push(XyEvent::ContextTokenSettlement {
@@ -89,6 +104,15 @@ pub(crate) async fn finish_turn(
     if let Some(bus) = hook_bus {
         let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::turn_end(turn as u32);
         observe_hook(bus, ty, phase, ctx).await;
+    }
+    if kind == IterationClose::ContinueTools {
+        return FinishTurnResult {
+            events,
+            outcome: FinishTurnOutcome::Advanced {
+                pending: Vec::new(),
+                queue_update: None,
+            },
+        };
     }
     let will_continue = try_turn_end_compaction(
         store,

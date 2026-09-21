@@ -10,6 +10,7 @@
 //! `AgentCapabilities::steer` / `AgentCapabilities::follow_up` (via XyDriver).
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::protocol::message::AgentMessage;
 use serde_json::Value;
@@ -27,7 +28,9 @@ pub type BeforeToolHook = Arc<dyn Fn(&str, &str, &Value) -> Option<String> + Sen
 pub type AfterToolHook =
     Arc<dyn Fn(&str, &str, Value, bool) -> Option<(Value, bool)> + Send + Sync>;
 
-/// Context passed to [`ShouldStopAfterTurnHook`] after each `TurnEnd` (pi-aligned).
+/// Context passed to [`ShouldStopAfterTurnHook`] after each **Settle** `TurnEnd`.
+///
+/// Tool-continuing iteration closes pair `TurnEnd` but MUST NOT invoke this hook (c2820).
 #[derive(Debug, Clone)]
 pub struct ShouldStopAfterTurnCtx {
     /// Zero-based turn index that just completed.
@@ -47,17 +50,22 @@ pub struct ShouldStopAfterTurnCtx {
 
 /// After-turn stop callback (pi `shouldStopAfterTurn`).
 ///
-/// Called after `TurnEnd`. Returning `true` ends the run with `AgentEnd` without
+/// Called after Settle `TurnEnd`. Returning `true` ends the run with `AgentEnd` without
 /// draining steer / follow-up or starting another model call.
 ///
 /// Contract: must not panic. Prefer returning `false` on uncertainty.
 pub type ShouldStopAfterTurnHook = Arc<dyn Fn(&ShouldStopAfterTurnCtx) -> bool + Send + Sync>;
 
-/// Build a [`ShouldStopAfterTurnHook`] for `session.max_turns` (c1620 / ar30).
+/// Build a [`ShouldStopAfterTurnHook`] for `session.max_turns` (c1620 / ar30 / c2820).
 ///
-/// Stops after `max_turns` completed turns (`turn_index` is 0-based).
+/// Counts **Settle** invocations (each call is one completed user-facing round),
+/// not raw iteration `turn_index` — tool continuation must not consume the budget.
 pub fn max_turns_stop_hook(max_turns: u32) -> ShouldStopAfterTurnHook {
-    Arc::new(move |ctx: &ShouldStopAfterTurnCtx| ctx.turn_index.saturating_add(1) >= max_turns)
+    let settles = AtomicU32::new(0);
+    Arc::new(move |_ctx: &ShouldStopAfterTurnCtx| {
+        let completed = settles.fetch_add(1, Ordering::Relaxed) + 1;
+        completed >= max_turns
+    })
 }
 
 #[cfg(test)]
@@ -80,6 +88,14 @@ mod max_turns_hook_tests {
         assert!(!hook(&ctx(0)));
         assert!(hook(&ctx(1)));
         assert!(hook(&ctx(2)));
+    }
+
+    #[test]
+    fn first_settle_does_not_use_iteration_index() {
+        let hook = max_turns_stop_hook(2);
+        // ContinueTools may have incremented turn_index; budget is settle count.
+        assert!(!hook(&ctx(5)));
+        assert!(hook(&ctx(0)));
     }
 }
 
