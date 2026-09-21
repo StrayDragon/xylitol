@@ -18,34 +18,29 @@ depends_on: []
 
 ## What Changes
 
-（方向性草案，具体取舍 propose/design 裁决）
+落地消融切点 **A3**（见 `design.md`）：三工具各一个动词，不扩闭集、不做旧形状兼容。
 
-- 补齐**增量变更原语**：单条/批量 add、remove、reorder、patch；`todo_rewrite`
-  降级为「首次建表 / 批量重建」专用，不再承担日常小步更新。
-- **增强条目结构**（候选）：优先级、依赖关系（blocked_by）、父子嵌套拆解、
-  content 与进行时描述拆分——哪些进产品按「LLM 规划表达收益 vs 结构复杂度」
-  裁决；wire 兼容旧 `agent_todo` 快照（向后可读）。
-- **收敛返回值**：mutation 回包从全表改为 diff / 受影响条目（或全表 + diff），
-  压读回成本。
-- **id 稳定性**：服务端生成持久短 id，跨 rewrite / 重排不漂移。
+- `todo_list`：读全表。
+- `todo_rewrite`：整表替换（建表 / 推翻 / 空数组清空；偶发的增删重排也走这里）。
+- `todo_update`：只按 id patch（`items[]`，每条必有 id；可批量改 status/content/位置）。
+- 服务端 `t_`+hex 短 id；mutate 对模型回短 ack；`TodoUpdated` / `agent_todo` 仍全量。
+- 去掉 `cancelled`：LLM/SSOT/待办栏三态 `pending|in_progress|completed`。删一项 = rewrite 不带该行。旧快照 `cancelled` 行读取时丢掉该行。
+- 不新增 `todo_add` / `todo_remove`。条目结构与 message 绑定 **不在本波**。
 
 ## Capabilities（预估，正式化时核对）
 
-- `agent-todo`：atd1 领域模型（条目结构扩展）、atd4 工具语义（增量原语改写）、
-  atd5 单在途约束（结构增强后是否保留/泛化）、atd13 类型化投影事件（事件形状随
-  diff 收敛）、atd2 latest-wins 快照（形状兼容）需修订。
-- `agent-prompt`：工具使用指引（何时 rewrite、何时增量）需同步。
-- `跨端同源` 约束板：gpui 桌面端同款 todo 语义。
+- `agent-todo`：r1118 三态 + 稳 id；r1125 update `items[]`、mutate 回 ack；
+  r1129 前翼仅 completed；r1122 事件仍全量。
+- `agent-prompt`：r1026 一条 todo guideline。
+- `app-tui-transcript`：att36 mutate 块按 ack 画受影响行。
 
 ## Impact
 
-- 行为合约变更（工具 schema + `agent_todo` 数据契约 + 事件形状）→ 走完整 SDD
-  pipeline（propose 起）。
-- 涉及层：`protocol/session`（领域词汇与校验）、`protocol/ports`（AgentTodoGateway
-  端口形状）、`infra/tools`（工具面）、`agent`（系统提示指引）、`app/tui`（投影与
-  渲染）。
-- 兼容性红线：会话 JSONL 旧 `agent_todo` 快照、compact 快照保留（atd10）、export
-  展示（atd12）必须继续可读。
+- 行为合约变更（工具 schema + 回包 + id 生成 + 工具块 body）→ 完整 SDD。
+- 涉及层：`protocol/session`（id 生成）、`protocol/ports`（gateway update 改 patches）、
+  `infra/tools`（工具面）、`agent`（guidelines）、`app/tui`（工具块 ack 渲染）。
+- 旧 JSONL `agent_todo` 快照、compact 重挂（r1119）、export（r1121）继续可读。
+  旧 `{id,status}` 单对象 **不** 再接受。
 
 ## Intake（2026-09-20，从 c2795 转来）
 
@@ -59,6 +54,15 @@ depends_on: []
 
 ## Open Questions
 
-- 绑定的是用户消息、助手消息，还是一轮 turn？
-- 嵌套是父子树，还是按 message 范围分组？
-- 「自动记录」写进 `agent_todo` 快照字段，还是另写 Custom？
+- 绑定的是用户消息、助手消息，还是一轮 turn？（park：不在本波）
+- 嵌套是父子树，还是按 message 范围分组？（park）
+- 「自动记录」写进 `agent_todo` 快照字段，还是另写 Custom？（park）
+
+## Further Notes
+
+调研：`research/current-api.md`（现行 schema/prompt）、`research/peer-todo-llm-apis.md`、
+`research/current-impl-and-seams.md`、`research/scope-triage.md`。
+
+设计草案：`design.md` — 消融切点 A3 + slim ack/schema：三工具严格意图；
+mutate 回 `{ids}` / `{changed:[{id,status}]}`；tools[] 不写长字段说明。
+Intake（message 绑定 / 嵌套）park。
