@@ -1,6 +1,8 @@
 # 现行 Todo LLM API 对照（c2805 基线）
 
-> 2026-09-21。代码真值，非目标合约。
+> **apply 前基线**。落地后无 `todo_list`、出站 `<agent_status_bar><todo>`、update `prompt_guidelines`。勿按本表回改。
+>
+> 2026-09-21。当时代码真值，非目标合约。
 
 ## 模型能看见的三件事
 

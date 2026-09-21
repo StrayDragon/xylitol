@@ -4,22 +4,17 @@
 //! in-memory implementation. Keeps session mutation out of `XyToolCtx`.
 
 use crate::protocol::error::XyToolError;
-use crate::protocol::session::{TodoItemDraft, TodoList, TodoStatus};
+use crate::protocol::session::{TodoItemDraft, TodoItemPatch, TodoList};
 
 /// Session-bound Todo SSOT operations for builtin tools.
 #[async_trait::async_trait]
 pub trait AgentTodoGateway: Send + Sync {
-    /// Current full list (empty when none).
+    /// Current full list (empty when none). Internal (inject / tests); not a tool.
     async fn list(&self) -> Result<TodoList, XyToolError>;
 
     /// Replace entire list; persist snapshot on success.
     async fn rewrite(&self, items: Vec<TodoItemDraft>) -> Result<TodoList, XyToolError>;
 
-    /// Patch one item by id; persist snapshot on success.
-    async fn update(
-        &self,
-        id: &str,
-        status: Option<TodoStatus>,
-        content: Option<String>,
-    ) -> Result<TodoList, XyToolError>;
+    /// Patch items by id (batch); persist snapshot on success.
+    async fn update(&self, patches: Vec<TodoItemPatch>) -> Result<TodoList, XyToolError>;
 }

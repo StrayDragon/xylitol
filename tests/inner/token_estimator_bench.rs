@@ -11,6 +11,7 @@ use criterion::{BenchmarkId, Criterion};
 use std::hint::black_box;
 
 use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_context_tokens_with};
+use crate::agent::prompt::AgentStatusBar;
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
 use crate::protocol::model::TokenProvenance;
 
@@ -59,7 +60,13 @@ fn bench_estimate_context_tokens(c: &mut Criterion) {
         let messages = sample_messages(turns);
         group.bench_with_input(BenchmarkId::from_parameter(turns), &messages, |b, msgs| {
             b.iter(|| {
-                let est = estimate_context_tokens_with(black_box(msgs), None, None, &opts);
+                let est = estimate_context_tokens_with(
+                    black_box(msgs),
+                    None,
+                    None,
+                    &opts,
+                    &AgentStatusBar::default(),
+                );
                 // Keep the result observable so the optimizer can't elide the loop.
                 black_box(est.tokens.max(1));
             });

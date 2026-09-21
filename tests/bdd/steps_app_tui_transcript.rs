@@ -1925,29 +1925,32 @@ fn then_todo_tool_body_still_checklist(transcript_bdd: &TranscriptBdd) {
 
 // ---- att13/att36：todo_* 空态（fix-todo-empty-state） ----
 
-#[when("折叠态读取 todo_list 无参调用与 todo_update 的人话摘要")]
+#[when("折叠态读取无 items 的 todo_rewrite 与带补丁 items 的 todo_update 的人话摘要")]
 fn when_todo_empty_arg_previews(transcript_bdd: &TranscriptBdd) {
     use crate::app::tui::human_tool_args_preview;
-    let list_read = human_tool_args_preview("todo_list", &serde_json::json!({}), 200);
+    let rewrite = human_tool_args_preview("todo_rewrite", &serde_json::json!({}), 200);
     let update = human_tool_args_preview(
         "todo_update",
-        &serde_json::json!({ "id": "a", "status": "completed" }),
+        &serde_json::json!({ "items": [{ "id": "a", "status": "completed" }] }),
         200,
     );
-    *transcript_bdd.previews.borrow_mut() = vec![list_read, update];
+    *transcript_bdd.previews.borrow_mut() = vec![rewrite, update];
 }
 
-#[then("两类摘要 MUST 均为空串（header 只画工具名），MUST NOT 出现三点占位")]
-fn then_todo_empty_arg_previews(transcript_bdd: &TranscriptBdd) {
+#[then("todo_rewrite 摘要 MUST 为空串（header 只画工具名）")]
+fn then_todo_rewrite_preview_empty(transcript_bdd: &TranscriptBdd) {
     let previews = transcript_bdd.previews.borrow();
-    assert!(
-        previews.iter().all(String::is_empty),
-        "att13: todo_* without parsed items must summarize empty: {previews:?}"
-    );
+    assert_eq!(previews[0], "", "rewrite without items: {previews:?}");
 }
 
-/// 空列表轮：user → assistant(toolCall todo_list 无参) → toolResult `{"items":[]}`。
-/// 只读 todo_list 不发 `TodoUpdated`、空表不落 agent_todo snapshot（清除语义）。
+#[then("todo_update 摘要 MUST 匹配补丁计数（如 `1 updated`），MUST NOT 为空串或三点占位")]
+fn then_todo_update_preview_count(transcript_bdd: &TranscriptBdd) {
+    let previews = transcript_bdd.previews.borrow();
+    assert_eq!(previews[1], "1 updated", "update patch count: {previews:?}");
+    assert!(!previews[1].contains("..."), "{previews:?}");
+}
+
+/// 空列表轮：user → assistant(toolCall todo_rewrite items:[]) → toolResult `{"items":[]}`.
 fn todo_empty_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
     let entries = vec![
         SessionEntry::Message(MessageEntry {
@@ -1973,8 +1976,8 @@ fn todo_empty_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
             message: serde_json::json!({
                 "role": "assistant",
                 "content": [
-                    { "type": "toolCall", "id": "tc-todo-empty", "name": "todo_list",
-                      "arguments": {} }
+                    { "type": "toolCall", "id": "tc-todo-empty", "name": "todo_rewrite",
+                      "arguments": { "items": [] } }
                 ],
                 "timestamp": 0u64,
             }),
@@ -1989,7 +1992,7 @@ fn todo_empty_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
             message: serde_json::json!({
                 "role": "toolResult",
                 "toolCallId": "tc-todo-empty",
-                "toolName": "todo_list",
+                "toolName": "todo_rewrite",
                 "content": [{ "type": "text", "text": "{\"items\":[]}" }],
                 "isError": false,
                 "timestamp": 0u64,
@@ -2005,27 +2008,26 @@ fn todo_empty_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
     (entries, travel)
 }
 
-#[when("以场景构建器回放 todo_list 空列表结果的直播与 travel 重建")]
+#[when("以场景构建器回放 todo_rewrite 空列表结果的直播与 travel 重建")]
 fn when_todo_empty_live_and_rebuild(transcript_bdd: &TranscriptBdd) {
     let (entries, travel) = todo_empty_fixture_entries();
     let mut rebuilt = UiModel::default();
     rebuild_scrollback_from_travel(&mut rebuilt, &entries, &travel);
 
-    // 直播事件流：Start（无参）→ End（空结果）。无 TodoUpdated（只读不发布）。
     let mut live = UiModel::default();
     apply_xy_event(
         &mut live,
         &XyEvent::ToolExecutionStart {
             id: "tc-todo-empty".into(),
-            name: "todo_list".into(),
-            args: serde_json::json!({}),
+            name: "todo_rewrite".into(),
+            args: serde_json::json!({"items": []}),
         },
     );
     apply_xy_event(
         &mut live,
         &XyEvent::ToolExecutionEnd {
             id: "tc-todo-empty".into(),
-            name: "todo_list".into(),
+            name: "todo_rewrite".into(),
             result: r#"{"items":[]}"#.into(),
             is_error: false,
         },
@@ -2048,18 +2050,19 @@ fn then_todo_empty_bodies_agree(transcript_bdd: &TranscriptBdd) {
                     args_preview,
                     output,
                     ..
-                } if name == "todo_list" => Some((args_preview.clone(), output.clone())),
+                } if name == "todo_rewrite" => Some((args_preview.clone(), output.clone())),
                 _ => None,
             })
-            .expect("todo_list tool row")
+            .expect("todo_rewrite tool row")
     }
 
     let (rebuilt_preview, rebuilt_body) = todo_list_row(&models[0]);
     let (live_preview, live_body) = todo_list_row(&models[1]);
-    assert!(
-        rebuilt_preview.is_empty() && live_preview.is_empty(),
-        "att13: pathless todo_list header must stay name-only: {rebuilt_preview:?} / {live_preview:?}"
+    assert_eq!(
+        rebuilt_preview, "0 items",
+        "empty rewrite header: {rebuilt_preview:?} / {live_preview:?}"
     );
+    assert_eq!(live_preview, "0 items");
     assert_eq!(
         rebuilt_body, live_body,
         "att36: empty-list body must be line-by-line identical across paths"

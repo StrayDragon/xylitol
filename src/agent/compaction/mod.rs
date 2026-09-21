@@ -444,7 +444,7 @@ fn session_cwd_from_entries(entries: &[SessionEntry]) -> Option<&str> {
 }
 
 /// If compaction/cut leaves no `agent_todo` in the post-cut context window,
-/// re-append the latest pre-cut snapshot so tip / resume / todo_list stay aligned (atd10).
+/// re-append the latest pre-cut snapshot so tip / resume / request-time inject stay aligned.
 pub(crate) async fn ensure_agent_todo_after_compact(
     store: &dyn XySessionStore,
     session_id: &str,

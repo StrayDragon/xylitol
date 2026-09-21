@@ -7,6 +7,10 @@
 //! Env fold **shapes** are part of the resume/import provider-prefix contract
 //! (c1930 / as48): changing the bash or context-summary templates breaks
 //! Responses `input` byte prefixes and prompt cache. Edit only via explicit change.
+//!
+//! Request-time (non-transcript) tails — AgentStatusBar readings — are
+//! **not** this module. They append after the fold via
+//! [`crate::agent::prompt::status_bar`].
 
 use crate::protocol::message::{AgentMessage, AgentPart, EnvLlmProjection, LlmMessage, now_ms};
 
@@ -48,7 +52,7 @@ pub fn project_for_llm(messages: &[AgentMessage]) -> Vec<LlmMessage> {
     out
 }
 
-fn user_text(text: String) -> LlmMessage {
+pub(crate) fn user_text(text: String) -> LlmMessage {
     LlmMessage::UserMessage {
         content: vec![AgentPart::text(text)],
         timestamp: now_ms(),

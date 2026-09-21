@@ -31,7 +31,7 @@ pub use parse::{
 #[cfg(test)]
 pub use todo::TodoItem;
 pub use todo::{
-    CUSTOM_TYPE_AGENT_TODO, TodoItemDraft, TodoList, TodoStatus, apply_todo_update,
+    CUSTOM_TYPE_AGENT_TODO, TodoItemDraft, TodoItemPatch, TodoList, TodoStatus, apply_todo_patches,
     latest_agent_todo, normalize_rewrite_items,
 };
 pub use tree::{

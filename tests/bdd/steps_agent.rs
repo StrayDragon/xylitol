@@ -32,14 +32,10 @@ pub(crate) fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: Stri
     });
 }
 
-#[given("工具注册表包含 10 个内置工具")]
+#[given("工具注册表包含 9 个内置工具")]
 pub(crate) fn _g_agent_tools_ready(_agent: &AgentState) {
     let tools = crate::infra::tools::default_tools();
-    assert_eq!(
-        tools.len(),
-        10,
-        "builtin tool registry must expose 10 tools"
-    );
+    assert_eq!(tools.len(), 9, "builtin tool registry must expose 9 tools");
 }
 
 #[when("启动 agent 会话并发送提示 {prompt:string}")]

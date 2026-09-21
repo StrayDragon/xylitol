@@ -1,7 +1,9 @@
 # 同行 Todo/checklist LLM API（c2805）
 
+> **同行对照仍可用**；文内 **xylitol 行是 apply 前基线**（当时三工具 + `todo_list`）。落地后是 rewrite/update + 请求时尾插。勿按 xylitol 行回改。
+>
 > 问题：harness 如何把 Todo 暴露给模型（工具名、schema、整表 vs 增量、字段、回包、id、prompt）？什么真正省 token，什么仍被整表重写？
-> 日期：2026-09-21。只引一手源。不改 live specs。xylitol 现行对照见同目录 `current-impl-and-seams.md`。
+> 日期：2026-09-21。只引一手源。不改 live specs。xylitol 当时对照见同目录 `current-impl-and-seams.md`。
 
 ## 对照表
 

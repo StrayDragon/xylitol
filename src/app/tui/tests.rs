@@ -4927,7 +4927,7 @@ fn activity_fold_todo_tools_are_used_not_thought_cluster() {
     model.entries.push(super::bridge::UiEntry::Tool {
         timeout_secs: None,
         id: "t-list".into(),
-        name: "todo_list".into(),
+        name: "todo_rewrite".into(),
         args_preview: String::new(),
         tool_path: None,
         write_content: None,
@@ -5439,10 +5439,10 @@ fn scene_dump_thinking_plus_todo_is_used_not_thought() {
         "todo_update",
         r#"{"items":[{"id":"1","content":"a","status":"completed"}]}"#,
     );
-    b.tool_start("td2", "todo_list", "");
+    b.tool_start("td2", "todo_rewrite", "");
     b.todo_result(
         "td2",
-        "todo_list",
+        "todo_rewrite",
         r#"{"items":[{"id":"1","content":"a","status":"completed"}]}"#,
     );
     let entries = b.entries().to_vec();

@@ -42,7 +42,7 @@ use super::state::{
 use super::{AgentHooks, XyEvent, XyEventStream};
 use crate::agent::capabilities::{AgentCapabilities, PendingMessageQueue};
 use crate::agent::compaction::CompactionError;
-use crate::agent::prompt::expand_skills_in_agent_messages;
+use crate::agent::prompt::{AgentStatusBar, expand_skills_in_agent_messages, project_outbound};
 use crate::agent::tools::ToolSet;
 use crate::protocol::error::{XyError, XySessionError};
 use crate::protocol::message::{AgentMessage, AgentPart};
@@ -1007,7 +1007,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 // (reqwest drop-cancels the in-flight HTTP future).
                 // 重试环在生成器内联:AutoRetryStart 在 backoff 等待「前」yield,
                 // bridge 才能在等待期间显示 Retry attempt/max(atb6)。
-                let llm_messages = crate::agent::llm_project::project_for_llm(&messages);
+                let bar = match store.load_leaf_branch(&session_id).await {
+                    Ok(branch) => AgentStatusBar::from_session_entries(&branch),
+                    Err(_) => AgentStatusBar::default(),
+                };
+                let llm_messages = project_outbound(&messages, &bar);
                 let mut stream_result: Option<Result<XyStream, XyError>> = None;
                 loop {
                     let result = tokio::select! {

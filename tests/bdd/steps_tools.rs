@@ -659,13 +659,14 @@ fn t_tools_txt_no_img(ws: &Workspace) {
 }
 // ── agent-tools: unbound tool scenarios (continued) ───────────────
 
-#[given("工具注册表含全部 10 个工具")]
-fn g_tools_all_ten(_ws: &Workspace) {
+#[given("工具注册表含全部 9 个工具")]
+fn g_tools_all_nine(_ws: &Workspace) {
     let tools = crate::infra::tools::default_tools();
-    assert_eq!(tools.len(), 10);
-    for n in ["todo_list", "todo_rewrite", "todo_update"] {
+    assert_eq!(tools.len(), 9);
+    for n in ["todo_rewrite", "todo_update"] {
         assert!(tools.iter().any(|t| t.name() == n), "missing builtin {n}");
     }
+    assert!(tools.iter().all(|t| t.name() != "todo_list"));
 }
 
 #[when("各工具以合法参数调用")]
@@ -762,14 +763,11 @@ async fn w_tools_smoke_all(ws: &Workspace) {
         if let Err(e) = by("todo_update")
             .execute(
                 &ctx,
-                serde_json::json!({"id": "smoke", "status": "completed"}),
+                serde_json::json!({"items": [{"id": "smoke", "status": "completed"}]}),
             )
             .await
         {
             failed.push(format!("todo_update:{e}"));
-        }
-        if let Err(e) = by("todo_list").execute(&ctx, serde_json::json!({})).await {
-            failed.push(format!("todo_list:{e}"));
         }
     }
     ws.last_result.replace(if failed.is_empty() {
@@ -938,7 +936,7 @@ fn t_tools_cancelled(ws: &Workspace) {
 
 #[given("工具集含全部内置工具")]
 fn g_tools_registry(_ws: &Workspace) {
-    assert_eq!(crate::infra::tools::default_tools().len(), 10);
+    assert_eq!(crate::infra::tools::default_tools().len(), 9);
 }
 
 #[when("列举工具名")]
@@ -950,14 +948,15 @@ fn w_tools_list_names(ws: &Workspace) {
     ws.last_result.replace(Some(Ok(names.join(","))));
 }
 
-#[then("返回 10 个工具名")]
-fn t_tools_ten_names(ws: &Workspace) {
+#[then("返回 9 个工具名")]
+fn t_tools_nine_names(ws: &Workspace) {
     let raw = result_ok_str(&ws.last_result);
     let names: Vec<_> = raw.split(',').collect();
-    assert_eq!(names.len(), 10, "expected 10 tool names, got: {names:?}");
-    for n in ["todo_list", "todo_rewrite", "todo_update"] {
+    assert_eq!(names.len(), 9, "expected 9 tool names, got: {names:?}");
+    for n in ["todo_rewrite", "todo_update"] {
         assert!(names.contains(&n), "missing {n} in {names:?}");
     }
+    assert!(!names.contains(&"todo_list"));
 }
 
 #[given("内置工具集已构造")]

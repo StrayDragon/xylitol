@@ -604,7 +604,7 @@ mod tests {
     fn thinking_plus_todo_tools_is_used_not_thought() {
         let entries = vec![
             thinking(),
-            tool("todo_list", None),
+            tool("todo_rewrite", None),
             tool("todo_update", None),
         ];
         let c = count_middles(&entries, &[0, 1, 2]);

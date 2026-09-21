@@ -1,4 +1,7 @@
 //! LLM-based summarization — generate structured compaction summaries.
+//!
+//! Summarizer generate uses [`project_for_llm`] only (r1124: no AgentStatusBar
+//! on compact summary requests).
 
 use anyhow::Result;
 use futures::StreamExt;

@@ -134,7 +134,7 @@ fn layout_todo_bar(glyphs: GlyphSet, params: TodoBarParams<'_>) -> TodoBarLayout
     let past: Vec<BarItem<'_>> = list
         .items
         .iter()
-        .filter(|i| matches!(i.status, TodoStatus::Completed | TodoStatus::Cancelled))
+        .filter(|i| i.status == TodoStatus::Completed)
         .map(|i| BarItem {
             content: i.content.as_str(),
             status: i.status,
@@ -295,22 +295,8 @@ fn doing_header(n: usize, open: bool, glyphs: GlyphSet) -> Option<String> {
 }
 
 fn past_header(items: &[BarItem<'_>], open: bool, glyphs: GlyphSet) -> Option<String> {
-    let completed = items
-        .iter()
-        .filter(|i| i.status == TodoStatus::Completed)
-        .count();
-    let cancelled = items
-        .iter()
-        .filter(|i| i.status == TodoStatus::Cancelled)
-        .count();
     let tri = if open { glyphs.unfold() } else { glyphs.fold() };
-    if cancelled > 0 {
-        Some(format!(
-            "{tri} {completed} completed · {cancelled} cancelled"
-        ))
-    } else {
-        Some(format!("{tri} {completed} completed"))
-    }
+    Some(format!("{tri} {} completed", items.len()))
 }
 
 fn pending_header(n: usize, open: bool, glyphs: GlyphSet) -> Option<String> {
@@ -511,7 +497,7 @@ mod tests {
     fn sample() -> TodoList {
         TodoList::new(vec![
             item("1", "read glossary", TodoStatus::Completed),
-            item("2", "skip overlay slot", TodoStatus::Cancelled),
+            item("2", "skip overlay slot", TodoStatus::Completed),
             item("3", "write todo-bar copy", TodoStatus::InProgress),
             item("4", "paint lab states", TodoStatus::Pending),
             item("5", "graduate to product", TodoStatus::Pending),
@@ -593,7 +579,7 @@ mod tests {
         assert!(out.contains("▾ 1 doing"), "{out}");
         assert!(out.contains("write todo-bar copy"), "{out}");
         assert!(!out.contains("[~]"), "{out}");
-        assert!(out.contains("▸ 1 completed · 1 cancelled"), "{out}");
+        assert!(out.contains("▸ 2 completed"), "{out}");
         assert!(out.contains("▸ 2 pending"), "{out}");
         assert!(!out.contains("[x] read glossary"), "{out}");
         assert!(!out.contains("[ ] paint lab states"), "{out}");

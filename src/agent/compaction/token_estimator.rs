@@ -6,7 +6,7 @@ use xylitol_ai_bridge::registry::{TokenizerSource, resolve_tokenizer_with_overri
 use xylitol_ai_bridge::tokenize::HfTokenizerCache;
 use xylitol_ai_bridge::tokenize::{BuiltinTokenizer, estimate_messages};
 
-use crate::agent::llm_project::project_for_llm;
+use crate::agent::prompt::project_outbound;
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
 use crate::protocol::model::{ContextTokenEstimate, XyToolSchema};
 
@@ -100,6 +100,7 @@ pub fn estimate_from_session_entries(
 ) -> ContextTokenEstimate {
     use crate::protocol::session::{SessionEntry, build_context_entries};
 
+    let bar = crate::agent::prompt::AgentStatusBar::from_session_entries(entries);
     let entries = build_context_entries(entries);
     let mut messages: Vec<AgentMessage> = Vec::new();
     let mut last_usage: Option<XyUsage> = None;
@@ -141,7 +142,7 @@ pub fn estimate_from_session_entries(
         stop_reason = None;
     }
 
-    estimate_context_tokens_with(&messages, last_usage.as_ref(), stop_reason, opts)
+    estimate_context_tokens_with(&messages, last_usage.as_ref(), stop_reason, opts, &bar)
 }
 
 /// Estimate context tokens via accounting priority:
@@ -152,9 +153,11 @@ pub fn estimate_context_tokens_with(
     last_usage: Option<&XyUsage>,
     stop_reason: Option<XyStopReason>,
     opts: &EstimateOpts,
+    bar: &crate::agent::prompt::AgentStatusBar,
 ) -> ContextTokenEstimate {
-    // LlmMessage ≡ AiBridgeMessage (c1210); project_for_llm is the sole map.
-    let mut bridge_msgs: Vec<AiBridgeMessage> = project_for_llm(messages);
+    // History fold + status bar (r1124). Compact summarizer does not
+    // call this path; it uses `project_for_llm` only.
+    let mut bridge_msgs: Vec<AiBridgeMessage> = project_outbound(messages, bar);
     // c25: fold fixed request overhead (system prompt + tools) only when no Api
     // anchor carries it already.
     if last_usage.is_none()
@@ -299,10 +302,25 @@ mod tests {
     use crate::protocol::model::TokenProvenance;
     use xylitol_ai_bridge::registry::TokenizerOverride;
 
+    fn estimate(
+        messages: &[AgentMessage],
+        last_usage: Option<&crate::protocol::message::XyUsage>,
+        stop_reason: Option<crate::protocol::message::XyStopReason>,
+        opts: &EstimateOpts,
+    ) -> crate::protocol::model::ContextTokenEstimate {
+        estimate_context_tokens_with(
+            messages,
+            last_usage,
+            stop_reason,
+            opts,
+            &crate::agent::prompt::AgentStatusBar::default(),
+        )
+    }
+
     #[test]
     fn override_enables_local_tokenizer_for_unmapped_alias() {
         let msgs = [AgentMessage::user("hello world")];
-        let without_over = estimate_context_tokens_with(
+        let without_over = estimate(
             &msgs,
             None,
             None,
@@ -314,7 +332,7 @@ mod tests {
         );
         assert_eq!(without_over.provenance, TokenProvenance::Heuristic);
 
-        let with_over = estimate_context_tokens_with(
+        let with_over = estimate(
             &msgs,
             None,
             None,
@@ -332,7 +350,7 @@ mod tests {
     #[test]
     fn local_tokenizer_off_skips_encode_even_with_override() {
         let msgs = [AgentMessage::user("hello world")];
-        let est = estimate_context_tokens_with(
+        let est = estimate(
             &msgs,
             None,
             None,
@@ -365,8 +383,8 @@ mod tests {
         let msgs = [AgentMessage::user("hello world")];
         let fixed = fixed_fixture();
 
-        let base = estimate_context_tokens_with(&msgs, None, None, &EstimateOpts::default());
-        let with_over = estimate_context_tokens_with(
+        let base = estimate(&msgs, None, None, &EstimateOpts::default());
+        let with_over = estimate(
             &msgs,
             None,
             None,
@@ -389,13 +407,13 @@ mod tests {
             total_tokens: 5_000,
             ..Default::default()
         };
-        let api_plain = estimate_context_tokens_with(
+        let api_plain = estimate(
             &msgs,
             Some(&usage),
             Some(XyStopReason::Stop),
             &EstimateOpts::default(),
         );
-        let api_over = estimate_context_tokens_with(
+        let api_over = estimate(
             &msgs,
             Some(&usage),
             Some(XyStopReason::Stop),
@@ -554,5 +572,47 @@ mod tests {
         // Reserve formula must use this shared number (not an independent len/4 sum).
         let settings = crate::agent::compaction::CompactionSettings::default();
         let _ = crate::agent::compaction::should_compact(est.tokens, 128_000, &settings, 0);
+    }
+
+    #[test]
+    fn session_entries_todo_overlay_increases_heuristic_estimate() {
+        use crate::protocol::session::{
+            CUSTOM_TYPE_AGENT_TODO, CustomEntry, EntryBase, MessageEntry, SessionEntry, TodoItem,
+            TodoList, TodoStatus,
+        };
+
+        let user = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u1".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: serde_json::to_value(AgentMessage::user("hi")).unwrap(),
+        });
+        let list = TodoList::new(vec![TodoItem {
+            id: "t_abcd1234".into(),
+            content: "do the thing".into(),
+            status: TodoStatus::InProgress,
+        }]);
+        let todo = SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: "todo1".into(),
+                parent_id: Some("u1".into()),
+                timestamp: 1,
+            },
+            custom_type: CUSTOM_TYPE_AGENT_TODO.into(),
+            data: list.to_data_value(),
+        });
+        let without =
+            estimate_from_session_entries(std::slice::from_ref(&user), &EstimateOpts::default());
+        let with = estimate_from_session_entries(&[user, todo], &EstimateOpts::default());
+        assert!(
+            with.tokens > without.tokens,
+            "r1124 overlay must land in estimate: without={} with={}",
+            without.tokens,
+            with.tokens
+        );
     }
 }

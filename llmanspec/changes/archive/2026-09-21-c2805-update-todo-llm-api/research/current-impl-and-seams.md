@@ -1,6 +1,8 @@
 # c2805：Todo 现行实现与测试接缝
 
-> 调研日期：2026-09-21。真值源：代码 + live specs；本文件不修改 specs 或应用代码。
+> **基线快照（apply 前）**。现行合约与代码以 live `agent-todo.feature` 与 `src/` 为准：两工具、三态、`t_` id、无 `todo_list`、出站 `<agent_status_bar><todo>`。勿按本文回改。
+>
+> 调研日期：2026-09-21。当时真值源：代码 + live specs；本文件不修改 specs 或应用代码。
 
 ## 1. 领域模型（`src/protocol/session/todo.rs`）
 

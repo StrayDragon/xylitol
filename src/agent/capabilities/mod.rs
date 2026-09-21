@@ -477,7 +477,7 @@ mod tests {
         let core = ToolSet::from_iter(crate::infra::tools::default_tools());
         session.freeze_tools(core);
         let fp = session.frozen_tool_fingerprint().cloned().expect("fp");
-        for n in ["todo_list", "todo_rewrite", "todo_update"] {
+        for n in ["todo_rewrite", "todo_update"] {
             assert!(
                 fp.names.iter().any(|x| x == n),
                 "frozen table missing {n}: {:?}",

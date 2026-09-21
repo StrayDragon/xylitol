@@ -14,7 +14,6 @@ pub(crate) fn todo_status_glyph(status: TodoStatus) -> &'static str {
         TodoStatus::Pending => "[ ]",
         TodoStatus::InProgress => "[~]",
         TodoStatus::Completed => "[x]",
-        TodoStatus::Cancelled => "[-]",
     }
 }
 
@@ -202,27 +201,25 @@ pub(crate) fn human_tool_args_preview_with_path(
                 }
             })
             .unwrap_or_else(|| PATH_PLACEHOLDER.to_string()),
-        "todo_list" | "todo_rewrite" | "todo_update" => {
-            // att13: item-count summary, never the full items JSON. No parsed
-            // items yet (streaming / read-only todo_list) → empty summary; the
-            // header paints the tool name alone. `...` is the path-slot
-            // placeholder — meaningless for pathless todo tools.
-            match args.get("items").and_then(Value::as_array) {
-                None => String::new(),
-                Some(items) => {
-                    let in_progress = items
-                        .iter()
-                        .filter(|i| i.get("status").and_then(Value::as_str) == Some("in_progress"))
-                        .count();
-                    let n = items.len();
-                    let mut summary = format!("{n} item{}", if n == 1 { "" } else { "s" });
-                    if in_progress > 0 {
-                        summary.push_str(&format!(" · {in_progress} in progress"));
-                    }
-                    summary
+        "todo_rewrite" => match args.get("items").and_then(Value::as_array) {
+            None => String::new(),
+            Some(items) => {
+                let in_progress = items
+                    .iter()
+                    .filter(|i| i.get("status").and_then(Value::as_str) == Some("in_progress"))
+                    .count();
+                let n = items.len();
+                let mut summary = format!("{n} item{}", if n == 1 { "" } else { "s" });
+                if in_progress > 0 {
+                    summary.push_str(&format!(" · {in_progress} in progress"));
                 }
+                summary
             }
-        }
+        },
+        "todo_update" => match args.get("items").and_then(Value::as_array) {
+            None => String::new(),
+            Some(items) => format!("{} updated", items.len()),
+        },
         _ => pick_str(&[
             "path",
             "file_path",
@@ -266,7 +263,7 @@ pub(crate) fn humanize_tool_result_for_tui(
         }
         "read" => humanize_read_tool_output(result),
         "bash" | "shell" => humanize_bash_tool_output(result),
-        "todo_list" | "todo_rewrite" | "todo_update" => {
+        "todo_rewrite" | "todo_update" => {
             // att36: block body is the checklist (shared glyph table), not the
             // raw items JSON. Empty list → explicit empty hint, never a
             // silent body.
@@ -1376,19 +1373,17 @@ mod tests {
             human_tool_args_preview("todo_rewrite", &serde_json::json!({"items": []}), 80),
             "0 items"
         );
-        // No parsed items (todo_list no-arg call / todo_update / partial
-        // stream) → empty summary; `...` is the path-slot placeholder.
         assert_eq!(
-            human_tool_args_preview("todo_list", &serde_json::json!({}), 80),
+            human_tool_args_preview("todo_rewrite", &serde_json::json!({}), 80),
             ""
         );
         assert_eq!(
             human_tool_args_preview(
                 "todo_update",
-                &serde_json::json!({"id": "a", "status": "completed"}),
+                &serde_json::json!({"items": [{"id": "a", "status": "completed"}]}),
                 80
             ),
-            ""
+            "1 updated"
         );
     }
 

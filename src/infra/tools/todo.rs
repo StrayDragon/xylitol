@@ -1,4 +1,4 @@
-//! Builtin Todo tools (`todo_list` / `todo_rewrite` / `todo_update`) + session gateway.
+//! Builtin Todo tools (`todo_rewrite` / `todo_update`) + session gateway.
 
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ use super::typed::TypedTool;
 use crate::protocol::error::XyToolError;
 use crate::protocol::ports::{AgentTodoGateway, XySessionStore, XyToolCtx, XyToolExecutionMode};
 use crate::protocol::session::{
-    TodoItemDraft, TodoList, TodoStatus, apply_todo_update, latest_agent_todo,
+    TodoItemDraft, TodoItemPatch, TodoList, apply_todo_patches, latest_agent_todo,
     normalize_rewrite_items,
 };
 
@@ -81,15 +81,10 @@ impl AgentTodoGateway for SessionAgentTodoGateway {
         Ok(list)
     }
 
-    async fn update(
-        &self,
-        id: &str,
-        status: Option<TodoStatus>,
-        content: Option<String>,
-    ) -> Result<TodoList, XyToolError> {
+    async fn update(&self, patches: Vec<TodoItemPatch>) -> Result<TodoList, XyToolError> {
         let current = self.load_current().await?;
-        let list = apply_todo_update(&current, id, status, content)
-            .map_err(|e| XyToolError::InvalidArgs(e.0))?;
+        let list =
+            apply_todo_patches(&current, &patches).map_err(|e| XyToolError::InvalidArgs(e.0))?;
         self.persist(&list).await?;
         Ok(list)
     }
@@ -99,57 +94,11 @@ fn list_json(list: &TodoList) -> String {
     serde_json::to_string(&list.to_data_value()).unwrap_or_else(|_| r#"{"items":[]}"#.into())
 }
 
-// ── todo_list ───────────────────────────────────────────────────────
+const TODO_STATUS_ENUM: [&str; 3] = ["pending", "in_progress", "completed"];
 
-pub struct TodoListTool {
-    gateway: Arc<dyn AgentTodoGateway>,
-}
-
-impl TodoListTool {
-    pub fn new(gateway: Arc<dyn AgentTodoGateway>) -> Self {
-        Self { gateway }
-    }
-}
-
-#[derive(Debug, Deserialize)]
-pub struct TodoListArgs {}
-
-#[async_trait]
-impl TypedTool for TodoListTool {
-    type Args = TodoListArgs;
-
-    fn name(&self) -> &str {
-        "todo_list"
-    }
-
-    fn description(&self) -> &str {
-        "Return the current session Todo checklist (full list). Read-only; does not mutate."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {},
-            "additionalProperties": false
-        })
-    }
-
-    fn execution_mode(&self) -> XyToolExecutionMode {
-        XyToolExecutionMode::Sequential
-    }
-
-    async fn execute_typed(
-        &self,
-        ctx: &XyToolCtx,
-        _args: TodoListArgs,
-    ) -> Result<String, XyToolError> {
-        if ctx.cancel.is_cancelled() {
-            return Err(XyToolError::Aborted);
-        }
-        let list = self.gateway.list().await?;
-        Ok(list_json(&list))
-    }
-}
+const TODO_UPDATE_GUIDELINES: &[&str] = &[
+    "todo_rewrite for a new/replaced plan; todo_update to tick existing ids (batch in items[]). Do not rewrite the list to mark one item done. The current list is under <todo> in the <agent_status_bar> message when non-empty.",
+];
 
 // ── todo_rewrite ────────────────────────────────────────────────────
 
@@ -177,38 +126,29 @@ impl TypedTool for TodoRewriteTool {
     }
 
     fn description(&self) -> &str {
-        "Replace the entire session Todo checklist. Returns the full written list. At most one item may be in_progress."
+        "Replace the whole checklist (new plan or []). Do not tick one item."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
+            "additionalProperties": false,
+            "required": ["items"],
             "properties": {
                 "items": {
                     "type": "array",
-                    "description": "Full replacement list (empty clears)",
                     "items": {
                         "type": "object",
+                        "additionalProperties": false,
+                        "required": ["content"],
                         "properties": {
-                            "id": {
-                                "type": "string",
-                                "description": "Stable id; omitted → server generates"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "Non-empty task text"
-                            },
-                            "status": {
-                                "type": "string",
-                                "enum": ["pending", "in_progress", "completed", "cancelled"],
-                                "description": "Defaults to pending"
-                            }
-                        },
-                        "required": ["content"]
+                            "id": { "type": "string" },
+                            "content": { "type": "string" },
+                            "status": { "type": "string", "enum": TODO_STATUS_ENUM }
+                        }
                     }
                 }
-            },
-            "required": ["items"]
+            }
         })
     }
 
@@ -225,7 +165,6 @@ impl TypedTool for TodoRewriteTool {
             return Err(XyToolError::Aborted);
         }
         let list = self.gateway.rewrite(args.items).await?;
-        // atd13: typed live projection straight from the SSOT mutation point.
         ctx.publish_state(crate::protocol::lifecycle::XyEvent::TodoUpdated { list: list.clone() });
         Ok(list_json(&list))
     }
@@ -245,9 +184,7 @@ impl TodoUpdateTool {
 
 #[derive(Debug, Deserialize)]
 pub struct TodoUpdateArgs {
-    pub id: String,
-    pub status: Option<TodoStatus>,
-    pub content: Option<String>,
+    pub items: Vec<TodoItemPatch>,
 }
 
 #[async_trait]
@@ -259,22 +196,36 @@ impl TypedTool for TodoUpdateTool {
     }
 
     fn description(&self) -> &str {
-        "Update one Todo item by id (status and/or content). Returns the full list. Rejects unknown id or dual in_progress."
+        "Patch existing items by id. items[{id, status?, content?, after_id?}]."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
+            "additionalProperties": false,
+            "required": ["items"],
             "properties": {
-                "id": { "type": "string", "description": "Todo item id" },
-                "status": {
-                    "type": "string",
-                    "enum": ["pending", "in_progress", "completed", "cancelled"]
-                },
-                "content": { "type": "string", "description": "Replacement content" }
-            },
-            "required": ["id"]
+                "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["id"],
+                        "properties": {
+                            "id": { "type": "string" },
+                            "status": { "type": "string", "enum": TODO_STATUS_ENUM },
+                            "content": { "type": "string" },
+                            "after_id": { "type": "string" }
+                        }
+                    }
+                }
+            }
         })
+    }
+
+    fn prompt_guidelines(&self) -> &[&str] {
+        TODO_UPDATE_GUIDELINES
     }
 
     fn execution_mode(&self) -> XyToolExecutionMode {
@@ -289,22 +240,17 @@ impl TypedTool for TodoUpdateTool {
         if ctx.cancel.is_cancelled() {
             return Err(XyToolError::Aborted);
         }
-        let list = self
-            .gateway
-            .update(&args.id, args.status, args.content)
-            .await?;
-        // atd13: typed live projection straight from the SSOT mutation point.
+        let list = self.gateway.update(args.items).await?;
         ctx.publish_state(crate::protocol::lifecycle::XyEvent::TodoUpdated { list: list.clone() });
         Ok(list_json(&list))
     }
 }
 
-/// Three Todo tools sharing `gateway`.
+/// Two Todo tools sharing `gateway`.
 pub fn todo_tools(
     gateway: Arc<dyn AgentTodoGateway>,
 ) -> Vec<Arc<dyn crate::protocol::ports::XyTool>> {
     vec![
-        Arc::new(TodoListTool::new(gateway.clone())),
         Arc::new(TodoRewriteTool::new(gateway.clone())),
         Arc::new(TodoUpdateTool::new(gateway)),
     ]
@@ -315,7 +261,7 @@ mod tests {
     use super::*;
     use crate::infra::session::SessionManager;
     use crate::protocol::ports::XyTool;
-    use crate::protocol::session::{CUSTOM_TYPE_AGENT_TODO, SessionEntry};
+    use crate::protocol::session::{CUSTOM_TYPE_AGENT_TODO, SessionEntry, TodoStatus};
 
     async fn bound_gw() -> (
         Arc<SessionAgentTodoGateway>,
@@ -351,6 +297,11 @@ mod tests {
             .unwrap();
         let v: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["items"].as_array().unwrap().len(), 2);
+        assert!(
+            v["items"][1]["id"].as_str().unwrap().starts_with("t_"),
+            "omitted id must be minted: {}",
+            v["items"][1]["id"]
+        );
         let branch = store.load_leaf_branch(&sid).await.unwrap();
         let customs: Vec<_> = branch
             .iter()
@@ -363,8 +314,6 @@ mod tests {
         assert_eq!(customs[0].data["items"], v["items"]);
     }
 
-    /// atd13: successful writes publish a typed TodoUpdated event through the
-    /// ctx uplink; todo_list (read-only) publishes nothing; no uplink = silent.
     #[tokio::test]
     async fn mutation_publishes_typed_todo_updated() {
         use crate::protocol::lifecycle::XyEvent;
@@ -377,7 +326,7 @@ mod tests {
         rewrite
             .execute(
                 &ctx,
-                json!({"items": [{"id": "a", "content": "one"}, {"content": "two"}]}),
+                json!({"items": [{"id": "a", "content": "one"}, {"id": "b", "content": "two"}]}),
             )
             .await
             .unwrap();
@@ -395,27 +344,16 @@ mod tests {
 
         let update = TodoUpdateTool::new(gw.clone());
         update
-            .execute(&ctx, json!({"id": "a", "status": "completed"}))
+            .execute(&ctx, json!({"items": [{"id": "a", "status": "completed"}]}))
             .await
             .unwrap();
         match rx.recv().await {
             Some(XyEvent::TodoUpdated { list }) => {
-                assert_eq!(
-                    list.items[0].status,
-                    crate::protocol::session::TodoStatus::Completed
-                );
+                assert_eq!(list.items[0].status, TodoStatus::Completed);
             }
             other => panic!("expected TodoUpdated, got {other:?}"),
         }
 
-        let list_tool = TodoListTool::new(gw);
-        list_tool.execute(&ctx, json!({})).await.unwrap();
-        assert!(
-            rx.try_recv().is_err(),
-            "read-only todo_list MUST NOT publish"
-        );
-
-        // Unbound ctx (no uplink) is a silent no-op.
         let bare = XyToolCtx::new("c2");
         let (gw2, _, _) = bound_gw().await;
         TodoRewriteTool::new(gw2)
@@ -424,7 +362,6 @@ mod tests {
             .unwrap();
     }
 
-    /// atd13: clearing via empty rewrite publishes an empty-list event.
     #[tokio::test]
     async fn clear_rewrite_publishes_empty_list() {
         use crate::protocol::lifecycle::XyEvent;
@@ -438,7 +375,7 @@ mod tests {
             .await
             .unwrap();
         tool.execute(&ctx, json!({"items": []})).await.unwrap();
-        let _ = rx.recv().await; // first write
+        let _ = rx.recv().await;
         match rx.recv().await {
             Some(XyEvent::TodoUpdated { list }) => assert!(list.is_empty()),
             other => panic!("expected TodoUpdated, got {other:?}"),
@@ -460,12 +397,28 @@ mod tests {
         let err = tool
             .execute(
                 &XyToolCtx::new("c"),
-                json!({"id": "nope", "status": "completed"}),
+                json!({"items": [{"id": "nope", "status": "completed"}]}),
             )
             .await
             .unwrap_err();
         assert!(err.to_string().contains("unknown todo id"));
         assert_eq!(store.load_leaf_branch(&sid).await.unwrap().len(), before);
+    }
+
+    #[tokio::test]
+    async fn old_top_level_update_shape_rejects() {
+        let (gw, _, _) = bound_gw().await;
+        let err = TodoUpdateTool::new(gw)
+            .execute(
+                &XyToolCtx::new("c"),
+                json!({"id": "a", "status": "completed"}),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().to_lowercase().contains("invalid") || err.to_string().contains("items"),
+            "{err}"
+        );
     }
 
     #[tokio::test]
@@ -500,22 +453,15 @@ mod tests {
         assert_eq!(customs[0].data["items"], v["items"]);
     }
 
-    #[tokio::test]
-    async fn todo_list_readonly() {
-        let (gw, store, sid) = bound_gw().await;
-        gw.rewrite(vec![TodoItemDraft {
-            id: Some("a".into()),
-            content: "x".into(),
-            status: TodoStatus::Pending,
-        }])
-        .await
-        .unwrap();
-        let before = store.load_leaf_branch(&sid).await.unwrap().len();
-        let out = TodoListTool::new(gw)
-            .execute(&XyToolCtx::new("c"), json!({}))
-            .await
-            .unwrap();
-        assert!(out.contains("\"id\":\"a\""));
-        assert_eq!(store.load_leaf_branch(&sid).await.unwrap().len(), before);
+    #[test]
+    fn update_has_guideline() {
+        let gw = SessionAgentTodoGateway::new(Arc::new(SessionManager::new(
+            tempfile::tempdir().unwrap().path().to_path_buf(),
+        )));
+        let tool = TodoUpdateTool::new(gw);
+        let g = TypedTool::prompt_guidelines(&tool);
+        assert!(!g.is_empty());
+        assert!(g[0].contains("<agent_status_bar>"));
+        assert!(g[0].contains("<todo>"));
     }
 }

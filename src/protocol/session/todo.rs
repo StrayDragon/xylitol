@@ -2,7 +2,7 @@
 //!
 //! Persist via [`crate::protocol::session::SessionEntry::Custom`]; never
 //! [`crate::protocol::session::CustomMessageEntry`] / session_env (those enter
-//! the LLM prefix).
+//! Request-time AgentStatusBar inject is a projection, not SSOT.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -27,7 +27,6 @@ pub enum TodoStatus {
     Pending,
     InProgress,
     Completed,
-    Cancelled,
 }
 
 impl TodoStatus {
@@ -59,12 +58,12 @@ impl TodoList {
         self.items.is_empty()
     }
 
-    /// Completed + cancelled count over total (for TUI summary).
+    /// Completed count over total (for TUI summary).
     pub fn done_total(&self) -> (usize, usize) {
         let done = self
             .items
             .iter()
-            .filter(|i| matches!(i.status, TodoStatus::Completed | TodoStatus::Cancelled))
+            .filter(|i| i.status == TodoStatus::Completed)
             .count();
         (done, self.items.len())
     }
@@ -78,9 +77,24 @@ impl TodoList {
         json!({ "items": self.items })
     }
 
+    /// Load a snapshot. Rows with status `cancelled` are dropped so old JSONL
+    /// still yields a list; other invalid rows fail the whole payload.
     pub fn from_data_value(data: &Value) -> Result<Self, TodoValidationError> {
-        serde_json::from_value(data.clone())
-            .map_err(|e| TodoValidationError(format!("invalid agent_todo payload: {e}")))
+        let Some(items) = data.get("items").and_then(Value::as_array) else {
+            return Err(TodoValidationError(
+                "invalid agent_todo payload: missing items array".into(),
+            ));
+        };
+        let mut out = Vec::with_capacity(items.len());
+        for item in items {
+            if item.get("status").and_then(Value::as_str) == Some("cancelled") {
+                continue;
+            }
+            let parsed: TodoItem = serde_json::from_value(item.clone())
+                .map_err(|e| TodoValidationError(format!("invalid agent_todo payload: {e}")))?;
+            out.push(parsed);
+        }
+        Ok(TodoList::new(out))
     }
 
     pub fn to_custom_entry_shell(&self) -> SessionEntry {
@@ -144,13 +158,27 @@ pub fn latest_agent_todo(entries: &[SessionEntry]) -> Option<TodoList> {
     })
 }
 
+fn mint_todo_id(existing: &[TodoItem]) -> String {
+    loop {
+        let b = uuid::Uuid::new_v4();
+        let bytes = b.as_bytes();
+        let id = format!(
+            "t_{:02x}{:02x}{:02x}{:02x}",
+            bytes[0], bytes[1], bytes[2], bytes[3]
+        );
+        if !existing.iter().any(|i| i.id == id) {
+            return id;
+        }
+    }
+}
+
 /// Normalize rewrite inputs: generate missing ids; trim content.
 pub fn normalize_rewrite_items(items: Vec<TodoItemDraft>) -> Result<TodoList, TodoValidationError> {
     let mut out = Vec::with_capacity(items.len());
-    for (idx, draft) in items.into_iter().enumerate() {
+    for draft in items {
         let id = match draft.id {
             Some(id) if !id.trim().is_empty() => id.trim().to_string(),
-            _ => format!("todo-{}", idx + 1),
+            _ => mint_todo_id(&out),
         };
         out.push(TodoItem {
             id,
@@ -176,27 +204,57 @@ fn default_pending() -> TodoStatus {
     TodoStatus::Pending
 }
 
-/// Apply `todo_update` to a list (validate after).
-pub fn apply_todo_update(
+/// One `todo_update` patch row.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TodoItemPatch {
+    pub id: String,
+    pub status: Option<TodoStatus>,
+    pub content: Option<String>,
+    pub after_id: Option<String>,
+}
+
+/// Apply `todo_update` patches in order (validate after).
+pub fn apply_todo_patches(
     list: &TodoList,
-    id: &str,
-    status: Option<TodoStatus>,
-    content: Option<String>,
+    patches: &[TodoItemPatch],
 ) -> Result<TodoList, TodoValidationError> {
-    if status.is_none() && content.is_none() {
+    if patches.is_empty() {
         return Err(TodoValidationError(
-            "todo_update requires status and/or content".into(),
+            "todo_update requires a non-empty items array".into(),
         ));
     }
     let mut items = list.items.clone();
-    let Some(item) = items.iter_mut().find(|i| i.id == id) else {
-        return Err(TodoValidationError(format!("unknown todo id: {id}")));
-    };
-    if let Some(s) = status {
-        item.status = s;
-    }
-    if let Some(c) = content {
-        item.content = c.trim().to_string();
+    for patch in patches {
+        if patch.status.is_none() && patch.content.is_none() && patch.after_id.is_none() {
+            return Err(TodoValidationError(format!(
+                "todo item '{}': patch must set status, content, or after_id",
+                patch.id
+            )));
+        }
+        let idx = items
+            .iter()
+            .position(|i| i.id == patch.id)
+            .ok_or_else(|| TodoValidationError(format!("unknown todo id: {}", patch.id)))?;
+        if let Some(s) = patch.status {
+            items[idx].status = s;
+        }
+        if let Some(ref c) = patch.content {
+            items[idx].content = c.trim().to_string();
+        }
+        if let Some(ref after) = patch.after_id {
+            if after == &patch.id {
+                return Err(TodoValidationError(format!(
+                    "todo item '{}': after_id must not be the same id",
+                    patch.id
+                )));
+            }
+            let item = items.remove(idx);
+            let insert_at = items
+                .iter()
+                .position(|i| i.id == *after)
+                .ok_or_else(|| TodoValidationError(format!("unknown todo id: {after}")))?;
+            items.insert(insert_at + 1, item);
+        }
     }
     let next = TodoList::new(items);
     validate_todo_list(&next)?;
@@ -234,13 +292,45 @@ mod tests {
             TodoStatus::Pending,
             TodoStatus::InProgress,
             TodoStatus::Completed,
-            TodoStatus::Cancelled,
         ] {
             let v = serde_json::to_value(s).unwrap();
             let back: TodoStatus = serde_json::from_value(v).unwrap();
             assert_eq!(back, s);
         }
         assert!(serde_json::from_str::<TodoStatus>(r#""planned""#).is_err());
+        assert!(serde_json::from_str::<TodoStatus>(r#""cancelled""#).is_err());
+    }
+
+    #[test]
+    fn from_data_value_skips_cancelled_rows() {
+        let data = json!({
+            "items": [
+                {"id": "1", "content": "keep", "status": "pending"},
+                {"id": "2", "content": "drop", "status": "cancelled"},
+                {"id": "3", "content": "also", "status": "completed"}
+            ]
+        });
+        let list = TodoList::from_data_value(&data).expect("cancelled rows skipped");
+        assert_eq!(list.items.len(), 2);
+        assert_eq!(list.items[0].id, "1");
+        assert_eq!(list.items[1].id, "3");
+    }
+
+    #[test]
+    fn latest_wins_reads_snapshot_with_cancelled_row() {
+        let data = json!({
+            "items": [
+                {"id": "1", "content": "keep", "status": "in_progress"},
+                {"id": "x", "content": "old", "status": "cancelled"}
+            ]
+        });
+        assert_eq!(
+            latest_agent_todo(&[custom(data.clone())])
+                .expect("load")
+                .items
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -285,11 +375,67 @@ mod tests {
     }
 
     #[test]
+    fn rewrite_omitted_id_is_t_hex() {
+        let list = normalize_rewrite_items(vec![TodoItemDraft {
+            id: None,
+            content: "x".into(),
+            status: TodoStatus::Pending,
+        }])
+        .unwrap();
+        assert!(
+            list.items[0].id.starts_with("t_") && list.items[0].id.len() == 10,
+            "id={}",
+            list.items[0].id
+        );
+        assert!(!list.items[0].id.starts_with("todo-"));
+    }
+
+    #[test]
     fn update_unknown_id_rejects() {
         let list = TodoList::new(vec![item("1", "a", TodoStatus::Pending)]);
-        let err =
-            apply_todo_update(&list, "missing", Some(TodoStatus::Completed), None).unwrap_err();
+        let err = apply_todo_patches(
+            &list,
+            &[TodoItemPatch {
+                id: "missing".into(),
+                status: Some(TodoStatus::Completed),
+                content: None,
+                after_id: None,
+            }],
+        )
+        .unwrap_err();
         assert!(err.0.contains("unknown todo id"));
+    }
+
+    #[test]
+    fn update_batch_ticks_and_reorders() {
+        let list = TodoList::new(vec![
+            item("a", "one", TodoStatus::InProgress),
+            item("b", "two", TodoStatus::Pending),
+            item("c", "three", TodoStatus::Pending),
+        ]);
+        let next = apply_todo_patches(
+            &list,
+            &[
+                TodoItemPatch {
+                    id: "a".into(),
+                    status: Some(TodoStatus::Completed),
+                    content: None,
+                    after_id: None,
+                },
+                TodoItemPatch {
+                    id: "b".into(),
+                    status: Some(TodoStatus::InProgress),
+                    content: None,
+                    after_id: Some("c".into()),
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(next.items[0].id, "a");
+        assert_eq!(next.items[0].status, TodoStatus::Completed);
+        assert_eq!(next.items[1].id, "c");
+        assert_eq!(next.items[2].id, "b");
+        assert_eq!(next.items[2].status, TodoStatus::InProgress);
     }
 
     #[test]
@@ -297,8 +443,8 @@ mod tests {
         let list = TodoList::new(vec![
             item("1", "a", TodoStatus::Completed),
             item("2", "b", TodoStatus::Pending),
-            item("3", "c", TodoStatus::Cancelled),
+            item("3", "c", TodoStatus::InProgress),
         ]);
-        assert_eq!(list.summary_line(), "Todo · 2/3");
+        assert_eq!(list.summary_line(), "Todo · 1/3");
     }
 }

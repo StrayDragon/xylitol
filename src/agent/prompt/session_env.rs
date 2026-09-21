@@ -2,7 +2,8 @@
 //!
 //! This is **not** a chat user turn. It is a sparse, append-only **special status
 //! bar type** that bootstraps `date` / `clock` / `cwd` before the real user
-//! message. Full Lane Runtime / `<agent_status_bar>` lands in **`c1895`**.
+//! message. Outbound `<agent_status_bar>` (Todo as `<todo>` child) is
+//! [`crate::agent::prompt::status_bar`] — not persisted.
 //!
 //! # Discovery for `c1895` (do not reinvent)
 //!
@@ -14,8 +15,9 @@
 //! | Whether to append another row | [`should_append_session_env`] (date **or** cwd change; clock alone ≠ append) |
 //! | Mutating ensure | [`ensure_session_env_in_history`] — append when missing/stale (c1906) |
 //! | Inject seams | ReAct before user persist; overflow reload; post-`compact_session` |
+//! | Outbound status bar | [`crate::agent::prompt::project_outbound`] — `<agent_status_bar>`; Todo is `<todo>` child |
 //! | TUI hide | [`crate::protocol::session::is_env_custom_message`] + tree kind `meta` |
-//! | Planned full-bar root | `<agent_status_bar>` (c1895) — **different** name; scan `session_env` then merge/replace/off |
+//! | Planned persist kind | still park (`c1895`); outbound root is already [`crate::agent::prompt::status_bar`] |
 //!
 //! Persisted as [`EnvMessage::CustomMessage`], folded to a **user** row by
 //! [`crate::agent::llm_project::project_for_llm`]. Stable XML body: edit only via
@@ -35,9 +37,9 @@ use crate::utils::xml_escape;
 /// Same string as the XML root ([`SESSION_ENV_XML_ROOT`]).
 pub const CUSTOM_TYPE_SESSION_ENV: &str = "session_env";
 
-/// XML root element for session-env body (status-bar family; c1905).
+/// XML root element for session-env body (sparse persist; c1905).
 ///
-/// c1895 full bar uses `<agent_status_bar>` — keep names distinct when scanning.
+/// Outbound bar root is [`crate::agent::prompt::status_bar::STATUS_BAR_XML_ROOT`].
 pub const SESSION_ENV_XML_ROOT: &str = "session_env";
 
 /// Snapshot used to build or compare session_env messages.

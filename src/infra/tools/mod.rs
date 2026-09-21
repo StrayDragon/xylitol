@@ -77,19 +77,17 @@ impl AgentTodoGateway for MemoryTodoGateway {
 
     async fn update(
         &self,
-        id: &str,
-        status: Option<crate::protocol::session::TodoStatus>,
-        content: Option<String>,
+        patches: Vec<crate::protocol::session::TodoItemPatch>,
     ) -> Result<crate::protocol::session::TodoList, crate::protocol::error::XyToolError> {
         let current = self.list.read().await.0.clone();
-        let list = crate::protocol::session::apply_todo_update(&current, id, status, content)
+        let list = crate::protocol::session::apply_todo_patches(&current, &patches)
             .map_err(|e| crate::protocol::error::XyToolError::InvalidArgs(e.0))?;
         self.list.write().await.0 = list.clone();
         Ok(list)
     }
 }
 
-/// Return all built-in tools as trait objects (10-tool closed set).
+/// Return all built-in tools as trait objects (9-tool closed set).
 ///
 /// Uses an ephemeral Todo gateway (no session persistence). Product composition
 /// SHOULD call [`default_tools_with_todo`] with a store-bound gateway.
@@ -135,14 +133,7 @@ mod tests {
                 "{name} must be ParallelSafe"
             );
         }
-        for name in [
-            "write",
-            "edit",
-            "bash",
-            "todo_list",
-            "todo_rewrite",
-            "todo_update",
-        ] {
+        for name in ["write", "edit", "bash", "todo_rewrite", "todo_update"] {
             assert_eq!(
                 mode(name),
                 XyToolExecutionMode::Sequential,
@@ -155,7 +146,7 @@ mod tests {
     fn default_tools_include_todo_closed_set() {
         let tools = default_tools();
         let names: Vec<_> = tools.iter().map(|t| t.name()).collect();
-        assert_eq!(names.len(), 10);
+        assert_eq!(names.len(), 9);
         for n in [
             "read",
             "bash",
@@ -164,7 +155,6 @@ mod tests {
             "grep",
             "find",
             "ls",
-            "todo_list",
             "todo_rewrite",
             "todo_update",
         ] {

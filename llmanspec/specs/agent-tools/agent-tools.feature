@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: agent-tools
-# purpose: 工具系统 — 工具定义、执行分发、文件类内置与 Todo 三工具、路径工具与并发类。
+# purpose: 工具系统 — 工具定义、执行分发、文件类内置与 Todo 两工具、路径工具与并发类。
 # scope: src/agent/tools/, src/infra/tools/, src/protocol/
 
 功能: agent-tools
@@ -14,7 +14,7 @@
 
   @req:r42 @human
   场景: 默认内置工具闭集
-    - 产品 default_tools（Print 与 TUI builtins 基座）MUST 包含且以闭集提供：read、bash、edit、write、grep、find、ls、todo_list、todo_rewrite、todo_update（共 10 个）。ask 等面专属工具 MUST NOT 计入该闭集（见 t28）。Todo 工具语义见 agent-todo。
+    - 产品 default_tools（Print 与 TUI builtins 基座）MUST 包含且以闭集提供：read、bash、edit、write、grep、find、ls、todo_rewrite、todo_update（共 9 个）。ask 等面专属工具 MUST NOT 计入该闭集（见 t28）。Todo 工具语义见 agent-todo。MUST NOT 向模型暴露 todo_list。
 
   @req:r48 @human
   场景: 补丁应用
@@ -70,7 +70,7 @@
 
   @req:r1144 @human
   场景: 默认内置工具闭集·t2
-    - System MUST 实现与 r42 相同的 10 个 default_tools 闭集成员：read、bash、edit、write、grep、find、ls、todo_list、todo_rewrite、todo_update。文件类七工具行为对齐既有 pi 等价语义；Todo 三工具行为见 agent-todo。
+    - System MUST 实现与 r42 相同的 9 个 default_tools 闭集成员：read、bash、edit、write、grep、find、ls、todo_rewrite、todo_update。文件类七工具行为对齐既有 pi 等价语义；Todo 两工具行为见 agent-todo。
 
   @req:r1154 @human
   场景: edit 多段编辑
@@ -166,7 +166,7 @@
 
   @req:r1150 @human
   场景: builtin-tool-concurrency-class
-    - 内置工具 MUST 声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 与 todo_list/todo_rewrite/todo_update 为 Barrier（或等价 Sequential 映射）。调度层在 barrier_parallel 下 MUST 尊重该类；FileMutationQueue 可并存作同 path 纵深防御。由单测覆盖 default_tools 分类表，MUST NOT 为静态表单独扩 BDD step。
+    - 内置工具 MUST 声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 与 todo_rewrite/todo_update 为 Barrier（或等价 Sequential 映射）。调度层在 barrier_parallel 下 MUST 尊重该类；FileMutationQueue 可并存作同 path 纵深防御。由单测覆盖 default_tools 分类表，MUST NOT 为静态表单独扩 BDD step。
 
   @req:r1151 @human
   场景: dynamic-tool-mcp-hard-barrier
@@ -496,7 +496,7 @@
 
   @executable @req:r42
   场景: all-ten-tools-smoke
-    假如 工具注册表含全部 10 个工具
+    假如 工具注册表含全部 9 个工具
     当 各工具以合法参数调用
     那么 各返回成功 ToolResult
 
@@ -564,7 +564,7 @@
   场景: registry
     假如 工具集含全部内置工具
     当 列举工具名
-    那么 返回 10 个工具名
+    那么 返回 9 个工具名
 
   @executable @req:r1137
   场景: infra-works
