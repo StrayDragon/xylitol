@@ -23,10 +23,33 @@ enum TodoBarMode {
     Columns,
 }
 
+/// One painted run. Wide mode zips three columns onto one row; emphasis stays
+/// on the doing cell, so a row is spans rather than one flag for the whole line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LayoutSpan {
+    text: String,
+    in_progress: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LayoutLine {
     text: String,
-    in_progress: bool,
+    spans: Vec<LayoutSpan>,
+}
+
+fn layout_line(text: String, in_progress: bool) -> LayoutLine {
+    LayoutLine {
+        spans: vec![LayoutSpan {
+            text: text.clone(),
+            in_progress,
+        }],
+        text,
+    }
+}
+
+fn layout_line_spans(spans: Vec<LayoutSpan>) -> LayoutLine {
+    let text = spans.iter().map(|span| span.text.as_str()).collect();
+    LayoutLine { spans, text }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,20 +119,26 @@ pub fn render_todo_bar(
 }
 
 fn paint_line(theme: LayoutTheme, line: &LayoutLine, width: usize) -> String {
-    let painted = if line.in_progress {
-        fg_rgb(theme.palette().on_surface, &line.text)
-    } else {
-        theme.paint_muted(&line.text)
-    };
+    let mut painted = String::new();
+    for span in &line.spans {
+        if span.text.is_empty() {
+            continue;
+        }
+        let piece = if span.in_progress {
+            fg_rgb(theme.palette().on_surface, &span.text)
+        } else {
+            theme.paint_muted(&span.text)
+        };
+        painted.push_str(&piece);
+    }
     if width == 0 {
+        return painted;
+    }
+    let w = visible_width(&line.text);
+    if w >= width {
         painted
     } else {
-        let w = visible_width(&line.text);
-        if w >= width {
-            painted
-        } else {
-            format!("{painted}{}", " ".repeat(width - w))
-        }
+        format!("{painted}{}", " ".repeat(width - w))
     }
 }
 
@@ -256,23 +285,23 @@ fn layout_todo_bar(glyphs: GlyphSet, params: TodoBarParams<'_>) -> TodoBarLayout
             h.row += 1;
         }
         let mut framed = Vec::with_capacity(lines.len() + 2);
-        framed.push(LayoutLine {
-            text: if more_above > 0 {
+        framed.push(layout_line(
+            if more_above > 0 {
                 overflow_more_border(cols, true, more_above)
             } else {
                 plain_border(cols)
             },
-            in_progress: false,
-        });
+            false,
+        ));
         framed.extend(lines);
-        framed.push(LayoutLine {
-            text: if more_below > 0 {
+        framed.push(layout_line(
+            if more_below > 0 {
                 overflow_more_border(cols, false, more_below)
             } else {
                 plain_border(cols)
             },
-            in_progress: false,
-        });
+            false,
+        ));
         lines = framed;
     }
     TodoBarLayout {
@@ -344,10 +373,7 @@ fn stack_col(
 ) -> Vec<LayoutLine> {
     let mut rows = Vec::new();
     if let Some(h) = header {
-        rows.push(LayoutLine {
-            text: h.to_string(),
-            in_progress: false,
-        });
+        rows.push(layout_line(h.to_string(), false));
     }
     if open {
         for item in body {
@@ -362,10 +388,7 @@ fn paint_item(content: &str, status: TodoStatus, inner: usize) -> Vec<LayoutLine
     if in_progress {
         return wrap_words(content, inner.max(1))
             .into_iter()
-            .map(|line| LayoutLine {
-                text: line,
-                in_progress: true,
-            })
+            .map(|line| layout_line(line, true))
             .collect();
     }
     let wrap_w = inner.saturating_sub(HANGING_INDENT).max(1);
@@ -376,9 +399,11 @@ fn paint_item(content: &str, status: TodoStatus, inner: usize) -> Vec<LayoutLine
     wrapped
         .into_iter()
         .enumerate()
-        .map(|(i, line)| LayoutLine {
-            text: format!("{}{line}", if i == 0 { &mark } else { &hang }),
-            in_progress: false,
+        .map(|(i, line)| {
+            layout_line(
+                format!("{}{line}", if i == 0 { &mark } else { &hang }),
+                false,
+            )
         })
         .collect()
 }
@@ -388,22 +413,21 @@ fn zip_cols(cols: [&[LayoutLine]; 3], widths: [usize; 3], gutter: usize) -> Vec<
     let gap = " ".repeat(gutter);
     let mut lines = Vec::with_capacity(height);
     for r in 0..height {
-        let mut text = String::new();
-        let mut in_progress = false;
+        let mut spans = Vec::new();
         for (i, col) in cols.iter().enumerate() {
             if i > 0 {
-                text.push_str(&gap);
+                spans.push(LayoutSpan {
+                    text: gap.clone(),
+                    in_progress: false,
+                });
             }
             let cell = col.get(r);
-            if cell.is_some_and(|c| c.in_progress) {
-                in_progress = true;
-            }
-            text.push_str(&pad_visible(
-                cell.map(|c| c.text.as_str()).unwrap_or(""),
-                widths[i],
-            ));
+            spans.push(LayoutSpan {
+                text: pad_visible(cell.map(|c| c.text.as_str()).unwrap_or(""), widths[i]),
+                in_progress: cell.is_some_and(|c| c.spans.iter().any(|span| span.in_progress)),
+            });
         }
-        lines.push(LayoutLine { text, in_progress });
+        lines.push(layout_line_spans(spans));
     }
     if cols.iter().all(|c| c.is_empty()) {
         Vec::new()
@@ -798,5 +822,58 @@ mod tests {
         assert!(out.contains("2 completed"), "{out}");
         assert!(out.contains("[x] one"), "{out}");
         assert!(!out.contains("[~]"), "{out}");
+    }
+
+    fn fg_at(line: &str, needle: &str) -> (u8, u8, u8) {
+        let idx = line
+            .find(needle)
+            .unwrap_or_else(|| panic!("missing {needle} in {line}"));
+        let prefix = &line[..idx];
+        let marker = "\x1b[38;2;";
+        let start = prefix
+            .rfind(marker)
+            .unwrap_or_else(|| panic!("no fg before {needle}"));
+        let rest = &prefix[start + marker.len()..];
+        let end = rest.find('m').expect("sgr");
+        let mut parts = rest[..end].split(';');
+        let r = parts.next().unwrap().parse().unwrap();
+        let g = parts.next().unwrap().parse().unwrap();
+        let b = parts.next().unwrap().parse().unwrap();
+        (r, g, b)
+    }
+
+    #[test]
+    fn wide_row_emphasis_stays_on_doing_cell() {
+        let list = TodoList::new(vec![
+            item("1", "doing now", TodoStatus::InProgress),
+            item("2", "first pending", TodoStatus::Pending),
+            item("3", "second pending", TodoStatus::Pending),
+            item("4", "first done", TodoStatus::Completed),
+            item("5", "second done", TodoStatus::Completed),
+        ]);
+        let theme = LayoutTheme::product_dark();
+        let on = theme.palette().on_surface;
+        let muted = theme.palette().muted;
+        let frame = render_todo_bar(theme, GlyphSet::Unicode, params(&list, true, true, 120, 8));
+        let row = frame
+            .lines
+            .iter()
+            .find(|l| l.contains("doing now"))
+            .expect("doing row");
+        assert_eq!(fg_at(row, "doing now"), (on.r, on.g, on.b));
+        assert_eq!(fg_at(row, "first pending"), (muted.r, muted.g, muted.b));
+        assert_eq!(fg_at(row, "first done"), (muted.r, muted.g, muted.b));
+        let below = frame
+            .lines
+            .iter()
+            .find(|l| l.contains("second pending"))
+            .expect("second row");
+        assert_eq!(fg_at(below, "second pending"), (muted.r, muted.g, muted.b));
+        assert_eq!(fg_at(below, "second done"), (muted.r, muted.g, muted.b));
+        let on_sgr = format!("\x1b[38;2;{};{};{}m", on.r, on.g, on.b);
+        assert!(
+            !below.contains(&on_sgr),
+            "a row with no doing cell must stay muted: {below}"
+        );
     }
 }
