@@ -2,7 +2,7 @@
 
 > 第二产品端：gpui 桌面应用（**Linux / Wayland 先行**），与 TUI 并列的双 Rust 端格局。
 > 吃同一 Host（attach 本机监听器，四象限信封），不另起第二套会话/工具故事。
-> 方向定案：2026-08-22（前端选型收敛，Web 端出局；见 [`../research/ui-runtime-tradeoffs-2026.md`](../research/ui-runtime-tradeoffs-2026.md)）。
+> 方向定案：2026-08-22，2026-09-24 复核仍维持。编码主面是 gpui；Web（TS + Bun）只作搁置的管控台；Flutter 薄客户端排在 Rust 原生备选之后，不用 rinf 做总线。依据：[`../research/ui-runtime-tradeoffs-2026.md`](../research/ui-runtime-tradeoffs-2026.md)。
 
 ## 用户怎么碰到
 

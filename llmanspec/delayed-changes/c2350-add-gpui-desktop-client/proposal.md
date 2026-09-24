@@ -4,7 +4,7 @@ depends_on: []
 
 # 第二产品面：gpui 桌面客户端（Linux/Wayland）
 
-产品面格局收敛为 **gpui 桌面 + TUI 双 Rust 面**（2026-08-22 选型拍板，见 `docs/research/ui-runtime-tradeoffs-2026.md`）。本票交付 gpui 面的第一可交付切片：attach 本机 Host（四象限信封）的只读观察者。方向正文：`docs/roadmaps/Gpui桌面客户端.md`。
+产品面格局收敛为 **gpui 桌面 + TUI 双 Rust 面**（2026-08-22 拍板，2026-09-24 复核仍维持，见 `docs/research/ui-runtime-tradeoffs-2026.md`）。本票交付 gpui 面的第一可交付切片：attach 本机 Host（四象限信封）的只读观察者。方向正文：`docs/roadmaps/Gpui桌面客户端.md`。
 
 ## Why
 
