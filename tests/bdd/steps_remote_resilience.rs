@@ -29,9 +29,6 @@ fn micro_tunings() -> LinkTunings {
 #[derive(Debug)]
 enum MuxScript {
     FailTransport(String),
-    FailProtocol {
-        got: u32,
-    },
     /// A live connection with an injectable frame channel; `life` ends it.
     Live {
         life: Option<Duration>,
@@ -44,6 +41,7 @@ struct ScriptState {
     mux_calls: Vec<Instant>,
     subscribes: Vec<u64>,
     senders: Vec<tokio::sync::mpsc::UnboundedSender<RpcMessage>>,
+    describe_protocol: Option<u32>,
 }
 
 #[derive(Clone, Default)]
@@ -108,6 +106,21 @@ impl HostClient for ScriptedMuxHost {
             self.state.lock().unwrap().subscribes.push(seq);
         }
         let value = match method {
+            "host.describe" => {
+                let got = self
+                    .state
+                    .lock()
+                    .unwrap()
+                    .describe_protocol
+                    .unwrap_or(PROTOCOL_VERSION);
+                if got != PROTOCOL_VERSION {
+                    return Err(HostClientError::ProtocolMismatch {
+                        got,
+                        expected: PROTOCOL_VERSION,
+                    });
+                }
+                serde_json::json!({ "protocol": got })
+            }
             "get_state" => serde_json::json!({ "leaf_entry_id": null, "model": null }),
             "get_available_models" => serde_json::json!({ "models": [] }),
             "get_commands" => serde_json::json!({ "commands": [] }),
@@ -136,10 +149,6 @@ impl HostClient for ScriptedMuxHost {
         };
         match behavior {
             MuxScript::FailTransport(message) => Err(HostClientError::transport(message)),
-            MuxScript::FailProtocol { got } => Err(HostClientError::ProtocolMismatch {
-                got,
-                expected: PROTOCOL_VERSION,
-            }),
             MuxScript::Live { life } => {
                 let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RpcMessage>();
                 self.state.lock().unwrap().senders.push(tx);
@@ -214,14 +223,14 @@ fn mount_rig(host: ScriptedMuxHost) -> ResilienceRig {
 
 // ── ath44 hello mismatch (mock seam) ───────────────────────────────
 
-#[given("mock HostClient 在 mux 首帧发送版本不符的 server_hello")]
+#[given("mock HostClient 握手返回不符协议版本")]
 fn g_hello_mismatch(resilience_bdd: &ResilienceBdd) {
     let host = ScriptedMuxHost::default();
-    host.script(vec![MuxScript::FailProtocol { got: 99 }]);
+    host.state.lock().unwrap().describe_protocol = Some(99);
     put_rig(resilience_bdd, mount_rig(host));
 }
 
-#[when("attach 客户端完成首帧校验")]
+#[when("attach 客户端完成握手校验")]
 async fn w_hello_attach(resilience_bdd: &ResilienceBdd) {
     let mut rig = take_rig(resilience_bdd);
     let result = rig.driver.attach_session().await;
@@ -241,10 +250,10 @@ fn t_hello_fatal(resilience_bdd: &ResilienceBdd) {
         "version mismatch MUST fail attach: {attach:?}"
     );
     let mut rig = take_rig(resilience_bdd);
-    assert_eq!(
-        rig.host.mux_call_count(),
-        1,
-        "fatal protocol mismatch MUST NOT retry-loop"
+    assert!(
+        rig.host.mux_call_count() <= 1,
+        "fatal protocol mismatch MUST NOT retry-loop, mux calls={}",
+        rig.host.mux_call_count()
     );
     let drained = rig.driver.drain_idle_events();
     let fatal = drained.iter().any(|ev| {

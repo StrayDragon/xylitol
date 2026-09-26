@@ -5,8 +5,7 @@ use super::registry;
 
 /// Downlink `ServerRequest.method` values (not unary).
 ///
-/// The mux version handshake is the `RpcMessage::ServerHello` envelope frame
-/// (ath44), not a `ServerRequest` method.
+/// Version handshake is `host.describe` result (c2825), not a mux `ServerHello` frame.
 pub const DOWNLINK_METHODS: &[&str] = &[
     "session/event",
     "session/subscribed",

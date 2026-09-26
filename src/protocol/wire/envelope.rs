@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Stable protocol version returned by `host.describe`.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Discriminated four-quadrant message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

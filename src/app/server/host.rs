@@ -45,8 +45,10 @@ use crate::protocol::wire::registry::{
     METHOD_PROMPT, METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
 
-/// Bounded per-mux-connection queue. Overflow → `session/resync_required` or drop conn.
-pub const MUX_CHAN_CAP: usize = 256;
+/// Bounded per-mux-connection queue. Must fit a full journal replay
+/// (`EventJournal` default 10_000) plus `session/subscribed`; overflow still
+/// sends `session/resync_required` or drops that subscriber.
+pub const MUX_CHAN_CAP: usize = 16_384;
 
 /// Shared Host process state (salvo Depot).
 pub struct HostState {
@@ -614,7 +616,7 @@ impl SessionSlot {
     }
 }
 
-/// Ask tool on a Host slot: mux `question/requested`, answer via POST /api/respond.
+/// Ask tool on a Host slot: mux `question/requested`, answer via `answer_question` unary.
 struct SlotAskGateway {
     slot: Arc<SessionSlot>,
 }

@@ -23,6 +23,7 @@ mod bindings_app_tui_transcript;
 mod bindings_cli_entry;
 mod bindings_domain_compaction;
 mod bindings_domain_security;
+mod bindings_layer_architecture;
 mod bindings_misc;
 mod bindings_otel_obs;
 mod bindings_package_tui_interaction_modes;

@@ -155,11 +155,17 @@
 
   @req:r1271 @human
   场景: mux-halfopen-detect
-    - mux 下行客户端 MUST 周期性探测连接活性（如 keepalive ping）；连续探测周期无任何入站帧时 MUST 判定半开并走既有重订/resync 路径，MUST NOT 静默停摆。
+    - 产品订阅连接（WS /rpc）MUST 周期性探测连接活性（如 keepalive ping）；连续探测周期无任何入站帧时 MUST 判定半开并走既有重订/resync 路径，MUST NOT 静默停摆。
+
+  @req:r1271 @executable
+  场景: mux-halfopen-idle-detect
+    假如 以短空闲超时的产品订阅客户端已升级 WS /rpc
+    当 超过空闲超时仍无入站帧
+    那么 客户端判定半开并结束该订阅
 
   @req:r1272 @human
   场景: attach-reconnect-backoff-generation
-    - 产品 TUI attach 的 mux 重连循环 MUST 指数退避，且单次连接存活达到阈值后才 MUST 归零退避：存活不足阈值的反复闪断 MUST 按持续故障逐次升级，MUST NOT 以固定高频重试冲击 Host。重订/重连循环 MUST 携带代际计数，旧代连接的迟到帧 MUST NOT 进入新代投影。
+    - 产品 TUI attach 的订阅重连循环 MUST 指数退避，且单次连接存活达到阈值后才 MUST 归零退避：存活不足阈值的反复闪断 MUST 按持续故障逐次升级，MUST NOT 以固定高频重试冲击 Host。重订/重连循环 MUST 携带代际计数，旧代连接的迟到帧 MUST NOT 进入新代投影。
 
   @req:r1273 @human
   场景: attach-reconnect-grace-ux
@@ -167,11 +173,11 @@
 
   @req:r1274 @human
   场景: attach-coalesce-downlink
-    - mux 下行事件 MUST 在短窗口内攒批合帧：同窗口多条事件 MUST 合并为一次 UI 投影批消费，MUST NOT 逐事件触发投影。
+    - 产品订阅下行事件 MUST 在短窗口内攒批合帧：同窗口多条事件 MUST 合并为一次 UI 投影批消费，MUST NOT 逐事件触发投影。
 
   @req:r1275 @human
   场景: attach-hello-handshake
-    - mux 下行连接建立后 server MUST 首帧发送 server_hello 且载荷携带现行协议版本；客户端 MUST 对每条连接校验首帧与版本：首帧缺失或不符 MUST 判连接失败进入重连判定，版本不符 MUST 按不可重试故障终止（fatal），MUST NOT 降级、MUST NOT 重试风暴；握手版本语义 MUST 单一，MUST NOT 同时维护两套版本协商。
+    - 产品 TUI attach 后 MUST 经已登记方法（host.describe 或语义等价）的 result 校验协议版本；版本不符 MUST 按不可重试故障终止（fatal），MUST NOT 降级、MUST NOT 重试风暴。握手版本语义 MUST 单一，MUST NOT 同时维护特例首帧与方法 result 两套协商。连接失败（含订阅失败）MUST 进入重连判定。
 
   @req:r1272 @executable
   场景: reconnect-backoff-escalation
@@ -195,8 +201,8 @@
 
   @req:r1275 @executable
   场景: attach-hello-mismatch-fatal
-    假如 mock HostClient 在 mux 首帧发送版本不符的 server_hello
-    当 attach 客户端完成首帧校验
+    假如 mock HostClient 握手返回不符协议版本
+    当 attach 客户端完成握手校验
     那么 driver MUST 报版本错误并终止该代循环且 MUST NOT 进入重试循环
 
   @req:r1275 @executable

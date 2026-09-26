@@ -1,7 +1,8 @@
-//! protocol-app 纯协议层步骤：serde 往返、闭集拒绝、四象限信封。
+//! protocol-app 纯协议层步骤：serde 往返、闭集拒绝、JSON-RPC 信封。
 //! 不起 Host —— 全部直接驱动 `crate::protocol` 公开类型。
 
 use crate::protocol::lifecycle::XyEvent;
+use crate::protocol::wire::codec;
 use crate::protocol::{Command, Event, RpcMessage};
 use crate::tests::bdd::prelude::*;
 use rstest::fixture;
@@ -219,24 +220,23 @@ fn t_tool_end_flag_semantics(protocol_bdd: &ProtocolBdd) {
     );
 }
 
-#[when("解析四象限信封样例（client-request/server-response/server-request/client-response）")]
-fn w_four_quadrant_envelopes(protocol_bdd: &ProtocolBdd) {
+#[when("解析 JSON-RPC 信封样例（request / result / notification）")]
+fn w_jsonrpc_envelopes(protocol_bdd: &ProtocolBdd) {
     let samples = [
-        r#"{"type":"client-request","rpcId":"r1","method":"prompt","payload":{}}"#,
-        r#"{"type":"server-response","rpcId":"r1","result":{"ok":true,"value":{}}}"#,
-        r#"{"type":"server-request","rpcId":"r9","method":"session/event","payload":{}}"#,
-        r#"{"type":"client-response","rpcId":"r9","payload":{"approved":true}}"#,
+        r#"{"jsonrpc":"2.0","id":"r1","method":"prompt","params":{}}"#,
+        r#"{"jsonrpc":"2.0","id":"r1","result":{}}"#,
+        r#"{"jsonrpc":"2.0","method":"session/event","params":{}}"#,
     ];
     let mut msgs = Vec::new();
     for s in samples {
-        let m: RpcMessage = serde_json::from_str(s).unwrap_or_else(|e| panic!("parse {s}: {e}"));
+        let m = codec::decode_str(s).unwrap_or_else(|e| panic!("parse {s}: {e}"));
         msgs.push(m);
     }
     *protocol_bdd.msgs.borrow_mut() = msgs;
 }
 
-#[then("四象限形态与 rpcId 回显成立")]
-fn t_four_quadrant_shape(protocol_bdd: &ProtocolBdd) {
+#[then("JSON-RPC 形态与 id 回显成立")]
+fn t_jsonrpc_shape(protocol_bdd: &ProtocolBdd) {
     let msgs = protocol_bdd.msgs.borrow();
     assert!(
         matches!(&msgs[0], RpcMessage::ClientRequest { rpc_id, method, .. }
@@ -245,15 +245,11 @@ fn t_four_quadrant_shape(protocol_bdd: &ProtocolBdd) {
     );
     assert!(
         matches!(&msgs[1], RpcMessage::ServerResponse { rpc_id, .. } if rpc_id == "r1"),
-        "{msgs:?}"
-    );
-    // 应答回显发起方铸造的相关 id
-    assert!(
-        matches!(&msgs[2], RpcMessage::ServerRequest { rpc_id, .. } if rpc_id == "r9"),
-        "{msgs:?}"
+        "result must echo request id, got {msgs:?}"
     );
     assert!(
-        matches!(&msgs[3], RpcMessage::ClientResponse { rpc_id, .. } if rpc_id == "r9"),
-        "client-response must echo related id, got {msgs:?}"
+        matches!(&msgs[2], RpcMessage::ServerRequest { method, rpc_id, .. }
+            if method == "session/event" && rpc_id.is_empty()),
+        "event downlink is a notification (no id), got {msgs:?}"
     );
 }

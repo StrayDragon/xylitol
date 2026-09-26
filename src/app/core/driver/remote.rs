@@ -15,6 +15,7 @@ use crate::app::core::host_client::{HostClient, HostClientError, HttpWsClient};
 use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::wire::Command;
+use crate::protocol::wire::envelope::PROTOCOL_VERSION;
 use crate::protocol::{Event, RpcMessage};
 
 use super::XyDriver;
@@ -354,8 +355,13 @@ where
             method,
             payload,
         } if method == "approval/requested" || method == "question/requested" => {
+            let call_id = payload
+                .get("call_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(rpc_id.as_str())
+                .to_string();
             if let Some(notify) = &ctx.reverse_rpc {
-                notify(rpc_id, method, payload);
+                notify(call_id, method, payload);
             }
         }
         _ => {}
@@ -423,10 +429,8 @@ where
         let connected_at = tokio::time::Instant::now();
         match ctx.host.mux().await {
             Ok(mut mux) => {
-                // ath44: the carrier already validated this
-                // connection's server_hello before handing us the
-                // stream; a mismatch would have surfaced as a fatal
-                // ProtocolMismatch below.
+                // ath44: host.describe result already validated protocol;
+                // mux frames are JSON-RPC notifications.
                 let seq = ctx.last_seq.load(Ordering::SeqCst);
                 ctx.skip_cold_replay.store(seq == 0, Ordering::SeqCst);
                 if ctx
@@ -643,6 +647,45 @@ where
         self.last_seq.store(0, Ordering::SeqCst);
         if self.downlink.started.load(Ordering::SeqCst) {
             self.restart_downlink();
+        }
+    }
+
+    async fn check_host_protocol(&self) -> Result<(), XyDriverError> {
+        match self
+            .host
+            .unary("host.describe", serde_json::json!({}))
+            .await
+        {
+            Err(e @ HostClientError::ProtocolMismatch { .. }) => {
+                let msg = e.to_string();
+                if let Ok(mut slot) = self.fatal.lock() {
+                    *slot = Some(msg.clone());
+                }
+                self.downlink.push(XyEvent::error_msg(msg.clone()));
+                Err(XyDriverError::remote(msg))
+            }
+            Err(e) => Err(XyDriverError::remote(e.to_string())),
+            Ok(result) => {
+                let got = result
+                    .value
+                    .as_ref()
+                    .and_then(|v| v.get("protocol"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+                if got != PROTOCOL_VERSION {
+                    let err = HostClientError::ProtocolMismatch {
+                        got,
+                        expected: PROTOCOL_VERSION,
+                    };
+                    let msg = err.to_string();
+                    if let Ok(mut slot) = self.fatal.lock() {
+                        *slot = Some(msg.clone());
+                    }
+                    self.downlink.push(XyEvent::error_msg(msg.clone()));
+                    return Err(XyDriverError::remote(msg));
+                }
+                Ok(())
+            }
         }
     }
 
@@ -869,9 +912,7 @@ where
     C: HostClient + Clone + 'static,
 {
     async fn attach_session(&mut self) -> Result<(), XyDriverError> {
-        // ath44: the version handshake rides on every mux connection's
-        // server_hello (carrier-validated); there is no separate unary
-        // describe on the attach critical path.
+        self.check_host_protocol().await?;
         self.ensure_downlink();
         self.wait_subscribed().await?;
         self.refresh_fixed_zone_caches().await

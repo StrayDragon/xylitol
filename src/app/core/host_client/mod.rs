@@ -1,4 +1,4 @@
-//! Four-quadrant typed client: unary POST, respond POST, mux downlink.
+//! Typed host client: JSON-RPC unary + mux downlink (in-process or WS /rpc).
 
 use std::pin::Pin;
 
@@ -44,7 +44,7 @@ impl HostClientError {
 /// One typed client, two carriers ([`InProcessClient`] / [`HttpWsClient`]).
 #[async_trait]
 pub trait HostClient: Send + Sync {
-    /// ClientRequest → ServerResponse (`POST /api/<method>` or in-process).
+    /// JSON-RPC unary (`WS /rpc` or in-process).
     async fn unary(&self, method: &str, payload: Value) -> Result<RpcResult, HostClientError>;
 
     /// Unary with a caller-chosen envelope `rpcId` — the idempotency admission
@@ -62,9 +62,9 @@ pub trait HostClient: Send + Sync {
         self.unary(method, payload).await
     }
 
-    /// ClientResponse (`POST /api/respond`). HTTP body is a carrier ack, not a second RpcMessage.
+    /// Approve / answer via product unary (`approve_tool` / `answer_question`).
     async fn respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError>;
 
-    /// WebSocket (or in-process) downlink. The socket MUST NOT send business uplinks.
+    /// WebSocket (or in-process) downlink; WS /rpc also accepts JSON-RPC unary.
     async fn mux(&self) -> Result<MuxStream, HostClientError>;
 }

@@ -22,7 +22,7 @@ pub enum AttachError {
 /// Probe that a TCP listener is accepting at the attach URL.
 ///
 /// This is liveness, not `host.describe`. A listening process that does not
-/// speak the four-quadrant envelope still counts as "in listening" here;
+/// speak JSON-RPC still counts as "in listening" here;
 /// handshake mismatch is a later error.
 pub fn probe_host(url: &str) -> Result<(), AttachError> {
     let parsed = url::Url::parse(url).map_err(|source| AttachError::InvalidUrl {

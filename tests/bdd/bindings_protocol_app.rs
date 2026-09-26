@@ -36,15 +36,57 @@ fn test_pa_err1_tool_end_flag(protocol_bdd: ProtocolBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
-    name = "four-quadrant-envelope-shape"
+    name = "ws-jsonrpc-unary-peer"
 )]
-fn test_pa_env1_four_quadrant_shape(protocol_bdd: ProtocolBdd) {}
+async fn test_pa_ws_jsonrpc_unary(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "jsonrpc-envelope-shape"
+)]
+fn test_pa_env1_jsonrpc_shape(protocol_bdd: ProtocolBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
     name = "unary-stable-error-envelope"
 )]
 async fn test_ip3_stable_error(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "jsonrpc-unary-success-shape"
+)]
+async fn test_pa_jsonrpc_unary_success(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "method-table-unknown-is-32601"
+)]
+async fn test_pa_method_table_unknown(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "handshake-protocol-via-describe"
+)]
+async fn test_pa_handshake_describe(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "subscribe-via-jsonrpc"
+)]
+async fn test_pa_subscribe_jsonrpc(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "approve-tool-is-product-unary"
+)]
+async fn test_pa_approve_unary(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "jsonrpc-illegal-envelope"
+)]
+async fn test_pa_illegal_envelope(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",

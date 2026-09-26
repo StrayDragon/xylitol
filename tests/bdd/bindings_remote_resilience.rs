@@ -6,6 +6,12 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "mux-halfopen-idle-detect"
+)]
+async fn test_ath_halfopen_idle(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "attach-hello-mismatch-fatal"
 )]
 async fn test_ath44_hello_mismatch(resilience_bdd: ResilienceBdd) {}

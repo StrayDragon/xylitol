@@ -19,7 +19,7 @@
 
   @req:r1532 @human
   场景: server 应用面
-    - System MUST 提供 server 应用面，托管 agent + infra 运行时，并经四象限信封暴露产品契约：unary 与 respond 为 HTTP POST，下行为 WebSocket 且 MUST NOT 收业务上行。同一 {addr,port} 占用 MUST 失败，MUST NOT 整机锁文件，MUST NOT port+1。MUST NOT 以 /api/v1 REST 资源动词或全双工 WS 应用帧为产品真源。
+    - System MUST 提供 server 应用面，托管 agent + infra 运行时，并经 JSON-RPC 2.0 暴露产品契约：产品入口为 POST /rpc 与 WS /rpc（同一方法表）；WS /rpc MUST 只承载 JSON-RPC 帧。同一 {addr,port} 占用 MUST 失败，MUST NOT 整机锁文件，MUST NOT port+1。MUST NOT 以 /api/v1 REST 资源动词、POST /api/respond 或非 JSON-RPC 的 WS 应用帧为产品真源。
 
   @req:r1533 @human
   场景: 运行时归属
@@ -124,3 +124,10 @@
   @req:r1515 @human
   场景: 产品 TUI 要求监听器
     - 产品 TUI MUST 要求本机 Host 监听器已在听（默认 127.0.0.1:18790，可覆盖）。未在听 MUST 失败。print 与库嵌入 MUST 仍允许无网络绑定。
+
+  @req:r1532 @executable
+  场景: server-surface-jsonrpc-entry
+    当 服务端在空闲端口上启动
+    并且 POST /rpc 调用 host.describe
+    那么 应答为 JSON-RPC 成功且 id 回显
+    并且 不暴露 /api/v1 产品 REST

@@ -229,7 +229,7 @@ impl ReverseRpcGateway {
         }
     }
 
-    /// Apply a `POST /api/respond` payload (`approved` and/or `answer`).
+    /// Apply an `approve_tool` / `answer_question` payload (`approved` and/or `answer`).
     ///
     /// First matching field wins; unknown payloads are ignored (returns false).
     pub fn handle_respond(&self, rpc_id: &str, payload: &Value) -> bool {
@@ -352,13 +352,13 @@ mod tests {
     }
 
     #[test]
-    fn server_hello_wire_tag_and_version() {
-        // ath44/c2480: the product handshake frame lives on RpcMessage now.
+    fn server_hello_is_not_a_wire_frame() {
         let json = codec::encode_to_string(&RpcMessage::ServerHello { protocol: 7 }).unwrap();
         assert!(json.contains("\"type\":\"server-hello\""), "{json}");
-        assert!(json.contains("\"protocol\":7"), "{json}");
-        let back = codec::decode_str(&json).unwrap();
-        assert_eq!(back, RpcMessage::ServerHello { protocol: 7 });
+        assert!(
+            codec::decode_str(&json).is_err(),
+            "handshake is host.describe, not a mux type tag"
+        );
     }
 
     #[test]

@@ -18,7 +18,7 @@ pub struct PendingAsk {
 /// Channel-based [`AskUserGateway`] shared by AskTool and the TUI host.
 ///
 /// When a [`crate::HostClient`] is set (product TUI attach), reverse-RPC answers go
-/// through `POST /api/respond` instead of a local fake.
+/// through `approve_tool` / `answer_question` unary instead of a local fake.
 pub struct AskHostGateway {
     pending: Mutex<Option<PendingAsk>>,
     host: Mutex<Option<std::sync::Arc<dyn crate::app::core::host_client::HostClient>>>,

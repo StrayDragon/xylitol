@@ -32,61 +32,50 @@ fn build() -> String {
     });
     paths.insert("/healthz".into(), healthz);
 
-    let respond = json!({
-        "post": {
-            "operationId": "respond",
-            "summary": "Reverse-RPC answer (approval / question)",
-            "requestBody": {"$ref": "#/components/schemas/ClientResponse"},
-            "responses": {"200": {"$ref": "#/components/schemas/RpcResult"}}
-        }
-    });
-    paths.insert("/api/respond".into(), respond);
-
-    for method in registry::names() {
-        let entry = json!({
+    paths.insert(
+        "/rpc".into(),
+        json!({
             "post": {
-                "operationId": method,
-                "summary": format!("unary `{method}`"),
-                "requestBody": {"$ref": "#/components/schemas/ClientRequest"},
-                "responses": {"200": {"$ref": "#/components/schemas/RpcResult"}}
+                "operationId": "jsonrpc",
+                "summary": "JSON-RPC 2.0 product entry",
+                "requestBody": {"$ref": "#/components/schemas/JsonRpcRequest"},
+                "responses": {"200": {"$ref": "#/components/schemas/JsonRpcResponse"}}
             }
-        });
-        paths.insert(format!("/api/{method}"), entry);
-    }
+        }),
+    );
 
-    // WS downlink (`GET /api/events.mux`) has no first-class server-push model
-    // in OpenAPI; it stays out of `paths` on purpose (D4).
+    let methods = registry::names().collect::<Vec<_>>().join(", ");
     let downlink_note = DOWNLINK_METHODS
         .iter()
         .map(|m| format!("`{m}`"))
         .collect::<Vec<_>>()
         .join(", ");
     let description = format!(
-        "Debug documentation for the xylitol Host four-quadrant unary surface \
-         (protocol v{PROTOCOL_VERSION}). HTTP 200 means carrier success; business \
-         failures ride `RpcResult.ok=false`.\n\n\
-         WebSocket downlink is NOT an OpenAPI path: subscribe via unary, then \
-         receive ServerRequest frames ({downlink_note}) on `GET /api/events.mux`. \
-         Concrete payload shapes live in the Rust protocol types \
-         (`xylitol::protocol::wire`), which — not this document — is the \
-         wire-type reference. Do not generate product clients from this file."
+        "Debug documentation for the xylitol Host JSON-RPC 2.0 surface \
+         (protocol v{PROTOCOL_VERSION}). Product entry is POST /rpc and WS /rpc. \
+         HTTP 200 means the JSON-RPC envelope parsed; business failures ride \
+         error.data.code (string). Envelope numeric codes are carriers only.\n\n\
+         Registered methods: {methods}.\n\n\
+         WebSocket is NOT an OpenAPI operation path: subscribe then receive \
+         JSON-RPC notifications ({downlink_note}) on WS /rpc. \
+         Concrete payload shapes live in the product method table, which — not \
+         this document — is the wire-type reference. Do not generate product \
+         clients from this file."
     );
 
     let doc = json!({
         "openapi": "3.1.0",
         "info": {
-            "title": "xylitol host unary debug API",
+            "title": "xylitol host JSON-RPC debug API",
             "version": env!("CARGO_PKG_VERSION"),
             "description": description,
         },
         "paths": Value::Object(paths),
         "components": {
             "schemas": {
-                "ClientRequest": client_request_schema(),
-                "ClientResponse": client_response_schema(),
-                "ServerResponse": server_response_schema(),
-                "RpcResult": rpc_result_schema(),
-                "RpcError": rpc_error_schema(),
+                "JsonRpcRequest": jsonrpc_request_schema(),
+                "JsonRpcResponse": jsonrpc_response_schema(),
+                "JsonRpcError": jsonrpc_error_schema(),
             }
         }
     });
@@ -94,67 +83,48 @@ fn build() -> String {
     doc.to_string()
 }
 
-fn client_request_schema() -> Value {
+fn jsonrpc_request_schema() -> Value {
     json!({
         "type": "object",
-        "description": "client-request quadrant",
+        "description": "JSON-RPC 2.0 request",
         "properties": {
-            "type": {"const": "client-request"},
-            "rpcId": {"type": "string"},
+            "jsonrpc": {"const": "2.0"},
+            "id": {"type": ["string", "number"]},
             "method": {"type": "string"},
-            "payload": {"description": "method payload; shape per Rust protocol wire types"},
-            "writerToken": {"type": ["string", "null"]}
+            "params": {"description": "method params; shape per product method table"}
         },
-        "required": ["type", "rpcId", "method"]
+        "required": ["jsonrpc", "method"]
     })
 }
 
-fn client_response_schema() -> Value {
+fn jsonrpc_response_schema() -> Value {
     json!({
         "type": "object",
-        "description": "client-response quadrant (reverse-RPC answer)",
+        "description": "JSON-RPC 2.0 result or error (mutually exclusive)",
         "properties": {
-            "type": {"const": "client-response"},
-            "rpcId": {"type": "string"},
-            "payload": {"description": "answer payload; shape per Rust protocol wire types"}
+            "jsonrpc": {"const": "2.0"},
+            "id": {"type": ["string", "number", "null"]},
+            "result": {"description": "success value; shape per product method table"},
+            "error": {"$ref": "#/components/schemas/JsonRpcError"}
         },
-        "required": ["type", "rpcId"]
+        "required": ["jsonrpc"]
     })
 }
 
-fn server_response_schema() -> Value {
-    json!({
-        "type": "object",
-        "description": "server-response quadrant",
-        "properties": {
-            "type": {"const": "server-response"},
-            "rpcId": {"type": "string"},
-            "result": {"$ref": "#/components/schemas/RpcResult"}
-        },
-        "required": ["type", "rpcId", "result"]
-    })
-}
-
-fn rpc_result_schema() -> Value {
+fn jsonrpc_error_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "ok": {"type": "boolean"},
-            "value": {"description": "result value; shape per Rust protocol wire types"},
-            "error": {"$ref": "#/components/schemas/RpcError"}
+            "code": {"type": "integer", "description": "JSON-RPC carrier numeric code"},
+            "message": {"type": "string"},
+            "data": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "product business code"}
+                }
+            }
         },
-        "required": ["ok"]
-    })
-}
-
-fn rpc_error_schema() -> Value {
-    json!({
-        "type": "object",
-        "properties": {
-            "code": {"type": "string"},
-            "details": {"type": "string"}
-        },
-        "required": ["code", "details"]
+        "required": ["code", "message"]
     })
 }
 
@@ -167,39 +137,32 @@ mod tests {
         let v: Value = serde_json::from_str(openapi_doc()).expect("valid json");
         let paths = v["paths"].as_object().expect("paths object");
         assert_eq!(v["openapi"], "3.1.0");
+        assert!(paths.contains_key("/healthz"));
+        assert!(paths.contains_key("/rpc"));
+        assert!(!paths.contains_key("/api/respond"));
         for m in registry::names() {
-            let key = format!("/api/{m}");
-            let entry = paths
-                .get(key.as_str())
-                .unwrap_or_else(|| panic!("missing entry for {m}"));
             assert!(
-                entry["post"]["operationId"].as_str() == Some(m),
-                "mismatched operationId for {m}"
+                !paths.contains_key(&format!("/api/{m}")),
+                "per-method /api path leaked: {m}"
             );
         }
-        assert!(paths.contains_key("/healthz"));
-        assert!(paths.contains_key("/api/respond"));
+        let desc = v["info"]["description"].as_str().expect("description");
+        assert!(desc.contains("JSON-RPC"), "{desc}");
+        for m in registry::names() {
+            assert!(desc.contains(m), "method {m} must appear in prose");
+        }
     }
 
     #[test]
     fn doc_excludes_ws_downlink_paths() {
         let v: Value = serde_json::from_str(openapi_doc()).expect("valid json");
         let paths = v["paths"].as_object().expect("paths object");
-        // WS downlink must not leak into `paths`…
         assert!(!paths.keys().any(|k| k.contains("events.mux")));
         for d in DOWNLINK_METHODS {
             assert!(!paths.contains_key(*d), "downlink path leaked: {d}");
         }
-        // …but the prose pointer to the mux channel + Rust protocol types is the contract.
         let desc = v["info"]["description"].as_str().expect("description");
-        assert!(
-            desc.contains("events.mux"),
-            "must explain mux channel: {desc}"
-        );
-        assert!(
-            desc.contains("protocol::wire"),
-            "must point at Rust protocol types"
-        );
+        assert!(desc.contains("WS /rpc"), "{desc}");
         for d in DOWNLINK_METHODS {
             assert!(
                 desc.contains(d),
@@ -218,14 +181,12 @@ mod tests {
         keys.sort_unstable();
         assert_eq!(
             keys,
-            [
-                "ClientRequest",
-                "ClientResponse",
-                "RpcError",
-                "RpcResult",
-                "ServerResponse"
-            ],
+            ["JsonRpcError", "JsonRpcRequest", "JsonRpcResponse"],
             "envelope-level only; per-method schemas would be a second vocabulary"
+        );
+        assert_eq!(
+            schemas["JsonRpcRequest"]["properties"]["jsonrpc"]["const"],
+            "2.0"
         );
     }
 }

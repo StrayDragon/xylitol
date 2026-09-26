@@ -52,6 +52,11 @@ impl InProcessHost for EchoHost {
         if !is_unary_method(method) {
             return RpcResult::error("unknown_method", method);
         }
+        if method == "host.describe" {
+            return RpcResult::ok_value(serde_json::json!({
+                "protocol": crate::protocol::wire::envelope::PROTOCOL_VERSION
+            }));
+        }
         RpcResult::ok_value(payload)
     }
 

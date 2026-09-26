@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: server-core
-# purpose: Server 运行时 — 独立 Host 监听器经四象限信封暴露产品契约（POST unary/respond + WS 只下行）；每 session 槽独立 journal 与写者。
+# purpose: Server 运行时 — 独立 Host 监听器经 JSON-RPC 2.0 暴露产品契约（POST /rpc + WS /rpc）；每 session 槽独立 journal 与写者。
 # scope: src/
 
 功能: server-core
@@ -10,12 +10,12 @@
     - app::server MUST 在启动时装配 infra 运行时并注入 agent 端口；组合根 MUST 持有可按 session 槽取用的 Driver（或等价缝），供 unary 处理器调用，MUST NOT 以无槽的裸 Agent 作为唯一生产入口。
 
   @req:r1778 @human
-  场景: 产品路径四象限
-    - 产品 TUI 与其它产品客户端 MUST 经四象限信封访问 Host：unary 与 respond 为 HTTP POST，下行为 WebSocket 且 MUST NOT 收业务上行。Host 监听器 MUST 实现该路径。现行 REST 资源动词与全双工 WS 应用帧 MUST NOT 再作为产品真源。
+  场景: 产品路径 JSON-RPC
+    - 产品 TUI 与其它产品客户端 MUST 经 JSON-RPC 2.0 访问 Host：产品入口为 POST /rpc 与 WS /rpc（同一方法表）；WS /rpc MUST 只承载 JSON-RPC 帧。Host 监听器 MUST 实现该路径。现行 REST 资源动词、POST /api/respond、GET /api/events.mux 与非 JSON-RPC 的 WS 应用帧 MUST NOT 再作为产品真源。
 
   @req:r1796 @human
-  场景: 四象限 HTTP 与 WS 下行
-    - Host MUST 暴露 POST /api/{method}（ClientRequest→ServerResponse）、POST /api/respond（ClientResponse）与 GET /api/events.mux（WebSocket 只下行 ServerRequest）。method 集合 MUST 为已登记 unary。MUST NOT 再以 /api/v1 REST 资源动词或全双工 WS 应用帧承载产品命令。
+  场景: 产品 HTTP 与 WS 入口
+    - Host MUST 暴露 POST /rpc 与 WS /rpc 作为产品 JSON-RPC 入口（同一方法表）。MUST 另暴露 GET /healthz 与调试 GET /openapi.json、GET /docs。MUST NOT 再以 POST /api/{method}、POST /api/respond 或 GET /api/events.mux 为产品真源。MUST NOT 再以 /api/v1 REST 资源动词或非 JSON-RPC 的 WS 应用帧承载产品命令。
 
   @req:r1797 @human
   场景: 绑定占用
@@ -35,11 +35,11 @@
 
   @req:r1798 @human
   场景: 重连 journal
-    - Host MUST 维护每会话单调事件序号与事件 journal；客户端经 unary subscribe 携带 last_seq 重连时 MUST 从 last_seq+1 重放事件；journal 截断超过 last_seq 时 Host MUST 发出 session/resync_required。
+    - Host MUST 维护每会话单调事件序号与事件 journal；客户端经产品订阅携带 last_seq 重连时 MUST 从 last_seq+1 重放事件；journal 截断超过 last_seq 时 Host MUST 发出 session/resync_required。
 
   @req:r1799 @human
-  场景: 反向 RPC
-    - Host MUST 支持 ApprovalRequired 与 QuestionRequired 的反向 RPC：经 mux 下行可应答 ServerRequest，挂起回合，并在匹配 rpcId 的 POST /api/respond 时恢复。MUST NOT 再经 WS 上行 ApproveTool/AnswerQuestion 应用帧应答。
+  场景: 审批与问卷
+    - Host MUST 支持 ApprovalRequired 与 QuestionRequired：经 WS /rpc 下行 JSON-RPC notification 告知，挂起回合，并在匹配 call 的第一笔审批/问卷 unary 时恢复。MUST NOT 再以 POST /api/respond 为产品作答路径。
 
   @req:r1800 @human
   场景: 无整机锁文件
@@ -51,7 +51,7 @@
 
   @req:r1802 @human
   场景: unary 驱动回合
-    - Host MUST 以 unary prompt 入队/驱动对话（HTTP 200 + ServerResponse）；abort 为 unary。MUST NOT 再提供 POST /api/v1/session/{id}/run、DELETE /api/v1/session/{id} 或 GET /api/v1/session/{id}/events 作为产品路径。
+    - Host MUST 以 unary prompt 入队/驱动对话（HTTP 200 + JSON-RPC result）；abort 为 unary。MUST NOT 再提供 POST /api/v1/session/{id}/run、DELETE /api/v1/session/{id} 或 GET /api/v1/session/{id}/events 作为产品路径。
 
   @req:r1795 @human
   场景: ExportIo 接线
@@ -63,7 +63,7 @@
 
   @req:r1788 @human
   场景: RemoteDriver 经信封
-    - 产品 RemoteDriver MUST 经四象限 HostClient 调用已登记 unary 与 mux；未登记方法 MUST NOT 发明 REST 端点来假装与 InProcess 对等。
+    - 产品 RemoteDriver MUST 经产品 JSON-RPC 入口调用已登记方法与事件订阅；未登记方法 MUST NOT 发明 REST 端点来假装与 InProcess 对等。
 
   @req:r1776 @human
   场景: Server 经 dispatch 执行命令
@@ -71,7 +71,7 @@
 
   @req:r1791 @human
   场景: 会话树经方法表
-    - Host MUST 为 session_tree、travel_session_tree 与 append_entry_label 提供已登记的四象限 unary；Host MUST NOT 再为 SessionTreeKind 提供 REST 读树/travel 端点。
+    - Host MUST 为 session_tree、travel_session_tree 与 append_entry_label 提供已登记的产品 unary；Host MUST NOT 再为 SessionTreeKind 提供 REST 读树/travel 端点。
 
   @req:r1783 @human
   场景: 会话生命周期方法接线
@@ -91,7 +91,7 @@
 
   @req:r1790 @human
   场景: 固定区资源下行
-    - Host MUST 为已物化写者的会话经 mux 下行 `session/resources` 推送 MCP/skills 固定区 快照：写者侧在 Host 进程内 poll MCP bootstrap，快照变化时才向该会话的 mux 连接广播一帧，payload 含 session_id 与资源快照（形状与 loaded_resources unary 结果一致）。该帧 MUST NOT 消耗 journal seq，MUST NOT 写入事件 journal；断线重放与冷恢复投影 MUST NOT 复播固定区帧。不识别该方法的旧客户端 MUST 可忽略该帧且其余行为不受影响；本方法 MUST NOT 要求 bump 协议版本。
+    - Host MUST 为已物化写者的会话经产品订阅下行 `session/resources` 推送 MCP/skills 固定区 快照：写者侧在 Host 进程内 poll MCP bootstrap，快照变化时才向该会话的订阅连接广播一帧，payload 含 session_id 与资源快照（形状与 loaded_resources unary 结果一致）。该帧 MUST 为 JSON-RPC notification，MUST NOT 消耗 journal seq，MUST NOT 写入事件 journal；断线重放与冷恢复投影 MUST NOT 复播固定区帧。不识别该方法的旧客户端 MUST 可忽略该帧且其余行为不受影响；本方法 MUST NOT 要求 bump 协议版本。
 
   @req:r1775 @human
   场景: abort 对进程级 reload 的合作取消
@@ -99,7 +99,7 @@
 
   @req:r1784 @human
   场景: unary 调试文档
-    - Host MUST 在监听器暴露 GET /openapi.json，返回 OpenAPI 3.1 文档描述 unary 调试面：每个已登记 unary 方法一个 /api/<method> 条目并附 /healthz 与 /api/respond。条目 MUST 从方法表生成，MUST NOT 手写第二套 schema 词表；payload schema 保持信封级粒度，具体形状以 Rust protocol 类型为准。Host MUST 在 GET /docs 提供 Scalar 调试 UI（指向 /openapi.json），且它 MUST 是唯一的调试 UI，MUST NOT 引入第二套调试 UI。WS 下行 MUST NOT 作为 OpenAPI path 呈现，MUST 以文档说明指向 events.mux 通道与 Rust protocol 类型。该端点仅调试文档，MUST NOT 作为客户端生成真源。
+    - Host MUST 在监听器暴露 GET /openapi.json，返回 OpenAPI 3.1 文档描述产品 JSON-RPC 入口 POST /rpc（信封级）并附 /healthz。条目 MUST 从方法表生成，MUST NOT 手写第二套 schema 词表；payload schema 保持信封级粒度，具体形状以产品方法表为准。Host MUST 在 GET /docs 提供 Scalar 调试 UI（指向 /openapi.json），且它 MUST 是唯一的调试 UI，MUST NOT 引入第二套调试 UI。WS /rpc MUST NOT 作为 OpenAPI operation path 呈现，MUST 以文档说明指向同一 JSON-RPC 方法表。该端点仅调试文档，MUST NOT 作为客户端生成真源。MUST NOT 再为每个 unary 生成 /api/<method> 产品 path，MUST NOT 描述 /api/respond。
 
   @req:r1785 @human
   场景: 队列深度只读方法
@@ -107,23 +107,23 @@
 
   @req:r1792 @human
   场景: 订阅跨回合存活
-    - 客户端对某 session 的 mux 订阅 MUST 持续到该连接断开或再次 subscribe 替换。单次 prompt 的 AgentEnd MUST NOT 结束该订阅，MUST NOT 停止后续 session/event（含 QueueUpdate 与下一轮）。
+    - 客户端对某 session 的事件订阅 MUST 持续到该连接断开或再次订阅替换。单次 prompt 的 AgentEnd MUST NOT 结束该订阅，MUST NOT 停止后续 session/event（含 QueueUpdate 与下一轮）。
 
   @req:r1793 @human
   场景: session 写者租约
-    - 同一 session MUST 至多一个写者租约。首次非只读 unary 颁发 writerToken；后续非只读 unary MUST 回显该令牌。缺失或错误 MUST 以业务错误拒绝（HTTP 仍 200）。只读 unary 与 subscribe MUST NOT 占用写者。HTTP 连接不是写者身份（每次 unary 都是新 TCP）。
+    - 同一 session MUST 至多一个写者租约。首次非只读方法颁发令牌：HTTP 经响应 header `X-Writer-Token` 回传；WS unary 应答 MUST 把同一令牌放在 JSON-RPC 对象顶层 `writerToken`（信封 extra member）。后续非只读方法：HTTP MUST 在请求 header 回显该令牌；WS 升级 MUST 可带同一 header，同一条连接内后续 unary 用连接本地租约。缺失或错误 MUST 以业务错误拒绝（HTTP 仍 200，产品码在 JSON-RPC error.data）。只读方法与事件订阅 MUST NOT 占用写者；HTTP 只读响应 MUST NOT 带该 header。`params` 与 `result` MUST NOT 携带 writerToken。HTTP 连接不是写者身份（每次 POST /rpc 都是新 TCP）。
 
   @req:r1803 @human
   场景: 下行信封
-    - mux 文本帧 MUST 为四象限 ServerRequest（type、rpcId、method、payload）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required 与 session/resources；可应答审批/问卷为 approval/requested 与 question/requested。MUST NOT 再以 ServerFrame tagged 外层为产品真源。
+    - WS /rpc 文本帧 MUST 为 JSON-RPC 2.0。下行事件 MUST 为 notification（有 method 与 params，无 id）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required 与 session/resources；审批/问卷告知为 approval/requested 与 question/requested（亦为 notification）。MUST NOT 再以 ServerFrame tagged 外层或四象限 type tag 为产品真源，MUST NOT 要求客户端对事件 notification 作答。
 
   @req:r1804 @human
-  场景: WS 不收业务上行
-    - mux WebSocket MUST NOT 接受业务 ClientRequest/ApproveTool/AnswerQuestion/Subscribe 应用帧。subscribe 为 unary；审批与问卷应答为 POST /api/respond。载体 ping/pong/close 除外。
+  场景: WS 只承载 JSON-RPC
+    - WS /rpc MUST 接受合法 JSON-RPC 帧（含客户端 unary 与订阅）。MUST NOT 接受非 JSON-RPC 应用帧。载体 ping/pong/close 除外。MUST NOT 再以「禁一切业务上行」或 POST /api/respond 为产品通道纪律。
 
   @req:r1805 @human
-  场景: mux 升级
-    - Host MUST 在 GET /api/events.mux 挂载 WebSocket 升级。会话选择 MUST NOT 依赖 /api/v1/session/{id}/ws 路径。缺 Origin 的原生客户端 MUST 可升级。
+  场景: WS 升级
+    - Host MUST 在 WS /rpc 挂载 WebSocket 升级。会话选择 MUST NOT 依赖 /api/v1/session/{id}/ws 或 GET /api/events.mux。缺 Origin 的原生客户端 MUST 可升级。
 
   @req:r1806 @human
   场景: 单调 seq
@@ -135,11 +135,11 @@
 
   @req:r1808 @human
   场景: resync 流程
-    - 收到 session/resync_required 后，客户端 MUST 以更新的 last_seq（如 0 全量重放）再次 unary subscribe 以恢复事件流。
+    - 收到 session/resync_required 后，客户端 MUST 以更新的 last_seq（如 0 全量重放）再次订阅以恢复事件流。
 
   @req:r1809 @human
   场景: WS 事件推送
-    - subscribe 之后，Host MUST 为 agent 发出的每个新事件推送 session/event 的 ServerRequest，附带会话单调 seq；MUST 以 JSON 文本帧经 mux 发送。
+    - 订阅之后，Host MUST 为 agent 发出的每个新事件推送 session/event 的 JSON-RPC notification，附带会话单调 seq；MUST 以 JSON 文本帧经 WS /rpc 发送。
 
   @req:r1810 @human
   场景: 冷恢复投影
@@ -147,23 +147,23 @@
 
   @req:r1771 @human
   场景: reverse-rpc-approval
-    - ApprovalRequired 时，Host MUST 向该 session 的 mux 连接广播 approval/requested ServerRequest；首个 POST /api/respond 胜出。
+    - ApprovalRequired 时，Host MUST 向该 session 的订阅连接广播 approval/requested notification；首个匹配该 call 的审批 unary 胜出。
 
   @req:r1772 @human
   场景: reverse-rpc-question
-    - QuestionRequired 时，Host MUST 向该 session 的 mux 连接广播 question/requested ServerRequest；首个 POST /api/respond 胜出。
+    - QuestionRequired 时，Host MUST 向该 session 的订阅连接广播 question/requested notification；首个匹配该 call 的问卷 unary 胜出。
 
   @req:r1773 @human
   场景: call-id-lifecycle
-    - 每个 reverse RPC MUST 有稳定 rpcId，在表中注册 oneshot；超时（默认 60s）时收到 ApprovalTimeout；应答时收到结果；消费后 MUST 移除条目。
+    - 每个审批/问卷 MUST 有稳定 call id（出现在 notification 的 params 中）；超时（默认 60s）时收到 ApprovalTimeout；应答时收到结果；消费后 MUST 移除条目。JSON-RPC 信封 id 是该 unary 的幂等键，MUST NOT 与 call id 混用。
 
   @req:r1774 @human
   场景: no-conflict-arbitration
-    - v1 MUST NOT 实现多客户端冲突仲裁；给定 rpcId 的首个 ClientResponse 胜出；同一 rpcId 的后续 respond MUST 被静默忽略。
+    - v1 MUST NOT 实现多客户端冲突仲裁；给定 call id 的首个审批/问卷 unary 胜出；同一 call id 的后续 unary MUST 被静默忽略。
 
   @req:r1781 @human
   场景: unary 幂等准入
-    - Host MUST 以信封 `rpcId` 为幂等键：同一 session 槽内，同 `rpcId` 的重复 unary 首次准入获胜，Host MUST 回放首次执行结果且 MUST NOT 二次执行；首次仍在处理中的同键重复 MUST 等待首次完成后获得同一结果，MUST NOT 并行执行。同 `rpcId` 但 method 或 payload 不同的提交 MUST 返回稳定冲突错误（code=idempotency_conflict，HTTP 仍 200）。幂等账本 MUST 有界且进程内，MUST NOT 跨重启持久化。
+    - Host MUST 以 JSON-RPC `id` 为幂等键：同一 session 槽内，同 `id` 的重复 unary 首次准入获胜，Host MUST 回放首次执行结果且 MUST NOT 二次执行；首次仍在处理中的同键重复 MUST 等待首次完成后获得同一结果，MUST NOT 并行执行。同 `id` 但 method 或 params 不同的提交 MUST 返回稳定冲突错误（产品码 idempotency_conflict，HTTP 仍 200）。幂等账本 MUST 有界且进程内，MUST NOT 跨重启持久化。
 
   @executable @req:r1780
   场景: start-healthz
@@ -173,7 +173,7 @@
   场景: openapi-debug-doc
     当 服务端在空闲端口上启动
     并且 GET /openapi.json
-    那么 返回 OpenAPI 3.1 文档且含全部登记 unary 条目
+    那么 返回 OpenAPI 3.1 文档且描述 POST /rpc 信封
     并且 文档不含 WS 下行 path
     当 GET /docs
     那么 Scalar 调试页可达且指向 spec
@@ -187,14 +187,15 @@
     当 server 应用面启动
     那么 装配 infra 运行时并按 session 槽注入 Driver，供 unary 处理器调用
   @req:r1778 @executable
-  场景: product-path-four-quadrant
-    当 产品 TUI 访问 Host
-    那么 经四象限 POST unary 与 WebSocket 下行
+  场景: product-path-jsonrpc
+    当 服务端在空闲端口上启动
+    并且 POST /rpc 调用 host.describe
+    那么 应答为 JSON-RPC 成功且 id 回显
     并且 Host 对该路径给出可观察往返
   @req:r1796 @executable
   场景: server-rest-ws-under-app
     当 启动 app::server 运行时
-    那么 暴露 POST /api/{method}、POST /api/respond 与只下行的 events.mux
+    那么 暴露 POST /rpc、WS /rpc 与 GET /healthz
     并且 不暴露 /api/v1 产品 REST
   @req:r1797 @executable
   场景: server-lock-under-app
@@ -202,14 +203,14 @@
     那么 因地址占用失败且不写整机锁文件
   @req:r1798 @executable
   场景: reconnect-replay
-    假如 客户端断开 N 秒后以 last_seq unary subscribe
+    假如 客户端断开 N 秒后以 last_seq 经 POST /rpc 订阅
     当 断开期间 server 产生事件
     那么 客户端收到 last_seq+1 起全部遗漏事件再收实时事件
   @req:r1799 @executable
   场景: approval-roundtrip
     假如 工具需审批
     当 推送 ApprovalRequired
-    那么 客户端经 POST /api/respond 应答且回合恢复
+    那么 客户端经 POST /rpc 调用 approve_tool 且回合恢复
   @req:r1800 @executable
   场景: lock-file-json
     假如 server 已启动
@@ -222,9 +223,9 @@
     那么 失败返回且不绑定 18791
   @req:r1802 @executable
   场景: run-endpoint-works
-    假如 向 POST /api/prompt 发送 ClientRequest
+    假如 向 POST /rpc 发送 prompt 的 JSON-RPC 请求
     当 server 处理 prompt
-    那么 HTTP 200 且 ServerResponse 回显 rpcId
+    那么 HTTP 200 且应答回显 id
     并且 POST /api/v1/session/x/run 不是产品路径
   @req:r1795 @executable
   场景: server-composition-export-io
@@ -253,12 +254,12 @@
   场景: remote-travel
     假如 RemoteDriver 指向该 server
     当 调用已登记方法表的 session_tree/travel
-    那么 经四象限 unary 到达 Host 且不经 REST 冒充
+    那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
   @req:r1783 @executable
   场景: remote-session-methods
     假如 RemoteDriver 指向该 server
     当 调用已登记的 session 能力 unary
-    那么 经四象限 unary 到达 Host 且不经 REST 冒充
+    那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
   @req:r1782 @executable
   场景: staged-wire-import
     假如 server 就绪
@@ -268,29 +269,41 @@
   场景: remote-host-resource-methods
     假如 RemoteDriver 指向该 server
     当 调用 Host 资源 unary
-    那么 经四象限 unary 到达 Host 且不经 REST 冒充
+    那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
   @req:r1793 @executable
   场景: writer-lease
-    假如 客户端 A 已对 session 发出非只读 unary
-    当 客户端 B 无 writerToken 再发非只读 unary
-    那么 业务错误说明已有写者
+    假如 客户端 A 已对 session 经 POST /rpc 发出非只读方法
+    当 客户端 B 无 X-Writer-Token 再发非只读方法
+    那么 业务错误 data.code 为 writer_conflict
+    并且 A 的响应带 X-Writer-Token 且 body 不含 writerToken
+  @req:r1793 @executable
+  场景: writer-token-via-ws-unary
+    当 服务端在空闲端口上启动
+    并且 客户端经 WS /rpc 发送非只读 JSON-RPC 请求
+    那么 WS 应答顶层有 writerToken 且 result 不含
 
   @req:r1803 @executable
   场景: frame-serialize
-    假如 构造下行 ServerRequest session/event
+    假如 构造下行 session/event、session/subscribed、session/resync_required 与 session/resources notification
     当 序列化为 JSON
-    那么 JSON 含 type=server-request 与 method=session/event
+    那么 各帧均为 JSON-RPC 2.0 notification 且无 id
   @req:r1804 @executable
   场景: subscribe-frame
     假如 客户端欲以 last_seq 5 订阅会话 s0
-    当 发送 unary subscribe
-    那么 payload 含 session_id=s0 与 last_seq=5
-    并且 mux 不接受 Subscribe 应用帧
+    当 服务端在空闲端口上启动
+    并且 POST /rpc 调用 subscribe 带 session_id=s0 与 last_seq=5
+    那么 应答为 JSON-RPC 成功且 result 含 session 与 seq
+    并且 WS 丢弃非 JSON-RPC 文本上行
+  @req:r1804 @executable
+  场景: ws-jsonrpc-unary-same-module
+    当 服务端在空闲端口上启动
+    并且 客户端经 WS /rpc 发送 host.describe JSON-RPC 请求
+    那么 同一条 WS 收回显 id 的 JSON-RPC result
   @req:r1805 @executable
   场景: ws-upgrade-mounted
-    假如 客户端连接 /api/events.mux
+    假如 客户端连接 /rpc
     当 server 接受升级
-    那么 连接只收下行 ServerRequest
+    那么 升级成功
     并且 不把会话绑在 /api/v1/session/x/ws
   @req:r1806 @executable
   场景: seq-monotonic
@@ -300,18 +313,18 @@
   @req:r1807 @executable
   场景: resync-on-wrap
     假如 向会话 append 10001 个事件（journal 容量=10000）
-    当 last_seq=0 的客户端 unary subscribe
+    当 last_seq=0 的客户端经 POST /rpc 订阅
     那么 server 发送 session/resync_required 因事件 0..1 已丢失
   @req:r1808 @executable
   场景: resync-recover
     假如 客户端收到 session/resync_required
-    当 客户端以 last_seq=0 再次 unary subscribe
+    当 客户端以 last_seq=0 再次经 POST /rpc 订阅
     那么 server 从 journal 重放全部可用事件
   @req:r1809 @executable
   场景: ws-events-pushed
     假如 客户端已 subscribe 且 prompt 运行
     当 agent 发出 TextDelta 事件
-    那么 客户端在 mux 上收到 session/event 的 ServerRequest
+    那么 客户端收到 session/event notification
   @req:r1810 @executable
   场景: cold-restore-snapshot-projection
     假如 会话 s0 已有 3 条历史条目且客户端无有效 last_seq
@@ -328,15 +341,15 @@
   场景: approve-roundtrip
     假如 服务端和已连接的 mux 客户端
     当 agent 执行需要审批的工具
-    那么 客户端收到带有 rpcId 的 approval/requested
-    当 客户端 POST /api/respond 且 approved=true
+    那么 客户端收到 approval/requested notification
+    当 客户端 POST /rpc 调用 approve_tool 且 approved=true
     那么 工具执行继续
     并且 turn 正常结束
   @executable @req:r1771
   场景: tool-denied
     假如 服务端和已连接的 mux 客户端
     当 agent 执行需要审批的工具
-    并且 客户端 POST /api/respond 且 approved=false
+    并且 客户端 POST /rpc 调用 approve_tool 且 approved=false
     那么 工具被拒绝
     并且 turn 继续但不包含工具结果
   @req:r1771 @executable
@@ -346,23 +359,23 @@
     那么 3 个已连接客户端均收到 approval/requested
   @req:r1772 @executable
   场景: first-wins
-    假如 2 个客户端 POST /api/respond，rpcId xyz（首个 true，50ms 后 false）
+    假如 2 个客户端 POST /rpc 调用 approve_tool，call_id xyz（首个 true，50ms 后 false）
     当 server 处理首个应答
     那么 agent 以 approved=true 恢复；第二个应答被忽略
   @req:r1773 @executable
   场景: timeout-error
-    假如 60s 内无客户端 POST /api/respond
+    假如 60s 内无客户端 POST /rpc 调用 approve_tool
     当 server 将 rpcId 标记为 expired
     那么 agent 收到 ApprovalTimeout 错误
   @req:r1774 @executable
   场景: second-answer-ignored
-    假如 第二个客户端对已消费 rpcId POST /api/respond
+    假如 第二个客户端对已消费 call 再 POST /rpc 调用 approve_tool
     当 server 收到该应答
     那么 应答被静默忽略（无状态变化、无错误）
   @req:r1785 @executable
   场景: queue-stats-readonly-unary
     当 服务端在空闲端口上启动
-    并且 查询只读 unary queue_stats
+    并且 POST /rpc 查询只读方法 queue_stats
     那么 返回 steer 与 follow-up 队列深度
     并且 响应不携带写者租约 token
   @req:r1775 @executable
@@ -383,20 +396,20 @@
 
   @executable @req:r1781
   场景: idempotent-replay-first-result
-    假如 客户端以 rpcId R 对某 session 提交 unary 命令并得到结果
-    当 客户端以相同 rpcId R 重试同一命令
+    假如 客户端以 JSON-RPC id R 对某 session 经 POST /rpc 提交方法并得到结果
+    当 客户端以相同 id R 重试同一方法
     那么 第二次得到与首次相同的结果且命令仅执行一次
 
   @executable @req:r1781
   场景: idempotency-conflict-differs
-    假如 rpcId R 已被某 method 与 payload 的提交占用
-    当 以相同 rpcId R 提交不同 method 或 payload
-    那么 返回 ok=false 且 code=idempotency_conflict 且不执行
+    假如 JSON-RPC id R 已被某 method 与 params 的提交占用
+    当 以相同 id R 提交不同 method 或 params
+    那么 返回 JSON-RPC 错误且 data.code 为 idempotency_conflict 且不执行
 
   @executable @req:r1781
   场景: idempotency-inflight-wait
-    假如 rpcId R 的首次命令仍在处理中
-    当 相同 rpcId R 的重复请求到达
+    假如 JSON-RPC id R 的首次命令仍在处理中
+    当 相同 id R 的重复请求到达
     那么 等待首次完成并回放同一结果且不并行执行
 
   @executable @req:r1786

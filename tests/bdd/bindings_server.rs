@@ -21,9 +21,9 @@ async fn test_sr1_server_under_app(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "product-path-four-quadrant"
+    name = "product-path-jsonrpc"
 )]
-async fn test_sr_env1_four_quadrant(server_test: ServerTest) {}
+async fn test_sr_env1_jsonrpc(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
@@ -125,7 +125,13 @@ fn test_w1(server_test: ServerTest) {}
     path = "llmanspec/specs/server-core/server-core.feature",
     name = "subscribe-frame"
 )]
-fn test_w2(server_test: ServerTest) {}
+async fn test_w2(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "ws-jsonrpc-unary-same-module"
+)]
+async fn test_w_ws_unary(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
@@ -210,6 +216,12 @@ async fn test_rr4(approval_test: ServerTest) {}
     name = "writer-lease"
 )]
 async fn test_sr_w1_writer_lease(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "writer-token-via-ws-unary"
+)]
+async fn test_sr_w1_writer_token_ws(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",

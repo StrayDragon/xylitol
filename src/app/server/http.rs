@@ -1,11 +1,9 @@
-//! Salvo HTTP + mux routes (four-quadrant product carrier).
+//! Salvo HTTP + mux routes.
 //!
 //! - `GET /healthz`
-//! - `GET /openapi.json` (unary debug document, built from the method table)
-//! - `GET /docs` (Scalar debug UI — the only debug UI; points at `/openapi.json`)
-//! - `POST /api/respond`
-//! - `POST /api/{method}` (registered unary only)
-//! - `GET /api/events.mux` (WebSocket downlink only)
+//! - `GET /openapi.json` / `GET /docs`
+//! - `POST /rpc` (product JSON-RPC 2.0 unary, jsonrpsee method table)
+//! - `GET /rpc` (mux WebSocket; downlink JSON-RPC notifications)
 
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -17,11 +15,10 @@ use salvo::prelude::*;
 use salvo::websocket::{Message, WebSocket, WebSocketUpgrade};
 use tokio::sync::mpsc;
 
-use crate::app::server::host::{HostState, MUX_CHAN_CAP, handle_unary};
+use crate::app::server::host::{HostState, MUX_CHAN_CAP};
+use crate::app::server::rpc_module::{self, ProductRpc};
 use crate::protocol::RpcMessage;
 use crate::protocol::wire::codec;
-use crate::protocol::wire::envelope::PROTOCOL_VERSION;
-use crate::protocol::wire::method::is_unary_method;
 
 /// Readiness phase of the listener (c2465 sr-rdy1).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -39,6 +36,7 @@ pub enum Phase {
 pub struct Gateway {
     phase: AtomicU8,
     host: OnceLock<Arc<HostState>>,
+    rpc: OnceLock<ProductRpc>,
 }
 
 impl Gateway {
@@ -50,11 +48,13 @@ impl Gateway {
         Arc::new(Self {
             phase: AtomicU8::new(Self::STARTING),
             host: OnceLock::new(),
+            rpc: OnceLock::new(),
         })
     }
 
     /// Fill the host and flip to ready (idempotent fill: first writer wins).
     pub fn set_host(&self, host: Arc<HostState>) {
+        let _ = self.rpc.set(rpc_module::build_rpc_module(host.clone()));
         let _ = self.host.set(host);
         self.phase.store(Self::READY, Ordering::SeqCst);
     }
@@ -73,6 +73,10 @@ impl Gateway {
 
     pub fn host(&self) -> Option<Arc<HostState>> {
         self.host.get().cloned()
+    }
+
+    pub(crate) fn rpc_module(&self) -> Option<&ProductRpc> {
+        self.rpc.get()
     }
 }
 
@@ -128,10 +132,6 @@ impl Handler for GatewayHoop {
     }
 }
 
-fn host_from(depot: &Depot) -> Option<Arc<HostState>> {
-    depot.get_typed::<Arc<HostState>>().ok().cloned()
-}
-
 /// Product router (no `/api/v1` REST).
 pub fn router(gateway: Arc<Gateway>) -> Router {
     Router::new()
@@ -143,9 +143,7 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
                 .title("xylitol unary debug API")
                 .into_router("docs"),
         )
-        .push(Router::with_path("api/respond").post(respond))
-        .push(Router::with_path("api/events.mux").get(mux_upgrade))
-        .push(Router::with_path("api/{method}").post(unary))
+        .push(Router::with_path("rpc").post(rpc).get(mux_upgrade))
 }
 
 /// Healthz body with the daemon identity fields (c2475 sr-reg1).
@@ -205,80 +203,102 @@ async fn openapi_json(res: &mut Response) {
 }
 
 #[handler]
-async fn unary(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let Some(host) = host_from(depot) else {
+async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let Some(gateway) = gateway_from(depot) else {
         res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     };
-    let path_method = req.param::<String>("method").unwrap_or_default();
-    if path_method == "respond" {
-        res.status_code(StatusCode::NOT_FOUND);
-        return;
-    }
-    if !is_unary_method(&path_method) {
-        res.status_code(StatusCode::NOT_FOUND);
-        res.render(Json(serde_json::json!({
-            "error": "unregistered method"
-        })));
-        return;
-    }
-
-    let Some(body) = parse_envelope(req, res).await else {
-        return;
-    };
-    let RpcMessage::ClientRequest {
-        rpc_id,
-        method,
-        payload,
-        writer_token,
-    } = body
-    else {
-        illegal_envelope(res);
-        return;
-    };
-    if method != path_method {
-        illegal_envelope(res);
-        return;
-    }
-
-    let result = handle_unary(&host, Some(&rpc_id), &method, payload, writer_token).await;
-    res.status_code(StatusCode::OK);
-    res.render(Json(RpcMessage::ServerResponse { rpc_id, result }));
-}
-
-#[handler]
-async fn respond(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    let Some(host) = host_from(depot) else {
+    let Some(module) = gateway.rpc_module().cloned() else {
         res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     };
-    let Some(body) = parse_envelope(req, res).await else {
-        return;
-    };
-    let RpcMessage::ClientResponse { rpc_id, payload } = body else {
-        illegal_envelope(res);
-        return;
-    };
-    let _ = host.respond(&rpc_id, payload).await;
-    res.status_code(StatusCode::OK);
-    res.render(Json(serde_json::json!({ "ok": true })));
-}
-
-async fn parse_envelope(req: &mut Request, res: &mut Response) -> Option<RpcMessage> {
+    let writer = req
+        .headers()
+        .get("X-Writer-Token")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
     let bytes = match req.payload().await {
         Ok(bytes) => bytes,
         Err(_) => {
             illegal_envelope(res);
-            return None;
+            return;
         }
     };
-    match codec::decode(bytes) {
-        Ok(msg) => Some(msg),
+    let v: serde_json::Value = match serde_json::from_slice(bytes) {
+        Ok(v) => v,
         Err(_) => {
             illegal_envelope(res);
-            None
+            return;
+        }
+    };
+    if v.get("jsonrpc").and_then(serde_json::Value::as_str) != Some("2.0") {
+        illegal_envelope(res);
+        return;
+    }
+    let rpc_id = match v.get("id") {
+        Some(serde_json::Value::String(s)) => s.clone(),
+        Some(serde_json::Value::Number(n)) => n.to_string(),
+        _ => String::new(),
+    };
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        illegal_envelope(res);
+        return;
+    };
+    match rpc_module::dispatch_raw(&module, text, rpc_id, writer).await {
+        Ok(raw) => polish_rpc_http(res, &raw),
+        Err(_) => illegal_envelope(res),
+    }
+}
+
+/// Stamp product `-32601` data.code and lift `writerToken` off the result.
+fn polish_rpc_json(raw: &str) -> (serde_json::Value, Option<String>) {
+    let mut v: serde_json::Value =
+        serde_json::from_str(raw).unwrap_or_else(|_| serde_json::json!({}));
+    let method_not_found = v
+        .get("error")
+        .and_then(|e| e.get("code"))
+        .and_then(serde_json::Value::as_i64)
+        == Some(-32601);
+    if method_not_found {
+        let missing_product_code = v
+            .pointer("/error/data/code")
+            .and_then(serde_json::Value::as_str)
+            .is_none();
+        if missing_product_code
+            && let Some(err) = v
+                .get_mut("error")
+                .and_then(serde_json::Value::as_object_mut)
+        {
+            err.insert(
+                "data".into(),
+                serde_json::json!({ "code": "unregistered_method" }),
+            );
         }
     }
+    let token = v
+        .get("result")
+        .and_then(|r| r.get("writerToken"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string);
+    if token.is_some()
+        && let Some(obj) = v
+            .get_mut("result")
+            .and_then(serde_json::Value::as_object_mut)
+    {
+        obj.remove("writerToken");
+    }
+    (v, token)
+}
+
+/// Stamp `X-Writer-Token` from `result.writerToken` and fill `-32601` product
+/// `data.code`. jsonrpsee owns method dispatch; HTTP leftovers stay here.
+fn polish_rpc_http(res: &mut Response, raw: &str) {
+    let (v, token) = polish_rpc_json(raw);
+    if let Some(tok) = token {
+        let _ = res.add_header("X-Writer-Token", tok, true);
+    }
+    res.status_code(StatusCode::OK);
+    res.render(Json(v));
 }
 
 fn illegal_envelope(res: &mut Response) {
@@ -294,12 +314,21 @@ async fn mux_upgrade(
     depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
-    let Some(host) = host_from(depot) else {
+    let Some(gateway) = gateway_from(depot) else {
         return Err(StatusError::internal_server_error());
     };
+    let Some(host) = gateway.host() else {
+        return Err(StatusError::internal_server_error());
+    };
+    let module = gateway.rpc_module().cloned();
+    let writer = req
+        .headers()
+        .get("X-Writer-Token")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
     WebSocketUpgrade::new()
         .check_origin(mux_origin_allowed)
-        .upgrade(req, res, move |ws| handle_mux(ws, host))
+        .upgrade(req, res, move |ws| handle_mux(ws, host, module, writer))
         .await
 }
 
@@ -319,29 +348,40 @@ fn mux_origin_allowed(origin: Option<&str>) -> bool {
     }
 }
 
-async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
+async fn handle_mux(
+    ws: WebSocket,
+    host: Arc<HostState>,
+    module: Option<ProductRpc>,
+    mut writer: Option<String>,
+) {
     use futures::SinkExt;
     let (mut sink, mut stream) = ws.split();
-    // ath44/c2480: the first frame on every mux connection is the version
-    // handshake. It goes out before the connection joins the broadcast pool so
-    // a client can never observe a business frame ahead of it.
-    let hello = codec::encode_to_string(&RpcMessage::ServerHello {
-        protocol: PROTOCOL_VERSION,
-    })
-    .expect("server_hello serializes");
-    if sink.send(Message::text(hello)).await.is_err() {
-        return;
-    }
+    // Handshake is host.describe result, not a mux ServerHello frame (c2825).
     let (tx, mut rx) = mpsc::channel::<RpcMessage>(MUX_CHAN_CAP);
+    let (reply_tx, mut reply_rx) = mpsc::channel::<String>(MUX_CHAN_CAP);
     host.register_unbound_mux(tx).await;
 
     let send_loop = async {
-        while let Some(msg) = rx.recv().await {
-            let Ok(text) = codec::encode_to_string(&msg) else {
-                continue;
-            };
-            if sink.send(Message::text(text)).await.is_err() {
-                break;
+        loop {
+            tokio::select! {
+                msg = rx.recv() => {
+                    let Some(msg) = msg else { break };
+                    let text = match &msg {
+                        RpcMessage::ServerRequest {
+                            method, payload, ..
+                        } => codec::jsonrpc_notification(method, payload.clone()).to_string(),
+                        _ => continue,
+                    };
+                    if sink.send(Message::text(text)).await.is_err() {
+                        break;
+                    }
+                }
+                text = reply_rx.recv() => {
+                    let Some(text) = text else { break };
+                    if sink.send(Message::text(text)).await.is_err() {
+                        break;
+                    }
+                }
             }
         }
     };
@@ -353,11 +393,50 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
             if msg.is_close() {
                 break;
             }
-            if msg.is_text() || msg.is_binary() {
-                // Business uplink is forbidden on mux: drop the connection.
+            if !msg.is_text() {
+                if msg.is_binary() {
+                    break;
+                }
+                continue;
+            }
+            let Ok(text) = msg.as_str() else {
+                break;
+            };
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
+                break;
+            };
+            if v.get("jsonrpc").and_then(serde_json::Value::as_str) != Some("2.0")
+                || v.get("method")
+                    .and_then(serde_json::Value::as_str)
+                    .is_none()
+            {
                 break;
             }
-            // ping/pong handled by the crate.
+            let Some(module) = module.as_ref() else {
+                break;
+            };
+            let rpc_id = match v.get("id") {
+                Some(serde_json::Value::String(s)) => s.clone(),
+                Some(serde_json::Value::Number(n)) => n.to_string(),
+                _ => String::new(),
+            };
+            let has_id = v.get("id").is_some() && !v.get("id").is_some_and(|id| id.is_null());
+            match rpc_module::dispatch_raw(module, text, rpc_id, writer.clone()).await {
+                Ok(raw) if has_id => {
+                    let (mut body, token) = polish_rpc_json(&raw);
+                    if let Some(tok) = token {
+                        writer = Some(tok.clone());
+                        if let Some(obj) = body.as_object_mut() {
+                            obj.insert("writerToken".into(), serde_json::json!(tok));
+                        }
+                    }
+                    if reply_tx.send(body.to_string()).await.is_err() {
+                        break;
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
         }
     };
     tokio::select! {
@@ -393,19 +472,19 @@ mod tests {
         gateway.set_host(state);
         let service = Service::new(router(gateway));
         let body = serde_json::json!({
-            "type": "client-request",
-            "rpcId": "r1",
+            "jsonrpc": "2.0",
+            "id": "r1",
             "method": "host.describe",
-            "payload": {}
+            "params": {}
         });
-        let mut resp = TestClient::post("http://127.0.0.1:0/api/host.describe")
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
             .json(&body)
             .send(&service)
             .await;
         assert_eq!(resp.status_code.unwrap(), StatusCode::OK, "unary path");
         let text = resp.take_string().await.unwrap();
         assert!(
-            text.contains("server-response") || text.contains("ok"),
+            text.contains("jsonrpc") && text.contains("result"),
             "{text}"
         );
     }
@@ -426,12 +505,12 @@ mod tests {
         );
 
         let body = serde_json::json!({
-            "type": "client-request",
-            "rpcId": "r-window",
+            "jsonrpc": "2.0",
+            "id": "r-window",
             "method": "host.describe",
-            "payload": {}
+            "params": {}
         });
-        let resp = TestClient::post("http://127.0.0.1:0/api/host.describe")
+        let resp = TestClient::post("http://127.0.0.1:0/rpc")
             .json(&body)
             .send(&service)
             .await;

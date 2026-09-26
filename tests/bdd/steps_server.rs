@@ -46,6 +46,8 @@ pub struct ServerTest {
     pub evict_rx: RefCell<Option<tokio::sync::watch::Receiver<bool>>>,
     /// c2480 ath44：真线 attach 场景跨步骤持有产品 RemoteDriver。
     pub attach_driver: RefCell<Option<XyRemoteDriver<HttpWsClient>>>,
+    /// c2825：POST /rpc 写者租约响应 header。
+    pub writer_header: RefCell<Option<String>>,
 }
 
 impl ServerTest {
@@ -75,6 +77,7 @@ impl ServerTest {
             reg_path: RefCell::new(None),
             evict_rx: RefCell::new(None),
             attach_driver: RefCell::new(None),
+            writer_header: RefCell::new(None),
         }
     }
 
@@ -138,6 +141,39 @@ async fn http_status(port: u16, method: &str, path: &str, body: &str) -> (u16, S
     (status, text)
 }
 
+async fn post_rpc(
+    port: u16,
+    id: &str,
+    method: &str,
+    params: serde_json::Value,
+    writer: Option<&str>,
+) -> (u16, Option<String>, String) {
+    let url = format!("http://127.0.0.1:{port}/rpc");
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "method": method,
+        "params": params,
+    });
+    let client = reqwest::Client::new();
+    let mut builder = client
+        .post(&url)
+        .header("content-type", "application/json")
+        .body(body.to_string());
+    if let Some(tok) = writer {
+        builder = builder.header("X-Writer-Token", tok);
+    }
+    let resp = builder.send().await.expect("rpc");
+    let status = resp.status().as_u16();
+    let token = resp
+        .headers()
+        .get("x-writer-token")
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let text = resp.text().await.unwrap_or_default();
+    (status, token, text)
+}
+
 fn source_contains(path: &str, needle: &str) -> bool {
     std::fs::read_to_string(path)
         .unwrap_or_default()
@@ -163,7 +199,7 @@ async fn w_openapi_doc(server_test: &ServerTest) {
     *server_test.unary_body.borrow_mut() = Some(body);
 }
 
-#[then("返回 OpenAPI 3.1 文档且含全部登记 unary 条目")]
+#[then("返回 OpenAPI 3.1 文档且描述 POST /rpc 信封")]
 fn t_openapi_methods(server_test: &ServerTest) {
     assert_eq!(server_test.unary_status.get(), 200, "must be 200");
     let body = server_test.unary_body.borrow().clone().unwrap_or_default();
@@ -171,18 +207,18 @@ fn t_openapi_methods(server_test: &ServerTest) {
     assert_eq!(v["openapi"], "3.1.0", "{body}");
     let paths = v["paths"].as_object().expect("paths object");
     for m in registry::names() {
-        let key = format!("/api/{m}");
-        let entry = paths
-            .get(key.as_str())
-            .unwrap_or_else(|| panic!("missing /api/{m}"));
-        assert_eq!(
-            entry["post"]["operationId"].as_str(),
-            Some(m),
-            "mismatched operationId for {m}"
+        assert!(
+            !paths.contains_key(&format!("/api/{m}")),
+            "per-method /api path leaked: {m}"
         );
     }
     assert!(paths.contains_key("/healthz"));
-    assert!(paths.contains_key("/api/respond"));
+    assert!(paths.contains_key("/rpc"));
+    assert!(!paths.contains_key("/api/respond"));
+    assert_eq!(
+        v["components"]["schemas"]["JsonRpcRequest"]["properties"]["jsonrpc"]["const"],
+        "2.0"
+    );
 }
 
 #[then("文档不含 WS 下行 path")]
@@ -194,10 +230,9 @@ fn t_openapi_no_ws(server_test: &ServerTest) {
     for d in DOWNLINK_METHODS {
         assert!(!paths.contains_key(*d), "downlink path leaked: {d}");
     }
-    // The prose pointer is the contract (sr-oapi1): mux channel + Rust protocol types.
     let desc = v["info"]["description"].as_str().expect("description");
-    assert!(desc.contains("events.mux"), "{desc}");
-    assert!(desc.contains("protocol::wire"), "{desc}");
+    assert!(desc.contains("WS /rpc"), "{desc}");
+    assert!(desc.contains("JSON-RPC"), "{desc}");
 }
 
 #[when("GET /docs")]
@@ -273,56 +308,90 @@ fn t_sr1(_server_test: &ServerTest) {
     ));
 }
 
-#[when("产品 TUI 访问 Host")]
-async fn w_product_tui(server_test: &ServerTest) {
-    start_host(server_test).await;
-    let client = HttpWsClient::new(server_test.base_url());
-    let desc = client
-        .unary("host.describe", serde_json::json!({}))
-        .await
-        .expect("describe");
-    server_test
-        .unary_body
-        .replace(Some(serde_json::to_string(&desc).unwrap()));
-    let mut mux = client.mux().await.expect("mux");
-    let host = server_test.host.borrow().as_ref().expect("host").clone();
-    wait_unbound(&host, 1).await;
-    let sub = client
-        .unary(
-            "subscribe",
-            serde_json::json!({"session_id": "s-tui", "last_seq": 0}),
-        )
-        .await
-        .expect("subscribe");
-    assert!(sub.ok, "{sub:?}");
-    host.slot("s-tui")
-        .await
-        .append_and_push(Event::TextDelta {
-            text: "roundtrip".into(),
-        })
-        .await;
-    // ath44: the mux hands the server_hello handshake frame first; collect
-    // downlink frames until the first business ServerRequest shows up.
-    let mut frames: Vec<RpcMessage> = Vec::new();
-    let _ = tokio::time::timeout(Duration::from_secs(2), async {
-        while let Some(item) = mux.next().await {
-            let Ok(frame) = item else { break };
-            let is_request = matches!(&frame, RpcMessage::ServerRequest { .. });
-            frames.push(frame);
-            if is_request {
-                break;
-            }
-        }
-    })
+#[when("POST /rpc 调用 host.describe")]
+async fn w_rpc_host_describe(server_test: &ServerTest) {
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "R",
+        "host.describe",
+        serde_json::json!({}),
+        None,
+    )
     .await;
-    server_test.mux_frames.replace(frames);
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(body));
 }
 
-#[then("经四象限 POST unary 与 WebSocket 下行")]
-fn t_four_quad_shape(server_test: &ServerTest) {
-    let body = server_test.unary_body.borrow();
-    let s = body.as_deref().unwrap_or("");
-    assert!(s.contains("ok") || s.contains("protocol"), "{s}");
+#[then("应答为 JSON-RPC 成功且 id 回显")]
+fn t_jsonrpc_success(server_test: &ServerTest) {
+    let st = server_test.unary_status.get();
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    assert_eq!(st, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    assert_eq!(v["jsonrpc"], "2.0", "{body}");
+    assert_eq!(v["id"], "R", "{body}");
+    assert!(v.get("result").is_some(), "{body}");
+    assert!(v.get("error").is_none(), "{body}");
+    assert!(v.get("ok").is_none(), "{body}");
+    assert!(!body.contains("\"type\":\"server-response\""), "{body}");
+}
+
+#[then("result 携带协议版本整数")]
+fn t_describe_protocol(server_test: &ServerTest) {
+    t_jsonrpc_success(server_test);
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    let protocol = v["result"]["protocol"]
+        .as_u64()
+        .expect("host.describe result.protocol");
+    assert_eq!(protocol, u64::from(PROTOCOL_VERSION), "{body}");
+}
+
+#[when("POST /rpc 调用 approve_tool")]
+async fn w_rpc_approve_tool(server_test: &ServerTest) {
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "A",
+        "approve_tool",
+        serde_json::json!({"call_id": "none", "approved": true}),
+        None,
+    )
+    .await;
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(body));
+}
+
+#[then("应答不是 JSON-RPC -32601")]
+fn t_not_method_not_found(server_test: &ServerTest) {
+    let st = server_test.unary_status.get();
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    assert_eq!(st, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    assert_eq!(v["jsonrpc"], "2.0", "{body}");
+    assert_ne!(v["error"]["code"], serde_json::json!(-32601), "{body}");
+    assert!(v.get("result").is_some(), "{body}");
+}
+
+#[when("POST /rpc 发送非法信封")]
+async fn w_rpc_illegal(server_test: &ServerTest) {
+    let (st, resp) = http_status(server_test.port.get(), "POST", "/rpc", "{}").await;
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(resp));
+}
+
+#[then("HTTP 失败且无 JSON-RPC result 成功")]
+fn t_illegal_envelope(server_test: &ServerTest) {
+    let st = server_test.unary_status.get();
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    assert!(
+        st >= 400,
+        "illegal envelope MUST fail HTTP, got {st} {body}"
+    );
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::json!({}));
+    assert!(
+        v.get("result").is_none(),
+        "illegal envelope MUST NOT be a JSON-RPC success: {body}"
+    );
 }
 
 #[then("Host 对该路径给出可观察往返")]
@@ -333,18 +402,6 @@ fn t_sr_env1_roundtrip(server_test: &ServerTest) {
         s.contains(&PROTOCOL_VERSION.to_string()) || s.contains("protocol"),
         "host.describe must round-trip, got {s}"
     );
-    let frames = server_test.mux_frames.borrow();
-    let hit = frames.iter().any(|f| {
-        matches!(
-            f,
-            RpcMessage::ServerRequest { method, .. }
-                if method == "session/event" || method == "session/subscribed"
-        )
-    });
-    assert!(
-        hit,
-        "mux downlink must carry a ServerRequest, got {frames:?}"
-    );
 }
 
 #[when("启动 app::server 运行时")]
@@ -352,17 +409,23 @@ async fn w_start_runtime(server_test: &ServerTest) {
     start_host(server_test).await;
 }
 
-#[then("暴露 POST /api/{{method}}、POST /api/respond 与只下行的 events.mux")]
+#[then("暴露 POST /rpc、WS /rpc 与 GET /healthz")]
 async fn t_sr2_routes(server_test: &ServerTest) {
+    let (st, body) = http_status(server_test.port.get(), "GET", "/healthz", "").await;
+    assert_eq!(st, 200, "{body}");
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "R",
+        "host.describe",
+        serde_json::json!({}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    assert!(body.contains("jsonrpc"), "{body}");
     let client = HttpWsClient::new(server_test.base_url());
-    let r = client
-        .unary("host.describe", serde_json::json!({}))
-        .await
-        .expect("describe");
-    assert!(r.ok, "{r:?}");
-    let (st, body) = http_status(server_test.port.get(), "POST", "/api/respond", "{}").await;
-    assert!(st == 400 || st == 200, "respond mounted, got {st} {body}");
-    let _mux = client.mux().await.expect("events.mux");
+    let mux = client.mux().await.expect("WS /rpc upgrade");
+    drop(mux);
 }
 
 #[then("不暴露 /api/v1 产品 REST")]
@@ -394,7 +457,7 @@ fn t_sr3(server_test: &ServerTest) {
     );
 }
 
-#[given("客户端断开 N 秒后以 last_seq unary subscribe")]
+#[given("客户端断开 N 秒后以 last_seq 经 POST /rpc 订阅")]
 async fn g_reconnect(server_test: &ServerTest) {
     start_host(server_test).await;
     server_test.last_seq.set(0);
@@ -417,14 +480,17 @@ async fn t_replay(server_test: &ServerTest) {
     let mut mux = client.mux().await.expect("mux");
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     wait_unbound(&host, 1).await;
-    let r = client
-        .unary(
-            "subscribe",
-            serde_json::json!({"session_id": "s-replay", "last_seq": 0}),
-        )
-        .await
-        .expect("subscribe");
-    assert!(r.ok, "{r:?}");
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "S",
+        "subscribe",
+        serde_json::json!({"session_id": "s-replay", "last_seq": 0}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    assert!(v.get("result").is_some(), "subscribe must succeed: {body}");
     let frame = tokio::time::timeout(Duration::from_secs(2), mux.next())
         .await
         .expect("timeout")
@@ -454,13 +520,17 @@ async fn w_push_approval(server_test: &ServerTest) {
     server_test.approval_rx.replace(Some(rx));
 }
 
-#[then("客户端经 POST /api/respond 应答且回合恢复")]
+#[then("客户端经 POST /rpc 调用 approve_tool 且回合恢复")]
 async fn t_sr5_respond(server_test: &ServerTest) {
-    let client = HttpWsClient::new(server_test.base_url());
-    client
-        .respond("xyz", serde_json::json!({"approved": true}))
-        .await
-        .expect("respond");
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "A1",
+        "approve_tool",
+        serde_json::json!({"call_id": "xyz", "approved": true}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
     let mut rx = server_test.approval_rx.borrow_mut().take().expect("rx");
     let got = tokio::time::timeout(Duration::from_secs(1), &mut rx)
         .await
@@ -528,31 +598,31 @@ fn t_sr8(server_test: &ServerTest) {
     );
 }
 
-#[given("向 POST /api/prompt 发送 ClientRequest")]
+#[given("向 POST /rpc 发送 prompt 的 JSON-RPC 请求")]
 async fn g_post_prompt(server_test: &ServerTest) {
     start_host(server_test).await;
-    let client = HttpWsClient::new(server_test.base_url());
-    let result = client
-        .unary(
-            "prompt",
-            serde_json::json!({"message": "hi", "session_id": "s-prompt"}),
-        )
-        .await
-        .expect("prompt");
-    server_test.unary_status.set(200);
-    server_test
-        .unary_body
-        .replace(Some(serde_json::to_string(&result).unwrap()));
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "R-prompt",
+        "prompt",
+        serde_json::json!({"message": "hi", "session_id": "s-prompt"}),
+        None,
+    )
+    .await;
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(body));
 }
 
 #[when("server 处理 prompt")]
 fn w_handle_prompt(_server_test: &ServerTest) {}
 
-#[then("HTTP 200 且 ServerResponse 回显 rpcId")]
+#[then("HTTP 200 且应答回显 id")]
 fn t_prompt_200(server_test: &ServerTest) {
     assert_eq!(server_test.unary_status.get(), 200);
-    let body = server_test.unary_body.borrow();
-    assert!(body.as_ref().is_some_and(|b| b.contains("ok")), "{body:?}");
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    assert_eq!(v["jsonrpc"], "2.0", "{body}");
+    assert_eq!(v["id"], "R-prompt", "{body}");
 }
 
 #[then("POST /api/v1/session/x/run 不是产品路径")]
@@ -649,7 +719,7 @@ fn g_remote_points(_server_test: &ServerTest) {}
 #[when("调用已登记方法表的 session_tree/travel")]
 fn w_session_tree_registered(_server_test: &ServerTest) {}
 
-#[then("经四象限 unary 到达 Host 且不经 REST 冒充")]
+#[then("经 JSON-RPC unary 到达 Host 且不经 REST 冒充")]
 fn t_tree_registered(_server_test: &ServerTest) {
     assert!(source_contains(
         "src/protocol/wire/registry.rs",
@@ -685,62 +755,241 @@ fn w_host_resource_methods(_server_test: &ServerTest) {
 
 // ── server-ws ─────────────────────────────────────────────────────
 
-#[given("构造下行 ServerRequest session/event")]
+#[given(
+    "构造下行 session/event、session/subscribed、session/resync_required 与 session/resources notification"
+)]
 fn g_w1_frame(server_test: &ServerTest) {
-    let msg = RpcMessage::ServerRequest {
-        rpc_id: "r1".into(),
-        method: "session/event".into(),
-        payload: serde_json::json!({"session_id": "s0", "seq": 1}),
-    };
-    server_test
-        .unary_body
-        .replace(Some(serde_json::to_string(&msg).unwrap()));
+    let notes: Vec<String> = [
+        "session/event",
+        "session/subscribed",
+        "session/resync_required",
+        "session/resources",
+        "approval/requested",
+        "question/requested",
+    ]
+    .into_iter()
+    .map(|method| {
+        codec::jsonrpc_notification(method, serde_json::json!({"session_id": "s0"})).to_string()
+    })
+    .collect();
+    server_test.unary_body.replace(Some(notes.join("\n")));
 }
 
 #[when("序列化为 JSON")]
 fn w_serialize(_server_test: &ServerTest) {}
 
-#[then("JSON 含 type=server-request 与 method=session/event")]
+#[then("各帧均为 JSON-RPC 2.0 notification 且无 id")]
 fn t_w1(server_test: &ServerTest) {
     let body = server_test.unary_body.borrow();
     let s = body.as_deref().unwrap();
-    assert!(s.contains("server-request"), "{s}");
-    assert!(s.contains("session/event"), "{s}");
+    for line in s.lines() {
+        let v: serde_json::Value = serde_json::from_str(line).expect("json");
+        assert_eq!(v["jsonrpc"], "2.0", "{line}");
+        assert!(v.get("method").and_then(|m| m.as_str()).is_some(), "{line}");
+        assert!(
+            v.get("id").is_none(),
+            "notification must not have id: {line}"
+        );
+    }
 }
 
 #[given("客户端欲以 last_seq 5 订阅会话 s0")]
 fn g_w2(_server_test: &ServerTest) {}
 
-#[when("发送 unary subscribe")]
-fn w_w2_subscribe(server_test: &ServerTest) {
-    let msg = RpcMessage::ClientRequest {
-        rpc_id: "r2".into(),
-        method: "subscribe".into(),
-        payload: serde_json::json!({"session_id": "s0", "last_seq": 5}),
-        writer_token: None,
-    };
+#[when("POST /rpc 调用 subscribe 带 session_id=s0 与 last_seq=5")]
+async fn w_subscribe_s0(server_test: &ServerTest) {
+    if server_test.port.get() == 0 {
+        start_host(server_test).await;
+    }
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "S0",
+        "subscribe",
+        serde_json::json!({"session_id": "s0", "last_seq": 5}),
+        None,
+    )
+    .await;
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(body));
+}
+
+#[then("应答为 JSON-RPC 成功且 result 含 session 与 seq")]
+fn t_subscribe_result(server_test: &ServerTest) {
+    let st = server_test.unary_status.get();
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    assert_eq!(st, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    assert_eq!(v["jsonrpc"], "2.0", "{body}");
+    assert!(v.get("error").is_none(), "{body}");
+    let result = v.get("result").expect("result");
+    assert!(
+        result.get("session_id").and_then(|s| s.as_str()) == Some("s0")
+            || result.get("sessionId").and_then(|s| s.as_str()) == Some("s0"),
+        "{body}"
+    );
+    assert!(
+        result.get("seq").and_then(|s| s.as_u64()).is_some(),
+        "{body}"
+    );
+}
+
+#[then("WS 丢弃非 JSON-RPC 文本上行")]
+async fn t_w2_no_uplink(server_test: &ServerTest) {
+    use futures::SinkExt;
+    let url = format!("ws://127.0.0.1:{}/rpc", server_test.port.get());
+    let (mut ws, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS /rpc");
+    let _ = tokio::time::timeout(Duration::from_secs(2), ws.next()).await;
+    ws.send(tokio_tungstenite::tungstenite::Message::Text(
+        "not-jsonrpc".into(),
+    ))
+    .await
+    .ok();
+    let closed = tokio::time::timeout(Duration::from_secs(2), ws.next()).await;
+    match closed {
+        Ok(None)
+        | Ok(Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))))
+        | Ok(Some(Err(_)))
+        | Err(_) => {}
+        Ok(Some(Ok(other))) => panic!("non-JSON-RPC text must drop the socket, got {other:?}"),
+    }
+}
+
+#[when("产品客户端经 WS /rpc 调用 host.describe")]
+async fn w_product_client_describe(server_test: &ServerTest) {
+    let client = HttpWsClient::new(server_test.base_url());
+    let result = client
+        .unary("host.describe", serde_json::json!({}))
+        .await
+        .expect("product HttpWsClient unary");
     server_test
         .unary_body
-        .replace(Some(serde_json::to_string(&msg).unwrap()));
+        .replace(Some(serde_json::to_string(&result).expect("rpc result")));
 }
 
-#[then("payload 含 session_id=s0 与 last_seq=5")]
-fn t_w2_payload(server_test: &ServerTest) {
-    let s = server_test.unary_body.borrow();
-    let t = s.as_deref().unwrap();
-    assert!(t.contains("s0") && t.contains("5"), "{t}");
+#[then("产品 unary 成功且 result 含协议版本")]
+fn t_product_unary_describe(server_test: &ServerTest) {
+    let body = server_test
+        .unary_body
+        .borrow()
+        .clone()
+        .expect("product unary body");
+    let result: crate::protocol::RpcResult = serde_json::from_str(&body).expect("RpcResult");
+    assert!(result.ok, "{body}");
+    assert!(result.error.is_none(), "{body}");
+    let protocol = result
+        .value
+        .as_ref()
+        .and_then(|v| v.get("protocol"))
+        .and_then(|v| v.as_u64())
+        .expect("host.describe protocol");
+    assert_eq!(protocol, u64::from(PROTOCOL_VERSION), "{body}");
 }
 
-#[then("mux 不接受 Subscribe 应用帧")]
-fn t_w2_no_uplink(_server_test: &ServerTest) {
-    assert!(source_contains("src/app/server/http.rs", "is_text()"));
-    assert!(source_contains(
-        "src/app/server/http.rs",
-        "Business uplink is forbidden"
-    ));
+#[when("客户端经 WS /rpc 发送 host.describe JSON-RPC 请求")]
+async fn w_ws_describe(server_test: &ServerTest) {
+    use futures::{SinkExt, StreamExt};
+    let url = format!("ws://127.0.0.1:{}/rpc", server_test.port.get());
+    let (mut ws, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS /rpc");
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": "ws-1",
+        "method": "host.describe",
+        "params": {}
+    });
+    ws.send(tokio_tungstenite::tungstenite::Message::Text(
+        req.to_string().into(),
+    ))
+    .await
+    .expect("send describe");
+    let reply = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            match ws.next().await {
+                Some(Ok(tokio_tungstenite::tungstenite::Message::Text(t))) => {
+                    return t.to_string();
+                }
+                Some(Ok(tokio_tungstenite::tungstenite::Message::Ping(_)))
+                | Some(Ok(tokio_tungstenite::tungstenite::Message::Pong(_))) => continue,
+                other => panic!("expected JSON-RPC text on WS, got {other:?}"),
+            }
+        }
+    })
+    .await
+    .expect("WS unary reply");
+    server_test.unary_body.replace(Some(reply));
 }
 
-#[given("客户端连接 /api/events.mux")]
+#[then("同一条 WS 收回显 id 的 JSON-RPC result")]
+fn t_ws_describe_echo(server_test: &ServerTest) {
+    let body = server_test
+        .unary_body
+        .borrow()
+        .clone()
+        .expect("ws unary body");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    assert_eq!(v["jsonrpc"], "2.0", "{body}");
+    assert_eq!(v["id"], "ws-1", "{body}");
+    assert!(v.get("result").is_some(), "{body}");
+    assert!(v.get("error").is_none(), "{body}");
+}
+
+#[when("客户端经 WS /rpc 发送非只读 JSON-RPC 请求")]
+async fn w_ws_writer_unary(server_test: &ServerTest) {
+    use futures::{SinkExt, StreamExt};
+    let url = format!("ws://127.0.0.1:{}/rpc", server_test.port.get());
+    let (mut ws, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("WS /rpc");
+    let req = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": "ws-w",
+        "method": "clear_queue",
+        "params": {"clear_steer": true, "clear_follow_up": true}
+    });
+    ws.send(tokio_tungstenite::tungstenite::Message::Text(
+        req.to_string().into(),
+    ))
+    .await
+    .expect("send writer unary");
+    let reply = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            match ws.next().await {
+                Some(Ok(tokio_tungstenite::tungstenite::Message::Text(t))) => {
+                    return t.to_string();
+                }
+                Some(Ok(tokio_tungstenite::tungstenite::Message::Ping(_)))
+                | Some(Ok(tokio_tungstenite::tungstenite::Message::Pong(_))) => continue,
+                other => panic!("expected JSON-RPC text on WS, got {other:?}"),
+            }
+        }
+    })
+    .await
+    .expect("WS writer unary reply");
+    server_test.unary_body.replace(Some(reply));
+}
+
+#[then("WS 应答顶层有 writerToken 且 result 不含")]
+fn t_ws_writer_token(server_test: &ServerTest) {
+    let body = server_test
+        .unary_body
+        .borrow()
+        .clone()
+        .expect("ws writer body");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    assert_eq!(v["jsonrpc"], "2.0", "{body}");
+    assert!(v.get("result").is_some(), "{body}");
+    let tok = v["writerToken"].as_str().expect("top-level writerToken");
+    assert!(!tok.is_empty(), "{body}");
+    assert!(
+        v["result"].get("writerToken").is_none(),
+        "token must not live in result: {body}"
+    );
+}
+
+#[given("客户端连接 /rpc")]
 async fn g_w3_mux(server_test: &ServerTest) {
     start_host(server_test).await;
 }
@@ -752,10 +1001,8 @@ async fn w_w3_upgrade(server_test: &ServerTest) {
     drop(mux);
 }
 
-#[then("连接只收下行 ServerRequest")]
-fn t_w3_downlink(_server_test: &ServerTest) {
-    assert!(source_contains("src/app/server/http.rs", "is_text()"));
-}
+#[then("升级成功")]
+fn t_w3_upgraded(_server_test: &ServerTest) {}
 
 #[then("不把会话绑在 /api/v1/session/x/ws")]
 fn t_w3_no_old_ws(_server_test: &ServerTest) {
@@ -765,6 +1012,35 @@ fn t_w3_no_old_ws(_server_test: &ServerTest) {
         !product.contains("/api/v1/session"),
         "product router must not mount /api/v1/session"
     );
+}
+
+#[given("以短空闲超时的产品订阅客户端已升级 WS /rpc")]
+async fn g_halfopen_mux(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let client = HttpWsClient::new(server_test.base_url())
+        .with_mux_liveness(Duration::from_secs(3600), Duration::from_millis(80));
+    let mux = client.mux().await.expect("upgrade");
+    server_test.mux_rx.replace(Some(mux));
+}
+
+#[when("超过空闲超时仍无入站帧")]
+async fn w_wait_idle(_server_test: &ServerTest) {
+    tokio::time::sleep(Duration::from_millis(160)).await;
+}
+
+#[then("客户端判定半开并结束该订阅")]
+async fn t_halfopen_idle(server_test: &ServerTest) {
+    let mut mux = server_test.mux_rx.borrow_mut().take().expect("mux");
+    let item = tokio::time::timeout(Duration::from_secs(2), mux.next())
+        .await
+        .expect("idle wait");
+    match item {
+        Some(Err(e)) => {
+            let msg = e.to_string();
+            assert!(msg.contains("mux idle"), "{msg}");
+        }
+        other => panic!("expected half-open idle error, got {other:?}"),
+    }
 }
 
 #[given("向会话 append 3 个事件")]
@@ -798,7 +1074,7 @@ fn g_w5(server_test: &ServerTest) {
     server_test.journal.replace(Some(j));
 }
 
-#[when("last_seq=0 的客户端 unary subscribe")]
+#[when("last_seq=0 的客户端经 POST /rpc 订阅")]
 async fn w_w5_subscribe(server_test: &ServerTest) {
     start_host(server_test).await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
@@ -814,12 +1090,14 @@ async fn w_w5_subscribe(server_test: &ServerTest) {
     let client = HttpWsClient::new(server_test.base_url());
     let mut mux = client.mux().await.expect("mux");
     wait_unbound(&host, 1).await;
-    let _ = client
-        .unary(
-            "subscribe",
-            serde_json::json!({"session_id": "s-wrap", "last_seq": 0}),
-        )
-        .await;
+    let _ = post_rpc(
+        server_test.port.get(),
+        "W5",
+        "subscribe",
+        serde_json::json!({"session_id": "s-wrap", "last_seq": 0}),
+        None,
+    )
+    .await;
     if let Ok(Some(Ok(frame))) = tokio::time::timeout(Duration::from_secs(2), mux.next()).await {
         server_test.mux_frames.replace(vec![frame]);
     }
@@ -842,18 +1120,20 @@ async fn g_w6(server_test: &ServerTest) {
     w_w5_subscribe(server_test).await;
 }
 
-#[when("客户端以 last_seq=0 再次 unary subscribe")]
+#[when("客户端以 last_seq=0 再次经 POST /rpc 订阅")]
 async fn w_w6_resub(server_test: &ServerTest) {
     let client = HttpWsClient::new(server_test.base_url());
     let mut mux = client.mux().await.expect("mux");
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     wait_unbound(&host, 1).await;
-    let _ = client
-        .unary(
-            "subscribe",
-            serde_json::json!({"session_id": "s-wrap", "last_seq": 0}),
-        )
-        .await;
+    let _ = post_rpc(
+        server_test.port.get(),
+        "W6",
+        "subscribe",
+        serde_json::json!({"session_id": "s-wrap", "last_seq": 0}),
+        None,
+    )
+    .await;
     let mut got = Vec::new();
     while let Ok(Some(Ok(frame))) =
         tokio::time::timeout(Duration::from_millis(400), mux.next()).await
@@ -894,12 +1174,14 @@ async fn w_w7_delta(server_test: &ServerTest) {
     let mut mux = client.mux().await.expect("mux");
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     wait_unbound(&host, 1).await;
-    let _ = client
-        .unary(
-            "subscribe",
-            serde_json::json!({"session_id": "s-delta", "last_seq": 0}),
-        )
-        .await;
+    let _ = post_rpc(
+        server_test.port.get(),
+        "W7",
+        "subscribe",
+        serde_json::json!({"session_id": "s-delta", "last_seq": 0}),
+        None,
+    )
+    .await;
     host.slot("s-delta")
         .await
         .append_and_push(Event::TextDelta {
@@ -920,7 +1202,7 @@ async fn w_w7_delta(server_test: &ServerTest) {
     server_test.mux_frames.replace(got);
 }
 
-#[then("客户端在 mux 上收到 session/event 的 ServerRequest")]
+#[then("客户端收到 session/event notification")]
 fn t_w7(server_test: &ServerTest) {
     let frames = server_test.mux_frames.borrow();
     let hit = frames.iter().any(|f| {
@@ -1097,26 +1379,35 @@ async fn w_rr_tool(approval_test: &ServerTest) {
     tokio::time::sleep(Duration::from_millis(80)).await;
 }
 
-#[then("客户端收到带有 rpcId 的 approval/requested")]
+#[then("客户端收到 approval/requested notification")]
 fn t_rr_got_request(approval_test: &ServerTest) {
     let acc = approval_test.mux_acc.lock().unwrap();
-    let hit = acc.iter().any(|f| {
-        matches!(
-            f,
-            RpcMessage::ServerRequest { method, rpc_id, .. }
-                if method == "approval/requested" && rpc_id == "call-approve-1"
-        )
+    let hit = acc.iter().any(|f| match f {
+        RpcMessage::ServerRequest {
+            method,
+            rpc_id,
+            payload,
+            ..
+        } if method == "approval/requested" => {
+            rpc_id == "call-approve-1"
+                || payload.get("call_id").and_then(|v| v.as_str()) == Some("call-approve-1")
+        }
+        _ => false,
     });
-    assert!(hit, "expected approval/requested with rpcId, got {acc:?}");
+    assert!(hit, "expected approval/requested, got {acc:?}");
 }
 
-#[when("客户端 POST /api/respond 且 approved=true")]
+#[when("客户端 POST /rpc 调用 approve_tool 且 approved=true")]
 async fn w_rr_approve(approval_test: &ServerTest) {
-    let client = HttpWsClient::new(approval_test.base_url());
-    client
-        .respond("call-approve-1", serde_json::json!({"approved": true}))
-        .await
-        .expect("respond");
+    let (st, _, body) = post_rpc(
+        approval_test.port.get(),
+        "A1",
+        "approve_tool",
+        serde_json::json!({"call_id": "call-approve-1", "approved": true}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
     let mut rx = approval_test.approval_rx.borrow_mut().take().expect("rx");
     let got = tokio::time::timeout(Duration::from_secs(1), &mut rx)
         .await
@@ -1138,13 +1429,17 @@ fn t_turn_ok(approval_test: &ServerTest) {
     t_tool_continues(approval_test);
 }
 
-#[when("客户端 POST /api/respond 且 approved=false")]
+#[when("客户端 POST /rpc 调用 approve_tool 且 approved=false")]
 async fn w_rr_deny(approval_test: &ServerTest) {
-    let client = HttpWsClient::new(approval_test.base_url());
-    client
-        .respond("call-approve-1", serde_json::json!({"approved": false}))
-        .await
-        .expect("respond");
+    let (st, _, body) = post_rpc(
+        approval_test.port.get(),
+        "A1",
+        "approve_tool",
+        serde_json::json!({"call_id": "call-approve-1", "approved": false}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
     let mut rx = approval_test.approval_rx.borrow_mut().take().expect("rx");
     let got = tokio::time::timeout(Duration::from_secs(1), &mut rx)
         .await
@@ -1179,8 +1474,9 @@ async fn g_rr1(approval_test: &ServerTest) {
             while let Some(Ok(frame)) = mux.next().await {
                 if matches!(
                     &frame,
-                    RpcMessage::ServerRequest { method, rpc_id, .. }
-                        if method == "approval/requested" && rpc_id == "xyz"
+                    RpcMessage::ServerRequest { method, payload, .. }
+                        if method == "approval/requested"
+                            && payload.get("call_id").and_then(|v| v.as_str()) == Some("xyz")
                 ) {
                     hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 }
@@ -1219,23 +1515,31 @@ fn t_rr1(approval_test: &ServerTest) {
     );
 }
 
-#[given("2 个客户端 POST /api/respond，rpcId xyz（首个 true，50ms 后 false）")]
+#[given("2 个客户端 POST /rpc 调用 approve_tool，call_id xyz（首个 true，50ms 后 false）")]
 async fn g_rr2(approval_test: &ServerTest) {
     start_host(approval_test).await;
     let host = approval_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot(&host.fallback_session).await;
     let rx = slot.request_approval("xyz".into()).await;
     approval_test.approval_rx.replace(Some(rx));
-    let client = HttpWsClient::new(approval_test.base_url());
-    client
-        .respond("xyz", serde_json::json!({"approved": true}))
-        .await
-        .unwrap();
+    let port = approval_test.port.get();
+    let _ = post_rpc(
+        port,
+        "A1",
+        "approve_tool",
+        serde_json::json!({"call_id": "xyz", "approved": true}),
+        None,
+    )
+    .await;
     tokio::time::sleep(Duration::from_millis(50)).await;
-    client
-        .respond("xyz", serde_json::json!({"approved": false}))
-        .await
-        .unwrap();
+    let _ = post_rpc(
+        port,
+        "A2",
+        "approve_tool",
+        serde_json::json!({"call_id": "xyz", "approved": false}),
+        None,
+    )
+    .await;
 }
 
 #[when("server 处理首个应答")]
@@ -1256,7 +1560,7 @@ fn t_rr2(approval_test: &ServerTest) {
     );
 }
 
-#[given("60s 内无客户端 POST /api/respond")]
+#[given("60s 内无客户端 POST /rpc 调用 approve_tool")]
 async fn g_rr3(approval_test: &ServerTest) {
     start_host(approval_test).await;
     let host = approval_test.host.borrow().as_ref().expect("host").clone();
@@ -1282,17 +1586,21 @@ fn t_rr3(approval_test: &ServerTest) {
     );
 }
 
-#[given("第二个客户端对已消费 rpcId POST /api/respond")]
+#[given("第二个客户端对已消费 call 再 POST /rpc 调用 approve_tool")]
 async fn g_rr4(approval_test: &ServerTest) {
     start_host(approval_test).await;
     let host = approval_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot(&host.fallback_session).await;
     let rx = slot.request_approval("xyz".into()).await;
-    let client = HttpWsClient::new(approval_test.base_url());
-    client
-        .respond("xyz", serde_json::json!({"approved": true}))
-        .await
-        .unwrap();
+    let (st, _, body) = post_rpc(
+        approval_test.port.get(),
+        "A1",
+        "approve_tool",
+        serde_json::json!({"call_id": "xyz", "approved": true}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
     let _ = rx.await;
     approval_test
         .last_rpc
@@ -1301,11 +1609,15 @@ async fn g_rr4(approval_test: &ServerTest) {
 
 #[when("server 收到该应答")]
 async fn w_rr4_second(approval_test: &ServerTest) {
-    let client = HttpWsClient::new(approval_test.base_url());
-    client
-        .respond("xyz", serde_json::json!({"approved": false}))
-        .await
-        .unwrap();
+    let (st, _, body) = post_rpc(
+        approval_test.port.get(),
+        "A2",
+        "approve_tool",
+        serde_json::json!({"call_id": "xyz", "approved": false}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
 }
 
 #[then("应答被静默忽略（无状态变化、无错误）")]
@@ -1316,73 +1628,84 @@ fn t_rr4(approval_test: &ServerTest) {
     );
 }
 
-#[given("客户端 A 已对 session 发出非只读 unary")]
+#[given("客户端 A 已对 session 经 POST /rpc 发出非只读方法")]
 async fn g_sr_w1_writer_a(server_test: &ServerTest) {
     start_host(server_test).await;
-    let a = HttpWsClient::new(server_test.base_url());
-    let r = a
-        .unary(
-            "clear_queue",
-            serde_json::json!({"clear_steer": true, "clear_follow_up": true}),
-        )
-        .await
-        .expect("A write");
-    assert!(r.ok, "{r:?}");
+    let (st, token, body) = post_rpc(
+        server_test.port.get(),
+        "A",
+        "clear_queue",
+        serde_json::json!({"clear_steer": true, "clear_follow_up": true}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    assert!(v.get("result").is_some(), "{body}");
     assert!(
-        r.value
-            .as_ref()
-            .and_then(|v| v.get("writerToken"))
-            .and_then(|v| v.as_str())
-            .is_some(),
-        "{r:?}"
+        !body.contains("writerToken"),
+        "token must not live in body: {body}"
     );
+    let token = token.expect("X-Writer-Token on first writer");
+    server_test.writer_header.replace(Some(token));
 }
 
-#[when("客户端 B 无 writerToken 再发非只读 unary")]
+#[when("客户端 B 无 X-Writer-Token 再发非只读方法")]
 async fn w_sr_w1_writer_b(server_test: &ServerTest) {
-    let b = HttpWsClient::new(server_test.base_url());
-    let r = b
-        .unary(
-            "clear_queue",
-            serde_json::json!({"clear_steer": true, "clear_follow_up": true}),
-        )
-        .await
-        .expect("B transport");
-    server_test
-        .unary_body
-        .replace(Some(serde_json::to_string(&r).unwrap()));
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "B",
+        "clear_queue",
+        serde_json::json!({"clear_steer": true, "clear_follow_up": true}),
+        None,
+    )
+    .await;
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(body));
 }
 
-#[then("业务错误说明已有写者")]
+#[then("业务错误 data.code 为 writer_conflict")]
 fn t_sr_w1_conflict(server_test: &ServerTest) {
     let s = server_test.unary_body.borrow().clone().expect("B result");
+    let v: serde_json::Value = serde_json::from_str(&s).expect("jsonrpc");
+    assert_eq!(v["error"]["data"]["code"], "writer_conflict", "{s}");
+}
+
+#[then("A 的响应带 X-Writer-Token 且 body 不含 writerToken")]
+fn t_sr_w1_header(server_test: &ServerTest) {
     assert!(
-        s.contains("writer_conflict") || s.contains("another client is the writer"),
-        "{s}"
+        server_test
+            .writer_header
+            .borrow()
+            .as_ref()
+            .is_some_and(|t| !t.is_empty()),
+        "missing writer header"
     );
 }
 
 // ---- sr-q1 / sr-abort1 / sr-sub1：queue_stats 只读、reload 合作取消、订阅跨回合存活 ----
 
-#[when("查询只读 unary queue_stats")]
+#[when("POST /rpc 查询只读方法 queue_stats")]
 async fn w_queue_stats(server_test: &ServerTest) {
-    let client = HttpWsClient::new(server_test.base_url());
-    let r = client
-        .unary("queue_stats", serde_json::json!({"session_id": "s-q"}))
-        .await
-        .expect("queue_stats");
-    assert!(r.ok, "{r:?}");
-    server_test
-        .unary_body
-        .replace(Some(serde_json::to_string(&r).unwrap()));
+    let (st, token, body) = post_rpc(
+        server_test.port.get(),
+        "Q",
+        "queue_stats",
+        serde_json::json!({"session_id": "s-q"}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    assert!(token.is_none(), "readonly must not set X-Writer-Token");
+    server_test.unary_body.replace(Some(body));
 }
 
 #[then("返回 steer 与 follow-up 队列深度")]
 fn t_queue_stats_shape(server_test: &ServerTest) {
     let body = server_test.unary_body.borrow().clone().expect("body");
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert!(v["value"]["steer_count"].is_u64(), "{body}");
-    assert!(v["value"]["follow_up_count"].is_u64(), "{body}");
+    assert!(v["result"]["steer_count"].is_u64(), "{body}");
+    assert!(v["result"]["follow_up_count"].is_u64(), "{body}");
 }
 
 #[then("响应不携带写者租约 token")]
@@ -1403,21 +1726,28 @@ async fn g_reload_inflight(server_test: &ServerTest) {
 
 #[when("收到进程级 abort unary")]
 async fn w_abort_unary(server_test: &ServerTest) {
-    let client = HttpWsClient::new(server_test.base_url());
-    let r = client
-        .unary("abort", serde_json::json!({}))
-        .await
-        .expect("abort");
-    server_test
-        .unary_body
-        .replace(Some(serde_json::to_string(&r).unwrap()));
+    let (st, token, body) = post_rpc(
+        server_test.port.get(),
+        "AB",
+        "abort",
+        serde_json::json!({}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    server_test.writer_header.replace(token);
+    server_test.unary_body.replace(Some(body));
 }
 
 #[then("应答携带 cancelled 指示且取消令牌被置位")]
 async fn t_reload_cancelled(server_test: &ServerTest) {
     let body = server_test.unary_body.borrow().clone().expect("body");
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert_eq!(v["value"]["cancelled"], serde_json::json!(true), "{body}");
+    let cancelled = v["result"]["cancelled"]
+        .as_bool()
+        .or_else(|| v["value"]["cancelled"].as_bool())
+        .unwrap_or(false);
+    assert!(cancelled, "{body}");
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let token = host
         .reload_cancel
@@ -1438,12 +1768,15 @@ async fn g_reload_idle(server_test: &ServerTest) {
 #[then("未命中 reload 取消而落回会话 abort 处理")]
 fn t_abort_falls_back(server_test: &ServerTest) {
     let body = server_test.unary_body.borrow().clone().expect("body");
-    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-    // reload 分支应答为纯 {"cancelled": true}（无租约）；
-    // 落回既有会话 abort 处理时，abort 作为非只读 unary 颁发写者租约（见 sr-w1）
     assert!(
-        v["value"]["writerToken"].is_string(),
-        "idle abort must fall through to leased session abort, got {body}"
+        server_test
+            .writer_header
+            .borrow()
+            .as_ref()
+            .is_some_and(|t| !t.is_empty()),
+        "idle abort must fall through to leased session abort, got body={} header={:?}",
+        body,
+        server_test.writer_header.borrow()
     );
 }
 
@@ -1528,61 +1861,44 @@ fn t_subscription_alive(server_test: &ServerTest) {
     );
 }
 
-#[when("调用未登记 unary 方法 no_such_method")]
+#[when("POST /rpc 调用未登记方法 no_such_method")]
 async fn w_unknown_unary(server_test: &ServerTest) {
-    let (st, body) = http_status(server_test.port.get(), "POST", "/api/no_such_method", "{}").await;
+    let body = r#"{"jsonrpc":"2.0","id":"R","method":"no_such_method","params":{}}"#;
+    let (st, resp) = http_status(server_test.port.get(), "POST", "/rpc", body).await;
     server_test.unary_status.set(st);
-    *server_test.unary_body.borrow_mut() = Some(body);
+    *server_test.unary_body.borrow_mut() = Some(resp);
 }
 
-#[then("应答为稳定错误形态且无 JSON-RPC 数字码")]
+#[then("应答为 JSON-RPC 错误且产品码在 data.code、信封数字码为 -32601")]
 fn t_unknown_unary_shape(server_test: &ServerTest) {
     let st = server_test.unary_status.get();
     let body = server_test.unary_body.borrow().clone().unwrap_or_default();
-    assert!(
-        !body.contains("jsonrpc"),
-        "product errors must not be JSON-RPC, got {body}"
+    assert_eq!(
+        st, 200,
+        "JSON-RPC parse success is HTTP 200, got {st} {body}"
     );
-    if st == 200 {
-        let v: serde_json::Value = serde_json::from_str(&body).expect("envelope body");
-        assert_eq!(v["ok"], serde_json::json!(false), "{body}");
-        assert!(
-            v["error"]["code"].is_string(),
-            "stable string code required, got {body}"
-        );
-    } else {
-        assert!(
-            matches!(st, 400 | 404 | 405),
-            "carrier must reject unknown method, got {st} {body}"
-        );
-    }
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc body");
+    assert_eq!(v["jsonrpc"], "2.0", "{body}");
+    assert_eq!(v["id"], "R", "{body}");
+    assert_eq!(v["error"]["code"], -32601, "{body}");
+    assert_eq!(v["error"]["data"]["code"], "unregistered_method", "{body}");
+    assert!(v.get("result").is_none(), "{body}");
 }
 
 // ---- c2460 sr-idem：unary 幂等准入 ----
 
-/// 以固定信封 `rpcId` 提交一个 unary ClientRequest，返回应答体原文。
+/// 以固定 JSON-RPC `id` 提交 POST /rpc，返回应答体原文。
 async fn post_unary_rpc_id(
     port: u16,
     rpc_id: &str,
     method: &str,
     payload: serde_json::Value,
 ) -> String {
-    let body = encode_client_request(rpc_id, method, payload);
-    let (_, resp) = http_status(port, "POST", &format!("/api/{method}"), &body).await;
+    let (_, _, resp) = post_rpc(port, rpc_id, method, payload, None).await;
     resp
 }
 
-fn encode_client_request(rpc_id: &str, method: &str, payload: serde_json::Value) -> String {
-    codec::encode_to_string(&RpcMessage::ClientRequest {
-        rpc_id: rpc_id.to_string(),
-        method: method.to_string(),
-        payload,
-        writer_token: None,
-    })
-    .expect("encode client-request")
-}
-
-#[given("客户端以 rpcId R 对某 session 提交 unary 命令并得到结果")]
+#[given("客户端以 JSON-RPC id R 对某 session 经 POST /rpc 提交方法并得到结果")]
 async fn g_idem_first_steer(server_test: &ServerTest) {
     start_host(server_test).await;
     let body = post_unary_rpc_id(
@@ -1595,7 +1911,7 @@ async fn g_idem_first_steer(server_test: &ServerTest) {
     *server_test.idem_first.lock().expect("idem_first") = Some(body);
 }
 
-#[when("客户端以相同 rpcId R 重试同一命令")]
+#[when("客户端以相同 id R 重试同一方法")]
 async fn w_idem_retry(server_test: &ServerTest) {
     let body = post_unary_rpc_id(
         server_test.port.get(),
@@ -1623,7 +1939,8 @@ async fn t_idem_replay_once(server_test: &ServerTest) {
     let first: serde_json::Value = serde_json::from_str(&first).expect("first envelope");
     let second: serde_json::Value = serde_json::from_str(&second).expect("second envelope");
     assert_eq!(first, second, "duplicate MUST replay the first result");
-    assert_eq!(first["result"]["ok"], serde_json::json!(true), "{first}");
+    assert!(first.get("error").is_none(), "{first}");
+    assert!(first.get("result").is_some(), "{first}");
     let stats = post_unary_rpc_id(
         server_test.port.get(),
         "R-stats",
@@ -1633,13 +1950,13 @@ async fn t_idem_replay_once(server_test: &ServerTest) {
     .await;
     let stats: serde_json::Value = serde_json::from_str(&stats).expect("queue_stats envelope");
     assert_eq!(
-        stats["result"]["value"]["steer_count"],
+        stats["result"]["steer_count"],
         serde_json::json!(1),
         "steer MUST be admitted exactly once: {stats}"
     );
 }
 
-#[given("rpcId R 已被某 method 与 payload 的提交占用")]
+#[given("JSON-RPC id R 已被某 method 与 params 的提交占用")]
 async fn g_idem_occupied(server_test: &ServerTest) {
     start_host(server_test).await;
     let body = post_unary_rpc_id(
@@ -1650,10 +1967,10 @@ async fn g_idem_occupied(server_test: &ServerTest) {
     )
     .await;
     let v: serde_json::Value = serde_json::from_str(&body).expect("get_state envelope");
-    assert_eq!(v["result"]["ok"], serde_json::json!(true), "{v}");
+    assert!(v.get("error").is_none(), "{v}");
 }
 
-#[when("以相同 rpcId R 提交不同 method 或 payload")]
+#[when("以相同 id R 提交不同 method 或 params")]
 async fn w_idem_conflict(server_test: &ServerTest) {
     let body = post_unary_rpc_id(
         server_test.port.get(),
@@ -1665,7 +1982,7 @@ async fn w_idem_conflict(server_test: &ServerTest) {
     *server_test.idem_second.borrow_mut() = Some(body);
 }
 
-#[then("返回 ok=false 且 code=idempotency_conflict 且不执行")]
+#[then("返回 JSON-RPC 错误且 data.code 为 idempotency_conflict 且不执行")]
 async fn t_idem_conflict(server_test: &ServerTest) {
     let second = server_test
         .idem_second
@@ -1673,15 +1990,14 @@ async fn t_idem_conflict(server_test: &ServerTest) {
         .clone()
         .expect("conflict result recorded");
     let v: serde_json::Value = serde_json::from_str(&second).expect("envelope");
-    assert_eq!(v["result"]["ok"], serde_json::json!(false), "{v}");
     assert_eq!(
-        v["result"]["error"]["code"],
+        v["error"]["data"]["code"],
         serde_json::json!("idempotency_conflict"),
         "{v}"
     );
 }
 
-#[given("rpcId R 的首次命令仍在处理中")]
+#[given("JSON-RPC id R 的首次命令仍在处理中")]
 async fn g_idem_inflight(server_test: &ServerTest) {
     start_host(server_test).await;
     let exec_file = std::env::temp_dir().join(format!("xylitol-idem-{}.txt", uuid::Uuid::new_v4()));
@@ -1707,7 +2023,7 @@ async fn g_idem_inflight(server_test: &ServerTest) {
     tokio::time::sleep(Duration::from_millis(120)).await;
 }
 
-#[when("相同 rpcId R 的重复请求到达")]
+#[when("相同 id R 的重复请求到达")]
 async fn w_idem_inflight_duplicate(server_test: &ServerTest) {
     let file = server_test
         .idem_exec_file
@@ -1747,7 +2063,7 @@ async fn t_idem_inflight_wait(server_test: &ServerTest) {
     let first: serde_json::Value = serde_json::from_str(&first).expect("first envelope");
     let second: serde_json::Value = serde_json::from_str(&second).expect("second envelope");
     assert_eq!(first, second, "duplicate MUST wait then replay: {second}");
-    assert_eq!(first["result"]["ok"], serde_json::json!(true), "{first}");
+    assert!(first.get("error").is_none(), "{first}");
     let file = server_test
         .idem_exec_file
         .borrow()
@@ -1788,12 +2104,13 @@ async fn w_rdy_probe_window(server_test: &ServerTest) {
     let (hz_status, hz_body) = http_status(server_test.port.get(), "GET", "/healthz", "").await;
     server_test.rdy_status.set(hz_status);
     *server_test.rdy_body.borrow_mut() = Some(hz_body);
-    let request = encode_client_request(
+    let request = codec::jsonrpc_request(
         "rdy-probe",
         "get_state",
         serde_json::json!({ "session_id": "rdy-s1" }),
-    );
-    let (st, body) = http_status(server_test.port.get(), "POST", "/api/get_state", &request).await;
+    )
+    .to_string();
+    let (st, body) = http_status(server_test.port.get(), "POST", "/rpc", &request).await;
     server_test.unary_status.set(st);
     *server_test.unary_body.borrow_mut() = Some(body);
 }
@@ -2040,13 +2357,13 @@ async fn g_server_ready(server_test: &ServerTest) {
 #[when("推送 content 载荷导入会话")]
 async fn w_staged_wire_import(server_test: &ServerTest) {
     let content = "{\"type\":\"session\",\"version\":6,\"id\":\"imp-scenario-1\",\"timestamp\":1,\"cwd\":\"/tmp\"}\n";
-    let body = encode_client_request(
+    let body = codec::jsonrpc_request(
         "r-staged-import",
         "import_jsonl",
         serde_json::json!({ "content": content }),
-    );
-    let (status, resp) =
-        http_status(server_test.port.get(), "POST", "/api/import_jsonl", &body).await;
+    )
+    .to_string();
+    let (status, resp) = http_status(server_test.port.get(), "POST", "/rpc", &body).await;
     server_test.unary_status.set(status);
     *server_test.unary_body.borrow_mut() = Some(resp);
 }
@@ -2056,10 +2373,10 @@ async fn t_staged_wire_import(server_test: &ServerTest) {
     assert_eq!(server_test.unary_status.get(), 200, "unary must be 200");
     let body = server_test.unary_body.borrow().clone().unwrap_or_default();
     let v: serde_json::Value = serde_json::from_str(&body).expect("valid envelope");
-    let sid = v["result"]["value"]["session_id"]
+    let sid = v["result"]["session_id"]
         .as_str()
         .map(str::to_string)
-        .unwrap_or_else(|| panic!("no session_id in result value, body={body}"));
+        .unwrap_or_else(|| panic!("no session_id in result, body={body}"));
     assert!(!sid.is_empty(), "imported session id must be non-empty");
     let host = server_test.host.borrow().clone().expect("host state");
     assert!(

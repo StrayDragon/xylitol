@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: protocol-app
-# purpose: Client↔host 产品真源为四象限信封；Command/Event 为方法/帧载荷；禁 JSON-RPC 2.0 与全双工 WS 外层。
+# purpose: Client↔host 产品真源为 JSON-RPC 2.0（入口 POST /rpc 与 WS /rpc）；Command/Event 为方法载荷与下行 notification 内容。
 # scope: src/, tests/
 
 功能: protocol-app
@@ -15,11 +15,11 @@
 
   @req:r1696 @human
   场景: 信封与错误
-    - 产品 unary 应答 MUST 使用结果形态：成功则 ok 为真并带 value，失败则 ok 为假并带稳定 code 与 details。合法信封的 HTTP 状态 MUST 表示载体成功；非法信封 MUST 失败。MUST NOT 以 JSON-RPC 2.0 数字码为产品错误模型。旧 REST {code,msg,data} 形态 MUST NOT 再作为产品 TUI 路径。
+    - 产品 unary 应答 MUST 使用 JSON-RPC 2.0 结果形态：成功则带 result，失败则带 error（message 为 details）。产品业务码 MUST 为 error.data 内稳定字符串；JSON-RPC 数字码 MUST 仅作载体，MUST NOT 成为产品错误模型。合法信封的 HTTP 状态 MUST 表示载体成功；非法信封 MUST 失败。旧 REST {code,msg,data} 与四象限 `{ok,value,error}` 顶层形态 MUST NOT 再作为产品 TUI 路径。
 
   @req:r1697 @human
   场景: Subscribe 命令
-    - protocol/ MUST 定义 Command::Subscribe {session_id, last_seq} 用于 WS 订阅，Event::Subscribed {session_id, seq} 作为确认。
+    - 产品 MUST 支持以 session 与 last_seq 订阅事件流；订阅确认 MUST 能表达 session 与当前 seq。该订阅 MUST 走产品 JSON-RPC 入口，MUST NOT 另开 REST 或非 JSON-RPC 的 WS 应用帧。
 
   @req:r1698 @human
   场景: Event 变体完整
@@ -31,7 +31,7 @@
 
   @req:r1700 @human
   场景: dispatch 归属
-    - 会话操作的执行语义 MUST 进入同一产品分发。订阅 MUST 为 unary。审批与问卷 MUST 作为对 host 可应答下行的 client-response（回显同一相关 id），MUST NOT 当作 unary，MUST NOT 留在仅全双工 WebSocket 应用层。
+    - 会话操作的执行语义 MUST 进入同一产品分发。订阅 MUST 为产品 JSON-RPC 订阅（session 与 last_seq）。审批与问卷 MUST 登记为产品 unary；host MUST 先以下行 JSON-RPC notification 告知，客户端再以 unary 作答。MUST NOT 另开 respond HTTP 路径，MUST NOT 用非 JSON-RPC 的 WS 应用帧作答。
 
   @req:r1691 @human
   场景: steer 与 followup 命令
@@ -75,7 +75,7 @@
 
   @req:r1714 @human
   场景: 会话能力方法表
-    - 产品方法表 MUST 登记并由 Host 暴露会话树读取与 travel、entry label、会话列表、会话条目读取、新建会话、会话名称读写与删除能力；这些能力 MUST 使用四象限 unary，不得退回未登记的 REST 产品动词。
+    - 产品方法表 MUST 登记并由 Host 暴露会话树读取与 travel、entry label、会话列表、会话条目读取、新建会话、会话名称读写与删除能力；这些能力 MUST 使用产品 unary，不得退回未登记的 REST 产品动词。
 
   @req:r1715 @human
   场景: Host 资源方法
@@ -83,7 +83,7 @@
 
   @req:r1716 @human
   场景: 队列深度方法
-    - 产品方法表 MUST 登记只读 `queue_stats`（steer/follow-up 深度）；MUST 为四象限 unary 且不占写者。Remote 客户端 MUST NOT 将未实现当成恒空深度。
+    - 产品方法表 MUST 登记只读 `queue_stats`（steer/follow-up 深度）；MUST 为产品 unary 且不占写者。Remote 客户端 MUST NOT 将未实现当成恒空深度。
 
   @req:r1710 @human
   场景: ToolEnd 失败标记下行
@@ -95,19 +95,19 @@
 
   @req:r1717 @human
   场景: 上下文估计方法
-    - 产品方法表 MUST 登记只读 `estimate_context`：host 侧以与本地 driver 同源入口计算 ContextTokenEstimate（含固定请求开销折算与 host tokenizer 映射）；MUST 为四象限 unary 且不占写者。Remote 客户端 MUST NOT 再以 GetMessages 拉条目在本地自估充当该能力。
+    - 产品方法表 MUST 登记只读 `estimate_context`：host 侧以与本地 driver 同源入口计算 ContextTokenEstimate（含固定请求开销折算与 host tokenizer 映射）；MUST 为产品 unary 且不占写者。Remote 客户端 MUST NOT 再以 GetMessages 拉条目在本地自估充当该能力。
 
   @req:r1701 @human
   场景: 单一产品真源
-    - client 与 host 之间的产品消息 MUST 且仅 MUST 经四象限信封投递。Command 与 Event 闭集 MUST 作为方法载荷 / 下行帧内容，MUST NOT 再作为产品协议外层。测试用进程内客户端与产品 attach 客户端 MUST 使用同一方法表。MUST NOT 为远程再开平行的 REST 产品动词或第二套词表。
+    - client 与 host 之间的产品消息 MUST 且仅 MUST 经 JSON-RPC 2.0 形状信封投递。Command 与 Event 闭集 MUST 作为方法载荷 / 下行帧内容，MUST NOT 再作为产品协议外层。测试用进程内客户端与产品 attach 客户端 MUST 使用同一方法表。MUST NOT 为远程再开平行的 REST 产品动词或第二套词表。
 
   @req:r1709 @human
-  场景: 四象限与通道
-    - 产品信封 MUST 区分为 client-request、server-response、server-request、client-response。相关 id 由发起方铸造，应答 MUST 回显。网络 unary 与 respond MUST 经 HTTP POST；网络下行 MUST 为 WebSocket 文本帧且该套接字 MUST NOT 收业务上行。产品 TUI MUST NOT 用 SSE 当下行真源。MUST NOT 以 JSON-RPC 2.0 为产品协议。
+  场景: JSON-RPC 通道
+    - 产品信封 MUST 为 JSON-RPC 2.0。带 id 的请求应答 MUST 回显同一 id。网络产品入口 MUST 为 POST /rpc 与 WS /rpc（同一方法表）。WS /rpc MUST 只承载 JSON-RPC 帧（含客户端 unary 与下行 notification），MUST NOT 收非 JSON-RPC 应用帧。产品 TUI MUST NOT 用 SSE 当下行真源。MUST NOT 再以四象限 type tag、POST /api/respond 或 GET /api/events.mux 为产品真源。
 
   @req:r1713 @human
   场景: 一份方法表
-    - 已承诺的会话操作 MUST 出现在一份方法表（unary 名 + 载荷 + 返回）。关闭 TUI MUST NOT 停 Host。审批与问卷 MUST NOT 登记为 unary。下行生命周期 MUST 能作为 server-request 载荷携带既有 Event，MUST NOT 为每个增量另开方法名。未登记方法 MUST 失败。
+    - 已承诺的会话操作 MUST 出现在一份方法表（方法名 + 载荷 + 返回）。关闭 TUI MUST NOT 停 Host。审批与问卷 MUST 登记为 unary。下行生命周期 MUST 以 JSON-RPC notification 携带既有 Event，MUST NOT 为每个增量另开方法名，MUST NOT 要求客户端对事件帧作答。未登记方法 MUST 以 JSON-RPC -32601 失败。
 
   @req:r1702 @human
   场景: 面本地不进协议
@@ -119,15 +119,15 @@
 
   @req:r1704 @human
   场景: 订阅与握手版本
-    - 每条线协议消息 MUST 归属某个 session。客户端 MUST 能以 session 与 last_seq 订阅并续传；journal 截断超过 last_seq 时 MUST 发出 resync。握手 MUST 携带协议版本；对不上 MUST 断开且 MUST NOT 降级。现行 ServerHello 版本字段在改名前 MUST 视为同一握手语义，MUST NOT 同时维护两套版本协商。
+    - 每条线协议消息 MUST 归属某个 session。客户端 MUST 能以 session 与 last_seq 订阅并续传；journal 截断超过 last_seq 时 MUST 发出 resync。握手 MUST 经已登记方法（host.describe 或语义等价）的 result 携带协议版本；对不上 MUST 断开且 MUST NOT 降级。MUST NOT 再以特例首帧并行维护第二套版本协商。
 
   @req:r1705 @human
   场景: 闭集缺口禁旁路
     - 协议闭集 MUST 能表达：host 侧重装（MCP / prompt / 技能）、项目信任持久化、session 写者与只读、导出回传内容、人 bash 直播增量。上述语义在尚未进入 Command/Event 枚举前，MUST NOT 用新的 REST 产品动词或第二套远程专用词表冒充；MUST NOT 要求本 requirement 单独新增运行时枚举变体。
 
   @req:r1706 @human
-  场景: 反向 RPC 首应答
-    - host 向 client 发起的审批与问卷 MUST 能经线协议往返；同一 call 的第一应答 MUST 生效，后续 MUST 忽略。
+  场景: 审批问卷首应答
+    - host 向 client 发起的审批与问卷 MUST 能经线协议往返（下行 notification + 客户端 unary）；同一 call 的第一 unary 应答 MUST 生效，后续 MUST 忽略。
 
   @req:r1691 @executable
   场景: command-queue-variants-parse
@@ -150,22 +150,57 @@
     当 序列化 is_error 失败标记的 tool_end 并构造缺省旧载荷
     那么 完整载荷保真失败态且缺失标记的载荷被拒绝
   @req:r1709 @executable
-  场景: four-quadrant-envelope-shape
-    当 解析四象限信封样例（client-request/server-response/server-request/client-response）
-    那么 四象限形态与 rpcId 回显成立
+  场景: jsonrpc-envelope-shape
+    当 解析 JSON-RPC 信封样例（request / result / notification）
+    那么 JSON-RPC 形态与 id 回显成立
+  @req:r1709 @executable
+  场景: ws-jsonrpc-unary-peer
+    当 服务端在空闲端口上启动
+    并且 客户端经 WS /rpc 发送 host.describe JSON-RPC 请求
+    那么 同一条 WS 收回显 id 的 JSON-RPC result
   @req:r1696 @executable
   场景: unary-stable-error-envelope
     当 服务端在空闲端口上启动
-    并且 调用未登记 unary 方法 no_such_method
-    那么 应答为稳定错误形态且无 JSON-RPC 数字码
+    并且 POST /rpc 调用未登记方法 no_such_method
+    那么 应答为 JSON-RPC 错误且产品码在 data.code、信封数字码为 -32601
+  @req:r1713 @executable
+  场景: method-table-unknown-is-32601
+    当 服务端在空闲端口上启动
+    并且 POST /rpc 调用未登记方法 no_such_method
+    那么 应答为 JSON-RPC 错误且产品码在 data.code、信封数字码为 -32601
+  @req:r1701 @executable
+  场景: jsonrpc-unary-success-shape
+    当 服务端在空闲端口上启动
+    并且 POST /rpc 调用 host.describe
+    那么 应答为 JSON-RPC 成功且 id 回显
+  @req:r1704 @executable
+  场景: handshake-protocol-via-describe
+    当 服务端在空闲端口上启动
+    并且 POST /rpc 调用 host.describe
+    那么 result 携带协议版本整数
+  @req:r1697 @executable
+  场景: subscribe-via-jsonrpc
+    当 服务端在空闲端口上启动
+    并且 POST /rpc 调用 subscribe 带 session_id=s0 与 last_seq=5
+    那么 应答为 JSON-RPC 成功且 result 含 session 与 seq
+  @req:r1700 @executable
+  场景: approve-tool-is-product-unary
+    当 服务端在空闲端口上启动
+    并且 POST /rpc 调用 approve_tool
+    那么 应答不是 JSON-RPC -32601
+  @req:r1709 @executable
+  场景: jsonrpc-illegal-envelope
+    当 服务端在空闲端口上启动
+    并且 POST /rpc 发送非法信封
+    那么 HTTP 失败且无 JSON-RPC result 成功
   @req:r1716 @executable
   场景: queue-stats-method-table-readonly
     当 服务端在空闲端口上启动
-    并且 查询只读 unary queue_stats
+    并且 POST /rpc 查询只读方法 queue_stats
     那么 返回 steer 与 follow-up 队列深度
     并且 响应不携带写者租约 token
   @req:r1706 @executable
   场景: reverse-rpc-first-answer-effective
     假如 工具需审批
     当 推送 ApprovalRequired
-    那么 客户端经 POST /api/respond 应答且回合恢复
+    那么 客户端经 POST /rpc 调用 approve_tool 且回合恢复

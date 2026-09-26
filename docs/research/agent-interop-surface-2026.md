@@ -8,11 +8,11 @@
 **2026-09-26 锁定**（JSON 真源 + 第一方面信封目标 JSON-RPC；**ACP 本轮不做**；Fory/gRPC 不当产品真源）：
 
 1. **痛点诊断**：开发成本高的不是 JSON vs 二进制，而是 **专有词表 + 专有信封**。现行线协议已经是 JSON；缺的是业界会的那套方法名。
-2. **第一方面**：走 **JSON 文本**；目标把四象限外层改成 JSON-RPC 2.0 形状，**通道仍拆开**（POST unary + WS 只下行）。词表仍是 Command/Event。
+2. **第一方面**：走 **JSON 文本**；目标把四象限外层换成 **jsonrpsee JSON-RPC 2.0 运行时**（单一 RPC 入口、subscription、middleware）。Salvo 留下 HTTP 周边（healthz / OpenAPI / 日后 Web 页面与 CORS），**不**再承载产品协议。词表仍是 Command/Event。字段改名补丁否决。通道纪律随 jsonrpsee peer 闭合（WS 上是 JSON-RPC 帧，含客户端 unary）。
 3. **不要** Fory / 自研 Fory-over-HTTP / Fory-gRPC 当产品编解码或独特点。可选程序 gRPC 若做，用标准 protobuf，且 **不**换 TUI。
 4. **不要**把 MCP Server 当主互操作面。
 5. **ACP 后置**：`c2305` 保持搁置，不纳入本轮 propose/apply。外人面互操作仍记在本文，但不开工。
-6. **落地顺序**：抽出四象限 JSON 的单一 encode/decode（不改约）→ SDD 改 `protocol-app` 做 JSON-RPC 双读/翻客户端。ACP 不排进这条队列。
+6. **落地顺序**：已抽出四象限 JSON 的单一 encode/decode（不改约）→ `c2825` 换 JSON-RPC 运行时（双读/翻客户端）。ACP 不排进这条队列。
 
 
 
@@ -56,16 +56,16 @@
 
 ```text
 第一方面（TUI / gpui / Print / embed）
-    └── 四象限信封 + Command/Event     ← 丰富度真源，保持 Rust 闭集
+    └── JSON-RPC 2.0 运行时 + Command/Event     ← 丰富度真源；c2825 换信封运行时
 
 第二方面（Zed / VS Code ACP / JetBrains / 任意语言脚本）
-    └── ACP Agent 方言                 ← 用官方多语言 SDK；方法子集 + `_` 扩展
+    └── ACP Agent 方言                 ← 后置（c2305）；用官方多语言 SDK
 
 第三方面（自动化 / 其它 agent 当工具调 xylitol）
     └── 可选 MCP Server                ← 窄、无会话深度；零成本默认关
 ```
 
-第一方面继续遵守「产品路径不是 JSON-RPC」。ACP 是 **附加方言**，类比 MCP 是附加工具方言，不是替换 TUI 真源。
+第一方面目标是 **业界 JSON-RPC 信封 + xylitol 词表**（不是再发明四象限）。ACP 仍是附加方言，本轮 **不开工**。
 
 ### 方言里 xylitol 仍然独特的部分（用 ACP 扩展，而不是再发明信封）
 
@@ -129,7 +129,7 @@ WIT / wasm 组件仍是 **工具/插件沙箱**（已写在 `ui-runtime-tradeoff
 
 它看起来「也是 RPC」（有 method、有相关 id），但信封、错误模型和通道切分都是自研四象限。TUI 走的是 `src/protocol/wire/envelope.rs` + `src/app/server/http.rs`（`Message::text`），不是 JSON-RPC 客户端。
 
-因此：要接「主流」，是 **加一条 JSON-RPC 方言**（优先 ACP），不是把 TUI 改成 JSON-RPC。仓库里已有搁置提案 [`llmanspec/delayed-changes/c2305-update-acp-provider-adapter/proposal.md`](../llmanspec/delayed-changes/c2305-update-acp-provider-adapter/proposal.md)：适配器译成同一 dispatch，**不共用**产品信封。
+**现状**如上；**目标**（c2825）是把第一方面换成主流 JSON-RPC 运行时，而不是继续自研四象限。外人面 ACP 仍后置：[`llmanspec/delayed-changes/c2305-update-acp-provider-adapter/proposal.md`](../llmanspec/delayed-changes/c2305-update-acp-provider-adapter/proposal.md)。词表与 ACP 方法表仍不同，本轮不译。
 
 ## DeepSeek Harness 可借鉴处
 

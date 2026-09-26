@@ -12,7 +12,7 @@
 //! execution semantics (model selection, compaction, export, session ops) so
 //! that [`crate::app::core::dispatch`] can be a pure Command→method dispatcher
 //! shared by tui (spec ce10). `subscribe` is a Host unary; reverse-RPC answers
-//! are `POST /api/respond` (not WS application frames).
+//! are `approve_tool` / `answer_question` unary (not a separate HTTP path).
 //!
 //! Product TUI attach uses [`HttpWsClient`](super::host_client::HttpWsClient);
 //! this adapter keeps the existing [`XyDriver`] seam until TUI speaks the envelope trait directly.
