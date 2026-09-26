@@ -755,12 +755,7 @@ async fn materialize_reader(
 }
 
 /// Busy `/model` / thinking: remember for the next run; do not retune this run's LLM calls.
-async fn defer_runtime_setting(
-    slot: &SessionSlot,
-    method: &str,
-    payload: &Value,
-    token: &str,
-) -> RpcResult {
+async fn defer_runtime_setting(slot: &SessionSlot, method: &str, payload: &Value) -> RpcResult {
     let mut g = slot.driver.lock().await;
     let Some(driver) = g.as_mut() else {
         return RpcResult::error("unavailable", "no writer engine");
@@ -779,7 +774,7 @@ async fn defer_runtime_setting(
             if let Ok(mut pending) = slot.pending_model.lock() {
                 *pending = Some(model.id.clone());
             }
-            RpcResult::ok_value(attach_writer_token(model_data(&model), token))
+            RpcResult::ok_value(model_data(&model))
         }
         "cycle_model" => {
             let list = driver.available_models();
@@ -796,7 +791,7 @@ async fn defer_runtime_setting(
             if let Ok(mut pending) = slot.pending_model.lock() {
                 *pending = Some(model.id.clone());
             }
-            RpcResult::ok_value(attach_writer_token(model_data(&model), token))
+            RpcResult::ok_value(model_data(&model))
         }
         "set_thinking_level" => {
             let level = payload
@@ -811,10 +806,7 @@ async fn defer_runtime_setting(
             if let Ok(mut pending) = slot.pending_thinking.lock() {
                 *pending = Some(level.clone());
             }
-            RpcResult::ok_value(attach_writer_token(
-                json!({ "thinking_level": level }),
-                token,
-            ))
+            RpcResult::ok_value(json!({ "thinking_level": level }))
         }
         _ => RpcResult::error("not_found", format!("unregistered method {method}")),
     }
@@ -898,13 +890,6 @@ fn rpc_err(e: XyDriverError) -> RpcResult {
     RpcResult::error(e.kind(), e.to_string())
 }
 
-fn attach_writer_token(mut value: Value, token: &str) -> Value {
-    if let Value::Object(map) = &mut value {
-        map.insert("writerToken".into(), json!(token));
-    }
-    value
-}
-
 async fn take_writer_lease(
     slot: &SessionSlot,
     presented: Option<&str>,
@@ -942,22 +927,14 @@ impl WriterLease {
         let token = take_writer_lease(slot, presented).await?;
         if let Err(e) = materialize_writer_at(host, slot, workspace).await {
             let mut r = rpc_err(e);
-            r.value = Some(json!({ "writerToken": token }));
+            r.writer_token = Some(token);
             return Err(r);
         }
         Ok(Self { token })
     }
 
-    /// Attach the lease token to `result` (inserted into success payloads,
-    /// replacing the value on failures).
     fn seal(&self, mut result: RpcResult) -> RpcResult {
-        if result.ok {
-            if let Some(v) = result.value.take() {
-                result.value = Some(attach_writer_token(v, &self.token));
-            }
-        } else {
-            result.value = Some(json!({ "writerToken": self.token }));
-        }
+        result.writer_token = Some(self.token.clone());
         result
     }
 }
@@ -1228,7 +1205,7 @@ async fn dispatch_writer_unary(
     if slot.run_inflight.load(Ordering::SeqCst)
         && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")
     {
-        return defer_runtime_setting(slot, method, &payload, &lease.token).await;
+        return lease.seal(defer_runtime_setting(slot, method, &payload).await);
     }
     // Export over the wire stages to a unique Host-side temp file; the
     // content is read back into the response and the TUI writes its own

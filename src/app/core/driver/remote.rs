@@ -2950,13 +2950,7 @@ mod tests {
         )
         .await;
         assert!(minted.ok, "new_session MUST succeed: {minted:?}");
-        let writer_token = minted
-            .value
-            .as_ref()
-            .and_then(|v| v.get("writerToken"))
-            .and_then(Value::as_str)
-            .expect("writer token")
-            .to_string();
+        let writer_token = minted.writer_token.clone().expect("writer token");
         let result = handle_unary(
             &host,
             None,

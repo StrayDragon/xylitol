@@ -58,6 +58,10 @@ pub struct RpcResult {
     pub value: Option<Value>,
     #[serde(default)]
     pub error: Option<RpcError>,
+    /// Session writer lease. Not part of the JSON-RPC `result` object; HTTP
+    /// stamps `X-Writer-Token`, WS stamps a top-level extra member.
+    #[serde(default, skip)]
+    pub writer_token: Option<String>,
 }
 
 impl RpcResult {
@@ -66,6 +70,7 @@ impl RpcResult {
             ok: true,
             value: Some(value),
             error: None,
+            writer_token: None,
         }
     }
 
@@ -77,6 +82,7 @@ impl RpcResult {
                 code: code.into(),
                 details: details.into(),
             }),
+            writer_token: None,
         }
     }
 
@@ -172,6 +178,11 @@ mod tests {
         let v = serde_json::to_value(&err).unwrap();
         assert_eq!(v["ok"], false);
         assert_eq!(v["error"]["code"], "not_found");
+        let mut leased = RpcResult::ok_value(serde_json::json!({"seq": 1}));
+        leased.writer_token = Some("tok".into());
+        let v = serde_json::to_value(&leased).unwrap();
+        assert!(v.get("writerToken").is_none(), "{v}");
+        assert!(v.get("writer_token").is_none(), "{v}");
     }
 
     #[test]

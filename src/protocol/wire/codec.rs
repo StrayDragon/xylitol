@@ -91,6 +91,7 @@ fn jsonrpc_to_message(v: &Value) -> Result<RpcMessage, serde_json::Error> {
                 ok: false,
                 value: None,
                 error: Some(RpcError { code, details }),
+                writer_token: None,
             },
         });
     }

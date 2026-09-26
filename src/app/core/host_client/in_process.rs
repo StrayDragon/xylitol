@@ -140,11 +140,10 @@ impl HostClient for InProcessClient {
             .ok()
             .and_then(|guard| guard.clone());
         let result = self.host.handle_unary(method, payload, writer_token).await;
-        if let Some(Value::Object(map)) = result.value.as_ref()
-            && let Some(token) = map.get("writerToken").and_then(Value::as_str)
+        if let Some(token) = result.writer_token.clone()
             && let Ok(mut guard) = self.writer_token.lock()
         {
-            *guard = Some(token.to_string());
+            *guard = Some(token);
         }
         Ok(result)
     }
@@ -227,14 +226,7 @@ mod tests {
             .await
             .expect("set name");
         assert!(acquired.ok);
-        assert!(
-            acquired
-                .value
-                .as_ref()
-                .and_then(|value| value.get("writerToken"))
-                .and_then(Value::as_str)
-                .is_some()
-        );
+        assert!(acquired.writer_token.is_some());
 
         let conflict = other_client
             .unary(

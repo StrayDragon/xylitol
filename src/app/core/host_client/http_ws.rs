@@ -128,6 +128,7 @@ impl HttpWsClient {
             dead,
         });
 
+        let writer_peer = peer.clone();
         tokio::spawn(async move {
             let mut sink = sink;
             loop {
@@ -140,6 +141,7 @@ impl HttpWsClient {
                             Outgoing::Ping => sink.send(Message::Ping(Default::default())).await,
                         };
                         if send.is_err() {
+                            fail_peer(&writer_peer, "mux closed");
                             break;
                         }
                     }
@@ -149,6 +151,7 @@ impl HttpWsClient {
 
         let ping_interval = self.ping_interval;
         let ping_stop = peer.stop.clone();
+        let ping_peer = peer.clone();
         let ping_out = out_tx;
         tokio::spawn(async move {
             let mut ping = tokio::time::interval(ping_interval);
@@ -159,6 +162,7 @@ impl HttpWsClient {
                     _ = ping_stop.cancelled() => return,
                     _ = ping.tick() => {
                         if ping_out.send(Outgoing::Ping).await.is_err() {
+                            fail_peer(&ping_peer, "mux closed");
                             return;
                         }
                     }

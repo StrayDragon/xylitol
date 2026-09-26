@@ -245,12 +245,12 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     };
     match rpc_module::dispatch_raw(&module, text, rpc_id, writer).await {
-        Ok(raw) => polish_rpc_http(res, &raw),
+        Ok((raw, token)) => polish_rpc_http(res, &raw, token),
         Err(_) => illegal_envelope(res),
     }
 }
 
-/// Stamp product `-32601` data.code and lift `writerToken` off the result.
+/// Fill `-32601` product `data.code`. Defensively strip a leaked `result.writerToken`.
 fn polish_rpc_json(raw: &str) -> (serde_json::Value, Option<String>) {
     let mut v: serde_json::Value =
         serde_json::from_str(raw).unwrap_or_else(|_| serde_json::json!({}));
@@ -290,11 +290,11 @@ fn polish_rpc_json(raw: &str) -> (serde_json::Value, Option<String>) {
     (v, token)
 }
 
-/// Stamp `X-Writer-Token` from `result.writerToken` and fill `-32601` product
+/// Stamp `X-Writer-Token` from the lease side-channel and fill `-32601` product
 /// `data.code`. jsonrpsee owns method dispatch; HTTP leftovers stay here.
-fn polish_rpc_http(res: &mut Response, raw: &str) {
-    let (v, token) = polish_rpc_json(raw);
-    if let Some(tok) = token {
+fn polish_rpc_http(res: &mut Response, raw: &str, token: Option<String>) {
+    let (v, leaked) = polish_rpc_json(raw);
+    if let Some(tok) = token.or(leaked) {
         let _ = res.add_header("X-Writer-Token", tok, true);
     }
     res.status_code(StatusCode::OK);
@@ -422,9 +422,9 @@ async fn handle_mux(
             };
             let has_id = v.get("id").is_some() && !v.get("id").is_some_and(|id| id.is_null());
             match rpc_module::dispatch_raw(module, text, rpc_id, writer.clone()).await {
-                Ok(raw) if has_id => {
-                    let (mut body, token) = polish_rpc_json(&raw);
-                    if let Some(tok) = token {
+                Ok((raw, token)) if has_id => {
+                    let (mut body, leaked) = polish_rpc_json(&raw);
+                    if let Some(tok) = token.or(leaked) {
                         writer = Some(tok.clone());
                         if let Some(obj) = body.as_object_mut() {
                             obj.insert("writerToken".into(), serde_json::json!(tok));

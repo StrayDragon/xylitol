@@ -4,7 +4,7 @@
 //! dispatches through this module. Writer lease (`X-Writer-Token`) and the
 //! JSON-RPC `id` ride a task-local — never `params`.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use jsonrpsee::RpcModule;
 use jsonrpsee::types::{ErrorObject, ErrorObjectOwned, Params};
@@ -22,6 +22,7 @@ tokio::task_local! {
 struct CallCtx {
     rpc_id: String,
     writer: Option<String>,
+    out_writer: Arc<Mutex<Option<String>>>,
 }
 
 /// jsonrpsee's `RpcModule` requires `Context: Debug`.
@@ -61,11 +62,22 @@ pub(crate) async fn dispatch_raw(
     request: &str,
     rpc_id: String,
     writer: Option<String>,
-) -> Result<String, serde_json::Error> {
-    CALL.scope(CallCtx { rpc_id, writer }, async {
-        let (raw, _rx) = module.raw_json_request(request, 4 * 1024 * 1024).await?;
-        Ok(raw.get().to_string())
-    })
+) -> Result<(String, Option<String>), serde_json::Error> {
+    CALL.scope(
+        CallCtx {
+            rpc_id,
+            writer,
+            out_writer: Arc::new(Mutex::new(None)),
+        },
+        async {
+            let (raw, _rx) = module.raw_json_request(request, 4 * 1024 * 1024).await?;
+            let token = CALL
+                .try_with(|c| c.out_writer.lock().ok().and_then(|g| g.clone()))
+                .ok()
+                .flatten();
+            Ok((raw.get().to_string(), token))
+        },
+    )
     .await
 }
 
@@ -80,6 +92,13 @@ async fn dispatch_named(
         .unwrap_or_default();
     let rpc_id = (!rpc_id.is_empty()).then_some(rpc_id);
     let result = handle_unary(&ctx.0, rpc_id.as_deref(), name, payload, writer).await;
+    if let Some(tok) = result.writer_token.clone() {
+        let _ = CALL.try_with(|c| {
+            if let Ok(mut g) = c.out_writer.lock() {
+                *g = Some(tok);
+            }
+        });
+    }
     into_jrpc(result)
 }
 
@@ -126,7 +145,7 @@ mod tests {
     async fn describe_ok_and_unknown_is_method_not_found() {
         let host = HostState::for_test().expect("host");
         let module = build_rpc_module(host);
-        let raw = dispatch_raw(
+        let (raw, token) = dispatch_raw(
             &module,
             r#"{"jsonrpc":"2.0","id":"1","method":"host.describe","params":{}}"#,
             "1".into(),
@@ -134,12 +153,13 @@ mod tests {
         )
         .await
         .expect("describe");
+        assert!(token.is_none(), "describe is readonly");
         let v: Value = serde_json::from_str(&raw).expect("json");
         assert_eq!(v["jsonrpc"], "2.0", "{raw}");
         assert!(v.get("result").is_some(), "{raw}");
         assert!(v.get("error").is_none(), "{raw}");
 
-        let raw = dispatch_raw(
+        let (raw, _) = dispatch_raw(
             &module,
             r#"{"jsonrpc":"2.0","id":"2","method":"no_such_method","params":{}}"#,
             "2".into(),
