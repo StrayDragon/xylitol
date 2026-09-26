@@ -19,6 +19,7 @@ use tokio::sync::mpsc;
 
 use crate::app::server::host::{HostState, MUX_CHAN_CAP, handle_unary};
 use crate::protocol::RpcMessage;
+use crate::protocol::wire::codec;
 use crate::protocol::wire::envelope::PROTOCOL_VERSION;
 use crate::protocol::wire::method::is_unary_method;
 
@@ -222,12 +223,8 @@ async fn unary(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     }
 
-    let body: RpcMessage = match req.parse_json().await {
-        Ok(b) => b,
-        Err(_) => {
-            illegal_envelope(res);
-            return;
-        }
+    let Some(body) = parse_envelope(req, res).await else {
+        return;
     };
     let RpcMessage::ClientRequest {
         rpc_id,
@@ -255,12 +252,8 @@ async fn respond(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     };
-    let body: RpcMessage = match req.parse_json().await {
-        Ok(b) => b,
-        Err(_) => {
-            illegal_envelope(res);
-            return;
-        }
+    let Some(body) = parse_envelope(req, res).await else {
+        return;
     };
     let RpcMessage::ClientResponse { rpc_id, payload } = body else {
         illegal_envelope(res);
@@ -269,6 +262,23 @@ async fn respond(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let _ = host.respond(&rpc_id, payload).await;
     res.status_code(StatusCode::OK);
     res.render(Json(serde_json::json!({ "ok": true })));
+}
+
+async fn parse_envelope(req: &mut Request, res: &mut Response) -> Option<RpcMessage> {
+    let bytes = match req.payload().await {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            illegal_envelope(res);
+            return None;
+        }
+    };
+    match codec::decode(bytes) {
+        Ok(msg) => Some(msg),
+        Err(_) => {
+            illegal_envelope(res);
+            None
+        }
+    }
 }
 
 fn illegal_envelope(res: &mut Response) {
@@ -315,7 +325,7 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
     // ath44/c2480: the first frame on every mux connection is the version
     // handshake. It goes out before the connection joins the broadcast pool so
     // a client can never observe a business frame ahead of it.
-    let hello = serde_json::to_string(&RpcMessage::ServerHello {
+    let hello = codec::encode_to_string(&RpcMessage::ServerHello {
         protocol: PROTOCOL_VERSION,
     })
     .expect("server_hello serializes");
@@ -327,7 +337,7 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
 
     let send_loop = async {
         while let Some(msg) = rx.recv().await {
-            let Ok(text) = serde_json::to_string(&msg) else {
+            let Ok(text) = codec::encode_to_string(&msg) else {
                 continue;
             };
             if sink.send(Message::text(text)).await.is_err() {

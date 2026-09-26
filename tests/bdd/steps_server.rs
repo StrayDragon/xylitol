@@ -7,6 +7,7 @@ use crate::app::server::host::HostState;
 use crate::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
 use crate::app::server::ws::{EventJournal, ReverseRpcResult};
 use crate::protocol::Event;
+use crate::protocol::wire::codec;
 use crate::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
 use crate::protocol::wire::method::DOWNLINK_METHODS;
 use crate::protocol::wire::registry;
@@ -1566,20 +1567,19 @@ async fn post_unary_rpc_id(
     method: &str,
     payload: serde_json::Value,
 ) -> String {
-    let request = serde_json::json!({
-        "type": "client-request",
-        "rpcId": rpc_id,
-        "method": method,
-        "payload": payload,
-    });
-    let (_, body) = http_status(
-        port,
-        "POST",
-        &format!("/api/{method}"),
-        &serde_json::to_string(&request).expect("serialize request"),
-    )
-    .await;
-    body
+    let body = encode_client_request(rpc_id, method, payload);
+    let (_, resp) = http_status(port, "POST", &format!("/api/{method}"), &body).await;
+    resp
+}
+
+fn encode_client_request(rpc_id: &str, method: &str, payload: serde_json::Value) -> String {
+    codec::encode_to_string(&RpcMessage::ClientRequest {
+        rpc_id: rpc_id.to_string(),
+        method: method.to_string(),
+        payload,
+        writer_token: None,
+    })
+    .expect("encode client-request")
 }
 
 #[given("客户端以 rpcId R 对某 session 提交 unary 命令并得到结果")]
@@ -1788,19 +1788,12 @@ async fn w_rdy_probe_window(server_test: &ServerTest) {
     let (hz_status, hz_body) = http_status(server_test.port.get(), "GET", "/healthz", "").await;
     server_test.rdy_status.set(hz_status);
     *server_test.rdy_body.borrow_mut() = Some(hz_body);
-    let request = serde_json::json!({
-        "type": "client-request",
-        "rpcId": "rdy-probe",
-        "method": "get_state",
-        "payload": { "session_id": "rdy-s1" },
-    });
-    let (st, body) = http_status(
-        server_test.port.get(),
-        "POST",
-        "/api/get_state",
-        &serde_json::to_string(&request).expect("serialize request"),
-    )
-    .await;
+    let request = encode_client_request(
+        "rdy-probe",
+        "get_state",
+        serde_json::json!({ "session_id": "rdy-s1" }),
+    );
+    let (st, body) = http_status(server_test.port.get(), "POST", "/api/get_state", &request).await;
     server_test.unary_status.set(st);
     *server_test.unary_body.borrow_mut() = Some(body);
 }
@@ -2047,13 +2040,11 @@ async fn g_server_ready(server_test: &ServerTest) {
 #[when("推送 content 载荷导入会话")]
 async fn w_staged_wire_import(server_test: &ServerTest) {
     let content = "{\"type\":\"session\",\"version\":6,\"id\":\"imp-scenario-1\",\"timestamp\":1,\"cwd\":\"/tmp\"}\n";
-    let body = serde_json::json!({
-        "type": "client-request",
-        "rpcId": "r-staged-import",
-        "method": "import_jsonl",
-        "payload": { "content": content },
-    })
-    .to_string();
+    let body = encode_client_request(
+        "r-staged-import",
+        "import_jsonl",
+        serde_json::json!({ "content": content }),
+    );
     let (status, resp) =
         http_status(server_test.port.get(), "POST", "/api/import_jsonl", &body).await;
     server_test.unary_status.set(status);

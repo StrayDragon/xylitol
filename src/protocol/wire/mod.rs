@@ -3,6 +3,7 @@
 //! Transport-agnostic: the same types are spoken over stdio RPC, WebSocket, and REST.
 //! MUST NOT depend on [`crate::protocol::ports`].
 
+pub mod codec;
 pub mod command;
 pub mod envelope;
 pub mod event;

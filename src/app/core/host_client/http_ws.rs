@@ -9,6 +9,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 use crate::protocol::RpcMessage;
 use crate::protocol::RpcResult;
+use crate::protocol::wire::codec;
 use crate::protocol::wire::envelope::PROTOCOL_VERSION;
 
 use super::{HostClient, HostClientError, MuxStream};
@@ -65,6 +66,8 @@ impl HttpWsClient {
             payload,
             writer_token,
         };
+        let encoded = codec::encode(&body)
+            .map_err(|e| HostClientError::transport(format!("unary {method} encode: {e}")))?;
         // c2425 program authority: every unary wait is bounded. Known long
         // ops (reload reinstalls shared resources) get a graded window.
         let bound = if method == "reload_runtime" || method == "reload" {
@@ -72,15 +75,16 @@ impl HttpWsClient {
         } else {
             std::time::Duration::from_secs(30)
         };
-        let resp = tokio::time::timeout(bound, async {
+        let bytes = tokio::time::timeout(bound, async {
             let resp = self
                 .http
                 .post(self.api(method))
-                .json(&body)
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .body(encoded)
                 .send()
                 .await?
                 .error_for_status()?;
-            resp.json::<RpcMessage>().await
+            resp.bytes().await
         })
         .await
         .map_err(|_| {
@@ -90,6 +94,8 @@ impl HttpWsClient {
             ))
         })?
         .map_err(|e| HostClientError::transport(format!("unary {method}: {e}")))?;
+        let resp = codec::decode(&bytes)
+            .map_err(|e| HostClientError::transport(format!("unary {method} decode: {e}")))?;
         match resp {
             RpcMessage::ServerResponse {
                 rpc_id: echo,
@@ -135,10 +141,13 @@ impl HostClient for HttpWsClient {
             rpc_id: rpc_id.to_string(),
             payload,
         };
+        let encoded = codec::encode(&body)
+            .map_err(|e| HostClientError::transport(format!("respond encode: {e}")))?;
         let resp = self
             .http
             .post(self.api("respond"))
-            .json(&body)
+            .header(reqwest::header::CONTENT_TYPE, "application/json")
+            .body(encoded)
             .send()
             .await
             .map_err(|e| HostClientError::transport(e.to_string()))?;
@@ -185,7 +194,7 @@ impl HostClient for HttpWsClient {
         })
         .await
         .map_err(|_| HostClientError::transport("mux hello: timed out"))??;
-        match serde_json::from_str::<RpcMessage>(&hello) {
+        match codec::decode_str(&hello) {
             Ok(RpcMessage::ServerHello { protocol }) if protocol == PROTOCOL_VERSION => {}
             Ok(RpcMessage::ServerHello { protocol }) => {
                 return Err(HostClientError::ProtocolMismatch {
@@ -231,7 +240,7 @@ impl HostClient for HttpWsClient {
                     }
                 };
                 match msg {
-                    Ok(Message::Text(text)) => match serde_json::from_str::<RpcMessage>(&text) {
+                    Ok(Message::Text(text)) => match codec::decode_str(&text) {
                         Ok(frame) => yield Ok(frame),
                         Err(e) => yield Err(HostClientError::transport(e.to_string())),
                     },

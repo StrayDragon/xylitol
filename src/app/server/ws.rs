@@ -265,6 +265,7 @@ impl Default for ReverseRpcGateway {
 mod tests {
     use super::*;
     use crate::protocol::Event;
+    use crate::protocol::wire::codec;
 
     fn dummy_event() -> Event {
         Event::TextDelta {
@@ -353,10 +354,10 @@ mod tests {
     #[test]
     fn server_hello_wire_tag_and_version() {
         // ath44/c2480: the product handshake frame lives on RpcMessage now.
-        let json = serde_json::to_string(&RpcMessage::ServerHello { protocol: 7 }).unwrap();
+        let json = codec::encode_to_string(&RpcMessage::ServerHello { protocol: 7 }).unwrap();
         assert!(json.contains("\"type\":\"server-hello\""), "{json}");
         assert!(json.contains("\"protocol\":7"), "{json}");
-        let back: RpcMessage = serde_json::from_str(&json).unwrap();
+        let back = codec::decode_str(&json).unwrap();
         assert_eq!(back, RpcMessage::ServerHello { protocol: 7 });
     }
 
