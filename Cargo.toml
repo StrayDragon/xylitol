@@ -123,8 +123,8 @@ vte = "0.13"
 serial_test = "3.5.0"
 wiremock = "0.6.5"
 rstest = "0.26"
-rstest-bdd = "0.6.0-beta3"
-rstest-bdd-macros = "0.6.0-beta3"
+rstest-bdd = "0.6.0"
+rstest-bdd-macros = "0.6.0"
 
 # compile-time-validation intentionally OFF: in this crate the macro's
 # compile-time step registry stays empty (one "step registry has no

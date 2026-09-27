@@ -1,6 +1,5 @@
 pub use std::cell::{Cell, RefCell};
 pub use std::collections::HashMap;
-pub use std::future::Future;
 pub use std::sync::Arc;
 
 pub use crate::XyDriverError;
