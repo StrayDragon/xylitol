@@ -135,3 +135,6 @@ rstest-bdd-macros = "0.6.0"
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
+
+[patch.crates-io]
+gherkin = { path = "vendor/gherkin" }

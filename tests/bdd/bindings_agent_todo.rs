@@ -4,13 +4,13 @@ use crate::tests::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd}
 use rstest_bdd_macros::scenario;
 
 #[scenario(
-    path = "target/bdd-specs/agent-todo/agent-todo.feature",
+    path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "todo-bar-default-shows-in-progress"
 )]
 fn test_todo_bar_default_shows_in_progress(transcript_bdd: TranscriptBdd) {}
 
 #[scenario(
-    path = "target/bdd-specs/agent-todo/agent-todo.feature",
+    path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "todo-bar-resume-matches-live"
 )]
 fn test_todo_bar_resume_matches_live(transcript_bdd: TranscriptBdd) {}
