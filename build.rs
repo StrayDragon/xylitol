@@ -1,13 +1,18 @@
 //! Build-time BDD feature view generator.
 //!
 //! llman-sdd 0.5 keeps specs in native layered Gherkin: `规则:` blocks headed
-//! by `@req:<id>` tags with nested `场景:`. The gherkin parser behind
-//! rstest-bdd 0.6.0-beta3 only walks top-level scenarios and hard-fails on a
-//! tag directly above the unrecognized `规则:` line (its zh-CN table only has
-//! rule = ["Rule"]). The `#[scenario]` bindings under tests/bdd therefore
-//! compile against a generated flat view: rule-nested scenarios are hoisted
-//! to the top level carrying their rule's `@req` tag, and the binding paths
-//! point at this view instead of the spec source.
+//! by `@req:<id>` tags with nested `场景:`. `规则` is a sanctioned zh-CN rule
+//! keyword in cucumber's official gherkin-languages.json (rule =
+//! ["Rule", "规则"]), but the Rust `gherkin` crate still vendors an older
+//! snapshot (rule = ["Rule"] in both 0.14 and 0.16) and rstest-bdd-macros
+//! pins gherkin = "0.14" — so a tag above the unrecognized `规则:` line
+//! hard-fails parsing. On top of that, rstest-bdd-macros' scenario selection
+//! (index or name) only walks top-level `feature.scenarios`, so rule-nested
+//! scenarios stay invisible even once the keyword parses. The `#[scenario]`
+//! bindings under tests/bdd therefore compile against a generated flat view:
+//! rule-nested scenarios are hoisted to the top level carrying their rule's
+//! `@req` tag, and the binding paths point at this view instead of the spec
+//! source.
 //!
 //! Specs stay the single source of truth — the view is regenerated on every
 //! build under target/bdd-specs/ (gitignored) and hoisting is structural
