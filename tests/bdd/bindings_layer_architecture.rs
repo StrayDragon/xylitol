@@ -4,7 +4,7 @@ use crate::tests::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
-    path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
+    path = "target/bdd-specs/layer-architecture/layer-architecture.feature",
     name = "server-surface-jsonrpc-entry"
 )]
 async fn test_la_server_jsonrpc_entry(server_test: ServerTest) {}

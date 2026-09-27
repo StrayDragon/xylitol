@@ -12,6 +12,13 @@ Encodes the dead-step audit method (see cb4dff5e) as a permanent gate:
 Scenarios without a #[scenario] binding are info-only: they are `@human`
 constraint rules (single-track feature-as-spec) audited by llman itself.
 
+llman-sdd 0.5 specs are native layered Gherkin (规则: blocks with nested
+场景:). #[scenario] bindings compile against the build.rs-flattened view
+under target/bdd-specs/ (the pinned gherkin crate cannot parse the native
+layout); this script maps those paths back to the llmanspec/specs source and
+parses it directly — its line parser collects rule-nested scenarios by name,
+which is exactly the flattened semantics.
+
 Usage:
   python3 scripts/check_bdd_steps.py --check
   python3 scripts/check_bdd_steps.py --check --verbose
@@ -145,6 +152,20 @@ def collect_features() -> dict[Path, tuple[list[tuple[str, str]], dict[str, list
     return features
 
 
+SPEC_VIEW_PREFIX = "target/bdd-specs/"
+
+
+def origin_of(rel: str) -> Path:
+    """Map a binding's feature path to its source-of-truth file.
+
+    Bindings point at the build.rs-generated flat view (target/bdd-specs/);
+    the view is gitignored, so resolve specs back to llmanspec/specs.
+    """
+    if rel.startswith(SPEC_VIEW_PREFIX):
+        return REPO / "llmanspec" / "specs" / rel[len(SPEC_VIEW_PREFIX):]
+    return REPO / rel
+
+
 def collect_bound_scenarios() -> list[tuple[str, str, str]]:
     """(feature_rel_path, scenario_name, binding_file:line)."""
     bound = []
@@ -196,7 +217,7 @@ def main() -> int:
     # 2. every bound scenario's steps resolve against registered patterns.
     unbound_steps = 0
     for rel, name, where in bound:
-        feat = REPO / rel
+        feat = origin_of(rel)
         parsed = features.get(feat)
         if parsed is None:
             errors.append(f"binding at {where}: feature file missing: {rel}")
@@ -213,7 +234,9 @@ def main() -> int:
                 )
     # info only: unbound scenarios keep executable-looking steps until their
     # migration ticket lands.
-    bound_keys = {(rel, name) for rel, name, _ in bound}
+    bound_keys = {
+        (str(origin_of(rel).relative_to(REPO)), name) for rel, name, _ in bound
+    }
     for feat, (background, scenarios) in features.items():
         rel = str(feat.relative_to(REPO))
         for name, steps in scenarios.items():
