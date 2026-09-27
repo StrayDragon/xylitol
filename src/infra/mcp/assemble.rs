@@ -71,11 +71,11 @@ pub async fn connect_and_discover_with_progress(
     Some((manager, tools))
 }
 
-/// Convenience: pull servers from [`AppConfig`] and assemble.
-///
-/// Missing / empty `mcp_servers` → `None`. Configured servers follow
-/// [`connect_and_discover`]: failures are diagnostics, not `None`.
-/// Removed in c2750 (zero callers); assembly goes through `connect_and_discover`.
+// Convenience: pull servers from [`AppConfig`] and assemble.
+//
+// Missing / empty `mcp_servers` → `None`. Configured servers follow
+// [`connect_and_discover`]: failures are diagnostics, not `None`.
+// Removed in c2750 (zero callers); assembly goes through `connect_and_discover`.
 
 #[cfg(test)]
 mod tests {

@@ -552,7 +552,7 @@ mod interrupted_bash_tests {
         ];
         let done = done_bash_ids(&entries);
         let texts = |rows: &Vec<crate::protocol::message::LlmMessage>| -> Vec<String> {
-            rows.iter().filter_map(|m| user_text_of(m)).collect()
+            rows.iter().filter_map(user_text_of).collect()
         };
         let first = texts(&crate::agent::llm_project::project_for_llm(
             &fold_interrupted_bash_rows(mapped(&entries), &done),

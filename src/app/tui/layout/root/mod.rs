@@ -1232,6 +1232,18 @@ impl UiRoot {
     }
 }
 
+impl Default for UiRoot {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+pub use mount::build_root;
+#[cfg(test)]
+pub(crate) use mount::sample_tree_nodes_for_test;
+pub use mount::{install_ui_root_key_listeners, shared_ui_root_rebuild};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1435,15 +1447,3 @@ mod tests {
         );
     }
 }
-
-impl Default for UiRoot {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[cfg(test)]
-pub use mount::build_root;
-#[cfg(test)]
-pub(crate) use mount::sample_tree_nodes_for_test;
-pub use mount::{install_ui_root_key_listeners, shared_ui_root_rebuild};
