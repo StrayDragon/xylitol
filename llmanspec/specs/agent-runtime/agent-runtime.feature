@@ -40,6 +40,11 @@
   @req:r1039
   规则: system-via-generate-options
     配置的 system prompt MUST 经 XyGenerateOptions.system_prompt 传给模型适配层；MUST NOT 将 system 正文作为 AgentMessage::user 写入会话 history（空会话首条 MUST 为真实用户输入）。由 ReAct 单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。
+
+    场景: first-turn-history-is-real-user
+      假如 配置了 mock 模型 "test-model"
+      当 运行一轮对话后检查持久化条目
+      那么 首条消息条目为真实 user 输入且无 system 角色行
   @req:r1055
   规则: builder-ports
     Agent 装配 MUST 经 AgentBuilder，依赖 protocol 端口与 agent 会话词汇；app 组合根注入具体 infra 实现。装配入口由单元测试 / 组合根覆盖，MUST NOT 为静态存在性单独扩 BDD step。
@@ -118,18 +123,20 @@
   @req:r1032
   规则: defaults
     未显式配置时 MUST 有可测默认：thinking level、compaction 频率等集中定义；MUST NOT 将 max_iterations 或未配置的硬步数闸列为运行时默认。由单元测试覆盖。
-  @req:r1033
-  规则: cwd-validate
-    创建/导入会话时 MUST 校验工作目录可访问，失败返回含路径的错误。由 session 单元测试覆盖。
-  @req:r1034
-  规则: wire-event-mapping
-    MUST 提供 XyEvent ↔ protocol::Event 映射（From/TryFrom 或等价），覆盖闭集内变体。由 protocol 单元测试覆盖。
   @req:r1035
   规则: Driver context 重载缝
     InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 context/SYSTEM/APPEND 并应用到 agent；未信任 MUST NOT 注入项目侧 context；重载 MUST NOT 清空 transcript。
+
+    场景: context-reload-trust-gated
+      当 在项目目录写 AGENTS.md 并分别以信任与未信任重载 context
+      那么 信任时项目 context 注入而未信任时被跳过且会话条目不变
   @req:r1037
   规则: Driver skills 重载缝
     InProcessDriver（经 app/core 助手）MUST 能在 Trust 语义下重载磁盘 skills 并应用到 agent；MUST 能查询当前已加载 skill 名（供后续 $ 展开）；未信任 MUST NOT 注入项目 skills；重载 MUST NOT 清空 transcript；本要求 MUST NOT 依赖 /session 或 /status skills UI。
+
+    场景: skills-reload-trust-gated-and-queryable
+      当 在项目目录写 skill 并分别以信任与未信任重载 skills
+      那么 信任时项目 skill 注入且可查询已加载名而未信任时被跳过
   @req:r1040
   规则: persist-done-usage
     ReAct 在模型流正常结束时 MUST 将 XyChunk::Done 携带的 usage 与 stop_reason（若有）写入随后持久化的 AssistantMessage；MUST NOT 在 Done 已提供非空 usage 时仍硬编码 usage: None。该行为 MUST 有可执行 BDD 或等价单测场景。
@@ -152,6 +159,11 @@
   @req:r1043
   规则: abort-persist-skip-llm
     用户 abort 中断模型流时，ReAct MUST 将已累积的 partial assistant（非空 content）以 stop_reason=aborted 持久化进 session history；project_for_llm（或等价 LLM 投影）MUST 跳过 stop_reason 为 aborted 或 error 的 assistant 行，MUST NOT 将其作为下一轮 provider 输入。空 content 的 aborted MAY 不落盘。该行为 MUST 有单测或 BDD 覆盖。
+
+    场景: abort-persists-partial-with-aborted-reason
+      假如 配置了 mock 模型 test-model 且慢速流式 40 段间隔 20 毫秒
+      当 经 Driver 启动会话并在首个 TextDelta 后 abort 并检查持久化条目
+      那么 partial assistant 以 aborted 落盘且非空
   @req:r1044
   规则: tool-batch-default-barrier-parallel
     未显式配置工具批模式时，ReAct MUST 对同一 MessageEnd 后的 tool call 批采用 barrier_parallel（连续 ParallelSafe 扇出；Barrier 先汇聚再串行）调度；MUST NOT 默认退回整批串行（除非显式 mode=sequential）。该行为 MUST 有可执行 BDD 场景（live `.feature`，`@req`）。
@@ -197,6 +209,11 @@
   @req:r1843
   规则: iteration-close-vs-settle
     一次用户触发的 run（观测根 agent.turn，AgentStart…AgentEnd）内，每一轮模型 generate 及其工具批是一次 iteration（观测 agent.iteration，XyEvent TurnStart/TurnEnd 成对）。本轮仍有 tool_calls、将再 generate 时 MUST 以 ContinueTools 关闭 iteration：发 TurnEnd 配成对，MUST NOT ContextTokenSettlement、MUST NOT auto-compact 预检、MUST NOT should_stop_after_turn。本轮不再要工具时 MUST Settle：TurnEnd + settlement + threshold/overflow 预检 + should_stop。generate 失败走 overflow Case1 的收尾仍为 Settle。MUST NOT 用「跳过 TurnEnd」或「导出侧去重 skipped」代替这组穷举。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。
+
+    场景: tool-turn-two-iterations-one-settlement
+      假如 mock 模型先 tool 后无 tool
+      当 运行 AgentRuntime 并收集事件
+      那么 TurnStart 与 TurnEnd 成对出现两次且 ContextTokenSettlement 恰一次
   @req:r1049
   规则: turn-end-threshold-compaction
     ReAct 或 session 编排在 Settle（本轮不再续跑工具、非 abort）后 MUST 调用 threshold auto-compact 检查（domain-compaction c2 地板感知有效触发阈值 + c17/c18）；ContinueTools、CompactionSettings.enabled 为 false、未超有效阈值、abort、或 stale 守卫命中时 MUST NOT compact；MUST NOT 仅依赖 TUI host 轮询触发。该行为 MUST 有可执行 BDD 或等价单测场景。

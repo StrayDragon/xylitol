@@ -8,3 +8,9 @@ use rstest_bdd_macros::scenario;
     name = "server-surface-jsonrpc-entry"
 )]
 async fn test_la_server_jsonrpc_entry(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
+    name = "second-writer-rejected-with-conflict"
+)]
+async fn test_c2826_one_writer(server_test: ServerTest) {}

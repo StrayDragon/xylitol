@@ -311,3 +311,43 @@
 4. 全量门禁：`llman-sdd validate --specs --strict` 全绿；`llman-sdd review` pending 与本表一致；`just qa`（fmt/lint/test 全套）。
 5. 每类错误最多 3 轮自修，不绿即停并贴输出。
 6. `change finalize`（squash）收口，附本计划与映射表。
+
+---
+
+## 5. 执行结果附录（2026-09-28）
+
+执行中对计划内「转场景」项按本文件 §1 判据复核，部分降级为保留（理由码见 §1）。
+
+### 5.1 降级记录（计划 T → 实际 K）
+
+| req | 降级理由 |
+|---|---|
+| ath r1244 | GetMessages 失败注入需给 ScriptedDriver 加失败开关（生产 harness 新仪表），成本失控（c） |
+| ath r1247 | 删除确认流在面板内部，无断言面（c） |
+| ath r1253/r1254/r1255 | 渲染缓存/重绘计数器未在 harness 暴露，转写需新增生产侧仪表（c） |
+| ath r1258 | render 请求不可观察（无 request_render 断言面）（c） |
+| ath r1259 | 日志默认态依赖真实 env/HOME，headless 断言不成比例（c） |
+| ath r1260 | ApplicationOwned 绑定在产品 run() 内，harness 不经该入口（c） |
+| ath r1262 | transcript 视口滚动位置无访问器；「空输入不提交」已由 atm 场景承载（c） |
+| ath r1264–r1269 | attach 族需 mock HostClient 时序扩展，行为面已由 remote-resilience 场景族（last_seq 续传/握手/合帧/退避）承载（b/c） |
+| ath r1270 | TestTerminal 无 resize 注入面；min-size 路径在产品 run() 内（c） |
+| ath r1273 | 宽限零输出已由 r1275 real-kill-reconnect 场景断言（b） |
+| ath r1279 | 单一扇入拓扑为 seam 结构约束；行为后果（bang Esc 可 abort、agent 流不饿死）已由 ati19/ati35 场景承载（b） |
+| ati r1298/r1309/r1315 | 补全 popup 交互无断言面（c） |
+| ati r1304 | Resume 面板内部态（scope/sort）无访问器（c） |
+| ati r1310 | paste marker 展开提交已被 r1313 粘贴路径场景实质承载（b） |
+| ati r1322/r1323/r1324 | agent_demo 面无 BDD harness（demo 为包示例进程）（b） |
+| atc r1233 | set_glyphs 影响面（编辑器边框）与头卡渲染耦合，无隔离断言面（c） |
+| atc r1235 | agent_demo 面（同上）（b） |
+| ar r1040/r1042/r1049/r1057 | 各自有同名单测承载（test_persist_done_usage 等），规则文本允许「等价单测」（a/b） |
+| ar r1049 | orchestrator settlement 单测承载（b） |
+| otel r1470/r1473/r1474/r1492 | 闲置 estimate 独立根、request-body input、abort 终态 flush、usage 透出属 CollectingReporter 单测面；BDD 转写需跨 harness 伪造流生命周期，成本失控（c） |
+| otel r1488 | fanout 双 reporter 组合根装配面，BDD 无对应缝（c） |
+| otel r1475 | 并行 span 树已由 otel11 场景实质承载（b） |
+| pab r1556 | SSE_IDLE 为编译期常量，无注入面（c） |
+| cli r1383 | 稳定 session id 需组合根 harness 起两轮（c） |
+| layer r1512 | print 端到端需真进程装配，超 harness 面（c） |
+
+### 5.2 最终 pending 对账（review 实测）
+
+见收口报告。计划 §3 的「pending 后」列按上表降级相应放宽；合并/换号/移除决策全部按计划落地，无未替代删除。

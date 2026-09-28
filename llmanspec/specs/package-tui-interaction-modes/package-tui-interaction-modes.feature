@@ -80,3 +80,4 @@
       假如 ApplicationOwned 应用会话已 begin
       当 松手复制成功
       那么 copy-notice 信号可观察且空选不发
+# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）

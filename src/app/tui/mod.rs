@@ -9,6 +9,8 @@ pub use activity_fold::scene::{SceneBuilder, SemanticDump};
 mod ask_host;
 mod bridge;
 mod commands;
+#[cfg(test)]
+pub(crate) use commands::parse_slash_command;
 mod editor_history_seed;
 mod effects;
 pub(crate) mod error;
@@ -44,7 +46,7 @@ use xylitol_tui::{CrosstermTerminal, InputEvent, Terminal};
 
 use crate::app::core::driver::{EventStream as AgentEventStream, XyDriver, XyDriverError};
 
-use self::effects::{drain_pending, run_interactive_bang, run_interactive_reload};
+pub(crate) use self::effects::{drain_pending, run_interactive_bang, run_interactive_reload};
 use self::host::{HostEvent, HostSession};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
@@ -56,10 +58,14 @@ pub use self::commands::{
     BangParse, PendingBash, PendingSlash as TuiPendingSlash, bash_result_entries,
     parse_bang_command,
 };
+#[cfg(test)]
+pub(crate) use self::effects::refresh_footer_tokens;
 pub use self::host::{
     HostEvent as TuiHostEvent, HostSession as TuiHostSession, LayoutMode, MIN_COLS, MIN_ROWS,
     TOO_SMALL_HINT, display_cwd, is_too_small,
 };
+#[cfg(test)]
+pub(crate) use self::layout::UiRoot;
 pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
 pub use self::widgets::{FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold};
 /// att26：ActivityFold 自动收纳旋钮（信封/簇折叠配置入口）。
@@ -68,6 +74,8 @@ pub use activity_fold::ActivityFoldSettings;
 pub use bridge::TODO_EMPTY_BODY_HINT;
 /// att13：折叠态工具人话摘要的窄导出（BDD 直驱纯函数合约）。
 pub use bridge::human_tool_args_preview;
+#[cfg(test)]
+pub(crate) use bridge::trailing_aborted_note;
 // TuiRunOptions exported via struct above in this module
 
 /// Options for [`run`] (c1560 / c2070).

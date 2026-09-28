@@ -26,3 +26,4 @@
   @req:r1660
   规则: mouse-capture-opt-in
     Terminal（或 CrosstermTerminal 等价面）MUST 提供显式 enable_mouse_capture / disable_mouse_capture（或同名 API）；start / 默认构造路径 MUST NOT 自动 EnableMouseCapture。若曾 Enable，stop 与 finish_inline（或等价 teardown）MUST Disable。VirtualTerminal 测试替身 MUST 可记录启停调用序。本要求 MUST NOT 规定产品何时开启捕获。
+# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）

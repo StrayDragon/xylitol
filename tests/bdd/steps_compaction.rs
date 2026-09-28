@@ -13,7 +13,7 @@ mod comp_fixture {
     }
 }
 
-const COMP_RETAIN_SID: &str = "compaction-retain";
+pub(crate) const COMP_RETAIN_SID: &str = "compaction-retain";
 const COMP_WRITE_SID: &str = "compaction-write";
 
 pub(crate) async fn comp_run_compact(

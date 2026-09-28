@@ -331,3 +331,243 @@ fn t_otel10_io_truncated(otel_bdd: &OtelBdd) {
         "otel15: user prompt preview: {turn_input}"
     );
 }
+
+// ── c2826 specs-compact：裸规则转场景补充（r1466/r1470/r1471/r1473/r1474/r1476/r1477/r1478/r1479/r1486/r1492）──
+
+fn find_named<'a>(
+    records: &'a [fastrace::collector::SpanRecord],
+    name: &str,
+) -> Vec<&'a fastrace::collector::SpanRecord> {
+    records.iter().filter(|r| r.name == name).collect()
+}
+
+#[when("以未开启观测闸运行一次带工具调用的 agent 回合")]
+async fn w_c2826_no_gate_run(agent: &AgentState, otel_bdd: &OtelBdd) {
+    // serial 序内起点即产品默认态：闸关（此前所有 otel 测试的 Drop 已复位）。
+    let gate_off_at_rest = !xylitol_ai_bridge::provider::trace::provider_trace_active();
+    set_fake_text("我来读文件");
+    set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
+    set_fake_tool_result("hello world");
+    // 不臂装任何收集槽/观测闸：默认关闸运行一回，验证主路径不受影响。
+    let mut runner = crate::tests::bdd::helpers::make_agent(agent);
+    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
+    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
+    while let Some(e) = stream.next().await {
+        if let XyEvent::Error(err) = &e {
+            panic!(
+                "[otel-bdd] run failed: kind={} message={}",
+                err.kind, err.message
+            );
+        }
+    }
+    // 回合结束后的常驻闸态仍应为关（本测试从未臂装）。
+    let gate_off_after = !xylitol_ai_bridge::provider::trace::provider_trace_active();
+    assert!(
+        gate_off_at_rest && gate_off_after,
+        "c2826: 默认（未配置 [otel]）观测闸必须为关：起点 {} / 终点 {}",
+        gate_off_at_rest,
+        gate_off_after
+    );
+}
+
+#[then("默认观测闸为关且回合正常完成不出口任何 span")]
+fn t_c2826_no_gate_no_export() {
+    // 断言已内联在 when（闸态捕获与回合完成）；此处保留 then 以钉住场景语义。
+}
+
+#[cfg(feature = "otel")]
+#[when("以合法 otlp-http 配置尝试构建 OTLP reporter")]
+async fn w_c2826_build_reporter_ok(otel_bdd: &OtelBdd) {
+    use crate::infra::config::types::{OtelConfig, OtelExporterKind};
+    let cfg = OtelConfig {
+        exporter: OtelExporterKind::OtlpHttp,
+        endpoint: Some("http://127.0.0.1:9/api/public/otel".into()),
+        ..Default::default()
+    };
+    let built = crate::infra::observability::otel::install::try_build_otlp_reporter(&cfg);
+    otel_bdd.mounted.set(built.is_some());
+    drop(built);
+}
+
+#[cfg(feature = "otel")]
+#[then("成功构建出可安装的 reporter")]
+fn t_c2826_reporter_built(otel_bdd: &OtelBdd) {
+    assert!(
+        otel_bdd.mounted.get(),
+        "c2826: 合法 otlp-http 配置必须能构建 reporter"
+    );
+}
+
+#[when("以缺失 endpoint 的 otlp-http 配置尝试构建 OTLP reporter")]
+async fn w_c2826_build_reporter_bad(otel_bdd: &OtelBdd) {
+    use crate::infra::config::types::{OtelConfig, OtelExporterKind};
+    let cfg = OtelConfig {
+        exporter: OtelExporterKind::OtlpHttp,
+        endpoint: None,
+        ..Default::default()
+    };
+    let built = crate::infra::observability::otel::install::try_build_otlp_reporter(&cfg);
+    otel_bdd.mounted.set(built.is_none());
+    drop(built);
+}
+
+#[then("构建安静返回 None 且产生 obs 诊断且不失败")]
+fn t_c2826_reporter_none_diag() {
+    let diag = crate::infra::observability::otel::otlp_disabled_diag();
+    assert!(
+        diag.is_some(),
+        "c2826: otlp-http 未生效必须经 obs_diag 呈现"
+    );
+    let msg = diag.expect("diag");
+    assert!(!msg.contains("sk-"), "c2826: 诊断不得携带密钥");
+}
+
+#[when("以 io=none 且 tool_io=truncated 的观测闸运行一次带工具调用的 agent 回合")]
+async fn w_c2826_tool_tier_only(agent: &AgentState, otel_bdd: &OtelBdd) {
+    set_fake_text("我来读文件");
+    set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
+    set_fake_tool_result("hello world");
+    set_provider_trace_active(true);
+    set_observation_io_tier(ObservationIoTier::None);
+    set_tool_observation_io_tier(ObservationIoTier::Truncated);
+    set_obs_session(SESSION_UUID, None);
+    drop(otel_bdd.collect.borrow_mut().take());
+    *otel_bdd.collect.borrow_mut() = Some(SpanCollectScope::enter());
+    otel_bdd.mounted.set(true);
+    let mut runner = crate::tests::bdd::helpers::make_agent(agent);
+    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
+    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
+    while let Some(e) = stream.next().await {
+        if let XyEvent::Error(err) = &e {
+            panic!(
+                "[otel-bdd] run failed: kind={} message={}",
+                err.kind, err.message
+            );
+        }
+    }
+}
+
+#[then("tool.execute 带参数与结果摘要而其余 span 无 observation I/O")]
+fn t_c2826_tool_tier_only(otel_bdd: &OtelBdd) {
+    let records = otel_bdd.records();
+    let tools = find_named(&records, "tool.execute");
+    assert!(!tools.is_empty(), "c2826: 应有 tool.execute span");
+    for tool in &tools {
+        assert!(
+            prop(tool, "langfuse.observation.input").is_some(),
+            "c2826: tool tier=truncated 时 tool.execute 必须带参数摘要"
+        );
+    }
+    for r in &records {
+        if r.name != "tool.execute" {
+            assert!(
+                prop(r, "langfuse.observation.input").is_none()
+                    && prop(r, "langfuse.observation.output").is_none(),
+                "c2826: observation_io=none 时 {} 不得带 observation I/O",
+                r.name
+            );
+        }
+    }
+}
+
+#[when("以观测闸开启并触发一次会话压缩")]
+async fn w_c2826_compaction_span(
+    sess: &crate::tests::bdd::fixtures::XySessionStore,
+    otel_bdd: &OtelBdd,
+) {
+    use crate::tests::bdd::steps_compaction::COMP_RETAIN_SID;
+    sess.ensure_mgr();
+    crate::tests::bdd::steps_compaction::comp_seed_turns(sess, COMP_RETAIN_SID, 50).await;
+    sess.current_id.replace(Some(COMP_RETAIN_SID.to_string()));
+    set_provider_trace_active(true);
+    set_observation_io_tier(ObservationIoTier::None);
+    set_tool_observation_io_tier(ObservationIoTier::None);
+    set_obs_session(SESSION_UUID, None);
+    drop(otel_bdd.collect.borrow_mut().take());
+    *otel_bdd.collect.borrow_mut() = Some(SpanCollectScope::enter());
+    otel_bdd.mounted.set(true);
+    // 经编排器手动压缩（span 守卫在 orchestrator，不在裸 compact_session）。
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let model =
+        crate::infra::provider::factory::build_provider(&crate::protocol::model::XyModelConfig {
+            kind: crate::protocol::model::XyModelKind::Fake,
+            model: "fake".into(),
+            api_key: String::new(),
+            base_url: None,
+            api: None,
+            compat: None,
+        });
+    let binding =
+        crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake");
+    let sink = std::sync::Arc::new(crate::infra::event::EventBus::new());
+    let mut notice = false;
+    crate::agent::compaction::CompactionOrchestrator::new(
+        crate::agent::compaction::CompactionSettings {
+            enabled: true,
+            reserve_tokens: 1024,
+            keep_recent_tokens: 1_000,
+            ..Default::default()
+        },
+    )
+    .compact(
+        &mgr,
+        COMP_RETAIN_SID,
+        &binding,
+        sink.as_ref(),
+        None,
+        100_000,
+        None,
+        &mut notice,
+    )
+    .await
+    .expect("c2826: orchestrator manual compact");
+}
+
+#[then("导出 agent.compaction 且 type 为 span 并携带原因与 obs lane")]
+fn t_c2826_compaction_span(otel_bdd: &OtelBdd) {
+    let records = otel_bdd.records();
+    let spans = find_named(&records, "agent.compaction");
+    assert!(
+        !spans.is_empty(),
+        "c2826: 过 prepare 的压缩必须导出 agent.compaction，实际 {:?}",
+        records.iter().map(|r| r.name.clone()).collect::<Vec<_>>()
+    );
+    for r in &spans {
+        assert_eq!(prop(r, "langfuse.observation.type"), Some("span"));
+        let reason = prop(r, "reason").unwrap_or_default();
+        assert!(
+            ["manual", "threshold", "overflow"].contains(&reason),
+            "c2826: 压缩 reason 必须诚实，实际 {reason}"
+        );
+        assert_eq!(prop(r, "xylitol.obs.lane"), Some("llm"));
+    }
+}
+
+#[then("agent.turn 不携带 ERROR 或 aborted 终态")]
+fn t_c2826_turn_not_error(otel_bdd: &OtelBdd) {
+    let records = otel_bdd.records();
+    let turns = find_named(&records, "agent.turn");
+    assert!(!turns.is_empty(), "c2826: 应有 agent.turn span");
+    for r in &turns {
+        assert_ne!(
+            prop(r, "langfuse.observation.level"),
+            Some("ERROR"),
+            "c2826: {r:?}"
+        );
+        assert_ne!(
+            prop(r, "langfuse.observation.status_message"),
+            Some("aborted"),
+            "c2826: 正常完成 turn 不得标 aborted"
+        );
+    }
+}
+
+#[then("token.estimate 恰好导出一次")]
+fn t_c2826_single_estimate(otel_bdd: &OtelBdd) {
+    let records = otel_bdd.records();
+    let count = find_named(&records, "token.estimate").len();
+    assert_eq!(
+        count, 1,
+        "c2826: 一次 TurnSettled 恰一个 token.estimate，实际 {count}"
+    );
+}

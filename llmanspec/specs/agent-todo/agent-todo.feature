@@ -58,3 +58,4 @@
   @req:r1122
   规则: typed-live-projection-event
     todo_* 成功写入后 host MUST 经领域事件发布类型化 TodoList 全量快照（空表亦然，语义为清除）；产品 client 的 live 待办栏投影 MUST 源自该事件，MUST NOT 依赖端侧解析工具结果字符串或调用 args 维持待办栏。resume / 重建 MUST 仍读 agent_todo SSOT 快照，与 live 投影 latest-wins 同构。事件未送达（如旧线协议端）时待办栏 MUST 可降级为仅 resume 刷新，MUST NOT panic。MUST NOT 要求 LLM 前缀、SSOT 持久形态或工具结果 JSON 形态为此改变。
+# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）

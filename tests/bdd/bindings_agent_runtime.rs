@@ -107,3 +107,35 @@ async fn test_ar_batch_mcp_never_parallel(agent: AgentState, ws: Workspace) {}
     name = "batch-history-source-order"
 )]
 async fn test_ar_batch_history_source_order(agent: AgentState, ws: Workspace) {}
+
+// ---- c2826 specs-compact：裸规则转场景绑定 ----
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "first-turn-history-is-real-user"
+)]
+async fn test_c2826_first_turn_history(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "context-reload-trust-gated"
+)]
+async fn test_c2826_context_reload(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "skills-reload-trust-gated-and-queryable"
+)]
+async fn test_c2826_skills_reload(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "abort-persists-partial-with-aborted-reason"
+)]
+async fn test_c2826_abort_persist(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "tool-turn-two-iterations-one-settlement"
+)]
+async fn test_c2826_two_iterations(agent: AgentState, ws: Workspace) {}

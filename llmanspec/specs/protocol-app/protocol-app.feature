@@ -29,7 +29,7 @@
       那么 应答为 JSON-RPC 成功且 result 含 session 与 seq
   @req:r1698
   规则: Event 变体完整
-    protocol::Event MUST 覆盖全部 AgentEvent 变体：TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionUpdate、CompactionEnd、TextDelta、ThinkingDelta；ThinkingDelta MUST 往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate。
+    protocol::Event MUST 覆盖全部 AgentEvent 变体：TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionUpdate、CompactionEnd、TextDelta、ThinkingDelta；ThinkingDelta MUST 往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；并 MUST 提供 XyEvent ↔ Event 闭集映射（From/TryFrom 或等价）。
 
     场景: agent-streaming-events-roundtrip
       当 对 Agent 流族事件做线协议序列化与反序列化往返
@@ -37,6 +37,17 @@
   @req:r1699
   规则: 会话命令分发
     RPC dispatch MUST 实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托会话导出/导入实现；MUST NOT 交付 stub 或仅字符串实现。
+
+    场景: switch-session-validates-target
+      当 服务端在空闲端口上启动
+      并且 POST /rpc 调用 switch_session 指向不存在会话
+      那么 应答为 JSON-RPC 错误且错误提及会话不存在或无效
+
+    场景: get-messages-returns-entries
+      假如 向 POST /rpc 发送 prompt 的 JSON-RPC 请求
+      当 server 处理 prompt
+      并且 POST /rpc 调用 get_messages
+      那么 应答含已加载会话条目
   @req:r1700
   规则: dispatch 归属
     会话操作的执行语义 MUST 进入同一产品分发。订阅 MUST 为产品 JSON-RPC 订阅（session 与 last_seq）。审批与问卷 MUST 登记为产品 unary；host MUST 先以下行 JSON-RPC notification 告知，客户端再以 unary 作答。MUST NOT 另开 respond HTTP 路径，MUST NOT 用非 JSON-RPC 的 WS 应用帧作答。
@@ -55,24 +66,50 @@
   @req:r1692
   规则: dispatch 队列命令
     app::core::dispatch MUST 将 Steer、FollowUp、ClearQueue 路由到 Driver 对应方法；这些变体 MUST NOT 留在仅 WS 层处理。
+
+    场景: queue-commands-route-via-unary
+      当 服务端在空闲端口上启动
+      并且 POST /rpc 调用 steer 携带文本
+      并且 POST /rpc 查询会话 "s-prompt" 的只读 queue_stats
+      那么 steer 深度至少为 1
   @req:r1694
   规则: 线协议不镜像厂商事件
     protocol::Event MUST 映射领域 XyEvent 闭集；MUST NOT 为 OpenAI/Anthropic 等厂商专属事件增加平行变体。无法表达的细节 MUST 留在领域 Message 载荷或被省略，而非拓宽线协议宽表。
   @req:r1719
   规则: 线协议映射队列与闭集
     protocol Event MUST 能表达跨面所需的 XyEvent 闭集子集（至少含 QueueUpdate）；未映射变体 MUST 可降级忽略，MUST NOT panic。
+
+    场景: queue-update-wire-roundtrip
+      当 对 QueueUpdate 事件做线协议序列化与反序列化往返
+      那么 队列计数保真且未知 type 解析为错误而非 panic
   @req:r1711
   规则: agent-part-tagged-wire
     AgentPart 序列化到 JSONL/session message.content 时 MUST 使用带 type 判别的自描述形态（对齐 pi ThinkingContent/TextContent/ToolCall）：thinking MUST 为 {type:thinking, thinking, thinkingSignature?, redacted?}；text MUST 为 {type:text, text}；toolCall MUST 为 {type:toolCall, id, name, arguments}。MUST NOT 使用 serde untagged；MUST NOT 将 Text 写成裸字符串；MUST NOT 将 Thinking 写成无 type 且字段名为 text 的对象。
+
+    场景: agent-part-tagged-content-wire
+      当 序列化含 thinking 与 text 的 assistant content 为会话部件
+      那么 每个部件带 type 判别且无裸字符串 content
   @req:r1712
   规则: preview-text-excludes-thinking
     用于 editor 预填与树摘要的 message 纯文本提取（message_text 或等价）MUST 只聚合 type=text 的正文；MUST NOT 把 type=thinking 的正文拼进预填/摘要。
+
+    场景: preview-text-excludes-thinking
+      当 对含 thinking 与 text 的消息提取纯文本摘要
+      那么 摘要仅含 text 正文
   @req:r1707
   规则: xy-event-error-kind
     XyEvent::Error MUST 携带结构化 XyEventError（kind + message）；kind 在源自 XyError 时 MUST 对齐 XyError::kind（Aborted/Provider/Session/Config/Tool/…），裸字符串 MUST 归类为 Message（message==aborted 除外，归 Aborted）。wire Event::Error MUST 可选携带 kind；有 kind 时往返 MUST 保留；缺省反序列化 MUST 不 panic（可回落 Message 或由 message 推断 Aborted）。
+
+    场景: error-kind-wire-roundtrip
+      当 序列化携带 kind 的 error 事件
+      那么 kind 往返保真
   @req:r1708
   规则: error-kind-at-source
     应用缝与 XyEvent::Error 对会话持久化、导出/导入、trust 持久化失败 MUST 给出稳定 kind（至少能区分缺失、IO、校验、不支持），MUST NOT 仅凭错误文案子串猜测这些域的分类。用户可见 message MUST 不把同一语义前缀叠两次。真正无结构的提示 MAY 使用 Message kind。
+
+    场景: stable-error-kind-at-source
+      当 以不存在的文件调用导入会话
+      那么 错误携带稳定 kind 且非文案猜测
   @req:r1720
   规则: 工具起始参数往返
     wire Event 的 ToolStart MUST 保留领域工具起始事件中的工具参数；经 JSON 序列化与反序列化往返后，客户端 MUST 能从同一字段生成与本地路径一致的人类可读工具摘要，MUST NOT 无故退化为 `Read ...` 等路径占位。
@@ -83,12 +120,24 @@
   @req:r1718
   规则: todo-updated-wire
     领域事件 TodoUpdated（完整 TodoList 快照载荷）MUST 能经 wire Event 表达，使远程 attach 端的 live checklist 刷新 MUST NOT 依赖解析工具结果文本；未映射该变体的端 MUST 可降级忽略，MUST NOT panic。该事件 MUST NOT 作为冷回放 tape 重画（resume 侧 checklist 由 SSOT 快照重建）。
+
+    场景: todo-updated-wire-roundtrip
+      当 对 TodoUpdated 快照事件做线协议往返
+      那么 清单快照载荷保真
   @req:r1714
   规则: 会话能力方法表
     产品方法表 MUST 登记并由 Host 暴露会话树读取与 travel、entry label、会话列表、会话条目读取、新建会话、会话名称读写与删除能力；这些能力 MUST 使用产品 unary，不得退回未登记的 REST 产品动词。
+
+    场景: session-capability-methods-registered
+      当 查询方法表的会话能力方法
+      那么 会话树、travel、label、列表、条目读取、新建、名称读写与删除均已登记
   @req:r1715
   规则: Host 资源方法
     产品方法表 MUST 登记 Host 级 `reload` 与只读 `loaded_resources` 能力；`reload` MUST 作用于 Host 共享的 skills、MCP 与 prompt 资源，`loaded_resources` MUST 返回当前资源快照且 MUST 含真实 MCP 连接态。Remote 客户端 MUST NOT 将已登记方法静默降级为空快照、从未连接的假完成（仅 configured、connected 恒 0 且无诊断）或 no-op。
+
+    场景: host-resource-methods-registered
+      当 查询方法表的 Host 资源方法
+      那么 reload 与 loaded_resources 均已登记
   @req:r1716
   规则: 队列深度方法
     产品方法表 MUST 登记只读 `queue_stats`（steer/follow-up 深度）；MUST 为产品 unary 且不占写者。Remote 客户端 MUST NOT 将未实现当成恒空深度。
@@ -108,9 +157,17 @@
   @req:r1721
   规则: CompactionEnd 载荷下行
     wire 的 CompactionEnd 事件 MUST 与 XyEvent::CompactionEnd 同构携带 result、aborted、reason、will_retry、error_message、summary、tokens_before、tokens_after、notice 全部载荷；经 JSON 序列化与反序列化往返 MUST 保真，反序列化侧 MUST NOT 把丢载荷重建为伪成功完成态；旧的无载荷形态 MUST 可解码为缺省载荷（None/false/空）且 MUST NOT panic。attach 客户端据此呈现真实 Compacted from N（或含 tokens_after 的 N → M）tokens 与可展开 summary，notice 携带一次性诊断时以滚动提示呈现。
+
+    场景: compaction-end-payload-roundtrip
+      当 序列化全载荷 CompactionEnd 并构造旧无载荷形态
+      那么 全载荷保真且旧形态解码为缺省载荷
   @req:r1717
   规则: 上下文估计方法
     产品方法表 MUST 登记只读 `estimate_context`：host 侧以与本地 driver 同源入口计算 ContextTokenEstimate（含固定请求开销折算与 host tokenizer 映射）；MUST 为产品 unary 且不占写者。Remote 客户端 MUST NOT 再以 GetMessages 拉条目在本地自估充当该能力。
+
+    场景: estimate-context-method-registered-readonly
+      当 查询方法表的 estimate_context
+      那么 已登记且为只读 unary 不占写者
   @req:r1701
   规则: 单一产品真源
     client 与 host 之间的产品消息 MUST 且仅 MUST 经 JSON-RPC 2.0 形状信封投递。Command 与 Event 闭集 MUST 作为方法载荷 / 下行帧内容，MUST NOT 再作为产品协议外层。测试用进程内客户端与产品 attach 客户端 MUST 使用同一方法表。MUST NOT 为远程再开平行的 REST 产品动词或第二套词表。

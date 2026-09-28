@@ -961,3 +961,208 @@ async fn then_summary_empty(sess: &XySessionStore) {
         "s6: empty input => empty output"
     );
 }
+
+// ---- c2826 specs-compact：裸规则转场景补充步骤 ----
+
+/// 植入一个 v7 会话（2 条合法 user 消息）并向 active 段直接追加一行自定义内容。
+async fn plant_v7_with_extra_line(sess: &XySessionStore, id: &str, extra_line: &str) {
+    sess.ensure_mgr();
+    sess.current_id.replace(Some(id.to_string()));
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    mgr.create(id, Some("."), None).await.unwrap();
+    for (n, text) in ["第一条", "第二条"].iter().enumerate() {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("plant-{n}"),
+                parent_id: None,
+                timestamp: 1704067200000,
+            },
+            message: serde_json::json!({
+                "role": "user",
+                "content": [{"type": "text", "text": text}]
+            }),
+        });
+        mgr.append_with_id(id, &entry).await.unwrap();
+    }
+    let path = active_session_file(sess, id);
+    use std::io::Write;
+    let mut f = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&path)
+        .unwrap();
+    writeln!(f, "{extra_line}").unwrap();
+}
+
+#[given("目录中植入含坏 JSON 行的 v7 会话 {id:string}")]
+async fn given_plant_bad_json_line(sess: &XySessionStore, id: String) {
+    let id = strip_quotes(&id);
+    plant_v7_with_extra_line(sess, &id, "not-json{{broken").await;
+}
+
+#[given("目录中植入含旧 untagged content 行的 v7 会话 {id:string}")]
+async fn given_plant_legacy_untagged(sess: &XySessionStore, id: String) {
+    let id = strip_quotes(&id);
+    // 旧 c646 前形态：content 为裸字符串而非 dm1 tagged 数组。
+    let line = r#"{"type":"message","id":"legacy-1","timestamp":1,"message":{"role":"user","content":"plain old string"}}"#;
+    plant_v7_with_extra_line(sess, &id, line).await;
+}
+
+#[then("坏行被跳过且其余条目正常加载")]
+async fn then_bad_line_skipped(sess: &XySessionStore) {
+    let entries = sess.entries.borrow();
+    let texts: Vec<String> = entries
+        .iter()
+        .filter_map(|e| match e {
+            SessionEntry::Message(m) => m
+                .message
+                .get("content")
+                .and_then(|c| c.as_array())
+                .and_then(|a| a.first())
+                .and_then(|p| p.get("text"))
+                .and_then(|t| t.as_str())
+                .map(str::to_owned),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        texts,
+        vec!["第一条".to_string(), "第二条".to_string()],
+        "c2826: 坏行必须被跳过且好行全部加载"
+    );
+}
+
+#[when("目录中植入未引用的临时段文件")]
+async fn when_plant_orphan_segment(sess: &XySessionStore) {
+    let id = sess.current_id.borrow().clone().expect("current session");
+    let dir = sess_dir(sess).join(&id).join("segments");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("00000000000000000099-sealed.jsonl"),
+        "{\"type\":\"message\",\"id\":\"orphan\",\"message\":{\"role\":\"user\",\"content\":[]}}\n",
+    )
+    .unwrap();
+}
+
+#[when("破坏该会话的 sealed sidecar 索引文件")]
+async fn when_corrupt_sidecar(sess: &XySessionStore) {
+    let id = sess.current_id.borrow().clone().expect("current session");
+    let manifest_path = sess_dir(sess).join(&id).join("manifest.json");
+    let raw = std::fs::read(&manifest_path).expect("manifest exists after seal");
+    let manifest: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+    let index_path = manifest["sealedSegments"]
+        .as_array()
+        .expect("sealed segments recorded")
+        .last()
+        .expect("compaction sealed a cold segment")
+        .get("indexPath")
+        .and_then(|v| v.as_str())
+        .expect("sidecar indexPath recorded")
+        .to_string();
+    let sidecar = sess_dir(sess).join(&id).join(&index_path);
+    std::fs::write(&sidecar, "not-json{corrupt").unwrap();
+}
+
+fn first_disk_line(sess: &XySessionStore, id: &str) -> serde_json::Value {
+    let path = active_session_file(sess, id);
+    let raw = std::fs::read_to_string(&path).expect("active segment readable");
+    let line = raw.lines().next().expect("header line present");
+    serde_json::from_str(line).expect("header line is JSON")
+}
+
+#[then("会话 {id:string} 头含父会话与切点条目 id")]
+async fn then_header_carries_cut(sess: &XySessionStore, id: String) {
+    let id = strip_quotes(&id);
+    let header = first_disk_line(sess, &id);
+    let parent = header.get("parentSession").and_then(|v| v.as_str());
+    let cut = header.get("forkAtEntryId").and_then(|v| v.as_str());
+    assert!(
+        parent.is_some_and(|p| !p.is_empty()),
+        "c2826: 子会话头缺父会话 id"
+    );
+    assert!(
+        cut.is_some_and(|c| !c.is_empty()),
+        "c2826: 子会话头大切点条目 id"
+    );
+}
+
+#[then("会话 {id:string} 头不含切点字段")]
+async fn then_header_lacks_cut(sess: &XySessionStore, id: String) {
+    let id = strip_quotes(&id);
+    let header = first_disk_line(sess, &id);
+    let cut = header
+        .get("forkAtEntryId")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    assert!(
+        cut.is_null(),
+        "c2826: 非 fork 会话头 MUST NOT 写切点字段，实际为 {cut}"
+    );
+}
+
+#[then("新会话磁盘头 version 为 7 且外壳字段为 camelCase")]
+async fn then_header_v7_camelcase(sess: &XySessionStore) {
+    let id = sess.current_id.borrow().clone().expect("current session");
+    let header = first_disk_line(sess, &id);
+    assert_eq!(header.get("version").and_then(|v| v.as_u64()), Some(7));
+    let keys: Vec<&str> = header
+        .as_object()
+        .expect("header object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert!(
+        keys.iter().all(|k| !k.contains('_')),
+        "c2826: 头外壳字段必须 camelCase，出现 snake_case 键：{keys:?}"
+    );
+}
+
+#[then("bash 记录行 type 为 message 且 role 为 bashExecution")]
+async fn then_bash_row_shape(sess: &XySessionStore) {
+    let id = sess.current_id.borrow().clone().expect("current session");
+    let path = active_session_file(sess, &id);
+    let raw = std::fs::read_to_string(&path).expect("active segment readable");
+    let hit = raw
+        .lines()
+        .find(|l| l.contains("make test"))
+        .expect("bash 记录行存在");
+    let v: serde_json::Value = serde_json::from_str(hit).unwrap();
+    assert_eq!(v.get("type").and_then(|t| t.as_str()), Some("message"));
+    assert_eq!(
+        v.get("message")
+            .and_then(|m| m.get("role"))
+            .and_then(|r| r.as_str()),
+        Some("bashExecution")
+    );
+}
+
+#[then("恢复投影模型为 {model:string} 且思考档为 {level:string} 且无抵消条目")]
+async fn then_resume_projection_verbatim(sess: &XySessionStore, model: String, level: String) {
+    let model = strip_quotes(&model);
+    let level = strip_quotes(&level);
+    let entries = sess.entries.borrow();
+    let model_changes: Vec<&str> = entries
+        .iter()
+        .filter_map(|e| match e {
+            SessionEntry::ModelChange(m) => Some(m.model_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    let thinking_changes: Vec<&str> = entries
+        .iter()
+        .filter_map(|e| match e {
+            SessionEntry::ThinkingLevelChange(t) => Some(t.thinking_level.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        model_changes,
+        vec![model.as_str()],
+        "c2826: leaf 投影模型必须原样保留且无抵消条目"
+    );
+    assert_eq!(
+        thinking_changes,
+        vec![level.as_str()],
+        "c2826: leaf 投影思考档必须原样保留且无抵消条目"
+    );
+}

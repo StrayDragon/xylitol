@@ -8,12 +8,25 @@
   @req:r1466
   规则: otel-default-none
     未配置 [otel]、feature 缺省或 exporter=none 时，进程 MUST NOT 向任何 OTLP 端点发送 traces；MUST NOT 仅因存在 fastrace span 而隐式开启远程导出。
+
+    场景: otel-default-none-no-spans
+      假如 mock 模型先 tool 后无 tool
+      当 以未开启观测闸运行一次带工具调用的 agent 回合
+      那么 默认观测闸为关且回合正常完成不出口任何 span
   @req:r1477
   规则: otel-config-opt-in
     当 Cargo feature otel 启用且 AppConfig.[otel] exporter=otlp-http 且 endpoint（及所需认证头）合法时，组合根 MUST 经 fastrace-opentelemetry OpenTelemetryReporter（或等价）将 fastrace span 导出为 OTLP/HTTP；protocol MUST 为 HTTP（binary 或 json），MUST NOT 以 gRPC 作为 Langfuse 目标路径的默认或唯一选项。
+
+    场景: otlp-config-arms-reporter
+      当 以合法 otlp-http 配置尝试构建 OTLP reporter
+      那么 成功构建出可安装的 reporter
   @req:r1486
   规则: otel-fallback-no-block
     OTLP exporter 构建失败、凭证缺失、feature otel 未启用、或配置不完整时，观测装配 MUST 降级为不安装 OTLP Reporter（本地 file JSONL 闸仍独立），MUST 将诊断写入 file-only 日志（若级别日志已开），MUST NOT 因此使对话主路径启动失败。当 [otel] exporter 请求 otlp-http 而通道未生效（缺 endpoint/认证或构建失败）时，该事实 MUST 经 LoadedResourcesSnapshot.obs_diag 在产品 loaded-resources 卡以单行 obs 诊断呈现；诊断内容 MUST NOT 携带密钥或完整 env；exporter=none 显式关闭时 MUST NOT 渲染提示。
+
+    场景: otlp-bad-endpoint-falls-back-with-diag
+      当 以缺失 endpoint 的 otlp-http 配置尝试构建 OTLP reporter
+      那么 构建安静返回 None 且产生 obs 诊断且不失败
   @req:r1487
   规则: otel-fastrace-only
     OTLP 出口 MUST 建立在 fastrace Reporter 之上（fastrace-opentelemetry）；Cargo 与 src MUST NOT 为该出口引入 tracing 或 tracing-subscriber；MUST NOT 使用会打印到 stderr/stdout 的 ConsoleReporter 或 OTEL 调试打印破坏 TUI。
@@ -50,6 +63,7 @@
   @req:r1492
   规则: otel-generation-usage
     当低频观测 span 激活且 llm.request 流以带 usage 的 Done 结束时，该 generation span MUST 携带 langfuse.observation.usage_details（JSON：input/output/total，可选非零 cache 字段）；MUST NOT 再额外写入 gen_ai.usage.*（与 usage_details 同映射且 inclusive 语义冲突）；无 usage 时 MUST NOT 伪造零用量属性。
+
   @req:r1467
   规则: otel-observation-io-tier
     AppConfig.[otel].observation_io 缺省或 none 时 MUST NOT 写入 langfuse.observation.input/output；仅当配置为 truncated 或 full 且 span 闸激活时，llm.request generation MUST 按该档写入 observation I/O；I/O 附着 MUST 在流结束（任意 Done）或 span 提前结束时发生，MUST NOT 仅依赖 Done 携带 usage；MUST NOT 因 observation_io 未配置而改变 otel1 默认不出口语义。
@@ -79,30 +93,49 @@
   @req:r1470
   规则: otel-token-estimate-parent
     当低频观测 span 激活时：若存在活跃 agent.turn 上下文，token.estimate MUST 作为该 turn 的子 span；若不存在 turn 上下文（真·闲置路径：换叶/resume/显式刷新等），token.estimate MAY 为独立根 span 且在 session 已知时 MUST 携带同一 langfuse.session.id；MUST NOT 伪造父 turn。对同一次 TurnSettled settlement，MUST 至多导出一个 token.estimate；MUST NOT 在 turn 刚结束后仅为 footer stream-close 兜底再开 SpanContext::random 独立根。
+
   @req:r1471
   规则: otel-tool-observation-io-tier
     AppConfig.[otel].tool_observation_io 缺省或 none 时 MUST NOT 在 tool.execute 上写入 langfuse.observation.input/output；仅当配置为 truncated 或 full 且 span 闸激活时，tool.execute MUST 在结果落定后按该档写入参数与结果摘要；MUST NOT 与 observation_io 合并为同一配置键；MUST NOT 因 tool_observation_io 未配置而改变 otel1 默认不出口语义。
-  @req:r1472
-  规则: otel-turn-input-preview
-    AppConfig.[otel].observation_io 缺省或 none 时 MUST NOT 在 agent.turn 根上写入 langfuse.observation.input；仅当配置为 truncated 或 full 且 span 闸激活时，agent.turn MUST 写入本轮用户提示文本摘要为 langfuse.observation.input（按同档硬顶截断）；本 req 不强制 agent.turn 根 output。
+
+    场景: tool-io-tier-truncated-only-tools
+      假如 mock 模型先 tool 后无 tool
+      当 以 io=none 且 tool_io=truncated 的观测闸运行一次带工具调用的 agent 回合
+      那么 tool.execute 带参数与结果摘要而其余 span 无 observation I/O
   @req:r1473
   规则: otel-generation-request-body-input
     当 observation_io 为 truncated 或 full 且 span 闸激活时，llm.request generation 的 langfuse.observation.input MUST 优先来自 adapter 发出前的完整 request JSON（按同档硬顶截断）；MUST NOT 仅依赖名为 response.json、chat.completion.json 或 message.json 的 raw 事件才缓冲请求体；流式路径 MUST 同样可带 input。
+
   @req:r1474
   规则: otel-generation-abort-finalize
     当低频观测 span 激活且 llm.request 在未见成功 Done 的情况下提前结束（用户 abort 或等价 drop 流）时：若 observation_io ≠ none，generation MUST 仍按档 flush 已缓冲的 input/output；该 generation MUST 携带 langfuse.observation.level=ERROR 与 langfuse.observation.status_message=aborted；MUST NOT 因此伪造 usage_details。
+
   @req:r1475
   规则: otel-parallel-tool-spans
     当低频观测 span 激活且 barrier_parallel 并行窗内并发执行多个工具时，各 tool.execute MUST 仍为同一 agent.iteration（进而同一 agent.turn）的子 span 并共享 trace_id；MUST 携带可区分的 tool_id（及可选 tool_batch.mode / tool_batch.barrier_index）；MUST NOT 为并发工具各自创建无关的 SpanContext::random 根 span；并发任务 MUST 使用扇出前捕获的显式 parent，MUST NOT 依赖全局 parent slot 的竞态读写。由单测或 obs 窄读覆盖，MUST NOT 为静态存在性单独扩 BDD step。
   @req:r1476
   规则: otel-compaction-span
     当低频观测 span 激活且实际执行会话 compaction（manual / threshold / overflow）时，MUST 导出名为 agent.compaction 的 fastrace span，且 langfuse.observation.type MUST 为 span；「实际执行」MUST 定义为已通过 prepare_compaction（或等价门闸）之后的压缩尝试——prepare 早退（无可摘要历史 / Already compacted 等）MUST NOT 导出 agent.compaction；若存在活跃 agent.turn，该 span MUST 为其子 span 并共享 trace_id；若不存在 turn 上下文，MUST 可为独立根且在 session 已知时携带同一 langfuse.session.id；MUST 携带诚实 reason（manual|threshold|overflow）与 xylitol.obs.lane=llm，结束时 MUST 能暴露 will_retry / aborted 或失败 status（或等价属性）；默认 MUST NOT 将压缩摘要全文写入 langfuse.observation.input/output；观测闸关闭时 MUST 为零/近零开销。由单测（CollectingReporter）覆盖，MUST NOT 为静态存在性单独扩 BDD step。MUST NOT 改变 XyEvent CompactionStart/End 的面语义。
+
+    场景: compaction-span-over-prepare
+      当 以观测闸开启并触发一次会话压缩
+      那么 导出 agent.compaction 且 type 为 span 并携带原因与 obs lane
   @req:r1478
   规则: otel-turn-terminal-status
     当低频观测 span 激活时，agent.turn 结束 MUST 暴露可过滤终态：若该轮因用户 abort（或等价 cancel 令牌）提前结束，MUST 携带 langfuse.observation.level=ERROR 与 langfuse.observation.status_message=aborted（或等价）；若该轮正常完成，MUST NOT 将 turn 标为 ERROR/aborted。本 req 不强制细分模型/工具 error 类（可 follow-up）。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。
+
+    场景: turn-normal-completion-not-error
+      假如 mock 模型先 tool 后无 tool
+      当 以观测闸开启运行一次带工具调用的 agent 回合
+      那么 agent.turn 不携带 ERROR 或 aborted 终态
   @req:r1479
   规则: otel-token-estimate-settlement-once
     当低频观测 span 激活且完成一次 TurnSettled（无随后 AfterCompaction 失效）时，导出的 token.estimate span 计数 MUST 为 1 且挂在该 agent.turn 下；MUST NOT 再出现同秒同 tokens 的第二 token.estimate（含独立根）。由 CollectingReporter 或 provider-trace 窄读覆盖，MUST NOT 为静态存在性单独扩 BDD step。
+
+    场景: settlement-single-token-estimate
+      假如 mock 模型先 tool 后无 tool
+      当 以观测闸开启运行一次带工具调用的 agent 回合
+      那么 token.estimate 恰好导出一次
   @req:r1480
   规则: otel-obs-lane-llm
     当低频观测 span 激活时，LLM/agent 主路径导出名 agent.turn、agent.iteration、llm.request、tool.execute、过 prepare 的 agent.compaction、以及 settlement 路径的 token.estimate MUST 携带属性 xylitol.obs.lane=llm，供 Collector 或直连消费端过滤；该属性 MUST NOT 写入 XyEvent / hooks；MUST NOT 用 xylitol.signal 作为同义属性名。直连 Langfuse 时，本属 infra 的门闸早退 MUST NOT 伪装为上述 LLM 语义 span（见 otel19）。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。

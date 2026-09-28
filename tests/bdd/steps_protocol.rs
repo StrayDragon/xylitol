@@ -15,6 +15,8 @@ pub struct ProtocolBdd {
     pub events: RefCell<Vec<Event>>,
     pub tool_end_pair: RefCell<Option<(String, bool)>>,
     pub msgs: RefCell<Vec<RpcMessage>>,
+    /// c2826：纯文本提取结果。
+    pub text_out: RefCell<String>,
 }
 
 #[fixture]
@@ -24,6 +26,7 @@ pub fn protocol_bdd() -> ProtocolBdd {
         events: RefCell::new(Vec::new()),
         tool_end_pair: RefCell::new(None),
         msgs: RefCell::new(Vec::new()),
+        text_out: RefCell::new(String::new()),
     }
 }
 
@@ -251,5 +254,261 @@ fn t_jsonrpc_shape(protocol_bdd: &ProtocolBdd) {
         matches!(&msgs[2], RpcMessage::ServerRequest { method, rpc_id, .. }
             if method == "session/event" && rpc_id.is_empty()),
         "event downlink is a notification (no id), got {msgs:?}"
+    );
+}
+
+// ---- c2826 specs-compact：裸规则转场景补充步骤 ----
+
+#[when("对 QueueUpdate 事件做线协议序列化与反序列化往返")]
+fn w_queue_update_roundtrip(protocol_bdd: &ProtocolBdd) {
+    let event = Event::QueueUpdate {
+        steer_count: 2,
+        follow_up_count: 1,
+    };
+    let text = serde_json::to_string(&event).expect("encode QueueUpdate");
+    let back: Event = serde_json::from_str(&text).expect("decode QueueUpdate");
+    assert_eq!(serde_json::to_string(&back).unwrap(), text);
+    protocol_bdd.events.replace(vec![back]);
+    // 未映射（未知 type 标签）帧：解析为 Err，消费端可降级忽略，MUST NOT panic。
+    let unknown = serde_json::from_str::<Event>(r#"{"type":"totally_unknown_variant","x":1}"#);
+    // 以 text_out 暂存「未知 type 解析为 Err」的结论（无 panic 即通过）。
+    let verdict = if unknown.is_err() { "err" } else { "ok" };
+    protocol_bdd.text_out.replace(verdict.to_string());
+}
+
+#[then("队列计数保真且未知 type 解析为错误而非 panic")]
+fn t_queue_update_fidelity(protocol_bdd: &ProtocolBdd) {
+    let events = protocol_bdd.events.borrow();
+    let Some(Event::QueueUpdate {
+        steer_count,
+        follow_up_count,
+    }) = events.first()
+    else {
+        panic!("c2826: 期望 QueueUpdate，实际 {:?}", events.first());
+    };
+    assert_eq!((*steer_count, *follow_up_count), (2, 1));
+    let verdict = protocol_bdd.text_out.borrow().clone();
+    assert_eq!(
+        verdict, "err",
+        "c2826: 未知 type MUST 解析失败（可降级忽略）而非 panic"
+    );
+}
+
+#[when("序列化含 thinking 与 text 的 assistant content 为会话部件")]
+fn w_agent_part_tagged(protocol_bdd: &ProtocolBdd) {
+    use crate::protocol::AgentPart;
+    let parts = vec![
+        AgentPart::Thinking {
+            thinking: "隐式推理".into(),
+            redacted: false,
+            thinking_signature: Some(r#"{"encrypted":"k"}"#.into()),
+        },
+        AgentPart::Text {
+            text: "正文回答".into(),
+        },
+    ];
+    let raw = serde_json::to_string(&parts).expect("serialize parts");
+    protocol_bdd.text_out.replace(raw);
+}
+
+#[then("每个部件带 type 判别且无裸字符串 content")]
+fn t_agent_part_tagged(protocol_bdd: &ProtocolBdd) {
+    let raw = protocol_bdd.text_out.borrow().clone();
+    let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    let items = value.as_array().expect("content 必须是数组（非裸字符串）");
+    let types: Vec<&str> = items
+        .iter()
+        .map(|item| item.get("type").and_then(|t| t.as_str()).unwrap_or(""))
+        .collect();
+    assert_eq!(
+        types,
+        vec!["thinking", "text"],
+        "c2826: 部件 type 判别：{raw}"
+    );
+    let thinking = &items[0];
+    assert!(
+        thinking.get("thinking").is_some(),
+        "c2826: thinking 字段：{raw}"
+    );
+    assert!(
+        thinking.get("thinkingSignature").is_some(),
+        "c2826: thinkingSignature 字段：{raw}"
+    );
+}
+
+#[when("对含 thinking 与 text 的消息提取纯文本摘要")]
+fn w_preview_text(protocol_bdd: &ProtocolBdd) {
+    use crate::protocol::session::message_text;
+    let msg = serde_json::json!({
+        "role": "assistant",
+        "content": [
+            {"type": "thinking", "thinking": "内心独白"},
+            {"type": "text", "text": "对外正文"}
+        ]
+    });
+    protocol_bdd.text_out.replace(message_text(&msg));
+}
+
+#[then("摘要仅含 text 正文")]
+fn t_preview_text(protocol_bdd: &ProtocolBdd) {
+    let text = protocol_bdd.text_out.borrow().clone();
+    assert_eq!(text, "对外正文");
+    assert!(
+        !text.contains("内心独白"),
+        "c2826: 摘要 MUST NOT 拼入 thinking 正文"
+    );
+}
+
+#[when("序列化携带 kind 的 error 事件")]
+fn w_error_kind_roundtrip(protocol_bdd: &ProtocolBdd) {
+    let event = Event::Error {
+        kind: "Provider".into(),
+        message: "upstream 429".into(),
+    };
+    let text = serde_json::to_string(&event).expect("encode error");
+    let back: Event = serde_json::from_str(&text).expect("decode error");
+    protocol_bdd.events.replace(vec![back]);
+}
+
+#[then("kind 往返保真")]
+fn t_error_kind_roundtrip(protocol_bdd: &ProtocolBdd) {
+    let events = protocol_bdd.events.borrow();
+    let Some(Event::Error { kind, message }) = events.first() else {
+        panic!("c2826: 期望 Error 事件");
+    };
+    assert_eq!(kind, "Provider");
+    assert_eq!(message, "upstream 429");
+}
+
+#[when("对 TodoUpdated 快照事件做线协议往返")]
+fn w_todo_updated_roundtrip(protocol_bdd: &ProtocolBdd) {
+    use crate::protocol::session::{TodoItem, TodoList, TodoStatus};
+    let event = Event::TodoUpdated {
+        list: TodoList::new(vec![
+            TodoItem {
+                id: "t1".into(),
+                content: "压降 specs".into(),
+                status: TodoStatus::InProgress,
+            },
+            TodoItem {
+                id: "t2".into(),
+                content: "收口报告".into(),
+                status: TodoStatus::Pending,
+            },
+        ]),
+    };
+    let text = serde_json::to_string(&event).expect("encode TodoUpdated");
+    let back: Event = serde_json::from_str(&text).expect("decode TodoUpdated");
+    assert_eq!(serde_json::to_string(&back).unwrap(), text);
+    protocol_bdd.events.replace(vec![back]);
+}
+
+#[then("清单快照载荷保真")]
+fn t_todo_updated_fidelity(protocol_bdd: &ProtocolBdd) {
+    let events = protocol_bdd.events.borrow();
+    let Some(Event::TodoUpdated { list }) = events.first() else {
+        panic!("c2826: 期望 TodoUpdated");
+    };
+    assert_eq!(list.items.len(), 2);
+    assert_eq!(list.items[0].id, "t1");
+    assert_eq!(list.items[0].content, "压降 specs");
+}
+
+#[when("序列化全载荷 CompactionEnd 并构造旧无载荷形态")]
+fn w_compaction_end_roundtrip(protocol_bdd: &ProtocolBdd) {
+    let event = Event::CompactionEnd {
+        result: Some("compacted".into()),
+        aborted: false,
+        reason: "threshold".into(),
+        will_retry: false,
+        error_message: None,
+        summary: Some("摘要正文".into()),
+        tokens_before: Some(120_000),
+        tokens_after: Some(30_000),
+        notice: Some("Compacted from 120k tokens".into()),
+    };
+    let text = serde_json::to_string(&event).expect("encode CompactionEnd");
+    let back: Event = serde_json::from_str(&text).expect("decode CompactionEnd");
+    assert_eq!(serde_json::to_string(&back).unwrap(), text);
+    protocol_bdd.events.replace(vec![back]);
+    let legacy: Event = serde_json::from_str(r#"{"type":"compaction_end"}"#)
+        .expect("c2826: 旧无载荷形态必须可解码为缺省载荷");
+    protocol_bdd.events.borrow_mut().push(legacy);
+}
+
+#[then("全载荷保真且旧形态解码为缺省载荷")]
+fn t_compaction_end_fidelity(protocol_bdd: &ProtocolBdd) {
+    let events = protocol_bdd.events.borrow();
+    let Some(Event::CompactionEnd {
+        result,
+        aborted,
+        reason,
+        will_retry,
+        error_message,
+        summary,
+        tokens_before,
+        tokens_after,
+        notice,
+    }) = events.first()
+    else {
+        panic!("c2826: 期望 CompactionEnd");
+    };
+    assert_eq!(result.as_deref(), Some("compacted"));
+    assert!(!aborted);
+    assert_eq!(reason, "threshold");
+    assert!(!will_retry);
+    assert!(error_message.is_none());
+    assert_eq!(summary.as_deref(), Some("摘要正文"));
+    assert_eq!(*tokens_before, Some(120_000));
+    assert_eq!(*tokens_after, Some(30_000));
+    assert_eq!(notice.as_deref(), Some("Compacted from 120k tokens"));
+    let Some(Event::CompactionEnd {
+        result,
+        summary,
+        tokens_before,
+        ..
+    }) = events.get(1)
+    else {
+        panic!("c2826: 旧形态必须是 CompactionEnd");
+    };
+    assert!(result.is_none() && summary.is_none() && tokens_before.is_none());
+}
+
+#[when("以不存在的文件调用导入会话")]
+async fn w_import_missing_file(protocol_bdd: &ProtocolBdd) {
+    use crate::SessionExporter;
+    use crate::infra::export::StdExportIo;
+    use crate::infra::session::SessionManager;
+    let dir = tempfile::tempdir().unwrap();
+    let sessions = dir.path().join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    let mgr = SessionManager::new(sessions);
+    let exporter = SessionExporter::new(Some(std::sync::Arc::new(StdExportIo::new())));
+    let missing = dir.path().join("definitely-missing.jsonl");
+    let e1 = exporter
+        .import_from_jsonl(&mgr, &missing)
+        .await
+        .expect_err("missing file import must fail");
+    let e2 = exporter
+        .import_from_jsonl(&mgr, &missing)
+        .await
+        .expect_err("missing file import must fail again");
+    protocol_bdd
+        .tool_end_pair
+        .replace(Some((e1.kind().to_string(), e1.kind() == e2.kind())));
+}
+
+#[then("错误携带稳定 kind 且非文案猜测")]
+fn t_import_stable_kind(protocol_bdd: &ProtocolBdd) {
+    let (kind, stable) = protocol_bdd
+        .tool_end_pair
+        .borrow()
+        .clone()
+        .expect("import error captured");
+    assert!(!kind.is_empty(), "c2826: 错误必须携带结构化 kind");
+    assert!(stable, "c2826: 同源失败 kind 必须稳定（两次调用一致）");
+    assert_ne!(
+        kind, "Message",
+        "c2826: 域失败 MUST NOT 归为无结构 Message kind"
     );
 }

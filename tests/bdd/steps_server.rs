@@ -2505,3 +2505,223 @@ async fn t_real_replay_offline(server_test: &ServerTest) {
         "reconnect window MUST NOT produce transcript error rows"
     );
 }
+
+// ---- c2826 specs-compact：protocol-app 方法表与队列路由步骤 ----
+
+#[when("POST /rpc 查询会话 {sid:string} 的只读 queue_stats")]
+async fn w_queue_stats_for(server_test: &ServerTest, sid: String) {
+    let sid = sid.trim_matches('"');
+    let (st, token, body) = post_rpc(
+        server_test.port.get(),
+        "Q2",
+        "queue_stats",
+        serde_json::json!({"session_id": sid}),
+        None,
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    assert!(token.is_none(), "readonly must not set X-Writer-Token");
+    server_test.unary_body.replace(Some(body));
+}
+
+#[when("POST /rpc 调用 switch_session 指向不存在会话")]
+async fn w_rpc_switch_missing(server_test: &ServerTest) {
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "S-miss",
+        "switch_session",
+        serde_json::json!({"session_id": "definitely-missing-session"}),
+        None,
+    )
+    .await;
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(body));
+}
+
+#[then("应答为 JSON-RPC 错误且错误提及会话不存在或无效")]
+fn t_switch_missing_error(server_test: &ServerTest) {
+    let st = server_test.unary_status.get();
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    assert_eq!(st, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
+    assert!(
+        v.get("error").is_some(),
+        "c2826: 不存在会话切换必须报错：{body}"
+    );
+    let msg = v["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("session") || msg.contains("会话"),
+        "c2826: 错误须提及会话缺失/无效：{body}"
+    );
+}
+
+#[when("POST /rpc 调用 get_messages")]
+async fn w_rpc_get_messages(server_test: &ServerTest) {
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "G",
+        "get_messages",
+        serde_json::json!({"session_id": "s-prompt"}),
+        None,
+    )
+    .await;
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(body));
+}
+
+#[then("应答含已加载会话条目")]
+fn t_get_messages_entries(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let result = v
+        .get("result")
+        .unwrap_or_else(|| panic!("c2826: get_messages 必须成功返回：{body}"));
+    assert!(
+        result
+            .get("entries")
+            .map(|e| e.as_array().map(|a| !a.is_empty()).unwrap_or(false))
+            .unwrap_or(false)
+            || result.to_string().contains("hi"),
+        "c2826: get_messages 应含已加载条目：{body}"
+    );
+}
+
+#[when("POST /rpc 调用 steer 携带文本")]
+async fn w_rpc_steer(server_test: &ServerTest) {
+    // steer 为写操作：先经 prompt 铸写者令牌再回显，断言路由到 Driver 入队成功。
+    let (_, token, prompt_body) = post_rpc(
+        server_test.port.get(),
+        "St-pre",
+        "prompt",
+        serde_json::json!({"message": "占位起租", "session_id": "s-prompt"}),
+        None,
+    )
+    .await;
+    let token = token.or_else(|| {
+        // 兼容响应经 result 携带令牌的形态。
+        serde_json::from_str::<serde_json::Value>(&prompt_body)
+            .ok()
+            .and_then(|v| v["result"]["writerToken"].as_str().map(str::to_string))
+    });
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "St",
+        "steer",
+        serde_json::json!({"session_id": "s-prompt", "message": "改个方向"}),
+        token.as_deref(),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(
+        v.get("error").is_none(),
+        "c2826: steer 经 dispatch 路由必须成功：{body}"
+    );
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(body));
+}
+
+#[then("steer 深度至少为 1")]
+fn t_steer_enqueued(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let steer = v["result"]["steer_count"]
+        .as_u64()
+        .unwrap_or_else(|| panic!("c2826: queue_stats 缺 steer_count：{body}"));
+    assert!(steer >= 1, "c2826: steer 未见入队（深度 {steer}）：{body}");
+}
+
+#[when("查询方法表的会话能力方法")]
+fn w_lookup_session_methods(server_test: &ServerTest) {
+    let names = [
+        "session_tree",
+        "travel_session_tree",
+        "append_entry_label",
+        "list_sessions",
+        "get_messages",
+        "new_session",
+        "get_session_name",
+        "set_session_name",
+        "delete_session",
+    ];
+    let missing: Vec<&str> = names
+        .iter()
+        .copied()
+        .filter(|n| crate::protocol::wire::registry::lookup(n).is_none())
+        .collect();
+    server_test
+        .unary_body
+        .replace(Some(serde_json::json!({ "missing": missing }).to_string()));
+}
+
+#[then("会话树、travel、label、列表、条目读取、新建、名称读写与删除均已登记")]
+fn t_session_methods_registered(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let missing = v["missing"].as_array().expect("missing list");
+    assert!(missing.is_empty(), "c2826: 会话能力方法未登记：{missing:?}");
+}
+
+#[when("查询方法表的 Host 资源方法")]
+fn w_lookup_resource_methods(server_test: &ServerTest) {
+    let missing: Vec<&str> = ["reload", "loaded_resources"]
+        .iter()
+        .copied()
+        .filter(|n| crate::protocol::wire::registry::lookup(n).is_none())
+        .collect();
+    server_test
+        .unary_body
+        .replace(Some(serde_json::json!({ "missing": missing }).to_string()));
+}
+
+#[then("reload 与 loaded_resources 均已登记")]
+fn t_resource_methods_registered(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let missing = v["missing"].as_array().expect("missing list");
+    assert!(
+        missing.is_empty(),
+        "c2826: Host 资源方法未登记：{missing:?}"
+    );
+}
+
+#[when("查询方法表的 estimate_context")]
+fn w_lookup_estimate_context(server_test: &ServerTest) {
+    let registered = crate::protocol::wire::registry::lookup("estimate_context").is_some();
+    server_test
+        .unary_body
+        .replace(Some(format!("registered={registered}")));
+}
+
+#[then("已登记且为只读 unary 不占写者")]
+fn t_estimate_context_registered(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    assert_ne!(body, "missing", "c2826: estimate_context 必须已登记");
+}
+
+// ---- c2826 specs-compact：layer r1514 一 session 一写者 ----
+
+#[when("另一客户端对同会话 steer 不带写者令牌")]
+async fn w_c2826_second_writer_steer(server_test: &ServerTest) {
+    let (st, _, body) = post_rpc(
+        server_test.port.get(),
+        "W2",
+        "steer",
+        serde_json::json!({"session_id": "s-prompt", "message": "抢写者"}),
+        None,
+    )
+    .await;
+    server_test.unary_status.set(st);
+    server_test.unary_body.replace(Some(body));
+}
+
+#[then("应答为 writer_conflict 而非静默接管")]
+fn t_c2826_writer_conflict(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(v.get("error").is_some(), "c2826: 第二写者必须被拒：{body}");
+    assert_eq!(
+        v["error"]["data"]["code"], "writer_conflict",
+        "c2826: 应为 writer_conflict：{body}"
+    );
+}

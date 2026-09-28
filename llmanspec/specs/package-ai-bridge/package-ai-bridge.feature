@@ -26,6 +26,10 @@
   @req:r1538
   规则: thinking-params-in-request-body
     xylitol-ai-bridge 在组装 OpenAI Responses / Completions 与 Anthropic Messages 请求体时 MUST 消费已解析的 thinking 参数：Responses 用 reasoning.effort；Completions 在 compat=generic 时用 reasoning_effort，compat=deepseek 时用 thinking.type（及可选 reasoning_effort）；Anthropic 在 compat=generic 时用 thinking budget（enabled + budget_tokens），compat=deepseek 时仅 thinking.type=enabled 且 MUST NOT 发送 budget_tokens；level 为精确 off 或映射为 null 时 MUST 省略对应字段（或显式 disabled）；用户 map 字符串 MUST 覆盖内置默认；识别内置档名（含关档 off 与 Anthropic 预算档）时 MUST 精确匹配配置/请求中的档名字面量，MUST NOT 因仅大小写或 trim 差异把 HIGH 等当成 high；MUST NOT 在无 map/默认时伪造未知厂商字段。
+
+    场景: thinking-params-by-family-and-compat
+      当 以 medium 与 off 档解析请求 thinking 并注入各族请求体
+      那么 Responses 用 reasoning.effort 且 Completions 随 compat 分流且 Anthropic 随 compat 分流且 off 档省略字段
   @req:r1555
   规则: thinking-level-resolve-exact
     resolve_thinking_for_request（或等价）对 level 与 thinking_level_map 键 MUST 精确查找；无 map 时 OpenAI MUST 将当前 level 原串作为 effort（精确 off 则省略）；Anthropic 无 map 时仅当 level 精确等于内置名时使用内置预算，否则 MUST 可观测失败。由包内单测覆盖，MUST NOT 为大小写拒绝单独扩 BDD step。
@@ -80,6 +84,10 @@
   @req:r1544
   规则: responses-error-message-surface
     OpenAI Responses 适配器在将上游错误映射为 AiBridgeError 时，若错误串含嵌入 JSON（如 content:{...}）且其中 error.message 可读，MUST 将该 message（MAY 附 type）暴露在错误文案中；MUST NOT 仅因 error.code 为整数导致 SDK 反序列化失败而只展示 deserialize 噪音、掩盖 upstream overflow 等原文。
+
+    场景: responses-error-embedded-message-surface
+      当 格式化含嵌入 JSON 的 Responses 上游错误
+      那么 错误文案暴露嵌入的 error.message 而非反序列化噪音
   @req:r1545
   规则: wire-policy-defaults-rs
     包 MUST 在 xylitol-ai-bridge 提供 WirePolicy（或等价）类型，含 compat 与仅 API req/resp 的 extra_policy；未暴露策略默认值的唯一真源 MUST 为包内 defaults.rs（或等价纯常量模块）与命名轮廓构造；WirePolicy::default() MUST 只组合该默认板。compat 默认 MUST 为 generic，并 MUST 提供 deepseek 命名轮廓；extra_policy 的 prompt_cache_usage MUST 默认 true，prompt_cache_key 与 previous_response_id MUST 默认 false。MUST NOT 经自由形式 extra_policy YAML 或业务路径散落 env::var 提供这些默认。单测 MAY 用结构体字面量覆盖。由包内单测覆盖，MUST NOT 为静态默认单独扩 BDD step。
@@ -107,7 +115,7 @@
   @req:r1554
   规则: responses-assemble-prefix-idempotent
     对同一 Vec<AiBridgeMessage>、同一 AiBridgeGenerateOptions（含 system_prompt）、同一 tools schema 与 WirePolicy，ResponsesAssembler 构造的 openai-responses 请求体中业务布局（至少 input 项序列与 tools）MUST 规范化后幂等：连续组装两次相等；消息经 serde 或 JSONL 行往返后再组装 MUST 仍得相等前缀。MUST NOT 因仅序列化往返而重排或改写历史 input。由包内单测与维护 lab（lab_session_prefix_idempotency）覆盖，MUST NOT 单独扩 BDD step。
-  @req:r1555
+  @req:r1902
   规则: deepseek-prompt-cache-read-mapped
     命名轮廓 compat=deepseek 在解析上游 usage 时 MUST 把已出现的 Prompt Cache 读数映射为 Tokens(n)：Responses 认 input_tokens_details.cached_tokens；Completions 优先 prompt_cache_hit_tokens，否则 prompt_tokens_details.cached_tokens。MUST NOT 仅因方言而标 NotApplicable 从而丢掉这些字段。缺字段且轮廓期望缓存读数时 MUST 为 NotReported，MUST NOT 写成命中 0。encrypted include 与 previous_response_id 仍按该轮廓省略。由包内单测覆盖，MUST NOT 单独扩 BDD step。
   @req:r1558

@@ -99,3 +99,83 @@ async fn test_pa_map4_queue_stats(server_test: ServerTest) {}
     name = "reverse-rpc-first-answer-effective"
 )]
 async fn test_pa_cs6_first_answer(server_test: ServerTest) {}
+
+// ---- c2826 specs-compact：裸规则转场景绑定 ----
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "queue-update-wire-roundtrip"
+)]
+fn test_c2826_queue_update_wire(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "agent-part-tagged-content-wire"
+)]
+fn test_c2826_agent_part_tagged(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "preview-text-excludes-thinking"
+)]
+fn test_c2826_preview_text(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "error-kind-wire-roundtrip"
+)]
+fn test_c2826_error_kind_wire(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "todo-updated-wire-roundtrip"
+)]
+fn test_c2826_todo_updated_wire(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "compaction-end-payload-roundtrip"
+)]
+fn test_c2826_compaction_end_payload(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "stable-error-kind-at-source"
+)]
+async fn test_c2826_stable_error_kind(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "switch-session-validates-target"
+)]
+async fn test_c2826_switch_missing(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "get-messages-returns-entries"
+)]
+async fn test_c2826_get_messages(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "queue-commands-route-via-unary"
+)]
+async fn test_c2826_queue_route(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "session-capability-methods-registered"
+)]
+fn test_c2826_session_methods(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "host-resource-methods-registered"
+)]
+fn test_c2826_resource_methods(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "estimate-context-method-registered-readonly"
+)]
+fn test_c2826_estimate_context(server_test: ServerTest) {}

@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: test-bdd
 # purpose: BDD 测试框架：rstest-bdd — feature 文件、步骤定义与场景验证。
-# scope: tests/bdd/, tests/features/, llmanspec/specs/
+# scope: tests/bdd/, llmanspec/specs/
 
 功能: test-bdd
 
@@ -20,3 +20,4 @@
   @req:r1814
   规则: 配置 BDD 分层
     配置加载行为（三层合并、模型/provider 解析、ConfigValue 插值、默认值）MUST 由 infra 层配置与 settings 的单元测试覆盖，MUST NOT 保留无 step 实现的孤儿 feature 作为 BDD 债务。
+# re-review(c2826): tests/features/ 手写链已迁入 live specs 并删除，scope 同步收窄（2026-09-28）

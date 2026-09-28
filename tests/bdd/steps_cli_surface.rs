@@ -441,3 +441,179 @@ fn t_atb4_attach_and_inprocess() {
     assert!(inprocess.contains("XyInProcessDriver"), "{inprocess}");
     assert!(http_ws.contains("HttpWsClient"), "{http_ws}");
 }
+
+use crate::tests::bdd::fixtures::{AgentState, Workspace};
+
+// ═══════════════════════════════════════════════════════════════════
+// c2826 specs-compact — 新增裸规则场景步骤（r69/r70/r1378/r1386/r1387/r1389）
+// ═══════════════════════════════════════════════════════════════════
+
+pub struct CliEntryBdd {
+    pub(crate) ok: Cell<bool>,
+    pub(crate) detail: RefCell<String>,
+}
+
+impl CliEntryBdd {
+    fn new() -> Self {
+        Self {
+            ok: Cell::new(false),
+            detail: RefCell::new(String::new()),
+        }
+    }
+}
+
+#[fixture]
+pub fn cli_entry_bdd() -> CliEntryBdd {
+    CliEntryBdd::new()
+}
+
+#[when("在产品命令模块解析 {a:string} 与 {b:string}")]
+fn w_c2826_parse_slash_pair(cli_entry_bdd: &CliEntryBdd, a: String, b: String) {
+    use crate::app::tui::parse_slash_command;
+    let first = parse_slash_command(a.trim_matches('"'));
+    let second = parse_slash_command(b.trim_matches('"'));
+    let summary = format!("first={:?} second={:?}", first.is_some(), second.is_some());
+    cli_entry_bdd.detail.replace(summary);
+}
+
+#[then("仅 session-tree 得到待发命令且废弃短名不解析")]
+fn t_c2826_legacy_names_rejected(cli_entry_bdd: &CliEntryBdd) {
+    let detail = cli_entry_bdd.detail.borrow();
+    assert_eq!(
+        detail.as_str(),
+        "first=false second=true",
+        "c2826: 废弃短名 MUST NOT 解析，产品名必须解析：{detail}"
+    );
+}
+
+#[then("分别得到模型与退出待发命令")]
+fn t_c2826_model_exit_parsed(cli_entry_bdd: &CliEntryBdd) {
+    let detail = cli_entry_bdd.detail.borrow();
+    assert_eq!(
+        detail.as_str(),
+        "first=true second=true",
+        "c2826: /model 与 /exit 必须经命令模块解析：{detail}"
+    );
+}
+
+#[given("存在损坏的 YAML 配置文件")]
+fn g_c2826_broken_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
+    ws.init();
+    let path = ws.ws("broken-config.yaml");
+    std::fs::write(&path, "models:\n  models: [unclosed\n").unwrap();
+    cli_entry_bdd.detail.replace(path);
+}
+
+#[given("存在零显式模型的配置文件")]
+fn g_c2826_zero_model_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
+    ws.init();
+    let path = ws.ws("zero-models.yaml");
+    std::fs::write(&path, "models:\n  models: {}\n").unwrap();
+    cli_entry_bdd.detail.replace(path);
+}
+
+#[when("调用 load_app_config 加载该文件")]
+fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
+    let path = cli_entry_bdd.detail.borrow().clone();
+    assert!(!path.is_empty(), "config path not prepared");
+    let input = crate::app::core::bootstrap::BootstrapInput {
+        config_path: Some(path.into()),
+        session: None,
+        model: None,
+        trust_override: Some(true),
+        interactive: false,
+        caller: "bdd",
+    };
+    // 隔离全局配置层：XYLITOL_CONFIG_DIR 指向空目录，避免开发机真实配置注入模型。
+    let isolated_global = ws.ws("isolated-global-config");
+    std::fs::create_dir_all(&isolated_global).unwrap();
+    let env_probe = move |k: &str| -> Option<String> {
+        if k == "XYLITOL_CONFIG_DIR" {
+            Some(isolated_global.clone())
+        } else {
+            None
+        }
+    };
+    let cwd = ws.root();
+    let result = crate::app::core::bootstrap::resolve_assembly_with(
+        &input,
+        env_probe,
+        Some(std::path::Path::new(&cwd)),
+    );
+    let rendered = match result {
+        Ok(_) => "ok".to_string(),
+        Err(e) => format!("error: {e}"),
+    };
+    cli_entry_bdd.ok.set(rendered.starts_with("error"));
+    cli_entry_bdd.detail.replace(rendered);
+}
+
+#[then("返回硬错误而非警告后继续")]
+fn t_c2826_config_hard_fail(cli_entry_bdd: &CliEntryBdd) {
+    assert!(
+        cli_entry_bdd.ok.get(),
+        "c2826: 损坏配置必须硬失败：{}",
+        cli_entry_bdd.detail.borrow()
+    );
+}
+
+#[then("返回硬错误且指向配置而非回退 env 默认模型")]
+fn t_c2826_zero_models_hard_fail(cli_entry_bdd: &CliEntryBdd) {
+    let detail = cli_entry_bdd.detail.borrow();
+    assert!(
+        cli_entry_bdd.ok.get(),
+        "c2826: 零显式模型必须硬失败：{detail}"
+    );
+    assert!(
+        detail.contains("model") || detail.contains("配置"),
+        "c2826: 错误须指向模型配置：{detail}"
+    );
+}
+
+#[when("产品面读取未选中模型的展示名")]
+fn w_c2826_unset_model_display(cli_entry_bdd: &CliEntryBdd) {
+    let shown = crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.to_string();
+    cli_entry_bdd.detail.replace(shown);
+}
+
+#[then("得到 NOT-SET 而非厂商默认模型名")]
+fn t_c2826_unset_display(cli_entry_bdd: &CliEntryBdd) {
+    let shown = cli_entry_bdd.detail.borrow();
+    assert_eq!(shown.as_str(), "NOT-SET");
+    assert_ne!(shown.as_str(), "gpt-4o");
+}
+
+#[when("对接好会话的驱动请求 file_browser 会话树")]
+async fn w_c2826_tree_kind_unsupported(agent: &AgentState) {
+    use crate::embed::{XyDriver, XyInProcessDriver};
+    use crate::protocol::session::SessionTreeKind;
+    let (runtime, store) = crate::tests::bdd::helpers::make_agent_with_store(agent);
+    let mut driver = XyInProcessDriver::new(runtime, store);
+    driver
+        .new_session()
+        .await
+        .expect("c2826: new_session for tree-kind probe");
+    let err = driver
+        .session_tree(SessionTreeKind::FileBrowser)
+        .await
+        .expect_err("file_browser kind must be rejected explicitly");
+    agent
+        .last_result
+        .replace(Some(Err(crate::XyDriverError::unsupported(
+            err.to_string(),
+        ))));
+    agent.last_op_error.replace(Some(err.to_string()));
+}
+
+#[then("返回明确的不支持错误且提及 file_browser")]
+fn t_c2826_tree_kind_error(agent: &AgentState) {
+    let msg = agent
+        .last_op_error
+        .borrow()
+        .clone()
+        .expect("error captured");
+    assert!(
+        msg.contains("file_browser") && msg.contains("not implemented"),
+        "c2826: 未实现 kind 必须明确报错：{msg}"
+    );
+}

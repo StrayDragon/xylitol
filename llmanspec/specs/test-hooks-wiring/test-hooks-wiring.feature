@@ -72,3 +72,4 @@
       假如 注册了匹配 "thinking_level_select" 的 hook
       当 执行操作 "设置思考级别 high"
       那么 hook 被调用且上下文含键 level
+# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）

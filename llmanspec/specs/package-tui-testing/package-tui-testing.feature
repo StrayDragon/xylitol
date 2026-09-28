@@ -29,3 +29,4 @@
   @req:r1668
   规则: 无头帧挂载面
     主 crate MUST 经 `xylitol::app::tui` 导出无头产品帧挂载面（SceneBuilder 流式脚本 + render(width) 返回剥离 ANSI 的纯文本帧与语义 dump），供 BDD 与集成测试直驱真实产品渲染；该面为测试支撑合约，MUST NOT 被产品运行时路径反向依赖。
+# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）

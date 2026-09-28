@@ -142,3 +142,59 @@ async fn test_s19_tool_call_id_key(sess: XySessionStore) {}
     name = "branch-summary-empty-input-empty-output"
 )]
 async fn test_s6_empty_boundary(sess: XySessionStore) {}
+
+// ---- c2826 specs-compact：裸规则转场景绑定 ----
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "v7-shell-camelcase-and-bash-message"
+)]
+async fn test_c2826_v7_shell(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "load-skips-unparseable-lines"
+)]
+async fn test_c2826_load_skips(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "legacy-untagged-content-rejected"
+)]
+async fn test_c2826_legacy_untagged(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "orphan-temp-segment-excluded"
+)]
+async fn test_c2826_orphan_excluded(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "unreferenced-segment-does-not-affect-list"
+)]
+async fn test_c2826_unref_segment_list(ws: Workspace, sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "fork-header-carries-cut-entry"
+)]
+async fn test_c2826_fork_header(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "cold-segment-restore-leaf-correct"
+)]
+async fn test_c2826_cold_restore(agent: AgentState, sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "sidecar-corrupt-falls-back-to-scan"
+)]
+async fn test_c2826_sidecar_corrupt(agent: AgentState, sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "resume-projects-llm-api-verbatim"
+)]
+async fn test_c2826_resume_projection(sess: XySessionStore) {}

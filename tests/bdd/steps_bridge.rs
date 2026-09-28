@@ -431,3 +431,147 @@ fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
             .any(|n| *n == "template:greet" || *n == "greet")
     );
 }
+
+// ---- c2826 specs-compact：裸规则转场景补充（r1538/r1544）----
+
+#[when("以 medium 与 off 档解析请求 thinking 并注入各族请求体")]
+fn w_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
+    use std::collections::HashMap;
+    use xylitol_ai_bridge::thinking::{
+        AiBridgeThinkingAdapterKind, apply_thinking_anthropic,
+        apply_thinking_openai_completions_with_compat, apply_thinking_openai_responses,
+        resolve_thinking_for_request,
+    };
+    use xylitol_ai_bridge::wire_policy::Compat;
+
+    let empty_map: HashMap<String, Option<String>> = HashMap::new();
+    let resolved_medium_openai = resolve_thinking_for_request(
+        "medium",
+        &empty_map,
+        None,
+        AiBridgeThinkingAdapterKind::OpenAi,
+    );
+    let resolved_medium_anthropic = resolve_thinking_for_request(
+        "high",
+        &empty_map,
+        None,
+        AiBridgeThinkingAdapterKind::Anthropic,
+    );
+    let resolved_off =
+        resolve_thinking_for_request("off", &empty_map, None, AiBridgeThinkingAdapterKind::OpenAi);
+
+    let mut responses = serde_json::json!({"model": "m"});
+    apply_thinking_openai_responses(&mut responses, &resolved_medium_openai);
+
+    let mut completions_generic = serde_json::json!({});
+    apply_thinking_openai_completions_with_compat(
+        &mut completions_generic,
+        &resolved_medium_openai,
+        Compat::Generic,
+    );
+
+    let mut completions_deepseek = serde_json::json!({});
+    apply_thinking_openai_completions_with_compat(
+        &mut completions_deepseek,
+        &resolved_medium_openai,
+        Compat::Deepseek,
+    );
+
+    let mut anthropic_generic = serde_json::json!({});
+    xylitol_ai_bridge::provider::dialect::apply_anthropic_thinking(
+        &mut anthropic_generic,
+        &resolved_medium_anthropic,
+        Compat::Generic,
+    );
+
+    let mut anthropic_deepseek = serde_json::json!({});
+    xylitol_ai_bridge::provider::dialect::apply_anthropic_thinking(
+        &mut anthropic_deepseek,
+        &resolved_medium_anthropic,
+        Compat::Deepseek,
+    );
+
+    let mut anthropic_off =
+        serde_json::json!({"thinking": {"type": "enabled", "budget_tokens": 1}});
+    apply_thinking_anthropic(&mut anthropic_off, &resolved_off);
+
+    ai_bridge_bdd.request_body.replace(Some(serde_json::json!({
+        "responses": responses,
+        "completions_generic": completions_generic,
+        "completions_deepseek": completions_deepseek,
+        "anthropic_generic": anthropic_generic,
+        "anthropic_deepseek": anthropic_deepseek,
+        "anthropic_off": anthropic_off,
+    })));
+}
+
+#[then(
+    "Responses 用 reasoning.effort 且 Completions 随 compat 分流且 Anthropic 随 compat 分流且 off 档省略字段"
+)]
+fn t_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
+    let body = ai_bridge_bdd.request_body.borrow().clone().expect("bodies");
+    assert_eq!(
+        body["responses"]["reasoning"]["effort"], "medium",
+        "c2826: Responses 应写 reasoning.effort"
+    );
+    assert_eq!(
+        body["completions_generic"]["reasoning_effort"], "medium",
+        "c2826: Completions generic 应写 reasoning_effort：{}",
+        body["completions_generic"]
+    );
+    assert!(
+        body["completions_deepseek"].get("thinking").is_some()
+            || body["completions_deepseek"]
+                .get("reasoning_effort")
+                .is_some(),
+        "c2826: Completions deepseek 应写 thinking.type（或可选 effort）：{}",
+        body["completions_deepseek"]
+    );
+    let anthropic_generic = &body["anthropic_generic"];
+    assert_eq!(anthropic_generic["thinking"]["type"], "enabled");
+    assert!(
+        anthropic_generic["thinking"]["budget_tokens"]
+            .as_u64()
+            .is_some(),
+        "c2826: Anthropic generic 应带 budget_tokens：{anthropic_generic}"
+    );
+    let anthropic_deepseek = &body["anthropic_deepseek"];
+    assert!(
+        anthropic_deepseek
+            .get("thinking")
+            .map(|t| t.get("budget_tokens").is_none())
+            .unwrap_or(false)
+            || anthropic_deepseek.get("thinking").is_none(),
+        "c2826: Anthropic deepseek MUST NOT 发送 budget_tokens：{anthropic_deepseek}"
+    );
+    // off 档：注入后必须整体省略 thinking 字段。
+    assert!(
+        body["anthropic_off"].get("thinking").is_none(),
+        "c2826: off 档必须省略 thinking 字段：{}",
+        body["anthropic_off"]
+    );
+}
+
+#[when("格式化含嵌入 JSON 的 Responses 上游错误")]
+fn w_c2826_responses_error(ai_bridge_bdd: &AiBridgeBdd) {
+    let raw = r#"error sending request: content:{"error":{"message":"upstream context overflow","type":"overloaded_error","code":429}}"#;
+    let formatted =
+        xylitol_ai_bridge::provider::native::openai_responses::format_responses_error(&raw);
+    ai_bridge_bdd
+        .parse_value
+        .replace(Some(serde_json::json!({ "message": formatted })));
+}
+
+#[then("错误文案暴露嵌入的 error.message 而非反序列化噪音")]
+fn t_c2826_responses_error(ai_bridge_bdd: &AiBridgeBdd) {
+    let v = ai_bridge_bdd.parse_value.borrow().clone().expect("error");
+    let msg = v["message"].as_str().unwrap_or_default();
+    assert!(
+        msg.contains("upstream context overflow"),
+        "c2826: 错误文案应暴露嵌入 error.message：{msg}"
+    );
+    assert!(
+        !msg.trim().is_empty() && !msg.starts_with("deserialize"),
+        "c2826: 不得以反序列化噪音掩盖原文：{msg}"
+    );
+}

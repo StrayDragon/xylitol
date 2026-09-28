@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2826-refactor-specs-compact
+base_branch: main
+base_sha: 7797b10c77e3847d55e12990d8649c3be1672570
 ---
 
 # specs-compact：压降裸规则并补可执行场景

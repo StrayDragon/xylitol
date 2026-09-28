@@ -26,15 +26,9 @@
   @req:r1279
   规则: single-mux-loop
     产品 TUI host MUST 以单一扇入模型同时等待终端输入、idle tick、可选 agent EventStream、可选 bang 完成与 bang 输出事件：生产主环与 harness MUST 调用同一共享 bang/主环事件臂（或单一 select 拓扑）；MUST NOT 保留与共享入口分叉的第三套 bang Esc select；bang 进行中 Esc MUST 仍可达 Driver（或等价）abort 并走取消说明；bash 输出事件（session/bash_output）到达 MUST 仅标记 dirty 并在 Tick 或 BangDone 时按需渲染，MUST NOT 每事件强制全屏重绘；进行中的 bang MUST 仍可 poll agent EventStream（不得 bang-only 饿死 agent）。
-  @req:r1280
-  规则: abort-drops-stream-events
-    产品 TUI 在用户 Busy Esc 置 pending_abort 的同一同步步进内 MUST 立即臂装 suppress_xy_until_stream_end（或等价门闩），使在随后 drain_pending 调用 note_user_abort / Driver::abort 之前到达的 ThinkingDelta / TextDelta / 会提交正文的 AgentEnd MUST NOT 经 apply_xy_event 复活 busy 或写出 assistant 正文；note_user_abort 仍 MUST 清空 streaming_thinking 与 streaming_assistant；Driver::abort MUST 仍被调用；下一轮 submit MUST 可正常开始。
   @req:r1241
   规则: agents-layout-map
     产品 TUI 面 AGENTS 文档 MUST 提供本地布局地图（目录/文件职责、协调者与可下沉模块边界、硬约束与验证命令指针）；MUST NOT 把进度板或易腐清单写入 AGENTS。
-  @req:r1242
-  规则: abort-suppress-before-drain
-    Busy Esc（非 overlay）MUST 在同一同步步进内臂装 Xy 抑制，MUST NOT 仅依赖下一轮循环顶部的事件泵才开始丢弃该轮流事件；bang Esc 路径 MUST 继续走取消语义（无 suppress_xy），不得与 agent abort 文案混用。
   @req:r1243
   规则: host-module-boundaries
     产品 TUI 的组件与 layout MUST NOT 直接调用 Driver；HostSession 协调逻辑 MUST 位于可单测切片并经单一事件泵驱动。
@@ -47,21 +41,36 @@
   @req:r1246
   规则: session-lifecycle-seam
     产品 TUI 创建空会话与读写会话显示名时 MUST 经 Command::NewSession / GetSessionName / SetSessionName（或 app::core 公开等价 seam），MUST NOT 从 app/tui 直接 import infra::session 或直接写 sessions 目录；set_session_name MUST 将 CR/LF 规范为空格并 trim；new_session 成功后 MUST 清空与旧 session 绑定的 transcript/树槽；session-clone MUST 仅经既有 Command::Fork(At)+Command::SwitchSession 路径，不得平行 fork 实现。
+
+    场景: session-name-normalizes-crlf
+      当 以主机泵在 idle 提交带换行的 "/session-name 甲 乙"
+      那么 会话名写入时换行规范为空格
   @req:r1247
   规则: session-resume-manage-seam
     产品 TUI Resume 面板内 rename/delete MUST 经 Command::SetSessionName / DeleteSession（或 app::core 公开等价 seam）；删除当前活跃 session MUST 拒绝并提示且 MUST NOT 调用删除；删除 MUST 经显式确认（确认前 MUST NOT 删盘）；scope=Current MUST 仅展示 cwd 匹配会话，scope=All MUST 展示 Command::ListSessions 或等价列举的全部可 resume 会话；TUI MUST NOT 直删会话文件。
   @req:r1249
   规则: reload-orchestrates-foundations
     产品 host/effects 在处理 /reload 时 MUST 经 Driver/composition 缝调用已归档的 reload_skills、MCP reload、keybindings reload、theme/context reload（若已接线），MUST 在 skills 重载后刷新产品 $skill 补全 catalog；MUST NOT reach agent/infra 内部绕过 seam；任一步失败 MUST 记录诊断并继续其余步骤（部分成功）。
-  @req:r1250
-  规则: copy-last-via-driver-seam
-    产品 /history-copy-last MUST 经 Driver::copy_text_to_clipboard（或等价）调用剪贴板，MUST NOT 从 app/tui 直接 reach infra::clipboard；选文 MUST 取已提交 UiEntry::Assistant 自尾向前第一条非空正文，MUST NOT 复制 thinking/tool/system 块或未提交 streaming 半句作为成功路径。
+
+    场景: reload-orchestrates-foundations-report
+      当 以主机泵在 idle 提交 "/reload"
+      那么 重载经共享缝完成且尾插 Reload 步进汇总
   @req:r1251
   规则: thinking-level-silent-commit
-    产品 host 经 /model 槽或有参 /model 提交 model/thinking 时 MUST 经 Command::SetThinkingLevel / SetModel 执行器更新 selected；成功路径 MUST 仅更新固定区（footer、边框），MUST NOT 向 live scrollback / transcript 追加 model → … 或 thinking-border → … 类滚动提示确认块；失败或诊断 MAY 写滚动提示。agent-busy 时 footer MUST 立即反映 selected（run 绑定语义；产品面无换模预告）。模型切换后 MUST 从 Driver 重同步 UI；组件 MUST NOT 直接 reach ModelManager。
+    产品 host 经 /model 槽或有参 /model 提交 model/thinking、或经 /theme 应用主题时 MUST 经共享执行器更新 selected；成功路径 MUST 仅更新固定区（footer、边框、主题），MUST NOT 向 live scrollback / transcript 追加 model → … / thinking-border → … / theme → … 类滚动提示确认块；失败或诊断 MAY 写滚动提示。agent-busy 时 footer MUST 立即反映 selected（run 绑定语义；产品面无换模预告）。模型切换后 MUST 从 Driver 重同步 UI；组件 MUST NOT 直接 reach ModelManager。
+
+    场景: silent-commit-model-and-theme-fixed-zone-only
+      当 以主机泵在 idle 提交 "/model test-model"
+      那么 有参直设经模型执行器更新且仅更新固定区
+      当 提交 "/theme dark"
+      那么 主题直接应用且槽关闭
   @req:r1252
   规则: loaded-resources-via-driver
     产品 host MUST 经 Driver 只读缝获取 skills 名与 MCP 连接摘要（含连接进行中进度或等价 phase）以填充 loaded-resources；启动过程中 MUST 能在 MCP 未全部完成时刷新该槽；启动完成与 /reload 成功后 MUST 再刷新；新会话与 CLI `--session` resume 进入 TUI 时 MUST NOT 等待全部 MCP 连接完成才渲染面或投影历史；MCP 未结算前 MUST NOT 因 connecting 拒绝用户键入、提交普通 agent prompt、bang 或 slash（含 `/reload`）（agent busy 既有闸除外），MUST 允许滚历史；首次 generate 的 MCP 门闸/定稿语义见 infra-mcp mcp8（可提交，生成可等待）。面内 `/session-resume` 切会话 MUST NOT 为切换而阻塞重连 MCP。idle `/reload` MUST 可触发工具重定稿（mcp8）；busy 时 /reload 拒绝语义保持 ath20/既有行为。MUST NOT 从 app/tui reach infra::mcp 或 skills 目录。
+
+    场景: connecting-mcp-does-not-block-input
+      当 以主机泵注入 connecting 资源快照后提交 bang 命令 "!echo hi"
+      那么 键入与提交未被拒且 bash 收到命令体
   @req:r1253
   规则: tick-gated-local-paint
     产品 host 在 Ready 态处理 Tick 时：MUST 先推进 idle 心跳；仅当 idle 心跳报告 dirty 或 host 已置 paint_dirty（含 bang 输出事件追加）时才请求渲染；idle 且无 paint_dirty 时 MUST NOT 仅为 Tick 整帧重绘。UiRoot 对 loaded-resources+scrollback+queue MUST 在仅 status Loader 动画帧推进（含 Loader 帧换与纯 status 短词变化）时复用上区行缓存；仅当 entries、streaming tails、queue strip、fold、theme、loaded-resources 或宽度变化时 MUST 失效该上区缓存。
@@ -74,12 +83,24 @@
   @req:r1256
   规则: mcp-discovery-surface
     产品 host MUST 将 MCP 发现主路径接到 `/mcp` SelectList（atm17）：refresh_loaded_resources（或等价）MUST 更新可供 `/mcp` 同步挂载的缓存快照；Driver 只读缝 MUST 能支撑列表行（每 server 连接态 + tools armed）与汇总。MCP 仍 connecting、或工具表尚未 FROZEN 且 bootstrap 未完成（含 resume 后 Settling、旧工具仍 armed）、或 Connected 尚未 armed 且未冻表时，MAY 在 busy 下轮预告位或 idle status 显示短 cue；已提交门闸 status lead=`Assembling` 时右侧 MUST 可与该 cue 并存。文案 MUST 固定为 `mcp pending (see /mcp)` 且右对齐（MUST NOT 分数计数，MUST NOT 枚举 server id）。Failed 或（bootstrap 已完成且已 FROZEN）后的未武装 MUST NOT 单独拖住短 cue（细节进 `/mcp`）。connecting 收口 / 冻表后短 cue MUST 收起（除非仍有 Connecting）。头卡 loaded-resources mcp 行仍可作启动摘要，但 MUST NOT 作为长对话唯一发现面。MUST NOT 因开 `/mcp` abort agent；MUST NOT 从 app/tui reach infra::mcp。
+
+    场景: mcp-pending-cue-in-status
+      当 以主机泵注入 connecting 且未冻表的资源快照后渲染当前主机帧
+      那么 status 短 cue 为固定文案 mcp pending (see /mcp) 且不枚举 server id
   @req:r1257
   规则: reload-in-progress-ux
     产品 TUI 在 idle 启动无参 /reload 后、重载未完成前 MUST：以独立 reload 进行中态（非 agent run_active、非 bang busy）驱动 status lead 为 spinner+`Reloading`；host/effects MUST NOT 因 await 重载而阻塞终端 tick 与键入处理。进行中 MUST 允许打字与 Ctrl+G 外编；Enter 提交普通上行 / slash（含二次 /reload）/ bang MUST 拒绝且经通知条 body 恰好为 `reloading — wait`（可见 `Error: reloading — wait`），MUST NOT 调用第二次 runtime reload 或入 steer。无 overlay 时 Esc 与 Ctrl+C MUST 请求协作取消重载（非退出）；有 overlay 时 MUST 先关槽。取消收口 MUST 恢复一致工具/MCP 快照（旧 manager 保留至新装好或取消恢复）、put-back reload 句柄、解除进行中态，并以滚动提示 `Reload cancelled:`（含已完成步进摘要）+ 通知条 body `reload cancelled` 说明；已写入的 skills/context MUST NOT 要求事务回滚。失败（含墙钟超时诊断）MUST 以既有 `Reload:` 步进报告 + 通知条 body `reload failed — see report` 说明并解除进行中态。成功路径仍尾插既有 `Reload:` 汇总；MUST NOT 清空 transcript/session 历史或 editor 草稿。agent/bang 真 busy 时 /reload 拒绝保持 ath20/atm12。墙钟对齐既有 MCP 单 server 与首 turn 门闸常量。验证 MUST 含可注入慢/失败/取消的 harness。
+
+    场景: reload-soft-gate-enter-toast
+      当 以主机泵挂起重载进行中提交上行并取消收尾
+      那么 提交被软闸拒绝且草稿保留且未发第二次运行时重载
   @req:r1281
   规则: synthetic-harness-one-round
     产品 TUI MUST 提供可在无真 TTY/无真 LLM 下运行的合成验收：ScriptedDriver（或等价）记录 run/steer/follow_up/abort/clear_queue，并能将预置 XyEvent 流回流 HostSession。MUST 覆盖全链场景清单：提交→流式/工具→steer/follow-up queue strip→abort 后再提交→/exit 触发 finish（按当前交互模式分发 teardown；默认 ApplicationOwned）并 stop（场景清单随 harness 命名漂移，以全链覆盖语义为准）；MUST NOT 把活树、bash、compaction UI 纳入本切片。
+
+    场景: synthetic-harness-full-round-chain
+      当 以合成验收链驱动一整轮含工具与 abort 的会话并 /exit
+      那么 提交流式工具 steer abort 再提交按序生效且会话请求退出
   @req:r1282
   规则: product-pty-fake-smoke
     仓库 MUST 含产品二进制的 PTY 冒烟（#[ignore]，经 just test-tui-e2e-pty 可跑）：在临时 Fake 模型配置与 --trust 下启动 TUI，提交用户消息后屏上 MUST 出现 Fake 默认文案 Hello from fake provider，输入 /exit 后进程 MUST 退出。默认 just qa MUST NOT 强制该用例；MUST NOT 要求跨进程 Fake 脚本化，MUST NOT 在本用例断言 steer/工具 strip。
@@ -92,12 +113,21 @@
   @req:r1261
   规则: mode-b-copy-notice-fixed-zone
     产品 TUI 在 ApplicationOwned 会话下，当库发出松手复制成功 copy-notice（ptim15）时 MUST 展示短时用户可见提醒（TTL 约 1.5–3s 后自动消失）。落点 SHOULD 为下缘固定区内、status/输入带附近的单行提示（或独立 info 固定区槽）；MUST NOT 写入 transcript / ScrollNotice；MUST NOT 使用带 `Error: ` 前缀的拒闸 toast-notice 形态冒充成功确认。折叠点击不在范围。
+
+    场景: copy-notice-fixed-zone-cue
+      当 臂装复制成功提示后渲染主机帧
+      那么 固定区出现 Copied 短提示且不以 Error 前缀冒充
   @req:r1262
   规则: enter-follows-transcript-bottom
     产品 TUI 在 ApplicationOwned 的 Ready 主输入面收到 `tui.input.submit` Enter 时 MUST 立即将 transcript 视口滚到底部并恢复尾插；该行为 MUST 同时适用于非空提交与空输入。空输入 MUST NOT 因此创建 submit；非 Editor 槽中的 Enter MUST 保留给该槽自身的确认语义，不得强制滚动 transcript。
   @req:r1263
   规则: fold-triangle-hit-priority
     产品 TUI 在 ApplicationOwned 会话下 MUST 将 live scrollback 折叠三角命中表接到库 set_transcript_hit_priority（或等价）：Left Down 命中三角列时 MUST 吞按下、清除 transcript 选区且不启拖选，并触发 att20/att21 的单块 toggle；未命中时 MUST 保持既有选区/dock/Editor 路径。transcript 拖选进行中 MUST 不重新消费折叠命中。产品 MUST NOT 经 XYLITOL_TUI_MOUSE 作为折叠开关。验证 MUST 含无真 TTY harness（合成 Mouse）。
+
+    场景: fold-triangle-click-toggles-block
+      当 以场景构建器回放读后改写序列并封轮挂载交互面
+      并且 左键单击折叠命中表中的簇头三角列
+      那么 簇即为折叠收纳态且无内层块登记
   @req:r1264
   规则: attach-tick-no-blocking-rpc
     产品 TUI attach 路径的 host 循环在 idle/busy tick 与 drain_pending 中 MUST NOT 同步阻塞等待 Host unary（含 get_state / current_model / MCP settle）。status spinner MUST 在 Host 慢连接或写者 unary 进行中仍能换帧；键入 MUST 仍可进入 editor。写者 unary（含 SetModel）MUST NOT 在返回前等待全部 MCP 连接完成。模型列表打开与选定 MUST 在 MCP 未结算时仍可操作（选定可走 NextTurn）。

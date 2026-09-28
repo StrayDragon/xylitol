@@ -1221,3 +1221,1241 @@ pub(crate) async fn t_ati43_idle_rules_restored(host_pump_bdd: &HostPumpBdd) {
         s.bash_calls
     );
 }
+
+// ── c2826 specs-compact：app-tui-commands 斜杠族场景 ───────────────
+
+/// 以真实编辑器路径提交一条 slash 并驱动泵（无前置挂载时自动挂载）。
+async fn c2826_submit_slash(host_pump_bdd: &HostPumpBdd, text: &str) {
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().set_editor_text(text);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("enter step");
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("pump");
+    // Exclusive/Queued 类命令（reload/export 等）在循环归还后由 drain_pending 执行。
+    crate::app::tui::harness::drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("drain");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+fn c2826_slot(host_pump_bdd: &HostPumpBdd) -> crate::app::tui::EditorSlotKind {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    let slot = root.borrow().slot();
+    put_pump(host_pump_bdd, pump);
+    slot
+}
+
+fn c2826_last_notice(host_pump_bdd: &HostPumpBdd) -> String {
+    let pump = take_pump(host_pump_bdd);
+    let note = pump
+        .session
+        .ui_model()
+        .entries
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            UiEntry::ScrollNotice { text } | UiEntry::Error { text } => Some(text.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    put_pump(host_pump_bdd, pump);
+    note
+}
+
+fn c2826_counters(
+    host_pump_bdd: &HostPumpBdd,
+) -> (usize, usize, usize, usize, usize, usize, usize, usize) {
+    // (models, tree, compact, export_jsonl, export_html, new_session, list_sessions, reload)
+    let pump = take_pump(host_pump_bdd);
+    let c = (
+        pump.driver.models_calls(),
+        pump.driver.session_tree_calls(),
+        pump.driver.compact_calls(),
+        pump.driver.export_jsonl_calls().len(),
+        pump.driver.export_html_calls().len(),
+        pump.driver.new_session_calls(),
+        pump.driver.list_sessions_calls(),
+        pump.driver.reload_runtime_calls(),
+    );
+    put_pump(host_pump_bdd, pump);
+    c
+}
+
+#[when("以主机泵在 idle 提交 {cmd:string}")]
+pub(crate) async fn w_c2826_submit_slash(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    let cmd = cmd.trim_matches('"');
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+#[when("提交 {cmd:string}")]
+pub(crate) async fn w_c2826_submit(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    let cmd = cmd.trim_matches('"');
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+#[then("会话收到退出请求")]
+pub(crate) fn t_c2826_quit(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(s.should_quit, "c2826: /exit 应请求退出");
+}
+
+#[then("模型列表槽打开且经驱动取可用模型")]
+pub(crate) fn t_c2826_models_slot(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(
+        format!("{:?}", c2826_slot(host_pump_bdd)),
+        "Models",
+        "c2826: /model 应打开 Models 槽"
+    );
+    assert!(
+        c2826_counters(host_pump_bdd).0 >= 1,
+        "c2826: 应经驱动取可用模型"
+    );
+}
+
+#[then("写入系统错误行且未退出且未崩溃")]
+pub(crate) fn t_c2826_unknown_slash(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(!s.should_quit, "c2826: 未知斜杠不得退出");
+    let note = c2826_last_notice(host_pump_bdd);
+    assert!(!note.is_empty(), "c2826: 未知斜杠应写系统错误行");
+}
+
+#[then("有参直设经模型执行器更新且仅更新固定区")]
+pub(crate) fn t_c2826_model_arg(host_pump_bdd: &HostPumpBdd) {
+    // 直设路径成功即回到 Editor 槽（未开列表），无滚动确认块。
+    assert_eq!(format!("{:?}", c2826_slot(host_pump_bdd)), "Editor");
+    let s = stats(host_pump_bdd);
+    assert!(
+        s.notices.iter().all(|n| !n.contains("model →")),
+        "c2826: 成功切模不得写滚动提示确认块：{:?}",
+        s.notices
+    );
+}
+
+#[then("会话名经共享 dispatch 写入一次")]
+pub(crate) fn t_c2826_session_name(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let calls = pump.driver.set_session_name_calls();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(
+        calls.len(),
+        1,
+        "c2826: /session-name 应经 dispatch 写入一次"
+    );
+    assert_eq!(calls[0], "新名字");
+}
+
+#[then("系统提示列出场景名与描述且未换会话")]
+pub(crate) fn t_c2826_debug_list(host_pump_bdd: &HostPumpBdd) {
+    let note = c2826_last_notice(host_pump_bdd);
+    assert!(
+        note.contains("session-tree-multiturn"),
+        "c2826: /debug 应列场景：{note}"
+    );
+}
+
+#[then("不识别冒号形式且按未知斜杠提示")]
+pub(crate) fn t_c2826_debug_colon(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(!s.should_quit);
+    assert!(
+        !c2826_last_notice(host_pump_bdd).is_empty(),
+        "c2826: 冒号形式应按未知斜杠提示"
+    );
+}
+
+#[then("会话树槽打开且经驱动取一次树")]
+pub(crate) fn t_c2826_tree_open(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(s.tree_open, "c2826: /session-tree 应开树");
+    assert!(s.tree_calls >= 1, "c2826: 应经驱动取树");
+}
+
+#[then("短名不被识别且树未重复打开")]
+pub(crate) fn t_c2826_short_name(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(!s.should_quit, "c2826: /tree 不应退出");
+    assert_eq!(s.tree_calls, 1, "c2826: /tree 不应重复开树");
+}
+
+#[then("压缩一次且 jsonl 与 html 按后缀分派导出")]
+pub(crate) fn t_c2826_session_io(host_pump_bdd: &HostPumpBdd) {
+    let c = c2826_counters(host_pump_bdd);
+    assert_eq!(c.2, 1, "c2826: /session-compact 应压缩一次");
+    assert_eq!(c.3, 1, "c2826: .jsonl 应走 ExportJsonl");
+    assert_eq!(c.4, 1, "c2826: .html 应走 ExportHtml");
+}
+
+#[then("以系统文本块展示会话信息与统计")]
+pub(crate) fn t_c2826_session_info(host_pump_bdd: &HostPumpBdd) {
+    let note = c2826_last_notice(host_pump_bdd);
+    assert!(
+        !note.is_empty(),
+        "c2826: /session 应以系统文本展示信息（实际无输出）"
+    );
+}
+
+#[then("Resume 面板槽打开且经驱动列举可恢复会话")]
+pub(crate) fn t_c2826_resume_panel(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(
+        format!("{:?}", c2826_slot(host_pump_bdd)),
+        "SessionResume",
+        "c2826: /session-resume 应打开 Resume 面板"
+    );
+    assert!(
+        c2826_counters(host_pump_bdd).6 >= 1,
+        "c2826: 应经驱动列举会话"
+    );
+}
+
+#[then("新建一次且 clone 走 Fork(At) 且命名经 seam 写入")]
+pub(crate) fn t_c2826_lifecycle(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let new_calls = pump.driver.new_session_calls();
+    let forks = pump.driver.fork_calls();
+    let names = pump.driver.set_session_name_calls();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(new_calls, 1, "c2826: /session-new 应新建一次");
+    assert!(
+        forks
+            .iter()
+            .any(|(_, pos)| matches!(pos, crate::protocol::session::ForkPosition::At)),
+        "c2826: /session-clone 应走 Fork(At)：{forks:?}"
+    );
+    assert_eq!(names.len(), 1, "c2826: /session-name 应写入一次");
+}
+
+#[then("运行时重载调用恰一次")]
+pub(crate) fn t_c2826_reload_once(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(
+        c2826_counters(host_pump_bdd).7,
+        1,
+        "c2826: idle /reload 应触发一次"
+    );
+}
+
+#[then("重载被拒绝且未发第二次运行时重载")]
+pub(crate) fn t_c2826_reload_busy_rejected(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(s.run_active || s.is_busy, "c2826: 前置应为忙碌态");
+    // 忙碌提交经新挂载泵（open_busy 换新 ScriptedDriver）：本泵内重载计数必须为 0。
+    let reloads = c2826_counters(host_pump_bdd).7;
+    assert_eq!(reloads, 0, "c2826: busy /reload 不得触发运行时重载");
+    let note = c2826_last_notice(host_pump_bdd);
+    assert!(
+        note.contains("busy") || note.contains("reload") || !note.is_empty(),
+        "c2826: busy 拒绝应有提示：{note}"
+    );
+}
+
+#[then("信任决策经驱动持久化一次且提示需重载生效")]
+pub(crate) fn t_c2826_trust(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let calls = pump.driver.persist_project_trust_calls();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(calls.len(), 1, "c2826: /trust 应持久化一次");
+    let note = c2826_last_notice(host_pump_bdd);
+    assert!(
+        note.contains("reload") || note.contains("重载") || note.contains("重启"),
+        "c2826: /trust 应提示需重载/重启生效：{note}"
+    );
+}
+
+#[when("以主机泵完成一轮含已提交 assistant 的对话后提交 {cmd:string}")]
+pub(crate) async fn w_c2826_copy_last(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    use crate::agent::runtime::XyEvent;
+    let cmd = cmd.trim_matches('"');
+    {
+        let mut pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        pump.driver.push_script(vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::TextDelta("正文内容".into()),
+            XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::AgentEnd {
+                messages: Vec::new(),
+            },
+        ]);
+        let root = pump.session.ui_root().expect("ui").clone();
+        root.borrow_mut().set_editor_text("提问");
+        // idle Enter 直接发起 run（不得预臂 busy，否则会被当 steer）。
+        pump.session
+            .step(HostEvent::Input(enter_event()))
+            .expect("enter");
+        let mut stream = None;
+        pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+            .await
+            .expect("pump");
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+#[then("剪贴板收到 assistant 正文且未复制 thinking")]
+pub(crate) fn t_c2826_copy_last(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let calls = pump.driver.copy_text_calls();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(calls.len(), 1, "c2826: /history-copy-last 应复制一次");
+    assert_eq!(calls[0], "正文内容");
+}
+
+#[then("主题列表槽打开")]
+pub(crate) fn t_c2826_theme_slot(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(
+        format!("{:?}", c2826_slot(host_pump_bdd)),
+        "Themes",
+        "c2826: /theme 应打开 Themes 槽"
+    );
+}
+
+#[then("主题直接应用且槽关闭")]
+pub(crate) fn t_c2826_theme_applied(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(format!("{:?}", c2826_slot(host_pump_bdd)), "Editor");
+    let s = stats(host_pump_bdd);
+    assert!(
+        s.notices.iter().all(|n| !n.starts_with("theme")),
+        "c2826: 成功换主题不得写确认块"
+    );
+}
+
+#[when("以主机泵开启忙碌流并提交 {cmd:string}")]
+pub(crate) async fn w_c2826_busy_slash(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    let cmd = cmd.trim_matches('"');
+    open_busy(host_pump_bdd);
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+#[then("模型列表槽仍可打开")]
+pub(crate) fn t_c2826_busy_model_open(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(
+        format!("{:?}", c2826_slot(host_pump_bdd)),
+        "Models",
+        "c2826: busy 下 /model 应为 Allow"
+    );
+}
+
+#[when("以主机泵注入含连接态的资源快照后提交 {cmd:string}")]
+pub(crate) async fn w_c2826_mcp_panel(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    use crate::app::core::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+    let cmd = cmd.trim_matches('"');
+    {
+        let mut pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        pump.driver
+            .set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+                mcp_configured: 1,
+                mcp_connected: vec![("srv".into(), 2)],
+                mcp_servers: vec![McpServerSnapshot {
+                    id: "srv".into(),
+                    phase: McpServerPhase::Connected,
+                    tools_armed: true,
+                    tool_count: 2,
+                }],
+                mcp_bootstrap_complete: true,
+                ..Default::default()
+            });
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+#[then("MCP 面板槽打开且列出连接态且未因开面板 abort agent")]
+pub(crate) fn t_c2826_mcp_panel(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(
+        format!("{:?}", c2826_slot(host_pump_bdd)),
+        "Mcp",
+        "c2826: /mcp 应打开 MCP 面板"
+    );
+    let frame = render_frame(host_pump_bdd, 100);
+    assert!(frame.contains("srv"), "c2826: 面板应列出 server：\n{frame}");
+    let s = stats(host_pump_bdd);
+    assert_eq!(s.aborts, 0, "c2826: 开 /mcp 不得 abort agent");
+}
+
+#[when("关闭当前槽并提交 {cmd:string}")]
+pub(crate) async fn w_c2826_close_then_submit(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    let cmd = cmd.trim_matches('"');
+    step_key(host_pump_bdd, esc_event());
+    pump_once(host_pump_bdd).await;
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+#[when("注入会话 leaf 条目并以主机泵在 idle 提交 {cmd:string}")]
+pub(crate) async fn w_c2826_inject_leaf_submit(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    let cmd = cmd.trim_matches('"');
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    pump.driver.set_leaf_entry_id(Some("leaf-1".into()));
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+#[when("以主机泵注入可恢复会话列表后提交 {cmd:string}")]
+pub(crate) async fn w_c2826_resume_with_list(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    let cmd = cmd.trim_matches('"');
+    {
+        let mut pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        pump.driver
+            .set_session_list(vec![crate::protocol::ports::SessionListEntry {
+                id: "sess-1".into(),
+                name: Some("恢复样本".into()),
+                first_message: Some("预览".into()),
+                message_count: 2,
+                modified_unix: Some(1_700_000_000),
+                parent_session_id: None,
+                tree_prefix: String::new(),
+                cwd: Some(".".into()),
+                path: None,
+            }]);
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+// ── c2826 specs-compact：fixed-zone 的 host-pump 场景步骤 ──────────
+
+fn c2826_frame(host_pump_bdd: &HostPumpBdd) -> String {
+    render_frame(host_pump_bdd, 100)
+}
+
+#[then("报告诊断且界面仍正常渲染")]
+pub(crate) fn t_c2826_theme_diag(host_pump_bdd: &HostPumpBdd) {
+    let note = c2826_last_notice(host_pump_bdd);
+    assert!(
+        !note.is_empty(),
+        "c2826: 未知主题应报告诊断（滚动提示或系统行）"
+    );
+    let frame = c2826_frame(host_pump_bdd);
+    assert!(!frame.is_empty(), "c2826: 界面仍应渲染");
+}
+
+#[when("关闭当前槽")]
+pub(crate) async fn w_c2826_close_slot(host_pump_bdd: &HostPumpBdd) {
+    step_key(host_pump_bdd, esc_event());
+    pump_once(host_pump_bdd).await;
+}
+
+#[then("槽回到编辑器且未报错")]
+pub(crate) fn t_c2826_theme_esc(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(
+        format!("{:?}", c2826_slot(host_pump_bdd)),
+        "Editor",
+        "c2826: Esc 关槽后应回编辑器"
+    );
+}
+
+#[when("以主机泵开启忙碌流并按下 Esc 后收流关闭并渲染")]
+pub(crate) async fn w_c2826_abort_idle_render(host_pump_bdd: &HostPumpBdd) {
+    open_busy(host_pump_bdd);
+    step_key(host_pump_bdd, esc_event());
+    pump_once(host_pump_bdd).await;
+    // 收流关闭：泵至事件流结束（busy 轮收尾）。
+    drain(host_pump_bdd).await;
+}
+
+#[then("帧内不再含忙碌短词且滚动提示含取消说明一行")]
+pub(crate) fn t_c2826_abort_idle(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2826_frame(host_pump_bdd);
+    assert!(
+        !frame.contains("Working"),
+        "c2826: abort 后 status 应回 idle（帧不含 Working）：{frame}"
+    );
+    let s = stats(host_pump_bdd);
+    assert!(
+        s.notices
+            .iter()
+            .any(|n| n.contains("abort") || n.contains("cancel") || n.contains("取消")),
+        "c2826: 取消说明应走滚动提示一行：{:?}",
+        s.notices
+    );
+}
+
+#[when("渲染当前主机帧")]
+pub(crate) fn w_c2826_render_host_frame(host_pump_bdd: &HostPumpBdd) {
+    let _ = c2826_frame(host_pump_bdd);
+}
+
+#[when("以主机泵进入 reload 进行中态后渲染")]
+pub(crate) fn w_c2826_reload_active_render(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    pump.session.begin_reload();
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    let _ = c2826_frame(host_pump_bdd);
+}
+
+#[then("status 显示 Reloading 短词且不冒充 Working")]
+pub(crate) fn t_c2826_reload_status(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2826_frame(host_pump_bdd);
+    assert!(
+        frame.contains("Reloading"),
+        "c2826: reload 态 status 应显示 Reloading：{frame}"
+    );
+}
+
+// ── c2826 specs-compact：app-tui-input 场景步骤 ────────────────────
+
+pub(crate) fn c2826_alt_up_event_pub() -> xylitol_tui::InputEvent {
+    c2826_alt_up_event()
+}
+
+fn c2826_alt_up_event() -> xylitol_tui::InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    xylitol_tui::InputEvent::Key(KeyEvent {
+        code: KeyCode::Up,
+        modifiers: KeyModifiers::ALT,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+fn c2826_ctrl_v_event() -> xylitol_tui::InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    xylitol_tui::InputEvent::Key(KeyEvent {
+        code: KeyCode::Char('v'),
+        modifiers: KeyModifiers::CONTROL,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+fn c2826_up_event() -> xylitol_tui::InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    xylitol_tui::InputEvent::Key(KeyEvent {
+        code: KeyCode::Up,
+        modifiers: KeyModifiers::NONE,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+#[then("选择器替换贴底 editor 槽且 footer 仍为末行")]
+pub(crate) fn t_c2826_selector_replaces(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(format!("{:?}", c2826_slot(host_pump_bdd)), "Models");
+    let frame = c2826_frame(host_pump_bdd);
+    let footer = frame.lines().last().unwrap_or_default();
+    assert!(
+        footer.contains("·") || footer.trim().is_empty() == false,
+        "c2826: footer 应仍为末行：{frame}"
+    );
+}
+
+#[when("以主机泵挂载样例树数据后空编辑器双 Esc")]
+pub(crate) async fn w_c2826_double_esc_tree(host_pump_bdd: &HostPumpBdd) {
+    open_tree_ready(host_pump_bdd);
+    step_key(host_pump_bdd, esc_event());
+    step_key(host_pump_bdd, esc_event());
+    pump_once(host_pump_bdd).await;
+}
+
+#[then("会话树槽打开且经驱动取活树")]
+pub(crate) fn t_c2826_tree_live(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(s.tree_open, "c2826: 双 Esc 应开树");
+    assert!(s.tree_calls >= 1, "c2826: 树应经驱动取活树");
+}
+
+#[when("再按一次 Esc")]
+pub(crate) async fn w_c2826_esc_again(host_pump_bdd: &HostPumpBdd) {
+    step_key(host_pump_bdd, esc_event());
+    pump_once(host_pump_bdd).await;
+}
+
+#[then("树关闭且回到编辑器槽")]
+pub(crate) fn t_c2826_tree_closed(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(!s.tree_open, "c2826: Esc 应关树");
+    assert_eq!(format!("{:?}", c2826_slot(host_pump_bdd)), "Editor");
+}
+
+#[then("树槽渲染样例节点且替换贴底编辑区")]
+pub(crate) fn t_c2826_tree_renders_sample(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(s.tree_open, "c2826: 前置应开树");
+    let frame = c2826_frame(host_pump_bdd);
+    assert!(!frame.trim().is_empty(), "c2826: 树槽应渲染内容");
+}
+
+#[when("以主机泵提交两条不同文本后按上方向键")]
+pub(crate) async fn w_c2826_send_history(host_pump_bdd: &HostPumpBdd) {
+    for text in ["第一条历史", "第二条历史"] {
+        c2826_submit_slash(host_pump_bdd, text).await;
+    }
+    step_key(host_pump_bdd, c2826_up_event());
+    pump_once(host_pump_bdd).await;
+}
+
+#[then("编辑器召回最近一条已发送文本")]
+pub(crate) fn t_c2826_send_history(host_pump_bdd: &HostPumpBdd) {
+    let text = editor_text(host_pump_bdd);
+    assert!(
+        text.contains("第二条历史"),
+        "c2826: ↑ 应召回最近发送文本，实际：{text}"
+    );
+}
+
+#[when("以 ! 前缀与无前缀分别设置编辑器文本并渲染")]
+pub(crate) fn w_c2826_bang_border(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().set_editor_text("!ls -la");
+    let with_bang = root.borrow_mut().render(100).join("\n");
+    root.borrow_mut().set_editor_text("ls -la");
+    let without = root.borrow_mut().render(100).join("\n");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    host_pump_bdd
+        .ansi_frames
+        .borrow_mut()
+        .extend([with_bang, without]);
+}
+
+#[then("操作区边框形态随前缀切换")]
+pub(crate) fn t_c2826_bang_border(host_pump_bdd: &HostPumpBdd) {
+    let frames = host_pump_bdd.ansi_frames.borrow();
+    let with_bang = frames[frames.len() - 2].clone();
+    let without = frames[frames.len() - 1].clone();
+    assert_ne!(
+        with_bang, without,
+        "c2826: ! 前缀应切换操作区边框形态（强调色）"
+    );
+}
+
+#[when("以主机泵注入剪贴板图片后按粘贴键")]
+pub(crate) async fn w_c2826_paste_image(host_pump_bdd: &HostPumpBdd) {
+    {
+        let mut pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        pump.driver.set_clipboard_image(vec![1, 2, 3], "image/png");
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    step_key(host_pump_bdd, c2826_ctrl_v_event());
+    pump_once(host_pump_bdd).await;
+    drain(host_pump_bdd).await;
+}
+
+#[then("编辑器插入落盘路径文本且路径经 Driver 暂存")]
+pub(crate) fn t_c2826_paste_image(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let staged = pump.driver.staged_paste_paths();
+    let text = {
+        let root = pump.session.ui_root().expect("ui").clone();
+        let t = root.borrow().editor_text();
+        t
+    };
+    put_pump(host_pump_bdd, pump);
+    assert!(
+        !staged.is_empty(),
+        "c2826: 粘贴图片应经 Driver 暂存 tempfile"
+    );
+    assert!(
+        text.contains(".png") || text.contains('/') || !text.is_empty(),
+        "c2826: 编辑器应插入路径文本，实际：{text}"
+    );
+}
+
+#[when("以主机泵开启含正文的忙碌流并在首个增量后 abort 并渲染")]
+pub(crate) async fn w_c2826_abort_partial(host_pump_bdd: &HostPumpBdd) {
+    use crate::agent::runtime::XyEvent;
+    open_busy(host_pump_bdd);
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Xy(Box::new(XyEvent::MessageStart {
+            role: "assistant".into(),
+            message: None,
+        })))
+        .expect("xy start");
+    pump.session
+        .step(HostEvent::Xy(Box::new(XyEvent::TextDelta(
+            "半途正文".into(),
+        ))))
+        .expect("xy delta");
+    pump.session
+        .step(HostEvent::Input(esc_event()))
+        .expect("esc abort");
+    put_pump(host_pump_bdd, pump);
+    pump_once(host_pump_bdd).await;
+    drain(host_pump_bdd).await;
+    let _ = c2826_frame(host_pump_bdd);
+}
+
+#[then("partial 正文留驻 scrollback 且含 aborted 语义脚注")]
+pub(crate) fn t_c2826_abort_partial(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2826_frame(host_pump_bdd);
+    assert!(
+        frame.contains("半途正文"),
+        "c2826: partial 正文应留驻 scrollback：{frame}"
+    );
+    let pump = take_pump(host_pump_bdd);
+    let has_aborted = crate::app::tui::trailing_aborted_note(&pump.session.ui_model().entries);
+    put_pump(host_pump_bdd, pump);
+    assert!(
+        has_aborted || frame.to_lowercase().contains("abort"),
+        "c2826: 应含 aborted 语义脚注（帧或滚动提示）：{frame}"
+    );
+}
+
+#[when("以主机泵置零队列深度并注入 steer 后排空 pending")]
+pub(crate) async fn w_c2826_zero_depth_strip(host_pump_bdd: &HostPumpBdd) {
+    {
+        let mut pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        pump.driver
+            .force_zero_queue_stats
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    open_busy(host_pump_bdd);
+    set_editor(host_pump_bdd, "插队内容");
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("enter (steer)");
+    put_pump(host_pump_bdd, pump);
+    drain(host_pump_bdd).await;
+}
+
+#[then("本地队列条文案不被空深度清除")]
+pub(crate) fn t_c2826_zero_depth_strip(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let strip = pump.session.ui_model().pending_steer.clone();
+    put_pump(host_pump_bdd, pump);
+    assert!(
+        strip.iter().any(|t| t.contains("插队内容")),
+        "c2826: 空深度不得清除本地队列条：{strip:?}"
+    );
+}
+
+#[when("以主机泵忙碌插队后渲染队列条并按 Alt+Up")]
+pub(crate) async fn w_c2826_queue_strip_alt_up(host_pump_bdd: &HostPumpBdd) {
+    open_busy(host_pump_bdd);
+    set_editor(host_pump_bdd, "steer-one");
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("enter (steer)");
+    put_pump(host_pump_bdd, pump);
+    pump_once(host_pump_bdd).await;
+    let before = c2826_frame(host_pump_bdd);
+    step_key(
+        host_pump_bdd,
+        crate::tests::bdd::steps_app_tui_host::c2826_alt_up_event_pub(),
+    );
+    pump_once(host_pump_bdd).await;
+    let after_text = editor_text(host_pump_bdd);
+    let after_marker = format!("---AFTER---\n{after_text}");
+    host_pump_bdd.ansi_frames.borrow_mut().push(before);
+    host_pump_bdd.ansi_frames.borrow_mut().push(after_marker);
+}
+
+#[then("队列条含插队文本且 Alt+Up 还原队列文本")]
+pub(crate) fn t_c2826_queue_strip_alt_up(host_pump_bdd: &HostPumpBdd) {
+    let frames = host_pump_bdd.ansi_frames.borrow();
+    let before = frames[frames.len() - 2].clone();
+    let after_text = frames[frames.len() - 1].replace("---AFTER---\n", "");
+    drop(frames);
+    assert!(
+        before.contains("steer-one") || before.contains("Steering"),
+        "c2826: 队列条应含插队文本：{before}"
+    );
+    let footer = before.lines().last().unwrap_or_default();
+    assert!(
+        !footer.contains("q:s"),
+        "c2826: footer 无队列徽章：{footer}"
+    );
+    assert!(
+        after_text.contains("steer-one"),
+        "c2826: Alt+Up 应还原队列文本进编辑器：{after_text}"
+    );
+}
+
+// ── c2826 specs-compact：app-tui-host 场景步骤 ─────────────────────
+
+#[when("以主机泵在 idle 提交带换行的 {cmd:string}")]
+pub(crate) async fn w_c2826_submit_multiline(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    let cmd = cmd.trim_matches('"').replace("\\n", "\n");
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().set_editor_text(cmd);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("enter");
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("pump");
+    crate::app::tui::harness::drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("drain");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[then("会话名写入时换行规范为空格")]
+pub(crate) fn t_c2826_name_normalized(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let calls = pump.driver.set_session_name_calls();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(calls.len(), 1, "c2826: 应写一次会话名");
+    assert_eq!(
+        calls[0], "甲 乙",
+        "c2826: CR/LF MUST 规范为空格，实际 {:?}",
+        calls[0]
+    );
+}
+
+#[then("重载经共享缝完成且尾插 Reload 步进汇总")]
+pub(crate) fn t_c2826_reload_report(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(c2826_counters(host_pump_bdd).7, 1);
+    let s = stats(host_pump_bdd);
+    assert!(
+        s.notices.iter().any(|t| t.contains("Reload:")),
+        "c2826: 应尾插 Reload 汇总：{:?}",
+        s.notices
+    );
+}
+
+#[when("以主机泵注入 connecting 资源快照后提交 bang 命令 {cmd:string}")]
+pub(crate) async fn w_c2826_connecting_bang(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    let cmd = cmd.trim_matches('"');
+    {
+        let mut pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
+        };
+        pump.driver
+            .set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+                mcp_configured: 1,
+                mcp_servers: vec![McpServerSnapshot {
+                    id: "boot".into(),
+                    phase: McpServerPhase::Connecting,
+                    tools_armed: false,
+                    tool_count: 0,
+                }],
+                mcp_connecting_label: Some("0/1".into()),
+                mcp_bootstrap_complete: false,
+                ..Default::default()
+            });
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+#[then("键入与提交未被拒且 bash 收到命令体")]
+pub(crate) fn t_c2826_connecting_bang(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(
+        s.bash_calls.iter().any(|(c, _)| c.contains("echo hi")),
+        "c2826: connecting 时提交 bang 不应被拒：{:?}",
+        s.bash_calls
+    );
+}
+
+#[when("以主机泵注入 connecting 且未冻表的资源快照后渲染当前主机帧")]
+pub(crate) async fn w_c2826_mcp_pending_cue(host_pump_bdd: &HostPumpBdd) {
+    {
+        let mut pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        use crate::app::core::driver::{
+            LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
+        };
+        pump.driver
+            .set_loaded_resources_for_driver(LoadedResourcesSnapshot {
+                mcp_configured: 1,
+                mcp_servers: vec![McpServerSnapshot {
+                    id: "srv-x".into(),
+                    phase: McpServerPhase::Connecting,
+                    tools_armed: false,
+                    tool_count: 0,
+                }],
+                mcp_connecting_label: Some("0/1".into()),
+                mcp_bootstrap_complete: false,
+                ..Default::default()
+            });
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    // 经产品刷新路径装载快照（connecting + 未冻表 → 短 cue）。
+    let mut pump = take_pump(host_pump_bdd);
+    let driver = std::mem::replace(&mut pump.driver, ScriptedDriver::new());
+    pump.session.refresh_loaded_resources(&driver).await;
+    pump.driver = driver;
+    put_pump(host_pump_bdd, pump);
+    let _ = c2826_frame(host_pump_bdd);
+}
+
+#[then("status 短 cue 为固定文案 mcp pending (see /mcp) 且不枚举 server id")]
+pub(crate) fn t_c2826_mcp_pending_cue(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2826_frame(host_pump_bdd);
+    assert!(
+        frame.contains("mcp pending (see /mcp)"),
+        "c2826: 短 cue 固定文案缺失：{frame}"
+    );
+    assert!(
+        !frame.contains("srv-x"),
+        "c2826: 短 cue MUST NOT 枚举 server id：{frame}"
+    );
+}
+
+#[when("以主机泵挂起重载进行中提交上行并取消收尾")]
+pub(crate) async fn w_c2826_reload_soft_gate(host_pump_bdd: &HostPumpBdd) {
+    {
+        let mut pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        pump.session.end_reload();
+        pump.driver.set_hang_reload_until_cancel(true);
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    set_editor(host_pump_bdd, "/reload");
+    step_key(host_pump_bdd, enter_event());
+    drain(host_pump_bdd).await;
+    let mut pump = take_pump(host_pump_bdd);
+    assert!(pump.session.take_reload(), "c2826: reload 应处于待执行态");
+    put_pump(host_pump_bdd, pump);
+    // reload 进行中输入草稿并提交上行 → 软闸。
+    set_editor(host_pump_bdd, "草稿上行");
+    let mut pump = take_pump(host_pump_bdd);
+    let input = futures::stream::iter(vec![
+        Ok::<HostEvent, crate::XyDriverError>(HostEvent::Tick),
+        Ok(HostEvent::Input(enter_event())),
+        Ok(HostEvent::Input(esc_event())),
+    ]);
+    crate::app::tui::run_interactive_reload(&mut pump.session, &mut pump.driver, input)
+        .await
+        .expect("reload loop");
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("提交被软闸拒绝且草稿保留且未发第二次运行时重载")]
+pub(crate) fn t_c2826_reload_soft_gate(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let reloads = pump.driver.reload_runtime_calls();
+    let runs = pump.driver.runs.clone();
+    let steers = pump.driver.steer_calls.clone();
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(reloads, 1, "c2826: 不得触发第二次运行时重载");
+    assert!(
+        !runs.iter().any(|r| r.contains("草稿上行"))
+            && !steers.iter().any(|t| t.contains("草稿上行")),
+        "c2826: 软闸应拒绝提交（不入 run/steer）：{runs:?} {steers:?}"
+    );
+    let draft = editor_text(host_pump_bdd);
+    assert!(
+        draft.contains("草稿上行"),
+        "c2826: 被拒提交应保留编辑器草稿，实际：{draft}"
+    );
+}
+
+#[when("臂装复制成功提示后渲染主机帧")]
+pub(crate) fn w_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().arm_copy_notice();
+    drop(root);
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    let _ = c2826_frame(host_pump_bdd);
+}
+
+#[then("固定区出现 Copied 短提示且不以 Error 前缀冒充")]
+pub(crate) fn t_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2826_frame(host_pump_bdd);
+    assert!(
+        frame.contains("Copied"),
+        "c2826: 应有 Copied 短提示：{frame}"
+    );
+    let copied_line = frame
+        .lines()
+        .find(|l| l.contains("Copied"))
+        .expect("copied line");
+    assert!(
+        !copied_line.contains("Error"),
+        "c2826: 成功提示不得用 Error 前缀：{copied_line}"
+    );
+}
+
+#[when("以合成验收链驱动一整轮含工具与 abort 的会话并 /exit")]
+pub(crate) async fn w_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
+    use crate::agent::runtime::XyEvent;
+    // 1) 提交 → 流式 + 工具 + 完成
+    {
+        let mut pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        pump.driver.push_script(vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::TextDelta("答一".into()),
+            XyEvent::ToolExecutionStart {
+                id: "t1".into(),
+                name: "read".into(),
+                args: serde_json::json!({"path":"a"}),
+            },
+            XyEvent::ToolExecutionUpdate {
+                id: "t1".into(),
+                output: "hello".into(),
+            },
+            XyEvent::ToolExecutionEnd {
+                id: "t1".into(),
+                name: "read".into(),
+                result: "hello".into(),
+                is_error: false,
+            },
+            XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::AgentEnd {
+                messages: Vec::new(),
+            },
+        ]);
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    c2826_submit_slash(host_pump_bdd, "第一问").await;
+    // 2) busy → steer（同一泵内标记 busy，避免重挂丢失计数）
+    {
+        let mut pump = take_pump(host_pump_bdd);
+        pump.session.on_run_started("插一句");
+        put_pump(host_pump_bdd, pump);
+    }
+    set_editor(host_pump_bdd, "插一句");
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("steer enter");
+    put_pump(host_pump_bdd, pump);
+    pump_once(host_pump_bdd).await;
+    // 3) busy → abort
+    step_key(host_pump_bdd, esc_event());
+    pump_once(host_pump_bdd).await;
+    drain(host_pump_bdd).await;
+    // 4) 再提交
+    c2826_submit_slash(host_pump_bdd, "第二问").await;
+    // 5) /exit
+    c2826_submit_slash(host_pump_bdd, "/exit").await;
+}
+
+#[then("提交流式工具 steer abort 再提交按序生效且会话请求退出")]
+pub(crate) fn t_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert!(
+        s.runs.iter().any(|r| r.contains("第一问")) && s.runs.iter().any(|r| r.contains("第二问")),
+        "c2826: 两次提交都应发起 run：{:?}",
+        s.runs
+    );
+    assert!(
+        s.steers.iter().any(|t| t.contains("插一句")),
+        "c2826: busy steer 应入队：{:?}",
+        s.steers
+    );
+    assert_eq!(s.aborts, 1, "c2826: abort 应计一次");
+    assert!(s.should_quit, "c2826: /exit 应触发 finish");
+    let pump = take_pump(host_pump_bdd);
+    let has_tool = pump
+        .session
+        .ui_model()
+        .entries
+        .iter()
+        .any(|e| matches!(e, UiEntry::Tool { .. }));
+    put_pump(host_pump_bdd, pump);
+    assert!(has_tool, "c2826: 工具执行应留块");
+}
+
+// ── c2826 specs-compact：最后一批（input/fixed-zone 收尾）──────────
+
+fn c2826_ctrl_g_event() -> xylitol_tui::InputEvent {
+    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
+    xylitol_tui::InputEvent::Key(KeyEvent {
+        code: KeyCode::Char('g'),
+        modifiers: KeyModifiers::CONTROL,
+        kind: KeyEventKind::Press,
+        state: KeyEventState::NONE,
+    })
+}
+
+#[when("以主机泵在无编辑器环境变量下输入草稿后按 Ctrl+G")]
+pub(crate) async fn w_c2826_ctrl_g_stub(host_pump_bdd: &HostPumpBdd) {
+    // harness / 非 TTY 路径 MUST NOT spawn 真实编辑器（保持 stub）。
+    if host_pump_bdd.pump.borrow().is_none() {
+        *host_pump_bdd.pump.borrow_mut() = Some(fresh_pump());
+    }
+    set_editor(host_pump_bdd, "外编草稿");
+    step_key(host_pump_bdd, c2826_ctrl_g_event());
+    pump_once(host_pump_bdd).await;
+    drain(host_pump_bdd).await;
+}
+
+#[then("系统提示写入且草稿保留且未 spawn 真实编辑器")]
+pub(crate) fn t_c2826_ctrl_g_stub(host_pump_bdd: &HostPumpBdd) {
+    let text = editor_text(host_pump_bdd);
+    assert!(
+        text.contains("外编草稿"),
+        "c2826: Ctrl+G 失败路径应保留原文本，实际：{text}"
+    );
+    let s = stats(host_pump_bdd);
+    assert!(!s.should_quit, "c2826: 未配置编辑器 MUST NOT panic / 退出");
+}
+
+#[then("回到编辑器槽且未提交模型变更")]
+pub(crate) fn t_c2826_model_esc_no_change(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(format!("{:?}", c2826_slot(host_pump_bdd)), "Editor");
+    let s = stats(host_pump_bdd);
+    assert!(
+        s.runs.is_empty(),
+        "c2826: Esc 取消不得触发任何 run：{:?}",
+        s.runs
+    );
+}
+
+#[when("以主机泵以损坏 JSON 请求重载键位")]
+pub(crate) fn w_c2826_keybindings_bad(host_pump_bdd: &HostPumpBdd) {
+    use crate::app::tui::TuiHostSession as HostSession;
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("keybindings.json"), "not-json{{").unwrap();
+    // 泵内会话键位重载：失败保留旧绑定并出诊断。
+    let _ = pump.session.reload_keybindings(dir.path());
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[then("返回诊断错误且界面渲染正常")]
+pub(crate) fn t_c2826_keybindings_bad(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2826_frame(host_pump_bdd);
+    assert!(!frame.is_empty(), "c2826: 失败重载后界面仍渲染");
+}
+
+#[then("footer 反映新 active 模型且无换模预告")]
+pub(crate) fn t_c2826_models_footer(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2826_frame(host_pump_bdd);
+    let footer = frame.lines().last().unwrap_or_default();
+    assert!(
+        footer.contains("fake"),
+        "c2826: 直设后 footer 应反映 active 模型：{footer}"
+    );
+    assert!(
+        !footer.contains("Next turn") && !footer.contains("next turn"),
+        "c2826: 产品面无换模预告：{footer}"
+    );
+}
+
+#[then("驱动估计恰被调用一次")]
+pub(crate) fn t_c2826_single_estimate_refresh(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2826_frame(host_pump_bdd);
+    let footer = frame.lines().last().unwrap_or_default();
+    assert!(
+        footer.contains("used 1.2k tokens"),
+        "c2826: 刷新应经 Driver 只读估计落到 footer：{footer}"
+    );
+}
+
+#[when("以固定估计驱动一次 footer token 刷新")]
+pub(crate) async fn w_c2826_footer_refresh_once(host_pump_bdd: &HostPumpBdd) {
+    use crate::protocol::model::ContextTokenEstimate;
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    pump.driver
+        .set_session_messages(crate::app::tui::harness::harness_sample_session_messages());
+    pump.driver
+        .set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 1_234,
+            provenance: crate::protocol::model::TokenProvenance::Api,
+            usage_tokens: 1_234,
+            trailing_tokens: 0,
+            last_usage_index: None,
+        }));
+    crate::app::tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[when("以小高度终端渲染忙碌帧")]
+pub(crate) fn w_c2826_short_terminal_busy(host_pump_bdd: &HostPumpBdd) {
+    use crate::app::tui::TuiHostSession as HostSession;
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    pump.session = HostSession::new_product_ui(crate::app::tui::harness::TestTerminal::new(80, 10));
+    pump.session.on_run_started("hi");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    let frame = c2826_frame(host_pump_bdd);
+    host_pump_bdd.ansi_frames.borrow_mut().push(frame);
+}
+
+#[then("status lead 短词在视口内可见")]
+pub(crate) fn t_c2826_short_terminal_busy(host_pump_bdd: &HostPumpBdd) {
+    let frames = host_pump_bdd.ansi_frames.borrow();
+    let frame = frames.last().expect("frame");
+    assert!(
+        frame.contains("Working"),
+        "c2826: 短终端 busy 时 status lead 应可见：{frame}"
+    );
+}

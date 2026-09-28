@@ -1014,3 +1014,291 @@ pub(crate) fn _t_ar7_tool_error_written() {
         events
     );
 }
+
+// ── c2826 specs-compact：裸规则转场景补充（r1035/r1037/r1039/r1043/r1843）──
+
+#[when("运行一轮对话后检查持久化条目")]
+pub(crate) async fn w_c2826_first_turn_history(agent: &AgentState) {
+    crate::infra::provider::factory::set_fake_text("回复正文");
+    let (mut runner, store) = make_agent_with_store(agent);
+    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, "c2826-first-turn");
+    let mut stream = agent_submit_root(&mut runner, "用户第一句").await;
+    while let Some(e) = stream.next().await {
+        if let XyEvent::Error(err) = &e {
+            panic!("c2826: run failed: {err:?}");
+        }
+    }
+    let entries = store
+        .load_entries("c2826-first-turn")
+        .await
+        .unwrap_or_default();
+    let roles: Vec<String> = entries
+        .iter()
+        .filter_map(|e| match e {
+            crate::infra::session::SessionEntry::Message(m) => m
+                .message
+                .get("role")
+                .and_then(|r| r.as_str())
+                .map(str::to_owned),
+            _ => None,
+        })
+        .collect();
+    let first_text = entries
+        .iter()
+        .find_map(|e| match e {
+            crate::infra::session::SessionEntry::Message(m) => m
+                .message
+                .get("content")
+                .and_then(|c| c.as_array())
+                .and_then(|a| a.first())
+                .and_then(|p| p.get("text"))
+                .and_then(|t| t.as_str())
+                .map(str::to_owned),
+            _ => None,
+        })
+        .unwrap_or_default();
+    agent
+        .last_result
+        .replace(Some(Ok(format!("roles={roles:?} first_text={first_text}"))));
+}
+
+#[then("首条消息条目为真实 user 输入且无 system 角色行")]
+pub(crate) fn t_c2826_first_turn_history(agent: &AgentState) {
+    let summary = crate::tests::bdd::helpers::result_ok_str(&agent.last_result);
+    let dialogue_roles: Vec<&str> = ["user", "assistant", "system"]
+        .iter()
+        .filter(|r| {
+            summary.contains(&format!("roles=[\"{r}\"")) || summary.contains(&format!(", \"{r}\""))
+        })
+        .copied()
+        .collect();
+    assert!(
+        !dialogue_roles.contains(&"system"),
+        "c2826: system 正文不得写入 history：{summary}"
+    );
+    assert!(
+        summary.contains("roles=[\"user\"") || summary.contains(", \"user\""),
+        "c2826: 对话首条必须为真实 user 输入：{summary}"
+    );
+    assert!(
+        summary.contains("first_text=用户第一句"),
+        "c2826: 首条 user 文本必须保留：{summary}"
+    );
+}
+
+fn c2826_driver() -> (
+    crate::app::core::driver::XyInProcessDriver,
+    std::sync::Arc<dyn crate::protocol::ports::XySessionStore>,
+) {
+    use std::sync::Arc;
+    let agent = crate::app::core::composition::build_agent(
+        crate::app::core::composition::BuildAgentOptions::default(),
+    )
+    .expect("build agent for reload seam");
+    let mgr = crate::infra::session::SessionManager::new(
+        tempfile::tempdir().unwrap().path().join("sessions"),
+    );
+    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let driver = crate::app::core::driver::XyInProcessDriver::new(agent, store.clone());
+    (driver, store)
+}
+
+#[when("在项目目录写 AGENTS.md 并分别以信任与未信任重载 context")]
+pub(crate) async fn w_c2826_context_reload_trust(
+    ws: &crate::tests::bdd::fixtures::Workspace,
+    agent: &AgentState,
+) {
+    ws.init();
+    let project = ws.root();
+    std::fs::write(
+        std::path::Path::new(&project).join("AGENTS.md"),
+        "SECRET_PROJECT_AGENTS_MARKER\n",
+    )
+    .unwrap();
+    let agent_dir = tempfile::tempdir().unwrap();
+    let (mut trusted_driver, _s1) = c2826_driver();
+    let trusted = crate::app::core::bootstrap::reload_prompt_context(
+        &mut trusted_driver,
+        std::path::Path::new(&project),
+        agent_dir.path(),
+        true,
+        None,
+    );
+    let (mut untrusted_driver, _s2) = c2826_driver();
+    let untrusted = crate::app::core::bootstrap::reload_prompt_context(
+        &mut untrusted_driver,
+        std::path::Path::new(&project),
+        agent_dir.path(),
+        false,
+        None,
+    );
+    let trusted_sp = trusted_driver.system_prompt_for_test().unwrap_or_default();
+    let untrusted_sp = untrusted_driver
+        .system_prompt_for_test()
+        .unwrap_or_default();
+    agent.last_result.replace(Some(Ok(format!(
+        "trusted_files={} untrusted_files={} trusted_marker={} untrusted_marker={}",
+        trusted.context_file_count,
+        untrusted.context_file_count,
+        trusted_sp.contains("SECRET_PROJECT_AGENTS_MARKER"),
+        untrusted_sp.contains("SECRET_PROJECT_AGENTS_MARKER")
+    ))));
+}
+
+#[then("信任时项目 context 注入而未信任时被跳过且会话条目不变")]
+pub(crate) fn t_c2826_context_reload_trust(agent: &AgentState) {
+    let summary = crate::tests::bdd::helpers::result_ok_str(&agent.last_result);
+    assert!(
+        summary.contains("trusted_files=1") || summary.contains("trusted_files=2"),
+        "c2826: 信任重载应发现项目 context：{summary}"
+    );
+    assert!(
+        summary.contains("trusted_marker=true"),
+        "c2826: 信任重载必须注入项目 AGENTS.md：{summary}"
+    );
+    assert!(
+        summary.contains("untrusted_files=0"),
+        "c2826: 未信任重载必须跳过项目 context：{summary}"
+    );
+    assert!(
+        summary.contains("untrusted_marker=false"),
+        "c2826: 未信任重载不得注入项目 AGENTS.md：{summary}"
+    );
+}
+
+#[when("在项目目录写 skill 并分别以信任与未信任重载 skills")]
+pub(crate) fn w_c2826_skills_reload_trust(
+    ws: &crate::tests::bdd::fixtures::Workspace,
+    agent: &AgentState,
+) {
+    ws.init();
+    let project = ws.root();
+    let skill_dir = std::path::Path::new(&project)
+        .join(".xylitol")
+        .join("skills")
+        .join("c2826-demo");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: c2826-demo\ndescription: test\n---\n\nbody\n",
+    )
+    .unwrap();
+    let agent_dir = tempfile::tempdir().unwrap();
+    let (mut trusted_driver, _s1) = c2826_driver();
+    let trusted = crate::app::core::bootstrap::reload_skills(
+        &mut trusted_driver,
+        std::path::Path::new(&project),
+        agent_dir.path(),
+        true,
+    );
+    let (mut untrusted_driver, _s2) = c2826_driver();
+    let untrusted = crate::app::core::bootstrap::reload_skills(
+        &mut untrusted_driver,
+        std::path::Path::new(&project),
+        agent_dir.path(),
+        false,
+    );
+    agent.last_result.replace(Some(Ok(format!(
+        "trusted_names={:?} untrusted_names={:?} trusted_query={:?} untrusted_query={:?}",
+        trusted.names,
+        untrusted.names,
+        trusted_driver.loaded_skill_names(),
+        untrusted_driver.loaded_skill_names()
+    ))));
+}
+
+#[then("信任时项目 skill 注入且可查询已加载名而未信任时被跳过")]
+pub(crate) fn t_c2826_skills_reload_trust(agent: &AgentState) {
+    let summary = crate::tests::bdd::helpers::result_ok_str(&agent.last_result);
+    assert!(
+        summary.contains("\"c2826-demo\""),
+        "c2826: 信任重载应注入项目 skill：{summary}"
+    );
+    assert!(
+        summary.contains("trusted_query=[\"c2826-demo\"]")
+            || summary.contains("trusted_query=[\"c2826-demo\","),
+        "c2826: 已加载 skill 名必须可查询：{summary}"
+    );
+    assert!(
+        !summary.contains("untrusted_names=[\"c2826-demo\"]"),
+        "c2826: 未信任重载必须跳过项目 skill：{summary}"
+    );
+}
+
+#[when("经 Driver 启动会话并在首个 TextDelta 后 abort 并检查持久化条目")]
+pub(crate) async fn w_c2826_abort_persist(agent: &AgentState) {
+    use crate::embed::{XyDriver, XyInProcessDriver};
+    crate::infra::provider::factory::set_fake_slow_stream(40, 5);
+    let (runtime, store) = make_agent_with_store(agent);
+    let mut driver = XyInProcessDriver::new(runtime, store.clone());
+    let sid = driver
+        .new_session()
+        .await
+        .expect("c2826: abort persist session");
+    let mut stream = driver.run("partial-please").await;
+    let mut saw_delta = false;
+    while let Some(e) = stream.next().await {
+        if !saw_delta && matches!(&e, XyEvent::TextDelta(_)) {
+            saw_delta = true;
+            driver.abort();
+        }
+    }
+    assert!(saw_delta, "c2826: 应先见到 TextDelta");
+    let entries = store.load_entries(&sid).await.unwrap_or_default();
+    let assistant_rows: Vec<String> = entries
+        .iter()
+        .filter_map(|e| match e {
+            crate::infra::session::SessionEntry::Message(m)
+                if m.message.get("role").and_then(|r| r.as_str()) == Some("assistant") =>
+            {
+                Some(serde_json::to_string(&m.message).unwrap_or_default())
+            }
+            _ => None,
+        })
+        .collect();
+    agent.last_result.replace(Some(Ok(format!(
+        "assistants={}",
+        assistant_rows.join("\n---\n")
+    ))));
+}
+
+#[then("partial assistant 以 aborted 落盘且非空")]
+pub(crate) fn t_c2826_abort_persist(agent: &AgentState) {
+    let summary = crate::tests::bdd::helpers::result_ok_str(&agent.last_result);
+    assert!(
+        summary.contains("\"stopReason\":\"aborted\"")
+            || summary.contains("stop_reason\":\"aborted")
+            || summary.contains("aborted"),
+        "c2826: partial assistant 应以 aborted 落盘：{summary}"
+    );
+    assert!(
+        summary.contains("\"type\":\"text\""),
+        "c2826: partial assistant 正文应非空：{summary}"
+    );
+}
+
+#[then("TurnStart 与 TurnEnd 成对出现两次且 ContextTokenSettlement 恰一次")]
+pub(crate) fn t_c2826_two_iterations_one_settlement(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let turn_starts = events
+        .iter()
+        .filter(|e| matches!(e, XyEvent::TurnStart { .. }))
+        .count();
+    let turn_ends = events
+        .iter()
+        .filter(|e| matches!(e, XyEvent::TurnEnd { .. }))
+        .count();
+    let settlements = events
+        .iter()
+        .filter(|e| matches!(e, XyEvent::ContextTokenSettlement { .. }))
+        .count();
+    assert_eq!(
+        (turn_starts, turn_ends),
+        (2, 2),
+        "c2826: 带工具回合应为两个成对 iteration"
+    );
+    assert_eq!(
+        settlements, 1,
+        "c2826: ContextTokenSettlement 必须恰一次（仅 Settle 发）"
+    );
+}

@@ -35,3 +35,4 @@
   @req:r1453
   规则: first-turn-tool-freeze
     轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 MUST 立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）MUST 等待 MCP settle 或 code-first 门闸超时后再定稿；单 server 连接 MUST 有 code-first 墙钟超时（挂死不得让 bootstrap 永 Running）。门闸超时 MUST 以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），MUST NOT 自动重试连接。TUI MUST NOT 在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 MUST 冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿；重定稿 MUST 按 tool name upsert（有则替换、无则追加），MUST NOT 留下同名多行。本波 resume/切会话 MUST 清冻再门闸（指纹持久化后的一致续冻另波）；重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
+# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）

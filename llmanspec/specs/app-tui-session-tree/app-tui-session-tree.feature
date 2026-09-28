@@ -47,3 +47,4 @@
   @req:r1331
   规则: demo-travel-notice-trailing
     agent_demo 会话树 travel 重建 transcript 后 MUST 与产品同源：history @ 通知 MUST 尾插于路径条目之后；MUST NOT 在 clear 后先插 ScrollNotice 再推路径（旧顶插）。
+# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）

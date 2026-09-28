@@ -14,3 +14,4 @@
   @req:r1653
   规则: enter-suppress-window
     检测到 burst（8+ chars 在 inter-char threshold 内）时，PasteBurst MUST 打开 120ms enter-suppress 窗口，期间 should_insert_newline_instead_of_submit 返回 true，以及 30ms active-idle 窗口在字符间保持检测器 active。suppress 窗口在无新字符后过期，后续 Enter MUST 正常 submit。reset() MUST 清除所有状态（用于 non-printable keys、bracketed paste 或显式 disable）。
+# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）

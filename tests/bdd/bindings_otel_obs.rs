@@ -54,3 +54,55 @@ async fn test_otel22_obs_lane(otel_bdd: OtelBdd, agent: AgentState, ws: Workspac
 )]
 #[serial]
 async fn test_otel10_io_tier(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
+
+// ---- c2826 specs-compact：裸规则转场景绑定 ----
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "otel-default-none-no-spans"
+)]
+#[serial]
+async fn test_c2826_otel_default_none(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
+
+#[cfg(feature = "otel")]
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "otlp-config-arms-reporter"
+)]
+#[serial]
+async fn test_c2826_otlp_arms(otel_bdd: OtelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "otlp-bad-endpoint-falls-back-with-diag"
+)]
+#[serial]
+async fn test_c2826_otlp_bad_endpoint(otel_bdd: OtelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "tool-io-tier-truncated-only-tools"
+)]
+#[serial]
+async fn test_c2826_tool_tier_only(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "compaction-span-over-prepare"
+)]
+#[serial]
+async fn test_c2826_compaction_span(sess: XySessionStore, otel_bdd: OtelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "turn-normal-completion-not-error"
+)]
+#[serial]
+async fn test_c2826_turn_not_error(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "settlement-single-token-estimate"
+)]
+#[serial]
+async fn test_c2826_single_estimate(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
