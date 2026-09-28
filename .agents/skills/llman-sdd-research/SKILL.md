@@ -2,7 +2,7 @@
 name: "llman-sdd-research"
 description: "委托后台 agent 查一手资料（官方文档/API/源码），产出带引用的调研文档。"
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
 ---
 
 # LLMAN SDD Research

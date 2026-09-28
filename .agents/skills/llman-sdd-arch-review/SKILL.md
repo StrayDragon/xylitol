@@ -2,7 +2,7 @@
 name: "llman-sdd-arch-review"
 description: "架构审查：扫描薄模块（接口≈实现），给出加深候选，改善可测性与 AI 可导航性。"
 metadata:
-  version: "0.5.0"
+  version: "0.5.1"
 ---
 
 # LLMAN SDD Architecture Review
