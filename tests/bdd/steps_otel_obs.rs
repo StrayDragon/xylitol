@@ -565,9 +565,15 @@ fn t_c2826_turn_not_error(otel_bdd: &OtelBdd) {
 #[then("token.estimate 恰好导出一次")]
 fn t_c2826_single_estimate(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();
-    let count = find_named(&records, "token.estimate").len();
+    // 收窄到本回合 trace：fastrace 后台批量投递可能把前一个测试的残留
+    // span 落进本 scope 的 buffer（跨测试噪声，非本回合行为）。
+    let turn = turn_root(&records);
+    let count = records
+        .iter()
+        .filter(|s| s.name == "token.estimate" && s.trace_id == turn.trace_id)
+        .count();
     assert_eq!(
         count, 1,
-        "c2826: 一次 TurnSettled 恰一个 token.estimate，实际 {count}"
+        "c2826: 一次 TurnSettled 恰一个挂在本回合 agent.turn 下的 token.estimate，实际 {count}"
     );
 }
