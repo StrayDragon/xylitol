@@ -1,0 +1,2988 @@
+{
+ "runtime-config": [
+  {
+   "req": "r1722",
+   "title": "ConfigValue 在 infra",
+   "len": 120,
+   "text": "ConfigValueResolver（环境变量、shell 命令与 ${VAR:-default} 解析，或等价）MUST 收敛于 infra 配置边界且零内部依赖；agent 层 MUST NOT 含重复解析实现。 @req:r1740"
+  },
+  {
+   "req": "r1740",
+   "title": "配置边界承载 JsonSchema",
+   "len": 125,
+   "text": "需要对外暴露 JSON Schema 的配置结构 MUST 在 runtime/config 边界（infra/config 或 settings）定义或包装，并 MUST 能映射到 domain 纯数据（若存在对应领域类型）。 @req:"
+  },
+  {
+   "req": "r1733",
+   "title": "no-agent-max-iterations",
+   "len": 286,
+   "text": "Agent profile / AppConfig MUST NOT 暴露或生效 max_iterations（或等价已移除硬闸名）配置字段；schema 与加载路径 MUST NOT 提供向后兼容 shim。可选 session.max_"
+  },
+  {
+   "req": "r1734",
+   "title": "config-yaml-vars-home",
+   "len": 242,
+   "text": "配置 YAML minijinja 模板 MUST 提供命名空间 vars，且 MUST 仅暴露键 home（解析为用户 home 目录绝对路径）；{{ vars.home }} MUST 可在任意配置字符串字段插值；home 不可解析或引"
+  },
+  {
+   "req": "r1735",
+   "title": "otel-config-section",
+   "len": 354,
+   "text": "AppConfig MUST 支持可选顶层 otel（或等价）节：至少含 exporter（none 或 otlp-http；缺省等价 none）、可选 endpoint、protocol（http-binary 或 http-json）、"
+  },
+  {
+   "req": "r1736",
+   "title": "tui-editor-history-seed-sessions",
+   "len": 181,
+   "text": "AppConfig MUST 支持可选顶层 tui 节字段 editor_history_seed_sessions（非负整数）；缺省 MUST 为 1；该值 MUST 供产品 TUI 纯 new session 装载跨 session 发"
+  },
+  {
+   "req": "r1737",
+   "title": "tool-batch-config",
+   "len": 262,
+   "text": "AppConfig MUST 支持可选工具批配置节 tool_batch：含 mode（sequential 或 barrier_parallel；缺省 barrier_parallel）；非法 mode MUST 使配置加载失败；显式 s"
+  },
+  {
+   "req": "r1738",
+   "title": "session-max-turns",
+   "len": 209,
+   "text": "SessionConfig MUST 支持可选 max_turns（正整数）；缺省或省略 MUST 为 None（不限制）；值为 0 或非法 MUST 使配置加载失败；该字段 MUST 供组合根安装 should_stop_after_tu"
+  },
+  {
+   "req": "r1739",
+   "title": "tui-activity-fold",
+   "len": 309,
+   "text": "AppConfig MUST 支持可选顶层 tui.activity_fold：enabled（缺省 true）、keep_recent_turns（缺省 2，非负整数）、stream_collapse（envelope 或 cluster"
+  }
+ ],
+ "agent-runtime": [
+  {
+   "req": "r1055",
+   "title": "builder-ports",
+   "len": 134,
+   "text": "Agent 装配 MUST 经 AgentBuilder，依赖 protocol 端口与 agent 会话词汇；app 组合根注入具体 infra 实现。装配入口由单元测试 / 组合根覆盖，MUST NOT 为静态存在性单独扩 BDD st"
+  },
+  {
+   "req": "r1056",
+   "title": "sessionstore-eventsink",
+   "len": 133,
+   "text": "protocol MUST 提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。端口存在性由类型系统与组合根覆盖，MUST NOT 为 trait 存在性单独扩 BDD ste"
+  },
+  {
+   "req": "r1057",
+   "title": "mutable-slots-next-turn",
+   "len": 83,
+   "text": "set_tools / set_hooks / set_system_prompt 等 MUST 只影响下一轮 run；进行中回合使用启动快照。 @req:r1058"
+  },
+  {
+   "req": "r1031",
+   "title": "unknown-event-degrade",
+   "len": 83,
+   "text": "应用面/bridge 对未识别 XyEvent 变体 MUST 降级（日志），MUST NOT panic。由 protocol 单元测试覆盖。 @req:r1032"
+  },
+  {
+   "req": "r1032",
+   "title": "defaults",
+   "len": 114,
+   "text": "未显式配置时 MUST 有可测默认：thinking level、compaction 频率等集中定义；MUST NOT 将 max_iterations 或未配置的硬步数闸列为运行时默认。由单元测试覆盖。 @req:r1035"
+  },
+  {
+   "req": "r1040",
+   "title": "persist-done-usage",
+   "len": 173,
+   "text": "ReAct 在模型流正常结束时 MUST 将 XyChunk::Done 携带的 usage 与 stop_reason（若有）写入随后持久化的 AssistantMessage；MUST NOT 在 Done 已提供非空 usage 时仍"
+  },
+  {
+   "req": "r1042",
+   "title": "next-turn-refresh-model-thinking",
+   "len": 348,
+   "text": "ReAct MUST 在每次模型调用前（turn 边界，对齐 pi prepareNextTurn）从 session 重读当前选中模型与 thinking level，并据此重建本 turn 的 XyModel 与 XyGenerateO"
+  },
+  {
+   "req": "r1049",
+   "title": "turn-end-threshold-compaction",
+   "len": 280,
+   "text": "ReAct 或 session 编排在 Settle（本轮不再续跑工具、非 abort）后 MUST 调用 threshold auto-compact 检查（domain-compaction c2 地板感知有效触发阈值 + c17/c1"
+  },
+  {
+   "req": "r1050",
+   "title": "turn-end-overflow-compact-retry",
+   "len": 523,
+   "text": "ReAct 在 Settle（或 generate 失败走 overflow Case1 的收尾）后 MUST 先于 threshold（ar31）评估 overflow Case1（domain-compaction c21–c23）。C"
+  },
+  {
+   "req": "r1051",
+   "title": "context-policy-responses-assembler",
+   "len": 340,
+   "text": "agent 层 MUST 提供 ContextPolicy（或等价）code-first 默认板：至少含 tools_mode（默认 full）、status_bar_mode（默认 off）；系统提示 MUST NOT 含日历日/CWD（"
+  },
+  {
+   "req": "r1052",
+   "title": "mcp-tool-table-freeze-gate",
+   "len": 292,
+   "text": "轨 A：Agent/session MUST 在首次 generate（会话尚未工具定稿）前执行 MCP 门闸（对齐 infra-mcp mcp8）：等待 settle 或超时后定稿 provider 可见工具表；定稿后 MUST 忽略会扩"
+  },
+  {
+   "req": "r1053",
+   "title": "stream-error-carries-kind",
+   "len": 239,
+   "text": "ReAct / session 热路径在将 XyError 投影为 XyEvent::Error 时 MUST 经 XyEventError::from_xy（或等价）保留稳定 kind（对齐 XyError::kind）；MUST NOT"
+  },
+  {
+   "req": "r1054",
+   "title": "stream-node-timestamps",
+   "len": 345,
+   "text": "ReAct 持久化 assistant 消息时 MUST 附加 streamTiming（camelCase unix-ms 节点，LLM 投影忽略）：本 run 的 agentStarted、本 turn 的 turnStarted、思考"
+  }
+ ],
+ "agent-session": [
+  {
+   "req": "r1077",
+   "title": "SessionStore 端口",
+   "len": 103,
+   "text": "System MUST 经 SessionStore 抽象做会话持久化：protocol 定义端口、infra 提供持久化与内存实现（供测试）、agent 层经该抽象持有 store。 @req:r1078"
+  },
+  {
+   "req": "r1080",
+   "title": "trust 不在 agent 层",
+   "len": 155,
+   "text": "项目 trust 决策 MUST 经 infra trust store + 应用面（Driver / `/trust`）路径；agent 层 MUST NOT 暴露 save_trust_decision 或 agent 层 trust "
+  },
+  {
+   "req": "r1083",
+   "title": "compaction-aware session context",
+   "len": 254,
+   "text": "build_session_context / build_session_context_v2（及等价 LLM history 播种）MUST 对 leaf 分支路径应用与 pi buildContextEntries 同构的裁切：存在 "
+  },
+  {
+   "req": "r1084",
+   "title": "resume-import-provider-prefix-path",
+   "len": 306,
+   "text": "resume_session / import_from_jsonl（或等价加载）后用于打模型的 history MUST 经与同进程续跑相同的唯一路径：SessionEntry → as_agent_message（或等价）→ proje"
+  }
+ ],
+ "agent-hooks": [
+  {
+   "req": "r1000",
+   "title": "hook 事件",
+   "len": 278,
+   "text": "Hook 系统 MUST 支持约定事件名，含：tool_call、tool_result、context、before_provider_headers、before_provider_request、after_provider_resp"
+  },
+  {
+   "req": "r1008",
+   "title": "hook 匹配",
+   "len": 107,
+   "text": "Hook 分发器 MUST 按 event_type.phase.qualifier 模式匹配 hooks（如 pre.tool_call.bash 匹配 bash 工具 pre 阶段调用）。 @req:r1009"
+  },
+  {
+   "req": "r1011",
+   "title": "hook 环境",
+   "len": 56,
+   "text": "Hook 脚本 MUST 经 stdin 接收事件上下文 JSON，并继承配置的环境变量。 @req:r1012"
+  },
+  {
+   "req": "r1001",
+   "title": "before_provider_headers",
+   "len": 102,
+   "text": "before_provider_headers hook MUST 在默认 auth 头构建后、发送前运行；Modify.args.headers 对象 MUST 合并或替换请求头。 @req:r1002"
+  },
+  {
+   "req": "r1002",
+   "title": "provider hooks 接线",
+   "len": 150,
+   "text": "注入 HookDispatcher 时，OpenAI Responses、OpenAI Completions 与 Anthropic Messages adapter MUST 调用三个 provider hooks；空 dispatch"
+  },
+  {
+   "req": "r1003",
+   "title": "脚本桥接 ReAct",
+   "len": 131,
+   "text": "Agent 附加 HookDispatcher 时，ReAct MUST 除 AgentHooks 外为 tool_call（pre）、tool_result（post）、context（pre model call）分发脚本 hooks。"
+  },
+  {
+   "req": "r1004",
+   "title": "生命周期脚本 hooks",
+   "len": 138,
+   "text": "附加 HookDispatcher 时，agent_start/agent_end/turn_start/turn_end/message_start/message_end MUST 与对应 XyEvent 发射一并分发（仅观察；fail"
+  },
+  {
+   "req": "r1005",
+   "title": "模型与 thinking 选择接线",
+   "len": 191,
+   "text": "附加 XyHookBus 时，Command::SetModel / CycleModel 执行器 MUST 在成功变更后分发 model_select；Command::SetThinkingLevel 执行器 MUST 分发 think"
+  },
+  {
+   "req": "r1006",
+   "title": "会话树切换 hooks",
+   "len": 254,
+   "text": "附加 XyHookBus 时，SessionTree / TravelSessionTree 执行器 MUST 分发 session_before_tree（Blocked 可取消）与成功时 session_tree；SwitchSessi"
+  },
+  {
+   "req": "r1007",
+   "title": "user_bash 于 execute_bash",
+   "len": 88,
+   "text": "附加 XyHookBus 时，Command::Bash 执行器 MUST 在运行命令前分发 user_bash；Blocked MUST 阻止执行并 surfaced 错误。"
+  }
+ ],
+ "agent-prompt": [
+  {
+   "req": "r1015",
+   "title": "system-assembly",
+   "len": 267,
+   "text": "System MUST 经 build_system_prompt（或等价）组装系统提示，可包含工具片段、skills 摘要、context 文件；自定义 system 文件可替换或 append。组装顺序 MUST 可文档化为 stabl"
+  },
+  {
+   "req": "r1020",
+   "title": "skills-section",
+   "len": 193,
+   "text": "当 ResourceLoader 发现 skills 时，系统提示 MUST 能包含 available_skills（或等价）清单供模型发现；未信任项目 MUST NOT 注入项目 skills。skills 元数据属 stable（会话"
+  },
+  {
+   "req": "r1022",
+   "title": "safe-minijinja-default-assembly",
+   "len": 389,
+   "text": "默认 system 组装路径（无 SYSTEM.md/custom_prompt 整段替换时）MUST 经沙箱 minijinja 渲染嵌入默认模板：UndefinedBehavior::Strict；上下文仅白名单键（至少含 date、c"
+  },
+  {
+   "req": "r1023",
+   "title": "context 热应用",
+   "len": 148,
+   "text": "Agent MUST 提供 apply_prompt_resources（或等价）：用新的 context_files、system_prompt、append_system_prompt 重建系统提示；MUST 只影响后续 run；MUS"
+  },
+  {
+   "req": "r1024",
+   "title": "skills 热应用与引导注入",
+   "len": 250,
+   "text": "Agent MUST 在构造/bootstrap 时将 ResourceLoader 发现的 skills 写入 SystemPromptOpts 并经 build_system_prompt 进入 available_skills（若非空"
+  },
+  {
+   "req": "r1025",
+   "title": "dollar-skill 提交注入",
+   "len": 187,
+   "text": "当用户消息含 $name 且 name 在已加载 skills 目录中时，System MUST 在发往模型前将对应 SKILL.md 正文（去 frontmatter）注入该 user 消息的模型侧投影；会话历史 MUST 保留原始含 $"
+  },
+  {
+   "req": "r1016",
+   "title": "runtime-policy-fragments",
+   "len": 491,
+   "text": "System MUST 按当前工具批模式（XyBatchMode）从内置表解析 runtime policy 片段并经 build_system_prompt 注入 <runtime_policy> 段（位于 APPEND_SYSTEM /"
+  },
+  {
+   "req": "r1017",
+   "title": "builtins-available-tools-mcp-discover",
+   "len": 359,
+   "text": "默认 build_system_prompt 路径下 Available tools 散文清单 MUST 仅含内置（非 mcp__ / 过渡 mcp- / mcp_ 前缀）工具片段；MUST 含一句引导：MCP/custom 工具以本会话定"
+  },
+  {
+   "req": "r1018",
+   "title": "system-omit-date-and-session-env",
+   "len": 439,
+   "text": "系统提示 MUST NOT 写入日历日或 CWD（无 date_placement 旋钮，日历日/CWD 由 session_env 提供）。产品路径 MUST 将日历日/CWD 以状态栏族特殊类型 session_env（Env Cust"
+  },
+  {
+   "req": "r1019",
+   "title": "no-instructions-dual-copy",
+   "len": 150,
+   "text": "openai-responses 主路径 MUST NOT 将系统提示再写入顶栏 instructions 与 input 前缀各一份；SSOT 为 system_prompt → input 前缀 item（thinking on 可为 "
+  }
+ ],
+ "agent-session-store": [
+  {
+   "req": "r31",
+   "title": "快照操作",
+   "len": 82,
+   "text": "System MUST 支持对不可变会话快照执行 snapshot、restore、spawn、list、prune、diff、merge 操作。 @req:r41"
+  },
+  {
+   "req": "r41",
+   "title": "compaction",
+   "len": 154,
+   "text": "当 CompactionSettings.enabled 且上下文占用超过 window−reserve（c1630）时，System MUST 在 agent/capabilities 回合落定后自动 compact（c1640）；MUS"
+  },
+  {
+   "req": "r1089",
+   "title": "分享指引",
+   "len": 46,
+   "text": "未配置 token 时调用分享，System MUST 返回配置指引。 @req:r1111"
+  },
+  {
+   "req": "r1114",
+   "title": "CWD 集成",
+   "len": 42,
+   "text": "CLI 与 RPC 模式 MUST 在恢复会话前完成同一校验。 @req:r1115"
+  },
+  {
+   "req": "r1115",
+   "title": "SessionStore 端口实现",
+   "len": 180,
+   "text": "infra 层的 SessionManager MUST 实现 protocol 的 XySessionStore 端口（append、load、load_context、exists），仅覆盖 agent 循环与 compaction 所"
+  },
+  {
+   "req": "r1117",
+   "title": "日志访问",
+   "len": 120,
+   "text": "会话 store MUST 暴露 read_recent(session_id, limit) -> Vec<Event> 供 server journal；journal 容量 MUST 可配置（默认 10000）。 @req:r1116"
+  },
+  {
+   "req": "r1116",
+   "title": "ExportIo 实现",
+   "len": 89,
+   "text": "System MUST 提供导出 I/O 端口实现（StdExportIo 或等价，tokio::fs 读写）；组合根 MUST 将导出协作器经该端口注入。 @req:r1100"
+  }
+ ],
+ "agent-tools": [
+  {
+   "req": "r32",
+   "title": "工具 trait 前缀",
+   "len": 79,
+   "text": "System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 protocol 边界其余命名一致。 @req:r42"
+  },
+  {
+   "req": "r1149",
+   "title": "grep-find-timeout-schema",
+   "len": 73,
+   "text": "grep 与 find 的 parameters schema MUST 暴露可选 timeout（秒）；行为遵循 t24。 @req:r1153"
+  },
+  {
+   "req": "r1153",
+   "title": "fs 工具有界",
+   "len": 110,
+   "text": "read、write、edit、ls 四个文件类工具的执行等待 MUST 有默认上限（30 秒），到期以 timeout 类错误呈现；MUST NOT 向模型暴露 per-call timeout 参数。 @req:r7"
+  },
+  {
+   "req": "r10",
+   "title": "禁止全局 dead_code 允许",
+   "len": 80,
+   "text": "crate 根 MUST NOT 使用全局 #![allow(dead_code)]；dead code 抑制 MUST 限定于单项并附理由。 @req:r11"
+  },
+  {
+   "req": "r1134",
+   "title": "diff 输出",
+   "len": 61,
+   "text": "编辑操作后，System MUST 使用 similar crate 计算结构化 diff 供审阅。 @req:r1141"
+  },
+  {
+   "req": "r1141",
+   "title": "工具定义包含 schema",
+   "len": 91,
+   "text": "展示类型 ToolDefinition MUST 包含 XyToolSchema 字段，而非重复 name/description/parameters 字段。 @req:r1142"
+  },
+  {
+   "req": "r1142",
+   "title": "ToolSet 在 agent 终态",
+   "len": 92,
+   "text": "ToolSet MUST 作为构建期终态编排状态留在 agent 层：聚合具体工具并组合单元操作；构建后交给一轮的集合即终态，无运行时过滤。具体工具由组合根注入。 @req:r1143"
+  },
+  {
+   "req": "r1143",
+   "title": "工具相关类型统一前缀",
+   "len": 95,
+   "text": "ToolExecutionMode MUST 重命名为 XyToolExecutionMode；protocol 工具边界及其签名类型 MUST 一致使用 Xy 前缀命名。 @req:r36"
+  },
+  {
+   "req": "r36",
+   "title": "MCP 工具经 XyTool 接入",
+   "len": 89,
+   "text": "MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。 @req:r1145"
+  },
+  {
+   "req": "r1150",
+   "title": "builtin-tool-concurrency-class",
+   "len": 250,
+   "text": "内置工具 MUST 声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 与 todo_rewrite/todo_update 为 Barrier（或等价 Sequential 映射）"
+  },
+  {
+   "req": "r1151",
+   "title": "dynamic-tool-mcp-hard-barrier",
+   "len": 293,
+   "text": "公开名以 `mcp__` 为前缀（过渡期可识别遗留 `mcp-` / `mcp_` / `mcp:`）的工具（含 McpToolAdapter 与任何同前缀注册）在批调度分类中 MUST 为 Barrier，无论其 trait 并发声明或配"
+  },
+  {
+   "req": "r1152",
+   "title": "ask-tui-only-builtin",
+   "len": 298,
+   "text": "内置工具 ask MUST 以 TypedTool 存在于 infra；schema MUST 含 questions 数组（每题 id/prompt/mode/options，option.description 可选）；execute "
+  }
+ ],
+ "app-tui-bridge": [
+  {
+   "req": "r1187",
+   "title": "bash-event-append",
+   "len": 241,
+   "text": "产品 bridge MUST 提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价），输入为交互 bang 的输出事件（session/bash_output → 面级 sink）；增"
+  }
+ ],
+ "domain-compaction": [
+  {
+   "req": "r1400",
+   "title": "单一配置来源",
+   "len": 277,
+   "text": "Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens "
+  },
+  {
+   "req": "r1402",
+   "title": "触发估计同源展示",
+   "len": 378,
+   "text": "auto-compact 的 reserve 触发决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 settlement snapshot）；当存在可信 Api 锚点时触发所用 to"
+  },
+  {
+   "req": "r1410",
+   "title": "overflow 与 threshold 分流",
+   "len": 192,
+   "text": "overflow Case1 MUST 先于 threshold Case2 评估；overflow 路径 MUST 复用 c18 stale 防抖；CompactionEnd MUST 能暴露 reason=overflow、will_r"
+  },
+  {
+   "req": "r1411",
+   "title": "force 可选 instructions",
+   "len": 449,
+   "text": "手动 force compact（Command::Compact / CompactionOrchestrator::compact）MUST 接受可选 instructions（Option<String> 或等价）；非空时 gener"
+  },
+  {
+   "req": "r1412",
+   "title": "compact 输入为 leaf 分支",
+   "len": 157,
+   "text": "prepare_compaction 与 compact_session（及 Orchestrator force/auto/overflow）MUST 仅消费当前 leaf 的分支路径条目（对齐 pi getBranch）；MUST NO"
+  },
+  {
+   "req": "r1413",
+   "title": "turn-settlement-once",
+   "len": 944,
+   "text": "当一次 Settle（本轮模型不再续跑工具）收尾做 threshold/overflow 预检时，System MUST 对该次收尾只产生一份 ContextTokenEstimate settlement（同一 tokens/proven"
+  },
+  {
+   "req": "r1414",
+   "title": "no-invent-reasoning-after-compact",
+   "len": 243,
+   "text": "Compaction 以 CompactionEntry 摘要替换 firstKept 之前的轨迹后，随后经 project_for_llm 与 Responses 组装的 input MUST 仅回放仍留在保留消息中的 thinkingS"
+  },
+  {
+   "req": "r1415",
+   "title": "压后地板一次性诊断",
+   "len": 394,
+   "text": "auto 路径（threshold / overflow）compaction 成功且其 AfterCompaction settlement tokens ≥ contextWindow（压后仍无可用窗口，固定开销吃满窗口的退化形态）时，"
+  },
+  {
+   "req": "r1416",
+   "title": "policy 指纹",
+   "len": 189,
+   "text": "CompactionEntry 的 policy 快照 MUST 记录产生该摘要时的 contextWindow、reserveTokens、keepRecentTokens 与 estimatorVersion；后续 resume、ins"
+  }
+ ],
+ "domain-security": [
+  {
+   "req": "r66",
+   "title": "网络权限检查",
+   "len": 153,
+   "text": "Bash 执行 SHALL 对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时"
+  },
+  {
+   "req": "r71",
+   "title": "信任单一事实来源",
+   "len": 100,
+   "text": "项目 trust 状态 MUST 在 infra 层 trust 模块有单一真源；agent 层 MUST NOT 含自有 trust store 或 trust resolver。 @req:r72"
+  },
+  {
+   "req": "r1425",
+   "title": "Permission 非安全边界",
+   "len": 177,
+   "text": "文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（"
+  }
+ ],
+ "package-ai-bridge-accounting": [
+  {
+   "req": "r1561",
+   "title": "计量优先级",
+   "len": 133,
+   "text": "上下文 token 估计 MUST 按固定优先级解析来源：Api，然后 RemoteCount，然后 LocalTokenizer，然后 Heuristic；结果 MUST 携带 TokenProvenance（或等价枚举）标明实际采用的来"
+  },
+  {
+   "req": "r1564",
+   "title": "Api-锚点规则",
+   "len": 146,
+   "text": "当存在适用于当前会话 prefix/leaf 的可信厂商 usage 时 MUST 优先用作 Api 锚点；因 abort 或 error 结束的回合 usage、以及 compaction 之后不再描述当前 prefix 的旧 usage"
+  },
+  {
+   "req": "r1563",
+   "title": "Api-trailing-范围",
+   "len": 233,
+   "text": "当 Api 锚点有效时，trailing_tokens MUST 仅计入 last usage 消息之后的消息（对齐 pi estimateContextTokens）；MUST NOT 对锚点及之前的消息再叠加 heuristic；las"
+  },
+  {
+   "req": "r1565",
+   "title": "禁止流上全量 encode",
+   "len": 130,
+   "text": "generate_stream 热路径 MUST NOT 在每个文本 delta 上对累计全文调用完整本地 tokenizer.encode；本地精确计数 MUST 仅在显式 estimate 调用、流结束补洞或经文档化的节流策略下发生。 "
+  },
+  {
+   "req": "r1566",
+   "title": "Heuristic-诚实标注",
+   "len": 121,
+   "text": "当最终采用 Heuristic 时，ContextTokenEstimate 的 provenance MUST 为 Heuristic；下游展示层若使用该结果 MUST 能区分于 Api/LocalTokenizer。 @req:r156"
+  },
+  {
+   "req": "r1567",
+   "title": "RemoteCount-可降级",
+   "len": 168,
+   "text": "RemoteCount（Anthropic count_tokens 与 OpenAI Responses input_tokens，及等价注入 stub）MUST 可配置关闭；调用失败或超时时 MUST 降级到 LocalTokenize"
+  },
+  {
+   "req": "r1568",
+   "title": "LocalTokenizer-注册与缓存",
+   "len": 220,
+   "text": "LocalTokenizer MUST 经 registry 将 model_id 映射到 Builtin、HuggingFace tokenizer.json 或本地 path 源（用户配置优先于 builtin 启发式）；Hugging"
+  },
+  {
+   "req": "r1569",
+   "title": "openai-responses-remote-count",
+   "len": 220,
+   "text": "当模型路径为 OpenAI Responses（或声明兼容 input_tokens 的端点）且 RemoteCount 已启用时，估计上下文 MUST 可经 POST /v1/responses/input_tokens（或配置的 bas"
+  },
+  {
+   "req": "r1562",
+   "title": "local-tokenizer-gate",
+   "len": 167,
+   "text": "LocalTokenizer 档 MUST 仅在显式允许时参与估计（配置 on|off，默认 off）；off 时即便 registry 已映射或缓存可用，估计路径 MUST NOT 调用本地 encode，并 MUST 继续按 paa1 "
+  }
+ ],
+ "package-ai-bridge": [
+  {
+   "req": "r1536",
+   "title": "workspace-包边界",
+   "len": 134,
+   "text": "仓库 MUST 提供 workspace 成员包 packages/xylitol-ai-bridge，作为 client 到上游 LLM model provider 的接线与计量库；该包 MUST NOT 依赖主 crate xylit"
+  },
+  {
+   "req": "r1546",
+   "title": "包内模块划分",
+   "len": 141,
+   "text": "xylitol-ai-bridge MUST 按职责划分至少包含 provider、usage、accounting、tokenize、registry 模块（名称可等价），分别承担方言接线、usage 归一化、多源计量、本地/远程分词计数"
+  },
+  {
+   "req": "r1557",
+   "title": "包内-DTO-独立",
+   "len": 243,
+   "text": "包对外流式与消息类型 MUST 使用包内自有 LLM DTO（如 AiBridgeMessage / AiBridgeChunk / AiBridgeUsage）作为 LLM 叶 SSOT；该 DTO MUST 仅表达发给模型的形状，MUS"
+  },
+  {
+   "req": "r1559",
+   "title": "主仓映射层",
+   "len": 265,
+   "text": "主仓 agent MUST 经 project_for_llm（或等价）将 AgentMessage 投影为 Vec<AiBridgeMessage>：Llm 臂 MUST passthrough；Env 折叠策略留在 agent。XyMo"
+  },
+  {
+   "req": "r1560",
+   "title": "provider-实现迁入",
+   "len": 156,
+   "text": "OpenAI 兼容（Responses 与 Completions）与 Anthropic Messages 的流式/非流式接线实现 MUST 以 xylitol-ai-bridge 为实现归属；主仓 MUST NOT 保留与包并行的第二套"
+  },
+  {
+   "req": "r1537",
+   "title": "vendor-sdk-first",
+   "len": 348,
+   "text": "OpenAI 兼容路径（Responses、Completions、input_tokens RemoteCount）与 Anthropic 兼容路径（Messages、count_tokens）MUST 优先经厂商官方 Rust SDK "
+  },
+  {
+   "req": "r1555",
+   "title": "thinking-level-resolve-exact",
+   "len": 230,
+   "text": "resolve_thinking_for_request（或等价）对 level 与 thinking_level_map 键 MUST 精确查找；无 map 时 OpenAI MUST 将当前 level 原串作为 effort（精确 o"
+  },
+  {
+   "req": "r1556",
+   "title": "provider-http-bounded",
+   "len": 116,
+   "text": "provider HTTP 客户端 MUST 有连接超时与请求级等待界：流式请求以 chunk-gap idle 上界判定挂起（任何入站字节重置计时）；非流式请求有总时长上界；到期返回可分类超时错误并释放连接。 @req:r1539"
+  },
+  {
+   "req": "r1543",
+   "title": "session-vs-llm-vocab",
+   "len": 372,
+   "text": "AgentMessage MUST 作为 session/agent 真源语义，以组合表达：Llm(AiBridgeMessage) 与 Env(EnvMessage)。物理模块 MUST 位于 protocol 根（供 ports/wir"
+  },
+  {
+   "req": "r1545",
+   "title": "wire-policy-defaults-rs",
+   "len": 445,
+   "text": "包 MUST 在 xylitol-ai-bridge 提供 WirePolicy（或等价）类型，含 compat 与仅 API req/resp 的 extra_policy；未暴露策略默认值的唯一真源 MUST 为包内 defaults."
+  },
+  {
+   "req": "r1547",
+   "title": "wire-extra-policy-scope",
+   "len": 383,
+   "text": "extra_policy MUST 仅表达 API 请求组装与响应解析/维持相关布尔（至少含 prompt_cache_usage、prompt_cache_key、previous_response_id）；MUST NOT 将 tool"
+  },
+  {
+   "req": "r1548",
+   "title": "first-language-vs-dialect",
+   "len": 277,
+   "text": "产品与桥接叙事 MUST 区分第一语言（厂商原生 API）与方言（他方实现该协议形状，如 DeepSeek 实现 openai-responses）。可识别 AdapterKind/api 字符串（openai-responses、open"
+  },
+  {
+   "req": "r1549",
+   "title": "responses-prompt-cache-read-tri-state",
+   "len": 325,
+   "text": "Responses usage 映射 MUST 提供可区分的 Prompt Cache 读数三态（名以实现为准，如 PromptCacheRead）：NotApplicable（expects_prompt_cache_usage 为 fa"
+  },
+  {
+   "req": "r1550",
+   "title": "prompt-cache-usage-obs-honesty",
+   "len": 303,
+   "text": "当 ProviderRequestTrace（或等价）激活并附着 usage 时，MUST 将 Prompt Cache 三态透出到观测属性（Langfuse/trace 自定义 property 或等价）；langfuse.observa"
+  },
+  {
+   "req": "r1551",
+   "title": "responses-assembler-sole-body",
+   "len": 395,
+   "text": "包 MUST 提供 ResponsesAssembler（或等价）作为构造 openai-responses 请求 JSON body 的唯一业务布局入口：消费投影后的 AiBridgeMessage、工具 schema、AiBridgeG"
+  },
+  {
+   "req": "r1552",
+   "title": "responses-reasoning-full-replay-only",
+   "len": 281,
+   "text": "从 session 形 AiBridgeMessage（含 thinkingSignature）经 ResponsesAssembler 重建 input 时，回放策略 MUST 仅为全量回放：有合法 signature 则原样推入 rea"
+  },
+  {
+   "req": "r1553",
+   "title": "responses-reasoning-encrypted-backfill",
+   "len": 271,
+   "text": "流式 Responses 路径在 response.completed 或 response.incomplete 时，若能按 reasoning id 将终端 output 中的非空 encrypted_content 合并进先前 Thi"
+  },
+  {
+   "req": "r1554",
+   "title": "responses-assemble-prefix-idempotent",
+   "len": 337,
+   "text": "对同一 Vec<AiBridgeMessage>、同一 AiBridgeGenerateOptions（含 system_prompt）、同一 tools schema 与 WirePolicy，ResponsesAssembler 构造的"
+  },
+  {
+   "req": "r1902",
+   "title": "deepseek-prompt-cache-read-mapped",
+   "len": 378,
+   "text": "命名轮廓 compat=deepseek 在解析上游 usage 时 MUST 把已出现的 Prompt Cache 读数映射为 Tokens(n)：Responses 认 input_tokens_details.cached_token"
+  },
+  {
+   "req": "r1558",
+   "title": "generate-obs-session-snapshot",
+   "len": 215,
+   "text": "适配器一次 generate（流式或非流）的观测会话身份 MUST 来自该次调用携带的快照（与 generate 选项或等价入参绑定）；OpenCode 会话归因 header 与 llm.request 上的 langfuse.sessi"
+  }
+ ],
+ "runtime-model-registry": [
+  {
+   "req": "r1742",
+   "title": "ModelRegistry provider",
+   "len": 136,
+   "text": "ModelRegistry MUST 支持 register_provider(name, config) 与 has_configured_auth(model) / has_resolved_auth(model) 检查 API key"
+  },
+  {
+   "req": "r1751",
+   "title": "模型发现",
+   "len": 89,
+   "text": "ModelRegistry MUST 支持 get_available()，返回已注册 provider 的全部配置模型，按 provider 优先级排序。 @req:r1752"
+  },
+  {
+   "req": "r1752",
+   "title": "模型默认值",
+   "len": 293,
+   "text": "ModelRegistry MUST 仅为 openai 与 anthropic provider 维护默认模型 ID。Pre-1.0.0 其它 provider MUST NOT 有默认模型条目。默认模型 ID MUST 为有效、当前可用"
+  },
+  {
+   "req": "r1753",
+   "title": "模型解析器",
+   "len": 139,
+   "text": "System MUST 提供 resolve_model(pattern, available)，支持 provider/modelId 规范形式、裸 id 匹配、别名优先于带日期版本、以及 thinking-level:model pat"
+  },
+  {
+   "req": "r1754",
+   "title": "作用域模型",
+   "len": 103,
+   "text": "System MUST 支持 scoped_models（来自 CLI --models 标志），用于模型循环，将可用模型限制为用户指定子集并可含每模型 thinking level。 @req:r1755"
+  },
+  {
+   "req": "r1755",
+   "title": "模型回退",
+   "len": 93,
+   "text": "目标模型 ID 不在 provider 可用列表时，ModelResolver MUST 构建回退 Model，保留用户意图并回退到同 provider 基础模型。 @req:r1756"
+  },
+  {
+   "req": "r1756",
+   "title": "鉴权指引",
+   "len": 68,
+   "text": "未配置模型 API key 时，ModelRegistry MUST 返回面向用户的错误消息，指引正确环境变量名。 @req:r1757"
+  },
+  {
+   "req": "r1757",
+   "title": "BDD model",
+   "len": 38,
+   "text": "模型注册表与解析的 BDD 测试 MUST 全部通过。 @req:r1758"
+  },
+  {
+   "req": "r1758",
+   "title": "thinking-levels-on-meta",
+   "len": 265,
+   "text": "ModelRegistry / resolve_model_meta（或等价）MUST 将配置中的 thinking_levels 字符串列表填入模型 meta 支持集并保留配置顺序；thinking 为 false 或未声明可调列表时支持"
+  },
+  {
+   "req": "r1744",
+   "title": "thinking-level-on-generate",
+   "len": 176,
+   "text": "Agent 在调用 generate_stream（或等价）时 MUST 传入当前 thinking 档名字符串与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下"
+  },
+  {
+   "req": "r1745",
+   "title": "no-silent-env-select",
+   "len": 245,
+   "text": "bootstrap MUST NOT 在缺少用户显式模型别名配置时，仅因存在 provider API key 环境变量而向 ModelRegistry 注册 default_model_id_for_provider（或等价）默认模型；亦"
+  },
+  {
+   "req": "r1746",
+   "title": "honor-model-entry-api",
+   "len": 330,
+   "text": "bootstrap / resolve_model_meta（或等价装配）注册 XyModelMeta 时 MUST 保留 ModelsConfig ModelEntry 的可选 api 字段写入 config.api 与 meta.api"
+  },
+  {
+   "req": "r1747",
+   "title": "manifest-api-kind-default",
+   "len": 217,
+   "text": "JSON model manifest 省略 api 时 MUST 按 provider 选用与 AdapterKind::default_for 一致的协议族字符串（OpenAI→openai-responses，Anthropic→an"
+  },
+  {
+   "req": "r1749",
+   "title": "explicit-model-entry-auth",
+   "len": 328,
+   "text": "AppConfig ModelsConfig 中每个显式模型别名条目 MUST 在 bootstrap 注册进 ModelRegistry（供 --list-models 与选模），MUST NOT 因 API key 缺失或未解析而跳过注"
+  }
+ ],
+ "test-hooks-wiring": [
+  {
+   "req": "r1817",
+   "title": "smoke-already-wired",
+   "len": 158,
+   "text": "仓库 MUST 至少有一条经库缝触发的观察型例子（如 session_start 或 agent_start），经 InProcessDriver 等库缝注入 XyHookBus 并录制 hook 调用；MUST NOT 用直接 HookD"
+  },
+  {
+   "req": "r1818",
+   "title": "provider-matrix-out-of-scope",
+   "len": 174,
+   "text": "model_select 与 thinking_level_select 已有可执行场景；OpenAI Responses / Anthropic Messages 的 provider 三缝由 agent-hooks 覆盖。本 featu"
+  },
+  {
+   "req": "r1819",
+   "title": "curated-xy-hook-bus",
+   "len": 168,
+   "text": "crate 根精选 pub use MUST 导出 XyHookBus 与 XyHookOutcome（及 NoopHookBus）；嵌入方 MUST 能在不 import protocol 深层子路径的情况下引用这些符号；MUST NOT"
+  }
+ ],
+ "package-tui-interaction-modes": [
+  {
+   "req": "r1627",
+   "title": "mode-b-alt-viewport",
+   "len": 303,
+   "text": "ApplicationOwned MUST 使用应用自管视口承载 transcript（滚轮与程序滚动归应用）。ApplicationOwned 进入路径 SHOULD 经终端 alt-buffer（如 CSI ?1049h 或等价）；无论"
+  },
+  {
+   "req": "r1628",
+   "title": "mode-b-drag-select",
+   "len": 152,
+   "text": "ApplicationOwned 在 mouse capture 开启且应用会话已 begin 时 MUST 将未修饰左键拖选接到应用内选区：按下记录锚点、拖动更新焦点、选区高亮出现在绘出的 transcript 可见行上。空选（锚点与焦点"
+  },
+  {
+   "req": "r1629",
+   "title": "mode-b-edge-autoscroll",
+   "len": 177,
+   "text": "ApplicationOwned 拖选过程中，当指针贴近视口顶或底边缘时 MUST 自动滚动 transcript 并扩展选区，使选区可跨出当前可见页（越界续选）。自动滚动 MUST 与应用视口共用同一滚动机制，MUST NOT 依赖终端 "
+  },
+  {
+   "req": "r1631",
+   "title": "mode-b-input-exclude",
+   "len": 181,
+   "text": "ApplicationOwned 布局 MUST 将主输入面（Editor/Input 或等价 dock）置于 transcript 选区坐标系之外：绘出帧的底部 dock 行 MUST NOT 进入 transcript 选区文本抽取；指"
+  },
+  {
+   "req": "r1632",
+   "title": "mode-b-reuses-mouse-pipe",
+   "len": 198,
+   "text": "ApplicationOwned MUST 复用既有 opt-in mouse 管道（Enable/Disable mouse capture 与 InputEvent::Mouse 扇入），MUST NOT 另建平行的第二套鼠标事件源。默"
+  },
+  {
+   "req": "r1633",
+   "title": "mode-a-preserves-emulator-selection",
+   "len": 157,
+   "text": "Inline MUST 保持今日主屏差分与终端 scrollback 路径作为默认产品取向的库能力；Inline MUST NOT 承诺「开启 mouse capture 后仍完整保留终端原生选区，同时又提供无修饰应用内点选」。Inline"
+  },
+  {
+   "req": "r1634",
+   "title": "mode-b-fixed-viewport-paint",
+   "len": 216,
+   "text": "ApplicationOwned 应用会话激活时，每帧绘出的行数 MUST 不超过终端高度；transcript 历史 MUST 由应用 ScrollView（或等价）持有，绘出仅可见窗口加底部 dock。ApplicationOwned "
+  },
+  {
+   "req": "r1636",
+   "title": "mode-b-suspend-restores-session",
+   "len": 178,
+   "text": "ApplicationOwned 应用会话激活期间若经 suspend/resume 终端（如外部编辑器），resume 后 MUST 重新进入 ApplicationOwned 会话所持有的 alt-buffer（若使用）与 mouse "
+  },
+  {
+   "req": "r1639",
+   "title": "mode-b-library-host-seam",
+   "len": 247,
+   "text": "xylitol-tui MUST 将 ApplicationOwned 作为可复用库基础暴露给下游 host：至少包括构造期模式入口/begin/end、dock 行登记、视口投影、选区与 OSC52、复制成功短提示信号、退出主屏 dump"
+  }
+ ],
+ "agent-todo": [
+  {
+   "req": "r1118",
+   "title": "todo-domain-model",
+   "len": 372,
+   "text": "会话 Todo 列表 MUST 为有序条目集合；每条含稳定 id、非空 content（trim 后 Unicode 标量 ≤ 80）、status ∈ pending|in_progress|completed。空表合法。complete"
+  },
+  {
+   "req": "r1123",
+   "title": "custom-agent-todo-latest-wins",
+   "len": 255,
+   "text": "Todo 真源 MUST 以会话 Custom 条目持久化：custom_type 为 agent_todo，载荷为当前全量 items 快照。每次成功变更 MUST append 一条完整快照；读取 MUST 在当前 leaf 分支上 l"
+  },
+  {
+   "req": "r1124",
+   "title": "todo-request-time-prefix-inject",
+   "len": 530,
+   "text": "agent_todo Custom 快照 MUST NOT 作为会话消息折叠进 provider 输入前缀（含 system / session_env）；SSOT 仍只在 Custom latest-wins。每次出站 generate，"
+  },
+  {
+   "req": "r1125",
+   "title": "todo-tools-semantics",
+   "len": 491,
+   "text": "产品默认工具表（Print 与 TUI 共用 builtins 基座）MUST 提供且仅提供两 Todo 工具：todo_rewrite（整表替换，成功返回当前全表 `{items}`，空表清除）、todo_update（参数为 `item"
+  },
+  {
+   "req": "r1126",
+   "title": "multiple-in-progress-allowed",
+   "len": 139,
+   "text": "in_progress 条目可为 0 或多条。todo_rewrite / todo_update MUST NOT 因存在两条及以上 in_progress 拒绝写入。待办栏 doing 列 MUST 按 SSOT 表序展示全部 in_p"
+  },
+  {
+   "req": "r1127",
+   "title": "todo-tool-concurrency-barrier",
+   "len": 137,
+   "text": "todo_rewrite / todo_update MUST 为 Barrier（或等价 Sequential）并发类，与其它会改会话状态的内置工具同族；调度 MUST 尊重该类。分类表由单测覆盖，MUST NOT 为静态表单独扩 BDD"
+  },
+  {
+   "req": "r1128",
+   "title": "status-bar-read-only-boundary",
+   "len": 292,
+   "text": "Todo SSOT 为本波唯一业务真源。待办栏与 AgentStatusBar 若投影清单或完成数等摘要，MUST 只读自本 SSOT；MUST NOT 以栏 auto 摘要写回 Todo。本波模型可见清单走 r1124 出站 AgentS"
+  },
+  {
+   "req": "r1119",
+   "title": "compact-preserves-todo-snapshot",
+   "len": 159,
+   "text": "压缩或裁切会话上下文时，若操作会丢掉当前 leaf 上全部 agent_todo 快照，System MUST 在裁切后重新 append 最新全量快照，使后续 TUI / resume / 出站 AgentStatusBar 仍可读到同一"
+  },
+  {
+   "req": "r1120",
+   "title": "todo-builtins-first-turn-freeze",
+   "len": 137,
+   "text": "todo_rewrite / todo_update 属核心 builtins，MUST 在会话首次工具表定稿前进入可见工具表；MUST NOT 在回合中途热加这两个名字。与既有首轮冻表门闸一致；由单测覆盖，MUST NOT 单独扩 BDD"
+  },
+  {
+   "req": "r1121",
+   "title": "export-shows-agent-todo",
+   "len": 87,
+   "text": "会话导出（HTML/JSONL 或等价）MUST 能呈现 agent_todo Custom 快照（或等价标记），MUST NOT 将其伪装成用户消息。 @req:r1842"
+  },
+  {
+   "req": "r1842",
+   "title": "todo-content-max-length",
+   "len": 166,
+   "text": "todo_rewrite / todo_update 写入的 content trim 后 Unicode 标量 MUST ≤ 80；超长 MUST 拒绝写入并返回可读错误，MUST NOT 截断后入库。读取已持久的超长 agent_tod"
+  },
+  {
+   "req": "r1122",
+   "title": "typed-live-projection-event",
+   "len": 371,
+   "text": "todo_* 成功写入后 host MUST 经领域事件发布类型化 TodoList 全量快照（空表亦然，语义为清除）；产品 client 的 live 待办栏投影 MUST 源自该事件，MUST NOT 依赖端侧解析工具结果字符串或调用 "
+  }
+ ],
+ "app-tui-commands": [
+  {
+   "req": "r1199",
+   "title": "extensible-commands",
+   "len": 75,
+   "text": "命令面 MUST 允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。 @req:r1201"
+  },
+  {
+   "req": "r1203",
+   "title": "commands-module-growth",
+   "len": 267,
+   "text": "产品 TUI slash/bang 解析 MUST 继续收口于 commands 模块（可多文件），执行仍经 pending + drain_pending → protocol::Command / dispatch 或 Driver；S"
+  }
+ ],
+ "app-tui-design-playground": [
+  {
+   "req": "r1206",
+   "title": "token-sync-ssot",
+   "len": 114,
+   "text": "产品 TUI 语义色 MUST 以视觉 SSOT frontmatter 为唯一色板数据；designing 生成的 tokens MUST 由单一同步脚本写出；手改生成物 MUST NOT 作为长期真值。 @req:r1207"
+  },
+  {
+   "req": "r1207",
+   "title": "markdown-slot-align",
+   "len": 66,
+   "text": "Markdown 固定态示意 MUST 无井号标题前缀、链接为 text (url)、粗体斜体无可见星号包裹。 @req:r1208"
+  },
+  {
+   "req": "r1208",
+   "title": "agent-default-ignore",
+   "len": 101,
+   "text": "面 AGENTS MUST 写明 Agent 改表面先读产品代码、默认读短模块 intent/states、默认忽略 designing 应用壳；仅在人类点名路径时才读应用壳源码。 @req:r1209"
+  },
+  {
+   "req": "r1209",
+   "title": "session-tree-kind-ssot",
+   "len": 95,
+   "text": "会话树固定态 MUST 用 DESIGN token 色区分 kind 前缀；选中反转行 MUST 继承前景，MUST NOT 再把 role 字符串预烘焙成唯一表现。 @req:r1210"
+  },
+  {
+   "req": "r1210",
+   "title": "session-tree-travel-ssot-live",
+   "len": 95,
+   "text": "会话树是 Driver MessageHistory 活树；Enter 经 travel（或等价）预填 user 输入。MUST NOT 再暗示产品仍为假树 stub。 @req:r1213"
+  },
+  {
+   "req": "r1213",
+   "title": "static-slots",
+   "len": 158,
+   "text": "交互设计稿 MUST 提供 models（wide / narrow / no-thinking）、session-tree filter 与 pending next-turn 固定态；MUST NOT 在静图中表达实现分层（包标签）或顶"
+  },
+  {
+   "req": "r1211",
+   "title": "designing-lint-gate",
+   "len": 208,
+   "text": "仓库 MUST 提供 designing lint 脚本（或等价），并由 just qa 经 check-scripts 执行；失败时 MUST 非零退出。脚本 MUST 覆盖：模块 intent/draft/states 存在、state"
+  },
+  {
+   "req": "r1212",
+   "title": "designing-lint-docs",
+   "len": 160,
+   "text": "面 AGENTS MUST 写明改设计稿须跑 designing lint 与 check-tui-tokens；MUST NOT 再暗示仅靠人眼发现色板或固定态漂移。 # re-review(c2826): 复审结论——本 capabil"
+  }
+ ],
+ "app-tui-host": [
+  {
+   "req": "r1240",
+   "title": "host-driven-engine",
+   "len": 126,
+   "text": "产品 TUI MUST 以 host 驱动引擎（事件分发、按需渲染、idle 心跳）驱动 packages/xylitol-tui；产品路径 MUST NOT 进入引擎的阻塞主循环（包 demo 专用启动 API 勿用于生产面）。 @req"
+  },
+  {
+   "req": "r1248",
+   "title": "terminal-restore",
+   "len": 108,
+   "text": "产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。 @req:r1259"
+  },
+  {
+   "req": "r1259",
+   "title": "infra-logging-default",
+   "len": 148,
+   "text": "debug 构建下产品 TUI MUST 默认启用即时文件日志（人类与 agent 可用 tail -f 观察）；release 构建 MUST 默认关闭，仍可通过 XYLITOL_DEBUG 或 RUST_LOG 显式打开。日志路径与查看"
+  },
+  {
+   "req": "r1270",
+   "title": "resize-and-min-size",
+   "len": 130,
+   "text": "终端 resize MUST 触发重绘且不得丢失输入焦点语义；当引擎因极端尺寸无法安全渲染时 MUST 干净恢复终端并退出进程，MUST NOT 卡死终端模拟器。宽度小于 40 或高度小于 6 时 MUST 显示友好提示而非 panic。 "
+  },
+  {
+   "req": "r1277",
+   "title": "host-harness-testable",
+   "len": 104,
+   "text": "产品 TUI host MUST 将事件推进与终端 I/O 解耦（可注入事件与终端），使 min-size 提示、事件分发与无阻塞主循环路径可在无真 TTY 的 harness 中验证。 @req:r1278"
+  },
+  {
+   "req": "r1278",
+   "title": "shared-effect-pump",
+   "len": 220,
+   "text": "产品 TUI MUST 经单一事件泵（或等价共享入口）消费 HostSession pending 并调用 Driver/dispatch；合成 harness 泵 MUST 复用同一入口或与其同序同分支（同序验证口径：harness 断言"
+  },
+  {
+   "req": "r1279",
+   "title": "single-mux-loop",
+   "len": 390,
+   "text": "产品 TUI host MUST 以单一扇入模型同时等待终端输入、idle tick、可选 agent EventStream、可选 bang 完成与 bang 输出事件：生产主环与 harness MUST 调用同一共享 bang/主环事"
+  },
+  {
+   "req": "r1241",
+   "title": "agents-layout-map",
+   "len": 104,
+   "text": "产品 TUI 面 AGENTS 文档 MUST 提供本地布局地图（目录/文件职责、协调者与可下沉模块边界、硬约束与验证命令指针）；MUST NOT 把进度板或易腐清单写入 AGENTS。 @req:r1243"
+  },
+  {
+   "req": "r1243",
+   "title": "host-module-boundaries",
+   "len": 90,
+   "text": "产品 TUI 的组件与 layout MUST NOT 直接调用 Driver；HostSession 协调逻辑 MUST 位于可单测切片并经单一事件泵驱动。 @req:r1244"
+  },
+  {
+   "req": "r1244",
+   "title": "session-read-errors-surfaced",
+   "len": 154,
+   "text": "产品 TUI 在 travel/fork/label 等路径调用 Command::GetMessages（或等价）失败时 MUST 向用户展示 system/error note，MUST NOT 以 unwrap_or_default "
+  },
+  {
+   "req": "r1245",
+   "title": "session-list-seam",
+   "len": 270,
+   "text": "产品 TUI 获取可 resume 会话列表时 MUST 经 Driver（或 app::core 公开 seam）list_sessions 或等价 API，行 MUST 能支撑 scope（cwd）、预览、parent、mtime/ag"
+  },
+  {
+   "req": "r1247",
+   "title": "session-resume-manage-seam",
+   "len": 297,
+   "text": "产品 TUI Resume 面板内 rename/delete MUST 经 Command::SetSessionName / DeleteSession（或 app::core 公开等价 seam）；删除当前活跃 session MUS"
+  },
+  {
+   "req": "r1253",
+   "title": "tick-gated-local-paint",
+   "len": 354,
+   "text": "产品 host 在 Ready 态处理 Tick 时：MUST 先推进 idle 心跳；仅当 idle 心跳报告 dirty 或 host 已置 paint_dirty（含 bang 输出事件追加）时才请求渲染；idle 且无 paint_"
+  },
+  {
+   "req": "r1254",
+   "title": "scrollback-entry-paint-cache",
+   "len": 318,
+   "text": "产品 live scrollback 绘制 MUST 对已提交 UiEntry 使用按条目指纹的行缓存：在 width 与 fold 不变时，仅 streaming tails 或发生变化的条目 MUST 触发该条目（及必要时其后条目）重绘"
+  },
+  {
+   "req": "r1255",
+   "title": "streaming-assistant-incremental-paint",
+   "len": 341,
+   "text": "产品对 streaming_assistant 的 live Markdown 绘制 MUST 在 width/theme 不变且文本仅后缀增长时，复用已稳定 Markdown 前缀（段落边界，且不切开未闭合代码围栏）的已渲染行，仅对不稳定"
+  },
+  {
+   "req": "r1282",
+   "title": "product-pty-fake-smoke",
+   "len": 258,
+   "text": "仓库 MUST 含产品二进制的 PTY 冒烟（#[ignore]，经 just test-tui-e2e-pty 可跑）：在临时 Fake 模型配置与 --trust 下启动 TUI，提交用户消息后屏上 MUST 出现 Fake 默认文案 "
+  },
+  {
+   "req": "r1258",
+   "title": "mouse-input-opt-in-no-moved-paint",
+   "len": 501,
+   "text": "产品 host 扇入 MUST 能将 crossterm Event::Mouse 映射为 HostEvent::Input(InputEvent::Mouse)（Moved 可在映射前丢弃）。Ready 态处理 Mouse 时：无 UI "
+  },
+  {
+   "req": "r1260",
+   "title": "interaction-mode-application-owned-default",
+   "len": 593,
+   "text": "产品 TUI MUST 在 host **启动构造时**绑定 xylitol-tui 交互模式为 ApplicationOwned（应用自管视口 / alt-screen）。缺省/未配置 MUST 为 ApplicationOwned。一次"
+  },
+  {
+   "req": "r1262",
+   "title": "enter-follows-transcript-bottom",
+   "len": 214,
+   "text": "产品 TUI 在 ApplicationOwned 的 Ready 主输入面收到 `tui.input.submit` Enter 时 MUST 立即将 transcript 视口滚到底部并恢复尾插；该行为 MUST 同时适用于非空提交与空"
+  },
+  {
+   "req": "r1264",
+   "title": "attach-tick-no-blocking-rpc",
+   "len": 300,
+   "text": "产品 TUI attach 路径的 host 循环在 idle/busy tick 与 drain_pending 中 MUST NOT 同步阻塞等待 Host unary（含 get_state / current_model / MCP"
+  },
+  {
+   "req": "r1265",
+   "title": "attach-mux-session-lifetime",
+   "len": 254,
+   "text": "产品 TUI attach MUST 在进入 host 循环前完成握手并订阅该 session 的 mux（启动即订，不等第一次 prompt）。单次 AgentEnd MUST NOT 拆掉该订阅。WS 断开后 MUST 用 last_s"
+  },
+  {
+   "req": "r1266",
+   "title": "attach-restore-projection",
+   "len": 214,
+   "text": "产品 TUI attach 恢复（CLI --session 启动与空闲 Resume 切换）MUST 以 Host 消息快照一次重建 transcript：完整历史一次可见、会话 Idle、无假 spinner、无逐条回放；恢复窗内的冷订"
+  },
+  {
+   "req": "r1267",
+   "title": "attach-reload-cooperative-cancel",
+   "len": 196,
+   "text": "产品 TUI attach 下 `/reload` 进行中用户触发取消（interrupt/clear 键位）时，client MUST 将取消意图经 Host 转达（合作取消该次进程级 reload），MUST NOT 继续等待原 rel"
+  },
+  {
+   "req": "r1268",
+   "title": "attach-fixed-zone-downlink-driven",
+   "len": 210,
+   "text": "产品 TUI attach 下 MCP/skills 头卡的连接态刷新 MUST 由 Host 的 `session/resources` 下行驱动：帧到达置脏后由 tick 读本地缓存刷新；MUST NOT 以周期性 unary 轮询同一"
+  },
+  {
+   "req": "r1269",
+   "title": "unary-request-bounded",
+   "len": 105,
+   "text": "产品 TUI 对 Host 的每笔 unary 请求 MUST 有请求级等待界；已知长操作（如 reload）MUST 分级放宽且各有界；半开连接下 MUST 以超时错误呈现而非无限挂起。 @req:r1271"
+  },
+  {
+   "req": "r1273",
+   "title": "attach-reconnect-grace-ux",
+   "len": 180,
+   "text": "产品 TUI attach 下初始连接与重连 MUST 各有宽限期：宽限内 MUST NOT 因断线/重试打扰信息面（transcript 与状态条零输出）；超宽限 MUST 以通知条（toast notice）提示断线重连中，恢复成功 M"
+  }
+ ],
+ "app-tui-input": [
+  {
+   "req": "r1314",
+   "title": "yolo-after-trust",
+   "len": 77,
+   "text": "在项目已信任前提下，TUI MUST NOT 实现逐工具审批确认流程；工具默认执行；MUST 保留 hook 扩展点供日后追加策略。 @req:r1321"
+  },
+  {
+   "req": "r1322",
+   "title": "demo-steer-preserves-turn",
+   "len": 173,
+   "text": "agent_demo 在 steer 入队时 MUST 将 steer 文本写入 transcript（可带 [steer] 标记）并可挂到会话活树；MUST NOT 调用会清空 scheduled_actions/pending_even"
+  },
+  {
+   "req": "r1323",
+   "title": "demo-bash-prefix-border",
+   "len": 125,
+   "text": "agent_demo 中当编辑器文本 trim 后以 ! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉 ! 前缀后 MUST 恢复默认 muted 边框。 @req:"
+  },
+  {
+   "req": "r1324",
+   "title": "demo-external-editor-stub",
+   "len": 124,
+   "text": "agent_demo MUST 将 Ctrl+G 绑定为外部编辑器原型：记录调用并写入系统提示；MUST NOT 在 harness 路径强制 spawn 真实 $EDITOR；MAY 向编辑器追加 stub 标记以演示往返。 @req:r"
+  },
+  {
+   "req": "r1316",
+   "title": "editor-history-session-seed",
+   "len": 406,
+   "text": "纯 new session（含 /session-new）启动时，产品 Host MUST 在当前 cwd 下按 mtime 取最近 N 个其它已持久化 session（N 来自配置 tui.editor_history_seed_sess"
+  },
+  {
+   "req": "r1298",
+   "title": "model-arg-completion",
+   "len": 350,
+   "text": "产品 Editor MUST 经包 CompletionSource 注册 SlashArgCompletionSource（命令 model，默认 MUST NOT with_bare_command）与 SlashCommandSour"
+  },
+  {
+   "req": "r1304",
+   "title": "session-resume-panel-keys",
+   "len": 620,
+   "text": "产品 TUI 在 EditorSlot::SessionResume 打开时：Tab MUST 切换 scope Current/All；Ctrl+S（或键位表等价）MUST 循环 Sort Threaded/Recent/Fuzzy；Ct"
+  },
+  {
+   "req": "r1309",
+   "title": "at-path-completion",
+   "len": 236,
+   "text": "产品 Editor MUST 经包 CompletionSource 注册 AtPathSource，根目录默认为进程 cwd（harness MAY 注入测试根）；用户键入 @（及路径前缀）时 MUST 弹出文件/目录补全；Tab/Ent"
+  },
+  {
+   "req": "r1310",
+   "title": "paste-collapse-submit",
+   "len": 262,
+   "text": "产品 TUI 在 idle 提交、busy steer、busy follow-up、remember_editor_send（历史）以及 Ctrl+G 外部编辑器读出时，MUST 使用 Editor::get_expanded_text（"
+  },
+  {
+   "req": "r1315",
+   "title": "dollar-skill 补全与高亮",
+   "len": 175,
+   "text": "产品 Editor MUST 经 CompletionSource 在键入 $ 时弹出已加载 skill 名补全；Tab/Enter 选定 MUST 写入 $name；用户消息在 scrollback 中 MUST 用 skill-ref "
+  }
+ ],
+ "app-tui-session-tree": [
+  {
+   "req": "r1325",
+   "title": "slot-replace",
+   "len": 73,
+   "text": "会话树打开时 MUST 替换 UiRoot editor 槽（贴底可见）；MUST NOT 画成内容区顶部 overlay。 @req:r1332"
+  },
+  {
+   "req": "r1332",
+   "title": "live-travel-via-driver",
+   "len": 361,
+   "text": "产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Command::SessionTree（MessageHistory）执行器映射为包 TreeNode，含 kind）；Enter 选"
+  },
+  {
+   "req": "r1333",
+   "title": "demo-travel-pi-semantics",
+   "len": 420,
+   "text": "agent_demo 在会话树 Enter travel 时：若选中节点 kind 为 user，则 MUST 将 history leaf 设为该节点的父（根 user 则回到无叶/约定根策略）、MUST 用该 user 正文预填编辑器（"
+  },
+  {
+   "req": "r1334",
+   "title": "demo-session-tree-fork",
+   "len": 238,
+   "text": "agent_demo 会话树打开时 MUST 支持 Shift+F fork：重建 root→选中节点路径（MUST NOT 自动纳入其后线性 assistant/tool 回复链）；history leaf MUST 等于选中 id；若选"
+  },
+  {
+   "req": "r1335",
+   "title": "map-session-tree-nodes",
+   "len": 416,
+   "text": "产品 MUST 将 domain SessionTreeNode（MessageHistory）映射为 xylitol-tui TreeNode：id 取 entry id、label 为可显示正文（MUST NOT 把 role 烘焙进 "
+  },
+  {
+   "req": "r1336",
+   "title": "tree-reflects-persisted-turn",
+   "len": 206,
+   "text": "在 auto-persist 与稳定 session_id 就绪后，产品双 Esc 打开的 MessageHistory 树 MUST 能反映已完成回合写入 store 的消息节点；一轮 user/assistant 成功结束后 Comma"
+  },
+  {
+   "req": "r1337",
+   "title": "session-tree-filter",
+   "len": 426,
+   "text": "产品会话树打开时 MUST 支持与 pi 对齐的 FilterMode（default / no-tools / user-only / labeled-only / all）：经 TreeSelector include_node 应用谓"
+  },
+  {
+   "req": "r1338",
+   "title": "session-tree-fold",
+   "len": 255,
+   "text": "产品会话树打开时 MUST 将 Ctrl+Left / Alt+Left / Ctrl+Right / Alt+Right（包 tui.tree.foldOrUp / unfoldOrDown）转发给 TreeSelector::handl"
+  },
+  {
+   "req": "r1326",
+   "title": "product-session-tree-fork",
+   "len": 380,
+   "text": "产品会话树 Shift+F MUST 创建新 child session：内容 MUST 为 get_branch 路径并重链 parent_id（对齐 pi createBranchedSession），MUST NOT 按 JSONL "
+  },
+  {
+   "req": "r1327",
+   "title": "session-tree-slot-help-search",
+   "len": 327,
+   "text": "产品会话树槽打开时 MUST 在 TreeSelector 列表上方渲染 Search 行与 TreeHelp 行：Search 在无查询时提示可键入搜索、有查询时显示 Search: 与当前串；TreeHelp MUST 根据 Keybi"
+  },
+  {
+   "req": "r1328",
+   "title": "session-tree-label-persist",
+   "len": 256,
+   "text": "产品会话树打开时 Shift+L MUST 进入节点 annotation 编辑；Enter 提交后 MUST 经 Driver 将 Label entry 写入当前 session（空串 MUST 清除 annotation）；重开或刷新"
+  },
+  {
+   "req": "r1329",
+   "title": "debug-scene-tree-fixture",
+   "len": 200,
+   "text": "经 /debug session-tree-multiturn 或 /debug session-tree-labeled 装载后，产品双 Esc 打开的 MessageHistory 树 MUST 非空且可见 fixture user 正"
+  },
+  {
+   "req": "r1330",
+   "title": "travel-notice-trailing",
+   "len": 262,
+   "text": "产品会话树 Enter travel 成功并重建 transcript 后，MUST 以可滚 UiEntry::ScrollNotice（或等价滚动提示行）尾插完整 history @ selected · leaf · path 文案，使"
+  },
+  {
+   "req": "r1331",
+   "title": "demo-travel-notice-trailing",
+   "len": 197,
+   "text": "agent_demo 会话树 travel 重建 transcript 后 MUST 与产品同源：history @ 通知 MUST 尾插于路径条目之后；MUST NOT 在 clear 后先插 ScrollNotice 再推路径（旧顶插）"
+  }
+ ],
+ "app-tui-transcript": [
+  {
+   "req": "r1360",
+   "title": "diff-via-package",
+   "len": 125,
+   "text": "产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。 @req:"
+  },
+  {
+   "req": "r1369",
+   "title": "tool-rail-via-package-helper",
+   "len": 128,
+   "text": "rail 行绘制 MUST 复用 packages/xylitol-tui 的 paint_left_rail_line（或等价包 API：轨+gutter+内容宽）；MUST NOT 在应用面手写第二套轨/gutter/宽预算逻辑。 @r"
+  },
+  {
+   "req": "r1370",
+   "title": "no-codex-transcript-view",
+   "len": 156,
+   "text": "产品 TUI MUST NOT 实现 Codex 风格的独立 transcript 浏览面或专用 TranscriptView 作为主 UX；历史/分支 travel MUST 经双 Esc 会话树（app-tui session-tree"
+  },
+  {
+   "req": "r1347",
+   "title": "diff-render-cap",
+   "len": 139,
+   "text": "产品 live scrollback 渲染 edit/Diff 的 display_diff 时 MUST 限制可见行数（硬上限）；超限 MUST 截断并提示 omitted；过大 diff MUST NOT 启用 word-level，以"
+  }
+ ],
+ "app-tui-trust": [
+  {
+   "req": "r1374",
+   "title": "choice-prompt-not-stdio",
+   "len": 179,
+   "text": "产品 TUI 路径（默认裸跑或 tui 动词）在需要 Ask trust 时 MUST 在 raw-mode TUI 内用 packages/xylitol-tui ChoicePrompt（替换 editor 槽）完成选择；MUST NO"
+  },
+  {
+   "req": "r1375",
+   "title": "theme-and-cancel",
+   "len": 136,
+   "text": "Trust ChoicePrompt MUST 使用 Palette::dark()（或等价）choice_prompt_theme；Esc/取消 MUST 视为不信任（deny）；提交 MUST 经 TrustManager 写入持久 s"
+  },
+  {
+   "req": "r1376",
+   "title": "yolo-after",
+   "len": 68,
+   "text": "项目已信任后产品 TUI MUST NOT 实现逐工具审批 UI；工具默认执行；MUST 保留 hook 扩展点。 @req:r1377"
+  },
+  {
+   "req": "r1377",
+   "title": "slash-persist-no-auto-reload",
+   "len": 306,
+   "text": "产品 /trust slash MUST 经 Driver/composition 缝调用 TrustManager（或等价端口）持久化 cwd/parent/deny 决策；MUST NOT 从 app/tui 直接 reach infr"
+  }
+ ],
+ "app-tui": [
+  {
+   "req": "r1164",
+   "title": "three-surfaces-coexist",
+   "len": 75,
+   "text": "print（cli）、server（HTTP 监听器）与 tui（交互面）应用面 MUST 共存；不得以统一为名删除任一传输面。 @req:r1165"
+  },
+  {
+   "req": "r1165",
+   "title": "reuse-contract",
+   "len": 140,
+   "text": "产品 TUI MUST 经协议契约、应用缝与 agent 公共入口导入，MUST NOT reach agent 子模块内部或 infra；MUST NOT 依赖已删除的独立 domain 顶栏。斜杠语义 MUST 复用 protocol:"
+  },
+  {
+   "req": "r1166",
+   "title": "no-skeleton-spray",
+   "len": 135,
+   "text": "产品 TUI 面下每个新增源文件 MUST 在同一变更内由真实入口驱动；MUST NOT 用 #[allow(dead_code)] 落地未驱动骨架。死码分诊规则由架构 AGENTS 与 l8ng-audit-dead-code skill"
+  },
+  {
+   "req": "r1163",
+   "title": "capability-index",
+   "len": 216,
+   "text": "产品 TUI 行为细节 MUST 由 app-tui-host / app-tui-bridge / app-tui-transcript / app-tui-fixed-zone / app-tui-input / app-tui-com"
+  },
+  {
+   "req": "r1162",
+   "title": "TUI 只承担面本地",
+   "len": 226,
+   "text": "产品 TUI MUST 只执行面本地能力（键盘、绘制、TTY、本机编辑器、剪贴板）。依赖工作区、模型、MCP 或会话生命周期的能力 MUST 由 host 角色执行。载体切分与同进程保留见 app-tui-bridge atb4。MUST "
+  }
+ ],
+ "cli-entry": [
+  {
+   "req": "r67",
+   "title": "info-fields",
+   "len": 75,
+   "text": "SlashCommandInfo MUST 携带 name、description、source 与 source_info 字段。 @req:r68"
+  },
+  {
+   "req": "r68",
+   "title": "source-enum",
+   "len": 87,
+   "text": "SlashCommandSource MUST 恰为 prompt 或 skill 之一（extension 若未实现 MUST NOT 作为产品必选项）。 @req:r69"
+  },
+  {
+   "req": "r1379",
+   "title": "app-directory",
+   "len": 74,
+   "text": "CLI MUST 为独立应用表面，print 为其子模式；app 面 MUST NOT reach agent 内部（经缝）。 @req:r1389"
+  },
+  {
+   "req": "r1392",
+   "title": "composition-root-ports",
+   "len": 59,
+   "text": "组合根 MUST 从 infra 构造 SessionStore/EventSink 注入装配。 @req:r1393"
+  },
+  {
+   "req": "r1394",
+   "title": "assembly-via-bootstrap",
+   "len": 65,
+   "text": "cli 与 Host 监听器 MUST 经共享 bootstrap 装配，MUST NOT 内联第二套装配。 @req:r1381"
+  },
+  {
+   "req": "r1383",
+   "title": "stable-session-id-on-run",
+   "len": 83,
+   "text": "InProcessDriver::run MUST 复用 bootstrap session_id，MUST NOT 每轮新建 Uuid 文件。 @req:r1384"
+  }
+ ],
+ "cli-print": [
+  {
+   "req": "r34",
+   "title": "streaming-output",
+   "len": 57,
+   "text": "Print 模式下 System MUST 实时将 agent 文本输出流式写入 stdout。 @req:r43"
+  },
+  {
+   "req": "r43",
+   "title": "tool-display",
+   "len": 45,
+   "text": "Print 模式下 System MUST 显示工具执行名称与结果摘要。 @req:r49"
+  },
+  {
+   "req": "r49",
+   "title": "thinking-to-stderr",
+   "len": 143,
+   "text": "Print 模式下 System MUST 将 reasoning/thinking 内容流式写入 stderr（非 stdout），使正式答案不被污染，包裹于 <think>...</think>；模型已自行发出 <think> 标签时 "
+  },
+  {
+   "req": "r52",
+   "title": "message-dedup",
+   "len": 111,
+   "text": "Print 模式下 System MUST 仅将增量 TextDelta 写入 stdout，MUST NOT 将累积 MessageUpdate payload 写入 stdout，以避免前缀重复输出。 @req:r55"
+  },
+  {
+   "req": "r55",
+   "title": "error-nonzero-exit",
+   "len": 146,
+   "text": "Print 模式在 XyEvent 流中出现 Error（或等价不可恢复失败）时，进程 MUST 以非零退出码结束；无此类错误且 run 正常结束（含 should_stop_after_turn）时 MUST 以零退出。工具单次失败但 R"
+  }
+ ],
+ "infra-bash": [
+  {
+   "req": "r1429",
+   "title": "流式执行器",
+   "len": 223,
+   "text": "System MUST 提供 XyBashExecutor，经 BashExecOpts 执行 shell 命令，携带可选 CancellationToken 与可选有界 mpsc chunk_tx 输出字节；chunk_tx 为 Some"
+  },
+  {
+   "req": "r1430",
+   "title": "中止与取消",
+   "len": 58,
+   "text": "BashExecutor MUST 支持取消，杀死整个进程组并将结果标为 cancelled。 @req:r1431"
+  },
+  {
+   "req": "r1431",
+   "title": "输出截断",
+   "len": 225,
+   "text": "BashExecutor MUST 将输出截断到配置 max bytes，超限时将完整输出溢出到临时文件；返回给调用方/会话的 output MUST 为截断尾部，并 MUST 追加 pi 形脚注 `[Full output: <path>"
+  },
+  {
+   "req": "r1432",
+   "title": "会话条目",
+   "len": 346,
+   "text": "新写入的 bang-bash MUST 持久化为 SessionEntry::Message（type=message），其 message 为 Env bashExecution（role=bashExecution），携带 comman"
+  },
+  {
+   "req": "r1433",
+   "title": "bash 执行入口",
+   "len": 105,
+   "text": "System MUST 经 Driver（或等价缝）暴露 bash 执行入口（execute_bash 或等价，含结果记录与中止）；单/双 bang 前缀 MUST 在产品面路由到执行器。 @req:r1434"
+  },
+  {
+   "req": "r1434",
+   "title": "上下文过滤",
+   "len": 174,
+   "text": "构建 LLM 上下文（含 ReAct 从 store 播种的 history）时 System MUST 省略 exclude_from_context 为 true 的 bashExecution（Message 内 nested）；单 "
+  },
+  {
+   "req": "r1426",
+   "title": "bash trait",
+   "len": 75,
+   "text": "System MUST 在 BashOperations trait 后抽象 bash 执行，支持真实与 mock 实现供测试。 @req:r1427"
+  },
+  {
+   "req": "r1427",
+   "title": "bash hooks",
+   "len": 71,
+   "text": "System MUST 支持 bash 执行的 pre-spawn 与 post-spawn hooks 以供扩展集成。 @req:r1428"
+  },
+  {
+   "req": "r1428",
+   "title": "超时逐级升级",
+   "len": 97,
+   "text": "当调用方提供有限超时时，System MUST 实现逐级超时：先 SIGTERM，5 秒宽限后 SIGKILL。未提供超时时 MUST NOT 仅因默认秒数触发该升级路径。 @req:r1435"
+  },
+  {
+   "req": "r1435",
+   "title": "运行时可达 abort",
+   "len": 167,
+   "text": "交互 bash 的取消入口 abort_bash MUST 可从 AgentRuntime::abort（&self）到达，无需独占 &mut AgentCapabilities 才能在 Driver::abort 路径杀进程树；Cance"
+  },
+  {
+   "req": "r1436",
+   "title": "执行器超时可选",
+   "len": 122,
+   "text": "XyBashExecutor / BashExecOpts MUST 支持可选超时；省略时的默认策略由调用方决定——产品工具层 MUST 传入默认上限，执行器自身 MUST NOT 硬编码秒数；仍可经 CancellationToken 取"
+  }
+ ],
+ "infra-clipboard": [
+  {
+   "req": "r13",
+   "title": "text-copy",
+   "len": 74,
+   "text": "System MUST 提供 copy_to_clipboard(text)，经平台原生工具将 UTF-8 文本复制到系统剪贴板。 @req:r14"
+  },
+  {
+   "req": "r14",
+   "title": "platform-order",
+   "len": 116,
+   "text": "System MUST 按顺序尝试平台原生剪贴板：native addon > pbcopy/clip > wl-copy > xclip/xsel > termux-clipboard-set > OSC 52。 @req:r15"
+  },
+  {
+   "req": "r15",
+   "title": "image-clipboard",
+   "len": 48,
+   "text": "System MUST 在支持平台上读取剪贴板图片数据并检测 MIME 类型。 @req:r16"
+  },
+  {
+   "req": "r16",
+   "title": "osc52-remote",
+   "len": 57,
+   "text": "原生剪贴板不可用时，System MUST 对远程会话（SSH）回退到 OSC 52 转义序列。 @req:r17"
+  },
+  {
+   "req": "r17",
+   "title": "osc52-limit",
+   "len": 71,
+   "text": "System MUST 遵守 OSC 52 载荷大小限制（编码后 100KB），超出时 MUST 跳过 OSC 52 回退。 @req:r18"
+  },
+  {
+   "req": "r18",
+   "title": "clipboard-error",
+   "len": 57,
+   "text": "所有剪贴板方法均失败时，System MUST 返回描述性错误，MUST NOT 静默吞掉失败。 @req:r19"
+  },
+  {
+   "req": "r19",
+   "title": "clipboard-image-temp-file",
+   "len": 140,
+   "text": "System MUST 提供将剪贴板图片字节写入 tempfile 的能力：文件名含不可预测分量；扩展名由 MIME 推导；返回绝对路径。MUST NOT 写入固定世界可读路径（如 ~/.xylitol/paste.png）。写盘失败 MU"
+  },
+  {
+   "req": "r20",
+   "title": "clipboard-text-read",
+   "len": 131,
+   "text": "System MUST 提供 read_clipboard_text：在支持平台上读取系统剪贴板 UTF-8 文本；无文本时返回空/None；工具不可用或失败 MUST 返回描述性错误。MUST NOT 依赖 OSC 52 读取（OSC 5"
+  }
+ ],
+ "infra-diagnostics": [
+  {
+   "req": "r1437",
+   "title": "timing-collector",
+   "len": 91,
+   "text": "System MUST 提供 reset_timings、time label 与 print_timings，由 XYLITOL_TIMING 环境变量门控。 @req:r1438"
+  },
+  {
+   "req": "r1438",
+   "title": "timing-points",
+   "len": 128,
+   "text": "System MUST 在 config load、ResourceLoader reload、ModelRegistry load、session restore 与 session create 插入 timing points。 @r"
+  },
+  {
+   "req": "r1439",
+   "title": "timing-output",
+   "len": 44,
+   "text": "print_timings MUST 向 stderr 输出每步 ms 与 total。"
+  }
+ ],
+ "infra-image": [
+  {
+   "req": "r1440",
+   "title": "image-resize",
+   "len": 82,
+   "text": "System MUST 提供 resize_image()，将图片缩放到可配置 max width/height/bytes 内并保持宽高比。 @req:r1441"
+  },
+  {
+   "req": "r1441",
+   "title": "exif-orientation",
+   "len": 61,
+   "text": "System MUST 加载图片时应用 EXIF orientation 元数据并相应校正像素数据。 @req:r1442"
+  },
+  {
+   "req": "r1442",
+   "title": "format-convert",
+   "len": 77,
+   "text": "System MUST 支持常见图片格式（PNG、JPEG、WebP）互转，需要缩小时自动选择 JPEG 与可配置 quality。 @req:r1443"
+  },
+  {
+   "req": "r1443",
+   "title": "multi-modal-prep",
+   "len": 88,
+   "text": "System MUST 产出适合 multimodal LLM 输入的输出：base64 编码 JPEG/PNG，载荷低于 4.5MB，含原始尺寸元数据。 @req:r1444"
+  },
+  {
+   "req": "r1444",
+   "title": "path-to-multimodal-image",
+   "len": 157,
+   "text": "System MUST 提供从本地图片路径产出 multimodal ImageContent（或等价 AgentPart::Image）的入口：读取文件、经图像缩放约束尺寸与载荷、填充 media_type 与 base64 data。路"
+  }
+ ],
+ "infra-mcp": [
+  {
+   "req": "r1445",
+   "title": "无配置零装配",
+   "len": 169,
+   "text": "当配置中不存在 mcp_servers 或列表为空时，System MUST NOT 创建 MCP client、MUST NOT 向默认 ToolSet 注册任何 mcp__ 前缀工具（过渡期亦可识别遗留 mcp-/mcp_/mcp:），"
+  },
+  {
+   "req": "r1447",
+   "title": "有配置则装配为 XyTool",
+   "len": 301,
+   "text": "当 mcp_servers 含有效条目时，System MUST 按 transport（至少 Stdio 与 Sse/url）连接对应服务器，并将发现的工具以 XyTool 形式注册，公开名 MUST 使用 mcp__{server_id"
+  },
+  {
+   "req": "r1448",
+   "title": "动态配置重载",
+   "len": 127,
+   "text": "System MUST 支持在进程存活期间根据更新后的 mcp_servers 配置重载 MCP 工具集（增删服务器/工具）；重载 MUST NOT 要求以重启整个进程作为唯一手段；重载 MUST NOT 删除内置非 mcp 工具。 @re"
+  },
+  {
+   "req": "r1449",
+   "title": "配置校验与失败可观测",
+   "len": 176,
+   "text": "System MUST 校验 mcp_servers 条目（stdio 需 command；url/sse 需合法 url 类字段）；无效条目 MUST 产生可读错误或诊断且 MUST NOT 静默当作成功连接；单个服务器连接失败 MUST"
+  },
+  {
+   "req": "r1450",
+   "title": "已连接列表只读",
+   "len": 102,
+   "text": "System MUST 提供只读查询已成功连接的 MCP 服务器摘要（至少 id 与工具数量或等价）；无配置或全部失败时 MUST 返回空列表；该查询 MUST NOT 创建新连接。 @req:r1451"
+  },
+  {
+   "req": "r1451",
+   "title": "mcp-tool-hard-barrier",
+   "len": 168,
+   "text": "经 McpToolAdapter（或等价）暴露的 MCP 工具 MUST 在批调度中为 Barrier（不可进并行窗）；重载后新发现工具 MUST 同样为 Barrier；MUST NOT 提供配置名、glob 或 annotation 放"
+  },
+  {
+   "req": "r1452",
+   "title": "nonblocking-ui-parallel-startup",
+   "len": 834,
+   "text": "当 mcp_servers 非空时，产品启动路径 MUST NOT 在打开 TUI 应用面（或 print 进入可观测启动）之前阻塞等待全部 MCP 连接完成；CLI `--session` resume MUST 能在 MCP 未完成时投"
+  },
+  {
+   "req": "r1454",
+   "title": "loaded-resources-live-mcp",
+   "len": 170,
+   "text": "当 mcp_servers 非空时，只读 loaded_resources 快照 MUST 与进程内正在连接或已连接的 MCP 状态同源；MUST NOT 用一份从未发起连接的资源壳冒充完成态（仅 configured、connected "
+  },
+  {
+   "req": "r1446",
+   "title": "call-phase-timeout",
+   "len": 95,
+   "text": "MCP 连接建立后的每笔请求（tools/list、tools/call 等）MUST 有单次调用期超时；到期以可分类超时错误呈现给调用方，MUST NOT 无限等待。 @req:r1453"
+  },
+  {
+   "req": "r1453",
+   "title": "first-turn-tool-freeze",
+   "len": 648,
+   "text": "轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 MUST 立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）MUST 等待 MCP settle 或 code"
+  }
+ ],
+ "infra-network": [
+  {
+   "req": "r1455",
+   "title": "placeholder",
+   "len": 50,
+   "text": "System SHALL 支持可配置的 HTTP 代理与 idle 超时设置。 @req:r1456"
+  },
+  {
+   "req": "r1456",
+   "title": "proxy-config",
+   "len": 70,
+   "text": "System MUST 从 httpProxy 设置应用 HTTP_PROXY 与 HTTPS_PROXY 环境变量。 @req:r1457"
+  },
+  {
+   "req": "r1457",
+   "title": "idle-timeout",
+   "len": 96,
+   "text": "System MUST 用可配置的 connect_timeout、read_timeout 与 pool_idle_timeout 配置 reqwest Client。 @req:r1458"
+  },
+  {
+   "req": "r1458",
+   "title": "timeout-parser",
+   "len": 72,
+   "text": "System MUST 提供 parse_http_idle_timeout_ms，接受字符串 30 sec 或数值毫秒。 @req:r1459"
+  },
+  {
+   "req": "r1459",
+   "title": "timeout-choices",
+   "len": 87,
+   "text": "System MUST 提供 HTTP_IDLE_TIMEOUT_CHOICES 常量，含预设 30s、1min、2min、5min、disabled。 @req:r1460"
+  },
+  {
+   "req": "r1460",
+   "title": "settings-stubs",
+   "len": 84,
+   "text": "System SHALL 向 Settings 添加 httpProxy、httpIdleTimeoutMs、websocketConnectTimeoutMs 字段。"
+  }
+ ],
+ "infra-observability": [
+  {
+   "req": "r1461",
+   "title": "debug-observation-pipeline",
+   "len": 665,
+   "text": "应用 MUST 在组合根恰好一次装配观测后端：级别 log 与本地 fastrace FileReporter MUST 只写入 agent 日志目录下的文件（如 xylitol.log / provider-trace.jsonl），MU"
+  },
+  {
+   "req": "r1462",
+   "title": "provider-raw-mapped-对照",
+   "len": 302,
+   "text": "当 provider tracing 激活时，每次 provider HTTP 流 MUST 在同一 fastrace 请求 span / request_id 下记录原始协议事件与映射后的 XyChunk 变体（Event），使 agen"
+  },
+  {
+   "req": "r1463",
+   "title": "provider-trace-闸门",
+   "len": 209,
+   "text": "Provider tracing 在 cfg(debug_assertions) 下 MUST 默认安装 Reporter，在 release 构建 MUST 默认不安装；release MUST 经 XYLITOL_PROVIDER_TR"
+  },
+  {
+   "req": "r1464",
+   "title": "fastrace-单栈",
+   "len": 190,
+   "text": "仓库观测时间线 MUST 仅使用 fastrace；级别诊断 MUST 使用 log 门面；Cargo 与 src MUST NOT 依赖 tracing 或 tracing-subscriber；MUST NOT 引入 fastrace-"
+  },
+  {
+   "req": "r1465",
+   "title": "agent-low-freq-spans",
+   "len": 549,
+   "text": "当 provider tracing 激活时，一次用户触发的 agent 处理 MUST 提供可关联的低频 fastrace span：根 agent.turn；每步 agent.iteration；模型流 llm.request（可与 r"
+  }
+ ],
+ "infra-otel": [
+  {
+   "req": "r1487",
+   "title": "otel-fastrace-only",
+   "len": 196,
+   "text": "OTLP 出口 MUST 建立在 fastrace Reporter 之上（fastrace-opentelemetry）；Cargo 与 src MUST NOT 为该出口引入 tracing 或 tracing-subscriber；M"
+  },
+  {
+   "req": "r1488",
+   "title": "otel-fanout-with-file",
+   "len": 162,
+   "text": "当本地 provider-trace FileReporter 与 OTLP Reporter 同时满足开启条件时，组合根 MUST 使用 fan-out（或等价）同时投递同一批 SpanRecord；任一侧失败 MUST NOT 静默关掉"
+  },
+  {
+   "req": "r1492",
+   "title": "otel-generation-usage",
+   "len": 253,
+   "text": "当低频观测 span 激活且 llm.request 流以带 usage 的 Done 结束时，该 generation span MUST 携带 langfuse.observation.usage_details（JSON：input/"
+  },
+  {
+   "req": "r1470",
+   "title": "otel-token-estimate-parent",
+   "len": 341,
+   "text": "当低频观测 span 激活时：若存在活跃 agent.turn 上下文，token.estimate MUST 作为该 turn 的子 span；若不存在 turn 上下文（真·闲置路径：换叶/resume/显式刷新等），token.est"
+  },
+  {
+   "req": "r1473",
+   "title": "otel-generation-request-body-input",
+   "len": 259,
+   "text": "当 observation_io 为 truncated 或 full 且 span 闸激活时，llm.request generation 的 langfuse.observation.input MUST 优先来自 adapter 发出"
+  },
+  {
+   "req": "r1474",
+   "title": "otel-generation-abort-finalize",
+   "len": 276,
+   "text": "当低频观测 span 激活且 llm.request 在未见成功 Done 的情况下提前结束（用户 abort 或等价 drop 流）时：若 observation_io ≠ none，generation MUST 仍按档 flush 已"
+  },
+  {
+   "req": "r1475",
+   "title": "otel-parallel-tool-spans",
+   "len": 354,
+   "text": "当低频观测 span 激活且 barrier_parallel 并行窗内并发执行多个工具时，各 tool.execute MUST 仍为同一 agent.iteration（进而同一 agent.turn）的子 span 并共享 trace"
+  },
+  {
+   "req": "r1481",
+   "title": "otel-session-id-per-generate",
+   "len": 221,
+   "text": "当低频观测 span 激活且两路（或以上）绑定不同会话 UUID 的处理重叠进行时，各路导出的根 span 与该路 llm.request MUST 携带自己那次处理所绑定会话的 langfuse.session.id；MUST NOT 因"
+  },
+  {
+   "req": "r1482",
+   "title": "otel-session-id-whole-tree-per-processing",
+   "len": 469,
+   "text": "当低频观测 span 激活且一次处理（绑定某会话 UUID 的 generate / compaction）导出任意低频观测 span（agent.turn、agent.iteration、llm.request、tool.execute、"
+  },
+  {
+   "req": "r1483",
+   "title": "otel-obs-slot-write-discipline",
+   "len": 263,
+   "text": "进程级观测槽 MUST 仅由会话自身的 writer 绑定路径（runtime bind_session / 显式 set_obs_session 调用）更新；host 对只读 RPC（session stats / tree / mess"
+  },
+  {
+   "req": "r1484",
+   "title": "otel-session-dual-identity-and-fork-edge",
+   "len": 592,
+   "text": "当低频观测 span 激活且当前 xylitol session UUID 已知时，一次处理导出的低频观测 span（覆盖范围与 otel24 相同）MUST 携带 xylitol.session.id，其值 MUST 等于该 sessio"
+  },
+  {
+   "req": "r1485",
+   "title": "otel-compaction-skipped-span",
+   "len": 591,
+   "text": "当低频观测 span 激活且会话 compaction 的 prepare_compaction 门闸早退（无可摘要历史 / Already compacted 等；auto 静默路径与 manual 路径皆然）且会话身份已知时，MUST "
+  }
+ ],
+ "infra-process": [
+  {
+   "req": "r1493",
+   "title": "bash-discovery",
+   "len": 80,
+   "text": "System MUST 跨平台定位可用的 bash：Windows 上 Git Bash，Unix 上 /bin/bash，回退到 sh。 @req:r1494"
+  },
+  {
+   "req": "r1494",
+   "title": "shell-env",
+   "len": 57,
+   "text": "System MUST 构造注入 agent bin 目录后的 shell PATH 环境。 @req:r1495"
+  },
+  {
+   "req": "r1495",
+   "title": "process-group",
+   "len": 53,
+   "text": "System MUST 支持按进程整树终止：在所有平台上结束目标进程及其所有子进程。 @req:r1496"
+  },
+  {
+   "req": "r1496",
+   "title": "child-wait",
+   "len": 79,
+   "text": "System MUST 等待子进程退出并取得 exit code，MUST NOT 因 detached 后代进程持有继承 stdio handle 而挂起。"
+  }
+ ],
+ "infra-provider": [
+  {
+   "req": "r1497",
+   "title": "adapter-single-layer-wrap",
+   "len": 246,
+   "text": "System SHALL 在 infra/provider/adapter 提供单层适配外壳 AdapterXyModel 直接包装 bridge adapter（AiBridgeLlmAdapter），经主仓 infra map 完成 D"
+  },
+  {
+   "req": "r1498",
+   "title": "openai-responses-adapter",
+   "len": 149,
+   "text": "System SHALL 提供 OpenAiResponsesAdapter，调用 /v1/responses，对 reasoning items 发出 XyChunk::ThinkingDelta，对 message items 发出 X"
+  },
+  {
+   "req": "r1502",
+   "title": "anthropic-messages-adapter",
+   "len": 128,
+   "text": "System SHALL 提供 AnthropicMessagesAdapter，保留现有 Anthropic SSE 解析行为，对 thinking content blocks 发出 XyChunk::ThinkingDelta。 @r"
+  },
+  {
+   "req": "r1503",
+   "title": "adapter-selection",
+   "len": 334,
+   "text": "System SHALL 基于 XyModelConfig 的 kind 与 api 字段选择具体 adapter：显式可识别 api MUST 优先；省略 api 时 OpenAI 兼容 MUST 默认 openai-responses、"
+  },
+  {
+   "req": "r1504",
+   "title": "responses-input-items-have-type",
+   "len": 709,
+   "text": "OpenAI Responses adapter MUST 序列化每个 input item 并带显式 type 字段，匹配 Responses API schema：message items 为 {type: message, role"
+  },
+  {
+   "req": "r1505",
+   "title": "单一-XyModel-装配路径",
+   "len": 199,
+   "text": "System MUST 通过唯一装配路径将协议适配器暴露为 XyModel：具体接线实现归属 packages/xylitol-ai-bridge，经主仓映射与统一外壳（如 AdapterXyModel）注入；OpenAI 兼容 MUST "
+  },
+  {
+   "req": "r1506",
+   "title": "vendor-类型不出-infra与agent",
+   "len": 184,
+   "text": "async-openai 与各厂商 HTTP/SSE 具体类型 MUST 仅出现在 packages/xylitol-ai-bridge（及其测试）与必要的主仓映射边界内；agent/ MUST NOT import 这些 vendor c"
+  },
+  {
+   "req": "r1499",
+   "title": "agent-projects-before-model",
+   "len": 286,
+   "text": "XyModel 端口的消息入参 MUST 为 Vec<AiBridgeMessage>（或等价 LLM DTO），MUST NOT 再接受 AgentMessage。agent 在调用 XyModel 之前 MUST 经 project_f"
+  },
+  {
+   "req": "r1500",
+   "title": "wire-policy-named-compat",
+   "len": 252,
+   "text": "主仓装配 MUST 将 YAML models.*.compat（命名轮廓，如 generic / deepseek）解析为 bridge WirePolicy 配置文件并注入 Responses/Completions；省略 compat"
+  },
+  {
+   "req": "r1501",
+   "title": "api-fullname-full-names",
+   "len": 304,
+   "text": "配置与装配中可识别的 api 字面量 MUST 使用全称 openai-responses、openai-completions 与 anthropic-messages；产品文档 MUST NOT 把配置真值简写成 responses、c"
+  }
+ ],
+ "layer-architecture": [
+  {
+   "req": "r1520",
+   "title": "核心层与 protocol 布局",
+   "len": 479,
+   "text": "System MUST 以 agent 层承载编排与投影（ReAct、LLM 投影、session 编排）；agent 侧共享类型 MUST 经 protocol 承载（因 infra 不得依赖 agent）。System MUST 以单一"
+  },
+  {
+   "req": "r1525",
+   "title": "向下依赖",
+   "len": 481,
+   "text": "infra 层 MUST NOT 导入任何 agent 符号；agent 层 MUST NOT 导入任何具体 infra 类型（仅经 protocol ports）；应用面（cli 渲染子路径、tui、非组合根的 app 模块）MUST N"
+  },
+  {
+   "req": "r1531",
+   "title": "app 层命名",
+   "len": 132,
+   "text": "app 表面（用户入口：cli、server、tui、gui）与跨面缝（composition、driver）MUST 分离：缝位于 app 跨面缝区，表面不托管缝实现。print 模式 MUST 为 CLI 子模式，而非顶层 app 模块"
+  },
+  {
+   "req": "r1533",
+   "title": "运行时归属",
+   "len": 211,
+   "text": "全部运行时（provider、tool、session storage、exec-env、bash executor、secret resolution、resource loader、export I/O）MUST 位于 infra 层；"
+  },
+  {
+   "req": "r1534",
+   "title": "agent 独立性",
+   "len": 137,
+   "text": "Agent（能力聚合体）构造器 MUST NOT 要求 Session、MUST NOT 持有 session_id、MUST NOT 依赖 Session 持久化生命周期；session_id 为 app 层绑定的 SessionStor"
+  },
+  {
+   "req": "r1535",
+   "title": "分层保障方式",
+   "len": 168,
+   "text": "分层不变量（la2 依赖方向）的保障手段为仓库自身约定：架构 AGENTS 文档、l8ng-write-surface 流程与缝/行为测试；System MUST NOT 要求或恢复以扫描 import 路径为手段的 arch_guard "
+  },
+  {
+   "req": "r1521",
+   "title": "agent 薄且无展示",
+   "len": 111,
+   "text": "agent/ MUST NOT 托管纯展示或用户指引逻辑（如静态帮助文本或消息格式化）；此类逻辑 MUST 位于 app/（客户端表面），agent/ MUST 仅含编排循环、hook 点与编排状态。 @req:r1522"
+  },
+  {
+   "req": "r1522",
+   "title": "app 组合根",
+   "len": 90,
+   "text": "System MUST 提供单一组合根装配入口，从构建选项集中构造完整接线的 Agent，使 CLI、Server 与 TUI 不重复 Agent 接线代码。 @req:r1523"
+  },
+  {
+   "req": "r1523",
+   "title": "Xy 协议端口",
+   "len": 76,
+   "text": "Xy 前缀端口契约 MUST 位于 protocol 层端口区；其签名所用共享类型 MUST 来自 protocol 层根共享区。 @req:r1524"
+  },
+  {
+   "req": "r1524",
+   "title": "缝与表面分离",
+   "len": 139,
+   "text": "app 层 MUST 将跨面缝（组合根与运行时 driver 边界）分组于独立跨面缝区，与自包含应用表面（cli、server、tui、gui）分离；应用表面 MUST NOT 直接托管 build_agent 接线或 Driver tra"
+  },
+  {
+   "req": "r1526",
+   "title": "共享 bootstrap 与 dispatch",
+   "len": 404,
+   "text": "System MUST 提供共享 bootstrap 入口集中从 CLI args 到运行时聚合体的完整装配路径，以及共享 dispatch 入口集中 Command 变体执行语义；print（cli）、server、tui MUST 调用"
+  },
+  {
+   "req": "r1527",
+   "title": "禁止死包装协作者",
+   "len": 115,
+   "text": "agent 层 MUST NOT 长期保留对端口的纯转发壳（无附加状态或行为，且无生产调用方）；死码分诊与删除策略由架构 AGENTS 体量策略与 l8ng-audit-dead-code skill 承载。 @req:r1517"
+  },
+  {
+   "req": "r1517",
+   "title": "嵌入缝与公开入口",
+   "len": 212,
+   "text": "System MUST 向库用户提供文档化的嵌入入口（含 bootstrap/Driver 或等价），使外部 crate 无需 reach-in agent::capabilities 或 infra 具体类型即可装配并驱动一轮对话。嵌入路"
+  },
+  {
+   "req": "r1519",
+   "title": "Server 与 Print 同缝",
+   "len": 102,
+   "text": "Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。 @req:r1518"
+  },
+  {
+   "req": "r1518",
+   "title": "MCP 经嵌入缝",
+   "len": 198,
+   "text": "System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra 实现的情况下传递配置。缝边界内的 MCP 会话类型（或等价）MUS"
+  },
+  {
+   "req": "r1516",
+   "title": "dispatch 有消费方",
+   "len": 129,
+   "text": "跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；仅单测覆盖而无面接线视为逻辑死码，死码分诊与激活策略由架构 AGENTS 与 l8ng-audit-dead-code skill 承载。 @"
+  },
+  {
+   "req": "r1528",
+   "title": "provider 包开闭",
+   "len": 293,
+   "text": "LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族；主仓投影缝（agent 内 project_for_llm）仅负责 Env→LLM 折叠。新 OpenAI-like 或 An"
+  },
+  {
+   "req": "r1529",
+   "title": "feature-flags",
+   "len": 176,
+   "text": "System MUST 为每个可选能力定义带域前缀的 feature flag，使非默认 feature 零开销编译剔除。内置能力（tools、hooks、security、print-mode）无 feature flag，运行时由 co"
+  },
+  {
+   "req": "r1530",
+   "title": "minimal-default-features",
+   "len": 184,
+   "text": "Cargo.toml default MUST 为 cli + tui + otel + server（个人 agent 开箱含本机 Host 监听器能力）；MUST NOT 要求 default 包含全部非 dev feature。构建 "
+  },
+  {
+   "req": "r1507",
+   "title": "清除 pi 文档引用",
+   "len": 133,
+   "text": "源文件 doc comments MUST NOT 引用 pi coding agent 或其 TypeScript 模块；pi 设计理由引用 MUST 替换为该模块实际职责的独立描述。文档卫生清单（含存量清理跟进）由架构 AGENTS 维"
+  },
+  {
+   "req": "r1508",
+   "title": "消除重复领域实体",
+   "len": 97,
+   "text": "System MUST NOT 为同一领域概念定义多种类型；Usage、StopReason 与 Compaction 配置 MUST 各有一个 canonical 类型。 @req:r1509"
+  },
+  {
+   "req": "r1509",
+   "title": "精选 pub use 清单",
+   "len": 144,
+   "text": "System MUST 在库公开入口（或等价）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NO"
+  },
+  {
+   "req": "r12",
+   "title": "配置 JSON Schema 边界",
+   "len": 163,
+   "text": "需要 JSON Schema 的配置/settings DTO MUST 收敛于 infra 配置边界（config/settings 或等价）并在该处 derive schemars；agent/protocol 会话词汇 MUST NO"
+  },
+  {
+   "req": "r1510",
+   "title": "双角色",
+   "len": 196,
+   "text": "System MUST 把运行时分成 client 与 host 两个产品角色（职责划分，MUST NOT 解读为必须拆成两个进程）。client MUST 只承担面本地：键盘、绘制、TTY、本机编辑器、剪贴板。host MUST 承担模型"
+  },
+  {
+   "req": "r1511",
+   "title": "归属判据",
+   "len": 266,
+   "text": "依赖工作区、仓库、模型或 MCP 的能力 MUST 由 host 执行。依赖本机终端或本机硬件的能力 MUST 由 client 执行。导出 MUST 由 host 序列化内容、由 client 写入本机路径；导入对称。一条 reload "
+  },
+  {
+   "req": "r1512",
+   "title": "embed 不要求监听器",
+   "len": 209,
+   "text": "host 是操作器角色，MUST NOT 被等同于占用了网络绑定的监听器。print 与库嵌入 MUST 允许 client 与 host 同进程、同一条产品契约自连，且 MUST NOT 要求先占用监听地址。占用绑定是显式 serve 的"
+  },
+  {
+   "req": "r1513",
+   "title": "session 原子与分面",
+   "len": 188,
+   "text": "产品最小对话单元 MUST 是 session。cwd MUST 只表示执行面（工具 / bang / trust / MCP 池），MUST NOT 当作唯一分类夹。视图组织 MUST 允许用 tag 等高频分面，且分面索引 MUST 与"
+  }
+ ],
+ "package-tui-agent-demo": [
+  {
+   "req": "r1572",
+   "title": "command-plate-slot",
+   "len": 114,
+   "text": "agent_demo MUST 提供 command plate（经 Ctrl+P 或等价 slash），以替换 editor 槽的方式展示可选演示项；MUST NOT 做成居中大 overlay 仪表盘。 @req:r1573"
+  },
+  {
+   "req": "r1573",
+   "title": "canned-triggers",
+   "len": 118,
+   "text": "command plate 每一项 MUST 绑定预制动作或预制 prompt；选中后 MUST 触发可重复的演示脚本（含 Markdown 全语法、流式代码高亮、Diff、工具三态、会话树等已支持场景中的子集）。 @req:r1574"
+  },
+  {
+   "req": "r1574",
+   "title": "slim-default-seed",
+   "len": 118,
+   "text": "默认 seed transcript MUST 保持短小（帮助指向 plate）；重型 showcase MUST 经 plate 或显式 slash（如 /md）注入，MUST NOT 仅依赖过长默认 seed。 @req:r1575"
+  },
+  {
+   "req": "r1575",
+   "title": "footer-no-key-wall",
+   "len": 91,
+   "text": "agent_demo footer MUST NOT 常驻多行或长键位墙；完整键位说明 MUST 经 plate 项或 /help 进入 transcript。 @req:r1576"
+  },
+  {
+   "req": "r1576",
+   "title": "demo-compaction-retry-fixed-zone",
+   "len": 216,
+   "text": "agent_demo MUST 提供可触发的 Compacting 与 Retry n/m 单行 status 预览（和弦或 plate 或 slash），时序结束后 MUST 回到 Ready/Working 类空闲短词，并 MUST 向"
+  },
+  {
+   "req": "r1577",
+   "title": "thinking-border-cycle",
+   "len": 303,
+   "text": "agent_demo MUST 以 Shift+Tab 作为 thinking border level 的主 cycle 入口（可另保留 plate 或 /thinking-level 辅助）；每次 cycle MUST 经 Editor"
+  }
+ ],
+ "package-tui-autocomplete": [
+  {
+   "req": "r1578",
+   "title": "async-cancellable-autocomplete",
+   "len": 202,
+   "text": "autocomplete 系统 MUST 支持异步建议获取，基于 CancellationToken 取消，使用户输入新内容时可中止进行中的文件系统查询，镜像 pi 的 AbortSignal 模式。CombinedAutocomplete"
+  },
+  {
+   "req": "r1579",
+   "title": "walk-directory-with-fd",
+   "len": 283,
+   "text": "autocomplete 系统 MUST 支持递归模糊文件系统搜索，spawn fd(1) 子进程，参数匹配 pi 的 walkDirectoryWithFd：--base-directory、--max-results、--type f、"
+  },
+  {
+   "req": "r1580",
+   "title": "debounced-autocomplete",
+   "len": 288,
+   "text": "DebouncedAutocomplete<P> wrapper MUST 按配置 delay（默认 250ms，对齐 pi setTimeout）debounce 连续 get_suggestions 调用。窗口内新调用到达时 MUST "
+  }
+ ],
+ "package-tui-choice-prompt": [
+  {
+   "req": "r1581",
+   "title": "single-and-multi",
+   "len": 141,
+   "text": "ChoicePrompt MUST 支持每题 ChoiceMode::Single（互斥）与 ChoiceMode::Multi（可勾选多项）；提交结果 MUST 区分单值与多值；Single 行视觉 MUST NOT 使用 ●/○ 单选圆"
+  },
+  {
+   "req": "r1582",
+   "title": "other-free-text",
+   "len": 82,
+   "text": "当题目 allow_other 为真时 MUST 提供 Other 选项；用户 MUST 能经 Tab 聚焦自由输入并在提交中带回自定义文本。 @req:r1583"
+  },
+  {
+   "req": "r1583",
+   "title": "multi-question-tabs",
+   "len": 91,
+   "text": "当问卷含多题时 MUST 渲染可切换的题目标签与 Submit，且每题可独立为 Single 或 Multi；单题 MUST NOT 强制显示多题 Tab 条。 @req:r1584"
+  },
+  {
+   "req": "r1584",
+   "title": "inline-not-overlay",
+   "len": 93,
+   "text": "ChoicePrompt MUST 可作为 Component 嵌入宿主布局（如 editor 槽替换）；MUST NOT 要求以全屏 Overlay 仪表盘呈现。 @req:r1585"
+  },
+  {
+   "req": "r1585",
+   "title": "cancel",
+   "len": 78,
+   "text": "Esc（tui.select.cancel）MUST 取消整份问卷并给出 cancelled 结果；MUST NOT 静默丢弃无回调。 @req:r1586"
+  },
+  {
+   "req": "r1586",
+   "title": "skip-status",
+   "len": 142,
+   "text": "Esc/Skip 结束时 ChoiceResult.status MUST 为 Skipped，且 to_ask_payload_json MUST 产出 status=skipped 成功载荷；cancelled MUST 仍为真以兼容 "
+  },
+  {
+   "req": "r1587",
+   "title": "review-unanswered-confirm",
+   "len": 121,
+   "text": "多题 Review 若存在未答题：首次 Enter MUST 提示有 tab 未填写且 MUST NOT 提交或 skip；同提示下再 Enter MUST 以 Skipped 结束；←/切题 MUST 取消该二次确认。 @req:r158"
+  },
+  {
+   "req": "r1588",
+   "title": "optional-description",
+   "len": 86,
+   "text": "option.description MUST 可选；全部缺省时 MUST NOT 打开空的右侧说明栏；有 description 时窄宽在聚焦项下展示、宽屏可右侧说明栏。"
+  }
+ ],
+ "package-tui-diff": [
+  {
+   "req": "r1589",
+   "title": "diff-component-api",
+   "len": 167,
+   "text": "xylitol-tui MUST 提供 Diff 组件（及/或 render_diff_lines），接受 display_diff 文本、unified diff 文本或 old/new 行对，输出 Vec of ANSI 行；主题 MU"
+  },
+  {
+   "req": "r1590",
+   "title": "diff-word-level",
+   "len": 102,
+   "text": "当恰好一对相邻删除行与添加行时，Diff MUST 对该对做词级（或字级）对比并用 reverse/word_change 高亮变更片段；多行连续增减 MUST NOT 做词级对比。 @req:r1591"
+  },
+  {
+   "req": "r1591",
+   "title": "diff-width-cjk",
+   "len": 135,
+   "text": "Diff 行宽 MUST 按 visible_width（CJK/emoji）处理；当宽度低于 side-by-side 阈值时 MUST 使用 unified；达到阈值且启用时 MAY 左右对照；MUST NOT 使用 Unicode 表"
+  },
+  {
+   "req": "r1592",
+   "title": "diff-edit-text-format",
+   "len": 168,
+   "text": "xylitol-tui Diff MUST 接受 DiffInput::EditText，解析 pi edit 行格式（^[+-\\\\s](\\\\s*\\\\d*)\\\\s(.*)$），并在 unified 路径以紧凑 ±{lineNum} {con"
+  },
+  {
+   "req": "r1593",
+   "title": "diff-side-by-side-line-numbers",
+   "len": 124,
+   "text": "当 Diff 以 side-by-side 渲染时，左栏 MUST 显示 old_no、右栏 MUST 显示 new_no（pad 对齐）；空半栏 MUST NOT 伪造行号；MUST NOT 使用 Unicode 表线装饰。 @req:r"
+  },
+  {
+   "req": "r1594",
+   "title": "diff-optional-content-highlight",
+   "len": 118,
+   "text": "DiffTheme MAY 提供 highlight_line 闭包对内容做语法高亮；默认 MUST 为 identity（无额外依赖）；包 MUST NOT 在非 highlight 构建中强制 syntect。 @req:r1595"
+  },
+  {
+   "req": "r1595",
+   "title": "sbs-no-default-row-bg",
+   "len": 147,
+   "text": "当 Diff 以 side-by-side 渲染时，增删半栏 MUST NOT 默认套用 added_line_bg / removed_line_bg 全行背景；极性 MUST 仅用 fg（及 gutter 符号/行号）表达。Unifie"
+  },
+  {
+   "req": "r1596",
+   "title": "cjk-narrow-wrap",
+   "len": 83,
+   "text": "当 Diff 行含全角/CJK 且宽度受限时，折行或截断 MUST 按 visible_width 处理；MUST NOT 按字节中途切开字形。 @req:r1597"
+  },
+  {
+   "req": "r1597",
+   "title": "sbs-empty-half-no-fake-lineno",
+   "len": 72,
+   "text": "side-by-side 仅一侧有内容时，空半栏 MUST NOT 伪造行号；有内容半栏 MUST 仍显示对应 old_no 或 new_no。"
+  }
+ ],
+ "package-tui-editor-autocomplete": [
+  {
+   "req": "r1608",
+   "title": "completion-source-registry",
+   "len": 356,
+   "text": "Editor MUST 经 set_completion_sources() 支持可插拔 CompletionSource。Editor MUST 在 edit/Tab 时按顺序探测已注册 source；首个 probe hit 拥有 po"
+  },
+  {
+   "req": "r1609",
+   "title": "autocomplete-selectlist-popup",
+   "len": 268,
+   "text": "CompletionSource 返回建议时，Editor MUST 用建议创建 SelectList popup，计算 best-match 预选项（精确 value 匹配 > prefix 起始匹配），并在 render() 中渲染于 "
+  },
+  {
+   "req": "r1610",
+   "title": "edit-cursor-refresh",
+   "len": 279,
+   "text": "任意文本插入、删除或光标移动后，Editor MUST 咨询 CompletionSource 注册表：popup 打开时，should_dismiss_active 或 failed probe MUST 取消；否则 MUST 刷新建议；"
+  },
+  {
+   "req": "r1611",
+   "title": "request-serialisation-and-debounce",
+   "len": 264,
+   "text": "多个快速 autocomplete 请求 MUST 由 autocomplete_start_token 计数器串行化；仅最新请求应用结果。@-attachment 触发器在 async debounce 接线时 MUST 强制 20ms "
+  },
+  {
+   "req": "r1612",
+   "title": "extra-source-open",
+   "len": 117,
+   "text": "Editor MUST 允许在 Slash/AtPath 之外再注册自定义 CompletionSource；未注册时 MUST NOT 为未来触发符预留运行时成本。应用面 MAY 注册测试桩或未来 $/^ 源。 @req:r1613"
+  },
+  {
+   "req": "r1613",
+   "title": "narrow-popup-width",
+   "len": 165,
+   "text": "补全 popup 打开时，其渲染行宽 MUST 不超过 Editor 当前内容宽度预算；超长项 MUST 截断或夹紧，MUST NOT 使整行超出 terminal width。 # re-review(c2826): 复审结论——本 ca"
+  }
+ ],
+ "package-tui-editor": [
+  {
+   "req": "r1598",
+   "title": "visual-line-map",
+   "len": 236,
+   "text": "Editor MUST 经 build_visual_line_map(width) 从逻辑行构建 visual-line map，将每个 wrapped visual segment 映射到 logical line index、star"
+  },
+  {
+   "req": "r1599",
+   "title": "sticky-column-vertical-move",
+   "len": 358,
+   "text": "Editor MUST 经 compute_vertical_move_column(current_col, src_max, tgt_max) 实现粘滞列垂直光标移动，遵循 P/S/T/U 决策表：（P=has preferred，S="
+  },
+  {
+   "req": "r1600",
+   "title": "page-scroll",
+   "len": 156,
+   "text": "Editor MUST 按宽度相关视觉行布局实现 pageScroll（或等价滚动入口），page size 为 max(5, terminal_rows * 30 / 100)。光标 MUST 按 page 大小移动 visual lin"
+  },
+  {
+   "req": "r1601",
+   "title": "paste-burst-integration",
+   "len": 315,
+   "text": "Editor MUST 集成 PasteBurst（c415）。每次 plain character 插入时 MUST 调用 on_plain_char(now)。Enter（submit 或 newline）时 MUST 检查 shoul"
+  },
+  {
+   "req": "r1602",
+   "title": "history-navigation",
+   "len": 261,
+   "text": "Editor MUST 提供 navigate_history(direction: isize)，使用 setTextInternal 与 cursorPlacement（上箭头 'start'，下箭头 'end'）。exitHistor"
+  },
+  {
+   "req": "r1603",
+   "title": "highlight-via-callback",
+   "len": 156,
+   "text": "Markdown 代码块高亮 MUST 经 MarkdownTheme.highlight_code 回调注入；xylitol-tui 默认依赖 MUST NOT 包含 syntect；真实高亮实现 MUST 位于 optional fea"
+  },
+  {
+   "req": "r1604",
+   "title": "highlight-safety-limits",
+   "len": 86,
+   "text": "注入的 syntect（或等价）高亮 MUST 对过大输入施加字节与行数上限；超限时 MUST 回退为未高亮纯文本行，MUST NOT 阻塞事件循环。 @req:r1605"
+  },
+  {
+   "req": "r1605",
+   "title": "set-border-color",
+   "len": 121,
+   "text": "Editor MUST 提供 set_border_color（或等价 API）以替换边框 ANSI 包装闭包，供 host 在 bash 模式等场景切换操作区边框色；MUST NOT 要求重建整个 Editor 实例。 @req:r160"
+  },
+  {
+   "req": "r1606",
+   "title": "paste-collapse-expand",
+   "len": 281,
+   "text": "Editor MUST 在 bracketed paste 内容超过 10 行或超过 1000 字符时，将缓冲区内文本替换为 [paste #N +L lines] 或 [paste #N C chars] 占位，并在内部 pastes 表"
+  },
+  {
+   "req": "r1607",
+   "title": "thinking-border-apply",
+   "len": 258,
+   "text": "Editor MUST 能在不重建实例的前提下经 set_border_color（ed08）或薄 helper apply_thinking_border 应用 Palette 给出的 thinking 边框闭包；应用后 render 的"
+  }
+ ],
+ "package-tui-engine": [
+  {
+   "req": "r1614",
+   "title": "container-vertical-stack",
+   "len": 232,
+   "text": "xylitol-tui 包 MUST 提供 Container 组件，持有有序子 Component 列表，按顺序拼接各 child 的 render(width) 行渲染，invalidate 时使所有 child 失效，MUST NOT"
+  },
+  {
+   "req": "r1615",
+   "title": "overlay-handle",
+   "len": 253,
+   "text": "TUI::show_overlay MUST 返回 OverlayHandle，可 hide（永久移除）、set_hidden / is_hidden（临时）、report is_focused。hide MUST 经 focus-rest"
+  },
+  {
+   "req": "r1616",
+   "title": "overlay-handle-focus-controls",
+   "len": 260,
+   "text": "OverlayHandle MUST 暴露 focus 与 unfocus 操作。focus MUST 将可见 overlay（含 non_capturing）带到视觉最前并捕获输入。unfocus MUST 释放焦点而不 rebuild；"
+  },
+  {
+   "req": "r1617",
+   "title": "image-surface-optional",
+   "len": 201,
+   "text": "包 MUST NOT 要求 Image 组件或完整 terminal_image encode 路径用于主 agent_demo / app-shell 接线。is_image_line（及 width invariant 所需的 mini"
+  },
+  {
+   "req": "r1618",
+   "title": "input-listener-pre-focus",
+   "len": 201,
+   "text": "TUI MUST 提供 add_input_listener / remove_input_listener；每个 InputEvent 在路由到 focused overlay 或 focused root child 之前 MUST 按"
+  },
+  {
+   "req": "r1619",
+   "title": "overlay-focus-restore-sm",
+   "len": 324,
+   "text": "TUI MUST 维护 overlay focus-restore 状态 inactive/eligible/blocked；capturing overlay 获焦时 MUST 进入 eligible；焦点被临时转到非祖先 root/ch"
+  },
+  {
+   "req": "r1620",
+   "title": "input-event-mouse",
+   "len": 359,
+   "text": "InputEvent MUST 包含 Mouse 变体（携带列/行与按键或移动类别，足以表达 crossterm MouseEvent 语义）；dispatch_event 与 add_input_listener MUST 可接收 Mou"
+  }
+ ],
+ "package-tui-expandable-output": [
+  {
+   "req": "r1621",
+   "title": "expandable-api",
+   "len": 168,
+   "text": "包 MUST 提供 ExpandableOutput 与 render_expandable_output；选项 MUST 含 max_preview_lines、TruncateFrom（Tail 或 Head）、expand_hint、"
+  },
+  {
+   "req": "r1622",
+   "title": "collapsed-tail-hint",
+   "len": 156,
+   "text": "当 collapsed 且跳过行数大于 0 时 Tail 与 Head 模式 MUST 均在可见窗口之下（块尾）渲染 dim 提示（Tail：earlier lines；Head：more lines；均含 expand_hint）；MUS"
+  },
+  {
+   "req": "r1623",
+   "title": "streaming-stick-tail",
+   "len": 202,
+   "text": "流式追加文本时 collapsed Tail 视口 MUST 继续显示最新视觉行；expanded MUST 显示全文且无 earlier 提示；expanded 且内容视觉行数超过 max_preview_lines 时 MUST 在块尾"
+  },
+  {
+   "req": "r1624",
+   "title": "head-more-hint",
+   "len": 133,
+   "text": "当 TruncateFrom::Head 且 collapsed 并跳过行数大于 0 时，MUST 在可见首部之下渲染 dim 的 more lines 提示（含 expand_hint）；MUST NOT 把该提示放在首部之上冒充 Tai"
+  },
+  {
+   "req": "r1625",
+   "title": "zero-width-safe",
+   "len": 72,
+   "text": "ExpandableOutput 在 width 为 0 或 1、或文本为空时 MUST 安全返回（空或有界行）；MUST NOT panic。"
+  }
+ ],
+ "package-tui-keybindings": [
+  {
+   "req": "r1641",
+   "title": "owned-user-config",
+   "len": 166,
+   "text": "KeybindingsManager MUST 接受拥有型用户覆盖配置（键与和弦为 String），使磁盘 JSON 可热加载；definitions 的 id 仍为包/应用静态目录。set_user_bindings MUST 按 id "
+  },
+  {
+   "req": "r1642",
+   "title": "matches-by-id",
+   "len": 113,
+   "text": "KeybindingsManager::matches_event MUST 按绑定 id 解析当前生效和弦并与 KeyEvent 比较；默认键在无用户覆盖时 MUST 等于 definitions.default_keys。"
+  }
+ ],
+ "package-tui-markdown": [
+  {
+   "req": "r1643",
+   "title": "heading-sgr-no-hash",
+   "len": 94,
+   "text": "Markdown 渲染标题时 MUST 用主题色与 bold/underline 表达 H1–H6 层级；可见文本 MUST NOT 包含 # 或 ## 等井号前缀。 @req:r1644"
+  },
+  {
+   "req": "r1644",
+   "title": "link-text-url",
+   "len": 114,
+   "text": "Markdown 渲染链接时 MUST 输出可见形态 text (url)；图片 MUST 输出 alt (url)（无 alt 则用 url）；MUST NOT 仅依赖不可选中的 OSC 或丢弃 URL。 @req:r1645"
+  },
+  {
+   "req": "r1645",
+   "title": "code-block-no-fence",
+   "len": 88,
+   "text": "Markdown 代码块 MUST 仅输出代码内容行（可选缩进与 highlight_code 高亮）；MUST NOT 输出围栏行、语言标签条或行号墙。 @req:r1646"
+  },
+  {
+   "req": "r1646",
+   "title": "inline-emphasis-display",
+   "len": 130,
+   "text": "Markdown 粗体与斜体 MUST 仅用 SGR（theme.bold / theme.italic）表达，可见文本 MUST NOT 保留 ** 或 * 星号包裹；行内代码与删除线的可见文本 MUST 分别保留 ` 与 ~~ 标记。 "
+  },
+  {
+   "req": "r1647",
+   "title": "quote-no-box",
+   "len": 77,
+   "text": "Markdown 引用 MUST 仅用 quote 色与 italic（或等价 SGR）；MUST NOT 使用竖线或盒线装饰前缀。 @req:r1648"
+  },
+  {
+   "req": "r1648",
+   "title": "table-space-align",
+   "len": 97,
+   "text": "Markdown 表格 MUST 以空格对齐列宽显示；表头 MAY bold 与 underline；MUST NOT 使用盒线表字符；MUST NOT 为装饰输出管道符。 @req:r1649"
+  },
+  {
+   "req": "r1649",
+   "title": "list-and-hr",
+   "len": 134,
+   "text": "Markdown 列表 MUST 使用 - 或数字点号标记且嵌套用空格缩进；MUST NOT 使用树线装饰。分隔线 MUST 为短线或空行；MUST NOT 拉满近全宽装饰线墙。任务列表 MUST 保持 - [ ] / - [x] 与正文同"
+  },
+  {
+   "req": "r1650",
+   "title": "highlight-callback-only",
+   "len": 162,
+   "text": "语法高亮 MUST 仅经 MarkdownTheme.highlight_code 可选回调注入；xylitol-tui 默认依赖 MUST NOT 捆绑 syntect。fg 着色在内联阶段完成；若设置 bg_color 则 MUST 在"
+  }
+ ],
+ "package-tui-paste-burst": [
+  {
+   "req": "r1651",
+   "title": "paste-burst-detector",
+   "len": 298,
+   "text": "TUI MUST 提供 PasteBurst 检测器（纯状态机），识别 non-bracketed paste burst：8 个或以上 plain characters 彼此间隔 8ms 内到达。检测器 MUST 暴露 on_plain_"
+  },
+  {
+   "req": "r1652",
+   "title": "time-injected",
+   "len": 214,
+   "text": "PasteBurst 方法 MUST 接受 Instant 参数（now）而非内部读 wall-clock，使测试经 c405 MockClock 确定性推进时间而无需 thread::sleep。editor（未来 port）将在各 ca"
+  },
+  {
+   "req": "r1653",
+   "title": "enter-suppress-window",
+   "len": 370,
+   "text": "检测到 burst（8+ chars 在 inter-char threshold 内）时，PasteBurst MUST 打开 120ms enter-suppress 窗口，期间 should_insert_newline_instea"
+  }
+ ],
+ "package-tui-terminal-protocol": [
+  {
+   "req": "r1654",
+   "title": "kitty-protocol-probe",
+   "len": 316,
+   "text": "终端层 MUST 在启动时探测 Kitty 键盘协议支持：发送 Kitty 渐进增强查询（CSI >7u 请求 flags，再 CSI ?u 弹出当前状态，再 CSI c 作为 device-attributes 哨兵），并在短有界窗口内读"
+  },
+  {
+   "req": "r1655",
+   "title": "kitty-flags-parser",
+   "len": 190,
+   "text": "终端层 MUST 提供纯解析器 parse_kitty_flags(seq)，将 Kitty 协议响应（CSI ?Nu，N 为协商 flags）映射为非负整数，非匹配序列返回 None。解析器 MUST 区分零 flags 响应（终端理解查"
+  },
+  {
+   "req": "r1656",
+   "title": "modify-other-keys-fallback",
+   "len": 322,
+   "text": "Kitty 键盘协议不可用时，terminal MUST 管理 xterm modifyOtherKeys 资源作为回退：enable_modify_other_keys() 发送 CSI >4;2m（mode 2），disable_mod"
+  },
+  {
+   "req": "r1657",
+   "title": "osc-title-and-progress",
+   "len": 304,
+   "text": "Terminal trait MUST 暴露 set_title(title)，发出 OSC 0;title BEL（或等价 OSC 2），以及 set_progress(active)，active 时发出 OSC 9;4;3，清除时 O"
+  },
+  {
+   "req": "r1658",
+   "title": "color-scheme-pure-helpers",
+   "len": 166,
+   "text": "packages/xylitol-tui 的 terminal_colors MUST 提供纯函数：从 OSC11 背景 RGB 经相对亮度判定 Dark/Light、解析 COLORFGBG（bg>=7 为 Light）、以及按优先级合成"
+  },
+  {
+   "req": "r1659",
+   "title": "color-scheme-priority",
+   "len": 100,
+   "text": "多源合成 MUST 按显式注入 > OSC11 亮度 > CSI 997 报告 > COLORFGBG > 默认 Dark 的优先级选择 TerminalColorScheme。 @req:r1660"
+  },
+  {
+   "req": "r1660",
+   "title": "mouse-capture-opt-in",
+   "len": 335,
+   "text": "Terminal（或 CrosstermTerminal 等价面）MUST 提供显式 enable_mouse_capture / disable_mouse_capture（或同名 API）；start / 默认构造路径 MUST NOT"
+  }
+ ],
+ "package-tui-testing": [
+  {
+   "req": "r1661",
+   "title": "四层测试架构",
+   "len": 396,
+   "text": "TUI 测试 harness MUST 组织为四层互不重叠：第 1 层按键序列→状态断言（以字节序列驱动 Component::handle_input 并断言模型状态，仿 helix test_key_sequence）；第 2 层 in"
+  },
+  {
+   "req": "r1662",
+   "title": "按键序列辅助",
+   "len": 250,
+   "text": "TUI 测试支持 MUST 提供通用按键序列驱动：接受终端输入字节串，经组件输入入口分发，并暴露状态断言（assert_text、assert_cursor、assert_screen_contains）。MutableComponent "
+  },
+  {
+   "req": "r1663",
+   "title": "insta 快照黄金",
+   "len": 272,
+   "text": "TUI 测试 harness MUST 用 insta（assert_snapshot!）做整屏渲染回归：VirtualTerminal::viewport() 输出（或单元格网格人类可读渲染）送入 assert_snapshot!，快照经"
+  },
+  {
+   "req": "r1664",
+   "title": "可注入 Clock 的时序",
+   "len": 373,
+   "text": "时序相关 TUI 逻辑（paste-burst 检测、autocomplete debounce、loader spinner 帧调度）MUST 可无真实 wall-clock sleep 确定性测试。同步时序逻辑 MUST 接受注入 Cl"
+  },
+  {
+   "req": "r1665",
+   "title": "portable-pty E2E 主驱动",
+   "len": 424,
+   "text": "端到端 TUI 测试 MUST 以 portable-pty 为主集成驱动：以 PTY 子进程 spawn 真实二进制，经 writer 注入按键序列（时序重要时键间显式 sleep），从 reader 读原始字节流，送入现有 Virtua"
+  },
+  {
+   "req": "r1666",
+   "title": "tmux 真终端冒烟",
+   "len": 506,
+   "text": "TUI 测试 harness MUST 含少量（3-5 例）经 tmux 驱动的真终端冒烟测试（用手写薄包装 std::process::Command，非 tmux 绑定 crate）：创建 detached 会话（tmux new-se"
+  },
+  {
+   "req": "r1667",
+   "title": "单一主 example 表面",
+   "len": 229,
+   "text": "xylitol-tui 包 MUST 保留代表假 coding-agent 工作流的单一主 example 表面，而非多个重叠 showcase demo。验收与 E2E 测试 MUST 瞄准该主 example。主 example MUS"
+  },
+  {
+   "req": "r1668",
+   "title": "无头帧挂载面",
+   "len": 233,
+   "text": "主 crate MUST 经 `xylitol::app::tui` 导出无头产品帧挂载面（SceneBuilder 流式脚本 + render(width) 返回剥离 ANSI 的纯文本帧与语义 dump），供 BDD 与集成测试直驱真实"
+  }
+ ],
+ "package-tui-theme": [
+  {
+   "req": "r1669",
+   "title": "two-palettes",
+   "len": 124,
+   "text": "包 MUST 提供恰好两套内建 SemanticPalette：Dark（对齐 DESIGN Mocha）与 Light（对齐 Catppuccin Latte）；MUST 能经 TerminalColorScheme 选取。 @req:r"
+  },
+  {
+   "req": "r1670",
+   "title": "paint-truecolor",
+   "len": 90,
+   "text": "paint 辅助 MUST 用真彩 SGR 上色，前景复位 39、背景复位 49（或文档约定的行内恢复）；MUST NOT 要求组件依赖 JSON 主题文件。 @req:r1671"
+  },
+  {
+   "req": "r1671",
+   "title": "theme-factories",
+   "len": 81,
+   "text": "包 MUST 提供由 SemanticPalette 生成 MarkdownTheme 与 DiffTheme 的工厂；组件仍只收闭包主题。 @req:r1672"
+  },
+  {
+   "req": "r1672",
+   "title": "demo-full-restyle",
+   "len": 121,
+   "text": "当 agent_demo theme_mode 为 Light 时 MUST 将 markdown、diff、tool 背景与 muted 固定区 切换为 Light 色板；Dark 时 MUST 使用 Dark 色板。 @req:r167"
+  },
+  {
+   "req": "r1673",
+   "title": "detect-opt-in",
+   "len": 88,
+   "text": "终端色探测 MUST 仅在显式 opt-in（如 XYLITOL_AGENT_DEMO_THEME_AUTO）时启用；未启用时 MUST 保持 Dark。 @req:r1674"
+  },
+  {
+   "req": "r1674",
+   "title": "host-feed-replies",
+   "len": 117,
+   "text": "包 MUST 导出 OSC11 / CSI 色方案查询常量，并允许宿主将 reply 喂入 resolve_terminal_color_scheme；MUST NOT 因本变更强制产品 host 打开自动亮色。 @req:r1675"
+  },
+  {
+   "req": "r1675",
+   "title": "thinking-border-palette",
+   "len": 379,
+   "text": "包 MUST 提供 ThinkingBorderLevel（或等价）覆盖至少 off、minimal、low、medium、high、xhigh、max，并提供 cycle_next；Palette MUST 经 thinking_bord"
+  },
+  {
+   "req": "r1676",
+   "title": "paint-left-rail-line",
+   "len": 182,
+   "text": "包 MUST 导出 paint_left_rail_line（或等价）：对给定行宽与轨色，输出「1 列轨底色空格 + 1 列无底色 gutter + 拟合内容」的真彩行；窄宽 MUST 不 panic（内容宽可压到 0）；轨段背景复位 MU"
+  }
+ ],
+ "protocol-app": [
+  {
+   "req": "r1693",
+   "title": "Command 枚举",
+   "len": 212,
+   "text": "protocol MUST 定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSessio"
+  },
+  {
+   "req": "r1695",
+   "title": "Event 枚举",
+   "len": 148,
+   "text": "protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client "
+  },
+  {
+   "req": "r1694",
+   "title": "线协议不镜像厂商事件",
+   "len": 133,
+   "text": "protocol::Event MUST 映射领域 XyEvent 闭集；MUST NOT 为 OpenAI/Anthropic 等厂商专属事件增加平行变体。无法表达的细节 MUST 留在领域 Message 载荷或被省略，而非拓宽线协议宽"
+  },
+  {
+   "req": "r1703",
+   "title": "bang 与工具分流",
+   "len": 172,
+   "text": "人发起的工作区 bash MUST 走独立于模型工具的事件路径，MUST NOT 并进 ToolStart / ToolExecutionUpdate / ToolEnd。结束态 MUST 能用 BashResult（或语义等价）表达。直播"
+  },
+  {
+   "req": "r1705",
+   "title": "闭集缺口禁旁路",
+   "len": 194,
+   "text": "协议闭集 MUST 能表达：host 侧重装（MCP / prompt / 技能）、项目信任持久化、session 写者与只读、导出回传内容、人 bash 直播增量。上述语义在尚未进入 Command/Event 枚举前，MUST NOT "
+  }
+ ],
+ "runtime-resource-discovery": [
+  {
+   "req": "r1759",
+   "title": "资源列表",
+   "len": 117,
+   "text": "System MUST 提供只读命令，列出全部已发现 skills、themes 及其 source scope 与 path；MUST NOT 将 prompts/*.md 列为可展开 prompt 模板资源。 @req:r1763"
+  },
+  {
+   "req": "r1763",
+   "title": "资源详情",
+   "len": 48,
+   "text": "System MUST 提供命令展示单个命名资源详情，未找到时以非零退出。 @req:r1764"
+  },
+  {
+   "req": "r1764",
+   "title": "资源 doctor",
+   "len": 59,
+   "text": "System MUST 提供命令展示 ResourceLoader 诊断，存在问题时以非零退出。 @req:r1765"
+  },
+  {
+   "req": "r1765",
+   "title": "只读",
+   "len": 45,
+   "text": "资源命令 MUST NOT 创建、修改或删除任何文件或已安装包状态。 @req:r1766"
+  },
+  {
+   "req": "r1766",
+   "title": "复用 loader",
+   "len": 56,
+   "text": "资源命令 MUST 复用 DefaultResourceLoader 发现，而非独立重扫。 @req:r1767"
+  },
+  {
+   "req": "r1767",
+   "title": "统一 SourceInfo 类型",
+   "len": 81,
+   "text": "System MUST 提供公共 SourceInfo 类型，含 path、source、scope、origin、base_dir 字段。 @req:r1768"
+  },
+  {
+   "req": "r1768",
+   "title": "Source 工厂",
+   "len": 81,
+   "text": "System MUST 提供 create_source_info 与 create_synthetic_source_info 工厂函数。 @req:r1769"
+  },
+  {
+   "req": "r1769",
+   "title": "Source 迁移",
+   "len": 90,
+   "text": "Skills、SlashCommandInfo MUST 使用统一 SourceInfo 类型；MUST NOT 再要求 PromptTemplate 类型。 @req:r1770"
+  },
+  {
+   "req": "r1770",
+   "title": "Scope 枚举",
+   "len": 63,
+   "text": "SourceScope MUST 支持 user、project、temporary 变体，对齐 pi。 @req:r1760"
+  },
+  {
+   "req": "r1760",
+   "title": "资源热重载",
+   "len": 182,
+   "text": "DefaultResourceLoader MUST 提供 reload（或实现 XyReloadable）：清空缓存后重新发现 context/skills/themes/SYSTEM/APPEND；失败诊断 MUST 可观察；reloa"
+  },
+  {
+   "req": "r1761",
+   "title": "主题名发现",
+   "len": 164,
+   "text": "System MUST 能在 Trust 语义下经 resource loader（get_themes 或等价）列出已发现 theme 文件名（stem）；未信任 MUST NOT 列出项目 themes 目录条目。应用面 MAY 仅暴露"
+  },
+  {
+   "req": "r1762",
+   "title": "Skills 发现与重载报告",
+   "len": 165,
+   "text": "System MUST 能在 Trust 语义下发现并列出已加载 skills（名与 scope）；提供 reload_skills（或等价）清空后重扫并返回 report（names/count；诊断可观察）；未信任 MUST NOT 列"
+  }
+ ],
+ "server-core": [
+  {
+   "req": "r1779",
+   "title": "上下文估计方法接线",
+   "len": 200,
+   "text": "Host MUST 为 estimate_context 提供已登记 unary：经与 in-process driver 同源的估算入口计算 ContextTokenEstimate，MUST 计入 host 侧固定请求开销（system"
+  },
+  {
+   "req": "r1790",
+   "title": "固定区资源下行",
+   "len": 355,
+   "text": "Host MUST 为已物化写者的会话经产品订阅下行 `session/resources` 推送 MCP/skills 固定区 快照：写者侧在 Host 进程内 poll MCP bootstrap，快照变化时才向该会话的订阅连接广播一帧"
+  }
+ ],
+ "test-bdd": [
+  {
+   "req": "r37",
+   "title": "BDD 全量通过",
+   "len": 167,
+   "text": "BDD 场景集 MUST 保持全量通过（cargo test --test bdd）；未实现的孤儿 feature MUST 移除而非保留为债务，其行为由对应模块单测 / harness 覆盖。产品 TUI 交互护栏 MUST 由 harn"
+  },
+  {
+   "req": "r1811",
+   "title": "server-integration-scenarios",
+   "len": 147,
+   "text": "BDD 测试套件 MUST 含 server.feature（server 启动、health check、prompt 提交、event streaming、shutdown）与 approval.feature（经 reverse RP"
+  },
+  {
+   "req": "r1812",
+   "title": "rstest-bdd-current",
+   "len": 103,
+   "text": "仓库 MUST 使用 crates.io 当前 rstest-bdd / rstest-bdd-macros 兼容最新 beta；既有核心 BDD 场景 MUST 在升级后仍全部通过。 @req:r1813"
+  },
+  {
+   "req": "r1813",
+   "title": "Partitioned live feature BDD",
+   "len": 335,
+   "text": "BDD 场景 MUST 支持在 live llmanspec/specs/<capability>/<capability>.feature 中以 @req 绑定 requirement，并由 tests/bdd/ 下的 #[scenari"
+  },
+  {
+   "req": "r1814",
+   "title": "配置 BDD 分层",
+   "len": 204,
+   "text": "配置加载行为（三层合并、模型/provider 解析、ConfigValue 插值、默认值）MUST 由 infra 层配置与 settings 的单元测试覆盖，MUST NOT 保留无 step 实现的孤儿 feature 作为 BDD "
+  }
+ ],
+ "test-fake-provider": [
+  {
+   "req": "r38",
+   "title": "fake-provider",
+   "len": 97,
+   "text": "System MUST 提供 FakeProvider，经统一装配路径（AdapterXyModel）暴露为 XyModel，经 ScenarioStep 序列返回预配置响应。 @req:r45"
+  },
+  {
+   "req": "r45",
+   "title": "scenario-orchestration",
+   "len": 95,
+   "text": "System MUST 支持编排多步场景：text -> tool_call -> tool_result -> text，含可配置 delay 与经 ScenarioStep 的错误注入。"
+  }
+ ],
+ "test-infra": [
+  {
+   "req": "r39",
+   "title": "faux-provider",
+   "len": 70,
+   "text": "System MUST 提供 FauxProvider，返回预配置的响应步骤，无需网络调用，用于确定性 agent 测试。 @req:r46"
+  },
+  {
+   "req": "r46",
+   "title": "test-harness-tools",
+   "len": 88,
+   "text": "System MUST 通过 rstest-bdd 场景/测试函数测试工具，使用 given/when/then 类型化占位符步骤，每个场景对应一个测试函数。 @req:r54"
+  },
+  {
+   "req": "r54",
+   "title": "temp-file-raii",
+   "len": 71,
+   "text": "所有创建临时文件的测试 MUST 使用 RAII 清理（tempfile crate），执行后 MUST NOT 遗留产物。 @req:r57"
+  },
+  {
+   "req": "r57",
+   "title": "async-test-timeout",
+   "len": 79,
+   "text": "异步集成测试 MUST 用 with_test_timeout 辅助函数包裹主体（默认 10s），防止 CI 因死锁或 mock 失败挂起。 @req:r60"
+  },
+  {
+   "req": "r60",
+   "title": "no-fixed-tmp-paths",
+   "len": 63,
+   "text": "测试 MUST NOT 使用固定名称的硬编码 /tmp 路径；MUST 使用唯一自动生成路径以支持并行执行。 @req:r63"
+  },
+  {
+   "req": "r63",
+   "title": "tui-e2e-isolation",
+   "len": 463,
+   "text": "TUI 端到端测试（portable-pty 与 tmux）MUST 与主测试矩阵隔离：MUST 位于 workspace 级 tests/tui_e2e/（非 packages/xylitol-tui/tests/），MUST 标记 #["
+  }
+ ],
+ "test-provider-integration": [
+  {
+   "req": "r1824",
+   "title": "provider-registration",
+   "len": 124,
+   "text": "System SHALL 支持 provider 注册，含可配置 API keys、base URLs、headers 与 adapter api type，适用于 OpenAI 兼容与 Anthropic provider。 @req:r"
+  },
+  {
+   "req": "r1821",
+   "title": "config-value-parser",
+   "len": 94,
+   "text": "System MUST 提供 ConfigValueResolver，解析 literal、env-var template 与 shell-command 配置值。 @req:r1822"
+  },
+  {
+   "req": "r1822",
+   "title": "env-var-interpolation",
+   "len": 76,
+   "text": "ConfigValueResolver MUST 插值 $VAR、${VAR} 与 ${VAR:-default} 环境变量引用。 @req:r1823"
+  },
+  {
+   "req": "r1823",
+   "title": "shell-command-execution",
+   "len": 82,
+   "text": "ConfigValueResolver 对以 ! 为前缀的命令 MUST 以 10 秒超时执行并在进程生命周期内缓存结果；超时以失败结果呈现。 @req:r1825"
+  },
+  {
+   "req": "r1825",
+   "title": "provider-in-infra",
+   "len": 184,
+   "text": "所有 LLM provider 实现（OpenAI、Anthropic、Fake、Mock）MUST 位于 infra 层并实现 protocol 端口 XyModel；agent 层 MUST NOT 托管 provider 实现子树；从"
+  },
+  {
+   "req": "r1826",
+   "title": "provider-port-injection",
+   "len": 112,
+   "text": "agent 持有的 model registry MUST 以 Arc<dyn XyModel> 存储 provider；选择 provider MUST NOT 要求 agent 命名具体 provider struct。"
+  }
+ ],
+ "test-qa-gate": [
+  {
+   "req": "r1827",
+   "title": "统一 just qa 满闸",
+   "len": 557,
+   "text": "仓库 MUST 提供 just qa 作为日常与 PR 前的统一验证入口；该入口 MUST 顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测"
+  },
+  {
+   "req": "r1828",
+   "title": "qa-e2e 可选第 5 层",
+   "len": 172,
+   "text": "仓库 MUST 提供 just qa-e2e，其行为 MUST 为先执行 just qa，再执行 just test-tui-e2e（portable-pty 与 tmux 驱动的 #[ignore] 用例）。默认 just qa MUST"
+  },
+  {
+   "req": "r1829",
+   "title": "文档指针",
+   "len": 169,
+   "text": "根 AGENTS.md 命令段与 test-tui-harness skill MUST 写明 just qa 与 just qa-e2e 的分工，以及 live-provider 串行闸与专用配置路径；TUI 四层方法论仍以 packag"
+  },
+  {
+   "req": "r1830",
+   "title": "scripts-check-convention",
+   "len": 157,
+   "text": "仓库 MUST 约定 scripts/check_*.py（或 check-*.py）为非变更闸脚本且 MUST 经 just qa 的 check-scripts-wired/check-scripts 入闸；cleanup_* 等维护脚"
+  },
+  {
+   "req": "r1831",
+   "title": "session-tree-pty-e2e",
+   "len": 243,
+   "text": "仓库 MUST 在 tests/tui_e2e（portable-pty）提供至少一条产品 Fake 会话树 E2E：双 Esc 开树后屏幕 MUST 含 Search 或 Type to search 类提示，且含 TreeHelp 用途"
+  },
+  {
+   "req": "r1832",
+   "title": "ath12-entry-complexity-gate",
+   "len": 252,
+   "text": "仓库 MUST 提供 scripts/check_complexity.py，并经 just qa 的 check-scripts 强制 ath12 入口协调者的函数级复杂度（cccc-rs）；该脚本属 scripts/check_* 约定"
+  },
+  {
+   "req": "r1833",
+   "title": "live-provider-serial-in-qa",
+   "len": 557,
+   "text": "just qa MUST 在 workspace 测试之后以严格串行（单 test binary、`--test-threads=1`）调用 `just test-live-provider`；配置 MUST 为全局共享目录专用文件 `<g"
+  }
+ ],
+ "test-standards": [
+  {
+   "req": "r1834",
+   "title": "BDD-vs-Unit 测试分界",
+   "len": 161,
+   "text": "项目 MUST 维护 documented 边界：BDD 场景覆盖端到端编排（agent loop、tool execution、session lifecycle、CLI dispatch）；单元测试覆盖纯算法、数据结构契约、组件内部状态"
+  },
+  {
+   "req": "r1835",
+   "title": "核心数据类型测试覆盖",
+   "len": 200,
+   "text": "agent/ 会话词汇与 protocol/ 端口签名类型 MUST 有 #[cfg(test)] 模块验证关键路径：（1）serialization round-trip（适用时），（2）Display/From 转换，（3）constr"
+  },
+  {
+   "req": "r1836",
+   "title": "纯逻辑组件测试覆盖",
+   "len": 186,
+   "text": "以下 agent/ 模块 MUST 有 #[cfg(test)] 验证纯逻辑行为：queue.rs（MessageQueue 全部操作）、retry.rs（状态转换）、commands.rs（slash 解析）、config_value.r"
+  },
+  {
+   "req": "r1837",
+   "title": "Session 子组件测试覆盖",
+   "len": 219,
+   "text": "以下 agent/ 子组件 MUST 有 #[cfg(test)]：model_manager.rs（cycle/select/thinking）、tool_manager.rs（register/filter）、skill_manager"
+  }
+ ],
+ "user-experience": [
+  {
+   "req": "r1838",
+   "title": "login-help",
+   "len": 60,
+   "text": "System MUST 提供登录引导消息（或等价入口），返回引用 /login 与文档路径的引导。 @req:r1839"
+  },
+  {
+   "req": "r1839",
+   "title": "no-models",
+   "len": 47,
+   "text": "无可用模型时，System MUST 提供无模型提示消息（或等价入口）。 @req:r1840"
+  },
+  {
+   "req": "r1840",
+   "title": "no-model-selected",
+   "len": 48,
+   "text": "未选择模型时，System MUST 提供未选模型提示消息（或等价入口）。 @req:r1841"
+  },
+  {
+   "req": "r1841",
+   "title": "no-api-key",
+   "len": 50,
+   "text": "System MUST 提供无 API key 提示消息（或等价入口），含 provider 名称。"
+  }
+ ],
+ "app-tui-fixed-zone": [
+  {
+   "req": "r1233",
+   "title": "theme-glyphs-config",
+   "len": 144,
+   "text": "产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开"
+  },
+  {
+   "req": "r1234",
+   "title": "design-docs-ssot",
+   "len": 160,
+   "text": "产品 TUI 视觉与 UX MUST 有单一书面 SSOT（总索引 + 组件级子文档）；实现与 demo 引用组件规则时 MUST 指向对应书面文档（尤其 diff-block 与 keybindings），MUST NOT 仅依赖口头约定"
+  },
+  {
+   "req": "r1235",
+   "title": "demo-theme-auto-detect",
+   "len": 189,
+   "text": "agent_demo MUST 默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 MUST 经 package terminal_colors 纯函数切换 Light/Dark，并在 layou"
+  },
+  {
+   "req": "r1231",
+   "title": "fixed-zone-no-extra-undocumented",
+   "len": 222,
+   "text": "产品 TUI 固定区（footer / status / 队列条 / 通知条 / 待办栏等）可观察文案与徽章 MUST 仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；MUST NOT 另加 SSOT 未声明或已废弃的冗余展示（"
+  }
+ ]
+}
