@@ -13,6 +13,11 @@
   规则: provider-raw-mapped-对照
     当 provider tracing 激活时，每次 provider HTTP 流 MUST 在同一 fastrace 请求 span / request_id 下记录原始协议事件与映射后的 XyChunk 变体（Event），使 agent 能区分上游通道混写与适配器映射错误；记录 MUST 只经 file-only Reporter 写入 agent 日志目录专用文件（禁止 stdout/stderr 与 ConsoleReporter），MUST NOT 包含 Authorization 或 API-key 头值，且 MUST NOT 经 script hook 分发。
 
+    场景: provider-raw-mapped-pairing-headless
+      假如 mock 上游按正常完成脚本回放 Anthropic SSE
+      当 以 io=truncated 的观测闸对 mock 上游驱动一次流式生成并耗尽全部事件
+      那么 同一 llm.request span 上同时记录 raw 与 mapped 事件
+
   @req:r1463
   规则: provider-trace-闸门
     Provider tracing 在 cfg(debug_assertions) 下 MUST 默认安装 Reporter，在 release 构建 MUST 默认不安装；release MUST 经 XYLITOL_PROVIDER_TRACE 显式打开；tracing 未激活时 MUST 避免对 SSE 载荷做昂贵序列化；新增跨层低频 span MUST 遵守同一闸门（关闸零/近零开销）。

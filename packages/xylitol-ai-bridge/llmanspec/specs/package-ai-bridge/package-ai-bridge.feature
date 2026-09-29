@@ -39,6 +39,7 @@
   @req:r1556
   规则: provider-http-bounded
     provider HTTP 客户端 MUST 有连接超时与请求级等待界：流式请求以 chunk-gap idle 上界判定挂起（任何入站字节重置计时）；非流式请求有总时长上界；到期返回可分类超时错误并释放连接。
+    # verified-by: fn sse_idle_bound_fires_classifiable_error
   @req:r1539
   规则: assistant-stream-toolcall-lifecycle
     Responses、Completions 与 Anthropic Messages 的流式路径 MUST 将原生工具调用映射为 AiBridgeChunk 的 ToolCallStart / ToolCallDelta / ToolCallEnd 生命周期：在首个可判别的工具相关上游事件后 MUST 发出 ToolCallStart（或同轮首次 ToolCallDelta 前已有 Start）；参数 JSON 片段 MUST 经 ToolCallDelta 增量发出且携带 parse_streaming_json 渐进 args；完整参数 MUST 在块结束时经 ToolCallEnd 发出。MUST NOT 仅在 finish_reason / output_item.done / message stop 才首次暴露工具意图。MUST NOT 在核心路径解析文本通道伪工具 XML。

@@ -42,4 +42,4 @@ serial_test = "3.5.0"
 wiremock = "0.6"
 tempfile = "3"
 yaml_serde = "0.10.7"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }

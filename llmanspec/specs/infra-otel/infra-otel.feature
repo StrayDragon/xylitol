@@ -115,10 +115,20 @@
   规则: otel-generation-request-body-input
     当 observation_io 为 truncated 或 full 且 span 闸激活时，llm.request generation 的 langfuse.observation.input MUST 优先来自 adapter 发出前的完整 request JSON（按同档硬顶截断）；MUST NOT 仅依赖名为 response.json、chat.completion.json 或 message.json 的 raw 事件才缓冲请求体；流式路径 MUST 同样可带 input。
 
+    场景: otel-generation-input-adapter-capture-headless
+      假如 mock 上游按正常完成脚本回放 Anthropic SSE
+      当 以 io=truncated 的观测闸对 mock 上游驱动一次流式生成并耗尽全部事件
+      那么 llm.request 携带来自适配器 HTTP 前捕获的观测输入
+
 
   @req:r1474
   规则: otel-generation-abort-finalize
     当低频观测 span 激活且 llm.request 在未见成功 Done 的情况下提前结束（用户 abort 或等价 drop 流）时：若 observation_io ≠ none，generation MUST 仍按档 flush 已缓冲的 input/output；该 generation MUST 携带 langfuse.observation.level=ERROR 与 langfuse.observation.status_message=aborted；MUST NOT 因此伪造 usage_details。
+
+    场景: otel-generation-abort-flush-headless
+      假如 mock 上游仅回放半程 SSE 后挂起
+      当 流式生成收到首个文本增量后放弃该流
+      那么 llm.request 以 ERROR/aborted 收口并按档 flush 输入输出且不伪造 usage
 
 
   @req:r1475

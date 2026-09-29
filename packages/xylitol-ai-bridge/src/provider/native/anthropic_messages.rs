@@ -1128,4 +1128,60 @@ mod tests {
         }
         assert_eq!(arr[2]["name"].as_str(), Some("mcp__legacy__colon"));
     }
+
+    /// r1556：流式请求以 chunk-gap idle 上界判定挂起——半帧后静默的上游
+    /// MUST 产生可分类的 `provider SSE idle` 超时错误。SSE_IDLE 为 90s
+    /// 程序权威常量（c2425），paused time 的 auto-advance 瞬时烧完等待。
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn sse_idle_bound_fires_classifiable_error() {
+        use futures::StreamExt;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        tokio::spawn(async move {
+            let Ok((mut sock, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = vec![0u8; 16 * 1024];
+            let _ = sock.read(&mut buf).await;
+            let head =
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n";
+            if sock.write_all(head).await.is_err() {
+                return;
+            }
+            let first = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"model\":\"idle-test\",\"stop_reason\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n";
+            if sock.write_all(first.as_bytes()).await.is_err() {
+                return;
+            }
+            let _ = sock.flush().await;
+            // 半帧后永久静默：连接保持，不再写任何字节（chunk-gap 无穷大）。
+            let () = futures::future::pending().await;
+        });
+
+        let adapter = AnthropicMessagesAdapter::new(
+            "k".into(),
+            "idle-test".into(),
+            Some(format!("http://{addr}")),
+            None,
+        );
+        let mut stream = adapter
+            .generate_stream(vec![], &[], Default::default())
+            .await
+            .expect("stream established");
+        let mut idle_err = None;
+        while let Some(item) = stream.next().await {
+            if let Err(e) = item {
+                idle_err = Some(e);
+                break;
+            }
+        }
+        let e = idle_err.expect("SSE idle bound must fire a timeout error");
+        assert!(
+            e.to_string().contains("provider SSE idle"),
+            "idle timeout must be classifiable by message: {e}"
+        );
+    }
 }

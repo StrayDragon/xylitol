@@ -59,7 +59,13 @@ impl OtelBdd {
         self.mounted.set(true);
     }
 
-    fn records(&self) -> Vec<fastrace::collector::SpanRecord> {
+    /// c2830：指定 io 档臂装（mock 上游场景复用同一闸具与收集槽）。
+    pub(crate) fn mount_io(&self, tier: ObservationIoTier) {
+        *self.io_tier.borrow_mut() = tier;
+        self.mount_scopes(None);
+    }
+
+    pub(crate) fn records(&self) -> Vec<fastrace::collector::SpanRecord> {
         fastrace::flush();
         self.collect
             .borrow()
