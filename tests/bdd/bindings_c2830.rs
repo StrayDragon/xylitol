@@ -1,6 +1,5 @@
 //! c2830 native HTTP mock 上游 BDD 绑定（r1462 / r1473 / r1474）。
 
-use crate::tests::bdd::fixtures::*;
 use crate::tests::bdd::steps_c2830::{MockUpstreamBdd, mock_upstream_bdd};
 use crate::tests::bdd::steps_otel_obs::{OtelBdd, otel_bdd};
 use rstest_bdd_macros::scenario;
