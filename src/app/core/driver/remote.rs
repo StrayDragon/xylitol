@@ -2470,6 +2470,82 @@ mod tests {
         }
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resources_watch_pushes_one_frame_on_snapshot_change() {
+        use crate::app::server::host::materialize_writer;
+
+        // r1790：写者侧 poll MCP bootstrap，快照变化才向订阅连接广播
+        // `session/resources` notification（bootstrap 过程可有多次变化、
+        // 各推一帧）；payload 与 loaded_resources unary 同形；不消耗
+        // journal seq；快照稳定后不重复推帧。
+        let host = HostState::for_test_with_mcp(vec![fixture_mcp("a")]).expect("host");
+        let slot = host.slot("res-watch").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        let mut rx = host.in_process_downlink.subscribe();
+        slot.ensure_mcp_resources_watch();
+
+        // 等 bootstrap 落定（与近邻 MCP 测试同一判据）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut snap = host.loaded_resources_snapshot_for("res-watch").await;
+        while std::time::Instant::now() < deadline {
+            if snap.mcp_bootstrap_complete
+                && (!snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty())
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            snap = host.loaded_resources_snapshot_for("res-watch").await;
+        }
+        assert!(
+            snap.mcp_bootstrap_complete,
+            "fixture MCP bootstrap must settle: {snap:?}"
+        );
+        // 再给 watch 循环一个 poll 间隔把最后一帧推出来。
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        // 非阻塞排空，收集期间所有 resources 帧。
+        let mut frames = Vec::new();
+        while let Ok(msg) = rx.try_recv() {
+            if let RpcMessage::ServerRequest {
+                method, payload, ..
+            } = msg
+                && method == "session/resources"
+            {
+                frames.push(payload);
+            }
+        }
+        assert!(
+            !frames.is_empty(),
+            "watch loop must push frames on snapshot change"
+        );
+        let last = frames.last().expect("frames nonempty");
+        assert_eq!(
+            last["session_id"], "res-watch",
+            "frame MUST carry the session id"
+        );
+        let expected = serde_json::to_value(&snap).unwrap_or(Value::Null);
+        assert_eq!(
+            last["snapshot"], expected,
+            "final frame snapshot MUST match the loaded_resources unary shape"
+        );
+        assert_eq!(
+            slot.journal.lock().await.max_seq(),
+            0,
+            "resources frames MUST NOT consume journal seq"
+        );
+
+        // 快照稳定后不再重复广播（仅变化时推帧；其他下行帧不算）。
+        let quiet = tokio::time::timeout(std::time::Duration::from_millis(700), rx.recv()).await;
+        if let Ok(Ok(RpcMessage::ServerRequest { method, .. })) = quiet {
+            assert_ne!(
+                method, "session/resources",
+                "stable snapshot MUST NOT repeat the resources frame"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn arm_tool_freeze_unary_freezes_after_mcp_settle() {
         use crate::app::server::host::materialize_writer;
