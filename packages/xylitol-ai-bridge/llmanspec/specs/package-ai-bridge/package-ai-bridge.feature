@@ -1,8 +1,7 @@
 # language: zh-CN
 # capability: package-ai-bridge
 # purpose: "packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。"
-# c2833 TODO(split): src/infra/provider/、src/agent/compaction/ 根侧规则待拆新根 capability（next-req-id 取号）；先行整体迁入，见 change research。
-# scope: packages/xylitol-ai-bridge/, src/infra/provider/
+# scope: packages/xylitol-ai-bridge/
 
 功能: package-ai-bridge
 
@@ -18,10 +17,6 @@
   规则: 包内-DTO-独立
     包对外流式与消息类型 MUST 使用包内自有 LLM DTO（如 AiBridgeMessage / AiBridgeChunk / AiBridgeUsage）作为 LLM 叶 SSOT；该 DTO MUST 仅表达发给模型的形状，MUST NOT 再定义与主仓 Env 平行的 bashExecution / compactionSummary / branchSummary / custom 等会话环境角色；包 MUST NOT 依赖主仓 xylitol。
     # verified-by: packages/xylitol-ai-bridge/src/dto/message.rs
-  @req:r1559
-  规则: 主仓映射层
-    主仓 agent MUST 经 project_for_llm（或等价）将 AgentMessage 投影为 Vec<AiBridgeMessage>：Llm 臂 MUST passthrough；Env 折叠策略留在 agent。XyModel 调用方 MUST 只传递投影后的 LLM DTO。agent MAY 依赖 bridge DTO 以组合 AgentMessage::Llm；agent MUST NOT 直接依赖 xylitol_ai_bridge 的 HTTP/vendor SDK 类型。
-    # verified-by: src/agent/llm_project.rs
   @req:r1560
   规则: provider-实现迁入
     OpenAI 兼容（Responses 与 Completions）与 Anthropic Messages 的流式/非流式接线实现 MUST 以 xylitol-ai-bridge 为实现归属；主仓 MUST NOT 保留与包并行的第二套完整 adapter 实现体（允许薄映射与装配）。
@@ -86,10 +81,6 @@
       假如 Responses 流或非流输出含完整 type=reasoning 的 output item
       当 映射为 AiBridgeChunk
       那么 存在带 thinkingSignature 的 Thinking 终态（ThinkingEnd 或等价）且 signature 可 JSON 解析为该 reasoning item
-  @req:r1543
-  规则: session-vs-llm-vocab
-    AgentMessage MUST 作为 session/agent 真源语义，以组合表达：Llm(AiBridgeMessage) 与 Env(EnvMessage)。物理模块 MUST 位于 protocol 根（供 ports/wire 签名与 infra 可见）；agent MUST 提供 project_for_llm 并将类型再导出。agent MAY 依赖 bridge DTO；MUST NOT 再维护平行 LLM 叶 enum；MUST NOT 依赖 bridge HTTP/vendor SDK。发往模型前 MUST 在 agent 内经 project_for_llm 得到 Vec<AiBridgeMessage>。MUST NOT 将 AgentMessage 作为 XyModel 端口入参。
-    # verified-by: src/protocol/message.rs
   @req:r1544
   规则: responses-error-message-surface
     OpenAI Responses 适配器在将上游错误映射为 AiBridgeError 时，若错误串含嵌入 JSON（如 content:{...}）且其中 error.message 可读，MUST 将该 message（MAY 附 type）暴露在错误文案中；MUST NOT 仅因 error.code 为整数导致 SDK 反序列化失败而只展示 deserialize 噪音、掩盖 upstream overflow 等原文。

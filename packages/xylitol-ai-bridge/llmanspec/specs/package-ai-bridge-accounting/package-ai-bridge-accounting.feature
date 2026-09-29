@@ -1,8 +1,7 @@
 # language: zh-CN
 # capability: package-ai-bridge-accounting
 # purpose: "xylitol-ai-bridge 多源上下文 token 计量与 TokenProvenance。"
-# c2833 TODO(split): src/infra/provider/、src/agent/compaction/ 根侧规则待拆新根 capability（next-req-id 取号）；先行整体迁入，见 change research。
-# scope: packages/xylitol-ai-bridge/, src/agent/compaction/
+# scope: packages/xylitol-ai-bridge/
 
 功能: package-ai-bridge-accounting
 

@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/bridge-rootside-rules
+base_branch: main
+base_sha: 2b76f1f59b86139f0ae8eb423e6acf9be42ab2bf
 ---
 
 ## Why
