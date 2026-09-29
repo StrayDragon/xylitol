@@ -9,9 +9,7 @@ extra_skills:
 - llman-sdd-arch-review
 - llman-sdd-wayfinder
 - llman-sdd-research
-bdd:
+specs:
   framework: rstest-bdd
-  feature_dir: tests/features
-  default_language: zh-CN
-  run_command: "cargo test --lib --all-features tests::bdd::"
+  check_command: "cargo test --lib --all-features tests::bdd::"
   verify_prompt: Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --lib --all-features tests::bdd::` to confirm all scenarios pass.
