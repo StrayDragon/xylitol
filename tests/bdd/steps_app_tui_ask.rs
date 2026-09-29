@@ -211,7 +211,6 @@ fn then_trust_not_ask() {
 
 #[then("装配不含 mcp 前缀工具")]
 pub(crate) fn t_c2827_toolset_no_mcp() {
-    use crate::protocol::ports::XyTool;
     TOOLSET.with(|t| {
         let set = t.borrow().as_ref().expect("toolset").clone();
         for tool in set.iter() {

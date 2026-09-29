@@ -348,7 +348,7 @@ fn find_named<'a>(
 }
 
 #[when("以未开启观测闸运行一次带工具调用的 agent 回合")]
-async fn w_c2826_no_gate_run(agent: &AgentState, otel_bdd: &OtelBdd) {
+async fn w_c2826_no_gate_run(agent: &AgentState, _otel_bdd: &OtelBdd) {
     // serial 序内起点即产品默认态：闸关（此前所有 otel 测试的 Drop 已复位）。
     let gate_off_at_rest = !xylitol_ai_bridge::provider::trace::provider_trace_active();
     set_fake_text("我来读文件");
@@ -592,7 +592,7 @@ fn g_c2827_otel_idle_gate(otel_bdd: &OtelBdd) {
 }
 
 #[when("以闲置路径结算一次 token 估计")]
-fn w_c2827_idle_settle(otel_bdd: &OtelBdd) {
+fn w_c2827_idle_settle(_otel_bdd: &OtelBdd) {
     // 无活跃 turn 上下文：settlement 不带 obs_parent → 独立根。
     let entries: Vec<SessionEntry> = Vec::new();
     let obs_session = xylitol_ai_bridge::thinking::ObsSessionContext {

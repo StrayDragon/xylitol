@@ -1559,7 +1559,7 @@ pub(crate) async fn w_c2826_mcp_panel(host_pump_bdd: &HostPumpBdd, cmd: String) 
     use crate::app::core::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
     let cmd = cmd.trim_matches('"');
     {
-        let mut pump = host_pump_bdd
+        let pump = host_pump_bdd
             .pump
             .borrow_mut()
             .take()
@@ -1606,7 +1606,7 @@ pub(crate) async fn w_c2826_close_then_submit(host_pump_bdd: &HostPumpBdd, cmd: 
 #[when("注入会话 leaf 条目并以主机泵在 idle 提交 {cmd:string}")]
 pub(crate) async fn w_c2826_inject_leaf_submit(host_pump_bdd: &HostPumpBdd, cmd: String) {
     let cmd = cmd.trim_matches('"');
-    let mut pump = host_pump_bdd
+    let pump = host_pump_bdd
         .pump
         .borrow_mut()
         .take()
@@ -1829,7 +1829,7 @@ pub(crate) fn t_c2826_send_history(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以 ! 前缀与无前缀分别设置编辑器文本并渲染")]
 pub(crate) fn w_c2826_bang_border(host_pump_bdd: &HostPumpBdd) {
-    let mut pump = host_pump_bdd
+    let pump = host_pump_bdd
         .pump
         .borrow_mut()
         .take()
@@ -1860,7 +1860,7 @@ pub(crate) fn t_c2826_bang_border(host_pump_bdd: &HostPumpBdd) {
 #[when("以主机泵注入剪贴板图片后按粘贴键")]
 pub(crate) async fn w_c2826_paste_image(host_pump_bdd: &HostPumpBdd) {
     {
-        let mut pump = host_pump_bdd
+        let pump = host_pump_bdd
             .pump
             .borrow_mut()
             .take()
@@ -1937,7 +1937,7 @@ pub(crate) fn t_c2826_abort_partial(host_pump_bdd: &HostPumpBdd) {
 #[when("以主机泵置零队列深度并注入 steer 后排空 pending")]
 pub(crate) async fn w_c2826_zero_depth_strip(host_pump_bdd: &HostPumpBdd) {
     {
-        let mut pump = host_pump_bdd
+        let pump = host_pump_bdd
             .pump
             .borrow_mut()
             .take()
@@ -2064,7 +2064,7 @@ pub(crate) fn t_c2826_reload_report(host_pump_bdd: &HostPumpBdd) {
 pub(crate) async fn w_c2826_connecting_bang(host_pump_bdd: &HostPumpBdd, cmd: String) {
     let cmd = cmd.trim_matches('"');
     {
-        let mut pump = host_pump_bdd
+        let pump = host_pump_bdd
             .pump
             .borrow_mut()
             .take()
@@ -2103,7 +2103,7 @@ pub(crate) fn t_c2826_connecting_bang(host_pump_bdd: &HostPumpBdd) {
 #[when("以主机泵注入 connecting 且未冻表的资源快照后渲染当前主机帧")]
 pub(crate) async fn w_c2826_mcp_pending_cue(host_pump_bdd: &HostPumpBdd) {
     {
-        let mut pump = host_pump_bdd
+        let pump = host_pump_bdd
             .pump
             .borrow_mut()
             .take()
@@ -2202,7 +2202,7 @@ pub(crate) fn t_c2826_reload_soft_gate(host_pump_bdd: &HostPumpBdd) {
 
 #[when("臂装复制成功提示后渲染主机帧")]
 pub(crate) fn w_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
-    let mut pump = host_pump_bdd
+    let pump = host_pump_bdd
         .pump
         .borrow_mut()
         .take()
@@ -2370,8 +2370,7 @@ pub(crate) fn t_c2826_model_esc_no_change(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵以损坏 JSON 请求重载键位")]
 pub(crate) fn w_c2826_keybindings_bad(host_pump_bdd: &HostPumpBdd) {
-    use crate::app::tui::TuiHostSession as HostSession;
-    let mut pump = host_pump_bdd
+    let pump = host_pump_bdd
         .pump
         .borrow_mut()
         .take()

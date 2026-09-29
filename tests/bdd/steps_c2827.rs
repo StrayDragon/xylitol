@@ -13,7 +13,6 @@ use crate::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_h
 use crate::tests::bdd::fixtures::AgentState;
 use crate::tests::bdd::prelude::*;
 use crate::tests::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
-use crate::tests::bdd::steps_otel_obs::OtelBdd;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol_tui::Component;
@@ -90,21 +89,6 @@ fn last_entries_text(pump: &HostPump) -> Vec<String> {
         .collect()
 }
 
-fn entry_kinds(pump: &HostPump) -> Vec<&'static str> {
-    pump.session
-        .ui_model()
-        .entries
-        .iter()
-        .filter_map(|e| match e {
-            UiEntry::Error { .. } => Some("error"),
-            UiEntry::ScrollNotice { .. } => Some("notice"),
-            UiEntry::Assistant { .. } => Some("assistant"),
-            UiEntry::User { .. } => Some("user"),
-            _ => None,
-        })
-        .collect()
-}
-
 fn key_event(
     code: crossterm::event::KeyCode,
     mods: crossterm::event::KeyModifiers,
@@ -147,15 +131,6 @@ fn type_text(pump: &mut HostPump, text: &str) {
             )))
             .expect("type step");
     }
-}
-
-async fn pump_c(bdd: &C2827Bdd) {
-    let mut pump = take_c(bdd);
-    let mut stream = None;
-    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
-        .await
-        .expect("pump");
-    put_c(bdd, pump);
 }
 
 async fn pump_host(bdd: &HostPumpBdd) {
@@ -231,7 +206,7 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
 #[when("以主机泵提交挂起 bang 并注入事件后按 Esc")]
 pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
     use crate::app::core::driver::XyDriver as _;
-    use crate::app::tui::harness::{drain_pending, run_interactive_bang};
+    use crate::app::tui::harness::drain_pending;
 
     let mut pump = fresh_pump();
     pump.driver.set_hang_bash_until_abort(true);
@@ -1038,14 +1013,12 @@ pub(crate) fn t_t2_no_mcp_names(prompt_bdd: &crate::tests::bdd::steps_bridge::Pr
 
 pub struct T2CapsBdd {
     pub caps: RefCell<Option<crate::agent::capabilities::AgentCapabilities>>,
-    pub history_probe: RefCell<usize>,
 }
 
 #[fixture]
 pub fn t2_caps_bdd() -> T2CapsBdd {
     T2CapsBdd {
         caps: RefCell::new(None),
-        history_probe: RefCell::new(0),
     }
 }
 
@@ -1123,7 +1096,6 @@ pub(crate) fn t_t2_skills_listed(t2_caps_bdd: &T2CapsBdd) {
 pub struct T2SkillBdd {
     pub skills: RefCell<Vec<crate::protocol::resource::SkillInfo>>,
     pub expanded: RefCell<String>,
-    pub unknown: RefCell<String>,
 }
 
 #[fixture]
@@ -1131,7 +1103,6 @@ pub fn t2_skill_bdd() -> T2SkillBdd {
     T2SkillBdd {
         skills: RefCell::new(Vec::new()),
         expanded: RefCell::new(String::new()),
-        unknown: RefCell::new(String::new()),
     }
 }
 
@@ -1194,7 +1165,6 @@ pub fn t2_schema_bdd() -> T2SchemaBdd {
 
 #[when("检查内置工具的参数 schema")]
 pub(crate) fn w_t2_check_schemas(t2_schema_bdd: &T2SchemaBdd) {
-    use crate::protocol::ports::XyTool;
     let schemas = crate::infra::tools::default_tools()
         .iter()
         .map(|t| (t.name().to_string(), t.parameters_schema()))
@@ -1276,7 +1246,6 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
 }
 
 fn t2_rewrite(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
-    use crate::protocol::ports::XyTool;
     t2_todo_mount(t2_todo_bdd);
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
     let tools = crate::infra::tools::todo::todo_tools(gw);
@@ -1291,7 +1260,6 @@ fn t2_rewrite(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<Strin
 }
 
 fn t2_update(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
-    use crate::protocol::ports::XyTool;
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
     let tools = crate::infra::tools::todo::todo_tools(gw);
     let tool = tools

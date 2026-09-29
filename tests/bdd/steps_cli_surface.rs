@@ -585,7 +585,7 @@ fn t_c2826_unset_display(cli_entry_bdd: &CliEntryBdd) {
 
 #[when("对接好会话的驱动请求 file_browser 会话树")]
 async fn w_c2826_tree_kind_unsupported(agent: &AgentState) {
-    use crate::embed::{XyDriver, XyInProcessDriver};
+    use crate::embed::XyInProcessDriver;
     use crate::protocol::session::SessionTreeKind;
     let (runtime, store) = crate::tests::bdd::helpers::make_agent_with_store(agent);
     let mut driver = XyInProcessDriver::new(runtime, store);
