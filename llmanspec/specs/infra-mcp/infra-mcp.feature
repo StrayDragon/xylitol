@@ -16,12 +16,24 @@
   @req:r1447
   规则: 有配置则装配为 XyTool
     当 mcp_servers 含有效条目时，System MUST 按 transport（至少 Stdio 与 Sse/url）连接对应服务器，并将发现的工具以 XyTool 形式注册，公开名 MUST 使用 mcp__{server_id}__{name} 约定（分隔符单点可换；仅 [a-zA-Z0-9_-]，与 DeepSeek/Anthropic/OpenAI-compat tools[].name 模式对齐；禁止冒号/点号分隔；段内 MAY 保留 -/_）；execute MUST 使用保存的 server_id/tool_name，MUST NOT 反解析公开名。
+
+    场景: fixture-server-assembles-xytools
+      当 以 fixture MCP 配置装配 ping 工具
+      那么 装配出 mcp 前缀的 XyTool 且连接在册
   @req:r1448
   规则: 动态配置重载
     System MUST 支持在进程存活期间根据更新后的 mcp_servers 配置重载 MCP 工具集（增删服务器/工具）；重载 MUST NOT 要求以重启整个进程作为唯一手段；重载 MUST NOT 删除内置非 mcp 工具。
+
+    场景: toolset-follows-config
+      当 以两组不同工具集的 fixture 配置先后装配
+      那么 工具集随配置变化
   @req:r1449
   规则: 配置校验与失败可观测
     System MUST 校验 mcp_servers 条目（stdio 需 command；url/sse 需合法 url 类字段）；无效条目 MUST 产生可读错误或诊断且 MUST NOT 静默当作成功连接；单个服务器连接失败 MUST 可观察（warn 或诊断）且 MUST NOT 单独导致整次 bootstrap 失败。
+
+    场景: invalid-entry-diagnosed-not-fatal
+      当 以无效 MCP 条目装配
+      那么 诊断在册且不产出该条目工具
   @req:r1450
   规则: 已连接列表只读
     System MUST 提供只读查询已成功连接的 MCP 服务器摘要（至少 id 与工具数量或等价）；无配置或全部失败时 MUST 返回空列表；该查询 MUST NOT 创建新连接。

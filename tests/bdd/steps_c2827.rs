@@ -2140,3 +2140,188 @@ pub(crate) fn t_t4_no_api_key() {
         "c2827: 无 key 提示应含 provider 名：{msg}"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// c2829 批 2：幽灵规则裁决（r1122 修正 + MCP fixture 三场景）
+// ═══════════════════════════════════════════════════════════════════
+
+// ── r1122：回合内 todo_* 成功 → run 流含类型化 TodoUpdated ──────
+
+#[when("以触发 todo_update 工具的回合收集事件")]
+pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
+    use crate::infra::provider::factory::{
+        reset_fake_state, set_fake_tool_call, set_fake_tool_result, set_fake_text,
+    };
+    use crate::tests::bdd::helpers::make_agent;
+    use futures::StreamExt;
+
+    reset_fake_state();
+    crate::tests::bdd::steps_agent_runtime::ar_register_fake(agent, "c2829-todo");
+    set_fake_tool_call("todo_rewrite", r#"{"items":[{"id":"a","content":"one","status":"in_progress"}]}"#);
+    set_fake_tool_result(r#"{"items":[{"id":"a","content":"one","status":"completed"}]}"#);
+    set_fake_text("done");
+    let mut runner = make_agent(agent);
+    futures::executor::block_on(runner.select_model("c2829-todo")).expect("select fake");
+    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, "sess-todo-ev");
+    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "tick todo")
+        .await;
+    let mut saw_todo_updated = false;
+    let mut list_len = None;
+    let mut seen: Vec<String> = Vec::new();
+    while let Some(e) = stream.next().await {
+        match &e {
+            XyEvent::TodoUpdated { list } => {
+                saw_todo_updated = true;
+                list_len = Some(list.items.len());
+                seen.push("TodoUpdated".into());
+            }
+            XyEvent::ToolExecutionStart { name, .. } => seen.push(format!("Start({name})")),
+            XyEvent::ToolExecutionEnd { name, is_error, .. } => {
+                seen.push(format!("End({name},err={is_error})"))
+            }
+            XyEvent::Error(err) => seen.push(format!("Error({}: {})", err.kind, err.message)),
+            _ => {}
+        }
+    }
+    reset_fake_state();
+    T6_TODO_EVENT2.with(|c| *c.borrow_mut() = (saw_todo_updated, list_len));
+    let _ = seen;
+}
+
+// ── r1447/r1448/r1449：MCP fixture 装配面 ────────────────────────
+
+pub struct T6McpBdd {
+    pub tool_names: RefCell<Vec<String>>,
+    pub diag_count: RefCell<usize>,
+    pub connected: RefCell<usize>,
+}
+
+#[fixture]
+pub fn t6_mcp_bdd() -> T6McpBdd {
+    T6McpBdd {
+        tool_names: RefCell::new(Vec::new()),
+        diag_count: RefCell::new(0),
+        connected: RefCell::new(0),
+    }
+}
+
+fn t6_fixture_config(name: &str, tools: &str) -> crate::infra::config::types::McpServerConfig {
+    let mut env = std::collections::HashMap::new();
+    env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), tools.into());
+    crate::infra::config::types::McpServerConfig {
+        name: name.into(),
+        transport: crate::infra::config::types::McpTransportKind::Stdio,
+        command: Some("python3".into()),
+        args: Some(vec![
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/support/mcp_fixture_server.py")
+                .display()
+                .to_string(),
+        ]),
+        env: Some(env),
+        ..Default::default()
+    }
+}
+
+async fn t6_discover(t6_mcp_bdd: &T6McpBdd, servers: &[crate::infra::config::types::McpServerConfig]) {
+    let result = crate::infra::mcp::connect_and_discover(servers).await;
+    let Some((manager, tools)) = result else {
+        panic!("c2829: 非空配置 MUST 构造 manager");
+    };
+    *t6_mcp_bdd.tool_names.borrow_mut() = tools
+        .iter()
+        .map(|t| t.name().to_string())
+        .collect();
+    *t6_mcp_bdd.diag_count.borrow_mut() = manager.diagnostics().await.len();
+    *t6_mcp_bdd.connected.borrow_mut() = manager.connected_servers().await.len();
+    manager.shutdown().await;
+}
+
+#[when("以 fixture MCP 配置装配 ping 工具")]
+pub(crate) async fn w_t6_mcp_ping(t6_mcp_bdd: &T6McpBdd) {
+    t6_discover(t6_mcp_bdd, &[t6_fixture_config("fixture", "ping")]).await;
+}
+
+#[then("装配出 mcp 前缀的 XyTool 且连接在册")]
+pub(crate) fn t_t6_mcp_tools(t6_mcp_bdd: &T6McpBdd) {
+    let names = t6_mcp_bdd.tool_names.borrow().clone();
+    assert!(
+        names.iter().any(|n| n == "mcp__fixture__ping"),
+        "c2829: fixture 应产出 mcp__fixture__ping：{names:?}"
+    );
+    assert!(
+        *t6_mcp_bdd.connected.borrow() >= 1,
+        "c2829: fixture server 应显示已连接"
+    );
+}
+
+#[when("以两组不同工具集的 fixture 配置先后装配")]
+pub(crate) async fn w_t6_mcp_config_driven(t6_mcp_bdd: &T6McpBdd) {
+    t6_discover(t6_mcp_bdd, &[t6_fixture_config("fixture", "ping")]).await;
+    let first = t6_mcp_bdd.tool_names.borrow().clone();
+    t6_discover(t6_mcp_bdd, &[t6_fixture_config("fixture", "echo")]).await;
+    let second = t6_mcp_bdd.tool_names.borrow().clone();
+    assert!(
+        first.iter().any(|n| n.contains("ping")) && !first.iter().any(|n| n.contains("echo")),
+        "c2829: 第一组应有 ping 无 echo：{first:?}"
+    );
+    assert!(
+        second.iter().any(|n| n.contains("echo")) && !second.iter().any(|n| n.contains("ping")),
+        "c2829: 第二组应有 echo 无 ping：{second:?}"
+    );
+}
+
+#[then("工具集随配置变化")]
+pub(crate) fn t_t6_mcp_config_driven(_t6_mcp_bdd: &T6McpBdd) {
+    // 断言在 when 内逐组完成（两轮 discover 的差集即配置驱动证据）。
+}
+
+#[when("以无效 MCP 条目装配")]
+pub(crate) async fn w_t6_mcp_invalid(t6_mcp_bdd: &T6McpBdd) {
+    let bad = crate::infra::config::types::McpServerConfig {
+        name: "bad".into(),
+        transport: crate::infra::config::types::McpTransportKind::Stdio,
+        command: None,
+        ..Default::default()
+    };
+    // 无效条目不整体失败：仍构造 manager，坏条目留在诊断。
+    let result = crate::infra::mcp::connect_and_discover(&[bad]).await;
+    let Some((manager, tools)) = result else {
+        panic!("c2829: 含无效条目的非空配置 MUST 仍构造 manager");
+    };
+    *t6_mcp_bdd.tool_names.borrow_mut() =
+        tools.iter().map(|t| t.name().to_string()).collect();
+    *t6_mcp_bdd.diag_count.borrow_mut() = manager.diagnostics().await.len();
+    *t6_mcp_bdd.connected.borrow_mut() = manager.connected_servers().await.len();
+    manager.shutdown().await;
+}
+
+#[then("诊断在册且不产出该条目工具")]
+pub(crate) fn t_t6_mcp_invalid_diag(t6_mcp_bdd: &T6McpBdd) {
+    assert!(
+        *t6_mcp_bdd.diag_count.borrow() >= 1,
+        "c2829: 无效条目应留下诊断"
+    );
+    assert!(
+        t6_mcp_bdd.tool_names.borrow().is_empty(),
+        "c2829: 无效条目 MUST NOT 产出工具"
+    );
+    assert_eq!(
+        *t6_mcp_bdd.connected.borrow(),
+        0,
+        "c2829: 无效条目不应出现在已连接列表"
+    );
+}
+
+thread_local! {
+    static T6_TODO_EVENT2: RefCell<(bool, Option<usize>)> = const { RefCell::new((false, None)) };
+}
+
+#[then("回合事件流含 TodoUpdated 全量快照")]
+pub(crate) fn t_t6_todo_event_assert() {
+    T6_TODO_EVENT2.with(|c| {
+        let (saw, len) = c.borrow().clone();
+        assert!(saw, "c2829: todo_rewrite 成功后 run 流 MUST 含类型化 TodoUpdated");
+        assert_eq!(len, Some(1), "c2829: TodoUpdated 应携带全量快照");
+    });
+}

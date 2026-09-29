@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2829-triage-ghost-rule-triage-batch2
+base_branch: main
+base_sha: 766e44a4f59a919f1752c303df2d3560bf3ddb04
 ---
 
 ## Why

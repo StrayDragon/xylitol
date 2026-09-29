@@ -479,3 +479,37 @@ fn test_pt_drag_copy() {}
     name = "dock-row-excluded-from-selection"
 )]
 fn test_pt_dock_exclude() {}
+
+// ═══════════════════════════════════════════════════════════════════
+// c2829 批 2
+// ═══════════════════════════════════════════════════════════════════
+
+use crate::tests::bdd::steps_c2827::{t6_mcp_bdd, T6McpBdd};
+
+// agent-todo r1122
+#[scenario(
+    path = "llmanspec/specs/agent-todo/agent-todo.feature",
+    name = "todo-update-emits-typed-event"
+)]
+async fn test_td_typed_event(agent: AgentState) {}
+
+// infra-mcp r1447
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "fixture-server-assembles-xytools"
+)]
+async fn test_mcp_fixture(t6_mcp_bdd: T6McpBdd) {}
+
+// infra-mcp r1448
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "toolset-follows-config"
+)]
+async fn test_mcp_config_driven(t6_mcp_bdd: T6McpBdd) {}
+
+// infra-mcp r1449
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "invalid-entry-diagnosed-not-fatal"
+)]
+async fn test_mcp_invalid(t6_mcp_bdd: T6McpBdd) {}

@@ -98,3 +98,7 @@
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
+
+    场景: todo-update-emits-typed-event
+      当 以触发 todo_update 工具的回合收集事件
+      那么 回合事件流含 TodoUpdated 全量快照
