@@ -12,9 +12,12 @@ Ref grammar (whitespace-tolerant):
     # verified-by: script <check_script_name>   → scripts/<name> exists
 
 Modes:
-    (default)  silent success; exit 1 only when an existing verified-by ref
-               no longer resolves (stale anchor = spec claims evidence that
-               the code no longer has).
+    (default)  silent success; exit 1 when an existing verified-by ref no
+               longer resolves (stale anchor = spec claims evidence that the
+               code no longer has), or when an @req id appears in more than
+               one feature across roots (upstream next-req-id is per-root —
+               llman-sdd 0.7.0 documents cross-root uniqueness as NOT
+               guaranteed — so the global-max+1 discipline is gated here).
     --report   print the alignment matrix (per capability: rules / with
                scenario / with anchor / naked) and exit 0.
     --verbose  also list naked rule ids in default mode.
@@ -77,13 +80,15 @@ def ref_resolves(ref: str, fns: set[str], rels: set[str]) -> bool:
     return ref in fns
 
 
-def parse_specs() -> dict[str, list[dict]]:
-    """capability → list of rule dicts {req, has_scenario, anchors}."""
+def parse_specs() -> tuple[dict[str, list[dict]], dict[str, list[str]]]:
+    """(capability → rule dicts, req id → feature paths declaring it)."""
     out: dict[str, list[dict]] = {}
+    req_locs: dict[str, list[str]] = {}
     all_features = sorted(SPECS.rglob("*.feature"))
     for d in SUB_ROOT_SPECS:
         all_features += sorted(d.rglob("*.feature"))
     for feature in all_features:
+        rel = feature.relative_to(REPO).as_posix()
         cap = feature.stem
         lines = feature.read_text(encoding="utf-8").splitlines()
         rule_starts = [i for i, l in enumerate(lines) if l.lstrip().startswith("规则:")]
@@ -95,6 +100,10 @@ def parse_specs() -> dict[str, list[dict]]:
                 if "@req:" in lines[back]:
                     req = lines[back].split("@req:", 1)[1].strip()
                     break
+            if req and req not in req_locs:
+                req_locs[req] = []
+            if req:
+                req_locs[req].append(rel)
             out.setdefault(cap, []).append(
                 {
                     "req": req or "?",
@@ -108,7 +117,7 @@ def parse_specs() -> dict[str, list[dict]]:
                     ],
                 }
             )
-    return out
+    return out, req_locs
 
 
 def main() -> int:
@@ -116,7 +125,8 @@ def main() -> int:
     report = "--report" in args
     verbose = "--verbose" in args or report
     fns, rels = collect_evidence_index()
-    specs = parse_specs()
+    specs, req_locs = parse_specs()
+    dup_reqs = {req: locs for req, locs in req_locs.items() if len(locs) > 1}
 
     broken: list[str] = []
     total = with_scenario = with_anchor = 0
@@ -145,6 +155,9 @@ def main() -> int:
             f"with-scenario: {with_scenario}  with-anchor: {with_anchor}  "
             f"naked(no scenario & no anchor): {naked_total}"
         )
+        print(f"unique @req ids: {len(req_locs)}  duplicated: {len(dup_reqs)}")
+        for req, locs in sorted(dup_reqs.items()):
+            print(f"  dup {req}: {', '.join(locs)}")
         print("\nnaked rules per capability (desc):")
         for cap, n in sorted(naked_report, key=lambda x: -x[1]):
             print(f"  {n:>4}  {cap}")
@@ -154,6 +167,15 @@ def main() -> int:
         print("error: stale spec anchors (code-as-SSOT violation):", file=sys.stderr)
         for b in broken:
             print(f"  - {b}", file=sys.stderr)
+        return 1
+    if dup_reqs:
+        print(
+            "error: duplicate @req ids across roots "
+            "(next-req-id is per-root; allocate via cross-root global max+1):",
+            file=sys.stderr,
+        )
+        for req, locs in sorted(dup_reqs.items()):
+            print(f"  - {req}: {', '.join(locs)}", file=sys.stderr)
         return 1
     if verbose:
         for cap, n in sorted(naked_report, key=lambda x: -x[1]):
