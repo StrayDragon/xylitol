@@ -148,7 +148,16 @@ pub struct QuestionRequestedPayload {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostDescribeValue {
     pub protocol: u32,
+    /// Supported wire formats (c2834 spec r1903): `jsonrpc` + `fory-v3`.
+    /// Absent on old hosts; clients MUST treat missing as jsonrpc-only and an
+    /// unknown demanded format as fatal (no downgrade, no retry storm).
+    #[serde(default)]
+    pub formats: Vec<String>,
 }
+
+/// Wire format capability names advertised via `host.describe` (spec r1903).
+pub const WIRE_FORMAT_JSONRPC: &str = "jsonrpc";
+pub const WIRE_FORMAT_FORY_V3: &str = "fory-v3";
 
 #[cfg(test)]
 mod tests {

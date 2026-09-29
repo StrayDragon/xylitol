@@ -403,3 +403,75 @@
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
+  @req:r1902
+  规则: 产品线协议 v3 二进制信封
+    产品线协议 v3 MUST 以 schema 化二进制帧（fory xlang 编码）承载：WS /rpc 的 binary 帧与 POST /rpc 的二进制 body 为 v3 产品路径。双轨迁移期内，同一入口 MUST 同时保活既有 JSON-RPC 2.0 文本路径（WS 文本帧与 JSON body），供对拍与回退；迁移完成前 v3 MUST NOT 成为唯一产品路径。领域语义（方法表、journal、订阅、审批）MUST 在两条路径上等价，由同一 dispatch 与事件源支撑。
+
+    场景: v3-binary-roundtrip
+      当 服务端以双轨配置在空闲端口上启动
+      并且 客户端经 WS /rpc 发送 v3 二进制 host.describe 帧
+      那么 同一条 WS 收回 v3 二进制应答且 rpc_id 回显
+
+    场景: dual-rail-json-still-served
+      当 服务端以双轨配置在空闲端口上启动
+      那么 POST /rpc 的 JSON-RPC 2.0 路径应答成功且 id 回显
+  @req:r1903
+  规则: wire 格式协商
+    host.describe 的结果 MUST 声明 Host 支持的 wire 格式集合（至少含 jsonrpc 与 fory-v3 标识）。客户端 MUST 以声明的格式通信；客户端要求的格式 Host 不支持时 MUST 致命失败，MUST NOT 降级猜测，MUST NOT 重试风暴（平移既有协议版本硬闸语义）。
+
+    场景: describe-declares-formats
+      当 服务端以双轨配置在空闲端口上启动
+      那么 host.describe 的 result 携带 wire 格式集合
+
+    场景: unknown-format-fatal
+      假如 客户端仅支持未声明的 wire 格式
+      当 客户端发起协商
+      那么 得到致命错误且无降级与重试风暴
+  @req:r1904
+  规则: v3 方法数字寻址
+    v3 帧内方法 MUST 以稳定数字 method_id 寻址；method_id 与方法语义的映射 MUST 由协议真源（IDL）编译期生成并与产品方法表一致，MUST NOT 手写第二套漂移映射。未登记 method_id MUST 返回稳定失败（产品码等价 method-not-found），MUST NOT 静默忽略。写者租约与幂等语义在 v3 下等价保持：rpc_id 为幂等键（语义同既有 JSON-RPC id 幂等准入），WS 连接本地租约载体语义同既有顶层 writerToken。
+
+    场景: unknown-method-id-stable-fail
+      当 服务端以双轨配置在空闲端口上启动
+      并且 客户端经 v3 帧发送未登记 method_id 或非法帧字节
+      那么 服务端稳定拒绝且不崩溃（等价 method-not-found 语义；闭集方法枚举使未登记判别在解码层即拒）
+  @req:r1905
+  规则: v3 下行通知与 seq 语义平移
+    v3 下行 MUST 为 ServerNotification 形态（seq + event）；每会话单调 seq、journal 环形重放、resync、订阅跨回合存活、冷恢复快照投影的既有语义 MUST 原样保持（与载体格式无关）。固定区 session/resources 与审批/问卷告知在 v3 下 MUST 保持：不消耗 journal seq、不写入 journal、不识别的端 MUST 可忽略且其余行为不受影响。
+
+    场景: v3-event-carries-seq
+      假如 v3 客户端已订阅会话且 prompt 运行
+      当 agent 经 v3 订阅发出 TextDelta 事件
+      那么 客户端收到携带单调 seq 的 v3 事件帧
+  @req:r1906
+  规则: v3 动态载荷原文纪律
+    形状由运行时决定的载荷（工具参数、工具结果、模型消息内容等任意 JSON）MUST 以原文（text）字段过线；协议 MUST NOT 为其定义结构化形状，也 MUST NOT 拓宽闭集词表；接收端 MUST 能原样取回原文。工具起始参数往返保真、ToolEnd 失败标记必填等既有载荷语义在 v3 下 MUST 等价保持。
+
+    场景: v3-tool-start-args-raw
+      当 对携带工具参数的 v3 tool_start 帧做往返
+      那么 参数原文逐字节保真且客户端可再解析
+  @req:r1907
+  规则: v3 字段级演进
+    v3 载荷 MUST 支持字段级演进：新增字段或事件变体 MUST NOT 要求 bump 协议版本；接收端对未知字段 MUST 跳过，对未知事件变体 MUST 可降级忽略（落入 unknown 载体）且 MUST NOT panic。字段编号删除后 MUST reserved 且永不复用。
+
+    场景: v3-unknown-variant-degrades
+      假如 构造携带未来事件变体的 v3 帧
+      当 旧词表接收端解码
+      那么 变体落入 unknown 载体且不 panic 且其余事件不受影响
+  @req:r1908
+  规则: 双轨对拍纪律
+    迁移期内，同一产品行为（事件流、幂等回放、写者租约、审批 first-wins、冷恢复快照）MUST 可经两条路径执行并产生领域等价结果；对拍未覆盖或未通过的能力 MUST NOT 仅在 v3 路径提供。对拍等价性 MUST 由自动化测试锁定。
+
+    场景: dual-rail-event-equivalence
+      假如 同一 prompt 分别经 JSON-RPC 与 v3 路径驱动
+      当 回合结束
+      那么 两条路径收集的事件流经领域对象比较等价
+  @req:r1909
+  规则: 迁移期旧路径保活与硬切
+    迁移期内既有 JSON-RPC 条款 MUST 继续对文本路径生效，直至硬切任务完成；硬切 MUST 以对拍全绿为前置条件，完成后旧条款措辞、文本帧产品路径与 JSON-RPC 分发依赖一并移除，并在 spec 收口为 v3 终态。
+
+
+    场景: cutover-requires-parity-green
+      假如 对拍测试存在未通过项
+      当 尝试启用 v3 默认切换
+      那么 切换被门禁拒绝

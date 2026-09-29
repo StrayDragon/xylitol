@@ -17,8 +17,8 @@
 | D2 | 信封 `Frame = ClientRequest{rpc_id, method_id, command} \| ServerResponse \| ServerNotification{seq, event}`;方法名不过线,`method_id` 编译期分配 | research/04 §2;registry `MethodEntry` 平移为 ID 表 |
 | D3 | 编码载体 = fory xlang compatible 模式(非 same-schema) | 字段级前后向兼容是核心动机;same-schema 等价又一个硬等值 |
 | D4 | server framework 保留 salvo;jsonrpsee 在硬切阶段退役 | fory 化不要求换框架;接缝在 codec 层(research/04 §3) |
-| D5 | fork foryc(基于 fory@963cb37)加 `--rust-serde`:生成物同时带 serde derive | 双轨对拍零转换层 + 持久化层类型复用;f-string 模板 fork 薄(research/03 §3.5);同步向上游提 PR |
-| D6 | 字段保留字改名 11 处(3 词:`message`×8/`list`×1/`timestamp`×2),只落 fdl 与 wire 映射层 | research/04 §2.5;领域层/持久化零改名;对拍点设领域对象层消除名字税 |
+| D5 | **不 fork(修订:原方案为 fork foryc 加 `--rust-serde`)**;直接用现有 compiler | 对拍经 3.2 映射层汇领域对象(D8 对拍点),持久化不进 schema(wire 只管投影),夹具断言用生成物自带的 Debug/Clone/PartialEq——fork 的三个原始动机全部被后续决策消解;仅当实施中确需 serde 形态(如 JSON dump)再做薄 fork,晚做不亏 |
+| D6 | **协议真源用 fbs(FlatBuffers schema)前端,字段名零改名**(修订:原方案为 fdl + 11 处改名) | fdl 三条逃逸路实测全败、fbs 前端全通(research/05);wire 字段名与现有 JSON 线逐字段一致;代价:类型 ID auto-hash、字段编号=声明顺序(尾部追加纪律)、map 用 keyed vector(仅 1 字段) |
 | D7 | 双轨 = 验证手段非共存常态:双轨期旧 JSON-RPC 路径 MUST 保活(对拍与回退保障),对拍全绿后**硬切**,旧 spec 条款与 jsonrpsee 绑定**延后**到硬切任务一并移除 | 用户指示;单人工具同步发版,无线上长期双轨负担 |
 | D8 | 版本协商:`host.describe` 声明 wire formats;v3 客户端不识别则致命断开(不降级、不重试风暴,平移 ath44 语义) | research/04 §4 |
 
@@ -62,7 +62,42 @@
 - fork foryc 落点:`tools/foryc/`(基于 fory@963cb37 的最小 patch:`--rust-serde`);同步上游 PR,合入后切回官方。
 - Dart 侧:Flutter 工程接入时 `build_runner` 生成 codec part(research/03 §3.4);CI 增可选 job。
 
-## 8. 风险与退路
+## 8. 实施编排(多 agent 并行规划)
+
+### 8.1 依赖结构与并行点
+
+串行依赖点(不可并行):**1.1/1.3**(全量真源与生成物是所有后续任务的公共地基;1.1 边写边暴露表达力缺口,可能回改设计)、**4.x 收口**(对拍需要全局视角 + 共享测试基建)、**5.x**(延后触发,收口性质)。
+
+真正的并行收益点只有三处:
+
+| 组 | 内容 | 机制 |
+|---|---|---|
+| ~~P0~~(已取消) | 阶段 1 纯串行单线(1.1 → 1.3 → …) | fork 决策取消后(D5 修订)无可并行点;1.1 本身就是全局串行点 |
+| **P1**(1.3 后,可三开) | 1.4 conformance ∥ 1.5 benchmark ∥ 3.2 映射层 ∥ 4.3 Dart smoke | 均为测试/小任务,互不依赖;单会话顺序做也可,量不大 |
+| **P2**(主并行) | **服务端 agent**:{2.1→2.2→2.4→2.5→2.6} ∥ **客户端 agent**:{3.1→3.3}(2.3 协商由服务端 agent 先行) | 文件面不相交(`src/app/server/` vs `src/app/core/`);3.2 映射层已在 P1 完成为共享 API;**双 worktree + 子分支**,见 8.2 |
+
+墙钟收益估算:全串行 ≈ 8 段,P0+P2 并行后 ≈ 5~6 段(省 25%~35%);协调成本主要在 P2 merge。
+
+### 8.2 P2 落地机制(worktree 子分支)
+
+- 从 `sdd/c2834-…` 分叉两个子分支:`sdd/c2834-w-server` / `sdd/c2834-w-client`,各绑独立 worktree;完成后依次合回 change 分支,finalize 仍在 change 分支(change diff 以 merge-base 现算,子分支合入不影响)。
+- **每 worktree 必须 `eval "$(just cargo-wt-env)"`,禁止共用 `CARGO_TARGET_DIR`**(仓库硬规则);sccache 可共享。
+- 门禁策略:并行期各 agent 只跑自己面的 `cargo test`(定向 nextest filter)+ clippy;**全量 `just qa` 只在 merge 后由主线跑一次**(避免 live-provider 串行闸与 CPU 争抢)。
+
+### 8.3 冲突规避设计(预埋,消除 merge 面)
+
+1. **BDD 挂载预埋**:1.3 顺手在 `src/tests.rs` 预挂空模块 `steps_wire_v3`(v3 步骤全进这个新文件),两个 agent 都不再碰 `steps_server.rs` 与挂载点 → BDD 层零冲突。
+2. **生成物冻结**:wire/v3 生成物 check-in 后由 1.3 recipe 独占再生成权;P2 agent 只消费不重生成。
+3. **映射层前置**:3.2 在 P1 完成,服务端(2.5 下行)与客户端(3.1 解码)共享同一 API,不各自发明转换。
+4. **justfile/Cargo.toml**:若 P2 双方都要加依赖/recipe,约定 server agent 先提交一次 Cargo.toml 变更再开 client agent,或把可预见的依赖在 P1 一次性加齐。
+
+### 8.4 放弃并行的触发条件(收敛回串行)
+
+- 1.1 暴露表达力缺口导致 Frame/信封设计回改(P2 取消,设计稳定前不开双 agent);
+- P2 merge 冲突处理超过约半小时(文件面预估失准);
+- 任一 agent 的实现触碰对方文件面(编排失守信号)。
+
+## 9. 风险与退路
 
 | 风险 | 缓解 |
 |---|---|

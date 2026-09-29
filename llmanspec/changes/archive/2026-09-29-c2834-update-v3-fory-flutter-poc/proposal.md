@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2834-update-v3-fory-flutter-poc
+base_branch: main
+base_sha: 4d2af98ae6b4333b9ac986e0809349508c107ffb
 ---
 
 # 线协议 v3:fory 二进制信封(Flutter 多端前瞻)
@@ -19,8 +22,8 @@ depends_on: []
 > 草案阶段:以下为方向性清单,落地拆解归 `llman-sdd-propose`。
 
 - 定义 `xy.wire.v3` fdl schema:Event/Command 载荷 union、`Frame` 信封(`rpc_id` 幂等键 + 编译期 `method_id` + 下行 `seq` 保留 journal/resync 语义)、动态块(工具参数等任意 JSON)以 `string` 原文过线(`any` 类型经查不可用:仅支持 bool/string/enum/message/union 动态值且须两端注册)。
-- 协议字段名盘点改名(已完成盘点,见 `research/04` §2.5):fdl 保留字撞现有字段共 11 处、3 个词(`message`×8 / `list`×1 / `timestamp`×2),改名只落在 fdl 与 wire 映射层,领域层与持久化零改名;对拍点设领域对象层以消除名字税。
-- fork `fory-compiler`(或上游 PR)增加 `--rust-serde` 选项:生成物同时携带 serde derive,支撑双轨对拍与持久化层复用。
+- 协议真源选型(实测后修订,见 `research/05`):fdl 保留字撞现有字段 11 处但三条官方逃逸路全败;**改用 fbs(FlatBuffers schema)前端,字段名零改名且与现有 JSON 线逐字段一致**;代价为类型 ID auto-hash、字段编号=声明顺序(尾部追加纪律)、map 用 keyed vector(仅 1 字段)。
+- ~~fork `fory-compiler`~~(已取消):对拍经映射层汇领域对象、持久化不进 schema,现有 compiler 够用;serde 形态确需时再评估薄 fork。
 - 切换实施(propose 时定):`server-core.feature` 信封合约改写(r1778/r1796/r1803/r1804)、jsonrpsee 退役、WS 文本/二进制双帧分派、`host.describe` 格式能力协商(保留「不匹配即致命」语义)、Dart 侧 build_runner 流程接入 CI。
 - 不变项:幂等账本、writer 租约带外通道、InProcess 零序列化路径、journal 存储格式。
 

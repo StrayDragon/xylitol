@@ -240,3 +240,15 @@
       那么 客户端经 POST /rpc 调用 approve_tool 且回合恢复
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
+  @req:r1910
+  规则: 协议真源单源生成
+    Command/Event 闭集与信封的形状 MUST 由单一协议真源（schema 化 IDL，fbs 前端）生成 Rust（及多端）代码；生成物与真源 MUST 可由 codegen 校验保持一致（re-generate diff 为空），MUST NOT 手写第二套可漂移词表。既有词表语义（闭集覆盖、往返保真、面本地不进协议）MUST 在生成物上等价保持。既有线字段名（含 message、list、timestamp 等保留字）MUST 在真源与生成物中原名保留（经对保留字无冲突的 fbs 前端），领域与持久化类型 MUST NOT 改名；字段编号采用声明顺序，新字段 MUST 尾部追加，删除字段 MUST 保留占位且编号永不复用。
+
+
+    场景: codegen-diff-clean
+      当 从协议真源 fbs 重新生成代码
+      那么 生成物 diff 为空且方法 ID 表与产品方法表一致
+
+    场景: reserved-word-field-names-preserved
+      当 从协议真源生成含 message、list、timestamp 字段的载荷
+      那么 生成物字段名原名保留且往返保真

@@ -224,6 +224,20 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
+    if super::wire_v3::looks_like_fory_v3(bytes) {
+        match super::wire_v3::handle_uplink(&module, bytes, writer).await {
+            Ok((frame, _token)) => {
+                res.status_code(StatusCode::OK);
+                let _ = res.add_header("Content-Type", super::wire_v3::CONTENT_TYPE, true);
+                res.body(frame);
+                return;
+            }
+            Err(_) => {
+                illegal_envelope(res);
+                return;
+            }
+        }
+    }
     let v: serde_json::Value = match serde_json::from_slice(bytes) {
         Ok(v) => v,
         Err(_) => {
@@ -358,7 +372,11 @@ async fn handle_mux(
     let (mut sink, mut stream) = ws.split();
     // Handshake is host.describe result, not a mux ServerHello frame (c2825).
     let (tx, mut rx) = mpsc::channel::<RpcMessage>(MUX_CHAN_CAP);
+    // wire v3 connection mode (c2834 spec r1902/r1905): set by the first
+    // binary uplink frame; downlink for this connection is then fory-encoded.
+    let v3_mode = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let (reply_tx, mut reply_rx) = mpsc::channel::<String>(MUX_CHAN_CAP);
+    let (bin_tx, mut bin_rx) = mpsc::channel::<Vec<u8>>(MUX_CHAN_CAP);
     host.register_unbound_mux(tx).await;
 
     let send_loop = async {
@@ -366,13 +384,34 @@ async fn handle_mux(
             tokio::select! {
                 msg = rx.recv() => {
                     let Some(msg) = msg else { break };
-                    let text = match &msg {
-                        RpcMessage::ServerRequest {
-                            method, payload, ..
-                        } => codec::jsonrpc_notification(method, payload.clone()).to_string(),
-                        _ => continue,
+                    let RpcMessage::ServerRequest { method, payload, .. } = &msg else {
+                        continue;
                     };
-                    if sink.send(Message::text(text)).await.is_err() {
+                    if v3_mode.load(std::sync::atomic::Ordering::Relaxed) {
+                        match super::wire_v3::downlink_frame(method, payload.clone(), 0) {
+                            Ok(bytes) => {
+                                if sink.send(Message::binary(bytes)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            // 未映射 method(如 session/bash_output,task 2.5b)
+                            // 降级跳过不断链(r1719 未知可降级精神)。
+                            Err(e) => {
+                                log::warn!(target: "xylitol::server",
+                                    "v3 downlink unmapped method={method} skipped: {e}");
+                            }
+                        }
+                    } else {
+                        let text =
+                            codec::jsonrpc_notification(method, payload.clone()).to_string();
+                        if sink.send(Message::text(text)).await.is_err() {
+                            break;
+                        }
+                    }
+                }
+                bin = bin_rx.recv() => {
+                    let Some(frame) = bin else { break };
+                    if sink.send(Message::binary(frame)).await.is_err() {
                         break;
                     }
                 }
@@ -393,10 +432,27 @@ async fn handle_mux(
             if msg.is_close() {
                 break;
             }
-            if !msg.is_text() {
-                if msg.is_binary() {
-                    break;
+            if msg.is_binary() {
+                // wire v3 uplink (c2834 spec r1902): binary frames are the
+                // fory-encoded ClientRequest path; JSON text path untouched.
+                v3_mode.store(true, std::sync::atomic::Ordering::Relaxed);
+                let Some(module) = module.as_ref() else { break };
+                match super::wire_v3::handle_uplink(module, msg.as_bytes(), writer.clone()).await {
+                    Ok((frame, token)) => {
+                        // 连接本地租约(r1793 语义在 v3 通路的对齐):应答
+                        // 携带新 mint token 时更新,同连接后续上行据此放行。
+                        if let Some(tok) = token {
+                            writer = Some(tok);
+                        }
+                        if bin_tx.send(frame).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
                 }
+                continue;
+            }
+            if !msg.is_text() {
                 continue;
             }
             let Ok(text) = msg.as_str() else {
@@ -463,6 +519,49 @@ mod tests {
         assert_eq!(resp.status_code.unwrap(), StatusCode::OK);
         let body = resp.take_string().await.unwrap();
         assert!(body.contains("ok"), "{body}");
+    }
+
+    /// c2834 spec r1902/r1903:v3 binary 上行经 POST /rpc 可服务,应答为
+    /// fory 帧;describe 携带 wire 格式能力集合(双轨期 JSON 路径并存)。
+    #[tokio::test]
+    async fn post_binary_describe_v3() {
+        use crate::protocol::wire::v3::{ClientRequest, Describe, Frame, Request, ResponsePayload};
+
+        let state = HostState::for_test().expect("host");
+        let gateway = Gateway::starting();
+        gateway.set_host(state);
+        let service = Service::new(router(gateway));
+
+        let uplink = Frame::ClientRequest(ClientRequest {
+            rpc_id: 21,
+            request: Request::Describe(Describe {}),
+            writer_token: None,
+        })
+        .to_bytes()
+        .unwrap();
+
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+            .add_header("Content-Type", "application/x-fory-v3", true)
+            .body(uplink)
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::OK);
+
+        let body = resp.take_bytes(None).await.unwrap();
+        let frame = Frame::from_bytes(&body).expect("v3 response frame");
+        let Frame::ServerResponse(resp) = frame else {
+            panic!("expected ServerResponse, got {frame:?}")
+        };
+        assert_eq!(resp.rpc_id, 21);
+        assert!(resp.ok);
+        match resp.payload {
+            Some(ResponsePayload::DescribeResult(d)) => {
+                assert_eq!(d.protocol, crate::protocol::wire::PROTOCOL_VERSION);
+                assert!(d.formats.iter().any(|f| f == "jsonrpc"), "{d:?}");
+                assert!(d.formats.iter().any(|f| f == "fory-v3"), "{d:?}");
+            }
+            other => panic!("expected DescribeResult, got {other:?}"),
+        }
     }
 
     #[tokio::test]

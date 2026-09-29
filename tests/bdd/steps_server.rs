@@ -96,7 +96,7 @@ pub fn approval_test() -> ServerTest {
     ServerTest::new()
 }
 
-async fn start_host(t: &ServerTest) {
+pub async fn start_host(t: &ServerTest) {
     let host = HostState::for_test().expect("HostState");
     let (running, port) = serve(
         ServerConfig {

@@ -1,0 +1,41 @@
+// xylitol wire v3 — fbs 前端保留字逃逸实测
+namespace xy.wire.v3;
+
+enum TodoStatus : int { Pending, InProgress, Completed }
+
+table TodoItem {
+    id: string;
+    content: string;
+    status: TodoStatus;
+}
+
+table TodoList {
+    items: [TodoItem];
+}
+
+table ErrorEvent {
+    kind: string;
+    message: string;      // fdl 保留字,fbs 合法
+}
+
+table ToolStart {
+    id: string;
+    name: string;
+    args_json: string;
+}
+
+table ToolEnd {
+    id: string;
+    name: string;
+    result: string;
+    is_error: bool;
+}
+
+union Event { ErrorEvent, ToolStart, ToolEnd }
+
+table ServerNotification {
+    seq: ulong;
+    event: Event;
+    list: string;         // fdl 保留字,fbs 合法
+    timestamp: long;      // fdl 保留字,fbs 合法
+}

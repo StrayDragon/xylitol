@@ -1,0 +1,525 @@
+// xylitol wire protocol v3 — 全量协议真源(fbs 前端,foryc 生成 Rust/Dart)
+//
+// 真源纪律(design §5 / spec r1907/r1910):
+// - 字段编号 = 声明顺序(从 1 起);新字段只能尾部追加;删除字段保留占位注释,编号永不复用。
+// - 类型名不改(类型 ID = auto-hash(namespace.类型名));重命名视为删旧加新。
+// - 动态块(D1,spec r1906):形状由运行时决定的载荷以 JSON 原文过线,字段名后缀 `_json`。
+// - 字段名与既有 JSON 线一致(message/list/timestamp 等保留字经 fbs 前端原名保留)。
+// - usize 非跨语言概念 → ulong;Option 标量用 (fory_nullable);Option 嵌套 table 天然可空。
+
+namespace xy.wire.v3;
+
+// ════════════════════════════════════════════════════════════════
+// 方法 ID 表(spec r1904:编译期数字寻址,与 registry 方法名一一对应;
+// 对齐测试锁定。值分配后永不复用,新方法只增不改。)
+// ════════════════════════════════════════════════════════════════
+
+enum Method : int {
+    HostDescribe = 1,
+    Prompt = 2,
+    Abort = 3,
+    GetState = 4,
+    SetModel = 5,
+    CycleModel = 6,
+    GetAvailableModels = 7,
+    SetThinkingLevel = 8,
+    Bash = 9,
+    Compact = 10,
+    GetSessionStats = 11,
+    ExportHtml = 12,
+    ExportJsonl = 13,
+    ImportJsonl = 14,
+    SwitchSession = 15,
+    Fork = 16,
+    GetMessages = 17,
+    EstimateContext = 18,
+    GetCommands = 19,
+    SessionTree = 20,
+    TravelSessionTree = 21,
+    AppendEntryLabel = 22,
+    ListSessions = 23,
+    LoadSessionEntries = 24,
+    NewSession = 25,
+    GetSessionName = 26,
+    SetSessionName = 27,
+    SetSessionNameFor = 28,
+    DeleteSession = 29,
+    Reload = 30,
+    LoadedResources = 31,
+    GetQueueStats = 32,
+    Steer = 33,
+    FollowUp = 34,
+    ClearQueue = 35,
+    Subscribe = 36,
+    ApproveTool = 37,
+    AnswerQuestion = 38,
+    Quit = 39,
+    ArmToolFreeze = 40,
+    PersistTrust = 41
+}
+
+// ════════════════════════════════════════════════════════════════
+// Event 载荷(core → client,18 变体;对照 src/protocol/wire/event.rs)
+// ════════════════════════════════════════════════════════════════
+
+enum TodoStatus : int { Pending, InProgress, Completed }
+
+table TodoItem {
+    id: string;
+    content: string;
+    status: TodoStatus;
+}
+
+table TodoList {
+    items: [TodoItem];
+}
+
+table ErrorEvent {
+    kind: string;
+    message: string;
+}
+
+table TextDelta {
+    text: string;
+}
+
+table ThinkingDelta {
+    text: string;
+}
+
+table ToolStart {
+    id: string;
+    name: string;
+    // 动态块:工具参数,形状由各工具运行时 JSON Schema 决定
+    args_json: string;
+}
+
+table ToolEnd {
+    id: string;
+    name: string;
+    result: string;
+    // Terminal failure marker (c2440); required on the wire.
+    is_error: bool;
+}
+
+table AgentEnd {
+}
+
+table ModelSelect {
+    provider: string;
+    model_id: string;
+}
+
+table CompactionStart {
+    reason: string;
+}
+
+table TurnStart {
+    turn_index: uint;
+}
+
+table TurnEnd {
+    turn_index: uint;
+}
+
+// 模型消息内容 = 动态块(AgentMessage JSON 原文;强 schema 化留作后续独立迭代)
+table MessageStart {
+    role: string;
+    message_json: string (fory_nullable);
+}
+
+table MessageEnd {
+    role: string;
+    message_json: string (fory_nullable);
+}
+
+table MessageUpdate {
+    text: string;
+    thinking: string (fory_nullable);
+    message_json: string (fory_nullable);
+}
+
+table ToolExecutionUpdate {
+    id: string;
+    output: string;
+}
+
+table CompactionEnd {
+    result: string (fory_nullable);
+    aborted: bool;
+    reason: string;
+    will_retry: bool;
+    error_message: string (fory_nullable);
+    summary: string (fory_nullable);
+    tokens_before: ulong (fory_nullable);
+    tokens_after: ulong (fory_nullable);
+    notice: string (fory_nullable);
+}
+
+table ContextTokenSettlement {
+    tokens: ulong;
+    provenance: string;
+    usage_tokens: ulong;
+    trailing_tokens: ulong;
+    last_usage_index: ulong (fory_nullable);
+    reason: string;
+    generation: ulong;
+}
+
+table QueueUpdate {
+    steer_count: ulong;
+    follow_up_count: ulong;
+}
+
+table TodoListSnapshot {
+    list: TodoList;
+}
+
+union Event {
+    ErrorEvent,
+    TextDelta,
+    ThinkingDelta,
+    ToolStart,
+    ToolEnd,
+    AgentEnd,
+    ModelSelect,
+    CompactionStart,
+    TurnStart,
+    TurnEnd,
+    MessageStart,
+    MessageEnd,
+    MessageUpdate,
+    ToolExecutionUpdate,
+    CompactionEnd,
+    ContextTokenSettlement,
+    QueueUpdate,
+    TodoListSnapshot
+}
+
+// ════════════════════════════════════════════════════════════════
+// Command 载荷(client → core,38 变体;对照 src/protocol/wire/command.rs)
+// ════════════════════════════════════════════════════════════════
+
+enum SessionTreeKind : int { MessageHistory, FileBrowser }
+
+table Prompt { message: string; }
+table Abort {}
+table GetState {}
+table SetModel { provider: string; model_id: string; }
+table CycleModel {}
+table GetAvailableModels {}
+table SetThinkingLevel { level: string; }
+table Bash { command: string; exclude_from_context: bool; }
+table Compact { instructions: string (fory_nullable); }
+table GetSessionStats {}
+table ExportHtml { output_path: string (fory_nullable); }
+table ExportJsonl { output_path: string (fory_nullable); }
+table ImportJsonl { input_path: string; }
+table SwitchSession { session_path: string; }
+table Fork { entry_id: string; position: string (fory_nullable); }
+table GetMessages {}
+table EstimateContext {}
+table GetCommands {}
+table SessionTreeCmd { kind: SessionTreeKind; }
+table TravelSessionTree { kind: SessionTreeKind; entry_id: string; }
+table AppendEntryLabel { target_id: string; label: string (fory_nullable); }
+table ListSessions {}
+table LoadSessionEntries { session_id: string; }
+table NewSession {}
+table GetSessionName {}
+table SetSessionName { name: string; }
+table SetSessionNameFor { session_id: string; name: string; }
+table DeleteSession { session_id: string; }
+table Reload {}
+table LoadedResources {}
+table GetQueueStats {}
+table Steer { message: string; }
+table FollowUp { message: string; }
+table ClearQueue { clear_steer: bool; clear_follow_up: bool; }
+table Subscribe { session_id: string; last_seq: ulong; }
+table ApproveTool { call_id: string; approved: bool; }
+table AnswerQuestion { call_id: string; answer: string; }
+table Quit {}
+
+union Command {
+    Prompt,
+    Abort,
+    GetState,
+    SetModel,
+    CycleModel,
+    GetAvailableModels,
+    SetThinkingLevel,
+    Bash,
+    Compact,
+    GetSessionStats,
+    ExportHtml,
+    ExportJsonl,
+    ImportJsonl,
+    SwitchSession,
+    Fork,
+    GetMessages,
+    EstimateContext,
+    GetCommands,
+    SessionTreeCmd,
+    TravelSessionTree,
+    AppendEntryLabel,
+    ListSessions,
+    LoadSessionEntries,
+    NewSession,
+    GetSessionName,
+    SetSessionName,
+    SetSessionNameFor,
+    DeleteSession,
+    Reload,
+    LoadedResources,
+    GetQueueStats,
+    Steer,
+    FollowUp,
+    ClearQueue,
+    Subscribe,
+    ApproveTool,
+    AnswerQuestion,
+    Quit
+}
+
+// ════════════════════════════════════════════════════════════════
+// 会话载荷(get_messages / session_tree 大载荷;对照 protocol::session)
+// ════════════════════════════════════════════════════════════════
+
+table EntryBase {
+    id: string;
+    parent_id: string (fory_nullable);
+    timestamp: ulong;
+}
+
+table SessionHeader {
+    version: uint;
+    id: string;
+    timestamp: ulong;
+    cwd: string;
+    parent_session: string (fory_nullable);
+    fork_at_entry_id: string (fory_nullable);
+}
+
+table MessageEntry {
+    base: EntryBase;
+    // AgentMessage JSON 原文(动态块)
+    message_json: string;
+}
+
+table CompactionPolicySnapshot {
+    context_window: ulong (fory_nullable);
+    reserve_tokens: ulong (fory_nullable);
+    keep_recent_tokens: ulong (fory_nullable);
+    estimator_version: string (fory_nullable);
+    status: string (fory_nullable);
+}
+
+table CompactionEntry {
+    base: EntryBase;
+    summary: string;
+    first_kept_entry_id: string;
+    tokens_before: ulong;
+    details_json: string (fory_nullable);
+    from_hook: bool (fory_nullable);
+    policy: CompactionPolicySnapshot;
+}
+
+table BranchSummaryEntry {
+    base: EntryBase;
+    from_id: string;
+    summary: string;
+    details_json: string (fory_nullable);
+    from_hook: bool (fory_nullable);
+}
+
+table ModelChangeEntry {
+    base: EntryBase;
+    provider: string;
+    model_id: string;
+}
+
+table ThinkingLevelChangeEntry {
+    base: EntryBase;
+    thinking_level: string;
+}
+
+table CustomEntry {
+    base: EntryBase;
+    custom_type: string;
+    data_json: string;
+}
+
+table CustomMessageEntry {
+    base: EntryBase;
+    custom_type: string;
+    content_json: string;
+    display: bool;
+    details_json: string (fory_nullable);
+}
+
+table LabelEntry {
+    base: EntryBase;
+    target_id: string;
+    label: string (fory_nullable);
+}
+
+table SessionInfoEntry {
+    base: EntryBase;
+    name: string (fory_nullable);
+}
+
+union SessionEntry {
+    SessionHeader,
+    MessageEntry,
+    CompactionEntry,
+    BranchSummaryEntry,
+    ModelChangeEntry,
+    ThinkingLevelChangeEntry,
+    CustomEntry,
+    CustomMessageEntry,
+    LabelEntry,
+    SessionInfoEntry
+}
+
+// 递归树节点(session_tree 大载荷)
+table SessionTreeNode {
+    entry: SessionEntry;
+    children: [SessionTreeNode];
+    label: string (fory_nullable);
+}
+
+table SessionTreeTravel {
+    kind: SessionTreeKind;
+    selected_id: string;
+    leaf_id: string (fory_nullable);
+    editor_text: string (fory_nullable);
+}
+
+// ════════════════════════════════════════════════════════════════
+// 信封(Frame)与应答/下行形态(spec r1902/r1904/r1905)
+// ════════════════════════════════════════════════════════════════
+
+table RpcError {
+    code: string;
+    details: string;
+}
+
+// host.describe 等无 Command 变体的方法
+table Describe {}
+// RAW 方法(载荷为任意 JSON 的登记方法,如 arm_tool_freeze / persist_trust)
+table Raw {
+    method: Method;
+    json: string;
+}
+
+union Request {
+    Command,
+    Describe,
+    Raw
+}
+
+table ClientRequest {
+    rpc_id: ulong;                 // 幂等键(r1904,语义同 JSON-RPC id)
+    request: Request;
+    writer_token: string (fory_nullable);  // WS 首帧/显式回显;HTTP 走 header 带外
+}
+
+// 应答载荷:高频强 schema + RawOk 兜底(其余低频方法 result 为 JSON 原文)
+table DescribeResult {
+    protocol: uint;
+    formats: [string];             // wire 格式能力集合(r1903)
+}
+
+table SubscribeResult {
+    session_id: string;
+    seq: ulong;
+}
+
+table MessagesResult {
+    entries: [SessionEntry];
+}
+
+table TreeResult {
+    nodes: [SessionTreeNode];
+}
+
+table TravelResult {
+    kind: SessionTreeKind;
+    selected_id: string;
+    leaf_id: string (fory_nullable);
+    editor_text: string (fory_nullable);
+}
+
+table RawOk {
+    json: string;
+}
+
+union ResponsePayload {
+    DescribeResult,
+    SubscribeResult,
+    MessagesResult,
+    TreeResult,
+    TravelResult,
+    RawOk
+}
+
+table ServerResponse {
+    rpc_id: ulong;
+    ok: bool;
+    error: RpcError;
+    payload: ResponsePayload (fory_nullable);
+    writer_token: string (fory_nullable);  // WS 连接本地租约(r1904)
+}
+
+table Subscribed {
+    session_id: string;
+    seq: ulong;
+}
+
+table ResyncRequired {
+    session_id: string;
+}
+
+table Resources {
+    session_id: string;
+    // MCP/skills 固定区快照,动态块原文(r1905:不消耗 seq、不进 journal)
+    snapshot_json: string;
+}
+
+table ApprovalRequested {
+    call_id: string;
+}
+
+table QuestionRequested {
+    call_id: string;
+}
+
+// 人发起 bash 直播增量(r1703 分流;不消耗 journal seq)
+table BashOutput {
+    session_id: string;
+    bash_id: string;
+    seq: ulong;
+    data: string;
+}
+
+union Notification {
+    Event,             // 携带会话事件(r1905)
+    Subscribed,
+    ResyncRequired,
+    Resources,
+    ApprovalRequested,
+    QuestionRequested,
+    BashOutput
+}
+
+table ServerNotification {
+    seq: ulong;         // 事件帧单调序号;非事件帧固定 0
+    notification: Notification;
+}
+
+union Frame {
+    ClientRequest,
+    ServerResponse,
+    ServerNotification
+}

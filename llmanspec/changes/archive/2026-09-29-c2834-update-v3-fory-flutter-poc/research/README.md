@@ -9,7 +9,7 @@
 - **时机**:server-TUI(本机 loopback)是切换收益最小的场景,**现在不切**;触发点 = Flutter 端立项或远程场景落地。
 - **PoC 已通全链路**:`.fdl` → foryc 生成 Rust + Dart → Rust roundtrip 冒烟 → **Rust 编码字节被 Dart 原生解码**(即 Flutter 客户端消费 host 下行帧的那条链路)。
 - **三个硬结论**(纸面分析拿不到,见 03):
-  1. fdl 保留字 `message` / `list` 撞现有高频字段名,v3 须全量盘点改名;
+  1. fdl 保留字 `message`/`list`/`timestamp` 撞现有字段名(11 处),但 **fbs 前端可零改名**(05 实测,真源改选 fbs);
   2. `any` 类型不可用于任意 JSON(仅 bool/string/enum/message/union 且须两端注册),动态块唯一形态 = `string` 装原文;
   3. 生成物无 serde derive,双轨对拍期需要 fork foryc 加 `--rust-serde`(或上游 PR)。
 
@@ -21,6 +21,7 @@
 | [02-xylitol-线协议现状盘点.md](02-xylitol-线协议现状盘点.md) | 现有 JSON-RPC 形态、强/动态分界线、接缝与被动面清单 |
 | [03-poc-报告.md](03-poc-报告.md) | PoC 全过程与发现(fdl、生成物质量、roundtrip、跨语言、体积对比) |
 | [04-迁移设计草案.md](04-迁移设计草案.md) | 信封设计、动态块策略、双轨对拍方案、决策记录(含被否方案) |
+| [05-fbs-前端保留字实测.md](05-fbs-前端保留字实测.md) | 保留字逃逸官方出路:三前端对比实测,真源改选 fbs(零改名) |
 
 ## PoC 复现(已在本目录验证)
 

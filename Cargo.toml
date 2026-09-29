@@ -69,6 +69,7 @@ xylitol-tui = { path = "packages/xylitol-tui", optional = true }
 xylitol-ai-bridge = { path = "packages/xylitol-ai-bridge" }
 crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 http = "1"
+fory = "1.7.5"
 jsonrpsee = { version = "0.26.0", default-features = false, features = ["server-core", "jsonrpsee-types"], optional = true }
 
 [features]

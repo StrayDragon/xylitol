@@ -955,6 +955,10 @@ pub async fn handle_unary(
         return RpcResult::ok_value(
             serde_json::to_value(HostDescribeValue {
                 protocol: PROTOCOL_VERSION,
+                formats: vec![
+                    crate::protocol::wire::WIRE_FORMAT_JSONRPC.into(),
+                    crate::protocol::wire::WIRE_FORMAT_FORY_V3.into(),
+                ],
             })
             .unwrap_or(Value::Null),
         );

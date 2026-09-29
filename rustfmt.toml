@@ -8,3 +8,6 @@ reorder_modules = true
 use_field_init_shorthand = true
 use_try_shorthand = true
 force_explicit_abi = true
+
+# foryc 生成物(空 struct 展开形态与 rustfmt 风格冲突;c2834 codegen SSOT)
+ignore = ["src/protocol/wire/v3/generated.rs"]

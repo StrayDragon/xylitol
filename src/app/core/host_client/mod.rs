@@ -12,6 +12,11 @@ use crate::protocol::{RpcMessage, RpcResult};
 #[cfg(feature = "server")]
 mod http_ws;
 mod in_process;
+#[cfg(feature = "server")]
+mod wire_v3_client;
+
+#[cfg(test)]
+pub(crate) use http_ws::dual_rail_event_parity;
 
 #[cfg(feature = "server")]
 pub use http_ws::HttpWsClient;

@@ -554,7 +554,7 @@ async fn run_product_tui_attached(
     }
     let attach_url =
         crate::app::core::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
-    let mut driver = crate::app::core::driver::XyRemoteDriver::new(
+    let mut driver = crate::app::core::driver::XyRemoteDriver::new_v3(
         attach_url,
         surface.session.clone().unwrap_or_default(),
     );

@@ -175,6 +175,11 @@ gen-live-provider-example:
 gen-config-example:
     python3 scripts/gen_config_example.py
 
+# Wire v3 codegen (fbs -> Rust). Maintenance only (needs local apache/fory clone);
+# `--check` verifies the checked-in artifact matches the fbs source of truth.
+codegen-wire *args:
+    python3 scripts/gen_wire_v3.py {{ args }}
+
 # Provider-safe MCP tool naming gate (registry SSOT + wire encode on all three APIs).
 # Not live-network; safe in qa loops. Prefer this after changing MCP_PUBLIC_DELIMITER.
 [arg('verbosity', pattern='quiet|normal|verbose')]
