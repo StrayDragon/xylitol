@@ -94,6 +94,11 @@
   规则: otel-token-estimate-parent
     当低频观测 span 激活时：若存在活跃 agent.turn 上下文，token.estimate MUST 作为该 turn 的子 span；若不存在 turn 上下文（真·闲置路径：换叶/resume/显式刷新等），token.estimate MAY 为独立根 span 且在 session 已知时 MUST 携带同一 langfuse.session.id；MUST NOT 伪造父 turn。对同一次 TurnSettled settlement，MUST 至多导出一个 token.estimate；MUST NOT 在 turn 刚结束后仅为 footer stream-close 兜底再开 SpanContext::random 独立根。
 
+    场景: idle-settlement-independent-root
+      假如 观测闸开启且绑定会话身份
+      当 以闲置路径结算一次 token 估计
+      那么 token.estimate 为独立根且携带会话 id
+
   @req:r1471
   规则: otel-tool-observation-io-tier
     AppConfig.[otel].tool_observation_io 缺省或 none 时 MUST NOT 在 tool.execute 上写入 langfuse.observation.input/output；仅当配置为 truncated 或 full 且 span 闸激活时，tool.execute MUST 在结果落定后按该档写入参数与结果摘要；MUST NOT 与 observation_io 合并为同一配置键；MUST NOT 因 tool_observation_io 未配置而改变 otel1 默认不出口语义。
@@ -106,9 +111,11 @@
   规则: otel-generation-request-body-input
     当 observation_io 为 truncated 或 full 且 span 闸激活时，llm.request generation 的 langfuse.observation.input MUST 优先来自 adapter 发出前的完整 request JSON（按同档硬顶截断）；MUST NOT 仅依赖名为 response.json、chat.completion.json 或 message.json 的 raw 事件才缓冲请求体；流式路径 MUST 同样可带 input。
 
+
   @req:r1474
   规则: otel-generation-abort-finalize
     当低频观测 span 激活且 llm.request 在未见成功 Done 的情况下提前结束（用户 abort 或等价 drop 流）时：若 observation_io ≠ none，generation MUST 仍按档 flush 已缓冲的 input/output；该 generation MUST 携带 langfuse.observation.level=ERROR 与 langfuse.observation.status_message=aborted；MUST NOT 因此伪造 usage_details。
+
 
   @req:r1475
   规则: otel-parallel-tool-spans

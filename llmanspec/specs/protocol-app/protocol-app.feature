@@ -8,6 +8,10 @@
   @req:r1693
   规则: Command 枚举
     protocol MUST 定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；每个 client→core 消息 MUST 反序列化为此枚举。
+
+    场景: command-roundtrip-fidelity
+      当 对产品命令样例做线协议序列化与反序列化往返
+      那么 命令往返保真且逐变体可反序列化
   @req:r1695
   规则: Event 枚举
     protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 MUST 反序列化为此枚举。
@@ -230,3 +234,5 @@
       假如 工具需审批
       当 推送 ApprovalRequired
       那么 客户端经 POST /rpc 调用 approve_tool 且回合恢复
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

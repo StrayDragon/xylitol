@@ -24,3 +24,5 @@
   规则: tui-e2e-isolation
     TUI 端到端测试（portable-pty 与 tmux）MUST 与主测试矩阵隔离：MUST 位于 workspace 级 tests/tui_e2e/（非 packages/xylitol-tui/tests/），MUST 标记 #[ignore] 或由 feature flag 门控，默认 cargo test 不运行，MUST 经专用 justfile 目标（test-tui-e2e）调用。tmux smoke MUST 额外要求 tmux 二进制存在（缺失则 skip 并给出清晰消息），并为 spawned session 设置 TERM=xterm-256color。每个 tmux session MUST 使用唯一名称（基于 PID 或时间戳）以支持并行，MUST 经 Drop guard 在 panic 时也 kill，避免泄漏 session。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

@@ -8,9 +8,19 @@
   @req:r1561
   规则: 计量优先级
     上下文 token 估计 MUST 按固定优先级解析来源：Api，然后 RemoteCount，然后 LocalTokenizer，然后 Heuristic；结果 MUST 携带 TokenProvenance（或等价枚举）标明实际采用的来源。
+
+    场景: estimate-priority-api-first
+      假如 会话条目含 stop 回合的 usage 锚点
+      当 以同源估计器估计上下文
+      那么 估计来源为 Api
   @req:r1564
   规则: Api-锚点规则
     当存在适用于当前会话 prefix/leaf 的可信厂商 usage 时 MUST 优先用作 Api 锚点；因 abort 或 error 结束的回合 usage、以及 compaction 之后不再描述当前 prefix 的旧 usage，MUST NOT 作为锚点。
+
+    场景: aborted-usage-not-anchor
+      假如 会话条目仅含 abort 回合的 usage 锚点
+      当 以同源估计器估计上下文
+      那么 估计来源降级而非 Api
   @req:r1563
   规则: Api-trailing-范围
     当 Api 锚点有效时，trailing_tokens MUST 仅计入 last usage 消息之后的消息（对齐 pi estimateContextTokens）；MUST NOT 对锚点及之前的消息再叠加 heuristic；last_usage_index MUST 为该锚点消息下标；若消息列表中找不到带 usage 的 assistant，可将整段列表视为 trailing 且 last_usage_index 可为 null。

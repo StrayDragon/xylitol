@@ -32,3 +32,5 @@
   @req:r1597
   规则: sbs-empty-half-no-fake-lineno
     side-by-side 仅一侧有内容时，空半栏 MUST NOT 伪造行号；有内容半栏 MUST 仍显示对应 old_no 或 new_no。
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

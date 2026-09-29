@@ -126,6 +126,10 @@
   @req:r1347
   规则: diff-render-cap
     产品 live scrollback 渲染 edit/Diff 的 display_diff 时 MUST 限制可见行数（硬上限）；超限 MUST 截断并提示 omitted；过大 diff MUST NOT 启用 word-level，以免卡死 TUI。
+
+    场景: oversize-diff-truncated-with-omitted
+      当 注入含 200 行 display_diff 的 edit 成功结果
+      那么 diff 正文截断并提示省略行数
   @req:r1348
   规则: no-prepend-nav-notices
     产品 TUI 在 travel/fork/resume/切换等重建或瞬时导航通知写入 live scrollback 时，MUST 将此类 ScrollNotice/Error 滚动提示追加到 entries 末尾（跟底时位于输入框上方可滚区域）；MUST NOT 为提高可见性而把瞬时导航通知 prepend 到 entries 前缀。会话路径上的时间线内容（含 BranchSummary 等按祖先投影的条目）不在本条「瞬时通知」范围。

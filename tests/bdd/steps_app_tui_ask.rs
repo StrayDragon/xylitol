@@ -206,3 +206,20 @@ fn then_trust_not_ask() {
         let _ = s;
     });
 }
+
+// ── c2827 r1445：无 MCP 配置零装配 ──────────────────────────────
+
+#[then("装配不含 mcp 前缀工具")]
+pub(crate) fn t_c2827_toolset_no_mcp() {
+    use crate::protocol::ports::XyTool;
+    TOOLSET.with(|t| {
+        let set = t.borrow().as_ref().expect("toolset").clone();
+        for tool in set.iter() {
+            assert!(
+                !tool.name().starts_with("mcp__"),
+                "c2827: 无配置时 MUST NOT 装配 mcp 工具：{}",
+                tool.name()
+            );
+        }
+    });
+}

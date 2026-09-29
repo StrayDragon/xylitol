@@ -11,3 +11,5 @@
   @req:r1642
   规则: matches-by-id
     KeybindingsManager::matches_event MUST 按绑定 id 解析当前生效和弦并与 KeyEvent 比较；默认键在无用户覆盖时 MUST 等于 definitions.default_keys。
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

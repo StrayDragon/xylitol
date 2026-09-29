@@ -159,6 +159,16 @@
   @req:r1298
   规则: model-arg-completion
     产品 Editor MUST 经包 CompletionSource 注册 SlashArgCompletionSource（命令 model，默认 MUST NOT with_bare_command）与 SlashCommandSource（至少 exit/model）；键入 /model 加空格（及可选前缀）时 MUST 弹出模型 id 补全（catalog 来自 available_models）；Tab/Enter 选定 MUST 将 id 写入 editor；Esc 关 popup MUST NOT 调用 SetModel；无参 /model Enter 仍 MUST 走 c630 OpenModels 槽，MUST NOT 被 arg Source 抢走。
+
+    场景: model-arg-popup-and-apply
+      假如 驱动可用模型含 test-model
+      当 在编辑器键入 "/model "
+      那么 弹出模型补全且 Tab 写入模型 id
+
+    场景: model-arg-esc-no-setmodel
+      假如 驱动可用模型含 test-model
+      当 在编辑器键入 "/model " 并按 Esc
+      那么 补全关闭且未调用换模
   @req:r1297
   规则: session-tree-filter-keys
     产品 TUI 在 EditorSlot::Tree 打开时：Ctrl+D MUST 将 FilterMode 设为 default；Ctrl+T / Ctrl+U / Ctrl+L / Ctrl+A MUST 在对应模式（no-tools / user-only / labeled-only / all）与 default 之间 toggle；Ctrl+O MUST 按 default→no-tools→user-only→labeled-only→all 循环；Ctrl+Shift+O（或等价 cycleBackward）MUST 反向循环（见 ati26）；上述键 MUST 优先于关树时的 thinking（Ctrl+T）与工具视口（Ctrl+O）；增量搜索键入 MUST 交给包 TreeSelector；有搜索串时 Esc MUST 先清搜索再关树（既有 ati5 语义保留）。
@@ -256,9 +266,17 @@
   @req:r1309
   规则: at-path-completion
     产品 Editor MUST 经包 CompletionSource 注册 AtPathSource，根目录默认为进程 cwd（harness MAY 注入测试根）；用户键入 @（及路径前缀）时 MUST 弹出文件/目录补全；Tab/Enter 选定 MUST 将路径引用写入 editor；Esc 关 popup MUST NOT 改已有非补全文本；提交消息时本变更 MUST NOT 自动把文件内容读入 transcript（路径文本引用即可）。
+
+    场景: at-path-popup-and-apply
+      当 在编辑器键入 "@"
+      那么 弹出路径补全且 Tab 写入路径引用
   @req:r1310
   规则: paste-collapse-submit
     产品 TUI 在 idle 提交、busy steer、busy follow-up、remember_editor_send（历史）以及 Ctrl+G 外部编辑器读出时，MUST 使用 Editor::get_expanded_text（或 UiRoot 等价 API）作为发送/写入文本；显示层 MUST 仍可经 get_text 展示 [paste #N …] 占位；MUST NOT 把未展开的 paste marker 作为 prompt/steer/follow-up 交给 Driver。
+
+    场景: paste-marker-expanded-on-submit
+      当 以主机泵在编辑器粘贴多段文本并提交
+      那么 驱动收到的正文为展开全文
   @req:r1311
   规则: keybindings-catalog-hot-reload
     产品 TUI MUST 将已接线产品动作注册为 app.*（或文档约定的）keybinding id 并经 KeybindingsManager 匹配，MUST NOT 在产品输入路径新增字面和弦硬编码；MUST 在启动时从用户 agent 目录 keybindings.json（若存在）加载覆盖；MUST 提供 reload_keybindings（或等价）在成功时替换当前会话绑定、失败时保留旧绑定并报告诊断；重载 MUST NOT 清空 transcript 或 session 历史。
@@ -269,6 +287,11 @@
   @req:r1315
   规则: dollar-skill 补全与高亮
     产品 Editor MUST 经 CompletionSource 在键入 $ 时弹出已加载 skill 名补全；Tab/Enter 选定 MUST 写入 $name；用户消息在 scrollback 中 MUST 用 skill-ref 色高亮 $name token；MUST NOT 另开 skill 色块或系统已加载行。
+
+    场景: dollar-skill-popup-apply
+      假如 已加载技能目录含 greet
+      当 在编辑器键入 "$"
+      那么 弹出技能补全且 Tab 写入 "$greet"
   @req:r1312
   规则: thinking-level-picker-only
     产品 TUI MUST NOT 注册全局 app.thinking.cycle，MUST NOT 在 Editor 槽（非 Models）将 Shift+Tab 绑为 thinking cycle。thinking 档变更 MUST 仅经 /model 槽（←→ / 槽内 Shift+Tab）或有参 /model <id>（可调默认声明列表末项，不可调为 off）路径提交。MUST NOT 新增产品 /thinking-level slash；MUST NOT 与 app.thinking.toggle（Ctrl+T 折叠）混淆；MUST NOT 用包 ThinkingBorderLevel::cycle_next 作为产品真源。

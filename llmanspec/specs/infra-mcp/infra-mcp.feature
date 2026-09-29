@@ -8,6 +8,11 @@
   @req:r1445
   规则: 无配置零装配
     当配置中不存在 mcp_servers 或列表为空时，System MUST NOT 创建 MCP client、MUST NOT 向默认 ToolSet 注册任何 mcp__ 前缀工具（过渡期亦可识别遗留 mcp-/mcp_/mcp:），且该路径 MUST 不引入可感知的运行时开销（zero-cost 未启用）。
+
+    场景: no-mcp-config-no-tools
+      假如 产品以 Print 面启动
+      当 查询装配后的 ToolSet
+      那么 装配不含 mcp 前缀工具
   @req:r1447
   规则: 有配置则装配为 XyTool
     当 mcp_servers 含有效条目时，System MUST 按 transport（至少 Stdio 与 Sse/url）连接对应服务器，并将发现的工具以 XyTool 形式注册，公开名 MUST 使用 mcp__{server_id}__{name} 约定（分隔符单点可换；仅 [a-zA-Z0-9_-]，与 DeepSeek/Anthropic/OpenAI-compat tools[].name 模式对齐；禁止冒号/点号分隔；段内 MAY 保留 -/_）；execute MUST 使用保存的 server_id/tool_name，MUST NOT 反解析公开名。
@@ -36,3 +41,5 @@
   规则: first-turn-tool-freeze
     轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 MUST 立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）MUST 等待 MCP settle 或 code-first 门闸超时后再定稿；单 server 连接 MUST 有 code-first 墙钟超时（挂死不得让 bootstrap 永 Running）。门闸超时 MUST 以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），MUST NOT 自动重试连接。TUI MUST NOT 在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 MUST 冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿；重定稿 MUST 按 tool name upsert（有则替换、无则追加），MUST NOT 留下同名多行。本波 resume/切会话 MUST 清冻再门闸（指纹持久化后的一致续冻另波）；重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

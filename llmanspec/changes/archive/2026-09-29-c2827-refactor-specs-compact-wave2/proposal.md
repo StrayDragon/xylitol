@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2827-refactor-specs-compact-wave2
+base_branch: main
+base_sha: c10572df622a4303a872409b3f1cfa1473f79c52
 ---
 
 ## Why

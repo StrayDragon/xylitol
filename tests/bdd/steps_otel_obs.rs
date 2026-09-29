@@ -9,14 +9,14 @@ use crate::infra::provider::factory::{set_fake_text, set_fake_tool_call, set_fak
 use crate::tests::bdd::fixtures::AgentState;
 use crate::tests::bdd::prelude::*;
 use rstest::fixture;
-use rstest_bdd_macros::{then, when};
+use rstest_bdd_macros::{given, then, when};
 use xylitol_ai_bridge::provider::trace::{
     ObservationIoTier, SpanCollectScope, set_observation_io_tier, set_provider_trace_active,
     set_tool_observation_io_tier,
 };
 use xylitol_ai_bridge::provider::{clear_obs_session, set_obs_session};
 
-const SESSION_UUID: &str = "aaagggg-hhhh-iiii-jjjj-kkkkllllmmmm";
+pub(crate) const SESSION_UUID: &str = "aaagggg-hhhh-iiii-jjjj-kkkkllllmmmm";
 
 /// Per-scenario globals + collect sink. Uses process-slot setters (not TLS
 /// scopes): the async runtime polls the stream on worker threads where TLS
@@ -71,7 +71,7 @@ impl OtelBdd {
 
 /// 运行一次带工具调用的 agent 回合（fake provider：文本 + read 工具）。
 /// `session_name` 走产品改名路径（bind 后 set_obs_session_name）。
-async fn run_turn_with_tool(agent: &AgentState, session_name: Option<&str>) {
+pub(crate) async fn run_turn_with_tool(agent: &AgentState, session_name: Option<&str>) {
     set_fake_text("我来读文件");
     set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
     set_fake_tool_result("hello world");
@@ -576,4 +576,64 @@ fn t_c2826_single_estimate(otel_bdd: &OtelBdd) {
         count, 1,
         "c2826: 一次 TurnSettled 恰一个挂在本回合 agent.turn 下的 token.estimate，实际 {count}"
     );
+}
+
+// ── c2827：r1470 闲置结算独立根 ─────────────────────────────────
+
+#[given("观测闸开启且绑定会话身份")]
+fn g_c2827_otel_idle_gate(otel_bdd: &OtelBdd) {
+    otel_bdd.mount_scopes(None);
+}
+
+#[when("以闲置路径结算一次 token 估计")]
+fn w_c2827_idle_settle(otel_bdd: &OtelBdd) {
+    // 无活跃 turn 上下文：settlement 不带 obs_parent → 独立根。
+    let entries: Vec<SessionEntry> = Vec::new();
+    let obs_session = xylitol_ai_bridge::thinking::ObsSessionContext {
+        session_id: Some(SESSION_UUID.into()),
+        ..Default::default()
+    };
+    let opts = crate::agent::compaction::token_estimator::EstimateOpts {
+        obs_session,
+        ..Default::default()
+    };
+    let _ = crate::agent::compaction::settlement::settle_from_session_entries(
+        &entries,
+        &opts,
+        crate::agent::compaction::settlement::ContextTokenSettlementReason::TurnSettled,
+    );
+    // fastrace 批量投递是异步的：给后台线程一点时间。
+    std::thread::sleep(std::time::Duration::from_millis(200));
+}
+
+#[then("token.estimate 为独立根且携带会话 id")]
+fn t_c2827_idle_estimate_root(otel_bdd: &OtelBdd) {
+    let records = otel_bdd.records();
+    // 收窄到本会话：并行套件里他测试的 settlement span 可能落进本 collector。
+    let ests: Vec<&fastrace::collector::SpanRecord> = records
+        .iter()
+        .filter(|s| s.name == "token.estimate")
+        .filter(|s| {
+            s.properties
+                .iter()
+                .any(|(k, v)| k == "langfuse.session.id" && v.as_ref() == SESSION_UUID)
+        })
+        .collect();
+    assert_eq!(
+        ests.len(),
+        1,
+        "c2827: 一次闲置结算应恰一个本会话 token.estimate：{}",
+        ests.len()
+    );
+    let est = ests[0];
+    let has_parent = records
+        .iter()
+        .any(|s| s.name == "agent.turn" && s.span_id == est.parent_id);
+    assert!(!has_parent, "c2827: 闲置路径 MUST NOT 伪造父 turn");
+    let session_id = est
+        .properties
+        .iter()
+        .find(|(k, _)| k == "langfuse.session.id")
+        .map(|(_, v)| v.as_ref());
+    assert_eq!(session_id, Some(SESSION_UUID), "c2827: 独立根应携带会话 id");
 }

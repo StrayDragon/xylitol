@@ -30,3 +30,5 @@
   规则: designing-lint-docs
     面 AGENTS MUST 写明改设计稿须跑 designing lint 与 check-tui-tokens；MUST NOT 再暗示仅靠人眼发现色板或固定态漂移。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

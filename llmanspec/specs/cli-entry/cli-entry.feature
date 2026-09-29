@@ -5,9 +5,11 @@
 
 功能: cli-entry
 
+  # c2827 复核：SlashCommandInfo 类型全仓无实现（pt3 已删除 prompts 源）；本条与 r68 为移除候选，待用户裁决。
   @req:r67
   规则: info-fields
     SlashCommandInfo MUST 携带 name、description、source 与 source_info 字段。
+  # c2827 复核：同 r67，为移除候选待裁决。
   @req:r68
   规则: source-enum
     SlashCommandSource MUST 恰为 prompt 或 skill 之一（extension 若未实现 MUST NOT 作为产品必选项）。
@@ -196,3 +198,5 @@
       假如 本机 Host 未在听
       当 产品 TUI 尝试 attach
       那么 非零退出并提示用 xylitol serve 启动 Host
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

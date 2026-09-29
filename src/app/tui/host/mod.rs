@@ -363,6 +363,19 @@ impl<T: Terminal> HostSession<T> {
         self.quit || self.quit_flag.load(Ordering::SeqCst)
     }
 
+    /// Teardown probe (c2827 r1248): whether the engine's `finish()` ran —
+    /// production run loop calls it on every exit path (mod.rs host loop tail).
+    #[cfg(test)]
+    pub(crate) fn engine_stopped(&self) -> bool {
+        self.tui.stop_requested()
+    }
+
+    /// Repaint probe (c2827 r1253/r1258): frames actually painted.
+    #[cfg(test)]
+    pub(crate) fn engine_frame_count(&self) -> u64 {
+        self.tui.frame_count()
+    }
+
     pub fn request_quit(&mut self) {
         self.quit = true;
     }

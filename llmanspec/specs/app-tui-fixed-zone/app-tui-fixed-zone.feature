@@ -168,3 +168,5 @@
       当 产品 TUI 同时存在非空待办栏、队列条与通知条
       那么 从上到下 MUST 为队列条、待办栏、通知条、status、editor
       并且 空表时待办栏 MUST 占 0 行
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

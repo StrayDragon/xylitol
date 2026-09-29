@@ -29,3 +29,5 @@
   @req:r1650
   规则: highlight-callback-only
     语法高亮 MUST 仅经 MarkdownTheme.highlight_code 可选回调注入；xylitol-tui 默认依赖 MUST NOT 捆绑 syntect。fg 着色在内联阶段完成；若设置 bg_color 则 MUST 在行宽 padding 后经 apply_background_to_line 铺满。
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

@@ -56,6 +56,8 @@ pub struct ScriptedDriver {
     available_models: Vec<ModelInfo>,
     message_history_tree: Vec<SessionTreeNode>,
     session_messages: Vec<SessionEntry>,
+    /// When set, get_messages returns this error (c2827 r1244 surfacing guard).
+    get_messages_error: Option<String>,
     travel_overrides: HashMap<String, SessionTreeTravel>,
     session_tree_calls: AtomicUsize,
     travel_calls: Mutex<Vec<String>>,
@@ -180,6 +182,7 @@ impl ScriptedDriver {
             ],
             message_history_tree: Vec::new(),
             session_messages: Vec::new(),
+            get_messages_error: None,
             travel_overrides: HashMap::new(),
             session_tree_calls: AtomicUsize::new(0),
             travel_calls: Mutex::new(Vec::new()),
@@ -348,6 +351,11 @@ impl ScriptedDriver {
         self.message_history_tree = tree;
     }
 
+    /// Test knob (c2827): fail the next get_messages with this message.
+    pub fn set_get_messages_error(&mut self, err: Option<String>) {
+        self.get_messages_error = err;
+    }
+
     pub fn set_session_messages(&mut self, entries: Vec<SessionEntry>) {
         self.session_messages = entries;
     }
@@ -435,6 +443,16 @@ impl ScriptedDriver {
 
     pub fn set_current_model(&mut self, model: ModelInfo) {
         self.model = model;
+    }
+
+    /// Test probe (c2827): current model id (SetModel applied or default).
+    pub fn current_model_id(&self) -> String {
+        self.model.id.clone()
+    }
+
+    /// Test probe (c2827): active session id as the XyDriver port reports it.
+    pub fn active_session_id(&self) -> String {
+        self.active_session_id.lock().expect("sid").clone()
     }
 
     pub fn set_available_models(&mut self, models: Vec<ModelInfo>) {
@@ -752,6 +770,9 @@ impl XyDriver for ScriptedDriver {
 impl ScriptedDriver {
     /// Test-helper: scripted session entries (c2710: no longer a Driver trait method).
     pub async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
+        if let Some(err) = &self.get_messages_error {
+            return Err(XyDriverError::message(err.clone()));
+        }
         Ok(self.session_messages.clone())
     }
 
@@ -923,6 +944,9 @@ impl crate::app::core::dispatch::SessionCommandExecutor for ScriptedDriver {
                 Ok(DispatchOutcome::SwitchedSession(id))
             }
             Command::GetMessages { .. } => {
+                if let Some(err) = &self.get_messages_error {
+                    return Err(XyDriverError::message(err.clone()));
+                }
                 let session_id = self.active_session_id.lock().expect("sid").clone();
                 Ok(DispatchOutcome::Messages {
                     session_id,

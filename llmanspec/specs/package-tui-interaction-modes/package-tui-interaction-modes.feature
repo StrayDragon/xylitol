@@ -19,6 +19,11 @@
   @req:r1628
   规则: mode-b-drag-select
     ApplicationOwned 在 mouse capture 开启且应用会话已 begin 时 MUST 将未修饰左键拖选接到应用内选区：按下记录锚点、拖动更新焦点、选区高亮出现在绘出的 transcript 可见行上。空选（锚点与焦点重合）MUST NOT 触发复制成功路径。
+
+    场景: drag-select-copies-transcript
+      假如 ApplicationOwned 应用会话已 begin 且 transcript 有可拖选文本
+      当 未修饰左键拖选非空范围并松开
+      那么 发出 OSC52 剪贴板序列
   @req:r1629
   规则: mode-b-edge-autoscroll
     ApplicationOwned 拖选过程中，当指针贴近视口顶或底边缘时 MUST 自动滚动 transcript 并扩展选区，使选区可跨出当前可见页（越界续选）。自动滚动 MUST 与应用视口共用同一滚动机制，MUST NOT 依赖终端 scrollback 完成续选。引擎 idle/tick 路径 MUST 能推进该自动滚动。
@@ -33,6 +38,11 @@
   @req:r1631
   规则: mode-b-input-exclude
     ApplicationOwned 布局 MUST 将主输入面（Editor/Input 或等价 dock）置于 transcript 选区坐标系之外：绘出帧的底部 dock 行 MUST NOT 进入 transcript 选区文本抽取；指针在 dock 内按下时 MUST NOT 以 dock 文本作为 transcript 拖选起点。
+
+    场景: dock-row-excluded-from-selection
+      假如 transcript 拖选进行中
+      当 指针拖入 dock 矩形
+      那么 选区仍在且焦点夹在 transcript 底边
   @req:r1632
   规则: mode-b-reuses-mouse-pipe
     ApplicationOwned MUST 复用既有 opt-in mouse 管道（Enable/Disable mouse capture 与 InputEvent::Mouse 扇入），MUST NOT 另建平行的第二套鼠标事件源。默认路径下无态变的 Moved MUST NOT 强制整帧重绘。本要求 MUST NOT 规定折叠点击或 Inline 产品默认开鼠标。
@@ -81,3 +91,5 @@
       当 松手复制成功
       那么 copy-notice 信号可观察且空选不发
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

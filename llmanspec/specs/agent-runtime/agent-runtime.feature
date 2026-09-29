@@ -232,3 +232,5 @@
   @req:r1054
   规则: stream-node-timestamps
     ReAct 持久化 assistant 消息时 MUST 附加 streamTiming（camelCase unix-ms 节点，LLM 投影忽略）：本 run 的 agentStarted、本 turn 的 turnStarted、思考通道起止、正文首末 TextDelta、首个工具意图、messageEnded；仅写入实际发生的键。思考通道结束 MUST 在先到的正文/工具意图/ThinkingEnd 打一次，MUST NOT 用 Done 或整段正文结束冒充。textEnded MAY 随最后 TextDelta 覆盖。Thought 展示用思考通道起止派生 thinkingElapsedSecs（不到 1s 省略）。由单测覆盖，MUST NOT 单独扩 BDD step。
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

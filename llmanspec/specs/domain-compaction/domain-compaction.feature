@@ -312,6 +312,10 @@
   @req:r1411
   规则: force 可选 instructions
     手动 force compact（Command::Compact / CompactionOrchestrator::compact）MUST 接受可选 instructions（Option<String> 或等价）；非空时 generate_summary（含 split-turn 的 history 摘要）MUST 在结构化摘要 prompt 上追加「Additional focus:」+ 该文本（对齐 pi customInstructions），MUST NOT 替换整份 Goal/Constraints 骨架；generate_turn_prefix_summary MUST NOT 注入 instructions；仅空白或 None MUST 视为无 instructions；threshold / overflow auto 路径 MUST 不传 instructions，MUST NOT 复用上一次 manual 的 instructions。
+
+    场景: force-instructions-append-focus
+      当 以附加指令合成摘要请求前缀
+      那么 摘要请求含 Additional focus 且骨架保留
   @req:r1412
   规则: compact 输入为 leaf 分支
     prepare_compaction 与 compact_session（及 Orchestrator force/auto/overflow）MUST 仅消费当前 leaf 的分支路径条目（对齐 pi getBranch）；MUST NOT 把旁支 sibling 条目计入切点或摘要范围。
@@ -327,3 +331,10 @@
   @req:r1416
   规则: policy 指纹
     CompactionEntry 的 policy 快照 MUST 记录产生该摘要时的 contextWindow、reserveTokens、keepRecentTokens 与 estimatorVersion；后续 resume、inspect 或诊断 MUST 能区分完整当前快照与迁移 legacy/unknown 标记，MUST NOT 将缺失快照静默解释为当前配置。
+
+    场景: policy-snapshot-recorded
+      假如 会话有 50 个轮次
+      当 触发压缩保留最近 10 轮
+      当 读取最新压缩条目的 policy 快照
+      那么 policy 快照记录窗口保留与估计器版本
+      并且 legacy 无快照条目不当作当前配置

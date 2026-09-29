@@ -27,7 +27,7 @@ pub(crate) async fn run_print(
 ///
 /// Extracted so print-mode event handling can be unit-tested without
 /// capturing the real stdout.
-async fn render_stream<W: Write>(
+pub(crate) async fn render_stream<W: Write>(
     stream: &mut EventStream,
     writer: &mut W,
 ) -> Result<(), XyDriverError> {
@@ -141,7 +141,7 @@ async fn render_stream<W: Write>(
     Ok(())
 }
 
-fn format_tool_start_lines(name: &str, args: &serde_json::Value) -> Vec<String> {
+pub(crate) fn format_tool_start_lines(name: &str, args: &serde_json::Value) -> Vec<String> {
     let mut lines = vec![format!("\n[Tool: {name}]")];
     // c1460: MCP call args on stderr for debug (pretty JSON).
     if is_mcp_tool_name(name) && !args.is_null() {
@@ -150,7 +150,7 @@ fn format_tool_start_lines(name: &str, args: &serde_json::Value) -> Vec<String> 
     lines
 }
 
-fn format_tool_end_line(name: &str, result: &str) -> String {
+pub(crate) fn format_tool_end_line(name: &str, result: &str) -> String {
     let display = if is_mcp_tool_name(name) {
         pretty_json_text(result)
     } else {

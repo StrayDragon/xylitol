@@ -93,6 +93,7 @@
       假如 Settings.default_thinking_level 为 off 且模型支持集为 off 与 high 与 max
       当 select_model 到该模型
       那么 thinking level 为 max
+    # （c2827 合并：runtime-model-registry r1758 thinking-levels-on-meta 的 meta 解析语义由本条 parse-list/freeform-ok 场景承载。）
   @req:r1728
   规则: model-entry-thinking-level-map
     ModelsConfig 的 ModelEntry MUST 支持可选 thinking_level_map（键为档名字符串，值为字符串或 null）；键不在该模型 thinking_levels 声明列表中（缺省列表视为仅 off）时 MUST 使配置加载失败；键与声明列表的归属判定 MUST 精确字符串相等（MUST NOT 因仅大小写或空白差异而匹配）；解析结果 MUST 进入模型 meta 供请求组装；键缺省 MUST 表示使用 adapter 内置默认，null MUST 表示该档不向 provider 发送 thinking/effort 字段。

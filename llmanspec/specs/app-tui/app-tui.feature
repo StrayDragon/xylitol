@@ -21,3 +21,5 @@
   规则: TUI 只承担面本地
     产品 TUI MUST 只执行面本地能力（键盘、绘制、TTY、本机编辑器、剪贴板）。依赖工作区、模型、MCP 或会话生命周期的能力 MUST 由 host 角色执行。载体切分与同进程保留见 app-tui-bridge atb4。MUST NOT 把剪贴板等面本地能力交给远程 host 写入本机盘。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

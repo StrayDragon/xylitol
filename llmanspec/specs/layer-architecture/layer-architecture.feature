@@ -89,9 +89,18 @@
   @req:r1511
   规则: 归属判据
     依赖工作区、仓库、模型或 MCP 的能力 MUST 由 host 执行。依赖本机终端或本机硬件的能力 MUST 由 client 执行。导出 MUST 由 host 序列化内容、由 client 写入本机路径；导入对称。一条 reload MUST 同时让 client 热加载本机键位与主题，并向 host 请求重装 MCP / prompt / 技能。默认 embed 同进程时，导出/导入/reload MUST 视为已满足（同一进程内按角色分工即可），MUST NOT 要求先存在跨进程 attach。
+
+    场景: reload-dual-end-effect
+      当 以主机泵在 idle 提交 "/reload"
+      那么 重载经共享缝完成且尾插 Reload 步进汇总
+      那么 运行时重载调用恰一次
   @req:r1512
   规则: embed 不要求监听器
     host 是操作器角色，MUST NOT 被等同于占用了网络绑定的监听器。print 与库嵌入 MUST 允许 client 与 host 同进程、同一条产品契约自连，且 MUST NOT 要求先占用监听地址。占用绑定是显式 serve 的职责，不是 embed 的前提。产品 TUI 对监听器的要求（默认 127.0.0.1:18790、未在听即失败）由 cli-entry r1391 承载。
+
+    场景: embed-print-no-listener
+      当 以同进程驱动完成一轮 print 对话
+      那么 对话完成且未要求监听器
   @req:r1513
   规则: session 原子与分面
     产品最小对话单元 MUST 是 session。cwd MUST 只表示执行面（工具 / bang / trust / MCP 池），MUST NOT 当作唯一分类夹。视图组织 MUST 允许用 tag 等高频分面，且分面索引 MUST 与 transcript 分离。本 requirement MUST NOT 要求交付独立 tag catalog。

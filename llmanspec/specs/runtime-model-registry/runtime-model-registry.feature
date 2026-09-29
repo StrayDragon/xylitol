@@ -18,20 +18,10 @@
   规则: 模型解析器
     System MUST 提供 resolve_model(pattern, available)，支持 provider/modelId 规范形式、裸 id 匹配、别名优先于带日期版本、以及 thinking-level:model pattern 解析。
   @req:r1754
-  规则: 作用域模型
-    System MUST 支持 scoped_models（来自 CLI --models 标志），用于模型循环，将可用模型限制为用户指定子集并可含每模型 thinking level。
   @req:r1755
   规则: 模型回退
     目标模型 ID 不在 provider 可用列表时，ModelResolver MUST 构建回退 Model，保留用户意图并回退到同 provider 基础模型。
   @req:r1756
-  规则: 鉴权指引
-    未配置模型 API key 时，ModelRegistry MUST 返回面向用户的错误消息，指引正确环境变量名。
-  @req:r1757
-  规则: BDD model
-    模型注册表与解析的 BDD 测试 MUST 全部通过。
-  @req:r1758
-  规则: thinking-levels-on-meta
-    ModelRegistry / resolve_model_meta（或等价）MUST 将配置中的 thinking_levels 字符串列表填入模型 meta 支持集并保留配置顺序；thinking 为 false 或未声明可调列表时支持集 MUST 仅为 off（不可调）。MUST NOT 在未声明列表时静默展开历史 STANDARD（off…high）或其它全球超集；MUST NOT 要求档名属于封闭枚举超集；MUST NOT 依赖 xylitol-tui ThinkingBorderLevel。
   @req:r1743
   规则: thinking-level-validate-clamp
     set_thinking_level（或 Driver 等价）在目标 level 不在当前模型支持集时 MUST 拒绝且 MUST NOT 更改当前值。匹配 MUST 为精确字符串相等（与配置声明字面量一致）；MUST NOT 因仅大小写或首尾空白差异而接受（例如声明 high 时 MUST 拒绝 HIGH 与「 high 」）。换模、精确 /model <id> 或路径要求默认档时：可调模型 MUST 采用支持集配置顺序的末项；仅精确 off 或不可调 MUST 为 off。MUST NOT 因 Settings.default_thinking_level 覆盖换模末项策略。会话 load/resume 还原分支末次 thinkingLevelChange 字符串时 MUST 原样恢复，MUST NOT 因集外而改写 JSONL 或自动追加 clamp 条目；配置漂移时 MAY 短暂 sticky 集外直至用户显式改档。产品面 MUST 展示当前模型声明的档名列表；provider wire 差异经 thinking_level_map 与 api×compat 在请求边界生效。
@@ -43,7 +33,7 @@
   @req:r1744
   规则: thinking-level-on-generate
     Agent 在调用 generate_stream（或等价）时 MUST 传入当前 thinking 档名字符串与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下一轮 provider 请求体；MUST NOT 仅更新会话/UI 状态而不影响请求组装。
-  @req:r1748
+   @req:r1748
   规则: thinking-level-exact-opaque
     运行时对 thinking 档名（支持集成员、set/cycle、Settings 默认是否 ∈ 支持集、可调判定中的关档字面量）MUST 使用精确 opaque 字符串；关档约定字面量 MUST 为精确 off。MUST NOT 在匹配或可调判定中对档名做 ASCII 大小写折叠或 trim 归一。
 

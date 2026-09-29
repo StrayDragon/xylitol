@@ -5,9 +5,6 @@
 
 功能: agent-session-store
 
-  @req:r31
-  规则: 快照操作
-    System MUST 支持对不可变会话快照执行 snapshot、restore、spawn、list、prune、diff、merge 操作。
   @req:r41
   规则: compaction
     当 CompactionSettings.enabled 且上下文占用超过 window−reserve（c1630）时，System MUST 在 agent/capabilities 回合落定后自动 compact（c1640）；MUST NOT 仅依赖百分比闸或仅 TUI 轮询。
@@ -279,8 +276,6 @@
       那么 HTML 文件 "blocks.html" 含可读块文本 "$ make test"
       并且 HTML 文件 "blocks.html" 含可读块文本 "构建通过"
   @req:r1089
-  规则: 分享指引
-    未配置 token 时调用分享，System MUST 返回配置指引。
   @req:r1111
   规则: CWD 校验
     恢复会话时 System MUST 校验会话头存储的 cwd 在磁盘可用；不可用时 MUST 尝试 fallback cwd，其一可用即继续。

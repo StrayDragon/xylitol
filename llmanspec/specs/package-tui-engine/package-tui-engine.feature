@@ -27,3 +27,5 @@
   规则: input-event-mouse
     InputEvent MUST 包含 Mouse 变体（携带列/行与按键或移动类别，足以表达 crossterm MouseEvent 语义）；dispatch_event 与 add_input_listener MUST 可接收 Mouse；demo/start 事件环 MUST 能将 crossterm Event::Mouse 映射为 InputEvent::Mouse。默认路径下 Mouse Moved（或等价无态变移动）MUST NOT 强制整帧 do_render / 递增 frame_count；本要求 MUST NOT 规定产品折叠点击语义。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

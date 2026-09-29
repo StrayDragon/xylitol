@@ -36,3 +36,5 @@
   规则: thinking-border-apply
     Editor MUST 能在不重建实例的前提下经 set_border_color（ed08）或薄 helper apply_thinking_border 应用 Palette 给出的 thinking 边框闭包；应用后 render 的边框行 MUST 经该闭包着色；MUST NOT 在 Editor 内硬编码产品 domain ThinkingLevel。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

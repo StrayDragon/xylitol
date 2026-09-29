@@ -6,6 +6,14 @@
 
 mod logging;
 mod print;
+#[cfg(test)]
+pub(crate) use print::render_stream;
+#[cfg(test)]
+pub(crate) use print::{format_tool_end_line, format_tool_start_lines};
+#[cfg(test)]
+pub(crate) use provider_guidance::{
+    format_no_api_key_found_message, format_no_models_available_message, get_provider_login_help,
+};
 mod provider_guidance;
 pub mod resources;
 pub mod tokenizer;

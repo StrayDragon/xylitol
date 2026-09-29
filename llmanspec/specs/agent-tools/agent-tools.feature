@@ -77,9 +77,17 @@
   @req:r1149
   规则: grep-find-timeout-schema
     grep 与 find 的 parameters schema MUST 暴露可选 timeout（秒）；行为遵循 t24。
+
+    场景: search-tools-expose-optional-timeout
+      当 检查内置工具的参数 schema
+      那么 grep 与 find 的 schema 含可选 timeout
   @req:r1153
   规则: fs 工具有界
     read、write、edit、ls 四个文件类工具的执行等待 MUST 有默认上限（30 秒），到期以 timeout 类错误呈现；MUST NOT 向模型暴露 per-call timeout 参数。
+
+    场景: fs-tools-hide-per-call-timeout
+      当 检查内置工具的参数 schema
+      那么 文件类四工具的 schema 不含 per-call timeout 参数
   @req:r7
   规则: find 禁止绝对路径逃逸
     Find 工具 MUST 拒绝绝对 pattern，或 MUST 规范化结果以验证其仍在 root 目录内。

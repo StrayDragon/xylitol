@@ -11,9 +11,15 @@
   @req:r1462
   规则: provider-raw-mapped-对照
     当 provider tracing 激活时，每次 provider HTTP 流 MUST 在同一 fastrace 请求 span / request_id 下记录原始协议事件与映射后的 XyChunk 变体（Event），使 agent 能区分上游通道混写与适配器映射错误；记录 MUST 只经 file-only Reporter 写入 agent 日志目录专用文件（禁止 stdout/stderr 与 ConsoleReporter），MUST NOT 包含 Authorization 或 API-key 头值，且 MUST NOT 经 script hook 分发。
+
   @req:r1463
   规则: provider-trace-闸门
     Provider tracing 在 cfg(debug_assertions) 下 MUST 默认安装 Reporter，在 release 构建 MUST 默认不安装；release MUST 经 XYLITOL_PROVIDER_TRACE 显式打开；tracing 未激活时 MUST 避免对 SSE 载荷做昂贵序列化；新增跨层低频 span MUST 遵守同一闸门（关闸零/近零开销）。
+
+    场景: trace-gate-off-emits-nothing
+      假如 mock 模型先 tool 后无 tool
+      当 以未开启观测闸运行一次带工具调用的 agent 回合
+      那么 默认观测闸为关且回合正常完成不出口任何 span
   @req:r1464
   规则: fastrace-单栈
     仓库观测时间线 MUST 仅使用 fastrace；级别诊断 MUST 使用 log 门面；Cargo 与 src MUST NOT 依赖 tracing 或 tracing-subscriber；MUST NOT 引入 fastrace-tracing 兼容层。允许 fastrace-futures 等官方 companion（非 tracing 桥）。

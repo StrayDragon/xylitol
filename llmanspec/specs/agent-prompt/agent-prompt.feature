@@ -25,12 +25,27 @@
   @req:r1023
   规则: context 热应用
     Agent MUST 提供 apply_prompt_resources（或等价）：用新的 context_files、system_prompt、append_system_prompt 重建系统提示；MUST 只影响后续 run；MUST NOT 改写已持久化历史消息。
+
+    场景: apply-prompt-resources-next-run
+      假如 Agent 能力聚合体已就绪
+      当 热应用新的上下文与系统提示资源
+      那么 系统提示按新资源重建
   @req:r1024
   规则: skills 热应用与引导注入
     Agent MUST 在构造/bootstrap 时将 ResourceLoader 发现的 skills 写入 SystemPromptOpts 并经 build_system_prompt 进入 available_skills（若非空）；MUST 提供 apply_skills（或扩展 apply_prompt_resources）用新目录重建系统提示；MUST 只影响后续 run；MUST NOT 改写已持久化历史；未信任 MUST NOT 注入项目 skills。
+
+    场景: apply-skills-rebuilds-catalog
+      假如 Agent 能力聚合体已就绪
+      当 热应用技能目录 greet
+      那么 系统提示含 available_skills 清单
   @req:r1025
   规则: dollar-skill 提交注入
     当用户消息含 $name 且 name 在已加载 skills 目录中时，System MUST 在发往模型前将对应 SKILL.md 正文（去 frontmatter）注入该 user 消息的模型侧投影；会话历史 MUST 保留原始含 $ 文本；未知 $name MUST 透传；未信任 MUST NOT 注入项目 skill 正文（目录已空即可）。
+
+    场景: dollar-skill-expands-body
+      假如 已加载技能 greet 正文为 "SKILL BODY"
+      当 对含技能引用的输入展开技能
+      那么 投影注入技能正文且未知名透传
   @req:r1026
   规则: tool-prompt-guidelines-assembly
     set_tools 或等价初次装配工具集时，System MUST 收集各 XyTool::prompt_guidelines（非空）写入 SystemPromptOpts.prompt_guidelines，并经 build_system_prompt 进入 Guidelines 段；内置 bash/read/edit/write（及已启用的同族工具）MUST 提供与 pi 对齐的非空 guideline 短句。MUST NOT 为抑制 XML 伪工具而注入防呆文案。自定义 SYSTEM.md 或 custom_prompt 整段替换默认正文时 MUST 保持替换语义（不偷偷回填 Available tools）。
@@ -50,6 +65,11 @@
   @req:r1017
   规则: builtins-available-tools-mcp-discover
     默认 build_system_prompt 路径下 Available tools 散文清单 MUST 仅含内置（非 mcp__ / 过渡 mcp- / mcp_ 前缀）工具片段；MUST 含一句引导：MCP/custom 工具以本会话定稿后的请求 tools 列表为准并按精确名调用（MAY 提示用户经产品 `/mcp` 查看连接与 armed）。MUST NOT 在 Available tools 段枚举 mcp 工具名。定稿后 provider tools 参数 MUST 可含当时冻结的 mcp 工具；MUST NOT 暗示 settle 后会继续热扩 tools 表。自定义 SYSTEM.md 或 custom_prompt 整段替换默认正文时 MUST 保持 pt9 替换语义。
+
+    场景: available-tools-omits-mcp-names
+      假如 工具片段含 mcp 前缀工具
+      当 以默认路径组装系统提示
+      那么 系统提示不含 mcp 工具名且含 MCP 引导句
   @req:r1018
   规则: system-omit-date-and-session-env
     系统提示 MUST NOT 写入日历日或 CWD（无 date_placement 旋钮，日历日/CWD 由 session_env 提供）。产品路径 MUST 将日历日/CWD 以状态栏族特殊类型 session_env（Env CustomMessage，project_for_llm 投影为 user）在用户真实输入落盘之前持久化：首轮或相对上次 session_env 的日历日/CWD 有变时追加；同日同 cwd MUST NOT 重复追加。压缩裁剪或 overflow 同轮 reload 之后、继续向模型生成之前，上下文 MUST 仍含与当前日历日/进程 cwd 对齐的 session_env（缺失或日/cwd 过期则 ensure 追加并持久化）。秒级时间戳 MUST NOT 进系统提示。完整状态栏 Lane 由后继 change 消费既有 session_env。由单测覆盖；MUST NOT 为静态存在性单独扩 BDD step。

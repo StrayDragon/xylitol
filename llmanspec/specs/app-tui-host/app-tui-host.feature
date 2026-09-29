@@ -11,12 +11,21 @@
   @req:r1248
   规则: terminal-restore
     产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
+
+    场景: terminal-restore-on-exit
+      当 以主机泵在 idle 提交 "/exit"
+      那么 会话请求退出且终端已恢复
   @req:r1259
   规则: infra-logging-default
     debug 构建下产品 TUI MUST 默认启用即时文件日志（人类与 agent 可用 tail -f 观察）；release 构建 MUST 默认关闭，仍可通过 XYLITOL_DEBUG 或 RUST_LOG 显式打开。日志路径与查看方式由面 AGENTS 文档写明。
   @req:r1270
   规则: resize-and-min-size
     终端 resize MUST 触发重绘且不得丢失输入焦点语义；当引擎因极端尺寸无法安全渲染时 MUST 干净恢复终端并退出进程，MUST NOT 卡死终端模拟器。宽度小于 40 或高度小于 6 时 MUST 显示友好提示而非 panic。
+
+    场景: min-size-friendly-hint
+      假如 以小于最小尺寸的终端挂载主机泵
+      当 渲染当前主机帧
+      那么 显示友好的最小尺寸提示而非 panic
   @req:r1277
   规则: host-harness-testable
     产品 TUI host MUST 将事件推进与终端 I/O 解耦（可注入事件与终端），使 min-size 提示、事件分发与无阻塞主循环路径可在无真 TTY 的 harness 中验证。
@@ -26,6 +35,16 @@
   @req:r1279
   规则: single-mux-loop
     产品 TUI host MUST 以单一扇入模型同时等待终端输入、idle tick、可选 agent EventStream、可选 bang 完成与 bang 输出事件：生产主环与 harness MUST 调用同一共享 bang/主环事件臂（或单一 select 拓扑）；MUST NOT 保留与共享入口分叉的第三套 bang Esc select；bang 进行中 Esc MUST 仍可达 Driver（或等价）abort 并走取消说明；bash 输出事件（session/bash_output）到达 MUST 仅标记 dirty 并在 Tick 或 BangDone 时按需渲染，MUST NOT 每事件强制全屏重绘；进行中的 bang MUST 仍可 poll agent EventStream（不得 bang-only 饿死 agent）。
+
+    场景: bang-esc-single-loop
+      假如 交互 bang 正在运行且驱动为 ScriptedDriver
+      当 以主机泵开启忙碌流并按下 Esc 后收流关闭并渲染
+      那么 abort 计一次且未退出且回到可输入 idle
+
+    场景: bang-polls-agent-stream
+      假如 交互 bang 正在运行且驱动为 ScriptedDriver
+      当 以主机泵提交挂起 bang 并注入事件后按 Esc
+      那么 事件被消费且中止计一次且未退出
   @req:r1241
   规则: agents-layout-map
     产品 TUI 面 AGENTS 文档 MUST 提供本地布局地图（目录/文件职责、协调者与可下沉模块边界、硬约束与验证命令指针）；MUST NOT 把进度板或易腐清单写入 AGENTS。
@@ -35,6 +54,12 @@
   @req:r1244
   规则: session-read-errors-surfaced
     产品 TUI 在 travel/fork/label 等路径调用 Command::GetMessages（或等价）失败时 MUST 向用户展示 system/error note，MUST NOT 以 unwrap_or_default 静默得到空 transcript 并当作成功。
+
+    场景: get-messages-failure-surfaced
+      假如 驱动对消息快照返回失败
+      当 以主机泵注入可恢复会话列表后提交 "/session-resume"
+      当 以主机泵在面板中确认选定
+      那么 写入错误提示而非静默空 transcript
   @req:r1245
   规则: session-list-seam
     产品 TUI 获取可 resume 会话列表时 MUST 经 Driver（或 app::core 公开 seam）list_sessions 或等价 API，行 MUST 能支撑 scope（cwd）、预览、parent、mtime/age 与可选 path 展示；MUST NOT 从 app/tui 直接 import infra::session / 直接读 sessions 目录；switch 成功后 MUST 重建 transcript 并清除与旧 session 绑定的树槽/pending UI 态。
@@ -48,6 +73,16 @@
   @req:r1247
   规则: session-resume-manage-seam
     产品 TUI Resume 面板内 rename/delete MUST 经 Command::SetSessionName / DeleteSession（或 app::core 公开等价 seam）；删除当前活跃 session MUST 拒绝并提示且 MUST NOT 调用删除；删除 MUST 经显式确认（确认前 MUST NOT 删盘）；scope=Current MUST 仅展示 cwd 匹配会话，scope=All MUST 展示 Command::ListSessions 或等价列举的全部可 resume 会话；TUI MUST NOT 直删会话文件。
+
+    场景: resume-delete-current-refused
+      当 以主机泵注入含当前会话的可恢复列表后提交 "/session-resume"
+      当 以主机泵在面板中按删除
+      那么 提示无法删除当前会话且未调用删除
+
+    场景: resume-delete-requires-confirm
+      当 以主机泵注入可恢复会话列表后提交 "/session-resume"
+      当 以主机泵在面板中按删除再确认
+      那么 删除恰经驱动调用一次
   @req:r1249
   规则: reload-orchestrates-foundations
     产品 host/effects 在处理 /reload 时 MUST 经 Driver/composition 缝调用已归档的 reload_skills、MCP reload、keybindings reload、theme/context reload（若已接线），MUST 在 skills 重载后刷新产品 $skill 补全 catalog；MUST NOT reach agent/infra 内部绕过 seam；任一步失败 MUST 记录诊断并继续其余步骤（部分成功）。
@@ -74,6 +109,11 @@
   @req:r1253
   规则: tick-gated-local-paint
     产品 host 在 Ready 态处理 Tick 时：MUST 先推进 idle 心跳；仅当 idle 心跳报告 dirty 或 host 已置 paint_dirty（含 bang 输出事件追加）时才请求渲染；idle 且无 paint_dirty 时 MUST NOT 仅为 Tick 整帧重绘。UiRoot 对 loaded-resources+scrollback+queue MUST 在仅 status Loader 动画帧推进（含 Loader 帧换与纯 status 短词变化）时复用上区行缓存；仅当 entries、streaming tails、queue strip、fold、theme、loaded-resources 或宽度变化时 MUST 失效该上区缓存。
+
+    场景: idle-tick-no-full-repaint
+      假如 以主机泵在空闲态渲染基线帧
+      当 空闲态推进一次 Tick
+      那么 未触发整帧重绘
   @req:r1254
   规则: scrollback-entry-paint-cache
     产品 live scrollback 绘制 MUST 对已提交 UiEntry 使用按条目指纹的行缓存：在 width 与 fold 不变时，仅 streaming tails 或发生变化的条目 MUST 触发该条目（及必要时其后条目）重绘；MUST NOT 因单次 TextDelta/ThinkingDelta 而对全部历史 Assistant 条目重新 Markdown 解析。MUST 在无真 TTY harness 中可测（重绘/miss 计数上界）；可选 PTY/tmux e2e 冒烟 MUST 在较大 scrollback 下仍能完成一轮并干净退出，MUST NOT 以 OS CPU% 作为硬闸。
@@ -107,6 +147,11 @@
   @req:r1258
   规则: mouse-input-opt-in-no-moved-paint
     产品 host 扇入 MUST 能将 crossterm Event::Mouse 映射为 HostEvent::Input(InputEvent::Mouse)（Moved 可在映射前丢弃）。Ready 态处理 Mouse 时：无 UI dirty / 未消费态变 MUST NOT request_render（含无态变 Moved）；消费态变（如 ApplicationOwned 拖选）MAY request_render。产品 MUST NOT 经 TerminalGuard / `XYLITOL_TUI_MOUSE` 在进 TTY 时默认开 mouse capture；ApplicationOwned 会话 begin 后的 capture 见 ath30。teardown MUST Disable mouse capture（尽探针所能断言 mouse mode 不残留）。MUST 提供 #[ignore] PTY 用例（经 just test-tui-e2e-pty 可跑）；默认 just qa MUST NOT 强制该用例。折叠点击语义不在本要求范围。
+
+    场景: mouse-moved-no-repaint
+      假如 以主机泵在空闲态渲染基线帧
+      当 注入无态变的鼠标移动
+      那么 未触发整帧重绘
   @req:r1260
   规则: interaction-mode-application-owned-default
     产品 TUI MUST 在 host **启动构造时**绑定 xylitol-tui 交互模式为 ApplicationOwned（应用自管视口 / alt-screen）。缺省/未配置 MUST 为 ApplicationOwned。一次会话 MUST 只有一个主模式；MUST NOT 在会话运行中热切模式（改模式 = 结束进程或新建 HostSession，不是 mid-loop 换栈 API）。MUST NOT 把 XYLITOL_TUI_MOUSE 环境变量当作产品模式开关；MUST NOT 提供面向用户的 Inline/ApplicationOwned 切换设置。产品 MUST 将下缘固定区（至少 status/editor/footer 所占行）登记为 dock，使包级选区排除输入面；teardown MUST 不残留 mouse capture / alt-buffer。退出 ApplicationOwned 时产品 MUST 依赖库 finish dump（或等价）使主屏 scrollback 仍可读会话内容；本要求不要求向用户暴露 dump opt-out。折叠点击语义不在本要求范围（见后续 fold 族 change）。库仍可暴露 Inline 构造入口供 lab/demo；产品默认路径 MUST NOT 使用 Inline。
@@ -120,6 +165,10 @@
   @req:r1262
   规则: enter-follows-transcript-bottom
     产品 TUI 在 ApplicationOwned 的 Ready 主输入面收到 `tui.input.submit` Enter 时 MUST 立即将 transcript 视口滚到底部并恢复尾插；该行为 MUST 同时适用于非空提交与空输入。空输入 MUST NOT 因此创建 submit；非 Editor 槽中的 Enter MUST 保留给该槽自身的确认语义，不得强制滚动 transcript。
+
+    场景: empty-enter-no-submit
+      当 空输入按下 Enter
+      那么 未创建提交且仍在编辑器槽
   @req:r1263
   规则: fold-triangle-hit-priority
     产品 TUI 在 ApplicationOwned 会话下 MUST 将 live scrollback 折叠三角命中表接到库 set_transcript_hit_priority（或等价）：Left Down 命中三角列时 MUST 吞按下、清除 transcript 选区且不启拖选，并触发 att20/att21 的单块 toggle；未命中时 MUST 保持既有选区/dock/Editor 路径。transcript 拖选进行中 MUST 不重新消费折叠命中。产品 MUST NOT 经 XYLITOL_TUI_MOUSE 作为折叠开关。验证 MUST 含无真 TTY harness（合成 Mouse）。

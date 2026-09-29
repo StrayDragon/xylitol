@@ -141,3 +141,5 @@
       假如 交互 bang 正在运行且驱动为 ScriptedDriver
       当 提交声明为 Inline 的无参 /model
       那么 模型列表 effect MUST 在 bang 结束前挂载生效
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

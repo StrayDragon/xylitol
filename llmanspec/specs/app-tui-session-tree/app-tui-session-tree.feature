@@ -32,15 +32,35 @@
   @req:r1326
   规则: product-session-tree-fork
     产品会话树 Shift+F MUST 创建新 child session：内容 MUST 为 get_branch 路径并重链 parent_id（对齐 pi createBranchedSession），MUST NOT 按 JSONL 文件序切片，MUST NOT 改写父文件，header MUST 含 parent_session。选中 user 时 MUST 用 ForkPosition::Before（leaf=parent、预填正文、不拷该 user）；选中非 user 时 MUST 用 ForkPosition::At（路径含选中、不因 fork 预填 user 正文）。随后 MUST 经 Command::SwitchSession 切换到 child 并关树。MUST NOT 使用 demo 同会话 ast5。
+
+    场景: product-tree-fork-creates-child
+      当 以主机泵挂载样例树数据后空编辑器双 Esc
+      当 在树槽按下分叉和弦
+      那么 新建子会话并切换且树关闭
   @req:r1327
   规则: session-tree-slot-help-search
     产品会话树槽打开时 MUST 在 TreeSelector 列表上方渲染 Search 行与 TreeHelp 行：Search 在无查询时提示可键入搜索、有查询时显示 Search: 与当前串；TreeHelp MUST 根据 KeybindingsManager（或只读封装）解析当前键位展示 move/page/fold/unfold（折叠）/filters/cycle 等用途片段（可用 · 分隔并随宽度换行），MUST NOT 再使用仅含 Up/Down Enter travel 的过时硬编码唯一提示行作为树槽唯一头行；MUST NOT 把产品 FilterMode 硬编码进 packages/xylitol-tui。
+
+    场景: tree-slot-search-help-lines
+      当 以主机泵挂载样例树数据后空编辑器双 Esc
+      当 渲染当前主机帧
+      那么 树槽渲染 Search 行与 TreeHelp 行
   @req:r1328
   规则: session-tree-label-persist
     产品会话树打开时 Shift+L MUST 进入节点 annotation 编辑；Enter 提交后 MUST 经 Driver 将 Label entry 写入当前 session（空串 MUST 清除 annotation）；重开或刷新后 MUST 仍可见对应 TreeNode.annotation；Shift+T MUST 切换 annotation 时间戳显示（本 change 允许本地 just now）；MUST NOT 在产品面 reach infra::session。
+
+    场景: tree-label-persist-via-driver
+      当 以主机泵挂载样例树数据后空编辑器双 Esc
+      当 在树槽编辑选中节点标签为 "重点"
+      那么 标签经驱动写入且注解生效
   @req:r1329
   规则: debug-scene-tree-fixture
     经 /debug session-tree-multiturn 或 /debug session-tree-labeled 装载后，产品双 Esc 打开的 MessageHistory 树 MUST 非空且可见 fixture user 正文；session-tree-labeled MUST 使至少一节点 annotation 有值以便 labeled-only 过滤可验。
+
+    场景: debug-tree-fixture-nonempty
+      当 以主机泵在 idle 提交 "/debug session-tree-multiturn"
+      当 以主机泵空编辑器双 Esc 开树
+      那么 会话树非空且含 fixture 用户正文
   @req:r1330
   规则: travel-notice-trailing
     产品会话树 Enter travel 成功并重建 transcript 后，MUST 以可滚 UiEntry::ScrollNotice（或等价滚动提示行）尾插完整 history @ selected · leaf · path 文案，使跟底时出现在输入框上方视野；重建投影 MUST NOT 将该通知 prepend 为 entries 首条。fork / session 切换 / debug scene 等已有尾插产品 note 的路径 MUST NOT 再叠一条 history @（去重）。

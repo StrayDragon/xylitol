@@ -519,6 +519,11 @@ impl<T: Terminal> TUI<T> {
         self.frame_count
     }
 
+    /// Whether `stop()` ran on the terminal (teardown probe for BDD/host tests).
+    pub fn stop_requested(&self) -> bool {
+        self.stopped
+    }
+
     /// Lines that ran normalize + `visible_width` in `do_render` (harness / obs).
     pub fn finalize_width_checks_for_test(&self) -> u64 {
         self.finalize_width_checks

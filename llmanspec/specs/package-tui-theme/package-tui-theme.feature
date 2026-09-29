@@ -29,3 +29,5 @@
   @req:r1676
   规则: paint-left-rail-line
     包 MUST 导出 paint_left_rail_line（或等价）：对给定行宽与轨色，输出「1 列轨底色空格 + 1 列无底色 gutter + 拟合内容」的真彩行；窄宽 MUST 不 panic（内容宽可压到 0）；轨段背景复位 MUST 遵循包 paint 约定（\\x1b[49m 或行内恢复）。MUST NOT 要求调用方手写轨/gutter 宽预算。
+
+# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
