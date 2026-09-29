@@ -334,6 +334,7 @@
   @req:r1415
   规则: 压后地板一次性诊断
     auto 路径（threshold / overflow）compaction 成功且其 AfterCompaction settlement tokens ≥ contextWindow（压后仍无可用窗口，固定开销吃满窗口的退化形态）时，System MUST 经 CompactionEnd 载荷（notice 或等价）发一条可行动诊断（建议：调低 keepRecentTokens / 调高 contextWindow / 精简工具面），每个会话运行（run）至多一次（对齐 c22 每 run 一次 overflow recovery 的作用域纪律）；manual force 路径 MUST NOT 发诊断；地板阈值本身不构成诊断条件（地板 + 迟滞 ∈ (window − reserve, window) 的受控频繁模式 MUST NOT 触发诊断）。
+    # verified-by: fn floor_notice_fires_once_and_manual_exempt
   @req:r1416
   规则: policy 指纹
     CompactionEntry 的 policy 快照 MUST 记录产生该摘要时的 contextWindow、reserveTokens、keepRecentTokens 与 estimatorVersion；后续 resume、inspect 或诊断 MUST 能区分完整当前快照与迁移 legacy/unknown 标记，MUST NOT 将缺失快照静默解释为当前配置。

@@ -959,6 +959,49 @@ mod tests {
             ends.iter().all(|(m, _)| m.is_some_and(|v| v >= window)),
             "post-compact projection must sit at/over the window: {ends:?}"
         );
+
+        // manual force 路径 MUST NOT 发地板诊断（compact() 不接 floor 旗标；
+        // 此断言把 c28 的 manual 豁免从实现形态钉成行为证据）。
+        let model = fake_xy_model("sum", vec![ScenarioStep::text(big_summary.clone())]);
+        orch.compact(
+            &mgr,
+            sid,
+            &CompactionSummaryBinding::for_test(model, "sum"),
+            sink.as_ref(),
+            None,
+            window,
+            Some(&fixed),
+            &mut fallback_notice,
+        )
+        .await
+        .expect("manual compact on the same over-window session");
+        let manual_end_count = sink
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    Ev::CompactionEnd { reason, .. } if reason == "manual"
+                )
+            })
+            .count();
+        assert_eq!(manual_end_count, 1, "one manual compact expected");
+        let manual_carries_floor = sink.0.lock().unwrap().iter().any(|e| {
+            matches!(
+                e,
+                Ev::CompactionEnd {
+                    reason,
+                    notice: Some(n),
+                    ..
+                } if reason == "manual" && n.contains("Context still ~")
+            )
+        });
+        assert!(
+            !manual_carries_floor,
+            "manual path MUST NOT carry the floor diagnostic"
+        );
     }
 
     /// c2 anti-churn: 32k-shape small window — appended turns must NOT compact
