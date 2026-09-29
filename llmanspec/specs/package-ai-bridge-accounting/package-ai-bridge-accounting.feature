@@ -24,21 +24,27 @@
   @req:r1563
   规则: Api-trailing-范围
     当 Api 锚点有效时，trailing_tokens MUST 仅计入 last usage 消息之后的消息（对齐 pi estimateContextTokens）；MUST NOT 对锚点及之前的消息再叠加 heuristic；last_usage_index MUST 为该锚点消息下标；若消息列表中找不到带 usage 的 assistant，可将整段列表视为 trailing 且 last_usage_index 可为 null。
+    # verified-by: packages/xylitol-ai-bridge/src/accounting/mod.rs
   @req:r1565
   规则: 禁止流上全量 encode
     generate_stream 热路径 MUST NOT 在每个文本 delta 上对累计全文调用完整本地 tokenizer.encode；本地精确计数 MUST 仅在显式 estimate 调用、流结束补洞或经文档化的节流策略下发生。
+    # verified-by: packages/xylitol-ai-bridge/src/tokenize/mod.rs
   @req:r1566
   规则: Heuristic-诚实标注
     当最终采用 Heuristic 时，ContextTokenEstimate 的 provenance MUST 为 Heuristic；下游展示层若使用该结果 MUST 能区分于 Api/LocalTokenizer。
+    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
   @req:r1567
   规则: RemoteCount-可降级
     RemoteCount（Anthropic count_tokens 与 OpenAI Responses input_tokens，及等价注入 stub）MUST 可配置关闭；调用失败或超时时 MUST 降级到 LocalTokenizer 或 Heuristic，且 MUST NOT 将失败结果标为 Api。
+    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
   @req:r1568
   规则: LocalTokenizer-注册与缓存
     LocalTokenizer MUST 经 registry 将 model_id 映射到 Builtin、HuggingFace tokenizer.json 或本地 path 源（用户配置优先于 builtin 启发式）；HuggingFace 文件下载 MUST 为 opt-in 或显式 prefetch，默认 MUST NOT 静默拉取大文件；缓存命中或 local path 可用后 MUST 可离线加载。
+    # verified-by: llmanspec/specs/cli-entry/cli-entry.feature
   @req:r1569
   规则: openai-responses-remote-count
     当模型路径为 OpenAI Responses（或声明兼容 input_tokens 的端点）且 RemoteCount 已启用时，估计上下文 MUST 可经 POST /v1/responses/input_tokens（或配置的 base_url 等价路径）取得 input_tokens 并标 provenance 为 RemoteCount；非 Responses 路径 MUST NOT 伪造该远程调用成功。
+    # verified-by: packages/xylitol-ai-bridge/src/accounting/mod.rs
   @req:r1570
   规则: tokenizer-cache-manage-api
     HfTokenizerCache（或等价）MUST 提供可测的缓存根查询、条目列举与按键删除；opt-in download MUST 在成功前不把不完整文件当作可用缓存；CLI 与其它面 MUST 经此 API 管理缓存，MUST NOT 在估计路径调用 download。
@@ -68,3 +74,4 @@
   @req:r1562
   规则: local-tokenizer-gate
     LocalTokenizer 档 MUST 仅在显式允许时参与估计（配置 on|off，默认 off）；off 时即便 registry 已映射或缓存可用，估计路径 MUST NOT 调用本地 encode，并 MUST 继续按 paa1 降级到其后档；本波 MUST NOT 引入 every-N 或 idle 等其它本地计数策略。
+    # verified-by: llmanspec/specs/runtime-config/runtime-config.feature

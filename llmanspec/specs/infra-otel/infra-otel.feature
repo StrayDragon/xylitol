@@ -30,9 +30,11 @@
   @req:r1487
   规则: otel-fastrace-only
     OTLP 出口 MUST 建立在 fastrace Reporter 之上（fastrace-opentelemetry）；Cargo 与 src MUST NOT 为该出口引入 tracing 或 tracing-subscriber；MUST NOT 使用会打印到 stderr/stdout 的 ConsoleReporter 或 OTEL 调试打印破坏 TUI。
+    # verified-by: Cargo.toml
   @req:r1488
   规则: otel-fanout-with-file
     当本地 provider-trace FileReporter 与 OTLP Reporter 同时满足开启条件时，组合根 MUST 使用 fan-out（或等价）同时投递同一批 SpanRecord；任一侧失败 MUST NOT 静默关掉另一侧的既有闸门语义（OTLP 侧失败按 otel3 降级）。
+    # verified-by: src/infra/observability/fanout.rs
   @req:r1489
   规则: otel-session-id-always
     当低频观测 span 激活且当前会话 UUID 已知时，导出根 span（至少 agent.turn；以及无父 turn 时的独立 token.estimate 与独立 agent.compaction）MUST 携带属性 langfuse.session.id，其值 MUST 等于该会话 UUID；同 turn 子 span MUST 继承同一 trace 从而同属该 session；MUST NOT 用 display name 替代 session id。
@@ -63,6 +65,7 @@
   @req:r1492
   规则: otel-generation-usage
     当低频观测 span 激活且 llm.request 流以带 usage 的 Done 结束时，该 generation span MUST 携带 langfuse.observation.usage_details（JSON：input/output/total，可选非零 cache 字段）；MUST NOT 再额外写入 gen_ai.usage.*（与 usage_details 同映射且 inclusive 语义冲突）；无 usage 时 MUST NOT 伪造零用量属性。
+    # verified-by: packages/xylitol-ai-bridge/src/provider/trace.rs
 
   @req:r1467
   规则: otel-observation-io-tier
@@ -120,6 +123,7 @@
   @req:r1475
   规则: otel-parallel-tool-spans
     当低频观测 span 激活且 barrier_parallel 并行窗内并发执行多个工具时，各 tool.execute MUST 仍为同一 agent.iteration（进而同一 agent.turn）的子 span 并共享 trace_id；MUST 携带可区分的 tool_id（及可选 tool_batch.mode / tool_batch.barrier_index）；MUST NOT 为并发工具各自创建无关的 SpanContext::random 根 span；并发任务 MUST 使用扇出前捕获的显式 parent，MUST NOT 依赖全局 parent slot 的竞态读写。由单测或 obs 窄读覆盖，MUST NOT 为静态存在性单独扩 BDD step。
+    # verified-by: src/agent/runtime/obs.rs
   @req:r1476
   规则: otel-compaction-span
     当低频观测 span 激活且实际执行会话 compaction（manual / threshold / overflow）时，MUST 导出名为 agent.compaction 的 fastrace span，且 langfuse.observation.type MUST 为 span；「实际执行」MUST 定义为已通过 prepare_compaction（或等价门闸）之后的压缩尝试——prepare 早退（无可摘要历史 / Already compacted 等）MUST NOT 导出 agent.compaction；若存在活跃 agent.turn，该 span MUST 为其子 span 并共享 trace_id；若不存在 turn 上下文，MUST 可为独立根且在 session 已知时携带同一 langfuse.session.id；MUST 携带诚实 reason（manual|threshold|overflow）与 xylitol.obs.lane=llm，结束时 MUST 能暴露 will_retry / aborted 或失败 status（或等价属性）；默认 MUST NOT 将压缩摘要全文写入 langfuse.observation.input/output；观测闸关闭时 MUST 为零/近零开销。由单测（CollectingReporter）覆盖，MUST NOT 为静态存在性单独扩 BDD step。MUST NOT 改变 XyEvent CompactionStart/End 的面语义。
@@ -154,15 +158,20 @@
   @req:r1481
   规则: otel-session-id-per-generate
     当低频观测 span 激活且两路（或以上）绑定不同会话 UUID 的处理重叠进行时，各路导出的根 span 与该路 llm.request MUST 携带自己那次处理所绑定会话的 langfuse.session.id；MUST NOT 因共享进程级会话槽而被另一路中途 bind 覆盖。本 req 不改变「值为 xylitol 书签 UUID」的语义。由包内/观测单测覆盖，MUST NOT 单独扩 BDD step。
+    # verified-by: src/agent/runtime/obs.rs
   @req:r1482
   规则: otel-session-id-whole-tree-per-processing
     当低频观测 span 激活且一次处理（绑定某会话 UUID 的 generate / compaction）导出任意低频观测 span（agent.turn、agent.iteration、llm.request、tool.execute、过 prepare 的 agent.compaction、token.estimate、react.error、tool.error，含 compaction summarizer 发起的 llm.request）时，这些 span 的 langfuse.session.id MUST 全部等于该次处理所绑定会话的书签 UUID；重叠处理下 MUST NOT 在 span 创建时读进程级会话槽，MUST NOT 因他路 bind 或 reader 物化改写槽而串入其它会话 id。无 run 上下文的闲置路径（如 slash compaction）MAY 以槽为回退。本 req 不改变「值为书签 UUID」的语义。由单测覆盖，MUST NOT 单独扩 BDD step。
+    # verified-by: src/agent/runtime/obs.rs
   @req:r1483
   规则: otel-obs-slot-write-discipline
     进程级观测槽 MUST 仅由会话自身的 writer 绑定路径（runtime bind_session / 显式 set_obs_session 调用）更新；host 对只读 RPC（session stats / tree / messages / 列表等）materialize 的 reader driver MUST NOT 写观测槽（含会话名），reader 物化前后槽内容 MUST 不变。槽仍可作无 options 闲置路径的回退。由单测覆盖，MUST NOT 单独扩 BDD step。
+    # verified-by: src/agent/runtime/obs.rs
   @req:r1484
   规则: otel-session-dual-identity-and-fork-edge
     当低频观测 span 激活且当前 xylitol session UUID 已知时，一次处理导出的低频观测 span（覆盖范围与 otel24 相同）MUST 携带 xylitol.session.id，其值 MUST 等于该 session UUID；langfuse.session.id MUST 等于 xylitol.session.id，MUST NOT 改成发给 LLM 通道的会话身份。xylitol.session.llm_gateway_session_id MUST 仅在该 span 所对应的 LLM 请求实际向通道呈报了会话身份时写出，且值 MUST 等于该次呈报值；未呈报 MUST NOT 写该键；MUST NOT 用 xylitol.session.id 占位。当该 session 由 fork 产生且会话头记录了父 session 与切点条目时 MUST 写出 xylitol.session.parent_session_id 与 xylitol.session.fork_at_entry_id（切点为 fork 时所选条目 id，含 Before 切位时未拷入子会话的那条）；无父或切点未知则 MUST NOT 写对应键。无处理快照的闲置路径 MAY 省略树边两键。由单测覆盖，MUST NOT 单独扩 BDD step。
+    # verified-by: src/agent/runtime/obs.rs
   @req:r1485
   规则: otel-compaction-skipped-span
     当低频观测 span 激活且会话 compaction 的 prepare_compaction 门闸早退（无可摘要历史 / Already compacted 等；auto 静默路径与 manual 路径皆然）且会话身份已知时，MUST 导出名为 agent.compaction.skipped 的轻量 span：MUST 携带跳过原因（skip_reason）与该会话的 langfuse.session.id / xylitol.session.id；MUST NOT 使用 agent.compaction 名（otel19 保留予过 prepare 的尝试），MUST NOT 携带 xylitol.obs.lane=llm，MUST NOT 伪装 LLM 语义（otel22）；auto 早退 MUST NOT 因此发出 CompactionEnd；auto 预检 MUST 仅发生在 Settle（或 overflow 错误收尾），MUST NOT 在工具续跑的 iteration 关闭时导出 skipped；存在活跃 agent.turn 时 MAY 为其子 span；无活跃会话（无可附的会话身份）MAY 省略；观测闸关闭时 MUST 为零/近零开销。由单测（CollectingReporter）覆盖，MUST NOT 为静态存在性单独扩 BDD step。
+    # verified-by: src/agent/compaction/obs.rs

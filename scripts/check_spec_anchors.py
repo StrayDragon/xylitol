@@ -70,9 +70,8 @@ def ref_resolves(ref: str, fns: set[str], rels: set[str]) -> bool:
         return ref[3:].strip() in fns
     if ref.startswith("script "):
         return (REPO / "scripts" / ref[7:].strip()).exists()
-    if "/" in ref or ref.endswith(".rs") or ref.endswith(".py"):
-        if (REPO / ref).exists():
-            return True
+    if (REPO / ref).exists():
+        return True
     return ref in fns
 
 
@@ -121,11 +120,12 @@ def main() -> int:
         cap_naked = 0
         for r in rules:
             total += 1
+            covered = r["has_scenario"] or bool(r["anchors"])
             if r["has_scenario"]:
                 with_scenario += 1
             if r["anchors"]:
                 with_anchor += 1
-            else:
+            if not covered:
                 cap_naked += 1
             for ref in r["anchors"]:
                 if not ref_resolves(ref, fns, rels):
@@ -133,11 +133,12 @@ def main() -> int:
         if cap_naked:
             naked_report.append((cap, cap_naked))
 
+    naked_total = sum(n for _, n in naked_report)
     if report:
         print(f"capabilities: {len(specs)}  rules: {total}")
         print(
             f"with-scenario: {with_scenario}  with-anchor: {with_anchor}  "
-            f"naked: {total - with_scenario - with_anchor}"
+            f"naked(no scenario & no anchor): {naked_total}"
         )
         print("\nnaked rules per capability (desc):")
         for cap, n in sorted(naked_report, key=lambda x: -x[1]):

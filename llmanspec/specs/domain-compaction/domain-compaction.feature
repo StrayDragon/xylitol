@@ -225,6 +225,7 @@
   @req:r1400
   规则: 单一配置来源
     Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens / keep_recent_tokens / model / thinking_level；model 为可选任务模型条目对象，thinking_level 为可选档名覆盖）；MUST NOT 再保留 compaction_threshold 或重复 CompactionConfig 定义。
+    # verified-by: src/protocol/session/entries.rs
   @req:r1401
   规则: token 使用量类型统一与来源标注
     Compaction 与会话侧上下文估计 MUST 使用 domain 的 XyUsage 作为厂商/归一化用量类型；估计结果 MUST 能暴露 TokenProvenance（或经映射的等价来源标注）供上层区分 Api 与降级估计；token_estimator 内 MUST NOT 再定义重复的 XyUsage。
@@ -236,6 +237,7 @@
   @req:r1402
   规则: 触发估计同源展示
     auto-compact 的 reserve 触发决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 settlement snapshot）；当存在可信 Api 锚点时触发所用 token 数字 MUST 跟 Api，MUST NOT 在 footer 已标 Api 时仍用独立 heuristic 触发；派生占用百分比（若展示）MUST NOT 作为触发 SSOT。该共享估计在 Heuristic / LocalTokenizer 路径（无 Api 锚点）MUST 计入固定请求开销——system prompt 与 tool schemas（取 reload 后最新态）的同源折算；存在 Api 锚点时 MUST NOT 重复叠加（usage.input 已含全请求）。
+    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
   @req:r1403
   规则: force 与 auto 分流
     手动 force 路径（CompactionOrchestrator::compact 或等价，经 Command::Compact 执行器）MUST 不过 reserve 闸；prepare 与 compact 的会话条目输入 MUST 为当前 leaf 分支路径（对齐 pi getBranch），MUST NOT 仅以整文件线性 load 作为唯一输入；prepare 无内容时 MUST 返回明确错误：末条已是 CompactionEntry 时等价 Already compacted；空 leaf 时等价 Nothing to compact (empty session)；其余确无可摘要历史（含已在 keep_recent 窗内）时等价 Nothing to compact (no summarizable history beyond keep window)；MUST NOT 再以 session too small 作为上述有上下文失败的用户可见主串（偏离 pi 同文，见 PI_DELTAS）；MUST NOT 因切点计量低估（相对 pi estimateTokens）把仍有可摘要历史的会话误判为无可摘要；auto 路径（maybe_auto_compact）在 prepare 失败时 MUST 静默跳过（不抛上述用户错误）。Force 的 CompactionStart.reason MUST 可区分为 manual；threshold auto 的 reason MUST 含 threshold 语义。MUST NOT 让手动入口继续调用 maybe_auto_compact。
@@ -309,6 +311,7 @@
   @req:r1410
   规则: overflow 与 threshold 分流
     overflow Case1 MUST 先于 threshold Case2 评估；overflow 路径 MUST 复用 c18 stale 防抖；CompactionEnd MUST 能暴露 reason=overflow、will_retry 与失败时 error_message；MUST NOT 将非 overflow 错误吞进 compaction。
+    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
   @req:r1411
   规则: force 可选 instructions
     手动 force compact（Command::Compact / CompactionOrchestrator::compact）MUST 接受可选 instructions（Option<String> 或等价）；非空时 generate_summary（含 split-turn 的 history 摘要）MUST 在结构化摘要 prompt 上追加「Additional focus:」+ 该文本（对齐 pi customInstructions），MUST NOT 替换整份 Goal/Constraints 骨架；generate_turn_prefix_summary MUST NOT 注入 instructions；仅空白或 None MUST 视为无 instructions；threshold / overflow auto 路径 MUST 不传 instructions，MUST NOT 复用上一次 manual 的 instructions。
@@ -319,12 +322,15 @@
   @req:r1412
   规则: compact 输入为 leaf 分支
     prepare_compaction 与 compact_session（及 Orchestrator force/auto/overflow）MUST 仅消费当前 leaf 的分支路径条目（对齐 pi getBranch）；MUST NOT 把旁支 sibling 条目计入切点或摘要范围。
+    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
   @req:r1413
   规则: turn-settlement-once
     当一次 Settle（本轮模型不再续跑工具）收尾做 threshold/overflow 预检时，System MUST 对该次收尾只产生一份 ContextTokenEstimate settlement（同一 tokens/provenance generation）供 compact 决策与产品 footer 消费；工具续跑的 iteration 关闭 MUST NOT 产生该 settlement、MUST NOT 跑该预检；MUST NOT 让 Agent 预检与 TUI TurnEnd/stream-close 在无上下文失效的情况下各自再跑一遍 estimate 并各自打点；若随后实际执行了 compaction，MUST 经 CompactionEnd（或等价）失效并允许新的 settlement。算数入口仍 MUST 为 estimate_from_session_entries（或同源），MUST NOT 另立第二套尺子。compaction 成功后 MUST 重载 leaf（含新 CompactionEntry 与回填行）并以「summary 折行 + 保留尾 + 固定请求开销（c16 同源折算）」产出一份 AfterCompaction settlement 占位估计，供 footer 与下一轮 reserve 闸消费；该占位估计 MUST NOT 伴随任何主动模型请求（重算上下文等下一个用户请求经 build_context_entries 同源机制生效）；resume / 会话激活路径 MUST 以同一机制（含固定开销）重建估计（LeafChanged settlement 或 host 同源 unary）。成功的 CompactionEnd 载荷 MUST 携带 tokens_after 与该 AfterCompaction settlement 同源同值（供压后大小呈现与压后地板诊断判定），压后重载 leaf 失败等无法产出 settlement 的退化路径 MUST 缺省 None（消费端落回无 M 词形）；MUST NOT 为此扩展 CompactionEntry 持久化形状（live-only）。
+    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
   @req:r1414
   规则: no-invent-reasoning-after-compact
     Compaction 以 CompactionEntry 摘要替换 firstKept 之前的轨迹后，随后经 project_for_llm 与 Responses 组装的 input MUST 仅回放仍留在保留消息中的 thinkingSignature；MUST NOT 为已摘要掉的旧 assistant 轮次发明或恢复 reasoning item / thinkingSignature。由单测或文档场景覆盖，MUST NOT 单独扩 BDD step。
+    # verified-by: src/agent/llm_project.rs
   @req:r1415
   规则: 压后地板一次性诊断
     auto 路径（threshold / overflow）compaction 成功且其 AfterCompaction settlement tokens ≥ contextWindow（压后仍无可用窗口，固定开销吃满窗口的退化形态）时，System MUST 经 CompactionEnd 载荷（notice 或等价）发一条可行动诊断（建议：调低 keepRecentTokens / 调高 contextWindow / 精简工具面），每个会话运行（run）至多一次（对齐 c22 每 run 一次 overflow recovery 的作用域纪律）；manual force 路径 MUST NOT 发诊断；地板阈值本身不构成诊断条件（地板 + 迟滞 ∈ (window − reserve, window) 的受控频繁模式 MUST NOT 触发诊断）。

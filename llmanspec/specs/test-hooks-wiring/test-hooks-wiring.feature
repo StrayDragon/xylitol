@@ -53,12 +53,15 @@
   @req:r1817
   规则: smoke-already-wired
     仓库 MUST 至少有一条经库缝触发的观察型例子（如 session_start 或 agent_start），经 InProcessDriver 等库缝注入 XyHookBus 并录制 hook 调用；MUST NOT 用直接 HookDispatcher::dispatch 冒充接线证明。
+    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
   @req:r1818
   规则: provider-matrix-out-of-scope
     model_select 与 thinking_level_select 已有可执行场景；OpenAI Responses / Anthropic Messages 的 provider 三缝由 agent-hooks 覆盖。本 feature MUST NOT 挂会导致 CI 失败的 provider HTTP 三缝场景。
+    # verified-by: llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature
   @req:r1819
   规则: curated-xy-hook-bus
     crate 根精选 pub use MUST 导出 XyHookBus 与 XyHookOutcome（及 NoopHookBus）；嵌入方 MUST 能在不 import protocol 深层子路径的情况下引用这些符号；MUST NOT 将 HookDispatcher 或 HookEvent 列为精选导出。
+    # verified-by: src/lib.rs
   @req:r1820
   规则: wiring-model-ops
     hooks-wiring 操作字典 MUST 支持「选择模型 fake」与「设置思考级别 high」，并启用对应观察场景。

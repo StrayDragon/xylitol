@@ -39,6 +39,7 @@
   @req:r1314
   规则: yolo-after-trust
     在项目已信任前提下，TUI MUST NOT 实现逐工具审批确认流程；工具默认执行；MUST 保留 hook 扩展点供日后追加策略。
+    # verified-by: llmanspec/specs/domain-security/domain-security.feature
   @req:r1321
   规则: double-esc-session-tree
     空编辑器下双 Esc（时间窗与 demo 一致）MUST 打开会话树；树打开时 Esc MUST 关闭树并还原 editor 槽。
@@ -51,12 +52,15 @@
   @req:r1322
   规则: demo-steer-preserves-turn
     agent_demo 在 steer 入队时 MUST 将 steer 文本写入 transcript（可带 [steer] 标记）并可挂到会话活树；MUST NOT 调用会清空 scheduled_actions/pending_events 的新一轮 queue_simulated_turn 入口来「顶替」当前忙碌轮。
+    # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
   @req:r1323
   规则: demo-bash-prefix-border
     agent_demo 中当编辑器文本 trim 后以 ! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉 ! 前缀后 MUST 恢复默认 muted 边框。
+    # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
   @req:r1324
   规则: demo-external-editor-stub
     agent_demo MUST 将 Ctrl+G 绑定为外部编辑器原型：记录调用并写入系统提示；MUST NOT 在 harness 路径强制 spawn 真实 $EDITOR；MAY 向编辑器追加 stub 标记以演示往返。
+    # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
   @req:r1284
   规则: product-host-key-wiring
     产品 HostSession MUST 在 agent 忙碌且会话树关闭时将普通 Enter 映射为 Command::Steer、Alt+Enter 映射为 Command::FollowUp（经 dispatch）；忙碌时 Esc MUST 调用 Driver::abort 并 Command::ClearQueue(steer=true, follow_up=false)；MUST NOT 在忙碌 Esc 时打开 c491 stub 树。
@@ -89,6 +93,7 @@
   @req:r1316
   规则: editor-history-session-seed
     纯 new session（含 /session-new）启动时，产品 Host MUST 在当前 cwd 下按 mtime 取最近 N 个其它已持久化 session（N 来自配置 tui.editor_history_seed_sessions，缺省 1），抽取其中 user 角色正文（跳过 trim 后以 / 开头的行），按较旧 session 先、会话内时间序调用 add_to_history，使 ↑ 先召回全局最近一条；恢复或切换到已有 session 时 MUST 仅用该 session 的 user 正文替换 editor 发送历史缓冲；MUST NOT 写入 assistant/tool/thinking；MUST NOT 改 transcript 或会话树；cwd 比较 MUST 与 resume Current scope 的 cwd_matches 同口径。
+    # verified-by: src/app/tui/editor_history_seed.rs
   @req:r1288
   规则: product-abort-resumable
     产品 TUI 在用户 Esc abort 当前流之后 MUST 回到可提交 idle（follow-up restore 语义不变）；MUST NOT 让后续用户输入持续产生粘性 aborted Error 而无法继续对话。
@@ -169,6 +174,7 @@
       假如 驱动可用模型含 test-model
       当 在编辑器键入 "/model " 并按 Esc
       那么 补全关闭且未调用换模
+    # verified-by: llmanspec/specs/app-tui-input/app-tui-input.feature
   @req:r1297
   规则: session-tree-filter-keys
     产品 TUI 在 EditorSlot::Tree 打开时：Ctrl+D MUST 将 FilterMode 设为 default；Ctrl+T / Ctrl+U / Ctrl+L / Ctrl+A MUST 在对应模式（no-tools / user-only / labeled-only / all）与 default 之间 toggle；Ctrl+O MUST 按 default→no-tools→user-only→labeled-only→all 循环；Ctrl+Shift+O（或等价 cycleBackward）MUST 反向循环（见 ati26）；上述键 MUST 优先于关树时的 thinking（Ctrl+T）与工具视口（Ctrl+O）；增量搜索键入 MUST 交给包 TreeSelector；有搜索串时 Esc MUST 先清搜索再关树（既有 ati5 语义保留）。
@@ -263,6 +269,7 @@
   @req:r1304
   规则: session-resume-panel-keys
     产品 TUI 在 EditorSlot::SessionResume 打开时：Tab MUST 切换 scope Current/All；Ctrl+S（或键位表等价）MUST 循环 Sort Threaded/Recent/Fuzzy；Ctrl+N MUST 切换 Name All/Named；Ctrl+P MUST 切换 path 显示；Ctrl+U（或键位表 app.session.toggleId）MUST 切换会话行完整 session id 列显隐（默认隐藏）；Ctrl+R MUST 进入选中项 rename（Esc 取消 rename MUST NOT 改名）；Ctrl+D MUST 进入删除确认（Enter 确认 / Esc 取消）；Threaded 下 ctrl/alt+left|right（tui.tree.foldOrUp / unfoldOrDown）MUST 折叠或展开选中父节点的子会话行；上述键 MUST 优先于 Editor 槽同名语义；面板关闭后键位恢复既有语义；搜索键入 MUST 交给面板 filter 而非误提交 prompt。agent/bang busy 时 Enter 选定会话 MUST NOT SwitchSession，MUST 经通知条显示 atm10 约定文案（见 atc22），MUST NOT 为此追加 ScrollNotice；idle 行为不变。
+    # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
   @req:r1309
   规则: at-path-completion
     产品 Editor MUST 经包 CompletionSource 注册 AtPathSource，根目录默认为进程 cwd（harness MAY 注入测试根）；用户键入 @（及路径前缀）时 MUST 弹出文件/目录补全；Tab/Enter 选定 MUST 将路径引用写入 editor；Esc 关 popup MUST NOT 改已有非补全文本；提交消息时本变更 MUST NOT 自动把文件内容读入 transcript（路径文本引用即可）。
@@ -270,6 +277,7 @@
     场景: at-path-popup-and-apply
       当 在编辑器键入 "@"
       那么 弹出路径补全且 Tab 写入路径引用
+    # verified-by: llmanspec/specs/app-tui-input/app-tui-input.feature
   @req:r1310
   规则: paste-collapse-submit
     产品 TUI 在 idle 提交、busy steer、busy follow-up、remember_editor_send（历史）以及 Ctrl+G 外部编辑器读出时，MUST 使用 Editor::get_expanded_text（或 UiRoot 等价 API）作为发送/写入文本；显示层 MUST 仍可经 get_text 展示 [paste #N …] 占位；MUST NOT 把未展开的 paste marker 作为 prompt/steer/follow-up 交给 Driver。
@@ -277,6 +285,7 @@
     场景: paste-marker-expanded-on-submit
       当 以主机泵在编辑器粘贴多段文本并提交
       那么 驱动收到的正文为展开全文
+    # verified-by: llmanspec/specs/app-tui-input/app-tui-input.feature
   @req:r1311
   规则: keybindings-catalog-hot-reload
     产品 TUI MUST 将已接线产品动作注册为 app.*（或文档约定的）keybinding id 并经 KeybindingsManager 匹配，MUST NOT 在产品输入路径新增字面和弦硬编码；MUST 在启动时从用户 agent 目录 keybindings.json（若存在）加载覆盖；MUST 提供 reload_keybindings（或等价）在成功时替换当前会话绑定、失败时保留旧绑定并报告诊断；重载 MUST NOT 清空 transcript 或 session 历史。
@@ -292,6 +301,7 @@
       假如 已加载技能目录含 greet
       当 在编辑器键入 "$"
       那么 弹出技能补全且 Tab 写入 "$greet"
+    # verified-by: llmanspec/specs/app-tui-input/app-tui-input.feature
   @req:r1312
   规则: thinking-level-picker-only
     产品 TUI MUST NOT 注册全局 app.thinking.cycle，MUST NOT 在 Editor 槽（非 Models）将 Shift+Tab 绑为 thinking cycle。thinking 档变更 MUST 仅经 /model 槽（←→ / 槽内 Shift+Tab）或有参 /model <id>（可调默认声明列表末项，不可调为 off）路径提交。MUST NOT 新增产品 /thinking-level slash；MUST NOT 与 app.thinking.toggle（Ctrl+T 折叠）混淆；MUST NOT 用包 ThinkingBorderLevel::cycle_next 作为产品真源。

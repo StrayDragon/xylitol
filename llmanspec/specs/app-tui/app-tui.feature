@@ -8,18 +8,23 @@
   @req:r1164
   规则: three-surfaces-coexist
     print（cli）、server（HTTP 监听器）与 tui（交互面）应用面 MUST 共存；不得以统一为名删除任一传输面。
+    # verified-by: src/app/cli/mod.rs
   @req:r1165
   规则: reuse-contract
     产品 TUI MUST 经协议契约、应用缝与 agent 公共入口导入，MUST NOT reach agent 子模块内部或 infra；MUST NOT 依赖已删除的独立 domain 顶栏。斜杠语义 MUST 复用 protocol::Command。
+    # verified-by: src/AGENTS.md
   @req:r1166
   规则: no-skeleton-spray
     产品 TUI 面下每个新增源文件 MUST 在同一变更内由真实入口驱动；MUST NOT 用 #[allow(dead_code)] 落地未驱动骨架。死码分诊规则由架构 AGENTS 与 l8ng-audit-dead-code skill 承载。
+    # verified-by: src/AGENTS.md
   @req:r1163
   规则: capability-index
     产品 TUI 行为细节 MUST 由 app-tui-host / app-tui-bridge / app-tui-transcript / app-tui-fixed-zone / app-tui-input / app-tui-commands 各自约束；引擎与四层 harness MUST 由 package-tui-*（含 package-tui-testing）约束，不得在本索引重复实现史细节。
+    # verified-by: llmanspec/specs/app-tui/app-tui.feature
   @req:r1162
   规则: TUI 只承担面本地
     产品 TUI MUST 只执行面本地能力（键盘、绘制、TTY、本机编辑器、剪贴板）。依赖工作区、模型、MCP 或会话生命周期的能力 MUST 由 host 角色执行。载体切分与同进程保留见 app-tui-bridge atb4。MUST NOT 把剪贴板等面本地能力交给远程 host 写入本机盘。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
+    # verified-by: docs/architecture/信任与项目门禁.md

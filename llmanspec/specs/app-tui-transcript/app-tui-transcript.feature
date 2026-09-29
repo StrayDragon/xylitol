@@ -16,6 +16,7 @@
   @req:r1360
   规则: diff-via-package
     产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。
+    # verified-by: src/app/tui/widgets/scrollback/diff.rs
   @req:r1368
   规则: tool-block-status-rail
     产品默认以 rail 皮肤绘制 tool 可展开块：每可见内容行左侧 MUST 为 1 列 status 色轨 + 1 列无底色 gutter，再跟内容；pending/success/error 轨色 MUST 对齐 DESIGN accent/success/error（MAY soft-mix surface）。MUST NOT 默认整行铺 tool-*-bg。edit/Diff（含 unified display_diff）的 header 与 Diff 正文 MUST 共用同一 status 轨色（无洗底信封）；正文 MUST NOT 再叠 diff-*-bg 行底（极性靠 fg + word_wash_bg）。外层 ANSI 背景 MUST 以 \\x1b[49m 复位。
@@ -28,9 +29,11 @@
   @req:r1369
   规则: tool-rail-via-package-helper
     rail 行绘制 MUST 复用 packages/xylitol-tui 的 paint_left_rail_line（或等价包 API：轨+gutter+内容宽）；MUST NOT 在应用面手写第二套轨/gutter/宽预算逻辑。
+    # verified-by: packages/xylitol-tui/src/theme/paint.rs
   @req:r1370
   规则: no-codex-transcript-view
     产品 TUI MUST NOT 实现 Codex 风格的独立 transcript 浏览面或专用 TranscriptView 作为主 UX；历史/分支 travel MUST 经双 Esc 会话树（app-tui session-tree / package TreeSelector）。
+    # verified-by: src/AGENTS.md
   @req:r1371
   规则: expandable-block-fold
     产品 live scrollback 的 thinking/tool/edit-diff 可展开块 MUST 支持折叠与展开；折叠态 MUST 保留可读摘要行；状态机 MUST 在应用面；展开快捷键旁注 MUST 为括号完整和弦（Ctrl+T / Alt+E）。
@@ -130,6 +133,7 @@
     场景: oversize-diff-truncated-with-omitted
       当 注入含 200 行 display_diff 的 edit 成功结果
       那么 diff 正文截断并提示省略行数
+    # verified-by: llmanspec/specs/app-tui-transcript/app-tui-transcript.feature
   @req:r1348
   规则: no-prepend-nav-notices
     产品 TUI 在 travel/fork/resume/切换等重建或瞬时导航通知写入 live scrollback 时，MUST 将此类 ScrollNotice/Error 滚动提示追加到 entries 末尾（跟底时位于输入框上方可滚区域）；MUST NOT 为提高可见性而把瞬时导航通知 prepend 到 entries 前缀。会话路径上的时间线内容（含 BranchSummary 等按祖先投影的条目）不在本条「瞬时通知」范围。

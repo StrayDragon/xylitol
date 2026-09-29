@@ -32,6 +32,7 @@
   @req:r1199
   规则: extensible-commands
     命令面 MUST 允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。
+    # verified-by: src/app/tui/commands.rs
   @req:r1201
   规则: debug-scene-slash
     产品 TUI 在 debug 构建 idle 时 MUST 解析斜杠 /debug 与 /debug <scene>（空格参数；MUST NOT 要求冒号形式）：无 scene 时 MUST 以系统提示列出可用场景及描述且 MUST NOT 改当前 session；已知 scene（至少 session-tree-multiturn、session-tree-labeled）MUST 仅在 TUI 进程内经非产品注入 API（harness/`cfg(debug_assertions)`）新建隔离 debug-* 会话、写入 fixture 后 switch 并重建 transcript；load_debug_scene MUST NOT 存在于 wire/Driver/Host 公开面（不进 protocol::Command、不进远程 unary）；未知 scene MUST 提示错误且 MUST NOT 崩溃；debug 构建 MUST 为 /debug 提供与 /model 同类的参数补全（SlashArgCompletionSource）；MUST NOT 覆写用户装载前的当前 session 文件内容。
@@ -53,6 +54,7 @@
   @req:r1203
   规则: commands-module-growth
     产品 TUI slash/bang 解析 MUST 继续收口于 commands 模块（可多文件），执行仍经 pending + drain_pending → protocol::Command / dispatch 或 Driver；SlashCommandSource 补全清单 MUST 与产品命令 SSOT（及 GetCommands 内建子集）同源；MUST NOT 在 UiRoot/widgets 内散落第二套 slash 语义；MUST NOT 维护与 agent 短名表分叉的第三套产品名表。
+    # verified-by: src/app/tui/layout/slash_catalog.rs
   @req:r1204
   规则: slash-session-io
     产品 TUI idle 时 MUST 解析 /session-compact、/session-export 与 /session-import：/session-compact 无参或仅空白 MUST 经 dispatch 调用 Compact（force；instructions=None；对齐 domain-compaction c17/c24）并以系统行提示是否压缩或明确错误；带非空参数 MUST 调用 Compact 且 instructions 为去壳后文本（对齐 c24 Additional focus），MUST NOT 再报 custom instructions not supported；/session-export 可选 path MUST 默认导出 HTML（对齐 pi；无参时可用 Driver/dispatch 默认 export.html），path 以 .jsonl 结尾 MUST 走 ExportJsonl，否则 ExportHtml，成功 MUST 回报写入路径；/session-import 缺 path MUST usage 错误，有 path MUST 先以 editor 槽 Yes/No 确认再 ImportJsonl 并 switch/重建 transcript，取消 MUST NOT 导入；busy 时 /session-compact 与 /session-export MUST 仍可执行（BusySlashPolicy Allow）且 MUST NOT 入 steer；/session-import busy MUST 拒绝且 MUST NOT 入 steer；SlashCommandSource MUST 列出三者；旧名 /compact /export /import MUST NOT 被识别；MUST 走 app::core::dispatch，MUST NOT 发明平行词表。

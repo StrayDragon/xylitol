@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2828-align-align-spec-code-anchors
+base_branch: main
+base_sha: 20b898f52dbeb79e59111250031e1f659581d411
 ---
 
 ## Why

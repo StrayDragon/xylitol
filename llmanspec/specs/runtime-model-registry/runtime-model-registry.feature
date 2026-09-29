@@ -8,19 +8,24 @@
   @req:r1742
   规则: ModelRegistry provider
     ModelRegistry MUST 支持 register_provider(name, config) 与 has_configured_auth(model) / has_resolved_auth(model) 检查 API key 可用性。
+    # verified-by: src/agent/model/registry.rs
   @req:r1751
   规则: 模型发现
     ModelRegistry MUST 支持 get_available()，返回已注册 provider 的全部配置模型，按 provider 优先级排序。
+    # verified-by: src/agent/model/registry.rs
   @req:r1752
   规则: 模型默认值
     ModelRegistry MUST 仅为 openai 与 anthropic provider 维护默认模型 ID。Pre-1.0.0 其它 provider MUST NOT 有默认模型条目。默认模型 ID MUST 为有效、当前可用的模型标识（如 gpt-4o、claude-sonnet-4-20250514），不得为占位或不存在的模型名。该默认 ID 仅作显式解析/回退辅助，MUST NOT 单独构成「用户已配置默认模型」的产品选中态；MUST NOT 因仅存在 provider 环境变量而把该默认 ID 注册进可调用模型表（见 m12/m17）。
+    # verified-by: llmanspec/specs/cli-entry/cli-entry.feature
   @req:r1753
   规则: 模型解析器
     System MUST 提供 resolve_model(pattern, available)，支持 provider/modelId 规范形式、裸 id 匹配、别名优先于带日期版本、以及 thinking-level:model pattern 解析。
+    # verified-by: src/agent/model/resolver.rs
   @req:r1754
   @req:r1755
   规则: 模型回退
     目标模型 ID 不在 provider 可用列表时，ModelResolver MUST 构建回退 Model，保留用户意图并回退到同 provider 基础模型。
+    # verified-by: src/agent/model/resolver.rs
   @req:r1756
   @req:r1743
   规则: thinking-level-validate-clamp
@@ -33,6 +38,7 @@
   @req:r1744
   规则: thinking-level-on-generate
     Agent 在调用 generate_stream（或等价）时 MUST 传入当前 thinking 档名字符串与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下一轮 provider 请求体；MUST NOT 仅更新会话/UI 状态而不影响请求组装。
+    # verified-by: llmanspec/specs/package-ai-bridge/package-ai-bridge.feature
    @req:r1748
   规则: thinking-level-exact-opaque
     运行时对 thinking 档名（支持集成员、set/cycle、Settings 默认是否 ∈ 支持集、可调判定中的关档字面量）MUST 使用精确 opaque 字符串；关档约定字面量 MUST 为精确 off。MUST NOT 在匹配或可调判定中对档名做 ASCII 大小写折叠或 trim 归一。
@@ -44,15 +50,19 @@
   @req:r1745
   规则: no-silent-env-select
     bootstrap MUST NOT 在缺少用户显式模型别名配置时，仅因存在 provider API key 环境变量而向 ModelRegistry 注册 default_model_id_for_provider（或等价）默认模型；亦 MUST NOT 自动将该默认 ID 设为当前选中模型。无显式模型配置时 registry MUST 为空且经 bootstrap 的表面 MUST 硬失败（见 ce2）；未选中时应用面按 cli-entry ce18 展示。
+    # verified-by: llmanspec/specs/cli-entry/cli-entry.feature
   @req:r1746
   规则: honor-model-entry-api
     bootstrap / resolve_model_meta（或等价装配）注册 XyModelMeta 时 MUST 保留 ModelsConfig ModelEntry 的可选 api 字段写入 config.api 与 meta.api：省略 api 时 MUST 走 AdapterKind::default_for（或等价）。显式可识别 api（含 openai-completions）MUST 参与 adapter 选择；未识别字符串 MUST 静默等同省略，MUST NOT 为此单独报错。MUST NOT 在注册路径把已配置的 api 字段写成 None。由单测覆盖，MUST NOT 为静态接线单独扩 BDD step。
+    # verified-by: src/infra/config/types.rs
   @req:r1747
   规则: manifest-api-kind-default
     JSON model manifest 省略 api 时 MUST 按 provider 选用与 AdapterKind::default_for 一致的协议族字符串（OpenAI→openai-responses，Anthropic→anthropic-messages）；显式 openai-completions MUST 可选且参与装配。由单测覆盖，MUST NOT 为静态缺省单独扩 BDD step。
+    # verified-by: src/infra/config/types.rs
   @req:r1749
   规则: explicit-model-entry-auth
     AppConfig ModelsConfig 中每个显式模型别名条目 MUST 在 bootstrap 注册进 ModelRegistry（供 --list-models 与选模），MUST NOT 因 API key 缺失或未解析而跳过注册。条目 api_key 省略或空串时注册 key MUST 为空；MUST NOT 回落 provider kind 级环境变量（OPENAI_API_KEY / OPENAI_KEY / ANTHROPIC_API_KEY / ANTHROPIC_KEY）。真发请求时缺 key MUST 失败并走鉴权引导（m7/ux4）。由单测覆盖，MUST NOT 为静态边界单独扩 BDD step。
+    # verified-by: src/infra/config/types.rs
   @req:r1750
   规则: 任务级模型解析
     System MUST 提供按任务用途解析模型的单一入口：给定任务模型条目（provider/model 等连接字段），经注入的 provider 构建器产出独立 XyModel 实例；条目缺失、解析或构建失败时 MUST 回退当前会话模型，且回退 MUST 可观测（归因标注 + 受控频率通知）；任务条目 MUST NOT 注册进 ModelRegistry（不占 --list-models 与模型循环）；MUST NOT 为每个任务角色复制解析逻辑。compact 摘要是第一个消费者（domain-compaction c7）；后续同类旁路任务复用同一入口，不预建未落地任务的抽象。
