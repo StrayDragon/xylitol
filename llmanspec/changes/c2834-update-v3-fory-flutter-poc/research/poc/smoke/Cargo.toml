@@ -1,0 +1,10 @@
+[package]
+name = "smoke"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+fory = { path = "../../../../../../../fory/rust/fory" }
+serde_json = "1"
+
+[workspace]

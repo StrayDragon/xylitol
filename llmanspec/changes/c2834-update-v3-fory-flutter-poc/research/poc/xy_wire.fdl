@@ -1,0 +1,161 @@
+// xylitol wire protocol v3 — PoC slice
+// 来源对照:
+//   Event  ↔ src/protocol/wire/event.rs (serde enum, tag="type", snake_case)
+//   Command↔ src/protocol/wire/command.rs
+//   Todo*  ↔ src/protocol/session/todo.rs
+// 动态块策略:工具参数等任意 JSON 一律 string 原文(fdl `any` 不支持
+// list/map/数字且要求两端注册具体类型,此路不通;ToolEnd.result 今天已是原文模式)。
+
+package xy.wire.v3;
+
+// ===== 领域投影类型(对应 protocol::session)=====
+
+enum TodoStatus [id=100] {
+    Pending = 0;
+    InProgress = 1;
+    Completed = 2;
+}
+
+message TodoItem [id=101] {
+    string id = 1;
+    string content = 2;
+    TodoStatus status = 3;
+}
+
+message TodoList [id=102] {
+    list<TodoItem> items = 1;
+}
+
+// ===== Event 载荷 union(core → client)=====
+
+message ErrorEvent [id=110] {
+    string kind = 1;
+    string detail = 2;
+}
+
+message TextDelta [id=111] {
+    string text = 1;
+}
+
+message ToolStart [id=112] {
+    string id = 1;
+    string name = 2;
+    // 动态块:形状由各工具运行时 JSON Schema 决定,JSON 原文过线
+    string args_json = 3;
+}
+
+message ToolEnd [id=113] {
+    string id = 1;
+    string name = 2;
+    string result = 3;
+    bool is_error = 4;
+}
+
+message AgentEnd [id=114] {
+}
+
+// 演进语义代表:字段可增删、可重排,编号永不复用(对应今天 #[serde(default)] 宽容解码)
+message CompactionEnd [id=115] {
+    optional string result = 1;
+    bool aborted = 2;
+    string reason = 3;
+    bool will_retry = 4;
+    optional string error_message = 5;
+    optional string summary = 6;
+    optional uint64 tokens_before = 7;
+    optional uint64 tokens_after = 8;
+    optional string notice = 9;
+}
+
+// usize 非跨语言概念 → uint64(Dart 侧 int)
+message ContextTokenSettlement [id=116] {
+    uint64 tokens = 1;
+    string provenance = 2;
+    uint64 usage_tokens = 3;
+    uint64 trailing_tokens = 4;
+    optional uint64 last_usage_index = 5;
+    string reason = 6;
+    uint64 generation = 7;
+}
+
+// ===== MessageStart 载荷:今天 to_value 擦成动态 JSON + untagged 试探解析,
+// 升级为 case_id 判别 union(半动态 → 强 schema,这是 net win)=====
+
+union AgentMessage [id=120] {
+    LlmMessage llm = 1;
+    EnvMessage env = 2;
+}
+
+message LlmMessage [id=121] {
+    string role = 1;
+    list<ContentPart> content = 2;
+}
+
+message ContentPart [id=122] {
+    string type = 1;
+    optional string text = 2;
+    optional string image_base64 = 3;
+}
+
+message EnvMessage [id=123] {
+    string raw = 1;
+}
+
+message MessageStart [id=124] {
+    string role = 1;
+    optional AgentMessage msg = 2;
+}
+
+message TodoListSnapshot [id=117] {
+    TodoList todo_list = 1;
+}
+
+union Event [id=130] {
+    ErrorEvent error = 1;
+    TextDelta text_delta = 2;
+    ToolStart tool_start = 3;
+    ToolEnd tool_end = 4;
+    AgentEnd agent_end = 5;
+    CompactionEnd compaction_end = 6;
+    ContextTokenSettlement context_token_settlement = 7;
+    MessageStart message_start = 8;
+    TodoListSnapshot todo_list_snapshot = 9;
+}
+
+// ===== Command 载荷 union(client → core)=====
+
+message Prompt [id=140] {
+    string text = 1;
+}
+
+message Abort [id=141] {
+}
+
+message SetModel [id=142] {
+    string provider = 1;
+    string model_id = 2;
+}
+
+union Command [id=150] {
+    Prompt prompt = 1;
+    Abort abort = 2;
+    SetModel set_model = 3;
+}
+
+// ===== 信封(Frame):rpc_id 即幂等键;method_id 由 registry 编译期分配 =====
+
+message ClientRequest [id=160] {
+    uint64 rpc_id = 1;
+    uint32 method_id = 2;
+    Command command = 3;
+}
+
+message ServerNotification [id=161] {
+    uint64 seq = 1;
+    Event event = 2;
+}
+
+union Frame [id=170] {
+    ClientRequest client_request = 1;
+    ServerNotification server_notification = 2;
+}
