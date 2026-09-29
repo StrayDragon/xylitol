@@ -27,6 +27,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SPECS = REPO / "llmanspec" / "specs"
+# Sub-project roots (subproject-llmanspec-discovery).
+SUB_ROOT_SPECS = sorted((REPO / "packages").glob("*/llmanspec/specs"))
 
 
 def collect_evidence_index() -> tuple[set[str], set[str]]:
@@ -78,7 +80,10 @@ def ref_resolves(ref: str, fns: set[str], rels: set[str]) -> bool:
 def parse_specs() -> dict[str, list[dict]]:
     """capability → list of rule dicts {req, has_scenario, anchors}."""
     out: dict[str, list[dict]] = {}
-    for feature in sorted(SPECS.rglob("*.feature")):
+    all_features = sorted(SPECS.rglob("*.feature"))
+    for d in SUB_ROOT_SPECS:
+        all_features += sorted(d.rglob("*.feature"))
+    for feature in all_features:
         cap = feature.stem
         lines = feature.read_text(encoding="utf-8").splitlines()
         rule_starts = [i for i, l in enumerate(lines) if l.lstrip().startswith("规则:")]

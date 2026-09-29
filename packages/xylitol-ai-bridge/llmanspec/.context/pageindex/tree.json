@@ -1,0 +1,307 @@
+{
+  "version": 1,
+  "spec_hash": "4715d8b933f2c3404e4a3a06bc6a5e68d6a94f14c7d9ff6e71ba2ff88f6653c8",
+  "build_timestamp": "2026-09-29T10:49:19.622Z",
+  "chat_model": "",
+  "docs": [
+    {
+      "spec_id": "package-ai-bridge",
+      "purpose": "\"packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。\"",
+      "reqs": [
+        {
+          "req_id": "r1536",
+          "title": "workspace-包边界",
+          "statement": "仓库 MUST 提供 workspace 成员包 packages/xylitol-ai-bridge，作为 client 到上游 LLM model provider 的接线与计量库；该包 MUST NOT 依赖主 crate xylitol。"
+        },
+        {
+          "req_id": "r1546",
+          "title": "包内模块划分",
+          "statement": "xylitol-ai-bridge MUST 按职责划分至少包含 provider、usage、accounting、tokenize、registry 模块（名称可等价），分别承担方言接线、usage 归一化、多源计量、本地/远程分词计数与模型到分词源注册。"
+        },
+        {
+          "req_id": "r1557",
+          "title": "包内-DTO-独立",
+          "statement": "包对外流式与消息类型 MUST 使用包内自有 LLM DTO（如 AiBridgeMessage / AiBridgeChunk / AiBridgeUsage）作为 LLM 叶 SSOT；该 DTO MUST 仅表达发给模型的形状，MUST NOT 再定义与主仓 Env 平行的 bashExecution / compactionSummary / branchSummary / custom 等会话环境角色；包 MUST NOT 依赖主仓 xylitol。"
+        },
+        {
+          "req_id": "r1559",
+          "title": "主仓映射层",
+          "statement": "主仓 agent MUST 经 project_for_llm（或等价）将 AgentMessage 投影为 Vec<AiBridgeMessage>：Llm 臂 MUST passthrough；Env 折叠策略留在 agent。XyModel 调用方 MUST 只传递投影后的 LLM DTO。agent MAY 依赖 bridge DTO 以组合 AgentMessage::Llm；agent MUST NOT 直接依赖 xylitol_ai_bridge 的 HTTP/vendor SDK 类型。"
+        },
+        {
+          "req_id": "r1560",
+          "title": "provider-实现迁入",
+          "statement": "OpenAI 兼容（Responses 与 Completions）与 Anthropic Messages 的流式/非流式接线实现 MUST 以 xylitol-ai-bridge 为实现归属；主仓 MUST NOT 保留与包并行的第二套完整 adapter 实现体（允许薄映射与装配）。"
+        },
+        {
+          "req_id": "r1537",
+          "title": "vendor-sdk-first",
+          "statement": "OpenAI 兼容路径（Responses、Completions、input_tokens RemoteCount）与 Anthropic 兼容路径（Messages、count_tokens）MUST 优先经厂商官方 Rust SDK Client 接线；hooks MUST 经 SDK middleware（或文档化等价扩展点）接入且保持可移植 HeaderBag/JSON body 语义；新兼容端 MUST 以新 adapter/配置扩展（开闭），MUST NOT 为每个网关分叉改 AgentMessage 或 ReAct；省略 api 时 OpenAI 兼容默认 MUST 为 Responses，显式 openai-completions MUST 可选。"
+        },
+        {
+          "req_id": "r1538",
+          "title": "thinking-params-in-request-body",
+          "statement": "xylitol-ai-bridge 在组装 OpenAI Responses / Completions 与 Anthropic Messages 请求体时 MUST 消费已解析的 thinking 参数：Responses 用 reasoning.effort；Completions 在 compat=generic 时用 reasoning_effort，compat=deepseek 时用 thinking.type（及可选 reasoning_effort）；Anthropic 在 compat=generic 时用 thinking budget（enabled + budget_tokens），compat=deepseek 时仅 thinking.type=enabled 且 MUST NOT 发送 budget_tokens；level 为精确 off 或映射为 null 时 MUST 省略对应字段（或显式 disabled）；用户 map 字符串 MUST 覆盖内置默认；识别内置档名（含关档 off 与 Anthropic 预算档）时 MUST 精确匹配配置/请求中的档名字面量，MUST NOT 因仅大小写或 trim 差异把 HIGH 等当成 high；MUST NOT 在无 map/默认时伪造未知厂商字段。"
+        },
+        {
+          "req_id": "r1555",
+          "title": "thinking-level-resolve-exact",
+          "statement": "resolve_thinking_for_request（或等价）对 level 与 thinking_level_map 键 MUST 精确查找；无 map 时 OpenAI MUST 将当前 level 原串作为 effort（精确 off 则省略）；Anthropic 无 map 时仅当 level 精确等于内置名时使用内置预算，否则 MUST 可观测失败。由包内单测覆盖，MUST NOT 为大小写拒绝单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1556",
+          "title": "provider-http-bounded",
+          "statement": "provider HTTP 客户端 MUST 有连接超时与请求级等待界：流式请求以 chunk-gap idle 上界判定挂起（任何入站字节重置计时）；非流式请求有总时长上界；到期返回可分类超时错误并释放连接。"
+        },
+        {
+          "req_id": "r1539",
+          "title": "assistant-stream-toolcall-lifecycle",
+          "statement": "Responses、Completions 与 Anthropic Messages 的流式路径 MUST 将原生工具调用映射为 AiBridgeChunk 的 ToolCallStart / ToolCallDelta / ToolCallEnd 生命周期：在首个可判别的工具相关上游事件后 MUST 发出 ToolCallStart（或同轮首次 ToolCallDelta 前已有 Start）；参数 JSON 片段 MUST 经 ToolCallDelta 增量发出且携带 parse_streaming_json 渐进 args；完整参数 MUST 在块结束时经 ToolCallEnd 发出。MUST NOT 仅在 finish_reason / output_item.done / message stop 才首次暴露工具意图。MUST NOT 在核心路径解析文本通道伪工具 XML。"
+        },
+        {
+          "req_id": "r1540",
+          "title": "parse-streaming-json",
+          "statement": "包 MUST 提供 parse_streaming_json（或等价）：对不完整工具参数 JSON 尽最大努力解析为 serde_json::Value，非法中间态 MUST NOT panic，可回退为空对象。"
+        },
+        {
+          "req_id": "r1541",
+          "title": "responses-input-align-pi",
+          "statement": "组装 OpenAI Responses 请求体时：AiBridgeGenerateOptions.system_prompt 非空 MUST 每请求前置 input 项，thinking_level 非 off 时 role 为 developer，否则为 system；assistant 历史回放 MUST 仅将 Text 部分写入 output_text；Thinking 有合法 JSON thinkingSignature 时 MUST 解析为 reasoning item 按现网顺序推入 input（同轮排在 assistant text / function_call 之前），此为唯一默认全量回放；无 signature 或非法 JSON 时 MUST 省略该 Thinking 且 MUST NOT 并入 output_text，MUST NOT 用展示用 thinking 文本冒充可回放 signature。Anthropic MUST 经 body.system 消费同一 options.system_prompt。"
+        },
+        {
+          "req_id": "r1542",
+          "title": "responses-reasoning-lifecycle-align-pi",
+          "statement": "组装 OpenAI Responses 请求体时 MUST 设置 store 为 false，且每个 tool 项 MUST 设置 strict 为 false；thinking_level 非 off 时 MUST 在 reasoning 对象写入 summary（默认 auto）；compat 允许时 MUST 设置 include 含 reasoning.encrypted_content，compat=deepseek（或文档化等价拒绝 include 的轮廓）时 MUST NOT 发送该 include。流式或非流式收到完整 reasoning output item 时 MUST 将其 JSON 写入 Thinking 的 thinkingSignature（经 ThinkingEnd 或文档化等价 chunk 交给调用方）；若流式 output_item.done 中缺非空 encrypted_content 而随后 response.completed 或 response.incomplete 的 response.output 同 id 项带有，MUST 在落盘材料最终确定前回填进 thinkingSignature（可再发 ThinkingEnd）；MUST NOT 仅累积 reasoning 文本而不保留可回放 signature；MUST NOT 伪造 encrypted_content。默认路径 MUST 对齐上述字段。"
+        },
+        {
+          "req_id": "r1543",
+          "title": "session-vs-llm-vocab",
+          "statement": "AgentMessage MUST 作为 session/agent 真源语义，以组合表达：Llm(AiBridgeMessage) 与 Env(EnvMessage)。物理模块 MUST 位于 protocol 根（供 ports/wire 签名与 infra 可见）；agent MUST 提供 project_for_llm 并将类型再导出。agent MAY 依赖 bridge DTO；MUST NOT 再维护平行 LLM 叶 enum；MUST NOT 依赖 bridge HTTP/vendor SDK。发往模型前 MUST 在 agent 内经 project_for_llm 得到 Vec<AiBridgeMessage>。MUST NOT 将 AgentMessage 作为 XyModel 端口入参。"
+        },
+        {
+          "req_id": "r1544",
+          "title": "responses-error-message-surface",
+          "statement": "OpenAI Responses 适配器在将上游错误映射为 AiBridgeError 时，若错误串含嵌入 JSON（如 content:{...}）且其中 error.message 可读，MUST 将该 message（MAY 附 type）暴露在错误文案中；MUST NOT 仅因 error.code 为整数导致 SDK 反序列化失败而只展示 deserialize 噪音、掩盖 upstream overflow 等原文。"
+        },
+        {
+          "req_id": "r1545",
+          "title": "wire-policy-defaults-rs",
+          "statement": "包 MUST 在 xylitol-ai-bridge 提供 WirePolicy（或等价）类型，含 compat 与仅 API req/resp 的 extra_policy；未暴露策略默认值的唯一真源 MUST 为包内 defaults.rs（或等价纯常量模块）与命名轮廓构造；WirePolicy::default() MUST 只组合该默认板。compat 默认 MUST 为 generic，并 MUST 提供 deepseek 命名轮廓；extra_policy 的 prompt_cache_usage MUST 默认 true，prompt_cache_key 与 previous_response_id MUST 默认 false。MUST NOT 经自由形式 extra_policy YAML 或业务路径散落 env::var 提供这些默认。单测 MAY 用结构体字面量覆盖。由包内单测覆盖，MUST NOT 为静态默认单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1547",
+          "title": "wire-extra-policy-scope",
+          "statement": "extra_policy MUST 仅表达 API 请求组装与响应解析/维持相关布尔（至少含 prompt_cache_usage、prompt_cache_key、previous_response_id）；MUST NOT 将 tool_search、defer_loading、状态栏等 agent/ContextPolicy 能力塞进 WirePolicy；MUST NOT 增加 reasoning_replay 或 Strip/BestEffort 类回放模式字段。适配层在对应位为 false 时 MUST NOT 假装第一语言（官方）wire 语义（例如不得假定必有 cached_tokens 或可安全发 previous_response_id）。由单测/文档场景覆盖，MUST NOT 为范围声明单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1548",
+          "title": "first-language-vs-dialect",
+          "statement": "产品与桥接叙事 MUST 区分第一语言（厂商原生 API）与方言（他方实现该协议形状，如 DeepSeek 实现 openai-responses）。可识别 AdapterKind/api 字符串（openai-responses、openai-completions、anthropic-messages）选择协议族；MUST NOT 把第一语言称作方言。方言端默认走 compat=generic 的保守 WirePolicy，可经命名 compat 轮廓切换。由文档与单测约定覆盖，MUST NOT 单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1549",
+          "title": "responses-prompt-cache-read-tri-state",
+          "statement": "Responses usage 映射 MUST 提供可区分的 Prompt Cache 读数三态（名以实现为准，如 PromptCacheRead）：NotApplicable（expects_prompt_cache_usage 为 false）、NotReported（期望但 JSON 无 cached_tokens 细节）、Tokens(n)（含 n=0）。AiBridgeUsage.cache_read（或等价）MAY 保留为派生 u64（仅 Tokens(n)→n，其余→0）供 accounting。MUST NOT 将「字段缺失」映射为「命中 0」。由包内单测覆盖，MUST NOT 单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1550",
+          "title": "prompt-cache-usage-obs-honesty",
+          "statement": "当 ProviderRequestTrace（或等价）激活并附着 usage 时，MUST 将 Prompt Cache 三态透出到观测属性（Langfuse/trace 自定义 property 或等价）；langfuse.observation.usage_details 中的 cache_read 数字 MUST 仅在 Tokens(n) 语义下写入。MUST NOT 在 NotReported 或 NotApplicable 时写入 cache_read:0 冒充已回报命中。由包内单测覆盖，MUST NOT 单独扩 BDD step。本 req 不要求 TUI 固定区。"
+        },
+        {
+          "req_id": "r1551",
+          "title": "responses-assembler-sole-body",
+          "statement": "包 MUST 提供 ResponsesAssembler（或等价）作为构造 openai-responses 请求 JSON body 的唯一业务布局入口：消费投影后的 AiBridgeMessage、工具 schema、AiBridgeGenerateOptions 与 WirePolicy；默认档 MUST 等价于既有 assemble_responses_body / prepend_system_prompt_item / apply_responses_wire_policy 行为（允许规范化后比较）。Adapter 内 MUST NOT 二次重排业务布局（WirePolicy 字段子集差异除外）。单测 MAY 用不同 WirePolicy 字面量覆盖证明字段集 diff。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1552",
+          "title": "responses-reasoning-full-replay-only",
+          "statement": "从 session 形 AiBridgeMessage（含 thinkingSignature）经 ResponsesAssembler 重建 input 时，回放策略 MUST 仅为全量回放：有合法 signature 则原样推入 reasoning item；MUST NOT 提供 Strip/BestEffort 产品旋钮或 ExtraPolicy 回放模式枚举；空字符串 encrypted_content 的 signature MUST 仍整包回放。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1553",
+          "title": "responses-reasoning-encrypted-backfill",
+          "statement": "流式 Responses 路径在 response.completed 或 response.incomplete 时，若能按 reasoning id 将终端 output 中的非空 encrypted_content 合并进先前 ThinkingEnd 的 thinkingSignature，MUST 在随后的 Done 之前发出更新后的 ThinkingEnd（或文档化等价）；主路径 MUST NOT 因缺 encrypted 而崩溃。由包内合成 SSE 单测覆盖，MUST NOT 单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1554",
+          "title": "responses-assemble-prefix-idempotent",
+          "statement": "对同一 Vec<AiBridgeMessage>、同一 AiBridgeGenerateOptions（含 system_prompt）、同一 tools schema 与 WirePolicy，ResponsesAssembler 构造的 openai-responses 请求体中业务布局（至少 input 项序列与 tools）MUST 规范化后幂等：连续组装两次相等；消息经 serde 或 JSONL 行往返后再组装 MUST 仍得相等前缀。MUST NOT 因仅序列化往返而重排或改写历史 input。由包内单测与维护 lab（lab_session_prefix_idempotency）覆盖，MUST NOT 单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1903",
+          "title": "deepseek-prompt-cache-read-mapped",
+          "statement": "命名轮廓 compat=deepseek 在解析上游 usage 时 MUST 把已出现的 Prompt Cache 读数映射为 Tokens(n)：Responses 认 input_tokens_details.cached_tokens；Completions 优先 prompt_cache_hit_tokens，否则 prompt_tokens_details.cached_tokens。MUST NOT 仅因方言而标 NotApplicable 从而丢掉这些字段。缺字段且轮廓期望缓存读数时 MUST 为 NotReported，MUST NOT 写成命中 0。encrypted include 与 previous_response_id 仍按该轮廓省略。由包内单测覆盖，MUST NOT 单独扩 BDD step。"
+        },
+        {
+          "req_id": "r1558",
+          "title": "generate-obs-session-snapshot",
+          "statement": "适配器一次 generate（流式或非流）的观测会话身份 MUST 来自该次调用携带的快照（与 generate 选项或等价入参绑定）；OpenCode 会话归因 header 与 llm.request 上的 langfuse.session.id MUST 使用该快照。MUST NOT 在请求进行中读取可被其它并发 generate 覆盖的进程级会话槽作为权威源。由包内单测覆盖，MUST NOT 单独扩 BDD step。"
+        }
+      ],
+      "scenarios": [
+        {
+          "req_id": "r1538",
+          "id": "thinking-params-by-family-and-compat",
+          "given": "",
+          "when": "以 medium 与 off 档解析请求 thinking 并注入各族请求体",
+          "then": "Responses 用 reasoning.effort 且 Completions 随 compat 分流且 Anthropic 随 compat 分流且 off 档省略字段"
+        },
+        {
+          "req_id": "r1539",
+          "id": "responses-toolcall-streams-before-done",
+          "given": "Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done",
+          "when": "映射为 AiBridgeChunk 流",
+          "then": "首个 args delta 之前或当时已有 ToolCallStart 且存在至少一次 ToolCallDelta 早于对应 ToolCallEnd"
+        },
+        {
+          "req_id": "r1540",
+          "id": "partial-args-object",
+          "given": "输入残缺工具参数 JSON",
+          "when": "调用 parse_streaming_json",
+          "then": "返回 Value 且不 panic"
+        },
+        {
+          "req_id": "r1541",
+          "id": "responses-system-as-developer",
+          "given": "Responses 组装且 system_prompt 非空且 thinking_level 为 medium",
+          "when": "转换为 input items",
+          "then": "首项 role 为 developer 且 content 为 system_prompt"
+        },
+        {
+          "req_id": "r1541",
+          "id": "responses-thinking-not-in-output-text",
+          "given": "assistant 含 Thinking 无 signature 与 Text",
+          "when": "转换为 Responses input",
+          "then": "output_text 仅含 Text 且无 Thinking 正文"
+        },
+        {
+          "req_id": "r1542",
+          "id": "responses-body-store-strict-summary-include",
+          "given": "Responses 组装且 thinking_level 为 medium 且 tools 非空",
+          "when": "构建请求体",
+          "then": "store 为 false 且每个 tool 的 strict 为 false 且 reasoning.summary 存在且 include 含 reasoning.encrypted_content"
+        },
+        {
+          "req_id": "r1542",
+          "id": "responses-reasoning-item-sets-thinking-signature",
+          "given": "Responses 流或非流输出含完整 type=reasoning 的 output item",
+          "when": "映射为 AiBridgeChunk",
+          "then": "存在带 thinkingSignature 的 Thinking 终态（ThinkingEnd 或等价）且 signature 可 JSON 解析为该 reasoning item"
+        },
+        {
+          "req_id": "r1544",
+          "id": "responses-error-embedded-message-surface",
+          "given": "",
+          "when": "格式化含嵌入 JSON 的 Responses 上游错误",
+          "then": "错误文案暴露嵌入的 error.message 而非反序列化噪音"
+        }
+      ]
+    },
+    {
+      "spec_id": "package-ai-bridge-accounting",
+      "purpose": "\"xylitol-ai-bridge 多源上下文 token 计量与 TokenProvenance。\"",
+      "reqs": [
+        {
+          "req_id": "r1561",
+          "title": "计量优先级",
+          "statement": "上下文 token 估计 MUST 按固定优先级解析来源：Api，然后 RemoteCount，然后 LocalTokenizer，然后 Heuristic；结果 MUST 携带 TokenProvenance（或等价枚举）标明实际采用的来源。"
+        },
+        {
+          "req_id": "r1564",
+          "title": "Api-锚点规则",
+          "statement": "当存在适用于当前会话 prefix/leaf 的可信厂商 usage 时 MUST 优先用作 Api 锚点；因 abort 或 error 结束的回合 usage、以及 compaction 之后不再描述当前 prefix 的旧 usage，MUST NOT 作为锚点。"
+        },
+        {
+          "req_id": "r1563",
+          "title": "Api-trailing-范围",
+          "statement": "当 Api 锚点有效时，trailing_tokens MUST 仅计入 last usage 消息之后的消息（对齐 pi estimateContextTokens）；MUST NOT 对锚点及之前的消息再叠加 heuristic；last_usage_index MUST 为该锚点消息下标；若消息列表中找不到带 usage 的 assistant，可将整段列表视为 trailing 且 last_usage_index 可为 null。"
+        },
+        {
+          "req_id": "r1565",
+          "title": "禁止流上全量 encode",
+          "statement": "generate_stream 热路径 MUST NOT 在每个文本 delta 上对累计全文调用完整本地 tokenizer.encode；本地精确计数 MUST 仅在显式 estimate 调用、流结束补洞或经文档化的节流策略下发生。"
+        },
+        {
+          "req_id": "r1566",
+          "title": "Heuristic-诚实标注",
+          "statement": "当最终采用 Heuristic 时，ContextTokenEstimate 的 provenance MUST 为 Heuristic；下游展示层若使用该结果 MUST 能区分于 Api/LocalTokenizer。"
+        },
+        {
+          "req_id": "r1567",
+          "title": "RemoteCount-可降级",
+          "statement": "RemoteCount（Anthropic count_tokens 与 OpenAI Responses input_tokens，及等价注入 stub）MUST 可配置关闭；调用失败或超时时 MUST 降级到 LocalTokenizer 或 Heuristic，且 MUST NOT 将失败结果标为 Api。"
+        },
+        {
+          "req_id": "r1568",
+          "title": "LocalTokenizer-注册与缓存",
+          "statement": "LocalTokenizer MUST 经 registry 将 model_id 映射到 Builtin、HuggingFace tokenizer.json 或本地 path 源（用户配置优先于 builtin 启发式）；HuggingFace 文件下载 MUST 为 opt-in 或显式 prefetch，默认 MUST NOT 静默拉取大文件；缓存命中或 local path 可用后 MUST 可离线加载。"
+        },
+        {
+          "req_id": "r1569",
+          "title": "openai-responses-remote-count",
+          "statement": "当模型路径为 OpenAI Responses（或声明兼容 input_tokens 的端点）且 RemoteCount 已启用时，估计上下文 MUST 可经 POST /v1/responses/input_tokens（或配置的 base_url 等价路径）取得 input_tokens 并标 provenance 为 RemoteCount；非 Responses 路径 MUST NOT 伪造该远程调用成功。"
+        },
+        {
+          "req_id": "r1570",
+          "title": "tokenizer-cache-manage-api",
+          "statement": "HfTokenizerCache（或等价）MUST 提供可测的缓存根查询、条目列举与按键删除；opt-in download MUST 在成功前不把不完整文件当作可用缓存；CLI 与其它面 MUST 经此 API 管理缓存，MUST NOT 在估计路径调用 download。"
+        },
+        {
+          "req_id": "r1571",
+          "title": "hf-endpoint-base",
+          "statement": "拼装 HuggingFace resolve URL 时 MUST 以环境变量 HF_ENDPOINT 为优先基址（去尾斜杠），未设置时可回退 HF_HUB_ENDPOINT，再默认 https://huggingface.co；URL 形状 MUST 为 {base}/{repo}/resolve/main/{file}（本波 revision 固定 main）；opt-in download MUST 使用该基址，MUST NOT 在已设 HF_ENDPOINT 时仍硬编码仅官方域。"
+        },
+        {
+          "req_id": "r1562",
+          "title": "local-tokenizer-gate",
+          "statement": "LocalTokenizer 档 MUST 仅在显式允许时参与估计（配置 on|off，默认 off）；off 时即便 registry 已映射或缓存可用，估计路径 MUST NOT 调用本地 encode，并 MUST 继续按 paa1 降级到其后档；本波 MUST NOT 引入 every-N 或 idle 等其它本地计数策略。"
+        }
+      ],
+      "scenarios": [
+        {
+          "req_id": "r1561",
+          "id": "estimate-priority-api-first",
+          "given": "会话条目含 stop 回合的 usage 锚点",
+          "when": "以同源估计器估计上下文",
+          "then": "估计来源为 Api"
+        },
+        {
+          "req_id": "r1564",
+          "id": "aborted-usage-not-anchor",
+          "given": "会话条目仅含 abort 回合的 usage 锚点",
+          "when": "以同源估计器估计上下文",
+          "then": "估计来源降级而非 Api"
+        },
+        {
+          "req_id": "r1570",
+          "id": "cache-list-and-remove",
+          "given": "缓存目录中已有 tokenizer.json 条目",
+          "when": "列举并删除该缓存键",
+          "then": "列举曾包含该条目且删除后不再包含"
+        },
+        {
+          "req_id": "r1570",
+          "id": "download-atomic",
+          "given": "opt-in download 中途失败",
+          "when": "再次 encode_count_if_cached",
+          "then": "不把不完整文件当作可用缓存"
+        },
+        {
+          "req_id": "r1571",
+          "id": "hf-endpoint-mirror",
+          "given": "环境变量 HF_ENDPOINT 为 https://hf-mirror.com",
+          "when": "拼装某 repo 的 tokenizer.json resolve URL",
+          "then": "URL 以 https://hf-mirror.com/ 为前缀且含 resolve/main/tokenizer.json"
+        },
+        {
+          "req_id": "r1571",
+          "id": "hf-endpoint-default",
+          "given": "未设置 HF_ENDPOINT 与 HF_HUB_ENDPOINT",
+          "when": "拼装 resolve URL",
+          "then": "基址为 https://huggingface.co"
+        }
+      ]
+    }
+  ]
+}
