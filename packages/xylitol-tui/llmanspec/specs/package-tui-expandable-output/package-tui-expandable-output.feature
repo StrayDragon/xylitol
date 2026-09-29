@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-expandable-output
 # purpose: 通用 ExpandableOutput：max-height 视口、earlier/more 提示、流式贴尾（供工具/bash 详情）。
-# scope: packages/xylitol-tui/
+# scope: src/
 
 功能: package-tui-expandable-output
 

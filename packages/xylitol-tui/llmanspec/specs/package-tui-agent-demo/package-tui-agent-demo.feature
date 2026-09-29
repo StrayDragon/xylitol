@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-agent-demo
 # purpose: xylitol-tui agent_demo 演示面：command plate 预制触发、瘦固定区、打字机 Markdown stub（≠ 产品 DESIGN playground）。
-# scope: packages/xylitol-tui/examples/, packages/xylitol-tui/tests/
+# scope: examples/, tests/
 
 功能: package-tui-agent-demo
 

@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-paste-burst
 # purpose: packages/xylitol-tui 的 PasteBurst 检测器（非 bracketed paste 的 Enter 抑制）。
-# scope: packages/xylitol-tui/, tests/
+# scope: src/, tests/
 
 功能: package-tui-paste-burst
 

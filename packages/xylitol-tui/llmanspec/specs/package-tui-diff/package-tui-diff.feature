@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-diff
 # purpose: 可复用 Diff 组件（行级与 word-level、可选 side-by-side、CJK 宽度）。
-# scope: packages/xylitol-tui/
+# scope: src/
 
 功能: package-tui-diff
 

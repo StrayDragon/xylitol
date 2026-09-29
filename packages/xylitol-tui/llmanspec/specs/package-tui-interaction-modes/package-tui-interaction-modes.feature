@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-interaction-modes
 # purpose: "packages/xylitol-tui 双交互模式（Inline 主屏 / ApplicationOwned 应用自管视口）完整库基础：视口、transcript 选区、dock 拖选夹边、Editor 独立多行选区、复制与短提示、生命周期，供产品 TUI 下游迁移。"
-# scope: packages/xylitol-tui/, tests/
+# scope: src/, tests/
 
 功能: package-tui-interaction-modes
 

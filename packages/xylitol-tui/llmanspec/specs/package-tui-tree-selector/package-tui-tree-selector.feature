@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-tree-selector
 # purpose: 通用 TreeSelector：flatten/过滤/搜索/翻页/fold/annotation（供双 Esc 会话树）。
-# scope: packages/xylitol-tui/
+# scope: src/
 
 功能: package-tui-tree-selector
 

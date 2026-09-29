@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-tui-theme
 # purpose: 包内 SemanticPalette（Dark/Light）、paint 真彩、主题工厂与 demo 换肤。
-# scope: packages/xylitol-tui/
+# scope: src/
 
 功能: package-tui-theme
 

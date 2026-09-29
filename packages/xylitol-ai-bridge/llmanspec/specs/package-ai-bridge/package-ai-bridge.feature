@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: package-ai-bridge
 # purpose: "packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。"
-# scope: packages/xylitol-ai-bridge/
+# scope: src/
 
 功能: package-ai-bridge
 
