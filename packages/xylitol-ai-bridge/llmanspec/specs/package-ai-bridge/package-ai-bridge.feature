@@ -1,6 +1,7 @@
 # language: zh-CN
 # capability: package-ai-bridge
 # purpose: "packages/xylitol-ai-bridge：client→LLM provider 接线与 AiBridge* DTO 边界。"
+# c2833 TODO(split): src/infra/provider/、src/agent/compaction/ 根侧规则待拆新根 capability（next-req-id 取号）；先行整体迁入，见 change research。
 # scope: packages/xylitol-ai-bridge/, src/infra/provider/
 
 功能: package-ai-bridge

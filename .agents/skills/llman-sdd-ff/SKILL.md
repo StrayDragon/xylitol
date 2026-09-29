@@ -2,7 +2,7 @@
 name: "llman-sdd-ff"
 description: "一趟走完 propose 等价路径：规划文档 → 绑定分支 → 落地 specs。"
 metadata:
-  version: "0.5.1"
+  version: "0.7.0"
 ---
 
 # LLMAN SDD Fast-Forward (FF)

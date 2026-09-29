@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/StrayDragon/llman/main/artifacts/schema/configs/en/llmanspec-config.schema.json
+schema: spec-driven
+locale: en
+
+# Optional extra skills (disabled by default, uncomment to enable).
+# On `llman-sdd init --update`, managed candidates are:
+#   default workflow skills + entries listed here (extra_skills extend).
+# Then `.agents/skills/llman-sdd-*` is scanned: anything not in that candidate
+# set is removed first, then candidates are written/updated. Only the
+# `llman-sdd-` prefix is touched (custom skills without that prefix are kept).
+# Deprecated shipped skills (e.g. removed from defaults) are cleaned this way.
+# extra_skills:
+#   - llman-sdd-continue
+#   - llman-sdd-ff
+#   - llman-sdd-validate
+#   - llman-sdd-arch-review
+#   - llman-sdd-wayfinder
+#   - llman-sdd-research
+
+# Spec verification (optional, uncomment to enable)
+specs:
+  framework: none
+  # 纯单测（无 rstest-bdd）：全量批跑一次（batch-once）。
+  check_command: "cargo test -p xylitol-ai-bridge"
+  verify_prompt: |
+    Map test failures to the requirement IDs whose behavior they cover.

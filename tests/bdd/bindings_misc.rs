@@ -54,37 +54,37 @@ async fn test_hooks_wiring_user_bash_block(agent: AgentState) {}
 )]
 async fn test_hooks_wiring_unknown_op(agent: AgentState) {}
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
     name = "responses-toolcall-streams-before-done"
 )]
 fn test_pab13_responses_toolcall_stream(ai_bridge_bdd: AiBridgeBdd) {}
 
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
     name = "partial-args-object"
 )]
 fn test_pab14_partial_args(ai_bridge_bdd: AiBridgeBdd) {}
 
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
     name = "responses-system-as-developer"
 )]
 fn test_pab15_system_developer(ai_bridge_bdd: AiBridgeBdd) {}
 
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
     name = "responses-thinking-not-in-output-text"
 )]
 fn test_pab15_thinking_omit(ai_bridge_bdd: AiBridgeBdd) {}
 
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
     name = "responses-body-store-strict-summary-include"
 )]
 fn test_pab16_body_fields(ai_bridge_bdd: AiBridgeBdd) {}
 
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
     name = "responses-reasoning-item-sets-thinking-signature"
 )]
 fn test_pab16_thinking_signature(ai_bridge_bdd: AiBridgeBdd) {}
@@ -108,25 +108,25 @@ fn test_pt9_no_backfill(prompt_bdd: PromptBdd) {}
 fn test_pt3_no_slash_prompt_templates(prompt_bdd: PromptBdd, ws: Workspace) {}
 
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
     name = "cache-list-and-remove"
 )]
 fn test_paa8_list_remove(tokenizer_bdd: TokenizerBdd) {}
 
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
     name = "download-atomic"
 )]
 fn test_paa8_atomic(tokenizer_bdd: TokenizerBdd) {}
 
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
     name = "hf-endpoint-mirror"
 )]
 fn test_paa9_mirror(tokenizer_bdd: TokenizerBdd) {}
 
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
     name = "hf-endpoint-default"
 )]
 fn test_paa9_default(tokenizer_bdd: TokenizerBdd) {}

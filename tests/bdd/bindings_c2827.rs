@@ -225,14 +225,14 @@ fn test_at_fs_no_timeout(ws: Workspace, t2_schema_bdd: T2SchemaBdd) {}
 
 // accounting r1561
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
     name = "estimate-priority-api-first"
 )]
 fn test_acc_api_first(t2_est_bdd: T2EstBdd) {}
 
 // accounting r1564
 #[scenario(
-    path = "llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
     name = "aborted-usage-not-anchor"
 )]
 fn test_acc_aborted_anchor(t2_est_bdd: T2EstBdd) {}
@@ -469,13 +469,13 @@ fn test_ux_no_key() {}
 
 // package-tui-interaction-modes r1628/r1631
 #[scenario(
-    path = "llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
+    path = "packages/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
     name = "drag-select-copies-transcript"
 )]
 fn test_pt_drag_copy() {}
 
 #[scenario(
-    path = "llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
+    path = "packages/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
     name = "dock-row-excluded-from-selection"
 )]
 fn test_pt_dock_exclude() {}

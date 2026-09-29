@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2833-migrate-migrate-tui-llmanspec-subroot
+base_branch: main
+base_sha: cf6a9841b90f674708ae3ebfff3ddf01f953cfd2
 ---
 
 ## Why

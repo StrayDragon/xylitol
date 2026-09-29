@@ -31,6 +31,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 BDD_DIR = REPO / "tests" / "bdd"
 FEATURE_DIRS = [REPO / "llmanspec" / "specs", REPO / "tests" / "features"]
+# Sub-project roots (subproject-llmanspec-discovery): packages/*/llmanspec/specs.
+FEATURE_DIRS += sorted((REPO / "packages").glob("*/llmanspec/specs"))
 
 # zh-CN keyword set must include 假定/假设 variants or orphan scans misfire.
 KEYWORD_KINDS = {

@@ -1,7 +1,8 @@
 # language: zh-CN
 # capability: infra-provider
 # purpose: Provider 装配与映射：协议适配实现在 xylitol-ai-bridge；主仓 AdapterXyModel 单层外壳与 DTO 映射。
-# scope: src/infra/provider/, packages/xylitol-ai-bridge/, tests/
+# scope: src/infra/provider/
+# c2833: bridge 侧适配器行为已随 package-ai-bridge 迁子根；本 cap 收窄为根侧装配/结构 mandate（one-path-one-root）。
 
 功能: infra-provider
 
@@ -12,7 +13,7 @@
   @req:r1498
   规则: openai-responses-adapter
     System SHALL 提供 OpenAiResponsesAdapter，调用 /v1/responses，对 reasoning items 发出 XyChunk::ThinkingDelta，对 message items 发出 XyChunk::TextDelta。
-    # verified-by: llmanspec/specs/package-ai-bridge/package-ai-bridge.feature
+    # verified-by: packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature
    @req:r1502
   规则: anthropic-messages-adapter
     System SHALL 提供 AnthropicMessagesAdapter，保留现有 Anthropic SSE 解析行为，对 thinking content blocks 发出 XyChunk::ThinkingDelta。

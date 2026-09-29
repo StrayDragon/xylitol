@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: test-qa-gate
 # purpose: 统一 just qa / qa-e2e 验证入口：日常满闸与可选 TUI 第 5 层 E2E 的分工。
-# scope: justfile, AGENTS.md, scripts/, .claude/skills/test-tui-harness/, .agents/skills/test-tui-harness/, packages/xylitol-tui/AGENTS.md, configs/testing/, .config/nextest.toml
+# scope: justfile, AGENTS.md, scripts/, .claude/skills/test-tui-harness/, .agents/skills/test-tui-harness/, configs/testing/, .config/nextest.toml
 
 功能: test-qa-gate
 

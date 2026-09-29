@@ -38,7 +38,7 @@
   @req:r1744
   规则: thinking-level-on-generate
     Agent 在调用 generate_stream（或等价）时 MUST 传入当前 thinking 档名字符串与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 MUST 影响下一轮 provider 请求体；MUST NOT 仅更新会话/UI 状态而不影响请求组装。
-    # verified-by: llmanspec/specs/package-ai-bridge/package-ai-bridge.feature
+    # verified-by: packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature
    @req:r1748
   规则: thinking-level-exact-opaque
     运行时对 thinking 档名（支持集成员、set/cycle、Settings 默认是否 ∈ 支持集、可调判定中的关档字面量）MUST 使用精确 opaque 字符串；关档约定字面量 MUST 为精确 off。MUST NOT 在匹配或可调判定中对档名做 ASCII 大小写折叠或 trim 归一。

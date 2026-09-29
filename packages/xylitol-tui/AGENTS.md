@@ -1,3 +1,16 @@
+<!-- LLMANSPEC:START -->
+
+# LLMAN Spec-Driven Development
+
+This project uses llman SDD. Read `llmanspec/config.yaml` for SDD command behavior configuration, and `llmanspec/AGENTS.md` for additional project-specific rules.
+
+## SDD Pipeline
+
+Use `/llman-sdd-explore` to get started, then follow the pipeline: `/llman-sdd-propose` → `/llman-sdd-apply` → `/llman-sdd-verify` → `/llman-sdd-archive`.
+
+Keep this managed block so `llman-sdd init --update` can refresh it.
+<!-- LLMANSPEC:END -->
+
 # packages/xylitol-tui
 
 本 package **稳定边界**。仓库规则与 AGENTS 写法：根 `AGENTS.md`。产品端接线：`src/app/tui/AGENTS.md`。产品视觉/UX：`src/app/tui/DESIGN.md`。
