@@ -484,7 +484,7 @@ fn test_pt_dock_exclude() {}
 // c2829 批 2
 // ═══════════════════════════════════════════════════════════════════
 
-use crate::tests::bdd::steps_c2827::{t6_mcp_bdd, T6McpBdd};
+use crate::tests::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
 
 // agent-todo r1122
 #[scenario(

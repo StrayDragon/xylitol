@@ -2150,21 +2150,23 @@ pub(crate) fn t_t4_no_api_key() {
 #[when("以触发 todo_update 工具的回合收集事件")]
 pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
     use crate::infra::provider::factory::{
-        reset_fake_state, set_fake_tool_call, set_fake_tool_result, set_fake_text,
+        reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
     };
     use crate::tests::bdd::helpers::make_agent;
     use futures::StreamExt;
 
     reset_fake_state();
     crate::tests::bdd::steps_agent_runtime::ar_register_fake(agent, "c2829-todo");
-    set_fake_tool_call("todo_rewrite", r#"{"items":[{"id":"a","content":"one","status":"in_progress"}]}"#);
+    set_fake_tool_call(
+        "todo_rewrite",
+        r#"{"items":[{"id":"a","content":"one","status":"in_progress"}]}"#,
+    );
     set_fake_tool_result(r#"{"items":[{"id":"a","content":"one","status":"completed"}]}"#);
     set_fake_text("done");
     let mut runner = make_agent(agent);
     futures::executor::block_on(runner.select_model("c2829-todo")).expect("select fake");
     crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, "sess-todo-ev");
-    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "tick todo")
-        .await;
+    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "tick todo").await;
     let mut saw_todo_updated = false;
     let mut list_len = None;
     let mut seen: Vec<String> = Vec::new();
@@ -2223,15 +2225,15 @@ fn t6_fixture_config(name: &str, tools: &str) -> crate::infra::config::types::Mc
     }
 }
 
-async fn t6_discover(t6_mcp_bdd: &T6McpBdd, servers: &[crate::infra::config::types::McpServerConfig]) {
+async fn t6_discover(
+    t6_mcp_bdd: &T6McpBdd,
+    servers: &[crate::infra::config::types::McpServerConfig],
+) {
     let result = crate::infra::mcp::connect_and_discover(servers).await;
     let Some((manager, tools)) = result else {
         panic!("c2829: 非空配置 MUST 构造 manager");
     };
-    *t6_mcp_bdd.tool_names.borrow_mut() = tools
-        .iter()
-        .map(|t| t.name().to_string())
-        .collect();
+    *t6_mcp_bdd.tool_names.borrow_mut() = tools.iter().map(|t| t.name().to_string()).collect();
     *t6_mcp_bdd.diag_count.borrow_mut() = manager.diagnostics().await.len();
     *t6_mcp_bdd.connected.borrow_mut() = manager.connected_servers().await.len();
     manager.shutdown().await;
@@ -2289,8 +2291,7 @@ pub(crate) async fn w_t6_mcp_invalid(t6_mcp_bdd: &T6McpBdd) {
     let Some((manager, tools)) = result else {
         panic!("c2829: 含无效条目的非空配置 MUST 仍构造 manager");
     };
-    *t6_mcp_bdd.tool_names.borrow_mut() =
-        tools.iter().map(|t| t.name().to_string()).collect();
+    *t6_mcp_bdd.tool_names.borrow_mut() = tools.iter().map(|t| t.name().to_string()).collect();
     *t6_mcp_bdd.diag_count.borrow_mut() = manager.diagnostics().await.len();
     *t6_mcp_bdd.connected.borrow_mut() = manager.connected_servers().await.len();
     manager.shutdown().await;
@@ -2321,7 +2322,10 @@ thread_local! {
 pub(crate) fn t_t6_todo_event_assert() {
     T6_TODO_EVENT2.with(|c| {
         let (saw, len) = c.borrow().clone();
-        assert!(saw, "c2829: todo_rewrite 成功后 run 流 MUST 含类型化 TodoUpdated");
+        assert!(
+            saw,
+            "c2829: todo_rewrite 成功后 run 流 MUST 含类型化 TodoUpdated"
+        );
         assert_eq!(len, Some(1), "c2829: TodoUpdated 应携带全量快照");
     });
 }
