@@ -185,10 +185,55 @@ async fn w_codegen(_server_test: &ServerTest) {
 
 #[then("生成物 diff 为空且方法 ID 表与产品方法表一致")]
 async fn t_codegen_clean() {
-    // 方法 ID 表对齐与字节 conformance 由 lib 测试
-    // (`method_table_aligns_with_registry` / `codec_conformance_bytes_locked`)
-    // 必跑覆盖;本地存在 ../fory 时顺带真跑 --check。
+    // 必跑（零外部依赖）：真源 ↔ check-in 生成物的类型名集合 MUST 1:1，能接住
+    // 「改了 fbs 但没重新生成」这类结构漂移。方法 ID 表对齐与字节 conformance
+    // 由 lib 测试(`method_table_aligns_with_registry` / `codec_conformance_bytes_locked`) 覆盖。
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let schema_dir = root.join("src/protocol/wire/v3");
+    let fbs = std::fs::read_to_string(schema_dir.join("xy_wire_v3.fbs")).expect("fbs 真源");
+    let generated =
+        std::fs::read_to_string(schema_dir.join("generated.rs")).expect("check-in 生成物");
+    let first_word = |rest: &str| -> String {
+        rest.split([' ', ':', '{', '<', '('])
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let declared: std::collections::BTreeSet<String> = fbs
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            ["table ", "enum ", "union "]
+                .iter()
+                .find_map(|kw| line.strip_prefix(kw))
+                .map(first_word)
+        })
+        .filter(|name| !name.is_empty())
+        .collect();
+    let emitted: std::collections::BTreeSet<String> = generated
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            ["pub struct ", "pub enum "]
+                .iter()
+                .find_map(|kw| line.strip_prefix(kw))
+                .map(first_word)
+        })
+        .filter(|name| !name.is_empty())
+        .collect();
+    assert!(
+        !declared.is_empty() && !emitted.is_empty(),
+        "真源/生成物类型集合不应为空：declared={} emitted={}",
+        declared.len(),
+        emitted.len()
+    );
+    assert_eq!(
+        declared, emitted,
+        "fbs 真源与 check-in 生成物漂移（补生成：just codegen-wire）"
+    );
+
+    // 字节级对拍需同一个 compiler：本地存在 ../fory clone 时才跑 --check。
     let fory = root.parent().unwrap().join("fory/compiler");
     if fory.is_dir() {
         let out = std::process::Command::new("python3")
