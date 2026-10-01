@@ -1,4 +1,4 @@
-//! Wire protocol v3 — fory 二进制信封(c2834 双轨数据面,spec r1902–r1910)。
+//! Wire protocol v3 — fory 二进制信封(c2834 双轨数据面,spec r1902/r1904–r1910/r1911)。
 //!
 //! - 真源:[`xy_wire_v3.fbs`](../../../../../llmanspec/changes/c2834-update-v3-fory-flutter-poc/research/05-fbs-前端保留字实测.md)
 //!   本目录同名的 fbs(fbs/FlatBuffers 前端,foryc 生成 Rust/Dart);字段名与既有
@@ -98,7 +98,7 @@ impl DebugRepr for Frame {
 }
 
 /// `Method` 判别值 ↔ 产品方法名(spec r1904;与 `wire::registry` SSOT 对齐,
-/// 由 [`tests::method_table_aligns_with_registry`] 锁定)。
+/// 由 `tests::method_table_aligns_with_registry` 单测锁定)。
 pub const METHOD_NAMES: &[(Method, &str)] = &[
     (
         Method::HostDescribe,
@@ -307,9 +307,11 @@ mod tests {
             crate::protocol::wire::registry::names().collect();
         let non_registry = ["approve_tool", "answer_question", "quit"];
 
-        for missing in registry_names.difference(&v3_names) {
-            panic!("registry 方法 {missing} 缺少 v3 Method 判别值");
-        }
+        let missing: Vec<_> = registry_names.difference(&v3_names).collect();
+        assert!(
+            missing.is_empty(),
+            "registry 方法 {missing:?} 缺少 v3 Method 判别值"
+        );
         let extra: Vec<_> = v3_names
             .difference(&registry_names)
             .filter(|n| !non_registry.contains(n))

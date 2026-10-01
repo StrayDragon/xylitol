@@ -80,7 +80,7 @@ fn v3_command_ptr(
 
 /// JSON-RPC 应答文本 → v3 `ServerResponse` 帧。
 ///
-/// `host.describe` 特判为 `DescribeResult`(承载 wire 格式能力,spec r1903);
+/// `host.describe` 特判为 `DescribeResult`(承载 wire 格式能力,spec r1911);
 /// 其余成功应答第一版为 `RawOk`(result JSON 原文)。产品错误码取
 /// `error.data.code`(缺失回落信封 message),对齐 `polish_rpc_json` 语义。
 fn response_from_raw(

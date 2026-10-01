@@ -521,7 +521,7 @@ mod tests {
         assert!(body.contains("ok"), "{body}");
     }
 
-    /// c2834 spec r1902/r1903:v3 binary 上行经 POST /rpc 可服务,应答为
+    /// c2834 spec r1902/r1911:v3 binary 上行经 POST /rpc 可服务,应答为
     /// fory 帧;describe 携带 wire 格式能力集合(双轨期 JSON 路径并存)。
     #[tokio::test]
     async fn post_binary_describe_v3() {

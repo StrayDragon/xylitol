@@ -84,6 +84,15 @@ def _probe_nextest() -> tuple[bool, str]:
     return False, "cargo-nextest not on PATH — `just test` falls back to the slower plain cargo-test path"
 
 
+def _probe_pyyaml() -> tuple[bool, str]:
+    """PyYAML: needed by scripts/check_tui_designing.py (hard dep there)."""
+    try:
+        import yaml
+    except ImportError:
+        return False, "PyYAML not importable by this python3"
+    return True, f"PyYAML {yaml.__version__}"
+
+
 def _probe_cccc() -> tuple[bool, str]:
     if _has("cccc-rs") or (REPO / ".tools" / "bin" / "cccc-rs").exists():
         return True, "cccc-rs present (complexity gate ready)"
@@ -129,6 +138,7 @@ CHECKS: list[Check] = [
     Check("git-lfs", "warn", "git lfs install --local  (or just setup)", _probe_git_lfs),
     Check("nextest", "warn", "cargo install cargo-nextest --locked", _probe_nextest),
     Check("cccc-rs", "warn", "just setup", _probe_cccc),
+    Check("pyyaml", "warn", "python3 -m pip install --user pyyaml  (or just setup)", _probe_pyyaml),
     Check("worktree-target", "warn", 'eval "$(just cargo-wt-env)"', _probe_worktree_target),
     Check("sccache", "info", "see skill rust-build-tune (cargo install sccache + RUSTC_WRAPPER)", _probe_sccache),
     Check("live-provider", "info", "see `just gen-live-provider-example`", _probe_live_provider),

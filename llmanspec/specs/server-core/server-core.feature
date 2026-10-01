@@ -415,7 +415,7 @@
     场景: dual-rail-json-still-served
       当 服务端以双轨配置在空闲端口上启动
       那么 POST /rpc 的 JSON-RPC 2.0 路径应答成功且 id 回显
-  @req:r1903
+  @req:r1911
   规则: wire 格式协商
     host.describe 的结果 MUST 声明 Host 支持的 wire 格式集合（至少含 jsonrpc 与 fory-v3 标识）。客户端 MUST 以声明的格式通信；客户端要求的格式 Host 不支持时 MUST 致命失败，MUST NOT 降级猜测，MUST NOT 重试风暴（平移既有协议版本硬闸语义）。
 

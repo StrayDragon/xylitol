@@ -46,6 +46,8 @@ rmcp = { version = "1.8.0", features = ["client", "transport-child-process", "tr
 sha2 = "0.11.0"
 time = { version = "0.3.55", features = ["formatting", "parsing", "macros"] }
 uuid = { version = "1.26.0", features = ["v4"] }
+# pid presence probe (`kill(pid, 0)`) on non-linux; already in the tree transitively.
+libc = "0.2"
 
 base64 = "0.22.1"
 

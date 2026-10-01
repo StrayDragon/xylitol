@@ -23,6 +23,9 @@ setup:
     # LFS pre-push is owned by git-lfs's native hooks (pre-push + post-*),
     # NOT by prek. Idempotent; also fixes fresh clones missing hooks.
     git lfs install --local
+    # PyYAML is a hard dep of scripts/check_tui_designing.py (designing YAML parse).
+    python3 -m pip install --quiet --user pyyaml \
+      || echo "warn: PyYAML missing — scripts/check_tui_designing.py needs it" >&2
     # Lazy install also happens in scripts/check_complexity.py; setup warms the cache.
     if ! command -v cccc-rs >/dev/null && [[ ! -x .tools/bin/cccc-rs ]]; then
       cargo install cccc-rs-cli --version 0.4.0 --locked --root .tools
@@ -354,10 +357,11 @@ check-scripts verbosity=verbosity_default:
       extra+=(--verbose)
     fi
     for f in "${files[@]}"; do
+        # ${arr[@]+…} 形态：bash 3.2（macOS 自带）在 `set -u` 下不将空数组当 unbound。
         if python3 "$f" --help 2>/dev/null | grep -q -- '--check'; then
-            python3 "$f" --check "${extra[@]}"
+            python3 "$f" --check ${extra[@]+"${extra[@]}"}
         else
-            python3 "$f" "${extra[@]}"
+            python3 "$f" ${extra[@]+"${extra[@]}"}
         fi
     done
 

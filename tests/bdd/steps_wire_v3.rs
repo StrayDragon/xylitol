@@ -1,4 +1,4 @@
-//! wire v3(fory 二进制信封)BDD 步骤(c2834 spec r1902–r1910)。
+//! wire v3(fory 二进制信封)BDD 步骤(c2834 spec r1902/r1904–r1910/r1911)。
 //!
 //! fixture 复用 `steps_server::ServerTest`(其跨步骤生命周期已被现有
 //! server-core 场景验证);v3 网络动作集中在断言步骤内完成。

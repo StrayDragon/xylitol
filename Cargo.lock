@@ -6200,6 +6200,7 @@ dependencies = [
  "insta",
  "jsonrpsee",
  "jsonschema",
+ "libc",
  "log",
  "minijinja",
  "opentelemetry",
