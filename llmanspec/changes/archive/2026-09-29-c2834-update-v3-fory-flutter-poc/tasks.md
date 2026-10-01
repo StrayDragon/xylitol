@@ -41,6 +41,10 @@
 - [x] 2.5 [blocked-by: 2.1, 3.2] 下行 v3:Event → v3 编码 + seq/journal/resync 复用;
       `session/resources`、审批/问卷告知的 v3 变体(不消耗 seq、不进 journal、
       可忽略语义保持)。
+- [x] 2.5b [blocked-by: 2.1, 3.2] 强 schema 应答 union 接入产品面（后继落地）:
+      `get_messages` / `load_session_entries` → `MessagesResult`、`session_tree` →
+      `TreeResult`、`travel_session_tree` → `TravelResult`；其余方法仍 `RawOk`。
+      对拍：`dual-rail-session-snapshot-parity` + mapping/`response_from_raw` 单测。
 - [x] 2.6 [blocked-by: 2.4] v3 通路写者租约与幂等:rpc_id 幂等键接入既有账本(语义同 r1781);
       WS 连接本地租约等价载体(语义同 r1793)。
 

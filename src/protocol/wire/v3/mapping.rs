@@ -12,7 +12,12 @@ use super::generated as v3;
 use crate::protocol::lifecycle::{XyEvent, XyEventError};
 use crate::protocol::message::AgentMessage;
 use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
-use crate::protocol::session::{SessionTreeKind, TodoList, TodoStatus};
+use crate::protocol::session::{
+    BranchSummaryEntry, CompactionEntry, CompactionPolicySnapshot, CustomEntry, CustomMessageEntry,
+    EntryBase, LabelEntry, MessageEntry, ModelChangeEntry, SessionEntry, SessionHeader,
+    SessionInfoEntry, SessionTreeKind, SessionTreeNode, SessionTreeTravel,
+    ThinkingLevelChangeEntry, TodoList, TodoStatus,
+};
 use crate::protocol::wire::Command as WireCommand;
 
 // ── XyEvent → v3 Event ─────────────────────────────────────
@@ -593,6 +598,268 @@ fn v3_todo_status_to_xy(status: &v3::TodoStatus) -> TodoStatus {
     }
 }
 
+// ── session entry / result converters（c2834 task 2.5b）──────
+
+/// 领域 `EntryBase` → v3。非 header 条目恒 `Some`（v3 侧可空只为容纳 header）。
+fn entry_base_to_v3(base: &EntryBase) -> Option<v3::EntryBase> {
+    Some(v3::EntryBase {
+        id: base.id.clone(),
+        parent_id: base.parent_id.clone(),
+        timestamp: base.timestamp,
+    })
+}
+
+/// v3 可空 base → 领域 base。缺 base 平移 serde `#[serde(default)]` 语义（空 id /
+/// 0 timestamp），使 v3 → 领域与 `from_value` 同形（对拍可逐字段比较）。
+fn v3_to_entry_base(base: &Option<v3::EntryBase>, entry_type: &str) -> EntryBase {
+    let (id, parent_id, timestamp) = match base.as_ref() {
+        Some(b) => (b.id.clone(), b.parent_id.clone(), b.timestamp),
+        None => (String::new(), None, 0),
+    };
+    EntryBase {
+        entry_type: entry_type.to_string(),
+        id,
+        parent_id,
+        timestamp,
+    }
+}
+
+/// 可选动态 JSON 块：v3 `_json` → `Option<Value>`；缺位 None，不可解析降级 Null。
+fn opt_json_from_v3(json: &Option<String>) -> Option<Value> {
+    json.as_ref().map(|s| json_string_to_value(s))
+}
+
+/// 领域会话条目 → v3 union（10 变体全覆盖；任意 JSON 子块走 `_json` 原文，spec r1906）。
+pub fn session_entry_to_v3(entry: &SessionEntry) -> v3::SessionEntry {
+    match entry {
+        SessionEntry::Header(h) => v3::SessionEntry::SessionHeader(v3::SessionHeader {
+            version: h.version,
+            id: h.id.clone(),
+            timestamp: h.timestamp,
+            cwd: h.cwd.clone(),
+            parent_session: h.parent_session.clone(),
+            fork_at_entry_id: h.fork_at_entry_id.clone(),
+        }),
+        SessionEntry::Message(e) => v3::SessionEntry::MessageEntry(v3::MessageEntry {
+            base: entry_base_to_v3(&e.base),
+            message_json: e.message.to_string(),
+        }),
+        SessionEntry::Compaction(e) => v3::SessionEntry::CompactionEntry(v3::CompactionEntry {
+            base: entry_base_to_v3(&e.base),
+            summary: e.summary.clone(),
+            first_kept_entry_id: e.first_kept_entry_id.clone(),
+            tokens_before: e.tokens_before,
+            details_json: e.details.as_ref().map(|d| d.to_string()),
+            from_hook: e.from_hook,
+            policy: e.policy.as_ref().map(|p| v3::CompactionPolicySnapshot {
+                context_window: p.context_window,
+                reserve_tokens: p.reserve_tokens,
+                keep_recent_tokens: p.keep_recent_tokens,
+                estimator_version: p.estimator_version.clone(),
+                status: p.status.clone(),
+            }),
+        }),
+        SessionEntry::BranchSummary(e) => {
+            v3::SessionEntry::BranchSummaryEntry(v3::BranchSummaryEntry {
+                base: entry_base_to_v3(&e.base),
+                from_id: e.from_id.clone(),
+                summary: e.summary.clone(),
+                details_json: e.details.as_ref().map(|d| d.to_string()),
+                from_hook: e.from_hook,
+            })
+        }
+        SessionEntry::ModelChange(e) => v3::SessionEntry::ModelChangeEntry(v3::ModelChangeEntry {
+            base: entry_base_to_v3(&e.base),
+            provider: e.provider.clone(),
+            model_id: e.model_id.clone(),
+        }),
+        SessionEntry::ThinkingLevelChange(e) => {
+            v3::SessionEntry::ThinkingLevelChangeEntry(v3::ThinkingLevelChangeEntry {
+                base: entry_base_to_v3(&e.base),
+                thinking_level: e.thinking_level.clone(),
+            })
+        }
+        SessionEntry::Custom(e) => v3::SessionEntry::CustomEntry(v3::CustomEntry {
+            base: entry_base_to_v3(&e.base),
+            custom_type: e.custom_type.clone(),
+            data_json: e.data.to_string(),
+        }),
+        SessionEntry::CustomMessage(e) => {
+            v3::SessionEntry::CustomMessageEntry(v3::CustomMessageEntry {
+                base: entry_base_to_v3(&e.base),
+                custom_type: e.custom_type.clone(),
+                content_json: e.content.to_string(),
+                display: e.display,
+                details_json: e.details.as_ref().map(|d| d.to_string()),
+            })
+        }
+        SessionEntry::Label(e) => v3::SessionEntry::LabelEntry(v3::LabelEntry {
+            base: entry_base_to_v3(&e.base),
+            target_id: e.target_id.clone(),
+            label: e.label.clone(),
+        }),
+        SessionEntry::SessionInfo(e) => v3::SessionEntry::SessionInfoEntry(v3::SessionInfoEntry {
+            base: entry_base_to_v3(&e.base),
+            name: e.name.clone(),
+        }),
+    }
+}
+
+/// v3 union → 领域条目。`Unknown`（对侧新变体，r1907）返回 `None`，由调用方整份
+/// 应答降级为 `RawOk`（对拍不断链，r1908）。
+pub fn v3_to_session_entry(entry: &v3::SessionEntry) -> Option<SessionEntry> {
+    let mapped = match entry {
+        v3::SessionEntry::SessionHeader(h) => SessionEntry::Header(SessionHeader {
+            entry_type: String::new(),
+            version: h.version,
+            id: h.id.clone(),
+            timestamp: h.timestamp,
+            cwd: h.cwd.clone(),
+            parent_session: h.parent_session.clone(),
+            fork_at_entry_id: h.fork_at_entry_id.clone(),
+        }),
+        v3::SessionEntry::MessageEntry(e) => SessionEntry::Message(MessageEntry {
+            base: v3_to_entry_base(&e.base, "message"),
+            message: json_string_to_value(&e.message_json),
+        }),
+        v3::SessionEntry::CompactionEntry(e) => SessionEntry::Compaction(CompactionEntry {
+            base: v3_to_entry_base(&e.base, "compaction"),
+            summary: e.summary.clone(),
+            first_kept_entry_id: e.first_kept_entry_id.clone(),
+            tokens_before: e.tokens_before,
+            details: opt_json_from_v3(&e.details_json),
+            from_hook: e.from_hook,
+            policy: e.policy.as_ref().map(|p| CompactionPolicySnapshot {
+                context_window: p.context_window,
+                reserve_tokens: p.reserve_tokens,
+                keep_recent_tokens: p.keep_recent_tokens,
+                estimator_version: p.estimator_version.clone(),
+                status: p.status.clone(),
+            }),
+        }),
+        v3::SessionEntry::BranchSummaryEntry(e) => {
+            SessionEntry::BranchSummary(BranchSummaryEntry {
+                base: v3_to_entry_base(&e.base, "branchSummary"),
+                from_id: e.from_id.clone(),
+                summary: e.summary.clone(),
+                details: opt_json_from_v3(&e.details_json),
+                from_hook: e.from_hook,
+            })
+        }
+        v3::SessionEntry::ModelChangeEntry(e) => SessionEntry::ModelChange(ModelChangeEntry {
+            base: v3_to_entry_base(&e.base, "modelChange"),
+            provider: e.provider.clone(),
+            model_id: e.model_id.clone(),
+        }),
+        v3::SessionEntry::ThinkingLevelChangeEntry(e) => {
+            SessionEntry::ThinkingLevelChange(ThinkingLevelChangeEntry {
+                base: v3_to_entry_base(&e.base, "thinkingLevelChange"),
+                thinking_level: e.thinking_level.clone(),
+            })
+        }
+        v3::SessionEntry::CustomEntry(e) => SessionEntry::Custom(CustomEntry {
+            base: v3_to_entry_base(&e.base, "custom"),
+            custom_type: e.custom_type.clone(),
+            data: json_string_to_value(&e.data_json),
+        }),
+        v3::SessionEntry::CustomMessageEntry(e) => {
+            SessionEntry::CustomMessage(CustomMessageEntry {
+                base: v3_to_entry_base(&e.base, "customMessage"),
+                custom_type: e.custom_type.clone(),
+                content: json_string_to_value(&e.content_json),
+                display: e.display,
+                details: opt_json_from_v3(&e.details_json),
+            })
+        }
+        v3::SessionEntry::LabelEntry(e) => SessionEntry::Label(LabelEntry {
+            base: v3_to_entry_base(&e.base, "label"),
+            target_id: e.target_id.clone(),
+            label: e.label.clone(),
+        }),
+        v3::SessionEntry::SessionInfoEntry(e) => SessionEntry::SessionInfo(SessionInfoEntry {
+            base: v3_to_entry_base(&e.base, "sessionInfo"),
+            name: e.name.clone(),
+        }),
+        v3::SessionEntry::Unknown(_) => return None,
+    };
+    Some(mapped)
+}
+
+/// 领域树节点（递归）→ v3；v3 侧省略 `Clone`/`PartialEq`，故逐层重建。
+pub fn session_tree_node_to_v3(node: &SessionTreeNode) -> v3::SessionTreeNode {
+    v3::SessionTreeNode {
+        entry: session_entry_to_v3(&node.entry),
+        children: node.children.iter().map(session_tree_node_to_v3).collect(),
+        label: node.label.clone(),
+    }
+}
+
+/// v3 树节点 → 领域（任一子节点落入 unknown 即整体降级，与条目同策略）。
+pub fn v3_to_session_tree_node(node: &v3::SessionTreeNode) -> Option<SessionTreeNode> {
+    let entry = v3_to_session_entry(&node.entry)?;
+    let mut children = Vec::with_capacity(node.children.len());
+    for child in &node.children {
+        children.push(v3_to_session_tree_node(child)?);
+    }
+    Some(SessionTreeNode {
+        entry,
+        children,
+        label: node.label.clone(),
+    })
+}
+
+/// `get_messages` / `load_session_entries` 应答 → v3 强 schema union。
+pub fn messages_result_to_v3(entries: &[SessionEntry]) -> v3::MessagesResult {
+    v3::MessagesResult {
+        entries: entries.iter().map(session_entry_to_v3).collect(),
+    }
+}
+
+/// v3 `MessagesResult` → 领域条目；含 unknown 变体时整体 `None`。
+pub fn v3_to_entries(result: &v3::MessagesResult) -> Option<Vec<SessionEntry>> {
+    result
+        .entries
+        .iter()
+        .map(v3_to_session_entry)
+        .collect::<Option<Vec<_>>>()
+}
+
+/// `session_tree` 应答 → v3 强 schema union。
+pub fn tree_result_to_v3(nodes: &[SessionTreeNode]) -> v3::TreeResult {
+    v3::TreeResult {
+        nodes: nodes.iter().map(session_tree_node_to_v3).collect(),
+    }
+}
+
+/// v3 `TreeResult` → 领域节点；含 unknown 变体时整体 `None`。
+pub fn v3_to_tree_nodes(result: &v3::TreeResult) -> Option<Vec<SessionTreeNode>> {
+    result
+        .nodes
+        .iter()
+        .map(v3_to_session_tree_node)
+        .collect::<Option<Vec<_>>>()
+}
+
+/// `travel_session_tree` 应答 → v3 强 schema union。
+pub fn travel_result_to_v3(travel: &SessionTreeTravel) -> v3::TravelResult {
+    v3::TravelResult {
+        kind: session_tree_kind_to_v3(travel.kind),
+        selected_id: travel.selected_id.clone(),
+        leaf_id: travel.leaf_id.clone(),
+        editor_text: travel.editor_text.clone(),
+    }
+}
+
+/// v3 `TravelResult` → 领域（闭集枚举，不失败）。
+pub fn v3_to_travel_result(result: &v3::TravelResult) -> SessionTreeTravel {
+    SessionTreeTravel {
+        kind: v3_session_tree_kind_to_xy(&result.kind),
+        selected_id: result.selected_id.clone(),
+        leaf_id: result.leaf_id.clone(),
+        editor_text: result.editor_text.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1056,5 +1323,144 @@ mod tests {
                 "{expected_kind} roundtrip payload drift"
             );
         }
+    }
+
+    /// task 2.5b 对拍地基：三类强 schema 应答经 fory 字节往返后，领域 JSON 与
+    /// JSON 轨逐字节同构（同一组 Serialize，无第二套词表）。
+    #[test]
+    fn session_result_types_roundtrip_through_fory_bytes() {
+        use crate::protocol::session::{
+            CompactionEntry, CompactionPolicySnapshot, CustomMessageEntry, EntryBase, LabelEntry,
+            MessageEntry, SessionEntry, SessionHeader, SessionTreeKind, SessionTreeNode,
+            SessionTreeTravel,
+        };
+
+        let entries = vec![
+            SessionEntry::Header(SessionHeader {
+                entry_type: String::new(),
+                version: 7,
+                id: "s1".into(),
+                timestamp: 1_700_000_000,
+                cwd: "/w".into(),
+                parent_session: None,
+                fork_at_entry_id: Some("e0".into()),
+            }),
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: String::new(),
+                    id: "e1".into(),
+                    parent_id: Some("e0".into()),
+                    timestamp: 1_700_000_001,
+                },
+                message: serde_json::json!({"role": "user", "content": "hi"}),
+            }),
+            SessionEntry::Compaction(CompactionEntry {
+                base: EntryBase {
+                    entry_type: String::new(),
+                    id: "e2".into(),
+                    parent_id: Some("e1".into()),
+                    timestamp: 1_700_000_002,
+                },
+                summary: "sum".into(),
+                first_kept_entry_id: "e1".into(),
+                tokens_before: 1234,
+                details: Some(serde_json::json!({"kept": 2})),
+                from_hook: Some(true),
+                policy: Some(CompactionPolicySnapshot::current(8192, 512, 256, "v1")),
+            }),
+            SessionEntry::CustomMessage(CustomMessageEntry {
+                base: EntryBase {
+                    entry_type: String::new(),
+                    id: "e3".into(),
+                    parent_id: None,
+                    timestamp: 1_700_000_003,
+                },
+                custom_type: "todo".into(),
+                content: serde_json::json!([{"id": "1", "done": true}]),
+                display: true,
+                details: None,
+            }),
+            SessionEntry::Label(LabelEntry {
+                base: EntryBase {
+                    entry_type: String::new(),
+                    id: "e4".into(),
+                    parent_id: None,
+                    timestamp: 1_700_000_004,
+                },
+                target_id: "e1".into(),
+                label: None,
+            }),
+        ];
+        let typed = messages_result_to_v3(&entries);
+        let decoded = v3::MessagesResult::from_bytes(&typed.to_bytes().unwrap()).unwrap();
+        assert_eq!(decoded, typed, "MessagesResult 字节往返保持形状");
+        let back = v3_to_entries(&decoded).expect("closed variants map back");
+        assert_eq!(
+            serde_json::to_value(&back).unwrap(),
+            serde_json::to_value(&entries).unwrap(),
+            "条目 JSON 应与 JSON 轨同构（含 camelCase 与 skip 规则）"
+        );
+
+        // 树:递归节点带 label，只 derive Debug/Default，故比 JSON 形状。
+        let nodes = vec![SessionTreeNode {
+            entry: entries[1].clone(),
+            children: vec![SessionTreeNode {
+                entry: entries[2].clone(),
+                children: Vec::new(),
+                label: Some("checkpoint".into()),
+            }],
+            label: None,
+        }];
+        let tree = tree_result_to_v3(&nodes);
+        let decoded_tree = v3::TreeResult::from_bytes(&tree.to_bytes().unwrap()).unwrap();
+        let back_nodes = v3_to_tree_nodes(&decoded_tree).expect("closed variants map back");
+        assert_eq!(
+            serde_json::to_value(&back_nodes).unwrap(),
+            serde_json::to_value(&nodes).unwrap(),
+            "树节点 JSON 应与 JSON 轨同构"
+        );
+
+        // travel:闭集枚举不失败，editor_text 缺位保持 None。
+        let travel = SessionTreeTravel {
+            kind: SessionTreeKind::MessageHistory,
+            selected_id: "e1".into(),
+            leaf_id: Some("e0".into()),
+            editor_text: None,
+        };
+        let typed_travel = travel_result_to_v3(&travel);
+        let decoded_travel =
+            v3::TravelResult::from_bytes(&typed_travel.to_bytes().unwrap()).unwrap();
+        assert_eq!(decoded_travel, typed_travel);
+        let back_travel = v3_to_travel_result(&decoded_travel);
+        assert_eq!(
+            serde_json::to_value(&back_travel).unwrap(),
+            serde_json::to_value(&travel).unwrap(),
+            "travel 缺位字段应继续不进 JSON"
+        );
+    }
+
+    /// unknown 变体使整份载荷降级，不拼半份形状（r1907 + r1908）。
+    #[test]
+    fn unknown_entry_variant_degrades_whole_result() {
+        use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+
+        let mut typed = messages_result_to_v3(&[SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: String::new(),
+                id: "e1".into(),
+                parent_id: None,
+                timestamp: 1,
+            },
+            message: serde_json::json!({"role": "user", "content": "x"}),
+        })]);
+        assert_eq!(v3_to_entries(&typed).expect("known variants").len(), 1);
+
+        typed
+            .entries
+            .push(v3::SessionEntry::Unknown(fory::UnknownCase::new(11, ())));
+        assert!(
+            v3_to_entries(&typed).is_none(),
+            "含 unknown 变体时整份降级，调用方退回 RawOk"
+        );
     }
 }

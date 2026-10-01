@@ -71,6 +71,12 @@ async fn test_dual_rail_event_equivalence(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
+    name = "dual-rail-session-snapshot-parity"
+)]
+async fn test_dual_rail_session_snapshot_parity(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
     name = "cutover-requires-parity-green"
 )]
 async fn test_cutover_requires_parity_green(server_test: ServerTest) {}

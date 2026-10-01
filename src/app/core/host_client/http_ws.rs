@@ -694,14 +694,22 @@ mod tests {
             unreachable!()
         };
         assert!(resp.ok, "{:?}", resp.error);
-        match resp.payload {
+        // task 2.5b 后 get_messages 走具名 union;其余方法仍 RawOk。两形都还原为
+        // JSON 轨形状后比对,对拍不依赖具体载体选哪一只。
+        let v3_result = match resp.payload {
+            Some(ResponsePayload::MessagesResult(m)) => json!({
+                "entries": serde_json::to_value(
+                    crate::protocol::wire::v3::mapping::v3_to_entries(&m)
+                        .expect("closed variants"),
+                )
+                .expect("entries serialize")
+            }),
             Some(ResponsePayload::RawOk(raw)) => {
-                let v3_result: serde_json::Value =
-                    serde_json::from_str(&raw.json).expect("RawOk 原文为合法 JSON");
-                assert_eq!(v3_result, json_result, "双路径 get_messages 语义等价");
+                serde_json::from_str(&raw.json).expect("RawOk 原文为合法 JSON")
             }
-            other => panic!("expected RawOk, got {other:?}"),
-        }
+            other => panic!("expected MessagesResult 或 RawOk, got {other:?}"),
+        };
+        assert_eq!(v3_result, json_result, "双路径 get_messages 语义等价");
     }
     use serde_json::json;
 

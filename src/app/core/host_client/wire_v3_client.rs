@@ -175,6 +175,10 @@ pub(super) fn server_response_to_result(resp: &ServerResponse) -> RpcResult {
 
 /// 成功载荷 → JSON value(`RawOk` 原文解析;describe 还原为
 /// `HostDescribeValue` 形状——与 JSON 轨 describe result 同构)。
+///
+/// 强 schema 应答(task 2.5b)以领域条目为中间物回到 serde,因此与
+/// `host::outcome_to_value` 的 JSON 形状逐字节同构(同一组 Serialize)。
+/// unknown 变体(r1907)使整份载荷降级 `Null`,不拼半份形状。
 fn payload_value(payload: Option<&ResponsePayload>) -> Value {
     match payload {
         Some(ResponsePayload::DescribeResult(d)) => serde_json::to_value(HostDescribeValue {
@@ -182,10 +186,26 @@ fn payload_value(payload: Option<&ResponsePayload>) -> Value {
             formats: d.formats.clone(),
         })
         .unwrap_or(Value::Null),
-        // 第一版服务端对非 describe 应答一律 RawOk(JSON 原文)。
+        // 会话条目与树:强 schema union 还原为 `{"entries": […]}` / `{"tree": […]}`。
+        Some(ResponsePayload::MessagesResult(m)) => match v3_mapping::v3_to_entries(m) {
+            Some(entries) => {
+                serde_json::json!({ "entries": serde_json::to_value(entries).unwrap_or(Value::Null) })
+            }
+            None => Value::Null,
+        },
+        Some(ResponsePayload::TreeResult(t)) => match v3_mapping::v3_to_tree_nodes(t) {
+            Some(nodes) => {
+                serde_json::json!({ "tree": serde_json::to_value(nodes).unwrap_or(Value::Null) })
+            }
+            None => Value::Null,
+        },
+        // travel 结果是平对象(闭集枚举),与 JSON 轨 `to_value(travel)` 一致。
+        Some(ResponsePayload::TravelResult(t)) => {
+            serde_json::to_value(v3_mapping::v3_to_travel_result(t)).unwrap_or(Value::Null)
+        }
+        // 其余未接强 schema 的方法一律 RawOk(JSON 原文)。
         Some(ResponsePayload::RawOk(raw)) => serde_json::from_str(&raw.json).unwrap_or(Value::Null),
-        // 防御:SubscribeResult 与 JSON 轨 subscribe result 同构;强 schema
-        // 应答 union(task 2.5b)落地前其余变体降级 Null,不断链。
+        // 防御:SubscribeResult 与 JSON 轨 subscribe result 同构，不断链。
         Some(ResponsePayload::SubscribeResult(s)) => {
             serde_json::to_value(SessionSubscribedPayload {
                 session_id: s.session_id.clone(),
@@ -444,6 +464,91 @@ mod tests {
         assert!(!formats_advertise_v3(&old_host));
         let dual = RpcResult::ok_value(json!({"protocol": 2, "formats": ["jsonrpc", "fory-v3"]}));
         assert!(formats_advertise_v3(&dual));
+    }
+
+    /// task 2.5b：具名应答 union 还原为与 JSON 轨 `outcome_to_value` 同构的形状
+    /// (条目/树多一层包裹键,travel 是平对象)。
+    #[test]
+    fn typed_payloads_restore_json_track_shape() {
+        use crate::protocol::session::{
+            EntryBase, MessageEntry, SessionEntry, SessionHeader, SessionTreeKind, SessionTreeNode,
+            SessionTreeTravel,
+        };
+
+        let header = SessionEntry::Header(SessionHeader {
+            entry_type: String::new(),
+            version: 7,
+            id: "s1".into(),
+            timestamp: 1_700_000_000,
+            cwd: "/w".into(),
+            parent_session: Some("s0".into()),
+            fork_at_entry_id: None,
+        });
+        let message = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: String::new(),
+                id: "e1".into(),
+                parent_id: Some("e0".into()),
+                timestamp: 1_700_000_001,
+            },
+            message: json!({"role": "user", "content": "hi"}),
+        });
+        let entries = vec![header.clone(), message.clone()];
+        let ok_entries = ServerResponse {
+            rpc_id: 2,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::MessagesResult(
+                v3_mapping::messages_result_to_v3(&entries),
+            )),
+            writer_token: None,
+        };
+        assert_eq!(
+            server_response_to_result(&ok_entries).value,
+            Some(json!({ "entries": serde_json::to_value(&entries).unwrap() })),
+            "get_messages / load_session_entries 的包裹键必须是 entries"
+        );
+
+        let nodes = vec![SessionTreeNode {
+            entry: message,
+            children: Vec::new(),
+            label: Some("checkpoint".into()),
+        }];
+        let ok_tree = ServerResponse {
+            rpc_id: 3,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::TreeResult(v3_mapping::tree_result_to_v3(
+                &nodes,
+            ))),
+            writer_token: None,
+        };
+        assert_eq!(
+            server_response_to_result(&ok_tree).value,
+            Some(json!({ "tree": serde_json::to_value(&nodes).unwrap() })),
+            "session_tree 的包裹键必须是 tree"
+        );
+
+        let travel = SessionTreeTravel {
+            kind: SessionTreeKind::MessageHistory,
+            selected_id: "e1".into(),
+            leaf_id: None,
+            editor_text: Some("prefill".into()),
+        };
+        let ok_travel = ServerResponse {
+            rpc_id: 4,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::TravelResult(
+                v3_mapping::travel_result_to_v3(&travel),
+            )),
+            writer_token: None,
+        };
+        assert_eq!(
+            server_response_to_result(&ok_travel).value,
+            Some(serde_json::to_value(&travel).unwrap()),
+            "travel 与 JSON 轨一样是平对象"
+        );
     }
 
     /// task 3.1 (b):ServerNotification(Event / Subscribed)→ 与 JSON 路径

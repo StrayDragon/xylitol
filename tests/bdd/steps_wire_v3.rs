@@ -18,6 +18,9 @@ use crate::protocol::wire::v3::{
 use crate::tests::bdd::steps_server::{ServerTest, start_host};
 use rstest_bdd_macros::{given, then, when};
 
+/// 对拍场景使用的会话 id（`HostState::for_test` 的默认会话）。
+const SNAPSHOT_SESSION: &str = "test-session";
+
 fn describe_frame(rpc_id: u64) -> Vec<u8> {
     Frame::ClientRequest(ClientRequest {
         rpc_id,
@@ -342,6 +345,100 @@ async fn t_dual_rail_equivalent(server_test: &ServerTest) {
     let (ok, n) = stored.split_once('|').expect("ok|n");
     assert_eq!(ok, "true", "双路径事件领域等价失败");
     assert!(n.parse::<usize>().unwrap() >= 3, "事件流样本数 {n}");
+}
+
+/// task 2.5b 对拍 fixture：给 Host 默认会话灌 3 条真实条目（两条路径读同一 store）。
+#[given("同一会话在两条路径上各有 3 条历史条目")]
+async fn g_seed_snapshot_entries(server_test: &ServerTest) {
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    host.ports
+        .store
+        .create(SNAPSHOT_SESSION, Some("."), None)
+        .await
+        .expect("create session");
+    for i in 0..3u64 {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("p-{i}"),
+                parent_id: None,
+                timestamp: 1_700_000_000_000 + i,
+            },
+            message: serde_json::json!({"role": "user", "content": format!("m{i}")}),
+        });
+        host.ports
+            .store
+            .append_session_entry(SNAPSHOT_SESSION, &entry)
+            .await
+            .expect("append entry");
+    }
+}
+
+/// 两条轨各取一次快照：JSON 轨走 `HttpWsClient`，v3 轨走 binary POST + 具名
+/// union 解码;两份 result 存 fixture 供断言。
+#[when("客户端分别经 JSON-RPC 与 v3 取回该会话快照")]
+async fn w_fetch_snapshot_dual_rail(server_test: &ServerTest) {
+    use crate::protocol::wire::v3::{Command as V3Command, GetMessages};
+
+    let port = server_test.port.get();
+    let json_client = HttpWsClient::new(format!("http://127.0.0.1:{port}"));
+    let json_result = json_client
+        .unary("get_messages", serde_json::json!({}))
+        .await
+        .expect("json get_messages");
+    assert!(json_result.ok, "json rail: {json_result:?}");
+
+    let frame = Frame::ClientRequest(ClientRequest {
+        rpc_id: 21,
+        request: Request::Command(V3Command::GetMessages(GetMessages {})),
+        writer_token: None,
+    })
+    .to_bytes()
+    .expect("encode get_messages frame");
+    let (_status, body) = post_v3(port, &frame).await;
+    let resp = expect_describe_response(&body);
+    assert!(resp.ok, "v3 rail: {:?}", resp.error);
+    // 具名 union 而非 RawOk：强 schema 载荷已接进产品面。
+    let v3_value = match resp.payload.as_ref() {
+        Some(ResponsePayload::MessagesResult(m)) => serde_json::json!({
+            "entries": serde_json::to_value(
+                crate::protocol::wire::v3::mapping::v3_to_entries(m).expect("closed variants"),
+            )
+            .unwrap()
+        }),
+        other => panic!("get_messages MUST 走 MessagesResult，实际 {other:?}"),
+    };
+
+    server_test.unary_body.borrow_mut().replace(format!(
+        "{}\n{}",
+        serde_json::to_string(&json_result.value).unwrap_or_default(),
+        serde_json::to_string(&v3_value).unwrap_or_default()
+    ));
+}
+
+#[then("两条路径的 result 等价且 v3 侧承载具名应答 union")]
+async fn t_snapshot_dual_rail_equal(server_test: &ServerTest) {
+    let stored = server_test
+        .unary_body
+        .borrow()
+        .clone()
+        .expect("dual rail snapshot pair");
+    let (json_text, v3_text) = stored.split_once('\n').expect("json|v3");
+    let json_value: serde_json::Value = serde_json::from_str(json_text).expect("json body");
+    let v3_value: serde_json::Value = serde_json::from_str(v3_text).expect("v3 body");
+    assert_eq!(v3_value, json_value, "两条轨的快照 result MUST 领域等价");
+    assert!(
+        json_value
+            .get("entries")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len)
+            .unwrap_or_default()
+            >= 3,
+        "fixture 的 3 条条目（加 store 自己的 session header）MUST 两边都看得到"
+    );
 }
 
 #[given("v3 客户端已订阅会话且 prompt 运行")]

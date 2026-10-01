@@ -3,9 +3,9 @@
 //! v3 是**纯编码层**:上行帧解码后转为 JSON-RPC 2.0 文本喂既有
 //! [`rpc_module::dispatch_raw`],方法表 / 幂等 / 写者租约 / 审批执行面零分叉
 //! (对拍纪律 spec r1908:两路径由同一 dispatch 与事件源支撑)。
-//! 下行 v3 事件通知由 mux 侧编码(见 `http.rs` binary 通道);应答侧除
-//! `host.describe` 外第一版以 `RawOk`(JSON 原文)承载,强 schema 应答
-//! union 随 SessionEntry 载荷映射(task 2.5b)逐步接入。
+//! 下行 v3 事件通知由 mux 侧编码(见 `http.rs` binary 通道);应答侧
+//! `host.describe` 与 task 2.5b 已接的三类(会话条目 / 会话树 / travel)走具名
+//! union,其余方法以 `RawOk`(JSON 原文)承载。
 
 use crate::app::server::rpc_module::{self, ProductRpc};
 use crate::protocol::wire::v3::{
@@ -118,6 +118,8 @@ fn response_from_raw(
             protocol: describe.protocol,
             formats: describe.formats.iter().map(|s| s.to_string()).collect(),
         })
+    } else if let Some(typed) = typed_payload(method, &result) {
+        typed
     } else {
         ResponsePayload::RawOk(crate::protocol::wire::v3::RawOk {
             json: result.to_string(),
@@ -130,6 +132,41 @@ fn response_from_raw(
         payload: Some(payload),
         writer_token: token,
     })
+}
+
+/// 强 schema 应答（c2834 task 2.5b）：会话条目 / 会话树 / travel 三类载荷走
+/// 具名 union,拿到完整体积收益;其余方法（含未命中与解码降级）走 `RawOk`。
+///
+/// 降级是逐方法的：某方法内任一 unknown 变体就整份退回 `RawOk`，不拼半份
+/// 强 schema（对拍不断链，r1908）。
+fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePayload> {
+    use crate::protocol::session::{SessionEntry, SessionTreeNode, SessionTreeTravel};
+    use crate::protocol::wire::registry;
+    use crate::protocol::wire::v3::mapping;
+
+    match method {
+        registry::METHOD_GET_MESSAGES | registry::METHOD_LOAD_SESSION_ENTRIES => {
+            let entries: Vec<SessionEntry> =
+                serde_json::from_value(result.get("entries")?.clone()).ok()?;
+            Some(ResponsePayload::MessagesResult(
+                mapping::messages_result_to_v3(&entries),
+            ))
+        }
+        registry::METHOD_SESSION_TREE => {
+            let nodes: Vec<SessionTreeNode> =
+                serde_json::from_value(result.get("tree")?.clone()).ok()?;
+            Some(ResponsePayload::TreeResult(mapping::tree_result_to_v3(
+                &nodes,
+            )))
+        }
+        registry::METHOD_TRAVEL_SESSION_TREE => {
+            let travel: SessionTreeTravel = serde_json::from_value(result.clone()).ok()?;
+            Some(ResponsePayload::TravelResult(mapping::travel_result_to_v3(
+                &travel,
+            )))
+        }
+        _ => None,
+    }
 }
 
 /// 处理一条 v3 上行帧,产出 v3 应答帧字节与本次应答携带的写者租约
@@ -330,6 +367,82 @@ mod tests {
         assert_eq!(method, "arm_tool_freeze");
         let v: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(v["params"]["frozen"], true);
+    }
+
+    #[test]
+    fn typed_payloads_cover_session_results() {
+        // task 2.5b:会话条目 / 会话树 / travel 走具名 union，其余仍走 RawOk。
+        let entries_json = r#"{"entries":[{"type":"message","id":"e1","parentId":null,"timestamp":7,"message":{"role":"user","content":"hi"}}]}"#;
+        let resp = response_from_raw(
+            1,
+            "get_messages",
+            &format!(r#"{{"jsonrpc":"2.0","id":1,"result":{entries_json}}}"#),
+            None,
+        )
+        .unwrap();
+        let bytes = Frame::ServerResponse(resp).to_bytes().unwrap();
+        let Frame::ServerResponse(decoded) = Frame::from_bytes(&bytes).unwrap() else {
+            unreachable!()
+        };
+        match decoded.payload.unwrap() {
+            ResponsePayload::MessagesResult(m) => {
+                assert_eq!(m.entries.len(), 1, "一条条目不应丢");
+                let back = crate::protocol::wire::v3::mapping::v3_to_entries(&m).unwrap();
+                assert_eq!(
+                    serde_json::to_value(&back).unwrap(),
+                    serde_json::from_str::<serde_json::Value>(entries_json)
+                        .unwrap()
+                        .get("entries")
+                        .cloned()
+                        .unwrap(),
+                    "v3 往返后的条目 JSON 与 JSON 轨逐字节同构"
+                );
+            }
+            other => panic!("expected MessagesResult, got {other:?}"),
+        }
+
+        let tree = response_from_raw(
+            2,
+            "session_tree",
+            r#"{"jsonrpc":"2.0","id":2,"result":{"tree":[{"entry":{"type":"message","id":"e1","parentId":null,"timestamp":7,"message":{"role":"user","content":"hi"}},"children":[],"label":null}]}}"#,
+            None,
+        )
+        .unwrap();
+        match tree.payload.unwrap() {
+            ResponsePayload::TreeResult(t) => {
+                assert_eq!(t.nodes.len(), 1);
+                assert_eq!(t.nodes[0].children.len(), 0);
+            }
+            other => panic!("expected TreeResult, got {other:?}"),
+        }
+
+        let travel = response_from_raw(
+            3,
+            "travel_session_tree",
+            r#"{"jsonrpc":"2.0","id":3,"result":{"kind":"message_history","selected_id":"e1","leaf_id":null}}"#,
+            None,
+        )
+        .unwrap();
+        match travel.payload.unwrap() {
+            ResponsePayload::TravelResult(t) => {
+                assert_eq!(t.selected_id, "e1");
+                assert!(t.editor_text.is_none(), "缺位字段保持 None");
+            }
+            other => panic!("expected TravelResult, got {other:?}"),
+        }
+
+        // 未接强 schema 的方法保持 RawOk(JSON 原文)。
+        let raw = response_from_raw(
+            4,
+            "get_state",
+            r#"{"jsonrpc":"2.0","id":4,"result":{"seq":1}}"#,
+            None,
+        )
+        .unwrap();
+        match raw.payload.unwrap() {
+            ResponsePayload::RawOk(raw) => assert_eq!(raw.json, r#"{"seq":1}"#),
+            other => panic!("expected RawOk, got {other:?}"),
+        }
     }
 
     #[test]

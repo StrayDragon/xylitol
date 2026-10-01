@@ -8,10 +8,10 @@
 //!   (已验证跨版本兼容生成物属性)。
 //! - 手写补充见下方 impl：foryc 对递归类型(`SessionTreeNode`)保守省略
 //!   `Clone`/`PartialEq`，链式拖累 `TreeResult`/`ResponsePayload`/`Frame`。
-//! - 应答 union 当前产出面：`host.describe` → `DescribeResult`，其余一律 `RawOk`
-//!   (JSON 原文)；`SubscribeResult` 仅客户端侧兼容读取。`MessagesResult` /
-//!   `TreeResult` / `TravelResult` 是 schema-ahead（已声明未接入，任务 2.5b），
-//!   接进产品面后大载荷才能拿到完整体积收益。
+//! - 应答 union 产出面（task 2.5b）：`host.describe` → `DescribeResult`；
+//!   `get_messages` / `load_session_entries` → `MessagesResult`；`session_tree` →
+//!   `TreeResult`；`travel_session_tree` → `TravelResult`。其余方法走 `RawOk`
+//!   (JSON 原文)；`SubscribeResult` 仅客户端侧兼容读取。
 //!
 //! 本模块只承载词表与信封形状,不承载传输;上行/下行路由接线在
 //! `app::server` / `app::core::host_client`(双轨期与 JSON-RPC 并存,spec r1902)。
@@ -359,10 +359,10 @@ mod tests {
     /// 断言宽松(0.95)防脆弱;比例变化显著时人工复核体积收益叙事。
     ///
     /// 两个比例分属不同通路，引用时别串位：
-    /// - 0.73（本测试）= 强 schema union（`ResponsePayload::MessagesResult`），
-    ///   即 2.5b 接完后的形态；
-    /// - ≈ 1.0006 = 当前产品通路（非 describe 应答一律 `RawOk`，JSON 原文入
-    ///   string，100KB 载荷仅 +64B 信封开销）。
+    /// - 0.73（本测试）= 强 schema union，即已接入产品面的 `MessagesResult`
+    ///   (`get_messages` / `load_session_entries`)；
+    /// - ≈ 1.0006 = 仍走 `RawOk` 的方法（JSON 原文入 string，100KB 载荷仅
+    ///   +64B 信封开销）。
     #[test]
     fn size_baseline_vs_json_large_transcript() {
         let entries: Vec<SessionEntry> = (0..500)

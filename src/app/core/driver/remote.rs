@@ -2508,19 +2508,30 @@ mod tests {
             snap.mcp_bootstrap_complete,
             "fixture MCP bootstrap must settle: {snap:?}"
         );
-        // 再给 watch 循环一个 poll 间隔把最后一帧推出来。
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
-        // 非阻塞排空，收集期间所有 resources 帧。
-        let mut frames = Vec::new();
-        while let Ok(msg) = rx.try_recv() {
-            if let RpcMessage::ServerRequest {
-                method, payload, ..
-            } = msg
-                && method == "session/resources"
-            {
-                frames.push(payload);
+        // 非阻塞排空 + 轮询：等到出现「与已落定快照同形」那一帧（相对判据，
+        // 不靠固定 sleep 猜 poll 间隔；收集到的帧仍逐帧可查）。
+        let expected = serde_json::to_value(&snap).unwrap_or(Value::Null);
+        let mut frames: Vec<Value> = Vec::new();
+        let mut matched: Option<Value> = None;
+        let drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            while let Ok(msg) = rx.try_recv() {
+                if let RpcMessage::ServerRequest {
+                    method, payload, ..
+                } = msg
+                    && method == "session/resources"
+                {
+                    frames.push(payload);
+                }
             }
+            if let Some(frame) = frames.iter().rev().find(|f| f["snapshot"] == expected) {
+                matched = Some(frame.clone());
+                break;
+            }
+            if std::time::Instant::now() >= drain_deadline {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
         assert!(
             !frames.is_empty(),
@@ -2531,9 +2542,9 @@ mod tests {
             last["session_id"], "res-watch",
             "frame MUST carry the session id"
         );
-        let expected = serde_json::to_value(&snap).unwrap_or(Value::Null);
         assert_eq!(
-            last["snapshot"], expected,
+            matched.expect("必须有一帧与已落定的 loaded_resources 快照同形")["snapshot"],
+            expected,
             "final frame snapshot MUST match the loaded_resources unary shape"
         );
         assert_eq!(
