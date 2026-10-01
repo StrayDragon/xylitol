@@ -541,7 +541,6 @@ pub(crate) async fn dual_rail_event_parity()
 -> Result<Vec<(crate::protocol::Event, crate::protocol::Event)>, String> {
     use crate::app::server::host::HostState;
     use crate::app::server::runtime::{ServerConfig, serve};
-    use futures::StreamExt;
 
     let host = HostState::for_test().map_err(|e| format!("host: {e}"))?;
     let (_running, port) = serve(

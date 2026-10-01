@@ -646,12 +646,7 @@ pub(crate) fn t_c2827_model_esc_no_set(host_pump_bdd: &HostPumpBdd) {
 pub(crate) fn t_c2827_at_popup_apply(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_host(host_pump_bdd);
     let frame = render_frame(&mut pump);
-    let plain: String = frame
-        .chars()
-        .collect::<Vec<_>>()
-        .iter()
-        .map(|c| *c)
-        .collect();
+    let plain: String = frame.chars().collect::<Vec<_>>().iter().copied().collect();
     let _ = plain;
     assert!(
         frame.contains("(1/") && frame.contains("/"),
@@ -2289,7 +2284,7 @@ thread_local! {
 #[then("回合事件流含 TodoUpdated 全量快照")]
 pub(crate) fn t_t6_todo_event_assert() {
     T6_TODO_EVENT2.with(|c| {
-        let (saw, len) = c.borrow().clone();
+        let (saw, len) = *c.borrow();
         assert!(
             saw,
             "c2829: todo_rewrite 成功后 run 流 MUST 含类型化 TodoUpdated"

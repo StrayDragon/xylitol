@@ -177,10 +177,7 @@ impl XyRemoteDriver<HttpWsClient> {
     /// c2834 task 5.1:TUI attach 产品面走 v3 二进制信封(对拍全绿;
     /// 库级 `HttpWsClient::new` 默认保持 JSON,显式旋钮开 v3)。
     pub fn new_v3(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
-        Self::with_host(
-            HttpWsClient::new(base_url).with_wire_v3(true),
-            session_id,
-        )
+        Self::with_host(HttpWsClient::new(base_url).with_wire_v3(true), session_id)
     }
 
     /// Create a new XyRemoteDriver connected to `base_url`.

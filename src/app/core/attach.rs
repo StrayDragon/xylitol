@@ -177,7 +177,12 @@ fn pid_alive(pid: u32) -> bool {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        true
+        // Signal 0 = presence probe (no /proc on macOS/BSD/Windows).
+        let Ok(pid) = i32::try_from(pid) else {
+            return false;
+        };
+        // SAFETY: valid pid value + signal 0; `kill` returns the match count or 0 (ESRCH).
+        unsafe { libc::kill(pid, 0) > 0 }
     }
 }
 

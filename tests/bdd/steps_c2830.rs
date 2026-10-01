@@ -212,9 +212,7 @@ fn prop<'a>(record: &'a fastrace::collector::SpanRecord, key: &str) -> Option<&'
         .map(|(_, v)| v.as_ref())
 }
 
-fn c2830_llm_span<'a>(
-    records: &'a [fastrace::collector::SpanRecord],
-) -> &'a fastrace::collector::SpanRecord {
+fn c2830_llm_span(records: &[fastrace::collector::SpanRecord]) -> &fastrace::collector::SpanRecord {
     records
         .iter()
         .rev()
@@ -227,12 +225,7 @@ fn c2830_llm_span<'a>(
         .expect("c2830: mock 模型的 llm.request span")
 }
 
-fn event_has<'a>(
-    span: &'a fastrace::collector::SpanRecord,
-    name: &str,
-    key: &str,
-    value: &str,
-) -> bool {
+fn event_has(span: &fastrace::collector::SpanRecord, name: &str, key: &str, value: &str) -> bool {
     span.events.iter().any(|e| {
         e.name == name
             && e.properties
@@ -248,17 +241,17 @@ pub(crate) fn t_c2830_raw_mapped(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();
     let llm = c2830_llm_span(&records);
     assert!(
-        event_has(&llm, "raw", "kind", "raw"),
+        event_has(llm, "raw", "kind", "raw"),
         "r1462: 应有 raw 事件，实际 {:?}",
         llm.events
     );
     assert!(
-        event_has(&llm, "mapped", "variant", "TextDelta"),
+        event_has(llm, "mapped", "variant", "TextDelta"),
         "r1462: 应有 mapped TextDelta，实际 {:?}",
         llm.events
     );
     assert!(
-        event_has(&llm, "mapped", "variant", "Done"),
+        event_has(llm, "mapped", "variant", "Done"),
         "r1462: 应有 mapped Done，实际 {:?}",
         llm.events
     );
@@ -272,7 +265,7 @@ pub(crate) fn t_c2830_raw_mapped(otel_bdd: &OtelBdd) {
 pub(crate) fn t_c2830_input(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();
     let llm = c2830_llm_span(&records);
-    let input = prop(&llm, "langfuse.observation.input")
+    let input = prop(llm, "langfuse.observation.input")
         .expect("r1473: io=truncated 流式路径必须携带 observation.input");
     assert!(
         input.contains(BDD_MODEL) && input.contains("\"stream\":true"),
@@ -286,23 +279,23 @@ pub(crate) fn t_c2830_abort(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();
     let llm = c2830_llm_span(&records);
     assert_eq!(
-        prop(&llm, "langfuse.observation.level"),
+        prop(llm, "langfuse.observation.level"),
         Some("ERROR"),
         "r1474: 提前结束必须标 ERROR"
     );
     assert_eq!(
-        prop(&llm, "langfuse.observation.status_message"),
+        prop(llm, "langfuse.observation.status_message"),
         Some("aborted"),
         "r1474: status_message 必须为 aborted"
     );
-    let input = prop(&llm, "langfuse.observation.input")
+    let input = prop(llm, "langfuse.observation.input")
         .expect("r1474: abort 也必须按档 flush 已缓冲 input");
     assert!(input.contains("\"stream\":true"), "{input}");
-    let output = prop(&llm, "langfuse.observation.output")
+    let output = prop(llm, "langfuse.observation.output")
         .expect("r1474: abort 必须按档 flush 已缓冲 output");
     assert!(output.contains("半程"), "{output}");
     assert!(
-        prop(&llm, "langfuse.observation.usage_details").is_none(),
+        prop(llm, "langfuse.observation.usage_details").is_none(),
         "r1474: 不得伪造 usage_details"
     );
 }

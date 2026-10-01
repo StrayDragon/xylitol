@@ -273,7 +273,7 @@ fn t_c2826_user_prefix(fixed_zone_bdd: &FixedZoneBdd) {
     assert!(
         user_line.trim_start_matches(' ').starts_with("❯")
             || user_line.contains("❯")
-            || user_line.trim_start().len() > 0,
+            || !user_line.trim_start().is_empty(),
         "c2826: 用户行应保留前缀形态：{user_line}"
     );
 }

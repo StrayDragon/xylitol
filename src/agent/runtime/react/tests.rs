@@ -2349,36 +2349,43 @@ async fn batch_default_sequential_no_overlap() {
 
 #[tokio::test]
 async fn batch_barrier_parallel_overlap_then_barrier() {
-    let log = Arc::new(Mutex::new(Vec::new()));
     let epoch = Instant::now();
-    let tools = ToolSet::from_iter(vec![
-        Arc::new(SlowTool {
-            name: "slow_safe",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
-            sleep_ms: 100,
-            log: log.clone(),
-            epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
-        Arc::new(SlowTool {
-            name: "slow_barrier",
-            mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
-            sleep_ms: 50,
-            log: log.clone(),
-            epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
-    ]);
-    let rounds = multi_tool_rounds(vec![
-        ("slow_safe", r#"{"n":1}"#),
-        ("slow_safe", r#"{"n":2}"#),
-        ("slow_barrier", r#"{}"#),
-    ]);
-    let mut agent = make_agent_with_rounds(rounds, tools);
-    agent.set_batch_mode(XyBatchMode::BarrierParallel);
-    let t0 = Instant::now();
-    let mut stream = run_agent(&mut agent, "go").await;
-    while stream.next().await.is_some() {}
-    let elapsed = t0.elapsed();
-    let entries = log.lock().unwrap().clone();
+
+    /// 同一轮 3 次调用在指定 batch 模式下跑一遍：返回 (壁钟, 工具窗口日志)。
+    async fn run_mode(mode: XyBatchMode, epoch: Instant) -> (Duration, Vec<(String, u128, u128)>) {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let tools = ToolSet::from_iter(vec![
+            Arc::new(SlowTool {
+                name: "slow_safe",
+                mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+                sleep_ms: 100,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+            Arc::new(SlowTool {
+                name: "slow_barrier",
+                mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
+                sleep_ms: 50,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+        ]);
+        let rounds = multi_tool_rounds(vec![
+            ("slow_safe", r#"{"n":1}"#),
+            ("slow_safe", r#"{"n":2}"#),
+            ("slow_barrier", r#"{}"#),
+        ]);
+        let mut agent = make_agent_with_rounds(rounds, tools);
+        agent.set_batch_mode(mode);
+        let t0 = Instant::now();
+        let mut stream = run_agent(&mut agent, "go").await;
+        while stream.next().await.is_some() {}
+        let entries = log.lock().unwrap().clone();
+        assert_eq!(entries.len(), 3, "{entries:?}");
+        (t0.elapsed(), entries)
+    }
+
+    let (elapsed, entries) = run_mode(XyBatchMode::BarrierParallel, epoch).await;
     assert_eq!(entries.len(), 3, "{entries:?}");
     let by = |n: &str| {
         entries
@@ -2404,10 +2411,17 @@ async fn batch_barrier_parallel_overlap_then_barrier() {
         safe_end_max <= barrier.1,
         "both safes must finish before barrier starts: {entries:?}"
     );
-    // S3: wall clock ≪ 200ms serial (two 100ms safes).
+    // S3：与同轮序的 Sequential 取相对比值。绝对惗秒随 nextest 并行负载漂移
+    // （280ms 定值上限在满载下会跳到 340ms+），相对判据不漂；两模式各两轮取小，
+    // 抹掉首轮惰性初始化偏差。
+    let parallel = elapsed.min(run_mode(XyBatchMode::BarrierParallel, epoch).await.0);
+    let serial = run_mode(XyBatchMode::Sequential, epoch)
+        .await
+        .0
+        .min(run_mode(XyBatchMode::Sequential, epoch).await.0);
     assert!(
-        elapsed < Duration::from_millis(280),
-        "expected parallel speedup, elapsed={elapsed:?}"
+        parallel < serial,
+        "expected parallel speedup: parallel={parallel:?} serial={serial:?}"
     );
 }
 

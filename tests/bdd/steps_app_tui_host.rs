@@ -1768,7 +1768,7 @@ pub(crate) fn t_c2826_selector_replaces(host_pump_bdd: &HostPumpBdd) {
     let frame = c2826_frame(host_pump_bdd);
     let footer = frame.lines().last().unwrap_or_default();
     assert!(
-        footer.contains("·") || footer.trim().is_empty() == false,
+        footer.contains("·") || !footer.trim().is_empty(),
         "c2826: footer 应仍为末行：{frame}"
     );
 }
@@ -1879,8 +1879,7 @@ pub(crate) fn t_c2826_paste_image(host_pump_bdd: &HostPumpBdd) {
     let staged = pump.driver.staged_paste_paths();
     let text = {
         let root = pump.session.ui_root().expect("ui").clone();
-        let t = root.borrow().editor_text();
-        t
+        root.borrow().editor_text()
     };
     put_pump(host_pump_bdd, pump);
     assert!(
@@ -2128,7 +2127,7 @@ pub(crate) async fn w_c2826_mcp_pending_cue(host_pump_bdd: &HostPumpBdd) {
     }
     // 经产品刷新路径装载快照（connecting + 未冻表 → 短 cue）。
     let mut pump = take_pump(host_pump_bdd);
-    let driver = std::mem::replace(&mut pump.driver, ScriptedDriver::new());
+    let driver = std::mem::take(&mut pump.driver);
     pump.session.refresh_loaded_resources(&driver).await;
     pump.driver = driver;
     put_pump(host_pump_bdd, pump);
