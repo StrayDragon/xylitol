@@ -188,6 +188,8 @@ pub struct ResilienceBdd {
     pub received: RefCell<Vec<(Instant, String)>>,
     pub push_t0: RefCell<Option<Instant>>,
     pub attach_result: RefCell<Option<Result<(), XyDriverError>>>,
+    /// ath38 探针：(drain 到的事件条数, 该次 drain 的微秒耗时)。
+    pub drain_probe: RefCell<Option<(usize, u64)>>,
 }
 
 #[fixture]
@@ -197,6 +199,7 @@ pub fn resilience_bdd() -> ResilienceBdd {
         received: RefCell::new(Vec::new()),
         push_t0: RefCell::new(None),
         attach_result: RefCell::new(None),
+        drain_probe: RefCell::new(None),
     }
 }
 
@@ -505,5 +508,39 @@ fn t_coalesce_single_batch(resilience_bdd: &ResilienceBdd) {
     assert!(
         spread <= Duration::from_millis(25),
         "one window ⇒ one projection batch: spread {spread:?}"
+    );
+}
+
+// ── ath38 tick 不被 unary 阻塞（mock seam）────────────────────────
+
+#[given("以注入短常量的 mock HostClient 完成 attach")]
+async fn g_attach_rig(resilience_bdd: &ResilienceBdd) {
+    let host = ScriptedMuxHost::default();
+    host.script(vec![MuxScript::Live { life: None }]);
+    let mut rig = mount_rig(host);
+    rig.driver.attach_session().await.expect("attach");
+    put_rig(resilience_bdd, rig);
+}
+
+#[when("在 idle 排空下行事件")]
+fn w_drain_idle_nonblocking(resilience_bdd: &ResilienceBdd) {
+    let mut rig = take_rig(resilience_bdd);
+    let t0 = Instant::now();
+    let events = rig.driver.drain_idle_events();
+    *resilience_bdd.drain_probe.borrow_mut() =
+        Some((events.len(), t0.elapsed().as_micros() as u64));
+    put_rig(resilience_bdd, rig);
+}
+
+#[then("排空不被未决 unary 阻塞且返回可读投影批")]
+fn t_drain_idle_nonblocking(resilience_bdd: &ResilienceBdd) {
+    let (count, micros) = resilience_bdd
+        .drain_probe
+        .borrow_mut()
+        .take()
+        .expect("drain 探针已跑");
+    assert!(
+        micros <= 5_000,
+        "idle drain MUST 为同步非阻塞（微秒级返回），实得 {micros}μs / {count} 条"
     );
 }

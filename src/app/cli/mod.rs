@@ -4,7 +4,7 @@
 //! the CLI provider-guidance helpers — they are pure CLI-surface presentation, not agent
 //! orchestration (la13).
 
-mod logging;
+pub(crate) mod logging;
 mod print;
 #[cfg(test)]
 pub(crate) use print::render_stream;

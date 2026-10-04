@@ -312,3 +312,35 @@ async fn test_sr_reg1_takeover(server_test: ServerTest) {}
     name = "staged-wire-import"
 )]
 async fn test_sr_imp1_staged_import(server_test: ServerTest) {}
+
+// ── c2835 后继：app-tui-host 的 attach 族裸规则回填 ───────────────────
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "agent-end-keeps-mux-subscription"
+)]
+async fn test_ath36_agent_end_keeps_mux(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "cold-restore-single-snapshot"
+)]
+async fn test_ath37_cold_restore_single_snapshot(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "cold-restore-ignores-live-tape"
+)]
+async fn test_ath37_cold_restore_ignores_tape(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "subscription-idle-wait-is-bounded"
+)]
+async fn test_ath39_idle_wait_bounded(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "reconnect-grace-then-toast"
+)]
+async fn test_ath43_reconnect_grace_then_toast(server_test: ServerTest) {}

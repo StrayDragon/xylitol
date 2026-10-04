@@ -412,17 +412,40 @@ async fn w_c2826_build_reporter_bad(otel_bdd: &OtelBdd) {
         endpoint: None,
         ..Default::default()
     };
+    // 本步要钉的是「endpoint 缺失」形状，而 endpoint 也可由 LANGFUSE_BASE_URL 供。
+    // 并行套件里前序用例可能已注入该 env，故本步隔离 env 后原样放回
+    // （与 `#[serial(env_global)]` 同一纪律），使判据与执行顺序无关。
+    const KEYS: [&str; 3] = [
+        "LANGFUSE_BASE_URL",
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+    ];
+    let saved: Vec<(&str, String)> = KEYS
+        .iter()
+        .filter_map(|k| std::env::var(k).ok().map(|v| (*k, v)))
+        .collect();
+    for (key, _) in &saved {
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
     let built = crate::infra::observability::otel::install::try_build_otlp_reporter(&cfg);
     otel_bdd.mounted.set(built.is_none());
     drop(built);
+    for (key, value) in saved {
+        unsafe {
+            std::env::set_var(key, value);
+        }
+    }
 }
 
 #[then("构建安静返回 None 且产生 obs 诊断且不失败")]
-fn t_c2826_reporter_none_diag() {
+fn t_c2826_reporter_none_diag(otel_bdd: &OtelBdd) {
     let diag = crate::infra::observability::otel::otlp_disabled_diag();
     assert!(
         diag.is_some(),
-        "c2826: otlp-http 未生效必须经 obs_diag 呈现"
+        "c2826: otlp-http 未生效必须经 obs_diag 呈现（构建返回 None = {}）",
+        otel_bdd.mounted.get()
     );
     let msg = diag.expect("diag");
     assert!(!msg.contains("sk-"), "c2826: 诊断不得携带密钥");

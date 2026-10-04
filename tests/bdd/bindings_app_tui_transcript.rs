@@ -151,3 +151,17 @@ fn test_att13_todo_empty_summary(transcript_bdd: TranscriptBdd) {}
     name = "todo-block-empty-list-body-hint"
 )]
 fn test_att36_todo_empty_body(transcript_bdd: TranscriptBdd) {}
+
+// ── c2835 后继：travel 通知尾插（产品与 demo 同源）─────────────────
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
+    name = "travel-notice-trails-entries"
+)]
+fn test_ats10_travel_notice_trails(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
+    name = "demo-travel-notice-shares-tail"
+)]
+fn test_ats11_demo_notice_same_tail_source(transcript_bdd: TranscriptBdd) {}

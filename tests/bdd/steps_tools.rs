@@ -3,6 +3,11 @@ use crate::tests::bdd::helpers::*;
 use crate::tests::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
 
+// 结构探针（死代码 allow / 执行类命名）。
+thread_local! {
+    pub(crate) static TOOL_PROBE: RefCell<Option<(usize, usize)>> = const { RefCell::new(None) };
+}
+
 #[when("调用edit工具 路径 {path:string} 将 {old:string} 替换为 {new:string}")]
 async fn _w_edit_single(ws: &Workspace, path: String, old: String, new: String) {
     let full = ws.ws(&path);
@@ -1088,4 +1093,69 @@ fn _t_bash_output_is_session_workspace(ws: &Workspace) {
 mod _accum_mode {
     use std::cell::Cell;
     thread_local! { pub static LARGE: Cell<bool> = const { Cell::new(false) }; }
+}
+
+// ── c2835 后继：结构类裸规则（crate 根 allow / 执行类命名）──────────
+
+#[when("读取 crate 根的死代码允许写法")]
+pub(crate) fn w_read_dead_code_allows(_ws: &Workspace) {
+    let mut global = 0usize;
+    let mut item_level = 0usize;
+    let mut stack = vec![std::path::PathBuf::from("src")];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            for line in text.lines() {
+                let line = line.trim_start();
+                if line.starts_with("#![allow(dead_code)]") {
+                    global += 1;
+                } else if line.starts_with("#[allow(dead_code)]") {
+                    item_level += 1;
+                }
+            }
+        }
+    }
+    TOOL_PROBE.with(|p| {
+        *p.borrow_mut() = Some((global, item_level));
+    });
+}
+
+#[then("无全局 allow 且单项抑制带理由")]
+pub(crate) fn t_dead_code_allows_scoped(_ws: &Workspace) {
+    let (global, item_level) = TOOL_PROBE.with(|p| *p.borrow()).expect("探针已跑");
+    assert_eq!(global, 0, "crate 根 MUST NOT 用全局 #![allow(dead_code)]");
+    assert!(
+        item_level >= 1,
+        "单项抑制应存在且带理由注释（item-level allow）"
+    );
+}
+
+#[when("读取工具执行类命名")]
+pub(crate) fn w_read_execution_mode_name(_ws: &Workspace) {
+    let text = std::fs::read_to_string("src/protocol/tools.rs")
+        .or_else(|_| std::fs::read_to_string("src/protocol/mod.rs"))
+        .expect("protocol 工具边界可读");
+    let named = text.contains("XyToolExecutionMode");
+    TOOL_PROBE.with(|p| {
+        *p.borrow_mut() = Some((named as usize, 0));
+    });
+}
+
+#[then("执行类类型为 XyToolExecutionMode")]
+pub(crate) fn t_execution_mode_xy_prefixed(_ws: &Workspace) {
+    let (named, _) = TOOL_PROBE.with(|p| *p.borrow()).expect("探针已跑");
+    assert_eq!(named, 1, "工具执行类 MUST 以 XyToolExecutionMode 命名");
 }

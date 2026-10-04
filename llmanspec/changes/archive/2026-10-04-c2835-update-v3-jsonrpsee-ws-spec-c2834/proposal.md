@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2835-update-v3-jsonrpsee-ws-spec-c2834
+base_branch: main
+base_sha: 2edf34297065f0b522c120a8e1c3c64a28ba8539
 ---
 
 # 线协议 v3 硬切收尾(c2834 后继)

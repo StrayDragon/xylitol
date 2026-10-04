@@ -94,3 +94,11 @@ fn test_ati27_label_keys(tui_interaction: TuiInteraction) {}
     name = "thinking-cycle-not-bound-editor-slot-headless"
 )]
 fn test_ati36_no_thinking_cycle(tui_interaction: TuiInteraction) {}
+
+// ── c2835 后继：会话树 fork 和弦交给主机 ────────────────────────────
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
+    name = "demo-fork-chord-to-host"
+)]
+fn test_ats4_fork_chord_to_host(tui_interaction: TuiInteraction) {}

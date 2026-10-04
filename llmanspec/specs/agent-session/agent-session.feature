@@ -250,3 +250,4 @@
   规则: resume-import-provider-prefix-path
     resume_session / import_from_jsonl（或等价加载）后用于打模型的 history MUST 经与同进程续跑相同的唯一路径：SessionEntry → as_agent_message（或等价）→ project_for_llm → ResponsesAssembler；有损 Env 折叠文案 MUST 形状稳定。MUST NOT 在 infra 另建平行 Env 折叠；MUST NOT 无显式 change 改稳定折叠串。system date 日界见相邻 c1905；tools 冻表见 c1900。由单测与维护 lab 覆盖，MUST NOT 强制新 BDD step。
     # verified-by: src/agent/llm_project.rs
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；SessionEntry 等领域词表未动，仅协议载体常量与死变体清理。（2026-09-29）

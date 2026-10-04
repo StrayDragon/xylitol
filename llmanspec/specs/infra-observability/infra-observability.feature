@@ -34,3 +34,4 @@
   规则: agent-low-freq-spans
     当 provider tracing 激活时，一次用户触发的 agent 处理 MUST 提供可关联的低频 fastrace span：根 agent.turn；每步 agent.iteration；模型流 llm.request（可与 request_id 对照）；可选 tool.execute；若发生会话 compaction 则 MUST 另有 agent.compaction（挂于该 turn 下，或无 turn 时为独立根）。主路径子 span MUST 挂在 turn/iteration/compaction 父节点之下（共享 trace_id），MUST NOT 在活跃 turn 下各自无关 random 根。agent.turn 结束时 MUST 能区分正常完成与用户 abort（见 infra-otel otel20）。MUST NOT 为每条 SSE / 每帧 TUI tick 安装无采样 span。默认 MUST NOT 启用 OpenTelemetry/Jaeger 等外部导出 Reporter；远程 OTLP 仅可经独立 [otel] 配置 + feature otel 显式 opt-in（见 infra-otel），且不得写 stdout/stderr。
     # verified-by: llmanspec/specs/infra-otel/infra-otel.feature
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；新增步骤在探针后复位 provider-trace 与 io tier（默认关闸、显式开启的语义未变）。（2026-09-29）

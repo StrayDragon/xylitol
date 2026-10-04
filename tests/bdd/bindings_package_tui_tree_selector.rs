@@ -86,3 +86,29 @@ fn test_pts13_kind_prefix(tree_sel_bdd: TreeSelBdd) {}
     name = "kind-matches-in-search-headless"
 )]
 fn test_pts14_kind_search(tree_sel_bdd: TreeSelBdd) {}
+
+// ── c2835 后继：app-tui-session-tree 裸规则回填（包侧可观察）────────
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
+    name = "travel-select-passes-node-id"
+)]
+fn test_ats3_travel_select_id(tree_sel_bdd: TreeSelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
+    name = "domain-nodes-map-to-tree-nodes"
+)]
+fn test_ats5_domain_node_mapping(tree_sel_bdd: TreeSelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
+    name = "filter-modes-narrow-visible-list"
+)]
+fn test_ats7_filter_narrows_list(tree_sel_bdd: TreeSelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
+    name = "fold-or-up-and-unfold"
+)]
+fn test_ats8_fold_or_up(tree_sel_bdd: TreeSelBdd) {}

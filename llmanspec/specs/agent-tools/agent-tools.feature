@@ -12,6 +12,11 @@
   规则: 工具 trait 前缀
     System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 protocol 边界其余命名一致。
     # verified-by: src/AGENTS.md
+    场景: builtin-names-listed-via-xytool
+      假如 工具集含全部内置工具
+      当 列举工具名
+      那么 返回 9 个工具名
+
   @req:r42
   规则: 默认内置工具闭集
     产品 default_tools（Print 与 TUI builtins 基座）MUST 包含且以闭集提供：read、bash、edit、write、grep、find、ls、todo_rewrite、todo_update（共 9 个）。ask 等面专属工具 MUST NOT 计入该闭集（见 t28）。Todo 工具语义见 agent-todo。MUST NOT 向模型暴露 todo_list。
@@ -121,6 +126,10 @@
   规则: 禁止全局 dead_code 允许
     crate 根 MUST NOT 使用全局 #![allow(dead_code)]；dead code 抑制 MUST 限定于单项并附理由。
     # verified-by: src/AGENTS.md
+    场景: dead-code-allow-is-item-scoped
+      当 读取 crate 根的死代码允许写法
+      那么 无全局 allow 且单项抑制带理由
+
   @req:r11
   规则: 工具错误类型
     System MUST 定义 XyToolError，含结构化错误类别（invalid_args / execution_failed / permission_denied / timeout），独立于 adk-core。
@@ -468,22 +477,45 @@
   规则: diff 输出
     编辑操作后，System MUST 使用 similar crate 计算结构化 diff 供审阅。
     # verified-by: src/app/tui/widgets/scrollback/diff.rs
+    场景: structured-diff-applies-with-offset-hunks
+      假如 临时目录存在含行偏移的 unified diff 文件
+      当 经补丁应用执行 edit
+      那么 模糊匹配补丁应用成功
+
   @req:r1141
   规则: 工具定义包含 schema
     展示类型 ToolDefinition MUST 包含 XyToolSchema 字段，而非重复 name/description/parameters 字段。
     # verified-by: src/protocol/ports/tool.rs
+    场景: schema-drives-required-arg
+      假如 工具需要必填字符串参数 file_path
+      当 以空参调用该工具
+      那么 调用失败且返回 MissingArgument 错误码
+
   @req:r1142
   规则: ToolSet 在 agent 终态
     ToolSet MUST 作为构建期终态编排状态留在 agent 层：聚合具体工具并组合单元操作；构建后交给一轮的集合即终态，无运行时过滤。具体工具由组合根注入。
     # verified-by: src/agent/tools/toolset.rs
+    场景: toolset-is-build-final
+      假如 工具集含 read 与 grep
+      当 plus(bash) 然后 remove(grep)
+      那么 最终工具集含 read 与 bash 且不含 grep
+
   @req:r1143
   规则: 工具相关类型统一前缀
     ToolExecutionMode MUST 重命名为 XyToolExecutionMode；protocol 工具边界及其签名类型 MUST 一致使用 Xy 前缀命名。
     # verified-by: src/AGENTS.md
+    场景: execution-mode-carries-xy-prefix
+      当 读取工具执行类命名
+      那么 执行类类型为 XyToolExecutionMode
+
   @req:r36
   规则: MCP 工具经 XyTool 接入
     MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。
     # verified-by: src/AGENTS.md
+    场景: mcp-tools-enter-as-xytool
+      当 以 fixture MCP 配置装配 ping 工具
+      那么 装配出 mcp 前缀的 XyTool 且连接在册
+
   @req:r1145
   规则: read-image-parts
     Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。
@@ -508,14 +540,29 @@
   规则: builtin-tool-concurrency-class
     内置工具 MUST 声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 与 todo_rewrite/todo_update 为 Barrier（或等价 Sequential 映射）。调度层在 barrier_parallel 下 MUST 尊重该类；FileMutationQueue 可并存作同 path 纵深防御。由单测覆盖 default_tools 分类表，MUST NOT 为静态表单独扩 BDD step。
     # verified-by: src/agent/tools/mod.rs
+    场景: builtins-declare-concurrency-class
+      假如 未配置工具批模式且 mock 模型同 turn 发出两个可并行假工具
+      当 运行 AgentRuntime
+      那么 两工具执行时间重叠
+
   @req:r1151
   规则: dynamic-tool-mcp-hard-barrier
     公开名以 `mcp__` 为前缀（过渡期可识别遗留 `mcp-` / `mcp_` / `mcp:`）的工具（含 McpToolAdapter 与任何同前缀注册）在批调度分类中 MUST 为 Barrier，无论其 trait 并发声明或配置如何；MUST NOT 提供 glob、配置名名单或 MCP annotation 将其升为 ParallelSafe。非 mcp 自注册工具缺省 MUST 为 Barrier，MAY 经 ToolConcurrency 显式标 ParallelSafe。由单测覆盖，MUST NOT 为静态默认单独扩 BDD step。
     # verified-by: llmanspec/specs/agent-runtime/agent-runtime.feature
+    场景: mcp-prefixed-is-hard-barrier
+      假如 工具批模式为 barrier_parallel 且 mock 同 turn 工具序为 ParallelSafe、mcp 假工具、ParallelSafe
+      当 运行 AgentRuntime
+      那么 mcp 假工具与两侧 ParallelSafe 均无执行时间重叠
+
   @req:r1152
   规则: ask-tui-only-builtin
     内置工具 ask MUST 以 TypedTool 存在于 infra；schema MUST 含 questions 数组（每题 id/prompt/mode/options，option.description 可选）；execute 成功结果 MUST 为 status 为 skipped 或 answered 的 JSON。default_tools MUST NOT 包含 ask；仅 TUI 装配路径 MAY 经 ToolSet plus 注入。ask MUST 为 Barrier Sequential。Abort MUST NOT 伪装为 skipped。
     # verified-by: llmanspec/specs/app-tui-ask/app-tui-ask.feature
+    场景: ask-builtin-in-tui-toolset
+      假如 产品以 TUI 面启动
+      当 查询装配后的 ToolSet
+      那么 含名为 ask 的内置工具
+
   @req:r1161
   规则: 工具执行会话工作区
     模型侧内置工具 MUST 以运行时注入的会话工作区为基：bash 子进程在该目录内启动；文件类工具（read/write/edit/ls/grep/find）的相对路径相对该目录解析；绝对路径行为不变。运行时未注入工作区时 MUST 回落 Host 进程 cwd。同一回合（含工具环）内工作区 MUST 保持开跑时冻结值，MUST NOT 随进程外状态漂移。
@@ -535,3 +582,4 @@
       假如 有一个临时工作目录
       当 以会话工作区调用bash命令 "pwd"
       那么 bash 输出为会话工作区目录
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议载体常量与死变体清理。（2026-09-29）

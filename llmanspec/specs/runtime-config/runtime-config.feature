@@ -56,10 +56,19 @@
   规则: ConfigValue 在 infra
     ConfigValueResolver（环境变量、shell 命令与 ${VAR:-default} 解析，或等价）MUST 收敛于 infra 配置边界且零内部依赖；agent 层 MUST NOT 含重复解析实现。
     # verified-by: src/infra/config/types.rs
+    场景: config-value-resolver-at-infra-edge
+      假如 仅存在 config.local.yaml 含可观测字段而无同层 config.yaml
+      当 从全局 config.yaml 加载完整 settings
+      那么 全局 config.yaml 生效且不经 config.local.yaml 合并
+
   @req:r1740
   规则: 配置边界承载 JsonSchema
     需要对外暴露 JSON Schema 的配置结构 MUST 在 runtime/config 边界（infra/config 或 settings）定义或包装，并 MUST 能映射到 domain 纯数据（若存在对应领域类型）。
     # verified-by: src/infra/config/types.rs
+    场景: json-schema-at-config-edge
+      当 读取配置边界的 schemars 派生
+      那么 派生集中在 infra 配置边界且会话层不派生
+
   @req:r1741
   规则: mcp_servers 配置字段
     运行时配置 MUST 提供 mcp_servers（或等价）字段以声明 MCP 服务器；缺省或空表示未启用 MCP。
@@ -170,27 +179,56 @@
   规则: no-agent-max-iterations
     Agent profile / AppConfig MUST NOT 暴露或生效 max_iterations（或等价已移除硬闸名）配置字段；schema 与加载路径 MUST NOT 提供向后兼容 shim。可选 session.max_turns（正整数）MUST 允许且仅经 should_stop_after_turn 装配生效（见 ar30）；缺省 MUST 不限制轮次。残留 max_iterations 键 MUST NOT 再限制 ReAct 迭代。由配置单测或加载用例覆盖，MUST NOT 为静态字段缺失单独扩 BDD step。
     # verified-by: src/agent/compaction/settings.rs
+    场景: no-max-iterations-field
+      假如 加载默认或示例 settings
+      当 检查 Settings 类型与合并结果
+      那么 Settings 仅含已接线交付字段
+
   @req:r1734
   规则: config-yaml-vars-home
     配置 YAML minijinja 模板 MUST 提供命名空间 vars，且 MUST 仅暴露键 home（解析为用户 home 目录绝对路径）；{{ vars.home }} MUST 可在任意配置字符串字段插值；home 不可解析或引用 vars 下其它键 MUST 使模板渲染以 strict 错误失败；MUST NOT 在 vars 下提供 project、cwd 或其它路径键。由配置模板单测覆盖，MUST NOT 为该插值单独扩 BDD step。
     # verified-by: src/infra/config/template.rs
+    场景: template-vars-home-only
+      当 读取模板 vars 命名空间
+      那么 vars 仅暴露 home
+
   @req:r1735
   规则: otel-config-section
     AppConfig MUST 支持可选顶层 otel（或等价）节：至少含 exporter（none 或 otlp-http；缺省等价 none）、可选 endpoint、protocol（http-binary 或 http-json）、environment、service_name 与 headers/凭证引用字段；非法 exporter/protocol MUST 使配置加载失败；该节 MUST 仅控制远程 OTLP 出口，MUST NOT 取代本地 file log / provider-trace 的环境与构建闸（见 infra-logging / infra-provider-trace）。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。
     # verified-by: src/infra/observability/otel.rs
+    场景: otel-section-optional
+      当 读取配置节字段缺省
+      那么 otel 节可缺省且等价 none
+
   @req:r1736
   规则: tui-editor-history-seed-sessions
     AppConfig MUST 支持可选顶层 tui 节字段 editor_history_seed_sessions（非负整数）；缺省 MUST 为 1；该值 MUST 供产品 TUI 纯 new session 装载跨 session 发送历史种子（ati41）；由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。
     # verified-by: src/app/tui/editor_history_seed.rs
+    场景: editor-history-seed-default-one
+      当 读取配置节字段缺省
+      那么 tui 历史种子缺省为一
+
   @req:r1737
   规则: tool-batch-config
     AppConfig MUST 支持可选工具批配置节 tool_batch：含 mode（sequential 或 barrier_parallel；缺省 barrier_parallel）；非法 mode MUST 使配置加载失败；显式 sequential MUST 恢复源序串行批；MUST NOT 提供将 mcp_ 工具升为并行安全的配置字段（无 parallel_safe_patterns 或等价 MCP 放行名单）。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。
     # verified-by: src/agent/compaction/settings.rs
+    场景: tool-batch-mode-default-and-invalid
+      当 读取配置节字段缺省
+      那么 工具批缺省并行且回合上限须为正整数
+
   @req:r1738
   规则: session-max-turns
     SessionConfig MUST 支持可选 max_turns（正整数）；缺省或省略 MUST 为 None（不限制）；值为 0 或非法 MUST 使配置加载失败；该字段 MUST 供组合根安装 should_stop_after_turn（ar30），MUST NOT 映射为已移除的 max_iterations。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。
     # verified-by: src/agent/compaction/settings.rs
+    场景: session-max-turns-loaded
+      假如 按 session.max_turns=2 安装 should_stop_after_turn 且入队 follow_up 以迫使第二轮
+      当 运行 AgentRuntime
+      那么 至多出现 2 次 TurnStart 后出现 AgentEnd
+
   @req:r1739
   规则: tui-activity-fold
     AppConfig MUST 支持可选顶层 tui.activity_fold：enabled（缺省 true）、keep_recent_turns（缺省 2，非负整数）、stream_collapse（envelope 或 clusters，缺省 envelope）、auto_on_rebuild（缺省 true）、auto_on_turn_end（缺省 true）。非法 stream_collapse MUST 使配置加载失败。enabled 为 false MUST 使 ActivityFold 不套信封（全细账，块级折叠仍可用）。由配置单测覆盖，MUST NOT 为静态字段形状单独扩 BDD step。
     # verified-by: src/app/tui/activity_fold
+    场景: activity-fold-lexical-contract
+      当 读取配置节字段缺省
+      那么 活动折叠启用且保留两回合与信封折叠

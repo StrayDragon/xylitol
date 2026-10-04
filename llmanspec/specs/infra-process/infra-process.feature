@@ -21,3 +21,4 @@
   规则: child-wait
     System MUST 等待子进程退出并取得 exit code，MUST NOT 因 detached 后代进程持有继承 stdio handle 而挂起。
     # verified-by: src/infra/bash_exec/mod.rs
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议载体常量与死变体清理。（2026-09-29）

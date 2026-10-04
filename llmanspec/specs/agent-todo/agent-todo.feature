@@ -102,3 +102,4 @@
     场景: todo-update-emits-typed-event
       当 以触发 todo_update 工具的回合收集事件
       那么 回合事件流含 TodoUpdated 全量快照
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议载体常量与死变体清理。（2026-09-29）

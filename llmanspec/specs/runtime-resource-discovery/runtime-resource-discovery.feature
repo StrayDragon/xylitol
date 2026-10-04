@@ -77,3 +77,4 @@
     场景: skills-hot-reload-trust-gated
       当 在项目目录写 skill 并分别以信任与未信任重载 skills
       那么 信任时项目 skill 注入且可查询已加载名而未信任时被跳过
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议载体常量与死变体清理。（2026-09-29）

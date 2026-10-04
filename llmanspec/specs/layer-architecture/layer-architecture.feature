@@ -9,14 +9,26 @@
   规则: 核心层与 protocol 布局
     System MUST 以 agent 层承载编排与投影（ReAct、LLM 投影、session 编排）；agent 侧共享类型 MUST 经 protocol 承载（因 infra 不得依赖 agent）。System MUST 以单一 protocol 层作为跨边界契约 SSOT：wire（Command/Event）与 ports（XyModel、XyTool、XySessionStore、XyEventSink 等）为契约子树；进 port/wire 签名的共享类型（AgentMessage、Env、SessionEntry、XyEvent、XyChunk 等）MUST 位于 protocol 根共享区（可按领域聚子树，非独立 vocab/types 顶栏）；wire MUST NOT 依赖 ports；ports MAY 依赖根共享类型；根共享类型 MUST NOT 依赖 ports/wire/agent/infra。MUST NOT 提供独立的 domain、runtime_protocol 或第三顶栏子树。
     # verified-by: src/AGENTS.md
+    场景: protocol-carries-shared-types
+      当 解析队列命令 steer、follow_up、clear_queue 的线协议 JSON
+      那么 分别得到 Steer、FollowUp 与 ClearQueue 变体
+
   @req:r1525
   规则: 向下依赖
     infra 层 MUST NOT 导入任何 agent 符号；agent 层 MUST NOT 导入任何具体 infra 类型（仅经 protocol ports）；应用面（cli 渲染子路径、tui、非组合根的 app 模块）MUST NOT 导入 infra 或 agent 子模块内部，MUST 经 app 跨面缝（composition / Driver / bootstrap / dispatch）与 agent 公共入口导入。组合根（cli 面、server 面、装配模块）可同时导入 agent 与 infra 做装配。InProcessDriver MAY 调用文档化的表面 infra（trust / clipboard / 必要 config 读）；MUST NOT 成为第二套组合根去构造 provider/session 工具集。protocol 层 MUST NOT 依赖 agent 或 infra 实现。分层靠 AGENTS + review + 缝行为测保障，MUST NOT 要求源码 grep 元测试。
     # verified-by: src/AGENTS.md
+    场景: same-process-driver-crosses-layers
+      当 以同进程驱动完成一轮 print 对话
+      那么 对话完成且未要求监听器
+
   @req:r1531
   规则: app 层命名
     app 表面（用户入口：cli、server、tui、gui）与跨面缝（composition、driver）MUST 分离：缝位于 app 跨面缝区，表面不托管缝实现。print 模式 MUST 为 CLI 子模式，而非顶层 app 模块。
     # verified-by: src/AGENTS.md
+    场景: print-is-cli-submode
+      当 xylitol print --session sid --trust --model m hi
+      那么 解析成功且 --session 生效
+
   @req:r1532
   规则: server 应用面
     System MUST 提供 server 应用面，托管 agent + infra 运行时，并经 JSON-RPC 2.0 暴露产品契约：产品入口为 POST /rpc 与 WS /rpc（同一方法表）；WS /rpc MUST 只承载 JSON-RPC 帧。同一 {addr,port} 占用 MUST 失败，MUST NOT 整机锁文件，MUST NOT port+1。MUST NOT 以 /api/v1 REST 资源动词、POST /api/respond 或非 JSON-RPC 的 WS 应用帧为产品真源。
@@ -30,86 +42,172 @@
   规则: 运行时归属
     全部运行时（provider、tool、session storage、exec-env、bash executor、secret resolution、resource loader、export I/O）MUST 位于 infra 层；agent 层 MUST 仅经 protocol 端口注入持有（组合根装配），MUST NOT 直接调用 infra 构造器或借用 infra exec 原语。
     # verified-by: src/AGENTS.md
+    场景: runtimes-live-in-infra
+      当 启动 app::server 运行时
+      那么 暴露 POST /rpc、WS /rpc 与 GET /healthz
+
   @req:r1534
   规则: agent 独立性
     Agent（能力聚合体）构造器 MUST NOT 要求 Session、MUST NOT 持有 session_id、MUST NOT 依赖 Session 持久化生命周期；session_id 为 app 层绑定的 SessionStore 查询键。
     # verified-by: src/AGENTS.md
+    场景: agent-runs-without-session-binding
+      假如 未注册 should_stop_after_turn 的无工具 agent
+      当 运行 AgentRuntime
+      那么 正常出现 AgentEnd 且恰好一轮 TurnStart
+
   @req:r1535
   规则: 分层保障方式
     分层不变量（la2 依赖方向）的保障手段为仓库自身约定：架构 AGENTS 文档、l8ng-write-surface 流程与缝/行为测试；System MUST NOT 要求或恢复以扫描 import 路径为手段的 arch_guard 测试模块作为强制闸（新增分层约束优先写成缝行为测或 AGENTS 约定）。
     # verified-by: src/AGENTS.md
+    场景: guarantee-via-docs-and-seam-tests
+      当 读取分层保障的真值文档
+      那么 保障方式为 AGENTS 与缝行为测
+
   @req:r1521
   规则: agent 薄且无展示
     agent/ MUST NOT 托管纯展示或用户指引逻辑（如静态帮助文本或消息格式化）；此类逻辑 MUST 位于 app/（客户端表面），agent/ MUST 仅含编排循环、hook 点与编排状态。
     # verified-by: src/AGENTS.md
+    场景: projection-in-agent-render-in-app
+      当 以桥缝注入元数据事件（模型选择与 thinking 档位）
+      那么 模型不 panic 且条目与相位不变
+
   @req:r1522
   规则: app 组合根
     System MUST 提供单一组合根装配入口，从构建选项集中构造完整接线的 Agent，使 CLI、Server 与 TUI 不重复 Agent 接线代码。
     # verified-by: src/app/core/bootstrap.rs
+    场景: single-composition-root
+      当 app::server 运行时经 app::core::composition 组装 Agent
+      那么 向 Agent 传入 Arc<dyn ExportIo>
+
   @req:r1523
   规则: Xy 协议端口
     Xy 前缀端口契约 MUST 位于 protocol 层端口区；其签名所用共享类型 MUST 来自 protocol 层根共享区。
     # verified-by: src/AGENTS.md
+    场景: xy-ports-in-protocol
+      当 解析 JSON-RPC 信封样例（request / result / notification）
+      那么 JSON-RPC 形态与 id 回显成立
+
   @req:r1524
   规则: 缝与表面分离
     app 层 MUST 将跨面缝（组合根与运行时 driver 边界）分组于独立跨面缝区，与自包含应用表面（cli、server、tui、gui）分离；应用表面 MUST NOT 直接托管 build_agent 接线或 Driver trait（或等价）。
     # verified-by: src/AGENTS.md
+    场景: seam-separated-from-surfaces
+      假如 审查 server 组合根
+      当 检查持有类型
+      那么 按 session 槽持有 Driver；handlers 不直接以 Mutex AgentRuntime 作为唯一入口
+
   @req:r1526
   规则: 共享 bootstrap 与 dispatch
     System MUST 提供共享 bootstrap 入口集中从 CLI args 到运行时聚合体的完整装配路径，以及共享 dispatch 入口集中 Command 变体执行语义；print（cli）、server、tui MUST 调用 bootstrap，tui MUST 调用 dispatch，任何表面 MAY NOT 内联自有装配或命令分发实现。装配步骤清单（config load、ModelRegistry build、trust resolution、resource discovery 含 templates/context_files/system_prompt/append_system_prompt、compaction settings、permission、build_agent、model select）随代码组织演化，由架构 AGENTS 维护。
     # verified-by: src/app/core/bootstrap.rs
+    场景: shared-dispatch-across-surfaces
+      当 审查 prompt/steer 等 unary handlers
+      那么 调用 dispatch 或共享 helper；与 InProcessDriver 语义一致
+
   @req:r1527
   规则: 禁止死包装协作者
     agent 层 MUST NOT 长期保留对端口的纯转发壳（无附加状态或行为，且无生产调用方）；死码分诊与删除策略由架构 AGENTS 体量策略与 l8ng-audit-dead-code skill 承载。
     # verified-by: src/AGENTS.md
+    场景: no-dead-wrapper-on-seam
+      当 调用已登记的 session 能力 unary
+      那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
+
   @req:r1517
   规则: 嵌入缝与公开入口
     System MUST 向库用户提供文档化的嵌入入口（含 bootstrap/Driver 或等价），使外部 crate 无需 reach-in agent::capabilities 或 infra 具体类型即可装配并驱动一轮对话。嵌入路径 MUST 仅依赖精选 Xy 契约与文档化应用缝；MUST NOT 要求嵌入方 import infra 具体实现或 agent 子模块内部类型以完成标准装配。
     # verified-by: src/lib.rs
+    场景: embed-entry-without-reach-in
+      当 读取库公开入口的重导出清单
+      那么 清单覆盖 Xy 核心契约类型
+
   @req:r1519
   规则: Server 与 Print 同缝
     Server 与 Print MUST 共享同一应用缝（Driver/bootstrap）；新增 server 能力时优先扩缝，禁止为 server 单独复制一套 agent 编排。
     # verified-by: src/app/core/bootstrap.rs
+    场景: reload-shared-by-server-and-print
+      当 以主机泵在 idle 提交 "/reload"
+      那么 重载经共享缝完成且尾插 Reload 步进汇总
+
   @req:r1518
   规则: MCP 经嵌入缝
     System MUST 向嵌入方提供不依赖 infra 路径的 MCP 服务器描述（或等价句柄），使 bootstrap/reload 可在不 reach-in infra 实现的情况下传递配置。缝边界内的 MCP 会话类型（或等价）MUST 将嵌入缝 MCP 描述转为 infra 实现；应用面 MUST NOT 为 MCP 装配单独 reach-in infra 类型。
     # verified-by: src/app/core/bootstrap.rs
+    场景: mcp-config-via-embed-seam
+      当 以两组不同工具集的 fixture 配置先后装配
+      那么 工具集随配置变化
+
   @req:r1516
   规则: dispatch 有消费方
     跨面命令执行缝 dispatch MUST 至少被一个生产应用面消费（Server 或 TUI）；仅单测覆盖而无面接线视为逻辑死码，死码分诊与激活策略由架构 AGENTS 与 l8ng-audit-dead-code skill 承载。
     # verified-by: src/app/core/dispatch.rs
+    场景: dispatch-consumed-by-tui
+      当 以主机泵在 idle 提交斜杠 session-tree
+      那么 会话树打开且未作为 prompt 调用 run
+
   @req:r1528
   规则: provider 包开闭
     LLM 厂商差异 MUST 收敛在 packages/xylitol-ai-bridge 的 adapter 族；主仓投影缝（agent 内 project_for_llm）仅负责 Env→LLM 折叠。新 OpenAI-like 或 Anthropic-like 兼容端 MUST 以开闭方式扩展（新 adapter/配置），MUST NOT 为某一网关修改 AgentMessage 角色集或 agent ReAct 核心；agent MAY 依赖 bridge DTO 组合 Llm 臂；agent/infra MUST NOT 依赖厂商 HTTP/SDK。
     # verified-by: packages/xylitol-ai-bridge/src/lib.rs
+    场景: provider-diff-contained-in-bridge
+      当 以 medium 与 off 档解析请求 thinking 并注入各族请求体
+      那么 Responses 用 reasoning.effort 且 Completions 随 compat 分流且 Anthropic 随 compat 分流且 off 档省略字段
+
   @req:r1529
   规则: feature-flags
     System MUST 为每个可选能力定义带域前缀的 feature flag，使非默认 feature 零开销编译剔除。内置能力（tools、hooks、security、print-mode）无 feature flag，运行时由 config.yaml 控制。ACP 模式使用 feature flag infra-acp。
     # verified-by: Cargo.toml
+    场景: optional-flags-prefixed-builtins-plain
+      当 读取 Cargo 特性表
+      那么 可选能力有域前缀 flag 且内置能力无条件
+
   @req:r1530
   规则: minimal-default-features
     Cargo.toml default MUST 为 cli + tui + otel + server（个人 agent 开箱含本机 Host 监听器能力）；MUST NOT 要求 default 包含全部非 dev feature。构建 feature 闸与条件编译以 Cargo.toml 为 SSOT（原 build-config 并入）。
     # verified-by: Cargo.toml
+    场景: default-features-minimal-quartet
+      当 读取 Cargo 特性表
+      那么 默认集为 cli 与 tui 与 otel 与 server
+
   @req:r1507
   规则: 清除 pi 文档引用
     源文件 doc comments MUST NOT 引用 pi coding agent 或其 TypeScript 模块；pi 设计理由引用 MUST 替换为该模块实际职责的独立描述。文档卫生清单（含存量清理跟进）由架构 AGENTS 维护。
     # verified-by: src/AGENTS.md
+    场景: pi-doc-refs-cleared
+      当 扫描源文件的 pi 文档引用
+      那么 pi 引用已清零且职责描述就位
+
   @req:r1508
   规则: 消除重复领域实体
     System MUST NOT 为同一领域概念定义多种类型；Usage、StopReason 与 Compaction 配置 MUST 各有一个 canonical 类型。
     # verified-by: src/protocol/message.rs
+    场景: one-canonical-type-per-concept
+      当 读取领域实体的规范类型声明
+      那么 每个领域概念只有一处规范声明
+
   @req:r1509
   规则: 精选 pub use 清单
     System MUST 在库公开入口（或等价）维护精选 pub use，至少覆盖 XyModel、XyTool、XySessionStore、XyEvent、XyChunk 及文档化的配套错误/配置类型；未列入清单的内部模块 MUST NOT 被误当作稳定公开 API。
     # verified-by: src/lib.rs
+    场景: curated-reexport-list
+      当 读取库公开入口的重导出清单
+      那么 清单覆盖 Xy 核心契约类型
+
   @req:r12
   规则: 配置 JSON Schema 边界
     需要 JSON Schema 的配置/settings DTO MUST 收敛于 infra 配置边界（config/settings 或等价）并在该处 derive schemars；agent/protocol 会话词汇 MUST NOT 仅为 schema 而 derive JsonSchema。
     # verified-by: src/infra/config/types.rs
+    场景: schemars-at-infra-config-edge
+      当 读取配置边界的 schemars 派生
+      那么 派生集中在 infra 配置边界且会话层不派生
+
   @req:r1510
   规则: 双角色
     System MUST 把运行时分成 client 与 host 两个产品角色（职责划分，MUST NOT 解读为必须拆成两个进程）。client MUST 只承担面本地：键盘、绘制、TTY、本机编辑器、剪贴板。host MUST 承担模型、会话生命周期、资源装配（配置 / MCP / 工具 / 技能 / prompt）、工作区执行（含人发起的 bang）与项目信任。
     # verified-by: docs/architecture/库与多客户端.md
+    场景: two-roles-one-process
+      当 调用 RemoteDriver 已登记 unary（如 steer）
+      那么 经 HostClient 到达 Host
+
   @req:r1511
   规则: 归属判据
     依赖工作区、仓库、模型或 MCP 的能力 MUST 由 host 执行。依赖本机终端或本机硬件的能力 MUST 由 client 执行。导出 MUST 由 host 序列化内容、由 client 写入本机路径；导入对称。一条 reload MUST 同时让 client 热加载本机键位与主题，并向 host 请求重装 MCP / prompt / 技能。默认 embed 同进程时，导出/导入/reload MUST 视为已满足（同一进程内按角色分工即可），MUST NOT 要求先存在跨进程 attach。
@@ -131,6 +229,10 @@
   规则: session 原子与分面
     产品最小对话单元 MUST 是 session。cwd MUST 只表示执行面（工具 / bang / trust / MCP 池），MUST NOT 当作唯一分类夹。视图组织 MUST 允许用 tag 等高频分面，且分面索引 MUST 与 transcript 分离。本 requirement MUST NOT 要求交付独立 tag catalog。
     # verified-by: src/AGENTS.md
+    场景: session-as-minimal-unit
+      当 以主机泵注入可恢复会话列表后提交 "/session-resume"
+      那么 Resume 面板槽打开且经驱动列举可恢复会话
+
   @req:r1514
   规则: 一 session 一写者
     同一 session MUST 至多一个写者。对已被写入的 session 再 attach MUST 只读恢复。只读面上发起写入 MUST 失败并说明已有其它客户端以写者连接。尚未提供多客户端 attach 时，单进程默认路径 MUST 视为已满足本规则。
@@ -140,3 +242,4 @@
       当 server 处理 prompt
       并且 另一客户端对同会话 steer 不带写者令牌
       那么 应答为 writer_conflict 而非静默接管
+# re-review(c2835): 复审结论——分层与 seam 不变：app → agent|infra → protocol 方向未动；本分支只删 jsonrpsee 依赖并手写 JSON-RPC 载体。（2026-09-29）

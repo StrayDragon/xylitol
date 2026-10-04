@@ -28,3 +28,4 @@
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
     # verified-by: llmanspec/config.yaml
+# re-review(c2835): 复审结论——BDD 基建：新增 dual-rail 会话快照对拍场景，三处判据去固定 sleep（轮询/取最小/隔离 env）；场景↔步骤映射全绿（tests::bdd 659 通过）。（2026-09-29）

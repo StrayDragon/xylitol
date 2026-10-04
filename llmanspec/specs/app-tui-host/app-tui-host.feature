@@ -9,6 +9,10 @@
   规则: host-driven-engine
     产品 TUI MUST 以 host 驱动引擎（事件分发、按需渲染、idle 心跳）驱动 packages/xylitol-tui；产品路径 MUST NOT 进入引擎的阻塞主循环（包 demo 专用启动 API 勿用于生产面）。
     # verified-by: src/app/tui/mod.rs
+    场景: host-pump-is-the-single-engine-entry
+      当 以主机泵在 idle 提交 bang 命令
+      那么 execute_bash 收到命令体且未调用 run
+
   @req:r1248
   规则: terminal-restore
     产品 TUI MUST 在正常退出、错误退出与 panic 路径恢复终端（关闭 raw mode 等），不得把用户终端留在损坏状态；MUST 安装 panic hook（仅靠 Drop 不足）。
@@ -21,6 +25,10 @@
   规则: infra-logging-default
     debug 构建下产品 TUI MUST 默认启用即时文件日志（人类与 agent 可用 tail -f 观察）；release 构建 MUST 默认关闭，仍可通过 XYLITOL_DEBUG 或 RUST_LOG 显式打开。日志路径与查看方式由面 AGENTS 文档写明。
     # verified-by: src/app/cli/logging.rs
+    场景: debug-build-enables-file-logging-by-default
+      当 以临时目录请求即时文件日志
+      那么 debug 构建默认安装文件日志且日志文件已落盘
+
   @req:r1270
   规则: resize-and-min-size
     终端 resize MUST 触发重绘且不得丢失输入焦点语义；当引擎因极端尺寸无法安全渲染时 MUST 干净恢复终端并退出进程，MUST NOT 卡死终端模拟器。宽度小于 40 或高度小于 6 时 MUST 显示友好提示而非 panic。
@@ -34,10 +42,19 @@
   规则: host-harness-testable
     产品 TUI host MUST 将事件推进与终端 I/O 解耦（可注入事件与终端），使 min-size 提示、事件分发与无阻塞主循环路径可在无真 TTY 的 harness 中验证。
     # verified-by: src/app/tui/harness.rs
+    场景: harness-verifies-without-real-tty
+      假如 以小于最小尺寸的终端挂载主机泵
+      当 渲染当前主机帧
+      那么 显示友好的最小尺寸提示而非 panic
+
   @req:r1278
   规则: shared-effect-pump
     产品 TUI MUST 经单一事件泵（或等价共享入口）消费 HostSession pending 并调用 Driver/dispatch；合成 harness 泵 MUST 复用同一入口或与其同序同分支（同序验证口径：harness 断言与生产循环对同一 pending 集合按相同分支次序产生相同副作用调用序列），MUST NOT 维护与生产循环分叉的第二份 slash/bash/steer 副作用 match。
     # verified-by: src/app/tui/harness.rs
+    场景: harness-pump-shares-production-effect-branches
+      当 以主机泵在 idle 提交斜杠 session-tree
+      那么 会话树打开且未作为 prompt 调用 run
+
   @req:r1279
   规则: single-mux-loop
     产品 TUI host MUST 以单一扇入模型同时等待终端输入、idle tick、可选 agent EventStream、可选 bang 完成与 bang 输出事件：生产主环与 harness MUST 调用同一共享 bang/主环事件臂（或单一 select 拓扑）；MUST NOT 保留与共享入口分叉的第三套 bang Esc select；bang 进行中 Esc MUST 仍可达 Driver（或等价）abort 并走取消说明；bash 输出事件（session/bash_output）到达 MUST 仅标记 dirty 并在 Tick 或 BangDone 时按需渲染，MUST NOT 每事件强制全屏重绘；进行中的 bang MUST 仍可 poll agent EventStream（不得 bang-only 饿死 agent）。
@@ -56,10 +73,18 @@
   规则: agents-layout-map
     产品 TUI 面 AGENTS 文档 MUST 提供本地布局地图（目录/文件职责、协调者与可下沉模块边界、硬约束与验证命令指针）；MUST NOT 把进度板或易腐清单写入 AGENTS。
     # verified-by: src/app/tui/AGENTS.md
+    场景: tui-agents-doc-carries-layout-map
+      当 读取产品 TUI 面 AGENTS 文档
+      那么 文档含本地布局地图与验证命令指针且无进度板
+
   @req:r1243
   规则: host-module-boundaries
     产品 TUI 的组件与 layout MUST NOT 直接调用 Driver；HostSession 协调逻辑 MUST 位于可单测切片并经单一事件泵驱动。
     # verified-by: src/AGENTS.md
+    场景: effects-go-through-the-single-pump
+      当 以主机泵在 idle 提交 "/reload"
+      那么 重载经共享缝完成且尾插 Reload 步进汇总
+
   @req:r1244
   规则: session-read-errors-surfaced
     产品 TUI 在 travel/fork/label 等路径调用 Command::GetMessages（或等价）失败时 MUST 向用户展示 system/error note，MUST NOT 以 unwrap_or_default 静默得到空 transcript 并当作成功。
@@ -73,6 +98,10 @@
   规则: session-list-seam
     产品 TUI 获取可 resume 会话列表时 MUST 经 Driver（或 app::core 公开 seam）list_sessions 或等价 API，行 MUST 能支撑 scope（cwd）、预览、parent、mtime/age 与可选 path 展示；MUST NOT 从 app/tui 直接 import infra::session / 直接读 sessions 目录；switch 成功后 MUST 重建 transcript 并清除与旧 session 绑定的树槽/pending UI 态。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
+    场景: resume-list-rows-via-public-seam
+      当 以主机泵注入可恢复会话列表后提交 "/session-resume"
+      那么 Resume 面板槽打开且经驱动列举可恢复会话
+
   @req:r1246
   规则: session-lifecycle-seam
     产品 TUI 创建空会话与读写会话显示名时 MUST 经 Command::NewSession / GetSessionName / SetSessionName（或 app::core 公开等价 seam），MUST NOT 从 app/tui 直接 import infra::session 或直接写 sessions 目录；set_session_name MUST 将 CR/LF 规范为空格并 trim；new_session 成功后 MUST 清空与旧 session 绑定的 transcript/树槽；session-clone MUST 仅经既有 Command::Fork(At)+Command::SwitchSession 路径，不得平行 fork 实现。
@@ -129,10 +158,20 @@
   规则: scrollback-entry-paint-cache
     产品 live scrollback 绘制 MUST 对已提交 UiEntry 使用按条目指纹的行缓存：在 width 与 fold 不变时，仅 streaming tails 或发生变化的条目 MUST 触发该条目（及必要时其后条目）重绘；MUST NOT 因单次 TextDelta/ThinkingDelta 而对全部历史 Assistant 条目重新 Markdown 解析。MUST 在无真 TTY harness 中可测（重绘/miss 计数上界）；可选 PTY/tmux e2e 冒烟 MUST 在较大 scrollback 下仍能完成一轮并干净退出，MUST NOT 以 OS CPU% 作为硬闸。
     # verified-by: src/app/tui/widgets/scrollback/mod.rs
+    场景: committed-entries-reuse-row-cache
+      假如 构造含两条已提交助手条目的 UI 并渲染基线帧
+      当 仅推进流式尾标再渲染一次并读取已提交条目重绘计数
+      那么 已提交条目在第二次渲染零重绘
+
   @req:r1255
   规则: streaming-assistant-incremental-paint
     产品对 streaming_assistant 的 live Markdown 绘制 MUST 在 width/theme 不变且文本仅后缀增长时，复用已稳定 Markdown 前缀（段落边界，且不切开未闭合代码围栏）的已渲染行，仅对不稳定后缀（含流式 … 尾标）重新 Markdown 解析；MUST NOT 在每次 TextDelta 上都对整段 streaming 缓冲做全量解析（当已存在可复用稳定前缀时）。本要求 MUST NOT 改变 tool/bash/write/diff 的 Ctrl+O 视口折叠/展开或硬截断禁展开语义（att14/att16）。MUST 在无真 TTY harness 中可测（全量解析计数上界 + 与全量解析行一致）。
     # verified-by: src/app/tui/widgets/scrollback/mod.rs
+    场景: streaming-suffix-growth-limits-full-parses
+      假如 构造含稳定 Markdown 前缀的流式助手 UI
+      当 仅以后缀增长连续渲染四十次并读取全量解析计数
+      那么 全量 Markdown 解析次数远小于渲染次数
+
   @req:r1256
   规则: mcp-discovery-surface
     产品 host MUST 将 MCP 发现主路径接到 `/mcp` SelectList（atm17）：refresh_loaded_resources（或等价）MUST 更新可供 `/mcp` 同步挂载的缓存快照；Driver 只读缝 MUST 能支撑列表行（每 server 连接态 + tools armed）与汇总。MCP 仍 connecting、或工具表尚未 FROZEN 且 bootstrap 未完成（含 resume 后 Settling、旧工具仍 armed）、或 Connected 尚未 armed 且未冻表时，MAY 在 busy 下轮预告位或 idle status 显示短 cue；已提交门闸 status lead=`Assembling` 时右侧 MUST 可与该 cue 并存。文案 MUST 固定为 `mcp pending (see /mcp)` 且右对齐（MUST NOT 分数计数，MUST NOT 枚举 server id）。Failed 或（bootstrap 已完成且已 FROZEN）后的未武装 MUST NOT 单独拖住短 cue（细节进 `/mcp`）。connecting 收口 / 冻表后短 cue MUST 收起（除非仍有 Connecting）。头卡 loaded-resources mcp 行仍可作启动摘要，但 MUST NOT 作为长对话唯一发现面。MUST NOT 因开 `/mcp` abort agent；MUST NOT 从 app/tui reach infra::mcp。
@@ -158,6 +197,10 @@
   规则: product-pty-fake-smoke
     仓库 MUST 含产品二进制的 PTY 冒烟（#[ignore]，经 just test-tui-e2e-pty 可跑）：在临时 Fake 模型配置与 --trust 下启动 TUI，提交用户消息后屏上 MUST 出现 Fake 默认文案 Hello from fake provider，输入 /exit 后进程 MUST 退出。默认 just qa MUST NOT 强制该用例；MUST NOT 要求跨进程 Fake 脚本化，MUST NOT 在本用例断言 steer/工具 strip。
     # verified-by: justfile
+    场景: pty-smoke-registered-and-opt-in
+      当 读取 PTY 冒烟登记
+      那么 存在 just test-tui-e2e-pty 且冒烟为 ignore 不进默认门禁
+
   @req:r1258
   规则: mouse-input-opt-in-no-moved-paint
     产品 host 扇入 MUST 能将 crossterm Event::Mouse 映射为 HostEvent::Input(InputEvent::Mouse)（Moved 可在映射前丢弃）。Ready 态处理 Mouse 时：无 UI dirty / 未消费态变 MUST NOT request_render（含无态变 Moved）；消费态变（如 ApplicationOwned 拖选）MAY request_render。产品 MUST NOT 经 TerminalGuard / `XYLITOL_TUI_MOUSE` 在进 TTY 时默认开 mouse capture；ApplicationOwned 会话 begin 后的 capture 见 ath30。teardown MUST Disable mouse capture（尽探针所能断言 mouse mode 不残留）。MUST 提供 #[ignore] PTY 用例（经 just test-tui-e2e-pty 可跑）；默认 just qa MUST NOT 强制该用例。折叠点击语义不在本要求范围。
@@ -171,6 +214,10 @@
   规则: interaction-mode-application-owned-default
     产品 TUI MUST 在 host **启动构造时**绑定 xylitol-tui 交互模式为 ApplicationOwned（应用自管视口 / alt-screen）。缺省/未配置 MUST 为 ApplicationOwned。一次会话 MUST 只有一个主模式；MUST NOT 在会话运行中热切模式（改模式 = 结束进程或新建 HostSession，不是 mid-loop 换栈 API）。MUST NOT 把 XYLITOL_TUI_MOUSE 环境变量当作产品模式开关；MUST NOT 提供面向用户的 Inline/ApplicationOwned 切换设置。产品 MUST 将下缘固定区（至少 status/editor/footer 所占行）登记为 dock，使包级选区排除输入面；teardown MUST 不残留 mouse capture / alt-buffer。退出 ApplicationOwned 时产品 MUST 依赖库 finish dump（或等价）使主屏 scrollback 仍可读会话内容；本要求不要求向用户暴露 dump opt-out。折叠点击语义不在本要求范围（见后续 fold 族 change）。库仍可暴露 Inline 构造入口供 lab/demo；产品默认路径 MUST NOT 使用 Inline。
     # verified-by: src/app/tui/host/mod.rs
+    场景: product-ui-binds-application-owned-at-construction
+      当 以产品 UI 构造主机会话并查询交互模式
+      那么 产品交互模式为 ApplicationOwned
+
   @req:r1261
   规则: mode-b-copy-notice-fixed-zone
     产品 TUI 在 ApplicationOwned 会话下，当库发出松手复制成功 copy-notice（ptim15）时 MUST 展示短时用户可见提醒（TTL 约 1.5–3s 后自动消失）。落点 SHOULD 为下缘固定区内、status/输入带附近的单行提示（或独立 info 固定区槽）；MUST NOT 写入 transcript / ScrollNotice；MUST NOT 使用带 `Error: ` 前缀的拒闸 toast-notice 形态冒充成功确认。折叠点击不在范围。
@@ -197,26 +244,61 @@
   规则: attach-tick-no-blocking-rpc
     产品 TUI attach 路径的 host 循环在 idle/busy tick 与 drain_pending 中 MUST NOT 同步阻塞等待 Host unary（含 get_state / current_model / MCP settle）。status spinner MUST 在 Host 慢连接或写者 unary 进行中仍能换帧；键入 MUST 仍可进入 editor。写者 unary（含 SetModel）MUST NOT 在返回前等待全部 MCP 连接完成。模型列表打开与选定 MUST 在 MCP 未结算时仍可操作（选定可走 NextTurn）。
     # verified-by: src/app/tui/host/mod.rs
+    场景: attach-drain-not-blocked-by-pending-unary
+      假如 以注入短常量的 mock HostClient 完成 attach
+      当 在 idle 排空下行事件
+      那么 排空不被未决 unary 阻塞且返回可读投影批
+
   @req:r1265
   规则: attach-mux-session-lifetime
     产品 TUI attach MUST 在进入 host 循环前完成握手并订阅该 session 的 mux（启动即订，不等第一次 prompt）。单次 AgentEnd MUST NOT 拆掉该订阅。WS 断开后 MUST 用 last_seq 再次 subscribe 续传；收到 session/resync_required 后 MUST 按 server-core 再订并重建可见 transcript，MUST NOT 只留一行错误后放弃事件流。退出 TUI 才关闭 mux。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
+    场景: agent-end-keeps-mux-subscription
+      假如 客户端已订阅会话 s-sub
+      当 会话回合以 AgentEnd 结束后又追加新事件
+      那么 订阅仍存活且新事件继续送达
+
   @req:r1266
   规则: attach-restore-projection
     产品 TUI attach 恢复（CLI --session 启动与空闲 Resume 切换）MUST 以 Host 消息快照一次重建 transcript：完整历史一次可见、会话 Idle、无假 spinner、无逐条回放；恢复窗内的冷订实况磁带（AgentStart / TextDelta 等回合磁带）MUST NOT 渲染进 transcript；MUST NOT 以 loading 态掩盖回放。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
+    场景: cold-restore-single-snapshot
+      假如 会话 s0 已有 3 条历史条目且客户端无有效 last_seq
+      当 冷订客户端调用消息快照
+      那么 快照一次返回全部 3 条条目
+
+    场景: cold-restore-ignores-live-tape
+      假如 冷订客户端处于恢复窗内且 journal 含实况磁带事件
+      当 调用消息快照
+      那么 快照内容与磁带回放无关
+
   @req:r1267
   规则: attach-reload-cooperative-cancel
     产品 TUI attach 下 `/reload` 进行中用户触发取消（interrupt/clear 键位）时，client MUST 将取消意图经 Host 转达（合作取消该次进程级 reload），MUST NOT 继续等待原 reload 完成；取消后 reload 界面 MUST 以已取消收尾，Host MUST 停止后续重装步骤。正常完成路径行为保持不变。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
+    场景: attach-reload-cancel-stops-later-steps
+      当 以主机泵开启重载并输入草稿后按 Enter
+      那么 通知条为 reloading 且草稿保留且未新增滚动提示
+      当 经输入流注入 Esc 取消挂起重载
+      那么 重载结束且通告为已取消
+
   @req:r1268
   规则: attach-fixed-zone-downlink-driven
     产品 TUI attach 下 MCP/skills 头卡的连接态刷新 MUST 由 Host 的 `session/resources` 下行驱动：帧到达置脏后由 tick 读本地缓存刷新；MUST NOT 以周期性 unary 轮询同一刷新。首帧到达前的初始快照 MAY 经一次性 loaded_resources unary 获取；启动与 /reload 后的既有刷新语义（ath23）保持。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
+    场景: resource-header-refreshed-from-snapshot
+      当 以含 skills 与 connecting MCP 的资源快照渲染头部卡
+      那么 卡含 skills 行与 mcp 行且展示连接进度
+
   @req:r1269
   规则: unary-request-bounded
     产品 TUI 对 Host 的每笔 unary 请求 MUST 有请求级等待界；已知长操作（如 reload）MUST 分级放宽且各有界；半开连接下 MUST 以超时错误呈现而非无限挂起。
     # verified-by: src/app/core/host_client/http_ws.rs
+    场景: subscription-idle-wait-is-bounded
+      假如 以短空闲超时的产品订阅客户端已升级 WS /rpc
+      当 超过空闲超时仍无入站帧
+      那么 客户端判定半开并结束该订阅
+
   @req:r1271
   规则: mux-halfopen-detect
     产品订阅连接（WS /rpc）MUST 周期性探测连接活性（如 keepalive ping）；连续探测周期无任何入站帧时 MUST 判定半开并走既有重订/resync 路径，MUST NOT 静默停摆。
@@ -244,6 +326,11 @@
   规则: attach-reconnect-grace-ux
     产品 TUI attach 下初始连接与重连 MUST 各有宽限期：宽限内 MUST NOT 因断线/重试打扰信息面（transcript 与状态条零输出）；超宽限 MUST 以通知条（toast notice）提示断线重连中，恢复成功 MUST 以通知条收尾并清除断线态；重连窗内 MUST NOT 向 transcript 推错误行。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
+    场景: reconnect-grace-then-toast
+      假如 真进程 serve 已启动且 attach 客户端已订阅
+      当 server 的 mux 连接被断开且期间 journal 新增事件
+      那么 客户端 MUST 在宽限内不上屏断线错误并自动重连
+
   @req:r1274
   规则: attach-coalesce-downlink
     产品订阅下行事件 MUST 在短窗口内攒批合帧：同窗口多条事件 MUST 合并为一次 UI 投影批消费，MUST NOT 逐事件触发投影。

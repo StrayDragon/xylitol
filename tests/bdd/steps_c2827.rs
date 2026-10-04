@@ -2292,3 +2292,562 @@ pub(crate) fn t_t6_todo_event_assert() {
         assert_eq!(len, Some(1), "c2829: TodoUpdated 应携带全量快照");
     });
 }
+
+// ── c2835 后继：layer-architecture 裸规则回填（结构/文档探针）──────
+
+// 单槽文本探针：每个场景一对 `当/那么`，顺序执行故复用一格足够。
+thread_local! {
+    pub(crate) static LA_PROBE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+fn la_load(path: &str) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path} 可读：{e}"))
+}
+
+#[when("读取分层保障的真值文档")]
+pub(crate) fn w_la_agents_doc() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/AGENTS.md")));
+}
+
+#[then("保障方式为 AGENTS 与缝行为测")]
+pub(crate) fn t_la_guarantee_way() {
+    let doc = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(doc.contains("AGENTS.md"), "分层保障 MUST 指向 AGENTS 文档");
+    assert!(
+        doc.contains("protocol") && doc.contains("infra") && doc.contains("agent"),
+        "保障文档 MUST 写明三层与依赖方向"
+    );
+}
+
+#[when("读取 Cargo 特性表")]
+pub(crate) fn w_la_cargo_features() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("Cargo.toml")));
+}
+
+#[then("可选能力有域前缀 flag 且内置能力无条件")]
+pub(crate) fn t_la_feature_flags() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let block = text
+        .split("[features]")
+        .nth(1)
+        .expect("Cargo.toml MUST 有 [features] 段");
+    for flag in ["cli", "tui", "otel", "server"] {
+        assert!(
+            block.contains(&format!("{flag} =")) || block.contains(&format!("{flag}=")),
+            "可选能力 {flag} MUST 有同名 feature flag"
+        );
+    }
+    // 内置能力（tools/hooks/security/print-mode）无 flag：不出现在 [features] 里。
+    for builtin in ["tools", "hooks", "security", "print-mode"] {
+        assert!(
+            !block.contains(&format!("{builtin} =")) && !block.contains(&format!("{builtin}=")),
+            "内置能力 {builtin} MUST NOT 有 feature flag"
+        );
+    }
+}
+
+#[then("默认集为 cli 与 tui 与 otel 与 server")]
+pub(crate) fn t_la_default_features() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let block = text
+        .split("[features]")
+        .nth(1)
+        .expect("Cargo.toml MUST 有 [features] 段");
+    let default_line = block
+        .lines()
+        .find(|l| l.trim_start().starts_with("default"))
+        .expect("default MUST 有定义");
+    for item in ["cli", "tui", "otel", "server"] {
+        assert!(
+            default_line.contains(item),
+            "default MUST 含 {item}，实得 {default_line}"
+        );
+    }
+    for extra in ["postgres", "sqlite"] {
+        assert!(
+            !default_line.contains(extra),
+            "default MUST NOT 含非默认 {extra}"
+        );
+    }
+}
+
+#[when("扫描源文件的 pi 文档引用")]
+pub(crate) fn w_la_pi_refs() {
+    let mut hits = 0usize;
+    for path in [
+        "src/protocol/wire/envelope.rs",
+        "src/protocol/model/meta.rs",
+        "src/agent/runtime/react/mod.rs",
+    ] {
+        let text = la_load(path);
+        hits += text
+            .lines()
+            .filter(|l| l.contains("pi coding agent"))
+            .count();
+    }
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits.to_string()));
+}
+
+#[then("pi 引用已清零且职责描述就位")]
+pub(crate) fn t_la_pi_refs_zero() {
+    let hits: usize = LA_PROBE
+        .with(|p| p.borrow().clone())
+        .expect("探针已跑")
+        .parse()
+        .expect("计数可解析");
+    assert_eq!(hits, 0, "所选源文件的 pi 文档引用 MUST 为 0");
+}
+
+#[when("读取库公开入口的重导出清单")]
+pub(crate) fn w_la_lib_reexports() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/lib.rs")));
+}
+
+#[then("清单覆盖 Xy 核心契约类型")]
+pub(crate) fn t_la_reexport_list() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    for name in ["XyModel", "XyTool", "XySessionStore", "XyEvent", "XyChunk"] {
+        assert!(text.contains(name), "pub use 清单 MUST 覆盖 {name}");
+    }
+}
+
+#[when("读取配置边界的 schemars 派生")]
+pub(crate) fn w_la_schemars_boundary() {
+    let mut hits = String::new();
+    for path in ["src/infra/config/types.rs", "src/protocol/session/mod.rs"] {
+        let text = la_load(path);
+        let n = text.lines().filter(|l| l.contains("JsonSchema")).count();
+        hits.push_str(&format!("{path}:{n};"));
+    }
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits));
+}
+
+#[then("派生集中在 infra 配置边界且会话层不派生")]
+pub(crate) fn t_la_schemars_boundary_shape() {
+    let hits = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let cfg = hits
+        .split(';')
+        .next()
+        .and_then(|s| s.rsplit(':').next())
+        .and_then(|s| s.parse::<usize>().ok())
+        .expect("infra 配置计数可读");
+    let sess = hits
+        .split(';')
+        .nth(1)
+        .and_then(|s| s.rsplit(':').next())
+        .and_then(|s| s.parse::<usize>().ok())
+        .expect("会话层计数可读");
+    assert!(cfg > 0, "配置 DTO MUST 在 infra 边界 derive JsonSchema");
+    assert_eq!(sess, 0, "会话层 MUST NOT 派生 JsonSchema（边界在 infra）");
+}
+
+#[when("读取领域实体的规范类型声明")]
+pub(crate) fn w_la_canonical_types() {
+    let mut hits = String::new();
+    for (path, decl) in [
+        ("src/agent/capabilities/stats.rs", "pub struct ContextUsage"),
+        (
+            "src/agent/compaction/settings.rs",
+            "pub struct CompactionSettings",
+        ),
+    ] {
+        let n = la_load(path)
+            .lines()
+            .filter(|l| l.trim_start().starts_with(decl))
+            .count();
+        hits.push_str(&format!("{n};"));
+    }
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits));
+}
+
+#[then("每个领域概念只有一处规范声明")]
+pub(crate) fn t_la_canonical_single() {
+    let hits = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let counts: Vec<usize> = hits
+        .split(';')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.parse::<usize>().expect("计数可解析"))
+        .collect();
+    assert_eq!(counts.len(), 2, "两概念 MUST 各有一处声明");
+    assert!(
+        counts.iter().all(|&c| c == 1),
+        "同概念 MUST NOT 重复定义，实得 {counts:?}"
+    );
+}
+
+#[when("读取适配外壳结构")]
+pub(crate) fn w_provider_wrap_shape() {
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load("src/infra/provider/adapter/xy_model.rs"));
+    });
+}
+
+#[then("适配外壳仅一层且桥接 bridge adapter")]
+pub(crate) fn t_provider_wrap_single() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let n = text
+        .lines()
+        .filter(|l| l.trim_start().starts_with("pub struct AdapterXyModel"))
+        .count();
+    assert_eq!(n, 1, "适配外壳 MUST 恰一处声明，实得 {n}");
+    assert!(
+        text.contains("AiBridgeLlmAdapter"),
+        "外壳 MUST 直接桥接 bridge adapter"
+    );
+}
+
+#[when("扫描厂商类型的出现位置")]
+pub(crate) fn w_vendor_type_boundary() {
+    let port = la_load("src/protocol/ports/model.rs");
+    let bridge = la_load("packages/xylitol-ai-bridge/src/provider/native/openai_responses.rs");
+    let hits = format!(
+        "{};{}",
+        port.lines().filter(|l| l.contains("async_openai")).count(),
+        bridge
+            .lines()
+            .filter(|l| l.contains("async_openai"))
+            .count()
+    );
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits));
+}
+
+#[then("厂商类型仅现于 bridge 与映射边界")]
+pub(crate) fn t_vendor_type_boundary() {
+    let hits = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let (port, bridge) = hits.split_once(';').expect("两段计数");
+    assert_eq!(port, "0", "protocol 端口 MUST NOT 出现厂商具体类型");
+    assert!(
+        bridge.parse::<usize>().expect("计数可解析") > 0,
+        "厂商类型 MUST 出现在 bridge 包内"
+    );
+}
+
+#[when("读取模型端口的消息入参形态")]
+pub(crate) fn w_model_port_input_shape() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/ports/model.rs")));
+}
+
+#[then("入参为 bridge DTO 且无 AgentMessage")]
+pub(crate) fn t_model_port_input_shape() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("messages: Vec<LlmMessage>"),
+        "端口入参 MUST 为 Vec<LlmMessage>（bridge DTO 别名）"
+    );
+    assert!(
+        text.contains("AiBridgeMessage"),
+        "LlmMessage MUST 注明为 bridge AiBridgeMessage 别名"
+    );
+}
+
+#[when("读取 api 字面量全称集")]
+pub(crate) fn w_api_literal_fullnames() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/model/config.rs")));
+}
+
+#[then("三全称在册且无简写别名")]
+pub(crate) fn t_api_literal_fullnames() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    for name in [
+        "openai-responses",
+        "openai-completions",
+        "anthropic-messages",
+    ] {
+        assert!(text.contains(name), "api 全称 MUST 在册：{name}");
+    }
+}
+
+#[when("读取配置节字段缺省")]
+pub(crate) fn w_config_section_defaults() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/types.rs")));
+}
+
+#[then("tui 历史种子缺省为一")]
+pub(crate) fn t_tui_editor_seed_default_one() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let idx = text
+        .find("fn default_editor_history_seed_sessions()")
+        .expect("缺省函数在册");
+    assert!(
+        text[idx..].contains("1"),
+        "editor_history_seed_sessions 缺省 MUST 为 1"
+    );
+}
+
+#[then("otel 节可缺省且等价 none")]
+pub(crate) fn t_otel_section_default_none() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(text.contains("otel"), "AppConfig MUST 支持 otel 节");
+    assert!(text.contains("none"), "exporter 缺省 MUST 等价 none");
+}
+
+#[when("读取模板 vars 命名空间")]
+pub(crate) fn w_template_vars_namespace() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/template.rs")));
+}
+
+#[then("vars 仅暴露 home")]
+pub(crate) fn t_template_vars_home_only() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(text.contains("vars.home"), "模板 MUST 暴露 vars.home");
+    assert!(text.contains("home_dir"), "home MUST 取用户 home 目录");
+}
+
+#[then("工具批缺省并行且回合上限须为正整数")]
+pub(crate) fn t_tool_batch_and_max_turns_defaults() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("BarrierParallel"),
+        "tool_batch.mode 缺省 MUST 为 barrier_parallel"
+    );
+    assert!(
+        text.contains("validate_session_max_turns") && text.contains("positive integer"),
+        "session.max_turns MUST 为缺席或正整数"
+    );
+}
+
+#[then("活动折叠启用且保留两回合与信封折叠")]
+pub(crate) fn t_activity_fold_defaults() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("enabled: true"),
+        "activity_fold.enabled 缺省 MUST 为 true"
+    );
+    assert!(
+        text.contains("keep_recent_turns: 2"),
+        "keep_recent_turns 缺省 MUST 为 2"
+    );
+    assert!(
+        text.contains("ActivityFoldStreamCollapse::Envelope"),
+        "stream_collapse 缺省 MUST 为 envelope"
+    );
+}
+
+#[when("读取 token 同步脚本与生成物")]
+pub(crate) fn w_token_sync() {
+    let script = la_load("scripts/sync_tui_tokens.py");
+    let js = la_load("designing/generated/tokens.js");
+    let ok = script.contains("tokens.css") && script.contains("tokens.js") && js.contains("{");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(if ok { "1".into() } else { "0".into() }));
+}
+
+#[then("单一脚本写出双端 token")]
+pub(crate) fn t_token_sync_single_source() {
+    assert_eq!(
+        LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑"),
+        "1",
+        "tokens.css 与 tokens.js MUST 由同一同步脚本写出"
+    );
+}
+
+#[when("读取 tui 面 AGENTS 摘要")]
+pub(crate) fn w_tui_agents_summary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/tui/AGENTS.md")));
+}
+
+#[then("摘要写明先读产品代码与默认忽略应用壳")]
+pub(crate) fn t_tui_agents_reading_order() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("本目录产品代码"),
+        "MUST 写明运行时真值在产品代码"
+    );
+    assert!(text.contains("默认忽略"), "MUST 写明默认忽略应用壳");
+}
+
+#[then("摘要写明改稿须跑 designing lint")]
+pub(crate) fn t_tui_agents_lint_pointers() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("check_tui_designing.py"),
+        "MUST 指向 designing lint 脚本"
+    );
+    assert!(text.contains("check-tui-tokens"), "MUST 指向词表闸");
+}
+
+#[when("读取 designing lint 闸接线")]
+pub(crate) fn w_designing_lint_wiring() {
+    let text = format!(
+        "{}{}",
+        la_load("justfile"),
+        la_load("scripts/check_scripts_convention.py")
+    );
+    let hit = text.contains("check_tui_designing.py") as usize;
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hit.to_string()));
+}
+
+#[then("designing lint 由 check-scripts 执行")]
+pub(crate) fn t_designing_lint_wired() {
+    let hits: usize = LA_PROBE
+        .with(|p| p.borrow().clone())
+        .expect("探针已跑")
+        .parse()
+        .expect("计数可解析");
+    assert!(hits > 0, "designing lint 脚本 MUST 在 just 接线里出现");
+}
+
+#[when("枚举 designing 固定态样例")]
+pub(crate) fn w_designing_static_slots() {
+    let regions = la_load("designing/tui/shell.regions.yaml");
+    let modules = std::fs::read_dir("designing/tui/modules")
+        .expect("modules 目录可读")
+        .count();
+    let ok = (regions.contains("models") && modules >= 3) as usize;
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(ok.to_string()));
+}
+
+#[then("固定态样例覆盖模型与树与待办")]
+pub(crate) fn t_designing_static_slots_shape() {
+    assert_eq!(
+        LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑"),
+        "1",
+        "固定态样例 MUST 覆盖模型列表等高频槽位"
+    );
+}
+
+#[when("读取 qa 文档指针")]
+pub(crate) fn w_qa_doc_pointers() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("AGENTS.md")));
+}
+
+#[then("文档写明 qa 与 e2e 分工")]
+pub(crate) fn t_qa_doc_pointers() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(text.contains("just qa"), "文档 MUST 指向 just qa");
+    assert!(text.contains("qa-e2e"), "文档 MUST 写明 qa-e2e 的分工");
+}
+
+#[when("读取 just 的 qa recipe 序列")]
+pub(crate) fn w_qa_recipe_sequence() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("justfile")));
+}
+
+#[then("qa 串含 fmt 与 lint 与 test 与 live")]
+pub(crate) fn t_qa_sequence_shape() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let idx = text.find("qa ").expect("qa recipe 在册");
+    let body = &text[idx..];
+    for item in ["fmt", "lint", "test", "check-scripts", "test-live-provider"] {
+        assert!(body.contains(item), "qa MUST 串到 {item}");
+    }
+}
+
+#[then("qa-e2e 在 qa 之后加 test-tui-e2e")]
+pub(crate) fn t_qa_e2e_layers() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let idx = text.find("qa-e2e").expect("qa-e2e recipe 在册");
+    let body = &text[idx..];
+    assert!(body.contains("qa"), "qa-e2e MUST 先跑 qa");
+    assert!(
+        body.contains("test-tui-e2e"),
+        "qa-e2e MUST 再跑 test-tui-e2e"
+    );
+}
+
+#[then("live 闸走串行且带超时")]
+pub(crate) fn t_live_gate_serial() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let idx = text.find("test-live-provider").expect("live recipe 在册");
+    let body = &text[idx..];
+    assert!(
+        body.contains("--test-threads=1"),
+        "live 闸 MUST 串行（单 test binary 单线程）"
+    );
+    let qa = &body[..body.len().min(4000)];
+    assert!(
+        qa.contains("test-live-provider") || qa.contains("lab_responses_prompt_cache"),
+        "qa 串 MUST 在 workspace 测试后串到 live 闸"
+    );
+}
+
+#[when("读取非变更闸脚本清单")]
+pub(crate) fn w_check_scripts_inventory() {
+    let dir = std::fs::read_dir("scripts")
+        .expect("scripts 目录可读")
+        .filter_map(|e| e.ok().and_then(|e| e.file_name().into_string().ok()))
+        .filter(|n| n.starts_with("check_") || n.starts_with("check-"))
+        .collect::<Vec<_>>();
+    let just = la_load("justfile");
+    let globbed = just.contains("scripts/check_*.py");
+    let wired = dir
+        .iter()
+        .filter(|n| {
+            let stem = n.trim_end_matches(".py");
+            globbed || just.contains(stem) || just.contains(&stem.replace('_', "-"))
+        })
+        .count();
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{};{}", dir.len(), wired)));
+}
+
+#[then("非变更闸均经 wiring 接线")]
+pub(crate) fn t_check_scripts_wired() {
+    let hits = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let (total, wired) = hits.split_once(';').expect("两段计数");
+    let total: usize = total.parse().expect("计数可解析");
+    let wired: usize = wired.parse().expect("计数可解析");
+    assert!(total > 0, "scripts/ 下 MUST 有 check_* 闸脚本");
+    assert_eq!(
+        wired, total,
+        "每个 check_* 脚本 MUST 在 justfile 出现（显名或 glob）"
+    );
+}
+
+#[then("复杂度闸以 cccc-rs 为 SSoT")]
+pub(crate) fn t_complexity_gate_ssot() {
+    let text = la_load("scripts/check_complexity.py");
+    assert!(
+        text.to_lowercase().contains("cccc"),
+        "复杂度闸 MUST 以 cccc-rs 指标为 SSoT"
+    );
+}
+
+#[when("读取 PTY 会话树用例清单")]
+pub(crate) fn w_pty_e2e_inventory() {
+    let mut hits = 0usize;
+    for path in ["tests/tui_e2e/pty.rs", "tests/tui_e2e/tmux.rs"] {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            hits += text.lines().filter(|l| l.contains("fn ")).count();
+        }
+    }
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits.to_string()));
+}
+
+#[then("会话树 PTY 用例在册")]
+pub(crate) fn t_pty_e2e_present() {
+    let hits: usize = LA_PROBE
+        .with(|p| p.borrow().clone())
+        .expect("探针已跑")
+        .parse()
+        .expect("计数可解析");
+    assert!(
+        hits >= 1,
+        "tests/tui_e2e MUST 至少一条会话树用例，实得 {hits}"
+    );
+}
+
+#[when("读取默认系统提示模板与装配")]
+pub(crate) fn w_default_system_template() {
+    let assembled = format!(
+        "{}{}",
+        la_load("src/agent/prompt/templates/default_system.j2"),
+        la_load("src/agent/prompt/system.rs")
+    );
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(assembled));
+}
+
+#[then("模板只带工具与 mcp 而日期与 cwd 由 session_env 补齐")]
+pub(crate) fn t_default_template_shape() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("Available tools:"),
+        "默认模板 MUST 注入工具片段"
+    );
+    assert!(
+        text.contains("session_env"),
+        "日历日与 cwd MUST 由 session_env 提供"
+    );
+    assert!(
+        !text.contains("{{ date }}"),
+        "默认模板 MUST NOT 内联日历日占位"
+    );
+}

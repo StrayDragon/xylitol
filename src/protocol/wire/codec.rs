@@ -102,7 +102,10 @@ fn jsonrpc_to_message(v: &Value) -> Result<RpcMessage, serde_json::Error> {
 
 /// JSON-RPC 2.0 success or application error. Envelope numeric codes are
 /// carriers; product codes live in `error.data.code`.
-pub fn jsonrpc_response(id: &str, result: &RpcResult) -> Value {
+///
+/// `id` MUST 逐字回显（保留原 JSON 类型：数字仍是数字）。
+/// `id` 为 [`Value::Null`] 时按通知处理（无 id 可回显）。
+pub fn jsonrpc_response(id: &Value, result: &RpcResult) -> Value {
     if result.ok {
         json!({
             "jsonrpc": "2.0",
@@ -123,7 +126,8 @@ pub fn jsonrpc_response(id: &str, result: &RpcResult) -> Value {
     }
 }
 
-pub fn jsonrpc_method_not_found(id: &str) -> Value {
+/// Unregistered method: carrier code `-32601`, product code in `data.code`.
+pub fn jsonrpc_method_not_found(id: &Value) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -131,6 +135,20 @@ pub fn jsonrpc_method_not_found(id: &str) -> Value {
             "code": -32601,
             "message": "Method not found",
             "data": { "code": "unregistered_method" },
+        },
+    })
+}
+
+/// Malformed envelope (missing `method`, wrong `jsonrpc` member, oversized body):
+/// carrier code `-32600`; product code `illegal_envelope`.
+pub fn jsonrpc_invalid_request(id: &Value) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": -32600,
+            "message": "Invalid request",
+            "data": { "code": "illegal_envelope" },
         },
     })
 }

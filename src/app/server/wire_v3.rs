@@ -7,7 +7,10 @@
 //! `host.describe` 与 task 2.5b 已接的三类(会话条目 / 会话树 / travel)走具名
 //! union,其余方法以 `RawOk`(JSON 原文)承载。
 
-use crate::app::server::rpc_module::{self, ProductRpc};
+use std::sync::Arc;
+
+use crate::app::server::host::HostState;
+use crate::app::server::rpc_module::{self};
 use crate::protocol::wire::v3::{
     ClientRequest, DescribeResult, Frame, Request, ResponsePayload, RpcError, ServerResponse,
     method_name,
@@ -86,10 +89,9 @@ fn v3_command_ptr(
 fn response_from_raw(
     rpc_id: u64,
     method: &str,
-    raw: &str,
+    v: &serde_json::Value,
     token: Option<String>,
 ) -> Result<ServerResponse, String> {
-    let v: serde_json::Value = serde_json::from_str(raw).map_err(|e| format!("raw parse: {e}"))?;
     if let Some(err) = v.get("error") {
         let code = err
             .pointer("/data/code")
@@ -178,7 +180,7 @@ fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePay
 /// `ClientRequest` 帧与未知变体按 envelope 错误处理(调用方决定 400 或
 /// 断连)。
 pub(crate) async fn handle_uplink(
-    module: &ProductRpc,
+    host: &Arc<HostState>,
     bytes: &[u8],
     conn_writer: Option<String>,
 ) -> Result<(Vec<u8>, Option<String>), String> {
@@ -188,10 +190,10 @@ pub(crate) async fn handle_uplink(
     };
     let (text, method) = to_jsonrpc_request(&req)?;
     let writer = req.writer_token.clone().or(conn_writer);
-    let (raw, token) = rpc_module::dispatch_raw(module, &text, req.rpc_id.to_string(), writer)
+    let (value, token) = rpc_module::dispatch_raw(host, &text, writer)
         .await
-        .map_err(|e| format!("dispatch: {e}"))?;
-    let resp = response_from_raw(req.rpc_id, &method, &raw, token.clone())?;
+        .ok_or_else(|| "illegal envelope".to_string())?;
+    let resp = response_from_raw(req.rpc_id, &method, &value, token.clone())?;
     let bytes = Frame::ServerResponse(resp)
         .to_bytes()
         .map_err(|e| format!("v3 encode: {e}"))?;
@@ -313,6 +315,11 @@ pub(crate) fn downlink_frame(
 mod tests {
     use super::*;
 
+    /// JSON-RPC 应答形状的测试夹具（与 dispatch 产出的 Value 同构）。
+    fn json_of(raw: &str) -> serde_json::Value {
+        serde_json::from_str(raw).expect("fixture json")
+    }
+
     fn steer_frame(rpc_id: u64) -> Vec<u8> {
         Frame::ClientRequest(ClientRequest {
             rpc_id,
@@ -376,7 +383,9 @@ mod tests {
         let resp = response_from_raw(
             1,
             "get_messages",
-            &format!(r#"{{"jsonrpc":"2.0","id":1,"result":{entries_json}}}"#),
+            &json_of(&format!(
+                r#"{{"jsonrpc":"2.0","id":1,"result":{entries_json}}}"#
+            )),
             None,
         )
         .unwrap();
@@ -404,7 +413,7 @@ mod tests {
         let tree = response_from_raw(
             2,
             "session_tree",
-            r#"{"jsonrpc":"2.0","id":2,"result":{"tree":[{"entry":{"type":"message","id":"e1","parentId":null,"timestamp":7,"message":{"role":"user","content":"hi"}},"children":[],"label":null}]}}"#,
+            &json_of(r#"{"jsonrpc":"2.0","id":2,"result":{"tree":[{"entry":{"type":"message","id":"e1","parentId":null,"timestamp":7,"message":{"role":"user","content":"hi"}},"children":[],"label":null}]}}"#),
             None,
         )
         .unwrap();
@@ -419,7 +428,7 @@ mod tests {
         let travel = response_from_raw(
             3,
             "travel_session_tree",
-            r#"{"jsonrpc":"2.0","id":3,"result":{"kind":"message_history","selected_id":"e1","leaf_id":null}}"#,
+            &json_of(r#"{"jsonrpc":"2.0","id":3,"result":{"kind":"message_history","selected_id":"e1","leaf_id":null}}"#),
             None,
         )
         .unwrap();
@@ -435,7 +444,7 @@ mod tests {
         let raw = response_from_raw(
             4,
             "get_state",
-            r#"{"jsonrpc":"2.0","id":4,"result":{"seq":1}}"#,
+            &json_of(r#"{"jsonrpc":"2.0","id":4,"result":{"seq":1}}"#),
             None,
         )
         .unwrap();
@@ -450,7 +459,7 @@ mod tests {
         let ok = response_from_raw(
             5,
             "get_state",
-            r#"{"jsonrpc":"2.0","id":5,"result":{"seq":1}}"#,
+            &json_of(r#"{"jsonrpc":"2.0","id":5,"result":{"seq":1}}"#),
             None,
         )
         .unwrap();
@@ -463,7 +472,7 @@ mod tests {
         let err = response_from_raw(
             6,
             "steer",
-            r#"{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"m","data":{"code":"unregistered_method"}}}"#,
+            &json_of(r#"{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"m","data":{"code":"unregistered_method"}}}"#),
             None,
         )
         .unwrap();
@@ -477,7 +486,7 @@ mod tests {
         let resp = response_from_raw(
             1,
             "host.describe",
-            r#"{"jsonrpc":"2.0","id":1,"result":{"protocol":2,"formats":["jsonrpc","fory-v3"]}}"#,
+            &json_of(r#"{"jsonrpc":"2.0","id":1,"result":{"protocol":2,"formats":["jsonrpc","fory-v3"]}}"#),
             None,
         )
         .unwrap();

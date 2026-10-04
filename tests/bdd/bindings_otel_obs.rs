@@ -106,3 +106,68 @@ async fn test_c2826_turn_not_error(agent: AgentState, ws: Workspace, otel_bdd: O
 )]
 #[serial]
 async fn test_c2826_single_estimate(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
+
+// ── c2835 后继：infra-otel 裸规则回填 ──────────────────────────────
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "otlp-exit-built-on-fastrace"
+)]
+#[serial]
+async fn test_otel_r1487_fastrace_only(otel_bdd: OtelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "file-and-otlp-fan-out"
+)]
+#[serial]
+async fn test_otel_r1488_fan_out(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "generation-span-carries-llm-lane"
+)]
+#[serial]
+async fn test_otel_r1492_generation_lane(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "parallel-tools-share-iteration-tree"
+)]
+#[serial]
+async fn test_otel_r1475_parallel_tree(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "session-id-per-overlapping-processing"
+)]
+#[serial]
+async fn test_otel_r1481_per_processing(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "whole-tree-one-session-id"
+)]
+#[serial]
+async fn test_otel_r1482_whole_tree(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "obs-slot-written-by-writer-path"
+)]
+#[serial]
+async fn test_otel_r1483_slot_discipline(sess: XySessionStore, otel_bdd: OtelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "dual-session-identity-keys"
+)]
+#[serial]
+async fn test_otel_r1484_dual_identity(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "skipped-compaction-single-estimate"
+)]
+#[serial]
+async fn test_otel_r1485_skipped_compaction(sess: XySessionStore, otel_bdd: OtelBdd) {}

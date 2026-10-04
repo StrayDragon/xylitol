@@ -1,7 +1,9 @@
 //! Bindings for c2827 specs-compact wave 2.
 
 use crate::tests::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
+use crate::tests::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use crate::tests::bdd::steps_c2827::{C2827Bdd, c2827_bdd};
+use crate::tests::bdd::steps_package_tui_tree_selector::{TreeSelBdd, tree_sel_bdd};
 use rstest_bdd_macros::scenario;
 use serial_test::serial;
 
@@ -513,3 +515,348 @@ async fn test_mcp_config_driven(t6_mcp_bdd: T6McpBdd) {}
     name = "invalid-entry-diagnosed-not-fatal"
 )]
 async fn test_mcp_invalid(t6_mcp_bdd: T6McpBdd) {}
+
+// ── c2835 后继：infra-provider 裸规则回填 ──────────────────────────
+use crate::tests::bdd::steps_bridge::{AiBridgeBdd, ai_bridge_bdd};
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "single-layer-adapter-wrap"
+)]
+fn test_ip_r1497_single_wrap() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "responses-adapter-request-body"
+)]
+fn test_ip_r1498_responses_body(ai_bridge_bdd: AiBridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "anthropic-messages-thinking-branch"
+)]
+fn test_ip_r1502_anthropic_branch(ai_bridge_bdd: AiBridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "adapter-selection-by-kind-and-api"
+)]
+fn test_ip_r1503_selection() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "single-xy-model-assembly-path"
+)]
+fn test_ip_r1505_single_path() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "vendor-types-stay-in-bridge"
+)]
+fn test_ip_r1506_vendor_boundary() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "model-port-takes-bridge-dto"
+)]
+fn test_ip_r1499_bridge_dto() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "named-compat-profile-injection"
+)]
+fn test_ip_r1500_named_compat(ai_bridge_bdd: AiBridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "api-literals-full-names"
+)]
+fn test_ip_r1501_full_names() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
+    name = "token-sync-single-script"
+)]
+fn test_pg_r1206_token_sync() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
+    name = "markdown-body-styled-no-literal-markers"
+)]
+fn test_pg_r1207_markdown_body(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
+    name = "tui-agents-reading-order"
+)]
+fn test_pg_r1208_reading_order() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
+    name = "kind-prefix-themed-not-baked-role"
+)]
+fn test_pg_r1209_kind_prefix(tree_sel_bdd: TreeSelBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
+    name = "live-tree-from-command"
+)]
+async fn test_pg_r1210_live_tree(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
+    name = "static-slot-samples-covered"
+)]
+fn test_pg_r1213_static_slots() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
+    name = "designing-lint-in-qa"
+)]
+fn test_pg_r1211_lint_gate() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
+    name = "tui-agents-name-lint-commands"
+)]
+fn test_pg_r1212_lint_docs() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-clipboard/infra-clipboard.feature",
+    name = "drag-select-copies-assistant-body"
+)]
+fn test_cb_r13_drag_copy() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-clipboard/infra-clipboard.feature",
+    name = "default-mode-inline"
+)]
+fn test_cb_r14_default_mode() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-clipboard/infra-clipboard.feature",
+    name = "copy-notice-observable"
+)]
+fn test_cb_r15_copy_notice() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-clipboard/infra-clipboard.feature",
+    name = "osc52-remote-fallback"
+)]
+fn test_cb_r16_osc52() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-clipboard/infra-clipboard.feature",
+    name = "empty-selection-silent"
+)]
+fn test_cb_r17_empty_selection() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-clipboard/infra-clipboard.feature",
+    name = "editor-copy-path-only"
+)]
+fn test_cb_r18_editor_path() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-clipboard/infra-clipboard.feature",
+    name = "image-paste-from-host"
+)]
+async fn test_cb_r19_image_paste(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-clipboard/infra-clipboard.feature",
+    name = "text-read-via-host-pump"
+)]
+async fn test_cb_r20_text_read(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "single-config-type-pair"
+)]
+async fn test_cp_r1400_single_type(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "reserve-shares-footer-estimate"
+)]
+async fn test_cp_r1402_shared_estimate(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "threshold-route-after-settle"
+)]
+async fn test_cp_r1410_threshold_route(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "cut-on-leaf-branch"
+)]
+async fn test_cp_r1412_leaf_cut(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "one-estimate-per-settlement"
+)]
+async fn test_cp_r1413_one_estimate(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "summary-sections-from-kept-branch"
+)]
+async fn test_cp_r1414_summary_sections(agent: AgentState, ws: Workspace, sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "floor-diagnostic-at-most-once"
+)]
+async fn test_cp_r1415_once(agent: AgentState, ws: Workspace, sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/test-qa-gate/test-qa-gate.feature",
+    name = "qa-six-ordered-gates"
+)]
+fn test_qa_r1827_sequence() {}
+
+#[scenario(
+    path = "llmanspec/specs/test-qa-gate/test-qa-gate.feature",
+    name = "qa-e2e-adds-fifth-layer"
+)]
+fn test_qa_r1828_layers() {}
+
+#[scenario(
+    path = "llmanspec/specs/test-qa-gate/test-qa-gate.feature",
+    name = "docs-name-qa-split"
+)]
+fn test_qa_r1829_docs() {}
+
+#[scenario(
+    path = "llmanspec/specs/test-qa-gate/test-qa-gate.feature",
+    name = "check-scripts-all-wired"
+)]
+fn test_qa_r1830_wired() {}
+
+#[scenario(
+    path = "llmanspec/specs/test-qa-gate/test-qa-gate.feature",
+    name = "pty-session-tree-registered"
+)]
+fn test_qa_r1831_pty() {}
+
+#[scenario(
+    path = "llmanspec/specs/test-qa-gate/test-qa-gate.feature",
+    name = "complexity-gate-ssot"
+)]
+fn test_qa_r1832_ssot() {}
+
+#[scenario(
+    path = "llmanspec/specs/test-qa-gate/test-qa-gate.feature",
+    name = "live-gate-serial-with-timeout"
+)]
+fn test_qa_r1833_serial() {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
+    name = "assembly-includes-tool-guidelines"
+)]
+fn test_ap_r1015_guidelines(prompt_bdd: PromptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
+    name = "runtime-policy-fragments-injected"
+)]
+fn test_ap_r1016_runtime_policy(prompt_bdd: PromptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
+    name = "date-and-cwd-from-session-env"
+)]
+fn test_ap_r1018_session_env() {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
+    name = "system-prompt-single-copy"
+)]
+fn test_ap_r1019_single_copy(ai_bridge_bdd: AiBridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
+    name = "skills-listed-after-trust"
+)]
+fn test_ap_r1020_skills(agent: AgentState, t2_caps_bdd: T2CapsBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
+    name = "replacement-skip-default-fragments"
+)]
+fn test_ap_r1022_replacement(prompt_bdd: PromptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "yolo-toggle-after-trust"
+)]
+async fn test_ai_r1314_yolo(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "steer-kept-in-transcript"
+)]
+async fn test_ai_r1322_steer(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "bang-prefix-single-block"
+)]
+async fn test_ai_r1323_bang(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "external-editor-chord-recorded"
+)]
+async fn test_ai_r1324_editor(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "history-seed-from-previous-session"
+)]
+fn test_ai_r1316_seed(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "resume-panel-keys"
+)]
+async fn test_ai_r1304_resume(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-bash/infra-bash.feature",
+    name = "echo-via-executor"
+)]
+fn test_bs_r1429_echo(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-bash/infra-bash.feature",
+    name = "overflow-to-temp-file"
+)]
+fn test_bs_r1431_truncate(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-bash/infra-bash.feature",
+    name = "trait-abstraction-mockable"
+)]
+fn test_bs_r1426_trait(agent: AgentState) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-bash/infra-bash.feature",
+    name = "escalating-timeout-kills"
+)]
+fn test_bs_r1428_timeout(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-bash/infra-bash.feature",
+    name = "abort-reachable-from-runtime"
+)]
+async fn test_bs_r1435_abort(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-bash/infra-bash.feature",
+    name = "optional-timeout-and-missing-arg"
+)]
+fn test_bs_r1436_missing_arg(ws: Workspace) {}

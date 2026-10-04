@@ -28,3 +28,4 @@
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
     # verified-by: docs/architecture/信任与项目门禁.md
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；v3 应答 union 与手写 JSON-RPC 分发均经对拍等价（同一 dispatch、同一组 Serialize），端上可见词表未动。（2026-09-29）

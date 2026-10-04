@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Stable protocol version returned by `host.describe`.
-pub const PROTOCOL_VERSION: u32 = 2;
+///
+/// 3 = 产品路径为 v3 二进制帧（fory），JSON-RPC 2.0 文本为调试通道（c2835）。
+/// attach 预检是硬等值：不等即致命，不降级、不重试风暴。
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Discriminated four-quadrant message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -35,16 +38,6 @@ pub enum RpcMessage {
         #[serde(rename = "rpcId")]
         rpc_id: String,
         method: String,
-        #[serde(default)]
-        payload: Value,
-    },
-    /// First frame on every mux connection (ath44/c2480): the per-connection
-    /// version handshake. Clients MUST validate it before trusting the stream;
-    /// a mismatch is fatal (no downgrade, no retry storm).
-    ServerHello { protocol: u32 },
-    ClientResponse {
-        #[serde(rename = "rpcId")]
-        rpc_id: String,
         #[serde(default)]
         payload: Value,
     },

@@ -376,3 +376,39 @@ fn _t_hook_noop(agent: &AgentState) {
         DispatchResult::Allowed
     ));
 }
+
+// ── c2835 后继：before_provider_headers 裸规则回填 ──────────────────
+
+#[when("provider 头构建后")]
+async fn _w_hook_before_headers(agent: &AgentState) {
+    dispatch_hook(
+        agent,
+        HookEvent::BeforeProviderHeaders {
+            headers: serde_json::json!({"authorization": "Bearer x", "x-y-litol-model": "deepseek"}),
+        },
+        HookPhase::Pre,
+    )
+    .await;
+}
+
+#[then("hook 收到待合并的请求头")]
+fn _t_hook_got_headers(agent: &AgentState) {
+    let stdin = agent
+        .last_hook_stdin
+        .borrow()
+        .clone()
+        .expect("before_provider_headers 应给出 stdin 上下文");
+    assert!(
+        stdin
+            .get("headers")
+            .is_some_and(|v| v.get("authorization").is_some()),
+        "头上下文 MUST 经 stdin 交出，实得 {stdin}"
+    );
+    assert!(
+        matches!(
+            agent.hook_result.borrow().as_ref(),
+            Some(DispatchResult::Allowed)
+        ),
+        "allow 脚本 MUST 收在 Pre 阶段并进入后续 auth 头合并"
+    );
+}

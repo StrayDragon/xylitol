@@ -2543,9 +2543,11 @@ mod tests {
             "frame MUST carry the session id"
         );
         assert_eq!(
-            matched.expect("必须有一帧与已落定的 loaded_resources 快照同形")["snapshot"],
+            matched.unwrap_or_else(|| Value::Array(
+                frames.iter().map(|f| f["snapshot"].clone()).collect()
+            ))["snapshot"],
             expected,
-            "final frame snapshot MUST match the loaded_resources unary shape"
+            "final frame snapshot MUST match the loaded_resources unary shape（无匹配时左值 = 收集到的各帧 snapshot）"
         );
         assert_eq!(
             slot.journal.lock().await.max_seq(),

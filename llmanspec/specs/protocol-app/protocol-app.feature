@@ -18,7 +18,7 @@
     # verified-by: llmanspec/specs/protocol-app/protocol-app.feature
   @req:r1696
   规则: 信封与错误
-    产品 unary 应答 MUST 使用 JSON-RPC 2.0 结果形态：成功则带 result，失败则带 error（message 为 details）。产品业务码 MUST 为 error.data 内稳定字符串；JSON-RPC 数字码 MUST 仅作载体，MUST NOT 成为产品错误模型。合法信封的 HTTP 状态 MUST 表示载体成功；非法信封 MUST 失败。旧 REST {code,msg,data} 与四象限 `{ok,value,error}` 顶层形态 MUST NOT 再作为产品 TUI 路径。
+    产品 unary 应答 MUST 使用统一结果形态：成功则带 result，失败则带 error（message 为 details）。产品业务码 MUST 为稳定字符串（JSON 载体在 `error.data.code`，v3 载体在 `RpcError.code`），载体数字码 MUST 仅作载体，MUST NOT 成为产品错误模型。合法信封的 HTTP 状态 MUST 表示载体成功；非法信封 MUST 失败。旧 REST {code,msg,data} 与四象限 `{ok,value,error}` 顶层形态 MUST NOT 再作为产品 TUI 路径。
 
     场景: unary-stable-error-envelope
       当 服务端在空闲端口上启动
@@ -176,7 +176,7 @@
       那么 已登记且为只读 unary 不占写者
   @req:r1701
   规则: 单一产品真源
-    client 与 host 之间的产品消息 MUST 且仅 MUST 经 JSON-RPC 2.0 形状信封投递。Command 与 Event 闭集 MUST 作为方法载荷 / 下行帧内容，MUST NOT 再作为产品协议外层。测试用进程内客户端与产品 attach 客户端 MUST 使用同一方法表。MUST NOT 为远程再开平行的 REST 产品动词或第二套词表。
+    client 与 host 之间的产品消息 MUST 且仅 MUST 经协商所得单一载体投递（产品路径为 v3 二进制帧，调试通道为 JSON-RPC 2.0 文本；两者同 dispatch、同方法表）。Command 与 Event 闭集 MUST 作为方法载荷 / 下行帧内容，MUST NOT 再作为产品协议外层。测试用进程内客户端与产品 attach 客户端 MUST 使用同一方法表。MUST NOT 为远程再开平行的 REST 产品动词或第二套词表。
 
     场景: jsonrpc-unary-success-shape
       当 服务端在空闲端口上启动
@@ -184,7 +184,7 @@
       那么 应答为 JSON-RPC 成功且 id 回显
   @req:r1709
   规则: JSON-RPC 通道
-    产品信封 MUST 为 JSON-RPC 2.0。带 id 的请求应答 MUST 回显同一 id。网络产品入口 MUST 为 POST /rpc 与 WS /rpc（同一方法表）。WS /rpc MUST 只承载 JSON-RPC 帧（含客户端 unary 与下行 notification），MUST NOT 收非 JSON-RPC 应用帧。产品 TUI MUST NOT 用 SSE 当下行真源。MUST NOT 再以四象限 type tag、POST /api/respond 或 GET /api/events.mux 为产品真源。
+    产品信封 MUST 为协商所得载体：产品路径为 v3 二进制帧，调试通道为 JSON-RPC 2.0。带 id 的请求应答 MUST 逐字回显同一 id（不改 JSON 类型）。网络产品入口 MUST 为 POST /rpc 与 WS /rpc（同一方法表）。WS /rpc MUST 只承载上述两类帧（含客户端 unary 与下行 notification），MUST NOT 收其它应用帧。产品 TUI MUST NOT 用 SSE 当下行真源。MUST NOT 再以四象限 type tag、POST /api/respond 或 GET /api/events.mux 为产品真源。
 
     场景: jsonrpc-envelope-shape
       当 解析 JSON-RPC 信封样例（request / result / notification）

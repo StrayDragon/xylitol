@@ -165,3 +165,4 @@
   规则: Permission 非安全边界
     文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。
     # verified-by: docs/architecture/信任与项目门禁.md
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议信封常量与死变体清理。（2026-09-29）

@@ -24,3 +24,4 @@
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
     # verified-by: src/agent/capabilities/mod.rs
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；门禁矩阵与标准词表未动。（2026-09-29）

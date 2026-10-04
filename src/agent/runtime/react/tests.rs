@@ -2411,14 +2411,17 @@ async fn batch_barrier_parallel_overlap_then_barrier() {
         safe_end_max <= barrier.1,
         "both safes must finish before barrier starts: {entries:?}"
     );
-    // S3：与同轮序的 Sequential 取相对比值。绝对惗秒随 nextest 并行负载漂移
-    // （280ms 定值上限在满载下会跳到 340ms+），相对判据不漂；两模式各两轮取小，
-    // 抹掉首轮惰性初始化偏差。
-    let parallel = elapsed.min(run_mode(XyBatchMode::BarrierParallel, epoch).await.0);
-    let serial = run_mode(XyBatchMode::Sequential, epoch)
-        .await
-        .0
-        .min(run_mode(XyBatchMode::Sequential, epoch).await.0);
+    // S3：与同轮序的 Sequential 取相对比值。绝对惗秒随 nextest 并行负载漂移，故不铉
+    // 定值；每模式再跑三轮取最小值，抹掉首轮惰性初始化与调度抖动。
+    async fn best_of(mode: XyBatchMode, epoch: Instant) -> Duration {
+        let mut best = Duration::MAX;
+        for _ in 0..3 {
+            best = best.min(run_mode(mode, epoch).await.0);
+        }
+        best
+    }
+    let parallel = elapsed.min(best_of(XyBatchMode::BarrierParallel, epoch).await);
+    let serial = best_of(XyBatchMode::Sequential, epoch).await;
     assert!(
         parallel < serial,
         "expected parallel speedup: parallel={parallel:?} serial={serial:?}"

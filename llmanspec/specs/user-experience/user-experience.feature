@@ -30,3 +30,4 @@
 
     场景: no-api-key-names-provider
       那么 无 api key 提示含 provider 名
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；改动限于 TUI/attach 家族的步骤实现与测试判据。（2026-09-29）

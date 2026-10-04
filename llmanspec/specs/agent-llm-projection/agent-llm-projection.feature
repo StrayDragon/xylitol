@@ -14,3 +14,4 @@
   规则: 主仓映射层
     主仓 agent MUST 经 project_for_llm（或等价）将 AgentMessage 投影为 Vec<AiBridgeMessage>：Llm 臂 MUST passthrough；Env 折叠策略留在 agent。XyModel 调用方 MUST 只传递投影后的 LLM DTO。agent MAY 依赖 bridge DTO 以组合 AgentMessage::Llm；agent MUST NOT 直接依赖 xylitol_ai_bridge 的 HTTP/vendor SDK 类型。
     # verified-by: src/agent/llm_project.rs
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；协议侧改动是 JSON-RPC 载体收口（id 逐字回显、-32600 形状、PROTOCOL_VERSION 3、删 ServerHello/ClientResponse 死变体），投影词表未动。（2026-09-29）

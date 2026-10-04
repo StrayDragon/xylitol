@@ -42,3 +42,11 @@ async fn test_ath43_coalesce(resilience_bdd: ResilienceBdd) {}
 async fn test_ath44_real_reconnect(server_test: ServerTest) {
     let _ = server_test;
 }
+
+// ── c2835 后继：attach tick 不被 unary 阻塞 ──────────────────────────
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "attach-drain-not-blocked-by-pending-unary"
+)]
+async fn test_ath38_attach_drain_nonblocking(resilience_bdd: ResilienceBdd) {}

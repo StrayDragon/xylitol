@@ -40,6 +40,11 @@
   规则: yolo-after-trust
     在项目已信任前提下，TUI MUST NOT 实现逐工具审批确认流程；工具默认执行；MUST 保留 hook 扩展点供日后追加策略。
     # verified-by: llmanspec/specs/domain-security/domain-security.feature
+    场景: yolo-toggle-after-trust
+      假如 注册匹配 bash 的 before 拒绝 hook
+      当 运行 AgentRuntime 触发 bash
+      那么 tool-error 回写且未执行
+
   @req:r1321
   规则: double-esc-session-tree
     空编辑器下双 Esc（时间窗与 demo 一致）MUST 打开会话树；树打开时 Esc MUST 关闭树并还原 editor 槽。
@@ -53,14 +58,26 @@
   规则: demo-steer-preserves-turn
     agent_demo 在 steer 入队时 MUST 将 steer 文本写入 transcript（可带 [steer] 标记）并可挂到会话活树；MUST NOT 调用会清空 scheduled_actions/pending_events 的新一轮 queue_simulated_turn 入口来「顶替」当前忙碌轮。
     # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
+    场景: steer-kept-in-transcript
+      当 以主机泵注入 connecting 资源快照后提交 bang 命令 "!echo hi"
+      那么 键入与提交未被拒且 bash 收到命令体
+
   @req:r1323
   规则: demo-bash-prefix-border
     agent_demo 中当编辑器文本 trim 后以 ! 开头时，Editor 操作区边框 MUST 切换为 bash 强调色（对齐 DESIGN success 前景）；去掉 ! 前缀后 MUST 恢复默认 muted 边框。
     # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
+    场景: bang-prefix-single-block
+      当 以主机泵在 idle 提交 bang 命令
+      那么 execute_bash 收到命令体且未调用 run
+
   @req:r1324
   规则: demo-external-editor-stub
     agent_demo MUST 将 Ctrl+G 绑定为外部编辑器原型：记录调用并写入系统提示；MUST NOT 在 harness 路径强制 spawn 真实 $EDITOR；MAY 向编辑器追加 stub 标记以演示往返。
     # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
+    场景: external-editor-chord-recorded
+      当 以主机泵在无编辑器环境变量下输入草稿后按 Ctrl+G
+      那么 系统提示写入且草稿保留且未 spawn 真实编辑器
+
   @req:r1284
   规则: product-host-key-wiring
     产品 HostSession MUST 在 agent 忙碌且会话树关闭时将普通 Enter 映射为 Command::Steer、Alt+Enter 映射为 Command::FollowUp（经 dispatch）；忙碌时 Esc MUST 调用 Driver::abort 并 Command::ClearQueue(steer=true, follow_up=false)；MUST NOT 在忙碌 Esc 时打开 c491 stub 树。
@@ -94,6 +111,11 @@
   规则: editor-history-session-seed
     纯 new session（含 /session-new）启动时，产品 Host MUST 在当前 cwd 下按 mtime 取最近 N 个其它已持久化 session（N 来自配置 tui.editor_history_seed_sessions，缺省 1），抽取其中 user 角色正文（跳过 trim 后以 / 开头的行），按较旧 session 先、会话内时间序调用 add_to_history，使 ↑ 先召回全局最近一条；恢复或切换到已有 session 时 MUST 仅用该 session 的 user 正文替换 editor 发送历史缓冲；MUST NOT 写入 assistant/tool/thinking；MUST NOT 改 transcript 或会话树；cwd 比较 MUST 与 resume Current scope 的 cwd_matches 同口径。
     # verified-by: src/app/tui/editor_history_seed.rs
+    场景: history-seed-from-previous-session
+      假如 session 含 bang bashExecution（Message 内）与 compaction 条目且未 exclude
+      当 run_with_id 播种 history
+      那么 history 含折叠后的 bash/摘要上下文而非空跳过
+
   @req:r1288
   规则: product-abort-resumable
     产品 TUI 在用户 Esc abort 当前流之后 MUST 回到可提交 idle（follow-up restore 语义不变）；MUST NOT 让后续用户输入持续产生粘性 aborted Error 而无法继续对话。
@@ -270,6 +292,10 @@
   规则: session-resume-panel-keys
     产品 TUI 在 EditorSlot::SessionResume 打开时：Tab MUST 切换 scope Current/All；Ctrl+S（或键位表等价）MUST 循环 Sort Threaded/Recent/Fuzzy；Ctrl+N MUST 切换 Name All/Named；Ctrl+P MUST 切换 path 显示；Ctrl+U（或键位表 app.session.toggleId）MUST 切换会话行完整 session id 列显隐（默认隐藏）；Ctrl+R MUST 进入选中项 rename（Esc 取消 rename MUST NOT 改名）；Ctrl+D MUST 进入删除确认（Enter 确认 / Esc 取消）；Threaded 下 ctrl/alt+left|right（tui.tree.foldOrUp / unfoldOrDown）MUST 折叠或展开选中父节点的子会话行；上述键 MUST 优先于 Editor 槽同名语义；面板关闭后键位恢复既有语义；搜索键入 MUST 交给面板 filter 而非误提交 prompt。agent/bang busy 时 Enter 选定会话 MUST NOT SwitchSession，MUST 经通知条显示 atm10 约定文案（见 atc22），MUST NOT 为此追加 ScrollNotice；idle 行为不变。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
+    场景: resume-panel-keys
+      当 以主机泵注入可恢复会话列表后提交 "/session-resume"
+      那么 Resume 面板槽打开且经驱动列举可恢复会话
+
   @req:r1309
   规则: at-path-completion
     产品 Editor MUST 经包 CompletionSource 注册 AtPathSource，根目录默认为进程 cwd（harness MAY 注入测试根）；用户键入 @（及路径前缀）时 MUST 弹出文件/目录补全；Tab/Enter 选定 MUST 将路径引用写入 editor；Esc 关 popup MUST NOT 改已有非补全文本；提交消息时本变更 MUST NOT 自动把文件内容读入 transcript（路径文本引用即可）。

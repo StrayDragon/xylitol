@@ -383,3 +383,66 @@ fn test_tools_write_in_session_workspace(ws: Workspace) {}
     name = "bash-runs-in-session-workspace"
 )]
 fn test_tools_bash_runs_in_session_workspace(ws: Workspace) {}
+
+// ── c2835 后继：agent-tools 裸规则回填 ──────────────────────────────
+use crate::tests::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "builtin-names-listed-via-xytool"
+)]
+fn test_tl1_builtin_names(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "dead-code-allow-is-item-scoped"
+)]
+fn test_tl2_item_scoped_allow(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "structured-diff-applies-with-offset-hunks"
+)]
+fn test_tl3_structured_diff(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "schema-drives-required-arg"
+)]
+fn test_tl4_schema_required_arg(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "toolset-is-build-final"
+)]
+fn test_tl5_toolset_build_final(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "execution-mode-carries-xy-prefix"
+)]
+fn test_tl6_xy_execution_mode(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "mcp-tools-enter-as-xytool"
+)]
+async fn test_tl7_mcp_via_xytool(t6_mcp_bdd: T6McpBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "builtins-declare-concurrency-class"
+)]
+async fn test_tl8_concurrency_class(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "mcp-prefixed-is-hard-barrier"
+)]
+async fn test_tl9_mcp_hard_barrier(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "ask-builtin-in-tui-toolset"
+)]
+fn test_tl10_ask_builtin(ws: Workspace) {}

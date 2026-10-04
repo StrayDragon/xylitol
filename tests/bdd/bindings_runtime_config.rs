@@ -1,3 +1,4 @@
+use crate::tests::bdd::fixtures::*;
 use crate::tests::bdd::steps_runtime_config::{RcSnap, rc_snap};
 use crate::tests::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
@@ -131,3 +132,59 @@ fn test_rc_compaction_anchor(rc_snap: RcSnap, tokenizer_bdd: TokenizerBdd) {}
     name = "compaction-model-settings-ignored"
 )]
 fn test_rc_compaction_settings_ignored(rc_snap: RcSnap) {}
+
+// ── c2835 后继：runtime-config 裸规则回填 ──────────────────────────
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "config-value-resolver-at-infra-edge"
+)]
+fn test_rc_local_ignored(rc_snap: RcSnap, tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "json-schema-at-config-edge"
+)]
+fn test_rc_jsonschema_edge() {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "no-max-iterations-field"
+)]
+fn test_rc_no_max_iterations(rc_snap: RcSnap) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "template-vars-home-only"
+)]
+fn test_rc_template_vars() {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "otel-section-optional"
+)]
+fn test_rc_otel_section() {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "editor-history-seed-default-one"
+)]
+fn test_rc_editor_seed_default() {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "tool-batch-mode-default-and-invalid"
+)]
+fn test_rc_tool_batch_mode() {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "session-max-turns-loaded"
+)]
+fn test_rc_session_max_turns(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "activity-fold-lexical-contract"
+)]
+fn test_rc_activity_fold_lexical() {}

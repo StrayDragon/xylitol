@@ -6,8 +6,9 @@
 
 use crate::app::tui::TuiHostEvent as HostEvent;
 use crate::app::tui::TuiHostSession as HostSession;
+use crate::app::tui::UiRoot;
 use crate::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
-use crate::app::tui::{BashBlockStatus, UiEntry};
+use crate::app::tui::{BashBlockStatus, UiEntry, UiModel};
 use crate::protocol::ports::XyBashResult;
 use crate::tests::bdd::prelude::*;
 use rstest::fixture;
@@ -25,6 +26,16 @@ pub struct HostPumpBdd {
     pub pump: RefCell<Option<HostPump>>,
     /// Frames rendered for assertions (ANSI), newest last.
     pub ansi_frames: RefCell<Vec<String>>,
+    /// 文本探针：面 AGENTS 文档 / PTY 登记原文。
+    pub doc_text: RefCell<Option<String>>,
+    /// 绘制缓存探针：(live root, 其 UiModel)。
+    pub paint_probe: RefCell<Option<(UiRoot, UiModel)>>,
+    /// 计数探针（paint cache / full parse 次数），按步序追加。
+    pub counts: RefCell<Vec<u64>>,
+    /// 即时文件日志探针：(是否装到后端, 日志目录)。
+    pub log_probe: RefCell<Option<(bool, std::path::PathBuf)>>,
+    /// 交互模式探针（`{:?}` 形态）。
+    pub mode_probe: RefCell<Option<String>>,
 }
 
 #[fixture]
@@ -32,6 +43,11 @@ pub fn host_pump_bdd() -> HostPumpBdd {
     HostPumpBdd {
         pump: RefCell::new(None),
         ansi_frames: RefCell::new(Vec::new()),
+        doc_text: RefCell::new(None),
+        paint_probe: RefCell::new(None),
+        counts: RefCell::new(Vec::new()),
+        log_probe: RefCell::new(None),
+        mode_probe: RefCell::new(None),
     }
 }
 
@@ -2455,5 +2471,204 @@ pub(crate) fn t_c2826_short_terminal_busy(host_pump_bdd: &HostPumpBdd) {
     assert!(
         frame.contains("Working"),
         "c2826: 短终端 busy 时 status lead 应可见：{frame}"
+    );
+}
+
+// ── 裸规则回填（c2835 后继）：文档 / 即时日志 / 绘制缓存 / 交互模式 / PTY 登记 ──
+
+#[when("读取产品 TUI 面 AGENTS 文档")]
+fn w_read_tui_agents_doc(host_pump_bdd: &HostPumpBdd) {
+    let text =
+        std::fs::read_to_string("src/app/tui/AGENTS.md").expect("src/app/tui/AGENTS.md 可读");
+    host_pump_bdd.doc_text.borrow_mut().replace(text);
+}
+
+#[then("文档含本地布局地图与验证命令指针且无进度板")]
+fn t_tui_agents_doc_carries_layout_map(host_pump_bdd: &HostPumpBdd) {
+    let text = host_pump_bdd
+        .doc_text
+        .borrow_mut()
+        .take()
+        .expect("AGENTS 文档已读取");
+    assert!(
+        text.contains("角色") && text.contains("职责"),
+        "MUST 有本地布局地图（角色 / 职责 / 禁止表）：{text}"
+    );
+    assert!(text.contains("just "), "MUST 有验证命令指针（just …）");
+    for drifted in ["进度", "待办板"] {
+        assert!(!text.contains(drifted), "面 AGENTS 不应带{drifted}类易腐块");
+    }
+}
+
+#[when("以临时目录请求即时文件日志")]
+fn w_init_instant_file_logging(host_pump_bdd: &HostPumpBdd) {
+    use xylitol_ai_bridge::provider::trace as pt;
+    // 探针会写进程级闸态；跑完即复位，不依赖同进程里其他场景的执行顺序。
+    let gate = pt::provider_trace_active();
+    let io_tier = pt::observation_io_tier();
+    let tool_io_tier = pt::tool_observation_io_tier();
+    let dir = std::env::temp_dir().join(format!("xy-bdd-logging-{}", std::process::id()));
+    let installed = crate::app::cli::logging::init_logging(
+        &dir,
+        &crate::infra::config::types::OtelConfig::default(),
+    )
+    .is_some();
+    pt::set_provider_trace_active(gate);
+    pt::set_observation_io_tier(io_tier);
+    pt::set_tool_observation_io_tier(tool_io_tier);
+    host_pump_bdd
+        .log_probe
+        .borrow_mut()
+        .replace((installed, dir.join("logs")));
+}
+
+#[then("debug 构建默认安装文件日志且日志文件已落盘")]
+fn t_debug_instant_file_logging_on(host_pump_bdd: &HostPumpBdd) {
+    let (installed, log_dir) = host_pump_bdd
+        .log_probe
+        .borrow_mut()
+        .take()
+        .expect("即时日志探针已跑");
+    assert!(installed, "debug 构建 MUST 默认启用即时文件日志");
+    assert!(
+        log_dir.join("xylitol.log").exists(),
+        "日志 MUST 落到 <agent_dir>/logs/xylitol.log，实际目录 {log_dir:?}"
+    );
+}
+
+#[given("构造含两条已提交助手条目的 UI 并渲染基线帧")]
+fn g_two_committed_entries(host_pump_bdd: &HostPumpBdd) {
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.entries.push(UiEntry::Assistant {
+        text: "alpha para".into(),
+    });
+    model.entries.push(UiEntry::Assistant {
+        text: "beta para".into(),
+    });
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    root.clear_scrollback_entry_misses_for_test();
+    *host_pump_bdd.paint_probe.borrow_mut() = Some((root, model));
+}
+
+#[when("仅推进流式尾标再渲染一次并读取已提交条目重绘计数")]
+fn w_tail_only_repaint(host_pump_bdd: &HostPumpBdd) {
+    let (mut root, mut model) = host_pump_bdd
+        .paint_probe
+        .borrow_mut()
+        .take()
+        .expect("UI 已构造");
+    model.streaming_assistant = "tail-1".into();
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    host_pump_bdd
+        .counts
+        .borrow_mut()
+        .push(root.scrollback_entry_misses_for_test());
+    *host_pump_bdd.paint_probe.borrow_mut() = Some((root, model));
+}
+
+#[then("已提交条目在第二次渲染零重绘")]
+fn t_committed_entries_reuse_cache(host_pump_bdd: &HostPumpBdd) {
+    let misses = *host_pump_bdd.counts.borrow().last().expect("计数已读");
+    assert_eq!(
+        misses, 0,
+        "width/fold 不变时，仅流式尾标变化 MUST NOT 让已提交条目重绘"
+    );
+}
+
+#[given("构造含稳定 Markdown 前缀的流式助手 UI")]
+fn g_streaming_stable_prefix(host_pump_bdd: &HostPumpBdd) {
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    // 足够多的完整段落，使稳定前缀非空（与单测同形）。
+    model.streaming_assistant = "alpha para\n\nbeta para\n\n".into();
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    root.clear_streaming_assistant_parse_counts_for_test();
+    *host_pump_bdd.paint_probe.borrow_mut() = Some((root, model));
+}
+
+#[when("仅以后缀增长连续渲染四十次并读取全量解析计数")]
+fn w_suffix_growth_parses(host_pump_bdd: &HostPumpBdd) {
+    let (mut root, mut model) = host_pump_bdd
+        .paint_probe
+        .borrow_mut()
+        .take()
+        .expect("UI 已构造");
+    for i in 0..40 {
+        model.streaming_assistant.push_str(&format!("tok{i} "));
+        if i % 10 == 9 {
+            model.streaming_assistant.push_str("\n\n");
+        }
+        root.apply_ui_model(&model);
+        let _ = root.render(80);
+    }
+    host_pump_bdd
+        .counts
+        .borrow_mut()
+        .push(root.streaming_assistant_full_parses_for_test());
+    *host_pump_bdd.paint_probe.borrow_mut() = Some((root, model));
+}
+
+#[then("全量 Markdown 解析次数远小于渲染次数")]
+fn t_full_parses_bounded_by_stable_prefix(host_pump_bdd: &HostPumpBdd) {
+    let full = *host_pump_bdd.counts.borrow().last().expect("计数已读");
+    assert!(
+        full <= 8,
+        "稳定前缀 MUST 把全量 Markdown 解析限制在段落数级：full_parses={full}，渲染 40 次"
+    );
+}
+
+#[when("以产品 UI 构造主机会话并查询交互模式")]
+fn w_product_ui_interaction_mode(host_pump_bdd: &HostPumpBdd) {
+    let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let mode = format!("{:?}", session.tui.interaction_mode());
+    *host_pump_bdd.mode_probe.borrow_mut() = Some(mode);
+}
+
+#[then("产品交互模式为 ApplicationOwned")]
+fn t_product_mode_is_application_owned(host_pump_bdd: &HostPumpBdd) {
+    let mode = host_pump_bdd
+        .mode_probe
+        .borrow_mut()
+        .take()
+        .expect("模式已查询");
+    assert!(
+        mode.contains("ApplicationOwned"),
+        "产品 UI 启动构造时 MUST 绑 ApplicationOwned，实得 {mode}"
+    );
+}
+
+#[when("读取 PTY 冒烟登记")]
+fn w_read_pty_registration(host_pump_bdd: &HostPumpBdd) {
+    let justfile = std::fs::read_to_string("justfile").expect("justfile 可读");
+    let pty = std::fs::read_to_string("tests/tui_e2e/pty.rs").expect("tests/tui_e2e/pty.rs 可读");
+    host_pump_bdd
+        .doc_text
+        .borrow_mut()
+        .replace(format!("{justfile}\n{pty}"));
+}
+
+#[then("存在 just test-tui-e2e-pty 且冒烟为 ignore 不进默认门禁")]
+fn t_pty_smoke_registration(host_pump_bdd: &HostPumpBdd) {
+    let text = host_pump_bdd
+        .doc_text
+        .borrow_mut()
+        .take()
+        .expect("登记已读取");
+    assert!(
+        text.contains("test-tui-e2e-pty"),
+        "MUST 有 just test-tui-e2e-pty 入口"
+    );
+    assert!(
+        text.contains("#[ignore]"),
+        "PTY 冒烟 MUST 为 #[ignore]，不进默认 just qa"
+    );
+    assert!(
+        text.contains("spawn_product_fake"),
+        "MUST 有产品二进制 + Fake 模型的 PTY 冒烟"
     );
 }

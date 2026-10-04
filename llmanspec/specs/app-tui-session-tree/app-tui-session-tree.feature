@@ -9,34 +9,70 @@
   规则: slot-replace
     会话树打开时 MUST 替换 UiRoot editor 槽（贴底可见）；MUST NOT 画成内容区顶部 overlay。
     # verified-by: llmanspec/specs/app-tui-input/app-tui-input.feature
+    场景: tree-slot-replaces-editor
+      当 以主机泵挂载样例树数据后空编辑器双 Esc
+      那么 树槽渲染样例节点且替换贴底编辑区
+
   @req:r1332
   规则: live-travel-via-driver
     产品双 Esc 会话树 MUST 渲染当前 session 的 MessageHistory 活树（经 Command::SessionTree（MessageHistory）执行器映射为包 TreeNode，含 kind）；Enter 选中节点时 MUST 调用 Command::TravelSessionTree（MessageHistory, id），按返回的 SessionTreeTravel 关闭树、预填 editor（仅当 editor_text 有值）、并重建/刷新 transcript 与后续提交 leaf 语义；MUST NOT 再使用 c491 假树样例作为唯一数据源；filter/fold/fork/label 见本 capability 其余 requirement。
     # verified-by: llmanspec/specs/app-tui-input/app-tui-input.feature
+    场景: live-tree-via-command
+      当 以主机泵在 idle 提交斜杠 session-tree
+      那么 会话树打开且未作为 prompt 调用 run
+
   @req:r1333
   规则: demo-travel-pi-semantics
     agent_demo 在会话树 Enter travel 时：若选中节点 kind 为 user，则 MUST 将 history leaf 设为该节点的父（根 user 则回到无叶/约定根策略）、MUST 用该 user 正文预填编辑器（可剥 steer 前缀）、MUST 重建 transcript 为 root→父 路径且 MUST NOT 纳入被选 user 及其后线性回复；若选中非 user，则 MUST 将 leaf 设为选中 id、MUST 重建 root→选中路径、MUST NOT 因 travel 预填 user 正文；完成后 status MUST 回到空闲（无 spinner）；重建后 MUST 以可滚 ScrollNotice（滚动提示）行尾插 history @ 通知（完整 selected/leaf/path 文案），MUST NOT 把该通知插在 transcript 条目最前。
     # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
+    场景: travel-select-passes-node-id
+      当 以样例树挂载 TreeSelector
+      当 按下 select confirm
+      那么 on_select 回调收到该节点 id
+
   @req:r1334
   规则: demo-session-tree-fork
     agent_demo 会话树打开时 MUST 支持 Shift+F fork：重建 root→选中节点路径（MUST NOT 自动纳入其后线性 assistant/tool 回复链）；history leaf MUST 等于选中 id；若选中为 user 消息 MUST 将其文本预填编辑器；关闭树后下一次用户提交 MUST 在该 leaf 下挂新子节点（与既有子树形成兄弟分叉）；MUST NOT 打开新会话文件或调用产品 Command::Fork。
     # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
+    场景: demo-fork-chord-to-host
+      当 打开样例会话树并挂载交互面
+      当 在树槽按下和弦 "Shift+F"
+      那么 fork 请求交给主机且编辑器未收到字面输入
+
   @req:r1335
   规则: map-session-tree-nodes
     产品 MUST 将 domain SessionTreeNode（MessageHistory）映射为 xylitol-tui TreeNode：id 取 entry id、label 为可显示正文（MUST NOT 把 role 烘焙进 label）、kind 取 message role 或等价（user/assistant/tool 等）；SessionTreeNode.label 有值时 MUST 映射为 TreeNode.annotation；bookkeeping 类 entry（ModelChange / ThinkingLevelChange / Label / SessionInfo / Custom / CustomMessage / Header）MUST 映射 kind=meta 以便 default 过滤；主题 kind_prefix 继续由 LayoutTheme 供给。
     # verified-by: src/app/tui/layout/session_tree.rs
+    场景: domain-nodes-map-to-tree-nodes
+      当 以带注解与时间戳的样例树挂载
+      那么 注解以括号形式先于主标签渲染
+
   @req:r1336
   规则: tree-reflects-persisted-turn
     在 auto-persist 与稳定 session_id 就绪后，产品双 Esc 打开的 MessageHistory 树 MUST 能反映已完成回合写入 store 的消息节点；一轮 user/assistant 成功结束后 Command::SessionTree（MessageHistory）MUST NOT 因 store 仅有 header 而长期为 0 节点（空会话除外）。
     # verified-by: llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature
+    场景: tree-reflects-persisted-round
+      当 以主机泵在 idle 提交 "/debug session-tree-multiturn"
+      当 以主机泵空编辑器双 Esc 开树
+      那么 会话树非空且含 fixture 用户正文
+
   @req:r1337
   规则: session-tree-filter
     产品会话树打开时 MUST 支持与 pi 对齐的 FilterMode（default / no-tools / user-only / labeled-only / all）：经 TreeSelector include_node 应用谓词，并与包增量搜索 AND；default MUST 隐藏 kind=meta；no-tools MUST 在 default 基础上隐藏 kind=tool；user-only MUST 仅 kind=user；labeled-only MUST 仅 annotation 有值；all MUST 显示全部；状态行 MUST 在非 default 时追加 [no-tools]/[user]/[labeled]/[all] 之一，default MUST NOT 追加 [default]；MUST NOT 在 packages/xylitol-tui 硬编码产品 FilterMode。
     # verified-by: llmanspec/specs/app-tui-input/app-tui-input.feature
+    场景: filter-modes-narrow-visible-list
+      当 以样例树挂载 TreeSelector 并设置只含叶子的过滤
+      那么 可见列表仅剩叶子且行完整重算
+
   @req:r1338
   规则: session-tree-fold
     产品会话树打开时 MUST 将 Ctrl+Left / Alt+Left / Ctrl+Right / Alt+Right（包 tui.tree.foldOrUp / unfoldOrDown）转发给 TreeSelector::handle_input，以折叠/展开可折节点或执行分支跳转；折叠后 MUST 隐藏该节点后代并显示 ⊞（或包等价标记）；MUST NOT 在应用面重写折叠算法（复用包 TreeSelector 语义）；裸 Left/Right MUST 仍为翻页（既有）。
     # verified-by: llmanspec/specs/app-tui-input/app-tui-input.feature
+    场景: fold-or-up-and-unfold
+      当 以样例树挂载并把选中移到可折叠父节点
+      当 按下 tree foldOrUp
+      那么 该节点子树折叠且渲染出现折叠标记
+
   @req:r1326
   规则: product-session-tree-fork
     产品会话树 Shift+F MUST 创建新 child session：内容 MUST 为 get_branch 路径并重链 parent_id（对齐 pi createBranchedSession），MUST NOT 按 JSONL 文件序切片，MUST NOT 改写父文件，header MUST 含 parent_session。选中 user 时 MUST 用 ForkPosition::Before（leaf=parent、预填正文、不拷该 user）；选中非 user 时 MUST 用 ForkPosition::At（路径含选中、不因 fork 预填 user 正文）。随后 MUST 经 Command::SwitchSession 切换到 child 并关树。MUST NOT 使用 demo 同会话 ast5。
@@ -77,8 +113,15 @@
   规则: travel-notice-trailing
     产品会话树 Enter travel 成功并重建 transcript 后，MUST 以可滚 UiEntry::ScrollNotice（或等价滚动提示行）尾插完整 history @ selected · leaf · path 文案，使跟底时出现在输入框上方视野；重建投影 MUST NOT 将该通知 prepend 为 entries 首条。fork / session 切换 / debug scene 等已有尾插产品 note 的路径 MUST NOT 再叠一条 history @（去重）。
     # verified-by: llmanspec/specs/app-tui-transcript/app-tui-transcript.feature
+    场景: travel-notice-trails-entries
+      当 重建到叶节点并按产品路径追加路径通告
+      那么 通告条目位于 entries 末尾且重建内容次序保持原样
+
   @req:r1331
   规则: demo-travel-notice-trailing
     agent_demo 会话树 travel 重建 transcript 后 MUST 与产品同源：history @ 通知 MUST 尾插于路径条目之后；MUST NOT 在 clear 后先插 ScrollNotice 再推路径（旧顶插）。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
     # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
+    场景: demo-travel-notice-shares-tail
+      当 重建到叶节点并按产品路径追加路径通告
+      那么 通告条目位于 entries 末尾且重建内容次序保持原样

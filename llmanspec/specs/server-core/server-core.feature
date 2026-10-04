@@ -14,7 +14,7 @@
       那么 装配 infra 运行时并按 session 槽注入 Driver，供 unary 处理器调用
   @req:r1778
   规则: 产品路径 JSON-RPC
-    产品 TUI 与其它产品客户端 MUST 经 JSON-RPC 2.0 访问 Host：产品入口为 POST /rpc 与 WS /rpc（同一方法表）；WS /rpc MUST 只承载 JSON-RPC 帧。Host 监听器 MUST 实现该路径。现行 REST 资源动词、POST /api/respond、GET /api/events.mux 与非 JSON-RPC 的 WS 应用帧 MUST NOT 再作为产品真源。
+    产品客户端 MUST 经协商后的载体访问 Host，产品入口为 POST /rpc 与 WS /rpc（同一方法表、同一 dispatch）：binary 帧 = v3 产品路径（fory 编码），JSON 文本帧 = 调试通道（与 /openapi.json、/docs 同用途），两者 MUST NOT 分叉语义。Host 监听器 MUST 同时实现两种载体。现行 REST 资源动词、POST /api/respond、GET /api/events.mux 与上述两形之外的 WS 应用帧 MUST NOT 再作为产品真源。
 
     场景: product-path-jsonrpc
       当 服务端在空闲端口上启动
@@ -23,7 +23,7 @@
       并且 Host 对该路径给出可观察往返
   @req:r1796
   规则: 产品 HTTP 与 WS 入口
-    Host MUST 暴露 POST /rpc 与 WS /rpc 作为产品 JSON-RPC 入口（同一方法表）。MUST 另暴露 GET /healthz 与调试 GET /openapi.json、GET /docs。MUST NOT 再以 POST /api/{method}、POST /api/respond 或 GET /api/events.mux 为产品真源。MUST NOT 再以 /api/v1 REST 资源动词或非 JSON-RPC 的 WS 应用帧承载产品命令。
+    Host MUST 暴露 POST /rpc 与 WS /rpc 作为产品入口（同一方法表；binary 产品帧 + JSON 文本调试通道）。MUST 另暴露 GET /healthz 与调试 GET /openapi.json、GET /docs。MUST NOT 再以 POST /api/{method}、POST /api/respond 或 GET /api/events.mux 为产品真源。MUST NOT 再以 /api/v1 REST 资源动词或上述两形之外的 WS 应用帧承载产品命令。
 
     场景: server-rest-ws-under-app
       当 启动 app::server 运行时
@@ -259,7 +259,7 @@
       那么 WS 应答顶层有 writerToken 且 result 不含
   @req:r1803
   规则: 下行信封
-    WS /rpc 文本帧 MUST 为 JSON-RPC 2.0。下行事件 MUST 为 notification（有 method 与 params，无 id）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required 与 session/resources；审批/问卷告知为 approval/requested 与 question/requested（亦为 notification）。MUST NOT 再以 ServerFrame tagged 外层或四象限 type tag 为产品真源，MUST NOT 要求客户端对事件 notification 作答。
+    下行 MUST 保持 JSON-RPC 2.0 notification 的语义形状（有 method 与 params，无 id）：调试通道以 JSON 文本帧承载，产品路径以 v3 ServerNotification 承载（同一 seq 与 payload 语义）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required 与 session/resources；审批/问卷告知为 approval/requested 与 question/requested（亦为 notification）。MUST NOT 再以 ServerFrame tagged 外层或四象限 type tag 为产品真源，MUST NOT 要求客户端对事件 notification 作答。
 
     场景: frame-serialize
       假如 构造下行 session/event、session/subscribed、session/resync_required 与 session/resources notification
@@ -267,7 +267,7 @@
       那么 各帧均为 JSON-RPC 2.0 notification 且无 id
   @req:r1804
   规则: WS 只承载 JSON-RPC
-    WS /rpc MUST 接受合法 JSON-RPC 帧（含客户端 unary 与订阅）。MUST NOT 接受非 JSON-RPC 应用帧。载体 ping/pong/close 除外。MUST NOT 再以「禁一切业务上行」或 POST /api/respond 为产品通道纪律。
+    WS /rpc MUST 接受两类上行：v3 binary 帧与合法 JSON-RPC 2.0 文本帧（含客户端 unary 与订阅）。其余帧 MUST 拒。载体 ping/pong/close 除外。MUST NOT 再以「禁一切业务上行」或 POST /api/respond 为产品通道纪律。
 
     场景: subscribe-frame
       假如 客户端欲以 last_seq 5 订阅会话 s0
@@ -315,7 +315,7 @@
       那么 server 从 journal 重放全部可用事件
   @req:r1809
   规则: WS 事件推送
-    订阅之后，Host MUST 为 agent 发出的每个新事件推送 session/event 的 JSON-RPC notification，附带会话单调 seq；MUST 以 JSON 文本帧经 WS /rpc 发送。
+    订阅之后，Host MUST 为 agent 发出的每个新事件推送 session/event 的 notification，附带会话单调 seq；载体由连接协商结果决定（产品路径为 v3 binary 帧，调试通道为 JSON 文本帧），MUST NOT 用 SSE 当下行真源。
 
     场景: ws-events-pushed
       假如 客户端已 subscribe 且 prompt 运行
@@ -405,7 +405,7 @@
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
   @req:r1902
   规则: 产品线协议 v3 二进制信封
-    产品线协议 v3 MUST 以 schema 化二进制帧（fory xlang 编码）承载：WS /rpc 的 binary 帧与 POST /rpc 的二进制 body 为 v3 产品路径。双轨迁移期内，同一入口 MUST 同时保活既有 JSON-RPC 2.0 文本路径（WS 文本帧与 JSON body），供对拍与回退；迁移完成前 v3 MUST NOT 成为唯一产品路径。领域语义（方法表、journal、订阅、审批）MUST 在两条路径上等价，由同一 dispatch 与事件源支撑。
+    产品线协议 v3 MUST 以 schema 化二进制帧（fory xlang 编码）承载：WS /rpc 的 binary 帧与 POST /rpc 的二进制 body 为产品默认路径（attach 显式启用）。双轨对拍已完成，既有 JSON-RPC 2.0 文本路径（WS 文本帧与 JSON body）降为**调试通道**，MUST 保活并与产品路径共用同一 dispatch 与同一方法表（语义 MUST NOT 分叉）。领域语义（方法表、journal、订阅、审批）MUST 在两种载体上等价。
 
     场景: v3-binary-roundtrip
       当 服务端以双轨配置在空闲端口上启动
@@ -473,7 +473,7 @@
       那么 两条路径的 result 等价且 v3 侧承载具名应答 union
   @req:r1909
   规则: 迁移期旧路径保活与硬切
-    迁移期内既有 JSON-RPC 条款 MUST 继续对文本路径生效，直至硬切任务完成；硬切 MUST 以对拍全绿为前置条件，完成后旧条款措辞、文本帧产品路径与 JSON-RPC 分发依赖一并移除，并在 spec 收口为 v3 终态。
+    硬切已完成：JSON-RPC 文本路径作为调试通道保活（同一方法表与 dispatch），MUST NOT 引入第三套载体。旧 JSON-RPC 条款 MUST 以「载体无关」措辞表述：产品级 WHAT 只描述语义与形状，不钉帧类型。对拍纪律（r1908）MUST 继续由自动化测试锁定。
 
 
     场景: cutover-requires-parity-green
