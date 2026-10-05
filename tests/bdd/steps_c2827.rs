@@ -3964,42 +3964,57 @@ pub(crate) fn t_tui_e2e_layout() {
 
 #[when("读取配置值解析机制")]
 pub(crate) fn w_config_value_parser() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/template.rs")));
+    let lookup = |name: &str| (name == "HOME").then(|| "/home/u".to_string());
+    let a = crate::infra::config::resolver::resolve_value("plain-string", &lookup)
+        .expect("字面值 MUST 直通");
+    let b =
+        crate::infra::config::resolver::resolve_value("$HOME", &lookup).expect("环境值 MUST 解析");
+    T2_PROC.with(|s| *s.borrow_mut() = Some((a, b == "/home/u", false)));
 }
 
 #[then("支持字面与环境模板解析")]
 pub(crate) fn t_config_value_parser() {
-    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
-    assert!(src.contains("minijinja"), "模板引擎 MUST 在册");
-    assert!(src.contains("env."), "环境变量解析 MUST 在册");
-    assert!(src.contains("secret."), "密钥解析 MUST 在册");
+    let (lit, env_ok, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已解析");
+    assert_eq!(lit, "plain-string", "字面值 MUST 原样返回");
+    assert!(env_ok, "环境变量引用 MUST 解析");
 }
 
 #[when("读取环境变量插值能力")]
 pub(crate) fn w_env_var_interpolation() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/template.rs")));
+    let lookup = |name: &str| (name == "HOME").then(|| "/home/u".to_string());
+    let a = crate::infra::config::resolver::resolve_value("${HOME}", &lookup)
+        .expect("${VAR} MUST 插值");
+    let b = crate::infra::config::resolver::resolve_value("${UNSET:-fallback}", &lookup)
+        .expect("默认值 MUST 生效");
+    T2_PROC.with(|s| *s.borrow_mut() = Some((a, b == "fallback", false)));
 }
 
 #[then("支持变量引用与默认值")]
 pub(crate) fn t_env_var_interpolation() {
-    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
-    assert!(src.contains("env."), "变量引用解析 MUST 在册");
-    assert!(src.contains("vars."), "模板变量命名空间 MUST 在册");
+    let (braced, default_ok, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已插值");
+    assert_eq!(braced, "/home/u", "尖括号变量引用 MUST 解析");
+    assert!(default_ok, "带默认值引用 MUST 生效");
 }
 
 #[when("读取配置命令执行边界")]
 pub(crate) fn w_config_command_boundary() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/template.rs")));
+    crate::infra::config::resolver::reset_shell_cache();
+    let lookup = |_name: &str| None;
+    let out = crate::infra::config::resolver::resolve_value("!printf ok", &lookup)
+        .expect("shell 命令 MUST 执行");
+    // `$$` 是 shell PID：缓存命中时两次结果相同（进程生命周期缓存证据）。
+    let c1 = crate::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
+        .expect("shell PID 值一");
+    let c2 = crate::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
+        .expect("shell PID 值二");
+    T2_PROC.with(|s| *s.borrow_mut() = Some((out, c1 == c2, true)));
 }
 
 #[then("命令带超时执行且缓存")]
 pub(crate) fn t_config_command_boundary() {
-    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
-    assert!(src.contains("minijinja"), "配置解析机制 MUST 在册");
-    assert!(
-        src.contains("UndefinedBehavior") || src.contains("strict"),
-        "缺键 MUST 路径化报错"
-    );
+    let (out, cached, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已执行");
+    assert_eq!(out, "ok", "shell 命令 MUST 带预算执行");
+    assert!(cached, "进程生命周期内结果 MUST 缓存");
 }
 
 #[when("读取 provider 注册配置")]
