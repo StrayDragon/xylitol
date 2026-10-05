@@ -16,6 +16,10 @@
   @req:r1360
   规则: diff-via-package
     产品 live scrollback 中文件编辑 diff MUST 复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；MUST NOT 在应用面复制准通用 diff 渲染器。
+
+    场景: diff-reuses-package-component
+      当 读取应用面对包组件的复用
+      那么 diff 渲染取自包的 Diff 且无第二套
     # verified-by: src/app/tui/widgets/scrollback/diff.rs
   @req:r1368
   规则: tool-block-status-rail
@@ -29,10 +33,18 @@
   @req:r1369
   规则: tool-rail-via-package-helper
     rail 行绘制 MUST 复用 packages/xylitol-tui 的 paint_left_rail_line（或等价包 API：轨+gutter+内容宽）；MUST NOT 在应用面手写第二套轨/gutter/宽预算逻辑。
+
+    场景: left-rail-reuses-package-painter
+      当 读取应用面对包组件的复用
+      那么 左轨只经包 paint_left_rail_line 绘制
     # verified-by: packages/xylitol-tui/src/theme/paint.rs
   @req:r1370
   规则: no-codex-transcript-view
     产品 TUI MUST NOT 实现 Codex 风格的独立 transcript 浏览面或专用 TranscriptView 作为主 UX；历史/分支 travel MUST 经双 Esc 会话树（app-tui session-tree / package TreeSelector）。
+
+    场景: travel-via-double-esc-tree
+      当 以主机泵空编辑器双 Esc 开树
+      那么 树槽渲染 Search 行与 TreeHelp 行
     # verified-by: src/AGENTS.md
   @req:r1371
   规则: expandable-block-fold

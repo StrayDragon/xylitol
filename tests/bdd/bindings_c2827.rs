@@ -860,3 +860,64 @@ async fn test_bs_r1435_abort(agent: AgentState, ws: Workspace) {}
     name = "optional-timeout-and-missing-arg"
 )]
 fn test_bs_r1436_missing_arg(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-print/cli-print.feature",
+    name = "thinking-streams-to-stderr-only"
+)]
+fn test_cp_thinking_stderr(t4_print_bdd: T4PrintBdd) {}
+#[scenario(
+    path = "llmanspec/specs/app-tui/app-tui.feature",
+    name = "three-app-surfaces-in-default-feature-set"
+)]
+fn test_at_three_surfaces() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui/app-tui.feature",
+    name = "tui-imports-via-public-contract-only"
+)]
+fn test_at_public_contract() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui/app-tui.feature",
+    name = "index-points-to-per-capability-rules"
+)]
+fn test_at_capability_index() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-trust/app-tui-trust.feature",
+    name = "trust-choice-theme-and-cancel"
+)]
+fn test_atq_theme_cancel() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-trust/app-tui-trust.feature",
+    name = "trust-slash-persists-without-auto-reload"
+)]
+fn test_atq_slash_persist() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "semantic-colors-from-single-token-source"
+)]
+fn test_atz_token_source() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "designing-lint-is-a-gate"
+)]
+fn test_atz_design_lint_gate() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "surface-agents-points-to-written-docs"
+)]
+fn test_atz_docs_ssot() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "demo-defaults-dark-with-explicit-auto"
+)]
+fn test_atz_demo_theme() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "diff-reuses-package-component"
+)]
+fn test_att_diff_package() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "left-rail-reuses-package-painter"
+)]
+fn test_att_rail_package() {}

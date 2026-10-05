@@ -23,6 +23,10 @@
   规则: thinking-to-stderr
     Print 模式下 System MUST 将 reasoning/thinking 内容流式写入 stderr（非 stdout），使正式答案不被污染，包裹于 <think>...</think>；模型已自行发出 <think> 标签时 MUST NOT 双重包裹。
     # verified-by: src/app/cli/print.rs
+
+    场景: thinking-streams-to-stderr-only
+      当 以 thinking 与自带标签两种流分别渲染 print 输出
+      那么 stdout 仅含正文且标签包裹只此一份
   @req:r52
   规则: message-dedup
     Print 模式下 System MUST 仅将增量 TextDelta 写入 stdout，MUST NOT 将累积 MessageUpdate payload 写入 stdout，以避免前缀重复输出。

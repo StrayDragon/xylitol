@@ -16,6 +16,14 @@
   规则: Event 枚举
     protocol/ MUST 定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 MUST 反序列化为此枚举。
     # verified-by: llmanspec/specs/protocol-app/protocol-app.feature
+
+    场景: event-enum-covers-agent-stream
+      当 对 Agent 流族事件做线协议序列化与反序列化往返
+      那么 流族事件保真且 thinking_delta 可投影为 XyEvent
+
+    场景: unknown-event-type-is-error-not-panic
+      当 对 QueueUpdate 事件做线协议序列化与反序列化往返
+      那么 队列计数保真且未知 type 解析为错误而非 panic
   @req:r1696
   规则: 信封与错误
     产品 unary 应答 MUST 使用统一结果形态：成功则带 result，失败则带 error（message 为 details）。产品业务码 MUST 为稳定字符串（JSON 载体在 `error.data.code`，v3 载体在 `RpcError.code`），载体数字码 MUST 仅作载体，MUST NOT 成为产品错误模型。合法信封的 HTTP 状态 MUST 表示载体成功；非法信封 MUST 失败。旧 REST {code,msg,data} 与四象限 `{ok,value,error}` 顶层形态 MUST NOT 再作为产品 TUI 路径。
@@ -81,6 +89,14 @@
   规则: 线协议不镜像厂商事件
     protocol::Event MUST 映射领域 XyEvent 闭集；MUST NOT 为 OpenAI/Anthropic 等厂商专属事件增加平行变体。无法表达的细节 MUST 留在领域 Message 载荷或被省略，而非拓宽线协议宽表。
     # verified-by: src/protocol/wire/event.rs
+
+    场景: no-vendor-specific-event-variants
+      当 对 Agent 流族事件做线协议序列化与反序列化往返
+      那么 流族事件保真且 thinking_delta 可投影为 XyEvent
+
+    场景: closed-set-rejects-surface-local-command-names
+      当 解析面本地能力冒充的命令（clipboard_write / osc52_put / set_keybinding）
+      那么 命令闭集拒绝且不产生任何变体
   @req:r1719
   规则: 线协议映射队列与闭集
     protocol Event MUST 能表达跨面所需的 XyEvent 闭集子集（至少含 QueueUpdate）；未映射变体 MUST 可降级忽略，MUST NOT panic。
@@ -218,6 +234,14 @@
   规则: bang 与工具分流
     人发起的工作区 bash MUST 走独立于模型工具的事件路径，MUST NOT 并进 ToolStart / ToolExecutionUpdate / ToolEnd。结束态 MUST 能用 BashResult（或语义等价）表达。直播增量若尚未成为 Event 变体，MUST NOT 改走工具流或 REST 冒充。
     # verified-by: llmanspec/specs/protocol-app/protocol-app.feature
+
+    场景: bang-runs-outside-agent-tool-stream
+      当 以主机泵在 idle 提交 bang 命令
+      那么 execute_bash 收到命令体且未调用 run
+
+    场景: bash-final-state-in-single-block
+      当 以主机泵提交 bang 命令并注入分段输出与成功结果
+      那么 命令进入单一 Bash 块且输出在同一块内且状态轨为成功
   @req:r1704
   规则: 订阅与握手版本
     每条线协议消息 MUST 归属某个 session。客户端 MUST 能以 session 与 last_seq 订阅并续传；journal 截断超过 last_seq 时 MUST 发出 resync。握手 MUST 经已登记方法（host.describe 或语义等价）的 result 携带协议版本；对不上 MUST 断开且 MUST NOT 降级。MUST NOT 再以特例首帧并行维护第二套版本协商。
@@ -230,6 +254,15 @@
   规则: 闭集缺口禁旁路
     协议闭集 MUST 能表达：host 侧重装（MCP / prompt / 技能）、项目信任持久化、session 写者与只读、导出回传内容、人 bash 直播增量。上述语义在尚未进入 Command/Event 枚举前，MUST NOT 用新的 REST 产品动词或第二套远程专用词表冒充；MUST NOT 要求本 requirement 单独新增运行时枚举变体。
     # verified-by: llmanspec/specs/protocol-app/protocol-app.feature
+
+    场景: host-semantics-on-single-jsonrpc-method-table
+      假如 RemoteDriver 指向该 server
+      当 调用已登记的 session 能力 unary
+      那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
+
+    场景: no-second-vocabulary-for-surface-locals
+      当 解析面本地能力冒充的命令（clipboard_write / osc52_put / set_keybinding）
+      那么 命令闭集拒绝且不产生任何变体
   @req:r1706
   规则: 审批问卷首应答
     host 向 client 发起的审批与问卷 MUST 能经线协议往返（下行 notification + 客户端 unary）；同一 call 的第一 unary 应答 MUST 生效，后续 MUST 忽略。

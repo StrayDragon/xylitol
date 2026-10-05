@@ -1,3 +1,4 @@
+use crate::tests::bdd::steps_c2827::{T2EstBdd, t2_est_bdd};
 use crate::tests::bdd::steps_server::{ServerTest, approval_test, server_test};
 use rstest_bdd_macros::scenario;
 
@@ -344,3 +345,24 @@ async fn test_ath39_idle_wait_bounded(server_test: ServerTest) {}
     name = "reconnect-grace-then-toast"
 )]
 async fn test_ath43_reconnect_grace_then_toast(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "estimate-context-unary-registered-readonly"
+)]
+fn test_sc_estimate_registered(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "fixed-zone-resources-frame-is-notification"
+)]
+fn test_sc_fixed_zone_frame(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "fixed-zone-resources-method-on-product-table"
+)]
+fn test_sc_fixed_zone_method(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "estimate-context-host-source-not-self-estimate"
+)]
+fn test_sc_estimate_host_source(t2_est_bdd: T2EstBdd) {}

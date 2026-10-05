@@ -58,3 +58,19 @@ fn test_scrollback_human_rail(ws: Workspace) {
 fn test_trust_untouched(ws: Workspace) {
     let _ = ws;
 }
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-trust/app-tui-trust.feature",
+    name = "trust-ask-uses-choice-prompt-in-tui"
+)]
+fn test_atq_trust_choice_prompt() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-trust/app-tui-trust.feature",
+    name = "choice-slot-replaces-editor"
+)]
+fn test_atq_choice_slot_editor() {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-trust/app-tui-trust.feature",
+    name = "hook-point-remains-after-trust"
+)]
+fn test_atq_hook_after_trust(agent: AgentState, ws: Workspace) {}

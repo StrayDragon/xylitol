@@ -30,6 +30,14 @@
   规则: app-directory
     CLI MUST 为独立应用表面，print 为其子模式；app 面 MUST NOT reach agent 内部（经缝）。
     # verified-by: src/AGENTS.md
+
+    场景: cli-is-independent-surface
+      当 xylitol --help
+      那么 Commands 含 tokenizer、resources 与 serve 为顶层而非 tui 子命令
+
+    场景: app-surface-reaches-agent-via-driver-seam
+      当 检查 Driver 实现
+      那么 默认 attach 且同进程驱动路径仍保留给 print 与嵌入
   @req:r1389
   规则: no-silent-fallback
     配置文件存在但 models.models 无任何显式模型别名（或等价零显式条目）时，经 bootstrap 的表面（TUI/print/--list-models/serve）MUST 硬失败并明确报错指向配置，MUST NOT 静默用 provider 环境变量注册或选中默认模型（如 gpt-4o）后继续。无配置文件且无显式模型时同样 MUST NOT 仅凭 OPENAI_API_KEY/ANTHROPIC_API_KEY 造模继续。
@@ -42,6 +50,10 @@
   规则: composition-root-ports
     组合根 MUST 从 infra 构造 SessionStore/EventSink 注入装配。
     # verified-by: src/app/core/bootstrap.rs
+
+    场景: composition-builds-ports-from-infra
+      当 server 应用面启动
+      那么 装配 infra 运行时并按 session 槽注入 Driver，供 unary 处理器调用
   @req:r1393
   规则: serve-subcommand
     CLI MUST 提供顶层动词 serve：无子命令时直接监听（默认 127.0.0.1:18790）；MUST 接受 --host 与 --port（--port 0 让操作系统分配并打印实际端口）；叶子至少含 stop 与 install。MUST NOT 提供 server 或 serve run 作为产品入口别名。
@@ -54,6 +66,10 @@
   规则: assembly-via-bootstrap
     cli 与 Host 监听器 MUST 经共享 bootstrap 装配，MUST NOT 内联第二套装配。
     # verified-by: src/app/core/bootstrap.rs
+
+    场景: cli-and-server-share-one-bootstrap
+      当 app::server 运行时经 app::core::composition 组装 Agent
+      那么 向 Agent 传入 Arc<dyn ExportIo>
   @req:r1381
   规则: default-tui-entry
     TTY 且无表面子命令时 MUST 默认进入产品 TUI。
@@ -81,6 +97,16 @@
   规则: stable-session-id-on-run
     InProcessDriver::run MUST 复用 bootstrap session_id，MUST NOT 每轮新建 Uuid 文件。
     # verified-by: llmanspec/specs/agent-session/agent-session.feature
+
+    场景: run-reuses-bootstrap-session-id
+      假如 当前 session 已出现在 list_sessions
+      当 TUI 或 print 正常退出
+      那么 stderr 含 resume 提示行
+
+    场景: unpersisted-session-no-resume-hint
+      假如 当前 session 未持久化
+      当 TUI 或 print 正常退出
+      那么 stderr 不含 resume 提示行
   @req:r1384
   规则: tokenizer-cache-subcommands
     CLI MUST 提供顶层动词 tokenizer（跨面 ops，MUST NOT 仅挂在 tui 下），叶子至少含 status、download、clean：status MUST 可报告缓存根与条目（及可选 --model 的 builtin/local/cached/missing/unmapped）；download MUST 为显式 opt-in（调用即同意；TTY 默认可二次确认，--yes 跳过），MUST 在确认摘要中告知 repo/file、HF 基址与落盘路径，MUST NOT 在估计热路径静默下载；无配置映射且无显式 owner/repo 时 MUST 失败并提示配置 tokenizer 字段或 CLI 形状，MUST NOT 猜测下载目标；clean MUST 支持 --all 或按 model/target 删除；上述子命令 MUST 早退且 MUST NOT 经 bootstrap 装配会话/MCP；实现 MUST 委托 bridge 缓存 API，MUST NOT 在 CLI 内直接发起 HTTP。

@@ -32,6 +32,10 @@
   @req:r1199
   规则: extensible-commands
     命令面 MUST 允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。
+
+    场景: mvp-needs-model-and-exit
+      当 在产品命令模块解析 "/model" 与 "/exit"
+      那么 分别得到模型与退出待发命令
     # verified-by: src/app/tui/commands.rs
   @req:r1201
   规则: debug-scene-slash
@@ -54,6 +58,10 @@
   @req:r1203
   规则: commands-module-growth
     产品 TUI slash/bang 解析 MUST 继续收口于 commands 模块（可多文件），执行仍经 pending + drain_pending → protocol::Command / dispatch 或 Driver；SlashCommandSource 补全清单 MUST 与产品命令 SSOT（及 GetCommands 内建子集）同源；MUST NOT 在 UiRoot/widgets 内散落第二套 slash 语义；MUST NOT 维护与 agent 短名表分叉的第三套产品名表。
+
+    场景: single-slash-parser-in-commands-module
+      当 在产品命令模块解析 "/tree" 与 "/session-tree"
+      那么 仅 session-tree 得到待发命令且废弃短名不解析
     # verified-by: src/app/tui/layout/slash_catalog.rs
   @req:r1204
   规则: slash-session-io

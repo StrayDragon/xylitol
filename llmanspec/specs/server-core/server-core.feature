@@ -182,6 +182,18 @@
   规则: 上下文估计方法接线
     Host MUST 为 estimate_context 提供已登记 unary：经与 in-process driver 同源的估算入口计算 ContextTokenEstimate，MUST 计入 host 侧固定请求开销（system prompt + tool schemas）与 host tokenizer 映射；MUST NOT 返回 stub 或客户端自估降级。
     # verified-by: llmanspec/specs/server-core/server-core.feature
+
+    场景: estimate-context-unary-registered-readonly
+      当 查询方法表的 estimate_context
+      那么 已登记且为只读 unary 不占写者
+
+    场景: estimate-context-host-source-not-self-estimate
+      假如 会话条目含 stop 回合的 usage 锚点
+      当 以同源估计器估计上下文
+      那么 估计来源为 Api
+      假如 会话条目仅含 abort 回合的 usage 锚点
+      当 以同源估计器估计上下文
+      那么 估计来源降级而非 Api
   @req:r1782
   规则: wire 会话导入内容暂存
     Host MUST 为 import_jsonl 提供内容暂存导入：载荷携带 content 而无 input_path 时，MUST 将内容暂存为临时输入路径、经同一 dispatch 导入并返回新 session_id，处理结束 MUST 清理暂存文件；携带 input_path 的直传行为 MUST 保持不变。
@@ -202,6 +214,16 @@
   规则: 固定区资源下行
     Host MUST 为已物化写者的会话经产品订阅下行 `session/resources` 推送 MCP/skills 固定区 快照：写者侧在 Host 进程内 poll MCP bootstrap，快照变化时才向该会话的订阅连接广播一帧，payload 含 session_id 与资源快照（形状与 loaded_resources unary 结果一致）。该帧 MUST 为 JSON-RPC notification，MUST NOT 消耗 journal seq，MUST NOT 写入事件 journal；断线重放与冷恢复投影 MUST NOT 复播固定区帧。不识别该方法的旧客户端 MUST 可忽略该帧且其余行为不受影响；本方法 MUST NOT 要求 bump 协议版本。
     # verified-by: fn resources_watch_pushes_one_frame_on_snapshot_change
+
+    场景: fixed-zone-resources-frame-is-notification
+      假如 构造下行 session/event、session/subscribed、session/resync_required 与 session/resources notification
+      当 序列化为 JSON
+      那么 各帧均为 JSON-RPC 2.0 notification 且无 id
+
+    场景: fixed-zone-resources-method-on-product-table
+      假如 RemoteDriver 指向该 server
+      当 调用 Host 资源 unary
+      那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
   @req:r1775
   规则: abort 对进程级 reload 的合作取消
     进程级 reload 进行中收到 abort unary 时，Host MUST 合作取消该次 reload（停止后续重装步骤），MUST 以 cancelled 指示应答；reload 未进行时该 unary MUST 落回既有会话 abort 处理。reload 仅 idle 可发起，MUST NOT 与回合 abort 产生并发歧义。

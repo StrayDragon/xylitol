@@ -1,5 +1,6 @@
 //! app-tui-transcript BDD 绑定（P1：纯字形合约）。
 
+use crate::tests::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::tests::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
 use crate::tests::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use rstest_bdd_macros::scenario;
@@ -165,3 +166,9 @@ fn test_ats10_travel_notice_trails(transcript_bdd: TranscriptBdd) {}
     name = "demo-travel-notice-shares-tail"
 )]
 fn test_ats11_demo_notice_same_tail_source(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "travel-via-double-esc-tree"
+)]
+fn test_att_tree_travel(host_pump_bdd: HostPumpBdd) {}

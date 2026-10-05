@@ -23,14 +23,37 @@
   规则: theme-glyphs-config
     产品 host MUST 经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）MUST 由显式配置切换，MUST NOT 做运行时字体探测；产品 MVP MUST NOT 默认开启 theme auto。
     # verified-by: llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature
+    场景: glyph-set-by-config-not-font-probe
+      假如 折叠字形环境未指定（默认 Unicode 集）
+      当 读取折叠与展开字形
+      那么 折叠为 ▸ 展开为 ▾ 且各占单列
+      并且 切换环境变量 XYLITOL_TUI_GLYPH_SET=ascii 并重新读取
+      并且 折叠回退为 > 展开回退为 v 且各占单列
+
+    场景: semantic-colors-from-single-token-source
+      当 读取 token 同步脚本与生成物
+      那么 单一脚本写出双端 token
   @req:r1234
   规则: design-docs-ssot
     产品 TUI 视觉与 UX MUST 有单一书面 SSOT（总索引 + 组件级子文档）；实现与 demo 引用组件规则时 MUST 指向对应书面文档（尤其 diff-block 与 keybindings），MUST NOT 仅依赖口头约定。文档落点（总索引与子文档目录）由面 AGENTS 维护。
     # verified-by: designing/AGENTS.md
+
+    场景: designing-lint-is-a-gate
+      当 读取 designing lint 闸接线
+      那么 designing lint 由 check-scripts 执行
+
+    场景: surface-agents-points-to-written-docs
+      当 读取 tui 面 AGENTS 摘要
+      那么 摘要写明先读产品代码与默认忽略应用壳
+      并且 摘要写明改稿须跑 designing lint
   @req:r1235
   规则: demo-theme-auto-detect
     agent_demo MUST 默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 MUST 经 package terminal_colors 纯函数切换 Light/Dark，并在 layout 壳（footer 或系统行）暴露当前 theme_mode；MUST NOT 将自动切换设为产品 MVP 默认。
     # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
+
+    场景: demo-defaults-dark-with-explicit-auto
+      当 读取 demo 主题探测接线
+      那么 缺省为 dark 且自动切换需显式开启
   @req:r1236
   规则: idle-editor-compact
     产品空闲且 Editor 草稿为空时操作区可见内容行 MUST 紧凑（对齐 agent_demo 观感：上下 ─ 保留，避免大块空盒）；有多行草稿时 MUST 仍可按既有 terminal_rows/max_vis 规则长高。
@@ -156,6 +179,14 @@
   @req:r1231
   规则: fixed-zone-no-extra-undocumented
     产品 TUI 固定区（footer / status / 队列条 / 通知条 / 待办栏等）可观察文案与徽章 MUST 仅来自文档化视觉 SSOT（见 atc4）已声明的槽与字段；MUST NOT 另加 SSOT 未声明或已废弃的冗余展示（避免用户疑惑）；队列可见性 SSOT 为中间队列条（Steering:/Follow-up:，见 ati11），MUST NOT 再在 footer/status 重复队列计数徽章。
+
+    场景: fixed-zone-slot-order
+      当 产品 TUI 同时存在非空待办栏、队列条与通知条
+      那么 从上到下 MUST 为队列条、待办栏、通知条、status、editor
+
+    场景: footer-carries-no-queue-badge
+      当 以 Heuristic 上下文估计驱动 footer token 字段
+      那么 footer 为单行且含 used ~C tokens 波浪号且无队列徽章
     # verified-by: llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature
   @req:r1232
   规则: tool-header-timeout-note

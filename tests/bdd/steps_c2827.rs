@@ -2851,3 +2851,167 @@ pub(crate) fn t_default_template_shape() {
         "默认模板 MUST NOT 内联日历日占位"
     );
 }
+
+// ── 批 1（端与协议族）：结构探针 ────────────────────────────────
+
+#[when("以 thinking 与自带标签两种流分别渲染 print 输出")]
+pub(crate) async fn w_thinking_render(t4_print_bdd: &T4PrintBdd) {
+    use crate::agent::runtime::XyEvent;
+    let mut out: Vec<u8> = Vec::new();
+    let open = String::from("<") + "think" + ">";
+    let close = String::from("<") + "think" + ">";
+    let tagged = open.clone() + "tagged" + &close;
+    for thinking in ["plain reasoning".to_string(), tagged] {
+        let mut stream = t4_stream(vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::ThinkingDelta(thinking.clone()),
+            XyEvent::TextDelta("ANSWER".into()),
+            XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            },
+        ]);
+        let mut buf: Vec<u8> = Vec::new();
+        crate::app::cli::render_stream(&mut stream, &mut buf)
+            .await
+            .expect("render 成功");
+        let text = String::from_utf8(buf).unwrap();
+        assert_eq!(text.trim(), "ANSWER", "{thinking}");
+        out.extend(text.as_bytes());
+    }
+    let src = la_load("src/app/cli/print.rs");
+    *t4_print_bdd.out.borrow_mut() = out;
+    *t4_print_bdd.result.borrow_mut() = Some(Ok(()));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(src));
+}
+
+#[then("stdout 仅含正文且标签包裹只此一份")]
+pub(crate) fn t_thinking_single_wrap(t4_print_bdd: &T4PrintBdd) {
+    let out = String::from_utf8(t4_print_bdd.out.borrow().clone()).unwrap();
+    let parts: Vec<&str> = out.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(
+        parts,
+        vec!["ANSWER", "ANSWER"],
+        "stdout MUST 只含正文（thinking 走 stderr）"
+    );
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert_eq!(
+        src.matches("write!(io::stderr(), \"<think>\"").count(),
+        1,
+        "开标签写出 MUST 只此一份"
+    );
+    assert_eq!(
+        src.matches("write!(io::stderr(), \"</think>\"").count(),
+        1,
+        "闭标签写出 MUST 只此一份"
+    );
+    assert!(
+        src.contains("thinking_has_tags"),
+        "MUST 有自带标签的去重守卫"
+    );
+}
+
+#[when("读取 trust 选择器主题与取消收口")]
+pub(crate) fn w_trust_gate_probe() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/cli/trust_gate.rs")));
+}
+
+#[then("主题出自 dark 且取消记为不信任")]
+pub(crate) fn t_trust_gate_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("Palette::dark().choice_prompt_theme()"),
+        "主题 MUST 出自 dark 调色板"
+    );
+    assert!(
+        src.contains("TrustManager::new(TrustManager::default_dir())"),
+        "MUST 经 TrustManager 持久化"
+    );
+    assert!(
+        src.contains("TrustGateResult::Cancelled => Err(TrustGateError::Cancelled)"),
+        "取消 MUST 收口为不写入"
+    );
+}
+
+#[when("读取 trust slash 的缝接线")]
+pub(crate) fn w_trust_slash_probe() {
+    let seam = la_load("src/app/core/driver/proto.rs");
+    let body = la_load("src/app/core/driver/in_process/reload.rs");
+    let start = body.find("fn persist_project_trust").unwrap_or(0);
+    let block = &body[start.min(body.len())..body.len().min(start.saturating_add(2600))];
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(format!(
+            "{seam}|{}",
+            block.replace("reload_runtime(", "RR(")
+        ));
+    });
+}
+
+#[then("经 Driver 缝持久化且本会话不自动重载")]
+pub(crate) fn t_trust_slash_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("persist_project_trust"),
+        "MUST 有 Driver 缝上的持久化方法"
+    );
+    assert!(src.contains("ProjectTrustMode"), "MUST 以类型化模式入参");
+    assert!(src.contains("apply_updates"), "MUST 落盘到 trust store");
+    assert!(src.contains("RELOAD_HINT"), "重载 MUST 只是提示（不自动）");
+    assert!(!src.contains("RR("), "持久化后 MUST NOT 自动重载");
+}
+
+#[when("读取 demo 主题探测接线")]
+pub(crate) fn w_demo_theme_probe() {
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load("packages/xylitol-tui/examples/agent_demo_impl.rs"))
+    });
+}
+
+#[then("缺省为 dark 且自动切换需显式开启")]
+pub(crate) fn t_demo_theme_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("theme_auto"), "MUST 有显式自动档开关");
+    assert!(
+        src.contains("resolve_terminal_color_scheme("),
+        "自动档 MUST 走纯函数解析"
+    );
+    assert!(src.contains("theme_mode"), "当前 theme_mode MUST 可暴露");
+    assert!(
+        src.contains("TerminalColorScheme::Dark"),
+        "缺省 MUST 为 Dark"
+    );
+}
+
+#[when("读取应用面对包组件的复用")]
+pub(crate) fn w_package_reuse_probe() {
+    let diff = la_load("src/app/tui/widgets/scrollback/diff.rs");
+    let paint = la_load("src/app/tui/widgets/scrollback/paint.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{diff}|{paint}")));
+}
+
+#[then("diff 渲染取自包的 Diff 且无第二套")]
+pub(crate) fn t_diff_reuse_from_package() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("use xylitol_tui::"), "diff MUST 引包 API");
+    assert!(src.contains("DiffOptions"), "MUST 复用包的 Diff 选项");
+    assert!(
+        src.contains("render_diff_lines"),
+        "MUST 走包的 diff 渲染入口"
+    );
+}
+
+#[then("左轨只经包 paint_left_rail_line 绘制")]
+pub(crate) fn t_rail_reuse_from_package() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("paint_left_rail_line"),
+        "左轨 MUST 经包 painter"
+    );
+    assert!(
+        src.matches("fn paint_left_rail_line").count() <= 1,
+        "应用面 MUST NOT 再写一份同名 painter"
+    );
+}

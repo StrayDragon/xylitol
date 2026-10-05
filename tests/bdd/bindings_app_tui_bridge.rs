@@ -80,3 +80,14 @@ fn test_atb14_error_kinds(bridge_bdd: BridgeBdd) {}
     name = "wire-roundtrip-preserves-tool-args-headless"
 )]
 fn test_atb15_wire_parity(bridge_bdd: BridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-bridge/app-tui-bridge.feature",
+    name = "bash-block-appends-in-place"
+)]
+fn test_atb_bash_append(bridge_bdd: BridgeBdd) {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-bridge/app-tui-bridge.feature",
+    name = "bash-block-closes-via-existing-finish-path"
+)]
+fn test_atb_bash_finish(bridge_bdd: BridgeBdd) {}
