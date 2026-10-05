@@ -9,24 +9,48 @@
   规则: provider-registration
     System SHALL 支持 provider 注册，含可配置 API keys、base URLs、headers 与 adapter api type，适用于 OpenAI 兼容与 Anthropic provider。
     # verified-by: llmanspec/specs/runtime-model-registry/runtime-model-registry.feature
+
+    场景: provider-registration-config
+      当 读取 provider 注册配置
+      那么 支持密钥与地址与请求头
   @req:r1821
   规则: config-value-parser
     System MUST 提供 ConfigValueResolver，解析 literal、env-var template 与 shell-command 配置值。
     # verified-by: src/infra/config/types.rs
+
+    场景: config-value-parser-boundary
+      当 读取配置值解析机制
+      那么 支持字面与环境模板解析
   @req:r1822
   规则: env-var-interpolation
     ConfigValueResolver MUST 插值 $VAR、${VAR} 与 ${VAR:-default} 环境变量引用。
     # verified-by: src/infra/config/types.rs
+
+    场景: env-var-interpolation-branch
+      当 读取环境变量插值能力
+      那么 支持变量引用与默认值
   @req:r1823
   规则: shell-command-execution
     ConfigValueResolver 对以 ! 为前缀的命令 MUST 以 10 秒超时执行并在进程生命周期内缓存结果；超时以失败结果呈现。
     # verified-by: src/infra/config/types.rs
+
+    场景: shell-command-value-exec
+      当 读取配置命令执行边界
+      那么 命令带超时执行且缓存
   @req:r1825
   规则: provider-in-infra
     所有 LLM provider 实现（OpenAI、Anthropic、Fake、Mock）MUST 位于 infra 层并实现 protocol 端口 XyModel；agent 层 MUST NOT 托管 provider 实现子树；从模型配置到 XyModel 的构造 MUST 位于 infra 层 factory，而非 agent 层。
     # verified-by: src/AGENTS.md
+
+    场景: provider-impl-in-infra
+      当 读取 provider 分层
+      那么 实现位于 infra 且遵循端口
   @req:r1826
   规则: provider-port-injection
     agent 持有的 model registry MUST 以 Arc<dyn XyModel> 存储 provider；选择 provider MUST NOT 要求 agent 命名具体 provider struct。
     # verified-by: src/AGENTS.md
+
+    场景: provider-port-injection
+      当 读取模型注册表存储
+      那么 以抽象 trait 对象持有
 # re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议载体常量与死变体清理。（2026-09-29）

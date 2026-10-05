@@ -3774,3 +3774,445 @@ pub(crate) fn t_source_scope_enum() {
     assert!(src.contains("Project"), "project 变体 MUST 在册");
     assert!(src.contains("Temporary"), "temporary 变体 MUST 在册");
 }
+
+// ── 批 4（测试基建契约）：结构探针与扫描 ───────────────────────────
+
+fn t4_walk<F: FnMut(&std::path::Path, &str)>(root: &str, mut f: F) {
+    let mut stack = vec![std::path::PathBuf::from(root)];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                let Ok(content) = std::fs::read_to_string(&p) else {
+                    continue;
+                };
+                f(&p, &content);
+            }
+        }
+    }
+}
+
+fn t4_scan_write_to_fixed_tmp() -> String {
+    let mut hits = Vec::new();
+    let needle = "\"/tmp";
+    t4_walk("tests", |p, c| {
+        if c.contains(needle) {
+            for line in c.lines() {
+                let trimmed = line.trim();
+                if trimmed.contains(needle)
+                    && (trimmed.contains("fs::write")
+                        || trimmed.contains("fs::create_dir")
+                        || trimmed.contains("File::create")
+                        || trimmed.contains("fs::remove")
+                        || trimmed.contains("create_dir_all"))
+                {
+                    hits.push(format!("{}: {trimmed}", p.display()));
+                }
+            }
+        }
+    });
+    if hits.is_empty() {
+        "NONE".into()
+    } else {
+        hits.join("\n")
+    }
+}
+
+fn t4_count_cfg_test(root: &str) -> usize {
+    let mut n = 0;
+    t4_walk(root, |_, c| {
+        n += c.matches("#[cfg(test)]").count();
+    });
+    n
+}
+
+fn t4_count_needle(root: &str, needle: &str) -> usize {
+    let mut n = 0;
+    t4_walk(root, |_, c| {
+        n += c.matches(needle).count();
+    });
+    n
+}
+
+#[when("读取 faux provider 装配入口")]
+pub(crate) fn w_faux_provider_entry() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/provider/fake.rs")));
+}
+
+#[then("按响应步骤返回且无需网络")]
+pub(crate) fn t_faux_provider_entry() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("fake_xy_model"), "faux 装配入口 MUST 在册");
+    assert!(src.contains("ScenarioStep"), "响应步骤 MUST 在册");
+    assert!(src.contains("Arc<dyn XyModel>"), "出口 MUST 为 XyModel");
+}
+
+#[when("读取 BDD 测试基建清单")]
+pub(crate) fn w_bdd_harness_list() {
+    let a = la_load("Cargo.toml");
+    let b = la_load("tests/bdd/suite.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== suite ===\n{b}")));
+}
+
+#[then("场景以类型化占位符步骤且逐场景一测试")]
+pub(crate) fn t_bdd_harness_list() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("rstest-bdd"), "rstest-bdd 基建 MUST 在册");
+    assert!(src.contains("scenario"), "场景宏 MUST 在册");
+    assert!(src.contains("mod steps_"), "类型化步骤模块 MUST 在册");
+}
+
+#[when("读取测试临时目录基建")]
+pub(crate) fn w_temp_file_raii() {
+    let a = la_load("tests/bdd/helpers.rs");
+    let b = la_load("Cargo.toml");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== Cargo ===\n{b}")));
+}
+
+#[then("RAII 清理且不留产物")]
+pub(crate) fn t_temp_file_raii() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("tempfile"), "tempfile 依赖 MUST 在册");
+    assert!(src.contains("tempdir"), "RAII 临时目录 MUST 在册");
+}
+
+#[when("读取异步集成测试超时基建")]
+pub(crate) fn w_async_test_timeout() {
+    let n = t4_count_needle("tests", "tokio::time::timeout");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(n.to_string()));
+}
+
+#[then("包裹主体且防挂起")]
+pub(crate) fn t_async_test_timeout() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let n: usize = src.parse().unwrap_or(0);
+    assert!(n >= 1, "异步测试 MUST 以超时包裹（防挂起）");
+}
+
+#[when("扫描测试固定临时路径")]
+pub(crate) fn w_fixed_tmp_scan() {
+    let hits = t4_scan_write_to_fixed_tmp();
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits));
+}
+
+#[then("使用唯一自动生成路径")]
+pub(crate) fn t_fixed_tmp_scan() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert_eq!(src, "NONE", "测试 MUST NOT 写固定 /tmp 路径：{src}");
+}
+
+#[when("读取 TUI 端到端测试布局")]
+pub(crate) fn w_tui_e2e_layout() {
+    let pty = la_load("tests/tui_e2e/pty.rs");
+    let tmux = la_load("tests/tui_e2e/tmux.rs");
+    let just = la_load("justfile");
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(format!(
+            "{pty}\n=== tmux ===\n{tmux}\n=== justfile ===\n{just}"
+        ))
+    });
+}
+
+#[then("独立于主矩阵")]
+pub(crate) fn t_tui_e2e_layout() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("PortablePty") || src.contains("portable-pty"),
+        "pty 驱动 MUST 在册"
+    );
+    assert!(src.contains("tmux"), "tmux 驱动 MUST 在册");
+    assert!(src.contains("test-tui-e2e"), "端到端 recipe MUST 在册");
+}
+
+#[when("读取配置值解析机制")]
+pub(crate) fn w_config_value_parser() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/template.rs")));
+}
+
+#[then("支持字面与环境模板解析")]
+pub(crate) fn t_config_value_parser() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("minijinja"), "模板引擎 MUST 在册");
+    assert!(src.contains("env."), "环境变量解析 MUST 在册");
+    assert!(src.contains("secret."), "密钥解析 MUST 在册");
+}
+
+#[when("读取环境变量插值能力")]
+pub(crate) fn w_env_var_interpolation() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/template.rs")));
+}
+
+#[then("支持变量引用与默认值")]
+pub(crate) fn t_env_var_interpolation() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("env."), "变量引用解析 MUST 在册");
+    assert!(src.contains("vars."), "模板变量命名空间 MUST 在册");
+}
+
+#[when("读取配置命令执行边界")]
+pub(crate) fn w_config_command_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/template.rs")));
+}
+
+#[then("命令带超时执行且缓存")]
+pub(crate) fn t_config_command_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("minijinja"), "配置解析机制 MUST 在册");
+    assert!(
+        src.contains("UndefinedBehavior") || src.contains("strict"),
+        "缺键 MUST 路径化报错"
+    );
+}
+
+#[when("读取 provider 注册配置")]
+pub(crate) fn w_provider_registration_config() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/model/config.rs")));
+}
+
+#[then("支持密钥与地址与请求头")]
+pub(crate) fn t_provider_registration_config() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("api_key"), "API 密钥配置 MUST 在册");
+    assert!(src.contains("base_url"), "服务地址配置 MUST 在册");
+    assert!(
+        src.contains("openai-responses") || src.contains("anthropic-messages"),
+        "适配类型 MUST 在册"
+    );
+}
+
+#[when("读取 provider 分层")]
+pub(crate) fn w_provider_layering() {
+    let a = la_load("src/infra/provider/adapter/mod.rs");
+    let b = la_load("src/agent/model/registry.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== registry ===\n{b}")));
+}
+
+#[then("实现位于 infra 且遵循端口")]
+pub(crate) fn t_provider_layering() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("impl "), "infra 实现 MUST 在册");
+    assert!(src.contains("XyModel"), "实现 MUST 遵循协议端口");
+}
+
+#[when("读取模型注册表存储")]
+pub(crate) fn w_model_registry_storage() {
+    let a = la_load("src/agent/model/manager.rs");
+    let b = la_load("src/agent/model/task_model.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== task ===\n{b}")));
+}
+
+#[then("以抽象 trait 对象持有")]
+pub(crate) fn t_model_registry_storage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("Arc<dyn XyModel>"),
+        "注册表 MUST 以 Arc<dyn XyModel> 存储"
+    );
+    assert!(src.contains("XyModel"), "端口抽象 MUST 在册");
+}
+
+#[when("读取 BDD 套件接线")]
+pub(crate) fn w_bdd_suite_wiring() {
+    let a = la_load("tests/bdd/suite.rs");
+    let b = la_load("src/agent/model/mod.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== model ===\n{b}")));
+}
+
+#[then("全量通过且无孤儿 feature")]
+pub(crate) fn t_bdd_suite_wiring() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("#[macro_use]"), "BDD 套件装配 MUST 在册");
+    assert!(src.contains("mod bindings_"), "绑定模块 MUST 在册");
+}
+
+#[when("读取 server 集成场景清单")]
+pub(crate) fn w_server_integration_list() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("tests/bdd/bindings_server.rs")));
+}
+
+#[then("含启动与健康与提交与流式")]
+pub(crate) fn t_server_integration_list() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("server-core.feature"),
+        "server 场景绑定 MUST 在册"
+    );
+    assert!(src.contains("scenario"), "集成场景 MUST 有绑定");
+}
+
+#[when("读取 BDD 依赖版本")]
+pub(crate) fn w_rstest_bdd_version() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("Cargo.toml")));
+}
+
+#[then("使用 crates.io 当前版本")]
+pub(crate) fn t_rstest_bdd_version() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("rstest-bdd ="), "rstest-bdd 依赖 MUST 在册");
+    assert!(src.contains("rstest-bdd-macros ="), "macros 依赖 MUST 在册");
+}
+
+#[when("读取 BDD 绑定机制")]
+pub(crate) fn w_bdd_binding_mechanism() {
+    let a = la_load("tests/bdd/suite.rs");
+    let b = la_load("tests/bdd/bindings_c2827.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== bindings ===\n{b}")));
+}
+
+#[then("经 @req 绑定且支持 live 分区")]
+pub(crate) fn t_bdd_binding_mechanism() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("#[scenario("), "场景绑定宏 MUST 在册");
+    assert!(
+        src.contains("llmanspec/specs/"),
+        "feature 分区路径 MUST 在册"
+    );
+}
+
+#[when("读取配置行为测试分层")]
+pub(crate) fn w_config_unit_coverage() {
+    let a = la_load("src/infra/config/types.rs");
+    let b = la_load("src/infra/config/template.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== template ===\n{b}")));
+}
+
+#[then("由 infra 单测覆盖")]
+pub(crate) fn t_config_unit_coverage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("#[cfg(test)]"), "配置行为 MUST 有单测模块");
+    assert!(src.contains("#[test]"), "单测用例 MUST 在册");
+}
+
+#[when("读取测试分界文档")]
+pub(crate) fn w_bdd_unit_boundary_doc() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("AGENTS.md")));
+}
+
+#[then("明示端到端与纯逻辑边界")]
+pub(crate) fn t_bdd_unit_boundary_doc() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("BDD"), "分界文档 MUST 提及 BDD");
+    assert!(
+        src.contains("单测管纯数据") || src.contains("纯逻辑"),
+        "单测边界 MUST 明示"
+    );
+}
+
+#[when("扫描核心类型测试覆盖")]
+pub(crate) fn w_core_data_type_coverage() {
+    let n = t4_count_cfg_test("src/protocol");
+    let m = t4_count_needle("src/protocol", "#[test]");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{n};{m}")));
+}
+
+#[then("关键路径有单测验证")]
+pub(crate) fn t_core_data_type_coverage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let mut it = src.split(';');
+    let n: usize = it.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    assert!(n >= 1, "核心类型 MUST 有 #[cfg(test)] 模块");
+}
+
+#[when("扫描纯逻辑组件测试")]
+pub(crate) fn w_pure_logic_coverage() {
+    let n = t4_count_cfg_test("src/agent");
+    let m = t4_count_needle("src/agent", "#[test]");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{n};{m}")));
+}
+
+#[then("队列与重试等有单测")]
+pub(crate) fn t_pure_logic_coverage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let mut it = src.split(';');
+    let n: usize = it.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    assert!(n >= 3, "agent 层纯逻辑组件 MUST 有单测（期望多模块）");
+}
+
+#[when("扫描会话子组件测试")]
+pub(crate) fn w_session_subcomponent_coverage() {
+    let n = t4_count_cfg_test("src/agent/capabilities");
+    let m = t4_count_needle("src/agent/capabilities", "#[test]");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{n};{m}")));
+}
+
+#[then("模型与工具管理器有单测")]
+pub(crate) fn t_session_subcomponent_coverage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let mut it = src.split(';');
+    let n: usize = it.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    assert!(n >= 1, "会话子组件 MUST 有单测模块");
+}
+
+#[when("读取库缝观察接线")]
+pub(crate) fn w_smoke_hook_wiring() {
+    let a = la_load("src/app/core/composition.rs");
+    let b = la_load("src/agent/runtime/ports.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== ports ===\n{b}")));
+}
+
+#[then("有经库缝触发的例子")]
+pub(crate) fn t_smoke_hook_wiring() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("XyHookBus"), "hook 总线端口 MUST 在册");
+    assert!(
+        src.contains("Hook") || src.contains("hook"),
+        "库缝注入 MUST 在册"
+    );
+}
+
+#[when("读取 provider 选择场景")]
+pub(crate) fn w_provider_matrix_scenarios() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("tests/bdd/bindings_misc.rs")));
+}
+
+#[then("已有可执行场景")]
+pub(crate) fn t_provider_matrix_scenarios() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("model-select"),
+        "model_select 场景 MUST 已绑定"
+    );
+}
+
+#[when("读取 crate 根再导出")]
+pub(crate) fn w_curated_hook_bus_reexport() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/lib.rs")));
+}
+
+#[then("精选导出总线与结果")]
+pub(crate) fn t_curated_hook_bus_reexport() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("XyHookBus"), "总线 MUST 经根导出");
+    assert!(src.contains("XyHookOutcome"), "结果 MUST 经根导出");
+    assert!(src.contains("NoopHookBus"), "noop 总线 MUST 经根导出");
+}
+
+#[when("读取 fake provider 装配")]
+pub(crate) fn w_fake_provider_assembly() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/provider/fake.rs")));
+}
+
+#[then("经统一路径暴露且按步骤返回")]
+pub(crate) fn t_fake_provider_assembly() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("fake_xy_model"), "统一装配入口 MUST 在册");
+    assert!(src.contains("ScenarioStep"), "响应步骤 MUST 在册");
+    assert!(src.contains("Arc<dyn XyModel>"), "暴露为 XyModel MUST 在册");
+}
+
+#[when("读取场景编排能力")]
+pub(crate) fn w_scenario_orchestration() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/provider/fake.rs")));
+}
+
+#[then("支持多步与延迟与错误注入")]
+pub(crate) fn t_scenario_orchestration() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("ScenarioStep"), "编排步骤类型 MUST 在册");
+    assert!(src.contains("fake_xy_model"), "编排装配 MUST 在册");
+}

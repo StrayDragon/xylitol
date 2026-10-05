@@ -1158,3 +1158,145 @@ fn test_t3_source_info() {}
     name = "scope-enum-variants"
 )]
 fn test_t3_scope_enum() {}
+
+// test-infra r39-63（批 4）
+#[scenario(
+    path = "llmanspec/specs/test-infra/test-infra.feature",
+    name = "faux-provider-no-network"
+)]
+fn test_t4_faux() {}
+#[scenario(
+    path = "llmanspec/specs/test-infra/test-infra.feature",
+    name = "bdd-harness-step-typed"
+)]
+fn test_t4_harness() {}
+#[scenario(
+    path = "llmanspec/specs/test-infra/test-infra.feature",
+    name = "temp-file-raii-cleanup"
+)]
+fn test_t4_temp_raii() {}
+#[scenario(
+    path = "llmanspec/specs/test-infra/test-infra.feature",
+    name = "async-test-timeout-guard"
+)]
+fn test_t4_timeout() {}
+#[scenario(
+    path = "llmanspec/specs/test-infra/test-infra.feature",
+    name = "no-fixed-tmp-path"
+)]
+fn test_t4_no_fixed_tmp() {}
+#[scenario(
+    path = "llmanspec/specs/test-infra/test-infra.feature",
+    name = "tui-e2e-workspace-isolation"
+)]
+fn test_t4_tui_e2e() {}
+
+// test-provider-integration r1821-1826（批 4）
+#[scenario(
+    path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
+    name = "config-value-parser-boundary"
+)]
+fn test_t4_cfg_parser() {}
+#[scenario(
+    path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
+    name = "env-var-interpolation-branch"
+)]
+fn test_t4_env_interp() {}
+#[scenario(
+    path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
+    name = "shell-command-value-exec"
+)]
+fn test_t4_cfg_cmd() {}
+#[scenario(
+    path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
+    name = "provider-registration-config"
+)]
+fn test_t4_provider_cfg() {}
+#[scenario(
+    path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
+    name = "provider-impl-in-infra"
+)]
+fn test_t4_provider_layers() {}
+#[scenario(
+    path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
+    name = "provider-port-injection"
+)]
+fn test_t4_provider_port() {}
+
+// test-bdd r37/1811-1814（批 4）
+#[scenario(
+    path = "llmanspec/specs/test-bdd/test-bdd.feature",
+    name = "bdd-suite-fully-wired"
+)]
+fn test_t4_bdd_suite() {}
+#[scenario(
+    path = "llmanspec/specs/test-bdd/test-bdd.feature",
+    name = "server-integration-scenarios-bound"
+)]
+fn test_t4_server_scn() {}
+#[scenario(
+    path = "llmanspec/specs/test-bdd/test-bdd.feature",
+    name = "rstest-bdd-current"
+)]
+fn test_t4_rstest_version() {}
+#[scenario(
+    path = "llmanspec/specs/test-bdd/test-bdd.feature",
+    name = "live-feature-partition-bound"
+)]
+fn test_t4_bdd_binding() {}
+#[scenario(
+    path = "llmanspec/specs/test-bdd/test-bdd.feature",
+    name = "config-behavior-unit-covered"
+)]
+fn test_t4_cfg_unit() {}
+
+// test-standards r1834-1837（批 4）
+#[scenario(
+    path = "llmanspec/specs/test-standards/test-standards.feature",
+    name = "bdd-unit-boundary-doc"
+)]
+fn test_t4_boundary_doc() {}
+#[scenario(
+    path = "llmanspec/specs/test-standards/test-standards.feature",
+    name = "core-data-types-tested"
+)]
+fn test_t4_core_tests() {}
+#[scenario(
+    path = "llmanspec/specs/test-standards/test-standards.feature",
+    name = "pure-logic-components-tested"
+)]
+fn test_t4_pure_logic() {}
+#[scenario(
+    path = "llmanspec/specs/test-standards/test-standards.feature",
+    name = "session-subcomponents-tested"
+)]
+fn test_t4_subcomp() {}
+
+// test-hooks-wiring r1817-1819（批 4）
+#[scenario(
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "smoke-hook-wired"
+)]
+fn test_t4_smoke_hook() {}
+#[scenario(
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "provider-matrix-scenarios"
+)]
+fn test_t4_provider_matrix() {}
+#[scenario(
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "curated-hook-bus-reexport"
+)]
+fn test_t4_hook_reexport() {}
+
+// test-fake-provider r38/45（批 4）
+#[scenario(
+    path = "llmanspec/specs/test-fake-provider/test-fake-provider.feature",
+    name = "fake-provider-adapter-path"
+)]
+fn test_t4_fake_path() {}
+#[scenario(
+    path = "llmanspec/specs/test-fake-provider/test-fake-provider.feature",
+    name = "scenario-orchestration-shape"
+)]
+fn test_t4_scenario_shape() {}
