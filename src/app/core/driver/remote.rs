@@ -2510,7 +2510,7 @@ mod tests {
         );
         // 非阻塞排空 + 轮询：等到出现「与已落定快照同形」那一帧（相对判据，
         // 不靠固定 sleep 猜 poll 间隔；收集到的帧仍逐帧可查）。
-        let mut expected = serde_json::to_value(&snap).unwrap_or(Value::Null);
+        let mut expected;
         let mut frames: Vec<Value> = Vec::new();
         let mut matched: Option<Value> = None;
         let mut drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
