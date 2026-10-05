@@ -241,3 +241,53 @@ macro_rules! tool_call {
         }
     };
 }
+
+/// 异步集成测试主体超时包裹（r57：async-test-timeout）。
+///
+/// 默认 10 秒；测试主体一旦死锁或被 mock 卡住，超时使用例以 `Elapsed`
+/// 失败而非整个 suite 挂起，CI 不会因单点死锁而中断。
+pub(crate) async fn with_test_timeout<F, Fut>(
+    f: F,
+) -> Result<Fut::Output, tokio::time::error::Elapsed>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future,
+{
+    with_test_timeout_for(std::time::Duration::from_secs(10), f).await
+}
+
+/// [`with_test_timeout`] 的时长参数化变体（供测试覆盖超时路径）。
+pub(crate) async fn with_test_timeout_for<F, Fut>(
+    budget: std::time::Duration,
+    f: F,
+) -> Result<Fut::Output, tokio::time::error::Elapsed>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future,
+{
+    tokio::time::timeout(budget, f()).await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::{with_test_timeout, with_test_timeout_for};
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn completes_within_budget() {
+        let out = with_test_timeout(|| async { 42u32 })
+            .await
+            .expect("短主体 MUST 在默认预算内完成");
+        assert_eq!(out, 42);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn times_out_when_deadlocked() {
+        let out = with_test_timeout_for(Duration::from_millis(50), || async {
+            std::future::pending::<u32>().await
+        })
+        .await;
+        assert!(out.is_err(), "挂死主体 MUST 以超时失败而非挂起");
+    }
+}

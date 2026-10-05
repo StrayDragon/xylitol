@@ -126,8 +126,41 @@ fn which(name: &str) -> Option<PathBuf> {
     None
 }
 
+/// Directory of the current executable's binary (agent-bin injection target).
+pub fn current_exe_bin_dir() -> Option<std::path::PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(ToOwned::to_owned)
+}
+
+/// Build a shell environment with the agent bin directory **prepended** to
+/// PATH (r1494 shell-env). Uses [`std::env::split_paths`] / [`join_paths`]
+/// so the platform-specific separator (`:` / `;`) is handled correctly.
+pub fn shell_env_with_agent_bin(
+    mut base: std::collections::BTreeMap<String, String>,
+) -> std::collections::BTreeMap<String, String> {
+    let Some(bin) = current_exe_bin_dir() else {
+        return base;
+    };
+    let existing = base.get("PATH").cloned().unwrap_or_default();
+    let mut list: Vec<std::path::PathBuf> = std::env::split_paths(&existing).collect();
+    list.insert(0, bin.clone());
+    match std::env::join_paths(&list) {
+        Ok(joined) => {
+            base.insert("PATH".into(), joined.to_string_lossy().into_owned());
+        }
+        Err(_) => {
+            // 极端不可表示路径：保留原值，避免写出畸形 PATH。
+        }
+    }
+    base
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::*;
 
     #[test]
@@ -141,5 +174,28 @@ mod tests {
             );
             assert_eq!(config.args, vec!["-c"]);
         }
+    }
+
+    #[test]
+    fn test_shell_env_prepends_agent_bin() {
+        let mut base = BTreeMap::new();
+        base.insert("PATH".into(), "/usr/bin:/bin".into());
+        let env = shell_env_with_agent_bin(base);
+        let path = env.get("PATH").unwrap();
+        let mut list = std::env::split_paths(path);
+        let first = list.next().expect("PATH 非空");
+        let bin = current_exe_bin_dir().expect("current exe dir");
+        assert_eq!(first, bin, "agent bin MUST 前置");
+    }
+
+    #[test]
+    fn test_shell_env_without_path_creates_one() {
+        let base = BTreeMap::new();
+        let env = shell_env_with_agent_bin(base);
+        let path = env.get("PATH").expect("无 PATH 时 MUST 创建");
+        let mut list = std::env::split_paths(path);
+        let first = list.next().expect("PATH 非空");
+        let bin = current_exe_bin_dir().expect("current exe dir");
+        assert_eq!(first, bin);
     }
 }

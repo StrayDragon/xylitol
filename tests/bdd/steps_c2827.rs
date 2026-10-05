@@ -3261,14 +3261,31 @@ pub(crate) fn t_first_turn_gate() {
 
 #[when("读取 shell 环境装配边界")]
 pub(crate) fn w_shell_env_boundary() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/process/shell.rs")));
+    let mut base = std::collections::BTreeMap::new();
+    base.insert("PATH".into(), "/usr/bin:/bin".into());
+    let env = crate::infra::process::shell::shell_env_with_agent_bin(base);
+    let path = env.get("PATH").cloned().unwrap_or_default();
+    T2_PROC.with(|s| *s.borrow_mut() = Some((path, false, false)));
 }
 
 #[then("以 PATH 定位可执行 bash")]
 pub(crate) fn t_shell_env_boundary() {
-    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
-    assert!(src.contains("find_bash"), "跨平台 bash 定位 MUST 在册");
-    assert!(src.contains("PATH"), "定位 MUST 依 PATH 解析");
+    let (path, _, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已装配");
+    assert!(!path.is_empty(), "注入后 PATH MUST 非空");
+    let mut it = std::env::split_paths(&path);
+    let head = it.next().expect("PATH MUST 可解析");
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(ToOwned::to_owned))
+        .expect("current exe dir");
+    assert_eq!(head, bin, "agent bin 目录 MUST 前置");
+    assert!(
+        !crate::infra::process::shell::find_bash(Some(&head))
+            .shell
+            .to_string_lossy()
+            .is_empty(),
+        "agent bin 目录 MUST 可执行（bash 定位）"
+    );
 }
 
 #[when("读取外部工具进程回收边界")]
@@ -3551,10 +3568,17 @@ pub(crate) fn w_journal_read_recent() {
 pub(crate) fn t_journal_read_recent() {
     let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     assert!(
-        src.contains("load_entries") || src.contains("read_recent"),
-        "会话 store MUST 暴露可读近条目接口"
+        src.contains("async fn read_recent"),
+        "read_recent 接口 MUST 在协议端口"
     );
-    assert!(src.contains("load_leaf_branch"), "leaf→root 读取 MUST 在册");
+    assert!(
+        src.contains("load_entries") && src.contains("saturating_sub"),
+        "默认实现 MUST 基于全量读取截断"
+    );
+    assert!(
+        src.contains("read_recent_returns_last_n_in_append_order"),
+        "行为单测 MUST 在册"
+    );
 }
 
 #[when("读取导出 I/O 装配")]
@@ -3883,15 +3907,24 @@ pub(crate) fn t_temp_file_raii() {
 
 #[when("读取异步集成测试超时基建")]
 pub(crate) fn w_async_test_timeout() {
-    let n = t4_count_needle("tests", "tokio::time::timeout");
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(n.to_string()));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("tests/bdd/helpers.rs")));
 }
 
 #[then("包裹主体且防挂起")]
 pub(crate) fn t_async_test_timeout() {
     let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
-    let n: usize = src.parse().unwrap_or(0);
-    assert!(n >= 1, "异步测试 MUST 以超时包裹（防挂起）");
+    assert!(
+        src.contains("with_test_timeout"),
+        "with_test_timeout 辅助函数 MUST 在册"
+    );
+    assert!(
+        src.contains("with_test_timeout_for"),
+        "时长参数化变体 MUST 在册"
+    );
+    assert!(
+        src.contains("times_out_when_deadlocked"),
+        "挂死超时用例 MUST 在册"
+    );
 }
 
 #[when("扫描测试固定临时路径")]
