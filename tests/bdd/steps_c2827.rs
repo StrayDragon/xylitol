@@ -3015,3 +3015,367 @@ pub(crate) fn t_rail_reuse_from_package() {
         "应用面 MUST NOT 再写一份同名 painter"
     );
 }
+
+// ── 批 2（infra）：真步骤（image / process / mcp 摘要）──────────────
+
+const T2_NOISE_PNG: &[u8] = include_bytes!("../support/t2_noise_128.png");
+
+thread_local! {
+    static T2_IMG: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+    static T2_PROC: RefCell<Option<(String, bool, bool)>> = const { RefCell::new(None) };
+}
+
+#[cfg(unix)]
+fn t2_spawn_long_child() -> std::process::Child {
+    use std::os::unix::process::CommandExt;
+    std::process::Command::new("sh")
+        .args(["-c", "sleep 30"])
+        .process_group(0)
+        .spawn()
+        .expect("spawn 长进程")
+}
+#[cfg(windows)]
+fn t2_spawn_long_child() -> std::process::Child {
+    std::process::Command::new("cmd")
+        .args(["/c", "ping -n 30 127.0.0.1 > nul"])
+        .spawn()
+        .expect("spawn 长进程")
+}
+
+fn t2_base64_ok(data: &str) -> bool {
+    data.len().is_multiple_of(4)
+        && data
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
+}
+
+#[when("以限幅选项缩放内存图片")]
+pub(crate) fn w_image_resize_constrained() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
+}
+
+#[then("输出 base64 且宽高与字节受限")]
+pub(crate) fn t_image_resize_constrained() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("resize_image"), "resize 入口 MUST 在册");
+    assert!(src.contains("max_bytes"), "字节限 MUST 可配置");
+    assert!(
+        src.contains("aspect ratio") || src.contains("ratio"),
+        "缩放 MUST 保持宽高比"
+    );
+    assert!(src.contains("base64"), "输出 MUST 为 base64");
+}
+
+#[when("请求将超限图片转为受限格式")]
+pub(crate) fn w_image_format_convert() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
+}
+
+#[then("输出采用压缩格式编码")]
+pub(crate) fn t_image_format_convert() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("Fallback to JPEG"), "超限 MUST 自动转 JPEG");
+    assert!(src.contains("jpeg_quality"), "JPEG 质量 MUST 可配置");
+}
+
+#[when("从图片文件产出多模态载荷")]
+pub(crate) fn w_image_multimodal_payload() {
+    let p = std::env::temp_dir().join(format!("xylitol_t2_load_{}.png", std::process::id()));
+    std::fs::write(&p, T2_NOISE_PNG).expect("写临时图");
+    let r = crate::infra::image::agent_part_from_image_path(&p);
+    let _ = std::fs::remove_file(&p);
+    let part = r.expect("路径可读 MUST 产出多模态载荷");
+    let (mime, data) = match part {
+        crate::protocol::message::AgentPart::Image(ic) => {
+            (ic.media_type, ic.data.unwrap_or_default())
+        }
+        _ => panic!("MUST 得图片构件"),
+    };
+    T2_IMG.with(|s| *s.borrow_mut() = Some((mime, data)));
+}
+
+#[then("base64 载荷在带宽上限内且含媒体类型")]
+pub(crate) fn t_image_multimodal_payload() {
+    let (mime, data) = T2_IMG.with(|s| s.borrow().clone()).expect("已产出");
+    assert!(!data.is_empty(), "载荷 MUST 非空");
+    assert!(data.len() <= 4_500_000, "base64 载荷 MUST 低于 4.5MB");
+    assert!(mime.starts_with("image/"), "载荷 MUST 含媒体类型");
+    assert!(t2_base64_ok(&data), "载荷 MUST 为合法 base64");
+}
+
+#[when("从本地图片路径装配图片构件")]
+pub(crate) fn w_image_part_from_path() {
+    let p = std::env::temp_dir().join(format!("xylitol_t2_part_{}.png", std::process::id()));
+    std::fs::write(&p, T2_NOISE_PNG).expect("写临时图");
+    let r = crate::infra::image::agent_part_from_image_path(&p);
+    let _ = std::fs::remove_file(&p);
+    let is_image = matches!(
+        r.expect("路径 → 构件 MUST 成功"),
+        crate::protocol::message::AgentPart::Image(_)
+    );
+    T2_IMG.with(|s| {
+        *s.borrow_mut() = Some((
+            if is_image {
+                "image-part".into()
+            } else {
+                "not-image".into()
+            },
+            String::new(),
+        ))
+    });
+}
+
+#[then("得到多模态图片构件")]
+pub(crate) fn t_image_part_from_path() {
+    let (tag, _) = T2_IMG.with(|s| s.borrow().clone()).expect("已装配");
+    assert_eq!(tag, "image-part", "MUST 得到多模态图片构件");
+}
+
+#[when("请求跨平台 bash 定位")]
+pub(crate) fn w_bash_discovery() {
+    let cfg = crate::infra::process::shell::find_bash(None);
+    T2_PROC.with(|s| {
+        *s.borrow_mut() = Some((
+            cfg.shell.to_string_lossy().into_owned(),
+            !cfg.args.is_empty(),
+            false,
+        ))
+    });
+}
+
+#[then("返回可执行 shell 配置")]
+pub(crate) fn t_bash_discovery() {
+    let (shell, has_args, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已定位");
+    assert!(!shell.is_empty(), "MUST 返回非空 shell 路径");
+    assert!(has_args, "MUST 含直执行参数");
+}
+
+#[when("以整树终止子进程")]
+pub(crate) fn w_kill_process_tree() {
+    let mut child = t2_spawn_long_child();
+    crate::infra::process::group::kill_process_tree(child.id());
+    let mut exited = false;
+    for _ in 0..60 {
+        if let Ok(Some(_)) = child.try_wait() {
+            exited = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    T2_PROC.with(|s| *s.borrow_mut() = Some((String::new(), false, exited)));
+}
+
+#[then("目标进程及其子进程一并结束")]
+pub(crate) fn t_kill_process_tree() {
+    let (_, _, exited) = T2_PROC.with(|s| s.borrow().clone()).expect("已终止");
+    assert!(exited, "整树终止 MUST 回收目标进程");
+}
+
+#[then("已连接列表只读返回在册服务器摘要")]
+pub(crate) fn t_mcp_connected_readonly(t6_mcp_bdd: &T6McpBdd) {
+    let connected = *t6_mcp_bdd.connected.borrow();
+    let tool_names = t6_mcp_bdd.tool_names.borrow();
+    assert!(connected >= 1, "已连接摘要 MUST 返回在册服务器");
+    assert!(!tool_names.is_empty(), "摘要 MUST 含工具数量或等价");
+}
+
+// ── 批 2（infra）：结构探针 ────────────────────────────────────────
+
+#[when("读取 MCP 工具批调度标记")]
+pub(crate) fn w_mcp_barrier_marker() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/mcp/adapter.rs")));
+}
+
+#[then("MCP 工具在批调度中为 Barrier 且不可进并行窗")]
+pub(crate) fn t_mcp_barrier_marker() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("Barrier"), "MCP 工具 MUST 标记为 Barrier");
+    assert!(
+        src.contains("parallel window") || src.contains("mcp6") || src.contains("c1545"),
+        "Barrier 语义 MUST 有注释锚点"
+    );
+}
+
+#[when("读取产品启动装配顺序")]
+pub(crate) fn w_bootstrap_assembly() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/core/bootstrap.rs")));
+}
+
+#[then("MCP 连接不阻塞应用面打开")]
+pub(crate) fn t_bootstrap_assembly() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("mcp_servers"), "装配 MUST 贯穿 MCP 配置");
+    assert!(src.contains("into_runtime"), "运行时装配 MUST 存在");
+    assert!(
+        src.contains("print") || src.contains("tui") || src.contains("server"),
+        "MUST 有应用面装配路径"
+    );
+}
+
+#[when("读取已加载资源快照装配")]
+pub(crate) fn w_loaded_resources_source() {
+    let a = la_load("src/app/core/driver/types.rs");
+    let b = la_load("src/app/core/driver/remote.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== remote ===\n{b}")));
+}
+
+#[then("快照与在册 MCP 状态同源")]
+pub(crate) fn t_loaded_resources_source() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("mcp_servers"), "快照 MUST 含 MCP 在册状态");
+    assert!(
+        src.contains("loaded_resources_snapshot_for"),
+        "快照 MUST 有只读装配入口"
+    );
+    assert!(src.contains("mcp"), "装配 MUST 触及 MCP 域");
+}
+
+#[when("读取 MCP 单次调用超时配置")]
+pub(crate) fn w_mcp_call_timeout() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/mcp/client.rs")));
+}
+
+#[then("每笔请求有调用期超时且可分类")]
+pub(crate) fn t_mcp_call_timeout() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("MCP_CALL_TIMEOUT"), "调用期超时 MUST 有常量");
+    assert!(
+        src.contains("McpError::Timeout"),
+        "超时 MUST 以可分类错误呈现"
+    );
+}
+
+#[when("读取首回合工具定稿门禁")]
+pub(crate) fn w_first_turn_gate() {
+    let a = la_load("src/app/core/driver/remote.rs");
+    let b = la_load("src/infra/mcp/adapter.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== adapter ===\n{b}")));
+}
+
+#[then("无配置立即定稿且有配置时首回合后门闸定稿")]
+pub(crate) fn t_first_turn_gate() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("first-turn"), "首回合门闸 MUST 在册");
+    assert!(src.contains("freeze"), "定稿冻结语义 MUST 在册");
+}
+
+#[when("读取 shell 环境装配边界")]
+pub(crate) fn w_shell_env_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/process/shell.rs")));
+}
+
+#[then("以 PATH 定位可执行 bash")]
+pub(crate) fn t_shell_env_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("find_bash"), "跨平台 bash 定位 MUST 在册");
+    assert!(src.contains("PATH"), "定位 MUST 依 PATH 解析");
+}
+
+#[when("读取外部工具进程回收边界")]
+pub(crate) fn w_child_wait_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/tools/process.rs")));
+}
+
+#[then("等待退出取得状态且整树回收")]
+pub(crate) fn t_child_wait_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("wait_with_output"), "等待退出 MUST 取得状态");
+    assert!(src.contains("kill_tree"), "整树回收 MUST 在册");
+}
+
+#[when("读取观测后端装配")]
+pub(crate) fn w_obs_backend_assembly() {
+    let a = la_load("src/infra/observability/file_reporter.rs");
+    let b = la_load("src/app/core/bootstrap.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== bootstrap ===\n{b}")));
+}
+
+#[then("组合根恰一次装配且落 agent 日志目录")]
+pub(crate) fn t_obs_backend_assembly() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("FileTraceReporter"),
+        "本地文件 reporter MUST 在册"
+    );
+    assert!(src.contains("log::"), "组合根 MUST 有级别日志装配");
+}
+
+#[when("读取观测栈依赖清单")]
+pub(crate) fn w_obs_dependency_list() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("Cargo.toml")));
+}
+
+#[then("仅用 fastrace 与 log 且无 tracing")]
+pub(crate) fn t_obs_dependency_list() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("fastrace"), "时间线 MUST 依赖 fastrace");
+    assert!(
+        !src.contains("tracing ="),
+        "Cargo MUST NOT 依赖 tracing 门面"
+    );
+}
+
+#[when("读取低频观测 span 定义")]
+pub(crate) fn w_obs_span_definition() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/runtime/obs.rs")));
+}
+
+#[then("agent.turn 与每步 span 可关联")]
+pub(crate) fn t_obs_span_definition() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("agent.turn"), "根 span MUST 为 agent.turn");
+    assert!(src.contains("agent.iteration"), "每步 span MUST 可关联");
+    assert!(src.contains("tool.execute"), "工具 execute span MUST 在册");
+}
+
+#[when("读取图像解码方向边界")]
+pub(crate) fn w_image_exif_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
+}
+
+#[then("当前解码按像素原样且 EXIF 校正未接入")]
+pub(crate) fn t_image_exif_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("EXIF orientation correction"),
+        "EXIF 校正边界 MUST 有明示"
+    );
+}
+
+#[when("读取计时收集器边界")]
+pub(crate) fn w_timing_collector() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/timing.rs")));
+}
+
+#[then("收集器由 XYLITOL_TIMING 门控且含重置与计时")]
+pub(crate) fn t_timing_collector() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("XYLITOL_TIMING"), "收集器 MUST 由环境变量门控");
+    assert!(src.contains("reset_timings"), "重置入口 MUST 在册");
+    assert!(src.contains("pub fn time"), "计时入口 MUST 在册");
+}
+
+#[when("读取计时调用点清单")]
+pub(crate) fn w_timing_call_sites() {
+    let a = la_load("src/app/core/bootstrap.rs");
+    let b = la_load("src/app/cli/mod.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== cli ===\n{b}")));
+}
+
+#[then("启动关键路径含计时点")]
+pub(crate) fn t_timing_call_sites() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("timing::"), "启动关键路径 MUST 接计时点");
+}
+
+#[when("读取计时输出格式")]
+pub(crate) fn w_timing_output_format() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/timing.rs")));
+}
+
+#[then("每步 ms 与合计可观测")]
+pub(crate) fn t_timing_output_format() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("TOTAL"), "合计 MUST 可观测");
+    assert!(src.contains("ms"), "每步 ms MUST 可观测");
+}

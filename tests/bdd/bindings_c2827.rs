@@ -921,3 +921,118 @@ fn test_att_diff_package() {}
     name = "left-rail-reuses-package-painter"
 )]
 fn test_att_rail_package() {}
+
+// infra-mcp r1450-1453/1446（批 2）
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "connected-list-readonly"
+)]
+async fn test_t2_mcp_connected(t6_mcp_bdd: T6McpBdd) {}
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "mcp-tool-hard-barrier-scheduling"
+)]
+fn test_t2_mcp_barrier() {}
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "nonblocking-ui-parallel-startup"
+)]
+fn test_t2_mcp_nonblocking() {}
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "loaded-resources-live-mcp-source"
+)]
+fn test_t2_mcp_loaded_src() {}
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "call-phase-timeout-classified"
+)]
+fn test_t2_mcp_timeout() {}
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "first-turn-tool-freeze-gate"
+)]
+fn test_t2_mcp_first_turn() {}
+
+// infra-image r1440-1444（批 2）
+#[scenario(
+    path = "llmanspec/specs/infra-image/infra-image.feature",
+    name = "constrained-image-resize"
+)]
+fn test_t2_image_resize() {}
+#[scenario(
+    path = "llmanspec/specs/infra-image/infra-image.feature",
+    name = "exif-orientation-boundary"
+)]
+fn test_t2_image_exif() {}
+#[scenario(
+    path = "llmanspec/specs/infra-image/infra-image.feature",
+    name = "overlimit-image-format-convert"
+)]
+fn test_t2_image_convert() {}
+#[scenario(
+    path = "llmanspec/specs/infra-image/infra-image.feature",
+    name = "multimodal-payload-bounds"
+)]
+fn test_t2_image_multimodal() {}
+#[scenario(
+    path = "llmanspec/specs/infra-image/infra-image.feature",
+    name = "path-to-image-part"
+)]
+fn test_t2_image_part() {}
+
+// infra-process r1493-1496（批 2）
+#[scenario(
+    path = "llmanspec/specs/infra-process/infra-process.feature",
+    name = "bash-path-discovery"
+)]
+fn test_t2_proc_bash() {}
+#[scenario(
+    path = "llmanspec/specs/infra-process/infra-process.feature",
+    name = "shell-env-path-lookup"
+)]
+fn test_t2_proc_shell_env() {}
+#[scenario(
+    path = "llmanspec/specs/infra-process/infra-process.feature",
+    name = "kill-process-tree-reaps"
+)]
+fn test_t2_proc_kill_tree() {}
+#[scenario(
+    path = "llmanspec/specs/infra-process/infra-process.feature",
+    name = "child-wait-with-reap-guard"
+)]
+fn test_t2_proc_child_wait() {}
+
+// infra-observability r1461/1464/1465（批 2）
+#[scenario(
+    path = "llmanspec/specs/infra-observability/infra-observability.feature",
+    name = "compose-root-single-obs-sink"
+)]
+fn test_t2_obs_sink() {}
+#[scenario(
+    path = "llmanspec/specs/infra-observability/infra-observability.feature",
+    name = "fastrace-single-stack"
+)]
+fn test_t2_obs_stack() {}
+#[scenario(
+    path = "llmanspec/specs/infra-observability/infra-observability.feature",
+    name = "provider-trace-correlated-spans"
+)]
+fn test_t2_obs_spans() {}
+
+// infra-diagnostics r1437-1439（批 2）
+#[scenario(
+    path = "llmanspec/specs/infra-diagnostics/infra-diagnostics.feature",
+    name = "timing-collector-gated"
+)]
+fn test_t2_timing_collector() {}
+#[scenario(
+    path = "llmanspec/specs/infra-diagnostics/infra-diagnostics.feature",
+    name = "timing-points-on-critical-path"
+)]
+fn test_t2_timing_sites() {}
+#[scenario(
+    path = "llmanspec/specs/infra-diagnostics/infra-diagnostics.feature",
+    name = "timing-output-millis"
+)]
+fn test_t2_timing_output() {}
