@@ -2513,7 +2513,11 @@ mod tests {
         let mut expected;
         let mut frames: Vec<Value> = Vec::new();
         let mut matched: Option<Value> = None;
-        let mut drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        // 计时只在「曾收到帧」后启用：冷启动首帧可能晚于 snap 落定，若在
+        // 首帧前就按 5 秒收口会误判。收到帧后无进展才按窗口收口；
+        // 另设 30 秒绝对保险，防产品 watch 异常导致测试挂死。
+        let mut drain_deadline: Option<std::time::Instant> = None;
+        let hard_cap = std::time::Instant::now() + std::time::Duration::from_secs(30);
         loop {
             let before = frames.len();
             while let Ok(msg) = rx.try_recv() {
@@ -2533,10 +2537,16 @@ mod tests {
                 matched = Some(frame.clone());
                 break;
             }
-            // 有新帧即视为有进展，顺延 deadline；仅在无进展时按 5 秒收口。
+            if std::time::Instant::now() >= hard_cap {
+                break;
+            }
+            // 收到帧后无进展才按 5 秒收口（首帧前的等待无时限）。
             if frames.len() != before {
-                drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-            } else if std::time::Instant::now() >= drain_deadline {
+                drain_deadline =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+            } else if let Some(dl) = drain_deadline
+                && std::time::Instant::now() >= dl
+            {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
