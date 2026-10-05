@@ -1036,3 +1036,125 @@ fn test_t2_timing_sites() {}
     name = "timing-output-millis"
 )]
 fn test_t2_timing_output() {}
+
+// agent-todo r1118-1128/1120（批 3）
+#[scenario(
+    path = "llmanspec/specs/agent-todo/agent-todo.feature",
+    name = "todo-strict-model-shape"
+)]
+fn test_t3_todo_model() {}
+#[scenario(
+    path = "llmanspec/specs/agent-todo/agent-todo.feature",
+    name = "todo-snapshot-outside-prefix"
+)]
+fn test_t3_todo_snapshot() {}
+#[scenario(
+    path = "llmanspec/specs/agent-todo/agent-todo.feature",
+    name = "todo-concurrency-barrier"
+)]
+fn test_t3_todo_barrier() {}
+#[scenario(
+    path = "llmanspec/specs/agent-todo/agent-todo.feature",
+    name = "status-bar-read-only-boundary"
+)]
+fn test_t3_todo_status_bar() {}
+#[scenario(
+    path = "llmanspec/specs/agent-todo/agent-todo.feature",
+    name = "todo-builtins-first-turn-freeze"
+)]
+fn test_t3_todo_freeze() {}
+
+// agent-session-store r41/1114-1117/1116（批 3）
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "compaction-trigger-on-reserve-exceed"
+)]
+fn test_t3_compaction_trigger() {}
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "cwd-check-before-restore"
+)]
+fn test_t3_cwd_check() {}
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "session-manager-implements-port"
+)]
+fn test_t3_session_port() {}
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "journal-read-recent-boundary"
+)]
+fn test_t3_journal_recent() {}
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "export-io-port-injected"
+)]
+fn test_t3_export_io() {}
+
+// agent-session r1077/1080/1083/1084（批 3）
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "session-store-port-layered"
+)]
+fn test_t3_session_layers(ws: Workspace, agent: AgentState) {}
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "trust-outside-agent-layer"
+)]
+fn test_t3_trust_agent(ws: Workspace, agent: AgentState) {}
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "compaction-aware-session-context"
+)]
+fn test_t3_compaction_context(ws: Workspace, agent: AgentState) {}
+#[scenario(
+    path = "llmanspec/specs/agent-session/agent-session.feature",
+    name = "resume-single-import-path"
+)]
+fn test_t3_resume_path(ws: Workspace, agent: AgentState) {}
+
+// agent-llm-projection r1543/1559（批 3）
+#[scenario(
+    path = "llmanspec/specs/agent-llm-projection/agent-llm-projection.feature",
+    name = "session-vs-llm-vocab-boundary"
+)]
+fn test_t3_vocab_layers() {}
+#[scenario(
+    path = "llmanspec/specs/agent-llm-projection/agent-llm-projection.feature",
+    name = "projection-via-llm-project"
+)]
+fn test_t3_projection() {}
+
+// domain-security r66/71/1425（批 3）
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "bash-url-network-gate"
+)]
+fn test_t3_network_gate() {}
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "trust-single-source-of-truth"
+)]
+fn test_t3_trust_ssot() {}
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "permission-advice-only"
+)]
+fn test_t3_permission_advice() {}
+
+// runtime-resource-discovery r1766-1768（批 3）
+#[scenario(
+    path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
+    name = "resource-commands-reuse-loader"
+)]
+fn test_t3_resources_loader() {}
+#[scenario(
+    path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
+    name = "source-info-public-shape"
+)]
+fn test_t3_source_info() {}
+#[scenario(
+    path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
+    name = "scope-enum-variants"
+)]
+fn test_t3_scope_enum() {}

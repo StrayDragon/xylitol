@@ -45,16 +45,27 @@
   规则: 复用 loader
     资源命令 MUST 复用 DefaultResourceLoader 发现，而非独立重扫。
     # verified-by: src/app/cli/resources.rs
+
+    场景: resource-commands-reuse-loader
+      当 读取资源命令装配
+      那么 复用 DefaultResourceLoader 发现
   @req:r1767
   规则: 统一 SourceInfo 类型
     System MUST 提供公共 SourceInfo 类型，含 path、source、scope、origin、base_dir 字段。
     # （c2827 合并：r1768 Source 工厂与 r1769 Source 迁移均属统一 SourceInfo 类型的子条款，并入本条承载。）
     # verified-by: src/protocol/source_info.rs
+
+    场景: source-info-public-shape
+      当 读取资源来源信息类型
+      那么 公共 SourceInfo 含来源与作用域字段
   @req:r1768
-  @req:r1770
   规则: Scope 枚举
     SourceScope MUST 支持 user、project、temporary 变体，对齐 pi。
     # verified-by: src/protocol/source_info.rs
+
+    场景: scope-enum-variants
+      当 读取资源作用域枚举
+      那么 支持 user 与 project 与 temporary
   @req:r1760
   规则: 资源热重载
     DefaultResourceLoader MUST 提供 reload（或实现 XyReloadable）：清空缓存后重新发现 context/skills/themes/SYSTEM/APPEND；失败诊断 MUST 可观察；reload MUST NOT 修改会话历史文件；MUST NOT 发现 prompts 为 slash 模板。

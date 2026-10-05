@@ -86,6 +86,10 @@
   规则: 网络权限检查
     Bash 执行 SHALL 对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时）不在允许列表时，执行 SHALL 被阻止。
     # verified-by: llmanspec/specs/domain-security/domain-security.feature
+
+    场景: bash-url-network-gate
+      当 读取网络权限裁决
+      那么 域名按 allow/deny 列表裁决并默认拒绝
   @req:r1423
   规则: Permission trait
     System MUST 提供 protocol::XyPermission trait（自 XySandboxEngine 重命名），含 check_read(path)、check_write(path)、check_network(domain)、check_process(path)，返回 XyPermissionVerdict（自 XySandboxVerdict 重命名）。该 trait 为 ReAct 循环在工具分发前消费的进程内建议性 permission 门控，非安全边界。具体后端（禁用时 AllowAllPermission、配置模式匹配 GlobPolicy）位于 infra/。
@@ -106,6 +110,10 @@
   规则: 信任单一事实来源
     项目 trust 状态 MUST 在 infra 层 trust 模块有单一真源；agent 层 MUST NOT 含自有 trust store 或 trust resolver。
     # verified-by: src/AGENTS.md
+
+    场景: trust-single-source-of-truth
+      当 扫描信任存储真源
+      那么 项目 trust 状态在 infra 单点维护
   @req:r72
   规则: 信任持久化格式
     Trust 决策 MUST 持久化为 JSON 文件，映射规范绝对目录路径到布尔 trust 决策（true=trusted、false=untrusted）或 null（已清除）。store MUST 支持父目录继承：祖先目录上的 trust 决策适用于全部后代项目目录，除非被覆盖。
@@ -165,4 +173,8 @@
   规则: Permission 非安全边界
     文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。
     # verified-by: docs/architecture/信任与项目门禁.md
+
+    场景: permission-advice-only
+      当 读取权限边界文档
+      那么 明示建议性且不阻塞主机级访问
 # re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议信封常量与死变体清理。（2026-09-29）

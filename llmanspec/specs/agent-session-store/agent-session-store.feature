@@ -9,6 +9,10 @@
   规则: compaction
     当 CompactionSettings.enabled 且上下文占用超过 window−reserve（c1630）时，System MUST 在 agent/capabilities 回合落定后自动 compact（c1640）；MUST NOT 仅依赖百分比闸或仅 TUI 轮询。
     # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
+
+    场景: compaction-trigger-on-reserve-exceed
+      当 读取压缩触发边界
+      那么 按窗口与保留阈值在会话路径触发
   @req:r1090
   规则: JSONL 存储
     SessionManager MUST 将会话持久化为 v7 会话目录（位于 ~/.xylitol/sessions/），目录 MUST 由 manifest 提交指针、一个 active JSONL 段与零个或多个 sealed cold JSONL 段组成；每行仍是一个带版本标签的 JSON 对象，manifest MUST 是恢复时的 SSOT。
@@ -298,18 +302,34 @@
   规则: CWD 集成
     CLI 与 RPC 模式 MUST 在恢复会话前完成同一校验。
     # verified-by: llmanspec/specs/agent-session-store/agent-session-store.feature
+
+    场景: cwd-check-before-restore
+      当 读取恢复会话校验顺序
+      那么 恢复前完成同一 CWD 校验
   @req:r1115
   规则: SessionStore 端口实现
     infra 层的 SessionManager MUST 实现 protocol 的 XySessionStore 端口（append、load、load_context、exists），仅覆盖 agent 循环与 compaction 所需；完整会话面（fork、navigate、export）MAY 留在具体结构体供组合根直接使用。
     # verified-by: src/AGENTS.md
+
+    场景: session-manager-implements-port
+      当 读取会话存储端口实现
+      那么 infra SessionManager 实现协议端口
   @req:r1117
   规则: 日志访问
     会话 store MUST 暴露 read_recent(session_id, limit) -> Vec<Event> 供 server journal；journal 容量 MUST 可配置（默认 10000）。
     # verified-by: llmanspec/specs/server-core/server-core.feature
+
+    场景: journal-read-recent-boundary
+      当 读取会话日志访问接口
+      那么 read_recent 暴露给 server journal
   @req:r1116
   规则: ExportIo 实现
     System MUST 提供导出 I/O 端口实现（StdExportIo 或等价，tokio::fs 读写）；组合根 MUST 将导出协作器经该端口注入。
     # verified-by: llmanspec/specs/agent-session-store/agent-session-store.feature
+
+    场景: export-io-port-injected
+      当 读取导出 I/O 装配
+      那么 StdExportIo 经端口注入组合根
   @req:r1100
   规则: 磁盘格式时间戳
     Session 磁盘格式时间戳（header.timestamp 与条目壳 timestamp）MUST 为 u64 unix 毫秒数，与 message 内 timestamp 同基准；MUST NOT 写出 RFC3339 字符串作为磁盘格式时间戳。展示面需要人类可读时间时 MUST 在展示边格式化。

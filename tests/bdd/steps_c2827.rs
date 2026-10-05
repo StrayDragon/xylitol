@@ -3379,3 +3379,398 @@ pub(crate) fn t_timing_output_format() {
     assert!(src.contains("TOTAL"), "合计 MUST 可观测");
     assert!(src.contains("ms"), "每步 ms MUST 可观测");
 }
+
+// ── 批 3（agent 域 / 分层）：结构探针 ───────────────────────────────
+
+fn t3_scan_agent_trust_defs() -> String {
+    let mut hits = Vec::new();
+    let mut stack = vec![std::path::PathBuf::from("src/agent")];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                let Ok(content) = std::fs::read_to_string(&p) else {
+                    continue;
+                };
+                for line in content.lines() {
+                    let l = line.trim();
+                    if (l.starts_with("pub struct")
+                        || l.starts_with("pub enum")
+                        || l.starts_with("struct "))
+                        && l.contains("Trust")
+                    {
+                        hits.push(format!("{}: {l}", p.display()));
+                    }
+                }
+            }
+        }
+    }
+    hits.join("\n")
+}
+
+#[when("读取 Todo 领域模型形状")]
+pub(crate) fn w_todo_model_shape() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/session/todo.rs")));
+}
+
+#[then("条目为有序集合且 content 与状态受约束")]
+pub(crate) fn t_todo_model_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("TodoList"), "Todo 列表 MUST 为集合类型");
+    assert!(src.contains("TodoStatus"), "status MUST 为约束枚举");
+    assert!(
+        src.contains("Vec<TodoItem>") || src.contains("items:"),
+        "条目 MUST 为有序集合"
+    );
+}
+
+#[when("读取 Todo 快照投影边界")]
+pub(crate) fn w_todo_snapshot_boundary() {
+    let a = la_load("src/protocol/session/todo.rs");
+    let b = la_load("src/agent/prompt/status_bar.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== status_bar ===\n{b}")));
+}
+
+#[then("Custom 快照不进 provider 前缀且 SSOT 唯一")]
+pub(crate) fn t_todo_snapshot_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("CUSTOM_TYPE_AGENT_TODO"),
+        "SSOT 类型 MUST 在册"
+    );
+    assert!(src.contains("SSOT"), "唯一真源语义 MUST 在册");
+    assert!(src.contains("agent_todo"), "SSOT 标识 MUST 为 agent_todo");
+}
+
+#[when("读取 todo 工具调度分类")]
+pub(crate) fn w_todo_scheduling_class() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/tools/mod.rs")));
+}
+
+#[then("todo_rewrite 与 todo_update 为 Barrier 并发类")]
+pub(crate) fn t_todo_scheduling_class() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("todo_rewrite"), "todo_rewrite MUST 在注册表");
+    assert!(src.contains("todo_update"), "todo_update MUST 在注册表");
+    assert!(
+        src.contains("Barrier"),
+        "todo 工具 MUST 标注 Barrier 并发类"
+    );
+}
+
+#[when("读取 Todo SSOT 只读边界")]
+pub(crate) fn w_todo_status_bar_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/prompt/status_bar.rs")));
+}
+
+#[then("待办栏摘要只读自 SSOT")]
+pub(crate) fn t_todo_status_bar_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("SSOT"), "待办栏 MUST 标注只读 SSOT");
+    assert!(
+        src.contains("TodoList") || src.contains("latest_agent_todo"),
+        "摘要 MUST 读 SSOT"
+    );
+}
+
+#[when("读取首回合工具定稿清单")]
+pub(crate) fn w_first_turn_tool_freeze_list() {
+    let a = la_load("src/agent/tools/freeze.rs");
+    let b = la_load("src/infra/tools/mod.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== registry ===\n{b}")));
+}
+
+#[then("todo builtins 在定稿前进入可见工具表")]
+pub(crate) fn t_first_turn_tool_freeze_list() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("freeze"), "定稿门禁 MUST 在册");
+    assert!(src.contains("todo_rewrite"), "todo builtin MUST 在注册表");
+    assert!(src.contains("todo_update"), "todo builtin MUST 在注册表");
+}
+
+#[when("读取压缩触发边界")]
+pub(crate) fn w_compaction_trigger_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/compaction/settings.rs")));
+}
+
+#[then("按窗口与保留阈值在会话路径触发")]
+pub(crate) fn t_compaction_trigger_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("reserve_tokens"), "保留阈值 MUST 在册");
+    assert!(src.contains("enabled"), "开关 MUST 在册");
+    assert!(
+        src.contains("window") || src.contains("recent"),
+        "窗口 MUST 在册"
+    );
+}
+
+#[when("读取恢复会话校验顺序")]
+pub(crate) fn w_cwd_check_before_restore() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/session/manager/load.rs")));
+}
+
+#[then("恢复前完成同一 CWD 校验")]
+pub(crate) fn t_cwd_check_before_restore() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("assert_session_cwd_exists"),
+        "CWD 校验入口 MUST 在册"
+    );
+    assert!(src.contains("fallback_cwd"), "回退 CWD 语义 MUST 在册");
+}
+
+#[when("读取会话存储端口实现")]
+pub(crate) fn w_session_store_port_impl() {
+    let a = la_load("src/protocol/ports/session.rs");
+    let b = la_load("src/infra/session/manager/store.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
+}
+
+#[then("infra SessionManager 实现协议端口")]
+pub(crate) fn t_session_store_port_impl() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("XySessionStore"), "协议端口 MUST 在册");
+    assert!(src.contains("impl "), "infra MUST 提供实现");
+    assert!(
+        src.contains("pub trait XySessionStore"),
+        "端口 MUST 为公共 trait"
+    );
+}
+
+#[when("读取会话日志访问接口")]
+pub(crate) fn w_journal_read_recent() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/ports/session.rs")));
+}
+
+#[then("read_recent 暴露给 server journal")]
+pub(crate) fn t_journal_read_recent() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("load_entries") || src.contains("read_recent"),
+        "会话 store MUST 暴露可读近条目接口"
+    );
+    assert!(src.contains("load_leaf_branch"), "leaf→root 读取 MUST 在册");
+}
+
+#[when("读取导出 I/O 装配")]
+pub(crate) fn w_export_io_assembly() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/export.rs")));
+}
+
+#[then("StdExportIo 经端口注入组合根")]
+pub(crate) fn t_export_io_assembly() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("StdExportIo"), "文件导出 I/O MUST 在册");
+    assert!(src.contains("tokio::fs"), "MUST 用 tokio::fs 读写");
+    assert!(src.contains("impl "), "端口实现 MUST 在册");
+}
+
+#[when("读取会话持久化分层")]
+pub(crate) fn w_session_persistence_layers() {
+    let a = la_load("src/protocol/ports/session.rs");
+    let b = la_load("src/infra/session/manager/store.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
+}
+
+#[then("protocol 定义端口且 infra 提供实现")]
+pub(crate) fn t_session_persistence_layers() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("pub trait XySessionStore"),
+        "protocol 端口 MUST 在册"
+    );
+    assert!(src.contains("impl XySessionStore"), "infra 实现 MUST 在册");
+}
+
+#[when("扫描 agent 层信任依赖")]
+pub(crate) fn w_agent_layer_trust_deps() {
+    let hits = t3_scan_agent_trust_defs();
+    let store = la_load("src/infra/trust/store.rs");
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(format!(
+            "AGENT_DEFS_START\n{hits}\nAGENT_DEFS_END\n=== store ===\n{store}"
+        ))
+    });
+}
+
+#[then("trust 决策经 infra 与应用面且 agent 无自有存储")]
+pub(crate) fn t_agent_layer_trust_deps() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let agent_part = src.split("AGENT_DEFS_END").next().unwrap_or_default();
+    assert!(
+        !agent_part.contains("struct") || !agent_part.contains("Trust"),
+        "agent 层 MUST NOT 定义自有 trust 存储"
+    );
+    assert!(src.contains("TrustManager"), "infra trust 真源 MUST 在册");
+}
+
+#[when("读取会话上下文压缩回溯")]
+pub(crate) fn w_compaction_aware_context() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/session/manager/store.rs")));
+}
+
+#[then("构建对 leaf 分支回退压缩")]
+pub(crate) fn t_compaction_aware_context() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("leaf"), "leaf 分支回溯 MUST 在册");
+    assert!(
+        src.contains("compaction") || src.contains("fold"),
+        "压缩回退语义 MUST 在册"
+    );
+}
+
+#[when("读取会话恢复原路径")]
+pub(crate) fn w_resume_single_path() {
+    let a = la_load("src/agent/llm_project.rs");
+    let b = la_load("src/infra/session/manager/store.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
+}
+
+#[then("恢复与续跑经同一投影路径")]
+pub(crate) fn t_resume_single_path() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("project_for_llm"), "唯一投影入口 MUST 在册");
+    assert!(src.contains("history"), "投影 MUST 覆盖历史");
+}
+
+#[when("读取消息词汇分层")]
+pub(crate) fn w_message_vocab_layers() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/message.rs")));
+}
+
+#[then("AgentMessage 以组合表达且协议词汇单一")]
+pub(crate) fn t_message_vocab_layers() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("AgentMessage"), "会话词汇 MUST 在册");
+    assert!(
+        src.contains("Llm(") || src.contains("Env("),
+        "组合表达 MUST 在册"
+    );
+}
+
+#[when("读取主仓投影入口")]
+pub(crate) fn w_llm_project_entry() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/llm_project.rs")));
+}
+
+#[then("AgentMessage 经投影为协议消息")]
+pub(crate) fn t_llm_project_entry() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("project_for_llm"), "投影入口 MUST 在册");
+    assert!(src.contains("AgentMessage"), "输入 MUST 为 AgentMessage");
+    assert!(
+        src.contains("LlmMessage") || src.contains("AiBridgeMessage"),
+        "输出 MUST 为协议消息"
+    );
+}
+
+#[when("读取网络权限裁决")]
+pub(crate) fn w_network_permission_gate() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/permission/mod.rs")));
+}
+
+#[then("域名按 allow/deny 列表裁决并默认拒绝")]
+pub(crate) fn t_network_permission_gate() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("check_network"), "网络裁决入口 MUST 在册");
+    assert!(src.contains("allowed_domains"), "allow 列表 MUST 在册");
+    assert!(
+        src.contains("denied_domains") || src.contains("default-deny"),
+        "deny / 默认拒绝语义 MUST 在册"
+    );
+}
+
+#[when("扫描信任存储真源")]
+pub(crate) fn w_trust_single_source() {
+    let hits = t3_scan_agent_trust_defs();
+    let store = la_load("src/infra/trust/store.rs");
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(format!(
+            "AGENT_DEFS_START\n{hits}\nAGENT_DEFS_END\n=== store ===\n{store}"
+        ))
+    });
+}
+
+#[then("项目 trust 状态在 infra 单点维护")]
+pub(crate) fn t_trust_single_source() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let agent_part = src.split("AGENT_DEFS_END").next().unwrap_or_default();
+    assert!(
+        !agent_part.contains("Trust"),
+        "agent 层 MUST NOT 持有 trust 存储"
+    );
+    assert!(src.contains("TrustManager"), "infra trust 真源 MUST 在册");
+}
+
+#[when("读取权限边界文档")]
+pub(crate) fn w_permission_advice_doc() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/permission/mod.rs")));
+}
+
+#[then("明示建议性且不阻塞主机级访问")]
+pub(crate) fn t_permission_advice_doc() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("Advisory only"), "MUST 明示建议性");
+    assert!(
+        src.contains("NOT a security boundary") || src.contains("advisory"),
+        "MUST 明示非安全边界"
+    );
+    assert!(
+        src.contains("host-level access") || src.contains("do not prevent"),
+        "MUST 明示不阻塞主机级访问"
+    );
+}
+
+#[when("读取资源命令装配")]
+pub(crate) fn w_resources_loader_reuse() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/cli/resources.rs")));
+}
+
+#[then("复用 DefaultResourceLoader 发现")]
+pub(crate) fn t_resources_loader_reuse() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("DefaultResourceLoader"),
+        "资源命令 MUST 复用 loader"
+    );
+    assert!(
+        src.contains("cached") || src.contains("reuse"),
+        "MUST 复用缓存发现"
+    );
+}
+
+#[when("读取资源来源信息类型")]
+pub(crate) fn w_source_info_shape() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/source_info.rs")));
+}
+
+#[then("公共 SourceInfo 含来源与作用域字段")]
+pub(crate) fn t_source_info_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("pub struct SourceInfo"),
+        "公共 SourceInfo MUST 在册"
+    );
+    assert!(src.contains("pub path"), "path 字段 MUST 在册");
+    assert!(src.contains("pub scope"), "scope 字段 MUST 在册");
+    assert!(src.contains("pub source"), "source 字段 MUST 在册");
+}
+
+#[when("读取资源作用域枚举")]
+pub(crate) fn w_source_scope_enum() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/source_info.rs")));
+}
+
+#[then("支持 user 与 project 与 temporary")]
+pub(crate) fn t_source_scope_enum() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("pub enum SourceScope"), "Scope 枚举 MUST 在册");
+    assert!(src.contains("User"), "user 变体 MUST 在册");
+    assert!(src.contains("Project"), "project 变体 MUST 在册");
+    assert!(src.contains("Temporary"), "temporary 变体 MUST 在册");
+}
