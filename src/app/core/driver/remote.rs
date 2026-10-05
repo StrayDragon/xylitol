@@ -2510,11 +2510,12 @@ mod tests {
         );
         // 非阻塞排空 + 轮询：等到出现「与已落定快照同形」那一帧（相对判据，
         // 不靠固定 sleep 猜 poll 间隔；收集到的帧仍逐帧可查）。
-        let expected = serde_json::to_value(&snap).unwrap_or(Value::Null);
+        let mut expected = serde_json::to_value(&snap).unwrap_or(Value::Null);
         let mut frames: Vec<Value> = Vec::new();
         let mut matched: Option<Value> = None;
-        let drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         loop {
+            let before = frames.len();
             while let Ok(msg) = rx.try_recv() {
                 if let RpcMessage::ServerRequest {
                     method, payload, ..
@@ -2524,11 +2525,18 @@ mod tests {
                     frames.push(payload);
                 }
             }
+            // 每轮以「当前快照」为期望值重算：冷启动首轮可能晚于 snap 落定，
+            // 重算让判据始终是同一落定态的自反比较，而非与陈旧快照比对。
+            let current = host.loaded_resources_snapshot_for("res-watch").await;
+            expected = serde_json::to_value(&current).unwrap_or(Value::Null);
             if let Some(frame) = frames.iter().rev().find(|f| f["snapshot"] == expected) {
                 matched = Some(frame.clone());
                 break;
             }
-            if std::time::Instant::now() >= drain_deadline {
+            // 有新帧即视为有进展，顺延 deadline；仅在无进展时按 5 秒收口。
+            if frames.len() != before {
+                drain_deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            } else if std::time::Instant::now() >= drain_deadline {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
