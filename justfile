@@ -9,6 +9,10 @@ set unstable
 # - verbose: tool -v where useful; scripts get --verbose
 verbosity_default := env("JUST_VERBOSITY", "quiet")
 
+# Pinned toolchain first (rust-toolchain.toml lives in this repo; Homebrew stable
+# cargo reports a different version and makes `llman-sdd validate --specs` fail).
+export PATH := env_var_or_default("HOME", "/usr") + "/.cargo/bin:" + env_var("PATH")
+
 _default:
     @just --list
     @python3 scripts/doctor_dev_env.py
@@ -407,7 +411,8 @@ qa verbosity=verbosity_default: \
     (doc-test verbosity) \
     (check-tui-tokens verbosity) \
     (check-scripts-wired verbosity) \
-    (check-scripts verbosity)
+    (check-scripts verbosity) \
+    (spec-validate verbosity)
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{verbosity}}" in
@@ -423,6 +428,24 @@ qa verbosity=verbosity_default: \
         prek -v run --all-files
         ;;
     esac
+
+# SDD contract sweep: index rebuild + strict validate (part of `just qa`) and the
+# review counters. `index rebuild` first — a stale index inflates warning counts.
+sdd:
+    llman-sdd index rebuild
+    @llman-sdd validate --all --strict
+    @llman-sdd review
+
+# Strict specs/change validate (wired into `just qa`; deterministic, no network).
+[arg('verbosity', pattern='quiet|normal|verbose')]
+spec-validate verbosity=verbosity_default:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ "{{verbosity}}" == "quiet" ]]; then
+      llman-sdd validate --all --strict | tail -n 8
+    else
+      llman-sdd validate --all --strict
+    fi
 
 # Full gate including TUI layer-5 E2E (portable-pty + tmux; #[ignore]).
 [arg('verbosity', pattern='quiet|normal|verbose')]
