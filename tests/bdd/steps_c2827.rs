@@ -3350,12 +3350,15 @@ pub(crate) fn w_image_exif_boundary() {
     LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
 }
 
-#[then("当前解码按像素原样且 EXIF 校正未接入")]
+#[then("解码应用 EXIF 定向且像素校正在册")]
 pub(crate) fn t_image_exif_boundary() {
     let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("read_exif_orientation"), "EXIF 读取 MUST 在册");
+    assert!(src.contains("apply_orientation"), "像素校正 MUST 在册");
+    assert!(src.contains("Orientation::from_exif"), "方向转换 MUST 在册");
     assert!(
-        src.contains("EXIF orientation correction"),
-        "EXIF 校正边界 MUST 有明示"
+        src.contains("exif_orientation_6_swaps_dimensions"),
+        "行为单测 MUST 在册"
     );
 }
 

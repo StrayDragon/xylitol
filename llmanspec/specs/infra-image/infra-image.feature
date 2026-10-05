@@ -20,7 +20,7 @@
 
     场景: exif-orientation-boundary
       当 读取图像解码方向边界
-      那么 当前解码按像素原样且 EXIF 校正未接入
+      那么 解码应用 EXIF 定向且像素校正在册
   @req:r1442
   规则: format-convert
     System MUST 支持常见图片格式（PNG、JPEG、WebP）互转，需要缩小时自动选择 JPEG 与可配置 quality。
