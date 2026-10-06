@@ -206,7 +206,11 @@ async fn one_call(
         ..Default::default()
     };
     let mut stream = adapter
-        .generate(vec![AiBridgeMessage::user(format!("{prefix}\n{user}"))], &[], opts)
+        .generate(
+            vec![AiBridgeMessage::user(format!("{prefix}\n{user}"))],
+            &[],
+            opts,
+        )
         .await
         .unwrap_or_else(|e| panic!("generate failed: {e}"));
     let mut usage = None;
