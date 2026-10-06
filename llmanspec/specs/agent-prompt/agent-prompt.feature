@@ -111,3 +111,5 @@
       假如 Responses 组装且 system_prompt 非空且 thinking_level 为 medium
       当 转换为 input items
       那么 首项 role 为 developer 且 content 为 system_prompt
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

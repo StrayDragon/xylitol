@@ -362,3 +362,5 @@
       当 提交 busy-Allow 且执行类为 Queued 的 /session-export
       那么 该命令 MUST 在 bang 结束前不执行
       并且 循环归还后 MUST 照常执行且 MUST NOT 丢失
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

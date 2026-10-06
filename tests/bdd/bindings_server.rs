@@ -1,5 +1,5 @@
-use crate::tests::bdd::steps_c2827::{T2EstBdd, t2_est_bdd};
-use crate::tests::bdd::steps_server::{ServerTest, approval_test, server_test};
+use crate::bdd::steps_c2827::{T2EstBdd, t2_est_bdd};
+use crate::bdd::steps_server::{ServerTest, approval_test, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

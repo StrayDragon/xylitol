@@ -62,7 +62,7 @@ pub struct AgentRuntime {
 }
 
 impl AgentRuntime {
-    pub(crate) fn new(mut inner: AgentCapabilities) -> Self {
+    pub fn new(mut inner: AgentCapabilities) -> Self {
         let coordinator = SharedRunCoordinator::new();
         let probe_coord = coordinator.clone();
         inner.set_midturn_active_probe(Arc::new(move || {

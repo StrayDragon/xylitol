@@ -23,3 +23,5 @@
       当 读取主仓投影入口
       那么 AgentMessage 经投影为协议消息
 # re-review(c2835): 复审结论——本 capability 管辖行为不变；协议侧改动是 JSON-RPC 载体收口（id 逐字回显、-32600 形状、PROTOCOL_VERSION 3、删 ServerHello/ClientResponse 死变体），投影词表未动。（2026-09-29）
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

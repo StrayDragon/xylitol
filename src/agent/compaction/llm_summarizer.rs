@@ -202,10 +202,7 @@ pub fn serialize_conversation(messages: &[AgentMessage]) -> String {
 // ── Summary generation ─────────────────────────────────────────────
 
 /// Append pi-style `Additional focus:` when non-empty instructions are present.
-pub(crate) fn with_additional_focus(
-    base_prompt: &str,
-    custom_instructions: Option<&str>,
-) -> String {
+pub fn with_additional_focus(base_prompt: &str, custom_instructions: Option<&str>) -> String {
     match custom_instructions.map(str::trim).filter(|s| !s.is_empty()) {
         Some(instr) => format!("{base_prompt}\n\nAdditional focus: {instr}"),
         None => base_prompt.to_string(),

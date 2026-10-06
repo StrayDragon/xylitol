@@ -23,12 +23,12 @@
 
 pub mod attach;
 pub mod bang_exec;
-pub(crate) mod bootstrap;
-pub(crate) mod composition;
-pub(crate) mod dispatch;
-pub(crate) mod driver;
+pub mod bootstrap;
+pub mod composition;
+pub mod dispatch;
+pub mod driver;
 pub(crate) mod driver_error;
-pub(crate) mod host_client;
+pub mod host_client;
 pub(crate) mod lag;
 pub(crate) mod mcp_spec;
 pub mod product_commands;

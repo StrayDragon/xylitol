@@ -5,16 +5,16 @@
 //! 会话树 fork·help·label·debug fixture / 输入补全族 / 超大 diff 截断 /
 //! trust Esc=deny / print 嵌入同进程。
 
-use crate::app::core::driver::ModelInfo;
-use crate::app::tui::TuiHostEvent as HostEvent;
-use crate::app::tui::TuiHostSession as HostSession;
-use crate::app::tui::UiEntry;
-use crate::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
-use crate::tests::bdd::fixtures::AgentState;
-use crate::tests::bdd::prelude::*;
-use crate::tests::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
+use crate::bdd::fixtures::AgentState;
+use crate::bdd::prelude::*;
+use crate::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
+use xylitol::app::core::driver::ModelInfo;
+use xylitol::app::tui::TuiHostEvent as HostEvent;
+use xylitol::app::tui::TuiHostSession as HostSession;
+use xylitol::app::tui::UiEntry;
+use xylitol::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
 use xylitol_tui::Component;
 
 // ── fixtures / helpers ───────────────────────────────────────────
@@ -105,7 +105,7 @@ fn key_event(
 /// 单发 Esc 的延迟输入流（挂起 bang 的中止注入，r1279）。
 fn c2827_esc_stream(
     after_ms: u64,
-) -> impl futures::Stream<Item = Result<HostEvent, crate::XyDriverError>> {
+) -> impl futures::Stream<Item = Result<HostEvent, xylitol::XyDriverError>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(after_ms)).await;
@@ -176,7 +176,7 @@ pub(crate) fn g_c2827_tiny_terminal(host_pump_bdd: &HostPumpBdd) {
         .expect("resize to tiny");
     assert_eq!(
         pump.session.mode(),
-        crate::app::tui::LayoutMode::TooSmall,
+        xylitol::app::tui::LayoutMode::TooSmall,
         "c2827: 前置应为 TooSmall 布局"
     );
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
@@ -187,7 +187,7 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_host(host_pump_bdd);
     assert_eq!(
         pump.session.mode(),
-        crate::app::tui::LayoutMode::TooSmall,
+        xylitol::app::tui::LayoutMode::TooSmall,
         "c2827: 极端尺寸应切 TooSmall 布局"
     );
     let frames_before = pump.session.engine_frame_count();
@@ -205,8 +205,8 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵提交挂起 bang 并注入事件后按 Esc")]
 pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
-    use crate::app::core::driver::XyDriver as _;
-    use crate::app::tui::harness::drain_pending;
+    use xylitol::app::core::driver::XyDriver as _;
+    use xylitol::app::tui::harness::drain_pending;
 
     let mut pump = fresh_pump();
     pump.driver.set_hang_bash_until_abort(true);
@@ -215,7 +215,7 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
     pump.session
         .step(HostEvent::Input(enter_event()))
         .expect("enter");
-    let mut stream: Option<crate::app::core::driver::EventStream> = None;
+    let mut stream: Option<xylitol::app::core::driver::EventStream> = None;
     drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("drain start");
@@ -232,13 +232,13 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
         },
         XyEvent::AgentEnd { messages: vec![] },
     ]);
-    let mut agent_stream: Option<crate::app::core::driver::EventStream> =
+    let mut agent_stream: Option<xylitol::app::core::driver::EventStream> =
         Some(pump.driver.run("bg").await);
     let bash = pump
         .session
         .take_bash()
         .expect("hanging bang pending after drain");
-    crate::app::tui::harness::run_interactive_bang(
+    xylitol::app::tui::harness::run_interactive_bang(
         &mut pump.session,
         &mut pump.driver,
         bash,
@@ -302,7 +302,7 @@ pub(crate) async fn w_c2827_resume_with_current(host_pump_bdd: &HostPumpBdd, cmd
     let mut pump = take_host(host_pump_bdd);
     let current = pump.driver.active_session_id();
     pump.driver
-        .set_session_list(vec![crate::protocol::ports::SessionListEntry {
+        .set_session_list(vec![xylitol::protocol::ports::SessionListEntry {
             id: current,
             name: Some("当前样本".into()),
             first_message: Some("预览".into()),
@@ -474,7 +474,7 @@ pub(crate) async fn w_c2827_tree_fork(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_host(host_pump_bdd);
     // fork 执行器经 get_messages 解析选中条目——同步样例消息。
     pump.driver
-        .set_session_messages(crate::app::tui::harness::harness_sample_session_messages());
+        .set_session_messages(xylitol::app::tui::harness::harness_sample_session_messages());
     pump.session
         .step(HostEvent::Input(key_event(
             crossterm::event::KeyCode::Char('f'),
@@ -843,7 +843,7 @@ pub(crate) fn t_c2827_print_embed_done(host_pump_bdd: &HostPumpBdd) {
 
 pub struct T2EstBdd {
     pub entries: RefCell<Vec<SessionEntry>>,
-    pub est: RefCell<Option<crate::protocol::model::ContextTokenEstimate>>,
+    pub est: RefCell<Option<xylitol::protocol::model::ContextTokenEstimate>>,
 }
 
 #[fixture]
@@ -856,10 +856,10 @@ pub fn t2_est_bdd() -> T2EstBdd {
 
 fn t2_assistant_entry(
     id: &str,
-    usage: crate::protocol::message::XyUsage,
-    stop: crate::protocol::message::XyStopReason,
+    usage: xylitol::protocol::message::XyUsage,
+    stop: xylitol::protocol::message::XyStopReason,
 ) -> SessionEntry {
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
     let asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
         content: vec![AgentPart::text("ok")],
         stop_reason: Some(stop),
@@ -885,7 +885,7 @@ fn t2_assistant_entry(
 
 #[given("会话条目含 stop 回合的 usage 锚点")]
 pub(crate) fn g_t2_anchor_stop(t2_est_bdd: &T2EstBdd) {
-    use crate::protocol::message::{AgentMessage, XyStopReason, XyUsage};
+    use xylitol::protocol::message::{AgentMessage, XyStopReason, XyUsage};
     *t2_est_bdd.entries.borrow_mut() = vec![
         SessionEntry::Message(MessageEntry {
             base: EntryBase {
@@ -911,7 +911,7 @@ pub(crate) fn g_t2_anchor_stop(t2_est_bdd: &T2EstBdd) {
 
 #[given("会话条目仅含 abort 回合的 usage 锚点")]
 pub(crate) fn g_t2_anchor_aborted(t2_est_bdd: &T2EstBdd) {
-    use crate::protocol::message::{AgentMessage, XyStopReason, XyUsage};
+    use xylitol::protocol::message::{AgentMessage, XyStopReason, XyUsage};
     *t2_est_bdd.entries.borrow_mut() = vec![
         SessionEntry::Message(MessageEntry {
             base: EntryBase {
@@ -938,9 +938,9 @@ pub(crate) fn g_t2_anchor_aborted(t2_est_bdd: &T2EstBdd) {
 #[when("以同源估计器估计上下文")]
 pub(crate) fn w_t2_estimate(t2_est_bdd: &T2EstBdd) {
     let entries = t2_est_bdd.entries.borrow().clone();
-    let est = crate::agent::compaction::token_estimator::estimate_from_session_entries(
+    let est = xylitol::agent::compaction::token_estimator::estimate_from_session_entries(
         &entries,
-        &crate::agent::compaction::token_estimator::EstimateOpts::default(),
+        &xylitol::agent::compaction::token_estimator::EstimateOpts::default(),
     );
     *t2_est_bdd.est.borrow_mut() = Some(est);
 }
@@ -950,7 +950,7 @@ pub(crate) fn t_t2_prov_api(t2_est_bdd: &T2EstBdd) {
     let est = t2_est_bdd.est.borrow().as_ref().expect("estimate").clone();
     assert_eq!(
         est.provenance,
-        crate::protocol::model::TokenProvenance::Api,
+        xylitol::protocol::model::TokenProvenance::Api,
         "c2827: stop 回合 usage 应为 Api 锚点"
     );
 }
@@ -960,7 +960,7 @@ pub(crate) fn t_t2_prov_not_api(t2_est_bdd: &T2EstBdd) {
     let est = t2_est_bdd.est.borrow().as_ref().expect("estimate").clone();
     assert_ne!(
         est.provenance,
-        crate::protocol::model::TokenProvenance::Api,
+        xylitol::protocol::model::TokenProvenance::Api,
         "c2827: abort 回合 usage MUST NOT 作 Api 锚点"
     );
 }
@@ -968,8 +968,8 @@ pub(crate) fn t_t2_prov_not_api(t2_est_bdd: &T2EstBdd) {
 // ── agent-prompt r1017：Available tools 无 mcp 名 ────────────────
 
 #[given("工具片段含 mcp 前缀工具")]
-pub(crate) fn g_t2_mcp_snippets(prompt_bdd: &crate::tests::bdd::steps_bridge::PromptBdd) {
-    use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
+pub(crate) fn g_t2_mcp_snippets(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
+    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
     let opts = SystemPromptOpts {
         selected_tools: vec!["read".into(), "bash".into(), "mcp__fs__read".into()],
         tool_snippets: vec![
@@ -983,7 +983,7 @@ pub(crate) fn g_t2_mcp_snippets(prompt_bdd: &crate::tests::bdd::steps_bridge::Pr
 }
 
 #[when("以默认路径组装系统提示")]
-pub(crate) fn w_t2_build_default(prompt_bdd: &crate::tests::bdd::steps_bridge::PromptBdd) {
+pub(crate) fn w_t2_build_default(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
     assert!(
         !prompt_bdd.prompt.borrow().is_empty(),
         "c2827: given 应已组装系统提示"
@@ -991,7 +991,7 @@ pub(crate) fn w_t2_build_default(prompt_bdd: &crate::tests::bdd::steps_bridge::P
 }
 
 #[then("系统提示不含 mcp 工具名且含 MCP 引导句")]
-pub(crate) fn t_t2_no_mcp_names(prompt_bdd: &crate::tests::bdd::steps_bridge::PromptBdd) {
+pub(crate) fn t_t2_no_mcp_names(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
     let p = prompt_bdd.prompt.borrow();
     assert!(
         !p.contains("mcp__fs__read"),
@@ -1007,7 +1007,7 @@ pub(crate) fn t_t2_no_mcp_names(prompt_bdd: &crate::tests::bdd::steps_bridge::Pr
 // ── agent-prompt r1023 / r1024：资源与技能热应用 ─────────────────
 
 pub struct T2CapsBdd {
-    pub caps: RefCell<Option<crate::agent::capabilities::AgentCapabilities>>,
+    pub caps: RefCell<Option<xylitol::agent::capabilities::AgentCapabilities>>,
 }
 
 #[fixture]
@@ -1017,17 +1017,16 @@ pub fn t2_caps_bdd() -> T2CapsBdd {
     }
 }
 
-fn t2_make_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::tests::bdd::fixtures::AgentState) {
+fn t2_make_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::bdd::fixtures::AgentState) {
     let dir = tempfile::tempdir().unwrap();
-    let mgr = crate::infra::session::SessionManager::new(dir.keep());
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let caps =
-        crate::tests::bdd::steps_domain_compaction_extra::make_test_capabilities(agent, store);
+    let mgr = xylitol::infra::session::SessionManager::new(dir.keep());
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let caps = crate::bdd::steps_domain_compaction_extra::make_test_capabilities(agent, store);
     *t2_caps_bdd.caps.borrow_mut() = Some(caps);
 }
 
 #[given("Agent 能力聚合体已就绪")]
-pub(crate) fn g_t2_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::tests::bdd::fixtures::AgentState) {
+pub(crate) fn g_t2_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::bdd::fixtures::AgentState) {
     t2_make_caps(t2_caps_bdd, agent);
 }
 
@@ -1056,14 +1055,14 @@ pub(crate) fn t_t2_rebuilt(t2_caps_bdd: &T2CapsBdd) {
 #[when("热应用技能目录 greet")]
 pub(crate) fn w_t2_apply_skills(t2_caps_bdd: &T2CapsBdd) {
     let mut caps = t2_caps_bdd.caps.borrow_mut().take().expect("caps");
-    caps.apply_skills(vec![crate::protocol::resource::SkillInfo {
+    caps.apply_skills(vec![xylitol::protocol::resource::SkillInfo {
         name: "greet".into(),
         description: Some("greets".into()),
-        source_info: crate::protocol::source_info::SourceInfo {
+        source_info: xylitol::protocol::source_info::SourceInfo {
             path: std::path::PathBuf::from("/tmp/greet/SKILL.md"),
             source: "local".into(),
-            scope: crate::protocol::source_info::SourceScope::Temporary,
-            origin: crate::protocol::source_info::SourceOrigin::TopLevel,
+            scope: xylitol::protocol::source_info::SourceScope::Temporary,
+            origin: xylitol::protocol::source_info::SourceOrigin::TopLevel,
             base_dir: None,
         },
         disable_model_invocation: false,
@@ -1089,7 +1088,7 @@ pub(crate) fn t_t2_skills_listed(t2_caps_bdd: &T2CapsBdd) {
 // ── agent-prompt r1025：$name 注入 ───────────────────────────────
 
 pub struct T2SkillBdd {
-    pub skills: RefCell<Vec<crate::protocol::resource::SkillInfo>>,
+    pub skills: RefCell<Vec<xylitol::protocol::resource::SkillInfo>>,
     pub expanded: RefCell<String>,
 }
 
@@ -1113,14 +1112,14 @@ pub(crate) fn g_t2_skill_loaded(t2_skill_bdd: &T2SkillBdd, body: String) {
     .expect("write skill");
     // tempdir drop 会删文件——保留到进程尾（测试场景内足够）。
     std::mem::forget(dir);
-    *t2_skill_bdd.skills.borrow_mut() = vec![crate::protocol::resource::SkillInfo {
+    *t2_skill_bdd.skills.borrow_mut() = vec![xylitol::protocol::resource::SkillInfo {
         name: "greet".into(),
         description: None,
-        source_info: crate::protocol::source_info::SourceInfo {
+        source_info: xylitol::protocol::source_info::SourceInfo {
             path,
             source: "local".into(),
-            scope: crate::protocol::source_info::SourceScope::Temporary,
-            origin: crate::protocol::source_info::SourceOrigin::TopLevel,
+            scope: xylitol::protocol::source_info::SourceScope::Temporary,
+            origin: xylitol::protocol::source_info::SourceOrigin::TopLevel,
             base_dir: None,
         },
         disable_model_invocation: false,
@@ -1131,7 +1130,7 @@ pub(crate) fn g_t2_skill_loaded(t2_skill_bdd: &T2SkillBdd, body: String) {
 pub(crate) fn w_t2_expand(t2_skill_bdd: &T2SkillBdd) {
     let skills = t2_skill_bdd.skills.borrow().clone();
     let out =
-        crate::agent::prompt::skill_expand::expand_skill_refs("请执行 $greet 与 $nope", &skills);
+        xylitol::agent::prompt::skill_expand::expand_skill_refs("请执行 $greet 与 $nope", &skills);
     *t2_skill_bdd.expanded.borrow_mut() = out;
 }
 
@@ -1160,7 +1159,7 @@ pub fn t2_schema_bdd() -> T2SchemaBdd {
 
 #[when("检查内置工具的参数 schema")]
 pub(crate) fn w_t2_check_schemas(t2_schema_bdd: &T2SchemaBdd) {
-    let schemas = crate::infra::tools::default_tools()
+    let schemas = xylitol::infra::tools::default_tools()
         .iter()
         .map(|t| (t.name().to_string(), t.parameters_schema()))
         .collect();
@@ -1204,8 +1203,8 @@ pub(crate) fn t_t2_fs_no_timeout(t2_schema_bdd: &T2SchemaBdd) {
 // ── agent-todo：SSOT 网关与两工具语义（r1119/r1121/r1123/r1125/r1126/r1842）──
 
 pub struct T2TodoBdd {
-    pub gw: RefCell<Option<Arc<crate::infra::tools::todo::SessionAgentTodoGateway>>>,
-    pub store: RefCell<Option<Arc<dyn crate::protocol::ports::XySessionStore>>>,
+    pub gw: RefCell<Option<Arc<xylitol::infra::tools::todo::SessionAgentTodoGateway>>>,
+    pub store: RefCell<Option<Arc<dyn xylitol::protocol::ports::XySessionStore>>>,
     pub sid: RefCell<String>,
     pub last_err: RefCell<Option<String>>,
 }
@@ -1225,14 +1224,14 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
         return;
     }
     let dir = tempfile::tempdir().unwrap();
-    let mgr = crate::infra::session::SessionManager::new(dir.path().to_path_buf());
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let mgr = xylitol::infra::session::SessionManager::new(dir.path().to_path_buf());
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let sid = "s-todo-c2827".to_string();
     let sid2 = sid.clone();
     futures::executor::block_on(async {
         store.create(&sid2, Some("/tmp"), None).await.unwrap();
     });
-    let gw = crate::infra::tools::todo::SessionAgentTodoGateway::new(store.clone());
+    let gw = xylitol::infra::tools::todo::SessionAgentTodoGateway::new(store.clone());
     futures::executor::block_on(gw.bind_session(Some(sid.clone())));
     *t2_todo_bdd.sid.borrow_mut() = sid;
     *t2_todo_bdd.store.borrow_mut() = Some(store);
@@ -1243,26 +1242,26 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
 fn t2_rewrite(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
     t2_todo_mount(t2_todo_bdd);
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    let tools = crate::infra::tools::todo::todo_tools(gw);
+    let tools = xylitol::infra::tools::todo::todo_tools(gw);
     let tool = tools
         .iter()
         .find(|t| t.name() == "todo_rewrite")
         .expect("todo_rewrite")
         .clone();
-    let ctx = crate::protocol::ports::XyToolCtx::new("c2827");
+    let ctx = xylitol::protocol::ports::XyToolCtx::new("c2827");
     futures::executor::block_on(async { tool.execute(&ctx, items).await })
         .map_err(|e| e.to_string())
 }
 
 fn t2_update(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    let tools = crate::infra::tools::todo::todo_tools(gw);
+    let tools = xylitol::infra::tools::todo::todo_tools(gw);
     let tool = tools
         .iter()
         .find(|t| t.name() == "todo_update")
         .expect("todo_update")
         .clone();
-    let ctx = crate::protocol::ports::XyToolCtx::new("c2827u");
+    let ctx = xylitol::protocol::ports::XyToolCtx::new("c2827u");
     futures::executor::block_on(async { tool.execute(&ctx, items).await })
         .map_err(|e| e.to_string())
 }
@@ -1333,7 +1332,7 @@ pub(crate) fn t_t2_todo_overlong_rejected(t2_todo_bdd: &T2TodoBdd) {
     );
     // 原表不变：读回当前清单为空（此前未写入）。
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    use crate::protocol::ports::AgentTodoGateway as _;
+    use xylitol::protocol::ports::AgentTodoGateway as _;
     let list = futures::executor::block_on(gw.list()).ok();
     assert!(
         list.as_ref().map(|l| l.items.len()).unwrap_or(0) == 0,
@@ -1355,7 +1354,7 @@ pub(crate) fn w_t2_todo_latest_wins(t2_todo_bdd: &T2TodoBdd) {
 
 #[then("读取当前清单为最新快照")]
 pub(crate) fn t_t2_todo_latest(t2_todo_bdd: &T2TodoBdd) {
-    use crate::protocol::ports::AgentTodoGateway as _;
+    use xylitol::protocol::ports::AgentTodoGateway as _;
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
     let list = futures::executor::block_on(gw.list()).expect("list");
     assert_eq!(list.items.len(), 1, "c2827: 应为最新快照 B：{list:?}");
@@ -1364,7 +1363,7 @@ pub(crate) fn t_t2_todo_latest(t2_todo_bdd: &T2TodoBdd) {
 
 #[when("执行压后 todo 保全")]
 pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
-    use crate::protocol::session::build_context_entries;
+    use xylitol::protocol::session::build_context_entries;
     t2_todo_mount(t2_todo_bdd);
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
@@ -1380,8 +1379,8 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
         .last()
         .and_then(|e| e.base().map(|b| b.timestamp))
         .unwrap_or(0);
-    let cut: Vec<crate::protocol::session::SessionEntry> = vec![SessionEntry::Compaction(
-        crate::infra::session::CompactionEntry {
+    let cut: Vec<xylitol::protocol::session::SessionEntry> = vec![SessionEntry::Compaction(
+        xylitol::infra::session::CompactionEntry {
             base: EntryBase {
                 entry_type: "compaction".into(),
                 id: "c1".into(),
@@ -1400,7 +1399,7 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
     // 直接驱动保全：压后窗口无 todo → 重追加最新快照。
     futures::executor::block_on({
         let sid_ref: &str = &sid;
-        crate::agent::compaction::ensure_agent_todo_after_compact(
+        xylitol::agent::compaction::ensure_agent_todo_after_compact(
             store.as_ref(),
             sid_ref,
             &entries_before,
@@ -1410,7 +1409,7 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
 
 #[then("最新快照被重追加到会话")]
 pub(crate) fn t_t2_todo_reappended(t2_todo_bdd: &T2TodoBdd) {
-    use crate::protocol::session::latest_agent_todo;
+    use xylitol::protocol::session::latest_agent_todo;
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
     let entries = futures::executor::block_on(store.load_leaf_branch(&sid)).expect("entries");
@@ -1423,7 +1422,7 @@ pub(crate) fn t_t2_todo_reappended(t2_todo_bdd: &T2TodoBdd) {
 
 #[then("导出条目含 agent_todo 自定义记录而非用户消息")]
 pub(crate) fn t_t2_todo_export(t2_todo_bdd: &T2TodoBdd) {
-    use crate::protocol::session::CUSTOM_TYPE_AGENT_TODO;
+    use xylitol::protocol::session::CUSTOM_TYPE_AGENT_TODO;
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
     let entries = futures::executor::block_on(store.load_entries(&sid)).expect("entries");
@@ -1442,7 +1441,7 @@ pub(crate) fn t_t2_todo_export(t2_todo_bdd: &T2TodoBdd) {
 }
 
 #[then("列表含 skills 与 themes 且不含 prompts")]
-pub(crate) fn t_t2_res_list_no_prompts(prompt_bdd: &crate::tests::bdd::steps_bridge::PromptBdd) {
+pub(crate) fn t_t2_res_list_no_prompts(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
     let out = prompt_bdd.prompt.borrow().clone();
     assert!(
         out.contains("skills:") && out.contains("themes:"),
@@ -1498,7 +1497,7 @@ fn t2_res_mount(t2_res_bdd: &T2ResBdd) {
     std::mem::forget(tmp);
 }
 
-fn t2_res_run(t2_res_bdd: &T2ResBdd, action: crate::app::cli::resources::ResourcesAction) {
+fn t2_res_run(t2_res_bdd: &T2ResBdd, action: xylitol::app::cli::resources::ResourcesAction) {
     let cwd = t2_res_bdd.cwd.borrow().as_ref().expect("cwd").clone();
     let agent_dir = t2_res_bdd
         .agent_dir
@@ -1506,7 +1505,7 @@ fn t2_res_run(t2_res_bdd: &T2ResBdd, action: crate::app::cli::resources::Resourc
         .as_ref()
         .expect("agent")
         .clone();
-    let (code, out) = crate::app::cli::resources::run_with_dirs(action, &cwd, &agent_dir);
+    let (code, out) = xylitol::app::cli::resources::run_with_dirs(action, &cwd, &agent_dir);
     *t2_res_bdd.code.borrow_mut() = Some(code);
     *t2_res_bdd.out.borrow_mut() = out;
 }
@@ -1547,7 +1546,7 @@ pub(crate) fn g_t2_res_layout(t2_res_bdd: &T2ResBdd) {
 pub(crate) fn w_t2_res_list(t2_res_bdd: &T2ResBdd) {
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::List,
+        xylitol::app::cli::resources::ResourcesAction::List,
     );
 }
 
@@ -1577,7 +1576,7 @@ pub(crate) fn t_t2_res_list_ok(t2_res_bdd: &T2ResBdd) {
 pub(crate) fn w_t2_res_info(t2_res_bdd: &T2ResBdd) {
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::Info {
+        xylitol::app::cli::resources::ResourcesAction::Info {
             name: "demo-skill".into(),
         },
     );
@@ -1587,7 +1586,7 @@ pub(crate) fn w_t2_res_info(t2_res_bdd: &T2ResBdd) {
 pub(crate) fn w_t2_res_info_missing(t2_res_bdd: &T2ResBdd) {
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::Info {
+        xylitol::app::cli::resources::ResourcesAction::Info {
             name: "no-such-thing".into(),
         },
     );
@@ -1610,7 +1609,7 @@ pub(crate) fn t_t2_res_info_missing_fails(t2_res_bdd: &T2ResBdd) {
 pub(crate) fn w_t2_res_doctor(t2_res_bdd: &T2ResBdd) {
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::Doctor,
+        xylitol::app::cli::resources::ResourcesAction::Doctor,
     );
 }
 
@@ -1632,7 +1631,7 @@ pub(crate) fn w_t2_res_doctor_broken(t2_res_bdd: &T2ResBdd) {
     .unwrap();
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::Doctor,
+        xylitol::app::cli::resources::ResourcesAction::Doctor,
     );
 }
 
@@ -1688,9 +1687,9 @@ pub(crate) fn w_t2_bash_exclude() {
 
 #[then("排除的 bash 条目不进上下文而普通条目保留")]
 pub(crate) fn t_t2_bash_exclude_filtered() {
-    use crate::protocol::message::BashExecutionStatus;
-    use crate::protocol::session::build_context_entries;
-    let exclude = crate::protocol::session::bash_execution_message_entry(
+    use xylitol::protocol::message::BashExecutionStatus;
+    use xylitol::protocol::session::build_context_entries;
+    let exclude = xylitol::protocol::session::bash_execution_message_entry(
         "b1",
         "make test",
         "all ok",
@@ -1701,7 +1700,7 @@ pub(crate) fn t_t2_bash_exclude_filtered() {
         true, // exclude_from_context
         BashExecutionStatus::Done,
     );
-    let keep = crate::protocol::session::bash_execution_message_entry(
+    let keep = xylitol::protocol::session::bash_execution_message_entry(
         "b2",
         "make build",
         "ok",
@@ -1771,12 +1770,13 @@ pub(crate) fn t_t2_input_items_typed(t2_schema_bdd: &T2SchemaBdd) {
 #[when("以附加指令合成摘要请求前缀")]
 pub(crate) fn w_t4_additional_focus() {
     let base = "GOAL_SKELETON";
-    let with = crate::agent::compaction::llm_summarizer::with_additional_focus(
+    let with = xylitol::agent::compaction::llm_summarizer::with_additional_focus(
         base,
         Some("重点看错误处理"),
     );
-    let blank = crate::agent::compaction::llm_summarizer::with_additional_focus(base, Some("   "));
-    let none = crate::agent::compaction::llm_summarizer::with_additional_focus(base, None);
+    let blank =
+        xylitol::agent::compaction::llm_summarizer::with_additional_focus(base, Some("   "));
+    let none = xylitol::agent::compaction::llm_summarizer::with_additional_focus(base, None);
     T4_PRINT_OUT.with(|o| *o.borrow_mut() = format!("with:{with}\nblank:{blank}\nnone:{none}"));
 }
 
@@ -1806,7 +1806,7 @@ pub(crate) fn t_t4_focus_appended() {
 // ── domain-compaction r1416：policy 指纹 ─────────────────────────
 
 pub struct T4PolicyBdd {
-    pub entry: RefCell<Option<crate::infra::session::CompactionEntry>>,
+    pub entry: RefCell<Option<xylitol::infra::session::CompactionEntry>>,
 }
 
 #[fixture]
@@ -1819,7 +1819,7 @@ pub fn t4_policy_bdd() -> T4PolicyBdd {
 #[when("读取最新压缩条目的 policy 快照")]
 pub(crate) fn w_t4_read_policy(
     t4_policy_bdd: &T4PolicyBdd,
-    sess: &crate::tests::bdd::fixtures::XySessionStore,
+    sess: &crate::bdd::fixtures::XySessionStore,
 ) {
     let entries = sess.entries.borrow().clone();
     let entry = entries
@@ -1856,7 +1856,7 @@ pub(crate) fn t_t4_policy_fields(t4_policy_bdd: &T4PolicyBdd) {
 #[then("legacy 无快照条目不当作当前配置")]
 pub(crate) fn t_t4_policy_legacy() {
     // 缺失 policy 的 legacy 条目：字段为 None，消费端 MUST NOT 静默解释为当前配置。
-    let legacy: Option<crate::protocol::session::CompactionPolicySnapshot> = None;
+    let legacy: Option<xylitol::protocol::session::CompactionPolicySnapshot> = None;
     assert!(
         legacy.is_none(),
         "c2827: legacy 条目 MUST 以缺省标记与完整快照可区分"
@@ -1867,7 +1867,7 @@ pub(crate) fn t_t4_policy_legacy() {
 
 #[when("对产品命令样例做线协议序列化与反序列化往返")]
 pub(crate) fn w_t4_command_roundtrip() {
-    use crate::protocol::Command;
+    use xylitol::protocol::Command;
     let samples = vec![
         Command::SwitchSession {
             session_path: "s1".into(),
@@ -1899,7 +1899,7 @@ pub(crate) fn t_t4_command_roundtrip() {
 
 pub struct T4PrintBdd {
     pub out: RefCell<Vec<u8>>,
-    pub result: RefCell<Option<Result<(), crate::XyDriverError>>>,
+    pub result: RefCell<Option<Result<(), xylitol::XyDriverError>>>,
 }
 
 #[fixture]
@@ -1910,14 +1910,16 @@ pub fn t4_print_bdd() -> T4PrintBdd {
     }
 }
 
-fn t4_stream(events: Vec<crate::agent::runtime::XyEvent>) -> crate::app::core::driver::EventStream {
+fn t4_stream(
+    events: Vec<xylitol::agent::runtime::XyEvent>,
+) -> xylitol::app::core::driver::EventStream {
     Box::pin(futures::stream::iter(events))
 }
 
 #[when("渲染 print 事件流到缓冲")]
 pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
-    use crate::agent::runtime::XyEvent;
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::agent::runtime::XyEvent;
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
     let events = vec![
         XyEvent::MessageStart {
             role: "assistant".into(),
@@ -1949,7 +1951,7 @@ pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = crate::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() = Some(r);
 }
@@ -1969,7 +1971,7 @@ pub(crate) fn t_t4_delta_only(t4_print_bdd: &T4PrintBdd) {
 
 #[when("渲染含工具执行的事件流到缓冲")]
 pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
-    use crate::agent::runtime::XyEvent;
+    use xylitol::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::ToolExecutionStart {
             id: "t1".into(),
@@ -1986,7 +1988,7 @@ pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = crate::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() = Some(r);
 }
@@ -1994,12 +1996,12 @@ pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
 #[then("工具名与结果摘要按人话格式生成")]
 pub(crate) fn t_t4_tool_display() {
     let start =
-        crate::app::cli::format_tool_start_lines("read", &serde_json::json!({"path": "a.rs"}));
+        xylitol::app::cli::format_tool_start_lines("read", &serde_json::json!({"path": "a.rs"}));
     assert!(
         start.iter().any(|l| l.contains("read")),
         "c2827: 工具开始行应含工具名：{start:?}"
     );
-    let end = crate::app::cli::format_tool_end_line("read", "file body\nline2\nline3\nline4");
+    let end = xylitol::app::cli::format_tool_end_line("read", "file body\nline2\nline3\nline4");
     assert!(
         end.contains("read") && end.contains("file body"),
         "c2827: 工具结束行应含名称与结果摘要：{end}"
@@ -2008,16 +2010,16 @@ pub(crate) fn t_t4_tool_display() {
 
 #[when("渲染含错误的事件流到缓冲")]
 pub(crate) async fn w_t4_render_error(t4_print_bdd: &T4PrintBdd) {
-    use crate::agent::runtime::XyEvent;
+    use xylitol::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::TextDelta("partial".into()),
-        XyEvent::Error(crate::protocol::lifecycle::XyEventError::new(
+        XyEvent::Error(xylitol::protocol::lifecycle::XyEventError::new(
             "provider", "boom",
         )),
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = crate::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() = Some(r);
 }
@@ -2038,7 +2040,7 @@ pub(crate) fn t_t4_error_exit(t4_print_bdd: &T4PrintBdd) {
 
 #[when("渲染含单次工具失败的事件流到缓冲")]
 pub(crate) async fn w_t4_render_tool_fail(t4_print_bdd: &T4PrintBdd) {
-    use crate::agent::runtime::XyEvent;
+    use xylitol::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::ToolExecutionEnd {
             id: "t1".into(),
@@ -2050,7 +2052,7 @@ pub(crate) async fn w_t4_render_tool_fail(t4_print_bdd: &T4PrintBdd) {
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = crate::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() = Some(r);
 }
@@ -2070,7 +2072,7 @@ pub(crate) fn t_t4_tool_fail_ok(t4_print_bdd: &T4PrintBdd) {
 
 #[then("登录引导含 /login 与文档路径")]
 pub(crate) fn t_t4_login_help() {
-    let msg = crate::app::cli::get_provider_login_help();
+    let msg = xylitol::app::cli::get_provider_login_help();
     assert!(
         msg.contains("/login") && (msg.contains("providers.md") || msg.contains("docs")),
         "c2827: 登录引导应引用 /login 与文档：{msg}"
@@ -2079,7 +2081,7 @@ pub(crate) fn t_t4_login_help() {
 
 #[then("无可用模型提示衔接登录引导")]
 pub(crate) fn t_t4_no_models() {
-    let msg = crate::app::cli::format_no_models_available_message();
+    let msg = xylitol::app::cli::format_no_models_available_message();
     assert!(
         msg.contains("No models available") && msg.contains("/login"),
         "c2827: 无模型提示应存在并引导登录：{msg}"
@@ -2089,7 +2091,7 @@ pub(crate) fn t_t4_no_models() {
 #[then("未选模型展示占位而非厂商默认名")]
 pub(crate) fn t_t4_unset_model() {
     assert_eq!(
-        crate::app::core::bootstrap::UNSET_MODEL_DISPLAY,
+        xylitol::app::core::bootstrap::UNSET_MODEL_DISPLAY,
         "NOT-SET",
         "c2827: 未选模型占位 MUST NOT 冒充厂商默认模型名"
     );
@@ -2097,7 +2099,7 @@ pub(crate) fn t_t4_unset_model() {
 
 #[then("无 api key 提示含 provider 名")]
 pub(crate) fn t_t4_no_api_key() {
-    let msg = crate::app::cli::format_no_api_key_found_message("openai");
+    let msg = xylitol::app::cli::format_no_api_key_found_message("openai");
     assert!(
         msg.contains("openai"),
         "c2827: 无 key 提示应含 provider 名：{msg}"
@@ -2112,14 +2114,14 @@ pub(crate) fn t_t4_no_api_key() {
 
 #[when("以触发 todo_update 工具的回合收集事件")]
 pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
-    use crate::infra::provider::factory::{
+    use crate::bdd::helpers::make_agent;
+    use futures::StreamExt;
+    use xylitol::infra::provider::factory::{
         reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
     };
-    use crate::tests::bdd::helpers::make_agent;
-    use futures::StreamExt;
 
     reset_fake_state();
-    crate::tests::bdd::steps_agent_runtime::ar_register_fake(agent, "c2829-todo");
+    crate::bdd::steps_agent_runtime::ar_register_fake(agent, "c2829-todo");
     set_fake_tool_call(
         "todo_rewrite",
         r#"{"items":[{"id":"a","content":"one","status":"in_progress"}]}"#,
@@ -2128,8 +2130,8 @@ pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
     set_fake_text("done");
     let mut runner = make_agent(agent);
     futures::executor::block_on(runner.select_model("c2829-todo")).expect("select fake");
-    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, "sess-todo-ev");
-    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "tick todo").await;
+    crate::bdd::helpers::bind_session_or_panic(&mut runner, "sess-todo-ev");
+    let mut stream = crate::bdd::helpers::agent_submit_root(&mut runner, "tick todo").await;
     let mut saw_todo_updated = false;
     let mut list_len = None;
     let mut seen: Vec<String> = Vec::new();
@@ -2170,12 +2172,12 @@ pub fn t6_mcp_bdd() -> T6McpBdd {
     }
 }
 
-fn t6_fixture_config(name: &str, tools: &str) -> crate::infra::config::types::McpServerConfig {
+fn t6_fixture_config(name: &str, tools: &str) -> xylitol::infra::config::types::McpServerConfig {
     let mut env = std::collections::HashMap::new();
     env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), tools.into());
-    crate::infra::config::types::McpServerConfig {
+    xylitol::infra::config::types::McpServerConfig {
         name: name.into(),
-        transport: crate::infra::config::types::McpTransportKind::Stdio,
+        transport: xylitol::infra::config::types::McpTransportKind::Stdio,
         command: Some("python3".into()),
         args: Some(vec![
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2190,9 +2192,9 @@ fn t6_fixture_config(name: &str, tools: &str) -> crate::infra::config::types::Mc
 
 async fn t6_discover(
     t6_mcp_bdd: &T6McpBdd,
-    servers: &[crate::infra::config::types::McpServerConfig],
+    servers: &[xylitol::infra::config::types::McpServerConfig],
 ) {
-    let result = crate::infra::mcp::connect_and_discover(servers).await;
+    let result = xylitol::infra::mcp::connect_and_discover(servers).await;
     let Some((manager, tools)) = result else {
         panic!("c2829: 非空配置 MUST 构造 manager");
     };
@@ -2243,14 +2245,14 @@ pub(crate) fn t_t6_mcp_config_driven(_t6_mcp_bdd: &T6McpBdd) {
 
 #[when("以无效 MCP 条目装配")]
 pub(crate) async fn w_t6_mcp_invalid(t6_mcp_bdd: &T6McpBdd) {
-    let bad = crate::infra::config::types::McpServerConfig {
+    let bad = xylitol::infra::config::types::McpServerConfig {
         name: "bad".into(),
-        transport: crate::infra::config::types::McpTransportKind::Stdio,
+        transport: xylitol::infra::config::types::McpTransportKind::Stdio,
         command: None,
         ..Default::default()
     };
     // 无效条目不整体失败：仍构造 manager，坏条目留在诊断。
-    let result = crate::infra::mcp::connect_and_discover(&[bad]).await;
+    let result = xylitol::infra::mcp::connect_and_discover(&[bad]).await;
     let Some((manager, tools)) = result else {
         panic!("c2829: 含无效条目的非空配置 MUST 仍构造 manager");
     };
@@ -2856,7 +2858,7 @@ pub(crate) fn t_default_template_shape() {
 
 #[when("以 thinking 与自带标签两种流分别渲染 print 输出")]
 pub(crate) async fn w_thinking_render(t4_print_bdd: &T4PrintBdd) {
-    use crate::agent::runtime::XyEvent;
+    use xylitol::agent::runtime::XyEvent;
     let mut out: Vec<u8> = Vec::new();
     let open = String::from("<") + "think" + ">";
     let close = String::from("<") + "think" + ">";
@@ -2875,7 +2877,7 @@ pub(crate) async fn w_thinking_render(t4_print_bdd: &T4PrintBdd) {
             },
         ]);
         let mut buf: Vec<u8> = Vec::new();
-        crate::app::cli::render_stream(&mut stream, &mut buf)
+        xylitol::app::cli::render_stream(&mut stream, &mut buf)
             .await
             .expect("render 成功");
         let text = String::from_utf8(buf).unwrap();
@@ -3084,11 +3086,11 @@ pub(crate) fn t_image_format_convert() {
 pub(crate) fn w_image_multimodal_payload() {
     let p = std::env::temp_dir().join(format!("xylitol_t2_load_{}.png", std::process::id()));
     std::fs::write(&p, T2_NOISE_PNG).expect("写临时图");
-    let r = crate::infra::image::agent_part_from_image_path(&p);
+    let r = xylitol::infra::image::agent_part_from_image_path(&p);
     let _ = std::fs::remove_file(&p);
     let part = r.expect("路径可读 MUST 产出多模态载荷");
     let (mime, data) = match part {
-        crate::protocol::message::AgentPart::Image(ic) => {
+        xylitol::protocol::message::AgentPart::Image(ic) => {
             (ic.media_type, ic.data.unwrap_or_default())
         }
         _ => panic!("MUST 得图片构件"),
@@ -3109,11 +3111,11 @@ pub(crate) fn t_image_multimodal_payload() {
 pub(crate) fn w_image_part_from_path() {
     let p = std::env::temp_dir().join(format!("xylitol_t2_part_{}.png", std::process::id()));
     std::fs::write(&p, T2_NOISE_PNG).expect("写临时图");
-    let r = crate::infra::image::agent_part_from_image_path(&p);
+    let r = xylitol::infra::image::agent_part_from_image_path(&p);
     let _ = std::fs::remove_file(&p);
     let is_image = matches!(
         r.expect("路径 → 构件 MUST 成功"),
-        crate::protocol::message::AgentPart::Image(_)
+        xylitol::protocol::message::AgentPart::Image(_)
     );
     T2_IMG.with(|s| {
         *s.borrow_mut() = Some((
@@ -3135,7 +3137,7 @@ pub(crate) fn t_image_part_from_path() {
 
 #[when("请求跨平台 bash 定位")]
 pub(crate) fn w_bash_discovery() {
-    let cfg = crate::infra::process::shell::find_bash(None);
+    let cfg = xylitol::infra::process::shell::find_bash(None);
     T2_PROC.with(|s| {
         *s.borrow_mut() = Some((
             cfg.shell.to_string_lossy().into_owned(),
@@ -3155,7 +3157,7 @@ pub(crate) fn t_bash_discovery() {
 #[when("以整树终止子进程")]
 pub(crate) fn w_kill_process_tree() {
     let mut child = t2_spawn_long_child();
-    crate::infra::process::group::kill_process_tree(child.id());
+    xylitol::infra::process::group::kill_process_tree(child.id());
     let mut exited = false;
     for _ in 0..60 {
         if let Ok(Some(_)) = child.try_wait() {
@@ -3265,7 +3267,7 @@ pub(crate) fn t_first_turn_gate() {
 pub(crate) fn w_shell_env_boundary() {
     let mut base = std::collections::BTreeMap::new();
     base.insert("PATH".into(), "/usr/bin:/bin".into());
-    let env = crate::infra::process::shell::shell_env_with_agent_bin(base);
+    let env = xylitol::infra::process::shell::shell_env_with_agent_bin(base);
     let path = env.get("PATH").cloned().unwrap_or_default();
     T2_PROC.with(|s| *s.borrow_mut() = Some((path, false, false)));
 }
@@ -3282,7 +3284,7 @@ pub(crate) fn t_shell_env_boundary() {
         .expect("current exe dir");
     assert_eq!(head, bin, "agent bin 目录 MUST 前置");
     assert!(
-        !crate::infra::process::shell::find_bash(Some(&head))
+        !xylitol::infra::process::shell::find_bash(Some(&head))
             .shell
             .to_string_lossy()
             .is_empty(),
@@ -3970,10 +3972,10 @@ pub(crate) fn t_tui_e2e_layout() {
 #[when("读取配置值解析机制")]
 pub(crate) fn w_config_value_parser() {
     let lookup = |name: &str| (name == "HOME").then(|| "/home/u".to_string());
-    let a = crate::infra::config::resolver::resolve_value("plain-string", &lookup)
+    let a = xylitol::infra::config::resolver::resolve_value("plain-string", &lookup)
         .expect("字面值 MUST 直通");
-    let b =
-        crate::infra::config::resolver::resolve_value("$HOME", &lookup).expect("环境值 MUST 解析");
+    let b = xylitol::infra::config::resolver::resolve_value("$HOME", &lookup)
+        .expect("环境值 MUST 解析");
     T2_PROC.with(|s| *s.borrow_mut() = Some((a, b == "/home/u", false)));
 }
 
@@ -3987,9 +3989,9 @@ pub(crate) fn t_config_value_parser() {
 #[when("读取环境变量插值能力")]
 pub(crate) fn w_env_var_interpolation() {
     let lookup = |name: &str| (name == "HOME").then(|| "/home/u".to_string());
-    let a = crate::infra::config::resolver::resolve_value("${HOME}", &lookup)
+    let a = xylitol::infra::config::resolver::resolve_value("${HOME}", &lookup)
         .expect("${VAR} MUST 插值");
-    let b = crate::infra::config::resolver::resolve_value("${UNSET:-fallback}", &lookup)
+    let b = xylitol::infra::config::resolver::resolve_value("${UNSET:-fallback}", &lookup)
         .expect("默认值 MUST 生效");
     T2_PROC.with(|s| *s.borrow_mut() = Some((a, b == "fallback", false)));
 }
@@ -4003,14 +4005,14 @@ pub(crate) fn t_env_var_interpolation() {
 
 #[when("读取配置命令执行边界")]
 pub(crate) fn w_config_command_boundary() {
-    crate::infra::config::resolver::reset_shell_cache();
+    xylitol::infra::config::resolver::reset_shell_cache();
     let lookup = |_name: &str| None;
-    let out = crate::infra::config::resolver::resolve_value("!printf ok", &lookup)
+    let out = xylitol::infra::config::resolver::resolve_value("!printf ok", &lookup)
         .expect("shell 命令 MUST 执行");
     // `$$` 是 shell PID：缓存命中时两次结果相同（进程生命周期缓存证据）。
-    let c1 = crate::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
+    let c1 = xylitol::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
         .expect("shell PID 值一");
-    let c2 = crate::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
+    let c2 = xylitol::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
         .expect("shell PID 值二");
     T2_PROC.with(|s| *s.borrow_mut() = Some((out, c1 == c2, true)));
 }
@@ -4039,7 +4041,7 @@ pub(crate) fn w_provider_config_value_expression() {
         "XYLITOL_CONFIG_DIR" => Some(cfgdir_s.clone()),
         _ => None,
     };
-    let loaded = crate::infra::config::loader::load_app_config_with(None, env, None)
+    let loaded = xylitol::infra::config::loader::load_app_config_with(None, env, None)
         .expect("装配 MUST 成功");
     let shell = loaded
         .model
@@ -4125,6 +4127,28 @@ pub(crate) fn t_bdd_suite_wiring() {
     let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     assert!(src.contains("#[macro_use]"), "BDD 套件装配 MUST 在册");
     assert!(src.contains("mod bindings_"), "绑定模块 MUST 在册");
+}
+
+// test-bdd r1913（c2837）：编译隔离不变量——独立目标承载、未挂回 lib。
+#[when("读取 BDD 挂载接线")]
+pub(crate) fn w_bdd_mount_wiring() {
+    let a = la_load("tests/bdd.rs");
+    let b = la_load("src/tests.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== lib-mount ===\n{b}")));
+}
+
+#[then("独立测试目标承载且未挂 lib")]
+pub(crate) fn t_bdd_mount_wiring() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let (entry, lib_mount) = src.split_once("=== lib-mount ===").expect("双文件探针");
+    assert!(
+        entry.contains("#[path = \"bdd/suite.rs\"]") && entry.contains("mod bdd;"),
+        "BDD 入口 MUST 以 #[path] 挂 suite 模块"
+    );
+    assert!(
+        !lib_mount.contains("tests/bdd/suite.rs"),
+        "lib MUST NOT 再以 mod bdd 挂载（编译隔离不变量）"
+    );
 }
 
 #[when("读取 server 集成场景清单")]

@@ -1,4 +1,4 @@
-use crate::tests::bdd::fixtures::*;
+use crate::bdd::fixtures::*;
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -141,15 +141,13 @@ async fn test_c2826_abort_persist(agent: AgentState, ws: Workspace) {}
 async fn test_c2826_two_iterations(agent: AgentState, ws: Workspace) {}
 
 // ── c2835 后继：agent-runtime 裸规则回填 ────────────────────────────
-use crate::tests::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
-use crate::tests::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
-use crate::tests::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
-use crate::tests::bdd::steps_bridge::{PromptBdd, prompt_bdd};
-use crate::tests::bdd::steps_c2827::{
-    T2CapsBdd, T2EstBdd, T6McpBdd, t2_caps_bdd, t2_est_bdd, t6_mcp_bdd,
-};
-use crate::tests::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
-use crate::tests::bdd::steps_runtime_config::{RcSnap, rc_snap};
+use crate::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
+use crate::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
+use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
+use crate::bdd::steps_bridge::{PromptBdd, prompt_bdd};
+use crate::bdd::steps_c2827::{T2CapsBdd, T2EstBdd, T6McpBdd, t2_caps_bdd, t2_est_bdd, t6_mcp_bdd};
+use crate::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
+use crate::bdd::steps_runtime_config::{RcSnap, rc_snap};
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",

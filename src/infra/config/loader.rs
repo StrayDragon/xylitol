@@ -63,8 +63,8 @@ pub(crate) fn load_app_config_detailed(
 ///
 /// Still injects missing `secret.env` keys into the process environment (product
 /// parity). Tests that exercise that side effect remain on `env_global`.
-#[cfg(test)]
-pub(crate) fn load_app_config_with(
+// c2837: 测试辅助无条件化
+pub fn load_app_config_with(
     cli_config: Option<&Path>,
     get_env: impl Fn(&str) -> Option<String>,
     cwd: Option<&Path>,

@@ -11,7 +11,6 @@ pub(crate) mod status_bar;
 pub mod system;
 // Umbrella re-export: system-prompt construction is the subsystem's main entry.
 pub(crate) use fragments::{fragment_ids_for_batch_mode, fragments_for_batch_mode};
-#[cfg(test)]
 pub use session_env::session_env_from_message;
 pub use session_env::{ensure_session_env_in_history, snapshot_for_cwd};
 pub(crate) use skill_expand::expand_skills_in_agent_messages;

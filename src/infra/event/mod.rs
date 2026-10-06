@@ -33,7 +33,7 @@ pub type Handler = Arc<
 
 /// Channel-based event bus with string channels and JSON Value payloads.
 #[derive(Clone, Default)]
-pub(crate) struct EventBus {
+pub struct EventBus {
     listeners: Arc<Mutex<HashMap<String, Vec<ListenerEntry>>>>,
 }
 

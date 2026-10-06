@@ -11,7 +11,7 @@ use crate::protocol::ports::XySessionStore;
 
 use super::{AgentCapabilities, SessionStats, observe_hook};
 
-pub(crate) async fn load_conversation_history_from_store(
+pub async fn load_conversation_history_from_store(
     store: &dyn XySessionStore,
     session_id: &str,
 ) -> Result<Vec<AgentMessage>, XyError> {
@@ -125,7 +125,7 @@ impl AgentCapabilities {
     /// interrupted notice here, paired against a session-scoped done set. On a
     /// done-set read failure the fold is skipped entirely (running rows keep
     /// the no-projection behavior — no false interrupts).
-    pub(crate) async fn load_conversation_history(
+    pub async fn load_conversation_history(
         &self,
         session_id: &str,
     ) -> Result<Vec<AgentMessage>, XyError> {

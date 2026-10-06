@@ -48,7 +48,6 @@ pub use crate::agent::capabilities::{
 pub use crate::agent::runtime::AgentRuntime;
 /// Clonable construction baseline for materializing isolated [`AgentRuntime`]s.
 pub use crate::agent::runtime::RuntimePorts;
-#[cfg(test)]
 pub use crate::agent::runtime::XyEventStream;
 pub use crate::agent::runtime::hooks::max_turns_stop_hook;
 pub use crate::agent::tools::MCP_FIRST_TURN_GATE_TIMEOUT;

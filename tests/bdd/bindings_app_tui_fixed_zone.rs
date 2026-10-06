@@ -1,7 +1,7 @@
 //! app-tui-fixed-zone BDD — 待办栏下缘堆叠（r21）。
 
-use crate::tests::bdd::steps_app_tui_fixed_zone::{FixedZoneBdd, fixed_zone_bdd};
-use crate::tests::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
+use crate::bdd::steps_app_tui_fixed_zone::{FixedZoneBdd, fixed_zone_bdd};
+use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

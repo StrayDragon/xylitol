@@ -511,7 +511,7 @@ impl HostClient for HttpWsClient {
 /// v3 路径各自订阅收集,解码回领域 `Event` 后逐事件比较(spec r1908:
 /// 对拍点在领域对象层)。返回逐事件收集结果供断言。
 /// 从 mux 流收集 n 个 `session/event` 事件(解码回领域 `Event`)。
-#[cfg(test)]
+// c2837: 测试辅助符号无条件化（BDD 独立 target 需 lib 非 test 可见）
 async fn collect_events(mux: &mut MuxStream, n: usize) -> Vec<crate::protocol::Event> {
     use futures::StreamExt;
     let mut out = Vec::new();
@@ -536,8 +536,8 @@ async fn collect_events(mux: &mut MuxStream, n: usize) -> Vec<crate::protocol::E
     out
 }
 
-#[cfg(test)]
-pub(crate) async fn dual_rail_event_parity()
+// c2837: 测试辅助符号无条件化（BDD 独立 target 需 lib 非 test 可见）
+pub async fn dual_rail_event_parity()
 -> Result<Vec<(crate::protocol::Event, crate::protocol::Event)>, String> {
     use crate::app::server::host::HostState;
     use crate::app::server::runtime::{ServerConfig, serve};

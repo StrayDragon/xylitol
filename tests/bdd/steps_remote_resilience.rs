@@ -4,17 +4,17 @@
 //! shape as the in-crate `driver/remote.rs` tests, with injected micro-second
 //! tunings so backoff/coalesce timing assertions finish in milliseconds.
 
-use crate::tests::bdd::prelude::*;
+use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use std::collections::VecDeque;
 use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
-use crate::protocol::RpcMessage;
-use crate::protocol::wire::envelope::PROTOCOL_VERSION;
-use crate::{HostClient, HostClientError, MuxStream, XyDriver};
-use crate::{LinkTunings, XyRemoteDriver};
+use xylitol::protocol::RpcMessage;
+use xylitol::protocol::wire::envelope::PROTOCOL_VERSION;
+use xylitol::{HostClient, HostClientError, MuxStream, XyDriver};
+use xylitol::{LinkTunings, XyRemoteDriver};
 
 /// Tunings small enough for millisecond-scale timing assertions.
 fn micro_tunings() -> LinkTunings {
@@ -97,7 +97,7 @@ impl HostClient for ScriptedMuxHost {
         &self,
         method: &str,
         payload: serde_json::Value,
-    ) -> Result<crate::protocol::RpcResult, HostClientError> {
+    ) -> Result<xylitol::protocol::RpcResult, HostClientError> {
         if method == "subscribe" {
             let seq = payload
                 .get("last_seq")
@@ -127,7 +127,7 @@ impl HostClient for ScriptedMuxHost {
             "loaded_resources" => serde_json::json!({ "mcp_configured": 0 }),
             _ => serde_json::json!({}),
         };
-        Ok(crate::protocol::RpcResult::ok_value(value))
+        Ok(xylitol::protocol::RpcResult::ok_value(value))
     }
 
     async fn respond(
@@ -262,7 +262,7 @@ fn t_hello_fatal(resilience_bdd: &ResilienceBdd) {
     let fatal = drained.iter().any(|ev| {
         matches!(
             ev,
-            crate::agent::runtime::XyEvent::Error(err)
+            xylitol::agent::runtime::XyEvent::Error(err)
                 if err.message.contains("protocol mismatch") && err.message.contains("99")
         )
     });
@@ -394,9 +394,9 @@ async fn g_stale_conn(resilience_bdd: &ResilienceBdd) {
 #[when("触发重订或换会话产生新代循环后旧代连接迟到推入事件")]
 async fn w_stale_late_frame(resilience_bdd: &ResilienceBdd) {
     let mut rig = take_rig(resilience_bdd);
-    crate::app::core::dispatch::dispatch(
+    xylitol::app::core::dispatch::dispatch(
         &mut rig.driver,
-        crate::protocol::Command::SwitchSession {
+        xylitol::protocol::Command::SwitchSession {
             session_path: "s-res-2".into(),
         },
     )
@@ -423,7 +423,7 @@ fn t_stale_dropped(resilience_bdd: &ResilienceBdd) {
     let texts: Vec<String> = drained
         .iter()
         .filter_map(|ev| match ev {
-            crate::agent::runtime::XyEvent::TextDelta(t) => Some(t.clone()),
+            xylitol::agent::runtime::XyEvent::TextDelta(t) => Some(t.clone()),
             _ => None,
         })
         .collect();
@@ -468,7 +468,7 @@ async fn w_coalesce_burst(resilience_bdd: &ResilienceBdd) {
             tokio::select! {
                 _ = tokio::time::sleep_until(deadline) => break,
                 item = stream.next() => match item {
-                    Some(crate::agent::runtime::XyEvent::TextDelta(t)) => {
+                    Some(xylitol::agent::runtime::XyEvent::TextDelta(t)) => {
                         sink.lock().unwrap().push((Instant::now(), t));
                     }
                     Some(_) => {}

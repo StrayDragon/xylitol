@@ -7,6 +7,8 @@ pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(),
 pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), CompactionError>
 pub async fn fork_session( &self, at_entry_id: &str, position: crate::protocol::session::ForkPosition, ) -> Result<String, XyError>
 pub async fn get_session_stats(&self) -> Result<SessionStats, XyError>
+pub async fn load_conversation_history( &self, session_id: &str, ) -> Result<Vec<AgentMessage>, XyError>
+pub async fn load_conversation_history_from_store( store: &dyn XySessionStore, session_id: &str, ) -> Result<Vec<AgentMessage>, XyError>
 pub async fn maybe_auto_compact(&self) -> Result<bool, CompactionError>
 pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&crate::protocol::message::AgentMessage>, ) -> Result<bool, CompactionError>
 pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
@@ -38,6 +40,7 @@ pub fn get_context_usage( token_estimate: u64, context_window: u64, settings: &c
 pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
 pub fn has_active_turn(&self) -> bool
 pub fn install_system_prompt_text(&mut self, prompt: String)
+pub fn is_empty(&self) -> bool
 pub fn is_tools_frozen(&self) -> bool
 pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
@@ -73,6 +76,7 @@ pub session_id: String, pub user_messages: usize, pub assistant_messages: usize,
 pub steer: Arc<Mutex<PendingMessageQueue>>, pub follow_up: Arc<Mutex<PendingMessageQueue>>, /// Bound as `(RunId, tx)` so a stale stream cannot clear a newer run's sender. event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>, } impl AsyncQueueRuntime
 pub steer_count: usize, pub follow_up_count: usize, } /// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent). pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>
 pub struct ActiveTurnBinding
+pub struct AgentCapabilities
 pub struct AsyncQueueRuntime
 pub struct ContextUsage
 pub struct HookBlockedError(pub String)

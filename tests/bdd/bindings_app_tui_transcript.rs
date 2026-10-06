@@ -1,8 +1,8 @@
 //! app-tui-transcript BDD 绑定（P1：纯字形合约）。
 
-use crate::tests::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
-use crate::tests::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
-use crate::tests::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
+use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
+use crate::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
+use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

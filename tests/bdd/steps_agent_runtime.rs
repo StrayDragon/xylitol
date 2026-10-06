@@ -1,6 +1,6 @@
-use crate::tests::bdd::fixtures::*;
-use crate::tests::bdd::helpers::*;
-use crate::tests::bdd::prelude::*;
+use crate::bdd::fixtures::*;
+use crate::bdd::helpers::*;
+use crate::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
 
 #[given("mock 模型先 tool 后无 tool")]
@@ -63,7 +63,7 @@ pub(crate) async fn _w_ar_react_run_collect(agent: &AgentState) {
     "MessageUpdate 含工具意图且早于任意 ToolExecutionStart；ToolExecutionStart 不早于 MessageEnd"
 )]
 pub(crate) fn _t_ar_intent_before_execution(agent: &AgentState) {
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
     let events = agent.events.borrow();
     let mut saw_intent = false;
@@ -213,7 +213,7 @@ thread_local! {
     static AR_RUNNER_EVENTS: std::cell::RefCell<Vec<XyEvent>> =
         const { std::cell::RefCell::new(Vec::new()) };
     static AR_BANG_RESULT: std::cell::RefCell<
-        Option<Result<crate::protocol::ports::XyBashResult, XyDriverError>>,
+        Option<Result<xylitol::protocol::ports::XyBashResult, XyDriverError>>,
     > = const { std::cell::RefCell::new(None) };
 }
 
@@ -462,7 +462,7 @@ pub(crate) async fn _g_ar30_max_turns(agent: &AgentState, ws: &Workspace) {
     set_fake_text("max-turns ack");
     let mut runner = ar_make_runner(agent, ws);
     runner.follow_up("第二轮追问");
-    runner.set_should_stop_after_turn(Some(crate::agent::max_turns_stop_hook(2)));
+    runner.set_should_stop_after_turn(Some(xylitol::agent::max_turns_stop_hook(2)));
     ar_store_runner(runner);
 }
 
@@ -525,10 +525,10 @@ pub(crate) fn _t_ar24_followup_not_injected(agent: &AgentState) {
     });
     let history = agent_end.expect("expected AgentEnd");
     let injected = history.iter().any(|m| match m {
-        crate::protocol::message::AgentMessage::Llm(
-            crate::protocol::message::LlmMessage::UserMessage { content, .. },
+        xylitol::protocol::message::AgentMessage::Llm(
+            xylitol::protocol::message::LlmMessage::UserMessage { content, .. },
         ) => content.iter().any(|p| match p {
-            crate::protocol::message::AgentPart::Text { text } => {
+            xylitol::protocol::message::AgentPart::Text { text } => {
                 text.contains("停闸后不应注入的追问")
             }
             _ => false,
@@ -573,7 +573,7 @@ thread_local! {
 
 struct BddSlowTool {
     name: &'static str,
-    mode: crate::protocol::ports::XyToolExecutionMode,
+    mode: xylitol::protocol::ports::XyToolExecutionMode,
     sleep_ms: u64,
 }
 
@@ -588,14 +588,14 @@ impl XyTool for BddSlowTool {
     fn parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({"type": "object", "properties": {}})
     }
-    fn execution_mode(&self) -> crate::protocol::ports::XyToolExecutionMode {
+    fn execution_mode(&self) -> xylitol::protocol::ports::XyToolExecutionMode {
         self.mode
     }
     async fn execute(
         &self,
         _ctx: &XyToolCtx,
         _args: serde_json::Value,
-    ) -> Result<String, crate::protocol::error::XyToolError> {
+    ) -> Result<String, xylitol::protocol::error::XyToolError> {
         let epoch = BATCH_EPOCH.with(|e| e.get().expect("batch epoch"));
         let start = epoch.elapsed().as_millis();
         tokio::time::sleep(std::time::Duration::from_millis(self.sleep_ms)).await;
@@ -606,21 +606,21 @@ impl XyTool for BddSlowTool {
 }
 
 struct BddMultiToolModel {
-    rounds: std::sync::Mutex<Vec<Vec<crate::protocol::model::XyChunk>>>,
+    rounds: std::sync::Mutex<Vec<Vec<xylitol::protocol::model::XyChunk>>>,
 }
 
 #[async_trait::async_trait]
-impl crate::protocol::ports::XyModel for BddMultiToolModel {
+impl xylitol::protocol::ports::XyModel for BddMultiToolModel {
     fn name(&self) -> &str {
         "bdd-batch-mock"
     }
     async fn generate_stream(
         &self,
-        _messages: Vec<crate::protocol::message::LlmMessage>,
-        _tools: &[crate::protocol::model::XyToolSchema],
+        _messages: Vec<xylitol::protocol::message::LlmMessage>,
+        _tools: &[xylitol::protocol::model::XyToolSchema],
         _stream: bool,
-        _options: crate::protocol::ports::XyGenerateOptions,
-    ) -> Result<crate::protocol::ports::XyStream, crate::protocol::error::XyError> {
+        _options: xylitol::protocol::ports::XyGenerateOptions,
+    ) -> Result<xylitol::protocol::ports::XyStream, xylitol::protocol::error::XyError> {
         let chunks = self.rounds.lock().unwrap().remove(0);
         Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
     }
@@ -628,16 +628,16 @@ impl crate::protocol::ports::XyModel for BddMultiToolModel {
 
 pub(crate) fn bdd_batch_rounds(
     calls: &[(&str, &str)],
-) -> Vec<Vec<crate::protocol::model::XyChunk>> {
-    let done = || crate::protocol::model::XyChunk::Done {
-        finish_reason: crate::protocol::message::XyStopReason::Stop,
+) -> Vec<Vec<xylitol::protocol::model::XyChunk>> {
+    let done = || xylitol::protocol::model::XyChunk::Done {
+        finish_reason: xylitol::protocol::message::XyStopReason::Stop,
         usage: None,
     };
     let mut round1 = Vec::new();
     for (i, (name, args_json)) in calls.iter().enumerate() {
         let args: serde_json::Value =
             serde_json::from_str(args_json).unwrap_or(serde_json::json!({}));
-        round1.push(crate::protocol::model::XyChunk::ToolCallEnd {
+        round1.push(xylitol::protocol::model::XyChunk::ToolCallEnd {
             id: format!("call-{i}"),
             name: (*name).into(),
             args,
@@ -647,7 +647,7 @@ pub(crate) fn bdd_batch_rounds(
     vec![
         round1,
         vec![
-            crate::protocol::model::XyChunk::TextDelta("ok".into()),
+            xylitol::protocol::model::XyChunk::TextDelta("ok".into()),
             done(),
         ],
     ]
@@ -657,9 +657,9 @@ pub(crate) fn bdd_batch_make_runner(
     agent: &AgentState,
     tools: ToolSet,
     calls: &[(&str, &str)],
-    mode: crate::protocol::ports::XyBatchMode,
+    mode: xylitol::protocol::ports::XyBatchMode,
 ) -> AgentRuntime {
-    use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore};
+    use xylitol::protocol::ports::{XyEventSink, XyModel, XySessionStore};
     BATCH_TIMING.with(|t| t.borrow_mut().clear());
     BATCH_EPOCH.with(|e| e.set(Some(std::time::Instant::now())));
     reset_fake_state();
@@ -668,8 +668,8 @@ pub(crate) fn bdd_batch_make_runner(
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn XySessionStore> = Arc::new(mgr);
-    let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::infra::event::EventBus::new());
+    let builder: xylitol::protocol::ports::XyModelBuilder = Arc::new(move |_| {
         Arc::new(BddMultiToolModel {
             rounds: std::sync::Mutex::new(rounds.clone()),
         }) as Arc<dyn XyModel>
@@ -685,9 +685,9 @@ pub(crate) fn bdd_batch_make_runner(
         ".".into(),
         None,
         builder,
-        crate::infra::permission::allow_all_permission(),
-        crate::agent::capabilities::QueueMode::default(),
-        crate::agent::capabilities::QueueMode::default(),
+        xylitol::infra::permission::allow_all_permission(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         None,
     );
     futures::executor::block_on(session.select_model("ar-batch")).expect("select ar-batch fake");
@@ -705,14 +705,14 @@ pub(crate) fn _g_ar27_batch_default(agent: &AgentState, ws: &Workspace) {
     ws.init();
     let tools = ToolSet::from_iter(vec![Arc::new(BddSlowTool {
         name: "slow_safe",
-        mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+        mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
         sleep_ms: 80,
     }) as Arc<dyn XyTool>]);
     let runner = bdd_batch_make_runner(
         agent,
         tools,
         &[("slow_safe", r#"{"n":1}"#), ("slow_safe", r#"{"n":2}"#)],
-        crate::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -725,12 +725,12 @@ pub(crate) fn _g_ar28_overlap(agent: &AgentState, ws: &Workspace) {
     let tools = ToolSet::from_iter(vec![
         Arc::new(BddSlowTool {
             name: "slow_safe",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
             sleep_ms: 100,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
             name: "slow_barrier",
-            mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Sequential,
             sleep_ms: 40,
         }) as Arc<dyn XyTool>,
     ]);
@@ -742,7 +742,7 @@ pub(crate) fn _g_ar28_overlap(agent: &AgentState, ws: &Workspace) {
             ("slow_safe", r#"{"n":2}"#),
             ("slow_barrier", r#"{}"#),
         ],
-        crate::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -755,12 +755,12 @@ pub(crate) fn _g_ar28_windows(agent: &AgentState, ws: &Workspace) {
     let tools = ToolSet::from_iter(vec![
         Arc::new(BddSlowTool {
             name: "slow_safe",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
             sleep_ms: 60,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
             name: "slow_barrier",
-            mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Sequential,
             sleep_ms: 40,
         }) as Arc<dyn XyTool>,
     ]);
@@ -772,7 +772,7 @@ pub(crate) fn _g_ar28_windows(agent: &AgentState, ws: &Workspace) {
             ("slow_barrier", r#"{}"#),
             ("slow_safe", r#"{"n":2}"#),
         ],
-        crate::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -785,12 +785,12 @@ pub(crate) fn _g_ar28_mcp(agent: &AgentState, ws: &Workspace) {
     let tools = ToolSet::from_iter(vec![
         Arc::new(BddSlowTool {
             name: "slow_safe",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
             sleep_ms: 80,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
             name: "mcp__fake__x",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
             sleep_ms: 80,
         }) as Arc<dyn XyTool>,
     ]);
@@ -802,7 +802,7 @@ pub(crate) fn _g_ar28_mcp(agent: &AgentState, ws: &Workspace) {
             ("mcp__fake__x", r#"{}"#),
             ("slow_safe", r#"{"n":2}"#),
         ],
-        crate::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -813,12 +813,12 @@ pub(crate) fn _g_ar29_history(agent: &AgentState, ws: &Workspace) {
     let tools = ToolSet::from_iter(vec![
         Arc::new(BddSlowTool {
             name: "slow_a",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
             sleep_ms: 120,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
             name: "slow_b",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
             sleep_ms: 30,
         }) as Arc<dyn XyTool>,
     ]);
@@ -826,7 +826,7 @@ pub(crate) fn _g_ar29_history(agent: &AgentState, ws: &Workspace) {
         agent,
         tools,
         &[("slow_a", r#"{}"#), ("slow_b", r#"{}"#)],
-        crate::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -926,8 +926,8 @@ pub(crate) fn _t_ar29_history_order(agent: &AgentState) {
     let ids: Vec<_> = history
         .iter()
         .filter_map(|m| match m {
-            crate::protocol::message::AgentMessage::Llm(
-                crate::protocol::message::LlmMessage::ToolResultMessage { tool_use_id, .. },
+            xylitol::protocol::message::AgentMessage::Llm(
+                xylitol::protocol::message::LlmMessage::ToolResultMessage { tool_use_id, .. },
             ) => Some(tool_use_id.clone()),
             _ => None,
         })
@@ -942,8 +942,8 @@ pub(crate) fn _t_ar29_history_order(agent: &AgentState) {
 // ar10 abort-cancels-bang
 #[given("启动交互 bang 长命令后 abort")]
 pub(crate) async fn _g_ar10_abort_cancels_bang(_agent: &AgentState, _ws: &Workspace) {
-    use crate::infra::bash_exec::InfraBashExecutor;
-    use crate::protocol::ports::{BashExecOpts, XyBashExecutor};
+    use xylitol::infra::bash_exec::InfraBashExecutor;
+    use xylitol::protocol::ports::{BashExecOpts, XyBashExecutor};
     let executor = std::sync::Arc::new(InfraBashExecutor::new());
     let token = tokio_util::sync::CancellationToken::new();
     let exec_for_task = executor.clone();
@@ -1019,9 +1019,9 @@ pub(crate) fn _t_ar7_tool_error_written() {
 
 #[when("运行一轮对话后检查持久化条目")]
 pub(crate) async fn w_c2826_first_turn_history(agent: &AgentState) {
-    crate::infra::provider::factory::set_fake_text("回复正文");
+    xylitol::infra::provider::factory::set_fake_text("回复正文");
     let (mut runner, store) = make_agent_with_store(agent);
-    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, "c2826-first-turn");
+    crate::bdd::helpers::bind_session_or_panic(&mut runner, "c2826-first-turn");
     let mut stream = agent_submit_root(&mut runner, "用户第一句").await;
     while let Some(e) = stream.next().await {
         if let XyEvent::Error(err) = &e {
@@ -1035,7 +1035,7 @@ pub(crate) async fn w_c2826_first_turn_history(agent: &AgentState) {
     let roles: Vec<String> = entries
         .iter()
         .filter_map(|e| match e {
-            crate::infra::session::SessionEntry::Message(m) => m
+            xylitol::infra::session::SessionEntry::Message(m) => m
                 .message
                 .get("role")
                 .and_then(|r| r.as_str())
@@ -1046,7 +1046,7 @@ pub(crate) async fn w_c2826_first_turn_history(agent: &AgentState) {
     let first_text = entries
         .iter()
         .find_map(|e| match e {
-            crate::infra::session::SessionEntry::Message(m) => m
+            xylitol::infra::session::SessionEntry::Message(m) => m
                 .message
                 .get("content")
                 .and_then(|c| c.as_array())
@@ -1064,7 +1064,7 @@ pub(crate) async fn w_c2826_first_turn_history(agent: &AgentState) {
 
 #[then("首条消息条目为真实 user 输入且无 system 角色行")]
 pub(crate) fn t_c2826_first_turn_history(agent: &AgentState) {
-    let summary = crate::tests::bdd::helpers::result_ok_str(&agent.last_result);
+    let summary = crate::bdd::helpers::result_ok_str(&agent.last_result);
     let dialogue_roles: Vec<&str> = ["user", "assistant", "system"]
         .iter()
         .filter(|r| {
@@ -1087,25 +1087,25 @@ pub(crate) fn t_c2826_first_turn_history(agent: &AgentState) {
 }
 
 fn c2826_driver() -> (
-    crate::app::core::driver::XyInProcessDriver,
-    std::sync::Arc<dyn crate::protocol::ports::XySessionStore>,
+    xylitol::app::core::driver::XyInProcessDriver,
+    std::sync::Arc<dyn xylitol::protocol::ports::XySessionStore>,
 ) {
     use std::sync::Arc;
-    let agent = crate::app::core::composition::build_agent(
-        crate::app::core::composition::BuildAgentOptions::default(),
+    let agent = xylitol::app::core::composition::build_agent(
+        xylitol::app::core::composition::BuildAgentOptions::default(),
     )
     .expect("build agent for reload seam");
-    let mgr = crate::infra::session::SessionManager::new(
+    let mgr = xylitol::infra::session::SessionManager::new(
         tempfile::tempdir().unwrap().path().join("sessions"),
     );
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let driver = crate::app::core::driver::XyInProcessDriver::new(agent, store.clone());
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let driver = xylitol::app::core::driver::XyInProcessDriver::new(agent, store.clone());
     (driver, store)
 }
 
 #[when("在项目目录写 AGENTS.md 并分别以信任与未信任重载 context")]
 pub(crate) async fn w_c2826_context_reload_trust(
-    ws: &crate::tests::bdd::fixtures::Workspace,
+    ws: &crate::bdd::fixtures::Workspace,
     agent: &AgentState,
 ) {
     ws.init();
@@ -1117,7 +1117,7 @@ pub(crate) async fn w_c2826_context_reload_trust(
     .unwrap();
     let agent_dir = tempfile::tempdir().unwrap();
     let (mut trusted_driver, _s1) = c2826_driver();
-    let trusted = crate::app::core::bootstrap::reload_prompt_context(
+    let trusted = xylitol::app::core::bootstrap::reload_prompt_context(
         &mut trusted_driver,
         std::path::Path::new(&project),
         agent_dir.path(),
@@ -1125,7 +1125,7 @@ pub(crate) async fn w_c2826_context_reload_trust(
         None,
     );
     let (mut untrusted_driver, _s2) = c2826_driver();
-    let untrusted = crate::app::core::bootstrap::reload_prompt_context(
+    let untrusted = xylitol::app::core::bootstrap::reload_prompt_context(
         &mut untrusted_driver,
         std::path::Path::new(&project),
         agent_dir.path(),
@@ -1147,7 +1147,7 @@ pub(crate) async fn w_c2826_context_reload_trust(
 
 #[then("信任时项目 context 注入而未信任时被跳过且会话条目不变")]
 pub(crate) fn t_c2826_context_reload_trust(agent: &AgentState) {
-    let summary = crate::tests::bdd::helpers::result_ok_str(&agent.last_result);
+    let summary = crate::bdd::helpers::result_ok_str(&agent.last_result);
     assert!(
         summary.contains("trusted_files=1") || summary.contains("trusted_files=2"),
         "c2826: 信任重载应发现项目 context：{summary}"
@@ -1168,7 +1168,7 @@ pub(crate) fn t_c2826_context_reload_trust(agent: &AgentState) {
 
 #[when("在项目目录写 skill 并分别以信任与未信任重载 skills")]
 pub(crate) fn w_c2826_skills_reload_trust(
-    ws: &crate::tests::bdd::fixtures::Workspace,
+    ws: &crate::bdd::fixtures::Workspace,
     agent: &AgentState,
 ) {
     ws.init();
@@ -1185,14 +1185,14 @@ pub(crate) fn w_c2826_skills_reload_trust(
     .unwrap();
     let agent_dir = tempfile::tempdir().unwrap();
     let (mut trusted_driver, _s1) = c2826_driver();
-    let trusted = crate::app::core::bootstrap::reload_skills(
+    let trusted = xylitol::app::core::bootstrap::reload_skills(
         &mut trusted_driver,
         std::path::Path::new(&project),
         agent_dir.path(),
         true,
     );
     let (mut untrusted_driver, _s2) = c2826_driver();
-    let untrusted = crate::app::core::bootstrap::reload_skills(
+    let untrusted = xylitol::app::core::bootstrap::reload_skills(
         &mut untrusted_driver,
         std::path::Path::new(&project),
         agent_dir.path(),
@@ -1209,7 +1209,7 @@ pub(crate) fn w_c2826_skills_reload_trust(
 
 #[then("信任时项目 skill 注入且可查询已加载名而未信任时被跳过")]
 pub(crate) fn t_c2826_skills_reload_trust(agent: &AgentState) {
-    let summary = crate::tests::bdd::helpers::result_ok_str(&agent.last_result);
+    let summary = crate::bdd::helpers::result_ok_str(&agent.last_result);
     assert!(
         summary.contains("\"c2826-demo\""),
         "c2826: 信任重载应注入项目 skill：{summary}"
@@ -1227,8 +1227,8 @@ pub(crate) fn t_c2826_skills_reload_trust(agent: &AgentState) {
 
 #[when("经 Driver 启动会话并在首个 TextDelta 后 abort 并检查持久化条目")]
 pub(crate) async fn w_c2826_abort_persist(agent: &AgentState) {
-    use crate::embed::{XyDriver, XyInProcessDriver};
-    crate::infra::provider::factory::set_fake_slow_stream(40, 5);
+    use xylitol::embed::{XyDriver, XyInProcessDriver};
+    xylitol::infra::provider::factory::set_fake_slow_stream(40, 5);
     let (runtime, store) = make_agent_with_store(agent);
     let mut driver = XyInProcessDriver::new(runtime, store.clone());
     let sid = driver
@@ -1248,7 +1248,7 @@ pub(crate) async fn w_c2826_abort_persist(agent: &AgentState) {
     let assistant_rows: Vec<String> = entries
         .iter()
         .filter_map(|e| match e {
-            crate::infra::session::SessionEntry::Message(m)
+            xylitol::infra::session::SessionEntry::Message(m)
                 if m.message.get("role").and_then(|r| r.as_str()) == Some("assistant") =>
             {
                 Some(serde_json::to_string(&m.message).unwrap_or_default())
@@ -1264,7 +1264,7 @@ pub(crate) async fn w_c2826_abort_persist(agent: &AgentState) {
 
 #[then("partial assistant 以 aborted 落盘且非空")]
 pub(crate) fn t_c2826_abort_persist(agent: &AgentState) {
-    let summary = crate::tests::bdd::helpers::result_ok_str(&agent.last_result);
+    let summary = crate::bdd::helpers::result_ok_str(&agent.last_result);
     assert!(
         summary.contains("\"stopReason\":\"aborted\"")
             || summary.contains("stop_reason\":\"aborted")

@@ -363,3 +363,5 @@
     场景: attach-zero-depth-keeps-local-strip
       当 以主机泵置零队列深度并注入 steer 后排空 pending
       那么 本地队列条文案不被空深度清除
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

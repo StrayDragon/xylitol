@@ -13,5 +13,4 @@ pub mod types;
 
 pub use manager::SessionManager;
 // Test-support re-export (in-crate tests import via this facade).
-#[cfg(test)]
 pub use types::*;

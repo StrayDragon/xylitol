@@ -1,6 +1,6 @@
-use crate::tests::bdd::fixtures::*;
-use crate::tests::bdd::steps_runtime_config::{RcSnap, rc_snap};
-use crate::tests::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
+use crate::bdd::fixtures::*;
+use crate::bdd::steps_runtime_config::{RcSnap, rc_snap};
+use crate::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

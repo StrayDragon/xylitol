@@ -258,8 +258,8 @@ impl XyInProcessDriver {
     }
 
     /// Test/diagnostics: assembled system prompt text (c1100).
-    #[cfg(test)]
-    pub(crate) fn system_prompt_for_test(&self) -> Option<String> {
+    // c2837: 测试辅助无条件化
+    pub fn system_prompt_for_test(&self) -> Option<String> {
         self.agent.system_prompt().map(String::from)
     }
 
@@ -488,10 +488,7 @@ impl XyDriver for XyInProcessDriver {
 
 // ── Session operations: inherent (Command executor SSOT, c2710) ─────
 impl XyInProcessDriver {
-    pub(crate) async fn select_model(
-        &mut self,
-        model_id: &str,
-    ) -> Result<ModelInfo, XyDriverError> {
+    pub async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
         // Prefer registry id; only use unique upstream `config.model` as alias.
         let registry = self.agent.model_registry();
         let found = registry
@@ -548,17 +545,14 @@ impl XyInProcessDriver {
         Ok(ModelInfo::from(&list[next_idx]))
     }
 
-    pub(crate) async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+    pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
         self.agent
             .set_thinking_level(level)
             .await
             .map_err(XyDriverError::from)
     }
 
-    pub(crate) async fn compact(
-        &mut self,
-        instructions: Option<String>,
-    ) -> Result<bool, XyDriverError> {
+    pub async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
         // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
         self.agent
             .force_compact(instructions)

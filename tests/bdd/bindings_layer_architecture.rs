@@ -1,13 +1,13 @@
 //! layer-architecture BDD：可观察的 server 产品入口（其余分层约束仍为 @human）。
 
-use crate::tests::bdd::fixtures::*;
-use crate::tests::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
-use crate::tests::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
-use crate::tests::bdd::steps_bridge::{AiBridgeBdd, ai_bridge_bdd};
-use crate::tests::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
-use crate::tests::bdd::steps_cli_surface::{SurfaceFlagsBdd, surface_flags_bdd};
-use crate::tests::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
-use crate::tests::bdd::steps_server::{ServerTest, server_test};
+use crate::bdd::fixtures::*;
+use crate::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
+use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
+use crate::bdd::steps_bridge::{AiBridgeBdd, ai_bridge_bdd};
+use crate::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
+use crate::bdd::steps_cli_surface::{SurfaceFlagsBdd, surface_flags_bdd};
+use crate::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
+use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

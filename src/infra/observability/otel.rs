@@ -133,7 +133,7 @@ pub fn otlp_disabled_diag() -> Option<String> {
 }
 
 #[cfg(feature = "otel")]
-pub(crate) mod install {
+pub mod install {
     use std::borrow::Cow;
     use std::future::Future;
 
@@ -198,7 +198,7 @@ pub(crate) mod install {
     }
 
     /// Build an OTLP reporter or `None` on any failure (caller logs + continues).
-    pub(crate) fn try_build_otlp_reporter(cfg: &OtelConfig) -> Option<Box<dyn Reporter>> {
+    pub fn try_build_otlp_reporter(cfg: &OtelConfig) -> Option<Box<dyn Reporter>> {
         let requested = matches!(cfg.exporter, OtelExporterKind::OtlpHttp);
         let (endpoint, headers) = match resolve_otlp_http_target(cfg) {
             Some(v) => v,

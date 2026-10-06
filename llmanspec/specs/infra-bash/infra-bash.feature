@@ -96,3 +96,5 @@
     场景: optional-timeout-and-missing-arg
       当 调用bash 不传命令参数
       那么 调用失败且返回 MissingArgument 错误码
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

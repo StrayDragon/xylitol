@@ -3,7 +3,7 @@
 //! attach-vs-inprocess pair. Serves `tests/features/cli-entry.feature`
 //! (surface half) and app-tui-bridge `remote-type-kept`.
 
-use crate::tests::bdd::prelude::*;
+use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 
@@ -12,7 +12,7 @@ use rstest_bdd_macros::{given, then, when};
 // ═══════════════════════════════════════════════════════════════════
 
 pub struct SurfaceBdd {
-    pub(crate) mode: Cell<Option<crate::app::cli::SurfaceMode>>,
+    pub(crate) mode: Cell<Option<xylitol::app::cli::SurfaceMode>>,
     pub(crate) print_err: RefCell<String>,
     pub(crate) is_tty: Cell<bool>,
     pub(crate) has_prompt: Cell<bool>,
@@ -41,8 +41,8 @@ fn g_ce16_tty(surface_bdd: &SurfaceBdd) {
 
 #[when("xylitol tui")]
 fn w_ce16_tui(surface_bdd: &SurfaceBdd) {
-    use crate::app::cli::{CliArgs, resolve_surface_intent, select_surface_mode};
     use clap::Parser;
+    use xylitol::app::cli::{CliArgs, resolve_surface_intent, select_surface_mode};
     assert!(surface_bdd.is_tty.get(), "given TTY must arm is_tty");
     let args = CliArgs::try_parse_from(["xylitol", "tui"]).expect("parse tui");
     let (force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
@@ -58,7 +58,7 @@ fn w_ce16_tui(surface_bdd: &SurfaceBdd) {
 fn t_ce16_enters_tui(surface_bdd: &SurfaceBdd) {
     assert_eq!(
         surface_bdd.mode.get(),
-        Some(crate::app::cli::SurfaceMode::Tui)
+        Some(xylitol::app::cli::SurfaceMode::Tui)
     );
 }
 
@@ -69,8 +69,8 @@ fn g_ce16_no_prompt(surface_bdd: &SurfaceBdd) {
 
 #[when("xylitol print")]
 fn w_ce16_print(surface_bdd: &SurfaceBdd) {
-    use crate::app::cli::{CliArgs, resolve_print_prompt, resolve_surface_intent};
     use clap::Parser;
+    use xylitol::app::cli::{CliArgs, resolve_print_prompt, resolve_surface_intent};
     assert!(
         !surface_bdd.has_prompt.get(),
         "given 无 prompt must clear has_prompt"
@@ -113,7 +113,7 @@ pub fn cli_help_bdd() -> CliHelpBdd {
 #[when("xylitol serve --help")]
 fn w_ce8_serve_help(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
-    let mut cmd = crate::app::cli::CliArgs::command();
+    let mut cmd = xylitol::app::cli::CliArgs::command();
     let help = cmd
         .find_subcommand_mut("serve")
         .expect("serve subcommand")
@@ -129,18 +129,18 @@ fn t_ce8_serve_shape(cli_help_bdd: &CliHelpBdd) {
     let help = cli_help_bdd.out.borrow();
     assert!(help.contains("--host"), "{help}");
     assert!(help.contains("--port"), "{help}");
-    let mut cmd = crate::app::cli::CliArgs::command();
+    let mut cmd = xylitol::app::cli::CliArgs::command();
     assert!(cmd.find_subcommand("server").is_none());
     let serve = cmd.find_subcommand_mut("serve").expect("serve");
     assert!(serve.find_subcommand("stop").is_some(), "{help}");
     assert!(serve.find_subcommand("install").is_some(), "{help}");
     assert!(serve.find_subcommand("run").is_none(), "{help}");
     assert!(
-        crate::app::cli::CliArgs::try_parse_from(["xylitol", "server"]).is_err(),
+        xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "server"]).is_err(),
         "server alias must not parse"
     );
     assert!(
-        crate::app::cli::CliArgs::try_parse_from(["xylitol", "serve", "run"]).is_err(),
+        xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "serve", "run"]).is_err(),
         "serve run must not parse"
     );
 }
@@ -148,7 +148,7 @@ fn t_ce8_serve_shape(cli_help_bdd: &CliHelpBdd) {
 #[when("xylitol --help")]
 fn w_ce16_top_help(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
-    let help = crate::app::cli::CliArgs::command()
+    let help = xylitol::app::cli::CliArgs::command()
         .render_long_help()
         .to_string();
     cli_help_bdd.out.replace(help);
@@ -164,7 +164,7 @@ fn t_ce16_ops_toplevel(cli_help_bdd: &CliHelpBdd) {
     assert!(help.contains("serve"), "{help}");
     assert!(help.contains("tui"), "{help}");
     assert!(help.contains("print"), "{help}");
-    let mut cmd = crate::app::cli::CliArgs::command();
+    let mut cmd = xylitol::app::cli::CliArgs::command();
     assert!(
         cmd.find_subcommand("serve").is_some(),
         "serve must be a top-level verb"
@@ -215,8 +215,8 @@ fn g_ce19_cli_ready(surface_flags_bdd: &SurfaceFlagsBdd) {
 
 #[when("xylitol tui --session sid --model m --trust")]
 fn w_ce19_tui_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
-    use crate::app::cli::{CliArgs, surface_from_command};
     use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from([
         "xylitol",
         "tui",
@@ -242,8 +242,8 @@ fn t_ce19_flags_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
 
 #[when("xylitol tui run --session sid")]
 fn w_ce19_tui_run_session(surface_flags_bdd: &SurfaceFlagsBdd) {
-    use crate::app::cli::{CliArgs, surface_from_command};
     use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from(["xylitol", "tui", "run", "--session", "sid"])
         .expect("parse tui run --session");
     let s = surface_from_command(args.command.as_ref());
@@ -259,8 +259,8 @@ fn t_ce19_session_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
 
 #[when("xylitol tui --attach http://127.0.0.1:9 --port 11")]
 fn w_ce19_tui_attach(surface_flags_bdd: &SurfaceFlagsBdd) {
-    use crate::app::cli::{CliArgs, surface_from_command};
     use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from([
         "xylitol",
         "tui",
@@ -271,7 +271,7 @@ fn w_ce19_tui_attach(surface_flags_bdd: &SurfaceFlagsBdd) {
     ])
     .expect("parse tui --attach/--port");
     let s = surface_from_command(args.command.as_ref());
-    let url = crate::resolve_attach_url(s.attach.as_deref(), s.port);
+    let url = xylitol::resolve_attach_url(s.attach.as_deref(), s.port);
     assert_eq!(url, "http://127.0.0.1:9");
     surface_flags_bdd.parse_ok.set(true);
 }
@@ -283,8 +283,8 @@ fn t_ce19_attach_wins(surface_flags_bdd: &SurfaceFlagsBdd) {
 
 #[when("xylitol print --session sid --no-color hi")]
 fn w_ce19_print_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
-    use crate::app::cli::CliArgs;
     use clap::Parser;
+    use xylitol::app::cli::CliArgs;
     CliArgs::try_parse_from(["xylitol", "print", "--session", "sid", "--no-color", "hi"])
         .expect("parse print flags");
     surface_flags_bdd.parse_ok.set(true);
@@ -292,8 +292,8 @@ fn w_ce19_print_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
 
 #[when("xylitol print --session sid --trust --model m hi")]
 fn w_ce19_print_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
-    use crate::app::cli::{CliArgs, surface_from_command};
     use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from([
         "xylitol",
         "print",
@@ -315,8 +315,8 @@ fn w_ce19_print_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
 
 #[when("xylitol print --session sid --no-trust hi")]
 fn w_ce19_print_no_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
-    use crate::app::cli::{CliArgs, surface_from_command};
     use clap::Parser;
+    use xylitol::app::cli::{CliArgs, surface_from_command};
     let args =
         CliArgs::try_parse_from(["xylitol", "print", "--session", "sid", "--no-trust", "hi"])
             .expect("parse print --no-trust");
@@ -334,8 +334,8 @@ fn t_ce19_parse_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
 
 #[when("xylitol --session sid")]
 fn w_ce19_toplevel_session(surface_flags_bdd: &SurfaceFlagsBdd) {
-    use crate::app::cli::CliArgs;
     use clap::Parser;
+    use xylitol::app::cli::CliArgs;
     surface_flags_bdd
         .parse_ok
         .set(CliArgs::try_parse_from(["xylitol", "--session", "sid"]).is_ok());
@@ -351,7 +351,7 @@ fn g_ce20_listed(surface_flags_bdd: &SurfaceFlagsBdd) {
     surface_flags_bdd.session.replace(Some("uuid-1".into()));
     surface_flags_bdd
         .hint
-        .replace(crate::app::cli::resume_hint_line(Some("uuid-1"), true));
+        .replace(xylitol::app::cli::resume_hint_line(Some("uuid-1"), true));
 }
 
 #[given("当前 session 未持久化")]
@@ -359,7 +359,7 @@ fn g_ce20_unlisted(surface_flags_bdd: &SurfaceFlagsBdd) {
     surface_flags_bdd.session.replace(Some("uuid-2".into()));
     surface_flags_bdd
         .hint
-        .replace(crate::app::cli::resume_hint_line(Some("uuid-2"), false));
+        .replace(xylitol::app::cli::resume_hint_line(Some("uuid-2"), false));
 }
 
 #[when("TUI 或 print 正常退出")]
@@ -414,7 +414,7 @@ fn g_ce21_host_down(attach_bdd: &AttachBdd) {
 
 #[when("产品 TUI 尝试 attach")]
 fn w_ce21_attach(attach_bdd: &AttachBdd) {
-    let err = crate::probe_host("http://127.0.0.1:1").expect_err("port 1 must be down");
+    let err = xylitol::probe_host("http://127.0.0.1:1").expect_err("port 1 must be down");
     attach_bdd.err.replace(Some(err.to_string()));
 }
 
@@ -425,7 +425,7 @@ fn t_ce21_fail(attach_bdd: &AttachBdd) {
         msg.contains("not listening") || msg.contains("Host is not listening"),
         "{msg}"
     );
-    let hint = crate::attach_fail_message(crate::DEFAULT_ATTACH_URL);
+    let hint = xylitol::attach_fail_message(xylitol::DEFAULT_ATTACH_URL);
     assert!(hint.contains("xylitol serve"), "{hint}");
     assert!(!hint.contains("server run"), "{hint}");
 }
@@ -435,14 +435,14 @@ fn w_atb4_inspect_drivers() {}
 
 #[then("默认 attach 且同进程驱动路径仍保留给 print 与嵌入")]
 fn t_atb4_attach_and_inprocess() {
-    assert_eq!(crate::DEFAULT_ATTACH_URL, "http://127.0.0.1:18790");
-    let inprocess = std::any::type_name::<crate::XyInProcessDriver>();
-    let http_ws = std::any::type_name::<crate::HttpWsClient>();
+    assert_eq!(xylitol::DEFAULT_ATTACH_URL, "http://127.0.0.1:18790");
+    let inprocess = std::any::type_name::<xylitol::XyInProcessDriver>();
+    let http_ws = std::any::type_name::<xylitol::HttpWsClient>();
     assert!(inprocess.contains("XyInProcessDriver"), "{inprocess}");
     assert!(http_ws.contains("HttpWsClient"), "{http_ws}");
 }
 
-use crate::tests::bdd::fixtures::{AgentState, Workspace};
+use crate::bdd::fixtures::{AgentState, Workspace};
 
 // ═══════════════════════════════════════════════════════════════════
 // c2826 specs-compact — 新增裸规则场景步骤（r69/r70/r1378/r1386/r1387/r1389）
@@ -469,7 +469,7 @@ pub fn cli_entry_bdd() -> CliEntryBdd {
 
 #[when("在产品命令模块解析 {a:string} 与 {b:string}")]
 fn w_c2826_parse_slash_pair(cli_entry_bdd: &CliEntryBdd, a: String, b: String) {
-    use crate::app::tui::parse_slash_command;
+    use xylitol::app::tui::parse_slash_command;
     let first = parse_slash_command(a.trim_matches('"'));
     let second = parse_slash_command(b.trim_matches('"'));
     let summary = format!("first={:?} second={:?}", first.is_some(), second.is_some());
@@ -516,7 +516,7 @@ fn g_c2826_zero_model_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
 fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
     let path = cli_entry_bdd.detail.borrow().clone();
     assert!(!path.is_empty(), "config path not prepared");
-    let input = crate::app::core::bootstrap::BootstrapInput {
+    let input = xylitol::app::core::bootstrap::BootstrapInput {
         config_path: Some(path.into()),
         session: None,
         model: None,
@@ -535,7 +535,7 @@ fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
         }
     };
     let cwd = ws.root();
-    let result = crate::app::core::bootstrap::resolve_assembly_with(
+    let result = xylitol::app::core::bootstrap::resolve_assembly_with(
         &input,
         env_probe,
         Some(std::path::Path::new(&cwd)),
@@ -572,7 +572,7 @@ fn t_c2826_zero_models_hard_fail(cli_entry_bdd: &CliEntryBdd) {
 
 #[when("产品面读取未选中模型的展示名")]
 fn w_c2826_unset_model_display(cli_entry_bdd: &CliEntryBdd) {
-    let shown = crate::app::core::bootstrap::UNSET_MODEL_DISPLAY.to_string();
+    let shown = xylitol::app::core::bootstrap::UNSET_MODEL_DISPLAY.to_string();
     cli_entry_bdd.detail.replace(shown);
 }
 
@@ -585,9 +585,9 @@ fn t_c2826_unset_display(cli_entry_bdd: &CliEntryBdd) {
 
 #[when("对接好会话的驱动请求 file_browser 会话树")]
 async fn w_c2826_tree_kind_unsupported(agent: &AgentState) {
-    use crate::embed::XyInProcessDriver;
-    use crate::protocol::session::SessionTreeKind;
-    let (runtime, store) = crate::tests::bdd::helpers::make_agent_with_store(agent);
+    use xylitol::embed::XyInProcessDriver;
+    use xylitol::protocol::session::SessionTreeKind;
+    let (runtime, store) = crate::bdd::helpers::make_agent_with_store(agent);
     let mut driver = XyInProcessDriver::new(runtime, store);
     driver
         .new_session()
@@ -599,7 +599,7 @@ async fn w_c2826_tree_kind_unsupported(agent: &AgentState) {
         .expect_err("file_browser kind must be rejected explicitly");
     agent
         .last_result
-        .replace(Some(Err(crate::XyDriverError::unsupported(
+        .replace(Some(Err(xylitol::XyDriverError::unsupported(
             err.to_string(),
         ))));
     agent.last_op_error.replace(Some(err.to_string()));

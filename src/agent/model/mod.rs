@@ -12,5 +12,4 @@ pub mod registry;
 pub mod resolver;
 pub mod task_model;
 
-#[cfg(test)]
 pub use manager::ModelManager;

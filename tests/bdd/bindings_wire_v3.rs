@@ -1,6 +1,6 @@
 //! wire v3 场景绑定(c2834;步骤实现见 `steps_wire_v3.rs`)。
 
-use crate::tests::bdd::steps_server::{ServerTest, server_test};
+use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

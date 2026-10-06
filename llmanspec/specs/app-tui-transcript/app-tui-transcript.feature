@@ -349,3 +349,5 @@
       当 以场景构建器回放 todo_rewrite 空列表结果的直播与 travel 重建
       那么 两种路径的块 body MUST 均为空态提示行 `(empty list)` 且逐行一致，MUST NOT 留空 body
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

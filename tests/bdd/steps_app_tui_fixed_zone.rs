@@ -1,10 +1,10 @@
 //! Steps for `app-tui-fixed-zone` — 下缘待办栏与队列条 / 通知条 / status / editor 堆叠。
 
-use crate::app::tui::{InteractionBdd, UiModel};
-use crate::protocol::session::{TodoItem, TodoList, TodoStatus};
-use crate::tests::bdd::prelude::*;
+use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
+use xylitol::app::tui::{InteractionBdd, UiModel};
+use xylitol::protocol::session::{TodoItem, TodoList, TodoStatus};
 
 pub struct FixedZoneBdd {
     pub model: RefCell<UiModel>,
@@ -105,11 +105,11 @@ fn then_empty_todo_bar_is_zero_rows(fixed_zone_bdd: &FixedZoneBdd) {
 
 // ── c2826 specs-compact：固定区裸规则转场景 ────────────────────────
 
-use crate::app::tui::UiEntry;
+use xylitol::app::tui::UiEntry;
 use xylitol_tui::Component;
 
-fn root_with(model: &UiModel) -> crate::app::tui::UiRoot {
-    let mut root = crate::app::tui::UiRoot::new();
+fn root_with(model: &UiModel) -> xylitol::app::tui::UiRoot {
+    let mut root = xylitol::app::tui::UiRoot::new();
     root.set_layout_meta("~/proj", "m1");
     root.apply_ui_model(model);
     root
@@ -322,7 +322,7 @@ fn t_c2826_tool_timeout(fixed_zone_bdd: &FixedZoneBdd) {
 #[when("以布局根设置 thinking 档 {level:string} 后渲染")]
 fn w_c2826_thinking_footer(fixed_zone_bdd: &FixedZoneBdd, level: String) {
     let level = level.trim_matches('"');
-    let mut root = crate::app::tui::UiRoot::new();
+    let mut root = xylitol::app::tui::UiRoot::new();
     root.set_layout_meta("~/proj", "m1");
     root.set_thinking_level_ui(level.to_string());
     root.apply_ui_model(&UiModel::new());
@@ -341,8 +341,8 @@ fn t_c2826_thinking_footer(fixed_zone_bdd: &FixedZoneBdd) {
 
 #[when("以含 skills 与 connecting MCP 的资源快照渲染头部卡")]
 fn w_c2826_loaded_resources(fixed_zone_bdd: &FixedZoneBdd) {
-    use crate::app::core::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
-    let mut root = crate::app::tui::UiRoot::new();
+    use xylitol::app::core::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+    let mut root = xylitol::app::tui::UiRoot::new();
     root.set_layout_meta("~/proj", "m1");
     root.set_loaded_resources(LoadedResourcesSnapshot {
         skill_names: vec!["demo-skill".into()],
@@ -389,7 +389,7 @@ fn t_c2826_loaded_resources(fixed_zone_bdd: &FixedZoneBdd) {
 
 #[when("连续推送两条通知条后渲染")]
 fn w_c2826_toast_replace(fixed_zone_bdd: &FixedZoneBdd) {
-    let mut fx = crate::app::tui::InteractionBdd::from_model(UiModel::new());
+    let mut fx = xylitol::app::tui::InteractionBdd::from_model(UiModel::new());
     fx.push_toast_notice("第一条通知");
     fx.push_toast_notice("第二条通知");
     stash(fixed_zone_bdd, vec![fx.render_plain(80)]);
@@ -416,22 +416,22 @@ fn t_c2826_toast_replace(fixed_zone_bdd: &FixedZoneBdd) {
 
 async fn footer_with_estimate(
     tokens: u64,
-    provenance: crate::protocol::model::TokenProvenance,
+    provenance: xylitol::protocol::model::TokenProvenance,
     window: u64,
 ) -> String {
-    use crate::app::tui::TuiHostSession as HostSession;
-    use crate::app::tui::harness::{ScriptedDriver, TestTerminal};
-    use crate::protocol::model::ContextTokenEstimate;
+    use xylitol::app::tui::TuiHostSession as HostSession;
+    use xylitol::app::tui::harness::{ScriptedDriver, TestTerminal};
+    use xylitol::protocol::model::ContextTokenEstimate;
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let mut driver = ScriptedDriver::new();
-    driver.set_current_model(crate::app::core::driver::ModelInfo {
+    driver.set_current_model(xylitol::app::core::driver::ModelInfo {
         id: "Fake".into(),
         display_name: "Fake".into(),
         thinking: false,
         thinking_levels: Vec::new(),
         context_window: window,
     });
-    driver.set_session_messages(crate::app::tui::harness::harness_sample_session_messages());
+    driver.set_session_messages(xylitol::app::tui::harness::harness_sample_session_messages());
     driver.set_estimate_override(Some(ContextTokenEstimate {
         tokens,
         provenance,
@@ -439,7 +439,7 @@ async fn footer_with_estimate(
         trailing_tokens: 0,
         last_usage_index: None,
     }));
-    crate::app::tui::refresh_footer_tokens(&mut session, &mut driver).await;
+    xylitol::app::tui::refresh_footer_tokens(&mut session, &mut driver).await;
     session
         .ui_root()
         .expect("ui")
@@ -452,7 +452,7 @@ async fn footer_with_estimate(
 
 #[when("以 Heuristic 上下文估计驱动 footer token 字段")]
 async fn w_c2826_footer_heuristic(fixed_zone_bdd: &FixedZoneBdd) {
-    use crate::protocol::model::TokenProvenance;
+    use xylitol::protocol::model::TokenProvenance;
     let footer = footer_with_estimate(42, TokenProvenance::Heuristic, 128_000).await;
     stash(fixed_zone_bdd, vec![footer]);
 }
@@ -474,7 +474,7 @@ fn t_c2826_footer_heuristic(fixed_zone_bdd: &FixedZoneBdd) {
 
 #[when("以 Api 来源 42k tokens 与 128k 窗口驱动 footer")]
 async fn w_c2826_footer_percent(fixed_zone_bdd: &FixedZoneBdd) {
-    use crate::protocol::model::TokenProvenance;
+    use xylitol::protocol::model::TokenProvenance;
     let footer = footer_with_estimate(42_000, TokenProvenance::Api, 128_000).await;
     stash(fixed_zone_bdd, vec![footer]);
 }
@@ -494,7 +494,7 @@ fn t_c2826_footer_percent(fixed_zone_bdd: &FixedZoneBdd) {
 
 #[when("以 42000 与 8123456 两种 token 数驱动 footer")]
 async fn w_c2826_footer_compact(fixed_zone_bdd: &FixedZoneBdd) {
-    use crate::protocol::model::TokenProvenance;
+    use xylitol::protocol::model::TokenProvenance;
     let a = footer_with_estimate(42_000, TokenProvenance::Api, 128_000).await;
     let b = footer_with_estimate(8_123_456, TokenProvenance::Api, 32_000_000).await;
     stash(fixed_zone_bdd, vec![a, b]);
@@ -519,8 +519,8 @@ fn t_c2826_footer_compact(fixed_zone_bdd: &FixedZoneBdd) {
 
 #[when("经事件流注入两条相同正文的用户消息")]
 fn w_c2826_same_text_twice(fixed_zone_bdd: &FixedZoneBdd) {
-    use crate::agent::runtime::XyEvent;
-    let mut fx = crate::app::tui::InteractionBdd::from_model(UiModel::new());
+    use xylitol::agent::runtime::XyEvent;
+    let mut fx = xylitol::app::tui::InteractionBdd::from_model(UiModel::new());
     for _ in 0..2 {
         fx.push_xy(XyEvent::MessageStart {
             role: "user".into(),

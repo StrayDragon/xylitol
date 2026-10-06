@@ -25,13 +25,9 @@ pub use llm_summarizer::{generate_summary, generate_turn_prefix_summary};
 pub use overflow::error_message_is_context_overflow;
 pub use settings::CompactionSettings;
 // Test-support re-exports (in-crate tests import via this facade).
-#[cfg(test)]
 pub use cut_detector::estimate_tokens_entry_for_cut;
-#[cfg(test)]
 pub use file_ops::FileOps;
-#[cfg(test)]
 pub use orchestrator::should_compact;
-#[cfg(test)]
 pub use overflow::{assistant_same_model, is_context_overflow_assistant};
 pub use settlement::{
     ContextTokenSettlement, ContextTokenSettlementReason, settle_from_session_entries,
@@ -445,7 +441,7 @@ fn session_cwd_from_entries(entries: &[SessionEntry]) -> Option<&str> {
 
 /// If compaction/cut leaves no `agent_todo` in the post-cut context window,
 /// re-append the latest pre-cut snapshot so tip / resume / request-time inject stay aligned.
-pub(crate) async fn ensure_agent_todo_after_compact(
+pub async fn ensure_agent_todo_after_compact(
     store: &dyn XySessionStore,
     session_id: &str,
     entries_before: &[SessionEntry],

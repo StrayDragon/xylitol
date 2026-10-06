@@ -5,11 +5,11 @@
 //! （spec 明文禁 BDD step），otel1–5 / 9 / 13 / 17 / 20 / 21 维持单测与
 //! live smoke 承载，不在本文件范围。
 
-use crate::infra::provider::factory::{set_fake_text, set_fake_tool_call, set_fake_tool_result};
-use crate::tests::bdd::fixtures::AgentState;
-use crate::tests::bdd::prelude::*;
+use crate::bdd::fixtures::AgentState;
+use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
+use xylitol::infra::provider::factory::{set_fake_text, set_fake_tool_call, set_fake_tool_result};
 use xylitol_ai_bridge::provider::trace::{
     ObservationIoTier, SpanCollectScope, set_observation_io_tier, set_provider_trace_active,
     set_tool_observation_io_tier,
@@ -81,14 +81,14 @@ pub(crate) async fn run_turn_with_tool(agent: &AgentState, session_name: Option<
     set_fake_text("我来读文件");
     set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
     set_fake_tool_result("hello world");
-    let mut runner = crate::tests::bdd::helpers::make_agent(agent);
+    let mut runner = crate::bdd::helpers::make_agent(agent);
     // 显式绑定已知会话 UUID——runtime bind_session 会把 obs session 槽
     // 同步为当前会话，otel6 的「当前会话 UUID」即此 id。
-    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
+    crate::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
     if let Some(name) = session_name {
         xylitol_ai_bridge::provider::set_obs_session_name(Some(name));
     }
-    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
+    let mut stream = crate::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
     while let Some(e) = stream.next().await {
         if let XyEvent::Error(err) = &e {
             panic!(
@@ -355,9 +355,9 @@ async fn w_c2826_no_gate_run(agent: &AgentState, _otel_bdd: &OtelBdd) {
     set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
     set_fake_tool_result("hello world");
     // 不臂装任何收集槽/观测闸：默认关闸运行一回，验证主路径不受影响。
-    let mut runner = crate::tests::bdd::helpers::make_agent(agent);
-    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
-    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
+    let mut runner = crate::bdd::helpers::make_agent(agent);
+    crate::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
+    let mut stream = crate::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
     while let Some(e) = stream.next().await {
         if let XyEvent::Error(err) = &e {
             panic!(
@@ -384,13 +384,13 @@ fn t_c2826_no_gate_no_export() {
 #[cfg(feature = "otel")]
 #[when("以合法 otlp-http 配置尝试构建 OTLP reporter")]
 async fn w_c2826_build_reporter_ok(otel_bdd: &OtelBdd) {
-    use crate::infra::config::types::{OtelConfig, OtelExporterKind};
+    use xylitol::infra::config::types::{OtelConfig, OtelExporterKind};
     let cfg = OtelConfig {
         exporter: OtelExporterKind::OtlpHttp,
         endpoint: Some("http://127.0.0.1:9/api/public/otel".into()),
         ..Default::default()
     };
-    let built = crate::infra::observability::otel::install::try_build_otlp_reporter(&cfg);
+    let built = xylitol::infra::observability::otel::install::try_build_otlp_reporter(&cfg);
     otel_bdd.mounted.set(built.is_some());
     drop(built);
 }
@@ -406,7 +406,7 @@ fn t_c2826_reporter_built(otel_bdd: &OtelBdd) {
 
 #[when("以缺失 endpoint 的 otlp-http 配置尝试构建 OTLP reporter")]
 async fn w_c2826_build_reporter_bad(otel_bdd: &OtelBdd) {
-    use crate::infra::config::types::{OtelConfig, OtelExporterKind};
+    use xylitol::infra::config::types::{OtelConfig, OtelExporterKind};
     let cfg = OtelConfig {
         exporter: OtelExporterKind::OtlpHttp,
         endpoint: None,
@@ -429,7 +429,7 @@ async fn w_c2826_build_reporter_bad(otel_bdd: &OtelBdd) {
             std::env::remove_var(key);
         }
     }
-    let built = crate::infra::observability::otel::install::try_build_otlp_reporter(&cfg);
+    let built = xylitol::infra::observability::otel::install::try_build_otlp_reporter(&cfg);
     otel_bdd.mounted.set(built.is_none());
     drop(built);
     for (key, value) in saved {
@@ -441,7 +441,7 @@ async fn w_c2826_build_reporter_bad(otel_bdd: &OtelBdd) {
 
 #[then("构建安静返回 None 且产生 obs 诊断且不失败")]
 fn t_c2826_reporter_none_diag(otel_bdd: &OtelBdd) {
-    let diag = crate::infra::observability::otel::otlp_disabled_diag();
+    let diag = xylitol::infra::observability::otel::otlp_disabled_diag();
     assert!(
         diag.is_some(),
         "c2826: otlp-http 未生效必须经 obs_diag 呈现（构建返回 None = {}）",
@@ -463,9 +463,9 @@ async fn w_c2826_tool_tier_only(agent: &AgentState, otel_bdd: &OtelBdd) {
     drop(otel_bdd.collect.borrow_mut().take());
     *otel_bdd.collect.borrow_mut() = Some(SpanCollectScope::enter());
     otel_bdd.mounted.set(true);
-    let mut runner = crate::tests::bdd::helpers::make_agent(agent);
-    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
-    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
+    let mut runner = crate::bdd::helpers::make_agent(agent);
+    crate::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
+    let mut stream = crate::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
     while let Some(e) = stream.next().await {
         if let XyEvent::Error(err) = &e {
             panic!(
@@ -500,13 +500,10 @@ fn t_c2826_tool_tier_only(otel_bdd: &OtelBdd) {
 }
 
 #[when("以观测闸开启并触发一次会话压缩")]
-async fn w_c2826_compaction_span(
-    sess: &crate::tests::bdd::fixtures::XySessionStore,
-    otel_bdd: &OtelBdd,
-) {
-    use crate::tests::bdd::steps_compaction::COMP_RETAIN_SID;
+async fn w_c2826_compaction_span(sess: &crate::bdd::fixtures::XySessionStore, otel_bdd: &OtelBdd) {
+    use crate::bdd::steps_compaction::COMP_RETAIN_SID;
     sess.ensure_mgr();
-    crate::tests::bdd::steps_compaction::comp_seed_turns(sess, COMP_RETAIN_SID, 50).await;
+    crate::bdd::steps_compaction::comp_seed_turns(sess, COMP_RETAIN_SID, 50).await;
     sess.current_id.replace(Some(COMP_RETAIN_SID.to_string()));
     set_provider_trace_active(true);
     set_observation_io_tier(ObservationIoTier::None);
@@ -517,21 +514,22 @@ async fn w_c2826_compaction_span(
     otel_bdd.mounted.set(true);
     // 经编排器手动压缩（span 守卫在 orchestrator，不在裸 compact_session）。
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let model =
-        crate::infra::provider::factory::build_provider(&crate::protocol::model::XyModelConfig {
-            kind: crate::protocol::model::XyModelKind::Fake,
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
             api: None,
             compat: None,
-        });
+        },
+    );
     let binding =
-        crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake");
-    let sink = std::sync::Arc::new(crate::infra::event::EventBus::new());
+        xylitol::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake");
+    let sink = std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut notice = false;
-    crate::agent::compaction::CompactionOrchestrator::new(
-        crate::agent::compaction::CompactionSettings {
+    xylitol::agent::compaction::CompactionOrchestrator::new(
+        xylitol::agent::compaction::CompactionSettings {
             enabled: true,
             reserve_tokens: 1024,
             keep_recent_tokens: 1_000,
@@ -622,14 +620,14 @@ fn w_c2827_idle_settle(_otel_bdd: &OtelBdd) {
         session_id: Some(SESSION_UUID.into()),
         ..Default::default()
     };
-    let opts = crate::agent::compaction::token_estimator::EstimateOpts {
+    let opts = xylitol::agent::compaction::token_estimator::EstimateOpts {
         obs_session,
         ..Default::default()
     };
-    let _ = crate::agent::compaction::settlement::settle_from_session_entries(
+    let _ = xylitol::agent::compaction::settlement::settle_from_session_entries(
         &entries,
         &opts,
-        crate::agent::compaction::settlement::ContextTokenSettlementReason::TurnSettled,
+        xylitol::agent::compaction::settlement::ContextTokenSettlementReason::TurnSettled,
     );
     // fastrace 批量投递是异步的：给后台线程一点时间。
     std::thread::sleep(std::time::Duration::from_millis(200));

@@ -32,7 +32,6 @@ pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueSt
 pub(crate) use self::session_ops::load_conversation_history_from_store;
 pub use self::stats::SessionStats;
 // Test-support re-export (in-crate tests import via this facade).
-#[cfg(test)]
 pub use self::stats::{ContextUsage, get_context_usage};
 
 use crate::agent::compaction::CompactionSettings;
@@ -82,7 +81,7 @@ impl ActiveTurnBinding {
 /// Engine capability aggregate (model / tools / session / prompt / compaction / queues).
 ///
 /// Product slash, bang, and session export live on [`XyDriver`](crate::app::core::driver::XyDriver).
-pub(crate) struct AgentCapabilities {
+pub struct AgentCapabilities {
     /// Model management (registry, selection, thinking level). Shared so ReAct
     /// can refresh at turn boundaries while surfaces call `select_model`.
     model_manager: Arc<Mutex<ModelManager>>,

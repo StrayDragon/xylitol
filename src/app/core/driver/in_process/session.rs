@@ -27,10 +27,7 @@ impl super::XyInProcessDriver {
         Ok(id)
     }
 
-    pub(crate) async fn switch_session(
-        &mut self,
-        session_id: &str,
-    ) -> Result<String, XyDriverError> {
+    pub async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
         if !self.store.exists(session_id).await {
             return Err(XyDriverError::not_found(session_id.to_string()));
         }
@@ -111,7 +108,7 @@ impl super::XyInProcessDriver {
         .map_err(|e| XyDriverError::io(format!("estimate join: {e}")))
     }
 
-    pub(crate) async fn session_tree(
+    pub async fn session_tree(
         &self,
         kind: SessionTreeKind,
     ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
@@ -226,7 +223,7 @@ impl super::XyInProcessDriver {
             .map_err(Into::into)
     }
 
-    pub(crate) async fn new_session(&mut self) -> Result<String, XyDriverError> {
+    pub async fn new_session(&mut self) -> Result<String, XyDriverError> {
         let session_id = uuid::Uuid::new_v4().to_string();
         let cwd = std::env::current_dir()
             .ok()

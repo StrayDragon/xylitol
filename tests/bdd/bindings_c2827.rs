@@ -1,9 +1,9 @@
 //! Bindings for c2827 specs-compact wave 2.
 
-use crate::tests::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
-use crate::tests::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
-use crate::tests::bdd::steps_c2827::{C2827Bdd, c2827_bdd};
-use crate::tests::bdd::steps_package_tui_tree_selector::{TreeSelBdd, tree_sel_bdd};
+use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
+use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
+use crate::bdd::steps_c2827::{C2827Bdd, c2827_bdd};
+use crate::bdd::steps_package_tui_tree_selector::{TreeSelBdd, tree_sel_bdd};
 use rstest_bdd_macros::scenario;
 use serial_test::serial;
 
@@ -175,10 +175,10 @@ fn test_at_diff_cap(host_pump_bdd: HostPumpBdd) {}
 // c2827 T2：agent 域
 // ═══════════════════════════════════════════════════════════════════
 
-use crate::tests::bdd::fixtures::XySessionStore;
-use crate::tests::bdd::fixtures::{AgentState, Workspace, agent, sess, ws};
-use crate::tests::bdd::steps_bridge::{PromptBdd, prompt_bdd};
-use crate::tests::bdd::steps_c2827::{
+use crate::bdd::fixtures::XySessionStore;
+use crate::bdd::fixtures::{AgentState, Workspace, agent, sess, ws};
+use crate::bdd::steps_bridge::{PromptBdd, prompt_bdd};
+use crate::bdd::steps_c2827::{
     T2CapsBdd, T2EstBdd, T2SchemaBdd, T2SkillBdd, t2_caps_bdd, t2_est_bdd, t2_schema_bdd,
     t2_skill_bdd,
 };
@@ -239,8 +239,8 @@ fn test_acc_api_first(t2_est_bdd: T2EstBdd) {}
 )]
 fn test_acc_aborted_anchor(t2_est_bdd: T2EstBdd) {}
 
-use crate::tests::bdd::steps_c2827::{T2TodoBdd, t2_todo_bdd};
-use crate::tests::bdd::steps_otel_obs::{OtelBdd, otel_bdd};
+use crate::bdd::steps_c2827::{T2TodoBdd, t2_todo_bdd};
+use crate::bdd::steps_otel_obs::{OtelBdd, otel_bdd};
 
 // agent-todo r1125
 #[scenario(
@@ -284,7 +284,7 @@ async fn test_td_compact_ensure(t2_todo_bdd: T2TodoBdd) {}
 )]
 async fn test_td_export(t2_todo_bdd: T2TodoBdd) {}
 
-use crate::tests::bdd::steps_c2827::{T2ResBdd, t2_res_bdd};
+use crate::bdd::steps_c2827::{T2ResBdd, t2_res_bdd};
 
 // runtime-resource-discovery r1759/r1760/r1762/r1761/r1763/r1764/r1765
 #[scenario(
@@ -390,7 +390,7 @@ fn test_mcp_none() {}
 #[serial]
 fn test_ot_idle_root(otel_bdd: OtelBdd) {}
 
-use crate::tests::bdd::steps_c2827::{T4PolicyBdd, T4PrintBdd, t4_policy_bdd, t4_print_bdd};
+use crate::bdd::steps_c2827::{T4PolicyBdd, T4PrintBdd, t4_policy_bdd, t4_print_bdd};
 
 // domain-compaction r1411
 #[scenario(
@@ -486,7 +486,7 @@ fn test_pt_dock_exclude() {}
 // c2829 批 2
 // ═══════════════════════════════════════════════════════════════════
 
-use crate::tests::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
+use crate::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
 
 // agent-todo r1122
 #[scenario(
@@ -517,7 +517,7 @@ async fn test_mcp_config_driven(t6_mcp_bdd: T6McpBdd) {}
 async fn test_mcp_invalid(t6_mcp_bdd: T6McpBdd) {}
 
 // ── c2835 后继：infra-provider 裸规则回填 ──────────────────────────
-use crate::tests::bdd::steps_bridge::{AiBridgeBdd, ai_bridge_bdd};
+use crate::bdd::steps_bridge::{AiBridgeBdd, ai_bridge_bdd};
 
 #[scenario(
     path = "llmanspec/specs/infra-provider/infra-provider.feature",
@@ -1234,6 +1234,11 @@ fn test_t4_provider_port() {}
     name = "bdd-suite-fully-wired"
 )]
 fn test_t4_bdd_suite() {}
+#[scenario(
+    path = "llmanspec/specs/test-bdd/test-bdd.feature",
+    name = "bdd-isolated-target-bound"
+)]
+fn test_t4_bdd_isolated_target() {}
 #[scenario(
     path = "llmanspec/specs/test-bdd/test-bdd.feature",
     name = "server-integration-scenarios-bound"

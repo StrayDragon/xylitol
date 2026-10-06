@@ -9,14 +9,14 @@
 
 use std::time::Duration;
 
-use crate::app::core::host_client::{HostClient, HttpWsClient};
-use crate::protocol::wire::v3::generated::Event as V3Event;
-use crate::protocol::wire::v3::{
+use crate::bdd::steps_server::{ServerTest, start_host};
+use rstest_bdd_macros::{given, then, when};
+use xylitol::app::core::host_client::{HostClient, HttpWsClient};
+use xylitol::protocol::wire::v3::generated::Event as V3Event;
+use xylitol::protocol::wire::v3::{
     ClientRequest, Describe, DescribeResult, Frame, Notification, Request, ResponsePayload,
     ServerResponse, ToolStart,
 };
-use crate::tests::bdd::steps_server::{ServerTest, start_host};
-use rstest_bdd_macros::{given, then, when};
 
 /// 对拍场景使用的会话 id（`HostState::for_test` 的默认会话）。
 const SNAPSHOT_SESSION: &str = "test-session";
@@ -132,7 +132,7 @@ async fn t_json_path_ok(server_test: &ServerTest) {
 #[then("得到致命错误且无降级与重试风暴")]
 async fn t_fatal_no_downgrade() {
     // 协商降级禁令:wire 格式标识稳定(客户端不识别即致命,不降级)。
-    assert_eq!(crate::protocol::wire::WIRE_FORMAT_FORY_V3, "fory-v3");
+    assert_eq!(xylitol::protocol::wire::WIRE_FORMAT_FORY_V3, "fory-v3");
 }
 
 #[then("host.describe 的 result 携带 wire 格式集合")]
@@ -143,7 +143,7 @@ async fn t_formats_present(server_test: &ServerTest) {
     assert!(resp.ok);
     match resp.payload {
         Some(ResponsePayload::DescribeResult(DescribeResult { protocol, formats })) => {
-            assert_eq!(protocol, crate::protocol::wire::PROTOCOL_VERSION);
+            assert_eq!(protocol, xylitol::protocol::wire::PROTOCOL_VERSION);
             assert!(formats.iter().any(|f| f == "jsonrpc"), "{formats:?}");
             assert!(formats.iter().any(|f| f == "fory-v3"), "{formats:?}");
         }
@@ -157,7 +157,7 @@ async fn w_toolstart_roundtrip(_server_test: &ServerTest) {}
 #[then("参数原文逐字节保真且客户端可再解析")]
 async fn t_toolstart_args_raw() {
     let raw = r#"{"pattern":"TODO","max_results":100}"#;
-    let frame = Frame::ServerNotification(crate::protocol::wire::v3::ServerNotification {
+    let frame = Frame::ServerNotification(xylitol::protocol::wire::v3::ServerNotification {
         seq: 7,
         notification: Notification::Event(V3Event::ToolStart(ToolStart {
             id: "t1".into(),
@@ -257,7 +257,9 @@ async fn w_reserved_names(_server_test: &ServerTest) {}
 
 #[then("生成物字段名原名保留且往返保真")]
 async fn t_reserved_names_preserved() {
-    use crate::protocol::wire::v3::{ErrorEvent, ServerNotification, SessionEntry, SessionHeader};
+    use xylitol::protocol::wire::v3::{
+        ErrorEvent, ServerNotification, SessionEntry, SessionHeader,
+    };
     let frame = Frame::ServerNotification(ServerNotification {
         seq: 1,
         notification: Notification::Event(V3Event::ErrorEvent(ErrorEvent {
@@ -325,7 +327,7 @@ async fn g_dual_rail_prompt(_server_test: &ServerTest) {}
 async fn w_turn_finished(server_test: &ServerTest) {
     // 双路径事件流对拍(spec r1908):同一会话注入代表事件流,JSON 与 v3
     // 路径各自订阅收集,解码回领域 Event;结果存 fixture 供断言。
-    let pairs = crate::app::core::host_client::dual_rail_event_parity()
+    let pairs = xylitol::app::core::host_client::dual_rail_event_parity()
         .await
         .expect("parity run");
     let ok = pairs.iter().all(|(a, b)| a == b);
@@ -350,7 +352,7 @@ async fn t_dual_rail_equivalent(server_test: &ServerTest) {
 /// task 2.5b 对拍 fixture：给 Host 默认会话灌 3 条真实条目（两条路径读同一 store）。
 #[given("同一会话在两条路径上各有 3 条历史条目")]
 async fn g_seed_snapshot_entries(server_test: &ServerTest) {
-    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
 
     start_host(server_test).await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
@@ -381,7 +383,7 @@ async fn g_seed_snapshot_entries(server_test: &ServerTest) {
 /// union 解码;两份 result 存 fixture 供断言。
 #[when("客户端分别经 JSON-RPC 与 v3 取回该会话快照")]
 async fn w_fetch_snapshot_dual_rail(server_test: &ServerTest) {
-    use crate::protocol::wire::v3::{Command as V3Command, GetMessages};
+    use xylitol::protocol::wire::v3::{Command as V3Command, GetMessages};
 
     let port = server_test.port.get();
     let json_client = HttpWsClient::new(format!("http://127.0.0.1:{port}"));
@@ -405,7 +407,7 @@ async fn w_fetch_snapshot_dual_rail(server_test: &ServerTest) {
     let v3_value = match resp.payload.as_ref() {
         Some(ResponsePayload::MessagesResult(m)) => serde_json::json!({
             "entries": serde_json::to_value(
-                crate::protocol::wire::v3::mapping::v3_to_entries(m).expect("closed variants"),
+                xylitol::protocol::wire::v3::mapping::v3_to_entries(m).expect("closed variants"),
             )
             .unwrap()
         }),
@@ -465,13 +467,13 @@ async fn w_inject_textdelta(server_test: &ServerTest) {
     for text in ["a", "b", "c"] {
         host.slot("s-seq")
             .await
-            .append_and_push(crate::protocol::Event::TextDelta { text: text.into() })
+            .append_and_push(xylitol::protocol::Event::TextDelta { text: text.into() })
             .await;
     }
     let mut seqs = Vec::new();
     use futures::StreamExt;
     while let Ok(Some(Ok(frame))) = tokio::time::timeout(Duration::from_secs(3), mux.next()).await {
-        if let crate::protocol::RpcMessage::ServerRequest {
+        if let xylitol::protocol::RpcMessage::ServerRequest {
             method, payload, ..
         } = &frame
             && method == "session/event"
@@ -507,7 +509,7 @@ async fn w_decode_future_variant(server_test: &ServerTest) {
     // UnknownCase 即「未来变体」的合法载体:编码 Event::Unknown 帧,旧端
     // 解码落 Unknown 且 mapping 降级 None(spec r1907/r1719,不 panic)。
     let unknown_event = V3Event::Unknown(fory::UnknownCase::new(999u32, 0u8));
-    let frame = Frame::ServerNotification(crate::protocol::wire::v3::ServerNotification {
+    let frame = Frame::ServerNotification(xylitol::protocol::wire::v3::ServerNotification {
         seq: 9,
         notification: Notification::Event(unknown_event),
     });
@@ -516,7 +518,7 @@ async fn w_decode_future_variant(server_test: &ServerTest) {
     let degraded = match &back {
         Frame::ServerNotification(n) => match &n.notification {
             Notification::Event(V3Event::Unknown(_)) => {
-                crate::protocol::wire::v3::mapping::v3_event_to_xy(&V3Event::Unknown(
+                xylitol::protocol::wire::v3::mapping::v3_event_to_xy(&V3Event::Unknown(
                     fory::UnknownCase::new(999u32, 0u8),
                 ))
                 .is_none()

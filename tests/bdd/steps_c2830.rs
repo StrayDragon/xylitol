@@ -9,13 +9,13 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use crate::infra::provider::adapter::AdapterXyModel;
-use crate::protocol::model::XyChunk;
-use crate::protocol::ports::XyModel;
-use crate::tests::bdd::prelude::*;
-use crate::tests::bdd::steps_otel_obs::OtelBdd;
+use crate::bdd::prelude::*;
+use crate::bdd::steps_otel_obs::OtelBdd;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
+use xylitol::infra::provider::adapter::AdapterXyModel;
+use xylitol::protocol::model::XyChunk;
+use xylitol::protocol::ports::XyModel;
 use xylitol_ai_bridge::provider::AnthropicMessagesAdapter;
 use xylitol_ai_bridge::provider::trace::ObservationIoTier;
 

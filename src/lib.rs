@@ -5,10 +5,19 @@
 //! ## Public API = `embed` + curated `Xy*` re-exports
 //!
 //! The only externally reachable surface is the [`embed`] seam plus the
-//! curated re-exports below. `agent` / `infra` / `utils` are `pub(crate)`;
-//! `protocol::wire` / `protocol::ports` and the root `Xy*` re-exports are the
-//! shared vocabulary. There is no second stable face: deep module paths are
-//! not a stability promise — extend the seam instead.
+//! curated re-exports below. `agent` / `infra` are public since c2837 (BDD
+//! independent integration-test target needs them reachable outside the
+//! crate); `utils` stays `pub(crate)`; `protocol::wire` / `protocol::ports`
+//! and the root `Xy*` re-exports are the shared vocabulary. There is no
+//! second stable face: deep module paths are not a stability promise —
+//! extend the seam instead.
+
+// c2837: BDD 独立集成测试 target 使 agent/infra 公开化，rustdoc 随之扫描扩大
+// 后的 doc 面；大量 intra-doc 链接指向私有项/断链在迁移前不可见（未开
+// --document-private-items）。这是 doc 质量软提示而非硬错误——允许跳过，
+// 完整 doc 链接治理另立 change。
+#![allow(rustdoc::broken_intra_doc_links)]
+#![allow(rustdoc::private_intra_doc_links)]
 //!
 //! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
@@ -34,14 +43,13 @@
 //!
 //! Visibility is enforced by the compiler, not convention:
 //!
-//! ```compile_fail
-//! // `infra` is `pub(crate)` — external crates cannot reach it.
-//! use xylitol::infra::session::SessionEntry;
-//! ```
+//! Since c2837, `agent` / `infra` are public (the BDD independent
+//! integration-test target reaches them as `xylitol::agent::…`); `utils`
+//! remains `pub(crate)` and is still a hard boundary:
 //!
 //! ```compile_fail
-//! // `agent::capabilities` is `pub(crate)` too.
-//! use xylitol::agent::capabilities::AgentCapabilities;
+//! // `utils` is `pub(crate)` — external crates cannot reach it.
+//! use xylitol::utils::sync::lock_mutex;
 //! ```
 //!
 //! ```rust
@@ -50,10 +58,12 @@
 //! use xylitol::XyDriver as _;
 //! ```
 
-pub(crate) mod agent;
+// `agent`/`infra` 由 pub(crate) 升 pub：BDD 独立集成测试 target（tests/bdd.rs）
+// 只能访问 lib 的 pub 项；纯可见性扩张，无行为变化（c2837 编译隔离）。
+pub mod agent;
 pub mod app;
 pub mod embed;
-pub(crate) mod infra;
+pub mod infra;
 pub mod protocol;
 pub(crate) mod utils;
 

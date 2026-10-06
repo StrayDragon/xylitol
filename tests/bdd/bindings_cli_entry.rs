@@ -1,10 +1,10 @@
-use crate::tests::bdd::fixtures::{AgentState, Workspace, agent, ws};
-use crate::tests::bdd::steps_cli_surface::{
+use crate::bdd::fixtures::{AgentState, Workspace, agent, ws};
+use crate::bdd::steps_cli_surface::{
     AttachBdd, CliEntryBdd, CliHelpBdd, SurfaceBdd, SurfaceFlagsBdd, attach_bdd, cli_entry_bdd,
     cli_help_bdd, surface_bdd, surface_flags_bdd,
 };
-use crate::tests::bdd::steps_server::{ServerTest, server_test};
-use crate::tests::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
+use crate::bdd::steps_server::{ServerTest, server_test};
+use crate::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

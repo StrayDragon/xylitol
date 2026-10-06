@@ -1,6 +1,6 @@
-use crate::tests::bdd::fixtures::*;
-use crate::tests::bdd::helpers::{result_ok_str, strip_quotes};
-use crate::tests::bdd::prelude::*;
+use crate::bdd::fixtures::*;
+use crate::bdd::helpers::{result_ok_str, strip_quotes};
+use crate::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
 
 fn bdd_provider_for(model: &str) -> &'static str {
@@ -756,9 +756,9 @@ fn tmp_root(sess: &XySessionStore) -> std::path::PathBuf {
         .expect("leaked tempdir root")
 }
 
-fn exporter() -> crate::SessionExporter {
-    use crate::infra::export::StdExportIo;
-    crate::SessionExporter::new(Some(std::sync::Arc::new(StdExportIo::new())))
+fn exporter() -> xylitol::SessionExporter {
+    use xylitol::infra::export::StdExportIo;
+    xylitol::SessionExporter::new(Some(std::sync::Arc::new(StdExportIo::new())))
 }
 
 async fn append_bash_execution(sess: &XySessionStore, cmd: &str, out: &str) {
@@ -904,7 +904,7 @@ async fn then_cwd_validate_err_both(
 
 #[when("向会话追加关联 {call_id:string} 的工具结果消息 {text:string}")]
 async fn when_append_tool_result(sess: &XySessionStore, call_id: String, text: String) {
-    use crate::protocol::message::{AgentMessage, AgentPart};
+    use xylitol::protocol::message::{AgentMessage, AgentPart};
     sess.ensure_mgr();
     let id = sess.current_id.borrow().clone().expect("current session");
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();

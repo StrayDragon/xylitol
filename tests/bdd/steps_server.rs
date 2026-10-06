@@ -1,17 +1,17 @@
-use crate::tests::bdd::prelude::*;
+use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use std::time::Duration;
 
-use crate::app::server::host::HostState;
-use crate::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
-use crate::app::server::ws::{EventJournal, ReverseRpcResult};
-use crate::protocol::Event;
-use crate::protocol::wire::codec;
-use crate::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
-use crate::protocol::wire::method::DOWNLINK_METHODS;
-use crate::protocol::wire::registry;
-use crate::{
+use xylitol::app::server::host::HostState;
+use xylitol::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
+use xylitol::app::server::ws::{EventJournal, ReverseRpcResult};
+use xylitol::protocol::Event;
+use xylitol::protocol::wire::codec;
+use xylitol::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
+use xylitol::protocol::wire::method::DOWNLINK_METHODS;
+use xylitol::protocol::wire::registry;
+use xylitol::{
     HostClient, HttpWsClient, LinkHealth, LinkTunings, MuxStream, XyDriver, XyRemoteDriver,
 };
 
@@ -38,7 +38,7 @@ pub struct ServerTest {
     pub idem_exec_file: RefCell<Option<std::path::PathBuf>>,
     pub idem_task: RefCell<Option<tokio::task::JoinHandle<()>>>,
     /// c2465 sr-rdy1：就绪窗口场景的网关与最近一次 healthz 应答。
-    pub gateway: RefCell<Option<Arc<crate::app::server::http::Gateway>>>,
+    pub gateway: RefCell<Option<Arc<xylitol::app::server::http::Gateway>>>,
     pub rdy_status: Cell<u16>,
     pub rdy_body: RefCell<Option<String>>,
     /// c2475 sr-reg1：注册文件路径与自检驱逐信号。
@@ -875,7 +875,7 @@ fn t_product_unary_describe(server_test: &ServerTest) {
         .borrow()
         .clone()
         .expect("product unary body");
-    let result: crate::protocol::RpcResult = serde_json::from_str(&body).expect("RpcResult");
+    let result: xylitol::protocol::RpcResult = serde_json::from_str(&body).expect("RpcResult");
     assert!(result.ok, "{body}");
     assert!(result.error.is_none(), "{body}");
     let protocol = result
@@ -2081,7 +2081,7 @@ async fn t_idem_inflight_wait(server_test: &ServerTest) {
 
 #[given("监听器已绑定端口但装配未完成")]
 async fn g_rdy_starting(server_test: &ServerTest) {
-    let gateway = crate::app::server::http::Gateway::starting();
+    let gateway = xylitol::app::server::http::Gateway::starting();
     let (running, port) = bind_serve(
         &ServerConfig {
             host: "127.0.0.1".into(),
@@ -2163,7 +2163,7 @@ async fn t_rdy_ready(server_test: &ServerTest) {
 
 #[given("装配失败")]
 async fn g_rdy_failed(server_test: &ServerTest) {
-    let gateway = crate::app::server::http::Gateway::starting();
+    let gateway = xylitol::app::server::http::Gateway::starting();
     gateway.mark_failed();
     let (running, port) = bind_serve(
         &ServerConfig {
@@ -2195,10 +2195,10 @@ async fn t_rdy_failed(server_test: &ServerTest) {
 
 // ---- c2475 sr-reg1：serve 注册文件发现契约 ----
 
-use crate::app::server::registration::{
+use xylitol::app::server::registration::{
     Registration, read_registration, run_self_check, write_registration,
 };
-use crate::app::server::runtime::serve_registered;
+use xylitol::app::server::runtime::serve_registered;
 
 fn temp_reg_path() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("xylitol-bdd-reg-{}.json", uuid::Uuid::new_v4()))
@@ -2282,7 +2282,7 @@ async fn g_reg_stale(server_test: &ServerTest) {
 #[when("客户端 attach 探活该地址")]
 async fn w_reg_attach_probe(server_test: &ServerTest) {
     let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
-    let msg = crate::attach_preflight_with("http://127.0.0.1:1", Some(reg_path))
+    let msg = xylitol::attach_preflight_with("http://127.0.0.1:1", Some(reg_path))
         .await
         .expect_err("stale registration must fail the preflight");
     *server_test.unary_body.borrow_mut() = Some(msg);
@@ -2647,7 +2647,7 @@ fn w_lookup_session_methods(server_test: &ServerTest) {
     let missing: Vec<&str> = names
         .iter()
         .copied()
-        .filter(|n| crate::protocol::wire::registry::lookup(n).is_none())
+        .filter(|n| xylitol::protocol::wire::registry::lookup(n).is_none())
         .collect();
     server_test
         .unary_body
@@ -2667,7 +2667,7 @@ fn w_lookup_resource_methods(server_test: &ServerTest) {
     let missing: Vec<&str> = ["reload", "loaded_resources"]
         .iter()
         .copied()
-        .filter(|n| crate::protocol::wire::registry::lookup(n).is_none())
+        .filter(|n| xylitol::protocol::wire::registry::lookup(n).is_none())
         .collect();
     server_test
         .unary_body
@@ -2687,7 +2687,7 @@ fn t_resource_methods_registered(server_test: &ServerTest) {
 
 #[when("查询方法表的 estimate_context")]
 fn w_lookup_estimate_context(server_test: &ServerTest) {
-    let registered = crate::protocol::wire::registry::lookup("estimate_context").is_some();
+    let registered = xylitol::protocol::wire::registry::lookup("estimate_context").is_some();
     server_test
         .unary_body
         .replace(Some(format!("registered={registered}")));

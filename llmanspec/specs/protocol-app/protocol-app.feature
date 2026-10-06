@@ -285,3 +285,5 @@
     场景: reserved-word-field-names-preserved
       当 从协议真源生成含 message、list、timestamp 字段的载荷
       那么 生成物字段名原名保留且往返保真
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

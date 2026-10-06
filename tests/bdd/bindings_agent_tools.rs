@@ -1,4 +1,4 @@
-use crate::tests::bdd::fixtures::*;
+use crate::bdd::fixtures::*;
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -385,7 +385,7 @@ fn test_tools_write_in_session_workspace(ws: Workspace) {}
 fn test_tools_bash_runs_in_session_workspace(ws: Workspace) {}
 
 // ── c2835 后继：agent-tools 裸规则回填 ──────────────────────────────
-use crate::tests::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
+use crate::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
 
 #[scenario(
     path = "llmanspec/specs/agent-tools/agent-tools.feature",

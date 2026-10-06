@@ -1,16 +1,16 @@
 //! BDD steps for runtime-model-registry m18 (task-level model resolution).
 
-use crate::tests::bdd::fixtures::*;
-use crate::tests::bdd::helpers::result_ok_str;
-use crate::tests::bdd::prelude::*;
+use crate::bdd::fixtures::*;
+use crate::bdd::helpers::result_ok_str;
+use crate::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
 
 #[given("任务模型条目可构建")]
 pub(crate) fn g_m18_task_entry_ok(agent: &AgentState) {
     agent
         .compaction_task_model
-        .replace(Some(crate::protocol::model_entry::XyModelEntryConfig {
-            provider: crate::protocol::model::XyModelKind::Fake,
+        .replace(Some(xylitol::protocol::model_entry::XyModelEntryConfig {
+            provider: xylitol::protocol::model::XyModelKind::Fake,
             model: "summary-task".into(),
             thinking: false,
             ..Default::default()
@@ -21,8 +21,8 @@ pub(crate) fn g_m18_task_entry_ok(agent: &AgentState) {
 pub(crate) fn g_m18_task_entry_fail(agent: &AgentState) {
     agent
         .compaction_task_model
-        .replace(Some(crate::protocol::model_entry::XyModelEntryConfig {
-            provider: crate::protocol::model::XyModelKind::Fake,
+        .replace(Some(xylitol::protocol::model_entry::XyModelEntryConfig {
+            provider: xylitol::protocol::model::XyModelKind::Fake,
             model: "bad-summary".into(),
             thinking: true,
             thinking_levels: Some(vec!["".into()]),
@@ -35,10 +35,10 @@ pub(crate) fn w_m18_resolve(agent: &AgentState) {
     use std::sync::Arc;
 
     let mut reg = ModelRegistry::new();
-    let meta = crate::protocol::model::XyModelMeta {
+    let meta = xylitol::protocol::model::XyModelMeta {
         id: "main".into(),
-        config: crate::protocol::model::XyModelConfig {
-            kind: crate::protocol::model::XyModelKind::Fake,
+        config: xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             api_key: String::new(),
             model: "main-wire".into(),
             base_url: None,
@@ -59,17 +59,17 @@ pub(crate) fn w_m18_resolve(agent: &AgentState) {
         thinking_level_map: Default::default(),
     };
     reg.register(meta);
-    let mut mm = crate::agent::model::ModelManager::new(
+    let mut mm = xylitol::agent::model::ModelManager::new(
         reg,
-        Arc::new(crate::infra::provider::factory::build_provider),
+        Arc::new(xylitol::infra::provider::factory::build_provider),
     );
     mm.select_model("main").expect("select main");
 
-    let settings = crate::agent::compaction::CompactionSettings {
+    let settings = xylitol::agent::compaction::CompactionSettings {
         model: agent.compaction_task_model.borrow().clone(),
         ..Default::default()
     };
-    let binding = crate::agent::model::task_model::resolve_compaction_summary(
+    let binding = xylitol::agent::model::task_model::resolve_compaction_summary(
         &settings,
         &mm,
         &Default::default(),
@@ -120,7 +120,7 @@ thread_local! {
 
 #[when("读取内置 provider 默认表")]
 pub(crate) fn w_read_provider_builtin_defaults() {
-    use crate::agent::model::registry::{ProviderApi, ProviderConfig};
+    use xylitol::agent::model::registry::{ProviderApi, ProviderConfig};
     let openai = ProviderConfig::openai(Some("k".into()));
     let anthropic = ProviderConfig::anthropic(Some("k".into()));
     let custom = ProviderConfig::custom("lm", ProviderApi::OpenAiCompatible, "http://x", None);
