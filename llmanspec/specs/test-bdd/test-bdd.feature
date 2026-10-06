@@ -48,4 +48,5 @@
     场景: config-behavior-unit-covered
       当 读取配置行为测试分层
       那么 由 infra 单测覆盖
+# re-review(c2836): c2836 在 test-bdd 管辖内的变更——新增 provider 配置值表达式装配步骤对（读取 provider 注册配置值解析 / 展开表达式并兼容字面量），经 loader 真装配收集证据并绑定 @req:r1912 场景。（2026-10-06）
 # re-review(c2835): 复审结论——BDD 基建：新增 dual-rail 会话快照对拍场景，三处判据去固定 sleep（轮询/取最小/隔离 env）；场景↔步骤映射全绿（tests::bdd 659 通过）。（2026-09-29）

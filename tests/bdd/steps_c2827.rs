@@ -3023,6 +3023,8 @@ const T2_NOISE_PNG: &[u8] = include_bytes!("../support/t2_noise_128.png");
 thread_local! {
     static T2_IMG: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
     static T2_PROC: RefCell<Option<(String, bool, bool)>> = const { RefCell::new(None) };
+    /// r1912 provider 配置值表达式装配证据（step 内收集，进程隔离）。
+    static T2_CFG_EXPR: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
 }
 
 #[cfg(unix)]
@@ -4018,6 +4020,50 @@ pub(crate) fn t_config_command_boundary() {
     let (out, cached, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已执行");
     assert_eq!(out, "ok", "shell 命令 MUST 带预算执行");
     assert!(cached, "进程生命周期内结果 MUST 缓存");
+}
+
+#[when("读取 provider 注册配置值解析")]
+pub(crate) fn w_provider_config_value_expression() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfgdir = dir.path().join(".config").join("xylitol");
+    std::fs::create_dir_all(&cfgdir).unwrap();
+    std::fs::write(
+        cfgdir.join("config.yaml"),
+        "models:\n  models:\n    a:\n      provider: fake\n      model: m1\n      api_key: \"!printf bdd-expanded\"\n    b:\n      provider: fake\n      model: m2\n      api_key: plain-literal\n",
+    )
+    .unwrap();
+    let home_s = dir.path().to_str().unwrap().to_string();
+    let cfgdir_s = cfgdir.to_str().unwrap().to_string();
+    let env = move |k: &str| match k {
+        "HOME" => Some(home_s.clone()),
+        "XYLITOL_CONFIG_DIR" => Some(cfgdir_s.clone()),
+        _ => None,
+    };
+    let loaded = crate::infra::config::loader::load_app_config_with(None, env, None)
+        .expect("装配 MUST 成功");
+    let shell = loaded
+        .model
+        .models
+        .get("a")
+        .and_then(|e| e.api_key.clone())
+        .unwrap_or_default();
+    let literal = loaded
+        .model
+        .models
+        .get("b")
+        .and_then(|e| e.api_key.clone())
+        .unwrap_or_default();
+    T2_CFG_EXPR.with(|s| *s.borrow_mut() = Some((shell, literal)));
+}
+
+#[then("展开表达式并兼容字面量")]
+pub(crate) fn t_provider_config_value_expression() {
+    let (shell, literal) = T2_CFG_EXPR.with(|s| s.borrow().clone()).expect("已解析");
+    assert_eq!(
+        shell, "bdd-expanded",
+        "shell-command 表达式 MUST 在产品装配链展开"
+    );
+    assert_eq!(literal, "plain-literal", "纯字面量 MUST 保持原样");
 }
 
 #[when("读取 provider 注册配置")]

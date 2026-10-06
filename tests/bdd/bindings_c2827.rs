@@ -1191,12 +1191,17 @@ fn test_t4_no_fixed_tmp() {}
 )]
 fn test_t4_tui_e2e() {}
 
-// test-provider-integration r1821-1826（批 4）
+// test-provider-integration r1821-1826 + r1912（批 4 / c2836）
 #[scenario(
     path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
     name = "config-value-parser-boundary"
 )]
 fn test_t4_cfg_parser() {}
+#[scenario(
+    path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
+    name = "provider-config-value-expression-boundary"
+)]
+fn test_t4_cfg_expr() {}
 #[scenario(
     path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
     name = "env-var-interpolation-branch"

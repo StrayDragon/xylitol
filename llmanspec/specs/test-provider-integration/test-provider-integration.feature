@@ -53,4 +53,12 @@
     场景: provider-port-injection
       当 读取模型注册表存储
       那么 以抽象 trait 对象持有
+  @req:r1912
+  规则: provider-config-value-expression
+    provider 注册配置值（models.models 条目 api_key / model / base_url / api / compat 字段）MUST 支持 ConfigValueResolver 表达式 $VAR、${VAR}、${VAR:-default} 与 !command；纯字面量保持原样；未绑定变量或命令执行失败 MUST 以可读错误拒绝装配（带 alias 与字段上下文）；表达式解析 MUST 与模板渲染（{{ secret.X }} / {{ env.Y }}）共存。
+    # verified-by: src/infra/config/loader.rs
+
+    场景: provider-config-value-expression-boundary
+      当 读取 provider 注册配置值解析
+      那么 展开表达式并兼容字面量
 # re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议载体常量与死变体清理。（2026-09-29）

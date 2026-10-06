@@ -48,6 +48,15 @@ pub const SHELL_CACHE_MAX_ENTRIES: usize = 256;
 static SHELL_CACHE: LazyLock<Mutex<HashMap<String, Result<String, ResolveError>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Product entry point: resolve a config value against the process environment
+/// (r1824 provider-registration wiring). Secret.env keys are injected into the
+/// process environment by the config loader, so `$VAR`/`!command` values resolve
+/// against the same source as the `{{ secret.* }}` template namespace. Literals
+/// (no `$` / `!` prefix) pass through unchanged.
+pub fn resolve_from_env(raw: &str) -> Result<String, ResolveError> {
+    resolve_value(raw, &|name| std::env::var(name).ok())
+}
+
 /// Classify a raw config value string.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConfigValue {
@@ -182,6 +191,7 @@ fn run_shell_bounded(command: &str, budget: Duration) -> Result<String, ResolveE
 }
 
 /// Clear the shell cache (tests / reload).
+#[allow(dead_code)] // BDD @executable contract surface; no product caller today.
 pub fn reset_shell_cache() {
     SHELL_CACHE.lock().unwrap().clear();
 }
