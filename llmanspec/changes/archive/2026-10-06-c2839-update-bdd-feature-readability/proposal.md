@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2839-update-bdd-feature-readability
+base_branch: main
+base_sha: be0c31cffe7a89294b7a80b6d701f9c3f93ac460
 ---
 
 ## Why

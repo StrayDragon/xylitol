@@ -3,6 +3,13 @@
 # purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计。"
 # scope: src/agent/compaction/, src/agent/capabilities/, src/infra/session/
 
+# ── 文件导览（28 规则）────────────────────────────────────────
+#   触发与估计   : token 估算/触发阈值 · force/auto 分流 · stale 防抖 · overflow 识别
+#   摘要与切点   : compact 摘要 · 会话/分支/LLM 摘要 · 切点 · 双摘要
+#   会话与策略   : compact 条目 · agent 集成 · policy 指纹 · 压后地板诊断
+#   （精确检索以 @req/规则标题为准，本导览为非强制快速导航）
+# ────────────────────────────────────────────────────────────────
+
 功能: domain-compaction
   背景:
     假如 有一个临时工作目录

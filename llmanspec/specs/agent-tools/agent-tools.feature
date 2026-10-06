@@ -3,6 +3,16 @@
 # purpose: 工具系统 — 工具定义、执行分发、文件类内置与 Todo 两工具、路径工具与并发类。
 # scope: src/agent/tools/, src/infra/tools/, src/protocol/
 
+# ── 文件导览（43 规则 / 86 场景）──────────────────────────────
+#   内置闭集与工具框架 : 默认内置工具闭集 · ToolSet · 工具错误类型 · 参数/schema
+#   文件与编辑         : read · write · edit（多段/校验/Unicode/diff）· image
+#   检索               : grep ripgrep · find（禁止绝对路径逃逸）
+#   bash/shell         : 流式输出 · 超时 · 中止 · 累加器 · fs 有界
+#   补丁/diff 应用     : 补丁应用 · 模糊匹配 · 行尾 · 跨行 span · diff 输出
+#   并发/屏障          : builtin concurrency-class · dynamic-tool MCP hard barrier
+#   （精确检索以 @req/规则标题为准，本导览为避免 500+ 行无导航而作，非强制分组）
+# ────────────────────────────────────────────────────────────────
+
 功能: agent-tools
   背景:
     假如 有一个临时工作目录

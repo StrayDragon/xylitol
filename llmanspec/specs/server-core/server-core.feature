@@ -3,6 +3,14 @@
 # purpose: Server 运行时 — 独立 Host 监听器经 JSON-RPC 2.0 暴露产品契约（POST /rpc + WS /rpc）；每 session 槽独立 journal 与写者。
 # scope: src/
 
+# ── 文件导览（48 规则）────────────────────────────────────────
+#   接入与生命周期    : host · JSON-RPC/HTTP/WS · healthz/就绪 · session 方法表
+#   信封与命令面      : unary · dispatch · 队列/订阅/写者租约 · export
+#   线上协议 v3       : 二进制信封 · 格式协商 · 数字寻址 · seq · 演进/双轨
+#   审批/恢复         : reverse-rpc approval/question · journal · 冷恢复投影
+#   （精确检索以 @req/规则标题为准，本导览为非强制快速导航）
+# ────────────────────────────────────────────────────────────────
+
 功能: server-core
 
   @req:r1794

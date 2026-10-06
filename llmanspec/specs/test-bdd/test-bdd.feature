@@ -62,3 +62,4 @@
       那么 独立测试目标承载且未挂 lib
 # re-review(c2837): test-bdd 管辖内变更——BDD 由 lib 测试模块迁至独立集成测试 target（tests/bdd.rs）；r37 的 cargo test --test bdd 由此名实相符；新增 r1913 编译隔离不变量。（2026-10-06）
 # re-review(c2838): c2838 doc 治理未触及 test-bdd 行为；批量 re-review 与 scope 覆盖触发本标记。（2026-10-06）
+# re-review(c2839): c2839 可读性导览未触及 test-bdd 行为；批量 scope 覆盖触发本标记。（2026-10-06）
