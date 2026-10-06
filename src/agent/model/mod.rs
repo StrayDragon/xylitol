@@ -4,7 +4,7 @@
 //! [`crate::protocol::model::XyModelKind`]) live in [`crate::protocol::model`];
 //! this module provides the runtime orchestration layer:
 //!
-//! - [`ModelRegistry`] — manages available models
+//! - [`registry::ModelRegistry`] — manages available models
 //! - [`ModelResolver`](resolver) — resolves model IDs to configs
 
 pub mod manager;

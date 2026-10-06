@@ -281,7 +281,7 @@ impl AgentRuntime {
     }
 
     /// Cancel-path script hook (pre-flight): dispatch on the hook bus when
-    /// present; a `Blocked` outcome maps to [`HookBlockedError`]. No bus is a
+    /// present; a `Blocked` outcome maps to [`crate::agent::capabilities::HookBlockedError`]. No bus is a
     /// no-op `Ok`.
     pub async fn script_hook_cancel(
         &self,

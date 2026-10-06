@@ -12,12 +12,8 @@
 //! second stable face: deep module paths are not a stability promise —
 //! extend the seam instead.
 
-// c2837: BDD 独立集成测试 target 使 agent/infra 公开化，rustdoc 随之扫描扩大
-// 后的 doc 面；大量 intra-doc 链接指向私有项/断链在迁移前不可见（未开
-// --document-private-items）。这是 doc 质量软提示而非硬错误——允许跳过，
-// 完整 doc 链接治理另立 change。
-#![allow(rustdoc::broken_intra_doc_links)]
-#![allow(rustdoc::private_intra_doc_links)]
+// c2838: intra-doc 链接已逐处治理（BROKEN 补路径、PRIVATE 改文本），
+// 移除 allow——rustdoc 链接 lint 恢复为默认告警完整性。
 //!
 //! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],

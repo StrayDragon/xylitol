@@ -1,7 +1,7 @@
 //! wire v3(fory 二进制)上行处理 — c2834 tasks 2.1–2.4(spec r1902/r1904)。
 //!
 //! v3 是**纯编码层**:上行帧解码后转为 JSON-RPC 2.0 文本喂既有
-//! [`rpc_module::dispatch_raw`],方法表 / 幂等 / 写者租约 / 审批执行面零分叉
+//! `rpc_module::dispatch_raw`，方法表 / 幂等 / 写者租约 / 审批执行面零分叉
 //! (对拍纪律 spec r1908:两路径由同一 dispatch 与事件源支撑)。
 //! 下行 v3 事件通知由 mux 侧编码(见 `http.rs` binary 通道);应答侧
 //! `host.describe` 与 task 2.5b 已接的三类(会话条目 / 会话树 / travel)走具名

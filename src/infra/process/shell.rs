@@ -135,7 +135,7 @@ pub fn current_exe_bin_dir() -> Option<std::path::PathBuf> {
 }
 
 /// Build a shell environment with the agent bin directory **prepended** to
-/// PATH (r1494 shell-env). Uses [`std::env::split_paths`] / [`join_paths`]
+/// PATH (r1494 shell-env). Uses [`std::env::split_paths`] / [`std::env::join_paths`]
 /// so the platform-specific separator (`:` / `;`) is handled correctly.
 pub fn shell_env_with_agent_bin(
     mut base: std::collections::BTreeMap<String, String>,

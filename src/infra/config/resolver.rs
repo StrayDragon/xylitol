@@ -42,7 +42,7 @@ impl std::error::Error for ResolveError {}
 /// Wall clock budget for `!command` values (spec r1823).
 pub const SHELL_BUDGET: Duration = Duration::from_secs(10);
 
-/// Defensive cap on [`SHELL_CACHE`] (r1823 合同保留「进程生命周期缓存」：不做过期；
+/// Defensive cap on `SHELL_CACHE` (r1823 合同保留「进程生命周期缓存」：不做过期；
 /// 此上限只阻止配置命令集合无限增长，超限清空旧条目，不引入陈旧语义)。
 pub const SHELL_CACHE_MAX_ENTRIES: usize = 256;
 static SHELL_CACHE: LazyLock<Mutex<HashMap<String, Result<String, ResolveError>>>> =

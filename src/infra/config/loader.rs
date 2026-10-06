@@ -59,7 +59,7 @@ pub(crate) fn load_app_config_detailed(
     )
 }
 
-/// Injectable load: path discovery via `get_env` / `cwd` (see [`ConfigPaths::discover_with`]).
+/// Injectable load: path discovery via `get_env` / `cwd` (see `ConfigPaths::discover_with`).
 ///
 /// Still injects missing `secret.env` keys into the process environment (product
 /// parity). Tests that exercise that side effect remain on `env_global`.

@@ -105,7 +105,7 @@ pub(crate) fn effective_keep_budget(
 const SUMMARY_PLACEHOLDER_TOKENS: u64 = 2_048;
 
 /// chars/4 estimate of the latest summary on the leaf (c2 summary placeholder);
-/// falls back to [`SUMMARY_PLACEHOLDER_TOKENS`] when there is no CompactionEntry
+/// falls back to `SUMMARY_PLACEHOLDER_TOKENS` when there is no CompactionEntry
 /// or the summary is empty.
 pub fn summary_placeholder_tokens(entries: &[SessionEntry]) -> u64 {
     entries

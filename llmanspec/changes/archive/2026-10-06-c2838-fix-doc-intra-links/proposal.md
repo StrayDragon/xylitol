@@ -1,5 +1,9 @@
 ---
 depends_on: []
+branch: sdd/c2838-fix-doc-intra-links
+base_branch: main
+base_sha: 06fe023c3a38d11ae5d79f49c9e30ec513d061e9
+needs_specs_change: false
 ---
 
 ## Why
