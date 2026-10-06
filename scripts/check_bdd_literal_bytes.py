@@ -125,7 +125,19 @@ def _iter_literals(path: Path):
             yield ln, lit
 
 
+# 全仓文本索引只建一次：多个 steps 文件复用同一快照，避免每文件重建整树索引
+# （rglob + 全量读取在每次调用都重来是 O(files×tree) 重复开销）。
+_blobs_cache: list[bytes] | None = None
+
+
 def _text_blobs() -> list[bytes]:
+    global _blobs_cache
+    if _blobs_cache is None:
+        _blobs_cache = _build_blobs()
+    return _blobs_cache
+
+
+def _build_blobs() -> list[bytes]:
     blobs: list[bytes] = []
     for root in TEXT_ROOTS:
         d = REPO / root
