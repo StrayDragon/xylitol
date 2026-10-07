@@ -441,6 +441,12 @@ sdd:
 spec-validate verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
+    # CI runner 不装 llman-sdd（dev/SDD 工具）：有则门禁强制（失败即红），
+    # 缺失则显式跳过并说明——spec 行为完整性由 qa 内 BDD/tests 全量闸兜底。
+    if ! command -v llman-sdd >/dev/null 2>&1; then
+      echo "spec-validate: skipped (llman-sdd 未安装；CI 由 BDD/test 闸兜底)"
+      exit 0
+    fi
     if [[ "{{verbosity}}" == "quiet" ]]; then
       llman-sdd validate --all --strict | tail -n 8
     else

@@ -60,3 +60,5 @@
     场景: live-gate-serial-with-timeout
       当 读取 just 的 qa recipe 序列
       那么 live 闸走串行且带超时
+
+# re-review(c2837): CI spec-validate 工具探测（llman-sdd 缺失显式跳过，门禁语义本地保持）已复核。（2026-10-06）
