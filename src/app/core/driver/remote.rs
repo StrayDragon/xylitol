@@ -2511,7 +2511,6 @@ mod tests {
         // 非阻塞排空 + 轮询：等到出现「与已落定快照同形」那一帧（相对判据，
         // 不靠固定 sleep 猜 poll 间隔；收集到的帧仍逐帧可查）。
         let mut frames: Vec<Value> = Vec::new();
-        let mut matched: Option<Value> = None;
         // 帧与「unary 同形」比较须剥离 settle 探测字段：mcp_bootstrap_complete
         // 属 host 装配状态（测试 settle 判据），非 resources 帧语义——其翻转
         // 不一定伴随推帧（产品契约：仅资源面变化才推）。其余字段必须逐字一致。
