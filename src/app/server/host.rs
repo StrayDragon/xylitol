@@ -214,7 +214,11 @@ impl HostState {
         for tx in pending {
             slot.add_subscriber(tx).await;
         }
-        slot.replay_or_resync(last_seq).await
+        let result = slot.replay_or_resync(last_seq).await;
+        // c2841：绑定后同步会话写者的当前已解析模型（含用户显式配置的默认模型），
+        // 使附加端模型徽标收敛而不是停在 NOT-SET；无写者 / 无模型时 no-op。
+        slot.sync_model_downlink().await;
+        result
     }
 
     pub async fn respond(&self, rpc_id: &str, payload: Value) -> bool {
@@ -504,6 +508,29 @@ impl SessionSlot {
             .unwrap_or(Value::Null),
         );
         self.broadcast(msg).await;
+    }
+
+    /// 同步会话写者的当前已解析模型（ModelSelect 下行）给订阅者，使附加端
+    /// 模型徽标收敛（c2841）。写者未装配或未持有模型时 no-op；幂等（重复
+    /// 绑定只会重播同一当前模型）。模型 id 来自写者 current_model，provider
+    /// 按 id 查写者注册表真源（ModelInfo 不携带 provider）。
+    pub async fn sync_model_downlink(&self) -> () {
+        let Some((provider, model_id)) = self.writer_model().await else {
+            return;
+        };
+        self.append_and_push(crate::protocol::Event::ModelSelect {
+            provider,
+            model_id,
+        })
+        .await;
+    }
+
+    async fn writer_model(&self) -> Option<(String, String)> {
+        let mut g = self.driver.lock().await;
+        let d = g.as_mut()?;
+        let id = d.current_model()?.id;
+        let provider = d.model_provider(&id).unwrap_or_default();
+        Some((provider, id))
     }
 
     /// Fixed-zone-only MCP/skills snapshot. Not journaled (must not consume seq).

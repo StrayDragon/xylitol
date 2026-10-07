@@ -530,8 +530,18 @@ fn apply_idle_downlink<T: xylitol_tui::Terminal>(
         session.ui_model_mut().streaming_thinking.clear();
         session.sync_ui_root_from_model();
     }
+    let mut model_synced = false;
     for ev in driver.drain_idle_events() {
+        model_synced |= matches!(
+            ev,
+            crate::app::core::driver::XyEvent::ModelSelect { .. }
+        );
         session.step(HostEvent::Xy(Box::new(ev)))?;
+    }
+    // c2841: Host 绑定/装配同步的生效模型事件（含用户显式配置的默认模型）→
+    // 刷新固定区徽标，避免执行默认模型而徽标停在 NOT-SET。
+    if model_synced {
+        session.sync_fixed_zone(driver);
     }
     Ok(())
 }

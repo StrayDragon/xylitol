@@ -552,6 +552,16 @@ impl XyInProcessDriver {
             .map_err(XyDriverError::from)
     }
 
+    /// Provider of a registered model id (registry truth; `ModelInfo` drops it).
+    pub fn model_provider(&self, model_id: &str) -> Option<String> {
+        self.agent
+            .model_registry()
+            .list()
+            .iter()
+            .find(|m| m.id == model_id)
+            .map(|m| m.provider.clone())
+    }
+
     pub async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
         // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
         self.agent

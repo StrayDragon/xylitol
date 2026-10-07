@@ -72,7 +72,11 @@ fn method_discriminant(method: &str) -> Option<v3::Method> {
 ///
 /// - `host.describe` → [`Request::Describe`](承载格式能力协商);
 /// - RAW 方法(registry 非 command_backed 行:arm_tool_freeze / persist_trust)
-///   → [`Request::Raw`],payload JSON 原文过线;
+///   → [`Request::Raw`],payload JSON 原文过线;`prompt` 同走 RAW**必须**——
+///   v3 `Prompt` schema 只载 `message`(丢 session_id / cwd / model_id /
+///   thinking_level),走 Command 会把 run 从已订阅 session 上脱锚,服务端
+///   回落 fallback session(无订阅者)导致事件全部 broadcast 丢失、TUI 永不
+///   结束;RAW 原文与 JSON 轨(params 透传)同构,字段全程不丢。
 /// - 其余(含非 registry 的 approve_tool / answer_question / quit)经
 ///   `registry::parse_command` 注入 serde tag 解析为 [`crate::protocol::Command`],
 ///   再 `mapping::command_to_v3` 包 [`Request::Command`]。
@@ -80,8 +84,9 @@ fn build_request(method: &str, payload: &Value) -> Result<Request, String> {
     if method == registry::METHOD_HOST_DESCRIBE {
         return Ok(Request::Describe(Describe {}));
     }
-    let raw_family = !NON_REGISTRY_COMMANDS.contains(&method)
-        && registry::lookup(method).is_some_and(|entry| !entry.command_backed);
+    let raw_family = method == registry::METHOD_PROMPT
+        || (!NON_REGISTRY_COMMANDS.contains(&method)
+            && registry::lookup(method).is_some_and(|entry| !entry.command_backed));
     if raw_family {
         let discriminant = method_discriminant(method)
             .ok_or_else(|| format!("RAW method {method} has no v3 Method discriminant"))?;
@@ -377,6 +382,30 @@ mod tests {
             other => panic!("expected Subscribe command, got {other:?}"),
         }
         assert_eq!(req.writer_token.as_deref(), Some("writer-1"));
+
+        // 回归锁：prompt 必须走 RAW 原文（v3 Command::Prompt 只载 message，
+        // 走 Command 会丢 session_id/cwd/model_id/thinking_level，run 脱锚
+        // 到无订阅者的 fallback session，事件全部 broadcast 丢失、TUI 挂死）。
+        let bytes = client_request_bytes(
+            "10",
+            "prompt",
+            &json!({"message": "hi", "session_id": "sess-1", "cwd": "/tmp", "model_id": "m1"}),
+            None,
+        )
+        .unwrap();
+        let Frame::ClientRequest(req) = decode_frame(&bytes) else {
+            panic!("expected ClientRequest")
+        };
+        match &req.request {
+            Request::Raw(raw) => {
+                assert_eq!(raw.method, v3::Method::Prompt);
+                let p: serde_json::Value = serde_json::from_str(&raw.json).unwrap();
+                assert_eq!(p["session_id"], "sess-1");
+                assert_eq!(p["cwd"], "/tmp");
+                assert_eq!(p["message"], "hi");
+            }
+            other => panic!("expected RAW prompt, got {other:?}"),
+        }
 
         // 非 registry、非白名单方法无 v3 映射(显式失败,不静默错发)。
         assert!(client_request_bytes("1", "no_such_method", &json!({}), None).is_err());

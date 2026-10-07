@@ -217,6 +217,10 @@ struct DownlinkCtx<C> {
     cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
     gate_notice_consumed: Arc<AtomicBool>,
     resources_dirty: Arc<AtomicBool>,
+    /// c2841：Host 绑定/装配同步的生效模型事件 → 写入缓存，供 current_model()
+    /// 收敛徽标（ModelInfo 缺失时回查已缓存可用模型表）。
+    cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
+    cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
     bash_run_sink: Arc<std::sync::Mutex<Option<crate::protocol::ports::BashOutputSink>>>,
     client_cwd: String,
     downlink_gen: Arc<AtomicU64>,
@@ -292,6 +296,22 @@ where
                     steer_count: *steer_count,
                     follow_up_count: *follow_up_count,
                 };
+            }
+            // c2841:Host 在会话绑定/装配时同步的生效模型事件(含用户显式配置
+            // 的默认模型)→ 写入缓存,供 current_model() 收敛徽标而非停在
+            // NOT-SET。事件仅载 provider/model_id,完整 ModelInfo 从已缓存
+            // 可用模型表按 id 解析;未命中时保持现状(停留 NOT-SET,不失败)。
+            if let XyEvent::ModelSelect { model_id, .. } = &agent_event
+                && let Some(models) = ctx
+                    .cached_models
+                    .lock()
+                    .ok()
+                    .and_then(|g| g.clone())
+                && let Some(found) = models.iter().find(|m| &m.id == model_id).cloned()
+            {
+                if let Ok(mut cached) = ctx.cached_model.lock() {
+                    *cached = Some(found);
+                }
             }
             if ctx.skip_cold_replay.load(Ordering::SeqCst)
                 && XyRemoteDriver::<C>::is_cold_replay_tape(&agent_event)
@@ -721,6 +741,8 @@ where
             cached_gate_notice: self.cached_gate_notice.clone(),
             gate_notice_consumed: self.gate_notice_consumed.clone(),
             resources_dirty: self.resources_dirty.clone(),
+            cached_model: self.cached_model.clone(),
+            cached_models: self.cached_models.clone(),
             bash_run_sink: self.bash_run_sink.clone(),
             client_cwd: self.client_cwd.clone(),
             downlink_gen: self.downlink_gen.clone(),
