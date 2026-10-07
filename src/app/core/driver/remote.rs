@@ -2540,16 +2540,22 @@ mod tests {
             if std::time::Instant::now() >= hard_cap {
                 break;
             }
-            // 收到帧后无进展才按 5 秒收口（首帧前的等待无时限）。
+            // 有帧后延长收口至 15s（CI 慢负载下 bootstrap 第二波帧可能晚到，
+            // 原 5s 帧静止收口会提前 break 导致匹配不到最终帧）；30s 绝限仍兜底。
             if frames.len() != before {
                 drain_deadline =
-                    Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(15));
             } else if let Some(dl) = drain_deadline
                 && std::time::Instant::now() >= dl
             {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        if matched.is_none() {
+            panic!(
+                "watch frames unmatched: expected={expected} frames={frames:?} (collected all push frames for diagnosis)"
+            );
         }
         assert!(
             !frames.is_empty(),

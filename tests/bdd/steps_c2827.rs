@@ -3159,7 +3159,9 @@ pub(crate) fn w_kill_process_tree() {
     let mut child = t2_spawn_long_child();
     xylitol::infra::process::group::kill_process_tree(child.id());
     let mut exited = false;
-    for _ in 0..60 {
+    // 进程组/树回收在 CI 慢负载下可能超过 1.2s（原 60×20ms 偶发误报）：
+    // 放宽至 6s 窗口，不改 kill 语义（SIGKILL 后回收为 OS 义务）。
+    for _ in 0..300 {
         if let Ok(Some(_)) = child.try_wait() {
             exited = true;
             break;
