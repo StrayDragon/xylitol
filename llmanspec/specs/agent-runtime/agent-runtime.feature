@@ -48,7 +48,7 @@
   @req:r1055
   规则: builder-ports
     Agent 装配 MUST 经 AgentBuilder，依赖 protocol 端口与 agent 会话词汇；app 组合根注入具体 infra 实现。装配入口由单元测试 / 组合根覆盖，MUST NOT 为静态存在性单独扩 BDD step。
-    # verified-by: tests/support/mod.rs
+    # verified-by: tests/bdd/bindings_agent_runtime.rs
     场景: builder-ports-drive-one-round
       假如 mock 模型先 tool 后无 tool
       当 运行 AgentRuntime 并收集事件
