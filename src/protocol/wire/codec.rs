@@ -6,6 +6,7 @@
 //! a wire dialect.
 
 use serde::de::Error as _;
+use serde::{Deserialize as _, Deserializer as _};
 use serde_json::{Value, json};
 
 use super::envelope::{RpcError, RpcMessage, RpcResult};
@@ -18,13 +19,25 @@ pub fn encode_to_string(msg: &RpcMessage) -> Result<String, serde_json::Error> {
     serde_json::to_string(msg)
 }
 
+/// c2846/r1922: 线载荷深解析须绕过 serde_json 默认 128 层递归上限——
+/// `session_tree` 深树（实机 188 层）通过 JSON 轨到达时会触发
+/// `recursion limit exceeded`（v3 轨 RawOk 同法见 host_client）。
+fn parse_json_value(text: &str) -> Result<Value, serde_json::Error> {
+    let mut de = serde_json::Deserializer::from_str(text);
+    de.disable_recursion_limit();
+    Value::deserialize(&mut de)
+}
+
 pub fn decode(bytes: &[u8]) -> Result<RpcMessage, serde_json::Error> {
-    let v: Value = serde_json::from_slice(bytes)?;
+    let text = std::str::from_utf8(bytes).map_err(|e| {
+        serde_json::Error::io(std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    })?;
+    let v: Value = parse_json_value(text)?;
     decode_value(v)
 }
 
 pub fn decode_str(text: &str) -> Result<RpcMessage, serde_json::Error> {
-    let v: Value = serde_json::from_str(text)?;
+    let v: Value = parse_json_value(text)?;
     decode_value(v)
 }
 

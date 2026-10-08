@@ -2736,6 +2736,59 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
+        // c2847 回归：配置了但永远连不上的 MCP，`arm_tool_freeze` unary MUST NOT
+        // 无限等待——`ensure_tool_table_frozen` 在门时限内 detach 并冻结 armed 子集，
+        // 返回 frozen+complete 快照；否则 TUI 的 Assembling 门死锁（旧行为：立即
+        // 返回未冻结快照，客户端无限等待）。
+        use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
+        use crate::app::server::host::materialize_writer;
+
+        let hang = McpServerSpec {
+            name: "hang-forever".into(),
+            transport: McpTransportSpec::Stdio,
+            command: Some("sleep".into()),
+            args: Some(vec!["300".into()]),
+            url: None,
+            env: None,
+            headers: None,
+        };
+        let host = HostState::for_test_with_mcp(vec![hang]).expect("host");
+        let slot = host.slot("hang-freeze").await;
+        materialize_writer(&host, &slot).await.expect("materialize");
+
+        let t0 = std::time::Instant::now();
+        let result = crate::app::server::host::handle_unary(
+            &host,
+            None,
+            "arm_tool_freeze",
+            serde_json::json!({ "session_id": "hang-freeze" }),
+            None,
+        )
+        .await;
+        let elapsed = t0.elapsed();
+        assert_eq!(result.error.as_ref().map(|e| e.code.as_str()), None);
+        assert!(
+            result.ok,
+            "arm_tool_freeze unary MUST resolve within gate window: {result:?}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(30),
+            "MUST be bounded by the first-turn gate window, took {elapsed:?}"
+        );
+        let snap: LoadedResourcesSnapshot =
+            serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
+        assert!(
+            snap.tools_table_frozen,
+            "timeout MUST freeze armed subset (deadlock guard): {snap:?}"
+        );
+        assert!(
+            snap.mcp_bootstrap_complete,
+            "timeout MUST settle bootstrap (no eternal connecting): {snap:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn materialize_writer_does_not_wait_mcp_bootstrap() {
         use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
         use crate::app::server::host::materialize_writer;

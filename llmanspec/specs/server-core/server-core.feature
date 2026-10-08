@@ -541,6 +541,19 @@
       假如 同一会话在两条路径上各有 3 条历史条目
       当 客户端分别经 JSON-RPC 与 v3 取回该会话树
       那么 两条路径 result 等价且 v3 侧为 RAW 载体（非递归强 schema）
+  @req:r1922
+  规则: session_tree 深度无关解析
+    v3 轨对 `session_tree` RAW 载荷的解析 MUST 不受 serde_json 默认递归上限（128 层）限制：深树（实机 188 层）MUST 完整还原为领域值，MUST NOT 在超深时静默降级 `Null`（否则下游报 `invalid type: null, expected a sequence`）。两条路径对该深树的 result MUST 领域等价。
+
+    场景: v3-deep-session-tree-raw-parity
+      假如 同一会话在两条路径上各有一条深链树（>默认递归上限）
+      当 客户端分别经 JSON-RPC 与 v3 取回该会话树
+      那么 两条路径 result 等价且 v3 侧完整还原深链（非 Null）
+
+  @req:r1923
+  规则: 首轮工具门有界决议
+    `arm_tool_freeze` unary MUST 有界决议：配置了但连不上的 MCP MUST NOT 让首轮门无限等待——在门时限（`MCP_FIRST_TURN_GATE_TIMEOUT`）内 settle；超时 MUST detach 未连上的 bootstrap 并冻结已 armed 工具子集后返回权威快照（`tools_table_frozen`、`mcp_bootstrap_complete` 反映决议结果）。该 unary MUST NOT 在连接无界挂起时返回未冻结快照使客户端无限等待（否则 TUI 首轮死锁、round 永不启动）。
+    # verified-by: fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window
 
   @req:r1909
   规则: 迁移期旧路径保活与硬切

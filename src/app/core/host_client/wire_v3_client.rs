@@ -173,6 +173,21 @@ pub(super) fn server_response_to_result(resp: &ServerResponse) -> RpcResult {
 /// 成功载荷 → JSON value(`RawOk` 原文解析;describe 还原为
 /// `HostDescribeValue` 形状——与 JSON 轨 describe result 同构)。
 ///
+/// c2846: 深度安全地解析 RawOk 原文。
+///
+/// `session_tree` 深树 JSON 可超过 serde_json 默认 **128 层**递归解析上限
+/// （实机深会话 188 层），默认 `from_str` 会 `recursion limit exceeded` 并被
+/// 调用方静默降级为 `Null`（下游再报 `invalid type: null`）。服务端序列化
+/// 无此上限（仅在反序列化侧），故对 RAW 原文一律禁用递归上限——帧内存天然
+/// 小（内容就是一个字符串），深度变化只来自树本身。失败仍按 r1907 退化语义
+/// 降级 `Null`，不拼半份形状。
+fn parse_raw_json(json: &str) -> Value {
+    use serde::Deserialize as _;
+    let mut de = serde_json::Deserializer::from_str(json);
+    de.disable_recursion_limit();
+    Value::deserialize(&mut de).unwrap_or(Value::Null)
+}
+
 /// 强 schema 应答(task 2.5b)以领域条目为中间物回到 serde,因此与
 /// `host::outcome_to_value` 的 JSON 形状逐字节同构(同一组 Serialize)。
 /// unknown 变体(r1907)使整份载荷降级 `Null`,不拼半份形状。
@@ -201,7 +216,7 @@ fn payload_value(payload: Option<&ResponsePayload>) -> Value {
             serde_json::to_value(v3_mapping::v3_to_travel_result(t)).unwrap_or(Value::Null)
         }
         // 其余未接强 schema 的方法一律 RawOk(JSON 原文)。
-        Some(ResponsePayload::RawOk(raw)) => serde_json::from_str(&raw.json).unwrap_or(Value::Null),
+        Some(ResponsePayload::RawOk(raw)) => parse_raw_json(&raw.json),
         // 防御:SubscribeResult 与 JSON 轨 subscribe result 同构，不断链。
         Some(ResponsePayload::SubscribeResult(s)) => {
             serde_json::to_value(SessionSubscribedPayload {
@@ -483,6 +498,35 @@ mod tests {
         assert_eq!(
             result.error.map(|e| (e.code, e.details)),
             Some(("writer_conflict".into(), "stale lease".into()))
+        );
+    }
+
+    /// c2846: RawOk 原文解析禁用递归上限——深树 JSON（实机 188 层 > 默认 128）
+    /// 必须还原为完整 Value，不得被静默降级 Null（旧行为让下游报
+    /// `invalid type: null, expected a sequence`）。
+    #[test]
+    fn raw_ok_parses_beyond_default_recursion_limit() {
+        // 构造 150 层（>128）嵌套 JSON，纯字符串拼接避免夹具自身触发默认上限。
+        let mut leaf = r#"{"entry":"e0","children":[]}"#.to_string();
+        for i in 1..150u32 {
+            leaf = format!(r#"{{"entry":"e{i}","children":[{leaf}]}}"#);
+        }
+        let deep = format!(r#"{{"tree":[{leaf}]}}"#);
+        assert!(deep.len() > 1024, "fixture 应显著深过默认上限");
+
+        let resp = ServerResponse {
+            rpc_id: 9,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::RawOk(v3::RawOk { json: deep })),
+            writer_token: None,
+        };
+        let result = server_response_to_result(&resp);
+        assert!(result.ok, "深树 RawOk MUST 解析成功: {result:?}");
+        let value = result.value.expect("深树 MUST 不为 Null");
+        assert!(
+            value.get("tree").is_some(),
+            "tree 键 MUST 存在，不得降级 Null: {value:?}"
         );
     }
 

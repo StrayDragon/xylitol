@@ -85,3 +85,8 @@ async fn test_cutover_requires_parity_green(server_test: ServerTest) {}
     name = "v3-session-tree-raw-parity"
 )]
 async fn test_c2845_session_tree_raw_parity(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "v3-deep-session-tree-raw-parity"
+)]
+async fn test_c2846_deep_session_tree_parity(server_test: ServerTest) {}

@@ -1227,8 +1227,12 @@ async fn dispatch_session_unary(
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
-        driver.arm_tool_freeze_gate().await;
-        let _ = driver.poll_mcp_bootstrap().await;
+        // c2847: arm 必须**有界决议**——`ensure_tool_table_frozen` 按首轮门时限
+        // （MCP_FIRST_TURN_GATE_TIMEOUT）等待 settle，超时 detach 未连上的 bootstrap
+        // 并冻结已 armed 子集后返回。此前仅 `arm_tool_freeze_gate` + 单次 poll 即回快照：
+        // 配置了但连不上的 MCP 会永驻 connecting，TUI 的 Assembling 门无限等待、
+        // turn 永不启动（runtime 的 ensure 只在 run() 后才触发，形成双向死锁）。
+        driver.ensure_tool_table_frozen().await;
         let snapshot = driver.loaded_resources_snapshot().await;
         return lease.seal(RpcResult::ok_value(
             serde_json::to_value(&snapshot).unwrap_or(Value::Null),

@@ -379,6 +379,85 @@ async fn g_seed_snapshot_entries(server_test: &ServerTest) {
     }
 }
 
+/// c2846/r1922: 深链树（>serde_json 默认 128 解析上限）双轨对拍夹具——
+/// 在默认会话上播种一条 160 层父子链，防「深树解析静默降级 Null」回归。
+#[given("同一会话在两条路径上各有一条深链树（>默认递归上限）")]
+async fn g_seed_deep_chain(server_test: &ServerTest) {
+    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    host.ports
+        .store
+        .create(SNAPSHOT_SESSION, Some("."), None)
+        .await
+        .expect("create session");
+    let mut prev: Option<String> = None;
+    for i in 0..160u32 {
+        let id = format!("dc-{i:04}");
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.clone(),
+                parent_id: prev,
+                timestamp: 1_700_000_000u64 + u64::from(i),
+            },
+            message: serde_json::json!({"role": "user", "content": format!("deep {i}")}),
+        });
+        prev = Some(id);
+        host.ports
+            .store
+            .append_session_entry(SNAPSHOT_SESSION, &entry)
+            .await
+            .expect("append deep entry");
+    }
+}
+
+/// c2846/r1922: 测试夹具自身的深 JSON 也要禁递归上限（>128 层）。
+fn parse_deep_json(s: &str) -> Result<serde_json::Value, serde_json::Error> {
+    use serde::Deserialize as _;
+    let mut de = serde_json::Deserializer::from_str(s);
+    de.disable_recursion_limit();
+    serde_json::Value::deserialize(&mut de)
+}
+
+/// c2846/r1922: 深链树双轨对拍断言——两轨 result 领域等价、v3 侧完整还原
+/// 深链（非 Null）、且树的嵌套链必须超过默认解析上限（回归防 128 层降级）。
+#[then("两条路径 result 等价且 v3 侧完整还原深链（非 Null）")]
+async fn t_deep_tree_dual_rail_restored(server_test: &ServerTest) {
+    let stored = server_test
+        .unary_body
+        .borrow()
+        .clone()
+        .expect("dual rail deep tree pair");
+    let (json_text, v3_text) = stored.split_once('\n').expect("json|v3");
+    let json_value: serde_json::Value = parse_deep_json(&json_text).expect("json body");
+    let v3_value: serde_json::Value = parse_deep_json(&v3_text).expect("v3 body");
+    assert_eq!(v3_value, json_value, "两轨深树 result MUST 领域等价");
+    let chain = |v: &serde_json::Value| {
+        let mut node = v
+            .get("tree")
+            .and_then(|t| t.as_array())
+            .and_then(|a| a.first());
+        let mut depth = 0usize;
+        while let Some(n) = node {
+            depth += 1;
+            node = n
+                .get("children")
+                .and_then(|c| c.as_array())
+                .and_then(|a| a.first());
+        }
+        depth
+    };
+    let json_depth = chain(&json_value);
+    let v3_depth = chain(&v3_value);
+    assert_eq!(v3_depth, json_depth, "两轨深链深度 MUST 一致");
+    assert!(
+        v3_depth > 128 && v3_value.get("tree").is_some(),
+        "深链 MUST 完整还原且超过默认解析上限（<>128），实际 v3_depth={v3_depth}"
+    );
+}
+
 /// c2845: `session_tree` 双轨对拍 —— v3 侧 MUST 走 RAW 载体（深度安全，r1921），
 /// 与 JSON 轨 result 领域等价（r1908 纪律）。裸 binary 帧探针钉死应答变体。
 #[when("客户端分别经 JSON-RPC 与 v3 取回该会话树")]

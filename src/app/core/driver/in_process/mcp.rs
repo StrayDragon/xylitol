@@ -72,7 +72,7 @@ impl super::XyInProcessDriver {
     ///
     /// On gate timeout while still `Running`, detach the discover handle so UI leaves
     /// `connecting i/n` immediately; late results apply via [`Self::poll_mcp_bootstrap`].
-    pub(super) async fn ensure_tool_table_frozen(&mut self) {
+    pub async fn ensure_tool_table_frozen(&mut self) {
         use crate::agent::MCP_FIRST_TURN_GATE_TIMEOUT;
 
         if self.agent.is_tools_frozen() {
