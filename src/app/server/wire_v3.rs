@@ -431,9 +431,9 @@ mod tests {
                 assert_eq!(nodes.len(), 1);
                 // 兼容解码面：强 schema 仍可对旧端/旧帧往返（v3_to_tree_nodes）。
                 let typed = crate::protocol::wire::v3::mapping::tree_result_to_v3(
-                    &serde_json::from_value::<Vec<
-                        crate::protocol::session::SessionTreeNode,
-                    >>(value.get("tree").cloned().unwrap())
+                    &serde_json::from_value::<Vec<crate::protocol::session::SessionTreeNode>>(
+                        value.get("tree").cloned().unwrap(),
+                    )
                     .unwrap(),
                 );
                 assert_eq!(typed.nodes.len(), 1);
