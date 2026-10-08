@@ -71,7 +71,12 @@ impl super::XyInProcessDriver {
     /// Wait settle/timeout then freeze the current tool table if not already frozen.
     ///
     /// On gate timeout while still `Running`, detach the discover handle so UI leaves
-    /// `connecting i/n` immediately; late results apply via [`Self::poll_mcp_bootstrap`].
+    /// `connecting i/n` immediately; late results apply via `poll_mcp_bootstrap`.
+    ///
+    /// c2847: public authoritative gate — the `arm_tool_freeze` unary binds to this
+    /// so a configured-but-unreachable MCP cannot leave first-turn clients waiting
+    /// forever (bounded by `MCP_FIRST_TURN_GATE_TIMEOUT`, timeout detaches and
+    /// freezes the armed subset).
     pub async fn ensure_tool_table_frozen(&mut self) {
         use crate::agent::MCP_FIRST_TURN_GATE_TIMEOUT;
 

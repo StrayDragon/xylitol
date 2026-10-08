@@ -5,8 +5,8 @@
 //! `jsonrpc_notification`. Internal [`RpcMessage`] serde (`type` tags) is not
 //! a wire dialect.
 
+use serde::Deserialize as _;
 use serde::de::Error as _;
-use serde::{Deserialize as _, Deserializer as _};
 use serde_json::{Value, json};
 
 use super::envelope::{RpcError, RpcMessage, RpcResult};
