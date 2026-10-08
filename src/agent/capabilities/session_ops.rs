@@ -66,9 +66,7 @@ impl AgentCapabilities {
     /// Owner display-name fact for this runtime (c2843). Rename paths (driver /
     /// host restore) set it; turns / idle obs read it. Never the process slot.
     pub(crate) fn set_session_name_fact(&mut self, name: Option<String>) {
-        self.session_name = name
-            .map(|n| n.trim().to_string())
-            .filter(|n| !n.is_empty());
+        self.session_name = name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
     }
 
     /// Owner display-name fact (c2843).

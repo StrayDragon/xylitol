@@ -307,10 +307,7 @@ where
                         .and_then(|x| x.as_str())
                         .unwrap_or("")
                         .to_string(),
-                    thinking: m
-                        .get("thinking")
-                        .and_then(|x| x.as_bool())
-                        .unwrap_or(false),
+                    thinking: m.get("thinking").and_then(|x| x.as_bool()).unwrap_or(false),
                     thinking_levels: m
                         .get("thinking_levels")
                         .and_then(|x| x.as_array())

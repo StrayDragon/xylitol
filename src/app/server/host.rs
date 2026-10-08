@@ -180,8 +180,8 @@ impl HostState {
     pub fn for_test_with_default_model(
         model_id: &str,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
-        use crate::protocol::model::{XyModelConfig, XyModelKind, XyModelMeta};
         use crate::agent::model::registry::ModelRegistry;
+        use crate::protocol::model::{XyModelConfig, XyModelKind, XyModelMeta};
 
         let mut registry = ModelRegistry::new();
         registry.register(XyModelMeta {
@@ -574,11 +574,8 @@ impl SessionSlot {
         let Some((provider, model_id)) = self.writer_model().await else {
             return;
         };
-        self.append_and_push(crate::protocol::Event::ModelSelect {
-            provider,
-            model_id,
-        })
-        .await;
+        self.append_and_push(crate::protocol::Event::ModelSelect { provider, model_id })
+            .await;
     }
 
     async fn writer_model(&self) -> Option<(String, String)> {

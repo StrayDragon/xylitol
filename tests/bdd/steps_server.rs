@@ -2729,8 +2729,7 @@ fn t_c2826_writer_conflict(server_test: &ServerTest) {
 // ---- c2841: prompt 会话身份保真 / 生效模型状态同步 ----
 
 async fn start_host_with_default_model(t: &ServerTest, model_id: &str) {
-    let host =
-        HostState::for_test_with_default_model(model_id).expect("host with default model");
+    let host = HostState::for_test_with_default_model(model_id).expect("host with default model");
     let (running, port) = serve(
         ServerConfig {
             host: "127.0.0.1".into(),
@@ -2758,7 +2757,9 @@ async fn g_c2841_writer_with_default_model(server_test: &ServerTest) {
         .expect("materialize writer");
     let mut g = slot.driver.lock().await;
     let d = g.as_mut().expect("writer driver");
-    let m = d.current_model().expect("writer must hold the default model");
+    let m = d
+        .current_model()
+        .expect("writer must hold the default model");
     assert_eq!(m.id, "fake-model");
 }
 
@@ -2788,7 +2789,10 @@ async fn t_c2841_model_sync_received(server_test: &ServerTest) {
             .expect("frame timeout")
             .expect("mux eof")
             .expect("ws frame");
-        let RpcMessage::ServerRequest { method, payload, .. } = &f else {
+        let RpcMessage::ServerRequest {
+            method, payload, ..
+        } = &f
+        else {
             continue;
         };
         if method != "session/event" {
@@ -2852,7 +2856,10 @@ async fn t_c2841_prompt_events_reachable(server_test: &ServerTest) {
             Ok(Some(Ok(f))) => f,
             other => panic!("c2841: run 事件未在订阅流上完成送达：{other:?}"),
         };
-        let RpcMessage::ServerRequest { method, payload, .. } = &f else {
+        let RpcMessage::ServerRequest {
+            method, payload, ..
+        } = &f
+        else {
             continue;
         };
         if method == "session/event"

@@ -205,7 +205,4 @@ fn test_ce_unpersisted_no_hint(surface_flags_bdd: SurfaceFlagsBdd) {}
     path = "llmanspec/specs/cli-entry/cli-entry.feature",
     name = "configured-default-shown"
 )]
-async fn test_ce_c2841_configured_default_shown(
-    agent: AgentState,
-    cli_entry_bdd: CliEntryBdd,
-) {}
+async fn test_ce_c2841_configured_default_shown(agent: AgentState, cli_entry_bdd: CliEntryBdd) {}

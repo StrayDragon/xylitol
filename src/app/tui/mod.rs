@@ -532,10 +532,7 @@ fn apply_idle_downlink<T: xylitol_tui::Terminal>(
     }
     let mut model_synced = false;
     for ev in driver.drain_idle_events() {
-        model_synced |= matches!(
-            ev,
-            crate::app::core::driver::XyEvent::ModelSelect { .. }
-        );
+        model_synced |= matches!(ev, crate::app::core::driver::XyEvent::ModelSelect { .. });
         session.step(HostEvent::Xy(Box::new(ev)))?;
     }
     // c2841: Host 绑定/装配同步的生效模型事件（含用户显式配置的默认模型）→
