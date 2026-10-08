@@ -431,7 +431,9 @@ mod tests {
         struct ReasoningOnlyModel;
         #[async_trait]
         impl XyModel for ReasoningOnlyModel {
-            fn name(&self) -> &str { "reasoning-only" }
+            fn name(&self) -> &str {
+                "reasoning-only"
+            }
             async fn generate_stream(
                 &self,
                 _messages: Vec<LlmMessage>,
@@ -440,7 +442,9 @@ mod tests {
                 _options: XyGenerateOptions,
             ) -> Result<XyStream, XyError> {
                 Ok(Box::pin(futures::stream::iter(vec![
-                    Ok(XyChunk::ThinkingDelta("## Goal\nkeep going\n## Next Steps\n1. finish".into())),
+                    Ok(XyChunk::ThinkingDelta(
+                        "## Goal\nkeep going\n## Next Steps\n1. finish".into(),
+                    )),
                     Ok(XyChunk::ThinkingEnd {
                         thinking: String::new(),
                         thinking_signature: None,
@@ -471,7 +475,9 @@ mod tests {
         struct EmptyModel;
         #[async_trait]
         impl XyModel for EmptyModel {
-            fn name(&self) -> &str { "empty" }
+            fn name(&self) -> &str {
+                "empty"
+            }
             async fn generate_stream(
                 &self,
                 _messages: Vec<LlmMessage>,
@@ -494,5 +500,4 @@ mod tests {
             "truly empty must still error: {err}"
         );
     }
-
 }

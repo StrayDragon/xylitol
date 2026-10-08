@@ -3382,7 +3382,10 @@ async fn submit_without_bind_returns_no_session_error() {
 // ── combine_run_streams: side-channel tail ordering (c2844) ──────────────
 
 /// Helper: a single-yield inner stream ending with AgentEnd.
-fn inner_stream_with_agent_end(prefix: XyEvent, agent_end: XyEvent) -> Pin<Box<dyn Stream<Item = XyEvent> + Send>> {
+fn inner_stream_with_agent_end(
+    prefix: XyEvent,
+    agent_end: XyEvent,
+) -> Pin<Box<dyn Stream<Item = XyEvent> + Send>> {
     Box::pin(async_stream::stream! {
         yield prefix;
         yield agent_end;
@@ -3415,18 +3418,25 @@ async fn combine_run_streams_flushes_side_tail_before_agent_end() {
     // driving — models the tee running ahead of the closing tape.
     side_tx.send(end.clone()).unwrap();
 
-    let combined = combine_run_streams(inner_stream_with_agent_end(prefix.clone(), agent_end.clone()), side_rx, queue_rx);
+    let combined = combine_run_streams(
+        inner_stream_with_agent_end(prefix.clone(), agent_end.clone()),
+        side_rx,
+        queue_rx,
+    );
     let mut it = Box::pin(combined);
     let mut got = Vec::new();
     while let Some(e) = it.next().await {
         got.push(e);
     }
-    let names: Vec<&str> = got.iter().map(|e| match e {
-        XyEvent::TextDelta(_) => "text",
-        XyEvent::CompactionEnd { .. } => "compaction_end",
-        XyEvent::AgentEnd { .. } => "agent_end",
-        other => panic!("unexpected: {other:?}"),
-    }).collect();
+    let names: Vec<&str> = got
+        .iter()
+        .map(|e| match e {
+            XyEvent::TextDelta(_) => "text",
+            XyEvent::CompactionEnd { .. } => "compaction_end",
+            XyEvent::AgentEnd { .. } => "agent_end",
+            other => panic!("unexpected: {other:?}"),
+        })
+        .collect();
     assert_eq!(
         names,
         vec!["text", "compaction_end", "agent_end"],
@@ -3462,7 +3472,10 @@ async fn combine_run_streams_drains_tail_when_inner_ends_without_agent_end() {
     let mut it = Box::pin(combine_run_streams(empty, side_rx, queue_rx));
     let mut n = 0;
     while let Some(e) = it.next().await {
-        assert!(matches!(e, XyEvent::ContextTokenSettlement { .. }), "tail drained: {e:?}");
+        assert!(
+            matches!(e, XyEvent::ContextTokenSettlement { .. }),
+            "tail drained: {e:?}"
+        );
         n += 1;
     }
     assert_eq!(n, 1, "side leftover must be drained at inner end");
@@ -3559,9 +3572,18 @@ async fn spike_turn_end_compaction_events_visible_on_stream() {
     let mut names = Vec::new();
     while let Some(e) = stream.next().await {
         let short = match &e {
-            XyEvent::CompactionStart { .. } => { start += 1; "Start".to_string() }
-            XyEvent::CompactionEnd { .. } => { end += 1; "End".to_string() }
-            XyEvent::AgentEnd { .. } => { agent_end += 1; "AgentEnd".to_string() }
+            XyEvent::CompactionStart { .. } => {
+                start += 1;
+                "Start".to_string()
+            }
+            XyEvent::CompactionEnd { .. } => {
+                end += 1;
+                "End".to_string()
+            }
+            XyEvent::AgentEnd { .. } => {
+                agent_end += 1;
+                "AgentEnd".to_string()
+            }
             XyEvent::Error(_) => "Error".to_string(),
             _ => ".".to_string(),
         };
@@ -3572,6 +3594,9 @@ async fn spike_turn_end_compaction_events_visible_on_stream() {
     assert!(end >= 1, "CompactionEnd must be delivered: {names:?}");
     let end_pos = names.iter().position(|n| n == "End").expect("End present");
     let agent_end_pos = names.iter().position(|n| n == "AgentEnd").unwrap();
-    assert!(end_pos < agent_end_pos, "CompactionEnd BEFORE AgentEnd: {names:?}");
+    assert!(
+        end_pos < agent_end_pos,
+        "CompactionEnd BEFORE AgentEnd: {names:?}"
+    );
     let _ = (start, end);
 }

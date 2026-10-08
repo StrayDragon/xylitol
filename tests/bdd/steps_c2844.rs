@@ -15,10 +15,10 @@ use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol::agent::capabilities::AgentCapabilities;
 use xylitol::agent::runtime::RunPolicy;
-use xylitol::infra::provider::fake_xy_model;
-use xylitol::infra::provider::ScenarioStep;
-use xylitol::infra::session::SessionManager;
 use xylitol::agent::tools::ToolSet;
+use xylitol::infra::provider::ScenarioStep;
+use xylitol::infra::provider::fake_xy_model;
+use xylitol::infra::session::SessionManager;
 use xylitol::infra::tools::default_tools;
 use xylitol::protocol::model::XyModelConfig;
 use xylitol::protocol::ports::XyModel;
@@ -133,8 +133,14 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
 #[when("提交一次回合并收齐事件名序列")]
 async fn w_c2844_collect(compaction_probe: &CompactionProbe) {
     use futures::StreamExt;
-    let mut agent = compaction_probe.runtime.borrow_mut().take().expect("runtime armed");
-    let mut stream = agent.submit_root("continue the work", RunPolicy::Reject).await;
+    let mut agent = compaction_probe
+        .runtime
+        .borrow_mut()
+        .take()
+        .expect("runtime armed");
+    let mut stream = agent
+        .submit_root("continue the work", RunPolicy::Reject)
+        .await;
     let mut names = Vec::new();
     while let Some(e) = stream.next().await {
         let short = match e {
@@ -219,17 +225,19 @@ async fn g_c2844_reasoning_store(
                 parent_id: None,
                 timestamp: 1704067200000 + i as u64,
             },
-            message: serde_json::to_value(
-                xylitol::protocol::message::AgentMessage::user(format!("turn {i} {}", "y".repeat(400))),
-            )
+            message: serde_json::to_value(xylitol::protocol::message::AgentMessage::user(format!(
+                "turn {i} {}",
+                "y".repeat(400)
+            )))
             .unwrap(),
         });
         mgr.append(sid, &e).await.unwrap();
     }
     let _ = sess;
-    compaction_probe
-        .store
-        .replace(Some((Arc::new(mgr.clone()) as Arc<dyn xylitol::protocol::ports::XySessionStore>, sid.to_string())));
+    compaction_probe.store.replace(Some((
+        Arc::new(mgr.clone()) as Arc<dyn xylitol::protocol::ports::XySessionStore>,
+        sid.to_string(),
+    )));
 }
 
 #[when("触发一次压缩")]
@@ -239,7 +247,11 @@ async fn w_c2844_reasoning_compact(compaction_probe: &CompactionProbe) {
     use xylitol::agent::model::task_model::CompactionSummaryBinding;
     use xylitol::infra::event::EventBus;
 
-    let (store, sid) = compaction_probe.store.borrow().clone().expect("store armed");
+    let (store, sid) = compaction_probe
+        .store
+        .borrow()
+        .clone()
+        .expect("store armed");
     let model: Arc<dyn XyModel> = Arc::new(ReasoningOnlyModel);
     let binding = CompactionSummaryBinding::for_test(model, "fake");
     let sink = Arc::new(EventBus::new());
@@ -272,7 +284,9 @@ async fn w_c2844_reasoning_compact(compaction_probe: &CompactionProbe) {
             _ => None,
         })
         .expect("compaction entry must exist");
-    compaction_probe.summary.replace(Some(entry.summary.clone()));
+    compaction_probe
+        .summary
+        .replace(Some(entry.summary.clone()));
 }
 
 #[then("摘要非空且采用推理内容而非 fallback 占位")]

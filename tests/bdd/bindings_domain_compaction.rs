@@ -240,7 +240,8 @@ async fn test_c2844_turn_end_compaction_events(
     compaction_probe: crate::bdd::steps_c2844::CompactionProbe,
     agent: AgentState,
     ws: Workspace,
-) {}
+) {
+}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "reasoning-only-summary-not-empty"
@@ -250,4 +251,5 @@ async fn test_c2844_reasoning_only_summary(
     sess: XySessionStore,
     agent: AgentState,
     ws: Workspace,
-) {}
+) {
+}
