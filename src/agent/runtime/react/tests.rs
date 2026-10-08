@@ -3567,11 +3567,11 @@ async fn spike_turn_end_compaction_events_visible_on_stream() {
         };
         names.push(short);
     }
-    eprintln!("SPIKE start={start} end={end} agent_end={agent_end} seq={names:?}");
     assert!(agent_end == 1, "run must end");
     assert!(start >= 1, "turn-end compaction must fire: {names:?}");
     assert!(end >= 1, "CompactionEnd must be delivered: {names:?}");
     let end_pos = names.iter().position(|n| n == "End").expect("End present");
     let agent_end_pos = names.iter().position(|n| n == "AgentEnd").unwrap();
     assert!(end_pos < agent_end_pos, "CompactionEnd BEFORE AgentEnd: {names:?}");
+    let _ = (start, end);
 }

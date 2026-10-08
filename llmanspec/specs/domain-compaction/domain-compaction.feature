@@ -404,8 +404,8 @@
     摘要生成（generate_complete 族，含 turn-prefix 摘要）对模型响应 MUST 同时累积可见文本与推理内容（ThinkingDelta 族）；当可见文本为空但推理内容非空时，MUST 将推理内容作为摘要结果返回，MUST NOT 判为空响应而走 fallback 占位（症状：tufa reasoning.encrypted_content 模式产出纯推理摘要被替换为 [Turn prefix: N entries]）；仅当文本与推理均空时才 MUST 判空并走 fallback。
     # verified-by: src/agent/compaction/llm_summarizer.rs
     场景: reasoning-only-summary-not-empty
-      假如 摘要模型仅流式返回推理内容且无可见文本
-      当 调用摘要生成
+      假如 以仅输出推理的摘要模型为压缩绑定并预置历史
+      当 触发一次压缩
       那么 摘要非空且采用推理内容而非 fallback 占位
 
 # re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

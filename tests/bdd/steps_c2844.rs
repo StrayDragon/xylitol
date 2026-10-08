@@ -18,6 +18,7 @@ use xylitol::agent::runtime::RunPolicy;
 use xylitol::infra::provider::fake_xy_model;
 use xylitol::infra::provider::ScenarioStep;
 use xylitol::infra::session::SessionManager;
+use xylitol::agent::tools::ToolSet;
 use xylitol::infra::tools::default_tools;
 use xylitol::protocol::model::XyModelConfig;
 use xylitol::protocol::ports::XyModel;
@@ -25,6 +26,8 @@ use xylitol::protocol::ports::XyModel;
 pub(crate) struct CompactionProbe {
     pub(crate) runtime: RefCell<Option<AgentRuntime>>,
     pub(crate) events: RefCell<Vec<String>>,
+    pub(crate) store: RefCell<Option<(Arc<dyn xylitol::protocol::ports::XySessionStore>, String)>>,
+    pub(crate) summary: RefCell<Option<String>>,
 }
 
 #[fixture]
@@ -32,6 +35,8 @@ pub(crate) fn compaction_probe() -> CompactionProbe {
     CompactionProbe {
         runtime: RefCell::new(None),
         events: RefCell::new(Vec::new()),
+        store: RefCell::new(None),
+        summary: RefCell::new(None),
     }
 }
 
@@ -77,7 +82,7 @@ fn small_window_meta(id: &str) -> xylitol::protocol::model::XyModelMeta {
 }
 
 #[given("以 overflow 错误响应模型装配可压缩运行库并预置可压缩历史")]
-async fn g_c2844_overflow_runtime(probe: &CompactionProbe, agent: &AgentState) {
+async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &AgentState) {
     use xylitol::protocol::ports::XyEventSink;
     use xylitol::protocol::ports::XySessionStore;
 
@@ -105,7 +110,7 @@ async fn g_c2844_overflow_runtime(probe: &CompactionProbe, agent: &AgentState) {
     let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         reg,
-        xylitol::infra::tools::ToolSet::from_iter(default_tools()),
+        ToolSet::from_iter(default_tools()),
         store,
         sink,
         Some("you are helpful".into()),
@@ -122,14 +127,13 @@ async fn g_c2844_overflow_runtime(probe: &CompactionProbe, agent: &AgentState) {
     session.select_model("overflow-fake").await.unwrap();
     let mut agent = AgentRuntime::new(session);
     agent.bind_session(sid).expect("bind");
-    probe.runtime.replace(Some(agent));
-    let _ = &agent;
+    compaction_probe.runtime.replace(Some(agent));
 }
 
 #[when("提交一次回合并收齐事件名序列")]
-async fn w_c2844_collect(probe: &CompactionProbe) {
+async fn w_c2844_collect(compaction_probe: &CompactionProbe) {
     use futures::StreamExt;
-    let mut agent = probe.runtime.borrow_mut().take().expect("runtime armed");
+    let mut agent = compaction_probe.runtime.borrow_mut().take().expect("runtime armed");
     let mut stream = agent.submit_root("continue the work", RunPolicy::Reject).await;
     let mut names = Vec::new();
     while let Some(e) = stream.next().await {
@@ -141,12 +145,12 @@ async fn w_c2844_collect(probe: &CompactionProbe) {
         };
         names.push(short);
     }
-    probe.events.replace(names);
+    compaction_probe.events.replace(names);
 }
 
 #[then("压缩开始与结束事件均到达且结束先于回合收尾")]
-fn t_c2844_order(probe: &CompactionProbe) {
-    let names = probe.events.borrow();
+fn t_c2844_order(compaction_probe: &CompactionProbe) {
+    let names = compaction_probe.events.borrow();
     assert!(
         names.iter().any(|n| n == "Start"),
         "turn-end overflow compaction MUST emit CompactionStart: {names:?}"
@@ -160,5 +164,126 @@ fn t_c2844_order(probe: &CompactionProbe) {
     assert!(
         end_pos < agent_end_pos,
         "CompactionEnd MUST arrive BEFORE AgentEnd: {names:?}"
+    );
+}
+
+// ── r1920: reasoning-only summarizer response must not fall back ─────────
+
+pub(crate) struct ReasoningOnlyModel;
+
+#[async_trait::async_trait]
+impl XyModel for ReasoningOnlyModel {
+    fn name(&self) -> &str {
+        "reasoning-only"
+    }
+    async fn generate_stream(
+        &self,
+        _messages: Vec<xylitol::protocol::message::LlmMessage>,
+        _tools: &[xylitol::protocol::model::XyToolSchema],
+        _stream: bool,
+        _options: xylitol::protocol::ports::XyGenerateOptions,
+    ) -> Result<xylitol::protocol::ports::XyStream, xylitol::protocol::error::XyError> {
+        use futures::stream::iter;
+        use xylitol::protocol::message::XyStopReason;
+        Ok(Box::pin(iter(vec![
+            Ok(xylitol::protocol::model::XyChunk::ThinkingDelta(
+                "## Goal\nreasoning-only checkpoint content\n## Next Steps\n1. finish".into(),
+            )),
+            Ok(xylitol::protocol::model::XyChunk::ThinkingEnd {
+                thinking: String::new(),
+                thinking_signature: None,
+            }),
+            Ok(xylitol::protocol::model::XyChunk::Done {
+                finish_reason: XyStopReason::Stop,
+                usage: None,
+            }),
+        ])))
+    }
+}
+
+#[given("以仅输出推理的摘要模型为压缩绑定并预置历史")]
+async fn g_c2844_reasoning_store(
+    sess: &crate::bdd::fixtures::XySessionStore,
+    compaction_probe: &CompactionProbe,
+) {
+    use xylitol::infra::session::SessionManager;
+    let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let sid = "c2844-reasoning";
+    mgr.create(sid, Some("."), None).await.unwrap();
+    for i in 0..120 {
+        use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+        let e = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("seed-{i}"),
+                parent_id: None,
+                timestamp: 1704067200000 + i as u64,
+            },
+            message: serde_json::to_value(
+                xylitol::protocol::message::AgentMessage::user(format!("turn {i} {}", "y".repeat(400))),
+            )
+            .unwrap(),
+        });
+        mgr.append(sid, &e).await.unwrap();
+    }
+    let _ = sess;
+    compaction_probe
+        .store
+        .replace(Some((Arc::new(mgr.clone()) as Arc<dyn xylitol::protocol::ports::XySessionStore>, sid.to_string())));
+}
+
+#[when("触发一次压缩")]
+async fn w_c2844_reasoning_compact(compaction_probe: &CompactionProbe) {
+    use xylitol::agent::compaction::CompactionOrchestrator;
+    use xylitol::agent::compaction::CompactionSettings;
+    use xylitol::agent::model::task_model::CompactionSummaryBinding;
+    use xylitol::infra::event::EventBus;
+
+    let (store, sid) = compaction_probe.store.borrow().clone().expect("store armed");
+    let model: Arc<dyn XyModel> = Arc::new(ReasoningOnlyModel);
+    let binding = CompactionSummaryBinding::for_test(model, "fake");
+    let sink = Arc::new(EventBus::new());
+    let mut notice = false;
+    CompactionOrchestrator::new(CompactionSettings {
+        enabled: true,
+        reserve_tokens: 1024,
+        keep_recent_tokens: 1000,
+        ..Default::default()
+    })
+    .compact(
+        store.as_ref(),
+        &sid,
+        &binding,
+        sink.as_ref(),
+        None,
+        8192,
+        None,
+        &mut notice,
+    )
+    .await
+    .expect("c2844: reasoning-only compaction must succeed");
+
+    let entries = store.load_leaf_branch(&sid).await.expect("load leaf");
+    let entry = entries
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            xylitol::protocol::session::SessionEntry::Compaction(c) => Some(c.clone()),
+            _ => None,
+        })
+        .expect("compaction entry must exist");
+    compaction_probe.summary.replace(Some(entry.summary.clone()));
+}
+
+#[then("摘要非空且采用推理内容而非 fallback 占位")]
+fn t_c2844_reasoning_summary(compaction_probe: &CompactionProbe) {
+    let summary = compaction_probe.summary.borrow().clone().expect("summary");
+    assert!(
+        summary.contains("reasoning-only checkpoint content"),
+        "MUST use the reasoning as summary content, got: {summary:?}"
+    );
+    assert!(
+        !summary.contains("[Turn prefix:") && !summary.contains("[Compacted:"),
+        "MUST NOT fall back on reasoning-only: {summary:?}"
     );
 }
