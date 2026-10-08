@@ -1,43 +1,39 @@
 ---
 depends_on: []
 needs_specs_change: true
-branch: pr/2026-10-bdd-infra-and-contracts
-base_branch: main
-base_sha: dc379efb8430dae278ffc66c7bdd7e56b3faa202
 ---
 
-# 观测身份与激活的去全局态（per-session 所有权）逐步重构 + BDD 收集隔离
+# 观测身份 per-session 所有权（Phase B）：移除 obs_slot_writes 折衷，多会话各归各会话
 
 ## Why
 
-低频观测（fastrace/otel 族）的「会话身份、激活开关、collect sink」当前是**进程级全局 slot**（`set_obs_session` / `set_provider_trace_active` / `set_observation_io_tier` / `SPAN_SINK`）。三处真实代价：
+观测「会话身份」在 materialized 路径上仍依赖**进程级槽**（`set_obs_session`/`obs_session_context`）：`bind_session` 每绑定一次都写全局槽（reader 需要 `obs_slot_writes(false)` 折衷防止 stomp，r1483/otel25）。实测代码（c2590 / otel24）已将 **generate/turn/tool 的归因改为显式快照**——进程槽只剩三处真消费：
+1. `react` turn 起点的 `session_name`（react/mod.rs:899 直接读槽）；
+2. `session_ops::obs_session_snapshot()` 的 name（session_ops.rs:72）；
+3. optionless/unknown 请求的默认归因回退（`provider::trace::ProviderRequestTrace::start`、`attribution::merge_opencode_attribution` 的 None 臂、remote_count）。
 
-1. **多会话 Host 语义错误**：served 拓扑下多 session 共享进程，`bind_session` 各写者轮流写全局 obs 槽（r1483 已用「reader 不得 stomp」打补丁证明这是已知痛点）；跨 session 的观测符号混在一条时间线。
-2. **BDD 并行干扰（实证）**：`SpanCollectScope` 的独占锁只串行「同为取 scope 的测试」，串行不了「enable 观测但不取 scope」的测试（`steps_app_tui_host` 即时文件日志场景）。并行时外来 span 写入当前 scope 的 sink + 全局会话槽被并发改写 → `test_otel_r1484_dual_identity` 偶发失败（`--test-threads=1` 全绿）。
-3. **未来任何 enable 观测的测试都会复发**（维护性差）。
+事实：**name 是唯一跨会话从槽窃取的字段**（多会话 Host 下 last-writer-wins 把名字贴到别的会话 span 上）；`obs_slot_writes` 布尔门是 hotfix 而非结构。
 
-## What Changes（分阶段，每阶段独立可校验）
+## What Changes
 
-### Phase A（near-term，本次）：per-turn 身份归因 + scope 按会话过滤
-- `SpanCollectScope` 增 `records_for(session_id)`：按 `xylitol.session.id`/`langfuse.session.id` 过滤收集记录——先验条件：**turn 身份不再从进程槽现读，而是经显式快照**（`AgentTurnSpan::start_with_session(&ObsSessionContext)` 已存在，检查 `bind_session` 之后的 obs 槽读点全部收敛到绑定时的快照，杜绝并发改写导致的张冠李戴）。
-- OTel BDD fixture 改用它，断言只对自身 SESSION_UUID 的记录生效——并行干扰在 content 层被隔离，无需串行化、无需枚举污染者。
-- 单测 + BDD：并发放大（多测试并行污染窗口）下 `dual_identity` 稳定绿。
+把「会话身份事实」收敛为**运行时（capabilities）自持的所有权**，全局槽降级为「默认身份」（optionless 回退专用，仅由显式 writer 事件更新）：
 
-### Phase B（follow-up，独立 change）：激活与身份收敛为 per-session 所有权
-- `xylitol-ai-bridge` 观测 slot 从进程单例改为**会话/driver 显式持有**（obs context 注入 run/tool/compaction 链），进程级 getter 仅保留为兼容回退。
-- Host reader 的 `set_obs_slot_writes(false)` 补丁可随之移除（r1483 语义升级为 per-session 事实，不再是「不 stomp」折衷）。
-- 多会话观测各归各会话（Langfuse 会话归属正确）。
+1. `AgentCapabilities` 增自有 `session_name` 事实 + setter；`set_session`/`switch_session` **不再写全局槽**；`obs_session_snapshot()` 与 turn 起点用自有事实（不再读槽 name）。
+2. **删除 `obs_slot_writes` 布尔门**（capabilities 字段/方法、react passthrough、host `new_reader_driver` 的 `set_obs_slot_writes(false)`、session.rs 的 gate 条件）。
+3. 全局槽仅由**显式 writer 事件**更新：rename（`set_session_name` / active 分支 `set_session_name_for`）与 bootstrap 会话恢复——不设布尔门，靠调用点结构保证（reader 绑定/切换不触达这些路径）。
+4. 槽成为纯「默认身份」：文档标注仅 optionless/remote-count/测试兜底消费，materialized 路径零依赖 → 多会话 span 各归各会话。
+5. 收集侧 per-owner 隔离：`SpanCollectScope::records_for(session_id)`（按 `xylitol.session.id` 过滤）；otel BDD fixture 断言只针对本场景 SESSION_UUID 的记录 → 并行 CI 下外来 span 不再污染断言（与 #1 相同不变式）。
 
 ## Capabilities
 
-- `infra-otel` / `test-infra`（BDD 观测隔离）；Phase B 触及 `xylitol-ai-bridge`（provider trace slot API）。
+- `xylitol-ai-bridge`（`provider::trace` 收集过滤、`provider::obs_session` 语义收窄）
+- `agent`（capabilities session 事实、react turn 归因）
+- `app`（driver session 改名路径、host reader 装配、bootstrap 恢复）
+- `test-infra`（otel BDD fixture 按 owner 断言）
 
 ## Impact / 风险
 
-- Phase A：产品行为零变（只改观测归因路径与测试断言），低风险。
-- Phase B：触及 product obs 槽 API 与 Host 组合根，中等风险；分独立 change（**intra 谨慎处理**：先 A 立基线，B 单独走 propose→apply→verify）。
-
-## 背景事实（c2841/c2842 调研期收集）
-
-- 干扰机制实证与分层方案：`llmanspec/changes/c2842-…/research/bdd-otel-parallel-interference.md`。
-- 本次调研补充：turn 已有 `ObsSessionContext` 快照（`AgentTurnSpan::start_with_session`），Phase A 的收紧是局部且可验证的；`set_obs_slot_writes`（react/mod.rs otel25）即 r1483 折衷点，Phase B 的移除判据。
+- **不倒退**：generate/turn/工具归因不受影响（早已快照化）；optionless 回退语义「最近显式 writer 事件」与 otel25 前相当（不再被 reader 反复 stomp，反而更稳）。
+- 单会话嵌入（desktop/库）仍正确（writer 路径不变）。
+- 步骤化小提交 + 全量门禁；BDD 并行稳定性为本 change 显式验收。
+- 交界测试需随迁：`reader_driver_switch_session_does_not_stomp_obs_slot`（otel25 测试）改写为「switch 根本不写槽」的结构性断言；otel7 改名步骤改走产品改名路径。
