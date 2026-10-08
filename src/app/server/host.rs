@@ -175,6 +175,62 @@ impl HostState {
         ))
     }
 
+    /// Isolated host with one selectable model registered as the writer default
+    /// (c2841 model-state sync tests; selection is offline — no provider call).
+    pub fn for_test_with_default_model(
+        model_id: &str,
+    ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
+        use crate::protocol::model::{XyModelConfig, XyModelKind, XyModelMeta};
+        use crate::agent::model::registry::ModelRegistry;
+
+        let mut registry = ModelRegistry::new();
+        registry.register(XyModelMeta {
+            id: model_id.to_string(),
+            config: XyModelConfig {
+                kind: XyModelKind::Fake,
+                api_key: String::new(),
+                model: model_id.to_string(),
+                base_url: None,
+                api: None,
+                compat: None,
+            },
+            display_name: model_id.to_string(),
+            thinking: false,
+            context_window: 64_000,
+            api: String::new(),
+            provider: "fake".into(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: vec!["off".into()],
+            thinking_level_map: Default::default(),
+        });
+        let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
+        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.join("sessions")));
+        let ports = build_ports_with_store(
+            BuildAgentOptions {
+                model_registry: registry,
+                ..Default::default()
+            },
+            store,
+        )?;
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+        Ok(Self::new(
+            ports,
+            ReloadBaseline {
+                cwd,
+                agent_dir,
+                project_trusted: true,
+                mcp_servers: Vec::new(),
+                default_model_id: Some(model_id.to_string()),
+            },
+            "test-session".into(),
+        ))
+    }
+
     pub async fn slot(&self, session_id: &str) -> Arc<SessionSlot> {
         {
             let map = self.sessions.read().await;

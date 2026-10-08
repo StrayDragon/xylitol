@@ -366,3 +366,13 @@ fn test_sc_fixed_zone_method(server_test: ServerTest) {}
     name = "estimate-context-host-source-not-self-estimate"
 )]
 fn test_sc_estimate_host_source(t2_est_bdd: T2EstBdd) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "prompt-runs-on-subscribed-session"
+)]
+async fn test_sr_c2841_prompt_session_identity(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "model-sync-on-bind"
+)]
+async fn test_sr_c2841_model_sync_on_bind(server_test: ServerTest) {}

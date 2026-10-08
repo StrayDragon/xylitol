@@ -617,3 +617,73 @@ fn t_c2826_tree_kind_error(agent: &AgentState) {
         "c2826: 未实现 kind 必须明确报错：{msg}"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// c2841 — r1387 已显式配置默认模型的展示（configured-default-shown）
+// ═══════════════════════════════════════════════════════════════════
+
+#[given("已显式配置默认模型 fake-model 且未显式选择模型")]
+async fn g_c2841_configured_default(agent: &AgentState, cli_entry_bdd: &CliEntryBdd) {
+    use xylitol::protocol::model::{XyModelConfig, XyModelKind, XyModelMeta};
+    {
+        let mut reg = agent.registry.borrow_mut();
+        if reg.find("fake-model").is_none() {
+            reg.register(XyModelMeta {
+                id: "fake-model".into(),
+                config: XyModelConfig {
+                    kind: XyModelKind::Fake,
+                    api_key: String::new(),
+                    model: "fake-model".into(),
+                    base_url: None,
+                    api: None,
+                    compat: None,
+                },
+                display_name: "fake-model".into(),
+                thinking: false,
+                context_window: 64_000,
+                api: String::new(),
+                provider: "fake".into(),
+                cost_input: 0.0,
+                cost_output: 0.0,
+                cost_cache_read: 0.0,
+                cost_cache_write: 0.0,
+                max_tokens: 0,
+                thinking_levels: vec!["off".into()],
+                thinking_level_map: Default::default(),
+            });
+        }
+    }
+    let (runtime, store) = crate::bdd::helpers::make_agent_with_store(agent);
+    let mut driver = xylitol::embed::XyInProcessDriver::new(runtime, store);
+    driver
+        .restore_model("fake-model")
+        .await
+        .expect("restore configured default");
+    let shown = model_display_name(xylitol::XyDriver::current_model(&driver).as_ref());
+    cli_entry_bdd.detail.replace(shown);
+}
+
+#[when("产品面读取当前模型展示名")]
+async fn w_c2841_read_display(_agent: &AgentState, _cli_entry_bdd: &CliEntryBdd) {}
+
+#[then("展示为 fake-model 而非 NOT-SET")]
+fn t_c2841_configured_default_shown(cli_entry_bdd: &CliEntryBdd) {
+    let shown = cli_entry_bdd.detail.borrow();
+    assert_eq!(shown.as_str(), "fake-model");
+    assert_ne!(shown.as_str(), "NOT-SET");
+}
+
+/// 产品面模型展示名规则（与 TUI sync_fixed_zone 的派生一致）：
+/// 已解析模型按 display_name（空则 id），否则 NOT-SET 占位。
+fn model_display_name(model: Option<&xylitol::app::core::driver::ModelInfo>) -> String {
+    match model {
+        Some(m) => {
+            if m.display_name.is_empty() {
+                m.id.clone()
+            } else {
+                m.display_name.clone()
+            }
+        }
+        None => xylitol::app::core::bootstrap::UNSET_MODEL_DISPLAY.to_string(),
+    }
+}

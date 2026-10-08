@@ -2725,3 +2725,145 @@ fn t_c2826_writer_conflict(server_test: &ServerTest) {
         "c2826: 应为 writer_conflict：{body}"
     );
 }
+
+// ---- c2841: prompt 会话身份保真 / 生效模型状态同步 ----
+
+async fn start_host_with_default_model(t: &ServerTest, model_id: &str) {
+    let host =
+        HostState::for_test_with_default_model(model_id).expect("host with default model");
+    let (running, port) = serve(
+        ServerConfig {
+            host: "127.0.0.1".into(),
+            port: 0,
+            sessions_dir: None,
+            registration_path: None,
+        },
+        host.clone(),
+    )
+    .await
+    .expect("serve");
+    t.host.replace(Some(host));
+    t.running.replace(Some(running));
+    t.port.set(port);
+    tokio::time::sleep(Duration::from_millis(30)).await;
+}
+
+#[given("会话写者已装配且持有已解析默认模型 fake-model")]
+async fn g_c2841_writer_with_default_model(server_test: &ServerTest) {
+    start_host_with_default_model(server_test, "fake-model").await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-c2841").await;
+    xylitol::app::server::host::materialize_writer(&host, &slot)
+        .await
+        .expect("materialize writer");
+    let mut g = slot.driver.lock().await;
+    let d = g.as_mut().expect("writer driver");
+    let m = d.current_model().expect("writer must hold the default model");
+    assert_eq!(m.id, "fake-model");
+}
+
+#[when("订阅者绑定该会话")]
+async fn w_c2841_bind_subscriber(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    wait_unbound(&host, 1).await;
+    let client = HttpWsClient::new(server_test.base_url());
+    let mux = client.mux().await.expect("mux");
+    server_test.mux_rx.replace(Some(mux));
+    let r = client
+        .unary(
+            "subscribe",
+            serde_json::json!({"session_id": "s-c2841", "last_seq": 0}),
+        )
+        .await
+        .expect("subscribe");
+    assert!(r.ok, "{r:?}");
+}
+
+#[then("订阅者收到模型同步事件且模型为 fake-model")]
+async fn t_c2841_model_sync_received(server_test: &ServerTest) {
+    let mut mux = server_test.mux_rx.borrow_mut().take().expect("mux");
+    for _ in 0..6 {
+        let f = tokio::time::timeout(Duration::from_secs(3), mux.next())
+            .await
+            .expect("frame timeout")
+            .expect("mux eof")
+            .expect("ws frame");
+        let RpcMessage::ServerRequest { method, payload, .. } = &f else {
+            continue;
+        };
+        if method != "session/event" {
+            continue;
+        }
+        let ev = payload.get("event").cloned().unwrap_or_default();
+        if ev.get("type").and_then(serde_json::Value::as_str) == Some("model_select") {
+            assert_eq!(
+                ev.get("model_id").and_then(serde_json::Value::as_str),
+                Some("fake-model")
+            );
+            return;
+        }
+    }
+    panic!("no model_select sync frame received on the subscribed session");
+}
+
+#[given("客户端已订阅会话 s-prompt 并以可用模型 fake-model 发送 prompt")]
+async fn g_c2841_prompt_with_identity(server_test: &ServerTest) {
+    start_host_with_default_model(server_test, "fake-model").await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    wait_unbound(&host, 1).await;
+    let client = HttpWsClient::new(server_test.base_url());
+    let mux = client.mux().await.expect("mux");
+    server_test.mux_rx.replace(Some(mux));
+    let sub = client
+        .unary(
+            "subscribe",
+            serde_json::json!({"session_id": "s-prompt", "last_seq": 0}),
+        )
+        .await
+        .expect("subscribe");
+    assert!(sub.ok, "{sub:?}");
+    let prompt = client
+        .unary(
+            "prompt",
+            serde_json::json!({
+                "message": "hi",
+                "session_id": "s-prompt",
+                "model_id": "fake-model",
+            }),
+        )
+        .await
+        .expect("prompt");
+    assert!(prompt.ok, "{prompt:?}");
+}
+
+#[when("Host 处理该 prompt")]
+async fn w_c2841_prompt_processed(_server_test: &ServerTest) {
+    // Fake provider 本轮即时完成；留出事件广播窗口。
+    tokio::time::sleep(Duration::from_millis(800)).await;
+}
+
+#[then("run 路由到 s-prompt 且事件在 s-prompt 的订阅者上可达")]
+async fn t_c2841_prompt_events_reachable(server_test: &ServerTest) {
+    let mut mux = server_test.mux_rx.borrow_mut().take().expect("mux");
+    // 事件流消耗完毕（run 完成）后 mux 已无入站帧；见到 agent_end 即证明
+    // run 事件在订阅会话的可达流上（含 绑定/装配后的 model_select 同步帧）。
+    for _ in 0..16 {
+        let f = match tokio::time::timeout(Duration::from_secs(3), mux.next()).await {
+            Ok(Some(Ok(f))) => f,
+            other => panic!("c2841: run 事件未在订阅流上完成送达：{other:?}"),
+        };
+        let RpcMessage::ServerRequest { method, payload, .. } = &f else {
+            continue;
+        };
+        if method == "session/event"
+            && payload
+                .get("event")
+                .and_then(|e| e.get("type"))
+                .and_then(serde_json::Value::as_str)
+                == Some("agent_end")
+        {
+            return;
+        }
+    }
+    panic!("c2841: 订阅会话流上未收到 agent_end");
+}

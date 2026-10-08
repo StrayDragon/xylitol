@@ -201,3 +201,11 @@ fn test_ce_reuse_session_id(surface_flags_bdd: SurfaceFlagsBdd) {}
     name = "unpersisted-session-no-resume-hint"
 )]
 fn test_ce_unpersisted_no_hint(surface_flags_bdd: SurfaceFlagsBdd) {}
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "configured-default-shown"
+)]
+async fn test_ce_c2841_configured_default_shown(
+    agent: AgentState,
+    cli_entry_bdd: CliEntryBdd,
+) {}

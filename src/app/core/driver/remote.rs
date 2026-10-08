@@ -264,6 +264,80 @@ fn store_resources_snapshot(
 }
 
 #[cfg(feature = "server")]
+/// Per-generation downlink state: the driver's shared handles cloned once for
+/// one spawned reconnect loop, plus the loop's generation snapshot (c2480).
+impl<C> DownlinkCtx<C>
+where
+    C: HostClient + Clone + 'static,
+{
+    /// 按 id 从已缓存可用模型表解析完整 `ModelInfo`（c2841 生效模型同步）。
+    /// 首次 attach 时可用模型表可能尚未就绪，未命中则拉取一次 `get_available_models`
+    /// 后重试；仍无则返回 None（徽标停留 NOT-SET，不失败）。
+    async fn resolve_model_info(&self, model_id: &str) -> Option<ModelInfo> {
+        let find = |models: &[ModelInfo]| models.iter().find(|m| m.id == model_id).cloned();
+        let from_cache = || {
+            self.cached_models
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+                .unwrap_or_default()
+        };
+        if let Some(hit) = find(&from_cache()) {
+            return Some(hit);
+        }
+        let Ok(data) = self
+            .host
+            .unary("get_available_models", serde_json::json!({}))
+            .await
+        else {
+            return None;
+        };
+        let Some(models) = data
+            .value
+            .as_ref()
+            .and_then(|v| v.get("models"))
+            .and_then(|v| v.as_array())
+        else {
+            return None;
+        };
+        let parsed: Vec<ModelInfo> = models
+            .iter()
+            .filter_map(|m| {
+                Some(ModelInfo {
+                    id: m.get("id").and_then(|x| x.as_str())?.to_string(),
+                    display_name: m
+                        .get("display_name")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    thinking: m
+                        .get("thinking")
+                        .and_then(|x| x.as_bool())
+                        .unwrap_or(false),
+                    thinking_levels: m
+                        .get("thinking_levels")
+                        .and_then(|x| x.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|x| x.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| vec![THINKING_OFF.into()]),
+                    context_window: m
+                        .get("context_window")
+                        .and_then(|x| x.as_u64())
+                        .unwrap_or(0),
+                })
+            })
+            .collect();
+        if let Ok(mut g) = self.cached_models.lock() {
+            *g = Some(parsed.clone());
+        }
+        find(&parsed)
+    }
+}
+
+#[cfg(feature = "server")]
 /// One downlink frame arm (connected phase): session event tape,
 /// subscribe/resync/resources lifecycle, reverse-RPC prompts. Unknown frames
 /// are ignored; a malformed event is a no-op — recovery is driven by
@@ -300,16 +374,19 @@ where
             // c2841:Host 在会话绑定/装配时同步的生效模型事件(含用户显式配置
             // 的默认模型)→ 写入缓存,供 current_model() 收敛徽标而非停在
             // NOT-SET。事件仅载 provider/model_id,完整 ModelInfo 从已缓存
-            // 可用模型表按 id 解析;未命中时保持现状(停留 NOT-SET,不失败)。
-            if let XyEvent::ModelSelect { model_id, .. } = &agent_event
-                && let Some(models) = ctx
-                    .cached_models
-                    .lock()
-                    .ok()
-                    .and_then(|g| g.clone())
-                && let Some(found) = models.iter().find(|m| &m.id == model_id).cloned()
-            {
-                if let Ok(mut cached) = ctx.cached_model.lock() {
+            // 可用模型表按 id 解析;首次 attach 时可用模型表可能尚未就绪,
+            // 未命中则拉取一次后重试——本分支在 push_current 前完成,保证
+            // TUI 侧收到事件时缓存已就绪可立即刷新徽标。
+            if let XyEvent::ModelSelect { model_id, .. } = &agent_event {
+                let found = ctx.resolve_model_info(model_id).await;
+                log::debug!(
+                    target: "xylitol::tui",
+                    "host-synced model {model_id} resolved=> {}",
+                    found.as_ref().map(|m| m.id.clone()).unwrap_or_default()
+                );
+                if let Some(found) = found
+                    && let Ok(mut cached) = ctx.cached_model.lock()
+                {
                     *cached = Some(found);
                 }
             }

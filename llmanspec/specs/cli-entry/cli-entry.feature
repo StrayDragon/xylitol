@@ -158,11 +158,15 @@
       那么 返回硬错误而非警告后继续
   @req:r1387
   规则: unset-model-display
-    当前未选中模型时，产品面展示的模型名 MUST 为 NOT-SET（或文档化的等价明确占位）；MUST NOT 将未显式配置/未传 --model 的状态显示为 gpt-4o 等厂商默认模型名。
+    未显式选择模型时，若存在可解析的**用户显式配置默认模型**（如 models.default_model 或等价 profile 默认），产品面 MUST 将该解析默认模型展示为当前模型而非 NOT-SET；仅当既无显式选择、又无可解析的已配置默认时，产品面 MUST 展示 NOT-SET（或文档化的等价明确占位）。MUST NOT 将仅凭 provider 环境变量（如 OPENAI_API_KEY/ANTHROPIC_API_KEY 存在）即可映射的厂商默认模型（gpt-4o 等）当成已解析默认展示。
 
     场景: unset-model-shown-as-not-set
       当 产品面读取未选中模型的展示名
       那么 得到 NOT-SET 而非厂商默认模型名
+    场景: configured-default-shown
+      假如 已显式配置默认模型 fake-model 且未显式选择模型
+      当 产品面读取当前模型展示名
+      那么 展示为 fake-model 而非 NOT-SET
   @req:r1388
   规则: surface-owned-flags
     CLI MUST 将表面旗标挂在表面动词下：`xylitol tui`（含可选 `run`）MUST 接受 --session/--model/--list-models/--trust/--no-trust/--config/--no-color/--attach/--port；`xylitol print` MUST 接受 --session/--model/--config/--no-color/--trust/--no-trust 且 MUST NOT 接受 --list-models/--attach/--port；顶层 MUST NOT 再提供上述旗标（解析 MUST 失败）。print 的 --trust/--no-trust MUST 经 bootstrap trust_override 生效（interactive=false，MUST NOT 弹出 ChoicePrompt）。`tui --session` 与 `tui run --session` MUST 等价生效。TUI 的 --attach 指定 Host URL（默认 http://127.0.0.1:18790）；仅 --port 时 MUST 连 http://127.0.0.1:<port>；二者都给时 --attach 胜。

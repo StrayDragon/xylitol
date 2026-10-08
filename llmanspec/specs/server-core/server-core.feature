@@ -158,6 +158,22 @@
       当 调用 RemoteDriver 已登记 unary（如 steer）
       那么 经 HostClient 到达 Host
       并且 未登记方法不发明 REST
+  @req:r1914
+  规则: prompt 会话身份保真
+    产品 RemoteDriver 发送 prompt/run 时 MUST 携带会话身份与 run 上下文字段（session_id、cwd、model_id、thinking_level 或等价信息），并使其经任何线协议形状转换后仍保真到达 Host 的会话解析；Host MUST 将 run 路由到该字段所指会话并在其上广播事件，MUST NOT 因命令承载字段收缩把 run 落向无订阅者的 fallback 会话而事件不可达。
+
+    场景: prompt-runs-on-subscribed-session
+      假如 客户端已订阅会话 s-prompt 并以可用模型 fake-model 发送 prompt
+      当 Host 处理该 prompt
+      那么 run 路由到 s-prompt 且事件在 s-prompt 的订阅者上可达
+  @req:r1915
+  规则: 生效模型状态同步
+    Host 在会话写者装配出已解析模型（含用户显式配置的默认模型）且订阅者绑定该会话时 MUST 向订阅者下发生效模型同步事件（ModelSelect 形状），使附加端模型徽标收敛而非停留在未选占位；显式 set_model/cycle_model 后的模型状态 MUST 反映切换结果。不识别该事件形状的旧客户端 MUST 可忽略该帧且其余行为不受影响。
+
+    场景: model-sync-on-bind
+      假如 会话写者已装配且持有已解析默认模型 fake-model
+      当 订阅者绑定该会话
+      那么 订阅者收到模型同步事件且模型为 fake-model
   @req:r1776
   规则: Server 经 dispatch 执行命令
     Server 对可映射的会话命令 MUST 经 protocol::Command + dispatch（或文档化的同一执行路径）执行，MUST NOT 为同一语义维护第二套与 dispatch 漂移的手写分支。
