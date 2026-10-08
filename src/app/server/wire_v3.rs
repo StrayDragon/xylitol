@@ -142,7 +142,7 @@ fn response_from_raw(
 /// 降级是逐方法的：某方法内任一 unknown 变体就整份退回 `RawOk`，不拼半份
 /// 强 schema（对拍不断链，r1908）。
 fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePayload> {
-    use crate::protocol::session::{SessionEntry, SessionTreeNode, SessionTreeTravel};
+    use crate::protocol::session::{SessionEntry, SessionTreeTravel};
     use crate::protocol::wire::registry;
     use crate::protocol::wire::v3::mapping;
 
@@ -154,13 +154,14 @@ fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePay
                 mapping::messages_result_to_v3(&entries),
             ))
         }
-        registry::METHOD_SESSION_TREE => {
-            let nodes: Vec<SessionTreeNode> =
-                serde_json::from_value(result.get("tree")?.clone()).ok()?;
-            Some(ResponsePayload::TreeResult(mapping::tree_result_to_v3(
-                &nodes,
-            )))
-        }
+        // c2845: session_tree 刻意不走强 schema `TreeResult`。
+        //
+        // `SessionTreeNode.children` 在生成的 binary codec 中按树深逐层递归
+        // （debug 帧巨大）：历史上 ~185 层深树即可让 tokio worker 默认栈
+        // 溢出 abort（serve `/session-tree`）。该方法改走 `RawOk`——载荷与
+        // JSON 轨逐字面同构（`{"tree": [...]}`），由客户端 serde 解析（小帧、
+        // 深度安全），把「按深度递归」从传输路径整体移除。强 schema
+        // `TreeResult` / `v3_to_tree_nodes` 保留供兼容解码与旧端对拍。
         registry::METHOD_TRAVEL_SESSION_TREE => {
             let travel: SessionTreeTravel = serde_json::from_value(result.clone()).ok()?;
             Some(ResponsePayload::TravelResult(mapping::travel_result_to_v3(
@@ -410,6 +411,8 @@ mod tests {
             other => panic!("expected MessagesResult, got {other:?}"),
         }
 
+        // c2845: `session_tree` 刻意走 RawOk（深度安全）——所返回载荷与 JSON 轨
+        // 逐字面同构，MUST NOT 再用递归强 schema TreeResult（深树会爆 worker 栈）。
         let tree = response_from_raw(
             2,
             "session_tree",
@@ -418,11 +421,25 @@ mod tests {
         )
         .unwrap();
         match tree.payload.unwrap() {
-            ResponsePayload::TreeResult(t) => {
-                assert_eq!(t.nodes.len(), 1);
-                assert_eq!(t.nodes[0].children.len(), 0);
+            ResponsePayload::RawOk(raw) => {
+                let value: serde_json::Value =
+                    serde_json::from_str(&raw.json).expect("raw json parses");
+                let nodes = value
+                    .get("tree")
+                    .and_then(serde_json::Value::as_array)
+                    .expect("tree array");
+                assert_eq!(nodes.len(), 1);
+                // 兼容解码面：强 schema 仍可对旧端/旧帧往返（v3_to_tree_nodes）。
+                let typed = crate::protocol::wire::v3::mapping::tree_result_to_v3(
+                    &serde_json::from_value::<Vec<
+                        crate::protocol::session::SessionTreeNode,
+                    >>(value.get("tree").cloned().unwrap())
+                    .unwrap(),
+                );
+                assert_eq!(typed.nodes.len(), 1);
+                assert_eq!(typed.nodes[0].children.len(), 0);
             }
-            other => panic!("expected TreeResult, got {other:?}"),
+            other => panic!("session_tree 应答 MUST 走 RawOk，实际 {other:?}"),
         }
 
         let travel = response_from_raw(

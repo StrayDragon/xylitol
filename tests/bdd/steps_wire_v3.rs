@@ -379,6 +379,74 @@ async fn g_seed_snapshot_entries(server_test: &ServerTest) {
     }
 }
 
+/// c2845: `session_tree` 双轨对拍 —— v3 侧 MUST 走 RAW 载体（深度安全，r1921），
+/// 与 JSON 轨 result 领域等价（r1908 纪律）。裸 binary 帧探针钉死应答变体。
+#[when("客户端分别经 JSON-RPC 与 v3 取回该会话树")]
+async fn w_fetch_tree_dual_rail(server_test: &ServerTest) {
+    use xylitol::protocol::wire::v3::{Method as V3Method, Raw as V3Raw};
+
+    let port = server_test.port.get();
+    let json_client = HttpWsClient::new(format!("http://127.0.0.1:{port}"));
+    let v3_client = HttpWsClient::new(format!("http://127.0.0.1:{port}")).with_wire_v3(true);
+    let payload = serde_json::json!({"type": "session_tree"});
+    let json_result = json_client
+        .unary("session_tree", payload)
+        .await
+        .expect("json session_tree");
+    let v3_result = v3_client
+        .unary("session_tree", serde_json::json!({"type": "session_tree"}))
+        .await
+        .expect("v3 session_tree");
+    assert!(json_result.ok, "json rail: {json_result:?}");
+    assert!(v3_result.ok, "v3 rail: {v3_result:?}");
+
+    // 裸 binary 探针：应答必须为 RawOk（非递归强 schema TreeResult）。
+    let frame = Frame::ClientRequest(ClientRequest {
+        rpc_id: 41,
+        request: Request::Raw(V3Raw {
+            method: V3Method::SessionTree,
+            json: r#"{"type":"session_tree"}"#.to_string(),
+        }),
+        writer_token: None,
+    })
+    .to_bytes()
+    .expect("encode session_tree frame");
+    let (_status, body) = post_v3(port, &frame).await;
+    let resp = expect_describe_response(&body);
+    assert!(resp.ok, "v3 rail: {:?}", resp.error);
+    assert!(
+        matches!(resp.payload, Some(ResponsePayload::RawOk(_))),
+        "c2845: session_tree v3 应答 MUST 走 RAW 载体（深度安全），实际 {:?}",
+        resp.payload
+    );
+
+    server_test.unary_body.borrow_mut().replace(format!(
+        "{}\n{}",
+        serde_json::to_string(&json_result.value).unwrap_or_default(),
+        serde_json::to_string(&v3_result.value).unwrap_or_default()
+    ));
+}
+
+#[then("两条路径 result 等价且 v3 侧为 RAW 载体（非递归强 schema）")]
+async fn t_tree_dual_rail_raw(server_test: &ServerTest) {
+    let stored = server_test
+        .unary_body
+        .borrow()
+        .clone()
+        .expect("dual rail tree pair");
+    let (json_text, v3_text) = stored.split_once('\n').expect("json|v3");
+    let json_value: serde_json::Value = serde_json::from_str(json_text).expect("json body");
+    let v3_value: serde_json::Value = serde_json::from_str(v3_text).expect("v3 body");
+    assert_eq!(
+        v3_value, json_value,
+        "两条轨 session_tree result MUST 领域等价"
+    );
+    assert!(
+        v3_value.get("tree").is_some(),
+        "树应答 MUST 含 tree 形状：{v3_value}"
+    );
+}
+
 /// 两条轨各取一次快照：JSON 轨走 `HttpWsClient`，v3 轨走 binary POST + 具名
 /// union 解码;两份 result 存 fixture 供断言。
 #[when("客户端分别经 JSON-RPC 与 v3 取回该会话快照")]

@@ -533,6 +533,15 @@
       假如 同一会话在两条路径上各有 3 条历史条目
       当 客户端分别经 JSON-RPC 与 v3 取回该会话快照
       那么 两条路径的 result 等价且 v3 侧承载具名应答 union
+  @req:r1921
+  规则: session_tree 应答透明与深度安全
+    v3 轨对 `session_tree` 方法 MUST 返回与 JSON 轨逐字面同构的 RAW 载荷（`{"tree":[...]}`，与 c2842 命令透明化同向），MUST NOT 将该方法塑形为递归强 schema `TreeResult`：生成的 binary codec 按树深逐层递归，深树会在默认 worker 栈上溢出 abort（历史实测：~185 层深树崩溃）；强 schema `TreeResult` 与 `v3_to_tree_nodes` MAY 保留仅作兼容解码与旧端对拍。两条路径对该方法的 result MUST 领域等价（r1908 对拍纪律适用）。
+
+    场景: v3-session-tree-raw-parity
+      假如 同一会话在两条路径上各有 3 条历史条目
+      当 客户端分别经 JSON-RPC 与 v3 取回该会话树
+      那么 两条路径 result 等价且 v3 侧为 RAW 载体（非递归强 schema）
+
   @req:r1909
   规则: 迁移期旧路径保活与硬切
     硬切已完成：JSON-RPC 文本路径作为调试通道保活（同一方法表与 dispatch），MUST NOT 引入第三套载体。旧 JSON-RPC 条款 MUST 以「载体无关」措辞表述：产品级 WHAT 只描述语义与形状，不钉帧类型。对拍纪律（r1908）MUST 继续由自动化测试锁定。
