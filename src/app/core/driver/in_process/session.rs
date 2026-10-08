@@ -62,11 +62,12 @@ impl super::XyInProcessDriver {
         } else {
             self.mcp_boot = McpBootState::Settled;
         }
-        if self.agent.obs_slot_writes()
-            && let Ok(Some(name)) = self.store.get_session_name(session_id).await
-        {
-            xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
-        }
+        // c2843 Phase B: switch/bind no longer writes the process obs slot —
+        // materialized obs identity is this runtime's own facts. The slot is
+        // only the "default identity" for optionless fallbacks and is updated by
+        // explicit writer events (rename / host restore), never by reads/switches.
+        // (otel25's obs_slot_writes gate is removed: readers structurally don't
+        // touch writer-event paths.)
         // c25/c26: freshly active leaf → one LeafChanged settlement for footer /
         // reserve gate parity (overhead-aware, no model call).
         self.agent.emit_leaf_changed_settlement().await;
@@ -245,6 +246,9 @@ impl super::XyInProcessDriver {
     pub(crate) async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
         let out = self.store.set_session_name(sid, name).await?;
+        // c2843 Phase B: writer rename updates BOTH the runtime owner fact and the
+        // default-identity slot (explicit writer event; no obs_slot_writes gate).
+        self.agent.set_session_name_fact(Some(out.clone()));
         xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
         Ok(out)
     }
@@ -256,6 +260,7 @@ impl super::XyInProcessDriver {
     ) -> Result<String, XyDriverError> {
         let out = self.store.set_session_name(session_id, name).await?;
         if self.agent.session_id() == Some(session_id) {
+            self.agent.set_session_name_fact(Some(out.clone()));
             xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
         }
         Ok(out)

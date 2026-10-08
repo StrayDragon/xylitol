@@ -226,6 +226,23 @@ impl SpanCollectScope {
     pub fn records(&self) -> Vec<SpanRecord> {
         self.buf.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
+
+    /// Collector records attributed to a specific session (c2843): filters on
+    /// the `xylitol.session.id` span attribute. With per-session obs ownership,
+    /// THIS scenario's spans always carry its own session uuid and foreign
+    /// spans (other in-process tenants / parallel tests) carry theirs — so a
+    /// scope-holder can assert on its own attribution deterministically without
+    /// serializing against every other observation source.
+    pub fn records_for(&self, session_id: &str) -> Vec<SpanRecord> {
+        self.records()
+            .into_iter()
+            .filter(|s| {
+                s.properties
+                    .iter()
+                    .any(|(k, v)| k == "xylitol.session.id" && v == session_id)
+            })
+            .collect()
+    }
 }
 
 impl Drop for SpanCollectScope {
@@ -724,3 +741,35 @@ mod tests {
         drop(t);
     }
 }
+
+    #[test]
+    fn records_for_filters_by_owner_session_id() {
+        // c2843 Phase B: collector filtering by owner session attribution.
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
+        {
+            let a = crate::provider::obs_session::ObsSessionContext {
+                session_id: Some("owner-a".into()),
+                ..Default::default()
+            };
+            let b = crate::provider::obs_session::ObsSessionContext {
+                session_id: Some("owner-b".into()),
+                ..Default::default()
+            };
+            let _ta = ProviderRequestTrace::start_with_parent_obs("openai-responses", "m", None, &a)
+                .expect("a span");
+            let _tb = ProviderRequestTrace::start_with_parent_obs("openai-responses", "m", None, &b)
+                .expect("b span");
+        }
+        fastrace::flush();
+        let all = collect.records();
+        assert_eq!(all.len(), 2, "both owner spans collected");
+        let only_a = collect.records_for("owner-a");
+        assert_eq!(only_a.len(), 1, "records_for keeps only owner-a");
+        let only_b = collect.records_for("owner-b");
+        assert_eq!(only_b.len(), 1, "records_for keeps only owner-b");
+        assert!(
+            collect.records_for("no-such-owner").is_empty(),
+            "unknown owner yields nothing"
+        );
+    }

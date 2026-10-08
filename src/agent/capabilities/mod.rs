@@ -123,10 +123,9 @@ pub struct AgentCapabilities {
     hook_bus: Option<Arc<dyn XyHookBus>>,
     /// Request-layout hooks (c1890); default ≡ current full-tools / no status bar.
     context_policy: crate::agent::context_policy::ContextPolicy,
-    /// Whether `set_session` may write the process obs slot (otel25). Off on
-    /// host **reader** drivers so read-only RPCs never stomp another session's
-    /// identity; writer binds keep the default `true`.
-    obs_slot_writes: bool,
+    /// This runtime's session display name fact (Phase B / c2843): turns observe
+    /// it directly; the process obs slot is never consulted by materialized paths.
+    session_name: Option<String>,
 }
 
 impl AgentCapabilities {
@@ -185,7 +184,7 @@ impl AgentCapabilities {
             queues: Arc::new(AsyncQueueRuntime::new(steering_mode, follow_up_mode)),
             hook_bus,
             context_policy: crate::agent::context_policy::ContextPolicy::default(),
-            obs_slot_writes: true,
+            session_name: None,
         };
         // Assemble full system prompt (tools + context + SYSTEM/APPEND + runtime
         // policy) once at construction so bootstrap-injected AGENTS.md is visible

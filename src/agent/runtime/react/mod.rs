@@ -83,15 +83,11 @@ impl AgentRuntime {
         Ok(())
     }
 
-    /// Toggle process obs-slot writes for `bind_session` (otel25). Host reader
-    /// drivers disable this so read-only RPCs cannot stomp another session's id.
-    pub(crate) fn set_obs_slot_writes(&mut self, enabled: bool) {
-        self.inner.set_obs_slot_writes(enabled);
-    }
-
-    /// Whether `bind_session` on this runtime writes the process obs slot.
-    pub(crate) fn obs_slot_writes(&self) -> bool {
-        self.inner.obs_slot_writes()
+    /// Set an obs display-name fact for this runtime (c2843 Phase B). Callers:
+    /// driver rename / host restore / tests — the runtime's own identity, never
+    /// the process obs slot.
+    pub fn set_session_name_fact(&mut self, name: Option<String>) {
+        self.inner.set_session_name_fact(name);
     }
 
     /// Currently bound session id, if any.
@@ -496,6 +492,9 @@ impl AgentRuntime {
         let queues = self.inner.queues();
         let event_sink_inner = self.inner.event_sink();
         let cwd = self.inner.cwd().to_string();
+        // c2843 Phase B: capture the owner obs name fact before the stream
+        // closure (must not borrow `self` past the method).
+        let obs_session_name = self.inner.session_name().map(str::to_string);
 
         let lease = RunLease::new(coordinator.clone(), run_id, Some(queues.clone()));
 
@@ -538,6 +537,7 @@ impl AgentRuntime {
                 session_id,
                 seeded_history,
                 event_sink_inner,
+                obs_session_name: obs_session_name.clone(),
             });
             let mut stream = std::pin::pin!(stream);
             while let Some(ev) = stream.next().await {
@@ -604,6 +604,7 @@ impl AgentRuntime {
             session_id,
             seeded_history,
             event_sink_inner: self.inner.event_sink(),
+            obs_session_name: self.inner.session_name().map(str::to_string),
         });
         self.coordinator.with_mut(|c| c.mark_streaming(run_id));
         XyEventStream::with_lease(Box::pin(stream), lease)
@@ -629,6 +630,8 @@ struct LiveReactArgs {
     session_id: String,
     seeded_history: Vec<AgentMessage>,
     event_sink_inner: Arc<dyn crate::protocol::ports::XyEventSink>,
+    /// Owner obs display-name fact for the turn (c2843 Phase B); never slot.
+    obs_session_name: Option<String>,
 }
 
 fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> + Send {
@@ -643,6 +646,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         session_id,
         seeded_history,
         event_sink_inner,
+        obs_session_name,
     } = args;
 
     let FrozenRootConfig {
@@ -721,6 +725,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         event_sink,
         compaction_settings,
         cwd,
+        obs_session_name,
     }));
 
     async_stream::stream! {
@@ -810,6 +815,8 @@ struct ReActConfig {
     compaction_settings: crate::agent::compaction::CompactionSettings,
     /// Workspace cwd for session_env (c1905).
     cwd: String,
+    /// Owner obs display-name fact for the turn (c2843 Phase B); never slot.
+    obs_session_name: Option<String>,
 }
 
 // ── Core ReAct loop ─────────────────────────────────────────────────
@@ -837,6 +844,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         event_sink,
         compaction_settings,
         cwd,
+        obs_session_name,
     } = cfg;
     // c25: fixed per-request overhead for overhead-aware settlement / cut clamp.
     let fixed_context = crate::agent::compaction::FixedRequestContext {
@@ -896,7 +904,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             .unwrap_or((None, None));
         let obs_session = xylitol_ai_bridge::ObsSessionContext {
             session_id: Some(session_id.clone()),
-            session_name: xylitol_ai_bridge::provider::obs_session_context().session_name,
+            session_name: obs_session_name,
             parent_session_id,
             fork_at_entry_id,
             llm_gateway_session_id: None,

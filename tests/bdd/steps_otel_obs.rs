@@ -18,6 +18,14 @@ use xylitol_ai_bridge::provider::{clear_obs_session, set_obs_session};
 
 pub(crate) const SESSION_UUID: &str = "aaagggg-hhhh-iiii-jjjj-kkkkllllmmmm";
 
+/// c2843 Phase B: process-wide gate-write lock for in-process BDD. The otel/c2830
+/// scenarios mutually exclude via `#[serial]`, but non-serial writers (e.g. the
+/// instant-file-logging step's `init_logging`, whose default config briefly arms
+/// the gate) can otherwise flip the process atomics while a "default-gate-off"
+/// scenario probes them. Every test-side gate write AND the gate-value probes
+/// take this lock, so the probes observe a deterministic, restored state.
+pub(crate) static OBS_GATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Per-scenario globals + collect sink. Uses process-slot setters (not TLS
 /// scopes): the async runtime polls the stream on worker threads where TLS
 /// scopes are invisible. Drop restores the pre-scenario state.
@@ -39,6 +47,11 @@ pub fn otel_bdd() -> OtelBdd {
 impl Drop for OtelBdd {
     fn drop(&mut self) {
         if self.mounted.get() {
+            // c2843 Phase B: release the collect scope (SPAN_COLLECT_EXCL) BEFORE
+            // taking the gate lock — lock order is always gates → collector, so
+            // a concurrent mount (gates → collector) can never ABBA-deadlock.
+            drop(self.collect.borrow_mut().take());
+            let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             set_provider_trace_active(false);
             set_observation_io_tier(ObservationIoTier::None);
             set_tool_observation_io_tier(ObservationIoTier::None);
@@ -50,10 +63,15 @@ impl Drop for OtelBdd {
 impl OtelBdd {
     fn mount_scopes(&self, session_name: Option<&str>) {
         let tier = *self.io_tier.borrow();
-        set_provider_trace_active(true);
-        set_observation_io_tier(tier);
-        set_tool_observation_io_tier(tier);
-        set_obs_session(SESSION_UUID, session_name.map(str::to_string));
+        // Lock only around the gate writes (released before collector enter) so
+        // the lock order never nests collector locks under the gate lock.
+        {
+            let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            set_provider_trace_active(true);
+            set_observation_io_tier(tier);
+            set_tool_observation_io_tier(tier);
+            set_obs_session(SESSION_UUID, session_name.map(str::to_string));
+        }
         drop(self.collect.borrow_mut().take());
         *self.collect.borrow_mut() = Some(SpanCollectScope::enter());
         self.mounted.set(true);
@@ -71,7 +89,10 @@ impl OtelBdd {
             .borrow()
             .as_ref()
             .expect("collect scope mounted")
-            .records()
+            // c2843 Phase B: per-session obs ownership — only THIS scenario's
+            // spans (owner-attributed to SESSION_UUID) enter the assertion surface;
+            // foreign spans from other in-process tests are excluded deterministically.
+            .records_for(SESSION_UUID)
     }
 }
 
@@ -82,11 +103,12 @@ pub(crate) async fn run_turn_with_tool(agent: &AgentState, session_name: Option<
     set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
     set_fake_tool_result("hello world");
     let mut runner = crate::bdd::helpers::make_agent(agent);
-    // 显式绑定已知会话 UUID——runtime bind_session 会把 obs session 槽
-    // 同步为当前会话，otel6 的「当前会话 UUID」即此 id。
+    // 显式绑定已知会话 UUID——turn 归因使用 run 的 session_id（owner 快照），
+    // 与进程槽无关（c2843 Phase B）。
     crate::bdd::helpers::bind_session_or_panic(&mut runner, SESSION_UUID);
     if let Some(name) = session_name {
-        xylitol_ai_bridge::provider::set_obs_session_name(Some(name));
+        // 产品改名事实路径（owner fact），不再直接写进程槽。
+        runner.set_session_name_fact(Some(name.to_string()));
     }
     let mut stream = crate::bdd::helpers::agent_submit_root(&mut runner, "读取文件").await;
     while let Some(e) = stream.next().await {
@@ -349,8 +371,13 @@ fn find_named<'a>(
 
 #[when("以未开启观测闸运行一次带工具调用的 agent 回合")]
 async fn w_c2826_no_gate_run(agent: &AgentState, _otel_bdd: &OtelBdd) {
-    // serial 序内起点即产品默认态：闸关（此前所有 otel 测试的 Drop 已复位）。
-    let gate_off_at_rest = !xylitol_ai_bridge::provider::trace::provider_trace_active();
+    // c2843 Phase B: probe the default (composition-root) gate UNDER the
+    // process-wide gate lock so a concurrent non-serial writer (instant-file-log
+    // init_logging) can never flip the atomics between probe and run.
+    let gate_off_at_rest = {
+        let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        !xylitol_ai_bridge::provider::trace::provider_trace_active()
+    };
     set_fake_text("我来读文件");
     set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
     set_fake_tool_result("hello world");
@@ -367,7 +394,10 @@ async fn w_c2826_no_gate_run(agent: &AgentState, _otel_bdd: &OtelBdd) {
         }
     }
     // 回合结束后的常驻闸态仍应为关（本测试从未臂装）。
-    let gate_off_after = !xylitol_ai_bridge::provider::trace::provider_trace_active();
+    let gate_off_after = {
+        let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        !xylitol_ai_bridge::provider::trace::provider_trace_active()
+    };
     assert!(
         gate_off_at_rest && gate_off_after,
         "c2826: 默认（未配置 [otel]）观测闸必须为关：起点 {} / 终点 {}",
@@ -456,10 +486,13 @@ async fn w_c2826_tool_tier_only(agent: &AgentState, otel_bdd: &OtelBdd) {
     set_fake_text("我来读文件");
     set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
     set_fake_tool_result("hello world");
-    set_provider_trace_active(true);
-    set_observation_io_tier(ObservationIoTier::None);
-    set_tool_observation_io_tier(ObservationIoTier::Truncated);
-    set_obs_session(SESSION_UUID, None);
+    {
+        let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        set_provider_trace_active(true);
+        set_observation_io_tier(ObservationIoTier::None);
+        set_tool_observation_io_tier(ObservationIoTier::Truncated);
+        set_obs_session(SESSION_UUID, None);
+    }
     drop(otel_bdd.collect.borrow_mut().take());
     *otel_bdd.collect.borrow_mut() = Some(SpanCollectScope::enter());
     otel_bdd.mounted.set(true);
@@ -505,10 +538,13 @@ async fn w_c2826_compaction_span(sess: &crate::bdd::fixtures::XySessionStore, ot
     sess.ensure_mgr();
     crate::bdd::steps_compaction::comp_seed_turns(sess, COMP_RETAIN_SID, 50).await;
     sess.current_id.replace(Some(COMP_RETAIN_SID.to_string()));
-    set_provider_trace_active(true);
-    set_observation_io_tier(ObservationIoTier::None);
-    set_tool_observation_io_tier(ObservationIoTier::None);
-    set_obs_session(SESSION_UUID, None);
+    {
+        let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        set_provider_trace_active(true);
+        set_observation_io_tier(ObservationIoTier::None);
+        set_tool_observation_io_tier(ObservationIoTier::None);
+        set_obs_session(SESSION_UUID, None);
+    }
     drop(otel_bdd.collect.borrow_mut().take());
     *otel_bdd.collect.borrow_mut() = Some(SpanCollectScope::enter());
     otel_bdd.mounted.set(true);
@@ -524,8 +560,15 @@ async fn w_c2826_compaction_span(sess: &crate::bdd::fixtures::XySessionStore, ot
             compat: None,
         },
     );
-    let binding =
+    let mut binding =
         xylitol::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake");
+    // c2843 Phase B: owner-attributed processing — give the compaction summary the
+    // scenario session snapshot so its spans carry SESSION_UUID and the fixture's
+    // per-owner records() keeps them (and parallel peers' spans stay excluded).
+    binding.generate_options.obs_session = xylitol_ai_bridge::ObsSessionContext {
+        session_id: Some(SESSION_UUID.into()),
+        ..Default::default()
+    };
     let sink = std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut notice = false;
     xylitol::agent::compaction::CompactionOrchestrator::new(

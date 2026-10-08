@@ -2504,7 +2504,13 @@ fn t_tui_agents_doc_carries_layout_map(host_pump_bdd: &HostPumpBdd) {
 #[when("以临时目录请求即时文件日志")]
 fn w_init_instant_file_logging(host_pump_bdd: &HostPumpBdd) {
     use xylitol_ai_bridge::provider::trace as pt;
+    // c2843 Phase B: hold the process-wide gate lock while mounting probes that
+    // mutate the process atomics (`init_logging` arms the gate per its config),
+    // so the gate probes in default-gate-off scenarios stay deterministic.
     // 探针会写进程级闸态；跑完即复位，不依赖同进程里其他场景的执行顺序。
+    let _g = crate::bdd::steps_otel_obs::OBS_GATE_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
     let gate = pt::provider_trace_active();
     let io_tier = pt::observation_io_tier();
     let tool_io_tier = pt::tool_observation_io_tier();
@@ -2517,6 +2523,7 @@ fn w_init_instant_file_logging(host_pump_bdd: &HostPumpBdd) {
     pt::set_provider_trace_active(gate);
     pt::set_observation_io_tier(io_tier);
     pt::set_tool_observation_io_tier(tool_io_tier);
+    drop(_g);
     host_pump_bdd
         .log_probe
         .borrow_mut()

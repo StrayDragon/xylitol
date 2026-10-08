@@ -21,6 +21,19 @@ use xylitol_ai_bridge::provider::trace::ObservationIoTier;
 
 pub(crate) const BDD_MODEL: &str = "claude-bdd-mock";
 
+/// c2843 Phase B: direct provider drives must be owner-attributed too — carry the
+/// scenario session snapshot in the generate options so `llm.request` spans pass
+/// the per-owner collector filter.
+fn c2830_options() -> xylitol::protocol::XyGenerateOptions {
+    xylitol::protocol::XyGenerateOptions {
+        obs_session: xylitol_ai_bridge::ObsSessionContext {
+            session_id: Some(crate::bdd::steps_otel_obs::SESSION_UUID.into()),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
 /// 脚本化 mock 上游的一帧。
 enum Frame {
     Sse {
@@ -168,7 +181,7 @@ pub(crate) async fn w_c2830_drive(otel_bdd: &OtelBdd, mock_upstream_bdd: &MockUp
     otel_bdd.mount_io(ObservationIoTier::Truncated);
     let addr = mock_upstream_bdd.addr.borrow().expect("mock started");
     let model = build_model(addr);
-    let mut stream = XyModel::generate_stream(&model, vec![], &[], true, Default::default())
+    let mut stream = XyModel::generate_stream(&model, vec![], &[], true, c2830_options())
         .await
         .expect("mock stream established");
     while let Some(item) = stream.next().await {
@@ -183,7 +196,7 @@ pub(crate) async fn w_c2830_abort(otel_bdd: &OtelBdd, mock_upstream_bdd: &MockUp
     otel_bdd.mount_io(ObservationIoTier::Truncated);
     let addr = mock_upstream_bdd.addr.borrow().expect("mock started");
     let model = build_model(addr);
-    let mut stream = XyModel::generate_stream(&model, vec![], &[], true, Default::default())
+    let mut stream = XyModel::generate_stream(&model, vec![], &[], true, c2830_options())
         .await
         .expect("mock stream established");
     while let Some(item) = stream.next().await {

@@ -44,34 +44,36 @@ impl AgentCapabilities {
 
     /// Set the active session ID.
     ///
-    /// Writes the process obs slot only when `Self::obs_slot_writes` is on
-    /// (otel25: host reader drivers opt out).
+    /// c2843 (Phase B): no longer writes the process obs slot — materialized
+    /// paths derive obs identity from this runtime's own facts, so concurrent
+    /// sessions can no longer stomp each other's attribution.
     pub fn set_session(&mut self, session_id: String) {
-        if self.obs_slot_writes {
-            xylitol_ai_bridge::provider::set_obs_session(session_id.clone(), None);
-        }
         self.session_id = Some(session_id);
     }
 
-    /// Obs-slot write permission for `set_session` (otel25). Default on;
-    /// host reader drivers turn this off before binding.
-    pub(crate) fn set_obs_slot_writes(&mut self, enabled: bool) {
-        self.obs_slot_writes = enabled;
-    }
-
-    pub(crate) fn obs_slot_writes(&self) -> bool {
-        self.obs_slot_writes
-    }
-
-    /// This session's obs identity snapshot (otel24 / c2610): the bound bookmark
-    /// id plus the slot's display name. Compaction / idle callers with a known
-    /// session MUST build the snapshot here instead of re-reading the slot id.
+    /// This runtime's obs identity snapshot (otel24 / c2610 / c2843): the bound
+    /// session id plus THIS runtime's display-name fact. Compaction / idle
+    /// callers with a known session MUST build the snapshot here instead of
+    /// re-reading the process slot.
     pub(crate) fn obs_session_snapshot(&self) -> xylitol_ai_bridge::ObsSessionContext {
         xylitol_ai_bridge::ObsSessionContext {
             session_id: self.session_id.clone(),
-            session_name: xylitol_ai_bridge::provider::obs_session_context().session_name,
+            session_name: self.session_name.clone(),
             ..Default::default()
         }
+    }
+
+    /// Owner display-name fact for this runtime (c2843). Rename paths (driver /
+    /// host restore) set it; turns / idle obs read it. Never the process slot.
+    pub(crate) fn set_session_name_fact(&mut self, name: Option<String>) {
+        self.session_name = name
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty());
+    }
+
+    /// Owner display-name fact (c2843).
+    pub(crate) fn session_name(&self) -> Option<&str> {
+        self.session_name.as_deref()
     }
 
     /// Snapshot plus header tree edge (facts from disk). Idle callers may skip this.

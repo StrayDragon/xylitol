@@ -204,12 +204,21 @@
       那么 agent.turn 根 span 携带等于会话 UUID 的 langfuse.session.id
 
   @req:r1483
-  规则: otel-obs-slot-write-discipline
-    进程级观测槽 MUST 仅由会话自身的 writer 绑定路径（runtime bind_session / 显式 set_obs_session 调用）更新；host 对只读 RPC（session stats / tree / messages / 列表等）materialize 的 reader driver MUST NOT 写观测槽（含会话名），reader 物化前后槽内容 MUST 不变。槽仍可作无 options 闲置路径的回退。由单测覆盖，MUST NOT 单独扩 BDD step。
-    # verified-by: src/agent/runtime/obs.rs
+  规则: otel-obs-slot-default-identity-only
+    进程级观测槽 MUST 仅作为「默认身份」供无 options 的闲置回退（remote count、无快照的 HTTP hooks、无 options 的 ProviderRequestTrace）与测试使用；materialized 会话（turn / iteration / tool / compaction / generate）MUST 使用运行时自持的会话事实快照，MUST NOT 在 span 创建时读该槽。bind / switch_session MUST NOT 写该槽（c2843 Phase B 移除 obs_slot_writes 门：读者结构上不触达写入路径），槽仅由显式 writer 事件（rename、会话恢复）更新；读者物化前后槽内容 MUST 不变。无 run 上下文的闲置路径 MAY 以槽为回退。由单测覆盖（switch 不写槽 + 快照归因），MUST NOT 单独扩 BDD step。
+    # verified-by: src/app/core/driver/in_process/tests/session.rs
     场景: obs-slot-written-by-writer-path
 当 以观测闸开启并触发一次会话压缩
       那么 导出 agent.compaction 且 type 为 span 并携带原因与 obs lane
+
+  @req:r1918
+  规则: otel-owner-attributed-collection
+    当收集低频观测 span 断言时（SpanCollectScope），MUST 按处理所有者的会话身份（xylitol.session.id）过滤后再断言，MUST NOT 将并行其他观测源（其它会话 / init_logging 式槽更新者）产出的外来 span 纳入断言面；owner 无会话身份时为闲置路径，其 span MAY 不携带 xylitol.session.id。本 req 使 in-process 并行收集确定化（与 r1481/r1482/r1483 的 owner 归因不变式同源）。
+    # verified-by: tests/bdd/steps_otel_obs.rs / packages/xylitol-ai-bridge/src/provider/trace.rs
+    场景: owner-scoped-otel-assertions
+      假如 mock 模型先 tool 后无 tool
+当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
+      那么 agent.turn 根 span 携带等于会话 UUID 的 langfuse.session.id
 
   @req:r1484
   规则: otel-session-dual-identity-and-fork-edge

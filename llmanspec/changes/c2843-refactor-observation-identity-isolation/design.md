@@ -31,6 +31,8 @@
 ## 明确不做（保持现状并记录）
 
 - 激活闸（`provider_trace_active` / io tier）维持进程级**组合根策略**（served 拓扑下激活是服务端策略，本就该全会话共享）；测试内的 TLS `ObsGateScope` 已有；并行隔离靠内容过滤（#4）而非枚举闸者。
+- **in-process 测试内**：依赖闸态/收集槽的场景（otel/c2830 全族）保持 `#[serial]` 互斥（闸是进程共享策略资源的测试内对应物）；断言面则 owner 过滤（并行稳定 + 不枚举污染者）。测试侧新增进程级 `OBS_GATE_LOCK`（仅测试基建）：包住所有闸写入与默认闸态探针，消除非 serial 写入者（如即时文件日志 `init_logging`）对「默认闸关」断言的竞态。
+- **锁序保证**（实施中实证）：`OBS_GATE_LOCK` 永不嵌套在收集器独占锁（`SpanCollectScope` 的 `SPAN_COLLECT_EXCL`）内——`OtelBdd::drop` 先释放 scope 再取闸锁，`mount_scopes` 闸锁只包写入。曾出现 ABBA 死锁（drop 持 scope 抢闸锁 × mount 持闸锁等 collect 锁），已修并加锁序注释。
 - `ProviderRequestTrace::start` / `merge_opencode_attribution` 的 None-arm / remote_count 继续消费默认身份（文档标注），不逐一改造成快照注入（超出本 change 安全面；optionless 在 c2590 后已近乎无生产触发）。
 
 ## 验收

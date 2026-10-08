@@ -171,3 +171,9 @@ async fn test_otel_r1484_dual_identity(otel_bdd: OtelBdd, agent: AgentState, ws:
 )]
 #[serial]
 async fn test_otel_r1485_skipped_compaction(sess: XySessionStore, otel_bdd: OtelBdd) {}
+#[scenario(
+    path = "llmanspec/specs/infra-otel/infra-otel.feature",
+    name = "owner-scoped-otel-assertions"
+)]
+#[serial]
+async fn test_otel_r1918_owner_scoped(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}

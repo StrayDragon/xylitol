@@ -257,6 +257,9 @@ impl BootstrappedAgent {
             self.agent.restore_thinking_level(level);
         }
         if let Some(name) = restored_session.session_name {
+            // c2843 Phase B: restore is an explicit writer event — set the runtime
+            // owner fact and keep the default-identity slot in sync.
+            self.agent.set_session_name_fact(Some(name.clone()));
             xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
         }
         let driver = crate::app::core::driver::XyInProcessDriver::new(self.agent, self.store);
