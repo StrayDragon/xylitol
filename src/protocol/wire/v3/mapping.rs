@@ -266,6 +266,11 @@ pub fn v3_event_to_xy(ev: &v3::Event) -> Option<XyEvent> {
 /// `ClearQueue`'s serde `default = true` semantics live at the JSON edge;
 /// this layer passes the bools through as-is. `SessionTree` maps to the v3
 /// `SessionTreeCmd` member (fbs keyword collision).
+///
+/// c2842:v3 上行已为透明信封(除 describe 外全 RAW 原文),生产路径不再使用本
+/// 编码器;保留给本模块往返对拍测试——与 [`v3_to_command`] 一起守护服务端
+/// typed 解码兼容(旧端 / Flutter POC 仍可能发 typed 帧)。
+#[cfg(test)]
 pub fn command_to_v3(cmd: &WireCommand) -> v3::Command {
     match cmd {
         WireCommand::Prompt { message } => v3::Command::Prompt(v3::Prompt {

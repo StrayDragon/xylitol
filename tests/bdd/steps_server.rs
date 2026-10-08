@@ -2867,3 +2867,91 @@ async fn t_c2841_prompt_events_reachable(server_test: &ServerTest) {
     }
     panic!("c2841: 订阅会话流上未收到 agent_end");
 }
+
+// ---- c2842: 会话命令身份透明（v3）/ get_state 反映写者模型 ----
+
+#[given("以 v3 客户端订阅会话 s-v3 且写者装配了默认模型 fake-model")]
+async fn g_c2842_v3_subscribe_default_model(server_test: &ServerTest) {
+    start_host_with_default_model(server_test, "fake-model").await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-v3").await;
+    xylitol::app::server::host::materialize_writer(&host, &slot)
+        .await
+        .expect("materialize writer");
+    let client = HttpWsClient::new(server_test.base_url()).with_wire_v3(true);
+    let r = client
+        .unary(
+            "subscribe",
+            serde_json::json!({"session_id": "s-v3", "last_seq": 0, "cwd": "/tmp"}),
+        )
+        .await
+        .expect("v3 subscribe");
+    assert!(r.ok, "v3 subscribe: {r:?}");
+    drop(client);
+}
+
+#[when("该 v3 客户端在 s-v3 上设置模型 fake-model")]
+async fn w_c2842_v3_set_model(server_test: &ServerTest) {
+    let client = HttpWsClient::new(server_test.base_url()).with_wire_v3(true);
+    let r = client
+        .unary(
+            "set_model",
+            serde_json::json!({
+                "type": "set_model",
+                "session_id": "s-v3",
+                "model_id": "fake-model",
+            }),
+        )
+        .await
+        .expect("v3 set_model");
+    server_test
+        .unary_body
+        .replace(Some(serde_json::to_string(&r).unwrap_or_default()));
+    if !r.ok {
+        server_test.unary_status.set(1);
+    } else {
+        server_test.unary_status.set(0);
+    }
+}
+
+#[then("设置无 writer_conflict")]
+fn t_c2842_no_writer_conflict(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    assert_eq!(
+        server_test.unary_status.get(),
+        0,
+        "set_model must not conflict: {body}"
+    );
+    assert!(
+        !body.contains("writer_conflict"),
+        "set_model must not hit writer_conflict: {body}"
+    );
+}
+
+#[when("客户端请求该会话 get_state")]
+async fn w_c2842_get_state(server_test: &ServerTest) {
+    let client = HttpWsClient::new(server_test.base_url());
+    let r = client
+        .unary(
+            "get_state",
+            serde_json::json!({"type": "get_state", "session_id": "s-c2841"}),
+        )
+        .await
+        .expect("get_state");
+    server_test.unary_status.set(u16::from(!r.ok));
+    let inner = r.value.clone().unwrap_or(serde_json::Value::Null);
+    server_test.unary_body.replace(Some(inner.to_string()));
+}
+
+#[then("应答的 model 为 fake-model")]
+fn t_c2842_get_state_model(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    assert_eq!(server_test.unary_status.get(), 0, "get_state ok: {body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let model = v.get("model").expect("model field");
+    assert_eq!(
+        model.get("id").and_then(serde_json::Value::as_str),
+        Some("fake-model"),
+        "get_state model must reflect the writer: {body}"
+    );
+}

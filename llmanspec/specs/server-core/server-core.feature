@@ -174,6 +174,22 @@
       假如 会话写者已装配且持有已解析默认模型 fake-model
       当 订阅者绑定该会话
       那么 订阅者收到模型同步事件且模型为 fake-model
+  @req:r1916
+  规则: 会话命令身份透明保真
+    产品 RemoteDriver 发送的任何 session-scoped 命令（prompt、set_model、cycle_model、set_thinking_level、steer、follow_up、bash、compact、abort、get_state、session_tree、get_messages 等）MUST 与注入的会话身份与上下文字段（session_id、cwd 及所需业务字段）在任意线协议形状下保真到达 Host 的会话解析，Host MUST 将命令路由到所指会话；线协议形状转换 MUST NOT 因固定 schema 变体收缩剥离注入字段，把命令落向无写者 / 非订阅的 fallback 会话（症状：writer_conflict、状态侧写、副作用落错槽）。v3 上行对命令为透明信封：与 JSON 轨 params 透传逐字面同语义，除握手 host.describe 外不得把命令压缩进会丢失注入字段的固定 schema 变体。
+
+    场景: v3-command-keeps-session-identity
+      假如 以 v3 客户端订阅会话 s-v3 且写者装配了默认模型 fake-model
+      当 该 v3 客户端在 s-v3 上设置模型 fake-model
+      那么 设置无 writer_conflict
+  @req:r1917
+  规则: get_state 反映生效写者模型
+    get_state unary 在会话写者已装配时 MUST 返回该写者当前模型与 thinking level（而非对无模型 reader 的空模型）；写者未装配时 MAY 返回空占位。
+
+    场景: get-state-reflects-writer-model
+      假如 会话写者已装配且持有已解析默认模型 fake-model
+      当 客户端请求该会话 get_state
+      那么 应答的 model 为 fake-model
   @req:r1776
   规则: Server 经 dispatch 执行命令
     Server 对可映射的会话命令 MUST 经 protocol::Command + dispatch（或文档化的同一执行路径）执行，MUST NOT 为同一语义维护第二套与 dispatch 漂移的手写分支。

@@ -292,14 +292,11 @@ where
         else {
             return None;
         };
-        let Some(models) = data
+        let models = data
             .value
             .as_ref()
             .and_then(|v| v.get("models"))
-            .and_then(|v| v.as_array())
-        else {
-            return None;
-        };
+            .and_then(|v| v.as_array())?;
         let parsed: Vec<ModelInfo> = models
             .iter()
             .filter_map(|m| {

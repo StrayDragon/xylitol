@@ -376,3 +376,13 @@ async fn test_sr_c2841_prompt_session_identity(server_test: ServerTest) {}
     name = "model-sync-on-bind"
 )]
 async fn test_sr_c2841_model_sync_on_bind(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "v3-command-keeps-session-identity"
+)]
+async fn test_sr_c2842_v3_command_session_identity(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "get-state-reflects-writer-model"
+)]
+async fn test_sr_c2842_get_state_writer_model(server_test: ServerTest) {}

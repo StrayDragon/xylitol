@@ -23,10 +23,6 @@ use crate::protocol::wire::{
 /// 实验开关 env(task 3.3):`XYLITOL_WIRE_V3=1|true` 开;其余值 / 未设 = 关。
 pub(super) const WIRE_V3_ENV: &str = "XYLITOL_WIRE_V3";
 
-/// 非 registry 的命令方法(approve_tool / answer_question 是反向 RPC 应答,
-/// quit 为客户端本地命令;v3 侧均有 Command 判别值,经 tag 注入解析)。
-const NON_REGISTRY_COMMANDS: &[&str] = &["approve_tool", "answer_question", "quit"];
-
 /// 读进程 env 决定 v3 是否开启。
 ///
 /// 库默认关(测试/嵌入稳定);task 5.1 的产品面切换在 TUI attach 入口
@@ -71,32 +67,28 @@ fn method_discriminant(method: &str) -> Option<v3::Method> {
 /// unary(method, params)→ v3 上行 `ClientRequest`。
 ///
 /// - `host.describe` → [`Request::Describe`](承载格式能力协商);
-/// - RAW 方法(registry 非 command_backed 行:arm_tool_freeze / persist_trust)
-///   → [`Request::Raw`],payload JSON 原文过线;`prompt` 同走 RAW**必须**——
-///   v3 `Prompt` schema 只载 `message`(丢 session_id / cwd / model_id /
-///   thinking_level),走 Command 会把 run 从已订阅 session 上脱锚,服务端
-///   回落 fallback session(无订阅者)导致事件全部 broadcast 丢失、TUI 永不
-///   结束;RAW 原文与 JSON 轨(params 透传)同构,字段全程不丢。
-/// - 其余(含非 registry 的 approve_tool / answer_question / quit)经
-///   `registry::parse_command` 注入 serde tag 解析为 [`crate::protocol::Command`],
-///   再 `mapping::command_to_v3` 包 [`Request::Command`]。
+/// - 其余全部方法 → [`Request::Raw`],payload JSON 原文过线(c2842)。
+///
+/// v3 上行是**透明信封**:除 describe 外一律 RAW 原文过线,与 JSON 轨
+/// (params 透传)逐字节同语义。原因:remote driver 的 `unary` 经
+/// `with_session` 给每个命令注入 `session_id`/`cwd` 及 run 上下文字段
+/// (model_id / thinking_level),typed `Command` schema 只载各命令业务字段
+/// 而不含这些注入字段——压缩进 typed 变体会把命令从已订阅会话上脱锚,
+/// 服务端回落 fallback session(无订阅者):run 事件丢失、TUI 挂死;
+/// set_model/get_state/steer 等打错槽(writer_conflict / 状态侧写)。
+/// JSON 轨 params 透传一直正确,RAW 使 v3 恢复「纯编码层、语义不变」契约。
+/// 服务端仍保留 typed `Command` 解码(v3_to_command)以兼容旧端 / Flutter
+/// POC 等仍发 typed 帧的对端。
 fn build_request(method: &str, payload: &Value) -> Result<Request, String> {
     if method == registry::METHOD_HOST_DESCRIBE {
         return Ok(Request::Describe(Describe {}));
     }
-    let raw_family = method == registry::METHOD_PROMPT
-        || (!NON_REGISTRY_COMMANDS.contains(&method)
-            && registry::lookup(method).is_some_and(|entry| !entry.command_backed));
-    if raw_family {
-        let discriminant = method_discriminant(method)
-            .ok_or_else(|| format!("RAW method {method} has no v3 Method discriminant"))?;
-        return Ok(Request::Raw(Raw {
-            method: discriminant,
-            json: payload.to_string(),
-        }));
-    }
-    let cmd = registry::parse_command(method, payload)?;
-    Ok(Request::Command(v3_mapping::command_to_v3(&cmd)))
+    let discriminant = method_discriminant(method)
+        .ok_or_else(|| format!("RAW method {method} has no v3 Method discriminant"))?;
+    Ok(Request::Raw(Raw {
+        method: discriminant,
+        json: payload.to_string(),
+    }))
 }
 
 /// v3 上行帧字节(WS binary 帧)。
@@ -363,7 +355,9 @@ mod tests {
             other => panic!("expected Raw, got {other:?}"),
         }
 
-        // 手搓载荷(无 type tag)经 tag 注入仍可构帧。
+        // 手搓载荷(无 type tag)经 tag 注入仍可构帧;subscribe 亦走 RAW(c2842),
+        // 注入的 cwd 必须保留(typed Subscribe 无 cwd 会让服务端在错误 workspace
+        // 装配写者)。
         let bytes = client_request_bytes(
             "9",
             "subscribe",
@@ -375,17 +369,20 @@ mod tests {
             panic!("expected ClientRequest")
         };
         match &req.request {
-            Request::Command(v3::Command::Subscribe(s)) => {
-                assert_eq!(s.session_id, "s1");
-                assert_eq!(s.last_seq, 3);
+            Request::Raw(raw) => {
+                assert_eq!(raw.method, v3::Method::Subscribe);
+                let p: serde_json::Value = serde_json::from_str(&raw.json).unwrap();
+                assert_eq!(p["session_id"], "s1");
+                assert_eq!(p["last_seq"], 3);
+                assert_eq!(p["cwd"], "/tmp");
             }
-            other => panic!("expected Subscribe command, got {other:?}"),
+            other => panic!("expected RAW subscribe, got {other:?}"),
         }
         assert_eq!(req.writer_token.as_deref(), Some("writer-1"));
 
-        // 回归锁：prompt 必须走 RAW 原文（v3 Command::Prompt 只载 message，
-        // 走 Command 会丢 session_id/cwd/model_id/thinking_level，run 脱锚
-        // 到无订阅者的 fallback session，事件全部 broadcast 丢失、TUI 挂死）。
+        // 回归锁：prompt 必须走 RAW 原文(c2842 起全部命令走 RAW,字段全程保真;
+        // 早先 typed Command::Prompt 只载 message 会把 run 从已订阅 session
+        // 脱锚到 fallback,事件 broadcast 丢失、TUI 挂死)。
         let bytes = client_request_bytes(
             "10",
             "prompt",
@@ -411,7 +408,7 @@ mod tests {
         assert!(client_request_bytes("1", "no_such_method", &json!({}), None).is_err());
     }
 
-    /// task 3.1 (b):approve_tool(非 registry 命令)可构帧。
+    /// task 3.1 (b):approve_tool(非 registry 命令)亦走 RAW 原文过线。
     #[test]
     fn non_registry_command_maps() {
         let bytes = client_request_bytes(
@@ -424,10 +421,15 @@ mod tests {
         let Frame::ClientRequest(req) = decode_frame(&bytes) else {
             panic!("expected ClientRequest")
         };
-        assert!(matches!(
-            &req.request,
-            Request::Command(v3::Command::ApproveTool(a)) if a.call_id == "c1" && a.approved
-        ));
+        match &req.request {
+            Request::Raw(raw) => {
+                assert_eq!(raw.method, v3::Method::ApproveTool);
+                let p: serde_json::Value = serde_json::from_str(&raw.json).unwrap();
+                assert_eq!(p["call_id"], "c1");
+                assert_eq!(p["approved"], true);
+            }
+            other => panic!("expected RAW approve_tool, got {other:?}"),
+        }
     }
 
     /// task 3.1 (b):ServerResponse → RpcResult(ok / error / writer_token /
