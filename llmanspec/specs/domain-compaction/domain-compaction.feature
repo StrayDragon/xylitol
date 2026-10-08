@@ -393,7 +393,7 @@
   @req:r1919
   规则: turn-end 压缩事件送达顺序
     当回合收尾（threshold / overflow auto 路径）经运行流内压缩且产出 CompactionStart / CompactionEnd 时，run 流消费者（server run loop、remote driver downlink 等任何在 AgentEnd 停止读取的消费方）MUST 收到成对的 Start 与 End，且 CompactionEnd MUST 先于 AgentEnd 到达；流组合 MUST NOT 因主通道优先分支在无穿插 await 的收尾（如 script hook bus 缺省）饿死侧通道，静默丢弃 End（症状：TUI 折叠块滞留 Compacting…）。该顺序对任何产生方式（含 summarizer 返回空响应的 fallback 路径）一致成立。
-    # verified-by: tests/bdd/steps_c2844.rs / src/agent/runtime/react/tests.rs
+    # verified-by: tests/bdd/steps_c2844.rs
     场景: turn-end-overflow-events-before-agent-end
       假如 以 overflow 错误响应模型装配可压缩运行库并预置可压缩历史
       当 提交一次回合并收齐事件名序列
