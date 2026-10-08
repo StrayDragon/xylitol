@@ -214,7 +214,7 @@
   @req:r1918
   规则: otel-owner-attributed-collection
     当收集低频观测 span 断言时（SpanCollectScope），MUST 按处理所有者的会话身份（xylitol.session.id）过滤后再断言，MUST NOT 将并行其他观测源（其它会话 / init_logging 式槽更新者）产出的外来 span 纳入断言面；owner 无会话身份时为闲置路径，其 span MAY 不携带 xylitol.session.id。本 req 使 in-process 并行收集确定化（与 r1481/r1482/r1483 的 owner 归因不变式同源）。
-    # verified-by: tests/bdd/steps_otel_obs.rs / packages/xylitol-ai-bridge/src/provider/trace.rs
+    # verified-by: packages/xylitol-ai-bridge/src/provider/trace.rs
     场景: owner-scoped-otel-assertions
       假如 mock 模型先 tool 后无 tool
 当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
