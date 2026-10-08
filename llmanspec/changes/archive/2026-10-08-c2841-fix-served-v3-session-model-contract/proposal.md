@@ -1,7 +1,7 @@
 ---
 depends_on: []
 branch: pr/2026-10-bdd-infra-and-contracts
-base_branch: pr/2026-10-bdd-infra-and-contracts
+base_branch: main
 needs_specs_change: true
 base_sha: dc379efb8430dae278ffc66c7bdd7e56b3faa202
 ---
