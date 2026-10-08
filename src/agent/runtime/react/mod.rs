@@ -694,13 +694,13 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
 
     let steer_queue = queues.steer.clone();
     let follow_up_queue = queues.follow_up.clone();
-    let (side_tx, mut side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
+    let (side_tx, side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
     let event_sink: Arc<dyn crate::protocol::ports::XyEventSink> = Arc::new(CompactionStreamTee {
         inner: event_sink_inner,
         tx: side_tx,
     });
 
-    let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (queue_tx, queue_rx) = tokio::sync::mpsc::unbounded_channel();
     queues.bind_event_tx(run_id, queue_tx);
 
     let react = Box::pin(run_react_loop(ReActConfig {
@@ -728,6 +728,28 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         obs_session_name,
     }));
 
+    combine_run_streams(react, side_rx, queue_rx)
+}
+
+/// Combine the core ReAct tape with the side lifecycle channel (compaction /
+/// settlement via [`CompactionStreamTee`]) and the queue-update channel (c1730).
+///
+/// Ordering contract: when the core tape closes (`AgentEnd` or stream end), any
+/// events already buffered on the side / queue channels MUST be yielded BEFORE
+/// the terminal `AgentEnd` — every consumer that stops reading at `AgentEnd`
+/// (server run loop, remote driver downlink) would otherwise silently drop a
+/// turn-end `CompactionEnd` / `ContextTokenSettlement` / `QueueUpdate`.
+///
+/// The legacy `biased` select prefers `react.next`; a turn-end overflow
+/// compaction emits its End on the side channel immediately before `AgentEnd`
+/// with no interleaving await (script hook bus absent) — the side event would
+/// sit queued and be lost. c2844 guards the tail: drain ready side/queue events
+/// before yielding `AgentEnd` / at stream end.
+pub(crate) fn combine_run_streams(
+    react: Pin<Box<dyn Stream<Item = XyEvent> + Send>>,
+    mut side_rx: tokio::sync::mpsc::UnboundedReceiver<XyEvent>,
+    mut queue_rx: tokio::sync::mpsc::UnboundedReceiver<XyEvent>,
+) -> impl Stream<Item = XyEvent> + Send {
     async_stream::stream! {
         let mut react = react;
         loop {
@@ -735,8 +757,28 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
                 biased;
                 ev = react.next() => {
                     match ev {
-                        Some(e) => yield e,
-                        None => break,
+                        Some(e) => {
+                            if matches!(e, XyEvent::AgentEnd { .. }) {
+                                // c2844: flush side/queue leftovers BEFORE the
+                                // terminal tape event (ordering preserved).
+                                while let Ok(ev2) = side_rx.try_recv() {
+                                    yield ev2;
+                                }
+                                while let Ok(ev2) = queue_rx.try_recv() {
+                                    yield ev2;
+                                }
+                            }
+                            yield e;
+                        }
+                        None => {
+                            while let Ok(ev2) = side_rx.try_recv() {
+                                yield ev2;
+                            }
+                            while let Ok(ev2) = queue_rx.try_recv() {
+                                yield ev2;
+                            }
+                            break;
+                        }
                     }
                 }
                 ev = queue_rx.recv() => {

@@ -118,10 +118,16 @@ pub(super) async fn generate_complete(
         .map_err(|e| anyhow::anyhow!("summarization model error: {e}"))?;
 
     let mut text = String::new();
+    let mut thinking = String::new();
     while let Some(chunk) = stream.next().await {
         match chunk.map_err(|e| anyhow::anyhow!("summarization stream error: {e}"))? {
             XyChunk::TextDelta(delta) => text.push_str(&delta),
-            XyChunk::ThinkingDelta(_) | XyChunk::ThinkingEnd { .. } => {}
+            // c2844: a reasoning-only response (thinking streams, no visible
+            // text — e.g. tufa `reasoning.encrypted_content` mode) must NOT be
+            // judged empty: the chain-of-thought IS substantive checkpoint
+            // content and beats the `[Turn prefix: N entries]` fallback.
+            XyChunk::ThinkingDelta(delta) => thinking.push_str(&delta),
+            XyChunk::ThinkingEnd { .. } => {}
             XyChunk::Done { .. } => break,
             XyChunk::ToolCallStart { .. }
             | XyChunk::ToolCallDelta { .. }
@@ -129,8 +135,12 @@ pub(super) async fn generate_complete(
         }
     }
 
-    if text.is_empty() {
-        return Err(anyhow::anyhow!("summarization returned empty response"));
+    if text.trim().is_empty() {
+        let thinking = thinking.trim();
+        if thinking.is_empty() {
+            return Err(anyhow::anyhow!("summarization returned empty response"));
+        }
+        return Ok(thinking.to_string());
     }
 
     Ok(text)
@@ -412,4 +422,77 @@ mod tests {
             Some("off")
         );
     }
+
+    #[tokio::test]
+    async fn reasoning_only_response_counts_as_non_empty() {
+        // c2844: a summarizer that only streams reasoning (tufa
+        // reasoning.encrypted_content) must NOT be judged empty — the chain of
+        // thought is the substantive checkpoint, better than the fallback.
+        struct ReasoningOnlyModel;
+        #[async_trait]
+        impl XyModel for ReasoningOnlyModel {
+            fn name(&self) -> &str { "reasoning-only" }
+            async fn generate_stream(
+                &self,
+                _messages: Vec<LlmMessage>,
+                _tools: &[XyToolSchema],
+                _stream: bool,
+                _options: XyGenerateOptions,
+            ) -> Result<XyStream, XyError> {
+                Ok(Box::pin(futures::stream::iter(vec![
+                    Ok(XyChunk::ThinkingDelta("## Goal\nkeep going\n## Next Steps\n1. finish".into())),
+                    Ok(XyChunk::ThinkingEnd {
+                        thinking: String::new(),
+                        thinking_signature: None,
+                    }),
+                    Ok(XyChunk::Done {
+                        finish_reason: XyStopReason::Stop,
+                        usage: None,
+                    }),
+                ])))
+            }
+        }
+        let model = ReasoningOnlyModel;
+        let out = generate_complete(&model, vec![], 100, None, &XyGenerateOptions::default())
+            .await
+            .expect("reasoning-only summary must succeed");
+        assert!(
+            out.contains("## Goal"),
+            "reasoning content must be returned instead of empty/fallback: {out:?}"
+        );
+        assert!(
+            !out.starts_with("[Turn prefix:"),
+            "MUST NOT fall back on reasoning-only: {out:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn full_empty_response_still_errors() {
+        struct EmptyModel;
+        #[async_trait]
+        impl XyModel for EmptyModel {
+            fn name(&self) -> &str { "empty" }
+            async fn generate_stream(
+                &self,
+                _messages: Vec<LlmMessage>,
+                _tools: &[XyToolSchema],
+                _stream: bool,
+                _options: XyGenerateOptions,
+            ) -> Result<XyStream, XyError> {
+                Ok(Box::pin(futures::stream::iter(vec![Ok(XyChunk::Done {
+                    finish_reason: XyStopReason::Stop,
+                    usage: None,
+                })])))
+            }
+        }
+        let model = EmptyModel;
+        let err = generate_complete(&model, vec![], 100, None, &XyGenerateOptions::default())
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("empty response"),
+            "truly empty must still error: {err}"
+        );
+    }
+
 }

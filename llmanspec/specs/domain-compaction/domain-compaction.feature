@@ -390,6 +390,24 @@
       那么 policy 快照记录窗口保留与估计器版本
       并且 legacy 无快照条目不当作当前配置
 
+  @req:r1919
+  规则: turn-end 压缩事件送达顺序
+    当回合收尾（threshold / overflow auto 路径）经运行流内压缩且产出 CompactionStart / CompactionEnd 时，run 流消费者（server run loop、remote driver downlink 等任何在 AgentEnd 停止读取的消费方）MUST 收到成对的 Start 与 End，且 CompactionEnd MUST 先于 AgentEnd 到达；流组合 MUST NOT 因主通道优先分支在无穿插 await 的收尾（如 script hook bus 缺省）饿死侧通道，静默丢弃 End（症状：TUI 折叠块滞留 Compacting…）。该顺序对任何产生方式（含 summarizer 返回空响应的 fallback 路径）一致成立。
+    # verified-by: tests/bdd/steps_c2844.rs / src/agent/runtime/react/tests.rs
+    场景: turn-end-overflow-events-before-agent-end
+      假如 以 overflow 错误响应模型装配可压缩运行库并预置可压缩历史
+      当 提交一次回合并收齐事件名序列
+      那么 压缩开始与结束事件均到达且结束先于回合收尾
+
+  @req:r1920
+  规则: 摘要响应 reasoning-only 非空
+    摘要生成（generate_complete 族，含 turn-prefix 摘要）对模型响应 MUST 同时累积可见文本与推理内容（ThinkingDelta 族）；当可见文本为空但推理内容非空时，MUST 将推理内容作为摘要结果返回，MUST NOT 判为空响应而走 fallback 占位（症状：tufa reasoning.encrypted_content 模式产出纯推理摘要被替换为 [Turn prefix: N entries]）；仅当文本与推理均空时才 MUST 判空并走 fallback。
+    # verified-by: src/agent/compaction/llm_summarizer.rs
+    场景: reasoning-only-summary-not-empty
+      假如 摘要模型仅流式返回推理内容且无可见文本
+      当 调用摘要生成
+      那么 摘要非空且采用推理内容而非 fallback 占位
+
 # re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
 
 # re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
