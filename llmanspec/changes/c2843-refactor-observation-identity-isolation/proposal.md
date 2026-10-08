@@ -1,6 +1,9 @@
 ---
 depends_on: []
 needs_specs_change: true
+branch: pr/2026-10-bdd-infra-and-contracts
+base_branch: main
+base_sha: dc379efb8430dae278ffc66c7bdd7e56b3faa202
 ---
 
 # 观测身份 per-session 所有权（Phase B）：移除 obs_slot_writes 折衷，多会话各归各会话
