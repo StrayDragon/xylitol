@@ -45,3 +45,4 @@
 
 # re-review(c2837): flaky-fix 分支复核——kill-tree 平台差异修复触及本 scope；行为不变。（2026-10-06）
 # re-review(c2853): 承载分支 sdd/2026-10-review-fixes 触及本 scope（BDD 步骤卫生 / 既有 codec·host 改动）；本 capability 管辖行为不变。场景映射不变量保持。（2026-10-09）
+# re-review(c2854): 复审结论——本 capability 管辖行为不变；分支改动为 Host 产品入口收口与 BDD 词表，未改本规则可观察语义。（2026-10-09）

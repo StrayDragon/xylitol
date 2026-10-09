@@ -52,11 +52,6 @@ fn expect_describe_response(body: &[u8]) -> ServerResponse {
     resp
 }
 
-#[when("服务端以双轨配置在空闲端口上启动")]
-async fn w_dual_rail_start(server_test: &ServerTest) {
-    start_host(server_test).await;
-}
-
 #[given("客户端仅支持未声明的 wire 格式")]
 async fn g_unsupported_format(_server_test: &ServerTest) {
     // 协商致命语义(ath44 平移):given 仅标记客户端意图,断言在 then。
@@ -67,7 +62,7 @@ async fn w_negotiate(_server_test: &ServerTest) {
     // 协商行为由 lib 测试与 3.1 客户端实现承担;BDD 层断言降级禁令。
 }
 
-#[when("客户端经 WS /rpc 发送 v3 二进制 host.describe 帧")]
+#[when("客户端经 WS /rpc 发送二进制 host.describe 帧")]
 async fn w_ws_binary_describe(server_test: &ServerTest) {
     use futures::{SinkExt, StreamExt};
     use tokio_tungstenite::{connect_async, tungstenite::Message};
@@ -101,7 +96,7 @@ async fn w_ws_binary_describe(server_test: &ServerTest) {
     let _ = ws.close(None).await;
 }
 
-#[then("同一条 WS 收回 v3 二进制应答且 rpc_id 回显")]
+#[then("同一条 WS 收回二进制应答且 rpc_id 回显")]
 async fn t_ws_binary_roundtrip(server_test: &ServerTest) {
     let stored = server_test
         .unary_body
@@ -113,29 +108,13 @@ async fn t_ws_binary_roundtrip(server_test: &ServerTest) {
     assert_eq!(ok, "true", "describe ok");
 }
 
-#[then("POST /rpc 的 JSON-RPC 2.0 路径应答成功且 id 回显")]
-async fn t_json_path_ok(server_test: &ServerTest) {
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("http://127.0.0.1:{}/rpc", server_test.port.get()))
-        .header("content-type", "application/json")
-        .body(r#"{"jsonrpc":"2.0","id":"j1","method":"host.describe","params":{}}"#)
-        .send()
-        .await
-        .expect("post json");
-    assert_eq!(resp.status().as_u16(), 200);
-    let text = resp.text().await.expect("body");
-    let v: serde_json::Value = serde_json::from_str(&text).expect("json body");
-    assert_eq!(v["id"], "j1", "id 回显: {text}");
-}
-
 #[then("得到致命错误且无降级与重试风暴")]
 async fn t_fatal_no_downgrade() {
     // 协商降级禁令:wire 格式标识稳定(客户端不识别即致命,不降级)。
     assert_eq!(xylitol::protocol::wire::WIRE_FORMAT_FORY_V3, "fory-v3");
 }
 
-#[then("host.describe 的 result 携带 wire 格式集合")]
+#[then("host.describe 的 result 携带 wire 格式集合且含 fory-v3")]
 async fn t_formats_present(server_test: &ServerTest) {
     let (status, body) = post_v3(server_test.port.get(), &describe_frame(6)).await;
     assert_eq!(status, 200, "v3 describe status");
@@ -144,14 +123,17 @@ async fn t_formats_present(server_test: &ServerTest) {
     match resp.payload {
         Some(ResponsePayload::DescribeResult(DescribeResult { protocol, formats })) => {
             assert_eq!(protocol, xylitol::protocol::wire::PROTOCOL_VERSION);
-            assert!(formats.iter().any(|f| f == "jsonrpc"), "{formats:?}");
             assert!(formats.iter().any(|f| f == "fory-v3"), "{formats:?}");
+            assert!(
+                !formats.iter().any(|f| f == "jsonrpc"),
+                "jsonrpc MUST NOT be advertised: {formats:?}"
+            );
         }
         other => panic!("expected DescribeResult, got {other:?}"),
     }
 }
 
-#[when("对携带工具参数的 v3 tool_start 帧做往返")]
+#[when("对携带工具参数的 tool_start 帧做往返")]
 async fn w_toolstart_roundtrip(_server_test: &ServerTest) {}
 
 #[then("参数原文逐字节保真且客户端可再解析")]
@@ -294,7 +276,7 @@ async fn t_reserved_names_preserved() {
     assert_eq!(h.timestamp, 42, "timestamp 字段原名保留且保真");
 }
 
-#[when("客户端经 v3 帧发送未登记 method_id 或非法帧字节")]
+#[when("客户端发送未登记方法或非法帧字节")]
 async fn w_unknown_method(server_test: &ServerTest) {
     // 闭集方法枚举下未登记判别在解码层即拒;以非法帧字节(0x01 头 + 垃圾)
     // 代表该语义,POST /rpc 稳定 400(非法信封),不半执行、不崩溃。
@@ -320,7 +302,7 @@ async fn t_unknown_method_stable(server_test: &ServerTest) {
     assert_eq!(server_test.unary_status.get(), 400, "稳定拒绝");
 }
 
-#[given("同一 prompt 分别经 JSON-RPC 与 v3 路径驱动")]
+#[given("同一 prompt 经产品路径驱动")]
 async fn g_dual_rail_prompt(_server_test: &ServerTest) {}
 
 #[when("回合结束")]
@@ -337,7 +319,7 @@ async fn w_turn_finished(server_test: &ServerTest) {
         .replace(format!("{ok}|{}", pairs.len()));
 }
 
-#[then("两条路径收集的事件流经领域对象比较等价")]
+#[then("收集的事件流经领域对象比较与注入事件等价")]
 async fn t_dual_rail_equivalent(server_test: &ServerTest) {
     let stored = server_test
         .unary_body
@@ -345,12 +327,12 @@ async fn t_dual_rail_equivalent(server_test: &ServerTest) {
         .clone()
         .expect("parity result");
     let (ok, n) = stored.split_once('|').expect("ok|n");
-    assert_eq!(ok, "true", "双路径事件领域等价失败");
+    assert_eq!(ok, "true", "v3 事件流与注入领域对象不等价");
     assert!(n.parse::<usize>().unwrap() >= 3, "事件流样本数 {n}");
 }
 
 /// task 2.5b 对拍 fixture：给 Host 默认会话灌 3 条真实条目（两条路径读同一 store）。
-#[given("同一会话在两条路径上各有 3 条历史条目")]
+#[given("同一会话有 3 条历史条目")]
 async fn g_seed_snapshot_entries(server_test: &ServerTest) {
     use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
 
@@ -381,7 +363,7 @@ async fn g_seed_snapshot_entries(server_test: &ServerTest) {
 
 /// c2846/r1922: 深链树（>serde_json 默认 128 解析上限）双轨对拍夹具——
 /// 在默认会话上播种一条 160 层父子链，防「深树解析静默降级 Null」回归。
-#[given("同一会话在两条路径上各有一条深链树（>默认递归上限）")]
+#[given("同一会话有一条深链树（>默认递归上限）")]
 async fn g_seed_deep_chain(server_test: &ServerTest) {
     use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
 
@@ -421,65 +403,46 @@ fn parse_deep_json(s: &str) -> Result<serde_json::Value, serde_json::Error> {
     serde_json::Value::deserialize(&mut de)
 }
 
-/// c2846/r1922: 深链树双轨对拍断言——两轨 result 领域等价、v3 侧完整还原
-/// 深链（非 Null）、且树的嵌套链必须超过默认解析上限（回归防 128 层降级）。
-#[then("两条路径 result 等价且 v3 侧完整还原深链（非 Null）")]
-async fn t_deep_tree_dual_rail_restored(server_test: &ServerTest) {
+/// c2846/r1922: 深链树 fory-only 回归——完整还原且超过默认解析上限。
+#[then("result 完整还原深链（非空降级）")]
+async fn t_deep_tree_restored(server_test: &ServerTest) {
     let stored = server_test
         .unary_body
         .borrow()
         .clone()
-        .expect("dual rail deep tree pair");
-    let (json_text, v3_text) = stored.split_once('\n').expect("json|v3");
-    let json_value: serde_json::Value = parse_deep_json(&json_text).expect("json body");
-    let v3_value: serde_json::Value = parse_deep_json(&v3_text).expect("v3 body");
-    assert_eq!(v3_value, json_value, "两轨深树 result MUST 领域等价");
-    let chain = |v: &serde_json::Value| {
-        let mut node = v
-            .get("tree")
-            .and_then(|t| t.as_array())
+        .expect("v3 deep tree");
+    let v3_value: serde_json::Value = parse_deep_json(&stored).expect("v3 body");
+    let mut node = v3_value
+        .get("tree")
+        .and_then(|t| t.as_array())
+        .and_then(|a| a.first());
+    let mut depth = 0usize;
+    while let Some(n) = node {
+        depth += 1;
+        node = n
+            .get("children")
+            .and_then(|c| c.as_array())
             .and_then(|a| a.first());
-        let mut depth = 0usize;
-        while let Some(n) = node {
-            depth += 1;
-            node = n
-                .get("children")
-                .and_then(|c| c.as_array())
-                .and_then(|a| a.first());
-        }
-        depth
-    };
-    let json_depth = chain(&json_value);
-    let v3_depth = chain(&v3_value);
-    assert_eq!(v3_depth, json_depth, "两轨深链深度 MUST 一致");
+    }
     assert!(
-        v3_depth > 128 && v3_value.get("tree").is_some(),
-        "深链 MUST 完整还原且超过默认解析上限（<>128），实际 v3_depth={v3_depth}"
+        depth > 128 && v3_value.get("tree").is_some(),
+        "深链 MUST 完整还原且超过默认解析上限（>128），实际 depth={depth}"
     );
 }
 
-/// c2845: `session_tree` 双轨对拍 —— v3 侧 MUST 走 RAW 载体（深度安全，r1921），
-/// 与 JSON 轨 result 领域等价（r1908 纪律）。裸 binary 帧探针钉死应答变体。
-#[when("客户端分别经 JSON-RPC 与 v3 取回该会话树")]
-async fn w_fetch_tree_dual_rail(server_test: &ServerTest) {
+/// c2845: `session_tree` fory-only 回归 —— MUST 走 RAW 载体（深度安全，r1921）。
+#[when("客户端取回该会话树")]
+async fn w_fetch_tree_v3(server_test: &ServerTest) {
     use xylitol::protocol::wire::v3::{Method as V3Method, Raw as V3Raw};
 
     let port = server_test.port.get();
-    let json_client = HttpWsClient::new(format!("http://127.0.0.1:{port}"));
-    let v3_client = HttpWsClient::new(format!("http://127.0.0.1:{port}")).with_wire_v3(true);
-    let payload = serde_json::json!({"type": "session_tree"});
-    let json_result = json_client
-        .unary("session_tree", payload)
-        .await
-        .expect("json session_tree");
+    let v3_client = HttpWsClient::new(format!("http://127.0.0.1:{port}"));
     let v3_result = v3_client
         .unary("session_tree", serde_json::json!({"type": "session_tree"}))
         .await
         .expect("v3 session_tree");
-    assert!(json_result.ok, "json rail: {json_result:?}");
     assert!(v3_result.ok, "v3 rail: {v3_result:?}");
 
-    // 裸 binary 探针：应答必须为 RawOk（非递归强 schema TreeResult）。
     let frame = Frame::ClientRequest(ClientRequest {
         rpc_id: 41,
         request: Request::Raw(V3Raw {
@@ -499,47 +462,28 @@ async fn w_fetch_tree_dual_rail(server_test: &ServerTest) {
         resp.payload
     );
 
-    server_test.unary_body.borrow_mut().replace(format!(
-        "{}\n{}",
-        serde_json::to_string(&json_result.value).unwrap_or_default(),
-        serde_json::to_string(&v3_result.value).unwrap_or_default()
-    ));
+    server_test
+        .unary_body
+        .borrow_mut()
+        .replace(serde_json::to_string(&v3_result.value).unwrap_or_default());
 }
 
-#[then("两条路径 result 等价且 v3 侧为 RAW 载体（非递归强 schema）")]
-async fn t_tree_dual_rail_raw(server_test: &ServerTest) {
-    let stored = server_test
-        .unary_body
-        .borrow()
-        .clone()
-        .expect("dual rail tree pair");
-    let (json_text, v3_text) = stored.split_once('\n').expect("json|v3");
-    let json_value: serde_json::Value = serde_json::from_str(json_text).expect("json body");
-    let v3_value: serde_json::Value = serde_json::from_str(v3_text).expect("v3 body");
-    assert_eq!(
-        v3_value, json_value,
-        "两条轨 session_tree result MUST 领域等价"
-    );
+#[then("result 为 RAW 载体（非递归强 schema）")]
+async fn t_tree_raw(server_test: &ServerTest) {
+    let stored = server_test.unary_body.borrow().clone().expect("v3 tree");
+    let v3_value: serde_json::Value = parse_deep_json(&stored)
+        .unwrap_or_else(|_| serde_json::from_str(&stored).expect("v3 body"));
     assert!(
         v3_value.get("tree").is_some(),
         "树应答 MUST 含 tree 形状：{v3_value}"
     );
 }
 
-/// 两条轨各取一次快照：JSON 轨走 `HttpWsClient`，v3 轨走 binary POST + 具名
-/// union 解码;两份 result 存 fixture 供断言。
-#[when("客户端分别经 JSON-RPC 与 v3 取回该会话快照")]
-async fn w_fetch_snapshot_dual_rail(server_test: &ServerTest) {
+#[when("客户端取回该会话快照")]
+async fn w_fetch_snapshot_v3(server_test: &ServerTest) {
     use xylitol::protocol::wire::v3::{Command as V3Command, GetMessages};
 
     let port = server_test.port.get();
-    let json_client = HttpWsClient::new(format!("http://127.0.0.1:{port}"));
-    let json_result = json_client
-        .unary("get_messages", serde_json::json!({}))
-        .await
-        .expect("json get_messages");
-    assert!(json_result.ok, "json rail: {json_result:?}");
-
     let frame = Frame::ClientRequest(ClientRequest {
         rpc_id: 21,
         request: Request::Command(V3Command::GetMessages(GetMessages {})),
@@ -550,7 +494,6 @@ async fn w_fetch_snapshot_dual_rail(server_test: &ServerTest) {
     let (_status, body) = post_v3(port, &frame).await;
     let resp = expect_describe_response(&body);
     assert!(resp.ok, "v3 rail: {:?}", resp.error);
-    // 具名 union 而非 RawOk：强 schema 载荷已接进产品面。
     let v3_value = match resp.payload.as_ref() {
         Some(ResponsePayload::MessagesResult(m)) => serde_json::json!({
             "entries": serde_json::to_value(
@@ -560,40 +503,35 @@ async fn w_fetch_snapshot_dual_rail(server_test: &ServerTest) {
         }),
         other => panic!("get_messages MUST 走 MessagesResult，实际 {other:?}"),
     };
-
-    server_test.unary_body.borrow_mut().replace(format!(
-        "{}\n{}",
-        serde_json::to_string(&json_result.value).unwrap_or_default(),
-        serde_json::to_string(&v3_value).unwrap_or_default()
-    ));
+    server_test
+        .unary_body
+        .borrow_mut()
+        .replace(serde_json::to_string(&v3_value).unwrap_or_default());
 }
 
-#[then("两条路径的 result 等价且 v3 侧承载具名应答 union")]
-async fn t_snapshot_dual_rail_equal(server_test: &ServerTest) {
+#[then("result 承载具名应答或等价领域条目")]
+async fn t_snapshot_named(server_test: &ServerTest) {
     let stored = server_test
         .unary_body
         .borrow()
         .clone()
-        .expect("dual rail snapshot pair");
-    let (json_text, v3_text) = stored.split_once('\n').expect("json|v3");
-    let json_value: serde_json::Value = serde_json::from_str(json_text).expect("json body");
-    let v3_value: serde_json::Value = serde_json::from_str(v3_text).expect("v3 body");
-    assert_eq!(v3_value, json_value, "两条轨的快照 result MUST 领域等价");
+        .expect("v3 snapshot");
+    let v3_value: serde_json::Value = serde_json::from_str(&stored).expect("v3 body");
     assert!(
-        json_value
+        v3_value
             .get("entries")
             .and_then(serde_json::Value::as_array)
             .map(Vec::len)
             .unwrap_or_default()
             >= 3,
-        "fixture 的 3 条条目（加 store 自己的 session header）MUST 两边都看得到"
+        "fixture 的 3 条条目（加 store 自己的 session header）MUST 看得到"
     );
 }
 
-#[given("v3 客户端已订阅会话且 prompt 运行")]
+#[given("产品客户端已订阅会话且 prompt 运行")]
 async fn g_subscribed_running(_server_test: &ServerTest) {}
 
-#[when("agent 经 v3 订阅发出 TextDelta 事件")]
+#[when("agent 经订阅发出 TextDelta 事件")]
 async fn w_inject_textdelta(server_test: &ServerTest) {
     // v3 路径单连接:订阅 → 注入 → 收 v3 事件帧,记录 seq 序列。
     if server_test.host.borrow().is_none() {
@@ -640,7 +578,7 @@ async fn w_inject_textdelta(server_test: &ServerTest) {
     );
 }
 
-#[then("客户端收到携带单调 seq 的 v3 事件帧")]
+#[then("客户端收到携带单调 seq 的事件帧")]
 async fn t_seq_monotonic_v3(server_test: &ServerTest) {
     let stored = server_test.unary_body.borrow().clone().expect("seqs");
     let seqs: Vec<u64> = stored.split(',').filter_map(|s| s.parse().ok()).collect();
@@ -648,7 +586,7 @@ async fn t_seq_monotonic_v3(server_test: &ServerTest) {
     assert!(seqs.windows(2).all(|w| w[0] < w[1]), "单调递增: {stored}");
 }
 
-#[given("构造携带未来事件变体的 v3 帧")]
+#[given("构造携带未来事件变体的产品帧")]
 async fn g_future_variant(_server_test: &ServerTest) {}
 
 #[when("旧词表接收端解码")]
@@ -694,27 +632,22 @@ async fn t_unknown_variant_degrades(server_test: &ServerTest) {
     );
 }
 
-#[given("对拍测试存在未通过项")]
-async fn g_parity_red(_server_test: &ServerTest) {}
-
-#[when("尝试启用 v3 默认切换")]
-async fn w_try_cutover(server_test: &ServerTest) {
-    // 硬切门禁(r1909):v3 默认切换的闸是双路径对拍测试在门禁套件中
-    // (dual_rail_event_stream_parity 必跑);其红则 qa 拒绝合入。
-    let gated = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/src/app/core/host_client/http_ws.rs"
-    ))
-    .unwrap_or_default()
-    .contains("async fn dual_rail_event_stream_parity");
-    server_test
-        .unary_body
-        .borrow_mut()
-        .replace(format!("{gated}"));
-}
-
-#[then("切换被门禁拒绝")]
-async fn t_cutover_gated(server_test: &ServerTest) {
-    let gated = server_test.unary_body.borrow().clone().expect("gate flag");
-    assert_eq!(gated, "true", "v3 默认切换必须由对拍测试把门(红则 qa 拒绝)");
+#[then("产品客户端默认以产品载体访问 Host")]
+async fn t_product_default_v3(server_test: &ServerTest) {
+    let client = HttpWsClient::new(format!("http://127.0.0.1:{}", server_test.port.get()));
+    let result = client
+        .unary("host.describe", serde_json::json!({}))
+        .await
+        .expect("default client unary");
+    assert!(result.ok, "{result:?}");
+    let formats = result
+        .value
+        .as_ref()
+        .and_then(|v| v.get("formats"))
+        .and_then(|f| f.as_array())
+        .expect("formats");
+    assert!(
+        formats.iter().any(|f| f == "fory-v3"),
+        "default client MUST speak fory-v3: {formats:?}"
+    );
 }

@@ -62,3 +62,4 @@
       那么 live 闸走串行且带超时
 
 # re-review(c2837): CI spec-validate 工具探测（llman-sdd 缺失显式跳过，门禁语义本地保持）已复核。（2026-10-06）
+# re-review(c2854): 复审结论——本 capability 管辖行为不变；分支改动为 Host 产品入口收口与 BDD 词表，未改本规则可观察语义。（2026-10-09）

@@ -415,7 +415,7 @@ pub fn lookup(name: &str) -> Option<&'static MethodEntry> {
     REGISTRY.iter().find(|e| e.name == name)
 }
 
-/// 注册表派生的方法名清单（404 语义 / OpenAPI 条目的唯一来源）。
+/// 注册表派生的方法名清单（未登记方法 / 方法表对拍的唯一来源）。
 pub fn names() -> impl Iterator<Item = &'static str> {
     REGISTRY.iter().map(|e| e.name)
 }

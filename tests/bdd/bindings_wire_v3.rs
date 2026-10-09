@@ -5,13 +5,13 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "v3-binary-roundtrip"
+    name = "binary-roundtrip"
 )]
 async fn test_v3_binary_roundtrip(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "dual-rail-json-still-served"
+    name = "json-text-rpc-rejected"
 )]
 async fn test_dual_rail_json_still_served(server_test: ServerTest) {}
 
@@ -29,7 +29,7 @@ async fn test_unknown_format_fatal(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "v3-tool-start-args-raw"
+    name = "tool-start-args-raw"
 )]
 async fn test_v3_tool_start_args_raw(server_test: ServerTest) {}
 
@@ -53,25 +53,25 @@ async fn test_unknown_method_id_stable_fail(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "v3-event-carries-seq"
+    name = "event-carries-seq"
 )]
 async fn test_v3_event_carries_seq(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "v3-unknown-variant-degrades"
+    name = "unknown-variant-degrades"
 )]
 async fn test_v3_unknown_variant_degrades(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "dual-rail-event-equivalence"
+    name = "product-path-event-equivalence"
 )]
 async fn test_dual_rail_event_equivalence(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "dual-rail-session-snapshot-parity"
+    name = "product-path-session-snapshot"
 )]
 async fn test_dual_rail_session_snapshot_parity(server_test: ServerTest) {}
 
@@ -82,11 +82,11 @@ async fn test_dual_rail_session_snapshot_parity(server_test: ServerTest) {}
 async fn test_cutover_requires_parity_green(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "v3-session-tree-raw-parity"
+    name = "session-tree-raw-carrier"
 )]
 async fn test_c2845_session_tree_raw_parity(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "v3-deep-session-tree-raw-parity"
+    name = "session-tree-deep-restore"
 )]
 async fn test_c2846_deep_session_tree_parity(server_test: ServerTest) {}

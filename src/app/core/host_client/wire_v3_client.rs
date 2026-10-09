@@ -3,7 +3,7 @@
 //! 纯编码 / 解码层,无传输:给 [`super::HttpWsClient`] 用的 fory v3 上行帧
 //! 构造与下行帧 → `RpcMessage` 还原。下行还原以 JSON 路径的 reader 产出为
 //! 准(`session/event` 等 payload 与 `codec::decode_str` 的通知形状同构,
-//! 下游消费零改动)。开关见 [`env_enabled`](task 5.1 后默认开,显式关闭回退 JSON)。
+//! 下游消费零改动)。产品默认开；[`env_enabled`] 只解析显式 env（测试注入）。
 
 use serde_json::Value;
 
@@ -20,13 +20,12 @@ use crate::protocol::wire::{
     WIRE_FORMAT_FORY_V3, registry,
 };
 
-/// 实验开关 env(task 3.3):`XYLITOL_WIRE_V3=1|true` 开;其余值 / 未设 = 关。
+/// Test injection env. Unset is treated as on by the attach client.
 pub(super) const WIRE_V3_ENV: &str = "XYLITOL_WIRE_V3";
 
 /// 读进程 env 决定 v3 是否开启。
 ///
-/// 库默认关(测试/嵌入稳定);task 5.1 的产品面切换在 TUI attach 入口
-/// 显式开(`with_wire_v3(true)`),全局默认翻转留作租约竞态专项后。
+/// 未设 `XYLITOL_WIRE_V3` 时产品默认开；显式 env 仍走本解析。
 pub(super) fn env_enabled() -> bool {
     flag_truthy(std::env::var_os(WIRE_V3_ENV).as_deref())
 }
@@ -44,7 +43,7 @@ fn flag_truthy(raw: Option<&std::ffi::OsStr>) -> bool {
 /// (零 key SipHash,跨调用 / 跨进程稳定)做稳定哈希映射——幂等语义
 /// (c2460)要求同一 rpcId 字符串复用同一 `rpc_id`,host 才能对重放取
 /// 首次结果;64 位空间下不同非数字 id 并发碰撞概率 ~2⁻⁶⁴,实验轨道接受。
-pub(super) fn stable_rpc_id(rpc_id: &str) -> u64 {
+pub fn stable_rpc_id(rpc_id: &str) -> u64 {
     match rpc_id.parse::<u64>() {
         Ok(n) => n,
         Err(_) => {
@@ -92,7 +91,7 @@ fn build_request(method: &str, payload: &Value) -> Result<Request, String> {
 }
 
 /// v3 上行帧字节(WS binary 帧)。
-pub(super) fn client_request_bytes(
+pub fn client_request_bytes(
     rpc_id: &str,
     method: &str,
     payload: &Value,
@@ -159,7 +158,7 @@ pub(super) fn decode_downlink(
 }
 
 /// v3 `ServerResponse` → `RpcResult`(对齐 JSON 路径的应答语义)。
-pub(super) fn server_response_to_result(resp: &ServerResponse) -> RpcResult {
+pub fn server_response_to_result(resp: &ServerResponse) -> RpcResult {
     let mut result = if resp.ok {
         RpcResult::ok_value(payload_value(resp.payload.as_ref()))
     } else {

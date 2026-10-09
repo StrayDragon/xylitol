@@ -1,12 +1,12 @@
 # language: zh-CN
 # capability: server-core
-# purpose: Server 运行时 — 独立 Host 监听器经 JSON-RPC 2.0 暴露产品契约（POST /rpc + WS /rpc）；每 session 槽独立 journal 与写者。
+# purpose: Server 运行时 — 独立 Host 监听器经产品二进制帧暴露产品契约（POST /rpc + WS /rpc）；每 session 槽独立 journal 与写者。
 # scope: src/
 
 # ── 文件导览（48 规则）────────────────────────────────────────
-#   接入与生命周期    : host · JSON-RPC/HTTP/WS · healthz/就绪 · session 方法表
+#   接入与生命周期    : host · HTTP/WS · healthz/就绪 · session 方法表
 #   信封与命令面      : unary · dispatch · 队列/订阅/写者租约 · export
-#   线上协议 v3       : 二进制信封 · 格式协商 · 数字寻址 · seq · 演进/双轨
+#   线上协议          : 二进制信封 · 格式协商 · 数字寻址 · seq · 演进
 #   审批/恢复         : reverse-rpc approval/question · journal · 冷恢复投影
 #   （精确检索以 @req/规则标题为准，本导览为非强制快速导航）
 # ────────────────────────────────────────────────────────────────
@@ -21,17 +21,17 @@
       当 server 应用面启动
       那么 装配 infra 运行时并按 session 槽注入 Driver，供 unary 处理器调用
   @req:r1778
-  规则: 产品路径 JSON-RPC
-    产品客户端 MUST 经协商后的载体访问 Host，产品入口为 POST /rpc 与 WS /rpc（同一方法表、同一 dispatch）：binary 帧 = v3 产品路径（fory 编码），JSON 文本帧 = 调试通道（与 /openapi.json、/docs 同用途），两者 MUST NOT 分叉语义。Host 监听器 MUST 同时实现两种载体。现行 REST 资源动词、POST /api/respond、GET /api/events.mux 与上述两形之外的 WS 应用帧 MUST NOT 再作为产品真源。
+  规则: 产品路径
+    产品客户端 MUST 经产品二进制载体访问 Host，产品入口为 POST /rpc 与 WS /rpc（同一方法表、同一 dispatch）：binary 帧 = 唯一产品路径。Host MUST NOT 再接受 JSON 文本作为 /rpc 业务通道。现行 REST 资源动词、POST /api/respond、GET /api/events.mux 与产品二进制之外的 WS 应用帧 MUST NOT 再作为产品真源。
 
-    场景: product-path-jsonrpc
+    场景: product-path-rpc
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 host.describe
-      那么 应答为 JSON-RPC 成功且 id 回显
+      那么 应答为产品成功且 rpc_id 回显
       并且 Host 对该路径给出可观察往返
   @req:r1796
   规则: 产品 HTTP 与 WS 入口
-    Host MUST 暴露 POST /rpc 与 WS /rpc 作为产品入口（同一方法表；binary 产品帧 + JSON 文本调试通道）。MUST 另暴露 GET /healthz 与调试 GET /openapi.json、GET /docs。MUST NOT 再以 POST /api/{method}、POST /api/respond 或 GET /api/events.mux 为产品真源。MUST NOT 再以 /api/v1 REST 资源动词或上述两形之外的 WS 应用帧承载产品命令。
+    Host MUST 暴露 POST /rpc 与 WS /rpc 作为产品入口（同一方法表；仅产品二进制帧）。MUST 另暴露 GET /healthz。MUST NOT 暴露 GET /openapi.json 或 GET /docs。MUST NOT 再以 POST /api/{method}、POST /api/respond 或 GET /api/events.mux 为产品真源。MUST NOT 再以 /api/v1 REST 资源动词或产品二进制之外的 WS 应用帧承载产品命令。
 
     场景: server-rest-ws-under-app
       当 启动 app::server 运行时
@@ -104,7 +104,7 @@
       那么 客户端收到 last_seq+1 起全部遗漏事件再收实时事件
   @req:r1799
   规则: 审批与问卷
-    Host MUST 支持 ApprovalRequired 与 QuestionRequired：经 WS /rpc 下行 JSON-RPC notification 告知，挂起回合，并在匹配 call 的第一笔审批/问卷 unary 时恢复。MUST NOT 再以 POST /api/respond 为产品作答路径。
+    Host MUST 支持 ApprovalRequired 与 QuestionRequired：经 WS /rpc 下行通知告知，挂起回合，并在匹配 call 的第一笔审批/问卷 unary 时恢复。MUST NOT 再以 POST /api/respond 为产品作答路径。
 
     场景: approval-roundtrip
       假如 工具需审批
@@ -128,12 +128,12 @@
       那么 失败返回且不绑定 18791
   @req:r1802
   规则: unary 驱动回合
-    Host MUST 以 unary prompt 入队/驱动对话（HTTP 200 + JSON-RPC result）；abort 为 unary。MUST NOT 再提供 POST /api/v1/session/{id}/run、DELETE /api/v1/session/{id} 或 GET /api/v1/session/{id}/events 作为产品路径。
+    Host MUST 以 unary prompt 入队/驱动对话（HTTP 200 + 产品应答）；abort 为 unary。MUST NOT 再提供 POST /api/v1/session/{id}/run、DELETE /api/v1/session/{id} 或 GET /api/v1/session/{id}/events 作为产品路径。
 
     场景: run-endpoint-works
-      假如 向 POST /rpc 发送 prompt 的 JSON-RPC 请求
+      假如 向 POST /rpc 发送 prompt 请求
       当 server 处理 prompt
-      那么 HTTP 200 且应答回显 id
+      那么 HTTP 200 且应答回显 rpc_id
       并且 POST /api/v1/session/x/run 不是产品路径
   @req:r1795
   规则: ExportIo 接线
@@ -152,7 +152,7 @@
       那么 按 session 槽持有 Driver；handlers 不直接以 Mutex AgentRuntime 作为唯一入口
   @req:r1788
   规则: RemoteDriver 经信封
-    产品 RemoteDriver MUST 经产品 JSON-RPC 入口调用已登记方法与事件订阅；未登记方法 MUST NOT 发明 REST 端点来假装与 InProcess 对等。
+    产品 RemoteDriver MUST 经产品入口调用已登记方法与事件订阅；未登记方法 MUST NOT 发明 REST 端点来假装与 InProcess 对等。
 
     场景: remote-commands
       当 调用 RemoteDriver 已登记 unary（如 steer）
@@ -176,11 +176,11 @@
       那么 订阅者收到模型同步事件且模型为 fake-model
   @req:r1916
   规则: 会话命令身份透明保真
-    产品 RemoteDriver 发送的任何 session-scoped 命令（prompt、set_model、cycle_model、set_thinking_level、steer、follow_up、bash、compact、abort、get_state、session_tree、get_messages 等）MUST 与注入的会话身份与上下文字段（session_id、cwd 及所需业务字段）在任意线协议形状下保真到达 Host 的会话解析，Host MUST 将命令路由到所指会话；线协议形状转换 MUST NOT 因固定 schema 变体收缩剥离注入字段，把命令落向无写者 / 非订阅的 fallback 会话（症状：writer_conflict、状态侧写、副作用落错槽）。v3 上行对命令为透明信封：与 JSON 轨 params 透传逐字面同语义，除握手 host.describe 外不得把命令压缩进会丢失注入字段的固定 schema 变体。
+    产品 RemoteDriver 发送的任何 session-scoped 命令（prompt、set_model、cycle_model、set_thinking_level、steer、follow_up、bash、compact、abort、get_state、session_tree、get_messages 等）MUST 与注入的会话身份与上下文字段（session_id、cwd 及所需业务字段）在任意线协议形状下保真到达 Host 的会话解析，Host MUST 将命令路由到所指会话；线协议形状转换 MUST NOT 因固定 schema 变体收缩剥离注入字段，把命令落向无写者 / 非订阅的 fallback 会话（症状：writer_conflict、状态侧写、副作用落错槽）。上行对命令为透明信封：除握手 host.describe 外不得把命令压缩进会丢失注入字段的固定 schema 变体。
 
-    场景: v3-command-keeps-session-identity
-      假如 以 v3 客户端订阅会话 s-v3 且写者装配了默认模型 fake-model
-      当 该 v3 客户端在 s-v3 上设置模型 fake-model
+    场景: command-keeps-session-identity
+      假如 以产品客户端订阅会话 s-v3 且写者装配了默认模型 fake-model
+      当 该客户端在 s-v3 上设置模型 fake-model
       那么 设置无 writer_conflict
   @req:r1917
   规则: get_state 反映生效写者模型
@@ -209,7 +209,7 @@
     场景: remote-travel
       假如 RemoteDriver 指向该 server
       当 调用已登记方法表的 session_tree/travel
-      那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
+      那么 经产品 unary 到达 Host 且不经 REST 冒充
   @req:r1783
   规则: 会话生命周期方法接线
     Host MUST 为 list_sessions、load_session_entries、new_session、get_session_name、set_session_name、set_session_name_for 与 delete_session 提供已登记 unary，并经同一 Driver/dispatch 语义执行；Remote 客户端调用这些方法时 MUST NOT 得到预留 unsupported。
@@ -217,7 +217,7 @@
     场景: remote-session-methods
       假如 RemoteDriver 指向该 server
       当 调用已登记的 session 能力 unary
-      那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
+      那么 经产品 unary 到达 Host 且不经 REST 冒充
   @req:r1779
   规则: 上下文估计方法接线
     Host MUST 为 estimate_context 提供已登记 unary：经与 in-process driver 同源的估算入口计算 ContextTokenEstimate，MUST 计入 host 侧固定请求开销（system prompt + tool schemas）与 host tokenizer 映射；MUST NOT 返回 stub 或客户端自估降级。
@@ -249,21 +249,21 @@
     场景: remote-host-resource-methods
       假如 RemoteDriver 指向该 server
       当 调用 Host 资源 unary
-      那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
+      那么 经产品 unary 到达 Host 且不经 REST 冒充
   @req:r1790
   规则: 固定区资源下行
-    Host MUST 为已物化写者的会话经产品订阅下行 `session/resources` 推送 MCP/skills 固定区 快照：写者侧在 Host 进程内 poll MCP bootstrap，快照变化时才向该会话的订阅连接广播一帧，payload 含 session_id 与资源快照（形状与 loaded_resources unary 结果一致）。该帧 MUST 为 JSON-RPC notification，MUST NOT 消耗 journal seq，MUST NOT 写入事件 journal；断线重放与冷恢复投影 MUST NOT 复播固定区帧。不识别该方法的旧客户端 MUST 可忽略该帧且其余行为不受影响；本方法 MUST NOT 要求 bump 协议版本。
+    Host MUST 为已物化写者的会话经产品订阅下行 `session/resources` 推送 MCP/skills 固定区 快照：写者侧在 Host 进程内 poll MCP bootstrap，快照变化时才向该会话的订阅连接广播一帧，payload 含 session_id 与资源快照（形状与 loaded_resources unary 结果一致）。该帧 MUST 为无作答义务的下行通知，MUST NOT 消耗 journal seq，MUST NOT 写入事件 journal；断线重放与冷恢复投影 MUST NOT 复播固定区帧。不识别该方法的旧客户端 MUST 可忽略该帧且其余行为不受影响；本方法 MUST NOT 要求 bump 协议版本。
     # verified-by: fn resources_watch_pushes_one_frame_on_snapshot_change
 
     场景: fixed-zone-resources-frame-is-notification
       假如 构造下行 session/event、session/subscribed、session/resync_required 与 session/resources notification
-      当 序列化为 JSON
-      那么 各帧均为 JSON-RPC 2.0 notification 且无 id
+      当 编码为下行通知帧
+      那么 各帧均为无作答义务的下行通知且携带 method 语义
 
     场景: fixed-zone-resources-method-on-product-table
       假如 RemoteDriver 指向该 server
       当 调用 Host 资源 unary
-      那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
+      那么 经产品 unary 到达 Host 且不经 REST 冒充
   @req:r1775
   规则: abort 对进程级 reload 的合作取消
     进程级 reload 进行中收到 abort unary 时，Host MUST 合作取消该次 reload（停止后续重装步骤），MUST 以 cancelled 指示应答；reload 未进行时该 unary MUST 落回既有会话 abort 处理。reload 仅 idle 可发起，MUST NOT 与回合 abort 产生并发歧义。
@@ -279,15 +279,14 @@
       那么 未命中 reload 取消而落回会话 abort 处理
   @req:r1784
   规则: unary 调试文档
-    Host MUST 在监听器暴露 GET /openapi.json，返回 OpenAPI 3.1 文档描述产品 JSON-RPC 入口 POST /rpc（信封级）并附 /healthz。条目 MUST 从方法表生成，MUST NOT 手写第二套 schema 词表；payload schema 保持信封级粒度，具体形状以产品方法表为准。Host MUST 在 GET /docs 提供 Scalar 调试 UI（指向 /openapi.json），且它 MUST 是唯一的调试 UI，MUST NOT 引入第二套调试 UI。WS /rpc MUST NOT 作为 OpenAPI operation path 呈现，MUST 以文档说明指向同一 JSON-RPC 方法表。该端点仅调试文档，MUST NOT 作为客户端生成真源。MUST NOT 再为每个 unary 生成 /api/<method> 产品 path，MUST NOT 描述 /api/respond。
+    Host MUST NOT 暴露 GET /openapi.json 或 GET /docs（含 Scalar 或其它调试 UI）。产品方法表与载荷形状以协议真源为准，MUST NOT 再以 JSON OpenAPI 为客户端或人读真源。MUST NOT 再为每个 unary 生成 /api/<method> 产品 path。
 
     场景: openapi-debug-doc
       当 服务端在空闲端口上启动
       并且 GET /openapi.json
-      那么 返回 OpenAPI 3.1 文档且描述 POST /rpc 信封
-      并且 文档不含 WS 下行 path
+      那么 该路径不提供调试文档
       当 GET /docs
-      那么 Scalar 调试页可达且指向 spec
+      那么 该路径不提供调试文档
   @req:r1785
   规则: 队列深度只读方法
     Host MUST 提供只读 unary queue_stats（或语义等价），返回当前 session 的 steer 与 follow-up 深度；该 unary MUST NOT 占用写者租约。Remote 客户端 MUST NOT 将队列深度静默当成恒 0。
@@ -307,7 +306,7 @@
       那么 订阅仍存活且新事件继续送达
   @req:r1793
   规则: session 写者租约
-    同一 session MUST 至多一个写者租约。首次非只读方法颁发令牌：HTTP 经响应 header `X-Writer-Token` 回传；WS unary 应答 MUST 把同一令牌放在 JSON-RPC 对象顶层 `writerToken`（信封 extra member）。后续非只读方法：HTTP MUST 在请求 header 回显该令牌；WS 升级 MUST 可带同一 header，同一条连接内后续 unary 用连接本地租约。缺失或错误 MUST 以业务错误拒绝（HTTP 仍 200，产品码在 JSON-RPC error.data）。只读方法与事件订阅 MUST NOT 占用写者；HTTP 只读响应 MUST NOT 带该 header。`params` 与 `result` MUST NOT 携带 writerToken。HTTP 连接不是写者身份（每次 POST /rpc 都是新 TCP）。
+    同一 session MUST 至多一个写者租约。首次非只读方法颁发令牌：HTTP 经响应 header `X-Writer-Token` 回传；WS unary 应答 MUST 把同一令牌放在应答的 writer_token 字段。后续非只读方法：HTTP MUST 在请求 header 回显该令牌；WS 升级 MUST 可带同一 header，同一条连接内后续 unary 用连接本地租约。缺失或错误 MUST 以业务错误拒绝（HTTP 仍 200，产品码在错误码字段）。只读方法与事件订阅 MUST NOT 占用写者；HTTP 只读响应 MUST NOT 带该 header。载荷 MUST NOT 携带 writerToken。HTTP 连接不是写者身份（每次 POST /rpc 都是新 TCP）。
 
     场景: writer-lease
       假如 客户端 A 已对 session 经 POST /rpc 发出非只读方法
@@ -317,31 +316,31 @@
 
     场景: writer-token-via-ws-unary
       当 服务端在空闲端口上启动
-      并且 客户端经 WS /rpc 发送非只读 JSON-RPC 请求
-      那么 WS 应答顶层有 writerToken 且 result 不含
+      并且 客户端经 WS /rpc 发送非只读请求
+      那么 WS 应答携带 writer_token 且载荷不含
   @req:r1803
   规则: 下行信封
-    下行 MUST 保持 JSON-RPC 2.0 notification 的语义形状（有 method 与 params，无 id）：调试通道以 JSON 文本帧承载，产品路径以 v3 ServerNotification 承载（同一 seq 与 payload 语义）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required 与 session/resources；审批/问卷告知为 approval/requested 与 question/requested（亦为 notification）。MUST NOT 再以 ServerFrame tagged 外层或四象限 type tag 为产品真源，MUST NOT 要求客户端对事件 notification 作答。
+    下行 MUST 为 ServerNotification（有 method 语义与 payload，无客户端作答义务；同一 seq 与 payload 语义）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required 与 session/resources；审批/问卷告知为 approval/requested 与 question/requested。MUST NOT 再以 JSON 文本帧、ServerFrame tagged 外层或四象限 type tag 为产品真源，MUST NOT 要求客户端对事件 notification 作答。
 
     场景: frame-serialize
       假如 构造下行 session/event、session/subscribed、session/resync_required 与 session/resources notification
-      当 序列化为 JSON
-      那么 各帧均为 JSON-RPC 2.0 notification 且无 id
+      当 编码为下行通知帧
+      那么 各帧均为无作答义务的下行通知且携带 method 语义
   @req:r1804
-  规则: WS 只承载 JSON-RPC
-    WS /rpc MUST 接受两类上行：v3 binary 帧与合法 JSON-RPC 2.0 文本帧（含客户端 unary 与订阅）。其余帧 MUST 拒。载体 ping/pong/close 除外。MUST NOT 再以「禁一切业务上行」或 POST /api/respond 为产品通道纪律。
+  规则: WS 只承载产品帧
+    WS /rpc MUST 只接受产品二进制上行（含客户端 unary 与订阅）。其余应用帧 MUST 拒。载体 ping/pong/close 除外。MUST NOT 再以「禁一切业务上行」或 POST /api/respond 为产品通道纪律。
 
     场景: subscribe-frame
       假如 客户端欲以 last_seq 5 订阅会话 s0
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 subscribe 带 session_id=s0 与 last_seq=5
-      那么 应答为 JSON-RPC 成功且 result 含 session 与 seq
-      并且 WS 丢弃非 JSON-RPC 文本上行
+      那么 应答为产品成功且 result 含 session 与 seq
+      并且 WS 丢弃文本业务上行
 
-    场景: ws-jsonrpc-unary-same-module
+    场景: ws-text-unary-rejected
       当 服务端在空闲端口上启动
       并且 客户端经 WS /rpc 发送 host.describe JSON-RPC 请求
-      那么 同一条 WS 收回显 id 的 JSON-RPC result
+      那么 WS 拒绝该文本业务帧
   @req:r1805
   规则: WS 升级
     Host MUST 在 WS /rpc 挂载 WebSocket 升级。会话选择 MUST NOT 依赖 /api/v1/session/{id}/ws 或 GET /api/events.mux。缺 Origin 的原生客户端 MUST 可升级。
@@ -377,7 +376,7 @@
       那么 server 从 journal 重放全部可用事件
   @req:r1809
   规则: WS 事件推送
-    订阅之后，Host MUST 为 agent 发出的每个新事件推送 session/event 的 notification，附带会话单调 seq；载体由连接协商结果决定（产品路径为 v3 binary 帧，调试通道为 JSON 文本帧），MUST NOT 用 SSE 当下行真源。
+    订阅之后，Host MUST 为 agent 发出的每个新事件推送 session/event 的 notification，附带会话单调 seq；载体为产品二进制帧，MUST NOT 用 SSE 或 JSON 文本帧当下行真源。
 
     场景: ws-events-pushed
       假如 客户端已 subscribe 且 prompt 运行
@@ -430,7 +429,7 @@
       那么 agent 以 approved=true 恢复；第二个应答被忽略
   @req:r1773
   规则: call-id-lifecycle
-    每个审批/问卷 MUST 有稳定 call id（出现在 notification 的 params 中）；超时（默认 60s）时收到 ApprovalTimeout；应答时收到结果；消费后 MUST 移除条目。JSON-RPC 信封 id 是该 unary 的幂等键，MUST NOT 与 call id 混用。
+    每个审批/问卷 MUST 有稳定 call id（出现在 notification 的 payload 中）；超时（默认 60s）时收到 ApprovalTimeout；应答时收到结果；消费后 MUST 移除条目。unary 的 rpc_id 是幂等键，MUST NOT 与 call id 混用。
 
     场景: timeout-error
       假如 60s 内无客户端 POST /rpc 调用 approve_tool
@@ -446,109 +445,110 @@
       那么 应答被静默忽略（无状态变化、无错误）
   @req:r1781
   规则: unary 幂等准入
-    Host MUST 以 JSON-RPC `id` 为幂等键：同一 session 槽内，同 `id` 的重复 unary 首次准入获胜，Host MUST 回放首次执行结果且 MUST NOT 二次执行；首次仍在处理中的同键重复 MUST 等待首次完成后获得同一结果，MUST NOT 并行执行。同 `id` 但 method 或 params 不同的提交 MUST 返回稳定冲突错误（产品码 idempotency_conflict，HTTP 仍 200）。幂等账本 MUST 有界且进程内，MUST NOT 跨重启持久化。
+    Host MUST 以 rpc_id 为幂等键：同一 session 槽内，同 rpc_id 的重复 unary 首次准入获胜，Host MUST 回放首次执行结果且 MUST NOT 二次执行；首次仍在处理中的同键重复 MUST 等待首次完成后获得同一结果，MUST NOT 并行执行。同 rpc_id 但 method 或 params 不同的提交 MUST 返回稳定冲突错误（产品码 idempotency_conflict，HTTP 仍 200）。幂等账本 MUST 有界且进程内，MUST NOT 跨重启持久化。
 
     场景: idempotent-replay-first-result
-      假如 客户端以 JSON-RPC id R 对某 session 经 POST /rpc 提交方法并得到结果
-      当 客户端以相同 id R 重试同一方法
+      假如 客户端以 rpc_id R 对某 session 经 POST /rpc 提交方法并得到结果
+      当 客户端以相同 rpc_id R 重试同一方法
       那么 第二次得到与首次相同的结果且命令仅执行一次
 
     场景: idempotency-conflict-differs
-      假如 JSON-RPC id R 已被某 method 与 params 的提交占用
-      当 以相同 id R 提交不同 method 或 params
-      那么 返回 JSON-RPC 错误且 data.code 为 idempotency_conflict 且不执行
+      假如 rpc_id R 已被某 method 与 params 的提交占用
+      当 以相同 rpc_id R 提交不同 method 或 params
+      那么 返回产品错误且 data.code 为 idempotency_conflict 且不执行
 
     场景: idempotency-inflight-wait
-      假如 JSON-RPC id R 的首次命令仍在处理中
-      当 相同 id R 的重复请求到达
+      假如 rpc_id R 的首次命令仍在处理中
+      当 相同 rpc_id R 的重复请求到达
       那么 等待首次完成并回放同一结果且不并行执行
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
   @req:r1902
-  规则: 产品线协议 v3 二进制信封
-    产品线协议 v3 MUST 以 schema 化二进制帧（fory xlang 编码）承载：WS /rpc 的 binary 帧与 POST /rpc 的二进制 body 为产品默认路径（attach 显式启用）。双轨对拍已完成，既有 JSON-RPC 2.0 文本路径（WS 文本帧与 JSON body）降为**调试通道**，MUST 保活并与产品路径共用同一 dispatch 与同一方法表（语义 MUST NOT 分叉）。领域语义（方法表、journal、订阅、审批）MUST 在两种载体上等价。
+  规则: 产品线协议二进制信封
+    产品线协议 MUST 以 schema 化二进制帧承载：WS /rpc 的 binary 帧与 POST /rpc 的二进制 body 为唯一产品路径。Host MUST NOT 再提供 JSON-RPC 2.0 文本路径（WS 文本帧与 JSON body）作为 /rpc 业务通道。领域语义（方法表、journal、订阅、审批）MUST 在该唯一载体上保持。
 
-    场景: v3-binary-roundtrip
-      当 服务端以双轨配置在空闲端口上启动
-      并且 客户端经 WS /rpc 发送 v3 二进制 host.describe 帧
-      那么 同一条 WS 收回 v3 二进制应答且 rpc_id 回显
+    场景: binary-roundtrip
+      当 服务端在空闲端口上启动
+      并且 客户端经 WS /rpc 发送二进制 host.describe 帧
+      那么 同一条 WS 收回二进制应答且 rpc_id 回显
 
-    场景: dual-rail-json-still-served
-      当 服务端以双轨配置在空闲端口上启动
-      那么 POST /rpc 的 JSON-RPC 2.0 路径应答成功且 id 回显
+    场景: json-text-rpc-rejected
+      当 服务端在空闲端口上启动
+      并且 POST /rpc 发送 JSON-RPC 2.0 文本
+      那么 HTTP 失败且无成功业务应答
   @req:r1911
   规则: wire 格式协商
-    host.describe 的结果 MUST 声明 Host 支持的 wire 格式集合（至少含 jsonrpc 与 fory-v3 标识）。客户端 MUST 以声明的格式通信；客户端要求的格式 Host 不支持时 MUST 致命失败，MUST NOT 降级猜测，MUST NOT 重试风暴（平移既有协议版本硬闸语义）。
+    host.describe 的结果 MUST 声明 Host 支持的 wire 格式集合（含 fory-v3）。MUST NOT 再宣告 jsonrpc 文本为产品格式。客户端 MUST 以声明的格式通信；客户端要求的格式 Host 不支持时 MUST 致命失败，MUST NOT 降级猜测，MUST NOT 重试风暴（平移既有协议版本硬闸语义）。
 
     场景: describe-declares-formats
-      当 服务端以双轨配置在空闲端口上启动
-      那么 host.describe 的 result 携带 wire 格式集合
+      当 服务端在空闲端口上启动
+      那么 host.describe 的 result 携带 wire 格式集合且含 fory-v3
 
     场景: unknown-format-fatal
       假如 客户端仅支持未声明的 wire 格式
       当 客户端发起协商
       那么 得到致命错误且无降级与重试风暴
   @req:r1904
-  规则: v3 方法数字寻址
-    v3 帧内方法 MUST 以稳定数字 method_id 寻址；method_id 与方法语义的映射 MUST 由协议真源（IDL）编译期生成并与产品方法表一致，MUST NOT 手写第二套漂移映射。未登记 method_id MUST 返回稳定失败（产品码等价 method-not-found），MUST NOT 静默忽略。写者租约与幂等语义在 v3 下等价保持：rpc_id 为幂等键（语义同既有 JSON-RPC id 幂等准入），WS 连接本地租约载体语义同既有顶层 writerToken。
+  规则: 方法数字寻址
+    产品帧内方法 MUST 以稳定数字 method_id 寻址；method_id 与方法语义的映射 MUST 由协议真源（IDL）编译期生成并与产品方法表一致，MUST NOT 手写第二套漂移映射。未登记 method_id MUST 返回稳定失败（产品码等价 method-not-found），MUST NOT 静默忽略。写者租约与幂等语义在产品路径上保持：rpc_id 为幂等键，WS 连接本地租约载体语义同 writer_token。
 
     场景: unknown-method-id-stable-fail
-      当 服务端以双轨配置在空闲端口上启动
-      并且 客户端经 v3 帧发送未登记 method_id 或非法帧字节
+      当 服务端在空闲端口上启动
+      并且 客户端发送未登记方法或非法帧字节
       那么 服务端稳定拒绝且不崩溃（等价 method-not-found 语义；闭集方法枚举使未登记判别在解码层即拒）
   @req:r1905
-  规则: v3 下行通知与 seq 语义平移
-    v3 下行 MUST 为 ServerNotification 形态（seq + event）；每会话单调 seq、journal 环形重放、resync、订阅跨回合存活、冷恢复快照投影的既有语义 MUST 原样保持（与载体格式无关）。固定区 session/resources 与审批/问卷告知在 v3 下 MUST 保持：不消耗 journal seq、不写入 journal、不识别的端 MUST 可忽略且其余行为不受影响。
+  规则: 下行通知与 seq 语义平移
+    下行 MUST 为 ServerNotification 形态（seq + event）；每会话单调 seq、journal 环形重放、resync、订阅跨回合存活、冷恢复快照投影的既有语义 MUST 原样保持（与载体格式无关）。固定区 session/resources 与审批/问卷告知在产品路径上 MUST 保持：不消耗 journal seq、不写入 journal、不识别的端 MUST 可忽略且其余行为不受影响。
 
-    场景: v3-event-carries-seq
-      假如 v3 客户端已订阅会话且 prompt 运行
-      当 agent 经 v3 订阅发出 TextDelta 事件
-      那么 客户端收到携带单调 seq 的 v3 事件帧
+    场景: event-carries-seq
+      假如 产品客户端已订阅会话且 prompt 运行
+      当 agent 经订阅发出 TextDelta 事件
+      那么 客户端收到携带单调 seq 的事件帧
   @req:r1906
-  规则: v3 动态载荷原文纪律
-    形状由运行时决定的载荷（工具参数、工具结果、模型消息内容等任意 JSON）MUST 以原文（text）字段过线；协议 MUST NOT 为其定义结构化形状，也 MUST NOT 拓宽闭集词表；接收端 MUST 能原样取回原文。工具起始参数往返保真、ToolEnd 失败标记必填等既有载荷语义在 v3 下 MUST 等价保持。
+  规则: 动态载荷原文纪律
+    形状由运行时决定的载荷（工具参数、工具结果、模型消息内容等任意 JSON）MUST 以原文（text）字段过线；协议 MUST NOT 为其定义结构化形状，也 MUST NOT 拓宽闭集词表；接收端 MUST 能原样取回原文。工具起始参数往返保真、ToolEnd 失败标记必填等既有载荷语义在产品路径上 MUST 等价保持。
 
-    场景: v3-tool-start-args-raw
-      当 对携带工具参数的 v3 tool_start 帧做往返
+    场景: tool-start-args-raw
+      当 对携带工具参数的 tool_start 帧做往返
       那么 参数原文逐字节保真且客户端可再解析
   @req:r1907
-  规则: v3 字段级演进
-    v3 载荷 MUST 支持字段级演进：新增字段或事件变体 MUST NOT 要求 bump 协议版本；接收端对未知字段 MUST 跳过，对未知事件变体 MUST 可降级忽略（落入 unknown 载体）且 MUST NOT panic。字段编号删除后 MUST reserved 且永不复用。
+  规则: 字段级演进
+    产品载荷 MUST 支持字段级演进：新增字段或事件变体 MUST NOT 要求 bump 协议版本；接收端对未知字段 MUST 跳过，对未知事件变体 MUST 可降级忽略（落入 unknown 载体）且 MUST NOT panic。字段编号删除后 MUST reserved 且永不复用。
 
-    场景: v3-unknown-variant-degrades
-      假如 构造携带未来事件变体的 v3 帧
+    场景: unknown-variant-degrades
+      假如 构造携带未来事件变体的产品帧
       当 旧词表接收端解码
       那么 变体落入 unknown 载体且不 panic 且其余事件不受影响
   @req:r1908
   规则: 双轨对拍纪律
-    迁移期内，同一产品行为（事件流、幂等回放、写者租约、审批 first-wins、冷恢复快照）MUST 可经两条路径执行并产生领域等价结果；对拍未覆盖或未通过的能力 MUST NOT 仅在 v3 路径提供。对拍等价性 MUST 由自动化测试锁定。
+    JSON 文本通道退役后，原双轨对拍所锁的产品行为（事件流、冷恢复快照、session_tree）MUST 在唯一产品路径上由自动化测试回归；MUST NOT 再要求 JSON 文本孪生路径。回归未覆盖的能力 MUST NOT 仅在未测试路径提供。
 
-    场景: dual-rail-event-equivalence
-      假如 同一 prompt 分别经 JSON-RPC 与 v3 路径驱动
+    场景: product-path-event-equivalence
+      假如 同一 prompt 经产品路径驱动
       当 回合结束
-      那么 两条路径收集的事件流经领域对象比较等价
+      那么 收集的事件流经领域对象比较与注入事件等价
 
-    场景: dual-rail-session-snapshot-parity
-      假如 同一会话在两条路径上各有 3 条历史条目
-      当 客户端分别经 JSON-RPC 与 v3 取回该会话快照
-      那么 两条路径的 result 等价且 v3 侧承载具名应答 union
+    场景: product-path-session-snapshot
+      假如 同一会话有 3 条历史条目
+      当 客户端取回该会话快照
+      那么 result 承载具名应答或等价领域条目
   @req:r1921
   规则: session_tree 应答透明与深度安全
-    v3 轨对 `session_tree` 方法 MUST 返回与 JSON 轨逐字面同构的 RAW 载荷（`{"tree":[...]}`，与 c2842 命令透明化同向），MUST NOT 将该方法塑形为递归强 schema `TreeResult`：生成的 binary codec 按树深逐层递归，深树会在默认 worker 栈上溢出 abort（历史实测：~185 层深树崩溃）；强 schema `TreeResult` 与 `v3_to_tree_nodes` MAY 保留仅作兼容解码与旧端对拍。两条路径对该方法的 result MUST 领域等价（r1908 对拍纪律适用）。
+    `session_tree` 方法 MUST 返回 RAW 载荷（`{"tree":[...]}` 语义），MUST NOT 将该方法塑形为递归强 schema `TreeResult`：生成的 binary codec 按树深逐层递归，深树会在默认 worker 栈上溢出 abort。强 schema `TreeResult` MAY 保留仅作兼容解码。
 
-    场景: v3-session-tree-raw-parity
-      假如 同一会话在两条路径上各有 3 条历史条目
-      当 客户端分别经 JSON-RPC 与 v3 取回该会话树
-      那么 两条路径 result 等价且 v3 侧为 RAW 载体（非递归强 schema）
+    场景: session-tree-raw-carrier
+      假如 同一会话有 3 条历史条目
+      当 客户端取回该会话树
+      那么 result 为 RAW 载体（非递归强 schema）
   @req:r1922
   规则: session_tree 深度无关解析
-    v3 轨对 `session_tree` RAW 载荷的解析 MUST 不受 serde_json 默认递归上限（128 层）限制：深树（实机 188 层）MUST 完整还原为领域值，MUST NOT 在超深时静默降级 `Null`（否则下游报 `invalid type: null, expected a sequence`）。两条路径对该深树的 result MUST 领域等价。
+    `session_tree` RAW 载荷的解析 MUST 不受默认递归上限（128 层）限制：深树 MUST 完整还原为领域值，MUST NOT 在超深时静默降级为空。
 
-    场景: v3-deep-session-tree-raw-parity
-      假如 同一会话在两条路径上各有一条深链树（>默认递归上限）
-      当 客户端分别经 JSON-RPC 与 v3 取回该会话树
-      那么 两条路径 result 等价且 v3 侧完整还原深链（非 Null）
+    场景: session-tree-deep-restore
+      假如 同一会话有一条深链树（>默认递归上限）
+      当 客户端取回该会话树
+      那么 result 完整还原深链（非空降级）
 
   @req:r1923
   规则: 首轮工具门有界决议
@@ -557,13 +557,13 @@
 
   @req:r1909
   规则: 迁移期旧路径保活与硬切
-    硬切已完成：JSON-RPC 文本路径作为调试通道保活（同一方法表与 dispatch），MUST NOT 引入第三套载体。旧 JSON-RPC 条款 MUST 以「载体无关」措辞表述：产品级 WHAT 只描述语义与形状，不钉帧类型。对拍纪律（r1908）MUST 继续由自动化测试锁定。
-
+    硬切已完成：JSON-RPC 文本路径已从产品入口移除，MUST NOT 引入第三套载体。产品级 WHAT 只描述语义与形状。产品路径回归（r1908）MUST 由自动化测试锁定。
 
     场景: cutover-requires-parity-green
-      假如 对拍测试存在未通过项
-      当 尝试启用 v3 默认切换
-      那么 切换被门禁拒绝
+      当 服务端在空闲端口上启动
+      并且 POST /rpc 发送 JSON-RPC 2.0 文本
+      那么 HTTP 失败且无成功业务应答
+      并且 产品客户端默认以产品载体访问 Host
 
 # re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
 
@@ -584,6 +584,6 @@
       当 同一会话被订阅两次
       那么 journal 序号未因绑定递增且两次均收到模型同步事件
   @req:r1928
-  规则: JSON-RPC batch 判非法信封
-    JSON-RPC 2.0 文本调试通道只承载单请求对象：数组 batch 请求 MUST 判非法信封（与缺 method、载体版本不符同梯队——「illegal_envelope」语义，HTTP 400），MUST NOT 静默支持 batch（逐元素幂等键与写者租约准入语义未定义）。产品路径为 v3 二进制帧（单请求），不受本条约束。
-    # verified-by: fn illegal_envelopes_are_rejected
+  规则: 非产品二进制判非法信封
+    POST /rpc 的非产品二进制 body（含 JSON 对象、JSON 数组 batch、其它文本）MUST 判非法信封（HTTP 400），MUST NOT 当业务 unary 执行。
+    # verified-by: fn json_rpc_text_is_illegal_envelope

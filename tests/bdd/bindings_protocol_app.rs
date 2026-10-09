@@ -37,15 +37,15 @@ fn test_pa_err1_tool_end_flag(protocol_bdd: ProtocolBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
-    name = "ws-jsonrpc-unary-peer"
+    name = "ws-text-unary-rejected-peer"
 )]
 async fn test_pa_ws_jsonrpc_unary(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
-    name = "jsonrpc-envelope-shape"
+    name = "json-text-envelope-rejected"
 )]
-fn test_pa_env1_jsonrpc_shape(protocol_bdd: ProtocolBdd) {}
+async fn test_pa_env1_jsonrpc_shape(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
@@ -55,7 +55,7 @@ async fn test_ip3_stable_error(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
-    name = "jsonrpc-unary-success-shape"
+    name = "unary-success-shape"
 )]
 async fn test_pa_jsonrpc_unary_success(server_test: ServerTest) {}
 
@@ -73,7 +73,7 @@ async fn test_pa_handshake_describe(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
-    name = "subscribe-via-jsonrpc"
+    name = "subscribe-via-rpc"
 )]
 async fn test_pa_subscribe_jsonrpc(server_test: ServerTest) {}
 
@@ -85,7 +85,7 @@ async fn test_pa_approve_unary(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
-    name = "jsonrpc-illegal-envelope"
+    name = "illegal-envelope"
 )]
 async fn test_pa_illegal_envelope(server_test: ServerTest) {}
 
@@ -208,7 +208,7 @@ fn test_pa_closed_set_local(protocol_bdd: ProtocolBdd) {}
 fn test_pa_no_second_vocab(protocol_bdd: ProtocolBdd) {}
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
-    name = "host-semantics-on-single-jsonrpc-method-table"
+    name = "host-semantics-on-single-method-table"
 )]
 fn test_pa_host_single_table(server_test: ServerTest) {}
 #[scenario(
