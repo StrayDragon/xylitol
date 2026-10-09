@@ -6,7 +6,7 @@
 //!
 //! 等价判据（design D2，逐条有单测）：① `id` 逐字回显（保留原 JSON 类型）
 //! ② 未登记方法 `-32601` + `data.code = unregistered_method` ③ 非法信封判否
-//! ④ 请求体 4 MiB 上限。
+//! （含 JSON-RPC 数组 batch，r1928）④ 请求体 4 MiB 上限。
 
 use std::sync::Arc;
 
@@ -142,7 +142,7 @@ mod tests {
         assert_eq!(v["id"], "j-1", "字符串 id MUST 仍是字符串");
     }
 
-    /// 等价判据 ③：非法信封判否（缺 method / 载体版本不符 / 非 JSON）。
+    /// 等价判据 ③：非法信封判否（缺 method / 载体版本不符 / 非 JSON / 数组 batch）。
     #[tokio::test]
     async fn illegal_envelopes_are_rejected() {
         let host = host();
@@ -151,6 +151,8 @@ mod tests {
             r#"{"jsonrpc":"1.0","id":"1","method":"host.describe"}"#,
             "not json",
             r#"{"type":"client-request","rpcId":"1","method":"host.describe"}"#,
+            // r1928: JSON-RPC 2.0 batch 数组——幂等键/写者租约语义未定义，MUST 判非法信封。
+            r#"[{"jsonrpc":"2.0","id":"1","method":"host.describe"},{"jsonrpc":"2.0","id":"2","method":"host.describe"}]"#,
         ] {
             assert!(
                 dispatch_raw(&host, raw, None).await.is_none(),

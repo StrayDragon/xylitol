@@ -581,4 +581,4 @@
   @req:r1928
   规则: JSON-RPC batch 判非法信封
     JSON-RPC 2.0 文本调试通道只承载单请求对象：数组 batch 请求 MUST 判非法信封（与缺 method、载体版本不符同梯队——「illegal_envelope」语义，HTTP 400），MUST NOT 静默支持 batch（逐元素幂等键与写者租约准入语义未定义）。产品路径为 v3 二进制帧（单请求），不受本条约束。
-    # verified-by: src/app/server/rpc_module.rs
+    # verified-by: fn illegal_envelopes_are_rejected
