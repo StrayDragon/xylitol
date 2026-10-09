@@ -42,7 +42,7 @@
     # verified-by: src/infra/observability/fanout.rs
     场景: file-and-otlp-fan-out
       假如 mock 模型先 tool 后无 tool
-当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
+      当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
       那么 agent.turn 根 span 携带等于会话 UUID 的 langfuse.session.id
 
   @req:r1489
@@ -78,7 +78,7 @@
     # verified-by: packages/xylitol-ai-bridge/src/provider/trace.rs
     场景: generation-span-carries-llm-lane
       假如 mock 模型先 tool 后无 tool
-当 以观测闸开启运行一次带工具调用的 agent 回合
+      当 以观测闸开启运行一次带工具调用的 agent 回合
       那么 全部主路径 span 携带 xylitol.obs.lane=llm
 
 
@@ -151,7 +151,7 @@
     # verified-by: src/agent/runtime/obs.rs
     场景: parallel-tools-share-iteration-tree
       假如 mock 模型先 tool 后无 tool
-当 以观测闸开启运行一次带工具调用的 agent 回合
+      当 以观测闸开启运行一次带工具调用的 agent 回合
       那么 iteration、tool 与 token.estimate 均为 turn 根的后代并共享 trace_id
 
   @req:r1476
@@ -191,7 +191,7 @@
     # verified-by: src/agent/runtime/obs.rs
     场景: session-id-per-overlapping-processing
       假如 mock 模型先 tool 后无 tool
-当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
+      当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
       那么 agent.turn 根 span 携带等于会话 UUID 的 langfuse.session.id
 
   @req:r1482
@@ -200,7 +200,7 @@
     # verified-by: src/agent/runtime/obs.rs
     场景: whole-tree-one-session-id
       假如 mock 模型先 tool 后无 tool
-当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
+      当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
       那么 agent.turn 根 span 携带等于会话 UUID 的 langfuse.session.id
 
   @req:r1483
@@ -208,7 +208,7 @@
     进程级观测槽 MUST 仅作为「默认身份」供无 options 的闲置回退（remote count、无快照的 HTTP hooks、无 options 的 ProviderRequestTrace）与测试使用；materialized 会话（turn / iteration / tool / compaction / generate）MUST 使用运行时自持的会话事实快照，MUST NOT 在 span 创建时读该槽。bind / switch_session MUST NOT 写该槽（c2843 Phase B 移除 obs_slot_writes 门：读者结构上不触达写入路径），槽仅由显式 writer 事件（rename、会话恢复）更新；读者物化前后槽内容 MUST 不变。无 run 上下文的闲置路径 MAY 以槽为回退。由单测覆盖（switch 不写槽 + 快照归因），MUST NOT 单独扩 BDD step。
     # verified-by: src/app/core/driver/in_process/tests/session.rs
     场景: obs-slot-written-by-writer-path
-当 以观测闸开启并触发一次会话压缩
+      当 以观测闸开启并触发一次会话压缩
       那么 导出 agent.compaction 且 type 为 span 并携带原因与 obs lane
 
   @req:r1918
@@ -217,7 +217,7 @@
     # verified-by: packages/xylitol-ai-bridge/src/provider/trace.rs
     场景: owner-scoped-otel-assertions
       假如 mock 模型先 tool 后无 tool
-当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
+      当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
       那么 agent.turn 根 span 携带等于会话 UUID 的 langfuse.session.id
 
   @req:r1484
@@ -226,7 +226,7 @@
     # verified-by: src/agent/runtime/obs.rs
     场景: dual-session-identity-keys
       假如 mock 模型先 tool 后无 tool
-当 以带 display name 的会话身份运行一次 agent 回合
+      当 以带 display name 的会话身份运行一次 agent 回合
       那么 根 span 携带 session_name 元数据
       当 以无 name 的会话身份运行一次 agent 回合
       那么 根 span 不写 session_name 属性
