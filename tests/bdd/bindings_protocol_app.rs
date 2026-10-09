@@ -1,7 +1,8 @@
 //! protocol-app BDD 绑定：纯协议层场景 + 复用 server 词表的方法表场景。
 
-use crate::tests::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
-use crate::tests::bdd::steps_server::{ServerTest, server_test};
+use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
+use crate::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
+use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -179,3 +180,44 @@ fn test_c2826_resource_methods(server_test: ServerTest) {}
     name = "estimate-context-method-registered-readonly"
 )]
 fn test_c2826_estimate_context(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "event-enum-covers-agent-stream"
+)]
+fn test_pa_event_enum_stream(protocol_bdd: ProtocolBdd) {}
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "unknown-event-type-is-error-not-panic"
+)]
+fn test_pa_unknown_event_error(protocol_bdd: ProtocolBdd) {}
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "no-vendor-specific-event-variants"
+)]
+fn test_pa_no_vendor_mirror(protocol_bdd: ProtocolBdd) {}
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "closed-set-rejects-surface-local-command-names"
+)]
+fn test_pa_closed_set_local(protocol_bdd: ProtocolBdd) {}
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "no-second-vocabulary-for-surface-locals"
+)]
+fn test_pa_no_second_vocab(protocol_bdd: ProtocolBdd) {}
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "host-semantics-on-single-jsonrpc-method-table"
+)]
+fn test_pa_host_single_table(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "bang-runs-outside-agent-tool-stream"
+)]
+fn test_pa_bang_outside_tool(host_pump_bdd: HostPumpBdd) {}
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "bash-final-state-in-single-block"
+)]
+fn test_pa_bash_single_block(host_pump_bdd: HostPumpBdd) {}

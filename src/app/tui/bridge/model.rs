@@ -31,7 +31,7 @@ fn drain_utf8_prefix(buf: &mut Vec<u8>) -> String {
 }
 
 /// True when the last scrollback line is already an abort note (same-event dedupe).
-pub(crate) fn trailing_aborted_note(entries: &[UiEntry]) -> bool {
+pub fn trailing_aborted_note(entries: &[UiEntry]) -> bool {
     matches!(
         entries.last(),
         Some(UiEntry::ScrollNotice { text })
@@ -238,7 +238,8 @@ pub struct UiModel {
     /// Busy-only short status; [`None`] when idle (layout status: 0 rows).
     pub status: Option<String>,
     /// In-progress assistant text (not yet committed as an entry).
-    pub(crate) streaming_assistant: String,
+    // c2837: 测试断言字段对外（BDD 独立 target）
+    pub streaming_assistant: String,
     /// In-progress thinking text.
     pub(crate) streaming_thinking: String,
     /// Live burst id ([`STREAMING_THINK_ID`]) while deltas are in flight.
@@ -635,7 +636,7 @@ impl UiModel {
         });
     }
 
-    pub(crate) fn set_busy_status(&mut self, status: impl Into<String>) {
+    pub fn set_busy_status(&mut self, status: impl Into<String>) {
         self.phase = UiPhase::Busy;
         self.status = Some(status.into());
     }

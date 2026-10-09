@@ -1,4 +1,5 @@
-use crate::tests::bdd::steps_server::{ServerTest, approval_test, server_test};
+use crate::bdd::steps_c2827::{T2EstBdd, t2_est_bdd};
+use crate::bdd::steps_server::{ServerTest, approval_test, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -312,3 +313,76 @@ async fn test_sr_reg1_takeover(server_test: ServerTest) {}
     name = "staged-wire-import"
 )]
 async fn test_sr_imp1_staged_import(server_test: ServerTest) {}
+
+// ── c2835 后继：app-tui-host 的 attach 族裸规则回填 ───────────────────
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "agent-end-keeps-mux-subscription"
+)]
+async fn test_ath36_agent_end_keeps_mux(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "cold-restore-single-snapshot"
+)]
+async fn test_ath37_cold_restore_single_snapshot(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "cold-restore-ignores-live-tape"
+)]
+async fn test_ath37_cold_restore_ignores_tape(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "subscription-idle-wait-is-bounded"
+)]
+async fn test_ath39_idle_wait_bounded(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "reconnect-grace-then-toast"
+)]
+async fn test_ath43_reconnect_grace_then_toast(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "estimate-context-unary-registered-readonly"
+)]
+fn test_sc_estimate_registered(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "fixed-zone-resources-frame-is-notification"
+)]
+fn test_sc_fixed_zone_frame(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "fixed-zone-resources-method-on-product-table"
+)]
+fn test_sc_fixed_zone_method(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "estimate-context-host-source-not-self-estimate"
+)]
+fn test_sc_estimate_host_source(t2_est_bdd: T2EstBdd) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "prompt-runs-on-subscribed-session"
+)]
+async fn test_sr_c2841_prompt_session_identity(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "model-sync-on-bind"
+)]
+async fn test_sr_c2841_model_sync_on_bind(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "v3-command-keeps-session-identity"
+)]
+async fn test_sr_c2842_v3_command_session_identity(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "get-state-reflects-writer-model"
+)]
+async fn test_sr_c2842_get_state_writer_model(server_test: ServerTest) {}

@@ -62,7 +62,7 @@ pub struct AgentRuntime {
 }
 
 impl AgentRuntime {
-    pub(crate) fn new(mut inner: AgentCapabilities) -> Self {
+    pub fn new(mut inner: AgentCapabilities) -> Self {
         let coordinator = SharedRunCoordinator::new();
         let probe_coord = coordinator.clone();
         inner.set_midturn_active_probe(Arc::new(move || {
@@ -83,15 +83,11 @@ impl AgentRuntime {
         Ok(())
     }
 
-    /// Toggle process obs-slot writes for `bind_session` (otel25). Host reader
-    /// drivers disable this so read-only RPCs cannot stomp another session's id.
-    pub(crate) fn set_obs_slot_writes(&mut self, enabled: bool) {
-        self.inner.set_obs_slot_writes(enabled);
-    }
-
-    /// Whether `bind_session` on this runtime writes the process obs slot.
-    pub(crate) fn obs_slot_writes(&self) -> bool {
-        self.inner.obs_slot_writes()
+    /// Set an obs display-name fact for this runtime (c2843 Phase B). Callers:
+    /// driver rename / host restore / tests — the runtime's own identity, never
+    /// the process obs slot.
+    pub fn set_session_name_fact(&mut self, name: Option<String>) {
+        self.inner.set_session_name_fact(name);
     }
 
     /// Currently bound session id, if any.
@@ -281,7 +277,7 @@ impl AgentRuntime {
     }
 
     /// Cancel-path script hook (pre-flight): dispatch on the hook bus when
-    /// present; a `Blocked` outcome maps to [`HookBlockedError`]. No bus is a
+    /// present; a `Blocked` outcome maps to [`crate::agent::capabilities::HookBlockedError`]. No bus is a
     /// no-op `Ok`.
     pub async fn script_hook_cancel(
         &self,
@@ -496,6 +492,9 @@ impl AgentRuntime {
         let queues = self.inner.queues();
         let event_sink_inner = self.inner.event_sink();
         let cwd = self.inner.cwd().to_string();
+        // c2843 Phase B: capture the owner obs name fact before the stream
+        // closure (must not borrow `self` past the method).
+        let obs_session_name = self.inner.session_name().map(str::to_string);
 
         let lease = RunLease::new(coordinator.clone(), run_id, Some(queues.clone()));
 
@@ -538,6 +537,7 @@ impl AgentRuntime {
                 session_id,
                 seeded_history,
                 event_sink_inner,
+                obs_session_name: obs_session_name.clone(),
             });
             let mut stream = std::pin::pin!(stream);
             while let Some(ev) = stream.next().await {
@@ -604,6 +604,7 @@ impl AgentRuntime {
             session_id,
             seeded_history,
             event_sink_inner: self.inner.event_sink(),
+            obs_session_name: self.inner.session_name().map(str::to_string),
         });
         self.coordinator.with_mut(|c| c.mark_streaming(run_id));
         XyEventStream::with_lease(Box::pin(stream), lease)
@@ -629,6 +630,8 @@ struct LiveReactArgs {
     session_id: String,
     seeded_history: Vec<AgentMessage>,
     event_sink_inner: Arc<dyn crate::protocol::ports::XyEventSink>,
+    /// Owner obs display-name fact for the turn (c2843 Phase B); never slot.
+    obs_session_name: Option<String>,
 }
 
 fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> + Send {
@@ -643,6 +646,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         session_id,
         seeded_history,
         event_sink_inner,
+        obs_session_name,
     } = args;
 
     let FrozenRootConfig {
@@ -690,13 +694,13 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
 
     let steer_queue = queues.steer.clone();
     let follow_up_queue = queues.follow_up.clone();
-    let (side_tx, mut side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
+    let (side_tx, side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
     let event_sink: Arc<dyn crate::protocol::ports::XyEventSink> = Arc::new(CompactionStreamTee {
         inner: event_sink_inner,
         tx: side_tx,
     });
 
-    let (queue_tx, mut queue_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (queue_tx, queue_rx) = tokio::sync::mpsc::unbounded_channel();
     queues.bind_event_tx(run_id, queue_tx);
 
     let react = Box::pin(run_react_loop(ReActConfig {
@@ -721,8 +725,31 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         event_sink,
         compaction_settings,
         cwd,
+        obs_session_name,
     }));
 
+    combine_run_streams(react, side_rx, queue_rx)
+}
+
+/// Combine the core ReAct tape with the side lifecycle channel (compaction /
+/// settlement via [`CompactionStreamTee`]) and the queue-update channel (c1730).
+///
+/// Ordering contract: when the core tape closes (`AgentEnd` or stream end), any
+/// events already buffered on the side / queue channels MUST be yielded BEFORE
+/// the terminal `AgentEnd` — every consumer that stops reading at `AgentEnd`
+/// (server run loop, remote driver downlink) would otherwise silently drop a
+/// turn-end `CompactionEnd` / `ContextTokenSettlement` / `QueueUpdate`.
+///
+/// The legacy `biased` select prefers `react.next`; a turn-end overflow
+/// compaction emits its End on the side channel immediately before `AgentEnd`
+/// with no interleaving await (script hook bus absent) — the side event would
+/// sit queued and be lost. c2844 guards the tail: drain ready side/queue events
+/// before yielding `AgentEnd` / at stream end.
+pub(crate) fn combine_run_streams(
+    react: Pin<Box<dyn Stream<Item = XyEvent> + Send>>,
+    mut side_rx: tokio::sync::mpsc::UnboundedReceiver<XyEvent>,
+    mut queue_rx: tokio::sync::mpsc::UnboundedReceiver<XyEvent>,
+) -> impl Stream<Item = XyEvent> + Send {
     async_stream::stream! {
         let mut react = react;
         loop {
@@ -730,8 +757,28 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
                 biased;
                 ev = react.next() => {
                     match ev {
-                        Some(e) => yield e,
-                        None => break,
+                        Some(e) => {
+                            if matches!(e, XyEvent::AgentEnd { .. }) {
+                                // c2844: flush side/queue leftovers BEFORE the
+                                // terminal tape event (ordering preserved).
+                                while let Ok(ev2) = side_rx.try_recv() {
+                                    yield ev2;
+                                }
+                                while let Ok(ev2) = queue_rx.try_recv() {
+                                    yield ev2;
+                                }
+                            }
+                            yield e;
+                        }
+                        None => {
+                            while let Ok(ev2) = side_rx.try_recv() {
+                                yield ev2;
+                            }
+                            while let Ok(ev2) = queue_rx.try_recv() {
+                                yield ev2;
+                            }
+                            break;
+                        }
                     }
                 }
                 ev = queue_rx.recv() => {
@@ -810,6 +857,8 @@ struct ReActConfig {
     compaction_settings: crate::agent::compaction::CompactionSettings,
     /// Workspace cwd for session_env (c1905).
     cwd: String,
+    /// Owner obs display-name fact for the turn (c2843 Phase B); never slot.
+    obs_session_name: Option<String>,
 }
 
 // ── Core ReAct loop ─────────────────────────────────────────────────
@@ -837,6 +886,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         event_sink,
         compaction_settings,
         cwd,
+        obs_session_name,
     } = cfg;
     // c25: fixed per-request overhead for overhead-aware settlement / cut clamp.
     let fixed_context = crate::agent::compaction::FixedRequestContext {
@@ -896,7 +946,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             .unwrap_or((None, None));
         let obs_session = xylitol_ai_bridge::ObsSessionContext {
             session_id: Some(session_id.clone()),
-            session_name: xylitol_ai_bridge::provider::obs_session_context().session_name,
+            session_name: obs_session_name,
             parent_session_id,
             fork_at_entry_id,
             llm_gateway_session_id: None,

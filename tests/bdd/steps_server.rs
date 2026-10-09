@@ -1,17 +1,17 @@
-use crate::tests::bdd::prelude::*;
+use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use std::time::Duration;
 
-use crate::app::server::host::HostState;
-use crate::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
-use crate::app::server::ws::{EventJournal, ReverseRpcResult};
-use crate::protocol::Event;
-use crate::protocol::wire::codec;
-use crate::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
-use crate::protocol::wire::method::DOWNLINK_METHODS;
-use crate::protocol::wire::registry;
-use crate::{
+use xylitol::app::server::host::HostState;
+use xylitol::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
+use xylitol::app::server::ws::{EventJournal, ReverseRpcResult};
+use xylitol::protocol::Event;
+use xylitol::protocol::wire::codec;
+use xylitol::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
+use xylitol::protocol::wire::method::DOWNLINK_METHODS;
+use xylitol::protocol::wire::registry;
+use xylitol::{
     HostClient, HttpWsClient, LinkHealth, LinkTunings, MuxStream, XyDriver, XyRemoteDriver,
 };
 
@@ -38,7 +38,7 @@ pub struct ServerTest {
     pub idem_exec_file: RefCell<Option<std::path::PathBuf>>,
     pub idem_task: RefCell<Option<tokio::task::JoinHandle<()>>>,
     /// c2465 sr-rdy1：就绪窗口场景的网关与最近一次 healthz 应答。
-    pub gateway: RefCell<Option<Arc<crate::app::server::http::Gateway>>>,
+    pub gateway: RefCell<Option<Arc<xylitol::app::server::http::Gateway>>>,
     pub rdy_status: Cell<u16>,
     pub rdy_body: RefCell<Option<String>>,
     /// c2475 sr-reg1：注册文件路径与自检驱逐信号。
@@ -875,7 +875,7 @@ fn t_product_unary_describe(server_test: &ServerTest) {
         .borrow()
         .clone()
         .expect("product unary body");
-    let result: crate::protocol::RpcResult = serde_json::from_str(&body).expect("RpcResult");
+    let result: xylitol::protocol::RpcResult = serde_json::from_str(&body).expect("RpcResult");
     assert!(result.ok, "{body}");
     assert!(result.error.is_none(), "{body}");
     let protocol = result
@@ -2081,7 +2081,7 @@ async fn t_idem_inflight_wait(server_test: &ServerTest) {
 
 #[given("监听器已绑定端口但装配未完成")]
 async fn g_rdy_starting(server_test: &ServerTest) {
-    let gateway = crate::app::server::http::Gateway::starting();
+    let gateway = xylitol::app::server::http::Gateway::starting();
     let (running, port) = bind_serve(
         &ServerConfig {
             host: "127.0.0.1".into(),
@@ -2163,7 +2163,7 @@ async fn t_rdy_ready(server_test: &ServerTest) {
 
 #[given("装配失败")]
 async fn g_rdy_failed(server_test: &ServerTest) {
-    let gateway = crate::app::server::http::Gateway::starting();
+    let gateway = xylitol::app::server::http::Gateway::starting();
     gateway.mark_failed();
     let (running, port) = bind_serve(
         &ServerConfig {
@@ -2195,10 +2195,10 @@ async fn t_rdy_failed(server_test: &ServerTest) {
 
 // ---- c2475 sr-reg1：serve 注册文件发现契约 ----
 
-use crate::app::server::registration::{
+use xylitol::app::server::registration::{
     Registration, read_registration, run_self_check, write_registration,
 };
-use crate::app::server::runtime::serve_registered;
+use xylitol::app::server::runtime::serve_registered;
 
 fn temp_reg_path() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("xylitol-bdd-reg-{}.json", uuid::Uuid::new_v4()))
@@ -2282,7 +2282,7 @@ async fn g_reg_stale(server_test: &ServerTest) {
 #[when("客户端 attach 探活该地址")]
 async fn w_reg_attach_probe(server_test: &ServerTest) {
     let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
-    let msg = crate::attach_preflight_with("http://127.0.0.1:1", Some(reg_path))
+    let msg = xylitol::attach_preflight_with("http://127.0.0.1:1", Some(reg_path))
         .await
         .expect_err("stale registration must fail the preflight");
     *server_test.unary_body.borrow_mut() = Some(msg);
@@ -2647,7 +2647,7 @@ fn w_lookup_session_methods(server_test: &ServerTest) {
     let missing: Vec<&str> = names
         .iter()
         .copied()
-        .filter(|n| crate::protocol::wire::registry::lookup(n).is_none())
+        .filter(|n| xylitol::protocol::wire::registry::lookup(n).is_none())
         .collect();
     server_test
         .unary_body
@@ -2667,7 +2667,7 @@ fn w_lookup_resource_methods(server_test: &ServerTest) {
     let missing: Vec<&str> = ["reload", "loaded_resources"]
         .iter()
         .copied()
-        .filter(|n| crate::protocol::wire::registry::lookup(n).is_none())
+        .filter(|n| xylitol::protocol::wire::registry::lookup(n).is_none())
         .collect();
     server_test
         .unary_body
@@ -2687,7 +2687,7 @@ fn t_resource_methods_registered(server_test: &ServerTest) {
 
 #[when("查询方法表的 estimate_context")]
 fn w_lookup_estimate_context(server_test: &ServerTest) {
-    let registered = crate::protocol::wire::registry::lookup("estimate_context").is_some();
+    let registered = xylitol::protocol::wire::registry::lookup("estimate_context").is_some();
     server_test
         .unary_body
         .replace(Some(format!("registered={registered}")));
@@ -2723,5 +2723,242 @@ fn t_c2826_writer_conflict(server_test: &ServerTest) {
     assert_eq!(
         v["error"]["data"]["code"], "writer_conflict",
         "c2826: 应为 writer_conflict：{body}"
+    );
+}
+
+// ---- c2841: prompt 会话身份保真 / 生效模型状态同步 ----
+
+async fn start_host_with_default_model(t: &ServerTest, model_id: &str) {
+    let host = HostState::for_test_with_default_model(model_id).expect("host with default model");
+    let (running, port) = serve(
+        ServerConfig {
+            host: "127.0.0.1".into(),
+            port: 0,
+            sessions_dir: None,
+            registration_path: None,
+        },
+        host.clone(),
+    )
+    .await
+    .expect("serve");
+    t.host.replace(Some(host));
+    t.running.replace(Some(running));
+    t.port.set(port);
+    tokio::time::sleep(Duration::from_millis(30)).await;
+}
+
+#[given("会话写者已装配且持有已解析默认模型 fake-model")]
+async fn g_c2841_writer_with_default_model(server_test: &ServerTest) {
+    start_host_with_default_model(server_test, "fake-model").await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-c2841").await;
+    xylitol::app::server::host::materialize_writer(&host, &slot)
+        .await
+        .expect("materialize writer");
+    let mut g = slot.driver.lock().await;
+    let d = g.as_mut().expect("writer driver");
+    let m = d
+        .current_model()
+        .expect("writer must hold the default model");
+    assert_eq!(m.id, "fake-model");
+}
+
+#[when("订阅者绑定该会话")]
+async fn w_c2841_bind_subscriber(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    wait_unbound(&host, 1).await;
+    let client = HttpWsClient::new(server_test.base_url());
+    let mux = client.mux().await.expect("mux");
+    server_test.mux_rx.replace(Some(mux));
+    let r = client
+        .unary(
+            "subscribe",
+            serde_json::json!({"session_id": "s-c2841", "last_seq": 0}),
+        )
+        .await
+        .expect("subscribe");
+    assert!(r.ok, "{r:?}");
+}
+
+#[then("订阅者收到模型同步事件且模型为 fake-model")]
+async fn t_c2841_model_sync_received(server_test: &ServerTest) {
+    let mut mux = server_test.mux_rx.borrow_mut().take().expect("mux");
+    for _ in 0..6 {
+        let f = tokio::time::timeout(Duration::from_secs(3), mux.next())
+            .await
+            .expect("frame timeout")
+            .expect("mux eof")
+            .expect("ws frame");
+        let RpcMessage::ServerRequest {
+            method, payload, ..
+        } = &f
+        else {
+            continue;
+        };
+        if method != "session/event" {
+            continue;
+        }
+        let ev = payload.get("event").cloned().unwrap_or_default();
+        if ev.get("type").and_then(serde_json::Value::as_str) == Some("model_select") {
+            assert_eq!(
+                ev.get("model_id").and_then(serde_json::Value::as_str),
+                Some("fake-model")
+            );
+            return;
+        }
+    }
+    panic!("no model_select sync frame received on the subscribed session");
+}
+
+#[given("客户端已订阅会话 s-prompt 并以可用模型 fake-model 发送 prompt")]
+async fn g_c2841_prompt_with_identity(server_test: &ServerTest) {
+    start_host_with_default_model(server_test, "fake-model").await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    wait_unbound(&host, 1).await;
+    let client = HttpWsClient::new(server_test.base_url());
+    let mux = client.mux().await.expect("mux");
+    server_test.mux_rx.replace(Some(mux));
+    let sub = client
+        .unary(
+            "subscribe",
+            serde_json::json!({"session_id": "s-prompt", "last_seq": 0}),
+        )
+        .await
+        .expect("subscribe");
+    assert!(sub.ok, "{sub:?}");
+    let prompt = client
+        .unary(
+            "prompt",
+            serde_json::json!({
+                "message": "hi",
+                "session_id": "s-prompt",
+                "model_id": "fake-model",
+            }),
+        )
+        .await
+        .expect("prompt");
+    assert!(prompt.ok, "{prompt:?}");
+}
+
+#[when("Host 处理该 prompt")]
+async fn w_c2841_prompt_processed(_server_test: &ServerTest) {
+    // Fake provider 本轮即时完成；留出事件广播窗口。
+    tokio::time::sleep(Duration::from_millis(800)).await;
+}
+
+#[then("run 路由到 s-prompt 且事件在 s-prompt 的订阅者上可达")]
+async fn t_c2841_prompt_events_reachable(server_test: &ServerTest) {
+    let mut mux = server_test.mux_rx.borrow_mut().take().expect("mux");
+    // 事件流消耗完毕（run 完成）后 mux 已无入站帧；见到 agent_end 即证明
+    // run 事件在订阅会话的可达流上（含 绑定/装配后的 model_select 同步帧）。
+    for _ in 0..16 {
+        let f = match tokio::time::timeout(Duration::from_secs(3), mux.next()).await {
+            Ok(Some(Ok(f))) => f,
+            other => panic!("c2841: run 事件未在订阅流上完成送达：{other:?}"),
+        };
+        let RpcMessage::ServerRequest {
+            method, payload, ..
+        } = &f
+        else {
+            continue;
+        };
+        if method == "session/event"
+            && payload
+                .get("event")
+                .and_then(|e| e.get("type"))
+                .and_then(serde_json::Value::as_str)
+                == Some("agent_end")
+        {
+            return;
+        }
+    }
+    panic!("c2841: 订阅会话流上未收到 agent_end");
+}
+
+// ---- c2842: 会话命令身份透明（v3）/ get_state 反映写者模型 ----
+
+#[given("以 v3 客户端订阅会话 s-v3 且写者装配了默认模型 fake-model")]
+async fn g_c2842_v3_subscribe_default_model(server_test: &ServerTest) {
+    start_host_with_default_model(server_test, "fake-model").await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-v3").await;
+    xylitol::app::server::host::materialize_writer(&host, &slot)
+        .await
+        .expect("materialize writer");
+    let client = HttpWsClient::new(server_test.base_url()).with_wire_v3(true);
+    let r = client
+        .unary(
+            "subscribe",
+            serde_json::json!({"session_id": "s-v3", "last_seq": 0, "cwd": "/tmp"}),
+        )
+        .await
+        .expect("v3 subscribe");
+    assert!(r.ok, "v3 subscribe: {r:?}");
+    drop(client);
+}
+
+#[when("该 v3 客户端在 s-v3 上设置模型 fake-model")]
+async fn w_c2842_v3_set_model(server_test: &ServerTest) {
+    let client = HttpWsClient::new(server_test.base_url()).with_wire_v3(true);
+    let r = client
+        .unary(
+            "set_model",
+            serde_json::json!({
+                "type": "set_model",
+                "session_id": "s-v3",
+                "model_id": "fake-model",
+            }),
+        )
+        .await
+        .expect("v3 set_model");
+    server_test
+        .unary_body
+        .replace(Some(serde_json::to_string(&r).unwrap_or_default()));
+    if !r.ok {
+        server_test.unary_status.set(1);
+    } else {
+        server_test.unary_status.set(0);
+    }
+}
+
+#[then("设置无 writer_conflict")]
+fn t_c2842_no_writer_conflict(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    assert_eq!(
+        server_test.unary_status.get(),
+        0,
+        "set_model must not conflict: {body}"
+    );
+    assert!(
+        !body.contains("writer_conflict"),
+        "set_model must not hit writer_conflict: {body}"
+    );
+}
+
+#[when("客户端请求该会话 get_state")]
+async fn w_c2842_get_state(server_test: &ServerTest) {
+    let client = HttpWsClient::new(server_test.base_url());
+    let r = client
+        .unary(
+            "get_state",
+            serde_json::json!({"type": "get_state", "session_id": "s-c2841"}),
+        )
+        .await
+        .expect("get_state");
+    server_test.unary_status.set(u16::from(!r.ok));
+    let inner = r.value.clone().unwrap_or(serde_json::Value::Null);
+    server_test.unary_body.replace(Some(inner.to_string()));
+}
+
+#[then("应答的 model 为 fake-model")]
+fn t_c2842_get_state_model(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    assert_eq!(server_test.unary_status.get(), 0, "get_state ok: {body}");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let model = v.get("model").expect("model field");
+    assert_eq!(
+        model.get("id").and_then(serde_json::Value::as_str),
+        Some("fake-model"),
+        "get_state model must reflect the writer: {body}"
     );
 }

@@ -1,6 +1,7 @@
 //! app-tui-commands BDD 绑定（c2826 specs-compact 斜杠族）。
 
-use crate::tests::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
+use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
+use crate::bdd::steps_cli_surface::{CliEntryBdd, cli_entry_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -98,3 +99,14 @@ async fn test_c2826_busy_policy(host_pump_bdd: HostPumpBdd) {}
     name = "mcp-panel-opens-from-cached-snapshot"
 )]
 async fn test_c2826_mcp(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
+    name = "mvp-needs-model-and-exit"
+)]
+fn test_atc_mvp_two_commands(cli_entry_bdd: CliEntryBdd) {}
+#[scenario(
+    path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
+    name = "single-slash-parser-in-commands-module"
+)]
+fn test_atc_single_parser(cli_entry_bdd: CliEntryBdd) {}

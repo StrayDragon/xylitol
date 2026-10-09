@@ -177,10 +177,7 @@ impl XyRemoteDriver<HttpWsClient> {
     /// c2834 task 5.1:TUI attach 产品面走 v3 二进制信封(对拍全绿;
     /// 库级 `HttpWsClient::new` 默认保持 JSON,显式旋钮开 v3)。
     pub fn new_v3(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
-        Self::with_host(
-            HttpWsClient::new(base_url).with_wire_v3(true),
-            session_id,
-        )
+        Self::with_host(HttpWsClient::new(base_url).with_wire_v3(true), session_id)
     }
 
     /// Create a new XyRemoteDriver connected to `base_url`.
@@ -220,6 +217,10 @@ struct DownlinkCtx<C> {
     cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
     gate_notice_consumed: Arc<AtomicBool>,
     resources_dirty: Arc<AtomicBool>,
+    /// c2841：Host 绑定/装配同步的生效模型事件 → 写入缓存，供 current_model()
+    /// 收敛徽标（ModelInfo 缺失时回查已缓存可用模型表）。
+    cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
+    cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
     bash_run_sink: Arc<std::sync::Mutex<Option<crate::protocol::ports::BashOutputSink>>>,
     client_cwd: String,
     downlink_gen: Arc<AtomicU64>,
@@ -263,6 +264,74 @@ fn store_resources_snapshot(
 }
 
 #[cfg(feature = "server")]
+/// Per-generation downlink state: the driver's shared handles cloned once for
+/// one spawned reconnect loop, plus the loop's generation snapshot (c2480).
+impl<C> DownlinkCtx<C>
+where
+    C: HostClient + Clone + 'static,
+{
+    /// 按 id 从已缓存可用模型表解析完整 `ModelInfo`（c2841 生效模型同步）。
+    /// 首次 attach 时可用模型表可能尚未就绪，未命中则拉取一次 `get_available_models`
+    /// 后重试；仍无则返回 None（徽标停留 NOT-SET，不失败）。
+    async fn resolve_model_info(&self, model_id: &str) -> Option<ModelInfo> {
+        let find = |models: &[ModelInfo]| models.iter().find(|m| m.id == model_id).cloned();
+        let from_cache = || {
+            self.cached_models
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+                .unwrap_or_default()
+        };
+        if let Some(hit) = find(&from_cache()) {
+            return Some(hit);
+        }
+        let Ok(data) = self
+            .host
+            .unary("get_available_models", serde_json::json!({}))
+            .await
+        else {
+            return None;
+        };
+        let models = data
+            .value
+            .as_ref()
+            .and_then(|v| v.get("models"))
+            .and_then(|v| v.as_array())?;
+        let parsed: Vec<ModelInfo> = models
+            .iter()
+            .filter_map(|m| {
+                Some(ModelInfo {
+                    id: m.get("id").and_then(|x| x.as_str())?.to_string(),
+                    display_name: m
+                        .get("display_name")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    thinking: m.get("thinking").and_then(|x| x.as_bool()).unwrap_or(false),
+                    thinking_levels: m
+                        .get("thinking_levels")
+                        .and_then(|x| x.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|x| x.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| vec![THINKING_OFF.into()]),
+                    context_window: m
+                        .get("context_window")
+                        .and_then(|x| x.as_u64())
+                        .unwrap_or(0),
+                })
+            })
+            .collect();
+        if let Ok(mut g) = self.cached_models.lock() {
+            *g = Some(parsed.clone());
+        }
+        find(&parsed)
+    }
+}
+
+#[cfg(feature = "server")]
 /// One downlink frame arm (connected phase): session event tape,
 /// subscribe/resync/resources lifecycle, reverse-RPC prompts. Unknown frames
 /// are ignored; a malformed event is a no-op — recovery is driven by
@@ -295,6 +364,25 @@ where
                     steer_count: *steer_count,
                     follow_up_count: *follow_up_count,
                 };
+            }
+            // c2841:Host 在会话绑定/装配时同步的生效模型事件(含用户显式配置
+            // 的默认模型)→ 写入缓存,供 current_model() 收敛徽标而非停在
+            // NOT-SET。事件仅载 provider/model_id,完整 ModelInfo 从已缓存
+            // 可用模型表按 id 解析;首次 attach 时可用模型表可能尚未就绪,
+            // 未命中则拉取一次后重试——本分支在 push_current 前完成,保证
+            // TUI 侧收到事件时缓存已就绪可立即刷新徽标。
+            if let XyEvent::ModelSelect { model_id, .. } = &agent_event {
+                let found = ctx.resolve_model_info(model_id).await;
+                log::debug!(
+                    target: "xylitol::tui",
+                    "host-synced model {model_id} resolved=> {}",
+                    found.as_ref().map(|m| m.id.clone()).unwrap_or_default()
+                );
+                if let Some(found) = found
+                    && let Ok(mut cached) = ctx.cached_model.lock()
+                {
+                    *cached = Some(found);
+                }
             }
             if ctx.skip_cold_replay.load(Ordering::SeqCst)
                 && XyRemoteDriver::<C>::is_cold_replay_tape(&agent_event)
@@ -724,6 +812,8 @@ where
             cached_gate_notice: self.cached_gate_notice.clone(),
             gate_notice_consumed: self.gate_notice_consumed.clone(),
             resources_dirty: self.resources_dirty.clone(),
+            cached_model: self.cached_model.clone(),
+            cached_models: self.cached_models.clone(),
             bash_run_sink: self.bash_run_sink.clone(),
             client_cwd: self.client_cwd.clone(),
             downlink_gen: self.downlink_gen.clone(),
@@ -2511,20 +2601,59 @@ mod tests {
             snap.mcp_bootstrap_complete,
             "fixture MCP bootstrap must settle: {snap:?}"
         );
-        // 再给 watch 循环一个 poll 间隔把最后一帧推出来。
-        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
-        // 非阻塞排空，收集期间所有 resources 帧。
-        let mut frames = Vec::new();
-        while let Ok(msg) = rx.try_recv() {
-            if let RpcMessage::ServerRequest {
-                method, payload, ..
-            } = msg
-                && method == "session/resources"
-            {
-                frames.push(payload);
+        // 非阻塞排空 + 轮询：等到出现「与已落定快照同形」那一帧（相对判据，
+        // 不靠固定 sleep 猜 poll 间隔；收集到的帧仍逐帧可查）。
+        let mut frames: Vec<Value> = Vec::new();
+        // 帧与「unary 同形」比较须剥离 settle 探测字段：mcp_bootstrap_complete
+        // 属 host 装配状态（测试 settle 判据），非 resources 帧语义——其翻转
+        // 不一定伴随推帧（产品契约：仅资源面变化才推）。其余字段必须逐字一致。
+        let strip = |v: &Value| -> Value {
+            let mut m = v.as_object().cloned().unwrap_or_default();
+            m.remove("mcp_bootstrap_complete");
+            Value::Object(m)
+        };
+        // 计时只在「曾收到帧」后启用：冷启动首帧可能晚于 snap 落定，若在
+        // 首帧前就按 5 秒收口会误判。收到帧后无进展才按窗口收口；
+        // 另设 30 秒绝对保险，防产品 watch 异常导致测试挂死。
+        let mut drain_deadline: Option<std::time::Instant> = None;
+        let hard_cap = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let before = frames.len();
+            while let Ok(msg) = rx.try_recv() {
+                if let RpcMessage::ServerRequest {
+                    method, payload, ..
+                } = msg
+                    && method == "session/resources"
+                {
+                    frames.push(payload);
+                }
             }
+            if std::time::Instant::now() >= hard_cap {
+                break;
+            }
+            // 静默收口：从「曾收到帧」起静默 5s 视为稳定（产品契约：资源面稳定后
+            // 不重复推帧）。mcp_bootstrap_complete 为 settle 探测字段、非资源面，
+            // 不要求其翻转伴随推帧——故后续「资源面一致帧」断言在其剔除后判断。
+            if frames.len() != before {
+                drain_deadline =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+            } else if let Some(dl) = drain_deadline
+                && std::time::Instant::now() >= dl
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
         }
+        let final_snap =
+            serde_json::to_value(host.loaded_resources_snapshot_for("res-watch").await)
+                .unwrap_or(Value::Null);
+        let resource_stable_matched = frames
+            .iter()
+            .any(|f| strip(&f["snapshot"]) == strip(&final_snap));
+        assert!(
+            resource_stable_matched,
+            "存在一帧的资源面与最终 loaded_resources unary 一致（剔除 mcp_bootstrap_complete 逐字同形）——帧={frames:?} final={final_snap:?}"
+        );
         assert!(
             !frames.is_empty(),
             "watch loop must push frames on snapshot change"
@@ -2533,11 +2662,6 @@ mod tests {
         assert_eq!(
             last["session_id"], "res-watch",
             "frame MUST carry the session id"
-        );
-        let expected = serde_json::to_value(&snap).unwrap_or(Value::Null);
-        assert_eq!(
-            last["snapshot"], expected,
-            "final frame snapshot MUST match the loaded_resources unary shape"
         );
         assert_eq!(
             slot.journal.lock().await.max_seq(),
@@ -2608,6 +2732,104 @@ mod tests {
                 || !snap.mcp_connected.is_empty()
                 || !snap.mcp_diag_short.is_empty(),
             "pre-subscribe snapshot MUST NOT be Idle-complete 0 connected: {snap:?}"
+        );
+    }
+
+    /// c2849 回归：槽位已被**另一写者**持有租约时，`arm_tool_freeze`（presented=None）
+    /// MUST 降级为无租约有界决议而非 `writer_conflict`——否则首轮门在竞态下永久停滞。
+    #[tokio::test]
+    async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
+        use crate::app::server::host::materialize_writer;
+
+        let host = HostState::for_test_with_mcp(vec![fixture_mcp("a")]).expect("host");
+        let slot = host.slot("conflict-sess").await;
+        materialize_writer(&host, &slot).await.expect("materialize");
+        // 由另一写者建立租约：先以一个 token 调用一次写 unary（set_model 走租约）。
+        let first = crate::app::server::host::handle_unary(
+            &host,
+            None,
+            "set_model",
+            serde_json::json!({ "provider": "", "model_id": "keep", "session_id": "conflict-sess" }),
+            None,
+        )
+        .await;
+        // （模型未知名返回 NotFound 无关紧要——租约在 take_writer_lease 已建立。）
+        assert!(
+            first.writer_token.is_some(),
+            "first write MUST establish + seal writer token"
+        );
+        // arm_tool_freeze 不带 token（客户端竞态：缓存未同步）→ 旧行为 conflict；
+        // 新行为 MUST 无租约降级、有界决议、返回冻结快照。
+        let result = crate::app::server::host::handle_unary(
+            &host,
+            None,
+            "arm_tool_freeze",
+            serde_json::json!({ "session_id": "conflict-sess" }),
+            None,
+        )
+        .await;
+        assert!(
+            result.ok,
+            "arm_tool_freeze under foreign lease MUST NOT conflict: {result:?}"
+        );
+        let snap: LoadedResourcesSnapshot =
+            serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
+        assert!(
+            snap.tools_table_frozen,
+            "lease-free arm MUST still resolve frozen: {snap:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
+        // c2847 回归：配置了但永远连不上的 MCP，`arm_tool_freeze` unary MUST NOT
+        // 无限等待——`ensure_tool_table_frozen` 在门时限内 detach 并冻结 armed 子集，
+        // 返回 frozen+complete 快照；否则 TUI 的 Assembling 门死锁（旧行为：立即
+        // 返回未冻结快照，客户端无限等待）。
+        use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
+        use crate::app::server::host::materialize_writer;
+
+        let hang = McpServerSpec {
+            name: "hang-forever".into(),
+            transport: McpTransportSpec::Stdio,
+            command: Some("sleep".into()),
+            args: Some(vec!["300".into()]),
+            url: None,
+            env: None,
+            headers: None,
+        };
+        let host = HostState::for_test_with_mcp(vec![hang]).expect("host");
+        let slot = host.slot("hang-freeze").await;
+        materialize_writer(&host, &slot).await.expect("materialize");
+
+        let t0 = std::time::Instant::now();
+        let result = crate::app::server::host::handle_unary(
+            &host,
+            None,
+            "arm_tool_freeze",
+            serde_json::json!({ "session_id": "hang-freeze" }),
+            None,
+        )
+        .await;
+        let elapsed = t0.elapsed();
+        assert_eq!(result.error.as_ref().map(|e| e.code.as_str()), None);
+        assert!(
+            result.ok,
+            "arm_tool_freeze unary MUST resolve within gate window: {result:?}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(30),
+            "MUST be bounded by the first-turn gate window, took {elapsed:?}"
+        );
+        let snap: LoadedResourcesSnapshot =
+            serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
+        assert!(
+            snap.tools_table_frozen,
+            "timeout MUST freeze armed subset (deadlock guard): {snap:?}"
+        );
+        assert!(
+            snap.mcp_bootstrap_complete,
+            "timeout MUST settle bootstrap (no eternal connecting): {snap:?}"
         );
     }
 

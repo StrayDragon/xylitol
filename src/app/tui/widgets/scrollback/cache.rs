@@ -38,7 +38,7 @@ impl ScrollbackPaintCache {
         // keep entry_misses / stream counters cumulative unless cleared
     }
 
-    #[cfg(test)]
+    // c2837: 测试探针无条件化
     pub fn clear_misses(&mut self) {
         self.entry_misses = 0;
     }

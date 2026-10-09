@@ -1,13 +1,16 @@
 //! wire v3(fory 二进制)上行处理 — c2834 tasks 2.1–2.4(spec r1902/r1904)。
 //!
 //! v3 是**纯编码层**:上行帧解码后转为 JSON-RPC 2.0 文本喂既有
-//! [`rpc_module::dispatch_raw`],方法表 / 幂等 / 写者租约 / 审批执行面零分叉
+//! `rpc_module::dispatch_raw`，方法表 / 幂等 / 写者租约 / 审批执行面零分叉
 //! (对拍纪律 spec r1908:两路径由同一 dispatch 与事件源支撑)。
-//! 下行 v3 事件通知由 mux 侧编码(见 `http.rs` binary 通道);应答侧除
-//! `host.describe` 外第一版以 `RawOk`(JSON 原文)承载,强 schema 应答
-//! union 随 SessionEntry 载荷映射(task 2.5b)逐步接入。
+//! 下行 v3 事件通知由 mux 侧编码(见 `http.rs` binary 通道);应答侧
+//! `host.describe` 与 task 2.5b 已接的三类(会话条目 / 会话树 / travel)走具名
+//! union,其余方法以 `RawOk`(JSON 原文)承载。
 
-use crate::app::server::rpc_module::{self, ProductRpc};
+use std::sync::Arc;
+
+use crate::app::server::host::HostState;
+use crate::app::server::rpc_module::{self};
 use crate::protocol::wire::v3::{
     ClientRequest, DescribeResult, Frame, Request, ResponsePayload, RpcError, ServerResponse,
     method_name,
@@ -80,16 +83,15 @@ fn v3_command_ptr(
 
 /// JSON-RPC 应答文本 → v3 `ServerResponse` 帧。
 ///
-/// `host.describe` 特判为 `DescribeResult`(承载 wire 格式能力,spec r1903);
+/// `host.describe` 特判为 `DescribeResult`(承载 wire 格式能力,spec r1911);
 /// 其余成功应答第一版为 `RawOk`(result JSON 原文)。产品错误码取
 /// `error.data.code`(缺失回落信封 message),对齐 `polish_rpc_json` 语义。
 fn response_from_raw(
     rpc_id: u64,
     method: &str,
-    raw: &str,
+    v: &serde_json::Value,
     token: Option<String>,
 ) -> Result<ServerResponse, String> {
-    let v: serde_json::Value = serde_json::from_str(raw).map_err(|e| format!("raw parse: {e}"))?;
     if let Some(err) = v.get("error") {
         let code = err
             .pointer("/data/code")
@@ -118,6 +120,8 @@ fn response_from_raw(
             protocol: describe.protocol,
             formats: describe.formats.iter().map(|s| s.to_string()).collect(),
         })
+    } else if let Some(typed) = typed_payload(method, &result) {
+        typed
     } else {
         ResponsePayload::RawOk(crate::protocol::wire::v3::RawOk {
             json: result.to_string(),
@@ -132,6 +136,42 @@ fn response_from_raw(
     })
 }
 
+/// 强 schema 应答（c2834 task 2.5b）：会话条目 / 会话树 / travel 三类载荷走
+/// 具名 union,拿到完整体积收益;其余方法（含未命中与解码降级）走 `RawOk`。
+///
+/// 降级是逐方法的：某方法内任一 unknown 变体就整份退回 `RawOk`，不拼半份
+/// 强 schema（对拍不断链，r1908）。
+fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePayload> {
+    use crate::protocol::session::{SessionEntry, SessionTreeTravel};
+    use crate::protocol::wire::registry;
+    use crate::protocol::wire::v3::mapping;
+
+    match method {
+        registry::METHOD_GET_MESSAGES | registry::METHOD_LOAD_SESSION_ENTRIES => {
+            let entries: Vec<SessionEntry> =
+                serde_json::from_value(result.get("entries")?.clone()).ok()?;
+            Some(ResponsePayload::MessagesResult(
+                mapping::messages_result_to_v3(&entries),
+            ))
+        }
+        // c2845: session_tree 刻意不走强 schema `TreeResult`。
+        //
+        // `SessionTreeNode.children` 在生成的 binary codec 中按树深逐层递归
+        // （debug 帧巨大）：历史上 ~185 层深树即可让 tokio worker 默认栈
+        // 溢出 abort（serve `/session-tree`）。该方法改走 `RawOk`——载荷与
+        // JSON 轨逐字面同构（`{"tree": [...]}`），由客户端 serde 解析（小帧、
+        // 深度安全），把「按深度递归」从传输路径整体移除。强 schema
+        // `TreeResult` / `v3_to_tree_nodes` 保留供兼容解码与旧端对拍。
+        registry::METHOD_TRAVEL_SESSION_TREE => {
+            let travel: SessionTreeTravel = serde_json::from_value(result.clone()).ok()?;
+            Some(ResponsePayload::TravelResult(mapping::travel_result_to_v3(
+                &travel,
+            )))
+        }
+        _ => None,
+    }
+}
+
 /// 处理一条 v3 上行帧,产出 v3 应答帧字节与本次应答携带的写者租约
 /// (POST 与 WS binary 共用)。
 ///
@@ -141,7 +181,7 @@ fn response_from_raw(
 /// `ClientRequest` 帧与未知变体按 envelope 错误处理(调用方决定 400 或
 /// 断连)。
 pub(crate) async fn handle_uplink(
-    module: &ProductRpc,
+    host: &Arc<HostState>,
     bytes: &[u8],
     conn_writer: Option<String>,
 ) -> Result<(Vec<u8>, Option<String>), String> {
@@ -151,10 +191,10 @@ pub(crate) async fn handle_uplink(
     };
     let (text, method) = to_jsonrpc_request(&req)?;
     let writer = req.writer_token.clone().or(conn_writer);
-    let (raw, token) = rpc_module::dispatch_raw(module, &text, req.rpc_id.to_string(), writer)
+    let (value, token) = rpc_module::dispatch_raw(host, &text, writer)
         .await
-        .map_err(|e| format!("dispatch: {e}"))?;
-    let resp = response_from_raw(req.rpc_id, &method, &raw, token.clone())?;
+        .ok_or_else(|| "illegal envelope".to_string())?;
+    let resp = response_from_raw(req.rpc_id, &method, &value, token.clone())?;
     let bytes = Frame::ServerResponse(resp)
         .to_bytes()
         .map_err(|e| format!("v3 encode: {e}"))?;
@@ -276,6 +316,11 @@ pub(crate) fn downlink_frame(
 mod tests {
     use super::*;
 
+    /// JSON-RPC 应答形状的测试夹具（与 dispatch 产出的 Value 同构）。
+    fn json_of(raw: &str) -> serde_json::Value {
+        serde_json::from_str(raw).expect("fixture json")
+    }
+
     fn steer_frame(rpc_id: u64) -> Vec<u8> {
         Frame::ClientRequest(ClientRequest {
             rpc_id,
@@ -333,11 +378,105 @@ mod tests {
     }
 
     #[test]
+    fn typed_payloads_cover_session_results() {
+        // task 2.5b:会话条目 / 会话树 / travel 走具名 union，其余仍走 RawOk。
+        let entries_json = r#"{"entries":[{"type":"message","id":"e1","parentId":null,"timestamp":7,"message":{"role":"user","content":"hi"}}]}"#;
+        let resp = response_from_raw(
+            1,
+            "get_messages",
+            &json_of(&format!(
+                r#"{{"jsonrpc":"2.0","id":1,"result":{entries_json}}}"#
+            )),
+            None,
+        )
+        .unwrap();
+        let bytes = Frame::ServerResponse(resp).to_bytes().unwrap();
+        let Frame::ServerResponse(decoded) = Frame::from_bytes(&bytes).unwrap() else {
+            unreachable!()
+        };
+        match decoded.payload.unwrap() {
+            ResponsePayload::MessagesResult(m) => {
+                assert_eq!(m.entries.len(), 1, "一条条目不应丢");
+                let back = crate::protocol::wire::v3::mapping::v3_to_entries(&m).unwrap();
+                assert_eq!(
+                    serde_json::to_value(&back).unwrap(),
+                    serde_json::from_str::<serde_json::Value>(entries_json)
+                        .unwrap()
+                        .get("entries")
+                        .cloned()
+                        .unwrap(),
+                    "v3 往返后的条目 JSON 与 JSON 轨逐字节同构"
+                );
+            }
+            other => panic!("expected MessagesResult, got {other:?}"),
+        }
+
+        // c2845: `session_tree` 刻意走 RawOk（深度安全）——所返回载荷与 JSON 轨
+        // 逐字面同构，MUST NOT 再用递归强 schema TreeResult（深树会爆 worker 栈）。
+        let tree = response_from_raw(
+            2,
+            "session_tree",
+            &json_of(r#"{"jsonrpc":"2.0","id":2,"result":{"tree":[{"entry":{"type":"message","id":"e1","parentId":null,"timestamp":7,"message":{"role":"user","content":"hi"}},"children":[],"label":null}]}}"#),
+            None,
+        )
+        .unwrap();
+        match tree.payload.unwrap() {
+            ResponsePayload::RawOk(raw) => {
+                let value: serde_json::Value =
+                    serde_json::from_str(&raw.json).expect("raw json parses");
+                let nodes = value
+                    .get("tree")
+                    .and_then(serde_json::Value::as_array)
+                    .expect("tree array");
+                assert_eq!(nodes.len(), 1);
+                // 兼容解码面：强 schema 仍可对旧端/旧帧往返（v3_to_tree_nodes）。
+                let typed = crate::protocol::wire::v3::mapping::tree_result_to_v3(
+                    &serde_json::from_value::<Vec<crate::protocol::session::SessionTreeNode>>(
+                        value.get("tree").cloned().unwrap(),
+                    )
+                    .unwrap(),
+                );
+                assert_eq!(typed.nodes.len(), 1);
+                assert_eq!(typed.nodes[0].children.len(), 0);
+            }
+            other => panic!("session_tree 应答 MUST 走 RawOk，实际 {other:?}"),
+        }
+
+        let travel = response_from_raw(
+            3,
+            "travel_session_tree",
+            &json_of(r#"{"jsonrpc":"2.0","id":3,"result":{"kind":"message_history","selected_id":"e1","leaf_id":null}}"#),
+            None,
+        )
+        .unwrap();
+        match travel.payload.unwrap() {
+            ResponsePayload::TravelResult(t) => {
+                assert_eq!(t.selected_id, "e1");
+                assert!(t.editor_text.is_none(), "缺位字段保持 None");
+            }
+            other => panic!("expected TravelResult, got {other:?}"),
+        }
+
+        // 未接强 schema 的方法保持 RawOk(JSON 原文)。
+        let raw = response_from_raw(
+            4,
+            "get_state",
+            &json_of(r#"{"jsonrpc":"2.0","id":4,"result":{"seq":1}}"#),
+            None,
+        )
+        .unwrap();
+        match raw.payload.unwrap() {
+            ResponsePayload::RawOk(raw) => assert_eq!(raw.json, r#"{"seq":1}"#),
+            other => panic!("expected RawOk, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn response_result_and_error_shapes() {
         let ok = response_from_raw(
             5,
             "get_state",
-            r#"{"jsonrpc":"2.0","id":5,"result":{"seq":1}}"#,
+            &json_of(r#"{"jsonrpc":"2.0","id":5,"result":{"seq":1}}"#),
             None,
         )
         .unwrap();
@@ -350,7 +489,7 @@ mod tests {
         let err = response_from_raw(
             6,
             "steer",
-            r#"{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"m","data":{"code":"unregistered_method"}}}"#,
+            &json_of(r#"{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"m","data":{"code":"unregistered_method"}}}"#),
             None,
         )
         .unwrap();
@@ -364,7 +503,7 @@ mod tests {
         let resp = response_from_raw(
             1,
             "host.describe",
-            r#"{"jsonrpc":"2.0","id":1,"result":{"protocol":2,"formats":["jsonrpc","fory-v3"]}}"#,
+            &json_of(r#"{"jsonrpc":"2.0","id":1,"result":{"protocol":2,"formats":["jsonrpc","fory-v3"]}}"#),
             None,
         )
         .unwrap();

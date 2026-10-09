@@ -1,6 +1,6 @@
-use crate::tests::bdd::fixtures::*;
-use crate::tests::bdd::helpers::*;
-use crate::tests::bdd::prelude::*;
+use crate::bdd::fixtures::*;
+use crate::bdd::helpers::*;
+use crate::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
 
 #[given("注册了匹配 {pat:string} 的 hook")]
@@ -21,17 +21,17 @@ fn _g_hook_returns(agent: &AgentState, json_str: String) {
         e.command = format!("echo '{}'", j.to_string().replace('\'', "'\\''"));
         let log = agent.ensure_wiring_hook_log();
         let outcome = match j.get("action").and_then(|a| a.as_str()) {
-            Some("block") => crate::XyHookOutcome::Blocked {
+            Some("block") => xylitol::XyHookOutcome::Blocked {
                 reason: j
                     .get("reason")
                     .and_then(|r| r.as_str())
                     .unwrap_or("blocked")
                     .to_string(),
             },
-            Some("modify") => crate::XyHookOutcome::Modified {
+            Some("modify") => xylitol::XyHookOutcome::Modified {
                 args: j.get("args").cloned().unwrap_or(j.clone()),
             },
-            _ => crate::XyHookOutcome::Allowed,
+            _ => xylitol::XyHookOutcome::Allowed,
         };
         *log.force.lock().unwrap_or_else(|err| err.into_inner()) = Some(outcome);
     }
@@ -80,13 +80,13 @@ fn _g_hook_merge_combo(agent: &AgentState) {
         command: "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into(),
         ..Default::default()
     };
-    let config = crate::infra::config::types::HooksConfig {
+    let config = xylitol::infra::config::types::HooksConfig {
         global: vec![global],
         project: vec![],
         user: vec![user.clone()],
     };
     // Production path: HookDispatcher::new runs three-tier merge_hooks.
-    let dispatcher = crate::infra::hooks::HookDispatcher::new(&config);
+    let dispatcher = xylitol::infra::hooks::HookDispatcher::new(&config);
     assert_eq!(
         dispatcher.hook_count(),
         1,
@@ -194,12 +194,12 @@ async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
 #[when("hook 被加载")]
 fn _w_hook_loaded(agent: &AgentState) {
     // Materialize merge the same way production does (HookDispatcher::new).
-    let config = crate::infra::config::types::HooksConfig {
+    let config = xylitol::infra::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         project: vec![],
         user: vec![],
     };
-    let dispatcher = crate::infra::hooks::HookDispatcher::new(&config);
+    let dispatcher = xylitol::infra::hooks::HookDispatcher::new(&config);
     assert!(
         !dispatcher.is_empty(),
         "expected at least one merged hook after load"
@@ -375,4 +375,40 @@ fn _t_hook_noop(agent: &AgentState) {
         agent.hook_result.borrow().as_ref().unwrap(),
         DispatchResult::Allowed
     ));
+}
+
+// ── c2835 后继：before_provider_headers 裸规则回填 ──────────────────
+
+#[when("provider 头构建后")]
+async fn _w_hook_before_headers(agent: &AgentState) {
+    dispatch_hook(
+        agent,
+        HookEvent::BeforeProviderHeaders {
+            headers: serde_json::json!({"authorization": "Bearer x", "x-y-litol-model": "deepseek"}),
+        },
+        HookPhase::Pre,
+    )
+    .await;
+}
+
+#[then("hook 收到待合并的请求头")]
+fn _t_hook_got_headers(agent: &AgentState) {
+    let stdin = agent
+        .last_hook_stdin
+        .borrow()
+        .clone()
+        .expect("before_provider_headers 应给出 stdin 上下文");
+    assert!(
+        stdin
+            .get("headers")
+            .is_some_and(|v| v.get("authorization").is_some()),
+        "头上下文 MUST 经 stdin 交出，实得 {stdin}"
+    );
+    assert!(
+        matches!(
+            agent.hook_result.borrow().as_ref(),
+            Some(DispatchResult::Allowed)
+        ),
+        "allow 脚本 MUST 收在 Pre 阶段并进入后续 auth 头合并"
+    );
 }

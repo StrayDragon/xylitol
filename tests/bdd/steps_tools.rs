@@ -1,7 +1,12 @@
-use crate::tests::bdd::fixtures::*;
-use crate::tests::bdd::helpers::*;
-use crate::tests::bdd::prelude::*;
+use crate::bdd::fixtures::*;
+use crate::bdd::helpers::*;
+use crate::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
+
+// 结构探针（死代码 allow / 执行类命名）。
+thread_local! {
+    pub(crate) static TOOL_PROBE: RefCell<Option<(usize, usize)>> = const { RefCell::new(None) };
+}
 
 #[when("调用edit工具 路径 {path:string} 将 {old:string} 替换为 {new:string}")]
 async fn _w_edit_single(ws: &Workspace, path: String, old: String, new: String) {
@@ -661,7 +666,7 @@ fn t_tools_txt_no_img(ws: &Workspace) {
 
 #[given("工具注册表含全部 9 个工具")]
 fn g_tools_all_nine(_ws: &Workspace) {
-    let tools = crate::infra::tools::default_tools();
+    let tools = xylitol::infra::tools::default_tools();
     assert_eq!(tools.len(), 9);
     for n in ["todo_rewrite", "todo_update"] {
         assert!(tools.iter().any(|t| t.name() == n), "missing builtin {n}");
@@ -747,7 +752,7 @@ async fn w_tools_smoke_all(ws: &Workspace) {
         .collect();
     // One default_tools() so todo_* share the same MemoryTodoGateway.
     {
-        let tools = crate::infra::tools::default_tools();
+        let tools = xylitol::infra::tools::default_tools();
         let by = |n: &str| tools.iter().find(|t| t.name() == n).cloned().unwrap();
         if let Err(e) = by("todo_rewrite")
             .execute(
@@ -857,7 +862,7 @@ fn t_tools_missing_arg(ws: &Workspace) {
 fn g_tools_invalid_args(ws: &Workspace) {
     ws.init();
     ws.last_result.replace(Some(Err(XyDriverError::from(
-        crate::protocol::error::XyToolError::InvalidArgs("bad args".into()).to_string(),
+        xylitol::protocol::error::XyToolError::InvalidArgs("bad args".into()).to_string(),
     ))));
 }
 
@@ -936,12 +941,12 @@ fn t_tools_cancelled(ws: &Workspace) {
 
 #[given("工具集含全部内置工具")]
 fn g_tools_registry(_ws: &Workspace) {
-    assert_eq!(crate::infra::tools::default_tools().len(), 9);
+    assert_eq!(xylitol::infra::tools::default_tools().len(), 9);
 }
 
 #[when("列举工具名")]
 fn w_tools_list_names(ws: &Workspace) {
-    let names: Vec<String> = crate::infra::tools::default_tools()
+    let names: Vec<String> = xylitol::infra::tools::default_tools()
         .iter()
         .map(|t| t.name().to_string())
         .collect();
@@ -978,7 +983,7 @@ fn t_tools_infra_ok(ws: &Workspace) {
 #[given("工具集含 read 与 grep")]
 fn g_tools_toolset_base() {
     let set = ToolSet::from_iter(
-        crate::infra::tools::default_tools()
+        xylitol::infra::tools::default_tools()
             .into_iter()
             .filter(|t| matches!(t.name(), "read" | "grep")),
     );
@@ -995,7 +1000,7 @@ fn w_tools_toolset_ops(_ws: &Workspace) {
         .with(|b| b.borrow_mut().take())
         .expect("given must build base toolset");
     let set = base
-        .plus(Arc::new(BashTool::default()) as Arc<dyn crate::protocol::ports::XyTool>)
+        .plus(Arc::new(BashTool::default()) as Arc<dyn xylitol::protocol::ports::XyTool>)
         .remove("grep");
     let names: Vec<String> = set.iter().map(|t| t.name().to_string()).collect();
     tools_toolset::NAMES.with(|n| n.replace(names));
@@ -1010,8 +1015,8 @@ fn t_tools_toolset_final(_ws: &Workspace) {
 }
 
 mod tools_toolset {
-    use crate::agent::tools::ToolSet;
     use std::cell::RefCell;
+    use xylitol::agent::tools::ToolSet;
     thread_local! {
         pub static NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
         pub static BASE: RefCell<Option<ToolSet>> = const { RefCell::new(None) };
@@ -1088,4 +1093,69 @@ fn _t_bash_output_is_session_workspace(ws: &Workspace) {
 mod _accum_mode {
     use std::cell::Cell;
     thread_local! { pub static LARGE: Cell<bool> = const { Cell::new(false) }; }
+}
+
+// ── c2835 后继：结构类裸规则（crate 根 allow / 执行类命名）──────────
+
+#[when("读取 crate 根的死代码允许写法")]
+pub(crate) fn w_read_dead_code_allows(_ws: &Workspace) {
+    let mut global = 0usize;
+    let mut item_level = 0usize;
+    let mut stack = vec![std::path::PathBuf::from("src")];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            for line in text.lines() {
+                let line = line.trim_start();
+                if line.starts_with("#![allow(dead_code)]") {
+                    global += 1;
+                } else if line.starts_with("#[allow(dead_code)]") {
+                    item_level += 1;
+                }
+            }
+        }
+    }
+    TOOL_PROBE.with(|p| {
+        *p.borrow_mut() = Some((global, item_level));
+    });
+}
+
+#[then("无全局 allow 且单项抑制带理由")]
+pub(crate) fn t_dead_code_allows_scoped(_ws: &Workspace) {
+    let (global, item_level) = TOOL_PROBE.with(|p| *p.borrow()).expect("探针已跑");
+    assert_eq!(global, 0, "crate 根 MUST NOT 用全局 #![allow(dead_code)]");
+    assert!(
+        item_level >= 1,
+        "单项抑制应存在且带理由注释（item-level allow）"
+    );
+}
+
+#[when("读取工具执行类命名")]
+pub(crate) fn w_read_execution_mode_name(_ws: &Workspace) {
+    let text = std::fs::read_to_string("src/protocol/tools.rs")
+        .or_else(|_| std::fs::read_to_string("src/protocol/mod.rs"))
+        .expect("protocol 工具边界可读");
+    let named = text.contains("XyToolExecutionMode");
+    TOOL_PROBE.with(|p| {
+        *p.borrow_mut() = Some((named as usize, 0));
+    });
+}
+
+#[then("执行类类型为 XyToolExecutionMode")]
+pub(crate) fn t_execution_mode_xy_prefixed(_ws: &Workspace) {
+    let (named, _) = TOOL_PROBE.with(|p| *p.borrow()).expect("探针已跑");
+    assert_eq!(named, 1, "工具执行类 MUST 以 XyToolExecutionMode 命名");
 }

@@ -1,7 +1,7 @@
 //! app-tui-host c2826 specs-compact 场景绑定。
 
-use crate::tests::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
-use crate::tests::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
+use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
+use crate::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
 use rstest_bdd_macros::scenario;
 
 #[scenario(

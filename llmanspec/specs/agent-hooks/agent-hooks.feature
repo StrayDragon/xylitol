@@ -33,10 +33,20 @@
   规则: hook 事件
     Hook 系统 MUST 支持约定事件名，含：tool_call、tool_result、context、before_provider_headers、before_provider_request、after_provider_response、agent_start、agent_end、agent_settled、turn_start、turn_end、message_start、message_end、session_start、session_shutdown，及 HookEvent 中已有 xylitol 专属事件。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+    场景: convention-event-names-dispatch
+      假如 注册了匹配 "pre.tool_call" 的 hook
+      当 任何工具即将执行
+      那么 hook 脚本被调用
+
   @req:r1008
   规则: hook 匹配
     Hook 分发器 MUST 按 event_type.phase.qualifier 模式匹配 hooks（如 pre.tool_call.bash 匹配 bash 工具 pre 阶段调用）。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+    场景: qualifier-narrows-dispatch
+      假如 注册了匹配 "pre.tool_call.bash" 的 hook
+      当 bash 工具以 "echo 1" 调用
+      那么 hook 脚本被调用
+
   @req:r1009
   规则: hook 动作
     Hook 脚本 MUST 返回 JSON，action 为 allow/block/modify；block 停止链，modify 更新后续 hooks 的 args。
@@ -57,6 +67,11 @@
   规则: hook 环境
     Hook 脚本 MUST 经 stdin 接收事件上下文 JSON，并继承配置的环境变量。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+    场景: stdin-receives-event-json
+      假如 注册了匹配 before_provider_request 的 hook 且 provider 为 deepseek
+      当 provider 请求发送前
+      那么 hook 收到请求 payload
+
   @req:r1012
   规则: before_provider_request
     before_provider_request hook MUST 在 provider JSON body 构建后、HTTP 发送前运行；Modify.args MUST 替换请求体（如 cache_control）。
@@ -85,27 +100,71 @@
   规则: before_provider_headers
     before_provider_headers hook MUST 在默认 auth 头构建后、发送前运行；Modify.args.headers 对象 MUST 合并或替换请求头。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+    场景: provider-headers-before-send
+      假如 注册了匹配 "before_provider_headers" 的 hook
+      当 provider 头构建后
+      那么 hook 收到待合并的请求头
+
   @req:r1002
   规则: provider hooks 接线
     注入 HookDispatcher 时，OpenAI Responses、OpenAI Completions 与 Anthropic Messages adapter MUST 调用三个 provider hooks；空 dispatcher MUST 为零开销 no-op。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+    场景: provider-hooks-empty-dispatch-noop
+      假如 没有注册任何 hook
+      当 dispatch hook
+      那么 dispatch 是零开销 no-op
+
   @req:r1003
   规则: 脚本桥接 ReAct
     Agent 附加 HookDispatcher 时，ReAct MUST 除 AgentHooks 外为 tool_call（pre）、tool_result（post）、context（pre model call）分发脚本 hooks。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+    场景: react-script-bridge-tool-call
+      假如 注册了匹配 "tool_call" 的 hook
+      当 执行操作 "执行 bash"
+      那么 hook 被调用且上下文含键 command
+
   @req:r1004
   规则: 生命周期脚本 hooks
     附加 HookDispatcher 时，agent_start/agent_end/turn_start/turn_end/message_start/message_end MUST 与对应 XyEvent 发射一并分发（仅观察；fail-open）。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+    场景: lifecycle-hooks-settle-round
+      假如 注册了匹配 "turn_end" 的 hook
+      假如 mock 模型先 tool 后无 tool
+      当 运行 AgentRuntime 并收集事件
+      那么 先执行工具再结束且无 adk 类型
+
   @req:r1005
   规则: 模型与 thinking 选择接线
     附加 XyHookBus 时，Command::SetModel / CycleModel 执行器 MUST 在成功变更后分发 model_select；Command::SetThinkingLevel 执行器 MUST 分发 thinking_level_select；二者 MUST 为仅观察 fail-open；MUST NOT 依赖仅 TUI 路径。
     # verified-by: llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature
+    场景: model-and-thinking-dispatch
+      假如 注册了匹配 "model_select" 的 hook
+      当 执行操作 "选择模型 fake"
+      那么 hook 被调用且上下文含键 model
+      假如 注册了匹配 "thinking_level_select" 的 hook
+      当 执行操作 "设置思考级别 high"
+      那么 hook 被调用且上下文含键 level
+
   @req:r1006
   规则: 会话树切换 hooks
     附加 XyHookBus 时，SessionTree / TravelSessionTree 执行器 MUST 分发 session_before_tree（Blocked 可取消）与成功时 session_tree；SwitchSession 执行器 MUST 分发 session_before_switch（Blocked 可取消）与成功时对 prior session 的 session_shutdown；process-quit shutdown MAY 直至库拆卸缝存在。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+    场景: tree-and-switch-before-block
+      假如 注册了匹配 session_before_tree 的 hook 且返回 block 树被拒绝
+      当 执行操作 "打开会话树"
+      那么 hook 被调用且上下文含键 kind
+      并且 操作失败原因包含 "树被拒绝"
+
   @req:r1007
   规则: user_bash 于 execute_bash
     附加 XyHookBus 时，Command::Bash 执行器 MUST 在运行命令前分发 user_bash；Blocked MUST 阻止执行并 surfaced 错误。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；分支内只改 ReAct 批量测试的时间判据（固定 sleep → 轮询到目标帧 / 每模式取最小）。（2026-09-29）
+    场景: user-bash-blocks-run
+      假如 注册了匹配 user_bash 的 hook 且返回 block bash被拒绝
+      当 执行操作 "执行 bash"
+      那么 操作失败原因包含 "bash被拒绝"
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
+
+# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

@@ -32,6 +32,10 @@
   @req:r1199
   规则: extensible-commands
     命令面 MUST 允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。
+
+    场景: mvp-needs-model-and-exit
+      当 在产品命令模块解析 "/model" 与 "/exit"
+      那么 分别得到模型与退出待发命令
     # verified-by: src/app/tui/commands.rs
   @req:r1201
   规则: debug-scene-slash
@@ -54,6 +58,10 @@
   @req:r1203
   规则: commands-module-growth
     产品 TUI slash/bang 解析 MUST 继续收口于 commands 模块（可多文件），执行仍经 pending + drain_pending → protocol::Command / dispatch 或 Driver；SlashCommandSource 补全清单 MUST 与产品命令 SSOT（及 GetCommands 内建子集）同源；MUST NOT 在 UiRoot/widgets 内散落第二套 slash 语义；MUST NOT 维护与 agent 短名表分叉的第三套产品名表。
+
+    场景: single-slash-parser-in-commands-module
+      当 在产品命令模块解析 "/tree" 与 "/session-tree"
+      那么 仅 session-tree 得到待发命令且废弃短名不解析
     # verified-by: src/app/tui/layout/slash_catalog.rs
   @req:r1204
   规则: slash-session-io
@@ -145,3 +153,7 @@
       那么 模型列表 effect MUST 在 bang 结束前挂载生效
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
+
+# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

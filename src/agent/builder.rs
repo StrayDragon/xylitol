@@ -1,11 +1,11 @@
-//! Agent builder — construct-time assembly for [`AgentRuntime`].
+//! Agent builder — construct-time assembly for [`crate::agent::runtime::AgentRuntime`].
 //!
 //! [`AgentBuilder`] takes only the minimal runtime-protocol ports in its
 //! constructor. Every other capability is attached via consuming builder
 //! methods, with safe defaults (empty tool set, no optional surface I/O). This keeps the agent layer free of concrete `infra/` types.
 //!
 //! [`AgentBuilder::build_ports`] yields a clonable [`RuntimePorts`] baseline;
-//! `RuntimePorts::materialize_runtime` materializes one [`AgentRuntime`] from it.
+//! `RuntimePorts::materialize_runtime` materializes one [`crate::agent::runtime::AgentRuntime`] from it.
 
 use std::sync::Arc;
 
@@ -18,7 +18,7 @@ use crate::protocol::ports::{
     XyBatchMode, XyEventSink, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
 };
 
-/// Builder for [`crate::agent::AgentCapabilities`] / [`crate::agent::AgentRuntime`].
+/// Builder for [`crate::agent::capabilities::AgentCapabilities`] / [`crate::agent::runtime::AgentRuntime`].
 pub struct AgentBuilder {
     // Required ports for a minimal conversation agent.
     model_registry: ModelRegistry,

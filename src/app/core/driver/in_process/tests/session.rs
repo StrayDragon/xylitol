@@ -472,17 +472,18 @@ async fn concurrent_run_rejects_second_with_busy() {
 }
 
 #[tokio::test]
-async fn reader_driver_switch_session_does_not_stomp_obs_slot() {
-    // otel25 / c2610: host reader materialization binds the target session on its
-    // own runtime; the active obs identity must stay the writer's session.
+async fn reader_switch_session_never_touches_obs_slot() {
+    // c2843 Phase B: materialized obs identity is runtime-owned — bind/switch no
+    // longer write the process obs slot at all, so readers structurally cannot
+    // stomp the default identity (otel25's obs_slot_writes gate is gone).
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let target = "reader-target";
     store.create(target, Some("."), None).await.unwrap();
 
+    xylitol_ai_bridge::provider::clear_obs_session();
     let (mut reader, _scope) = build_test_driver(store.clone()).await;
     let writer_identity = xylitol_ai_bridge::provider::obs_session_context();
-    reader.agent.set_obs_slot_writes(false);
 
     reader.switch_session(target).await.unwrap();
 
@@ -490,6 +491,6 @@ async fn reader_driver_switch_session_does_not_stomp_obs_slot() {
     assert_eq!(
         xylitol_ai_bridge::provider::obs_session_context(),
         writer_identity,
-        "reader materialization must not stomp the obs identity"
+        "switch must not write the process obs slot (runtime-owned identity)"
     );
 }

@@ -16,7 +16,7 @@ use salvo::websocket::{Message, WebSocket, WebSocketUpgrade};
 use tokio::sync::mpsc;
 
 use crate::app::server::host::{HostState, MUX_CHAN_CAP};
-use crate::app::server::rpc_module::{self, ProductRpc};
+use crate::app::server::rpc_module::{self};
 use crate::protocol::RpcMessage;
 use crate::protocol::wire::codec;
 
@@ -36,7 +36,6 @@ pub enum Phase {
 pub struct Gateway {
     phase: AtomicU8,
     host: OnceLock<Arc<HostState>>,
-    rpc: OnceLock<ProductRpc>,
 }
 
 impl Gateway {
@@ -48,13 +47,11 @@ impl Gateway {
         Arc::new(Self {
             phase: AtomicU8::new(Self::STARTING),
             host: OnceLock::new(),
-            rpc: OnceLock::new(),
         })
     }
 
     /// Fill the host and flip to ready (idempotent fill: first writer wins).
     pub fn set_host(&self, host: Arc<HostState>) {
-        let _ = self.rpc.set(rpc_module::build_rpc_module(host.clone()));
         let _ = self.host.set(host);
         self.phase.store(Self::READY, Ordering::SeqCst);
     }
@@ -73,10 +70,6 @@ impl Gateway {
 
     pub fn host(&self) -> Option<Arc<HostState>> {
         self.host.get().cloned()
-    }
-
-    pub(crate) fn rpc_module(&self) -> Option<&ProductRpc> {
-        self.rpc.get()
     }
 }
 
@@ -208,7 +201,7 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     };
-    let Some(module) = gateway.rpc_module().cloned() else {
+    let Some(host) = gateway.host() else {
         res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     };
@@ -225,7 +218,7 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         }
     };
     if super::wire_v3::looks_like_fory_v3(bytes) {
-        match super::wire_v3::handle_uplink(&module, bytes, writer).await {
+        match super::wire_v3::handle_uplink(&host, bytes, writer).await {
             Ok((frame, _token)) => {
                 res.status_code(StatusCode::OK);
                 let _ = res.add_header("Content-Type", super::wire_v3::CONTENT_TYPE, true);
@@ -238,36 +231,19 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             }
         }
     }
-    let v: serde_json::Value = match serde_json::from_slice(bytes) {
-        Ok(v) => v,
-        Err(_) => {
-            illegal_envelope(res);
-            return;
-        }
-    };
-    if v.get("jsonrpc").and_then(serde_json::Value::as_str) != Some("2.0") {
-        illegal_envelope(res);
-        return;
-    }
-    let rpc_id = match v.get("id") {
-        Some(serde_json::Value::String(s)) => s.clone(),
-        Some(serde_json::Value::Number(n)) => n.to_string(),
-        _ => String::new(),
-    };
+    // 载体预检单一判据点在 dispatch_raw（载体版本 / method / 体量都在这里判）。
     let Ok(text) = std::str::from_utf8(bytes) else {
         illegal_envelope(res);
         return;
     };
-    match rpc_module::dispatch_raw(&module, text, rpc_id, writer).await {
-        Ok((raw, token)) => polish_rpc_http(res, &raw, token),
-        Err(_) => illegal_envelope(res),
+    match rpc_module::dispatch_raw(&host, text, writer).await {
+        Some((raw, token)) => polish_rpc_http(res, raw, token),
+        None => illegal_envelope(res),
     }
 }
 
 /// Fill `-32601` product `data.code`. Defensively strip a leaked `result.writerToken`.
-fn polish_rpc_json(raw: &str) -> (serde_json::Value, Option<String>) {
-    let mut v: serde_json::Value =
-        serde_json::from_str(raw).unwrap_or_else(|_| serde_json::json!({}));
+fn polish_rpc_json(mut v: serde_json::Value) -> (serde_json::Value, Option<String>) {
     let method_not_found = v
         .get("error")
         .and_then(|e| e.get("code"))
@@ -305,8 +281,8 @@ fn polish_rpc_json(raw: &str) -> (serde_json::Value, Option<String>) {
 }
 
 /// Stamp `X-Writer-Token` from the lease side-channel and fill `-32601` product
-/// `data.code`. jsonrpsee owns method dispatch; HTTP leftovers stay here.
-fn polish_rpc_http(res: &mut Response, raw: &str, token: Option<String>) {
+/// `data.code`. Dispatch owns the method table; HTTP leftovers stay here.
+fn polish_rpc_http(res: &mut Response, raw: serde_json::Value, token: Option<String>) {
     let (v, leaked) = polish_rpc_json(raw);
     if let Some(tok) = token.or(leaked) {
         let _ = res.add_header("X-Writer-Token", tok, true);
@@ -334,7 +310,6 @@ async fn mux_upgrade(
     let Some(host) = gateway.host() else {
         return Err(StatusError::internal_server_error());
     };
-    let module = gateway.rpc_module().cloned();
     let writer = req
         .headers()
         .get("X-Writer-Token")
@@ -342,7 +317,7 @@ async fn mux_upgrade(
         .map(str::to_string);
     WebSocketUpgrade::new()
         .check_origin(mux_origin_allowed)
-        .upgrade(req, res, move |ws| handle_mux(ws, host, module, writer))
+        .upgrade(req, res, move |ws| handle_mux(ws, host, writer))
         .await
 }
 
@@ -362,12 +337,7 @@ fn mux_origin_allowed(origin: Option<&str>) -> bool {
     }
 }
 
-async fn handle_mux(
-    ws: WebSocket,
-    host: Arc<HostState>,
-    module: Option<ProductRpc>,
-    mut writer: Option<String>,
-) {
+async fn handle_mux(ws: WebSocket, host: Arc<HostState>, mut writer: Option<String>) {
     use futures::SinkExt;
     let (mut sink, mut stream) = ws.split();
     // Handshake is host.describe result, not a mux ServerHello frame (c2825).
@@ -433,11 +403,10 @@ async fn handle_mux(
                 break;
             }
             if msg.is_binary() {
-                // wire v3 uplink (c2834 spec r1902): binary frames are the
-                // fory-encoded ClientRequest path; JSON text path untouched.
+                // 产品上行（c2834 spec r1902）：binary 帧 = fory 编码的 ClientRequest；
+                // JSON 文本帧是同 dispatch 的调试通道。
                 v3_mode.store(true, std::sync::atomic::Ordering::Relaxed);
-                let Some(module) = module.as_ref() else { break };
-                match super::wire_v3::handle_uplink(module, msg.as_bytes(), writer.clone()).await {
+                match super::wire_v3::handle_uplink(&host, msg.as_bytes(), writer.clone()).await {
                     Ok((frame, token)) => {
                         // 连接本地租约(r1793 语义在 v3 通路的对齐):应答
                         // 携带新 mint token 时更新,同连接后续上行据此放行。
@@ -458,28 +427,13 @@ async fn handle_mux(
             let Ok(text) = msg.as_str() else {
                 break;
             };
-            let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
-                break;
-            };
-            if v.get("jsonrpc").and_then(serde_json::Value::as_str) != Some("2.0")
-                || v.get("method")
-                    .and_then(serde_json::Value::as_str)
-                    .is_none()
-            {
-                break;
-            }
-            let Some(module) = module.as_ref() else {
-                break;
-            };
-            let rpc_id = match v.get("id") {
-                Some(serde_json::Value::String(s)) => s.clone(),
-                Some(serde_json::Value::Number(n)) => n.to_string(),
-                _ => String::new(),
-            };
-            let has_id = v.get("id").is_some() && !v.get("id").is_some_and(|id| id.is_null());
-            match rpc_module::dispatch_raw(module, text, rpc_id, writer.clone()).await {
-                Ok((raw, token)) if has_id => {
-                    let (mut body, leaked) = polish_rpc_json(&raw);
+            // 只有带非null id 的请求才需要同步应答（通知与下行同形）。
+            let has_id = serde_json::from_str::<serde_json::Value>(text)
+                .ok()
+                .is_some_and(|v| v.get("id").is_some_and(|id| !id.is_null()));
+            match rpc_module::dispatch_raw(&host, text, writer.clone()).await {
+                Some((raw, token)) if has_id => {
+                    let (mut body, leaked) = polish_rpc_json(raw);
                     if let Some(tok) = token.or(leaked) {
                         writer = Some(tok.clone());
                         if let Some(obj) = body.as_object_mut() {
@@ -490,8 +444,8 @@ async fn handle_mux(
                         break;
                     }
                 }
-                Ok(_) => {}
-                Err(_) => break,
+                Some(_) => {}
+                None => break,
             }
         }
     };
@@ -521,7 +475,7 @@ mod tests {
         assert!(body.contains("ok"), "{body}");
     }
 
-    /// c2834 spec r1902/r1903:v3 binary 上行经 POST /rpc 可服务,应答为
+    /// c2834 spec r1902/r1911:v3 binary 上行经 POST /rpc 可服务,应答为
     /// fory 帧;describe 携带 wire 格式能力集合(双轨期 JSON 路径并存)。
     #[tokio::test]
     async fn post_binary_describe_v3() {

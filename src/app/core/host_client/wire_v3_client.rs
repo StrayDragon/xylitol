@@ -23,10 +23,6 @@ use crate::protocol::wire::{
 /// 实验开关 env(task 3.3):`XYLITOL_WIRE_V3=1|true` 开;其余值 / 未设 = 关。
 pub(super) const WIRE_V3_ENV: &str = "XYLITOL_WIRE_V3";
 
-/// 非 registry 的命令方法(approve_tool / answer_question 是反向 RPC 应答,
-/// quit 为客户端本地命令;v3 侧均有 Command 判别值,经 tag 注入解析)。
-const NON_REGISTRY_COMMANDS: &[&str] = &["approve_tool", "answer_question", "quit"];
-
 /// 读进程 env 决定 v3 是否开启。
 ///
 /// 库默认关(测试/嵌入稳定);task 5.1 的产品面切换在 TUI attach 入口
@@ -71,27 +67,28 @@ fn method_discriminant(method: &str) -> Option<v3::Method> {
 /// unary(method, params)→ v3 上行 `ClientRequest`。
 ///
 /// - `host.describe` → [`Request::Describe`](承载格式能力协商);
-/// - RAW 方法(registry 非 command_backed 行:arm_tool_freeze / persist_trust)
-///   → [`Request::Raw`],payload JSON 原文过线;
-/// - 其余(含非 registry 的 approve_tool / answer_question / quit)经
-///   `registry::parse_command` 注入 serde tag 解析为 [`crate::protocol::Command`],
-///   再 `mapping::command_to_v3` 包 [`Request::Command`]。
+/// - 其余全部方法 → [`Request::Raw`],payload JSON 原文过线(c2842)。
+///
+/// v3 上行是**透明信封**:除 describe 外一律 RAW 原文过线,与 JSON 轨
+/// (params 透传)逐字节同语义。原因:remote driver 的 `unary` 经
+/// `with_session` 给每个命令注入 `session_id`/`cwd` 及 run 上下文字段
+/// (model_id / thinking_level),typed `Command` schema 只载各命令业务字段
+/// 而不含这些注入字段——压缩进 typed 变体会把命令从已订阅会话上脱锚,
+/// 服务端回落 fallback session(无订阅者):run 事件丢失、TUI 挂死;
+/// set_model/get_state/steer 等打错槽(writer_conflict / 状态侧写)。
+/// JSON 轨 params 透传一直正确,RAW 使 v3 恢复「纯编码层、语义不变」契约。
+/// 服务端仍保留 typed `Command` 解码(v3_to_command)以兼容旧端 / Flutter
+/// POC 等仍发 typed 帧的对端。
 fn build_request(method: &str, payload: &Value) -> Result<Request, String> {
     if method == registry::METHOD_HOST_DESCRIBE {
         return Ok(Request::Describe(Describe {}));
     }
-    let raw_family = !NON_REGISTRY_COMMANDS.contains(&method)
-        && registry::lookup(method).is_some_and(|entry| !entry.command_backed);
-    if raw_family {
-        let discriminant = method_discriminant(method)
-            .ok_or_else(|| format!("RAW method {method} has no v3 Method discriminant"))?;
-        return Ok(Request::Raw(Raw {
-            method: discriminant,
-            json: payload.to_string(),
-        }));
-    }
-    let cmd = registry::parse_command(method, payload)?;
-    Ok(Request::Command(v3_mapping::command_to_v3(&cmd)))
+    let discriminant = method_discriminant(method)
+        .ok_or_else(|| format!("RAW method {method} has no v3 Method discriminant"))?;
+    Ok(Request::Raw(Raw {
+        method: discriminant,
+        json: payload.to_string(),
+    }))
 }
 
 /// v3 上行帧字节(WS binary 帧)。
@@ -175,6 +172,25 @@ pub(super) fn server_response_to_result(resp: &ServerResponse) -> RpcResult {
 
 /// 成功载荷 → JSON value(`RawOk` 原文解析;describe 还原为
 /// `HostDescribeValue` 形状——与 JSON 轨 describe result 同构)。
+///
+/// c2846: 深度安全地解析 RawOk 原文。
+///
+/// `session_tree` 深树 JSON 可超过 serde_json 默认 **128 层**递归解析上限
+/// （实机深会话 188 层），默认 `from_str` 会 `recursion limit exceeded` 并被
+/// 调用方静默降级为 `Null`（下游再报 `invalid type: null`）。服务端序列化
+/// 无此上限（仅在反序列化侧），故对 RAW 原文一律禁用递归上限——帧内存天然
+/// 小（内容就是一个字符串），深度变化只来自树本身。失败仍按 r1907 退化语义
+/// 降级 `Null`，不拼半份形状。
+fn parse_raw_json(json: &str) -> Value {
+    use serde::Deserialize as _;
+    let mut de = serde_json::Deserializer::from_str(json);
+    de.disable_recursion_limit();
+    Value::deserialize(&mut de).unwrap_or(Value::Null)
+}
+
+/// 强 schema 应答(task 2.5b)以领域条目为中间物回到 serde,因此与
+/// `host::outcome_to_value` 的 JSON 形状逐字节同构(同一组 Serialize)。
+/// unknown 变体(r1907)使整份载荷降级 `Null`,不拼半份形状。
 fn payload_value(payload: Option<&ResponsePayload>) -> Value {
     match payload {
         Some(ResponsePayload::DescribeResult(d)) => serde_json::to_value(HostDescribeValue {
@@ -182,10 +198,26 @@ fn payload_value(payload: Option<&ResponsePayload>) -> Value {
             formats: d.formats.clone(),
         })
         .unwrap_or(Value::Null),
-        // 第一版服务端对非 describe 应答一律 RawOk(JSON 原文)。
-        Some(ResponsePayload::RawOk(raw)) => serde_json::from_str(&raw.json).unwrap_or(Value::Null),
-        // 防御:SubscribeResult 与 JSON 轨 subscribe result 同构;强 schema
-        // 应答 union(task 2.5b)落地前其余变体降级 Null,不断链。
+        // 会话条目与树:强 schema union 还原为 `{"entries": […]}` / `{"tree": […]}`。
+        Some(ResponsePayload::MessagesResult(m)) => match v3_mapping::v3_to_entries(m) {
+            Some(entries) => {
+                serde_json::json!({ "entries": serde_json::to_value(entries).unwrap_or(Value::Null) })
+            }
+            None => Value::Null,
+        },
+        Some(ResponsePayload::TreeResult(t)) => match v3_mapping::v3_to_tree_nodes(t) {
+            Some(nodes) => {
+                serde_json::json!({ "tree": serde_json::to_value(nodes).unwrap_or(Value::Null) })
+            }
+            None => Value::Null,
+        },
+        // travel 结果是平对象(闭集枚举),与 JSON 轨 `to_value(travel)` 一致。
+        Some(ResponsePayload::TravelResult(t)) => {
+            serde_json::to_value(v3_mapping::v3_to_travel_result(t)).unwrap_or(Value::Null)
+        }
+        // 其余未接强 schema 的方法一律 RawOk(JSON 原文)。
+        Some(ResponsePayload::RawOk(raw)) => parse_raw_json(&raw.json),
+        // 防御:SubscribeResult 与 JSON 轨 subscribe result 同构，不断链。
         Some(ResponsePayload::SubscribeResult(s)) => {
             serde_json::to_value(SessionSubscribedPayload {
                 session_id: s.session_id.clone(),
@@ -338,7 +370,9 @@ mod tests {
             other => panic!("expected Raw, got {other:?}"),
         }
 
-        // 手搓载荷(无 type tag)经 tag 注入仍可构帧。
+        // 手搓载荷(无 type tag)经 tag 注入仍可构帧;subscribe 亦走 RAW(c2842),
+        // 注入的 cwd 必须保留(typed Subscribe 无 cwd 会让服务端在错误 workspace
+        // 装配写者)。
         let bytes = client_request_bytes(
             "9",
             "subscribe",
@@ -350,19 +384,46 @@ mod tests {
             panic!("expected ClientRequest")
         };
         match &req.request {
-            Request::Command(v3::Command::Subscribe(s)) => {
-                assert_eq!(s.session_id, "s1");
-                assert_eq!(s.last_seq, 3);
+            Request::Raw(raw) => {
+                assert_eq!(raw.method, v3::Method::Subscribe);
+                let p: serde_json::Value = serde_json::from_str(&raw.json).unwrap();
+                assert_eq!(p["session_id"], "s1");
+                assert_eq!(p["last_seq"], 3);
+                assert_eq!(p["cwd"], "/tmp");
             }
-            other => panic!("expected Subscribe command, got {other:?}"),
+            other => panic!("expected RAW subscribe, got {other:?}"),
         }
         assert_eq!(req.writer_token.as_deref(), Some("writer-1"));
+
+        // 回归锁：prompt 必须走 RAW 原文(c2842 起全部命令走 RAW,字段全程保真;
+        // 早先 typed Command::Prompt 只载 message 会把 run 从已订阅 session
+        // 脱锚到 fallback,事件 broadcast 丢失、TUI 挂死)。
+        let bytes = client_request_bytes(
+            "10",
+            "prompt",
+            &json!({"message": "hi", "session_id": "sess-1", "cwd": "/tmp", "model_id": "m1"}),
+            None,
+        )
+        .unwrap();
+        let Frame::ClientRequest(req) = decode_frame(&bytes) else {
+            panic!("expected ClientRequest")
+        };
+        match &req.request {
+            Request::Raw(raw) => {
+                assert_eq!(raw.method, v3::Method::Prompt);
+                let p: serde_json::Value = serde_json::from_str(&raw.json).unwrap();
+                assert_eq!(p["session_id"], "sess-1");
+                assert_eq!(p["cwd"], "/tmp");
+                assert_eq!(p["message"], "hi");
+            }
+            other => panic!("expected RAW prompt, got {other:?}"),
+        }
 
         // 非 registry、非白名单方法无 v3 映射(显式失败,不静默错发)。
         assert!(client_request_bytes("1", "no_such_method", &json!({}), None).is_err());
     }
 
-    /// task 3.1 (b):approve_tool(非 registry 命令)可构帧。
+    /// task 3.1 (b):approve_tool(非 registry 命令)亦走 RAW 原文过线。
     #[test]
     fn non_registry_command_maps() {
         let bytes = client_request_bytes(
@@ -375,10 +436,15 @@ mod tests {
         let Frame::ClientRequest(req) = decode_frame(&bytes) else {
             panic!("expected ClientRequest")
         };
-        assert!(matches!(
-            &req.request,
-            Request::Command(v3::Command::ApproveTool(a)) if a.call_id == "c1" && a.approved
-        ));
+        match &req.request {
+            Request::Raw(raw) => {
+                assert_eq!(raw.method, v3::Method::ApproveTool);
+                let p: serde_json::Value = serde_json::from_str(&raw.json).unwrap();
+                assert_eq!(p["call_id"], "c1");
+                assert_eq!(p["approved"], true);
+            }
+            other => panic!("expected RAW approve_tool, got {other:?}"),
+        }
     }
 
     /// task 3.1 (b):ServerResponse → RpcResult(ok / error / writer_token /
@@ -435,6 +501,35 @@ mod tests {
         );
     }
 
+    /// c2846: RawOk 原文解析禁用递归上限——深树 JSON（实机 188 层 > 默认 128）
+    /// 必须还原为完整 Value，不得被静默降级 Null（旧行为让下游报
+    /// `invalid type: null, expected a sequence`）。
+    #[test]
+    fn raw_ok_parses_beyond_default_recursion_limit() {
+        // 构造 150 层（>128）嵌套 JSON，纯字符串拼接避免夹具自身触发默认上限。
+        let mut leaf = r#"{"entry":"e0","children":[]}"#.to_string();
+        for i in 1..150u32 {
+            leaf = format!(r#"{{"entry":"e{i}","children":[{leaf}]}}"#);
+        }
+        let deep = format!(r#"{{"tree":[{leaf}]}}"#);
+        assert!(deep.len() > 1024, "fixture 应显著深过默认上限");
+
+        let resp = ServerResponse {
+            rpc_id: 9,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::RawOk(v3::RawOk { json: deep })),
+            writer_token: None,
+        };
+        let result = server_response_to_result(&resp);
+        assert!(result.ok, "深树 RawOk MUST 解析成功: {result:?}");
+        let value = result.value.expect("深树 MUST 不为 Null");
+        assert!(
+            value.get("tree").is_some(),
+            "tree 键 MUST 存在，不得降级 Null: {value:?}"
+        );
+    }
+
     /// 协商门:旧 host(formats 缺失)与未宣告 fory-v3 都必须判否。
     #[test]
     fn negotiate_gate_rejects_without_fory_v3() {
@@ -444,6 +539,91 @@ mod tests {
         assert!(!formats_advertise_v3(&old_host));
         let dual = RpcResult::ok_value(json!({"protocol": 2, "formats": ["jsonrpc", "fory-v3"]}));
         assert!(formats_advertise_v3(&dual));
+    }
+
+    /// task 2.5b：具名应答 union 还原为与 JSON 轨 `outcome_to_value` 同构的形状
+    /// (条目/树多一层包裹键,travel 是平对象)。
+    #[test]
+    fn typed_payloads_restore_json_track_shape() {
+        use crate::protocol::session::{
+            EntryBase, MessageEntry, SessionEntry, SessionHeader, SessionTreeKind, SessionTreeNode,
+            SessionTreeTravel,
+        };
+
+        let header = SessionEntry::Header(SessionHeader {
+            entry_type: String::new(),
+            version: 7,
+            id: "s1".into(),
+            timestamp: 1_700_000_000,
+            cwd: "/w".into(),
+            parent_session: Some("s0".into()),
+            fork_at_entry_id: None,
+        });
+        let message = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: String::new(),
+                id: "e1".into(),
+                parent_id: Some("e0".into()),
+                timestamp: 1_700_000_001,
+            },
+            message: json!({"role": "user", "content": "hi"}),
+        });
+        let entries = vec![header.clone(), message.clone()];
+        let ok_entries = ServerResponse {
+            rpc_id: 2,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::MessagesResult(
+                v3_mapping::messages_result_to_v3(&entries),
+            )),
+            writer_token: None,
+        };
+        assert_eq!(
+            server_response_to_result(&ok_entries).value,
+            Some(json!({ "entries": serde_json::to_value(&entries).unwrap() })),
+            "get_messages / load_session_entries 的包裹键必须是 entries"
+        );
+
+        let nodes = vec![SessionTreeNode {
+            entry: message,
+            children: Vec::new(),
+            label: Some("checkpoint".into()),
+        }];
+        let ok_tree = ServerResponse {
+            rpc_id: 3,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::TreeResult(v3_mapping::tree_result_to_v3(
+                &nodes,
+            ))),
+            writer_token: None,
+        };
+        assert_eq!(
+            server_response_to_result(&ok_tree).value,
+            Some(json!({ "tree": serde_json::to_value(&nodes).unwrap() })),
+            "session_tree 的包裹键必须是 tree"
+        );
+
+        let travel = SessionTreeTravel {
+            kind: SessionTreeKind::MessageHistory,
+            selected_id: "e1".into(),
+            leaf_id: None,
+            editor_text: Some("prefill".into()),
+        };
+        let ok_travel = ServerResponse {
+            rpc_id: 4,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::TravelResult(
+                v3_mapping::travel_result_to_v3(&travel),
+            )),
+            writer_token: None,
+        };
+        assert_eq!(
+            server_response_to_result(&ok_travel).value,
+            Some(serde_json::to_value(&travel).unwrap()),
+            "travel 与 JSON 轨一样是平对象"
+        );
     }
 
     /// task 3.1 (b):ServerNotification(Event / Subscribed)→ 与 JSON 路径

@@ -1,9 +1,10 @@
-use crate::tests::bdd::fixtures::{AgentState, Workspace, agent, ws};
-use crate::tests::bdd::steps_cli_surface::{
+use crate::bdd::fixtures::{AgentState, Workspace, agent, ws};
+use crate::bdd::steps_cli_surface::{
     AttachBdd, CliEntryBdd, CliHelpBdd, SurfaceBdd, SurfaceFlagsBdd, attach_bdd, cli_entry_bdd,
     cli_help_bdd, surface_bdd, surface_flags_bdd,
 };
-use crate::tests::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
+use crate::bdd::steps_server::{ServerTest, server_test};
+use crate::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -169,3 +170,39 @@ fn test_c2826_zero_models(ws: Workspace, cli_entry_bdd: CliEntryBdd) {}
     name = "unset-model-shown-as-not-set"
 )]
 fn test_c2826_unset_display(cli_entry_bdd: CliEntryBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "cli-is-independent-surface"
+)]
+fn test_ce_surface_independent(cli_help_bdd: CliHelpBdd) {}
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "app-surface-reaches-agent-via-driver-seam"
+)]
+fn test_ce_driver_seam() {}
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "composition-builds-ports-from-infra"
+)]
+fn test_ce_ports_from_infra(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "cli-and-server-share-one-bootstrap"
+)]
+fn test_ce_one_bootstrap(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "run-reuses-bootstrap-session-id"
+)]
+fn test_ce_reuse_session_id(surface_flags_bdd: SurfaceFlagsBdd) {}
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "unpersisted-session-no-resume-hint"
+)]
+fn test_ce_unpersisted_no_hint(surface_flags_bdd: SurfaceFlagsBdd) {}
+#[scenario(
+    path = "llmanspec/specs/cli-entry/cli-entry.feature",
+    name = "configured-default-shown"
+)]
+async fn test_ce_c2841_configured_default_shown(agent: AgentState, cli_entry_bdd: CliEntryBdd) {}

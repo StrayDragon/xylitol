@@ -16,15 +16,15 @@
 pub mod ports;
 pub mod wire;
 
-pub(crate) mod compaction_config;
-pub(crate) mod error;
-pub(crate) mod lifecycle;
-pub(crate) mod message;
-pub(crate) mod model;
-pub(crate) mod model_entry;
-pub(crate) mod resource;
-pub(crate) mod session;
-pub(crate) mod source_info;
+pub mod compaction_config;
+pub mod error;
+pub mod lifecycle;
+pub mod message;
+pub mod model;
+pub mod model_entry;
+pub mod resource;
+pub mod session;
+pub mod source_info;
 pub(crate) mod tool_name;
 pub(crate) mod tool_timeout;
 

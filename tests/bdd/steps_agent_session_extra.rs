@@ -1,14 +1,14 @@
-use crate::tests::bdd::fixtures::*;
-use crate::tests::bdd::helpers::{
+use crate::bdd::fixtures::*;
+use crate::bdd::helpers::{
     agent_submit_root, agent_submit_root_with_id, bind_session_or_panic, make_agent,
     make_agent_with_store, result_ok_str,
 };
-use crate::tests::bdd::prelude::*;
-use crate::tests::bdd::steps_agent::{
+use crate::bdd::prelude::*;
+use crate::bdd::steps_agent::{
     _g_agent_mock_model, _g_agent_thinking_level, _w_agent_switch_thinking,
 };
-use crate::tests::bdd::steps_agent_runtime::ar_register_fake;
-use crate::tests::bdd::steps_domain_compaction_extra::make_test_capabilities;
+use crate::bdd::steps_agent_runtime::ar_register_fake;
+use crate::bdd::steps_domain_compaction_extra::make_test_capabilities;
 use rstest_bdd_macros::{given, then, when};
 
 #[given("cwd 树存在 AGENTS.md")]
@@ -60,7 +60,7 @@ pub(crate) fn t_sess_turn_1_in_history(agent: &AgentState) {
 
 #[given("session 含 bang bashExecution（Message 内）与 compaction 条目且未 exclude")]
 pub(crate) async fn g_sess_bang(sess: &XySessionStore) {
-    use crate::protocol::session::bash_execution_message_entry;
+    use xylitol::protocol::session::bash_execution_message_entry;
 
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
@@ -76,7 +76,7 @@ pub(crate) async fn g_sess_bang(sess: &XySessionStore) {
         false,
         None,
         false,
-        crate::protocol::message::BashExecutionStatus::Done,
+        xylitol::protocol::message::BashExecutionStatus::Done,
     );
     if let SessionEntry::Message(ref mut m) = bash_entry {
         m.base.id = "bash-1".into();
@@ -113,7 +113,7 @@ pub(crate) async fn w_sess_seed(sess: &XySessionStore) {
 
 #[then("history 含折叠后的 bash/摘要上下文而非空跳过")]
 pub(crate) fn t_sess_seeded(sess: &XySessionStore) {
-    use crate::protocol::message::{AgentMessage, EnvMessage};
+    use xylitol::protocol::message::{AgentMessage, EnvMessage};
 
     let entries = sess.entries.borrow();
     let mapped: Vec<_> = entries
@@ -184,7 +184,7 @@ pub(crate) async fn w_sess_as_msg(sess: &XySessionStore) {
 
 #[then("content 含独立 Thinking 与 Text 且 type 字段正确")]
 pub(crate) fn t_sess_split(sess: &XySessionStore) {
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
     let entries = sess.entries.borrow();
     let msg = entries
@@ -239,7 +239,7 @@ pub(crate) fn w_sess_legacy(sess: &XySessionStore) {
 
 #[then("不产生糊成一体的合法 Assistant Text；失败或跳过可观测")]
 pub(crate) fn t_sess_legacy_rejected(sess: &XySessionStore) {
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 
     let entries = sess.entries.borrow();
     let mapped = entries.first().and_then(|e| e.as_agent_message());
@@ -394,14 +394,14 @@ pub(crate) fn g_switch_model_setup(agent: &AgentState) {
 pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
     // Build an AgentCapabilities, select "agent-a-model", then cycle
     let dir = tempfile::tempdir().unwrap();
-    let mgr = crate::infra::session::SessionManager::new(dir.keep());
-    let store: std::sync::Arc<dyn crate::protocol::ports::XySessionStore> =
+    let mgr = xylitol::infra::session::SessionManager::new(dir.keep());
+    let store: std::sync::Arc<dyn xylitol::protocol::ports::XySessionStore> =
         std::sync::Arc::new(mgr);
-    let sink: std::sync::Arc<dyn crate::XyEventSink> =
-        std::sync::Arc::new(crate::infra::event::EventBus::new());
-    let mut session = crate::agent::capabilities::AgentCapabilities::new(
+    let sink: std::sync::Arc<dyn xylitol::XyEventSink> =
+        std::sync::Arc::new(xylitol::infra::event::EventBus::new());
+    let mut session = xylitol::agent::capabilities::AgentCapabilities::new(
         agent.registry.borrow().clone(),
-        crate::agent::tools::ToolSet::from_iter(crate::infra::tools::default_tools()),
+        xylitol::agent::tools::ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,
         sink,
         None,
@@ -409,10 +409,10 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(crate::infra::provider::factory::build_provider),
-        crate::infra::permission::allow_all_permission(),
-        crate::agent::capabilities::QueueMode::default(),
-        crate::agent::capabilities::QueueMode::default(),
+        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
+        xylitol::infra::permission::allow_all_permission(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         None,
     );
     // Select first model then cycle to the next
@@ -458,7 +458,7 @@ pub(crate) fn g_abort_streaming(agent: &AgentState, _ws: &Workspace) {
 
 #[when("调用 abort()")]
 pub(crate) fn w_abort_call(agent: &AgentState) {
-    use crate::embed::{XyDriver, XyInProcessDriver};
+    use xylitol::embed::{XyDriver, XyInProcessDriver};
     let (runtime, store) = make_agent_with_store(agent);
     let driver = XyInProcessDriver::new(runtime, store);
     driver.abort();
@@ -499,8 +499,8 @@ pub(crate) fn g_sess_review_no_template(ws: &Workspace, agent: &AgentState) {
 pub(crate) fn w_prompt_process(agent: &AgentState, ws: &Workspace) {
     use std::path::PathBuf;
 
-    use crate::app::cli::resources::{ResourcesAction, run_with_dirs};
-    use crate::app::product_commands::product_slash_commands;
+    use xylitol::app::cli::resources::{ResourcesAction, run_with_dirs};
+    use xylitol::app::product_commands::product_slash_commands;
 
     let cwd = PathBuf::from(ws.ws("."));
     let agent_dir = cwd.join(".xylitol");
@@ -546,7 +546,7 @@ pub(crate) async fn w_slash_intercepted(agent: &AgentState, _ws: &Workspace) {
         panic!("slash-dispatch scenario must use /compact, got: {marker}");
     }
 
-    use crate::embed::XyInProcessDriver;
+    use xylitol::embed::XyInProcessDriver;
 
     let (mut runtime, store) = make_agent_with_store(agent);
     let sid = uuid::Uuid::new_v4().to_string();
@@ -591,7 +591,7 @@ pub(crate) fn g_sess_prompt_loader(ws: &Workspace, agent: &AgentState) {
 
 #[when("agent 构建 system prompt")]
 pub(crate) fn w_sess_build_system_prompt(ws: &Workspace, agent: &AgentState) {
-    use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
+    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
     let agents_md = std::fs::read_to_string(ws.ws("AGENTS.md")).unwrap_or_default();
     let prompt = build_system_prompt(&SystemPromptOpts {
         system_prompt: Some(agents_md),
@@ -665,7 +665,7 @@ pub(crate) async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStor
     let _ = mgr.create(sid, Some("."), None).await;
     reset_fake_state();
     set_fake_text("assistant reply");
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let mut caps = make_test_capabilities(agent, store.clone());
     let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
     if let Some(id) = first_model_id {
@@ -688,7 +688,7 @@ pub(crate) async fn w_sess_load_entries(sess: &XySessionStore) {
 
 #[then("含本轮 user 与 assistant 的 SessionEntry::Message")]
 pub(crate) fn t_sess_has_user_assistant(sess: &XySessionStore) {
-    use crate::protocol::message::{AgentMessage, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, LlmMessage};
 
     let entries = sess.entries.borrow();
     let has_user = entries.iter().any(|e| {
@@ -716,7 +716,7 @@ pub(crate) async fn g_sess_persist_tool(agent: &AgentState, sess: &XySessionStor
     let sid = "persist-tool-result";
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(sid, Some("."), None).await;
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let mut caps = make_test_capabilities(agent, store);
     let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
     if let Some(id) = first_model_id {
@@ -736,7 +736,7 @@ pub(crate) async fn w_sess_tool_done(sess: &XySessionStore) {
 
 #[then("store 含对应 toolResult（或等价 tool）消息条目")]
 pub(crate) fn t_sess_has_tool_result(sess: &XySessionStore) {
-    use crate::protocol::message::{AgentMessage, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, LlmMessage};
 
     let has_tool = sess.entries.borrow().iter().any(|e| {
         matches!(
@@ -779,7 +779,7 @@ pub(crate) fn t_sess_prompt_build_order(agent: &AgentState) {
 
 #[given("空扩展命令的能力聚合体")]
 pub(crate) fn g_sess_get_commands(_agent: &AgentState) {
-    use crate::app::product_commands::product_slash_commands;
+    use xylitol::app::product_commands::product_slash_commands;
     let names: Vec<String> = product_slash_commands()
         .iter()
         .map(|c| c.name.to_string())
@@ -823,7 +823,7 @@ pub(crate) async fn w_sess_message_end(agent: &AgentState, sess: &XySessionStore
 
 #[then("该消息已 append 到 session store")]
 pub(crate) fn t_sess_auto_persisted(sess: &XySessionStore) {
-    use crate::protocol::message::{AgentMessage, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, LlmMessage};
 
     assert!(
         sess.entries.borrow().iter().any(|e| {
@@ -872,14 +872,14 @@ pub(crate) fn t_sess_resume_ok(sess: &XySessionStore) {
 pub(crate) fn g_sess_resp_separated(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let _caps = make_test_capabilities(agent, store);
     agent.last_result.replace(Some(Ok("constructed".into())));
 }
 
 #[when("分别调用 get_context_usage 与 export_to_html 入口")]
 pub(crate) fn w_sess_resp_apis(agent: &AgentState) {
-    let settings = crate::agent::compaction::CompactionSettings::default();
+    let settings = xylitol::agent::compaction::CompactionSettings::default();
     let usage = get_context_usage(1000, 100_000, &settings);
     let tokens = usage.tokens;
     agent.context_usage.replace(Some(usage));
@@ -899,16 +899,16 @@ struct MockExportIo {
 }
 
 #[async_trait::async_trait]
-impl crate::protocol::ports::XyExportIo for MockExportIo {
+impl xylitol::protocol::ports::XyExportIo for MockExportIo {
     async fn write_text(
         &self,
         _path: &std::path::Path,
         content: &str,
-    ) -> Result<(), crate::XyExportError> {
+    ) -> Result<(), xylitol::XyExportError> {
         self.writes.lock().unwrap().push(content.to_string());
         Ok(())
     }
-    async fn read_bytes(&self, _path: &std::path::Path) -> Result<Vec<u8>, crate::XyExportError> {
+    async fn read_bytes(&self, _path: &std::path::Path) -> Result<Vec<u8>, xylitol::XyExportError> {
         Ok(Vec::new())
     }
 }
@@ -923,7 +923,7 @@ pub(crate) fn g_sess_mock_export(_agent: &AgentState) {
 
 #[when("调用 export_to_html")]
 pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStore) {
-    use crate::app::session_export::SessionExporter;
+    use xylitol::app::session_export::SessionExporter;
 
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("out.html");
@@ -933,8 +933,9 @@ pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStor
     let mock = sess_export::MOCK
         .with(|m| m.borrow().clone())
         .expect("mock export");
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let exporter = SessionExporter::new(Some(mock as Arc<dyn crate::protocol::ports::XyExportIo>));
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let exporter =
+        SessionExporter::new(Some(mock as Arc<dyn xylitol::protocol::ports::XyExportIo>));
     let result = exporter
         .export_to_html(store.as_ref(), sid, out.as_path())
         .await;
@@ -976,10 +977,10 @@ pub(crate) fn g_sess_no_bash(_agent: &AgentState) {}
 
 #[when("调用 execute_bash")]
 pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
-    use crate::app::bang_exec::BangExecHandler;
+    use xylitol::app::bang_exec::BangExecHandler;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let bang = BangExecHandler::new(None);
     let result = bang
         .execute(
@@ -1021,7 +1022,7 @@ pub(crate) fn t_sess_no_bash_err(agent: &AgentState) {
 mod sess_interrupted {
     use std::cell::RefCell;
 
-    use crate::protocol::message::AgentMessage;
+    use xylitol::protocol::message::AgentMessage;
 
     thread_local! {
         /// 播种路径的两次构建（折叠文本逐字节一致断言用）。
@@ -1035,10 +1036,10 @@ async fn append_interrupted_bash_row(
     bash_id: &str,
     command: &str,
     output: &str,
-    status: crate::protocol::message::BashExecutionStatus,
+    status: xylitol::protocol::message::BashExecutionStatus,
     exclude: bool,
 ) {
-    use crate::protocol::session::bash_execution_message_entry;
+    use xylitol::protocol::session::bash_execution_message_entry;
 
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
@@ -1061,8 +1062,8 @@ async fn append_interrupted_bash_row(
     let _ = mgr.append(&sid, &entry).await;
 }
 
-fn interrupted_user_texts(rows: &[crate::protocol::message::LlmMessage]) -> Vec<String> {
-    use crate::protocol::message::{AgentPart, LlmMessage};
+fn interrupted_user_texts(rows: &[xylitol::protocol::message::LlmMessage]) -> Vec<String> {
+    use xylitol::protocol::message::{AgentPart, LlmMessage};
     rows.iter()
         .filter_map(|m| match m {
             LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
@@ -1086,7 +1087,7 @@ pub(crate) async fn g_sess_interrupted_orphan(sess: &XySessionStore, command: St
         "b-serve",
         &command,
         "",
-        crate::protocol::message::BashExecutionStatus::Running,
+        xylitol::protocol::message::BashExecutionStatus::Running,
         false,
     )
     .await;
@@ -1106,7 +1107,7 @@ pub(crate) async fn g_sess_interrupted_excluded(sess: &XySessionStore, command: 
         "b-clean",
         &command,
         "",
-        crate::protocol::message::BashExecutionStatus::Running,
+        xylitol::protocol::message::BashExecutionStatus::Running,
         true,
     )
     .await;
@@ -1120,7 +1121,7 @@ pub(crate) async fn g_sess_interrupted_pair(sess: &XySessionStore) {
         "b-pair",
         "pair",
         "",
-        crate::protocol::message::BashExecutionStatus::Running,
+        xylitol::protocol::message::BashExecutionStatus::Running,
         false,
     )
     .await;
@@ -1130,7 +1131,7 @@ pub(crate) async fn g_sess_interrupted_pair(sess: &XySessionStore) {
         "b-pair",
         "pair",
         "paired-out",
-        crate::protocol::message::BashExecutionStatus::Done,
+        xylitol::protocol::message::BashExecutionStatus::Done,
         false,
     )
     .await;
@@ -1141,7 +1142,7 @@ pub(crate) async fn w_sess_build_llm_history(agent: &AgentState, sess: &XySessio
     let sid = sess.current_id.borrow().clone().expect("session id");
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let caps = make_test_capabilities(agent, store);
     let first = caps
         .load_conversation_history(&sid)
@@ -1157,7 +1158,7 @@ pub(crate) async fn w_sess_build_llm_history(agent: &AgentState, sess: &XySessio
 #[then("送给模型的 history 恰含一行 `[interrupted] $ serve`")]
 pub(crate) fn t_sess_interrupted_line_present(_sess: &XySessionStore) {
     let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
-    let texts = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
+    let texts = interrupted_user_texts(&xylitol::agent::llm_project::project_for_llm(&builds[0]));
     let hits = texts
         .iter()
         .filter(|t| *t == "[interrupted] $ serve")
@@ -1171,15 +1172,15 @@ pub(crate) fn t_sess_interrupted_line_present(_sess: &XySessionStore) {
 #[then("重复构建上下文两次折叠文本逐字节一致")]
 pub(crate) fn t_sess_interrupted_byte_stable(_sess: &XySessionStore) {
     let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
-    let first = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
-    let second = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[1]));
+    let first = interrupted_user_texts(&xylitol::agent::llm_project::project_for_llm(&builds[0]));
+    let second = interrupted_user_texts(&xylitol::agent::llm_project::project_for_llm(&builds[1]));
     assert_eq!(first, second, "repeated builds MUST fold byte-stable text");
 }
 
 #[then("history 不含 \"clean\" 的 interrupted 提示")]
 pub(crate) fn t_sess_interrupted_clean_absent(_sess: &XySessionStore) {
     let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
-    let texts = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
+    let texts = interrupted_user_texts(&xylitol::agent::llm_project::project_for_llm(&builds[0]));
     assert!(
         texts.iter().all(|t| !t.contains("[interrupted] $ clean")),
         "`!!` orphan MUST NOT project interrupted: {texts:?}"
@@ -1189,7 +1190,7 @@ pub(crate) fn t_sess_interrupted_clean_absent(_sess: &XySessionStore) {
 #[then("有 done 的 running 不产出任何投影且 done 照常折叠")]
 pub(crate) fn t_sess_paired_running_hidden(_sess: &XySessionStore) {
     let builds = sess_interrupted::BUILDS.with(|b| b.borrow().clone());
-    let texts = interrupted_user_texts(&crate::agent::llm_project::project_for_llm(&builds[0]));
+    let texts = interrupted_user_texts(&xylitol::agent::llm_project::project_for_llm(&builds[0]));
     assert!(
         texts.iter().all(|t| !t.contains("[interrupted] $ pair")),
         "paired running MUST NOT project: {texts:?}"

@@ -10,7 +10,7 @@
 //!
 //! Request-time (non-transcript) tails — AgentStatusBar readings — are
 //! **not** this module. They append after the fold via
-//! [`crate::agent::prompt::status_bar`].
+//! `crate::agent::prompt::status_bar`.
 
 use crate::protocol::message::{AgentMessage, AgentPart, EnvLlmProjection, LlmMessage, now_ms};
 

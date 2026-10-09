@@ -35,7 +35,7 @@ pub enum ProjectTrustMode {
     Deny,
 }
 
-/// Outcome of [`XyDriver::persist_project_trust`] (c1105).
+/// Outcome of [`crate::XyDriver::persist_project_trust`] (c1105).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectTrustPersistReport {
     pub trusted: bool,
@@ -49,7 +49,7 @@ impl ProjectTrustPersistReport {
         "Project resources apply after /reload or restart (not auto-reloaded).";
 }
 
-/// Outcome of [`XyDriver::copy_text_to_clipboard`] (c1110).
+/// Outcome of [`crate::XyDriver::copy_text_to_clipboard`] (c1110).
 ///
 /// Native tools run off the UI thread; OSC 52 (when needed) is returned here so
 /// the product TUI can write it via `Terminal` on the host thread — never from
@@ -181,10 +181,10 @@ impl LoadedResourcesSnapshot {
 /// `crate::app::core::driver::SessionStats`.
 pub use crate::agent::{QueueStats, SessionStats};
 
-/// Session resume list row (from [`XySessionStore::list_sessions`]).
+/// Session resume list row (from [`crate::XySessionStore::list_sessions`]).
 pub use crate::protocol::ports::SessionListEntry;
 
-/// Build a [`ContextTokenEstimate`] from persisted session entries (XyDriver seam).
+/// Build a [`crate::protocol::model::ContextTokenEstimate`] from persisted session entries (XyDriver seam).
 ///
 /// `tokenizer_override` comes from `AppConfig` (`models.*.tokenizer` / `tokenizers:`)
 /// when the in-process XyDriver estimates; harness / remote may pass `None`.
@@ -211,7 +211,7 @@ pub fn estimate_from_session_entries(
 
 /// Resolve `models.<alias>.tokenizer` from the layered AppConfig (best-effort).
 ///
-/// Surfaces MUST use this (or [`XyDriver::estimate_context_tokens`]) — do not
+/// Surfaces MUST use this (or [`crate::XyDriver::estimate_context_tokens`]) — do not
 /// reach `infra::config` from app/tui.
 pub fn tokenizer_override_from_app_config(
     model_alias: &str,

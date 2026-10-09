@@ -12,7 +12,7 @@
 //! - [`composition`] — the composition root: the single module permitted
 //!   to import both `agent` and `infra`, centralizing Agent wiring so CLI/RPC/
 //!   Server/TUI never duplicate it.
-//! - [`mcp_spec`] — embed-facing MCP server description (`McpServerSpec`).
+//! - `mcp_spec` — embed-facing MCP server description (`McpServerSpec`).
 //! - [`dispatch`] — shared Command execution: maps non-transport
 //!   `protocol::Command` variants to [`driver::XyDriver`] method calls.
 //!   Consumed by tui (spec ce10).
@@ -23,12 +23,12 @@
 
 pub mod attach;
 pub mod bang_exec;
-pub(crate) mod bootstrap;
-pub(crate) mod composition;
-pub(crate) mod dispatch;
-pub(crate) mod driver;
+pub mod bootstrap;
+pub mod composition;
+pub mod dispatch;
+pub mod driver;
 pub(crate) mod driver_error;
-pub(crate) mod host_client;
+pub mod host_client;
 pub(crate) mod lag;
 pub(crate) mod mcp_spec;
 pub mod product_commands;

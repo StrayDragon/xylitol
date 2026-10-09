@@ -23,7 +23,6 @@ pub mod truncate;
 pub mod typed;
 pub mod write;
 
-#[cfg(test)]
 pub use ask::default_tools_with_ask;
 pub use ask::default_tools_with_ask_and_todo;
 pub use todo::{SessionAgentTodoGateway, todo_tools};

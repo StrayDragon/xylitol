@@ -1,4 +1,4 @@
-use crate::tests::bdd::fixtures::*;
+use crate::bdd::fixtures::*;
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -139,3 +139,94 @@ async fn test_c2826_abort_persist(agent: AgentState, ws: Workspace) {}
     name = "tool-turn-two-iterations-one-settlement"
 )]
 async fn test_c2826_two_iterations(agent: AgentState, ws: Workspace) {}
+
+// ── c2835 后继：agent-runtime 裸规则回填 ────────────────────────────
+use crate::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
+use crate::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
+use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
+use crate::bdd::steps_bridge::{PromptBdd, prompt_bdd};
+use crate::bdd::steps_c2827::{T2CapsBdd, T2EstBdd, T6McpBdd, t2_caps_bdd, t2_est_bdd, t6_mcp_bdd};
+use crate::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
+use crate::bdd::steps_runtime_config::{RcSnap, rc_snap};
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "builder-ports-drive-one-round"
+)]
+async fn test_ar1_builder_ports(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "ports-yield-xy-events"
+)]
+async fn test_ar2_ports_yield_events(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "hot-applied-slots-rebuild-prompt"
+)]
+async fn test_ar3_hot_slots_next_turn(t2_caps_bdd: T2CapsBdd, agent: AgentState) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "unknown-queue-type-degrades"
+)]
+async fn test_ar4_unknown_event_degrades(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "centralised-default-thinking-level"
+)]
+fn test_ar5_centralised_defaults(rc_snap: RcSnap) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "done-usage-anchor-persisted"
+)]
+async fn test_ar6_done_usage_persisted(t2_est_bdd: T2EstBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "next-turn-rereads-model-and-thinking"
+)]
+async fn test_ar7_next_turn_reresolve(bridge_bdd: BridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "turn-end-threshold-auto-compact"
+)]
+async fn test_ar8_turn_end_threshold(agent: AgentState) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "overflow-case1-compact-retry"
+)]
+async fn test_ar9_overflow_case1(agent: AgentState) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "code-first-context-policy-defaults"
+)]
+async fn test_ar10_context_policy_defaults(prompt_bdd: PromptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "first-generate-freezes-tool-table"
+)]
+async fn test_ar11_mcp_freeze_gate(t6_mcp_bdd: T6McpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "error-kind-survives-projection"
+)]
+async fn test_ar12_error_kind(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "persisted-node-timings-settle-thought"
+)]
+async fn test_ar13_stream_node_timings(
+    transcript_bdd: TranscriptBdd,
+    tui_interaction: TuiInteraction,
+) {
+}

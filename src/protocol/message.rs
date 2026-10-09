@@ -12,7 +12,6 @@ pub use xylitol_ai_bridge::dto::{
     AiBridgeImageContent as ImageContent, AiBridgeMessage as LlmMessage, AiBridgePart as AgentPart,
     AiBridgeStopReason as XyStopReason, AiBridgeUsage as XyUsage, now_ms,
 };
-#[cfg(test)]
 pub use xylitol_ai_bridge::dto::{AiBridgeUsageCost as XyUsageCost, Diagnostic};
 
 // ── EnvMessage / AgentMessage (domain composition) ─────────────────

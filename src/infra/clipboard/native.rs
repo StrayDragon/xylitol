@@ -97,9 +97,9 @@ pub async fn plan_clipboard_copy_async(text: String) -> Result<ClipboardPlan, Cl
 /// Try platform-native clipboard tools (PATH from `path_value`).
 fn try_native_copy_with(text: &str, path_value: Option<&str>) -> ClipboardResult {
     if cfg!(target_os = "macos") {
-        copy_macos(text)
+        copy_macos(text, path_value)
     } else if cfg!(target_os = "windows") {
-        copy_windows(text)
+        copy_windows(text, path_value)
     } else if cfg!(target_os = "linux") {
         copy_linux(text, path_value)
     } else {
@@ -110,24 +110,30 @@ fn try_native_copy_with(text: &str, path_value: Option<&str>) -> ClipboardResult
 // ── macOS: pbcopy ────────────────────────────────────────────────────
 
 #[cfg(target_os = "macos")]
-fn copy_macos(text: &str) -> ClipboardResult {
+fn copy_macos(text: &str, path_value: Option<&str>) -> ClipboardResult {
+    if !tool_on_path_with("pbcopy", path_value) {
+        return ClipboardResult::Unsupported;
+    }
     pipe_to_command("pbcopy", &[], text)
 }
 
 #[cfg(not(target_os = "macos"))]
-fn copy_macos(_text: &str) -> ClipboardResult {
+fn copy_macos(_text: &str, _path_value: Option<&str>) -> ClipboardResult {
     ClipboardResult::Unsupported
 }
 
 // ── Windows: clip ────────────────────────────────────────────────────
 
 #[cfg(target_os = "windows")]
-fn copy_windows(text: &str) -> ClipboardResult {
+fn copy_windows(text: &str, path_value: Option<&str>) -> ClipboardResult {
+    if !tool_on_path_with("clip", path_value) {
+        return ClipboardResult::Unsupported;
+    }
     pipe_to_command("clip", &[], text)
 }
 
 #[cfg(not(target_os = "windows"))]
-fn copy_windows(_text: &str) -> ClipboardResult {
+fn copy_windows(_text: &str, _path_value: Option<&str>) -> ClipboardResult {
     ClipboardResult::Unsupported
 }
 
@@ -176,6 +182,7 @@ fn copy_linux(_text: &str, _path_value: Option<&str>) -> ClipboardResult {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /// PATH presence check — never execute the tool (pi uses `which wl-copy`).
+/// Used by every platform branch so the injected `PATH` is honoured uniformly.
 fn tool_on_path_with(cmd: &str, path_value: Option<&str>) -> bool {
     let Some(path) = path_value else {
         return false;
@@ -251,6 +258,7 @@ fn pipe_to_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
 ///
 /// Rust `Child` Drop waits for the process; forgetting the handle is the unref
 /// equivalent so a daemonized wl-copy cannot freeze the TUI.
+#[cfg(any(test, target_os = "linux"))]
 fn spawn_unref_pipe_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
     use std::io::Write;
 

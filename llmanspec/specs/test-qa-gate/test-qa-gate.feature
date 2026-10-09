@@ -9,27 +9,56 @@
   规则: 统一 just qa 满闸
     仓库 MUST 提供 just qa 作为日常与 PR 前的统一验证入口；该入口 MUST 顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、live-provider 串行闸（见 qg07）、显式 packages/xylitol-tui 测试（四层中的 1–3）、cargo doc --no-deps --all-features、doc-test（cargo test --doc --all-features，根包 doctest）、DESIGN token/Palette 一致性检查（check-tui-tokens）、scripts/check_* 入闸校验与执行（check-scripts-wired 与 check-scripts；约定 scripts/check_*.py 或 check-*.py 为非变更闸脚本）、以及 prek run --all-files（prek 仅承担文本/元数据卫生与 commit-msg 规约，cargo 级门禁 MUST NOT 进 prek）。just check 与 just ci MUST 作为 just qa 的别名。
     # verified-by: justfile
+    场景: qa-six-ordered-gates
+      当 读取 just 的 qa recipe 序列
+      那么 qa 串含 fmt 与 lint 与 test 与 live
+
   @req:r1828
   规则: qa-e2e 可选第 5 层
     仓库 MUST 提供 just qa-e2e，其行为 MUST 为先执行 just qa，再执行 just test-tui-e2e（portable-pty 与 tmux 驱动的 #[ignore] 用例）。默认 just qa MUST NOT 自动运行第 5 层 E2E，以免缺少 tmux/PTY 环境时整闸失败。
     # verified-by: justfile
+    场景: qa-e2e-adds-fifth-layer
+      当 读取 just 的 qa recipe 序列
+      那么 qa-e2e 在 qa 之后加 test-tui-e2e
+
   @req:r1829
   规则: 文档指针
     根 AGENTS.md 命令段与 test-tui-harness skill MUST 写明 just qa 与 just qa-e2e 的分工，以及 live-provider 串行闸与专用配置路径；TUI 四层方法论仍以 package-tui-testing 与该 skill 为 SSOT，本闸仅统一入口。
     # verified-by: AGENTS.md
+    场景: docs-name-qa-split
+      当 读取 qa 文档指针
+      那么 文档写明 qa 与 e2e 分工
+
   @req:r1830
   规则: scripts-check-convention
     仓库 MUST 约定 scripts/check_*.py（或 check-*.py）为非变更闸脚本且 MUST 经 just qa 的 check-scripts-wired/check-scripts 入闸；cleanup_* 等维护脚本 MUST NOT 被 just qa 强制执行。
     # verified-by: justfile
+    场景: check-scripts-all-wired
+      当 读取非变更闸脚本清单
+      那么 非变更闸均经 wiring 接线
+
   @req:r1831
   规则: session-tree-pty-e2e
     仓库 MUST 在 tests/tui_e2e（portable-pty）提供至少一条产品 Fake 会话树 E2E：双 Esc 开树后屏幕 MUST 含 Search 或 Type to search 类提示，且含 TreeHelp 用途片段（如 fold/unfold 或 filters）；该用例 MUST 为 #[ignore] 并由 just test-tui-e2e-pty（或 qa-e2e）拉取；默认 just qa MUST NOT 强制运行之。
     # verified-by: justfile
+    场景: pty-session-tree-registered
+      当 读取 PTY 会话树用例清单
+      那么 会话树 PTY 用例在册
+
   @req:r1832
   规则: ath12-entry-complexity-gate
     仓库 MUST 提供 scripts/check_complexity.py，并经 just qa 的 check-scripts 强制 ath12 入口协调者的函数级复杂度（cccc-rs）；该脚本属 scripts/check_* 约定，MUST NOT 仅作维护探针。入口名单与阈值数字由架构 AGENTS 体量策略维护，本 req MUST NOT 钉具体源文件路径。just complexity（--radar）MAY 报告更广子树且 MUST NOT 作为硬失败条件。
     # verified-by: scripts/check_complexity.py
+    场景: complexity-gate-ssot
+      当 读取非变更闸脚本清单
+      那么 复杂度闸以 cccc-rs 为 SSoT
+
   @req:r1833
   规则: live-provider-serial-in-qa
     just qa MUST 在 workspace 测试之后以严格串行（单 test binary、`--test-threads=1`）调用 `just test-live-provider`；配置 MUST 为全局共享目录专用文件 `<global-dir>/dev/live-provider.yaml`（`global-dir` 解析优先级：`XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`；示例为仓库 `configs/testing/live-provider.example.yaml`，由维护脚本生成），由测试程序化解析（`enabled` / base_url / model / api_key），MUST NOT 从全局 AppConfig `config.yaml` 合并 live-provider 参数。缺失配置或 `enabled=false` 时 MUST skip（通过）；`enabled=true` 时 MUST 对配置的 Responses 端点做 prompt-cache 反例验证。该套件 MUST NOT 进入 nextest 默认并行矩阵，以免压垮本地 llama.cpp。
     # verified-by: justfile
+    场景: live-gate-serial-with-timeout
+      当 读取 just 的 qa recipe 序列
+      那么 live 闸走串行且带超时
+
+# re-review(c2837): CI spec-validate 工具探测（llman-sdd 缺失显式跳过，门禁语义本地保持）已复核。（2026-10-06）

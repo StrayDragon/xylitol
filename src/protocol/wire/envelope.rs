@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// Stable protocol version returned by `host.describe`.
-pub const PROTOCOL_VERSION: u32 = 2;
+///
+/// 3 = 产品路径为 v3 二进制帧（fory），JSON-RPC 2.0 文本为调试通道（c2835）。
+/// attach 预检是硬等值：不等即致命，不降级、不重试风暴。
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// Discriminated four-quadrant message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -35,16 +38,6 @@ pub enum RpcMessage {
         #[serde(rename = "rpcId")]
         rpc_id: String,
         method: String,
-        #[serde(default)]
-        payload: Value,
-    },
-    /// First frame on every mux connection (ath44/c2480): the per-connection
-    /// version handshake. Clients MUST validate it before trusting the stream;
-    /// a mismatch is fatal (no downgrade, no retry storm).
-    ServerHello { protocol: u32 },
-    ClientResponse {
-        #[serde(rename = "rpcId")]
-        rpc_id: String,
         #[serde(default)]
         payload: Value,
     },
@@ -148,14 +141,14 @@ pub struct QuestionRequestedPayload {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostDescribeValue {
     pub protocol: u32,
-    /// Supported wire formats (c2834 spec r1903): `jsonrpc` + `fory-v3`.
+    /// Supported wire formats (c2834 spec r1911): `jsonrpc` + `fory-v3`.
     /// Absent on old hosts; clients MUST treat missing as jsonrpc-only and an
     /// unknown demanded format as fatal (no downgrade, no retry storm).
     #[serde(default)]
     pub formats: Vec<String>,
 }
 
-/// Wire format capability names advertised via `host.describe` (spec r1903).
+/// Wire format capability names advertised via `host.describe` (spec r1911).
 pub const WIRE_FORMAT_JSONRPC: &str = "jsonrpc";
 pub const WIRE_FORMAT_FORY_V3: &str = "fory-v3";
 

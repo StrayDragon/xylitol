@@ -23,6 +23,10 @@
   规则: thinking-to-stderr
     Print 模式下 System MUST 将 reasoning/thinking 内容流式写入 stderr（非 stdout），使正式答案不被污染，包裹于 <think>...</think>；模型已自行发出 <think> 标签时 MUST NOT 双重包裹。
     # verified-by: src/app/cli/print.rs
+
+    场景: thinking-streams-to-stderr-only
+      当 以 thinking 与自带标签两种流分别渲染 print 输出
+      那么 stdout 仅含正文且标签包裹只此一份
   @req:r52
   规则: message-dedup
     Print 模式下 System MUST 仅将增量 TextDelta 写入 stdout，MUST NOT 将累积 MessageUpdate payload 写入 stdout，以避免前缀重复输出。
@@ -39,3 +43,6 @@
       那么 错误返回驱动错误而工具单败不退出
       当 渲染含单次工具失败的事件流到缓冲
       那么 单次工具失败不产生驱动错误
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；分支内仅把 app/cli/logging 改为 pub(crate) 以让 harness 走同一初始化入口，print 面输出语义未动。（2026-09-29）
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

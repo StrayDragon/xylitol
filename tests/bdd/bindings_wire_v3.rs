@@ -1,6 +1,6 @@
 //! wire v3 场景绑定(c2834;步骤实现见 `steps_wire_v3.rs`)。
 
-use crate::tests::bdd::steps_server::{ServerTest, server_test};
+use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -71,6 +71,22 @@ async fn test_dual_rail_event_equivalence(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
+    name = "dual-rail-session-snapshot-parity"
+)]
+async fn test_dual_rail_session_snapshot_parity(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
     name = "cutover-requires-parity-green"
 )]
 async fn test_cutover_requires_parity_green(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "v3-session-tree-raw-parity"
+)]
+async fn test_c2845_session_tree_raw_parity(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "v3-deep-session-tree-raw-parity"
+)]
+async fn test_c2846_deep_session_tree_parity(server_test: ServerTest) {}

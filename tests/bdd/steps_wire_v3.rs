@@ -1,4 +1,4 @@
-//! wire v3(fory 二进制信封)BDD 步骤(c2834 spec r1902–r1910)。
+//! wire v3(fory 二进制信封)BDD 步骤(c2834 spec r1902/r1904–r1910/r1911)。
 //!
 //! fixture 复用 `steps_server::ServerTest`(其跨步骤生命周期已被现有
 //! server-core 场景验证);v3 网络动作集中在断言步骤内完成。
@@ -9,14 +9,17 @@
 
 use std::time::Duration;
 
-use crate::app::core::host_client::{HostClient, HttpWsClient};
-use crate::protocol::wire::v3::generated::Event as V3Event;
-use crate::protocol::wire::v3::{
+use crate::bdd::steps_server::{ServerTest, start_host};
+use rstest_bdd_macros::{given, then, when};
+use xylitol::app::core::host_client::{HostClient, HttpWsClient};
+use xylitol::protocol::wire::v3::generated::Event as V3Event;
+use xylitol::protocol::wire::v3::{
     ClientRequest, Describe, DescribeResult, Frame, Notification, Request, ResponsePayload,
     ServerResponse, ToolStart,
 };
-use crate::tests::bdd::steps_server::{ServerTest, start_host};
-use rstest_bdd_macros::{given, then, when};
+
+/// 对拍场景使用的会话 id（`HostState::for_test` 的默认会话）。
+const SNAPSHOT_SESSION: &str = "test-session";
 
 fn describe_frame(rpc_id: u64) -> Vec<u8> {
     Frame::ClientRequest(ClientRequest {
@@ -129,7 +132,7 @@ async fn t_json_path_ok(server_test: &ServerTest) {
 #[then("得到致命错误且无降级与重试风暴")]
 async fn t_fatal_no_downgrade() {
     // 协商降级禁令:wire 格式标识稳定(客户端不识别即致命,不降级)。
-    assert_eq!(crate::protocol::wire::WIRE_FORMAT_FORY_V3, "fory-v3");
+    assert_eq!(xylitol::protocol::wire::WIRE_FORMAT_FORY_V3, "fory-v3");
 }
 
 #[then("host.describe 的 result 携带 wire 格式集合")]
@@ -140,7 +143,7 @@ async fn t_formats_present(server_test: &ServerTest) {
     assert!(resp.ok);
     match resp.payload {
         Some(ResponsePayload::DescribeResult(DescribeResult { protocol, formats })) => {
-            assert_eq!(protocol, crate::protocol::wire::PROTOCOL_VERSION);
+            assert_eq!(protocol, xylitol::protocol::wire::PROTOCOL_VERSION);
             assert!(formats.iter().any(|f| f == "jsonrpc"), "{formats:?}");
             assert!(formats.iter().any(|f| f == "fory-v3"), "{formats:?}");
         }
@@ -154,7 +157,7 @@ async fn w_toolstart_roundtrip(_server_test: &ServerTest) {}
 #[then("参数原文逐字节保真且客户端可再解析")]
 async fn t_toolstart_args_raw() {
     let raw = r#"{"pattern":"TODO","max_results":100}"#;
-    let frame = Frame::ServerNotification(crate::protocol::wire::v3::ServerNotification {
+    let frame = Frame::ServerNotification(xylitol::protocol::wire::v3::ServerNotification {
         seq: 7,
         notification: Notification::Event(V3Event::ToolStart(ToolStart {
             id: "t1".into(),
@@ -185,10 +188,55 @@ async fn w_codegen(_server_test: &ServerTest) {
 
 #[then("生成物 diff 为空且方法 ID 表与产品方法表一致")]
 async fn t_codegen_clean() {
-    // 方法 ID 表对齐与字节 conformance 由 lib 测试
-    // (`method_table_aligns_with_registry` / `codec_conformance_bytes_locked`)
-    // 必跑覆盖;本地存在 ../fory 时顺带真跑 --check。
+    // 必跑（零外部依赖）：真源 ↔ check-in 生成物的类型名集合 MUST 1:1，能接住
+    // 「改了 fbs 但没重新生成」这类结构漂移。方法 ID 表对齐与字节 conformance
+    // 由 lib 测试(`method_table_aligns_with_registry` / `codec_conformance_bytes_locked`) 覆盖。
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let schema_dir = root.join("src/protocol/wire/v3");
+    let fbs = std::fs::read_to_string(schema_dir.join("xy_wire_v3.fbs")).expect("fbs 真源");
+    let generated =
+        std::fs::read_to_string(schema_dir.join("generated.rs")).expect("check-in 生成物");
+    let first_word = |rest: &str| -> String {
+        rest.split([' ', ':', '{', '<', '('])
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    };
+    let declared: std::collections::BTreeSet<String> = fbs
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            ["table ", "enum ", "union "]
+                .iter()
+                .find_map(|kw| line.strip_prefix(kw))
+                .map(first_word)
+        })
+        .filter(|name| !name.is_empty())
+        .collect();
+    let emitted: std::collections::BTreeSet<String> = generated
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            ["pub struct ", "pub enum "]
+                .iter()
+                .find_map(|kw| line.strip_prefix(kw))
+                .map(first_word)
+        })
+        .filter(|name| !name.is_empty())
+        .collect();
+    assert!(
+        !declared.is_empty() && !emitted.is_empty(),
+        "真源/生成物类型集合不应为空：declared={} emitted={}",
+        declared.len(),
+        emitted.len()
+    );
+    assert_eq!(
+        declared, emitted,
+        "fbs 真源与 check-in 生成物漂移（补生成：just codegen-wire）"
+    );
+
+    // 字节级对拍需同一个 compiler：本地存在 ../fory clone 时才跑 --check。
     let fory = root.parent().unwrap().join("fory/compiler");
     if fory.is_dir() {
         let out = std::process::Command::new("python3")
@@ -209,7 +257,9 @@ async fn w_reserved_names(_server_test: &ServerTest) {}
 
 #[then("生成物字段名原名保留且往返保真")]
 async fn t_reserved_names_preserved() {
-    use crate::protocol::wire::v3::{ErrorEvent, ServerNotification, SessionEntry, SessionHeader};
+    use xylitol::protocol::wire::v3::{
+        ErrorEvent, ServerNotification, SessionEntry, SessionHeader,
+    };
     let frame = Frame::ServerNotification(ServerNotification {
         seq: 1,
         notification: Notification::Event(V3Event::ErrorEvent(ErrorEvent {
@@ -277,7 +327,7 @@ async fn g_dual_rail_prompt(_server_test: &ServerTest) {}
 async fn w_turn_finished(server_test: &ServerTest) {
     // 双路径事件流对拍(spec r1908):同一会话注入代表事件流,JSON 与 v3
     // 路径各自订阅收集,解码回领域 Event;结果存 fixture 供断言。
-    let pairs = crate::app::core::host_client::dual_rail_event_parity()
+    let pairs = xylitol::app::core::host_client::dual_rail_event_parity()
         .await
         .expect("parity run");
     let ok = pairs.iter().all(|(a, b)| a == b);
@@ -297,6 +347,247 @@ async fn t_dual_rail_equivalent(server_test: &ServerTest) {
     let (ok, n) = stored.split_once('|').expect("ok|n");
     assert_eq!(ok, "true", "双路径事件领域等价失败");
     assert!(n.parse::<usize>().unwrap() >= 3, "事件流样本数 {n}");
+}
+
+/// task 2.5b 对拍 fixture：给 Host 默认会话灌 3 条真实条目（两条路径读同一 store）。
+#[given("同一会话在两条路径上各有 3 条历史条目")]
+async fn g_seed_snapshot_entries(server_test: &ServerTest) {
+    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    host.ports
+        .store
+        .create(SNAPSHOT_SESSION, Some("."), None)
+        .await
+        .expect("create session");
+    for i in 0..3u64 {
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("p-{i}"),
+                parent_id: None,
+                timestamp: 1_700_000_000_000 + i,
+            },
+            message: serde_json::json!({"role": "user", "content": format!("m{i}")}),
+        });
+        host.ports
+            .store
+            .append_session_entry(SNAPSHOT_SESSION, &entry)
+            .await
+            .expect("append entry");
+    }
+}
+
+/// c2846/r1922: 深链树（>serde_json 默认 128 解析上限）双轨对拍夹具——
+/// 在默认会话上播种一条 160 层父子链，防「深树解析静默降级 Null」回归。
+#[given("同一会话在两条路径上各有一条深链树（>默认递归上限）")]
+async fn g_seed_deep_chain(server_test: &ServerTest) {
+    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    host.ports
+        .store
+        .create(SNAPSHOT_SESSION, Some("."), None)
+        .await
+        .expect("create session");
+    let mut prev: Option<String> = None;
+    for i in 0..160u32 {
+        let id = format!("dc-{i:04}");
+        let entry = SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.clone(),
+                parent_id: prev,
+                timestamp: 1_700_000_000u64 + u64::from(i),
+            },
+            message: serde_json::json!({"role": "user", "content": format!("deep {i}")}),
+        });
+        prev = Some(id);
+        host.ports
+            .store
+            .append_session_entry(SNAPSHOT_SESSION, &entry)
+            .await
+            .expect("append deep entry");
+    }
+}
+
+/// c2846/r1922: 测试夹具自身的深 JSON 也要禁递归上限（>128 层）。
+fn parse_deep_json(s: &str) -> Result<serde_json::Value, serde_json::Error> {
+    use serde::Deserialize as _;
+    let mut de = serde_json::Deserializer::from_str(s);
+    de.disable_recursion_limit();
+    serde_json::Value::deserialize(&mut de)
+}
+
+/// c2846/r1922: 深链树双轨对拍断言——两轨 result 领域等价、v3 侧完整还原
+/// 深链（非 Null）、且树的嵌套链必须超过默认解析上限（回归防 128 层降级）。
+#[then("两条路径 result 等价且 v3 侧完整还原深链（非 Null）")]
+async fn t_deep_tree_dual_rail_restored(server_test: &ServerTest) {
+    let stored = server_test
+        .unary_body
+        .borrow()
+        .clone()
+        .expect("dual rail deep tree pair");
+    let (json_text, v3_text) = stored.split_once('\n').expect("json|v3");
+    let json_value: serde_json::Value = parse_deep_json(&json_text).expect("json body");
+    let v3_value: serde_json::Value = parse_deep_json(&v3_text).expect("v3 body");
+    assert_eq!(v3_value, json_value, "两轨深树 result MUST 领域等价");
+    let chain = |v: &serde_json::Value| {
+        let mut node = v
+            .get("tree")
+            .and_then(|t| t.as_array())
+            .and_then(|a| a.first());
+        let mut depth = 0usize;
+        while let Some(n) = node {
+            depth += 1;
+            node = n
+                .get("children")
+                .and_then(|c| c.as_array())
+                .and_then(|a| a.first());
+        }
+        depth
+    };
+    let json_depth = chain(&json_value);
+    let v3_depth = chain(&v3_value);
+    assert_eq!(v3_depth, json_depth, "两轨深链深度 MUST 一致");
+    assert!(
+        v3_depth > 128 && v3_value.get("tree").is_some(),
+        "深链 MUST 完整还原且超过默认解析上限（<>128），实际 v3_depth={v3_depth}"
+    );
+}
+
+/// c2845: `session_tree` 双轨对拍 —— v3 侧 MUST 走 RAW 载体（深度安全，r1921），
+/// 与 JSON 轨 result 领域等价（r1908 纪律）。裸 binary 帧探针钉死应答变体。
+#[when("客户端分别经 JSON-RPC 与 v3 取回该会话树")]
+async fn w_fetch_tree_dual_rail(server_test: &ServerTest) {
+    use xylitol::protocol::wire::v3::{Method as V3Method, Raw as V3Raw};
+
+    let port = server_test.port.get();
+    let json_client = HttpWsClient::new(format!("http://127.0.0.1:{port}"));
+    let v3_client = HttpWsClient::new(format!("http://127.0.0.1:{port}")).with_wire_v3(true);
+    let payload = serde_json::json!({"type": "session_tree"});
+    let json_result = json_client
+        .unary("session_tree", payload)
+        .await
+        .expect("json session_tree");
+    let v3_result = v3_client
+        .unary("session_tree", serde_json::json!({"type": "session_tree"}))
+        .await
+        .expect("v3 session_tree");
+    assert!(json_result.ok, "json rail: {json_result:?}");
+    assert!(v3_result.ok, "v3 rail: {v3_result:?}");
+
+    // 裸 binary 探针：应答必须为 RawOk（非递归强 schema TreeResult）。
+    let frame = Frame::ClientRequest(ClientRequest {
+        rpc_id: 41,
+        request: Request::Raw(V3Raw {
+            method: V3Method::SessionTree,
+            json: r#"{"type":"session_tree"}"#.to_string(),
+        }),
+        writer_token: None,
+    })
+    .to_bytes()
+    .expect("encode session_tree frame");
+    let (_status, body) = post_v3(port, &frame).await;
+    let resp = expect_describe_response(&body);
+    assert!(resp.ok, "v3 rail: {:?}", resp.error);
+    assert!(
+        matches!(resp.payload, Some(ResponsePayload::RawOk(_))),
+        "c2845: session_tree v3 应答 MUST 走 RAW 载体（深度安全），实际 {:?}",
+        resp.payload
+    );
+
+    server_test.unary_body.borrow_mut().replace(format!(
+        "{}\n{}",
+        serde_json::to_string(&json_result.value).unwrap_or_default(),
+        serde_json::to_string(&v3_result.value).unwrap_or_default()
+    ));
+}
+
+#[then("两条路径 result 等价且 v3 侧为 RAW 载体（非递归强 schema）")]
+async fn t_tree_dual_rail_raw(server_test: &ServerTest) {
+    let stored = server_test
+        .unary_body
+        .borrow()
+        .clone()
+        .expect("dual rail tree pair");
+    let (json_text, v3_text) = stored.split_once('\n').expect("json|v3");
+    let json_value: serde_json::Value = serde_json::from_str(json_text).expect("json body");
+    let v3_value: serde_json::Value = serde_json::from_str(v3_text).expect("v3 body");
+    assert_eq!(
+        v3_value, json_value,
+        "两条轨 session_tree result MUST 领域等价"
+    );
+    assert!(
+        v3_value.get("tree").is_some(),
+        "树应答 MUST 含 tree 形状：{v3_value}"
+    );
+}
+
+/// 两条轨各取一次快照：JSON 轨走 `HttpWsClient`，v3 轨走 binary POST + 具名
+/// union 解码;两份 result 存 fixture 供断言。
+#[when("客户端分别经 JSON-RPC 与 v3 取回该会话快照")]
+async fn w_fetch_snapshot_dual_rail(server_test: &ServerTest) {
+    use xylitol::protocol::wire::v3::{Command as V3Command, GetMessages};
+
+    let port = server_test.port.get();
+    let json_client = HttpWsClient::new(format!("http://127.0.0.1:{port}"));
+    let json_result = json_client
+        .unary("get_messages", serde_json::json!({}))
+        .await
+        .expect("json get_messages");
+    assert!(json_result.ok, "json rail: {json_result:?}");
+
+    let frame = Frame::ClientRequest(ClientRequest {
+        rpc_id: 21,
+        request: Request::Command(V3Command::GetMessages(GetMessages {})),
+        writer_token: None,
+    })
+    .to_bytes()
+    .expect("encode get_messages frame");
+    let (_status, body) = post_v3(port, &frame).await;
+    let resp = expect_describe_response(&body);
+    assert!(resp.ok, "v3 rail: {:?}", resp.error);
+    // 具名 union 而非 RawOk：强 schema 载荷已接进产品面。
+    let v3_value = match resp.payload.as_ref() {
+        Some(ResponsePayload::MessagesResult(m)) => serde_json::json!({
+            "entries": serde_json::to_value(
+                xylitol::protocol::wire::v3::mapping::v3_to_entries(m).expect("closed variants"),
+            )
+            .unwrap()
+        }),
+        other => panic!("get_messages MUST 走 MessagesResult，实际 {other:?}"),
+    };
+
+    server_test.unary_body.borrow_mut().replace(format!(
+        "{}\n{}",
+        serde_json::to_string(&json_result.value).unwrap_or_default(),
+        serde_json::to_string(&v3_value).unwrap_or_default()
+    ));
+}
+
+#[then("两条路径的 result 等价且 v3 侧承载具名应答 union")]
+async fn t_snapshot_dual_rail_equal(server_test: &ServerTest) {
+    let stored = server_test
+        .unary_body
+        .borrow()
+        .clone()
+        .expect("dual rail snapshot pair");
+    let (json_text, v3_text) = stored.split_once('\n').expect("json|v3");
+    let json_value: serde_json::Value = serde_json::from_str(json_text).expect("json body");
+    let v3_value: serde_json::Value = serde_json::from_str(v3_text).expect("v3 body");
+    assert_eq!(v3_value, json_value, "两条轨的快照 result MUST 领域等价");
+    assert!(
+        json_value
+            .get("entries")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len)
+            .unwrap_or_default()
+            >= 3,
+        "fixture 的 3 条条目（加 store 自己的 session header）MUST 两边都看得到"
+    );
 }
 
 #[given("v3 客户端已订阅会话且 prompt 运行")]
@@ -323,13 +614,13 @@ async fn w_inject_textdelta(server_test: &ServerTest) {
     for text in ["a", "b", "c"] {
         host.slot("s-seq")
             .await
-            .append_and_push(crate::protocol::Event::TextDelta { text: text.into() })
+            .append_and_push(xylitol::protocol::Event::TextDelta { text: text.into() })
             .await;
     }
     let mut seqs = Vec::new();
     use futures::StreamExt;
     while let Ok(Some(Ok(frame))) = tokio::time::timeout(Duration::from_secs(3), mux.next()).await {
-        if let crate::protocol::RpcMessage::ServerRequest {
+        if let xylitol::protocol::RpcMessage::ServerRequest {
             method, payload, ..
         } = &frame
             && method == "session/event"
@@ -365,7 +656,7 @@ async fn w_decode_future_variant(server_test: &ServerTest) {
     // UnknownCase 即「未来变体」的合法载体:编码 Event::Unknown 帧,旧端
     // 解码落 Unknown 且 mapping 降级 None(spec r1907/r1719,不 panic)。
     let unknown_event = V3Event::Unknown(fory::UnknownCase::new(999u32, 0u8));
-    let frame = Frame::ServerNotification(crate::protocol::wire::v3::ServerNotification {
+    let frame = Frame::ServerNotification(xylitol::protocol::wire::v3::ServerNotification {
         seq: 9,
         notification: Notification::Event(unknown_event),
     });
@@ -374,7 +665,7 @@ async fn w_decode_future_variant(server_test: &ServerTest) {
     let degraded = match &back {
         Frame::ServerNotification(n) => match &n.notification {
             Notification::Event(V3Event::Unknown(_)) => {
-                crate::protocol::wire::v3::mapping::v3_event_to_xy(&V3Event::Unknown(
+                xylitol::protocol::wire::v3::mapping::v3_event_to_xy(&V3Event::Unknown(
                     fory::UnknownCase::new(999u32, 0u8),
                 ))
                 .is_none()
