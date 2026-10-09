@@ -574,3 +574,7 @@
   规则: arm_tool_freeze 租约冲突降级为无租约有界决议
     「arm_tool_freeze」unary 在写者租约冲突时（首轮竞态：客户端 writer token 尚未同步即 presented 为空/过期）MUST 降级为无租约有界决议——照常经「ensure_tool_table_frozen」返回权威冻结快照，MUST NOT 以「writer_conflict」失败使首轮门永久停滞（冻结的是写者内部门、不写会话状态）。正常路径的租约 mint/续用语义不变。
     # verified-by: fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck
+  @req:r1926
+  规则: attach 生效模型同步不进 journal
+    会话绑定期同步写者当前生效模型的「ModelSelect」下行 MUST 为 transient 推送（不落 journal、不消耗 seq）——它附属于订阅者收敛而非会话历史；重复绑定产生的重复「ModelSelect」下行 MUST 语义幂等（消费端徽标收敛不闪变）。会话历史中的模型变更记录由领域层「ModelChange」条目承载，MUST NOT 由 attach 期同步兼任。
+    # verified-by: src/app/server/host.rs
