@@ -25,6 +25,12 @@ const ESTIMATED_IMAGE_CHARS: u64 = 4800;
 /// Returns 0 when the entry has no context-visible message (skipped in accumulation).
 /// Message rows that fail typed deserialize still use a lax content walk (string or
 /// parts) so cut math stays usable for legacy / fixture wire shapes.
+/// c2848/r1924: cut 逐条度量与 unified 估算链（`accounting::heuristic_tokens`）
+/// 同源：对**投影后单条**消息按序列化字节 /4 计数（同一算法族、同一投影源），
+/// 不再使用独立的内容字符启发式作为决策 SSOT。不可行的反序列化走 lax 兜底。
+///
+/// 注意：unified 的启发式是逐条 `serde_json::to_string /4` 之和，本函数即它的
+/// 逐条切片——切点位置因此与决策/展示落在同一度量空间（中文会话不再 5x 失真）。
 pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
     match entry {
         SessionEntry::Message(msg) => {
@@ -35,16 +41,47 @@ pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
                     {
                         return 0;
                     }
-                    estimate_tokens_message_for_cut(&agent_msg)
+                    unified_projected_entry_token_estimate(&agent_msg)
                 }
+                // lax 兜底：非 SSOT，仅在消息反序列化失败时使用。
                 Err(_) => estimate_lax_message_json_chars(&msg.message).div_ceil(4),
             }
         }
         _ => entry
             .as_agent_message()
-            .map(|m| estimate_tokens_message_for_cut(&m))
+            .map(|m| unified_projected_entry_token_estimate(&m))
             .unwrap_or(0),
     }
+}
+
+/// c2848: 与 `accounting::heuristic_tokens` 同算法的单条投影计数（逐条切片）。
+/// 投影丢弃 error 助手与无投影的 Env —— 与 unified 估算完全同源。
+///
+/// pi 视觉成本单独叠加：图片（user/toolResult）按 `ESTIMATED_IMAGE_CHARS`（≈1200
+/// token）计——投影后的序列化只含图片元数据、不承载真实视觉载荷，必须显式建模。
+fn unified_projected_entry_token_estimate(agent_msg: &AgentMessage) -> u64 {
+    let image_tokens = match agent_msg {
+        AgentMessage::Llm(LlmMessage::UserMessage { content, .. })
+        | AgentMessage::Llm(LlmMessage::ToolResultMessage { content, .. }) => {
+            content
+                .iter()
+                .filter(|p| matches!(p, AgentPart::Image(_)))
+                .count() as u64
+                * ESTIMATED_IMAGE_CHARS.div_ceil(4)
+        }
+        _ => 0,
+    };
+    let projected = crate::agent::llm_project::project_for_llm(std::slice::from_ref(agent_msg));
+    let serialized: u64 = projected
+        .iter()
+        .map(|m| {
+            (serde_json::to_string(m)
+                .map(|s| s.len() as u64)
+                .unwrap_or(0))
+            .div_ceil(4)
+        })
+        .sum();
+    serialized.saturating_add(image_tokens)
 }
 
 /// Lax wire: string `content` or part array (text / image / thinking / toolCall).

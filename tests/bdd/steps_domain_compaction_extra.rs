@@ -178,7 +178,7 @@ pub(crate) fn t_comp_never_tool_ok(agent: &AgentState) {
 
 #[given("keepRecent tokens 预算给定且存在多个合法切点")]
 pub(crate) fn g_comp_keep_budget(agent: &AgentState) {
-    use xylitol::agent::compaction::{estimate_tokens_entry, find_cut_point};
+    use xylitol::agent::compaction::{cut_detector::estimate_tokens_entry_for_cut, find_cut_point};
     let mut entries = Vec::new();
     for i in 0..20 {
         entries.push(comp_make_msg(
@@ -194,9 +194,11 @@ pub(crate) fn g_comp_keep_budget(agent: &AgentState) {
     }
     let keep = 80u64;
     let result = find_cut_point(&entries, 0, entries.len(), keep);
+    // c2848: 保留侧测量与切点决策同平面（estimate_tokens_entry_for_cut）——
+    // 与 find_cut_point 的累积器一致，预算契约才可真实检验。
     let kept: u64 = entries[result.first_kept_entry_index..]
         .iter()
-        .map(estimate_tokens_entry)
+        .map(estimate_tokens_entry_for_cut)
         .sum();
     agent.last_result.replace(Some(Ok(format!(
         "kept:{kept} keep:{keep} cut:{}",

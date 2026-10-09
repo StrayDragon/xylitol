@@ -56,6 +56,7 @@ mod steps_bridge;
 mod steps_c2827;
 mod steps_c2830;
 mod steps_c2844;
+mod steps_c2848;
 mod steps_cli_surface;
 mod steps_compaction;
 mod steps_domain_compaction_extra;

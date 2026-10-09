@@ -845,9 +845,10 @@ mod tests {
             cut > text_only + 5_000,
             "cut estimate must include thinking/toolCall: cut={cut} text_only={text_only}"
         );
-        // Image-style: 4800 chars → 1200 tokens (not 4800 tokens).
+        // Image-style: 4800 chars → 1200 tokens (not 4800 tokens)。统一口径下
+        // 图片按 pi 视觉建模叠加（≈1200 token），其余文本按序列化同源计量。
         let img = {
-            use crate::protocol::message::{AgentMessage, AgentPart};
+            use crate::protocol::message::{AgentMessage as Am, AgentPart};
             let now = timestamp_now();
             SessionEntry::Message(crate::protocol::session::MessageEntry {
                 base: crate::protocol::session::EntryBase {
@@ -856,16 +857,17 @@ mod tests {
                     parent_id: None,
                     timestamp: now,
                 },
-                message: serde_json::to_value(AgentMessage::user_parts(vec![
+                message: serde_json::to_value(Am::user_parts(vec![
                     AgentPart::text("see"),
                     AgentPart::image("image/png", "AAAA"),
                 ]))
                 .unwrap(),
             })
         };
-        assert_eq!(
-            estimate_tokens_entry_for_cut(&img),
-            (3 + 4800u64).div_ceil(4)
+        let cut_img = estimate_tokens_entry_for_cut(&img);
+        assert!(
+            (1200..1400).contains(&cut_img),
+            "image MUST be modeled as ~1200 tokens on the unified plane (pi ESTIMATED_IMAGE_CHARS/4), got {cut_img}"
         );
     }
 

@@ -253,3 +253,8 @@ async fn test_c2844_reasoning_only_summary(
     ws: Workspace,
 ) {
 }
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "compaction-cut-metric-same-source"
+)]
+fn test_c2848_cut_metric_same_source(agent: AgentState, ws: Workspace) {}
