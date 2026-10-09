@@ -378,6 +378,11 @@ async fn test_sr_c2841_prompt_session_identity(server_test: ServerTest) {}
 async fn test_sr_c2841_model_sync_on_bind(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
+    name = "model-sync-on-rebind-is-transient"
+)]
+async fn test_sr_c2850_model_sync_rebind_transient(server_test: ServerTest) {}
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
     name = "v3-command-keeps-session-identity"
 )]
 async fn test_sr_c2842_v3_command_session_identity(server_test: ServerTest) {}

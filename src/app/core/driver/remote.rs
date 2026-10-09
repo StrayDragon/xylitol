@@ -2187,6 +2187,57 @@ mod tests {
         );
     }
 
+    /// c2850/r1926: attach 期 ModelSelect 同步不进 journal、不消耗 seq；
+    /// 重复调用仍向订阅者推送（语义幂等）。
+    #[tokio::test]
+    async fn sync_model_downlink_is_not_journaled() {
+        use crate::app::server::host::materialize_writer;
+
+        let host = HostState::for_test_with_default_model("fake-model").expect("host");
+        let slot = host.slot("model-sync").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        let seq_before = slot.journal.lock().await.max_seq();
+        let mut rx = host.in_process_downlink.subscribe();
+        slot.sync_model_downlink().await;
+        slot.sync_model_downlink().await;
+
+        let mut seen = 0u8;
+        for _ in 0..16 {
+            if seen >= 2 {
+                break;
+            }
+            let msg = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+                .await
+                .expect("downlink")
+                .expect("msg");
+            let RpcMessage::ServerRequest {
+                method, payload, ..
+            } = msg
+            else {
+                continue;
+            };
+            if method != "session/event" {
+                continue;
+            }
+            let ev = payload.get("event").cloned().unwrap_or_default();
+            if ev.get("type").and_then(|v| v.as_str()) == Some("model_select") {
+                assert_eq!(
+                    ev.get("model_id").and_then(|v| v.as_str()),
+                    Some("fake-model")
+                );
+                seen += 1;
+            }
+        }
+        assert_eq!(seen, 2, "两次 sync MUST 各推一帧 ModelSelect");
+        assert_eq!(
+            slot.journal.lock().await.max_seq(),
+            seq_before,
+            "attach ModelSelect MUST NOT consume journal seq"
+        );
+    }
+
     #[tokio::test]
     async fn minted_session_subscribe_does_not_require_cli_flag() {
         let host = HostState::for_test().expect("host");
