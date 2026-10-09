@@ -570,3 +570,7 @@
 # re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
 
 # re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）
+  @req:r1925
+  规则: arm_tool_freeze 租约冲突降级为无租约有界决议
+    「arm_tool_freeze」unary 在写者租约冲突时（首轮竞态：客户端 writer token 尚未同步即 presented 为空/过期）MUST 降级为无租约有界决议——照常经「ensure_tool_table_frozen」返回权威冻结快照，MUST NOT 以「writer_conflict」失败使首轮门永久停滞（冻结的是写者内部门、不写会话状态）。正常路径的租约 mint/续用语义不变。
+    # verified-by: fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck
