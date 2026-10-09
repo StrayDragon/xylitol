@@ -19,10 +19,50 @@ pub fn encode_to_string(msg: &RpcMessage) -> Result<String, serde_json::Error> {
     serde_json::to_string(msg)
 }
 
+/// 线上 JSON 深解析上限（r1927）：容纳实机深树（188）一个量级余量，
+/// 远低于 tokio worker 栈风险区。两处 `disable_recursion_limit` 入口共用。
+pub(crate) const JSON_DEPTH_LIMIT: u32 = 2048;
+
+/// 单趟、转义感知：字符串字面量内的 `[`/`{` 不计入嵌套。超限即 `true`，
+/// 不再进入 serde 递归下降（c2851：无界 `disable_recursion_limit` 可打穿栈）。
+pub(crate) fn json_nesting_exceeds_limit(text: &str) -> bool {
+    let mut depth: u32 = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    for c in text.chars() {
+        if in_string {
+            if escape {
+                escape = false;
+            } else if c == '\\' {
+                escape = true;
+            } else if c == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => in_string = true,
+            '[' | '{' => {
+                depth = depth.saturating_add(1);
+                if depth > JSON_DEPTH_LIMIT {
+                    return true;
+                }
+            }
+            ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    false
+}
+
 /// c2846/r1922: 线载荷深解析须绕过 serde_json 默认 128 层递归上限——
 /// `session_tree` 深树（实机 188 层）通过 JSON 轨到达时会触发
 /// `recursion limit exceeded`（v3 轨 RawOk 同法见 host_client）。
+/// c2851/r1927: 绕过默认上限前先做显式深度闸，超限早退。
 fn parse_json_value(text: &str) -> Result<Value, serde_json::Error> {
+    if json_nesting_exceeds_limit(text) {
+        return Err(serde_json::Error::custom("json depth limit exceeded"));
+    }
     let mut de = serde_json::Deserializer::from_str(text);
     de.disable_recursion_limit();
     Value::deserialize(&mut de)
@@ -205,6 +245,44 @@ mod tests {
             "four-quadrant type tag is not wire"
         );
         assert!(decode_str(text).is_err());
+    }
+
+    fn nested_arrays(depth: usize) -> String {
+        format!("{}0{}", "[".repeat(depth), "]".repeat(depth))
+    }
+
+    #[test]
+    fn json_depth_probe_skips_brackets_inside_strings() {
+        let text = "{\"s\":\"[[[[[\"}";
+        assert!(
+            !json_nesting_exceeds_limit(text),
+            "字符串内括号 MUST NOT 计入嵌套"
+        );
+    }
+
+    #[test]
+    fn parse_json_accepts_session_tree_scale_depth() {
+        let text = nested_arrays(200);
+        parse_json_value(&text).expect("~200 层（实机深树量级）MUST 通过");
+    }
+
+    #[test]
+    fn decode_rejects_beyond_json_depth_limit() {
+        let too_deep = nested_arrays(JSON_DEPTH_LIMIT as usize + 1);
+        assert!(
+            json_nesting_exceeds_limit(&too_deep),
+            "探测 MUST 在 >{JSON_DEPTH_LIMIT} 层早退"
+        );
+        assert!(
+            parse_json_value(&too_deep).is_err(),
+            "超限 MUST 拒解析（服务端非法信封路径）"
+        );
+        let envelope =
+            format!(r#"{{"jsonrpc":"2.0","id":"1","method":"host.describe","params":{too_deep}}}"#);
+        assert!(
+            decode_str(&envelope).is_err(),
+            "超限 envelope MUST decode 失败"
+        );
     }
 
     #[test]

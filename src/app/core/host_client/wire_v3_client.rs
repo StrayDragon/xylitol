@@ -178,11 +178,14 @@ pub(super) fn server_response_to_result(resp: &ServerResponse) -> RpcResult {
 /// `session_tree` 深树 JSON 可超过 serde_json 默认 **128 层**递归解析上限
 /// （实机深会话 188 层），默认 `from_str` 会 `recursion limit exceeded` 并被
 /// 调用方静默降级为 `Null`（下游再报 `invalid type: null`）。服务端序列化
-/// 无此上限（仅在反序列化侧），故对 RAW 原文一律禁用递归上限——帧内存天然
-/// 小（内容就是一个字符串），深度变化只来自树本身。失败仍按 r1907 退化语义
-/// 降级 `Null`，不拼半份形状。
+/// 无此上限（仅在反序列化侧），故对 RAW 原文禁用默认递归上限，但 c2851/r1927
+/// 加显式深度闸（与 codec 共用 `JSON_DEPTH_LIMIT`）——超限仍按 r1907 退化
+/// `Null`，不拼半份形状、不进无界递归下降。
 fn parse_raw_json(json: &str) -> Value {
     use serde::Deserialize as _;
+    if crate::protocol::wire::codec::json_nesting_exceeds_limit(json) {
+        return Value::Null;
+    }
     let mut de = serde_json::Deserializer::from_str(json);
     de.disable_recursion_limit();
     Value::deserialize(&mut de).unwrap_or(Value::Null)
@@ -313,7 +316,7 @@ mod tests {
         ApprovalRequested, DescribeResult, Event as V3Event, ResyncRequired, ServerNotification,
         Subscribed, TextDelta as V3TextDelta, ToolStart as V3ToolStart,
     };
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     fn decode_frame(bytes: &[u8]) -> Frame {
         Frame::from_bytes(bytes).expect("roundtrip decode")
@@ -528,6 +531,43 @@ mod tests {
             value.get("tree").is_some(),
             "tree 键 MUST 存在，不得降级 Null: {value:?}"
         );
+    }
+
+    /// c2851/r1927: 超过共享深度上限的 RawOk 按 r1907 退化 Null，不进无界递归。
+    #[test]
+    fn raw_ok_over_json_depth_limit_degrades_to_null() {
+        use crate::protocol::wire::codec::JSON_DEPTH_LIMIT;
+        let depth = JSON_DEPTH_LIMIT as usize + 1;
+        let too_deep = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+        let resp = ServerResponse {
+            rpc_id: 10,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::RawOk(v3::RawOk { json: too_deep })),
+            writer_token: None,
+        };
+        let result = server_response_to_result(&resp);
+        assert!(result.ok, "超限仍是 ok 应答，只是载荷退化: {result:?}");
+        assert_eq!(
+            result.value,
+            Some(Value::Null),
+            "超限 RawOk MUST 退化 Null（r1907）"
+        );
+    }
+
+    #[test]
+    fn raw_ok_parses_two_hundred_nested_arrays() {
+        let deep = format!("{}0{}", "[".repeat(200), "]".repeat(200));
+        let resp = ServerResponse {
+            rpc_id: 11,
+            ok: true,
+            error: None,
+            payload: Some(ResponsePayload::RawOk(v3::RawOk { json: deep })),
+            writer_token: None,
+        };
+        let result = server_response_to_result(&resp);
+        let value = result.value.expect("~200 层 RawOk MUST 不为 Null");
+        assert!(value.is_array(), "200 层数组 MUST 解析为 Array: {value:?}");
     }
 
     /// 协商门:旧 host(formats 缺失)与未宣告 fory-v3 都必须判否。
