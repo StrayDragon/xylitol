@@ -291,3 +291,7 @@
 # re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
 
 # re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）
+  @req:r1927
+  规则: 线上 JSON 深解析有界
+    对线上输入的 JSON 深解析 MUST 设显式深度上限（2048 层：容纳实机深树两个量级、远低于栈风险区），超限 MUST 按既有降级语义收口（服务端非法信封判否、客户端「RawOk」退化 Null——r1907 不断链），MUST NOT 以无界递归深度解析线上输入（4 MiB 体量上限内的嵌套字节数组仍可打穿 worker 栈）。上限 MUST 为单一常量（两处解码入口共用）。
+    # verified-by: src/protocol/wire/codec.rs
