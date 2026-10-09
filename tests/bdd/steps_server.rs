@@ -3,6 +3,7 @@ use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use std::time::Duration;
 
+use crate::bdd::helpers::with_test_timeout;
 use xylitol::app::server::host::HostState;
 use xylitol::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
 use xylitol::app::server::ws::{EventJournal, ReverseRpcResult};
@@ -14,6 +15,11 @@ use xylitol::protocol::wire::registry;
 use xylitol::{
     HostClient, HttpWsClient, LinkHealth, LinkTunings, MuxStream, XyDriver, XyRemoteDriver,
 };
+
+/// c2841 场景族会话 id（W7：与 v3 族常量分列，禁止跨规则隐式借用）。
+const SESSION_C2841: &str = "s-c2841";
+/// c2842 v3 场景族会话 id。
+const SESSION_V3: &str = "s-v3";
 
 /// Shared fixture for server-core scenarios.
 pub struct ServerTest {
@@ -98,21 +104,29 @@ pub fn approval_test() -> ServerTest {
 
 pub async fn start_host(t: &ServerTest) {
     let host = HostState::for_test().expect("HostState");
-    let (running, port) = serve(
-        ServerConfig {
-            host: "127.0.0.1".into(),
-            port: 0,
-            sessions_dir: None,
-            registration_path: None,
-        },
-        host.clone(),
-    )
+    let (running, port) = with_test_timeout(|| {
+        let host = host.clone();
+        async move {
+            let (running, port) = serve(
+                ServerConfig {
+                    host: "127.0.0.1".into(),
+                    port: 0,
+                    sessions_dir: None,
+                    registration_path: None,
+                },
+                host,
+            )
+            .await
+            .expect("serve");
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            (running, port)
+        }
+    })
     .await
-    .expect("serve");
+    .expect("serve 启动 MUST 在 with_test_timeout 内完成");
     t.host.replace(Some(host));
     t.running.replace(Some(running));
     t.port.set(port);
-    tokio::time::sleep(Duration::from_millis(30)).await;
 }
 
 async fn wait_unbound(host: &HostState, n: usize) {
@@ -2730,28 +2744,36 @@ fn t_c2826_writer_conflict(server_test: &ServerTest) {
 
 async fn start_host_with_default_model(t: &ServerTest, model_id: &str) {
     let host = HostState::for_test_with_default_model(model_id).expect("host with default model");
-    let (running, port) = serve(
-        ServerConfig {
-            host: "127.0.0.1".into(),
-            port: 0,
-            sessions_dir: None,
-            registration_path: None,
-        },
-        host.clone(),
-    )
+    let (running, port) = with_test_timeout(|| {
+        let host = host.clone();
+        async move {
+            let (running, port) = serve(
+                ServerConfig {
+                    host: "127.0.0.1".into(),
+                    port: 0,
+                    sessions_dir: None,
+                    registration_path: None,
+                },
+                host,
+            )
+            .await
+            .expect("serve");
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            (running, port)
+        }
+    })
     .await
-    .expect("serve");
+    .expect("serve 启动 MUST 在 with_test_timeout 内完成");
     t.host.replace(Some(host));
     t.running.replace(Some(running));
     t.port.set(port);
-    tokio::time::sleep(Duration::from_millis(30)).await;
 }
 
 #[given("会话写者已装配且持有已解析默认模型 fake-model")]
 async fn g_c2841_writer_with_default_model(server_test: &ServerTest) {
     start_host_with_default_model(server_test, "fake-model").await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
-    let slot = host.slot("s-c2841").await;
+    let slot = host.slot(SESSION_C2841).await;
     xylitol::app::server::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
@@ -2773,7 +2795,7 @@ async fn w_c2841_bind_subscriber(server_test: &ServerTest) {
     let r = client
         .unary(
             "subscribe",
-            serde_json::json!({"session_id": "s-c2841", "last_seq": 0}),
+            serde_json::json!({"session_id": SESSION_C2841, "last_seq": 0}),
         )
         .await
         .expect("subscribe");
@@ -2842,7 +2864,13 @@ async fn drain_model_select(mux: &mut MuxStream) -> bool {
 #[when("同一会话被订阅两次")]
 async fn w_c2850_subscribe_twice(server_test: &ServerTest) {
     let host = server_test.host.borrow().as_ref().expect("host").clone();
-    let seq_before = host.slot("s-c2841").await.journal.lock().await.max_seq();
+    let seq_before = host
+        .slot(SESSION_C2841)
+        .await
+        .journal
+        .lock()
+        .await
+        .max_seq();
 
     let mut seen = 0u8;
     for _ in 0..2 {
@@ -2852,7 +2880,7 @@ async fn w_c2850_subscribe_twice(server_test: &ServerTest) {
         let r = client
             .unary(
                 "subscribe",
-                serde_json::json!({"session_id": "s-c2841", "last_seq": 0}),
+                serde_json::json!({"session_id": SESSION_C2841, "last_seq": 0}),
             )
             .await
             .expect("subscribe");
@@ -2862,7 +2890,13 @@ async fn w_c2850_subscribe_twice(server_test: &ServerTest) {
         }
     }
 
-    let seq_after = host.slot("s-c2841").await.journal.lock().await.max_seq();
+    let seq_after = host
+        .slot(SESSION_C2841)
+        .await
+        .journal
+        .lock()
+        .await
+        .max_seq();
     server_test.last_seq.set(seq_after.wrapping_sub(seq_before));
     server_test.unary_status.set(u16::from(seen));
 }
@@ -2913,8 +2947,7 @@ async fn g_c2841_prompt_with_identity(server_test: &ServerTest) {
 
 #[when("Host 处理该 prompt")]
 async fn w_c2841_prompt_processed(_server_test: &ServerTest) {
-    // Fake provider 本轮即时完成；留出事件广播窗口。
-    tokio::time::sleep(Duration::from_millis(800)).await;
+    // Fake provider 本轮即时完成；事件可达由 then 的 3s 读循环兜底（c2853 W5）。
 }
 
 #[then("run 路由到 s-prompt 且事件在 s-prompt 的订阅者上可达")]
@@ -2952,7 +2985,7 @@ async fn t_c2841_prompt_events_reachable(server_test: &ServerTest) {
 async fn g_c2842_v3_subscribe_default_model(server_test: &ServerTest) {
     start_host_with_default_model(server_test, "fake-model").await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
-    let slot = host.slot("s-v3").await;
+    let slot = host.slot(SESSION_V3).await;
     xylitol::app::server::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
@@ -2960,7 +2993,7 @@ async fn g_c2842_v3_subscribe_default_model(server_test: &ServerTest) {
     let r = client
         .unary(
             "subscribe",
-            serde_json::json!({"session_id": "s-v3", "last_seq": 0, "cwd": "/tmp"}),
+            serde_json::json!({"session_id": SESSION_V3, "last_seq": 0, "cwd": "/tmp"}),
         )
         .await
         .expect("v3 subscribe");
@@ -2976,7 +3009,7 @@ async fn w_c2842_v3_set_model(server_test: &ServerTest) {
             "set_model",
             serde_json::json!({
                 "type": "set_model",
-                "session_id": "s-v3",
+                "session_id": SESSION_V3,
                 "model_id": "fake-model",
             }),
         )
@@ -3012,7 +3045,7 @@ async fn w_c2842_get_state(server_test: &ServerTest) {
     let r = client
         .unary(
             "get_state",
-            serde_json::json!({"type": "get_state", "session_id": "s-c2841"}),
+            serde_json::json!({"type": "get_state", "session_id": SESSION_C2841}),
         )
         .await
         .expect("get_state");
