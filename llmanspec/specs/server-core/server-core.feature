@@ -578,3 +578,7 @@
   规则: attach 生效模型同步不进 journal
     会话绑定期同步写者当前生效模型的「ModelSelect」下行 MUST 为 transient 推送（不落 journal、不消耗 seq）——它附属于订阅者收敛而非会话历史；重复绑定产生的重复「ModelSelect」下行 MUST 语义幂等（消费端徽标收敛不闪变）。会话历史中的模型变更记录由领域层「ModelChange」条目承载，MUST NOT 由 attach 期同步兼任。
     # verified-by: src/app/server/host.rs
+  @req:r1928
+  规则: JSON-RPC batch 判非法信封
+    JSON-RPC 2.0 文本调试通道只承载单请求对象：数组 batch 请求 MUST 判非法信封（与缺 method、载体版本不符同梯队——「illegal_envelope」语义，HTTP 400），MUST NOT 静默支持 batch（逐元素幂等键与写者租约准入语义未定义）。产品路径为 v3 二进制帧（单请求），不受本条约束。
+    # verified-by: src/app/server/rpc_module.rs
