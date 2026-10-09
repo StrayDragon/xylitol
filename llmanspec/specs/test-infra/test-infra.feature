@@ -31,7 +31,7 @@
       那么 RAII 清理且不留产物
   @req:r57
   规则: async-test-timeout
-    异步集成测试 MUST 用 with_test_timeout 辅助函数包裹主体（默认 10s），防止 CI 因死锁或 mock 失败挂起。
+    依赖外部时序（网络 / 子进程 / 挂钟等待）的异步集成场景 MUST 用 with_test_timeout 辅助函数包裹等待主体（默认 10s），防止 CI 因死锁或 mock 失败挂起；纯内存异步场景 SHOULD 复用同一辅助统一收口。MUST NOT 以「断言该辅助存在」的文本探针替代真实包裹（名实不符即债务）。
     # verified-by: tests/bdd/helpers.rs
 
     场景: async-test-timeout-guard
