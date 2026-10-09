@@ -181,8 +181,10 @@ fn pid_alive(pid: u32) -> bool {
         let Ok(pid) = i32::try_from(pid) else {
             return false;
         };
-        // SAFETY: valid pid value + signal 0; `kill` returns the match count or 0 (ESRCH).
-        unsafe { libc::kill(pid, 0) > 0 }
+        // SAFETY: valid pid value + signal 0 (presence probe, nothing delivered).
+        // kill(2) returns 0 on success and -1 on error (e.g. ESRCH = no such
+        // process) — success, not a positive count, is the "alive" verdict.
+        unsafe { libc::kill(pid, 0) == 0 }
     }
 }
 

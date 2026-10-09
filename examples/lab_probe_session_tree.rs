@@ -15,10 +15,7 @@ async fn main() {
         SessionTreeKind::MessageHistory,
         SessionTreeKind::FileBrowser,
     ] {
-        let mut cmd = Command::SessionTree { kind: kind.clone() };
-        if !sid.is_empty() {
-            cmd = Command::SessionTree { kind: kind.clone() };
-        }
+        let cmd = Command::SessionTree { kind: kind.clone() };
         let payload = serde_json::to_value(&cmd).expect("serialize command");
         let mut payload = payload;
         if payload
