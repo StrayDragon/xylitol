@@ -7,7 +7,7 @@ use serde_json::Value;
 
 /// Stable protocol version returned by `host.describe`.
 ///
-/// 3 = 产品路径为 v3 二进制帧（fory），JSON-RPC 2.0 文本为调试通道（c2835）。
+/// 3 = 产品路径为 v3 二进制帧（fory）；JSON-RPC 2.0 文本不是产品通道。
 /// attach 预检是硬等值：不等即致命，不降级、不重试风暴。
 pub const PROTOCOL_VERSION: u32 = 3;
 
@@ -141,9 +141,8 @@ pub struct QuestionRequestedPayload {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostDescribeValue {
     pub protocol: u32,
-    /// Supported wire formats (c2834 spec r1911): `jsonrpc` + `fory-v3`.
-    /// Absent on old hosts; clients MUST treat missing as jsonrpc-only and an
-    /// unknown demanded format as fatal (no downgrade, no retry storm).
+    /// Supported wire formats (c2854): product advertises `fory-v3` only.
+    /// Absent on old hosts; an unknown demanded format is fatal (no downgrade).
     #[serde(default)]
     pub formats: Vec<String>,
 }

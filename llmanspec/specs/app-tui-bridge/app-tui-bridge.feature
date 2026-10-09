@@ -44,13 +44,13 @@
       并且 正文快照不写入 streaming 缓冲
   @req:r1182
   规则: attach-default-inprocess-retained
-    产品 TUI 默认 MUST 经 JSON-RPC 客户端 attach Host：unary 与下行 MUST 共用同一条 WS /rpc；MUST NOT 默认同进程直握操作器。POST /rpc 仍为 HTTP 产品入口，MUST NOT 删除。同进程驱动路径 MUST 保留给 print、库嵌入与符合性闸，MUST NOT 删除。表面切换 MUST 只换客户端实现（seam 稳定），MUST NOT 为产品 TUI 静默改回同进程直握。
+    产品 TUI 默认 MUST 经产品客户端 attach Host：unary 与下行 MUST 共用同一条 WS /rpc；MUST NOT 默认同进程直握操作器。POST /rpc 仍为 HTTP 产品入口（二进制），MUST NOT 删除。同进程驱动路径 MUST 保留给 print、库嵌入与符合性闸，MUST NOT 删除。表面切换 MUST 只换客户端实现（seam 稳定），MUST NOT 为产品 TUI 静默改回同进程直握。
 
     场景: remote-type-kept
       当 服务端在空闲端口上启动
       并且 检查 Driver 实现
       并且 POST /rpc 调用 host.describe
-      那么 应答为 JSON-RPC 成功且 id 回显
+      那么 应答为产品成功且 rpc_id 回显
       当 产品客户端经 WS /rpc 调用 host.describe
       那么 产品 unary 成功且 result 含协议版本
       并且 默认 attach 且同进程驱动路径仍保留给 print 与嵌入

@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: protocol-app
-# purpose: Client↔host 产品真源为 JSON-RPC 2.0（入口 POST /rpc 与 WS /rpc）；Command/Event 为方法载荷与下行 notification 内容。
+# purpose: Client↔host 产品真源为产品二进制帧（入口 POST /rpc 与 WS /rpc）；Command/Event 为方法载荷与下行通知内容。
 # scope: src/, tests/
 
 功能: protocol-app
@@ -26,20 +26,20 @@
       那么 队列计数保真且未知 type 解析为错误而非 panic
   @req:r1696
   规则: 信封与错误
-    产品 unary 应答 MUST 使用统一结果形态：成功则带 result，失败则带 error（message 为 details）。产品业务码 MUST 为稳定字符串（JSON 载体在 `error.data.code`，v3 载体在 `RpcError.code`），载体数字码 MUST 仅作载体，MUST NOT 成为产品错误模型。合法信封的 HTTP 状态 MUST 表示载体成功；非法信封 MUST 失败。旧 REST {code,msg,data} 与四象限 `{ok,value,error}` 顶层形态 MUST NOT 再作为产品 TUI 路径。
+    产品 unary 应答 MUST 使用统一结果形态：成功则带 result，失败则带 error（message 为 details）。产品业务码 MUST 为稳定字符串（在错误码字段），载体数字码 MUST 仅作载体，MUST NOT 成为产品错误模型。合法信封的 HTTP 状态 MUST 表示载体成功；非法信封 MUST 失败。旧 REST {code,msg,data}、JSON-RPC 文本信封与四象限 `{ok,value,error}` 顶层形态 MUST NOT 再作为产品 TUI 路径。
 
     场景: unary-stable-error-envelope
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用未登记方法 no_such_method
-      那么 应答为 JSON-RPC 错误且产品码在 data.code、信封数字码为 -32601
+      那么 应答为产品错误且为未登记方法
   @req:r1697
   规则: Subscribe 命令
-    产品 MUST 支持以 session 与 last_seq 订阅事件流；订阅确认 MUST 能表达 session 与当前 seq。该订阅 MUST 走产品 JSON-RPC 入口，MUST NOT 另开 REST 或非 JSON-RPC 的 WS 应用帧。
+    产品 MUST 支持以 session 与 last_seq 订阅事件流；订阅确认 MUST 能表达 session 与当前 seq。该订阅 MUST 走产品入口，MUST NOT 另开 REST 或非产品二进制的 WS 应用帧。
 
-    场景: subscribe-via-jsonrpc
+    场景: subscribe-via-rpc
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 subscribe 带 session_id=s0 与 last_seq=5
-      那么 应答为 JSON-RPC 成功且 result 含 session 与 seq
+      那么 应答为产品成功且 result 含 session 与 seq
   @req:r1698
   规则: Event 变体完整
     protocol::Event MUST 覆盖全部 AgentEvent 变体：TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionUpdate、CompactionEnd、TextDelta、ThinkingDelta；ThinkingDelta MUST 往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；并 MUST 提供 XyEvent ↔ Event 闭集映射（From/TryFrom 或等价）。
@@ -54,21 +54,21 @@
     场景: switch-session-validates-target
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 switch_session 指向不存在会话
-      那么 应答为 JSON-RPC 错误且错误提及会话不存在或无效
+      那么 应答为产品错误且错误提及会话不存在或无效
 
     场景: get-messages-returns-entries
-      假如 向 POST /rpc 发送 prompt 的 JSON-RPC 请求
+      假如 向 POST /rpc 发送 prompt 请求
       当 server 处理 prompt
       并且 POST /rpc 调用 get_messages
       那么 应答含已加载会话条目
   @req:r1700
   规则: dispatch 归属
-    会话操作的执行语义 MUST 进入同一产品分发。订阅 MUST 为产品 JSON-RPC 订阅（session 与 last_seq）。审批与问卷 MUST 登记为产品 unary；host MUST 先以下行 JSON-RPC notification 告知，客户端再以 unary 作答。MUST NOT 另开 respond HTTP 路径，MUST NOT 用非 JSON-RPC 的 WS 应用帧作答。
+    会话操作的执行语义 MUST 进入同一产品分发。订阅 MUST 为产品订阅（session 与 last_seq）。审批与问卷 MUST 登记为产品 unary；host MUST 先以下行通知告知，客户端再以 unary 作答。MUST NOT 另开 respond HTTP 路径，MUST NOT 用非产品二进制的 WS 应用帧作答。
 
     场景: approve-tool-is-product-unary
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 approve_tool
-      那么 应答不是 JSON-RPC -32601
+      那么 应答不是未登记方法错误
   @req:r1691
   规则: steer 与 followup 命令
     protocol::Command MUST 包含 Steer、FollowUp 与 ClearQueue（或语义等价变体）；client 经线协议入队或清队列 MUST 反序列化为这些变体。
@@ -192,37 +192,38 @@
       那么 已登记且为只读 unary 不占写者
   @req:r1701
   规则: 单一产品真源
-    client 与 host 之间的产品消息 MUST 且仅 MUST 经协商所得单一载体投递（产品路径为 v3 二进制帧，调试通道为 JSON-RPC 2.0 文本；两者同 dispatch、同方法表）。Command 与 Event 闭集 MUST 作为方法载荷 / 下行帧内容，MUST NOT 再作为产品协议外层。测试用进程内客户端与产品 attach 客户端 MUST 使用同一方法表。MUST NOT 为远程再开平行的 REST 产品动词或第二套词表。
+    client 与 host 之间的产品消息 MUST 且仅 MUST 经产品二进制载体投递。Command 与 Event 闭集 MUST 作为方法载荷 / 下行帧内容，MUST NOT 再作为产品协议外层。测试用进程内客户端与产品 attach 客户端 MUST 使用同一方法表。MUST NOT 为远程再开平行的 REST 产品动词、JSON 文本 /rpc 或第二套词表。
 
-    场景: jsonrpc-unary-success-shape
+    场景: unary-success-shape
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 host.describe
-      那么 应答为 JSON-RPC 成功且 id 回显
+      那么 应答为产品成功且 rpc_id 回显
   @req:r1709
-  规则: JSON-RPC 通道
-    产品信封 MUST 为协商所得载体：产品路径为 v3 二进制帧，调试通道为 JSON-RPC 2.0。带 id 的请求应答 MUST 逐字回显同一 id（不改 JSON 类型）。网络产品入口 MUST 为 POST /rpc 与 WS /rpc（同一方法表）。WS /rpc MUST 只承载上述两类帧（含客户端 unary 与下行 notification），MUST NOT 收其它应用帧。产品 TUI MUST NOT 用 SSE 当下行真源。MUST NOT 再以四象限 type tag、POST /api/respond 或 GET /api/events.mux 为产品真源。
+  规则: 产品通道
+    产品信封 MUST 为产品二进制帧。请求应答 MUST 回显同一 rpc_id。网络产品入口 MUST 为 POST /rpc 与 WS /rpc（同一方法表）。WS /rpc MUST 只承载产品二进制帧（含客户端 unary 与下行通知），MUST NOT 收 JSON 文本业务帧或其它应用帧。产品 TUI MUST NOT 用 SSE 当下行真源。MUST NOT 再以四象限 type tag、POST /api/respond 或 GET /api/events.mux 为产品真源。
 
-    场景: jsonrpc-envelope-shape
-      当 解析 JSON-RPC 信封样例（request / result / notification）
-      那么 JSON-RPC 形态与 id 回显成立
+    场景: json-text-envelope-rejected
+      当 服务端在空闲端口上启动
+      并且 POST /rpc 发送 JSON-RPC 2.0 文本
+      那么 HTTP 失败且无成功业务应答
 
-    场景: ws-jsonrpc-unary-peer
+    场景: ws-text-unary-rejected-peer
       当 服务端在空闲端口上启动
       并且 客户端经 WS /rpc 发送 host.describe JSON-RPC 请求
-      那么 同一条 WS 收回显 id 的 JSON-RPC result
+      那么 WS 拒绝该文本业务帧
 
-    场景: jsonrpc-illegal-envelope
+    场景: illegal-envelope
       当 服务端在空闲端口上启动
       并且 POST /rpc 发送非法信封
-      那么 HTTP 失败且无 JSON-RPC result 成功
+      那么 HTTP 失败且无成功业务应答
   @req:r1713
   规则: 一份方法表
-    已承诺的会话操作 MUST 出现在一份方法表（方法名 + 载荷 + 返回）。关闭 TUI MUST NOT 停 Host。审批与问卷 MUST 登记为 unary。下行生命周期 MUST 以 JSON-RPC notification 携带既有 Event，MUST NOT 为每个增量另开方法名，MUST NOT 要求客户端对事件帧作答。未登记方法 MUST 以 JSON-RPC -32601 失败。
+    已承诺的会话操作 MUST 出现在一份方法表（方法名 + 载荷 + 返回）。关闭 TUI MUST NOT 停 Host。审批与问卷 MUST 登记为 unary。下行生命周期 MUST 以产品通知携带既有 Event，MUST NOT 为每个增量另开方法名，MUST NOT 要求客户端对事件帧作答。未登记方法 MUST 以产品未登记方法错误失败。
 
     场景: method-table-unknown-is-32601
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用未登记方法 no_such_method
-      那么 应答为 JSON-RPC 错误且产品码在 data.code、信封数字码为 -32601
+      那么 应答为产品错误且为未登记方法
   @req:r1702
   规则: 面本地不进协议
     剪贴板（含 OSC 52）、TTY、本机编辑器、键位与绘制 MUST NOT 成为 Command 或 Event 变体。这些能力 MUST 留在 client 面本地。
@@ -255,10 +256,10 @@
     协议闭集 MUST 能表达：host 侧重装（MCP / prompt / 技能）、项目信任持久化、session 写者与只读、导出回传内容、人 bash 直播增量。上述语义在尚未进入 Command/Event 枚举前，MUST NOT 用新的 REST 产品动词或第二套远程专用词表冒充；MUST NOT 要求本 requirement 单独新增运行时枚举变体。
     # verified-by: llmanspec/specs/protocol-app/protocol-app.feature
 
-    场景: host-semantics-on-single-jsonrpc-method-table
+    场景: host-semantics-on-single-method-table
       假如 RemoteDriver 指向该 server
       当 调用已登记的 session 能力 unary
-      那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
+      那么 经产品 unary 到达 Host 且不经 REST 冒充
 
     场景: no-second-vocabulary-for-surface-locals
       当 解析面本地能力冒充的命令（clipboard_write / osc52_put / set_keybinding）

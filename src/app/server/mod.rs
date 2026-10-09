@@ -1,6 +1,6 @@
 //! Server module — Host composition root.
 //!
-//! Product carrier is JSON-RPC 2.0: `POST /rpc` unary + `WS /rpc` downlink.
+//! Product carrier is v3 fory: `POST /rpc` unary + `WS /rpc` downlink.
 //! Occupancy is a **session slot** (journal + seq + writer Driver), not a
 //! process-wide `Mutex` Driver.
 //! The Host process shares one `RuntimePorts` baseline; slots lazy-materialize
@@ -14,9 +14,6 @@ pub mod idempotency;
 
 #[cfg(feature = "server")]
 pub mod http;
-
-#[cfg(feature = "server")]
-pub mod oapi;
 
 #[cfg(feature = "server")]
 pub mod rpc_module;

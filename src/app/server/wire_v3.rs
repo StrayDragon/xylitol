@@ -503,17 +503,14 @@ mod tests {
         let resp = response_from_raw(
             1,
             "host.describe",
-            &json_of(r#"{"jsonrpc":"2.0","id":1,"result":{"protocol":2,"formats":["jsonrpc","fory-v3"]}}"#),
+            &json_of(r#"{"jsonrpc":"2.0","id":1,"result":{"protocol":2,"formats":["fory-v3"]}}"#),
             None,
         )
         .unwrap();
         match resp.payload.unwrap() {
             ResponsePayload::DescribeResult(d) => {
                 assert_eq!(d.protocol, 2);
-                assert_eq!(
-                    d.formats,
-                    vec!["jsonrpc".to_string(), "fory-v3".to_string()]
-                );
+                assert_eq!(d.formats, vec!["fory-v3".to_string()]);
             }
             _ => panic!("expected DescribeResult"),
         }

@@ -1,9 +1,8 @@
-//! Product attach client: JSON-RPC unary + notifications on one `WS /rpc`.
+//! Product attach client: unary + notifications on one `WS /rpc`.
 //!
-//! c2834 tasks 3.1/3.3(实验):`XYLITOL_WIRE_V3=1|true` 时同一连接改说 fory
-//! v3 binary 帧(编解码 helper 见 [`wire_v3_client`]);默认关(JSON 产品路径不动,task 5.1
-//! 行为不变。开关开时连接期以 binary describe 做格式硬闸协商——host 未
-//! 宣告 `fory-v3` 即致命失败,不静默降级。
+//! Default carrier is the product binary frame. `with_wire_v3(false)` and
+//! `XYLITOL_WIRE_V3` are test injection; Host rejects JSON text as an illegal
+//! envelope. Handshake fails closed if the host does not advertise `fory-v3`.
 
 use std::collections::HashMap;
 use std::sync::{
@@ -37,8 +36,7 @@ pub struct HttpWsClient {
     ping_interval: std::time::Duration,
     idle_timeout: std::time::Duration,
     peer: Arc<tokio::sync::Mutex<Option<Arc<SharedWs>>>>,
-    /// c2834 task 3.3 实验开关覆盖旋钮:`None` 跟随 `XYLITOL_WIRE_V3` env
-    /// (测试注入用,避免跨测试 env 竞态)。
+    /// Test injection: `None` follows `XYLITOL_WIRE_V3` (unset = product on).
     wire_v3: Option<bool>,
 }
 
@@ -87,15 +85,19 @@ impl HttpWsClient {
         self
     }
 
-    /// Test-only: force the wire v3 experiment on/off, bypassing `XYLITOL_WIRE_V3`.
+    /// Test-only: force the product carrier on/off, bypassing `XYLITOL_WIRE_V3`.
     pub fn with_wire_v3(mut self, on: bool) -> Self {
         self.wire_v3 = Some(on);
         self
     }
 
-    /// c2834 task 3.3:开关解析(默认关;5.1 翻转被租约竞态 blocker 阻塞)。连接模式在 connect 时定格。
+    /// Unset env → product carrier on. Connect-time freeze.
     fn wire_v3_on(&self) -> bool {
-        self.wire_v3.unwrap_or_else(wire_v3_client::env_enabled)
+        self.wire_v3
+            .unwrap_or_else(|| match std::env::var_os(WIRE_V3_ENV) {
+                None => true,
+                Some(_) => wire_v3_client::env_enabled(),
+            })
     }
 
     fn ws_mux_url(&self) -> String {
@@ -566,16 +568,9 @@ pub async fn dual_rail_event_parity()
     .map_err(|e| format!("serve: {e}"))?;
     let url = format!("http://127.0.0.1:{port}");
 
-    // 路径 A:JSON-RPC(默认);路径 B:v3 binary(实验开关注入旋钮)。
-    let client_json = HttpWsClient::new(url.clone());
     let client_v3 = HttpWsClient::new(url).with_wire_v3(true);
-    let mut mux_json = client_json
-        .mux()
-        .await
-        .map_err(|e| format!("json mux: {e}"))?;
     let mut mux_v3 = client_v3.mux().await.map_err(|e| format!("v3 mux: {e}"))?;
 
-    // 双路径先做一次 describe 握手(v3 连接借此协商并切下行 binary)。
     let d = client_v3
         .unary("host.describe", serde_json::json!({}))
         .await
@@ -585,20 +580,17 @@ pub async fn dual_rail_event_parity()
     }
 
     let session = "s-parity";
-    for client in [&client_json, &client_v3] {
-        let r = client
-            .unary(
-                "subscribe",
-                serde_json::json!({"session_id": session, "last_seq": 0}),
-            )
-            .await
-            .map_err(|e| format!("subscribe: {e}"))?;
-        if !r.ok {
-            return Err(format!("subscribe failed: {:?}", r.error));
-        }
+    let r = client_v3
+        .unary(
+            "subscribe",
+            serde_json::json!({"session_id": session, "last_seq": 0}),
+        )
+        .await
+        .map_err(|e| format!("subscribe: {e}"))?;
+    if !r.ok {
+        return Err(format!("subscribe failed: {:?}", r.error));
     }
 
-    // 注入代表事件流(流式增量、工具带动态块、投影快照)。
     let injected = vec![
         crate::protocol::Event::TextDelta {
             text: "parity chunk".into(),
@@ -614,18 +606,14 @@ pub async fn dual_rail_event_parity()
         host.slot(session).await.append_and_push(ev.clone()).await;
     }
 
-    let got_json = collect_events(&mut mux_json, injected.len()).await;
     let got_v3 = collect_events(&mut mux_v3, injected.len()).await;
-    if got_json.len() != injected.len() {
-        return Err(format!("json path collected {} events", got_json.len()));
-    }
     if got_v3.len() != injected.len() {
         return Err(format!(
             "v3 path collected {} events: {got_v3:?}",
             got_v3.len()
         ));
     }
-    Ok(got_json.into_iter().zip(got_v3).collect())
+    Ok(injected.into_iter().zip(got_v3).collect())
 }
 
 #[cfg(test)]
@@ -636,8 +624,8 @@ mod tests {
     #[tokio::test]
     async fn dual_rail_event_stream_parity() {
         let pairs = dual_rail_event_parity().await.expect("parity run");
-        for (json_ev, v3_ev) in pairs {
-            assert_eq!(json_ev, v3_ev, "双路径事件领域等价失败");
+        for (injected, v3_ev) in pairs {
+            assert_eq!(injected, v3_ev, "v3 事件流与注入领域对象不等价");
         }
     }
 
@@ -665,22 +653,6 @@ mod tests {
         .await
         .expect("serve");
         let url = format!("http://127.0.0.1:{port}/rpc");
-
-        let body = serde_json::json!({
-            "jsonrpc": "2.0", "id": 1,
-            "method": "get_messages",
-            "params": {"type": "get_messages"},
-        });
-        let json_resp: serde_json::Value = reqwest::Client::new()
-            .post(&url)
-            .json(&body)
-            .send()
-            .await
-            .expect("json post")
-            .json()
-            .await
-            .expect("json body");
-        let json_result = json_resp.get("result").cloned().expect("json result");
 
         let uplink = Frame::ClientRequest(ClientRequest {
             rpc_id: 1,
@@ -719,16 +691,20 @@ mod tests {
             }
             other => panic!("expected MessagesResult 或 RawOk, got {other:?}"),
         };
-        assert_eq!(v3_result, json_result, "双路径 get_messages 语义等价");
+        assert!(
+            v3_result
+                .get("entries")
+                .and_then(|e| e.as_array())
+                .is_some(),
+            "v3 get_messages 应含 entries: {v3_result}"
+        );
     }
     use serde_json::json;
 
-    /// task 3.3:默认(未设 env)开关为关——JSON 路径不受影响;覆盖旋钮
-    /// 可双向钉死(5.1 产品面切换在 TUI attach 入口,库默认翻转留作
-    /// 租约竞态专项后,见 tasks.md 备注)。
+    /// c2854:产品默认 v3；覆盖旋钮仍可关（测试拒 JSON 文本）。
     #[test]
-    fn wire_v3_defaults_off() {
-        assert!(!HttpWsClient::new("http://127.0.0.1:1").wire_v3_on());
+    fn wire_v3_defaults_on() {
+        assert!(HttpWsClient::new("http://127.0.0.1:1").wire_v3_on());
         assert!(
             HttpWsClient::new("http://127.0.0.1:1")
                 .with_wire_v3(true)

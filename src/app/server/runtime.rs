@@ -1,7 +1,7 @@
 //! Server runtime — Host composition root (salvo listener).
 //!
 //! Binds `ServerConfig.host`+`port` (default 127.0.0.1:18790). EADDRINUSE fails;
-//! no port+1, no lock file. Product routes are JSON-RPC `POST /rpc` + `WS /rpc`
+//! no port+1, no lock file. Product routes are v3 `POST /rpc` + `WS /rpc`
 //! (see [`super::http`]). Session occupancy is lazy per slot
 //! ([`super::host::HostState`]).
 

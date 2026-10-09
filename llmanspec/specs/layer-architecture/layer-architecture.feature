@@ -31,12 +31,12 @@
 
   @req:r1532
   规则: server 应用面
-    System MUST 提供 server 应用面，托管 agent + infra 运行时，并经 JSON-RPC 2.0 暴露产品契约：产品入口为 POST /rpc 与 WS /rpc（同一方法表）；WS /rpc MUST 只承载 JSON-RPC 帧。同一 {addr,port} 占用 MUST 失败，MUST NOT 整机锁文件，MUST NOT port+1。MUST NOT 以 /api/v1 REST 资源动词、POST /api/respond 或非 JSON-RPC 的 WS 应用帧为产品真源。
+    System MUST 提供 server 应用面，托管 agent + infra 运行时，并经产品二进制帧暴露产品契约：产品入口为 POST /rpc 与 WS /rpc（同一方法表）；WS /rpc MUST 只承载产品二进制帧。同一 {addr,port} 占用 MUST 失败，MUST NOT 整机锁文件，MUST NOT port+1。MUST NOT 以 /api/v1 REST 资源动词、POST /api/respond 或非产品二进制的 WS 应用帧为产品真源。
 
-    场景: server-surface-jsonrpc-entry
+    场景: server-surface-rpc-entry
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 host.describe
-      那么 应答为 JSON-RPC 成功且 id 回显
+      那么 应答为产品成功且 rpc_id 回显
       并且 不暴露 /api/v1 产品 REST
   @req:r1533
   规则: 运行时归属
@@ -110,7 +110,7 @@
     # verified-by: src/AGENTS.md
     场景: no-dead-wrapper-on-seam
       当 调用已登记的 session 能力 unary
-      那么 经 JSON-RPC unary 到达 Host 且不经 REST 冒充
+      那么 经产品 unary 到达 Host 且不经 REST 冒充
 
   @req:r1517
   规则: 嵌入缝与公开入口
@@ -238,7 +238,7 @@
     同一 session MUST 至多一个写者。对已被写入的 session 再 attach MUST 只读恢复。只读面上发起写入 MUST 失败并说明已有其它客户端以写者连接。尚未提供多客户端 attach 时，单进程默认路径 MUST 视为已满足本规则。
 
     场景: second-writer-rejected-with-conflict
-      假如 向 POST /rpc 发送 prompt 的 JSON-RPC 请求
+      假如 向 POST /rpc 发送 prompt 请求
       当 server 处理 prompt
       并且 另一客户端对同会话 steer 不带写者令牌
       那么 应答为 writer_conflict 而非静默接管

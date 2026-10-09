@@ -1,4 +1,4 @@
-//! Typed host client: JSON-RPC unary + mux downlink (in-process or WS /rpc).
+//! Typed host client: product unary + mux downlink (in-process or WS `/rpc`).
 
 use std::pin::Pin;
 
@@ -20,6 +20,8 @@ pub use http_ws::dual_rail_event_parity;
 #[cfg(feature = "server")]
 pub use http_ws::HttpWsClient;
 pub use in_process::InProcessClient;
+#[cfg(feature = "server")]
+pub use wire_v3_client::{client_request_bytes, server_response_to_result, stable_rpc_id};
 
 /// Stream of downlink `ServerRequest` envelopes (and ignored carrier frames).
 pub type MuxStream =
@@ -48,7 +50,7 @@ impl HostClientError {
 /// One typed client, two carriers ([`InProcessClient`] / [`HttpWsClient`]).
 #[async_trait]
 pub trait HostClient: Send + Sync {
-    /// JSON-RPC unary (`WS /rpc` or in-process).
+    /// Product unary (`POST /rpc` / `WS /rpc` v3, or in-process).
     async fn unary(&self, method: &str, payload: Value) -> Result<RpcResult, HostClientError>;
 
     /// Unary with a caller-chosen envelope `rpcId` — the idempotency admission
@@ -69,7 +71,7 @@ pub trait HostClient: Send + Sync {
     /// Approve / answer via product unary (`approve_tool` / `answer_question`).
     async fn respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError>;
 
-    /// WebSocket (or in-process) downlink; WS /rpc also accepts JSON-RPC unary.
+    /// WebSocket (or in-process) downlink; WS `/rpc` accepts v3 binary unary.
     async fn mux(&self) -> Result<MuxStream, HostClientError>;
 
     /// Drop a cached mux transport so the next [`Self::mux`] opens a fresh

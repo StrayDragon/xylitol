@@ -12,7 +12,7 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "server-surface-jsonrpc-entry"
+    name = "server-surface-rpc-entry"
 )]
 async fn test_la_server_jsonrpc_entry(server_test: ServerTest) {}
 

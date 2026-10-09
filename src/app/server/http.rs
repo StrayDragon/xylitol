@@ -1,9 +1,8 @@
 //! Salvo HTTP + mux routes.
 //!
 //! - `GET /healthz`
-//! - `GET /openapi.json` / `GET /docs`
-//! - `POST /rpc` (product JSON-RPC 2.0 unary, jsonrpsee method table)
-//! - `GET /rpc` (mux WebSocket; downlink JSON-RPC notifications)
+//! - `POST /rpc` (v3 fory unary)
+//! - `GET /rpc` (mux WebSocket; v3 binary downlink)
 
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -16,9 +15,7 @@ use salvo::websocket::{Message, WebSocket, WebSocketUpgrade};
 use tokio::sync::mpsc;
 
 use crate::app::server::host::{HostState, MUX_CHAN_CAP};
-use crate::app::server::rpc_module::{self};
 use crate::protocol::RpcMessage;
-use crate::protocol::wire::codec;
 
 /// Readiness phase of the listener (c2465 sr-rdy1).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -130,12 +127,6 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
     Router::new()
         .hoop(GatewayHoop(gateway))
         .push(Router::with_path("healthz").get(healthz))
-        .push(Router::with_path("openapi.json").get(openapi_json))
-        .push(
-            salvo_oapi::scalar::Scalar::new("/openapi.json")
-                .title("xylitol unary debug API")
-                .into_router("docs"),
-        )
         .push(Router::with_path("rpc").post(rpc).get(mux_upgrade))
 }
 
@@ -188,13 +179,6 @@ async fn healthz(depot: &mut Depot, res: &mut Response) {
     }
 }
 
-/// sr-oapi1: static OpenAPI 3.1 debug document (built from the method table).
-#[handler]
-async fn openapi_json(res: &mut Response) {
-    res.status_code(StatusCode::OK);
-    res.render(Text::Plain(super::oapi::openapi_doc()));
-}
-
 #[handler]
 async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let Some(gateway) = gateway_from(depot) else {
@@ -217,78 +201,21 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    if super::wire_v3::looks_like_fory_v3(bytes) {
-        match super::wire_v3::handle_uplink(&host, bytes, writer).await {
-            Ok((frame, _token)) => {
-                res.status_code(StatusCode::OK);
-                let _ = res.add_header("Content-Type", super::wire_v3::CONTENT_TYPE, true);
-                res.body(frame);
-                return;
-            }
-            Err(_) => {
-                illegal_envelope(res);
-                return;
-            }
-        }
-    }
-    // 载体预检单一判据点在 dispatch_raw（载体版本 / method / 体量都在这里判）。
-    let Ok(text) = std::str::from_utf8(bytes) else {
+    if !super::wire_v3::looks_like_fory_v3(bytes) {
         illegal_envelope(res);
         return;
-    };
-    match rpc_module::dispatch_raw(&host, text, writer).await {
-        Some((raw, token)) => polish_rpc_http(res, raw, token),
-        None => illegal_envelope(res),
     }
-}
-
-/// Fill `-32601` product `data.code`. Defensively strip a leaked `result.writerToken`.
-fn polish_rpc_json(mut v: serde_json::Value) -> (serde_json::Value, Option<String>) {
-    let method_not_found = v
-        .get("error")
-        .and_then(|e| e.get("code"))
-        .and_then(serde_json::Value::as_i64)
-        == Some(-32601);
-    if method_not_found {
-        let missing_product_code = v
-            .pointer("/error/data/code")
-            .and_then(serde_json::Value::as_str)
-            .is_none();
-        if missing_product_code
-            && let Some(err) = v
-                .get_mut("error")
-                .and_then(serde_json::Value::as_object_mut)
-        {
-            err.insert(
-                "data".into(),
-                serde_json::json!({ "code": "unregistered_method" }),
-            );
+    match super::wire_v3::handle_uplink(&host, bytes, writer).await {
+        Ok((frame, token)) => {
+            res.status_code(StatusCode::OK);
+            let _ = res.add_header("Content-Type", super::wire_v3::CONTENT_TYPE, true);
+            if let Some(tok) = token {
+                let _ = res.add_header("X-Writer-Token", tok, true);
+            }
+            res.body(frame);
         }
+        Err(_) => illegal_envelope(res),
     }
-    let token = v
-        .get("result")
-        .and_then(|r| r.get("writerToken"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string);
-    if token.is_some()
-        && let Some(obj) = v
-            .get_mut("result")
-            .and_then(serde_json::Value::as_object_mut)
-    {
-        obj.remove("writerToken");
-    }
-    (v, token)
-}
-
-/// Stamp `X-Writer-Token` from the lease side-channel and fill `-32601` product
-/// `data.code`. Dispatch owns the method table; HTTP leftovers stay here.
-fn polish_rpc_http(res: &mut Response, raw: serde_json::Value, token: Option<String>) {
-    let (v, leaked) = polish_rpc_json(raw);
-    if let Some(tok) = token.or(leaked) {
-        let _ = res.add_header("X-Writer-Token", tok, true);
-    }
-    res.status_code(StatusCode::OK);
-    res.render(Json(v));
 }
 
 fn illegal_envelope(res: &mut Response) {
@@ -342,10 +269,6 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>, mut writer: Option<Stri
     let (mut sink, mut stream) = ws.split();
     // Handshake is host.describe result, not a mux ServerHello frame (c2825).
     let (tx, mut rx) = mpsc::channel::<RpcMessage>(MUX_CHAN_CAP);
-    // wire v3 connection mode (c2834 spec r1902/r1905): set by the first
-    // binary uplink frame; downlink for this connection is then fory-encoded.
-    let v3_mode = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let (reply_tx, mut reply_rx) = mpsc::channel::<String>(MUX_CHAN_CAP);
     let (bin_tx, mut bin_rx) = mpsc::channel::<Vec<u8>>(MUX_CHAN_CAP);
     host.register_unbound_mux(tx).await;
 
@@ -357,37 +280,22 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>, mut writer: Option<Stri
                     let RpcMessage::ServerRequest { method, payload, .. } = &msg else {
                         continue;
                     };
-                    if v3_mode.load(std::sync::atomic::Ordering::Relaxed) {
-                        match super::wire_v3::downlink_frame(method, payload.clone(), 0) {
-                            Ok(bytes) => {
-                                if sink.send(Message::binary(bytes)).await.is_err() {
-                                    break;
-                                }
-                            }
-                            // 未映射 method(如 session/bash_output,task 2.5b)
-                            // 降级跳过不断链(r1719 未知可降级精神)。
-                            Err(e) => {
-                                log::warn!(target: "xylitol::server",
-                                    "v3 downlink unmapped method={method} skipped: {e}");
+                    match super::wire_v3::downlink_frame(method, payload.clone(), 0) {
+                        Ok(bytes) => {
+                            if sink.send(Message::binary(bytes)).await.is_err() {
+                                break;
                             }
                         }
-                    } else {
-                        let text =
-                            codec::jsonrpc_notification(method, payload.clone()).to_string();
-                        if sink.send(Message::text(text)).await.is_err() {
-                            break;
+                        // 未映射 method 降级跳过不断链(r1719)。
+                        Err(e) => {
+                            log::warn!(target: "xylitol::server",
+                                "v3 downlink unmapped method={method} skipped: {e}");
                         }
                     }
                 }
                 bin = bin_rx.recv() => {
                     let Some(frame) = bin else { break };
                     if sink.send(Message::binary(frame)).await.is_err() {
-                        break;
-                    }
-                }
-                text = reply_rx.recv() => {
-                    let Some(text) = text else { break };
-                    if sink.send(Message::text(text)).await.is_err() {
                         break;
                     }
                 }
@@ -402,50 +310,23 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>, mut writer: Option<Stri
             if msg.is_close() {
                 break;
             }
-            if msg.is_binary() {
-                // 产品上行（c2834 spec r1902）：binary 帧 = fory 编码的 ClientRequest；
-                // JSON 文本帧是同 dispatch 的调试通道。
-                v3_mode.store(true, std::sync::atomic::Ordering::Relaxed);
-                match super::wire_v3::handle_uplink(&host, msg.as_bytes(), writer.clone()).await {
-                    Ok((frame, token)) => {
-                        // 连接本地租约(r1793 语义在 v3 通路的对齐):应答
-                        // 携带新 mint token 时更新,同连接后续上行据此放行。
-                        if let Some(tok) = token {
-                            writer = Some(tok);
-                        }
-                        if bin_tx.send(frame).await.is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
+            if msg.is_text() {
+                // JSON 文本业务帧已退役；丢弃不断链。
                 continue;
             }
-            if !msg.is_text() {
+            if !msg.is_binary() {
                 continue;
             }
-            let Ok(text) = msg.as_str() else {
-                break;
-            };
-            // 只有带非null id 的请求才需要同步应答（通知与下行同形）。
-            let has_id = serde_json::from_str::<serde_json::Value>(text)
-                .ok()
-                .is_some_and(|v| v.get("id").is_some_and(|id| !id.is_null()));
-            match rpc_module::dispatch_raw(&host, text, writer.clone()).await {
-                Some((raw, token)) if has_id => {
-                    let (mut body, leaked) = polish_rpc_json(raw);
-                    if let Some(tok) = token.or(leaked) {
-                        writer = Some(tok.clone());
-                        if let Some(obj) = body.as_object_mut() {
-                            obj.insert("writerToken".into(), serde_json::json!(tok));
-                        }
+            match super::wire_v3::handle_uplink(&host, msg.as_bytes(), writer.clone()).await {
+                Ok((frame, token)) => {
+                    if let Some(tok) = token {
+                        writer = Some(tok);
                     }
-                    if reply_tx.send(body.to_string()).await.is_err() {
+                    if bin_tx.send(frame).await.is_err() {
                         break;
                     }
                 }
-                Some(_) => {}
-                None => break,
+                Err(_) => break,
             }
         }
     };
@@ -476,7 +357,7 @@ mod tests {
     }
 
     /// c2834 spec r1902/r1911:v3 binary 上行经 POST /rpc 可服务,应答为
-    /// fory 帧;describe 携带 wire 格式能力集合(双轨期 JSON 路径并存)。
+    /// fory 帧;describe 只宣告 fory-v3。
     #[tokio::test]
     async fn post_binary_describe_v3() {
         use crate::protocol::wire::v3::{ClientRequest, Describe, Frame, Request, ResponsePayload};
@@ -511,15 +392,14 @@ mod tests {
         match resp.payload {
             Some(ResponsePayload::DescribeResult(d)) => {
                 assert_eq!(d.protocol, crate::protocol::wire::PROTOCOL_VERSION);
-                assert!(d.formats.iter().any(|f| f == "jsonrpc"), "{d:?}");
-                assert!(d.formats.iter().any(|f| f == "fory-v3"), "{d:?}");
+                assert_eq!(d.formats, vec!["fory-v3".to_string()], "{d:?}");
             }
             other => panic!("expected DescribeResult, got {other:?}"),
         }
     }
 
     #[tokio::test]
-    async fn unary_host_describe_ok() {
+    async fn json_rpc_text_is_illegal_envelope() {
         let state = HostState::for_test().expect("host");
         let gateway = Gateway::starting();
         gateway.set_host(state);
@@ -530,16 +410,29 @@ mod tests {
             "method": "host.describe",
             "params": {}
         });
-        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+        let resp = TestClient::post("http://127.0.0.1:0/rpc")
             .json(&body)
             .send(&service)
             .await;
-        assert_eq!(resp.status_code.unwrap(), StatusCode::OK, "unary path");
-        let text = resp.take_string().await.unwrap();
-        assert!(
-            text.contains("jsonrpc") && text.contains("result"),
-            "{text}"
-        );
+        assert_eq!(resp.status_code.unwrap(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn openapi_and_docs_are_absent() {
+        let state = HostState::for_test().expect("host");
+        let gateway = Gateway::starting();
+        gateway.set_host(state);
+        let service = Service::new(router(gateway));
+        for path in ["/openapi.json", "/docs"] {
+            let resp = TestClient::get(format!("http://127.0.0.1:0{path}"))
+                .send(&service)
+                .await;
+            assert_ne!(
+                resp.status_code.unwrap(),
+                StatusCode::OK,
+                "{path} must not serve debug docs"
+            );
+        }
     }
 
     #[tokio::test]
