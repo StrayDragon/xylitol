@@ -2735,6 +2735,51 @@ mod tests {
         );
     }
 
+    /// c2849 回归：槽位已被**另一写者**持有租约时，`arm_tool_freeze`（presented=None）
+    /// MUST 降级为无租约有界决议而非 `writer_conflict`——否则首轮门在竞态下永久停滞。
+    #[tokio::test]
+    async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
+        use crate::app::server::host::materialize_writer;
+
+        let host = HostState::for_test_with_mcp(vec![fixture_mcp("a")]).expect("host");
+        let slot = host.slot("conflict-sess").await;
+        materialize_writer(&host, &slot).await.expect("materialize");
+        // 由另一写者建立租约：先以一个 token 调用一次写 unary（set_model 走租约）。
+        let first = crate::app::server::host::handle_unary(
+            &host,
+            None,
+            "set_model",
+            serde_json::json!({ "provider": "", "model_id": "keep", "session_id": "conflict-sess" }),
+            None,
+        )
+        .await;
+        // （模型未知名返回 NotFound 无关紧要——租约在 take_writer_lease 已建立。）
+        assert!(
+            first.writer_token.is_some(),
+            "first write MUST establish + seal writer token"
+        );
+        // arm_tool_freeze 不带 token（客户端竞态：缓存未同步）→ 旧行为 conflict；
+        // 新行为 MUST 无租约降级、有界决议、返回冻结快照。
+        let result = crate::app::server::host::handle_unary(
+            &host,
+            None,
+            "arm_tool_freeze",
+            serde_json::json!({ "session_id": "conflict-sess" }),
+            None,
+        )
+        .await;
+        assert!(
+            result.ok,
+            "arm_tool_freeze under foreign lease MUST NOT conflict: {result:?}"
+        );
+        let snap: LoadedResourcesSnapshot =
+            serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
+        assert!(
+            snap.tools_table_frozen,
+            "lease-free arm MUST still resolve frozen: {snap:?}"
+        );
+    }
+
     #[tokio::test]
     async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
         // c2847 回归：配置了但永远连不上的 MCP，`arm_tool_freeze` unary MUST NOT

@@ -1219,13 +1219,29 @@ async fn dispatch_session_unary(
     }
 
     if method == METHOD_ARM_TOOL_FREEZE {
+        // c2849: 门调用不可被 writer 租约记账卡死——首轮竞态下客户端 token 尚
+        // 未同步即 `writer_conflict`，会让首轮门永久停滞（实机复现：serve 建
+        // 立租约后 TUI 先发 arm_tool_freeze，无有效 token → conflict → inline
+        // Assembling 永不放行）。冲突时降级为**无租约**有界决议（与
+        // loaded_resources 同梯队——冻结的是写者内部门，不写会话）。正常路径
+        // 保留租约（materialize + 打 token）。
         let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
-            Ok(l) => l,
-            Err(e) => return e,
+            Ok(l) => Some(l),
+            Err(e) => {
+                log::warn!(
+                    target: "xylitol::host",
+                    "arm_tool_freeze lease conflict ({:?}); falling back to lease-free resolution",
+                    e.error.map(|er| er.details),
+                );
+                None
+            }
         };
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
-            return RpcResult::error("unavailable", "no writer engine");
+            return match lease {
+                Some(l) => l.seal(RpcResult::error("unavailable", "no writer engine")),
+                None => RpcResult::error("unavailable", "no writer engine"),
+            };
         };
         // c2847: arm 必须**有界决议**——`ensure_tool_table_frozen` 按首轮门时限
         // （MCP_FIRST_TURN_GATE_TIMEOUT）等待 settle，超时 detach 未连上的 bootstrap
@@ -1234,9 +1250,12 @@ async fn dispatch_session_unary(
         // turn 永不启动（runtime 的 ensure 只在 run() 后才触发，形成双向死锁）。
         driver.ensure_tool_table_frozen().await;
         let snapshot = driver.loaded_resources_snapshot().await;
-        return lease.seal(RpcResult::ok_value(
-            serde_json::to_value(&snapshot).unwrap_or(Value::Null),
-        ));
+        return match lease {
+            Some(l) => l.seal(RpcResult::ok_value(
+                serde_json::to_value(&snapshot).unwrap_or(Value::Null),
+            )),
+            None => RpcResult::ok_value(serde_json::to_value(&snapshot).unwrap_or(Value::Null)),
+        };
     }
 
     if method == METHOD_PERSIST_TRUST {
