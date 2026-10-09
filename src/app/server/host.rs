@@ -570,12 +570,25 @@ impl SessionSlot {
     /// 模型徽标收敛（c2841）。写者未装配或未持有模型时 no-op；幂等（重复
     /// 绑定只会重播同一当前模型）。模型 id 来自写者 current_model，provider
     /// 按 id 查写者注册表真源（ModelInfo 不携带 provider）。
+    ///
+    /// c2850/r1926: attach 期同步是订阅者收敛而非会话历史——MUST NOT 落
+    /// journal、MUST NOT 消耗 seq（与 `push_resources` 同族）。下行 `seq`
+    /// 回显当前 max_seq（不递增），避免客户端 `last_seq` 回退或与 journal 错位。
     pub async fn sync_model_downlink(&self) -> () {
         let Some((provider, model_id)) = self.writer_model().await else {
             return;
         };
-        self.append_and_push(crate::protocol::Event::ModelSelect { provider, model_id })
-            .await;
+        let seq = self.journal.lock().await.max_seq();
+        let msg = downlink_server_request(
+            "session/event",
+            serde_json::to_value(SessionEventPayload {
+                session_id: self.session_id.clone(),
+                seq,
+                event: crate::protocol::Event::ModelSelect { provider, model_id },
+            })
+            .unwrap_or(Value::Null),
+        );
+        self.broadcast(msg).await;
     }
 
     async fn writer_model(&self) -> Option<(String, String)> {

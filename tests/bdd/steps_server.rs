@@ -2810,6 +2810,77 @@ async fn t_c2841_model_sync_received(server_test: &ServerTest) {
     panic!("no model_select sync frame received on the subscribed session");
 }
 
+async fn drain_model_select(mux: &mut MuxStream) -> bool {
+    for _ in 0..8 {
+        let f = match tokio::time::timeout(Duration::from_secs(3), mux.next()).await {
+            Ok(Some(Ok(f))) => f,
+            _ => return false,
+        };
+        let RpcMessage::ServerRequest {
+            method, payload, ..
+        } = &f
+        else {
+            continue;
+        };
+        if method == "session/event"
+            && payload
+                .get("event")
+                .and_then(|e| e.get("type"))
+                .and_then(serde_json::Value::as_str)
+                == Some("model_select")
+        {
+            return payload
+                .get("event")
+                .and_then(|e| e.get("model_id"))
+                .and_then(serde_json::Value::as_str)
+                == Some("fake-model");
+        }
+    }
+    false
+}
+
+#[when("同一会话被订阅两次")]
+async fn w_c2850_subscribe_twice(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let seq_before = host.slot("s-c2841").await.journal.lock().await.max_seq();
+
+    let mut seen = 0u8;
+    for _ in 0..2 {
+        let client = HttpWsClient::new(server_test.base_url());
+        let mut mux = client.mux().await.expect("mux");
+        wait_unbound(&host, 1).await;
+        let r = client
+            .unary(
+                "subscribe",
+                serde_json::json!({"session_id": "s-c2841", "last_seq": 0}),
+            )
+            .await
+            .expect("subscribe");
+        assert!(r.ok, "{r:?}");
+        if drain_model_select(&mut mux).await {
+            seen += 1;
+        }
+    }
+
+    let seq_after = host.slot("s-c2841").await.journal.lock().await.max_seq();
+    server_test.last_seq.set(seq_after.wrapping_sub(seq_before));
+    server_test.unary_status.set(u16::from(seen));
+}
+
+#[then("journal 序号未因绑定递增且两次均收到模型同步事件")]
+fn t_c2850_rebind_transient(server_test: &ServerTest) {
+    assert_eq!(
+        server_test.unary_status.get(),
+        2,
+        "两次订阅 MUST 各收到一帧 model_select"
+    );
+    assert_eq!(
+        server_test.last_seq.get(),
+        0,
+        "两次绑定 MUST NOT 递增 journal seq"
+    );
+}
+
 #[given("客户端已订阅会话 s-prompt 并以可用模型 fake-model 发送 prompt")]
 async fn g_c2841_prompt_with_identity(server_test: &ServerTest) {
     start_host_with_default_model(server_test, "fake-model").await;
