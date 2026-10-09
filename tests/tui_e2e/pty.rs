@@ -1188,14 +1188,27 @@ fn pty_product_fake_session_tree_branched() {
     session
         .wait_for_raw("forked → session", Duration::from_secs(20))
         .expect("fork notice");
+    session
+        .wait_for_idle("fake", "Working", Duration::from_secs(15), COLS, ROWS)
+        .expect("idle after fork before alt prompt");
 
     // Alt branch turn under the fork. The second Fake reply is byte-identical
-    // to the first (already in the raw stream), so settle with a fixed drain
-    // before opening the tree — the alt node must exist in the host store.
+    // to the first (already in the raw stream), so wait for Hello *after* the
+    // fork notice. A fixed drain can return while the alt turn is still
+    // Working; double Esc then latches abort instead of opening the tree.
     session
         .send_keys("\x15alt branch\r")
         .expect("submit alt prompt");
-    session.drain(Duration::from_secs(3));
+    session
+        .wait_for_raw_after(
+            crate::FAKE_HELLO,
+            "forked → session",
+            Duration::from_secs(30),
+        )
+        .expect("alt Fake reply after fork");
+    // CapturedScreen idle-oracle is stale under tall scrollback (no
+    // scroll-region); the second Hello in the raw stream is the settle signal.
+    session.drain(Duration::from_millis(200));
 
     // Same open path as labeled (c705): empty editor + double Esc.
     // Assert via raw bytes: tall fixture scrollback desyncs CapturedScreen

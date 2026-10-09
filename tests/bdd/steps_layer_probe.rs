@@ -1,6 +1,7 @@
 //! 结构/文档探针（c2853）：源文件文本扫描，非产品行为步骤。
 //! 评审时可整体跳过。步骤注册文本与拆分前一致。
 
+use crate::bdd::helpers::{with_test_timeout, with_test_timeout_for};
 use crate::bdd::prelude::*;
 use crate::bdd::steps_c2827::{T4PrintBdd, t4_stream};
 use crate::bdd::steps_infra_runtime::T2_PROC;
@@ -1490,46 +1491,26 @@ pub(crate) fn t_temp_file_raii() {
 }
 
 #[when("外部时序场景以 with_test_timeout 包裹等待主体")]
-pub(crate) fn w_async_test_timeout() {
-    let mut report = String::new();
-    for path in [
-        "tests/bdd/helpers.rs",
-        "tests/bdd/steps_infra_runtime.rs",
-        "tests/bdd/steps_server.rs",
-        "tests/bdd/steps_remote_resilience.rs",
-    ] {
-        let src = la_load(path);
-        let n = src.matches("with_test_timeout").count();
-        report.push_str(&format!("{path}:{n}\n"));
-    }
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(report));
+pub(crate) async fn w_async_test_timeout() {
+    let ok = with_test_timeout(|| async { 1u8 }).await.is_ok();
+    let timed_out = with_test_timeout_for(std::time::Duration::from_millis(50), || async {
+        std::future::pending::<()>().await
+    })
+    .await
+    .is_err();
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("ok={ok};timed_out={timed_out}")));
 }
 
 #[then("超时辅助被真实调用且不得仅以源码探针自证")]
 pub(crate) fn t_async_test_timeout() {
-    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
-    let count = |name: &str| -> usize {
-        src.lines()
-            .find(|l| l.starts_with(name))
-            .and_then(|l| l.rsplit_once(':'))
-            .and_then(|(_, n)| n.parse().ok())
-            .unwrap_or(0)
-    };
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("已跑超时辅助");
     assert!(
-        count("tests/bdd/helpers.rs") >= 2,
-        "helpers MUST 定义 with_test_timeout 并自测超时路径：{src}"
+        src.contains("ok=true"),
+        "短主体 MUST 经 with_test_timeout 真实完成：{src}"
     );
     assert!(
-        count("tests/bdd/steps_infra_runtime.rs") >= 1,
-        "kill-tree 等待 MUST 真实包裹：{src}"
-    );
-    assert!(
-        count("tests/bdd/steps_server.rs") >= 1,
-        "serve 启动 MUST 真实包裹：{src}"
-    );
-    assert!(
-        count("tests/bdd/steps_remote_resilience.rs") >= 1,
-        "remote resilience 等待 MUST 真实包裹：{src}"
+        src.contains("timed_out=true"),
+        "挂死主体 MUST 经 with_test_timeout_for 以超时失败而非源码探针：{src}"
     );
 }
 

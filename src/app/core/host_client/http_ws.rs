@@ -453,6 +453,16 @@ impl HostClient for HttpWsClient {
         self.unary(method, params).await.map(|_| ())
     }
 
+    async fn reset_mux(&self) -> Result<(), HostClientError> {
+        let mut slot = self.peer.lock().await;
+        if let Some(old) = slot.take() {
+            old.stop.cancel();
+            old.closed.store(true, Ordering::SeqCst);
+            let _ = old.dead.send(Some("mux reset for session switch".into()));
+        }
+        Ok(())
+    }
+
     async fn mux(&self) -> Result<MuxStream, HostClientError> {
         let peer = self.ensure_peer().await?;
         if peer.closed.load(Ordering::SeqCst) {
