@@ -71,4 +71,12 @@ pub trait HostClient: Send + Sync {
 
     /// WebSocket (or in-process) downlink; WS /rpc also accepts JSON-RPC unary.
     async fn mux(&self) -> Result<MuxStream, HostClientError>;
+
+    /// Drop a cached mux transport so the next [`Self::mux`] opens a fresh
+    /// connection. HTTP/WS MUST re-enter Host `unbound_mux` after SwitchSession
+    /// / NewSession; in-process broadcast is a no-op.
+    async fn reset_mux(&self) -> Result<(), HostClientError> {
+        let _ = self;
+        Ok(())
+    }
 }

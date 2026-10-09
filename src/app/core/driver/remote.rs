@@ -723,13 +723,17 @@ where
         );
     }
 
-    fn restart_downlink(&mut self) {
+    async fn restart_downlink(&mut self) {
         // c2480: the new generation invalidates the old loop's late pushes.
         self.downlink_gen.fetch_add(1, Ordering::SeqCst);
         self.session_life.cancel();
         self.session_life = CancellationToken::new();
         self.subscribed_ok.store(false, Ordering::SeqCst);
         self.downlink.started.store(false, Ordering::SeqCst);
+        // HTTP/WS mux is one shared socket bound at connect into Host
+        // `unbound_mux`. Reusing it after SwitchSession leaves the sink on
+        // the parent slot, so child prompt events have no subscriber.
+        let _ = self.host.reset_mux().await;
         self.ensure_downlink();
     }
 
@@ -740,11 +744,12 @@ where
     /// this reset the stale seq made the daemon replay the new session's tape
     /// from an arbitrary offset, and the bridge rendered the mid-message tail
     /// as a live stream appended after the switch notice (resume 渲染修复).
-    fn restart_downlink_for_switched_session(&mut self) {
+    async fn restart_downlink_for_switched_session(&mut self) {
         self.last_seq.store(0, Ordering::SeqCst);
-        if self.downlink.started.load(Ordering::SeqCst) {
-            self.restart_downlink();
-        }
+        // Always restart: DownlinkCtx.session_id is a spawn-time snapshot.
+        // Skipping when `started` is false leaves the next subscribe on the
+        // old session, and a subsequent prompt on the child has no mux.
+        self.restart_downlink().await;
     }
 
     async fn check_host_protocol(&self) -> Result<(), XyDriverError> {
@@ -1100,6 +1105,9 @@ where
             };
             return Box::pin(stream);
         }
+        // Live turn tape must paint even if `session/subscribed` has not yet
+        // cleared the cold-subscribe skip (last_seq=0 after SwitchSession).
+        self.skip_cold_replay.store(false, Ordering::SeqCst);
         let turn = {
             let mut g = self.turn_cancel.lock().unwrap_or_else(|e| e.into_inner());
             if g.is_cancelled() {
@@ -1586,7 +1594,7 @@ where
                 if let Ok(mut leaf) = self.leaf_entry_id.lock() {
                     *leaf = None;
                 }
-                self.restart_downlink_for_switched_session();
+                self.restart_downlink_for_switched_session().await;
                 Ok(DispatchOutcome::SwitchedSession(id))
             }
             Command::Fork {
@@ -1689,7 +1697,7 @@ where
                 if let Ok(mut leaf) = self.leaf_entry_id.lock() {
                     *leaf = None;
                 }
-                self.restart_downlink_for_switched_session();
+                self.restart_downlink_for_switched_session().await;
                 Ok(DispatchOutcome::NewSession(id))
             }
             Command::GetSessionName { .. } => {
@@ -3099,6 +3107,182 @@ mod tests {
                 XyEvent::TextDelta(t) if t.contains("xylitol")
             )),
             "switch 后旧偏移的 journal 重放不得作为直播尾巴到达 transcript: {evs:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn prompt_after_fork_switch_delivers_live_text() {
+        use crate::app::core::dispatch::{DispatchOutcome, dispatch};
+        use crate::app::core::host_client::InProcessClient;
+        use crate::protocol::Command;
+        use futures::StreamExt;
+
+        let host = HostState::for_test_with_default_model("fake-model").expect("host");
+        let client = InProcessClient::host_state(host.clone());
+        let mut driver = XyRemoteDriver::with_host(client, "s-fork-live");
+        driver.attach_session().await.expect("attach");
+
+        let mut stream = driver.run("main branch").await;
+        let mut saw_hello = false;
+        while let Some(ev) = stream.next().await {
+            if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                saw_hello = true;
+            }
+            if matches!(ev, XyEvent::AgentEnd { .. }) {
+                break;
+            }
+        }
+        assert!(saw_hello, "trunk Fake reply MUST arrive");
+
+        let leaf = driver.leaf_entry_id().expect("leaf after trunk");
+        let child = match dispatch(
+            &mut driver,
+            Command::Fork {
+                entry_id: leaf,
+                position: Some("at".into()),
+            },
+        )
+        .await
+        .expect("fork")
+        {
+            DispatchOutcome::NewSession(id) => id,
+            other => panic!("fork outcome: {other:?}"),
+        };
+        dispatch(
+            &mut driver,
+            Command::SwitchSession {
+                session_path: child,
+            },
+        )
+        .await
+        .expect("switch");
+
+        let mut stream = driver.run("alt branch").await;
+        let mut saw_hello = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            match tokio::time::timeout(
+                deadline.saturating_duration_since(tokio::time::Instant::now()),
+                stream.next(),
+            )
+            .await
+            {
+                Ok(Some(ev)) => {
+                    if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                        saw_hello = true;
+                    }
+                    if matches!(ev, XyEvent::AgentEnd { .. }) {
+                        break;
+                    }
+                }
+                Ok(None) | Err(_) => break,
+            }
+        }
+        assert!(
+            saw_hello,
+            "forked child prompt MUST deliver live Fake text, not hang"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn prompt_after_fork_switch_delivers_live_text_http() {
+        use crate::app::core::dispatch::{DispatchOutcome, dispatch};
+        use crate::protocol::Command;
+        use futures::StreamExt;
+
+        let host = HostState::for_test_with_default_model("fake-model").expect("host");
+        let (running, port) = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+                sessions_dir: None,
+                registration_path: None,
+            },
+            host,
+        )
+        .await
+        .expect("bind");
+        let mut driver = XyRemoteDriver::new(format!("http://127.0.0.1:{port}"), "s-fork-http");
+        let attach = driver.attach_session().await;
+        if let Err(e) = attach {
+            running.shutdown();
+            panic!("attach: {e}");
+        }
+
+        let mut stream = driver.run("main branch").await;
+        let mut saw_hello = false;
+        while let Some(ev) = stream.next().await {
+            if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                saw_hello = true;
+            }
+            if matches!(ev, XyEvent::AgentEnd { .. }) {
+                break;
+            }
+        }
+        if !saw_hello {
+            running.shutdown();
+            panic!("trunk Fake reply MUST arrive over HTTP");
+        }
+
+        let leaf = match driver.leaf_entry_id() {
+            Some(leaf) => leaf,
+            None => {
+                running.shutdown();
+                panic!("leaf after trunk");
+            }
+        };
+        let child = match dispatch(
+            &mut driver,
+            Command::Fork {
+                entry_id: leaf,
+                position: Some("at".into()),
+            },
+        )
+        .await
+        {
+            Ok(DispatchOutcome::NewSession(id)) => id,
+            other => {
+                running.shutdown();
+                panic!("fork outcome: {other:?}");
+            }
+        };
+        if let Err(e) = dispatch(
+            &mut driver,
+            Command::SwitchSession {
+                session_path: child,
+            },
+        )
+        .await
+        {
+            running.shutdown();
+            panic!("switch: {e}");
+        }
+
+        let mut stream = driver.run("alt branch").await;
+        let mut saw_hello = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            match tokio::time::timeout(
+                deadline.saturating_duration_since(tokio::time::Instant::now()),
+                stream.next(),
+            )
+            .await
+            {
+                Ok(Some(ev)) => {
+                    if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                        saw_hello = true;
+                    }
+                    if matches!(ev, XyEvent::AgentEnd { .. }) {
+                        break;
+                    }
+                }
+                Ok(None) | Err(_) => break,
+            }
+        }
+        running.shutdown();
+        assert!(
+            saw_hello,
+            "HTTP forked child prompt MUST deliver live Fake text, not hang"
         );
     }
 
