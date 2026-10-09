@@ -77,7 +77,7 @@ llman-sdd show <id> --output json --type change
    - 可选只读审查：`llman-sdd change diff <id>`（或 `--export-patch <path>`）——仅审查/导出，绝不当作 apply 步骤。
    - verify 通过后下一步 `llman-sdd-archive`（勿在此 inline finalize）。
 
-   - 额外要求: Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --lib --all-features tests::bdd::` to confirm all scenarios pass.
+   - 额外要求: Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --all-features --test bdd` to confirm all scenarios pass.
 
 6. 输出简短报告：**CRITICAL**（归档前必须修复）/ **WARNING**（建议修复）/ **SUGGESTION**（可选优化）。
 7. **人审关卡**：报告无 CRITICAL 后、建议归档前跑 `llman-sdd review`：退出码零 → 建议 `llman-sdd-archive`；非零 = CRITICAL → 用 `llman-sdd-apply` 修复后重跑 review；MUST NOT 带 CRITICAL 进入 finalize/archive。

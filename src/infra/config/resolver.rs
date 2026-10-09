@@ -5,9 +5,9 @@
 //! - literal:                no marker → as-is
 //! - env-var template:       `$VAR`, `${VAR}`, `${VAR:-default}`
 //! - shell command:          prefix `!` → run under `sh -c` with a 10s wall-clock
-//!   budget; successful results are cached for the process lifetime; an expired
-//!   budget yields a `Timeout` (already-classified failure), never an infinite
-//!   wait.
+//!   budget; the resolution outcome (success AND failure alike, r1823「缓存结果」)
+//!   is cached for the process lifetime — an expired budget yields a `Timeout`
+//!   that stays failed until restart, never an infinite wait.
 //!
 //! Pure/std-only — no crate-internal dependencies.
 
@@ -103,6 +103,12 @@ pub fn parse_value(raw: &str) -> ConfigValue {
 }
 
 /// Resolve a raw value with the given env lookup.
+///
+/// A lookup miss is NOT final: the `${VAR:-default}` default applies first and,
+/// failing that, the process environment is consulted before reporting
+/// `UnboundVariable` (product parity — `secret.env` keys are injected into the
+/// process env by the loader, so injected lookups and the process env are the
+/// same source).
 pub fn resolve_value(
     raw: &str,
     lookup: &dyn Fn(&str) -> Option<String>,

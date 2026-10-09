@@ -646,8 +646,6 @@ pub(crate) fn t_c2827_model_esc_no_set(host_pump_bdd: &HostPumpBdd) {
 pub(crate) fn t_c2827_at_popup_apply(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_host(host_pump_bdd);
     let frame = render_frame(&mut pump);
-    let plain: String = frame.chars().collect::<Vec<_>>().iter().copied().collect();
-    let _ = plain;
     assert!(
         frame.contains("(1/") && frame.contains("/"),
         "c2827: @ 应弹出路径补全（分页指示）：{frame}"
@@ -1363,7 +1361,6 @@ pub(crate) fn t_t2_todo_latest(t2_todo_bdd: &T2TodoBdd) {
 
 #[when("执行压后 todo 保全")]
 pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
-    use xylitol::protocol::session::build_context_entries;
     t2_todo_mount(t2_todo_bdd);
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
@@ -1372,30 +1369,8 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
         "items": [{"id": "k", "content": "keep me", "status": "pending"}]
     });
     t2_rewrite(t2_todo_bdd, items).expect("seed todo");
-    // 构造「压后窗口」：裁切后仅留 Compaction 条目（丢弃 todo 快照）。
     let entries_before =
         futures::executor::block_on(store.load_leaf_branch(&sid)).expect("entries before");
-    let last_ts = entries_before
-        .last()
-        .and_then(|e| e.base().map(|b| b.timestamp))
-        .unwrap_or(0);
-    let cut: Vec<xylitol::protocol::session::SessionEntry> = vec![SessionEntry::Compaction(
-        xylitol::infra::session::CompactionEntry {
-            base: EntryBase {
-                entry_type: "compaction".into(),
-                id: "c1".into(),
-                parent_id: None,
-                timestamp: last_ts + 10,
-            },
-            summary: "cut".into(),
-            first_kept_entry_id: String::new(),
-            tokens_before: 0,
-            details: None,
-            from_hook: None,
-            policy: None,
-        },
-    )];
-    let _ = build_context_entries(&cut);
     // 直接驱动保全：压后窗口无 todo → 重追加最新快照。
     futures::executor::block_on({
         let sid_ref: &str = &sid;
@@ -2134,25 +2109,14 @@ pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
     let mut stream = crate::bdd::helpers::agent_submit_root(&mut runner, "tick todo").await;
     let mut saw_todo_updated = false;
     let mut list_len = None;
-    let mut seen: Vec<String> = Vec::new();
     while let Some(e) = stream.next().await {
-        match &e {
-            XyEvent::TodoUpdated { list } => {
-                saw_todo_updated = true;
-                list_len = Some(list.items.len());
-                seen.push("TodoUpdated".into());
-            }
-            XyEvent::ToolExecutionStart { name, .. } => seen.push(format!("Start({name})")),
-            XyEvent::ToolExecutionEnd { name, is_error, .. } => {
-                seen.push(format!("End({name},err={is_error})"))
-            }
-            XyEvent::Error(err) => seen.push(format!("Error({}: {})", err.kind, err.message)),
-            _ => {}
+        if let XyEvent::TodoUpdated { list } = &e {
+            saw_todo_updated = true;
+            list_len = Some(list.items.len());
         }
     }
     reset_fake_state();
     T6_TODO_EVENT2.with(|c| *c.borrow_mut() = (saw_todo_updated, list_len));
-    let _ = seen;
 }
 
 // ── r1447/r1448/r1449：MCP fixture 装配面 ────────────────────────
