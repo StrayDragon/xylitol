@@ -5,7 +5,7 @@
 //! - [`AgentRuntime`]（[`runtime::AgentRuntime`]）：会话绑定的 ReAct actor。
 //!   交互层（cli/rpc/server/tui）经 `XyDriver` 持有它，调用
 //!   `bind_session` / `submit_root` / `abort` / `set_tools` 等方法。
-//! - [`AgentCapabilities`]（[`capabilities::AgentCapabilities`]）：可插拔的能力聚合体
+//! - [`capabilities::AgentCapabilities`]：可插拔的能力聚合体
 //!   （models + io + tools + 编排状态）。被 `AgentRuntime` 持有；构造期由
 //!   [`AgentBuilder`] 装配。
 //! - [`RuntimePorts`]（[`runtime::RuntimePorts`]）：可克隆的构造基线；
@@ -44,11 +44,10 @@ pub use crate::agent::builder::AgentBuilder;
 pub use crate::agent::capabilities::{
     HookBlockedError, ModelRegistry, QueueMode, QueueStats, SessionStats,
 };
-/// ReAct 循环运行时（驱动 [`AgentCapabilities`]）。
+/// ReAct 循环运行时（驱动 [`capabilities::AgentCapabilities`]）。
 pub use crate::agent::runtime::AgentRuntime;
 /// Clonable construction baseline for materializing isolated [`AgentRuntime`]s.
 pub use crate::agent::runtime::RuntimePorts;
-#[cfg(test)]
 pub use crate::agent::runtime::XyEventStream;
 pub use crate::agent::runtime::hooks::max_turns_stop_hook;
 pub use crate::agent::tools::MCP_FIRST_TURN_GATE_TIMEOUT;

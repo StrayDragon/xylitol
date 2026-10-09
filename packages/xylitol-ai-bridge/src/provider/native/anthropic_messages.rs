@@ -1132,7 +1132,11 @@ mod tests {
     /// r1556：流式请求以 chunk-gap idle 上界判定挂起——半帧后静默的上游
     /// MUST 产生可分类的 `provider SSE idle` 超时错误。SSE_IDLE 为 90s
     /// 程序权威常量（c2425），paused time 的 auto-advance 瞬时烧完等待。
-    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    ///
+    /// 时钟暂停放在 `generate_stream` 之后：connect 阶段的 10s 定时器（reqwest
+    /// / hyper 自带）与 paused clock 的 auto-advance 会抢在 socket 就绪前到期，
+    /// 故先以实时时钟完成握手，再 pause 让 90s idle 上界瞬时到期。
+    #[tokio::test(flavor = "current_thread")]
     async fn sse_idle_bound_fires_classifiable_error() {
         use futures::StreamExt;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -1171,6 +1175,9 @@ mod tests {
             .generate_stream(vec![], &[], Default::default())
             .await
             .expect("stream established");
+        // 握手已完成（connect 定时器已消费），此刻暂停时钟 → 唯一待触发的
+        // 定时器是 SSE_IDLE，auto-advance 瞬时烧完 90s。
+        tokio::time::pause();
         let mut idle_err = None;
         while let Some(item) = stream.next().await {
             if let Err(e) = item {

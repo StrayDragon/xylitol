@@ -54,14 +54,26 @@
   规则: smoke-already-wired
     仓库 MUST 至少有一条经库缝触发的观察型例子（如 session_start 或 agent_start），经 InProcessDriver 等库缝注入 XyHookBus 并录制 hook 调用；MUST NOT 用直接 HookDispatcher::dispatch 冒充接线证明。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
+
+    场景: smoke-hook-wired
+      当 读取库缝观察接线
+      那么 有经库缝触发的例子
   @req:r1818
   规则: provider-matrix-out-of-scope
     model_select 与 thinking_level_select 已有可执行场景；OpenAI Responses / Anthropic Messages 的 provider 三缝由 agent-hooks 覆盖。本 feature MUST NOT 挂会导致 CI 失败的 provider HTTP 三缝场景。
     # verified-by: llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature
+
+    场景: provider-matrix-scenarios
+      当 读取 provider 选择场景
+      那么 已有可执行场景
   @req:r1819
   规则: curated-xy-hook-bus
     crate 根精选 pub use MUST 导出 XyHookBus 与 XyHookOutcome（及 NoopHookBus）；嵌入方 MUST 能在不 import protocol 深层子路径的情况下引用这些符号；MUST NOT 将 HookDispatcher 或 HookEvent 列为精选导出。
     # verified-by: src/lib.rs
+
+    场景: curated-hook-bus-reexport
+      当 读取 crate 根再导出
+      那么 精选导出总线与结果
   @req:r1820
   规则: wiring-model-ops
     hooks-wiring 操作字典 MUST 支持「选择模型 fake」与「设置思考级别 high」，并启用对应观察场景。
@@ -78,3 +90,10 @@
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；被测词表未动，仅测试判据与协议载体收口。（2026-09-29）
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
+
+# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
+
+# re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）

@@ -352,9 +352,16 @@ mod tests {
     }
 
     #[test]
-    fn server_hello_is_not_a_wire_frame() {
-        let json = codec::encode_to_string(&RpcMessage::ServerHello { protocol: 7 }).unwrap();
-        assert!(json.contains("\"type\":\"server-hello\""), "{json}");
+    fn four_quadrant_type_tag_is_not_a_wire_frame() {
+        // 握手是 host.describe 结果（c2825），不是 mux 首帧；四象限 type tag
+        // 只是内部 RpcMessage 的 serde 形状，不进线。
+        let json = codec::encode_to_string(&RpcMessage::ServerRequest {
+            rpc_id: "n1".into(),
+            method: "session/event".into(),
+            payload: serde_json::json!({}),
+        })
+        .unwrap();
+        assert!(json.contains("\"type\":\"server-request\""), "{json}");
         assert!(
             codec::decode_str(&json).is_err(),
             "handshake is host.describe, not a mux type tag"

@@ -9,8 +9,7 @@ pub use activity_fold::scene::{SceneBuilder, SemanticDump};
 mod ask_host;
 mod bridge;
 mod commands;
-#[cfg(test)]
-pub(crate) use commands::parse_slash_command;
+pub use commands::parse_slash_command;
 mod editor_history_seed;
 mod effects;
 pub(crate) mod error;
@@ -46,7 +45,7 @@ use xylitol_tui::{CrosstermTerminal, InputEvent, Terminal};
 
 use crate::app::core::driver::{EventStream as AgentEventStream, XyDriver, XyDriverError};
 
-pub(crate) use self::effects::{drain_pending, run_interactive_bang, run_interactive_reload};
+pub use self::effects::{drain_pending, run_interactive_bang, run_interactive_reload};
 use self::host::{HostEvent, HostSession};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
@@ -58,14 +57,12 @@ pub use self::commands::{
     BangParse, PendingBash, PendingSlash as TuiPendingSlash, bash_result_entries,
     parse_bang_command,
 };
-#[cfg(test)]
-pub(crate) use self::effects::refresh_footer_tokens;
+pub use self::effects::refresh_footer_tokens;
 pub use self::host::{
     HostEvent as TuiHostEvent, HostSession as TuiHostSession, LayoutMode, MIN_COLS, MIN_ROWS,
     TOO_SMALL_HINT, display_cwd, is_too_small,
 };
-#[cfg(test)]
-pub(crate) use self::layout::UiRoot;
+pub use self::layout::UiRoot;
 pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
 pub use self::widgets::{FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold};
 /// att26：ActivityFold 自动收纳旋钮（信封/簇折叠配置入口）。
@@ -74,8 +71,7 @@ pub use activity_fold::ActivityFoldSettings;
 pub use bridge::TODO_EMPTY_BODY_HINT;
 /// att13：折叠态工具人话摘要的窄导出（BDD 直驱纯函数合约）。
 pub use bridge::human_tool_args_preview;
-#[cfg(test)]
-pub(crate) use bridge::trailing_aborted_note;
+pub use bridge::trailing_aborted_note;
 // TuiRunOptions exported via struct above in this module
 
 /// Options for [`run`] (c1560 / c2070).
@@ -534,8 +530,15 @@ fn apply_idle_downlink<T: xylitol_tui::Terminal>(
         session.ui_model_mut().streaming_thinking.clear();
         session.sync_ui_root_from_model();
     }
+    let mut model_synced = false;
     for ev in driver.drain_idle_events() {
+        model_synced |= matches!(ev, crate::app::core::driver::XyEvent::ModelSelect { .. });
         session.step(HostEvent::Xy(Box::new(ev)))?;
+    }
+    // c2841: Host 绑定/装配同步的生效模型事件（含用户显式配置的默认模型）→
+    // 刷新固定区徽标，避免执行默认模型而徽标停在 NOT-SET。
+    if model_synced {
+        session.sync_fixed_zone(driver);
     }
     Ok(())
 }

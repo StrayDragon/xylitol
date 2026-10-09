@@ -4,19 +4,19 @@
 //! P4：live scrollback（att1）、Thought 结算（att8）、travel 重建 seam
 //! （att12/18，走产品 `rebuild_scrollback_from_travel` 正常路径）。
 
-use crate::app::tui::GlyphSet;
-use crate::app::tui::SceneBuilder;
-use crate::app::tui::UiEntry;
-use crate::app::tui::UiModel;
-use crate::app::tui::apply_xy_event;
-use crate::app::tui::rebuild_scrollback_from_travel;
-use crate::app::tui::travel_history_note;
-use crate::protocol::session::SessionTreeKind;
-use crate::protocol::session::SessionTreeTravel;
-use crate::tests::bdd::prelude::*;
-use crate::tests::bdd::steps_app_tui_interaction::TuiInteraction;
+use crate::bdd::prelude::*;
+use crate::bdd::steps_app_tui_interaction::TuiInteraction;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
+use xylitol::app::tui::GlyphSet;
+use xylitol::app::tui::SceneBuilder;
+use xylitol::app::tui::UiEntry;
+use xylitol::app::tui::UiModel;
+use xylitol::app::tui::apply_xy_event;
+use xylitol::app::tui::rebuild_scrollback_from_travel;
+use xylitol::app::tui::travel_history_note;
+use xylitol::protocol::session::SessionTreeKind;
+use xylitol::protocol::session::SessionTreeTravel;
 
 /// Shared state for transcript glyph scenarios.
 pub struct TranscriptBdd {
@@ -104,7 +104,7 @@ fn then_ascii_fallback(transcript_bdd: &TranscriptBdd) {
 
 #[when("折叠态读取 bash、read、write 三类参数人话摘要")]
 fn then_read_tool_previews(transcript_bdd: &TranscriptBdd) {
-    use crate::app::tui::human_tool_args_preview;
+    use xylitol::app::tui::human_tool_args_preview;
     let bash = human_tool_args_preview("bash", &serde_json::json!({"command": "cargo test"}), 200);
     let read = human_tool_args_preview(
         "read",
@@ -136,7 +136,7 @@ fn then_tool_preview_shapes(transcript_bdd: &TranscriptBdd) {
 #[then("缺 path 时用三点占位且不回退完整 args JSON")]
 fn then_missing_path_placeholder(transcript_bdd: &TranscriptBdd) {
     let _ = transcript_bdd; // 断言本地自足，夹具仅用于步骤分组
-    use crate::app::tui::human_tool_args_preview;
+    use xylitol::app::tui::human_tool_args_preview;
     // 前一步存的是三类正常摘要；这里直接补算 edit 无 path 场景
     let edit_no_path = human_tool_args_preview(
         "edit",
@@ -154,7 +154,7 @@ fn then_missing_path_placeholder(transcript_bdd: &TranscriptBdd) {
 
 #[when("以场景构建器渲染相邻的助手块与工具块（宽 80）")]
 fn then_render_adjacent_blocks(transcript_bdd: &TranscriptBdd) {
-    use crate::app::tui::SceneBuilder;
+    use xylitol::app::tui::SceneBuilder;
     let mut sb = SceneBuilder::begin();
     sb.assistant("alpha body").message_end();
     sb.tool_start("t1", "read", "src/lib.rs")
@@ -414,7 +414,7 @@ fn then_assistant_live_unenveloped(transcript_bdd: &TranscriptBdd) {
 
 #[when("以场景构建器渲染多段助手正文（宽 80）")]
 fn when_render_multi_assistant(transcript_bdd: &TranscriptBdd) {
-    use crate::app::tui::InteractionBdd;
+    use xylitol::app::tui::InteractionBdd;
     let mut sb = SceneBuilder::begin();
     sb.assistant("first **loud** tail").message_end();
     sb.assistant("second para").message_end();
@@ -461,7 +461,7 @@ fn then_assistant_line_styled(transcript_bdd: &TranscriptBdd) {
 
 #[when("以场景构建器回放思考加工具并结算 7 秒封轮挂载交互面")]
 fn when_mount_settled_thinking(transcript_bdd: &TranscriptBdd, tui_interaction: &TuiInteraction) {
-    use crate::app::tui::InteractionBdd;
+    use xylitol::app::tui::InteractionBdd;
     let mut sb = SceneBuilder::begin();
     sb.assistant("开工").message_end();
     sb.thinking_flushed("慢慢想", 7);
@@ -694,8 +694,8 @@ fn then_notice_trailing_not_prepended(transcript_bdd: &TranscriptBdd) {
 
 // ---- att4：rail 皮肤状态轨（accent / success / error，轨+gutter 结构） ----
 
-use crate::app::tui::FoldTarget;
-use crate::app::tui::InteractionBdd;
+use xylitol::app::tui::FoldTarget;
+use xylitol::app::tui::InteractionBdd;
 
 /// rail 前缀 = 1 列底色 + `49m` 复位 + 1 列无底色 gutter（paint_left_rail_line 同构）。
 pub(crate) fn rail_prefix(rgb: xylitol_tui::terminal_colors::RgbColor) -> String {
@@ -746,7 +746,7 @@ fn then_rail_status_colors(tui_interaction: &TuiInteraction) {
         let fx = fx.as_mut().expect("fixture mounted");
         fx.render_lines(80).join("\n")
     };
-    let theme = crate::app::tui::LayoutTheme::product_dark();
+    let theme = xylitol::app::tui::LayoutTheme::product_dark();
     let p = theme.palette();
     // att4 MAY soft-mix surface：产品轨色为 surface 与 vivid 的 0.72 混合。
     let cases = [
@@ -769,7 +769,7 @@ fn then_rail_status_colors(tui_interaction: &TuiInteraction) {
 fn then_rail_shape_and_reset(tui_interaction: &TuiInteraction) {
     let (done, prefix) = {
         use xylitol_tui::mix_rgb;
-        let theme = crate::app::tui::LayoutTheme::product_dark();
+        let theme = xylitol::app::tui::LayoutTheme::product_dark();
         let p = theme.palette();
         let prefix = rail_prefix(mix_rgb(p.surface, p.success, 0.72));
         let mut fx = tui_interaction.fx.borrow_mut();
@@ -793,7 +793,7 @@ fn then_rail_shape_and_reset(tui_interaction: &TuiInteraction) {
 fn then_no_full_row_wash(tui_interaction: &TuiInteraction) {
     let (done, prefix) = {
         use xylitol_tui::mix_rgb;
-        let theme = crate::app::tui::LayoutTheme::product_dark();
+        let theme = xylitol::app::tui::LayoutTheme::product_dark();
         let p = theme.palette();
         let prefix = rail_prefix(mix_rgb(p.surface, p.success, 0.72));
         let mut fx = tui_interaction.fx.borrow_mut();
@@ -860,7 +860,7 @@ fn then_write_viewport_tail(tui_interaction: &TuiInteraction) {
 fn then_write_shared_rail(tui_interaction: &TuiInteraction) {
     use xylitol_tui::mix_rgb;
     let (header, body, prefix) = {
-        let theme = crate::app::tui::LayoutTheme::product_dark();
+        let theme = xylitol::app::tui::LayoutTheme::product_dark();
         let p = theme.palette();
         let prefix = rail_prefix(mix_rgb(p.surface, p.accent, 0.72));
         let mut fx = tui_interaction.fx.borrow_mut();
@@ -977,7 +977,7 @@ fn then_footer_warning_fg(tui_interaction: &TuiInteraction) {
         fx.render_lines(120).join("\n")
     };
     let expect = bold(&fg_rgb(
-        crate::app::tui::LayoutTheme::product_dark()
+        xylitol::app::tui::LayoutTheme::product_dark()
             .palette()
             .warning,
         FULL_OUTPUT_FOOTER,
@@ -1305,7 +1305,7 @@ fn then_rebuild_folds_all(tui_interaction: &TuiInteraction) {
 
 #[when("关闭 ActivityFold 重挂并按回合结束收纳")]
 fn when_mount_disabled_fold(tui_interaction: &TuiInteraction) {
-    use crate::app::tui::ActivityFoldSettings;
+    use xylitol::app::tui::ActivityFoldSettings;
     mount_activity_turns(tui_interaction, 4);
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
@@ -1580,7 +1580,7 @@ fn then_suffix_updates_live(transcript_bdd: &TranscriptBdd) {
 /// 一轮 todo 会话条目：user → assistant(toolCall todo_rewrite) → toolResult 全表快照
 /// + 一条 agent_todo Custom 快照（SSOT，resume 侧 checklist 来源）。
 fn todo_block_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
-    use crate::protocol::session::CustomEntry;
+    use xylitol::protocol::session::CustomEntry;
     let todo_json = serde_json::json!({
         "items": [
             { "id": "a", "content": "检查环境", "status": "in_progress" },
@@ -1637,13 +1637,13 @@ fn todo_block_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
             }),
         }),
         SessionEntry::Custom(CustomEntry {
-            base: crate::protocol::session::EntryBase {
+            base: xylitol::protocol::session::EntryBase {
                 entry_type: "custom".into(),
                 id: "snap1".into(),
                 parent_id: Some("tr1".into()),
                 timestamp: 0,
             },
-            custom_type: crate::protocol::session::CUSTOM_TYPE_AGENT_TODO.into(),
+            custom_type: xylitol::protocol::session::CUSTOM_TYPE_AGENT_TODO.into(),
             data: todo_json.clone(),
         }),
     ];
@@ -1681,7 +1681,7 @@ fn when_todo_block_live_and_rebuild(transcript_bdd: &TranscriptBdd) {
             args: todo_args,
         },
     );
-    let list = crate::protocol::session::TodoList::from_data_value(
+    let list = xylitol::protocol::session::TodoList::from_data_value(
         &serde_json::from_str::<serde_json::Value>(&todo_result).expect("todo json"),
     )
     .expect("typed list");
@@ -1719,7 +1719,7 @@ fn then_todo_block_bodies_agree(transcript_bdd: &TranscriptBdd) {
             })
             .expect("todo tool row")
     }
-    fn checklist(model: &UiModel) -> crate::protocol::session::TodoList {
+    fn checklist(model: &UiModel) -> xylitol::protocol::session::TodoList {
         model.todo.clone()
     }
 
@@ -1752,16 +1752,16 @@ fn then_todo_block_bodies_agree(transcript_bdd: &TranscriptBdd) {
 }
 
 fn paint_model(model: &UiModel) -> String {
-    crate::app::tui::InteractionBdd::from_model(model.clone()).render_plain(80)
+    xylitol::app::tui::InteractionBdd::from_model(model.clone()).render_plain(80)
 }
 
 #[when("以场景构建器回放含一条 in_progress 与前后翼条目的 TodoUpdated")]
 fn when_todo_bar_three_zone(transcript_bdd: &TranscriptBdd) {
-    use crate::protocol::session::{TodoItem, TodoList, TodoStatus};
+    use xylitol::protocol::session::{TodoItem, TodoList, TodoStatus};
     let mut model = UiModel::new();
     apply_xy_event(
         &mut model,
-        &crate::app::core::driver::XyEvent::TodoUpdated {
+        &xylitol::app::core::driver::XyEvent::TodoUpdated {
             list: TodoList::new(vec![
                 TodoItem {
                     id: "1".into(),
@@ -1927,7 +1927,7 @@ fn then_todo_tool_body_still_checklist(transcript_bdd: &TranscriptBdd) {
 
 #[when("折叠态读取无 items 的 todo_rewrite 与带补丁 items 的 todo_update 的人话摘要")]
 fn when_todo_empty_arg_previews(transcript_bdd: &TranscriptBdd) {
-    use crate::app::tui::human_tool_args_preview;
+    use xylitol::app::tui::human_tool_args_preview;
     let rewrite = human_tool_args_preview("todo_rewrite", &serde_json::json!({}), 200);
     let update = human_tool_args_preview(
         "todo_update",
@@ -2069,7 +2069,7 @@ fn then_todo_empty_bodies_agree(transcript_bdd: &TranscriptBdd) {
     );
     assert_eq!(
         live_body,
-        crate::app::tui::TODO_EMPTY_BODY_HINT,
+        xylitol::app::tui::TODO_EMPTY_BODY_HINT,
         "att36: empty list must surface the explicit hint, not a silent body"
     );
 }

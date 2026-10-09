@@ -284,7 +284,7 @@ pub fn parse_bang_command(text: &str) -> BangParse {
     }
 }
 
-/// Parse idle slash MVP (`/exit`, `/model` [id], and debug-build `/debug` [scene]).
+/// Parse idle slash MVP (`/exit`, `/model` `id`, and debug-build `/debug` `scene`).
 pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
     let trimmed = text.trim();
     let rest = trimmed.strip_prefix('/')?;

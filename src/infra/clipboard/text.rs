@@ -28,7 +28,7 @@ fn read_macos_clipboard_text() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| ClipboardError::io(format!("pbpaste failed: {e}")))?;
+        .map_err(|e| ClipboardError::io("pbpaste failed", e))?;
     if !output.status.success() {
         return Ok(None);
     }
@@ -124,6 +124,7 @@ fn read_text_via_xclip() -> Result<Option<String>, ClipboardError> {
 }
 
 /// Prefer `text/plain` (with optional charset) from a MIME list.
+#[cfg(any(test, target_os = "linux"))]
 fn select_text_mime(mime_types: &str) -> Option<&str> {
     let entries: Vec<&str> = mime_types
         .lines()
@@ -156,7 +157,7 @@ fn read_windows_clipboard_text() -> Result<Option<String>, ClipboardError> {
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .map_err(|e| ClipboardError::io(format!("PowerShell Get-Clipboard failed: {e}")))?;
+        .map_err(|e| ClipboardError::io("PowerShell Get-Clipboard failed", e))?;
     if !output.status.success() {
         return Ok(None);
     }

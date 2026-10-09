@@ -3,7 +3,7 @@
 //! This is **not** a chat user turn. It is a sparse, append-only **special status
 //! bar type** that bootstraps `date` / `clock` / `cwd` before the real user
 //! message. Outbound `<agent_status_bar>` (Todo as `<todo>` child) is
-//! [`crate::agent::prompt::status_bar`] — not persisted.
+//! `crate::agent::prompt::status_bar` — not persisted.
 //!
 //! # Discovery for `c1895` (do not reinvent)
 //!
@@ -17,7 +17,7 @@
 //! | Inject seams | ReAct before user persist; overflow reload; post-`compact_session` |
 //! | Outbound status bar | [`crate::agent::prompt::project_outbound`] — `<agent_status_bar>`; Todo is `<todo>` child |
 //! | TUI hide | [`crate::protocol::session::is_env_custom_message`] + tree kind `meta` |
-//! | Planned persist kind | still park (`c1895`); outbound root is already [`crate::agent::prompt::status_bar`] |
+//! | Planned persist kind | still park (`c1895`); outbound root is already `crate::agent::prompt::status_bar` |
 //!
 //! Persisted as [`EnvMessage::CustomMessage`], folded to a **user** row by
 //! [`crate::agent::llm_project::project_for_llm`]. Stable XML body: edit only via
@@ -39,7 +39,7 @@ pub const CUSTOM_TYPE_SESSION_ENV: &str = "session_env";
 
 /// XML root element for session-env body (sparse persist; c1905).
 ///
-/// Outbound bar root is [`crate::agent::prompt::status_bar::STATUS_BAR_XML_ROOT`].
+/// Outbound bar root is `crate::agent::prompt::status_bar::STATUS_BAR_XML_ROOT`.
 pub const SESSION_ENV_XML_ROOT: &str = "session_env";
 
 /// Snapshot used to build or compare session_env messages.

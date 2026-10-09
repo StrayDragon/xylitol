@@ -3,7 +3,7 @@
 //! Walk session entries backwards from newest, accumulate token estimates,
 //! and find the nearest valid boundary (user / assistant / bash / custom / branch).
 
-use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
+use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 use crate::protocol::session::SessionEntry;
 
 /// Result from [`find_cut_point`].
@@ -25,6 +25,12 @@ const ESTIMATED_IMAGE_CHARS: u64 = 4800;
 /// Returns 0 when the entry has no context-visible message (skipped in accumulation).
 /// Message rows that fail typed deserialize still use a lax content walk (string or
 /// parts) so cut math stays usable for legacy / fixture wire shapes.
+/// c2848/r1924: cut 逐条度量与 unified 估算链（`accounting::heuristic_tokens`）
+/// 同源：对**投影后单条**消息按序列化字节 /4 计数（同一算法族、同一投影源），
+/// 不再使用独立的内容字符启发式作为决策 SSOT。不可行的反序列化走 lax 兜底。
+///
+/// 注意：unified 的启发式是逐条 `serde_json::to_string /4` 之和，本函数即它的
+/// 逐条切片——切点位置因此与决策/展示落在同一度量空间（中文会话不再 5x 失真）。
 pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
     match entry {
         SessionEntry::Message(msg) => {
@@ -35,16 +41,47 @@ pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
                     {
                         return 0;
                     }
-                    estimate_tokens_message_for_cut(&agent_msg)
+                    unified_projected_entry_token_estimate(&agent_msg)
                 }
+                // lax 兜底：非 SSOT，仅在消息反序列化失败时使用。
                 Err(_) => estimate_lax_message_json_chars(&msg.message).div_ceil(4),
             }
         }
         _ => entry
             .as_agent_message()
-            .map(|m| estimate_tokens_message_for_cut(&m))
+            .map(|m| unified_projected_entry_token_estimate(&m))
             .unwrap_or(0),
     }
+}
+
+/// c2848: 与 `accounting::heuristic_tokens` 同算法的单条投影计数（逐条切片）。
+/// 投影丢弃 error 助手与无投影的 Env —— 与 unified 估算完全同源。
+///
+/// pi 视觉成本单独叠加：图片（user/toolResult）按 `ESTIMATED_IMAGE_CHARS`（≈1200
+/// token）计——投影后的序列化只含图片元数据、不承载真实视觉载荷，必须显式建模。
+fn unified_projected_entry_token_estimate(agent_msg: &AgentMessage) -> u64 {
+    let image_tokens = match agent_msg {
+        AgentMessage::Llm(LlmMessage::UserMessage { content, .. })
+        | AgentMessage::Llm(LlmMessage::ToolResultMessage { content, .. }) => {
+            content
+                .iter()
+                .filter(|p| matches!(p, AgentPart::Image(_)))
+                .count() as u64
+                * ESTIMATED_IMAGE_CHARS.div_ceil(4)
+        }
+        _ => 0,
+    };
+    let projected = crate::agent::llm_project::project_for_llm(std::slice::from_ref(agent_msg));
+    let serialized: u64 = projected
+        .iter()
+        .map(|m| {
+            (serde_json::to_string(m)
+                .map(|s| s.len() as u64)
+                .unwrap_or(0))
+            .div_ceil(4)
+        })
+        .sum();
+    serialized.saturating_add(image_tokens)
 }
 
 /// Lax wire: string `content` or part array (text / image / thinking / toolCall).
@@ -94,81 +131,6 @@ fn estimate_lax_message_json_chars(message: &serde_json::Value) -> u64 {
 }
 
 /// pi-aligned chars/4 estimate for a single transcript message.
-pub fn estimate_tokens_message_for_cut(msg: &AgentMessage) -> u64 {
-    let chars = match msg {
-        // pi user / toolResult / custom: text + image only
-        AgentMessage::Llm(LlmMessage::UserMessage { content, .. })
-        | AgentMessage::Llm(LlmMessage::ToolResultMessage { content, .. }) => {
-            estimate_text_and_image_chars(content)
-        }
-        // pi assistant: text + thinking + toolCall (not image)
-        AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) => {
-            estimate_assistant_chars(content)
-        }
-        AgentMessage::Env(EnvMessage::BashExecutionMessage {
-            command, output, ..
-        }) => (command.len() + output.len()) as u64,
-        AgentMessage::Env(EnvMessage::CompactionSummaryMessage { summary, .. })
-        | AgentMessage::Env(EnvMessage::BranchSummaryMessage { summary, .. }) => {
-            summary.len() as u64
-        }
-        AgentMessage::Env(EnvMessage::CustomMessage { content, .. }) => {
-            estimate_custom_content_chars(content)
-        }
-    };
-    chars.div_ceil(4)
-}
-
-fn estimate_text_and_image_chars(parts: &[AgentPart]) -> u64 {
-    let mut chars = 0u64;
-    for part in parts {
-        match part {
-            AgentPart::Text { text } => chars += text.len() as u64,
-            AgentPart::Image(_) => chars += ESTIMATED_IMAGE_CHARS,
-            AgentPart::Thinking { .. } | AgentPart::ToolCall { .. } => {}
-        }
-    }
-    chars
-}
-
-fn estimate_assistant_chars(parts: &[AgentPart]) -> u64 {
-    let mut chars = 0u64;
-    for part in parts {
-        match part {
-            AgentPart::Text { text } => chars += text.len() as u64,
-            AgentPart::Thinking { thinking, .. } => chars += thinking.len() as u64,
-            AgentPart::ToolCall {
-                name, arguments, ..
-            } => {
-                chars += name.len() as u64 + arguments.to_string().len() as u64;
-            }
-            AgentPart::Image(_) => {}
-        }
-    }
-    chars
-}
-
-fn estimate_custom_content_chars(content: &serde_json::Value) -> u64 {
-    if let Some(s) = content.as_str() {
-        return s.len() as u64;
-    }
-    if let Some(parts) = content.as_array() {
-        let mut chars = 0u64;
-        for part in parts {
-            let typ = part.get("type").and_then(|t| t.as_str());
-            if typ == Some("image") {
-                chars += ESTIMATED_IMAGE_CHARS;
-            } else if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                chars += text.len() as u64;
-            } else if let Some(s) = part.as_str() {
-                chars += s.len() as u64;
-            }
-        }
-        return chars;
-    }
-    content.to_string().len() as u64
-}
-
 /// Estimate tokens for a single `SessionEntry` using chars/4 heuristic.
 ///
 /// Prefer [`estimate_tokens_entry_for_cut`] for cut-point walking (pi-aligned).
@@ -678,31 +640,6 @@ mod tests {
             message: json!({"role": "user", "content": "hello"}),
         });
         assert_eq!(estimate_tokens_entry(&message), 2);
-    }
-
-    // ── estimate_custom_content_chars ───────────────────────────────
-
-    #[test]
-    fn custom_content_chars_table() {
-        let cases = [
-            ("字符串直取", json!("abcd"), 4u64),
-            ("数组内 image", json!([{"type":"image"}]), 4800),
-            ("数组内 text part", json!([{"text":"ab"}]), 2),
-            ("数组内裸字符串", json!(["xyz"]), 3),
-            ("空数组", json!([]), 0),
-            (
-                "非数组非字符串 → 整体序列化",
-                json!({"k":1}),
-                r#"{"k":1}"#.len() as u64,
-            ),
-        ];
-        for (desc, content, expected) in cases {
-            assert_eq!(
-                estimate_custom_content_chars(&content),
-                expected,
-                "case: {desc}"
-            );
-        }
     }
 
     // ── is_valid_cut_point / is_turn_start_entry ────────────────────

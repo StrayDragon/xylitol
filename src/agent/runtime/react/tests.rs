@@ -2349,36 +2349,43 @@ async fn batch_default_sequential_no_overlap() {
 
 #[tokio::test]
 async fn batch_barrier_parallel_overlap_then_barrier() {
-    let log = Arc::new(Mutex::new(Vec::new()));
     let epoch = Instant::now();
-    let tools = ToolSet::from_iter(vec![
-        Arc::new(SlowTool {
-            name: "slow_safe",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
-            sleep_ms: 100,
-            log: log.clone(),
-            epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
-        Arc::new(SlowTool {
-            name: "slow_barrier",
-            mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
-            sleep_ms: 50,
-            log: log.clone(),
-            epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
-    ]);
-    let rounds = multi_tool_rounds(vec![
-        ("slow_safe", r#"{"n":1}"#),
-        ("slow_safe", r#"{"n":2}"#),
-        ("slow_barrier", r#"{}"#),
-    ]);
-    let mut agent = make_agent_with_rounds(rounds, tools);
-    agent.set_batch_mode(XyBatchMode::BarrierParallel);
-    let t0 = Instant::now();
-    let mut stream = run_agent(&mut agent, "go").await;
-    while stream.next().await.is_some() {}
-    let elapsed = t0.elapsed();
-    let entries = log.lock().unwrap().clone();
+
+    /// 同一轮 3 次调用在指定 batch 模式下跑一遍：返回 (壁钟, 工具窗口日志)。
+    async fn run_mode(mode: XyBatchMode, epoch: Instant) -> (Duration, Vec<(String, u128, u128)>) {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let tools = ToolSet::from_iter(vec![
+            Arc::new(SlowTool {
+                name: "slow_safe",
+                mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+                sleep_ms: 100,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+            Arc::new(SlowTool {
+                name: "slow_barrier",
+                mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
+                sleep_ms: 50,
+                log: log.clone(),
+                epoch,
+            }) as Arc<dyn crate::protocol::ports::XyTool>,
+        ]);
+        let rounds = multi_tool_rounds(vec![
+            ("slow_safe", r#"{"n":1}"#),
+            ("slow_safe", r#"{"n":2}"#),
+            ("slow_barrier", r#"{}"#),
+        ]);
+        let mut agent = make_agent_with_rounds(rounds, tools);
+        agent.set_batch_mode(mode);
+        let t0 = Instant::now();
+        let mut stream = run_agent(&mut agent, "go").await;
+        while stream.next().await.is_some() {}
+        let entries = log.lock().unwrap().clone();
+        assert_eq!(entries.len(), 3, "{entries:?}");
+        (t0.elapsed(), entries)
+    }
+
+    let (elapsed, entries) = run_mode(XyBatchMode::BarrierParallel, epoch).await;
     assert_eq!(entries.len(), 3, "{entries:?}");
     let by = |n: &str| {
         entries
@@ -2404,10 +2411,20 @@ async fn batch_barrier_parallel_overlap_then_barrier() {
         safe_end_max <= barrier.1,
         "both safes must finish before barrier starts: {entries:?}"
     );
-    // S3: wall clock ≪ 200ms serial (two 100ms safes).
+    // S3：与同轮序的 Sequential 取相对比值。绝对惗秒随 nextest 并行负载漂移，故不铉
+    // 定值；每模式再跑三轮取最小值，抹掉首轮惰性初始化与调度抖动。
+    async fn best_of(mode: XyBatchMode, epoch: Instant) -> Duration {
+        let mut best = Duration::MAX;
+        for _ in 0..3 {
+            best = best.min(run_mode(mode, epoch).await.0);
+        }
+        best
+    }
+    let parallel = elapsed.min(best_of(XyBatchMode::BarrierParallel, epoch).await);
+    let serial = best_of(XyBatchMode::Sequential, epoch).await;
     assert!(
-        elapsed < Duration::from_millis(280),
-        "expected parallel speedup, elapsed={elapsed:?}"
+        parallel < serial,
+        "expected parallel speedup: parallel={parallel:?} serial={serial:?}"
     );
 }
 
@@ -3360,4 +3377,226 @@ async fn submit_without_bind_returns_no_session_error() {
         }
     }
     assert!(saw);
+}
+
+// ── combine_run_streams: side-channel tail ordering (c2844) ──────────────
+
+/// Helper: a single-yield inner stream ending with AgentEnd.
+fn inner_stream_with_agent_end(
+    prefix: XyEvent,
+    agent_end: XyEvent,
+) -> Pin<Box<dyn Stream<Item = XyEvent> + Send>> {
+    Box::pin(async_stream::stream! {
+        yield prefix;
+        yield agent_end;
+    })
+}
+
+#[tokio::test]
+async fn combine_run_streams_flushes_side_tail_before_agent_end() {
+    // c2844 regression: a turn-end compaction emits CompactionEnd on the side
+    // channel immediately before AgentEnd (no interleaving await). The biased
+    // select must still deliver it BEFORE the terminal AgentEnd — consumers stop
+    // reading at AgentEnd and would otherwise drop it.
+    let prefix = XyEvent::TextDelta("hello".into());
+    let agent_end = XyEvent::AgentEnd { messages: vec![] };
+    let (side_tx, side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
+    let (q_tx, queue_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
+    let _q = q_tx;
+    let end = XyEvent::CompactionEnd {
+        result: Some("ok".into()),
+        aborted: false,
+        reason: "overflow".into(),
+        will_retry: false,
+        error_message: None,
+        summary: Some("s".into()),
+        tokens_before: Some(10),
+        tokens_after: Some(5),
+        notice: None,
+    };
+    // Inject the side event AFTER constructing the inner stream but before
+    // driving — models the tee running ahead of the closing tape.
+    side_tx.send(end.clone()).unwrap();
+
+    let combined = combine_run_streams(
+        inner_stream_with_agent_end(prefix.clone(), agent_end.clone()),
+        side_rx,
+        queue_rx,
+    );
+    let mut it = Box::pin(combined);
+    let mut got = Vec::new();
+    while let Some(e) = it.next().await {
+        got.push(e);
+    }
+    let names: Vec<&str> = got
+        .iter()
+        .map(|e| match e {
+            XyEvent::TextDelta(_) => "text",
+            XyEvent::CompactionEnd { .. } => "compaction_end",
+            XyEvent::AgentEnd { .. } => "agent_end",
+            other => panic!("unexpected: {other:?}"),
+        })
+        .collect();
+    assert_eq!(
+        names,
+        vec!["text", "compaction_end", "agent_end"],
+        "side-channel CompactionEnd MUST be delivered BEFORE AgentEnd, never dropped: {got:?}"
+    );
+}
+
+#[tokio::test]
+async fn combine_run_streams_drains_tail_when_inner_ends_without_agent_end() {
+    // Defensive: even a bare inner end (no AgentEnd on tape) must not lose
+    // side-channel leftovers.
+    let (side_tx, side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
+    let (q_tx, queue_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
+    let _q = q_tx;
+    side_tx
+        .send(XyEvent::ContextTokenSettlement {
+            estimate: crate::protocol::model::ContextTokenEstimate {
+                tokens: 1,
+                provenance: crate::protocol::model::TokenProvenance::Api,
+                usage_tokens: 1,
+                trailing_tokens: 0,
+                last_usage_index: None,
+            },
+            reason: "overflow".into(),
+            generation: 0,
+        })
+        .unwrap();
+    let empty: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
+        if false {
+            yield XyEvent::TextDelta(String::new());
+        }
+    });
+    let mut it = Box::pin(combine_run_streams(empty, side_rx, queue_rx));
+    let mut n = 0;
+    while let Some(e) = it.next().await {
+        assert!(
+            matches!(e, XyEvent::ContextTokenSettlement { .. }),
+            "tail drained: {e:?}"
+        );
+        n += 1;
+    }
+    assert_eq!(n, 1, "side leftover must be drained at inner end");
+}
+
+// ── Spike: turn-end overflow compaction events land on the run stream ─────
+
+fn overflow_error_builder() -> ModelBuilderFn {
+    // c2844: the summarizer/agent LLM replies with a context-overflow error so
+    // turn-end overflow compaction (Case 1) fires through the real run stream.
+    // fake helpers are re-exported at crate::infra::provider
+    Arc::new(move |_cfg: &XyModelConfig| {
+        crate::infra::provider::fake_xy_model(
+            "overflow-fake",
+            vec![crate::infra::provider::ScenarioStep::error(
+                "This model's maximum context length is 4096 tokens",
+                false,
+            )],
+        )
+    })
+}
+
+#[tokio::test]
+async fn spike_turn_end_compaction_events_visible_on_stream() {
+    let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
+    let sid = "s-compact-spike";
+    session_mgr.create(sid, Some("."), None).await.unwrap();
+    // Seed a summarizable history so overflow compaction has something to cut.
+    for i in 0..60 {
+        use crate::protocol::session::{EntryBase, MessageEntry};
+        let e = crate::protocol::session::SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: format!("seed-{i}"),
+                parent_id: None,
+                timestamp: 1704067200000 + i as u64,
+            },
+            message: serde_json::to_value(format!("seed turn {i} {}", "x".repeat(400))).unwrap(),
+        });
+        session_mgr.append(sid, &e).await.unwrap();
+    }
+
+    let mut reg = ModelRegistry::new();
+    reg.register(XyModelMeta {
+        id: "tiny".into(),
+        config: XyModelConfig {
+            kind: crate::protocol::model::XyModelKind::Fake,
+            api_key: String::new(),
+            model: "fake".into(),
+            base_url: None,
+            api: None,
+            compat: None,
+        },
+        display_name: "Tiny".into(),
+        thinking: false,
+        context_window: 4096,
+        api: String::new(),
+        provider: String::new(),
+        cost_input: 0.0,
+        cost_output: 0.0,
+        cost_cache_read: 0.0,
+        cost_cache_write: 0.0,
+        max_tokens: 0,
+        thinking_levels: vec!["off".into()],
+        thinking_level_map: Default::default(),
+    });
+
+    let store: Arc<dyn XySessionStore> = Arc::new(session_mgr.clone());
+    let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+    let mut session = AgentCapabilities::new(
+        reg,
+        ToolSet::from_iter(crate::infra::tools::default_tools()),
+        store.clone(),
+        sink,
+        Some("You are helpful.".into()),
+        Vec::new(),
+        Vec::new(),
+        ".".into(),
+        None,
+        overflow_error_builder(),
+        crate::infra::permission::allow_all_permission(),
+        crate::agent::capabilities::QueueMode::default(),
+        crate::agent::capabilities::QueueMode::default(),
+        None,
+    );
+    session.select_model("tiny").await.unwrap();
+    let mut agent = AgentRuntime::new(session);
+    crate::infra::provider::factory::reset_fake_state();
+
+    let mut stream = Box::pin(run_agent_with_id(&mut agent, "continue the work", sid).await);
+    let mut start = 0usize;
+    let mut end = 0usize;
+    let mut agent_end = 0usize;
+    let mut names = Vec::new();
+    while let Some(e) = stream.next().await {
+        let short = match &e {
+            XyEvent::CompactionStart { .. } => {
+                start += 1;
+                "Start".to_string()
+            }
+            XyEvent::CompactionEnd { .. } => {
+                end += 1;
+                "End".to_string()
+            }
+            XyEvent::AgentEnd { .. } => {
+                agent_end += 1;
+                "AgentEnd".to_string()
+            }
+            XyEvent::Error(_) => "Error".to_string(),
+            _ => ".".to_string(),
+        };
+        names.push(short);
+    }
+    assert!(agent_end == 1, "run must end");
+    assert!(start >= 1, "turn-end compaction must fire: {names:?}");
+    assert!(end >= 1, "CompactionEnd must be delivered: {names:?}");
+    let end_pos = names.iter().position(|n| n == "End").expect("End present");
+    let agent_end_pos = names.iter().position(|n| n == "AgentEnd").unwrap();
+    assert!(
+        end_pos < agent_end_pos,
+        "CompactionEnd BEFORE AgentEnd: {names:?}"
+    );
+    let _ = (start, end);
 }

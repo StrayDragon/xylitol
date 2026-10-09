@@ -3,8 +3,6 @@
 //! Extends the basic `tools/process::kill_tree` with Windows support
 //! and a unified kill-tree API for bash / child process cleanup.
 
-use std::process::Command;
-
 /// Kill a process and all its children.
 ///
 /// On Unix: sends SIGKILL to the process group (negative PID).
@@ -16,17 +14,17 @@ pub fn kill_process_tree(pid: u32) {
 
     #[cfg(unix)]
     {
-        // Kill the entire process group
-        let _ = Command::new("kill")
-            .args(["-9", &format!("-{pid}")])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
+        // 直接 syscall 杀进程组：不依赖 /bin/kill 的 PATH 可用性（CI runner
+        // 环境 PATH 可能不含系统 bin，外部命令缺失会静默失败——CI 偶发根因）。
+        let pid = pid as i32;
+        // SIGKILL 整组（负 pgid）；若目标非组首领，补杀单 pid 兜底。
+        unsafe { libc::kill(-pid, libc::SIGKILL) };
+        unsafe { libc::kill(pid, libc::SIGKILL) };
     }
 
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill")
+        let _ = std::process::Command::new("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())

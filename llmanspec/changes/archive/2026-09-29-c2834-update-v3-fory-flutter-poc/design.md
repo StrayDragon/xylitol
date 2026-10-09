@@ -54,12 +54,12 @@
 1. **BDD 行为合约**:`tests/bdd/steps_server.rs` / `steps_protocol.rs` / `steps_remote_resilience.rs`(起真实服务端 → 发帧 → 断言);v3 新场景新增 step:binary 帧发送探针、协商断言、对拍断言。
 2. **编解码单测**:生成物 roundtrip、未知字段/变体跳过、动态块原文保真(r1720 等价)、字节 conformance 快照。
 3. **对拍测试**:双路径领域等价(事件流、幂等回放、租约冲突、审批 first-wins)。
-4. **benchmark**:JSON baseline → v3 对比(criterion 或统计测试,对齐 `token_estimator_bench.rs` 形态)。
+4. **benchmark**：JSON baseline → v3 对比（落为统计测试 `size_baseline_vs_json_large_transcript`）。两个比例分属不同通路：0.73 = 强 schema union（`MessagesResult`，即 2.5b 接完后的形态）；≈ 1.0006 = 当前产品通路（非 describe 应答一律 `RawOk`，JSON 原文入 string，100KB 仅 +64B 信封开销）。引用体积叙事时得带上通路。
 
 ## 7. 工具链与仓库落点
 
-- fdl 真源:`src/protocol/wire/v3/xy_wire_v3.fdl`(协议切片 PoC 产物升级为全量);生成物 check-in(可 diff 审查),`just codegen-wire` recipe 用 vendored foryc 重新生成并 diff 校验(CI 防漂移)。
-- fork foryc 落点:`tools/foryc/`(基于 fory@963cb37 的最小 patch:`--rust-serde`);同步上游 PR,合入后切回官方。
+- 真源：`src/protocol/wire/v3/xy_wire_v3.fbs`（fbs 前端，D6 修订后不再用 fdl 后缀；协议切片 PoC 产物升级为全量）；生成物 `generated.rs` check-in（可 diff 审查）。`just codegen-wire` = `scripts/gen_wire_v3.py`，经 `PYTHONPATH=<../fory>/compiler` 直调 fory 仓内纯 Python compiler（无 `tools/foryc/` vendored 目录，D5 修订已取消 fork），`--check` 做字节级 diff 校验。
+- 无 fory clone 时的必跑探针：BDD `codegen-diff-clean` 以「fbs 声明类型集 ↔ `generated.rs` 的 `pub struct`/`pub enum` 集」1:1 兜住结构漂移（字节级对拍仍靠有 clone 的机器跑 `--check`）。
 - Dart 侧:Flutter 工程接入时 `build_runner` 生成 codec part(research/03 §3.4);CI 增可选 job。
 
 ## 8. 实施编排(多 agent 并行规划)
@@ -101,6 +101,7 @@
 
 | 风险 | 缓解 |
 |---|---|
-| fory 上游 breaking / codec 漂移 | 锁 1.7.5 + conformance 快照 + fork vendor 意向 |
+| fory 上游 breaking / codec 漂移 | 锁 1.7.5 + conformance 快照 + 无 clone 时的类型集 1:1 探针 |
+| 新增依赖拉入上一代传递依赖（`syn` 1.0.109 / `num_enum` 0.5.11 / `toml_edit` 0.19.15 与现用 syn 2.x 并存） | 已接受（8 包纯新增）；bump 时按 skill `xylitol-bump-toolchain` 逐个核，勿因 syn 1.x 而整库 freeze |
 | 双轨期复杂度(两条路径两套测试) | 阶段 5 硬切移除清单一次性收口;对拍纪律保证不产生「仅 v3 可用」能力 |
 | fdl 全量后发现表达力缺口(untagged `AgentMessage` 细节) | 阶段 1.1 首个任务即全量草稿,缺口在基建期暴露;protobuf 为退路(D2 寻址/信封设计格式无关) |

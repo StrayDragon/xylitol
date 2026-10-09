@@ -9,17 +9,30 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use crate::infra::provider::adapter::AdapterXyModel;
-use crate::protocol::model::XyChunk;
-use crate::protocol::ports::XyModel;
-use crate::tests::bdd::prelude::*;
-use crate::tests::bdd::steps_otel_obs::OtelBdd;
+use crate::bdd::prelude::*;
+use crate::bdd::steps_otel_obs::OtelBdd;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
+use xylitol::infra::provider::adapter::AdapterXyModel;
+use xylitol::protocol::model::XyChunk;
+use xylitol::protocol::ports::XyModel;
 use xylitol_ai_bridge::provider::AnthropicMessagesAdapter;
 use xylitol_ai_bridge::provider::trace::ObservationIoTier;
 
 pub(crate) const BDD_MODEL: &str = "claude-bdd-mock";
+
+/// c2843 Phase B: direct provider drives must be owner-attributed too — carry the
+/// scenario session snapshot in the generate options so `llm.request` spans pass
+/// the per-owner collector filter.
+fn c2830_options() -> xylitol::protocol::XyGenerateOptions {
+    xylitol::protocol::XyGenerateOptions {
+        obs_session: xylitol_ai_bridge::ObsSessionContext {
+            session_id: Some(crate::bdd::steps_otel_obs::SESSION_UUID.into()),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
 
 /// 脚本化 mock 上游的一帧。
 enum Frame {
@@ -168,7 +181,7 @@ pub(crate) async fn w_c2830_drive(otel_bdd: &OtelBdd, mock_upstream_bdd: &MockUp
     otel_bdd.mount_io(ObservationIoTier::Truncated);
     let addr = mock_upstream_bdd.addr.borrow().expect("mock started");
     let model = build_model(addr);
-    let mut stream = XyModel::generate_stream(&model, vec![], &[], true, Default::default())
+    let mut stream = XyModel::generate_stream(&model, vec![], &[], true, c2830_options())
         .await
         .expect("mock stream established");
     while let Some(item) = stream.next().await {
@@ -183,7 +196,7 @@ pub(crate) async fn w_c2830_abort(otel_bdd: &OtelBdd, mock_upstream_bdd: &MockUp
     otel_bdd.mount_io(ObservationIoTier::Truncated);
     let addr = mock_upstream_bdd.addr.borrow().expect("mock started");
     let model = build_model(addr);
-    let mut stream = XyModel::generate_stream(&model, vec![], &[], true, Default::default())
+    let mut stream = XyModel::generate_stream(&model, vec![], &[], true, c2830_options())
         .await
         .expect("mock stream established");
     while let Some(item) = stream.next().await {
@@ -212,9 +225,7 @@ fn prop<'a>(record: &'a fastrace::collector::SpanRecord, key: &str) -> Option<&'
         .map(|(_, v)| v.as_ref())
 }
 
-fn c2830_llm_span<'a>(
-    records: &'a [fastrace::collector::SpanRecord],
-) -> &'a fastrace::collector::SpanRecord {
+fn c2830_llm_span(records: &[fastrace::collector::SpanRecord]) -> &fastrace::collector::SpanRecord {
     records
         .iter()
         .rev()
@@ -227,12 +238,7 @@ fn c2830_llm_span<'a>(
         .expect("c2830: mock 模型的 llm.request span")
 }
 
-fn event_has<'a>(
-    span: &'a fastrace::collector::SpanRecord,
-    name: &str,
-    key: &str,
-    value: &str,
-) -> bool {
+fn event_has(span: &fastrace::collector::SpanRecord, name: &str, key: &str, value: &str) -> bool {
     span.events.iter().any(|e| {
         e.name == name
             && e.properties
@@ -248,17 +254,17 @@ pub(crate) fn t_c2830_raw_mapped(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();
     let llm = c2830_llm_span(&records);
     assert!(
-        event_has(&llm, "raw", "kind", "raw"),
+        event_has(llm, "raw", "kind", "raw"),
         "r1462: 应有 raw 事件，实际 {:?}",
         llm.events
     );
     assert!(
-        event_has(&llm, "mapped", "variant", "TextDelta"),
+        event_has(llm, "mapped", "variant", "TextDelta"),
         "r1462: 应有 mapped TextDelta，实际 {:?}",
         llm.events
     );
     assert!(
-        event_has(&llm, "mapped", "variant", "Done"),
+        event_has(llm, "mapped", "variant", "Done"),
         "r1462: 应有 mapped Done，实际 {:?}",
         llm.events
     );
@@ -272,7 +278,7 @@ pub(crate) fn t_c2830_raw_mapped(otel_bdd: &OtelBdd) {
 pub(crate) fn t_c2830_input(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();
     let llm = c2830_llm_span(&records);
-    let input = prop(&llm, "langfuse.observation.input")
+    let input = prop(llm, "langfuse.observation.input")
         .expect("r1473: io=truncated 流式路径必须携带 observation.input");
     assert!(
         input.contains(BDD_MODEL) && input.contains("\"stream\":true"),
@@ -286,23 +292,23 @@ pub(crate) fn t_c2830_abort(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();
     let llm = c2830_llm_span(&records);
     assert_eq!(
-        prop(&llm, "langfuse.observation.level"),
+        prop(llm, "langfuse.observation.level"),
         Some("ERROR"),
         "r1474: 提前结束必须标 ERROR"
     );
     assert_eq!(
-        prop(&llm, "langfuse.observation.status_message"),
+        prop(llm, "langfuse.observation.status_message"),
         Some("aborted"),
         "r1474: status_message 必须为 aborted"
     );
-    let input = prop(&llm, "langfuse.observation.input")
+    let input = prop(llm, "langfuse.observation.input")
         .expect("r1474: abort 也必须按档 flush 已缓冲 input");
     assert!(input.contains("\"stream\":true"), "{input}");
-    let output = prop(&llm, "langfuse.observation.output")
+    let output = prop(llm, "langfuse.observation.output")
         .expect("r1474: abort 必须按档 flush 已缓冲 output");
     assert!(output.contains("半程"), "{output}");
     assert!(
-        prop(&llm, "langfuse.observation.usage_details").is_none(),
+        prop(llm, "langfuse.observation.usage_details").is_none(),
         "r1474: 不得伪造 usage_details"
     );
 }

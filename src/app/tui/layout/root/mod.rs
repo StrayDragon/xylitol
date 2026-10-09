@@ -319,7 +319,7 @@ impl UiRoot {
 
     /// Sync fixed MCP short cue from loaded-resources snapshot (c1210).
     ///
-    /// Always right-aligned in [`render_status_slot`] (idle whole-line or busy trail).
+    /// Always right-aligned in `render_status_slot` (idle whole-line or busy trail).
     /// Sticky header may still show `mcp: connecting i/n` — that is the progress
     /// row; the cue only points at `/mcp` and must not sit left under the card.
     pub fn refresh_mcp_short_cue(&mut self) {
@@ -1033,7 +1033,7 @@ impl UiRoot {
         }
     }
 
-    /// Push / replace toast notice body (TTL from [`crate::app::tui::commands::TOAST_NOTICE_TTL`]).
+    /// Push / replace toast notice body (TTL from `crate::app::tui::commands::TOAST_NOTICE_TTL`).
     pub fn push_toast_notice(&mut self, body: impl Into<String>) {
         self.toast_notice = Some((
             body.into(),
@@ -1211,22 +1211,22 @@ impl UiRoot {
         self.upper_rebuild_count
     }
 
-    #[cfg(test)]
+    // c2837: 测试探针无条件化
     pub fn scrollback_entry_misses_for_test(&self) -> u64 {
         self.scrollback_paint.entry_misses
     }
 
-    #[cfg(test)]
+    // c2837: 测试探针无条件化
     pub fn clear_scrollback_entry_misses_for_test(&mut self) {
         self.scrollback_paint.clear_misses();
     }
 
-    #[cfg(test)]
+    // c2837: 测试探针无条件化
     pub fn streaming_assistant_full_parses_for_test(&self) -> u64 {
         self.scrollback_paint.streaming_assistant.full_parses
     }
 
-    #[cfg(test)]
+    // c2837: 测试探针无条件化
     pub fn clear_streaming_assistant_parse_counts_for_test(&mut self) {
         self.scrollback_paint.streaming_assistant.clear_counts();
     }

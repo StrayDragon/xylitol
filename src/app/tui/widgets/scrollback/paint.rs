@@ -272,7 +272,7 @@ impl StreamingAssistantPaint {
         self.prefix_lines.clear();
     }
 
-    #[cfg(test)]
+    // c2837: 测试探针无条件化
     pub fn clear_counts(&mut self) {
         self.full_parses = 0;
         self.suffix_parses = 0;

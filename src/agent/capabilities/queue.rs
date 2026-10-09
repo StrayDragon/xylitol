@@ -56,6 +56,12 @@ impl PendingMessageQueue {
         self.messages.len()
     }
 
+    /// Whether the queue is empty (c2837: clippy len-without-is-empty on the
+    /// now externally-referenced public API).
+    pub fn is_empty(&self) -> bool {
+        self.messages.is_empty()
+    }
+
     /// Drain according to [`QueueMode`]: all messages, or only the first.
     pub fn drain(&mut self) -> Vec<AgentMessage> {
         match self.mode {

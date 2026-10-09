@@ -175,6 +175,62 @@ impl HostState {
         ))
     }
 
+    /// Isolated host with one selectable model registered as the writer default
+    /// (c2841 model-state sync tests; selection is offline — no provider call).
+    pub fn for_test_with_default_model(
+        model_id: &str,
+    ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
+        use crate::agent::model::registry::ModelRegistry;
+        use crate::protocol::model::{XyModelConfig, XyModelKind, XyModelMeta};
+
+        let mut registry = ModelRegistry::new();
+        registry.register(XyModelMeta {
+            id: model_id.to_string(),
+            config: XyModelConfig {
+                kind: XyModelKind::Fake,
+                api_key: String::new(),
+                model: model_id.to_string(),
+                base_url: None,
+                api: None,
+                compat: None,
+            },
+            display_name: model_id.to_string(),
+            thinking: false,
+            context_window: 64_000,
+            api: String::new(),
+            provider: "fake".into(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: vec!["off".into()],
+            thinking_level_map: Default::default(),
+        });
+        let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
+        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.join("sessions")));
+        let ports = build_ports_with_store(
+            BuildAgentOptions {
+                model_registry: registry,
+                ..Default::default()
+            },
+            store,
+        )?;
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
+        Ok(Self::new(
+            ports,
+            ReloadBaseline {
+                cwd,
+                agent_dir,
+                project_trusted: true,
+                mcp_servers: Vec::new(),
+                default_model_id: Some(model_id.to_string()),
+            },
+            "test-session".into(),
+        ))
+    }
+
     pub async fn slot(&self, session_id: &str) -> Arc<SessionSlot> {
         {
             let map = self.sessions.read().await;
@@ -214,7 +270,11 @@ impl HostState {
         for tx in pending {
             slot.add_subscriber(tx).await;
         }
-        slot.replay_or_resync(last_seq).await
+        let result = slot.replay_or_resync(last_seq).await;
+        // c2841：绑定后同步会话写者的当前已解析模型（含用户显式配置的默认模型），
+        // 使附加端模型徽标收敛而不是停在 NOT-SET；无写者 / 无模型时 no-op。
+        slot.sync_model_downlink().await;
+        result
     }
 
     pub async fn respond(&self, rpc_id: &str, payload: Value) -> bool {
@@ -506,6 +566,26 @@ impl SessionSlot {
         self.broadcast(msg).await;
     }
 
+    /// 同步会话写者的当前已解析模型（ModelSelect 下行）给订阅者，使附加端
+    /// 模型徽标收敛（c2841）。写者未装配或未持有模型时 no-op；幂等（重复
+    /// 绑定只会重播同一当前模型）。模型 id 来自写者 current_model，provider
+    /// 按 id 查写者注册表真源（ModelInfo 不携带 provider）。
+    pub async fn sync_model_downlink(&self) -> () {
+        let Some((provider, model_id)) = self.writer_model().await else {
+            return;
+        };
+        self.append_and_push(crate::protocol::Event::ModelSelect { provider, model_id })
+            .await;
+    }
+
+    async fn writer_model(&self) -> Option<(String, String)> {
+        let mut g = self.driver.lock().await;
+        let d = g.as_mut()?;
+        let id = d.current_model()?.id;
+        let provider = d.model_provider(&id).unwrap_or_default();
+        Some((provider, id))
+    }
+
     /// Fixed-zone-only MCP/skills snapshot. Not journaled (must not consume seq).
     pub async fn push_resources(&self, snap: LoadedResourcesSnapshot) {
         let msg = downlink_server_request(
@@ -731,10 +811,10 @@ pub async fn materialize_writer_at(
 }
 
 fn new_reader_driver(host: &HostState) -> XyInProcessDriver {
-    let mut agent = host.ports.materialize_runtime();
-    // otel25: read-only RPCs must never stomp the process obs slot — it belongs
-    // to whichever session's writer bound it last.
-    agent.set_obs_slot_writes(false);
+    let agent = host.ports.materialize_runtime();
+    // c2843 Phase B: reader drivers need no obs-slot gate — materialized obs
+    // identity is runtime-owned, and readers never touch the writer-event paths
+    // that update the default-identity slot.
     let mut driver = XyInProcessDriver::new(agent, host.ports.store.clone());
     driver.enable_reload_state(
         host.reload.cwd.clone(),
@@ -1139,20 +1219,43 @@ async fn dispatch_session_unary(
     }
 
     if method == METHOD_ARM_TOOL_FREEZE {
+        // c2849: 门调用不可被 writer 租约记账卡死——首轮竞态下客户端 token 尚
+        // 未同步即 `writer_conflict`，会让首轮门永久停滞（实机复现：serve 建
+        // 立租约后 TUI 先发 arm_tool_freeze，无有效 token → conflict → inline
+        // Assembling 永不放行）。冲突时降级为**无租约**有界决议（与
+        // loaded_resources 同梯队——冻结的是写者内部门，不写会话）。正常路径
+        // 保留租约（materialize + 打 token）。
         let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
-            Ok(l) => l,
-            Err(e) => return e,
+            Ok(l) => Some(l),
+            Err(e) => {
+                log::warn!(
+                    target: "xylitol::host",
+                    "arm_tool_freeze lease conflict ({:?}); falling back to lease-free resolution",
+                    e.error.map(|er| er.details),
+                );
+                None
+            }
         };
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
-            return RpcResult::error("unavailable", "no writer engine");
+            return match lease {
+                Some(l) => l.seal(RpcResult::error("unavailable", "no writer engine")),
+                None => RpcResult::error("unavailable", "no writer engine"),
+            };
         };
-        driver.arm_tool_freeze_gate().await;
-        let _ = driver.poll_mcp_bootstrap().await;
+        // c2847: arm 必须**有界决议**——`ensure_tool_table_frozen` 按首轮门时限
+        // （MCP_FIRST_TURN_GATE_TIMEOUT）等待 settle，超时 detach 未连上的 bootstrap
+        // 并冻结已 armed 子集后返回。此前仅 `arm_tool_freeze_gate` + 单次 poll 即回快照：
+        // 配置了但连不上的 MCP 会永驻 connecting，TUI 的 Assembling 门无限等待、
+        // turn 永不启动（runtime 的 ensure 只在 run() 后才触发，形成双向死锁）。
+        driver.ensure_tool_table_frozen().await;
         let snapshot = driver.loaded_resources_snapshot().await;
-        return lease.seal(RpcResult::ok_value(
-            serde_json::to_value(&snapshot).unwrap_or(Value::Null),
-        ));
+        return match lease {
+            Some(l) => l.seal(RpcResult::ok_value(
+                serde_json::to_value(&snapshot).unwrap_or(Value::Null),
+            )),
+            None => RpcResult::ok_value(serde_json::to_value(&snapshot).unwrap_or(Value::Null)),
+        };
     }
 
     if method == METHOD_PERSIST_TRUST {

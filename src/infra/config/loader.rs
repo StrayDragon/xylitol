@@ -59,12 +59,12 @@ pub(crate) fn load_app_config_detailed(
     )
 }
 
-/// Injectable load: path discovery via `get_env` / `cwd` (see [`ConfigPaths::discover_with`]).
+/// Injectable load: path discovery via `get_env` / `cwd` (see `ConfigPaths::discover_with`).
 ///
 /// Still injects missing `secret.env` keys into the process environment (product
 /// parity). Tests that exercise that side effect remain on `env_global`.
-#[cfg(test)]
-pub(crate) fn load_app_config_with(
+// c2837: 测试辅助无条件化
+pub fn load_app_config_with(
     cli_config: Option<&Path>,
     get_env: impl Fn(&str) -> Option<String>,
     cwd: Option<&Path>,
@@ -135,15 +135,49 @@ fn load_from_paths(
         });
     }
 
-    let config: AppConfig = serde_json::from_value(merged.clone())?;
+    let mut config: AppConfig = serde_json::from_value(merged.clone())?;
     super::validate::validate_merged_config(&merged)?;
     config.validate_thinking_levels()?;
     config.validate_model_tokenizers()?;
     config.validate_session_max_turns()?;
+    expand_model_config_expressions(&mut config)?;
     Ok(LoadedAppConfig {
         config,
         from_yaml_layers,
     })
+}
+
+/// Expand ConfigValueResolver expressions (`$VAR` / `${VAR}` / `${VAR:-default}` /
+/// `!command`) in `models.models` entry values (spec r1912 provider-config-value-expression).
+///
+/// Runs after template rendering (`{{ secret.X }}` / `{{ env.Y }}`); the two syntaxes
+/// do not overlap. Only `$` / `!`-prefixed values are affected — plain literals pass
+/// through unchanged (zero-cost default). Unbound variables / shell failures reject
+/// the load with an `alias:field` context (minijinja-strict parity).
+fn expand_model_config_expressions(config: &mut AppConfig) -> Result<(), LoadError> {
+    for (alias, entry) in config.model.models.iter_mut() {
+        if let Some(v) = entry.api_key.as_mut() {
+            *v = expand_config_value(alias, "api_key", v)?;
+        }
+        let model_raw = entry.model.clone();
+        entry.model = expand_config_value(alias, "model", &model_raw)?;
+        if let Some(v) = entry.base_url.as_mut() {
+            *v = expand_config_value(alias, "base_url", v)?;
+        }
+        if let Some(v) = entry.api.as_mut() {
+            *v = expand_config_value(alias, "api", v)?;
+        }
+        if let Some(v) = entry.compat.as_mut() {
+            *v = expand_config_value(alias, "compat", v)?;
+        }
+    }
+    Ok(())
+}
+
+fn expand_config_value(alias: &str, field: &str, raw: &str) -> Result<String, LoadError> {
+    let resolved = super::resolver::resolve_from_env(raw)
+        .map_err(|e| LoadError::validation(format!("models.{alias}.{field}: {e}")))?;
+    Ok(resolved)
 }
 
 fn first_existing(candidates: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
@@ -420,5 +454,119 @@ compaction:
         .unwrap();
         let cfg = load_app_config_with(None, env_map(&entries), None).expect("load with yaml");
         assert_eq!(cfg.model.default_model.as_deref(), Some("from-yaml"));
+    }
+
+    // ── r1912 provider 配置值 resolver 表达式（走 secret.env → 进程 env → resolver）──
+
+    fn write_model_config(global: &std::path::Path, body: &str) {
+        std::fs::write(
+            global.join("config.yaml"),
+            format!("models:\n  models:\n{body}"),
+        )
+        .unwrap();
+    }
+
+    fn load_with(global: &std::path::Path) -> Result<AppConfig, LoadError> {
+        let home_s = global.parent().unwrap().parent().unwrap().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        load_app_config_with(None, env_map(&entries), None)
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn model_entry_literal_passes_through() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        write_model_config(
+            &global,
+            "    x:\n      provider: openai\n      model: m1\n      api_key: sk-anchor\n",
+        );
+        let cfg = load_with(&global).expect("load");
+        let e = cfg.model.models.get("x").unwrap();
+        assert_eq!(e.api_key.as_deref(), Some("sk-anchor"), "字面量 MUST 原样");
+        assert_eq!(e.model, "m1");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn model_entry_env_var_expands_from_secret_env() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("secret.env"),
+            "XYLITOL_A1_SECRET_9f3b=resolved-key\n",
+        )
+        .unwrap();
+        write_model_config(
+            &global,
+            "    x:\n      provider: openai\n      model: m1\n      api_key: $XYLITOL_A1_SECRET_9f3b\n",
+        );
+        let cfg = load_with(&global).expect("load");
+        let e = cfg.model.models.get("x").unwrap();
+        assert_eq!(
+            e.api_key.as_deref(),
+            Some("resolved-key"),
+            "dollar-var syntax MUST 从 secret.env/进程环境展开"
+        );
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn model_entry_default_syntax_expands() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        write_model_config(
+            &global,
+            "    x:\n      provider: openai\n      model: m1\n      api_key: ${XYLITOL_A1_UNDEF_9f3b:-fallback-key}\n",
+        );
+        let cfg = load_with(&global).expect("load");
+        let e = cfg.model.models.get("x").unwrap();
+        assert_eq!(
+            e.api_key.as_deref(),
+            Some("fallback-key"),
+            "braced-default syntax MUST 使用默认值"
+        );
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn model_entry_shell_command_expands() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        write_model_config(
+            &global,
+            "    x:\n      provider: openai\n      model: \"!printf evalm\"\n",
+        );
+        let cfg = load_with(&global).expect("load");
+        let e = cfg.model.models.get("x").unwrap();
+        assert_eq!(e.model, "evalm", "shell-command syntax MUST 展开为 stdout");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn model_entry_unbound_variable_rejects_with_context() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        write_model_config(
+            &global,
+            "    x:\n      provider: openai\n      model: m1\n      api_key: $XYLITOL_A1_UNDEF_9f3b\n",
+        );
+        let err = load_with(&global).expect_err("未绑定变量 MUST 拒绝装配");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("models.x.api_key"),
+            "错误 MUST 带 alias:field 上下文，got: {msg}"
+        );
+        assert!(msg.contains("unbound"), "错误 MUST 可读，got: {msg}");
     }
 }

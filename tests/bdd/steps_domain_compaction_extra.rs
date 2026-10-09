@@ -1,7 +1,7 @@
-use crate::tests::bdd::fixtures::*;
-use crate::tests::bdd::helpers::*;
-use crate::tests::bdd::prelude::*;
-use crate::tests::bdd::steps_compaction::{
+use crate::bdd::fixtures::*;
+use crate::bdd::helpers::*;
+use crate::bdd::prelude::*;
+use crate::bdd::steps_compaction::{
     _g_comp_navigate_branch, comp_run_compact, comp_seed_turns, compaction_entry_from_sess,
 };
 use rstest_bdd_macros::{given, then, when};
@@ -39,9 +39,9 @@ pub(crate) fn t_comp_fallback(agent: &AgentState) {
 
 #[given("会话 50 条共 80000 tokens 且 keepRecent=20000")]
 pub(crate) fn g_comp_find_cut(agent: &AgentState) {
-    use crate::agent::compaction::cut_detector::find_cut_point;
-    use crate::infra::session::{EntryBase, MessageEntry, SessionEntry};
-    use crate::protocol::message::AgentMessage;
+    use xylitol::agent::compaction::cut_detector::find_cut_point;
+    use xylitol::infra::session::{EntryBase, MessageEntry, SessionEntry};
+    use xylitol::protocol::message::AgentMessage;
     let entries: Vec<SessionEntry> = (0..50)
         .map(|i| {
             SessionEntry::Message(MessageEntry {
@@ -80,16 +80,16 @@ pub(crate) fn t_comp_cut_ok(agent: &AgentState) {
 // ── c1650 cut / split-turn / tokens_before ─────────────────────────
 
 fn comp_make_msg(id: &str, role: &str, content: &str) -> SessionEntry {
-    use crate::infra::session::SessionEntry;
-    use crate::infra::session::{EntryBase, MessageEntry};
-    use crate::protocol::message::AgentMessage;
+    use xylitol::infra::session::SessionEntry;
+    use xylitol::infra::session::{EntryBase, MessageEntry};
+    use xylitol::protocol::message::AgentMessage;
     let message = match role {
         "user" => serde_json::to_value(AgentMessage::user(content)).unwrap(),
         "assistant" => serde_json::to_value(AgentMessage::assistant(content)).unwrap(),
         "toolResult" => serde_json::to_value(AgentMessage::tool_result(
             format!("call-{id}"),
             "test_tool",
-            vec![crate::protocol::message::AgentPart::text(content)],
+            vec![xylitol::protocol::message::AgentPart::text(content)],
             false,
         ))
         .unwrap(),
@@ -112,7 +112,7 @@ fn comp_make_msg(id: &str, role: &str, content: &str) -> SessionEntry {
 
 #[given("会话在 keep 预算内最近合法切点落在 assistant 消息")]
 pub(crate) fn g_comp_cut_assistant(agent: &AgentState) {
-    use crate::agent::compaction::find_cut_point;
+    use xylitol::agent::compaction::find_cut_point;
     let long = "x".repeat(400);
     let entries = vec![
         comp_make_msg("u0", "user", "old"),
@@ -147,7 +147,7 @@ pub(crate) fn t_comp_cut_assistant_ok(agent: &AgentState) {
 
 #[given("会话含 toolResult 条目")]
 pub(crate) fn g_comp_never_tool(agent: &AgentState) {
-    use crate::agent::compaction::find_cut_point;
+    use xylitol::agent::compaction::find_cut_point;
     let long = "y".repeat(400);
     let entries = vec![
         comp_make_msg("u0", "user", "start"),
@@ -178,7 +178,7 @@ pub(crate) fn t_comp_never_tool_ok(agent: &AgentState) {
 
 #[given("keepRecent tokens 预算给定且存在多个合法切点")]
 pub(crate) fn g_comp_keep_budget(agent: &AgentState) {
-    use crate::agent::compaction::{estimate_tokens_entry, find_cut_point};
+    use xylitol::agent::compaction::{cut_detector::estimate_tokens_entry_for_cut, find_cut_point};
     let mut entries = Vec::new();
     for i in 0..20 {
         entries.push(comp_make_msg(
@@ -194,9 +194,11 @@ pub(crate) fn g_comp_keep_budget(agent: &AgentState) {
     }
     let keep = 80u64;
     let result = find_cut_point(&entries, 0, entries.len(), keep);
+    // c2848: 保留侧测量与切点决策同平面（estimate_tokens_entry_for_cut）——
+    // 与 find_cut_point 的累积器一致，预算契约才可真实检验。
     let kept: u64 = entries[result.first_kept_entry_index..]
         .iter()
-        .map(estimate_tokens_entry)
+        .map(estimate_tokens_entry_for_cut)
         .sum();
     agent.last_result.replace(Some(Ok(format!(
         "kept:{kept} keep:{keep} cut:{}",
@@ -245,8 +247,8 @@ pub(crate) async fn g_comp_split_dual(sess: &XySessionStore) {
 
 #[when("执行 split-turn compact_session")]
 pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionStore) {
-    use crate::agent::compaction::{CompactionSettings, compact_session};
-    use crate::infra::provider::{ScenarioStep, fake_xy_model};
+    use xylitol::agent::compaction::{CompactionSettings, compact_session};
+    use xylitol::infra::provider::{ScenarioStep, fake_xy_model};
     let sid = sess
         .current_id
         .borrow()
@@ -270,7 +272,7 @@ pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionSto
     let result = compact_session(
         &mgr,
         &sid,
-        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
+        &xylitol::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
         &settings,
         None,
         0,
@@ -296,7 +298,7 @@ pub(crate) fn t_comp_split_dual_ok(agent: &AgentState) {
 
 #[given("compact_session 完成")]
 pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessionStore) {
-    use crate::agent::compaction::{
+    use xylitol::agent::compaction::{
         CompactionSettings, EstimateOpts, compact_session, estimate_from_session_entries,
         estimate_tokens_entry,
     };
@@ -317,15 +319,16 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
             )
             .await;
     }
-    let model =
-        crate::infra::provider::factory::build_provider(&crate::protocol::model::XyModelConfig {
-            kind: crate::protocol::model::XyModelKind::Fake,
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
             api: None,
             compat: None,
-        });
+        },
+    );
     let settings = CompactionSettings {
         enabled: true,
         reserve_tokens: 1024,
@@ -335,7 +338,7 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
     let entry = compact_session(
         &mgr,
         sid,
-        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
+        &xylitol::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
         &settings,
         None,
         0,
@@ -383,8 +386,12 @@ pub(crate) fn t_comp_tokens_before_ok(agent: &AgentState) {
 
 // ── c1660 overflow compact-and-retry ───────────────────────────────
 
-fn overflow_asst(provider: &str, model: &str, err: &str) -> crate::protocol::message::AgentMessage {
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
+fn overflow_asst(
+    provider: &str,
+    model: &str,
+    err: &str,
+) -> xylitol::protocol::message::AgentMessage {
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
     AgentMessage::Llm(LlmMessage::AssistantMessage {
         content: vec![AgentPart::text("")],
         stop_reason: Some(XyStopReason::Error),
@@ -394,14 +401,14 @@ fn overflow_asst(provider: &str, model: &str, err: &str) -> crate::protocol::mes
         model: model.into(),
         response_id: None,
         error_message: Some(err.into()),
-        timestamp: crate::protocol::message::now_ms(),
+        timestamp: xylitol::protocol::message::now_ms(),
         diagnostics: Vec::new(),
     })
 }
 
 #[given("sameModel 的 assistant 被判定为 context overflow 且 stop_reason 非 stop")]
 pub(crate) fn g_overflow_retry_setup(agent: &AgentState) {
-    use crate::agent::compaction::is_context_overflow_assistant;
+    use xylitol::agent::compaction::is_context_overflow_assistant;
     let msg = overflow_asst(
         "fake",
         "fake-model",
@@ -424,7 +431,7 @@ pub(crate) fn g_overflow_enabled_fresh(agent: &AgentState) {
 
 #[when("执行 turn 后 overflow 检查")]
 pub(crate) fn w_overflow_check(agent: &AgentState) {
-    use crate::agent::compaction::{
+    use xylitol::agent::compaction::{
         OverflowCompactOutcome, assistant_same_model, is_context_overflow_assistant,
     };
     let s = result_ok_str(&agent.last_result);
@@ -606,7 +613,7 @@ pub(crate) fn g_comp_settled_assistant(agent: &AgentState) {
 
 #[when("执行 turn 后 threshold auto 检查")]
 pub(crate) fn w_comp_turn_end_check(agent: &AgentState) {
-    use crate::agent::compaction::{CompactionSettings, should_compact};
+    use xylitol::agent::compaction::{CompactionSettings, should_compact};
     let tokens: u64 = agent
         .last_result
         .borrow()
@@ -628,7 +635,9 @@ pub(crate) fn w_comp_turn_end_check(agent: &AgentState) {
     // c2 floor-aware threshold: overhead defaults to 0 unless a given injected one
     // (degenerates to the reserve formula, matching pre-c2 semantics in scenarios).
     let floor = {
-        use crate::agent::compaction::{projected_post_compact_tokens, summary_placeholder_tokens};
+        use xylitol::agent::compaction::{
+            projected_post_compact_tokens, summary_placeholder_tokens,
+        };
         let settings = CompactionSettings {
             enabled: true,
             reserve_tokens: agent.compaction_reserve_tokens.get(),
@@ -682,9 +691,9 @@ pub(crate) fn g_comp_force_ready(agent: &AgentState) {
 
 #[when("调用 Driver 或 slash force compact")]
 pub(crate) fn w_comp_force_path(agent: &AgentState) {
-    use crate::agent::compaction::{CompactionSettings, prepare_compaction, should_compact};
-    use crate::protocol::message::AgentMessage;
-    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+    use xylitol::agent::compaction::{CompactionSettings, prepare_compaction, should_compact};
+    use xylitol::protocol::message::AgentMessage;
+    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
 
     let settings = CompactionSettings {
         enabled: true,
@@ -757,8 +766,8 @@ pub(crate) fn t_comp_force_not_undercount(agent: &AgentState) {
 
 #[given("会话文件序含旁支 sibling 且当前 leaf 在右支")]
 pub(crate) async fn g_comp_leaf_branch_sibling(sess: &XySessionStore) {
-    use crate::protocol::message::AgentMessage;
-    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+    use xylitol::protocol::message::AgentMessage;
+    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
 
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
@@ -809,8 +818,8 @@ pub(crate) async fn g_comp_leaf_branch_sibling(sess: &XySessionStore) {
 
 #[when("执行 prepare 或 force compact")]
 pub(crate) async fn w_comp_prepare_on_leaf(agent: &AgentState, sess: &XySessionStore) {
-    use crate::agent::compaction::{CompactionSettings, prepare_compaction};
-    use crate::protocol::ports::XySessionStore as _;
+    use xylitol::agent::compaction::{CompactionSettings, prepare_compaction};
+    use xylitol::protocol::ports::XySessionStore as _;
 
     let sid = sess.current_id.borrow().clone().expect("sid");
     let mgr = sess.mgr.borrow().as_ref().expect("mgr").clone();
@@ -899,20 +908,21 @@ pub(crate) async fn g_comp_50_rounds(sess: &XySessionStore) {
 
 #[when("调用 compact")]
 pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStore) {
-    use crate::agent::compaction::{CompactionSettings, compact_session};
+    use xylitol::agent::compaction::{CompactionSettings, compact_session};
 
     let sid = "summarize-c3";
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let model =
-        crate::infra::provider::factory::build_provider(&crate::protocol::model::XyModelConfig {
-            kind: crate::protocol::model::XyModelKind::Fake,
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
             api: None,
             compat: None,
-        });
+        },
+    );
     let settings = CompactionSettings {
         enabled: true,
         reserve_tokens: 1024,
@@ -922,7 +932,7 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
     let result = compact_session(
         &mgr,
         sid,
-        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
+        &xylitol::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
         &settings,
         None,
         0,
@@ -994,7 +1004,7 @@ pub(crate) async fn g_comp_30_file_edits(sess: &XySessionStore) {
 
 #[when("调用 generate_summary")]
 pub(crate) async fn w_comp_generate_summary(agent: &AgentState, sess: &XySessionStore) {
-    use crate::agent::compaction::generate_summary;
+    use xylitol::agent::compaction::generate_summary;
 
     let sid = sess.current_id.borrow().clone().expect("session id");
     sess.ensure_mgr();
@@ -1016,15 +1026,16 @@ Edit src/file5.rs and update Cargo.toml
 1. Review src/file5.rs changes
 "#;
     set_fake_text(fake_summary);
-    let model =
-        crate::infra::provider::factory::build_provider(&crate::protocol::model::XyModelConfig {
-            kind: crate::protocol::model::XyModelKind::Fake,
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
             api: None,
             compat: None,
-        });
+        },
+    );
     let result = generate_summary(
         &messages,
         model.as_ref(),
@@ -1032,7 +1043,7 @@ Edit src/file5.rs and update Cargo.toml
         None,
         None,
         None,
-        &crate::protocol::ports::XyGenerateOptions::default(),
+        &xylitol::protocol::ports::XyGenerateOptions::default(),
     )
     .await;
     agent
@@ -1069,7 +1080,7 @@ pub(crate) fn g_comp_agent_over_threshold(agent: &AgentState) {
 
 #[when("调用 compact_current_session")]
 pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionStore) {
-    use crate::agent::compaction::{CompactionSettings, compact_session};
+    use xylitol::agent::compaction::{CompactionSettings, compact_session};
 
     sess.ensure_mgr();
     let sid = "comp-agent-test";
@@ -1087,15 +1098,16 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
         });
         let _ = mgr.append(sid, &e).await;
     }
-    let model =
-        crate::infra::provider::factory::build_provider(&crate::protocol::model::XyModelConfig {
-            kind: crate::protocol::model::XyModelKind::Fake,
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
             api: None,
             compat: None,
-        });
+        },
+    );
     let settings = CompactionSettings {
         enabled: true,
         reserve_tokens: 1024,
@@ -1105,7 +1117,7 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
     let result = compact_session(
         &mgr,
         sid,
-        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
+        &xylitol::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
         &settings,
         None,
         0,
@@ -1145,13 +1157,13 @@ pub(crate) async fn t_comp_agent_entry_written(agent: &AgentState, sess: &XySess
 
 pub(crate) fn make_test_capabilities(
     agent: &AgentState,
-    store: Arc<dyn crate::protocol::ports::XySessionStore>,
+    store: Arc<dyn xylitol::protocol::ports::XySessionStore>,
 ) -> AgentCapabilities {
-    let sink: Arc<dyn crate::protocol::ports::XyEventSink> =
-        Arc::new(crate::infra::event::EventBus::new());
+    let sink: Arc<dyn xylitol::protocol::ports::XyEventSink> =
+        Arc::new(xylitol::infra::event::EventBus::new());
     AgentCapabilities::new(
         agent.registry.borrow().clone(),
-        ToolSet::from_iter(crate::infra::tools::default_tools()),
+        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store,
         sink,
         None,
@@ -1159,10 +1171,10 @@ pub(crate) fn make_test_capabilities(
         Vec::new(),
         ".".into(),
         None,
-        Arc::new(crate::infra::provider::factory::build_provider),
-        crate::infra::permission::allow_all_permission(),
-        crate::agent::capabilities::QueueMode::default(),
-        crate::agent::capabilities::QueueMode::default(),
+        Arc::new(xylitol::infra::provider::factory::build_provider),
+        xylitol::infra::permission::allow_all_permission(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         None,
     )
 }
@@ -1229,7 +1241,7 @@ pub(crate) async fn g_comp_iterative(sess: &XySessionStore, agent: &AgentState) 
 
 #[when("以 previousSummary 调用 generate_summary")]
 pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessionStore) {
-    use crate::agent::compaction::generate_summary;
+    use xylitol::agent::compaction::generate_summary;
 
     let sid = "comp-iterative";
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
@@ -1245,15 +1257,16 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
     set_fake_text(
         "## Goal\nContinue\n\n## Progress\n### Done\n- [x] prior item\n\n## Next Steps\n1. New work\n",
     );
-    let model =
-        crate::infra::provider::factory::build_provider(&crate::protocol::model::XyModelConfig {
-            kind: crate::protocol::model::XyModelKind::Fake,
+    let model = xylitol::infra::provider::factory::build_provider(
+        &xylitol::protocol::model::XyModelConfig {
+            kind: xylitol::protocol::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
             api: None,
             compat: None,
-        });
+        },
+    );
     let result = generate_summary(
         &messages,
         model.as_ref(),
@@ -1261,7 +1274,7 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
         prev.as_deref(),
         None,
         None,
-        &crate::protocol::ports::XyGenerateOptions::default(),
+        &xylitol::protocol::ports::XyGenerateOptions::default(),
     )
     .await;
     agent
@@ -1281,7 +1294,7 @@ pub(crate) fn t_comp_iterative_ok(agent: &AgentState) {
 
 #[given("消息含工具调用：read a.txt、write b.rs、edit c.py")]
 pub(crate) async fn g_comp_files_msgs(sess: &XySessionStore) {
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
 
     let sid = "comp-files";
     sess.ensure_mgr();
@@ -1433,7 +1446,7 @@ pub(crate) fn t_comp_entry_fields(sess: &XySessionStore) {
 
 #[given("compaction 公共 API 已就绪")]
 pub(crate) fn g_comp_split_ready(agent: &AgentState) {
-    let settings = crate::agent::compaction::CompactionSettings {
+    let settings = xylitol::agent::compaction::CompactionSettings {
         enabled: true,
         reserve_tokens: 10_000,
         keep_recent_tokens: 20_000,
@@ -1492,22 +1505,22 @@ fn c2811_session_meta(id: &str, levels: &[&str]) -> XyModelMeta {
     }
 }
 
-fn c2811_model_manager(levels: &[&str]) -> crate::agent::model::ModelManager {
+fn c2811_model_manager(levels: &[&str]) -> xylitol::agent::model::ModelManager {
     use std::sync::Arc;
 
     let mut reg = ModelRegistry::new();
     reg.register(c2811_session_meta("main-wire", levels));
-    let mut mm = crate::agent::model::ModelManager::new(
+    let mut mm = xylitol::agent::model::ModelManager::new(
         reg,
-        Arc::new(crate::infra::provider::factory::build_provider),
+        Arc::new(xylitol::infra::provider::factory::build_provider),
     );
     mm.select_model("main-wire").expect("select session model");
     mm
 }
 
 async fn c2811_run_compact_summary(agent: &AgentState, sess: &XySessionStore, levels: &[&str]) {
-    use crate::agent::compaction::{CompactionSettings, compact_session};
-    use crate::agent::model::task_model::resolve_compaction_summary;
+    use xylitol::agent::compaction::{CompactionSettings, compact_session};
+    use xylitol::agent::model::task_model::resolve_compaction_summary;
 
     reset_fake_state();
     set_fake_text(
@@ -1573,7 +1586,7 @@ async fn c2811_run_compact_summary(agent: &AgentState, sess: &XySessionStore, le
 pub(crate) fn g_c7_task_model_ok(agent: &AgentState) {
     agent
         .compaction_task_model
-        .replace(Some(crate::protocol::model_entry::XyModelEntryConfig {
+        .replace(Some(xylitol::protocol::model_entry::XyModelEntryConfig {
             provider: XyModelKind::Fake,
             model: "summary-task".into(),
             thinking: false,
@@ -1585,7 +1598,7 @@ pub(crate) fn g_c7_task_model_ok(agent: &AgentState) {
 pub(crate) fn g_c7_task_model_fail(agent: &AgentState) {
     agent
         .compaction_task_model
-        .replace(Some(crate::protocol::model_entry::XyModelEntryConfig {
+        .replace(Some(xylitol::protocol::model_entry::XyModelEntryConfig {
             provider: XyModelKind::Fake,
             model: "bad-summary".into(),
             thinking: true,

@@ -1,5 +1,5 @@
 //! Shared application bootstrap — the single assembly path from CLI args to a
-//! constructed [`AgentRuntime`], reused by the print / tui / server surfaces.
+//! constructed [`crate::agent::runtime::AgentRuntime`], reused by the print / tui / server surfaces.
 //!
 //! This module is the seam that prevents assembly drift across surfaces: every
 //! surface that needs a ready-to-run agent calls [`bootstrap`]; none inlines its
@@ -19,7 +19,7 @@
 //! [`bootstrap`].
 //!
 //! Layering note: this module emits diagnostics only via the returned
-//! [`BootstrapOutput::warnings`] list (structured strings). It MUST NOT depend
+//! [`ResolvedAssembly::warnings`] list (structured strings). It MUST NOT depend
 //! on any surface's presentation module (e.g. `app::cli::provider_guidance`) —
 //! surfaces decide how to render warnings. This keeps `app::core` free of
 //! reverse dependencies on surfaces.
@@ -257,6 +257,9 @@ impl BootstrappedAgent {
             self.agent.restore_thinking_level(level);
         }
         if let Some(name) = restored_session.session_name {
+            // c2843 Phase B: restore is an explicit writer event — set the runtime
+            // owner fact and keep the default-identity slot in sync.
+            self.agent.set_session_name_fact(Some(name.clone()));
             xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
         }
         let driver = crate::app::core::driver::XyInProcessDriver::new(self.agent, self.store);

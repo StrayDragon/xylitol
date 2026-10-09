@@ -1,14 +1,14 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::XyDriverError;
-use crate::agent::capabilities::AgentCapabilities;
-use crate::agent::runtime::{AgentRuntime, RunPolicy};
-use crate::agent::tools::ToolSet;
-use crate::infra::hooks::{HookDispatcher, HookEvent, HookPhase};
-use crate::infra::session::SessionManager;
+use xylitol::XyDriverError;
+use xylitol::agent::capabilities::AgentCapabilities;
+use xylitol::agent::runtime::{AgentRuntime, RunPolicy};
+use xylitol::agent::tools::ToolSet;
+use xylitol::infra::hooks::{HookDispatcher, HookEvent, HookPhase};
+use xylitol::infra::session::SessionManager;
 
-use crate::tests::bdd::fixtures::AgentState;
+use crate::bdd::fixtures::AgentState;
 
 pub(crate) fn result_ok_str(r: &RefCell<Option<Result<String, XyDriverError>>>) -> String {
     let guard = r.borrow();
@@ -44,22 +44,22 @@ pub(crate) fn make_agent_with_store(
     agent: &AgentState,
 ) -> (
     AgentRuntime,
-    Arc<dyn crate::protocol::ports::XySessionStore>,
+    Arc<dyn xylitol::protocol::ports::XySessionStore>,
 ) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     use std::sync::Arc;
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr.clone());
-    let sink: Arc<dyn crate::protocol::ports::XyEventSink> =
-        Arc::new(crate::infra::event::EventBus::new());
-    let hook_bus: Option<Arc<dyn crate::XyHookBus>> = agent
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr.clone());
+    let sink: Arc<dyn xylitol::protocol::ports::XyEventSink> =
+        Arc::new(xylitol::infra::event::EventBus::new());
+    let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = agent
         .wiring_hook_log
         .borrow()
         .clone()
-        .map(|log| log as Arc<dyn crate::XyHookBus>);
+        .map(|log| log as Arc<dyn xylitol::XyHookBus>);
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
-        ToolSet::from_iter(crate::infra::tools::default_tools()),
+        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
         store.clone(),
         sink,
         Some("you are helpful".into()),
@@ -67,10 +67,10 @@ pub(crate) fn make_agent_with_store(
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(crate::infra::provider::factory::build_provider),
-        crate::infra::permission::allow_all_permission(),
-        crate::agent::capabilities::QueueMode::default(),
-        crate::agent::capabilities::QueueMode::default(),
+        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
+        xylitol::infra::permission::allow_all_permission(),
+        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::agent::capabilities::QueueMode::default(),
         hook_bus,
     );
     // Harness often registers models without select; pick the first so ReAct can build.
@@ -89,7 +89,7 @@ pub(crate) fn bind_session_or_panic(agent: &mut AgentRuntime, session_id: impl I
 pub(crate) async fn agent_submit_root(
     agent: &mut AgentRuntime,
     prompt: &str,
-) -> crate::agent::XyEventStream {
+) -> xylitol::agent::XyEventStream {
     if agent.session_id().is_none() {
         bind_session_or_panic(agent, uuid::Uuid::new_v4().to_string());
     }
@@ -100,7 +100,7 @@ pub(crate) async fn agent_submit_root_with_id(
     agent: &mut AgentRuntime,
     prompt: &str,
     session_id: &str,
-) -> crate::agent::XyEventStream {
+) -> xylitol::agent::XyEventStream {
     bind_session_or_panic(agent, session_id.to_string());
     agent.submit_root(prompt, RunPolicy::Reject).await
 }
@@ -111,8 +111,8 @@ pub(crate) async fn run_wiring_operation(
     agent: &AgentState,
     op: &str,
 ) -> Result<(), XyDriverError> {
-    use crate::embed::XyInProcessDriver;
-    use crate::protocol::session::SessionTreeKind;
+    use xylitol::embed::XyInProcessDriver;
+    use xylitol::protocol::session::SessionTreeKind;
 
     match op {
         "确保新会话" => {
@@ -171,7 +171,7 @@ pub(crate) async fn run_wiring_operation(
             let _ = agent.ensure_wiring_hook_log();
             let (runtime, store) = make_agent_with_store(agent);
             let mut driver = XyInProcessDriver::new(runtime, store);
-            crate::app::core::driver::XyDriver::bash_run(&mut driver, "true", false)
+            xylitol::app::core::driver::XyDriver::bash_run(&mut driver, "true", false)
                 .await?
                 .await
                 .map(|_| ())
@@ -181,8 +181,8 @@ pub(crate) async fn run_wiring_operation(
 }
 
 pub(crate) fn ensure_wiring_fake_model(agent: &AgentState, thinking: bool) {
-    use crate::protocol::model::XyModelMeta;
-    use crate::protocol::model::{XyModelConfig, XyModelKind};
+    use xylitol::protocol::model::XyModelMeta;
+    use xylitol::protocol::model::{XyModelConfig, XyModelKind};
     let mut reg = agent.registry.borrow_mut();
     if reg.find("fake").is_some() {
         return;
@@ -220,7 +220,7 @@ pub(crate) async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: H
     agent
         .last_hook_stdin
         .replace(Some(event.to_json_context(phase)));
-    let dispatcher = HookDispatcher::new(&crate::infra::config::types::HooksConfig {
+    let dispatcher = HookDispatcher::new(&xylitol::infra::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         project: vec![],
         user: vec![],
@@ -240,4 +240,54 @@ macro_rules! tool_call {
                 .replace(Some(Err(XyDriverError::from(e.to_string())))),
         }
     };
+}
+
+/// 异步集成测试主体超时包裹（r57：async-test-timeout）。
+///
+/// 默认 10 秒；测试主体一旦死锁或被 mock 卡住，超时使用例以 `Elapsed`
+/// 失败而非整个 suite 挂起，CI 不会因单点死锁而中断。
+pub(crate) async fn with_test_timeout<F, Fut>(
+    f: F,
+) -> Result<Fut::Output, tokio::time::error::Elapsed>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future,
+{
+    with_test_timeout_for(std::time::Duration::from_secs(10), f).await
+}
+
+/// [`with_test_timeout`] 的时长参数化变体（供测试覆盖超时路径）。
+pub(crate) async fn with_test_timeout_for<F, Fut>(
+    budget: std::time::Duration,
+    f: F,
+) -> Result<Fut::Output, tokio::time::error::Elapsed>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future,
+{
+    tokio::time::timeout(budget, f()).await
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::{with_test_timeout, with_test_timeout_for};
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn completes_within_budget() {
+        let out = with_test_timeout(|| async { 42u32 })
+            .await
+            .expect("短主体 MUST 在默认预算内完成");
+        assert_eq!(out, 42);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn times_out_when_deadlocked() {
+        let out = with_test_timeout_for(Duration::from_millis(50), || async {
+            std::future::pending::<u32>().await
+        })
+        .await;
+        assert!(out.is_err(), "挂死主体 MUST 以超时失败而非挂起");
+    }
 }

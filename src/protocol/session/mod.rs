@@ -28,7 +28,6 @@ pub use parse::{
     enforce_legacy_session_version, enforce_session_version, parse_session_jsonl,
     parse_session_jsonl_lines,
 };
-#[cfg(test)]
 pub use todo::TodoItem;
 pub use todo::{
     CUSTOM_TYPE_AGENT_TODO, TodoItemDraft, TodoItemPatch, TodoList, TodoStatus, apply_todo_patches,

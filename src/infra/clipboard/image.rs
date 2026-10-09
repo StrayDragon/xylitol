@@ -218,13 +218,16 @@ fn read_windows_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardErr
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+#[cfg(any(test, target_os = "linux"))]
 const PREFERRED_IMAGE_MIMES: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/gif"];
 
+#[cfg(any(test, target_os = "linux"))]
 fn base_image_mime(mime_type: &str) -> &str {
     mime_type.split(';').next().unwrap_or(mime_type).trim()
 }
 
 /// Prefer png/jpeg/webp/gif (pi order); otherwise first `image/*` offer.
+#[cfg(any(test, target_os = "linux"))]
 fn select_preferred_image_mime(mime_types: &str) -> Option<String> {
     let entries: Vec<&str> = mime_types
         .lines()

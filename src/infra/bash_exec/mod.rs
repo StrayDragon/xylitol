@@ -106,6 +106,11 @@ impl XyBashExecutor for InfraBashExecutor {
             .arg(command)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
+        // r1494 shell-env：把 agent bin 目录前置到子进程 PATH（其余环境继承）。
+        let shell_env = crate::infra::process::shell::shell_env_with_agent_bin(
+            std::env::vars().collect::<std::collections::BTreeMap<_, _>>(),
+        );
+        spawn.envs(&shell_env);
         if let Some(dir) = cwd {
             spawn.current_dir(dir);
         }

@@ -7,6 +7,14 @@
 //! 1. thread-local [`ObsSessionScope`] if entered (tests / sync inject)
 //! 2. else process `Mutex` slot (production — survives tokio worker hops)
 //!
+//! c2843 (Phase B): the process slot is a **default identity** for optionless /
+//! unknown-session fallbacks (remote count, hooks None arm, no-options
+//! [`crate::provider::trace::ProviderRequestTrace`]) and for tests. Materialized
+//! sessions (turns / iterations / tools / compaction / generate) MUST derive
+//! identity from the owning runtime's facts (`obs_session_snapshot` family) and
+//! MUST NOT read this slot — it is only ever updated by explicit writer events
+//! (rename / host session restore), never by bind/switch.
+//!
 //! Overlapping generate (c2590): the snapshot on
 //! [`crate::thinking::AiBridgeGenerateOptions::obs_session`] is the authority.
 //! HTTP hooks / `llm.request` MUST use that copy and MUST NOT re-read this slot

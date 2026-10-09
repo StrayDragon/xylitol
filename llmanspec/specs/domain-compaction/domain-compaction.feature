@@ -3,6 +3,13 @@
 # purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计。"
 # scope: src/agent/compaction/, src/agent/capabilities/, src/infra/session/
 
+# ── 文件导览（28 规则）────────────────────────────────────────
+#   触发与估计   : token 估算/触发阈值 · force/auto 分流 · stale 防抖 · overflow 识别
+#   摘要与切点   : compact 摘要 · 会话/分支/LLM 摘要 · 切点 · 双摘要
+#   会话与策略   : compact 条目 · agent 集成 · policy 指纹 · 压后地板诊断
+#   （精确检索以 @req/规则标题为准，本导览为非强制快速导航）
+# ────────────────────────────────────────────────────────────────
+
 功能: domain-compaction
   背景:
     假如 有一个临时工作目录
@@ -226,6 +233,10 @@
   规则: 单一配置来源
     Compaction 配置 MUST 有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens / keep_recent_tokens / model / thinking_level；model 为可选任务模型条目对象，thinking_level 为可选档名覆盖）；MUST NOT 再保留 compaction_threshold 或重复 CompactionConfig 定义。
     # verified-by: src/protocol/session/entries.rs
+    场景: single-config-type-pair
+      当 读取领域实体的规范类型声明
+      那么 每个领域概念只有一处规范声明
+
   @req:r1401
   规则: token 使用量类型统一与来源标注
     Compaction 与会话侧上下文估计 MUST 使用 domain 的 XyUsage 作为厂商/归一化用量类型；估计结果 MUST 能暴露 TokenProvenance（或经映射的等价来源标注）供上层区分 Api 与降级估计；token_estimator 内 MUST NOT 再定义重复的 XyUsage。
@@ -238,6 +249,11 @@
   规则: 触发估计同源展示
     auto-compact 的 reserve 触发决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 settlement snapshot）；当存在可信 Api 锚点时触发所用 token 数字 MUST 跟 Api，MUST NOT 在 footer 已标 Api 时仍用独立 heuristic 触发；派生占用百分比（若展示）MUST NOT 作为触发 SSOT。该共享估计在 Heuristic / LocalTokenizer 路径（无 Api 锚点）MUST 计入固定请求开销——system prompt 与 tool schemas（取 reload 后最新态）的同源折算；存在 Api 锚点时 MUST NOT 重复叠加（usage.input 已含全请求）。
     # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
+    场景: reserve-shares-footer-estimate
+      假如 会话叶上存在可信 Api usage 锚点且 footer 同源估计可用
+      当 执行 auto-compact reserve 触发判断
+      那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
+
   @req:r1403
   规则: force 与 auto 分流
     手动 force 路径（CompactionOrchestrator::compact 或等价，经 Command::Compact 执行器）MUST 不过 reserve 闸；prepare 与 compact 的会话条目输入 MUST 为当前 leaf 分支路径（对齐 pi getBranch），MUST NOT 仅以整文件线性 load 作为唯一输入；prepare 无内容时 MUST 返回明确错误：末条已是 CompactionEntry 时等价 Already compacted；空 leaf 时等价 Nothing to compact (empty session)；其余确无可摘要历史（含已在 keep_recent 窗内）时等价 Nothing to compact (no summarizable history beyond keep window)；MUST NOT 再以 session too small 作为上述有上下文失败的用户可见主串（偏离 pi 同文，见 PI_DELTAS）；MUST NOT 因切点计量低估（相对 pi estimateTokens）把仍有可摘要历史的会话误判为无可摘要；auto 路径（maybe_auto_compact）在 prepare 失败时 MUST 静默跳过（不抛上述用户错误）。Force 的 CompactionStart.reason MUST 可区分为 manual；threshold auto 的 reason MUST 含 threshold 语义。MUST NOT 让手动入口继续调用 maybe_auto_compact。
@@ -312,6 +328,13 @@
   规则: overflow 与 threshold 分流
     overflow Case1 MUST 先于 threshold Case2 评估；overflow 路径 MUST 复用 c18 stale 防抖；CompactionEnd MUST 能暴露 reason=overflow、will_retry 与失败时 error_message；MUST NOT 将非 overflow 错误吞进 compaction。
     # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
+    场景: threshold-route-after-settle
+      假如 compaction enabled 为 true
+      并且 同源估计已超过 window 减 reserveTokens
+      并且 非 abort 的 assistant 回合刚落定
+      当 执行 turn 后 threshold auto 检查
+      那么 发生 compaction 且 CompactionStart reason 含 threshold
+
   @req:r1411
   规则: force 可选 instructions
     手动 force compact（Command::Compact / CompactionOrchestrator::compact）MUST 接受可选 instructions（Option<String> 或等价）；非空时 generate_summary（含 split-turn 的 history 摘要）MUST 在结构化摘要 prompt 上追加「Additional focus:」+ 该文本（对齐 pi customInstructions），MUST NOT 替换整份 Goal/Constraints 骨架；generate_turn_prefix_summary MUST NOT 注入 instructions；仅空白或 None MUST 视为无 instructions；threshold / overflow auto 路径 MUST 不传 instructions，MUST NOT 复用上一次 manual 的 instructions。
@@ -323,18 +346,39 @@
   规则: compact 输入为 leaf 分支
     prepare_compaction 与 compact_session（及 Orchestrator force/auto/overflow）MUST 仅消费当前 leaf 的分支路径条目（对齐 pi getBranch）；MUST NOT 把旁支 sibling 条目计入切点或摘要范围。
     # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
+    场景: cut-on-leaf-branch
+      假如 会话在 keep 预算内最近合法切点落在 assistant 消息
+      当 调用 find_cut_point
+      那么 切点落在该 assistant 且 is_split_turn 为 true 或 false 依是否 mid-turn 而定
+
   @req:r1413
   规则: turn-settlement-once
     当一次 Settle（本轮模型不再续跑工具）收尾做 threshold/overflow 预检时，System MUST 对该次收尾只产生一份 ContextTokenEstimate settlement（同一 tokens/provenance generation）供 compact 决策与产品 footer 消费；工具续跑的 iteration 关闭 MUST NOT 产生该 settlement、MUST NOT 跑该预检；MUST NOT 让 Agent 预检与 TUI TurnEnd/stream-close 在无上下文失效的情况下各自再跑一遍 estimate 并各自打点；若随后实际执行了 compaction，MUST 经 CompactionEnd（或等价）失效并允许新的 settlement。算数入口仍 MUST 为 estimate_from_session_entries（或同源），MUST NOT 另立第二套尺子。compaction 成功后 MUST 重载 leaf（含新 CompactionEntry 与回填行）并以「summary 折行 + 保留尾 + 固定请求开销（c16 同源折算）」产出一份 AfterCompaction settlement 占位估计，供 footer 与下一轮 reserve 闸消费；该占位估计 MUST NOT 伴随任何主动模型请求（重算上下文等下一个用户请求经 build_context_entries 同源机制生效）；resume / 会话激活路径 MUST 以同一机制（含固定开销）重建估计（LeafChanged settlement 或 host 同源 unary）。成功的 CompactionEnd 载荷 MUST 携带 tokens_after 与该 AfterCompaction settlement 同源同值（供压后大小呈现与压后地板诊断判定），压后重载 leaf 失败等无法产出 settlement 的退化路径 MUST 缺省 None（消费端落回无 M 词形）；MUST NOT 为此扩展 CompactionEntry 持久化形状（live-only）。
     # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
+    场景: one-estimate-per-settlement
+      假如 存在可信 XyUsage 锚点
+      当 调用上下文估计
+      那么 优先采用 Api 语义且仍返回统一估计结构
+
   @req:r1414
   规则: no-invent-reasoning-after-compact
     Compaction 以 CompactionEntry 摘要替换 firstKept 之前的轨迹后，随后经 project_for_llm 与 Responses 组装的 input MUST 仅回放仍留在保留消息中的 thinkingSignature；MUST NOT 为已摘要掉的旧 assistant 轮次发明或恢复 reasoning item / thinkingSignature。由单测或文档场景覆盖，MUST NOT 单独扩 BDD step。
     # verified-by: src/agent/llm_project.rs
+    场景: summary-sections-from-kept-branch
+      假如 会话有 30 轮 user+assistant 含文件编辑
+      当 调用 generate_summary
+      那么 响应含 Goal、Progress、Next Steps 节及具体文件路径
+
   @req:r1415
   规则: 压后地板一次性诊断
     auto 路径（threshold / overflow）compaction 成功且其 AfterCompaction settlement tokens ≥ contextWindow（压后仍无可用窗口，固定开销吃满窗口的退化形态）时，System MUST 经 CompactionEnd 载荷（notice 或等价）发一条可行动诊断（建议：调低 keepRecentTokens / 调高 contextWindow / 精简工具面），每个会话运行（run）至多一次（对齐 c22 每 run 一次 overflow recovery 的作用域纪律）；manual force 路径 MUST NOT 发诊断；地板阈值本身不构成诊断条件（地板 + 迟滞 ∈ (window − reserve, window) 的受控频繁模式 MUST NOT 触发诊断）。
     # verified-by: fn floor_notice_fires_once_and_manual_exempt
+    场景: floor-diagnostic-at-most-once
+      假如 compaction 配置了任务模型条目且该条目构建失败
+      当 执行 compact 摘要
+      那么 摘要请求回退当前会话模型
+      并且 归因标注 fallback 且通知至多一次
+
   @req:r1416
   规则: policy 指纹
     CompactionEntry 的 policy 快照 MUST 记录产生该摘要时的 contextWindow、reserveTokens、keepRecentTokens 与 estimatorVersion；后续 resume、inspect 或诊断 MUST 能区分完整当前快照与迁移 legacy/unknown 标记，MUST NOT 将缺失快照静默解释为当前配置。
@@ -345,3 +389,35 @@
       当 读取最新压缩条目的 policy 快照
       那么 policy 快照记录窗口保留与估计器版本
       并且 legacy 无快照条目不当作当前配置
+
+  @req:r1919
+  规则: turn-end 压缩事件送达顺序
+    当回合收尾（threshold / overflow auto 路径）经运行流内压缩且产出 CompactionStart / CompactionEnd 时，run 流消费者（server run loop、remote driver downlink 等任何在 AgentEnd 停止读取的消费方）MUST 收到成对的 Start 与 End，且 CompactionEnd MUST 先于 AgentEnd 到达；流组合 MUST NOT 因主通道优先分支在无穿插 await 的收尾（如 script hook bus 缺省）饿死侧通道，静默丢弃 End（症状：TUI 折叠块滞留 Compacting…）。该顺序对任何产生方式（含 summarizer 返回空响应的 fallback 路径）一致成立。
+    # verified-by: tests/bdd/steps_c2844.rs
+    场景: turn-end-overflow-events-before-agent-end
+      假如 以 overflow 错误响应模型装配可压缩运行库并预置可压缩历史
+      当 提交一次回合并收齐事件名序列
+      那么 压缩开始与结束事件均到达且结束先于回合收尾
+
+  @req:r1920
+  规则: 摘要响应 reasoning-only 非空
+    摘要生成（generate_complete 族，含 turn-prefix 摘要）对模型响应 MUST 同时累积可见文本与推理内容（ThinkingDelta 族）；当可见文本为空但推理内容非空时，MUST 将推理内容作为摘要结果返回，MUST NOT 判为空响应而走 fallback 占位（症状：tufa reasoning.encrypted_content 模式产出纯推理摘要被替换为 [Turn prefix: N entries]）；仅当文本与推理均空时才 MUST 判空并走 fallback。
+    # verified-by: src/agent/compaction/llm_summarizer.rs
+    场景: reasoning-only-summary-not-empty
+      假如 以仅输出推理的摘要模型为压缩绑定并预置历史
+      当 触发一次压缩
+      那么 摘要非空且采用推理内容而非 fallback 占位
+
+  @req:r1924
+  规则: 压缩度量口径一致与校准
+    压缩决策链 MUST 对同一份「替换后」请求上下文（`build_context_entries` 输出）使用同一可校准的 token 度量源：切点判定（`prepare_compaction` / `find_cut_point` 累加）、触发判定（r1406 同源纪律）与产品 footer / Driver 只读估计 MUST 收敛到同一估算入口族；切点判定 MUST NOT 以独立字符串字符启发式（chars/4 之类的 len/4）作为度量 SSOT（lax 兜底仅限消息反序列化失败，MUST NOT 作为默认决策度量）。该度量对同一上下文的估算与 provider 实测 input 的系统性偏差 MUST 可解释且可对拍（tokenizer 口径差异、fixed_context 叠加与否必须可区分），MUST NOT 出现「展示显示超窗而压缩判定无可压缩」的长期矛盾（症状：footer 高估超窗、压缩永不触发、每回合重复判定）。
+    # verified-by: src/agent/compaction/cut_detector.rs
+
+    场景: compaction-cut-metric-same-source
+      假如 会话含一批可投影的 user 与 assistant 消息（含长文本与图片）
+      当 对该上下文计算切点度量与统一估算的逐条组成
+      那么 切点累计等于统一估算逐条分解且非常规字符计数
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
+
+# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

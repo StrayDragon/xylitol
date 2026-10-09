@@ -8,7 +8,7 @@ mod model;
 mod preview;
 pub(crate) mod session_tree;
 
-pub(crate) use model::trailing_aborted_note;
+pub use model::trailing_aborted_note;
 pub use model::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, STREAMING_THINK_ID,
     StreamingTailKind, UiEntry, UiModel, UiPhase, allocate_thinking_id,

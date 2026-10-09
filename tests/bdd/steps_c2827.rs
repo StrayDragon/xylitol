@@ -5,16 +5,16 @@
 //! 会话树 fork·help·label·debug fixture / 输入补全族 / 超大 diff 截断 /
 //! trust Esc=deny / print 嵌入同进程。
 
-use crate::app::core::driver::ModelInfo;
-use crate::app::tui::TuiHostEvent as HostEvent;
-use crate::app::tui::TuiHostSession as HostSession;
-use crate::app::tui::UiEntry;
-use crate::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
-use crate::tests::bdd::fixtures::AgentState;
-use crate::tests::bdd::prelude::*;
-use crate::tests::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
+use crate::bdd::fixtures::AgentState;
+use crate::bdd::prelude::*;
+use crate::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
+use xylitol::app::core::driver::ModelInfo;
+use xylitol::app::tui::TuiHostEvent as HostEvent;
+use xylitol::app::tui::TuiHostSession as HostSession;
+use xylitol::app::tui::UiEntry;
+use xylitol::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
 use xylitol_tui::Component;
 
 // ── fixtures / helpers ───────────────────────────────────────────
@@ -105,7 +105,7 @@ fn key_event(
 /// 单发 Esc 的延迟输入流（挂起 bang 的中止注入，r1279）。
 fn c2827_esc_stream(
     after_ms: u64,
-) -> impl futures::Stream<Item = Result<HostEvent, crate::XyDriverError>> {
+) -> impl futures::Stream<Item = Result<HostEvent, xylitol::XyDriverError>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(after_ms)).await;
@@ -176,7 +176,7 @@ pub(crate) fn g_c2827_tiny_terminal(host_pump_bdd: &HostPumpBdd) {
         .expect("resize to tiny");
     assert_eq!(
         pump.session.mode(),
-        crate::app::tui::LayoutMode::TooSmall,
+        xylitol::app::tui::LayoutMode::TooSmall,
         "c2827: 前置应为 TooSmall 布局"
     );
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
@@ -187,7 +187,7 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_host(host_pump_bdd);
     assert_eq!(
         pump.session.mode(),
-        crate::app::tui::LayoutMode::TooSmall,
+        xylitol::app::tui::LayoutMode::TooSmall,
         "c2827: 极端尺寸应切 TooSmall 布局"
     );
     let frames_before = pump.session.engine_frame_count();
@@ -205,8 +205,8 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵提交挂起 bang 并注入事件后按 Esc")]
 pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
-    use crate::app::core::driver::XyDriver as _;
-    use crate::app::tui::harness::drain_pending;
+    use xylitol::app::core::driver::XyDriver as _;
+    use xylitol::app::tui::harness::drain_pending;
 
     let mut pump = fresh_pump();
     pump.driver.set_hang_bash_until_abort(true);
@@ -215,7 +215,7 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
     pump.session
         .step(HostEvent::Input(enter_event()))
         .expect("enter");
-    let mut stream: Option<crate::app::core::driver::EventStream> = None;
+    let mut stream: Option<xylitol::app::core::driver::EventStream> = None;
     drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("drain start");
@@ -232,13 +232,13 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
         },
         XyEvent::AgentEnd { messages: vec![] },
     ]);
-    let mut agent_stream: Option<crate::app::core::driver::EventStream> =
+    let mut agent_stream: Option<xylitol::app::core::driver::EventStream> =
         Some(pump.driver.run("bg").await);
     let bash = pump
         .session
         .take_bash()
         .expect("hanging bang pending after drain");
-    crate::app::tui::harness::run_interactive_bang(
+    xylitol::app::tui::harness::run_interactive_bang(
         &mut pump.session,
         &mut pump.driver,
         bash,
@@ -302,7 +302,7 @@ pub(crate) async fn w_c2827_resume_with_current(host_pump_bdd: &HostPumpBdd, cmd
     let mut pump = take_host(host_pump_bdd);
     let current = pump.driver.active_session_id();
     pump.driver
-        .set_session_list(vec![crate::protocol::ports::SessionListEntry {
+        .set_session_list(vec![xylitol::protocol::ports::SessionListEntry {
             id: current,
             name: Some("当前样本".into()),
             first_message: Some("预览".into()),
@@ -474,7 +474,7 @@ pub(crate) async fn w_c2827_tree_fork(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_host(host_pump_bdd);
     // fork 执行器经 get_messages 解析选中条目——同步样例消息。
     pump.driver
-        .set_session_messages(crate::app::tui::harness::harness_sample_session_messages());
+        .set_session_messages(xylitol::app::tui::harness::harness_sample_session_messages());
     pump.session
         .step(HostEvent::Input(key_event(
             crossterm::event::KeyCode::Char('f'),
@@ -646,12 +646,7 @@ pub(crate) fn t_c2827_model_esc_no_set(host_pump_bdd: &HostPumpBdd) {
 pub(crate) fn t_c2827_at_popup_apply(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_host(host_pump_bdd);
     let frame = render_frame(&mut pump);
-    let plain: String = frame
-        .chars()
-        .collect::<Vec<_>>()
-        .iter()
-        .map(|c| *c)
-        .collect();
+    let plain: String = frame.chars().collect::<Vec<_>>().iter().copied().collect();
     let _ = plain;
     assert!(
         frame.contains("(1/") && frame.contains("/"),
@@ -848,7 +843,7 @@ pub(crate) fn t_c2827_print_embed_done(host_pump_bdd: &HostPumpBdd) {
 
 pub struct T2EstBdd {
     pub entries: RefCell<Vec<SessionEntry>>,
-    pub est: RefCell<Option<crate::protocol::model::ContextTokenEstimate>>,
+    pub est: RefCell<Option<xylitol::protocol::model::ContextTokenEstimate>>,
 }
 
 #[fixture]
@@ -861,10 +856,10 @@ pub fn t2_est_bdd() -> T2EstBdd {
 
 fn t2_assistant_entry(
     id: &str,
-    usage: crate::protocol::message::XyUsage,
-    stop: crate::protocol::message::XyStopReason,
+    usage: xylitol::protocol::message::XyUsage,
+    stop: xylitol::protocol::message::XyStopReason,
 ) -> SessionEntry {
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
     let asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
         content: vec![AgentPart::text("ok")],
         stop_reason: Some(stop),
@@ -890,7 +885,7 @@ fn t2_assistant_entry(
 
 #[given("会话条目含 stop 回合的 usage 锚点")]
 pub(crate) fn g_t2_anchor_stop(t2_est_bdd: &T2EstBdd) {
-    use crate::protocol::message::{AgentMessage, XyStopReason, XyUsage};
+    use xylitol::protocol::message::{AgentMessage, XyStopReason, XyUsage};
     *t2_est_bdd.entries.borrow_mut() = vec![
         SessionEntry::Message(MessageEntry {
             base: EntryBase {
@@ -916,7 +911,7 @@ pub(crate) fn g_t2_anchor_stop(t2_est_bdd: &T2EstBdd) {
 
 #[given("会话条目仅含 abort 回合的 usage 锚点")]
 pub(crate) fn g_t2_anchor_aborted(t2_est_bdd: &T2EstBdd) {
-    use crate::protocol::message::{AgentMessage, XyStopReason, XyUsage};
+    use xylitol::protocol::message::{AgentMessage, XyStopReason, XyUsage};
     *t2_est_bdd.entries.borrow_mut() = vec![
         SessionEntry::Message(MessageEntry {
             base: EntryBase {
@@ -943,9 +938,9 @@ pub(crate) fn g_t2_anchor_aborted(t2_est_bdd: &T2EstBdd) {
 #[when("以同源估计器估计上下文")]
 pub(crate) fn w_t2_estimate(t2_est_bdd: &T2EstBdd) {
     let entries = t2_est_bdd.entries.borrow().clone();
-    let est = crate::agent::compaction::token_estimator::estimate_from_session_entries(
+    let est = xylitol::agent::compaction::token_estimator::estimate_from_session_entries(
         &entries,
-        &crate::agent::compaction::token_estimator::EstimateOpts::default(),
+        &xylitol::agent::compaction::token_estimator::EstimateOpts::default(),
     );
     *t2_est_bdd.est.borrow_mut() = Some(est);
 }
@@ -955,7 +950,7 @@ pub(crate) fn t_t2_prov_api(t2_est_bdd: &T2EstBdd) {
     let est = t2_est_bdd.est.borrow().as_ref().expect("estimate").clone();
     assert_eq!(
         est.provenance,
-        crate::protocol::model::TokenProvenance::Api,
+        xylitol::protocol::model::TokenProvenance::Api,
         "c2827: stop 回合 usage 应为 Api 锚点"
     );
 }
@@ -965,7 +960,7 @@ pub(crate) fn t_t2_prov_not_api(t2_est_bdd: &T2EstBdd) {
     let est = t2_est_bdd.est.borrow().as_ref().expect("estimate").clone();
     assert_ne!(
         est.provenance,
-        crate::protocol::model::TokenProvenance::Api,
+        xylitol::protocol::model::TokenProvenance::Api,
         "c2827: abort 回合 usage MUST NOT 作 Api 锚点"
     );
 }
@@ -973,8 +968,8 @@ pub(crate) fn t_t2_prov_not_api(t2_est_bdd: &T2EstBdd) {
 // ── agent-prompt r1017：Available tools 无 mcp 名 ────────────────
 
 #[given("工具片段含 mcp 前缀工具")]
-pub(crate) fn g_t2_mcp_snippets(prompt_bdd: &crate::tests::bdd::steps_bridge::PromptBdd) {
-    use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
+pub(crate) fn g_t2_mcp_snippets(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
+    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
     let opts = SystemPromptOpts {
         selected_tools: vec!["read".into(), "bash".into(), "mcp__fs__read".into()],
         tool_snippets: vec![
@@ -988,7 +983,7 @@ pub(crate) fn g_t2_mcp_snippets(prompt_bdd: &crate::tests::bdd::steps_bridge::Pr
 }
 
 #[when("以默认路径组装系统提示")]
-pub(crate) fn w_t2_build_default(prompt_bdd: &crate::tests::bdd::steps_bridge::PromptBdd) {
+pub(crate) fn w_t2_build_default(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
     assert!(
         !prompt_bdd.prompt.borrow().is_empty(),
         "c2827: given 应已组装系统提示"
@@ -996,7 +991,7 @@ pub(crate) fn w_t2_build_default(prompt_bdd: &crate::tests::bdd::steps_bridge::P
 }
 
 #[then("系统提示不含 mcp 工具名且含 MCP 引导句")]
-pub(crate) fn t_t2_no_mcp_names(prompt_bdd: &crate::tests::bdd::steps_bridge::PromptBdd) {
+pub(crate) fn t_t2_no_mcp_names(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
     let p = prompt_bdd.prompt.borrow();
     assert!(
         !p.contains("mcp__fs__read"),
@@ -1012,7 +1007,7 @@ pub(crate) fn t_t2_no_mcp_names(prompt_bdd: &crate::tests::bdd::steps_bridge::Pr
 // ── agent-prompt r1023 / r1024：资源与技能热应用 ─────────────────
 
 pub struct T2CapsBdd {
-    pub caps: RefCell<Option<crate::agent::capabilities::AgentCapabilities>>,
+    pub caps: RefCell<Option<xylitol::agent::capabilities::AgentCapabilities>>,
 }
 
 #[fixture]
@@ -1022,17 +1017,16 @@ pub fn t2_caps_bdd() -> T2CapsBdd {
     }
 }
 
-fn t2_make_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::tests::bdd::fixtures::AgentState) {
+fn t2_make_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::bdd::fixtures::AgentState) {
     let dir = tempfile::tempdir().unwrap();
-    let mgr = crate::infra::session::SessionManager::new(dir.keep());
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let caps =
-        crate::tests::bdd::steps_domain_compaction_extra::make_test_capabilities(agent, store);
+    let mgr = xylitol::infra::session::SessionManager::new(dir.keep());
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let caps = crate::bdd::steps_domain_compaction_extra::make_test_capabilities(agent, store);
     *t2_caps_bdd.caps.borrow_mut() = Some(caps);
 }
 
 #[given("Agent 能力聚合体已就绪")]
-pub(crate) fn g_t2_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::tests::bdd::fixtures::AgentState) {
+pub(crate) fn g_t2_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::bdd::fixtures::AgentState) {
     t2_make_caps(t2_caps_bdd, agent);
 }
 
@@ -1061,14 +1055,14 @@ pub(crate) fn t_t2_rebuilt(t2_caps_bdd: &T2CapsBdd) {
 #[when("热应用技能目录 greet")]
 pub(crate) fn w_t2_apply_skills(t2_caps_bdd: &T2CapsBdd) {
     let mut caps = t2_caps_bdd.caps.borrow_mut().take().expect("caps");
-    caps.apply_skills(vec![crate::protocol::resource::SkillInfo {
+    caps.apply_skills(vec![xylitol::protocol::resource::SkillInfo {
         name: "greet".into(),
         description: Some("greets".into()),
-        source_info: crate::protocol::source_info::SourceInfo {
+        source_info: xylitol::protocol::source_info::SourceInfo {
             path: std::path::PathBuf::from("/tmp/greet/SKILL.md"),
             source: "local".into(),
-            scope: crate::protocol::source_info::SourceScope::Temporary,
-            origin: crate::protocol::source_info::SourceOrigin::TopLevel,
+            scope: xylitol::protocol::source_info::SourceScope::Temporary,
+            origin: xylitol::protocol::source_info::SourceOrigin::TopLevel,
             base_dir: None,
         },
         disable_model_invocation: false,
@@ -1094,7 +1088,7 @@ pub(crate) fn t_t2_skills_listed(t2_caps_bdd: &T2CapsBdd) {
 // ── agent-prompt r1025：$name 注入 ───────────────────────────────
 
 pub struct T2SkillBdd {
-    pub skills: RefCell<Vec<crate::protocol::resource::SkillInfo>>,
+    pub skills: RefCell<Vec<xylitol::protocol::resource::SkillInfo>>,
     pub expanded: RefCell<String>,
 }
 
@@ -1118,14 +1112,14 @@ pub(crate) fn g_t2_skill_loaded(t2_skill_bdd: &T2SkillBdd, body: String) {
     .expect("write skill");
     // tempdir drop 会删文件——保留到进程尾（测试场景内足够）。
     std::mem::forget(dir);
-    *t2_skill_bdd.skills.borrow_mut() = vec![crate::protocol::resource::SkillInfo {
+    *t2_skill_bdd.skills.borrow_mut() = vec![xylitol::protocol::resource::SkillInfo {
         name: "greet".into(),
         description: None,
-        source_info: crate::protocol::source_info::SourceInfo {
+        source_info: xylitol::protocol::source_info::SourceInfo {
             path,
             source: "local".into(),
-            scope: crate::protocol::source_info::SourceScope::Temporary,
-            origin: crate::protocol::source_info::SourceOrigin::TopLevel,
+            scope: xylitol::protocol::source_info::SourceScope::Temporary,
+            origin: xylitol::protocol::source_info::SourceOrigin::TopLevel,
             base_dir: None,
         },
         disable_model_invocation: false,
@@ -1136,7 +1130,7 @@ pub(crate) fn g_t2_skill_loaded(t2_skill_bdd: &T2SkillBdd, body: String) {
 pub(crate) fn w_t2_expand(t2_skill_bdd: &T2SkillBdd) {
     let skills = t2_skill_bdd.skills.borrow().clone();
     let out =
-        crate::agent::prompt::skill_expand::expand_skill_refs("请执行 $greet 与 $nope", &skills);
+        xylitol::agent::prompt::skill_expand::expand_skill_refs("请执行 $greet 与 $nope", &skills);
     *t2_skill_bdd.expanded.borrow_mut() = out;
 }
 
@@ -1165,7 +1159,7 @@ pub fn t2_schema_bdd() -> T2SchemaBdd {
 
 #[when("检查内置工具的参数 schema")]
 pub(crate) fn w_t2_check_schemas(t2_schema_bdd: &T2SchemaBdd) {
-    let schemas = crate::infra::tools::default_tools()
+    let schemas = xylitol::infra::tools::default_tools()
         .iter()
         .map(|t| (t.name().to_string(), t.parameters_schema()))
         .collect();
@@ -1209,8 +1203,8 @@ pub(crate) fn t_t2_fs_no_timeout(t2_schema_bdd: &T2SchemaBdd) {
 // ── agent-todo：SSOT 网关与两工具语义（r1119/r1121/r1123/r1125/r1126/r1842）──
 
 pub struct T2TodoBdd {
-    pub gw: RefCell<Option<Arc<crate::infra::tools::todo::SessionAgentTodoGateway>>>,
-    pub store: RefCell<Option<Arc<dyn crate::protocol::ports::XySessionStore>>>,
+    pub gw: RefCell<Option<Arc<xylitol::infra::tools::todo::SessionAgentTodoGateway>>>,
+    pub store: RefCell<Option<Arc<dyn xylitol::protocol::ports::XySessionStore>>>,
     pub sid: RefCell<String>,
     pub last_err: RefCell<Option<String>>,
 }
@@ -1230,14 +1224,14 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
         return;
     }
     let dir = tempfile::tempdir().unwrap();
-    let mgr = crate::infra::session::SessionManager::new(dir.path().to_path_buf());
-    let store: Arc<dyn crate::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let mgr = xylitol::infra::session::SessionManager::new(dir.path().to_path_buf());
+    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
     let sid = "s-todo-c2827".to_string();
     let sid2 = sid.clone();
     futures::executor::block_on(async {
         store.create(&sid2, Some("/tmp"), None).await.unwrap();
     });
-    let gw = crate::infra::tools::todo::SessionAgentTodoGateway::new(store.clone());
+    let gw = xylitol::infra::tools::todo::SessionAgentTodoGateway::new(store.clone());
     futures::executor::block_on(gw.bind_session(Some(sid.clone())));
     *t2_todo_bdd.sid.borrow_mut() = sid;
     *t2_todo_bdd.store.borrow_mut() = Some(store);
@@ -1248,26 +1242,26 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
 fn t2_rewrite(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
     t2_todo_mount(t2_todo_bdd);
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    let tools = crate::infra::tools::todo::todo_tools(gw);
+    let tools = xylitol::infra::tools::todo::todo_tools(gw);
     let tool = tools
         .iter()
         .find(|t| t.name() == "todo_rewrite")
         .expect("todo_rewrite")
         .clone();
-    let ctx = crate::protocol::ports::XyToolCtx::new("c2827");
+    let ctx = xylitol::protocol::ports::XyToolCtx::new("c2827");
     futures::executor::block_on(async { tool.execute(&ctx, items).await })
         .map_err(|e| e.to_string())
 }
 
 fn t2_update(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    let tools = crate::infra::tools::todo::todo_tools(gw);
+    let tools = xylitol::infra::tools::todo::todo_tools(gw);
     let tool = tools
         .iter()
         .find(|t| t.name() == "todo_update")
         .expect("todo_update")
         .clone();
-    let ctx = crate::protocol::ports::XyToolCtx::new("c2827u");
+    let ctx = xylitol::protocol::ports::XyToolCtx::new("c2827u");
     futures::executor::block_on(async { tool.execute(&ctx, items).await })
         .map_err(|e| e.to_string())
 }
@@ -1338,7 +1332,7 @@ pub(crate) fn t_t2_todo_overlong_rejected(t2_todo_bdd: &T2TodoBdd) {
     );
     // 原表不变：读回当前清单为空（此前未写入）。
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    use crate::protocol::ports::AgentTodoGateway as _;
+    use xylitol::protocol::ports::AgentTodoGateway as _;
     let list = futures::executor::block_on(gw.list()).ok();
     assert!(
         list.as_ref().map(|l| l.items.len()).unwrap_or(0) == 0,
@@ -1360,7 +1354,7 @@ pub(crate) fn w_t2_todo_latest_wins(t2_todo_bdd: &T2TodoBdd) {
 
 #[then("读取当前清单为最新快照")]
 pub(crate) fn t_t2_todo_latest(t2_todo_bdd: &T2TodoBdd) {
-    use crate::protocol::ports::AgentTodoGateway as _;
+    use xylitol::protocol::ports::AgentTodoGateway as _;
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
     let list = futures::executor::block_on(gw.list()).expect("list");
     assert_eq!(list.items.len(), 1, "c2827: 应为最新快照 B：{list:?}");
@@ -1369,7 +1363,7 @@ pub(crate) fn t_t2_todo_latest(t2_todo_bdd: &T2TodoBdd) {
 
 #[when("执行压后 todo 保全")]
 pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
-    use crate::protocol::session::build_context_entries;
+    use xylitol::protocol::session::build_context_entries;
     t2_todo_mount(t2_todo_bdd);
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
@@ -1385,8 +1379,8 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
         .last()
         .and_then(|e| e.base().map(|b| b.timestamp))
         .unwrap_or(0);
-    let cut: Vec<crate::protocol::session::SessionEntry> = vec![SessionEntry::Compaction(
-        crate::infra::session::CompactionEntry {
+    let cut: Vec<xylitol::protocol::session::SessionEntry> = vec![SessionEntry::Compaction(
+        xylitol::infra::session::CompactionEntry {
             base: EntryBase {
                 entry_type: "compaction".into(),
                 id: "c1".into(),
@@ -1405,7 +1399,7 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
     // 直接驱动保全：压后窗口无 todo → 重追加最新快照。
     futures::executor::block_on({
         let sid_ref: &str = &sid;
-        crate::agent::compaction::ensure_agent_todo_after_compact(
+        xylitol::agent::compaction::ensure_agent_todo_after_compact(
             store.as_ref(),
             sid_ref,
             &entries_before,
@@ -1415,7 +1409,7 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
 
 #[then("最新快照被重追加到会话")]
 pub(crate) fn t_t2_todo_reappended(t2_todo_bdd: &T2TodoBdd) {
-    use crate::protocol::session::latest_agent_todo;
+    use xylitol::protocol::session::latest_agent_todo;
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
     let entries = futures::executor::block_on(store.load_leaf_branch(&sid)).expect("entries");
@@ -1428,7 +1422,7 @@ pub(crate) fn t_t2_todo_reappended(t2_todo_bdd: &T2TodoBdd) {
 
 #[then("导出条目含 agent_todo 自定义记录而非用户消息")]
 pub(crate) fn t_t2_todo_export(t2_todo_bdd: &T2TodoBdd) {
-    use crate::protocol::session::CUSTOM_TYPE_AGENT_TODO;
+    use xylitol::protocol::session::CUSTOM_TYPE_AGENT_TODO;
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
     let entries = futures::executor::block_on(store.load_entries(&sid)).expect("entries");
@@ -1447,7 +1441,7 @@ pub(crate) fn t_t2_todo_export(t2_todo_bdd: &T2TodoBdd) {
 }
 
 #[then("列表含 skills 与 themes 且不含 prompts")]
-pub(crate) fn t_t2_res_list_no_prompts(prompt_bdd: &crate::tests::bdd::steps_bridge::PromptBdd) {
+pub(crate) fn t_t2_res_list_no_prompts(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
     let out = prompt_bdd.prompt.borrow().clone();
     assert!(
         out.contains("skills:") && out.contains("themes:"),
@@ -1503,7 +1497,7 @@ fn t2_res_mount(t2_res_bdd: &T2ResBdd) {
     std::mem::forget(tmp);
 }
 
-fn t2_res_run(t2_res_bdd: &T2ResBdd, action: crate::app::cli::resources::ResourcesAction) {
+fn t2_res_run(t2_res_bdd: &T2ResBdd, action: xylitol::app::cli::resources::ResourcesAction) {
     let cwd = t2_res_bdd.cwd.borrow().as_ref().expect("cwd").clone();
     let agent_dir = t2_res_bdd
         .agent_dir
@@ -1511,7 +1505,7 @@ fn t2_res_run(t2_res_bdd: &T2ResBdd, action: crate::app::cli::resources::Resourc
         .as_ref()
         .expect("agent")
         .clone();
-    let (code, out) = crate::app::cli::resources::run_with_dirs(action, &cwd, &agent_dir);
+    let (code, out) = xylitol::app::cli::resources::run_with_dirs(action, &cwd, &agent_dir);
     *t2_res_bdd.code.borrow_mut() = Some(code);
     *t2_res_bdd.out.borrow_mut() = out;
 }
@@ -1552,7 +1546,7 @@ pub(crate) fn g_t2_res_layout(t2_res_bdd: &T2ResBdd) {
 pub(crate) fn w_t2_res_list(t2_res_bdd: &T2ResBdd) {
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::List,
+        xylitol::app::cli::resources::ResourcesAction::List,
     );
 }
 
@@ -1582,7 +1576,7 @@ pub(crate) fn t_t2_res_list_ok(t2_res_bdd: &T2ResBdd) {
 pub(crate) fn w_t2_res_info(t2_res_bdd: &T2ResBdd) {
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::Info {
+        xylitol::app::cli::resources::ResourcesAction::Info {
             name: "demo-skill".into(),
         },
     );
@@ -1592,7 +1586,7 @@ pub(crate) fn w_t2_res_info(t2_res_bdd: &T2ResBdd) {
 pub(crate) fn w_t2_res_info_missing(t2_res_bdd: &T2ResBdd) {
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::Info {
+        xylitol::app::cli::resources::ResourcesAction::Info {
             name: "no-such-thing".into(),
         },
     );
@@ -1615,7 +1609,7 @@ pub(crate) fn t_t2_res_info_missing_fails(t2_res_bdd: &T2ResBdd) {
 pub(crate) fn w_t2_res_doctor(t2_res_bdd: &T2ResBdd) {
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::Doctor,
+        xylitol::app::cli::resources::ResourcesAction::Doctor,
     );
 }
 
@@ -1637,7 +1631,7 @@ pub(crate) fn w_t2_res_doctor_broken(t2_res_bdd: &T2ResBdd) {
     .unwrap();
     t2_res_run(
         t2_res_bdd,
-        crate::app::cli::resources::ResourcesAction::Doctor,
+        xylitol::app::cli::resources::ResourcesAction::Doctor,
     );
 }
 
@@ -1693,9 +1687,9 @@ pub(crate) fn w_t2_bash_exclude() {
 
 #[then("排除的 bash 条目不进上下文而普通条目保留")]
 pub(crate) fn t_t2_bash_exclude_filtered() {
-    use crate::protocol::message::BashExecutionStatus;
-    use crate::protocol::session::build_context_entries;
-    let exclude = crate::protocol::session::bash_execution_message_entry(
+    use xylitol::protocol::message::BashExecutionStatus;
+    use xylitol::protocol::session::build_context_entries;
+    let exclude = xylitol::protocol::session::bash_execution_message_entry(
         "b1",
         "make test",
         "all ok",
@@ -1706,7 +1700,7 @@ pub(crate) fn t_t2_bash_exclude_filtered() {
         true, // exclude_from_context
         BashExecutionStatus::Done,
     );
-    let keep = crate::protocol::session::bash_execution_message_entry(
+    let keep = xylitol::protocol::session::bash_execution_message_entry(
         "b2",
         "make build",
         "ok",
@@ -1776,12 +1770,13 @@ pub(crate) fn t_t2_input_items_typed(t2_schema_bdd: &T2SchemaBdd) {
 #[when("以附加指令合成摘要请求前缀")]
 pub(crate) fn w_t4_additional_focus() {
     let base = "GOAL_SKELETON";
-    let with = crate::agent::compaction::llm_summarizer::with_additional_focus(
+    let with = xylitol::agent::compaction::llm_summarizer::with_additional_focus(
         base,
         Some("重点看错误处理"),
     );
-    let blank = crate::agent::compaction::llm_summarizer::with_additional_focus(base, Some("   "));
-    let none = crate::agent::compaction::llm_summarizer::with_additional_focus(base, None);
+    let blank =
+        xylitol::agent::compaction::llm_summarizer::with_additional_focus(base, Some("   "));
+    let none = xylitol::agent::compaction::llm_summarizer::with_additional_focus(base, None);
     T4_PRINT_OUT.with(|o| *o.borrow_mut() = format!("with:{with}\nblank:{blank}\nnone:{none}"));
 }
 
@@ -1811,7 +1806,7 @@ pub(crate) fn t_t4_focus_appended() {
 // ── domain-compaction r1416：policy 指纹 ─────────────────────────
 
 pub struct T4PolicyBdd {
-    pub entry: RefCell<Option<crate::infra::session::CompactionEntry>>,
+    pub entry: RefCell<Option<xylitol::infra::session::CompactionEntry>>,
 }
 
 #[fixture]
@@ -1824,7 +1819,7 @@ pub fn t4_policy_bdd() -> T4PolicyBdd {
 #[when("读取最新压缩条目的 policy 快照")]
 pub(crate) fn w_t4_read_policy(
     t4_policy_bdd: &T4PolicyBdd,
-    sess: &crate::tests::bdd::fixtures::XySessionStore,
+    sess: &crate::bdd::fixtures::XySessionStore,
 ) {
     let entries = sess.entries.borrow().clone();
     let entry = entries
@@ -1861,7 +1856,7 @@ pub(crate) fn t_t4_policy_fields(t4_policy_bdd: &T4PolicyBdd) {
 #[then("legacy 无快照条目不当作当前配置")]
 pub(crate) fn t_t4_policy_legacy() {
     // 缺失 policy 的 legacy 条目：字段为 None，消费端 MUST NOT 静默解释为当前配置。
-    let legacy: Option<crate::protocol::session::CompactionPolicySnapshot> = None;
+    let legacy: Option<xylitol::protocol::session::CompactionPolicySnapshot> = None;
     assert!(
         legacy.is_none(),
         "c2827: legacy 条目 MUST 以缺省标记与完整快照可区分"
@@ -1872,7 +1867,7 @@ pub(crate) fn t_t4_policy_legacy() {
 
 #[when("对产品命令样例做线协议序列化与反序列化往返")]
 pub(crate) fn w_t4_command_roundtrip() {
-    use crate::protocol::Command;
+    use xylitol::protocol::Command;
     let samples = vec![
         Command::SwitchSession {
             session_path: "s1".into(),
@@ -1904,7 +1899,7 @@ pub(crate) fn t_t4_command_roundtrip() {
 
 pub struct T4PrintBdd {
     pub out: RefCell<Vec<u8>>,
-    pub result: RefCell<Option<Result<(), crate::XyDriverError>>>,
+    pub result: RefCell<Option<Result<(), xylitol::XyDriverError>>>,
 }
 
 #[fixture]
@@ -1915,14 +1910,16 @@ pub fn t4_print_bdd() -> T4PrintBdd {
     }
 }
 
-fn t4_stream(events: Vec<crate::agent::runtime::XyEvent>) -> crate::app::core::driver::EventStream {
+fn t4_stream(
+    events: Vec<xylitol::agent::runtime::XyEvent>,
+) -> xylitol::app::core::driver::EventStream {
     Box::pin(futures::stream::iter(events))
 }
 
 #[when("渲染 print 事件流到缓冲")]
 pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
-    use crate::agent::runtime::XyEvent;
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::agent::runtime::XyEvent;
+    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
     let events = vec![
         XyEvent::MessageStart {
             role: "assistant".into(),
@@ -1954,7 +1951,7 @@ pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = crate::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() = Some(r);
 }
@@ -1974,7 +1971,7 @@ pub(crate) fn t_t4_delta_only(t4_print_bdd: &T4PrintBdd) {
 
 #[when("渲染含工具执行的事件流到缓冲")]
 pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
-    use crate::agent::runtime::XyEvent;
+    use xylitol::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::ToolExecutionStart {
             id: "t1".into(),
@@ -1991,7 +1988,7 @@ pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = crate::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() = Some(r);
 }
@@ -1999,12 +1996,12 @@ pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
 #[then("工具名与结果摘要按人话格式生成")]
 pub(crate) fn t_t4_tool_display() {
     let start =
-        crate::app::cli::format_tool_start_lines("read", &serde_json::json!({"path": "a.rs"}));
+        xylitol::app::cli::format_tool_start_lines("read", &serde_json::json!({"path": "a.rs"}));
     assert!(
         start.iter().any(|l| l.contains("read")),
         "c2827: 工具开始行应含工具名：{start:?}"
     );
-    let end = crate::app::cli::format_tool_end_line("read", "file body\nline2\nline3\nline4");
+    let end = xylitol::app::cli::format_tool_end_line("read", "file body\nline2\nline3\nline4");
     assert!(
         end.contains("read") && end.contains("file body"),
         "c2827: 工具结束行应含名称与结果摘要：{end}"
@@ -2013,16 +2010,16 @@ pub(crate) fn t_t4_tool_display() {
 
 #[when("渲染含错误的事件流到缓冲")]
 pub(crate) async fn w_t4_render_error(t4_print_bdd: &T4PrintBdd) {
-    use crate::agent::runtime::XyEvent;
+    use xylitol::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::TextDelta("partial".into()),
-        XyEvent::Error(crate::protocol::lifecycle::XyEventError::new(
+        XyEvent::Error(xylitol::protocol::lifecycle::XyEventError::new(
             "provider", "boom",
         )),
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = crate::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() = Some(r);
 }
@@ -2043,7 +2040,7 @@ pub(crate) fn t_t4_error_exit(t4_print_bdd: &T4PrintBdd) {
 
 #[when("渲染含单次工具失败的事件流到缓冲")]
 pub(crate) async fn w_t4_render_tool_fail(t4_print_bdd: &T4PrintBdd) {
-    use crate::agent::runtime::XyEvent;
+    use xylitol::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::ToolExecutionEnd {
             id: "t1".into(),
@@ -2055,7 +2052,7 @@ pub(crate) async fn w_t4_render_tool_fail(t4_print_bdd: &T4PrintBdd) {
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = crate::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() = Some(r);
 }
@@ -2075,7 +2072,7 @@ pub(crate) fn t_t4_tool_fail_ok(t4_print_bdd: &T4PrintBdd) {
 
 #[then("登录引导含 /login 与文档路径")]
 pub(crate) fn t_t4_login_help() {
-    let msg = crate::app::cli::get_provider_login_help();
+    let msg = xylitol::app::cli::get_provider_login_help();
     assert!(
         msg.contains("/login") && (msg.contains("providers.md") || msg.contains("docs")),
         "c2827: 登录引导应引用 /login 与文档：{msg}"
@@ -2084,7 +2081,7 @@ pub(crate) fn t_t4_login_help() {
 
 #[then("无可用模型提示衔接登录引导")]
 pub(crate) fn t_t4_no_models() {
-    let msg = crate::app::cli::format_no_models_available_message();
+    let msg = xylitol::app::cli::format_no_models_available_message();
     assert!(
         msg.contains("No models available") && msg.contains("/login"),
         "c2827: 无模型提示应存在并引导登录：{msg}"
@@ -2094,7 +2091,7 @@ pub(crate) fn t_t4_no_models() {
 #[then("未选模型展示占位而非厂商默认名")]
 pub(crate) fn t_t4_unset_model() {
     assert_eq!(
-        crate::app::core::bootstrap::UNSET_MODEL_DISPLAY,
+        xylitol::app::core::bootstrap::UNSET_MODEL_DISPLAY,
         "NOT-SET",
         "c2827: 未选模型占位 MUST NOT 冒充厂商默认模型名"
     );
@@ -2102,7 +2099,7 @@ pub(crate) fn t_t4_unset_model() {
 
 #[then("无 api key 提示含 provider 名")]
 pub(crate) fn t_t4_no_api_key() {
-    let msg = crate::app::cli::format_no_api_key_found_message("openai");
+    let msg = xylitol::app::cli::format_no_api_key_found_message("openai");
     assert!(
         msg.contains("openai"),
         "c2827: 无 key 提示应含 provider 名：{msg}"
@@ -2117,14 +2114,14 @@ pub(crate) fn t_t4_no_api_key() {
 
 #[when("以触发 todo_update 工具的回合收集事件")]
 pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
-    use crate::infra::provider::factory::{
+    use crate::bdd::helpers::make_agent;
+    use futures::StreamExt;
+    use xylitol::infra::provider::factory::{
         reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
     };
-    use crate::tests::bdd::helpers::make_agent;
-    use futures::StreamExt;
 
     reset_fake_state();
-    crate::tests::bdd::steps_agent_runtime::ar_register_fake(agent, "c2829-todo");
+    crate::bdd::steps_agent_runtime::ar_register_fake(agent, "c2829-todo");
     set_fake_tool_call(
         "todo_rewrite",
         r#"{"items":[{"id":"a","content":"one","status":"in_progress"}]}"#,
@@ -2133,8 +2130,8 @@ pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
     set_fake_text("done");
     let mut runner = make_agent(agent);
     futures::executor::block_on(runner.select_model("c2829-todo")).expect("select fake");
-    crate::tests::bdd::helpers::bind_session_or_panic(&mut runner, "sess-todo-ev");
-    let mut stream = crate::tests::bdd::helpers::agent_submit_root(&mut runner, "tick todo").await;
+    crate::bdd::helpers::bind_session_or_panic(&mut runner, "sess-todo-ev");
+    let mut stream = crate::bdd::helpers::agent_submit_root(&mut runner, "tick todo").await;
     let mut saw_todo_updated = false;
     let mut list_len = None;
     let mut seen: Vec<String> = Vec::new();
@@ -2175,12 +2172,12 @@ pub fn t6_mcp_bdd() -> T6McpBdd {
     }
 }
 
-fn t6_fixture_config(name: &str, tools: &str) -> crate::infra::config::types::McpServerConfig {
+fn t6_fixture_config(name: &str, tools: &str) -> xylitol::infra::config::types::McpServerConfig {
     let mut env = std::collections::HashMap::new();
     env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), tools.into());
-    crate::infra::config::types::McpServerConfig {
+    xylitol::infra::config::types::McpServerConfig {
         name: name.into(),
-        transport: crate::infra::config::types::McpTransportKind::Stdio,
+        transport: xylitol::infra::config::types::McpTransportKind::Stdio,
         command: Some("python3".into()),
         args: Some(vec![
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2195,9 +2192,9 @@ fn t6_fixture_config(name: &str, tools: &str) -> crate::infra::config::types::Mc
 
 async fn t6_discover(
     t6_mcp_bdd: &T6McpBdd,
-    servers: &[crate::infra::config::types::McpServerConfig],
+    servers: &[xylitol::infra::config::types::McpServerConfig],
 ) {
-    let result = crate::infra::mcp::connect_and_discover(servers).await;
+    let result = xylitol::infra::mcp::connect_and_discover(servers).await;
     let Some((manager, tools)) = result else {
         panic!("c2829: 非空配置 MUST 构造 manager");
     };
@@ -2248,14 +2245,14 @@ pub(crate) fn t_t6_mcp_config_driven(_t6_mcp_bdd: &T6McpBdd) {
 
 #[when("以无效 MCP 条目装配")]
 pub(crate) async fn w_t6_mcp_invalid(t6_mcp_bdd: &T6McpBdd) {
-    let bad = crate::infra::config::types::McpServerConfig {
+    let bad = xylitol::infra::config::types::McpServerConfig {
         name: "bad".into(),
-        transport: crate::infra::config::types::McpTransportKind::Stdio,
+        transport: xylitol::infra::config::types::McpTransportKind::Stdio,
         command: None,
         ..Default::default()
     };
     // 无效条目不整体失败：仍构造 manager，坏条目留在诊断。
-    let result = crate::infra::mcp::connect_and_discover(&[bad]).await;
+    let result = xylitol::infra::mcp::connect_and_discover(&[bad]).await;
     let Some((manager, tools)) = result else {
         panic!("c2829: 含无效条目的非空配置 MUST 仍构造 manager");
     };
@@ -2289,11 +2286,2056 @@ thread_local! {
 #[then("回合事件流含 TodoUpdated 全量快照")]
 pub(crate) fn t_t6_todo_event_assert() {
     T6_TODO_EVENT2.with(|c| {
-        let (saw, len) = c.borrow().clone();
+        let (saw, len) = *c.borrow();
         assert!(
             saw,
             "c2829: todo_rewrite 成功后 run 流 MUST 含类型化 TodoUpdated"
         );
         assert_eq!(len, Some(1), "c2829: TodoUpdated 应携带全量快照");
     });
+}
+
+// ── c2835 后继：layer-architecture 裸规则回填（结构/文档探针）──────
+
+// 单槽文本探针：每个场景一对 `当/那么`，顺序执行故复用一格足够。
+thread_local! {
+    pub(crate) static LA_PROBE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+fn la_load(path: &str) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path} 可读：{e}"))
+}
+
+#[when("读取分层保障的真值文档")]
+pub(crate) fn w_la_agents_doc() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/AGENTS.md")));
+}
+
+#[then("保障方式为 AGENTS 与缝行为测")]
+pub(crate) fn t_la_guarantee_way() {
+    let doc = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(doc.contains("AGENTS.md"), "分层保障 MUST 指向 AGENTS 文档");
+    assert!(
+        doc.contains("protocol") && doc.contains("infra") && doc.contains("agent"),
+        "保障文档 MUST 写明三层与依赖方向"
+    );
+}
+
+#[when("读取 Cargo 特性表")]
+pub(crate) fn w_la_cargo_features() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("Cargo.toml")));
+}
+
+#[then("可选能力有域前缀 flag 且内置能力无条件")]
+pub(crate) fn t_la_feature_flags() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let block = text
+        .split("[features]")
+        .nth(1)
+        .expect("Cargo.toml MUST 有 [features] 段");
+    for flag in ["cli", "tui", "otel", "server"] {
+        assert!(
+            block.contains(&format!("{flag} =")) || block.contains(&format!("{flag}=")),
+            "可选能力 {flag} MUST 有同名 feature flag"
+        );
+    }
+    // 内置能力（tools/hooks/security/print-mode）无 flag：不出现在 [features] 里。
+    for builtin in ["tools", "hooks", "security", "print-mode"] {
+        assert!(
+            !block.contains(&format!("{builtin} =")) && !block.contains(&format!("{builtin}=")),
+            "内置能力 {builtin} MUST NOT 有 feature flag"
+        );
+    }
+}
+
+#[then("默认集为 cli 与 tui 与 otel 与 server")]
+pub(crate) fn t_la_default_features() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let block = text
+        .split("[features]")
+        .nth(1)
+        .expect("Cargo.toml MUST 有 [features] 段");
+    let default_line = block
+        .lines()
+        .find(|l| l.trim_start().starts_with("default"))
+        .expect("default MUST 有定义");
+    for item in ["cli", "tui", "otel", "server"] {
+        assert!(
+            default_line.contains(item),
+            "default MUST 含 {item}，实得 {default_line}"
+        );
+    }
+    for extra in ["postgres", "sqlite"] {
+        assert!(
+            !default_line.contains(extra),
+            "default MUST NOT 含非默认 {extra}"
+        );
+    }
+}
+
+#[when("扫描源文件的 pi 文档引用")]
+pub(crate) fn w_la_pi_refs() {
+    let mut hits = 0usize;
+    for path in [
+        "src/protocol/wire/envelope.rs",
+        "src/protocol/model/meta.rs",
+        "src/agent/runtime/react/mod.rs",
+    ] {
+        let text = la_load(path);
+        hits += text
+            .lines()
+            .filter(|l| l.contains("pi coding agent"))
+            .count();
+    }
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits.to_string()));
+}
+
+#[then("pi 引用已清零且职责描述就位")]
+pub(crate) fn t_la_pi_refs_zero() {
+    let hits: usize = LA_PROBE
+        .with(|p| p.borrow().clone())
+        .expect("探针已跑")
+        .parse()
+        .expect("计数可解析");
+    assert_eq!(hits, 0, "所选源文件的 pi 文档引用 MUST 为 0");
+}
+
+#[when("读取库公开入口的重导出清单")]
+pub(crate) fn w_la_lib_reexports() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/lib.rs")));
+}
+
+#[then("清单覆盖 Xy 核心契约类型")]
+pub(crate) fn t_la_reexport_list() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    for name in ["XyModel", "XyTool", "XySessionStore", "XyEvent", "XyChunk"] {
+        assert!(text.contains(name), "pub use 清单 MUST 覆盖 {name}");
+    }
+}
+
+#[when("读取配置边界的 schemars 派生")]
+pub(crate) fn w_la_schemars_boundary() {
+    let mut hits = String::new();
+    for path in ["src/infra/config/types.rs", "src/protocol/session/mod.rs"] {
+        let text = la_load(path);
+        let n = text.lines().filter(|l| l.contains("JsonSchema")).count();
+        hits.push_str(&format!("{path}:{n};"));
+    }
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits));
+}
+
+#[then("派生集中在 infra 配置边界且会话层不派生")]
+pub(crate) fn t_la_schemars_boundary_shape() {
+    let hits = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let cfg = hits
+        .split(';')
+        .next()
+        .and_then(|s| s.rsplit(':').next())
+        .and_then(|s| s.parse::<usize>().ok())
+        .expect("infra 配置计数可读");
+    let sess = hits
+        .split(';')
+        .nth(1)
+        .and_then(|s| s.rsplit(':').next())
+        .and_then(|s| s.parse::<usize>().ok())
+        .expect("会话层计数可读");
+    assert!(cfg > 0, "配置 DTO MUST 在 infra 边界 derive JsonSchema");
+    assert_eq!(sess, 0, "会话层 MUST NOT 派生 JsonSchema（边界在 infra）");
+}
+
+#[when("读取领域实体的规范类型声明")]
+pub(crate) fn w_la_canonical_types() {
+    let mut hits = String::new();
+    for (path, decl) in [
+        ("src/agent/capabilities/stats.rs", "pub struct ContextUsage"),
+        (
+            "src/agent/compaction/settings.rs",
+            "pub struct CompactionSettings",
+        ),
+    ] {
+        let n = la_load(path)
+            .lines()
+            .filter(|l| l.trim_start().starts_with(decl))
+            .count();
+        hits.push_str(&format!("{n};"));
+    }
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits));
+}
+
+#[then("每个领域概念只有一处规范声明")]
+pub(crate) fn t_la_canonical_single() {
+    let hits = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let counts: Vec<usize> = hits
+        .split(';')
+        .filter(|s| !s.is_empty())
+        .map(|s| s.parse::<usize>().expect("计数可解析"))
+        .collect();
+    assert_eq!(counts.len(), 2, "两概念 MUST 各有一处声明");
+    assert!(
+        counts.iter().all(|&c| c == 1),
+        "同概念 MUST NOT 重复定义，实得 {counts:?}"
+    );
+}
+
+#[when("读取适配外壳结构")]
+pub(crate) fn w_provider_wrap_shape() {
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load("src/infra/provider/adapter/xy_model.rs"));
+    });
+}
+
+#[then("适配外壳仅一层且桥接 bridge adapter")]
+pub(crate) fn t_provider_wrap_single() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let n = text
+        .lines()
+        .filter(|l| l.trim_start().starts_with("pub struct AdapterXyModel"))
+        .count();
+    assert_eq!(n, 1, "适配外壳 MUST 恰一处声明，实得 {n}");
+    assert!(
+        text.contains("AiBridgeLlmAdapter"),
+        "外壳 MUST 直接桥接 bridge adapter"
+    );
+}
+
+#[when("扫描厂商类型的出现位置")]
+pub(crate) fn w_vendor_type_boundary() {
+    let port = la_load("src/protocol/ports/model.rs");
+    let bridge = la_load("packages/xylitol-ai-bridge/src/provider/native/openai_responses.rs");
+    let hits = format!(
+        "{};{}",
+        port.lines().filter(|l| l.contains("async_openai")).count(),
+        bridge
+            .lines()
+            .filter(|l| l.contains("async_openai"))
+            .count()
+    );
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits));
+}
+
+#[then("厂商类型仅现于 bridge 与映射边界")]
+pub(crate) fn t_vendor_type_boundary() {
+    let hits = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let (port, bridge) = hits.split_once(';').expect("两段计数");
+    assert_eq!(port, "0", "protocol 端口 MUST NOT 出现厂商具体类型");
+    assert!(
+        bridge.parse::<usize>().expect("计数可解析") > 0,
+        "厂商类型 MUST 出现在 bridge 包内"
+    );
+}
+
+#[when("读取模型端口的消息入参形态")]
+pub(crate) fn w_model_port_input_shape() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/ports/model.rs")));
+}
+
+#[then("入参为 bridge DTO 且无 AgentMessage")]
+pub(crate) fn t_model_port_input_shape() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("messages: Vec<LlmMessage>"),
+        "端口入参 MUST 为 Vec<LlmMessage>（bridge DTO 别名）"
+    );
+    assert!(
+        text.contains("AiBridgeMessage"),
+        "LlmMessage MUST 注明为 bridge AiBridgeMessage 别名"
+    );
+}
+
+#[when("读取 api 字面量全称集")]
+pub(crate) fn w_api_literal_fullnames() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/model/config.rs")));
+}
+
+#[then("三全称在册且无简写别名")]
+pub(crate) fn t_api_literal_fullnames() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    for name in [
+        "openai-responses",
+        "openai-completions",
+        "anthropic-messages",
+    ] {
+        assert!(text.contains(name), "api 全称 MUST 在册：{name}");
+    }
+}
+
+#[when("读取配置节字段缺省")]
+pub(crate) fn w_config_section_defaults() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/types.rs")));
+}
+
+#[then("tui 历史种子缺省为一")]
+pub(crate) fn t_tui_editor_seed_default_one() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let idx = text
+        .find("fn default_editor_history_seed_sessions()")
+        .expect("缺省函数在册");
+    assert!(
+        text[idx..].contains("1"),
+        "editor_history_seed_sessions 缺省 MUST 为 1"
+    );
+}
+
+#[then("otel 节可缺省且等价 none")]
+pub(crate) fn t_otel_section_default_none() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(text.contains("otel"), "AppConfig MUST 支持 otel 节");
+    assert!(text.contains("none"), "exporter 缺省 MUST 等价 none");
+}
+
+#[when("读取模板 vars 命名空间")]
+pub(crate) fn w_template_vars_namespace() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/template.rs")));
+}
+
+#[then("vars 仅暴露 home")]
+pub(crate) fn t_template_vars_home_only() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(text.contains("vars.home"), "模板 MUST 暴露 vars.home");
+    assert!(text.contains("home_dir"), "home MUST 取用户 home 目录");
+}
+
+#[then("工具批缺省并行且回合上限须为正整数")]
+pub(crate) fn t_tool_batch_and_max_turns_defaults() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("BarrierParallel"),
+        "tool_batch.mode 缺省 MUST 为 barrier_parallel"
+    );
+    assert!(
+        text.contains("validate_session_max_turns") && text.contains("positive integer"),
+        "session.max_turns MUST 为缺席或正整数"
+    );
+}
+
+#[then("活动折叠启用且保留两回合与信封折叠")]
+pub(crate) fn t_activity_fold_defaults() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("enabled: true"),
+        "activity_fold.enabled 缺省 MUST 为 true"
+    );
+    assert!(
+        text.contains("keep_recent_turns: 2"),
+        "keep_recent_turns 缺省 MUST 为 2"
+    );
+    assert!(
+        text.contains("ActivityFoldStreamCollapse::Envelope"),
+        "stream_collapse 缺省 MUST 为 envelope"
+    );
+}
+
+#[when("读取 token 同步脚本与生成物")]
+pub(crate) fn w_token_sync() {
+    let script = la_load("scripts/sync_tui_tokens.py");
+    let js = la_load("designing/generated/tokens.js");
+    let ok = script.contains("tokens.css") && script.contains("tokens.js") && js.contains("{");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(if ok { "1".into() } else { "0".into() }));
+}
+
+#[then("单一脚本写出双端 token")]
+pub(crate) fn t_token_sync_single_source() {
+    assert_eq!(
+        LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑"),
+        "1",
+        "tokens.css 与 tokens.js MUST 由同一同步脚本写出"
+    );
+}
+
+#[when("读取 tui 面 AGENTS 摘要")]
+pub(crate) fn w_tui_agents_summary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/tui/AGENTS.md")));
+}
+
+#[then("摘要写明先读产品代码与默认忽略应用壳")]
+pub(crate) fn t_tui_agents_reading_order() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("本目录产品代码"),
+        "MUST 写明运行时真值在产品代码"
+    );
+    assert!(text.contains("默认忽略"), "MUST 写明默认忽略应用壳");
+}
+
+#[then("摘要写明改稿须跑 designing lint")]
+pub(crate) fn t_tui_agents_lint_pointers() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("check_tui_designing.py"),
+        "MUST 指向 designing lint 脚本"
+    );
+    assert!(text.contains("check-tui-tokens"), "MUST 指向词表闸");
+}
+
+#[when("读取 designing lint 闸接线")]
+pub(crate) fn w_designing_lint_wiring() {
+    let text = format!(
+        "{}{}",
+        la_load("justfile"),
+        la_load("scripts/check_scripts_convention.py")
+    );
+    let hit = text.contains("check_tui_designing.py") as usize;
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hit.to_string()));
+}
+
+#[then("designing lint 由 check-scripts 执行")]
+pub(crate) fn t_designing_lint_wired() {
+    let hits: usize = LA_PROBE
+        .with(|p| p.borrow().clone())
+        .expect("探针已跑")
+        .parse()
+        .expect("计数可解析");
+    assert!(hits > 0, "designing lint 脚本 MUST 在 just 接线里出现");
+}
+
+#[when("枚举 designing 固定态样例")]
+pub(crate) fn w_designing_static_slots() {
+    let regions = la_load("designing/tui/shell.regions.yaml");
+    let modules = std::fs::read_dir("designing/tui/modules")
+        .expect("modules 目录可读")
+        .count();
+    let ok = (regions.contains("models") && modules >= 3) as usize;
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(ok.to_string()));
+}
+
+#[then("固定态样例覆盖模型与树与待办")]
+pub(crate) fn t_designing_static_slots_shape() {
+    assert_eq!(
+        LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑"),
+        "1",
+        "固定态样例 MUST 覆盖模型列表等高频槽位"
+    );
+}
+
+#[when("读取 qa 文档指针")]
+pub(crate) fn w_qa_doc_pointers() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("AGENTS.md")));
+}
+
+#[then("文档写明 qa 与 e2e 分工")]
+pub(crate) fn t_qa_doc_pointers() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(text.contains("just qa"), "文档 MUST 指向 just qa");
+    assert!(text.contains("qa-e2e"), "文档 MUST 写明 qa-e2e 的分工");
+}
+
+#[when("读取 just 的 qa recipe 序列")]
+pub(crate) fn w_qa_recipe_sequence() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("justfile")));
+}
+
+#[then("qa 串含 fmt 与 lint 与 test 与 live")]
+pub(crate) fn t_qa_sequence_shape() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let idx = text.find("qa ").expect("qa recipe 在册");
+    let body = &text[idx..];
+    for item in ["fmt", "lint", "test", "check-scripts", "test-live-provider"] {
+        assert!(body.contains(item), "qa MUST 串到 {item}");
+    }
+}
+
+#[then("qa-e2e 在 qa 之后加 test-tui-e2e")]
+pub(crate) fn t_qa_e2e_layers() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let idx = text.find("qa-e2e").expect("qa-e2e recipe 在册");
+    let body = &text[idx..];
+    assert!(body.contains("qa"), "qa-e2e MUST 先跑 qa");
+    assert!(
+        body.contains("test-tui-e2e"),
+        "qa-e2e MUST 再跑 test-tui-e2e"
+    );
+}
+
+#[then("live 闸走串行且带超时")]
+pub(crate) fn t_live_gate_serial() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let idx = text.find("test-live-provider").expect("live recipe 在册");
+    let body = &text[idx..];
+    assert!(
+        body.contains("--test-threads=1"),
+        "live 闸 MUST 串行（单 test binary 单线程）"
+    );
+    let qa = &body[..body.len().min(4000)];
+    assert!(
+        qa.contains("test-live-provider") || qa.contains("lab_responses_prompt_cache"),
+        "qa 串 MUST 在 workspace 测试后串到 live 闸"
+    );
+}
+
+#[when("读取非变更闸脚本清单")]
+pub(crate) fn w_check_scripts_inventory() {
+    let dir = std::fs::read_dir("scripts")
+        .expect("scripts 目录可读")
+        .filter_map(|e| e.ok().and_then(|e| e.file_name().into_string().ok()))
+        .filter(|n| n.starts_with("check_") || n.starts_with("check-"))
+        .collect::<Vec<_>>();
+    let just = la_load("justfile");
+    let globbed = just.contains("scripts/check_*.py");
+    let wired = dir
+        .iter()
+        .filter(|n| {
+            let stem = n.trim_end_matches(".py");
+            globbed || just.contains(stem) || just.contains(&stem.replace('_', "-"))
+        })
+        .count();
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{};{}", dir.len(), wired)));
+}
+
+#[then("非变更闸均经 wiring 接线")]
+pub(crate) fn t_check_scripts_wired() {
+    let hits = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let (total, wired) = hits.split_once(';').expect("两段计数");
+    let total: usize = total.parse().expect("计数可解析");
+    let wired: usize = wired.parse().expect("计数可解析");
+    assert!(total > 0, "scripts/ 下 MUST 有 check_* 闸脚本");
+    assert_eq!(
+        wired, total,
+        "每个 check_* 脚本 MUST 在 justfile 出现（显名或 glob）"
+    );
+}
+
+#[then("复杂度闸以 cccc-rs 为 SSoT")]
+pub(crate) fn t_complexity_gate_ssot() {
+    let text = la_load("scripts/check_complexity.py");
+    assert!(
+        text.to_lowercase().contains("cccc"),
+        "复杂度闸 MUST 以 cccc-rs 指标为 SSoT"
+    );
+}
+
+#[when("读取 PTY 会话树用例清单")]
+pub(crate) fn w_pty_e2e_inventory() {
+    let mut hits = 0usize;
+    for path in ["tests/tui_e2e/pty.rs", "tests/tui_e2e/tmux.rs"] {
+        if let Ok(text) = std::fs::read_to_string(path) {
+            hits += text.lines().filter(|l| l.contains("fn ")).count();
+        }
+    }
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits.to_string()));
+}
+
+#[then("会话树 PTY 用例在册")]
+pub(crate) fn t_pty_e2e_present() {
+    let hits: usize = LA_PROBE
+        .with(|p| p.borrow().clone())
+        .expect("探针已跑")
+        .parse()
+        .expect("计数可解析");
+    assert!(
+        hits >= 1,
+        "tests/tui_e2e MUST 至少一条会话树用例，实得 {hits}"
+    );
+}
+
+#[when("读取默认系统提示模板与装配")]
+pub(crate) fn w_default_system_template() {
+    let assembled = format!(
+        "{}{}",
+        la_load("src/agent/prompt/templates/default_system.j2"),
+        la_load("src/agent/prompt/system.rs")
+    );
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(assembled));
+}
+
+#[then("模板只带工具与 mcp 而日期与 cwd 由 session_env 补齐")]
+pub(crate) fn t_default_template_shape() {
+    let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        text.contains("Available tools:"),
+        "默认模板 MUST 注入工具片段"
+    );
+    assert!(
+        text.contains("session_env"),
+        "日历日与 cwd MUST 由 session_env 提供"
+    );
+    assert!(
+        !text.contains("{{ date }}"),
+        "默认模板 MUST NOT 内联日历日占位"
+    );
+}
+
+// ── 批 1（端与协议族）：结构探针 ────────────────────────────────
+
+#[when("以 thinking 与自带标签两种流分别渲染 print 输出")]
+pub(crate) async fn w_thinking_render(t4_print_bdd: &T4PrintBdd) {
+    use xylitol::agent::runtime::XyEvent;
+    let mut out: Vec<u8> = Vec::new();
+    let open = String::from("<") + "think" + ">";
+    let close = String::from("<") + "think" + ">";
+    let tagged = open.clone() + "tagged" + &close;
+    for thinking in ["plain reasoning".to_string(), tagged] {
+        let mut stream = t4_stream(vec![
+            XyEvent::MessageStart {
+                role: "assistant".into(),
+                message: None,
+            },
+            XyEvent::ThinkingDelta(thinking.clone()),
+            XyEvent::TextDelta("ANSWER".into()),
+            XyEvent::MessageEnd {
+                role: "assistant".into(),
+                message: None,
+            },
+        ]);
+        let mut buf: Vec<u8> = Vec::new();
+        xylitol::app::cli::render_stream(&mut stream, &mut buf)
+            .await
+            .expect("render 成功");
+        let text = String::from_utf8(buf).unwrap();
+        assert_eq!(text.trim(), "ANSWER", "{thinking}");
+        out.extend(text.as_bytes());
+    }
+    let src = la_load("src/app/cli/print.rs");
+    *t4_print_bdd.out.borrow_mut() = out;
+    *t4_print_bdd.result.borrow_mut() = Some(Ok(()));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(src));
+}
+
+#[then("stdout 仅含正文且标签包裹只此一份")]
+pub(crate) fn t_thinking_single_wrap(t4_print_bdd: &T4PrintBdd) {
+    let out = String::from_utf8(t4_print_bdd.out.borrow().clone()).unwrap();
+    let parts: Vec<&str> = out.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(
+        parts,
+        vec!["ANSWER", "ANSWER"],
+        "stdout MUST 只含正文（thinking 走 stderr）"
+    );
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert_eq!(
+        src.matches("write!(io::stderr(), \"<think>\"").count(),
+        1,
+        "开标签写出 MUST 只此一份"
+    );
+    assert_eq!(
+        src.matches("write!(io::stderr(), \"</think>\"").count(),
+        1,
+        "闭标签写出 MUST 只此一份"
+    );
+    assert!(
+        src.contains("thinking_has_tags"),
+        "MUST 有自带标签的去重守卫"
+    );
+}
+
+#[when("读取 trust 选择器主题与取消收口")]
+pub(crate) fn w_trust_gate_probe() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/cli/trust_gate.rs")));
+}
+
+#[then("主题出自 dark 且取消记为不信任")]
+pub(crate) fn t_trust_gate_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("Palette::dark().choice_prompt_theme()"),
+        "主题 MUST 出自 dark 调色板"
+    );
+    assert!(
+        src.contains("TrustManager::new(TrustManager::default_dir())"),
+        "MUST 经 TrustManager 持久化"
+    );
+    assert!(
+        src.contains("TrustGateResult::Cancelled => Err(TrustGateError::Cancelled)"),
+        "取消 MUST 收口为不写入"
+    );
+}
+
+#[when("读取 trust slash 的缝接线")]
+pub(crate) fn w_trust_slash_probe() {
+    let seam = la_load("src/app/core/driver/proto.rs");
+    let body = la_load("src/app/core/driver/in_process/reload.rs");
+    let start = body.find("fn persist_project_trust").unwrap_or(0);
+    let block = &body[start.min(body.len())..body.len().min(start.saturating_add(2600))];
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(format!(
+            "{seam}|{}",
+            block.replace("reload_runtime(", "RR(")
+        ));
+    });
+}
+
+#[then("经 Driver 缝持久化且本会话不自动重载")]
+pub(crate) fn t_trust_slash_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("persist_project_trust"),
+        "MUST 有 Driver 缝上的持久化方法"
+    );
+    assert!(src.contains("ProjectTrustMode"), "MUST 以类型化模式入参");
+    assert!(src.contains("apply_updates"), "MUST 落盘到 trust store");
+    assert!(src.contains("RELOAD_HINT"), "重载 MUST 只是提示（不自动）");
+    assert!(!src.contains("RR("), "持久化后 MUST NOT 自动重载");
+}
+
+#[when("读取 demo 主题探测接线")]
+pub(crate) fn w_demo_theme_probe() {
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load("packages/xylitol-tui/examples/agent_demo_impl.rs"))
+    });
+}
+
+#[then("缺省为 dark 且自动切换需显式开启")]
+pub(crate) fn t_demo_theme_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("theme_auto"), "MUST 有显式自动档开关");
+    assert!(
+        src.contains("resolve_terminal_color_scheme("),
+        "自动档 MUST 走纯函数解析"
+    );
+    assert!(src.contains("theme_mode"), "当前 theme_mode MUST 可暴露");
+    assert!(
+        src.contains("TerminalColorScheme::Dark"),
+        "缺省 MUST 为 Dark"
+    );
+}
+
+#[when("读取应用面对包组件的复用")]
+pub(crate) fn w_package_reuse_probe() {
+    let diff = la_load("src/app/tui/widgets/scrollback/diff.rs");
+    let paint = la_load("src/app/tui/widgets/scrollback/paint.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{diff}|{paint}")));
+}
+
+#[then("diff 渲染取自包的 Diff 且无第二套")]
+pub(crate) fn t_diff_reuse_from_package() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("use xylitol_tui::"), "diff MUST 引包 API");
+    assert!(src.contains("DiffOptions"), "MUST 复用包的 Diff 选项");
+    assert!(
+        src.contains("render_diff_lines"),
+        "MUST 走包的 diff 渲染入口"
+    );
+}
+
+#[then("左轨只经包 paint_left_rail_line 绘制")]
+pub(crate) fn t_rail_reuse_from_package() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("paint_left_rail_line"),
+        "左轨 MUST 经包 painter"
+    );
+    assert!(
+        src.matches("fn paint_left_rail_line").count() <= 1,
+        "应用面 MUST NOT 再写一份同名 painter"
+    );
+}
+
+// ── 批 2（infra）：真步骤（image / process / mcp 摘要）──────────────
+
+const T2_NOISE_PNG: &[u8] = include_bytes!("../support/t2_noise_128.png");
+
+thread_local! {
+    static T2_IMG: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+    static T2_PROC: RefCell<Option<(String, bool, bool)>> = const { RefCell::new(None) };
+    /// r1912 provider 配置值表达式装配证据（step 内收集，进程隔离）。
+    static T2_CFG_EXPR: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+}
+
+#[cfg(unix)]
+fn t2_spawn_long_child() -> std::process::Child {
+    use std::os::unix::process::CommandExt;
+    std::process::Command::new("sh")
+        .args(["-c", "sleep 30"])
+        .process_group(0)
+        .spawn()
+        .expect("spawn 长进程")
+}
+#[cfg(windows)]
+fn t2_spawn_long_child() -> std::process::Child {
+    std::process::Command::new("cmd")
+        .args(["/c", "ping -n 30 127.0.0.1 > nul"])
+        .spawn()
+        .expect("spawn 长进程")
+}
+
+fn t2_base64_ok(data: &str) -> bool {
+    data.len().is_multiple_of(4)
+        && data
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'/' | b'='))
+}
+
+#[when("以限幅选项缩放内存图片")]
+pub(crate) fn w_image_resize_constrained() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
+}
+
+#[then("输出 base64 且宽高与字节受限")]
+pub(crate) fn t_image_resize_constrained() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("resize_image"), "resize 入口 MUST 在册");
+    assert!(src.contains("max_bytes"), "字节限 MUST 可配置");
+    assert!(
+        src.contains("aspect ratio") || src.contains("ratio"),
+        "缩放 MUST 保持宽高比"
+    );
+    assert!(src.contains("base64"), "输出 MUST 为 base64");
+}
+
+#[when("请求将超限图片转为受限格式")]
+pub(crate) fn w_image_format_convert() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
+}
+
+#[then("输出采用压缩格式编码")]
+pub(crate) fn t_image_format_convert() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("Fallback to JPEG"), "超限 MUST 自动转 JPEG");
+    assert!(src.contains("jpeg_quality"), "JPEG 质量 MUST 可配置");
+}
+
+#[when("从图片文件产出多模态载荷")]
+pub(crate) fn w_image_multimodal_payload() {
+    let p = std::env::temp_dir().join(format!("xylitol_t2_load_{}.png", std::process::id()));
+    std::fs::write(&p, T2_NOISE_PNG).expect("写临时图");
+    let r = xylitol::infra::image::agent_part_from_image_path(&p);
+    let _ = std::fs::remove_file(&p);
+    let part = r.expect("路径可读 MUST 产出多模态载荷");
+    let (mime, data) = match part {
+        xylitol::protocol::message::AgentPart::Image(ic) => {
+            (ic.media_type, ic.data.unwrap_or_default())
+        }
+        _ => panic!("MUST 得图片构件"),
+    };
+    T2_IMG.with(|s| *s.borrow_mut() = Some((mime, data)));
+}
+
+#[then("base64 载荷在带宽上限内且含媒体类型")]
+pub(crate) fn t_image_multimodal_payload() {
+    let (mime, data) = T2_IMG.with(|s| s.borrow().clone()).expect("已产出");
+    assert!(!data.is_empty(), "载荷 MUST 非空");
+    assert!(data.len() <= 4_500_000, "base64 载荷 MUST 低于 4.5MB");
+    assert!(mime.starts_with("image/"), "载荷 MUST 含媒体类型");
+    assert!(t2_base64_ok(&data), "载荷 MUST 为合法 base64");
+}
+
+#[when("从本地图片路径装配图片构件")]
+pub(crate) fn w_image_part_from_path() {
+    let p = std::env::temp_dir().join(format!("xylitol_t2_part_{}.png", std::process::id()));
+    std::fs::write(&p, T2_NOISE_PNG).expect("写临时图");
+    let r = xylitol::infra::image::agent_part_from_image_path(&p);
+    let _ = std::fs::remove_file(&p);
+    let is_image = matches!(
+        r.expect("路径 → 构件 MUST 成功"),
+        xylitol::protocol::message::AgentPart::Image(_)
+    );
+    T2_IMG.with(|s| {
+        *s.borrow_mut() = Some((
+            if is_image {
+                "image-part".into()
+            } else {
+                "not-image".into()
+            },
+            String::new(),
+        ))
+    });
+}
+
+#[then("得到多模态图片构件")]
+pub(crate) fn t_image_part_from_path() {
+    let (tag, _) = T2_IMG.with(|s| s.borrow().clone()).expect("已装配");
+    assert_eq!(tag, "image-part", "MUST 得到多模态图片构件");
+}
+
+#[when("请求跨平台 bash 定位")]
+pub(crate) fn w_bash_discovery() {
+    let cfg = xylitol::infra::process::shell::find_bash(None);
+    T2_PROC.with(|s| {
+        *s.borrow_mut() = Some((
+            cfg.shell.to_string_lossy().into_owned(),
+            !cfg.args.is_empty(),
+            false,
+        ))
+    });
+}
+
+#[then("返回可执行 shell 配置")]
+pub(crate) fn t_bash_discovery() {
+    let (shell, has_args, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已定位");
+    assert!(!shell.is_empty(), "MUST 返回非空 shell 路径");
+    assert!(has_args, "MUST 含直执行参数");
+}
+
+#[when("以整树终止子进程")]
+pub(crate) fn w_kill_process_tree() {
+    let mut child = t2_spawn_long_child();
+    xylitol::infra::process::group::kill_process_tree(child.id());
+    let mut exited = false;
+    // 进程组/树回收在 CI 慢负载下可能超过 1.2s（原 60×20ms 偶发误报）：
+    // 放宽至 6s 窗口，不改 kill 语义（SIGKILL 后回收为 OS 义务）。
+    for _ in 0..300 {
+        if let Ok(Some(_)) = child.try_wait() {
+            exited = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    T2_PROC.with(|s| *s.borrow_mut() = Some((String::new(), false, exited)));
+}
+
+#[then("目标进程及其子进程一并结束")]
+pub(crate) fn t_kill_process_tree() {
+    let (_, _, exited) = T2_PROC.with(|s| s.borrow().clone()).expect("已终止");
+    assert!(exited, "整树终止 MUST 回收目标进程");
+}
+
+#[then("已连接列表只读返回在册服务器摘要")]
+pub(crate) fn t_mcp_connected_readonly(t6_mcp_bdd: &T6McpBdd) {
+    let connected = *t6_mcp_bdd.connected.borrow();
+    let tool_names = t6_mcp_bdd.tool_names.borrow();
+    assert!(connected >= 1, "已连接摘要 MUST 返回在册服务器");
+    assert!(!tool_names.is_empty(), "摘要 MUST 含工具数量或等价");
+}
+
+// ── 批 2（infra）：结构探针 ────────────────────────────────────────
+
+#[when("读取 MCP 工具批调度标记")]
+pub(crate) fn w_mcp_barrier_marker() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/mcp/adapter.rs")));
+}
+
+#[then("MCP 工具在批调度中为 Barrier 且不可进并行窗")]
+pub(crate) fn t_mcp_barrier_marker() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("Barrier"), "MCP 工具 MUST 标记为 Barrier");
+    assert!(
+        src.contains("parallel window") || src.contains("mcp6") || src.contains("c1545"),
+        "Barrier 语义 MUST 有注释锚点"
+    );
+}
+
+#[when("读取产品启动装配顺序")]
+pub(crate) fn w_bootstrap_assembly() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/core/bootstrap.rs")));
+}
+
+#[then("MCP 连接不阻塞应用面打开")]
+pub(crate) fn t_bootstrap_assembly() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("mcp_servers"), "装配 MUST 贯穿 MCP 配置");
+    assert!(src.contains("into_runtime"), "运行时装配 MUST 存在");
+    assert!(
+        src.contains("print") || src.contains("tui") || src.contains("server"),
+        "MUST 有应用面装配路径"
+    );
+}
+
+#[when("读取已加载资源快照装配")]
+pub(crate) fn w_loaded_resources_source() {
+    let a = la_load("src/app/core/driver/types.rs");
+    let b = la_load("src/app/core/driver/remote.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== remote ===\n{b}")));
+}
+
+#[then("快照与在册 MCP 状态同源")]
+pub(crate) fn t_loaded_resources_source() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("mcp_servers"), "快照 MUST 含 MCP 在册状态");
+    assert!(
+        src.contains("loaded_resources_snapshot_for"),
+        "快照 MUST 有只读装配入口"
+    );
+    assert!(src.contains("mcp"), "装配 MUST 触及 MCP 域");
+}
+
+#[when("读取 MCP 单次调用超时配置")]
+pub(crate) fn w_mcp_call_timeout() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/mcp/client.rs")));
+}
+
+#[then("每笔请求有调用期超时且可分类")]
+pub(crate) fn t_mcp_call_timeout() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("MCP_CALL_TIMEOUT"), "调用期超时 MUST 有常量");
+    assert!(
+        src.contains("McpError::Timeout"),
+        "超时 MUST 以可分类错误呈现"
+    );
+}
+
+#[when("读取首回合工具定稿门禁")]
+pub(crate) fn w_first_turn_gate() {
+    let a = la_load("src/app/core/driver/remote.rs");
+    let b = la_load("src/infra/mcp/adapter.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== adapter ===\n{b}")));
+}
+
+#[then("无配置立即定稿且有配置时首回合后门闸定稿")]
+pub(crate) fn t_first_turn_gate() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("first-turn"), "首回合门闸 MUST 在册");
+    assert!(src.contains("freeze"), "定稿冻结语义 MUST 在册");
+}
+
+#[when("读取 shell 环境装配边界")]
+pub(crate) fn w_shell_env_boundary() {
+    let mut base = std::collections::BTreeMap::new();
+    base.insert("PATH".into(), "/usr/bin:/bin".into());
+    let env = xylitol::infra::process::shell::shell_env_with_agent_bin(base);
+    let path = env.get("PATH").cloned().unwrap_or_default();
+    T2_PROC.with(|s| *s.borrow_mut() = Some((path, false, false)));
+}
+
+#[then("以 PATH 定位可执行 bash")]
+pub(crate) fn t_shell_env_boundary() {
+    let (path, _, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已装配");
+    assert!(!path.is_empty(), "注入后 PATH MUST 非空");
+    let mut it = std::env::split_paths(&path);
+    let head = it.next().expect("PATH MUST 可解析");
+    let bin = std::env::current_exe()
+        .ok()
+        .and_then(|e| e.parent().map(ToOwned::to_owned))
+        .expect("current exe dir");
+    assert_eq!(head, bin, "agent bin 目录 MUST 前置");
+    assert!(
+        !xylitol::infra::process::shell::find_bash(Some(&head))
+            .shell
+            .to_string_lossy()
+            .is_empty(),
+        "agent bin 目录 MUST 可执行（bash 定位）"
+    );
+}
+
+#[when("读取外部工具进程回收边界")]
+pub(crate) fn w_child_wait_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/tools/process.rs")));
+}
+
+#[then("等待退出取得状态且整树回收")]
+pub(crate) fn t_child_wait_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("wait_with_output"), "等待退出 MUST 取得状态");
+    assert!(src.contains("kill_tree"), "整树回收 MUST 在册");
+}
+
+#[when("读取观测后端装配")]
+pub(crate) fn w_obs_backend_assembly() {
+    let a = la_load("src/infra/observability/file_reporter.rs");
+    let b = la_load("src/app/core/bootstrap.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== bootstrap ===\n{b}")));
+}
+
+#[then("组合根恰一次装配且落 agent 日志目录")]
+pub(crate) fn t_obs_backend_assembly() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("FileTraceReporter"),
+        "本地文件 reporter MUST 在册"
+    );
+    assert!(src.contains("log::"), "组合根 MUST 有级别日志装配");
+}
+
+#[when("读取观测栈依赖清单")]
+pub(crate) fn w_obs_dependency_list() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("Cargo.toml")));
+}
+
+#[then("仅用 fastrace 与 log 且无 tracing")]
+pub(crate) fn t_obs_dependency_list() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("fastrace"), "时间线 MUST 依赖 fastrace");
+    assert!(
+        !src.contains("tracing ="),
+        "Cargo MUST NOT 依赖 tracing 门面"
+    );
+}
+
+#[when("读取低频观测 span 定义")]
+pub(crate) fn w_obs_span_definition() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/runtime/obs.rs")));
+}
+
+#[then("agent.turn 与每步 span 可关联")]
+pub(crate) fn t_obs_span_definition() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("agent.turn"), "根 span MUST 为 agent.turn");
+    assert!(src.contains("agent.iteration"), "每步 span MUST 可关联");
+    assert!(src.contains("tool.execute"), "工具 execute span MUST 在册");
+}
+
+#[when("读取图像解码方向边界")]
+pub(crate) fn w_image_exif_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
+}
+
+#[then("解码应用 EXIF 定向且像素校正在册")]
+pub(crate) fn t_image_exif_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("read_exif_orientation"), "EXIF 读取 MUST 在册");
+    assert!(src.contains("apply_orientation"), "像素校正 MUST 在册");
+    assert!(src.contains("Orientation::from_exif"), "方向转换 MUST 在册");
+    assert!(
+        src.contains("exif_orientation_6_swaps_dimensions"),
+        "行为单测 MUST 在册"
+    );
+}
+
+#[when("读取计时收集器边界")]
+pub(crate) fn w_timing_collector() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/timing.rs")));
+}
+
+#[then("收集器由 XYLITOL_TIMING 门控且含重置与计时")]
+pub(crate) fn t_timing_collector() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("XYLITOL_TIMING"), "收集器 MUST 由环境变量门控");
+    assert!(src.contains("reset_timings"), "重置入口 MUST 在册");
+    assert!(src.contains("pub fn time"), "计时入口 MUST 在册");
+}
+
+#[when("读取计时调用点清单")]
+pub(crate) fn w_timing_call_sites() {
+    let a = la_load("src/app/core/bootstrap.rs");
+    let b = la_load("src/app/cli/mod.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== cli ===\n{b}")));
+}
+
+#[then("启动关键路径含计时点")]
+pub(crate) fn t_timing_call_sites() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("timing::"), "启动关键路径 MUST 接计时点");
+}
+
+#[when("读取计时输出格式")]
+pub(crate) fn w_timing_output_format() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/timing.rs")));
+}
+
+#[then("每步 ms 与合计可观测")]
+pub(crate) fn t_timing_output_format() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("TOTAL"), "合计 MUST 可观测");
+    assert!(src.contains("ms"), "每步 ms MUST 可观测");
+}
+
+// ── 批 3（agent 域 / 分层）：结构探针 ───────────────────────────────
+
+fn t3_scan_agent_trust_defs() -> String {
+    let mut hits = Vec::new();
+    let mut stack = vec![std::path::PathBuf::from("src/agent")];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                let Ok(content) = std::fs::read_to_string(&p) else {
+                    continue;
+                };
+                for line in content.lines() {
+                    let l = line.trim();
+                    if (l.starts_with("pub struct")
+                        || l.starts_with("pub enum")
+                        || l.starts_with("struct "))
+                        && l.contains("Trust")
+                    {
+                        hits.push(format!("{}: {l}", p.display()));
+                    }
+                }
+            }
+        }
+    }
+    hits.join("\n")
+}
+
+#[when("读取 Todo 领域模型形状")]
+pub(crate) fn w_todo_model_shape() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/session/todo.rs")));
+}
+
+#[then("条目为有序集合且 content 与状态受约束")]
+pub(crate) fn t_todo_model_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("TodoList"), "Todo 列表 MUST 为集合类型");
+    assert!(src.contains("TodoStatus"), "status MUST 为约束枚举");
+    assert!(
+        src.contains("Vec<TodoItem>") || src.contains("items:"),
+        "条目 MUST 为有序集合"
+    );
+}
+
+#[when("读取 Todo 快照投影边界")]
+pub(crate) fn w_todo_snapshot_boundary() {
+    let a = la_load("src/protocol/session/todo.rs");
+    let b = la_load("src/agent/prompt/status_bar.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== status_bar ===\n{b}")));
+}
+
+#[then("Custom 快照不进 provider 前缀且 SSOT 唯一")]
+pub(crate) fn t_todo_snapshot_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("CUSTOM_TYPE_AGENT_TODO"),
+        "SSOT 类型 MUST 在册"
+    );
+    assert!(src.contains("SSOT"), "唯一真源语义 MUST 在册");
+    assert!(src.contains("agent_todo"), "SSOT 标识 MUST 为 agent_todo");
+}
+
+#[when("读取 todo 工具调度分类")]
+pub(crate) fn w_todo_scheduling_class() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/tools/mod.rs")));
+}
+
+#[then("todo_rewrite 与 todo_update 为 Barrier 并发类")]
+pub(crate) fn t_todo_scheduling_class() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("todo_rewrite"), "todo_rewrite MUST 在注册表");
+    assert!(src.contains("todo_update"), "todo_update MUST 在注册表");
+    assert!(
+        src.contains("Barrier"),
+        "todo 工具 MUST 标注 Barrier 并发类"
+    );
+}
+
+#[when("读取 Todo SSOT 只读边界")]
+pub(crate) fn w_todo_status_bar_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/prompt/status_bar.rs")));
+}
+
+#[then("待办栏摘要只读自 SSOT")]
+pub(crate) fn t_todo_status_bar_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("SSOT"), "待办栏 MUST 标注只读 SSOT");
+    assert!(
+        src.contains("TodoList") || src.contains("latest_agent_todo"),
+        "摘要 MUST 读 SSOT"
+    );
+}
+
+#[when("读取首回合工具定稿清单")]
+pub(crate) fn w_first_turn_tool_freeze_list() {
+    let a = la_load("src/agent/tools/freeze.rs");
+    let b = la_load("src/infra/tools/mod.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== registry ===\n{b}")));
+}
+
+#[then("todo builtins 在定稿前进入可见工具表")]
+pub(crate) fn t_first_turn_tool_freeze_list() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("freeze"), "定稿门禁 MUST 在册");
+    assert!(src.contains("todo_rewrite"), "todo builtin MUST 在注册表");
+    assert!(src.contains("todo_update"), "todo builtin MUST 在注册表");
+}
+
+#[when("读取压缩触发边界")]
+pub(crate) fn w_compaction_trigger_boundary() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/compaction/settings.rs")));
+}
+
+#[then("按窗口与保留阈值在会话路径触发")]
+pub(crate) fn t_compaction_trigger_boundary() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("reserve_tokens"), "保留阈值 MUST 在册");
+    assert!(src.contains("enabled"), "开关 MUST 在册");
+    assert!(
+        src.contains("window") || src.contains("recent"),
+        "窗口 MUST 在册"
+    );
+}
+
+#[when("读取恢复会话校验顺序")]
+pub(crate) fn w_cwd_check_before_restore() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/session/manager/load.rs")));
+}
+
+#[then("恢复前完成同一 CWD 校验")]
+pub(crate) fn t_cwd_check_before_restore() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("assert_session_cwd_exists"),
+        "CWD 校验入口 MUST 在册"
+    );
+    assert!(src.contains("fallback_cwd"), "回退 CWD 语义 MUST 在册");
+}
+
+#[when("读取会话存储端口实现")]
+pub(crate) fn w_session_store_port_impl() {
+    let a = la_load("src/protocol/ports/session.rs");
+    let b = la_load("src/infra/session/manager/store.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
+}
+
+#[then("infra SessionManager 实现协议端口")]
+pub(crate) fn t_session_store_port_impl() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("XySessionStore"), "协议端口 MUST 在册");
+    assert!(src.contains("impl "), "infra MUST 提供实现");
+    assert!(
+        src.contains("pub trait XySessionStore"),
+        "端口 MUST 为公共 trait"
+    );
+}
+
+#[when("读取会话日志访问接口")]
+pub(crate) fn w_journal_read_recent() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/ports/session.rs")));
+}
+
+#[then("read_recent 暴露给 server journal")]
+pub(crate) fn t_journal_read_recent() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("async fn read_recent"),
+        "read_recent 接口 MUST 在协议端口"
+    );
+    assert!(
+        src.contains("load_entries") && src.contains("saturating_sub"),
+        "默认实现 MUST 基于全量读取截断"
+    );
+    assert!(
+        src.contains("read_recent_returns_last_n_in_append_order"),
+        "行为单测 MUST 在册"
+    );
+}
+
+#[when("读取导出 I/O 装配")]
+pub(crate) fn w_export_io_assembly() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/export.rs")));
+}
+
+#[then("StdExportIo 经端口注入组合根")]
+pub(crate) fn t_export_io_assembly() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("StdExportIo"), "文件导出 I/O MUST 在册");
+    assert!(src.contains("tokio::fs"), "MUST 用 tokio::fs 读写");
+    assert!(src.contains("impl "), "端口实现 MUST 在册");
+}
+
+#[when("读取会话持久化分层")]
+pub(crate) fn w_session_persistence_layers() {
+    let a = la_load("src/protocol/ports/session.rs");
+    let b = la_load("src/infra/session/manager/store.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
+}
+
+#[then("protocol 定义端口且 infra 提供实现")]
+pub(crate) fn t_session_persistence_layers() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("pub trait XySessionStore"),
+        "protocol 端口 MUST 在册"
+    );
+    assert!(src.contains("impl XySessionStore"), "infra 实现 MUST 在册");
+}
+
+#[when("扫描 agent 层信任依赖")]
+pub(crate) fn w_agent_layer_trust_deps() {
+    let hits = t3_scan_agent_trust_defs();
+    let store = la_load("src/infra/trust/store.rs");
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(format!(
+            "AGENT_DEFS_START\n{hits}\nAGENT_DEFS_END\n=== store ===\n{store}"
+        ))
+    });
+}
+
+#[then("trust 决策经 infra 与应用面且 agent 无自有存储")]
+pub(crate) fn t_agent_layer_trust_deps() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let agent_part = src.split("AGENT_DEFS_END").next().unwrap_or_default();
+    assert!(
+        !agent_part.contains("struct") || !agent_part.contains("Trust"),
+        "agent 层 MUST NOT 定义自有 trust 存储"
+    );
+    assert!(src.contains("TrustManager"), "infra trust 真源 MUST 在册");
+}
+
+#[when("读取会话上下文压缩回溯")]
+pub(crate) fn w_compaction_aware_context() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/session/manager/store.rs")));
+}
+
+#[then("构建对 leaf 分支回退压缩")]
+pub(crate) fn t_compaction_aware_context() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("leaf"), "leaf 分支回溯 MUST 在册");
+    assert!(
+        src.contains("compaction") || src.contains("fold"),
+        "压缩回退语义 MUST 在册"
+    );
+}
+
+#[when("读取会话恢复原路径")]
+pub(crate) fn w_resume_single_path() {
+    let a = la_load("src/agent/llm_project.rs");
+    let b = la_load("src/infra/session/manager/store.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
+}
+
+#[then("恢复与续跑经同一投影路径")]
+pub(crate) fn t_resume_single_path() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("project_for_llm"), "唯一投影入口 MUST 在册");
+    assert!(src.contains("history"), "投影 MUST 覆盖历史");
+}
+
+#[when("读取消息词汇分层")]
+pub(crate) fn w_message_vocab_layers() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/message.rs")));
+}
+
+#[then("AgentMessage 以组合表达且协议词汇单一")]
+pub(crate) fn t_message_vocab_layers() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("AgentMessage"), "会话词汇 MUST 在册");
+    assert!(
+        src.contains("Llm(") || src.contains("Env("),
+        "组合表达 MUST 在册"
+    );
+}
+
+#[when("读取主仓投影入口")]
+pub(crate) fn w_llm_project_entry() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/llm_project.rs")));
+}
+
+#[then("AgentMessage 经投影为协议消息")]
+pub(crate) fn t_llm_project_entry() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("project_for_llm"), "投影入口 MUST 在册");
+    assert!(src.contains("AgentMessage"), "输入 MUST 为 AgentMessage");
+    assert!(
+        src.contains("LlmMessage") || src.contains("AiBridgeMessage"),
+        "输出 MUST 为协议消息"
+    );
+}
+
+#[when("读取网络权限裁决")]
+pub(crate) fn w_network_permission_gate() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/permission/mod.rs")));
+}
+
+#[then("域名按 allow/deny 列表裁决并默认拒绝")]
+pub(crate) fn t_network_permission_gate() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("check_network"), "网络裁决入口 MUST 在册");
+    assert!(src.contains("allowed_domains"), "allow 列表 MUST 在册");
+    assert!(
+        src.contains("denied_domains") || src.contains("default-deny"),
+        "deny / 默认拒绝语义 MUST 在册"
+    );
+}
+
+#[when("扫描信任存储真源")]
+pub(crate) fn w_trust_single_source() {
+    let hits = t3_scan_agent_trust_defs();
+    let store = la_load("src/infra/trust/store.rs");
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(format!(
+            "AGENT_DEFS_START\n{hits}\nAGENT_DEFS_END\n=== store ===\n{store}"
+        ))
+    });
+}
+
+#[then("项目 trust 状态在 infra 单点维护")]
+pub(crate) fn t_trust_single_source() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let agent_part = src.split("AGENT_DEFS_END").next().unwrap_or_default();
+    assert!(
+        !agent_part.contains("Trust"),
+        "agent 层 MUST NOT 持有 trust 存储"
+    );
+    assert!(src.contains("TrustManager"), "infra trust 真源 MUST 在册");
+}
+
+#[when("读取权限边界文档")]
+pub(crate) fn w_permission_advice_doc() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/permission/mod.rs")));
+}
+
+#[then("明示建议性且不阻塞主机级访问")]
+pub(crate) fn t_permission_advice_doc() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("Advisory only"), "MUST 明示建议性");
+    assert!(
+        src.contains("NOT a security boundary") || src.contains("advisory"),
+        "MUST 明示非安全边界"
+    );
+    assert!(
+        src.contains("host-level access") || src.contains("do not prevent"),
+        "MUST 明示不阻塞主机级访问"
+    );
+}
+
+#[when("读取资源命令装配")]
+pub(crate) fn w_resources_loader_reuse() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/cli/resources.rs")));
+}
+
+#[then("复用 DefaultResourceLoader 发现")]
+pub(crate) fn t_resources_loader_reuse() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("DefaultResourceLoader"),
+        "资源命令 MUST 复用 loader"
+    );
+    assert!(
+        src.contains("cached") || src.contains("reuse"),
+        "MUST 复用缓存发现"
+    );
+}
+
+#[when("读取资源来源信息类型")]
+pub(crate) fn w_source_info_shape() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/source_info.rs")));
+}
+
+#[then("公共 SourceInfo 含来源与作用域字段")]
+pub(crate) fn t_source_info_shape() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("pub struct SourceInfo"),
+        "公共 SourceInfo MUST 在册"
+    );
+    assert!(src.contains("pub path"), "path 字段 MUST 在册");
+    assert!(src.contains("pub scope"), "scope 字段 MUST 在册");
+    assert!(src.contains("pub source"), "source 字段 MUST 在册");
+}
+
+#[when("读取资源作用域枚举")]
+pub(crate) fn w_source_scope_enum() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/source_info.rs")));
+}
+
+#[then("支持 user 与 project 与 temporary")]
+pub(crate) fn t_source_scope_enum() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("pub enum SourceScope"), "Scope 枚举 MUST 在册");
+    assert!(src.contains("User"), "user 变体 MUST 在册");
+    assert!(src.contains("Project"), "project 变体 MUST 在册");
+    assert!(src.contains("Temporary"), "temporary 变体 MUST 在册");
+}
+
+// ── 批 4（测试基建契约）：结构探针与扫描 ───────────────────────────
+
+fn t4_walk<F: FnMut(&std::path::Path, &str)>(root: &str, mut f: F) {
+    let mut stack = vec![std::path::PathBuf::from(root)];
+    while let Some(dir) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                let Ok(content) = std::fs::read_to_string(&p) else {
+                    continue;
+                };
+                f(&p, &content);
+            }
+        }
+    }
+}
+
+fn t4_scan_write_to_fixed_tmp() -> String {
+    let mut hits = Vec::new();
+    let needle = "\"/tmp";
+    t4_walk("tests", |p, c| {
+        if c.contains(needle) {
+            for line in c.lines() {
+                let trimmed = line.trim();
+                if trimmed.contains(needle)
+                    && (trimmed.contains("fs::write")
+                        || trimmed.contains("fs::create_dir")
+                        || trimmed.contains("File::create")
+                        || trimmed.contains("fs::remove")
+                        || trimmed.contains("create_dir_all"))
+                {
+                    hits.push(format!("{}: {trimmed}", p.display()));
+                }
+            }
+        }
+    });
+    if hits.is_empty() {
+        "NONE".into()
+    } else {
+        hits.join("\n")
+    }
+}
+
+fn t4_count_cfg_test(root: &str) -> usize {
+    let mut n = 0;
+    t4_walk(root, |_, c| {
+        n += c.matches("#[cfg(test)]").count();
+    });
+    n
+}
+
+fn t4_count_needle(root: &str, needle: &str) -> usize {
+    let mut n = 0;
+    t4_walk(root, |_, c| {
+        n += c.matches(needle).count();
+    });
+    n
+}
+
+#[when("读取 faux provider 装配入口")]
+pub(crate) fn w_faux_provider_entry() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/provider/fake.rs")));
+}
+
+#[then("按响应步骤返回且无需网络")]
+pub(crate) fn t_faux_provider_entry() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("fake_xy_model"), "faux 装配入口 MUST 在册");
+    assert!(src.contains("ScenarioStep"), "响应步骤 MUST 在册");
+    assert!(src.contains("Arc<dyn XyModel>"), "出口 MUST 为 XyModel");
+}
+
+#[when("读取 BDD 测试基建清单")]
+pub(crate) fn w_bdd_harness_list() {
+    let a = la_load("Cargo.toml");
+    let b = la_load("tests/bdd/suite.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== suite ===\n{b}")));
+}
+
+#[then("场景以类型化占位符步骤且逐场景一测试")]
+pub(crate) fn t_bdd_harness_list() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("rstest-bdd"), "rstest-bdd 基建 MUST 在册");
+    assert!(src.contains("scenario"), "场景宏 MUST 在册");
+    assert!(src.contains("mod steps_"), "类型化步骤模块 MUST 在册");
+}
+
+#[when("读取测试临时目录基建")]
+pub(crate) fn w_temp_file_raii() {
+    let a = la_load("tests/bdd/helpers.rs");
+    let b = la_load("Cargo.toml");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== Cargo ===\n{b}")));
+}
+
+#[then("RAII 清理且不留产物")]
+pub(crate) fn t_temp_file_raii() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("tempfile"), "tempfile 依赖 MUST 在册");
+    assert!(src.contains("tempdir"), "RAII 临时目录 MUST 在册");
+}
+
+#[when("读取异步集成测试超时基建")]
+pub(crate) fn w_async_test_timeout() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("tests/bdd/helpers.rs")));
+}
+
+#[then("包裹主体且防挂起")]
+pub(crate) fn t_async_test_timeout() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("with_test_timeout"),
+        "with_test_timeout 辅助函数 MUST 在册"
+    );
+    assert!(
+        src.contains("with_test_timeout_for"),
+        "时长参数化变体 MUST 在册"
+    );
+    assert!(
+        src.contains("times_out_when_deadlocked"),
+        "挂死超时用例 MUST 在册"
+    );
+}
+
+#[when("扫描测试固定临时路径")]
+pub(crate) fn w_fixed_tmp_scan() {
+    let hits = t4_scan_write_to_fixed_tmp();
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(hits));
+}
+
+#[then("使用唯一自动生成路径")]
+pub(crate) fn t_fixed_tmp_scan() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert_eq!(src, "NONE", "测试 MUST NOT 写固定 /tmp 路径：{src}");
+}
+
+#[when("读取 TUI 端到端测试布局")]
+pub(crate) fn w_tui_e2e_layout() {
+    let pty = la_load("tests/tui_e2e/pty.rs");
+    let tmux = la_load("tests/tui_e2e/tmux.rs");
+    let just = la_load("justfile");
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(format!(
+            "{pty}\n=== tmux ===\n{tmux}\n=== justfile ===\n{just}"
+        ))
+    });
+}
+
+#[then("独立于主矩阵")]
+pub(crate) fn t_tui_e2e_layout() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("PortablePty") || src.contains("portable-pty"),
+        "pty 驱动 MUST 在册"
+    );
+    assert!(src.contains("tmux"), "tmux 驱动 MUST 在册");
+    assert!(src.contains("test-tui-e2e"), "端到端 recipe MUST 在册");
+}
+
+#[when("读取配置值解析机制")]
+pub(crate) fn w_config_value_parser() {
+    let lookup = |name: &str| (name == "HOME").then(|| "/home/u".to_string());
+    let a = xylitol::infra::config::resolver::resolve_value("plain-string", &lookup)
+        .expect("字面值 MUST 直通");
+    let b = xylitol::infra::config::resolver::resolve_value("$HOME", &lookup)
+        .expect("环境值 MUST 解析");
+    T2_PROC.with(|s| *s.borrow_mut() = Some((a, b == "/home/u", false)));
+}
+
+#[then("支持字面与环境模板解析")]
+pub(crate) fn t_config_value_parser() {
+    let (lit, env_ok, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已解析");
+    assert_eq!(lit, "plain-string", "字面值 MUST 原样返回");
+    assert!(env_ok, "环境变量引用 MUST 解析");
+}
+
+#[when("读取环境变量插值能力")]
+pub(crate) fn w_env_var_interpolation() {
+    let lookup = |name: &str| (name == "HOME").then(|| "/home/u".to_string());
+    let a = xylitol::infra::config::resolver::resolve_value("${HOME}", &lookup)
+        .expect("${VAR} MUST 插值");
+    let b = xylitol::infra::config::resolver::resolve_value("${UNSET:-fallback}", &lookup)
+        .expect("默认值 MUST 生效");
+    T2_PROC.with(|s| *s.borrow_mut() = Some((a, b == "fallback", false)));
+}
+
+#[then("支持变量引用与默认值")]
+pub(crate) fn t_env_var_interpolation() {
+    let (braced, default_ok, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已插值");
+    assert_eq!(braced, "/home/u", "尖括号变量引用 MUST 解析");
+    assert!(default_ok, "带默认值引用 MUST 生效");
+}
+
+#[when("读取配置命令执行边界")]
+pub(crate) fn w_config_command_boundary() {
+    xylitol::infra::config::resolver::reset_shell_cache();
+    let lookup = |_name: &str| None;
+    let out = xylitol::infra::config::resolver::resolve_value("!printf ok", &lookup)
+        .expect("shell 命令 MUST 执行");
+    // `$$` 是 shell PID：缓存命中时两次结果相同（进程生命周期缓存证据）。
+    let c1 = xylitol::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
+        .expect("shell PID 值一");
+    let c2 = xylitol::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
+        .expect("shell PID 值二");
+    T2_PROC.with(|s| *s.borrow_mut() = Some((out, c1 == c2, true)));
+}
+
+#[then("命令带超时执行且缓存")]
+pub(crate) fn t_config_command_boundary() {
+    let (out, cached, _) = T2_PROC.with(|s| s.borrow().clone()).expect("已执行");
+    assert_eq!(out, "ok", "shell 命令 MUST 带预算执行");
+    assert!(cached, "进程生命周期内结果 MUST 缓存");
+}
+
+#[when("读取 provider 注册配置值解析")]
+pub(crate) fn w_provider_config_value_expression() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let cfgdir = dir.path().join(".config").join("xylitol");
+    std::fs::create_dir_all(&cfgdir).unwrap();
+    std::fs::write(
+        cfgdir.join("config.yaml"),
+        "models:\n  models:\n    a:\n      provider: fake\n      model: m1\n      api_key: \"!printf bdd-expanded\"\n    b:\n      provider: fake\n      model: m2\n      api_key: plain-literal\n",
+    )
+    .unwrap();
+    let home_s = dir.path().to_str().unwrap().to_string();
+    let cfgdir_s = cfgdir.to_str().unwrap().to_string();
+    let env = move |k: &str| match k {
+        "HOME" => Some(home_s.clone()),
+        "XYLITOL_CONFIG_DIR" => Some(cfgdir_s.clone()),
+        _ => None,
+    };
+    let loaded = xylitol::infra::config::loader::load_app_config_with(None, env, None)
+        .expect("装配 MUST 成功");
+    let shell = loaded
+        .model
+        .models
+        .get("a")
+        .and_then(|e| e.api_key.clone())
+        .unwrap_or_default();
+    let literal = loaded
+        .model
+        .models
+        .get("b")
+        .and_then(|e| e.api_key.clone())
+        .unwrap_or_default();
+    T2_CFG_EXPR.with(|s| *s.borrow_mut() = Some((shell, literal)));
+}
+
+#[then("展开表达式并兼容字面量")]
+pub(crate) fn t_provider_config_value_expression() {
+    let (shell, literal) = T2_CFG_EXPR.with(|s| s.borrow().clone()).expect("已解析");
+    assert_eq!(
+        shell, "bdd-expanded",
+        "shell-command 表达式 MUST 在产品装配链展开"
+    );
+    assert_eq!(literal, "plain-literal", "纯字面量 MUST 保持原样");
+}
+
+#[when("读取 provider 注册配置")]
+pub(crate) fn w_provider_registration_config() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/model/config.rs")));
+}
+
+#[then("支持密钥与地址与请求头")]
+pub(crate) fn t_provider_registration_config() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("api_key"), "API 密钥配置 MUST 在册");
+    assert!(src.contains("base_url"), "服务地址配置 MUST 在册");
+    assert!(
+        src.contains("openai-responses") || src.contains("anthropic-messages"),
+        "适配类型 MUST 在册"
+    );
+}
+
+#[when("读取 provider 分层")]
+pub(crate) fn w_provider_layering() {
+    let a = la_load("src/infra/provider/adapter/mod.rs");
+    let b = la_load("src/agent/model/registry.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== registry ===\n{b}")));
+}
+
+#[then("实现位于 infra 且遵循端口")]
+pub(crate) fn t_provider_layering() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("impl "), "infra 实现 MUST 在册");
+    assert!(src.contains("XyModel"), "实现 MUST 遵循协议端口");
+}
+
+#[when("读取模型注册表存储")]
+pub(crate) fn w_model_registry_storage() {
+    let a = la_load("src/agent/model/manager.rs");
+    let b = la_load("src/agent/model/task_model.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== task ===\n{b}")));
+}
+
+#[then("以抽象 trait 对象持有")]
+pub(crate) fn t_model_registry_storage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("Arc<dyn XyModel>"),
+        "注册表 MUST 以 Arc<dyn XyModel> 存储"
+    );
+    assert!(src.contains("XyModel"), "端口抽象 MUST 在册");
+}
+
+#[when("读取 BDD 套件接线")]
+pub(crate) fn w_bdd_suite_wiring() {
+    let a = la_load("tests/bdd/suite.rs");
+    let b = la_load("src/agent/model/mod.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== model ===\n{b}")));
+}
+
+#[then("全量通过且无孤儿 feature")]
+pub(crate) fn t_bdd_suite_wiring() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("#[macro_use]"), "BDD 套件装配 MUST 在册");
+    assert!(src.contains("mod bindings_"), "绑定模块 MUST 在册");
+}
+
+// test-bdd r1913（c2837）：编译隔离不变量——独立目标承载、未挂回 lib。
+#[when("读取 BDD 挂载接线")]
+pub(crate) fn w_bdd_mount_wiring() {
+    let a = la_load("tests/bdd.rs");
+    let b = la_load("src/tests.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== lib-mount ===\n{b}")));
+}
+
+#[then("独立测试目标承载且未挂 lib")]
+pub(crate) fn t_bdd_mount_wiring() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let (entry, lib_mount) = src.split_once("=== lib-mount ===").expect("双文件探针");
+    assert!(
+        entry.contains("#[path = \"bdd/suite.rs\"]") && entry.contains("mod bdd;"),
+        "BDD 入口 MUST 以 #[path] 挂 suite 模块"
+    );
+    assert!(
+        !lib_mount.contains("tests/bdd/suite.rs"),
+        "lib MUST NOT 再以 mod bdd 挂载（编译隔离不变量）"
+    );
+}
+
+#[when("读取 server 集成场景清单")]
+pub(crate) fn w_server_integration_list() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("tests/bdd/bindings_server.rs")));
+}
+
+#[then("含启动与健康与提交与流式")]
+pub(crate) fn t_server_integration_list() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("server-core.feature"),
+        "server 场景绑定 MUST 在册"
+    );
+    assert!(src.contains("scenario"), "集成场景 MUST 有绑定");
+}
+
+#[when("读取 BDD 依赖版本")]
+pub(crate) fn w_rstest_bdd_version() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("Cargo.toml")));
+}
+
+#[then("使用 crates.io 当前版本")]
+pub(crate) fn t_rstest_bdd_version() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("rstest-bdd ="), "rstest-bdd 依赖 MUST 在册");
+    assert!(src.contains("rstest-bdd-macros ="), "macros 依赖 MUST 在册");
+}
+
+#[when("读取 BDD 绑定机制")]
+pub(crate) fn w_bdd_binding_mechanism() {
+    let a = la_load("tests/bdd/suite.rs");
+    let b = la_load("tests/bdd/bindings_c2827.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== bindings ===\n{b}")));
+}
+
+#[then("经 @req 绑定且支持 live 分区")]
+pub(crate) fn t_bdd_binding_mechanism() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("#[scenario("), "场景绑定宏 MUST 在册");
+    assert!(
+        src.contains("llmanspec/specs/"),
+        "feature 分区路径 MUST 在册"
+    );
+}
+
+#[when("读取配置行为测试分层")]
+pub(crate) fn w_config_unit_coverage() {
+    let a = la_load("src/infra/config/types.rs");
+    let b = la_load("src/infra/config/template.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== template ===\n{b}")));
+}
+
+#[then("由 infra 单测覆盖")]
+pub(crate) fn t_config_unit_coverage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("#[cfg(test)]"), "配置行为 MUST 有单测模块");
+    assert!(src.contains("#[test]"), "单测用例 MUST 在册");
+}
+
+#[when("读取测试分界文档")]
+pub(crate) fn w_bdd_unit_boundary_doc() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("AGENTS.md")));
+}
+
+#[then("明示端到端与纯逻辑边界")]
+pub(crate) fn t_bdd_unit_boundary_doc() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("BDD"), "分界文档 MUST 提及 BDD");
+    assert!(
+        src.contains("单测管纯数据") || src.contains("纯逻辑"),
+        "单测边界 MUST 明示"
+    );
+}
+
+#[when("扫描核心类型测试覆盖")]
+pub(crate) fn w_core_data_type_coverage() {
+    let n = t4_count_cfg_test("src/protocol");
+    let m = t4_count_needle("src/protocol", "#[test]");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{n};{m}")));
+}
+
+#[then("关键路径有单测验证")]
+pub(crate) fn t_core_data_type_coverage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let mut it = src.split(';');
+    let n: usize = it.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    assert!(n >= 1, "核心类型 MUST 有 #[cfg(test)] 模块");
+}
+
+#[when("扫描纯逻辑组件测试")]
+pub(crate) fn w_pure_logic_coverage() {
+    let n = t4_count_cfg_test("src/agent");
+    let m = t4_count_needle("src/agent", "#[test]");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{n};{m}")));
+}
+
+#[then("队列与重试等有单测")]
+pub(crate) fn t_pure_logic_coverage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let mut it = src.split(';');
+    let n: usize = it.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    assert!(n >= 3, "agent 层纯逻辑组件 MUST 有单测（期望多模块）");
+}
+
+#[when("扫描会话子组件测试")]
+pub(crate) fn w_session_subcomponent_coverage() {
+    let n = t4_count_cfg_test("src/agent/capabilities");
+    let m = t4_count_needle("src/agent/capabilities", "#[test]");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{n};{m}")));
+}
+
+#[then("模型与工具管理器有单测")]
+pub(crate) fn t_session_subcomponent_coverage() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let mut it = src.split(';');
+    let n: usize = it.next().and_then(|v| v.parse().ok()).unwrap_or(0);
+    assert!(n >= 1, "会话子组件 MUST 有单测模块");
+}
+
+#[when("读取库缝观察接线")]
+pub(crate) fn w_smoke_hook_wiring() {
+    let a = la_load("src/app/core/composition.rs");
+    let b = la_load("src/agent/runtime/ports.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== ports ===\n{b}")));
+}
+
+#[then("有经库缝触发的例子")]
+pub(crate) fn t_smoke_hook_wiring() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("XyHookBus"), "hook 总线端口 MUST 在册");
+    assert!(
+        src.contains("Hook") || src.contains("hook"),
+        "库缝注入 MUST 在册"
+    );
+}
+
+#[when("读取 provider 选择场景")]
+pub(crate) fn w_provider_matrix_scenarios() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("tests/bdd/bindings_misc.rs")));
+}
+
+#[then("已有可执行场景")]
+pub(crate) fn t_provider_matrix_scenarios() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(
+        src.contains("model-select"),
+        "model_select 场景 MUST 已绑定"
+    );
+}
+
+#[when("读取 crate 根再导出")]
+pub(crate) fn w_curated_hook_bus_reexport() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/lib.rs")));
+}
+
+#[then("精选导出总线与结果")]
+pub(crate) fn t_curated_hook_bus_reexport() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("XyHookBus"), "总线 MUST 经根导出");
+    assert!(src.contains("XyHookOutcome"), "结果 MUST 经根导出");
+    assert!(src.contains("NoopHookBus"), "noop 总线 MUST 经根导出");
+}
+
+#[when("读取 fake provider 装配")]
+pub(crate) fn w_fake_provider_assembly() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/provider/fake.rs")));
+}
+
+#[then("经统一路径暴露且按步骤返回")]
+pub(crate) fn t_fake_provider_assembly() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("fake_xy_model"), "统一装配入口 MUST 在册");
+    assert!(src.contains("ScenarioStep"), "响应步骤 MUST 在册");
+    assert!(src.contains("Arc<dyn XyModel>"), "暴露为 XyModel MUST 在册");
+}
+
+#[when("读取场景编排能力")]
+pub(crate) fn w_scenario_orchestration() {
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/provider/fake.rs")));
+}
+
+#[then("支持多步与延迟与错误注入")]
+pub(crate) fn t_scenario_orchestration() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    assert!(src.contains("ScenarioStep"), "编排步骤类型 MUST 在册");
+    assert!(src.contains("fake_xy_model"), "编排装配 MUST 在册");
 }

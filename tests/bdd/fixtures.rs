@@ -2,12 +2,12 @@ use rstest::fixture;
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
-use crate::XyDriverError;
-use crate::agent::capabilities::{ContextUsage, ModelRegistry};
-use crate::agent::runtime::XyEvent;
-use crate::infra::config::types::HookEntry;
-use crate::infra::hooks::DispatchResult;
-use crate::infra::session::{SessionEntry, SessionManager};
+use xylitol::XyDriverError;
+use xylitol::agent::capabilities::{ContextUsage, ModelRegistry};
+use xylitol::agent::runtime::XyEvent;
+use xylitol::infra::config::types::HookEntry;
+use xylitol::infra::hooks::DispatchResult;
+use xylitol::infra::session::{SessionEntry, SessionManager};
 
 pub struct Workspace {
     pub dir: RefCell<Option<tempfile::TempDir>>,
@@ -84,10 +84,10 @@ impl XySessionStore {
     }
 }
 
-/// Library-seam hook recorder implementing crate-root [`crate::XyHookBus`] (c990).
+/// Library-seam hook recorder implementing crate-root [`xylitol::XyHookBus`] (c990).
 pub(crate) struct WiringHookLog {
     pub(crate) calls: std::sync::Mutex<Vec<(String, String, serde_json::Value)>>,
-    pub(crate) force: std::sync::Mutex<Option<crate::XyHookOutcome>>,
+    pub(crate) force: std::sync::Mutex<Option<xylitol::XyHookOutcome>>,
 }
 
 impl WiringHookLog {
@@ -100,13 +100,13 @@ impl WiringHookLog {
 }
 
 #[async_trait::async_trait]
-impl crate::XyHookBus for WiringHookLog {
+impl xylitol::XyHookBus for WiringHookLog {
     async fn dispatch(
         &self,
         event_type: &str,
         phase: &str,
         context: serde_json::Value,
-    ) -> crate::XyHookOutcome {
+    ) -> xylitol::XyHookOutcome {
         self.calls.lock().unwrap_or_else(|e| e.into_inner()).push((
             event_type.to_string(),
             phase.to_string(),
@@ -115,7 +115,7 @@ impl crate::XyHookBus for WiringHookLog {
         if let Some(outcome) = self.force.lock().unwrap_or_else(|e| e.into_inner()).take() {
             return outcome;
         }
-        crate::XyHookOutcome::Allowed
+        xylitol::XyHookOutcome::Allowed
     }
 }
 
@@ -137,10 +137,10 @@ pub struct AgentState {
     /// When set, injected as `XyHookBus` for library-seam wiring BDD (c990).
     pub(crate) wiring_hook_log: RefCell<Option<Arc<WiringHookLog>>>,
     pub(crate) last_op_error: RefCell<Option<String>>,
-    pub compaction_task_model: RefCell<Option<crate::protocol::model_entry::XyModelEntryConfig>>,
+    pub compaction_task_model: RefCell<Option<xylitol::protocol::model_entry::XyModelEntryConfig>>,
     pub compaction_thinking_level: RefCell<Option<String>>,
     pub compaction_binding:
-        RefCell<Option<crate::agent::model::task_model::CompactionSummaryBinding>>,
+        RefCell<Option<xylitol::agent::model::task_model::CompactionSummaryBinding>>,
     pub compaction_notice_count: Cell<u32>,
 }
 impl AgentState {

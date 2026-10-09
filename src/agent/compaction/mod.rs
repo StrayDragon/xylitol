@@ -25,13 +25,9 @@ pub use llm_summarizer::{generate_summary, generate_turn_prefix_summary};
 pub use overflow::error_message_is_context_overflow;
 pub use settings::CompactionSettings;
 // Test-support re-exports (in-crate tests import via this facade).
-#[cfg(test)]
 pub use cut_detector::estimate_tokens_entry_for_cut;
-#[cfg(test)]
 pub use file_ops::FileOps;
-#[cfg(test)]
 pub use orchestrator::should_compact;
-#[cfg(test)]
 pub use overflow::{assistant_same_model, is_context_overflow_assistant};
 pub use settlement::{
     ContextTokenSettlement, ContextTokenSettlementReason, settle_from_session_entries,
@@ -109,7 +105,7 @@ pub(crate) fn effective_keep_budget(
 const SUMMARY_PLACEHOLDER_TOKENS: u64 = 2_048;
 
 /// chars/4 estimate of the latest summary on the leaf (c2 summary placeholder);
-/// falls back to [`SUMMARY_PLACEHOLDER_TOKENS`] when there is no CompactionEntry
+/// falls back to `SUMMARY_PLACEHOLDER_TOKENS` when there is no CompactionEntry
 /// or the summary is empty.
 pub fn summary_placeholder_tokens(entries: &[SessionEntry]) -> u64 {
     entries
@@ -445,7 +441,7 @@ fn session_cwd_from_entries(entries: &[SessionEntry]) -> Option<&str> {
 
 /// If compaction/cut leaves no `agent_todo` in the post-cut context window,
 /// re-append the latest pre-cut snapshot so tip / resume / request-time inject stay aligned.
-pub(crate) async fn ensure_agent_todo_after_compact(
+pub async fn ensure_agent_todo_after_compact(
     store: &dyn XySessionStore,
     session_id: &str,
     entries_before: &[SessionEntry],
@@ -849,9 +845,10 @@ mod tests {
             cut > text_only + 5_000,
             "cut estimate must include thinking/toolCall: cut={cut} text_only={text_only}"
         );
-        // Image-style: 4800 chars → 1200 tokens (not 4800 tokens).
+        // Image-style: 4800 chars → 1200 tokens (not 4800 tokens)。统一口径下
+        // 图片按 pi 视觉建模叠加（≈1200 token），其余文本按序列化同源计量。
         let img = {
-            use crate::protocol::message::{AgentMessage, AgentPart};
+            use crate::protocol::message::{AgentMessage as Am, AgentPart};
             let now = timestamp_now();
             SessionEntry::Message(crate::protocol::session::MessageEntry {
                 base: crate::protocol::session::EntryBase {
@@ -860,16 +857,17 @@ mod tests {
                     parent_id: None,
                     timestamp: now,
                 },
-                message: serde_json::to_value(AgentMessage::user_parts(vec![
+                message: serde_json::to_value(Am::user_parts(vec![
                     AgentPart::text("see"),
                     AgentPart::image("image/png", "AAAA"),
                 ]))
                 .unwrap(),
             })
         };
-        assert_eq!(
-            estimate_tokens_entry_for_cut(&img),
-            (3 + 4800u64).div_ceil(4)
+        let cut_img = estimate_tokens_entry_for_cut(&img);
+        assert!(
+            (1200..1400).contains(&cut_img),
+            "image MUST be modeled as ~1200 tokens on the unified plane (pi ESTIMATED_IMAGE_CHARS/4), got {cut_img}"
         );
     }
 

@@ -1,4 +1,5 @@
-use crate::tests::bdd::fixtures::*;
+use crate::bdd::fixtures::*;
+use crate::bdd::steps_c2844::compaction_probe;
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -231,3 +232,29 @@ async fn test_c7_summary_fallback(agent: AgentState, sess: XySessionStore, ws: W
     name = "summary-thinking-override-out-of-set"
 )]
 async fn test_c7_thinking_override(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "turn-end-overflow-events-before-agent-end"
+)]
+async fn test_c2844_turn_end_compaction_events(
+    compaction_probe: crate::bdd::steps_c2844::CompactionProbe,
+    agent: AgentState,
+    ws: Workspace,
+) {
+}
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "reasoning-only-summary-not-empty"
+)]
+async fn test_c2844_reasoning_only_summary(
+    compaction_probe: crate::bdd::steps_c2844::CompactionProbe,
+    sess: XySessionStore,
+    agent: AgentState,
+    ws: Workspace,
+) {
+}
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "compaction-cut-metric-same-source"
+)]
+fn test_c2848_cut_metric_same_source(agent: AgentState, ws: Workspace) {}

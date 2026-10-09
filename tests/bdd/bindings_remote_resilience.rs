@@ -1,7 +1,7 @@
 //! app-tui-host attach-resilience BDD bindings (ath41/ath43/ath44, c2480).
 
-use crate::tests::bdd::steps_remote_resilience::{ResilienceBdd, resilience_bdd};
-use crate::tests::bdd::steps_server::{ServerTest, server_test};
+use crate::bdd::steps_remote_resilience::{ResilienceBdd, resilience_bdd};
+use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -42,3 +42,11 @@ async fn test_ath43_coalesce(resilience_bdd: ResilienceBdd) {}
 async fn test_ath44_real_reconnect(server_test: ServerTest) {
     let _ = server_test;
 }
+
+// ── c2835 后继：attach tick 不被 unary 阻塞 ──────────────────────────
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "attach-drain-not-blocked-by-pending-unary"
+)]
+async fn test_ath38_attach_drain_nonblocking(resilience_bdd: ResilienceBdd) {}

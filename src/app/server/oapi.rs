@@ -51,15 +51,18 @@ fn build() -> String {
         .collect::<Vec<_>>()
         .join(", ");
     let description = format!(
-        "Debug documentation for the xylitol Host JSON-RPC 2.0 surface \
-         (protocol v{PROTOCOL_VERSION}). Product entry is POST /rpc and WS /rpc. \
-         HTTP 200 means the JSON-RPC envelope parsed; business failures ride \
+        "Debug documentation for the xylitol Host unary surface \n\
+         (protocol v{PROTOCOL_VERSION}). Product path is the v3 binary carrier \n\
+         (fory frames on POST /rpc and WS /rpc); this JSON-RPC 2.0 text form is the \n\
+         debug channel and rides the same dispatch and method table. \n\
+         HTTP 200 means the envelope parsed; business failures ride \n\
          error.data.code (string). Envelope numeric codes are carriers only.\n\n\
          Registered methods: {methods}.\n\n\
-         WebSocket is NOT an OpenAPI operation path: subscribe then receive \
-         JSON-RPC notifications ({downlink_note}) on WS /rpc. \
-         Concrete payload shapes live in the product method table, which — not \
-         this document — is the wire-type reference. Do not generate product \
+         WebSocket is NOT an OpenAPI operation path: subscribe then receive \n\
+         notifications ({downlink_note}) on WS /rpc \n\
+         (binary ServerNotification on the product path, JSON text here). \n\
+         Concrete payload shapes live in the product method table, which — not \n\
+         this document — is the wire-type reference. Do not generate product \n\
          clients from this file."
     );
 

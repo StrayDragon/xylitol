@@ -180,6 +180,10 @@
   规则: SessionStore 端口
     System MUST 经 SessionStore 抽象做会话持久化：protocol 定义端口、infra 提供持久化与内存实现（供测试）、agent 层经该抽象持有 store。
     # verified-by: src/AGENTS.md
+
+    场景: session-store-port-layered
+      当 读取会话持久化分层
+      那么 protocol 定义端口且 infra 提供实现
   @req:r1078
   规则: 导出 IO 端口
     会话导出/导入 MUST 经注入的导出 I/O 端口做文件 I/O（不得直接调用 std::fs），使导出实现无文件系统副作用，未来后端（gist、S3）可替换而不改导出逻辑。
@@ -200,6 +204,10 @@
   规则: trust 不在 agent 层
     项目 trust 决策 MUST 经 infra trust store + 应用面（Driver / `/trust`）路径；agent 层 MUST NOT 暴露 save_trust_decision 或 agent 层 trust 模块（曾为无生产调用方的预留自由函数，已删除）。
     # verified-by: src/AGENTS.md
+
+    场景: trust-outside-agent-layer
+      当 扫描 agent 层信任依赖
+      那么 trust 决策经 infra 与应用面且 agent 无自有存储
   @req:r1081
   规则: 从 store 播种 history
     AgentRuntime::run_with_id（或等价入口）在已有 session 上开新一轮时 MUST 经 leaf 分支路径、经与 pi buildContextEntries 同构的 compaction-aware 裁切（取路径上最新 CompactionEntry：保留该摘要，并仅保留 firstKeptEntryId 起至该 compaction 前的条目及 compaction 之后的条目；无 compaction 则保留整条 leaf），再经统一 SessionEntry→AgentMessage 投影灌入 history（含 type=message 内的 LLM/Env 角色，以及 compaction/branchSummary 投影；bang-bash 仅接受 message+role=bashExecution），再追加本轮 user prompt；MUST 尊重 exclude_from_context。MUST NOT 把 firstKept 之前已被摘要的消息再送入工作 history；MUST NOT 每轮从空 history 起步；MUST NOT 仅过滤 Message 行而永久丢弃合法 bang-bash 或摘要上下文；MUST NOT 将旧顶层 type=bashExecution/bash_execution 提升为合法 history（此类行由 agent-session-store s20 跳过）。
@@ -246,7 +254,20 @@
   规则: compaction-aware session context
     build_session_context / build_session_context_v2（及等价 LLM history 播种）MUST 对 leaf 分支路径应用与 pi buildContextEntries 同构的裁切：存在 CompactionEntry 时仅保留路径上最新一条 compaction 摘要 + firstKeptEntryId 起至该条之前的条目 + 该条之后的条目；MUST NOT 把 firstKept 之前已被摘要的消息再送入 LLM 上下文。
     # verified-by: llmanspec/specs/agent-session/agent-session.feature
+
+    场景: compaction-aware-session-context
+      当 读取会话上下文压缩回溯
+      那么 构建对 leaf 分支回退压缩
   @req:r1084
   规则: resume-import-provider-prefix-path
     resume_session / import_from_jsonl（或等价加载）后用于打模型的 history MUST 经与同进程续跑相同的唯一路径：SessionEntry → as_agent_message（或等价）→ project_for_llm → ResponsesAssembler；有损 Env 折叠文案 MUST 形状稳定。MUST NOT 在 infra 另建平行 Env 折叠；MUST NOT 无显式 change 改稳定折叠串。system date 日界见相邻 c1905；tools 冻表见 c1900。由单测与维护 lab 覆盖，MUST NOT 强制新 BDD step。
     # verified-by: src/agent/llm_project.rs
+
+    场景: resume-single-import-path
+      当 读取会话恢复原路径
+      那么 恢复与续跑经同一投影路径
+# re-review(c2835): 复审结论——本 capability 管辖行为不变；SessionEntry 等领域词表未动，仅协议载体常量与死变体清理。（2026-09-29）
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
+
+# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

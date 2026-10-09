@@ -1,13 +1,13 @@
 //! protocol-app 纯协议层步骤：serde 往返、闭集拒绝、JSON-RPC 信封。
-//! 不起 Host —— 全部直接驱动 `crate::protocol` 公开类型。
+//! 不起 Host —— 全部直接驱动 `xylitol::protocol` 公开类型。
 
-use crate::protocol::lifecycle::XyEvent;
-use crate::protocol::wire::codec;
-use crate::protocol::{Command, Event, RpcMessage};
-use crate::tests::bdd::prelude::*;
+use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
 use std::convert::TryFrom;
+use xylitol::protocol::lifecycle::XyEvent;
+use xylitol::protocol::wire::codec;
+use xylitol::protocol::{Command, Event, RpcMessage};
 
 /// Shared state for protocol-layer scenarios.
 pub struct ProtocolBdd {
@@ -296,7 +296,7 @@ fn t_queue_update_fidelity(protocol_bdd: &ProtocolBdd) {
 
 #[when("序列化含 thinking 与 text 的 assistant content 为会话部件")]
 fn w_agent_part_tagged(protocol_bdd: &ProtocolBdd) {
-    use crate::protocol::AgentPart;
+    use xylitol::protocol::AgentPart;
     let parts = vec![
         AgentPart::Thinking {
             thinking: "隐式推理".into(),
@@ -338,7 +338,7 @@ fn t_agent_part_tagged(protocol_bdd: &ProtocolBdd) {
 
 #[when("对含 thinking 与 text 的消息提取纯文本摘要")]
 fn w_preview_text(protocol_bdd: &ProtocolBdd) {
-    use crate::protocol::session::message_text;
+    use xylitol::protocol::session::message_text;
     let msg = serde_json::json!({
         "role": "assistant",
         "content": [
@@ -382,7 +382,7 @@ fn t_error_kind_roundtrip(protocol_bdd: &ProtocolBdd) {
 
 #[when("对 TodoUpdated 快照事件做线协议往返")]
 fn w_todo_updated_roundtrip(protocol_bdd: &ProtocolBdd) {
-    use crate::protocol::session::{TodoItem, TodoList, TodoStatus};
+    use xylitol::protocol::session::{TodoItem, TodoList, TodoStatus};
     let event = Event::TodoUpdated {
         list: TodoList::new(vec![
             TodoItem {
@@ -476,9 +476,9 @@ fn t_compaction_end_fidelity(protocol_bdd: &ProtocolBdd) {
 
 #[when("以不存在的文件调用导入会话")]
 async fn w_import_missing_file(protocol_bdd: &ProtocolBdd) {
-    use crate::SessionExporter;
-    use crate::infra::export::StdExportIo;
-    use crate::infra::session::SessionManager;
+    use xylitol::SessionExporter;
+    use xylitol::infra::export::StdExportIo;
+    use xylitol::infra::session::SessionManager;
     let dir = tempfile::tempdir().unwrap();
     let sessions = dir.path().join("sessions");
     std::fs::create_dir_all(&sessions).unwrap();

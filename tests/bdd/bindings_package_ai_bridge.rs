@@ -1,6 +1,6 @@
 //! package-ai-bridge BDD 绑定。
 
-use crate::tests::bdd::steps_bridge::{AiBridgeBdd, ai_bridge_bdd};
+use crate::bdd::steps_bridge::{AiBridgeBdd, ai_bridge_bdd};
 use rstest_bdd_macros::scenario;
 
 // ---- c2826 specs-compact：裸规则转场景绑定 ----

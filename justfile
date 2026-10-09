@@ -9,6 +9,10 @@ set unstable
 # - verbose: tool -v where useful; scripts get --verbose
 verbosity_default := env("JUST_VERBOSITY", "quiet")
 
+# Pinned toolchain first (rust-toolchain.toml lives in this repo; Homebrew stable
+# cargo reports a different version and makes `llman-sdd validate --specs` fail).
+export PATH := env_var_or_default("HOME", "/usr") + "/.cargo/bin:" + env_var("PATH")
+
 _default:
     @just --list
     @python3 scripts/doctor_dev_env.py
@@ -23,6 +27,9 @@ setup:
     # LFS pre-push is owned by git-lfs's native hooks (pre-push + post-*),
     # NOT by prek. Idempotent; also fixes fresh clones missing hooks.
     git lfs install --local
+    # PyYAML is a hard dep of scripts/check_tui_designing.py (designing YAML parse).
+    python3 -m pip install --quiet --user pyyaml \
+      || echo "warn: PyYAML missing — scripts/check_tui_designing.py needs it" >&2
     # Lazy install also happens in scripts/check_complexity.py; setup warms the cache.
     if ! command -v cccc-rs >/dev/null && [[ ! -x .tools/bin/cccc-rs ]]; then
       cargo install cccc-rs-cli --version 0.4.0 --locked --root .tools
@@ -354,10 +361,11 @@ check-scripts verbosity=verbosity_default:
       extra+=(--verbose)
     fi
     for f in "${files[@]}"; do
+        # ${arr[@]+…} 形态：bash 3.2（macOS 自带）在 `set -u` 下不将空数组当 unbound。
         if python3 "$f" --help 2>/dev/null | grep -q -- '--check'; then
-            python3 "$f" --check "${extra[@]}"
+            python3 "$f" --check ${extra[@]+"${extra[@]}"}
         else
-            python3 "$f" "${extra[@]}"
+            python3 "$f" ${extra[@]+"${extra[@]}"}
         fi
     done
 
@@ -403,7 +411,8 @@ qa verbosity=verbosity_default: \
     (doc-test verbosity) \
     (check-tui-tokens verbosity) \
     (check-scripts-wired verbosity) \
-    (check-scripts verbosity)
+    (check-scripts verbosity) \
+    (spec-validate verbosity)
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{verbosity}}" in
@@ -419,6 +428,30 @@ qa verbosity=verbosity_default: \
         prek -v run --all-files
         ;;
     esac
+
+# SDD contract sweep: index rebuild + strict validate (part of `just qa`) and the
+# review counters. `index rebuild` first — a stale index inflates warning counts.
+sdd:
+    llman-sdd index rebuild
+    @llman-sdd validate --all --strict
+    @llman-sdd review
+
+# Strict specs/change validate (wired into `just qa`; deterministic, no network).
+[arg('verbosity', pattern='quiet|normal|verbose')]
+spec-validate verbosity=verbosity_default:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # CI runner 不装 llman-sdd（dev/SDD 工具）：有则门禁强制（失败即红），
+    # 缺失则显式跳过并说明——spec 行为完整性由 qa 内 BDD/tests 全量闸兜底。
+    if ! command -v llman-sdd >/dev/null 2>&1; then
+      echo "spec-validate: skipped (llman-sdd 未安装；CI 由 BDD/test 闸兜底)"
+      exit 0
+    fi
+    if [[ "{{verbosity}}" == "quiet" ]]; then
+      llman-sdd validate --all --strict | tail -n 8
+    else
+      llman-sdd validate --all --strict
+    fi
 
 # Full gate including TUI layer-5 E2E (portable-pty + tmux; #[ignore]).
 [arg('verbosity', pattern='quiet|normal|verbose')]

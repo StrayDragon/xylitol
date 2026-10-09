@@ -105,6 +105,15 @@
   规则: bash-event-append
     产品 bridge MUST 提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价），输入为交互 bang 的输出事件（session/bash_output → 面级 sink）；增量追加期间 status MUST 保持 pending tint；BashDone 或取消收口时 MUST 经既有 finish/cancelled 路径切换终态；MUST NOT 每 chunk 新建独立滚动提示行。
     # verified-by: llmanspec/specs/app-tui-bridge/app-tui-bridge.feature
+
+    场景: bash-block-appends-in-place
+      当 以桥缝创建 pending Bash 块并增量追加输出
+      那么 条目为 Bash 块而非裸滚动提示且 status 保持 pending
+
+    场景: bash-block-closes-via-existing-finish-path
+      当 以桥缝创建 pending Bash 块并增量追加输出
+      当 注入完成收口
+      那么 块状态切换为终态
   @req:r1175
   规则: quiet-write-edit-success-output
     ToolExecutionEnd 对 write/edit 且 is_error=false 时，若 result 为机器成功 JSON（含 path/success 或 display_diff），bridge MUST NOT 把该 JSON 当作默认可见的机器结果墙。edit 成功时 MUST 将 display_diff 合入同一条工具块（MUST NOT 再 push 独立 UiEntry::Diff）。write 意图流式阶段 MUST 把 args.content 写入该工具块可渲染正文（供 viewport）。is_error=true 时 MUST 保留错误文案供块末查看。
@@ -144,3 +153,7 @@
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
+
+# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
+
+# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

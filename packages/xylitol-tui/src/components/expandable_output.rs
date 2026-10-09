@@ -213,7 +213,7 @@ mod tests {
             max_preview_lines: 3,
             ..ExpandableOutputOptions::default()
         };
-        let (lines, footer) = render_expandable_output(&text, 40, true, &opts);
+        let (lines, footer) = render_expandable_output(text, 40, true, &opts);
         assert_eq!(footer, None, "short content has no footer: {lines:?}");
         assert_eq!(lines.len(), 2, "short content stays footer-free: {lines:?}");
         assert!(

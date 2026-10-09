@@ -272,10 +272,13 @@ mod tests {
         assert!(display.contains("[Full output:"), "{display}");
         assert!(display.contains("lines shown"), "{display}");
         assert!(display.contains("Truncated:"), "{display}");
-        assert!(
-            display.contains("/tmp/") || display.contains("(unavailable)"),
-            "{display}"
-        );
+        // 截断行 MUST 带上全量文件路径（路径值随平台而异，只断载体本身）。
+        let path = snapshot
+            .full_output_path
+            .as_ref()
+            .and_then(|p| p.to_str())
+            .expect("truncated snapshot carries the full-output path");
+        assert!(display.contains(path), "{display}");
     }
 
     #[test]
