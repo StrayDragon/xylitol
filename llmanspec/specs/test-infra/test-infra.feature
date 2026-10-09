@@ -32,11 +32,11 @@
   @req:r57
   规则: async-test-timeout
     依赖外部时序（网络 / 子进程 / 挂钟等待）的异步集成场景 MUST 用 with_test_timeout 辅助函数包裹等待主体（默认 10s），防止 CI 因死锁或 mock 失败挂起；纯内存异步场景 SHOULD 复用同一辅助统一收口。MUST NOT 以「断言该辅助存在」的文本探针替代真实包裹（名实不符即债务）。
-    # verified-by: tests/bdd/helpers.rs
+    # verified-by: fn t_async_test_timeout
 
     场景: async-test-timeout-guard
-      当 读取异步集成测试超时基建
-      那么 包裹主体且防挂起
+      当 外部时序场景以 with_test_timeout 包裹等待主体
+      那么 超时辅助被真实调用且不得仅以源码探针自证
   @req:r60
   规则: no-fixed-tmp-paths
     测试 MUST NOT 使用固定名称的硬编码 /tmp 路径；MUST 使用唯一自动生成路径以支持并行执行。

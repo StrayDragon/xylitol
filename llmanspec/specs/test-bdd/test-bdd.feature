@@ -64,3 +64,4 @@
 # re-review(c2838): c2838 doc 治理未触及 test-bdd 行为；批量 re-review 与 scope 覆盖触发本标记。（2026-10-06）
 # re-review(c2839): c2839 可读性导览未触及 test-bdd 行为；批量 scope 覆盖触发本标记。（2026-10-06）
 # re-review(c2837): flaky-fix 分支复核（CI 偶发 flaky 修复触及 tests/bdd scope）。（2026-10-06）
+# re-review(c2853): steps_c2827 按域拆分（探针 / infra-runtime）与 r57 真实化——步骤注册文本除 r57 场景外零变化；映射不变量保持。（2026-10-09）
