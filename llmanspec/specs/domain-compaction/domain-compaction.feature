@@ -408,6 +408,11 @@
       当 触发一次压缩
       那么 摘要非空且采用推理内容而非 fallback 占位
 
+  @req:r1924
+  规则: 压缩度量口径一致与校准
+    压缩决策链 MUST 对同一份「替换后」请求上下文（`build_context_entries` 输出）使用同一可校准的 token 度量源：切点判定（`prepare_compaction` / `find_cut_point` 累加）、触发判定（r1406 同源纪律）与产品 footer / Driver 只读估计 MUST 收敛到同一估算入口族；切点判定 MUST NOT 以独立字符串字符启发式（chars/4 之类的 len/4）作为度量 SSOT（lax 兜底仅限消息反序列化失败，MUST NOT 作为默认决策度量）。该度量对同一上下文的估算与 provider 实测 input 的系统性偏差 MUST 可解释且可对拍（tokenizer 口径差异、fixed_context 叠加与否必须可区分），MUST NOT 出现「展示显示超窗而压缩判定无可压缩」的长期矛盾（症状：footer 高估超窗、压缩永不触发、每回合重复判定）。
+    # verified-by: src/agent/compaction/cut_detector.rs
+
 # re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
 
 # re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
