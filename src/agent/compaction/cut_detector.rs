@@ -3,7 +3,7 @@
 //! Walk session entries backwards from newest, accumulate token estimates,
 //! and find the nearest valid boundary (user / assistant / bash / custom / branch).
 
-use crate::protocol::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
+use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 use crate::protocol::session::SessionEntry;
 
 /// Result from [`find_cut_point`].
@@ -131,81 +131,6 @@ fn estimate_lax_message_json_chars(message: &serde_json::Value) -> u64 {
 }
 
 /// pi-aligned chars/4 estimate for a single transcript message.
-pub fn estimate_tokens_message_for_cut(msg: &AgentMessage) -> u64 {
-    let chars = match msg {
-        // pi user / toolResult / custom: text + image only
-        AgentMessage::Llm(LlmMessage::UserMessage { content, .. })
-        | AgentMessage::Llm(LlmMessage::ToolResultMessage { content, .. }) => {
-            estimate_text_and_image_chars(content)
-        }
-        // pi assistant: text + thinking + toolCall (not image)
-        AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) => {
-            estimate_assistant_chars(content)
-        }
-        AgentMessage::Env(EnvMessage::BashExecutionMessage {
-            command, output, ..
-        }) => (command.len() + output.len()) as u64,
-        AgentMessage::Env(EnvMessage::CompactionSummaryMessage { summary, .. })
-        | AgentMessage::Env(EnvMessage::BranchSummaryMessage { summary, .. }) => {
-            summary.len() as u64
-        }
-        AgentMessage::Env(EnvMessage::CustomMessage { content, .. }) => {
-            estimate_custom_content_chars(content)
-        }
-    };
-    chars.div_ceil(4)
-}
-
-fn estimate_text_and_image_chars(parts: &[AgentPart]) -> u64 {
-    let mut chars = 0u64;
-    for part in parts {
-        match part {
-            AgentPart::Text { text } => chars += text.len() as u64,
-            AgentPart::Image(_) => chars += ESTIMATED_IMAGE_CHARS,
-            AgentPart::Thinking { .. } | AgentPart::ToolCall { .. } => {}
-        }
-    }
-    chars
-}
-
-fn estimate_assistant_chars(parts: &[AgentPart]) -> u64 {
-    let mut chars = 0u64;
-    for part in parts {
-        match part {
-            AgentPart::Text { text } => chars += text.len() as u64,
-            AgentPart::Thinking { thinking, .. } => chars += thinking.len() as u64,
-            AgentPart::ToolCall {
-                name, arguments, ..
-            } => {
-                chars += name.len() as u64 + arguments.to_string().len() as u64;
-            }
-            AgentPart::Image(_) => {}
-        }
-    }
-    chars
-}
-
-fn estimate_custom_content_chars(content: &serde_json::Value) -> u64 {
-    if let Some(s) = content.as_str() {
-        return s.len() as u64;
-    }
-    if let Some(parts) = content.as_array() {
-        let mut chars = 0u64;
-        for part in parts {
-            let typ = part.get("type").and_then(|t| t.as_str());
-            if typ == Some("image") {
-                chars += ESTIMATED_IMAGE_CHARS;
-            } else if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                chars += text.len() as u64;
-            } else if let Some(s) = part.as_str() {
-                chars += s.len() as u64;
-            }
-        }
-        return chars;
-    }
-    content.to_string().len() as u64
-}
-
 /// Estimate tokens for a single `SessionEntry` using chars/4 heuristic.
 ///
 /// Prefer [`estimate_tokens_entry_for_cut`] for cut-point walking (pi-aligned).
@@ -715,31 +640,6 @@ mod tests {
             message: json!({"role": "user", "content": "hello"}),
         });
         assert_eq!(estimate_tokens_entry(&message), 2);
-    }
-
-    // ── estimate_custom_content_chars ───────────────────────────────
-
-    #[test]
-    fn custom_content_chars_table() {
-        let cases = [
-            ("字符串直取", json!("abcd"), 4u64),
-            ("数组内 image", json!([{"type":"image"}]), 4800),
-            ("数组内 text part", json!([{"text":"ab"}]), 2),
-            ("数组内裸字符串", json!(["xyz"]), 3),
-            ("空数组", json!([]), 0),
-            (
-                "非数组非字符串 → 整体序列化",
-                json!({"k":1}),
-                r#"{"k":1}"#.len() as u64,
-            ),
-        ];
-        for (desc, content, expected) in cases {
-            assert_eq!(
-                estimate_custom_content_chars(&content),
-                expected,
-                "case: {desc}"
-            );
-        }
     }
 
     // ── is_valid_cut_point / is_turn_start_entry ────────────────────
