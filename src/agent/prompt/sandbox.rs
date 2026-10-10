@@ -3,7 +3,7 @@
 //! Strict undefined, whitelist context only, pre-registered templates — no
 //! filesystem loader and no `env`/`secret` namespaces (unlike config YAML).
 
-use minijinja::{AutoEscape, Environment, UndefinedBehavior, context, value::Value as MjValue};
+use minijinja::{AutoEscape, Environment, UndefinedBehavior, context, value::Serde};
 use serde::Serialize;
 
 const DEFAULT_TEMPLATE: &str = "default_system.j2";
@@ -50,7 +50,7 @@ fn try_render_default(tools: &[(String, String)]) -> Result<String, minijinja::E
     let env = sandbox_env();
     let tmpl = env.get_template(DEFAULT_TEMPLATE)?;
     let ctx = context! {
-        tools => MjValue::from_serialize(&rows),
+        tools => Serde(&rows),
         mcp_discover => MCP_DISCOVER,
     };
     tmpl.render(ctx)

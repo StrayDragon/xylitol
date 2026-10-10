@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use minijinja::{AutoEscape, Environment, UndefinedBehavior, context, value::Value as MjValue};
+use minijinja::{AutoEscape, Environment, UndefinedBehavior, context, value::Serde};
 
 use super::error::LoadError;
 use super::secret_env::SecretMap;
@@ -78,9 +78,9 @@ pub(crate) fn render_config_template_with(
         .map_err(|e| LoadError::template(format_template_error(path, &e)))?;
 
     let ctx = context! {
-        env => MjValue::from_serialize(env_vars),
-        secret => MjValue::from_serialize(&secret_ns),
-        vars => MjValue::from_serialize(&vars_ns),
+        env => Serde(env_vars),
+        secret => Serde(&secret_ns),
+        vars => Serde(&vars_ns),
     };
 
     tmpl.render(ctx)
