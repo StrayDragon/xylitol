@@ -1,10 +1,7 @@
 //! Token estimation — multi-source accounting via xylitol-ai-bridge (c1030 / c1210).
 
-use xylitol_ai_bridge::accounting::{EstimateContextOpts, estimate_context};
+use xylitol_ai_bridge::accounting::{EstimateContextOpts, estimate_context, heuristic_token_count};
 use xylitol_ai_bridge::dto::AiBridgeMessage;
-use xylitol_ai_bridge::registry::{TokenizerSource, resolve_tokenizer_with_override};
-use xylitol_ai_bridge::tokenize::HfTokenizerCache;
-use xylitol_ai_bridge::tokenize::{BuiltinTokenizer, estimate_messages};
 
 use crate::agent::prompt::project_outbound;
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
@@ -25,7 +22,7 @@ pub struct FixedRequestContext {
 }
 
 impl FixedRequestContext {
-    /// chars/4 estimate of the fixed overhead (same unit as the cut walk, c8).
+    /// `/3` estimate of the fixed overhead (same unit as the cut walk, c8).
     pub fn overhead_tokens(&self) -> u64 {
         let mut chars: u64 = self
             .system_prompt
@@ -36,7 +33,7 @@ impl FixedRequestContext {
             chars += (t.name.len() + t.description.len()) as u64;
             chars += t.parameters.to_string().len() as u64;
         }
-        chars.div_ceil(4)
+        heuristic_token_count(chars)
     }
 
     /// Estimate-only pseudo rows folding the fixed context into message accounting.
@@ -70,14 +67,6 @@ impl FixedRequestContext {
 #[derive(Debug, Clone, Default)]
 pub struct EstimateOpts {
     pub model_id: Option<String>,
-    /// Config / CLI-derived override (c1380 `ModelEntry.tokenizer`).
-    pub tokenizer_override: Option<xylitol_ai_bridge::registry::TokenizerOverride>,
-    /// When false (default), RemoteCount is skipped (must be explicitly enabled).
-    pub allow_remote_count: bool,
-    /// Injected RemoteCount result (tests / Anthropic count_tokens caller).
-    pub remote_count_tokens: Option<u64>,
-    /// When false (default, c1420 / paa10), LocalTokenizer encode is skipped.
-    pub allow_local_tokenizer: bool,
     /// Fixed per-request overhead folded in when no Api anchor exists (c25).
     /// Api provenance MUST NOT receive this — usage.input already covers the
     /// full request; folding it in would double-count.
@@ -145,9 +134,7 @@ pub fn estimate_from_session_entries(
     estimate_context_tokens_with(&messages, last_usage.as_ref(), stop_reason, opts, &bar)
 }
 
-/// Estimate context tokens via accounting priority:
-/// Api → RemoteCount → LocalTokenizer → Heuristic. Full entry with optional stop-reason
-/// (Api anchor validity) and model id.
+/// Estimate context tokens via accounting priority: Api → Heuristic.
 pub fn estimate_context_tokens_with(
     messages: &[AgentMessage],
     last_usage: Option<&XyUsage>,
@@ -168,73 +155,22 @@ pub fn estimate_context_tokens_with(
     let bridge_usage = last_usage.copied();
     let bridge_stop = stop_reason;
 
-    let model_id = opts.model_id.clone();
-    let tok_over = opts.tokenizer_override.clone();
-    let remote_tokens = opts.remote_count_tokens;
-    let allow_remote = opts.allow_remote_count;
-
-    let tokenizer_estimate: Option<Box<xylitol_ai_bridge::accounting::TokenizerEstimateFn>> =
-        if opts.allow_local_tokenizer {
-            model_id.as_ref().and_then(|id| {
-                let source = resolve_tokenizer_with_override(id, tok_over.clone())?;
-                Some(Box::new(move |msgs: &[AiBridgeMessage]| match &source {
-                    TokenizerSource::Builtin(b) => estimate_messages(msgs, *b),
-                    TokenizerSource::HuggingFace { repo, file } => {
-                        let cache = HfTokenizerCache::new(None);
-                        msgs.iter()
-                            .map(|m| {
-                                let s = serde_json::to_string(m).unwrap_or_default();
-                                cache
-                                    .encode_count_if_cached(repo, file, &s)
-                                    .unwrap_or_else(|| BuiltinTokenizer::FALLBACK.encode_count(&s))
-                            })
-                            .sum()
-                    }
-                    TokenizerSource::Local { path } => {
-                        let cache = HfTokenizerCache::new(None);
-                        msgs.iter()
-                            .map(|m| {
-                                let s = serde_json::to_string(m).unwrap_or_default();
-                                cache
-                                    .encode_count_at_path(path, &s)
-                                    .unwrap_or_else(|| BuiltinTokenizer::FALLBACK.encode_count(&s))
-                            })
-                            .sum()
-                    }
-                })
-                    as Box<xylitol_ai_bridge::accounting::TokenizerEstimateFn>)
-            })
-        } else {
-            None
-        };
-
-    let remote_count: Option<Box<xylitol_ai_bridge::accounting::RemoteCountFn>> = if allow_remote {
-        Some(Box::new(move |_msgs: &[AiBridgeMessage]| remote_tokens))
-    } else {
-        None
-    };
-
     let est = estimate_context(
         &bridge_msgs,
         EstimateContextOpts {
             last_usage: bridge_usage.as_ref(),
             stop_reason: bridge_stop,
-            remote_count,
-            tokenizer_estimate,
-            allow_remote,
         },
     );
 
     let result: ContextTokenEstimate = est;
     log::debug!(
         target: "xylitol::token_estimate",
-        "token estimate backend={} tokens={} usage_tokens={} trailing={} allow_local={} allow_remote={} emit_obs={} model_id={:?}",
+        "token estimate backend={} tokens={} usage_tokens={} trailing={} emit_obs={} model_id={:?}",
         result.provenance.as_str(),
         result.tokens,
         result.usage_tokens,
         result.trailing_tokens,
-        opts.allow_local_tokenizer,
-        opts.allow_remote_count,
         opts.emit_obs,
         opts.model_id,
     );
@@ -260,13 +196,6 @@ pub(crate) fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &Estimat
         ("usage_tokens".into(), est.usage_tokens.to_string()),
         ("trailing_tokens".into(), est.trailing_tokens.to_string()),
     ];
-    // Gate flags: only emit when armed (default false is noise).
-    if opts.allow_local_tokenizer {
-        props.push(("allow_local_tokenizer".into(), "true".into()));
-    }
-    if opts.allow_remote_count {
-        props.push(("allow_remote_count".into(), "true".into()));
-    }
     if let Some(model) = opts
         .model_id
         .as_deref()
@@ -298,7 +227,6 @@ mod tests {
     use super::*;
     use crate::protocol::message::AgentMessage;
     use crate::protocol::model::TokenProvenance;
-    use xylitol_ai_bridge::registry::TokenizerOverride;
 
     fn estimate(
         messages: &[AgentMessage],
@@ -313,54 +241,6 @@ mod tests {
             opts,
             &crate::agent::prompt::AgentStatusBar::default(),
         )
-    }
-
-    #[test]
-    fn override_enables_local_tokenizer_for_unmapped_alias() {
-        let msgs = [AgentMessage::user("hello world")];
-        let without_over = estimate(
-            &msgs,
-            None,
-            None,
-            &EstimateOpts {
-                model_id: Some("qwen-custom".into()),
-                allow_local_tokenizer: true,
-                ..Default::default()
-            },
-        );
-        assert_eq!(without_over.provenance, TokenProvenance::Heuristic);
-
-        let with_over = estimate(
-            &msgs,
-            None,
-            None,
-            &EstimateOpts {
-                model_id: Some("qwen-custom".into()),
-                tokenizer_override: Some(TokenizerOverride::Builtin),
-                allow_local_tokenizer: true,
-                ..Default::default()
-            },
-        );
-        assert_eq!(with_over.provenance, TokenProvenance::LocalTokenizer);
-        assert!(with_over.tokens > 0);
-    }
-
-    #[test]
-    fn local_tokenizer_off_skips_encode_even_with_override() {
-        let msgs = [AgentMessage::user("hello world")];
-        let est = estimate(
-            &msgs,
-            None,
-            None,
-            &EstimateOpts {
-                model_id: Some("qwen-custom".into()),
-                tokenizer_override: Some(TokenizerOverride::Builtin),
-                allow_local_tokenizer: false,
-                ..Default::default()
-            },
-        );
-        assert_ne!(est.provenance, TokenProvenance::LocalTokenizer);
-        assert_eq!(est.provenance, TokenProvenance::Heuristic);
     }
 
     fn fixed_fixture() -> FixedRequestContext {
@@ -567,7 +447,6 @@ mod tests {
         let est = estimate_from_session_entries(&entries, &EstimateOpts::default());
         assert_eq!(est.provenance, TokenProvenance::Api);
         assert!(est.tokens > 0);
-        // Reserve formula must use this shared number (not an independent len/4 sum).
         let settings = crate::agent::compaction::CompactionSettings::default();
         let _ = crate::agent::compaction::should_compact(est.tokens, 128_000, &settings, 0);
     }

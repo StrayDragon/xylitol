@@ -75,7 +75,7 @@ fn bench_estimate_context_tokens(c: &mut Criterion) {
     group.finish();
 
     // Provenance: touch the strum SSOT path so string derivations stay benchmarked.
-    let provenance = [TokenProvenance::Api, TokenProvenance::LocalTokenizer];
+    let provenance = [TokenProvenance::Api, TokenProvenance::Heuristic];
     c.bench_function("provenance_as_str", |b| {
         b.iter(|| {
             for p in &provenance {

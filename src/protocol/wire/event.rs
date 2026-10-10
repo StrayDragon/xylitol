@@ -345,13 +345,7 @@ impl TryFrom<&Event> for XyEvent {
                 generation,
             } => {
                 use crate::protocol::model::{ContextTokenEstimate, TokenProvenance};
-                let provenance = match provenance.as_str() {
-                    "Api" => TokenProvenance::Api,
-                    "RemoteCount" => TokenProvenance::RemoteCount,
-                    "LocalTokenizer" => TokenProvenance::LocalTokenizer,
-                    "Heuristic" => TokenProvenance::Heuristic,
-                    _ => TokenProvenance::Unknown,
-                };
+                let provenance = TokenProvenance::from_key(provenance);
                 Ok(XyEvent::ContextTokenSettlement {
                     estimate: ContextTokenEstimate {
                         tokens: *tokens,

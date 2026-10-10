@@ -528,13 +528,7 @@ fn json_string_to_agent_message(json: Option<&str>) -> Option<AgentMessage> {
 // ── small enum converters ──────────────────────────────────
 
 fn token_provenance_from_str(provenance: &str) -> TokenProvenance {
-    match provenance {
-        "Api" => TokenProvenance::Api,
-        "RemoteCount" => TokenProvenance::RemoteCount,
-        "LocalTokenizer" => TokenProvenance::LocalTokenizer,
-        "Heuristic" => TokenProvenance::Heuristic,
-        _ => TokenProvenance::Unknown,
-    }
+    TokenProvenance::from_key(provenance)
 }
 
 fn session_tree_kind_to_v3(kind: SessionTreeKind) -> v3::SessionTreeKind {

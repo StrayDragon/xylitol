@@ -353,8 +353,12 @@ async fn run_host_loop(
                 }
                 _ = ticker.tick() => {
                     // Drain any footer estimates that completed without waiting on select.
-                    while let Some((job_id, label)) = session.try_recv_footer_token() {
-                        session.step(HostEvent::FooterTokens { job_id, label })?;
+                    while let Some((job_id, label, heuristic)) = session.try_recv_footer_token() {
+                        session.step(HostEvent::FooterTokens {
+                            job_id,
+                            label,
+                            heuristic,
+                        })?;
                     }
                     if agent_stream.is_none() {
                         apply_idle_downlink(&mut session, driver)?;
@@ -458,8 +462,12 @@ async fn run_host_loop(
                     on_agent_stream_item(&mut session, &mut agent_stream, maybe_agent)?;
                 }
                 maybe_footer = session.recv_footer_token() => {
-                    if let Some((job_id, label)) = maybe_footer {
-                        session.step(HostEvent::FooterTokens { job_id, label })?;
+                    if let Some((job_id, label, heuristic)) = maybe_footer {
+                        session.step(HostEvent::FooterTokens {
+                            job_id,
+                            label,
+                            heuristic,
+                        })?;
                     }
                 }
                 maybe_seed = async {

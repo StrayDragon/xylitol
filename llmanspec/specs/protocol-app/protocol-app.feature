@@ -185,7 +185,7 @@
       那么 全载荷保真且旧形态解码为缺省载荷
   @req:r1717
   规则: 上下文估计方法
-    产品方法表 MUST 登记只读 `estimate_context`：host 侧以与本地 driver 同源入口计算 ContextTokenEstimate（含固定请求开销折算与 host tokenizer 映射）；MUST 为产品 unary 且不占写者。Remote 客户端 MUST NOT 再以 GetMessages 拉条目在本地自估充当该能力。
+    产品方法表 MUST 登记只读 `estimate_context`：host 侧以与本地 driver 同源入口计算 ContextTokenEstimate（含固定请求开销折算）；MUST 为产品 unary 且不占写者。Remote 客户端 MUST NOT 再以 GetMessages 拉条目在本地自估充当该能力。
 
     场景: estimate-context-method-registered-readonly
       当 查询方法表的 estimate_context

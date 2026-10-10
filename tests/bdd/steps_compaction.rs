@@ -203,8 +203,8 @@ pub(crate) async fn _g_comp_50_turns(sess: &XySessionStore) {
 
 #[when("触发压缩保留最近 10 轮")]
 pub(crate) async fn _w_comp_trigger(agent: &AgentState, sess: &XySessionStore) {
-    // c2848: 统一度量平面后保留预算按新口径重调（保持「保留最近 10 轮」语义）。
-    comp_run_compact(agent, sess, COMP_RETAIN_SID, 1_150).await;
+    // 统一度量平面 /3 后重调保留预算（保持「保留最近 10 轮」语义）。
+    comp_run_compact(agent, sess, COMP_RETAIN_SID, 1_540).await;
 }
 
 #[then("前 40 轮被总结为一个 CompactionEntry")]

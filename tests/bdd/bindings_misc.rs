@@ -1,6 +1,5 @@
 use crate::bdd::fixtures::*;
 use crate::bdd::steps_bridge::{AiBridgeBdd, PromptBdd, ai_bridge_bdd, prompt_bdd};
-use crate::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -106,36 +105,6 @@ fn test_pt9_no_backfill(prompt_bdd: PromptBdd) {}
     name = "no-slash-prompt-templates"
 )]
 fn test_pt3_no_slash_prompt_templates(prompt_bdd: PromptBdd, ws: Workspace) {}
-
-#[scenario(
-    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
-    name = "cache-list-and-remove"
-)]
-fn test_paa8_list_remove(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
-    name = "download-atomic"
-)]
-fn test_paa8_atomic(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
-    name = "hf-endpoint-mirror"
-)]
-fn test_paa9_mirror(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
-    name = "hf-endpoint-default"
-)]
-fn test_paa9_default(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
-    name = "builtin-follows-tiktoken-table"
-)]
-fn test_paa_builtin_follows_tiktoken() {}
 
 #[test]
 fn curated_xy_hook_bus_symbols_resolve() {

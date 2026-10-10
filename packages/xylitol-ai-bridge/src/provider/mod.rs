@@ -20,7 +20,6 @@ pub mod dialect;
 pub mod factory;
 pub mod native;
 pub mod obs_session;
-pub mod remote_count;
 pub mod reqwest_bridge;
 pub mod tool_wire;
 pub mod trace;
@@ -42,9 +41,6 @@ pub use obs_session::{
     langfuse_observation_properties, langfuse_observation_properties_from,
     langfuse_session_properties, langfuse_session_properties_from, obs_session_context,
     set_obs_session, set_obs_session_name, xylitol_obs_lane_properties,
-};
-pub use remote_count::{
-    AnthropicRemoteCounter, OpenAiResponsesRemoteCounter, RemoteCounter, StubRemoteCounter,
 };
 pub use tool_wire::{
     canonical_tool_names, from_wire_tool_name, is_provider_safe_tool_name, to_wire_tool_name,

@@ -44,7 +44,7 @@ pub fn format_compact_tokens(count: u64) -> String {
 /// (c1820); Unknown stays `?` without compact.
 pub fn footer_token_label(provenance: TokenProvenance, tokens: u64, context_window: u64) -> String {
     let base = match provenance {
-        TokenProvenance::Api | TokenProvenance::RemoteCount | TokenProvenance::LocalTokenizer => {
+        TokenProvenance::Api => {
             format!("used {} tokens", format_compact_tokens(tokens))
         }
         TokenProvenance::Heuristic => {
@@ -62,7 +62,7 @@ pub fn footer_token_label(provenance: TokenProvenance, tokens: u64, context_wind
             let pct = tokens as f64 / context_window as f64 * 100.0;
             format!("{base} · ~{pct:.1}%/{win}")
         }
-        TokenProvenance::Api | TokenProvenance::RemoteCount | TokenProvenance::LocalTokenizer => {
+        TokenProvenance::Api => {
             let pct = tokens as f64 / context_window as f64 * 100.0;
             format!("{base} · {pct:.1}%/{win}")
         }
@@ -117,14 +117,6 @@ mod tests {
         assert_eq!(
             footer_token_label(TokenProvenance::Api, 42, 0),
             "used 42 tokens"
-        );
-        assert_eq!(
-            footer_token_label(TokenProvenance::RemoteCount, 7, 0),
-            "used 7 tokens"
-        );
-        assert_eq!(
-            footer_token_label(TokenProvenance::LocalTokenizer, 9, 0),
-            "used 9 tokens"
         );
         assert_eq!(
             footer_token_label(TokenProvenance::Heuristic, 100, 0),

@@ -1796,10 +1796,9 @@ fn harness_cli_restored_session_rebuilds_transcript() {
     let root = session.ui_root().expect("product ui").clone();
     assert!(
         root.borrow()
-            .toast_notice_body()
-            .is_some_and(|b| b.contains("restored → session sid-restored")),
-        "expected restored toast above editor: {:?}",
-        root.borrow().toast_notice_body()
+            .transient_notice_contains_for_test("restored → session sid-restored"),
+        "expected restored notice: {:?}",
+        root.borrow().client_notice_bodies_for_test()
     );
     session.step(HostEvent::Input(arrow_up_event())).unwrap();
     assert_eq!(root.borrow().editor_text(), "hi");

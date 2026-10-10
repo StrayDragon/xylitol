@@ -13,7 +13,6 @@ pub use provider_guidance::{
 };
 mod provider_guidance;
 pub mod resources;
-pub mod tokenizer;
 #[cfg(feature = "tui")]
 mod trust_gate;
 
@@ -43,7 +42,6 @@ impl From<crate::infra::config::types::TuiActivityFoldConfig>
 use clap::{Args, Parser, Subcommand};
 
 use crate::app::cli::resources::ResourcesAction;
-use crate::app::cli::tokenizer::TokenizerAction;
 use crate::app::core::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, bootstrap, resolve_assembly,
 };
@@ -135,11 +133,6 @@ pub enum CliCommand {
     Resources {
         #[command(subcommand)]
         action: ResourcesAction,
-    },
-    /// Local tokenizer cache: status / opt-in download / clean (c1380).
-    Tokenizer {
-        #[command(subcommand)]
-        action: TokenizerAction,
     },
     /// Host listener (default 127.0.0.1:18790). Closing the TUI does not stop it.
     #[cfg(feature = "server")]
@@ -354,13 +347,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     match args.command {
         Some(CliCommand::Resources { action }) => {
             let code = crate::app::cli::resources::run(action);
-            if code == std::process::ExitCode::FAILURE {
-                std::process::exit(1);
-            }
-            return Ok(());
-        }
-        Some(CliCommand::Tokenizer { action }) => {
-            let code = crate::app::cli::tokenizer::run(action).await;
             if code == std::process::ExitCode::FAILURE {
                 std::process::exit(1);
             }
@@ -896,12 +882,16 @@ mod tests {
         use clap::CommandFactory;
         let mut cmd = CliArgs::command();
         let help = cmd.render_long_help().to_string();
-        for name in ["tui", "print", "resources", "tokenizer"] {
+        for name in ["tui", "print", "resources"] {
             assert!(
                 help.contains(name),
                 "expected `{name}` in top-level help:\n{help}"
             );
         }
+        assert!(
+            cmd.find_subcommand("tokenizer").is_none(),
+            "tokenizer must not remain a product verb:\n{help}"
+        );
         #[cfg(feature = "server")]
         {
             assert!(

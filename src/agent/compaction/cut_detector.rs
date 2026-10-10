@@ -5,6 +5,7 @@
 
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 use crate::protocol::session::SessionEntry;
+use xylitol_ai_bridge::accounting::heuristic_token_count;
 
 /// Result from [`find_cut_point`].
 #[derive(Debug, Clone)]
@@ -17,7 +18,7 @@ pub struct CutPointResult {
     pub is_split_turn: bool,
 }
 
-/// pi `ESTIMATED_IMAGE_CHARS` — counted as chars before `/4`.
+/// pi `ESTIMATED_IMAGE_CHARS` — counted as chars before `/3`.
 const ESTIMATED_IMAGE_CHARS: u64 = 4800;
 
 /// Estimate tokens for cut-point walking (pi `estimateTokens` on AgentMessage).
@@ -26,10 +27,10 @@ const ESTIMATED_IMAGE_CHARS: u64 = 4800;
 /// Message rows that fail typed deserialize still use a lax content walk (string or
 /// parts) so cut math stays usable for legacy / fixture wire shapes.
 /// c2848/r1924: cut 逐条度量与 unified 估算链（`accounting::heuristic_tokens`）
-/// 同源：对**投影后单条**消息按序列化字节 /4 计数（同一算法族、同一投影源），
+/// 同源：对**投影后单条**消息按序列化字节 /3 计数（同一算法族、同一投影源），
 /// 不再使用独立的内容字符启发式作为决策 SSOT。不可行的反序列化走 lax 兜底。
 ///
-/// 注意：unified 的启发式是逐条 `serde_json::to_string /4` 之和，本函数即它的
+/// 注意：unified 的启发式是逐条 `serde_json::to_string /3` 之和，本函数即它的
 /// 逐条切片——切点位置因此与决策/展示落在同一度量空间（中文会话不再 5x 失真）。
 pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
     match entry {
@@ -44,7 +45,7 @@ pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
                     unified_projected_entry_token_estimate(&agent_msg)
                 }
                 // lax 兜底：非 SSOT，仅在消息反序列化失败时使用。
-                Err(_) => estimate_lax_message_json_chars(&msg.message).div_ceil(4),
+                Err(_) => heuristic_token_count(estimate_lax_message_json_chars(&msg.message)),
             }
         }
         _ => entry
@@ -57,7 +58,7 @@ pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
 /// c2848: 与 `accounting::heuristic_tokens` 同算法的单条投影计数（逐条切片）。
 /// 投影丢弃 error 助手与无投影的 Env —— 与 unified 估算完全同源。
 ///
-/// pi 视觉成本单独叠加：图片（user/toolResult）按 `ESTIMATED_IMAGE_CHARS`（≈1200
+/// pi 视觉成本单独叠加：图片（user/toolResult）按 `ESTIMATED_IMAGE_CHARS`（≈1600
 /// token）计——投影后的序列化只含图片元数据、不承载真实视觉载荷，必须显式建模。
 fn unified_projected_entry_token_estimate(agent_msg: &AgentMessage) -> u64 {
     let image_tokens = match agent_msg {
@@ -67,7 +68,7 @@ fn unified_projected_entry_token_estimate(agent_msg: &AgentMessage) -> u64 {
                 .iter()
                 .filter(|p| matches!(p, AgentPart::Image(_)))
                 .count() as u64
-                * ESTIMATED_IMAGE_CHARS.div_ceil(4)
+                * heuristic_token_count(ESTIMATED_IMAGE_CHARS)
         }
         _ => 0,
     };
@@ -75,10 +76,11 @@ fn unified_projected_entry_token_estimate(agent_msg: &AgentMessage) -> u64 {
     let serialized: u64 = projected
         .iter()
         .map(|m| {
-            (serde_json::to_string(m)
-                .map(|s| s.len() as u64)
-                .unwrap_or(0))
-            .div_ceil(4)
+            heuristic_token_count(
+                serde_json::to_string(m)
+                    .map(|s| s.len() as u64)
+                    .unwrap_or(0),
+            )
         })
         .sum();
     serialized.saturating_add(image_tokens)
@@ -130,25 +132,24 @@ fn estimate_lax_message_json_chars(message: &serde_json::Value) -> u64 {
     chars
 }
 
-/// pi-aligned chars/4 estimate for a single transcript message.
-/// Estimate tokens for a single `SessionEntry` using chars/4 heuristic.
+/// Estimate tokens for a single `SessionEntry` using the `/3` byte heuristic.
 ///
 /// Prefer [`estimate_tokens_entry_for_cut`] for cut-point walking (pi-aligned).
 pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
     match entry {
         SessionEntry::Message(msg) => estimate_tokens_message_json(&msg.message),
         SessionEntry::Header(_) => 0,
-        SessionEntry::Compaction(c) => (c.summary.len() as u64).div_ceil(4),
-        SessionEntry::BranchSummary(b) => (b.summary.len() as u64).div_ceil(4),
+        SessionEntry::Compaction(c) => heuristic_token_count(c.summary.len() as u64),
+        SessionEntry::BranchSummary(b) => heuristic_token_count(b.summary.len() as u64),
         SessionEntry::ModelChange(_) => 0,
         SessionEntry::ThinkingLevelChange(_) => 0,
         SessionEntry::Custom(c) => {
             let s = c.data.to_string();
-            (s.len() as u64).div_ceil(4)
+            heuristic_token_count(s.len() as u64)
         }
         SessionEntry::CustomMessage(cm) => {
             let s = cm.content.to_string();
-            (s.len() as u64).div_ceil(4)
+            heuristic_token_count(s.len() as u64)
         }
         SessionEntry::Label(_) => 0,
         SessionEntry::SessionInfo(_) => 0,
@@ -157,20 +158,20 @@ pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
 
 fn estimate_tokens_message_json(message: &serde_json::Value) -> u64 {
     if let Some(s) = message.get("content").and_then(|c| c.as_str()) {
-        return (s.len() as u64).div_ceil(4);
+        return heuristic_token_count(s.len() as u64);
     }
     let Some(parts) = message
         .get("content")
         .or_else(|| message.get("parts"))
         .and_then(|p| p.as_array())
     else {
-        return (message.to_string().len() as u64).div_ceil(4);
+        return heuristic_token_count(message.to_string().len() as u64);
     };
 
     let mut tokens: u64 = 0;
     for part in parts {
         if let Some(t) = part.as_str() {
-            tokens += (t.len() as u64).div_ceil(4);
+            tokens += heuristic_token_count(t.len() as u64);
             continue;
         }
         let typ = part.get("type").and_then(|t| t.as_str());
@@ -179,19 +180,19 @@ fn estimate_tokens_message_json(message: &serde_json::Value) -> u64 {
                 && part.get("text").is_none()
                 && part.get("name").is_none())
         {
-            tokens += 4800;
+            tokens += heuristic_token_count(4800);
             continue;
         }
         match typ {
             Some("text") | Some("thinking") | None => {
                 if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                    tokens += (text.len() as u64).div_ceil(4);
+                    tokens += heuristic_token_count(text.len() as u64);
                 } else {
-                    tokens += (part.to_string().len() as u64).div_ceil(4);
+                    tokens += heuristic_token_count(part.to_string().len() as u64);
                 }
             }
             _ => {
-                tokens += (part.to_string().len() as u64).div_ceil(4);
+                tokens += heuristic_token_count(part.to_string().len() as u64);
             }
         }
     }
@@ -548,57 +549,52 @@ mod tests {
         }
     }
 
-    // ── estimate_tokens_message_json（tokens = chars/4 上取整）──────
-
     #[test]
     fn tokens_string_content_div_ceil() {
         assert_eq!(
             estimate_tokens_message_json(&json!({"content": "hello"})),
             2
-        ); // 5→2
-        assert_eq!(estimate_tokens_message_json(&json!({"content": "abcd"})), 1); // 4→1
+        );
+        assert_eq!(estimate_tokens_message_json(&json!({"content": "abcd"})), 2);
         assert_eq!(estimate_tokens_message_json(&json!({"content": ""})), 0);
     }
 
     #[test]
     fn tokens_part_array_table() {
         let cases = [
-            ("字符串 part", json!({"content":["abcdef"]}), 2u64), // 6→2
+            ("字符串 part", json!({"content":["abcdef"]}), 2u64),
             (
-                // 注意：tokens 变体把 image 直接记为 4800「token」，而 lax
-                // 变体记 4800「char」（÷4 后=1200 token）——两口径相差 4 倍。
-                // 此处按现状钉住；是否统一属显式行为决策，勿顺手改。
-                "image 形态 → 直接 4800 token",
+                "image 形态",
                 json!({"content":[{"type":"image"}]}),
-                4800,
+                heuristic_token_count(4800),
             ),
             (
-                "有 url 无 text/name 同样直接 4800 token",
+                "有 url 无 text/name",
                 json!({"content":[{"url":"http://x"}]}),
-                4800,
+                heuristic_token_count(4800),
             ),
             (
                 "url 带 text 则按 text 计",
                 json!({"content":[{"url":"http://x","text":"abcdefgh"}]}),
-                2,
+                3,
             ),
             (
                 "thinking 与 lax 不同：不区分角色",
                 json!({"role":"user","content":[{"type":"thinking","text":"abcdefgh"}]}),
-                2,
+                3,
             ),
             (
                 "未知 type 用整个 part 序列化长度",
                 json!({"content":[{"type":"zzz","x":"yy"}]}),
                 {
                     let part = json!({"type":"zzz","x":"yy"});
-                    (part.to_string().len() as u64).div_ceil(4)
+                    heuristic_token_count(part.to_string().len() as u64)
                 },
             ),
             (
                 "缺 content → 整个消息 JSON 长度",
                 json!({"foo":1}),
-                (r#"{"foo":1}"#.len() as u64).div_ceil(4),
+                heuristic_token_count(r#"{"foo":1}"#.len() as u64),
             ),
         ];
         for (desc, msg, expected) in cases {
@@ -627,7 +623,7 @@ mod tests {
         assert_eq!(estimate_tokens_entry(&header), 0);
         let compaction = SessionEntry::Compaction(CompactionEntry {
             base: base("c1"),
-            summary: "abcdefgh".into(), // 8 → 2
+            summary: "abcdef".into(),
             first_kept_entry_id: String::new(),
             tokens_before: 0,
             details: None,
@@ -777,14 +773,13 @@ mod tests {
 
     #[test]
     fn find_cut_point_splits_mid_turn_with_turn_start_hint() {
-        // [user(4tok), assistant(4tok), user(4tok)]，keep=6 → 累计在 assistant 处
-        // 达标 → 切点落到 mid-turn → 返回 turn_start 提示恢复完整 turn。
+        // keep=8 → 累计在 assistant 处达标 → 切点落到 mid-turn → 返回 turn_start。
         let entries = vec![
-            msg_entry("u1", "user", "abcdefghijklmnop"), // 16 chars → 4 tok
-            msg_entry("a1", "assistant", "abcdefghijklmnop"), // 4 tok
-            msg_entry("u2", "user", "abcdefghijklmnop"), // 4 tok
+            msg_entry("u1", "user", "abcdefghijklmnop"),
+            msg_entry("a1", "assistant", "abcdefghijklmnop"),
+            msg_entry("u2", "user", "abcdefghijklmnop"),
         ];
-        let r = find_cut_point(&entries, 0, 3, 6);
+        let r = find_cut_point(&entries, 0, 3, 8);
         assert_eq!(r.first_kept_entry_index, 1);
         assert_eq!(r.turn_start_index, 0);
         assert!(r.is_split_turn);

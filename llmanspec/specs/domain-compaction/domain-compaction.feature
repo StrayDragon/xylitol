@@ -17,20 +17,20 @@
 
   @req:r1395
   规则: token 估算使用统一 Usage 与多源计量
-    System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 RemoteCount 然后 LocalTokenizer 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构。
+    System MUST 基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 Heuristic 的优先级解析；MUST 继续使用 canonical XyUsage，MUST NOT 再引入并行的第二套 usage 结构，MUST NOT 经本地词表 encode 或独立 RemoteCount HTTP 作为估计档。
 
     场景: estimate-uses-priority
       假如 存在可信 XyUsage 锚点
       当 调用上下文估计
       那么 优先采用 Api 语义且仍返回统一估计结构
 
-    场景: estimate-fallback-chain
-      假如 无 XyUsage 且 LocalTokenizer 可用
+    场景: estimate-fallback-heuristic
+      假如 无可信 XyUsage 锚点
       当 调用上下文估计
-      那么 采用 LocalTokenizer 而非静默当作 Api
+      那么 采用 Heuristic 而非静默当作 Api
   @req:r1406
   规则: 应触发 compact
-    当 CompactionSettings.enabled 为 true 且 context_window > 0 时，System MUST 在 contextTokens > 有效触发阈值时判定 threshold auto 应触发 compaction；有效触发阈值 = max(contextWindow - reserveTokens, 压后地板 + 迟滞带)（reserveTokens 来自 CompactionSettings）；压后地板 = 固定请求开销（与 c16 同源折算）+ 有效保留尾预算（c8 clamp）+ 摘要占位（最新 CompactionEntry.summary 的 chars/4 估计，无先前摘要时取保守常量）；迟滞带 = 压后地板的 25%（固定常量，MUST NOT 引入新配置字段）；固定请求开销未知或未注入时阈值 MUST 退化为 contextWindow - reserveTokens（与 c8 clamp 同款退化纪律）。该地板阈值 MUST 仅约束 threshold auto 路径：手动 force（c17）与 overflow（c22）MUST NOT 受其约束。enabled 为 false 时 MUST NOT 因用量触发；该判定所用 contextTokens MUST 与产品 footer / Driver 只读估计同源（同一 paa1 入口与 LocalTokenizer 闸），MUST NOT 另用独立的 message 字符串 len/4 总和，MUST NOT 再使用独立的百分比阈值（如 compaction_threshold / usage_ratio）作为触发 SSOT。
+    当 CompactionSettings.enabled 为 true 且 context_window > 0 时，System MUST 在 contextTokens > 有效触发阈值时判定 threshold auto 应触发 compaction；有效触发阈值 = max(contextWindow - reserveTokens, 压后地板 + 迟滞带)（reserveTokens 来自 CompactionSettings）；压后地板 = 固定请求开销（与 c16 同源折算）+ 有效保留尾预算（c8 clamp）+ 摘要占位（最新 CompactionEntry.summary 的同源启发式估计，无先前摘要时取保守常量）；迟滞带 = 压后地板的 25%（固定常量，MUST NOT 引入新配置字段）；固定请求开销未知或未注入时阈值 MUST 退化为 contextWindow - reserveTokens（与 c8 clamp 同款退化纪律）。该地板阈值 MUST 仅约束 threshold auto 路径：手动 force（c17）与 overflow（c22）MUST NOT 受其约束。enabled 为 false 时 MUST NOT 因用量触发；该判定所用 contextTokens MUST 与产品 footer / Driver 只读估计同源（同一 Api 然后 Heuristic 入口），MUST NOT 另用独立的 message 字符串启发式总和，MUST NOT 再使用独立的百分比阈值（如 compaction_threshold / usage_ratio）作为触发 SSOT。
 
     场景: need-compact
       假如 会话消息估算使用 90000 个 token
@@ -56,7 +56,7 @@
     场景: reserve-trigger-shares-footer-estimate
       假如 会话叶上存在可信 Api usage 锚点且 footer 同源估计可用
       当 执行 auto-compact reserve 触发判断
-      那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
+      那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立启发式总和
       并且 触发比较式为占用大于有效触发阈值 max(window 减 reserveTokens, 压后地板 加 迟滞带)
 
     场景: floor-threshold-holds
@@ -160,7 +160,7 @@
       那么 摘要请求 thinking 回退继承档且可观测
   @req:r1421
   规则: 切点
-    System MUST 自最新条目向后累计 token，在约 keepRecent tokens 预算处找最近合法切点；累计所用 token MUST 对齐 pi estimateTokens：对上下文可见 AgentMessage（含 text/thinking/toolCall/toolResult/bashExecution 等）按字符启发式（chars/4 或等价），零贡献条目 MUST 跳过；MUST NOT 以条目原始 JSON 整包 len/4 作为切点 SSOT；合法切点 MUST 含 user、assistant、bashExecution、custom_message、branch_summary（及等价条目类型）；MUST NOT 在 toolResult 处切断；切在 turn 中部时 MUST 填 turn_start_index 与 is_split_turn=true，切在 turn-start 时 turn_start_index MUST 为哨兵（如 -1）且 is_split_turn=false。keepRecent 预算 MUST 先经窗口协调 clamp：有效预算取 min(keepRecentTokens, contextWindow − reserveTokens − 固定请求开销估计)（固定请求开销与 c16 同源折算；contextWindow 未知或为 0、或开销未注入时 clamp 不生效，预算即 keepRecentTokens）；prepare 与 compact MUST 共用同一 clamp，MUST NOT 出现保留窗预算不低于「窗口减 reserve」而把全部可摘要历史划入保留侧的退化切点。
+    System MUST 自最新条目向后累计 token，在约 keepRecent tokens 预算处找最近合法切点；累计所用 token MUST 与统一 Heuristic 同源（序列化 UTF-8 字节向上取整除以 3）；零贡献条目 MUST 跳过；MUST NOT 以条目原始 JSON 整包长度另套一套除数作为切点 SSOT；合法切点 MUST 含 user、assistant、bashExecution、custom_message、branch_summary（及等价条目类型）；MUST NOT 在 toolResult 处切断；切在 turn 中部时 MUST 填 turn_start_index 与 is_split_turn=true，切在 turn-start 时 turn_start_index MUST 为哨兵（如 -1）且 is_split_turn=false。keepRecent 预算 MUST 先经窗口协调 clamp：有效预算取 min(keepRecentTokens, contextWindow − reserveTokens − 固定请求开销估计)（固定请求开销与 c16 同源折算；contextWindow 未知或为 0、或开销未注入时 clamp 不生效，预算即 keepRecentTokens）；prepare 与 compact MUST 共用同一 clamp，MUST NOT 出现保留窗预算不低于「窗口减 reserve」而把全部可摘要历史划入保留侧的退化切点。
 
     场景: find-cut
       假如 会话 50 条共 80000 tokens 且 keepRecent=20000
@@ -247,12 +247,12 @@
       那么 带有 Heuristic 来源标注且无重复 XyUsage 定义
   @req:r1402
   规则: 触发估计同源展示
-    auto-compact 的 reserve 触发决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 settlement snapshot）；当存在可信 Api 锚点时触发所用 token 数字 MUST 跟 Api，MUST NOT 在 footer 已标 Api 时仍用独立 heuristic 触发；派生占用百分比（若展示）MUST NOT 作为触发 SSOT。该共享估计在 Heuristic / LocalTokenizer 路径（无 Api 锚点）MUST 计入固定请求开销——system prompt 与 tool schemas（取 reload 后最新态）的同源折算；存在 Api 锚点时 MUST NOT 重复叠加（usage.input 已含全请求）。
+    auto-compact 的 reserve 触发决策 MUST 消费与 TUI footer 相同的 ContextTokenEstimate（或等价共享 settlement snapshot）；当存在可信 Api 锚点时触发所用 token 数字 MUST 跟 Api，MUST NOT 在 footer 已标 Api 时仍用独立 heuristic 触发；派生占用百分比（若展示）MUST NOT 作为触发 SSOT。该共享估计在 Heuristic 路径（无 Api 锚点）MUST 计入固定请求开销——system prompt 与 tool schemas（取 reload 后最新态）的同源折算；存在 Api 锚点时 MUST NOT 重复叠加（usage.input 已含全请求）。
     # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
     场景: reserve-shares-footer-estimate
       假如 会话叶上存在可信 Api usage 锚点且 footer 同源估计可用
       当 执行 auto-compact reserve 触发判断
-      那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
+      那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立启发式总和
 
   @req:r1403
   规则: force 与 auto 分流
@@ -293,12 +293,12 @@
       那么 CompactionEntry.summary 含 Turn Context (split turn) 合并标记且 turn-prefix 已被摘要
   @req:r1407
   规则: tokens_before 同源估计
-    CompactionEntry.tokensBefore MUST 优先来自对压缩前会话上下文（与 buildSessionContext / estimate_from_session_entries 同源）的估计，MUST NOT 仅以 boundary 内条目字符串 len/4 累加作为唯一权威。
+    CompactionEntry.tokensBefore MUST 优先来自对压缩前会话上下文（与 buildSessionContext / estimate_from_session_entries 同源）的估计，MUST NOT 仅以 boundary 内条目字符串启发式累加作为唯一权威。
 
     场景: tokens-before
       假如 compact_session 完成
       当 读取 CompactionEntry.tokensBefore
-      那么 该值来自压缩前会话上下文同源估计而非仅 boundary len/4 累加
+      那么 该值来自压缩前会话上下文同源估计而非仅 boundary 启发式累加
   @req:r1408
   规则: overflow 识别
     System MUST 经单一 is_context_overflow_assistant（或等价）判定上下文溢出：含 usage 输入超 context_window、length/max_tokens 且近零输出填窗、以及 stop_reason=error 时对 error_message 的集中 overflow 模式匹配；MUST 应用 non-overflow 排除（如 rate limit）；MUST NOT 以散落英文子串匹配作为唯一手段；该判定 MUST 同时供 compaction Case1 与 retry 互斥使用。
@@ -410,7 +410,7 @@
 
   @req:r1924
   规则: 压缩度量口径一致与校准
-    压缩决策链 MUST 对同一份「替换后」请求上下文（`build_context_entries` 输出）使用同一可校准的 token 度量源：切点判定（`prepare_compaction` / `find_cut_point` 累加）、触发判定（r1406 同源纪律）与产品 footer / Driver 只读估计 MUST 收敛到同一估算入口族；切点判定 MUST NOT 以独立字符串字符启发式（chars/4 之类的 len/4）作为度量 SSOT（lax 兜底仅限消息反序列化失败，MUST NOT 作为默认决策度量）。该度量对同一上下文的估算与 provider 实测 input 的系统性偏差 MUST 可解释且可对拍（tokenizer 口径差异、fixed_context 叠加与否必须可区分），MUST NOT 出现「展示显示超窗而压缩判定无可压缩」的长期矛盾（症状：footer 高估超窗、压缩永不触发、每回合重复判定）。
+    压缩决策链 MUST 对同一份「替换后」请求上下文（`build_context_entries` 输出）使用同一可校准的 token 度量源：切点判定（`prepare_compaction` / `find_cut_point` 累加）、触发判定（r1406 同源纪律）与产品 footer / Driver 只读估计 MUST 收敛到同一估算入口族；切点判定 MUST NOT 以独立字符串启发式或不同除数作为度量 SSOT（lax 兜底仅限消息反序列化失败，MUST NOT 作为默认决策度量）。该度量对同一上下文的估算与 provider 实测 input 的系统性偏差 MUST 可解释且可对拍（启发式除数与 fixed_context 叠加与否必须可区分），MUST NOT 出现「展示显示超窗而压缩判定无可压缩」的长期矛盾（症状：footer 高估超窗、压缩永不触发、每回合重复判定）。
     # verified-by: src/agent/compaction/cut_detector.rs
 
     场景: compaction-cut-metric-same-source

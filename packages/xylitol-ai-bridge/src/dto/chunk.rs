@@ -3,6 +3,7 @@ use std::pin::Pin;
 use futures::Stream;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use strum::{EnumString, IntoStaticStr};
 
 use super::message::{AiBridgeStopReason, AiBridgeUsage};
 use crate::error::AiBridgeError;
@@ -55,12 +56,15 @@ pub struct AiBridgeToolSchema {
 
 pub type AiBridgeStream = Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Provenance of a context-token estimate.
+///
+/// Observation / wire keys are PascalCase (`as_str` / `from_key`) via strum.
+/// Serde JSON stays snake_case and is a separate form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, IntoStaticStr, EnumString)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "PascalCase")]
 pub enum TokenProvenance {
     Api,
-    RemoteCount,
-    LocalTokenizer,
     Heuristic,
     Unknown,
 }
@@ -68,13 +72,12 @@ pub enum TokenProvenance {
 impl TokenProvenance {
     /// Stable PascalCase key used by observation and wire projection code.
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Api => "Api",
-            Self::RemoteCount => "RemoteCount",
-            Self::LocalTokenizer => "LocalTokenizer",
-            Self::Heuristic => "Heuristic",
-            Self::Unknown => "Unknown",
-        }
+        self.into()
+    }
+
+    /// Parse an observation / wire key. Retired or unknown names become [`Self::Unknown`].
+    pub fn from_key(s: &str) -> Self {
+        s.parse().unwrap_or(Self::Unknown)
     }
 }
 
@@ -85,4 +88,33 @@ pub struct ContextTokenEstimate {
     pub usage_tokens: u64,
     pub trailing_tokens: u64,
     pub last_usage_index: Option<usize>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provenance_key_is_pascal_case_strum_ssot() {
+        assert_eq!(TokenProvenance::Api.as_str(), "Api");
+        assert_eq!(TokenProvenance::Heuristic.as_str(), "Heuristic");
+        assert_eq!(TokenProvenance::Unknown.as_str(), "Unknown");
+        assert_eq!(TokenProvenance::from_key("Api"), TokenProvenance::Api);
+        assert_eq!(
+            TokenProvenance::from_key("Heuristic"),
+            TokenProvenance::Heuristic
+        );
+        assert_eq!(
+            TokenProvenance::from_key("LocalTokenizer"),
+            TokenProvenance::Unknown
+        );
+        assert_eq!(
+            TokenProvenance::from_key("RemoteCount"),
+            TokenProvenance::Unknown
+        );
+        assert_eq!(
+            serde_json::to_value(TokenProvenance::Api).unwrap(),
+            serde_json::json!("api")
+        );
+    }
 }

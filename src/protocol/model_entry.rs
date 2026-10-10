@@ -39,8 +39,6 @@ pub struct XyModelEntryConfig {
     pub thinking_level_map: Option<HashMap<String, Option<String>>>,
     #[serde(default)]
     pub context_window: u64,
-    #[serde(default)]
-    pub tokenizer: Option<String>,
 }
 
 impl XyModelEntryConfig {

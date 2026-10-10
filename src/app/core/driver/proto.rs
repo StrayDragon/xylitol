@@ -151,7 +151,7 @@ pub trait XyDriver: crate::app::core::dispatch::SessionCommandExecutor + Send {
     ///
     /// # Errors
     ///
-    /// `Err` when no model / tokenizer can estimate the current context.
+    /// `Err` when the current context cannot be estimated.
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError>;

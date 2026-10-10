@@ -40,7 +40,7 @@ fn test_compaction_branch(agent: AgentState, sess: XySessionStore, ws: Workspace
 fn test_comp_est_priority(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "estimate-fallback-chain"
+    name = "estimate-fallback-heuristic"
 )]
 fn test_comp_est_fallback(agent: AgentState, ws: Workspace) {}
 #[scenario(

@@ -23,7 +23,7 @@
     # verified-by: packages/xylitol-ai-bridge/src/provider/mod.rs
   @req:r1537
   规则: vendor-sdk-first
-    OpenAI 兼容路径（Responses、Completions、input_tokens RemoteCount）与 Anthropic 兼容路径（Messages、count_tokens）MUST 优先经厂商官方 Rust SDK Client 接线；hooks MUST 经 SDK middleware（或文档化等价扩展点）接入且保持可移植 HeaderBag/JSON body 语义；新兼容端 MUST 以新 adapter/配置扩展（开闭），MUST NOT 为每个网关分叉改 AgentMessage 或 ReAct；省略 api 时 OpenAI 兼容默认 MUST 为 Responses，显式 openai-completions MUST 可选。
+    OpenAI 兼容路径（Responses、Completions）与 Anthropic 兼容路径（Messages）MUST 优先经厂商官方 Rust SDK Client 接线；hooks MUST 经 SDK middleware（或文档化等价扩展点）接入且保持可移植 HeaderBag/JSON body 语义；新兼容端 MUST 以新 adapter/配置扩展（开闭），MUST NOT 为每个网关分叉改 AgentMessage 或 ReAct；省略 api 时 OpenAI 兼容默认 MUST 为 Responses，显式 openai-completions MUST 可选。
     # verified-by: packages/xylitol-ai-bridge/src/provider/mod.rs
   @req:r1538
   规则: thinking-params-in-request-body

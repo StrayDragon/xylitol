@@ -501,9 +501,6 @@ fn t_rc_docs(rc_snap: &RcSnap) {
     );
 }
 
-// TokenizerBdd-backed then for "失败" steps
-// rc "失败" is already satisfied by the tokenizer_bdd t_rc18_fail step.
-// rc "加载配置" is already satisfied by tokenizer_bdd w_rc18_load step.
-// Both require tokenizer_bdd fixture in scenario binding.
+// TokenizerBdd-backed When 加载配置 / Then 失败 live in steps_tokenizer.rs.
 
 // --- scenario bindings ---

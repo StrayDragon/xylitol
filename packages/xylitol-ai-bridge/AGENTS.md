@@ -21,7 +21,7 @@ LLM **provider 方言桥** + multi-source **token accounting**。Workspace 库�
 |---|---|
 | 厂商官方 SDK Client 接线（OpenAI：`async-openai`；Anthropic：**暂 reqwest**，官方 Rust SDK 未成熟）+ middleware / 可移植 hooks | ReAct / session / TUI |
 | **LLM 投影 DTO**（只表达发给模型的形状）+ usage / accounting | 平行拷贝全量 `AgentMessage`（含 bash/compact/branch/custom） |
-| RemoteCount（Anthropic count_tokens、OpenAI Responses input_tokens）优先于本地 tokenizer | 产品 footer 文案；抽第三个 `xylitol-llm-types` |
+| 计量：Api usage 优先，否则 Heuristic（UTF-8 字节 `/3`） | 产品 footer 文案；抽第三个 `xylitol-llm-types`；本地词表 encode / RemoteCount HTTP |
 | **WirePolicy**（`wire_policy/defaults.rs` 纯常量 = 默认值 SSOT）：`compat` + 仅 req/resp 的 `extra_policy`；具体默认值以该文件为准；infra 只注入 | 平行 YAML/env 影子配置；把 `tool_search` 等 agent 能力塞进 WirePolicy |
 
 ## 与主仓概念分层（normative）
@@ -45,15 +45,15 @@ OpenAI-like / Anthropic-like upstream
 | OpenAI Responses **流式**：`create_stream_byot::<_, Value>`，按事件 `type` 宽松匹配（兼容端常缺字段） | 把 SSE 默认绑死在 typed `ResponseStreamEvent`（如缺 `created_at` 的 `response.created` 会炸） |
 | hooks 经 SDK **middleware**（或文档化等价点）接到可移植 HeaderBag/JSON body | agent/protocol import 本包 `provider` / vendor SDK 类型 |
 | DTO **不含** session 环境角色的平行 enum；主仓 MAY `pub use` DTO 组合 `AgentMessage::Llm` | 与 `AgentMessage` 全量孪生 + JSON 往返「对齐」 |
-| accounting：Api → RemoteCount → LocalTokenizer → Heuristic；Builtin 模型表 SSOT = tiktoken-rs `get_tokenizer` | 把 Heuristic 标成 Api；TextDelta 热路径全文 encode；平行 gpt-* 前缀表 |
+| accounting：Api → Heuristic（`HEURISTIC_BYTES_PER_TOKEN = 3`）；切点 / trailing 同源 | 把 Heuristic 标成 Api；TextDelta 热路径全文 encode；再引入 tiktoken / HF tokenizers / RemoteCount（见 xylitol-dev-candidates） |
 
 ## 包内模块边界
 
 ```text
-accounting / tokenize / registry / usage / dto   ← 计量 + LLM DTO
-provider / fake                                  ← SDK 接线侧
+accounting / usage / dto   ← 计量 + LLM DTO
+provider / fake            ← SDK 接线侧
 ```
 
-`accounting` / `tokenize` / `registry` **MUST NOT** import `provider::*`。
+`accounting` **MUST NOT** import `provider::*`。
 
 验证：`cargo test -p xylitol-ai-bridge`；全仓 `just qa`。

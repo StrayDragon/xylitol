@@ -14,7 +14,7 @@ pub(crate) fn g_comp_usage(agent: &AgentState) {
 }
 #[when("调用上下文估计")]
 pub(crate) fn w_comp_estimate(agent: &AgentState) {
-    if !result_ok_str(&agent.last_result).contains("source:LocalTokenizer") {
+    if agent.last_result.borrow().is_none() {
         agent
             .last_result
             .replace(Some(Ok("source:Api tokens:80000".into())));
@@ -25,16 +25,18 @@ pub(crate) fn t_comp_api(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("source:Api"));
 }
 
-#[given("无 XyUsage 且 LocalTokenizer 可用")]
+#[given("无可信 XyUsage 锚点")]
 pub(crate) fn g_comp_no_api(agent: &AgentState) {
     agent
         .last_result
-        .replace(Some(Ok("source:LocalTokenizer tokens:75000".into())));
+        .replace(Some(Ok("source:Heuristic tokens:75000".into())));
 }
 
-#[then("采用 LocalTokenizer 而非静默当作 Api")]
+#[then("采用 Heuristic 而非静默当作 Api")]
 pub(crate) fn t_comp_fallback(agent: &AgentState) {
-    assert!(result_ok_str(&agent.last_result).contains("source:LocalTokenizer"));
+    let s = result_ok_str(&agent.last_result);
+    assert!(s.contains("source:Heuristic"), "{s}");
+    assert!(!s.contains("source:Api"));
 }
 
 #[given("会话 50 条共 80000 tokens 且 keepRecent=20000")]
@@ -366,7 +368,7 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
 #[when("读取 CompactionEntry.tokensBefore")]
 pub(crate) fn w_comp_read_tokens_before(_agent: &AgentState) {}
 
-#[then("该值来自压缩前会话上下文同源估计而非仅 boundary len/4 累加")]
+#[then("该值来自压缩前会话上下文同源估计而非仅 boundary 启发式累加")]
 pub(crate) fn t_comp_tokens_before_ok(agent: &AgentState) {
     let s = result_ok_str(&agent.last_result);
     let tb: u64 = s
@@ -554,7 +556,7 @@ pub(crate) fn g_comp_footer(agent: &AgentState) {
 #[when("执行 auto-compact reserve 触发判断")]
 pub(crate) fn w_comp_reserve_trigger(_agent: &AgentState) { /* set in given */
 }
-#[then("所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和")]
+#[then("所用 token 数字与同源估计一致且 MUST NOT 另算独立启发式总和")]
 pub(crate) fn t_comp_threshold_ok(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("shared:true"));
 }

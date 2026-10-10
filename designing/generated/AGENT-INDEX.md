@@ -28,6 +28,7 @@
 | tui | status | idle：**1 行空白**呼吸距，无 spinner / Ready。busy：`spinner + 短词` 紧贴左。 | busy, idle | `/tui/status` |
 | tui | theme | **产品 host 默认 dark**。本稿预览默认 light 只为审色，不是产品默认。 | list | `/tui/theme` |
 | tui | toast-notice | status / spinner **上方**恰好 1 行通知条。不是滚动提示，不是错误行。 | busy-resume-deny | `/tui/toast-notice` |
+| tui | toast-stack | 视口右上角 **通知栈**：成功/说明类短时堆叠。不是通知条，不是滚动提示。 | copied, empty, stack | `/tui/toast-stack` |
 | tui | todo-bar | 下缘待办栏。三区是视图，不改 SSOT 顺序。空表不渲染。 | all-done, all-pending, both-open, both-open-wide, capped, empty, focus, focus-wide, no-focus, no-focus-wide, past-open, past-open-wide, pending-open, pending-open-wide, wrap-stack, wrap-wide | `/tui/todo-bar` |
 | tui | tool | tool / bash / diff：**1-cell 轨 + gutter + 内容**（与 expandable 同源）。 | success | `/tui/tool` |
 | tui | transcript | 当前轮写入 scrollback。不是 Codex 独立浏览界面。 | mixed | `/tui/transcript` |
@@ -38,5 +39,4 @@
 | tui-lab | interrupt-arm | 中止前先给一次确认提示，避免误触后无法撤回。 | armed, calm, stopped | `/tui-lab/interrupt-arm` |
 | tui-lab | paste-fold | 大段粘贴在输入框里折叠为一行摘要的显示方式。 | empty, folded, plain | `/tui-lab/paste-fold` |
 | tui-lab | toast-interaction | 通知条的两点交互增强。 | action | `/tui-lab/toast-interaction` |
-| tui-lab | toast-stack | 右上角通知栈：只承载关键确认类通知，配专属图标。 | copied, empty, stack | `/tui-lab/toast-stack` |
 | tui-lab | turn-usage | 每轮回复结束后，显示一行可展开的用量小结。 | collapsed | `/tui-lab/turn-usage` |

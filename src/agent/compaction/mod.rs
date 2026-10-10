@@ -104,7 +104,7 @@ pub(crate) fn effective_keep_budget(
 /// CompactionEntry to measure from. ≈2k tokens of structured summary.
 const SUMMARY_PLACEHOLDER_TOKENS: u64 = 2_048;
 
-/// chars/4 estimate of the latest summary on the leaf (c2 summary placeholder);
+/// `/3` estimate of the latest summary on the leaf (c2 summary placeholder);
 /// falls back to `SUMMARY_PLACEHOLDER_TOKENS` when there is no CompactionEntry
 /// or the summary is empty.
 pub fn summary_placeholder_tokens(entries: &[SessionEntry]) -> u64 {
@@ -113,7 +113,8 @@ pub fn summary_placeholder_tokens(entries: &[SessionEntry]) -> u64 {
         .rev()
         .find_map(|e| match e {
             SessionEntry::Compaction(c) => {
-                let est = c.summary.len() as u64 / 4;
+                let est =
+                    xylitol_ai_bridge::accounting::heuristic_token_count(c.summary.len() as u64);
                 Some(if est == 0 {
                     SUMMARY_PLACEHOLDER_TOKENS
                 } else {
@@ -845,8 +846,6 @@ mod tests {
             cut > text_only + 5_000,
             "cut estimate must include thinking/toolCall: cut={cut} text_only={text_only}"
         );
-        // Image-style: 4800 chars → 1200 tokens (not 4800 tokens)。统一口径下
-        // 图片按 pi 视觉建模叠加（≈1200 token），其余文本按序列化同源计量。
         let img = {
             use crate::protocol::message::{AgentMessage as Am, AgentPart};
             let now = timestamp_now();
@@ -866,8 +865,8 @@ mod tests {
         };
         let cut_img = estimate_tokens_entry_for_cut(&img);
         assert!(
-            (1200..1400).contains(&cut_img),
-            "image MUST be modeled as ~1200 tokens on the unified plane (pi ESTIMATED_IMAGE_CHARS/4), got {cut_img}"
+            (1600..1800).contains(&cut_img),
+            "image MUST be modeled as ~1600 tokens on the unified plane, got {cut_img}"
         );
     }
 
@@ -951,10 +950,10 @@ mod tests {
     }
 
     /// c25/c8 regression for session 92fa9adf: window 32768 / reserve 16384 /
-    /// keep 20000 with ~12k chars/4 of history — the unclamped budget exceeded
-    /// every walk total, so the cut landed on the first entry (keep-everything)
-    /// and each turn-end compact rewrote nothing while real usage grew past 3×
-    /// the window. The clamp shrinks the budget below the history size.
+    /// keep 20000 — the unclamped budget exceeded every walk total, so the cut
+    /// landed on the first entry (keep-everything) and each turn-end compact
+    /// rewrote nothing while real usage grew past 3× the window. The clamp
+    /// shrinks the budget below the history size.
     #[test]
     fn keep_budget_clamp_moves_cut_off_first_entry_on_small_windows() {
         let settings = CompactionSettings {
@@ -964,23 +963,24 @@ mod tests {
             ..Default::default()
         };
         let window = 32_768u64;
-        let overhead = 6_500u64; // system prompt + tool schemas, chars/4
+        let overhead = 6_500u64;
         let budget = effective_keep_budget(&settings, window, overhead);
         assert_eq!(budget, window - 16_384 - 6_500);
 
-        // 60 user/assistant turns ≈ 12k chars/4 tokens: below keep(20k) but
-        // above the clamped budget.
+        // 60 user/assistant turns stay below keep(20k), but above the clamped
+        // budget. Content length is chosen so the unclamped path still refuses
+        // to compact.
         let mut entries = Vec::new();
         for i in 0..60 {
             entries.push(make_message_entry(
                 &format!("u{i}"),
                 "user",
-                &"x".repeat(400),
+                &"x".repeat(250),
             ));
             entries.push(make_message_entry(
                 &format!("a{i}"),
                 "assistant",
-                &"y".repeat(400),
+                &"y".repeat(250),
             ));
         }
 
@@ -1208,7 +1208,7 @@ mod tests {
     // ── XyUsage tests ───────────────────────────────────────────────
 
     #[test]
-    fn test_tokens_before_prefers_session_estimate_over_len4_sum() {
+    fn test_tokens_before_prefers_session_estimate_over_boundary_sum() {
         use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
 
         let usage = XyUsage {
@@ -1243,15 +1243,15 @@ mod tests {
             }),
         ];
         let estimated = estimate_from_session_entries(&entries, &EstimateOpts::default());
-        let len4: u64 = entries.iter().map(estimate_tokens_entry).sum();
+        let boundary: u64 = entries.iter().map(estimate_tokens_entry).sum();
         assert_eq!(
             estimated.provenance,
             crate::protocol::model::TokenProvenance::Api
         );
         assert!(estimated.tokens > 0);
         assert_ne!(
-            estimated.tokens, len4,
-            "tokens_before must not be boundary len/4 alone"
+            estimated.tokens, boundary,
+            "tokens_before must not be boundary heuristic alone"
         );
     }
 

@@ -1,8 +1,8 @@
 id: toast-stack.empty
 cols: 80
 must_not_contain:
-  - "Copied to clipboard"
-  - "export done"
+  - "Copied"
+  - "Context tokens are approximate"
 lines:
   -
     - { text: "", token: muted }

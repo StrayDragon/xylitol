@@ -35,14 +35,6 @@ pub struct AppConfig {
 
     pub mcp_servers: Option<Vec<McpServerConfig>>,
 
-    /// Named tokenizer sources shared by models (c1380; pre-1.0 simple shape).
-    #[serde(default)]
-    pub tokenizers: HashMap<String, TokenizerEntry>,
-
-    /// Context token estimate gates (c1420).
-    #[serde(default)]
-    pub token_estimate: TokenEstimateConfig,
-
     /// Optional remote OTLP export (c1475). Default exporter=none (no remote traffic).
     #[serde(default)]
     pub otel: OtelConfig,
@@ -253,30 +245,6 @@ impl OtelConfig {
     }
 }
 
-/// Gates for multi-source context token estimation (c1420 / paa10 / rc19).
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct TokenEstimateConfig {
-    /// Local tokenizer encode: only `on` | `off` (default off).
-    #[serde(default)]
-    pub local_tokenizer: LocalTokenizerGate,
-}
-
-/// `token_estimate.local_tokenizer` — on/off only (no every-N / idle).
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "lowercase")]
-pub enum LocalTokenizerGate {
-    On,
-    #[default]
-    Off,
-}
-
-impl LocalTokenizerGate {
-    pub fn is_on(&self) -> bool {
-        matches!(self, Self::On)
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Model
 // ---------------------------------------------------------------------------
@@ -295,91 +263,6 @@ pub struct ModelsConfig {
 
 /// YAML wire model alias entry — SSOT [`XyModelEntryConfig`](crate::protocol::model_entry::XyModelEntryConfig).
 pub type ModelEntry = crate::protocol::model_entry::XyModelEntryConfig;
-
-/// Shared tokenizer definition under top-level `tokenizers:` (c1380).
-///
-/// Prefer `repo` (HF). If `path` is set, load local file and ignore `repo`.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-pub struct TokenizerEntry {
-    /// HuggingFace repo id, e.g. `Qwen/Qwen3.6-35B-A3B`.
-    #[serde(default)]
-    pub repo: Option<String>,
-    /// File within the repo. Default `tokenizer.json`.
-    #[serde(default = "default_tokenizer_file")]
-    pub file: String,
-    /// Local filesystem path to a tokenizer.json (wins over `repo` when set).
-    #[serde(default)]
-    pub path: Option<String>,
-}
-
-fn default_tokenizer_file() -> String {
-    "tokenizer.json".into()
-}
-
-/// Resolve a model alias's `tokenizer:` string against `tokenizers:` table.
-///
-/// Pre-1.0: keep it dumb — named ref, `builtin`, path-ish, or HF `owner/repo`.
-pub fn resolve_tokenizer_ref(
-    tokenizers: &HashMap<String, TokenizerEntry>,
-    raw: &str,
-) -> Result<xylitol_ai_bridge::registry::TokenizerOverride, LoadError> {
-    use xylitol_ai_bridge::registry::TokenizerOverride;
-    let s = raw.trim();
-    if s.is_empty() {
-        return Err(LoadError::validation("tokenizer ref is empty"));
-    }
-    if s.eq_ignore_ascii_case("builtin") {
-        return Ok(TokenizerOverride::Builtin);
-    }
-    if let Some(entry) = tokenizers.get(s) {
-        if let Some(path) = entry
-            .path
-            .as_ref()
-            .map(|p| p.trim())
-            .filter(|p| !p.is_empty())
-        {
-            return Ok(TokenizerOverride::Local {
-                path: std::path::PathBuf::from(path),
-            });
-        }
-        let repo = entry
-            .repo
-            .as_ref()
-            .map(|r| r.trim())
-            .filter(|r| !r.is_empty())
-            .ok_or_else(|| LoadError::validation(format!("tokenizers.{s}: need repo or path")))?;
-        let file = if entry.file.trim().is_empty() {
-            "tokenizer.json".into()
-        } else {
-            entry.file.clone()
-        };
-        return Ok(TokenizerOverride::HuggingFace {
-            repo: repo.to_string(),
-            file,
-        });
-    }
-    // Local path heuristics (pre-1.0 messy OK).
-    if s.starts_with('/')
-        || s.starts_with('.')
-        || s.ends_with(".json")
-        || s.contains('\\')
-        || std::path::Path::new(s).exists()
-    {
-        return Ok(TokenizerOverride::Local {
-            path: std::path::PathBuf::from(s),
-        });
-    }
-    // HF repo: contains '/'
-    if s.contains('/') {
-        return Ok(TokenizerOverride::HuggingFace {
-            repo: s.to_string(),
-            file: "tokenizer.json".into(),
-        });
-    }
-    Err(LoadError::validation(format!(
-        "unknown tokenizer `{s}`: use a name from tokenizers:, HF owner/repo, path, or builtin"
-    )))
-}
 
 // ---------------------------------------------------------------------------
 // Execution
@@ -482,26 +365,6 @@ impl AppConfig {
             )),
             Some(_) => Ok(()),
         }
-    }
-
-    /// Soft-check tokenizer refs (pre-1.0: warn via Err only for clearly broken named refs).
-    pub fn validate_model_tokenizers(&self) -> Result<(), LoadError> {
-        for (alias, entry) in &self.model.models {
-            if let Some(raw) = &entry.tokenizer {
-                resolve_tokenizer_ref(&self.tokenizers, raw)
-                    .map_err(|e| LoadError::validation(format!("models.{alias}.tokenizer: {e}")))?;
-            }
-        }
-        Ok(())
-    }
-
-    /// Resolve `models.<id>.tokenizer` to a bridge override, if set.
-    pub fn tokenizer_override_for(
-        &self,
-        model_alias: &str,
-    ) -> Option<xylitol_ai_bridge::registry::TokenizerOverride> {
-        let raw = self.model.models.get(model_alias)?.tokenizer.as_ref()?;
-        resolve_tokenizer_ref(&self.tokenizers, raw).ok()
     }
 
     /// Resolve a model alias to a runtime [`XyModelConfig`](crate::protocol::model::XyModelConfig).
@@ -952,7 +815,6 @@ mod thinking_levels_tests {
             thinking_levels: levels.map(|v| v.into_iter().map(str::to_string).collect()),
             thinking_level_map: None,
             context_window: 0,
-            tokenizer: None,
         }
     }
 
@@ -1038,82 +900,21 @@ mod thinking_levels_tests {
     }
 
     #[test]
-    fn tokenizer_ref_named_and_inline() {
-        use xylitol_ai_bridge::registry::TokenizerOverride;
-        let mut table = HashMap::new();
-        table.insert(
-            "qwen36".into(),
-            TokenizerEntry {
-                repo: Some("Qwen/Qwen3.6-35B-A3B".into()),
-                file: "tokenizer.json".into(),
-                path: None,
-            },
-        );
-        match resolve_tokenizer_ref(&table, "qwen36").unwrap() {
-            TokenizerOverride::HuggingFace { repo, file } => {
-                assert_eq!(repo, "Qwen/Qwen3.6-35B-A3B");
-                assert_eq!(file, "tokenizer.json");
-            }
-            other => panic!("expected HF, got {other:?}"),
-        }
-        match resolve_tokenizer_ref(&HashMap::new(), "Qwen/Qwen3.6-35B-A3B").unwrap() {
-            TokenizerOverride::HuggingFace { repo, .. } => {
-                assert_eq!(repo, "Qwen/Qwen3.6-35B-A3B");
-            }
-            other => panic!("expected HF, got {other:?}"),
-        }
-        assert!(matches!(
-            resolve_tokenizer_ref(&HashMap::new(), "builtin").unwrap(),
-            TokenizerOverride::Builtin
-        ));
-        assert!(resolve_tokenizer_ref(&HashMap::new(), "nope").is_err());
-    }
-
-    #[test]
-    fn token_estimate_local_tokenizer_default_off() {
-        let cfg: AppConfig = yaml_serde::from_str("models: {}").unwrap();
-        assert_eq!(cfg.token_estimate.local_tokenizer, LocalTokenizerGate::Off);
-        assert!(!cfg.token_estimate.local_tokenizer.is_on());
-    }
-
-    #[test]
-    fn token_estimate_local_tokenizer_on() {
-        let cfg: AppConfig = yaml_serde::from_str(
+    fn leftover_tokenizer_yaml_keys_are_ignored() {
+        let cfg = yaml_serde::from_str::<AppConfig>(
             r#"
 models: {}
 token_estimate:
   local_tokenizer: on
-"#,
-        )
-        .unwrap();
-        assert!(cfg.token_estimate.local_tokenizer.is_on());
-    }
-
-    #[test]
-    fn token_estimate_local_tokenizer_unquoted_off() {
-        // YAML 1.1 may treat bare `off` as bool; must still load as Off gate.
-        let cfg: AppConfig = yaml_serde::from_str(
-            r#"
-models: {}
-token_estimate:
-  local_tokenizer: off
-"#,
-        )
-        .expect("unquoted off must deserialize");
-        assert!(!cfg.token_estimate.local_tokenizer.is_on());
-        assert_eq!(cfg.token_estimate.local_tokenizer, LocalTokenizerGate::Off);
-    }
-
-    #[test]
-    fn token_estimate_local_tokenizer_invalid_fails() {
-        let err = yaml_serde::from_str::<AppConfig>(
-            r#"
-models: {}
-token_estimate:
-  local_tokenizer: every_n
+tokenizers:
+  qwen36:
+    repo: Qwen/Qwen3.6-35B-A3B
 "#,
         );
-        assert!(err.is_err());
+        assert!(
+            cfg.is_ok(),
+            "retired tokenizer keys must not fail load: {cfg:?}"
+        );
     }
 
     #[test]

@@ -89,8 +89,7 @@ fn t_ce16_print_no_hello(surface_bdd: &SurfaceBdd) {
     assert!(!err.contains("Hello!"), "{err}");
 }
 
-/// Minimal CLI help-output holder for serve/top-level help steps (ce8/ce16);
-/// these scenarios never touch the tokenizer cache, only rendered help text.
+/// Minimal CLI help-output holder for serve/top-level help steps (ce8/ce16).
 pub struct CliHelpBdd {
     pub(crate) out: RefCell<String>,
     pub(crate) ok: Cell<bool>,
@@ -109,6 +108,9 @@ impl CliHelpBdd {
 pub fn cli_help_bdd() -> CliHelpBdd {
     CliHelpBdd::new()
 }
+
+#[given("CLI 已解析")]
+fn g_ce_cli_parsed(_cli_help_bdd: &CliHelpBdd) {}
 
 #[when("xylitol serve --help")]
 fn w_ce8_serve_help(cli_help_bdd: &CliHelpBdd) {
@@ -155,11 +157,11 @@ fn w_ce16_top_help(cli_help_bdd: &CliHelpBdd) {
     cli_help_bdd.ok.set(true);
 }
 
-#[then("Commands 含 tokenizer、resources 与 serve 为顶层而非 tui 子命令")]
+#[then("Commands 含 resources 与 serve 为顶层且不含 tokenizer")]
 fn t_ce16_ops_toplevel(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
     let help = cli_help_bdd.out.borrow();
-    assert!(help.contains("tokenizer"), "{help}");
+    assert!(!help.contains("tokenizer"), "{help}");
     assert!(help.contains("resources"), "{help}");
     assert!(help.contains("serve"), "{help}");
     assert!(help.contains("tui"), "{help}");
@@ -168,6 +170,10 @@ fn t_ce16_ops_toplevel(cli_help_bdd: &CliHelpBdd) {
     assert!(
         cmd.find_subcommand("serve").is_some(),
         "serve must be a top-level verb"
+    );
+    assert!(
+        cmd.find_subcommand("tokenizer").is_none(),
+        "tokenizer must not remain a product verb"
     );
     assert!(
         cmd.find_subcommand("server").is_none(),

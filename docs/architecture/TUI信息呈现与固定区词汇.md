@@ -11,7 +11,8 @@
 | **待办栏** | todo bar | 下缘固定区常驻任务清单（队列条与通知条之间）；空表 0 行；**≠** 对话条目 / 通知条 / 状态条 | Plan 侧栏、`UiEntry::Todo` 当主清单 |
 | **对话条目** | transcript entry | 主滚动区可持久内容（user / assistant / thinking / tool / …） | system 消息、LLM message（除非特指协议） |
 | **滚动提示** | scrollback notice · **`UiEntry::ScrollNotice`** | 插入 **主滚动区** 的短 UI 提示 | system prompt、AgentMessage、system 消息；**勿**与通知条混称 |
-| **通知条** | toast notice · **`ToastNotice`** · `push_toast_notice` | 通知类组件：底部输入区上方（status/spinner **之上**独立一行）的短暂固定通知；`{colors.warning}`；可见前缀 `Error: `；TTL 自动清除；**≠** 滚动提示 / 错误行 | 抢用 `ScrollNotice` / `UiEntry`；与 `UiEntry::Error` 混称；笼统 Notice 指滚动行 |
+| **通知条** | toast notice · **`ToastNotice`** · `push_toast_notice` | 通知类组件：底部输入区上方（status/spinner **之上**独立一行）的短暂固定通知；`{colors.warning}`；可见前缀 `Error: `；TTL 自动清除；**≠** 滚动提示 / 错误行 / **通知栈** | 抢用 `ScrollNotice` / `UiEntry`；与 `UiEntry::Error` 混称；笼统 Notice 指滚动行；把 Copied 等成功确认塞进本槽 |
+| **通知栈** | client notice stack | 视口**右上角**浮层时间线：成功/说明类短时堆叠（最新在上，最多约 3，TTL 消失）；成功 `✓`、说明 `◆`；不进 transcript、不计入下缘 footprint；**≠** 通知条 | `Error: ` 通知条；status 旁独立 Copied 行；ScrollNotice |
 | **错误行** | error row | `UiEntry::Error` | 笼统 system |
 | **状态条** | status | busy 时输入区上方短状态（idle = 0 行） | 塞进 scrollback |
 | **页脚** | footer | 输入区下：生效中模型、用量 provenance 等 | 成功确认刷滚动提示 |
@@ -40,7 +41,7 @@
 | 即将消息 | 弃用：产品无「即将消息」概念（run 绑定语义） |
 | System 确认行 / system 消息（指 UI） / `UiEntry::System` | **滚动提示** / **`UiEntry::ScrollNotice`** |
 | `push_system_note` | **`push_scroll_notice`** |
-| 笼统 Notice 指滚动行 | **ScrollNotice**（瞬时硬拒反馈用 **通知条**，勿再堆滚动提示） |
+| 笼统 Notice 指滚动行 | **ScrollNotice**（瞬时硬拒反馈用 **通知条**，成功/说明用 **通知栈**，勿再堆滚动提示） |
 | 把「尾插」写成 trail（无 append） | **尾插 / tail-append** |
 
 换模预告的用户可见文案（`Next turn:` 等）已随 run 绑定语义从产品端退役。
@@ -51,7 +52,8 @@
 |---|---|---|---|---|
 | **A 对话正文** | user / assistant / thinking / tool / diff / bash / compaction | 对话条目 | 是 | 按时间序 append |
 | **B 导航瞬时** | `history @`、`forked →`、`switched →` | **滚动提示 · 尾插** | 随 scrollback；rebuild 可清 | **默认尾插**（跟底可见） |
-| **C 操作结果 / 诊断** | slash 失败、复制、trust 报告 | 短：滚动提示尾插；成功换模/主题 → **不**刷 | 易堆墙 | **默认尾插** |
+| **C 操作结果 / 诊断** | slash 失败、trust 报告 | 短：滚动提示尾插；成功换模/主题 → **不**刷 | 易堆墙 | **默认尾插** |
+| **C′ 成功/说明确认** | Copied、首次 Heuristic 用量说明 | **通知栈**（右上角） | TTL | 勿通知条 / ScrollNotice |
 | **D 即时设置** | 换模 / thinking / 主题成功 | **页脚**（选中即时反映） | 否（态） | — |
 | **E 运行态** | busy、abort、队列；busy 下硬拒反馈（如 Resume switch）；**待办栏**（常驻任务清单） | 状态条 / 队列条 / **通知条** / **待办栏** | 待办栏：有表驻留；通知条否 | 禁止冒充 A/B；硬拒反馈优先通知条，勿 ScrollNotice |
 | **F 槽内确认** | 树 travel、选模 | 关槽 + 固定区 / B 类尾插 | 视 B/C | **默认尾插** |
@@ -62,7 +64,7 @@
 - **不是绝对禁令**：若有明确产品理由且写清代价，可例外。
 - 能进页脚 / 状态条 / 槽的，优先别做成滚动提示。
 
-**原则一句话**：能反映在固定区（页脚 / 状态条 / **通知条** / **待办栏** / 槽）的不要做成滚动提示；必须进主区的瞬时信息 → **默认尾插**。
+**原则一句话**：能反映在固定区（页脚 / 状态条 / **通知条** / **待办栏** / 槽）或 **通知栈** 的不要做成滚动提示；必须进主区的瞬时信息 → **默认尾插**。
 
 ## 与代码的对应（可漂移，以代码为准）
 
@@ -70,6 +72,7 @@
 |---|---|
 | 滚动提示 | `UiEntry::ScrollNotice` · `HostSession::push_scroll_notice`；demo `Role::ScrollNotice` |
 | 通知条 | host `push_toast_notice` · layout `toast_notice` 槽（status 上方；warning + `Error:`） |
+| 通知栈 | host `push_toast_info_notice` / `arm_copy_notice` · 右上角 overlay（不占 dock 行） |
 | 待生效 | 生成进行中的 `selected ≠ active`（footer 即时反映 selected） |
 
 ## 维护

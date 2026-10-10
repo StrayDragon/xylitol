@@ -123,45 +123,9 @@
       假如 仅配置 thinking_levels 无 map
       当 加载配置
       那么 成功且 map 为空或缺省
-  @req:r1729
-  规则: model-entry-tokenizer
-    ModelsConfig 的 ModelEntry MUST 支持可选字符串字段 tokenizer：可为顶层 tokenizers 表中的名字、HF owner/repo、本地路径或 builtin；AppConfig MUST 支持可选顶层 tokenizers 映射（条目含 repo/file 或 path）供多模型共用同一词表源；缺省 tokenizer 时 MUST 回退 bridge builtin 映射（tiktoken 模型表，见 package-ai-bridge-accounting）或视为未映射，MUST NOT 用推理用 model id 静默假定 HF 仓库。
-
-    场景: tokenizer-hf-ok
-      假如 YAML 含 tokenizers.qwen36.repo 且模型条目 tokenizer 为 qwen36
-      当 加载配置
-      那么 成功且该模型可解析为 HuggingFace 词表源
-
-    场景: tokenizer-inline-repo
-      假如 模型条目 tokenizer 为 Qwen/Qwen3.6-35B-A3B 字符串
-      当 解析 tokenizer 引用
-      那么 得到 HuggingFace repo 且无需 tokenizers 表项
-
-    场景: tokenizer-unknown-name-fails
-      假如 模型条目 tokenizer 为未知名且非 HF repo/路径/builtin
-      当 加载配置
-      那么 失败
-  @req:r1730
-  规则: token-estimate-local-tokenizer
-    AppConfig MUST 支持可选 token_estimate.local_tokenizer，取值仅 on 或 off（或缺省等价 off）；默认 MUST 为 off；非法值 MUST 使配置加载失败；该闸 MUST 接到估计路径的 LocalTokenizer 允许位（paa10），MUST NOT 引入其它本地计数策略枚举。
-
-    场景: local-tokenizer-default-off
-      假如 YAML 未设 token_estimate.local_tokenizer
-      当 加载配置
-      那么 local_tokenizer 闸为 off
-
-    场景: local-tokenizer-on
-      假如 YAML 含 token_estimate.local_tokenizer: on
-      当 加载配置
-      那么 local_tokenizer 闸为 on
-
-    场景: local-tokenizer-invalid-fails
-      假如 YAML 含 token_estimate.local_tokenizer: every_n
-      当 加载配置
-      那么 失败
   @req:r1731
   规则: config-yaml-secret-env-only
-    产品配置 MUST 仅以 config.yaml（可分享非密钥）与 secret.env（密钥；YAML 经 {{ secret.KEY }}）为配置面；加载链 MUST 为 global config.yaml → project config.yaml → 可选 --config，外加 secret.env 注入；AppConfig 全局目录 MUST 以 ~/.config/xylitol/ 为 SSOT，~/.xylitol/ MUST 定位为数据目录（sessions/tokenizers/logs 等），MUST NOT 鼓励在 ~/.xylitol/config.yaml 放置 AppConfig（migrate 兼容除外）。
+    产品配置 MUST 仅以 config.yaml（可分享非密钥）与 secret.env（密钥；YAML 经 {{ secret.KEY }}）为配置面；加载链 MUST 为 global config.yaml → project config.yaml → 可选 --config，外加 secret.env 注入；AppConfig 全局目录 MUST 以 ~/.config/xylitol/ 为 SSOT，~/.xylitol/ MUST 定位为数据目录（sessions/logs 等），MUST NOT 鼓励在 ~/.xylitol/config.yaml 放置 AppConfig（migrate 兼容除外）。MUST NOT 再把本地词表缓存目录作为产品数据面承诺。
 
     场景: config-yaml-secret-env-layout
       假如 配置加载器已就绪

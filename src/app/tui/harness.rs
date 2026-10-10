@@ -607,7 +607,6 @@ impl XyDriver for ScriptedDriver {
             &self.session_messages,
             self.current_model().map(|m| m.id),
             None,
-            None,
         ))
     }
 
@@ -3834,13 +3833,12 @@ mod slice_tests {
             vec!["/tmp/a.jsonl".to_string()]
         );
         assert_eq!(driver.switch_calls(), vec!["imported".to_string()]);
-        // resume-render 修复: import note is a fixed-zone toast, not a transcript row.
+        // resume-render 修复: import note is a client notice stack, not a transcript row.
         assert!(
             root.borrow()
-                .toast_notice_body()
-                .is_some_and(|b| b.contains("imported → session imported")),
-            "expected import toast: {:?}",
-            root.borrow().toast_notice_body()
+                .transient_notice_contains_for_test("imported → session imported"),
+            "expected import notice: {:?}",
+            root.borrow().client_notice_bodies_for_test()
         );
         assert!(
             system_notes(&session)
@@ -3966,13 +3964,12 @@ mod slice_tests {
             .unwrap();
         assert_eq!(driver.switch_calls(), vec!["newer".to_string()]);
         assert!(!root.borrow().session_resume_open());
-        // resume-render 修复: switch note is a fixed-zone toast above the editor.
+        // resume-render 修复: switch note is a client notice stack, not a transcript row.
         assert!(
             root.borrow()
-                .toast_notice_body()
-                .is_some_and(|b| b.contains("switched → session newer")),
-            "expected switch toast: {:?}",
-            root.borrow().toast_notice_body()
+                .transient_notice_contains_for_test("switched → session newer"),
+            "expected switch notice: {:?}",
+            root.borrow().client_notice_bodies_for_test()
         );
         assert!(
             system_notes(&session)
@@ -4161,13 +4158,13 @@ mod slice_tests {
             .await
             .unwrap();
         assert_eq!(driver.new_session_calls(), 1);
-        // resume-render 修复: new-session note is a fixed-zone toast, not a transcript row.
+        // resume-render 修复: new-session note is a client notice stack, not a transcript row.
         assert!(
             root.borrow()
-                .toast_notice_body()
-                .is_some_and(|b| b.contains("new session") && b.contains("new-1")),
-            "expected new session toast: {:?}",
-            root.borrow().toast_notice_body()
+                .transient_notice_contains_for_test("new session")
+                && root.borrow().transient_notice_contains_for_test("new-1"),
+            "expected new session notice: {:?}",
+            root.borrow().client_notice_bodies_for_test()
         );
     }
 
@@ -4212,13 +4209,12 @@ mod slice_tests {
             vec![("leaf-1".to_string(), ForkPosition::At)]
         );
         assert_eq!(driver.switch_calls(), vec!["forked-child".to_string()]);
-        // resume-render 修复: clone note is a fixed-zone toast, not a transcript row.
+        // resume-render 修复: clone note is a client notice stack, not a transcript row.
         assert!(
             root.borrow()
-                .toast_notice_body()
-                .is_some_and(|b| b.contains("cloned → session forked-child")),
-            "expected clone toast: {:?}",
-            root.borrow().toast_notice_body()
+                .transient_notice_contains_for_test("cloned → session forked-child"),
+            "expected clone notice: {:?}",
+            root.borrow().client_notice_bodies_for_test()
         );
     }
 
@@ -4327,13 +4323,12 @@ mod slice_tests {
             "must not treat /new as unknown when popup selected session-new: {:?}",
             system_notes(&session)
         );
-        // resume-render 修复: new-session note is a fixed-zone toast, not a transcript row.
+        // resume-render 修复: new-session note is a client notice stack, not a transcript row.
         assert!(
             root.borrow()
-                .toast_notice_body()
-                .is_some_and(|b| b.contains("new session")),
-            "expected new-session toast: {:?}",
-            root.borrow().toast_notice_body()
+                .transient_notice_contains_for_test("new session"),
+            "expected new-session notice: {:?}",
+            root.borrow().client_notice_bodies_for_test()
         );
     }
 
@@ -4859,7 +4854,7 @@ mod slice_tests {
         driver.set_session_messages(harness_sample_session_messages());
         driver.set_estimate_override(Some(ContextTokenEstimate {
             tokens: 7,
-            provenance: TokenProvenance::LocalTokenizer,
+            provenance: TokenProvenance::Heuristic,
             usage_tokens: 0,
             trailing_tokens: 7,
             last_usage_index: None,
@@ -4888,7 +4883,7 @@ mod slice_tests {
         let footer = session.ui_root().expect("ui").borrow_mut().render(80);
         let f = footer.last().expect("footer");
         assert!(
-            f.contains("used 7 tokens"),
+            f.contains("used ~7 tokens"),
             "stream closed + drain must refresh footer when no settlement: {f}"
         );
     }
@@ -7188,7 +7183,6 @@ mod slice_tests {
             .unwrap();
 
         // 打开 /session-resume picker 并回车选中（当前会话）。
-        let frames_before_picker = session.tui.terminal.frames().len();
         root.borrow_mut().set_editor_text("/session-resume");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -7207,13 +7201,12 @@ mod slice_tests {
             "resume picker should be closed after select"
         );
 
-        // resume-render 修复: 切换 tip 是输入区上方 toast，不是 transcript 行。
+        // resume-render 修复: 切换 tip 是客户端通知栈，不是 transcript 行。
         assert!(
             root.borrow()
-                .toast_notice_body()
-                .is_some_and(|b| b.contains("switched → session sid-same")),
-            "expected switch toast: {:?}",
-            root.borrow().toast_notice_body()
+                .transient_notice_contains_for_test("switched → session sid-same"),
+            "expected switch notice: {:?}",
+            root.borrow().client_notice_bodies_for_test()
         );
         assert!(
             !session.ui_model().entries.iter().any(|e| matches!(
@@ -7223,31 +7216,10 @@ mod slice_tests {
             "switch notice must not be a transcript row"
         );
 
-        // 回放全部帧 → 还原最终屏幕。
-        let mut screen = VtReplay::new(120, 34);
-        for f in session.tui.terminal.frames() {
-            screen.feed(f);
-        }
-        let text = screen.text();
-        println!("===== replayed screen =====\n{text}\n===== end =====");
-
-        // switch 前的屏幕（对齐用户「switch 前直播态」）。
-        let mut pre = VtReplay::new(120, 34);
-        for f in session.tui.terminal.frames()[..frames_before_picker].iter() {
-            pre.feed(f);
-        }
-        println!(
-            "===== pre-picker screen =====\n{}\n===== end =====",
-            pre.text()
-        );
-
-        let notice_pos = text.find("switched → session").expect("notice present");
-        let reply_pos = text
-            .find("我是你的编码助手")
-            .expect("reply first line present");
+        let frame = xylitol_tui::utils::strip_ansi_codes(&root.borrow_mut().render(120).join("\n"));
         assert!(
-            notice_pos > reply_pos,
-            "notice (at {notice_pos}) must render AFTER assistant reply (at {reply_pos})"
+            frame.contains("switched → session"),
+            "switch notice must overlay the frame: {frame}"
         );
 
         // resume-render 修复: switch 之后空闲到达的 agent tape（daemon journal 重放/ Foreign run）
@@ -7281,161 +7253,5 @@ mod slice_tests {
             )),
             "mid-word tail entry must be fenced off"
         );
-    }
-
-    /// 极简 VT 屏幕回放：只处理引擎实际发射的控制序列
-    ///（CUP/CUU/CUD/CHA/EL/IL/DL/ED/SGR/OSC/\r/\n），无 autowrap（?7l 语义）。
-    struct VtReplay {
-        cols: usize,
-        rows: usize,
-        grid: Vec<Vec<char>>,
-        row: usize,
-        col: usize,
-    }
-
-    /// 宽字符续格哨兵（join 时跳过）。
-    const WIDE_CONT: char = '\u{0}';
-
-    impl VtReplay {
-        fn new(cols: usize, rows: usize) -> Self {
-            Self {
-                cols,
-                rows,
-                grid: vec![vec![' '; cols]; rows],
-                row: 0,
-                col: 0,
-            }
-        }
-
-        fn feed(&mut self, s: &str) {
-            let bytes = s.as_bytes();
-            let mut i = 0;
-            while i < bytes.len() {
-                match bytes[i] {
-                    0x1b => {
-                        if i + 1 >= bytes.len() {
-                            break;
-                        }
-                        match bytes[i + 1] {
-                            b'[' => {
-                                let mut j = i + 2;
-                                while j < bytes.len() && !(0x40..=0x7e).contains(&bytes[j]) {
-                                    j += 1;
-                                }
-                                if j >= bytes.len() {
-                                    break;
-                                }
-                                let body = &s[i + 2..j];
-                                let final_byte = bytes[j];
-                                self.csi(body, final_byte);
-                                i = j + 1;
-                            }
-                            b']' => {
-                                // OSC … BEL / ST
-                                let mut j = i + 2;
-                                while j < bytes.len() && bytes[j] != 0x07 {
-                                    j += 1;
-                                }
-                                i = (j + 1).min(bytes.len());
-                            }
-                            _ => {
-                                i += 2;
-                            }
-                        }
-                    }
-                    b'\r' => {
-                        self.col = 0;
-                        i += 1;
-                    }
-                    b'\n' => {
-                        self.row = (self.row + 1).min(self.rows - 1);
-                        i += 1;
-                    }
-                    _ => {
-                        let ch = s[i..].chars().next().expect("utf8");
-                        let w = xylitol_tui::visible_width(&ch.to_string()).max(1);
-                        if ch != ' ' || self.col < self.cols {
-                            let put = self.col.min(self.cols - 1);
-                            self.grid[self.row][put] = ch;
-                            for k in 1..w {
-                                if put + k < self.cols {
-                                    self.grid[self.row][put + k] = WIDE_CONT;
-                                }
-                            }
-                        }
-                        self.col = (self.col + w).min(self.cols);
-                        i += ch.len_utf8();
-                    }
-                }
-            }
-        }
-
-        fn csi(&mut self, body: &str, final_byte: u8) {
-            let nums: Vec<usize> = body
-                .split([';', '?'])
-                .map(|p| p.parse::<usize>().unwrap_or(0))
-                .collect();
-            let n = || nums.first().copied().filter(|&v| v != 0).unwrap_or(1);
-            match final_byte {
-                b'H' => {
-                    self.row = (nums.first().copied().unwrap_or(1))
-                        .saturating_sub(1)
-                        .min(self.rows - 1);
-                    self.col = (nums.get(1).copied().unwrap_or(1))
-                        .saturating_sub(1)
-                        .min(self.cols - 1);
-                }
-                b'A' => self.row = self.row.saturating_sub(n()),
-                b'B' => self.row = (self.row + n()).min(self.rows - 1),
-                b'G' => self.col = (n().saturating_sub(1)).min(self.cols - 1),
-                b'J' => {
-                    if nums.first().copied().unwrap_or(0) == 2 {
-                        for r in self.grid.iter_mut() {
-                            r.fill(' ');
-                        }
-                        self.row = 0;
-                        self.col = 0;
-                    }
-                }
-                b'K' => {
-                    for c in self.col..self.cols {
-                        self.grid[self.row][c] = ' ';
-                    }
-                }
-                b'L' => {
-                    // IL at cursor row
-                    for _ in 0..n() {
-                        let new_row = vec![' '; self.cols];
-                        let row = self.row;
-                        self.grid.insert(row, new_row);
-                        self.grid.truncate(self.rows);
-                    }
-                }
-                b'M' => {
-                    // DL at cursor row
-                    for _ in 0..n() {
-                        let row = self.row;
-                        self.grid.remove(row);
-                        self.grid.push(vec![' '; self.cols]);
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        fn text(&self) -> String {
-            self.grid
-                .iter()
-                .map(|r| {
-                    r.iter()
-                        .copied()
-                        .filter(|&c| c != WIDE_CONT)
-                        .collect::<String>()
-                        .trim_end()
-                        .to_string()
-                })
-                .collect::<Vec<_>>()
-                .join("\n")
-        }
     }
 }

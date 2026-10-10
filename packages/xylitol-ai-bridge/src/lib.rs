@@ -8,9 +8,7 @@ pub mod fake;
 pub use fake::{FakeProvider, FakeProviderBuilder, FakeProviderMode, ScenarioStep};
 pub mod hooks;
 pub mod provider;
-pub mod registry;
 pub mod thinking;
-pub mod tokenize;
 pub mod usage;
 pub mod wire_policy;
 
@@ -55,9 +53,9 @@ mod boundary_tests {
 
     /// Metering side must not import provider (HTTP/SSE) modules.
     #[test]
-    fn accounting_tokenize_registry_do_not_import_provider() {
+    fn accounting_does_not_import_provider() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-        let guarded = ["accounting", "tokenize", "registry"];
+        let guarded = ["accounting"];
         let mut violations = Vec::new();
         for dir_name in guarded {
             let mut files = Vec::new();
@@ -84,7 +82,7 @@ mod boundary_tests {
         }
         assert!(
             violations.is_empty(),
-            "accounting/tokenize/registry must not import provider:\n  {}",
+            "accounting must not import provider:\n  {}",
             violations.join("\n  ")
         );
     }
