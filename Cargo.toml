@@ -120,10 +120,10 @@ criterion = "0.8"
 # real binary under a PTY, inject keys, read bytes back into a vte cell grid.
 portable-pty = "0.9"
 # vte: ANSI parser for the E2E cell-grid oracle (shared by pty + tmux drivers).
-vte = "0.13"
-serial_test = "3.5.0"
+vte = "0.15"
+serial_test = "4.0.1"
 wiremock = "0.6.5"
-rstest = "0.26"
+rstest = "0.27"
 rstest-bdd = "0.6.0"
 rstest-bdd-macros = "0.6.0"
 

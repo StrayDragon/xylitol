@@ -28,7 +28,7 @@ highlight = ["dep:syntect", "dep:two-face"]
 
 
 [dev-dependencies]
-vte = "0.13"
+vte = "0.15"
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "time", "test-util"] }
 # insta: whole-screen snapshot golden (c405 layer 2) — viewport output regression.
 insta = { version = "1", features = ["filters"] }

@@ -462,9 +462,7 @@ impl Terminal for VirtualTerminal {
     fn write(&mut self, data: &str) {
         let mut parser = vte::Parser::new();
         let mut performer = VTPerformer { vt: self };
-        for byte in data.bytes() {
-            parser.advance(&mut performer, byte);
-        }
+        parser.advance(&mut performer, data.as_bytes());
     }
     fn columns(&self) -> u16 {
         self.cols
