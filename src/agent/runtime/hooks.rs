@@ -68,37 +68,6 @@ pub fn max_turns_stop_hook(max_turns: u32) -> ShouldStopAfterTurnHook {
     })
 }
 
-#[cfg(test)]
-mod max_turns_hook_tests {
-    use super::*;
-
-    fn ctx(turn_index: u32) -> ShouldStopAfterTurnCtx {
-        ShouldStopAfterTurnCtx {
-            turn_index,
-            assistant: None,
-            tool_results: vec![],
-            history: vec![],
-            new_messages: vec![],
-        }
-    }
-
-    #[test]
-    fn stops_when_completed_turns_reach_cap() {
-        let hook = max_turns_stop_hook(2);
-        assert!(!hook(&ctx(0)));
-        assert!(hook(&ctx(1)));
-        assert!(hook(&ctx(2)));
-    }
-
-    #[test]
-    fn first_settle_does_not_use_iteration_index() {
-        let hook = max_turns_stop_hook(2);
-        // ContinueTools may have incremented turn_index; budget is settle count.
-        assert!(!hook(&ctx(5)));
-        assert!(hook(&ctx(0)));
-    }
-}
-
 // ── AgentHooks ──────────────────────────────────────────────────────
 
 /// Hooks for customizing the agent loop around tool execution and turn stop.
@@ -129,5 +98,36 @@ impl AgentHooks {
     /// Set or clear the pi-aligned after-turn stop callback (single slot).
     pub fn set_should_stop_after_turn(&mut self, hook: Option<ShouldStopAfterTurnHook>) {
         self.should_stop_after_turn = hook;
+    }
+}
+
+#[cfg(test)]
+mod max_turns_hook_tests {
+    use super::*;
+
+    fn ctx(turn_index: u32) -> ShouldStopAfterTurnCtx {
+        ShouldStopAfterTurnCtx {
+            turn_index,
+            assistant: None,
+            tool_results: vec![],
+            history: vec![],
+            new_messages: vec![],
+        }
+    }
+
+    #[test]
+    fn stops_when_completed_turns_reach_cap() {
+        let hook = max_turns_stop_hook(2);
+        assert!(!hook(&ctx(0)));
+        assert!(hook(&ctx(1)));
+        assert!(hook(&ctx(2)));
+    }
+
+    #[test]
+    fn first_settle_does_not_use_iteration_index() {
+        let hook = max_turns_stop_hook(2);
+        // ContinueTools may have incremented turn_index; budget is settle count.
+        assert!(!hook(&ctx(5)));
+        assert!(hook(&ctx(0)));
     }
 }

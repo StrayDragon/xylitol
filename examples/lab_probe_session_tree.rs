@@ -15,7 +15,7 @@ async fn main() {
         SessionTreeKind::MessageHistory,
         SessionTreeKind::FileBrowser,
     ] {
-        let cmd = Command::SessionTree { kind: kind.clone() };
+        let cmd = Command::SessionTree { kind };
         let payload = serde_json::to_value(&cmd).expect("serialize command");
         let mut payload = payload;
         if payload
@@ -27,10 +27,10 @@ async fn main() {
         {
             payload["session_id"] = serde_json::json!(sid);
         }
-        if payload.get("cwd").is_none() {
-            if let Ok(c) = std::env::current_dir() {
-                payload["cwd"] = serde_json::json!(c.to_string_lossy());
-            }
+        if payload.get("cwd").is_none()
+            && let Ok(c) = std::env::current_dir()
+        {
+            payload["cwd"] = serde_json::json!(c.to_string_lossy());
         }
         eprintln!("[probe] kind={kind:?} payload={payload}");
         let r = client

@@ -3160,22 +3160,17 @@ mod tests {
         let mut stream = driver.run("alt branch").await;
         let mut saw_hello = false;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
-        loop {
-            match tokio::time::timeout(
-                deadline.saturating_duration_since(tokio::time::Instant::now()),
-                stream.next(),
-            )
-            .await
-            {
-                Ok(Some(ev)) => {
-                    if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
-                        saw_hello = true;
-                    }
-                    if matches!(ev, XyEvent::AgentEnd { .. }) {
-                        break;
-                    }
-                }
-                Ok(None) | Err(_) => break,
+        while let Ok(Some(ev)) = tokio::time::timeout(
+            deadline.saturating_duration_since(tokio::time::Instant::now()),
+            stream.next(),
+        )
+        .await
+        {
+            if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                saw_hello = true;
+            }
+            if matches!(ev, XyEvent::AgentEnd { .. }) {
+                break;
             }
         }
         assert!(
@@ -3261,22 +3256,17 @@ mod tests {
         let mut stream = driver.run("alt branch").await;
         let mut saw_hello = false;
         let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
-        loop {
-            match tokio::time::timeout(
-                deadline.saturating_duration_since(tokio::time::Instant::now()),
-                stream.next(),
-            )
-            .await
-            {
-                Ok(Some(ev)) => {
-                    if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
-                        saw_hello = true;
-                    }
-                    if matches!(ev, XyEvent::AgentEnd { .. }) {
-                        break;
-                    }
-                }
-                Ok(None) | Err(_) => break,
+        while let Ok(Some(ev)) = tokio::time::timeout(
+            deadline.saturating_duration_since(tokio::time::Instant::now()),
+            stream.next(),
+        )
+        .await
+        {
+            if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                saw_hello = true;
+            }
+            if matches!(ev, XyEvent::AgentEnd { .. }) {
+                break;
             }
         }
         running.shutdown();
