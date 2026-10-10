@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: cli-entry
-# purpose: CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/serve/tokenizer）；bootstrap/dispatch；产品 slash 以 session-* 为准。
+# purpose: CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/serve）；bootstrap/dispatch；产品 slash 以 session-* 为准。
 # scope: src/app/cli/, src/main.rs, tests/
 
 功能: cli-entry
@@ -33,7 +33,7 @@
 
     场景: cli-is-independent-surface
       当 xylitol --help
-      那么 Commands 含 tokenizer、resources 与 serve 为顶层而非 tui 子命令
+      那么 Commands 含 resources 与 serve 为顶层且不含 tokenizer
 
     场景: app-surface-reaches-agent-via-driver-seam
       当 检查 Driver 实现
@@ -107,47 +107,14 @@
       假如 当前 session 未持久化
       当 TUI 或 print 正常退出
       那么 stderr 不含 resume 提示行
-  @req:r1384
-  规则: tokenizer-cache-subcommands
-    CLI MUST 提供顶层动词 tokenizer（跨面 ops，MUST NOT 仅挂在 tui 下），叶子至少含 status、download、clean：status MUST 可报告缓存根与条目（及可选 --model 的 builtin/local/cached/missing/unmapped）；download MUST 为显式 opt-in（调用即同意；TTY 默认可二次确认，--yes 跳过），MUST 在确认摘要中告知 repo/file、HF 基址与落盘路径，MUST NOT 在估计热路径静默下载；无配置映射且无显式 owner/repo 时 MUST 失败并提示配置 tokenizer 字段或 CLI 形状，MUST NOT 猜测下载目标；clean MUST 支持 --all 或按 model/target 删除；上述子命令 MUST 早退且 MUST NOT 经 bootstrap 装配会话/MCP；实现 MUST 委托 bridge 缓存 API，MUST NOT 在 CLI 内直接发起 HTTP。
-
-    场景: tokenizer-help-tree
-      假如 CLI 已解析
-      当 xylitol tokenizer --help
-      那么 可见 status、download、clean 叶子
-
-    场景: tokenizer-status-empty
-      假如 缓存目录为空
-      当 xylitol tokenizer status
-      那么 报告缓存根且不失败伪装已下载
-
-    场景: tokenizer-download-opt-in
-      假如 目标映射到 HuggingFace 且本地无缓存
-      当 xylitol tokenizer download <target> --yes
-      那么 词表落入缓存路径且再次 status 可见
-
-    场景: tokenizer-clean
-      假如 缓存中已有条目
-      当 xylitol tokenizer clean --all
-      那么 条目被移除且 status 不再列出
-
-    场景: tokenizer-no-bootstrap
-      假如 仅执行 tokenizer 子命令
-      当 xylitol tokenizer status
-      那么 不经 bootstrap 装配会话或 MCP 即可完成
-
-    场景: tokenizer-download-shows-hf-base
-      假如 已设置 HF_ENDPOINT 为镜像基址且目标已映射
-      当 xylitol tokenizer download <target> 进入确认摘要（或 --yes 的等价日志）
-      那么 摘要含该镜像基址与落盘路径
   @req:r1385
   规则: cli-surface-vs-ops
-    CLI MUST 区分表面动词与管理动词：表面至少含 tui 与 print（xylitol tui 进入 TUI；xylitol print 进入一次性 print 且须非空 prompt）；管理动词 resources、serve、tokenizer MUST 保持顶层，MUST NOT 挪入 tui 子树；TTY 裸跑默认 TUI 的语义 MUST 保持；MUST NOT 提供顶层 --tui/--print/-p/--prompt 或位置 PROMPT 作为表面切换别名（print 的 --prompt/-p 仅允许挂在 print 子命令下）。
+    CLI MUST 区分表面动词与管理动词：表面至少含 tui 与 print（xylitol tui 进入 TUI；xylitol print 进入一次性 print 且须非空 prompt）；管理动词 resources、serve MUST 保持顶层，MUST NOT 挪入 tui 子树，MUST NOT 再提供顶层 tokenizer 动词；TTY 裸跑默认 TUI 的语义 MUST 保持；MUST NOT 提供顶层 --tui/--print/-p/--prompt 或位置 PROMPT 作为表面切换别名（print 的 --prompt/-p 仅允许挂在 print 子命令下）。
 
     场景: ops-stay-toplevel
       假如 CLI 已解析
       当 xylitol --help
-      那么 Commands 含 tokenizer、resources 与 serve 为顶层而非 tui 子命令
+      那么 Commands 含 resources 与 serve 为顶层且不含 tokenizer
   @req:r1386
   规则: config-load-fail-closed
     load_app_config（或等价）失败（含模板渲染、YAML 解析、IO）时，bootstrap MUST 返回硬错误且经其装配的全表面 MUST 非零退出；MUST NOT 仅 Warning 后继续并用 env 默认模型进入 TUI/print。

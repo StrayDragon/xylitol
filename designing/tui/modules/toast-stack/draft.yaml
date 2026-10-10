@@ -1,0 +1,15 @@
+id: toast-stack
+title: 通知栈
+category: 固定区
+surface: tui
+summary: "右上角浮层时间线：成功/说明短时堆叠，自动逐条消失。"
+alignment:
+  fixed: 视口右上角 overlay；不占下缘 dock 行；错误类仍走通知条
+  item: 不进 transcript / ScrollNotice
+  todo-bar: 无关
+todos:
+  - { done: true, text: "与通知条分工写入 TUI信息呈现与固定区词汇.md" }
+  - { done: true, text: "Copied 与首次 Heuristic 说明进栈" }
+  - { done: false, text: "后波：栈内动作 / 展开侧板" }
+notes: |
+  代码 SSOT：UiRoot client_notices overlay。无组件自有快捷键（本波）。

@@ -1,0 +1,11 @@
+id: toast-stack.copied
+cols: 80
+must_contain:
+  - "✓ Copied"
+must_not_contain:
+  - "Error: Copied"
+lines:
+  -
+    - { text: "                                                                  ✓ Copied", token: success }
+  -
+    - { text: "", token: muted }

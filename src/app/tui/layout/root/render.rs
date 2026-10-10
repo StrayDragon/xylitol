@@ -59,26 +59,54 @@ impl UiRoot {
     }
 
     pub(super) fn render_toast_notice_slot(&mut self, width: usize) -> Vec<String> {
-        let Some((body, _, kind)) = self.toast_notice.as_ref() else {
+        let Some((body, _, _)) = self.toast_notice.as_ref() else {
             return Vec::new();
         };
-        // resume 渲染修复: Info toasts (session-switch tips) render muted without the
-        // `Error: ` prefix — they are transient hints, not failures.
-        let line = match kind {
-            crate::app::tui::layout::root::ToastKind::Error => format!(
-                "{}{body}",
-                crate::app::tui::commands::TOAST_NOTICE_ERROR_PREFIX
-            ),
-            crate::app::tui::layout::root::ToastKind::Info => body.clone(),
-        };
-        let painted = match kind {
-            crate::app::tui::layout::root::ToastKind::Error => self.theme.paint_warning(&line),
-            crate::app::tui::layout::root::ToastKind::Info => self.theme.paint_muted(&line),
-        };
+        let line = format!(
+            "{}{body}",
+            crate::app::tui::commands::TOAST_NOTICE_ERROR_PREFIX
+        );
+        let painted = self.theme.paint_warning(&line);
         if width == 0 {
             return vec![painted];
         }
         vec![truncate_to_width(&painted, width, "…", false)]
+    }
+
+    pub(super) fn overlay_client_notices(&self, lines: &mut [String], width: usize) {
+        if width == 0 {
+            return;
+        }
+        let now = Instant::now();
+        for (i, notice) in self
+            .client_notices
+            .iter()
+            .filter(|n| now < n.until)
+            .enumerate()
+        {
+            if i >= lines.len() {
+                break;
+            }
+            let raw = match notice.kind {
+                super::ClientNoticeKind::Success => format!("✓ {}", notice.body),
+                super::ClientNoticeKind::Info => format!("◆ {}", notice.body),
+            };
+            let painted = match notice.kind {
+                super::ClientNoticeKind::Success => self.theme.paint_success(&raw),
+                super::ClientNoticeKind::Info => self.theme.paint_muted(&raw),
+            };
+            let overlay = truncate_to_width(&painted, width, "…", false);
+            let ow = xylitol_tui::visible_width(&overlay);
+            let budget = width.saturating_sub(ow);
+            let left = if budget == 0 {
+                String::new()
+            } else {
+                let truncated = truncate_to_width(&lines[i], budget, "", false);
+                let lw = xylitol_tui::visible_width(&truncated);
+                format!("{truncated}{}", " ".repeat(budget.saturating_sub(lw)))
+            };
+            lines[i] = format!("{left}{overlay}");
+        }
     }
 
     pub(super) fn render_status_slot(&mut self, width: usize) -> Vec<String> {
@@ -98,16 +126,7 @@ impl UiRoot {
             // ApplicationOwned copy cue (ath31): reuse the blank status row when no next-turn cue
             // so dock height stays stable; never use Error: toast-notice.
             if let Some(cue) = self.status_next_turn_cue.as_deref() {
-                let mut lines = vec![paint_cue_line(&self.theme, cue, width)];
-                if self.copy_notice_visible() {
-                    let painted = self.theme.paint_muted("Copied");
-                    lines.push(truncate_to_width(&painted, width.max(1), "…", false));
-                }
-                return lines;
-            }
-            if self.copy_notice_visible() {
-                let painted = self.theme.paint_muted("Copied");
-                return vec![truncate_to_width(&painted, width.max(1), "…", false)];
+                return vec![paint_cue_line(&self.theme, cue, width)];
             }
             return vec![String::new()];
         }
@@ -137,10 +156,6 @@ impl UiRoot {
             } else {
                 lines.push(paint_cue_line(&self.theme, cue, width));
             }
-        }
-        if self.copy_notice_visible() {
-            let painted = self.theme.paint_muted("Copied");
-            lines.push(truncate_to_width(&painted, width, "…", false));
         }
         lines
     }
@@ -244,6 +259,7 @@ impl Component for UiRoot {
         lines.extend(status);
         lines.extend(editor);
         lines.push(footer);
+        self.overlay_client_notices(&mut lines, width);
         lines
     }
 

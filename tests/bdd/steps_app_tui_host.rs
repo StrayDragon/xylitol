@@ -2229,7 +2229,7 @@ pub(crate) fn w_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
     let _ = c2826_frame(host_pump_bdd);
 }
 
-#[then("固定区出现 Copied 短提示且不以 Error 前缀冒充")]
+#[then("右上角通知栈含 Copied 短提示且不以 Error 前缀冒充")]
 pub(crate) fn t_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
     let frame = c2826_frame(host_pump_bdd);
     assert!(
@@ -2240,6 +2240,10 @@ pub(crate) fn t_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
         .lines()
         .find(|l| l.contains("Copied"))
         .expect("copied line");
+    assert!(
+        copied_line.contains('✓'),
+        "Copied must use success stack icon: {copied_line}"
+    );
     assert!(
         !copied_line.contains("Error"),
         "c2826: 成功提示不得用 Error 前缀：{copied_line}"
@@ -2679,4 +2683,49 @@ fn t_pty_smoke_registration(host_pump_bdd: &HostPumpBdd) {
         text.contains("spawn_product_fake"),
         "MUST 有产品二进制 + Fake 模型的 PTY 冒烟"
     );
+}
+
+#[then("右上角通知栈含 Copied 且不以 Error 前缀冒充")]
+pub(crate) fn t_notice_stack_copied(host_pump_bdd: &HostPumpBdd) {
+    t_c2826_copy_notice(host_pump_bdd);
+}
+
+#[given("footer 同源估计为 Heuristic")]
+pub(crate) fn g_heuristic_estimate(host_pump_bdd: &HostPumpBdd) {
+    use xylitol::protocol::model::{ContextTokenEstimate, TokenProvenance};
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    pump.driver
+        .set_session_messages(xylitol::app::tui::harness::harness_sample_session_messages());
+    pump.driver
+        .set_estimate_override(Some(ContextTokenEstimate {
+            tokens: 42,
+            provenance: TokenProvenance::Heuristic,
+            usage_tokens: 0,
+            trailing_tokens: 42,
+            last_usage_index: None,
+        }));
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[when("连续两次以 Heuristic 刷新估计")]
+pub(crate) async fn w_heuristic_refresh_twice(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_pump(host_pump_bdd);
+    xylitol::app::tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
+    xylitol::app::tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
+    pump.session.render_now().expect("render");
+    put_pump(host_pump_bdd, pump);
+    let _ = c2826_frame(host_pump_bdd);
+}
+
+#[then("估算说明在通知栈至多出现一次")]
+pub(crate) fn t_heuristic_notice_once(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2826_frame(host_pump_bdd);
+    let n = frame.matches("Context tokens are approximate").count();
+    assert_eq!(n, 1, "Heuristic notice once: {frame}");
+    assert!(frame.contains('◆'), "{frame}");
+    assert!(!frame.contains("Error: Context"), "{frame}");
 }

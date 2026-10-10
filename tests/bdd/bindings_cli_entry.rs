@@ -4,44 +4,7 @@ use crate::bdd::steps_cli_surface::{
     cli_help_bdd, surface_bdd, surface_flags_bdd,
 };
 use crate::bdd::steps_server::{ServerTest, server_test};
-use crate::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
-
-#[scenario(
-    path = "llmanspec/specs/cli-entry/cli-entry.feature",
-    name = "tokenizer-help-tree"
-)]
-fn test_ce15_help(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/cli-entry/cli-entry.feature",
-    name = "tokenizer-status-empty"
-)]
-fn test_ce15_status_empty(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/cli-entry/cli-entry.feature",
-    name = "tokenizer-download-opt-in"
-)]
-fn test_ce15_download(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/cli-entry/cli-entry.feature",
-    name = "tokenizer-clean"
-)]
-fn test_ce15_clean(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/cli-entry/cli-entry.feature",
-    name = "tokenizer-no-bootstrap"
-)]
-fn test_ce15_no_bootstrap(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/cli-entry/cli-entry.feature",
-    name = "tokenizer-download-shows-hf-base"
-)]
-fn test_ce15_hf_base(tokenizer_bdd: TokenizerBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/cli-entry/cli-entry.feature",

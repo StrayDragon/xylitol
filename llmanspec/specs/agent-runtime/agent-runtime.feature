@@ -261,7 +261,7 @@
     场景: turn-end-threshold-auto-compact
       假如 会话叶上存在可信 Api usage 锚点且 footer 同源估计可用
       当 执行 auto-compact reserve 触发判断
-      那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立 len/4 总和
+      那么 所用 token 数字与同源估计一致且 MUST NOT 另算独立启发式总和
       并且 触发比较式为占用大于有效触发阈值 max(window 减 reserveTokens, 压后地板 加 迟滞带)
 
   @req:r1050

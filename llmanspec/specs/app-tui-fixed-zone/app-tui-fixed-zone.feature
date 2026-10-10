@@ -1,6 +1,6 @@
 # language: zh-CN
 # capability: app-tui-fixed-zone
-# purpose: 主题 token、glyph、status、footer、通知条、待办栏等固定区（非滚动 layout 壳）行为。
+# purpose: 主题 token、glyph、status、footer、通知条、通知栈、待办栏等固定区（非滚动 layout 壳）行为。
 # scope: src/app/tui/
 
 功能: app-tui-fixed-zone
@@ -14,7 +14,7 @@
       那么 空闲帧不含忙碌短词且忙碌帧恰一行 Working 且 footer 不含 Working
   @req:r1224
   规则: footer-minimal
-    产品 footer MUST 为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为该档位的显示名，off 时用 `thinking off`；字段间只用 ` · `，MUST NOT 在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 MUST 省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api/RemoteCount/LocalTokenizer 为 used C tokens，Heuristic 为 used ~C tokens，Unknown 为 used ? tokens；其中 C 为与 window 同源的紧凑计数，见 atc24）；当当前模型 context_window > 0 时 MUST 在 used 字段后追加派生占用比（见 atc21）；MUST NOT 在 footer 展示队列计数徽章（如 `q:sN|fM`；队列可见性见 ati11 / atc26）；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。
+    产品 footer MUST 为 1 行 dim 文本，显示 active（in-flight 或当前 turn 已绑定）的 model，而非仅裸读 selected；字段序为 cwd · model · thinking 标签（形如 `cwd · model · thinking off` 或 `· xhigh`，level 文案为该档位的显示名，off 时用 `thinking off`；字段间只用 ` · `，MUST NOT 在 thinking 前再加装饰 `•`）；当 active 模型无思考或仅不可调 off 时 MUST 省略 thinking 段；并在可获得 ContextTokenEstimate 时追加 `· used … tokens`（文案按 TokenProvenance：Api 为 used C tokens，Heuristic 为 used ~C tokens，Unknown 为 used ? tokens；其中 C 为与 window 同源的紧凑计数，见 atc24）；当当前模型 context_window > 0 时 MUST 在 used 字段后追加派生占用比（见 atc21）；MUST NOT 在 footer 展示队列计数徽章（如 `q:sN|fM`；队列可见性见 ati11 / atc26）；无估计数据时 MUST NOT 伪造 used 0；MUST NOT 常驻快捷键墙；放不下时 MUST 截断右侧而非增高。
 
     场景: footer-single-line-with-heuristic-provenance
       当 以 Heuristic 上下文估计驱动 footer token 字段
@@ -106,7 +106,7 @@
       那么 帧内不出现 Ready 文案
   @req:r1219
   规则: footer-token-refresh
-    产品 host MUST 在 session tree travel 换叶、CompactionEnd、turn 收尾 settlement（经 TurnEnd 携带或独立 ContextTokenSettlement 事件或 Driver 缓存）、以及 turn 进行中有可用 Api usage 更新时（节流）刷新 footer token 字段；刷新 MUST 经 settlement snapshot 或 Driver 只读 estimate_context_tokens（或等价 seam）且异步不阻塞输入；同一轮 agent run 在已应用 TurnSettled settlement 后，stream close / AgentEnd MUST NOT 再触发第二次 estimate；MUST NOT 在每个 TextDelta 上全量本地 tokenizer.encode。
+    产品 host MUST 在 session tree travel 换叶、CompactionEnd、turn 收尾 settlement（经 TurnEnd 携带或独立 ContextTokenSettlement 事件或 Driver 缓存）、以及 turn 进行中有可用 Api usage 更新时（节流）刷新 footer token 字段；刷新 MUST 经 settlement snapshot 或 Driver 只读 estimate_context_tokens（或等价 seam）且异步不阻塞输入；同一轮 agent run 在已应用 TurnSettled settlement 后，stream close / AgentEnd MUST NOT 再触发第二次 estimate；MUST NOT 在每个 TextDelta 上全量重算上下文估计。
 
     场景: footer-token-refresh-single-estimate
       当 以固定估计驱动一次 footer token 刷新
@@ -155,9 +155,19 @@
     场景: toast-single-slot-replaces-with-error-prefix
       当 连续推送两条通知条后渲染
       那么 仅见后一条且以 Error: 前缀且未写入对话条目
+  @req:r1930
+  规则: client-notice-stack
+    产品 TUI MUST 在视口右上角提供客户端通知栈：纵向堆叠、最新在上、同时最多约 3 条，TTL 到期自动消失；成功确认（至少复制成功 Copied）以 ✓ 起头，说明类（至少整段 Heuristic 估计的首次提示）以 ◆ 起头。MUST NOT 写入对话条目 / ScrollNotice；MUST NOT 计入下缘 Fixed-Zone Footprint；MUST NOT 使用通知条的 Error: 前缀。整段估计 provenance 为 Heuristic 时 MUST 在每个 TUI 进程内至多提示一次；Api 锚点有效仅 trailing 为启发式时 MUST NOT 再弹。Print 面 MUST NOT 展示该栈。本波 MUST NOT 要求栈内键盘动作或展开侧板。
+    场景: notice-stack-copied-not-error-bar
+      当 臂装复制成功提示后渲染主机帧
+      那么 右上角通知栈含 Copied 且不以 Error 前缀冒充
+    场景: notice-stack-heuristic-once
+      假如 footer 同源估计为 Heuristic
+      当 连续两次以 Heuristic 刷新估计
+      那么 估算说明在通知栈至多出现一次
   @req:r1228
   规则: fixed-zone-footprint-term-budget
-    产品 TUI MUST 维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / 通知条 / 待办栏各按其实际行计入）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 MUST = term_rows 减去上述 reserved 与槽头行后的预算且 MUST ≥ 1；MUST NOT 以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 MUST 仍能看到 status lead（Working 或等价 spinner 短词）。MUST NOT 为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
+    产品 TUI MUST 维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 MUST NOT 计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 MUST = term_rows 减去上述 reserved 与槽头行后的预算且 MUST ≥ 1；MUST NOT 以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 MUST 仍能看到 status lead（Working 或等价 spinner 短词）。MUST NOT 为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
 
     场景: short-terminal-busy-lead-visible
       当 以小高度终端渲染忙碌帧

@@ -46,3 +46,4 @@
 # re-review(c2835): 复审结论——本 capability 管辖行为不变；分支内仅把 app/cli/logging 改为 pub(crate) 以让 harness 走同一初始化入口，print 面输出语义未动。（2026-09-29）
 
 # re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
+# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）

@@ -1,5 +1,7 @@
 //! UI-only model types and methods (c1170).
 
+use strum::IntoStaticStr;
+
 use crate::protocol::session::TodoList;
 use crate::utils::ThoughtClock;
 
@@ -208,7 +210,8 @@ pub fn allocate_thinking_id<'a>(
 }
 
 /// Role of an in-flight streaming tail rendered in scrollback.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
+#[strum(serialize_all = "lowercase")]
 pub enum StreamingTailKind {
     /// Model reasoning text (foldable / muted).
     Thinking,
@@ -218,10 +221,7 @@ pub enum StreamingTailKind {
 
 impl StreamingTailKind {
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Thinking => "thinking",
-            Self::Assistant => "assistant",
-        }
+        self.into()
     }
 }
 

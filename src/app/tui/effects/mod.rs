@@ -99,6 +99,9 @@ pub async fn refresh_footer_tokens<T: Terminal>(
                 .map(|m| m.context_window)
                 .unwrap_or(0);
             let label = footer_token_label(est.provenance, est.tokens, window);
+            session.maybe_heuristic_estimate_notice(
+                est.provenance == crate::protocol::model::TokenProvenance::Heuristic,
+            );
             session.set_footer_token_label(Some(label));
         }
         Err(_) => session.set_footer_token_label(None),
@@ -123,15 +126,18 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
         .map(|m| m.context_window)
         .unwrap_or(0);
 
-    let label = match driver.estimate_context_tokens().await {
-        Ok(est) => Some(footer_token_label(
-            est.provenance,
-            est.tokens,
-            context_window,
-        )),
-        Err(_) => None,
+    let (label, heuristic) = match driver.estimate_context_tokens().await {
+        Ok(est) => (
+            Some(footer_token_label(
+                est.provenance,
+                est.tokens,
+                context_window,
+            )),
+            est.provenance == crate::protocol::model::TokenProvenance::Heuristic,
+        ),
+        Err(_) => (None, false),
     };
-    let _ = tx.send((job_id, label));
+    let _ = tx.send((job_id, label, heuristic));
 }
 
 /// Abort bookkeeping + steer / follow-up lane pump (ati3 / c665 / busy→idle).
@@ -401,6 +407,9 @@ async fn drain_footer_token_if_pending<T: Terminal>(
             .map(|m| m.context_window)
             .unwrap_or(0);
         let label = footer_token_label(est.provenance, est.tokens, window);
+        session.maybe_heuristic_estimate_notice(
+            est.provenance == crate::protocol::model::TokenProvenance::Heuristic,
+        );
         session.set_footer_token_label(Some(label));
         let _ = session.render_now();
         return;

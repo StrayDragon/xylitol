@@ -1240,8 +1240,8 @@ where
     async fn estimate_context_tokens(
         &self,
     ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
-        // Remote surface: the host owns the system prompt + tool schemas and the
-        // tokenizer mapping (pa-map5 / sr-est1) — estimate there, never locally.
+        // Remote surface: the host owns the system prompt + tool schemas —
+        // estimate there, never locally.
         let data = self.unary_cmd(Command::EstimateContext {}).await?;
         serde_json::from_value(data.get("estimate").cloned().unwrap_or(Value::Null))
             .map_err(|e| XyDriverError::remote(format!("estimate_context payload: {e}")))

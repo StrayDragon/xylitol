@@ -1,20 +1,22 @@
-//! Multi-source context token estimation with provenance.
+//! Context token estimation with provenance: Api, else Heuristic.
 
 use crate::dto::{
     AiBridgeMessage, AiBridgeStopReason, AiBridgeUsage, ContextTokenEstimate, TokenProvenance,
 };
 use crate::usage::total_context_tokens;
 
-pub type RemoteCountFn = dyn Fn(&[AiBridgeMessage]) -> Option<u64> + Send + Sync;
-pub type TokenizerEstimateFn = dyn Fn(&[AiBridgeMessage]) -> u64 + Send + Sync;
+/// Shared heuristic divisor: UTF-8 bytes, rounded up (r1929).
+pub const HEURISTIC_BYTES_PER_TOKEN: u64 = 3;
+
+/// Fold a UTF-8 byte length into heuristic tokens.
+pub fn heuristic_token_count(byte_len: u64) -> u64 {
+    byte_len.div_ceil(HEURISTIC_BYTES_PER_TOKEN)
+}
 
 #[derive(Default)]
 pub struct EstimateContextOpts<'a> {
     pub last_usage: Option<&'a AiBridgeUsage>,
     pub stop_reason: Option<AiBridgeStopReason>,
-    pub remote_count: Option<Box<RemoteCountFn>>,
-    pub tokenizer_estimate: Option<Box<TokenizerEstimateFn>>,
-    pub allow_remote: bool,
 }
 
 fn is_valid_api_anchor(stop_reason: Option<AiBridgeStopReason>) -> bool {
@@ -29,7 +31,7 @@ fn heuristic_tokens(messages: &[AiBridgeMessage]) -> u64 {
         .iter()
         .map(|msg| {
             let s = serde_json::to_string(msg).unwrap_or_default();
-            (s.len() as u64).div_ceil(4)
+            heuristic_token_count(s.len() as u64)
         })
         .sum()
 }
@@ -41,7 +43,7 @@ fn last_assistant_usage_index(messages: &[AiBridgeMessage]) -> Option<usize> {
         .rposition(|m| matches!(m, AiBridgeMessage::AssistantMessage { usage: Some(_), .. }))
 }
 
-/// Estimate context tokens with priority: Api → RemoteCount → LocalTokenizer → Heuristic.
+/// Estimate context tokens with priority: Api → Heuristic.
 ///
 /// When an Api usage anchor is valid, trailing heuristic tokens cover only messages
 /// **after** the last usage-bearing assistant (pi `estimateContextTokens`). If that
@@ -65,30 +67,6 @@ pub fn estimate_context(
             usage_tokens,
             trailing_tokens,
             last_usage_index,
-        };
-    }
-
-    if opts.allow_remote
-        && let Some(remote) = &opts.remote_count
-        && let Some(tokens) = remote(messages)
-    {
-        return ContextTokenEstimate {
-            tokens,
-            provenance: TokenProvenance::RemoteCount,
-            usage_tokens: 0,
-            trailing_tokens: tokens,
-            last_usage_index: None,
-        };
-    }
-
-    if let Some(tokenizer) = &opts.tokenizer_estimate {
-        let tokens = tokenizer(messages);
-        return ContextTokenEstimate {
-            tokens,
-            provenance: TokenProvenance::LocalTokenizer,
-            usage_tokens: 0,
-            trailing_tokens: tokens,
-            last_usage_index: None,
         };
     }
 
@@ -121,7 +99,6 @@ mod tests {
             EstimateContextOpts {
                 last_usage: Some(&usage),
                 stop_reason: Some(AiBridgeStopReason::Stop),
-                ..Default::default()
             },
         );
         assert_eq!(est.provenance, TokenProvenance::Api);
@@ -162,7 +139,6 @@ mod tests {
             EstimateContextOpts {
                 last_usage: Some(&usage),
                 stop_reason: Some(AiBridgeStopReason::Stop),
-                ..Default::default()
             },
         );
         assert_eq!(est.provenance, TokenProvenance::Api);
@@ -189,7 +165,6 @@ mod tests {
             EstimateContextOpts {
                 last_usage: Some(&usage),
                 stop_reason: Some(AiBridgeStopReason::Aborted),
-                ..Default::default()
             },
         );
         assert_ne!(est.provenance, TokenProvenance::Api);
@@ -202,5 +177,13 @@ mod tests {
         let est = estimate_context(&msgs, EstimateContextOpts::default());
         assert_eq!(est.provenance, TokenProvenance::Heuristic);
         assert!(est.tokens > 0);
+    }
+
+    #[test]
+    fn heuristic_divisor_is_three() {
+        assert_eq!(heuristic_token_count(0), 0);
+        assert_eq!(heuristic_token_count(1), 1);
+        assert_eq!(heuristic_token_count(3), 1);
+        assert_eq!(heuristic_token_count(4), 2);
     }
 }

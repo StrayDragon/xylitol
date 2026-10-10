@@ -186,14 +186,11 @@ pub use crate::protocol::ports::SessionListEntry;
 
 /// Build a [`crate::protocol::model::ContextTokenEstimate`] from persisted session entries (XyDriver seam).
 ///
-/// `tokenizer_override` comes from `AppConfig` (`models.*.tokenizer` / `tokenizers:`)
-/// when the in-process XyDriver estimates; harness / remote may pass `None`.
 /// `fixed_context` carries the host-side system prompt + tool schemas so the
 /// estimate reflects the real next-request size (c25 / c16).
 pub fn estimate_from_session_entries(
     entries: &[SessionEntry],
     model_id: Option<String>,
-    tokenizer_override: Option<xylitol_ai_bridge::registry::TokenizerOverride>,
     fixed_context: Option<crate::agent::compaction::FixedRequestContext>,
 ) -> crate::protocol::model::ContextTokenEstimate {
     use crate::agent::compaction::{EstimateOpts, estimate_from_session_entries as estimate};
@@ -201,30 +198,10 @@ pub fn estimate_from_session_entries(
         entries,
         &EstimateOpts {
             model_id,
-            tokenizer_override,
             fixed_context,
-            allow_local_tokenizer: allow_local_tokenizer_from_app_config(),
             ..Default::default()
         },
     )
-}
-
-/// Resolve `models.<alias>.tokenizer` from the layered AppConfig (best-effort).
-///
-/// Surfaces MUST use this (or [`crate::XyDriver::estimate_context_tokens`]) — do not
-/// reach `infra::config` from app/tui.
-pub fn tokenizer_override_from_app_config(
-    model_alias: &str,
-) -> Option<xylitol_ai_bridge::registry::TokenizerOverride> {
-    crate::infra::config::loader::load_app_config(None)
-        .ok()?
-        .tokenizer_override_for(model_alias)
-}
-
-pub(crate) fn allow_local_tokenizer_from_app_config() -> bool {
-    crate::infra::config::loader::load_app_config(None)
-        .map(|c| c.token_estimate.local_tokenizer.is_on())
-        .unwrap_or(false)
 }
 
 /// Lifecycle events on [`EventStream`] — surfaces import via the XyDriver seam

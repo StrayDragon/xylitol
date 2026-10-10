@@ -1,0 +1,14 @@
+id: toast-stack.stack
+cols: 80
+must_contain:
+  - "✓ Copied"
+  - "◆ Context tokens are approximate"
+must_not_contain:
+  - "Error:"
+lines:
+  -
+    - { text: "                                                                  ✓ Copied", token: success }
+  -
+    - { text: "                                      ◆ Context tokens are approximate", token: muted }
+  -
+    - { text: "", token: muted }

@@ -32,13 +32,10 @@ tower = { version = "0.5", default-features = false, features = ["util"] }
 fastrace = { version = "0.7", features = ["enable"] }
 uuid = { version = "1", features = ["v4"] }
 log = "0.4"
-tiktoken-rs = "0.12"
-tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
-dirs = "7"
+strum = { version = "0.28", features = ["derive"] }
 partial-json-fixer = "0.5.5"
 
 [dev-dependencies]
-serial_test = "4.0.1"
 wiremock = "0.6"
 tempfile = "3"
 yaml_serde = "0.10.7"

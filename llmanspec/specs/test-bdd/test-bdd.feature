@@ -66,3 +66,4 @@
 # re-review(c2837): flaky-fix 分支复核（CI 偶发 flaky 修复触及 tests/bdd scope）。（2026-10-06）
 # re-review(c2853): steps_c2827 按域拆分（探针 / infra-runtime）与 r57 真实化——步骤注册文本除 r57 场景外零变化；映射不变量保持。（2026-10-09）
 # re-review(c2854): JSON-RPC 文本通道退役——产品路径回归，JSON/OpenAPI 改拒绝；可执行 GWT 与规则标题不钉 fory/v3（握手格式标识 `fory-v3` 除外）；场景 id 去 jsonrpc/v3 前缀。（2026-10-09）
+# re-review(c2855): 删 tokenizer CLI/配置步骤与 LocalTokenizer 绑定；估算 Then 改启发式累加；映射不变量保持（无孤儿 feature）。（2026-10-10）

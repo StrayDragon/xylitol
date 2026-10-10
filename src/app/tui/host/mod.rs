@@ -75,6 +75,7 @@ pub enum HostEvent {
     FooterTokens {
         job_id: u64,
         label: Option<String>,
+        heuristic: bool,
     },
 }
 
@@ -131,8 +132,8 @@ pub struct HostSession<T: Terminal> {
     /// Latest footer-token job generation (stale results discarded).
     footer_token_gen: u64,
     /// Background estimate results → host `select!` (production).
-    footer_token_tx: tokio::sync::mpsc::UnboundedSender<(u64, Option<String>)>,
-    footer_token_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, Option<String>)>,
+    footer_token_tx: tokio::sync::mpsc::UnboundedSender<(u64, Option<String>, bool)>,
+    footer_token_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, Option<String>, bool)>,
     /// Throttle mid-turn Api usage footer refresh (c1730).
     last_mid_turn_footer_refresh: Option<std::time::Instant>,
     /// c1860: this run already applied a TurnSettled (or AfterCompaction) settlement —
@@ -707,6 +708,13 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_footer_token_label(label);
     }
 
+    pub fn maybe_heuristic_estimate_notice(&mut self, heuristic: bool) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().maybe_heuristic_estimate_notice(heuristic);
+    }
+
     /// Request a XyDriver estimate refresh on the next `drain_pending` (c1035).
     pub fn request_footer_token_refresh(&mut self) {
         self.pending.footer_token_refresh = true;
@@ -736,15 +744,17 @@ impl<T: Terminal> HostSession<T> {
         self.footer_token_gen
     }
 
-    pub fn footer_token_tx(&self) -> tokio::sync::mpsc::UnboundedSender<(u64, Option<String>)> {
+    pub fn footer_token_tx(
+        &self,
+    ) -> tokio::sync::mpsc::UnboundedSender<(u64, Option<String>, bool)> {
         self.footer_token_tx.clone()
     }
 
-    pub fn try_recv_footer_token(&mut self) -> Option<(u64, Option<String>)> {
+    pub fn try_recv_footer_token(&mut self) -> Option<(u64, Option<String>, bool)> {
         self.footer_token_rx.try_recv().ok()
     }
 
-    pub async fn recv_footer_token(&mut self) -> Option<(u64, Option<String>)> {
+    pub async fn recv_footer_token(&mut self) -> Option<(u64, Option<String>, bool)> {
         self.footer_token_rx.recv().await
     }
 
@@ -894,8 +904,13 @@ impl<T: Terminal> HostSession<T> {
             HostEvent::Xy(xy) => {
                 self.handle_xy(xy);
             }
-            HostEvent::FooterTokens { job_id, label } => {
+            HostEvent::FooterTokens {
+                job_id,
+                label,
+                heuristic,
+            } => {
                 if job_id == self.footer_token_gen {
+                    self.maybe_heuristic_estimate_notice(heuristic);
                     self.set_footer_token_label(label);
                     // Differential engine: only footer line should rewrite.
                     self.tui.request_render(false);

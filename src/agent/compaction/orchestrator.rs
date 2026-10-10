@@ -769,7 +769,6 @@ mod tests {
         )
         .await
         .unwrap();
-        // 60 turns ≈ 12k chars/4: below keep(20k) — only the window clamp frees it.
         for i in 0..60 {
             for (id, role, body) in [
                 (format!("u{i}"), "user", "x".repeat(400)),
@@ -808,7 +807,7 @@ mod tests {
             ..Default::default()
         });
         let fixed = FixedRequestContext {
-            system_prompt: Some("S".repeat(26_000)), // ≈6.5k chars/4 overhead
+            system_prompt: Some("S".repeat(26_000)),
             tool_schemas: Vec::new(),
         };
         let mut fallback_notice = false;
@@ -1210,7 +1209,7 @@ mod tests {
         let entries = vec![SessionEntry::Compaction(entry)];
         assert_eq!(
             crate::agent::compaction::summary_placeholder_tokens(&entries),
-            2_048
+            xylitol_ai_bridge::accounting::heuristic_token_count(8_192)
         );
         assert_eq!(
             crate::agent::compaction::summary_placeholder_tokens(&[]),
@@ -1235,7 +1234,6 @@ mod tests {
         assert!(assistant_is_aborted(Some(&msg)));
     }
 
-    /// Two 400-char messages ≈ 200 tokens per appended turn (heuristic chars/4).
     async fn append_turn(mgr: &crate::infra::session::SessionManager, sid: &str, i: usize) {
         for (id, role, body) in [
             (format!("u{i}"), "user", "x".repeat(400)),

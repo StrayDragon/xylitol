@@ -5,42 +5,6 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "tokenizer-hf-ok"
-)]
-fn test_rc18_named(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "tokenizer-inline-repo"
-)]
-fn test_rc18_inline(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "tokenizer-unknown-name-fails"
-)]
-fn test_rc18_unknown(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "local-tokenizer-default-off"
-)]
-fn test_rc19_default(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "local-tokenizer-on"
-)]
-fn test_rc19_on(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "local-tokenizer-invalid-fails"
-)]
-fn test_rc19_invalid(tokenizer_bdd: TokenizerBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "mode-set"
 )]
 fn test_rc_mode_set(rc_snap: RcSnap) {}

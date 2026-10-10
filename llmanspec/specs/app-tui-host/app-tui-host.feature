@@ -220,11 +220,11 @@
 
   @req:r1261
   规则: mode-b-copy-notice-fixed-zone
-    产品 TUI 在 ApplicationOwned 会话下，当库发出松手复制成功 copy-notice（ptim15）时 MUST 展示短时用户可见提醒（TTL 约 1.5–3s 后自动消失）。落点 SHOULD 为下缘固定区内、status/输入带附近的单行提示（或独立 info 固定区槽）；MUST NOT 写入 transcript / ScrollNotice；MUST NOT 使用带 `Error: ` 前缀的拒闸 toast-notice 形态冒充成功确认。折叠点击不在范围。
+    产品 TUI 在 ApplicationOwned 会话下，当库发出松手复制成功 copy-notice（ptim15）时 MUST 展示短时用户可见提醒（TTL 约 1.5–3s 后自动消失）。落点 MUST 为右上角客户端通知栈（见 r1930）；MUST NOT 写入 transcript / ScrollNotice；MUST NOT 使用带 `Error: ` 前缀的拒闸通知条冒充成功确认；MUST NOT 再占用 status 旁下缘行。折叠点击不在范围。
 
     场景: copy-notice-fixed-zone-cue
       当 臂装复制成功提示后渲染主机帧
-      那么 固定区出现 Copied 短提示且不以 Error 前缀冒充
+      那么 右上角通知栈含 Copied 短提示且不以 Error 前缀冒充
   @req:r1262
   规则: enter-follows-transcript-bottom
     产品 TUI 在 ApplicationOwned 的 Ready 主输入面收到 `tui.input.submit` Enter 时 MUST 立即将 transcript 视口滚到底部并恢复尾插；该行为 MUST 同时适用于非空提交与空输入。空输入 MUST NOT 因此创建 submit；非 Editor 槽中的 Enter MUST 保留给该槽自身的确认语义，不得强制滚动 transcript。

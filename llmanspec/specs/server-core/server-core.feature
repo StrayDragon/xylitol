@@ -220,7 +220,7 @@
       那么 经产品 unary 到达 Host 且不经 REST 冒充
   @req:r1779
   规则: 上下文估计方法接线
-    Host MUST 为 estimate_context 提供已登记 unary：经与 in-process driver 同源的估算入口计算 ContextTokenEstimate，MUST 计入 host 侧固定请求开销（system prompt + tool schemas）与 host tokenizer 映射；MUST NOT 返回 stub 或客户端自估降级。
+    Host MUST 为 estimate_context 提供已登记 unary：经与 in-process driver 同源的估算入口计算 ContextTokenEstimate，MUST 计入 host 侧固定请求开销（system prompt + tool schemas）；MUST NOT 返回 stub 或客户端自估降级。
     # verified-by: llmanspec/specs/server-core/server-core.feature
 
     场景: estimate-context-unary-registered-readonly

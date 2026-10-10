@@ -123,3 +123,15 @@ async fn test_c2826_atc_footer_refresh(host_pump_bdd: HostPumpBdd) {}
     name = "short-terminal-busy-lead-visible"
 )]
 fn test_c2826_atc_short_terminal(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "notice-stack-copied-not-error-bar"
+)]
+async fn test_c2855_notice_stack_copied(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "notice-stack-heuristic-once"
+)]
+async fn test_c2855_notice_stack_heuristic(host_pump_bdd: HostPumpBdd) {}

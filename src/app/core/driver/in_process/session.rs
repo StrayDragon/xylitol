@@ -8,7 +8,6 @@ use super::XyDriverError;
 use super::mcp::McpBootState;
 use super::types::{
     SessionListEntry, SessionStats, estimate_from_session_entries, session_tree_kind_unimplemented,
-    tokenizer_override_from_app_config,
 };
 use super::{bind_session_or_err, require_active_session};
 
@@ -91,19 +90,10 @@ impl super::XyInProcessDriver {
     ) -> Result<crate::protocol::model::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await?;
         let model_id = self.current_model().map(|m| m.id);
-        let tokenizer_override = model_id
-            .as_deref()
-            .and_then(tokenizer_override_from_app_config);
         // c25: same fixed context the agent would send — footer parity (c16).
         let fixed_context = self.agent.fixed_request_context();
-        // HF / local encode is CPU-heavy — keep it off the async worker (TUI host loop).
         tokio::task::spawn_blocking(move || {
-            estimate_from_session_entries(
-                &entries,
-                model_id,
-                tokenizer_override,
-                Some(fixed_context),
-            )
+            estimate_from_session_entries(&entries, model_id, Some(fixed_context))
         })
         .await
         .map_err(|e| XyDriverError::io(format!("estimate join: {e}")))

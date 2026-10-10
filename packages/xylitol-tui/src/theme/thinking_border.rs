@@ -4,13 +4,16 @@
 //! `packages/coding-agent/src/modes/interactive/theme/{dark,light}.json`
 //! (`thinkingOff` … `thinkingMax`).
 
+use strum::{EnumString, IntoStaticStr};
+
 use crate::components::editor::Editor;
 use crate::terminal_colors::RgbColor;
 use crate::theme::paint::fg_rgb;
 use crate::theme::palette::Palette;
 
 /// Package-local thinking border palette level, independent of product config strings.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, IntoStaticStr, EnumString)]
+#[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum ThinkingBorderLevel {
     Off,
     Minimal,
@@ -34,28 +37,11 @@ impl ThinkingBorderLevel {
     ];
 
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::Minimal => "minimal",
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::Xhigh => "xhigh",
-            Self::Max => "max",
-        }
+        self.into()
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        match s.trim().to_ascii_lowercase().as_str() {
-            "off" => Some(Self::Off),
-            "minimal" => Some(Self::Minimal),
-            "low" => Some(Self::Low),
-            "medium" => Some(Self::Medium),
-            "high" => Some(Self::High),
-            "xhigh" => Some(Self::Xhigh),
-            "max" => Some(Self::Max),
-            _ => None,
-        }
+        s.trim().parse().ok()
     }
 
     pub fn cycle_next(self) -> Self {

@@ -12,6 +12,8 @@
 //! **Never reverse-parse** the public name for `tools/call`; adapters keep
 //! `server_id` / `tool_name` fields (tool names MAY still contain `__`).
 
+use strum::{EnumString, IntoStaticStr};
+
 /// Segment delimiter between `mcp`, `server_id`, and `tool_name`.
 ///
 /// Single SSOT: retarget public naming by changing this const (+ specs/docs).
@@ -43,7 +45,8 @@ pub fn is_mcp_tool_name(name: &str) -> bool {
 /// app display layer classifies via [`BuiltinToolName::from_name`], so renaming
 /// a builtin tool becomes a compile-time break instead of silent UI drift.
 /// Wire-visible names stay stable strings ([`BuiltinToolName::as_str`]).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, EnumString)]
+#[strum(serialize_all = "lowercase")]
 pub enum BuiltinToolName {
     Ask,
     Write,
@@ -56,21 +59,12 @@ impl BuiltinToolName {
 
     /// Stable wire / tool-registry name (no marker; matches tool `name()`).
     pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Ask => "ask",
-            Self::Write => "write",
-            Self::Edit => "edit",
-        }
+        self.into()
     }
 
     /// Classify a tool name into a builtin identity.
     pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "ask" => Some(Self::Ask),
-            "write" => Some(Self::Write),
-            "edit" => Some(Self::Edit),
-            _ => None,
-        }
+        name.parse().ok()
     }
 }
 

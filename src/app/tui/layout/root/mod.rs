@@ -15,6 +15,7 @@ mod slot_nav;
 mod theme_apply;
 
 use pending_slot::PendingSlotOps;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -50,13 +51,28 @@ use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 
 pub use super::slots::ImportConfirmDecision;
 
-/// Toast styling plane: `Error` keeps the warning + `Error: ` prefix;
-/// `Info` renders muted without a prefix (session-switch tips are not failures).
+/// Toast styling plane: `Error` keeps the warning + `Error: ` prefix.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToastKind {
     Error,
+}
+
+/// Right-stack notice (Copied / Heuristic hint). Not the Error 通知条.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientNoticeKind {
+    Success,
     Info,
 }
+
+#[derive(Debug, Clone)]
+struct ClientNotice {
+    body: String,
+    kind: ClientNoticeKind,
+    until: Instant,
+}
+
+const CLIENT_NOTICE_MAX: usize = 3;
+pub const HEURISTIC_ESTIMATE_NOTICE: &str = "Context tokens are approximate";
 
 /// Root UI: loaded-resources + live scrollback + optional status + bordered editor|tree + footer.
 pub struct UiRoot {
@@ -133,8 +149,9 @@ pub struct UiRoot {
     todo_selection: xylitol_tui::SelectionController,
     todo_clipboard: Vec<String>,
     todo_pointer_dirty: bool,
-    /// ApplicationOwned copy-success cue (`Copied`, ~2s). Not toast-notice / ScrollNotice.
-    copy_notice_until: Option<Instant>,
+    /// Right-top client notice stack (Copied, Heuristic hint, info).
+    client_notices: VecDeque<ClientNotice>,
+    heuristic_notice_emitted: bool,
     /// Test/obs: how many times upper (loaded+scrollback+queue) was rebuilt.
     #[cfg(test)]
     upper_rebuild_count: u64,
@@ -212,7 +229,8 @@ impl UiRoot {
             todo_selection: xylitol_tui::SelectionController::new(),
             todo_clipboard: Vec::new(),
             todo_pointer_dirty: false,
-            copy_notice_until: None,
+            client_notices: VecDeque::new(),
+            heuristic_notice_emitted: false,
             #[cfg(test)]
             upper_rebuild_count: 0,
         };
@@ -599,21 +617,59 @@ impl UiRoot {
         self.todo_pointer_dirty || Component::input_wants_rerender(&self.editor, event)
     }
 
-    /// Arm ApplicationOwned «Copied» fixed-zone cue (~2s). Must not use Error: toast (ath31).
+    /// Arm ApplicationOwned «Copied» cue on the client notice stack (~2s).
     pub fn arm_copy_notice(&mut self) {
-        self.copy_notice_until = Some(Instant::now() + xylitol_tui::COPY_NOTICE_TTL);
+        self.push_client_notice(ClientNoticeKind::Success, "Copied");
     }
 
-    /// Whether the ApplicationOwned copy cue is still within TTL.
+    /// Whether a Copied stack item is still within TTL.
     pub fn copy_notice_visible(&self) -> bool {
-        self.copy_notice_until
-            .is_some_and(|until| Instant::now() < until)
+        self.client_notices
+            .iter()
+            .any(|n| n.body == "Copied" && Instant::now() < n.until)
     }
 
     /// Test helper: visible copy-notice body when armed.
     #[cfg(test)]
     pub fn copy_notice_body_for_test(&self) -> Option<&'static str> {
         self.copy_notice_visible().then_some("Copied")
+    }
+
+    /// Test helper: client-stack bodies (newest first), Error 通知条 excluded.
+    #[cfg(test)]
+    pub fn client_notice_bodies_for_test(&self) -> Vec<String> {
+        self.client_notices.iter().map(|n| n.body.clone()).collect()
+    }
+
+    /// Error 通知条 **or** client stack (Copied / Info session notes).
+    #[cfg(test)]
+    pub fn transient_notice_contains_for_test(&self, needle: &str) -> bool {
+        self.toast_notice_body().is_some_and(|b| b.contains(needle))
+            || self.client_notices.iter().any(|n| n.body.contains(needle))
+    }
+
+    pub fn push_client_notice(&mut self, kind: ClientNoticeKind, body: impl Into<String>) {
+        let ttl = match kind {
+            ClientNoticeKind::Success => xylitol_tui::COPY_NOTICE_TTL,
+            ClientNoticeKind::Info => crate::app::tui::commands::TOAST_NOTICE_TTL,
+        };
+        self.client_notices.push_front(ClientNotice {
+            body: body.into(),
+            kind,
+            until: Instant::now() + ttl,
+        });
+        while self.client_notices.len() > CLIENT_NOTICE_MAX {
+            self.client_notices.pop_back();
+        }
+    }
+
+    /// First Heuristic estimate in this TUI process → one info stack item.
+    pub fn maybe_heuristic_estimate_notice(&mut self, heuristic: bool) {
+        if !heuristic || self.heuristic_notice_emitted {
+            return;
+        }
+        self.heuristic_notice_emitted = true;
+        self.push_client_notice(ClientNoticeKind::Info, HEURISTIC_ESTIMATE_NOTICE);
     }
 
     /// Test helper: Editor absolute screen origin (ApplicationOwned mouse hit-test).
@@ -1049,14 +1105,9 @@ impl UiRoot {
         self.todo_pending_open = pending_open;
     }
 
-    /// Informational toast (muted, no `Error: ` prefix) — session-switch tips
-    /// and other transient notices that are not failures.
+    /// Informational notice on the client stack (muted, no `Error: ` prefix).
     pub fn push_toast_info_notice(&mut self, body: impl Into<String>) {
-        self.toast_notice = Some((
-            body.into(),
-            Instant::now() + crate::app::tui::commands::TOAST_NOTICE_TTL,
-            ToastKind::Info,
-        ));
+        self.push_client_notice(ClientNoticeKind::Info, body);
     }
 
     /// Body only (no `Error: ` prefix); `None` when cleared / expired.
@@ -1093,15 +1144,10 @@ impl UiRoot {
     }
 
     pub(super) fn clear_copy_notice_if_expired(&mut self) -> bool {
-        let expired = self
-            .copy_notice_until
-            .is_some_and(|until| Instant::now() >= until);
-        if expired {
-            self.copy_notice_until = None;
-            true
-        } else {
-            false
-        }
+        let before = self.client_notices.len();
+        let now = Instant::now();
+        self.client_notices.retain(|n| now < n.until);
+        self.client_notices.len() != before
     }
 
     /// Update Editor screen origin from the last ApplicationOwned dock measure.
@@ -1445,5 +1491,66 @@ mod tests {
             plain.contains("[ ] paint lab states"),
             "pending stays expanded: {plain}"
         );
+    }
+
+    #[test]
+    fn client_notice_stack_right_aligns_copied_not_error_bar() {
+        use xylitol_tui::utils::strip_ansi_codes;
+        let mut root = UiRoot::new();
+        root.arm_copy_notice();
+        let frame = root.render(80);
+        let joined = frame.join("\n");
+        let first = strip_ansi_codes(&frame[0]);
+        assert!(
+            first.contains("✓ Copied"),
+            "Copied must overlay top-right: {first:?}"
+        );
+        let trimmed = first.trim_start();
+        assert!(
+            first.ends_with("Copied") || trimmed.contains("✓ Copied"),
+            "notice should sit on the right: {first:?}"
+        );
+        assert!(!joined.contains("Error: Copied"));
+        assert!(root.toast_notice_body().is_none());
+        let dock_before = root.last_dock_rows();
+        root.push_client_notice(ClientNoticeKind::Info, "hint");
+        let _ = root.render(80);
+        assert_eq!(
+            root.last_dock_rows(),
+            dock_before,
+            "notice stack must not grow dock footprint"
+        );
+    }
+
+    #[test]
+    fn heuristic_estimate_notice_emits_once() {
+        use xylitol_tui::utils::strip_ansi_codes;
+        let mut root = UiRoot::new();
+        root.maybe_heuristic_estimate_notice(true);
+        root.maybe_heuristic_estimate_notice(true);
+        root.maybe_heuristic_estimate_notice(false);
+        let frame = strip_ansi_codes(&root.render(80).join("\n"));
+        assert_eq!(
+            frame.matches(HEURISTIC_ESTIMATE_NOTICE).count(),
+            1,
+            "first Heuristic notice only: {frame}"
+        );
+        assert!(frame.contains("◆"));
+        assert!(!frame.contains("Error:"));
+    }
+
+    #[test]
+    fn client_notice_stack_caps_at_three_newest_first() {
+        use xylitol_tui::utils::strip_ansi_codes;
+        let mut root = UiRoot::new();
+        root.push_client_notice(ClientNoticeKind::Info, "n1");
+        root.push_client_notice(ClientNoticeKind::Info, "n2");
+        root.push_client_notice(ClientNoticeKind::Info, "n3");
+        root.push_client_notice(ClientNoticeKind::Success, "n4");
+        let frame = strip_ansi_codes(&root.render(80).join("\n"));
+        assert!(frame.contains("✓ n4"), "{frame}");
+        assert!(frame.contains("◆ n3"), "{frame}");
+        assert!(frame.contains("◆ n2"), "{frame}");
+        assert!(!frame.contains("n1"), "oldest dropped: {frame}");
     }
 }

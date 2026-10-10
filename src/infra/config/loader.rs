@@ -138,7 +138,6 @@ fn load_from_paths(
     let mut config: AppConfig = serde_json::from_value(merged.clone())?;
     super::validate::validate_merged_config(&merged)?;
     config.validate_thinking_levels()?;
-    config.validate_model_tokenizers()?;
     config.validate_session_max_turns()?;
     expand_model_config_expressions(&mut config)?;
     Ok(LoadedAppConfig {
