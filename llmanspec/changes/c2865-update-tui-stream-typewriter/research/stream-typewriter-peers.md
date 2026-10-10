@@ -17,3 +17,7 @@
 ## D12 / ratatui
 
 继续 `render → Vec<String>` ANSI。块稳定 = 冻结前缀行切片，不是新行类型。ratatui-markdown 每帧画 `Line`，无稳定前缀缓存，不能当打字机模型。本票与 c2858 鼠标管线无关。
+
+## 引擎落点（相对 pi）
+
+pi `trimPartialClosingFences` 改 `marked` 的最后一个 `code` token。xylitol 用 pulldown-cmark，事件流不可变。应对齐 **parse 前剥原文**（pi-oxidized-tui 同类）：未闭合围栏 + 末行是短于 opener 的同字符 `` ` `` / `~` 才剥。完整 ``` 到达后高度与剥半截时相同。

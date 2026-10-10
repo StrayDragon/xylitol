@@ -2,7 +2,7 @@
 depends_on: []
 ---
 
-# 流式打字机稳定：未闭合围栏与尾部 wrap
+# 流式打字机稳定：未闭合围栏
 
 ## Why
 
@@ -16,10 +16,10 @@ delayed `c1535` 仍 park（CPU% ≠ 体感）。不重开 c1505 / c2525。
 
 ## What Changes
 
-- 引擎 `Markdown`：流式修剪不完整闭合围栏（对齐 pi），避免代码块高度来回跳。
-- 可选：thinking 尾只 wrap 最后视觉行；assistant 稳定前缀扩到围栏/列表边界。
+- 引擎 `Markdown::render`：parse **前**修剪未闭合围栏末行上的不完整 closer（对齐 pi `trimPartialClosingFences` / pulldown 只能动源字符串）。
+- 产品流式助手继续走该组件，不另写第二套修剪。
 - **不**引入 `StyledLine` / ratatui `Line`（D12）；**不**为 CPU% 降帧率。
-- 尺子：半截 \`\`\` 到达前后可见高度不变。
+- 尺子：半截 \`\`\` 到达前后，代码块可见行数不变。
 
 ## 非目标
 
@@ -27,11 +27,13 @@ delayed `c1535` 仍 park（CPU% ≠ 体感）。不重开 c1505 / c2525。
 - 不改 Codex 式终端 scrollback 历史。
 - 不把 `UiModel` 流缓冲下沉进包。
 - 不处理鼠标（hover 脏行是 c2858）。
+- 不改 thinking 尾 wrap（plain wrap，另开切片）。
+- 不扩 r1255 稳定前缀到列表/表边界。
 
 ## Capabilities
 
-- `package-tui-markdown`
-- `app-tui-host`（仅当 r1255 前缀边界扩展）
+- `package-tui-markdown`（新 r1936：半截闭合围栏）
+- `app-tui-host`（新 r1937：流式助手高度不跳；r1255 不改句）
 
 ## Impact
 
@@ -41,8 +43,9 @@ delayed `c1535` 仍 park（CPU% ≠ 体感）。不重开 c1505 / c2525。
 
 ## Open Questions
 
-1. 修剪放引擎 `Markdown`（推荐）还是只放产品 `StreamingAssistantPaint`？
-2. thinking 尾 wrap 是否本切片一起做？
+1. ~~修剪放引擎 `Markdown` 还是只放产品 `StreamingAssistantPaint`？~~ **已定引擎**（2026-10-10）：parse 前剥源字符串。pulldown 不能改 token；产品前缀缓存救不了围栏内那一行。
+2. ~~thinking 尾 wrap 是否本切片一起做？~~ **已定否**：thinking 是 plain wrap，另开切片。
+3. ~~扩稳定前缀到列表/表边界？~~ **已定否**：r1255 不改句。
 
 ## Further Notes
 
