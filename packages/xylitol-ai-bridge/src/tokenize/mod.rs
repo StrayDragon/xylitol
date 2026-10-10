@@ -53,27 +53,58 @@ fn loaded_tokenizer_handle_len() -> usize {
         .unwrap_or(0)
 }
 
+/// OpenAI tiktoken encodings we actually count with.
+///
+/// Legacy `p50k` / `r50k` / `gpt2` exist upstream but are not product builtins:
+/// unmapped ids stay Heuristic rather than pretend-count with a dead vocab.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinTokenizer {
+    /// GPT-5 / GPT-4.1 / GPT-4o / o-series / Codex (`o200k_base`).
     OpenAiO200k,
+    /// GPT-4 / GPT-3.5 / embeddings (`cl100k_base`).
     OpenAiCl100k,
+    /// gpt-oss only: same BPE as [`Self::OpenAiO200k`], extra harmony specials.
+    OpenAiO200kHarmony,
 }
 
 impl BuiltinTokenizer {
-    pub fn encode_count(self, text: &str) -> u64 {
-        match self {
-            Self::OpenAiO200k => tiktoken_rs::o200k_base()
-                .map(|enc| enc.encode_with_special_tokens(text).len() as u64)
-                .unwrap_or_else(|_| heuristic_count(text)),
-            Self::OpenAiCl100k => tiktoken_rs::cl100k_base()
-                .map(|enc| enc.encode_with_special_tokens(text).len() as u64)
-                .unwrap_or_else(|_| heuristic_count(text)),
+    /// Catch-all when config forces `tokenizer: builtin` on an unmapped alias.
+    /// Modern OpenAI default; not a substitute for a real HF/local vocab.
+    pub const FALLBACK: Self = Self::OpenAiO200k;
+
+    /// Resolve via tiktoken-rs `get_tokenizer` (exact then prefix, plus `ft:`).
+    ///
+    /// `owner/model` ids try the full string then the last path segment.
+    /// Anthropic ids stay `None` (no local vocab crate).
+    pub fn for_model_id(model_id: &str) -> Option<Self> {
+        let id = model_id.to_ascii_lowercase();
+        let leaf = id.rsplit('/').next().unwrap_or(id.as_str());
+        if leaf.starts_with("claude") {
+            return None;
+        }
+        tiktoken_rs::tokenizer::get_tokenizer(&id)
+            .or_else(|| tiktoken_rs::tokenizer::get_tokenizer(leaf))
+            .and_then(Self::from_tiktoken)
+    }
+
+    fn from_tiktoken(tok: tiktoken_rs::tokenizer::Tokenizer) -> Option<Self> {
+        use tiktoken_rs::tokenizer::Tokenizer as T;
+        match tok {
+            T::O200kBase => Some(Self::OpenAiO200k),
+            T::Cl100kBase => Some(Self::OpenAiCl100k),
+            T::O200kHarmony => Some(Self::OpenAiO200kHarmony),
+            T::P50kBase | T::P50kEdit | T::R50kBase | T::Gpt2 => None,
         }
     }
-}
 
-fn heuristic_count(text: &str) -> u64 {
-    (text.len() as u64).div_ceil(4)
+    pub fn encode_count(self, text: &str) -> u64 {
+        let enc = match self {
+            Self::OpenAiO200k => tiktoken_rs::o200k_base_singleton(),
+            Self::OpenAiCl100k => tiktoken_rs::cl100k_base_singleton(),
+            Self::OpenAiO200kHarmony => tiktoken_rs::o200k_harmony_singleton(),
+        };
+        enc.encode_with_special_tokens(text).len() as u64
+    }
 }
 
 pub fn estimate_messages(messages: &[AiBridgeMessage], tokenizer: BuiltinTokenizer) -> u64 {
@@ -302,6 +333,71 @@ mod tests {
     fn builtin_openai_counts_nonzero() {
         let n = BuiltinTokenizer::OpenAiCl100k.encode_count("hello world");
         assert!(n > 0);
+    }
+
+    /// Cross-vocab counts after tiktoken-rs 0.12. Harmony shares o200k BPE;
+    /// it only diverges on gpt-oss special tokens — not a general default.
+    #[test]
+    fn lab_vocab_count_matrix() {
+        struct Row {
+            label: &'static str,
+            text: &'static str,
+            cl100k: u64,
+            o200k: u64,
+            harmony: u64,
+        }
+        let rows = [
+            Row {
+                label: "ascii",
+                text: "hello world",
+                cl100k: 2,
+                o200k: 2,
+                harmony: 2,
+            },
+            Row {
+                label: "cjk",
+                text: "上下文窗口压缩与本地词表计数",
+                cl100k: 18,
+                o200k: 12,
+                harmony: 12,
+            },
+            Row {
+                label: "rust",
+                text: "fn encode_count(text: &str) -> u64 { text.len() as u64 }",
+                cl100k: 19,
+                o200k: 19,
+                harmony: 19,
+            },
+            Row {
+                label: "eot-special",
+                text: "done <|endoftext|>",
+                cl100k: 3,
+                o200k: 3,
+                harmony: 3,
+            },
+            Row {
+                label: "harmony-specials",
+                text: "<|start|>assistant<|message|>hello<|end|>",
+                cl100k: 17,
+                o200k: 17,
+                harmony: 5,
+            },
+        ];
+        for row in rows {
+            let cl = BuiltinTokenizer::OpenAiCl100k.encode_count(row.text);
+            let o2 = BuiltinTokenizer::OpenAiO200k.encode_count(row.text);
+            let hy = BuiltinTokenizer::OpenAiO200kHarmony.encode_count(row.text);
+            assert_eq!(
+                (cl, o2, hy),
+                (row.cl100k, row.o200k, row.harmony),
+                "{}",
+                row.label
+            );
+            // Old `gpt-*` → cl100k mapping overcounted CJK vs the o200k default.
+            if row.label == "cjk" {
+                assert!(o2 < cl, "o200k must be the tighter CJK count");
+            }
+        }
     }
 
     #[test]

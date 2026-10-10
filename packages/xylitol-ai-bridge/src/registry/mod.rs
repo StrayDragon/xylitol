@@ -34,19 +34,13 @@ pub enum RemoteCountKind {
     OpenAiResponsesInputTokens,
 }
 
-/// Builtin mapping for common OpenAI model ids (Anthropic → `None`).
+/// Builtin mapping for OpenAI-family model ids (Anthropic → `None`).
+///
+/// Encoding table is tiktoken-rs `get_tokenizer` (aligned with openai/tiktoken
+/// 0.14). GPT-5 / 4.1 / 4o / o-series / Codex → o200k; GPT-4 / 3.5 → cl100k;
+/// gpt-oss → o200k_harmony. Unknown ids stay unmapped (Heuristic).
 pub fn builtin_tokenizer_for(model_id: &str) -> Option<TokenizerSource> {
-    let id = model_id.to_ascii_lowercase();
-    if id.starts_with("claude") {
-        return None;
-    }
-    if id.starts_with("gpt-4o") || id.starts_with("o1") || id.starts_with("o3") {
-        return Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiO200k));
-    }
-    if id.starts_with("gpt-") {
-        return Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiCl100k));
-    }
-    None
+    BuiltinTokenizer::for_model_id(model_id).map(TokenizerSource::Builtin)
 }
 
 /// Resolve tokenizer: optional config override, then builtin heuristics.
@@ -61,9 +55,9 @@ pub fn resolve_tokenizer_with_override(
     if let Some(o) = over {
         return Some(match o {
             TokenizerOverride::Builtin => {
-                // Prefer heuristic for this id when forcing builtin; else cl100k.
+                // Prefer this id's mapping; unmapped aliases get modern o200k.
                 builtin_tokenizer_for(model_id)
-                    .unwrap_or(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiCl100k))
+                    .unwrap_or(TokenizerSource::Builtin(BuiltinTokenizer::FALLBACK))
             }
             TokenizerOverride::HuggingFace { repo, file } => {
                 TokenizerSource::HuggingFace { repo, file }
@@ -100,6 +94,47 @@ mod tests {
     fn gpt4o_maps_to_o200k() {
         let src = resolve_tokenizer("gpt-4o-mini").unwrap();
         assert_eq!(src, TokenizerSource::Builtin(BuiltinTokenizer::OpenAiO200k));
+    }
+
+    #[test]
+    fn modern_openai_maps_to_o200k_not_cl100k() {
+        for id in [
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5.2",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "o4-mini",
+            "codex-mini",
+            "openai/gpt-5-mini",
+        ] {
+            assert_eq!(
+                resolve_tokenizer(id),
+                Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiO200k)),
+                "{id}"
+            );
+        }
+    }
+
+    #[test]
+    fn gpt4_family_stays_cl100k() {
+        for id in ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"] {
+            assert_eq!(
+                resolve_tokenizer(id),
+                Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiCl100k)),
+                "{id}"
+            );
+        }
+    }
+
+    #[test]
+    fn gpt_oss_maps_to_harmony() {
+        assert_eq!(
+            resolve_tokenizer("gpt-oss-20b"),
+            Some(TokenizerSource::Builtin(
+                BuiltinTokenizer::OpenAiO200kHarmony
+            ))
+        );
     }
 
     #[test]

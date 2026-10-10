@@ -186,9 +186,7 @@ pub fn estimate_context_tokens_with(
                                 let s = serde_json::to_string(m).unwrap_or_default();
                                 cache
                                     .encode_count_if_cached(repo, file, &s)
-                                    .unwrap_or_else(|| {
-                                        BuiltinTokenizer::OpenAiCl100k.encode_count(&s)
-                                    })
+                                    .unwrap_or_else(|| BuiltinTokenizer::FALLBACK.encode_count(&s))
                             })
                             .sum()
                     }
@@ -197,9 +195,9 @@ pub fn estimate_context_tokens_with(
                         msgs.iter()
                             .map(|m| {
                                 let s = serde_json::to_string(m).unwrap_or_default();
-                                cache.encode_count_at_path(path, &s).unwrap_or_else(|| {
-                                    BuiltinTokenizer::OpenAiCl100k.encode_count(&s)
-                                })
+                                cache
+                                    .encode_count_at_path(path, &s)
+                                    .unwrap_or_else(|| BuiltinTokenizer::FALLBACK.encode_count(&s))
                             })
                             .sum()
                     }
