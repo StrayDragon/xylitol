@@ -34,7 +34,7 @@ uuid = { version = "1", features = ["v4"] }
 log = "0.4"
 tiktoken-rs = "0.6"
 tokenizers = { version = "0.21", default-features = false, features = ["onig"] }
-dirs = "6"
+dirs = "7"
 partial-json-fixer = "0.5.5"
 
 [dev-dependencies]
