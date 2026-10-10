@@ -111,6 +111,97 @@ impl Markdown {
     }
 }
 
+/// Drop a trailing incomplete fence closer before parse (c2865 / r1936).
+///
+/// pulldown-cmark cannot mutate tokens the way pi's `marked` trim does; if a
+/// fence is still open at EOF and the last line is the same character as the
+/// opener but strictly shorter, that line would paint as code and then vanish
+/// when the real closer arrives. Strip it (and the preceding newline) so height
+/// stays stable. Closed fences, prose, and real last-line code are unchanged.
+fn trim_partial_closing_fence(src: &str) -> String {
+    if src.is_empty() {
+        return String::new();
+    }
+
+    let mut open: Option<(char, usize)> = None;
+    for line in src.split('\n') {
+        let line = line.trim_end_matches('\r');
+        if let Some((ch, n, closer)) = classify_fence_line(line, open) {
+            if closer {
+                open = None;
+            } else {
+                open = Some((ch, n));
+            }
+        }
+    }
+
+    let Some((och, olen)) = open else {
+        return src.to_string();
+    };
+
+    let last = match src.rsplit_once('\n') {
+        Some((_, last)) => last.trim_end_matches('\r'),
+        None => src.trim_end_matches('\r'),
+    };
+    if !last_line_is_partial_closer(last, och, olen) {
+        return src.to_string();
+    }
+
+    match src.rsplit_once('\n') {
+        Some((head, _)) => head.to_string(),
+        None => String::new(),
+    }
+}
+
+/// CommonMark fenced line: 0–3 spaces, then ≥3 `` ` `` or `~`.
+///
+/// `closer` is true only when a matching open fence exists, the run is at least
+/// as long, and the rest of the line is trailing space.
+fn classify_fence_line(line: &str, open: Option<(char, usize)>) -> Option<(char, usize, bool)> {
+    let indent = line.bytes().take_while(|&b| b == b' ').count();
+    if indent > 3 {
+        return None;
+    }
+    let rest = &line[indent..];
+    let ch = *rest.as_bytes().first()?;
+    if ch != b'`' && ch != b'~' {
+        return None;
+    }
+    let n = rest.bytes().take_while(|&b| b == ch).count();
+    if n < 3 {
+        return None;
+    }
+    let after = &rest[n..];
+    let info = after.trim_end_matches([' ', '\t']);
+    let is_blank_rest = info.is_empty();
+    if !is_blank_rest && ch == b'`' && after.contains('`') {
+        return None;
+    }
+
+    if let Some((och, olen)) = open {
+        if ch == och as u8 && is_blank_rest && n >= olen {
+            return Some((och, n, true));
+        }
+        return None;
+    }
+    Some((ch as char, n, false))
+}
+
+/// Incomplete closer: optional 0–3 spaces, then only the opener character,
+/// strictly shorter than the opener (CommonMark closer shape, too short to close).
+fn last_line_is_partial_closer(last: &str, och: char, olen: usize) -> bool {
+    let indent = last.bytes().take_while(|&b| b == b' ').count();
+    if indent > 3 {
+        return false;
+    }
+    let rest = last[indent..].trim_end_matches([' ', '\t']);
+    if rest.is_empty() {
+        return false;
+    }
+    let n = rest.chars().count();
+    n < olen && rest.chars().all(|c| c == och)
+}
+
 impl Component for Markdown {
     fn render(&mut self, width: usize) -> Vec<String> {
         if let Some(ref lines) = self.cached_lines
@@ -126,7 +217,7 @@ impl Component for Markdown {
             return vec![];
         }
 
-        let normalized = self.text.replace('\t', "   ");
+        let normalized = trim_partial_closing_fence(&self.text.replace('\t', "   "));
 
         let mut opts = Options::empty();
         opts.insert(Options::ENABLE_TABLES);
@@ -1755,5 +1846,102 @@ mod tests {
             !lines[1].starts_with("3. "),
             "continuation must not repeat the marker:\n{text}"
         );
+    }
+
+    fn render_visible(src: &str) -> (usize, String) {
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
+        let vis: Vec<String> = md
+            .render(40)
+            .iter()
+            .map(|l| strip_ansi_codes(l).trim_end().to_string())
+            .collect();
+        let text = vis.join("\n");
+        (vis.len(), text)
+    }
+
+    #[test]
+    fn trim_partial_closing_fence_identity() {
+        assert_eq!(trim_partial_closing_fence(""), "");
+        assert_eq!(trim_partial_closing_fence("hello"), "hello");
+        assert_eq!(
+            trim_partial_closing_fence("```rust\nprint(1)\n```"),
+            "```rust\nprint(1)\n```"
+        );
+        assert_eq!(
+            trim_partial_closing_fence("```rust\nprint(1)\nx = 1"),
+            "```rust\nprint(1)\nx = 1"
+        );
+        assert_eq!(
+            trim_partial_closing_fence("```rust\nprint(1)\n``"),
+            "```rust\nprint(1)"
+        );
+        assert_eq!(
+            trim_partial_closing_fence("```rust\nprint(1)\n`"),
+            "```rust\nprint(1)"
+        );
+        assert_eq!(
+            trim_partial_closing_fence("~~~\nprint(1)\n~~"),
+            "~~~\nprint(1)"
+        );
+        assert_eq!(
+            trim_partial_closing_fence("````\nprint(1)\n```"),
+            "````\nprint(1)"
+        );
+        assert_eq!(
+            trim_partial_closing_fence("```rust\nprint(1)\n  ``"),
+            "```rust\nprint(1)"
+        );
+        assert_eq!(
+            trim_partial_closing_fence("```rust\nprint(1)\n    ``"),
+            "```rust\nprint(1)\n    ``"
+        );
+    }
+
+    #[test]
+    fn partial_backtick_closer_keeps_code_height() {
+        let body = "```rust\nprint(1)\n";
+        let (complete_n, complete) = render_visible(&format!("{body}```"));
+        for partial in ["`", "``"] {
+            let (n, text) = render_visible(&format!("{body}{partial}"));
+            assert_eq!(
+                n, complete_n,
+                "partial {partial:?} height {n} != complete {complete_n}:\n{text}"
+            );
+            assert!(text.contains("print(1)"), "code body must remain:\n{text}");
+            assert!(
+                !text.contains("```") && !text.contains("rust"),
+                "must not paint fence chrome:\n{text}"
+            );
+        }
+        assert!(
+            complete.contains("print(1)") && !complete.contains("```"),
+            "complete fence must keep r1645 (no fence chrome):\n{complete}"
+        );
+    }
+
+    #[test]
+    fn indented_partial_closer_keeps_code_height() {
+        let body = "```rust\nprint(1)\n";
+        let (complete_n, complete) = render_visible(&format!("{body}```"));
+        let (n, text) = render_visible(&format!("{body}  ``"));
+        assert_eq!(
+            n, complete_n,
+            "indented partial height {n} != {complete_n}:\n{text}"
+        );
+        assert!(text.contains("print(1)") && !text.contains("```"));
+        assert!(complete.contains("print(1)") && !complete.contains("```"));
+    }
+
+    #[test]
+    fn partial_tilde_closer_keeps_code_height() {
+        let body = "~~~\nprint(1)\n";
+        let (complete_n, complete) = render_visible(&format!("{body}~~~"));
+        let (n, text) = render_visible(&format!("{body}~~"));
+        assert_eq!(
+            n, complete_n,
+            "tilde partial height {n} != {complete_n}:\n{text}"
+        );
+        assert!(text.contains("print(1)") && !text.contains("~~~"));
+        assert!(complete.contains("print(1)") && !complete.contains("~~~"));
     }
 }

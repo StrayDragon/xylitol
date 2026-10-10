@@ -263,6 +263,8 @@ pub struct StreamingAssistantPaint {
     pub(crate) full_parses: u64,
     /// Suffix-only (or stable-extend) Markdown parses.
     pub(crate) suffix_parses: u64,
+    /// Last painted streaming-block line count (c2865 height probe).
+    pub(crate) last_lines: usize,
 }
 
 impl StreamingAssistantPaint {
@@ -286,13 +288,43 @@ impl StreamingAssistantPaint {
     }
 }
 
-fn markdown_fit_lines(text: String, width: usize, theme: LayoutTheme) -> Vec<String> {
+fn markdown_unfitted(text: String, width: usize, theme: LayoutTheme) -> Vec<String> {
     let mut md = Markdown::new(text, 0, 0, theme.palette().markdown_theme(), None)
         .with_table_header_underline(true);
     md.render(width)
+}
+
+fn markdown_fit_lines(text: String, width: usize, theme: LayoutTheme) -> Vec<String> {
+    markdown_unfitted(text, width, theme)
         .into_iter()
         .map(|line| fit(&line, width))
         .collect()
+}
+
+/// Join a Markdown-parsed stream `…` onto the last content row (r1255 尾标仍走引擎，不进围栏源).
+fn attach_stream_ellipsis(mut lines: Vec<String>, width: usize, theme: LayoutTheme) -> Vec<String> {
+    let marker = markdown_unfitted("…".into(), width, theme)
+        .into_iter()
+        .find(|l| !l.trim_end().is_empty())
+        .unwrap_or_else(|| "…".into());
+    let marker = marker.trim_end().to_string();
+    match lines.iter().rposition(|l| !l.trim_end().is_empty()) {
+        Some(i) => lines[i] = format!("{}{}", lines[i].trim_end(), marker),
+        None => lines.push(marker),
+    }
+    lines.into_iter().map(|line| fit(&line, width)).collect()
+}
+
+/// Live suffix: Markdown-parse the raw buffer, then attach the stream marker.
+/// Gluing `…` onto the source would sit on a half-written closer
+/// (` ``… ` / ` ```… `) and both skip engine trim and keep the fence open.
+fn markdown_fit_streaming(text: &str, width: usize, theme: LayoutTheme) -> Vec<String> {
+    let lines = if text.trim().is_empty() {
+        Vec::new()
+    } else {
+        markdown_unfitted(text.to_string(), width, theme)
+    };
+    attach_stream_ellipsis(lines, width, theme)
 }
 
 pub(super) fn paint_streaming_assistant(
@@ -306,7 +338,9 @@ pub(super) fn paint_streaming_assistant(
     if text.is_empty() {
         stream.invalidate();
         stream.width = width;
-        return markdown_fit_lines("…".into(), width, theme);
+        let lines = markdown_fit_lines("…".into(), width, theme);
+        stream.last_lines = lines.len();
+        return lines;
     }
 
     let stable_end = find_stable_markdown_prefix_end(text);
@@ -326,16 +360,20 @@ pub(super) fn paint_streaming_assistant(
         }
         stream.suffix_parses = stream.suffix_parses.saturating_add(1);
         let mut out = stream.prefix_lines.clone();
-        out.extend(markdown_fit_lines(
-            format!("{}…", &text[stable_end..]),
-            width,
-            theme,
-        ));
+        let suffix = &text[stable_end..];
+        if suffix.is_empty() {
+            // Cold full-parse joins … onto the last content row; empty suffix
+            // must do the same instead of appending a lone marker line.
+            out = attach_stream_ellipsis(out, width, theme);
+        } else {
+            out.extend(markdown_fit_streaming(suffix, width, theme));
+        }
+        stream.last_lines = out.len();
         return out;
     }
 
     stream.full_parses = stream.full_parses.saturating_add(1);
-    let all = markdown_fit_lines(format!("{text}…"), width, theme);
+    let all = markdown_fit_streaming(text, width, theme);
     if stable_end > 0 {
         // Seed prefix cache for subsequent deltas (extra parse; not counted as full).
         stream.prefix_lines = markdown_fit_lines(new_stable.to_string(), width, theme);
@@ -344,6 +382,7 @@ pub(super) fn paint_streaming_assistant(
         stream.prefix_lines.clear();
         stream.stable_prefix.clear();
     }
+    stream.last_lines = all.len();
     all
 }
 

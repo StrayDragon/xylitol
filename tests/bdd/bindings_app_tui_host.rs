@@ -139,6 +139,12 @@ fn test_ath35_stable_prefix_limits_full_parses(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "streaming-assistant-partial-fence-height-headless"
+)]
+fn test_ath35_partial_fence_height(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "debug-build-enables-file-logging-by-default"
 )]
 fn test_ath9_debug_file_logging_on(host_pump_bdd: HostPumpBdd) {}

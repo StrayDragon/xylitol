@@ -2634,6 +2634,50 @@ fn t_full_parses_bounded_by_stable_prefix(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
+#[given("构造含开围栏与代码正文的流式助手 UI")]
+fn g_streaming_open_fence(host_pump_bdd: &HostPumpBdd) {
+    let root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    model.streaming_assistant = "```rust\nprint(1)\n".into();
+    *host_pump_bdd.paint_probe.borrow_mut() = Some((root, model));
+}
+
+#[when("追加半截闭合围栏再渲染并补全闭合围栏再渲染")]
+fn w_partial_then_complete_streaming_fence(host_pump_bdd: &HostPumpBdd) {
+    let (mut root, mut model) = host_pump_bdd
+        .paint_probe
+        .borrow_mut()
+        .take()
+        .expect("UI 已构造");
+    model.streaming_assistant.push_str("``");
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    host_pump_bdd
+        .counts
+        .borrow_mut()
+        .push(root.streaming_assistant_last_lines_for_test() as u64);
+    model.streaming_assistant.push('`');
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    host_pump_bdd
+        .counts
+        .borrow_mut()
+        .push(root.streaming_assistant_last_lines_for_test() as u64);
+    *host_pump_bdd.paint_probe.borrow_mut() = Some((root, model));
+}
+
+#[then("两次流式块可见行数相同")]
+fn t_streaming_fence_heights_equal(host_pump_bdd: &HostPumpBdd) {
+    let counts = host_pump_bdd.counts.borrow();
+    let partial = counts[counts.len() - 2];
+    let complete = counts[counts.len() - 1];
+    assert_eq!(
+        partial, complete,
+        "半截 closer 与补全后流式块可见行数 MUST 相同：partial={partial} complete={complete}"
+    );
+}
+
 #[when("以产品 UI 构造主机会话并查询交互模式")]
 fn w_product_ui_interaction_mode(host_pump_bdd: &HostPumpBdd) {
     let session = HostSession::new_product_ui(TestTerminal::new(80, 24));

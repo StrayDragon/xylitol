@@ -39,3 +39,10 @@
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
     # verified-by: packages/xylitol-tui/src/components/markdown.rs
+  @req:r1936
+  规则: streaming-partial-closing-fence
+    Markdown 在流式或完整文本以未闭合代码围栏结尾、且最后一行是短于该围栏 opener 的同字符反引号或波浪线时，MUST 在解析前去掉该半截闭合行。补全闭合围栏后，代码块可见行数 MUST 与去掉半截时相同。已闭合围栏、围栏外正文、以及并非 closer 前缀的末行 MUST NOT 被误删。MUST NOT 因此画出围栏铬或语言标签条（仍遵守代码块无围栏行）。MUST NOT 把修剪做成产品私有第二套解析。
+    # verified-by: packages/xylitol-tui/src/components/markdown.rs
+    场景: streaming-partial-fence-height-stable
+      当 渲染以半截闭合围栏结尾的围栏代码再补全该闭合围栏
+      那么 两次代码块可见行数相同且无围栏铬

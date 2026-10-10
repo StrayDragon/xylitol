@@ -587,3 +587,4 @@
   规则: 非产品二进制判非法信封
     POST /rpc 的非产品二进制 body（含 JSON 对象、JSON 数组 batch、其它文本）MUST 判非法信封（HTTP 400），MUST NOT 当业务 unary 执行。
     # verified-by: fn json_rpc_text_is_illegal_envelope
+# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）

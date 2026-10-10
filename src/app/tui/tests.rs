@@ -3701,7 +3701,111 @@ fn streaming_assistant_reuses_stable_prefix_under_deltas() {
     );
     assert_eq!(
         got, expected,
-        "warm incremental paint must match cold full Markdown(text+…)"
+        "warm incremental paint must match cold full Markdown + stream ellipsis"
+    );
+}
+
+#[test]
+fn streaming_assistant_partial_fence_keeps_height() {
+    use super::layout::{LayoutTheme, UiRoot};
+    use super::widgets::{
+        FoldHitTable, GlyphSet, ScrollbackFold, ScrollbackPaintCache, render_scrollback,
+    };
+    use xylitol_tui::utils::strip_ansi_codes;
+
+    let theme = LayoutTheme::product_dark();
+    let glyphs = GlyphSet::from_env();
+    let fold = ScrollbackFold::default();
+    let body = "```rust\nprint(1)\n";
+
+    let paint = |text: &str| {
+        let mut model = UiModel::new();
+        model.begin_run("hi");
+        model.streaming_assistant = text.into();
+        render_scrollback(
+            &model,
+            glyphs,
+            theme,
+            &fold,
+            &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
+            80,
+            &mut ScrollbackPaintCache::default(),
+            &mut FoldHitTable::default(),
+        )
+    };
+
+    let complete = paint(&format!("{body}```"));
+    for partial in ["`", "``"] {
+        let got = paint(&format!("{body}{partial}"));
+        assert_eq!(
+            got.len(),
+            complete.len(),
+            "partial {partial:?} scrollback height {} != complete {}",
+            got.len(),
+            complete.len()
+        );
+        let vis = got.iter().map(|l| strip_ansi_codes(l)).collect::<Vec<_>>();
+        let vis_text = vis.join("\n");
+        assert!(
+            vis.iter().any(|l| l.contains("print(1)")),
+            "code body must remain:\n{vis_text}"
+        );
+        assert!(
+            !vis_text.contains("```"),
+            "must not paint fence chrome:\n{vis_text}"
+        );
+    }
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    model.streaming_assistant = format!("{body}``");
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    let partial_n = root.streaming_assistant_last_lines_for_test();
+    model.streaming_assistant = format!("{body}```");
+    root.apply_ui_model(&model);
+    let _ = root.render(80);
+    let complete_n = root.streaming_assistant_last_lines_for_test();
+    assert_eq!(
+        partial_n, complete_n,
+        "UiRoot streaming block height {partial_n} != {complete_n}"
+    );
+    let full = root.streaming_assistant_full_parses_for_test();
+    assert!(
+        full >= 1,
+        "fence-only buffer has no stable prefix; full parses still run, got {full}"
+    );
+}
+
+#[test]
+fn streaming_ellipsis_is_markdown_themed() {
+    use super::layout::LayoutTheme;
+    use super::widgets::{
+        FoldHitTable, GlyphSet, ScrollbackFold, ScrollbackPaintCache, render_scrollback,
+    };
+
+    let mut model = UiModel::new();
+    model.begin_run("hi");
+    model.streaming_assistant = "hello".into();
+    let lines = render_scrollback(
+        &model,
+        GlyphSet::from_env(),
+        LayoutTheme::product_dark(),
+        &ScrollbackFold::default(),
+        &mut crate::app::tui::activity_fold::ActivityFoldState::default(),
+        80,
+        &mut ScrollbackPaintCache::default(),
+        &mut FoldHitTable::default(),
+    );
+    let vis_line = lines
+        .iter()
+        .map(|l| strip_ansi(l))
+        .find(|l| l.contains('…'))
+        .expect("stream marker line");
+    assert!(
+        vis_line.contains("hello") && vis_line.contains('…'),
+        "Markdown-parsed … MUST join the suffix line, got {vis_line:?}"
     );
 }
 

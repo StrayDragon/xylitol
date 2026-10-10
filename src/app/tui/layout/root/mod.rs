@@ -1272,6 +1272,11 @@ impl UiRoot {
     }
 
     // c2837: 测试探针无条件化
+    pub fn streaming_assistant_last_lines_for_test(&self) -> usize {
+        self.scrollback_paint.streaming_assistant.last_lines
+    }
+
+    // c2837: 测试探针无条件化
     pub fn clear_streaming_assistant_parse_counts_for_test(&mut self) {
         self.scrollback_paint.streaming_assistant.clear_counts();
     }

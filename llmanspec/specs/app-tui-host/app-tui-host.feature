@@ -171,6 +171,14 @@
       假如 构造含稳定 Markdown 前缀的流式助手 UI
       当 仅以后缀增长连续渲染四十次并读取全量解析计数
       那么 全量 Markdown 解析次数远小于渲染次数
+  @req:r1937
+  规则: streaming-assistant-partial-fence-height
+    产品对 streaming_assistant 的 live Markdown 绘制 MUST 使用与包 Markdown 同一把半截闭合围栏尺子：开围栏后代码正文再跟不完整 closer、随后补全 closer 时，该流式块可见行数 MUST 不变。MUST NOT 另写第二套围栏修剪。本要求不改变 r1255 的稳定前缀复用与全量解析上界，MUST NOT 改变 tool/bash/write/diff 视口折叠语义。MUST 在无真 TTY harness 中可测。
+    # verified-by: src/app/tui/widgets/scrollback/paint.rs
+    场景: streaming-assistant-partial-fence-height-headless
+      假如 构造含开围栏与代码正文的流式助手 UI
+      当 追加半截闭合围栏再渲染并补全闭合围栏再渲染
+      那么 两次流式块可见行数相同
 
   @req:r1256
   规则: mcp-discovery-surface

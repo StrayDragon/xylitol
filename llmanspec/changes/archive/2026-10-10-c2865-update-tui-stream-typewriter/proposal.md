@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2865-update-tui-stream-typewriter
+base_branch: main
+base_sha: 5e2a2f128313de43df881a08988abdf96534be5f
 ---
 
 # 流式打字机稳定：未闭合围栏
