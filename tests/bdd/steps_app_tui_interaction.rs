@@ -2,8 +2,8 @@
 //! over the product `UiRoot` via [`InteractionBdd`] (att20–att32).
 //!
 //! Paths exercised are the product's own: chord routing (`UiRoot::handle_key`),
-//! the shared fold-toggle pipeline (`UiRoot::click_fold_at`, also called by the
-//! host hit-priority wiring), and product paint for frames.
+//! the shared fold-toggle pipeline (`UiRoot::click_fold_at` / host
+//! `take_pointer_click` on the same table), and product paint for frames.
 
 use crate::bdd::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
@@ -150,6 +150,53 @@ fn when_click_tool_triangle(tui_interaction: &TuiInteraction, id: String) {
     *tui_interaction.last_clicked.borrow_mut() = Some(id);
 }
 
+#[when("点击 \"{id}\" 工具块头行非折叠标记列")]
+fn when_click_tool_header_not_marker(tui_interaction: &TuiInteraction, id: String) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    let _ = fx.render_plain(80);
+    let target_id = id.clone();
+    let region = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::Tool(tid) if *tid == target_id))
+        .cloned()
+        .unwrap_or_else(|| panic!("tool `{target_id}` must be registered"));
+    let col = region.col_end.saturating_sub(1).min(12) as u16;
+    assert!(
+        col >= region.col_start as u16,
+        "header must be wider than the marker"
+    );
+    assert!(fx.left_click(col, region.content_row as u16));
+    *tui_interaction.last_clicked.borrow_mut() = Some(id);
+}
+
+#[when("空选左键单击已展开 \"{id}\" 的 painted 正文")]
+fn when_click_expanded_tool_body(tui_interaction: &TuiInteraction, id: String) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    let _ = fx.render_plain(80);
+    let target_id = id.clone();
+    let region = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::Tool(tid) if *tid == target_id))
+        .cloned()
+        .unwrap_or_else(|| panic!("tool `{target_id}` must be registered"));
+    assert!(
+        region.height > 1,
+        "expanded tool `{target_id}` must register a tall body"
+    );
+    let row = region.content_row.saturating_add(1) as u16;
+    assert!(
+        fx.left_click(8, row),
+        "empty-selection body click must consume"
+    );
+    *tui_interaction.last_clicked.borrow_mut() = Some(id);
+}
+
 #[when("再左键单击第一条思考的折叠三角列")]
 fn when_click_first_thinking(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
@@ -168,37 +215,6 @@ fn when_click_first_thinking(tui_interaction: &TuiInteraction) {
         .expect("first thinking triangle must be registered");
     assert!(fx.left_click(col, row));
     *tui_interaction.last_clicked.borrow_mut() = Some(id);
-}
-
-#[when("点击该行折叠命中区右边界之外的一列")]
-fn when_click_outside_triangle_column(tui_interaction: &TuiInteraction) {
-    let mut fx = tui_interaction.fx.borrow_mut();
-    let fx = fx.as_mut().expect("fixture mounted");
-    let _ = fx.render_plain(80); // refresh the registered regions
-    // First registered inner block row; aim one full column past its end.
-    let hit = fx
-        .fold_hits()
-        .regions
-        .iter()
-        .find(|r| {
-            matches!(
-                &r.target,
-                FoldTarget::Tool(_) | FoldTarget::Thinking(_) | FoldTarget::Diff(_)
-            )
-        })
-        .map(|r| (r.col_end as u16, r.content_row as u16))
-        .expect("an inner block must be registered after expanding");
-    let consumed = fx.left_click(hit.0, hit.1);
-    assert!(!consumed, "non-triangle columns must not toggle folds");
-    *tui_interaction.last_clicked.borrow_mut() = None;
-}
-
-#[then("折叠命中不消费且覆盖表为空")]
-fn then_no_consumption_no_overrides(tui_interaction: &TuiInteraction) {
-    let fx = tui_interaction.fx.borrow();
-    let fx = fx.as_ref().expect("fixture mounted");
-    assert!(fx.fold().tools_overrides.is_empty());
-    assert!(fx.fold().thinking_overrides.is_empty());
 }
 
 #[then("该块经覆盖表收起且覆盖表只有这一个条目")]
@@ -318,6 +334,26 @@ fn when_click_compaction_triangle(tui_interaction: &TuiInteraction) {
     assert!(fx.left_click(hit.0, hit.1), "compaction click must consume");
 }
 
+#[when("点击 Compaction 块摘要正文列而非折叠标记列")]
+fn when_click_compaction_summary(tui_interaction: &TuiInteraction) {
+    let mut fx = tui_interaction.fx.borrow_mut();
+    let fx = fx.as_mut().expect("fixture mounted");
+    let _ = fx.render_plain(80);
+    let region = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::Compaction))
+        .cloned()
+        .expect("a registered compaction triangle");
+    let col = region.col_end as u16;
+    let consumed = fx.left_click(col, region.content_row as u16);
+    assert!(
+        !consumed,
+        "compaction summary column must not consume a fold hit"
+    );
+}
+
 #[then("Compaction 全局展开态翻转")]
 fn then_compaction_global_toggled(tui_interaction: &TuiInteraction) {
     let fx = tui_interaction.fx.borrow();
@@ -325,6 +361,16 @@ fn then_compaction_global_toggled(tui_interaction: &TuiInteraction) {
     assert!(
         fx.fold().compaction_expanded,
         "one click on the compaction triangle expands the global state"
+    );
+}
+
+#[then("Compaction 全局展开态未变")]
+fn then_compaction_global_unchanged(tui_interaction: &TuiInteraction) {
+    let fx = tui_interaction.fx.borrow();
+    let fx = fx.as_ref().expect("fixture mounted");
+    assert!(
+        !fx.fold().compaction_expanded,
+        "summary-column click must leave compaction collapsed"
     );
 }
 
@@ -438,7 +484,23 @@ fn when_mount_two_long_output_tools(tui_interaction: &TuiInteraction) {
 fn when_click_first_tool_hint_band(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    let _ = fx.render_plain(80); // refresh the registered regions
+    let _ = fx.render_plain(80);
+    let has_hint = fx
+        .fold_hits()
+        .regions
+        .iter()
+        .any(|r| matches!(&r.target, FoldTarget::OutputViewport(id) if id.as_str() == "t-a"));
+    if !has_hint {
+        let cluster = fx
+            .fold_hits()
+            .regions
+            .iter()
+            .find(|r| matches!(&r.target, FoldTarget::Cluster(_)))
+            .map(|r| (r.col_start as u16, r.content_row as u16))
+            .expect("cluster header to reveal tool hints");
+        assert!(fx.left_click(cluster.0, cluster.1));
+        let _ = fx.render_plain(80);
+    }
     let hit = fx
         .fold_hits()
         .regions
@@ -543,23 +605,22 @@ fn then_targets_share_one_hit_table(tui_interaction: &TuiInteraction) {
     assert!(fx.left_click(block.0, block.1));
 }
 
-#[when("点击簇头行的摘要正文列而非三角列")]
-fn when_click_cluster_body_column(tui_interaction: &TuiInteraction) {
+#[when("点击簇头行的摘要正文列")]
+fn when_click_cluster_header_summary(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    let _ = fx.render_plain(80); // refresh the registered regions
-    // Cluster header region is the triangle column `[0, 1)`; column 1 onward
-    // is summary text / chord annotation — clicking it must not toggle.
-    let hit = fx
+    let _ = fx.render_plain(80);
+    let region = fx
         .fold_hits()
         .regions
         .iter()
         .find(|r| matches!(&r.target, FoldTarget::Cluster(_)))
-        .map(|r| (r.col_end as u16, r.content_row as u16))
+        .cloned()
         .expect("a registered cluster header region");
+    let col = region.col_end.saturating_sub(1).min(12) as u16;
     assert!(
-        !fx.left_click(hit.0, hit.1),
-        "summary-text columns must not consume fold hits"
+        fx.left_click(col, region.content_row as u16),
+        "cluster header summary columns must toggle"
     );
 }
 

@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use xylitol_tui::{InputEvent, InputReaction, RenderError, TUI, Terminal};
+use xylitol_tui::{InputEvent, InputReaction, PointerClickPhase, RenderError, TUI, Terminal};
 
 use crate::app::core::driver::{XyDriverError, XyEvent};
 use crate::protocol::ports::XyBashResult;
@@ -155,6 +155,8 @@ pub struct HostSession<T: Terminal> {
     keybindings: Option<Rc<RefCell<xylitol_tui::KeybindingsManager>>>,
     /// Keeps [`xylitol_tui::KeybindingsScope`] alive for the session thread.
     _keybindings_scope: Option<xylitol_tui::KeybindingsScope>,
+    /// Snapshot at Left Down: existing transcript selection blocks fold Up.
+    pointer_down_had_selection: bool,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -226,6 +228,7 @@ impl<T: Terminal> HostSession<T> {
             debug_live_ask_close: false,
             keybindings: None,
             _keybindings_scope: None,
+            pointer_down_had_selection: false,
         }
     }
 
@@ -323,24 +326,16 @@ impl<T: Terminal> HostSession<T> {
         if interaction_mode.is_application_owned() {
             session.sync_dock_rows();
             session.tui.begin_application_owned_session();
-            session.install_fold_triangle_hit_priority();
+            session
+                .tui
+                .set_pointer_click_phase(PointerClickPhase::UpIfEmptySelection);
+            session.tui.arm_pointer_probe(true);
             session.sync_dock_rows();
             session.sync_fold_hit_viewport();
             session.tui.request_render(true);
             session.paint_dirty = true;
         }
         session
-    }
-
-    /// Wire fold-triangle Left Down → per-block toggle (ath33 / c2040).
-    fn install_fold_triangle_hit_priority(&mut self) {
-        let Some(ui_root) = self.ui_root.clone() else {
-            return;
-        };
-        self.tui
-            .set_transcript_hit_priority(Some(Box::new(move |col, row| {
-                ui_root.borrow_mut().click_fold_at(col, row)
-            })));
     }
 
     /// Keep fold hit table scroll/pane geometry aligned with AO viewport.
@@ -354,6 +349,19 @@ impl<T: Terminal> HostSession<T> {
         let transcript_rows = term_rows.saturating_sub(dock) as u16;
         root.borrow_mut()
             .sync_fold_hit_viewport(scroll_top, transcript_rows);
+        self.sync_pointer_hits();
+    }
+
+    fn sync_pointer_hits(&mut self) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        let root = root.borrow();
+        let clicks = root.fold_hits().pointer_click_hits();
+        let hovers = root.fold_hits().pointer_hover_hits();
+        drop(root);
+        self.tui.replace_hits(clicks);
+        self.tui.replace_hover_hits(hovers);
     }
 
     pub fn mode(&self) -> LayoutMode {
@@ -996,6 +1004,23 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn handle_input(&mut self, input: InputEvent) {
+        let left_down = matches!(
+            input,
+            InputEvent::Mouse(crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left),
+                ..
+            })
+        );
+        let left_up = matches!(
+            input,
+            InputEvent::Mouse(crossterm::event::MouseEvent {
+                kind: crossterm::event::MouseEventKind::Up(crossterm::event::MouseButton::Left),
+                ..
+            })
+        );
+        if left_down {
+            self.pointer_down_had_selection = self.tui.application_owned_has_selection();
+        }
         let reaction = if self.mode == LayoutMode::Ready {
             self.follow_bottom_on_submit_key(&input);
             if self.try_suppress_stale_esc(&input)
@@ -1014,12 +1039,24 @@ impl<T: Terminal> HostSession<T> {
             // TooSmall / other modes: ignore input; no paint from mouse floods.
             InputReaction::rerender_if(!matches!(input, InputEvent::Mouse(_)))
         };
+        if left_up {
+            let clicked = self.tui.take_pointer_click();
+            if !self.pointer_down_had_selection
+                && let Some(id) = clicked
+                && let Some(root) = self.ui_root.as_ref()
+            {
+                let mut root = root.borrow_mut();
+                if let Some(target) = root.fold_hits().target_for_hit(id) {
+                    root.toggle_fold_target(target);
+                }
+            }
+        }
         if self.tui.application_session_active() {
             if let Some(root) = self.ui_root.as_ref() {
                 let mut root = root.borrow_mut();
                 root.sync_editor_screen_origin();
-                // Hit-priority path returns Rerender without component render;
-                // fold toggles must force a full AO project (ath33 / att20).
+                // Fold toggles dirty the component tree; force a full AO project
+                // so the next paint rebuilds hits (ath33 / att20).
                 if root.take_fold_dirty() {
                     drop(root);
                     self.tui.mark_ao_components_stale();

@@ -17,6 +17,7 @@
 | tui | expandable | 块级折叠（thinking / tool / diff / ask）。段/簇信封见 activity-fold。 | thinking, tool-collapsed, tool-expanded, tool-timeout | `/tui/expandable` |
 | tui | footer | 恰好 1 行 dim。字段序 `cwd · model · {thinking}`，可续 `used C/~C/? tokens`（紧凑如 `42k`）与占用比。 | default | `/tui/footer` |
 | tui | full-shell | 少装饰壳：可选 loaded 卡片 + scrollback + 可选队列 + toast + status + editor + footer。 | busy, short | `/tui/full-shell` |
+| tui | hover-highlight | 指针悬停时，用引擎 dim 标出「哪里能点」，不改内容、不触发动作、不写会话。 | activity-header, collapsed-header, expanded-rail, hint-band | `/tui/hover-highlight` |
 | tui | loaded-resources | scrollback 上方 Codex 风边框卡片：`>_ xylitol` + directory。有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行。 | card | `/tui/loaded-resources` |
 | tui | markdown | 助手正文：终端里直观、安静；框选粘贴省 token。包 Markdown 已按本节收敛。 | sample | `/tui/markdown` |
 | tui | mcp-cue | 短 cue 固定 `mcp pending (see /mcp)`。 | cue-short-busy, panel-connecting, panel-mixed | `/tui/mcp-cue` |
@@ -35,7 +36,6 @@
 | tui | widgets | 列表槽、空态、窄宽。静图槽一律平等，禁止「(包)」置灰表达实现分层。 | empty | `/tui/widgets` |
 | tui-lab | delayed-hint | 长操作的延迟出现提示。 | mcp-connecting | `/tui-lab/delayed-hint` |
 | tui-lab | editor-placeholder | editor 空态占位示例句。 | busy, idle | `/tui-lab/editor-placeholder` |
-| tui-lab | hover-highlight | 鼠标悬停时高亮当前可交互的块，让「哪里能点」看得见。 | tool | `/tui-lab/hover-highlight` |
 | tui-lab | interrupt-arm | 中止前先给一次确认提示，避免误触后无法撤回。 | armed, calm, stopped | `/tui-lab/interrupt-arm` |
 | tui-lab | paste-fold | 大段粘贴在输入框里折叠为一行摘要的显示方式。 | empty, folded, plain | `/tui-lab/paste-fold` |
 | tui-lab | toast-interaction | 通知条的两点交互增强。 | action | `/tui-lab/toast-interaction` |

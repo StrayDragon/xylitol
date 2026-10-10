@@ -209,7 +209,9 @@ impl ApplicationOwnedRuntime {
         let mut visible = self.scroll.visible_lines().to_vec();
         self.selection
             .apply_highlight(&mut visible, self.scroll.scroll_top());
-        if let Some(id) = self.hover_id {
+        if let Some(id) = self.hover_id
+            && !self.selection.is_dragging()
+        {
             apply_hover_tint(
                 &mut visible,
                 self.scroll.scroll_top(),
@@ -555,6 +557,35 @@ mod tests {
         let full3 = reflow_fixture(&["foxtrot"], "alpha wraps differently now");
         let _ = runtime.project_frame(&full3, 7);
         assert!(!runtime.has_selection(), "reflow above must invalidate");
+    }
+
+    #[test]
+    fn hover_dim_skipped_while_dragging() {
+        use crate::pointer::HitRegion;
+
+        let mut runtime = ApplicationOwnedRuntime::new(1);
+        let full = vec!["header-line".into(), "body".into(), "dock".into()];
+        let _ = runtime.project_frame(&full, 3);
+
+        let mut regions = HitRegionList::new();
+        regions.push(HitRegion::new(1, 0, 0, 11));
+        runtime.set_hover(Some(1), regions);
+        let hovered = runtime.reproject_frame(3);
+        assert!(
+            hovered[0].contains("\x1b[2m"),
+            "idle hover must dim the header, got {:?}",
+            hovered[0]
+        );
+
+        assert!(runtime.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 0, 1), 20, 3));
+        assert!(runtime.handle_mouse(&mouse(MouseEventKind::Drag(MouseButton::Left), 3, 1), 20, 3));
+        assert!(runtime.selection.is_dragging());
+        let dragging = runtime.reproject_frame(3);
+        assert!(
+            !dragging[0].contains("\x1b[2m"),
+            "drag must suppress hover dim on the header, got {:?}",
+            dragging[0]
+        );
     }
 
     #[test]

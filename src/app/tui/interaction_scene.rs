@@ -3,8 +3,8 @@
 //! Product paths only — no test double between fixture and behavior:
 //! - key injection → [`UiRoot::handle_key`] → the product chord router
 //!   (`app.thinking.toggle` / `app.tools.blocks` / …);
-//! - mouse injection → [`UiRoot::click_fold_at`] (the same function the host
-//!   hit-priority wiring calls), so BDD and host share one toggle pipeline;
+//! - mouse injection → [`UiRoot::click_fold_at`] (same `FoldHitTable` the host
+//!   maps through `take_pointer_click`), so BDD and host share one toggle;
 //! - paint → the same `render` / ANSI-strip chain [`SceneBuilder`] uses.
 //!
 //! Entries enter by replaying [`XyEvent`]s through [`apply_xy_event`] in a

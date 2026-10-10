@@ -481,6 +481,15 @@ impl<T: Terminal> TUI<T> {
         }
     }
 
+    /// Chrome-only hover paint (same ids as click hits). Empty → dim the click table.
+    pub fn replace_hover_hits(&mut self, hits: impl IntoIterator<Item = Hit>) {
+        let mut list = HitRegionList::new();
+        for hit in hits {
+            list.mark(hit);
+        }
+        self.pointer.set_hover_paint(list);
+    }
+
     pub fn set_pointer_click_phase(&mut self, phase: PointerClickPhase) {
         self.pointer.set_phase(phase);
     }
@@ -584,7 +593,7 @@ impl<T: Terminal> TUI<T> {
 
     fn sync_pointer_hover_into_runtime(&mut self) {
         let hover_id = self.pointer.hover_id();
-        let regions = self.pointer.regions().clone();
+        let regions = self.pointer.hover_paint().clone();
         if let Some(runtime) = self.application_owned.as_mut() {
             runtime.set_hover(hover_id, regions);
         }

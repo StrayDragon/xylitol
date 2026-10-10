@@ -60,6 +60,7 @@ pub(super) fn push_expandable_with_viewport_hit(
             row_offset: base + idx,
             col_start: col_offset,
             col_end: col_offset.saturating_add(hint_cols),
+            height: 1,
             target,
         });
     }

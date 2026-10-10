@@ -24,6 +24,16 @@ widget **不收鼠标**。折叠要点击 = app 对上一帧 Rect 命中（custo
 
 产品 fan-in 无条件丢 `Moved`（`src/app/tui/mod.rs`），悬停必须先 c2858 探针 + 本票停丢。
 
+## 长内容回收（相对「只放宽 header」）
+
+header 全宽只降低 **展开** 成本。展开后块头滚出视口，L1 再折要滚回去——这是 accordion 通病。
+
+xylitol 已把「输出很长」交给 Ctrl+O 视口：`expandable_output` 展开后在 **块尾** 画 `ctrl+o to fold`（peo3 / att30），读完自然落在折回控件上。Activity 另有从输入侧 `collapseNearest`。这两条都不该被「整块可点」替代。
+
+整块 click（opencode/pi/crush）用空选守卫换回收便利，和 DESIGN「复制友好优先」抢划词。钉住块头要 Viewport 钉行，偏固定区而不是对话条目，留给以后（滚动槽一类）而不是本票。
+
+L1 首轮设想曾对齐 att30「头上展开、尾上折回」。锁定后改为空选点 painted 正文也可折（见 proposal Open Questions 1）；att30 hint 仍只折视口。
+
 ## 不推荐
 
 把产品 scrollback 改成 pi 式每块 Component：推翻 AO `ScrollView` 行缓存与 ath25「单块不重 parse Markdown」。不抄 ratatui immediate-mode 每事件整帧 Buffer。

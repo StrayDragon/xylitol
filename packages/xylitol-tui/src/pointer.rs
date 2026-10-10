@@ -305,6 +305,9 @@ pub struct PointerOutcome {
 #[derive(Debug, Clone, Default)]
 pub struct PointerPipeline {
     regions: HitRegionList,
+    /// Optional chrome-only paint table (same ids as [`regions`]). Empty →
+    /// paint uses [`regions`].
+    hover_paint: HitRegionList,
     phase: PointerClickPhase,
     probe_armed: bool,
     hover_id: Option<HitId>,
@@ -326,6 +329,19 @@ impl PointerPipeline {
 
     pub fn regions_mut(&mut self) -> &mut HitRegionList {
         &mut self.regions
+    }
+
+    #[must_use]
+    pub fn hover_paint(&self) -> &HitRegionList {
+        if self.hover_paint.is_empty() {
+            &self.regions
+        } else {
+            &self.hover_paint
+        }
+    }
+
+    pub fn set_hover_paint(&mut self, regions: HitRegionList) {
+        self.hover_paint = regions;
     }
 
     #[must_use]
@@ -473,30 +489,30 @@ impl PointerPipeline {
     }
 }
 
-/// Dim-tint a hovered region on the visible slice (not selection invert).
+/// Dim-tint every hovered region with `hover_id` on the visible slice (not
+/// selection invert). Multiple rects may share an id (header + rail).
 pub fn apply_hover_tint(
     visible: &mut [String],
     scroll_top: usize,
     regions: &HitRegionList,
     hover_id: HitId,
 ) {
-    let Some(region) = regions.region_by_id(hover_id) else {
-        return;
-    };
-    let height = region.height.max(1);
-    for offset in 0..height {
-        let vis_i = match region.space {
-            HitSpace::Content => {
-                let content_row = region.content_row.saturating_add(offset);
-                if content_row < scroll_top {
-                    continue;
+    for region in regions.iter().filter(|r| r.id == hover_id) {
+        let height = region.height.max(1);
+        for offset in 0..height {
+            let vis_i = match region.space {
+                HitSpace::Content => {
+                    let content_row = region.content_row.saturating_add(offset);
+                    if content_row < scroll_top {
+                        continue;
+                    }
+                    content_row - scroll_top
                 }
-                content_row - scroll_top
+                HitSpace::Viewport => region.content_row.saturating_add(offset),
+            };
+            if let Some(line) = visible.get_mut(vis_i) {
+                *line = dim_columns(line, region.col_start, region.col_end);
             }
-            HitSpace::Viewport => region.content_row.saturating_add(offset),
-        };
-        if let Some(line) = visible.get_mut(vis_i) {
-            *line = dim_columns(line, region.col_start, region.col_end);
         }
     }
 }

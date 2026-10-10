@@ -84,6 +84,38 @@ impl Terminal for TestTerminal {
     }
 }
 
+fn mouse_at(
+    kind: crossterm::event::MouseEventKind,
+    col: u16,
+    row: u16,
+) -> crossterm::event::MouseEvent {
+    use crossterm::event::{KeyModifiers, MouseEvent};
+    MouseEvent {
+        kind,
+        column: col,
+        row,
+        modifiers: KeyModifiers::NONE,
+    }
+}
+
+fn step_left_click(session: &mut HostSession<TestTerminal>, col: u16, row: u16) {
+    use crossterm::event::{MouseButton, MouseEventKind};
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Down(MouseButton::Left),
+            col,
+            row,
+        ))))
+        .unwrap();
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Up(MouseButton::Left),
+            col,
+            row,
+        ))))
+        .unwrap();
+}
+
 #[test]
 fn too_small_predicate() {
     assert!(is_too_small(39, 24));
@@ -201,14 +233,15 @@ fn mouse_moved_does_not_request_render_by_default() {
     session.render_now().unwrap();
     assert!(!session.tui.is_render_requested());
 
+    let frames = session.engine_frame_count();
     session
         .step(HostEvent::Input(InputEvent::Key(
             crossterm::event::KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
         )))
         .unwrap();
     assert!(
-        session.tui.is_render_requested(),
-        "Key path must still request render"
+        session.engine_frame_count() > frames || session.tui.is_render_requested(),
+        "Key path must still schedule or paint a frame"
     );
 }
 
@@ -2384,7 +2417,6 @@ fn single_tool_toggle_does_not_miss_unrelated_assistant() {
 #[test]
 fn harness_mouse_triangle_toggles_tool_fold() {
     use super::widgets::FoldTarget;
-    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -2430,14 +2462,7 @@ fn harness_mouse_triangle_toggles_tool_fold() {
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
     let screen_col = region.col_start as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: screen_col,
-            row: screen_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, screen_col, screen_row);
     assert!(
         !root.borrow().fold().tools_effective("click-me"),
         "triangle click must toggle tools override"
@@ -2450,27 +2475,139 @@ fn harness_mouse_triangle_toggles_tool_fold() {
         "AO paint must collapse tool body after triangle toggle: {after}"
     );
 
-    // Click body column (not triangle) must not toggle back.
-    let before = root.borrow().fold().tools_effective("click-me");
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: (region.col_end + 4) as u16,
-            row: screen_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
-    assert_eq!(
+    // Header full width (not just the marker) expands again.
+    let header_mid = region.col_end.saturating_sub(1).min(12) as u16;
+    step_left_click(&mut session, header_mid, screen_row);
+    assert!(
         root.borrow().fold().tools_effective("click-me"),
-        before,
-        "non-triangle column must not toggle"
+        "header full-width click must toggle"
+    );
+}
+
+#[test]
+fn harness_mouse_empty_body_collapses_tool() {
+    use super::widgets::FoldTarget;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
+            id: "body-click".into(),
+            name: "read".into(),
+            args_preview: "z.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "line-a\nline-b\nline-c\nline-d".into(),
+            is_error: false,
+            done: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    assert!(root.borrow().fold().tools_effective("body-click"));
+
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Tool(id) if id == "body-click"))
+        .cloned()
+        .expect("tool hit");
+    assert!(
+        region.height > 1,
+        "expanded tool must register a tall click body"
+    );
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    step_left_click(&mut session, 8, screen_row.saturating_add(1));
+    assert!(
+        !root.borrow().fold().tools_effective("body-click"),
+        "empty-selection body click must collapse"
+    );
+}
+
+#[test]
+fn harness_mouse_moved_armed_probe_sets_hover_without_full_stale() {
+    use super::widgets::FoldTarget;
+    use crossterm::event::MouseEventKind;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
+            id: "hover-me".into(),
+            name: "read".into(),
+            args_preview: "h.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "hover-body".into(),
+            is_error: false,
+            done: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    session.render_now().unwrap();
+    assert!(!session.tui.is_render_requested());
+    assert!(session.tui.pointer_probe_armed());
+
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Tool(id) if id == "hover-me"))
+        .cloned()
+        .expect("tool hit");
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Moved,
+            region.col_start as u16,
+            screen_row,
+        ))))
+        .unwrap();
+    assert!(
+        session.tui.pointer_hover_id().is_some(),
+        "armed probe must record hover id"
+    );
+    assert!(
+        session.tui.last_render_perf().ao_reprojected,
+        "hover change must cheap-reproject, not stale the component tree"
+    );
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Moved,
+            region.col_start as u16,
+            screen_row,
+        ))))
+        .unwrap();
+    assert!(
+        !session.tui.is_render_requested(),
+        "same hover id must not request another frame"
     );
 }
 
 #[test]
 fn harness_mouse_drag_across_triangle_does_not_toggle_fold() {
-    // att22: while transcript drag-select is active, crossing the fold triangle
-    // must not toggle (engine only consults hit_priority on Left Down).
+    // att22: while transcript drag-select is active, crossing a fold hit must
+    // not toggle (UpIfEmptySelection records a click only when !dragged).
     use super::widgets::FoldTarget;
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -2557,7 +2694,6 @@ fn harness_mouse_drag_across_triangle_does_not_toggle_fold() {
 #[test]
 fn harness_mouse_triangle_toggles_thinking_fold() {
     use super::widgets::FoldTarget;
-    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -2597,14 +2733,7 @@ fn harness_mouse_triangle_toggles_thinking_fold() {
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
     let screen_col = region.col_start as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: screen_col,
-            row: screen_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, screen_col, screen_row);
     assert!(
         root.borrow().fold().thinking_effective(&thinking_id),
         "thinking triangle click must toggle per-id override"
@@ -2621,7 +2750,6 @@ fn harness_mouse_triangle_toggles_thinking_fold() {
 #[test]
 fn harness_mouse_triangle_toggles_diff_fold() {
     use super::widgets::FoldTarget;
-    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -2662,14 +2790,7 @@ fn harness_mouse_triangle_toggles_diff_fold() {
     let screen_row = region
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: region.col_start as u16,
-            row: screen_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, region.col_start as u16, screen_row);
     assert!(
         !root.borrow().fold().tools_effective(&key),
         "Diff triangle click must toggle tools override"
@@ -2687,7 +2808,6 @@ fn harness_mouse_triangle_toggles_diff_fold() {
 fn harness_mouse_triangle_toggles_ask_fold() {
     use super::bridge::AskPhase;
     use super::widgets::FoldTarget;
-    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -2725,14 +2845,7 @@ fn harness_mouse_triangle_toggles_ask_fold() {
     let screen_row = region
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: region.col_start as u16,
-            row: screen_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, region.col_start as u16, screen_row);
     assert!(
         !root.borrow().fold().tools_effective("ask-click"),
         "Ask triangle click must toggle tools override"
@@ -2752,7 +2865,6 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
     // tools overrides stay intact.
     use super::bridge::CompactionBlockStatus;
     use super::widgets::FoldTarget;
-    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -2811,14 +2923,7 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
     let screen_row = region
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: region.col_start as u16,
-            row: screen_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, region.col_start as u16, screen_row);
     assert!(
         root.borrow().fold().compaction_expanded,
         "Compaction triangle must flip compaction_expanded"
@@ -2860,14 +2965,11 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
     let screen_row_expanded = region_expanded
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: region_expanded.col_start as u16,
-            row: screen_row_expanded,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(
+        &mut session,
+        region_expanded.col_start as u16,
+        screen_row_expanded,
+    );
     assert!(
         !root.borrow().fold().compaction_expanded,
         "Compaction triangle must collapse after a second click"
@@ -2881,27 +2983,21 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
     );
 
     // Re-expand so the non-triangle body click check below still has a visible header.
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: region_expanded.col_start as u16,
-            row: screen_row_expanded,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(
+        &mut session,
+        region_expanded.col_start as u16,
+        screen_row_expanded,
+    );
     assert!(root.borrow().fold().compaction_expanded);
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
 
     let before = root.borrow().fold().compaction_expanded;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: (region_expanded.col_end + 4) as u16,
-            row: screen_row_expanded,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(
+        &mut session,
+        (region_expanded.col_end + 4) as u16,
+        screen_row_expanded,
+    );
     assert_eq!(
         root.borrow().fold().compaction_expanded,
         before,
@@ -2915,9 +3011,7 @@ fn harness_mouse_hint_toggles_output_viewport() {
     // Ctrl+O flips the global default and clears overrides. Two sibling Bash
     // blocks guard the isolation regression.
     use super::widgets::FoldTarget;
-    use crossterm::event::{
-        KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-    };
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -2976,14 +3070,7 @@ fn harness_mouse_hint_toggles_output_viewport() {
     // Click block A's hint band → only A expands; B and the global stay put.
     let (hint_row, hint_col) = locate_band("bash-a");
     let hint_screen_row = (hint_row.saturating_sub(root.borrow().fold_hits().scroll_top)) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: hint_col as u16,
-            row: hint_screen_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, hint_col as u16, hint_screen_row);
     assert!(
         root.borrow().fold().output_effective("bash-a"),
         "hint click must expand the clicked block"
@@ -3007,14 +3094,7 @@ fn harness_mouse_hint_toggles_output_viewport() {
     // The expanded block paints a fold-back band; clicking it folds only A.
     let (fold_row, fold_col) = locate_band("bash-a");
     let fold_screen_row = (fold_row.saturating_sub(root.borrow().fold_hits().scroll_top)) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: fold_col as u16,
-            row: fold_screen_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, fold_col as u16, fold_screen_row);
     assert!(
         !root.borrow().fold().output_effective("bash-a"),
         "fold band must collapse the block"
@@ -3045,7 +3125,6 @@ fn harness_mouse_segment_marker_toggles_one_step() {
     // body click does not; coexisting L1 Tool triangle still works (att32).
     use super::activity_fold::SegmentLevel;
     use super::widgets::FoldTarget;
-    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(100, 32));
     let root = session.ui_root().expect("product ui").clone();
@@ -3111,21 +3190,14 @@ fn harness_mouse_segment_marker_toggles_one_step() {
     let seg_row = seg_hit
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: seg_hit.col_start as u16,
-            row: seg_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, seg_hit.col_start as u16, seg_row);
     assert_eq!(
         root.borrow().activity().level_of("seg-0"),
         SegmentLevel::L2,
         "Segment marker click MUST expand one step (L3→L2)"
     );
 
-    // Re-collapse and confirm body column does not toggle.
+    // Re-collapse and confirm the envelope header is clickable past the marker.
     {
         let mut r = root.borrow_mut();
         r.activity_mut().force_level("seg-0", SegmentLevel::L3);
@@ -3144,33 +3216,28 @@ fn harness_mouse_segment_marker_toggles_one_step() {
     let seg_row = seg_hit
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: (seg_hit.col_end + 4) as u16,
-            row: seg_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    let header_mid = seg_hit.col_end.saturating_sub(1).min(12) as u16;
+    step_left_click(&mut session, header_mid, seg_row);
     assert_eq!(
         root.borrow().activity().level_of("seg-0"),
-        SegmentLevel::L3,
-        "summary body click MUST NOT toggle segment"
+        SegmentLevel::L2,
+        "envelope header full-width click MUST toggle segment"
     );
+
+    {
+        let mut r = root.borrow_mut();
+        r.activity_mut().force_level("seg-0", SegmentLevel::L3);
+        r.touch_activity();
+    }
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
 
     // L1 tool triangle still toggles its own override (same paint).
     let tool_row = tool_hit
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
     let before = root.borrow().fold().tools_effective("tool-l1");
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: tool_hit.col_start as u16,
-            row: tool_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, tool_hit.col_start as u16, tool_row);
     assert_ne!(
         root.borrow().fold().tools_effective("tool-l1"),
         before,
@@ -4554,7 +4621,6 @@ fn activity_fold_att33_live_planning_and_open_cluster_updates() {
 fn activity_fold_att33_ask_waiting_stays_clickable() {
     use super::bridge::AskPhase;
     use super::widgets::FoldTarget;
-    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(100, 32));
     let root = session.ui_root().expect("product ui").clone();
@@ -4599,14 +4665,7 @@ fn activity_fold_att33_ask_waiting_stays_clickable() {
     let screen_row = region
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
-    session
-        .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
-            kind: MouseEventKind::Down(MouseButton::Left),
-            column: region.col_start as u16,
-            row: screen_row,
-            modifiers: KeyModifiers::NONE,
-        })))
-        .unwrap();
+    step_left_click(&mut session, region.col_start as u16, screen_row);
     assert!(
         !root.borrow().fold().tools_effective("ask-live"),
         "Ask Waiting triangle must remain interactive"

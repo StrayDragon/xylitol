@@ -421,6 +421,73 @@ pub(crate) fn t_c2827_no_repaint(c2827_bdd: &C2827Bdd) {
     );
 }
 
+#[when("指针探针已武装并注入落在折叠块头的鼠标移动")]
+pub(crate) fn w_c2827_armed_hover_header(c2827_bdd: &C2827Bdd) {
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+    use xylitol::app::tui::FoldTarget;
+    let mut pump = take_c(c2827_bdd);
+    assert!(
+        pump.session.tui.pointer_probe_armed(),
+        "product AO begin must arm the pointer probe"
+    );
+    {
+        let mut model = pump.session.ui_model().clone();
+        model.entries.push(UiEntry::Tool {
+            timeout_secs: None,
+            id: "hover-bdd".into(),
+            name: "read".into(),
+            args_preview: "h.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "hover-body".into(),
+            is_error: false,
+            done: true,
+        });
+        let root = pump.session.ui_root().expect("ui").clone();
+        root.borrow_mut().apply_ui_model(&model);
+    }
+    pump.session.tui.request_render(true);
+    pump.session.step(HostEvent::Tick).expect("paint fold hits");
+    let root = pump.session.ui_root().expect("ui").clone();
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|r| matches!(&r.target, FoldTarget::Tool(id) if id == "hover-bdd"))
+        .cloned()
+        .expect("tool header hit after paint");
+    let row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    pump.session
+        .step(HostEvent::Input(xylitol_tui::InputEvent::Mouse(
+            MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: region.col_start as u16,
+                row,
+                modifiers: KeyModifiers::NONE,
+            },
+        )))
+        .expect("armed hover moved");
+    put_c(c2827_bdd, pump);
+}
+
+#[then("未触发整帧重绘且悬停目标已送达")]
+pub(crate) fn t_c2827_hover_delivered_cheap(c2827_bdd: &C2827Bdd) {
+    let pump = take_c(c2827_bdd);
+    assert!(
+        pump.session.tui.pointer_hover_id().is_some(),
+        "armed probe must deliver a hover id"
+    );
+    assert!(
+        !pump.session.tui.ao_components_stale(),
+        "hover must not stale the component tree"
+    );
+    put_c(c2827_bdd, pump);
+}
+
 // ── r1262 空输入 Enter ───────────────────────────────────────────
 
 #[when("空输入按下 Enter")]

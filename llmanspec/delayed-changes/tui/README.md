@@ -12,3 +12,4 @@
 |---|---|
 | `c1940-add-tui-prompt-cache-footer/` | 与双交互族无关；仍 stay delayed |
 | `c2325-add-cross-surface-actions/` | 跨面动作 id 登记表；TUI 已交付 expand/collapseNearest；**不进 Host**；gpui 未开闸前不 promote |
+| `c2892-update-tui-compaction-session-divider/` | 压缩在对话条目里画成居中分割线（进行中 spinner + 可选单行流式摘要）；c2860 不预画 |

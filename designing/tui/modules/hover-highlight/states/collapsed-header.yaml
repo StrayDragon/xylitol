@@ -1,0 +1,9 @@
+id: hover-highlight.collapsed-header
+cols: 80
+must_contain:
+  - "▸"
+  - "Read"
+must_not_contain:
+  - "tool-body"
+lines:
+  - - { text: "▸ Read foo.rs  (Alt+E)", token: muted }

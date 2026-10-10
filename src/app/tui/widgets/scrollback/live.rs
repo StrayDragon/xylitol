@@ -12,7 +12,6 @@ use crate::app::tui::layout::LayoutTheme;
 use super::super::fold_hit::{FoldHitTable, FoldTarget};
 use super::super::glyphs::GlyphSet;
 use super::ScrollbackFold;
-use super::cache::marker_cols;
 use super::paint::{inter_block_spacer, key_hint, push_wrapped};
 
 #[allow(clippy::too_many_arguments)] // paint planes: lines, hits, activity, theme
@@ -32,17 +31,16 @@ pub(super) fn paint_envelope_header_row(
     let expanded = activity.effective_level(&seg.id) != SegmentLevel::L3;
     let dur = activity.duration_for(&seg.id);
     let plain = format_envelope_line(glyphs, dur.as_deref(), expanded);
-    let marker = if expanded {
-        glyphs.unfold()
-    } else {
-        glyphs.fold()
-    };
-    let mw = marker_cols(marker);
     let painted = theme.paint_muted(&plain);
     let row_start = lines.len();
     push_wrapped(lines, &painted, width);
     let row_end = lines.len();
-    fold_hits.push(row_start, 0, mw, FoldTarget::Segment(seg.id.clone()));
+    fold_hits.push(
+        row_start,
+        0,
+        width.max(1),
+        FoldTarget::Segment(seg.id.clone()),
+    );
     activity
         .row_spans
         .insert(seg.id.clone(), row_start, row_end);
@@ -87,16 +85,15 @@ pub(super) fn paint_cluster_header_row(
         progressive,
         thought_dur.as_deref(),
     );
-    let marker = if expanded {
-        glyphs.unfold()
-    } else {
-        glyphs.fold()
-    };
-    let mw = marker_cols(marker);
     let painted = theme.paint_muted(&plain);
     let row_start = lines.len();
     push_wrapped(lines, &painted, width);
-    fold_hits.push(row_start, 0, mw, FoldTarget::Cluster(cl.id.clone()));
+    fold_hits.push(
+        row_start,
+        0,
+        width.max(1),
+        FoldTarget::Cluster(cl.id.clone()),
+    );
     *need_spacer = true;
 }
 
@@ -142,19 +139,19 @@ pub(super) fn paint_folded_streaming_thought(
         } else {
             glyphs.fold()
         };
-        let mw = marker_cols(marker);
         let header = theme.paint_muted(&format!("{marker} Thinking  {}", key_hint("Ctrl+T")));
         let row_start = lines.len();
         push_wrapped(lines, &header, width);
-        fold_hits.push(
-            row_start,
-            0,
-            mw,
-            FoldTarget::Thinking(STREAMING_THINK_ID.to_string()),
-        );
         if expanded {
             push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
         }
+        fold_hits.push_rect(
+            row_start,
+            0,
+            width.max(1),
+            lines.len().saturating_sub(row_start).max(1),
+            FoldTarget::Thinking(STREAMING_THINK_ID.to_string()),
+        );
         return;
     }
 
@@ -162,16 +159,10 @@ pub(super) fn paint_folded_streaming_thought(
     let expanded = activity.cluster_kids_visible(&env_id, &cluster_id);
     let counts = streaming_thought_counts();
     let plain = format_cluster_header(glyphs, &counts, expanded, true, None);
-    let marker = if expanded {
-        glyphs.unfold()
-    } else {
-        glyphs.fold()
-    };
-    let mw = marker_cols(marker);
     let painted = theme.paint_muted(&plain);
     let row_start = lines.len();
     push_wrapped(lines, &painted, width);
-    fold_hits.push(row_start, 0, mw, FoldTarget::Cluster(cluster_id));
+    fold_hits.push(row_start, 0, width.max(1), FoldTarget::Cluster(cluster_id));
     if expanded {
         push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
     }

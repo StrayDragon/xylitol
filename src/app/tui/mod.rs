@@ -321,9 +321,10 @@ async fn run_host_loop(
                 if session.reload_active() {
                     session.push_toast_notice(self::commands::RELOADING_WAIT_NOTICE);
                 } else {
-                    let input = term_events
-                        .by_ref()
-                        .filter_map(|maybe| futures::future::ready(map_crossterm_item(maybe)));
+                    let motion = session.tui.pointer_probe_armed();
+                    let input = term_events.by_ref().filter_map(move |maybe| {
+                        futures::future::ready(map_crossterm_item(maybe, motion))
+                    });
                     run_interactive_reload(&mut session, driver, input).await?;
                     continue;
                 }
@@ -337,9 +338,10 @@ async fn run_host_loop(
                     );
                 } else {
                     // Shared bang loop (c715/c725): same crossterm→HostEvent map as main arms.
-                    let input = term_events
-                        .by_ref()
-                        .filter_map(|maybe| futures::future::ready(map_crossterm_item(maybe)));
+                    let motion = session.tui.pointer_probe_armed();
+                    let input = term_events.by_ref().filter_map(move |maybe| {
+                        futures::future::ready(map_crossterm_item(maybe, motion))
+                    });
                     run_interactive_bang(&mut session, driver, bash, &mut agent_stream, input)
                         .await?;
                     continue;
@@ -428,7 +430,8 @@ async fn run_host_loop(
                                 }
                                 session.apply_ao_wheel_delta(delta)?;
                                 if let Some(next) = deferred
-                                    && let Some(ev) = map_crossterm_item(next)
+                                    && let Some(ev) =
+                                        map_crossterm_item(next, session.tui.pointer_probe_armed())
                                 {
                                     match ev {
                                         Ok(host_ev) => session.step(host_ev)?,
@@ -438,7 +441,9 @@ async fn run_host_loop(
                                         }
                                     }
                                 }
-                            } else if let Some(ev) = map_crossterm_item(item) {
+                            } else if let Some(ev) =
+                                map_crossterm_item(item, session.tui.pointer_probe_armed())
+                            {
                                 match ev {
                                     Ok(host_ev) => session.step(host_ev)?,
                                     Err(e) => {
@@ -566,6 +571,7 @@ fn wheel_delta_from_item(item: &Result<Event, std::io::Error>, step: isize) -> O
 /// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).
 fn map_crossterm_item(
     item: Result<Event, std::io::Error>,
+    deliver_motion: bool,
 ) -> Option<Result<HostEvent, XyDriverError>> {
     match item {
         Ok(Event::Key(key)) => {
@@ -579,8 +585,7 @@ fn map_crossterm_item(
         Ok(Event::Resize(cols, rows)) => Some(Ok(HostEvent::Resize { cols, rows })),
         Ok(Event::Mouse(mouse)) => {
             let event = InputEvent::Mouse(mouse);
-            // Drop 1003 motion at the edge — never enter handle_input paint path.
-            if event.is_pointer_motion() {
+            if event.is_pointer_motion() && !deliver_motion {
                 None
             } else {
                 Some(Ok(HostEvent::Input(event)))

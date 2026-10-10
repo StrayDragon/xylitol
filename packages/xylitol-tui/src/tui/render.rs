@@ -97,11 +97,15 @@ impl<T: Terminal> TUI<T> {
         } else {
             self.last_render_at
         };
-        if let Some(last) = cadence_last {
-            let elapsed = last.elapsed();
-            if elapsed < std::time::Duration::from_millis(MIN_RENDER_INTERVAL_MS) {
-                return Ok(false);
-            }
+        // Fold / content rebuilds must paint in the same tick as the gesture so
+        // pointer hits stay aligned with the last frame. Wheel/hover reprojection
+        // still uses the cadence above (that path never sets ao_components_stale).
+        if !self.ao_components_stale
+            && cadence_last.is_some_and(|last| {
+                last.elapsed() < std::time::Duration::from_millis(MIN_RENDER_INTERVAL_MS)
+            })
+        {
+            return Ok(false);
         }
         self.render_requested = false;
         let now = std::time::Instant::now();

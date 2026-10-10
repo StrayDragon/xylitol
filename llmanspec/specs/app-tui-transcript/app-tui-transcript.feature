@@ -186,15 +186,25 @@
       当 按下和弦 Ctrl+T
       那么 思考默认展开态翻转且全部 per-id 覆盖清空
   @req:r1352
-  规则: mouse-fold-triangle-column-only
-    产品在 ApplicationOwned 下，对 att20/att21 范围内块：折叠命中 MUST 仅覆盖折叠三角列（单列可视宽）；点击摘要正文、旁注和弦或其它非三角列 MUST NOT 因此 toggle 折叠。transcript 拖选进行中 MUST 忽略折叠命中（不因划过三角而 toggle）。本要求不涵盖信封/簇头行；Ask 等待时 Asking questions 整行可点见 att31 与 att33。
+  规则: mouse-fold-leaf-header-and-empty-body
+    产品在 ApplicationOwned 下，对 att20/att21 范围内叶块（Tool / Diff / Ask / Thinking）：收起时折叠命中 MUST 覆盖块头全宽（含折叠标记）；展开后空选左键点 painted 正文 MUST 亦 toggle 该块。transcript 拖选进行中或已有选区 MUST 忽略折叠命中（不因划过而 toggle，MUST NOT 因此复制）。夹心助手正文 MUST NOT 登记为该叶块折叠命中。本要求不涵盖信封/簇头行（见 att31）；Compaction 保持三角列-only（见 att29）。Ask 等待时 Asking questions 整行可点见 att31 与 att33。
 
-    场景: mouse-fold-hit-triangle-column-only-headless
+    场景: mouse-fold-leaf-triangle-still-toggles-headless
       当 以场景构建器回放读后改写序列并封轮挂载交互面
       当 左键单击折叠命中表中的簇头三角列
-      当 点击该行折叠命中区右边界之外的一列
-      那么 折叠命中不消费且覆盖表为空
       当 再左键单击 "t-edit" 的工具块三角列
+      那么 该块经覆盖表收起且覆盖表只有这一个条目
+
+    场景: mouse-fold-leaf-header-full-width-headless
+      当 以场景构建器回放读后改写序列并封轮挂载交互面
+      当 左键单击折叠命中表中的簇头三角列
+      当 点击 "t-edit" 工具块头行非折叠标记列
+      那么 该块经覆盖表收起且覆盖表只有这一个条目
+
+    场景: mouse-fold-leaf-empty-body-collapses-headless
+      当 以场景构建器回放读后改写序列并封轮挂载交互面
+      当 左键单击折叠命中表中的簇头三角列
+      当 空选左键单击已展开 "t-read" 的 painted 正文
       那么 该块经覆盖表收起且覆盖表只有这一个条目
   @req:r1353
   规则: activity-nested-envelope-cluster
@@ -269,9 +279,15 @@
       当 左键单击 Compaction 块的折叠三角列
       那么 Compaction 全局展开态翻转
       并且 工具族覆盖表仍为空且工具族默认态未变
+
+    场景: compaction-fold-summary-does-not-toggle-headless
+      当 以场景构建器回放压缩事件并封轮挂载交互面
+      当 点击 Compaction 块摘要正文列而非折叠标记列
+      那么 Compaction 全局展开态未变
+      并且 工具族覆盖表仍为空且工具族默认态未变
   @req:r1361
   规则: output-viewport-hint-mouse
-    产品在 ApplicationOwned 下，对渲染 Ctrl+O 输出视口 expand/collapse hint 的块（含 Tool、Bash、独立 Diff 等凡展示该 hint 者）：左键单击可见 expand hint 带 MUST 仅翻转该块的输出视口展开态（全局默认 + 按块覆盖，或等价），MUST NOT 波及其他块；展开态块尾渲染的 fold 提示带单击 MUST 仅把该块折回。键盘 Ctrl+O（app.tools.expand）MUST 翻转全局默认并清除按块覆盖（与 Alt+E / Ctrl+T 的默认+覆盖模型同构）。命中几何 MUST 为 hint 文案可点带（非折叠三角列；att22 三角列-only 不适用本条）。Bash MUST NOT 另补块级 L1 折叠三角；其输出高度交互 MUST 走本条 Viewport。硬截断禁展开（att16）时 MUST NOT 因点击 hint 而展开全文。态变 MUST 遵守 ath25（单块覆盖切换仅重绘该块）。
+    产品在 ApplicationOwned 下，对渲染 Ctrl+O 输出视口 expand/collapse hint 的块（含 Tool、Bash、独立 Diff 等凡展示该 hint 者）：左键单击可见 expand hint 带 MUST 仅翻转该块的输出视口展开态（全局默认 + 按块覆盖，或等价），MUST NOT 波及其他块；展开态块尾渲染的 fold 提示带单击 MUST 仅把该块折回。键盘 Ctrl+O（app.tools.expand）MUST 翻转全局默认并清除按块覆盖（与 Alt+E / Ctrl+T 的默认+覆盖模型同构）。命中几何 MUST 为 hint 文案可点带（与叶块 L1 折叠命中分层，后登记赢）。Bash MUST NOT 另补块级 L1 折叠三角；其输出高度交互 MUST 走本条 Viewport。硬截断禁展开（att16）时 MUST NOT 因点击 hint 而展开全文。态变 MUST 遵守 ath25（单块覆盖切换仅重绘该块）。
 
     场景: output-viewport-hint-band-mouse-headless
       当 以场景构建器回放多行输出的工具并封轮挂载交互面
@@ -285,17 +301,20 @@
       那么 仅该块展开且另一块保持折叠且折叠带可点回折
   @req:r1362
   规则: envelope-cluster-fold-marker-mouse
-    产品在 ApplicationOwned 下，对信封与簇头行：左键单击折叠标记列（字形遵守 att19/att27；命中仅三角列）MUST 只 toggle 该级（信封或该簇），MUST NOT 使用 expandNearest/collapseNearest 启发式代替定点。单击摘要正文或旁注 MUST NOT 因此 toggle。对 Asking questions：整行可点 MUST 展开打开簇，属 att22 三角列-only 的例外。分层继承 att25：信封或簇折叠时 Alt+E、Ctrl+T、Ctrl+O 与 per-id 块级覆盖 MUST NOT 改变该折叠外观；被收纳块级折叠三角 MUST NOT 登记。态变 MUST 遵守 ath25。
+    产品在 ApplicationOwned 下，对信封与簇头行：左键单击块头行全宽（含折叠标记，字形遵守 att19/att27）MUST 只 toggle 该级（信封或该簇），MUST NOT 使用 expandNearest/collapseNearest 启发式代替定点。展开后的嵌套块与夹心助手正文 MUST NOT 登记为该级命中。对 Asking questions：整行可点 MUST 展开打开簇。分层继承 att25：信封或簇折叠时 Alt+E、Ctrl+T、Ctrl+O 与 per-id 块级覆盖 MUST NOT 改变该折叠外观；被收纳块级折叠三角 MUST NOT 登记。态变 MUST 遵守 ath25。
 
     场景: cluster-fold-marker-mouse-precise-headless
       当 以场景构建器回放读后改写序列并封轮挂载交互面
-      当 点击簇头行的摘要正文列而非三角列
-      那么 折叠命中不消费且覆盖表为空
       当 左键单击折叠命中表中的簇头三角列
+      那么 仅该簇被定点展开且内层块行可见
+
+    场景: cluster-header-full-width-mouse-headless
+      当 以场景构建器回放读后改写序列并封轮挂载交互面
+      当 点击簇头行的摘要正文列
       那么 仅该簇被定点展开且内层块行可见
   @req:r1363
   规则: remaining-fold-targets-unified-hit
-    产品对 att29–att31 剩余可点折叠目标（Compaction、OutputViewport、信封、簇）MUST 登记进与 att20/att21 同一折叠命中表及 ath33 hit_priority 路径；MUST NOT 另开第二套命中管道。transcript 拖选进行中 MUST 忽略这些折叠命中（与 att22/ath33 同构）。本条不要求新增 host latch 管道（ath33 已覆盖吞按与拖选忽略）。
+    产品对 att29–att31 剩余可点折叠目标（Compaction、OutputViewport、信封、簇）MUST 登记进与 att20/att21 同一折叠命中表及产品指针命中管线；MUST NOT 另开第二套命中管道。transcript 拖选进行中 MUST 忽略这些折叠命中（与 att22/ath33 同构）。本条不要求新增 host latch 管道（ath33 已覆盖空选单击与拖选忽略）。
 
     场景: remaining-fold-targets-unified-hit-table-headless
       当 以场景构建器回放压缩加多行输出并封轮挂载交互面

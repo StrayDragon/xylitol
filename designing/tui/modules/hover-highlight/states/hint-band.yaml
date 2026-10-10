@@ -1,0 +1,12 @@
+id: hover-highlight.hint-band
+cols: 80
+must_contain:
+  - "ctrl+o to expand"
+must_not_contain: []
+lines:
+  - - { text: "▎", token: success }
+    - { text: " $ cargo test", token: on-surface }
+  - - { text: "▎", token: success }
+    - { text: " ok", token: muted }
+  - - { text: "▎", token: success }
+    - { text: " ctrl+o to expand", token: muted }

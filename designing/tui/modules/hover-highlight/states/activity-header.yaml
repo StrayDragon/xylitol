@@ -1,0 +1,9 @@
+id: hover-highlight.activity-header
+cols: 80
+must_contain:
+  - "▸"
+  - "Explored"
+must_not_contain:
+  - "Planning next moves"
+lines:
+  - - { text: "▸ Explored 1 file  (Alt+Shift+E)", token: muted }

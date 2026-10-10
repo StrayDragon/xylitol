@@ -54,6 +54,6 @@ async fn test_c2826_ath_chain(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "fold-triangle-click-toggles-block"
+    name = "fold-pointer-click-toggles-block"
 )]
 fn test_c2826_ath_fold_click(tui_interaction: TuiInteraction) {}

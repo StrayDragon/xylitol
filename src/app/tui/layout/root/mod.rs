@@ -80,7 +80,7 @@ pub struct UiRoot {
     loaded_resources: LoadedResourcesSnapshot,
     ui_model: UiModel,
     fold: ScrollbackFold,
-    /// Triangle-column hit regions for ApplicationOwned mouse (c2040).
+    /// Fold hit regions for ApplicationOwned mouse (c2040 / c2860).
     fold_hits: FoldHitTable,
     /// Set when a fold triangle toggle mutates state; host marks AO stale.
     fold_dirty: bool,
@@ -469,8 +469,7 @@ impl UiRoot {
     }
 
     /// Left click at screen `(col, row)` through the product fold hit table —
-    /// the single toggle pipeline shared by the host hit-priority wiring and
-    /// BDD mouse injection (att20 / att22 / att29–att32).
+    /// BDD / headless injection. Host ApplicationOwned uses `take_pointer_click`.
     pub fn click_fold_at(&mut self, col: u16, row: u16) -> bool {
         if let Some(target) = self.fold_hits.hit(col, row) {
             self.toggle_fold_target(target);

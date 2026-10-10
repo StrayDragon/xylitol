@@ -1,0 +1,14 @@
+id: hover-highlight
+title: 悬停高亮
+category: 对话条目
+surface: tui
+summary: 悬停用引擎 dim 标出块头 / 可见左边轨 / 提示带，不洗输出正文。
+alignment:
+  fixed: 只作用于 transcript 可点折叠；输入坞（status / footer / 待办栏）不响应
+  item: 拖选文本时让位给选区，不叠加 dim
+todos:
+  - { done: true, text: "可交互块清单与命中区域划定（与折叠点击同一套 id）" }
+  - { done: true, text: "高亮走引擎 dim，不新开 hover-bg、不复活 tool-*-bg" }
+notes: |
+  点击区可以大于悬停区（展开叶块空选点正文可折，悬停不 dim 正文）。
+  目标切换廉价重投影，同 id 不整段重建组件树。

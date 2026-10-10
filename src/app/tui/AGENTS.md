@@ -31,7 +31,7 @@
 |---|---|
 | 滚动提示默认 **尾插**（跟底可见、保 paint-cache）；顶层原则与例外条件见 [`docs/architecture/TUI信息呈现与固定区词汇.md`](../../../docs/architecture/TUI信息呈现与固定区词汇.md)「信息分类 × 落点」；瞬时确认优先页脚 / 状态条 / 槽 | 无理由顶插；瞬时确认堆进滚动区 |
 | 渲染只用 `xylitol_tui`；缺能力先改包再接线；产品路径 **host 驱动** | 准通用实现塞进本端；产品调 demo 启动 API（`TUI::start()`） |
-| 鼠标默认 **ApplicationOwned**：host 启动构造时绑定（缺省 AO），begin 后开 capture，应用内选区 + dock 排除；折叠命中经 `set_transcript_hit_priority`；模式命名以包 AGENTS 硬约束为准（`Inline` / `ApplicationOwned`） | mid-session 热切；读 `XYLITOL_TUI_MOUSE`（lab env）；把 `XYLITOL_TUI_INLINE=1` 当产品旗标（仅 lab 窥视 Inline 构造） |
+| 鼠标默认 **ApplicationOwned**：host 启动构造时绑定（缺省 AO），begin 后开 capture，应用内选区 + dock 排除；折叠命中经 `replace_hits` + `take_pointer_click`（`UpIfEmptySelection`）；探针武装后扇入送达 Moved；模式命名以包 AGENTS 硬约束为准（`Inline` / `ApplicationOwned`） | mid-session 热切；读 `XYLITOL_TUI_MOUSE`（lab env）；把 `XYLITOL_TUI_INLINE=1` 当产品旗标（仅 lab 窥视 Inline 构造）；产品路径 `HitPriorityFn` |
 | Agent 只经产品信封客户端（端侧）或 Host 内 `XyDriver`（依赖纪律同 `src/AGENTS.md`） | 产品 TUI 默认同进程直握操作器 |
 | Trust 在 CLI 门禁（见 `docs/architecture/信任与项目门禁.md`）；本端 `EditorSlot::Choice` 已解冻给内置 `ask` | Plate / Settings stub 冻结期间扩展其功能或抢先落对应 spec |
 | 颜色走本端 theme token；已确认需求须先有 harness / BDD 护栏 | 另立 hex；没有护栏就先写实现 |

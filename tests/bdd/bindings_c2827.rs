@@ -88,6 +88,12 @@ fn test_ath_idle_tick(c2827_bdd: C2827Bdd) {}
 )]
 fn test_ath_mouse_moved(c2827_bdd: C2827Bdd) {}
 
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "mouse-moved-armed-probe-delivers-headless"
+)]
+fn test_ath_mouse_moved_armed_probe(c2827_bdd: C2827Bdd) {}
+
 // r1262 空输入 Enter
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",

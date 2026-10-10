@@ -425,7 +425,6 @@ pub(super) fn paint_thinking_block(
     } else {
         glyphs.fold()
     };
-    let mw = marker_cols(marker);
     let dur = elapsed_secs.filter(|s| *s > 0).map(format_elapsed_secs);
     let label = thought_header_body(dur.as_deref());
     let header = theme.paint_muted(&format!("{marker} {label}  {}", key_hint("Ctrl+T")));
@@ -434,11 +433,15 @@ pub(super) fn paint_thinking_block(
     block_hits.push(CachedFoldHit {
         row_offset: header_row,
         col_start: 0,
-        col_end: mw,
+        col_end: width.max(1),
+        height: 1,
         target: FoldTarget::Thinking(id.to_string()),
     });
     if expanded {
         push_wrapped(&mut lines, &theme.paint_muted(text), width);
+    }
+    if let Some(h) = block_hits.first_mut() {
+        h.height = lines.len().saturating_sub(header_row).max(1);
     }
     (lines, block_hits)
 }
@@ -470,7 +473,6 @@ pub(super) fn paint_tool_block(
     } else {
         glyphs.fold()
     };
-    let mw = marker_cols(marker);
     let header = paint_tool_header_line(theme, marker, name, args_preview, timeout_secs);
     let rgb = tool_rail_rgb(!done, is_error, theme);
     let mut block = Vec::new();
@@ -478,8 +480,9 @@ pub(super) fn paint_tool_block(
     push_wrapped(&mut block, &header, inner);
     block_hits.push(CachedFoldHit {
         row_offset: 0,
-        col_start: RAILED_MARKER_COL,
-        col_end: RAILED_MARKER_COL + mw,
+        col_start: 0,
+        col_end: width.max(1),
+        height: 1,
         target: FoldTarget::Tool(id.to_string()),
     });
 
@@ -556,6 +559,14 @@ pub(super) fn paint_tool_block(
 
     let mut lines = Vec::new();
     push_railed(&mut lines, &block, width, rgb);
+    if let Some(h) = block_hits
+        .iter_mut()
+        .find(|h| matches!(h.target, FoldTarget::Tool(_)))
+    {
+        h.height = lines.len().max(1);
+        h.col_start = 0;
+        h.col_end = width.max(1);
+    }
     (lines, block_hits)
 }
 
@@ -579,15 +590,15 @@ pub(super) fn paint_diff_block(
     } else {
         glyphs.fold()
     };
-    let mw = marker_cols(marker);
     let header = paint_tool_header_line(theme, marker, "diff", summary, None);
     let mut block = Vec::new();
     let mut block_hits = Vec::new();
     push_wrapped(&mut block, &header, inner);
     block_hits.push(CachedFoldHit {
         row_offset: 0,
-        col_start: RAILED_MARKER_COL,
-        col_end: RAILED_MARKER_COL + mw,
+        col_start: 0,
+        col_end: width.max(1),
+        height: 1,
         target: FoldTarget::Diff(key.clone()),
     });
     let rgb = tool_rail_rgb(false, false, theme);
@@ -605,6 +616,14 @@ pub(super) fn paint_diff_block(
     }
     let mut lines = Vec::new();
     push_railed(&mut lines, &block, width, rgb);
+    if let Some(h) = block_hits
+        .iter_mut()
+        .find(|h| matches!(h.target, FoldTarget::Diff(_)))
+    {
+        h.height = lines.len().max(1);
+        h.col_start = 0;
+        h.col_end = width.max(1);
+    }
     (lines, block_hits)
 }
 
@@ -689,13 +708,13 @@ pub(super) fn paint_ask_block(
     } else {
         glyphs.fold()
     };
-    let mw = marker_cols(marker);
     let header = paint_ask_header_line(theme, marker, summary, inner);
     let mut block = vec![fit(&header, inner)];
-    let block_hits = vec![CachedFoldHit {
+    let mut block_hits = vec![CachedFoldHit {
         row_offset: 0,
-        col_start: RAILED_MARKER_COL,
-        col_end: RAILED_MARKER_COL + mw,
+        col_start: 0,
+        col_end: width.max(1),
+        height: 1,
         target: FoldTarget::Ask(id.to_string()),
     }];
     if expanded {
@@ -705,6 +724,9 @@ pub(super) fn paint_ask_block(
     }
     let mut lines = Vec::new();
     push_railed(&mut lines, &block, width, ask_rail_rgb(phase, theme));
+    if let Some(h) = block_hits.first_mut() {
+        h.height = lines.len().max(1);
+    }
     (lines, block_hits)
 }
 
@@ -756,6 +778,7 @@ pub(super) fn paint_compaction_block(
                 row_offset: header_row,
                 col_start: 0,
                 col_end: mw,
+                height: 1,
                 target: FoldTarget::Compaction,
             });
             if fold.compaction_expanded && !summary.is_empty() {

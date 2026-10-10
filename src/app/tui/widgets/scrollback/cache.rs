@@ -13,6 +13,7 @@ pub(super) struct CachedFoldHit {
     pub(super) row_offset: usize,
     pub(super) col_start: usize,
     pub(super) col_end: usize,
+    pub(super) height: usize,
     pub(super) target: FoldTarget,
 }
 
@@ -165,10 +166,11 @@ pub(super) fn emit_block_hits(
     hits: &[CachedFoldHit],
 ) {
     for h in hits {
-        fold_hits.push(
+        fold_hits.push_rect(
             content_row_base.saturating_add(h.row_offset),
             h.col_start,
             h.col_end,
+            h.height,
             h.target.clone(),
         );
     }

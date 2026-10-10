@@ -17,9 +17,21 @@ fn test_att21_thinking_per_id(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "mouse-fold-hit-triangle-column-only-headless"
+    name = "mouse-fold-leaf-triangle-still-toggles-headless"
 )]
-fn test_att22_triangle_column_only(tui_interaction: TuiInteraction) {}
+fn test_att22_leaf_triangle_still_toggles(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "mouse-fold-leaf-header-full-width-headless"
+)]
+fn test_att22_leaf_header_full_width(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "mouse-fold-leaf-empty-body-collapses-headless"
+)]
+fn test_att22_leaf_empty_body(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
@@ -35,15 +47,33 @@ fn test_att31_cluster_precise(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "cluster-header-full-width-mouse-headless"
+)]
+fn test_att31_cluster_header_full_width(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
     name = "compaction-fold-triangle-mouse-headless"
 )]
 fn test_att29_compaction_triangle(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "compaction-fold-summary-does-not-toggle-headless"
+)]
+fn test_att29_compaction_summary_no_toggle(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
     name = "output-viewport-hint-band-mouse-headless"
 )]
 fn test_att30_viewport_hint_band(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
+    name = "output-viewport-fold-per-block-headless"
+)]
+fn test_att30_viewport_fold_per_block(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",

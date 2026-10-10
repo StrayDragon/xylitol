@@ -203,12 +203,17 @@
 
   @req:r1258
   规则: mouse-input-opt-in-no-moved-paint
-    产品 host 扇入 MUST 能将 crossterm Event::Mouse 映射为 HostEvent::Input(InputEvent::Mouse)（Moved 可在映射前丢弃）。Ready 态处理 Mouse 时：无 UI dirty / 未消费态变 MUST NOT request_render（含无态变 Moved）；消费态变（如 ApplicationOwned 拖选）MAY request_render。产品 MUST NOT 经 TerminalGuard / `XYLITOL_TUI_MOUSE` 在进 TTY 时默认开 mouse capture；ApplicationOwned 会话 begin 后的 capture 见 ath30。teardown MUST Disable mouse capture（尽探针所能断言 mouse mode 不残留）。MUST 提供 #[ignore] PTY 用例（经 just test-tui-e2e-pty 可跑）；默认 just qa MUST NOT 强制该用例。折叠点击语义不在本要求范围。
+    产品 host 扇入 MUST 能将 crossterm Event::Mouse 映射为 HostEvent::Input(InputEvent::Mouse)。ApplicationOwned 指针探针未武装时 Moved MAY 在映射前丢弃。探针武装后 Moved MUST 送达引擎；无命中或悬停目标未变 MUST NOT 因此整帧重绘。Ready 态处理 Mouse 时：无 UI dirty / 未消费态变 MUST NOT request_render（含无命中 Moved）；消费态变（如 ApplicationOwned 拖选或悬停目标切换）MAY request_render。产品 MUST NOT 经 TerminalGuard / `XYLITOL_TUI_MOUSE` 在进 TTY 时默认开 mouse capture；ApplicationOwned 会话 begin 后的 capture 见 ath30。teardown MUST Disable mouse capture（尽探针所能断言 mouse mode 不残留）。MUST 提供 #[ignore] PTY 用例（经 just test-tui-e2e-pty 可跑）；默认 just qa MUST NOT 强制该用例。折叠点击语义不在本要求范围。
 
     场景: mouse-moved-no-repaint
       假如 以主机泵在空闲态渲染基线帧
       当 注入无态变的鼠标移动
       那么 未触发整帧重绘
+
+    场景: mouse-moved-armed-probe-delivers-headless
+      假如 以主机泵在空闲态渲染基线帧
+      当 指针探针已武装并注入落在折叠块头的鼠标移动
+      那么 未触发整帧重绘且悬停目标已送达
     # verified-by: src/app/tui/host/mod.rs
   @req:r1260
   规则: interaction-mode-application-owned-default
@@ -233,13 +238,13 @@
       当 空输入按下 Enter
       那么 未创建提交且仍在编辑器槽
   @req:r1263
-  规则: fold-triangle-hit-priority
-    产品 TUI 在 ApplicationOwned 会话下 MUST 将 live scrollback 折叠三角命中表接到库 set_transcript_hit_priority（或等价）：Left Down 命中三角列时 MUST 吞按下、清除 transcript 选区且不启拖选，并触发 att20/att21 的单块 toggle；未命中时 MUST 保持既有选区/dock/Editor 路径。transcript 拖选进行中 MUST 不重新消费折叠命中。产品 MUST NOT 经 XYLITOL_TUI_MOUSE 作为折叠开关。验证 MUST 含无真 TTY harness（合成 Mouse）。
+  规则: fold-pointer-hit
+    产品 TUI 在 ApplicationOwned 会话下 MUST 将 live scrollback 折叠命中接到引擎指针命中管线：空选左键命中已登记折叠区时 MUST 清除 transcript 选区且不启拖选，并触发该目标的定点 toggle；未命中时 MUST 保持既有选区/dock/Editor 路径。有选区或拖选进行中 MUST 不消费折叠命中、MUST NOT 因此复制。产品 MUST NOT 经 XYLITOL_TUI_MOUSE 作为折叠开关。验证 MUST 含无真 TTY harness（合成 Mouse）。
 
-    场景: fold-triangle-click-toggles-block
+    场景: fold-pointer-click-toggles-block
       当 以场景构建器回放读后改写序列并封轮挂载交互面
       并且 左键单击折叠命中表中的簇头三角列
-      那么 簇即为折叠收纳态且无内层块登记
+      那么 仅该簇被定点展开且内层块行可见
   @req:r1264
   规则: attach-tick-no-blocking-rpc
     产品 TUI attach 路径的 host 循环在 idle/busy tick 与 drain_pending 中 MUST NOT 同步阻塞等待 Host unary（含 get_state / current_model / MCP settle）。status spinner MUST 在 Host 慢连接或写者 unary 进行中仍能换帧；键入 MUST 仍可进入 editor。写者 unary（含 SetModel）MUST NOT 在返回前等待全部 MCP 连接完成。模型列表打开与选定 MUST 在 MCP 未结算时仍可操作（选定可走 NextTurn）。
