@@ -3,6 +3,9 @@
 //! Anthropic: no local vocab crate — prefer response `usage` (Api) or
 //! `count_tokens` (RemoteCount); otherwise Heuristic. The abandoned
 //! `claude-tokenizer` crate is intentionally not used.
+//!
+//! OpenAI model→encoding SSOT is tiktoken-rs `get_tokenizer` (not a local
+//! prefix table). Product only exposes o200k / cl100k / o200k_harmony.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -333,6 +336,50 @@ mod tests {
     fn builtin_openai_counts_nonzero() {
         let n = BuiltinTokenizer::OpenAiCl100k.encode_count("hello world");
         assert!(n > 0);
+    }
+
+    /// Family probes only — snapshot aliases belong in tiktoken-rs, not here.
+    #[test]
+    fn for_model_id_follows_filtered_tiktoken() {
+        for id in [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "openai/gpt-4o-mini",
+            "gpt-4",
+            "gpt-3.5-turbo",
+            "gpt-5",
+            "gpt-4.1",
+            "o1",
+            "gpt-oss-20b",
+            "text-davinci-003",
+            "claude-opus-4",
+            "qwen-custom",
+        ] {
+            assert_eq!(
+                BuiltinTokenizer::for_model_id(id),
+                expected_from_tiktoken(id),
+                "{id}"
+            );
+        }
+        assert_eq!(
+            BuiltinTokenizer::for_model_id("gpt-5"),
+            Some(BuiltinTokenizer::OpenAiO200k)
+        );
+        assert_ne!(
+            BuiltinTokenizer::for_model_id("gpt-5"),
+            Some(BuiltinTokenizer::OpenAiCl100k)
+        );
+    }
+
+    fn expected_from_tiktoken(model_id: &str) -> Option<BuiltinTokenizer> {
+        let id = model_id.to_ascii_lowercase();
+        let leaf = id.rsplit('/').next().unwrap_or(id.as_str());
+        if leaf.starts_with("claude") {
+            return None;
+        }
+        tiktoken_rs::tokenizer::get_tokenizer(&id)
+            .or_else(|| tiktoken_rs::tokenizer::get_tokenizer(leaf))
+            .and_then(BuiltinTokenizer::from_tiktoken)
     }
 
     /// Cross-vocab counts after tiktoken-rs 0.12. Harmony shares o200k BPE;

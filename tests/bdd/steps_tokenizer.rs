@@ -662,3 +662,31 @@ fn t_rc19_on(tokenizer_bdd: &TokenizerBdd) {
             .is_on()
     );
 }
+
+#[when("解析未配置 tokenizer 的模型 id")]
+fn w_paa_builtin_resolve() {}
+
+#[then("gpt-4o 为 o200k 且 gpt-4 为 cl100k 且 gpt-5 不为 cl100k 且 Claude 与未收录别名为未映射")]
+fn t_paa_builtin_follows_tiktoken() {
+    use xylitol_ai_bridge::registry::{TokenizerSource, resolve_tokenizer};
+    use xylitol_ai_bridge::tokenize::BuiltinTokenizer;
+
+    assert_eq!(
+        resolve_tokenizer("gpt-4o"),
+        Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiO200k))
+    );
+    assert_eq!(
+        resolve_tokenizer("gpt-4"),
+        Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiCl100k))
+    );
+    assert_ne!(
+        resolve_tokenizer("gpt-5"),
+        Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiCl100k))
+    );
+    assert_eq!(
+        resolve_tokenizer("gpt-5"),
+        Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiO200k))
+    );
+    assert!(resolve_tokenizer("claude-opus-4").is_none());
+    assert!(resolve_tokenizer("qwen-custom").is_none());
+}

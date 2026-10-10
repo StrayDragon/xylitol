@@ -45,7 +45,7 @@ OpenAI-like / Anthropic-like upstream
 | OpenAI Responses **流式**：`create_stream_byot::<_, Value>`，按事件 `type` 宽松匹配（兼容端常缺字段） | 把 SSE 默认绑死在 typed `ResponseStreamEvent`（如缺 `created_at` 的 `response.created` 会炸） |
 | hooks 经 SDK **middleware**（或文档化等价点）接到可移植 HeaderBag/JSON body | agent/protocol import 本包 `provider` / vendor SDK 类型 |
 | DTO **不含** session 环境角色的平行 enum；主仓 MAY `pub use` DTO 组合 `AgentMessage::Llm` | 与 `AgentMessage` 全量孪生 + JSON 往返「对齐」 |
-| accounting：Api → RemoteCount → LocalTokenizer → Heuristic | 把 Heuristic 标成 Api；TextDelta 热路径全文 encode |
+| accounting：Api → RemoteCount → LocalTokenizer → Heuristic；Builtin 模型表 SSOT = tiktoken-rs `get_tokenizer` | 把 Heuristic 标成 Api；TextDelta 热路径全文 encode；平行 gpt-* 前缀表 |
 
 ## 包内模块边界
 

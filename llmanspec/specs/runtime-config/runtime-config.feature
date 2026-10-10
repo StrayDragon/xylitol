@@ -125,7 +125,7 @@
       那么 成功且 map 为空或缺省
   @req:r1729
   规则: model-entry-tokenizer
-    ModelsConfig 的 ModelEntry MUST 支持可选字符串字段 tokenizer：可为顶层 tokenizers 表中的名字、HF owner/repo、本地路径或 builtin；AppConfig MUST 支持可选顶层 tokenizers 映射（条目含 repo/file 或 path）供多模型共用同一词表源；缺省 tokenizer 时 MUST 回退 registry builtin 启发式或视为未映射，MUST NOT 用推理用 model id 静默假定 HF 仓库。
+    ModelsConfig 的 ModelEntry MUST 支持可选字符串字段 tokenizer：可为顶层 tokenizers 表中的名字、HF owner/repo、本地路径或 builtin；AppConfig MUST 支持可选顶层 tokenizers 映射（条目含 repo/file 或 path）供多模型共用同一词表源；缺省 tokenizer 时 MUST 回退 bridge builtin 映射（tiktoken 模型表，见 package-ai-bridge-accounting）或视为未映射，MUST NOT 用推理用 model id 静默假定 HF 仓库。
 
     场景: tokenizer-hf-ok
       假如 YAML 含 tokenizers.qwen36.repo 且模型条目 tokenizer 为 qwen36

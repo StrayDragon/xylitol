@@ -43,7 +43,7 @@ pub fn builtin_tokenizer_for(model_id: &str) -> Option<TokenizerSource> {
     BuiltinTokenizer::for_model_id(model_id).map(TokenizerSource::Builtin)
 }
 
-/// Resolve tokenizer: optional config override, then builtin heuristics.
+/// Resolve tokenizer: optional config override, then tiktoken builtin mapping.
 pub fn resolve_tokenizer(model_id: &str) -> Option<TokenizerSource> {
     resolve_tokenizer_with_override(model_id, None)
 }
@@ -97,49 +97,15 @@ mod tests {
     }
 
     #[test]
-    fn modern_openai_maps_to_o200k_not_cl100k() {
-        for id in [
-            "gpt-5",
-            "gpt-5-mini",
-            "gpt-5.2",
-            "gpt-4.1",
-            "gpt-4.1-mini",
-            "o4-mini",
-            "codex-mini",
-            "openai/gpt-5-mini",
-        ] {
-            assert_eq!(
-                resolve_tokenizer(id),
-                Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiO200k)),
-                "{id}"
-            );
-        }
-    }
-
-    #[test]
-    fn gpt4_family_stays_cl100k() {
-        for id in ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"] {
-            assert_eq!(
-                resolve_tokenizer(id),
-                Some(TokenizerSource::Builtin(BuiltinTokenizer::OpenAiCl100k)),
-                "{id}"
-            );
-        }
-    }
-
-    #[test]
-    fn gpt_oss_maps_to_harmony() {
-        assert_eq!(
-            resolve_tokenizer("gpt-oss-20b"),
-            Some(TokenizerSource::Builtin(
-                BuiltinTokenizer::OpenAiO200kHarmony
-            ))
-        );
-    }
-
-    #[test]
     fn unknown_model_returns_none() {
         assert!(resolve_tokenizer("unknown-model-xyz").is_none());
+    }
+
+    #[test]
+    fn override_builtin_unmapped_uses_o200k_fallback() {
+        let src = resolve_tokenizer_with_override("qwen-custom", Some(TokenizerOverride::Builtin))
+            .unwrap();
+        assert_eq!(src, TokenizerSource::Builtin(BuiltinTokenizer::FALLBACK));
     }
 
     #[test]
