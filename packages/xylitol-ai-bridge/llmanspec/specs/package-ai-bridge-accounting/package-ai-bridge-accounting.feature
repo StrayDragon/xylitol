@@ -39,8 +39,13 @@
     # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
   @req:r1568
   规则: LocalTokenizer-注册与缓存
-    LocalTokenizer MUST 经 registry 将 model_id 映射到 Builtin、HuggingFace tokenizer.json 或本地 path 源（用户配置优先于 builtin 启发式）；HuggingFace 文件下载 MUST 为 opt-in 或显式 prefetch，默认 MUST NOT 静默拉取大文件；缓存命中或 local path 可用后 MUST 可离线加载。
+    LocalTokenizer MUST 经 registry 将 model_id 映射到 Builtin、HuggingFace tokenizer.json 或本地 path 源（用户配置优先于 builtin）；HuggingFace 文件下载 MUST 为 opt-in 或显式 prefetch，默认 MUST NOT 静默拉取大文件；缓存命中或 local path 可用后 MUST 可离线加载。Builtin 对 OpenAI 族 MUST 与 tiktoken 模型表一致（现代 GPT / o / Codex → o200k；GPT-4 / 3.5 → cl100k；gpt-oss → o200k_harmony）；Anthropic 与表外 id MUST 视为未映射。MUST NOT 把未点名的 gpt-* 一律当作 cl100k。
+    # verified-by: packages/xylitol-ai-bridge/src/tokenize/mod.rs
     # verified-by: llmanspec/specs/cli-entry/cli-entry.feature
+
+    场景: builtin-follows-tiktoken-table
+      当 解析未配置 tokenizer 的模型 id
+      那么 gpt-4o 为 o200k 且 gpt-4 为 cl100k 且 gpt-5 不为 cl100k 且 Claude 与未收录别名为未映射
   @req:r1569
   规则: openai-responses-remote-count
     当模型路径为 OpenAI Responses（或声明兼容 input_tokens 的端点）且 RemoteCount 已启用时，估计上下文 MUST 可经 POST /v1/responses/input_tokens（或配置的 base_url 等价路径）取得 input_tokens 并标 provenance 为 RemoteCount；非 Responses 路径 MUST NOT 伪造该远程调用成功。

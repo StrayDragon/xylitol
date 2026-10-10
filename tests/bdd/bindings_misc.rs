@@ -131,6 +131,12 @@ fn test_paa9_mirror(tokenizer_bdd: TokenizerBdd) {}
 )]
 fn test_paa9_default(tokenizer_bdd: TokenizerBdd) {}
 
+#[scenario(
+    path = "packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    name = "builtin-follows-tiktoken-table"
+)]
+fn test_paa_builtin_follows_tiktoken() {}
+
 #[test]
 fn curated_xy_hook_bus_symbols_resolve() {
     fn assert_port<T: ?Sized>() {}
