@@ -72,7 +72,7 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 
 产品 / 自写 host **MUST** 以 `examples/host_loop_application_owned.rs`（`just demo-tui-host-loop`）为样板；**禁止**把 `agent_demo_impl` 私有坐标算术当 SSOT。
 
-构造 `ApplicationOwnedTui`（或 `TUI::with_interaction_mode(..., ApplicationOwned)`）→ `begin_application_owned_session` → host 驱动 `dispatch_event` / `idle_tick` / `try_render`（**勿**产品路径调 `TUI::start()`）→ 每帧 `set_dock_rows` → Editor 用 `editor_screen_origin` 收**绝对** screen 坐标 → `mouse_in_dock` 过滤 dock → 折叠命中 `set_transcript_hit_priority` → 复制走 `take_copy_notice` / Editor OSC52 → 退出 `finish`。挂起用 `with_terminal_suspended`（ApplicationOwned 自动重进 alt+mouse）。
+构造 `ApplicationOwnedTui`（或 `TUI::with_interaction_mode(..., ApplicationOwned)`）→ `begin_application_owned_session` → host 驱动 `dispatch_event` / `idle_tick` / `try_render`（**勿**产品路径调 `TUI::start()`）→ 每帧 `set_dock_rows` → Editor 用 `editor_screen_origin` 收**绝对** screen 坐标 → `mouse_in_dock` 过滤 dock → 命中优先 `mark_hit(Hit::on_line(id, line).cols(..))`（正文随滚动）或 `Hit::at_cell(id, col, row)`（钉在可见格）；`set_hit_regions` 是引擎整表替换。不透明 id；`set_transcript_hit_priority` 仍可用 → 相位 / 探针 `set_pointer_click_phase` / `arm_pointer_probe` / `take_pointer_click` → 复制走 `take_copy_notice` / Editor OSC52 → 退出 `finish`。挂起用 `with_terminal_suspended`（ApplicationOwned 自动重进 alt+mouse）。**禁止**把产品 `FoldTarget` 写进本包。host **不必**自算 `content_row = scroll_top + screen_row`。
 
 ## 验证（本文件 = 人类/agent 验证分工 SSOT）
 

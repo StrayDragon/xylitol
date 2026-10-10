@@ -8,7 +8,7 @@
 //! # Minimal ApplicationOwned host loop
 //!
 //! ```ignore
-//! use xylitol_tui::{ApplicationOwnedTui, InputEvent, InteractionMode, TUI};
+//! use xylitol_tui::{ApplicationOwnedTui, Hit, InputEvent, InteractionMode, TUI};
 //!
 //! let mut tui = ApplicationOwnedTui::new(terminal);
 //! tui.terminal_mut().start();
@@ -20,6 +20,11 @@
 //!     if tui.idle_tick() { let _ = tui.try_render(); }
 //!     // after paint / dock measure:
 //!     // editor.set_screen_origin(editor_screen_origin(rows, dock, above).0, 0);
+//!     // tui.replace_hits([
+//!     //     Hit::on_line(fold_id, line).cols(0, 1),      // follows transcript
+//!     //     Hit::at_cell(btn_id, col, row).capturing(),  // stays on screen
+//!     // ]);
+//!     if let Some(_id) = tui.take_pointer_click() { /* host maps id */ }
 //!     if quit { break; }
 //! }
 //! tui.finish(); // leave alt; append session to main scrollback by default

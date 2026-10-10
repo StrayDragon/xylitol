@@ -2,6 +2,10 @@
 depends_on: []
 blocks:
   - c2860-add-tui-block-click-hover
+branch: sdd/c2858-add-package-tui-pointer-hit-pipeline
+base_branch: main
+base_sha: a536bf44690e36ba8a9e215b432e7a21324daebd
+needs_specs_change: false
 ---
 
 # 引擎指针命中管线（click / hover / capture）
@@ -24,7 +28,7 @@ ratatui 并不更强：widget **不收鼠标**，app 用上一帧 `Rect.contains
 
 ## What Changes
 
-- 包层 `HitRegionList`：`{id: u64, content_row, col_start, col_end, height?}` + 事件时刻用 `ScrollView.scroll_top` 做 screen→id（不要用 host 上一帧拷贝的 scroll_top）。
+- 包层 host API `Hit::on_line` / `Hit::at_cell` + `TUI::mark_hit`（引擎存储仍是 `HitRegionList`）。正文行事件时刻用 live `scroll_top` 做 screen→id；可见格钉屏，滚动不漂移。host 不必自算 `content_row = scroll_top + screen_row`。
 - 手势相位 **默认 `DownSwallow`**（今日 ath33）。可选 `UpIfEmptySelection`：Up 仅当无选区且位移为 0 才报 click；Drag 永不进 click。
 - 可选 pointer-probe：武装后 `Moved` 送到探针；id 未变 **不排帧**；id 变则 **reproject + 可见行 overlay**（学 `apply_highlight`），MUST NOT `ao_components_stale`。
 - z / capture：Overlay 与 capturing region 在选区 **之前**；Down 命中则后续 Drag/Up 直到松开不启 transcript 拖选。
@@ -41,7 +45,8 @@ ratatui 并不更强：widget **不收鼠标**，app 用上一帧 `Rect.contains
 
 ## Capabilities
 
-- `package-tui-interaction-modes`（扩展 r1632：探针是同一管道的 opt-in，不是第二套事件源）
+- `package-tui-pointer`（新：命中区 / click 相位 / 探针 / capture / 廉价悬停绘出）
+- `package-tui-interaction-modes` r1632 **不改句**（无态 Moved 仍不得强制整帧；探针是同一管道的 opt-in）
 
 ## Impact
 
@@ -49,11 +54,13 @@ ratatui 并不更强：widget **不收鼠标**，app 用上一帧 `Rect.contains
 - 新产品测走 `dispatch_event` 直驱；产品 fan-in 仍丢 Moved，直到 c2860 停丢。
 - `agent_demo` / `host_loop_application_owned` 可演示通用 hit id，不必 import 主 crate。
 
-## Open Questions
+## Decisions
 
-1. 相位 API：`DownSwallow | UpIfEmptySelection` 枚举（推荐）vs 两个回调？
-2. hover overlay 是否复用 selection invert 通道，还是独立 muted tint 层（推荐独立，invert 留给选区）？
+1. 相位用枚举 `DownSwallow`（默认）/ `UpIfEmptySelection`，不用双回调。
+2. hover 独立 muted tint 层，不复用 selection invert。
 
 ## Further Notes
 
 - 管道与 ratatui 对照：[research/pointer-pipeline.md](./research/pointer-pipeline.md)
+- 决策与缝：[design.md](./design.md)
+- 可执行合约 SSOT：`packages/xylitol-tui/llmanspec/specs/package-tui-pointer/`（`package-tui-*` 落在嵌套包实例）。根 specs-landed 只扫 `llmanspec/specs/`，且 `@req` 跨根必须唯一，故不在根树再抄一份；本 change 标 `needs_specs_change: false` 以过 apply 门。

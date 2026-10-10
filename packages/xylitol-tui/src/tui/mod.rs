@@ -1,6 +1,8 @@
 use crate::application_owned_runtime::ApplicationOwnedRuntime;
 use crate::interaction_mode::InteractionMode;
+use crate::pointer::{Hit, HitId, HitRegionList, PointerClickPhase, PointerPipeline, PointerView};
 use crate::scroll_view::ScrollView;
+use crate::selection::ScreenRect;
 use crate::terminal::Terminal;
 use crossterm::event::{KeyEvent, KeyEventKind, MouseEvent, MouseEventKind};
 use std::sync::Arc;
@@ -246,6 +248,8 @@ pub struct TUI<T: Terminal> {
     /// survives ApplicationOwnedRuntime recreate (suspend / begin); swapped
     /// onto the live selection controller for each mouse dispatch.
     transcript_hit_priority: Option<crate::selection::HitPriorityFn>,
+    /// Pointer hit pipeline (regions / phase / probe). Survives runtime recreate.
+    pointer: PointerPipeline,
     /// When true (default), [`Self::finish_application_owned`] appends the
     /// session transcript (+ last dock) to the **main-screen** terminal
     /// scrollback after leaving the alternate buffer — so the user can still
@@ -294,6 +298,7 @@ impl<T: Terminal> TUI<T> {
             dock_rows: 3,
             transcript_copy_on_release: true,
             transcript_hit_priority: None,
+            pointer: PointerPipeline::default(),
             append_session_to_main_scrollback_on_exit: true,
         }
     }
@@ -444,6 +449,80 @@ impl<T: Terminal> TUI<T> {
         self.transcript_hit_priority = hit;
     }
 
+    /// Replace the entire hit table. Empty ≡ unhooked (today's mouse).
+    /// Prefer [`Self::clear_hits`] / [`Self::mark_hit`] with [`Hit`].
+    pub fn set_hit_regions(&mut self, regions: HitRegionList) {
+        self.pointer.set_regions(regions);
+    }
+
+    pub fn hit_regions(&self) -> &HitRegionList {
+        self.pointer.regions()
+    }
+
+    pub fn hit_regions_mut(&mut self) -> &mut HitRegionList {
+        self.pointer.regions_mut()
+    }
+
+    /// Drop every registered hit. Empty table ≡ unhooked mouse.
+    pub fn clear_hits(&mut self) {
+        self.pointer.regions_mut().clear();
+    }
+
+    /// Register one host-facing [`Hit`] (`on_line` follows scroll; `at_cell` stays on screen).
+    pub fn mark_hit(&mut self, hit: Hit) {
+        self.pointer.regions_mut().mark(hit);
+    }
+
+    /// Clear then register a frame's worth of hits.
+    pub fn replace_hits(&mut self, hits: impl IntoIterator<Item = Hit>) {
+        self.clear_hits();
+        for hit in hits {
+            self.mark_hit(hit);
+        }
+    }
+
+    pub fn set_pointer_click_phase(&mut self, phase: PointerClickPhase) {
+        self.pointer.set_phase(phase);
+    }
+
+    pub fn pointer_click_phase(&self) -> PointerClickPhase {
+        self.pointer.phase()
+    }
+
+    /// Arm the pointer probe on the same `InputEvent::Mouse` pipe (r1933).
+    pub fn arm_pointer_probe(&mut self, armed: bool) {
+        self.pointer.arm_probe(armed);
+    }
+
+    pub fn pointer_probe_armed(&self) -> bool {
+        self.pointer.probe_armed()
+    }
+
+    pub fn pointer_hover_id(&self) -> Option<HitId> {
+        self.pointer.hover_id()
+    }
+
+    /// Consume the last classified pointer click (DownSwallow on Down,
+    /// UpIfEmptySelection on a no-drag Up).
+    pub fn take_pointer_click(&mut self) -> Option<HitId> {
+        self.pointer.take_click()
+    }
+
+    /// Screen → hit id using the live ApplicationOwned scroll position.
+    pub fn hit_id_at(&self, col: u16, row: u16) -> Option<HitId> {
+        let rows = self.terminal.rows();
+        let transcript_rows = rows.saturating_sub(self.dock_rows.min(rows as usize) as u16);
+        self.pointer.hit_at(
+            col,
+            row,
+            PointerView {
+                scroll_top: self.application_owned_scroll_top(),
+                transcript_rows,
+                overlay_capturing: false,
+            },
+        )
+    }
+
     /// After leaving alt-screen, append the session transcript (+ last dock)
     /// into the terminal's **main** scrollback so history remains readable
     /// (default **on**). Set `false` to tear down without writing those lines.
@@ -484,6 +563,31 @@ impl<T: Terminal> TUI<T> {
         self.application_owned
             .as_ref()
             .is_some_and(|runtime| runtime.has_selection())
+    }
+
+    /// Whether a transcript drag is in progress (including empty click-down).
+    pub fn application_owned_is_dragging(&self) -> bool {
+        self.application_owned
+            .as_ref()
+            .is_some_and(|runtime| runtime.selection.is_dragging())
+    }
+
+    fn capturing_overlay_contains(&self, col: u16, row: u16) -> bool {
+        self.overlays.iter().any(|(_comp, opts, entry)| {
+            !opts.non_capturing
+                && self.is_overlay_entry_visible(entry)
+                && entry
+                    .last_screen_rect
+                    .is_some_and(|rect: ScreenRect| rect.contains(col, row))
+        })
+    }
+
+    fn sync_pointer_hover_into_runtime(&mut self) {
+        let hover_id = self.pointer.hover_id();
+        let regions = self.pointer.regions().clone();
+        if let Some(runtime) = self.application_owned.as_mut() {
+            runtime.set_hover(hover_id, regions);
+        }
     }
 
     /// Register a pre-focus input listener. Returns an id for
@@ -865,25 +969,46 @@ impl<T: Terminal> TUI<T> {
             }
             let cols = self.terminal.columns();
             let rows = self.terminal.rows();
-            let wheel_in_transcript = is_wheel
-                && mouse.row < rows.saturating_sub(self.dock_rows.min(rows as usize) as u16);
+            let transcript_rows = rows.saturating_sub(self.dock_rows.min(rows as usize) as u16);
+            let wheel_in_transcript = is_wheel && mouse.row < transcript_rows;
+            let overlay_capturing = self.capturing_overlay_contains(mouse.column, mouse.row);
+            let scroll_top = self.application_owned_scroll_top();
+            let outcome = self.pointer.on_mouse(
+                mouse,
+                PointerView {
+                    scroll_top,
+                    transcript_rows,
+                    overlay_capturing,
+                },
+            );
             // Park hit-priority on the live selection for this dispatch so
             // c2040 fold hooks survive runtime recreate (suspend / begin).
             let hit = self.transcript_hit_priority.take();
             let dirty = if let Some(runtime) = self.application_owned.as_mut() {
                 runtime.selection.set_hit_priority(hit);
-                let dirty = runtime.handle_mouse(mouse, cols, rows);
+                let dirty = if outcome.skip_selection {
+                    runtime.clear_selection();
+                    false
+                } else {
+                    runtime.handle_mouse(mouse, cols, rows)
+                };
                 self.transcript_hit_priority = runtime.selection.take_hit_priority();
                 dirty
             } else {
                 self.transcript_hit_priority = hit;
                 false
             };
+            if outcome.hover_changed {
+                // Cheap hover paint: reproject visible overlay, MUST NOT stale components.
+                self.ao_wheel_render_requested = true;
+                self.sync_pointer_hover_into_runtime();
+                return InputReaction::Rerender;
+            }
             if force_rerender {
                 // Editor pointer clear needs Component::render for dock highlight.
                 self.ao_components_stale = true;
             }
-            if dirty {
+            if dirty || (outcome.skip_selection && outcome.consume) {
                 // Scroll/selection only: keep component cache, reproject viewport.
                 // Copied chrome is armed by the host via take_copy_notice → mark stale.
                 if is_wheel {

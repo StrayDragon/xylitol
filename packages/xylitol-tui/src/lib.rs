@@ -12,6 +12,7 @@ pub mod keybindings;
 pub mod keys;
 pub mod kill_ring;
 pub mod paste_burst;
+pub mod pointer;
 pub mod scroll_view;
 pub mod selection;
 pub mod terminal;
@@ -80,6 +81,10 @@ pub use keys::{
     printable_from_key_event, set_kitty_protocol_active, with_kitty_protocol_active,
 };
 pub use paste_burst::PasteBurst;
+pub use pointer::{
+    Hit, HitId, HitRegion, HitRegionList, HitSpace, PointerClickPhase, PointerOutcome,
+    PointerPipeline, PointerView, apply_hover_tint,
+};
 pub use scroll_view::ScrollView;
 pub use selection::{
     CellPoint, ClipboardSink, HitPriorityFn, RecordingClipboardSink, ScreenRect,

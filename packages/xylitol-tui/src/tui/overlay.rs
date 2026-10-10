@@ -1,4 +1,5 @@
 use super::{Component, TUI};
+use crate::selection::ScreenRect;
 use crate::terminal::Terminal;
 use crate::utils::visible_width;
 
@@ -98,6 +99,8 @@ pub(super) struct OverlayStackEntry {
     pub(super) pre_focus: Option<FocusTarget>,
     pub(super) hidden: bool,
     focus_order: u64,
+    /// Last painted overlay box in screen cells (for pointer capture).
+    pub(super) last_screen_rect: Option<ScreenRect>,
 }
 
 /// Handle returned by [`TUI::show_overlay`] for controlling one overlay entry.
@@ -152,6 +155,7 @@ impl<T: Terminal> TUI<T> {
             pre_focus: self.current_focus_target(),
             hidden: false,
             focus_order: self.focus_order_counter,
+            last_screen_rect: None,
         };
         let capturing = !options.non_capturing;
         self.overlays.push((component, options, entry));
@@ -585,6 +589,12 @@ impl<T: Terminal> TUI<T> {
                 term_width,
                 term_height,
             );
+            self.overlays[*idx].2.last_screen_rect = Some(ScreenRect {
+                row: row.min(u16::MAX as usize) as u16,
+                col: col.min(u16::MAX as usize) as u16,
+                height: ov_lines.len().min(u16::MAX as usize) as u16,
+                width: layout.width.min(u16::MAX as usize) as u16,
+            });
             rendered.push((ov_lines, row, col));
         }
 

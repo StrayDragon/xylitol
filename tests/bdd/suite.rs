@@ -36,6 +36,7 @@ mod bindings_misc;
 mod bindings_otel_obs;
 mod bindings_package_ai_bridge;
 mod bindings_package_tui_interaction_modes;
+mod bindings_package_tui_pointer;
 mod bindings_package_tui_tree_selector;
 mod bindings_protocol_app;
 mod bindings_remote_resilience;

@@ -67,3 +67,4 @@
 # re-review(c2853): steps_c2827 按域拆分（探针 / infra-runtime）与 r57 真实化——步骤注册文本除 r57 场景外零变化；映射不变量保持。（2026-10-09）
 # re-review(c2854): JSON-RPC 文本通道退役——产品路径回归，JSON/OpenAPI 改拒绝；可执行 GWT 与规则标题不钉 fory/v3（握手格式标识 `fory-v3` 除外）；场景 id 去 jsonrpc/v3 前缀。（2026-10-09）
 # re-review(c2855): 删 tokenizer CLI/配置步骤与 LocalTokenizer 绑定；估算 Then 改启发式累加；映射不变量保持（无孤儿 feature）。（2026-10-10）
+# re-review(c2858): 新增 package-tui-pointer 场景绑定；套件全量通过、无孤儿 feature 不变量保持。（2026-10-10）

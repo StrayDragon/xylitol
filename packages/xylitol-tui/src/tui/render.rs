@@ -150,6 +150,7 @@ impl<T: Terminal> TUI<T> {
             return Ok(());
         }
 
+        self.sync_pointer_hover_into_runtime();
         let render_started = std::time::Instant::now();
         let checks_before = self.finalize_width_checks;
         let reuses_before = self.finalize_line_reuses;

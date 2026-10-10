@@ -4,6 +4,7 @@
 
 use std::time::{Duration, Instant};
 
+use crate::pointer::{HitId, HitRegionList, apply_hover_tint};
 use crate::scroll_view::ScrollView;
 use crate::selection::{ClipboardSink, ScreenRect, SelectionController, format_osc52};
 use crossterm::event::MouseEvent;
@@ -27,6 +28,8 @@ pub struct ApplicationOwnedRuntime {
     pending_copy_notice: bool,
     /// Visible/active notice deadline; cleared by [`Self::tick_copy_notice`].
     copy_notice_until: Option<Instant>,
+    hover_id: Option<HitId>,
+    hover_regions: HitRegionList,
 }
 
 impl ApplicationOwnedRuntime {
@@ -40,7 +43,14 @@ impl ApplicationOwnedRuntime {
             last_dock_lines: Vec::new(),
             pending_copy_notice: false,
             copy_notice_until: None,
+            hover_id: None,
+            hover_regions: HitRegionList::new(),
         }
+    }
+
+    pub fn set_hover(&mut self, id: Option<HitId>, regions: HitRegionList) {
+        self.hover_id = id;
+        self.hover_regions = regions;
     }
 
     pub fn set_dock_rows(&mut self, rows: usize) {
@@ -199,6 +209,14 @@ impl ApplicationOwnedRuntime {
         let mut visible = self.scroll.visible_lines().to_vec();
         self.selection
             .apply_highlight(&mut visible, self.scroll.scroll_top());
+        if let Some(id) = self.hover_id {
+            apply_hover_tint(
+                &mut visible,
+                self.scroll.scroll_top(),
+                &self.hover_regions,
+                id,
+            );
+        }
         while visible.len() < viewport_h {
             visible.push(String::new());
         }

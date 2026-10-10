@@ -5,8 +5,8 @@ mod support;
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use support::LoggingVirtualTerminal;
 use xylitol_tui::{
-    Component, InputEvent, InteractionMode, RecordingClipboardSink, ScreenRect, ScrollView,
-    SelectionController, TUI, Terminal,
+    Component, Hit, InputEvent, InteractionMode, PointerClickPhase, RecordingClipboardSink,
+    ScreenRect, ScrollView, SelectionController, TUI, Terminal,
 };
 
 struct StaticLines {
@@ -1115,4 +1115,232 @@ fn application_owned_soft_resize_rerenders_not_reprojects() {
         !tui.last_render_perf().ao_reprojected,
         "width change must rebuild components, not reproject 40-col cache"
     );
+}
+
+fn ao_seeded(
+    term_rows: u16,
+    content: Vec<String>,
+    dock: Vec<String>,
+) -> TUI<LoggingVirtualTerminal> {
+    let mut lines = content;
+    lines.extend(dock);
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, term_rows),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(2);
+    tui.add_child(Box::new(StaticLines { lines }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.request_render(true);
+    tui.render_now().expect("seed");
+    tui
+}
+
+fn mouse_at(kind: MouseEventKind, col: u16, row: u16) -> MouseEvent {
+    MouseEvent {
+        kind,
+        column: col,
+        row,
+        modifiers: KeyModifiers::NONE,
+    }
+}
+
+#[test]
+fn hit_id_follows_live_scroll_not_registration_snapshot() {
+    let content: Vec<String> = (0..20).map(|i| format!("row-{i:02}")).collect();
+    let mut tui = ao_seeded(10, content, vec!["dock-a".into(), "dock-b".into()]);
+    tui.mark_hit(Hit::on_line(7, 12).cols(0, 8));
+    // 20 content rows, viewport 8 → follow-end scroll_top = 12.
+    assert_eq!(tui.application_owned_scroll_top(), 12);
+    assert_eq!(
+        tui.hit_id_at(1, 0),
+        Some(7),
+        "screen 0 + scroll 12 → content 12"
+    );
+    assert!(tui.application_owned_scroll_by(-3));
+    assert_eq!(tui.application_owned_scroll_top(), 9);
+    assert_eq!(
+        tui.hit_id_at(1, 0),
+        None,
+        "same screen cell must not keep the registration-time mapping"
+    );
+    assert_eq!(
+        tui.hit_id_at(1, 3),
+        Some(7),
+        "screen 3 + scroll 9 → content 12"
+    );
+}
+
+#[test]
+fn viewport_hit_stays_on_screen_cell_after_scroll() {
+    let content: Vec<String> = (0..20).map(|i| format!("row-{i:02}")).collect();
+    let mut tui = ao_seeded(10, content, vec!["dock-a".into(), "dock-b".into()]);
+    tui.mark_hit(Hit::at_cell(11, 1, 0));
+    assert_eq!(tui.application_owned_scroll_top(), 12);
+    assert_eq!(tui.hit_id_at(1, 0), Some(11));
+    assert!(tui.application_owned_scroll_by(-3));
+    assert_eq!(tui.application_owned_scroll_top(), 9);
+    assert_eq!(
+        tui.hit_id_at(1, 0),
+        Some(11),
+        "viewport-sticky hit must not drift with scroll"
+    );
+    assert_eq!(tui.hit_id_at(1, 3), None);
+}
+
+#[test]
+fn default_down_swallow_does_not_start_drag_or_report_on_up() {
+    let mut tui = ao_seeded(
+        10,
+        vec!["hello".into(), "world".into()],
+        vec!["dock-a".into(), "dock-b".into()],
+    );
+    tui.mark_hit(Hit::on_line(3, 0).cols(0, 5));
+    assert_eq!(tui.pointer_click_phase(), PointerClickPhase::DownSwallow);
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Down(MouseButton::Left),
+            1,
+            0
+        ))),
+        xylitol_tui::InputReaction::Rerender
+    );
+    assert_eq!(tui.take_pointer_click(), Some(3));
+    assert!(!tui.application_owned_is_dragging());
+    assert!(!tui.application_owned_has_selection());
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(
+        MouseEventKind::Up(MouseButton::Left),
+        1,
+        0,
+    )));
+    assert!(tui.take_pointer_click().is_none());
+}
+
+#[test]
+fn up_if_empty_reports_click_without_osc52() {
+    let mut tui = ao_seeded(
+        10,
+        vec!["hello".into(), "world".into()],
+        vec!["dock-a".into(), "dock-b".into()],
+    );
+    tui.mark_hit(Hit::on_line(9, 0).cols(0, 5));
+    tui.set_pointer_click_phase(PointerClickPhase::UpIfEmptySelection);
+    tui.terminal.clear_writes();
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(
+        MouseEventKind::Down(MouseButton::Left),
+        1,
+        0,
+    )));
+    assert!(tui.take_pointer_click().is_none());
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(
+        MouseEventKind::Up(MouseButton::Left),
+        1,
+        0,
+    )));
+    assert_eq!(tui.take_pointer_click(), Some(9));
+    tui.request_render(false);
+    let _ = tui.render_now();
+    let raw = tui.terminal.all_writes();
+    assert!(
+        !raw.contains("\x1b]52;c;"),
+        "empty click must not OSC52, got {raw:?}"
+    );
+}
+
+#[test]
+fn unarmed_moved_does_not_force_full_frame() {
+    let mut tui = ao_seeded(
+        10,
+        vec!["hello".into(), "world".into()],
+        vec!["dock-a".into(), "dock-b".into()],
+    );
+    let before = tui.frame_count();
+    let stale_before = tui.ao_components_stale();
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(mouse_at(MouseEventKind::Moved, 1, 0))),
+        xylitol_tui::InputReaction::None
+    );
+    tui.request_render(false);
+    let _ = tui.try_render();
+    assert_eq!(tui.frame_count(), before);
+    assert_eq!(tui.ao_components_stale(), stale_before);
+}
+
+#[test]
+fn armed_probe_same_id_moved_does_not_rerender() {
+    let mut tui = ao_seeded(
+        10,
+        vec!["hello".into(), "world".into()],
+        vec!["dock-a".into(), "dock-b".into()],
+    );
+    tui.mark_hit(Hit::on_line(1, 0).cols(0, 5));
+    tui.arm_pointer_probe(true);
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(mouse_at(MouseEventKind::Moved, 1, 0))),
+        xylitol_tui::InputReaction::Rerender
+    );
+    assert!(
+        !tui.ao_components_stale(),
+        "hover must not stale components"
+    );
+    assert_eq!(tui.pointer_hover_id(), Some(1));
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(mouse_at(MouseEventKind::Moved, 2, 0))),
+        xylitol_tui::InputReaction::None,
+        "same hit id must not schedule a frame"
+    );
+}
+
+#[test]
+fn hover_id_change_rerenders_without_stale_components() {
+    let mut tui = ao_seeded(
+        10,
+        vec!["hello".into(), "world".into()],
+        vec!["dock-a".into(), "dock-b".into()],
+    );
+    tui.replace_hits([Hit::on_line(1, 0).cols(0, 2), Hit::on_line(2, 0).cols(3, 5)]);
+    tui.arm_pointer_probe(true);
+    tui.mark_ao_components_stale();
+    tui.render_frame().expect("warm");
+    assert!(!tui.ao_components_stale());
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(MouseEventKind::Moved, 0, 0)));
+    assert_eq!(tui.pointer_hover_id(), Some(1));
+    assert!(!tui.ao_components_stale());
+    assert_eq!(
+        tui.dispatch_event(InputEvent::Mouse(mouse_at(MouseEventKind::Moved, 4, 0))),
+        xylitol_tui::InputReaction::Rerender
+    );
+    assert_eq!(tui.pointer_hover_id(), Some(2));
+    assert!(
+        !tui.ao_components_stale(),
+        "hover id change must reproject, not rebuild components"
+    );
+}
+
+#[test]
+fn capturing_region_blocks_transcript_drag() {
+    let mut tui = ao_seeded(
+        10,
+        vec!["hello".into(), "world".into()],
+        vec!["dock-a".into(), "dock-b".into()],
+    );
+    tui.mark_hit(Hit::on_line(4, 0).cols(0, 6).capturing());
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(
+        MouseEventKind::Down(MouseButton::Left),
+        1,
+        0,
+    )));
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(
+        MouseEventKind::Drag(MouseButton::Left),
+        5,
+        0,
+    )));
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(
+        MouseEventKind::Up(MouseButton::Left),
+        5,
+        0,
+    )));
+    assert!(!tui.application_owned_is_dragging());
+    assert!(!tui.application_owned_has_selection());
 }
