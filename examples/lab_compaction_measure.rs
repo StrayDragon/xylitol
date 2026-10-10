@@ -2,6 +2,7 @@
 //! - A: 切点路径 chars/4 启发式（`estimate_tokens_entry_for_cut` 累计）
 //! - B: 统一估算（`estimate_from_session_entries` · EstimateOpts::default，footer/触发同族）
 //! - C: provider 实测 input（Langfuse llm.request，观测 17441）
+//!
 //! 运行：`cargo run --example lab_compaction_measure -- [session_id]`
 use xylitol::agent::compaction::EstimateOpts;
 use xylitol::agent::compaction::cut_detector::estimate_tokens_entry_for_cut;

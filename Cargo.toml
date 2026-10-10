@@ -4,8 +4,8 @@ version = "0.0.0-pre"
 edition = "2024"
 # rust-toolchain.toml is the compiler pin (dated nightly).
 # rust-version must stay below that nightly's x.y.z — Cargo treats
-# `1.100.0-nightly` as a prerelease and rejects rust-version = "1.100.0".
-rust-version = "1.98.1"
+# `1.101.0-nightly` as a prerelease and rejects rust-version = "1.101.0".
+rust-version = "1.99.0"
 license = "MIT"
 repository = "https://github.com/straydragon/xylitol"
 description = "Out-of-the-box personal coding agent (LLM-augmented dev toolkit)"
@@ -24,7 +24,7 @@ schemars = { version = "1", features = ["derive"] }
 jsonschema = "0.55"
 minijinja = { version = "2.24.0", features = ["json", "builtins"] }
 dirs = "6"
-thiserror = "2.0.20"
+thiserror = "2.0.21"
 # Timeline tracing (c1000): enable at the binary crate; FileReporter is file-only.
 fastrace = { version = "0.7.19", features = ["enable"] }
 # Optional OTLP export (c1475): fastrace → OpenTelemetry → Langfuse/Collector.
@@ -34,8 +34,8 @@ opentelemetry_sdk = { version = "0.32", default-features = false, features = ["t
 opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "http-json", "reqwest-client", "reqwest-rustls"], optional = true }
 log = "0.4"
 env_logger = "0.11"
-clap = { version = "4.6.6", features = ["derive"] }
-tokio = { version = "1.53.1", features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread", "signal", "sync", "time"] }
+clap = { version = "4.6.7", features = ["derive"] }
+tokio = { version = "1.53.2", features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 async-trait = "0.1.92"
 similar = "3.2.0"
 glob = "0.3.4"
@@ -45,7 +45,7 @@ regex = "1.13.1"
 rmcp = { version = "1.8.0", features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 sha2 = "0.11.0"
 time = { version = "0.3.55", features = ["formatting", "parsing", "macros"] }
-uuid = { version = "1.26.0", features = ["v4"] }
+uuid = { version = "1.28.0", features = ["v4"] }
 # pid presence probe (`kill(pid, 0)`) on non-linux; already in the tree transitively.
 libc = "0.2"
 
@@ -57,7 +57,7 @@ url = { version = "2.5.8" }
 
 reqwest = { version = "0.13.5", default-features = false, features = ["stream", "json", "rustls", "charset", "http2", "system-proxy"] }
 async-stream = "0.3.6"
-tokio-util = "0.7.19"
+tokio-util = "0.7.20"
 yaml_serde = "0.10.7"
 
 salvo = { version = "0.95.2", optional = true, default-features = false, features = ["server", "server-handle", "http1", "websocket", "test"] }
@@ -70,7 +70,7 @@ xylitol-tui = { path = "packages/xylitol-tui", optional = true }
 xylitol-ai-bridge = { path = "packages/xylitol-ai-bridge" }
 crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 http = "1"
-fory = "1.7.5"
+fory = "1.7.6"
 
 [features]
 default = ["cli", "tui", "otel", "server"]
@@ -113,7 +113,7 @@ tempfile = "3.27.0"
 # Property-based invariants (roundtrip / idempotence / monotonicity); see
 # skill l8ng-test-methodology → rust.md for the pattern library.
 
-insta = { version = "1.48.0", features = ["filters", "glob"] }
+insta = { version = "1.49.0", features = ["filters", "glob"] }
 # Statistical micro-benchmarks (benches/); run via `cargo bench`, not qa.
 criterion = "0.8"
 # portable-pty: end-to-end TUI integration tests (c405 layer 5a) — spawn the
