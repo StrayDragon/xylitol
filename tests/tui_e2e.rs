@@ -85,9 +85,7 @@ impl CapturedScreen {
     pub fn feed(&mut self, bytes: &[u8]) {
         let mut parser = vte::Parser::new();
         let mut performer = Performer { screen: self };
-        for &b in bytes {
-            parser.advance(&mut performer, b);
-        }
+        parser.advance(&mut performer, bytes);
     }
 
     /// Visible viewport as trimmed plain-text rows.
