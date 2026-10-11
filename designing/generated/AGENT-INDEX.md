@@ -38,5 +38,6 @@
 | tui-lab | editor-placeholder | editor 空态占位示例句。 | busy, idle | `/tui-lab/editor-placeholder` |
 | tui-lab | interrupt-arm | 中止前先给一次确认提示，避免误触后无法撤回。 | armed, calm, stopped | `/tui-lab/interrupt-arm` |
 | tui-lab | paste-fold | 大段粘贴在输入框里折叠为一行摘要的显示方式。 | empty, folded, plain | `/tui-lab/paste-fold` |
+| tui-lab | tabs | 标题条只画一行标题；溢出用窗口和两侧计数，不截每一条来塞满。 | fit, overflow, overflow-jump | `/tui-lab/tabs` |
 | tui-lab | toast-interaction | 通知条的两点交互增强。 | action | `/tui-lab/toast-interaction` |
 | tui-lab | turn-usage | 每轮回复结束后，显示一行可展开的用量小结。 | collapsed | `/tui-lab/turn-usage` |

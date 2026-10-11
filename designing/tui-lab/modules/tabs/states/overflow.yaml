@@ -1,0 +1,16 @@
+id: tabs.overflow
+cols: 20
+must_contain:
+  - "CharlieC"
+  - "←"
+  - "→"
+  - "+2"
+must_not_contain:
+  - "AlphaAAA"
+  - "EchoEEEE"
+  - "(包)"
+lines:
+  -
+    - { text: " ← +2 ", token: muted }
+    - { text: "CharlieC", token: on-surface, rev: true }
+    - { text: " +2 → ", token: muted }

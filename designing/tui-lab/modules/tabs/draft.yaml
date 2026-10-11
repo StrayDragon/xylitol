@@ -1,0 +1,14 @@
+id: tabs
+title: 标题条
+surface: tui-lab
+summary: "一行标题条：溢出用窗口和两侧计数；点标题或标记改选中。默认不绑物理键。"
+alignment:
+  fixed: 标题条恰好 1 行；在对话条目之上。不持有页内容。
+  item: 点可见标题改下标；点溢出标记跳该侧第一个隐藏标题；条上滚轮循环
+todos:
+  - { done: false, text: "晋级：产品 host 按 selected 换对话条目（本票不接线）" }
+  - { done: false, text: "产品是否写入 tui.tabs.prev / next 绑定；默认仍空" }
+  - { done: false, text: "标题左右分列、整条隐藏（已 park，不进本模块 API）" }
+notes: |
+  包层已落地；产品端未接线，故停在 tui-lab。
+  默认和弦为空：未绑定前方向键不切标题。指针由库在焦点前认领。

@@ -10,8 +10,10 @@ function surfaceSpaFallback(): Plugin {
     if (
       path === "/tui" ||
       path === "/web" ||
+      path === "/tui-lab" ||
       path.startsWith("/tui/") ||
-      path.startsWith("/web/")
+      path.startsWith("/web/") ||
+      path.startsWith("/tui-lab/")
     ) {
       return query ? `/index.html?${query}` : "/index.html";
     }

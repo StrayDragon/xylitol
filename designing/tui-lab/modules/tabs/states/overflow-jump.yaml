@@ -1,0 +1,16 @@
+id: tabs.overflow-jump
+cols: 20
+must_contain:
+  - "DeltaDDD"
+  - "←"
+  - "+3"
+  - "+1"
+must_not_contain:
+  - "CharlieC"
+  - "EchoEEEE"
+  - "(包)"
+lines:
+  -
+    - { text: " ← +3 ", token: muted }
+    - { text: "DeltaDDD", token: on-surface, rev: true }
+    - { text: " +1 → ", token: muted }
