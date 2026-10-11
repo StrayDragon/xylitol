@@ -2,50 +2,48 @@
 depends_on: []
 ---
 
-# TUI attach 第二轮 Working 空转（写者租约 / AgentEnd）
+# 砍协议写者令牌，会话占用改内核锁
 
 ## Why
 
-c2890 本地 mermaid 手测时，session `c6a98522-1a5d-44ee-8dd8-54a4f607ec31` 第二句「你能给我一个故意出错的mermaid吗」TUI 一直 Working、助手体空，llamacpp 侧已空闲。当时怀疑 mermaid-text 画图卡住。日志把这条从 c2890 里拆开：不是盒线渲染，是产品 TUI attach Host 的写者租约与远程 `run()` 收口。
+产品 TUI attach 本机 Host 后，退出再 `--session` 同一会话会永久 Working。实机 session `c6a98522-1a5d-44ee-8dd8-54a4f607ec31`：第二句未落盘，Esc 清队列 `writer_conflict`。根因不是 mermaid，是 r1793 防双写落在 **Host 内存 UUID**：只 mint、连接死了不还；`run()` 又把业务错误当 prompt 成功，死等 AgentEnd。
 
-**证据（2026-10-11，`$HOME/.xylitol`）：**
+对照 `../deepseek-harness`（session 目录内核 flock，进程死 fd 关锁没）和 `../maka`（State Root OS lock）。个人 harness 要的是「同一 session 同时一个写者」，不是信封令牌。JSONL 模块还写着 file locking，实现里没有。
 
-1. jsonl 只有第一轮 user + assistant；第二句从未落盘。
-2. `provider-trace` 最近只有 `58ed8674`（第一轮 mermaid 展示，text-only + `Done`）。llamacpp「对话完毕」是这一轮，不是第二句返回了空。
-3. 05:50:00Z 第一轮：`tool freeze gate armed` → `XyDriver::run after tool freeze prompt_len=561` → `run_ensure_session 0ms`。05:50:39Z 该 TUI 进程停。
-4. 05:52:08Z 再 attach 同一 session。05:52:17Z `XyDriver::run starting prompt_len=43`（tools 已 frozen 路径）、`host_run_await 0ms`（远程 stream 懒构造）。之后 **没有** `run_ensure_session` / 新 request。
-5. `host_tick` 全程 0ms（约 16ms busy ticker）直到 05:55:19Z Esc。UI 循环活着，不是 mermaid-text 把绘制打死。
-6. Esc：`ClearQueue` → `writer_conflict: another client is the writer for this session`。产品 TUI 默认 attach 本机 Host；写者租约 sticky，断连不释放。
-7. 远程 `XyRemoteDriver::run` 只把 `XyEvent::AgentEnd` 当结束。`Error` / Busy / spawn 静默 return 都不会拆 Working。`begin_run` 在本地立刻打 Working，所以用户看见转圈、没有 Error 行。
+## What Changes
 
-本票 **延后**：c2890 mermaid 先收口。手测时不要对仍在听的 Host 再开第二个 `xylitol tui --session`。
+- 砍协议 `writer_token` / `X-Writer-Token`。跨进程占用 = 内核排他锁，锁已有 **manifest**，不新建锁文件。还锁 = close fd，不 unlink。
+- 该 session 最后一条订阅连接干净退出（TUI Ctrl+C / WS Close / 切走 session）立刻还；异常断开 linger（可配置，默认 60s，`0` 立即还）。linger 内同进程重连续占；他进程争用大声失败，不抢活锁。Host 进程死由内核还。
+- 同进程第二客户端靠 `run_inflight`。纯 HTTP 无订阅：回合结束且订阅者为 0 则 linger。
+- `run()` 必须看 unary 业务成败；未准入结束 stream。Busy + 空 follow-up 的非中止 Error → Idle。
+- `arm_tool_freeze` 仍不因写占用失败而卡死首轮门。
+- 破坏性：旧客户端不能再靠 header 令牌当写者身份。Pre-0.0.1，无迁移脚本。
 
-## What Changes（propose 时落地）
+## 非目标
 
-- 写者租约：mux / TUI 断连 MUST 释放该 session 的 writer token，否则下一客户端 prompt 不是 writer。
-- 远程 `run()`：`XyEvent::Error`（含 Busy / unary prompt 失败）MUST 结束这条 stream，不得只等 `AgentEnd`。
-- Esc abort / `ClearQueue`：对本客户端已取得或正在等的 run，MUST NOT 因 sticky 他者租约而 `writer_conflict` 静默。
-- Host `METHOD_PROMPT` spawn：`driver` 为 `None` 时 MUST 下行 Error，禁止 unary 已 Ok、spawn 直接 `return`、客户端永远等 `AgentEnd`。
-- Working 空转 MUST 能在 Error / abort 收口到 Idle；不得只留 spinner。
+- mermaid、通知栈、滚动槽。
+- opencode stale 抢锁、last-writer-wins、Maka State Root / Epoch。
+- 每次 append 才加锁。
 
-## 非目标（草案）
+## Capabilities
 
-- **不实施**（仅 proposal，c2890 之后再 propose）。
-- 不改 mermaid 围栏画图（c2890）。
-- 不放开多客户端同时写同一 session。
-
-## Capabilities（propose 时）
-
-- `app-tui-*` / `server-*` 会话写者与下行收口（具体 capability 正式化时再钉）
+- `server-core`（改 r1793；顺带 r1785 / r1904 / r1925 去令牌措辞）
+- `agent-session-store`（持久化层内核写占用）
+- `app-tui-bridge`（Busy + Error 收口 Idle）
+- `protocol-app`（queue_stats 场景不再断言令牌）
 
 ## Impact
 
-- 复测：同一 Host，TUI 退出再 `--session` 续上，第二句必须出正文或可见 Error，不得永久 Working。
-- 与 c2842（session-scoped 命令身份）、c2849（arm_tool_freeze 租约竞态）同类，但是 **断连释放 + AgentEnd 唯一收口**，不是 `/model` 打错槽。
+- 同一 Host：TUI 退出再 `--session`，第二句出正文或可见错误，不得永久 Working。
+- 两个 Host 进程写同一会话：后到者失败，不得撕 JSONL。
+- 既有 `writer-lease` / `writer-token-via-ws-unary` BDD 改写为占用/释放/冲突，不再要 header 令牌。
+
+## Open Questions
+
+- **[已定]** 砍 UUID，改内核锁。
+- **[已定]** 锁 manifest，还锁 = close fd。
+- **[已定]** 干净最后连接立刻还；异常断开 linger 默认 60s；不抢他进程活锁。
 
 ## Further Notes
 
-- 观测：`just obs-summary` / `obs-requests` / `obs-tui-lag`；session 目录 `{agent_dir}/sessions/<id>/active-0.jsonl`。不要整文件 Read 大 jsonl。
-- 远程 `run()` 结束条件：`src/app/core/driver/remote.rs`（`is_end = matches!(ev, XyEvent::AgentEnd { .. })`）。
-- 租约：`src/app/server/host.rs` `take_writer_lease` / `WriterLease`；订阅 `METHOD_SUBSCRIBE` **不** mint token，prompt 才 mint。
-- unary prompt 30s 超时；本次 3 分钟 Working 且无 `prompt failed` / `XyEvent::Error` WARN → unary 已 Ok，Host 未进 `InProcessDriver::run`，TUI 在等永远不到的 `AgentEnd`。
+- 设计：同目录 `design.md`。调研：`research/writer-lease-lifetime.md`、`research/peer-writer-exclusion.md`。
