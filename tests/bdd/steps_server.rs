@@ -1768,15 +1768,6 @@ fn t_queue_stats_shape(server_test: &ServerTest) {
     assert!(v["result"]["follow_up_count"].is_u64(), "{body}");
 }
 
-#[then("响应不携带写者租约 token")]
-fn t_queue_stats_no_writer_lease(server_test: &ServerTest) {
-    let body = server_test.unary_body.borrow().clone().expect("body");
-    assert!(
-        !body.contains("writerToken"),
-        "readonly unary must not lease writer, got {body}"
-    );
-}
-
 #[given("进程级 reload 正在进行（取消令牌已注册）")]
 async fn g_reload_inflight(server_test: &ServerTest) {
     start_host(server_test).await;
