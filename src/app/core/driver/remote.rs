@@ -1141,9 +1141,21 @@ where
             if let Some(level) = thinking_level {
                 body["thinking_level"] = serde_json::Value::String(level);
             }
-            if let Err(e) = host.unary("prompt", body).await {
-                yield XyEvent::error_msg(format!("prompt failed: {e}"));
-                return;
+            match host.unary("prompt", body).await {
+                Err(e) => {
+                    yield XyEvent::error_msg(format!("prompt failed: {e}"));
+                    return;
+                }
+                Ok(result) if !result.ok => {
+                    let details = result.error.map(|e| e.details).unwrap_or_default();
+                    yield XyEvent::error_msg(if details.is_empty() {
+                        "prompt failed".into()
+                    } else {
+                        format!("prompt failed: {details}")
+                    });
+                    return;
+                }
+                Ok(_) => {}
             }
 
             loop {
@@ -1878,6 +1890,65 @@ mod tests {
         }
     }
 
+    #[derive(Clone)]
+    struct FailPromptClient;
+
+    #[async_trait]
+    impl HostClient for FailPromptClient {
+        async fn unary(
+            &self,
+            method: &str,
+            _payload: Value,
+        ) -> Result<crate::protocol::RpcResult, crate::app::core::host_client::HostClientError>
+        {
+            if method == "prompt" {
+                return Ok(crate::protocol::RpcResult::error(
+                    "session_write_held",
+                    "session s is being written by another process",
+                ));
+            }
+            Ok(crate::protocol::RpcResult::ok_value(serde_json::json!({})))
+        }
+
+        async fn respond(
+            &self,
+            _rpc_id: &str,
+            _payload: Value,
+        ) -> Result<(), crate::app::core::host_client::HostClientError> {
+            Ok(())
+        }
+
+        async fn mux(
+            &self,
+        ) -> Result<
+            crate::app::core::host_client::MuxStream,
+            crate::app::core::host_client::HostClientError,
+        > {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
+    #[tokio::test]
+    async fn prompt_business_error_ends_run_stream() {
+        let mut driver = XyRemoteDriver::with_host(FailPromptClient, "s");
+        driver.subscribed_ok.store(true, Ordering::SeqCst);
+        let mut stream = driver.run("hi").await;
+        let mut events = Vec::new();
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, XyEvent::Error(err) if err.message.contains("prompt failed"))),
+            "business error MUST yield Error: {events:?}"
+        );
+        assert!(
+            !events.iter().any(|e| matches!(e, XyEvent::AgentEnd { .. })),
+            "MUST NOT wait for AgentEnd after prompt failure: {events:?}"
+        );
+    }
+
     #[tokio::test]
     async fn poll_mcp_bootstrap_is_cache_dirty_only() {
         let client = SnapClient {
@@ -2121,7 +2192,6 @@ mod tests {
             None,
             "abort",
             serde_json::json!({ "session_id": "abort-bash" }),
-            None,
         )
         .await;
         assert_eq!(
@@ -2147,7 +2217,6 @@ mod tests {
             None,
             "abort",
             serde_json::json!({ "session_id": "other-session" }),
-            None,
         )
         .await;
         assert!(
@@ -2768,7 +2837,6 @@ mod tests {
             None,
             "arm_tool_freeze",
             serde_json::json!({ "session_id": "mcp-freeze" }),
-            None,
         )
         .await;
         assert!(result.ok, "arm_tool_freeze unary failed: {result:?}");
@@ -2794,8 +2862,7 @@ mod tests {
         );
     }
 
-    /// c2849 回归：槽位已被**另一写者**持有租约时，`arm_tool_freeze`（presented=None）
-    /// MUST 降级为无租约有界决议而非 `writer_conflict`——否则首轮门在竞态下永久停滞。
+    /// c2849 / c2893：`arm_tool_freeze` 不占写锁，已有写引擎时仍须返回冻结快照。
     #[tokio::test]
     async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
         use crate::app::server::host::materialize_writer;
@@ -2809,27 +2876,19 @@ mod tests {
             None,
             "set_model",
             serde_json::json!({ "provider": "", "model_id": "keep", "session_id": "conflict-sess" }),
-            None,
         )
         .await;
-        // （模型未知名返回 NotFound 无关紧要——租约在 take_writer_lease 已建立。）
-        assert!(
-            first.writer_token.is_some(),
-            "first write MUST establish + seal writer token"
-        );
-        // arm_tool_freeze 不带 token（客户端竞态：缓存未同步）→ 旧行为 conflict；
-        // 新行为 MUST 无租约降级、有界决议、返回冻结快照。
+        let _ = first;
         let result = crate::app::server::host::handle_unary(
             &host,
             None,
             "arm_tool_freeze",
             serde_json::json!({ "session_id": "conflict-sess" }),
-            None,
         )
         .await;
         assert!(
             result.ok,
-            "arm_tool_freeze under foreign lease MUST NOT conflict: {result:?}"
+            "arm_tool_freeze MUST succeed without taking occupancy: {result:?}"
         );
         let snap: LoadedResourcesSnapshot =
             serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
@@ -2867,7 +2926,6 @@ mod tests {
             None,
             "arm_tool_freeze",
             serde_json::json!({ "session_id": "hang-freeze" }),
-            None,
         )
         .await;
         let elapsed = t0.elapsed();
@@ -2925,7 +2983,6 @@ mod tests {
                 "model_id": "missing",
                 "session_id": "hang-sess",
             }),
-            None,
         )
         .await;
         assert!(
@@ -3310,7 +3367,6 @@ mod tests {
             None,
             "bash",
             serde_json::json!({ "session_id": "ws-bang", "command": "pwd" }),
-            None,
         )
         .await;
         assert!(result.ok, "bash unary MUST succeed: {result:?}");
@@ -3449,7 +3505,6 @@ mod tests {
             None,
             "persist_trust",
             serde_json::json!({ "session_id": "ws-trust", "mode": "trust_cwd" }),
-            None,
         )
         .await;
         assert!(
@@ -3478,17 +3533,14 @@ mod tests {
             None,
             "new_session",
             serde_json::json!({ "session_id": "ws-export" }),
-            None,
         )
         .await;
         assert!(minted.ok, "new_session MUST succeed: {minted:?}");
-        let writer_token = minted.writer_token.clone().expect("writer token");
         let result = handle_unary(
             &host,
             None,
             "export_jsonl",
             serde_json::json!({ "session_id": "ws-export" }),
-            Some(writer_token),
         )
         .await;
         assert!(result.ok, "export unary MUST succeed: {result:?}");
@@ -3527,7 +3579,6 @@ mod tests {
             None,
             "set_thinking_level",
             serde_json::json!({ "session_id": "th", "level": "high" }),
-            None,
         )
         .await;
         assert!(result.ok, "defer thinking MUST succeed: {result:?}");

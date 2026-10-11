@@ -172,33 +172,24 @@ fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePay
     }
 }
 
-/// 处理一条 v3 上行帧,产出 v3 应答帧字节与本次应答携带的写者租约
-/// (POST 与 WS binary 共用)。
+/// 处理一条 v3 上行帧,产出 v3 应答帧字节(POST 与 WS binary 共用)。
 ///
-/// 帧内 `writer_token` 优先;WS 场景由调用方传入**连接本地租约**
-/// (`header_writer` 形参,r1793 语义:同连接内后续 unary 用连接本地租约,
-/// 应答携带新 mint 的 token 时调用方须更新连接本地状态)。非
+/// 占用走内核锁，帧内 `writer_token` 忽略且应答恒为 `None`。非
 /// `ClientRequest` 帧与未知变体按 envelope 错误处理(调用方决定 400 或
 /// 断连)。
-pub(crate) async fn handle_uplink(
-    host: &Arc<HostState>,
-    bytes: &[u8],
-    conn_writer: Option<String>,
-) -> Result<(Vec<u8>, Option<String>), String> {
+pub(crate) async fn handle_uplink(host: &Arc<HostState>, bytes: &[u8]) -> Result<Vec<u8>, String> {
     let frame = Frame::from_bytes(bytes).map_err(|e| format!("v3 decode: {e}"))?;
     let Frame::ClientRequest(req) = frame else {
         return Err("expected ClientRequest frame".into());
     };
     let (text, method) = to_jsonrpc_request(&req)?;
-    let writer = req.writer_token.clone().or(conn_writer);
-    let (value, token) = rpc_module::dispatch_raw(host, &text, writer)
+    let (value, _) = rpc_module::dispatch_raw(host, &text)
         .await
         .ok_or_else(|| "illegal envelope".to_string())?;
-    let resp = response_from_raw(req.rpc_id, &method, &value, token.clone())?;
-    let bytes = Frame::ServerResponse(resp)
+    let resp = response_from_raw(req.rpc_id, &method, &value, None)?;
+    Frame::ServerResponse(resp)
         .to_bytes()
-        .map_err(|e| format!("v3 encode: {e}"))?;
-    Ok((bytes, token))
+        .map_err(|e| format!("v3 encode: {e}"))
 }
 
 /// 下行:JSON-RPC notification(method + params)→ v3 `ServerNotification` 帧。

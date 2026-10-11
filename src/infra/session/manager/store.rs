@@ -250,4 +250,12 @@ impl XySessionStore for SessionManager {
     async fn delete_session(&self, session_id: &str) -> Result<(), XySessionStoreError> {
         SessionManager::delete_session(self, session_id).await
     }
+
+    fn try_acquire_write_lock(&self, session_id: &str) -> Result<(), XySessionStoreError> {
+        SessionManager::acquire_write_lock(self, session_id)
+    }
+
+    fn release_write_lock(&self, session_id: &str) {
+        SessionManager::release_write_lock(self, session_id);
+    }
 }

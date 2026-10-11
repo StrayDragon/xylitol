@@ -5,7 +5,7 @@
 
 # ── 文件导览（48 规则）────────────────────────────────────────
 #   接入与生命周期    : host · HTTP/WS · healthz/就绪 · session 方法表
-#   信封与命令面      : unary · dispatch · 队列/订阅/写者租约 · export
+#   信封与命令面      : unary · dispatch · 队列/订阅/写占用 · export
 #   线上协议          : 二进制信封 · 格式协商 · 数字寻址 · seq · 演进
 #   审批/恢复         : reverse-rpc approval/question · journal · 冷恢复投影
 #   （精确检索以 @req/规则标题为准，本导览为非强制快速导航）
@@ -289,13 +289,12 @@
       那么 该路径不提供调试文档
   @req:r1785
   规则: 队列深度只读方法
-    Host MUST 提供只读 unary queue_stats（或语义等价），返回当前 session 的 steer 与 follow-up 深度；该 unary MUST NOT 占用写者租约。Remote 客户端 MUST NOT 将队列深度静默当成恒 0。
+    Host MUST 提供只读 unary queue_stats（或语义等价），返回当前 session 的 steer 与 follow-up 深度；该 unary MUST NOT 占用会话写锁。Remote 客户端 MUST NOT 将队列深度静默当成恒 0。
 
     场景: queue-stats-readonly-unary
       当 服务端在空闲端口上启动
       并且 POST /rpc 查询只读方法 queue_stats
       那么 返回 steer 与 follow-up 队列深度
-      并且 响应不携带写者租约 token
   @req:r1792
   规则: 订阅跨回合存活
     客户端对某 session 的事件订阅 MUST 持续到该连接断开或再次订阅替换。单次 prompt 的 AgentEnd MUST NOT 结束该订阅，MUST NOT 停止后续 session/event（含 QueueUpdate 与下一轮）。
@@ -305,19 +304,30 @@
       当 会话回合以 AgentEnd 结束后又追加新事件
       那么 订阅仍存活且新事件继续送达
   @req:r1793
-  规则: session 写者租约
-    同一 session MUST 至多一个写者租约。首次非只读方法颁发令牌：HTTP 经响应 header `X-Writer-Token` 回传；WS unary 应答 MUST 把同一令牌放在应答的 writer_token 字段。后续非只读方法：HTTP MUST 在请求 header 回显该令牌；WS 升级 MUST 可带同一 header，同一条连接内后续 unary 用连接本地租约。缺失或错误 MUST 以业务错误拒绝（HTTP 仍 200，产品码在错误码字段）。只读方法与事件订阅 MUST NOT 占用写者；HTTP 只读响应 MUST NOT 带该 header。载荷 MUST NOT 携带 writerToken。HTTP 连接不是写者身份（每次 POST /rpc 都是新 TCP）。
+  规则: session 写占用
+    同一已物化 session 跨进程 MUST 至多一个写占用。占用 MUST 为内核排他对象：POSIX 对该会话目录内 `session.lock` 取 `flock`（锁文件 MUST NOT 在释放时 unlink，MUST NOT 锁会原子改写的提交指针）；Windows MUST 用由该锁路径派生的命名内核对象，MUST NOT 对会话数据文件做强制文件锁。MUST NOT 用协议令牌或进程内 UUID 当跨进程所有权。持有进程退出后内核 MUST 释放。他进程争用 MUST 以业务错误拒绝（HTTP 仍 200），MUST NOT 静默成功后再等待回合结束。
+    该 session 最后一条事件订阅连接干净关闭（含客户端主动退出与切走会话）MUST 立即释放写占用。异常断开 MUST 在可配置宽限后释放（缺省约 60 秒，0 表示立即）。宽限内同一进程重连 MUST 续占。MUST NOT 在宽限到期时抢夺他进程仍持有的内核锁。
+    只读方法 MUST NOT 单独要求持锁。载荷与应答 MUST NOT 携带 writerToken 或 X-Writer-Token。
 
-    场景: writer-lease
-      假如 客户端 A 已对 session 经 POST /rpc 发出非只读方法
-      当 客户端 B 无 X-Writer-Token 再发非只读方法
-      那么 业务错误 data.code 为 writer_conflict
-      并且 A 的响应带 X-Writer-Token 且 body 不含 writerToken
+    场景: two-process-write-conflict
+      假如 进程 A 已对会话取得写占用
+      当 进程 B 再对该会话发起写占用
+      那么 B 得到业务错误且不得写入
 
-    场景: writer-token-via-ws-unary
-      当 服务端在空闲端口上启动
-      并且 客户端经 WS /rpc 发送非只读请求
-      那么 WS 应答携带 writer_token 且载荷不含
+    场景: holder-exit-releases
+      假如 进程 A 持锁后退出
+      当 进程 B 再对该会话发起写占用
+      那么 B 取得占用
+
+    场景: last-clean-disconnect-releases
+      假如 会话仅一条订阅连接且持有写占用
+      当 该连接干净关闭
+      那么 写占用已释放且后续同机进程可取得
+
+    场景: linger-reconnect-same-process
+      假如 唯一订阅异常断开且宽限未到
+      当 同一进程再次订阅该会话
+      那么 写占用仍在且订阅成功
   @req:r1803
   规则: 下行信封
     下行 MUST 为 ServerNotification（有 method 语义与 payload，无客户端作答义务；同一 seq 与 payload 语义）。产品下行 method MUST 含 session/event、session/subscribed、session/resync_required 与 session/resources；审批/问卷告知为 approval/requested 与 question/requested。MUST NOT 再以 JSON 文本帧、ServerFrame tagged 外层或四象限 type tag 为产品真源，MUST NOT 要求客户端对事件 notification 作答。
@@ -491,7 +501,7 @@
       那么 得到致命错误且无降级与重试风暴
   @req:r1904
   规则: 方法数字寻址
-    产品帧内方法 MUST 以稳定数字 method_id 寻址；method_id 与方法语义的映射 MUST 由协议真源（IDL）编译期生成并与产品方法表一致，MUST NOT 手写第二套漂移映射。未登记 method_id MUST 返回稳定失败（产品码等价 method-not-found），MUST NOT 静默忽略。写者租约与幂等语义在产品路径上保持：rpc_id 为幂等键，WS 连接本地租约载体语义同 writer_token。
+    产品帧内方法 MUST 以稳定数字 method_id 寻址；method_id 与方法语义的映射 MUST 由协议真源（IDL）编译期生成并与产品方法表一致，MUST NOT 手写第二套漂移映射。未登记 method_id MUST 返回稳定失败（产品码等价 method-not-found），MUST NOT 静默忽略。幂等语义在产品路径上保持：rpc_id 为幂等键。
 
     场景: unknown-method-id-stable-fail
       当 服务端在空闲端口上启动
@@ -572,7 +582,7 @@
 # re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）
   @req:r1925
   规则: arm_tool_freeze 租约冲突降级为无租约有界决议
-    「arm_tool_freeze」unary 在写者租约冲突时（首轮竞态：客户端 writer token 尚未同步即 presented 为空/过期）MUST 降级为无租约有界决议——照常经「ensure_tool_table_frozen」返回权威冻结快照，MUST NOT 以「writer_conflict」失败使首轮门永久停滞（冻结的是写者内部门、不写会话状态）。正常路径的租约 mint/续用语义不变。
+    「arm_tool_freeze」unary MUST NOT 占用会话写锁；他进程已持有该会话写占用时 MUST 仍返回权威冻结快照，MUST NOT 使首轮工具门永久停滞。冻结的是写者内部门、不写会话状态。
     # verified-by: fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck
   @req:r1926
   规则: attach 生效模型同步不进 journal

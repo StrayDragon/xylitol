@@ -247,6 +247,20 @@ pub trait XySessionStore: Send + Sync {
         Err(XySessionStoreError::unsupported("delete_session"))
     }
 
+    /// Take process-local kernel write occupancy for a materialized session.
+    ///
+    /// Default is a no-op so in-memory stubs stay usable. Persisted stores
+    /// take a kernel occupancy on `session.lock` (r1950).
+    fn try_acquire_write_lock(&self, session_id: &str) -> Result<(), XySessionStoreError> {
+        let _ = session_id;
+        Ok(())
+    }
+
+    /// Release occupancy. Default no-op. MUST NOT unlink `session.lock`.
+    fn release_write_lock(&self, session_id: &str) {
+        let _ = session_id;
+    }
+
     /// Read the most recent `limit` typed entries (server journal replay /
     /// resume seeding / diagnostics).
     ///

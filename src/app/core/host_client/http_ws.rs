@@ -31,8 +31,6 @@ use super::{HostClient, HostClientError, MuxStream, wire_v3_client};
 #[derive(Clone)]
 pub struct HttpWsClient {
     base_url: String,
-    /// Shared across clones: one TUI = one writer lease.
-    writer_token: Arc<Mutex<Option<String>>>,
     ping_interval: std::time::Duration,
     idle_timeout: std::time::Duration,
     peer: Arc<tokio::sync::Mutex<Option<Arc<SharedWs>>>>,
@@ -66,7 +64,6 @@ impl HttpWsClient {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
-            writer_token: Arc::new(Mutex::new(None)),
             ping_interval: MUX_PING_INTERVAL,
             idle_timeout: MUX_IDLE_TIMEOUT,
             peer: Arc::new(tokio::sync::Mutex::new(None)),
@@ -126,15 +123,10 @@ impl HttpWsClient {
 
     async fn connect_peer(&self) -> Result<Arc<SharedWs>, HostClientError> {
         let url = self.ws_mux_url();
-        let mut request = url
+        let request = url
             .as_str()
             .into_client_request()
             .map_err(|e| HostClientError::transport(format!("WS request {url}: {e}")))?;
-        if let Some(tok) = self.writer_token.lock().ok().and_then(|g| g.clone())
-            && let Ok(value) = http::HeaderValue::from_str(&tok)
-        {
-            request.headers_mut().insert("X-Writer-Token", value);
-        }
         let (ws_stream, _) = connect_async(request)
             .await
             .map_err(|e| HostClientError::transport(format!("WS connect {url}: {e}")))?;
@@ -200,7 +192,6 @@ impl HttpWsClient {
 
         let idle_timeout = self.idle_timeout;
         let reader_peer = peer.clone();
-        let writer_token = self.writer_token.clone();
         // c2834:连接的 v3 模式在 connect 时定格(首 binary 帧决定双方形态,
         // 运行中翻转 env 不追认既有连接)。
         let v3 = self.wire_v3_on();
@@ -227,47 +218,29 @@ impl HttpWsClient {
                     }
                 };
                 match msg {
-                    Ok(Message::Text(text)) => {
-                        if let Some(tok) = serde_json::from_str::<Value>(text.as_str())
-                            .ok()
-                            .and_then(|v| {
-                                v.get("writerToken")
-                                    .and_then(Value::as_str)
-                                    .map(str::to_string)
-                            })
-                            && let Ok(mut slot) = writer_token.lock()
-                        {
-                            *slot = Some(tok);
-                        }
-                        match codec::decode_str(text.as_str()) {
-                            Ok(RpcMessage::ServerResponse { rpc_id, result }) => {
-                                if let Some(tx) = reader_peer
-                                    .pending
-                                    .lock()
-                                    .ok()
-                                    .and_then(|mut g| g.remove(&rpc_id))
-                                {
-                                    let _ = tx.send(Ok(result));
-                                }
-                            }
-                            Ok(frame) => {
-                                let _ = reader_peer.events.send(frame);
-                            }
-                            Err(e) => {
-                                fail_peer(&reader_peer, &e.to_string());
-                                break;
+                    Ok(Message::Text(text)) => match codec::decode_str(text.as_str()) {
+                        Ok(RpcMessage::ServerResponse { rpc_id, result }) => {
+                            if let Some(tx) = reader_peer
+                                .pending
+                                .lock()
+                                .ok()
+                                .and_then(|mut g| g.remove(&rpc_id))
+                            {
+                                let _ = tx.send(Ok(result));
                             }
                         }
-                    }
+                        Ok(frame) => {
+                            let _ = reader_peer.events.send(frame);
+                        }
+                        Err(e) => {
+                            fail_peer(&reader_peer, &e.to_string());
+                            break;
+                        }
+                    },
                     Ok(Message::Binary(bytes)) if v3 => {
                         // c2834 task 3.1:下行 binary 帧(fory v3)。
                         match wire_v3_client::decode_downlink(&bytes, &mut v3_session_id) {
                             Ok(Some(wire_v3_client::Downlink::Response { rpc_id, result })) => {
-                                if let Some(tok) = &result.writer_token
-                                    && let Ok(mut slot) = writer_token.lock()
-                                {
-                                    *slot = Some(tok.clone());
-                                }
                                 if let Some(tx) = reader_peer
                                     .pending
                                     .lock()
@@ -321,8 +294,7 @@ impl HttpWsClient {
         // rpc_id(数字形态直通 / 非数字稳定哈希)之下,与 reader 的
         // `rpc_id.to_string()` 回填对齐。JSON 路径仍挂信封 rpcId,不动。
         let (outgoing, pending_key) = if self.wire_v3_on() {
-            let token = self.writer_token.lock().ok().and_then(|g| g.clone());
-            let bytes = wire_v3_client::client_request_bytes(rpc_id, method, &payload, token)
+            let bytes = wire_v3_client::client_request_bytes(rpc_id, method, &payload)
                 .map_err(|e| HostClientError::transport(format!("unary {method}: {e}")))?;
             (
                 Outgoing::Binary(bytes),

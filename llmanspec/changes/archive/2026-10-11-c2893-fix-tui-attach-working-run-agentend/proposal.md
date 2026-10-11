@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2893-fix-tui-attach-working-run-agentend
+base_branch: main
+base_sha: 048738c5d8e568e739ff5718b9e7a7d4f4997f09
 ---
 
 # 砍协议写者令牌，会话占用改内核锁
@@ -12,7 +15,7 @@ depends_on: []
 
 ## What Changes
 
-- 砍协议 `writer_token` / `X-Writer-Token`。跨进程占用 = 内核排他锁，锁已有 **manifest**，不新建锁文件。还锁 = close fd，不 unlink。
+- 砍协议 `writer_token` / `X-Writer-Token`。跨进程占用 = 内核排他锁，对齐 dsh：会话目录 **`session.lock`**（POSIX `flock`；Windows 由该路径派生命名信号量，不锁数据文件）。还锁 = close fd / 关 handle，不 unlink。
 - 该 session 最后一条订阅连接干净退出（TUI Ctrl+C / WS Close / 切走 session）立刻还；异常断开 linger（可配置，默认 60s，`0` 立即还）。linger 内同进程重连续占；他进程争用大声失败，不抢活锁。Host 进程死由内核还。
 - 同进程第二客户端靠 `run_inflight`。纯 HTTP 无订阅：回合结束且订阅者为 0 则 linger。
 - `run()` 必须看 unary 业务成败；未准入结束 stream。Busy + 空 follow-up 的非中止 Error → Idle。
@@ -41,9 +44,10 @@ depends_on: []
 ## Open Questions
 
 - **[已定]** 砍 UUID，改内核锁。
-- **[已定]** 锁 manifest，还锁 = close fd。
+- **[已定]** 锁 `session.lock`（不锁 manifest）；POSIX flock + inode 核对；Windows 命名信号量。还锁 = close，不 unlink。
 - **[已定]** 干净最后连接立刻还；异常断开 linger 默认 60s；不抢他进程活锁。
 
 ## Further Notes
 
 - 设计：同目录 `design.md`。调研：`research/writer-lease-lifetime.md`、`research/peer-writer-exclusion.md`。
+- 同 Host 双 TUI resume 同一 session 会扇出打字机（占用是写引擎，不是连接）。产品未决，草案见 `c2895-update-same-host-second-attach`。

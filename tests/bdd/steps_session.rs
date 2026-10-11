@@ -1166,3 +1166,79 @@ async fn then_resume_projection_verbatim(sess: &XySessionStore, model: String, l
         "c2826: leaf 投影思考档必须原样保留且无抵消条目"
     );
 }
+
+fn occupancy_lock_path(sess: &XySessionStore, id: &str) -> std::path::PathBuf {
+    sess_dir(sess).join(id).join("session.lock")
+}
+
+async fn materialize_persisted_occupancy(sess: &XySessionStore, id: &str) {
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    mgr.create(id, Some("."), None).await.expect("create");
+    mgr.append(id, &message_entry("m1", None, "assistant", "hi"))
+        .await
+        .expect("append");
+    sess.current_id.replace(Some(id.to_string()));
+}
+
+#[given("已物化会话的写占用被进程 A 持有")]
+async fn g_r1950_a_holds(sess: &XySessionStore) {
+    materialize_persisted_occupancy(sess, "s-lock").await;
+    let path = occupancy_lock_path(sess, "s-lock");
+    assert!(path.exists(), "session.lock MUST exist after materialize");
+}
+
+#[given("进程 A 持有已物化会话写占用后退出")]
+async fn g_r1950_a_exits(sess: &XySessionStore) {
+    materialize_persisted_occupancy(sess, "s-lock").await;
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    mgr.release_write_lock("s-lock");
+}
+
+#[when("进程 B 打开同一会话写入")]
+async fn w_r1950_b_writes(sess: &XySessionStore) {
+    let id = sess.current_id.borrow().clone().expect("session id");
+    let path = occupancy_lock_path(sess, &id);
+    let code = crate::bdd::helpers::python_flock_probe(&path);
+    sess.lock_probe.set(code);
+    if code == Some(0) {
+        let dir = sess_dir(sess);
+        let b = SessionManager::new(dir);
+        let result = b
+            .append(&id, &message_entry("m-b", None, "assistant", "from-b"))
+            .await;
+        sess.last_result.replace(Some(
+            result
+                .map(|_| "ok".into())
+                .map_err(|e| XyDriverError::from(e)),
+        ));
+        sess.second_mgr.replace(Some(b));
+    }
+}
+
+#[then("进程 B 失败且不得追加")]
+fn t_r1950_b_conflicts(sess: &XySessionStore) {
+    assert_eq!(
+        sess.lock_probe.get(),
+        Some(2),
+        "process B MUST not take A's kernel lock"
+    );
+    assert!(
+        sess.last_result.borrow().is_none(),
+        "B MUST NOT append while A holds"
+    );
+}
+
+#[then("进程 B 可以追加")]
+fn t_r1950_b_appends(sess: &XySessionStore) {
+    assert_eq!(
+        sess.lock_probe.get(),
+        Some(0),
+        "process B MUST take the lock after A exited"
+    );
+    let result = sess.last_result.borrow();
+    assert!(
+        result.as_ref().is_some_and(|r| r.is_ok()),
+        "B MUST append: {result:?}"
+    );
+}

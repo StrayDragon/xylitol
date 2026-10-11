@@ -23,6 +23,14 @@
       那么 相位仍忙碌且 status 为 Follow-up pending
       当 注入空队列的 AgentEnd
       那么 相位回到 idle
+  @req:r1952
+  规则: prompt-failure-ends-run
+    产品 attach 对 prompt 的非成功业务应答 MUST 结束该次 run 并露出错误，MUST NOT 当作已开跑而继续等待 AgentEnd。Busy 且 follow-up 为空时收到非中止 Error MUST 进入 Idle 并清忙碌短词；Error 条目仍保留。
+
+    场景: prompt-business-error-idles-busy
+      假如 模型已进入忙碌 Working
+      当 以桥缝注入非中止 Error 且 follow-up 为空
+      那么 相位回到 idle 且保留 Error 条目
   @req:r1181
   规则: steer-followup-events
     bridge MUST 能消费 QueueUpdate（steer_count / follow_up_count）；display_diff 等工具结果字段 MUST 在 ToolExecutionEnd 路径可被抽取供 transcript 使用。

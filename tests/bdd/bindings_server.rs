@@ -214,15 +214,27 @@ async fn test_rr4(approval_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "writer-lease"
+    name = "two-process-write-conflict"
 )]
-async fn test_sr_w1_writer_lease(server_test: ServerTest) {}
+async fn test_sr_w1_two_process_write_conflict(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "writer-token-via-ws-unary"
+    name = "holder-exit-releases"
 )]
-async fn test_sr_w1_writer_token_ws(server_test: ServerTest) {}
+async fn test_sr_w1_holder_exit_releases(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "last-clean-disconnect-releases"
+)]
+async fn test_sr_w1_last_clean_disconnect(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "linger-reconnect-same-process"
+)]
+async fn test_sr_w1_linger_reconnect(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",

@@ -65,6 +65,8 @@ pub enum XySessionStoreError {
     Validation { message: String },
     #[error("{op} not supported")]
     Unsupported { op: &'static str },
+    #[error("session {session_id} is being written by another process")]
+    WriteHeld { session_id: String },
 }
 
 /// Session-domain failures: store IO plus control-plane (no active session,
@@ -133,6 +135,12 @@ impl XySessionStoreError {
 
     pub fn unsupported(op: &'static str) -> Self {
         Self::Unsupported { op }
+    }
+
+    pub fn write_held(session_id: impl Into<String>) -> Self {
+        Self::WriteHeld {
+            session_id: session_id.into(),
+        }
     }
 }
 
@@ -394,6 +402,10 @@ mod tests {
             (
                 "XySessionStoreError::Validation",
                 XySessionStoreError::validation("entry type unknown").to_string(),
+            ),
+            (
+                "XySessionStoreError::WriteHeld",
+                XySessionStoreError::write_held("s1").to_string(),
             ),
             (
                 "XySessionError::NoActiveSession",

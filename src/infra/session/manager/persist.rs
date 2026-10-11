@@ -12,7 +12,9 @@ impl SessionManager {
         session_id: &str,
         entries: &[SessionEntry],
     ) -> Result<(), XySessionStoreError> {
+        self.acquire_write_lock(session_id)?;
         self.replace_entries(session_id, entries).await?;
+        self.acquire_write_lock(session_id)?;
         // Zero-compat: never silently delete a legacy file in the background.
         // Legacy cleanup is only done through the user's explicit `delete_session`.
         Ok(())
@@ -240,6 +242,7 @@ impl SessionManager {
                     return Err(super::segments::legacy_unsupported_error(session_id));
                 }
                 if self.manifest_path(session_id).exists() {
+                    self.acquire_write_lock(session_id)?;
                     let manifest = self.read_manifest(session_id).await?;
                     let path =
                         self.resolve_segment_path(session_id, &manifest.active_segment.path)?;

@@ -25,7 +25,7 @@ pub enum RpcMessage {
         method: String,
         #[serde(default)]
         payload: Value,
-        /// Session writer lease. First non-readonly unary mints it; later writes must echo it.
+        /// Unused wire leftover (always None). Occupancy is a kernel lock, not a token.
         #[serde(default, rename = "writerToken")]
         writer_token: Option<String>,
     },
@@ -51,8 +51,7 @@ pub struct RpcResult {
     pub value: Option<Value>,
     #[serde(default)]
     pub error: Option<RpcError>,
-    /// Session writer lease. Not part of the JSON-RPC `result` object; HTTP
-    /// stamps `X-Writer-Token`, WS stamps a top-level extra member.
+    /// Unused leftover; occupancy is a kernel lock. Always `None` on product paths.
     #[serde(default, skip)]
     pub writer_token: Option<String>,
 }

@@ -189,11 +189,6 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     };
-    let writer = req
-        .headers()
-        .get("X-Writer-Token")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
     let bytes = match req.payload().await {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -205,13 +200,10 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         illegal_envelope(res);
         return;
     }
-    match super::wire_v3::handle_uplink(&host, bytes, writer).await {
-        Ok((frame, token)) => {
+    match super::wire_v3::handle_uplink(&host, bytes).await {
+        Ok(frame) => {
             res.status_code(StatusCode::OK);
             let _ = res.add_header("Content-Type", super::wire_v3::CONTENT_TYPE, true);
-            if let Some(tok) = token {
-                let _ = res.add_header("X-Writer-Token", tok, true);
-            }
             res.body(frame);
         }
         Err(_) => illegal_envelope(res),
@@ -237,14 +229,9 @@ async fn mux_upgrade(
     let Some(host) = gateway.host() else {
         return Err(StatusError::internal_server_error());
     };
-    let writer = req
-        .headers()
-        .get("X-Writer-Token")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_string);
     WebSocketUpgrade::new()
         .check_origin(mux_origin_allowed)
-        .upgrade(req, res, move |ws| handle_mux(ws, host, writer))
+        .upgrade(req, res, move |ws| handle_mux(ws, host))
         .await
 }
 
@@ -264,13 +251,16 @@ fn mux_origin_allowed(origin: Option<&str>) -> bool {
     }
 }
 
-async fn handle_mux(ws: WebSocket, host: Arc<HostState>, mut writer: Option<String>) {
+async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
     use futures::SinkExt;
     let (mut sink, mut stream) = ws.split();
     // Handshake is host.describe result, not a mux ServerHello frame (c2825).
     let (tx, mut rx) = mpsc::channel::<RpcMessage>(MUX_CHAN_CAP);
     let (bin_tx, mut bin_rx) = mpsc::channel::<Vec<u8>>(MUX_CHAN_CAP);
     host.register_unbound_mux(tx).await;
+    let clean_close = AtomicBool::new(false);
 
     let send_loop = async {
         loop {
@@ -308,6 +298,7 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>, mut writer: Option<Stri
                 break;
             };
             if msg.is_close() {
+                clean_close.store(true, Ordering::SeqCst);
                 break;
             }
             if msg.is_text() {
@@ -317,11 +308,8 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>, mut writer: Option<Stri
             if !msg.is_binary() {
                 continue;
             }
-            match super::wire_v3::handle_uplink(&host, msg.as_bytes(), writer.clone()).await {
-                Ok((frame, token)) => {
-                    if let Some(tok) = token {
-                        writer = Some(tok);
-                    }
+            match super::wire_v3::handle_uplink(&host, msg.as_bytes()).await {
+                Ok(frame) => {
                     if bin_tx.send(frame).await.is_err() {
                         break;
                     }
@@ -334,6 +322,7 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>, mut writer: Option<Stri
         _ = send_loop => {}
         _ = recv_loop => {}
     }
+    super::host::prune_mux_and_maybe_release(&host, clean_close.load(Ordering::SeqCst)).await;
 }
 
 #[cfg(test)]

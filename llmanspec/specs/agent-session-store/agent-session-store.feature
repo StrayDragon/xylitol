@@ -99,7 +99,7 @@
       那么 分支摘要为空字符串
   @req:r1109
   规则: 写入安全
-    SessionManager 写 v7 会话 MUST 以 manifest 原子切换作为 seal 提交点：进程任意时点终止后，旧 manifest 仍 MUST 指向可恢复的旧段，或新 manifest MUST 只指向完整的新段；MUST NOT 将未提交的 orphan/临时段拼入会话。系统以单进程单写者为并发假设（同一会话至多一个进程写入），MUST NOT 声称提供跨进程文件锁互斥。
+    SessionManager 写 v7 会话 MUST 以 manifest 原子切换作为 seal 提交点：进程任意时点终止后，旧 manifest 仍 MUST 指向可恢复的旧段，或新 manifest MUST 只指向完整的新段；MUST NOT 将未提交的 orphan/临时段拼入会话。跨进程写入互斥见 r1950；本规则只约束 seal 原子性。
 
     场景: orphan-temp-segment-excluded
       假如 存在会话 "safe" 包含 2 条记录
@@ -348,5 +348,18 @@
       那么 会话 "lazy" 的磁盘 JSONL 尚不存在
       当 向会话追加用户消息 "hello"
       那么 会话 "lazy" 的磁盘 JSONL 已存在且包含 "hello"
+  @req:r1950
+  规则: persisted-session-kernel-write-lock
+    已物化（磁盘上有提交指针）的持久化会话，跨进程写入 MUST 经内核排他占用：POSIX MUST flock 该会话目录内 `session.lock`（释放 MUST NOT unlink；MUST NOT 锁会原子改写的提交指针）；Windows MUST 用由该锁路径派生的命名内核对象。持有进程退出后后继 MUST 可写入。内存后端 MUST NOT 要求该锁。
+
+    场景: second-process-write-open-conflicts
+      假如 已物化会话的写占用被进程 A 持有
+      当 进程 B 打开同一会话写入
+      那么 进程 B 失败且不得追加
+
+    场景: lock-releases-on-holder-drop
+      假如 进程 A 持有已物化会话写占用后退出
+      当 进程 B 打开同一会话写入
+      那么 进程 B 可以追加
 
 # re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

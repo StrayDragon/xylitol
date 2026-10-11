@@ -1,6 +1,6 @@
 //! In-process envelope client (tests / c2304 conformance). Print still uses `XyInProcessDriver`.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
@@ -15,12 +15,7 @@ const DOWNLINK_CAP: usize = 256;
 /// Local host half of [`InProcessClient`].
 #[async_trait]
 pub trait InProcessHost: Send + Sync {
-    async fn handle_unary(
-        &self,
-        method: &str,
-        payload: Value,
-        writer_token: Option<String>,
-    ) -> RpcResult;
+    async fn handle_unary(&self, method: &str, payload: Value) -> RpcResult;
     async fn handle_respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError>;
     fn subscribe_downlink(&self) -> broadcast::Receiver<RpcMessage>;
 }
@@ -43,12 +38,7 @@ impl EchoHost {
 
 #[async_trait]
 impl InProcessHost for EchoHost {
-    async fn handle_unary(
-        &self,
-        method: &str,
-        payload: Value,
-        _writer_token: Option<String>,
-    ) -> RpcResult {
+    async fn handle_unary(&self, method: &str, payload: Value) -> RpcResult {
         if !is_unary_method(method) {
             return RpcResult::error("unknown_method", method);
         }
@@ -85,14 +75,8 @@ impl HostStateHost {
 #[cfg(feature = "server")]
 #[async_trait]
 impl InProcessHost for HostStateHost {
-    async fn handle_unary(
-        &self,
-        method: &str,
-        payload: Value,
-        writer_token: Option<String>,
-    ) -> RpcResult {
-        crate::app::server::host::handle_unary(&self.host, None, method, payload, writer_token)
-            .await
+    async fn handle_unary(&self, method: &str, payload: Value) -> RpcResult {
+        crate::app::server::host::handle_unary(&self.host, None, method, payload).await
     }
 
     async fn handle_respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError> {
@@ -109,15 +93,11 @@ impl InProcessHost for HostStateHost {
 #[derive(Clone)]
 pub struct InProcessClient {
     host: Arc<dyn InProcessHost>,
-    writer_token: Arc<Mutex<Option<String>>>,
 }
 
 impl InProcessClient {
     pub fn new(host: Arc<dyn InProcessHost>) -> Self {
-        Self {
-            host,
-            writer_token: Arc::new(Mutex::new(None)),
-        }
+        Self { host }
     }
 
     pub fn echo() -> (Self, Arc<EchoHost>) {
@@ -134,18 +114,7 @@ impl InProcessClient {
 #[async_trait]
 impl HostClient for InProcessClient {
     async fn unary(&self, method: &str, payload: Value) -> Result<RpcResult, HostClientError> {
-        let writer_token = self
-            .writer_token
-            .lock()
-            .ok()
-            .and_then(|guard| guard.clone());
-        let result = self.host.handle_unary(method, payload, writer_token).await;
-        if let Some(token) = result.writer_token.clone()
-            && let Ok(mut guard) = self.writer_token.lock()
-        {
-            *guard = Some(token);
-        }
-        Ok(result)
+        Ok(self.host.handle_unary(method, payload).await)
     }
 
     async fn respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError> {
@@ -226,9 +195,9 @@ mod tests {
             .await
             .expect("set name");
         assert!(acquired.ok);
-        assert!(acquired.writer_token.is_some());
+        assert!(acquired.writer_token.is_none());
 
-        let conflict = other_client
+        let second = other_client
             .unary(
                 "set_session_name",
                 serde_json::json!({
@@ -237,11 +206,10 @@ mod tests {
                 }),
             )
             .await
-            .expect("writer conflict response");
-        assert!(!conflict.ok);
-        assert_eq!(
-            conflict.error.as_ref().map(|error| error.code.as_str()),
-            Some("writer_conflict")
+            .expect("same-process second client");
+        assert!(
+            second.ok,
+            "same Host two clients share occupancy: {second:?}"
         );
 
         let unknown = client

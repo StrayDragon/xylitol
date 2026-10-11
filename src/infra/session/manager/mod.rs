@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use super::types::*;
 use crate::utils::{lock_rwlock_read, lock_rwlock_write};
@@ -17,6 +17,9 @@ mod seal;
 mod segments;
 mod store;
 mod tree;
+mod write_lock;
+
+pub use write_lock::SESSION_WRITE_LOCK_FILENAME;
 
 #[cfg(test)]
 mod tests;
@@ -40,6 +43,8 @@ pub struct SessionManager {
     in_memory_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
     /// Pending entries for persisted sessions not yet flushed to disk.
     pending_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
+    /// Process-local kernel write occupancy keyed by session id (r1950).
+    write_locks: Arc<Mutex<HashMap<String, write_lock::SessionWriteLock>>>,
 }
 
 impl Default for SessionManager {
@@ -51,6 +56,7 @@ impl Default for SessionManager {
             active_session: Arc::new(RwLock::new(None)),
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
             pending_store: Arc::new(RwLock::new(HashMap::new())),
+            write_locks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -65,6 +71,7 @@ impl SessionManager {
             active_session: Arc::new(RwLock::new(None)),
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
             pending_store: Arc::new(RwLock::new(HashMap::new())),
+            write_locks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -78,6 +85,7 @@ impl SessionManager {
             active_session: Arc::new(RwLock::new(None)),
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
             pending_store: Arc::new(RwLock::new(HashMap::new())),
+            write_locks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Duration;
 
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -28,7 +29,7 @@ use crate::app::server::ws::{
     EventJournal, ReverseRpcGateway, ReverseRpcResult, downlink_server_request,
 };
 use crate::infra::session::SessionManager;
-use crate::protocol::error::XyToolError;
+use crate::protocol::error::{XySessionStoreError, XyToolError};
 use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::ports::XySessionStore;
 use crate::protocol::ports::ask::{AskArgs, AskUserGateway};
@@ -65,6 +66,10 @@ pub struct HostState {
     pub reload_cancel: Mutex<Option<CancellationToken>>,
     pub shutting_down: AtomicBool,
     pub fallback_session: String,
+    /// Abnormal last-subscriber disconnect grace before releasing occupancy.
+    pub write_lock_linger: std::sync::Mutex<Duration>,
+    /// Persisted sessions directory (empty when the store is not disk-backed).
+    pub sessions_dir: std::sync::Mutex<PathBuf>,
 }
 
 /// Process-wide reload / MCP inputs cloned onto each materialized Driver.
@@ -87,9 +92,8 @@ pub struct SessionSlot {
     pub journal: Mutex<EventJournal>,
     pub driver: Arc<Mutex<Option<XyInProcessDriver>>>,
     pub writer: AtomicBool,
-    /// Lease for non-readonly unary. HTTP is not a long-lived connection, so identity is this token.
-    pub writer_token: Mutex<Option<String>>,
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
+    linger_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     pub gateway: Arc<ReverseRpcGateway>,
     pub in_process_downlink: broadcast::Sender<RpcMessage>,
     next_conn: AtomicU64,
@@ -120,7 +124,16 @@ impl HostState {
             reload_cancel: Mutex::new(None),
             shutting_down: AtomicBool::new(false),
             fallback_session,
+            write_lock_linger: std::sync::Mutex::new(Duration::from_secs(60)),
+            sessions_dir: std::sync::Mutex::new(PathBuf::new()),
         })
+    }
+
+    fn remember_sessions_dir(self: Arc<Self>, sessions_dir: PathBuf) -> Arc<Self> {
+        if let Ok(mut g) = self.sessions_dir.lock() {
+            *g = sessions_dir;
+        }
+        self
     }
 
     /// Production assembly (shared bootstrap ingredients → RuntimePorts).
@@ -135,7 +148,8 @@ impl HostState {
     /// Isolated store + default ports (BDD / unit tests; no user `~/.xylitol`).
     pub fn for_test() -> Result<Arc<Self>, Box<dyn std::error::Error>> {
         let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
-        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.join("sessions")));
+        let sessions = dir.join("sessions");
+        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(sessions.clone()));
         let ports = build_ports_with_store(BuildAgentOptions::default(), store)?;
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
@@ -149,7 +163,16 @@ impl HostState {
                 default_model_id: None,
             },
             "test-session".into(),
-        ))
+        )
+        .remember_sessions_dir(sessions)
+        .arm_test_linger())
+    }
+
+    fn arm_test_linger(self: Arc<Self>) -> Arc<Self> {
+        if let Ok(mut g) = self.write_lock_linger.lock() {
+            *g = Duration::from_millis(80);
+        }
+        self
     }
 
     /// Isolated host with configured MCP servers (parity tests).
@@ -158,7 +181,8 @@ impl HostState {
         mcp_servers: Vec<McpServerSpec>,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
         let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
-        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.join("sessions")));
+        let sessions = dir.join("sessions");
+        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(sessions.clone()));
         let ports = build_ports_with_store(BuildAgentOptions::default(), store)?;
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
@@ -172,7 +196,9 @@ impl HostState {
                 default_model_id: None,
             },
             "test-session".into(),
-        ))
+        )
+        .remember_sessions_dir(sessions)
+        .arm_test_linger())
     }
 
     /// Isolated host with one selectable model registered as the writer default
@@ -208,7 +234,8 @@ impl HostState {
             thinking_level_map: Default::default(),
         });
         let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
-        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.join("sessions")));
+        let sessions = dir.join("sessions");
+        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(sessions.clone()));
         let ports = build_ports_with_store(
             BuildAgentOptions {
                 model_registry: registry,
@@ -228,7 +255,9 @@ impl HostState {
                 default_model_id: Some(model_id.to_string()),
             },
             "test-session".into(),
-        ))
+        )
+        .remember_sessions_dir(sessions)
+        .arm_test_linger())
     }
 
     pub async fn slot(&self, session_id: &str) -> Arc<SessionSlot> {
@@ -270,11 +299,40 @@ impl HostState {
         for tx in pending {
             slot.add_subscriber(tx).await;
         }
+        Self::cancel_write_linger(slot).await;
         let result = slot.replay_or_resync(last_seq).await;
         // c2841：绑定后同步会话写者的当前已解析模型（含用户显式配置的默认模型），
         // 使附加端模型徽标收敛而不是停在 NOT-SET；无写者 / 无模型时 no-op。
         slot.sync_model_downlink().await;
         result
+    }
+
+    async fn cancel_write_linger(slot: &SessionSlot) {
+        if let Some(task) = slot.linger_task.lock().await.take() {
+            task.abort();
+        }
+    }
+
+    fn linger_duration(&self) -> Duration {
+        *self
+            .write_lock_linger
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Disk path of `session.lock` for a persisted session (tests / BDD).
+    pub fn occupancy_lock_path(&self, session_id: &str) -> PathBuf {
+        self.sessions_dir
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .join(session_id)
+            .join(crate::infra::session::manager::SESSION_WRITE_LOCK_FILENAME)
+    }
+
+    async fn live_subscriber_count(slot: &SessionSlot) -> usize {
+        let mut subs = slot.subscribers.lock().await;
+        subs.retain(|_, tx| !tx.is_closed());
+        subs.len()
     }
 
     pub async fn respond(&self, rpc_id: &str, payload: Value) -> bool {
@@ -383,8 +441,8 @@ impl SessionSlot {
             session_id,
             driver: Arc::new(Mutex::new(None)),
             writer: AtomicBool::new(false),
-            writer_token: Mutex::new(None),
             subscribers: Mutex::new(HashMap::new()),
+            linger_task: Mutex::new(None),
             gateway: Arc::new(ReverseRpcGateway::new()),
             in_process_downlink,
             next_conn: AtomicU64::new(1),
@@ -983,52 +1041,67 @@ fn rpc_err(e: XyDriverError) -> RpcResult {
     RpcResult::error(e.kind(), e.to_string())
 }
 
-async fn take_writer_lease(
-    slot: &SessionSlot,
-    presented: Option<&str>,
-) -> Result<String, RpcResult> {
-    let mut guard = slot.writer_token.lock().await;
-    match guard.as_ref() {
-        None => {
-            let token = uuid::Uuid::new_v4().to_string();
-            *guard = Some(token.clone());
-            slot.writer.store(true, Ordering::SeqCst);
-            Ok(token)
-        }
-        Some(existing) if presented == Some(existing.as_str()) => Ok(existing.clone()),
-        Some(_) => Err(RpcResult::error(
-            "writer_conflict",
-            "another client is the writer for this session",
-        )),
+fn occupancy_err(err: XySessionStoreError) -> RpcResult {
+    match err {
+        XySessionStoreError::WriteHeld { session_id } => RpcResult::error(
+            "session_write_held",
+            format!("session {session_id} is being written by another process"),
+        ),
+        other => rpc_err(XyDriverError::from(other)),
     }
 }
 
-/// Guard for a writer-method unary call: acquires the session's writer lease,
-/// materializes the engine, and stamps every response — success or failure —
-/// with the lease token so the client can keep writing.
-struct WriterLease {
-    token: String,
+async fn ensure_write_occupancy(
+    host: &HostState,
+    slot: &Arc<SessionSlot>,
+    workspace: &Path,
+) -> Result<(), RpcResult> {
+    HostState::cancel_write_linger(slot).await;
+    if let Err(e) = host.ports.store.try_acquire_write_lock(&slot.session_id) {
+        return Err(occupancy_err(e));
+    }
+    materialize_writer_at(host, slot, workspace)
+        .await
+        .map_err(rpc_err)?;
+    Ok(())
 }
 
-impl WriterLease {
-    async fn acquire(
-        host: &HostState,
-        slot: &Arc<SessionSlot>,
-        workspace: &Path,
-        presented: Option<&str>,
-    ) -> Result<Self, RpcResult> {
-        let token = take_writer_lease(slot, presented).await?;
-        if let Err(e) = materialize_writer_at(host, slot, workspace).await {
-            let mut r = rpc_err(e);
-            r.writer_token = Some(token);
-            return Err(r);
+pub async fn prune_mux_and_maybe_release(host: &Arc<HostState>, clean: bool) {
+    let slots: Vec<Arc<SessionSlot>> = host.sessions.read().await.values().cloned().collect();
+    for slot in slots {
+        if HostState::live_subscriber_count(&slot).await == 0 {
+            on_last_subscriber_gone(host, &slot, clean).await;
         }
-        Ok(Self { token })
     }
+}
 
-    fn seal(&self, mut result: RpcResult) -> RpcResult {
-        result.writer_token = Some(self.token.clone());
-        result
+async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>, clean: bool) {
+    if slot.run_inflight.load(Ordering::SeqCst) {
+        return;
+    }
+    HostState::cancel_write_linger(slot).await;
+    let linger = host.linger_duration();
+    if clean || linger.is_zero() {
+        host.ports.store.release_write_lock(&slot.session_id);
+        return;
+    }
+    let host = host.clone();
+    let slot_wait = slot.clone();
+    let task = tokio::spawn(async move {
+        tokio::time::sleep(linger).await;
+        if slot_wait.run_inflight.load(Ordering::SeqCst) {
+            return;
+        }
+        if HostState::live_subscriber_count(&slot_wait).await == 0 {
+            host.ports.store.release_write_lock(&slot_wait.session_id);
+        }
+    });
+    *slot.linger_task.lock().await = Some(task);
+}
+
+async fn on_prompt_finished(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
+    if HostState::live_subscriber_count(slot).await == 0 {
+        on_last_subscriber_gone(host, slot, false).await;
     }
 }
 
@@ -1042,7 +1115,6 @@ pub async fn handle_unary(
     rpc_id: Option<&str>,
     method: &str,
     payload: Value,
-    writer_token: Option<String>,
 ) -> RpcResult {
     if method == METHOD_HOST_DESCRIBE {
         return RpcResult::ok_value(
@@ -1095,7 +1167,6 @@ pub async fn handle_unary(
     };
     let workspace = workspace_from_payload(host, &payload);
     let slot = host.slot(&session_id).await;
-    let presented = writer_token.as_deref();
 
     // c2460: session-scoped admission keyed by the envelope rpcId — first
     // admission wins, duplicates replay the first result, foreign reuse of a
@@ -1106,16 +1177,8 @@ pub async fn handle_unary(
         Admission::Conflict => return conflict_result(),
     };
 
-    let result = dispatch_session_unary(
-        host,
-        &slot,
-        &session_id,
-        method,
-        payload,
-        presented,
-        &workspace,
-    )
-    .await;
+    let result =
+        dispatch_session_unary(host, &slot, &session_id, method, payload, &workspace).await;
     reservation.complete(result.clone());
     result
 }
@@ -1127,7 +1190,6 @@ async fn dispatch_session_unary(
     session_id: &str,
     method: &str,
     payload: Value,
-    presented: Option<&str>,
     workspace: &Path,
 ) -> RpcResult {
     if method == METHOD_SUBSCRIBE {
@@ -1138,6 +1200,12 @@ async fn dispatch_session_unary(
             .get("last_seq")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
+        HostState::cancel_write_linger(slot).await;
+        if let Err(e) = host.ports.store.try_acquire_write_lock(session_id)
+            && matches!(e, XySessionStoreError::WriteHeld { .. })
+        {
+            return occupancy_err(e);
+        }
         if let Err(e) = materialize_writer_at(host, slot, workspace).await {
             log::warn!(
                 target: "xylitol::host",
@@ -1156,12 +1224,12 @@ async fn dispatch_session_unary(
         if message.is_empty() {
             return RpcResult::error("invalid_input", "missing message");
         }
-        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
-            Ok(l) => l,
-            Err(e) => return e,
-        };
+        if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
+            return e;
+        }
         let driver = slot.driver.clone();
         let slot_push = slot.clone();
+        let host_push = host.clone();
         let prompt_model = payload
             .get("model_id")
             .and_then(Value::as_str)
@@ -1224,34 +1292,23 @@ async fn dispatch_session_unary(
             }
             slot_push.run_inflight.store(false, Ordering::SeqCst);
             slot_push.flush_pending_runtime().await;
+            on_prompt_finished(&host_push, &slot_push).await;
         });
-        return lease.seal(RpcResult::ok_value(json!({ "session_id": session_id })));
+        return RpcResult::ok_value(json!({ "session_id": session_id }));
     }
 
     if method == METHOD_ARM_TOOL_FREEZE {
-        // c2849: 门调用不可被 writer 租约记账卡死——首轮竞态下客户端 token 尚
-        // 未同步即 `writer_conflict`，会让首轮门永久停滞（实机复现：serve 建
-        // 立租约后 TUI 先发 arm_tool_freeze，无有效 token → conflict → inline
-        // Assembling 永不放行）。冲突时降级为**无租约**有界决议（与
-        // loaded_resources 同梯队——冻结的是写者内部门，不写会话）。正常路径
-        // 保留租约（materialize + 打 token）。
-        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
-            Ok(l) => Some(l),
-            Err(e) => {
-                log::warn!(
-                    target: "xylitol::host",
-                    "arm_tool_freeze lease conflict ({:?}); falling back to lease-free resolution",
-                    e.error.map(|er| er.details),
-                );
-                None
-            }
-        };
+        // r1925: freeze the in-process tool table; MUST NOT take write occupancy
+        // so another process holding the kernel lock still gets a snapshot.
+        if let Err(e) = materialize_writer_at(host, slot, workspace).await {
+            log::warn!(
+                target: "xylitol::host",
+                "arm_tool_freeze materialize_writer failed: {e}"
+            );
+        }
         let mut g = slot.driver.lock().await;
         let Some(driver) = g.as_mut() else {
-            return match lease {
-                Some(l) => l.seal(RpcResult::error("unavailable", "no writer engine")),
-                None => RpcResult::error("unavailable", "no writer engine"),
-            };
+            return RpcResult::error("unavailable", "no writer engine");
         };
         // c2847: arm 必须**有界决议**——`ensure_tool_table_frozen` 按首轮门时限
         // （MCP_FIRST_TURN_GATE_TIMEOUT）等待 settle，超时 detach 未连上的 bootstrap
@@ -1260,19 +1317,13 @@ async fn dispatch_session_unary(
         // turn 永不启动（runtime 的 ensure 只在 run() 后才触发，形成双向死锁）。
         driver.ensure_tool_table_frozen().await;
         let snapshot = driver.loaded_resources_snapshot().await;
-        return match lease {
-            Some(l) => l.seal(RpcResult::ok_value(
-                serde_json::to_value(&snapshot).unwrap_or(Value::Null),
-            )),
-            None => RpcResult::ok_value(serde_json::to_value(&snapshot).unwrap_or(Value::Null)),
-        };
+        return RpcResult::ok_value(serde_json::to_value(&snapshot).unwrap_or(Value::Null));
     }
 
     if method == METHOD_PERSIST_TRUST {
-        let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
-            Ok(l) => l,
-            Err(e) => return e,
-        };
+        if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
+            return e;
+        }
         let mode = match payload.get("mode").and_then(Value::as_str) {
             Some("trust_cwd") | None => ProjectTrustMode::TrustCwd,
             Some("trust_parent") => ProjectTrustMode::TrustParent,
@@ -1287,23 +1338,23 @@ async fn dispatch_session_unary(
         };
         let report = match driver.persist_project_trust(mode).await {
             Ok(report) => report,
-            Err(e) => return lease.seal(rpc_err(e)),
+            Err(e) => return rpc_err(e),
         };
-        return lease.seal(RpcResult::ok_value(json!({
+        return RpcResult::ok_value(json!({
             "trusted": report.trusted,
             "saved_path": report.saved_path,
             "message": report.message,
-        })));
+        }));
     }
 
     if is_writer_method(method) {
-        return dispatch_writer_unary(host, slot, method, payload, presented, workspace).await;
+        return dispatch_writer_unary(host, slot, method, payload, workspace).await;
     }
 
     dispatch_readonly_unary(host, slot, session_id, method, payload, workspace).await
 }
 
-/// Writer-method unary: lease + inflight deferral + wire staging + shared dispatch.
+/// Writer-method unary: occupancy + inflight deferral + wire staging + shared dispatch.
 ///
 /// Split out of [`dispatch_session_unary`] (c2710) so the entry point stays a
 /// thin router (special paths → writer → reader).
@@ -1312,17 +1363,15 @@ async fn dispatch_writer_unary(
     slot: &Arc<SessionSlot>,
     method: &str,
     payload: Value,
-    presented: Option<&str>,
     workspace: &Path,
 ) -> RpcResult {
-    let lease = match WriterLease::acquire(host, slot, workspace, presented).await {
-        Ok(l) => l,
-        Err(e) => return e,
-    };
+    if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
+        return e;
+    }
     if slot.run_inflight.load(Ordering::SeqCst)
         && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")
     {
-        return lease.seal(defer_runtime_setting(slot, method, &payload).await);
+        return defer_runtime_setting(slot, method, &payload).await;
     }
     // Export over the wire stages to a unique Host-side temp file; the
     // content is read back into the response and the TUI writes its own
@@ -1409,9 +1458,9 @@ async fn dispatch_writer_unary(
                 }
                 let _ = std::fs::remove_file(&p);
             }
-            lease.seal(RpcResult::ok_value(value))
+            RpcResult::ok_value(value)
         }
-        Err(e) => lease.seal(rpc_err(e)),
+        Err(e) => rpc_err(e),
     };
     if bash_forwarder.is_some() {
         driver.set_bash_run_sink(None);
@@ -1524,5 +1573,168 @@ async fn dispatch_readonly_unary(
     match dispatch(driver, cmd).await {
         Ok(outcome) => RpcResult::ok_value(outcome_to_value(outcome)),
         Err(e) => rpc_err(e),
+    }
+}
+
+#[cfg(test)]
+mod occupancy_lifecycle_tests {
+    use super::*;
+    use crate::infra::session::manager::SESSION_WRITE_LOCK_FILENAME;
+    use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
+
+    fn assistant(text: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: fixture_message_json("assistant", text),
+        })
+    }
+
+    async fn materialize(host: &HostState, sid: &str) {
+        host.ports
+            .store
+            .create(sid, Some("."), None)
+            .await
+            .expect("create");
+        host.ports
+            .store
+            .append_session_entry(sid, &assistant("hi"))
+            .await
+            .expect("append");
+        let lock = host.occupancy_lock_path(sid);
+        assert!(
+            lock.ends_with(SESSION_WRITE_LOCK_FILENAME),
+            "{}",
+            lock.display()
+        );
+        assert!(lock.exists(), "append MUST create session.lock");
+    }
+
+    #[cfg(unix)]
+    fn flock_probe(path: &Path) -> Option<i32> {
+        let script = format!(
+            "import fcntl, sys\nf=open({path:?}, 'r+')\ntry:\n fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\n sys.exit(0)\nexcept BlockingIOError:\n sys.exit(2)\n",
+            path = path
+        );
+        std::process::Command::new("python3")
+            .arg("-c")
+            .arg(&script)
+            .status()
+            .ok()
+            .and_then(|s| s.code())
+    }
+
+    #[tokio::test]
+    async fn last_clean_disconnect_releases_lock() {
+        let host = HostState::for_test().expect("host");
+        materialize(&host, "s-clean").await;
+        let lock = host.occupancy_lock_path("s-clean");
+        #[cfg(unix)]
+        assert_eq!(flock_probe(&lock), Some(2), "append holds the kernel lock");
+
+        let slot = host.slot("s-clean").await;
+        let (tx, rx) = mpsc::channel(8);
+        slot.add_subscriber(tx).await;
+        drop(rx);
+        prune_mux_and_maybe_release(&host, true).await;
+
+        #[cfg(unix)]
+        assert_eq!(
+            flock_probe(&lock),
+            Some(0),
+            "clean last disconnect MUST release immediately"
+        );
+        assert!(lock.exists(), "release MUST NOT unlink session.lock");
+    }
+
+    #[tokio::test]
+    async fn linger_reconnect_keeps_occupancy() {
+        let host = HostState::for_test().expect("host");
+        materialize(&host, "s-linger").await;
+        let lock = host.occupancy_lock_path("s-linger");
+        let slot = host.slot("s-linger").await;
+        let (tx, rx) = mpsc::channel(8);
+        slot.add_subscriber(tx).await;
+        drop(rx);
+        prune_mux_and_maybe_release(&host, false).await;
+
+        #[cfg(unix)]
+        assert_eq!(
+            flock_probe(&lock),
+            Some(2),
+            "abnormal disconnect MUST linger"
+        );
+
+        let (tx2, _rx2) = mpsc::channel(8);
+        host.register_unbound_mux(tx2).await;
+        let subscribed = host.bind_mux_to_session(&slot, 0).await;
+        assert!(subscribed.ok, "same-process reconnect MUST succeed");
+
+        #[cfg(unix)]
+        assert_eq!(flock_probe(&lock), Some(2), "reconnect MUST keep occupancy");
+    }
+
+    #[tokio::test]
+    async fn linger_expires_without_reconnect() {
+        let host = HostState::for_test().expect("host");
+        materialize(&host, "s-expire").await;
+        let lock = host.occupancy_lock_path("s-expire");
+        let slot = host.slot("s-expire").await;
+        let (tx, rx) = mpsc::channel(8);
+        slot.add_subscriber(tx).await;
+        drop(rx);
+        prune_mux_and_maybe_release(&host, false).await;
+        tokio::time::sleep(Duration::from_millis(160)).await;
+
+        #[cfg(unix)]
+        assert_eq!(
+            flock_probe(&lock),
+            Some(0),
+            "linger expiry MUST release when nobody returned"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn foreign_process_blocks_writer_unary() {
+        let host = HostState::for_test().expect("host");
+        materialize(&host, "s-held").await;
+        host.ports.store.release_write_lock("s-held");
+        let lock = host.occupancy_lock_path("s-held");
+        assert_eq!(
+            flock_probe(&lock),
+            Some(0),
+            "lock MUST be free after Host release"
+        );
+        let script = format!(
+            "import fcntl, sys, time\nf=open({path:?}, 'r+')\nfcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\nsys.stdout.write('held\\n')\nsys.stdout.flush()\ntime.sleep(30)\n",
+            path = lock
+        );
+        let mut child = std::process::Command::new("python3")
+            .arg("-c")
+            .arg(&script)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("python hold");
+        let mut stdout = child.stdout.take().expect("stdout");
+        let mut buf = [0u8; 5];
+        std::io::Read::read_exact(&mut stdout, &mut buf).expect("held");
+        assert_eq!(&buf, b"held\n");
+
+        let slot = host.slot("s-held").await;
+        let err = ensure_write_occupancy(&host, &slot, &host.reload.cwd)
+            .await
+            .expect_err("foreign holder MUST block");
+        assert_eq!(
+            err.error.as_ref().map(|e| e.code.as_str()),
+            Some("session_write_held"),
+            "{err:?}"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }

@@ -17,6 +17,12 @@ fn test_atb2_busy_lifecycle(bridge_bdd: BridgeBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-bridge/app-tui-bridge.feature",
+    name = "prompt-business-error-idles-busy"
+)]
+fn test_r1952_prompt_business_error_idles(bridge_bdd: BridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-bridge/app-tui-bridge.feature",
     name = "queue-counts-and-display-diff-headless"
 )]
 fn test_atb3_queue_and_diff(bridge_bdd: BridgeBdd) {}

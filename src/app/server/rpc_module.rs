@@ -2,7 +2,7 @@
 //!
 //! Salvo 拥有监听器与 HTTP 周边，[`handle_unary`] 是唯一执行面；本模块只做
 //! 「JSON 文本 ↔ 方法表」这一层：解析 → 命中 → 应答信封。幂等键取信封 `id`，
-//! 写者租约走形参（HTTP `X-Writer-Token` / WS 连接本地），MUST NOT 进 `params`。
+//! 会话写占用是内核锁，不经协议令牌；MUST NOT 把 writerToken 放进 `params`。
 //!
 //! 等价判据（design D2，逐条有单测）：① `id` 逐字回显（保留原 JSON 类型）
 //! ② 未登记方法 `-32601` + `data.code = unregistered_method` ③ 非法信封判否
@@ -35,13 +35,12 @@ fn id_key(id: &Value) -> Option<String> {
 /// 一次 JSON-RPC 2.0 unary 往返（POST body 与 WS 文本帧共用）。
 ///
 /// 返回 `None` = 非法信封（调用方按 400 处理，语义同 r1696）；
-/// `Some((应答, 租约))` 里应答是完整 JSON-RPC 对象（`result` 或 `error`），
-/// 租约是本次 mint/续用的写者令牌（只读方法为 `None`）。
+/// `Some((应答, ()))` 里应答是完整 JSON-RPC 对象（`result` 或 `error`）。
+/// 第二项恒为 `None`：占用改内核锁后不再 mint 协议令牌。
 /// 未登记方法不判非法，而是给 `-32601` 应答（合法信封 + 产品码）。
 pub(crate) async fn dispatch_raw(
     host: &Arc<HostState>,
     request: &str,
-    writer: Option<String>,
 ) -> Option<(Value, Option<String>)> {
     if request.len() > MAX_BODY_BYTES {
         return None;
@@ -78,9 +77,8 @@ pub(crate) async fn dispatch_raw(
     }
 
     let rpc_id = id_key(&id);
-    let result = handle_unary(host, rpc_id.as_deref(), method, payload, writer).await;
-    let token = result.writer_token.clone();
-    Some((codec::jsonrpc_response(&id, &result), token))
+    let result = handle_unary(host, rpc_id.as_deref(), method, payload).await;
+    Some((codec::jsonrpc_response(&id, &result), None))
 }
 
 #[cfg(test)]
@@ -98,7 +96,6 @@ mod tests {
         let (v, token) = dispatch_raw(
             &host,
             r#"{"jsonrpc":"2.0","id":"1","method":"host.describe","params":{}}"#,
-            None,
         )
         .await
         .expect("describe");
@@ -110,7 +107,6 @@ mod tests {
         let (v, _) = dispatch_raw(
             &host,
             r#"{"jsonrpc":"2.0","id":"2","method":"no_such_method","params":{}}"#,
-            None,
         )
         .await
         .expect("unknown");
@@ -125,7 +121,6 @@ mod tests {
         let (v, _) = dispatch_raw(
             &host,
             r#"{"jsonrpc":"2.0","id":7,"method":"host.describe"}"#,
-            None,
         )
         .await
         .expect("numeric id");
@@ -135,7 +130,6 @@ mod tests {
         let (v, _) = dispatch_raw(
             &host,
             r#"{"jsonrpc":"2.0","id":"j-1","method":"host.describe"}"#,
-            None,
         )
         .await
         .expect("string id");
@@ -155,7 +149,7 @@ mod tests {
             r#"[{"jsonrpc":"2.0","id":"1","method":"host.describe"},{"jsonrpc":"2.0","id":"2","method":"host.describe"}]"#,
         ] {
             assert!(
-                dispatch_raw(&host, raw, None).await.is_none(),
+                dispatch_raw(&host, raw).await.is_none(),
                 "非法信封 MUST 判否: {raw}"
             );
         }
@@ -170,7 +164,7 @@ mod tests {
             "x".repeat(MAX_BODY_BYTES)
         );
         assert!(
-            dispatch_raw(&host, &big, None).await.is_none(),
+            dispatch_raw(&host, &big).await.is_none(),
             "超过 4 MiB MUST 判否"
         );
     }
@@ -182,65 +176,39 @@ mod tests {
         let (v, _) = dispatch_raw(
             &host,
             r#"{"jsonrpc":"2.0","id":"3","method":"get_commands"}"#,
-            None,
         )
         .await
         .expect("no params");
         assert!(v.get("result").is_some(), "{v}");
     }
 
-    /// D6 租约跨连接窗口（三条观测点，按时间序）：首次 mint → 他连接无令牌
-    /// 冲突且不带令牌 → 同连接带令牌续用同一值（不 mint 新的）。
+    /// Same-process writer methods share occupancy; responses carry no token.
     #[tokio::test]
     async fn writer_lease_window_across_connections() {
         let host = host();
         let clear = r#"{"clear_steer":true,"clear_follow_up":true}"#;
 
-        // ① 首次非只读：mint。
         let (v, token) = dispatch_raw(
             &host,
             &format!(r#"{{"jsonrpc":"2.0","id":"w1","method":"clear_queue","params":{clear}}}"#),
-            None,
         )
         .await
         .expect("first write");
         assert!(v.get("result").is_some(), "{v}");
-        let first = token.expect("首次非只读 MUST mint 写者租约");
+        assert!(token.is_none(), "MUST NOT mint writer token");
 
-        // ② 他连接不带令牌再写：冲突，且冲突应答不携令牌。
-        let (v, conflict_token) = dispatch_raw(
+        let (v, token) = dispatch_raw(
             &host,
             &format!(r#"{{"jsonrpc":"2.0","id":"w2","method":"clear_queue","params":{clear}}}"#),
-            None,
         )
         .await
         .expect("second write");
-        assert_eq!(v["error"]["data"]["code"], "writer_conflict", "{v}");
-        assert!(
-            conflict_token.is_none(),
-            "冲突不得抢走租约：{conflict_token:?}"
-        );
+        assert!(v.get("result").is_some(), "same process continues: {v}");
+        assert!(token.is_none());
 
-        // ③ 同连接（回显令牌）：复用同一值。
-        let (v, again) = dispatch_raw(
-            &host,
-            &format!(r#"{{"jsonrpc":"2.0","id":"w3","method":"clear_queue","params":{clear}}}"#),
-            Some(first.clone()),
-        )
-        .await
-        .expect("renewed write");
-        assert!(v.get("result").is_some(), "{v}");
-        assert_eq!(
-            again.as_deref(),
-            Some(first.as_str()),
-            "同连接续用 MUST 复用同一令牌"
-        );
-
-        // 只读方法不占租约，也不带令牌。
         let (_, readonly) = dispatch_raw(
             &host,
             r#"{"jsonrpc":"2.0","id":"r1","method":"host.describe"}"#,
-            None,
         )
         .await
         .expect("readonly");
@@ -254,7 +222,6 @@ mod tests {
         let (v, token) = dispatch_raw(
             &host,
             r#"{"jsonrpc":"2.0","id":"r1","method":"approve_tool","params":{"call_id":"c1","approved":true}}"#,
-            None,
         )
         .await
         .expect("reverse answer");

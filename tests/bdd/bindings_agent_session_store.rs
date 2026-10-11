@@ -198,3 +198,15 @@ async fn test_c2826_sidecar_corrupt(agent: AgentState, sess: XySessionStore) {}
     name = "resume-projects-llm-api-verbatim"
 )]
 async fn test_c2826_resume_projection(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "second-process-write-open-conflicts"
+)]
+async fn test_r1950_second_process_write_open(sess: XySessionStore) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
+    name = "lock-releases-on-holder-drop"
+)]
+async fn test_r1950_lock_releases_on_holder_drop(sess: XySessionStore) {}

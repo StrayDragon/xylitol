@@ -52,6 +52,16 @@ pub struct ServerTest {
     pub attach_driver: RefCell<Option<XyRemoteDriver<HttpWsClient>>>,
     /// c2825：POST /rpc 写者租约响应 header。
     pub writer_header: RefCell<Option<String>>,
+    /// r1793：他进程持 `session.lock` 的夹具。
+    pub lock_child: RefCell<Option<std::process::Child>>,
+}
+
+impl Drop for ServerTest {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.lock_child.borrow_mut().take() {
+            crate::bdd::helpers::kill_child(&mut child);
+        }
+    }
 }
 
 impl ServerTest {
@@ -82,6 +92,7 @@ impl ServerTest {
             evict_rx: RefCell::new(None),
             attach_driver: RefCell::new(None),
             writer_header: RefCell::new(None),
+            lock_child: RefCell::new(None),
         }
     }
 
@@ -166,16 +177,13 @@ async fn post_rpc(
     use xylitol::protocol::wire::v3::Frame;
 
     let url = format!("http://127.0.0.1:{port}/rpc");
-    let bytes =
-        client_request_bytes(id, method, &params, writer.map(str::to_string)).expect("v3 encode");
+    let bytes = client_request_bytes(id, method, &params).expect("v3 encode");
+    let _ = writer;
     let client = reqwest::Client::new();
-    let mut builder = client
+    let builder = client
         .post(&url)
         .header("content-type", "application/x-fory-v3")
         .body(bytes);
-    if let Some(tok) = writer {
-        builder = builder.header("X-Writer-Token", tok);
-    }
     let resp = builder.send().await.expect("rpc");
     let status = resp.status().as_u16();
     let token = resp
@@ -937,68 +945,6 @@ fn t_ws_reject_text(server_test: &ServerTest) {
     );
 }
 
-#[when("客户端经 WS /rpc 发送非只读请求")]
-async fn w_ws_writer_unary(server_test: &ServerTest) {
-    use futures::{SinkExt, StreamExt};
-    use xylitol::app::core::host_client::client_request_bytes;
-    use xylitol::protocol::wire::v3::Frame;
-    let url = format!("ws://127.0.0.1:{}/rpc", server_test.port.get());
-    let (mut ws, _) = tokio_tungstenite::connect_async(&url)
-        .await
-        .expect("WS /rpc");
-    let bytes = client_request_bytes(
-        "ws-w",
-        "clear_queue",
-        &serde_json::json!({"clear_steer": true, "clear_follow_up": true}),
-        None,
-    )
-    .expect("v3 encode");
-    ws.send(tokio_tungstenite::tungstenite::Message::binary(bytes))
-        .await
-        .expect("send writer unary");
-    let reply = tokio::time::timeout(Duration::from_secs(3), async {
-        loop {
-            match ws.next().await {
-                Some(Ok(tokio_tungstenite::tungstenite::Message::Binary(b))) => {
-                    return b.to_vec();
-                }
-                Some(Ok(tokio_tungstenite::tungstenite::Message::Ping(_)))
-                | Some(Ok(tokio_tungstenite::tungstenite::Message::Pong(_))) => continue,
-                other => panic!("expected v3 binary on WS, got {other:?}"),
-            }
-        }
-    })
-    .await
-    .expect("WS writer unary reply");
-    let Frame::ServerResponse(resp) = Frame::from_bytes(&reply).expect("v3 frame") else {
-        panic!("expected ServerResponse");
-    };
-    let view = serde_json::json!({
-        "ok": resp.ok,
-        "writer_token": resp.writer_token,
-        "payload": format!("{:?}", resp.payload),
-    });
-    server_test.unary_body.replace(Some(view.to_string()));
-    let _ = ws.close(None).await;
-}
-
-#[then("WS 应答携带 writer_token 且载荷不含")]
-fn t_ws_writer_token(server_test: &ServerTest) {
-    let body = server_test
-        .unary_body
-        .borrow()
-        .clone()
-        .expect("ws writer body");
-    let v: serde_json::Value = serde_json::from_str(&body).expect("v3 view");
-    let tok = v["writer_token"].as_str().expect("writer_token");
-    assert!(!tok.is_empty(), "{body}");
-    let payload = v["payload"].as_str().unwrap_or("");
-    assert!(
-        !payload.contains("writerToken") && !payload.to_lowercase().contains("writer_token"),
-        "token must not live in payload: {body}"
-    );
-}
-
 #[given("客户端连接 /rpc")]
 async fn g_w3_mux(server_test: &ServerTest) {
     start_host(server_test).await;
@@ -1638,59 +1584,163 @@ fn t_rr4(approval_test: &ServerTest) {
     );
 }
 
-#[given("客户端 A 已对 session 经 POST /rpc 发出非只读方法")]
-async fn g_sr_w1_writer_a(server_test: &ServerTest) {
-    start_host(server_test).await;
-    let (st, token, body) = post_rpc(
-        server_test.port.get(),
-        "A",
-        "clear_queue",
-        serde_json::json!({"clear_steer": true, "clear_follow_up": true}),
-        None,
-    )
-    .await;
-    assert_eq!(st, 200, "{body}");
-    let v: serde_json::Value = serde_json::from_str(&body).expect("jsonrpc");
-    assert!(v.get("result").is_some(), "{body}");
-    assert!(
-        !body.contains("writerToken"),
-        "token must not live in body: {body}"
-    );
-    let token = token.expect("X-Writer-Token on first writer");
-    server_test.writer_header.replace(Some(token));
+const OCCUPANCY_SID: &str = "s-occ";
+
+fn occupancy_assistant() -> xylitol::protocol::session::SessionEntry {
+    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
+    SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: 0,
+        },
+        message: fixture_message_json("assistant", "hi"),
+    })
 }
 
-#[when("客户端 B 无 X-Writer-Token 再发非只读方法")]
-async fn w_sr_w1_writer_b(server_test: &ServerTest) {
-    let (st, _, body) = post_rpc(
+async fn materialize_occupancy(host: &HostState) {
+    host.ports
+        .store
+        .create(OCCUPANCY_SID, Some("."), None)
+        .await
+        .expect("create occupancy session");
+    host.ports
+        .store
+        .append_session_entry(OCCUPANCY_SID, &occupancy_assistant())
+        .await
+        .expect("append occupancy session");
+}
+
+async fn occupancy_writer_unary(server_test: &ServerTest, id: &str) -> (u16, String) {
+    let (st, token, body) = post_rpc(
         server_test.port.get(),
-        "B",
+        id,
         "clear_queue",
-        serde_json::json!({"clear_steer": true, "clear_follow_up": true}),
+        serde_json::json!({
+            "session_id": OCCUPANCY_SID,
+            "clear_steer": true,
+            "clear_follow_up": true
+        }),
         None,
     )
     .await;
+    assert!(
+        token.is_none(),
+        "MUST NOT carry X-Writer-Token: {token:?} {body}"
+    );
+    assert!(
+        !body.contains("writerToken") && !body.to_lowercase().contains("writer_token"),
+        "MUST NOT carry writerToken: {body}"
+    );
+    (st, body)
+}
+
+#[given("进程 A 已对会话取得写占用")]
+async fn g_sr_w1_process_a_holds(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    materialize_occupancy(&host).await;
+    host.ports.store.release_write_lock(OCCUPANCY_SID);
+    let lock = host.occupancy_lock_path(OCCUPANCY_SID);
+    let child = crate::bdd::helpers::python_hold_lock(&lock);
+    server_test.lock_child.replace(Some(child));
+}
+
+#[when("进程 B 再对该会话发起写占用")]
+async fn w_sr_w1_process_b_write(server_test: &ServerTest) {
+    let (st, body) = occupancy_writer_unary(server_test, "B").await;
     server_test.unary_status.set(st);
     server_test.unary_body.replace(Some(body));
 }
 
-#[then("业务错误 data.code 为 writer_conflict")]
-fn t_sr_w1_conflict(server_test: &ServerTest) {
+#[then("B 得到业务错误且不得写入")]
+fn t_sr_w1_b_held(server_test: &ServerTest) {
     let s = server_test.unary_body.borrow().clone().expect("B result");
     let v: serde_json::Value = serde_json::from_str(&s).expect("jsonrpc");
-    assert_eq!(v["error"]["data"]["code"], "writer_conflict", "{s}");
+    assert_eq!(server_test.unary_status.get(), 200, "{s}");
+    assert_eq!(v["error"]["data"]["code"], "session_write_held", "{s}");
 }
 
-#[then("A 的响应带 X-Writer-Token 且 body 不含 writerToken")]
-fn t_sr_w1_header(server_test: &ServerTest) {
-    assert!(
-        server_test
-            .writer_header
-            .borrow()
-            .as_ref()
-            .is_some_and(|t| !t.is_empty()),
-        "missing writer header"
-    );
+#[given("进程 A 持锁后退出")]
+async fn g_sr_w1_holder_exit(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    materialize_occupancy(&host).await;
+    host.ports.store.release_write_lock(OCCUPANCY_SID);
+    let lock = host.occupancy_lock_path(OCCUPANCY_SID);
+    let mut child = crate::bdd::helpers::python_hold_lock(&lock);
+    crate::bdd::helpers::kill_child(&mut child);
+}
+
+#[then("B 取得占用")]
+fn t_sr_w1_b_acquired(server_test: &ServerTest) {
+    let s = server_test.unary_body.borrow().clone().expect("B result");
+    let v: serde_json::Value = serde_json::from_str(&s).expect("jsonrpc");
+    assert_eq!(server_test.unary_status.get(), 200, "{s}");
+    assert_eq!(v["ok"], true, "{s}");
+    assert!(v.get("error").is_none(), "{s}");
+}
+
+#[given("会话仅一条订阅连接且持有写占用")]
+async fn g_sr_w1_one_sub_holds(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    materialize_occupancy(&host).await;
+    let slot = host.slot(OCCUPANCY_SID).await;
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
+    slot.add_subscriber(tx).await;
+    drop(rx);
+}
+
+#[when("该连接干净关闭")]
+async fn w_sr_w1_clean_close(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    xylitol::app::server::host::prune_mux_and_maybe_release(&host, true).await;
+}
+
+#[then("写占用已释放且后续同机进程可取得")]
+fn t_sr_w1_lock_free(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let lock = host.occupancy_lock_path(OCCUPANCY_SID);
+    assert!(lock.exists(), "release MUST NOT unlink session.lock");
+    let code = crate::bdd::helpers::python_flock_probe(&lock);
+    assert_eq!(code, Some(0), "other process MUST take after clean release");
+}
+
+#[given("唯一订阅异常断开且宽限未到")]
+async fn g_sr_w1_linger_window(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    materialize_occupancy(&host).await;
+    let slot = host.slot(OCCUPANCY_SID).await;
+    let (tx, rx) = tokio::sync::mpsc::channel(8);
+    slot.add_subscriber(tx).await;
+    drop(rx);
+    xylitol::app::server::host::prune_mux_and_maybe_release(&host, false).await;
+}
+
+#[when("同一进程再次订阅该会话")]
+async fn w_sr_w1_reconnect_subscribe(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot(OCCUPANCY_SID).await;
+    let (tx, _rx) = tokio::sync::mpsc::channel(8);
+    host.register_unbound_mux(tx).await;
+    let result = host.bind_mux_to_session(&slot, 0).await;
+    server_test.unary_body.replace(Some(
+        serde_json::json!({ "ok": result.ok, "error": result.error.map(|e| e.code) }).to_string(),
+    ));
+}
+
+#[then("写占用仍在且订阅成功")]
+fn t_sr_w1_linger_held(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("subscribe");
+    let v: serde_json::Value = serde_json::from_str(&body).expect("json");
+    assert_eq!(v["ok"], true, "{body}");
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let lock = host.occupancy_lock_path(OCCUPANCY_SID);
+    let code = crate::bdd::helpers::python_flock_probe(&lock);
+    assert_eq!(code, Some(2), "linger reconnect MUST keep occupancy");
 }
 
 // ---- sr-q1 / sr-abort1 / sr-sub1：queue_stats 只读、reload 合作取消、订阅跨回合存活 ----
@@ -1778,15 +1828,17 @@ async fn g_reload_idle(server_test: &ServerTest) {
 #[then("未命中 reload 取消而落回会话 abort 处理")]
 fn t_abort_falls_back(server_test: &ServerTest) {
     let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert!(
-        server_test
-            .writer_header
-            .borrow()
-            .as_ref()
-            .is_some_and(|t| !t.is_empty()),
-        "idle abort must fall through to leased session abort, got body={} header={:?}",
-        body,
+        server_test.writer_header.borrow().is_none(),
+        "abort MUST NOT mint a writer token: header={:?} body={body}",
         server_test.writer_header.borrow()
+    );
+    let code = v["error"]["data"]["code"].as_str().unwrap_or("");
+    assert_ne!(code, "writer_conflict", "session abort must run: {body}");
+    assert!(
+        v.get("result").is_some() || v.get("error").is_some(),
+        "session abort MUST produce a unary result: {body}"
     );
 }
 
@@ -2736,9 +2788,9 @@ fn t_estimate_context_registered(server_test: &ServerTest) {
 
 // ---- c2826 specs-compact：layer r1514 一 session 一写者 ----
 
-#[when("另一客户端对同会话 steer 不带写者令牌")]
+#[when("另一客户端对同会话发送 steer")]
 async fn w_c2826_second_writer_steer(server_test: &ServerTest) {
-    let (st, _, body) = post_rpc(
+    let (st, token, body) = post_rpc(
         server_test.port.get(),
         "W2",
         "steer",
@@ -2747,17 +2799,25 @@ async fn w_c2826_second_writer_steer(server_test: &ServerTest) {
     )
     .await;
     server_test.unary_status.set(st);
+    server_test.writer_header.replace(token);
     server_test.unary_body.replace(Some(body));
 }
 
-#[then("应答为 writer_conflict 而非静默接管")]
-fn t_c2826_writer_conflict(server_test: &ServerTest) {
+#[then("同进程第二客户端不得因协议写者令牌被拒")]
+fn t_c2826_same_process_not_token_conflict(server_test: &ServerTest) {
     let body = server_test.unary_body.borrow().clone().expect("body");
     let v: serde_json::Value = serde_json::from_str(&body).unwrap();
-    assert!(v.get("error").is_some(), "c2826: 第二写者必须被拒：{body}");
-    assert_eq!(
-        v["error"]["data"]["code"], "writer_conflict",
-        "c2826: 应为 writer_conflict：{body}"
+    assert_eq!(server_test.unary_status.get(), 200, "{body}");
+    assert!(
+        server_test.writer_header.borrow().is_none(),
+        "MUST NOT mint X-Writer-Token: {:?}",
+        server_test.writer_header.borrow()
+    );
+    let code = v["error"]["data"]["code"].as_str().unwrap_or("");
+    assert_ne!(code, "writer_conflict", "token lease is gone: {body}");
+    assert_ne!(
+        code, "session_write_held",
+        "same process MUST share occupancy: {body}"
     );
 }
 

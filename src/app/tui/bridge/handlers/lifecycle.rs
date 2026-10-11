@@ -118,6 +118,10 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                 model.entries.push(UiEntry::Error {
                     text: err.message.clone(),
                 });
+                if model.phase == UiPhase::Busy && model.queue.follow_up_count == 0 {
+                    model.phase = UiPhase::Idle;
+                    model.status = None;
+                }
             }
             true
         }

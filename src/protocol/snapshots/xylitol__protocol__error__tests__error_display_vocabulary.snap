@@ -10,6 +10,7 @@ XyError::Tool/Aborted: tool error: aborted
 XySessionStoreError::NotFound: session not found: abc
 XySessionStoreError::Unsupported: fork not supported
 XySessionStoreError::Validation: entry type unknown
+XySessionStoreError::WriteHeld: session s1 is being written by another process
 XySessionError::NoActiveSession: no active session
 XySessionError::Busy: a turn is already running
 XySessionError::EntryNotFound: target entry not found: e-42

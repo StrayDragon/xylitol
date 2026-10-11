@@ -5,7 +5,7 @@
 
 use crate::bdd::prelude::*;
 use rstest::fixture;
-use rstest_bdd_macros::{then, when};
+use rstest_bdd_macros::{given, then, when};
 use xylitol::app::tui::{BashBlockStatus, UiEntry, UiModel, UiPhase, apply_xy_event};
 use xylitol::protocol::{AgentMessage, AgentPart, LlmMessage};
 
@@ -137,6 +137,45 @@ fn t_atb2_idle(bridge_bdd: &BridgeBdd) {
     let model = bridge_bdd.model.borrow();
     assert_eq!(model.phase, UiPhase::Idle);
     assert!(model.status.is_none());
+}
+
+#[given("模型已进入忙碌 Working")]
+fn g_r1952_busy_working(bridge_bdd: &BridgeBdd) {
+    bridge_bdd.model.borrow_mut().begin_run("hi");
+    apply(
+        bridge_bdd,
+        XyEvent::AgentStart {
+            session_id: "s".into(),
+            model: "fake".into(),
+        },
+    );
+    assert_eq!(bridge_bdd.model.borrow().phase, UiPhase::Busy);
+}
+
+#[when("以桥缝注入非中止 Error 且 follow-up 为空")]
+fn w_r1952_non_abort_error(bridge_bdd: &BridgeBdd) {
+    apply(
+        bridge_bdd,
+        XyEvent::Error(xylitol::protocol::lifecycle::XyEventError::new(
+            "Config",
+            "agent config error: no model configured",
+        )),
+    );
+}
+
+#[then("相位回到 idle 且保留 Error 条目")]
+fn t_r1952_idle_keeps_error(bridge_bdd: &BridgeBdd) {
+    let model = bridge_bdd.model.borrow();
+    assert_eq!(model.phase, UiPhase::Idle);
+    assert!(model.status.is_none());
+    assert!(
+        model.entries.iter().any(|e| matches!(
+            e,
+            UiEntry::Error { text } if text.contains("no model configured")
+        )),
+        "Error row MUST remain: {:?}",
+        model.entries
+    );
 }
 
 // atb3 ─────────────────────────────────────────────────────────

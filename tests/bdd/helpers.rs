@@ -268,6 +268,44 @@ where
     tokio::time::timeout(budget, f()).await
 }
 
+/// Non-blocking `flock` from a real second process (POSIX). Exit 2 = held.
+pub(crate) fn python_flock_probe(path: &std::path::Path) -> Option<i32> {
+    let script = format!(
+        "import fcntl, sys\nf=open({path:?}, 'r+')\ntry:\n fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\n sys.exit(0)\nexcept BlockingIOError:\n sys.exit(2)\n",
+        path = path
+    );
+    std::process::Command::new("python3")
+        .arg("-c")
+        .arg(&script)
+        .status()
+        .ok()
+        .and_then(|s| s.code())
+}
+
+/// Hold `session.lock` in a child until killed. Blocks until stdout says `held`.
+pub(crate) fn python_hold_lock(path: &std::path::Path) -> std::process::Child {
+    let script = format!(
+        "import fcntl, sys, time\nf=open({path:?}, 'r+')\nfcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\nsys.stdout.write('held\\n')\nsys.stdout.flush()\ntime.sleep(60)\n",
+        path = path
+    );
+    let mut child = std::process::Command::new("python3")
+        .arg("-c")
+        .arg(&script)
+        .stdout(std::process::Stdio::piped())
+        .spawn()
+        .expect("python3 hold session.lock");
+    let mut stdout = child.stdout.take().expect("hold stdout");
+    let mut buf = [0u8; 4];
+    std::io::Read::read_exact(&mut stdout, &mut buf).expect("wait until held");
+    assert_eq!(&buf, b"held", "python hold handshake");
+    child
+}
+
+pub(crate) fn kill_child(child: &mut std::process::Child) {
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;

@@ -162,13 +162,12 @@
       那么 reload 与 loaded_resources 均已登记
   @req:r1716
   规则: 队列深度方法
-    产品方法表 MUST 登记只读 `queue_stats`（steer/follow-up 深度）；MUST 为产品 unary 且不占写者。Remote 客户端 MUST NOT 将未实现当成恒空深度。
+    产品方法表 MUST 登记只读 `queue_stats`（steer/follow-up 深度）；MUST 为产品 unary 且不占会话写锁。Remote 客户端 MUST NOT 将未实现当成恒空深度。
 
     场景: queue-stats-method-table-readonly
       当 服务端在空闲端口上启动
       并且 POST /rpc 查询只读方法 queue_stats
       那么 返回 steer 与 follow-up 队列深度
-      并且 响应不携带写者租约 token
   @req:r1710
   规则: ToolEnd 失败标记下行
     wire 的 ToolEnd 事件 MUST 携带 is_error 终态失败标记，该字段线上必填（缺失载荷 MUST 解析失败）；attach 客户端据此呈现失败态。

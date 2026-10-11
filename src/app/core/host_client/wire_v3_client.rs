@@ -74,7 +74,7 @@ fn method_discriminant(method: &str) -> Option<v3::Method> {
 /// (model_id / thinking_level),typed `Command` schema 只载各命令业务字段
 /// 而不含这些注入字段——压缩进 typed 变体会把命令从已订阅会话上脱锚,
 /// 服务端回落 fallback session(无订阅者):run 事件丢失、TUI 挂死;
-/// set_model/get_state/steer 等打错槽(writer_conflict / 状态侧写)。
+/// set_model/get_state/steer 等打错槽(状态侧写)。
 /// JSON 轨 params 透传一直正确,RAW 使 v3 恢复「纯编码层、语义不变」契约。
 /// 服务端仍保留 typed `Command` 解码(v3_to_command)以兼容旧端 / Flutter
 /// POC 等仍发 typed 帧的对端。
@@ -95,12 +95,11 @@ pub fn client_request_bytes(
     rpc_id: &str,
     method: &str,
     payload: &Value,
-    writer_token: Option<String>,
 ) -> Result<Vec<u8>, String> {
     let frame = Frame::ClientRequest(ClientRequest {
         rpc_id: stable_rpc_id(rpc_id),
         request: build_request(method, payload)?,
-        writer_token,
+        writer_token: None,
     });
     frame.to_bytes().map_err(|e| format!("v3 encode: {e}"))
 }
@@ -159,14 +158,12 @@ pub(super) fn decode_downlink(
 
 /// v3 `ServerResponse` → `RpcResult`(对齐 JSON 路径的应答语义)。
 pub fn server_response_to_result(resp: &ServerResponse) -> RpcResult {
-    let mut result = if resp.ok {
+    if resp.ok {
         RpcResult::ok_value(payload_value(resp.payload.as_ref()))
     } else {
         let err = resp.error.clone().unwrap_or_default();
         RpcResult::error(err.code, err.details)
-    };
-    result.writer_token = resp.writer_token.clone();
-    result
+    }
 }
 
 /// 成功载荷 → JSON value(`RawOk` 原文解析;describe 还原为
@@ -352,7 +349,7 @@ mod tests {
     /// task 3.1 (b):describe / RAW / Command 三族请求形状。
     #[test]
     fn request_family_shapes() {
-        let bytes = client_request_bytes("7", "host.describe", &json!({}), None).unwrap();
+        let bytes = client_request_bytes("7", "host.describe", &json!({})).unwrap();
         let Frame::ClientRequest(req) = decode_frame(&bytes) else {
             panic!("expected ClientRequest")
         };
@@ -360,7 +357,7 @@ mod tests {
         assert!(matches!(req.request, Request::Describe(_)));
 
         let bytes =
-            client_request_bytes("8", "persist_trust", &json!({"mode": "project"}), None).unwrap();
+            client_request_bytes("8", "persist_trust", &json!({"mode": "project"})).unwrap();
         let Frame::ClientRequest(req) = decode_frame(&bytes) else {
             panic!("expected ClientRequest")
         };
@@ -379,7 +376,6 @@ mod tests {
             "9",
             "subscribe",
             &json!({"session_id": "s1", "last_seq": 3, "cwd": "/tmp"}),
-            Some("writer-1".into()),
         )
         .unwrap();
         let Frame::ClientRequest(req) = decode_frame(&bytes) else {
@@ -395,7 +391,7 @@ mod tests {
             }
             other => panic!("expected RAW subscribe, got {other:?}"),
         }
-        assert_eq!(req.writer_token.as_deref(), Some("writer-1"));
+        assert!(req.writer_token.is_none(), "MUST NOT stamp writer_token");
 
         // 回归锁：prompt 必须走 RAW 原文(c2842 起全部命令走 RAW,字段全程保真;
         // 早先 typed Command::Prompt 只载 message 会把 run 从已订阅 session
@@ -404,7 +400,6 @@ mod tests {
             "10",
             "prompt",
             &json!({"message": "hi", "session_id": "sess-1", "cwd": "/tmp", "model_id": "m1"}),
-            None,
         )
         .unwrap();
         let Frame::ClientRequest(req) = decode_frame(&bytes) else {
@@ -422,7 +417,7 @@ mod tests {
         }
 
         // 非 registry、非白名单方法无 v3 映射(显式失败,不静默错发)。
-        assert!(client_request_bytes("1", "no_such_method", &json!({}), None).is_err());
+        assert!(client_request_bytes("1", "no_such_method", &json!({})).is_err());
     }
 
     /// task 3.1 (b):approve_tool(非 registry 命令)亦走 RAW 原文过线。
@@ -432,7 +427,6 @@ mod tests {
             "5",
             "approve_tool",
             &json!({"call_id": "c1", "approved": true}),
-            None,
         )
         .unwrap();
         let Frame::ClientRequest(req) = decode_frame(&bytes) else {
@@ -449,8 +443,8 @@ mod tests {
         }
     }
 
-    /// task 3.1 (b):ServerResponse → RpcResult(ok / error / writer_token /
-    /// RawOk 与 DescribeResult 的 value 形状)。
+    /// task 3.1 (b):ServerResponse → RpcResult(ok / error /
+    /// RawOk 与 DescribeResult 的 value 形状)。占用不走协议令牌。
     #[test]
     fn server_response_to_result_shapes() {
         let ok = ServerResponse {
@@ -465,7 +459,10 @@ mod tests {
         let result = server_response_to_result(&ok);
         assert!(result.ok);
         assert_eq!(result.value, Some(json!({"seq": 1})));
-        assert_eq!(result.writer_token.as_deref(), Some("lease-9"));
+        assert!(
+            result.writer_token.is_none(),
+            "wire writer_token MUST NOT become occupancy"
+        );
 
         let describe = ServerResponse {
             rpc_id: 1,
@@ -489,8 +486,8 @@ mod tests {
             rpc_id: 6,
             ok: false,
             error: Some(v3::RpcError {
-                code: "writer_conflict".into(),
-                details: "stale lease".into(),
+                code: "session_write_held".into(),
+                details: "session s is being written by another process".into(),
             }),
             payload: None,
             writer_token: None,
@@ -499,7 +496,10 @@ mod tests {
         assert!(!result.ok);
         assert_eq!(
             result.error.map(|e| (e.code, e.details)),
-            Some(("writer_conflict".into(), "stale lease".into()))
+            Some((
+                "session_write_held".into(),
+                "session s is being written by another process".into(),
+            ))
         );
     }
 
@@ -788,7 +788,7 @@ mod tests {
     #[test]
     fn decode_downlink_ignores_non_server_frames() {
         let mut session_id = String::new();
-        let bytes = client_request_bytes("1", "host.describe", &json!({}), None).unwrap();
+        let bytes = client_request_bytes("1", "host.describe", &json!({})).unwrap();
         assert!(
             decode_downlink(&bytes, &mut session_id)
                 .expect("decode")

@@ -514,6 +514,13 @@ fn config_error_is_sticky_error_row() {
         "Config must not look like abort: {:?}",
         model.entries
     );
+    assert_eq!(
+        model.phase,
+        UiPhase::Idle,
+        "Busy + empty follow-up + non-abort Error MUST idle: {:?}",
+        model.phase
+    );
+    assert!(model.status.is_none(), "busy short word MUST clear");
 }
 
 #[test]

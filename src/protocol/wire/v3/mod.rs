@@ -517,7 +517,7 @@ mod tests {
             rpc_id: 11,
             ok: false,
             error: Some(RpcError {
-                code: "writer_conflict".into(),
+                code: "session_write_held".into(),
                 details: "d".into(),
             }),
             payload: None,

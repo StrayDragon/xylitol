@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use crate::protocol::Command;
 
-/// 写者租约准入：`Writer` 走 `WriterLease`，`Readonly` 无租约。
+/// 写占用准入：`Writer` 取会话内核占用，`Readonly` 不占。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Auth {
     Readonly,

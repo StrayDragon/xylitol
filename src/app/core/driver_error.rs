@@ -304,6 +304,10 @@ impl From<XySessionStoreError> for XyDriverError {
             XySessionStoreError::Validation { message } => {
                 Self::message(message).with_source_kind("Session")
             }
+            XySessionStoreError::WriteHeld { session_id } => Self::message(format!(
+                "session {session_id} is being written by another process"
+            ))
+            .with_source_kind("Session"),
         }
     }
 }

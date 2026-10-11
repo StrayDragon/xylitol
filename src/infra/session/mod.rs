@@ -6,7 +6,7 @@
 //! - Entry types: message, compaction, branch_summary, model_change, thinking_level_change, custom
 //! - Session tree via parentSession header field
 //! - Version gate: current manifests load; the supported legacy file is migrated once
-//! - Atomic appends with file locking
+//! - Kernel write occupancy on `session.lock` (POSIX flock / Windows named object)
 
 pub(crate) mod manager;
 pub mod types;

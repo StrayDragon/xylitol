@@ -57,6 +57,8 @@ pub struct XySessionStore {
     pub sessions_dir: RefCell<Option<std::path::PathBuf>>,
     /// ex3：导入侧的全新存储与返回 id。
     pub second_mgr: RefCell<Option<SessionManager>>,
+    /// r1950：跨进程 flock 探针退出码。
+    pub lock_probe: Cell<Option<i32>>,
 }
 impl XySessionStore {
     fn new() -> Self {
@@ -67,6 +69,7 @@ impl XySessionStore {
             last_result: RefCell::new(None),
             sessions_dir: RefCell::new(None),
             second_mgr: RefCell::new(None),
+            lock_probe: Cell::new(None),
         }
     }
     /// Auto-initialize session manager if not yet set.
