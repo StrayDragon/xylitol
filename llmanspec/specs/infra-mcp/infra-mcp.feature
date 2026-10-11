@@ -2,6 +2,7 @@
 # capability: infra-mcp
 # purpose: MCP 客户端：stdio / url·sse 传输、零配置零成本、工具前缀与进程内重载。
 # scope: src/infra/mcp/, src/app/
+# reviewed-through: c2865
 
 功能: infra-mcp
 
@@ -77,22 +78,9 @@
   @req:r1453
   规则: first-turn-tool-freeze
     轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 须立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）须等待 MCP settle 或 code-first 门闸超时后再定稿；单 server 连接 须有 code-first 墙钟超时（挂死不得让 bootstrap 永 Running）。门闸超时 须以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），不得自动重试连接。TUI 不得在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 须冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿；重定稿 须按 tool name upsert（有则替换、无则追加），不得留下同名多行。本波 resume/切会话 须清冻再门闸（指纹持久化后的一致续冻另波）；重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
-# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
     # verified-by: llmanspec/specs/agent-runtime/agent-runtime.feature
 
     场景: first-turn-tool-freeze-gate
       当 读取首回合工具定稿门禁
       那么 无配置立即定稿且有配置时首回合后门闸定稿
-# re-review(c2835): 复审结论——本 capability 管辖行为不变；server 分发手写化经对拍等价，MCP 快照与告知词表未动。（2026-09-29）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）
-# re-review(c2853): 承载分支 sdd/2026-10-review-fixes 触及本 scope（BDD 步骤卫生 / 既有 codec·host 改动）；本 capability 管辖行为不变。场景映射不变量保持。（2026-10-09）
-# re-review(c2854): 复审结论——本 capability 管辖行为不变；分支改动为 Host 产品入口收口与 BDD 词表，未改本规则可观察语义。（2026-10-09）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）

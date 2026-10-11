@@ -2,6 +2,7 @@
 # capability: infra-observability
 # purpose: Debug 观察与 provider trace 管线：env 驱动激活的 fastrace 时间线 + log 文件 + provider-trace.jsonl（~/.xylitol/logs/），file-only 不毁 TUI 渲染，在组合根 app::cli::run 统一装配；禁止 tracing 双栈；低频跨层 span 可关联；导出名与父子树对齐 infra-otel 产品词汇。
 # scope: src/infra/observability/, src/app/cli/
+# reviewed-through: c2855
 
 功能: infra-observability
 
@@ -46,7 +47,3 @@
     场景: provider-trace-correlated-spans
       当 读取低频观测 span 定义
       那么 agent.turn 与每步 span 可关联
-# re-review(c2835): 复审结论——本 capability 管辖行为不变；新增步骤在探针后复位 provider-trace 与 io tier（默认关闸、显式开启的语义未变）。（2026-09-29）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）

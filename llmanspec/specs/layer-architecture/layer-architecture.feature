@@ -2,6 +2,7 @@
 # capability: layer-architecture
 # purpose: 分层与 seam、Xy 精选导出、嵌入缝与组件粒度：agent / protocol / infra / app（单 crate；无独立 domain 或 runtime_protocol 顶栏；不用源码 grep 元测试卡写法）。
 # scope: src/agent/, src/infra/, src/app/, src/protocol/, tests/, AGENTS.md, src/AGENTS.md
+# reviewed-through: c2890
 
 功能: layer-architecture
 
@@ -242,15 +243,3 @@
       当 server 处理 prompt
       并且 另一客户端对同会话发送 steer
       那么 同进程第二客户端不得因协议写者令牌被拒
-# re-review(c2835): 复审结论——分层与 seam 不变：app → agent|infra → protocol 方向未动；本分支只删 jsonrpsee 依赖并手写 JSON-RPC 载体。（2026-09-29）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）
-# re-review(c2853): 承载分支 sdd/2026-10-review-fixes 触及本 scope（BDD 步骤卫生 / 既有 codec·host 改动）；本 capability 管辖行为不变。场景映射不变量保持。（2026-10-09）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）
-# re-review(c2858): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui 指针命中管线与 package-tui-pointer BDD 接线，未改本规则可观察语义。（2026-10-10）
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）
-# re-review(c2890): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui mermaid 围栏盒线与 package-tui-markdown BDD 接线，未改本规则可观察语义。（2026-10-11）

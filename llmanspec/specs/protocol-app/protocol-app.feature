@@ -2,6 +2,7 @@
 # capability: protocol-app
 # purpose: Client↔host 产品真源为产品二进制帧（入口 POST /rpc 与 WS /rpc）；Command/Event 为方法载荷与下行通知内容。
 # scope: src/, tests/
+# reviewed-through: c2890
 
 功能: protocol-app
 
@@ -272,11 +273,9 @@
       当 推送 ApprovalRequired
       那么 客户端经 POST /rpc 调用 approve_tool 且回合恢复
 
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
   @req:r1910
   规则: 协议真源单源生成
     Command/Event 闭集与信封的形状 须由单一协议真源（schema 化 IDL，fbs 前端）生成 Rust（及多端）代码；生成物与真源 须可由 codegen 校验保持一致（re-generate diff 为空），不得手写第二套可漂移词表。既有词表语义（闭集覆盖、往返保真、面本地不进协议）须在生成物上等价保持。既有线字段名（含 message、list、timestamp 等保留字）须在真源与生成物中原名保留（经对保留字无冲突的 fbs 前端），领域与持久化类型 不得改名；字段编号采用声明顺序，新字段 须尾部追加，删除字段 须保留占位且编号永不复用。
-
 
     场景: codegen-diff-clean
       当 从协议真源 fbs 重新生成代码
@@ -286,15 +285,7 @@
       当 从协议真源生成含 message、list、timestamp 字段的载荷
       那么 生成物字段名原名保留且往返保真
 
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）
   @req:r1927
   规则: 线上 JSON 深解析有界
     对线上输入的 JSON 深解析 须设显式深度上限（2048 层：容纳实机深树两个量级、远低于栈风险区），超限 须按既有降级语义收口（服务端非法信封判否、客户端「RawOk」退化 Null——r1907 不断链），不得以无界递归深度解析线上输入（4 MiB 体量上限内的嵌套字节数组仍可打穿 worker 栈）。上限 须为单一常量（两处解码入口共用）。
     # verified-by: fn decode_rejects_beyond_json_depth_limit
-# re-review(c2858): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui 指针命中管线与 package-tui-pointer BDD 接线，未改本规则可观察语义。（2026-10-10）
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）
-# re-review(c2890): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui mermaid 围栏盒线与 package-tui-markdown BDD 接线，未改本规则可观察语义。（2026-10-11）

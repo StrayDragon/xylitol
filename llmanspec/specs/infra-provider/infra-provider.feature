@@ -2,6 +2,7 @@
 # capability: infra-provider
 # purpose: Provider 装配与映射：协议适配实现在 xylitol-ai-bridge；主仓 AdapterXyModel 单层外壳与 DTO 映射。
 # scope: src/infra/provider/
+# reviewed-through: c2827
 # c2833: bridge 侧适配器行为已随 package-ai-bridge 迁子根；本 cap 收窄为根侧装配/结构 mandate（one-path-one-root）。
 
 功能: infra-provider
@@ -81,11 +82,8 @@
   @req:r1501
   规则: api-fullname-full-names
     配置与装配中可识别的 api 字面量 须使用全称 openai-responses、openai-completions 与 anthropic-messages；产品文档 不得把配置真值简写成 responses、completions 或 messages。省略 api→默认 openai-responses（OpenAI 兼容）行为保持（见 pa4 / m13）。由单测与文档覆盖，不得单独扩 BDD step。
-# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
     场景: api-literals-full-names
       当 读取 api 字面量全称集
       那么 三全称在册且无简写别名
 
-
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
     # verified-by: packages/xylitol-ai-bridge/src/provider/mod.rs

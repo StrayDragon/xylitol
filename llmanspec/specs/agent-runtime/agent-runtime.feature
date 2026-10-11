@@ -2,6 +2,7 @@
 # capability: agent-runtime
 # purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 # scope: src/agent/, src/protocol/, tests/
+# reviewed-through: c2890
 
 功能: agent-runtime
 
@@ -307,18 +308,4 @@
       当 左键单击折叠命中表中的簇头三角列
       那么 结算行外显 Thought 7s 且不再出现流式 Thinking 头
 
-
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
     # verified-by: src/agent/runtime/react/tests.rs
-# re-review(c2835): 复审结论——本 capability 管辖行为不变；改动为批量 barrier 的测试判据与协议载体终态形状，ReAct 状态机与批语义未动。（2026-09-29）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）
-# re-review(c2853): 承载分支 sdd/2026-10-review-fixes 触及本 scope（BDD 步骤卫生 / 既有 codec·host 改动）；本 capability 管辖行为不变。场景映射不变量保持。（2026-10-09）
-# re-review(c2854): 复审结论——本 capability 管辖行为不变；分支改动为 Host 产品入口收口与 BDD 词表，未改本规则可观察语义。（2026-10-09）
-# re-review(c2858): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui 指针命中管线与 package-tui-pointer BDD 接线，未改本规则可观察语义。（2026-10-10）
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）
-# re-review(c2890): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui mermaid 围栏盒线与 package-tui-markdown BDD 接线，未改本规则可观察语义。（2026-10-11）

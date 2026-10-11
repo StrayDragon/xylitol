@@ -2,6 +2,7 @@
 # capability: app-tui-design-playground
 # purpose: 交互设计稿：token 从视觉 SSOT 生成；模块固定态可闸；无快捷键墙；浏览器稿不是运行时真值。
 # scope: designing/, src/app/tui/
+# reviewed-through: c2890
 
 功能: app-tui-design-playground
 
@@ -64,18 +65,8 @@
   @req:r1212
   规则: designing-lint-docs
     面 AGENTS 须写明改设计稿须跑 designing lint 与 check-tui-tokens；不得再暗示仅靠人眼发现色板或固定态漂移。
-# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
     场景: tui-agents-name-lint-commands
       当 读取 tui 面 AGENTS 摘要
       那么 摘要写明改稿须跑 designing lint
 
-
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
     # verified-by: designing/AGENTS.md
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）
-# re-review(c2890): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui mermaid 围栏盒线与 designing markdown 对照态，未改本规则可观察语义。（2026-10-11）

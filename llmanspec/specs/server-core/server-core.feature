@@ -2,6 +2,7 @@
 # capability: server-core
 # purpose: Server 运行时 — 独立 Host 监听器经产品二进制帧暴露产品契约（POST /rpc + WS /rpc）；每 session 槽独立 journal 与写者。
 # scope: src/
+# reviewed-through: c2865
 
 # ── 文件导览（48 规则）────────────────────────────────────────
 #   接入与生命周期    : host · HTTP/WS · healthz/就绪 · session 方法表
@@ -471,9 +472,7 @@
       假如 rpc_id R 的首次命令仍在处理中
       当 相同 rpc_id R 的重复请求到达
       那么 等待首次完成并回放同一结果且不并行执行
-# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
   @req:r1902
   规则: 产品线协议二进制信封
     产品线协议 须以 schema 化二进制帧承载：WS /rpc 的 binary 帧与 POST /rpc 的二进制 body 为唯一产品路径。Host 不得再提供 JSON-RPC 2.0 文本路径（WS 文本帧与 JSON body）作为 /rpc 业务通道。领域语义（方法表、journal、订阅、审批）须在该唯一载体上保持。
@@ -575,11 +574,6 @@
       那么 HTTP 失败且无成功业务应答
       并且 产品客户端默认以产品载体访问 Host
 
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）
   @req:r1925
   规则: arm_tool_freeze 租约冲突降级为无租约有界决议
     「arm_tool_freeze」unary 不得占用会话写锁；他进程已持有该会话写占用时 须仍返回权威冻结快照，不得使首轮工具门永久停滞。冻结的是写者内部门、不写会话状态。
@@ -597,4 +591,3 @@
   规则: 非产品二进制判非法信封
     POST /rpc 的非产品二进制 body（含 JSON 对象、JSON 数组 batch、其它文本）须判非法信封（HTTP 400），不得当业务 unary 执行。
     # verified-by: fn json_rpc_text_is_illegal_envelope
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）

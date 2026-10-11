@@ -2,6 +2,7 @@
 # capability: app-tui-fixed-zone
 # purpose: 主题 token、glyph、status、footer、通知条、通知栈、待办栏等固定区（非滚动 layout 壳）行为。
 # scope: src/app/tui/
+# reviewed-through: c2865
 
 功能: app-tui-fixed-zone
 
@@ -217,10 +218,3 @@
       当 产品 TUI 同时存在非空待办栏、队列条与通知条
       那么 从上到下 为队列条、待办栏、通知条、status、editor
       并且 空表时待办栏 占 0 行
-
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）

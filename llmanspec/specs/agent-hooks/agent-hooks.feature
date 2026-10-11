@@ -2,6 +2,7 @@
 # capability: agent-hooks
 # purpose: 脚本/库 hooks：工具与 provider 生命周期、XyHookBus 精选导出与可取消/可修改语义。
 # scope: src/infra/hooks/, src/agent/runtime/
+# reviewed-through: c2838
 
 功能: agent-hooks
 
@@ -159,12 +160,7 @@
   规则: user_bash 于 execute_bash
     附加 XyHookBus 时，Command::Bash 执行器 须在运行命令前分发 user_bash；Blocked 须阻止执行并 surfaced 错误。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
-# re-review(c2835): 复审结论——本 capability 管辖行为不变；分支内只改 ReAct 批量测试的时间判据（固定 sleep → 轮询到目标帧 / 每模式取最小）。（2026-09-29）
     场景: user-bash-blocks-run
       假如 注册了匹配 user_bash 的 hook 且返回 block bash被拒绝
       当 执行操作 "执行 bash"
       那么 操作失败原因包含 "bash被拒绝"
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

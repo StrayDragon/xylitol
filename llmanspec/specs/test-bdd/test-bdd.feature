@@ -41,16 +41,12 @@
   @req:r1814
   规则: 配置 BDD 分层
     配置加载行为（三层合并、模型/provider 解析、ConfigValue 插值、默认值）须由 infra 层配置与 settings 的单元测试覆盖，不得保留无 step 实现的孤儿 feature 作为 BDD 债务。
-# re-review(c2826): tests/features/ 手写链已迁入 live specs 并删除，scope 同步收窄（2026-09-28）
 
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
     # verified-by: llmanspec/config.yaml
 
     场景: config-behavior-unit-covered
       当 读取配置行为测试分层
       那么 由 infra 单测覆盖
-# re-review(c2836): c2836 在 test-bdd 管辖内的变更——新增 provider 配置值表达式装配步骤对（读取 provider 注册配置值解析 / 展开表达式并兼容字面量），经 loader 真装配收集证据并绑定 @req:r1912 场景。（2026-10-06）
-# re-review(c2835): 复审结论——BDD 基建：新增 dual-rail 会话快照对拍场景，三处判据去固定 sleep（轮询/取最小/隔离 env）；场景↔步骤映射全绿（tests::bdd 659 通过）。（2026-09-29）
 
   @req:r1913
   规则: BDD 独立测试目标承载
@@ -61,13 +57,3 @@
     场景: bdd-isolated-target-bound
       当 读取 BDD 挂载接线
       那么 独立测试目标承载且未挂 lib
-# re-review(c2837): test-bdd 管辖内变更——BDD 由 lib 测试模块迁至独立集成测试 target（tests/bdd.rs）；r37 的 cargo test --test bdd 由此名实相符；新增 r1913 编译隔离不变量。（2026-10-06）
-# re-review(c2838): c2838 doc 治理未触及 test-bdd 行为；批量 re-review 与 scope 覆盖触发本标记。（2026-10-06）
-# re-review(c2839): c2839 可读性导览未触及 test-bdd 行为；批量 scope 覆盖触发本标记。（2026-10-06）
-# re-review(c2837): flaky-fix 分支复核（CI 偶发 flaky 修复触及 tests/bdd scope）。（2026-10-06）
-# re-review(c2853): steps_c2827 按域拆分（探针 / infra-runtime）与 r57 真实化——步骤注册文本除 r57 场景外零变化；映射不变量保持。（2026-10-09）
-# re-review(c2854): JSON-RPC 文本通道退役——产品路径回归，JSON/OpenAPI 改拒绝；可执行 GWT 与规则标题不钉 fory/v3（握手格式标识 `fory-v3` 除外）；场景 id 去 jsonrpc/v3 前缀。（2026-10-09）
-# re-review(c2855): 删 tokenizer CLI/配置步骤与 LocalTokenizer 绑定；估算 Then 改启发式累加；映射不变量保持（无孤儿 feature）。（2026-10-10）
-# re-review(c2858): 新增 package-tui-pointer 场景绑定；套件全量通过、无孤儿 feature 不变量保持。（2026-10-10）
-# re-review(c2865): 新增 package-tui-markdown / app-tui-host 半截闭合围栏场景绑定；套件全量通过、无孤儿 feature 不变量保持。（2026-10-10）
-# re-review(c2890): 新增 package-tui-markdown mermaid 盒线/回源场景绑定；套件全量通过、无孤儿 feature 不变量保持。（2026-10-11）

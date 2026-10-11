@@ -2,6 +2,7 @@
 # capability: test-qa-gate
 # purpose: 统一 just qa / qa-e2e 验证入口：日常满闸与可选 TUI 第 5 层 E2E 的分工。
 # scope: justfile, AGENTS.md, scripts/, .claude/skills/test-tui-harness/, .agents/skills/test-tui-harness/, configs/testing/, .config/nextest.toml
+# reviewed-through: c2855
 
 功能: test-qa-gate
 
@@ -60,7 +61,3 @@
     场景: live-gate-serial-with-timeout
       当 读取 just 的 qa recipe 序列
       那么 live 闸走串行且带超时
-
-# re-review(c2837): CI spec-validate 工具探测（llman-sdd 缺失显式跳过，门禁语义本地保持）已复核。（2026-10-06）
-# re-review(c2854): 复审结论——本 capability 管辖行为不变；分支改动为 Host 产品入口收口与 BDD 词表，未改本规则可观察语义。（2026-10-09）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）

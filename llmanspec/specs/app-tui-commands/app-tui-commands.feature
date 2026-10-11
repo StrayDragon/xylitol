@@ -2,6 +2,7 @@
 # capability: app-tui-commands
 # purpose: 斜杠命令与 protocol::Command / dispatch 映射。
 # scope: src/app/tui/
+# reviewed-through: c2865
 
 功能: app-tui-commands
 
@@ -154,11 +155,3 @@
       假如 交互 bang 正在运行且驱动为 ScriptedDriver
       当 提交声明为 Inline 的无参 /model
       那么 模型列表 effect 在 bang 结束前挂载生效
-
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）

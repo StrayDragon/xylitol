@@ -2,6 +2,7 @@
 # capability: infra-otel
 # purpose: 可选 OpenTelemetry OTLP/HTTP 出口：Cargo feature otel + 配置显式开启；默认与失败路径均不收集；经 fastrace-opentelemetry 导出；Langfuse 会话、GenAI 属性、xylitol.obs.lane 与同一 turn 内父子 span 树（含过 prepare 的 agent.compaction）在 opt-in 出口之上叠加。
 # scope: src/infra/observability/, src/app/cli/, src/agent/runtime/, src/agent/compaction/
+# reviewed-through: c2855
 # c2833: packages/xylitol-ai-bridge trace 部分暂留本 cap（verified-by 指向子包源文件）；子包侧拆分待批，scope 行先行收窄（one-path-one-root）。
 
 功能: infra-otel
@@ -81,7 +82,6 @@
       当 以观测闸开启运行一次带工具调用的 agent 回合
       那么 全部主路径 span 携带 xylitol.obs.lane=llm
 
-
   @req:r1467
   规则: otel-observation-io-tier
     AppConfig.[otel].observation_io 缺省或 none 时 不得写入 langfuse.observation.input/output；仅当配置为 truncated 或 full 且 span 闸激活时，llm.request generation 须按该档写入 observation I/O；I/O 附着 须在流结束（任意 Done）或 span 提前结束时发生，不得仅依赖 Done 携带 usage；不得因 observation_io 未配置而改变 otel1 默认不出口语义。
@@ -134,7 +134,6 @@
       当 以 io=truncated 的观测闸对 mock 上游驱动一次流式生成并耗尽全部事件
       那么 llm.request 携带来自适配器 HTTP 前捕获的观测输入
 
-
   @req:r1474
   规则: otel-generation-abort-finalize
     当低频观测 span 激活且 llm.request 在未见成功 Done 的情况下提前结束（用户 abort 或等价 drop 流）时：若 observation_io ≠ none，generation 须仍按档 flush 已缓冲的 input/output；该 generation 须携带 langfuse.observation.level=ERROR 与 langfuse.observation.status_message=aborted；不得因此伪造 usage_details。
@@ -143,7 +142,6 @@
       假如 mock 上游仅回放半程 SSE 后挂起
       当 流式生成收到首个文本增量后放弃该流
       那么 llm.request 以 ERROR/aborted 收口并按档 flush 输入输出且不伪造 usage
-
 
   @req:r1475
   规则: otel-parallel-tool-spans
@@ -235,12 +233,6 @@
   规则: otel-compaction-skipped-span
     当低频观测 span 激活且会话 compaction 的 prepare_compaction 门闸早退（无可摘要历史 / Already compacted 等；auto 静默路径与 manual 路径皆然）且会话身份已知时，须导出名为 agent.compaction.skipped 的轻量 span：须携带跳过原因（skip_reason）与该会话的 langfuse.session.id / xylitol.session.id；不得使用 agent.compaction 名（otel19 保留予过 prepare 的尝试），不得携带 xylitol.obs.lane=llm，不得伪装 LLM 语义（otel22）；auto 早退 不得因此发出 CompactionEnd；auto 预检 须仅发生在 Settle（或 overflow 错误收尾），不得在工具续跑的 iteration 关闭时导出 skipped；存在活跃 agent.turn 时 MAY 为其子 span；无活跃会话（无可附的会话身份）MAY 省略；观测闸关闭时 须为零/近零开销。由单测（CollectingReporter）覆盖，不得为静态存在性单独扩 BDD step。
     # verified-by: src/agent/compaction/obs.rs
-# re-review(c2835): 复审结论——本 capability 管辖行为不变；仅测试判据改为隔离 LANGFUSE_* env，OTLP 装配与降级语义未动。（2026-09-29）
     场景: skipped-compaction-single-estimate
       当 以观测闸开启并触发一次会话压缩
       那么 导出 agent.compaction 且 type 为 span 并携带原因与 obs lane
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）

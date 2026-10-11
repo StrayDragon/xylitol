@@ -2,6 +2,7 @@
 # capability: agent-tools
 # purpose: 工具系统 — 工具定义、执行分发、文件类内置与 Todo 两工具、路径工具与并发类。
 # scope: src/agent/tools/, src/infra/tools/, src/protocol/
+# reviewed-through: c2855
 
 # ── 文件导览（43 规则 / 86 场景）──────────────────────────────
 #   内置闭集与工具框架 : 默认内置工具闭集 · ToolSet · 工具错误类型 · 参数/schema
@@ -592,9 +593,3 @@
       假如 有一个临时工作目录
       当 以会话工作区调用bash命令 "pwd"
       那么 bash 输出为会话工作区目录
-# re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议载体常量与死变体清理。（2026-09-29）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-# re-review(c2853): 承载分支 sdd/2026-10-review-fixes 触及本 scope（BDD 步骤卫生 / 既有 codec·host 改动）；本 capability 管辖行为不变。场景映射不变量保持。（2026-10-09）
-# re-review(c2854): 复审结论——本 capability 管辖行为不变；分支改动为 Host 产品入口收口与 BDD 词表，未改本规则可观察语义。（2026-10-09）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）

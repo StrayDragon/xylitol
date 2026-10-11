@@ -2,6 +2,7 @@
 # capability: agent-session-store
 # purpose: 会话持久化 — 基于 JSONL 文件的会话存储，含树操作、compaction、fork 与 CWD 校验。
 # scope: src/infra/session/
+# reviewed-through: c2837
 
 功能: agent-session-store
 
@@ -361,5 +362,3 @@
       假如 进程 A 持有已物化会话写占用后退出
       当 进程 B 打开同一会话写入
       那么 进程 B 可以追加
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

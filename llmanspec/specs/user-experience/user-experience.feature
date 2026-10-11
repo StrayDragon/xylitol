@@ -2,6 +2,7 @@
 # capability: user-experience
 # purpose: 用户体验 — 鉴权引导消息、错误消息与启动诊断。
 # scope: src/app/cli/
+# reviewed-through: c2855
 
 功能: user-experience
 
@@ -30,7 +31,3 @@
 
     场景: no-api-key-names-provider
       那么 无 api key 提示含 provider 名
-# re-review(c2835): 复审结论——本 capability 管辖行为不变；改动限于 TUI/attach 家族的步骤实现与测试判据。（2026-09-29）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）

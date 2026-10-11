@@ -2,6 +2,7 @@
 # capability: app-tui-host
 # purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志、尺寸降级，以及合成垂直切片 / 产品 PTY smoke 验收。
 # scope: src/app/tui/, tests/tui_e2e/
+# reviewed-through: c2838
 
 功能: app-tui-host
 
@@ -382,7 +383,3 @@
     场景: session-switch-trails-not-stack
       当 以主机泵完成空闲会话切换并渲染
       那么 滚动提示尾插含 switched 且通知栈不含该文案
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）

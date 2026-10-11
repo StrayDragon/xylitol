@@ -2,6 +2,7 @@
 # capability: cli-entry
 # purpose: CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/serve）；bootstrap/dispatch；产品 slash 以 session-* 为准。
 # scope: src/app/cli/, src/main.rs, tests/
+# reviewed-through: c2890
 
 功能: cli-entry
 
@@ -193,15 +194,3 @@
       假如 本机 Host 未在听
       当 产品 TUI 尝试 attach
       那么 非零退出并提示用 xylitol serve 启动 Host
-
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
-# re-review(c2835): 复审结论——本 capability 管辖行为不变；仅 OTLP 构建步骤的测试判据隔离 env，CLI 入口语义未动。（2026-09-29）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2837): flaky-fix 分支复核——测试时序放宽与诊断增强触及本 scope；行为不变。（2026-10-06）
-# re-review(c2853): 承载分支 sdd/2026-10-review-fixes 触及本 scope（BDD 步骤卫生 / 既有 codec·host 改动）；本 capability 管辖行为不变。场景映射不变量保持。（2026-10-09）
-# re-review(c2854): 复审结论——本 capability 管辖行为不变；分支改动为 Host 产品入口收口与 BDD 词表，未改本规则可观察语义。（2026-10-09）
-# re-review(c2858): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui 指针命中管线与 package-tui-pointer BDD 接线，未改本规则可观察语义。（2026-10-10）
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）
-# re-review(c2890): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui mermaid 围栏盒线与 package-tui-markdown BDD 接线，未改本规则可观察语义。（2026-10-11）

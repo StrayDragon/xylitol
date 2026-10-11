@@ -2,6 +2,7 @@
 # capability: agent-todo
 # purpose: 会话内 Todo SSOT — Custom latest-wins 持久、内置两工具（rewrite/update）、出站 AgentStatusBar 以 <todo> 子树投影当前清单、status 三态、in_progress 可多条、content ≤80 标量；类型化 live 事件与 TUI 下缘待办栏（三区可折、宽屏三栏）；不 persist 栏消息、无注册表。
 # scope: src/protocol/, src/agent/, src/infra/tools/, src/app/tui/
+# reviewed-through: c2865
 
 功能: agent-todo
 
@@ -115,19 +116,7 @@
   @req:r1122
   规则: typed-live-projection-event
     todo_* 成功写入后 host 须经领域事件发布类型化 TodoList 全量快照（空表亦然，语义为清除）；产品 client 的 live 待办栏投影 须源自该事件，不得依赖端侧解析工具结果字符串或调用 args 维持待办栏。resume / 重建 须仍读 agent_todo SSOT 快照，与 live 投影 latest-wins 同构。事件未送达（如旧线协议端）时待办栏 须可降级为仅 resume 刷新，不得 panic。不得要求 LLM 前缀、SSOT 持久形态或工具结果 JSON 形态为此改变。
-# re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
-
-# re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
 
     场景: todo-update-emits-typed-event
       当 以触发 todo_update 工具的回合收集事件
       那么 回合事件流含 TodoUpdated 全量快照
-# re-review(c2835): 复审结论——本 capability 管辖行为不变；仅协议载体常量与死变体清理。（2026-09-29）
-
-# re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-
-# re-review(c2838): c2838 intra-doc 链接治理触及本 scope 内源码 doc 注释（纯文档、无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
-# re-review(c2853): 承载分支 sdd/2026-10-review-fixes 触及本 scope（BDD 步骤卫生 / 既有 codec·host 改动）；本 capability 管辖行为不变。场景映射不变量保持。（2026-10-09）
-# re-review(c2854): 复审结论——本 capability 管辖行为不变；分支改动为 Host 产品入口收口与 BDD 词表，未改本规则可观察语义。（2026-10-09）
-# re-review(c2855): 复审结论——本 capability 管辖行为不变；分支改动为 Api 优先启发式 /3、下线本地词表与客户端通知栈，未改本规则可观察语义。（2026-10-10）
-# re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）
