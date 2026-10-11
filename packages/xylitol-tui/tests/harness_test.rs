@@ -140,6 +140,45 @@ fn container_does_not_fanout_input() {
     );
 }
 
+#[test]
+fn container_offer_pointer_fans_by_last_render_rows() {
+    use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use xylitol_tui::{Component, Container, InputEvent, Spacer, Tabs};
+
+    let changed = Rc::new(Cell::new(None));
+    let mut tabs = Tabs::new(vec!["alpha".into(), "beta".into()]);
+    tabs = tabs.with_on_change({
+        let changed = changed.clone();
+        move |i| changed.set(Some(i))
+    });
+    let mut container = Container::new();
+    container.add_child(Box::new(Spacer::new(2)));
+    container.add_child(Box::new(tabs));
+    container.set_screen_origin(0, 0);
+    let _ = container.render(40);
+
+    let miss = InputEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 0,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert!(!container.offer_pointer(&miss));
+    assert_eq!(changed.get(), None);
+
+    // "beta" starts after "alpha" + space; click a column on the second title.
+    let hit = InputEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Left),
+        column: 6,
+        row: 2,
+        modifiers: KeyModifiers::NONE,
+    });
+    assert!(container.offer_pointer(&hit));
+    assert_eq!(changed.get(), Some(1));
+}
+
 /// OverlayHandle hide removes overlay from the composite (c445 / pte02).
 #[test]
 fn overlay_handle_hide_removes_from_composite() {

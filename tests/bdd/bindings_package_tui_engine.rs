@@ -1,0 +1,12 @@
+//! BDD bindings for `package-tui-engine` r1946 (c2880).
+
+use crate::bdd::steps_package_tui_engine::{EngineOfferBdd, engine_offer_bdd};
+use rstest_bdd_macros::scenario;
+
+#[scenario(
+    path = "packages/xylitol-tui/llmanspec/specs/package-tui-engine/package-tui-engine.feature",
+    name = "dispatch-offer-pointer-blocks-focus"
+)]
+fn test_dispatch_offer_pointer_blocks_focus(engine_offer_bdd: EngineOfferBdd) {
+    let _ = engine_offer_bdd;
+}

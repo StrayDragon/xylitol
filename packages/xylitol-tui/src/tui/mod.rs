@@ -157,6 +157,17 @@ pub trait Component {
     fn clear_pointer_selection(&mut self) -> bool {
         false
     }
+
+    /// Screen-cell origin of this component's last layout (top-left). Default
+    /// no-op; pointer hit uses (0, 0) until a layout writes a real origin.
+    fn set_screen_origin(&mut self, _col: u16, _row: u16) {}
+
+    /// Offer a pointer event before focus routing. Return true to consume
+    /// (focused child / overlay MUST NOT also receive it). Default rejects.
+    /// Keyboard and paste MUST NOT be forwarded through this method.
+    fn offer_pointer(&mut self, _event: &InputEvent) -> bool {
+        false
+    }
 }
 
 pub trait Focusable: Component {
@@ -941,6 +952,28 @@ impl<T: Terminal> TUI<T> {
         self.after_dispatch_hook = hook;
     }
 
+    /// Visible overlays (top-first) then root children. First `true` consumes.
+    /// Keyboard / paste are never offered.
+    fn offer_pointer_tree(&mut self, event: &InputEvent) -> Option<bool> {
+        if !matches!(event, InputEvent::Mouse(_)) {
+            return None;
+        }
+        for i in (0..self.overlays.len()).rev() {
+            if self.overlays[i].2.hidden {
+                continue;
+            }
+            if self.overlays[i].0.offer_pointer(event) {
+                return Some(self.overlays[i].0.input_wants_rerender(event));
+            }
+        }
+        for i in 0..self.components.len() {
+            if self.components[i].offer_pointer(event) {
+                return Some(self.components[i].input_wants_rerender(event));
+            }
+        }
+        None
+    }
+
     /// Route one decoded input event through listeners, then the focused
     /// overlay (if any) or root child.
     ///
@@ -1118,6 +1151,18 @@ impl<T: Terminal> TUI<T> {
                 },
                 _ => {}
             }
+        }
+
+        // Pointer offer before focus: a claiming child (e.g. Tabs) consumes
+        // Down / wheel so the focused editor does not also receive it.
+        if matches!(event, InputEvent::Mouse(_))
+            && let Some(wants) = self.offer_pointer_tree(&event)
+        {
+            let paint = wants || force_rerender;
+            if paint {
+                self.ao_components_stale = true;
+            }
+            return InputReaction::rerender_if(paint);
         }
 
         // Route to focused overlay (including explicitly focused non_capturing).

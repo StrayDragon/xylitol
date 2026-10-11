@@ -7,7 +7,7 @@
 
   @req:r1614
   规则: container-vertical-stack
-    xylitol-tui 包 MUST 提供 Container 组件，持有有序子 Component 列表，按顺序拼接各 child 的 render(width) 行渲染，invalidate 时使所有 child 失效，MUST NOT 自动将 InputEvent fan-out 到 child（焦点路由仍为 TUI/host 职责）。Container MUST 暴露 add_child、remove_child 与 clear。
+    xylitol-tui 包 MUST 提供 Container 组件，持有有序子 Component 列表，按顺序拼接各 child 的 render(width) 行渲染，invalidate 时使所有 child 失效。handle_input MUST NOT 把键盘或粘贴转给 child（焦点路由仍为 TUI/host 职责）。Container MUST 暴露 add_child、remove_child 与 clear。
     # verified-by: packages/xylitol-tui/tests/tui_integration_test.rs
   @req:r1615
   规则: overlay-handle
@@ -31,7 +31,15 @@
     # verified-by: packages/xylitol-tui/tests/overlay_focus_test.rs
   @req:r1620
   规则: input-event-mouse
-    InputEvent MUST 包含 Mouse 变体（携带列/行与按键或移动类别，足以表达 crossterm MouseEvent 语义）；dispatch_event 与 add_input_listener MUST 可接收 Mouse；demo/start 事件环 MUST 能将 crossterm Event::Mouse 映射为 InputEvent::Mouse。默认路径下 Mouse Moved（或等价无态变移动）MUST NOT 强制整帧 do_render / 递增 frame_count；本要求 MUST NOT 规定产品折叠点击语义。
+    InputEvent MUST 包含 Mouse 变体（携带列/行与按键或移动类别，足以表达 crossterm MouseEvent 语义）；dispatch_event 与 add_input_listener MUST 可接收 Mouse；demo/start 事件环 MUST 能将 crossterm Event::Mouse 映射为 InputEvent::Mouse。    默认路径下 Mouse Moved（或等价无态变移动）MUST NOT 强制整帧 do_render / 递增 frame_count；本要求 MUST NOT 规定产品折叠点击语义。
+  @req:r1946
+  规则: pointer-offer-before-focus
+    Component MUST 提供默认空操作的 set_screen_origin 与 offer_pointer。offer_pointer 收到指针且组件认领时 MUST 返回 true，未认领 MUST 返回 false。TUI::dispatch_event 在 listener 之后、焦点 overlay 或焦点根 child 之前 MUST 对可见 overlay 与根 child 调用 offer_pointer；任一返回 true MUST 阻止焦点组件再收到该指针事件。Container 的 offer_pointer MUST 按上次 render 各 child 占用的行把屏上事件转给命中的 child。键盘与粘贴 MUST NOT 经 offer_pointer 转发。Moved 被 offer_pointer 拒绝时 MUST NOT 仅因此强制整帧重绘。
+
+    场景: dispatch-offer-pointer-blocks-focus
+      假如 根 child 会认领指针且另一组件持有焦点
+      当 dispatch_event 收到该指针
+      那么 焦点组件收不到该事件
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

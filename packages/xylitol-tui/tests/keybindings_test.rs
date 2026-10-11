@@ -16,6 +16,8 @@ fn test_default_keybindings_exist() {
     assert!(defs.contains_key("tui.editor.cursorUp"));
     assert!(defs.contains_key("tui.input.submit"));
     assert!(defs.contains_key("tui.select.cancel"));
+    assert!(defs.contains_key("tui.tabs.prev"));
+    assert!(defs.contains_key("tui.tabs.next"));
 }
 
 #[test]
@@ -26,6 +28,10 @@ fn test_keybindings_manager_default() {
     assert!(kb.matches_event(&key(KeyCode::Up), "tui.editor.cursorUp"));
     assert!(kb.matches_event(&key(KeyCode::Delete), "tui.editor.deleteCharForward"));
     assert!(kb.matches_event(&key(KeyCode::Esc), "tui.select.cancel"));
+    assert!(!kb.matches_event(&key(KeyCode::Left), "tui.tabs.prev"));
+    assert!(!kb.matches_event(&key(KeyCode::Right), "tui.tabs.next"));
+    assert!(kb.get_keys("tui.tabs.prev").is_empty());
+    assert!(kb.get_keys("tui.tabs.next").is_empty());
 }
 
 #[test]

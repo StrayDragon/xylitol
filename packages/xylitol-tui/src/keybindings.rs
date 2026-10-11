@@ -122,6 +122,9 @@ static TUI_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         &["escape", "ctrl+c"],
         Some("Cancel selection"),
     ),
+    // Unbound by default: product / tests write chords; bare ←→ stay free.
+    ("tui.tabs.prev", &[], Some("Previous tab title")),
+    ("tui.tabs.next", &[], Some("Next tab title")),
     (
         "tui.tree.foldOrUp",
         &["ctrl+left", "alt+left"],

@@ -21,7 +21,7 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 
 | 是 | 不是 |
 |---|---|
-| `TUI` 引擎、`Component`/`Focusable`、通用组件 | agent session、slash、`XyEvent`、业务状态机 |
+| `TUI` 引擎、`Component`/`Focusable`、通用组件（含 `Tabs` 标题条，无页内容） | agent session、slash、`XyEvent`、业务状态机 |
 | 同步库；产品端 host 驱动（tokio 仅 autocomplete 异步辅助，runtime 由消费方提供） | 拥有产品事件循环 |
 | `lib.rs` re-export = API 边界 SSOT | 应用层 theme token / 流式业务缓冲 / 产品 layout |
 
@@ -72,7 +72,7 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 
 产品 / 自写 host **MUST** 以 `examples/host_loop_application_owned.rs`（`just demo-tui-host-loop`）为样板；**禁止**把 `agent_demo_impl` 私有坐标算术当 SSOT。
 
-构造 `ApplicationOwnedTui`（或 `TUI::with_interaction_mode(..., ApplicationOwned)`）→ `begin_application_owned_session` → host 驱动 `dispatch_event` / `idle_tick` / `try_render`（**勿**产品路径调 `TUI::start()`）→ 每帧 `set_dock_rows` → Editor 用 `editor_screen_origin` 收**绝对** screen 坐标 → `mouse_in_dock` 过滤 dock → 命中优先 `mark_hit(Hit::on_line(id, line).cols(..))`（正文随滚动）或 `Hit::at_cell(id, col, row)`（钉在可见格）；`set_hit_regions` 是引擎整表替换。不透明 id；`set_transcript_hit_priority` 仍可用 → 相位 / 探针 `set_pointer_click_phase` / `arm_pointer_probe` / `take_pointer_click` → 复制走 `take_copy_notice` / Editor OSC52 → 退出 `finish`。挂起用 `with_terminal_suspended`（ApplicationOwned 自动重进 alt+mouse）。**禁止**把产品 `FoldTarget` 写进本包。host **不必**自算 `content_row = scroll_top + screen_row`。
+构造 `ApplicationOwnedTui`（或 `TUI::with_interaction_mode(..., ApplicationOwned)`）→ `begin_application_owned_session` → host 驱动 `dispatch_event` / `idle_tick` / `try_render`（**勿**产品路径调 `TUI::start()`）→ 每帧 `set_dock_rows` → Editor 用 `editor_screen_origin` 收**绝对** screen 坐标 → `mouse_in_dock` 过滤 dock → 命中优先 `mark_hit(Hit::on_line(id, line).cols(..))`（正文随滚动）或 `Hit::at_cell(id, col, row)`（钉在可见格）；`set_hit_regions` 是引擎整表替换。不透明 id；`set_transcript_hit_priority` 仍可用 → 相位 / 探针 `set_pointer_click_phase` / `arm_pointer_probe` / `take_pointer_click` → 复制走 `take_copy_notice` / Editor OSC52 → 退出 `finish`。挂起用 `with_terminal_suspended`（ApplicationOwned 自动重进 alt+mouse）。**禁止**把产品 `FoldTarget` 写进本包。host **不必**自算 `content_row = scroll_top + screen_row`。`Tabs`：布局后 `set_screen_origin`，走 `dispatch_event` 即可（引擎在焦点前 `offer_pointer`）；底层 `title_col_ranges` / `overflow_col_ranges` / `set_selected` 仍可用。
 
 ## 验证（本文件 = 人类/agent 验证分工 SSOT）
 

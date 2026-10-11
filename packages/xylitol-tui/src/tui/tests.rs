@@ -308,6 +308,36 @@ fn mouse_moved_flood_does_not_bump_frame_count() {
 }
 
 #[test]
+fn offer_pointer_on_root_tabs_blocks_focused_child() {
+    use crate::components::tabs::Tabs;
+
+    let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let mut tabs = Tabs::new(vec!["alpha".into(), "beta".into(), "gamma".into()]);
+    let _ = tabs.render(80);
+    let (_, start, end) = tabs.title_col_ranges()[1];
+    let col = ((start + end) / 2) as u16;
+
+    let mut tui = TUI::new(DummyTerminal);
+    tui.add_child(Box::new(tabs));
+    tui.add_child(Box::new(RecordingComponent {
+        events: events.clone(),
+    }));
+    tui.set_focus(Some(1));
+
+    let click = InputEvent::Mouse(MouseEvent {
+        kind: MouseEventKind::Down(crossterm::event::MouseButton::Left),
+        column: col,
+        row: 0,
+        modifiers: KeyModifiers::NONE,
+    });
+    tui.dispatch_event(click);
+    assert!(
+        events.lock().unwrap().is_empty(),
+        "focused child must not receive a pointer Tabs claimed"
+    );
+}
+
+#[test]
 fn mouse_consumed_listener_can_bump_frame_count() {
     let mut tui = TUI::new(DummyTerminal);
     tui.add_input_listener(|_| InputListenerResult::ConsumedRerender);

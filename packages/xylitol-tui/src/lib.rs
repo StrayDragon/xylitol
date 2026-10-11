@@ -62,6 +62,7 @@ pub use components::settings_list::{
     SettingItem, SettingsList, SettingsListOptions, SettingsListTheme,
 };
 pub use components::spacer::Spacer;
+pub use components::tabs::{Tabs, TabsTheme};
 pub use components::text::Text;
 pub use components::tree_selector::{
     FlatNode, GutterInfo, TreeNode, TreeNodePredicate, TreeSelector, TreeSelectorOptions,
