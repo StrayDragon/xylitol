@@ -1,0 +1,2 @@
+title: "修复 arm_tool_freeze 无界等待（MCP 配置不可达时首轮死锁）"
+depends_on: []

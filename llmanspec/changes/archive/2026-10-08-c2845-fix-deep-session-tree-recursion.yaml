@@ -1,0 +1,2 @@
+title: "修复 v3 session_tree 深度递归崩溃（治本：RAW 透明 + 回退栈补丁）"
+depends_on: []

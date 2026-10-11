@@ -1,0 +1,2 @@
+title: "Session JSONL 分段冷备与 compaction seal（manifest + 活跃段，v7）"
+depends_on: [c25-fix-compact-overflow-placeholder]

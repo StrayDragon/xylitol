@@ -1,0 +1,2 @@
+title: "紧凑窗口频繁压缩：地板感知触发 + 压后大小呈现 + 一次性诊断 + lab 回放（c2/c26 修订）"
+depends_on: [c25-fix-compact-overflow-placeholder]

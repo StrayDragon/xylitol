@@ -1,0 +1,2 @@
+title: "整块可点折叠与悬停可发现性"
+depends_on: [c2858-add-package-tui-pointer-hit-pipeline]

@@ -1,0 +1,2 @@
+title: "修复深树 JSON 的 serde 默认递归上限泄漏（两轨）"
+depends_on: [c2845-fix-deep-session-tree-recursion]
