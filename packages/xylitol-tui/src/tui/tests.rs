@@ -1,23 +1,7 @@
 use super::*;
 use crossterm::event::{KeyCode, KeyEventState, KeyModifiers};
 
-struct DummyTerminal;
-
-impl Terminal for DummyTerminal {
-    fn write(&mut self, _data: &str) {}
-    fn columns(&self) -> u16 {
-        80
-    }
-    fn rows(&self) -> u16 {
-        24
-    }
-    fn hide_cursor(&mut self) {}
-    fn show_cursor(&mut self) {}
-    fn clear_line(&mut self) {}
-    fn clear_from_cursor(&mut self) {}
-    fn clear_screen(&mut self) {}
-    fn flush(&mut self) {}
-}
+use crate::NullTerminal;
 
 struct DummyComponent {
     wants_release: bool,
@@ -48,7 +32,7 @@ fn key_with_kind(kind: KeyEventKind) -> KeyEvent {
 
 #[test]
 fn dispatches_press_and_repeat() {
-    let tui = TUI::new(DummyTerminal);
+    let tui = TUI::new(NullTerminal::default());
 
     assert!(tui.should_dispatch_key_event(&key_with_kind(KeyEventKind::Press)));
     assert!(tui.should_dispatch_key_event(&key_with_kind(KeyEventKind::Repeat)));
@@ -56,7 +40,7 @@ fn dispatches_press_and_repeat() {
 
 #[test]
 fn ignores_release_without_opt_in() {
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(DummyComponent {
         wants_release: false,
     }));
@@ -67,7 +51,7 @@ fn ignores_release_without_opt_in() {
 
 #[test]
 fn dispatches_release_when_focused_component_requests_it() {
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(DummyComponent {
         wants_release: true,
     }));
@@ -111,7 +95,7 @@ fn ctrl_c() -> InputEvent {
 #[test]
 fn input_listener_consumes_before_focus() {
     let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(RecordingComponent {
         events: events.clone(),
     }));
@@ -138,7 +122,7 @@ fn input_listener_consumes_before_focus() {
 #[test]
 fn input_listeners_run_fifo_until_consumed() {
     let order = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     let o1 = order.clone();
     tui.add_input_listener(move |_| {
         o1.lock().unwrap().push(1);
@@ -162,7 +146,7 @@ fn input_listeners_run_fifo_until_consumed() {
 #[test]
 fn paste_passes_through_continuing_listener() {
     let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(RecordingComponent {
         events: events.clone(),
     }));
@@ -204,7 +188,7 @@ fn mouse_motion_is_pointer_motion() {
 #[test]
 fn mouse_down_reaches_focused_child_without_default_rerender() {
     let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(RecordingComponent {
         events: events.clone(),
     }));
@@ -224,14 +208,14 @@ fn mouse_down_reaches_focused_child_without_default_rerender() {
 
 #[test]
 fn mouse_listener_consumed_does_not_request_rerender() {
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_input_listener(|_| InputListenerResult::Consumed);
     assert_eq!(tui.dispatch_event(mouse_left_down()), InputReaction::None);
 }
 
 #[test]
 fn mouse_listener_consumed_rerender_requests_frame() {
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_input_listener(|_| InputListenerResult::ConsumedRerender);
     assert_eq!(
         tui.dispatch_event(mouse_left_down()),
@@ -242,7 +226,7 @@ fn mouse_listener_consumed_rerender_requests_frame() {
 #[test]
 fn mouse_listener_consumed_blocks_focused_child() {
     let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(RecordingComponent {
         events: events.clone(),
     }));
@@ -276,7 +260,7 @@ impl Component for MouseAwareComponent {
 
 #[test]
 fn component_can_opt_in_mouse_rerender() {
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(MouseAwareComponent));
     tui.set_focus(Some(0));
     assert_eq!(
@@ -288,7 +272,7 @@ fn component_can_opt_in_mouse_rerender() {
 
 #[test]
 fn mouse_moved_flood_does_not_bump_frame_count() {
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(RecordingComponent {
         events: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
     }));
@@ -317,7 +301,7 @@ fn offer_pointer_on_root_tabs_blocks_focused_child() {
     let (_, start, end) = tabs.title_col_ranges()[1];
     let col = ((start + end) / 2) as u16;
 
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(tabs));
     tui.add_child(Box::new(RecordingComponent {
         events: events.clone(),
@@ -339,7 +323,7 @@ fn offer_pointer_on_root_tabs_blocks_focused_child() {
 
 #[test]
 fn mouse_consumed_listener_can_bump_frame_count() {
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_input_listener(|_| InputListenerResult::ConsumedRerender);
     let before = tui.frame_count();
     assert_eq!(

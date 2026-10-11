@@ -91,7 +91,9 @@ pub use selection::{
     CellPoint, ClipboardSink, HitPriorityFn, RecordingClipboardSink, ScreenRect,
     SelectionController, SelectionGranularity, format_osc52,
 };
-pub use terminal::{CrosstermTerminal, Terminal, env_requests_mouse_capture, parse_kitty_flags};
+pub use terminal::{
+    CrosstermTerminal, NullTerminal, Terminal, env_requests_mouse_capture, parse_kitty_flags,
+};
 pub use terminal_colors::{
     CSI_COLOR_SCHEME_QUERY, OSC11_BG_QUERY, RgbColor, TerminalColorScheme, ThemeDetectSources,
     is_osc11_background_color_response, is_terminal_color_reply, parse_colorfgbg,

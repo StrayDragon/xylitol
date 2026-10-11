@@ -104,6 +104,41 @@ pub trait Terminal {
     fn move_by(&mut self, _lines: i32) {}
 }
 
+/// No-op [`Terminal`] for dispatch / layout tests. Fixed size, no I/O.
+#[derive(Debug, Clone, Copy)]
+pub struct NullTerminal {
+    cols: u16,
+    rows: u16,
+}
+
+impl NullTerminal {
+    pub fn new(cols: u16, rows: u16) -> Self {
+        Self { cols, rows }
+    }
+}
+
+impl Default for NullTerminal {
+    fn default() -> Self {
+        Self::new(80, 24)
+    }
+}
+
+impl Terminal for NullTerminal {
+    fn write(&mut self, _data: &str) {}
+    fn columns(&self) -> u16 {
+        self.cols
+    }
+    fn rows(&self) -> u16 {
+        self.rows
+    }
+    fn hide_cursor(&mut self) {}
+    fn show_cursor(&mut self) {}
+    fn clear_line(&mut self) {}
+    fn clear_from_cursor(&mut self) {}
+    fn clear_screen(&mut self) {}
+    fn flush(&mut self) {}
+}
+
 /// True when `XYLITOL_TUI_MOUSE` is a truthy opt-in (`1` / `true` / `yes`).
 ///
 /// **Default off.** This is a **lab / PTY e2e** hook for `agent_demo` and harnesses

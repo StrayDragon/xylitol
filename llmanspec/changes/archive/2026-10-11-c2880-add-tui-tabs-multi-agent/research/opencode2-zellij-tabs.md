@@ -64,13 +64,13 @@ Composer 打开时 Left/Right 切 composer 内页（subagents / shell / terminal
 
 Q6 已锁：登记 `tui.tabs.prev` / `next`，默认不绑物理键。
 
-## 鼠标（两边都有，现票刻意不做）
+## 鼠标（两边都有；落地后库做命中）
 
 - zellij：`LeftClick(_, col)` 走 `get_tab_to_focus`（累计 `LinePart.len`）；滚轮切邻 tab（`tab-bar/src/main.rs:92-104`，`tab.rs:122-148`）
 - opencode 桌面：mousedown 切 tab、中键关、拖排序（`tab-nav.tsx:201-238`，`tab-strip.tsx:292-334`）
 - opencode TUI：有 `session-tabs-mouse.test.tsx`
 
-`title_col_ranges` 对以后点选是对的，形状接近 zellij 的 `LinePart { len, tab_index }`。本票仍可不接鼠标。
+`title_col_ranges` / `overflow_col_ranges` 形状接近 zellij 的 `LinePart { len, tab_index }`。落地后左键与条上滚轮经 `offer_pointer` 改下标，不登记 `HitRegion`。
 
 ## 对 xylitol 的含义（未改合约）
 

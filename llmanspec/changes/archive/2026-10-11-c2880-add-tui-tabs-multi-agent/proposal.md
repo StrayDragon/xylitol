@@ -23,7 +23,7 @@ needs_specs_change: false
 - 新组件 `xylitol-tui::Tabs`：只画标题条。状态是 N 个标题 + 一个 `selected` 下标。不持有对话条目或其它页；产品端按 `selected` 自己换内容。
 - 不知道 session id，不读 Host / `XyEvent`。
 - 溢出：窗口 + 两侧计数（Q5）。切到上一标题 / 下一标题：登记 `tui.tabs.prev` / `tui.tabs.next`，默认不绑任何物理键（Q6）。产品端以后要切会话书签时，再在端侧绑定表里写上键。
-- `render(width)` 之后 `title_col_ranges()` 给出**可见** title 在条上的列区间，给以后 hit map 用。本票不接鼠标、不登记 `HitRegion`。
+- `render(width)` 之后 `title_col_ranges()` / `overflow_col_ranges()` 给出可见标题与溢出标记的列区间。左键与条上滚轮改 `selected`（`offer_pointer`，焦点前投递）。不登记 `HitRegion`。
 - `Container` 仍是垂直栈。`Tabs` 是普通 `Component`，可以放进 `Container`。
 - 输出 `Vec<String>` ANSI。主题用闭包。不引入 `StyledLine`，不依赖 ratatui `Tabs`。
 
@@ -63,7 +63,7 @@ needs_specs_change: false
 6. ~~用户按键时，谁改标题条下标？~~ **登记 id、默认不绑物理键**（2026-10-11）。`tui.tabs.prev` / `tui.tabs.next` 默认键列表为空，与 `tui.select.pageUp` 相同。数字跳转不进默认表。
 7. ~~本票要不要支持标题左右分列、整条隐藏？~~ **不要**（2026-10-11）。以后另开 change。
 8. ~~超宽藏掉若干标题后，列区间怎么对回原来的标题下标？~~ **每段带原下标**（2026-10-11）：`(标题下标, 起始列, 结束列)`，只含画出来的标题。
-9. ~~两侧溢出标记要不要也给列区间？~~ **要**（2026-10-11）。按 zellij：每侧标记有列区间，并带该侧第一个隐藏标题的原下标。本票仍不处理点击。
+9. ~~两侧溢出标记要不要也给列区间？~~ **要**（2026-10-11）。按 zellij：每侧标记有列区间，并带该侧第一个隐藏标题的原下标。点击走 Q10。
 10. ~~本票标题条要不要自己处理点击？~~ **要**（2026-10-11）。左键按下：列落在标题上则选该标题；落在溢出标记上则选该侧第一个隐藏标题。不登记命中区。
 11. ~~标题条上滚轮要不要切相邻标题？~~ **要**（2026-10-11）。向上滚选下一项，向下滚选上一项，循环。与 zellij tab-bar 相同。
 12. ~~调用方怎么把屏上指针交给标题条？~~ **库做命中与投递**（2026-10-11）。调用方只报标题条画在屏上哪一行。`set_screen_origin` + `offer_pointer`；`TUI::dispatch_event` 在焦点路由前投给根 child。区间、`set_selected`、条内列的 `handle_input` 仍可用。不改 `Container` 对键盘的 fan-out（pte01 / r1614）。

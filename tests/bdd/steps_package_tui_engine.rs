@@ -4,26 +4,7 @@ use crate::bdd::prelude::*;
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol_tui::terminal::Terminal;
-use xylitol_tui::{Component, InputEvent, TUI, Tabs};
-
-struct DummyTerminal;
-
-impl Terminal for DummyTerminal {
-    fn write(&mut self, _data: &str) {}
-    fn columns(&self) -> u16 {
-        80
-    }
-    fn rows(&self) -> u16 {
-        24
-    }
-    fn hide_cursor(&mut self) {}
-    fn show_cursor(&mut self) {}
-    fn clear_line(&mut self) {}
-    fn clear_from_cursor(&mut self) {}
-    fn clear_screen(&mut self) {}
-    fn flush(&mut self) {}
-}
+use xylitol_tui::{Component, InputEvent, NullTerminal, TUI, Tabs};
 
 struct Recorder {
     events: std::sync::Arc<std::sync::Mutex<Vec<InputEvent>>>,
@@ -41,7 +22,7 @@ impl Component for Recorder {
 
 pub struct EngineOfferBdd {
     events: std::sync::Arc<std::sync::Mutex<Vec<InputEvent>>>,
-    tui: RefCell<Option<TUI<DummyTerminal>>>,
+    tui: RefCell<Option<TUI<NullTerminal>>>,
     click: RefCell<Option<InputEvent>>,
 }
 
@@ -67,7 +48,7 @@ fn g_tabs_claims_editor_focused(engine_offer_bdd: &EngineOfferBdd) {
         modifiers: KeyModifiers::NONE,
     }));
 
-    let mut tui = TUI::new(DummyTerminal);
+    let mut tui = TUI::new(NullTerminal::default());
     tui.add_child(Box::new(tabs));
     tui.add_child(Box::new(Recorder {
         events: engine_offer_bdd.events.clone(),

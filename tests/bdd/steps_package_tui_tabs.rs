@@ -20,6 +20,7 @@ pub struct TabsBdd {
     pub last_offer: Cell<Option<bool>>,
     pub last_vis: RefCell<String>,
     pub kb_scope: RefCell<Option<KeybindingsScope>>,
+    pub selected_path: RefCell<Vec<usize>>,
 }
 
 #[fixture]
@@ -29,6 +30,7 @@ pub fn tabs_bdd() -> TabsBdd {
         last_offer: Cell::new(None),
         last_vis: RefCell::new(String::new()),
         kb_scope: RefCell::new(None),
+        selected_path: RefCell::new(Vec::new()),
     }
 }
 
@@ -166,8 +168,11 @@ fn g_three_first_origin0(tabs_bdd: &TabsBdd) {
 #[when("依次收到下一标题键与上一标题键")]
 fn w_next_then_prev(tabs_bdd: &TabsBdd) {
     let mut tabs = tabs_bdd.tabs.borrow_mut();
+    let mut path = tabs_bdd.selected_path.borrow_mut();
     tabs.handle_input(key(KeyCode::Right));
+    path.push(tabs.selected());
     tabs.handle_input(key(KeyCode::Left));
+    path.push(tabs.selected());
 }
 
 #[when("收到左方向键")]
@@ -234,15 +239,7 @@ fn w_click_row0_second(tabs_bdd: &TabsBdd) {
 
 #[then("选中下标先到第三个再回到第二个")]
 fn t_cycle_then_back(tabs_bdd: &TabsBdd) {
-    // After next+prev the index is back at 1; the pair of handle_input
-    // calls already asserted the cycle by finishing at the start index
-    // with two mutations. Re-run from a fresh mid to show the peak.
-    let mut probe = Tabs::new(vec!["alpha".into(), "beta".into(), "gamma".into()]);
-    probe.set_selected(1);
-    probe.handle_input(key(KeyCode::Right));
-    assert_eq!(probe.selected(), 2);
-    probe.handle_input(key(KeyCode::Left));
-    assert_eq!(probe.selected(), 1);
+    assert_eq!(tabs_bdd.selected_path.borrow().as_slice(), &[2, 1]);
     assert_eq!(tabs_bdd.tabs.borrow().selected(), 1);
 }
 
