@@ -157,7 +157,7 @@
       那么 仅见后一条且以 Error: 前缀且未写入对话条目
   @req:r1930
   规则: client-notice-stack
-    产品 TUI MUST 在视口右上角提供客户端通知栈：纵向堆叠、最新在上、同时最多约 3 条，TTL 到期自动消失；成功确认（至少复制成功 Copied）以 ✓ 起头，说明类（至少整段 Heuristic 估计的首次提示）以 ◆ 起头。MUST NOT 写入对话条目 / ScrollNotice；MUST NOT 计入下缘 Fixed-Zone Footprint；MUST NOT 使用通知条的 Error: 前缀。整段估计 provenance 为 Heuristic 时 MUST 在每个 TUI 进程内至多提示一次；Api 锚点有效仅 trailing 为启发式时 MUST NOT 再弹。Print 面 MUST NOT 展示该栈。本波 MUST NOT 要求栈内键盘动作或展开侧板。
+    产品 TUI MUST 在视口右上角提供客户端通知栈：纵向堆叠、最新在上、同时最多约 3 条，TTL 到期自动消失；成功确认（至少复制成功 Copied、Copied Last Msg）以 ✓ 起头，说明类（至少整段 Heuristic 估计的首次提示）以 ◆ 起头。该右上角 MUST 为当前已裁切的可见 transcript 视口，滚动对话后 MUST 仍钉在该角；MUST NOT 写在滚动内容缓冲第 0 行并随内容滚出视口。MUST NOT 写入对话条目 / ScrollNotice；MUST NOT 计入下缘 Fixed-Zone Footprint；MUST NOT 使用通知条的 Error: 前缀。MUST NOT 把导航瞬时（switched →、forked →、cloned →、imported →、restored →、new session →、history @）放入本栈（那些走滚动提示尾插，见 r1953 / r1330）。整段估计 provenance 为 Heuristic 时 MUST 在每个 TUI 进程内至多提示一次；Api 锚点有效仅 trailing 为启发式时 MUST NOT 再弹。Print 面 MUST NOT 展示该栈。本波 MUST NOT 要求栈内键盘动作或展开侧板。
     场景: notice-stack-copied-not-error-bar
       当 臂装复制成功提示后渲染主机帧
       那么 右上角通知栈含 Copied 且不以 Error 前缀冒充
@@ -165,6 +165,10 @@
       假如 footer 同源估计为 Heuristic
       当 连续两次以 Heuristic 刷新估计
       那么 估算说明在通知栈至多出现一次
+    场景: notice-stack-copied-pins-scrolled-viewport
+      假如 对话内容高于可见 transcript 窗且视口未停在内容顶
+      当 臂装复制成功提示后渲染已裁切视口
+      那么 可见视口顶部含 Copied 且不以 Error 前缀冒充
   @req:r1228
   规则: fixed-zone-footprint-term-budget
     产品 TUI MUST 维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 MUST NOT 计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 MUST = term_rows 减去上述 reserved 与槽头行后的预算且 MUST ≥ 1；MUST NOT 以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 MUST 仍能看到 status lead（Working 或等价 spinner 短词）。MUST NOT 为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。

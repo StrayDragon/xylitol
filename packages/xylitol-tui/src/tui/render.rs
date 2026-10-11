@@ -198,10 +198,6 @@ impl<T: Terminal> TUI<T> {
                 self.previous_height = FORCE_SIZE_SENTINEL;
             }
 
-            if !self.overlays.is_empty() {
-                new_lines = self.composite_overlays(new_lines, width, height);
-            }
-
             let component_lines = new_lines.len();
 
             // ApplicationOwned: project *before* finalize/cursor extract so we only
@@ -218,6 +214,10 @@ impl<T: Terminal> TUI<T> {
             self.ao_components_stale = false;
             (component_lines, new_lines, false)
         };
+
+        // Viewport overlay after clip (AO project/reproject) or after render
+        // (Inline): screen-anchored overlays + Component::overlay_viewport.
+        new_lines = self.apply_viewport_overlay(new_lines, width, height);
 
         // pi: extract cursor marker before applyLineResets.
         let cursor_pos = self.extract_cursor_position(&mut new_lines, height);
@@ -360,6 +360,41 @@ impl<T: Terminal> TUI<T> {
         }
         self.ao_wheel_render_requested = false;
         Ok(())
+    }
+
+    /// Screen-anchored overlays + root `overlay_viewport`, after the visible
+    /// frame exists. ApplicationOwned paints the clipped surface; Inline maps
+    /// into the content-end viewport the same way `composite_overlays` does.
+    fn apply_viewport_overlay(
+        &mut self,
+        mut lines: Vec<String>,
+        width: usize,
+        height: usize,
+    ) -> Vec<String> {
+        if !self.overlays.is_empty() {
+            lines = self.composite_overlays(lines, width, height);
+        }
+        if lines.is_empty() || height == 0 {
+            return lines;
+        }
+        let viewport_start = lines.len().saturating_sub(height.min(lines.len()));
+        let dock = if self.application_session_active {
+            self.application_owned
+                .as_ref()
+                .map(ApplicationOwnedRuntime::dock_line_count)
+                .unwrap_or(self.dock_rows)
+        } else {
+            self.dock_rows
+        };
+        {
+            let visible = &mut lines[viewport_start..];
+            let dock = dock.min(visible.len());
+            let transcript_rows = visible.len().saturating_sub(dock);
+            for comp in &self.components {
+                comp.overlay_viewport(visible, width, transcript_rows);
+            }
+        }
+        lines
     }
 
     fn full_render(&mut self, new_lines: &[String], clear: bool, height: usize) {

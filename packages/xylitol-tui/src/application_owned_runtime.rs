@@ -101,6 +101,11 @@ impl ApplicationOwnedRuntime {
         self.scroll.content_len()
     }
 
+    /// Unclipped transcript rows (no dock). Viewport overlay must not write here.
+    pub fn content_lines(&self) -> &[String] {
+        self.scroll.lines()
+    }
+
     /// Dock lines cached from the last component project.
     pub fn dock_line_count(&self) -> usize {
         self.last_dock_lines.len()

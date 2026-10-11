@@ -488,10 +488,9 @@ impl<T: Terminal> HostSession<T> {
         }
         self.sync_ui_root_from_model();
         self.finish_activity_after_rebuild(&entries, &travel);
-        // resume-render 修复: switch/resume/restore/clone/import/new are ephemeral TUI-only
-        // tips — fixed-zone info toast above the editor (never a transcript
-        // row, so a later rebuild can never strand them mid-scrollback).
-        self.push_toast_info_notice(note);
+        // Trailing ScrollNotice after rebuild: next rebuild drops the old tip
+        // (not a SessionEntry), same model as `forked →` / `history @`.
+        self.push_scroll_notice(note);
         // Resume / restore / clone / import must refresh footer without waiting for
         // a new turn (c1035 was stream-close only; CLI --session left token blank).
         self.request_footer_token_refresh();

@@ -1146,10 +1146,18 @@ async fn harness_history_copy_last_copies_assistant() {
 
     assert_eq!(driver.copy_text_calls(), vec!["copy-me-please".to_string()]);
     assert!(
-        session.ui_model().entries.iter().any(
-            |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("Copied") && text.contains("chars"))
+        root.borrow()
+            .client_notice_bodies_for_test()
+            .iter()
+            .any(|b| b == "Copied Last Msg"),
+        "success must arm Copied Last Msg stack: {:?}",
+        root.borrow().client_notice_bodies_for_test()
+    );
+    assert!(
+        session.ui_model().entries.iter().all(
+            |e| !matches!(e, UiEntry::ScrollNotice { text } if text.contains("Copied last assistant"))
         ),
-        "expected copy ok note; got {:?}",
+        "success must not trail Copied last assistant: {:?}",
         session.ui_model().entries
     );
 }
@@ -1177,12 +1185,19 @@ async fn harness_history_copy_last_empty_prompts() {
         "expected empty note; got {:?}",
         session.ui_model().entries
     );
+    assert!(
+        root.borrow()
+            .client_notice_bodies_for_test()
+            .iter()
+            .all(|b| b != "Copied Last Msg"),
+        "empty list must not arm the stack: {:?}",
+        root.borrow().client_notice_bodies_for_test()
+    );
 }
 
 #[tokio::test]
 async fn harness_busy_history_copy_last_still_copies() {
     use super::harness::{ScriptedDriver, pump_host_driver};
-    use crate::app::tui::bridge::UiEntry;
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -1208,13 +1223,12 @@ async fn harness_busy_history_copy_last_still_copies() {
 
     assert_eq!(driver.copy_text_calls(), vec!["A".to_string()]);
     assert!(
-        session
-            .ui_model()
-            .entries
+        root.borrow()
+            .client_notice_bodies_for_test()
             .iter()
-            .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("Copied"))),
-        "busy must still copy; got {:?}",
-        session.ui_model().entries
+            .any(|b| b == "Copied Last Msg"),
+        "busy must still arm Copied Last Msg: {:?}",
+        root.borrow().client_notice_bodies_for_test()
     );
 }
 
@@ -1817,20 +1831,20 @@ fn harness_cli_restored_session_rebuilds_transcript() {
         "CLI restore must show assistant turn: {:?}",
         model.entries
     );
-    // resume-render 修复: restore note is a fixed-zone toast above the editor, never a
-    // transcript row (a rebuild would strand it mid-scrollback).
     assert!(
-        model.entries.iter().all(
-            |e| !matches!(e, UiEntry::ScrollNotice { text } if text.contains("restored → session"))
+        model.entries.iter().any(
+            |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("restored → session sid-restored"))
         ),
-        "restored note must not be a transcript row: {:?}",
+        "restored note must trail as ScrollNotice: {:?}",
         model.entries
     );
     let root = session.ui_root().expect("product ui").clone();
     assert!(
         root.borrow()
-            .transient_notice_contains_for_test("restored → session sid-restored"),
-        "expected restored notice: {:?}",
+            .client_notice_bodies_for_test()
+            .iter()
+            .all(|t| !t.contains("restored →")),
+        "restored note must not be on the notice stack: {:?}",
         root.borrow().client_notice_bodies_for_test()
     );
     session.step(HostEvent::Input(arrow_up_event())).unwrap();
@@ -4047,14 +4061,98 @@ fn application_owned_copy_notice_arms_copied_cue_not_error_toast() {
     root.borrow_mut().arm_copy_notice();
     assert_eq!(root.borrow().copy_notice_body_for_test(), Some("Copied"));
     assert!(root.borrow().toast_notice_body().is_none());
-    let frame = root.borrow_mut().render(80).join("\n");
+    session.tui.request_render(false);
+    session.render_now().unwrap();
+    let frame = xylitol_tui::utils::strip_ansi_codes(&session.tui.last_painted_lines().join("\n"));
     assert!(
         frame.contains("Copied"),
-        "ApplicationOwned copy cue must paint in fixed zone: {frame}"
+        "ApplicationOwned copy cue must paint in viewport overlay: {frame}"
     );
     assert!(
         !frame.contains("Error: Copied"),
         "must not use Error: toast shape: {frame}"
+    );
+}
+
+#[test]
+fn client_notice_stack_pins_scrolled_ao_viewport() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    for i in 0..80 {
+        session.push_scroll_notice(format!("row-{i:02}"));
+    }
+    session.render_now().unwrap();
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(
+        session.tui.application_owned_scroll_by(-(notch * 8)),
+        "must leave the content top"
+    );
+    session.render_now().unwrap();
+    assert!(
+        session.tui.application_owned_scroll_top() > 0,
+        "scroll_top must be off content 0"
+    );
+
+    let root = session.ui_root().expect("ui").clone();
+    root.borrow_mut().arm_copy_notice();
+    session.tui.request_render(false);
+    session.render_now().unwrap();
+
+    let painted = session.tui.last_painted_lines();
+    assert!(!painted.is_empty());
+    let first = xylitol_tui::utils::strip_ansi_codes(&painted[0]);
+    assert!(
+        first.contains("✓ Copied"),
+        "visible top must pin Copied: {first:?}"
+    );
+    assert!(
+        !first.contains("Error"),
+        "must not use Error: prefix: {first:?}"
+    );
+    let content0 = session
+        .tui
+        .application_owned_content_lines()
+        .and_then(|c| c.first())
+        .map(|l| xylitol_tui::utils::strip_ansi_codes(l))
+        .unwrap_or_default();
+    assert!(
+        !content0.contains("Copied"),
+        "unclipped content[0] must not hold the stack: {content0:?}"
+    );
+    let dock = session.tui.dock_rows().min(painted.len());
+    let transcript = painted.len().saturating_sub(dock);
+    for line in &painted[transcript..] {
+        let plain = xylitol_tui::utils::strip_ansi_codes(line);
+        assert!(
+            !plain.contains("✓ Copied"),
+            "stack must not cover dock: {plain:?}"
+        );
+    }
+}
+
+#[test]
+fn client_notice_stack_pins_after_reproject_without_rerender() {
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    for i in 0..80 {
+        session.push_scroll_notice(format!("row-{i:02}"));
+    }
+    session.render_now().unwrap();
+    let notch = session.tui.application_owned_wheel_notch();
+    assert!(session.tui.application_owned_scroll_by(-(notch * 8)));
+    session.render_now().unwrap();
+
+    let root = session.ui_root().expect("ui").clone();
+    root.borrow_mut().arm_copy_notice();
+    session.tui.clear_ao_reproject_frames_for_test();
+    session.tui.request_render(false);
+    session.render_now().unwrap();
+    assert!(
+        session.tui.last_render_perf().ao_reprojected,
+        "arming Copied must not force a component rebuild"
+    );
+    let first = xylitol_tui::utils::strip_ansi_codes(&session.tui.last_painted_lines()[0]);
+    assert!(
+        first.contains("✓ Copied"),
+        "reproject must still pin Copied: {first:?}"
     );
 }
 

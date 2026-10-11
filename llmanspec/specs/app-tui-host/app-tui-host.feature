@@ -233,7 +233,7 @@
 
   @req:r1261
   规则: mode-b-copy-notice-fixed-zone
-    产品 TUI 在 ApplicationOwned 会话下，当库发出松手复制成功 copy-notice（ptim15）时 MUST 展示短时用户可见提醒（TTL 约 1.5–3s 后自动消失）。落点 MUST 为右上角客户端通知栈（见 r1930）；MUST NOT 写入 transcript / ScrollNotice；MUST NOT 使用带 `Error: ` 前缀的拒闸通知条冒充成功确认；MUST NOT 再占用 status 旁下缘行。折叠点击不在范围。
+    产品 TUI 在 ApplicationOwned 会话下，当库发出松手复制成功 copy-notice（ptim15）时 MUST 展示短时用户可见提醒（TTL 约 1.5–3s 后自动消失）。落点 MUST 为右上角客户端通知栈（见 r1930），且 MUST 钉在已裁切视口而非滚动内容顶；MUST NOT 写入 transcript / ScrollNotice；MUST NOT 使用带 `Error: ` 前缀的拒闸通知条冒充成功确认；MUST NOT 再占用 status 旁下缘行。折叠点击不在范围。
 
     场景: copy-notice-fixed-zone-cue
       当 臂装复制成功提示后渲染主机帧
@@ -375,6 +375,13 @@
       当 提交 busy-Allow 且执行类为 Queued 的 /session-export
       那么 该命令 MUST 在 bang 结束前不执行
       并且 循环归还后 MUST 照常执行且 MUST NOT 丢失
+
+  @req:r1953
+  规则: session-nav-notice-trailing
+    产品 TUI 在空闲会话切换、新建、clone、import 与 CLI restore 成功并重建 transcript 后，MUST 以滚动提示尾插对应导航文案（switched → / new session → / cloned → / imported → / restored →），跟底时 MUST 出现在输入框上方视野。MUST NOT 写入通知栈或通知条。busy 拒切仍走通知条（r1189）。树 fork 的 forked → 与 travel 的 history @ 已有尾插，MUST 保持、MUST NOT 改送通知栈。
+    场景: session-switch-trails-not-stack
+      当 以主机泵完成空闲会话切换并渲染
+      那么 滚动提示尾插含 switched 且通知栈不含该文案
 
 # re-review(c2837): c2837 编译隔离变更影响本 scope——agent/infra 公开化与 BDD 测试辅助面收敛（纯可见性扩张与测试基建，无行为变化）。场景映射不变量保持；已复核。（2026-10-06）
 

@@ -3833,19 +3833,20 @@ mod slice_tests {
             vec!["/tmp/a.jsonl".to_string()]
         );
         assert_eq!(driver.switch_calls(), vec!["imported".to_string()]);
-        // resume-render 修复: import note is a client notice stack, not a transcript row.
-        assert!(
-            root.borrow()
-                .transient_notice_contains_for_test("imported → session imported"),
-            "expected import notice: {:?}",
-            root.borrow().client_notice_bodies_for_test()
-        );
         assert!(
             system_notes(&session)
                 .iter()
-                .all(|t| !t.contains("imported → session")),
-            "import note must not be a transcript row: {:?}",
+                .any(|t| t.contains("imported → session imported")),
+            "import note must trail as ScrollNotice: {:?}",
             system_notes(&session)
+        );
+        assert!(
+            root.borrow()
+                .client_notice_bodies_for_test()
+                .iter()
+                .all(|t| !t.contains("imported →")),
+            "import note must not be on the notice stack: {:?}",
+            root.borrow().client_notice_bodies_for_test()
         );
     }
 
@@ -3964,19 +3965,20 @@ mod slice_tests {
             .unwrap();
         assert_eq!(driver.switch_calls(), vec!["newer".to_string()]);
         assert!(!root.borrow().session_resume_open());
-        // resume-render 修复: switch note is a client notice stack, not a transcript row.
-        assert!(
-            root.borrow()
-                .transient_notice_contains_for_test("switched → session newer"),
-            "expected switch notice: {:?}",
-            root.borrow().client_notice_bodies_for_test()
-        );
         assert!(
             system_notes(&session)
                 .iter()
-                .all(|t| !t.contains("switched → session")),
-            "switch note must not be a transcript row: {:?}",
+                .any(|t| t.contains("switched → session newer")),
+            "switch note must trail as ScrollNotice: {:?}",
             system_notes(&session)
+        );
+        assert!(
+            root.borrow()
+                .client_notice_bodies_for_test()
+                .iter()
+                .all(|t| !t.contains("switched →")),
+            "switch note must not be on the notice stack: {:?}",
+            root.borrow().client_notice_bodies_for_test()
         );
     }
 
@@ -4158,12 +4160,19 @@ mod slice_tests {
             .await
             .unwrap();
         assert_eq!(driver.new_session_calls(), 1);
-        // resume-render 修复: new-session note is a client notice stack, not a transcript row.
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("new session") && t.contains("new-1")),
+            "new-session note must trail as ScrollNotice: {:?}",
+            system_notes(&session)
+        );
         assert!(
             root.borrow()
-                .transient_notice_contains_for_test("new session")
-                && root.borrow().transient_notice_contains_for_test("new-1"),
-            "expected new session notice: {:?}",
+                .client_notice_bodies_for_test()
+                .iter()
+                .all(|t| !t.contains("new session")),
+            "new-session note must not be on the notice stack: {:?}",
             root.borrow().client_notice_bodies_for_test()
         );
     }
@@ -4209,11 +4218,19 @@ mod slice_tests {
             vec![("leaf-1".to_string(), ForkPosition::At)]
         );
         assert_eq!(driver.switch_calls(), vec!["forked-child".to_string()]);
-        // resume-render 修复: clone note is a client notice stack, not a transcript row.
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("cloned → session forked-child")),
+            "clone note must trail as ScrollNotice: {:?}",
+            system_notes(&session)
+        );
         assert!(
             root.borrow()
-                .transient_notice_contains_for_test("cloned → session forked-child"),
-            "expected clone notice: {:?}",
+                .client_notice_bodies_for_test()
+                .iter()
+                .all(|t| !t.contains("cloned →")),
+            "clone note must not be on the notice stack: {:?}",
             root.borrow().client_notice_bodies_for_test()
         );
     }
@@ -4323,11 +4340,19 @@ mod slice_tests {
             "must not treat /new as unknown when popup selected session-new: {:?}",
             system_notes(&session)
         );
-        // resume-render 修复: new-session note is a client notice stack, not a transcript row.
+        assert!(
+            system_notes(&session)
+                .iter()
+                .any(|t| t.contains("new session")),
+            "new-session note must trail as ScrollNotice: {:?}",
+            system_notes(&session)
+        );
         assert!(
             root.borrow()
-                .transient_notice_contains_for_test("new session"),
-            "expected new-session notice: {:?}",
+                .client_notice_bodies_for_test()
+                .iter()
+                .all(|t| !t.contains("new session")),
+            "new-session note must not be on the notice stack: {:?}",
             root.borrow().client_notice_bodies_for_test()
         );
     }
@@ -7201,25 +7226,27 @@ mod slice_tests {
             "resume picker should be closed after select"
         );
 
-        // resume-render 修复: 切换 tip 是客户端通知栈，不是 transcript 行。
         assert!(
-            root.borrow()
-                .transient_notice_contains_for_test("switched → session sid-same"),
-            "expected switch notice: {:?}",
-            root.borrow().client_notice_bodies_for_test()
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::ScrollNotice { text } if text.contains("switched → session sid-same")
+            )),
+            "switch notice must trail as ScrollNotice: {:?}",
+            session.ui_model().entries
         );
         assert!(
-            !session.ui_model().entries.iter().any(|e| matches!(
-                e,
-                UiEntry::ScrollNotice { text } if text.contains("switched → session")
-            )),
-            "switch notice must not be a transcript row"
+            root.borrow()
+                .client_notice_bodies_for_test()
+                .iter()
+                .all(|t| !t.contains("switched →")),
+            "switch notice must not be on the notice stack: {:?}",
+            root.borrow().client_notice_bodies_for_test()
         );
 
         let frame = xylitol_tui::utils::strip_ansi_codes(&root.borrow_mut().render(120).join("\n"));
         assert!(
             frame.contains("switched → session"),
-            "switch notice must overlay the frame: {frame}"
+            "switch notice must appear above the editor: {frame}"
         );
 
         // resume-render 修复: switch 之后空闲到达的 agent tape（daemon journal 重放/ Foreign run）

@@ -73,10 +73,16 @@ impl UiRoot {
         vec![truncate_to_width(&painted, width, "…", false)]
     }
 
-    pub(super) fn overlay_client_notices(&self, lines: &mut [String], width: usize) {
+    pub(super) fn overlay_client_notices(
+        &self,
+        lines: &mut [String],
+        width: usize,
+        transcript_rows: usize,
+    ) {
         if width == 0 {
             return;
         }
+        let cap = transcript_rows.min(lines.len());
         let now = Instant::now();
         for (i, notice) in self
             .client_notices
@@ -84,7 +90,7 @@ impl UiRoot {
             .filter(|n| now < n.until)
             .enumerate()
         {
-            if i >= lines.len() {
+            if i >= cap {
                 break;
             }
             let raw = match notice.kind {
@@ -259,8 +265,11 @@ impl Component for UiRoot {
         lines.extend(status);
         lines.extend(editor);
         lines.push(footer);
-        self.overlay_client_notices(&mut lines, width);
         lines
+    }
+
+    fn overlay_viewport(&self, lines: &mut [String], width: usize, transcript_rows: usize) {
+        self.overlay_client_notices(lines, width, transcript_rows);
     }
 
     fn handle_input(&mut self, event: InputEvent) {

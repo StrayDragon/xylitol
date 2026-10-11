@@ -1081,6 +1081,66 @@ fn application_owned_wheel_reprojects_without_component_render() {
     assert_eq!(tui.ao_reproject_frames_for_test(), 1);
 }
 
+struct ViewportMarkLines {
+    lines: Vec<String>,
+}
+
+impl Component for ViewportMarkLines {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        self.lines.clone()
+    }
+    fn handle_input(&mut self, _event: InputEvent) {}
+    fn invalidate(&mut self) {}
+    fn dock_rows_hint(&self) -> Option<usize> {
+        Some(1)
+    }
+    fn overlay_viewport(&self, lines: &mut [String], _width: usize, transcript_rows: usize) {
+        let cap = transcript_rows.min(lines.len());
+        if cap == 0 {
+            return;
+        }
+        lines[0] = format!("{} VP-MARK", lines[0]);
+    }
+}
+
+#[test]
+fn overlay_viewport_pins_after_reproject() {
+    let mut body: Vec<String> = (0..80).map(|i| format!("L{i:02}")).collect();
+    body.push("dock".into());
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 12),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.add_child(Box::new(ViewportMarkLines { lines: body }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.render_frame().expect("ingest");
+    assert!(!tui.last_render_perf().ao_reprojected);
+
+    let notch = tui.application_owned_wheel_notch();
+    assert!(tui.application_owned_scroll_by(-(notch * 4)));
+    tui.clear_ao_reproject_frames_for_test();
+    tui.render_frame().expect("reproject");
+    assert!(tui.last_render_perf().ao_reprojected);
+    assert!(tui.application_owned_scroll_top() > 0);
+
+    let painted = tui.last_painted_lines();
+    assert!(
+        painted[0].contains("VP-MARK"),
+        "visible top must carry overlay_viewport mark: {:?}",
+        painted[0]
+    );
+    let content0 = tui
+        .application_owned_content_lines()
+        .and_then(|c| c.first())
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        !content0.contains("VP-MARK"),
+        "ScrollView content[0] must stay unmarked: {content0:?}"
+    );
+}
+
 /// Soft resize must not reproject width-specific cached lines (editor borders /
 /// markdown wrap). Host uses `request_render(false)` on Resize.
 #[test]

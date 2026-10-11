@@ -168,6 +168,15 @@ pub trait Component {
     fn offer_pointer(&mut self, _event: &InputEvent) -> bool {
         false
     }
+
+    /// Viewport overlay after the visible frame is assembled (post
+    /// `project_frame` / `reproject_frame` in ApplicationOwned; post `render`
+    /// in Inline). `lines` is the already-clipped paint surface; `transcript_rows`
+    /// is the visible transcript height (excluding dock). Default no-op.
+    ///
+    /// MUST NOT mutate the unclipped content buffer. MUST NOT mark the
+    /// component tree stale just to paint decoration.
+    fn overlay_viewport(&self, _lines: &mut [String], _width: usize, _transcript_rows: usize) {}
 }
 
 pub trait Focusable: Component {
@@ -449,6 +458,19 @@ impl<T: Terminal> TUI<T> {
 
     pub fn dock_rows(&self) -> usize {
         self.dock_rows
+    }
+
+    /// Last painted frame (post clip + viewport overlay). Host / tests probe
+    /// the visible surface without calling unclipped `Component::render`.
+    pub fn last_painted_lines(&self) -> &[String] {
+        &self.previous_lines
+    }
+
+    /// ApplicationOwned ScrollView content (unclipped transcript, no dock).
+    pub fn application_owned_content_lines(&self) -> Option<&[String]> {
+        self.application_owned
+            .as_ref()
+            .map(ApplicationOwnedRuntime::content_lines)
     }
 
     /// Transcript Left-Down priority hook (c2040 fold triangle, etc.).

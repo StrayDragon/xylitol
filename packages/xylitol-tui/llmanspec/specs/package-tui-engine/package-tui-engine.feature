@@ -40,6 +40,15 @@
       假如 根 child 会认领指针且另一组件持有焦点
       当 dispatch_event 收到该指针
       那么 焦点组件收不到该事件
+    # verified-by: packages/xylitol-tui/tests/tui_integration_test.rs
+  @req:r1954
+  规则: viewport-overlay-after-clip
+    xylitol-tui MUST 在可见帧拼好之后做视口叠层：ApplicationOwned 为 project_frame 与 reproject_frame 之后（含只投影的滚轮帧）；Inline 为 Component::render 之后。视口叠层 MUST 先按屏格 composite 已登记 overlay（锚点相对终端高宽，MUST NOT blit 到未裁切内容缓冲），再对每个根 Component 调用默认空操作的 overlay_viewport(&self, lines, width, transcript_rows)。overlay_viewport MUST 只改已裁切的 lines；transcript_rows MUST 为可见 transcript 行数（不含 dock）；默认实现 MUST 为 no-op。MUST NOT 为视口装饰把组件树标为整段 stale。库 copy-notice 仍只发信号（r1640），MUST NOT 在引擎内画 Copied 文案。
+    场景: overlay-viewport-pins-after-reproject
+      假如 ApplicationOwned 已 ingest 长内容且根组件 overlay_viewport 会在可见顶行写标记
+      当 只 reproject_frame 且 scroll_top 大于 0
+      那么 可见帧顶行含该标记且 ScrollView 内容第 0 行不含
+    # verified-by: packages/xylitol-tui/tests/tui_integration_test.rs
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

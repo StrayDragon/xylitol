@@ -786,11 +786,19 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Informational toast (muted, no `Error: ` prefix) — resume-render 修复：session-switch
-    /// tips and similar transient notices that are not failures.
+    /// Informational client-stack notice (muted, no `Error: ` prefix). Heuristic
+    /// estimate (session-nav is ScrollNotice).
     pub fn push_toast_info_notice(&mut self, text: impl Into<String>) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().push_toast_info_notice(text);
+            self.paint_dirty = true;
+        }
+    }
+
+    /// Arm `/history-copy-last` success on the client notice stack.
+    pub fn arm_copy_last_msg_notice(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().arm_copy_last_msg_notice();
             self.paint_dirty = true;
         }
     }
@@ -1067,7 +1075,6 @@ impl<T: Terminal> HostSession<T> {
                 && let Some(root) = self.ui_root.as_ref()
             {
                 root.borrow_mut().arm_copy_notice();
-                self.tui.mark_ao_components_stale();
                 self.tui.request_render(false);
             }
         }

@@ -57,3 +57,9 @@ async fn test_c2826_ath_chain(host_pump_bdd: HostPumpBdd) {}
     name = "fold-pointer-click-toggles-block"
 )]
 fn test_c2826_ath_fold_click(tui_interaction: TuiInteraction) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "session-switch-trails-not-stack"
+)]
+fn test_session_switch_trails_not_stack(host_pump_bdd: HostPumpBdd) {}

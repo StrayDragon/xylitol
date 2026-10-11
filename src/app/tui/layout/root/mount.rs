@@ -56,6 +56,10 @@ impl Component for SharedUiRoot {
     fn tick(&mut self) -> bool {
         self.0.borrow_mut().tick()
     }
+
+    fn overlay_viewport(&self, lines: &mut [String], width: usize, transcript_rows: usize) {
+        Component::overlay_viewport(&*self.0.borrow(), lines, width, transcript_rows)
+    }
 }
 
 /// Full-screen hint when the terminal is too small.

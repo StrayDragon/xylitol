@@ -53,14 +53,12 @@ pub(super) async fn history_copy_last<T: Terminal>(
         None => session.push_scroll_notice("no assistant message to copy"),
         Some(text) => {
             let text = text.to_string();
-            let n = text.chars().count();
             match driver.copy_text_to_clipboard(&text).await {
                 Ok(outcome) => {
                     if let Some(seq) = outcome.pending_osc52.as_deref() {
                         session.emit_clipboard_osc52(seq);
                     }
-                    session
-                        .push_scroll_notice(format!("Copied last assistant message ({n} chars)"));
+                    session.arm_copy_last_msg_notice();
                 }
                 Err(e) => note_driver_err(
                     session,

@@ -1664,6 +1664,18 @@ fn c2826_frame(host_pump_bdd: &HostPumpBdd) -> String {
     render_frame(host_pump_bdd, 100)
 }
 
+/// Clipped ApplicationOwned paint (post 视口叠层). Stack assertions MUST use
+/// this, not unclipped `UiRoot::render`.
+fn paint_clipped_viewport(host_pump_bdd: &HostPumpBdd) -> String {
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session.render_now().expect("clipped viewport render");
+    let frame =
+        xylitol_tui::utils::strip_ansi_codes(&pump.session.tui.last_painted_lines().join("\n"));
+    put_pump(host_pump_bdd, pump);
+    host_pump_bdd.ansi_frames.borrow_mut().push(frame.clone());
+    frame
+}
+
 #[then("报告诊断且界面仍正常渲染")]
 pub(crate) fn t_c2826_theme_diag(host_pump_bdd: &HostPumpBdd) {
     let note = c2826_last_notice(host_pump_bdd);
@@ -2226,12 +2238,17 @@ pub(crate) fn w_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
     root.borrow_mut().arm_copy_notice();
     drop(root);
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
-    let _ = c2826_frame(host_pump_bdd);
+    let _ = paint_clipped_viewport(host_pump_bdd);
+}
+
+#[when("臂装复制成功提示后渲染已裁切视口")]
+pub(crate) fn w_copy_notice_clipped(host_pump_bdd: &HostPumpBdd) {
+    w_c2826_copy_notice(host_pump_bdd);
 }
 
 #[then("右上角通知栈含 Copied 短提示且不以 Error 前缀冒充")]
 pub(crate) fn t_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
-    let frame = c2826_frame(host_pump_bdd);
+    let frame = paint_clipped_viewport(host_pump_bdd);
     assert!(
         frame.contains("Copied"),
         "c2826: 应有 Copied 短提示：{frame}"
@@ -2762,14 +2779,128 @@ pub(crate) async fn w_heuristic_refresh_twice(host_pump_bdd: &HostPumpBdd) {
     xylitol::app::tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
     pump.session.render_now().expect("render");
     put_pump(host_pump_bdd, pump);
-    let _ = c2826_frame(host_pump_bdd);
+    let _ = paint_clipped_viewport(host_pump_bdd);
 }
 
 #[then("估算说明在通知栈至多出现一次")]
 pub(crate) fn t_heuristic_notice_once(host_pump_bdd: &HostPumpBdd) {
-    let frame = c2826_frame(host_pump_bdd);
+    let frame = paint_clipped_viewport(host_pump_bdd);
     let n = frame.matches("Context tokens are approximate").count();
     assert_eq!(n, 1, "Heuristic notice once: {frame}");
     assert!(frame.contains('◆'), "{frame}");
     assert!(!frame.contains("Error: Context"), "{frame}");
+}
+
+#[given("对话内容高于可见 transcript 窗且视口未停在内容顶")]
+pub(crate) fn g_tall_scrolled_viewport(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    for i in 0..80 {
+        pump.session.push_scroll_notice(format!("row-{i:02}"));
+    }
+    pump.session.render_now().expect("ingest tall transcript");
+    let notch = pump.session.tui.application_owned_wheel_notch();
+    assert!(
+        pump.session.tui.application_owned_scroll_by(-(notch * 8)),
+        "must leave content top"
+    );
+    pump.session.render_now().expect("scrolled paint");
+    assert!(
+        pump.session.tui.application_owned_scroll_top() > 0,
+        "scroll_top must be off content 0"
+    );
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[then("可见视口顶部含 Copied 且不以 Error 前缀冒充")]
+pub(crate) fn t_copied_pins_viewport_top(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session.render_now().expect("clipped viewport");
+    let painted = pump.session.tui.last_painted_lines();
+    let first = xylitol_tui::utils::strip_ansi_codes(&painted[0]);
+    let content0 = pump
+        .session
+        .tui
+        .application_owned_content_lines()
+        .and_then(|c| c.first())
+        .map(|l| xylitol_tui::utils::strip_ansi_codes(l))
+        .unwrap_or_default();
+    put_pump(host_pump_bdd, pump);
+    assert!(
+        first.contains("Copied") && first.contains('✓'),
+        "visible top must pin Copied: {first:?}"
+    );
+    assert!(
+        !first.contains("Error"),
+        "must not use Error prefix: {first:?}"
+    );
+    assert!(
+        !content0.contains("Copied"),
+        "unclipped content[0] must not hold the stack: {content0:?}"
+    );
+}
+
+#[when("以主机泵完成空闲会话切换并渲染")]
+pub(crate) fn w_idle_session_switch(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = host_pump_bdd
+        .pump
+        .borrow_mut()
+        .take()
+        .unwrap_or_else(fresh_pump);
+    pump.session.apply_resume_session(
+        "newer",
+        xylitol::app::tui::harness::harness_sample_session_messages(),
+    );
+    pump.session.render_now().expect("switch render");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+}
+
+#[then("滚动提示尾插含 switched 且通知栈不含该文案")]
+pub(crate) fn t_session_switch_trails(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let trailed = pump
+        .session
+        .ui_model()
+        .entries
+        .iter()
+        .any(|e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("switched →")));
+    let root = pump.session.ui_root().expect("ui").clone();
+    let stack = root.borrow().client_notice_bodies_for_test();
+    let toast = root.borrow().toast_notice_body().map(str::to_string);
+    put_pump(host_pump_bdd, pump);
+    assert!(trailed, "switched → must trail as ScrollNotice");
+    assert!(
+        stack.iter().all(|b| !b.contains("switched")),
+        "notice stack must not hold switched: {stack:?}"
+    );
+    assert!(
+        toast.as_deref().is_none_or(|t| !t.contains("switched")),
+        "通知条 must not hold switched: {toast:?}"
+    );
+}
+
+#[then("右上角通知栈含 Copied Last Msg 且不以 Error 前缀冒充")]
+pub(crate) fn t_copied_last_msg_stack(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    let stack = root.borrow().client_notice_bodies_for_test();
+    let trailed = pump.session.ui_model().entries.iter().any(
+        |e| matches!(e, UiEntry::ScrollNotice { text } if text.contains("Copied last assistant")),
+    );
+    put_pump(host_pump_bdd, pump);
+    let frame = paint_clipped_viewport(host_pump_bdd);
+    assert!(
+        stack.iter().any(|b| b == "Copied Last Msg"),
+        "stack must hold Copied Last Msg: {stack:?}"
+    );
+    assert!(!trailed, "must not trail Copied last assistant message");
+    let line = frame
+        .lines()
+        .find(|l| l.contains("Copied Last Msg"))
+        .expect("Copied Last Msg visible");
+    assert!(line.contains('✓'), "success icon: {line}");
+    assert!(!line.contains("Error"), "must not use Error prefix: {line}");
 }

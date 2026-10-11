@@ -621,6 +621,11 @@ impl UiRoot {
         self.push_client_notice(ClientNoticeKind::Success, "Copied");
     }
 
+    /// Arm `/history-copy-last` success on the client notice stack (~2s).
+    pub fn arm_copy_last_msg_notice(&mut self) {
+        self.push_client_notice(ClientNoticeKind::Success, "Copied Last Msg");
+    }
+
     /// Whether a Copied stack item is still within TTL.
     pub fn copy_notice_visible(&self) -> bool {
         self.client_notices
@@ -634,8 +639,7 @@ impl UiRoot {
         self.copy_notice_visible().then_some("Copied")
     }
 
-    /// Test helper: client-stack bodies (newest first), Error 通知条 excluded.
-    #[cfg(test)]
+    /// Client-stack bodies (newest first), Error 通知条 excluded. Host / BDD probe.
     pub fn client_notice_bodies_for_test(&self) -> Vec<String> {
         self.client_notices.iter().map(|n| n.body.clone()).collect()
     }
@@ -1105,8 +1109,18 @@ impl UiRoot {
     }
 
     /// Informational notice on the client stack (muted, no `Error: ` prefix).
+    /// After session-nav moved to ScrollNotice, this is Heuristic (and tests).
     pub fn push_toast_info_notice(&mut self, body: impl Into<String>) {
         self.push_client_notice(ClientNoticeKind::Info, body);
+    }
+
+    /// `render` plus viewport overlay (unclipped). Prefer TUI paint for scroll.
+    #[cfg(test)]
+    pub fn render_with_viewport_overlay(&mut self, width: usize) -> Vec<String> {
+        let mut lines = Component::render(self, width);
+        let transcript_rows = lines.len().saturating_sub(self.last_dock_rows);
+        Component::overlay_viewport(self, &mut lines, width, transcript_rows);
+        lines
     }
 
     /// Body only (no `Error: ` prefix); `None` when cleared / expired.
@@ -1502,7 +1516,7 @@ mod tests {
         use xylitol_tui::utils::strip_ansi_codes;
         let mut root = UiRoot::new();
         root.arm_copy_notice();
-        let frame = root.render(80);
+        let frame = root.render_with_viewport_overlay(80);
         let joined = frame.join("\n");
         let first = strip_ansi_codes(&frame[0]);
         assert!(
@@ -1518,7 +1532,7 @@ mod tests {
         assert!(root.toast_notice_body().is_none());
         let dock_before = root.last_dock_rows();
         root.push_client_notice(ClientNoticeKind::Info, "hint");
-        let _ = root.render(80);
+        let _ = root.render_with_viewport_overlay(80);
         assert_eq!(
             root.last_dock_rows(),
             dock_before,
@@ -1533,7 +1547,7 @@ mod tests {
         root.maybe_heuristic_estimate_notice(true);
         root.maybe_heuristic_estimate_notice(true);
         root.maybe_heuristic_estimate_notice(false);
-        let frame = strip_ansi_codes(&root.render(80).join("\n"));
+        let frame = strip_ansi_codes(&root.render_with_viewport_overlay(80).join("\n"));
         assert_eq!(
             frame.matches(HEURISTIC_ESTIMATE_NOTICE).count(),
             1,
@@ -1551,7 +1565,7 @@ mod tests {
         root.push_client_notice(ClientNoticeKind::Info, "n2");
         root.push_client_notice(ClientNoticeKind::Info, "n3");
         root.push_client_notice(ClientNoticeKind::Success, "n4");
-        let frame = strip_ansi_codes(&root.render(80).join("\n"));
+        let frame = strip_ansi_codes(&root.render_with_viewport_overlay(80).join("\n"));
         assert!(frame.contains("✓ n4"), "{frame}");
         assert!(frame.contains("◆ n3"), "{frame}");
         assert!(frame.contains("◆ n2"), "{frame}");

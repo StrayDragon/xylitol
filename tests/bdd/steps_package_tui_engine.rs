@@ -4,7 +4,7 @@ use crate::bdd::prelude::*;
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol_tui::{Component, InputEvent, NullTerminal, TUI, Tabs};
+use xylitol_tui::{Component, InputEvent, InteractionMode, NullTerminal, TUI, Tabs};
 
 struct Recorder {
     events: std::sync::Arc<std::sync::Mutex<Vec<InputEvent>>>,
@@ -77,5 +77,81 @@ fn t_focus_missed(engine_offer_bdd: &EngineOfferBdd) {
     assert!(
         engine_offer_bdd.events.lock().unwrap().is_empty(),
         "focused child must not receive a claimed pointer"
+    );
+}
+
+struct ViewportMarkLines {
+    lines: Vec<String>,
+}
+
+impl Component for ViewportMarkLines {
+    fn render(&mut self, _width: usize) -> Vec<String> {
+        self.lines.clone()
+    }
+    fn handle_input(&mut self, _event: InputEvent) {}
+    fn invalidate(&mut self) {}
+    fn dock_rows_hint(&self) -> Option<usize> {
+        Some(1)
+    }
+    fn overlay_viewport(&self, lines: &mut [String], _width: usize, transcript_rows: usize) {
+        if transcript_rows == 0 || lines.is_empty() {
+            return;
+        }
+        lines[0] = format!("{} VP-MARK", lines[0]);
+    }
+}
+
+pub struct EngineViewportBdd {
+    tui: RefCell<Option<TUI<NullTerminal>>>,
+}
+
+#[fixture]
+pub fn engine_viewport_bdd() -> EngineViewportBdd {
+    EngineViewportBdd {
+        tui: RefCell::new(None),
+    }
+}
+
+#[given("ApplicationOwned 已 ingest 长内容且根组件 overlay_viewport 会在可见顶行写标记")]
+fn g_ao_ingest_mark(engine_viewport_bdd: &EngineViewportBdd) {
+    let mut body: Vec<String> = (0..80).map(|i| format!("L{i:02}")).collect();
+    body.push("dock".into());
+    let mut tui =
+        TUI::with_interaction_mode(NullTerminal::new(40, 12), InteractionMode::ApplicationOwned);
+    tui.add_child(Box::new(ViewportMarkLines { lines: body }));
+    tui.begin_application_owned_session();
+    tui.render_frame().expect("ingest");
+    *engine_viewport_bdd.tui.borrow_mut() = Some(tui);
+}
+
+#[when("只 reproject_frame 且 scroll_top 大于 0")]
+fn w_reproject_scrolled(engine_viewport_bdd: &EngineViewportBdd) {
+    let mut tui = engine_viewport_bdd.tui.borrow_mut();
+    let tui = tui.as_mut().expect("tui");
+    let notch = tui.application_owned_wheel_notch();
+    assert!(tui.application_owned_scroll_by(-(notch * 4)));
+    tui.clear_ao_reproject_frames_for_test();
+    tui.render_frame().expect("reproject");
+    assert!(tui.last_render_perf().ao_reprojected);
+    assert!(tui.application_owned_scroll_top() > 0);
+}
+
+#[then("可见帧顶行含该标记且 ScrollView 内容第 0 行不含")]
+fn t_mark_pins_not_content(engine_viewport_bdd: &EngineViewportBdd) {
+    let tui = engine_viewport_bdd.tui.borrow();
+    let tui = tui.as_ref().expect("tui");
+    let painted0 = &tui.last_painted_lines()[0];
+    let content0 = tui
+        .application_owned_content_lines()
+        .and_then(|c| c.first())
+        .cloned()
+        .unwrap_or_default();
+    assert!(
+        painted0.contains("VP-MARK"),
+        "visible top must carry overlay mark: {painted0:?}"
+    );
+    assert!(
+        !content0.contains("VP-MARK"),
+        "ScrollView content[0] must stay unmarked: {content0:?}"
     );
 }

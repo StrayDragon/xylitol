@@ -84,6 +84,12 @@ async fn test_c2826_copy_last(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
+    name = "history-copy-last-success-stack"
+)]
+async fn test_history_copy_last_success_stack(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
     name = "theme-slot-and-direct-apply"
 )]
 async fn test_c2826_theme(host_pump_bdd: HostPumpBdd) {}

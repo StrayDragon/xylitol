@@ -113,11 +113,14 @@
       那么 信任决策经驱动持久化一次且提示需重载生效
   @req:r1193
   规则: slash-history-copy-last
-    产品 TUI MUST 解析无参 /history-copy-last：将当前 transcript 最近一条已提交 assistant 正文（自尾向前第一条非空，MUST NOT 取 thinking/tool/system 块或未提交流式半句）经 Driver 缝复制到系统剪贴板，并以系统块提示成功或失败；idle 与 busy MUST 均可执行（只读）；无 assistant 时 MUST 提示且 MUST NOT 伪造成功；SlashCommandSource MUST 列出 history-copy-last；带参 MUST usage 错误（ath r1250 并入）。
+    产品 TUI MUST 解析无参 /history-copy-last：将当前 transcript 最近一条已提交 assistant 正文（自尾向前第一条非空，MUST NOT 取 thinking/tool/system 块或未提交流式半句）经 Driver 缝复制到系统剪贴板。成功 MUST 经通知栈展示 `Copied Last Msg`（✓ 起头，见 r1930），MUST NOT 再尾插 Copied last assistant message 滚动提示。无 assistant 或复制失败 MUST 仍以滚动提示说明且 MUST NOT 伪造成功、MUST NOT 臂装通知栈。idle 与 busy MUST 均可执行（只读）；SlashCommandSource MUST 列出 history-copy-last；带参 MUST usage 错误（ath r1250 并入）。
 
     场景: history-copy-last-copies-assistant-text
       当 以主机泵完成一轮含已提交 assistant 的对话后提交 "/history-copy-last"
       那么 剪贴板收到 assistant 正文且未复制 thinking
+    场景: history-copy-last-success-stack
+      当 以主机泵完成一轮含已提交 assistant 的对话后提交 "/history-copy-last"
+      那么 右上角通知栈含 Copied Last Msg 且不以 Error 前缀冒充
   @req:r1194
   规则: slash-theme
     产品 TUI idle 时 MUST 解析 /theme：无参 MUST 打开替换 editor 槽的主题 SelectList（至少内建 dark/light）；有参 dark|light MUST 经 HostSession::reload_themes（或等价）应用；有参 toggle|cycle MUST 在 dark↔light 间切换；busy 时 MUST 仍可打开主题列表或应用有参 dark|light|toggle|cycle（BusySlashPolicy Allow）；未知参 MUST 提示且 MUST NOT 伪造成功；SlashCommandSource MUST 列出 theme；空格后参数补全 MUST 至少含 dark 与 light。

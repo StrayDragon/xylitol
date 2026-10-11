@@ -135,3 +135,9 @@ async fn test_c2855_notice_stack_copied(host_pump_bdd: HostPumpBdd) {}
     name = "notice-stack-heuristic-once"
 )]
 async fn test_c2855_notice_stack_heuristic(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "notice-stack-copied-pins-scrolled-viewport"
+)]
+fn test_notice_stack_copied_pins_scrolled_viewport(host_pump_bdd: HostPumpBdd) {}
