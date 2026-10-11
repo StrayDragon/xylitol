@@ -13,7 +13,7 @@ export function renderGrid(state: StateDoc, cols = state.cols ?? 80): HTMLElemen
   for (const row of state.lines) {
     const line = document.createElement("div");
     line.className = "cell-row";
-    if (row.some((s) => s.rev)) line.dataset.rev = "true";
+    if (row.length > 0 && row.every((s) => s.rev)) line.dataset.rev = "true";
     for (const span of row) {
       const el = document.createElement("span");
       el.className = "cell";
