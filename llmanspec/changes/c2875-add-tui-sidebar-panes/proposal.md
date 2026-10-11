@@ -1,4 +1,5 @@
 ---
+title: 左右边栏（占用列 vs 抽屉）
 depends_on: []
 ---
 

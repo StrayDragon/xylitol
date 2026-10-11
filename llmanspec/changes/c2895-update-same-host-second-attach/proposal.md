@@ -1,4 +1,5 @@
 ---
+title: 同 Host 第二路 TUI attach：不跟看打字机（未决）
 depends_on:
   - c2893-fix-tui-attach-working-run-agentend
 ---

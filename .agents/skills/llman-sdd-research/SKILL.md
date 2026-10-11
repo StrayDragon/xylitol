@@ -2,7 +2,7 @@
 name: "llman-sdd-research"
 description: "委托后台 agent 查一手资料（官方文档/API/源码），产出带引用的调研文档。"
 metadata:
-  version: "0.7.4"
+  version: "0.7.5"
 ---
 
 # LLMAN SDD Research
@@ -14,7 +14,7 @@ metadata:
 1. 针对**一手资料**调研——官方文档、源码、spec、第一方 API，而非二手转述；每个论断追溯到拥有它的源头。
 2. 发现写入单个 Markdown 文件，每条论断标注来源。
 3. 存放（仓库另有约定时优先）：**默认** `llmanspec/changes/<current-change>/research/<topic>.md`（change 文档，**不是** specs）。仅当主题跨多个 change、归档后仍常引用时才写 `docs/research/`；**不得**把单 change 选型/易腐深挖塞进 `docs/research/`。
-4. **不得**本 skill 直接编辑 `llmanspec/specs/**`。调研表明必须改 必须/必须 → 宜转 `llman-sdd-propose`（绑定分支 → 提交 specs）。
+4. **不得**本 skill 直接编辑 `llmanspec/specs/**`。调研表明行为合约（需求语义）必须改 → 宜转 `llman-sdd-propose`（绑定分支 → 提交 specs）。
 
 ## 步骤
 

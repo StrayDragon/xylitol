@@ -1,8 +1,8 @@
 ---
 name: "llman-sdd-quick"
-description: "快速路径：不改行为合约的小改动（重构/错字/性能）。要改 必须/必须 就停，转 propose。"
+description: "快速路径：不改行为合约的小改动（重构/错字/性能）。要改行为合约（需求语义）就停，转 propose。"
 metadata:
-  version: "0.7.4"
+  version: "0.7.5"
 ---
 
 # LLMAN SDD Quick Path
@@ -22,7 +22,7 @@ flowchart LR
 > 📍 快速路径：直接改代码 commit。发现要改合约 → STOP，转 `llman-sdd-propose`。
 
 ## 使用条件（全部满足）
-- 不改变任何 spec 中 必须/必须 定义的外部可观测行为
+- 不改变任何 spec 中需求语义定义的外部可观测行为
 - 不跨 capability；不涉及迁移/兼容性；不是 SDD 元规范变更
 
 ## 步骤

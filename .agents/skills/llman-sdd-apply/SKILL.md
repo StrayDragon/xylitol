@@ -2,7 +2,7 @@
 name: "llman-sdd-apply"
 description: "循环实施已提案 change 的 tasks：写码→测试→失败自修复→门禁全绿。propose 完成、specs 提交后进入。"
 metadata:
-  version: "0.7.4"
+  version: "0.7.5"
 ---
 
 # LLMAN SDD Apply
@@ -35,7 +35,7 @@ flowchart LR
 
 ## 硬约束
 
-- **唯一事实来源驱动**：`proposal.md` / `design.md` / `tasks.md` 与分支上的 `llmanspec/specs/**`；specs 的 MUST/SHALL 逐条落实。
+- **唯一事实来源驱动**：`proposal.md` / `design.md` / `tasks.md` 与分支上的 `llmanspec/specs/**`；specs 的行为合约条款逐条落实。
 - **范围锁定**：只做当前 change 范围，不得顺手修无关问题；改动保持最小。
 - **不得猜测**：需求不明或 specs 与现实矛盾 → STOP 报告，不自行假定。
 - **不留旧兼容层**：change 要求改行为就全量升级到新写法，除非 tasks/proposal 明确要兼容。
@@ -156,7 +156,7 @@ llman-sdd show <id> --output json --type change
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：
 - 规范样式只有一种：`@req:<id>` 挂在 `规则:` 块头标签,块内嵌套 `场景:`(假如/当/那么)是可执行示例——默认首选。
-- 仅当需求无法程序化表达或暂不转写时才保留无嵌套场景的 `规则:`(裸规则):描述自由文本,无 必须/必须 强制;validate 以聚合计数提示,review `pending` 信号计量,specs-compact 负责压降。
+- 仅当需求无法程序化表达或暂不转写时才保留无嵌套场景的 `规则:`(裸规则):描述自由文本,不强制情态词;validate 以聚合计数提示,review `pending` 信号计量,specs-compact 负责压降。
 - 历史标签 `@executable`/`@rule`/`@human`/`@manual` 不再使用、解析惰性;旧文件报结构问题时运行 `llman-sdd spec migrate-native` 迁移。
 - 不在任何 `规则:` 内的顶层 `场景:` 是功能级示例:无规则句柄、不告警、不参与规则统计(Gherkin 原生语义)。
 

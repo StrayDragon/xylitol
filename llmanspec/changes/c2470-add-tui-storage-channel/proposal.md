@@ -1,4 +1,5 @@
 ---
+title: Client-Local 存储通道（storage channel）：多实例共享的面本地状态
 depends_on: []
 ---
 

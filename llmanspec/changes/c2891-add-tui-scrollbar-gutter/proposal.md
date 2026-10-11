@@ -1,4 +1,5 @@
 ---
+title: 右侧一列滚动槽（跳顶 / 跳底）
 depends_on:
   - c2858-add-package-tui-pointer-hit-pipeline
 ---

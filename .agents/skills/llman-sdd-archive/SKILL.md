@@ -2,7 +2,7 @@
 name: "llman-sdd-archive"
 description: "归档已完成 change：合并回基准分支（默认 squash）、文档改名入 archive/、自动收口提交。verify 全绿后运行。"
 metadata:
-  version: "0.7.4"
+  version: "0.7.5"
 ---
 
 # LLMAN SDD 归档
@@ -62,13 +62,13 @@ flowchart LR
 - **archived `depends_on`**：archive 把 change 目录改名为 `archive/YYYY-MM-DD-<id>`；validate 把指向 archived/frozen id 的 `depends_on` 识别为 INFO（非 ERROR），**无需**手动更新其它 change 的 frontmatter。
 
 ## Archive 冷备引导
-- archive 目录过大时用冷备维护（冻结 = 正文入 7z 冷备 + 以 `<YYYY-MM-DD>-<id>.yaml` 平铺索引卡替代目录，卡仅含 title 与 depends_on）：
+- archive 目录过大时用冷备维护（冻结 = 正文入 7z 冷备 + 以 `<YYYY-MM-DD>-<id>.yaml` 平铺索引卡替代目录，卡为单文档纯 YAML、仅含 title 与 depends_on）：
   - 预览冻结候选：`llman-sdd archive freeze --dry-run`
   - 冻结旧归档：`llman-sdd archive freeze --before <YYYY-MM-DD> --keep-recent <N>`
   - 列出已冻结条目：`llman-sdd archive freeze --list`
   - 需要恢复时：`llman-sdd archive thaw --change <YYYY-MM-DD-id>`（正文解回目录并移除平铺卡）
 - freeze/thaw 仅用于日期归档目录（`YYYY-MM-DD-*`）；宜保留最近 2 个目录不冻结。
-- 平铺索引卡常驻磁盘：title（来自 proposal H1）与 depends_on（graph 依赖边种子）可 grep、可追溯；
+- 平铺索引卡常驻磁盘：title（frontmatter `title` 非空时优先，否则取 proposal H1）与 depends_on（graph 依赖边种子）可 grep、可追溯；
   id 与日期由文件名隐含——冻结 change 的用途与依赖关系无需解冻即可查阅，正文在 7z 冷备按需取用。
 - 在非主检出（不持有默认分支的 worktree）运行时打印警告（仅提示、不阻断）——有意为之才在该处继续。
 
@@ -87,7 +87,7 @@ flowchart LR
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：
 - 规范样式只有一种：`@req:<id>` 挂在 `规则:` 块头标签,块内嵌套 `场景:`(假如/当/那么)是可执行示例——默认首选。
-- 仅当需求无法程序化表达或暂不转写时才保留无嵌套场景的 `规则:`(裸规则):描述自由文本,无 必须/必须 强制;validate 以聚合计数提示,review `pending` 信号计量,specs-compact 负责压降。
+- 仅当需求无法程序化表达或暂不转写时才保留无嵌套场景的 `规则:`(裸规则):描述自由文本,不强制情态词;validate 以聚合计数提示,review `pending` 信号计量,specs-compact 负责压降。
 - 历史标签 `@executable`/`@rule`/`@human`/`@manual` 不再使用、解析惰性;旧文件报结构问题时运行 `llman-sdd spec migrate-native` 迁移。
 - 不在任何 `规则:` 内的顶层 `场景:` 是功能级示例:无规则句柄、不告警、不参与规则统计(Gherkin 原生语义)。
 
