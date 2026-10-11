@@ -135,7 +135,7 @@
       那么 错误文案保留在块末
   @req:r1176
   规则: write-intent-body-stream
-    当 MessageUpdate/ToolCall 名为 write 且 arguments 含 content 时，bridge MUST 刷新同一 Tool 行的可渲染正文为当前 content 快照（可与 args_preview 并存）；MUST NOT 等 ToolExecutionEnd 才首次出现正文。
+    当 MessageUpdate/ToolCall 名为 write 且 arguments 含 content 时，bridge 须刷新同一 Tool 行的可渲染正文为当前 content 快照（可与 args_preview 并存）；不得等 ToolExecutionEnd 才首次出现正文。
 
     场景: write-intent-body-before-end-headless
       当 以桥缝在 End 前注入 write 快照（arguments.content）

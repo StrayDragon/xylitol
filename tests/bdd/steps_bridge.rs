@@ -379,7 +379,7 @@ fn w_pt9_build_again(prompt_bdd: &PromptBdd) {
     assert!(!prompt_bdd.prompt.borrow().is_empty());
 }
 
-#[then("正文以该替换内容为主且 MUST NOT 偷偷回填默认 Available tools 清单")]
+#[then("正文以该替换内容为主且 不偷偷回填默认 Available tools 清单")]
 fn t_pt9_no_backfill(prompt_bdd: &PromptBdd) {
     let p = prompt_bdd.prompt.borrow();
     assert!(p.contains("CUSTOM_ONLY_BODY"), "{p}");
@@ -410,7 +410,7 @@ fn w_pt3_discover(ws: &crate::bdd::fixtures::Workspace, prompt_bdd: &PromptBdd) 
 }
 
 #[then(
-    "get_commands MUST NOT 含 template:greet 或 /greet 模板命令且 loader MUST NOT 将 greet 注册为 prompt 模板"
+    "get_commands 不含 template:greet 或 /greet 模板命令且 loader 不将 greet 注册为 prompt 模板"
 )]
 fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
     use xylitol::app::product_commands::product_slash_commands;

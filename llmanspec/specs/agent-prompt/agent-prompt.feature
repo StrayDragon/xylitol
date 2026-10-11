@@ -16,7 +16,7 @@
 
   @req:r1020
   规则: skills-section
-    当 ResourceLoader 发现 skills 时，系统提示 MUST 能包含 available_skills（或等价）清单供模型发现；未信任项目 MUST NOT 注入项目 skills。skills 元数据属 stable（会话作用域）；SKILL.md 正文仍经 $skill 注入 user 投影，MUST NOT 为对齐外部书语而强制改走状态栏。
+    当 ResourceLoader 发现 skills 时，系统提示 须能包含 available_skills（或等价）清单供模型发现；未信任项目 不得注入项目 skills。skills 元数据属 stable（会话作用域）；SKILL.md 正文仍经 $skill 注入 user 投影，不得为对齐外部书语而强制改走状态栏。
     # verified-by: llmanspec/specs/agent-prompt/agent-prompt.feature
     场景: skills-listed-after-trust
       假如 Agent 能力聚合体已就绪
@@ -30,7 +30,7 @@
     场景: no-slash-prompt-templates
       假如 项目或全局 prompts 目录存在 greet.md
       当 装配资源加载器并发现
-      那么 get_commands MUST NOT 含 template:greet 或 /greet 模板命令且 loader MUST NOT 将 greet 注册为 prompt 模板
+      那么 get_commands 不含 template:greet 或 /greet 模板命令且 loader 不将 greet 注册为 prompt 模板
   @req:r1022
   规则: safe-minijinja-default-assembly
     默认 system 组装路径（无 SYSTEM.md/custom_prompt 整段替换时）MUST 经沙箱 minijinja 渲染嵌入默认模板：UndefinedBehavior::Strict；上下文仅白名单键（至少含 date、cwd、tools、guidelines、skills、runtime_policy、mcp_discover 或等价）；MUST NOT 注册任意文件系统 loader；MUST NOT 将 env/secret 命名空间注入该上下文。{% include %} MUST 仅解析预注册模板名。SystemPromptOpts（或等价）MUST 允许注入 date（或等价时钟）。由单测覆盖安全与可钉 date；MUST NOT 为静态依赖存在性单独扩重型 BDD（可保留窄正向场景或 feature:false）。
@@ -38,7 +38,7 @@
     场景: replacement-skip-default-fragments
       假如 custom_prompt 或 SYSTEM.md 整段替换默认正文且未附 Available tools
       当 build_system_prompt
-      那么 正文以该替换内容为主且 MUST NOT 偷偷回填默认 Available tools 清单
+      那么 正文以该替换内容为主且 不偷偷回填默认 Available tools 清单
 
   @req:r1023
   规则: context 热应用
@@ -58,7 +58,7 @@
       那么 系统提示含 available_skills 清单
   @req:r1025
   规则: dollar-skill 提交注入
-    当用户消息含 $name 且 name 在已加载 skills 目录中时，System MUST 在发往模型前将对应 SKILL.md 正文（去 frontmatter）注入该 user 消息的模型侧投影；会话历史 MUST 保留原始含 $ 文本；未知 $name MUST 透传；未信任 MUST NOT 注入项目 skill 正文（目录已空即可）。
+    当用户消息含 $name 且 name 在已加载 skills 目录中时，System 须在发往模型前将对应 SKILL.md 正文（去 frontmatter）注入该 user 消息的模型侧投影；会话历史 须保留原始含 $ 文本；未知 $name 须透传；未信任 不得注入项目 skill 正文（目录已空即可）。
 
     场景: dollar-skill-expands-body
       假如 已加载技能 greet 正文为 "SKILL BODY"
@@ -76,7 +76,7 @@
     场景: custom-prompt-no-silent-tools-backfill
       假如 custom_prompt 或 SYSTEM.md 整段替换默认正文且未附 Available tools
       当 build_system_prompt
-      那么 正文以该替换内容为主且 MUST NOT 偷偷回填默认 Available tools 清单
+      那么 正文以该替换内容为主且 不偷偷回填默认 Available tools 清单
   @req:r1016
   规则: runtime-policy-fragments
     System MUST 按当前工具批模式（XyBatchMode）从内置表解析 runtime policy 片段并经 build_system_prompt 注入 <runtime_policy> 段（位于 APPEND_SYSTEM / Guidelines 之后；产品默认其后不再追加 date/cwd）；barrier_parallel MUST 注入多-tool 同消息策略片段；sequential MUST NOT 注入该片段；set_tool_mode（或等价）MUST 在下一轮重建前提示中反映片段启停。Session MUST 持有已应用 fragment id 集合：同一 id 集合 MUST NOT 重复同步/重写片段正文（同模式重复 set_tool_mode 不得导致 <runtime_policy> 重复段或同 body 多份）；模式变更后 id 集合变化时 MUST 再同步一次。MUST NOT 要求用户手写 APPEND_SYSTEM 才能获得该策略。由单测覆盖，MUST NOT 为静态存在性单独扩 BDD step。

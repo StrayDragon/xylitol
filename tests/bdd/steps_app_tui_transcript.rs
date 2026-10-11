@@ -1516,7 +1516,7 @@ fn when_replay_reads_only(transcript_bdd: &TranscriptBdd) {
     *transcript_bdd.frames.borrow_mut() = vec![plain];
 }
 
-#[then("封口簇头 MUST 同时含文件计数与类目计数后缀（3 files · 3 reads · 2 searches）")]
+#[then("封口簇头 同时含文件计数与类目计数后缀（3 files · 3 reads · 2 searches）")]
 fn then_head_file_and_call_counts(transcript_bdd: &TranscriptBdd) {
     let frames = transcript_bdd.frames.borrow();
     let plain = frames.last().expect("frame");
@@ -1526,7 +1526,7 @@ fn then_head_file_and_call_counts(transcript_bdd: &TranscriptBdd) {
     );
 }
 
-#[then("后缀 MUST 只列该非零类目")]
+#[then("后缀 只列该非零类目")]
 fn then_suffix_single_category(transcript_bdd: &TranscriptBdd) {
     let frames = transcript_bdd.frames.borrow();
     let plain = frames.last().expect("frame");
@@ -1556,7 +1556,7 @@ fn when_new_tool_starts(transcript_bdd: &TranscriptBdd) {
     transcript_bdd.frames.borrow_mut().push(plain);
 }
 
-#[then("簇头后缀计数 MUST 随工具开始更新且进行时词形 MUST 为 Exploring")]
+#[then("簇头后缀计数 随工具开始更新且进行时词形 为 Exploring")]
 fn then_suffix_updates_live(transcript_bdd: &TranscriptBdd) {
     let frames = transcript_bdd.frames.borrow();
     assert_eq!(frames.len(), 2, "two streaming frames");
@@ -1699,7 +1699,7 @@ fn when_todo_block_live_and_rebuild(transcript_bdd: &TranscriptBdd) {
     *transcript_bdd.models.borrow_mut() = vec![rebuilt, live];
 }
 
-#[then("两种路径的块 body MUST 均为清单行形态且逐行一致，MUST NOT 出现原始 items JSON")]
+#[then("两种路径的块 body 均为清单行形态且逐行一致，不出现原始 items JSON")]
 fn then_todo_block_bodies_agree(transcript_bdd: &TranscriptBdd) {
     let models = transcript_bdd.models.borrow();
 
@@ -1811,7 +1811,7 @@ fn then_todo_bar_shows_current(transcript_bdd: &TranscriptBdd) {
     );
 }
 
-#[then("对话条目中 MUST NOT 出现 checklist 投影行")]
+#[then("对话条目中 不出现 checklist 投影行")]
 fn then_no_transcript_checklist(transcript_bdd: &TranscriptBdd) {
     let models = transcript_bdd.models.borrow();
     let model = models.first().expect("model");
@@ -1837,7 +1837,7 @@ fn then_no_transcript_checklist(transcript_bdd: &TranscriptBdd) {
     );
 }
 
-#[then("翼头 MUST 分别标注 completed 与 pending 且 MUST NOT 出现 done/todo 行或无标签 N/M")]
+#[then("翼头 分别标注 completed 与 pending 且 不出现 done/todo 行或无标签 N/M")]
 fn then_todo_bar_wing_headers(transcript_bdd: &TranscriptBdd) {
     let plain = transcript_bdd
         .plain_frame
@@ -1878,7 +1878,7 @@ fn dock_todo_rows(frame: &str) -> Vec<String> {
     out
 }
 
-#[then("两种路径的待办栏默认露出 MUST 一致且同源自 SSOT")]
+#[then("两种路径的待办栏默认露出 一致且同源自 SSOT")]
 fn then_todo_bar_resume_matches_live(transcript_bdd: &TranscriptBdd) {
     let models = transcript_bdd.models.borrow();
     assert!(models.len() >= 2, "need rebuilt + live");
@@ -1907,7 +1907,7 @@ fn then_todo_bar_resume_matches_live(transcript_bdd: &TranscriptBdd) {
     );
 }
 
-#[then("todo_* 工具块 body MUST 仍为清单行形态")]
+#[then("todo_* 工具块 body 仍为清单行形态")]
 fn then_todo_tool_body_still_checklist(transcript_bdd: &TranscriptBdd) {
     let models = transcript_bdd.models.borrow();
     for model in models.iter() {
@@ -1937,13 +1937,13 @@ fn when_todo_empty_arg_previews(transcript_bdd: &TranscriptBdd) {
     *transcript_bdd.previews.borrow_mut() = vec![rewrite, update];
 }
 
-#[then("todo_rewrite 摘要 MUST 为空串（header 只画工具名）")]
+#[then("todo_rewrite 摘要 为空串（header 只画工具名）")]
 fn then_todo_rewrite_preview_empty(transcript_bdd: &TranscriptBdd) {
     let previews = transcript_bdd.previews.borrow();
     assert_eq!(previews[0], "", "rewrite without items: {previews:?}");
 }
 
-#[then("todo_update 摘要 MUST 匹配补丁计数（如 `1 updated`），MUST NOT 为空串或三点占位")]
+#[then("todo_update 摘要 匹配补丁计数（如 `1 updated`），不为空串或三点占位")]
 fn then_todo_update_preview_count(transcript_bdd: &TranscriptBdd) {
     let previews = transcript_bdd.previews.borrow();
     assert_eq!(previews[1], "1 updated", "update patch count: {previews:?}");
@@ -2036,7 +2036,7 @@ fn when_todo_empty_live_and_rebuild(transcript_bdd: &TranscriptBdd) {
     *transcript_bdd.models.borrow_mut() = vec![rebuilt, live];
 }
 
-#[then("两种路径的块 body MUST 均为空态提示行 `(empty list)` 且逐行一致，MUST NOT 留空 body")]
+#[then("两种路径的块 body 均为空态提示行 `(empty list)` 且逐行一致，不留空 body")]
 fn then_todo_empty_bodies_agree(transcript_bdd: &TranscriptBdd) {
     let models = transcript_bdd.models.borrow();
 

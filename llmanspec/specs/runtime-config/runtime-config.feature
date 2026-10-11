@@ -33,7 +33,7 @@
     场景: no-prompts-settings-field
       假如 加载默认或示例 settings
       当 检查 Settings 类型与合并结果
-      那么 MUST NOT 存在可生效的 prompts 路径列表字段
+      那么 不存在可生效的 prompts 路径列表字段
   @req:r1726
   规则: compaction 配置映射
     运行时配置 MUST 定义从 YAML 加载期 compaction 表面（enabled / reserveTokens / keepRecentTokens / model / thinkingLevel）到规范运行时 CompactionSettings 的单一文档化映射，无并行重复类型；MUST NOT 暴露或映射 compaction_threshold / 百分比阈值字段。model 为与 models 条目字段形状兼容的内嵌对象，跨条目共享 MUST 靠 YAML 锚点/别名原生能力，MUST NOT 引入字符串别名引用语义；model 与 thinkingLevel 仅 config.yaml 加载面生效，Settings.json 的 compaction 块 MUST NOT 接线这两键（出现即忽略，对齐 rc12 遗留键纪律）。

@@ -143,7 +143,7 @@
       那么 卡含 skills 行与 mcp 行且展示连接进度
   @req:r1226
   规则: footer-derived-context-percent
-    当 footer 已展示 ContextTokenEstimate 且当前模型 context_window > 0 时，MUST 在 used 字段后追加派生占用比：percent = tokens/context_window*100（展示 1 位小数）与紧凑 window（如 128k），形如 ` · 32.8%/128k`（used 侧紧凑例：`used 42k tokens · 32.8%/128k`）；Heuristic MUST 为 ` · ~p%/W`；Unknown 且有窗 MUST 为 ` · ?%/W`；context_window 为 0 或不展示 used 字段时 MUST NOT 追加 %；该百分比 MUST 仅作展示，MUST NOT 作为 should_compact / reserve 触发 SSOT，MUST NOT 恢复 compaction_threshold 或百分比闸配置。
+    当 footer 已展示 ContextTokenEstimate 且当前模型 context_window > 0 时，须在 used 字段后追加派生占用比：percent = tokens/context_window*100（展示 1 位小数）与紧凑 window（如 128k），形如 ` · 32.8%/128k`（used 侧紧凑例：`used 42k tokens · 32.8%/128k`）；Heuristic 须为 ` · ~p%/W`；Unknown 且有窗 须为 ` · ?%/W`；context_window 为 0 或不展示 used 字段时 不得追加 %；该百分比 须仅作展示，不得作为 should_compact / reserve 触发 SSOT，不得恢复 compaction_threshold 或百分比闸配置。
 
     场景: footer-derived-percent-from-api-usage
       当 以 Api 来源 42k tokens 与 128k 窗口驱动 footer
@@ -196,7 +196,7 @@
 
     场景: fixed-zone-slot-order
       当 产品 TUI 同时存在非空待办栏、队列条与通知条
-      那么 从上到下 MUST 为队列条、待办栏、通知条、status、editor
+      那么 从上到下 为队列条、待办栏、通知条、status、editor
 
     场景: footer-carries-no-queue-badge
       当 以 Heuristic 上下文估计驱动 footer token 字段
@@ -215,8 +215,8 @@
 
     场景: todo-bar-sits-between-queue-and-toast
       当 产品 TUI 同时存在非空待办栏、队列条与通知条
-      那么 从上到下 MUST 为队列条、待办栏、通知条、status、editor
-      并且 空表时待办栏 MUST 占 0 行
+      那么 从上到下 为队列条、待办栏、通知条、status、editor
+      并且 空表时待办栏 占 0 行
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
 

@@ -55,7 +55,7 @@ fn when_todo_queue_toast_present(fixed_zone_bdd: &FixedZoneBdd) {
     *fixed_zone_bdd.model.borrow_mut() = model;
 }
 
-#[then("从上到下 MUST 为队列条、待办栏、通知条、status、editor")]
+#[then("从上到下 为队列条、待办栏、通知条、status、editor")]
 fn then_dock_order_queue_todo_toast_status_editor(fixed_zone_bdd: &FixedZoneBdd) {
     let plain = fixed_zone_bdd
         .frame
@@ -82,7 +82,7 @@ fn then_dock_order_queue_todo_toast_status_editor(fixed_zone_bdd: &FixedZoneBdd)
     );
 }
 
-#[then("空表时待办栏 MUST 占 0 行")]
+#[then("空表时待办栏 占 0 行")]
 fn then_empty_todo_bar_is_zero_rows(fixed_zone_bdd: &FixedZoneBdd) {
     let mut model = fixed_zone_bdd.model.borrow().clone();
     model.todo = TodoList::default();

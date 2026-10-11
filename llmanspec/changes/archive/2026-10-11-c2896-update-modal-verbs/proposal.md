@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/c2896-update-modal-verbs
+base_branch: main
+base_sha: ee77cb9054258d2143f336bb3bb7cb22457f4838
 ---
 
 ## Why

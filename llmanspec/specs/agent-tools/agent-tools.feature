@@ -20,7 +20,7 @@
 
   @req:r32
   规则: 工具 trait 前缀
-    System MUST 将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，MUST 与 protocol 边界其余命名一致。
+    System 须将主工具接口定义为 XyTool；trait 名已带 Xy 前缀，须与 protocol 边界其余命名一致。
     # verified-by: src/AGENTS.md
     场景: builtin-names-listed-via-xytool
       假如 工具集含全部内置工具
@@ -29,7 +29,7 @@
 
   @req:r42
   规则: 默认内置工具闭集
-    产品 default_tools（Print 与 TUI builtins 基座）MUST 包含且以闭集提供：read、bash、edit、write、grep、find、ls、todo_rewrite、todo_update（共 9 个）。ask 等面专属工具 MUST NOT 计入该闭集（见 t28）。Todo 工具语义见 agent-todo。MUST NOT 向模型暴露 todo_list。
+    产品 default_tools（Print 与 TUI builtins 基座）须包含且以闭集提供：read、bash、edit、write、grep、find、ls、todo_rewrite、todo_update（共 9 个）。ask 等面专属工具 不得计入该闭集（见 t28）。Todo 工具语义见 agent-todo。不得向模型暴露 todo_list。
 
     场景: all-ten-tools-smoke
       假如 工具注册表含全部 9 个工具
@@ -37,7 +37,7 @@
       那么 各返回成功 ToolResult
   @req:r48
   规则: 补丁应用
-    System MUST 使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
+    System 须使用 fudiff 模糊匹配应用 AI 生成的补丁，并以 patch crate 精确匹配作为回退。
 
     场景: fudiff-line-offset
       假如 临时目录存在含行偏移的 unified diff 文件
@@ -45,7 +45,7 @@
       那么 模糊匹配补丁应用成功
   @req:r4
   规则: 读文件大小限制
-    Read 工具 MUST 拒绝超过 MAX_FILE_SIZE（默认 10MB）的文件，并返回清晰错误信息。
+    Read 工具 须拒绝超过 MAX_FILE_SIZE（默认 10MB）的文件，并返回清晰错误信息。
 
     场景: large-file
       假如 存在 50MB 文件
@@ -53,7 +53,7 @@
       那么 工具返回文件过大错误
   @req:r5
   规则: bash 流式输出
-    Bash 工具 MUST 流式输出 stdout/stderr 并设字节上限；超限时 MUST 终止子进程。
+    Bash 工具 须流式输出 stdout/stderr 并设字节上限；超限时 须终止子进程。
 
     场景: bash-truncate
       当 调用bash命令 "yes xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx | head -n 3000"
@@ -68,7 +68,7 @@
       那么 子进程被杀并返回截断输出
   @req:r6
   规则: 整数转换校验
-    工具 MUST 在转换前校验数值参数（timeout、max_results）处于正数安全范围内；timeout 若出现则 MUST 为正整数秒，超过全局上界的值 MUST 被程序钳制到上界而非拒绝，MUST NOT 将 0 解释为无限。
+    工具 须在转换前校验数值参数（timeout、max_results）处于正数安全范围内；timeout 若出现则 须为正整数秒，超过全局上界的值 须被程序钳制到上界而非拒绝，不得将 0 解释为无限。
 
     场景: negative-timeout
       假如 LLM 传入 timeout=-1
@@ -81,7 +81,7 @@
       那么 工具以无效 timeout 错误拒绝
   @req:r1148
   规则: 工具超时默认有界
-    命令类工具（bash、grep、find）的执行等待由程序最高权限管理：timeout 为模型侧请求——正整数秒被接受并钳制到全局上界（600 秒），省略时按工具默认（bash 120 秒、grep/find 60 秒）；计时器 MUST 必然武装，到期终止并返回 timeout 类错误；MUST NOT 存在无限语义或可绕过计时的输入。任何外部等待 MUST NOT 超过全局兜底上界（600 秒）。流式与非流式路径共用同一语义。
+    命令类工具（bash、grep、find）的执行等待由程序最高权限管理：timeout 为模型侧请求——正整数秒被接受并钳制到全局上界（600 秒），省略时按工具默认（bash 120 秒、grep/find 60 秒）；计时器 须必然武装，到期终止并返回 timeout 类错误；不得存在无限语义或可绕过计时的输入。任何外部等待 不得超过全局兜底上界（600 秒）。流式与非流式路径共用同一语义。
 
     场景: bash-timeout
       当 调用bash命令 "sleep 10" 超时 1 秒
@@ -92,21 +92,21 @@
       那么 退出码为 0
   @req:r1149
   规则: grep-find-timeout-schema
-    grep 与 find 的 parameters schema MUST 暴露可选 timeout（秒）；行为遵循 t24。
+    grep 与 find 的 parameters schema 须暴露可选 timeout（秒）；行为遵循 t24。
 
     场景: search-tools-expose-optional-timeout
       当 检查内置工具的参数 schema
       那么 grep 与 find 的 schema 含可选 timeout
   @req:r1153
   规则: fs 工具有界
-    read、write、edit、ls 四个文件类工具的执行等待 MUST 有默认上限（30 秒），到期以 timeout 类错误呈现；MUST NOT 向模型暴露 per-call timeout 参数。
+    read、write、edit、ls 四个文件类工具的执行等待 须有默认上限（30 秒），到期以 timeout 类错误呈现；不得向模型暴露 per-call timeout 参数。
 
     场景: fs-tools-hide-per-call-timeout
       当 检查内置工具的参数 schema
       那么 文件类四工具的 schema 不含 per-call timeout 参数
   @req:r7
   规则: find 禁止绝对路径逃逸
-    Find 工具 MUST 拒绝绝对 pattern，或 MUST 规范化结果以验证其仍在 root 目录内。
+    Find 工具 须拒绝绝对 pattern，或 须规范化结果以验证其仍在 root 目录内。
 
     场景: find-absolute
       当 调用find工具 查找绝对路径失败
@@ -118,7 +118,7 @@
       那么 工具返回错误或过滤结果至 root
   @req:r8
   规则: 安全 UTF-8 截断
-    输出截断 MUST 使用字符边界感知切片，防止 UTF-8 panic。
+    输出截断 须使用字符边界感知切片，防止 UTF-8 panic。
 
     场景: multibyte-truncation
       假如 bash 输出在上限边界以不完整 UTF-8 序列结束
@@ -126,7 +126,7 @@
       那么 输出在字符边界安全截断且不 panic
   @req:r9
   规则: 工具参数辅助函数
-    工具系统 MUST 提供共享参数提取辅助函数，消除各工具实现中重复的 JSON 字段解析。
+    工具系统 须提供共享参数提取辅助函数，消除各工具实现中重复的 JSON 字段解析。
 
     场景: require-str-missing-arg
       假如 工具需要必填字符串参数 file_path
@@ -134,7 +134,7 @@
       那么 调用失败且返回 MissingArgument 错误码
   @req:r10
   规则: 禁止全局 dead_code 允许
-    crate 根 MUST NOT 使用全局 #![allow(dead_code)]；dead code 抑制 MUST 限定于单项并附理由。
+    crate 根 不得使用全局 #![allow(dead_code)]；dead code 抑制 须限定于单项并附理由。
     # verified-by: src/AGENTS.md
     场景: dead-code-allow-is-item-scoped
       当 读取 crate 根的死代码允许写法
@@ -142,7 +142,7 @@
 
   @req:r11
   规则: 工具错误类型
-    System MUST 定义 XyToolError，含结构化错误类别（invalid_args / execution_failed / permission_denied / timeout），独立于 adk-core。
+    System 须定义 XyToolError，含结构化错误类别（invalid_args / execution_failed / permission_denied / timeout），独立于 adk-core。
 
     场景: read-missing
       当 调用read工具 路径 "nonexistent.txt"
@@ -187,7 +187,7 @@
       那么 产生的 AgentEvent 含 error 类别
   @req:r1135
   规则: traits
-    System MUST 定义 XyTool trait，execute 接受 CancellationToken。
+    System 须定义 XyTool trait，execute 接受 CancellationToken。
 
     场景: cancel
       假如 bash 工具正在 sleep 60
@@ -195,7 +195,7 @@
       那么 execute 返回 Cancelled 错误
   @req:r1144
   规则: 默认内置工具闭集·t2
-    System MUST 实现与 r42 相同的 9 个 default_tools 闭集成员：read、bash、edit、write、grep、find、ls、todo_rewrite、todo_update。文件类七工具行为对齐既有 pi 等价语义；Todo 两工具行为见 agent-todo。
+    System 须实现与 r42 相同的 9 个 default_tools 闭集成员：read、bash、edit、write、grep、find、ls、todo_rewrite、todo_update。文件类七工具行为对齐既有 pi 等价语义；Todo 两工具行为见 agent-todo。
 
     场景: read-entire
       假如 存在文件 "src/hello.rs" 内容为 "fn main() {\n    println!(\"Hello, world!\");\n}"
@@ -258,7 +258,7 @@
       那么 返回 9 个工具名
   @req:r1154
   规则: edit 多段编辑
-    Edit 工具 MUST 接受 path 与 edits 数组（oldText、newText），对照原始内容匹配。
+    Edit 工具 须接受 path 与 edits 数组（oldText、newText），对照原始内容匹配。
 
     场景: edit-single
       当 调用edit工具 路径 "src/main.rs" 将 "println!(\"hello\");" 替换为 "println!(\"你好\");"
@@ -272,7 +272,7 @@
       并且 文件 "src/lib.rs" 应该包含 "a.wrapping_sub(b)"
   @req:r1155
   规则: edit 校验
-    Edit 工具 MUST 拒绝重叠编辑、非唯一 oldText、空 oldText 与无变化编辑。
+    Edit 工具 须拒绝重叠编辑、非唯一 oldText、空 oldText 与无变化编辑。
 
     场景: edit-overlap
       假如 存在文件 "src/overlap.rs" 内容为 "fn hello_world() {\n    println!(\"hello world\");\n}"
@@ -293,7 +293,7 @@
       那么 edit调用应该失败 包含错误信息 "identical" 或 "No changes" 或 "no change" 或 "not unique"
   @req:r1156
   规则: edit Unicode
-    Edit 工具 MUST 将 CRLF 规范为 LF、剥离 UTF-8 BOM，并通过 NFKC 规范化做模糊匹配。
+    Edit 工具 须将 CRLF 规范为 LF、剥离 UTF-8 BOM，并通过 NFKC 规范化做模糊匹配。
 
     场景: edit-bom
       假如 存在文件 "src/bom.txt" 带UTF8_BOM 内容为 "Hello World"
@@ -302,7 +302,7 @@
       并且 文件 "src/bom.txt" 应该包含 "Hello BOM"
   @req:r1157
   规则: edit diff
-    Edit 工具 MUST 对编辑前后的整文件内容产生 unified patch 与带行号的展示 diff（display_diff MUST 为 context hunk，MUST NOT 把全文件 Equal 行展开进展示；展示行数 MUST 有硬上限并在超限时标注截断）；发往模型的 tool result 正文 MUST NOT 嵌入完整 diff/display_diff。
+    Edit 工具 须对编辑前后的整文件内容产生 unified patch 与带行号的展示 diff（display_diff 须为 context hunk，不得把全文件 Equal 行展开进展示；展示行数 须有硬上限并在超限时标注截断）；发往模型的 tool result 正文 不得嵌入完整 diff/display_diff。
 
     场景: edit-diff
       假如 存在文件 "src/diff_test.rs" 内容为 "第1行\n第2行\n第3行"
@@ -310,7 +310,7 @@
       那么 结果包含 "@@"
   @req:r1158
   规则: grep ripgrep
-    Grep 工具 MUST 使用 ripgrep，支持 regex、glob、ignoreCase、literal、context、limit。
+    Grep 工具 须使用 ripgrep，支持 regex、glob、ignoreCase、literal、context、limit。
 
     场景: grep-basic
       假如 存在文件 "src/data.txt" 内容为 "apple\nbanana\ncherry\napple pie\norange"
@@ -340,7 +340,7 @@
       那么 结果包含 "fn.call()"
   @req:r1159
   规则: find fd
-    Find 工具 MUST 使用 fd，尊重 gitignore，返回 Posix 相对路径并支持 limit。
+    Find 工具 须使用 fd，尊重 gitignore，返回 Posix 相对路径并支持 limit。
 
     场景: find-simple
       假如 存在文件 "src/main.rs"
@@ -370,7 +370,7 @@
       那么 结果包含 "No files found" 或 "未找到文件"
   @req:r1160
   规则: bash 中止
-    Bash 工具 MUST 支持 CancellationToken 杀进程树并合并流式输出。
+    Bash 工具 须支持 CancellationToken 杀进程树并合并流式输出。
 
     场景: bash-merged-streams
       当 调用bash命令 "echo out && echo err >&2 && echo out2"
@@ -384,7 +384,7 @@
       那么 命令应该失败 包含取消错误
   @req:r1136
   规则: read 截断
-    Read 工具 MUST 在 2000 行或 50KB 处截断，并对 offset 越界报告剩余行提示。
+    Read 工具 须在 2000 行或 50KB 处截断，并对 offset 越界报告剩余行提示。
 
     场景: read-offset-limit
       假如 存在文件 "src/multi.txt" 内容为 "第1行\n第2行\n第3行\n第4行\n第5行"
@@ -406,7 +406,7 @@
       并且 如果截断则显示剩余行提示
   @req:r1137
   规则: infra
-    System MUST 提供 TruncationResult、XxxOperations trait、FileMutationQueue 与 CancellationToken。
+    System 须提供 TruncationResult、XxxOperations trait、FileMutationQueue 与 CancellationToken。
 
     场景: infra-works
       假如 内置工具集已构造
@@ -414,7 +414,7 @@
       那么 各工具返回成功结果且无 panic
   @req:r1138
   规则: ToolSet 单元操作
-    工具容器 ToolSet MUST 仅提供构建期单元操作：empty、from_iter、plus、remove、merge、retain（带谓词）；MUST NOT 提供运行时 allow/exclude 过滤 API 或 wrap_with_hooks 方法。按名 get 与遍历最终集合仍可用。
+    工具容器 ToolSet 须仅提供构建期单元操作：empty、from_iter、plus、remove、merge、retain（带谓词）；不得提供运行时 allow/exclude 过滤 API 或 wrap_with_hooks 方法。按名 get 与遍历最终集合仍可用。
 
     场景: toolset-unit-ops
       假如 工具集含 read 与 grep
@@ -422,7 +422,7 @@
       那么 最终工具集含 read 与 bash 且不含 grep
   @req:r1139
   规则: OutputAccumulator
-    工具执行 MUST 支持 OutputAccumulator：增量缓冲接收流式数据、在内存保留可配置尾部窗口、总量超滚动阈值时透明溢出到临时文件，并产出含截断信息的最终快照。
+    工具执行 须支持 OutputAccumulator：增量缓冲接收流式数据、在内存保留可配置尾部窗口、总量超滚动阈值时透明溢出到临时文件，并产出含截断信息的最终快照。
 
     场景: small-output
       假如 累加器接收 100 字节
@@ -435,7 +435,7 @@
       那么 快照内容为截断尾部，full_output_path 指向含完整输出的临时文件
   @req:r1140
   规则: bash 累加器
-    Bash 工具 MUST 对 stdout/stderr 流式输出使用 OutputAccumulator，替代 String 拼接；配置 max_lines 100 与 max_bytes DEFAULT_MAX_BYTES。
+    Bash 工具 须对 stdout/stderr 流式输出使用 OutputAccumulator，替代 String 拼接；配置 max_lines 100 与 max_bytes DEFAULT_MAX_BYTES。
 
     场景: bash-stderr
       当 调用bash命令 "echo 错误信息 >&2"
@@ -447,7 +447,7 @@
       那么 返回 output:hello 且未触发临时文件落盘
   @req:r1147
   规则: bash-tool-result-no-full-dump
-    Bash 工具返回的 JSON（流式与非流式）在截断时 MUST 仅含截断视图（stdout/combined 为 display_content，含 Full output 脚注）与 truncated/full_output_path；MUST NOT 再附带未截断的完整 stdout 或 stderr 载荷。未截断时 stdout/combined MUST 为完整合并输出且无 Full output 脚注。
+    Bash 工具返回的 JSON（流式与非流式）在截断时 须仅含截断视图（stdout/combined 为 display_content，含 Full output 脚注）与 truncated/full_output_path；不得再附带未截断的完整 stdout 或 stderr 载荷。未截断时 stdout/combined 须为完整合并输出且无 Full output 脚注。
 
     场景: bash-result-no-full-dump
       当 调用bash命令 "yes yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy | head -n 3000"
@@ -455,7 +455,7 @@
       并且 bash 结果 JSON 无未截断全量 stdout 字段载荷
   @req:r1131
   规则: 模糊匹配
-    System MUST 对 edit oldText 做模糊匹配：NFKC 规范化、智能引号转 ASCII、破折号转连字符、剥离尾部空白，再逐步放宽匹配。
+    System 须对 edit oldText 做模糊匹配：NFKC 规范化、智能引号转 ASCII、破折号转连字符、剥离尾部空白，再逐步放宽匹配。
 
     场景: edit-unicode
       假如 存在文件 "src/quotes.rs" 内容为 "let msg = \"hello world\";"
@@ -468,7 +468,7 @@
       那么 模糊匹配成功并写入替换
   @req:r1132
   规则: 行尾风格
-    System MUST 在编辑前检测文件行尾（CRLF vs LF），应用变更后恢复原有风格。
+    System 须在编辑前检测文件行尾（CRLF vs LF），应用变更后恢复原有风格。
 
     场景: edit-crlf
       假如 存在文件 "src/windows.rs" 使用CRLF行尾 内容为 "// Windows 风格\n// 第二行"
@@ -477,7 +477,7 @@
       并且 文件 "src/windows.rs" 应该包含 "第二行"
   @req:r1133
   规则: 跨行 span 匹配
-    精确匹配失败时，System MUST 支持跨不同行段匹配多行 oldText span。
+    精确匹配失败时，System 须支持跨不同行段匹配多行 oldText span。
 
     场景: span
       假如 oldText 跨 5 行但中间一行精确匹配失败
@@ -485,7 +485,7 @@
       那么 滑动窗口匹配成功
   @req:r1134
   规则: diff 输出
-    编辑操作后，System MUST 使用 similar crate 计算结构化 diff 供审阅。
+    编辑操作后，System 须使用 similar crate 计算结构化 diff 供审阅。
     # verified-by: src/app/tui/widgets/scrollback/diff.rs
     场景: structured-diff-applies-with-offset-hunks
       假如 临时目录存在含行偏移的 unified diff 文件
@@ -494,7 +494,7 @@
 
   @req:r1141
   规则: 工具定义包含 schema
-    展示类型 ToolDefinition MUST 包含 XyToolSchema 字段，而非重复 name/description/parameters 字段。
+    展示类型 ToolDefinition 须包含 XyToolSchema 字段，而非重复 name/description/parameters 字段。
     # verified-by: src/protocol/ports/tool.rs
     场景: schema-drives-required-arg
       假如 工具需要必填字符串参数 file_path
@@ -503,7 +503,7 @@
 
   @req:r1142
   规则: ToolSet 在 agent 终态
-    ToolSet MUST 作为构建期终态编排状态留在 agent 层：聚合具体工具并组合单元操作；构建后交给一轮的集合即终态，无运行时过滤。具体工具由组合根注入。
+    ToolSet 须作为构建期终态编排状态留在 agent 层：聚合具体工具并组合单元操作；构建后交给一轮的集合即终态，无运行时过滤。具体工具由组合根注入。
     # verified-by: src/agent/tools/toolset.rs
     场景: toolset-is-build-final
       假如 工具集含 read 与 grep
@@ -512,7 +512,7 @@
 
   @req:r1143
   规则: 工具相关类型统一前缀
-    ToolExecutionMode MUST 重命名为 XyToolExecutionMode；protocol 工具边界及其签名类型 MUST 一致使用 Xy 前缀命名。
+    ToolExecutionMode 须重命名为 XyToolExecutionMode；protocol 工具边界及其签名类型 须一致使用 Xy 前缀命名。
     # verified-by: src/AGENTS.md
     场景: execution-mode-carries-xy-prefix
       当 读取工具执行类命名
@@ -520,7 +520,7 @@
 
   @req:r36
   规则: MCP 工具经 XyTool 接入
-    MCP 工具 MUST 仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 MUST NOT 泄漏到 agent/ 或 domain/。
+    MCP 工具 须仅通过 XyTool 端口进入 agent 工具集；rmcp 具体类型 不得泄漏到 agent/ 或 domain/。
     # verified-by: src/AGENTS.md
     场景: mcp-tools-enter-as-xytool
       当 以 fixture MCP 配置装配 ping 工具
@@ -528,7 +528,7 @@
 
   @req:r1145
   规则: read-image-parts
-    Read 工具在路径为支持的图片文件时 MUST 经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；MUST NOT 仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 MUST 允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。
+    Read 工具在路径为支持的图片文件时 须经 resize/multimodal 准备产出含 AgentPart::Image（base64 data + media_type）的 tool result parts，并附简短 text note；不得仅返回「[Image file: …]」占位字符串作为唯一结果。文本文件行为保持既有截断语义。工具端口 须允许 execute 结果以 parts 形式进入 history（默认实现可将纯文本包成 Text part）。
 
     场景: png-yields-image-part
       假如 临时目录有小 PNG
@@ -541,14 +541,14 @@
       那么 返回文本内容且无 Image part
   @req:r1146
   规则: write-edit-llm-result-quiet
-    write/edit 成功时，进入会话 history 并经 project_for_llm 发往模型的 tool result 正文 MUST 为短成功句（对齐 pi）；MUST NOT 把完整 content 回灌或嵌入 unified/display_diff。失败时 MUST 保留可读错误原因。UI 仍 MUST 能取得 display_diff（或等价）以渲染编辑块。
+    write/edit 成功时，进入会话 history 并经 project_for_llm 发往模型的 tool result 正文 须为短成功句（对齐 pi）；不得把完整 content 回灌或嵌入 unified/display_diff。失败时 须保留可读错误原因。UI 仍 须能取得 display_diff（或等价）以渲染编辑块。
 
     场景: write-byte-count
       当 调用write工具 路径 "src/size.txt" 内容 "hello"
       那么 结果包含 "success"
   @req:r1150
   规则: builtin-tool-concurrency-class
-    内置工具 MUST 声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 与 todo_rewrite/todo_update 为 Barrier（或等价 Sequential 映射）。调度层在 barrier_parallel 下 MUST 尊重该类；FileMutationQueue 可并存作同 path 纵深防御。由单测覆盖 default_tools 分类表，MUST NOT 为静态表单独扩 BDD step。
+    内置工具 须声明并发类：read/grep/find/ls 为 ParallelSafe；write/edit/bash 与 todo_rewrite/todo_update 为 Barrier（或等价 Sequential 映射）。调度层在 barrier_parallel 下 须尊重该类；FileMutationQueue 可并存作同 path 纵深防御。由单测覆盖 default_tools 分类表，不得为静态表单独扩 BDD step。
     # verified-by: src/agent/tools/mod.rs
     场景: builtins-declare-concurrency-class
       假如 未配置工具批模式且 mock 模型同 turn 发出两个可并行假工具
@@ -557,7 +557,7 @@
 
   @req:r1151
   规则: dynamic-tool-mcp-hard-barrier
-    公开名以 `mcp__` 为前缀（过渡期可识别遗留 `mcp-` / `mcp_` / `mcp:`）的工具（含 McpToolAdapter 与任何同前缀注册）在批调度分类中 MUST 为 Barrier，无论其 trait 并发声明或配置如何；MUST NOT 提供 glob、配置名名单或 MCP annotation 将其升为 ParallelSafe。非 mcp 自注册工具缺省 MUST 为 Barrier，MAY 经 ToolConcurrency 显式标 ParallelSafe。由单测覆盖，MUST NOT 为静态默认单独扩 BDD step。
+    公开名以 `mcp__` 为前缀（过渡期可识别遗留 `mcp-` / `mcp_` / `mcp:`）的工具（含 McpToolAdapter 与任何同前缀注册）在批调度分类中 须为 Barrier，无论其 trait 并发声明或配置如何；不得提供 glob、配置名名单或 MCP annotation 将其升为 ParallelSafe。非 mcp 自注册工具缺省 须为 Barrier，MAY 经 ToolConcurrency 显式标 ParallelSafe。由单测覆盖，不得为静态默认单独扩 BDD step。
     # verified-by: llmanspec/specs/agent-runtime/agent-runtime.feature
     场景: mcp-prefixed-is-hard-barrier
       假如 工具批模式为 barrier_parallel 且 mock 同 turn 工具序为 ParallelSafe、mcp 假工具、ParallelSafe
@@ -566,7 +566,7 @@
 
   @req:r1152
   规则: ask-tui-only-builtin
-    内置工具 ask MUST 以 TypedTool 存在于 infra；schema MUST 含 questions 数组（每题 id/prompt/mode/options，option.description 可选）；execute 成功结果 MUST 为 status 为 skipped 或 answered 的 JSON。default_tools MUST NOT 包含 ask；仅 TUI 装配路径 MAY 经 ToolSet plus 注入。ask MUST 为 Barrier Sequential。Abort MUST NOT 伪装为 skipped。
+    内置工具 ask 须以 TypedTool 存在于 infra；schema 须含 questions 数组（每题 id/prompt/mode/options，option.description 可选）；execute 成功结果 须为 status 为 skipped 或 answered 的 JSON。default_tools 不得包含 ask；仅 TUI 装配路径 MAY 经 ToolSet plus 注入。ask 须为 Barrier Sequential。Abort 不得伪装为 skipped。
     # verified-by: llmanspec/specs/app-tui-ask/app-tui-ask.feature
     场景: ask-builtin-in-tui-toolset
       假如 产品以 TUI 面启动
@@ -575,7 +575,7 @@
 
   @req:r1161
   规则: 工具执行会话工作区
-    模型侧内置工具 MUST 以运行时注入的会话工作区为基：bash 子进程在该目录内启动；文件类工具（read/write/edit/ls/grep/find）的相对路径相对该目录解析；绝对路径行为不变。运行时未注入工作区时 MUST 回落 Host 进程 cwd。同一回合（含工具环）内工作区 MUST 保持开跑时冻结值，MUST NOT 随进程外状态漂移。
+    模型侧内置工具 须以运行时注入的会话工作区为基：bash 子进程在该目录内启动；文件类工具（read/write/edit/ls/grep/find）的相对路径相对该目录解析；绝对路径行为不变。运行时未注入工作区时 须回落 Host 进程 cwd。同一回合（含工具环）内工作区 须保持开跑时冻结值，不得随进程外状态漂移。
 
     场景: ls-default-cwd
       假如 工作区根目录存在文件 "in_root.txt"

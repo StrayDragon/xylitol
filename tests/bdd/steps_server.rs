@@ -2506,7 +2506,7 @@ async fn w_real_drop_mux(server_test: &ServerTest) {
     tokio::time::sleep(Duration::from_millis(30)).await;
 }
 
-#[then("客户端 MUST 在宽限内不上屏断线错误并自动重连")]
+#[then("客户端 在宽限内不上屏断线错误并自动重连")]
 async fn t_real_no_error_rows(server_test: &ServerTest) {
     // ath42 驱动信号：断线后 link_health MUST 如实报 Down（Down 窗口 ≥ 一个
     // 退避间隔，2ms 采样必然命中），随后无人工干预恢复 Up。
@@ -2544,7 +2544,7 @@ async fn t_real_no_error_rows(server_test: &ServerTest) {
     );
 }
 
-#[then("重连后 MUST 按 last_seq 从 journal 续传缺失事件且 MUST NOT 依赖人工重开")]
+#[then("重连后 按 last_seq 从 journal 续传缺失事件且 不依赖人工重开")]
 async fn t_real_replay_offline(server_test: &ServerTest) {
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     let mut replayed = false;

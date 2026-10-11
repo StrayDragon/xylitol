@@ -15,7 +15,7 @@
       那么 组合根恰一次装配且落 agent 日志目录
   @req:r1462
   规则: provider-raw-mapped-对照
-    当 provider tracing 激活时，每次 provider HTTP 流 MUST 在同一 fastrace 请求 span / request_id 下记录原始协议事件与映射后的 XyChunk 变体（Event），使 agent 能区分上游通道混写与适配器映射错误；记录 MUST 只经 file-only Reporter 写入 agent 日志目录专用文件（禁止 stdout/stderr 与 ConsoleReporter），MUST NOT 包含 Authorization 或 API-key 头值，且 MUST NOT 经 script hook 分发。
+    当 provider tracing 激活时，每次 provider HTTP 流 须在同一 fastrace 请求 span / request_id 下记录原始协议事件与映射后的 XyChunk 变体（Event），使 agent 能区分上游通道混写与适配器映射错误；记录 须只经 file-only Reporter 写入 agent 日志目录专用文件（禁止 stdout/stderr 与 ConsoleReporter），不得包含 Authorization 或 API-key 头值，且 不得经 script hook 分发。
 
     场景: provider-raw-mapped-pairing-headless
       假如 mock 上游按正常完成脚本回放 Anthropic SSE
@@ -40,7 +40,7 @@
       那么 仅用 fastrace 与 log 且无 tracing
   @req:r1465
   规则: agent-low-freq-spans
-    当 provider tracing 激活时，一次用户触发的 agent 处理 MUST 提供可关联的低频 fastrace span：根 agent.turn；每步 agent.iteration；模型流 llm.request（可与 request_id 对照）；可选 tool.execute；若发生会话 compaction 则 MUST 另有 agent.compaction（挂于该 turn 下，或无 turn 时为独立根）。主路径子 span MUST 挂在 turn/iteration/compaction 父节点之下（共享 trace_id），MUST NOT 在活跃 turn 下各自无关 random 根。agent.turn 结束时 MUST 能区分正常完成与用户 abort（见 infra-otel otel20）。MUST NOT 为每条 SSE / 每帧 TUI tick 安装无采样 span。默认 MUST NOT 启用 OpenTelemetry/Jaeger 等外部导出 Reporter；远程 OTLP 仅可经独立 [otel] 配置 + feature otel 显式 opt-in（见 infra-otel），且不得写 stdout/stderr。
+    当 provider tracing 激活时，一次用户触发的 agent 处理 须提供可关联的低频 fastrace span：根 agent.turn；每步 agent.iteration；模型流 llm.request（可与 request_id 对照）；可选 tool.execute；若发生会话 compaction 则 须另有 agent.compaction（挂于该 turn 下，或无 turn 时为独立根）。主路径子 span 须挂在 turn/iteration/compaction 父节点之下（共享 trace_id），不得在活跃 turn 下各自无关 random 根。agent.turn 结束时 须能区分正常完成与用户 abort（见 infra-otel otel20）。不得为每条 SSE / 每帧 TUI tick 安装无采样 span。默认 不得启用 OpenTelemetry/Jaeger 等外部导出 Reporter；远程 OTLP 仅可经独立 [otel] 配置 + feature otel 显式 opt-in（见 infra-otel），且不得写 stdout/stderr。
     # verified-by: llmanspec/specs/infra-otel/infra-otel.feature
 
     场景: provider-trace-correlated-spans

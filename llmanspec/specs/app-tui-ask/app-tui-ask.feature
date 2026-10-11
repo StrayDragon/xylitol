@@ -20,7 +20,7 @@
       那么 不含名为 ask 的工具
   @req:r1168
   规则: choice-slot-mount
-    当 ask 工具执行等待用户时，产品 TUI MUST 在 editor 槽挂载 ChoicePrompt（解冻 EditorSlot::Choice）；MUST NOT 使用 stderr 数字菜单。
+    当 ask 工具执行等待用户时，产品 TUI 须在 editor 槽挂载 ChoicePrompt（解冻 EditorSlot::Choice）；不得使用 stderr 数字菜单。
 
     场景: mounts-choice-slot
       假如 ask 工具已开始等待用户

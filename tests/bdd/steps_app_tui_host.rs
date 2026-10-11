@@ -740,7 +740,7 @@ pub(crate) async fn w_atm18_inline_model(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
 }
 
-#[then("模型列表 effect MUST 在 bang 结束前挂载生效")]
+#[then("模型列表 effect 在 bang 结束前挂载生效")]
 pub(crate) async fn t_atm18_inline_mounted(host_pump_bdd: &HostPumpBdd) {
     let pump = take_pump(host_pump_bdd);
     let models_calls = pump.driver.models_calls();
@@ -794,7 +794,7 @@ pub(crate) async fn w_ath45_queued_export(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
 }
 
-#[then("该命令 MUST 在 bang 结束前不执行")]
+#[then("该命令 在 bang 结束前不执行")]
 pub(crate) async fn t_ath45_still_queued(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_pump(host_pump_bdd);
     let slash = pump.session.take_slash();
@@ -811,7 +811,7 @@ pub(crate) async fn t_ath45_still_queued(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-#[then("循环归还后 MUST 照常执行且 MUST NOT 丢失")]
+#[then("循环归还后 照常执行且 不丢失")]
 pub(crate) async fn t_ath45_executes_after_return(host_pump_bdd: &HostPumpBdd) {
     drain(host_pump_bdd).await;
     let mut pump = take_pump(host_pump_bdd);

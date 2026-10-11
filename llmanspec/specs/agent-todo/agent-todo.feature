@@ -70,16 +70,16 @@
     场景: todo-bar-default-shows-in-progress
       当 以场景构建器回放含一条 in_progress 与前后翼条目的 TodoUpdated
       那么 待办栏默认展开当前任务与两翼条目
-      并且 对话条目中 MUST NOT 出现 checklist 投影行
-      并且 翼头 MUST 分别标注 completed 与 pending 且 MUST NOT 出现 done/todo 行或无标签 N/M
+      并且 对话条目中 不出现 checklist 投影行
+      并且 翼头 分别标注 completed 与 pending 且 不出现 done/todo 行或无标签 N/M
   @req:r1130
   规则: tui-resume-and-tool-refresh
     TUI 在 resume / 切换会话后 MUST 自当前 leaf 上 latest agent_todo 快照重建待办栏（默认露出与三区折叠同 r1129）；todo_* 工具成功结束后 MUST 经类型化 TodoUpdated 刷新为与 SSOT 一致。Print 面 MUST NOT 要求待办栏 UI，但工具与持久 MUST 仍可用（同源 SSOT）。
 
     场景: todo-bar-resume-matches-live
       当 以场景构建器回放 todo_rewrite 成功调用的直播与 travel 重建
-      那么 两种路径的待办栏默认露出 MUST 一致且同源自 SSOT
-      并且 todo_* 工具块 body MUST 仍为清单行形态
+      那么 两种路径的待办栏默认露出 一致且同源自 SSOT
+      并且 todo_* 工具块 body 仍为清单行形态
   @req:r1119
   规则: compact-preserves-todo-snapshot
     压缩或裁切会话上下文时，若操作会丢掉当前 leaf 上全部 agent_todo 快照，System MUST 在裁切后重新 append 最新全量快照，使后续 TUI / resume / 出站 AgentStatusBar 仍可读到同一逻辑列表。MUST NOT 静默永久丢弃用户 Todo。

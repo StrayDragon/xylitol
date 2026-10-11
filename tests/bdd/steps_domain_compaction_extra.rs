@@ -490,7 +490,7 @@ pub(crate) fn g_overflow_once_setup(agent: &AgentState) {
 #[given("再次出现 sameModel overflow")]
 pub(crate) fn g_overflow_again(_agent: &AgentState) {}
 
-#[then("MUST NOT 再次 compact 或无限重试")]
+#[then("不再次 compact 或无限重试")]
 pub(crate) fn t_overflow_no_loop(agent: &AgentState) {
     let s = result_ok_str(&agent.last_result);
     assert!(s.contains("outcome:failed_once"), "{s}");
@@ -510,7 +510,7 @@ pub(crate) fn g_overflow_wrong_model(agent: &AgentState) {
     )));
 }
 
-#[then("MUST NOT 因该旧 overflow 触发 recovery")]
+#[then("不因该旧 overflow 触发 recovery")]
 pub(crate) fn t_overflow_wrong_skip(agent: &AgentState) {
     let s = result_ok_str(&agent.last_result);
     assert!(s.contains("outcome:skipped"), "{s}");
@@ -556,7 +556,7 @@ pub(crate) fn g_comp_footer(agent: &AgentState) {
 #[when("执行 auto-compact reserve 触发判断")]
 pub(crate) fn w_comp_reserve_trigger(_agent: &AgentState) { /* set in given */
 }
-#[then("所用 token 数字与同源估计一致且 MUST NOT 另算独立启发式总和")]
+#[then("所用 token 数字与同源估计一致且 不另算独立启发式总和")]
 pub(crate) fn t_comp_threshold_ok(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("shared:true"));
 }
@@ -747,7 +747,7 @@ pub(crate) fn t_comp_force_ok_or_err(agent: &AgentState) {
     );
 }
 
-#[then("MUST NOT 经 maybe_auto_compact 闸")]
+#[then("不经 maybe_auto_compact 闸")]
 pub(crate) fn t_comp_force_not_maybe(agent: &AgentState) {
     assert!(
         result_ok_str(&agent.last_result).contains("bypass_maybe:true")
@@ -756,7 +756,7 @@ pub(crate) fn t_comp_force_not_maybe(agent: &AgentState) {
 }
 
 #[then(
-    "MUST NOT 因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact (no summarizable history beyond keep window) 或 session too small"
+    "不因切点 JSON 低估把仍有可摘要历史误报为 Nothing to compact (no summarizable history beyond keep window) 或 session too small"
 )]
 pub(crate) fn t_comp_force_not_undercount(agent: &AgentState) {
     let s = result_ok_str(&agent.last_result);
@@ -893,7 +893,7 @@ pub(crate) fn w_comp_stale_check(agent: &AgentState) {
         .replace(Some(Ok(format!("stale:{stale} compacted:false"))));
 }
 
-#[then("MUST NOT 用压缩前 usage 再触发 compaction")]
+#[then("不用压缩前 usage 再触发 compaction")]
 pub(crate) fn t_comp_stale_ok(agent: &AgentState) {
     let s = result_ok_str(&agent.last_result);
     assert!(s.contains("stale:true"), "{s}");

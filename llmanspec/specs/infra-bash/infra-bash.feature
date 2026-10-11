@@ -72,7 +72,7 @@
       那么 tool-error 回写且未执行
   @req:r1428
   规则: 超时逐级升级
-    当调用方提供有限超时时，System MUST 实现逐级超时：先 SIGTERM，5 秒宽限后 SIGKILL。未提供超时时 MUST NOT 仅因默认秒数触发该升级路径。
+    当调用方提供有限超时时，System 须实现逐级超时：先 SIGTERM，5 秒宽限后 SIGKILL。未提供超时时 不得仅因默认秒数触发该升级路径。
     # verified-by: src/infra/bash_exec/mod.rs
     场景: escalating-timeout-kills
       假如 bash 运行 yes 命令

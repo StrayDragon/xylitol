@@ -16,7 +16,7 @@
     场景: prompt-from-loader
       假如 项目含 AGENTS.md 且 CLI 组合根构造 agent
       当 agent 构建 system prompt
-      那么 system prompt MUST 含 AGENTS.md 内容且 loader 有值时 MUST NOT 回退硬编码占位符
+      那么 system prompt 含 AGENTS.md 内容且 loader 有值时 不回退硬编码占位符
   @req:r1062
   规则: 回合事件
     System MUST 每轮发出：turn_start、message_start、message_update（流式）、message_end。
@@ -138,7 +138,7 @@
     场景: no-template-dispatch
       假如 用户发送 /review 及参数且仅存在 prompts/review.md
       当 prompt 处理
-      那么 MUST NOT 将 prompt 模板展开并送 LLM
+      那么 不将 prompt 模板展开并送 LLM
   @req:r1065
   规则: 资源加载器
     System MUST 提供 ResourceLoader，聚合项目上下文文件（AGENTS.md、CLAUDE.md）、skills 与 CLI/配置 system prompt；MUST NOT 将 prompts/*.md 发现为可注册 slash 模板。

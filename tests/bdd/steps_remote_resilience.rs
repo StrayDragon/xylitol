@@ -244,7 +244,7 @@ async fn w_hello_attach(resilience_bdd: &ResilienceBdd) {
     put_rig(resilience_bdd, rig);
 }
 
-#[then("driver MUST 报版本错误并终止该代循环且 MUST NOT 进入重试循环")]
+#[then("driver 报版本错误并终止该代循环且 不进入重试循环")]
 fn t_hello_fatal(resilience_bdd: &ResilienceBdd) {
     let attach = resilience_bdd
         .attach_result
@@ -331,7 +331,7 @@ async fn w_backoff_survives(resilience_bdd: &ResilienceBdd) {
     .await;
 }
 
-#[then("重试间隔 MUST 逐次翻倍升级")]
+#[then("重试间隔 逐次翻倍升级")]
 fn t_backoff_escalates(resilience_bdd: &ResilienceBdd) {
     let rig = resilience_bdd.rig.borrow();
     let rig = rig.as_ref().expect("rig mounted");
@@ -356,7 +356,7 @@ fn t_backoff_escalates(resilience_bdd: &ResilienceBdd) {
     );
 }
 
-#[then("下次重试间隔 MUST 回落到起点")]
+#[then("下次重试间隔 回落到起点")]
 fn t_backoff_resets(resilience_bdd: &ResilienceBdd) {
     let rig = resilience_bdd.rig.borrow();
     let rig = rig.as_ref().expect("rig mounted");
@@ -419,7 +419,7 @@ async fn w_stale_late_frame(resilience_bdd: &ResilienceBdd) {
     put_rig(resilience_bdd, rig);
 }
 
-#[then("该迟到事件 MUST NOT 出现在新代的 drain 结果中")]
+#[then("该迟到事件 不出现在新代的 drain 结果中")]
 fn t_stale_dropped(resilience_bdd: &ResilienceBdd) {
     let mut rig = take_rig(resilience_bdd);
     let drained = rig.driver.drain_idle_events();
@@ -492,7 +492,7 @@ async fn w_coalesce_burst(resilience_bdd: &ResilienceBdd) {
     put_rig(resilience_bdd, rig);
 }
 
-#[then("客户端 MUST 以一次投影批消费且消费批数等于合并后批数而非事件条数")]
+#[then("客户端 以一次投影批消费且消费批数等于合并后批数而非事件条数")]
 fn t_coalesce_single_batch(resilience_bdd: &ResilienceBdd) {
     let received = resilience_bdd.received.borrow();
     let t0 = resilience_bdd.push_t0.borrow().expect("burst pushed");

@@ -524,7 +524,7 @@ pub(crate) fn w_prompt_process(agent: &AgentState, ws: &Workspace) {
     agent.last_result.replace(Some(Ok(outcome)));
 }
 
-#[then("MUST NOT 将 prompt 模板展开并送 LLM")]
+#[then("不将 prompt 模板展开并送 LLM")]
 pub(crate) fn t_no_template_dispatch(agent: &AgentState) {
     let msg = result_ok_str(&agent.last_result);
     assert!(
@@ -600,7 +600,7 @@ pub(crate) fn w_sess_build_system_prompt(ws: &Workspace, agent: &AgentState) {
     agent.last_result.replace(Some(Ok(prompt)));
 }
 
-#[then("system prompt MUST 含 AGENTS.md 内容且 loader 有值时 MUST NOT 回退硬编码占位符")]
+#[then("system prompt 含 AGENTS.md 内容且 loader 有值时 不回退硬编码占位符")]
 pub(crate) fn t_sess_prompt_from_agents(agent: &AgentState) {
     let prompt = result_ok_str(&agent.last_result);
     assert!(

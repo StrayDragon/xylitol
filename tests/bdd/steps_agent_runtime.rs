@@ -862,9 +862,7 @@ pub(crate) fn _t_ar28_overlap() {
     assert!(safe_end <= barrier.1, "safes before barrier: {entries:?}");
 }
 
-#[then(
-    "第二个 ParallelSafe MUST NOT 与第一个 ParallelSafe 同窗并行且 MUST 在 Barrier 完成之后开始"
-)]
+#[then("第二个 ParallelSafe 不与第一个 ParallelSafe 同窗并行且 在 Barrier 完成之后开始")]
 pub(crate) fn _t_ar28_windows() {
     let entries = BATCH_TIMING.with(|t| t.borrow().clone());
     assert_eq!(entries.len(), 3, "{entries:?}");

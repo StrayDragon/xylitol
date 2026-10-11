@@ -7,7 +7,7 @@
 
   @req:r1445
   规则: 无配置零装配
-    当配置中不存在 mcp_servers 或列表为空时，System MUST NOT 创建 MCP client、MUST NOT 向默认 ToolSet 注册任何 mcp__ 前缀工具（过渡期亦可识别遗留 mcp-/mcp_/mcp:），且该路径 MUST 不引入可感知的运行时开销（zero-cost 未启用）。
+    当配置中不存在 mcp_servers 或列表为空时，System 不得创建 MCP client、不得向默认 ToolSet 注册任何 mcp__ 前缀工具（过渡期亦可识别遗留 mcp-/mcp_/mcp:），且该路径 须不引入可感知的运行时开销（zero-cost 未启用）。
 
     场景: no-mcp-config-no-tools
       假如 产品以 Print 面启动
@@ -15,7 +15,7 @@
       那么 装配不含 mcp 前缀工具
   @req:r1447
   规则: 有配置则装配为 XyTool
-    当 mcp_servers 含有效条目时，System MUST 按 transport（至少 Stdio 与 Sse/url）连接对应服务器，并将发现的工具以 XyTool 形式注册，公开名 MUST 使用 mcp__{server_id}__{name} 约定（分隔符单点可换；仅 [a-zA-Z0-9_-]，与 DeepSeek/Anthropic/OpenAI-compat tools[].name 模式对齐；禁止冒号/点号分隔；段内 MAY 保留 -/_）；execute MUST 使用保存的 server_id/tool_name，MUST NOT 反解析公开名。
+    当 mcp_servers 含有效条目时，System 须按 transport（至少 Stdio 与 Sse/url）连接对应服务器，并将发现的工具以 XyTool 形式注册，公开名 须使用 mcp__{server_id}__{name} 约定（分隔符单点可换；仅 [a-zA-Z0-9_-]，与 DeepSeek/Anthropic/OpenAI-compat tools[].name 模式对齐；禁止冒号/点号分隔；段内 MAY 保留 -/_）；execute 须使用保存的 server_id/tool_name，不得反解析公开名。
 
     场景: fixture-server-assembles-xytools
       当 以 fixture MCP 配置装配 ping 工具
@@ -52,7 +52,7 @@
       那么 MCP 工具在批调度中为 Barrier 且不可进并行窗
   @req:r1452
   规则: nonblocking-ui-parallel-startup
-    当 mcp_servers 非空时，产品启动路径 MUST NOT 在打开 TUI 应用面（或 print 进入可观测启动）之前阻塞等待全部 MCP 连接完成；CLI `--session` resume MUST 能在 MCP 未完成时投影历史。多服务器连接 MUST 并行尝试（单失败 MUST 仍可观察且 MUST NOT 拖死其余，对齐 mcp4）。连接过程 MUST 经 Driver/composition 只读缝暴露可轮询的进度或快照（至少：配置数、已连接摘要、进行中/完成态或等价；每 server 或汇总的 tools armed 态，供 `/mcp` 面板与短 cue）。TUI 在 MCP 未结算前 MUST NOT 因 connecting 拒绝用户键入、提交普通 agent prompt、bang 或 slash（含面内 session-resume、`/reload` 与 `/mcp`）（agent busy 既有闸除外）；MUST 允许滚历史。Host 为 session 物化写者或处理 SetModel 等 unary 时 MUST NOT 在该 unary 返回前等待全部 MCP 连接完成（门闸仍见 mcp8，跨 tick）。结算成功 MUST 经单一入口更新内部 MCP registry/armed 快照（保留内置、同名不重复）；**MUST NOT** 在工具表已定稿（FROZEN）后静默把新 settle 结果热扩进 provider 可见 `tools[]`（定稿/重定稿语义见 mcp8）。替换 manager 前 MUST shutdown 旧 MCP client/子进程，MUST NOT 静默堆叠无法管理的连接进程。MUST NOT 往 session 历史插入宣告 MCP ready 的假 system/user 行。无配置路径 MUST 仍满足 mcp1 zero-cost。
+    当 mcp_servers 非空时，产品启动路径 不得在打开 TUI 应用面（或 print 进入可观测启动）之前阻塞等待全部 MCP 连接完成；CLI `--session` resume 须能在 MCP 未完成时投影历史。多服务器连接 须并行尝试（单失败 须仍可观察且 不得拖死其余，对齐 mcp4）。连接过程 须经 Driver/composition 只读缝暴露可轮询的进度或快照（至少：配置数、已连接摘要、进行中/完成态或等价；每 server 或汇总的 tools armed 态，供 `/mcp` 面板与短 cue）。TUI 在 MCP 未结算前 不得因 connecting 拒绝用户键入、提交普通 agent prompt、bang 或 slash（含面内 session-resume、`/reload` 与 `/mcp`）（agent busy 既有闸除外）；须允许滚历史。Host 为 session 物化写者或处理 SetModel 等 unary 时 不得在该 unary 返回前等待全部 MCP 连接完成（门闸仍见 mcp8，跨 tick）。结算成功 须经单一入口更新内部 MCP registry/armed 快照（保留内置、同名不重复）；**不得** 在工具表已定稿（FROZEN）后静默把新 settle 结果热扩进 provider 可见 `tools[]`（定稿/重定稿语义见 mcp8）。替换 manager 前 须 shutdown 旧 MCP client/子进程，不得静默堆叠无法管理的连接进程。不得往 session 历史插入宣告 MCP ready 的假 system/user 行。无配置路径 须仍满足 mcp1 zero-cost。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
 
     场景: nonblocking-ui-parallel-startup
@@ -60,7 +60,7 @@
       那么 MCP 连接不阻塞应用面打开
   @req:r1454
   规则: loaded-resources-live-mcp
-    当 mcp_servers 非空时，只读 loaded_resources 快照 MUST 与进程内正在连接或已连接的 MCP 状态同源；MUST NOT 用一份从未发起连接的资源壳冒充完成态（仅 configured、connected 恒空且无 connecting/诊断）。无配置时 MUST 仍满足 mcp1。
+    当 mcp_servers 非空时，只读 loaded_resources 快照 须与进程内正在连接或已连接的 MCP 状态同源；不得用一份从未发起连接的资源壳冒充完成态（仅 configured、connected 恒空且无 connecting/诊断）。无配置时 须仍满足 mcp1。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
 
     场景: loaded-resources-live-mcp-source

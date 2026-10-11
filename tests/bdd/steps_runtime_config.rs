@@ -361,7 +361,7 @@ fn t_rc_delivered_surface(rc_snap: &RcSnap) {
         );
     }
 }
-#[then("MUST NOT 存在可生效的 prompts 路径列表字段")]
+#[then("不存在可生效的 prompts 路径列表字段")]
 fn t_rc_no_prompts_field(rc_snap: &RcSnap) {
     let mgr = rc_snap.mgr.borrow();
     let mgr = mgr.as_ref().expect("settings loaded");
