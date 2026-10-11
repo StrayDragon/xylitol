@@ -111,6 +111,7 @@ impl Palette {
         let muted = self.muted;
         let success = self.success;
         let warning = self.warning;
+        let error = self.error;
 
         MarkdownTheme {
             heading: Box::new(move |level, s| match level {
@@ -134,6 +135,8 @@ impl Palette {
             underline: Box::new(underline),
             highlight_code: Some(Box::new(highlight_code)),
             code_block_indent: Some("  ".into()),
+            render_fence: None,
+            mermaid_error: Box::new(move |s| fg_rgb(error, s)),
         }
     }
 

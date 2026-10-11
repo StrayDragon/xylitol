@@ -16,6 +16,7 @@
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
+use super::mermaid_ascii::try_render_mermaid;
 use crate::terminal_image::is_image_line;
 use crate::tui::Component;
 use crate::utils::{
@@ -53,6 +54,26 @@ pub struct MarkdownTheme {
     pub underline: Box<dyn Fn(&str) -> String>,
     pub highlight_code: Option<Box<dyn Fn(&str, Option<&str>) -> Vec<String>>>,
     pub code_block_indent: Option<String>,
+    /// Optional mermaid (or other fence) override. `Some(rows)` replaces the
+    /// builtin drawer; `None` falls through to `mermaid-text` then code.
+    pub render_fence: Option<Box<dyn Fn(&str, Option<&str>, usize) -> Option<Vec<String>>>>,
+    /// Paints [`MERMAID_UNRENDERABLE`] when a closed mermaid fence could not be drawn.
+    pub mermaid_error: Box<dyn Fn(&str) -> String>,
+}
+
+/// Visible hint above mermaid source when drawing failed.
+pub const MERMAID_UNRENDERABLE: &str = "无法渲染 mermaid";
+
+/// When to turn a mermaid fence into a box-drawing block (c2890).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MermaidFenceMode {
+    /// Never draw; always a markdown code block.
+    Off,
+    /// Draw only after the fence closes. Default — avoids per-token art jumps.
+    #[default]
+    Final,
+    /// Try to draw even if the fence is still open.
+    Streaming,
 }
 
 // ── Markdown component ──────────────────────────────────────────────────────
@@ -67,6 +88,9 @@ pub struct Markdown {
     /// full padded cell (historical look). Default **false**: bold only — padded
     /// underlines otherwise join into a continuous bar under the header row.
     table_header_underline: bool,
+    mermaid_mode: MermaidFenceMode,
+    /// Last `render` content width (padding already subtracted).
+    content_width: usize,
 
     cached_text: Option<String>,
     cached_width: Option<usize>,
@@ -88,6 +112,8 @@ impl Markdown {
             theme,
             default_text_style,
             table_header_underline: false,
+            mermaid_mode: MermaidFenceMode::Final,
+            content_width: 0,
             cached_text: None,
             cached_width: None,
             cached_lines: None,
@@ -103,6 +129,17 @@ impl Markdown {
 
     pub fn table_header_underline(&self) -> bool {
         self.table_header_underline
+    }
+
+    /// Override mermaid fence mode (default [`MermaidFenceMode::Final`]).
+    pub fn with_mermaid_mode(mut self, mode: MermaidFenceMode) -> Self {
+        self.mermaid_mode = mode;
+        self.invalidate();
+        self
+    }
+
+    pub fn mermaid_mode(&self) -> MermaidFenceMode {
+        self.mermaid_mode
     }
 
     pub fn set_text(&mut self, text: String) {
@@ -212,6 +249,7 @@ impl Component for Markdown {
         }
 
         let content_width = width.saturating_sub(self.padding_x * 2).max(1);
+        self.content_width = content_width;
         if self.text.trim().is_empty() {
             self.cache_result(width, vec![]);
             return vec![];
@@ -273,9 +311,8 @@ impl Component for Markdown {
                     idx += 1;
                     let lang = fenced_lang(kind);
                     let code = collect_text_until(&events, &mut idx);
-                    for line in render_code_block_lines(self, &code, lang) {
-                        rendered.push(MdLine::raw(line));
-                    }
+                    let paint = render_code_block_lines(self, &code, lang);
+                    rendered.extend(paint.lines);
                     if !next_is_space(&events, idx) {
                         rendered.push(MdLine::raw(String::new()));
                     }
@@ -418,7 +455,8 @@ impl Component for Markdown {
 /// One Markdown output row before margin/pad.
 ///
 /// `prewrapped` lines already respect `content_width` (list hanging indent,
-/// table rows, quote wraps) and must not go through a second wrap pass.
+/// table rows, quote wraps, mermaid flowcharts) and must not go through a
+/// second wrap pass.
 struct MdLine {
     text: String,
     prewrapped: bool,
@@ -645,9 +683,119 @@ fn fenced_lang<'a>(kind: &'a pulldown_cmark::CodeBlockKind<'_>) -> Option<&'a st
     }
 }
 
+fn is_mermaid_lang(lang: Option<&str>) -> bool {
+    lang.and_then(|s| s.split_whitespace().next())
+        .is_some_and(|w| w.eq_ignore_ascii_case("mermaid"))
+}
+
+fn fence_info_after_marks(line: &str) -> &str {
+    let indent = line
+        .bytes()
+        .take_while(|&b| b == b' ')
+        .count()
+        .min(line.len());
+    let rest = &line[indent..];
+    let ch = rest.as_bytes().first().copied().unwrap_or(0);
+    let n = rest.bytes().take_while(|&b| b == ch).count();
+    rest.get(n..).unwrap_or("").trim()
+}
+
+/// Body of a mermaid fence still open at EOF, or `None` if every mermaid fence closed.
+fn open_mermaid_body(src: &str) -> Option<String> {
+    let mut open: Option<(char, usize)> = None;
+    let mut mermaid = false;
+    let mut body = String::new();
+    for line in src.lines() {
+        if let Some((ch, n, closer)) = classify_fence_line(line, open) {
+            if closer {
+                open = None;
+                mermaid = false;
+                body.clear();
+                continue;
+            }
+            mermaid = fence_info_after_marks(line)
+                .split_whitespace()
+                .next()
+                .is_some_and(|w| w.eq_ignore_ascii_case("mermaid"));
+            open = Some((ch, n));
+            body.clear();
+            continue;
+        }
+        if mermaid {
+            if !body.is_empty() {
+                body.push('\n');
+            }
+            body.push_str(line);
+        }
+    }
+    mermaid.then_some(body)
+}
+
+fn should_draw_mermaid(md: &Markdown, lang: Option<&str>, code: &str) -> bool {
+    if !is_mermaid_lang(lang) || md.mermaid_mode == MermaidFenceMode::Off {
+        return false;
+    }
+    if md.mermaid_mode == MermaidFenceMode::Final {
+        let normalized = trim_partial_closing_fence(&md.text.replace('\t', "   "));
+        if let Some(open) = open_mermaid_body(&normalized)
+            && open.trim_end() == code.trim_end()
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// Rows of a fenced block after mermaid/highlight (no ``` chrome).
+struct FencePaint {
+    lines: Vec<MdLine>,
+}
+
 /// Highlighted (or themed) code lines without fence chrome (c530).
-fn render_code_block_lines(md: &Markdown, code: &str, lang: Option<&str>) -> Vec<String> {
+/// Drawable mermaid becomes a terminal flowchart; otherwise ordinary code (c2890).
+fn render_code_block_lines(md: &Markdown, code: &str, lang: Option<&str>) -> FencePaint {
     let indent = md.theme.code_block_indent.as_deref().unwrap_or("  ");
+    let indent_cols = visible_width(indent);
+    let avail = md.content_width.saturating_sub(indent_cols).max(1);
+    if should_draw_mermaid(md, lang, code) {
+        if let Some(ref hook) = md.theme.render_fence
+            && let Some(rows) = hook(code, lang, avail)
+        {
+            return FencePaint {
+                lines: rows
+                    .into_iter()
+                    .map(|row| {
+                        MdLine::prewrapped(format!("{indent}{}", (md.theme.code_block)(&row)))
+                    })
+                    .collect(),
+            };
+        }
+        if let Some(rows) = try_render_mermaid(code, avail) {
+            return FencePaint {
+                lines: rows
+                    .into_iter()
+                    .map(|row| {
+                        MdLine::prewrapped(format!("{indent}{}", (md.theme.code_block)(&row)))
+                    })
+                    .collect(),
+            };
+        }
+        return mermaid_failed_paint(md, code, lang, indent);
+    }
+    FencePaint {
+        lines: mermaid_source_lines(md, code, lang, indent)
+            .into_iter()
+            .map(MdLine::raw)
+            .collect(),
+    }
+}
+
+fn mermaid_source_lines(
+    md: &Markdown,
+    code: &str,
+    lang: Option<&str>,
+    indent: &str,
+) -> Vec<String> {
     if let Some(ref hc) = md.theme.highlight_code {
         hc(code, lang)
             .into_iter()
@@ -658,6 +806,32 @@ fn render_code_block_lines(md: &Markdown, code: &str, lang: Option<&str>) -> Vec
             .map(|cl| format!("{indent}{}", (md.theme.code_block)(cl)))
             .collect()
     }
+}
+
+fn mermaid_failed_paint(
+    md: &Markdown,
+    code: &str,
+    _lang: Option<&str>,
+    indent: &str,
+) -> FencePaint {
+    let hint = MdLine::prewrapped(format!(
+        "{indent}{}",
+        (md.theme.mermaid_error)(MERMAID_UNRENDERABLE)
+    ));
+    // Nested one indent under the hint so it reads as a code block, not a
+    // second caption. `theme.code` (not mermaid syntect): mermaid-lang
+    // highlight collapses to body/muted. prewrapped keeps source newlines.
+    let body_indent = format!("{indent}{indent}");
+    let mut lines = vec![hint];
+    let body = if code.is_empty() {
+        vec![format!("{body_indent}{}", (md.theme.code)(""))]
+    } else {
+        code.lines()
+            .map(|cl| format!("{body_indent}{}", (md.theme.code)(cl)))
+            .collect()
+    };
+    lines.extend(body.into_iter().map(MdLine::prewrapped));
+    FencePaint { lines }
 }
 
 fn collect_text_until(events: &[Event], idx: &mut usize) -> String {
@@ -846,7 +1020,10 @@ fn render_list(
                             let code = collect_text_until(events, idx);
                             push_list_block_lines(
                                 &mut lines,
-                                render_code_block_lines(md, &code, lang),
+                                render_code_block_lines(md, &code, lang)
+                                    .lines
+                                    .into_iter()
+                                    .map(|l| l.text),
                                 &first_prefix,
                                 &continuation,
                                 &mut rendered_any,
@@ -1032,7 +1209,12 @@ fn render_events_block(
                 let lang = fenced_lang(kind);
                 let code = collect_text_until(events, idx);
                 // Keep highlight colors — do not wrap with quote_fn (muted/italic).
-                lines.extend(render_code_block_lines(md, &code, lang));
+                lines.extend(
+                    render_code_block_lines(md, &code, lang)
+                        .lines
+                        .into_iter()
+                        .map(|l| l.text),
+                );
             }
             Event::Start(Tag::Table(_)) => {
                 *idx += 1;
@@ -1291,6 +1473,8 @@ mod tests {
             underline: id.clone(),
             highlight_code: None,
             code_block_indent: None,
+            render_fence: None,
+            mermaid_error: id.clone(),
         }
     }
 
@@ -1334,6 +1518,198 @@ mod tests {
         assert!(
             !text.contains("```"),
             "code block must not emit fence lines:\n{text}"
+        );
+    }
+
+    fn has_box_drawing(text: &str) -> bool {
+        text.chars().any(|c| {
+            matches!(
+                c,
+                '─' | '│'
+                    | '┌'
+                    | '┐'
+                    | '└'
+                    | '┘'
+                    | '╭'
+                    | '╮'
+                    | '╰'
+                    | '╯'
+                    | '┼'
+                    | '├'
+                    | '┤'
+                    | '┬'
+                    | '┴'
+                    | '▶'
+                    | '▼'
+                    | '◇'
+            )
+        })
+    }
+
+    #[test]
+    fn mermaid_closed_flowchart_draws_boxes() {
+        let src = "```mermaid\nflowchart TD\nA --> B\n```";
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
+        let text = visible_join(&mut md, 80);
+        assert!(has_box_drawing(&text), "expected mermaid art:\n{text}");
+        assert!(!text.contains("```"), "must not emit fence chrome:\n{text}");
+        assert!(
+            !text.contains("flowchart TD"),
+            "success must not keep mermaid source:\n{text}"
+        );
+        assert!(
+            !text.contains(MERMAID_UNRENDERABLE),
+            "success is not a failed draw:\n{text}"
+        );
+    }
+
+    #[test]
+    fn mermaid_garbage_stays_source() {
+        let src = "```mermaid\nthis is not a diagram\n```";
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
+        let text = visible_join(&mut md, 80);
+        let hint_at = text
+            .find(MERMAID_UNRENDERABLE)
+            .expect("failed draw must hint");
+        let body_at = text
+            .find("this is not a diagram")
+            .expect("fallback must keep inner source");
+        assert!(hint_at < body_at, "hint then inner source:\n{text}");
+        assert!(!has_box_drawing(&text), "must not draw garbage:\n{text}");
+        assert!(!text.contains("```"), "{text}");
+        assert!(!text.contains("mermaid:"), "must not sourceBox:\n{text}");
+    }
+
+    #[test]
+    fn mermaid_garbage_uses_code_style() {
+        let mut theme = identity_theme();
+        theme.code = Box::new(|s| format!("«{s}»"));
+        let src = "```mermaid\nthis is not a diagram\n```";
+        let mut md = Markdown::new(src.into(), 0, 0, theme, None);
+        let text = visible_join(&mut md, 80);
+        assert!(
+            text.contains("«this is not a diagram»"),
+            "fail body must use code style:\n{text}"
+        );
+        assert!(text.contains(MERMAID_UNRENDERABLE), "{text}");
+        let hint_pad = text
+            .lines()
+            .find(|l| l.contains(MERMAID_UNRENDERABLE))
+            .map(|l| l.chars().take_while(|c| *c == ' ').count())
+            .unwrap_or(0);
+        let body_pad = text
+            .lines()
+            .find(|l| l.contains("«this is not a diagram»"))
+            .map(|l| l.chars().take_while(|c| *c == ' ').count())
+            .unwrap_or(0);
+        assert!(
+            body_pad > hint_pad,
+            "fail source must indent more than the hint:\n{text}"
+        );
+    }
+
+    #[test]
+    fn mermaid_final_open_fence_stays_source() {
+        let src = "```mermaid\nflowchart TD\nA --> B";
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
+        let text = visible_join(&mut md, 80);
+        assert!(
+            text.contains("flowchart TD") && text.contains("A --> B"),
+            "open fence must stay code:\n{text}"
+        );
+        assert!(
+            !has_box_drawing(&text),
+            "final must not draw open fence:\n{text}"
+        );
+        assert!(
+            !text.contains(MERMAID_UNRENDERABLE),
+            "open fence is not a failed draw:\n{text}"
+        );
+    }
+
+    #[test]
+    fn mermaid_off_never_draws() {
+        let src = "```mermaid\nflowchart TD\nA --> B\n```";
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None)
+            .with_mermaid_mode(MermaidFenceMode::Off);
+        let text = visible_join(&mut md, 80);
+        assert!(text.contains("flowchart TD"), "{text}");
+        assert!(!has_box_drawing(&text), "off must not draw:\n{text}");
+        assert!(
+            !text.contains(MERMAID_UNRENDERABLE),
+            "off is not a failed draw:\n{text}"
+        );
+    }
+
+    #[test]
+    fn mermaid_streaming_garbage_open_falls_back() {
+        let src = "```mermaid\nthis is not a diagram";
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None)
+            .with_mermaid_mode(MermaidFenceMode::Streaming);
+        let text = visible_join(&mut md, 80);
+        let hint_at = text
+            .find(MERMAID_UNRENDERABLE)
+            .expect("streaming fail must hint");
+        let body_at = text
+            .find("this is not a diagram")
+            .expect("streaming fail must keep inner source");
+        assert!(hint_at < body_at, "hint then inner source:\n{text}");
+        assert!(!has_box_drawing(&text), "{text}");
+        assert!(!text.contains("```"), "{text}");
+    }
+
+    #[test]
+    fn mermaid_too_wide_falls_back_to_source() {
+        let src = "```mermaid\nflowchart LR\nStart[Start Label] --> End[End Label]\n```";
+        let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
+        let text = visible_join(&mut md, 12);
+        assert!(
+            text.contains("flowchart") && text.contains("Start"),
+            "too wide must stay inner source:\n{text}"
+        );
+        assert!(
+            !text.contains("```"),
+            "too wide must not emit fence:\n{text}"
+        );
+        assert!(
+            text.contains(MERMAID_UNRENDERABLE),
+            "too wide is a failed draw:\n{text}"
+        );
+        assert!(
+            !has_box_drawing(&text),
+            "too wide must not emit art:\n{text}"
+        );
+        for line in text.lines() {
+            assert!(
+                visible_width(line) <= 12 || !has_box_drawing(line),
+                "must not wrap box-drawing:\n{line}"
+            );
+        }
+    }
+
+    #[test]
+    fn mermaid_render_fence_hook_overrides() {
+        let mut theme = identity_theme();
+        theme.render_fence = Some(Box::new(|_code, _lang, _w| Some(vec!["HOOK-ART".into()])));
+        let src = "```mermaid\nflowchart TD\nA --> B\n```";
+        let mut md = Markdown::new(src.into(), 0, 0, theme, None);
+        let text = visible_join(&mut md, 80);
+        assert!(text.contains("HOOK-ART"), "{text}");
+    }
+
+    #[test]
+    fn mermaid_flowchart_is_not_word_wrapped() {
+        // A diagram row with spaces would split if Markdown wrapped it again.
+        let mut theme = identity_theme();
+        theme.render_fence = Some(Box::new(|_code, _lang, _w| {
+            Some(vec!["NODE-A  ---->  NODE-B".into()])
+        }));
+        let src = "```mermaid\nflowchart LR\nA --> B\n```";
+        let mut md = Markdown::new(src.into(), 0, 0, theme, None);
+        let text = visible_join(&mut md, 12);
+        assert!(
+            text.lines().any(|l| l.contains("NODE-A  ---->  NODE-B")),
+            "flowchart rows must stay intact, not wrap at spaces:\n{text}"
         );
     }
 

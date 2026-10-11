@@ -52,7 +52,10 @@ pub use components::expandable_output::{
 };
 pub use components::input::Input;
 pub use components::loader::{Loader, LoaderIndicatorOptions};
-pub use components::markdown::{DefaultTextStyle, Markdown, MarkdownTheme};
+pub use components::markdown::{
+    DefaultTextStyle, MERMAID_UNRENDERABLE, Markdown, MarkdownTheme, MermaidFenceMode,
+};
+pub use components::mermaid_ascii::try_render_mermaid;
 pub use components::panel::Panel;
 pub use components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,

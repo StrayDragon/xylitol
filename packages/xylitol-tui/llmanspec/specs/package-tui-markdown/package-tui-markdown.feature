@@ -1,7 +1,8 @@
 # language: zh-CN
 # capability: package-tui-markdown
 # purpose: token 友好的 Markdown 终端渲染：SGR 层级、明文链接、无围栏代码块、空格对齐表。
-# scope: src/
+# scope: src/components/markdown.rs, src/components/mermaid_ascii.rs, src/theme/palette.rs, src/lib.rs
+# reviewed-through: c2890
 
 功能: package-tui-markdown
 
@@ -38,6 +39,7 @@
     语法高亮 MUST 仅经 MarkdownTheme.highlight_code 可选回调注入；xylitol-tui 默认依赖 MUST NOT 捆绑 syntect。fg 着色在内联阶段完成；若设置 bg_color 则 MUST 在行宽 padding 后经 apply_background_to_line 铺满。
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）
+    # re-review(c2890): 复审结论——既有标题/链接/围栏铬/高亮回调规则不变；本票只新增闭合 mermaid 盒线与失败回源（r1947–r1949）。（2026-10-11）
     # verified-by: packages/xylitol-tui/src/components/markdown.rs
   @req:r1936
   规则: streaming-partial-closing-fence
@@ -46,3 +48,35 @@
     场景: streaming-partial-fence-height-stable
       当 渲染以半截闭合围栏结尾的围栏代码再补全该闭合围栏
       那么 两次代码块可见行数相同且无围栏铬
+  @req:r1947
+  规则: mermaid-fence-ascii-or-source
+    Markdown 渲染围栏语言首词为 mermaid（大小写不敏感）的已闭合代码块时：能画成盒线且自然列宽不超过可用宽，MUST 输出 Unicode 盒线行，且 MUST NOT 输出围栏行、语言标签条或该围栏源码；画不成时（画图返回错误）MUST 先输出错误色提示「无法渲染 mermaid」，再按普通代码块呈现该代码块内源码（即使非法也原样；源码比提示多一档缩进，行内代码色，保持源码换行不按散文折）。失败呈现 MUST NOT 套标题装饰框，MUST NOT 输出围栏行。
+
+    场景: mermaid-closed-flowchart-draws-boxes
+      当 渲染已闭合的最小 flowchart TD mermaid 围栏
+      那么 可见行含盒线且无围栏铬
+
+    场景: mermaid-unknown-type-stays-source
+      当 渲染已闭合但画不成盒线的 mermaid 围栏
+      那么 可见行是代码块内源码并带无法渲染提示且无盒线图
+  @req:r1948
+  规则: mermaid-mode-final-open-fence
+    Markdown mermaid 围栏默认模式为 final：当源在文件末尾仍有未闭合的 mermaid 围栏时，MUST 按普通代码块呈现，MUST NOT 输出盒线图，MUST NOT 输出无法渲染提示。模式为 off 时任何 mermaid 围栏 MUST 按普通代码块呈现，MUST NOT 输出无法渲染提示。模式为 streaming 时未闭合围栏 MAY 尝试画图，失败仍回源并带无法渲染提示。
+
+    场景: mermaid-final-open-fence-stays-source
+      当 以默认 final 渲染末尾未闭合的 mermaid 围栏
+      那么 可见行是源码且无盒线图
+
+    场景: mermaid-off-never-draws
+      当 以 off 模式渲染已闭合的最小 flowchart TD mermaid 围栏
+      那么 可见行是源码且无盒线图
+
+    场景: mermaid-streaming-open-garbage-falls-back
+      当 以 streaming 模式渲染末尾未闭合且画不成盒线的 mermaid 围栏
+      那么 可见行是代码块内源码并带无法渲染提示且无盒线图
+  @req:r1949
+  规则: mermaid-too-wide-fallback
+    已闭合 mermaid 围栏若盒线自然列宽超过本次渲染可用宽（已扣除该代码块既有缩进），MUST 整块回退为代码块内源码并带无法渲染提示，MUST NOT 把盒线折行，MUST NOT 输出围栏行。
+    场景: mermaid-too-wide-falls-back
+      当 在窄于盒线自然宽的宽度渲染已闭合 mermaid 围栏
+      那么 可见行是代码块内源码并带无法渲染提示且盒线未折行

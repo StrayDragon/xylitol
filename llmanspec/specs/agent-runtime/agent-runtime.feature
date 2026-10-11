@@ -321,3 +321,4 @@
 # re-review(c2854): 复审结论——本 capability 管辖行为不变；分支改动为 Host 产品入口收口与 BDD 词表，未改本规则可观察语义。（2026-10-09）
 # re-review(c2858): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui 指针命中管线与 package-tui-pointer BDD 接线，未改本规则可观察语义。（2026-10-10）
 # re-review(c2865): 复审结论——本 capability 管辖行为不变；分支改动为流式半截闭合围栏修剪（引擎 Markdown + 产品 streaming_assistant 高度），未改本规则可观察语义。（2026-10-10）
+# re-review(c2890): 复审结论——本 capability 管辖行为不变；分支改动为 xylitol-tui mermaid 围栏盒线与 package-tui-markdown BDD 接线，未改本规则可观察语义。（2026-10-11）

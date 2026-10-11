@@ -860,6 +860,17 @@ function accept(prompt: string): boolean {
 { \"ok\": true, \"note\": \"no fence chrome\", \"n\": 3 }
 ```
 
+```mermaid
+flowchart TD
+  Parse --> Layout --> Render
+```
+
+画不成时回源（非法 mermaid，不是库自己打的说明）：
+
+```mermaid
+this is not a diagram
+```
+
 行内后再跟一段普通段落，确认块后恢复 body 色。
 
 ---

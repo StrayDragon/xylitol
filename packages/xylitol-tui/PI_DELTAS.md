@@ -44,6 +44,7 @@
 | D19 | `requestRender(true)` / suspend / resize | force 用 `previousWidth=-1` → **整屏 clear**；resize 回调 **soft** `requestRender()` → `width/heightChanged` → `fullRender(true)`；外部编辑器 resume 亦 `force` clear | **对齐**：force 用 `FORCE_SIZE_SENTINEL`（`usize::MAX` ≡ pi `-1`）→ **clear**；host resize / mount **soft** `request_render(false)`；`with_terminal_suspended` 仍保留 `previous_lines`、不立刻 paint（resume 后由调用方 soft/force） | 是 |
 | D20 | paste marker 原子分段 | `segmentWithMarkers`：光标/删除把 `[paste #N …]` 当单段 | **未移植**；折叠/展开与 `get_expanded_text` 已对齐；原子分段另开 change | 是 |
 | D21 | 双交互模式 | `TuiMainScreen` / `TuiAltScreen` 两套实现 | 单 `TUI` + `InteractionMode`；ApplicationOwned 经 alt-buffer + `ScrollView`/`SelectionController`；**产品默认 ApplicationOwned**（ath30 / c2071）；库仍暴露 Inline | 是 |
+| D22 | mermaid 围栏 | npm `grok-mermaid`（coding-agent transformer；默认 streaming） | 包 Markdown 默认 **final**：能画成终端流程图则画（`mermaid-text`）；画图报错或太窄则红色「无法渲染 mermaid」+ 代码块内源码（行内代码色，源码比提示多一档缩进）；成功不跟源；无 Kitty Image / 无标题框 | 是 |
 
 ---
 

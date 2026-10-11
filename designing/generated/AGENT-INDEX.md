@@ -19,7 +19,7 @@
 | tui | full-shell | 少装饰壳：可选 loaded 卡片 + scrollback + 可选队列 + toast + status + editor + footer。 | busy, short | `/tui/full-shell` |
 | tui | hover-highlight | 指针悬停时，用引擎 dim 标出「哪里能点」，不改内容、不触发动作、不写会话。 | activity-header, collapsed-header, expanded-rail, hint-band | `/tui/hover-highlight` |
 | tui | loaded-resources | scrollback 上方 Codex 风边框卡片：`>_ xylitol` + directory。有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行。 | card | `/tui/loaded-resources` |
-| tui | markdown | 助手正文：终端里直观、安静；框选粘贴省 token。包 Markdown 已按本节收敛。 | sample | `/tui/markdown` |
+| tui | markdown | 助手正文：终端里直观、安静；框选粘贴省 token。包 Markdown 已按本节收敛。 | mermaid-drawn, mermaid-fallback, mermaid-too-wide, sample | `/tui/markdown` |
 | tui | mcp-cue | 短 cue 固定 `mcp pending (see /mcp)`。 | cue-short-busy, panel-connecting, panel-mixed | `/tui/mcp-cue` |
 | tui | models | `/model` 同时选模型与 xylitol thinking 档。↑↓ 选模型；←→ 或槽内 Shift+Tab cycle 档。 | filter, narrow, no-thinking, wide | `/tui/models` |
 | tui | palette | 语义色短表：on-surface / muted / accent / user / assistant / tool / error / warning / success / diff-* / surface / skill-ref。 | swatches | `/tui/palette` |
