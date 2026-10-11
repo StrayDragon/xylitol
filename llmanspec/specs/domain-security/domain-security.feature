@@ -7,7 +7,7 @@
 
   @req:r35
   规则: Security 包装器
-    SecurityToolWrapper MUST 包装 XyTool（非 adk_core::Tool），并在工具执行前强制审批策略。
+    SecurityToolWrapper 须包装 XyTool（非 adk_core::Tool），并在工具执行前强制审批策略。
 
     场景: xy-tool-approval
       假如 需审批的工具被 SecurityToolWrapper 包装
@@ -15,7 +15,7 @@
       那么 审批检查在 XyTool::execute 前运行且拒绝时阻止
   @req:r44
   规则: 仅收紧
-    System MUST 仅允许三层配置覆盖收紧规则，不得放宽。
+    System 须仅允许三层配置覆盖收紧规则，不得放宽。
 
     场景: forbidden-pattern-blocks-override
       假如 user 配置试图允许禁止 pattern
@@ -23,7 +23,7 @@
       那么 禁止 pattern 仍被阻止
   @req:r50
   规则: 统一 path 字段检查
-    SecurityEngine MUST 在评估文件系统工具访问时同时检查 'file_path' 与 'path' 参数字段。
+    SecurityEngine 须在评估文件系统工具访问时同时检查 'file_path' 与 'path' 参数字段。
 
     场景: path-field-bypass
       假如 安全启用且 forbidden_patterns=['/etc/**']
@@ -31,7 +31,7 @@
       那么 SecurityEngine 返回 Blocked
   @req:r53
   规则: MCP 工具安全策略
-    SecurityEngine MUST 对 MCP 工具（名称前缀 'mcp__'（及过渡期遗留 'mcp-' / 'mcp_' / 'mcp:'））应用专用策略分支，含显式 server/tool 允许列表与默认拒绝语义。
+    SecurityEngine 须对 MCP 工具（名称前缀 'mcp__'（及过渡期遗留 'mcp-' / 'mcp_' / 'mcp:'））应用专用策略分支，含显式 server/tool 允许列表与默认拒绝语义。
 
     场景: mcp-default-deny
       假如 安全启用且无 MCP 允许列表
@@ -39,7 +39,7 @@
       那么 SecurityEngine 返回 Blocked 并附理由
   @req:r56
   规则: 安全默认启用
-    生产构建中 SecurityConfig.enabled MUST 默认为 true。
+    生产构建中 SecurityConfig.enabled 须默认为 true。
 
     场景: default-enabled
       假如 全新安装无配置覆盖
@@ -47,7 +47,7 @@
       那么 enabled 字段为 true
   @req:r59
   规则: hook 超时杀进程
-    Hook 执行器 MUST 在超时时杀死子进程，并 MUST 支持可配置 fail-open 或 fail-closed 行为。
+    Hook 执行器 须在超时时杀死子进程，并 须支持可配置 fail-open 或 fail-closed 行为。
 
     场景: hook-kill-on-timeout
       假如 hook 配置 timeout=100ms
@@ -55,7 +55,7 @@
       那么 子进程被杀且动作为 Block（默认 fail-closed）
   @req:r61
   规则: 网络域强制
-    SecurityEngine MUST 对 bash/curl 与 MCP SSE URL 强制 network.allowed_domains 与 network.blocked_domains。该行为 MUST 有可执行 BDD 场景（live domain-security.feature / network-domain-block）。
+    SecurityEngine 须对 bash/curl 与 MCP SSE URL 强制 network.allowed_domains 与 network.blocked_domains。该行为 须有可执行 BDD 场景（live domain-security.feature / network-domain-block）。
 
     场景: network-domain-block
       假如 沙箱引擎已初始化
@@ -63,7 +63,7 @@
       那么 结果应为拒绝且原因含 denied_domains
   @req:r64
   规则: Permission 配置结构
-    System MUST 定义 PermissionConfig 结构，含 enabled、backend（PermissionBackend，当前仅 Glob）、filesystem（read_allowed、write_allowed、write_denied）、network（allowed_domains、denied_domains）、process（allowed_paths），可从 config.yaml security.permission 键加载。
+    System 须定义 PermissionConfig 结构，含 enabled、backend（PermissionBackend，当前仅 Glob）、filesystem（read_allowed、write_allowed、write_denied）、network（allowed_domains、denied_domains）、process（allowed_paths），可从 config.yaml security.permission 键加载。
 
     场景: permission-config
       假如 config.yaml 含 security.permission.filesystem.write_denied=['.env']
@@ -71,7 +71,7 @@
       那么 write_denied 字段含 .env 且配置键来自 security.permission 非 security.sandbox
   @req:r65
   规则: 文件系统权限检查
-    文件系统工具（read、write、edit）SHALL 在执行前检查 XyPermission。路径匹配 write_denied 或（read_allowed 非空时）不匹配 read_allowed 时，工具 SHALL 返回 access-denied 错误。
+    文件系统工具（read、write、edit）须在执行前检查 XyPermission。路径匹配 write_denied 或（read_allowed 非空时）不匹配 read_allowed 时，工具 须返回 access-denied 错误。
 
     场景: deny-write
       假如 沙箱引擎已初始化
@@ -84,7 +84,7 @@
       那么 结果应为允许
   @req:r66
   规则: 网络权限检查
-    Bash 执行 SHALL 对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时）不在允许列表时，执行 SHALL 被阻止。
+    Bash 执行 须对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时）不在允许列表时，执行 须被阻止。
     # verified-by: llmanspec/specs/domain-security/domain-security.feature
 
     场景: bash-url-network-gate
@@ -92,7 +92,7 @@
       那么 域名按 allow/deny 列表裁决并默认拒绝
   @req:r1423
   规则: Permission trait
-    System MUST 提供 protocol::XyPermission trait（自 XySandboxEngine 重命名），含 check_read(path)、check_write(path)、check_network(domain)、check_process(path)，返回 XyPermissionVerdict（自 XySandboxVerdict 重命名）。该 trait 为 ReAct 循环在工具分发前消费的进程内建议性 permission 门控，非安全边界。具体后端（禁用时 AllowAllPermission、配置模式匹配 GlobPolicy）位于 infra/。
+    System 须提供 protocol::XyPermission trait（自 XySandboxEngine 重命名），含 check_read(path)、check_write(path)、check_network(domain)、check_process(path)，返回 XyPermissionVerdict（自 XySandboxVerdict 重命名）。该 trait 为 ReAct 循环在工具分发前消费的进程内建议性 permission 门控，非安全边界。具体后端（禁用时 AllowAllPermission、配置模式匹配 GlobPolicy）位于 infra/。
 
     场景: permission-trait
       假如 permission 后端实例已构造
@@ -100,7 +100,7 @@
       那么 返回 XyPermissionVerdict 且默认后端为 AllowAllPermission
   @req:r1424
   规则: Permission 默认拒绝未列出
-    permission.filesystem.read_allowed 非空时，任何不匹配允许 pattern 的路径 SHALL 视为拒绝（默认拒绝）。permission.network.allowed_domains 非空时，任何不匹配允许 pattern 的域 SHALL 视为拒绝。
+    permission.filesystem.read_allowed 非空时，任何不匹配允许 pattern 的路径 须视为拒绝（默认拒绝）。permission.network.allowed_domains 非空时，任何不匹配允许 pattern 的域 须视为拒绝。
 
     场景: default-deny-read
       假如 permission.filesystem.read_allowed=['/home/user/project']
@@ -108,7 +108,7 @@
       那么 permission engine 返回 access-denied
   @req:r71
   规则: 信任单一事实来源
-    项目 trust 状态 MUST 在 infra 层 trust 模块有单一真源；agent 层 MUST NOT 含自有 trust store 或 trust resolver。
+    项目 trust 状态 须在 infra 层 trust 模块有单一真源；agent 层 不得含自有 trust store 或 trust resolver。
     # verified-by: src/AGENTS.md
 
     场景: trust-single-source-of-truth
@@ -116,7 +116,7 @@
       那么 项目 trust 状态在 infra 单点维护
   @req:r72
   规则: 信任持久化格式
-    Trust 决策 MUST 持久化为 JSON 文件，映射规范绝对目录路径到布尔 trust 决策（true=trusted、false=untrusted）或 null（已清除）。store MUST 支持父目录继承：祖先目录上的 trust 决策适用于全部后代项目目录，除非被覆盖。
+    Trust 决策 须持久化为 JSON 文件，映射规范绝对目录路径到布尔 trust 决策（true=trusted、false=untrusted）或 null（已清除）。store 须支持父目录继承：祖先目录上的 trust 决策适用于全部后代项目目录，除非被覆盖。
 
     场景: parent-inheritance
       假如 trust store 将 /home/user 设为 true
@@ -129,7 +129,7 @@
       那么 返回 false（最近祖先胜出）
   @req:r73
   规则: 信任解析管线
-    项目 trust 解析 MUST 遵循固定优先级：(1) 显式 CLI 覆盖（--trust / --no-trust）；(2) 无 trust 所需输入时自动 trust；(3) 带父继承的持久 store 查找；(4) 配置默认策略（always / never / ask）；(5) 仅 has_ui 为 true 时 app UI 提示；(6) 回退 deny。解析 MUST 同时返回决策与原因。
+    项目 trust 解析 须遵循固定优先级：(1) 显式 CLI 覆盖（--trust / --no-trust）；(2) 无 trust 所需输入时自动 trust；(3) 带父继承的持久 store 查找；(4) 配置默认策略（always / never / ask）；(5) 仅 has_ui 为 true 时 app UI 提示；(6) 回退 deny。解析 须同时返回决策与原因。
 
     场景: override-wins
       假如 trust store 将项目标为 untrusted
@@ -147,7 +147,7 @@
       那么 结果非 trusted 且原因为 FallbackNoUi
   @req:r74
   规则: 信任 UI 回调注入
-    trust resolver MUST 接受 app 步骤的 on_prompt 回调，MUST NOT 直接做终端 I/O。app/ 层负责提供提示回调；agent/ 与 infra/ 层对 trust 决策 MUST 保持 UI 无关。
+    trust resolver 须接受 app 步骤的 on_prompt 回调，不得直接做终端 I/O。app/ 层负责提供提示回调；agent/ 与 infra/ 层对 trust 决策 须保持 UI 无关。
 
     场景: callback-invoked
       假如 解析在 has_ui=true 时到达 Ask 步骤
@@ -155,7 +155,7 @@
       那么 决策为 trusted 且原因为 UserPrompt，选择持久化到 store
   @req:r75
   规则: 信任状态接线
-    agent 启动时，项目 CWD 的已解析 trust 决策 MUST 应用于门控项目范围 settings 与资源。项目未 trusted 时 SettingsManager MUST 拒绝加载项目范围 settings。SettingsManager 上独立 project_trusted bool 切换 MUST 由已解析 trust 决策替换（per t1 单一真源）。
+    agent 启动时，项目 CWD 的已解析 trust 决策 须应用于门控项目范围 settings 与资源。项目未 trusted 时 SettingsManager 须拒绝加载项目范围 settings。SettingsManager 上独立 project_trusted bool 切换 须由已解析 trust 决策替换（per t1 单一真源）。
 
     场景: untrusted-blocks-project-settings
       假如 项目有 .xylitol/settings.json 且项目解析为未 trusted
@@ -163,7 +163,7 @@
       那么 项目范围 settings 不合并到有效 settings
   @req:r76
   规则: 信任命令接线
-    信任相关产品命令（如 /trust）MUST 经 Driver/composition（或等价应用缝）调用 TrustManager/端口持久化决策；MUST NOT 从应用面 reach-in infra::trust 具体类型。会话中运行信任命令 MUST 为当前项目 CWD 持久化决策；写盘成功后本会话 MUST NOT 自动重载项目 skills/MCP/context（用户显式 /reload 或重启除外）。
+    信任相关产品命令（如 /trust）须经 Driver/composition（或等价应用缝）调用 TrustManager/端口持久化决策；不得从应用面 reach-in infra::trust 具体类型。会话中运行信任命令 须为当前项目 CWD 持久化决策；写盘成功后本会话 不得自动重载项目 skills/MCP/context（用户显式 /reload 或重启除外）。
 
     场景: command-persists
       假如 项目 CWD 中有活动会话
@@ -171,7 +171,7 @@
       那么 经应用缝持久化到 trust store，后续解析返回持久化值，且本会话不自动重载项目资源
   @req:r1425
   规则: Permission 非安全边界
-    文档与命名 MUST 明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 MUST 来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission MUST NOT 被视为增加安全控制。
+    文档与命名 须明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 须来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission 不得被视为增加安全控制。
     # verified-by: docs/architecture/信任与项目门禁.md
 
     场景: permission-advice-only

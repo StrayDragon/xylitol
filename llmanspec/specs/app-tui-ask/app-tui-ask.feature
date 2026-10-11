@@ -7,7 +7,7 @@
 
   @req:r1167
   规则: tui-only-registration
-    产品 TUI 装配的 ToolSet MUST 含内置工具 ask；Print 与非 TUI composition MUST NOT 注册 ask。
+    产品 TUI 装配的 ToolSet 须含内置工具 ask；Print 与非 TUI composition 不得注册 ask。
 
     场景: tui-registers-ask
       假如 产品以 TUI 面启动
@@ -28,7 +28,7 @@
       那么 槽为 ChoicePrompt 且标题含 Ask
   @req:r1169
   规则: skip-success
-    用户 Skip 或 Esc MUST 使 ask 以成功结构化结果返回（status=skipped）；MUST NOT 将 skip 表示为 tool error；Abort/取消整轮 MUST NOT 伪装为 skip。
+    用户 Skip 或 Esc 须使 ask 以成功结构化结果返回（status=skipped）；不得将 skip 表示为 tool error；Abort/取消整轮 不得伪装为 skip。
 
     场景: esc-skips-success
       假如 ChoicePrompt 因 ask 打开
@@ -36,7 +36,7 @@
       那么 ask 工具结果为 status skipped 成功 JSON
   @req:r1170
   规则: answered-payload
-    用户提交 MUST 返回 status=answered 与 answers（含 question id 与所选 values/labels）；LLM 消费 JSON；人看 scrollback 人话。
+    用户提交 须返回 status=answered 与 answers（含 question id 与所选 values/labels）；LLM 消费 JSON；人看 scrollback 人话。
 
     场景: submit-answered
       假如 ChoicePrompt 因 ask 打开且用户已选选项
@@ -44,7 +44,7 @@
       那么 ask 工具结果为 status answered 且含 answers
   @req:r1171
   规则: scrollback-ask-rail
-    ask 相关 scrollback MUST 使用固定左边轨与人话摘要（waiting/answered/skipped 语义色）；MUST NOT 默认以 tool-*-bg 洗底或 raw JSON 作为人对人展示。
+    ask 相关 scrollback 须使用固定左边轨与人话摘要（waiting/answered/skipped 语义色）；不得默认以 tool-*-bg 洗底或 raw JSON 作为人对人展示。
 
     场景: scrollback-human-rail
       假如 ask 已结束（answered 或 skipped）
@@ -52,7 +52,7 @@
       那么 出现 Ask 人话摘要与左边轨且无 raw tool JSON 洗底
   @req:r1172
   规则: not-trust
-    ask MUST NOT 替代 Trust 闸；Trust 仍走 app-tui-trust / bootstrap ChoicePrompt。
+    ask 不得替代 Trust 闸；Trust 仍走 app-tui-trust / bootstrap ChoicePrompt。
 
     场景: trust-untouched
       假如 项目尚未信任

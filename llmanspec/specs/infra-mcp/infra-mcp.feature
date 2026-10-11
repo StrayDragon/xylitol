@@ -22,21 +22,21 @@
       那么 装配出 mcp 前缀的 XyTool 且连接在册
   @req:r1448
   规则: 动态配置重载
-    System MUST 支持在进程存活期间根据更新后的 mcp_servers 配置重载 MCP 工具集（增删服务器/工具）；重载 MUST NOT 要求以重启整个进程作为唯一手段；重载 MUST NOT 删除内置非 mcp 工具。
+    System 须支持在进程存活期间根据更新后的 mcp_servers 配置重载 MCP 工具集（增删服务器/工具）；重载 不得要求以重启整个进程作为唯一手段；重载 不得删除内置非 mcp 工具。
 
     场景: toolset-follows-config
       当 以两组不同工具集的 fixture 配置先后装配
       那么 工具集随配置变化
   @req:r1449
   规则: 配置校验与失败可观测
-    System MUST 校验 mcp_servers 条目（stdio 需 command；url/sse 需合法 url 类字段）；无效条目 MUST 产生可读错误或诊断且 MUST NOT 静默当作成功连接；单个服务器连接失败 MUST 可观察（warn 或诊断）且 MUST NOT 单独导致整次 bootstrap 失败。
+    System 须校验 mcp_servers 条目（stdio 需 command；url/sse 需合法 url 类字段）；无效条目 须产生可读错误或诊断且 不得静默当作成功连接；单个服务器连接失败 须可观察（warn 或诊断）且 不得单独导致整次 bootstrap 失败。
 
     场景: invalid-entry-diagnosed-not-fatal
       当 以无效 MCP 条目装配
       那么 诊断在册且不产出该条目工具
   @req:r1450
   规则: 已连接列表只读
-    System MUST 提供只读查询已成功连接的 MCP 服务器摘要（至少 id 与工具数量或等价）；无配置或全部失败时 MUST 返回空列表；该查询 MUST NOT 创建新连接。
+    System 须提供只读查询已成功连接的 MCP 服务器摘要（至少 id 与工具数量或等价）；无配置或全部失败时 须返回空列表；该查询 不得创建新连接。
     # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
 
     场景: connected-list-readonly
@@ -44,7 +44,7 @@
       那么 已连接列表只读返回在册服务器摘要
   @req:r1451
   规则: mcp-tool-hard-barrier
-    经 McpToolAdapter（或等价）暴露的 MCP 工具 MUST 在批调度中为 Barrier（不可进并行窗）；重载后新发现工具 MUST 同样为 Barrier；MUST NOT 提供配置名、glob 或 annotation 放行路径。由单测覆盖，MUST NOT 为静态默认单独扩 BDD step。
+    经 McpToolAdapter（或等价）暴露的 MCP 工具 须在批调度中为 Barrier（不可进并行窗）；重载后新发现工具 须同样为 Barrier；不得提供配置名、glob 或 annotation 放行路径。由单测覆盖，不得为静态默认单独扩 BDD step。
     # verified-by: llmanspec/specs/agent-runtime/agent-runtime.feature
 
     场景: mcp-tool-hard-barrier-scheduling
@@ -68,7 +68,7 @@
       那么 快照与在册 MCP 状态同源
   @req:r1446
   规则: call-phase-timeout
-    MCP 连接建立后的每笔请求（tools/list、tools/call 等）MUST 有单次调用期超时；到期以可分类超时错误呈现给调用方，MUST NOT 无限等待。
+    MCP 连接建立后的每笔请求（tools/list、tools/call 等）须有单次调用期超时；到期以可分类超时错误呈现给调用方，不得无限等待。
     # verified-by: src/infra/mcp/adapter.rs
 
     场景: call-phase-timeout-classified
@@ -76,7 +76,7 @@
       那么 每笔请求有调用期超时且可分类
   @req:r1453
   规则: first-turn-tool-freeze
-    轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 MUST 立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）MUST 等待 MCP settle 或 code-first 门闸超时后再定稿；单 server 连接 MUST 有 code-first 墙钟超时（挂死不得让 bootstrap 永 Running）。门闸超时 MUST 以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），MUST NOT 自动重试连接。TUI MUST NOT 在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 MUST 冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿；重定稿 MUST 按 tool name upsert（有则替换、无则追加），MUST NOT 留下同名多行。本波 resume/切会话 MUST 清冻再门闸（指纹持久化后的一致续冻另波）；重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
+    轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 须立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）须等待 MCP settle 或 code-first 门闸超时后再定稿；单 server 连接 须有 code-first 墙钟超时（挂死不得让 bootstrap 永 Running）。门闸超时 须以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），不得自动重试连接。TUI 不得在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 须冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿；重定稿 须按 tool name upsert（有则替换、无则追加），不得留下同名多行。本波 resume/切会话 须清冻再门闸（指纹持久化后的一致续冻另波）；重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

@@ -7,7 +7,7 @@
 
   @req:r1815
   规则: hooks-wiring-feature
-    hooks 接线验收 MUST 以场景大纲固定「观察型 / 可取消」库缝接线；与 agent-hooks（调度器机制）分工：本 capability 只证 Driver/XyHookBus 权威路径，MUST NOT 用 HookDispatcher::dispatch 冒充。
+    hooks 接线验收 须以场景大纲固定「观察型 / 可取消」库缝接线；与 agent-hooks（调度器机制）分工：本 capability 只证 Driver/XyHookBus 权威路径，不得用 HookDispatcher::dispatch 冒充。
 
     场景: session-start
       假如 注册了匹配 "session_start" 的 hook
@@ -45,14 +45,14 @@
       那么 操作失败原因包含 "bash被拒绝"
   @req:r1816
   规则: operation-dictionary-steps
-    BDD runner MUST 提供可复用步骤：注册匹配事件的 hook、hook 返回 JSON、执行操作「操作名」、断言 hook 被调用、断言 hook 上下文包含键、断言操作被阻止；操作名 MUST 经显式字典映射到权威路径，未知操作名 MUST 失败且信息可读。
+    BDD runner 须提供可复用步骤：注册匹配事件的 hook、hook 返回 JSON、执行操作「操作名」、断言 hook 被调用、断言 hook 上下文包含键、断言操作被阻止；操作名 须经显式字典映射到权威路径，未知操作名 须失败且信息可读。
 
     场景: unknown-op
       当 执行操作 "未登记操作"
       那么 操作失败原因包含 "未知操作"
   @req:r1817
   规则: smoke-already-wired
-    仓库 MUST 至少有一条经库缝触发的观察型例子（如 session_start 或 agent_start），经 InProcessDriver 等库缝注入 XyHookBus 并录制 hook 调用；MUST NOT 用直接 HookDispatcher::dispatch 冒充接线证明。
+    仓库 须至少有一条经库缝触发的观察型例子（如 session_start 或 agent_start），经 InProcessDriver 等库缝注入 XyHookBus 并录制 hook 调用；不得用直接 HookDispatcher::dispatch 冒充接线证明。
     # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
 
     场景: smoke-hook-wired
@@ -60,7 +60,7 @@
       那么 有经库缝触发的例子
   @req:r1818
   规则: provider-matrix-out-of-scope
-    model_select 与 thinking_level_select 已有可执行场景；OpenAI Responses / Anthropic Messages 的 provider 三缝由 agent-hooks 覆盖。本 feature MUST NOT 挂会导致 CI 失败的 provider HTTP 三缝场景。
+    model_select 与 thinking_level_select 已有可执行场景；OpenAI Responses / Anthropic Messages 的 provider 三缝由 agent-hooks 覆盖。本 feature 不得挂会导致 CI 失败的 provider HTTP 三缝场景。
     # verified-by: llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature
 
     场景: provider-matrix-scenarios
@@ -68,7 +68,7 @@
       那么 已有可执行场景
   @req:r1819
   规则: curated-xy-hook-bus
-    crate 根精选 pub use MUST 导出 XyHookBus 与 XyHookOutcome（及 NoopHookBus）；嵌入方 MUST 能在不 import protocol 深层子路径的情况下引用这些符号；MUST NOT 将 HookDispatcher 或 HookEvent 列为精选导出。
+    crate 根精选 pub use 须导出 XyHookBus 与 XyHookOutcome（及 NoopHookBus）；嵌入方 须能在不 import protocol 深层子路径的情况下引用这些符号；不得将 HookDispatcher 或 HookEvent 列为精选导出。
     # verified-by: src/lib.rs
 
     场景: curated-hook-bus-reexport
@@ -76,7 +76,7 @@
       那么 精选导出总线与结果
   @req:r1820
   规则: wiring-model-ops
-    hooks-wiring 操作字典 MUST 支持「选择模型 fake」与「设置思考级别 high」，并启用对应观察场景。
+    hooks-wiring 操作字典 须支持「选择模型 fake」与「设置思考级别 high」，并启用对应观察场景。
 
     场景: model-select
       假如 注册了匹配 "model_select" 的 hook

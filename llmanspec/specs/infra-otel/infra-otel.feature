@@ -8,7 +8,7 @@
 
   @req:r1466
   规则: otel-default-none
-    未配置 [otel]、feature 缺省或 exporter=none 时，进程 MUST NOT 向任何 OTLP 端点发送 traces；MUST NOT 仅因存在 fastrace span 而隐式开启远程导出。
+    未配置 [otel]、feature 缺省或 exporter=none 时，进程 不得向任何 OTLP 端点发送 traces；不得仅因存在 fastrace span 而隐式开启远程导出。
 
     场景: otel-default-none-no-spans
       假如 mock 模型先 tool 后无 tool
@@ -23,14 +23,14 @@
       那么 成功构建出可安装的 reporter
   @req:r1486
   规则: otel-fallback-no-block
-    OTLP exporter 构建失败、凭证缺失、feature otel 未启用、或配置不完整时，观测装配 MUST 降级为不安装 OTLP Reporter（本地 file JSONL 闸仍独立），MUST 将诊断写入 file-only 日志（若级别日志已开），MUST NOT 因此使对话主路径启动失败。当 [otel] exporter 请求 otlp-http 而通道未生效（缺 endpoint/认证或构建失败）时，该事实 MUST 经 LoadedResourcesSnapshot.obs_diag 在产品 loaded-resources 卡以单行 obs 诊断呈现；诊断内容 MUST NOT 携带密钥或完整 env；exporter=none 显式关闭时 MUST NOT 渲染提示。
+    OTLP exporter 构建失败、凭证缺失、feature otel 未启用、或配置不完整时，观测装配 须降级为不安装 OTLP Reporter（本地 file JSONL 闸仍独立），须将诊断写入 file-only 日志（若级别日志已开），不得因此使对话主路径启动失败。当 [otel] exporter 请求 otlp-http 而通道未生效（缺 endpoint/认证或构建失败）时，该事实 须经 LoadedResourcesSnapshot.obs_diag 在产品 loaded-resources 卡以单行 obs 诊断呈现；诊断内容 不得携带密钥或完整 env；exporter=none 显式关闭时 不得渲染提示。
 
     场景: otlp-bad-endpoint-falls-back-with-diag
       当 以缺失 endpoint 的 otlp-http 配置尝试构建 OTLP reporter
       那么 构建安静返回 None 且产生 obs 诊断且不失败
   @req:r1487
   规则: otel-fastrace-only
-    OTLP 出口 MUST 建立在 fastrace Reporter 之上（fastrace-opentelemetry）；Cargo 与 src MUST NOT 为该出口引入 tracing 或 tracing-subscriber；MUST NOT 使用会打印到 stderr/stdout 的 ConsoleReporter 或 OTEL 调试打印破坏 TUI。
+    OTLP 出口 须建立在 fastrace Reporter 之上（fastrace-opentelemetry）；Cargo 与 src 不得为该出口引入 tracing 或 tracing-subscriber；不得使用会打印到 stderr/stdout 的 ConsoleReporter 或 OTEL 调试打印破坏 TUI。
     # verified-by: Cargo.toml
     场景: otlp-exit-built-on-fastrace
       当 以合法 otlp-http 配置尝试构建 OTLP reporter
@@ -84,7 +84,7 @@
 
   @req:r1467
   规则: otel-observation-io-tier
-    AppConfig.[otel].observation_io 缺省或 none 时 MUST NOT 写入 langfuse.observation.input/output；仅当配置为 truncated 或 full 且 span 闸激活时，llm.request generation MUST 按该档写入 observation I/O；I/O 附着 MUST 在流结束（任意 Done）或 span 提前结束时发生，MUST NOT 仅依赖 Done 携带 usage；MUST NOT 因 observation_io 未配置而改变 otel1 默认不出口语义。
+    AppConfig.[otel].observation_io 缺省或 none 时 不得写入 langfuse.observation.input/output；仅当配置为 truncated 或 full 且 span 闸激活时，llm.request generation 须按该档写入 observation I/O；I/O 附着 须在流结束（任意 Done）或 span 提前结束时发生，不得仅依赖 Done 携带 usage；不得因 observation_io 未配置而改变 otel1 默认不出口语义。
 
     场景: otel-observation-io-tier-headless
       假如 mock 模型先 tool 后无 tool
@@ -119,7 +119,7 @@
 
   @req:r1471
   规则: otel-tool-observation-io-tier
-    AppConfig.[otel].tool_observation_io 缺省或 none 时 MUST NOT 在 tool.execute 上写入 langfuse.observation.input/output；仅当配置为 truncated 或 full 且 span 闸激活时，tool.execute MUST 在结果落定后按该档写入参数与结果摘要；MUST NOT 与 observation_io 合并为同一配置键；MUST NOT 因 tool_observation_io 未配置而改变 otel1 默认不出口语义。
+    AppConfig.[otel].tool_observation_io 缺省或 none 时 不得在 tool.execute 上写入 langfuse.observation.input/output；仅当配置为 truncated 或 full 且 span 闸激活时，tool.execute 须在结果落定后按该档写入参数与结果摘要；不得与 observation_io 合并为同一配置键；不得因 tool_observation_io 未配置而改变 otel1 默认不出口语义。
 
     场景: tool-io-tier-truncated-only-tools
       假如 mock 模型先 tool 后无 tool
@@ -205,7 +205,7 @@
 
   @req:r1483
   规则: otel-obs-slot-default-identity-only
-    进程级观测槽 MUST 仅作为「默认身份」供无 options 的闲置回退（remote count、无快照的 HTTP hooks、无 options 的 ProviderRequestTrace）与测试使用；materialized 会话（turn / iteration / tool / compaction / generate）MUST 使用运行时自持的会话事实快照，MUST NOT 在 span 创建时读该槽。bind / switch_session MUST NOT 写该槽（c2843 Phase B 移除 obs_slot_writes 门：读者结构上不触达写入路径），槽仅由显式 writer 事件（rename、会话恢复）更新；读者物化前后槽内容 MUST 不变。无 run 上下文的闲置路径 MAY 以槽为回退。由单测覆盖（switch 不写槽 + 快照归因），MUST NOT 单独扩 BDD step。
+    进程级观测槽 须仅作为「默认身份」供无 options 的闲置回退（remote count、无快照的 HTTP hooks、无 options 的 ProviderRequestTrace）与测试使用；materialized 会话（turn / iteration / tool / compaction / generate）须使用运行时自持的会话事实快照，不得在 span 创建时读该槽。bind / switch_session 不得写该槽（c2843 Phase B 移除 obs_slot_writes 门：读者结构上不触达写入路径），槽仅由显式 writer 事件（rename、会话恢复）更新；读者物化前后槽内容 须不变。无 run 上下文的闲置路径 MAY 以槽为回退。由单测覆盖（switch 不写槽 + 快照归因），不得单独扩 BDD step。
     # verified-by: src/app/core/driver/in_process/tests/session.rs
     场景: obs-slot-written-by-writer-path
       当 以观测闸开启并触发一次会话压缩

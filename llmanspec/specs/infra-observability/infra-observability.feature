@@ -7,7 +7,7 @@
 
   @req:r1461
   规则: debug-observation-pipeline
-    应用 MUST 在组合根恰好一次装配观测后端：级别 log 与本地 fastrace FileReporter MUST 只写入 agent 日志目录下的文件（如 xylitol.log / provider-trace.jsonl），MUST NEVER 写 stdout 或 stderr，以免破坏 TUI Inline viewport 与 DSR。禁止使用会打印到 stderr 的 ConsoleReporter。本地 file 激活 MUST 仅由环境与构建配置驱动（无 CLI flag）：debug 构建（cfg(debug_assertions)）MUST 默认启用；release MUST 默认关闭，经 XYLITOL_DEBUG / RUST_LOG（级别日志）与 XYLITOL_PROVIDER_TRACE（provider timeline）显式打开。可选远程 OTLP 出口 MAY 由 AppConfig.[otel] 控制且默认关闭（见 infra-otel），MUST NOT 与本地 file 闸混为一谈。文件写入 MUST 同步 append（兼容 panic=abort），unix 下文件模式 MUST 为 0o600。TUI 层 MUST 只调用 log 宏或 fastrace API，MUST NOT 自行安装 Reporter。时间线栈 MUST 为 fastrace；MUST NOT 再依赖 tracing / tracing-subscriber。
+    应用 须在组合根恰好一次装配观测后端：级别 log 与本地 fastrace FileReporter 须只写入 agent 日志目录下的文件（如 xylitol.log / provider-trace.jsonl），须 NEVER 写 stdout 或 stderr，以免破坏 TUI Inline viewport 与 DSR。禁止使用会打印到 stderr 的 ConsoleReporter。本地 file 激活 须仅由环境与构建配置驱动（无 CLI flag）：debug 构建（cfg(debug_assertions)）须默认启用；release 须默认关闭，经 XYLITOL_DEBUG / RUST_LOG（级别日志）与 XYLITOL_PROVIDER_TRACE（provider timeline）显式打开。可选远程 OTLP 出口 MAY 由 AppConfig.[otel] 控制且默认关闭（见 infra-otel），不得与本地 file 闸混为一谈。文件写入 须同步 append（兼容 panic=abort），unix 下文件模式 须为 0o600。TUI 层 须只调用 log 宏或 fastrace API，不得自行安装 Reporter。时间线栈 须为 fastrace；不得再依赖 tracing / tracing-subscriber。
     # verified-by: src/infra/observability/file_reporter.rs
 
     场景: compose-root-single-obs-sink
@@ -24,7 +24,7 @@
 
   @req:r1463
   规则: provider-trace-闸门
-    Provider tracing 在 cfg(debug_assertions) 下 MUST 默认安装 Reporter，在 release 构建 MUST 默认不安装；release MUST 经 XYLITOL_PROVIDER_TRACE 显式打开；tracing 未激活时 MUST 避免对 SSE 载荷做昂贵序列化；新增跨层低频 span MUST 遵守同一闸门（关闸零/近零开销）。
+    Provider tracing 在 cfg(debug_assertions) 下 须默认安装 Reporter，在 release 构建 须默认不安装；release 须经 XYLITOL_PROVIDER_TRACE 显式打开；tracing 未激活时 须避免对 SSE 载荷做昂贵序列化；新增跨层低频 span 须遵守同一闸门（关闸零/近零开销）。
 
     场景: trace-gate-off-emits-nothing
       假如 mock 模型先 tool 后无 tool
@@ -32,7 +32,7 @@
       那么 默认观测闸为关且回合正常完成不出口任何 span
   @req:r1464
   规则: fastrace-单栈
-    仓库观测时间线 MUST 仅使用 fastrace；级别诊断 MUST 使用 log 门面；Cargo 与 src MUST NOT 依赖 tracing 或 tracing-subscriber；MUST NOT 引入 fastrace-tracing 兼容层。允许 fastrace-futures 等官方 companion（非 tracing 桥）。
+    仓库观测时间线 须仅使用 fastrace；级别诊断 须使用 log 门面；Cargo 与 src 不得依赖 tracing 或 tracing-subscriber；不得引入 fastrace-tracing 兼容层。允许 fastrace-futures 等官方 companion（非 tracing 桥）。
     # verified-by: Cargo.toml
 
     场景: fastrace-single-stack

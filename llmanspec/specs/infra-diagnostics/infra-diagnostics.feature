@@ -7,7 +7,7 @@
 
   @req:r1437
   规则: timing-collector
-    System MUST 提供 reset_timings、time label 与 print_timings，由 XYLITOL_TIMING 环境变量门控。
+    System 须提供 reset_timings、time label 与 print_timings，由 XYLITOL_TIMING 环境变量门控。
     # verified-by: src/infra/timing.rs
 
     场景: timing-collector-gated
@@ -15,7 +15,7 @@
       那么 收集器由 XYLITOL_TIMING 门控且含重置与计时
   @req:r1438
   规则: timing-points
-    System MUST 在 config load、ResourceLoader reload、ModelRegistry load、session restore 与 session create 插入 timing points。
+    System 须在 config load、ResourceLoader reload、ModelRegistry load、session restore 与 session create 插入 timing points。
     # verified-by: src/infra/timing.rs
 
     场景: timing-points-on-critical-path
@@ -23,7 +23,7 @@
       那么 启动关键路径含计时点
   @req:r1439
   规则: timing-output
-    print_timings MUST 向 stderr 输出每步 ms 与 total。
+    print_timings 须向 stderr 输出每步 ms 与 total。
     # verified-by: src/infra/timing.rs
 
     场景: timing-output-millis

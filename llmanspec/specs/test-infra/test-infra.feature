@@ -7,7 +7,7 @@
 
   @req:r39
   规则: faux-provider
-    System MUST 提供 FauxProvider，返回预配置的响应步骤，无需网络调用，用于确定性 agent 测试。
+    System 须提供 FauxProvider，返回预配置的响应步骤，无需网络调用，用于确定性 agent 测试。
     # verified-by: src/infra/provider/fake.rs
 
     场景: faux-provider-no-network
@@ -15,7 +15,7 @@
       那么 按响应步骤返回且无需网络
   @req:r46
   规则: test-harness-tools
-    System MUST 通过 rstest-bdd 场景/测试函数测试工具，使用 given/when/then 类型化占位符步骤，每个场景对应一个测试函数。
+    System 须通过 rstest-bdd 场景/测试函数测试工具，使用 given/when/then 类型化占位符步骤，每个场景对应一个测试函数。
     # verified-by: tests/bdd/suite.rs
 
     场景: bdd-harness-step-typed
@@ -23,7 +23,7 @@
       那么 场景以类型化占位符步骤且逐场景一测试
   @req:r54
   规则: temp-file-raii
-    所有创建临时文件的测试 MUST 使用 RAII 清理（tempfile crate），执行后 MUST NOT 遗留产物。
+    所有创建临时文件的测试 须使用 RAII 清理（tempfile crate），执行后 不得遗留产物。
     # verified-by: tests/bdd/helpers.rs
 
     场景: temp-file-raii-cleanup
@@ -31,7 +31,7 @@
       那么 RAII 清理且不留产物
   @req:r57
   规则: async-test-timeout
-    依赖外部时序（网络 / 子进程 / 挂钟等待）的异步集成场景 MUST 用 with_test_timeout 辅助函数包裹等待主体（默认 10s），防止 CI 因死锁或 mock 失败挂起；纯内存异步场景 SHOULD 复用同一辅助统一收口。MUST NOT 以「断言该辅助存在」的文本探针替代真实包裹（名实不符即债务）。
+    依赖外部时序（网络 / 子进程 / 挂钟等待）的异步集成场景 须用 with_test_timeout 辅助函数包裹等待主体（默认 10s），防止 CI 因死锁或 mock 失败挂起；纯内存异步场景 SHOULD 复用同一辅助统一收口。不得以「断言该辅助存在」的文本探针替代真实包裹（名实不符即债务）。
     # verified-by: fn t_async_test_timeout
 
     场景: async-test-timeout-guard
@@ -39,7 +39,7 @@
       那么 超时辅助被真实调用且不得仅以源码探针自证
   @req:r60
   规则: no-fixed-tmp-paths
-    测试 MUST NOT 使用固定名称的硬编码 /tmp 路径；MUST 使用唯一自动生成路径以支持并行执行。
+    测试 不得使用固定名称的硬编码 /tmp 路径；须使用唯一自动生成路径以支持并行执行。
     # verified-by: tests/bdd/helpers.rs
 
     场景: no-fixed-tmp-path
@@ -47,7 +47,7 @@
       那么 使用唯一自动生成路径
   @req:r63
   规则: tui-e2e-isolation
-    TUI 端到端测试（portable-pty 与 tmux）MUST 与主测试矩阵隔离：MUST 位于 workspace 级 tests/tui_e2e/（非 packages/xylitol-tui/tests/），MUST 标记 #[ignore] 或由 feature flag 门控，默认 cargo test 不运行，MUST 经专用 justfile 目标（test-tui-e2e）调用。tmux smoke MUST 额外要求 tmux 二进制存在（缺失则 skip 并给出清晰消息），并为 spawned session 设置 TERM=xterm-256color。每个 tmux session MUST 使用唯一名称（基于 PID 或时间戳）以支持并行，MUST 经 Drop guard 在 panic 时也 kill，避免泄漏 session。
+    TUI 端到端测试（portable-pty 与 tmux）须与主测试矩阵隔离：须位于 workspace 级 tests/tui_e2e/（非 packages/xylitol-tui/tests/），须标记 #[ignore] 或由 feature flag 门控，默认 cargo test 不运行，须经专用 justfile 目标（test-tui-e2e）调用。tmux smoke 须额外要求 tmux 二进制存在（缺失则 skip 并给出清晰消息），并为 spawned session 设置 TERM=xterm-256color。每个 tmux session 须使用唯一名称（基于 PID 或时间戳）以支持并行，须经 Drop guard 在 panic 时也 kill，避免泄漏 session。
 # re-review(c2826): 复审结论——本 capability 管辖行为不变；分支内改动仅测试基建与可见性再导出（2026-09-28）
 
 # re-review(c2827): 复审结论——本 capability 管辖行为不变；分支内改动为 BDD 场景落地、BDD 测试基建（steps/bindings/驱动旋钮与探针）与可见性再导出（2026-09-28）

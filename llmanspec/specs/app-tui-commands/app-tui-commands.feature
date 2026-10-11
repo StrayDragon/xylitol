@@ -7,7 +7,7 @@
 
   @req:r1188
   规则: slash-exit-model
-    TUI MUST 解析斜杠命令 /exit（映射 Quit）与 /model：无参 idle MUST 打开替换 editor 槽的 fuzzy 模型列表（GetAvailableModels）；列表 MUST 支持 ↑↓ 选模型行，可调模型 MUST 支持 ←→ 与槽内 Shift+Tab 在焦点模型声明的 thinking_levels 上选档；宽内容区 MUST 在焦点行铺开该模型声明档名（当前档以方括号标记），窄内容区 MUST 仅显示单档标签；无思考或仅不可调 off 的模型 MUST 显示 — 且方向键 MUST NOT 改变状态。Enter 选定 MUST 提交 (model, level)（可调默认配置列表末项，无思考为 off）经 SetModel/set_thinking_level 并关槽；有参 /model <id> MUST 直接 SetModel 并对可调模型默认末项、不可调为 off；键入 /model 参数时 MAY/MUST 经包 SlashArgCompletionSource 内联补全（见 ati23）。busy 时无参 MUST 仍可打开模型列表（BusySlashPolicy Allow；确认选定仍走既有 SetModel/thinking 与 NextTurn/下轮预告，见 ar25）；busy 有参直设 MUST 更新 selected（NextTurn 生效，见 ar25）。MUST NOT 再把无参 /model 做成 CycleModel；MUST NOT 引入 /models 主路径；MUST NOT 把未在该模型 thinking_levels 声明的档名当成可选项；未知斜杠 MUST 显示系统错误行且 MUST NOT 崩溃；idle Enter 提交以 / 开头的文本 MUST 先经命令解析路径。
+    TUI 须解析斜杠命令 /exit（映射 Quit）与 /model：无参 idle 须打开替换 editor 槽的 fuzzy 模型列表（GetAvailableModels）；列表 须支持 ↑↓ 选模型行，可调模型 须支持 ←→ 与槽内 Shift+Tab 在焦点模型声明的 thinking_levels 上选档；宽内容区 须在焦点行铺开该模型声明档名（当前档以方括号标记），窄内容区 须仅显示单档标签；无思考或仅不可调 off 的模型 须显示 — 且方向键 不得改变状态。Enter 选定 须提交 (model, level)（可调默认配置列表末项，无思考为 off）经 SetModel/set_thinking_level 并关槽；有参 /model <id> 须直接 SetModel 并对可调模型默认末项、不可调为 off；键入 /model 参数时 MAY/须经包 SlashArgCompletionSource 内联补全（见 ati23）。busy 时无参 须仍可打开模型列表（BusySlashPolicy Allow；确认选定仍走既有 SetModel/thinking 与 NextTurn/下轮预告，见 ar25）；busy 有参直设 须更新 selected（NextTurn 生效，见 ar25）。不得再把无参 /model 做成 CycleModel；不得引入 /models 主路径；不得把未在该模型 thinking_levels 声明的档名当成可选项；未知斜杠 须显示系统错误行且 不得崩溃；idle Enter 提交以 / 开头的文本 须先经命令解析路径。
 
     场景: slash-exit-requests-quit
       当 以主机泵在 idle 提交 "/exit"
@@ -24,14 +24,14 @@
       那么 有参直设经模型执行器更新且仅更新固定区
   @req:r1198
   规则: dispatch-shared
-    除 Prompt、Quit 与传输专用命令外，斜杠执行 MUST 走 app::core::dispatch 共享路径，MUST NOT 发明平行命令词表。
+    除 Prompt、Quit 与传输专用命令外，斜杠执行 须走 app::core::dispatch 共享路径，不得发明平行命令词表。
 
     场景: slash-session-name-via-shared-dispatch
       当 以主机泵在 idle 提交 "/session-name 新名字"
       那么 会话名经共享 dispatch 写入一次
   @req:r1199
   规则: extensible-commands
-    命令面 MUST 允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。
+    命令面 须允许后续追加斜杠（如 /compact /help）而不改引擎；MVP 仅要求 /exit 与 /model。
 
     场景: mvp-needs-model-and-exit
       当 在产品命令模块解析 "/model" 与 "/exit"
@@ -39,7 +39,7 @@
     # verified-by: src/app/tui/commands.rs
   @req:r1201
   规则: debug-scene-slash
-    产品 TUI 在 debug 构建 idle 时 MUST 解析斜杠 /debug 与 /debug <scene>（空格参数；MUST NOT 要求冒号形式）：无 scene 时 MUST 以系统提示列出可用场景及描述且 MUST NOT 改当前 session；已知 scene（至少 session-tree-multiturn、session-tree-labeled）MUST 仅在 TUI 进程内经非产品注入 API（harness/`cfg(debug_assertions)`）新建隔离 debug-* 会话、写入 fixture 后 switch 并重建 transcript；load_debug_scene MUST NOT 存在于 wire/Driver/Host 公开面（不进 protocol::Command、不进远程 unary）；未知 scene MUST 提示错误且 MUST NOT 崩溃；debug 构建 MUST 为 /debug 提供与 /model 同类的参数补全（SlashArgCompletionSource）；MUST NOT 覆写用户装载前的当前 session 文件内容。
+    产品 TUI 在 debug 构建 idle 时 须解析斜杠 /debug 与 /debug <scene>（空格参数；不得要求冒号形式）：无 scene 时 须以系统提示列出可用场景及描述且 不得改当前 session；已知 scene（至少 session-tree-multiturn、session-tree-labeled）须仅在 TUI 进程内经非产品注入 API（harness/`cfg(debug_assertions)`）新建隔离 debug-* 会话、写入 fixture 后 switch 并重建 transcript；load_debug_scene 不得存在于 wire/Driver/Host 公开面（不进 protocol::Command、不进远程 unary）；未知 scene 须提示错误且 不得崩溃；debug 构建 须为 /debug 提供与 /model 同类的参数补全（SlashArgCompletionSource）；不得覆写用户装载前的当前 session 文件内容。
 
     场景: debug-slash-lists-and-rejects-colon
       当 以主机泵在 idle 提交 "/debug"
@@ -48,7 +48,7 @@
       那么 不识别冒号形式且按未知斜杠提示
   @req:r1202
   规则: slash-session-tree-fork
-    产品 TUI idle 时 MUST 解析 /session-tree 与 /session-fork：/session-tree MUST 打开 MessageHistory 会话树（与双 Esc 同路径）；/session-fork MUST 对当前 session leaf 执行与树内 Shift+F 相同的产品 fork（user→Before、非 user→At）并 switch 到 child；busy 时二者 MUST 拒绝并提示且 MUST NOT 开树或 fork；SlashCommandSource MUST 列出 session-tree 与 session-fork；MUST NOT 再将 /tree 或 /fork 识别为上述命令；MUST NOT 发明平行 fork 语义（含 pi 式 user 消息选择器）。
+    产品 TUI idle 时 须解析 /session-tree 与 /session-fork：/session-tree 须打开 MessageHistory 会话树（与双 Esc 同路径）；/session-fork 须对当前 session leaf 执行与树内 Shift+F 相同的产品 fork（user→Before、非 user→At）并 switch 到 child；busy 时二者 须拒绝并提示且 不得开树或 fork；SlashCommandSource 须列出 session-tree 与 session-fork；不得再将 /tree 或 /fork 识别为上述命令；不得发明平行 fork 语义（含 pi 式 user 消息选择器）。
 
     场景: slash-session-tree-opens-tree
       当 以主机泵在 idle 提交 "/session-tree"
@@ -57,7 +57,7 @@
       那么 短名不被识别且树未重复打开
   @req:r1203
   规则: commands-module-growth
-    产品 TUI slash/bang 解析 MUST 继续收口于 commands 模块（可多文件），执行仍经 pending + drain_pending → protocol::Command / dispatch 或 Driver；SlashCommandSource 补全清单 MUST 与产品命令 SSOT（及 GetCommands 内建子集）同源；MUST NOT 在 UiRoot/widgets 内散落第二套 slash 语义；MUST NOT 维护与 agent 短名表分叉的第三套产品名表。
+    产品 TUI slash/bang 解析 须继续收口于 commands 模块（可多文件），执行仍经 pending + drain_pending → protocol::Command / dispatch 或 Driver；SlashCommandSource 补全清单 须与产品命令 SSOT（及 GetCommands 内建子集）同源；不得在 UiRoot/widgets 内散落第二套 slash 语义；不得维护与 agent 短名表分叉的第三套产品名表。
 
     场景: single-slash-parser-in-commands-module
       当 在产品命令模块解析 "/tree" 与 "/session-tree"
@@ -65,7 +65,7 @@
     # verified-by: src/app/tui/layout/slash_catalog.rs
   @req:r1204
   规则: slash-session-io
-    产品 TUI idle 时 MUST 解析 /session-compact、/session-export 与 /session-import：/session-compact 无参或仅空白 MUST 经 dispatch 调用 Compact（force；instructions=None；对齐 domain-compaction c17/c24）并以系统行提示是否压缩或明确错误；带非空参数 MUST 调用 Compact 且 instructions 为去壳后文本（对齐 c24 Additional focus），MUST NOT 再报 custom instructions not supported；/session-export 可选 path MUST 默认导出 HTML（对齐 pi；无参时可用 Driver/dispatch 默认 export.html），path 以 .jsonl 结尾 MUST 走 ExportJsonl，否则 ExportHtml，成功 MUST 回报写入路径；/session-import 缺 path MUST usage 错误，有 path MUST 先以 editor 槽 Yes/No 确认再 ImportJsonl 并 switch/重建 transcript，取消 MUST NOT 导入；busy 时 /session-compact 与 /session-export MUST 仍可执行（BusySlashPolicy Allow）且 MUST NOT 入 steer；/session-import busy MUST 拒绝且 MUST NOT 入 steer；SlashCommandSource MUST 列出三者；旧名 /compact /export /import MUST NOT 被识别；MUST 走 app::core::dispatch，MUST NOT 发明平行词表。
+    产品 TUI idle 时 须解析 /session-compact、/session-export 与 /session-import：/session-compact 无参或仅空白 须经 dispatch 调用 Compact（force；instructions=None；对齐 domain-compaction c17/c24）并以系统行提示是否压缩或明确错误；带非空参数 须调用 Compact 且 instructions 为去壳后文本（对齐 c24 Additional focus），不得再报 custom instructions not supported；/session-export 可选 path 须默认导出 HTML（对齐 pi；无参时可用 Driver/dispatch 默认 export.html），path 以 .jsonl 结尾 须走 ExportJsonl，否则 ExportHtml，成功 须回报写入路径；/session-import 缺 path 须 usage 错误，有 path 须先以 editor 槽 Yes/No 确认再 ImportJsonl 并 switch/重建 transcript，取消 不得导入；busy 时 /session-compact 与 /session-export 须仍可执行（BusySlashPolicy Allow）且 不得入 steer；/session-import busy 须拒绝且 不得入 steer；SlashCommandSource 须列出三者；旧名 /compact /export /import 不得被识别；须走 app::core::dispatch，不得发明平行词表。
 
     场景: session-io-dispatch-by-suffix
       当 以主机泵在 idle 提交 "/session-compact"
@@ -74,21 +74,21 @@
       那么 压缩一次且 jsonl 与 html 按后缀分派导出
   @req:r1205
   规则: slash-session-info
-    产品 TUI 提交无参 /session 时 MUST 经 dispatch 调用 GetSessionStats（及必要 GetState）并将会话信息与统计以 scrollback/系统文本块展示（对齐 pi：信息转储而非操作菜单）；带参数 MUST 短错误或不识别为本命令；busy 时 MUST 仍可执行（Allow）且 MUST NOT 入 steer；SlashCommandSource MUST 列出 session；MUST NOT 实现 /session 子命令操作板。
+    产品 TUI 提交无参 /session 时 须经 dispatch 调用 GetSessionStats（及必要 GetState）并将会话信息与统计以 scrollback/系统文本块展示（对齐 pi：信息转储而非操作菜单）；带参数 须短错误或不识别为本命令；busy 时 须仍可执行（Allow）且 不得入 steer；SlashCommandSource 须列出 session；不得实现 /session 子命令操作板。
 
     场景: session-info-dump-as-system-text
       当 以主机泵在 idle 提交 "/session"
       那么 以系统文本块展示会话信息与统计
   @req:r1189
   规则: slash-session-resume
-    产品 TUI idle 提交无参 /session-resume 时 MUST 打开替换 editor 槽的 Resume 面板（非居中 overlay）：数据经 Command::ListSessions 或等价 seam；面板 MUST 提供 header（scope Current/All、Name All/Named、Sort Threaded/Recent/Fuzzy）、搜索（支持 re: 正则与引号 phrase）与会话行（name 或 first_message 预览、message_count、相对时间；Threaded 时 parent 树前缀）。预览列宽度 MUST 按终端比例软顶（约 60% 可用宽，扣除 meta 与可选 id 列后）；超长 MUST … 截断。默认 MUST NOT 在会话行展示 session id；经 Ctrl+U（或键位表 app.session.toggleId）打开 id 列时 MUST 完整显示 session id 且 MUST NOT 截断。无 name/first_message 时预览 MUST 用占位（如 —）且 MUST NOT 用 id 顶替预览列。Enter 选定：idle 时 MUST SwitchSession 并重建 transcript、关闭面板；agent/bang busy 时 MUST NOT SwitchSession，MUST 经通知条（toast notice，见 atc22）显示可见文案恰好为 `Error: ` + `agent busy — finish turn or Esc abort before switching session`（body 为文档约定等价常量；前缀由渲染层拼），MUST NOT 为此追加 UiEntry::ScrollNotice；面板可保持打开；Esc 取消 MUST NOT 切换；busy 时无参 /session-resume MUST 仍可打开面板供浏览/搜索（Allow）；旧名 /resume MUST NOT 被识别；MVP MUST NOT 要求路径直参；TUI MUST NOT reach infra::session。
+    产品 TUI idle 提交无参 /session-resume 时 须打开替换 editor 槽的 Resume 面板（非居中 overlay）：数据经 Command::ListSessions 或等价 seam；面板 须提供 header（scope Current/All、Name All/Named、Sort Threaded/Recent/Fuzzy）、搜索（支持 re: 正则与引号 phrase）与会话行（name 或 first_message 预览、message_count、相对时间；Threaded 时 parent 树前缀）。预览列宽度 须按终端比例软顶（约 60% 可用宽，扣除 meta 与可选 id 列后）；超长 须 … 截断。默认 不得在会话行展示 session id；经 Ctrl+U（或键位表 app.session.toggleId）打开 id 列时 须完整显示 session id 且 不得截断。无 name/first_message 时预览 须用占位（如 —）且 不得用 id 顶替预览列。Enter 选定：idle 时 须 SwitchSession 并重建 transcript、关闭面板；agent/bang busy 时 不得 SwitchSession，须经通知条（toast notice，见 atc22）显示可见文案恰好为 `Error: ` + `agent busy — finish turn or Esc abort before switching session`（body 为文档约定等价常量；前缀由渲染层拼），不得为此追加 UiEntry::ScrollNotice；面板可保持打开；Esc 取消 不得切换；busy 时无参 /session-resume 须仍可打开面板供浏览/搜索（Allow）；旧名 /resume 不得被识别；MVP 不得要求路径直参；TUI 不得 reach infra::session。
 
     场景: session-resume-opens-panel-via-seam
       当 以主机泵注入可恢复会话列表后提交 "/session-resume"
       那么 Resume 面板槽打开且经驱动列举可恢复会话
   @req:r1190
   规则: slash-session-lifecycle
-    产品 TUI idle 时 MUST 解析 /session-new、/session-clone 与 /session-name：/session-new 无参 MUST 经 Command::NewSession（或等价）创建空会话并切换、清空 transcript，带参 MUST usage 错误；/session-clone 无参 MUST 对当前 leaf 以 ForkPosition::At 执行 Command::Fork 并 Command::SwitchSession（对齐 pi /clone；MUST NOT 套用 /session-fork 的 Before/At 规则），无 leaf MUST 提示且 MUST NOT fork，带参 MUST usage 错误；/session-name 无参 MUST 显示当前会话名或 usage，有参 MUST 经 Command::SetSessionName（换行→空格 trim）写入并回报最终名，规范化与输入不同时 MUST 提示；busy 时 /session-new 与 /session-clone MUST 拒绝且 MUST NOT 入 steer；/session-name busy MUST 仍可执行（Allow）且 MUST NOT 入 steer；SlashCommandSource MUST 列出三者；旧名 /new /clone /name MUST NOT 被识别；MUST NOT 发明平行词表或 pi 式 user 选择器。
+    产品 TUI idle 时 须解析 /session-new、/session-clone 与 /session-name：/session-new 无参 须经 Command::NewSession（或等价）创建空会话并切换、清空 transcript，带参 须 usage 错误；/session-clone 无参 须对当前 leaf 以 ForkPosition::At 执行 Command::Fork 并 Command::SwitchSession（对齐 pi /clone；不得套用 /session-fork 的 Before/At 规则），无 leaf 须提示且 不得 fork，带参 须 usage 错误；/session-name 无参 须显示当前会话名或 usage，有参 须经 Command::SetSessionName（换行→空格 trim）写入并回报最终名，规范化与输入不同时 须提示；busy 时 /session-new 与 /session-clone 须拒绝且 不得入 steer；/session-name busy 须仍可执行（Allow）且 不得入 steer；SlashCommandSource 须列出三者；旧名 /new /clone /name 不得被识别；不得发明平行词表或 pi 式 user 选择器。
 
     场景: session-lifecycle-verbs-via-seam
       当 注入会话 leaf 条目并以主机泵在 idle 提交 "/session-clone"
@@ -97,7 +97,7 @@
       那么 新建一次且 clone 走 Fork(At) 且命名经 seam 写入
   @req:r1191
   规则: slash-reload
-    产品 TUI idle 时 MUST 解析无参 /reload：依次（或文档约定安全序）触发 keybindings、skills、MCP、themes、context 热重载 API，并以滚动提示汇总成功/失败诊断；agent/bang busy 时 MUST 拒绝且 MUST NOT 调用重载。启动后的进行中交互（status `Reloading`、输入软闸、Esc/Ctrl+C 协作取消、失败/取消可见）MUST 满足 ath28/atc25/ati43。MUST NOT 改写已持久化 session 历史或清空已渲染 transcript 历史块；SlashCommandSource MUST 列出 reload；带参 MUST usage 错误或不识别为成功路径。
+    产品 TUI idle 时 须解析无参 /reload：依次（或文档约定安全序）触发 keybindings、skills、MCP、themes、context 热重载 API，并以滚动提示汇总成功/失败诊断；agent/bang busy 时 须拒绝且 不得调用重载。启动后的进行中交互（status `Reloading`、输入软闸、Esc/Ctrl+C 协作取消、失败/取消可见）须满足 ath28/atc25/ati43。不得改写已持久化 session 历史或清空已渲染 transcript 历史块；SlashCommandSource 须列出 reload；带参 须 usage 错误或不识别为成功路径。
 
     场景: reload-idle-fires-busy-rejects
       当 以主机泵在 idle 提交 "/reload"
@@ -106,14 +106,14 @@
       那么 重载被拒绝且未发第二次运行时重载
   @req:r1192
   规则: slash-trust
-    产品 TUI idle 时 MUST 解析 /trust（及文档约定子命令 self/this_dir/parent/deny）：经 Driver 缝将信任决策写入持久 trust store，并以系统块提示需 /reload 或重启后项目资源才按新信任生效；busy 时 MUST 拒绝且 MUST NOT 写盘；MUST NOT 在成功路径自动调用 runtime reload；SlashCommandSource MUST 列出 trust；/trust 空格后 MUST 提供 self（默认）/parent/deny 参数补全；未知子命令 MUST usage 错误。
+    产品 TUI idle 时 须解析 /trust（及文档约定子命令 self/this_dir/parent/deny）：经 Driver 缝将信任决策写入持久 trust store，并以系统块提示需 /reload 或重启后项目资源才按新信任生效；busy 时 须拒绝且 不得写盘；不得在成功路径自动调用 runtime reload；SlashCommandSource 须列出 trust；/trust 空格后 须提供 self（默认）/parent/deny 参数补全；未知子命令 须 usage 错误。
 
     场景: trust-persists-via-driver-seam
       当 以主机泵在 idle 提交 "/trust"
       那么 信任决策经驱动持久化一次且提示需重载生效
   @req:r1193
   规则: slash-history-copy-last
-    产品 TUI MUST 解析无参 /history-copy-last：将当前 transcript 最近一条已提交 assistant 正文（自尾向前第一条非空，MUST NOT 取 thinking/tool/system 块或未提交流式半句）经 Driver 缝复制到系统剪贴板。成功 MUST 经通知栈展示 `Copied Last Msg`（✓ 起头，见 r1930），MUST NOT 再尾插 Copied last assistant message 滚动提示。无 assistant 或复制失败 MUST 仍以滚动提示说明且 MUST NOT 伪造成功、MUST NOT 臂装通知栈。idle 与 busy MUST 均可执行（只读）；SlashCommandSource MUST 列出 history-copy-last；带参 MUST usage 错误（ath r1250 并入）。
+    产品 TUI 须解析无参 /history-copy-last：将当前 transcript 最近一条已提交 assistant 正文（自尾向前第一条非空，不得取 thinking/tool/system 块或未提交流式半句）经 Driver 缝复制到系统剪贴板。成功 须经通知栈展示 `Copied Last Msg`（✓ 起头，见 r1930），不得再尾插 Copied last assistant message 滚动提示。无 assistant 或复制失败 须仍以滚动提示说明且 不得伪造成功、不得臂装通知栈。idle 与 busy 须均可执行（只读）；SlashCommandSource 须列出 history-copy-last；带参 须 usage 错误（ath r1250 并入）。
 
     场景: history-copy-last-copies-assistant-text
       当 以主机泵完成一轮含已提交 assistant 的对话后提交 "/history-copy-last"
@@ -123,7 +123,7 @@
       那么 右上角通知栈含 Copied Last Msg 且不以 Error 前缀冒充
   @req:r1194
   规则: slash-theme
-    产品 TUI idle 时 MUST 解析 /theme：无参 MUST 打开替换 editor 槽的主题 SelectList（至少内建 dark/light）；有参 dark|light MUST 经 HostSession::reload_themes（或等价）应用；有参 toggle|cycle MUST 在 dark↔light 间切换；busy 时 MUST 仍可打开主题列表或应用有参 dark|light|toggle|cycle（BusySlashPolicy Allow）；未知参 MUST 提示且 MUST NOT 伪造成功；SlashCommandSource MUST 列出 theme；空格后参数补全 MUST 至少含 dark 与 light。
+    产品 TUI idle 时 须解析 /theme：无参 须打开替换 editor 槽的主题 SelectList（至少内建 dark/light）；有参 dark|light 须经 HostSession::reload_themes（或等价）应用；有参 toggle|cycle 须在 dark↔light 间切换；busy 时 须仍可打开主题列表或应用有参 dark|light|toggle|cycle（BusySlashPolicy Allow）；未知参 须提示且 不得伪造成功；SlashCommandSource 须列出 theme；空格后参数补全 须至少含 dark 与 light。
 
     场景: theme-slot-and-direct-apply
       当 以主机泵在 idle 提交 "/theme"
@@ -132,7 +132,7 @@
       那么 主题直接应用且槽关闭
   @req:r1195
   规则: busy-slash-policy
-    产品 TUI agent/bang 忙碌且无 overlay 时，Enter 提交经 parse_slash_command 命中的 PendingSlash MUST 经单一穷尽 BusySlashPolicy::{Allow,Reject} 分流且 MUST NOT 落入 steer/follow-up：Allow 至少含 SessionName、SetModel、HistoryCopyLast、SessionDump、Export、Exit、Compact、OpenMcp、Theme、OpenModels、OpenSessionResume；Reject 至少含 Reload、Trust、OpenTree、ForkAtLeaf、SessionNew、SessionClone、Import、DebugScene、Usage。OpenSessionResume Allow 仅覆盖打开/浏览；busy 下面板内 SwitchSession（及会写盘的 rename/delete 确认）MUST 另闸拒绝并经通知条提示（见 atm10 / atc22），MUST NOT 因 Allow 开面板而放行 switch。未识别且 looks_like_unknown_slash 的 `/…` MUST 短提示拒绝且 MUST NOT 入 steer（严于 pi）。try_busy_input MUST NOT 再对个别命令散落特判。
+    产品 TUI agent/bang 忙碌且无 overlay 时，Enter 提交经 parse_slash_command 命中的 PendingSlash 须经单一穷尽 BusySlashPolicy::{Allow,Reject} 分流且 不得落入 steer/follow-up：Allow 至少含 SessionName、SetModel、HistoryCopyLast、SessionDump、Export、Exit、Compact、OpenMcp、Theme、OpenModels、OpenSessionResume；Reject 至少含 Reload、Trust、OpenTree、ForkAtLeaf、SessionNew、SessionClone、Import、DebugScene、Usage。OpenSessionResume Allow 仅覆盖打开/浏览；busy 下面板内 SwitchSession（及会写盘的 rename/delete 确认）须另闸拒绝并经通知条提示（见 atm10 / atc22），不得因 Allow 开面板而放行 switch。未识别且 looks_like_unknown_slash 的 `/…` 须短提示拒绝且 不得入 steer（严于 pi）。try_busy_input 不得再对个别命令散落特判。
 
     场景: busy-slash-allow-and-reject
       当 以主机泵开启忙碌流并提交 "/model"
@@ -141,14 +141,14 @@
       那么 重载被拒绝且未发第二次运行时重载
   @req:r1196
   规则: slash-mcp
-    产品 TUI MUST 解析无参 /mcp（可选别名 /mcps → 同路径）：打开替换 editor 槽的 MCP SelectList（对齐 /model|/session-resume；MUST NOT 居中 overlay）。列表 MUST 支持 ↑↓ 选中（焦点行 reverse）；行至少含 server id、连接态（connecting/connected/failed 或等价）、tools armed、可选 tool 数；汇总至少含 configured / connected / armed；失败短诊断可感。Esc 关槽 MUST NOT 仅因开面板 abort agent；本波 Enter MUST 关槽（MUST NOT 假实现禁用 MCP）。开槽 MUST 优先使用已缓存的 LoadedResourcesSnapshot（如 UiRoot/host 经 refresh 持有的）同步挂载，MUST NOT 在缓存可用时仍阻塞等待完整 reconnect 式 discover；缓存缺失时 MAY await 一次 snapshot。idle、agent-busy、bang-busy 与 MCP connecting 下 MUST 均可打开。数据 MUST 经 Driver 只读缝（或公开等价），MUST NOT 从 app/tui reach infra::mcp。SlashCommandSource MUST 列出 mcp；带参 MUST usage 错误或不识别为成功路径；busy 时 OpenMcp MUST 为 BusySlashPolicy Allow 且 MUST NOT 入 steer。
+    产品 TUI 须解析无参 /mcp（可选别名 /mcps → 同路径）：打开替换 editor 槽的 MCP SelectList（对齐 /model|/session-resume；不得居中 overlay）。列表 须支持 ↑↓ 选中（焦点行 reverse）；行至少含 server id、连接态（connecting/connected/failed 或等价）、tools armed、可选 tool 数；汇总至少含 configured / connected / armed；失败短诊断可感。Esc 关槽 不得仅因开面板 abort agent；本波 Enter 须关槽（不得假实现禁用 MCP）。开槽 须优先使用已缓存的 LoadedResourcesSnapshot（如 UiRoot/host 经 refresh 持有的）同步挂载，不得在缓存可用时仍阻塞等待完整 reconnect 式 discover；缓存缺失时 MAY await 一次 snapshot。idle、agent-busy、bang-busy 与 MCP connecting 下 须均可打开。数据 须经 Driver 只读缝（或公开等价），不得从 app/tui reach infra::mcp。SlashCommandSource 须列出 mcp；带参 须 usage 错误或不识别为成功路径；busy 时 OpenMcp 须为 BusySlashPolicy Allow 且 不得入 steer。
 
     场景: mcp-panel-opens-from-cached-snapshot
       当 以主机泵注入含连接态的资源快照后提交 "/mcp"
       那么 MCP 面板槽打开且列出连接态且未因开面板 abort agent
   @req:r1197
   规则: command-execution-class
-    每条 protocol::Command MUST 经单一 SSOT 声明唯一执行类 Exec（Exclusive=独占会话循环直至完成，至少 bash/prompt/reload；Inline=任何交互循环内立即生效且 effect MUST NOT await 远程 unary/HTTP；Queued=保持排队至循环归还），声明 MUST 与 wire REGISTRY 属性行同源并由守卫测试锁定逐变体穷举一致；客户端（泵循环/effects）MUST 经 exec_class 推导消费，MUST NOT 逐命令散落特判（延续 atm16 收口方向）；新增命令 MUST 在 REGISTRY 行声明执行类且 MUST NOT 为表达执行语义修改任何循环结构；Inline 的非阻塞承诺 MUST 以缓存/本地直出实现（/model open 缓存先挂载为样板）。
+    每条 protocol::Command 须经单一 SSOT 声明唯一执行类 Exec（Exclusive=独占会话循环直至完成，至少 bash/prompt/reload；Inline=任何交互循环内立即生效且 effect 不得 await 远程 unary/HTTP；Queued=保持排队至循环归还），声明 须与 wire REGISTRY 属性行同源并由守卫测试锁定逐变体穷举一致；客户端（泵循环/effects）须经 exec_class 推导消费，不得逐命令散落特判（延续 atm16 收口方向）；新增命令 须在 REGISTRY 行声明执行类且 不得为表达执行语义修改任何循环结构；Inline 的非阻塞承诺 须以缓存/本地直出实现（/model open 缓存先挂载为样板）。
 
     场景: bang-inline-effect-runs-during-bang
       假如 交互 bang 正在运行且驱动为 ScriptedDriver
