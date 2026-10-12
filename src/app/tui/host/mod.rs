@@ -957,9 +957,11 @@ impl<T: Terminal> HostSession<T> {
         if need_dock_sync {
             self.sync_dock_rows();
         }
+        let t_render = std::time::Instant::now();
         match self.tui.try_render() {
             Ok(painted) => {
                 if painted {
+                    crate::app::core::lag::note("host_step_paint", t_render);
                     self.paint_dirty = false;
                     // After a full component paint, refresh measured dock rows.
                     if self.tui.application_session_active()
@@ -985,9 +987,11 @@ impl<T: Terminal> HostSession<T> {
         if !self.tui.application_owned_scroll_by(delta) {
             return Ok(());
         }
+        let t_wheel_render = std::time::Instant::now();
         match self.tui.try_render() {
             Ok(painted) => {
                 if painted {
+                    crate::app::core::lag::note("host_wheel_paint", t_wheel_render);
                     self.paint_dirty = false;
                     self.sync_fold_hit_viewport();
                 }
