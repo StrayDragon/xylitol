@@ -272,7 +272,7 @@ mod export {
     async fn lab_design_frame_export() {
         let skills: Vec<(String, String)> = vec![
             ("xylitol".into(), "本仓库开发手册".into()),
-            ("rust-build-tune".into(), "构建调优手册".into()),
+            ("xylitol-test-tui-harness".into(), "TUI 分层验证守则".into()),
         ];
 
         // --- busy: restored transcript + Working + steering queue + 通知条 ---

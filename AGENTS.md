@@ -94,7 +94,7 @@
 ## Worktree 并行开发
 
 - **硬规则**：同 crate 的不同 worktree **禁止**共用 `CARGO_TARGET_DIR`（Cargo fingerprint 不区分包绝对路径，会错误复用别的树编出的产物）。
-- 每个工作区先 `eval "$(just cargo-wt-env)"`（或 `source scripts/cargo_worktree_env.sh`）；路径布局、sccache 共享与清盘细则见 skill `rust-build-tune`（`references/disk-and-worktree.md`）。
+- 每个工作区先 `eval "$(just cargo-wt-env)"`（或 `source scripts/cargo_worktree_env.sh`）；路径布局见该脚本 `--help`。磁盘清盘 / 堆积考古无固化手册——具体行为随工具链版本变化（历史调优结论会过期），遇到时按当次 rust 版本即时调研。
 
 ## 提交与测试
 
@@ -105,7 +105,7 @@
 
 ## Skills
 
-SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建/磁盘：`rust-build-tune`。工具链与 crates.io 依赖 bump：`xylitol-bump-toolchain`。Host 监听器/线协议候选与已退役件清单（现役/退役以 skill 本体为 SSOT）：`xylitol-dev-candidates`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
+SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`xylitol-test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建 / 磁盘调优：按当次 rust 版本即时调研，不固化结论（历史调优结论随版本更迭过期）。工具链与 crates.io 依赖 bump：`xylitol-bump-toolchain`。Host 监听器/线协议候选与已退役件清单（现役/退役以 skill 本体为 SSOT）：`xylitol-dev-candidates`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
 
 ## 编写与维护 AGENTS.md
 

@@ -15,7 +15,7 @@
 #   RUSTC_WRAPPER=sccache   # set yourself if installed; safe across worktrees
 #   SCCACHE_CACHE_SIZE=60G  # defaulted below when unset — caps sccache disk growth
 #
-# See: .agents/skills/rust-build-tune/references/disk-and-worktree.md
+# See: AGENTS.md「Worktree 并行开发」（磁盘卫生无固化手册，按当次 rust 版本调研）
 
 set -euo pipefail
 

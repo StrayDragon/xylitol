@@ -1,5 +1,5 @@
 ---
-name: test-tui-harness
+name: xylitol-test-tui-harness
 description: >-
   Run and extend xylitol TUI automated verification (layered harness:
   key-sequence model asserts, insta snapshots, deterministic timing,

@@ -37,7 +37,7 @@
 | D12 | 渲染输出 | `string[]` ANSI | 同 `Vec<String>`；**不**引入 `StyledLine` | 是 |
 | D13 | Editor 补全扩展 | provider + 引擎内 `/` 等特判较多 | **`CompletionSource` 注册表**（`completion.rs`）；`/` `@` `$` 等为可插拔 Source（扩展点已落地；业务语义在应用端） | 是 |
 | D14 | paste-burst | 无对等模块（或弱） | `PasteBurst` + `Clock`/`MockClock`（确定性时序） | 是 |
-| D15 | 测试分层 | vitest + virtual-terminal | 分层 harness 口径（按键状态 / snapshot / 时序 / 真终端 PTY-tmux；proptest 未落地；`test-tui-harness`） | 是 |
+| D15 | 测试分层 | vitest + virtual-terminal | 分层 harness 口径（按键状态 / snapshot / 时序 / 真终端 PTY-tmux；proptest 未落地；`xylitol-test-tui-harness`） | 是 |
 | D16 | InputListener | VT 字符串回调常见 | **`InputEvent` 原生** `add_input_listener`；无 KeyEvent→VT；`Continue` / `Consumed`（Key·Paste 刷帧，Mouse 静默）/ `ConsumedRerender`（显式 dirty） | 是 |
 | D17 | Diff 组件 | `renderDiff` 函数式 | **`Diff` Component + `render_diff_lines`**；`similar` 在包内；主题闭包；对齐 `designing/tui/modules/diff` | 是 |
 | D18 | 代码高亮 | 应用层常见 | **`highlight` feature**（syntect+two-face），**默认启用**（`default = ["highlight"]`；`--no-default-features` 可关）；经 `MarkdownTheme.highlight_code` 注入 | 是 |

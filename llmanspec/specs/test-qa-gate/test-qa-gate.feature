@@ -1,7 +1,7 @@
 # language: zh-CN
 # capability: test-qa-gate
 # purpose: 统一 just qa / qa-e2e 验证入口：日常满闸与可选 TUI 第 5 层 E2E 的分工。
-# scope: justfile, AGENTS.md, scripts/, .claude/skills/test-tui-harness/, .agents/skills/test-tui-harness/, configs/testing/, .config/nextest.toml
+# scope: justfile, AGENTS.md, scripts/, .claude/skills/xylitol-test-tui-harness/, .agents/skills/xylitol-test-tui-harness/, configs/testing/, .config/nextest.toml
 # reviewed-through: c2855
 
 功能: test-qa-gate
@@ -24,7 +24,7 @@
 
   @req:r1829
   规则: 文档指针
-    根 AGENTS.md 命令段与 test-tui-harness skill 须写明 just qa 与 just qa-e2e 的分工，以及 live-provider 串行闸与专用配置路径；TUI 四层方法论仍以 package-tui-testing 与该 skill 为 SSOT，本闸仅统一入口。
+    根 AGENTS.md 命令段与 xylitol-test-tui-harness skill 须写明 just qa 与 just qa-e2e 的分工，以及 live-provider 串行闸与专用配置路径；TUI 四层方法论仍以 package-tui-testing 与该 skill 为 SSOT，本闸仅统一入口。
     # verified-by: AGENTS.md
     场景: docs-name-qa-split
       当 读取 qa 文档指针

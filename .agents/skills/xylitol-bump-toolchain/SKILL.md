@@ -21,7 +21,7 @@ description: >-
 | 各 `Cargo.toml` 的 `rust-version` | Cargo MSRV **声明**：已发布 stable，且 **小于** 该 nightly 的 `x.y.z` |
 | `Cargo.lock` | 解析出的 crate 图 |
 
-`rust-build-tune` 管 profile / Cranelift / worktree target；动手前 `eval "$(just cargo-wt-env)"`。
+`rust-build-tune` 已退役（调优结论已固化入仓库 profile / 脚本，其余随版本过期）。profile / 工具链调优按当次版本即时调研，勿套历史结论；动手前 `eval "$(just cargo-wt-env)"`。
 
 不另写 bump 日志。新踩坑若六个月后仍真，收进本节硬规则；一次性现象写进 commit message。
 

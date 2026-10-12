@@ -167,7 +167,7 @@ CHECKS: list[Check] = [
     Check("cccc-rs", "warn", "just setup", _probe_cccc),
     Check("pyyaml", "warn", "python3 -m pip install --user pyyaml  (or just setup)", _probe_pyyaml),
     Check("worktree-target", "warn", 'eval "$(just cargo-wt-env)"', _probe_worktree_target),
-    Check("sccache", "info", "see skill rust-build-tune (cargo install sccache + RUSTC_WRAPPER)", _probe_sccache),
+    Check("sccache", "info", "cargo install sccache + RUSTC_WRAPPER（理由见 AGENTS.md Worktree 并行开发）", _probe_sccache),
     Check("live-provider", "info", "see `just gen-live-provider-example`", _probe_live_provider),
 ]
 
