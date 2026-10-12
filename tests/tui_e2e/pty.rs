@@ -291,6 +291,28 @@ impl PtySession {
         }
     }
 
+    /// Bytes accumulated in the raw PTY output stream so far（时序采样用）。
+    pub fn raw_len(&self) -> usize {
+        self.buf.len()
+    }
+
+    /// `buf[offset..]` 是否含 `needle`（帧批标记判定）。
+    pub fn buf_tail_contains(&self, offset: usize, needle: &[u8]) -> bool {
+        self.buf.len() > offset && windows_two(&self.buf[offset..], needle)
+    }
+
+    /// `buf[offset..]` 中 `needle` 出现次数（帧计数）。
+    pub fn count_marks_since(&self, offset: usize, needle: &[u8]) -> usize {
+        if self.buf.len() <= offset {
+            return 0;
+        }
+        let hay = &self.buf[offset..];
+        if needle.is_empty() {
+            return 0;
+        }
+        hay.windows(needle.len()).filter(|w| *w == needle).count()
+    }
+
     /// True if the raw byte stream received so far contains `needle` (a byte
     /// substring, e.g. a CSI escape sequence emitted at startup). Used to
     /// assert protocol-negotiation sequences were sent (c410 tp01).
@@ -1290,4 +1312,109 @@ fn spawn_product_fake_ready_in(
         )
         .expect("product TUI should render Fake footer");
     (session, tmp)
+}
+
+/// c2891-followup：滚轮响应签名（真 PTY=crossterm EventStream 全链）。
+/// 单发 SGR wheel → 首个 paint 批(`?2026h`)延迟；连发 → 排空时长与帧数。
+/// 「卡」的客观基线：签名劣化即回归；数值供调参对照（非精密时序断言）。
+#[test]
+#[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
+fn pty_product_wheel_latency_signature() {
+    let (mut session, _tmp) = spawn_product_fake_ready(100, 30);
+    // seed：8 轮 fake 对话，确保 transcript 远高于视口（30 行窗）可滚。
+    for i in 0..8 {
+        session.send_keys("\x15hi\r").expect("seed submit");
+        let needle = format!("{} (#{i})", crate::FAKE_HELLO);
+        let _ = session.wait_for_raw(&needle, Duration::from_secs(20));
+    }
+    // 先 down 消 follow/bottom 对齐，up 才有位移可言。
+    session
+        .send_keys("\x1b[<65;10;5M")
+        .expect("wheel down pre-align");
+    std::thread::sleep(Duration::from_millis(200));
+    session.drain(Duration::from_millis(200));
+    session.drain(Duration::from_millis(400));
+    let wheel = "\x1b[<64;10;5M"; // SGR wheel-up @ transcript row5 col10
+    let frame_mark = "\x1b[?2026h";
+
+    // ── 单发首响 ×10 ──
+    let mut single_lat_ms: Vec<u128> = Vec::new();
+    for _ in 0..10 {
+        // 先 down 一格确保下方有位移空间（防顶溢 no-op 假 MAX）。
+        session.send_keys("\x1b[<65;10;5M").expect("pre-align down");
+        std::thread::sleep(Duration::from_millis(60));
+        session.drain(Duration::from_millis(60));
+        let base = session.raw_len();
+        let t0 = std::time::Instant::now();
+        session.send_keys(wheel).expect("wheel");
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            session.drain(Duration::from_millis(2));
+            if session.raw_len() > base && session.buf_tail_contains(base, frame_mark.as_bytes()) {
+                single_lat_ms.push(t0.elapsed().as_millis());
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                single_lat_ms.push(u128::MAX); // no-paint sentinel
+                break;
+            }
+        }
+        // 等价真实慢滚手间隙
+        std::thread::sleep(Duration::from_millis(120));
+    }
+    single_lat_ms.sort_unstable();
+    let mut ok: Vec<u128> = single_lat_ms
+        .iter()
+        .filter(|v| **v != u128::MAX)
+        .copied()
+        .collect();
+    ok.sort_unstable();
+    let med = ok.get(ok.len() / 2).copied().unwrap_or(u128::MAX);
+    println!("wheel-single latency ms: median={med} ok={ok:?} all={single_lat_ms:?}");
+
+    // ── 连发 20@25ms down（自上部向下恒有效）：排空时长 + 帧数 ──
+    session.drain(Duration::from_millis(200));
+    let base = session.raw_len();
+    let t0 = std::time::Instant::now();
+    let wheel_dn = "\x1b[<65;10;5M";
+    for _ in 0..20 {
+        session.send_keys(wheel_dn).expect("burst wheel");
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    let injected_done = std::time::Instant::now();
+    let quiet_deadline = std::time::Instant::now() + Duration::from_secs(3);
+    let mut last_len;
+    loop {
+        let before = session.raw_len();
+        std::thread::sleep(Duration::from_millis(60));
+        session.drain(Duration::from_millis(30));
+        last_len = session.raw_len();
+        if last_len == before
+            && std::time::Instant::now().duration_since(injected_done)
+                > std::time::Duration::from_millis(150)
+        {
+            break;
+        }
+        if std::time::Instant::now() > quiet_deadline {
+            break;
+        }
+    }
+    let drain_total = t0.elapsed().as_millis();
+    let frames = session.count_marks_since(base, frame_mark.as_bytes());
+    println!("wheel-burst: total_drain={drain_total}ms frames={frames}");
+    assert!(
+        med < 300,
+        "single wheel median {med}ms >= 300 —— 首响签名劣化"
+    );
+    assert!(frames >= 1, "burst frames {frames} < 1 —— 合帧/响应缺失");
+    assert!(
+        u128::from(drain_total) < 4500,
+        "burst drain {drain_total}ms —— 排空迟滞"
+    );
+
+    session.send_keys("\x15/exit\r").expect("submit /exit");
+    let code = session
+        .wait_exit(Duration::from_secs(30))
+        .expect("exit after wheel signature");
+    assert_eq!(code, 0, "clean exit");
 }
