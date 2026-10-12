@@ -403,8 +403,11 @@ async fn run_host_loop(
                             // Fast scroll: sum already-buffered wheel events and
                             // apply the full delta before one cheap AO reproject.
                             // Only when the first event is over the transcript pane.
-                            let step = session.tui.application_owned_wheel_notch();
-                            let coalesce_wheel = wheel_delta_from_item(&item, step).filter(|_| {
+                            // Velocity-adaptive lines/event (pi wheel-scroll);
+                            // XYLITOL_WHEEL_SPEED=<n> pins a constant.
+                            let coalesce_wheel =
+                                wheel_delta_from_item(&item, &mut session.wheel_accel).filter(
+                                    |_| {
                                 session.tui.application_session_active()
                                     && match &item {
                                         Ok(Event::Mouse(m)) => {
@@ -421,7 +424,9 @@ async fn run_host_loop(
                                 let mut deferred: Option<Result<Event, std::io::Error>> = None;
                                 while let Some(next) = term_events.next().now_or_never().flatten()
                                 {
-                                    if let Some(d) = wheel_delta_from_item(&next, step) {
+                                    if let Some(d) =
+                                        wheel_delta_from_item(&next, &mut session.wheel_accel)
+                                    {
                                         delta = delta.saturating_add(d);
                                     } else {
                                         deferred = Some(next);
@@ -556,16 +561,20 @@ fn apply_idle_downlink<T: xylitol_tui::Terminal>(
     Ok(())
 }
 
-fn wheel_delta_from_item(item: &Result<Event, std::io::Error>, step: isize) -> Option<isize> {
-    let step = step.max(1);
-    match item {
+fn wheel_delta_from_item(
+    item: &Result<Event, std::io::Error>,
+    accel: &mut xylitol_tui::WheelAccelerator,
+) -> Option<isize> {
+    let direction = match item {
         Ok(Event::Mouse(m)) => match m.kind {
-            MouseEventKind::ScrollUp => Some(-step),
-            MouseEventKind::ScrollDown => Some(step),
+            MouseEventKind::ScrollUp => Some(-1),
+            MouseEventKind::ScrollDown => Some(1),
             _ => None,
         },
         _ => None,
-    }
+    }?;
+    let now = std::time::Instant::now();
+    Some(direction * accel.next(direction, now))
 }
 
 /// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).
