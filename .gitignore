@@ -187,10 +187,6 @@ site/
 *.exe
 *.test
 vendor/
-# Keep Rust vendored sources (src/app/tui/vendor/, see c370). The bare
-# `vendor/` rule above is for Go; this un-ignores our TUI vendored crate.
-!src/app/tui/vendor/
-!src/app/tui/vendor/**
 # Root-level vendored patch (gherkin, see vendor/README.md) for the BDD chain.
 !vendor/
 !vendor/**
