@@ -16,7 +16,7 @@ use std::io::{Write, stdout};
 use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
-use xylitol_tui::{ApplicationOwnedTui, Component, CrosstermTerminal, InputEvent, InputReaction};
+use xylitol_tui::{ApplicationOwnedTui, Component, CrosstermTerminal, InputEvent};
 use crossterm::event::Event as TermEvent;
 
 const LINES: usize = 300;
@@ -77,19 +77,10 @@ impl Component for WheelHost {
         self.lines.clone()
     }
 
-    fn handle_input(&mut self, event: InputEvent) {
-        let InputEvent::Mouse(m) = event else {
-            return;
-        };
-        match m.kind {
-            MouseEventKind::ScrollUp => self.wheel(-NOTCH),
-            MouseEventKind::ScrollDown => self.wheel(NOTCH),
-            _ => {}
-        }
-    }
+    fn handle_input(&mut self, _event: InputEvent) {}
 
     fn input_wants_rerender(&self, _e: &InputEvent) -> bool {
-        true
+        false
     }
 
     fn invalidate(&mut self) {}
@@ -177,15 +168,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     {
                         break;
                     }
-                    // 双通道：tmux 等会把滚轮本地译成 Up/Down——等价 wheel。
+                    // 双通道：tmux 等把滚轮本地译成 Up/Down——等价 wheel。
                     let d = match key.code {
                         KeyCode::Up => Some(-NOTCH),
                         KeyCode::Down => Some(NOTCH),
                         _ => None,
                     };
-                    if d.is_some() {
+                    if let Some(d) = d {
                         let t0 = Instant::now();
-                        let _ = tui.dispatch_event(InputEvent::Key(*key));
+                        let _ = tui.application_owned_scroll_by(d);
                         let _ = tui.render_now();
                         let ms = t0.elapsed().as_millis();
                         lat.push(ms);
@@ -200,10 +191,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if matches!(m.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown) =>
                 {
                     let t0 = Instant::now();
-                    let reaction = tui.dispatch_event(InputEvent::Mouse(*m));
-                    if reaction == InputReaction::Rerender {
-                        let _ = tui.render_now();
-                    }
+                    let d = if matches!(m.kind, MouseEventKind::ScrollUp) {
+                        -NOTCH
+                    } else {
+                        NOTCH
+                    };
+                    let _ = tui.application_owned_scroll_by(d);
+                    let _ = tui.render_now();
                     let ms = t0.elapsed().as_millis();
                     lat.push(ms);
                     let now = Instant::now();
