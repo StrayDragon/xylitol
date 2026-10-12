@@ -35,10 +35,6 @@ pub struct ApplicationOwnedRuntime {
     scroll_gutter: Option<ScrollGutter>,
     /// 滑轨拖拽抓取偏移（内域 0 基）；None = 非拖拽中。
     gutter_drag_grab: Option<usize>,
-    /// Wheel 弹簧目标位（`None`=无动画；见 `queue_wheel_delta`）。
-    wheel_target: Option<usize>,
-    /// 最近 wheel 时刻——动画时间常数据此贴事件节拍（消「动停」）。
-    last_wheel_at: Option<std::time::Instant>,
 }
 
 impl ApplicationOwnedRuntime {
@@ -65,8 +61,6 @@ impl ApplicationOwnedRuntime {
             hover_regions: HitRegionList::new(),
             scroll_gutter: None,
             gutter_drag_grab: None,
-            wheel_target: None,
-            last_wheel_at: None,
         }
     }
 
@@ -147,8 +141,6 @@ impl ApplicationOwnedRuntime {
         if delta == 0 {
             return false;
         }
-        // 绝对/拖拽语义入口：清平滑残量，防交错回拉。
-        self.wheel_target = None;
         if !self.scroll.scroll_by(delta) {
             return false;
         }
@@ -158,7 +150,6 @@ impl ApplicationOwnedRuntime {
 
     /// Re-arm follow mode and move the application-owned viewport to its end.
     pub fn scroll_to_end(&mut self) -> bool {
-        self.wheel_target = None;
         let was_at_bottom = self.scroll.at_bottom();
         self.scroll.scroll_to_end();
         self.follow_bottom = true;
@@ -167,7 +158,6 @@ impl ApplicationOwnedRuntime {
 
     /// Jump to the transcript top; follow disarms unless already at top (c2891).
     pub fn scroll_home(&mut self) -> bool {
-        self.wheel_target = None;
         if !self.scroll.scroll_home() {
             return false;
         }
@@ -175,86 +165,11 @@ impl ApplicationOwnedRuntime {
         true
     }
 
-    /// Apply a wheel delta immediately. Hosts map each physical wheel event to
-    /// [`Self::wheel_notch`] rows and may coalesce buffered events into one delta.
+    /// Apply a wheel delta immediately（zellij 式恒跳：数据搬移+should_render，
+    /// 无动画层——顺滑来自恒定步长与宿主合帧纪律，非插值）。Hosts map each
+    /// physical wheel event via the accelerator and may coalesce buffered events.
     pub fn ingest_wheel_delta(&mut self, delta: isize) -> bool {
         self.scroll_by(delta)
-    }
-
-    /// Wheel 弹簧平滑：记目标位，渲染位由 [`Self::tick_wheel_smooth`] 每帧指数
-    /// 逼近（~45%/帧）。**无队列无积压**——连滚即时重定目标，滞后不累积；
-    /// 拖拽丝滑的本质（高频小步长）由帧级小步长复现。
-    pub fn queue_wheel_delta(&mut self, delta: isize) {
-        self.last_wheel_at = Some(std::time::Instant::now());
-        let cur = self.scroll.scroll_top() as isize;
-        let max = self.scroll.max_scroll() as isize;
-        // 同向：自 target 累积（快甩连加）；反向/无动画：自当前视觉位重定
-        //（用户改向=新意图，旧残程作废）。
-        let base = match self.wheel_target {
-            Some(t) if (t as isize - cur).signum() == delta.signum() => t as isize,
-            _ => cur,
-        };
-        let want = (base + delta).clamp(0, max);
-        self.wheel_target = Some(want as usize);
-    }
-
-    /// 弹簧动画是否活跃（target 与渲染位有差距）。
-    pub fn wheel_smooth_pending(&self) -> bool {
-        self.wheel_target
-            .is_some_and(|t| t != self.scroll.scroll_top())
-    }
-
-    /// 弹簧一帧：向 target 逼近一步；返回是否产生位移（需重渲）。
-    pub fn tick_wheel_smooth(&mut self) -> bool {
-        let Some(target) = self.wheel_target else {
-            return false;
-        };
-        let cur = self.scroll.scroll_top() as isize;
-        let diff = target as isize - cur;
-        if diff == 0 {
-            self.wheel_target = None;
-            return false;
-        }
-        // 拖拽中：立即贴齐（拖拽持绝对定位）。
-        let dragging = self.gutter_drag_grab.is_some() || self.selection.is_dragging();
-        if dragging || diff.abs() <= 1 {
-            let hit = self.scroll.scroll_by(diff);
-            if hit {
-                self.follow_bottom = self.scroll.at_bottom();
-            }
-            self.wheel_target = None;
-            return hit;
-        }
-        // 自适应时间常数：动画时长贴事件间隙（crossterm 异步批/无时戳的补偿）——
-        // 慢滚长间隙演满不「停摆」，快甩短间隙速收不拖尾。
-        let gap_ms = self
-            .last_wheel_at
-            .map(|t| t.elapsed().as_secs_f32() * 1000.0)
-            .unwrap_or(100.0);
-        let mut tau = (gap_ms * 0.9).clamp(40.0, 150.0);
-        // 连甩 target 远：τ 随差距放宽，防「大 diff×短 τ」高频大步跳（连续顿挫）。
-        tau = (tau + diff.abs() as f32 * 2.0).min(400.0).max(tau);
-        let k = 1.0 - (-16.0 / tau).exp();
-        let mag = ((diff.abs() as f32) * k).ceil() as isize;
-        // 每帧步长上限（视口 ~1/10）：连甩平滑底线，慢滚不受影响。
-        let mag = mag.clamp(1, 4);
-        let step = diff.signum() * mag.clamp(1, diff.abs());
-        let cur_usize = self.scroll.scroll_top();
-        let step = if cur_usize as isize + step < 0 {
-            -(cur_usize as isize)
-        } else {
-            step
-        };
-        if self.scroll.scroll_by(step) {
-            self.follow_bottom = self.scroll.at_bottom();
-            if self.scroll.scroll_top() == target {
-                self.wheel_target = None;
-            }
-            return true;
-        }
-        // Edge-clamped：放弃残余动画。
-        self.wheel_target = None;
-        false
     }
 
     /// Wheel step for host coalescing. Edge-drag uses [`ScrollView::motion_step`].

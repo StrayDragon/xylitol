@@ -418,41 +418,18 @@ impl<T: Terminal> TUI<T> {
         self.ao_components_stale
     }
 
-    /// Queue a coalesced ApplicationOwned wheel delta for smooth release
-    ///（插值动画：宿主 16ms wheel-deadline 帧逐次释放，拖拽级连续性）。
+    /// Apply a coalesced ApplicationOwned wheel delta（zellij 式：即时跳变+
+    /// 宿主 16ms cap 合帧；无动画层）。
     pub fn application_owned_scroll_by(&mut self, delta: isize) -> bool {
         let Some(runtime) = self.application_owned.as_mut() else {
             return false;
         };
-        runtime.queue_wheel_delta(delta);
-        // 首帧同步逼近（弹簧首步 ~45%）——滚完即见位移，无 16ms 起步延迟。
-        let moved = runtime.tick_wheel_smooth();
-        if !moved && !runtime.wheel_smooth_pending() {
-            return false; // target==current：零位移（如已底的同向滚）。
+        if !runtime.ingest_wheel_delta(delta) {
+            return false;
         }
         self.ao_wheel_render_requested = true;
         self.request_render(false);
         true
-    }
-
-    /// 弹簧动画帧：向 wheel target 逼近一步；true=有位移需重渲。
-    pub fn application_owned_wheel_release(&mut self) -> bool {
-        let Some(runtime) = self.application_owned.as_mut() else {
-            return false;
-        };
-        let moved = runtime.tick_wheel_smooth();
-        if moved {
-            self.ao_wheel_render_requested = true;
-            self.request_render(false);
-        }
-        moved
-    }
-
-    /// 弹簧动画是否未收敛（供帧判定）。
-    pub fn application_owned_wheel_animating(&self) -> bool {
-        self.application_owned
-            .as_ref()
-            .is_none_or(ApplicationOwnedRuntime::wheel_smooth_pending)
     }
 
     /// Move an active ApplicationOwned viewport to the transcript end and
@@ -768,10 +745,8 @@ impl<T: Terminal> TUI<T> {
     /// restarting a full cadence interval from the latest input event. Other
     /// pending paints return `None` and keep their existing host tick policy.
     pub fn application_owned_wheel_render_deadline(&self) -> Option<std::time::Instant> {
-        // Wheel 动画期间持续供帧（pending 释放完毕前 keep 16ms cadence）。
-        let animating = self.application_owned_wheel_animating();
-        if (!self.render_requested && !animating)
-            || (!self.ao_wheel_render_requested && !animating)
+        if !self.render_requested
+            || !self.ao_wheel_render_requested
             || !self.can_reproject_application_owned(
                 self.ao_render_width(self.terminal.columns() as usize),
             )

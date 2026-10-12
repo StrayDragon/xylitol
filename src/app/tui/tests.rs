@@ -284,28 +284,27 @@ fn application_owned_host_coalesced_wheel_paints_once_without_tick_tail() {
         frames_after_first,
         "continuous wheel paint should respect the independent 60fps cap"
     );
-    // c2891+ wheel smooth-release：连续 input 期间 pending 动画供帧（deadline
-    // Some）；「无 busy-tick 尾」合约改为——排空动画后 deadline 归 None 且不欠
-    // generic tick。60fps cap 仍由帧计数断言守护。
-    let deadline = session.tui.application_owned_wheel_render_deadline();
+    let deadline = session
+        .tui
+        .application_owned_wheel_render_deadline()
+        .expect("capped wheel paint must expose its exact deadline");
     assert!(
-        deadline
-            .is_none_or(|d| d <= std::time::Instant::now() + std::time::Duration::from_millis(16)),
+        deadline <= std::time::Instant::now() + std::time::Duration::from_millis(16),
         "wheel deadline must be based on the previous paint, not a fresh host tick"
     );
     session
         .apply_ao_wheel_delta(-notch)
         .expect("additional wheel delta before deadline");
+    assert_eq!(
+        session.tui.application_owned_wheel_render_deadline(),
+        Some(deadline),
+        "new wheel input must not restart the existing paint deadline"
+    );
     assert!(
         !session.wants_busy_tick(),
         "wheel deadline owns this wake; the generic busy ticker must not add delay"
     );
     session.tui.render_now().expect("flush capped wheel paint");
-    // 动画残留排空后 deadline 才归 None（wheel smooth-release 供帧期间 Some）。
-    while session.tui.application_owned_wheel_animating() {
-        session.tui.application_owned_wheel_release();
-        session.tui.render_now().expect("anim frame");
-    }
     assert!(
         session
             .tui

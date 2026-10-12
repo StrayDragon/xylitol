@@ -351,8 +351,6 @@ async fn run_host_loop(
             let ao_wheel_render_deadline = session.tui.application_owned_wheel_render_deadline();
             tokio::select! {
                 _ = wait_for_ao_wheel_deadline(ao_wheel_render_deadline) => {
-                    // Wheel 动画帧：先释放一段 pending 再 paint（拖拽级连续性）。
-                    session.tui.application_owned_wheel_release();
                     session.step_paint_only()?;
                 }
                 _ = ticker.tick() => {
