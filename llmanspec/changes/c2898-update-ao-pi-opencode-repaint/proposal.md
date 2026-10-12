@@ -11,9 +11,16 @@ title: AO 滚动跟手性：对齐 pi / opencode 的丝滑度
 
 ## What Changes
 
-- TODO（propose 时锁）：以 lab 实测为据，锁定热点后改造 repaint 链相应段。
-- 候选方向（未拍板，仅记录）：输入侧合帧；wheel 快路径命中率；finalize 增量宽度检查；diff reuse 提升到滚动平移特例（vertical shift 已有检测，或可扩展）。
-- 验收口径：与 pi/opencode 同规模 transcript 对比滚动手感；`lab_ao_perf` p95 不回归且重投影比率显著上升。
+- **主修复（E1）**：busy/streaming 期动画（spinner 等）tick 的 stale 粒度从「全组件树」细化到「dock/受影响组件」，消除 60Hz×全量重排（dev 18.4ms/帧）对交互帧的挤占。实测与方案见 `research/latency-findings.md`（F2/E1）。
+- **诊断基建（F6）**：修 `lab_ao_stream_delta_perf_report` 陈年坏（缺 `on_run_started`→idle fence 吞 TextDelta），随本票入库；补 busy 期混合负载 lab 场景（spinner tick + wheel 交替）作为 E1 前后对比。
+- **运行 profile（E2）**：确认产品 run 路径 release 编译；dev 另行提示（F3，3.6× 差距）。
+- 候选（数据支持后议）：finalize reuse dev 未命中复辨（F4）；非本票——滚轮管线健康（F1）无需动。
+
+## Further Notes
+
+- 调研全文：`research/latency-findings.md`（lab 实测 F1–F6 + pi `loader.ts`/`tui.ts` 对照）。
+- 关键数字：release wheel p50 12us（管线健康）；warm 全重排 dev 18.4ms / release 5.1ms；60Hz×18.4ms≈110% 单核 = 卡顿主嫌。
+- 用户复现条件问卷（busy/idle、dev/release、终端）见 research E3——实施前须确认。
 
 ## 非目标（草案）
 
