@@ -201,11 +201,12 @@ impl ApplicationOwnedRuntime {
             return false;
         }
         let dragging = self.gutter_drag_grab.is_some() || self.selection.is_dragging();
-        let step = if dragging || self.pending_wheel.abs() <= 3 {
+        let step = if dragging {
             self.pending_wheel
         } else {
-            // ~3 帧收敛于 host 16ms wheel deadline。
-            self.pending_wheel / 3 + self.pending_wheel.signum()
+            // 统一 ~3 帧收敛（ceil 均分）：小滚 1 行/帧消灭格跳，大甩同收敛窗。
+            let mag = (self.pending_wheel.abs() + 2) / 3;
+            self.pending_wheel.signum() * mag.max(1)
         };
         // 直呼 inner（绕 `scroll_by` 的 pending 清零——此处正在消费它）。
         let before = self.scroll.scroll_top();
