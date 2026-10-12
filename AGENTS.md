@@ -105,20 +105,20 @@
 
 ## Skills
 
-SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建/磁盘：`rust-build-tune`。工具链与 crates.io 依赖 bump：`xylitol-bump-toolchain`。Host 监听器/线协议候选（salvo、jsonrpsee 退役、axum、Scalar/oapi）与已退役本地词表/RemoteCount（tiktoken、HF tokenizers、gigatoken、count_tokens HTTP）：`xylitol-dev-candidates`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
+SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建/磁盘：`rust-build-tune`。工具链与 crates.io 依赖 bump：`xylitol-bump-toolchain`。Host 监听器/线协议候选与已退役件清单（现役/退役以 skill 本体为 SSOT）：`xylitol-dev-candidates`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
 
 ## 编写与维护 AGENTS.md
 
-`AGENTS.md` = **稳定操作边界**，不是 README / 进度板。
+`AGENTS.md` = **稳定操作边界**，不是 README / 进度板。只收三类内容：**硬约束 / 稳定原则 / 宽泛索引（HOW 指针）**；API 名、调用序列、参数流水账等易腐细节一律以代码、skill 或 spec 为 SSOT，此处至多留一句指针——索引会过期，原则不会。
 
 | 写 | 不写 |
 |---|---|
 | WHAT、硬约束、依赖方向、开闭规则 | 进度、行数快照、commit 列表、待办板 |
-| HOW 指针（skill / 命令 / `docs/architecture`） | 长教程、完整测试矩阵、易腐文件地图 |
+| HOW 指针（skill / 命令 / `docs/architecture`） | 长教程、完整测试矩阵、API / 调用序列枚举（代码为 SSOT）、易腐文件地图 |
 | 与父级不同的本地例外 | 重复父级长文；复述他处 SSOT 已写全的事实（用指针替代）；钉死易变文件路径 / change id |
 
 **偏好**：全局规则与架构不变量；落点用层名（`agent`/`infra`/…），细节去读代码。子目录只补本端例外。
 
 放哪：全仓规则 → 根；目录边界 → 该目录 `AGENTS.md`；多步 how-to → skill；临时笔记 → `_HANDOFF` / `*.tmp.md`（勿升格规范）；**change 作用域调研** → `llmanspec/changes/<id>/research/`（细则 `llmanspec/AGENTS.md`，勿堆 `docs/research/`）。
 
-维护：六个月后是否仍真？否则不要进 AGENTS。复杂度门禁与拆分默认策略在 `src/AGENTS.md`；**不**另维护超标表。
+维护：六个月后是否仍真？否则不要进 AGENTS。同审 `.agents/skills/` 项目 skills（`xylitol-*` 等）：事实性断言（路径 / 命令 / 约束）对照代码复核，漂移即修——skill 与 AGENTS 同一抗衰老纪律。复杂度门禁与拆分默认策略在 `src/AGENTS.md`；**不**另维护超标表。

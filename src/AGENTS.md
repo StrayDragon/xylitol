@@ -125,7 +125,7 @@ Hook 三条接缝只认可移植 JSON（headers map + body Value）；不把 req
 
 生产模块避免无结构 God 文件。**不以文件物理行数作为质量约束**（行数与可维护性无直接映射，行数硬测会逼出按 impl 块散落的假拆分）；质量信号只走函数级复杂度指标（cccc-rs 的 Sonar cognitive / McCabe cyclomatic）。
 
-**TUI 端复杂度门禁（HARD）**：产品 TUI 入口协调者（host 入口、layout 根、effects 入口、bridge 入口）的函数级复杂度经 `just qa` 的 `scripts/check_complexity.py`（cccc-rs）强制：Sonar cognitive ≤32 且 McCabe cyclomatic ≤27。**不以文件物理行数作为硬门禁**（行数硬测会逼出按 impl 块散落的假拆分）。测试专用模块不参与本门禁。
+**TUI 端复杂度门禁（HARD）**：产品 TUI 入口协调者（host 入口、layout 根、effects 入口、bridge 入口）的函数级复杂度经 `just qa` 的 `scripts/check_complexity.py`（cccc-rs）强制：Sonar cognitive ≤32 且 McCabe cyclomatic ≤27。测试专用模块不参与本门禁。
 
 **全树复杂度雷达（review 信号）**：`just complexity`（`--radar`）对全生产树（排除测试文件）报告 cccc-rs top-cognitive 排名，作为 review 参照；软信号，非硬门禁。复杂度高的函数优先拆分/重构，不用行数 KPI。
 

@@ -31,19 +31,14 @@
 |---|---|
 | 滚动提示默认 **尾插**（跟底可见、保 paint-cache）；顶层原则与例外条件见 [`docs/architecture/TUI信息呈现与固定区词汇.md`](../../../docs/architecture/TUI信息呈现与固定区词汇.md)「信息分类 × 落点」；瞬时确认优先页脚 / 状态条 / 槽 | 无理由顶插；瞬时确认堆进滚动区 |
 | 渲染只用 `xylitol_tui`；缺能力先改包再接线；产品路径 **host 驱动** | 准通用实现塞进本端；产品调 demo 启动 API（`TUI::start()`） |
-| 鼠标默认 **ApplicationOwned**：host 启动构造时绑定（缺省 AO），begin 后开 capture，应用内选区 + dock 排除；折叠命中经 `replace_hits` + `take_pointer_click`（`UpIfEmptySelection`）；探针武装后扇入送达 Moved；模式命名以包 AGENTS 硬约束为准（`Inline` / `ApplicationOwned`） | mid-session 热切；读 `XYLITOL_TUI_MOUSE`（lab env）；把 `XYLITOL_TUI_INLINE=1` 当产品旗标（仅 lab 窥视 Inline 构造）；产品路径 `HitPriorityFn` |
+| 鼠标默认 **ApplicationOwned**（host 启动构造时绑定，缺省 AO；应用内选区 + dock 排除）；命中/探针管线细节以包代码与 `package-tui-pointer` 合约为 SSOT；模式命名以包 AGENTS 硬约束为准（`Inline` / `ApplicationOwned`） | mid-session 热切；产品路径读/设 lab env（`XYLITOL_TUI_*`）或用 `HitPriorityFn` |
 | Agent 只经产品信封客户端（端侧）或 Host 内 `XyDriver`（依赖纪律同 `src/AGENTS.md`） | 产品 TUI 默认同进程直握操作器 |
 | Trust 在 CLI 门禁（见 `docs/architecture/信任与项目门禁.md`）；本端 `EditorSlot::Choice` 已解冻给内置 `ask` | Plate / Settings stub 冻结期间扩展其功能或抢先落对应 spec |
 | 颜色走本端 theme token；已确认需求须先有 harness / BDD 护栏 | 另立 hex；没有护栏就先写实现 |
 | UiEntry：tool/bash/diff = status 左边轨 + gutter；user / assistant / thinking = flush；`Palette` = [`DESIGN.md`](./DESIGN.md) frontmatter 运行时快照 | 给 user / assistant 加轨或洗底 |
 | steer / follow-up 走 `src/AGENTS.md` 的 `XyDriver` 队列边界 | 本端持有 ReAct 内部队列 |
 
-**Esc 行为**（实现细节以代码与 stage-QA design 为准）：
-
-- Idle 空 editor → 双 Esc 开树
-- Busy 无 overlay → 置 abort 锁存（latch），Xy 抑制立即生效；drain 仍须调用 `XyDriver::abort`
-- Busy + overlay → 先关槽，不 abort
-- Agent abort 与 Bang abort 文案 / 抑制策略不同（见代码与 harness）
+**Esc 行为**：分场景收敛（idle 空 editor 双 Esc 开树 / busy 锁存 abort 且 drain 仍须调 `XyDriver::abort` / overlay 先关槽）；完整矩阵以代码、harness 测与 stage-QA design 为 SSOT，此处不复制。Agent abort 与 Bang abort 文案 / 抑制策略不同。
 
 ## 验证与 HOW
 

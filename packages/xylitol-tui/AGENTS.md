@@ -70,9 +70,9 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 
 ## ApplicationOwned host checklist
 
-产品 / 自写 host **MUST** 以 `examples/host_loop_application_owned.rs`（`just demo-tui-host-loop`）为样板；**禁止**把 `agent_demo_impl` 私有坐标算术当 SSOT。
+产品 / 自写 host **MUST** 以 `examples/host_loop_application_owned.rs`（`just demo-tui-host-loop`）为样板——构造序、dock / 命中 / 复制 / 挂起的完整调用序列以该 example 与 `lib.rs` 导出文档为 SSOT，本节不维护 API 流水账；**禁止**把 `agent_demo_impl` 私有坐标算术当 SSOT，host **不必**自算 `content_row = scroll_top + screen_row`。
 
-构造 `ApplicationOwnedTui`（或 `TUI::with_interaction_mode(..., ApplicationOwned)`）→ `begin_application_owned_session` → host 驱动 `dispatch_event` / `idle_tick` / `try_render`（**勿**产品路径调 `TUI::start()`）→ 每帧 `set_dock_rows` → Editor 用 `editor_screen_origin` 收**绝对** screen 坐标 → `mouse_in_dock` 过滤 dock → 命中优先 `mark_hit(Hit::on_line(id, line).cols(..))`（正文随滚动）或 `Hit::at_cell(id, col, row)`（钉在可见格）；`set_hit_regions` 是引擎整表替换。不透明 id；`set_transcript_hit_priority` 仍可用 → 相位 / 探针 `set_pointer_click_phase` / `arm_pointer_probe` / `take_pointer_click` → 复制走 `take_copy_notice` / Editor OSC52 → 退出 `finish`。挂起用 `with_terminal_suspended`（ApplicationOwned 自动重进 alt+mouse）。**禁止**把产品 `FoldTarget` 写进本包。host **不必**自算 `content_row = scroll_top + screen_row`。`Tabs`：布局后 `set_screen_origin`，走 `dispatch_event` 即可（引擎在焦点前 `offer_pointer`）；底层 `title_col_ranges` / `overflow_col_ranges` / `set_selected` 仍可用。
+原则级禁令：产品路径勿调 `TUI::start()`（仅 demo）；**禁止**把产品 `FoldTarget` 写进本包；命中 id 对本包不透明（宿主自选、引擎不解析）。
 
 ## 验证（本文件 = 人类/agent 验证分工 SSOT）
 
