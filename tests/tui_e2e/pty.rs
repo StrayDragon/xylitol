@@ -1408,7 +1408,7 @@ fn pty_product_wheel_latency_signature() {
     );
     assert!(frames >= 1, "burst frames {frames} < 1 —— 合帧/响应缺失");
     assert!(
-        u128::from(drain_total) < 4500,
+        drain_total < 4500,
         "burst drain {drain_total}ms —— 排空迟滞"
     );
 

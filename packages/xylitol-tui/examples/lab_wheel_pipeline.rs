@@ -15,9 +15,9 @@
 use std::io::{Write, stdout};
 use std::time::{Duration, Instant};
 
+use crossterm::event::Event as TermEvent;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 use xylitol_tui::{ApplicationOwnedTui, Component, CrosstermTerminal, InputEvent};
-use crossterm::event::Event as TermEvent;
 
 const LINES: usize = 300;
 const NOTCH: isize = 3;
@@ -163,7 +163,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ev = event::read()?;
             match &ev {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
-                    if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL)
+                    if key.code == KeyCode::Char('c')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
                         || key.code == KeyCode::Char('q')
                     {
                         break;
@@ -188,7 +189,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
                 Event::Mouse(m)
-                    if matches!(m.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown) =>
+                    if matches!(
+                        m.kind,
+                        MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                    ) =>
                 {
                     let t0 = Instant::now();
                     let d = if matches!(m.kind, MouseEventKind::ScrollUp) {
@@ -212,7 +216,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => {}
             }
             // 非 wheel key 路径的 rerender（q 已 break）
-
         } else if tui.idle_tick() {
             let _ = tui.try_render();
         }
@@ -274,7 +277,10 @@ fn run_raw(poll_ms: u64, variant: Variant) -> Result<(), Box<dyn std::error::Err
                     draw_raw(&mut out, &host, cols, rows)?;
                 }
                 Event::Mouse(m)
-                    if matches!(m.kind, MouseEventKind::ScrollUp | MouseEventKind::ScrollDown) =>
+                    if matches!(
+                        m.kind,
+                        MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+                    ) =>
                 {
                     let t0 = Instant::now();
                     let d = if matches!(m.kind, MouseEventKind::ScrollUp) {
@@ -330,7 +336,6 @@ fn terminal_size() -> Result<(usize, usize), Box<dyn std::error::Error>> {
     let (c, r) = crossterm::terminal::size()?;
     Ok((c as usize, r as usize))
 }
-
 
 /// 进/退 raw mode（例内自管；RAII 退出恢复）。
 struct RawMode;

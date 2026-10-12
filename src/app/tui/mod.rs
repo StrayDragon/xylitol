@@ -419,39 +419,13 @@ async fn run_host_loop(
                                         _ => false,
                                     }
                             });
-                            if let Some(delta0) = coalesce_wheel {
-                                let mut delta = delta0;
-                                let mut deferred: Option<Result<Event, std::io::Error>> = None;
-                                while let Some(next) = term_events.next().now_or_never().flatten()
-                                {
-                                    if let Some(d) =
-                                        wheel_delta_from_item(&next, &mut session.wheel_accel)
-                                    {
-                                        delta = delta.saturating_add(d);
-                                    } else {
-                                        deferred = Some(next);
-                                        break;
-                                    }
-                                }
-                                log::debug!(
-                                    target: "xylitol::wheel",
-                                    "wheel delta={delta} last_lines={} last_gap={:?}",
-                                    session.wheel_accel.last_lines,
-                                    session.wheel_accel.last_gap_ms
-                                );
+                            if let Some(delta) = coalesce_wheel {
+                                // c2891-followup：**砍 now_or_never 主动并批**——实测
+                                // 连发被并成单帧 21+ 行巨跳（xylitol::wheel delta 序列），
+                                // 「串内巨跳+串间空转」即顿挫。事件即渲（paint 1ms 没
+                                // 必要省），帧距随事件节奏天然匀化（pi/zellij 同）。
+                                log::debug!(target: "xylitol::wheel", "wheel delta={delta}");
                                 session.apply_ao_wheel_delta(delta)?;
-                                if let Some(next) = deferred
-                                    && let Some(ev) =
-                                        map_crossterm_item(next, session.tui.pointer_probe_armed())
-                                {
-                                    match ev {
-                                        Ok(host_ev) => session.step(host_ev)?,
-                                        Err(e) => {
-                                            e.log_failure("tui.term_input");
-                                            return Err(e);
-                                        }
-                                    }
-                                }
                             } else if let Some(ev) =
                                 map_crossterm_item(item, session.tui.pointer_probe_armed())
                             {
