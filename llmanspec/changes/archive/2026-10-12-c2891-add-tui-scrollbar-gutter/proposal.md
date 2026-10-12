@@ -2,6 +2,9 @@
 title: 右侧一列滚动槽（跳顶 / 跳底）
 depends_on:
   - c2858-add-package-tui-pointer-hit-pipeline
+branch: sdd/c2891-add-tui-scrollbar-gutter
+base_branch: main
+base_sha: 3eee87d8bf4644d7206fa5109826de4140547492
 ---
 
 # 右侧一列滚动槽（跳顶 / 跳底）

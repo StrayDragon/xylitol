@@ -6072,3 +6072,67 @@ async fn harness_ask_gateway_esc_resolves_skipped_success_payload() {
         .expect("Esc skip MUST NOT surface as tool error");
     assert!(result.contains("\"status\":\"skipped\""), "{result}");
 }
+
+// c2891 T4：host click 分派——gutter id 先于 fold；点顶归零、点底回底；拖选不进 gutter。
+#[test]
+fn gutter_host_click_jumps_and_selection_stays_clean() {
+    use crossterm::event::MouseButton;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(40, 12));
+    for i in 0..40 {
+        session.push_scroll_notice(format!("hist{i:02}xx"));
+    }
+    session.render_now().expect("seed long AO");
+    // 离底（seed follow 底）：上滚两 notch
+    let notch = session.tui.application_owned_wheel_notch();
+    session
+        .apply_ao_wheel_delta(-(notch * 2))
+        .expect("scroll up");
+    let top0 = session.tui.application_owned_scroll_top();
+    assert!(top0 > 0, "must be away from head, got {top0}");
+
+    // 点右缘顶行（col 39 = 物理末列 gutter）
+    step_left_click(&mut session, 39, 0);
+    assert_eq!(
+        session.tui.application_owned_scroll_top(),
+        0,
+        "gutter top click jumps to head"
+    );
+    assert!(!session.tui.application_owned_has_selection());
+
+    // 点右缘底行回底：先上滚再点底
+    session
+        .apply_ao_wheel_delta(-(notch * 2))
+        .expect("up again");
+    let rows = 12;
+    let dock = session.tui.dock_rows();
+    let bottom_row = (rows - dock as u16).saturating_sub(1);
+    step_left_click(&mut session, 39, bottom_row);
+    let content = session
+        .tui
+        .application_owned_content_lines()
+        .map(<[String]>::len)
+        .unwrap_or(0);
+    assert_eq!(
+        session.tui.application_owned_scroll_top(),
+        content.saturating_sub(rows as usize - dock),
+        "gutter bottom call lands at bottom"
+    );
+
+    // 拖过 gutter 列：无选区
+    let drag = |session: &mut HostSession<TestTerminal>, kind, col, row| {
+        session
+            .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+                kind, col, row,
+            ))))
+            .unwrap();
+    };
+    use crossterm::event::MouseEventKind as K;
+    drag(&mut session, K::Down(MouseButton::Left), 39, 1);
+    drag(&mut session, K::Drag(MouseButton::Left), 39, 3);
+    drag(&mut session, K::Up(MouseButton::Left), 39, 3);
+    assert!(
+        !session.tui.application_owned_has_selection(),
+        "drag ending on gutter must not select"
+    );
+}

@@ -330,6 +330,10 @@ impl<T: Terminal> HostSession<T> {
                 .tui
                 .set_pointer_click_phase(PointerClickPhase::UpIfEmptySelection);
             session.tui.arm_pointer_probe(true);
+            // c2891：产品默认开右缘滚动槽（包层 opt-in 契约的产品侧翻转，仅 AO）。
+            session
+                .tui
+                .set_scroll_gutter(Some(xylitol_tui::ScrollGutter));
             session.sync_dock_rows();
             session.sync_fold_hit_viewport();
             session.tui.request_render(true);
@@ -357,9 +361,12 @@ impl<T: Terminal> HostSession<T> {
             return;
         };
         let root = root.borrow();
-        let clicks = root.fold_hits().pointer_click_hits();
+        let mut clicks = root.fold_hits().pointer_click_hits();
         let hovers = root.fold_hits().pointer_hover_hits();
         drop(root);
+        // c2891：gutter hits 随帧并入（引擎 single-truth，隐藏/未启用为空）；
+        // 后入表 = z 序高，与 fold 列区间不重叠（carve 保证）。
+        clicks.extend(self.tui.scroll_gutter_hit_set());
         self.tui.replace_hits(clicks);
         self.tui.replace_hover_hits(hovers);
     }
@@ -1011,6 +1018,26 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    /// c2891：gutter id 空间与 fold index+1 disjoint，先 match 再回落 fold。
+    fn dispatch_pointer_click(&mut self, id: xylitol_tui::HitId) {
+        match id {
+            xylitol_tui::GUTTER_TOP_HIT_ID => {
+                self.tui.application_owned_scroll_home();
+            }
+            xylitol_tui::GUTTER_BOTTOM_HIT_ID => {
+                self.tui.application_owned_scroll_to_end();
+            }
+            _ => {
+                if let Some(root) = self.ui_root.as_ref() {
+                    let mut root = root.borrow_mut();
+                    if let Some(target) = root.fold_hits().target_for_hit(id) {
+                        root.toggle_fold_target(target);
+                    }
+                }
+            }
+        }
+    }
+
     fn handle_input(&mut self, input: InputEvent) {
         let left_down = matches!(
             input,
@@ -1051,12 +1078,8 @@ impl<T: Terminal> HostSession<T> {
             let clicked = self.tui.take_pointer_click();
             if !self.pointer_down_had_selection
                 && let Some(id) = clicked
-                && let Some(root) = self.ui_root.as_ref()
             {
-                let mut root = root.borrow_mut();
-                if let Some(target) = root.fold_hits().target_for_hit(id) {
-                    root.toggle_fold_target(target);
-                }
+                self.dispatch_pointer_click(id);
             }
         }
         if self.tui.application_session_active() {

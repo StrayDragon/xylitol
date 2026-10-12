@@ -5,9 +5,10 @@
 use std::time::{Duration, Instant};
 
 use crate::pointer::{HitId, HitRegionList, apply_hover_tint};
+use crate::scroll_gutter::{ScrollGutter, gutter_active, stamp_gutter};
 use crate::scroll_view::ScrollView;
 use crate::selection::{ClipboardSink, ScreenRect, SelectionController, format_osc52};
-use crossterm::event::MouseEvent;
+use crossterm::event::{MouseButton, MouseEvent};
 
 /// Default TTL for the ApplicationOwned copy-notice cue (ptim15 / design §7).
 pub const COPY_NOTICE_TTL: Duration = Duration::from_millis(2000);
@@ -30,6 +31,19 @@ pub struct ApplicationOwnedRuntime {
     copy_notice_until: Option<Instant>,
     hover_id: Option<HitId>,
     hover_regions: HitRegionList,
+    /// 右缘滚动槽（c2891）；None = 关。经 [`crate::TUI`] 注入以存活 session 重建。
+    scroll_gutter: Option<ScrollGutter>,
+    /// 滑轨拖拽抓取偏移（内域 0 基）；None = 非拖拽中。
+    gutter_drag_grab: Option<usize>,
+}
+
+impl ApplicationOwnedRuntime {
+    /// 本会话正文区被预留的右缘列数（gutter 1 列；未来侧栏在同一 seam 叠加）。
+    /// 宿主据此 carve 组件渲染宽与选中 rect；stamp 另见 [`gutter_active`]。
+    #[must_use]
+    pub fn reserved_cols(&self) -> usize {
+        usize::from(self.scroll_gutter.is_some())
+    }
 }
 
 impl ApplicationOwnedRuntime {
@@ -45,12 +59,19 @@ impl ApplicationOwnedRuntime {
             copy_notice_until: None,
             hover_id: None,
             hover_regions: HitRegionList::new(),
+            scroll_gutter: None,
+            gutter_drag_grab: None,
         }
     }
 
     pub fn set_hover(&mut self, id: Option<HitId>, regions: HitRegionList) {
         self.hover_id = id;
         self.hover_regions = regions;
+    }
+
+    /// Opt-in 右缘滚动槽（c2891）。宿主经 TUI 级 setter 注入，两处 begin 后重放。
+    pub fn set_scroll_gutter(&mut self, gutter: Option<ScrollGutter>) {
+        self.scroll_gutter = gutter;
     }
 
     pub fn set_dock_rows(&mut self, rows: usize) {
@@ -135,6 +156,15 @@ impl ApplicationOwnedRuntime {
         !was_at_bottom
     }
 
+    /// Jump to the transcript top; follow disarms unless already at top (c2891).
+    pub fn scroll_home(&mut self) -> bool {
+        if !self.scroll.scroll_home() {
+            return false;
+        }
+        self.follow_bottom = self.scroll.at_bottom();
+        true
+    }
+
     /// Apply a wheel delta immediately. Hosts map each physical wheel event to
     /// [`Self::wheel_notch`] rows and may coalesce buffered events into one delta.
     pub fn ingest_wheel_delta(&mut self, delta: isize) -> bool {
@@ -152,7 +182,13 @@ impl ApplicationOwnedRuntime {
     }
 
     /// Split full component output into viewport paint lines (≤ terminal height).
-    pub fn project_frame(&mut self, full_lines: &[String], term_height: usize) -> Vec<String> {
+    /// `term_cols` 仅供滚动槽 stamp 几何（c2891）；正文排版宽度由宿主 carve 决定。
+    pub fn project_frame(
+        &mut self,
+        full_lines: &[String],
+        term_height: usize,
+        term_cols: usize,
+    ) -> Vec<String> {
         let dock = self.dock_rows.min(full_lines.len()).min(term_height);
         let content_end = full_lines.len().saturating_sub(dock);
         let content = &full_lines[..content_end];
@@ -178,7 +214,7 @@ impl ApplicationOwnedRuntime {
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
         self.scroll.set_lines(content.to_vec());
-        self.paint_visible(viewport_h, term_height)
+        self.paint_visible(viewport_h, term_height, term_cols)
     }
 
     /// True when rows `[0, upto]` differ between old and new content.
@@ -195,17 +231,22 @@ impl ApplicationOwnedRuntime {
 
     /// Re-slice the already-ingested transcript + dock after scroll/selection
     /// changes — **no** component re-render. Used by ApplicationOwned wheel/drag.
-    pub fn reproject_frame(&mut self, term_height: usize) -> Vec<String> {
+    pub fn reproject_frame(&mut self, term_height: usize, term_cols: usize) -> Vec<String> {
         let dock = self
             .dock_rows
             .min(self.last_dock_lines.len())
             .min(term_height);
         let viewport_h = term_height.saturating_sub(dock);
         self.scroll.set_viewport_height(viewport_h.max(1));
-        self.paint_visible(viewport_h, term_height)
+        self.paint_visible(viewport_h, term_height, term_cols)
     }
 
-    fn paint_visible(&mut self, viewport_h: usize, term_height: usize) -> Vec<String> {
+    fn paint_visible(
+        &mut self,
+        viewport_h: usize,
+        term_height: usize,
+        term_cols: usize,
+    ) -> Vec<String> {
         // Follow only when sticky; wheel / selection edge scroll must persist across frames.
         if self.follow_bottom && !self.selection.is_dragging() {
             self.scroll.scroll_to_end();
@@ -224,6 +265,14 @@ impl ApplicationOwnedRuntime {
                 id,
             );
         }
+        // Gutter last: 追加列不参与反色 / dim（契约②）；pad 由 stamp 内完成。
+        if self.scroll_gutter.is_some()
+            && gutter_active(self.scroll.content_len(), viewport_h, term_cols)
+        {
+            let top = self.scroll.scroll_top();
+            let content = self.scroll.content_len();
+            stamp_gutter(&mut visible, term_cols, top, content);
+        }
         while visible.len() < viewport_h {
             visible.push(String::new());
         }
@@ -241,11 +290,14 @@ impl ApplicationOwnedRuntime {
 
         let dock = self.dock_rows.min(term_rows as usize) as u16;
         let transcript_h = term_rows.saturating_sub(dock);
+        // c2891：选中 / 拖拽 rect 按预留后宽——拖到物理末列经 screen_to_content
+        // 钳制，复制永不吞 gutter 字符（stamp 只在 paint 副本）。
+        let content_w = term_cols.saturating_sub(self.reserved_cols() as u16);
         let transcript = ScreenRect {
             row: 0,
             col: 0,
             height: transcript_h,
-            width: term_cols,
+            width: content_w,
         };
         // Host-side coalescing sums physical wheel steps before calling
         // `ingest_wheel_delta`, but never changes the per-event notch.
@@ -255,10 +307,71 @@ impl ApplicationOwnedRuntime {
             _ => None,
         };
         if let Some(delta) = wheel_delta {
-            if !transcript.contains(event.column, event.row) {
+            // 滚轮用物理宽判定：gutter 列上滚轮仍滚动。
+            if event.row >= transcript_h || event.column >= term_cols {
                 return false;
             }
             return self.ingest_wheel_delta(delta);
+        }
+
+        // c2891 滑轨拖拽（pi `handleScrollbarMouseEvent`）：轨中 Down 即跳（thumb 外
+        // grab 居中）、Drag 跟随、Up 结束；期间清选区。顶/底行让位按钮 click 流。
+        if self.scroll_gutter.is_some() {
+            let gutter_col = term_cols.saturating_sub(1);
+            let on_track =
+                event.column == gutter_col && (event.row as usize) < transcript_h as usize;
+            let dragging = self.gutter_drag_grab.is_some();
+            if event.kind == MouseEventKind::Up(MouseButton::Left) && dragging {
+                self.gutter_drag_grab = None;
+            } else if on_track || dragging {
+                let row = event.row as usize;
+                let inner = crate::scroll_gutter::gutter_inner_rows(transcript_h as usize);
+                let inner_row = row.saturating_sub(1).min(inner.saturating_sub(1));
+                let content = self.scroll.content_len();
+                match event.kind {
+                    MouseEventKind::Down(MouseButton::Left)
+                        if on_track && row > 0 && row < transcript_h as usize - 1 && inner > 0 =>
+                    {
+                        let vh = transcript_h as usize;
+                        let thumb_len = crate::scroll_gutter::gutter_thumb_len(content, vh);
+                        let thumb_off = crate::scroll_gutter::gutter_thumb_offset(
+                            self.scroll.scroll_top(),
+                            content,
+                            vh,
+                        );
+                        let on_thumb = inner_row >= thumb_off && inner_row < thumb_off + thumb_len;
+                        let grab = if on_thumb {
+                            inner_row - thumb_off
+                        } else {
+                            thumb_len / 2
+                        };
+                        let target = crate::scroll_gutter::gutter_scroll_for_pointer(
+                            inner_row, grab, content, vh,
+                        );
+                        let delta = target as isize - self.scroll.scroll_top() as isize;
+                        self.scroll_by(delta);
+                        self.clear_selection();
+                        self.gutter_drag_grab = Some(grab);
+                        return true;
+                    }
+                    MouseEventKind::Drag(MouseButton::Left) if dragging => {
+                        let grab = self.gutter_drag_grab.expect("dragging");
+                        let target = crate::scroll_gutter::gutter_scroll_for_pointer(
+                            inner_row,
+                            grab,
+                            content,
+                            transcript_h as usize,
+                        );
+                        let delta = target as isize - self.scroll.scroll_top() as isize;
+                        if self.scroll_by(delta) {
+                            self.clear_selection();
+                            return true;
+                        }
+                        return true;
+                    }
+                    _ => {}
+                }
+            }
         }
 
         let dock_rect = ScreenRect {
@@ -293,7 +406,7 @@ impl ApplicationOwnedRuntime {
             row: 0,
             col: 0,
             height: transcript_h,
-            width: term_cols,
+            width: term_cols.saturating_sub(self.reserved_cols() as u16),
         };
         let dirty = self.selection.tick_autoscroll(&mut self.scroll, transcript);
         if dirty {
@@ -390,7 +503,7 @@ mod tests {
     fn project_frame_caps_height_and_keeps_dock() {
         let mut runtime = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
-        let paint = runtime.project_frame(&full, 8);
+        let paint = runtime.project_frame(&full, 8, 40);
         assert_eq!(paint.len(), 8);
         assert_eq!(paint[6], "L18");
         assert_eq!(paint[7], "L19");
@@ -402,7 +515,7 @@ mod tests {
     fn wheel_scroll_persists_across_project_frame() {
         let mut runtime = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
-        let _ = runtime.project_frame(&full, 8);
+        let _ = runtime.project_frame(&full, 8, 40);
         assert!(runtime.scroll.at_bottom());
         let top_before = runtime.scroll.scroll_top();
         let notch = runtime.wheel_notch();
@@ -416,7 +529,7 @@ mod tests {
         // One physical notch is applied immediately.
         assert_eq!(runtime.scroll.scroll_top(), top_before - notch as usize);
         let top_scrolled = runtime.scroll.scroll_top();
-        let paint = runtime.project_frame(&full, 8);
+        let paint = runtime.project_frame(&full, 8, 40);
         assert_eq!(runtime.scroll.scroll_top(), top_scrolled);
         assert_eq!(paint[0], format!("L{top_scrolled}"));
     }
@@ -425,7 +538,7 @@ mod tests {
     fn wheel_coalesce_applies_full_delta_immediately() {
         let mut runtime = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..40).map(|i| format!("L{i}")).collect();
-        let _ = runtime.project_frame(&full, 10);
+        let _ = runtime.project_frame(&full, 10, 40);
         let notch = runtime.wheel_notch();
         assert_eq!(notch, 3);
         let top0 = runtime.scroll.scroll_top();
@@ -442,7 +555,7 @@ mod tests {
     fn scroll_to_end_rearms_follow_mode() {
         let mut runtime = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
-        let _ = runtime.project_frame(&full, 8);
+        let _ = runtime.project_frame(&full, 8, 40);
         assert!(runtime.scroll_by(-runtime.wheel_notch()));
         assert!(!runtime.follow_bottom);
 
@@ -456,7 +569,7 @@ mod tests {
     fn dock_that_fills_terminal_keeps_dock_and_disables_transcript_selection() {
         let mut runtime = ApplicationOwnedRuntime::new(8);
         let full: Vec<String> = (0..8).map(|i| format!("L{i}")).collect();
-        let paint = runtime.project_frame(&full, 4);
+        let paint = runtime.project_frame(&full, 4, 40);
         assert_eq!(paint, vec!["L4", "L5", "L6", "L7"]);
 
         assert!(!runtime.handle_mouse(
@@ -476,7 +589,7 @@ mod tests {
             "status".into(),
             "input".into(),
         ];
-        let _ = runtime.project_frame(&full, 6);
+        let _ = runtime.project_frame(&full, 6, 40);
         // Empty click — no notice.
         assert!(runtime.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 1, 0), 40, 6));
         assert!(runtime.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 1, 0), 40, 6));
@@ -499,7 +612,7 @@ mod tests {
         let mut runtime = ApplicationOwnedRuntime::new(2);
         runtime.set_copy_on_release(false);
         let full: Vec<String> = vec!["abcd".into(), "e".into(), "s".into(), "i".into()];
-        let _ = runtime.project_frame(&full, 6);
+        let _ = runtime.project_frame(&full, 6, 40);
         runtime.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 0, 0), 40, 6);
         runtime.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 3, 0), 40, 6);
         assert!(!runtime.copy_notice_active());
@@ -549,19 +662,106 @@ mod tests {
     fn completed_selection_survives_append_below_and_clears_on_reflow_above() {
         let mut runtime = ApplicationOwnedRuntime::new(1);
         let full1 = reflow_fixture(&[], "alpha");
-        let _ = runtime.project_frame(&full1, 6);
+        let _ = runtime.project_frame(&full1, 6, 40);
         drag_select_rows_1_to_2(&mut runtime);
         assert!(runtime.has_selection(), "drag must complete with selection");
 
         // Streaming appends below the selection — rows ≤ anchor unchanged → kept.
         let full2 = reflow_fixture(&["foxtrot"], "alpha");
-        let _ = runtime.project_frame(&full2, 7);
+        let _ = runtime.project_frame(&full2, 7, 40);
         assert!(runtime.has_selection(), "append below must not clear");
 
         // Re-wrap above the anchor — row indices shifted → stale, cleared.
         let full3 = reflow_fixture(&["foxtrot"], "alpha wraps differently now");
-        let _ = runtime.project_frame(&full3, 7);
+        let _ = runtime.project_frame(&full3, 7, 40);
         assert!(!runtime.has_selection(), "reflow above must invalidate");
+    }
+
+    #[test]
+    fn gutter_paint_matches_across_project_and_reproject() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        runtime.set_scroll_gutter(Some(crate::scroll_gutter::ScrollGutter));
+        let full: Vec<String> = (0..20).map(|i| format!("L{i:0>3}")).collect();
+        let painted = runtime.project_frame(&full, 8, 40);
+        assert!(painted[0].ends_with('^'), "top row, got {:?}", painted[0]);
+        let mid = painted[3].chars().last().unwrap();
+        assert!(
+            mid == '\u{2502}' || mid == '\u{2503}',
+            "track/thumb row, got {mid:?}"
+        );
+        assert_eq!(crate::utils::visible_width(&painted[0]), 40);
+        // wheel 快路径同形；v 在 transcript 末行（viewport_h-1=5），dock 不 stamp
+        assert!(runtime.scroll_by(-1));
+        let repainted = runtime.reproject_frame(8, 40);
+        assert!(repainted[0].ends_with('^'));
+        assert!(repainted[5].ends_with('v'));
+        assert!(
+            repainted[6].ends_with("L018"),
+            "dock unstamped, got {:?}",
+            repainted[6]
+        );
+    }
+
+    #[test]
+    fn gutter_hidden_when_content_fits_or_too_narrow() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        runtime.set_scroll_gutter(Some(crate::scroll_gutter::ScrollGutter));
+        // 内容不超屏（20 行内容、dock 2 → 内容 18 > 6？不：short 只有 3 行）
+        let short: Vec<String> = vec!["aa".into(), "bb".into(), "dock".into()];
+        let painted = runtime.project_frame(&short, 8, 40);
+        assert_eq!(painted[0], "aa");
+        // 宽度不足 20：内容 18 > 6 但 19 < 20 → 无 stamp；可见首行 = 倒数第 6 条内容
+        let full: Vec<String> = (0..20).map(|i| format!("L{i:0>3}")).collect();
+        let narrow = runtime.project_frame(&full, 8, 19);
+        assert_eq!(narrow[0], "L012");
+        // 同一内容正常宽度 → 有 stamp
+        let wide = runtime.project_frame(&full, 8, 40);
+        assert!(wide[0].ends_with('^'), "got {:?}", wide[0]);
+    }
+
+    #[test]
+    fn reserved_cols_and_carved_selection_copy() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        assert_eq!(runtime.reserved_cols(), 0, "default off");
+        runtime.set_scroll_gutter(Some(crate::scroll_gutter::ScrollGutter));
+        assert_eq!(runtime.reserved_cols(), 1);
+
+        let body = "x".repeat(30);
+        let full: Vec<String> = (0..20).map(|i| format!("L{i:0>3}{body}")).collect();
+        let _ = runtime.project_frame(&full, 8, 40);
+        assert!(runtime.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 0, 1), 40, 8));
+        // 拖到物理末列（39）——超越 carve 后内容宽边界，钳制入正文
+        assert!(runtime.handle_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 39, 2),
+            40,
+            8
+        ));
+        assert!(runtime.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 39, 2), 40, 8));
+        let text = runtime
+            .selection
+            .selected_text(runtime.scroll.lines())
+            .unwrap_or_default();
+        assert!(
+            !text.contains('^') && !text.contains('|') && !text.contains('v'),
+            "copy must exclude gutter glyphs, got {text:?}"
+        );
+    }
+
+    #[test]
+    fn wheel_over_gutter_column_still_scrolls() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        runtime.set_scroll_gutter(Some(crate::scroll_gutter::ScrollGutter));
+        let full: Vec<String> = (0..20).map(|i| format!("L{i}")).collect();
+        let _ = runtime.project_frame(&full, 8, 40);
+        let top = runtime.scroll_top();
+        let wheel = MouseEvent {
+            kind: MouseEventKind::ScrollUp,
+            column: 39,
+            row: 1,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(runtime.handle_mouse(&wheel, 40, 8));
+        assert!(runtime.scroll_top() < top);
     }
 
     #[test]
@@ -570,12 +770,12 @@ mod tests {
 
         let mut runtime = ApplicationOwnedRuntime::new(1);
         let full = vec!["header-line".into(), "body".into(), "dock".into()];
-        let _ = runtime.project_frame(&full, 3);
+        let _ = runtime.project_frame(&full, 3, 20);
 
         let mut regions = HitRegionList::new();
         regions.push(HitRegion::new(1, 0, 0, 11));
         runtime.set_hover(Some(1), regions);
-        let hovered = runtime.reproject_frame(3);
+        let hovered = runtime.reproject_frame(3, 40);
         assert!(
             hovered[0].contains("\x1b[2m"),
             "idle hover must dim the header, got {:?}",
@@ -585,7 +785,7 @@ mod tests {
         assert!(runtime.handle_mouse(&mouse(MouseEventKind::Down(MouseButton::Left), 0, 1), 20, 3));
         assert!(runtime.handle_mouse(&mouse(MouseEventKind::Drag(MouseButton::Left), 3, 1), 20, 3));
         assert!(runtime.selection.is_dragging());
-        let dragging = runtime.reproject_frame(3);
+        let dragging = runtime.reproject_frame(3, 40);
         assert!(
             !dragging[0].contains("\x1b[2m"),
             "drag must suppress hover dim on the header, got {:?}",
@@ -598,7 +798,7 @@ mod tests {
         use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
         let mut runtime = ApplicationOwnedRuntime::new(1);
         let full1 = reflow_fixture(&[], "alpha");
-        let _ = runtime.project_frame(&full1, 6);
+        let _ = runtime.project_frame(&full1, 6, 40);
         let ev = |kind, col: u16, row: u16| MouseEvent {
             kind,
             column: col,
@@ -610,7 +810,60 @@ mod tests {
 
         // Mid-drag frame with changed rows above: keep dragging (ptim12).
         let full2 = reflow_fixture(&[], "alpha wraps differently now");
-        let _ = runtime.project_frame(&full2, 6);
+        let _ = runtime.project_frame(&full2, 6, 40);
         assert!(runtime.selection.is_dragging());
+    }
+
+    #[test]
+    fn gutter_track_drag_jumps_and_follows() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        runtime.set_scroll_gutter(Some(crate::scroll_gutter::ScrollGutter));
+        let full: Vec<String> = (0..100).map(|i| format!("L{i:0>3}")).collect();
+        let _ = runtime.project_frame(&full, 20, 40);
+        // vh=18 inner=16 thumb=2? content100: thumb=max(2,256/100=2)=2 max_thumb=14
+        let vh = 18usize;
+        let content = 98usize; // 100 行 − dock 2
+
+        // Down 轨中（row 9 → inner 8，非 thumb）：grab=thumb_len/2=1 → 居中跳
+        assert!(runtime.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 39, 9),
+            40,
+            20
+        ));
+        let jumped = runtime.scroll_top();
+        let expect = crate::scroll_gutter::gutter_scroll_for_pointer(8, 1, content, vh);
+        assert_eq!(jumped, expect, "thumb-center grab jump");
+        assert!(runtime.gutter_drag_grab.is_some());
+        assert!(!runtime.has_selection(), "drag clears selection");
+
+        // Drag 向上跟拖（row 3 → inner 2）
+        assert!(runtime.handle_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 39, 3),
+            40,
+            20
+        ));
+        assert_eq!(
+            runtime.scroll_top(),
+            crate::scroll_gutter::gutter_scroll_for_pointer(2, 1, content, vh),
+        );
+
+        // Up 结束
+        let _ = runtime.handle_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 39, 3), 40, 20);
+        assert!(runtime.gutter_drag_grab.is_none());
+    }
+
+    #[test]
+    fn gutter_button_rows_not_hijacked_by_drag() {
+        let mut runtime = ApplicationOwnedRuntime::new(2);
+        runtime.set_scroll_gutter(Some(crate::scroll_gutter::ScrollGutter));
+        let full: Vec<String> = (0..100).map(|i| format!("L{i:0>3}")).collect();
+        let _ = runtime.project_frame(&full, 20, 40);
+        // 顶行按钮：Down 不进 drag 状态机（交管线 click 流；返回值随 selection 路径）
+        let _ = runtime.handle_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 39, 0),
+            40,
+            20,
+        );
+        assert!(runtime.gutter_drag_grab.is_none());
     }
 }

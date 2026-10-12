@@ -54,10 +54,8 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 - spec 的 `purpose` / requirement statement / scenario 步骤 **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。规则块场景名用 requirement title；验收场景名用英文 `scenario.id`。
 - **单轨 feature-as-spec（r131）**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；`spec.toon` 已退役，validate 拒绝读取。文件头部注释 `# language:` / `# capability:` / `# purpose:` / `# scope:` 必备。
-- 场景三档（标签决定语义）：
-  - `@req:<id> @human` = **约束规则**（statement 须含 MUST/SHALL/必须/不得/禁止）；已锁定（r135/S0）：增删改以 **WARNING** 报告，**不阻断** validate / finalize / diff；控制点 = git 分支对比 + `llman-sdd review` / `change diff` 报告浮现。
-  - `@executable`（+ `@req:<id>`）= 验收场景，由 `tests/bdd/bindings_*.rs` 的 `#[scenario(path=…, name=…)]` 按**精确名与步骤文本**绑定；`@req` MUST 指向本文件已定义的规则；
-  - `@human @manual` = 人工豁免。
+- 场景语义（原生分层，完整格式以 `llman-sdd-propose` / `llman-sdd-ff` skill 内嵌 feature-contract 为 SSOT）：`@req:<id`> 挂 `规则:` 块头 = 全局唯一需求句柄（validate 查重）；嵌套 `场景:`（假如/当/那么）= 可执行示例，由 `tests/bdd/bindings_*.rs` 的 `#[scenario(path=…, name=…)]` 按**精确名与步骤文本**绑定；无嵌套场景 = 裸规则（review `pending` 计量；无法程序化表达的需求才保留，理由记 proposal/design）。增删改既有 `规则:` 块 = WARNING 报告制，不阻断 validate / finalize / diff；控制点 = git 分支对比 + `llman-sdd review` / `change diff`。
+- **情态动词词表（对齐 STC 简明技术中文 `dictionary/avoid.yaml` 强度词条）**：约束 statement 用中文情态——要求 `必须`，否定 `不得`／`禁止`，推荐 `宜`；避免 `应`／`应当`／`应该`／`务必`／`一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。
 - `背景:`（Background）MUST 紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
 - 在非默认 feature 分支直接编辑 live `.feature` → `llman-sdd change attach` → `llman-sdd change finalize`（自动合并进基准分支 + 归档改名 + 单提交；目标 `--into` > `base_branch` > 默认分支，方式 `--method` > `sdd.merge_method` 缺省 squash）。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。与 `tests/features/` 手写链路可并存。
 

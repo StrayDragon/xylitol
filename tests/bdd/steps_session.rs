@@ -1208,9 +1208,7 @@ async fn w_r1950_b_writes(sess: &XySessionStore) {
             .append(&id, &message_entry("m-b", None, "assistant", "from-b"))
             .await;
         sess.last_result.replace(Some(
-            result
-                .map(|_| "ok".into())
-                .map_err(|e| XyDriverError::from(e)),
+            result.map(|_| "ok".into()).map_err(XyDriverError::from),
         ));
         sess.second_mgr.replace(Some(b));
     }

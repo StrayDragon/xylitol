@@ -2,7 +2,7 @@
 # capability: agent-runtime
 # purpose: "薄编排 ReAct 运行时：AgentRuntime 循环、工具批执行、steer/follow-up 队列、abort 与 XyEvent 流（不含 adk / OutputGuard）。"
 # scope: src/agent/, src/protocol/, tests/bdd/
-# reviewed-through: c2890
+# reviewed-through: c2891
 
 功能: agent-runtime
 

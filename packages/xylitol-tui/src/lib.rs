@@ -13,6 +13,7 @@ pub mod keys;
 pub mod kill_ring;
 pub mod paste_burst;
 pub mod pointer;
+pub mod scroll_gutter;
 pub mod scroll_view;
 pub mod selection;
 pub mod terminal;
@@ -88,6 +89,11 @@ pub use paste_burst::PasteBurst;
 pub use pointer::{
     Hit, HitId, HitRegion, HitRegionList, HitSpace, PointerClickPhase, PointerOutcome,
     PointerPipeline, PointerView, apply_hover_tint,
+};
+pub use scroll_gutter::{
+    GUTTER_BOTTOM, GUTTER_BOTTOM_HIT_ID, GUTTER_MIN_WIDTH, GUTTER_THUMB, GUTTER_TOP,
+    GUTTER_TOP_HIT_ID, GUTTER_TRACK, ScrollGutter, gutter_active, gutter_hit_set,
+    gutter_scroll_for_pointer, gutter_thumb_len, gutter_thumb_offset, stamp_gutter,
 };
 pub use scroll_view::ScrollView;
 pub use selection::{

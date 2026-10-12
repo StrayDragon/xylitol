@@ -90,8 +90,8 @@ impl<T: Terminal> TUI<T> {
             return Ok(false);
         }
         let width = self.terminal.columns() as usize;
-        let ao_wheel_reproject =
-            self.ao_wheel_render_requested && self.can_reproject_application_owned(width);
+        let ao_wheel_reproject = self.ao_wheel_render_requested
+            && self.can_reproject_application_owned(self.ao_render_width(width));
         let cadence_last = if ao_wheel_reproject {
             self.last_ao_wheel_render_at
         } else {
@@ -121,7 +121,9 @@ impl<T: Terminal> TUI<T> {
     /// was rendered (i.e. not stopped), Err on width-invariant violation.
     pub fn render_now(&mut self) -> Result<bool, RenderError> {
         let ao_wheel_reproject = self.ao_wheel_render_requested
-            && self.can_reproject_application_owned(self.terminal.columns() as usize);
+            && self.can_reproject_application_owned(
+                self.ao_render_width(self.terminal.columns() as usize),
+            );
         self.render_requested = false;
         let now = std::time::Instant::now();
         self.last_render_at = Some(now);
@@ -143,6 +145,22 @@ impl<T: Terminal> TUI<T> {
                 .is_some_and(ApplicationOwnedRuntime::has_projected_content)
     }
 
+    /// AO 正文渲染宽：物理宽 − 预留列（c2891 gutter；未来侧栏同 seam 叠加）。
+    /// 组件渲染、can_reproject 宽比较、选中 rect 均用此宽；finalize 宽检查与
+    /// stamp 几何仍用物理宽（stamp 后行恰达物理宽）。
+    pub(super) fn ao_render_width(&self, physical: usize) -> usize {
+        if self.application_session_active {
+            physical.saturating_sub(
+                self.application_owned
+                    .as_ref()
+                    .map(ApplicationOwnedRuntime::reserved_cols)
+                    .unwrap_or(0),
+            )
+        } else {
+            physical
+        }
+    }
+
     pub(super) fn do_render(&mut self) -> Result<(), RenderError> {
         if self.stopped {
             return Ok(());
@@ -150,6 +168,9 @@ impl<T: Terminal> TUI<T> {
         self.frame_count = self.frame_count.saturating_add(1);
         let width = self.terminal.columns() as usize;
         let height = self.terminal.rows() as usize;
+        // c2891：AO 预留列 carve——组件按 render_w 排版；finalize 宽检查、
+        // viewport overlay 与 stamp 几何仍用物理 width（stamp 后行恰达物理宽）。
+        let render_w = self.ao_render_width(width);
         if width == 0 {
             return Ok(());
         }
@@ -161,7 +182,7 @@ impl<T: Terminal> TUI<T> {
 
         // Cached project lines are width-specific (editor borders, markdown wrap).
         // Soft resize (`request_render(false)`) must not reproject the prior width.
-        let can_reproject = self.can_reproject_application_owned(width);
+        let can_reproject = self.can_reproject_application_owned(render_w);
 
         let (component_lines, mut new_lines, ao_reprojected) = if can_reproject {
             let runtime = self
@@ -171,7 +192,7 @@ impl<T: Terminal> TUI<T> {
             let cached_len = runtime
                 .content_len()
                 .saturating_add(runtime.dock_line_count());
-            let painted = runtime.reproject_frame(height);
+            let painted = runtime.reproject_frame(height, width);
             self.ao_reproject_frames = self.ao_reproject_frames.saturating_add(1);
             // Never grow terminal scrollback in ApplicationOwned.
             self.previous_viewport_top = 0;
@@ -183,7 +204,7 @@ impl<T: Terminal> TUI<T> {
                 .as_ref()
                 .map(|runtime| runtime.dock_rows);
             for comp in &mut self.components {
-                new_lines.extend(comp.render(width));
+                new_lines.extend(comp.render(render_w));
                 if let Some(dock) = comp.dock_rows_hint() {
                     self.dock_rows = dock.max(1);
                     if let Some(runtime) = self.application_owned.as_mut() {
@@ -206,7 +227,7 @@ impl<T: Terminal> TUI<T> {
             // Also keeps cursor row indices in screen space for position_cursor.
             if self.application_session_active {
                 if let Some(runtime) = self.application_owned.as_mut() {
-                    new_lines = runtime.project_frame(&new_lines, height);
+                    new_lines = runtime.project_frame(&new_lines, height, width);
                 }
                 // Never grow terminal scrollback in ApplicationOwned.
                 self.previous_viewport_top = 0;
@@ -276,7 +297,7 @@ impl<T: Terminal> TUI<T> {
             *line = finalized;
         }
 
-        let width_changed = self.previous_width != 0 && self.previous_width != width;
+        let width_changed = self.previous_width != 0 && self.previous_width != render_w;
         let height_changed = self.previous_height != 0 && self.previous_height != height;
 
         // Compute the changed range up front so the full-vs-diff decision can
@@ -345,7 +366,7 @@ impl<T: Terminal> TUI<T> {
             ao_vertical_shifted,
         };
         self.previous_lines = new_lines;
-        self.previous_width = width;
+        self.previous_width = render_w;
         self.previous_height = height;
         if self.application_session_active {
             self.previous_viewport_top = 0;

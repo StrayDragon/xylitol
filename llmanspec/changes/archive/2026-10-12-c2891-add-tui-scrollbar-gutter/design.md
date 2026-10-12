@@ -47,7 +47,7 @@ host left_up 分支 `take_pointer_click` 命中 gutter id → `scroll_top=0` / `
 已核实安全边界：
 - finalize 宽度不变量是 `lw > width → Err`（**≤** 非必须满宽）——carve 后行宽 `render_w < width` 合法；stamp 后 gutter 列恰补到 `width` 也合法
 - `can_reproject_application_owned` 的 `previous_width == width` 比较：**统一改比 carve 后 render_w**（否则 resize 检测与内容宽错位）。此接缝是全票唯一需测试钉死的点 → tasks 刀 2
-- selection `handle_mouse` 的 transcript `ScreenRect.width: term_cols` → gutter 开启时同 carve（`render_w`），gutter 列自身由 capture hit skip，双保险
+- selection `handle_mouse` 的 transcript `ScreenRect.width: term_cols` → gutter 开启时同 carve（`render_w`）；gutter 列在 rect 外，拖选物理不可入（capture 见 D4 订正）
 
 ## 3. 交互语义拍板
 
@@ -55,8 +55,8 @@ host left_up 分支 `take_pointer_click` 命中 gutter id → `scroll_top=0` / `
 |---|---|---|
 | thumb？ | v1 无，`^ │ v` 三段；中轨整列 `.capturing()` 吞拖选、无点击动作 | proposal 草案默认；thumb 几何后票（pi 公式已存此档） |
 | 中轨点击？ | 忽略（capture 仅防误选区，不 page） | proposal「先只吞拖选」 |
-| 隐藏阈值？ | `content_len ≤ viewport_h` 或 `render_w < 20` 隐藏（隐藏时同时不 carve、不注册 hit） | 内容不满屏无滚动语义；20 = 极窄档下限（对齐 c2520 档位表精神，窄屏不挤内容） |
-| phase？ | 沿用产品现值 `UpIfEmptySelection`（host 已设）+ hit `capturing=true` | Up+无拖才报 click：拖选路过 gutter 不误触发跳转；Down capture 不启选区。两机制正交，各管一件事 |
+| 隐藏阈值？ | `content_len ≤ viewport_h` 或宽 `< 20`：不 stamp、不注册 hit；**carve 仍按 enabled 保持**（T2 实作订正：随 active 翻转 carve 会使 `previous_width` 抖动→全量重排；稳定宽优先，隐藏时右缘空白 1 列无感知） | 内容不满屏无滚动语义；20 = 极窄档下限（对齐 c2520 档位表精神，窄屏不挤内容） |
+| phase？ | 沿用产品现值 `UpIfEmptySelection`（host 已设）+ hit **非 capturing** | 实测：engine capture 分支吞 pending_click（Down latch / Up was_capture 均不设），capture+UpIfEmpty 组合点击永不生效；拖选隔离由 T2 rect carve 物理保证（gutter 列在 selection rect 外），无需 capture。两机制各管一件事且不重叠 |
 | 产品开关 | host 构造处 opt-in 常量，**产品默认开**（仅 ApplicationOwned；Inline 永远走终端 scrollback 不接） | proposal「包层默认关 host opt-in」＝引擎 API 契约；产品价值要可观察 |
 
 ## 4. 悬置（apply 时核实，不阻塞）

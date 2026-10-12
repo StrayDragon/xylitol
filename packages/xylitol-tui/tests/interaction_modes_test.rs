@@ -1404,3 +1404,87 @@ fn capturing_region_blocks_transcript_drag() {
     assert!(!tui.application_owned_is_dragging());
     assert!(!tui.application_owned_has_selection());
 }
+
+// c2891 T2：gutter carve —— 组件按物理宽−1排版、stamp 后整行恰物理宽、
+// wheel 快路径（previous_width==render_w）不被 carve 破坏。
+#[test]
+fn application_owned_gutter_carves_width_and_keeps_reproject_fast_path() {
+    use xylitol_tui::{ScrollGutter, gutter_active};
+
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 8),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(2);
+    let body = "x".repeat(35);
+    let lines: Vec<String> = (0..20).map(|i| format!("L{i:0>3}{body}")).collect();
+    tui.add_child(Box::new(StaticLines { lines }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.set_scroll_gutter(Some(ScrollGutter));
+    assert!(
+        gutter_active(20, 6, 40),
+        "content 18 > viewport 6, wide enough"
+    );
+
+    tui.request_render(true);
+    tui.render_now().expect("first paint");
+    // 顶行：39 列正文 + 末列 '^'；正文未被 stamp 侵入（col 38 仍是正文）
+    assert_eq!(tui.terminal.inner().grid_row(0)[39].ch, '^');
+    assert_eq!(tui.terminal.inner().grid_row(0)[38].ch, 'x');
+    // dock 行不 stamp（grid 未写入 = '\0'）
+    assert_eq!(tui.terminal.inner().grid_row(6)[39].ch, '\0');
+
+    // wheel → reproject 快路径必须命中（carve 后 previous_width 一致性）
+    tui.clear_ao_reproject_frames_for_test();
+    assert!(tui.application_owned_scroll_by(-3));
+    tui.request_render(false);
+    tui.render_now().expect("wheel repaint");
+    assert!(
+        tui.ao_reproject_frames_for_test() >= 1,
+        "carve must not break the reproject fast path"
+    );
+    assert_eq!(
+        tui.terminal.inner().grid_row(0)[39].ch,
+        '^',
+        "still stamped"
+    );
+}
+
+#[test]
+fn application_owned_gutter_copy_excludes_gutter_column() {
+    use xylitol_tui::ScrollGutter;
+
+    let mut tui = TUI::with_interaction_mode(
+        LoggingVirtualTerminal::new(40, 8),
+        InteractionMode::ApplicationOwned,
+    );
+    tui.set_dock_rows(2);
+    let body = "y".repeat(35);
+    let lines: Vec<String> = (0..20).map(|i| format!("L{i:0>3}{body}")).collect();
+    tui.add_child(Box::new(StaticLines { lines }));
+    tui.terminal.start();
+    tui.begin_application_owned_session();
+    tui.set_scroll_gutter(Some(ScrollGutter));
+    tui.request_render(true);
+    tui.render_now().expect("paint");
+
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(
+        MouseEventKind::Down(MouseButton::Left),
+        0,
+        0,
+    )));
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(
+        MouseEventKind::Drag(MouseButton::Left),
+        39,
+        1,
+    )));
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(
+        MouseEventKind::Up(MouseButton::Left),
+        39,
+        1,
+    )));
+    assert!(tui.application_owned_has_selection());
+    // copy-on-release 管线在 carve 下照常 armed（文本洁净由 runtime 单测锁）
+    assert!(tui.copy_notice_active());
+}

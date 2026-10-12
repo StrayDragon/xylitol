@@ -264,6 +264,9 @@ pub struct TUI<T: Terminal> {
     dock_rows: usize,
     /// Persists across begin/end; applied when constructing [`ApplicationOwnedRuntime`].
     transcript_copy_on_release: bool,
+    /// 右缘滚动槽开关（c2891）。Parked on `TUI` 同 [`Self::transcript_copy_on_release`]：
+    /// 存活 session 重建，两处 begin 后重放进 runtime。
+    scroll_gutter: Option<crate::scroll_gutter::ScrollGutter>,
     /// Transcript Left-Down priority hook (fold hit). Parked on `TUI` so it
     /// survives ApplicationOwnedRuntime recreate (suspend / begin); swapped
     /// onto the live selection controller for each mouse dispatch.
@@ -317,6 +320,7 @@ impl<T: Terminal> TUI<T> {
             application_owned: None,
             dock_rows: 3,
             transcript_copy_on_release: true,
+            scroll_gutter: None,
             transcript_hit_priority: None,
             pointer: PointerPipeline::default(),
             append_session_to_main_scrollback_on_exit: true,
@@ -348,6 +352,7 @@ impl<T: Terminal> TUI<T> {
         self.application_session_active = true;
         let mut runtime = ApplicationOwnedRuntime::new(self.dock_rows);
         runtime.set_copy_on_release(self.transcript_copy_on_release);
+        runtime.set_scroll_gutter(self.scroll_gutter);
         self.application_owned = Some(runtime);
         self.ao_components_stale = true;
         self.last_ao_wheel_render_at = None;
@@ -434,6 +439,18 @@ impl<T: Terminal> TUI<T> {
             return false;
         };
         let changed = runtime.scroll_to_end();
+        if changed {
+            self.request_render(false);
+        }
+        changed
+    }
+
+    /// Transcript 跳顶（c2891 gutter 跳底对称）；变化时软请求重绘。
+    pub fn application_owned_scroll_home(&mut self) -> bool {
+        let Some(runtime) = self.application_owned.as_mut() else {
+            return false;
+        };
+        let changed = runtime.scroll_home();
         if changed {
             self.request_render(false);
         }
@@ -593,6 +610,33 @@ impl<T: Terminal> TUI<T> {
         }
     }
 
+    /// Opt-in 右缘滚动槽（c2891，默认关）。存活 ApplicationOwned session 重建：
+    /// 存于 `TUI`，两处 begin 后重放进 runtime（同 transcript_copy_on_release 模式）。
+    pub fn set_scroll_gutter(&mut self, gutter: Option<crate::scroll_gutter::ScrollGutter>) {
+        self.scroll_gutter = gutter;
+        if let Some(runtime) = self.application_owned.as_mut() {
+            runtime.set_scroll_gutter(gutter);
+        }
+    }
+
+    /// 当前应注册的滚动槽命中集（c2891 T3）：active 时顶/底两枚 capturing
+    /// Viewport hit，隐藏 / 未启用 / 无会话时空。宿主每帧随 fold hits 一并
+    /// replace；几何与 [`crate::scroll_gutter::gutter_active`] 单点判定一致。
+    pub fn scroll_gutter_hit_set(&self) -> Vec<crate::pointer::Hit> {
+        use crate::scroll_gutter::{gutter_active, gutter_hit_set};
+        let Some(runtime) = self.application_owned.as_ref() else {
+            return Vec::new();
+        };
+        if self.scroll_gutter.is_none() {
+            return Vec::new();
+        }
+        let cols = self.terminal.columns();
+        let rows = self.terminal.rows() as usize;
+        let transcript_rows = rows.saturating_sub(self.dock_rows.min(rows));
+        let active = gutter_active(runtime.content_len(), transcript_rows, cols as usize);
+        gutter_hit_set(cols, transcript_rows as u16, active)
+    }
+
     /// Whether ApplicationOwned copy-notice is still within its TTL (~2s).
     pub fn copy_notice_active(&self) -> bool {
         self.application_owned
@@ -703,7 +747,9 @@ impl<T: Terminal> TUI<T> {
     pub fn application_owned_wheel_render_deadline(&self) -> Option<std::time::Instant> {
         if !self.render_requested
             || !self.ao_wheel_render_requested
-            || !self.can_reproject_application_owned(self.terminal.columns() as usize)
+            || !self.can_reproject_application_owned(
+                self.ao_render_width(self.terminal.columns() as usize),
+            )
         {
             return None;
         }
@@ -942,6 +988,7 @@ impl<T: Terminal> TUI<T> {
             if self.application_owned.is_none() {
                 let mut runtime = ApplicationOwnedRuntime::new(self.dock_rows);
                 runtime.set_copy_on_release(self.transcript_copy_on_release);
+                runtime.set_scroll_gutter(self.scroll_gutter);
                 self.application_owned.replace(runtime);
             }
             self.previous_width = FORCE_SIZE_SENTINEL;
