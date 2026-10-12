@@ -32,6 +32,11 @@ pub struct WheelAccelerator {
     last_direction: isize,
     average_gap_ms: Option<f32>,
     carry: f32,
+    /// Lines emitted by the last non-burst event; bursts inherit it (our
+    /// coalesce drain collapses same-batch events to ~0ms gap, which is a
+    /// processing artifact — pi sees real hi-res sub-notches there).
+    last_lines: isize,
+    last_gap_ms: f32,
 }
 
 impl WheelAccelerator {
@@ -45,7 +50,15 @@ impl WheelAccelerator {
             last_direction: 0,
             average_gap_ms: None,
             carry: 0.0,
+            last_lines: 1,
+            last_gap_ms: 0.0,
         }
+    }
+
+    /// Observability: (last inter-event gap ms, lines emitted by last event).
+    pub fn last_debug(&self) -> (Option<f32>, isize) {
+        let gap = self.last_time.map(|_| self.last_gap_ms);
+        (gap, self.last_lines)
     }
 
     /// Default product policy: adaptive, with the platform dedup respect.
@@ -69,6 +82,7 @@ impl WheelAccelerator {
 
     fn next_auto(&mut self, direction: isize, now: Instant) -> isize {
         if !self.accelerate {
+            self.last_lines = 1;
             return 1;
         }
         let gap_ms = self.last_time.map_or(f32::INFINITY, |last| {
@@ -80,26 +94,36 @@ impl WheelAccelerator {
         if !same_gesture {
             self.average_gap_ms = None;
             self.carry = 0.0;
+            self.last_gap_ms = gap_ms;
+            self.last_lines = 1;
             return 1;
         }
         if (gap_ms as u64) < BURST_GAP_MS {
-            return 1;
+            // Same-batch / hi-res sub-event: inherit the notch's line count
+            // instead of collapsing to 1 (coalesce makes these gaps ~0).
+            self.last_gap_ms = gap_ms;
+            return self.last_lines.max(1);
         }
         self.average_gap_ms = Some(match self.average_gap_ms {
             Some(avg) => (avg + gap_ms) / 2.0,
             None => gap_ms,
         });
-        let lines = self.average_gap_ms.unwrap_or(REFERENCE_GAP_MS);
-        let lines = (REFERENCE_GAP_MS / lines).clamp(1.0, MAX_AUTO_LINES as f32) + self.carry;
+        self.last_gap_ms = gap_ms;
+        let avg = self.average_gap_ms.unwrap_or(REFERENCE_GAP_MS);
+        let lines = (REFERENCE_GAP_MS / avg).clamp(1.0, MAX_AUTO_LINES as f32) + self.carry;
         let whole = lines.floor();
         self.carry = lines - whole;
         // Carry is fractional by construction; whole is at least 1 here.
-        whole.max(1.0) as isize
+        let out = whole.max(1.0) as isize;
+        self.last_lines = out;
+        out
     }
 
     /// Reset gesture state (direction change / long pause handled in [`Self::next`]).
     pub fn reset(&mut self) {
         self.last_time = None;
+        self.last_gap_ms = 0.0;
+        self.last_lines = 1;
         self.last_direction = 0;
         self.average_gap_ms = None;
         self.carry = 0.0;

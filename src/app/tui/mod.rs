@@ -574,7 +574,13 @@ fn wheel_delta_from_item(
         _ => None,
     }?;
     let now = std::time::Instant::now();
-    Some(direction * accel.next(direction, now))
+    let lines = accel.next(direction, now);
+    let (gap, last) = accel.last_debug();
+    log::debug!(
+        target: "xylitol::wheel",
+        "wheel dir={direction} lines={lines} gap={gap:?} prev={last}"
+    );
+    Some(direction * lines)
 }
 
 /// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).
