@@ -167,7 +167,7 @@ impl ApplicationOwnedRuntime {
 
     /// Apply a wheel delta immediately（zellij 式恒跳：数据搬移+should_render，
     /// 无动画层——顺滑来自恒定步长与宿主合帧纪律，非插值）。Hosts map each
-    /// physical wheel event via the accelerator and may coalesce buffered events.
+    /// physical wheel event to notch rows; larger deltas stay legal.
     pub fn ingest_wheel_delta(&mut self, delta: isize) -> bool {
         self.scroll_by(delta)
     }
@@ -536,7 +536,7 @@ mod tests {
     }
 
     #[test]
-    fn wheel_coalesce_applies_full_delta_immediately() {
+    fn wheel_multi_notch_applies_fully_immediately() {
         let mut runtime = ApplicationOwnedRuntime::new(2);
         let full: Vec<String> = (0..40).map(|i| format!("L{i}")).collect();
         let _ = runtime.project_frame(&full, 10, 40);

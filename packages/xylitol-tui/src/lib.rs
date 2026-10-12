@@ -23,7 +23,6 @@ pub mod theme;
 pub mod tui;
 pub mod undo_stack;
 pub mod utils;
-pub mod wheel_accel;
 pub mod word_navigation;
 
 pub use application_owned::{ApplicationOwnedTui, editor_screen_origin, mouse_in_dock};
@@ -128,4 +127,3 @@ pub use utils::{
     strip_ansi_codes, truncate_to_visual_lines, truncate_to_width, visible_width,
     wrap_text_with_ansi,
 };
-pub use wheel_accel::{WheelAccelerator, WheelMode};

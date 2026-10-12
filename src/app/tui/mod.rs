@@ -400,14 +400,11 @@ async fn run_host_loop(
                 maybe = term_events.next() => {
                     match maybe {
                         Some(item) => {
-                            // Fast scroll: sum already-buffered wheel events and
-                            // apply the full delta before one cheap AO reproject.
-                            // Only when the first event is over the transcript pane.
-                            // Velocity-adaptive lines/event (pi wheel-scroll);
-                            // XYLITOL_WHEEL_SPEED=<n> pins a constant.
-                            let coalesce_wheel =
-                                wheel_delta_from_item(&item, &mut session.wheel_accel).filter(
-                                    |_| {
+                            // Wheel over the transcript pane: AO fast path, one
+                            // notch per event（批量并帧已砍，缘由见下方 apply 处注释）。
+                            let notch = session.tui.application_owned_wheel_notch();
+                            let ao_wheel = wheel_delta_from_item(&item, notch).filter(
+                                |_| {
                                 session.tui.application_session_active()
                                     && match &item {
                                         Ok(Event::Mouse(m)) => {
@@ -419,7 +416,7 @@ async fn run_host_loop(
                                         _ => false,
                                     }
                             });
-                            if let Some(delta) = coalesce_wheel {
+                            if let Some(delta) = ao_wheel {
                                 // c2891-followup：**砍 now_or_never 主动并批**——实测
                                 // 连发被并成单帧 21+ 行巨跳（xylitol::wheel delta 序列），
                                 // 「串内巨跳+串间空转」即顿挫。事件即渲（paint 1ms 没
@@ -541,20 +538,16 @@ fn apply_idle_downlink<T: xylitol_tui::Terminal>(
     Ok(())
 }
 
-fn wheel_delta_from_item(
-    item: &Result<Event, std::io::Error>,
-    accel: &mut xylitol_tui::WheelAccelerator,
-) -> Option<isize> {
-    let direction = match item {
+fn wheel_delta_from_item(item: &Result<Event, std::io::Error>, notch: isize) -> Option<isize> {
+    let notch = notch.max(1);
+    match item {
         Ok(Event::Mouse(m)) => match m.kind {
-            MouseEventKind::ScrollUp => Some(-1),
-            MouseEventKind::ScrollDown => Some(1),
+            MouseEventKind::ScrollUp => Some(-notch),
+            MouseEventKind::ScrollDown => Some(notch),
             _ => None,
         },
         _ => None,
-    }?;
-    let now = std::time::Instant::now();
-    Some(direction * accel.next(direction, now))
+    }
 }
 
 /// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).

@@ -571,7 +571,7 @@ obs-tui-lag n="80" LOG="":
       exit 1
     fi
     echo "# $log (last {{n}} xylitol::lag lines)"
-    rg -n "xylitol::lag|host_run_await|host_drain_pending|host_mcp_poll|mcp_settle_|rebuild_system_prompt|run_ensure_session|run_load_history|run_build_tool_schemas|host_tick" "$log" | tail -n "{{n}}"
+    rg -n "xylitol::lag|xylitol::wheel|host_run_await|host_drain_pending|host_mcp_poll|mcp_settle_|rebuild_system_prompt|run_ensure_session|run_load_history|run_build_tool_schemas|host_tick|host_wheel_paint|host_step_paint" "$log" | tail -n "{{n}}"
 
 # --- Manual lab probes (scripts/lab_*.py; maintenance, NOT in qa) ---
 

@@ -118,8 +118,6 @@ pub struct HostSession<T: Terminal> {
     suppress_idle_esc: bool,
     /// After Esc abort: drop agent `XyEvent`s until this run's EventStream ends (c670).
     suppress_xy_until_stream_end: bool,
-    /// Wheel-event → line-count accelerator (pi wheel-scroll semantics).
-    pub(crate) wheel_accel: xylitol_tui::WheelAccelerator,
     /// Bang chunk / deferred content: Tick must paint even if Loader idle (ath24 / ath7).
     paint_dirty: bool,
     layout_cwd: String,
@@ -231,7 +229,6 @@ impl<T: Terminal> HostSession<T> {
             keybindings: None,
             _keybindings_scope: None,
             pointer_down_had_selection: false,
-            wheel_accel: xylitol_tui::WheelAccelerator::from_env(),
         }
     }
 
