@@ -151,6 +151,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let term = CrosstermTerminal::new()?;
+    let _raw_guard = RawMode::new();
     let mut tui = ApplicationOwnedTui::new(term);
     tui.begin(); // begin 内含 terminal.start（alt+mouse）
     let host = Box::new(WheelHost::new());
@@ -175,6 +176,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         || key.code == KeyCode::Char('q')
                     {
                         break;
+                    }
+                    // 双通道：tmux 等会把滚轮本地译成 Up/Down——等价 wheel。
+                    let d = match key.code {
+                        KeyCode::Up => Some(-NOTCH),
+                        KeyCode::Down => Some(NOTCH),
+                        _ => None,
+                    };
+                    if d.is_some() {
+                        let t0 = Instant::now();
+                        let _ = tui.dispatch_event(InputEvent::Key(*key));
+                        let _ = tui.render_now();
+                        let ms = t0.elapsed().as_millis();
+                        lat.push(ms);
+                        let now = Instant::now();
+                        if let Some(prev) = paint_at {
+                            paint_gaps.push(now.duration_since(prev).as_millis());
+                        }
+                        paint_at = Some(now);
                     }
                 }
                 Event::Mouse(m)
@@ -214,6 +233,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 /// 纯 CSI 自绘：无 diff 引擎，直接重写视口——管线下限对照。
 fn run_raw(poll_ms: u64, variant: Variant) -> Result<(), Box<dyn std::error::Error>> {
+    let _raw_guard = RawMode::new();
     let mut host = WheelHost::new();
     let mut out = stdout();
     writeln!(out, "\x1b[?1049h\x1b[?1000h\x1b[?1006h")?;
@@ -236,6 +256,23 @@ fn run_raw(poll_ms: u64, variant: Variant) -> Result<(), Box<dyn std::error::Err
                         || key.code == KeyCode::Char('q')
                     {
                         break;
+                    }
+                    let d = match key.code {
+                        KeyCode::Up => Some(-NOTCH),
+                        KeyCode::Down => Some(NOTCH),
+                        _ => None,
+                    };
+                    if let Some(d) = d {
+                        let t0 = Instant::now();
+                        host.wheel(d);
+                        draw_raw(&mut out, &host, cols, rows)?;
+                        let ms = t0.elapsed().as_millis();
+                        lat.push(ms);
+                        let now = Instant::now();
+                        if let Some(prev) = paint_at {
+                            paint_gaps.push(now.duration_since(prev).as_millis());
+                        }
+                        paint_at = Some(now);
                     }
                 }
                 Event::Resize(c, r) => {
@@ -298,4 +335,24 @@ fn truncate(s: &str, cols: usize) -> String {
 fn terminal_size() -> Result<(usize, usize), Box<dyn std::error::Error>> {
     let (c, r) = crossterm::terminal::size()?;
     Ok((c as usize, r as usize))
+}
+
+
+/// 进/退 raw mode（例内自管；RAII 退出恢复）。
+struct RawMode;
+impl RawMode {
+    fn new() -> Self {
+        let _ = crossterm::terminal::enable_raw_mode();
+        Self
+    }
+}
+impl Default for RawMode {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+impl Drop for RawMode {
+    fn drop(&mut self) {
+        let _ = crossterm::terminal::disable_raw_mode();
+    }
 }
