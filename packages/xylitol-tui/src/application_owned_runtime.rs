@@ -37,6 +37,8 @@ pub struct ApplicationOwnedRuntime {
     gutter_drag_grab: Option<usize>,
     /// Wheel 弹簧目标位（`None`=无动画；见 `queue_wheel_delta`）。
     wheel_target: Option<usize>,
+    /// 最近 wheel 时刻——动画时间常数据此贴事件节拍（消「动停」）。
+    last_wheel_at: Option<std::time::Instant>,
 }
 
 impl ApplicationOwnedRuntime {
@@ -64,6 +66,7 @@ impl ApplicationOwnedRuntime {
             scroll_gutter: None,
             gutter_drag_grab: None,
             wheel_target: None,
+            last_wheel_at: None,
         }
     }
 
@@ -182,6 +185,7 @@ impl ApplicationOwnedRuntime {
     /// 逼近（~45%/帧）。**无队列无积压**——连滚即时重定目标，滞后不累积；
     /// 拖拽丝滑的本质（高频小步长）由帧级小步长复现。
     pub fn queue_wheel_delta(&mut self, delta: isize) {
+        self.last_wheel_at = Some(std::time::Instant::now());
         let cur = self.scroll.scroll_top() as isize;
         let max = self.scroll.max_scroll() as isize;
         // 同向：自 target 累积（快甩连加）；反向/无动画：自当前视觉位重定
@@ -211,13 +215,31 @@ impl ApplicationOwnedRuntime {
             self.wheel_target = None;
             return false;
         }
-        // 拖拽中：立即贴齐（拖拽持绝对定位）。否则指数步长，尾段 1..2 行贴齐。
+        // 拖拽中：立即贴齐（拖拽持绝对定位）。
         let dragging = self.gutter_drag_grab.is_some() || self.selection.is_dragging();
-        let step = if dragging || diff.abs() <= 2 {
-            diff
+        if dragging || diff.abs() <= 1 {
+            let hit = self.scroll.scroll_by(diff);
+            if hit {
+                self.follow_bottom = self.scroll.at_bottom();
+            }
+            self.wheel_target = None;
+            return hit;
+        }
+        // 自适应时间常数：动画时长贴事件间隙（crossterm 异步批/无时戳的补偿）——
+        // 慢滚长间隙演满不「停摆」，快甩短间隙速收不拖尾。
+        let gap_ms = self
+            .last_wheel_at
+            .map(|t| t.elapsed().as_secs_f32() * 1000.0)
+            .unwrap_or(100.0);
+        let tau = (gap_ms * 0.9).clamp(40.0, 150.0);
+        let k = 1.0 - (-16.0 / tau).exp();
+        let mag = ((diff.abs() as f32) * k).ceil() as isize;
+        let step = diff.signum() * mag.clamp(1, diff.abs());
+        let cur_usize = self.scroll.scroll_top();
+        let step = if cur_usize as isize + step < 0 {
+            -(cur_usize as isize)
         } else {
-            let mag = ((diff.abs() as f32) * 0.45).ceil() as isize;
-            diff.signum() * mag.clamp(1, diff.abs())
+            step
         };
         if self.scroll.scroll_by(step) {
             self.follow_bottom = self.scroll.at_bottom();
