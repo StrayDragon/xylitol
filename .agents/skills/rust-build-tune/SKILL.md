@@ -1,6 +1,6 @@
 ---
 name: rust-build-tune
-description: '当需要优化 Rust 编译速度、产物体积或磁盘占用/worktree 缓存时使用：分析 Cargo.toml profile、Cranelift、codegen-units/opt-level/LTO/strip、mold/MUSL/UPX；以及 debuginfo/incremental/toolchain 清盘、禁止跨 worktree 共享 CARGO_TARGET_DIR、推荐 sccache。Use when optimizing Rust build speed, binary size, or disk/worktree caches: profiles, Cranelift, linker, and disk-health (line-tables-only, rustup prune, per-worktree target + sccache). Keywords: Rust, Cargo, build, disk, target, worktree, sccache, debuginfo, incremental, Cranelift, mold, LTO, strip'
+description: '当需要优化 Rust 编译速度、产物体积或磁盘占用/worktree 缓存时使用：分析 Cargo.toml profile、Cranelift、codegen-units/opt-level/LTO/strip、mold/MUSL/UPX；以及 debuginfo/incremental/toolchain 清盘、禁止跨 worktree 共享 CARGO_TARGET_DIR、推荐 sccache；另含 target/ 巨大时的「历史堆积 vs 稳态增长」考古诊断，与多测试二进制 workspace 的 -Zshare-generics 泛型去重。Use when optimizing Rust build speed, binary size, or disk/worktree caches: profiles, Cranelift, linker, and disk-health (line-tables-only, rustup prune, per-worktree target + sccache, stale-artifact archaeology, share-generics). Keywords: Rust, Cargo, build, disk, target, worktree, sccache, debuginfo, incremental, Cranelift, mold, LTO, strip'
 metadata:
   origin_post: https://canmi.net/posts/development/rust-build-config-cranelift-profile-optimization
 ---
@@ -112,7 +112,32 @@ sccache --show-stats
 | `0` | ❌ | ❌ | ~2GB | 极致省空间，无 backtrace |
 
 > **实测数据**（28 依赖、129K SLoC 项目）：`debug=1` → `debug="line-tables-only"` 将 `target/` 从 **64GB 降到 7GB（9x 缩减）**。backtrace 仍显示函数名+行号，仅丢失变量类型信息。
+> **实测数据**（3-crate workspace、约 500 crates、40K SLoC、22 个集成测试二进制）：`debug=1` → `line-tables-only` + `-Zshare-generics` + 清理历史堆积，`target/` 从 **33.8GB 降到 3.6GB 稳态**；dev 主二进制 94–99MB → 83MB。
 > 本机大二进制抽样：`debug=2` 下可执行文件内 `.debug_*` 常占 **~80%**。多 worktree / 自定义 `target/bdd-*` 会把上述体积再乘份数。
+
+**Agent / backtrace 驱动错误分析的 debug 下限 = `line-tables-only`。** 它保留函数名 + 行号（定位失败足够）；`debug = 0` 只剩符号名、无行号，错误分析质量明显下降；`debug = 2` 的变量级检查是 gdb/lldb 交互场景，agent 文本化分析用不到。给 agent 用的项目不必为「分析错误」开 `1` 以上。
+
+### 多测试二进制 workspace：`-Zshare-generics` 泛型去重
+
+Cargo 对每个集成测试文件单独产出一个二进制，每个都**静态链接整个 workspace**——泛型单态化在每份拷贝里重复展开。测试文件越多（10+），这份重复越是磁盘大头。
+
+```toml
+# .cargo/config.toml（nightly-only；项目 pin nightly 时零成本采用）
+[build]
+rustflags = ["-Zshare-generics"]
+```
+
+⚠️ **rustflags 配置不合并**：`[target.<triple>.rustflags]` 会整体**覆盖** `[build].rustflags`（本地 `~/.cargo` 配置覆盖仓库配置同理）。不要把不同 flag 分散在两处——加 mold 等本地链接器配置时，必须把 `-Zshare-generics` 一并写进生效的那份，否则静默丢失。
+
+### 考古：`target/` 巨大 ≠ 配置问题
+
+调 profile 之前先分清「历史堆积」和「稳态增长」——配置只管未来，清盘才管过去：
+
+1. **拆账**：`du -sh target/debug/* | sort -rh`。重点看 `build/`（build-script 运行目录，可按指纹缓存**每次构建的完整二进制**，单个 `build/<pkg>/<hash>/out/` 达上百 MB）、`incremental/`、`deps/`（同一 bin 的多个旧 hash 拷贝）。
+2. **实证再生测试**：对最大目录记录 `ls <dir> | wc -l` → 跑嫌疑命令（`cargo build` / `cargo test`）→ 对比计数。计数不变 = 死历史，配置没病。
+3. **处置**：死历史占比高 → 直接 `cargo clean` 一次性回收（需用户授权，见清盘清单）；确认当前配置确实在持续生成大产物 → 才动 profile / rustflags。
+
+> 实测案例：`target/` 33GB，其中 `build/<pkg>/` 下 731 个目录含约 130 个 92MB 的陈旧二进制副本，实证当前命令已不再生成（731→731）。`cargo clean` 回收 33.8GB，套用 `line-tables-only` + `-Zshare-generics` 后稳态 3.6GB。
 
 磁盘与 worktree 的完整决策（含 **禁止共享 `CARGO_TARGET_DIR`**、sccache、清盘清单）见 [disk-and-worktree.md](references/disk-and-worktree.md)。
 
@@ -173,8 +198,10 @@ sccache --show-stats
 ## 完成检查清单
 
 - [ ] 已确认本次目标：速度 / 体积 / **磁盘·worktree**
+- [ ] `target/` 巨大时已先考古（拆账 + 再生测试），区分历史堆积与稳态增长，死历史优先清盘而非调参
 - [ ] `Cargo.toml` 中 `[profile.dev]` 和 `[profile.release]` 已按目标配置
-- [ ] 磁盘场景下 dev 使用 `debug = "line-tables-only"`（除非用户要完整 DWARF）
+- [ ] 磁盘场景下 dev 使用 `debug = "line-tables-only"`（除非用户要完整 DWARF）；agent 诊断场景不低于此下限
+- [ ] 多测试二进制 workspace 已评估 `-Zshare-generics`；rustflags 未被另一处 `[target]` 配置静默覆盖
 - [ ] `[profile.dev.package."*"]` 已按并行度/内存评估是否保留 O3
 - [ ] 链接器已按平台配置（Linux: mold, macOS: 默认）
 - [ ] 已评估 Cranelift 适用性（无 FFI/ASM 冲突；`-j1` 不用）
