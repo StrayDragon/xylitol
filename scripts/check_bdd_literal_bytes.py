@@ -4,9 +4,9 @@
 背景（显示失真防复发）：
   本仓库/工具的显示层会把形如 `<...>` 的文本当作 HTML 外观样式解释，
   导致经渲染显示读取源码/文本时，`< think>`、`<read-files>`、`Arc<dyn XyModel>`
-  一类含尖括号的内容可能被隐藏或改写。若干 BDD 探针曾因此写下与源码
-  字节不一致的断言字面量（如把 `" thinking"` 写成 `<|im_start|>`），仅在
-  字节级核对（python repr / od hex）后才收敛真值。
+  一类含尖括号的内容可能被隐藏或改写，断言字面量易与源码
+  字节不一致（如把 `" thinking"` 写成 `<|im_start|>`；真值以
+  字节级核对 python repr / od hex 为准）。
 
   本门禁把这一隐患机械化：凡 `tests/bdd/steps_*.rs` 中 `contains(...)` /
   `matches(...)` 的、含 ASCII 尖括号（`<`/`>`）的字符串字面量，MUST 以其

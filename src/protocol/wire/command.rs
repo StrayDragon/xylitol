@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::session::SessionTreeKind;
 
-/// A command from the client (c2530 后继：传输级关联唯一走信封 rpcId，
-/// `id` 字段作为无消费者的逻辑死码已移除)。
+/// A command from the client（传输级关联只走信封 `rpcId`；无传输级 `id` 字段）。
 #[derive(Debug, Clone, Serialize, Deserialize, strum::VariantNames, strum::IntoStaticStr)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {

@@ -302,7 +302,7 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
                 break;
             }
             if msg.is_text() {
-                // JSON 文本业务帧已退役；丢弃不断链。
+                // 文本帧非产品载荷，忽略不断链。
                 continue;
             }
             if !msg.is_binary() {

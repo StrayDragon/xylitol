@@ -1,4 +1,4 @@
-//! 产品 JSON-RPC 2.0 分发（c2835：手写载体，jsonrpsee 已退役）。
+//! 产品 JSON-RPC 2.0 分发（手写载体；方法表 SSOT 见 [`crate::protocol::wire::registry`]）。
 //!
 //! Salvo 拥有监听器与 HTTP 周边，[`handle_unary`] 是唯一执行面；本模块只做
 //! 「JSON 文本 ↔ 方法表」这一层：解析 → 命中 → 应答信封。幂等键取信封 `id`，
@@ -17,7 +17,7 @@ use crate::protocol::wire::codec;
 use crate::protocol::wire::envelope::RpcResult;
 use crate::protocol::wire::registry;
 
-/// 请求体上限（平移 jsonrpsee 时期 `raw_json_request(_, 4MB)` 的闸）。
+/// 请求体上限（信封解析前的硬闸）。
 const MAX_BODY_BYTES: usize = 4 * 1024 * 1024;
 
 /// 反向 RPC 应答方法：不在 registry 方法表内，直接落网关待答表。
