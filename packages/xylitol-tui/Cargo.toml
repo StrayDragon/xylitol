@@ -47,3 +47,7 @@ path = "examples/agent_demo_alt.rs"
 [[example]]
 name = "host_loop_application_owned"
 path = "examples/host_loop_application_owned.rs"
+
+[[example]]
+name = "lab_wheel_pipeline"
+path = "examples/lab_wheel_pipeline.rs"
