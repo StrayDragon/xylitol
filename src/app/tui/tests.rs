@@ -302,7 +302,7 @@ fn application_owned_host_coalesced_wheel_paints_once_without_tick_tail() {
     );
     session.tui.render_now().expect("flush capped wheel paint");
     // 动画残留排空后 deadline 才归 None（wheel smooth-release 供帧期间 Some）。
-    while session.tui.application_owned_wheel_pending() != 0 {
+    while session.tui.application_owned_wheel_animating() {
         session.tui.application_owned_wheel_release();
         session.tui.render_now().expect("anim frame");
     }

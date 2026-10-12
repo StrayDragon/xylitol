@@ -35,8 +35,8 @@ pub struct ApplicationOwnedRuntime {
     scroll_gutter: Option<ScrollGutter>,
     /// 滑轨拖拽抓取偏移（内域 0 基）；None = 非拖拽中。
     gutter_drag_grab: Option<usize>,
-    /// Pending wheel rows for smooth release (see `queue_wheel_delta`).
-    pending_wheel: isize,
+    /// Wheel 弹簧目标位（`None`=无动画；见 `queue_wheel_delta`）。
+    wheel_target: Option<usize>,
 }
 
 impl ApplicationOwnedRuntime {
@@ -63,7 +63,7 @@ impl ApplicationOwnedRuntime {
             hover_regions: HitRegionList::new(),
             scroll_gutter: None,
             gutter_drag_grab: None,
-            pending_wheel: 0,
+            wheel_target: None,
         }
     }
 
@@ -145,7 +145,7 @@ impl ApplicationOwnedRuntime {
             return false;
         }
         // 绝对/拖拽语义入口：清平滑残量，防交错回拉。
-        self.pending_wheel = 0;
+        self.wheel_target = None;
         if !self.scroll.scroll_by(delta) {
             return false;
         }
@@ -155,7 +155,7 @@ impl ApplicationOwnedRuntime {
 
     /// Re-arm follow mode and move the application-owned viewport to its end.
     pub fn scroll_to_end(&mut self) -> bool {
-        self.pending_wheel = 0;
+        self.wheel_target = None;
         let was_at_bottom = self.scroll.at_bottom();
         self.scroll.scroll_to_end();
         self.follow_bottom = true;
@@ -164,7 +164,7 @@ impl ApplicationOwnedRuntime {
 
     /// Jump to the transcript top; follow disarms unless already at top (c2891).
     pub fn scroll_home(&mut self) -> bool {
-        self.pending_wheel = 0;
+        self.wheel_target = None;
         if !self.scroll.scroll_home() {
             return false;
         }
@@ -178,46 +178,56 @@ impl ApplicationOwnedRuntime {
         self.scroll_by(delta)
     }
 
-    /// Queue a wheel delta for smooth release. 拖拽丝滑的数学本质=高频小步长；
-    /// 滚轮事件率物理性低，跳变感靠插值补——宿主 16ms wheel-deadline 帧逐次
-    /// 释放，见 [`Self::release_pending_wheel`]。
+    /// Wheel 弹簧平滑：记目标位，渲染位由 [`Self::tick_wheel_smooth`] 每帧指数
+    /// 逼近（~45%/帧）。**无队列无积压**——连滚即时重定目标，滞后不累积；
+    /// 拖拽丝滑的本质（高频小步长）由帧级小步长复现。
     pub fn queue_wheel_delta(&mut self, delta: isize) {
-        // 同向积累（连滚加速）；反向=重定目标，覆盖未完残量（跟手优先）。
-        if self.pending_wheel != 0 && delta != 0 && self.pending_wheel.signum() != delta.signum() {
-            self.pending_wheel = 0;
-        }
-        self.pending_wheel = self.pending_wheel.saturating_add(delta);
+        let cur = self.scroll.scroll_top() as isize;
+        let max = self.scroll.max_scroll() as isize;
+        // 同向：自 target 累积（快甩连加）；反向/无动画：自当前视觉位重定
+        //（用户改向=新意图，旧残程作废）。
+        let base = match self.wheel_target {
+            Some(t) if (t as isize - cur).signum() == delta.signum() => t as isize,
+            _ => cur,
+        };
+        let want = (base + delta).clamp(0, max);
+        self.wheel_target = Some(want as usize);
     }
 
-    /// Rows waiting for smooth release.
-    pub fn pending_wheel_rows(&self) -> isize {
-        self.pending_wheel
+    /// 弹簧动画是否活跃（target 与渲染位有差距）。
+    pub fn wheel_smooth_pending(&self) -> bool {
+        self.wheel_target
+            .is_some_and(|t| t != self.scroll.scroll_top())
     }
 
-    /// Release one animation frame of the pending wheel delta. Active drags
-    /// flush entirely（拖拽持有绝对定位，不留交错残量）。
-    pub fn release_pending_wheel(&mut self) -> bool {
-        if self.pending_wheel == 0 {
+    /// 弹簧一帧：向 target 逼近一步；返回是否产生位移（需重渲）。
+    pub fn tick_wheel_smooth(&mut self) -> bool {
+        let Some(target) = self.wheel_target else {
+            return false;
+        };
+        let cur = self.scroll.scroll_top() as isize;
+        let diff = target as isize - cur;
+        if diff == 0 {
+            self.wheel_target = None;
             return false;
         }
+        // 拖拽中：立即贴齐（拖拽持绝对定位）。否则指数步长，尾段 1..2 行贴齐。
         let dragging = self.gutter_drag_grab.is_some() || self.selection.is_dragging();
-        let step = if dragging {
-            self.pending_wheel
+        let step = if dragging || diff.abs() <= 2 {
+            diff
         } else {
-            // 统一 ~3 帧收敛（ceil 均分）：小滚 1 行/帧消灭格跳，大甩同收敛窗。
-            let mag = (self.pending_wheel.abs() + 2) / 3;
-            self.pending_wheel.signum() * mag.max(1)
+            let mag = ((diff.abs() as f32) * 0.45).ceil() as isize;
+            diff.signum() * mag.clamp(1, diff.abs())
         };
-        // 直呼 inner（绕 `scroll_by` 的 pending 清零——此处正在消费它）。
-        let before = self.scroll.scroll_top();
         if self.scroll.scroll_by(step) {
             self.follow_bottom = self.scroll.at_bottom();
-            self.pending_wheel -= step;
-            let _ = before;
+            if self.scroll.scroll_top() == target {
+                self.wheel_target = None;
+            }
             return true;
         }
-        // Edge-clamped，零位移：排空残量且本帧无可渲染变化。
-        self.pending_wheel = 0;
+        // Edge-clamped：放弃残余动画。
+        self.wheel_target = None;
         false
     }
 

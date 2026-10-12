@@ -425,36 +425,34 @@ impl<T: Terminal> TUI<T> {
             return false;
         };
         runtime.queue_wheel_delta(delta);
-        // 首帧同步释放（ease-out：首大后小）——滚完即见位移，无 16ms 起步延迟。
-        let released = runtime.release_pending_wheel();
-        let pending = runtime.pending_wheel_rows();
-        if !released && pending == 0 {
-            return false;
+        // 首帧同步逼近（弹簧首步 ~45%）——滚完即见位移，无 16ms 起步延迟。
+        let moved = runtime.tick_wheel_smooth();
+        if !moved && !runtime.wheel_smooth_pending() {
+            return false; // target==current：零位移（如已底的同向滚）。
         }
         self.ao_wheel_render_requested = true;
         self.request_render(false);
         true
     }
 
-    /// Release one animation frame of pending wheel rows; true if painted-worthy.
+    /// 弹簧动画帧：向 wheel target 逼近一步；true=有位移需重渲。
     pub fn application_owned_wheel_release(&mut self) -> bool {
         let Some(runtime) = self.application_owned.as_mut() else {
             return false;
         };
-        let released = runtime.release_pending_wheel();
-        if released {
+        let moved = runtime.tick_wheel_smooth();
+        if moved {
             self.ao_wheel_render_requested = true;
             self.request_render(false);
         }
-        released
+        moved
     }
 
-    /// Pending wheel rows awaiting smooth release.
-    pub fn application_owned_wheel_pending(&self) -> isize {
+    /// 弹簧动画是否未收敛（供帧判定）。
+    pub fn application_owned_wheel_animating(&self) -> bool {
         self.application_owned
             .as_ref()
-            .map(ApplicationOwnedRuntime::pending_wheel_rows)
-            .unwrap_or(0)
+            .is_none_or(ApplicationOwnedRuntime::wheel_smooth_pending)
     }
 
     /// Move an active ApplicationOwned viewport to the transcript end and
@@ -771,7 +769,7 @@ impl<T: Terminal> TUI<T> {
     /// pending paints return `None` and keep their existing host tick policy.
     pub fn application_owned_wheel_render_deadline(&self) -> Option<std::time::Instant> {
         // Wheel 动画期间持续供帧（pending 释放完毕前 keep 16ms cadence）。
-        let animating = self.application_owned_wheel_pending() != 0;
+        let animating = self.application_owned_wheel_animating();
         if (!self.render_requested && !animating)
             || (!self.ao_wheel_render_requested && !animating)
             || !self.can_reproject_application_owned(
