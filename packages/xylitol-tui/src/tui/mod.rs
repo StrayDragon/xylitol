@@ -418,18 +418,43 @@ impl<T: Terminal> TUI<T> {
         self.ao_components_stale
     }
 
-    /// Apply a coalesced ApplicationOwned wheel delta immediately and request
-    /// a cheap cached reproject paint.
+    /// Queue a coalesced ApplicationOwned wheel delta for smooth release
+    ///（插值动画：宿主 16ms wheel-deadline 帧逐次释放，拖拽级连续性）。
     pub fn application_owned_scroll_by(&mut self, delta: isize) -> bool {
         let Some(runtime) = self.application_owned.as_mut() else {
             return false;
         };
-        if !runtime.ingest_wheel_delta(delta) {
+        runtime.queue_wheel_delta(delta);
+        // 首帧同步释放（ease-out：首大后小）——滚完即见位移，无 16ms 起步延迟。
+        let released = runtime.release_pending_wheel();
+        let pending = runtime.pending_wheel_rows();
+        if !released && pending == 0 {
             return false;
         }
         self.ao_wheel_render_requested = true;
         self.request_render(false);
         true
+    }
+
+    /// Release one animation frame of pending wheel rows; true if painted-worthy.
+    pub fn application_owned_wheel_release(&mut self) -> bool {
+        let Some(runtime) = self.application_owned.as_mut() else {
+            return false;
+        };
+        let released = runtime.release_pending_wheel();
+        if released {
+            self.ao_wheel_render_requested = true;
+            self.request_render(false);
+        }
+        released
+    }
+
+    /// Pending wheel rows awaiting smooth release.
+    pub fn application_owned_wheel_pending(&self) -> isize {
+        self.application_owned
+            .as_ref()
+            .map(ApplicationOwnedRuntime::pending_wheel_rows)
+            .unwrap_or(0)
     }
 
     /// Move an active ApplicationOwned viewport to the transcript end and
@@ -745,8 +770,10 @@ impl<T: Terminal> TUI<T> {
     /// restarting a full cadence interval from the latest input event. Other
     /// pending paints return `None` and keep their existing host tick policy.
     pub fn application_owned_wheel_render_deadline(&self) -> Option<std::time::Instant> {
-        if !self.render_requested
-            || !self.ao_wheel_render_requested
+        // Wheel 动画期间持续供帧（pending 释放完毕前 keep 16ms cadence）。
+        let animating = self.application_owned_wheel_pending() != 0;
+        if (!self.render_requested && !animating)
+            || (!self.ao_wheel_render_requested && !animating)
             || !self.can_reproject_application_owned(
                 self.ao_render_width(self.terminal.columns() as usize),
             )

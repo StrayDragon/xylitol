@@ -35,6 +35,8 @@ pub struct ApplicationOwnedRuntime {
     scroll_gutter: Option<ScrollGutter>,
     /// 滑轨拖拽抓取偏移（内域 0 基）；None = 非拖拽中。
     gutter_drag_grab: Option<usize>,
+    /// Pending wheel rows for smooth release (see `queue_wheel_delta`).
+    pending_wheel: isize,
 }
 
 impl ApplicationOwnedRuntime {
@@ -61,6 +63,7 @@ impl ApplicationOwnedRuntime {
             hover_regions: HitRegionList::new(),
             scroll_gutter: None,
             gutter_drag_grab: None,
+            pending_wheel: 0,
         }
     }
 
@@ -141,6 +144,8 @@ impl ApplicationOwnedRuntime {
         if delta == 0 {
             return false;
         }
+        // 绝对/拖拽语义入口：清平滑残量，防交错回拉。
+        self.pending_wheel = 0;
         if !self.scroll.scroll_by(delta) {
             return false;
         }
@@ -150,6 +155,7 @@ impl ApplicationOwnedRuntime {
 
     /// Re-arm follow mode and move the application-owned viewport to its end.
     pub fn scroll_to_end(&mut self) -> bool {
+        self.pending_wheel = 0;
         let was_at_bottom = self.scroll.at_bottom();
         self.scroll.scroll_to_end();
         self.follow_bottom = true;
@@ -158,6 +164,7 @@ impl ApplicationOwnedRuntime {
 
     /// Jump to the transcript top; follow disarms unless already at top (c2891).
     pub fn scroll_home(&mut self) -> bool {
+        self.pending_wheel = 0;
         if !self.scroll.scroll_home() {
             return false;
         }
@@ -169,6 +176,48 @@ impl ApplicationOwnedRuntime {
     /// [`Self::wheel_notch`] rows and may coalesce buffered events into one delta.
     pub fn ingest_wheel_delta(&mut self, delta: isize) -> bool {
         self.scroll_by(delta)
+    }
+
+    /// Queue a wheel delta for smooth release. 拖拽丝滑的数学本质=高频小步长；
+    /// 滚轮事件率物理性低，跳变感靠插值补——宿主 16ms wheel-deadline 帧逐次
+    /// 释放，见 [`Self::release_pending_wheel`]。
+    pub fn queue_wheel_delta(&mut self, delta: isize) {
+        // 同向积累（连滚加速）；反向=重定目标，覆盖未完残量（跟手优先）。
+        if self.pending_wheel != 0 && delta != 0 && self.pending_wheel.signum() != delta.signum() {
+            self.pending_wheel = 0;
+        }
+        self.pending_wheel = self.pending_wheel.saturating_add(delta);
+    }
+
+    /// Rows waiting for smooth release.
+    pub fn pending_wheel_rows(&self) -> isize {
+        self.pending_wheel
+    }
+
+    /// Release one animation frame of the pending wheel delta. Active drags
+    /// flush entirely（拖拽持有绝对定位，不留交错残量）。
+    pub fn release_pending_wheel(&mut self) -> bool {
+        if self.pending_wheel == 0 {
+            return false;
+        }
+        let dragging = self.gutter_drag_grab.is_some() || self.selection.is_dragging();
+        let step = if dragging || self.pending_wheel.abs() <= 3 {
+            self.pending_wheel
+        } else {
+            // ~3 帧收敛于 host 16ms wheel deadline。
+            self.pending_wheel / 3 + self.pending_wheel.signum()
+        };
+        // 直呼 inner（绕 `scroll_by` 的 pending 清零——此处正在消费它）。
+        let before = self.scroll.scroll_top();
+        if self.scroll.scroll_by(step) {
+            self.follow_bottom = self.scroll.at_bottom();
+            self.pending_wheel -= step;
+            let _ = before;
+            return true;
+        }
+        // Edge-clamped，零位移：排空残量且本帧无可渲染变化。
+        self.pending_wheel = 0;
+        false
     }
 
     /// Wheel step for host coalescing. Edge-drag uses [`ScrollView::motion_step`].
