@@ -35,3 +35,19 @@ enum AoDirty { None, Repaint, Restale }
 
 - 签名一步到位（见上），不留兼容层。
 - E3：idle 与 busy 均卡（用户实证）——D1 为全局结构改造，非 busy 专属补丁。
+
+## 实作订正（T2 实测后，偏离 D1 原案）
+
+**未引入 `AoDirty`/签名改造**——T2 实验发现根因更浅：`idle_tick` 里「动画 dirty→`ao_components_stale=true`」这一行**冗余**（dock 每帧现算天然带新 spinner 帧；upper 区走 gen 缓存；内容/结构变化各处本就显式 mark）。删除该置位后：
+
+| busy-mixed（dev） | 前 | 后 |
+|---|---|---|
+| wheel p50/p95/max | 916 / 1071 / **2632** | 924 / 1010 / **~1438（-45% 尾）** |
+| tick p50/p95/max | 1217 / 1557 / 2617 | 1060 / 1233 / 1836 |
+| release wheel p50/p95 | — | **294 / 367** |
+
+偶发 2.6ms 尾延迟（卡感来源）收敛过半；D3 阈值（dev<5ms/rel<1ms）达标。**签名改造取消**：无新 API、无兼容面，比「一步到位」更彻底；AoDirty 显式化待未来真出现「需 Restale 的动画」再议（YAGNI）。
+
+## E2 结论
+
+`profile.dev.package."*"=opt3` 已有、本 crate 两 crate opt0——dev 3.6× 为既定构建取舍。产品日常建议 `--release`；不改默认（build 时间权衡，用户可调）。

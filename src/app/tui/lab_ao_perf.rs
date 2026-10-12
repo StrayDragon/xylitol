@@ -362,6 +362,7 @@ async fn lab_ao_stream_delta_perf_report() {
     seed_long_session(&mut session).await;
     session.tui.render_now().expect("warm");
 
+    session.on_run_started("lab"); // F6：否则 idle fence 吞 TextDelta（research/latency-findings.md）
     session
         .step(HostEvent::Xy(Box::new(XyEvent::AgentStart {
             session_id: "lab".into(),
@@ -598,4 +599,81 @@ async fn lab_ao_memory_profile() {
         prev_rss = rss;
         prev_lines = perf.component_lines as u64;
     }
+}
+
+/// E1 基线/验收 lab（c2898）：busy 动画 tick × wheel 交错，量交互帧 p95 与重排次数。
+/// 拍板见 changes/c2898…/design.md D1；验收 D3：dev <5ms release <1ms（busy wheel p95）。
+#[ignore = "lab: busy mixed tick+wheel report"]
+#[tokio::test]
+async fn lab_ao_busy_mixed_perf() {
+    let mut session = HostSession::new_product_ui(LabTerminal::new(120, 40));
+    seed_long_session(&mut session).await;
+    session.tui.render_now().expect("warm");
+    session.on_run_started("lab");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::AgentStart {
+            session_id: "lab".into(),
+            model: "lab".into(),
+        })))
+        .expect("agent start");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::MessageStart {
+            role: "assistant".into(),
+            message: None,
+        })))
+        .expect("msg start");
+
+    const ROUNDS: usize = 200;
+    let mut wheel_us = Vec::with_capacity(ROUNDS);
+    let mut tick_us = Vec::with_capacity(ROUNDS);
+    let mut wheel_reprojected = 0u32;
+    for i in 0..ROUNDS {
+        // 真 80ms 节拍：否则 loader gate（elapsed>=interval）永不触发、测不到动画全重排
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        // 交替：1 tick（busy 动画帧）+ 1 wheel
+        let t0 = Instant::now();
+        session.step(HostEvent::Tick).expect("tick");
+        let tick = t0.elapsed();
+        if session.tui.application_session_active() {
+            let top = session.tui.application_owned_scroll_top();
+            let _ = session.tui.application_owned_scroll_by(-1);
+            let t1 = Instant::now();
+            session.tui.render_now().expect("wheel frame");
+            let el = t1.elapsed();
+            let perf = session.tui.last_render_perf();
+            if perf.ao_reprojected {
+                wheel_reprojected += 1;
+            }
+            wheel_us.push(el.as_micros() as u64);
+            let _ = top;
+        }
+        tick_us.push(tick.as_micros() as u64);
+        if i % 40 == 39 {
+            // 周期性文本 delta：模拟流式内容增长与 reflow
+            session
+                .step(HostEvent::Xy(Box::new(XyEvent::TextDelta(format!(
+                    "tok{i} Lorem ipsum dolor sit amet "
+                )))))
+                .expect("delta");
+        }
+    }
+    fn pct(v: &[u64], p: usize) -> u64 {
+        let mut v = v.to_vec();
+        v.sort_unstable();
+        v[v.len().saturating_sub(1).min(p * v.len() / 100)]
+    }
+    println!(
+        "busy_mixed wheel p50={} p95={} max={} reprojected={}/{}",
+        pct(&wheel_us, 50),
+        pct(&wheel_us, 95),
+        wheel_us.iter().max().unwrap_or(&0),
+        wheel_reprojected,
+        ROUNDS
+    );
+    println!(
+        "busy_mixed tick  p50={} p95={} max={}",
+        pct(&tick_us, 50),
+        pct(&tick_us, 95),
+        tick_us.iter().max().unwrap_or(&0)
+    );
 }

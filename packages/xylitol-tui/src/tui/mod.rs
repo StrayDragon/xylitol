@@ -1319,18 +1319,15 @@ impl<T: Terminal> TUI<T> {
             .overlays
             .iter_mut()
             .any(|(component, _, _)| component.tick());
-        if changed {
-            // Spinner / chrome animations must rebuild dock lines.
-            self.ao_components_stale = true;
-        }
+        // c2898 D1：动画 tick 不再全局 stale——dock 每帧现算（spinner 帧随之更新），
+        // upper 区走 gen 缓存；内容/结构变化仍由各处显式 mark_ao_components_stale。
+        // copy-notice 清除属 chrome 文本消失，同上不需全树重排。
         if self.application_session_active {
             let cols = self.terminal.columns();
             let rows = self.terminal.rows();
             if let Some(runtime) = self.application_owned.as_mut() {
                 changed |= runtime.tick_autoscroll(cols, rows);
                 if runtime.tick_copy_notice() {
-                    // Status row lost "Copied" — refresh chrome.
-                    self.ao_components_stale = true;
                     changed = true;
                 }
             }

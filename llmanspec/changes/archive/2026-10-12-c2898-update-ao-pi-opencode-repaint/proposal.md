@@ -1,9 +1,15 @@
 ---
 depends_on: []
+needs_specs_change: false
 title: AO 滚动跟手性：对齐 pi / opencode 的丝滑度
+branch: sdd/c2898-update-ao-pi-opencode-repaint
+base_branch: main
+base_sha: 3e4ddc9cc6ff81d39ed0ffd5954bc7db683a1274
 ---
 
 ## Why
+
+> 注：纯性能/时序修复，行为合约（需求语义）零变化；改动全在包/宿主实现层，故 `needs_specs_change: false`。
 
 用户实感：ApplicationOwned 会话滚轮 / 拖动滚动**卡、不跟手**，对比 pi 与 opencode 同规模 transcript 明显更钝（无帧率数据，体感级）。卡顿点未定位——可能嫌疑：每 notch 全组件重排 vs reproject 快路径未命中、`ao_wheel_render_requested` 节流/合流策略、`paint_visible` 后 finalize 全行 `visible_width` 重算、diff paint 行级 reuse 失效导致大面积重绘、或输入事件合帧缺失（pi 有 frame-coalesce）。
 
