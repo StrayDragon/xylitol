@@ -29,11 +29,14 @@ struct LabTerminal {
     stopped: bool,
     mouse_capture_active: bool,
     alternate_screen_active: bool,
+    /// 诊断：write 字节留存（lab_wheel_frame_bytes）。
+    pub writes: Vec<String>,
 }
 
 impl LabTerminal {
     fn new(cols: u16, rows: u16) -> Self {
         Self {
+            writes: Vec::new(),
             cols,
             rows,
             started: false,
@@ -45,7 +48,9 @@ impl LabTerminal {
 }
 
 impl Terminal for LabTerminal {
-    fn write(&mut self, _data: &str) {}
+    fn write(&mut self, data: &str) {
+        self.writes.push(data.to_string());
+    }
     fn columns(&self) -> u16 {
         self.cols
     }
@@ -675,5 +680,24 @@ async fn lab_ao_busy_mixed_perf() {
         pct(&tick_us, 50),
         pct(&tick_us, 95),
         tick_us.iter().max().unwrap_or(&0)
+    );
+}
+
+/// 诊断：滚 1 行的输出字节量/行数（vs zellij chunk 粒度对照）。
+#[ignore = "lab: wheel frame output size"]
+#[tokio::test]
+async fn lab_wheel_frame_bytes() {
+    let mut session = HostSession::new_product_ui(LabTerminal::new(120, 40));
+    seed_long_session(&mut session).await;
+    session.tui.render_now().expect("warm");
+    let before = session.tui.terminal.writes.len();
+    session.apply_ao_wheel_delta(-1).expect("wheel 1");
+    let frames = &session.tui.terminal.writes[before..];
+    let bytes: usize = frames.iter().map(|f| f.len()).sum();
+    let escapes: usize = frames.iter().map(|f| f.matches("\x1b[2K").count()).sum();
+    let moves: usize = frames.iter().map(|f| f.matches("\x1b[2;1H").count()).sum();
+    println!(
+        "wheel1 writes={} bytes={bytes} erase2K={escapes} absH={moves}",
+        frames.len()
     );
 }
