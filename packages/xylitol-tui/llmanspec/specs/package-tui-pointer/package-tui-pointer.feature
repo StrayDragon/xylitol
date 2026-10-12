@@ -9,7 +9,7 @@
 
   @req:r1931
   规则: pointer-hit-regions
-    ApplicationOwned MUST 提供以不透明数值 id 标识的命中区。钉在正文行的命中 MUST 用 content 坐标（行、列区间、可选多行高度），屏幕格到 id 的映射 MUST 使用事件时刻的应用视口滚动位置，MUST NOT 使用登记时冻结的 scroll 快照。钉在可见页的命中 MUST 按屏幕格匹配，滚动后同一屏幕格仍命中同一 id。空表 MUST 等同未登记命中。MUST NOT 把产品折叠种类编进库类型。
+    ApplicationOwned 须 提供以不透明数值 id 标识的命中区。钉在正文行的命中 须 用 content 坐标（行、列区间、可选多行高度），屏幕格到 id 的映射 须 使用事件时刻的应用视口滚动位置，不得 使用登记时冻结的 scroll 快照。钉在可见页的命中 须 按屏幕格匹配，滚动后同一屏幕格仍命中同一 id。空表 须 等同未登记命中。不得 把产品折叠种类编进库类型。
 
     场景: hit-id-follows-live-scroll
       当 登记 content 命中区并改变视口滚动后查询同一屏幕格
@@ -20,7 +20,7 @@
       那么 命中 id 仍钉在同一屏幕格
   @req:r1932
   规则: pointer-click-phase
-    ApplicationOwned 指针 click 相位默认 MUST 为按下即吞（Left Down 命中 id 则 MUST NOT 启动 transcript 拖选；随后 Drag 与 Up MUST NOT 再报告 click）。库 MUST 提供 opt-in：仅当选区为空且指针未拖动时在 Left Up 报告 click；该相位下空 click MUST NOT 发出复制。拖动过程 MUST NOT 报告 click。
+    ApplicationOwned 指针 click 相位默认 须 为按下即吞（Left Down 命中 id 则 不得 启动 transcript 拖选；随后 Drag 与 Up 不得 再报告 click）。库 须 提供 opt-in：仅当选区为空且指针未拖动时在 Left Up 报告 click；该相位下空 click 不得 发出复制。拖动过程 不得 报告 click。
 
     场景: default-down-swallow-up-silent
       假如 click 相位为 "DownSwallow"
@@ -33,7 +33,7 @@
       那么 报告 click 且不发出 OSC52
   @req:r1933
   规则: pointer-hover-probe
-    ApplicationOwned MUST 允许武装同一鼠标输入管道上的指针探针（MUST NOT 另建第二套鼠标事件源）。未武装时无态 Moved MUST NOT 强制整帧重绘。武装后 Moved MUST 送达探针；同一命中 id 连续 Moved MUST NOT 排帧；id 变化 MAY 请求重绘。
+    ApplicationOwned 须 允许武装同一鼠标输入管道上的指针探针（不得 另建第二套鼠标事件源）。未武装时无态 Moved 不得 强制整帧重绘。武装后 Moved 须 送达探针；同一命中 id 连续 Moved 不得 排帧；id 变化 MAY 请求重绘。
 
     场景: unarmed-moved-no-full-frame
       当 未武装探针时派发 Moved
@@ -45,7 +45,7 @@
       那么 第二次不排帧
   @req:r1934
   规则: pointer-capture-before-selection
-    ApplicationOwned 在启动 transcript 拖选之前 MUST 先判定 capturing 命中区（含盖在 transcript 上的 overlay 几何）。Left Down 命中 capturing 区后直到松开，Drag MUST NOT 启动 transcript 选区。
+    ApplicationOwned 在启动 transcript 拖选之前 须 先判定 capturing 命中区（含盖在 transcript 上的 overlay 几何）。Left Down 命中 capturing 区后直到松开，Drag 不得 启动 transcript 选区。
 
     场景: capture-blocks-transcript-drag
       假如 已登记 capturing 命中区
@@ -53,7 +53,7 @@
       那么 不启动 transcript 拖选
   @req:r1935
   规则: pointer-cheap-hover-paint
-    由指针探针引起的悬停呈现 MUST 能在不重建全部组件的前提下绘出（可见行 overlay 或等价 reproject）。MUST NOT 因此将组件树标为整段 stale。悬停绘出 MUST 独立于 transcript 选区反色。
+    由指针探针引起的悬停呈现 须 能在不重建全部组件的前提下绘出（可见行 overlay 或等价 reproject）。不得 因此将组件树标为整段 stale。悬停绘出 须 独立于 transcript 选区反色。
 
     场景: hover-paint-does-not-stale-components
       假如 指针探针已武装
