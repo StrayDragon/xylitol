@@ -1,46 +1,53 @@
-//! Wheel-batch → line-count acceleration.
+//! Wheel-event → line-count conversion.
 //!
-//! 口径（v3，实测校准 2026-10-12）：coalesce 后的**事件批**为单元——高分辨率
-//! 滚轮一格发 4-6 事件（实测同毫秒 5 连发），批内事件数不放大行数；批计 1 notch
-//! 基线 [`BASE_LINES_PER_NOTCH`]（旧 `WHEEL_NOTCH=3` 手感），批间 cadence 加速
-//! 快甩至基线×[`MAX_SPEED_MULT`]。`XYLITOL_WHEEL_SPEED=<n>` 钉固定行数。
+//! 两家对标（2026-10-12 复核）：
+//! - **opencode**：每事件恒定行数（`CustomSpeedScroll`，默认 3）——可预测零意外，
+//!   **产品默认**。
+//! - **pi**（`wheel-scroll.ts`）：`"auto"` 速度自适应 1..6 行/事件 + 5ms burst
+//！   合并 + macOS 本地（OS 已加速）恒 1 —— opt-in。
+//!
+//! 无设备探测：粒度差异（hi-res 多事件/notch）交用户 `XYLITOL_WHEEL_SPEED` 自调，
+//! 同两家「settings 开放行数」哲学。
 
 use std::time::Instant;
 
-/// A pause longer than this ends a scroll gesture (new gesture ⇒ base lines).
-const GESTURE_GAP_MS: f32 = 200.0;
-/// Batch gap mapping to 1× base (slower than this never accelerates).
+/// Events closer than this belong to one physical notch (hi-res wheels).
+const BURST_GAP_MS: u64 = 5;
+/// A pause longer than this ends a scroll gesture.
+const GESTURE_GAP_MS: u64 = 200;
+/// Event gap mapping to one line per event; faster gaps scale up.
 const REFERENCE_GAP_MS: f32 = 100.0;
-/// Base lines per notch — the historical `WHEEL_NOTCH` feel.
-const BASE_LINES_PER_NOTCH: f32 = 3.0;
-const MAX_SPEED_MULT: f32 = 3.0;
+const MAX_AUTO_LINES: isize = 6;
 
-/// Fixed lines-per-batch or velocity-adaptive mode.
+/// Constant lines-per-event or pi-style velocity-adaptive.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WheelMode {
-    /// Velocity-adaptive mult over [`BASE_LINES_PER_NOTCH`].
+    /// pi `"auto"`: velocity-adaptive 1..[`MAX_AUTO_LINES`] lines/event.
     Auto,
-    /// Constant lines per batch.
+    /// Constant lines per event (opencode `speed`; product default = 3).
     Fixed(isize),
 }
 
-/// Converts coalesced wheel batches into line counts.
+/// Converts consecutive wheel events into line counts.
 #[derive(Debug)]
 pub struct WheelAccelerator {
     mode: WheelMode,
+    /// pi: local macOS terminals receive OS-accelerated deltas; no extra mult.
+    accelerate: bool,
     last_time: Option<Instant>,
     last_direction: isize,
     average_gap_ms: Option<f32>,
     carry: f32,
-    /// Observability: last gap / lines (host `xylitol::wheel` debug span).
+    /// Observability (host `xylitol::wheel` debug span).
     pub last_gap_ms: Option<f32>,
     pub last_lines: isize,
 }
 
 impl WheelAccelerator {
-    pub fn new(mode: WheelMode) -> Self {
+    pub fn new(mode: WheelMode, accelerate: bool) -> Self {
         Self {
             mode,
+            accelerate,
             last_time: None,
             last_direction: 0,
             average_gap_ms: None,
@@ -50,47 +57,55 @@ impl WheelAccelerator {
         }
     }
 
-    /// Default product policy; `XYLITOL_WHEEL_SPEED=<n>` pins a constant.
+    /// Product default: constant 3 lines/event (old `WHEEL_NOTCH` feel).
+    /// `XYLITOL_WHEEL_SPEED=auto` → pi curve; `=<n>` → constant n.
     pub fn from_env() -> Self {
-        let mode = std::env::var("XYLITOL_WHEEL_SPEED")
-            .ok()
-            .and_then(|v| v.parse::<isize>().ok().map(WheelMode::Fixed))
-            .unwrap_or(WheelMode::Auto);
-        Self::new(mode)
+        let mode = match std::env::var("XYLITOL_WHEEL_SPEED").ok().as_deref() {
+            Some("auto") => Some(WheelMode::Auto),
+            Some(v) => v.parse::<isize>().ok().map(WheelMode::Fixed),
+            None => None,
+        }
+        .unwrap_or(WheelMode::Fixed(3));
+        Self::new(mode, platform_already_accelerated())
     }
 
-    /// Lines for one coalesced batch of `events` wheel events (same direction).
-    /// Sign is applied by the caller.
-    pub fn next_batch(&mut self, events: isize, now: Instant) -> isize {
+    /// Positive line count for this event; sign applied by the caller.
+    pub fn next(&mut self, direction: isize, now: Instant) -> isize {
         let WheelMode::Fixed(lines) = self.mode else {
-            return self.next_auto(now);
+            return self.next_auto(direction, now);
         };
-        let _ = events;
+        let _ = direction;
         self.last_lines = lines.max(1);
         self.last_lines
     }
 
-    fn next_auto(&mut self, now: Instant) -> isize {
+    fn next_auto(&mut self, direction: isize, now: Instant) -> isize {
+        if !self.accelerate {
+            self.last_lines = 1;
+            return 1;
+        }
         let gap_ms = self.last_time.map_or(f32::INFINITY, |last| {
             now.duration_since(last).as_secs_f32() * 1000.0
         });
-        self.last_time = Some(now);
         self.last_gap_ms = Some(gap_ms);
-        let same_gesture = self.last_direction > 0 && gap_ms <= GESTURE_GAP_MS;
+        let same_gesture = direction == self.last_direction && gap_ms <= GESTURE_GAP_MS as f32;
+        self.last_time = Some(now);
+        self.last_direction = direction;
         if !same_gesture {
-            self.last_direction = 1;
             self.average_gap_ms = None;
             self.carry = 0.0;
-            self.last_lines = BASE_LINES_PER_NOTCH as isize;
-            return self.last_lines;
+            self.last_lines = 1;
+            return 1;
+        }
+        if (gap_ms as u64) < BURST_GAP_MS {
+            return 1;
         }
         self.average_gap_ms = Some(match self.average_gap_ms {
             Some(avg) => (avg + gap_ms) / 2.0,
             None => gap_ms,
         });
-        let mult = (REFERENCE_GAP_MS / self.average_gap_ms.unwrap_or(REFERENCE_GAP_MS))
-            .clamp(1.0, MAX_SPEED_MULT);
-        let lines = BASE_LINES_PER_NOTCH * mult + self.carry;
+        let lines = self.average_gap_ms.unwrap_or(REFERENCE_GAP_MS);
+        let lines = (REFERENCE_GAP_MS / lines).clamp(1.0, MAX_AUTO_LINES as f32) + self.carry;
         let whole = lines.floor();
         self.carry = lines - whole;
         let out = whole.max(1.0) as isize;
@@ -98,8 +113,7 @@ impl WheelAccelerator {
         out
     }
 
-    /// Reset gesture state (direction change handled by the caller re-invoking
-    /// after a `scroll_to` / jump; gaps > `GESTURE_GAP_MS` self-reset).
+    /// Reset gesture state.
     pub fn reset(&mut self) {
         self.last_time = None;
         self.last_direction = 0;
@@ -108,64 +122,81 @@ impl WheelAccelerator {
     }
 }
 
+/// Local macOS terminals receive OS-accelerated wheel deltas (one event per
+/// line); remotes and other platforms emit one event per notch.
+fn platform_already_accelerated() -> bool {
+    let ssh = std::env::var_os("SSH_CONNECTION").is_some()
+        || std::env::var_os("SSH_CLIENT").is_some()
+        || std::env::var_os("SSH_TTY").is_some();
+    !ssh && cfg!(target_os = "macos")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Duration;
 
     #[test]
-    fn slow_batches_stay_at_base() {
-        let mut a = WheelAccelerator::new(WheelMode::Auto);
+    fn default_fixed_is_constant_three() {
+        let mut a = WheelAccelerator::new(WheelMode::Fixed(3), true);
         let t0 = Instant::now();
-        assert_eq!(a.next_batch(1, t0), 3);
+        assert_eq!(a.next(1, t0), 3);
         assert_eq!(
-            a.next_batch(1, t0 + Duration::from_millis(300)),
+            a.next(1, t0 + Duration::from_millis(5)),
             3,
-            "new gesture"
+            "hi-res burst too"
         );
-        assert_eq!(a.next_batch(1, t0 + Duration::from_millis(400)), 3);
+        assert_eq!(a.next(-1, t0 + Duration::from_millis(50)), 3);
     }
 
     #[test]
-    fn fast_cadence_scales_to_cap() {
-        let mut a = WheelAccelerator::new(WheelMode::Auto);
+    fn auto_slow_scroll_is_one_line_per_notch() {
+        let mut a = WheelAccelerator::new(WheelMode::Auto, true);
         let t0 = Instant::now();
-        a.next_batch(1, t0);
+        assert_eq!(a.next(1, t0), 1);
+        assert_eq!(a.next(1, t0 + Duration::from_millis(300)), 1, "new gesture");
+        assert_eq!(a.next(1, t0 + Duration::from_millis(400)), 1);
+    }
+
+    #[test]
+    fn auto_fast_spin_scales_up() {
+        let mut a = WheelAccelerator::new(WheelMode::Auto, true);
+        let t0 = Instant::now();
+        a.next(1, t0);
         let mut t = t0;
         let mut last = 0;
         for _ in 0..30 {
             t += Duration::from_millis(20);
-            last = a.next_batch(1, t);
+            last = a.next(1, t);
         }
-        assert_eq!(last, 9, "20ms cadence ⇒ 3×cap 3 = 9");
+        assert_eq!(last, 5, "20ms cadence settles at REFERENCE_GAP/20ms");
     }
 
     #[test]
-    fn hires_batch_counts_once() {
-        let mut a = WheelAccelerator::new(WheelMode::Auto);
+    fn auto_burst_events_move_one_line() {
+        let mut a = WheelAccelerator::new(WheelMode::Auto, true);
         let t0 = Instant::now();
-        assert_eq!(
-            a.next_batch(5, t0),
-            3,
-            "5-event hi-res notch = 1 notch of lines"
-        );
+        a.next(1, t0);
+        assert_eq!(a.next(1, t0 + Duration::from_millis(2)), 1);
+        assert_eq!(a.next(1, t0 + Duration::from_millis(4)), 1);
     }
 
     #[test]
-    fn fixed_mode_is_constant() {
-        let mut a = WheelAccelerator::new(WheelMode::Fixed(3));
+    fn auto_no_acceleration_is_always_one() {
+        let mut a = WheelAccelerator::new(WheelMode::Auto, false);
         let t0 = Instant::now();
-        assert_eq!(a.next_batch(1, t0), 3);
-        assert_eq!(a.next_batch(7, t0 + Duration::from_millis(5)), 3);
+        a.next(1, t0);
+        for i in 1..10 {
+            assert_eq!(a.next(1, t0 + Duration::from_millis(i * 5)), 1);
+        }
     }
 
     #[test]
-    fn direction_flip_via_gap_reset() {
-        let mut a = WheelAccelerator::new(WheelMode::Auto);
+    fn auto_direction_flip_restarts_gesture() {
+        let mut a = WheelAccelerator::new(WheelMode::Auto, true);
         let t0 = Instant::now();
-        a.next_batch(1, t0);
-        a.next_batch(1, t0 + Duration::from_millis(10));
-        // Caller models a flip as a long gap (scroll_to / pause).
-        assert_eq!(a.next_batch(1, t0 + Duration::from_millis(400)), 3);
+        a.next(1, t0);
+        a.next(1, t0 + Duration::from_millis(10));
+        assert_eq!(a.next(-1, t0 + Duration::from_millis(20)), 1);
     }
 }

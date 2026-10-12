@@ -406,7 +406,8 @@ async fn run_host_loop(
                             // Velocity-adaptive lines/event (pi wheel-scroll);
                             // XYLITOL_WHEEL_SPEED=<n> pins a constant.
                             let coalesce_wheel =
-                                wheel_event_direction(&item).filter(|_| {
+                                wheel_delta_from_item(&item, &mut session.wheel_accel).filter(
+                                    |_| {
                                 session.tui.application_session_active()
                                     && match &item {
                                         Ok(Event::Mouse(m)) => {
@@ -418,31 +419,23 @@ async fn run_host_loop(
                                         _ => false,
                                     }
                             });
-                            if let Some(direction0) = coalesce_wheel {
-                                // v3 batch 口径：批内事件计数，批后单点 accelerate
-                                // （高分辨率滚轮一格多事件=1 notch，不放大行数）。
-                                let mut events: isize = 1;
+                            if let Some(delta0) = coalesce_wheel {
+                                let mut delta = delta0;
                                 let mut deferred: Option<Result<Event, std::io::Error>> = None;
                                 while let Some(next) = term_events.next().now_or_never().flatten()
                                 {
-                                    if let Some(d) = wheel_event_direction(&next) {
-                                        if d == direction0 {
-                                            events += 1;
-                                        } else {
-                                            deferred = Some(next);
-                                            break;
-                                        }
+                                    if let Some(d) =
+                                        wheel_delta_from_item(&next, &mut session.wheel_accel)
+                                    {
+                                        delta = delta.saturating_add(d);
                                     } else {
                                         deferred = Some(next);
                                         break;
                                     }
                                 }
-                                let now = std::time::Instant::now();
-                                let lines = session.wheel_accel.next_batch(events, now);
-                                let delta = direction0 * lines;
                                 log::debug!(
                                     target: "xylitol::wheel",
-                                    "wheel dir={direction0} events={events} lines={} gap={:?}",
+                                    "wheel delta={delta} last_lines={} last_gap={:?}",
                                     session.wheel_accel.last_lines,
                                     session.wheel_accel.last_gap_ms
                                 );
@@ -574,15 +567,20 @@ fn apply_idle_downlink<T: xylitol_tui::Terminal>(
     Ok(())
 }
 
-fn wheel_event_direction(item: &Result<Event, std::io::Error>) -> Option<isize> {
-    match item {
+fn wheel_delta_from_item(
+    item: &Result<Event, std::io::Error>,
+    accel: &mut xylitol_tui::WheelAccelerator,
+) -> Option<isize> {
+    let direction = match item {
         Ok(Event::Mouse(m)) => match m.kind {
             MouseEventKind::ScrollUp => Some(-1),
             MouseEventKind::ScrollDown => Some(1),
             _ => None,
         },
         _ => None,
-    }
+    }?;
+    let now = std::time::Instant::now();
+    Some(direction * accel.next(direction, now))
 }
 
 /// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).
