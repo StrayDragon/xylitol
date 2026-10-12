@@ -231,9 +231,13 @@ impl ApplicationOwnedRuntime {
             .last_wheel_at
             .map(|t| t.elapsed().as_secs_f32() * 1000.0)
             .unwrap_or(100.0);
-        let tau = (gap_ms * 0.9).clamp(40.0, 150.0);
+        let mut tau = (gap_ms * 0.9).clamp(40.0, 150.0);
+        // 连甩 target 远：τ 随差距放宽，防「大 diff×短 τ」高频大步跳（连续顿挫）。
+        tau = (tau + diff.abs() as f32 * 2.0).min(400.0).max(tau);
         let k = 1.0 - (-16.0 / tau).exp();
         let mag = ((diff.abs() as f32) * k).ceil() as isize;
+        // 每帧步长上限（视口 ~1/10）：连甩平滑底线，慢滚不受影响。
+        let mag = mag.clamp(1, 4);
         let step = diff.signum() * mag.clamp(1, diff.abs());
         let cur_usize = self.scroll.scroll_top();
         let step = if cur_usize as isize + step < 0 {
