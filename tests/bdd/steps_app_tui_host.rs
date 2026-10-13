@@ -3185,6 +3185,7 @@ fn c2905_assert_on(host_pump_bdd: &HostPumpBdd) {
         .join("\n");
     put_pump(host_pump_bdd, pump);
     assert!(frame.contains("会话侧栏"), "驻列须上屏");
+    assert!(frame.contains("施工中"), "c2912 驻列须为实验占位");
 }
 
 #[then("右缘驻列上屏且内容区让宽")]

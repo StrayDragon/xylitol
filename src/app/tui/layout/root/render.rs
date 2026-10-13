@@ -214,7 +214,7 @@ impl UiRoot {
         lines
     }
 
-    /// c2905 驻列第 i 行内容（标题 + 字段，余空）。
+    /// c2912 驻列第 i 行内容：标题 + 实验占位（施工中；业务字段待正式业务后回归，见 c2911 草案）。
     pub(super) fn session_sidebar_cell(&self, row: usize, w: usize) -> String {
         if row == 0 {
             let title = "┌ 会话侧栏";
@@ -223,17 +223,11 @@ impl UiRoot {
                 .theme
                 .paint_muted(&format!("{title} {}", "─".repeat(w.saturating_sub(tw + 1))));
         }
-        let fields: [(&str, &String); 4] = [
-            ("会话", &self.session_drawer_id),
-            ("模型", &self.model),
-            ("思考", &self.thinking_level),
-            ("目录", &self.cwd),
-        ];
-        let idx = row - 1;
-        let Some((label, value)) = fields.get(idx) else {
-            return String::new();
-        };
-        format!("{} {}", self.theme.paint_muted(label), value)
+        match row {
+            1 => self.theme.paint_muted("实验特性 · 施工中"),
+            2 => self.theme.paint_muted("正式业务后启用"),
+            _ => String::new(),
+        }
     }
 
     pub(super) fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
