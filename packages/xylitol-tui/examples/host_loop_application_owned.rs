@@ -1,7 +1,7 @@
 //! Minimal ApplicationOwned host loop — canonical ptim14 surface (c2070 §7.9).
 //!
 //! Run: `cargo run -p xylitol-tui --example host_loop_application_owned`
-//!   or: `just demo-tui-host-loop`
+//!   or: `just demo-tui-host-loop`（packages/xylitol-tui 内）
 //!
 //! Demonstrates the reusable path (no demo-private mouse glue):
 //! [`ApplicationOwnedTui`] → begin → dispatch / idle / render → finish.

@@ -153,7 +153,7 @@ def _live_provider_path() -> Path:
 def _probe_live_provider() -> tuple[bool, str]:
     cfg = _live_provider_path()
     if not cfg.exists():
-        return True, f"no live-provider config at {cfg} — `just test-live-provider` will skip (expected on CI)"
+        return True, f"no live-provider config at {cfg} — `just qa-test-live-provider` will skip (expected on CI)"
     if re.search(r"(?m)^\s*enabled:\s*true\s*(#.*)?$", cfg.read_text(encoding="utf-8")):
         return True, f"live-provider enabled at {cfg} — the live gate will hit the gateway"
     return True, f"live-provider present but disabled at {cfg} — the live gate will skip"

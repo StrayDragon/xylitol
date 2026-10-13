@@ -46,7 +46,7 @@ intent.md 只写 **可观察 MUST**（词表、禁止滑入、轨/flush、跨端
 | 规则 | 禁止 |
 |---|---|
 | 颜色 / 尺寸只引用 DESIGN token（YAML `token: muted` → `var(--muted)`） | 另立冲突 hex |
-| 改 token：`just sync-tui-tokens`；门禁 `just check-tui-tokens`；生成物只在 `generated/` | 手改生成物 |
+| 改 token：`just sync-tui-tokens`；门禁 `just qa-check-tui-tokens`；生成物只在 `generated/` | 手改生成物 |
 | 静图 UI 无「(包)」分层样式；无顶栏快捷键墙 | 把包分层样式当产品表达 |
 | **无独立快捷键设计**：组件自己的键写在该模块 `draft.yaml` `keys:`（仅当非空时页面展示） | 另立快捷键设计 / 在散文里钉键位 |
 | `agent_demo` 不是产品 playground / 固定区真值（硬边界见 `packages/xylitol-tui/AGENTS.md`） | 拿 demo 当产品定稿 |

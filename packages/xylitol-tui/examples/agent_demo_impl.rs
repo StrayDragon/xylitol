@@ -3052,8 +3052,8 @@ impl FakeCodingAgentApp {
         self.push_message(Role::User, "plate · playground-sync · c555");
         self.push_message(
             Role::ScrollNotice,
-            "This demo (`just demo-tui` / `agent_demo`) is the **package** Inline harness. \
-             ApplicationOwned: `just demo-tui-alt-screen` (`agent_demo_alt`). \
+            "This demo (package `just demo-tui` / `agent_demo`) is the **package** Inline harness. \
+             ApplicationOwned: package `just demo-tui-alt-screen` (`agent_demo_alt`). \
              It MAY differ from product chrome / copy. Product runtime = \
              `src/app/tui` code; color tokens = `DESIGN.md`. Interactive draft = \
              repo-root `designing/` (`just open-designing`). Tokens: DESIGN.md → \

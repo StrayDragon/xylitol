@@ -64,16 +64,18 @@ LOG_DIR="$HOME/.xylitol/logs"
 
 过滤放在子命令**前**（`just` 薄封装不传过滤时直接调 python）。
 
-`just` 的 `n` 为**位置参数**（`just obs-requests 8`），不要写 `n=8`。
+`just` 的 `n` 为**位置参数**（`just obs-recent 40`），不要写 `n=40`。
+仅 summary / recent / tui-lag 有 just 薄封装；其余子命令直接调 python：
 
 ```bash
 just obs-summary
-just obs-requests 8
 just obs-recent 40
-just obs-turns 8
-just obs-lag                          # 或 REQUEST_ID=…
-just obs-lifecycle                    # 或 TURN_ID=… / REQUEST_ID=…
-just obs-channel
+
+python3 scripts/inspect_provider_trace.py requests -n 8
+python3 scripts/inspect_provider_trace.py turns -n 8
+python3 scripts/inspect_provider_trace.py --request-id RID lag
+python3 scripts/inspect_provider_trace.py --request-id RID --turn-id TID lifecycle
+python3 scripts/inspect_provider_trace.py --request-id RID channel
 
 python3 scripts/inspect_provider_trace.py --since 30m summary
 python3 scripts/inspect_provider_trace.py --path "$LOG_DIR/provider-trace.jsonl" summary

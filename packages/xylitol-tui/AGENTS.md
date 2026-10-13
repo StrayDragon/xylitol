@@ -35,14 +35,14 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 | 角色 | 路径 | 说明 |
 |---|---|---|
 | **产品视觉 / 设计稿** | app `DESIGN.md` 色板 + 顶层 `designing/` 交互稿 | 固定态给人看；运行时以产品代码为准 |
-| **包交互演示** | `examples/agent_demo.rs`（Inline，`just demo-tui`）· `examples/agent_demo_alt.rs`（ApplicationOwned / alt-screen，`just demo-tui-alt-screen`）· `examples/host_loop_application_owned.rs`（最小 host，`just demo-tui-host-loop`） | 引擎 / 通用组件试跑；**≠** designing；共享实现 `agent_demo_impl.rs` |
+| **包交互演示** | `examples/agent_demo.rs`（Inline，包内 `just demo-tui`）· `examples/agent_demo_alt.rs`（ApplicationOwned / alt-screen，包内 `just demo-tui-alt-screen`）· `examples/host_loop_application_owned.rs`（最小 host，包内 `just demo-tui-host-loop`） | 引擎 / 通用组件试跑；**≠** designing；共享实现 `agent_demo_impl.rs` |
 | **运行时便利** | `Palette`（本包） | 对齐 DESIGN 的 Dark/Light 快照；组件仍只收闭包 |
 
 ### `agent_demo` 硬边界（防误导）
 
 | 是 | 不是 |
 |---|---|
-| 包引擎 / 通用组件的动态试跑（`agent_demo` / `agent_demo_alt` / `just demo-tui*`） | 产品 TUI 或 designing 交互稿 |
+| 包引擎 / 通用组件的动态试跑（`agent_demo` / `agent_demo_alt` / 包内 `just demo-tui*`） | 产品 TUI 或 designing 交互稿 |
 | `XYLITOL_TUI_MOUSE` 仅 **Inline** demo（及以其为目标的 PTY e2e）生效；Inline 与 ApplicationOwned 用双 example 区分 | 产品 inline 鼠标开关；env 热切模式 |
 | demo 屏英文 / plate 文案以 demo 自身为准（人类明确要求除外），允许与产品中文 SSOT（队列条 / 滚动提示 / 命令面板…）不同 | 为「对齐产品固定区词汇表」改写 demo 文案 |
 | 形态学对照产品（rail 默认、中间队列条）；对照 ≠ 同一 SSOT | 把对照当落地 |
@@ -70,7 +70,7 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 
 ## ApplicationOwned host checklist
 
-产品 / 自写 host **MUST** 以 `examples/host_loop_application_owned.rs`（`just demo-tui-host-loop`）为样板——构造序、dock / 命中 / 复制 / 挂起的完整调用序列以该 example 与 `lib.rs` 导出文档为 SSOT，本节不维护 API 流水账；**禁止**把 `agent_demo_impl` 私有坐标算术当 SSOT，host **不必**自算 `content_row = scroll_top + screen_row`。
+产品 / 自写 host **MUST** 以 `examples/host_loop_application_owned.rs`（包内 `just demo-tui-host-loop`）为样板——构造序、dock / 命中 / 复制 / 挂起的完整调用序列以该 example 与 `lib.rs` 导出文档为 SSOT，本节不维护 API 流水账；**禁止**把 `agent_demo_impl` 私有坐标算术当 SSOT，host **不必**自算 `content_row = scroll_top + screen_row`。
 
 原则级禁令：产品路径勿调 `TUI::start()`（仅 demo）；**禁止**把产品 `FoldTarget` 写进本包；命中 id 对本包不透明（宿主自选、引擎不解析）。
 
@@ -104,8 +104,8 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 | 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
 | 对照 / 合并 pi-tui 行为 | 先读 [`PI_DELTAS.md`](PI_DELTAS.md)；不得静默回退表中决议 |
 | 改产品 TUI 端 / UX / 视觉 | `l8ng-write-tui` + 产品代码 + `src/app/tui/DESIGN.md` + `just open-designing`；**勿**默认改 `agent_demo` 当产品落地 |
-| 改包引擎 / 通用组件 / demo | `xylitol-test-tui-harness`；`just demo-tui` 仅验证包能力 |
-| 改色板 | 只改 app `DESIGN.md` → `just sync-tui-tokens` → 对齐 `Palette`；`just check-tui-tokens` |
+| 改包引擎 / 通用组件 / demo | `xylitol-test-tui-harness`；包内 `just demo-tui` 仅验证包能力（demo recipe 在 `packages/xylitol-tui/justfile`，根 justfile 不收 demo） |
+| 改色板 | 只改 app `DESIGN.md` → `just sync-tui-tokens` → 对齐 `Palette`；`just qa-check-tui-tokens` |
 | 打开交互设计稿 | `just open-designing`（对照稿；≠ 产品真值；≠ demo） |
 | 日常 / 真终端门禁 | 上「验证」表 |
 

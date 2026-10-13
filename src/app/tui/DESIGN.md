@@ -137,7 +137,7 @@ components:
 
 情绪：安静、高效、像在普通 REPL 里聊天。用户应能向上翻历史、框选复制，再贴回下一轮提问——**复制友好优先于视觉热闹**。
 
-参考实现锚点：浏览器 [`designing/`](../../../designing/) = **交互设计稿**（固定状态，对照辅助）；生产接线在本目录 `src/app/tui`（运行时真值）。包侧 `agent_demo`（`just demo-tui`）= 引擎交互演示，**允许与产品固定区 / 文案有差异**，**不**充当 designing。
+参考实现锚点：浏览器 [`designing/`](../../../designing/) = **交互设计稿**（固定状态，对照辅助）；生产接线在本目录 `src/app/tui`（运行时真值）。包侧 `agent_demo`（`packages/xylitol-tui` 内 `just demo-tui`）= 引擎交互演示，**允许与产品固定区 / 文案有差异**，**不**充当 designing。
 
 ## Colors
 

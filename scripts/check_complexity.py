@@ -267,7 +267,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    # `just check-scripts` always passes --check; allow --radar alone for humans.
+    # `just qa-check-scripts` always passes --check; allow --radar alone for humans.
     do_check = args.check or not args.radar
     do_radar = args.radar
 

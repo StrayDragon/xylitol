@@ -85,7 +85,7 @@ lint-all verbosity=verbosity_default:
 # root package + xylitol-ai-bridge lib. NOT in this matrix:
 #   - xylitol-tui → sole runner is `just test-tui` (in-process #[serial]
 #     coordination, TUI harness methodology SSOT);
-#   - lab_responses_prompt_cache → serial-only via `test-live-provider`.
+#   - lab_responses_prompt_cache → serial-only via `qa-test-live-provider`.
 # -E overrides the profile default-filter, so the live-binary clause is
 # restated here; ad-hoc `cargo nextest run` keeps the nextest.toml filter.
 [arg('verbosity', pattern='quiet|normal|verbose')]
@@ -141,9 +141,8 @@ test verbosity=verbosity_default:
 # CI / offline opt-out: XYLITOL_SKIP_LIVE=1 skips this gate unconditionally
 # (env, because `qa` composes this recipe as a dependency — conditional deps
 # cannot take just args). Example: `XYLITOL_SKIP_LIVE=1 just qa`.
-alias test-live-responses-cache := test-live-provider
 [arg('verbosity', pattern='quiet|normal|verbose')]
-test-live-provider verbosity=verbosity_default:
+qa-test-live-provider verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     if [[ "${XYLITOL_SKIP_LIVE:-}" == "1" ]]; then
@@ -242,26 +241,7 @@ test-tui-e2e-tmux verbosity=verbosity_default:
       verbose) cargo test -v --test tui_e2e -- --ignored tmux ;;
     esac
 
-# Run the xylitol-tui Inline agent_demo (package dynamic playground — not product host).
-# ApplicationOwned (alt-screen): `just demo-tui-alt-screen` → example `agent_demo_alt`.
-demo-tui:
-    cargo run -p xylitol-tui --example agent_demo
-
-# agent_demo_alt — ApplicationOwned (alt-screen + app selection / scroll / OSC52). Human + e2e target.
-demo-tui-alt-screen:
-    cargo run -p xylitol-tui --example agent_demo_alt
-
-# Minimal ApplicationOwned host loop (ptim14 surface — not agent_demo).
-demo-tui-host-loop:
-    cargo run -p xylitol-tui --example host_loop_application_owned
-
-# agent_demo with rail entry skin (left bg strip; /entry-style rail).
-demo-tui-rail:
-    XYLITOL_AGENT_DEMO_ENTRY_STYLE=rail cargo run -p xylitol-tui --example agent_demo
-
-# agent_demo without syntect (lighter / no-highlight regression).
-demo-tui-no-highlight:
-    cargo run -p xylitol-tui --example agent_demo --no-default-features
+# Engine demos live in packages/xylitol-tui/justfile (just demo-tui there).
 
 # Sync designing tokens.css/js from src/app/tui/DESIGN.md frontmatter.
 sync-tui-tokens:
@@ -273,7 +253,7 @@ export-design-frame:
 
 # Fail if designing tokens or package Palette diverge from DESIGN.md.
 [arg('verbosity', pattern='quiet|normal|verbose')]
-check-tui-tokens verbosity=verbosity_default:
+qa-check-tui-tokens verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     args=(--check)
@@ -283,7 +263,7 @@ check-tui-tokens verbosity=verbosity_default:
     python3 scripts/sync_tui_tokens.py "${args[@]}"
 
 # Soft complexity radar (cccc-rs top-cognitive). Not a hard gate — see
-# scripts/check_complexity.py (HARD entry limits run via check-scripts / qa).
+# scripts/check_complexity.py (HARD entry limits run via qa-check-scripts / qa).
 [arg('verbosity', pattern='quiet|normal|verbose')]
 complexity verbosity=verbosity_default:
     #!/usr/bin/env bash
@@ -297,16 +277,16 @@ complexity verbosity=verbosity_default:
 # --- scripts/ QA checks -------------------------------------------------
 # Convention (normative for this repo):
 #   - scripts/check_*.py or scripts/check-*.py = non-mutating gate scripts.
-#     Each MUST be reachable from `just qa` (via `check-scripts` / deps).
+#     Each MUST be reachable from `just qa` (via `qa-check-scripts` / deps).
 #     Own `--verbose` for ok summaries; default silent success.
 #   - Other scripts/ files (e.g. cleanup_*) are maintenance tools and MUST NOT
 #     be required by `qa` (they may mutate the tree).
 #
 # Meta-gate: every check_* script path must appear in this justfile, and `qa`
-# must depend on `check-scripts-wired` + `check-scripts`.
+# must depend on `qa-check-scripts-wired` + `qa-check-scripts`.
 # Complexity HARD gate: scripts/check_complexity.py (cccc-rs entry mods).
 [arg('verbosity', pattern='quiet|normal|verbose')]
-check-scripts-wired verbosity=verbosity_default:
+qa-check-scripts-wired verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     # Recipe may span continued lines: `qa …: \` / `(dep) \` / …
@@ -320,8 +300,8 @@ check-scripts-wired verbosity=verbosity_default:
         if ($0 !~ /\\[[:space:]]*$/) exit
       }
     ' justfile)"
-    if [[ "$qa_hdr" != *check-scripts-wired* ]] || [[ "$qa_hdr" != *check-scripts* ]]; then
-        echo "error: just qa must list check-scripts-wired and check-scripts as dependencies" >&2
+    if [[ "$qa_hdr" != *qa-check-scripts-wired* ]] || [[ "$qa_hdr" != *qa-check-scripts* ]]; then
+        echo "error: just qa must list qa-check-scripts-wired and qa-check-scripts as dependencies" >&2
         echo "  got: $qa_hdr" >&2
         exit 1
     fi
@@ -331,21 +311,21 @@ check-scripts-wired verbosity=verbosity_default:
         echo "error: no scripts/check_*.py on disk; gate must not silently run zero checks" >&2
         exit 1
     fi
-    body="$(awk '/^check-scripts([ :]|$)/ {grab=1; next} grab {if ($0 ~ /^[ \t]/) print; else exit}' justfile)"
+    body="$(awk '/^qa-check-scripts([ :]|$)/ {grab=1; next} grab {if ($0 ~ /^[ \t]/) print; else exit}' justfile)"
     if ! grep -Eq 'files=\(scripts/check_\*\.py scripts/check-\*\.py\)' <<<"$body" \
         || ! grep -Fq '"${files[@]}"' <<<"$body"; then
-        echo "error: check-scripts recipe must keep glob wiring:" >&2
+        echo "error: qa-check-scripts recipe must keep glob wiring:" >&2
         echo '  files=(scripts/check_*.py scripts/check-*.py) + iterate "${files[@]}"' >&2
         echo "  (explicit per-file whitelists fork from the glob and strand new checks)" >&2
         exit 1
     fi
     if [[ "{{verbosity}}" == "verbose" ]]; then
-        echo "ok: check-scripts keeps glob wiring over ${#files[@]} check script(s)"
+        echo "ok: qa-check-scripts keeps glob wiring over ${#files[@]} check script(s)"
     fi
 
 # Run every scripts/check_*.py / check-*.py (prefer `--check` when supported).
 [arg('verbosity', pattern='quiet|normal|verbose')]
-check-scripts verbosity=verbosity_default:
+qa-check-scripts verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     shopt -s nullglob
@@ -396,23 +376,23 @@ test-tui verbosity=verbosity_default:
 
 # Unified daily / PR gate (no TUI layer-5 E2E — needs PTY/tmux).
 # Order: fmt → clippy → workspace tests → live-provider (serial) → package TUI
-# harness → docs (doc-check + doc-test) → DESIGN tokens → scripts/check_* →
+# harness → docs (qa-doc-check + qa-doc-test) → DESIGN tokens → scripts/check_* →
 # prek (text-hygiene-only hooks; cargo gates never in prek — see AGENTS.md).
 # Default verbosity=quiet (agent-friendly). Pass `normal` / `verbose` for humans.
 # Skip options (env): XYLITOL_SKIP_LIVE=1 skips the live-provider gate (CI).
 [arg('verbosity', pattern='quiet|normal|verbose')]
 qa verbosity=verbosity_default: \
-    (fmt-check verbosity) \
+    (qa-fmt-check verbosity) \
     (lint verbosity) \
     (test verbosity) \
-    (test-live-provider verbosity) \
+    (qa-test-live-provider verbosity) \
     (test-tui verbosity) \
-    (doc-check verbosity) \
-    (doc-test verbosity) \
-    (check-tui-tokens verbosity) \
-    (check-scripts-wired verbosity) \
-    (check-scripts verbosity) \
-    (spec-validate verbosity)
+    (qa-doc-check verbosity) \
+    (qa-doc-test verbosity) \
+    (qa-check-tui-tokens verbosity) \
+    (qa-check-scripts-wired verbosity) \
+    (qa-check-scripts verbosity) \
+    (qa-spec-validate verbosity)
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{verbosity}}" in
@@ -438,13 +418,13 @@ sdd:
 
 # Strict specs/change validate (wired into `just qa`; deterministic, no network).
 [arg('verbosity', pattern='quiet|normal|verbose')]
-spec-validate verbosity=verbosity_default:
+qa-spec-validate verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     # CI runner 不装 llman-sdd（dev/SDD 工具）：有则门禁强制（失败即红），
     # 缺失则显式跳过并说明——spec 行为完整性由 qa 内 BDD/tests 全量闸兜底。
     if ! command -v llman-sdd >/dev/null 2>&1; then
-      echo "spec-validate: skipped (llman-sdd 未安装；CI 由 BDD/test 闸兜底)"
+      echo "qa-spec-validate: skipped (llman-sdd 未安装；CI 由 BDD/test 闸兜底)"
       exit 0
     fi
     if [[ "{{verbosity}}" == "quiet" ]]; then
@@ -465,9 +445,9 @@ qa-e2e verbosity=verbosity_default: (qa verbosity) (test-tui-e2e verbosity)
 alias check := qa
 alias ci := qa
 
-# fmt-check only (cargo fmt covers all crates regardless of features).
+# qa-fmt-check only (cargo fmt covers all crates regardless of features).
 [arg('verbosity', pattern='quiet|normal|verbose')]
-fmt-check verbosity=verbosity_default:
+qa-fmt-check verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{verbosity}}" in
@@ -479,10 +459,8 @@ fmt-check verbosity=verbosity_default:
 # --- Dev CPU profiling suite (c1520; maintenance; NOT in qa) ---
 # Needs: samply, tmux, perf_event_paranoid<=1
 #   echo 1 | sudo tee /proc/sys/kernel/perf_event_paranoid
-
-# Release build with symbols (strip=none, line-tables-only).
-profile-build:
-    python3 scripts/profile_tui_suite.py --build
+# Build-only: `python3 scripts/profile_tui_suite.py --build`.
+# Summarize: `python3 scripts/summarize_samply_profile.py <run-dir> --addr2line ./target/release/xylitol`.
 
 # Run Fake/tmux scenarios A–E (or subset). Writes target/profile/<run-id>/.
 #   just profile-suite
@@ -490,10 +468,6 @@ profile-build:
 # c1505 T0d (long history + stream): python3 scripts/profile_tui_suite.py --scenarios E --b-pairs 400 --duration 20 --run-id e-hist-400
 profile-suite scenarios="A,B,C,D" duration="20":
     python3 scripts/profile_tui_suite.py --build --scenarios {{scenarios}} --duration {{duration}}
-
-# Summarize one profile (xylitol-only filter).
-profile-summary path:
-    python3 scripts/summarize_samply_profile.py "{{path}}" --addr2line ./target/release/xylitol
 
 # --- Cargo worktree target isolation (maintenance; not in qa) ---
 # Per-worktree CARGO_TARGET_DIR under ~/.cache/cargo-targets/…
@@ -506,56 +480,19 @@ cargo-wt-env:
 
 # --- Observability / provider-trace inspect (maintenance; not in qa) ---
 # Token-efficient summaries. Skill: xylitol-inspect-runtime-logs.
-# Filters (--since / --request-id / --turn-id): pass via python CLI, not just kwargs
-#   python3 scripts/inspect_provider_trace.py --since 30m summary
+# Filters (--since / --request-id / --turn-id) and rarer subcommands
+# (requests / turns / lag / lifecycle / channel): pass via the python CLI, e.g.
+#   python3 scripts/inspect_provider_trace.py requests -n 8
 
 obs-summary:
     python3 scripts/inspect_provider_trace.py summary
 
 # Prefer positional: `just obs-recent 80` (Just 1.57 treats `n=80` as a literal arg value).
-obs-requests n="8":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    n="{{n}}"; n="${n#n=}"
-    python3 scripts/inspect_provider_trace.py requests -n "$n"
-
 obs-recent n="40":
     #!/usr/bin/env bash
     set -euo pipefail
     n="{{n}}"; n="${n#n=}"
     python3 scripts/inspect_provider_trace.py recent -n "$n"
-
-obs-turns n="8":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    n="{{n}}"; n="${n#n=}"
-    python3 scripts/inspect_provider_trace.py turns -n "$n"
-
-obs-lag REQUEST_ID="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ -n "{{REQUEST_ID}}" ]]; then
-      python3 scripts/inspect_provider_trace.py --request-id "{{REQUEST_ID}}" lag
-    else
-      python3 scripts/inspect_provider_trace.py lag
-    fi
-
-obs-lifecycle REQUEST_ID="" TURN_ID="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    args=()
-    [[ -n "{{REQUEST_ID}}" ]] && args+=(--request-id "{{REQUEST_ID}}")
-    [[ -n "{{TURN_ID}}" ]] && args+=(--turn-id "{{TURN_ID}}")
-    python3 scripts/inspect_provider_trace.py "${args[@]}" lifecycle
-
-obs-channel REQUEST_ID="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ -n "{{REQUEST_ID}}" ]]; then
-      python3 scripts/inspect_provider_trace.py --request-id "{{REQUEST_ID}}" channel
-    else
-      python3 scripts/inspect_provider_trace.py channel
-    fi
 
 # Spinner / host-loop freeze breadcrumbs in xylitol.log (target xylitol::lag).
 # Repro: XYLITOL_DEBUG=1 or RUST_LOG=xylitol::lag=info,xylitol=warn — then submit a prompt
@@ -573,17 +510,6 @@ obs-tui-lag n="80" LOG="":
     echo "# $log (last {{n}} xylitol::lag lines)"
     rg -n "xylitol::lag|xylitol::wheel|host_run_await|host_drain_pending|host_mcp_poll|mcp_settle_|rebuild_system_prompt|run_ensure_session|run_load_history|run_build_tool_schemas|host_tick|host_wheel_paint|host_step_paint" "$log" | tail -n "{{n}}"
 
-# --- Manual lab probes (scripts/lab_*.py; maintenance, NOT in qa) ---
-
-# PTY CPU sample of the product TUI with a restored session.
-lab-ao-session-cpu:
-    python3 scripts/lab_ao_session_cpu.py
-
-# FIFO-backed slow reads for tool_batch parallel wall-clock probing
-# (foreground; Ctrl+C to stop. See scripts/lab_batch_slow_fifos.py docstring).
-lab-batch-slow-fifos:
-    python3 scripts/lab_batch_slow_fifos.py
-
 # --- Documentation ---
 
 # Build API docs (cargo doc) and open in browser.
@@ -592,7 +518,7 @@ doc:
 
 # Check API docs build without warnings.
 [arg('verbosity', pattern='quiet|normal|verbose')]
-doc-check verbosity=verbosity_default:
+qa-doc-check verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{verbosity}}" in
@@ -603,7 +529,7 @@ doc-check verbosity=verbosity_default:
 
 # Run doc tests (verify /// examples compile).
 [arg('verbosity', pattern='quiet|normal|verbose')]
-doc-test verbosity=verbosity_default:
+qa-doc-test verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
     case "{{verbosity}}" in
