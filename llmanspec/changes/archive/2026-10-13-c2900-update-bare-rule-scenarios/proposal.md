@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 裸规则压降：protocol-app 与 server-core 裸规则补可执行场景
+branch: sdd/c2900-update-bare-rule-scenarios
+base_branch: main
+base_sha: 99d53c5a4091368cfafc6886a4cda84860a57cd9
 ---
 
 # 裸规则压降：protocol-app 与 server-core 裸规则补可执行场景

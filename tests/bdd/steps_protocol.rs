@@ -17,6 +17,8 @@ pub struct ProtocolBdd {
     pub msgs: RefCell<Vec<RpcMessage>>,
     /// c2826：纯文本提取结果。
     pub text_out: RefCell<String>,
+    /// r1927：最近一次线上信封解码结果。
+    pub last_decode: RefCell<Option<Result<(), String>>>,
 }
 
 #[fixture]
@@ -27,6 +29,7 @@ pub fn protocol_bdd() -> ProtocolBdd {
         tool_end_pair: RefCell::new(None),
         msgs: RefCell::new(Vec::new()),
         text_out: RefCell::new(String::new()),
+        last_decode: RefCell::new(None),
     }
 }
 
@@ -511,4 +514,50 @@ fn t_import_stable_kind(protocol_bdd: &ProtocolBdd) {
         kind, "Message",
         "c2826: 域失败 MUST NOT 归为无结构 Message kind"
     );
+}
+
+// ── r1927 线上 JSON 深解析有界 ─────────────────────────────────
+
+fn deep_array_envelope(depth: usize) -> String {
+    let deep = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));
+    format!(r#"{{"jsonrpc":"2.0","id":"d1","method":"host.describe","params":{deep}}}"#)
+}
+
+fn decode_envelope(protocol_bdd: &ProtocolBdd, depth: usize) {
+    let env = deep_array_envelope(depth);
+    protocol_bdd.last_decode.replace(Some(
+        codec::decode_str(&env)
+            .map(|_| ())
+            .map_err(|e| e.to_string()),
+    ));
+}
+
+#[when("对超过深度上限的线上 JSON 信封做解码")]
+fn w_json_depth_over_limit(protocol_bdd: &ProtocolBdd) {
+    decode_envelope(protocol_bdd, 2049);
+}
+
+#[when("对实机深树量级的合法线上信封做解码")]
+fn w_json_depth_tree_scale(protocol_bdd: &ProtocolBdd) {
+    decode_envelope(protocol_bdd, 200);
+}
+
+#[then("深解析有界早退且超限按降级语义拒绝")]
+fn t_json_depth_bounded(protocol_bdd: &ProtocolBdd) {
+    let r = protocol_bdd
+        .last_decode
+        .borrow()
+        .clone()
+        .expect("decode executed");
+    assert!(r.is_err(), "超限深解析 MUST 拒绝: {r:?}");
+}
+
+#[then("深度上限不误伤常规深树")]
+fn t_json_depth_tree_ok(protocol_bdd: &ProtocolBdd) {
+    let r = protocol_bdd
+        .last_decode
+        .borrow()
+        .clone()
+        .expect("decode executed");
+    assert!(r.is_ok(), "实机深树量级 MUST 通过: {r:?}");
 }

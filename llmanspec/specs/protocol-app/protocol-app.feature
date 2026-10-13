@@ -289,3 +289,11 @@
   规则: 线上 JSON 深解析有界
     对线上输入的 JSON 深解析 须设显式深度上限（2048 层：容纳实机深树两个量级、远低于栈风险区），超限 须按既有降级语义收口（服务端非法信封判否、客户端「RawOk」退化 Null——r1907 不断链），不得以无界递归深度解析线上输入（4 MiB 体量上限内的嵌套字节数组仍可打穿 worker 栈）。上限 须为单一常量（两处解码入口共用）。
     # verified-by: fn decode_rejects_beyond_json_depth_limit
+
+    场景: json-depth-limit-envelope-decode
+      当 对超过深度上限的线上 JSON 信封做解码
+      那么 深解析有界早退且超限按降级语义拒绝
+
+    场景: json-depth-limit-admits-tree-scale
+      当 对实机深树量级的合法线上信封做解码
+      那么 深度上限不误伤常规深树

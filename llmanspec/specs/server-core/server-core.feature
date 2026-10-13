@@ -564,6 +564,11 @@
     `arm_tool_freeze` unary 须有界决议：配置了但连不上的 MCP 不得让首轮门无限等待——在门时限（`MCP_FIRST_TURN_GATE_TIMEOUT`）内 settle；超时 须 detach 未连上的 bootstrap 并冻结已 armed 工具子集后返回权威快照（`tools_table_frozen`、`mcp_bootstrap_complete` 反映决议结果）。该 unary 不得在连接无界挂起时返回未冻结快照使客户端无限等待（否则 TUI 首轮死锁、round 永不启动）。
     # verified-by: fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window
 
+    场景: arm-freeze-bounded-under-hanging-mcp
+      假如 宿主配置了连不上的 MCP 且会话写者已物化
+      当 发起首轮工具门冻结
+      那么 门时限内返回冻结快照且引导收口
+
   @req:r1909
   规则: 迁移期旧路径保活与硬切
     硬切已完成：JSON-RPC 文本路径已从产品入口移除，不得引入第三套载体。产品级 WHAT 只描述语义与形状。产品路径回归（r1908）须由自动化测试锁定。
@@ -578,6 +583,11 @@
   规则: arm_tool_freeze 租约冲突降级为无租约有界决议
     「arm_tool_freeze」unary 不得占用会话写锁；他进程已持有该会话写占用时 须仍返回权威冻结快照，不得使首轮工具门永久停滞。冻结的是写者内部门、不写会话状态。
     # verified-by: fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck
+
+    场景: arm-freeze-lease-free-under-write-conflict
+      假如 会话写租约已被其他写者持有
+      当 发起首轮工具门冻结
+      那么 不取写占用仍返回冻结快照
   @req:r1926
   规则: attach 生效模型同步不进 journal
     会话绑定期同步写者当前生效模型的「ModelSelect」下行 须为 transient 推送（不落 journal、不消耗 seq）——它附属于订阅者收敛而非会话历史；重复绑定产生的重复「ModelSelect」下行 须语义幂等（消费端徽标收敛不闪变）。会话历史中的模型变更记录由领域层「ModelChange」条目承载，不得由 attach 期同步兼任。
@@ -591,3 +601,8 @@
   规则: 非产品二进制判非法信封
     POST /rpc 的非产品二进制 body（含 JSON 对象、JSON 数组 batch、其它文本）须判非法信封（HTTP 400），不得当业务 unary 执行。
     # verified-by: fn json_rpc_text_is_illegal_envelope
+
+    场景: non-binary-body-is-illegal-envelope
+      当 服务端在空闲端口上启动
+      并且 POST /rpc 发送 JSON 对象、JSON 数组与纯文本等非产品二进制 body
+      那么 各 body 判非法信封 HTTP 400 且不执行业务

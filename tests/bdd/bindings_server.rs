@@ -403,3 +403,21 @@ async fn test_sr_c2842_v3_command_session_identity(server_test: ServerTest) {}
     name = "get-state-reflects-writer-model"
 )]
 async fn test_sr_c2842_get_state_writer_model(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "non-binary-body-is-illegal-envelope"
+)]
+async fn test_sr_r1928_nonbinary_body(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "arm-freeze-bounded-under-hanging-mcp"
+)]
+async fn test_sr_r1923_arm_freeze_bounded(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "arm-freeze-lease-free-under-write-conflict"
+)]
+async fn test_sr_r1925_arm_freeze_lease_free(server_test: ServerTest) {}

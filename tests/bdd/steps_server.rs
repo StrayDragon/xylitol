@@ -54,6 +54,13 @@ pub struct ServerTest {
     pub writer_header: RefCell<Option<String>>,
     /// r1793：他进程持 `session.lock` 的夹具。
     pub lock_child: RefCell<Option<std::process::Child>>,
+    /// r1928：非产品二进制 body 的 POST 结果（status, body）。
+    pub nonbinary_posts: RefCell<Vec<(u16, String)>>,
+    /// r1923/r1925：arm_tool_freeze 场景的会话、结果与耗时。
+    pub freeze_session: RefCell<String>,
+    pub freeze_value: RefCell<Option<serde_json::Value>>,
+    pub freeze_error: RefCell<Option<String>>,
+    pub freeze_elapsed_ms: Cell<u64>,
 }
 
 impl Drop for ServerTest {
@@ -93,6 +100,11 @@ impl ServerTest {
             attach_driver: RefCell::new(None),
             writer_header: RefCell::new(None),
             lock_child: RefCell::new(None),
+            nonbinary_posts: RefCell::new(Vec::new()),
+            freeze_session: RefCell::new(String::new()),
+            freeze_value: RefCell::new(None),
+            freeze_error: RefCell::new(None),
+            freeze_elapsed_ms: Cell::new(0),
         }
     }
 
@@ -3136,5 +3148,150 @@ fn t_c2842_get_state_model(server_test: &ServerTest) {
         model.get("id").and_then(serde_json::Value::as_str),
         Some("fake-model"),
         "get_state model must reflect the writer: {body}"
+    );
+}
+
+// ── r1928 非产品二进制 body ────────────────────────────────────
+
+#[when("POST /rpc 发送 JSON 对象、JSON 数组与纯文本等非产品二进制 body")]
+async fn w_rpc_nonbinary_bodies(server_test: &ServerTest) {
+    let bodies = [
+        serde_json::json!({"jsonrpc":"2.0","id":1,"method":"host.describe","params":{}})
+            .to_string(),
+        serde_json::json!([{"jsonrpc":"2.0","id":2,"method":"host.describe"}]).to_string(),
+        "plain-text-not-json".to_string(),
+    ];
+    let mut results = Vec::new();
+    for body in bodies {
+        let (st, resp) = http_status(server_test.port.get(), "POST", "/rpc", &body).await;
+        results.push((st, resp));
+    }
+    *server_test.nonbinary_posts.borrow_mut() = results;
+}
+
+#[then("各 body 判非法信封 HTTP 400 且不执行业务")]
+fn t_nonbinary_illegal(server_test: &ServerTest) {
+    let results = server_test.nonbinary_posts.borrow();
+    assert_eq!(results.len(), 3, "三个非产品二进制 body 均须已发送");
+    for (st, body) in results.iter() {
+        assert_eq!(*st, 400, "非产品二进制 body MUST 400: {st} {body}");
+    }
+}
+
+// ── r1923 / r1925 arm_tool_freeze 有界决议 ─────────────────────
+
+fn arm_freeze_fixture_mcp(name: &str) -> xylitol::app::core::composition::McpServerSpec {
+    use xylitol::app::core::composition::{McpServerSpec, McpTransportSpec};
+    let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/support/mcp_fixture_server.py");
+    let mut env = std::collections::HashMap::new();
+    env.insert("XYLITOL_MCP_FIXTURE_TOOLS".to_string(), "ping".to_string());
+    McpServerSpec {
+        name: name.into(),
+        transport: McpTransportSpec::Stdio,
+        command: Some("python3".into()),
+        args: Some(vec![script.display().to_string()]),
+        url: None,
+        env: Some(env),
+        headers: None,
+    }
+}
+
+#[given("宿主配置了连不上的 MCP 且会话写者已物化")]
+async fn g_arm_freeze_hang_mcp(server_test: &ServerTest) {
+    use xylitol::app::core::composition::{McpServerSpec, McpTransportSpec};
+    let hang = McpServerSpec {
+        name: "hang-forever-bdd".into(),
+        transport: McpTransportSpec::Stdio,
+        command: Some("sleep".into()),
+        args: Some(vec!["300".into()]),
+        url: None,
+        env: None,
+        headers: None,
+    };
+    let host = HostState::for_test_with_mcp(vec![hang]).expect("host");
+    let slot = host.slot("freeze-gate-hang").await;
+    xylitol::app::server::host::materialize_writer(&host, &slot)
+        .await
+        .expect("materialize writer");
+    *server_test.host.borrow_mut() = Some(host);
+    *server_test.freeze_session.borrow_mut() = "freeze-gate-hang".into();
+}
+
+#[given("会话写租约已被其他写者持有")]
+async fn g_arm_freeze_lease_held(server_test: &ServerTest) {
+    let host =
+        HostState::for_test_with_mcp(vec![arm_freeze_fixture_mcp("fixture-bdd")]).expect("host");
+    let slot = host.slot("freeze-gate-conflict").await;
+    xylitol::app::server::host::materialize_writer(&host, &slot)
+        .await
+        .expect("materialize writer");
+    // 以一次写 unary 建立租约（与单测同路径：set_model 走租约）。
+    let first = xylitol::app::server::host::handle_unary(
+        &host,
+        None,
+        "set_model",
+        serde_json::json!({ "provider": "", "model_id": "keep", "session_id": "freeze-gate-conflict" }),
+    )
+    .await;
+    let _ = first;
+    *server_test.host.borrow_mut() = Some(host);
+    *server_test.freeze_session.borrow_mut() = "freeze-gate-conflict".into();
+}
+
+#[when("发起首轮工具门冻结")]
+async fn w_arm_tool_freeze(server_test: &ServerTest) {
+    let host = server_test.host.borrow().clone().expect("host present");
+    let session = server_test.freeze_session.borrow().clone();
+    let t0 = std::time::Instant::now();
+    let result = xylitol::app::server::host::handle_unary(
+        &host,
+        None,
+        "arm_tool_freeze",
+        serde_json::json!({ "session_id": session }),
+    )
+    .await;
+    server_test
+        .freeze_elapsed_ms
+        .set(t0.elapsed().as_millis() as u64);
+    *server_test.freeze_value.borrow_mut() = result.value;
+    if let Some(e) = result.error {
+        *server_test.freeze_error.borrow_mut() = Some(format!("{}: {}", e.code, e.details));
+    }
+}
+
+#[then("门时限内返回冻结快照且引导收口")]
+fn t_arm_freeze_bounded(server_test: &ServerTest) {
+    let err = server_test.freeze_error.borrow().clone();
+    assert!(err.is_none(), "arm_tool_freeze MUST ok: {err:?}");
+    let elapsed = server_test.freeze_elapsed_ms.get();
+    assert!(
+        elapsed < 30_000,
+        "MUST be bounded by the first-turn gate window, took {elapsed}ms"
+    );
+    let v = server_test
+        .freeze_value
+        .borrow()
+        .clone()
+        .expect("snapshot value");
+    assert_eq!(v["tools_table_frozen"], true, "timeout MUST freeze: {v}");
+    assert_eq!(
+        v["mcp_bootstrap_complete"], true,
+        "timeout MUST settle bootstrap: {v}"
+    );
+}
+
+#[then("不取写占用仍返回冻结快照")]
+fn t_arm_freeze_lease_free(server_test: &ServerTest) {
+    let err = server_test.freeze_error.borrow().clone();
+    assert!(err.is_none(), "lease-free arm MUST ok: {err:?}");
+    let v = server_test
+        .freeze_value
+        .borrow()
+        .clone()
+        .expect("snapshot value");
+    assert_eq!(
+        v["tools_table_frozen"], true,
+        "lease-free arm MUST resolve frozen: {v}"
     );
 }

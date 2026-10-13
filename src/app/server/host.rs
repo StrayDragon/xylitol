@@ -176,7 +176,6 @@ impl HostState {
     }
 
     /// Isolated host with configured MCP servers (parity tests).
-    #[cfg(test)]
     pub fn for_test_with_mcp(
         mcp_servers: Vec<McpServerSpec>,
     ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {

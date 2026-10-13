@@ -221,3 +221,15 @@ fn test_pa_bang_outside_tool(host_pump_bdd: HostPumpBdd) {}
     name = "bash-final-state-in-single-block"
 )]
 fn test_pa_bash_single_block(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "json-depth-limit-envelope-decode"
+)]
+fn test_pa_r1927_depth_limit(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "json-depth-limit-admits-tree-scale"
+)]
+fn test_pa_r1927_depth_tree_scale(protocol_bdd: ProtocolBdd) {}
