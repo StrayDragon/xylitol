@@ -1,0 +1,15 @@
+id: session-sidebar.placeholder
+cols: 24
+must_contain:
+  - "会话侧栏"
+  - "实验特性 · 施工中"
+  - "正式业务后启用"
+must_not_contain:
+  - "(包)"
+lines:
+  -
+    - { text: "│ ┌ 会话侧栏 ───────", token: muted }
+  -
+    - { text: "│ 实验特性 · 施工中", token: muted }
+  -
+    - { text: "│ 正式业务后启用", token: muted }

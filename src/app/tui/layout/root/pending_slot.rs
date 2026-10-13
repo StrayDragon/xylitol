@@ -16,9 +16,9 @@ pub(super) struct PendingSlotOps {
     pub session_resume_select: Option<String>,
     pub session_resume_rename: Option<(String, String)>,
     pub session_resume_delete: Option<String>,
-    /// c2875 会话详情抽屉：打开请求（显隐切换的显示半段）。
-    pub session_drawer: bool,
-    /// c2905 会话侧栏（驻列）：打开请求。
+    /// c2875 会话详情覆盖弹出框：打开请求（显隐切换的显示半段）。
+    pub session_popup: bool,
+    /// c2905 会话侧栏：打开请求。
     pub session_sidebar: bool,
 }
 

@@ -24,7 +24,9 @@
 | tui | models | `/model` 同时选模型与 xylitol thinking 档。↑↓ 选模型；←→ 或槽内 Shift+Tab cycle 档。 | filter, narrow, no-thinking, wide | `/tui/models` |
 | tui | palette | 语义色短表：on-surface / muted / accent / user / assistant / tool / error / warning / success / diff-* / surface / skill-ref。 | swatches | `/tui/palette` |
 | tui | queue-steer | 非空时在 scrollback 与 status 之间：`Steering:` / `Follow-up:`，末行 `↳ Alt+Up to edit all queued messages`。 | both | `/tui/queue-steer` |
+| tui | session-popup | 右缘瞬态覆盖弹出框（会话详情）。不是侧栏，不是通知栈，不是槽。 | open | `/tui/session-popup` |
 | tui | session-resume | 标题 `Resume Session`。替换 editor 槽。 | default, id-on | `/tui/session-resume` |
+| tui | session-sidebar | 常驻右列第二列（会话侧栏）。不是槽，不是待办栏；与覆盖弹出框显隐互不影响。 | placeholder | `/tui/session-sidebar` |
 | tui | session-tree | 产品树是会话**活树**（双 Esc 开）。kind 前缀（user/assistant/tool）走 token 色；选中反转 inherit，禁止 kind 前景穿透。 | filter | `/tui/session-tree` |
 | tui | status | idle：**1 行空白**呼吸距，无 spinner / Ready。busy：`spinner + 短词` 紧贴左。 | busy, idle, tier-narrowest | `/tui/status` |
 | tui | theme | **产品 host 默认 dark**。本稿预览默认 light 只为审色，不是产品默认。 | list | `/tui/theme` |

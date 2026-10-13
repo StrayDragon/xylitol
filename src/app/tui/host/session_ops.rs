@@ -9,8 +9,8 @@ use super::super::bridge::session_tree::{rebuild_scrollback_from_travel, travel_
 use super::HostSession;
 
 impl<T: Terminal> HostSession<T> {
-    /// c2875：抽屉 pending / 上屏透传。
-    /// c2905/c2910：每轮 drain 对账驻列让宽——包层选中 rect / gutter 几何 /
+    /// c2875：覆盖弹出框 pending / 上屏透传。
+    /// c2905/c2910：每轮 drain 对账侧栏让宽——包层选中 rect / gutter 几何 /
     /// 滚轮分区与根渲染共用同一常量；开关切换与重建后均自愈。
     pub fn sync_session_sidebar_reserve(&mut self) {
         let n = self
@@ -21,7 +21,7 @@ impl<T: Terminal> HostSession<T> {
         self.tui.set_extra_reserved_cols(n as u16);
     }
 
-    /// c2905：驻列 pending / 上屏透传。
+    /// c2905：侧栏 pending / 上屏透传。
     pub fn take_pending_session_sidebar(&mut self) -> bool {
         let root = self.ui_root.as_ref().expect("product ui").clone();
         root.borrow_mut().take_pending_session_sidebar()
@@ -33,14 +33,14 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    pub fn take_pending_session_drawer(&mut self) -> bool {
+    pub fn take_pending_session_popup(&mut self) -> bool {
         let root = self.ui_root.as_ref().expect("product ui").clone();
-        root.borrow_mut().take_pending_session_drawer()
+        root.borrow_mut().take_pending_session_popup()
     }
 
-    pub fn show_session_drawer(&mut self, session_id: &str) {
+    pub fn show_session_popup(&mut self, session_id: &str) {
         if let Some(root) = self.ui_root.as_ref() {
-            root.borrow_mut().show_session_drawer(session_id);
+            root.borrow_mut().show_session_popup(session_id);
         }
     }
 

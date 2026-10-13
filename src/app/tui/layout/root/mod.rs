@@ -113,10 +113,10 @@ pub struct UiRoot {
     slot: EditorSlot,
     /// Handshake with host `drain_pending_ui` (outlives the live payload).
     pending: PendingSlotOps,
-    /// c2875 瞬态会话详情抽屉（右缘 overlay；非常驻分栏，DESIGN 硬规则 2 例外）。
-    session_drawer_open: bool,
-    session_drawer_id: String,
-    /// c2905 会话侧栏（驻列）：内容区让宽的常驻第二列。
+    /// c2875 瞬态会话详情覆盖弹出框（右缘 overlay；非常驻分栏，DESIGN 硬规则 2 例外）。
+    session_popup_open: bool,
+    session_popup_id: String,
+    /// c2905 会话侧栏：内容区让宽的常驻第二列。
     session_sidebar_on: bool,
     last_esc_at: Option<Instant>,
     /// `!` / `!!` prefix → success border (c492).
@@ -207,8 +207,8 @@ impl UiRoot {
             toast_notice: None,
             slot: EditorSlot::Editor,
             pending: PendingSlotOps::default(),
-            session_drawer_open: false,
-            session_drawer_id: String::new(),
+            session_popup_open: false,
+            session_popup_id: String::new(),
             session_sidebar_on: false,
             last_esc_at: None,
             bash_mode: false,
@@ -811,42 +811,42 @@ impl UiRoot {
         self.slot.is_tree()
     }
 
-    /// c2875：抽屉显隐查询（Esc / 渲染判定）。
-    pub fn session_drawer_open(&self) -> bool {
-        self.session_drawer_open
+    /// c2875：覆盖弹出框显隐查询（Esc / 渲染判定）。
+    pub fn session_popup_open(&self) -> bool {
+        self.session_popup_open
     }
 
-    /// c2875：关闭抽屉（Esc / 复按切换）。
-    pub fn close_session_drawer(&mut self) {
-        self.session_drawer_open = false;
+    /// c2875：关闭覆盖弹出框（Esc / 复按切换）。
+    pub fn close_session_popup(&mut self) {
+        self.session_popup_open = false;
     }
 
-    /// c2875：请求打开抽屉（host drain 供给会话身份后上屏）。
-    pub fn request_session_drawer(&mut self) {
-        self.pending.session_drawer = true;
+    /// c2875：请求打开覆盖弹出框（host drain 供给会话身份后上屏）。
+    pub fn request_session_popup(&mut self) {
+        self.pending.session_popup = true;
     }
 
-    pub fn take_pending_session_drawer(&mut self) -> bool {
-        std::mem::take(&mut self.pending.session_drawer)
+    pub fn take_pending_session_popup(&mut self) -> bool {
+        std::mem::take(&mut self.pending.session_popup)
     }
 
-    /// c2875：上屏抽屉（身份来自 host；其余行取根既有 footer 态）。
-    pub fn show_session_drawer(&mut self, session_id: &str) {
-        self.session_drawer_id = session_id.to_string();
-        self.session_drawer_open = true;
+    /// c2875：上屏覆盖弹出框（身份来自 host；其余行取根既有 footer 态）。
+    pub fn show_session_popup(&mut self, session_id: &str) {
+        self.session_popup_id = session_id.to_string();
+        self.session_popup_open = true;
     }
 
-    /// c2905：驻列显隐查询。
+    /// c2905：侧栏显隐查询。
     pub fn session_sidebar_on(&self) -> bool {
         self.session_sidebar_on
     }
 
-    /// c2905：收起驻列（内容区恢复全宽）。
+    /// c2905：收起侧栏（内容区恢复全宽）。
     pub fn close_session_sidebar(&mut self) {
         self.session_sidebar_on = false;
     }
 
-    /// c2905：请求开启驻列（host drain 供给身份后生效）。
+    /// c2905：请求开启侧栏（host drain 供给身份后生效）。
     pub fn request_session_sidebar(&mut self) {
         self.pending.session_sidebar = true;
     }
@@ -855,17 +855,17 @@ impl UiRoot {
         std::mem::take(&mut self.pending.session_sidebar)
     }
 
-    /// c2905：开启驻列（身份与抽屉共享一份）。
+    /// c2905：开启侧栏（身份与覆盖弹出框共享一份）。
     pub fn show_session_sidebar(&mut self, session_id: &str) {
-        self.session_drawer_id = session_id.to_string();
+        self.session_popup_id = session_id.to_string();
         self.session_sidebar_on = true;
     }
 
-    /// c2905 驻列带宽（列；含分隔列）。宿主据此向包层同步额外让宽，
+    /// c2905 侧栏带宽（列；含分隔列）。宿主据此向包层同步额外让宽，
     /// 选中 rect / gutter / 滚轮分区与渲染共用同一常量。
     pub const SESSION_SIDEBAR_W: usize = 24;
 
-    /// c2905：宿主对账口径——驻列开启时包层应额外让宽的列数。
+    /// c2905：宿主对账口径——侧栏开启时包层应额外让宽的列数。
     pub fn session_sidebar_reserved_cols(&self) -> usize {
         if self.session_sidebar_on {
             Self::SESSION_SIDEBAR_W
@@ -874,7 +874,7 @@ impl UiRoot {
         }
     }
 
-    /// c2905 驻列布局口径：（是否启用，驻列宽，内容宽）。overlay 右对齐
+    /// c2905 侧栏布局口径：（是否启用，侧栏宽，内容宽）。overlay 右对齐
     /// 与渲染让宽共用此一口径，任何一处改动两处同步。
     pub fn session_sidebar_layout(&self, width: usize) -> (bool, usize, usize) {
         if !self.session_sidebar_on || width < Self::SESSION_SIDEBAR_W + 2 {
@@ -1209,7 +1209,7 @@ impl UiRoot {
     }
 
     /// `render` plus viewport overlay (unclipped). Prefer TUI paint for scroll.
-    /// BDD / 单测共用的帧探针（c2875 抽屉断言经此）。
+    /// BDD / 单测共用的帧探针（c2875 覆盖弹出框断言经此）。
     pub fn render_with_viewport_overlay(&mut self, width: usize) -> Vec<String> {
         let mut lines = Component::render(self, width);
         let transcript_rows = lines.len().saturating_sub(self.last_dock_rows);

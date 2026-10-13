@@ -207,18 +207,18 @@ fn test_ati_c2895_observe_notice(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "session-drawer-toggle-render-close"
+    name = "session-popup-toggle-render-close"
 )]
-async fn test_ati_c2875_drawer(host_pump_bdd: HostPumpBdd) {}
+async fn test_ati_c2875_popup(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "session-sidebar-dock-and-restore"
+    name = "session-sidebar-toggle-and-restore"
 )]
 async fn test_ati_c2905_sidebar(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "sidebar-and-drawer-coexist"
+    name = "sidebar-and-popup-coexist"
 )]
 async fn test_ati_c2905_coexist(host_pump_bdd: HostPumpBdd) {}

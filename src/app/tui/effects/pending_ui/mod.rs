@@ -20,12 +20,12 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     session.poll_ask_host();
 
     clipboard::take_paste_image(session, driver).await;
-    // c2875 会话详情抽屉：pending 打开请求 → 身份供给后上屏。
-    if session.take_pending_session_drawer() {
+    // c2875 会话详情覆盖弹出框：pending 打开请求 → 身份供给后上屏。
+    if session.take_pending_session_popup() {
         let id = driver.session_id().unwrap_or_default();
-        session.show_session_drawer(&id);
+        session.show_session_popup(&id);
     }
-    // c2905 会话侧栏（驻列）：同握手，身份共享。
+    // c2905 会话侧栏：同握手，身份共享。
     if session.take_pending_session_sidebar() {
         let id = driver.session_id().unwrap_or_default();
         session.show_session_sidebar(&id);

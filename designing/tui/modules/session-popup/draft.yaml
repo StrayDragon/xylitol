@@ -1,0 +1,20 @@
+id: session-popup
+title: 覆盖弹出框（会话详情）
+category: 槽与面板
+surface: tui
+summary: "右缘瞬态浮层：只覆盖对话条目区域，正文不重排。"
+alignment:
+  fixed: 不占固定区行；浮层贴对话条目区域右缘、顶部向下（上限 30 列，窄屏收窄）
+  item: 覆盖对话条目行；被盖行按弹出框宽截断显示，不重排
+  todo-bar: 无关
+keys:
+  - { chord: "Alt+i", when: "切换显隐（任意槽位）" }
+  - { chord: "Esc", when: "收起（仅闲置态；忙碌态透传中止）" }
+todos:
+  - { done: true, text: "c2875 落地：切换 / 复按收起 / 忙碌 Esc 透传中止" }
+  - { done: true, text: "通知栈 z 序在其上；本期不注册指针命中" }
+  - { done: false, text: "命中注册与点按关闭（c2911 草案候选）" }
+notes: |
+  内容为只读快照：会话身份 / 生效模型 / thinking 档 / 工作目录；重开刷新。
+  无宽度动画、无阴影卡片；muted 单色。标准词「覆盖弹出框」，弃用「抽屉」；
+  与侧栏（session-sidebar）显隐互不影响，并存时贴内容右缘。

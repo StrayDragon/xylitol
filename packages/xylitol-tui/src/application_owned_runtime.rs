@@ -925,7 +925,7 @@ mod c2910_tests {
         assert!(rt.handle_mouse(&up, 40, 8));
         let top = rt.scroll_top();
         assert!(top > 0, "seed must be away from head");
-        // 驻列带滚轮：不被当作正文滚轮消费，滚动不动。
+        // 侧栏带滚轮：不被当作正文滚轮消费，滚动不动。
         let before = rt.scroll_top();
         let band = mouse(MouseEventKind::ScrollUp, 30, 1);
         assert!(!rt.handle_mouse(&band, 40, 8), "band wheel must not scroll");

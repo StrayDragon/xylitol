@@ -131,9 +131,9 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         Some("Paste clipboard image as tempfile path"),
     ),
     (
-        "app.session.drawer",
+        "app.session.popup",
         &["alt+i"],
-        Some("Toggle session details drawer"),
+        Some("Toggle session details popup"),
     ),
     (
         "app.session.sidebar",

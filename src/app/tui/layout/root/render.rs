@@ -73,16 +73,16 @@ impl UiRoot {
         vec![truncate_to_width(&painted, width, "…", false)]
     }
 
-    /// c2875 会话详情抽屉：右缘瞬态 overlay（键位 alt+d 显隐；Esc 收起）。
+    /// c2875 会话详情覆盖弹出框：右缘瞬态 overlay（键位 alt+i 显隐；Esc 收起）。
     /// 纯展示：不注册指针命中（AO 选区可覆盖其文本，后续票处理）；
     /// 无阴影无卡片——muted 标尺行 + label/value，右缘截断。
-    pub(super) fn overlay_session_drawer(
+    pub(super) fn overlay_session_popup(
         &self,
         lines: &mut [String],
         width: usize,
         transcript_rows: usize,
     ) {
-        if !self.session_drawer_open || width == 0 {
+        if !self.session_popup_open || width == 0 {
             return;
         }
         let box_w = 30.min(width.saturating_sub(2));
@@ -97,7 +97,7 @@ impl UiRoot {
             "─".repeat(box_w.saturating_sub(title_w + 1))
         ));
         let fields: [(&str, &String); 4] = [
-            ("会话", &self.session_drawer_id),
+            ("会话", &self.session_popup_id),
             ("模型", &self.model),
             ("思考", &self.thinking_level),
             ("目录", &self.cwd),
@@ -214,7 +214,7 @@ impl UiRoot {
         lines
     }
 
-    /// c2912 驻列第 i 行内容：标题 + 实验占位（施工中；业务字段待正式业务后回归，见 c2911 草案）。
+    /// c2912 侧栏第 i 行内容：标题 + 实验占位（施工中；业务字段待正式业务后回归，见 c2911 草案）。
     pub(super) fn session_sidebar_cell(&self, row: usize, w: usize) -> String {
         if row == 0 {
             let title = "┌ 会话侧栏";
@@ -275,7 +275,7 @@ impl UiRoot {
 
 impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
-        // c2905 驻列：内容区让宽（wrap 按 content 重排），右缘整高第二列。
+        // c2905 侧栏：内容区让宽（wrap 按 content 重排），右缘整高第二列。
         let full_width = width;
         let (sidebar_on, _sidebar_w, content_w) = self.session_sidebar_layout(width);
         let width = if sidebar_on { content_w } else { width };
@@ -338,13 +338,13 @@ impl Component for UiRoot {
     }
 
     fn overlay_viewport(&self, lines: &mut [String], width: usize, transcript_rows: usize) {
-        // c2905：overlay 右对齐按内容宽收口，不得压驻列。
+        // c2905：overlay 右对齐按内容宽收口，不得压侧栏。
         let (sidebar_on, sidebar_w, content_w) = self.session_sidebar_layout(width);
         let eff = if sidebar_on { content_w } else { width };
-        // c2875 抽屉先画：通知栈随后叠绘（右上 z 序高于抽屉）。
-        self.overlay_session_drawer(lines, eff, transcript_rows);
+        // c2875 覆盖弹出框先画：通知栈随后叠绘（右上 z 序高于覆盖弹出框）。
+        self.overlay_session_popup(lines, eff, transcript_rows);
         self.overlay_client_notices(lines, eff, transcript_rows);
-        // c2905 驻列最后画：整高右缘，覆盖语义仅限驻列带（>=内容宽）。
+        // c2905 侧栏最后画：整高右缘，覆盖语义仅限侧栏带（>=内容宽）。
         if sidebar_on {
             let sep = self.theme.paint_muted("│");
             for (i, line) in lines.iter_mut().enumerate() {

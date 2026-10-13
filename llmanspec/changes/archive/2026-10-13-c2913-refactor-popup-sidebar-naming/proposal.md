@@ -2,6 +2,9 @@
 depends_on: []
 title: 固定区组件命名统一：覆盖弹出框 / 侧栏（代码与文档同源）
 needs_specs_change: true
+branch: sdd/c2913-refactor-popup-sidebar-naming
+base_branch: main
+base_sha: 835f95b89fd1dd2ae8a5d3a921c933e03b1cc274
 ---
 
 # 固定区组件命名统一：覆盖弹出框 / 侧栏（代码与文档同源）

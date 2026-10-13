@@ -34,13 +34,13 @@ impl UiRoot {
                 _ => {}
             }
         }
-        // c2875 抽屉键位：切换显影 / Esc 收起；先于槽派发（任意槽可用）。
+        // c2875 覆盖弹出框键位：切换显影 / Esc 收起；先于槽派发（任意槽可用）。
         if let InputEvent::Key(ref key) = event {
-            if matches_binding(key, "app.session.drawer") {
-                if self.session_drawer_open {
-                    self.close_session_drawer();
+            if matches_binding(key, "app.session.popup") {
+                if self.session_popup_open {
+                    self.close_session_popup();
                 } else {
-                    self.request_session_drawer();
+                    self.request_session_popup();
                 }
                 return;
             }
@@ -52,10 +52,10 @@ impl UiRoot {
                 }
                 return;
             }
-            if self.session_drawer_open && matches_binding(key, "app.interrupt") {
-                // 忙碌 Esc = 中止优先（词表 E 类）；抽屉收起仅闲置态让位。
+            if self.session_popup_open && matches_binding(key, "app.interrupt") {
+                // 忙碌 Esc = 中止优先（词表 E 类）；覆盖弹出框收起仅闲置态让位。
                 if !self.status_busy {
-                    self.close_session_drawer();
+                    self.close_session_popup();
                     return;
                 }
             }

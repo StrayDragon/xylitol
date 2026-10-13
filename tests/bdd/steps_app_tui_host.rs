@@ -3071,7 +3071,7 @@ fn t_c2470_merged(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
 }
 
-// ── c2875 会话详情抽屉（app-tui-fixed-zone r2903）───────────────
+// ── c2875 会话详情覆盖弹出框（app-tui-fixed-zone r2903）───────────────
 
 use xylitol::app::tui::harness::key_event as c2875_key_event;
 
@@ -3102,7 +3102,7 @@ async fn c2875_press(
     put_pump(host_pump_bdd, pump);
 }
 
-#[when("切换抽屉显隐")]
+#[when("切换覆盖弹出框显隐")]
 async fn w_c2875_toggle(host_pump_bdd: &HostPumpBdd) {
     c2875_press(
         host_pump_bdd,
@@ -3127,15 +3127,19 @@ fn c2875_frame(host_pump_bdd: &HostPumpBdd) -> String {
     rendered
 }
 
-#[then("抽屉渲染会话详情")]
+#[then("覆盖弹出框渲染会话详情")]
 fn t_c2875_visible(host_pump_bdd: &HostPumpBdd) {
     let frame = c2875_frame(host_pump_bdd);
-    assert!(frame.contains("会话详情"), "抽屉须上屏: {}", {
-        let f = &frame;
-        f.get(0..600)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| f.clone())
-    });
+    assert!(
+        frame.contains("会话详情"),
+        "覆盖弹出框须上屏: {}",
+        {
+            let f = &frame;
+            f.get(0..600)
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| f.clone())
+        }
+    );
 }
 
 #[when("复按切换收起")]
@@ -3148,15 +3152,15 @@ async fn w_c2875_toggle_again(host_pump_bdd: &HostPumpBdd) {
     .await;
 }
 
-#[then("抽屉不再渲染")]
+#[then("覆盖弹出框不再渲染")]
 fn t_c2875_hidden(host_pump_bdd: &HostPumpBdd) {
     let frame = c2875_frame(host_pump_bdd);
-    assert!(!frame.contains("会话详情"), "抽屉须收起");
+    assert!(!frame.contains("会话详情"), "覆盖弹出框须收起");
 }
 
-// ── c2905 会话侧栏驻列（app-tui-fixed-zone r2904）───────────────
+// ── c2905 会话侧栏（app-tui-fixed-zone r2904）───────────────
 
-#[when("切换侧栏驻列")]
+#[when("切换侧栏")]
 async fn w_c2905_sidebar_toggle(host_pump_bdd: &HostPumpBdd) {
     c2875_press(
         host_pump_bdd,
@@ -3174,7 +3178,7 @@ fn c2905_assert_on(host_pump_bdd: &HostPumpBdd) {
             .expect("ui")
             .borrow()
             .session_sidebar_on(),
-        "驻列须开启"
+        "侧栏须开启"
     );
     let frame = pump
         .session
@@ -3184,11 +3188,11 @@ fn c2905_assert_on(host_pump_bdd: &HostPumpBdd) {
         .render_with_viewport_overlay(120)
         .join("\n");
     put_pump(host_pump_bdd, pump);
-    assert!(frame.contains("会话侧栏"), "驻列须上屏");
-    assert!(frame.contains("施工中"), "c2912 驻列须为实验占位");
+    assert!(frame.contains("会话侧栏"), "侧栏须上屏");
+    assert!(frame.contains("施工中"), "c2912 侧栏须为实验占位");
 }
 
-#[then("右缘驻列上屏且内容区让宽")]
+#[then("右缘侧栏上屏且内容区让宽")]
 fn t_c2905_on(host_pump_bdd: &HostPumpBdd) {
     c2905_assert_on(host_pump_bdd);
 }
@@ -3203,7 +3207,7 @@ async fn w_c2905_toggle_off(host_pump_bdd: &HostPumpBdd) {
     .await;
 }
 
-#[then("驻列消失且内容区恢复")]
+#[then("侧栏消失且内容区恢复")]
 fn t_c2905_off(host_pump_bdd: &HostPumpBdd) {
     let pump = take_pump(host_pump_bdd);
     assert!(
@@ -3213,7 +3217,7 @@ fn t_c2905_off(host_pump_bdd: &HostPumpBdd) {
             .expect("ui")
             .borrow()
             .session_sidebar_on(),
-        "驻列须关闭"
+        "侧栏须关闭"
     );
     let frame = pump
         .session
@@ -3223,10 +3227,10 @@ fn t_c2905_off(host_pump_bdd: &HostPumpBdd) {
         .render_with_viewport_overlay(120)
         .join("\n");
     put_pump(host_pump_bdd, pump);
-    assert!(!frame.contains("会话侧栏"), "驻列须消失");
+    assert!(!frame.contains("会话侧栏"), "侧栏须消失");
 }
 
-#[when("先开抽屉再开侧栏")]
+#[when("先开覆盖弹出框再开侧栏")]
 async fn w_c2905_both(host_pump_bdd: &HostPumpBdd) {
     c2875_press(
         host_pump_bdd,
@@ -3242,7 +3246,7 @@ async fn w_c2905_both(host_pump_bdd: &HostPumpBdd) {
     .await;
 }
 
-#[then("两面同时可辨且抽屉贴内容右缘")]
+#[then("两面同时可辨且覆盖弹出框贴内容右缘")]
 fn t_c2905_coexist(host_pump_bdd: &HostPumpBdd) {
     let pump = take_pump(host_pump_bdd);
     let frame = pump
@@ -3252,7 +3256,7 @@ fn t_c2905_coexist(host_pump_bdd: &HostPumpBdd) {
         .borrow_mut()
         .render_with_viewport_overlay(120)
         .join("\n");
-    assert!(frame.contains("会话详情"), "抽屉须在");
-    assert!(frame.contains("会话侧栏"), "驻列须在");
+    assert!(frame.contains("会话详情"), "覆盖弹出框须在");
+    assert!(frame.contains("会话侧栏"), "侧栏须在");
     put_pump(host_pump_bdd, pump);
 }
