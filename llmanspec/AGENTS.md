@@ -108,7 +108,7 @@ lifecycle v2 起 stage 为四档：`draft`（仅 proposal）→ `designed`（+de
 
 - `depends_on` 指向的 change **归档后**仍可用原 `change_id`（目录进 `archive/YYYY-MM-DD-*`）；apply 前确认依赖已归档或本分支已落地其行为。
 
-## delayed-changes（搁置提案 park）
+## delayed-changes（搁置提案）
 
 `llmanspec/delayed-changes/` 收纳**未启动**的搁置提案（可按 `tui/`、`models/`、`tools/` 等分类；`legacy/` 存旧代提案）：
 

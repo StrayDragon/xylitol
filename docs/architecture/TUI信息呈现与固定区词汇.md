@@ -26,6 +26,8 @@
 | **终端原生选区** | emulator-owned selection | 仿真器画选区/复制；应用不解释未修饰拖选 | 「开了 mouse 就有原生选区」 |
 | **应用内选区** | application-owned selection | 应用收鼠标、自绘高亮、自复制（OSC52 等） | 把 mouse capture 说成「有选区」 |
 | **timeout 预算注记** | `(timeout {N}s)` · tool header budget note | 工具行 header 在 `(Alt+E)` 前的 muted 预算声明；仅模型显式传 `timeout` 的 bash/grep/find 出现（c2435 tool-timeout-chrome），走默认不显示 | 倒计时（无）；把工具默认值逐行刷出 |
+| **覆盖弹出框** | overlay popup | 瞬态右缘浮层（c2875，`alt+i`）：只覆盖对话条目区域，正文不重排；复按或闲置 Esc 收起；会话详情只读展示 | **抽屉**（弃用）；与**通知栈**（右上角时间线）/ **槽**混称 |
+| **侧栏** | sidebar · panel | 常驻右列（c2905，`alt+u`）：内容区让宽重排的第二列；实验特性，现施工中占位（c2912） | **驻列**（弃用）；与**槽** / **待办栏**混称 |
 
 完整术语 ↔ 代码标识符对照（grabbed/ungrabbed、视口 vs scrollback）：`emulator-vs-app-selection-oneof.md` §1（`c2070`（双交互模式）research；2026-08-16 前的 change 已冷归档（freeze）进 `llmanspec/changes/archive/freezed_changes.7z.archived`）。
 
@@ -43,6 +45,8 @@
 | `push_system_note` | **`push_scroll_notice`** |
 | 笼统 Notice 指滚动行 | **ScrollNotice**（瞬时硬拒反馈用 **通知条**，成功/说明用 **通知栈**，勿再堆滚动提示） |
 | 把「尾插」写成 trail（无 append） | **尾插 / tail-append** |
+| **抽屉**（组件名） | **覆盖弹出框**（c2875 组件；只覆盖对话条目区域的浮层） |
+| **驻列** | **侧栏**（c2905 组件；内容区让宽的常驻右列） |
 
 换模预告的用户可见文案（`Next turn:` 等）已随 run 绑定语义从产品端退役。
 
