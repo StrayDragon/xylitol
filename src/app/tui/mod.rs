@@ -9,6 +9,7 @@ pub use activity_fold::scene::{SceneBuilder, SemanticDump};
 mod ask_host;
 mod bridge;
 mod commands;
+pub mod storage;
 pub use commands::parse_slash_command;
 mod editor_history_seed;
 mod effects;
@@ -89,6 +90,8 @@ pub struct TuiRunOptions {
     pub restored_session: bool,
     /// Process-local ask gateway (TUI-only); host polls for Choice mounts (c1850).
     pub ask_gateway: Option<std::sync::Arc<AskHostGateway>>,
+    /// c2470 client-local 存储通道；None = 不落地（labs / 测试缺省）。
+    pub client_storage: Option<std::sync::Arc<crate::app::tui::storage::ClientStorage>>,
     /// Interaction mode bound at host start (c2070 / ath30). Default ApplicationOwned.
     /// Not driven by `XYLITOL_TUI_MOUSE`. Mid-session switching is not supported —
     /// rebuild the host (or exit the process) to change modes.
@@ -105,6 +108,7 @@ impl Default for TuiRunOptions {
             activity_fold: crate::app::tui::activity_fold::ActivityFoldSettings::default(),
             restored_session: false,
             ask_gateway: None,
+            client_storage: None,
             interaction_mode: xylitol_tui::InteractionMode::ApplicationOwned,
         }
     }
@@ -248,6 +252,13 @@ async fn run_host_loop(
         options.interaction_mode,
     );
     session.set_editor_history_seed_sessions(options.editor_history_seed_sessions);
+    // c2470 client-local 存储通道：接入 + watcher（外部实例变更 → 轮询合并）。
+    if let Some(storage) = options.client_storage.clone() {
+        session.set_client_storage(Some(storage.clone()));
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let _watcher = storage.spawn_watcher(std::time::Duration::from_millis(400), tx);
+        session.set_client_history_receiver(rx);
+    }
     session.set_activity_fold_settings(options.activity_fold);
     if let Some(gw) = options.ask_gateway {
         session.set_ask_gateway(gw);
@@ -308,6 +319,8 @@ async fn run_host_loop(
             {
                 editor_seed = Some(job);
             }
+            // c2470：watcher 变更轮询（跨实例历史并入）。
+            session.drain_client_history_updates();
 
             let want_busy_tick = session.wants_busy_tick();
             if want_busy_tick != tick_busy {

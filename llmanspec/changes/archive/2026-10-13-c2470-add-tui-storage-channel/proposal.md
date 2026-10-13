@@ -1,6 +1,9 @@
 ---
 title: Client-Local 存储通道（storage channel）：多实例共享的面本地状态
 depends_on: []
+branch: sdd/c2470-add-tui-storage-channel
+base_branch: main
+base_sha: cdbca5b7de7981d27817bd7c22a17e6b0779a5ef
 ---
 
 # Client-Local 存储通道（storage channel）：多实例共享的面本地状态

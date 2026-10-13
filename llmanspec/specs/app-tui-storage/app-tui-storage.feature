@@ -1,0 +1,56 @@
+# language: zh-CN
+# capability: app-tui-storage
+# purpose: 产品端 client-local 存储通道——多实例共享面本地状态的磁盘真值、写串行化与跨实例可见性。
+# scope: src/app/tui/storage.rs, src/app/tui/host/, tests/bdd/
+
+功能: app-tui-storage
+
+  @req:r2898
+  规则: 通道分桶与段校验
+    client-local 状态 须落 `<root>/<channel>/tui/<key>.json`（一 key 一 JSON 文件）；channel 与 key 须为路径安全段（首字符字母数字，其余字母数字与 . _ -），非法段 须构造失败，不得路径逃逸。root 缺省用户状态根、channel 缺省 default，env 可覆盖（XYLITOL_STATE_ROOT / XYLITOL_CHANNEL）；不同 channel 桶互不可见。
+
+    场景: storage-channel-partition-and-segments
+      当 以不同 channel 与非法段构造存储
+      那么 同根异桶互不可见且非法段被拒
+
+  @req:r2899
+  规则: 写路径串行化与原子落存
+    同 key 写 须经目录内排他锁串行化：锁下 读盘 → mutate → 临时文件原子 rename。并发写 须全数落地不互相覆盖；落盘后 不得残留临时文件；锁文件 须持久旁路不得当数据删除。读侧无锁，最坏读到旧值；缺失 / 损坏 须回落调用方初值而非失败。
+
+    场景: concurrent-writes-all-land-atomically
+      假如 存储通道就位
+      当 多线程并发更新同一 key
+      那么 并发条目全数在存且无临时文件残留
+
+    场景: corrupt-file-falls-back
+      当 key 文件被写坏
+      那么 读回落空值由调用方初值兜底
+
+  @req:r2900
+  规则: 外部变更可见
+    存储目录的外部写入（他实例 / 人）须被周期感知并投递变更 key，接收端无须主动动作；监听以启动时刻基线为准，基线后的写入不得丢失。
+
+    场景: cross-instance-write-is-observed
+      假如 watcher 已以空基线启动
+      当 另一实例写同通道 key
+      那么 变更 key 在防抖周期内被投递
+
+  @req:r2901
+  规则: 双实例同通道互见
+    同 channel 双实例对同一 key 先后写后，双方重读 须见两实例全部条目；实例间除磁盘真值外不得有第二同步通道。
+
+    场景: dual-instance-mutual-visibility
+      假如 同 channel 双实例就位
+      当 A 与 B 先后写同一列表 key
+      那么 双方重读均见两实例条目
+
+  @req:r2902
+  规则: 编辑器历史入通道
+    产品 TUI ↑/↓ 发送历史为首个通道条目：经真实按键路径的发送 须落通道（去重置顶、上限对齐进程内截断）；任何 seed 路径（启动 / 恢复 / 切换）替换历史后 须并回通道条目；watcher 报告编辑器历史变更 须重载合并。通道缺失 / 损坏 须不影响既有 seed 行为。
+
+    场景: editor-history-persist-and-merge
+      假如 产品 TUI 会话接入存储通道
+      当 经真实按键路径发送 prompt
+      那么 发送文本落通道且进程内历史含该条
+      当 他实例另写历史且会话轮询到变更
+      那么 合并后两实例条目并见且不重复

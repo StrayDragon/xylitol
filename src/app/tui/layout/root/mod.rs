@@ -785,6 +785,16 @@ impl UiRoot {
         self.editor.replace_history(texts);
     }
 
+    /// c2470：并入存储通道 / 跨实例历史（去重置顶）。
+    pub fn merge_editor_history(&mut self, texts: impl IntoIterator<Item = String>) {
+        self.editor.merge_history(texts);
+    }
+
+    /// c2470：当前 ↑/↓ 历史快照（新→旧）。
+    pub fn editor_history_texts(&self) -> Vec<String> {
+        self.editor.history_texts()
+    }
+
     pub fn slot(&self) -> EditorSlotKind {
         self.slot.kind()
     }

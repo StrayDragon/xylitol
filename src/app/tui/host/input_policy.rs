@@ -147,6 +147,7 @@ impl<T: Terminal> HostSession<T> {
             root.remember_editor_send(text.clone());
             root.set_editor_text(String::new());
             drop(root);
+            self.persist_client_history(&text);
             // pi queue strip: dim Follow-up: above status — not a scrollback [steer] wall.
             self.ui_model.enqueue_follow_up_strip(text.clone());
             self.pending.follow_up = Some(text);
@@ -227,6 +228,7 @@ impl<T: Terminal> HostSession<T> {
             root.remember_editor_send(text.clone());
             root.set_editor_text(String::new());
             drop(root);
+            self.persist_client_history(&text);
             self.ui_model.enqueue_steer_strip(text.clone());
             self.pending.steer = Some(text);
             self.sync_ui_root_from_model();
@@ -327,6 +329,7 @@ impl<T: Terminal> HostSession<T> {
                 root.remember_editor_send(text.clone());
                 root.set_editor_text(String::new());
                 drop(root);
+                self.persist_client_history(&text);
                 self.pending.bash = Some(PendingBash {
                     command,
                     exclude_from_context,
@@ -338,6 +341,7 @@ impl<T: Terminal> HostSession<T> {
         root.remember_editor_send(text.clone());
         root.set_editor_text(String::new());
         drop(root);
+        self.persist_client_history(&text);
         self.pending.submit = Some(text);
         true
     }

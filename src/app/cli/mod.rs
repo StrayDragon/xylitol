@@ -577,6 +577,9 @@ async fn run_product_tui_attached(
             activity_fold,
             restored_session: surface.session.is_some(),
             ask_gateway: Some(ask_gateway),
+            client_storage: Some(std::sync::Arc::new(
+                crate::app::tui::storage::ClientStorage::from_env(),
+            )),
             interaction_mode: crate::app::tui::lab_interaction_mode_from_env(),
         },
     )

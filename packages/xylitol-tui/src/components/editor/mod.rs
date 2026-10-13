@@ -250,6 +250,26 @@ impl Editor {
             self.add_to_history(text);
         }
     }
+
+    /// c2470：并入外部（跨实例 / 存储通道）历史——未见于现史者按给定
+    /// 新旧序前置，超限截断；不动历史浏览态以外的状态。
+    pub fn merge_history(&mut self, external: impl IntoIterator<Item = String>) {
+        for text in external {
+        let t = text.trim().to_string();
+            if t.is_empty() || self.history.contains(&t) {
+                continue;
+            }
+            self.history.insert(0, t);
+        }
+        if self.history.len() > 100 {
+            self.history.truncate(100);
+        }
+    }
+
+    /// c2470：当前 ↑/↓ 历史快照（新→旧；诊断 / 断言用）。
+    pub fn history_texts(&self) -> Vec<String> {
+        self.history.clone()
+    }
     pub fn get_expanded_text(&self) -> String {
         expand_paste_markers(&self.state.lines.join("\n"), &self.pastes)
     }

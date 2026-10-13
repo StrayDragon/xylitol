@@ -39,6 +39,8 @@ pub struct HostPumpBdd {
     /// c2895：观景态守望前态与最近一次映射提示。
     pub observe_prev: RefCell<xylitol::app::core::driver::AttachObserve>,
     pub observe_notice: RefCell<Option<&'static str>>,
+    /// c2470：客户端存储通道（编辑器历史场景）。
+    pub storage: RefCell<Option<std::sync::Arc<xylitol::app::tui::storage::ClientStorage>>>,
 }
 
 #[fixture]
@@ -53,6 +55,7 @@ pub fn host_pump_bdd() -> HostPumpBdd {
         mode_probe: RefCell::new(None),
         observe_prev: RefCell::new(xylitol::app::core::driver::AttachObserve::Live),
         observe_notice: RefCell::new(None),
+        storage: RefCell::new(None),
     }
 }
 
@@ -2969,4 +2972,101 @@ fn t_c2895_observe_ended_notice(host_pump_bdd: &HostPumpBdd) {
         notice.contains("session-resume"),
         "可重挂提示须指引: {notice}"
     );
+}
+
+// ── c2470 编辑器历史入通道（app-tui-storage r2902）───────────────
+
+use std::sync::Arc as StdArc;
+use xylitol::app::tui::storage::ClientStorage as StorageClient;
+
+fn c2470_storage(host_pump_bdd: &HostPumpBdd) -> StdArc<StorageClient> {
+    if let Some(s) = host_pump_bdd.storage.borrow().clone() {
+        return s;
+    }
+    let dir = std::env::temp_dir().join(format!("xyl-bdd-c2470-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let storage = StdArc::new(StorageClient::new(dir, "default").unwrap());
+    *host_pump_bdd.storage.borrow_mut() = Some(storage.clone());
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session.set_client_storage(Some(storage.clone()));
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let _watcher = storage.spawn_watcher(std::time::Duration::from_millis(10), tx);
+    pump.session.set_client_history_receiver(rx);
+    put_pump(host_pump_bdd, pump);
+    storage
+}
+
+#[given("产品 TUI 会话接入存储通道")]
+fn g_c2470_storage_mounted(host_pump_bdd: &HostPumpBdd) {
+    if host_pump_bdd.pump.borrow().is_none() {
+        put_pump(host_pump_bdd, fresh_pump());
+    }
+    let _ = c2470_storage(host_pump_bdd);
+}
+
+#[when("经真实按键路径发送 prompt")]
+async fn w_c2470_submit(host_pump_bdd: &HostPumpBdd) {
+    submit_bang(host_pump_bdd, "c2470-hello").await;
+}
+
+#[then("发送文本落通道且进程内历史含该条")]
+fn t_c2471_persisted(host_pump_bdd: &HostPumpBdd) {
+    let storage = host_pump_bdd.storage.borrow().clone().expect("storage");
+    let persisted = storage.editor_history();
+    assert!(
+        persisted.contains(&"c2470-hello".to_string()),
+        "发送须落通道: {persisted:?}"
+    );
+    let pump = take_pump(host_pump_bdd);
+    let in_memory = pump
+        .session
+        .ui_root()
+        .expect("ui")
+        .borrow()
+        .editor_history_texts();
+    assert!(
+        in_memory.contains(&"c2470-hello".to_string()),
+        "{in_memory:?}"
+    );
+    put_pump(host_pump_bdd, pump);
+}
+
+#[when("他实例另写历史且会话轮询到变更")]
+fn w_c2470_twin_and_drain(host_pump_bdd: &HostPumpBdd) {
+    let storage = host_pump_bdd.storage.borrow().clone().expect("storage");
+    let root = storage
+        .dir()
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("root")
+        .to_path_buf();
+    let twin = StorageClient::new(root, "default").unwrap();
+    twin.record_editor_prompt("c2470-twin");
+    // 等一个 watcher 轮询周期，再走产品 tick 轮询合并。
+    std::thread::sleep(std::time::Duration::from_millis(120));
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session.drain_client_history_updates();
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("合并后两实例条目并见且不重复")]
+fn t_c2470_merged(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let history = pump
+        .session
+        .ui_root()
+        .expect("ui")
+        .borrow()
+        .editor_history_texts();
+    let hello = history
+        .iter()
+        .filter(|t| t.as_str() == "c2470-hello")
+        .count();
+    let twin = history
+        .iter()
+        .filter(|t| t.as_str() == "c2470-twin")
+        .count();
+    assert_eq!(hello, 1, "去重: {history:?}");
+    assert_eq!(twin, 1, "跨实例条目须并入: {history:?}");
+    put_pump(host_pump_bdd, pump);
 }

@@ -141,6 +141,10 @@ pub struct HostSession<T: Terminal> {
     run_applied_token_settlement: bool,
     /// Pending settlement snapshot to paint on next drain (with driver context_window).
     pending_settlement_estimate: Option<crate::protocol::model::ContextTokenEstimate>,
+    /// c2470 client-local 存储通道（None = labs / 测试不落地）。
+    pub(crate) client_storage: Option<std::sync::Arc<crate::app::tui::storage::ClientStorage>>,
+    /// c2470 watcher 上报的变更 key 通道（跨实例可见性）。
+    client_history_rx: Option<std::sync::mpsc::Receiver<String>>,
     /// `tui.editor_history_seed_sessions` (c1560).
     editor_history_seed_sessions: u32,
     /// Background ↑/↓ history seed (startup / `/session-new`); host loop merges into select.
@@ -221,6 +225,8 @@ impl<T: Terminal> HostSession<T> {
             last_mid_turn_footer_refresh: None,
             run_applied_token_settlement: false,
             pending_settlement_estimate: None,
+            client_storage: None,
+            client_history_rx: None,
             editor_history_seed_sessions: 1,
             editor_history_seed_job: None,
             mcp_blocks_agent: false,
