@@ -3072,6 +3072,35 @@ fn t_c2470_merged(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
 }
 
+#[when("他实例先写旧条目再写新条目后 本端按 ↑ 召回")]
+async fn w_c2917_twin_old_new_and_up(host_pump_bdd: &HostPumpBdd) {
+    let storage = host_pump_bdd.storage.borrow().clone().expect("storage");
+    let root = storage
+        .dir()
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("root")
+        .to_path_buf();
+    let twin = StorageClient::new(root, "default").unwrap();
+    twin.record_editor_prompt("c2917-old");
+    twin.record_editor_prompt("c2917-new");
+    // 使用点懒并盘（c2915）：↑ 按键路径内先并通道历史，再召回。
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(xylitol::app::tui::harness::key_event(
+            crossterm::event::KeyCode::Up,
+            crossterm::event::KeyModifiers::NONE,
+        )))
+        .expect("key step");
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("召回文本为通道最新条目")]
+fn t_c2917_recall_is_newest(host_pump_bdd: &HostPumpBdd) {
+    let text = editor_text(host_pump_bdd);
+    assert_eq!(text.trim(), "c2917-new", "召回须最新优先: {text:?}");
+}
+
 // ── c2875 会话详情覆盖弹出框（app-tui-fixed-zone r2903）───────────────
 
 use xylitol::app::tui::harness::key_event as c2875_key_event;

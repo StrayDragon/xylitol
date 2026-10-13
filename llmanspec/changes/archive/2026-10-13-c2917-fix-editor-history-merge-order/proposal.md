@@ -2,6 +2,9 @@
 depends_on: []
 title: 编辑器历史合并召回顺序修复：跨实例条目最新优先
 needs_specs_change: true
+branch: sdd/c2917-fix-editor-history-merge-order
+base_branch: main
+base_sha: 60823f23868b90a5d3dde6dcc9394babb065e096
 ---
 
 ## Why

@@ -39,7 +39,10 @@ impl<T: Terminal> HostSession<T> {
             return;
         }
         if let Some(root) = self.ui_root.as_ref() {
-            root.borrow_mut().merge_editor_history(texts);
+            // 通道为新→旧序；包层历史入口约定旧→新（同 replace_history），seam
+            // 处反转后传入。
+            root.borrow_mut()
+                .merge_editor_history(texts.into_iter().rev());
         }
     }
 

@@ -35,6 +35,12 @@ fn test_cs_dual(storage_bdd: StorageBdd) {}
 )]
 fn test_cs_editor_history(host_pump_bdd: HostPumpBdd) {}
 
+#[scenario(
+    path = "llmanspec/specs/app-tui-storage/app-tui-storage.feature",
+    name = "editor-history-merge-recall-order"
+)]
+fn test_cs_editor_history_recall_order(host_pump_bdd: HostPumpBdd) {}
+
 // 保留 host_pump_bdd 导入使用（编辑器历史场景经其 fixture 装配）。
 #[allow(unused_imports)]
 use host_pump_bdd as _;

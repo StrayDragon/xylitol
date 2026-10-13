@@ -310,6 +310,32 @@ fn history_draft_restored_on_back_past_first() {
 }
 
 #[test]
+fn merge_history_oldest_to_newest_block_order() {
+    let mut e = Editor::new(t(), EditorOptions::default(), clk());
+    e.add_to_history("mine".to_string());
+    e.merge_history(["old".to_string(), "new".to_string()]);
+    // 输入 oldest→newest：外部块整体置于现史之上，块内最新在最前。
+    assert_eq!(
+        e.history_texts(),
+        vec!["new".to_string(), "old".to_string(), "mine".to_string()]
+    );
+    // ↑ 首次召回外部最新条目。
+    e.navigate_history(-1);
+    assert_eq!(e.get_text(), "new");
+    // 已在史条目去重。
+    e.merge_history(["new".to_string(), "dup".to_string()]);
+    assert_eq!(
+        e.history_texts(),
+        vec![
+            "dup".to_string(),
+            "new".to_string(),
+            "old".to_string(),
+            "mine".to_string()
+        ]
+    );
+}
+
+#[test]
 fn exit_history_on_edit() {
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
     e.add_to_history("old".to_string());

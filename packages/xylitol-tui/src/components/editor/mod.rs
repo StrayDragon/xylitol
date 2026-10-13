@@ -251,8 +251,9 @@ impl Editor {
         }
     }
 
-    /// c2470：并入外部（跨实例 / 存储通道）历史——未见于现史者按给定
-    /// 新旧序前置，超限截断；不动历史浏览态以外的状态。
+    /// c2470：并入外部（跨实例 / 存储通道）历史。输入 Texts oldest→newest
+    /// （同 [`Self::replace_history`] 约定）；未见于现史者作为块整体置于现史
+    /// 之上（合并后最新在最前），超限截断；不动历史浏览态以外的状态。
     pub fn merge_history(&mut self, external: impl IntoIterator<Item = String>) {
         for text in external {
             let t = text.trim().to_string();
