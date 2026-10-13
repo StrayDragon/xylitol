@@ -25,12 +25,6 @@ fn test_cs_corrupt(storage_bdd: StorageBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-storage/app-tui-storage.feature",
-    name = "cross-instance-write-is-observed"
-)]
-fn test_cs_watch(storage_bdd: StorageBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/app-tui-storage/app-tui-storage.feature",
     name = "dual-instance-mutual-visibility"
 )]
 fn test_cs_dual(storage_bdd: StorageBdd) {}

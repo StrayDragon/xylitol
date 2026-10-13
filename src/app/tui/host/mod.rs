@@ -143,8 +143,6 @@ pub struct HostSession<T: Terminal> {
     pending_settlement_estimate: Option<crate::protocol::model::ContextTokenEstimate>,
     /// c2470 client-local 存储通道（None = labs / 测试不落地）。
     pub(crate) client_storage: Option<std::sync::Arc<crate::app::tui::storage::ClientStorage>>,
-    /// c2470 watcher 上报的变更 key 通道（跨实例可见性）。
-    client_history_rx: Option<std::sync::mpsc::Receiver<String>>,
     /// `tui.editor_history_seed_sessions` (c1560).
     editor_history_seed_sessions: u32,
     /// Background ↑/↓ history seed (startup / `/session-new`); host loop merges into select.
@@ -226,7 +224,6 @@ impl<T: Terminal> HostSession<T> {
             run_applied_token_settlement: false,
             pending_settlement_estimate: None,
             client_storage: None,
-            client_history_rx: None,
             editor_history_seed_sessions: 1,
             editor_history_seed_job: None,
             mcp_blocks_agent: false,
@@ -1049,6 +1046,13 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn handle_input(&mut self, input: InputEvent) {
+        // c2915 使用点懒并盘：↑ 召回前并入通道历史（同通道他实例写入即见；无通道 no-op）。
+        if let InputEvent::Key(ref key) = input
+            && key.code == crossterm::event::KeyCode::Up
+            && key.modifiers.is_empty()
+        {
+            self.merge_client_history();
+        }
         let left_down = matches!(
             input,
             InputEvent::Mouse(crossterm::event::MouseEvent {

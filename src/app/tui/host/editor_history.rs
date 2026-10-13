@@ -21,11 +21,6 @@ impl<T: Terminal> HostSession<T> {
         self.client_storage = storage;
     }
 
-    /// c2470：接 watcher 上报通道（跨实例变更 key）。
-    pub fn set_client_history_receiver(&mut self, rx: std::sync::mpsc::Receiver<String>) {
-        self.client_history_rx = Some(rx);
-    }
-
     /// c2470：发送落盘（best-effort；失败静默，最坏丢一条本地历史）。
     pub(crate) fn persist_client_history(&mut self, text: &str) {
         if let Some(storage) = &self.client_storage {
@@ -33,7 +28,8 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// c2470：通道历史并入 ↑/↓（去重置顶；无通道 / 空历史 no-op）。
+    /// c2470/c2915：通道历史并入 ↑/↓（去重置顶；无通道 / 空历史 no-op）。
+    /// 使用点懒并盘：↑ 召回前调用，外部实例写入即在本次召回可见。
     pub fn merge_client_history(&mut self) {
         let Some(storage) = &self.client_storage else {
             return;
@@ -44,25 +40,6 @@ impl<T: Terminal> HostSession<T> {
         }
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().merge_editor_history(texts);
-        }
-    }
-
-    /// c2470：tick 轮询 watcher 变更；编辑器历史变更 → 重载合并。
-    pub fn drain_client_history_updates(&mut self) {
-        let has_updates = {
-            let Some(rx) = &mut self.client_history_rx else {
-                return;
-            };
-            let mut hit = false;
-            while let Ok(key) = rx.try_recv() {
-                if key == crate::app::tui::storage::KEY_EDITOR_HISTORY {
-                    hit = true;
-                }
-            }
-            hit
-        };
-        if has_updates {
-            self.merge_client_history();
         }
     }
 

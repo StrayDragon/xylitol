@@ -2989,9 +2989,6 @@ fn c2470_storage(host_pump_bdd: &HostPumpBdd) -> StdArc<StorageClient> {
     *host_pump_bdd.storage.borrow_mut() = Some(storage.clone());
     let mut pump = take_pump(host_pump_bdd);
     pump.session.set_client_storage(Some(storage.clone()));
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
-    let _watcher = storage.spawn_watcher(std::time::Duration::from_millis(10), tx);
-    pump.session.set_client_history_receiver(rx);
     put_pump(host_pump_bdd, pump);
     storage
 }
@@ -3031,8 +3028,8 @@ fn t_c2471_persisted(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
 }
 
-#[when("他实例另写历史且会话轮询到变更")]
-fn w_c2470_twin_and_drain(host_pump_bdd: &HostPumpBdd) {
+#[when("他实例另写历史后 本端按 ↑ 召回")]
+async fn w_c2470_twin_and_up(host_pump_bdd: &HostPumpBdd) {
     let storage = host_pump_bdd.storage.borrow().clone().expect("storage");
     let root = storage
         .dir()
@@ -3042,10 +3039,14 @@ fn w_c2470_twin_and_drain(host_pump_bdd: &HostPumpBdd) {
         .to_path_buf();
     let twin = StorageClient::new(root, "default").unwrap();
     twin.record_editor_prompt("c2470-twin");
-    // 等一个 watcher 轮询周期，再走产品 tick 轮询合并。
-    std::thread::sleep(std::time::Duration::from_millis(120));
+    // 使用点懒并盘（c2915）：↑ 按键路径内先并通道历史，再召回。
     let mut pump = take_pump(host_pump_bdd);
-    pump.session.drain_client_history_updates();
+    pump.session
+        .step(HostEvent::Input(xylitol::app::tui::harness::key_event(
+            crossterm::event::KeyCode::Up,
+            crossterm::event::KeyModifiers::NONE,
+        )))
+        .expect("key step");
     put_pump(host_pump_bdd, pump);
 }
 

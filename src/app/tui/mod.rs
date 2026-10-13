@@ -252,12 +252,9 @@ async fn run_host_loop(
         options.interaction_mode,
     );
     session.set_editor_history_seed_sessions(options.editor_history_seed_sessions);
-    // c2470 client-local 存储通道：接入 + watcher（外部实例变更 → 轮询合并）。
+    // c2470/c2915 client-local 存储通道：接入（外部变更走 ↑ 使用点懒并盘）。
     if let Some(storage) = options.client_storage.clone() {
-        session.set_client_storage(Some(storage.clone()));
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-        let _watcher = storage.spawn_watcher(std::time::Duration::from_millis(400), tx);
-        session.set_client_history_receiver(rx);
+        session.set_client_storage(Some(storage));
     }
     session.set_activity_fold_settings(options.activity_fold);
     if let Some(gw) = options.ask_gateway {
@@ -319,9 +316,6 @@ async fn run_host_loop(
             {
                 editor_seed = Some(job);
             }
-            // c2470：watcher 变更轮询（跨实例历史并入）。
-            session.drain_client_history_updates();
-
             let want_busy_tick = session.wants_busy_tick();
             if want_busy_tick != tick_busy {
                 tick_busy = want_busy_tick;

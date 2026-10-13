@@ -2,6 +2,9 @@
 depends_on: []
 title: 存储通道外部感知降级为使用点懒并盘（撤 watcher 常驻线程）
 needs_specs_change: true
+branch: sdd/c2915-update-storage-usepoint-merge
+base_branch: main
+base_sha: a9f35b1b5dc9d5c9122afa3dc5bc5c7d37a391ce
 ---
 
 # 存储通道外部感知降级为使用点懒并盘（撤 watcher 常驻线程）

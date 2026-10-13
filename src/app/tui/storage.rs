@@ -1,17 +1,16 @@
 //! Client-local storage channel (c2470): multi-instance shared surface state.
 //!
-//! 磁盘为真值 + 写路径 flock 串行化（读→改→临时文件原子 rename）+ 外部变更
-//! 轮询可见。路径按 channel 分桶：`<root>/<channel>/tui/<key>.json`，一 key
-//! 一文件；同 channel 多实例天然共享，跨 channel（dev / default）互不污染。
-//! 只承载 client-local 态（偏好 / 布局 / 历史）；会话数据归 Host，渲染包
-//! `xylitol-tui` 不感知本模块（app 层接线）。
+//! 磁盘为真值 + 写路径 flock 串行化（读→改→临时文件原子 rename）；外部变更
+//! 经使用点懒并盘感知（c2915：↑ 召回前重读，无常驻 watcher）。路径按 channel
+//! 分桶：`<root>/<channel>/tui/<key>.json`，一 key 一文件；同 channel 多实例
+//! 天然共享，跨 channel（dev / default）互不污染。只承载 client-local 态
+//! （偏好 / 布局 / 历史）；会话数据归 Host，渲染包 `xylitol-tui` 不感知本
+//! 模块（app 层接线）。
 
-use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime};
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -29,31 +28,6 @@ pub const KEY_EDITOR_HISTORY: &str = "editor-history";
 
 /// 编辑器历史上限（对齐包内 editor `add_to_history` 截断）。
 const EDITOR_HISTORY_CAP: usize = 100;
-
-fn snapshot_keys(dir: &Path) -> HashMap<String, u64> {
-    let mut map = HashMap::new();
-    let Ok(entries) = fs::read_dir(dir) else {
-        return map;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        let Some(name) = name.strip_suffix(".json") else {
-            continue;
-        };
-        let Ok(meta) = entry.metadata() else {
-            continue;
-        };
-        let mtime = meta.modified().map(mtime_millis).unwrap_or(0);
-        map.insert(name.into(), mtime);
-    }
-    map
-}
-
-fn mtime_millis(m: SystemTime) -> u64 {
-    m.duration_since(SystemTime::UNIX_EPOCH)
-        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or(0)
-}
 
 /// client-local 存储通道句柄（进程内共享 `Arc`）。
 #[derive(Debug, Clone)]
@@ -160,37 +134,6 @@ impl ClientStorage {
             libc::flock(fd, libc::LOCK_UN);
         }
         result
-    }
-
-    /// 轮询 watcher：目录内 `.json` 增改 → 投递变更 key。外部（他实例 / 人）
-    /// 写入无须本进程动作即被感知；接收端落幕（channel 断开）时线程退出。
-    pub fn spawn_watcher(
-        &self,
-        interval: Duration,
-        tx: std::sync::mpsc::Sender<String>,
-    ) -> std::thread::JoinHandle<()> {
-        let dir = self.dir.clone();
-        // 基线在调用方线程内取：spawn 前的既有状态不算“变更”，
-        // 其后的任意写入（含线程未调度窗口）必被下轮轮询捕获。
-        let mut seen = snapshot_keys(&dir);
-        std::thread::spawn(move || {
-            loop {
-                std::thread::sleep(interval);
-                let now = snapshot_keys(&dir);
-                let mut changed: Vec<String> = now
-                    .iter()
-                    .filter(|(k, v)| seen.get(*k).is_none_or(|old| old != *v))
-                    .map(|(k, _)| (*k).clone())
-                    .collect();
-                changed.sort();
-                for k in changed {
-                    if tx.send(k).is_err() {
-                        return;
-                    }
-                }
-                seen = now;
-            }
-        })
     }
 
     /// 编辑器 ↑/↓ 历史：跨进程记录（去重置顶、cap 截断）。失败静默
@@ -330,25 +273,5 @@ mod tests {
         }
         let v = storage.editor_history();
         assert_eq!(v.len(), 80, "并发写须全数落地: {}", v.len());
-    }
-
-    #[test]
-    fn watcher_reports_cross_instance_writes() {
-        let root = tmp_root("watch");
-        let storage = ClientStorage::new(root.clone(), "default").unwrap();
-        let (tx, rx) = std::sync::mpsc::channel::<String>();
-        let watcher = storage.spawn_watcher(Duration::from_millis(10), tx);
-        let twin = ClientStorage::new(root, "default").unwrap();
-        twin.record_editor_prompt("external");
-        assert!(
-            twin.editor_history() == vec!["external".to_string()],
-            "twin 落盘须成功: {:?}",
-            twin.editor_history()
-        );
-        let key = rx
-            .recv_timeout(Duration::from_secs(5))
-            .expect("watcher 须感知外部写入");
-        assert_eq!(key, KEY_EDITOR_HISTORY);
-        drop(watcher);
     }
 }

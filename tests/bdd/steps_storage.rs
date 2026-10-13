@@ -18,7 +18,6 @@ pub struct StorageBdd {
     pub concurrent_len: Cell<usize>,
     pub tmp_residue: Cell<bool>,
     pub lock_present: Cell<bool>,
-    pub watch_rx: RefCell<Option<std::sync::mpsc::Receiver<String>>>,
 }
 
 #[fixture]
@@ -32,7 +31,6 @@ pub fn storage_bdd() -> StorageBdd {
         concurrent_len: Cell::new(0),
         tmp_residue: Cell::new(true),
         lock_present: Cell::new(false),
-        watch_rx: RefCell::new(None),
     }
 }
 
@@ -128,33 +126,6 @@ fn w_corrupt(storage_bdd: &StorageBdd) {
 #[then("读回落空值由调用方初值兜底")]
 fn t_corrupt(storage_bdd: &StorageBdd) {
     assert!(storage_bdd.corrupt_ok.get(), "损坏须回落 None 而非报错");
-}
-
-#[given("watcher 已以空基线启动")]
-fn g_watch_armed(storage_bdd: &StorageBdd) {
-    let root = tmp_root("watch");
-    let a = Arc::new(ClientStorage::new(root.clone(), "default").unwrap());
-    let (tx, rx) = std::sync::mpsc::channel::<String>();
-    let _watcher = a.spawn_watcher(Duration::from_millis(5), tx);
-    *storage_bdd.root.borrow_mut() = Some(root);
-    *storage_bdd.a.borrow_mut() = Some(a);
-    *storage_bdd.watch_rx.borrow_mut() = Some(rx);
-}
-
-#[when("另一实例写同通道 key")]
-fn w_cross_instance(storage_bdd: &StorageBdd) {
-    let root = storage_bdd.root.borrow().clone().expect("root");
-    let twin = Arc::new(ClientStorage::new(root, "default").unwrap());
-    twin.record_editor_prompt("external");
-}
-
-#[then("变更 key 在防抖周期内被投递")]
-fn t_watch_delivered(storage_bdd: &StorageBdd) {
-    let rx = storage_bdd.watch_rx.borrow_mut().take().expect("watch rx");
-    let key = rx
-        .recv_timeout(Duration::from_secs(5))
-        .expect("watcher 须投递变更 key");
-    assert_eq!(key, KEY_EDITOR_HISTORY);
 }
 
 #[given("同 channel 双实例就位")]
