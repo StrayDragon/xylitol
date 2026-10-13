@@ -28,7 +28,7 @@ mod types;
 
 pub use crate::app::core::driver_error::XyDriverError;
 pub use in_process::XyInProcessDriver;
-pub use proto::{LinkHealth, XyDriver};
+pub use proto::{AttachObserve, LinkHealth, XyDriver};
 #[cfg(feature = "server")]
 pub use remote::{LinkTunings, XyRemoteDriver};
 // Re-export seam DTOs for surfaces (`crate::app::core::driver::*`).

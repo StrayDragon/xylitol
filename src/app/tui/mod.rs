@@ -43,7 +43,9 @@ use futures::FutureExt;
 use futures::StreamExt;
 use xylitol_tui::{CrosstermTerminal, InputEvent, Terminal};
 
-use crate::app::core::driver::{EventStream as AgentEventStream, XyDriver, XyDriverError};
+use crate::app::core::driver::{
+    AttachObserve, EventStream as AgentEventStream, XyDriver, XyDriverError,
+};
 
 pub use self::effects::{drain_pending, run_interactive_bang, run_interactive_reload};
 use self::host::{HostEvent, HostSession};
@@ -58,6 +60,8 @@ pub use self::commands::{
     parse_bang_command,
 };
 pub use self::effects::refresh_footer_tokens;
+/// c2895 观景态提示合约（BDD 直驱纯函数;主循环守望用同一映射）。
+pub use self::host::observe_notice;
 pub use self::host::{
     HostEvent as TuiHostEvent, HostSession as TuiHostSession, LayoutMode, MIN_COLS, MIN_ROWS,
     TOO_SMALL_HINT, display_cwd, is_too_small,
@@ -279,6 +283,8 @@ async fn run_host_loop(
     const TICK_BUSY_MS: u64 = 16;
     const TICK_IDLE_MS: u64 = 250;
     let mut tick_busy = session.is_busy();
+    // c2895 观景态守望：状态变化时一次性通知条（远端 driver 才会离常）。
+    let mut observe_prev = AttachObserve::Live;
     let mut ticker = tokio::time::interval(Duration::from_millis(if tick_busy {
         TICK_BUSY_MS
     } else {
@@ -382,6 +388,12 @@ async fn run_host_loop(
                             }
                         }
                     }
+                    // c2895 观景态：进入 / 可重挂一次性通知条（E 类运行态）。
+                    let observe = driver.attach_observe();
+                    if let Some(notice) = host::observe_notice(observe_prev, observe) {
+                        session.push_toast_notice(notice);
+                    }
+                    observe_prev = observe;
                     if driver.poll_mcp_bootstrap().await {
                         let t0 = std::time::Instant::now();
                         if let Some(snap) = driver.loaded_resources_cached() {

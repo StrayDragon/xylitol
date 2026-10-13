@@ -17,6 +17,12 @@ pub const LINK_GRACE_RECONNECT: Duration = Duration::from_secs(1);
 pub const LINK_DOWN_NOTICE: &str = "连接断开，重连中…";
 pub const LINK_RECOVERED_NOTICE: &str = "Host 连接已恢复";
 
+/// c2895 观景态提示（通知条，E 类运行态；词表 SSOT：
+/// `docs/architecture/TUI信息呈现与固定区词汇.md`）。
+pub const OBSERVE_INFLIGHT_NOTICE: &str =
+    "另一端正在对话：已显示会话快照；结束后 /session-resume 收看与接管";
+pub const OBSERVE_ENDED_NOTICE: &str = "另一端回合已结束：/session-resume 收看刚才的回合";
+
 /// 宽限期内的一次性通告请求。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkNotice {
@@ -75,6 +81,21 @@ impl LinkGrace {
                 None
             }
         }
+    }
+}
+
+/// c2895 观景态一次性提示映射：状态变化沿返回应弹的通知条文案（同态不弹）。
+pub fn observe_notice(
+    prev: crate::app::core::driver::AttachObserve,
+    cur: crate::app::core::driver::AttachObserve,
+) -> Option<&'static str> {
+    if prev == cur {
+        return None;
+    }
+    match cur {
+        crate::app::core::driver::AttachObserve::Inflight => Some(OBSERVE_INFLIGHT_NOTICE),
+        crate::app::core::driver::AttachObserve::Ended => Some(OBSERVE_ENDED_NOTICE),
+        crate::app::core::driver::AttachObserve::Live => None,
     }
 }
 

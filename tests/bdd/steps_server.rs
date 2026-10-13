@@ -56,6 +56,12 @@ pub struct ServerTest {
     pub lock_child: RefCell<Option<std::process::Child>>,
     /// r1928：非产品二进制 body 的 POST 结果（status, body）。
     pub nonbinary_posts: RefCell<Vec<(u16, String)>>,
+    /// c2895：观景态场景的两侧订阅 rx 与绑定应答。
+    pub observe_rx_a: RefCell<Option<tokio::sync::mpsc::Receiver<RpcMessage>>>,
+    pub observe_rx_b: RefCell<Option<tokio::sync::mpsc::Receiver<RpcMessage>>>,
+    pub observe_bind: RefCell<Option<serde_json::Value>>,
+    /// c2895：busy 拒绝场景的错误码。
+    pub busy_code: RefCell<Option<String>>,
     /// r1923/r1925：arm_tool_freeze 场景的会话、结果与耗时。
     pub freeze_session: RefCell<String>,
     pub freeze_value: RefCell<Option<serde_json::Value>>,
@@ -101,6 +107,10 @@ impl ServerTest {
             writer_header: RefCell::new(None),
             lock_child: RefCell::new(None),
             nonbinary_posts: RefCell::new(Vec::new()),
+            observe_rx_a: RefCell::new(None),
+            observe_rx_b: RefCell::new(None),
+            observe_bind: RefCell::new(None),
+            busy_code: RefCell::new(None),
             freeze_session: RefCell::new(String::new()),
             freeze_value: RefCell::new(None),
             freeze_error: RefCell::new(None),
@@ -3294,4 +3304,202 @@ fn t_arm_freeze_lease_free(server_test: &ServerTest) {
         v["tools_table_frozen"], true,
         "lease-free arm MUST resolve frozen: {v}"
     );
+}
+
+// ── c2895 观景态 / busy 拒绝 / 定向重放（host seam，无 HTTP）──────────
+
+const OBSERVE_SESSION: &str = "s-observe";
+
+async fn observe_bind_a(
+    host: &std::sync::Arc<HostState>,
+) -> tokio::sync::mpsc::Receiver<RpcMessage> {
+    let (tx, rx) = tokio::sync::mpsc::channel(64);
+    host.register_unbound_mux(tx).await;
+    let slot = host.slot(OBSERVE_SESSION).await;
+    let _ = host.bind_mux_to_session(&slot, 0).await;
+    rx
+}
+
+async fn observe_seed_journal(host: &std::sync::Arc<HostState>) {
+    let slot = host.slot(OBSERVE_SESSION).await;
+    let mut j = slot.journal.lock().await;
+    j.append(Event::TextDelta { text: "e1".into() });
+    j.append(Event::TextDelta { text: "e2".into() });
+}
+
+async fn observe_bind_b(server_test: &ServerTest) {
+    let host = server_test.host.borrow().clone().expect("host present");
+    let (tx, rx) = tokio::sync::mpsc::channel(64);
+    host.register_unbound_mux(tx).await;
+    let slot = host.slot(OBSERVE_SESSION).await;
+    let result = host.bind_mux_to_session(&slot, 0).await;
+    *server_test.observe_bind.borrow_mut() = result.value;
+    *server_test.observe_rx_b.borrow_mut() = Some(rx);
+}
+
+fn observe_drain(rx: &mut tokio::sync::mpsc::Receiver<RpcMessage>) -> Vec<(String, Option<Event>)> {
+    let mut out = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        let RpcMessage::ServerRequest {
+            method, payload, ..
+        } = msg
+        else {
+            continue;
+        };
+        let event = payload
+            .get("event")
+            .and_then(|v| serde_json::from_value::<Event>(v.clone()).ok());
+        out.push((method, event));
+    }
+    out
+}
+
+fn observe_texts(frames: &[(String, Option<Event>)]) -> Vec<String> {
+    frames
+        .iter()
+        .filter_map(|(_, ev)| match ev {
+            Some(Event::TextDelta { text }) => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn observe_agent_ends(frames: &[(String, Option<Event>)]) -> usize {
+    frames
+        .iter()
+        .filter(|(_, ev)| matches!(ev, Some(Event::AgentEnd)))
+        .count()
+}
+
+#[given("会话回合成中且已有一路直播订阅")]
+async fn g_observe_inflight(server_test: &ServerTest) {
+    let host = HostState::for_test().expect("host");
+    let rx_a = observe_bind_a(&host).await;
+    observe_seed_journal(&host).await;
+    host.slot(OBSERVE_SESSION)
+        .await
+        .mark_run_inflight_for_test(true);
+    *server_test.host.borrow_mut() = Some(host);
+    *server_test.observe_rx_a.borrow_mut() = Some(rx_a);
+}
+
+#[given("第二路处于观景态")]
+async fn g_observe_bound(server_test: &ServerTest) {
+    g_observe_inflight(server_test).await;
+    observe_bind_b(server_test).await;
+}
+
+#[given("一路订阅在订且 journal 含历史事件")]
+async fn g_observe_idle_journal(server_test: &ServerTest) {
+    let host = HostState::for_test().expect("host");
+    let rx_a = observe_bind_a(&host).await;
+    observe_seed_journal(&host).await;
+    *server_test.host.borrow_mut() = Some(host);
+    *server_test.observe_rx_a.borrow_mut() = Some(rx_a);
+}
+
+#[given("会话回合进行中")]
+async fn g_busy_inflight(server_test: &ServerTest) {
+    let host = HostState::for_test().expect("host");
+    host.slot(OBSERVE_SESSION)
+        .await
+        .mark_run_inflight_for_test(true);
+    *server_test.host.borrow_mut() = Some(host);
+}
+
+#[when("第二路冷订阅同一会话")]
+#[when("第二路冷订阅")]
+async fn w_observe_second_bind(server_test: &ServerTest) {
+    observe_bind_b(server_test).await;
+}
+
+#[when("会话产生流式 tape 与 AgentEnd")]
+async fn w_observe_inject(server_test: &ServerTest) {
+    let host = server_test.host.borrow().clone().expect("host present");
+    let slot = host.slot(OBSERVE_SESSION).await;
+    slot.append_and_push(Event::TextDelta {
+        text: "live-tail".into(),
+    })
+    .await;
+    slot.append_and_push(Event::AgentEnd).await;
+}
+
+#[when("任一连接对该会话再发根提交")]
+async fn w_busy_second_root(server_test: &ServerTest) {
+    let host = server_test.host.borrow().clone().expect("host present");
+    let result = xylitol::app::server::host::handle_unary(
+        &host,
+        None,
+        "prompt",
+        serde_json::json!({ "session_id": OBSERVE_SESSION, "message": "second root" }),
+    )
+    .await;
+    *server_test.busy_code.borrow_mut() =
+        result.error.map(|e| e.code).or_else(|| Some("ok".into()));
+}
+
+#[then("订阅应答标记 inflight 且第二路不收到历史 tape 重放")]
+fn t_observe_bind_flag(server_test: &ServerTest) {
+    let bind = server_test
+        .observe_bind
+        .borrow()
+        .clone()
+        .expect("bind result");
+    assert_eq!(
+        bind["inflight"], true,
+        "观景绑定应答须携带 inflight: {bind}"
+    );
+    let mut rx = server_test.observe_rx_b.borrow_mut().take().expect("rx b");
+    let frames = observe_drain(&mut rx);
+    *server_test.observe_rx_b.borrow_mut() = Some(rx);
+    assert!(
+        !frames.iter().any(|(m, _)| m == "session/event"),
+        "观景绑定不重放历史 tape: {frames:?}"
+    );
+    assert!(
+        frames.iter().any(|(m, _)| m == "session/subscribed"),
+        "订阅确认照常: {frames:?}"
+    );
+}
+
+#[then("第二路仅收到 AgentEnd 而直播端全收")]
+fn t_observe_filter(server_test: &ServerTest) {
+    let mut rx_b = server_test.observe_rx_b.borrow_mut().take().expect("rx b");
+    let b = observe_drain(&mut rx_b);
+    *server_test.observe_rx_b.borrow_mut() = Some(rx_b);
+    let mut rx_a = server_test.observe_rx_a.borrow_mut().take().expect("rx a");
+    let a = observe_drain(&mut rx_a);
+    *server_test.observe_rx_a.borrow_mut() = Some(rx_a);
+    assert_eq!(
+        observe_texts(&b),
+        Vec::<String>::new(),
+        "观景端 tape 冻结: {b:?}"
+    );
+    assert_eq!(observe_agent_ends(&b), 1, "观景端放行 AgentEnd: {b:?}");
+    assert_eq!(observe_texts(&a), vec!["live-tail"], "直播端全收: {a:?}");
+    assert_eq!(observe_agent_ends(&a), 1, "直播端 AgentEnd: {a:?}");
+}
+
+#[then("重放仅达第二路而在订者不收到重放帧")]
+fn t_observe_targeted(server_test: &ServerTest) {
+    let mut rx_b = server_test.observe_rx_b.borrow_mut().take().expect("rx b");
+    let b = observe_drain(&mut rx_b);
+    *server_test.observe_rx_b.borrow_mut() = Some(rx_b);
+    let mut rx_a = server_test.observe_rx_a.borrow_mut().take().expect("rx a");
+    let a = observe_drain(&mut rx_a);
+    *server_test.observe_rx_a.borrow_mut() = Some(rx_a);
+    let b_events = b.iter().filter(|(m, _)| m == "session/event").count();
+    let a_events = a.iter().filter(|(m, _)| m == "session/event").count();
+    assert_eq!(b_events, 2, "新绑定者收全量重放: {b:?}");
+    assert_eq!(a_events, 0, "在订者不收重放突发: {a:?}");
+}
+
+#[then("得到稳定 session_busy 错误且不产生第二回合并发")]
+fn t_busy_rejected(server_test: &ServerTest) {
+    let code = server_test
+        .busy_code
+        .borrow()
+        .clone()
+        .expect("prompt result");
+    assert_eq!(code, "session_busy", "根提交忙碌须稳定拒绝");
 }

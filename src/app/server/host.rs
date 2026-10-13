@@ -4,7 +4,7 @@
 //! single Driver still must not run two root submits or two session bindings
 //! at once.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -93,6 +93,8 @@ pub struct SessionSlot {
     pub driver: Arc<Mutex<Option<XyInProcessDriver>>>,
     pub writer: AtomicBool,
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
+    /// c2895 观景态订阅：回合中绑定者仅收 AgentEnd 生命周期帧，显式重挂后才看直播。
+    observing: Mutex<HashSet<u64>>,
     linger_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     pub gateway: Arc<ReverseRpcGateway>,
     pub in_process_downlink: broadcast::Sender<RpcMessage>,
@@ -295,11 +297,22 @@ impl HostState {
             let mut unbound = self.unbound_mux.lock().await;
             std::mem::take(&mut *unbound)
         };
+        let mut bound = Vec::new();
         for tx in pending {
-            slot.add_subscriber(tx).await;
+            bound.push(slot.add_subscriber(tx).await);
         }
         Self::cancel_write_linger(slot).await;
-        let result = slot.replay_or_resync(last_seq).await;
+        // c2895：回合成中且冷订阅（last_seq=0）→ 观景态（tape 冻结、AgentEnd 例外、
+        // 不重放），显式重挂后再收看直播；中段重连（last_seq>0）与空闲绑定照常直播。
+        // 重放定向到本次新绑定者。
+        let inflight = slot.run_inflight.load(Ordering::SeqCst);
+        let observe = inflight && last_seq == 0;
+        if observe {
+            slot.observe(bound.iter().copied()).await;
+        }
+        let result = slot
+            .replay_or_resync(&bound, observe, inflight, last_seq)
+            .await;
         // c2841：绑定后同步会话写者的当前已解析模型（含用户显式配置的默认模型），
         // 使附加端模型徽标收敛而不是停在 NOT-SET；无写者 / 无模型时 no-op。
         slot.sync_model_downlink().await;
@@ -330,7 +343,14 @@ impl HostState {
 
     async fn live_subscriber_count(slot: &SessionSlot) -> usize {
         let mut subs = slot.subscribers.lock().await;
+        let before = subs.len();
         subs.retain(|_, tx| !tx.is_closed());
+        if subs.len() != before {
+            slot.observing
+                .lock()
+                .await
+                .retain(|id| subs.contains_key(id));
+        }
         subs.len()
     }
 
@@ -441,6 +461,7 @@ impl SessionSlot {
             driver: Arc::new(Mutex::new(None)),
             writer: AtomicBool::new(false),
             subscribers: Mutex::new(HashMap::new()),
+            observing: Mutex::new(HashSet::new()),
             linger_task: Mutex::new(None),
             gateway: Arc::new(ReverseRpcGateway::new()),
             in_process_downlink,
@@ -492,8 +513,9 @@ impl SessionSlot {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn mark_run_inflight_for_test(&self, on: bool) {
+    /// 场景缝（BDD / 单测）：直接置回合成况，供观景态与 busy 拒绝场景
+    /// 无需真实回合成流即可驱动。产品路径勿用。
+    pub fn mark_run_inflight_for_test(&self, on: bool) {
         self.run_inflight.store(on, Ordering::SeqCst);
     }
 
@@ -502,7 +524,31 @@ impl SessionSlot {
         self.flush_pending_runtime().await;
     }
 
-    async fn replay_or_resync(&self, last_seq: u64) -> RpcResult {
+    /// 订阅确立应答载荷（c2895：附带绑定时刻回合成况 `inflight`）。
+    fn subscribed_value(&self, seq: u64, inflight: bool) -> Value {
+        let mut v = serde_json::to_value(SessionSubscribedPayload {
+            session_id: self.session_id.clone(),
+            seq,
+        })
+        .unwrap_or(Value::Null);
+        if let Some(o) = v.as_object_mut() {
+            o.insert("inflight".into(), Value::Bool(inflight));
+        }
+        v
+    }
+
+    /// 重放/重同步。c2895：journal 重放定向到本次绑定的新订阅者（在订者
+    /// 不再吃重放突发）；观景态绑定（`observe`）不重放 tape（冷快照兜底）。
+    /// resync 分支维持广播（整槽条件、罕见路径）；subscribed 确认帧广播
+    /// （端侧 skip_cold_replay 清除语义不变）。应答 `inflight` 回显绑定时刻
+    /// 回合成况（原始值，观景判定由端侧结合自身冷/暖订阅得出）。
+    async fn replay_or_resync(
+        &self,
+        bound: &[u64],
+        observe: bool,
+        inflight: bool,
+        last_seq: u64,
+    ) -> RpcResult {
         let journal = self.journal.lock().await;
         let wrapped_gap =
             journal.is_full() && last_seq < journal.min_seq() && journal.min_seq() > 1;
@@ -516,13 +562,7 @@ impl SessionSlot {
                 .unwrap_or(Value::Null),
             );
             self.broadcast(msg).await;
-            return RpcResult::ok_value(
-                serde_json::to_value(SessionSubscribedPayload {
-                    session_id: self.session_id.clone(),
-                    seq: 0,
-                })
-                .unwrap_or(Value::Null),
-            );
+            return RpcResult::ok_value(self.subscribed_value(0, inflight));
         }
         match journal.replay_from(last_seq) {
             None => {
@@ -536,28 +576,26 @@ impl SessionSlot {
                     .unwrap_or(Value::Null),
                 );
                 self.broadcast(msg).await;
-                RpcResult::ok_value(
-                    serde_json::to_value(SessionSubscribedPayload {
-                        session_id: self.session_id.clone(),
-                        seq: 0,
-                    })
-                    .unwrap_or(Value::Null),
-                )
+                RpcResult::ok_value(self.subscribed_value(0, inflight))
             }
             Some(events) => {
                 let seq = journal.max_seq();
                 drop(journal);
-                for (ev_seq, event) in events {
-                    let msg = downlink_server_request(
-                        "session/event",
-                        serde_json::to_value(SessionEventPayload {
-                            session_id: self.session_id.clone(),
-                            seq: ev_seq,
-                            event,
-                        })
-                        .unwrap_or(Value::Null),
-                    );
-                    self.broadcast(msg).await;
+                if !observe {
+                    for (ev_seq, event) in events {
+                        let msg = downlink_server_request(
+                            "session/event",
+                            serde_json::to_value(SessionEventPayload {
+                                session_id: self.session_id.clone(),
+                                seq: ev_seq,
+                                event,
+                            })
+                            .unwrap_or(Value::Null),
+                        );
+                        for id in bound {
+                            self.send_to(*id, &msg).await;
+                        }
+                    }
                 }
                 let subscribed = downlink_server_request(
                     "session/subscribed",
@@ -568,20 +606,35 @@ impl SessionSlot {
                     .unwrap_or(Value::Null),
                 );
                 self.broadcast(subscribed).await;
-                RpcResult::ok_value(
-                    serde_json::to_value(SessionSubscribedPayload {
-                        session_id: self.session_id.clone(),
-                        seq,
-                    })
-                    .unwrap_or(Value::Null),
-                )
+                RpcResult::ok_value(self.subscribed_value(seq, inflight))
             }
         }
     }
 
+    /// c2895：观景态订阅在 session/event 帧上仅放行 AgentEnd 生命周期帧；
+    /// 其余 tape 冻结（冷快照 + 显式重挂兜底）。非 session/event 帧与解析失败放行。
+    fn observe_passes(msg: &RpcMessage) -> bool {
+        match msg {
+            RpcMessage::ServerRequest {
+                method, payload, ..
+            } if method == "session/event" => payload
+                .get("event")
+                .and_then(|v| serde_json::from_value::<crate::protocol::Event>(v.clone()).ok())
+                .map(|ev| matches!(ev, crate::protocol::Event::AgentEnd))
+                .unwrap_or(true),
+            _ => true,
+        }
+    }
+
+    pub async fn observe<I: IntoIterator<Item = u64>>(&self, ids: I) {
+        self.observing.lock().await.extend(ids);
+    }
+
     pub async fn broadcast(&self, msg: RpcMessage) {
         let _ = self.in_process_downlink.send(msg.clone());
+        let observe_filter = !Self::observe_passes(&msg);
         let mut subs = self.subscribers.lock().await;
+        let mut observing = self.observing.lock().await;
         let mut dead = Vec::new();
         let resync = downlink_server_request(
             "session/resync_required",
@@ -591,6 +644,9 @@ impl SessionSlot {
             .unwrap_or(Value::Null),
         );
         for (id, tx) in subs.iter() {
+            if observe_filter && observing.contains(id) {
+                continue;
+            }
             match tx.try_send(msg.clone()) {
                 Ok(()) => {}
                 Err(mpsc::error::TrySendError::Full(_)) => {
@@ -603,6 +659,16 @@ impl SessionSlot {
         }
         for id in dead {
             subs.remove(&id);
+            observing.remove(&id);
+        }
+    }
+
+    /// 定向投递：只发指定订阅者（c2895 重放定向，在订者不重复吃重放突发）。
+    async fn send_to(&self, id: u64, msg: &RpcMessage) -> bool {
+        let subs = self.subscribers.lock().await;
+        match subs.get(&id) {
+            Some(tx) => tx.send(msg.clone()).await.is_ok(),
+            None => false,
         }
     }
 
@@ -1226,6 +1292,18 @@ async fn dispatch_session_unary(
         if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
             return e;
         }
+        // c2895 一回合一演员：根提交准入 CAS——回合成中再发根提交稳定拒绝
+        // （对齐「忙碌时二次根提交有明确拒绝」），并关闭第二 `d.run()` 重叠流。
+        if slot
+            .run_inflight
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return RpcResult::error(
+                "session_busy",
+                "会话回合进行中：根提交须等待结束后重试，或以插话（steer / follow_up）改向",
+            );
+        }
         let driver = slot.driver.clone();
         let slot_push = slot.clone();
         let host_push = host.clone();
@@ -1249,6 +1327,7 @@ async fn dispatch_session_unary(
                 loop {
                     let mut g = driver.lock().await;
                     let Some(d) = g.as_mut() else {
+                        slot_push.run_inflight.store(false, Ordering::SeqCst);
                         return;
                     };
                     d.arm_tool_freeze_gate().await;
@@ -1271,7 +1350,6 @@ async fn dispatch_session_unary(
                                 "prompt thinking_level select failed: {e}"
                             );
                         }
-                        slot_push.run_inflight.store(true, Ordering::SeqCst);
                         let stream = d.run(&message).await;
                         drop(g);
                         break stream;

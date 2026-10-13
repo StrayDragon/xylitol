@@ -36,6 +36,9 @@ pub struct HostPumpBdd {
     pub log_probe: RefCell<Option<(bool, std::path::PathBuf)>>,
     /// 交互模式探针（`{:?}` 形态）。
     pub mode_probe: RefCell<Option<String>>,
+    /// c2895：观景态守望前态与最近一次映射提示。
+    pub observe_prev: RefCell<xylitol::app::core::driver::AttachObserve>,
+    pub observe_notice: RefCell<Option<&'static str>>,
 }
 
 #[fixture]
@@ -48,6 +51,8 @@ pub fn host_pump_bdd() -> HostPumpBdd {
         counts: RefCell::new(Vec::new()),
         log_probe: RefCell::new(None),
         mode_probe: RefCell::new(None),
+        observe_prev: RefCell::new(xylitol::app::core::driver::AttachObserve::Live),
+        observe_notice: RefCell::new(None),
     }
 }
 
@@ -2903,4 +2908,65 @@ pub(crate) fn t_copied_last_msg_stack(host_pump_bdd: &HostPumpBdd) {
         .expect("Copied Last Msg visible");
     assert!(line.contains('✓'), "success icon: {line}");
     assert!(!line.contains("Error"), "must not use Error prefix: {line}");
+}
+
+// ── c2895 观景态提示（r2897）────────────────────────────────────
+
+use xylitol::app::core::driver::XyDriver as _;
+
+#[given("产品 TUI 主循环守望观景态")]
+fn g_c2895_observe_watch(host_pump_bdd: &HostPumpBdd) {
+    if host_pump_bdd.pump.borrow().is_none() {
+        put_pump(host_pump_bdd, fresh_pump());
+    }
+    let pump = take_pump(host_pump_bdd);
+    // 主循环前态：Live（attach 完成后的首观）。
+    *host_pump_bdd.observe_prev.borrow_mut() = xylitol::app::core::driver::AttachObserve::Live;
+    *pump.driver.observe_state.lock().unwrap() = xylitol::app::core::driver::AttachObserve::Live;
+    put_pump(host_pump_bdd, pump);
+}
+
+#[when("远端驱动报告回合成中观景")]
+fn w_c2895_observe_inflight(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    *pump.driver.observe_state.lock().unwrap() =
+        xylitol::app::core::driver::AttachObserve::Inflight;
+    let cur = pump.driver.attach_observe();
+    let prev = *host_pump_bdd.observe_prev.borrow();
+    let notice = xylitol::app::tui::observe_notice(prev, cur);
+    *host_pump_bdd.observe_prev.borrow_mut() = cur;
+    *host_pump_bdd.observe_notice.borrow_mut() = notice;
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("一次性提示进入观景并指引 session-resume")]
+fn t_c2895_observe_inflight_notice(host_pump_bdd: &HostPumpBdd) {
+    let notice = *host_pump_bdd.observe_notice.borrow();
+    let notice = notice.expect("进入观景须一次性提示");
+    assert!(
+        notice.contains("session-resume"),
+        "提示须指引重挂: {notice}"
+    );
+}
+
+#[when("远端驱动报告对端回合已结束")]
+fn w_c2895_observe_ended(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    *pump.driver.observe_state.lock().unwrap() = xylitol::app::core::driver::AttachObserve::Ended;
+    let cur = pump.driver.attach_observe();
+    let prev = *host_pump_bdd.observe_prev.borrow();
+    let notice = xylitol::app::tui::observe_notice(prev, cur);
+    *host_pump_bdd.observe_prev.borrow_mut() = cur;
+    *host_pump_bdd.observe_notice.borrow_mut() = notice;
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("一次性提示可重挂收看")]
+fn t_c2895_observe_ended_notice(host_pump_bdd: &HostPumpBdd) {
+    let notice = *host_pump_bdd.observe_notice.borrow();
+    let notice = notice.expect("结束须转可重挂提示");
+    assert!(
+        notice.contains("session-resume"),
+        "可重挂提示须指引: {notice}"
+    );
 }

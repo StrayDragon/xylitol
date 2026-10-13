@@ -8,7 +8,7 @@ mod session_ops;
 
 pub use link_grace::{
     LINK_DOWN_NOTICE, LINK_GRACE_INITIAL, LINK_GRACE_RECONNECT, LINK_RECOVERED_NOTICE, LinkGrace,
-    LinkNotice,
+    LinkNotice, observe_notice,
 };
 pub use pending::PendingOps;
 

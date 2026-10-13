@@ -36,6 +36,8 @@ pub struct ScriptedDriver {
     pub steer_calls: Vec<String>,
     pub follow_up_calls: Vec<String>,
     pub clear_calls: Vec<(bool, bool)>,
+    /// c2895 观景态场景缝：attach_observe() 返回值。
+    pub observe_state: std::sync::Mutex<crate::app::core::driver::AttachObserve>,
     bash_calls: Mutex<Vec<(String, bool)>>,
     abort_count: AtomicUsize,
     /// GetAvailableModels dispatch counter (c2790 inline-drain observable).
@@ -122,6 +124,7 @@ impl ScriptedDriver {
             steer_calls: Vec::new(),
             follow_up_calls: Vec::new(),
             clear_calls: Vec::new(),
+            observe_state: std::sync::Mutex::new(crate::app::core::driver::AttachObserve::Live),
             bash_calls: Mutex::new(Vec::new()),
             abort_count: AtomicUsize::new(0),
             models_calls: AtomicUsize::new(0),
@@ -506,6 +509,10 @@ impl Default for ScriptedDriver {
 
 #[async_trait]
 impl XyDriver for ScriptedDriver {
+    fn attach_observe(&self) -> crate::app::core::driver::AttachObserve {
+        *self.observe_state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     async fn run(&mut self, prompt: &str) -> EventStream {
         self.runs.push(prompt.to_string());
         let events = self

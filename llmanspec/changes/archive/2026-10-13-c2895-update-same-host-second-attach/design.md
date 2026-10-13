@@ -44,7 +44,7 @@
 
 ## 线协议增量
 
-`SubscribeResult` / `Subscribed` 尾部追加 `inflight: bool`（r1910 尾部追加纪律；旧端按 r1907 忽略）。fbs 真源 + `just codegen-wire` 再生。
+订阅应答走 RAW JSON（c2842 先例，r1906 动态载荷原文纪律）：`inflight` 标志直接入 subscribe 应答 Value，**无需动 fbs**（typed `SubscribeResult` 表仅客户端兼容解码，维持原状；下行通知帧不变）。
 
 ## 非目标
 

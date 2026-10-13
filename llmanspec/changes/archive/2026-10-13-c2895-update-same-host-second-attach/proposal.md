@@ -2,6 +2,9 @@
 title: 同 Host 第二路 TUI attach：不跟看打字机（未决）
 depends_on:
   - c2893-fix-tui-attach-working-run-agentend
+branch: sdd/c2895-update-same-host-second-attach
+base_branch: main
+base_sha: 85a3a7f42c5b7474b39ac63cac09f54f093098ad
 ---
 
 # 同 Host 第二路 TUI attach：不跟看打字机（未决）

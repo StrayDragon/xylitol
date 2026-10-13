@@ -421,3 +421,27 @@ async fn test_sr_r1923_arm_freeze_bounded(server_test: ServerTest) {}
     name = "arm-freeze-lease-free-under-write-conflict"
 )]
 async fn test_sr_r1925_arm_freeze_lease_free(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "inflight-cold-subscribe-observes"
+)]
+async fn test_sr_c2895_observe_bind(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "observe-passes-agent-end-only"
+)]
+async fn test_sr_c2895_observe_filter(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "replay-targeted-to-new-subscriber"
+)]
+async fn test_sr_c2895_targeted_replay(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "second-root-busy-rejected"
+)]
+async fn test_sr_c2895_busy_reject(server_test: ServerTest) {}

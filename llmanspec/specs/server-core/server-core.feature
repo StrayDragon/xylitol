@@ -606,3 +606,35 @@
       当 服务端在空闲端口上启动
       并且 POST /rpc 发送 JSON 对象、JSON 数组与纯文本等非产品二进制 body
       那么 各 body 判非法信封 HTTP 400 且不执行业务
+
+  @req:r2894
+  规则: 根提交回合成中稳定拒绝
+    同一会话回合进行中时，任何连接（含先到端）再发根提交（prompt）须获稳定业务错误 session_busy（HTTP 仍 200 的信封内错误），不得并行第二根对话写历史，不得偷跑第二轮，不得静默转插话。单端产品 TUI 忙碌时 Enter 已映射为插话，不经此守卫回归；插话（steer）与续跑（follow_up）为会话级共享道，回合成中任何连接仍可入队。
+
+    场景: second-root-busy-rejected
+      假如 会话回合进行中
+      当 任一连接对该会话再发根提交
+      那么 得到稳定 session_busy 错误且不产生第二回合并发
+
+  @req:r2895
+  规则: 观景态订阅
+    会话回合成中时，主机向冷订阅（last_seq=0）的新到端提供观景态：不重放历史 tape，下行流式 tape 冻结，仅放行 AgentEnd 生命周期帧与队列、审批等非 tape 帧。订阅确立应答 须携带绑定时刻回合成况标记 inflight。中段重连（last_seq>0）与空闲绑定不进入观景态。观景端显式重挂（同会话再次订阅）后 须按彼时回合成况重新决定订阅形态，主机不得自动升格。
+
+    场景: inflight-cold-subscribe-observes
+      假如 会话回合成中且已有一路直播订阅
+      当 第二路冷订阅同一会话
+      那么 订阅应答标记 inflight 且第二路不收到历史 tape 重放
+
+    场景: observe-passes-agent-end-only
+      假如 第二路处于观景态
+      当 会话产生流式 tape 与 AgentEnd
+      那么 第二路仅收到 AgentEnd 而直播端全收
+
+  @req:r2896
+  规则: journal 重放定向
+    订阅确立时的 journal 重放 须仅投递本次新绑定的订阅者，在订者不得因他端绑定而收到重放突发。订阅确认帧与 resync 语义维持既有广播。
+
+    场景: replay-targeted-to-new-subscriber
+      假如 一路订阅在订且 journal 含历史事件
+      当 第二路冷订阅
+      那么 重放仅达第二路而在订者不收到重放帧

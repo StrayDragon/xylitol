@@ -30,6 +30,18 @@ pub enum LinkHealth {
     Down,
 }
 
+/// c2895 观景态：远端 attach 落在回合成中时的降级订阅。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AttachObserve {
+    /// 完整直播订阅（含回中绑定后到者以外的常态）。
+    #[default]
+    Live,
+    /// 观景中：对端回合进行中，仅冷快照 + 生命周期帧，tape 冻结。
+    Inflight,
+    /// 对端回合已结束：可重挂（/session-resume）收看与接管。
+    Ended,
+}
+
 /// XyDriver — interact with the core without knowing its internals.
 ///
 /// [`crate::app::core::driver::XyInProcessDriver`] keeps a cached `AgentRuntime` and is the local
@@ -92,6 +104,12 @@ pub trait XyDriver: crate::app::core::dispatch::SessionCommandExecutor + Send {
     /// subscription state.
     fn link_health(&self) -> LinkHealth {
         LinkHealth::Up
+    }
+
+    /// c2895 观景态：本端订阅是否为回合成中降级订阅（tape 冻结待重挂）。
+    /// 默认 [`AttachObserve::Live`]：in-process / 本地 driver 无此态。
+    fn attach_observe(&self) -> AttachObserve {
+        AttachObserve::Live
     }
 
     /// Consume a `session/resync_required` rebuild flag (journal replay).

@@ -198,3 +198,9 @@ async fn test_ats2_live_tree_via_command(host_pump_bdd: HostPumpBdd) {}
     name = "tree-reflects-persisted-round"
 )]
 async fn test_ats6_tree_reflects_persisted(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
+    name = "observe-notice-transitions"
+)]
+fn test_ati_c2895_observe_notice(host_pump_bdd: HostPumpBdd) {}

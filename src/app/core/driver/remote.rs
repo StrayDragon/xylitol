@@ -18,6 +18,7 @@ use crate::protocol::wire::Command;
 use crate::protocol::wire::envelope::PROTOCOL_VERSION;
 use crate::protocol::{Event, RpcMessage};
 
+use super::AttachObserve;
 use super::XyDriver;
 use super::XyDriverError;
 use super::proto::BashRun;
@@ -155,6 +156,8 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     /// (cold attach). Cleared on `session/subscribed`. Mid-turn reconnect uses
     /// `last_seq>0` and keeps replay.
     skip_cold_replay: Arc<AtomicBool>,
+    /// c2895 观景态：attach 落在回合成中时的降级订阅（tape 冻结待重挂）。
+    attach_observe: Arc<std::sync::Mutex<AttachObserve>>,
     /// TUI process cwd; injected on every unary so Host can bind the session workspace.
     client_cwd: String,
     cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
@@ -211,6 +214,7 @@ struct DownlinkCtx<C> {
     resync_needed: Arc<AtomicBool>,
     subscribed_ok: Arc<AtomicBool>,
     skip_cold_replay: Arc<AtomicBool>,
+    attach_observe: Arc<std::sync::Mutex<AttachObserve>>,
     cached_queue: Arc<std::sync::Mutex<QueueStats>>,
     cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
     cached_resources: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
@@ -389,6 +393,13 @@ where
             {
                 return;
             }
+            // c2895：观景态下对端回合结束 → 可重挂。
+            if matches!(agent_event, XyEvent::AgentEnd { .. })
+                && let Ok(mut g) = ctx.attach_observe.lock()
+                && *g == AttachObserve::Inflight
+            {
+                *g = AttachObserve::Ended;
+            }
             push_current(agent_event);
         }
         RpcMessage::ServerRequest { method, .. } if method == "session/subscribed" => {
@@ -530,7 +541,7 @@ where
                 // mux frames are JSON-RPC notifications.
                 let seq = ctx.last_seq.load(Ordering::SeqCst);
                 ctx.skip_cold_replay.store(seq == 0, Ordering::SeqCst);
-                if ctx
+                match ctx
                     .host
                     .unary(
                         "subscribe",
@@ -541,18 +552,35 @@ where
                         }),
                     )
                     .await
-                    .is_err()
                 {
-                    // ath42: silent — reconnect churn must not paint
-                    // the transcript; fixed-zone grace UX handles notice.
-                    ctx.subscribed_ok.store(false, Ordering::SeqCst);
-                    match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff)
-                        .await
-                    {
-                        Some(next) => backoff = next,
-                        None => return,
+                    Err(_) => {
+                        // ath42: silent — reconnect churn must not paint
+                        // the transcript; fixed-zone grace UX handles notice.
+                        ctx.subscribed_ok.store(false, Ordering::SeqCst);
+                        match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff)
+                            .await
+                        {
+                            Some(next) => backoff = next,
+                            None => return,
+                        }
+                        continue;
                     }
-                    continue;
+                    Ok(result) => {
+                        // c2895：应答 `inflight` = 绑定时刻回合成况；冷订阅（seq==0）
+                        // 且 inflight ⇒ 观景态（tape 冻结，显式重挂后复直播）。
+                        let inflight = result
+                            .into_std()
+                            .ok()
+                            .and_then(|v| v.get("inflight").and_then(Value::as_bool))
+                            .unwrap_or(false);
+                        if let Ok(mut g) = ctx.attach_observe.lock() {
+                            *g = if inflight && seq == 0 {
+                                AttachObserve::Inflight
+                            } else {
+                                AttachObserve::Live
+                            };
+                        }
+                    }
                 }
                 ctx.subscribed_ok.store(true, Ordering::SeqCst);
                 loop {
@@ -634,6 +662,7 @@ where
             resync_needed: Arc::new(AtomicBool::new(false)),
             subscribed_ok: Arc::new(AtomicBool::new(false)),
             skip_cold_replay: Arc::new(AtomicBool::new(false)),
+            attach_observe: Arc::new(std::sync::Mutex::new(AttachObserve::Live)),
             client_cwd: std::env::current_dir()
                 .map(|p| p.to_string_lossy().into_owned())
                 .unwrap_or_else(|_| ".".into()),
@@ -811,6 +840,7 @@ where
             resync_needed: self.resync_needed.clone(),
             subscribed_ok: self.subscribed_ok.clone(),
             skip_cold_replay: self.skip_cold_replay.clone(),
+            attach_observe: self.attach_observe.clone(),
             cached_queue: self.cached_queue.clone(),
             cached_skills: self.cached_skills.clone(),
             cached_resources: self.cached_resources.clone(),
@@ -1090,6 +1120,13 @@ where
         } else {
             super::LinkHealth::Down
         }
+    }
+
+    fn attach_observe(&self) -> super::AttachObserve {
+        *self
+            .attach_observe
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     fn take_resync_rebuild(&mut self) -> bool {

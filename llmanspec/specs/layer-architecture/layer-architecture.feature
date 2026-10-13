@@ -237,7 +237,7 @@
 
   @req:r1514
   规则: 一 session 一写者
-    同一 session 须至多一个写者。对已被写入的 session 再 attach 须只读恢复。只读面上发起写入 须失败并说明已有其它客户端以写者连接。尚未提供多客户端 attach 时，单进程默认路径 须视为已满足本规则。
+    同一 session 须至多一个写者。对已被写入的 session 再 attach 须只读或观景恢复（回合成中观景态，行为细则见 server-core 占用与观景合约）。只读面上发起写入 须失败并说明已有其它客户端以写者连接。并发根提交 须稳定拒绝。单进程默认路径不得豁免：同 Host 第二路 attach 即多客户端。
 
     场景: second-writer-rejected-with-conflict
       假如 向 POST /rpc 发送 prompt 请求
