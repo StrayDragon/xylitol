@@ -41,7 +41,7 @@
 
     场景: designing-lint-is-a-gate
       当 读取 designing lint 闸接线
-      那么 designing lint 由 check-scripts 执行
+      那么 designing lint 由 qa-check-scripts 执行
 
     场景: surface-agents-points-to-written-docs
       当 读取 tui 面 AGENTS 摘要

@@ -57,9 +57,9 @@ def main() -> int:
             if not ln.rstrip().endswith("\\"):
                 break
     qa_block = "\n".join(qa_chunks)
-    if "check-scripts-wired" not in qa_block or "check-scripts" not in qa_block:
+    if "qa-check-scripts-wired" not in qa_block or "qa-check-scripts" not in qa_block:
         print(
-            "error: just qa must depend on check-scripts-wired and check-scripts",
+            "error: just qa must depend on qa-check-scripts-wired and qa-check-scripts",
             file=sys.stderr,
         )
         print(f"  got: {qa_block!r}", file=sys.stderr)

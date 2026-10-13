@@ -56,11 +56,11 @@
 
   @req:r1211
   规则: designing-lint-gate
-    仓库 须提供 designing lint 脚本（或等价），并由 just qa 经 check-scripts 执行；失败时 须非零退出。脚本 须覆盖：模块 intent/draft/states 存在、states 的 must_contain / must_not_contain、禁止实现分层标签、选中反转 inherit、无独立 keybindings 模块。
+    仓库 须提供 designing lint 脚本（或等价），并由 just qa 经 qa-check-scripts 执行；失败时 须非零退出。脚本 须覆盖：模块 intent/draft/states 存在、states 的 must_contain / must_not_contain、禁止实现分层标签、选中反转 inherit、无独立 keybindings 模块。
     # verified-by: scripts/check_tui_designing.py
     场景: designing-lint-in-qa
       当 读取 designing lint 闸接线
-      那么 designing lint 由 check-scripts 执行
+      那么 designing lint 由 qa-check-scripts 执行
 
   @req:r1212
   规则: designing-lint-docs

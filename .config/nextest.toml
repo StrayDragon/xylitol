@@ -1,7 +1,7 @@
 # Gate matrix policy (see justfile `test` — the gate restate this filter via -E,
 # which OVERRIDES default-filter; ad-hoc `cargo nextest run` falls back here):
 # - Live HTTP provider suite NEVER enters a parallel nextest matrix: it runs
-#   serial via `just test-live-provider` (--test-threads=1), so local
+#   serial via `just qa-test-live-provider` (--test-threads=1), so local
 #   llama.cpp / Ornith is not hammered alongside unit tests.
 # - xylitol-tui is excluded from the gate matrix via `just test`'s -E, NOT via
 #   default-filter (that would zero out `cargo nextest run -p xylitol-tui`).
@@ -18,7 +18,7 @@ path = "junit.xml"
 # Agent / `just qa` default: failures only, no pass/progress noise.
 #
 # L3 nextest `[test-groups]`: **none needed** today.
-# - Live HTTP: filtered out + `just test-live-provider` serial.
+# - Live HTTP: filtered out + `just qa-test-live-provider` serial.
 # - Ports: `:0` / wiremock ephemeral; no fixed binds in the suite.
 # - FS: tempfile / UUID lock paths (not UDP-port-named).
 # In-process `#[serial(<domain>_global)]` remains for cargo-test / `just test-tui`

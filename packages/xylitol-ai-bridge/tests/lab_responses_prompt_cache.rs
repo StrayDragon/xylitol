@@ -6,7 +6,7 @@
 //! 3. Field overrides: `XYLITOL_LIVE_*` / `OPENAI_API_KEY`
 //! 4. `XYLITOL_LIVE_PROVIDER=0|1` forces disable/enable
 //!
-//! Wired into `just qa` via `test-live-provider` (**serial**, `--test-threads=1`).
+//! Wired into `just qa` via `qa-test-live-provider` (**serial**, `--test-threads=1`).
 //! Excluded from nextest parallel matrix (see `.config/nextest.toml`).
 //! Naming: unified `lab_` prefix (was `live_responses_prompt_cache`).
 

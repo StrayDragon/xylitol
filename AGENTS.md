@@ -90,7 +90,7 @@
 | `#[test] fn lab_*`（无 `#[ignore]`） | 门禁内契约实验（无网或假网） | **是**（随 crate 测） |
 | `#[ignore]` 的 `lab_*` 测试 / `src/**/lab_*.rs` lab 模块 | 人跑维护 lab（模块 doc 给命令） | **否** |
 
-配置文件名 `live-provider.yaml` / recipe `test-live-provider` 保留「live 网关」语义，与代码符号前缀无关。新试验 **MUST** 用 `lab_`；禁止再引入 `evidence_` / `experiment_` 前缀。
+配置文件名 `live-provider.yaml` / recipe `qa-test-live-provider` 保留「live 网关」语义，与代码符号前缀无关。新试验 **MUST** 用 `lab_`；禁止再引入 `evidence_` / `experiment_` 前缀。
 
 ## Worktree 并行开发
 

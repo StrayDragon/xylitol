@@ -390,7 +390,7 @@ pub(crate) fn w_designing_lint_wiring() {
     LA_PROBE.with(|p| *p.borrow_mut() = Some(hit.to_string()));
 }
 
-#[then("designing lint 由 check-scripts 执行")]
+#[then("designing lint 由 qa-check-scripts 执行")]
 pub(crate) fn t_designing_lint_wired() {
     let hits: usize = LA_PROBE
         .with(|p| p.borrow().clone())
@@ -441,7 +441,13 @@ pub(crate) fn t_qa_sequence_shape() {
     let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     let idx = text.find("qa ").expect("qa recipe 在册");
     let body = &text[idx..];
-    for item in ["fmt", "lint", "test", "check-scripts", "test-live-provider"] {
+    for item in [
+        "fmt",
+        "lint",
+        "test",
+        "qa-check-scripts",
+        "qa-test-live-provider",
+    ] {
         assert!(body.contains(item), "qa MUST 串到 {item}");
     }
 }
@@ -461,7 +467,9 @@ pub(crate) fn t_qa_e2e_layers() {
 #[then("live 闸走串行且带超时")]
 pub(crate) fn t_live_gate_serial() {
     let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
-    let idx = text.find("test-live-provider").expect("live recipe 在册");
+    let idx = text
+        .find("qa-test-live-provider")
+        .expect("live recipe 在册");
     let body = &text[idx..];
     assert!(
         body.contains("--test-threads=1"),
@@ -469,7 +477,7 @@ pub(crate) fn t_live_gate_serial() {
     );
     let qa = &body[..body.len().min(4000)];
     assert!(
-        qa.contains("test-live-provider") || qa.contains("lab_responses_prompt_cache"),
+        qa.contains("qa-test-live-provider") || qa.contains("lab_responses_prompt_cache"),
         "qa 串 MUST 在 workspace 测试后串到 live 闸"
     );
 }

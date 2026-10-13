@@ -8,7 +8,7 @@
 
   @req:r1827
   规则: 统一 just qa 满闸
-    仓库 须提供 just qa 作为日常与 PR 前的统一验证入口；该入口 须顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、live-provider 串行闸（见 qg07）、显式 packages/xylitol-tui 测试（四层中的 1–3）、cargo doc --no-deps --all-features、doc-test（cargo test --doc --all-features，根包 doctest）、DESIGN token/Palette 一致性检查（check-tui-tokens）、scripts/check_* 入闸校验与执行（check-scripts-wired 与 check-scripts；约定 scripts/check_*.py 或 check-*.py 为非变更闸脚本）、以及 prek run --all-files（prek 仅承担文本/元数据卫生与 commit-msg 规约，cargo 级门禁 不得进 prek）。just check 与 just ci 须作为 just qa 的别名。
+    仓库 须提供 just qa 作为日常与 PR 前的统一验证入口；该入口 须顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、live-provider 串行闸（见 qg07）、显式 packages/xylitol-tui 测试（四层中的 1–3）、cargo doc --no-deps --all-features、doc-test（cargo test --doc --all-features，根包 doctest）、DESIGN token/Palette 一致性检查（qa-check-tui-tokens）、scripts/check_* 入闸校验与执行（qa-check-scripts-wired 与 qa-check-scripts；约定 scripts/check_*.py 或 check-*.py 为非变更闸脚本）、以及 prek run --all-files（prek 仅承担文本/元数据卫生与 commit-msg 规约，cargo 级门禁 不得进 prek）。just check 与 just ci 须作为 just qa 的别名。
     # verified-by: justfile
     场景: qa-six-ordered-gates
       当 读取 just 的 qa recipe 序列
@@ -32,7 +32,7 @@
 
   @req:r1830
   规则: scripts-check-convention
-    仓库 须约定 scripts/check_*.py（或 check-*.py）为非变更闸脚本且 须经 just qa 的 check-scripts-wired/check-scripts 入闸；cleanup_* 等维护脚本 不得被 just qa 强制执行。
+    仓库 须约定 scripts/check_*.py（或 check-*.py）为非变更闸脚本且 须经 just qa 的 qa-check-scripts-wired/qa-check-scripts 入闸；cleanup_* 等维护脚本 不得被 just qa 强制执行。
     # verified-by: justfile
     场景: check-scripts-all-wired
       当 读取非变更闸脚本清单
@@ -48,7 +48,7 @@
 
   @req:r1832
   规则: ath12-entry-complexity-gate
-    仓库 须提供 scripts/check_complexity.py，并经 just qa 的 check-scripts 强制 ath12 入口协调者的函数级复杂度（cccc-rs）；该脚本属 scripts/check_* 约定，不得仅作维护探针。入口名单与阈值数字由架构 AGENTS 体量策略维护，本 req 不得钉具体源文件路径。just complexity（--radar）MAY 报告更广子树且 不得作为硬失败条件。
+    仓库 须提供 scripts/check_complexity.py，并经 just qa 的 qa-check-scripts 强制 ath12 入口协调者的函数级复杂度（cccc-rs）；该脚本属 scripts/check_* 约定，不得仅作维护探针。入口名单与阈值数字由架构 AGENTS 体量策略维护，本 req 不得钉具体源文件路径。just complexity（--radar）MAY 报告更广子树且 不得作为硬失败条件。
     # verified-by: scripts/check_complexity.py
     场景: complexity-gate-ssot
       当 读取非变更闸脚本清单
@@ -56,7 +56,7 @@
 
   @req:r1833
   规则: live-provider-serial-in-qa
-    just qa 须在 workspace 测试之后以严格串行（单 test binary、`--test-threads=1`）调用 `just test-live-provider`；配置 须为全局共享目录专用文件 `<global-dir>/dev/live-provider.yaml`（`global-dir` 解析优先级：`XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`；示例为仓库 `configs/testing/live-provider.example.yaml`，由维护脚本生成），由测试程序化解析（`enabled` / base_url / model / api_key），不得从全局 AppConfig `config.yaml` 合并 live-provider 参数。缺失配置或 `enabled=false` 时 须 skip（通过）；`enabled=true` 时 须对配置的 Responses 端点做 prompt-cache 反例验证。该套件 不得进入 nextest 默认并行矩阵，以免压垮本地 llama.cpp。
+    just qa 须在 workspace 测试之后以严格串行（单 test binary、`--test-threads=1`）调用 `just qa-test-live-provider`；配置 须为全局共享目录专用文件 `<global-dir>/dev/live-provider.yaml`（`global-dir` 解析优先级：`XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`；示例为仓库 `configs/testing/live-provider.example.yaml`，由维护脚本生成），由测试程序化解析（`enabled` / base_url / model / api_key），不得从全局 AppConfig `config.yaml` 合并 live-provider 参数。缺失配置或 `enabled=false` 时 须 skip（通过）；`enabled=true` 时 须对配置的 Responses 端点做 prompt-cache 反例验证。该套件 不得进入 nextest 默认并行矩阵，以免压垮本地 llama.cpp。
     # verified-by: justfile
     场景: live-gate-serial-with-timeout
       当 读取 just 的 qa recipe 序列
