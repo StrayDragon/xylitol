@@ -231,6 +231,12 @@ async fn test_ati_c2905_sidebar(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "sidebar-below-standard-tier-falls-back-to-popup"
+)]
+async fn test_ati_c2918_sidebar_fallback(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
     name = "sidebar-and-popup-coexist"
 )]
 async fn test_ati_c2905_coexist(host_pump_bdd: HostPumpBdd) {}

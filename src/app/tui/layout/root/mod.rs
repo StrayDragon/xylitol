@@ -37,6 +37,7 @@ use super::slash_catalog::product_slash_commands_for_editor;
 use super::session_tree::FilterMode;
 use super::slots::{AskSlot, EditorSlot, EditorSlotKind, ImportSlot, ThemesSlot, TreeSlot};
 use super::theme::LayoutTheme;
+use super::{WidthTier, width_tier};
 use crate::app::core::driver::LoadedResourcesSnapshot;
 use crate::app::tui::activity_fold::{ActivityFoldState, AutoTrigger, ingest_rebuild_clocks};
 use crate::app::tui::bridge::UiModel;
@@ -865,19 +866,21 @@ impl UiRoot {
     /// 选中 rect / gutter / 滚轮分区与渲染共用同一常量。
     pub const SESSION_SIDEBAR_W: usize = 24;
 
-    /// c2905：宿主对账口径——侧栏开启时包层应额外让宽的列数。
-    pub fn session_sidebar_reserved_cols(&self) -> usize {
-        if self.session_sidebar_on {
+    /// c2918：宿主对账口径——由布局口径推导（开启且标准档可用才让宽），
+    /// 与渲染让宽单一真值源。
+    pub fn session_sidebar_reserved_cols(&self, width: usize) -> usize {
+        if self.session_sidebar_layout(width).0 {
             Self::SESSION_SIDEBAR_W
         } else {
             0
         }
     }
 
-    /// c2905 侧栏布局口径：（是否启用，侧栏宽，内容宽）。overlay 右对齐
-    /// 与渲染让宽共用此一口径，任何一处改动两处同步。
+    /// c2905/c2918 侧栏布局口径：（是否启用，侧栏宽，内容宽）。overlay 右对齐
+    /// 与渲染让宽共用此一口径，任何一处改动两处同步。仅标准档及以上（≥80 列，
+    /// 物理宽口径）启用；窄档不渲染侧栏带，状态保留、回宽自愈。
     pub fn session_sidebar_layout(&self, width: usize) -> (bool, usize, usize) {
-        if !self.session_sidebar_on || width < Self::SESSION_SIDEBAR_W + 2 {
+        if !self.session_sidebar_on || width_tier(width) < WidthTier::Standard {
             return (false, 0, width);
         }
         (
@@ -1419,6 +1422,20 @@ mod tests {
 
     fn enter() -> crossterm::event::KeyEvent {
         key(KeyCode::Enter)
+    }
+
+    /// c2918：侧栏门槛挂标准档——窄档不渲染（状态保留），reserve 同源推导。
+    #[test]
+    fn sidebar_layout_gated_on_standard_tier() {
+        let mut root = UiRoot::new();
+        root.show_session_sidebar("s1");
+        assert_eq!(root.session_sidebar_layout(79), (false, 0, 79));
+        assert_eq!(root.session_sidebar_layout(80), (true, 24, 56));
+        assert_eq!(root.session_sidebar_reserved_cols(79), 0);
+        assert_eq!(root.session_sidebar_reserved_cols(80), 24);
+        root.close_session_sidebar();
+        assert_eq!(root.session_sidebar_layout(120), (false, 0, 120));
+        assert_eq!(root.session_sidebar_reserved_cols(120), 0);
     }
 
     fn fake_row() -> ModelPickerRow {

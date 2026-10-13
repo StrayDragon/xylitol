@@ -25,10 +25,15 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         let id = driver.session_id().unwrap_or_default();
         session.show_session_popup(&id);
     }
-    // c2905 会话侧栏：同握手，身份共享。
+    // c2905/c2918 会话侧栏：同握手，身份共享；标准档以下侧栏不可用——
+    // 降级打开覆盖弹出框（信息不丢、形态切换，Esc 收起走 c2914）。
     if session.take_pending_session_sidebar() {
         let id = driver.session_id().unwrap_or_default();
-        session.show_session_sidebar(&id);
+        if session.session_sidebar_available() {
+            session.show_session_sidebar(&id);
+        } else {
+            session.show_session_popup(&id);
+        }
     }
     tree::open(session, driver).await;
     tree::travel(session, driver).await;

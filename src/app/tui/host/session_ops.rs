@@ -2,6 +2,7 @@
 
 use crate::app::core::driver::{ModelInfo, XyDriver};
 use crate::app::debug_fixtures::FixedZoneOp;
+use crate::app::tui::layout::{WidthTier, width_tier};
 use crate::protocol::session::{SessionEntry, SessionTreeTravel};
 use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion, Terminal, TreeNode};
 
@@ -10,15 +11,22 @@ use super::HostSession;
 
 impl<T: Terminal> HostSession<T> {
     /// c2875：覆盖弹出框 pending / 上屏透传。
-    /// c2905/c2910：每轮 drain 对账侧栏让宽——包层选中 rect / gutter 几何 /
-    /// 滚轮分区与根渲染共用同一常量；开关切换与重建后均自愈。
+    /// c2905/c2910/c2918：每轮 drain 对账侧栏让宽——以终端物理宽经布局口径
+    /// 推导（开启且标准档可用才让宽），包层选中 rect / gutter 几何 / 滚轮分区
+    /// 与根渲染共用同一真值源；开关切换、缩放与重建后均自愈。
     pub fn sync_session_sidebar_reserve(&mut self) {
+        let cols = Terminal::columns(&self.tui.terminal) as usize;
         let n = self
             .ui_root
             .as_ref()
-            .map(|r| r.borrow().session_sidebar_reserved_cols())
+            .map(|r| r.borrow().session_sidebar_reserved_cols(cols))
             .unwrap_or(0);
         self.tui.set_extra_reserved_cols(n as u16);
+    }
+
+    /// c2918：侧栏可用性——标准档及以上（物理宽口径，与根渲染同源）。
+    pub fn session_sidebar_available(&self) -> bool {
+        width_tier(Terminal::columns(&self.tui.terminal) as usize) >= WidthTier::Standard
     }
 
     /// c2905：侧栏 pending / 上屏透传。

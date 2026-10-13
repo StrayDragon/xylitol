@@ -3314,6 +3314,31 @@ fn t_c2905_off(host_pump_bdd: &HostPumpBdd) {
     assert!(!frame.contains("会话侧栏"), "侧栏须消失");
 }
 
+#[given("产品 TUI 会话就绪于窄终端")]
+fn g_c2918_narrow_mount(host_pump_bdd: &HostPumpBdd) {
+    if host_pump_bdd.pump.borrow().is_none() {
+        // 78 列 = 窄档（60–79）：低于侧栏标准档门槛（80）。
+        *host_pump_bdd.pump.borrow_mut() = Some(HostPump {
+            session: HostSession::new_product_ui(TestTerminal::new(78, 40)),
+            driver: ScriptedDriver::new(),
+        });
+    }
+}
+
+#[then("覆盖弹出框上屏且侧栏不出")]
+fn t_c2918_popup_fallback(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    assert!(!root.borrow().session_sidebar_on(), "窄档不得开侧栏");
+    let frame = root
+        .borrow_mut()
+        .render_with_viewport_overlay(78)
+        .join("\n");
+    put_pump(host_pump_bdd, pump);
+    assert!(frame.contains("┌ 会话详情"), "窄档须降级弹出框:\n{frame}");
+    assert!(!frame.contains("会话侧栏"), "窄档不得渲染侧栏:\n{frame}");
+}
+
 #[when("先开覆盖弹出框再开侧栏")]
 async fn w_c2905_both(host_pump_bdd: &HostPumpBdd) {
     c2875_press(

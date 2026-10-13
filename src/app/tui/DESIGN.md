@@ -195,7 +195,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 硬规则：
 
 1. Viewport 贴尾：`previous_viewport_top = max(0, max(height, n) - height)`。
-2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。例外：**瞬态会话详情覆盖弹出框**（右缘 overlay，`alt+i` 显隐 / Esc 收起，app-tui-fixed-zone）——非常驻、不分栏，不构成本规则意义内的侧栏。
+2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。例外：**瞬态会话详情覆盖弹出框**（右缘 overlay，`alt+i` 显隐 / Esc 收起，app-tui-fixed-zone）与**实验性会话侧栏**（常驻右列 24 列，标准档 80+ 起可用，`alt+u` 显隐、窄档降级为弹出框，app-tui-fixed-zone r2904）——不引入 Workspace / Plan / Files 类通用侧栏。
 3. **不截断历史**冒充滚动；**分支 travel / 回看**走会话树，不走 Codex 式 transcript 浏览器。
 4. **无常驻 debug strip**；调试信息走 `/debug`、日志或临时一行，不占 3 行底栏。
 5. **无常驻键墙 / debug header**；允许 **Codex 风边框启动卡片**（简约 meta；见 `loaded-resources` 设计模块）——名称 **MUST 全量展示**（换行），**MUST NOT** `...` 截断。会话名/路径仍并进 footer。
@@ -212,12 +212,12 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | 档 | cols | 信息分级（保留 → 紧凑 → 隐藏） |
 |---|---|---|
 | 极窄 | 40–59 | 核心对话流（scrollback / status / editor）必须可用；footer 仅 cwd · model（右侧截断）；待办栏竖叠；diff unified |
-| 窄 | 60–79 | 同极窄，footer 恢复 thinking 档位段 |
-| 标准 | 80–99 | 默认体验档：footer 全字段（cwd · model · thinking · used tokens · 占比）目标形态 |
+| 窄 | 60–79 | 同极窄，footer 恢复 thinking 档位段；`alt+u` 降级打开会话详情覆盖弹出框 |
+| 标准 | 80–99 | 默认体验档：footer 全字段（cwd · model · thinking · used tokens · 占比）目标形态；会话侧栏（24 列右列）可用 |
 | 宽 | 100–119 | 待办栏三栏（agent-todo spec）；diff 左右分屏 |
-| 极宽 | ≥120 | 无新增披露；内容自然占宽；仍无双栏侧栏（硬规则 2） |
+| 极宽 | ≥120 | 无新增披露；内容自然占宽 |
 
-连续截断组件（footer / status / models picker / toast 通知）不设档位开关：放不下即右侧截断（`…`），档位表仅约束离散可见性。极窄档只保证核心对话流可用，不承诺全功能；固定态样例见 `designing/tui/modules/{footer,status,editor}/states/tier-*.yaml` 与既有 `*-wide`（100）。
+连续截断组件（footer / status / models picker / toast 通知）不设档位开关：放不下即右侧截断（`…`），档位表仅约束离散可见性。极窄档只保证核心对话流可用，不承诺全功能；固定态样例见 `designing/tui/modules/{footer,status,editor}/states/tier-*.yaml` 与既有 `*-wide`（100）。会话侧栏自标准档（80）起渲染；极窄 / 窄档 `alt+u` 降级为覆盖弹出框（不占列），见硬规则 2 例外。
 
 ## Elevation & Depth
 

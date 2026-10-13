@@ -2,6 +2,9 @@
 depends_on: []
 title: 侧栏标准档门槛与窄档覆盖弹出框降级
 needs_specs_change: true
+branch: sdd/c2918-update-sidebar-tier-gate-fallback
+base_branch: main
+base_sha: 5949032f4406ca3a44ab3d0066d7c8da618bb199
 ---
 
 ## Why
