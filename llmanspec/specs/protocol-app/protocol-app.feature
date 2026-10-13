@@ -2,7 +2,7 @@
 # capability: protocol-app
 # purpose: Client↔host 产品真源为产品二进制帧（入口 POST /rpc 与 WS /rpc）；Command/Event 为方法载荷与下行通知内容。
 # scope: src/protocol/, src/app/core/, src/app/server/, tests/bdd/
-# reviewed-through: c2890
+# reviewed-through: c2900
 
 功能: protocol-app
 

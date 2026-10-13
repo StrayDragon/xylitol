@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 修复 spec reviewed-through 单调性（老编号晚归档倒退 + 后续触碰未推进）
+branch: sdd/c2916-update-spec-reviewed-through
+base_branch: main
+base_sha: 175010c160785578fa3a73187e1f042dde40c82d
 ---
 
 ## Why
