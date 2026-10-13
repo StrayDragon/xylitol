@@ -861,14 +861,26 @@ impl UiRoot {
         self.session_sidebar_on = true;
     }
 
+    /// c2905 驻列带宽（列；含分隔列）。宿主据此向包层同步额外让宽，
+    /// 选中 rect / gutter / 滚轮分区与渲染共用同一常量。
+    pub const SESSION_SIDEBAR_W: usize = 24;
+
+    /// c2905：宿主对账口径——驻列开启时包层应额外让宽的列数。
+    pub fn session_sidebar_reserved_cols(&self) -> usize {
+        if self.session_sidebar_on {
+            Self::SESSION_SIDEBAR_W
+        } else {
+            0
+        }
+    }
+
     /// c2905 驻列布局口径：（是否启用，驻列宽，内容宽）。overlay 右对齐
     /// 与渲染让宽共用此一口径，任何一处改动两处同步。
     pub fn session_sidebar_layout(&self, width: usize) -> (bool, usize, usize) {
-        if !self.session_sidebar_on || width < 2 {
+        if !self.session_sidebar_on || width < Self::SESSION_SIDEBAR_W + 2 {
             return (false, 0, width);
         }
-        let panel_w = 24.min(width / 3).max(1);
-        (true, panel_w, width - panel_w)
+        (true, Self::SESSION_SIDEBAR_W, width - Self::SESSION_SIDEBAR_W)
     }
 
     pub fn take_pending_tree_open(&mut self) -> bool {

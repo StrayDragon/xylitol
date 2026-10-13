@@ -35,6 +35,9 @@ pub struct ApplicationOwnedRuntime {
     scroll_gutter: Option<ScrollGutter>,
     /// 滑轨拖拽抓取偏移（内域 0 基）；None = 非拖拽中。
     gutter_drag_grab: Option<usize>,
+    /// c2905 宿主侧栏额外让宽（列）：选中 rect / 滚轮分区 / gutter stamp 与
+    /// hit 几何全部按 `term - reserved - extra` 的内容边界收口。
+    extra_reserved_cols: u16,
 }
 
 impl ApplicationOwnedRuntime {
@@ -43,6 +46,23 @@ impl ApplicationOwnedRuntime {
     #[must_use]
     pub fn reserved_cols(&self) -> usize {
         usize::from(self.scroll_gutter.is_some())
+    }
+
+    /// c2905 宿主侧栏让宽（列）；0 = 无。仅影响右缘边界口径（rect / stamp /
+    /// hit / 滚轮分区），正文排版让宽由宿主组件自身完成。
+    pub fn set_extra_reserved_cols(&mut self, n: u16) {
+        self.extra_reserved_cols = n;
+    }
+
+    pub fn extra_reserved_cols(&self) -> u16 {
+        self.extra_reserved_cols
+    }
+
+    /// 内容右边界（0 基可锚列 = 内容宽）：gutter / 选中 / 滚轮共用。
+    fn content_right(&self, term_cols: usize) -> usize {
+        term_cols
+            .saturating_sub(self.reserved_cols())
+            .saturating_sub(usize::from(self.extra_reserved_cols))
     }
 }
 
@@ -61,6 +81,7 @@ impl ApplicationOwnedRuntime {
             hover_regions: HitRegionList::new(),
             scroll_gutter: None,
             gutter_drag_grab: None,
+            extra_reserved_cols: 0,
         }
     }
 
@@ -272,7 +293,12 @@ impl ApplicationOwnedRuntime {
         {
             let top = self.scroll.scroll_top();
             let content = self.scroll.content_len();
-            stamp_gutter(&mut visible, term_cols, top, content);
+            stamp_gutter(
+                &mut visible,
+                self.content_right(term_cols).saturating_add(1),
+                top,
+                content,
+            );
         }
         while visible.len() < viewport_h {
             visible.push(String::new());
@@ -293,7 +319,7 @@ impl ApplicationOwnedRuntime {
         let transcript_h = term_rows.saturating_sub(dock);
         // c2891：选中 / 拖拽 rect 按预留后宽——拖到物理末列经 screen_to_content
         // 钳制，复制永不吞 gutter 字符（stamp 只在 paint 副本）。
-        let content_w = term_cols.saturating_sub(self.reserved_cols() as u16);
+        let content_w = self.content_right(term_cols as usize) as u16;
         let transcript = ScreenRect {
             row: 0,
             col: 0,
@@ -308,8 +334,11 @@ impl ApplicationOwnedRuntime {
             _ => None,
         };
         if let Some(delta) = wheel_delta {
-            // 滚轮用物理宽判定：gutter 列上滚轮仍滚动。
-            if event.row >= transcript_h || event.column >= term_cols {
+            // 滚轮用物理宽判定：gutter 列上滚轮仍滚动；宿主侧栏带（边界右）不滚。
+            let content_right = self.content_right(usize::from(term_cols)) as u16;
+            if event.row >= transcript_h || event.column >= term_cols
+                || event.column > content_right
+            {
                 return false;
             }
             return self.ingest_wheel_delta(delta);
@@ -318,7 +347,7 @@ impl ApplicationOwnedRuntime {
         // c2891 滑轨拖拽（pi `handleScrollbarMouseEvent`）：轨中 Down 即跳（thumb 外
         // grab 居中）、Drag 跟随、Up 结束；期间清选区。顶/底行让位按钮 click 流。
         if self.scroll_gutter.is_some() {
-            let gutter_col = term_cols.saturating_sub(1);
+            let gutter_col = self.content_right(term_cols as usize) as u16;
             let on_track =
                 event.column == gutter_col && (event.row as usize) < transcript_h as usize;
             let dragging = self.gutter_drag_grab.is_some();
@@ -407,7 +436,7 @@ impl ApplicationOwnedRuntime {
             row: 0,
             col: 0,
             height: transcript_h,
-            width: term_cols.saturating_sub(self.reserved_cols() as u16),
+            width: self.content_right(term_cols as usize) as u16,
         };
         let dirty = self.selection.tick_autoscroll(&mut self.scroll, transcript);
         if dirty {
@@ -866,5 +895,44 @@ mod tests {
             20,
         );
         assert!(runtime.gutter_drag_grab.is_none());
+    }
+}
+
+#[cfg(test)]
+mod c2910_tests {
+    use super::*;
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+
+    fn mouse(kind: MouseEventKind, col: u16, row: u16) -> MouseEvent {
+        MouseEvent {
+            kind,
+            column: col,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }
+    }
+
+    #[test]
+    fn extra_reserved_owns_sidebar_band() {
+        let mut rt = ApplicationOwnedRuntime::new(1);
+        rt.set_scroll_gutter(Some(crate::scroll_gutter::ScrollGutter));
+        rt.set_extra_reserved_cols(24);
+        let full: Vec<String> = (0..100).map(|i| format!("L{i:0>3}")).collect();
+        let _ = rt.project_frame(&full, 8, 40);
+        // 先离底（正文滚轮，内容列）。
+        let up = mouse(MouseEventKind::ScrollUp, 1, 1);
+        assert!(rt.handle_mouse(&up, 40, 8));
+        let top = rt.scroll_top();
+        assert!(top > 0, "seed must be away from head");
+        // 驻列带滚轮：不被当作正文滚轮消费，滚动不动。
+        let before = rt.scroll_top();
+        let band = mouse(MouseEventKind::ScrollUp, 30, 1);
+        assert!(!rt.handle_mouse(&band, 40, 8), "band wheel must not scroll");
+        assert_eq!(rt.scroll_top(), before, "band wheel must not move scroll");
+        // 内容列滚轮照常。
+        assert!(rt.handle_mouse(&up, 40, 8));
+        assert_ne!(rt.scroll_top(), before, "content wheel still scrolls");
+        // gutter 几何贴内容右缘（content_right），拖拽/命中与之同列。
+        assert_eq!(rt.content_right(40), 40 - 1 - 24);
     }
 }

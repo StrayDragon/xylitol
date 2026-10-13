@@ -259,6 +259,7 @@ pub async fn drain_pending<T: Terminal>(
     driver: &mut dyn XyDriver,
     agent_stream: &mut Option<EventStream>,
 ) -> Result<(), XyDriverError> {
+    session.sync_session_sidebar_reserve();
     drain_footer_token_if_pending(session, driver).await;
     let converted_submit = drain_abort_and_lanes(session, driver, agent_stream).await;
     if session.take_dequeue() {

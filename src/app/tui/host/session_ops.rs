@@ -10,6 +10,17 @@ use super::HostSession;
 
 impl<T: Terminal> HostSession<T> {
     /// c2875：抽屉 pending / 上屏透传。
+    /// c2905/c2910：每轮 drain 对账驻列让宽——包层选中 rect / gutter 几何 /
+    /// 滚轮分区与根渲染共用同一常量；开关切换与重建后均自愈。
+    pub fn sync_session_sidebar_reserve(&mut self) {
+        let n = self
+            .ui_root
+            .as_ref()
+            .map(|r| r.borrow().session_sidebar_reserved_cols())
+            .unwrap_or(0);
+        self.tui.set_extra_reserved_cols(n as u16);
+    }
+
     /// c2905：驻列 pending / 上屏透传。
     pub fn take_pending_session_sidebar(&mut self) -> bool {
         let root = self.ui_root.as_ref().expect("product ui").clone();
