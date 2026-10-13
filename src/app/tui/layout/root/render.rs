@@ -73,6 +73,54 @@ impl UiRoot {
         vec![truncate_to_width(&painted, width, "…", false)]
     }
 
+    /// c2875 会话详情抽屉：右缘瞬态 overlay（键位 alt+d 显隐；Esc 收起）。
+    /// 纯展示：不注册指针命中（AO 选区可覆盖其文本，后续票处理）；
+    /// 无阴影无卡片——muted 标尺行 + label/value，右缘截断。
+    pub(super) fn overlay_session_drawer(
+        &self,
+        lines: &mut [String],
+        width: usize,
+        transcript_rows: usize,
+    ) {
+        if !self.session_drawer_open || width == 0 {
+            return;
+        }
+        let box_w = 30.min(width.saturating_sub(2));
+        if box_w == 0 {
+            return;
+        }
+        let cap = transcript_rows.min(lines.len());
+        let title = "┌ 会话详情";
+        let title_w = xylitol_tui::visible_width(title);
+        let title_paint = self.theme.paint_muted(&format!(
+            "{title} {}",
+            "─".repeat(box_w.saturating_sub(title_w + 1))
+        ));
+        let fields: [(&str, &String); 4] = [
+            ("会话", &self.session_drawer_id),
+            ("模型", &self.model),
+            ("思考", &self.thinking_level),
+            ("目录", &self.cwd),
+        ];
+        let mut body: Vec<String> = vec![title_paint];
+        for (label, value) in fields {
+            body.push(format!("{} {}", self.theme.paint_muted(label), value));
+        }
+        for (i, row) in body.iter().enumerate() {
+            if i >= cap {
+                break;
+            }
+            let block = truncate_to_width(row, box_w, "…", false);
+            let bw = xylitol_tui::visible_width(&block);
+            let budget = width.saturating_sub(box_w);
+            let left = truncate_to_width(&lines[i], budget, "", false);
+            let lw = xylitol_tui::visible_width(&left);
+            let pad = " ".repeat(budget.saturating_sub(lw));
+            let right_pad = " ".repeat(box_w.saturating_sub(bw));
+            lines[i] = format!("{left}{pad}{block}{right_pad}");
+        }
+    }
+
     pub(super) fn overlay_client_notices(
         &self,
         lines: &mut [String],
@@ -269,6 +317,8 @@ impl Component for UiRoot {
     }
 
     fn overlay_viewport(&self, lines: &mut [String], width: usize, transcript_rows: usize) {
+        // c2875 抽屉先画：通知栈随后叠绘（右上 z 序高于抽屉）。
+        self.overlay_session_drawer(lines, width, transcript_rows);
         self.overlay_client_notices(lines, width, transcript_rows);
     }
 

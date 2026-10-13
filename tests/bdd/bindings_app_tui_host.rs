@@ -204,3 +204,9 @@ async fn test_ats6_tree_reflects_persisted(host_pump_bdd: HostPumpBdd) {}
     name = "observe-notice-transitions"
 )]
 fn test_ati_c2895_observe_notice(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "session-drawer-toggle-render-close"
+)]
+async fn test_ati_c2875_drawer(host_pump_bdd: HostPumpBdd) {}

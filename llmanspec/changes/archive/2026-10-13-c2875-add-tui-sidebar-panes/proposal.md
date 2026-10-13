@@ -1,6 +1,9 @@
 ---
 title: 左右边栏（占用列 vs 抽屉）
 depends_on: []
+branch: sdd/c2875-add-tui-sidebar-panes
+base_branch: main
+base_sha: af742d55647f6fad8a3b1fbcc8515d21863ce50b
 ---
 
 # 左右边栏（占用列 vs 抽屉）

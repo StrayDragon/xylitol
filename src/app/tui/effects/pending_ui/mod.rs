@@ -20,6 +20,11 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     session.poll_ask_host();
 
     clipboard::take_paste_image(session, driver).await;
+    // c2875 会话详情抽屉：pending 打开请求 → 身份供给后上屏。
+    if session.take_pending_session_drawer() {
+        let id = driver.session_id().unwrap_or_default();
+        session.show_session_drawer(&id);
+    }
     tree::open(session, driver).await;
     tree::travel(session, driver).await;
     if let Some(entry_id) = session.take_pending_session_tree_fork() {

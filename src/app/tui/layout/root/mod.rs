@@ -113,6 +113,9 @@ pub struct UiRoot {
     slot: EditorSlot,
     /// Handshake with host `drain_pending_ui` (outlives the live payload).
     pending: PendingSlotOps,
+    /// c2875 瞬态会话详情抽屉（右缘 overlay；非常驻分栏，DESIGN 硬规则 2 例外）。
+    session_drawer_open: bool,
+    session_drawer_id: String,
     last_esc_at: Option<Instant>,
     /// `!` / `!!` prefix → success border (c492).
     bash_mode: bool,
@@ -202,6 +205,8 @@ impl UiRoot {
             toast_notice: None,
             slot: EditorSlot::Editor,
             pending: PendingSlotOps::default(),
+            session_drawer_open: false,
+            session_drawer_id: String::new(),
             last_esc_at: None,
             bash_mode: false,
             external_editor_invocations: 0,
@@ -803,6 +808,31 @@ impl UiRoot {
         self.slot.is_tree()
     }
 
+    /// c2875：抽屉显隐查询（Esc / 渲染判定）。
+    pub fn session_drawer_open(&self) -> bool {
+        self.session_drawer_open
+    }
+
+    /// c2875：关闭抽屉（Esc / 复按切换）。
+    pub fn close_session_drawer(&mut self) {
+        self.session_drawer_open = false;
+    }
+
+    /// c2875：请求打开抽屉（host drain 供给会话身份后上屏）。
+    pub fn request_session_drawer(&mut self) {
+        self.pending.session_drawer = true;
+    }
+
+    pub fn take_pending_session_drawer(&mut self) -> bool {
+        std::mem::take(&mut self.pending.session_drawer)
+    }
+
+    /// c2875：上屏抽屉（身份来自 host；其余行取根既有 footer 态）。
+    pub fn show_session_drawer(&mut self, session_id: &str) {
+        self.session_drawer_id = session_id.to_string();
+        self.session_drawer_open = true;
+    }
+
     pub fn take_pending_tree_open(&mut self) -> bool {
         std::mem::take(&mut self.pending.tree_open)
     }
@@ -1125,7 +1155,7 @@ impl UiRoot {
     }
 
     /// `render` plus viewport overlay (unclipped). Prefer TUI paint for scroll.
-    #[cfg(test)]
+    /// BDD / 单测共用的帧探针（c2875 抽屉断言经此）。
     pub fn render_with_viewport_overlay(&mut self, width: usize) -> Vec<String> {
         let mut lines = Component::render(self, width);
         let transcript_rows = lines.len().saturating_sub(self.last_dock_rows);

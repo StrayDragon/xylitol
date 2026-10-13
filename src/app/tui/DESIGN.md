@@ -195,7 +195,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 硬规则：
 
 1. Viewport 贴尾：`previous_viewport_top = max(0, max(height, n) - height)`。
-2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。
+2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。例外：**瞬态会话详情抽屉**（右缘 overlay，`alt+d` 显隐 / Esc 收起，app-tui-fixed-zone）——非常驻、不分栏，不构成本规则意义内的侧栏。
 3. **不截断历史**冒充滚动；**分支 travel / 回看**走会话树，不走 Codex 式 transcript 浏览器。
 4. **无常驻 debug strip**；调试信息走 `/debug`、日志或临时一行，不占 3 行底栏。
 5. **无常驻键墙 / debug header**；允许 **Codex 风边框启动卡片**（简约 meta；见 `loaded-resources` 设计模块）——名称 **MUST 全量展示**（换行），**MUST NOT** `...` 截断。会话名/路径仍并进 footer。

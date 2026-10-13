@@ -130,6 +130,11 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         &["ctrl+v"],
         Some("Paste clipboard image as tempfile path"),
     ),
+    (
+        "app.session.drawer",
+        &["alt+i"],
+        Some("Toggle session details drawer"),
+    ),
 ];
 
 /// Result of a reload attempt.

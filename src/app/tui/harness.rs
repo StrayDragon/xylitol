@@ -1283,6 +1283,19 @@ impl Terminal for TestTerminal {
     }
 }
 
+/// c2875：任意键事件（BDD 直驱键位路径；enter/esc/组合键统一入口）。
+pub fn key_event(
+    code: crossterm::event::KeyCode,
+    modifiers: crossterm::event::KeyModifiers,
+) -> InputEvent {
+    InputEvent::Key(crossterm::event::KeyEvent {
+        code,
+        modifiers,
+        kind: crossterm::event::KeyEventKind::Press,
+        state: crossterm::event::KeyEventState::NONE,
+    })
+}
+
 pub fn enter_event() -> InputEvent {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     InputEvent::Key(KeyEvent {

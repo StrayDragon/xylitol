@@ -3070,3 +3070,86 @@ fn t_c2470_merged(host_pump_bdd: &HostPumpBdd) {
     assert_eq!(twin, 1, "跨实例条目须并入: {history:?}");
     put_pump(host_pump_bdd, pump);
 }
+
+// ── c2875 会话详情抽屉（app-tui-fixed-zone r2903）───────────────
+
+use xylitol::app::tui::harness::key_event as c2875_key_event;
+
+fn g2875_mount(host_pump_bdd: &HostPumpBdd) {
+    if host_pump_bdd.pump.borrow().is_none() {
+        put_pump(host_pump_bdd, fresh_pump());
+    }
+}
+
+#[given("产品 TUI 主循环就绪")]
+fn g_c2875_ready(host_pump_bdd: &HostPumpBdd) {
+    g2875_mount(host_pump_bdd);
+}
+
+async fn c2875_press(
+    host_pump_bdd: &HostPumpBdd,
+    code: crossterm::event::KeyCode,
+    modifiers: crossterm::event::KeyModifiers,
+) {
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(c2875_key_event(code, modifiers)))
+        .expect("key step");
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("pump");
+    put_pump(host_pump_bdd, pump);
+}
+
+#[when("切换抽屉显隐")]
+async fn w_c2875_toggle(host_pump_bdd: &HostPumpBdd) {
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Char('i'),
+        crossterm::event::KeyModifiers::ALT,
+    )
+    .await;
+}
+
+fn c2875_frame(host_pump_bdd: &HostPumpBdd) -> String {
+    let mut pump = take_pump(host_pump_bdd);
+    let frame = pump.session.render_now().is_ok();
+    let _ = frame;
+    let rendered = pump
+        .session
+        .ui_root()
+        .expect("ui")
+        .borrow_mut()
+        .render_with_viewport_overlay(120)
+        .join("\n");
+    put_pump(host_pump_bdd, pump);
+    rendered
+}
+
+#[then("抽屉渲染会话详情")]
+fn t_c2875_visible(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2875_frame(host_pump_bdd);
+    assert!(frame.contains("会话详情"), "抽屉须上屏: {}", {
+        let f = &frame;
+        f.get(0..600)
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| f.clone())
+    });
+}
+
+#[when("复按切换收起")]
+async fn w_c2875_toggle_again(host_pump_bdd: &HostPumpBdd) {
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Char('i'),
+        crossterm::event::KeyModifiers::ALT,
+    )
+    .await;
+}
+
+#[then("抽屉不再渲染")]
+fn t_c2875_hidden(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2875_frame(host_pump_bdd);
+    assert!(!frame.contains("会话详情"), "抽屉须收起");
+}
