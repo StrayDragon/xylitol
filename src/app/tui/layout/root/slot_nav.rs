@@ -8,6 +8,12 @@ use crate::app::tui::bridge::UiPhase;
 
 impl UiRoot {
     pub fn on_escape(&mut self) -> bool {
+        // c2914：覆盖弹出框为最上层瞬态面（c2875 审计④）——闲置 Esc 先收框且
+        // 不记双击链；忙碌态让位中止链（词表 E 类），框保持开启由中止路径处理。
+        if self.session_popup_open && !self.status_busy {
+            self.close_session_popup();
+            return true;
+        }
         if matches!(&self.slot, EditorSlot::Tree(_)) {
             let stay = if let EditorSlot::Tree(tree) = &mut self.slot {
                 tree.cancel_label_edit() || tree.clear_search_if_any()

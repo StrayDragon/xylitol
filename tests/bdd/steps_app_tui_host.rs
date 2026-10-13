@@ -3158,6 +3158,60 @@ fn t_c2875_hidden(host_pump_bdd: &HostPumpBdd) {
     assert!(!frame.contains("会话详情"), "覆盖弹出框须收起");
 }
 
+// c2914 收起语义护栏：闲置 Esc 收框不入双击链；忙碌 Esc 透传中止不收框。
+
+#[when("按 Esc 收起覆盖弹出框")]
+async fn w_c2875_esc_close(host_pump_bdd: &HostPumpBdd) {
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    )
+    .await;
+}
+
+#[when("再按 Esc")]
+async fn w_c2875_esc_again(host_pump_bdd: &HostPumpBdd) {
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    )
+    .await;
+}
+
+#[then("覆盖弹出框不再渲染且会话树未打开")]
+fn t_c2875_esc_no_tree_chain(host_pump_bdd: &HostPumpBdd) {
+    let frame = c2875_frame(host_pump_bdd);
+    assert!(!frame.contains("会话详情"), "闲置 Esc 须收起覆盖弹出框");
+    let s = stats(host_pump_bdd);
+    assert!(!s.tree_open, "收框的 Esc 不得记入双击链开树");
+    assert_eq!(s.tree_calls, 0, "收框不得触发会话树");
+}
+
+#[when("忙碌中按 Esc")]
+async fn w_c2875_busy_esc(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session.on_run_started("c2875-busy");
+    put_pump(host_pump_bdd, pump);
+    // 先泵一轮同步模型 → root.status_busy = true，Esc 才走中止而非收框。
+    pump_once(host_pump_bdd).await;
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Esc,
+        crossterm::event::KeyModifiers::NONE,
+    )
+    .await;
+}
+
+#[then("中止计一次且覆盖弹出框仍渲染")]
+fn t_c2875_busy_esc_abort(host_pump_bdd: &HostPumpBdd) {
+    let s = stats(host_pump_bdd);
+    assert_eq!(s.aborts, 1, "忙碌 Esc 须透传中止链: {:?}", s.notices);
+    let frame = c2875_frame(host_pump_bdd);
+    assert!(frame.contains("会话详情"), "忙碌 Esc 不得收起覆盖弹出框");
+}
+
 // ── c2905 会话侧栏（app-tui-fixed-zone r2904）───────────────
 
 #[when("切换侧栏")]

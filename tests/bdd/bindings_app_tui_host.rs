@@ -213,6 +213,18 @@ async fn test_ati_c2875_popup(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "popup-idle-esc-close-no-tree-chain"
+)]
+async fn test_ati_c2914_popup_esc_chain(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "popup-busy-esc-passes-abort"
+)]
+async fn test_ati_c2914_popup_busy_esc(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
     name = "session-sidebar-toggle-and-restore"
 )]
 async fn test_ati_c2905_sidebar(host_pump_bdd: HostPumpBdd) {}
