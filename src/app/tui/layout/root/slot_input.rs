@@ -52,13 +52,6 @@ impl UiRoot {
                 }
                 return;
             }
-            if self.session_popup_open && matches_binding(key, "app.interrupt") {
-                // 忙碌 Esc = 中止优先（词表 E 类）；覆盖弹出框收起仅闲置态让位。
-                if !self.status_busy {
-                    self.close_session_popup();
-                    return;
-                }
-            }
         }
         if matches!(&self.slot, EditorSlot::Editor) {
             self.handle_editor_keys(event);
