@@ -8,7 +8,7 @@
 
 ## T2 server-core：观景态订阅 + inflight 标志 + 定向重放
 
-- [x] fbs `SubscribeResult`/`Subscribed` 尾追加 `inflight: bool`，`just codegen-wire` 再生；envelope/mapping 同步
+- [x] subscribe 应答携 `inflight`：RAW JSON 注入（`subscribed_value` 在应答 Value 加字段；**不动 fbs**，typed `SubscribeResult` 维持客户端兼容解码，design「线协议增量」方案）
 - [x] `bind_mux_to_session`：inflight 时新订阅者置 observe 态（不重放 tape、tape 直播过滤；非 tape 帧与 AgentEnd 照收）；空闲 → 完整订阅；重挂（同会话再 subscribe）按当时状态定态
 - [x] journal 重放定向：仅发新绑定 mux 订阅者；`session/subscribed` 确认维持广播；in-process broadcast 道不变
 - [x] specs：`server-core` 新 requirement（观景态订阅语义 + 重放定向）

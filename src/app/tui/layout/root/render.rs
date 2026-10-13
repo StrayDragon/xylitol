@@ -113,7 +113,7 @@ impl UiRoot {
             let block = truncate_to_width(row, box_w, "…", false);
             let bw = xylitol_tui::visible_width(&block);
             let budget = width.saturating_sub(box_w);
-            let left = truncate_to_width(&lines[i], budget, "", false);
+            let left = truncate_to_width(&lines[i], budget, "…", false);
             let lw = xylitol_tui::visible_width(&left);
             let pad = " ".repeat(budget.saturating_sub(lw));
             let right_pad = " ".repeat(box_w.saturating_sub(bw));
@@ -155,7 +155,7 @@ impl UiRoot {
             let left = if budget == 0 {
                 String::new()
             } else {
-                let truncated = truncate_to_width(&lines[i], budget, "", false);
+                let truncated = truncate_to_width(&lines[i], budget, "…", false);
                 let lw = xylitol_tui::visible_width(&truncated);
                 format!("{truncated}{}", " ".repeat(budget.saturating_sub(lw)))
             };
@@ -276,7 +276,6 @@ impl UiRoot {
 impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
         // c2905 侧栏：内容区让宽（wrap 按 content 重排），右缘整高第二列。
-        let full_width = width;
         let (sidebar_on, _sidebar_w, content_w) = self.session_sidebar_layout(width);
         let width = if sidebar_on { content_w } else { width };
         let mut lines = Vec::new();
@@ -333,7 +332,6 @@ impl Component for UiRoot {
         lines.extend(status);
         lines.extend(editor);
         lines.push(footer);
-        let _ = full_width;
         lines
     }
 

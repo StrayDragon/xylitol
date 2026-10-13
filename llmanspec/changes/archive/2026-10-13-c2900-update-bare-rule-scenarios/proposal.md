@@ -29,5 +29,5 @@ specs-compact 例行压降：`llman-sdd review` 报告 4 条 unbound 裸规则�
 
 ## Impact
 
-- 仅 `llmanspec/specs/{protocol-app,server-core}` 与 `tests/bdd/`；产品代码零改动。
+- 仅 `llmanspec/specs/{protocol-app,server-core}` 与 `tests/bdd/`；产品代码仅放开 `HostState::for_test_with_mcp` 的 `#[cfg(test)]`（BDD 可达，无行为改动）。
 - `llman-sdd review` unbound 计数归零；`cargo test --all-features --test bdd` 全绿。

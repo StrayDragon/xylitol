@@ -142,13 +142,18 @@ impl ClientStorage {
             let tmp = self
                 .dir
                 .join(format!(".{}.{}.tmp", key, uuid::Uuid::new_v4().simple()));
-            {
+            let persisted = (|| {
                 let mut f = fs::File::create(&tmp).map_err(|e| e.to_string())?;
                 f.write_all(serialized.as_bytes())
                     .map_err(|e| e.to_string())?;
                 f.sync_all().ok();
+                fs::rename(&tmp, &path).map_err(|e| e.to_string())
+            })();
+            if persisted.is_err() {
+                // 失败路径清理半成品，不残留 .tmp（r2899 落盘语义）。
+                let _ = fs::remove_file(&tmp);
             }
-            fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+            persisted?;
             Ok(val)
         })();
         unsafe {
@@ -258,6 +263,27 @@ mod tests {
         let path = storage.key_path(KEY_EDITOR_HISTORY).unwrap();
         fs::write(&path, "{not json").unwrap();
         assert!(storage.load::<Vec<String>>(KEY_EDITOR_HISTORY).is_none());
+    }
+
+    #[test]
+    fn update_failure_cleans_up_tmp() {
+        let storage = ClientStorage::new(tmp_root("tmpclean"), "default").unwrap();
+        fs::create_dir_all(storage.dir()).unwrap();
+        // key 落点被同名目录占位 → rename 失败，走失败清理路径。
+        let target = storage.key_path(KEY_EDITOR_HISTORY).unwrap();
+        fs::create_dir(&target).unwrap();
+        let _err = storage
+            .update::<Vec<String>, _>(KEY_EDITOR_HISTORY, Vec::new(), |v| {
+                v.insert(0, "x".into());
+            })
+            .unwrap_err();
+        let leftovers: Vec<String> = fs::read_dir(storage.dir())
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect();
+        assert!(leftovers.is_empty(), "失败路径不得残留 .tmp: {leftovers:?}");
     }
 
     #[test]
