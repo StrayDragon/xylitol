@@ -4,7 +4,7 @@ category: 槽与面板
 surface: tui
 summary: "常驻右列：内容区让宽重排；实验特性，现施工中占位。"
 alignment:
-  fixed: 右缘整高第二列（上限 24 列，窄屏取宽 1/3）；不占 dock 行
+  fixed: 右缘整高第二列（固定 24 列，总宽不足 26 列整体关闭）；不占 dock 行
   item: 正文按内容宽重排换行（非覆盖截断）
   todo-bar: 无关
 keys:
