@@ -1,0 +1,9 @@
+id: footer.tier-narrow
+cols: 60
+must_contain:
+  - "thinking"
+must_not_contain:
+  - "used"
+lines:
+  -
+    - { text: "~/xylitol · qwen3-coder:48b · thinking off", token: muted }

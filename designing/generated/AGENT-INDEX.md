@@ -12,10 +12,10 @@
 | tui | bash | `!` / `!!` 执行进 scrollback：与 tool/diff 同一套 **1-cell 轨**。`!` 时 editor 边框切 success。 | running | `/tui/bash` |
 | tui | compaction | 已完成压缩是 transcript 块：`[compaction] Compacted from {n} tokens`，折叠提示 `Alt+E to expand`。 | collapsed, expanded | `/tui/compaction` |
 | tui | diff | 复制友好的代码变更。产品把 Edit `display_diff` 嵌在 expandable 工具块里（**非**独立浏览界面）。 | empty, side-by-side, unified | `/tui/diff` |
-| tui | editor | 输入贴底，上下 `─` 边框。树 / Ask / `/model` 等选择器 **替换本槽**，Esc 还原；禁止 blit 到 transcript 顶。 | idle | `/tui/editor` |
+| tui | editor | 输入贴底，上下 `─` 边框。树 / Ask / `/model` 等选择器 **替换本槽**，Esc 还原；禁止 blit 到 transcript 顶。 | idle, tier-narrowest | `/tui/editor` |
 | tui | errors | 持久错误进错误行：优先 **一行** error 色短文。瞬时硬拒（busy 下直接拒绝提交）的即时反馈走通知条。 | row | `/tui/errors` |
 | tui | expandable | 块级折叠（thinking / tool / diff / ask）。段/簇信封见 activity-fold。 | thinking, tool-collapsed, tool-expanded, tool-timeout | `/tui/expandable` |
-| tui | footer | 恰好 1 行 dim。字段序 `cwd · model · {thinking}`，可续 `used C/~C/? tokens`（紧凑如 `42k`）与占用比。 | default | `/tui/footer` |
+| tui | footer | 恰好 1 行 dim。字段序 `cwd · model · {thinking}`，可续 `used C/~C/? tokens`（紧凑如 `42k`）与占用比。 | default, tier-narrow, tier-narrowest | `/tui/footer` |
 | tui | full-shell | 少装饰壳：可选 loaded 卡片 + scrollback + 可选队列 + toast + status + editor + footer。 | busy, short | `/tui/full-shell` |
 | tui | hover-highlight | 指针悬停时，用引擎 dim 标出「哪里能点」，不改内容、不触发动作、不写会话。 | activity-header, collapsed-header, expanded-rail, hint-band | `/tui/hover-highlight` |
 | tui | loaded-resources | scrollback 上方 Codex 风边框卡片：`>_ xylitol` + directory。有 skills 时 skill-ref 色 skills 行并换行全量；有 MCP 时 success 色 mcp 行。 | card | `/tui/loaded-resources` |
@@ -26,7 +26,7 @@
 | tui | queue-steer | 非空时在 scrollback 与 status 之间：`Steering:` / `Follow-up:`，末行 `↳ Alt+Up to edit all queued messages`。 | both | `/tui/queue-steer` |
 | tui | session-resume | 标题 `Resume Session`。替换 editor 槽。 | default, id-on | `/tui/session-resume` |
 | tui | session-tree | 产品树是会话**活树**（双 Esc 开）。kind 前缀（user/assistant/tool）走 token 色；选中反转 inherit，禁止 kind 前景穿透。 | filter | `/tui/session-tree` |
-| tui | status | idle：**1 行空白**呼吸距，无 spinner / Ready。busy：`spinner + 短词` 紧贴左。 | busy, idle | `/tui/status` |
+| tui | status | idle：**1 行空白**呼吸距，无 spinner / Ready。busy：`spinner + 短词` 紧贴左。 | busy, idle, tier-narrowest | `/tui/status` |
 | tui | theme | **产品 host 默认 dark**。本稿预览默认 light 只为审色，不是产品默认。 | list | `/tui/theme` |
 | tui | toast-notice | status / spinner **上方**恰好 1 行通知条。不是滚动提示，不是错误行。 | busy-resume-deny | `/tui/toast-notice` |
 | tui | toast-stack | 视口右上角 **通知栈**：成功/说明类短时堆叠。不是通知条，不是滚动提示。 | copied, empty, stack | `/tui/toast-stack` |

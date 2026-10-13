@@ -205,6 +205,20 @@ footer            1 行 dim（cwd · model · 可选 context%）
 
 `spacing.*` 单位是 cell / 行。宽屏 Diff 阈值见 `spacing.diff-side-by-side-min-cols`。
 
+### 横向断点档位（信息分级）
+
+宽度分档唯一判定入口是 `width_tier`（`src/app/tui/layout/tier.rs`）；组件 **MUST** 消费档位 / 档界常量，**MUST NOT** 自写阈值比较。新增离散降级（隐藏 / 紧凑切换）先入下表再写码。`spacing.diff-side-by-side-min-cols`（100）= 宽档下缘，待办栏分栏与 diff 左右分屏由它驱动；低于 40 列由 host 判定过小屏（`LayoutMode::TooSmall`），不属渲染档。
+
+| 档 | cols | 信息分级（保留 → 紧凑 → 隐藏） |
+|---|---|---|
+| 极窄 | 40–59 | 核心对话流（scrollback / status / editor）必须可用；footer 仅 cwd · model（右侧截断）；待办栏竖叠；diff unified |
+| 窄 | 60–79 | 同极窄，footer 恢复 thinking 档位段 |
+| 标准 | 80–99 | 默认体验档：footer 全字段（cwd · model · thinking · used tokens · 占比）目标形态 |
+| 宽 | 100–119 | 待办栏三栏（agent-todo spec）；diff 左右分屏 |
+| 极宽 | ≥120 | 无新增披露；内容自然占宽；仍无双栏侧栏（硬规则 2） |
+
+连续截断组件（footer / status / models picker / toast 通知）不设档位开关：放不下即右侧截断（`…`），档位表仅约束离散可见性。极窄档只保证核心对话流可用，不承诺全功能；固定态样例见 `designing/tui/modules/{footer,status,editor}/states/tier-*.yaml` 与既有 `*-wide`（100）。
+
 ## Elevation & Depth
 
 无阴影、无卡片。层次靠：短前缀、dim/bold、reverse、editor 操作区边框，以及工具块的 **tint 背景**（pending/success/error）。不要双线框墙或装饰性 Unicode 表格线。

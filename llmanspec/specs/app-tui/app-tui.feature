@@ -2,7 +2,7 @@
 # capability: app-tui
 # purpose: 跨切面不变量索引。产品细节见 app-tui-*；引擎/harness 见 package-tui-*；CLI 默认进 TUI 见 cli-entry。
 # scope: src/app/tui/, src/app/cli/, src/lib.rs, src/AGENTS.md, Cargo.toml, docs/architecture/信任与项目门禁.md
-# reviewed-through: c2890
+# reviewed-through: c2520
 
 功能: app-tui
 

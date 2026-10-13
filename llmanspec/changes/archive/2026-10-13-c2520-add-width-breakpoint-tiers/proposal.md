@@ -1,6 +1,10 @@
 ---
 title: 宽度断点信息分级：横向披露档位表
 depends_on: []
+needs_specs_change: false
+branch: sdd/c2520-add-width-breakpoint-tiers
+base_branch: main
+base_sha: 964d5d3e38b00ac97688a3a2249dcd393fe80066
 ---
 
 # 宽度断点信息分级：横向披露档位表

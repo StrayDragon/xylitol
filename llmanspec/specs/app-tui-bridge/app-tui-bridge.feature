@@ -2,7 +2,7 @@
 # capability: app-tui-bridge
 # purpose: XyEvent 到 UI 模型的单一翻译缝与 agent 循环生命周期。
 # scope: src/app/tui/
-# reviewed-through: c2865
+# reviewed-through: c2520
 
 功能: app-tui-bridge
 

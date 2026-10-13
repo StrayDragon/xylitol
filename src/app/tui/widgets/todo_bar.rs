@@ -4,11 +4,9 @@ use xylitol_tui::{fg_rgb, overflow_more_border, visible_width};
 
 use super::GlyphSet;
 use crate::app::tui::bridge::todo_status_glyph;
-use crate::app::tui::layout::LayoutTheme;
+use crate::app::tui::layout::{LayoutTheme, WidthTier, width_tier};
 use crate::protocol::session::{TodoList, TodoStatus};
 
-/// DESIGN `spacing.diff-side-by-side-min-cols`.
-pub const TODO_BAR_BREAKPOINT: usize = 100;
 pub const TODO_BAR_MAX_ROWS: usize = 6;
 const HANGING_INDENT: usize = 4;
 const COL_GUTTER: usize = 2;
@@ -192,7 +190,7 @@ fn layout_todo_bar(glyphs: GlyphSet, params: TodoBarParams<'_>) -> TodoBarLayout
     let past_h = past_header(&past, past_open, glyphs);
     let mw = visible_width(glyphs.fold()).max(1);
     let cols = width.max(1);
-    let use_cols = cols >= TODO_BAR_BREAKPOINT;
+    let use_cols = width_tier(cols) >= WidthTier::Wide;
     let mut hits = Vec::new();
     let mut lines = if !use_cols {
         let mut out = Vec::new();

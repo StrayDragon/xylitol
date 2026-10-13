@@ -3,7 +3,7 @@ use xylitol_tui::{
     render_expandable_output, visible_width,
 };
 
-use crate::app::tui::layout::LayoutTheme;
+use crate::app::tui::layout::{LayoutTheme, TIER_WIDE_MIN_COLS};
 
 use super::super::fold_hit::FoldTarget;
 use super::cache::CachedFoldHit;
@@ -80,6 +80,8 @@ pub(super) fn push_viewport_diff_lines(
     let input = DiffInput::DisplayText(diff.to_string());
     let opts = DiffOptions {
         word_level,
+        // DESIGN 横向断点档位：宽档（≥100）起左右分屏；token `spacing.diff-side-by-side-min-cols`。
+        side_by_side_min_width: Some(TIER_WIDE_MIN_COLS),
         ..DiffOptions::default()
     };
     // Rail: no tool wash envelope; identity row bg via on_block(surface) so no diff-*-bg stack.
