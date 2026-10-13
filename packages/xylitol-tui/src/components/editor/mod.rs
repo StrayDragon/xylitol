@@ -255,7 +255,7 @@ impl Editor {
     /// 新旧序前置，超限截断；不动历史浏览态以外的状态。
     pub fn merge_history(&mut self, external: impl IntoIterator<Item = String>) {
         for text in external {
-        let t = text.trim().to_string();
+            let t = text.trim().to_string();
             if t.is_empty() || self.history.contains(&t) {
                 continue;
             }

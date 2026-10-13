@@ -880,7 +880,11 @@ impl UiRoot {
         if !self.session_sidebar_on || width < Self::SESSION_SIDEBAR_W + 2 {
             return (false, 0, width);
         }
-        (true, Self::SESSION_SIDEBAR_W, width - Self::SESSION_SIDEBAR_W)
+        (
+            true,
+            Self::SESSION_SIDEBAR_W,
+            width - Self::SESSION_SIDEBAR_W,
+        )
     }
 
     pub fn take_pending_tree_open(&mut self) -> bool {

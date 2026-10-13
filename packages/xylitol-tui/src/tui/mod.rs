@@ -646,8 +646,11 @@ impl<T: Terminal> TUI<T> {
         let rows = self.terminal.rows() as usize;
         let transcript_rows = rows.saturating_sub(self.dock_rows.min(rows));
         let boundary_cols = cols.saturating_sub(runtime.extra_reserved_cols());
-        let active =
-            gutter_active(runtime.content_len(), transcript_rows, usize::from(boundary_cols));
+        let active = gutter_active(
+            runtime.content_len(),
+            transcript_rows,
+            usize::from(boundary_cols),
+        );
         gutter_hit_set(boundary_cols, transcript_rows as u16, active)
     }
 
@@ -1003,7 +1006,7 @@ impl<T: Terminal> TUI<T> {
                 let mut runtime = ApplicationOwnedRuntime::new(self.dock_rows);
                 runtime.set_copy_on_release(self.transcript_copy_on_release);
                 runtime.set_scroll_gutter(self.scroll_gutter);
-        runtime.set_extra_reserved_cols(self.extra_reserved_cols);
+                runtime.set_extra_reserved_cols(self.extra_reserved_cols);
                 self.application_owned.replace(runtime);
             }
             self.previous_width = FORCE_SIZE_SENTINEL;

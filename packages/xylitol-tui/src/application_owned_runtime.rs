@@ -336,7 +336,8 @@ impl ApplicationOwnedRuntime {
         if let Some(delta) = wheel_delta {
             // 滚轮用物理宽判定：gutter 列上滚轮仍滚动；宿主侧栏带（边界右）不滚。
             let content_right = self.content_right(usize::from(term_cols)) as u16;
-            if event.row >= transcript_h || event.column >= term_cols
+            if event.row >= transcript_h
+                || event.column >= term_cols
                 || event.column > content_right
             {
                 return false;
