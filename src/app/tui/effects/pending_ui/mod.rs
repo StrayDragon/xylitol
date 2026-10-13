@@ -25,6 +25,11 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
         let id = driver.session_id().unwrap_or_default();
         session.show_session_drawer(&id);
     }
+    // c2905 会话侧栏（驻列）：同握手，身份共享。
+    if session.take_pending_session_sidebar() {
+        let id = driver.session_id().unwrap_or_default();
+        session.show_session_sidebar(&id);
+    }
     tree::open(session, driver).await;
     tree::travel(session, driver).await;
     if let Some(entry_id) = session.take_pending_session_tree_fork() {

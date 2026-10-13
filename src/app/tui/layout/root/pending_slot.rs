@@ -18,6 +18,8 @@ pub(super) struct PendingSlotOps {
     pub session_resume_delete: Option<String>,
     /// c2875 会话详情抽屉：打开请求（显隐切换的显示半段）。
     pub session_drawer: bool,
+    /// c2905 会话侧栏（驻列）：打开请求。
+    pub session_sidebar: bool,
 }
 
 impl PendingSlotOps {

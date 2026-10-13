@@ -116,6 +116,8 @@ pub struct UiRoot {
     /// c2875 瞬态会话详情抽屉（右缘 overlay；非常驻分栏，DESIGN 硬规则 2 例外）。
     session_drawer_open: bool,
     session_drawer_id: String,
+    /// c2905 会话侧栏（驻列）：内容区让宽的常驻第二列。
+    session_sidebar_on: bool,
     last_esc_at: Option<Instant>,
     /// `!` / `!!` prefix → success border (c492).
     bash_mode: bool,
@@ -207,6 +209,7 @@ impl UiRoot {
             pending: PendingSlotOps::default(),
             session_drawer_open: false,
             session_drawer_id: String::new(),
+            session_sidebar_on: false,
             last_esc_at: None,
             bash_mode: false,
             external_editor_invocations: 0,
@@ -831,6 +834,41 @@ impl UiRoot {
     pub fn show_session_drawer(&mut self, session_id: &str) {
         self.session_drawer_id = session_id.to_string();
         self.session_drawer_open = true;
+    }
+
+    /// c2905：驻列显隐查询。
+    pub fn session_sidebar_on(&self) -> bool {
+        self.session_sidebar_on
+    }
+
+    /// c2905：收起驻列（内容区恢复全宽）。
+    pub fn close_session_sidebar(&mut self) {
+        self.session_sidebar_on = false;
+    }
+
+    /// c2905：请求开启驻列（host drain 供给身份后生效）。
+    pub fn request_session_sidebar(&mut self) {
+        self.pending.session_sidebar = true;
+    }
+
+    pub fn take_pending_session_sidebar(&mut self) -> bool {
+        std::mem::take(&mut self.pending.session_sidebar)
+    }
+
+    /// c2905：开启驻列（身份与抽屉共享一份）。
+    pub fn show_session_sidebar(&mut self, session_id: &str) {
+        self.session_drawer_id = session_id.to_string();
+        self.session_sidebar_on = true;
+    }
+
+    /// c2905 驻列布局口径：（是否启用，驻列宽，内容宽）。overlay 右对齐
+    /// 与渲染让宽共用此一口径，任何一处改动两处同步。
+    pub fn session_sidebar_layout(&self, width: usize) -> (bool, usize, usize) {
+        if !self.session_sidebar_on || width < 2 {
+            return (false, 0, width);
+        }
+        let panel_w = 24.min(width / 3).max(1);
+        (true, panel_w, width - panel_w)
     }
 
     pub fn take_pending_tree_open(&mut self) -> bool {

@@ -44,6 +44,14 @@ impl UiRoot {
                 }
                 return;
             }
+            if matches_binding(key, "app.session.sidebar") {
+                if self.session_sidebar_on {
+                    self.close_session_sidebar();
+                } else {
+                    self.request_session_sidebar();
+                }
+                return;
+            }
             if self.session_drawer_open && matches_binding(key, "app.interrupt") {
                 // 忙碌 Esc = 中止优先（词表 E 类）；抽屉收起仅闲置态让位。
                 if !self.status_busy {

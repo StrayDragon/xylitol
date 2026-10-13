@@ -214,6 +214,28 @@ impl UiRoot {
         lines
     }
 
+    /// c2905 驻列第 i 行内容（标题 + 字段，余空）。
+    pub(super) fn session_sidebar_cell(&self, row: usize, w: usize) -> String {
+        if row == 0 {
+            let title = "┌ 会话侧栏";
+            let tw = xylitol_tui::visible_width(title);
+            return self
+                .theme
+                .paint_muted(&format!("{title} {}", "─".repeat(w.saturating_sub(tw + 1))));
+        }
+        let fields: [(&str, &String); 4] = [
+            ("会话", &self.session_drawer_id),
+            ("模型", &self.model),
+            ("思考", &self.thinking_level),
+            ("目录", &self.cwd),
+        ];
+        let idx = row - 1;
+        let Some((label, value)) = fields.get(idx) else {
+            return String::new();
+        };
+        format!("{} {}", self.theme.paint_muted(label), value)
+    }
+
     pub(super) fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
         match &mut self.slot {
             EditorSlot::Editor => self.editor.render(width.max(1)),
@@ -259,6 +281,10 @@ impl UiRoot {
 
 impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
+        // c2905 驻列：内容区让宽（wrap 按 content 重排），右缘整高第二列。
+        let full_width = width;
+        let (sidebar_on, _sidebar_w, content_w) = self.session_sidebar_layout(width);
+        let width = if sidebar_on { content_w } else { width };
         let mut lines = Vec::new();
         if self.upper_cache_width == width && self.upper_cache_gen == self.upper_gen {
             lines.extend(self.upper_cache_lines.iter().cloned());
@@ -313,13 +339,31 @@ impl Component for UiRoot {
         lines.extend(status);
         lines.extend(editor);
         lines.push(footer);
+        let _ = full_width;
         lines
     }
 
     fn overlay_viewport(&self, lines: &mut [String], width: usize, transcript_rows: usize) {
+        // c2905：overlay 右对齐按内容宽收口，不得压驻列。
+        let (sidebar_on, sidebar_w, content_w) = self.session_sidebar_layout(width);
+        let eff = if sidebar_on { content_w } else { width };
         // c2875 抽屉先画：通知栈随后叠绘（右上 z 序高于抽屉）。
-        self.overlay_session_drawer(lines, width, transcript_rows);
-        self.overlay_client_notices(lines, width, transcript_rows);
+        self.overlay_session_drawer(lines, eff, transcript_rows);
+        self.overlay_client_notices(lines, eff, transcript_rows);
+        // c2905 驻列最后画：整高右缘，覆盖语义仅限驻列带（>=内容宽）。
+        if sidebar_on {
+            let sep = self.theme.paint_muted("│");
+            for (i, line) in lines.iter_mut().enumerate() {
+                let content = truncate_to_width(line, eff, "", false);
+                let cw = xylitol_tui::visible_width(&content);
+                let pad = " ".repeat(eff.saturating_sub(cw));
+                let cell = self.session_sidebar_cell(i, sidebar_w.saturating_sub(1));
+                let cell = truncate_to_width(&cell, sidebar_w.saturating_sub(1), "", false);
+                let cw2 = xylitol_tui::visible_width(&cell);
+                let cpad = " ".repeat(sidebar_w.saturating_sub(1).saturating_sub(cw2));
+                *line = format!("{content}{pad}{sep}{cell}{cpad}");
+            }
+        }
     }
 
     fn handle_input(&mut self, event: InputEvent) {

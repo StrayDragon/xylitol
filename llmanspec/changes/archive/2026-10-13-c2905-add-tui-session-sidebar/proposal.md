@@ -2,6 +2,9 @@
 depends_on:
   - c2875-add-tui-sidebar-panes
 title: 会话侧栏（zellij 式驻列）：内容区让宽的常驻第二列
+branch: sdd/c2905-add-tui-session-sidebar
+base_branch: main
+base_sha: 2a46dc6ec7b906b91ef239e99c481ea89d30ce23
 ---
 
 # 会话侧栏（zellij 式驻列）：内容区让宽的常驻第二列

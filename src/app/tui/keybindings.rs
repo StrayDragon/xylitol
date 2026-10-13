@@ -135,6 +135,11 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         &["alt+i"],
         Some("Toggle session details drawer"),
     ),
+    (
+        "app.session.sidebar",
+        &["alt+u"],
+        Some("Toggle session sidebar (docked column)"),
+    ),
 ];
 
 /// Result of a reload attempt.

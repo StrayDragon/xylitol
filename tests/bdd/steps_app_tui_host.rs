@@ -3153,3 +3153,105 @@ fn t_c2875_hidden(host_pump_bdd: &HostPumpBdd) {
     let frame = c2875_frame(host_pump_bdd);
     assert!(!frame.contains("会话详情"), "抽屉须收起");
 }
+
+// ── c2905 会话侧栏驻列（app-tui-fixed-zone r2904）───────────────
+
+#[when("切换侧栏驻列")]
+async fn w_c2905_sidebar_toggle(host_pump_bdd: &HostPumpBdd) {
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Char('u'),
+        crossterm::event::KeyModifiers::ALT,
+    )
+    .await;
+}
+
+fn c2905_assert_on(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    assert!(
+        pump.session
+            .ui_root()
+            .expect("ui")
+            .borrow()
+            .session_sidebar_on(),
+        "驻列须开启"
+    );
+    let frame = pump
+        .session
+        .ui_root()
+        .unwrap()
+        .borrow_mut()
+        .render_with_viewport_overlay(120)
+        .join("\n");
+    put_pump(host_pump_bdd, pump);
+    assert!(frame.contains("会话侧栏"), "驻列须上屏");
+}
+
+#[then("右缘驻列上屏且内容区让宽")]
+fn t_c2905_on(host_pump_bdd: &HostPumpBdd) {
+    c2905_assert_on(host_pump_bdd);
+}
+
+#[when("复按收起")]
+async fn w_c2905_toggle_off(host_pump_bdd: &HostPumpBdd) {
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Char('u'),
+        crossterm::event::KeyModifiers::ALT,
+    )
+    .await;
+}
+
+#[then("驻列消失且内容区恢复")]
+fn t_c2905_off(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    assert!(
+        !pump
+            .session
+            .ui_root()
+            .expect("ui")
+            .borrow()
+            .session_sidebar_on(),
+        "驻列须关闭"
+    );
+    let frame = pump
+        .session
+        .ui_root()
+        .unwrap()
+        .borrow_mut()
+        .render_with_viewport_overlay(120)
+        .join("\n");
+    put_pump(host_pump_bdd, pump);
+    assert!(!frame.contains("会话侧栏"), "驻列须消失");
+}
+
+#[when("先开抽屉再开侧栏")]
+async fn w_c2905_both(host_pump_bdd: &HostPumpBdd) {
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Char('i'),
+        crossterm::event::KeyModifiers::ALT,
+    )
+    .await;
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Char('u'),
+        crossterm::event::KeyModifiers::ALT,
+    )
+    .await;
+}
+
+#[then("两面同时可辨且抽屉贴内容右缘")]
+fn t_c2905_coexist(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let frame = pump
+        .session
+        .ui_root()
+        .expect("ui")
+        .borrow_mut()
+        .render_with_viewport_overlay(120)
+        .join("\n");
+    assert!(frame.contains("会话详情"), "抽屉须在");
+    assert!(frame.contains("会话侧栏"), "驻列须在");
+    put_pump(host_pump_bdd, pump);
+}

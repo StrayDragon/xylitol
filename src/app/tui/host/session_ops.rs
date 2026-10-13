@@ -10,6 +10,18 @@ use super::HostSession;
 
 impl<T: Terminal> HostSession<T> {
     /// c2875：抽屉 pending / 上屏透传。
+    /// c2905：驻列 pending / 上屏透传。
+    pub fn take_pending_session_sidebar(&mut self) -> bool {
+        let root = self.ui_root.as_ref().expect("product ui").clone();
+        root.borrow_mut().take_pending_session_sidebar()
+    }
+
+    pub fn show_session_sidebar(&mut self, session_id: &str) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().show_session_sidebar(session_id);
+        }
+    }
+
     pub fn take_pending_session_drawer(&mut self) -> bool {
         let root = self.ui_root.as_ref().expect("product ui").clone();
         root.borrow_mut().take_pending_session_drawer()
