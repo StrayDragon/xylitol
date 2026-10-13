@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 恢复 c2520 归档时被整体倒退的其余 11 个 spec reviewed-through 头
+branch: sdd/c2919-restore-spec-reviewed-through-batch
+base_branch: main
+base_sha: a52232fcf8c037e16708a3fb29dbbff9c3b391fd
 ---
 
 ## Why

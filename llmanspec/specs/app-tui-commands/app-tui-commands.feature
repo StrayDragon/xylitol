@@ -2,7 +2,7 @@
 # capability: app-tui-commands
 # purpose: 斜杠命令与 protocol::Command / dispatch 映射。
 # scope: src/app/tui/
-# reviewed-through: c2520
+# reviewed-through: c2865
 
 功能: app-tui-commands
 
