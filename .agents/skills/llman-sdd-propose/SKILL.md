@@ -2,7 +2,7 @@
 name: "llman-sdd-propose"
 description: "为行为合约（需求语义）变更创建提案（proposal/tasks → 绑定分支 → 提交 specs）。小改动走 quick，记想法走 draft。"
 metadata:
-  version: "0.7.5"
+  version: "0.8.0"
 ---
 
 # LLMAN SDD Propose
@@ -161,7 +161,6 @@ llman-sdd validate <change-id> --strict
 # language: zh-CN
 # capability: <capability>
 # purpose: 一句话概述
-# scope: src/
 ```
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：

@@ -2,7 +2,7 @@
 name: "llman-sdd-specs-compact"
 description: "压缩去重 specs：合并冗余 requirement/scenario，规范行为不变。仅用户明确要求时手动运行。"
 metadata:
-  version: "0.7.5"
+  version: "0.8.0"
 ---
 
 # LLMAN SDD Specs Compact
@@ -44,7 +44,6 @@ metadata:
 # language: zh-CN
 # capability: <capability>
 # purpose: 一句话概述
-# scope: src/
 ```
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：

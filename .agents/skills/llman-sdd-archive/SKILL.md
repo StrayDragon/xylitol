@@ -2,7 +2,7 @@
 name: "llman-sdd-archive"
 description: "归档已完成 change：合并回基准分支（默认 squash）、文档改名入 archive/、自动收口提交。verify 全绿后运行。"
 metadata:
-  version: "0.7.5"
+  version: "0.8.0"
 ---
 
 # LLMAN SDD 归档
@@ -82,7 +82,6 @@ flowchart LR
 # language: zh-CN
 # capability: <capability>
 # purpose: 一句话概述
-# scope: src/
 ```
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：

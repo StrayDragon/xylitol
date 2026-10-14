@@ -2,7 +2,7 @@
 name: "llman-sdd-verify"
 description: "验证已实施 change 与 specs/design/tasks 是否一致，产出 CRITICAL/WARNING/SUGGESTION 分级报告。apply 后运行，全绿可归档。"
 metadata:
-  version: "0.7.5"
+  version: "0.8.0"
 ---
 
 # LLMAN SDD Verify
@@ -108,10 +108,6 @@ llman-sdd show <id> --output json --type change
 
 见到该 stderr 提示时：向用户**转述**此提示并宜跑 `llman-sdd init --update`（刷新 managed blocks 与 skills 至当前 CLI 版本）；更新完成前**继续按现有 skill 执行**，不因版本差异中断流程。每进程至多提示一次，属参考信息而非错误。
 
-## 复核戳纪律（re-review stamp → `# reviewed-through:` 头）
-
-复核确认“本 capability 管辖行为不变”时，**只更新** spec 头部的 `# reviewed-through: <change-id>` 一行（改为本次 change id），**不得**在 rule 块间追加自由 `# re-review(...)` 注释——历史叙事归 `changes/archive/<id>/`，spec 只留机读指针。staleness 据此消警；旧版自由注释随触碰一并机械清理（删除、不搬运）。
-
 校验修复（单轨 feature-as-spec）：
 
 1）缺头注释（`missing # capability: header comment`）：每个 capability `.feature`（`llmanspec/specs/<capability>.feature` 或目录内同名主文件）必须以下列注释开头：
@@ -119,7 +115,6 @@ llman-sdd show <id> --output json --type change
 # language: zh-CN
 # capability: <capability>
 # purpose: 一句话概述
-# scope: src/
 ```
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：

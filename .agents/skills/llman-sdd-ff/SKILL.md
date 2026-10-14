@@ -2,7 +2,7 @@
 name: "llman-sdd-ff"
 description: "一趟走完 propose 等价路径：规划文档 → 绑定分支 → 提交 specs。"
 metadata:
-  version: "0.7.5"
+  version: "0.8.0"
 ---
 
 # LLMAN SDD Fast-Forward (FF)
@@ -45,7 +45,6 @@ metadata:
 # language: zh-CN
 # capability: <capability>
 # purpose: 一句话概述
-# scope: src/
 ```
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：
