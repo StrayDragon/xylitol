@@ -2,7 +2,7 @@
 name: "llman-sdd-verify"
 description: "验证已实施 change 与 specs/design/tasks 是否一致，产出 CRITICAL/WARNING/SUGGESTION 分级报告。apply 后运行，全绿可归档。"
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
 ---
 
 # LLMAN SDD Verify
@@ -77,8 +77,6 @@ llman-sdd show <id> --output json --type change
    - 可选只读审查：`llman-sdd change diff <id>`（或 `--export-patch <path>`）——仅审查/导出，绝不当作 apply 步骤。
    - verify 通过后下一步 `llman-sdd-archive`（不得在此 inline finalize）。
 
-   - 额外要求: Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --all-features --test bdd` to confirm all scenarios pass.
-
 6. 输出简短报告：**CRITICAL**（归档前必须修复）/ **WARNING**（宜修复）/ **SUGGESTION**（可选优化）。
 7. **人审关卡**：报告无 CRITICAL 后、归档前宜跑 `llman-sdd review`：退出码零 → 宜接 `llman-sdd-archive`；非零 = CRITICAL → 用 `llman-sdd-apply` 修复后重跑 review；不得 带 CRITICAL 进入 finalize/archive。
 
@@ -110,11 +108,12 @@ llman-sdd show <id> --output json --type change
 
 校验修复（单轨 feature-as-spec）：
 
-1）缺头注释（`missing # capability: header comment`）：每个 capability `.feature`（`llmanspec/specs/<capability>.feature` 或目录内同名主文件）必须以下列注释开头：
+1）缺 `# purpose:` 头注释：每个 capability `.feature` 必须含非空 `# purpose:`；`功能:` 标题必须等于 discover 分配后的 spec id（`llman-sdd list --specs` 查看 id）。
 ```
 # language: zh-CN
-# capability: <capability>
 # purpose: 一句话概述
+
+功能: <spec-id>
 ```
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：

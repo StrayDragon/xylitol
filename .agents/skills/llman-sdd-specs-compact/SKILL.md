@@ -2,7 +2,7 @@
 name: "llman-sdd-specs-compact"
 description: "压缩去重 specs：合并冗余 requirement/scenario，规范行为不变。仅用户明确要求时手动运行。"
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
 ---
 
 # LLMAN SDD Specs Compact
@@ -39,11 +39,12 @@ metadata:
 
 校验修复（单轨 feature-as-spec）：
 
-1）缺头注释（`missing # capability: header comment`）：每个 capability `.feature`（`llmanspec/specs/<capability>.feature` 或目录内同名主文件）必须以下列注释开头：
+1）缺 `# purpose:` 头注释：每个 capability `.feature` 必须含非空 `# purpose:`；`功能:` 标题必须等于 discover 分配后的 spec id（`llman-sdd list --specs` 查看 id）。
 ```
 # language: zh-CN
-# capability: <capability>
 # purpose: 一句话概述
+
+功能: <spec-id>
 ```
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：

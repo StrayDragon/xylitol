@@ -2,7 +2,7 @@
 name: "llman-sdd-apply"
 description: "循环实施已提案 change 的 tasks：写码→测试→失败自修复→门禁全绿。propose 完成、specs 提交后进入。"
 metadata:
-  version: "0.8.0"
+  version: "0.8.1"
 ---
 
 # LLMAN SDD Apply
@@ -37,6 +37,7 @@ flowchart LR
 
 - **唯一事实来源驱动**：`proposal.md` / `design.md` / `tasks.md` 与分支上的 `llmanspec/specs/**`；specs 的行为合约条款逐条落实。
 - **范围锁定**：只做当前 change 范围，不得顺手修无关问题；改动保持最小。
+- **管辖范围**：SDD 流程（change 分支、proposal、specs 编辑门）只约束行为合约面——`llmanspec/**` 及其产物对齐（如 `.agents/skills` 渲染新鲜度）。仓库其余文件（构建脚本、CI、一般文档、测试实现）按项目常规工程流程直改直提交，不经 change 包装；改动触及行为合约语义时，回到对应 skill 流程。
 - **不得猜测**：需求不明或 specs 与现实矛盾 → STOP 报告，不自行假定。
 - **不留旧兼容层**：change 要求改行为就全量升级到新写法，除非 tasks/proposal 明确要兼容。
 - **收尾**：该轮以宜接 `llman-sdd-verify` 收束；finalize/archive 归 `llman-sdd-archive`（不得在自修复循环里 finalize）。
@@ -53,7 +54,7 @@ flowchart LR
 - 读取并遵守 `llmanspec/config.yaml`、`AGENTS.md`（若存在）。
 - `git status --porcelain`：工作区不干净且改动不属于本 change → 先 `git stash push -u -m "llman-sdd-apply autopilot backup"`。
 - `llman-sdd validate --all --strict`：失败且与本 change 无关 → 停下报告（工件不一致则无法以事实来源驱动实现）。
-- **检查 spec valid_scope 完整性**：`llman-sdd list --specs --json` 列出所有 spec，逐个核对 `valid_scope` 路径存在于磁盘；有缺失 → 停下并宜更新 spec（移除已删路径）。
+- **specs 清单可读**：`llman-sdd list --specs` 返回清单且无错误；异常 → 停下报告。
 
 ### 1) 选定 change id 并查前置
 - 已提供则直接用；否则从上下文推断，不明确就跑 `llman-sdd list --json` 让用户选。始终说明“使用变更：<id>”并告知如何覆盖。
@@ -95,14 +96,13 @@ llman-sdd show <id> --output json --type change
 4. task 不明、遇 blocker、或 specs/design 与现实不一致 → STOP 报告，不自行假定。
 
 ### 5) 验证与自修复循环（每个 task 或每批 task 后跑一次）
-按项目实际跑门禁：
-- 测试集：`just test` 或 `cargo test --all`；格式/lint：`just check` 或 `just lint` + `just fmt`
+- 测试与静态门禁：执行本仓已声明的验证手段——以仓库文档与配置记载为准；已配置 `specs.check_command` 的项目，以 `llman-sdd config` 读得的命令为准。仓库未声明时，询问用户；不假定任何具体任务工具存在。
 - 分支上按需编辑 `llmanspec/specs/<capability>.feature`（扁平或目录主文件；统一原生分层：`@req:<id>` 挂 `规则:` 块头、嵌套 `场景:` 为可执行示例），spec 改动后跑 `llman-sdd validate --specs`；分支上可自由提交。
 - SDD 校验：`llman-sdd validate <id> --strict`
 
 **验证阶梯（opt-in 纪律，按成本逐级扩大）**：
-- L1 最小单元：`bun test tests/unit/<改动对应目录>`（<1s，直接导入），仅覆盖当前改动点。
-- L2 定向行为：`bun test tests/bdd -t "<场景/规则标题模式>"`——只跑匹配 -t 模式场景的真实 CLI 调用。
+- L1 最小单元：已声明验证手段中能直接加载被改模块的最快一层，仅覆盖当前改动点。
+- L2 定向行为：定向执行已声明验证手段中匹配当前场景的子集（已配置 `specs.check_command` 时优先），只复现目标行为。
 - L3 显式全量：`llman-sdd validate --check`（配置 `specs.check_command` 时执行全量 harness；缺省 validate 不再执行 harness）。
 - L4 收口兜底：`change finalize` 预合并强制真实 harness——每次收口至少 1 次全量。
 - 自修复循环默认用 L1/L2 快速复现；只有需要全量验收时才 L3；避免无谓白付全量成本。
@@ -142,11 +142,12 @@ llman-sdd show <id> --output json --type change
 
 校验修复（单轨 feature-as-spec）：
 
-1）缺头注释（`missing # capability: header comment`）：每个 capability `.feature`（`llmanspec/specs/<capability>.feature` 或目录内同名主文件）必须以下列注释开头：
+1）缺 `# purpose:` 头注释：每个 capability `.feature` 必须含非空 `# purpose:`；`功能:` 标题必须等于 discover 分配后的 spec id（`llman-sdd list --specs` 查看 id）。
 ```
 # language: zh-CN
-# capability: <capability>
 # purpose: 一句话概述
+
+功能: <spec-id>
 ```
 
 2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：
