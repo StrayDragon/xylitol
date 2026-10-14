@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: agent-tools
 # purpose: 工具系统 — 工具定义、执行分发、文件类内置与 Todo 两工具、路径工具与并发类。
-# scope: src/agent/tools/, src/infra/tools/, src/protocol/
-# reviewed-through: c2855
 
 # ── 文件导览（43 规则 / 86 场景）──────────────────────────────
 #   内置闭集与工具框架 : 默认内置工具闭集 · ToolSet · 工具错误类型 · 参数/schema

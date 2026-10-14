@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: infra-mcp
 # purpose: MCP 客户端：stdio / url·sse 传输、零配置零成本、工具前缀与进程内重载。
-# scope: src/infra/mcp/, src/app/
-# reviewed-through: c2865
 
 功能: infra-mcp
 

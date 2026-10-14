@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: app-tui-fixed-zone
 # purpose: 主题 token、glyph、status、footer、通知条、通知栈、待办栏等固定区（非滚动 layout 壳）行为。
-# scope: src/app/tui/
-# reviewed-through: c2914
 
 功能: app-tui-fixed-zone
 

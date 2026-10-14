@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: agent-prompt
 # purpose: 系统提示组装：skills/context 注入与热应用；默认正文经沙箱 minijinja；产品主路径用 skill（含 $name），不得提供 pi 式 slash prompt templates。
-# scope: src/agent/prompt/, src/protocol/, src/infra/resource/
-# reviewed-through: c2855
 
 功能: agent-prompt
 

@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: test-fake-provider
 # purpose: Fake 与 mock provider：用于 agent 行为的确定性测试。
-# scope: src/infra/provider/
 
 功能: test-fake-provider
 

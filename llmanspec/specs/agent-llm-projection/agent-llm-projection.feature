@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: agent-llm-projection
 # purpose: "AgentMessage 会话真源与 project_for_llm 投影缝：protocol 根消息词表、agent 投影边界、对 xylitol-ai-bridge DTO 的依赖分界。"
-# scope: src/protocol/, src/agent/
-# reviewed-through: c2855
 # c2833 拆分承接：自 packages/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge 平移（bridge-rootside-rules），原文保 id。
 
 功能: agent-llm-projection

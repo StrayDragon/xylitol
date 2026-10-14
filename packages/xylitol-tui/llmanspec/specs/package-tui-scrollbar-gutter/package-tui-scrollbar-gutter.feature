@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-tui-scrollbar-gutter
 # purpose: ApplicationOwned transcript 右缘 1 列滚动槽：跳顶/跳底按钮、宽度预留与拖选让位。
-# scope: src/, tests/
 
 功能: package-tui-scrollbar-gutter
 

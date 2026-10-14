@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: agent-todo
 # purpose: 会话内 Todo SSOT — Custom latest-wins 持久、内置两工具（rewrite/update）、出站 AgentStatusBar 以 <todo> 子树投影当前清单、status 三态、in_progress 可多条、content ≤80 标量；类型化 live 事件与 TUI 下缘待办栏（三区可折、宽屏三栏）；不 persist 栏消息、无注册表。
-# scope: src/protocol/, src/agent/, src/infra/tools/, src/app/tui/
-# reviewed-through: c2865
 
 功能: agent-todo
 

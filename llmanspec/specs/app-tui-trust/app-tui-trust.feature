@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: app-tui-trust
 # purpose: 产品 TUI 项目信任选择器（ChoicePrompt）；信任后 yolo。
-# scope: src/app/tui/
-# reviewed-through: c2865
 
 功能: app-tui-trust
 

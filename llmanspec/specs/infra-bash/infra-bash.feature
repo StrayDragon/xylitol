@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: infra-bash
 # purpose: 经 shell 子进程执行 Bash 命令，含流式输出与取消。
-# scope: src/infra/bash_exec/, src/protocol/
-# reviewed-through: c2855
 
 功能: infra-bash
 

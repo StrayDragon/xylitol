@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-tui-tabs
 # purpose: 通用标题条：键切下标，不持有页内容，暴露可见标题列区间。
-# scope: src/, tests/
 
 功能: package-tui-tabs
 

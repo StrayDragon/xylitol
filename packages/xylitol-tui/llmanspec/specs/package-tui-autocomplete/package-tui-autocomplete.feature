@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-tui-autocomplete
 # purpose: 自动补全：CancellationToken 取消、可选 fd 模糊搜、DebouncedAutocomplete。
-# scope: src/, tests/
 
 功能: package-tui-autocomplete
 

@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-tui-editor
 # purpose: xylitol-tui Editor：视觉行图、粘滞列、PasteBurst、历史导航与边框色 API。
-# scope: src/, tests/
 
 功能: package-tui-editor
 

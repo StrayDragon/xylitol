@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: app-tui-transcript
 # purpose: Live 输出进引擎 scrollback（非 Codex 式 transcript 浏览面）；分支回看走会话树。
-# scope: src/app/tui/
-# reviewed-through: c2865
 
 功能: app-tui-transcript
 

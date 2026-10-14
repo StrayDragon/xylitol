@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: agent-hooks
 # purpose: 脚本/库 hooks：工具与 provider 生命周期、XyHookBus 精选导出与可取消/可修改语义。
-# scope: src/infra/hooks/, src/agent/runtime/
-# reviewed-through: c2838
 
 功能: agent-hooks
 

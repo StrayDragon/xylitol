@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-tui-pointer
 # purpose: ApplicationOwned 指针命中管线：正文行 / 可见格命中区、click 相位、探针与 capture。
-# scope: src/, tests/
 
 功能: package-tui-pointer
   背景:

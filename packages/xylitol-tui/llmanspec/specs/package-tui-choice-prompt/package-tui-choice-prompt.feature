@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-tui-choice-prompt
 # purpose: 通用 ChoicePrompt：单选/多选、Other 自由输入、多题 Tab 混搭（AskQuestion 形态，供 agent_demo / 产品内联槽）。
-# scope: src/
 
 功能: package-tui-choice-prompt
 

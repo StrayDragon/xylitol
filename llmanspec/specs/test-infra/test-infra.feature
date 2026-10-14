@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: test-infra
 # purpose: 测试基础设施：Fake/Faux provider、临时目录 RAII、TUI E2E 隔离。
-# scope: tests/, src/infra/provider/, justfile
-# reviewed-through: c2890
 
 功能: test-infra
 

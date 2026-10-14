@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: domain-security
 # purpose: 安全策略 — 含工具级门控的 permission 系统、trust store 与审批工作流。
-# scope: src/infra/permission/, src/infra/trust/, src/protocol/
-# reviewed-through: c2855
 
 功能: domain-security
 

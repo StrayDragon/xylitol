@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: test-standards
 # purpose: 测试标准与约定 — 测试组织、harness 要求与覆盖期望。
-# scope: tests/, src/agent/, src/protocol/, src/AGENTS.md
-# reviewed-through: c2890
 
 功能: test-standards
 

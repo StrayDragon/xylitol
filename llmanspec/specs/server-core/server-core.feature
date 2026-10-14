@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: server-core
 # purpose: Server 运行时 — 独立 Host 监听器经产品二进制帧暴露产品契约（POST /rpc + WS /rpc）；每 session 槽独立 journal 与写者。
-# scope: src/app/server/, src/app/core/, src/protocol/, tests/bdd/
-# reviewed-through: c2900
 
 # ── 文件导览（48 规则）────────────────────────────────────────
 #   接入与生命周期    : host · HTTP/WS · healthz/就绪 · session 方法表

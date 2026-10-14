@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: infra-image
 # purpose: 图片处理 — 格式检测、缩放、方向校正与终端渲染。
-# scope: src/infra/image/
 
 功能: infra-image
 

@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: app-tui-input
 # purpose: Editor 操作区、取消/退出键位、steer 与 follow-up、信任后 yolo。
-# scope: src/app/tui/
-# reviewed-through: c2865
 
 功能: app-tui-input
 

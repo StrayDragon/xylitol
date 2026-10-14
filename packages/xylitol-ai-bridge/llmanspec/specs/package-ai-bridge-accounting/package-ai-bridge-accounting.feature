@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-ai-bridge-accounting
 # purpose: "xylitol-ai-bridge 上下文 token 计量：Api 优先，否则 Heuristic。"
-# scope: src/
 
 功能: package-ai-bridge-accounting
 

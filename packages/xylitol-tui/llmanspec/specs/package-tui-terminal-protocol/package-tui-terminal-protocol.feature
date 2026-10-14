@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-tui-terminal-protocol
 # purpose: packages/xylitol-tui 终端协议协商（Kitty / modifyOtherKeys / OSC）。
-# scope: src/, tests/
 
 功能: package-tui-terminal-protocol
 

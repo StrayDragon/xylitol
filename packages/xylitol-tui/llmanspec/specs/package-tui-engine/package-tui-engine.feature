@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-tui-engine
 # purpose: packages/xylitol-tui 核心 TUI 引擎 API（Container、OverlayHandle、可选 image surface）。
-# scope: src/, tests/
 
 功能: package-tui-engine
 

@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: infra-diagnostics
 # purpose: 诊断 — 启动计时 instrumentation 与性能 profiling。
-# scope: src/infra/timing.rs
 
 功能: infra-diagnostics
 

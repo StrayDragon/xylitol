@@ -1,8 +1,6 @@
 # language: zh-CN
 # capability: domain-compaction
 # purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计。"
-# scope: src/agent/compaction/, src/agent/capabilities/, src/infra/session/
-# reviewed-through: c2838
 
 # ── 文件导览（28 规则）────────────────────────────────────────
 #   触发与估计   : token 估算/触发阈值 · force/auto 分流 · stale 防抖 · overflow 识别

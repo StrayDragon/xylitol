@@ -1,7 +1,6 @@
 # language: zh-CN
 # capability: package-tui-testing
 # purpose: packages/xylitol-tui 四层测试 harness。
-# scope: src/, tests/
 
 功能: package-tui-testing
 
