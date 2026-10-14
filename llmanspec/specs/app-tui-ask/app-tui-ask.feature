@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: app-tui-ask
 # purpose: 产品 TUI 内置工具 ask：澄清/分叉问卷、仅 TUI 装配、Choice 槽与 scrollback 人话摘要。
 
 功能: app-tui-ask

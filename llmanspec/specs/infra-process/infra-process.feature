@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: infra-process
 # purpose: Shell 进程管理 — 子进程 spawn、进程组与取消。
 
 功能: infra-process

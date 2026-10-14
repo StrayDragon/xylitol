@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: app-tui-session-tree
 # purpose: 产品 TUI 会话树：双 Esc /slash 开 MessageHistory 活树；travel/filter/fold/fork/label 经 Driver（非 c491 假树）。
 
 功能: app-tui-session-tree

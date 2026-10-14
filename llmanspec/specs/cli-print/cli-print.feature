@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: cli-print
 # purpose: Print 模式（非交互）输出渲染 — TextDelta 流式 stdout、reasoning 流式 stderr 与工具摘要。
 
 功能: cli-print

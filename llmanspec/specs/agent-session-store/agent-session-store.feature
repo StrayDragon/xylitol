@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: agent-session-store
 # purpose: 会话持久化 — 基于 JSONL 文件的会话存储，含树操作、compaction、fork 与 CWD 校验。
 
 功能: agent-session-store

@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: server-core
 # purpose: Server 运行时 — 独立 Host 监听器经产品二进制帧暴露产品契约（POST /rpc + WS /rpc）；每 session 槽独立 journal 与写者。
 
 # ── 文件导览（48 规则）────────────────────────────────────────

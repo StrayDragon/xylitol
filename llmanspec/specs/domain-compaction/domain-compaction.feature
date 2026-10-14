@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: domain-compaction
 # purpose: "对话 compaction — n-gram 切点检测、LLM 摘要与 token 估计。"
 
 # ── 文件导览（28 规则）────────────────────────────────────────

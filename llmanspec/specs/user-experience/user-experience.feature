@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: user-experience
 # purpose: 用户体验 — 鉴权引导消息、错误消息与启动诊断。
 
 功能: user-experience

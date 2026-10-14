@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: app-tui-host
 # purpose: 产品 TUI 宿主：host 驱动引擎、终端生命周期、即时日志、尺寸降级，以及合成垂直切片 / 产品 PTY smoke 验收。
 
 功能: app-tui-host

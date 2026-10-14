@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: agent-session
 # purpose: Agent 会话管理 — 会话生命周期、能力状态、prompt 构造与回合编排。
 
 功能: agent-session

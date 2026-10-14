@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: app-tui-bridge
 # purpose: XyEvent 到 UI 模型的单一翻译缝与 agent 循环生命周期。
 
 功能: app-tui-bridge

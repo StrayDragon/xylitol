@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: agent-hooks
 # purpose: 脚本/库 hooks：工具与 provider 生命周期、XyHookBus 精选导出与可取消/可修改语义。
 
 功能: agent-hooks

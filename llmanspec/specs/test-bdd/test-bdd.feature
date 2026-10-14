@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: test-bdd
 # purpose: BDD 测试框架：rstest-bdd — feature 文件、步骤定义与场景验证。
 
 功能: test-bdd

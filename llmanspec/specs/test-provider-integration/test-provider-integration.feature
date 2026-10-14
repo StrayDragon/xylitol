@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: test-provider-integration
 # purpose: Provider 集成 — API key 解析、模型注册表集成与 OpenAI/Anthropic provider 构造。Attribution headers、OAuth 存储与非 OpenAI/Anthropic provider 集成在 1.0.0 前不在范围内。
 
 功能: test-provider-integration

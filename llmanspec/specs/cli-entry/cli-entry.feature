@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: cli-entry
 # purpose: CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/serve）；bootstrap/dispatch；产品 slash 以 session-* 为准。
 
 功能: cli-entry

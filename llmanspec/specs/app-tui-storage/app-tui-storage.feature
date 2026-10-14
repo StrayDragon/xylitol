@@ -1,5 +1,4 @@
 # language: zh-CN
-# capability: app-tui-storage
 # purpose: 产品端 client-local 存储通道——多实例共享面本地状态的磁盘真值、写串行化与跨实例可见性。
 
 功能: app-tui-storage

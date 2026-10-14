@@ -2,7 +2,7 @@
 name: "llman-sdd-apply-cycle"
 description: "单 change 一轮到底：实施→测试→校验→verify→归档提交。仅手动触发，agent 不得自动调用。"
 metadata:
-  version: "0.8.1"
+  version: "0.8.2"
 disable-model-invocation: true
 ---
 
