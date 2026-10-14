@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: compaction 触发阈值场景收敛为场景大纲（Scenario Outline）
+branch: sdd/c2920-refactor-compaction-trigger-scenario-outline
+base_branch: main
+base_sha: ee829064315de154f37f09a006d4c2221b3bd835
 ---
 
 ## Why

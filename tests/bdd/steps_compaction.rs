@@ -145,6 +145,12 @@ pub(crate) fn _g_comp_enabled_false(agent: &AgentState) {
     agent.compaction_enabled.set(false);
 }
 
+/// 参数化形态（c2920 场景大纲专用）：`{flag}` 无类型提示 → `.+?` 捕获 → parse bool。
+#[given("compaction enabled 为 {flag}")]
+pub(crate) fn _g_comp_enabled_flag(agent: &AgentState, flag: bool) {
+    agent.compaction_enabled.set(flag);
+}
+
 #[when("调用 shouldCompact")]
 pub(crate) fn _w_comp_check(agent: &AgentState) {
     use xylitol::agent::compaction::{
@@ -193,6 +199,12 @@ pub(crate) fn _t_comp_result_true(agent: &AgentState) {
 #[then("返回 false")]
 pub(crate) fn _t_comp_result_false(agent: &AgentState) {
     assert_eq!(*agent.compaction_result.borrow(), Some(false));
+}
+
+/// 参数化形态（c2920 场景大纲专用）：逐行断言 `expect_compact` 列。
+#[then("返回 {expect_compact}")]
+pub(crate) fn _t_comp_result_expect(agent: &AgentState, expect_compact: bool) {
+    assert_eq!(*agent.compaction_result.borrow(), Some(expect_compact));
 }
 
 #[given("会话有 50 个轮次")]

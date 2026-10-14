@@ -30,26 +30,18 @@
   规则: 应触发 compact
     当 CompactionSettings.enabled 为 true 且 context_window > 0 时，System 须在 contextTokens > 有效触发阈值时判定 threshold auto 应触发 compaction；有效触发阈值 = max(contextWindow - reserveTokens, 压后地板 + 迟滞带)（reserveTokens 来自 CompactionSettings）；压后地板 = 固定请求开销（与 c16 同源折算）+ 有效保留尾预算（c8 clamp）+ 摘要占位（最新 CompactionEntry.summary 的同源启发式估计，无先前摘要时取保守常量）；迟滞带 = 压后地板的 25%（固定常量，不得引入新配置字段）；固定请求开销未知或未注入时阈值 须退化为 contextWindow - reserveTokens（与 c8 clamp 同款退化纪律）。该地板阈值 须仅约束 threshold auto 路径：手动 force（c17）与 overflow（c22）不得受其约束。enabled 为 false 时 不得因用量触发；该判定所用 contextTokens 须与产品 footer / Driver 只读估计同源（同一 Api 然后 Heuristic 入口），不得另用独立的 message 字符串启发式总和，不得再使用独立的百分比阈值（如 compaction_threshold / usage_ratio）作为触发 SSOT。
 
-    场景: need-compact
-      假如 会话消息估算使用 90000 个 token
+    场景大纲: threshold-reserve-gate
+      假如 会话消息估算使用 <tokens> 个 token
       并且 compaction reserveTokens 为 16384
-      并且 compaction enabled 为 true
+      并且 compaction enabled 为 <enabled>
       当 调用 shouldCompact
-      那么 返回 true
+      那么 返回 <expect_compact>
 
-    场景: no-compact
-      假如 会话消息估算使用 50000 个 token
-      并且 compaction reserveTokens 为 16384
-      并且 compaction enabled 为 true
-      当 调用 shouldCompact
-      那么 返回 false
-
-    场景: disabled-no-compact
-      假如 会话消息估算使用 90000 个 token
-      并且 compaction reserveTokens 为 16384
-      并且 compaction enabled 为 false
-      当 调用 shouldCompact
-      那么 返回 false
+      例子:
+        | tokens | enabled | expect_compact |
+        | 90000  | true    | true           |
+        | 50000  | true    | false          |
+        | 90000  | false   | false          |
 
     场景: reserve-trigger-shares-footer-estimate
       假如 会话叶上存在可信 Api usage 锚点且 footer 同源估计可用
@@ -57,23 +49,19 @@
       那么 所用 token 数字与同源估计一致且 不另算独立启发式总和
       并且 触发比较式为占用大于有效触发阈值 max(window 减 reserveTokens, 压后地板 加 迟滞带)
 
-    场景: floor-threshold-holds
-      假如 配置了上下文窗口为 32768 的模型
-      并且 compaction reserveTokens 为 16384
-      并且 compaction keepRecentTokens 为 20000
-      并且 compaction 固定请求开销为 9000 token
-      并且 会话消息估算使用 20000 个 token
+    场景大纲: floor-aware-threshold
+      假如 配置了上下文窗口为 <window> 的模型
+      并且 compaction reserveTokens 为 <reserve>
+      并且 compaction keepRecentTokens 为 <keep>
+      并且 compaction 固定请求开销为 <overhead> token
+      并且 会话消息估算使用 <tokens> 个 token
       当 调用 shouldCompact
-      那么 返回 false
+      那么 返回 <expect_compact>
 
-    场景: floor-cross-triggers
-      假如 配置了上下文窗口为 32768 的模型
-      并且 compaction reserveTokens 为 16384
-      并且 compaction keepRecentTokens 为 20000
-      并且 compaction 固定请求开销为 9000 token
-      并且 会话消息估算使用 24000 个 token
-      当 调用 shouldCompact
-      那么 返回 true
+      例子:
+        | window | reserve | keep  | overhead | tokens | expect_compact |
+        | 32768  | 16384   | 20000 | 9000     | 20000  | false          |
+        | 32768  | 16384   | 20000 | 9000     | 24000  | true           |
 
     场景: auto-over-threshold
       假如 compaction enabled 为 true

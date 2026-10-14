@@ -4,19 +4,31 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "need-compact"
+    name = "threshold-reserve-gate"
 )]
-fn test_compaction_need(agent: AgentState, ws: Workspace) {}
+fn test_compaction_threshold_gate(
+    agent: AgentState,
+    tokens: u32,
+    enabled: bool,
+    expect_compact: bool,
+    ws: Workspace,
+) {
+}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "no-compact"
+    name = "floor-aware-threshold"
 )]
-fn test_compaction_not_needed(agent: AgentState, ws: Workspace) {}
-#[scenario(
-    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "disabled-no-compact"
-)]
-fn test_compaction_disabled(agent: AgentState, ws: Workspace) {}
+fn test_comp_floor_outline(
+    agent: AgentState,
+    window: u64,
+    reserve: u64,
+    keep: u64,
+    overhead: u64,
+    tokens: u32,
+    expect_compact: bool,
+    ws: Workspace,
+) {
+}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "retain-recent"
@@ -58,18 +70,6 @@ fn test_comp_provenance(agent: AgentState, ws: Workspace) {}
     name = "reserve-trigger-shares-footer-estimate"
 )]
 fn test_comp_reserve_trigger_shared(agent: AgentState, ws: Workspace) {}
-
-#[scenario(
-    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "floor-threshold-holds"
-)]
-fn test_comp_floor_holds(agent: AgentState, ws: Workspace) {}
-
-#[scenario(
-    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "floor-cross-triggers"
-)]
-fn test_comp_floor_cross(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
