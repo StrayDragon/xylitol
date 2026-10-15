@@ -27,7 +27,6 @@
   @req:r1379
   规则: app-directory
     CLI 须为独立应用表面，print 为其子模式；app 面 不得 reach agent 内部（经缝）。
-    # verified-by: src/AGENTS.md
 
     场景: cli-is-independent-surface
       当 xylitol --help
@@ -47,7 +46,6 @@
   @req:r1392
   规则: composition-root-ports
     组合根 须从 infra 构造 SessionStore/EventSink 注入装配。
-    # verified-by: src/app/core/bootstrap.rs
 
     场景: composition-builds-ports-from-infra
       当 server 应用面启动
@@ -63,7 +61,6 @@
   @req:r1394
   规则: assembly-via-bootstrap
     cli 与 Host 监听器 须经共享 bootstrap 装配，不得内联第二套装配。
-    # verified-by: src/app/core/bootstrap.rs
 
     场景: cli-and-server-share-one-bootstrap
       当 app::server 运行时经 app::core::composition 组装 Agent
@@ -94,7 +91,6 @@
   @req:r1383
   规则: stable-session-id-on-run
     InProcessDriver::run 须复用 bootstrap session_id，不得每轮新建 Uuid 文件。
-    # verified-by: llmanspec/specs/agent-session/agent-session.feature
 
     场景: run-reuses-bootstrap-session-id
       假如 当前 session 已出现在 list_sessions

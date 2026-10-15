@@ -20,7 +20,6 @@
   @req:r1233
   规则: theme-glyphs-config
     产品 host 须经 Palette::dark()（或等价闭包）将语义色注入组件主题；glyph 档（unicode/ascii）须由显式配置切换，不得做运行时字体探测；产品 MVP 不得默认开启 theme auto。
-    # verified-by: llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature
     场景: glyph-set-by-config-not-font-probe
       假如 折叠字形环境未指定（默认 Unicode 集）
       当 读取折叠与展开字形
@@ -34,7 +33,6 @@
   @req:r1234
   规则: design-docs-ssot
     产品 TUI 视觉与 UX 须有单一书面 SSOT（总索引 + 组件级子文档）；实现与 demo 引用组件规则时 须指向对应书面文档（尤其 diff-block 与 keybindings），不得仅依赖口头约定。文档落点（总索引与子文档目录）由面 AGENTS 维护。
-    # verified-by: designing/AGENTS.md
 
     场景: designing-lint-is-a-gate
       当 读取 designing lint 闸接线
@@ -47,7 +45,6 @@
   @req:r1235
   规则: demo-theme-auto-detect
     agent_demo 须默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 须经 package terminal_colors 纯函数切换 Light/Dark，并在 layout 壳（footer 或系统行）暴露当前 theme_mode；不得将自动切换设为产品 MVP 默认。
-    # verified-by: packages/xylitol-tui/tests/agent_demo_test.rs
 
     场景: demo-defaults-dark-with-explicit-auto
       当 读取 demo 主题探测接线
@@ -199,7 +196,6 @@
     场景: footer-carries-no-queue-badge
       当 以 Heuristic 上下文估计驱动 footer token 字段
       那么 footer 为单行且含 used ~C tokens 波浪号且无队列徽章
-    # verified-by: llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature
   @req:r1232
   规则: tool-header-timeout-note
     命令类工具（bash/grep/find）的模型显式 timeout 请求 须在工具行 header 的按键提示 (Alt+E) 前以 muted 文本显示 (timeout {N}s)（N 为钳制后的生效秒数）；省略（走工具默认）时 不得显示。注记为静态文本，不得做倒计时或运行中改写。

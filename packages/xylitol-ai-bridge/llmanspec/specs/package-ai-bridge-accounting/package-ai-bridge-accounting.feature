@@ -23,14 +23,12 @@
   @req:r1563
   规则: Api-trailing-范围
     当 Api 锚点有效时，trailing_tokens MUST 仅计入 last usage 消息之后的消息（对齐 pi estimateContextTokens）；MUST NOT 对锚点及之前的消息再叠加 heuristic；last_usage_index MUST 为该锚点消息下标；若消息列表中找不到带 usage 的 assistant，可将整段列表视为 trailing 且 last_usage_index 可为 null。trailing 所用启发式 MUST 与无锚点 Heuristic 档同一除数（见 r1929）。
-    # verified-by: packages/xylitol-ai-bridge/src/accounting/mod.rs
   @req:r1565
   规则: 禁止流上全量重估
     generate_stream 热路径 MUST NOT 在每个文本 delta 上对累计全文重算完整上下文估计。
   @req:r1566
   规则: Heuristic-诚实标注
     当最终采用 Heuristic 时，ContextTokenEstimate 的 provenance MUST 为 Heuristic；下游展示层若使用该结果 MUST 能区分于 Api。本规则的可执行绑定在主仓 domain-compaction 同名场景（镜像；主仓 BDD runner 消费，包仓无 BDD 基建）。
-    # verified-by: fn test_comp_est_fallback
 
     场景: estimate-fallback-heuristic
       假如 无可信 XyUsage 锚点
@@ -39,4 +37,3 @@
   @req:r1929
   规则: 启发式除数同源
     无 Api 锚点的 Heuristic 档、Api trailing、切点逐条累计所用启发式、固定请求开销折算与摘要占位 MUST 共用同一校准：对序列化后的 UTF-8 字节长度向上取整除以 3。MUST NOT 再使用除以 4 的平行启发式作为决策或展示度量。
-    # verified-by: packages/xylitol-ai-bridge/src/accounting/mod.rs

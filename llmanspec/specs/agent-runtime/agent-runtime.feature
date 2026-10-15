@@ -46,7 +46,6 @@
   @req:r1055
   规则: builder-ports
     Agent 装配 须经 AgentBuilder，依赖 protocol 端口与 agent 会话词汇；app 组合根注入具体 infra 实现。装配入口由单元测试 / 组合根覆盖，不得为静态存在性单独扩 BDD step。
-    # verified-by: tests/bdd/bindings_agent_runtime.rs
     场景: builder-ports-drive-one-round
       假如 mock 模型先 tool 后无 tool
       当 运行 AgentRuntime 并收集事件
@@ -55,7 +54,6 @@
   @req:r1056
   规则: sessionstore-eventsink
     protocol 须提供 SessionStore 与 EventSink；SessionManager / EventBus 为实现。端口存在性由类型系统与组合根覆盖，不得为 trait 存在性单独扩 BDD step。
-    # verified-by: src/AGENTS.md
     场景: ports-yield-xy-events
       假如 消费事件流
       当 轮询
@@ -64,7 +62,6 @@
   @req:r1057
   规则: mutable-slots-next-turn
     set_tools / set_hooks / set_system_prompt 等 须只影响下一轮 run；进行中回合使用启动快照。
-    # verified-by: src/agent/runtime/react/tests.rs
     场景: hot-applied-slots-rebuild-prompt
       假如 Agent 能力聚合体已就绪
       当 热应用新的上下文与系统提示资源
@@ -136,7 +133,6 @@
   @req:r1031
   规则: unknown-event-degrade
     应用面/bridge 对未识别 XyEvent 变体 须降级（日志），不得 panic。由 protocol 单元测试覆盖。
-    # verified-by: src/protocol/lifecycle.rs
     场景: unknown-queue-type-degrades
       当 对 QueueUpdate 事件做线协议序列化与反序列化往返
       那么 队列计数保真且未知 type 解析为错误而非 panic
@@ -144,7 +140,6 @@
   @req:r1032
   规则: defaults
     未显式配置时 须有可测默认：thinking level、compaction 频率等集中定义；不得将 max_iterations 或未配置的硬步数闸列为运行时默认。由单元测试覆盖。
-    # verified-by: src/agent/compaction/settings.rs
     场景: centralised-default-thinking-level
       假如 Settings.default_thinking_level 为 high 且模型支持集为 off 与 high 与 max
       当 会话首次装配
@@ -167,7 +162,6 @@
   @req:r1040
   规则: persist-done-usage
     ReAct 在模型流正常结束时 须将 XyChunk::Done 携带的 usage 与 stop_reason（若有）写入随后持久化的 AssistantMessage；不得在 Done 已提供非空 usage 时仍硬编码 usage: None。该行为 须有可执行 BDD 或等价单测场景。
-    # verified-by: src/agent/runtime/react/tests.rs
     场景: done-usage-anchor-persisted
       假如 会话条目含 stop 回合的 usage 锚点
       当 以同源估计器估计上下文
@@ -189,7 +183,6 @@
   @req:r1042
   规则: next-turn-refresh-model-thinking
     ReAct 须在每次模型调用前（turn 边界，对齐 pi prepareNextTurn）从 session 重读当前选中模型与 thinking level，并据此重建本 turn 的 XyModel 与 XyGenerateOptions（或等价绑定）；不得在整个 run 内握死首帧 model/thinking snapshot。已开始的 in-flight generate_stream 须继续使用该次调用开始时的绑定，不得中途拆流。run 结束（AgentEnd）或 abort 后无 in-flight 时，active 与 selected 须收敛。该行为 须有可执行 BDD 或等价单测场景。
-    # verified-by: src/agent/runtime/react/tests.rs
     场景: next-turn-rereads-model-and-thinking
       当 以桥缝注入元数据事件（模型选择与 thinking 档位）
       那么 模型不 panic 且条目与相位不变
@@ -255,7 +248,6 @@
   @req:r1049
   规则: turn-end-threshold-compaction
     ReAct 或 session 编排在 Settle（本轮不再续跑工具、非 abort）后 须调用 threshold auto-compact 检查（domain-compaction c2 地板感知有效触发阈值 + c17/c18）；ContinueTools、CompactionSettings.enabled 为 false、未超有效阈值、abort、或 stale 守卫命中时 不得 compact；不得仅依赖 TUI host 轮询触发。该行为 须有可执行 BDD 或等价单测场景。
-    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
     场景: turn-end-threshold-auto-compact
       假如 会话叶上存在可信 Api usage 锚点且 footer 同源估计可用
       当 执行 auto-compact reserve 触发判断
@@ -265,7 +257,6 @@
   @req:r1050
   规则: turn-end-overflow-compact-retry
     ReAct 在 Settle（或 generate 失败走 overflow Case1 的收尾）后 须先于 threshold（ar31）评估 overflow Case1（domain-compaction c21–c23）。ContinueTools 不得做该预检。sameModel 且 is_context_overflow 时执行一次 compact-and-retry；willRetry 为 true 时 须从 store 重载与 as45 同源的 compaction-aware 工作 history（含摘掉错误 assistant 的效果，因 error/aborted 投影跳过或重载不含未裁切旧链）并继续本 run 的下一模型调用；不得仅 pop 错误行却继续握持 firstKept 之前的膨胀 history；二次 overflow 须失败并结束 recovery；overflow 不得走 AutoRetry 瞬态重试。该行为 须有可执行 BDD 场景（见 domain-compaction.feature 锚点）。
-    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
     场景: overflow-case1-compact-retry
       假如 sameModel 的 assistant 被判定为 context overflow 且 stop_reason 非 stop
       假如 compaction enabled 且尚未做过 overflow recovery
@@ -275,7 +266,6 @@
   @req:r1051
   规则: context-policy-responses-assembler
     agent 层 须提供 ContextPolicy（或等价）code-first 默认板：至少含 tools_mode（默认 full）、status_bar_mode（默认 off）；系统提示 不得含日历日/CWD（无 date_placement 旋钮，c2730 删消融）；不得本 change 实现 search/状态栏完整行为。openai-responses 主路径 须经 ResponsesAssembler（bridge）构造请求 body，并传入 WirePolicy；不得在 ReAct/adapter 散落第二套业务布局。由单测覆盖，不得单独扩 BDD step。
-    # verified-by: src/agent/prompt/mod.rs
     场景: code-first-context-policy-defaults
       假如 工具片段含 mcp 前缀工具
       当 以默认路径组装系统提示
@@ -284,7 +274,6 @@
   @req:r1052
   规则: mcp-tool-table-freeze-gate
     轨 A：Agent/session 须在首次 generate（会话尚未工具定稿）前执行 MCP 门闸（对齐 infra-mcp mcp8）：等待 settle 或超时后定稿 provider 可见工具表；定稿后 须忽略会扩表的 settle 热并；idle `/reload` 须按 name upsert 重定稿；本波 resume/切会话 须清冻再门闸（指纹持久化后的一致续冻另波，对齐 mcp8）。tools_mode=search（c1960）不在本要求交付范围。由单测覆盖，不得单独扩 BDD step。
-    # verified-by: src/agent/tools/freeze.rs
     场景: first-generate-freezes-tool-table
       当 以两组不同工具集的 fixture 配置先后装配
       那么 工具集随配置变化
@@ -292,7 +281,6 @@
   @req:r1053
   规则: stream-error-carries-kind
     ReAct / session 热路径在将 XyError 投影为 XyEvent::Error 时 须经 XyEventError::from_xy（或等价）保留稳定 kind（对齐 XyError::kind）；不得仅把 Display 字符串塞进无 kind 的 Error。Abort 路径 须使用 Aborted kind（或 is_aborted 可识别）。由单测覆盖，不得单独扩 BDD step。
-    # verified-by: llmanspec/specs/protocol-app/protocol-app.feature
     场景: error-kind-survives-projection
       当 序列化携带 kind 的 error 事件
       那么 kind 往返保真
@@ -305,12 +293,9 @@
       当 左键单击折叠命中表中的簇头三角列
       那么 结算行外显 Thought 7s 且不再出现流式 Thinking 头
 
-    # verified-by: src/agent/runtime/react/tests.rs
-
   @req:r2905
   规则: runtime-phase-transition-table
     RunCoordinator 的 RuntimePhase（Idle/Starting/Streaming/Cancelling）转移 须受守卫约束：仅 Idle 可 try_begin_immediate 入 Starting；mark_streaming 与 finish_run 仅对活动 run_id（或按 stale 语义相不变/降级）生效；cancel_active 自 Starting/Streaming 入 Cancelling；finish_run 匹配 run_id 后归 Idle。守卫失败相 须保持原相不变形。转移闭集 须以场景大纲固定并经状态流转校验（E1-E4）。
-    # verified-by: src/agent/runtime/state.rs
 
     场景大纲: phase-transition-matrix
       假如 运行协调器处于 "<from>" 阶段

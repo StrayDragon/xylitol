@@ -6,7 +6,6 @@
   @req:r1429
   规则: 流式执行器
     System 须提供 XyBashExecutor，经 BashExecOpts 执行 shell 命令，携带可选 CancellationToken 与可选有界 mpsc chunk_tx 输出字节；chunk_tx 为 Some 时执行器 须在该通道发送输出块（Full 时发送方合并）；为 None 时 须静默累积且不要求回调。原 on_chunk 回调签名 不得保留为公共端口。
-    # verified-by: src/infra/bash_exec/mod.rs
     场景: echo-via-executor
       假如 bash 工具即将执行 echo hello
       当 执行 bash echo hello
@@ -23,7 +22,6 @@
   @req:r1431
   规则: 输出截断
     BashExecutor 须将输出截断到配置 max bytes，超限时将完整输出溢出到临时文件；返回给调用方/会话的 output 须为截断尾部，并 须追加 pi 形脚注 `[Full output: <path>. Truncated: <N> lines shown (<limit> limit)]`（path 不可用时用 `(unavailable)`）；未截断 不得追加该脚注。
-    # verified-by: src/infra/bash_exec/mod.rs
     场景: overflow-to-temp-file
       假如 bash 输出在上限边界以不完整 UTF-8 序列结束
       当 调用 truncate_output
@@ -54,7 +52,6 @@
   @req:r1426
   规则: bash trait
     System 须在 BashOperations trait 后抽象 bash 执行，支持真实与 mock 实现供测试。
-    # verified-by: src/AGENTS.md
     场景: trait-abstraction-mockable
       假如 构建无 bash executor 的 agent
       当 调用 execute_bash
@@ -71,7 +68,6 @@
   @req:r1428
   规则: 超时逐级升级
     当调用方提供有限超时时，System 须实现逐级超时：先 SIGTERM，5 秒宽限后 SIGKILL。未提供超时时 不得仅因默认秒数触发该升级路径。
-    # verified-by: src/infra/bash_exec/mod.rs
     场景: escalating-timeout-kills
       假如 bash 运行 yes 命令
       当 stdout 超过 1MB 上限
@@ -80,7 +76,6 @@
   @req:r1435
   规则: 运行时可达 abort
     交互 bash 的取消入口 abort_bash 须可从 AgentRuntime::abort（&self）到达，无需独占 &mut AgentCapabilities 才能在 Driver::abort 路径杀进程树；CancellationToken 取消后 须触发既有杀树路径（be2）。
-    # verified-by: llmanspec/specs/infra-bash/infra-bash.feature
     场景: abort-reachable-from-runtime
       假如 启动交互 bang 长命令后 abort
       当 检查 bash 结果
@@ -89,7 +84,6 @@
   @req:r1436
   规则: 执行器超时可选
     XyBashExecutor / BashExecOpts 须支持可选超时；省略时的默认策略由调用方决定——产品工具层 须传入默认上限，执行器自身 不得硬编码秒数；仍可经 CancellationToken 取消。
-    # verified-by: src/infra/bash_exec/mod.rs
     场景: optional-timeout-and-missing-arg
       当 调用bash 不传命令参数
       那么 调用失败且返回 MissingArgument 错误码

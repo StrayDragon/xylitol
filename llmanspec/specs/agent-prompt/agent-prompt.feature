@@ -6,7 +6,6 @@
   @req:r1015
   规则: system-assembly
     System 须经 build_system_prompt（或等价）组装系统提示，可包含工具片段、skills 摘要、context 文件；自定义 system 文件可替换或 append。组装顺序 须可文档化为 stable 正文与资源 → skills 元数据 → Guidelines → runtime_policy。产品默认 不得将日历日或 CWD 写入系统提示前缀（session_env 另条）；秒级时刻等 volatile 读数 不得进入系统提示前缀。
-    # verified-by: src/agent/prompt/system.rs
     场景: assembly-includes-tool-guidelines
       假如 工具集含 bash 且其 prompt_guidelines 非空
       当 set_tools 或等价装配后 build_system_prompt
@@ -15,7 +14,6 @@
   @req:r1020
   规则: skills-section
     当 ResourceLoader 发现 skills 时，系统提示 须能包含 available_skills（或等价）清单供模型发现；未信任项目 不得注入项目 skills。skills 元数据属 stable（会话作用域）；SKILL.md 正文仍经 $skill 注入 user 投影，不得为对齐外部书语而强制改走状态栏。
-    # verified-by: llmanspec/specs/agent-prompt/agent-prompt.feature
     场景: skills-listed-after-trust
       假如 Agent 能力聚合体已就绪
       当 热应用技能目录 greet
@@ -32,7 +30,6 @@
   @req:r1022
   规则: safe-minijinja-default-assembly
     默认 system 组装路径（无 SYSTEM.md/custom_prompt 整段替换时）须经沙箱 minijinja 渲染嵌入默认模板：UndefinedBehavior::Strict；上下文仅白名单键（至少含 date、cwd、tools、guidelines、skills、runtime_policy、mcp_discover 或等价）；不得注册任意文件系统 loader；不得将 env/secret 命名空间注入该上下文。{% include %} 须仅解析预注册模板名。SystemPromptOpts（或等价）须允许注入 date（或等价时钟）。由单测覆盖安全与可钉 date；不得为静态依赖存在性单独扩重型 BDD（可保留窄正向场景或 feature:false）。
-    # verified-by: src/agent/prompt/sandbox.rs
     场景: replacement-skip-default-fragments
       假如 custom_prompt 或 SYSTEM.md 整段替换默认正文且未附 Available tools
       当 build_system_prompt
@@ -78,7 +75,6 @@
   @req:r1016
   规则: runtime-policy-fragments
     System 须按当前工具批模式（XyBatchMode）从内置表解析 runtime policy 片段并经 build_system_prompt 注入 <runtime_policy> 段（位于 APPEND_SYSTEM / Guidelines 之后；产品默认其后不再追加 date/cwd）；barrier_parallel 须注入多-tool 同消息策略片段；sequential 不得注入该片段；set_tool_mode（或等价）须在下一轮重建前提示中反映片段启停。Session 须持有已应用 fragment id 集合：同一 id 集合 不得重复同步/重写片段正文（同模式重复 set_tool_mode 不得导致 <runtime_policy> 重复段或同 body 多份）；模式变更后 id 集合变化时 须再同步一次。不得要求用户手写 APPEND_SYSTEM 才能获得该策略。由单测覆盖，不得为静态存在性单独扩 BDD step。
-    # verified-by: src/agent/prompt/fragments.rs
     场景: runtime-policy-fragments-injected
       假如 工具集含 bash 且其 prompt_guidelines 非空
       当 set_tools 或等价装配后 build_system_prompt
@@ -95,7 +91,6 @@
   @req:r1018
   规则: system-omit-date-and-session-env
     系统提示 不得写入日历日或 CWD（无 date_placement 旋钮，日历日/CWD 由 session_env 提供）。产品路径 须将日历日/CWD 以状态栏族特殊类型 session_env（Env CustomMessage，project_for_llm 投影为 user）在用户真实输入落盘之前持久化：首轮或相对上次 session_env 的日历日/CWD 有变时追加；同日同 cwd 不得重复追加。压缩裁剪或 overflow 同轮 reload 之后、继续向模型生成之前，上下文 须仍含与当前日历日/进程 cwd 对齐的 session_env（缺失或日/cwd 过期则 ensure 追加并持久化）。秒级时间戳 不得进系统提示。完整状态栏 Lane 由后继 change 消费既有 session_env。由单测覆盖；不得为静态存在性单独扩 BDD step。
-    # verified-by: src/agent/prompt/session_env.rs
     场景: date-and-cwd-from-session-env
       当 读取默认系统提示模板与装配
       那么 模板只带工具与 mcp 而日期与 cwd 由 session_env 补齐
@@ -103,7 +98,6 @@
   @req:r1019
   规则: no-instructions-dual-copy
     openai-responses 主路径 不得将系统提示再写入顶栏 instructions 与 input 前缀各一份；SSOT 为 system_prompt → input 前缀 item（thinking on 可为 developer）。由 Assembler/单测回归覆盖。
-    # verified-by: packages/xylitol-ai-bridge/src/provider/native/openai_responses.rs
     场景: system-prompt-single-copy
       假如 Responses 组装且 system_prompt 非空且 thinking_level 为 medium
       当 转换为 input items

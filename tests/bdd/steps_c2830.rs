@@ -3,8 +3,7 @@
 //! 真 `AnthropicMessagesAdapter`（base_url → 127.0.0.1 脚本化 SSE mock）在
 //! 观测闸 + `SpanCollectScope` 下驱动，`llm.request` 断言落在收集到的
 //! `SpanRecord`（properties + events）。r1556（SSE idle 上界）由 bridge
-//! 包内 paused-time 单测承载：90s 程序权威常量在真实时间等不起，见该
-//! 规则的 `# verified-by: fn` 锚。
+//! 包内 paused-time 单测承载：90s 程序权威常量在真实时间等不起。
 
 use std::net::SocketAddr;
 use std::time::Duration;

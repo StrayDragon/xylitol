@@ -6,7 +6,6 @@
   @req:r1824
   规则: provider-registration
     System 须支持 provider 注册，含可配置 API keys、base URLs、headers 与 adapter api type，适用于 OpenAI 兼容与 Anthropic provider。
-    # verified-by: llmanspec/specs/runtime-model-registry/runtime-model-registry.feature
 
     场景: provider-registration-config
       当 读取 provider 注册配置
@@ -14,7 +13,6 @@
   @req:r1821
   规则: config-value-parser
     System 须提供 ConfigValueResolver，解析 literal、env-var template 与 shell-command 配置值。
-    # verified-by: src/infra/config/types.rs
 
     场景: config-value-parser-boundary
       当 读取配置值解析机制
@@ -22,7 +20,6 @@
   @req:r1822
   规则: env-var-interpolation
     ConfigValueResolver 须插值 $VAR、${VAR} 与 ${VAR:-default} 环境变量引用。
-    # verified-by: src/infra/config/types.rs
 
     场景: env-var-interpolation-branch
       当 读取环境变量插值能力
@@ -30,7 +27,6 @@
   @req:r1823
   规则: shell-command-execution
     ConfigValueResolver 对以 ! 为前缀的命令 须以 10 秒超时执行并在进程生命周期内缓存结果；超时以失败结果呈现。
-    # verified-by: src/infra/config/types.rs
 
     场景: shell-command-value-exec
       当 读取配置命令执行边界
@@ -38,7 +34,6 @@
   @req:r1825
   规则: provider-in-infra
     所有 LLM provider 实现（OpenAI、Anthropic、Fake、Mock）须位于 infra 层并实现 protocol 端口 XyModel；agent 层 不得托管 provider 实现子树；从模型配置到 XyModel 的构造 须位于 infra 层 factory，而非 agent 层。
-    # verified-by: src/AGENTS.md
 
     场景: provider-impl-in-infra
       当 读取 provider 分层
@@ -46,7 +41,6 @@
   @req:r1826
   规则: provider-port-injection
     agent 持有的 model registry 须以 Arc<dyn XyModel> 存储 provider；选择 provider 不得要求 agent 命名具体 provider struct。
-    # verified-by: src/AGENTS.md
 
     场景: provider-port-injection
       当 读取模型注册表存储
@@ -54,7 +48,6 @@
   @req:r1912
   规则: provider-config-value-expression
     provider 注册配置值（models.models 条目 api_key / model / base_url / api / compat 字段）须支持 ConfigValueResolver 表达式 $VAR、${VAR}、${VAR:-default} 与 !command；纯字面量保持原样；未绑定变量或命令执行失败 须以可读错误拒绝装配（带 alias 与字段上下文）；表达式解析 须与模板渲染（{{ secret.X }} / {{ env.Y }}）共存。
-    # verified-by: src/infra/config/loader.rs
 
     场景: provider-config-value-expression-boundary
       当 读取 provider 注册配置值解析

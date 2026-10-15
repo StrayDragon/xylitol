@@ -6,7 +6,6 @@
   @req:r1118
   规则: todo-domain-model
     会话 Todo 列表 须为有序条目集合；每条含稳定 id、非空 content（trim 后 Unicode 标量 ≤ 80）、status ∈ pending|in_progress|completed。空表合法。completed 须保留在表内直至整表 rewrite 不再包含该 id。省略 id 写入时 须由服务端铸造持久短 id（`t_` 前缀），不得按条目序号生成 `todo-{idx}`。读取旧 `agent_todo` 快照时，status 为 cancelled 的行 须丢掉且 不得使整表反序列化失败。本波 不得要求 max_attempt、assignee、namespace、cancelled 状态或 plan 类字段。
-    # verified-by: src/infra/tools/todo.rs
 
     场景: todo-strict-model-shape
       当 读取 Todo 领域模型形状
@@ -22,7 +21,6 @@
   @req:r1124
   规则: todo-request-time-prefix-inject
     agent_todo Custom 快照 不得作为会话消息折叠进 provider 输入前缀（含 system / session_env）；SSOT 仍只在 Custom latest-wins。每次出站 generate，在历史折叠之后，须经 AgentStatusBar 投影：若当前 leaf 上 latest 清单非空，须在投影末尾追加恰好一条 user 行，根标签为 `<agent_status_bar>`，清单为子树 `<todo>`，每条目为带 id 与 status 属性的 `<item>`、正文为转义后的 content；空表 须省略该行（不得只发空根或空 `<todo/>`）。该行 不得写入会话 transcript / JSONL，不得进入系统提示前缀，不得并入 session_env。token 估计 须与真实请求同形计入该行；compact 摘要请求 不得投影状态栏。产品 不得再向模型暴露 todo_list 工具。由单测覆盖；不得为静态存在性单独扩 BDD step。
-    # verified-by: src/agent/prompt/status_bar.rs
 
     场景: todo-snapshot-outside-prefix
       当 读取 Todo 快照投影边界
@@ -48,7 +46,6 @@
   @req:r1127
   规则: todo-tool-concurrency-barrier
     todo_rewrite / todo_update 须为 Barrier（或等价 Sequential）并发类，与其它会改会话状态的内置工具同族；调度 须尊重该类。分类表由单测覆盖，不得为静态表单独扩 BDD step。
-    # verified-by: src/agent/tools/mod.rs
 
     场景: todo-concurrency-barrier
       当 读取 todo 工具调度分类
@@ -56,7 +53,6 @@
   @req:r1128
   规则: status-bar-read-only-boundary
     Todo SSOT 为本波唯一业务真源。待办栏与 AgentStatusBar 若投影清单或完成数等摘要，须只读自本 SSOT；不得以栏 auto 摘要写回 Todo。本波模型可见清单走 r1124 出站 AgentStatusBar（`<todo>` 子树）。不得 persist 栏消息、不得做 Agent 列 publish / statusline_refresh / 读数注册表。禁止 todo_* 只写栏不写 SSOT。TUI 待办栏不是 TUI 状态条，也不是 AgentStatusBar 投影行。
-    # verified-by: src/agent/prompt/status_bar.rs
 
     场景: status-bar-read-only-boundary
       当 读取 Todo SSOT 只读边界
@@ -89,7 +85,6 @@
   @req:r1120
   规则: todo-builtins-first-turn-freeze
     todo_rewrite / todo_update 属核心 builtins，须在会话首次工具表定稿前进入可见工具表；不得在回合中途热加这两个名字。与既有首轮冻表门闸一致；由单测覆盖，不得单独扩 BDD step。
-    # verified-by: src/agent/tools/freeze.rs
 
     场景: todo-builtins-first-turn-freeze
       当 读取首回合工具定稿清单

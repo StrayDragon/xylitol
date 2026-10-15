@@ -6,7 +6,6 @@
   @req:r38
   规则: fake-provider
     System 须提供 FakeProvider，经统一装配路径（AdapterXyModel）暴露为 XyModel，经 ScenarioStep 序列返回预配置响应。
-    # verified-by: src/infra/provider/fake.rs
 
     场景: fake-provider-adapter-path
       当 读取 fake provider 装配
@@ -14,7 +13,6 @@
   @req:r45
   规则: scenario-orchestration
     System 须支持编排多步场景：text -> tool_call -> tool_result -> text，含可配置 delay 与经 ScenarioStep 的错误注入。
-    # verified-by: src/infra/provider/fake.rs
 
     场景: scenario-orchestration-shape
       当 读取场景编排能力

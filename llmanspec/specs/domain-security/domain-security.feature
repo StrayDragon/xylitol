@@ -83,7 +83,6 @@
   @req:r66
   规则: 网络权限检查
     Bash 执行 须对命令文本中出现的 URL 检查 XyPermission 的 network.allowed_domains 与 network.denied_domains。域被拒绝或（allowed_domains 非空时）不在允许列表时，执行 须被阻止。
-    # verified-by: llmanspec/specs/domain-security/domain-security.feature
 
     场景: bash-url-network-gate
       当 读取网络权限裁决
@@ -107,7 +106,6 @@
   @req:r71
   规则: 信任单一事实来源
     项目 trust 状态 须在 infra 层 trust 模块有单一真源；agent 层 不得含自有 trust store 或 trust resolver。
-    # verified-by: src/AGENTS.md
 
     场景: trust-single-source-of-truth
       当 扫描信任存储真源
@@ -170,7 +168,6 @@
   @req:r1425
   规则: Permission 非安全边界
     文档与命名 须明示 XyPermission 为建议性：礼貌阻止循环调用被拒绝工具，但不阻止主机级访问，因 bash 仍可删文件且恶意 prompt 不受 containment。真实隔离 须来自 OS、容器或 VM 边界（如未来将工具执行委托到沙箱的工具路由模式）；扩展 XyPermission 不得被视为增加安全控制。
-    # verified-by: docs/architecture/信任与项目门禁.md
 
     场景: permission-advice-only
       当 读取权限边界文档

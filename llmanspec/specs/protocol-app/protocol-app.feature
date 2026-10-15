@@ -13,7 +13,6 @@
   @req:r1695
   规则: Event 枚举
     protocol/ 须定义 Event 枚举，至少覆盖 TurnStart、Delta、ToolCall、ApprovalRequired、QuestionRequired、TurnEnd、Usage；每个 core→client 消息 须反序列化为此枚举。
-    # verified-by: llmanspec/specs/protocol-app/protocol-app.feature
 
     场景: event-enum-covers-agent-stream
       当 对 Agent 流族事件做线协议序列化与反序列化往返
@@ -86,7 +85,6 @@
   @req:r1694
   规则: 线协议不镜像厂商事件
     protocol::Event 须映射领域 XyEvent 闭集；不得为 OpenAI/Anthropic 等厂商专属事件增加平行变体。无法表达的细节 须留在领域 Message 载荷或被省略，而非拓宽线协议宽表。
-    # verified-by: src/protocol/wire/event.rs
 
     场景: no-vendor-specific-event-variants
       当 对 Agent 流族事件做线协议序列化与反序列化往返
@@ -231,7 +229,6 @@
   @req:r1703
   规则: bang 与工具分流
     人发起的工作区 bash 须走独立于模型工具的事件路径，不得并进 ToolStart / ToolExecutionUpdate / ToolEnd。结束态 须能用 BashResult（或语义等价）表达。直播增量若尚未成为 Event 变体，不得改走工具流或 REST 冒充。
-    # verified-by: llmanspec/specs/protocol-app/protocol-app.feature
 
     场景: bang-runs-outside-agent-tool-stream
       当 以主机泵在 idle 提交 bang 命令
@@ -251,7 +248,6 @@
   @req:r1705
   规则: 闭集缺口禁旁路
     协议闭集 须能表达：host 侧重装（MCP / prompt / 技能）、项目信任持久化、session 写者与只读、导出回传内容、人 bash 直播增量。上述语义在尚未进入 Command/Event 枚举前，不得用新的 REST 产品动词或第二套远程专用词表冒充；不得要求本 requirement 单独新增运行时枚举变体。
-    # verified-by: llmanspec/specs/protocol-app/protocol-app.feature
 
     场景: host-semantics-on-single-method-table
       假如 RemoteDriver 指向该 server
@@ -285,7 +281,6 @@
   @req:r1927
   规则: 线上 JSON 深解析有界
     对线上输入的 JSON 深解析 须设显式深度上限（2048 层：容纳实机深树两个量级、远低于栈风险区），超限 须按既有降级语义收口（服务端非法信封判否、客户端「RawOk」退化 Null——r1907 不断链），不得以无界递归深度解析线上输入（4 MiB 体量上限内的嵌套字节数组仍可打穿 worker 栈）。上限 须为单一常量（两处解码入口共用）。
-    # verified-by: fn decode_rejects_beyond_json_depth_limit
 
     场景: json-depth-limit-envelope-decode
       当 对超过深度上限的线上 JSON 信封做解码

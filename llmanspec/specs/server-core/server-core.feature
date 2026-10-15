@@ -229,7 +229,6 @@
   @req:r1779
   规则: 上下文估计方法接线
     Host 须为 estimate_context 提供已登记 unary：经与 in-process driver 同源的估算入口计算 ContextTokenEstimate，须计入 host 侧固定请求开销（system prompt + tool schemas）；不得返回 stub 或客户端自估降级。
-    # verified-by: llmanspec/specs/server-core/server-core.feature
 
     场景: estimate-context-unary-registered-readonly
       当 查询方法表的 estimate_context
@@ -261,7 +260,6 @@
   @req:r1790
   规则: 固定区资源下行
     Host 须为已物化写者的会话经产品订阅下行 `session/resources` 推送 MCP/skills 固定区 快照：写者侧在 Host 进程内 poll MCP bootstrap，快照变化时才向该会话的订阅连接广播一帧，payload 含 session_id 与资源快照（形状与 loaded_resources unary 结果一致）。该帧 须为无作答义务的下行通知，不得消耗 journal seq，不得写入事件 journal；断线重放与冷恢复投影 不得复播固定区帧。不识别该方法的旧客户端 须可忽略该帧且其余行为不受影响；本方法 不得要求 bump 协议版本。
-    # verified-by: fn resources_watch_pushes_one_frame_on_snapshot_change
 
     场景: fixed-zone-resources-frame-is-notification
       假如 构造下行 session/event、session/subscribed、session/resync_required 与 session/resources notification
@@ -569,7 +567,6 @@
   @req:r1923
   规则: 首轮工具门有界决议
     `arm_tool_freeze` unary 须有界决议：配置了但连不上的 MCP 不得让首轮门无限等待——在门时限（`MCP_FIRST_TURN_GATE_TIMEOUT`）内 settle；超时 须 detach 未连上的 bootstrap 并冻结已 armed 工具子集后返回权威快照（`tools_table_frozen`、`mcp_bootstrap_complete` 反映决议结果）。该 unary 不得在连接无界挂起时返回未冻结快照使客户端无限等待（否则 TUI 首轮死锁、round 永不启动）。
-    # verified-by: fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window
 
     场景: arm-freeze-bounded-under-hanging-mcp
       假如 宿主配置了连不上的 MCP 且会话写者已物化
@@ -589,7 +586,6 @@
   @req:r1925
   规则: arm_tool_freeze 租约冲突降级为无租约有界决议
     「arm_tool_freeze」unary 不得占用会话写锁；他进程已持有该会话写占用时 须仍返回权威冻结快照，不得使首轮工具门永久停滞。冻结的是写者内部门、不写会话状态。
-    # verified-by: fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck
 
     场景: arm-freeze-lease-free-under-write-conflict
       假如 会话写租约已被其他写者持有
@@ -598,7 +594,6 @@
   @req:r1926
   规则: attach 生效模型同步不进 journal
     会话绑定期同步写者当前生效模型的「ModelSelect」下行 须为 transient 推送（不落 journal、不消耗 seq）——它附属于订阅者收敛而非会话历史；重复绑定产生的重复「ModelSelect」下行 须语义幂等（消费端徽标收敛不闪变）。会话历史中的模型变更记录由领域层「ModelChange」条目承载，不得由 attach 期同步兼任。
-    # verified-by: fn sync_model_downlink_is_not_journaled
 
     场景: model-sync-on-rebind-is-transient
       假如 会话写者已装配且持有已解析默认模型 fake-model
@@ -607,7 +602,6 @@
   @req:r1928
   规则: 非产品二进制判非法信封
     POST /rpc 的非产品二进制 body（含 JSON 对象、JSON 数组 batch、其它文本）须判非法信封（HTTP 400），不得当业务 unary 执行。
-    # verified-by: fn json_rpc_text_is_illegal_envelope
 
     场景: non-binary-body-is-illegal-envelope
       当 服务端在空闲端口上启动

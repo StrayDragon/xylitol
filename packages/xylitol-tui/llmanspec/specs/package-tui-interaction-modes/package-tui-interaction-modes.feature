@@ -15,7 +15,6 @@
   @req:r1627
   规则: mode-b-alt-viewport
     ApplicationOwned 须 使用应用自管视口承载 transcript（滚轮与程序滚动归应用）。ApplicationOwned 进入路径 宜 经终端 alt-buffer（如 CSI ?1049h 或等价）；无论是否经 alt-buffer，退出/teardown 须 恢复进入前的缓冲与光标可见性约定，且 须 关闭本模式启用的 mouse capture。ApplicationOwned 退出后 宜 将 transcript（及末帧 dock）转储到主屏 scrollback，便于用户上翻会话（库默认开启，MAY 可配置关闭）。
-    # verified-by: packages/xylitol-tui/tests/interaction_modes_test.rs
   @req:r1628
   规则: mode-b-drag-select
     ApplicationOwned 在 mouse capture 开启且应用会话已 begin 时 须 将未修饰左键拖选接到应用内选区：按下记录锚点、拖动更新焦点、选区高亮出现在绘出的 transcript 可见行上。空选（锚点与焦点重合）不得 触发复制成功路径。
@@ -27,7 +26,6 @@
   @req:r1629
   规则: mode-b-edge-autoscroll
     ApplicationOwned 拖选过程中，当指针贴近视口顶或底边缘时 须 自动滚动 transcript 并扩展选区，使选区可跨出当前可见页（越界续选）。自动滚动 须 与应用视口共用同一滚动机制，不得 依赖终端 scrollback 完成续选。引擎 idle/tick 路径 须 能推进该自动滚动。
-    # verified-by: packages/xylitol-tui/tests/interaction_modes_test.rs
   @req:r1630
   规则: mode-b-copy-on-release
     ApplicationOwned 在左键松开且选区非空时 须 默认将选中纯文本写入剪贴板。缺省路径 须 能发出 OSC52（经 Terminal::write，且在差分 batch 外），并 MAY 同时或回退到本地剪贴板后端。该默认 须 可配置关闭。空选 不得 发出复制。
@@ -47,15 +45,12 @@
   @req:r1632
   规则: mode-b-reuses-mouse-pipe
     ApplicationOwned 须 复用既有 opt-in mouse 管道（Enable/Disable mouse capture 与 InputEvent::Mouse 扇入），不得 另建平行的第二套鼠标事件源。默认路径下无态变的 Moved 不得 强制整帧重绘。本要求 不得 规定折叠点击或 Inline 产品默认开鼠标。
-    # verified-by: packages/xylitol-tui/tests/interaction_modes_test.rs
   @req:r1633
   规则: mode-a-preserves-emulator-selection
     Inline 须 保持今日主屏差分与终端 scrollback 路径作为默认产品取向的库能力；Inline 不得 承诺「开启 mouse capture 后仍完整保留终端原生选区，同时又提供无修饰应用内点选」。Inline 文档与 API 说明 须 不暗示该组合可行。
-    # verified-by: packages/xylitol-tui/src/interaction_mode.rs
   @req:r1634
   规则: mode-b-fixed-viewport-paint
     ApplicationOwned 应用会话激活时，每帧绘出的行数 须 不超过终端高度；transcript 历史 须 由应用 ScrollView（或等价）持有，绘出仅可见窗口加底部 dock。ApplicationOwned 不得 通过向终端主缓冲追加行来滚动历史（即 不得 依赖终端 scrollback 保存 ApplicationOwned transcript）。
-    # verified-by: packages/xylitol-tui/tests/interaction_modes_test.rs
   @req:r1635
   规则: mode-b-wheel-app-scroll
     ApplicationOwned 应用会话激活时，落在 transcript 视口内的滚轮事件 须 滚动应用视口且在后续帧保持视口位置（非强制 follow-end），不得 依赖终端 scrollback 滚历史。用户滚回底部后 MAY 恢复跟随最新内容。
@@ -67,7 +62,6 @@
   @req:r1636
   规则: mode-b-suspend-restores-session
     ApplicationOwned 应用会话激活期间若经 suspend/resume 终端（如外部编辑器），resume 后 须 重新进入 ApplicationOwned 会话所持有的 alt-buffer（若使用）与 mouse capture，使 application_session_active 与终端实际状态一致。
-    # verified-by: packages/xylitol-tui/tests/interaction_modes_test.rs
   @req:r1637
   规则: mode-b-dock-drag-clamp
     ApplicationOwned 在 transcript 拖选进行中，指针移入 dock 矩形时 须 将焦点夹到 transcript 视口底边（或等价）并继续扩展选区，不得 因此清除选区或提前触发复制取消；松手在 dock 内时 须 按正常松手路径结束选区（含默认复制）。已完成（非拖动中）的 transcript 选区在指针移过 dock 时 不得 被自动清除。按下始于 dock 时仍适用 ptim06（不启 transcript 选区）。
@@ -87,7 +81,6 @@
   @req:r1639
   规则: mode-b-library-host-seam
     xylitol-tui 须 将 ApplicationOwned 作为可复用库基础暴露给下游 host：至少包括构造期模式入口/begin/end、dock 行登记、视口投影、选区与 OSC52、复制成功短提示信号、退出主屏 dump 的可观察行为。产品 app host 须 能在不 fork 引擎的前提下于启动时接入 ApplicationOwned。库仍可暴露 Inline 构造入口。产品默认面见 ath30；本要求不规定运行中热切，也不规定折叠点击。
-    # verified-by: packages/xylitol-tui/src/application_owned_runtime.rs
   @req:r1640
   规则: mode-b-copy-notice
     ApplicationOwned 在松手复制成功（非空选且实际发出复制路径）后 须 发出可观察的短时 copy-notice 信号（pending 标志、回调或等价），供 host/demo 展示用户可见提醒。空选、复制关闭或未发出复制时 不得 发出该信号。提示展示 不得 写入 transcript / ScrollNotice；展示 TTL 宜 约 1.5–3 秒后自动消失。库本身 MAY 只提供信号而不强制绘出文案；若库内绘出，落点 宜 在 dock 带内（输入面上方）单行。

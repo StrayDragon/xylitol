@@ -1,6 +1,6 @@
 # language: zh-CN
 # purpose: 可选 OpenTelemetry OTLP/HTTP 出口：Cargo feature otel + 配置显式开启；默认与失败路径均不收集；经 fastrace-opentelemetry 导出；Langfuse 会话、GenAI 属性、xylitol.obs.lane 与同一 turn 内父子 span 树（含过 prepare 的 agent.compaction）在 opt-in 出口之上叠加。
-# c2833: packages/xylitol-ai-bridge trace 部分暂留本 cap（verified-by 指向子包源文件）；子包侧拆分待批，scope 行先行收窄（one-path-one-root）。
+# c2833: packages/xylitol-ai-bridge trace 部分暂留本 cap；子包侧拆分待批，scope 行先行收窄（one-path-one-root）。
 
 功能: infra-otel
 
@@ -29,7 +29,6 @@
   @req:r1487
   规则: otel-fastrace-only
     OTLP 出口 须建立在 fastrace Reporter 之上（fastrace-opentelemetry）；Cargo 与 src 不得为该出口引入 tracing 或 tracing-subscriber；不得使用会打印到 stderr/stdout 的 ConsoleReporter 或 OTEL 调试打印破坏 TUI。
-    # verified-by: Cargo.toml
     场景: otlp-exit-built-on-fastrace
       当 以合法 otlp-http 配置尝试构建 OTLP reporter
       那么 成功构建出可安装的 reporter
@@ -37,7 +36,6 @@
   @req:r1488
   规则: otel-fanout-with-file
     当本地 provider-trace FileReporter 与 OTLP Reporter 同时满足开启条件时，组合根 须使用 fan-out（或等价）同时投递同一批 SpanRecord；任一侧失败 不得静默关掉另一侧的既有闸门语义（OTLP 侧失败按 otel3 降级）。
-    # verified-by: src/infra/observability/fanout.rs
     场景: file-and-otlp-fan-out
       假如 mock 模型先 tool 后无 tool
       当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
@@ -73,7 +71,6 @@
   @req:r1492
   规则: otel-generation-usage
     当低频观测 span 激活且 llm.request 流以带 usage 的 Done 结束时，该 generation span 须携带 langfuse.observation.usage_details（JSON：input/output/total，可选非零 cache 字段）；不得再额外写入 gen_ai.usage.*（与 usage_details 同映射且 inclusive 语义冲突）；无 usage 时 不得伪造零用量属性。
-    # verified-by: packages/xylitol-ai-bridge/src/provider/trace.rs
     场景: generation-span-carries-llm-lane
       假如 mock 模型先 tool 后无 tool
       当 以观测闸开启运行一次带工具调用的 agent 回合
@@ -143,7 +140,6 @@
   @req:r1475
   规则: otel-parallel-tool-spans
     当低频观测 span 激活且 barrier_parallel 并行窗内并发执行多个工具时，各 tool.execute 须仍为同一 agent.iteration（进而同一 agent.turn）的子 span 并共享 trace_id；须携带可区分的 tool_id（及可选 tool_batch.mode / tool_batch.barrier_index）；不得为并发工具各自创建无关的 SpanContext::random 根 span；并发任务 须使用扇出前捕获的显式 parent，不得依赖全局 parent slot 的竞态读写。由单测或 obs 窄读覆盖，不得为静态存在性单独扩 BDD step。
-    # verified-by: src/agent/runtime/obs.rs
     场景: parallel-tools-share-iteration-tree
       假如 mock 模型先 tool 后无 tool
       当 以观测闸开启运行一次带工具调用的 agent 回合
@@ -183,7 +179,6 @@
   @req:r1481
   规则: otel-session-id-per-generate
     当低频观测 span 激活且两路（或以上）绑定不同会话 UUID 的处理重叠进行时，各路导出的根 span 与该路 llm.request 须携带自己那次处理所绑定会话的 langfuse.session.id；不得因共享进程级会话槽而被另一路中途 bind 覆盖。本 req 不改变「值为 xylitol 书签 UUID」的语义。由包内/观测单测覆盖，不得单独扩 BDD step。
-    # verified-by: src/agent/runtime/obs.rs
     场景: session-id-per-overlapping-processing
       假如 mock 模型先 tool 后无 tool
       当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
@@ -192,7 +187,6 @@
   @req:r1482
   规则: otel-session-id-whole-tree-per-processing
     当低频观测 span 激活且一次处理（绑定某会话 UUID 的 generate / compaction）导出任意低频观测 span（agent.turn、agent.iteration、llm.request、tool.execute、过 prepare 的 agent.compaction、token.estimate、react.error、tool.error，含 compaction summarizer 发起的 llm.request）时，这些 span 的 langfuse.session.id 须全部等于该次处理所绑定会话的书签 UUID；重叠处理下 不得在 span 创建时读进程级会话槽，不得因他路 bind 或 reader 物化改写槽而串入其它会话 id。无 run 上下文的闲置路径（如 slash compaction）MAY 以槽为回退。本 req 不改变「值为书签 UUID」的语义。由单测覆盖，不得单独扩 BDD step。
-    # verified-by: src/agent/runtime/obs.rs
     场景: whole-tree-one-session-id
       假如 mock 模型先 tool 后无 tool
       当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
@@ -201,7 +195,6 @@
   @req:r1483
   规则: otel-obs-slot-default-identity-only
     进程级观测槽 须仅作为「默认身份」供无 options 的闲置回退（remote count、无快照的 HTTP hooks、无 options 的 ProviderRequestTrace）与测试使用；materialized 会话（turn / iteration / tool / compaction / generate）须使用运行时自持的会话事实快照，不得在 span 创建时读该槽。bind / switch_session 不得写该槽（c2843 Phase B 移除 obs_slot_writes 门：读者结构上不触达写入路径），槽仅由显式 writer 事件（rename、会话恢复）更新；读者物化前后槽内容 须不变。无 run 上下文的闲置路径 MAY 以槽为回退。由单测覆盖（switch 不写槽 + 快照归因），不得单独扩 BDD step。
-    # verified-by: src/app/core/driver/in_process/tests/session.rs
     场景: obs-slot-written-by-writer-path
       当 以观测闸开启并触发一次会话压缩
       那么 导出 agent.compaction 且 type 为 span 并携带原因与 obs lane
@@ -209,7 +202,6 @@
   @req:r1918
   规则: otel-owner-attributed-collection
     当收集低频观测 span 断言时（SpanCollectScope），须按处理所有者的会话身份（xylitol.session.id）过滤后再断言，不得将并行其他观测源（其它会话 / init_logging 式槽更新者）产出的外来 span 纳入断言面；owner 无会话身份时为闲置路径，其 span MAY 不携带 xylitol.session.id。本 req 使 in-process 并行收集确定化（与 r1481/r1482/r1483 的 owner 归因不变式同源）。
-    # verified-by: packages/xylitol-ai-bridge/src/provider/trace.rs
     场景: owner-scoped-otel-assertions
       假如 mock 模型先 tool 后无 tool
       当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合
@@ -218,7 +210,6 @@
   @req:r1484
   规则: otel-session-dual-identity-and-fork-edge
     当低频观测 span 激活且当前 xylitol session UUID 已知时，一次处理导出的低频观测 span（覆盖范围与 otel24 相同）须携带 xylitol.session.id，其值 须等于该 session UUID；langfuse.session.id 须等于 xylitol.session.id，不得改成发给 LLM 通道的会话身份。xylitol.session.llm_gateway_session_id 须仅在该 span 所对应的 LLM 请求实际向通道呈报了会话身份时写出，且值 须等于该次呈报值；未呈报 不得写该键；不得用 xylitol.session.id 占位。当该 session 由 fork 产生且会话头记录了父 session 与切点条目时 须写出 xylitol.session.parent_session_id 与 xylitol.session.fork_at_entry_id（切点为 fork 时所选条目 id，含 Before 切位时未拷入子会话的那条）；无父或切点未知则 不得写对应键。无处理快照的闲置路径 MAY 省略树边两键。由单测覆盖，不得单独扩 BDD step。
-    # verified-by: src/agent/runtime/obs.rs
     场景: dual-session-identity-keys
       假如 mock 模型先 tool 后无 tool
       当 以带 display name 的会话身份运行一次 agent 回合
@@ -229,7 +220,6 @@
   @req:r1485
   规则: otel-compaction-skipped-span
     当低频观测 span 激活且会话 compaction 的 prepare_compaction 门闸早退（无可摘要历史 / Already compacted 等；auto 静默路径与 manual 路径皆然）且会话身份已知时，须导出名为 agent.compaction.skipped 的轻量 span：须携带跳过原因（skip_reason）与该会话的 langfuse.session.id / xylitol.session.id；不得使用 agent.compaction 名（otel19 保留予过 prepare 的尝试），不得携带 xylitol.obs.lane=llm，不得伪装 LLM 语义（otel22）；auto 早退 不得因此发出 CompactionEnd；auto 预检 须仅发生在 Settle（或 overflow 错误收尾），不得在工具续跑的 iteration 关闭时导出 skipped；存在活跃 agent.turn 时 MAY 为其子 span；无活跃会话（无可附的会话身份）MAY 省略；观测闸关闭时 须为零/近零开销。由单测（CollectingReporter）覆盖，不得为静态存在性单独扩 BDD step。
-    # verified-by: src/agent/compaction/obs.rs
     场景: skipped-compaction-single-estimate
       当 以观测闸开启并触发一次会话压缩
       那么 导出 agent.compaction 且 type 为 span 并携带原因与 obs lane

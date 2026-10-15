@@ -6,7 +6,6 @@
   @req:r41
   规则: compaction
     当 CompactionSettings.enabled 且上下文占用超过 window−reserve（c1630）时，System 须在 agent/capabilities 回合落定后自动 compact（c1640）；不得仅依赖百分比闸或仅 TUI 轮询。
-    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
 
     场景: compaction-trigger-on-reserve-exceed
       当 读取压缩触发边界
@@ -299,7 +298,6 @@
   @req:r1114
   规则: CWD 集成
     CLI 与 RPC 模式 须在恢复会话前完成同一校验。
-    # verified-by: llmanspec/specs/agent-session-store/agent-session-store.feature
 
     场景: cwd-check-before-restore
       当 读取恢复会话校验顺序
@@ -307,7 +305,6 @@
   @req:r1115
   规则: SessionStore 端口实现
     infra 层的 SessionManager 须实现 protocol 的 XySessionStore 端口（append、load、load_context、exists），仅覆盖 agent 循环与 compaction 所需；完整会话面（fork、navigate、export）MAY 留在具体结构体供组合根直接使用。
-    # verified-by: src/AGENTS.md
 
     场景: session-manager-implements-port
       当 读取会话存储端口实现
@@ -315,7 +312,6 @@
   @req:r1117
   规则: 日志访问
     会话 store 须暴露 read_recent(session_id, limit) -> Vec<Event> 供 server journal；journal 容量 须可配置（默认 10000）。
-    # verified-by: llmanspec/specs/server-core/server-core.feature
 
     场景: journal-read-recent-boundary
       当 读取会话日志访问接口
@@ -323,7 +319,6 @@
   @req:r1116
   规则: ExportIo 实现
     System 须提供导出 I/O 端口实现（StdExportIo 或等价，tokio::fs 读写）；组合根 须将导出协作器经该端口注入。
-    # verified-by: llmanspec/specs/agent-session-store/agent-session-store.feature
 
     场景: export-io-port-injected
       当 读取导出 I/O 装配

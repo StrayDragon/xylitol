@@ -35,7 +35,6 @@
   @req:r1450
   规则: 已连接列表只读
     System 须提供只读查询已成功连接的 MCP 服务器摘要（至少 id 与工具数量或等价）；无配置或全部失败时 须返回空列表；该查询 不得创建新连接。
-    # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
 
     场景: connected-list-readonly
       当 以 fixture MCP 配置装配 ping 工具
@@ -43,7 +42,6 @@
   @req:r1451
   规则: mcp-tool-hard-barrier
     经 McpToolAdapter（或等价）暴露的 MCP 工具 须在批调度中为 Barrier（不可进并行窗）；重载后新发现工具 须同样为 Barrier；不得提供配置名、glob 或 annotation 放行路径。由单测覆盖，不得为静态默认单独扩 BDD step。
-    # verified-by: llmanspec/specs/agent-runtime/agent-runtime.feature
 
     场景: mcp-tool-hard-barrier-scheduling
       当 读取 MCP 工具批调度标记
@@ -51,7 +49,6 @@
   @req:r1452
   规则: nonblocking-ui-parallel-startup
     当 mcp_servers 非空时，产品启动路径 不得在打开 TUI 应用面（或 print 进入可观测启动）之前阻塞等待全部 MCP 连接完成；CLI `--session` resume 须能在 MCP 未完成时投影历史。多服务器连接 须并行尝试（单失败 须仍可观察且 不得拖死其余，对齐 mcp4）。连接过程 须经 Driver/composition 只读缝暴露可轮询的进度或快照（至少：配置数、已连接摘要、进行中/完成态或等价；每 server 或汇总的 tools armed 态，供 `/mcp` 面板与短 cue）。TUI 在 MCP 未结算前 不得因 connecting 拒绝用户键入、提交普通 agent prompt、bang 或 slash（含面内 session-resume、`/reload` 与 `/mcp`）（agent busy 既有闸除外）；须允许滚历史。Host 为 session 物化写者或处理 SetModel 等 unary 时 不得在该 unary 返回前等待全部 MCP 连接完成（门闸仍见 mcp8，跨 tick）。结算成功 须经单一入口更新内部 MCP registry/armed 快照（保留内置、同名不重复）；**不得** 在工具表已定稿（FROZEN）后静默把新 settle 结果热扩进 provider 可见 `tools[]`（定稿/重定稿语义见 mcp8）。替换 manager 前 须 shutdown 旧 MCP client/子进程，不得静默堆叠无法管理的连接进程。不得往 session 历史插入宣告 MCP ready 的假 system/user 行。无配置路径 须仍满足 mcp1 zero-cost。
-    # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
 
     场景: nonblocking-ui-parallel-startup
       当 读取产品启动装配顺序
@@ -59,7 +56,6 @@
   @req:r1454
   规则: loaded-resources-live-mcp
     当 mcp_servers 非空时，只读 loaded_resources 快照 须与进程内正在连接或已连接的 MCP 状态同源；不得用一份从未发起连接的资源壳冒充完成态（仅 configured、connected 恒空且无 connecting/诊断）。无配置时 须仍满足 mcp1。
-    # verified-by: llmanspec/specs/app-tui-host/app-tui-host.feature
 
     场景: loaded-resources-live-mcp-source
       当 读取已加载资源快照装配
@@ -67,7 +63,6 @@
   @req:r1446
   规则: call-phase-timeout
     MCP 连接建立后的每笔请求（tools/list、tools/call 等）须有单次调用期超时；到期以可分类超时错误呈现给调用方，不得无限等待。
-    # verified-by: src/infra/mcp/adapter.rs
 
     场景: call-phase-timeout-classified
       当 读取 MCP 单次调用超时配置
@@ -75,8 +70,6 @@
   @req:r1453
   规则: first-turn-tool-freeze
     轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 须立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）须等待 MCP settle 或 code-first 门闸超时后再定稿；单 server 连接 须有 code-first 墙钟超时（挂死不得让 bootstrap 永 Running）。门闸超时 须以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），不得自动重试连接。TUI 不得在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 须冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿；重定稿 须按 tool name upsert（有则替换、无则追加），不得留下同名多行。本波 resume/切会话 须清冻再门闸（指纹持久化后的一致续冻另波）；重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
-
-    # verified-by: llmanspec/specs/agent-runtime/agent-runtime.feature
 
     场景: first-turn-tool-freeze-gate
       当 读取首回合工具定稿门禁

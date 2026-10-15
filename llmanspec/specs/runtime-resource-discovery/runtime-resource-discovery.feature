@@ -42,7 +42,6 @@
   @req:r1766
   规则: 复用 loader
     资源命令 须复用 DefaultResourceLoader 发现，而非独立重扫。
-    # verified-by: src/app/cli/resources.rs
 
     场景: resource-commands-reuse-loader
       当 读取资源命令装配
@@ -51,7 +50,6 @@
   规则: 统一 SourceInfo 类型
     System 须提供公共 SourceInfo 类型，含 path、source、scope、origin、base_dir 字段。
     # （c2827 合并：r1768 Source 工厂与 r1769 Source 迁移均属统一 SourceInfo 类型的子条款，并入本条承载。）
-    # verified-by: src/protocol/source_info.rs
 
     场景: source-info-public-shape
       当 读取资源来源信息类型
@@ -59,7 +57,6 @@
   @req:r1768
   规则: Scope 枚举
     SourceScope 须支持 user、project、temporary 变体，对齐 pi。
-    # verified-by: src/protocol/source_info.rs
 
     场景: scope-enum-variants
       当 读取资源作用域枚举

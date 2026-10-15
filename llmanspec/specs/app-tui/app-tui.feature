@@ -6,7 +6,6 @@
   @req:r1164
   规则: three-surfaces-coexist
     print（cli）、server（HTTP 监听器）与 tui（交互面）应用面 须共存；不得以统一为名删除任一传输面。
-    # verified-by: src/app/cli/mod.rs
 
     场景: three-app-surfaces-in-default-feature-set
       当 读取 Cargo 特性表
@@ -15,7 +14,6 @@
   @req:r1165
   规则: reuse-contract
     产品 TUI 须经协议契约、应用缝与 agent 公共入口导入，不得 reach agent 子模块内部或 infra；不得依赖已删除的独立 domain 顶栏。斜杠语义 须复用 protocol::Command。
-    # verified-by: src/AGENTS.md
 
     场景: tui-imports-via-public-contract-only
       当 读取库公开入口的重导出清单
@@ -23,7 +21,6 @@
   @req:r1166
   规则: no-skeleton-spray
     产品 TUI 面下每个新增源文件 须在同一变更内由真实入口驱动；不得用 #[allow(dead_code)] 落地未驱动骨架。死码分诊规则由架构 AGENTS 与 l8ng-audit-dead-code skill 承载。
-    # verified-by: src/AGENTS.md
 
     场景: no-undriven-skeleton-files
       当 读取 crate 根的死代码允许写法
@@ -31,7 +28,6 @@
   @req:r1163
   规则: capability-index
     产品 TUI 行为细节 须由 app-tui-host / app-tui-bridge / app-tui-transcript / app-tui-fixed-zone / app-tui-input / app-tui-commands 各自约束；引擎与四层 harness 须由 package-tui-*（含 package-tui-testing）约束，不得在本索引重复实现史细节。
-    # verified-by: llmanspec/specs/app-tui/app-tui.feature
 
     场景: index-points-to-per-capability-rules
       当 读取 tui 面 AGENTS 摘要
@@ -46,5 +42,3 @@
       那么 编辑器插入落盘路径文本且路径经 Driver 暂存
       当 以主机泵注入含连接态的资源快照后提交 "/mcp"
       那么 MCP 面板槽打开且列出连接态且未因开面板 abort agent
-
-    # verified-by: docs/architecture/信任与项目门禁.md

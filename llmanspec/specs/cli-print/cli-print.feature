@@ -20,7 +20,6 @@
   @req:r49
   规则: thinking-to-stderr
     Print 模式下 System 须将 reasoning/thinking 内容流式写入 stderr（非 stdout），使正式答案不被污染，包裹于 <think>...</think>；模型已自行发出 <think> 标签时 不得双重包裹。
-    # verified-by: src/app/cli/print.rs
 
     场景: thinking-streams-to-stderr-only
       当 以 thinking 与自带标签两种流分别渲染 print 输出

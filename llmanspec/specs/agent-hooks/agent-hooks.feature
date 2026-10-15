@@ -31,7 +31,6 @@
   @req:r1000
   规则: hook 事件
     Hook 系统 须支持约定事件名，含：tool_call、tool_result、context、before_provider_headers、before_provider_request、after_provider_response、agent_start、agent_end、agent_settled、turn_start、turn_end、message_start、message_end、session_start、session_shutdown，及 HookEvent 中已有 xylitol 专属事件。
-    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
     场景: convention-event-names-dispatch
       假如 注册了匹配 "pre.tool_call" 的 hook
       当 任何工具即将执行
@@ -40,7 +39,6 @@
   @req:r1008
   规则: hook 匹配
     Hook 分发器 须按 event_type.phase.qualifier 模式匹配 hooks（如 pre.tool_call.bash 匹配 bash 工具 pre 阶段调用）。
-    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
     场景: qualifier-narrows-dispatch
       假如 注册了匹配 "pre.tool_call.bash" 的 hook
       当 bash 工具以 "echo 1" 调用
@@ -65,7 +63,6 @@
   @req:r1011
   规则: hook 环境
     Hook 脚本 须经 stdin 接收事件上下文 JSON，并继承配置的环境变量。
-    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
     场景: stdin-receives-event-json
       假如 注册了匹配 before_provider_request 的 hook 且 provider 为 deepseek
       当 provider 请求发送前
@@ -98,7 +95,6 @@
   @req:r1001
   规则: before_provider_headers
     before_provider_headers hook 须在默认 auth 头构建后、发送前运行；Modify.args.headers 对象 须合并或替换请求头。
-    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
     场景: provider-headers-before-send
       假如 注册了匹配 "before_provider_headers" 的 hook
       当 provider 头构建后
@@ -107,7 +103,6 @@
   @req:r1002
   规则: provider hooks 接线
     注入 HookDispatcher 时，OpenAI Responses、OpenAI Completions 与 Anthropic Messages adapter 须调用三个 provider hooks；空 dispatcher 须为零开销 no-op。
-    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
     场景: provider-hooks-empty-dispatch-noop
       假如 没有注册任何 hook
       当 dispatch hook
@@ -116,7 +111,6 @@
   @req:r1003
   规则: 脚本桥接 ReAct
     Agent 附加 HookDispatcher 时，ReAct 须除 AgentHooks 外为 tool_call（pre）、tool_result（post）、context（pre model call）分发脚本 hooks。
-    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
     场景: react-script-bridge-tool-call
       假如 注册了匹配 "tool_call" 的 hook
       当 执行操作 "执行 bash"
@@ -125,7 +119,6 @@
   @req:r1004
   规则: 生命周期脚本 hooks
     附加 HookDispatcher 时，agent_start/agent_end/turn_start/turn_end/message_start/message_end 须与对应 XyEvent 发射一并分发（仅观察；fail-open）。
-    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
     场景: lifecycle-hooks-settle-round
       假如 注册了匹配 "turn_end" 的 hook
       假如 mock 模型先 tool 后无 tool
@@ -135,7 +128,6 @@
   @req:r1005
   规则: 模型与 thinking 选择接线
     附加 XyHookBus 时，Command::SetModel / CycleModel 执行器 须在成功变更后分发 model_select；Command::SetThinkingLevel 执行器 须分发 thinking_level_select；二者 须为仅观察 fail-open；不得依赖仅 TUI 路径。
-    # verified-by: llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature
     场景: model-and-thinking-dispatch
       假如 注册了匹配 "model_select" 的 hook
       当 执行操作 "选择模型 fake"
@@ -147,7 +139,6 @@
   @req:r1006
   规则: 会话树切换 hooks
     附加 XyHookBus 时，SessionTree / TravelSessionTree 执行器 须分发 session_before_tree（Blocked 可取消）与成功时 session_tree；SwitchSession 执行器 须分发 session_before_switch（Blocked 可取消）与成功时对 prior session 的 session_shutdown；process-quit shutdown MAY 直至库拆卸缝存在。
-    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
     场景: tree-and-switch-before-block
       假如 注册了匹配 session_before_tree 的 hook 且返回 block 树被拒绝
       当 执行操作 "打开会话树"
@@ -157,7 +148,6 @@
   @req:r1007
   规则: user_bash 于 execute_bash
     附加 XyHookBus 时，Command::Bash 执行器 须在运行命令前分发 user_bash；Blocked 须阻止执行并 surfaced 错误。
-    # verified-by: llmanspec/specs/agent-hooks/agent-hooks.feature
     场景: user-bash-blocks-run
       假如 注册了匹配 user_bash 的 hook 且返回 block bash被拒绝
       当 执行操作 "执行 bash"

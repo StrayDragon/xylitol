@@ -177,7 +177,6 @@
   @req:r1077
   规则: SessionStore 端口
     System 须经 SessionStore 抽象做会话持久化：protocol 定义端口、infra 提供持久化与内存实现（供测试）、agent 层经该抽象持有 store。
-    # verified-by: src/AGENTS.md
 
     场景: session-store-port-layered
       当 读取会话持久化分层
@@ -201,7 +200,6 @@
   @req:r1080
   规则: trust 不在 agent 层
     项目 trust 决策 须经 infra trust store + 应用面（Driver / `/trust`）路径；agent 层 不得暴露 save_trust_decision 或 agent 层 trust 模块（曾为无生产调用方的预留自由函数，已删除）。
-    # verified-by: src/AGENTS.md
 
     场景: trust-outside-agent-layer
       当 扫描 agent 层信任依赖
@@ -251,7 +249,6 @@
   @req:r1083
   规则: compaction-aware session context
     build_session_context / build_session_context_v2（及等价 LLM history 播种）须对 leaf 分支路径应用与 pi buildContextEntries 同构的裁切：存在 CompactionEntry 时仅保留路径上最新一条 compaction 摘要 + firstKeptEntryId 起至该条之前的条目 + 该条之后的条目；不得把 firstKept 之前已被摘要的消息再送入 LLM 上下文。
-    # verified-by: llmanspec/specs/agent-session/agent-session.feature
 
     场景: compaction-aware-session-context
       当 读取会话上下文压缩回溯
@@ -259,7 +256,6 @@
   @req:r1084
   规则: resume-import-provider-prefix-path
     resume_session / import_from_jsonl（或等价加载）后用于打模型的 history 须经与同进程续跑相同的唯一路径：SessionEntry → as_agent_message（或等价）→ project_for_llm → ResponsesAssembler；有损 Env 折叠文案 须形状稳定。不得在 infra 另建平行 Env 折叠；不得无显式 change 改稳定折叠串。system date 日界见相邻 c1905；tools 冻表见 c1900。由单测与维护 lab 覆盖，不得强制新 BDD step。
-    # verified-by: src/agent/llm_project.rs
 
     场景: resume-single-import-path
       当 读取会话恢复原路径

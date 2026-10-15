@@ -6,7 +6,6 @@
   @req:r1461
   规则: debug-observation-pipeline
     应用 须在组合根恰好一次装配观测后端：级别 log 与本地 fastrace FileReporter 须只写入 agent 日志目录下的文件（如 xylitol.log / provider-trace.jsonl），须 NEVER 写 stdout 或 stderr，以免破坏 TUI Inline viewport 与 DSR。禁止使用会打印到 stderr 的 ConsoleReporter。本地 file 激活 须仅由环境与构建配置驱动（无 CLI flag）：debug 构建（cfg(debug_assertions)）须默认启用；release 须默认关闭，经 XYLITOL_DEBUG / RUST_LOG（级别日志）与 XYLITOL_PROVIDER_TRACE（provider timeline）显式打开。可选远程 OTLP 出口 MAY 由 AppConfig.[otel] 控制且默认关闭（见 infra-otel），不得与本地 file 闸混为一谈。文件写入 须同步 append（兼容 panic=abort），unix 下文件模式 须为 0o600。TUI 层 须只调用 log 宏或 fastrace API，不得自行安装 Reporter。时间线栈 须为 fastrace；不得再依赖 tracing / tracing-subscriber。
-    # verified-by: src/infra/observability/file_reporter.rs
 
     场景: compose-root-single-obs-sink
       当 读取观测后端装配
@@ -31,7 +30,6 @@
   @req:r1464
   规则: fastrace-单栈
     仓库观测时间线 须仅使用 fastrace；级别诊断 须使用 log 门面；Cargo 与 src 不得依赖 tracing 或 tracing-subscriber；不得引入 fastrace-tracing 兼容层。允许 fastrace-futures 等官方 companion（非 tracing 桥）。
-    # verified-by: Cargo.toml
 
     场景: fastrace-single-stack
       当 读取观测栈依赖清单
@@ -39,7 +37,6 @@
   @req:r1465
   规则: agent-low-freq-spans
     当 provider tracing 激活时，一次用户触发的 agent 处理 须提供可关联的低频 fastrace span：根 agent.turn；每步 agent.iteration；模型流 llm.request（可与 request_id 对照）；可选 tool.execute；若发生会话 compaction 则 须另有 agent.compaction（挂于该 turn 下，或无 turn 时为独立根）。主路径子 span 须挂在 turn/iteration/compaction 父节点之下（共享 trace_id），不得在活跃 turn 下各自无关 random 根。agent.turn 结束时 须能区分正常完成与用户 abort（见 infra-otel otel20）。不得为每条 SSE / 每帧 TUI tick 安装无采样 span。默认 不得启用 OpenTelemetry/Jaeger 等外部导出 Reporter；远程 OTLP 仅可经独立 [otel] 配置 + feature otel 显式 opt-in（见 infra-otel），且不得写 stdout/stderr。
-    # verified-by: llmanspec/specs/infra-otel/infra-otel.feature
 
     场景: provider-trace-correlated-spans
       当 读取低频观测 span 定义
