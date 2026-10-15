@@ -109,14 +109,7 @@ fn _g_hook_before_provider_combo(agent: &AgentState) {
 }
 
 /// hooks-wiring solidify：观察型 then 折叠（调用 + 上下文键）。
-#[then("hook 被调用且上下文含键 reason")]
-fn _t_wiring_called_reason(agent: &AgentState) {
-    _t_hook_called(agent);
-    _t_hook_context_has_key(agent, "reason".into());
-}
-
-/// 参数化（c2921 观察矩阵）：`{key}` 无类型提示 → `.+?` 捕获；老字面变体保留
-/// （agent-hooks 侧场景仍引用，specificity 消歧归 runtime）。
+/// 参数化（c2921 观察矩阵）：`{key}` 无类型提示 → `.+?` 捕获（specificity 消歧归 runtime）。
 #[then("hook 被调用且上下文含键 {key}")]
 fn _t_wiring_called_key(agent: &AgentState, key: String) {
     let key = strip_quotes(&key);
@@ -148,11 +141,6 @@ fn _t_wiring_called_command(agent: &AgentState) {
 fn _g_wiring_tree_block(agent: &AgentState) {
     _g_hook_registered(agent, "session_before_tree".into());
     _g_hook_returns(agent, r#"{"action":"block","reason":"树被拒绝"}"#.into());
-}
-#[given("注册了匹配 session_before_switch 的 hook 且返回 block 切换被拒绝")]
-fn _g_wiring_switch_block(agent: &AgentState) {
-    _g_hook_registered(agent, "session_before_switch".into());
-    _g_hook_returns(agent, r#"{"action":"block","reason":"切换被拒绝"}"#.into());
 }
 #[given("注册了匹配 user_bash 的 hook 且返回 block bash被拒绝")]
 fn _g_wiring_bash_block(agent: &AgentState) {

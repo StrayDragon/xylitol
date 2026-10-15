@@ -192,15 +192,6 @@ pub(crate) fn _g_comp_overhead(agent: &AgentState, n: u64) {
     agent.compaction_fixed_overhead.set(n);
 }
 
-#[then("返回 true")]
-pub(crate) fn _t_comp_result_true(agent: &AgentState) {
-    assert_eq!(*agent.compaction_result.borrow(), Some(true));
-}
-#[then("返回 false")]
-pub(crate) fn _t_comp_result_false(agent: &AgentState) {
-    assert_eq!(*agent.compaction_result.borrow(), Some(false));
-}
-
 /// 参数化形态（c2920 场景大纲专用）：逐行断言 `expect_compact` 列。
 #[then("返回 {expect_compact}")]
 pub(crate) fn _t_comp_result_expect(agent: &AgentState, expect_compact: bool) {

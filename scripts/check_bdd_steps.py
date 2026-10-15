@@ -51,7 +51,12 @@ STEP_ATTR_RE = re.compile(
     r'#\[(?P<kind>given|when|then)\(\s*"(?P<pat>(?:[^"\\]|\\.)*)"\s*\)\s*\]', re.S
 )
 SCENARIO_ATTR_RE = re.compile(r"#\[scenario\s*\((?P<args>[^)]*)\)\s*\]", re.S)
-SCENARIO_TITLE_RE = re.compile(r"^\s*(?:场景|Scenario):\s*(.+?)\s*$")
+# 场景大纲 / Scenario Outline titles bind exactly like plain scenarios; the
+# steps inside keep their <param> placeholders (matched literally by {var}
+# patterns, c2920+).
+SCENARIO_TITLE_RE = re.compile(
+    r"^\s*(?:场景大纲|场景|Scenario Outline|Scenario):\s*(.+?)\s*$"
+)
 
 
 def collect_patterns() -> dict[tuple[str, str], list[str]]:
