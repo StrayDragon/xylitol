@@ -3277,7 +3277,7 @@ fn c2905_assert_on(host_pump_bdd: &HostPumpBdd) {
     assert!(frame.contains("施工中"), "c2912 侧栏须为实验占位");
 }
 
-#[then("右缘侧栏上屏且内容区让宽")]
+#[then("右侧栏上屏且内容区让宽")]
 fn t_c2905_on(host_pump_bdd: &HostPumpBdd) {
     c2905_assert_on(host_pump_bdd);
 }
@@ -3356,7 +3356,7 @@ async fn w_c2905_both(host_pump_bdd: &HostPumpBdd) {
     .await;
 }
 
-#[then("两面同时可辨且覆盖弹出框贴内容右缘")]
+#[then("两面同时可辨且覆盖弹出框贴内容右边界")]
 fn t_c2905_coexist(host_pump_bdd: &HostPumpBdd) {
     let pump = take_pump(host_pump_bdd);
     let frame = pump
@@ -3378,7 +3378,7 @@ pub(crate) fn g_product_ao_scrolled(host_pump_bdd: &HostPumpBdd) {
     g_tall_scrolled_viewport(host_pump_bdd);
 }
 
-#[when("产品会话在右缘顶行左键单击")]
+#[when("产品会话左键单击跳转顶部按钮字符")]
 pub(crate) async fn w_product_gutter_click_top(host_pump_bdd: &HostPumpBdd) {
     use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
     let mut pump = take_pump(host_pump_bdd);

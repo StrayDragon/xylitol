@@ -333,7 +333,7 @@ impl<T: Terminal> HostSession<T> {
                 .tui
                 .set_pointer_click_phase(PointerClickPhase::UpIfEmptySelection);
             session.tui.arm_pointer_probe(true);
-            // c2891：产品默认开右缘滚动槽（包层 opt-in 契约的产品侧翻转，仅 AO）。
+            // c2891：产品默认开最右列滚动槽（包层 opt-in 契约的产品侧翻转，仅 AO）。
             session
                 .tui
                 .set_scroll_gutter(Some(xylitol_tui::ScrollGutter));

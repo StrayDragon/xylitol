@@ -114,7 +114,7 @@ pub struct UiRoot {
     slot: EditorSlot,
     /// Handshake with host `drain_pending_ui` (outlives the live payload).
     pending: PendingSlotOps,
-    /// c2875 瞬态会话详情覆盖弹出框（右缘 overlay；非常驻分栏，DESIGN 硬规则 2 例外）。
+    /// c2875 瞬态会话详情覆盖弹出框（屏幕右侧 overlay；非常驻分栏，DESIGN 硬规则 2 例外）。
     session_popup_open: bool,
     session_popup_id: String,
     /// c2905 会话侧栏：内容区让宽的常驻第二列。

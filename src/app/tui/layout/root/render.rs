@@ -73,9 +73,9 @@ impl UiRoot {
         vec![truncate_to_width(&painted, width, "…", false)]
     }
 
-    /// c2875 会话详情覆盖弹出框：右缘瞬态 overlay（键位 alt+i 显隐；Esc 收起）。
+    /// c2875 会话详情覆盖弹出框：屏幕右侧瞬态 overlay（键位 alt+i 显隐；Esc 收起）。
     /// 纯展示：不注册指针命中（AO 选区可覆盖其文本，后续票处理）；
-    /// 无阴影无卡片——muted 标尺行 + label/value，右缘截断。
+    /// 无阴影无卡片——muted 标尺行 + label/value，右边界截断。
     pub(super) fn overlay_session_popup(
         &self,
         lines: &mut [String],
@@ -275,7 +275,7 @@ impl UiRoot {
 
 impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
-        // c2905 侧栏：内容区让宽（wrap 按 content 重排），右缘整高第二列。
+        // c2905 侧栏：内容区让宽（wrap 按 content 重排），最右整高第二列。
         let (sidebar_on, _sidebar_w, content_w) = self.session_sidebar_layout(width);
         let width = if sidebar_on { content_w } else { width };
         let mut lines = Vec::new();
@@ -342,7 +342,7 @@ impl Component for UiRoot {
         // c2875 覆盖弹出框先画：通知栈随后叠绘（右上 z 序高于覆盖弹出框）。
         self.overlay_session_popup(lines, eff, transcript_rows);
         self.overlay_client_notices(lines, eff, transcript_rows);
-        // c2905 侧栏最后画：整高右缘，覆盖语义仅限侧栏带（>=内容宽）。
+        // c2905 侧栏最后画：整高最右列，覆盖语义仅限侧栏带（>=内容宽）。
         if sidebar_on {
             let sep = self.theme.paint_muted("│");
             for (i, line) in lines.iter_mut().enumerate() {

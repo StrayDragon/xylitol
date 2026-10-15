@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: gutter 词汇常名化——跳顶/跳底/记号/右缘 换常见措辞
+branch: sdd/c2923-refactor-gutter-step-wording
+base_branch: main
+base_sha: 9a2ae58ca3b80837bb749d49a5c553edcc455d87
 ---
 
 ## Why

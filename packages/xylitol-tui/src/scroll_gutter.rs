@@ -1,4 +1,4 @@
-//! Scroll gutter (c2891): transcript 右缘 1 列 `^ | v`（跳顶 / 轨道 / 跳底）。
+//! Scroll gutter (c2891): transcript 最右 1 列 `^ | v`（跳转顶部 / 轨道 / 跳转底部）。
 //!
 //! Opt-in（[`ScrollGutter`]，默认关）：开启时正文按少一列排版（宿主 carve，
 //! 见 change design D2），本模块只负责末列 stamp 与可见性判定。
@@ -11,18 +11,18 @@ use unicode_width::UnicodeWidthChar;
 /// 极窄阈值：可用宽低于此不占列（对齐 c2520 档位精神，窄屏不挤正文）。
 pub const GUTTER_MIN_WIDTH: usize = 20;
 
-/// 顶行跳顶记号。
+/// 顶行跳转顶部按钮字符。
 pub const GUTTER_TOP: char = '^';
-/// 底行跳底记号。
+/// 底行跳转底部按钮字符。
 pub const GUTTER_BOTTOM: char = 'v';
 /// 轨道字符（pi 同款；中段非 thumb 区）。
 pub const GUTTER_TRACK: char = '│';
 /// thumb 字符（拖拽中改粗的粗体观感由后续主题票承接入）。
 pub const GUTTER_THUMB: char = '┃';
 
-/// 跳顶 hit id（与产品 FoldHitTable 的 index+1 空间天然不相交）。
+/// 跳转顶部 hit id（与产品 FoldHitTable 的 index+1 空间天然不相交）。
 pub const GUTTER_TOP_HIT_ID: HitId = 1 << 62;
-/// 跳底 hit id。
+/// 跳转底部 hit id。
 pub const GUTTER_BOTTOM_HIT_ID: HitId = 1 << 62 | 1;
 
 /// 滚动槽开关（v1 无载荷；字符 / 颜色可后票扩展为字段）。
@@ -92,7 +92,7 @@ pub fn gutter_scroll_for_pointer(
     (offset * max_scroll) / max_thumb
 }
 
-/// 于 `visible` 每行右缘 `term_cols - 1` 列 stamp 记号：首行 top、末行 bottom、中间 track。
+/// 于 `visible` 每行最右 `term_cols - 1` 列 stamp 按钮字符：首行 top、末行 bottom、中间 track。
 ///
 /// 行宽不足时先补普通空格（内容经 carve ≤ 该列，正常不覆盖；宽出则 ANSI 感知截断该列起尾部——零宽 SGR 保留）。调用方 MUST 已做过 [`gutter_active`] 判定。
 pub fn stamp_gutter(

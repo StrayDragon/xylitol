@@ -367,9 +367,9 @@
       那么 两种路径的块 body 均为空态提示行 `(empty list)` 且逐行一致，不留空 body
   @req:r2893
   规则: product-ao-scrollbar-gutter
-    产品 ApplicationOwned 会话必须默认开启右缘滚动槽（包层 opt-in 契约的产品侧翻转）：transcript 右缘保留 1 列，跳顶/跳底可点击并作用于应用视口；产品宿主必须把滚动槽命中区随帧并入指针命中表且点击分派先于折叠命中。Inline 会话不得接线（仍走终端 scrollback）。
+    产品 ApplicationOwned 会话必须默认开启最右列滚动槽（包层 opt-in 契约的产品侧翻转）：transcript 最右保留 1 列，跳转顶部/跳转底部可点击并作用于应用视口；产品宿主必须把滚动槽命中区随帧并入指针命中表且点击分派先于折叠命中。Inline 会话不得接线（仍走终端 scrollback）。
 
     场景: product-gutter-click-jumps
       假如 产品 ApplicationOwned 会话已向下滚动
-      当 产品会话在右缘顶行左键单击
+      当 产品会话左键单击跳转顶部按钮字符
       那么 产品应用视口滚动位置归零且无选区

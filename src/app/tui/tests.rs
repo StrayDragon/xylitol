@@ -6090,7 +6090,7 @@ fn gutter_host_click_jumps_and_selection_stays_clean() {
     let top0 = session.tui.application_owned_scroll_top();
     assert!(top0 > 0, "must be away from head, got {top0}");
 
-    // 点右缘顶行（col 39 = 物理末列 gutter）
+    // 点最右列顶行（col 39 = 物理末列 gutter）
     step_left_click(&mut session, 39, 0);
     assert_eq!(
         session.tui.application_owned_scroll_top(),
@@ -6099,7 +6099,7 @@ fn gutter_host_click_jumps_and_selection_stays_clean() {
     );
     assert!(!session.tui.application_owned_has_selection());
 
-    // 点右缘底行回底：先上滚再点底
+    // 点最右列底行回底：先上滚再点底
     session
         .apply_ao_wheel_delta(-(notch * 2))
         .expect("up again");

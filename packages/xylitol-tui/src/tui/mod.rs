@@ -264,7 +264,7 @@ pub struct TUI<T: Terminal> {
     dock_rows: usize,
     /// Persists across begin/end; applied when constructing [`ApplicationOwnedRuntime`].
     transcript_copy_on_release: bool,
-    /// 右缘滚动槽开关（c2891）。Parked on `TUI` 同 [`Self::transcript_copy_on_release`]：
+    /// 最右列滚动槽开关（c2891）。Parked on `TUI` 同 [`Self::transcript_copy_on_release`]：
     /// 存活 session 重建，两处 begin 后重放进 runtime。
     scroll_gutter: Option<crate::scroll_gutter::ScrollGutter>,
     /// c2905 宿主侧栏让宽（列）；begin 重放与即时 set 双路（同 gutter 模式）。
@@ -449,7 +449,7 @@ impl<T: Terminal> TUI<T> {
         changed
     }
 
-    /// Transcript 跳顶（c2891 gutter 跳底对称）；变化时软请求重绘。
+    /// Transcript 跳转顶部（c2891 gutter 跳转底部对称）；变化时软请求重绘。
     pub fn application_owned_scroll_home(&mut self) -> bool {
         let Some(runtime) = self.application_owned.as_mut() else {
             return false;
@@ -614,7 +614,7 @@ impl<T: Terminal> TUI<T> {
         }
     }
 
-    /// Opt-in 右缘滚动槽（c2891，默认关）。存活 ApplicationOwned session 重建：
+    /// Opt-in 最右列滚动槽（c2891，默认关）。存活 ApplicationOwned session 重建：
     /// 存于 `TUI`，两处 begin 后重放进 runtime（同 transcript_copy_on_release 模式）。
     pub fn set_scroll_gutter(&mut self, gutter: Option<crate::scroll_gutter::ScrollGutter>) {
         self.scroll_gutter = gutter;

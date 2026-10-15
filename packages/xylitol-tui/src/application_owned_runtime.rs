@@ -31,7 +31,7 @@ pub struct ApplicationOwnedRuntime {
     copy_notice_until: Option<Instant>,
     hover_id: Option<HitId>,
     hover_regions: HitRegionList,
-    /// 右缘滚动槽（c2891）；None = 关。经 [`crate::TUI`] 注入以存活 session 重建。
+    /// 最右列滚动槽（c2891）；None = 关。经 [`crate::TUI`] 注入以存活 session 重建。
     scroll_gutter: Option<ScrollGutter>,
     /// 滑轨拖拽抓取偏移（内域 0 基）；None = 非拖拽中。
     gutter_drag_grab: Option<usize>,
@@ -41,14 +41,14 @@ pub struct ApplicationOwnedRuntime {
 }
 
 impl ApplicationOwnedRuntime {
-    /// 本会话正文区被预留的右缘列数（gutter 1 列；未来侧栏在同一 seam 叠加）。
+    /// 本会话正文区被预留的最右列数（gutter 1 列；未来侧栏在同一 seam 叠加）。
     /// 宿主据此 carve 组件渲染宽与选中 rect；stamp 另见 [`gutter_active`]。
     #[must_use]
     pub fn reserved_cols(&self) -> usize {
         usize::from(self.scroll_gutter.is_some())
     }
 
-    /// c2905 宿主侧栏让宽（列）；0 = 无。仅影响右缘边界口径（rect / stamp /
+    /// c2905 宿主侧栏让宽（列）；0 = 无。仅影响最右边界口径（rect / stamp /
     /// hit / 滚轮分区），正文排版让宽由宿主组件自身完成。
     pub fn set_extra_reserved_cols(&mut self, n: u16) {
         self.extra_reserved_cols = n;
@@ -90,7 +90,7 @@ impl ApplicationOwnedRuntime {
         self.hover_regions = regions;
     }
 
-    /// Opt-in 右缘滚动槽（c2891）。宿主经 TUI 级 setter 注入，两处 begin 后重放。
+    /// Opt-in 最右列滚动槽（c2891）。宿主经 TUI 级 setter 注入，两处 begin 后重放。
     pub fn set_scroll_gutter(&mut self, gutter: Option<ScrollGutter>) {
         self.scroll_gutter = gutter;
     }
@@ -933,7 +933,7 @@ mod c2910_tests {
         // 内容列滚轮照常。
         assert!(rt.handle_mouse(&up, 40, 8));
         assert_ne!(rt.scroll_top(), before, "content wheel still scrolls");
-        // gutter 几何贴内容右缘（content_right），拖拽/命中与之同列。
+        // gutter 几何贴内容右边界（content_right），拖拽/命中与之同列。
         assert_eq!(rt.content_right(40), 40 - 1 - 24);
     }
 }

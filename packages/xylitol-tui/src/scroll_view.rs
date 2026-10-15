@@ -78,7 +78,7 @@ impl ScrollView {
         self.scroll_top = self.max_scroll();
     }
 
-    /// 回顶（c2891 跳底对称）。已在顶时 false（无谓 repaint）。
+    /// 回顶（c2891 跳转底部对称）。已在顶时 false（无谓 repaint）。
     pub fn scroll_home(&mut self) -> bool {
         if self.scroll_top == 0 {
             return false;

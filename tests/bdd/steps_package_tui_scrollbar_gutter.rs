@@ -148,7 +148,7 @@ fn dispatch_click(tui: &mut TUI<NullTerminal>, kind: MouseEventKind, col: u16, r
     }));
 }
 
-#[when("在右缘顶行左键单击")]
+#[when("左键单击跳转顶部按钮字符")]
 fn w_click_top(gutter_bdd: &GutterBdd) {
     let mut tui = seeded(gutter_bdd);
     let tui = tui.as_mut().expect("seeded");
@@ -160,7 +160,7 @@ fn w_click_top(gutter_bdd: &GutterBdd) {
     consume_gutter_click(tui);
 }
 
-#[when("在右缘底行左键单击")]
+#[when("左键单击跳转底部按钮字符")]
 fn w_click_bottom(gutter_bdd: &GutterBdd) {
     let mut tui = seeded(gutter_bdd);
     let tui = tui.as_mut().expect("seeded");
@@ -172,7 +172,7 @@ fn w_click_bottom(gutter_bdd: &GutterBdd) {
     consume_gutter_click(tui);
 }
 
-#[when("在右缘列左键按下并拖动")]
+#[when("在最右列按住左键拖动")]
 fn w_drag_gutter(gutter_bdd: &GutterBdd) {
     let mut tui = seeded(gutter_bdd);
     let tui = tui.as_mut().expect("seeded");
@@ -184,7 +184,7 @@ fn w_drag_gutter(gutter_bdd: &GutterBdd) {
     dispatch_click(tui, MouseEventKind::Up(MouseButton::Left), col, 2);
 }
 
-#[then("transcript 右缘一列为滚动槽且正文按少一列排版")]
+#[then("transcript 最右一列为滚动槽且正文按少一列排版")]
 fn t_stamped(gutter_bdd: &GutterBdd) {
     let tui = gutter_bdd.tui.borrow();
     let tui = tui.as_ref().expect("seeded");
