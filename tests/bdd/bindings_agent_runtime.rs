@@ -230,3 +230,10 @@ async fn test_ar13_stream_node_timings(
     tui_interaction: TuiInteraction,
 ) {
 }
+
+// c2924：RuntimePhase 迁移表（xstate E1-E4 执行侧；sync fn 保全 case 展开）
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "phase-transition-matrix"
+)]
+fn test_ar_phase_transition_matrix(from: String, event: String, guard: String, to: String) {}

@@ -306,3 +306,26 @@
       那么 结算行外显 Thought 7s 且不再出现流式 Thinking 头
 
     # verified-by: src/agent/runtime/react/tests.rs
+
+  @req:r2905
+  规则: runtime-phase-transition-table
+    RunCoordinator 的 RuntimePhase（Idle/Starting/Streaming/Cancelling）转移 须受守卫约束：仅 Idle 可 try_begin_immediate 入 Starting；mark_streaming 与 finish_run 仅对活动 run_id（或按 stale 语义相不变/降级）生效；cancel_active 自 Starting/Streaming 入 Cancelling；finish_run 匹配 run_id 后归 Idle。守卫失败相 须保持原相不变形。转移闭集 须以场景大纲固定并经状态流转校验（E1-E4）。
+    # verified-by: src/agent/runtime/state.rs
+
+    场景大纲: phase-transition-matrix
+      假如 运行协调器处于 "<from>" 阶段
+      当 协调器事件 "<event>" 且守卫 "<guard>"
+      那么 协调器阶段为 "<to>"
+
+      例子:
+        | from      | event  | guard        | to        |
+        | idle      | begin  | phase_idle   | starting  |
+        | starting  | stream | run_id_match | streaming |
+        | starting  | cancel | always       | cancelling |
+        | streaming | cancel | always       | cancelling |
+        | streaming | begin  | phase_busy   | streaming |
+        | starting  | finish | run_id_match | idle      |
+        | streaming | finish | run_id_match | idle      |
+        | cancelling | finish | run_id_match | idle     |
+        | streaming  | finish | run_id_stale | starting  |
+        | starting   | finish | run_id_stale | starting  |

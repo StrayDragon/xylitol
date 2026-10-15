@@ -79,7 +79,7 @@ impl RuntimePhase {
 
 /// Frozen capability snapshot for a queued / starting root turn.
 #[derive(Clone)]
-pub(crate) struct FrozenRootConfig {
+pub struct FrozenRootConfig {
     pub user_parts: Vec<AgentPart>,
     pub system_prompt: Option<String>,
     pub tools: crate::agent::tools::ToolSet,
@@ -93,7 +93,7 @@ pub(crate) struct FrozenRootConfig {
     pub cwd: String,
 }
 
-struct PendingRoot {
+pub struct PendingRoot {
     run_id: RunId,
     frozen: FrozenRootConfig,
     /// Wakes the waiting event stream when this turn may start.
@@ -106,7 +106,7 @@ struct ActiveTurnSlot {
 }
 
 /// Single-flight run coordinator shared with leases and queue bind/unbind.
-pub(crate) struct RunCoordinator {
+pub struct RunCoordinator {
     next_id: u64,
     phase: RuntimePhase,
     cancel: Option<(RunId, CancellationToken)>,
@@ -296,11 +296,16 @@ impl SharedRunCoordinator {
         crate::utils::lock_mutex(&self.inner)
     }
 
-    pub(crate) fn with<R>(&self, f: impl FnOnce(&RunCoordinator) -> R) -> R {
+    /// Snapshot the current phase (BDD observation surface, c2924).
+    pub fn phase(&self) -> RuntimePhase {
+        self.with(|c| c.phase())
+    }
+
+    pub fn with<R>(&self, f: impl FnOnce(&RunCoordinator) -> R) -> R {
         f(&self.lock())
     }
 
-    pub(crate) fn with_mut<R>(&self, f: impl FnOnce(&mut RunCoordinator) -> R) -> R {
+    pub fn with_mut<R>(&self, f: impl FnOnce(&mut RunCoordinator) -> R) -> R {
         f(&mut self.lock())
     }
 }

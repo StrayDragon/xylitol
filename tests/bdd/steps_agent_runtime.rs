@@ -1300,3 +1300,117 @@ pub(crate) fn t_c2826_two_iterations_one_settlement(agent: &AgentState) {
         "c2826: ContextTokenSettlement 必须恰一次（仅 Settle 发）"
     );
 }
+
+// ── c2924：RunCoordinator phase 迁移表（xstate E1-E4 执行侧；RunCoordinator 单元直驱）────
+
+thread_local! {
+    /// 迁移表执行态：R1=主 run_id（given 初态用），R2=备用（stale 守卫相用）。
+    static COORD_STATE: RefCell<Option<(xylitol::agent::runtime::SharedRunCoordinator, u64, u64)>> =
+        const { RefCell::new(None) };
+}
+
+fn coord_take() -> (xylitol::agent::runtime::SharedRunCoordinator, u64, u64) {
+    COORD_STATE
+        .with(|s| s.borrow_mut().take())
+        .expect("协调器已预置")
+}
+
+fn coord_put(c: xylitol::agent::runtime::SharedRunCoordinator, r1: u64, r2: u64) {
+    COORD_STATE.with(|s| *s.borrow_mut() = Some((c, r1, r2)));
+}
+
+fn phase_name(p: xylitol::agent::runtime::RuntimePhase) -> &'static str {
+    match p {
+        xylitol::agent::runtime::RuntimePhase::Idle => "idle",
+        xylitol::agent::runtime::RuntimePhase::Starting(_) => "starting",
+        xylitol::agent::runtime::RuntimePhase::Streaming(_) => "streaming",
+        xylitol::agent::runtime::RuntimePhase::Cancelling(_) => "cancelling",
+    }
+}
+
+/// 造初态：idle 直建；starting/streaming/cancelling 经真实转移序列抵达。
+fn coord_seed(phase: &str) -> (xylitol::agent::runtime::SharedRunCoordinator, u64, u64) {
+    use xylitol::agent::runtime::SharedRunCoordinator;
+    let c = SharedRunCoordinator::new();
+    let (r1, r2) = (1_u64, 2_u64);
+    match phase {
+        "idle" => {}
+        "starting" | "streaming" | "cancelling" => {
+            let (id, _) = c.with_mut(|co| co.try_begin_immediate().expect("begin r1"));
+            if phase != "starting" {
+                c.with_mut(|co| co.mark_streaming(id));
+            }
+            if phase == "cancelling" {
+                c.with_mut(|co| co.cancel_active(false));
+            }
+        }
+        other => panic!("unknown phase: {other}"),
+    }
+    (c, r1, r2)
+}
+
+#[given("运行协调器处于 {from:string} 阶段")]
+pub(crate) fn _g_coord_phase(from: String) {
+    let (c, r1, r2) = coord_seed(&from);
+    coord_put(c, r1, r2);
+}
+
+#[when("协调器事件 {event:string} 且守卫 {guard:string}")]
+pub(crate) fn _w_coord_transition(event: String, guard: String) {
+    let (c, r1, r2) = coord_take();
+    match (event.as_str(), guard.as_str()) {
+        ("begin", "phase_idle") => {
+            let _began = c.with_mut(|co| co.try_begin_immediate()).is_some();
+        }
+        ("begin", "phase_busy") => {
+            // 拒绝相：非 Idle 时 try_begin 返回 None，相保持不变。
+            let began = c.with_mut(|co| co.try_begin_immediate());
+            assert!(began.is_none(), "busy coordinator must refuse begin");
+        }
+        ("stream", "run_id_match") => {
+            let active = c.with(|co| co.phase().active_run_id());
+            if let Some(id) = active {
+                c.with_mut(|co| co.mark_streaming(id));
+            }
+        }
+        ("stream", "run_id_stale") => {
+            // 构造 stale：记下活动 id，finish 归 Idle（槽清空），再对该旧 id mark_streaming
+            // ——守卫失败，相保持 Idle 不变形。
+            let stale_id = c.with(|co| co.phase().active_run_id());
+            if let Some(id) = stale_id {
+                c.with_mut(|co| co.finish_run(id));
+                c.with_mut(|co| co.mark_streaming(id));
+            }
+        }
+        ("cancel", "always") => {
+            c.with_mut(|co| co.cancel_active(false));
+        }
+        ("finish", "run_id_match") => {
+            let active = c.with(|co| co.phase().active_run_id());
+            if let Some(id) = active {
+                c.with_mut(|co| co.finish_run(id));
+            }
+        }
+        ("finish", "run_id_stale") => {
+            // stale 复刻单测场景：R1 活动 → cancel → finish(R1) 归 Idle →
+            // begin 新 R2（相回 Starting/新 id）→ finish(R1) 为 stale，守卫失败相保持。
+            let old = c.with(|co| co.phase().active_run_id());
+            if let Some(old) = old {
+                c.with_mut(|co| co.cancel_active(false));
+                c.with_mut(|co| co.finish_run(old));
+                let (_new, _) = c.with_mut(|co| co.try_begin_immediate().expect("begin r2"));
+                let r = c.with_mut(|co| co.finish_run(old));
+                assert!(r.is_none(), "stale finish must be ignored");
+            }
+        }
+        other => panic!("unknown event/guard: {other:?}"),
+    }
+    coord_put(c, r1, r2);
+}
+
+#[then("协调器阶段为 {to:string}")]
+pub(crate) fn _t_coord_phase(to: String) {
+    let (c, _r1, _r2) = coord_take();
+    let actual = phase_name(c.phase());
+    assert_eq!(actual, to, "runtime phase transition");
+}

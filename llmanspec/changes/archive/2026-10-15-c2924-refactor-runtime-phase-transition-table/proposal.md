@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: agent-runtime RunCoordinator phase 状态机迁移表化（xstate E1-E4 守卫）
+branch: sdd/c2924-refactor-runtime-phase-transition-table
+base_branch: main
+base_sha: 10f48f49e4a934702beca476f63170f8ddb6ce51
 ---
 
 ## Why
