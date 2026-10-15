@@ -302,6 +302,14 @@ async fn test_sr_rdy1_ready_flips(server_test: ServerTest) {}
 )]
 async fn test_sr_rdy1_failed(server_test: ServerTest) {}
 
+// c2922：就绪状态机迁移表（xstate E1-E4 执行侧；sync fn 保 outline 全 case 展开）
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "readiness-phase-transition-table"
+)]
+fn test_sr_rdy1_transition_table(server_test: ServerTest, from: String, event: String, to: String) {
+}
+
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
     name = "serve-writes-registration-file"

@@ -14,6 +14,7 @@ use xylitol::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump
 use xylitol::app::tui::{BashBlockStatus, UiEntry, UiModel};
 use xylitol::protocol::ports::XyBashResult;
 use xylitol_tui::Component;
+use xylitol_tui::Terminal as _;
 
 /// One mounted host pump (session + scripted driver). Steps take it out,
 /// mutate, and put it back — `HostSession` is not shareable behind `&self`.
@@ -3368,4 +3369,53 @@ fn t_c2905_coexist(host_pump_bdd: &HostPumpBdd) {
     assert!(frame.contains("会话详情"), "覆盖弹出框须在");
     assert!(frame.contains("会话侧栏"), "侧栏须在");
     put_pump(host_pump_bdd, pump);
+}
+
+// ── 产品 AO 滚动槽（c2922：app-tui-transcript r2893 产品侧翻转）──────────────
+
+#[given("产品 ApplicationOwned 会话已向下滚动")]
+pub(crate) fn g_product_ao_scrolled(host_pump_bdd: &HostPumpBdd) {
+    g_tall_scrolled_viewport(host_pump_bdd);
+}
+
+#[when("产品会话在右缘顶行左键单击")]
+pub(crate) async fn w_product_gutter_click_top(host_pump_bdd: &HostPumpBdd) {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let mut pump = take_pump(host_pump_bdd);
+    // host 每帧 paint 后 sync 的镜像：hit 注册先于点击（sync_pointer_hits 同序）。
+    let hits = pump.session.tui.scroll_gutter_hit_set();
+    pump.session.tui.replace_hits(hits);
+    let col = (pump.session.tui.terminal.columns() as u16).saturating_sub(1);
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        pump.session
+            .step(HostEvent::Input(xylitol_tui::InputEvent::Mouse(
+                MouseEvent {
+                    kind,
+                    column: col,
+                    row: 0,
+                    modifiers: crossterm::event::KeyModifiers::NONE,
+                },
+            )))
+            .expect("gutter click step");
+    }
+    pump.session.render_now().expect("post-click paint");
+    *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    pump_once(host_pump_bdd).await;
+}
+
+#[then("产品应用视口滚动位置归零且无选区")]
+pub(crate) fn t_product_gutter_jump_home(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    assert_eq!(
+        pump.session.tui.application_owned_scroll_top(),
+        0,
+        "gutter top click must jump to head"
+    );
+    assert!(
+        !pump.session.tui.application_owned_has_selection(),
+        "gutter click must not start selection"
+    );
 }

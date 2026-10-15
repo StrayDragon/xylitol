@@ -73,6 +73,16 @@
       假如 装配失败
       当 访问 /healthz
       那么 返回 503 且携带 failed 不可重试语义
+
+    场景大纲: readiness-phase-transition-table
+      假如 监听器处于 "<from>" 阶段
+      当 装配事件 "<event>" 发生
+      那么 就绪状态迁移为 "<to>"
+
+      例子:
+        | from     | event             | to     |
+        | starting | assembly_complete | ready  |
+        | starting | assembly_fail     | failed |
   @req:r1787
   规则: serve 注册文件发现契约
     serve 装配完成（ready）后 须原子写注册文件 `~/.xylitol/serve.json`（0600），内容含 url、pid、version；优雅退出 须删除该文件。serve 进程 须周期复读注册文件，字段与自身不全等（被顶替或被删）时 须自行优雅退出。/healthz 各状态应答 body 须携带本进程 pid 与 version。客户端 attach 探活失败时 须读取注册文件给出可操作分级诊断（未启动 / 僵死注册 / 旧版本 / 端口被无关进程占用 / serve 已退出），探活正常路径 不得依赖该文件。

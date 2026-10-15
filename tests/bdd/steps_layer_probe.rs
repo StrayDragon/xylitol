@@ -1888,6 +1888,20 @@ pub(crate) fn t_provider_matrix_scenarios() {
     );
 }
 
+#[then("观察矩阵覆盖模型与思考级别操作")]
+pub(crate) fn t_model_ops_covered() {
+    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
+    let feature =
+        std::fs::read_to_string("llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature")
+            .expect("wiring feature 可读");
+    assert!(
+        src.contains("wiring-observe-matrix")
+            && feature.contains("model_select")
+            && feature.contains("thinking_level_select"),
+        "观察矩阵例子表 MUST 覆盖 model_select 与 thinking_level_select"
+    );
+}
+
 #[when("读取 crate 根再导出")]
 pub(crate) fn w_curated_hook_bus_reexport() {
     LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/lib.rs")));

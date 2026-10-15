@@ -29,8 +29,8 @@
     generate_stream 热路径 MUST NOT 在每个文本 delta 上对累计全文重算完整上下文估计。
   @req:r1566
   规则: Heuristic-诚实标注
-    当最终采用 Heuristic 时，ContextTokenEstimate 的 provenance MUST 为 Heuristic；下游展示层若使用该结果 MUST 能区分于 Api。
-    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature
+    当最终采用 Heuristic 时，ContextTokenEstimate 的 provenance MUST 为 Heuristic；下游展示层若使用该结果 MUST 能区分于 Api。本规则的可执行绑定在主仓 domain-compaction 同名场景（镜像；主仓 BDD runner 消费，包仓无 BDD 基建）。
+    # verified-by: llmanspec/specs/domain-compaction/domain-compaction.feature::estimate-fallback-heuristic
 
     场景: estimate-fallback-heuristic
       假如 无可信 XyUsage 锚点

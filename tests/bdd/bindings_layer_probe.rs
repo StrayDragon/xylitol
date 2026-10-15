@@ -299,6 +299,13 @@ fn test_t4_provider_matrix() {}
 )]
 fn test_t4_hook_reexport() {}
 
+// test-hooks-wiring r1820（c2922：模型操作经观察矩阵覆盖）
+#[scenario(
+    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
+    name = "model-ops-covered-by-observe-matrix"
+)]
+fn test_t4_model_ops_covered() {}
+
 // test-fake-provider r38/45（批 4）
 #[scenario(
     path = "llmanspec/specs/test-fake-provider/test-fake-provider.feature",

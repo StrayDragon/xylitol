@@ -64,14 +64,8 @@
       那么 精选导出总线与结果
   @req:r1820
   规则: wiring-model-ops
-    hooks-wiring 操作字典 须支持「选择模型 fake」与「设置思考级别 high」，并启用对应观察场景。
+    hooks-wiring 操作字典 须支持「选择模型 fake」与「设置思考级别 high」；两操作的观察语义由 wiring-observe-matrix 的 case 4/5（event=model_select / thinking_level_select）固定，不另设独立场景。
 
-    场景: model-select
-      假如 注册了匹配 "model_select" 的 hook
-      当 执行操作 "选择模型 fake"
-      那么 hook 被调用且上下文含键 model
-
-    场景: thinking-select
-      假如 注册了匹配 "thinking_level_select" 的 hook
-      当 执行操作 "设置思考级别 high"
-      那么 hook 被调用且上下文含键 level
+    场景: model-ops-covered-by-observe-matrix
+      当 读取 provider 选择场景
+      那么 观察矩阵覆盖模型与思考级别操作

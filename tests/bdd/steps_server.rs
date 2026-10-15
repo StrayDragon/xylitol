@@ -3503,3 +3503,52 @@ fn t_busy_rejected(server_test: &ServerTest) {
         .expect("prompt result");
     assert_eq!(code, "session_busy", "根提交忙碌须稳定拒绝");
 }
+
+// ---- c2922 sr-rdy1：就绪状态机迁移表（xstate E1-E4 守卫的执行侧） ----
+// 表行驱动 Gateway 单元语义：given 造对应初态的独立 Gateway，when 施加转移，then 观测 phase。
+
+fn rdy_fresh_gateway(phase: &str) -> Arc<xylitol::app::server::http::Gateway> {
+    let g = xylitol::app::server::http::Gateway::starting();
+    match phase {
+        "ready" => {
+            g.set_host(xylitol::app::server::host::HostState::for_test().expect("HostState"))
+        }
+        "failed" => g.mark_failed(),
+        "starting" => {}
+        other => panic!("unknown readiness phase: {other}"),
+    }
+    g
+}
+
+#[given("监听器处于 {from:string} 阶段")]
+async fn g_rdy_phase(server_test: &ServerTest, from: String) {
+    *server_test.gateway.borrow_mut() = Some(rdy_fresh_gateway(&from));
+}
+
+#[when("装配事件 {event:string} 发生")]
+async fn w_rdy_transition(server_test: &ServerTest, event: String) {
+    let gateway = server_test
+        .gateway
+        .borrow()
+        .clone()
+        .expect("gateway held by given");
+    match event.as_str() {
+        // set_host 幂等填 host 并翻 ready（首写者胜，与生产装配完成路径同函数）。
+        "assembly_complete" => {
+            gateway.set_host(xylitol::app::server::host::HostState::for_test().expect("HostState"))
+        }
+        "assembly_fail" => gateway.mark_failed(),
+        other => panic!("unknown assembly event: {other}"),
+    }
+}
+
+#[then("就绪状态迁移为 {to:string}")]
+async fn t_rdy_phase(server_test: &ServerTest, to: String) {
+    let gateway = server_test
+        .gateway
+        .borrow()
+        .clone()
+        .expect("gateway held by given");
+    let phase = format!("{:?}", gateway.phase()).to_lowercase();
+    assert_eq!(phase, to, "readiness phase transition");
+}

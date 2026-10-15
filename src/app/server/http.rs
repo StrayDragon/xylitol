@@ -18,7 +18,7 @@ use crate::app::server::host::{HostState, MUX_CHAN_CAP};
 use crate::protocol::RpcMessage;
 
 /// Readiness phase of the listener (c2465 sr-rdy1).
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
     /// Bound, assembly not finished yet.
     Starting,

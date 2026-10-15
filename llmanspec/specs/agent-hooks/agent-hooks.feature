@@ -1,5 +1,6 @@
 # language: zh-CN
 # purpose: 脚本/库 hooks：工具与 provider 生命周期、XyHookBus 精选导出与可取消/可修改语义。
+# c2922: r1-r3（HookDispatcher stdin-JSON/block-allow/三层合并机制细节）为 rutis P1（hook 层替换为事件+waterfall）重审对象——机制锚定场景冻结新增，行为语义场景照常演进；映射备忘见该 change research/。
 
 功能: agent-hooks
 
