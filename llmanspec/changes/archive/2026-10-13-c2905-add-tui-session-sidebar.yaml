@@ -1,0 +1,2 @@
+title: "会话侧栏（zellij 式驻列）：内容区让宽的常驻第二列"
+depends_on: [c2875-add-tui-sidebar-panes]

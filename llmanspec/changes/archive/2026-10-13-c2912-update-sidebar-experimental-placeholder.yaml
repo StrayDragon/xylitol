@@ -1,0 +1,2 @@
+title: "驻列改实验占位（施工中），会话详情字段延后"
+depends_on: [c2905-add-tui-session-sidebar, c2910-fix-tui-sidebar-scroll-region]
