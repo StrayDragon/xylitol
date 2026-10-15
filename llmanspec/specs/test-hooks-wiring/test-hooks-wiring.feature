@@ -7,40 +7,30 @@
   规则: hooks-wiring-feature
     hooks 接线验收 须以场景大纲固定「观察型 / 可取消」库缝接线；与 agent-hooks（调度器机制）分工：本 capability 只证 Driver/XyHookBus 权威路径，不得用 HookDispatcher::dispatch 冒充。
 
-    场景: session-start
-      假如 注册了匹配 "session_start" 的 hook
-      当 执行操作 "确保新会话"
-      那么 hook 被调用且上下文含键 reason
+    场景大纲: wiring-observe-matrix
+      假如 注册了匹配 <event> 的 hook
+      当 执行操作 <op>
+      那么 hook 被调用且上下文含键 <context_key>
 
-    场景: session-tree
-      假如 注册了匹配 "session_tree" 的 hook
-      当 执行操作 "打开会话树"
-      那么 hook 被调用且上下文含键 kind
+      例子:
+        | event                   | op                 | context_key |
+        | "session_start"         | "确保新会话"        | reason       |
+        | "session_tree"          | "打开会话树"        | kind         |
+        | "session_shutdown"      | "切换会话 target"   | reason       |
+        | "user_bash"             | "执行 bash"         | command      |
+        | "model_select"          | "选择模型 fake"     | model        |
+        | "thinking_level_select" | "设置思考级别 high" | level        |
 
-    场景: tree-cancel
-      假如 注册了匹配 session_before_tree 的 hook 且返回 block 树被拒绝
-      当 执行操作 "打开会话树"
-      那么 操作失败原因包含 "树被拒绝"
+    场景大纲: wiring-cancel-matrix
+      假如 注册了匹配 <event> 的 hook 且返回 block <block_reason>
+      当 执行操作 <op>
+      那么 操作失败原因包含 <block_reason>
 
-    场景: session-shutdown
-      假如 注册了匹配 "session_shutdown" 的 hook
-      当 执行操作 "切换会话 target"
-      那么 hook 被调用且上下文含键 reason
-
-    场景: switch-cancel
-      假如 注册了匹配 session_before_switch 的 hook 且返回 block 切换被拒绝
-      当 执行操作 "切换会话 target"
-      那么 操作失败原因包含 "切换被拒绝"
-
-    场景: user-bash
-      假如 注册了匹配 "user_bash" 的 hook
-      当 执行操作 "执行 bash"
-      那么 hook 被调用且上下文含键 command
-
-    场景: user-bash-block
-      假如 注册了匹配 user_bash 的 hook 且返回 block bash被拒绝
-      当 执行操作 "执行 bash"
-      那么 操作失败原因包含 "bash被拒绝"
+      例子:
+        | event                   | op                 | block_reason |
+        | "session_before_tree"   | "打开会话树"        | 树被拒绝      |
+        | "session_before_switch" | "切换会话 target"   | 切换被拒绝    |
+        | "user_bash"             | "执行 bash"         | bash被拒绝    |
   @req:r1816
   规则: operation-dictionary-steps
     BDD runner 须提供可复用步骤：注册匹配事件的 hook、hook 返回 JSON、执行操作「操作名」、断言 hook 被调用、断言 hook 上下文包含键、断言操作被阻止；操作名 须经显式字典映射到权威路径，未知操作名 须失败且信息可读。

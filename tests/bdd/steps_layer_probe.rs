@@ -1883,8 +1883,8 @@ pub(crate) fn w_provider_matrix_scenarios() {
 pub(crate) fn t_provider_matrix_scenarios() {
     let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     assert!(
-        src.contains("model-select"),
-        "model_select 场景 MUST 已绑定"
+        src.contains("wiring-observe-matrix"),
+        "model_select 场景 MUST 已绑定（c2921 起收敛进观察矩阵）"
     );
 }
 

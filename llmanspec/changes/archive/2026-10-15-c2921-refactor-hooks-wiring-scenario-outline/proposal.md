@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: test-hooks-wiring r1815 观察/取消矩阵收敛为场景大纲
+branch: sdd/c2921-refactor-hooks-wiring-scenario-outline
+base_branch: main
+base_sha: 0f1201d7c2dc6c8a00922736eba296a87d1ac782
 ---
 
 ## Why

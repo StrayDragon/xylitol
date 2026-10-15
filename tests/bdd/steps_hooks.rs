@@ -114,6 +114,15 @@ fn _t_wiring_called_reason(agent: &AgentState) {
     _t_hook_called(agent);
     _t_hook_context_has_key(agent, "reason".into());
 }
+
+/// 参数化（c2921 观察矩阵）：`{key}` 无类型提示 → `.+?` 捕获；老字面变体保留
+/// （agent-hooks 侧场景仍引用，specificity 消歧归 runtime）。
+#[then("hook 被调用且上下文含键 {key}")]
+fn _t_wiring_called_key(agent: &AgentState, key: String) {
+    let key = strip_quotes(&key);
+    _t_hook_called(agent);
+    _t_hook_context_has_key(agent, key);
+}
 #[then("hook 被调用且上下文含键 model")]
 fn _t_wiring_called_model(agent: &AgentState) {
     _t_hook_called(agent);
@@ -149,6 +158,18 @@ fn _g_wiring_switch_block(agent: &AgentState) {
 fn _g_wiring_bash_block(agent: &AgentState) {
     _g_hook_registered(agent, "user_bash".into());
     _g_hook_returns(agent, r#"{"action":"block","reason":"bash被拒绝"}"#.into());
+}
+
+/// 参数化（c2921 取消矩阵）：event/reason 表值带引号（对齐 {pat:string} 生态），
+/// strip 后组装 block JSON 复用既有路径。
+#[given("注册了匹配 {event} 的 hook 且返回 block {block_reason}")]
+fn _g_wiring_block_combo(agent: &AgentState, event: String, block_reason: String) {
+    _g_hook_registered(agent, strip_quotes(&event));
+    let reason = strip_quotes(&block_reason);
+    _g_hook_returns(
+        agent,
+        format!("{{\"action\":\"block\",\"reason\":\"{reason}\"}}"),
+    );
 }
 
 #[when("bash 工具即将执行")]

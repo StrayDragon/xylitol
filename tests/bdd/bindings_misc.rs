@@ -4,49 +4,14 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
-    name = "session-start"
+    name = "wiring-observe-matrix"
 )]
-async fn test_hooks_wiring_session_start(agent: AgentState) {}
+fn test_hooks_wiring_observe(agent: AgentState, event: String, op: String, context_key: String) {}
 #[scenario(
     path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
-    name = "model-select"
+    name = "wiring-cancel-matrix"
 )]
-async fn test_hooks_wiring_model_select(agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
-    name = "thinking-select"
-)]
-async fn test_hooks_wiring_thinking_select(agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
-    name = "session-tree"
-)]
-async fn test_hooks_wiring_session_tree(agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
-    name = "tree-cancel"
-)]
-async fn test_hooks_wiring_tree_cancel(agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
-    name = "session-shutdown"
-)]
-async fn test_hooks_wiring_session_shutdown(agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
-    name = "switch-cancel"
-)]
-async fn test_hooks_wiring_switch_cancel(agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
-    name = "user-bash"
-)]
-async fn test_hooks_wiring_user_bash(agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
-    name = "user-bash-block"
-)]
-async fn test_hooks_wiring_user_bash_block(agent: AgentState) {}
+fn test_hooks_wiring_cancel(agent: AgentState, event: String, op: String, block_reason: String) {}
 #[scenario(
     path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
     name = "unknown-op"
