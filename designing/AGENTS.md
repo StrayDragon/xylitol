@@ -1,6 +1,6 @@
 # designing/
 
-跨端 **交互设计稿**按「端面」分组在 `user_interfaces/` 下（产品端稿 `user_interfaces/tui/`；**禁止**为空端预留空目录。实验原型区 `user_interfaces/tui-lab/` 见下节）。`app/` 是实验 / 快速查看用的 **web 交互工具**（bun + Vite），不是某一端设计稿——真设计稿一律在 `user_interfaces/`。人类主视图：`just open-designing` → `/tui`（产品代码导出的真实帧 + 右栏区域）。tui-lab 经 `/tui-lab/<id>/<state>`，不进 shell 页。深链与亮暗/帧查询见 app；预览是 pathname 不是 hash。右栏 **复制路径**（copy-handoff）给出当前 endpoint / surface / module / state 等元信息与相关设计文档的仓库相对路径清单，便于 handoff 定位。
+跨端 **交互设计稿**按「端面」分组在 `user_interfaces/` 下（产品端稿 `user_interfaces/tui/`；**禁止**为空端预留空目录。实验原型区 `user_interfaces/tui-lab/` 见下节）。人类主视图：`just open-designing` → `/tui`（产品代码导出的真实帧 + 右栏区域）。tui-lab 经 `/tui-lab/<id>/<state>`，不进 shell 页。深链与亮暗/帧查询见 app；预览是 pathname 不是 hash。右栏 **复制路径**（copy-handoff）给出当前 endpoint / surface / module / state 等元信息与相关设计文档的仓库相对路径清单，便于 handoff 定位。
 
 **代码是运行时真值。** 改 TUI 先读 [`src/app/tui/`](../src/app/tui/)。本稿是对照辅助，不是第二套视觉 SSOT。浏览器格子比 / 差分 / 鼠标 / 流式仍以 host 为准。
 
@@ -11,7 +11,7 @@ Token 色板：[`src/app/tui/DESIGN.md`](../src/app/tui/DESIGN.md) frontmatter�
 ```text
 designing/
   AGENTS.md
-  app/                 # 实验 / 快速查看的 web 交互工具（bun + Vite，无前端框架）；package.json 只在这里
+  app/preview-tool/    # 实验 / 快速查看的 web 交互工具（bun + Vite，无前端框架）；package.json 只在这里
   generated/           # AGENT-INDEX.md、tokens.css/js、shell-frame.json；勿手改
   user_interfaces/     # 交互设计稿按「端面」分组；surface 名 = 叶子目录名 = 预览 endpoint 段
     tui/
@@ -34,8 +34,8 @@ designing/
 
 | 受众 | 默认读 | 禁止默认读 |
 |---|---|---|
-| **Agent 改某端** | 产品代码 → `user_interfaces/tui/modules/<id>/intent.md` + `draft.yaml`（+ `states/*.yaml`） | `app/` 源码、`generated/*`、整包 HTML、`node_modules` |
-| **Agent 找路** | [`generated/AGENT-INDEX.md`](./generated/AGENT-INDEX.md) | `app/` 源码、整包 HTML |
+| **Agent 改某端** | 产品代码 → `user_interfaces/tui/modules/<id>/intent.md` + `draft.yaml`（+ `states/*.yaml`） | `app/preview-tool/` 源码、`generated/*`、整包 HTML、`node_modules` |
+| **Agent 找路** | [`generated/AGENT-INDEX.md`](./generated/AGENT-INDEX.md) | `app/preview-tool/` 源码、整包 HTML |
 | **人类** | `just open-designing` → `/tui`；tui-lab 经 `/tui-lab/<id>/<state>` | — |
 
 改模块后跑 `just gen-designing-index`；改了产品 UI 重跑 `just export-design-frame`（漏跑由 `scripts/check_tui_designing.py` 进 `just qa` 抓住区域/帧不齐）。

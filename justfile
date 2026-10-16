@@ -349,9 +349,9 @@ qa-check-scripts verbosity=verbosity_default:
         fi
     done
 
-# Interactive design draft (TUI modules under designing/user_interfaces; preview shell designing/app).
+# Interactive design draft (TUI modules under designing/user_interfaces; preview shell designing/app/preview-tool).
 open-designing:
-    bun run --cwd designing/app dev
+    bun run --cwd designing/app/preview-tool dev
 
 gen-designing-index:
     python3 scripts/gen_designing_index.py

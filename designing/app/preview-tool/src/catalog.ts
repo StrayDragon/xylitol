@@ -1,19 +1,19 @@
 import { parse } from "yaml";
 import type { Alignment, DraftDoc, ModulePreview, StateDoc } from "./types";
 
-const drafts = import.meta.glob("../../user_interfaces/*/modules/*/draft.yaml", {
+const drafts = import.meta.glob("../../../user_interfaces/*/modules/*/draft.yaml", {
   query: "?raw",
   eager: true,
   import: "default",
 }) as Record<string, string>;
 
-const intents = import.meta.glob("../../user_interfaces/*/modules/*/intent.md", {
+const intents = import.meta.glob("../../../user_interfaces/*/modules/*/intent.md", {
   query: "?raw",
   eager: true,
   import: "default",
 }) as Record<string, string>;
 
-const yamlFiles = import.meta.glob("../../user_interfaces/*/modules/*/states/*.yaml", {
+const yamlFiles = import.meta.glob("../../../user_interfaces/*/modules/*/states/*.yaml", {
   query: "?raw",
   eager: true,
   import: "default",

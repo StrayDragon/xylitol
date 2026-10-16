@@ -47,8 +47,8 @@ export type ResolvedRegion = {
   end: number;
 };
 
-import shellFrameJson from "../../generated/shell-frame.json";
-import regionsRaw from "../../user_interfaces/tui/shell.regions.yaml?raw";
+import shellFrameJson from "../../../generated/shell-frame.json";
+import regionsRaw from "../../../user_interfaces/tui/shell.regions.yaml?raw";
 
 const frameDoc = shellFrameJson as unknown as ShellFrameDoc;
 

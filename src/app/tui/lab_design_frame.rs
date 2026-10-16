@@ -7,7 +7,7 @@
 //! ```
 //!
 //! Writes `designing/generated/shell-frame.json` (span rows per frame) consumed
-//! by `designing/app` — the shell view renders product truth, so refreshing the
+//! by `designing/app/preview-tool` — the shell view renders product truth, so refreshing the
 //! view after UI changes means re-running this lab, not hand-editing mockups.
 //!
 //! Reuses the engine test `VirtualTerminal` (vte cell grid) via `#[path]`

@@ -1,4 +1,4 @@
-import "../../generated/tokens.css";
+import "../../../generated/tokens.css";
 import "./shell.css";
 import { renderGrid } from "./cell-grid";
 import { applyFrame, hasSpin, spinFrames, spinMs } from "./animate";

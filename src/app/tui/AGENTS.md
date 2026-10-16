@@ -17,7 +17,7 @@
 | layout / widgets | 呈现与局部交互 | 直接调 Driver / 读写 session |
 | harness / tests | 合成切片护栏 | 与生产复杂度门禁混用（测试另计） |
 
-运行时真值：本目录产品代码。交互设计稿：[`designing/`](../../../designing/)（对照辅助）——阅读顺序、索引、tui-lab SOP 与快捷键约定见 [`designing/AGENTS.md`](../../../designing/AGENTS.md)；**默认忽略** `designing/app/`。改固定态跑 `scripts/check_tui_designing.py`（入 `just qa`）与 `check-tui-tokens`。现行词「固定区」= layout/widgets；勿用 `shell`/`scene` 命名。
+运行时真值：本目录产品代码。交互设计稿：[`designing/`](../../../designing/)（对照辅助）——阅读顺序、索引、tui-lab SOP 与快捷键约定见 [`designing/AGENTS.md`](../../../designing/AGENTS.md)；**默认忽略** `designing/app/preview-tool/`。改固定态跑 `scripts/check_tui_designing.py`（入 `just qa`）与 `check-tui-tokens`。现行词「固定区」= layout/widgets；勿用 `shell`/`scene` 命名。
 
 **信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`docs/architecture/TUI信息呈现与固定区词汇.md`](../../../docs/architecture/TUI信息呈现与固定区词汇.md) 表内词——尤其 **滚动提示**、**通知条**、**通知栈**、**待办栏**、**尾插 / 顶插**；弃用词（挂账 / Status trail / chrome / 壳层 / system 消息等）以该表「弃用」节为准，表外旧称勿再引入。
 
