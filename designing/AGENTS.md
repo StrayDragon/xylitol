@@ -4,7 +4,7 @@
 
 **代码是运行时真值。** 改 TUI 先读 [`src/app/tui/`](../src/app/tui/)。本稿是对照辅助，不是第二套视觉 SSOT。浏览器格子比 / 差分 / 鼠标 / 流式仍以 host 为准。
 
-Token 色板：[`src/app/tui/DESIGN.md`](../src/app/tui/DESIGN.md) frontmatter（一份）。引擎：`packages/xylitol-tui/AGENTS.md`。产品端：[`src/app/tui/AGENTS.md`](../src/app/tui/AGENTS.md)。设计稿入口即本目录 `tui/modules/<id>/`。
+Token 色板：[`src/app/tui/DESIGN.md`](../src/app/tui/DESIGN.md) frontmatter（一份）。引擎：`crates/xylitol-tui/AGENTS.md`。产品端：[`src/app/tui/AGENTS.md`](../src/app/tui/AGENTS.md)。设计稿入口即本目录 `tui/modules/<id>/`。
 
 ## 目录
 
@@ -22,7 +22,7 @@ designing/
   tui-lab/modules/<id>/  # 实验原型区（未接入产品），内部结构与上面相同
 ```
 
-不放 `tools/`，不进 `packages/xylitol-tui`。未交付的端 **不要**先建空目录。
+不放 `tools/`，不进 `crates/xylitol-tui`。未交付的端 **不要**先建空目录。
 
 ## 帧与区域（shell 页数据流）
 
@@ -49,9 +49,9 @@ intent.md 只写 **可观察 MUST**（词表、禁止滑入、轨/flush、跨端
 | 改 token：`just sync-tui-tokens`；门禁 `just qa-check-tui-tokens`；生成物只在 `generated/` | 手改生成物 |
 | 静图 UI 无「(包)」分层样式；无顶栏快捷键墙 | 把包分层样式当产品表达 |
 | **无独立快捷键设计**：组件自己的键写在该模块 `draft.yaml` `keys:`（仅当非空时页面展示） | 另立快捷键设计 / 在散文里钉键位 |
-| `agent_demo` 不是产品 playground / 固定区真值（硬边界见 `packages/xylitol-tui/AGENTS.md`） | 拿 demo 当产品定稿 |
+| `agent_demo` 不是产品 playground / 固定区真值（硬边界见 `crates/xylitol-tui/AGENTS.md`） | 拿 demo 当产品定稿 |
 | 信息呈现用词：[`docs/architecture/TUI信息呈现与固定区词汇.md`](../docs/architecture/TUI信息呈现与固定区词汇.md)；固定区弃用 / 旧称只留在该表对照行 | 发明第二套同义词；在 intent / 注释里复读 chrome |
-| `packages/xylitol-tui` **不**平行维护 design HTML | 在包里另起 design 文档树 |
+| `crates/xylitol-tui` **不**平行维护 design HTML | 在包里另起 design 文档树 |
 | shell 帧是产品渲染导出；要改设计先改产品或先立 change | 在 `shell-frame.json` / regions 锚点里手改视觉内容来「修设计」 |
 
 ## tui-lab 实验区（交互候选）

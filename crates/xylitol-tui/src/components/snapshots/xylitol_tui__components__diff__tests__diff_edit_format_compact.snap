@@ -1,0 +1,10 @@
+---
+source: crates/xylitol-tui/src/components/diff.rs
+assertion_line: 1554
+expression: "lines.join(\"\\n\")"
+---
+-1 fn ready() -> bool {
+-2     true
++1 fn ready(prompt: &str) -> bool {
++2     !prompt.is_empty()
+ 3 }

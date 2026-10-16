@@ -15,7 +15,7 @@
 //! module into `xylitol-tui` proper instead of duplicating it here.
 
 #[cfg(test)]
-#[path = "../../../packages/xylitol-tui/tests/support/mod.rs"]
+#[path = "../../../crates/xylitol-tui/tests/support/mod.rs"]
 mod vt_support;
 
 #[cfg(test)]

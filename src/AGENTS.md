@@ -105,7 +105,7 @@ Trust / Permission / MCP 产品语义分别见 `docs/architecture/` 对应文；
 
 ## Provider 与消息
 
-业务只认 `XyModel`。HTTP/SSE 优先官方 SDK，落在 `packages/xylitol-ai-bridge`；主仓：
+业务只认 `XyModel`。HTTP/SSE 优先官方 SDK，落在 `crates/xylitol-ai-bridge`；主仓：
 
 1. **agent**：`project_for_llm`（投影 projection：`AgentMessage` → LLM 叶层；Env 折叠）
 2. **infra**：装配 `XyModel`、边界 map；**MUST NOT** 再对 `AgentMessage` 做 Env 折叠主路径

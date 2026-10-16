@@ -138,7 +138,7 @@
       那么 有提示且未执行 bash 且未调用 run
   @req:r1291
   规则: product-external-editor
-    产品 Host 须将 Ctrl+G 绑定为外部编辑器入口：交互 TTY 且已配置非空 $VISUAL 或 $EDITOR 时 须经 xylitol_tui::TUI::with_terminal_suspended（或等价）挂起终端、写入 tempfile、spawn 该编辑器、成功退出后把文件内容写回 Editor；harness / 非 TTY / 测试路径 不得 spawn 真实编辑器（保持 stub：系统提示与可选 stub 标记）；未配置 $VISUAL 与 $EDITOR、tempfile/spawn/读回失败、或编辑器非零退出时 不得 panic，须向 scrollback 追加 UiEntry::Error 短行并保留原 Editor 文本；不得静默默认 nano/notepad；不得在 packages/xylitol-tui 内实现 $EDITOR/tempfile/spawn（包仅提供 with_terminal_suspended）。
+    产品 Host 须将 Ctrl+G 绑定为外部编辑器入口：交互 TTY 且已配置非空 $VISUAL 或 $EDITOR 时 须经 xylitol_tui::TUI::with_terminal_suspended（或等价）挂起终端、写入 tempfile、spawn 该编辑器、成功退出后把文件内容写回 Editor；harness / 非 TTY / 测试路径 不得 spawn 真实编辑器（保持 stub：系统提示与可选 stub 标记）；未配置 $VISUAL 与 $EDITOR、tempfile/spawn/读回失败、或编辑器非零退出时 不得 panic，须向 scrollback 追加 UiEntry::Error 短行并保留原 Editor 文本；不得静默默认 nano/notepad；不得在 crates/xylitol-tui 内实现 $EDITOR/tempfile/spawn（包仅提供 with_terminal_suspended）。
 
     场景: ctrl-g-stub-without-editor-env
       当 以主机泵在无编辑器环境变量下输入草稿后按 Ctrl+G

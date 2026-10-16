@@ -146,7 +146,7 @@ def bucket(func: str, loc: str) -> str:
     L, F = loc.lower(), func.lower()
     if "unicode" in L or "grapheme" in F or "segmentation" in L:
         return "unicode/grapheme"
-    if "xylitol-tui" in L or "packages/xylitol" in L:
+    if "xylitol-tui" in L or "crates/xylitol" in L:
         return "xylitol-tui"
     if "/src/app/" in L or "/src/agent/" in L or "/src/infra/" in L:
         return "xylitol app/agent/infra"

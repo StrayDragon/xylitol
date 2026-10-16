@@ -41,7 +41,7 @@ STEPS_DIR = REPO / "tests" / "bdd"
 TEXT_ROOTS = [
     "src",
     "tests",
-    "packages",
+    "crates",
     "llmanspec",
     "docs",
     "scripts",

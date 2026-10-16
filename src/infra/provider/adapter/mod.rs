@@ -1,6 +1,6 @@
 //! Provider adapter layer — maps xylitol-ai-bridge adapters into domain streams.
 //!
-//! Vendor HTTP/SSE implementations live in `packages/xylitol-ai-bridge`. The
+//! Vendor HTTP/SSE implementations live in `crates/xylitol-ai-bridge`. The
 //! domain-facing surface is the single-layer [`AdapterXyModel`] shell (pa1):
 //! it holds a bridge `AiBridgeLlmAdapter` directly and runs the DTO→`XyChunk`
 //! mapping inline via [`crate::infra::provider::map`].

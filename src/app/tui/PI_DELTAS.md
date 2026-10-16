@@ -1,7 +1,7 @@
 # app/tui ↔ pi coding-agent 刻意差异台账
 
 > **目的**：对照 `../pi/packages/coding-agent` interactive 做 UX 对齐时，**不得静默覆盖**本文件列出的 xylitol 产品决议。
-> **定位**：本端是 xylitol 产品 TUI（host + XyDriver seam），不是 pi interactive 的 1:1 port。包层差异见 [`packages/xylitol-tui/PI_DELTAS.md`](../../../packages/xylitol-tui/PI_DELTAS.md)。
+> **定位**：本端是 xylitol 产品 TUI（host + XyDriver seam），不是 pi interactive 的 1:1 port。包层差异见 [`crates/xylitol-tui/PI_DELTAS.md`](../../../crates/xylitol-tui/PI_DELTAS.md)。
 > **不是**进度板。稳定边界见本目录 `AGENTS.md`。
 > 新增刻意差异时：**先改代码与测试（或明确不实现），再在本表加一行**；回退差异须显式评审。
 
@@ -16,7 +16,7 @@
 1. 从 pi 拉行为或补丁前，先扫本表「不得回退」列。
 2. 若 pi 变更触及某行主题，默认 **保留 xylitol 侧**；只有产品明确要求才改决议并更新本表。
 3. 纯 bugfix（两边语义一致）可对齐 pi，不必记入本表。
-4. 包组件行为差异记在 `packages/xylitol-tui/PI_DELTAS.md`，不要重复抄进本表。
+4. 包组件行为差异记在 `crates/xylitol-tui/PI_DELTAS.md`，不要重复抄进本表。
 5. 缺能力优先按 xylitol 产品需求设计；需要扩展点时先留 hook，再接具体策略。
 
 ---

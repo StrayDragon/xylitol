@@ -11,7 +11,7 @@
 
 | 资产 | 说明 |
 |---|---|
-| 包默认 `tui.*` | `packages/xylitol-tui/src/keybindings.rs` |
+| 包默认 `tui.*` | `crates/xylitol-tui/src/keybindings.rs` |
 | 产品 `app.*` | `src/app/tui/keybindings.rs` |
 | 用户覆盖 | `~/.xylitol/keybindings.json`；`/reload` |
 | 冲突 API | `KeybindingsManager::get_conflicts()` — 仅用户同键多 id；未进 UI |

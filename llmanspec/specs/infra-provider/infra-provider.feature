@@ -42,14 +42,14 @@
       那么 每个 input item 均带 type 字段
   @req:r1505
   规则: 单一-XyModel-装配路径
-    System 须通过唯一装配路径将协议适配器暴露为 XyModel：具体接线实现归属 packages/xylitol-ai-bridge，经主仓映射与统一外壳（如 AdapterXyModel）注入；OpenAI 兼容 须可经 Responses 或 Completions 适配暴露；不得在主仓保留与包并行的第二套完整 adapter 实现。
+    System 须通过唯一装配路径将协议适配器暴露为 XyModel：具体接线实现归属 crates/xylitol-ai-bridge，经主仓映射与统一外壳（如 AdapterXyModel）注入；OpenAI 兼容 须可经 Responses 或 Completions 适配暴露；不得在主仓保留与包并行的第二套完整 adapter 实现。
     场景: single-xy-model-assembly-path
       当 读取适配外壳结构
       那么 适配外壳仅一层且桥接 bridge adapter
 
   @req:r1506
   规则: vendor-类型不出-infra与agent
-    async-openai 与各厂商 HTTP/SSE 具体类型 须仅出现在 packages/xylitol-ai-bridge（及其测试）与必要的主仓映射边界内；agent/ 不得 import 这些 vendor crate；主仓 infra 若保留映射模块 不得把 vendor 类型再导出给 agent。
+    async-openai 与各厂商 HTTP/SSE 具体类型 须仅出现在 crates/xylitol-ai-bridge（及其测试）与必要的主仓映射边界内；agent/ 不得 import 这些 vendor crate；主仓 infra 若保留映射模块 不得把 vendor 类型再导出给 agent。
     场景: vendor-types-stay-in-bridge
       当 扫描厂商类型的出现位置
       那么 厂商类型仅现于 bridge 与映射边界

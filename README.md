@@ -82,7 +82,7 @@ just qa-e2e   # 额外跑 PTY/tmux 端到端测试
 
 ## 致谢
 
-TUI 引擎(`packages/xylitol-tui`)源自 [pi-tui](https://github.com/earendil-works/pi/tree/main/packages/tui)(MIT,Copyright (c) 2025 Mario Zechner),是它的独立 fork,我们打算长期维持这个方向、不与上游对齐;provider 归因与显示名等设计参考了 [pi](https://pi.dev)。详见 [NOTICE](NOTICE) 与 [packages/xylitol-tui/NOTICE](packages/xylitol-tui/NOTICE)。
+TUI 引擎(`crates/xylitol-tui`)源自 [pi-tui](https://github.com/earendil-works/pi/tree/main/packages/tui)(MIT,Copyright (c) 2025 Mario Zechner),是它的独立 fork,我们打算长期维持这个方向、不与上游对齐;provider 归因与显示名等设计参考了 [pi](https://pi.dev)。详见 [NOTICE](NOTICE) 与 [crates/xylitol-tui/NOTICE](crates/xylitol-tui/NOTICE)。
 
 ## 许可证
 

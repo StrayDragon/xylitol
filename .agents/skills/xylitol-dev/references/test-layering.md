@@ -23,8 +23,8 @@ brief: "测试分层与 lab_ 试验命名（快照 insta / wire 契约 wiremock 
 
 | 形态 | 约定 | 是否进 `just qa` |
 |---|---|---|
-| `packages/*/examples/lab_*.rs` | 人跑维护 lab（`cargo run -p … --example lab_…`） | **否** |
-| `packages/*/tests/lab_*.rs` | 可连接真实网关的 lab 二进制；是否纳入门禁看 just 接线 | **仅**已接线者（见 `qa-test-live-provider`） |
+| `crates/*/examples/lab_*.rs` | 人跑维护 lab（`cargo run -p … --example lab_…`） | **否** |
+| `crates/*/tests/lab_*.rs` | 可连接真实网关的 lab 二进制；是否纳入门禁看 just 接线 | **仅**已接线者（见 `qa-test-live-provider`） |
 | `#[test] fn lab_*`（无 `#[ignore]`） | 门禁内契约实验（无网或假网） | **是**（随 crate 测） |
 | `#[ignore]` 的 `lab_*` 测试 / `src/**/lab_*.rs` lab 模块 | 人跑维护 lab（模块 doc 给命令） | **否** |
 
@@ -44,4 +44,4 @@ brief: "测试分层与 lab_ 试验命名（快照 insta / wire 契约 wiremock 
 
 ## TUI 验证
 
-TUI 专项分层（按键→状态 / snapshot / 时序 / 真终端 E2E）与落点：`references/tui-harness.md` + `packages/xylitol-tui/AGENTS.md`「验证」。
+TUI 专项分层（按键→状态 / snapshot / 时序 / 真终端 E2E）与落点：`references/tui-harness.md` + `crates/xylitol-tui/AGENTS.md`「验证」。

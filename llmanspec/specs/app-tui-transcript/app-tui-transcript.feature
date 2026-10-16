@@ -13,7 +13,7 @@
       并且 助手正文行携带样式转义
   @req:r1360
   规则: diff-via-package
-    产品 live scrollback 中文件编辑 diff 须复用 packages/xylitol-tui Diff（含 word-level 与复制友好前缀）；不得在应用面复制准通用 diff 渲染器。
+    产品 live scrollback 中文件编辑 diff 须复用 crates/xylitol-tui Diff（含 word-level 与复制友好前缀）；不得在应用面复制准通用 diff 渲染器。
 
     场景: diff-reuses-package-component
       当 读取应用面对包组件的复用
@@ -29,7 +29,7 @@
       并且 内容行除轨外无整行洗底
   @req:r1369
   规则: tool-rail-via-package-helper
-    rail 行绘制 须复用 packages/xylitol-tui 的 paint_left_rail_line（或等价包 API：轨+gutter+内容宽）；不得在应用面手写第二套轨/gutter/宽预算逻辑。
+    rail 行绘制 须复用 crates/xylitol-tui 的 paint_left_rail_line（或等价包 API：轨+gutter+内容宽）；不得在应用面手写第二套轨/gutter/宽预算逻辑。
 
     场景: left-rail-reuses-package-painter
       当 读取应用面对包组件的复用

@@ -1,6 +1,6 @@
 import type { Span, StateDoc } from "./types";
 
-/** Product Loader default (`packages/xylitol-tui` LoaderIndicatorOptions). */
+/** Product Loader default (`crates/xylitol-tui` LoaderIndicatorOptions). */
 export const SPINNER_FRAMES = [
   "⠋",
   "⠙",

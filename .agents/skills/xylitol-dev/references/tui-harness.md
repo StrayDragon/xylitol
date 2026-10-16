@@ -4,7 +4,7 @@ brief: "TUI 分层验证 harness（按键→状态 / snapshot INSTA_UPDATE / 真
 
 # TUI 分层自动验证（harness）
 
-**边界 / 产品 vs 包 E2E 分工 SSOT**：`packages/xylitol-tui/AGENTS.md`「验证」。应用端接线：`src/app/tui/AGENTS.md`。门禁命令见 `references/qa-gates.md`（`just qa` / `just qa-e2e`）。合约 capability：`package-tui-testing`。
+**边界 / 产品 vs 包 E2E 分工 SSOT**：`crates/xylitol-tui/AGENTS.md`「验证」。应用端接线：`src/app/tui/AGENTS.md`。门禁命令见 `references/qa-gates.md`（`just qa` / `just qa-e2e`）。合约 capability：`package-tui-testing`。
 
 本文件只写**怎么写测 / 怎么跑**，不另立分工表。
 
@@ -15,7 +15,7 @@ brief: "TUI 分层验证 harness（按键→状态 / snapshot INSTA_UPDATE / 真
 | 按键→状态 | 组件交互、光标、提交、列表选择 | `cargo test -p xylitol-tui --test harness_test`；`tests/support/mod.rs::TuiTestHarness` |
 | snapshot | 整屏布局 / 换行 / 颜色回归 | `cargo test -p xylitol-tui --test snapshot_test`；`tests/snapshots/` |
 | 时序 | paste-burst、debounce、动画 | 同步：`Instant` 注入或 `MockClock`；async：`#[tokio::test(start_paused = true)]` |
-| proptest | Editor 崩溃边界与不变量 | **未落地**（落地时补 `packages/xylitol-tui/tests/property_test.rs`） |
+| proptest | Editor 崩溃边界与不变量 | **未落地**（落地时补 `crates/xylitol-tui/tests/property_test.rs`） |
 | 真终端 E2E | 真 PTY / tmux · **agent_demo** | `#[ignore]`；`just test-tui-e2e`；就绪针 `DEMO_READY_NEEDLE`（见包 `AGENTS.md`「验证」） |
 
 日常改组件：**先「按键→状态」，布局变了再 snapshot**；动时序必加时序用例；动 Editor 状态机考虑 proptest（落地后）；协议 / 真终端验证才上 E2E。

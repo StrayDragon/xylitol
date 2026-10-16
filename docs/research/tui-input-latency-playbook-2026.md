@@ -1,6 +1,6 @@
 # TUI 输入延迟：排查方法论与结论
 
-> **性质**：跨 change 耐久底稿。源自滚轮跟手性专项（2026-10，八版迭代收敛）——**方法论与工具长期有效；具体数字与结论句已抽象**，现行实现以代码为 SSOT（滚轮：`src/app/tui/mod.rs` wheel 分支 + `packages/xylitol-tui` AO runtime）。
+> **性质**：跨 change 耐久底稿。源自滚轮跟手性专项（2026-10，八版迭代收敛）——**方法论与工具长期有效；具体数字与结论句已抽象**，现行实现以代码为 SSOT（滚轮：`src/app/tui/mod.rs` wheel 分支 + `crates/xylitol-tui` AO runtime）。
 
 ## 结论（恒真版）
 
@@ -22,7 +22,7 @@
 | 工具 | 用途 | 入口 |
 |---|---|---|
 | wheel 延迟签名 E2E | 真 PTY 注 SGR，量首响/排空/帧数——「卡」的客观回归界 | `tests/tui_e2e/pty.rs::pty_product_wheel_latency_signature`（`just test-tui-e2e-pty`） |
-| 管线 A/B/C example | 同壳变体（轮询节奏/合帧/纯 CSI）横向手感排除法 | `packages/xylitol-tui/examples/lab_wheel_pipeline.rs` |
+| 管线 A/B/C example | 同壳变体（轮询节奏/合帧/纯 CSI）横向手感排除法 | `crates/xylitol-tui/examples/lab_wheel_pipeline.rs` |
 | AO 性能 lab | busy 混合/滚轮帧成本/输出字节量 | `src/app/tui/lab_ao_perf.rs`（`lab_ao_busy_mixed_perf` 等，`#[ignore]`） |
 | lag/wheel 观测 | 产品内 paint 耗时 + wheel delta 序列（顿挫 signatures） | `XYLITOL_DEBUG=1 RUST_LOG=xylitol::lag=info,xylitol::wheel=debug` → `just obs-tui-lag` |
 
@@ -35,5 +35,5 @@
 
 ## 关联
 
-- 滚动交互产品语义（gutter/选中/follow）：`packages/xylitol-tui/llmanspec/spec/` 与 `src/app/tui/AGENTS.md`
+- 滚动交互产品语义（gutter/选中/follow）：`crates/xylitol-tui/llmanspec/spec/` 与 `src/app/tui/AGENTS.md`
 - 观测窄读操作：`xylitol-dev` skill（`references/observability.md`）

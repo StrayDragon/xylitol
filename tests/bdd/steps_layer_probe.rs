@@ -213,7 +213,7 @@ pub(crate) fn t_provider_wrap_single() {
 #[when("扫描厂商类型的出现位置")]
 pub(crate) fn w_vendor_type_boundary() {
     let port = la_load("src/protocol/ports/model.rs");
-    let bridge = la_load("packages/xylitol-ai-bridge/src/provider/native/openai_responses.rs");
+    let bridge = la_load("crates/xylitol-ai-bridge/src/provider/native/openai_responses.rs");
     let hits = format!(
         "{};{}",
         port.lines().filter(|l| l.contains("async_openai")).count(),
@@ -688,7 +688,7 @@ pub(crate) fn t_trust_slash_shape() {
 #[when("读取 demo 主题探测接线")]
 pub(crate) fn w_demo_theme_probe() {
     LA_PROBE.with(|p| {
-        *p.borrow_mut() = Some(la_load("packages/xylitol-tui/examples/agent_demo_impl.rs"))
+        *p.borrow_mut() = Some(la_load("crates/xylitol-tui/examples/agent_demo_impl.rs"))
     });
 }
 

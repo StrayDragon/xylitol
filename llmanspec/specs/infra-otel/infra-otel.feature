@@ -1,6 +1,6 @@
 # language: zh-CN
 # purpose: 可选 OpenTelemetry OTLP/HTTP 出口：Cargo feature otel + 配置显式开启；默认与失败路径均不收集；经 fastrace-opentelemetry 导出；Langfuse 会话、GenAI 属性、xylitol.obs.lane 与同一 turn 内父子 span 树（含过 prepare 的 agent.compaction）在 opt-in 出口之上叠加。
-# c2833: packages/xylitol-ai-bridge trace 部分暂留本 cap；子包侧拆分待批，scope 行先行收窄（one-path-one-root）。
+# c2833: crates/xylitol-ai-bridge trace 部分暂留本 cap；子包侧拆分待批，scope 行先行收窄（one-path-one-root）。
 
 功能: infra-otel
 

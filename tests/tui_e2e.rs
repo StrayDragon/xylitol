@@ -14,7 +14,7 @@
 //! `test-tui-e2e`. tmux cases additionally skip unless the `tmux` binary is
 //! present and `TERM=xterm-256color` is set.
 //!
-//! Ready-probe SSOT for `agent_demo`: see `packages/xylitol-tui/AGENTS.md`
+//! Ready-probe SSOT for `agent_demo`: see `crates/xylitol-tui/AGENTS.md`
 //! 「验证」; needle is [`DEMO_READY_NEEDLE`].
 //! Product binary smoke (c485 avs2): [`PRODUCT_READY_NEEDLE`] + [`FAKE_HELLO`].
 

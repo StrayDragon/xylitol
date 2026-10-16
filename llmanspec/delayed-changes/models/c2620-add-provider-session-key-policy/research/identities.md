@@ -14,7 +14,7 @@
 
 （本节竞态已由 c2590 修复：观测快照跟本次 generate，进程槽仅作未收到 options 路径的 fallback。以下为当时事实，留档。）
 
-`packages/xylitol-ai-bridge/src/provider/obs_session.rs`：进程 `Mutex` + 测试用 TLS `ObsSessionScope`。
+`crates/xylitol-ai-bridge/src/provider/obs_session.rs`：进程 `Mutex` + 测试用 TLS `ObsSessionScope`。
 
 生产：`set_session` → `set_obs_session` 写进程槽。Host `SessionSlot` 可并行 `run_inflight`（`src/app/server/host.rs`）。后一次 bind 会污染先一次未完成的 `llm.request` 的 `langfuse.session.id` 与 OpenCode header。
 

@@ -14,5 +14,5 @@ keys:
   - { chord: "Alt+E", when: "折叠/展开 Diff 块（与 tool 共用）" }
   - { chord: "Ctrl+O", when: "视口满高，与 Alt+E 正交" }
 notes: |
-  代码 SSOT：packages/xylitol-tui Diff + scrollback push_viewport_diff_lines。
+  代码 SSOT：crates/xylitol-tui Diff + scrollback push_viewport_diff_lines。
   DESIGN spacing.diff-side-by-side-min-cols = 100。包 Default 即 Some(100)。

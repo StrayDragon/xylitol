@@ -1,7 +1,7 @@
 # OpenAI Responses 上下文布局与缓存权衡（2026-08）
 
 > **范围**：个人 coding agent（xylitol）在 **OpenAI Responses API**（含 llama.cpp 等兼容端）下，如何组织发给 provider 的 body，以及 KV Cache / Prompt Cache、状态栏、MCP/`tool_search`、压缩的工程取舍。
-> **一手来源**：本仓 `packages/xylitol-ai-bridge` / `src/agent` 现状；OpenAI Prompt caching / Responses / tool_search 文档；《深入理解 AI Agent》姊妹仓 `ai-agent-book/book/chapter2.md`（及 Ch4/Ch5）（状态栏、KV/Prompt Cache、工具只增不改、Cursor MCP 索引实践）。书语仅经下文 §7 术语表进入工程名，**禁止**写入 live specs。
+> **一手来源**：本仓 `crates/xylitol-ai-bridge` / `src/agent` 现状；OpenAI Prompt caching / Responses / tool_search 文档；《深入理解 AI Agent》姊妹仓 `ai-agent-book/book/chapter2.md`（及 Ch4/Ch5）（状态栏、KV/Prompt Cache、工具只增不改、Cursor MCP 索引实践）。书语仅经下文 §7 术语表进入工程名，**禁止**写入 live specs。
 >
 > **Assembler 缝（c1890）**：Responses 请求 body 经 `ResponsesAssembler`（`xylitol-ai-bridge`）唯一构造（底层 assemble 为 crate-private）；agent 侧 `ContextPolicy` 提供 hooks；`set_tools*` 已消费 mid-turn rewrite 闸。状态栏完整行为 **deferred**（`llmanspec/delayed-changes/next-todo/c1895…`）；Todo **deferred**（`c1955`）；本期主线 **`c1900`（MCP 首条门闸 + Full 工具定稿）**；`tool_search` → [`c1960`](../../llmanspec/delayed-changes/c1960-add-tool-search-mcp-discovery/proposal.md)；`c1930`/`c1925` 软配合。**不**引入独立 context epoch 计数（全量重放以当前 SSOT 为准；链式断链见 `c1915` 非 input 快照比对）。Ornith lab：改 tools[] 必 cache miss → 宜首轮定稿后冻死。
 > **非目标**：不定实现排期；不改 live specs；不把 hit rate 当唯一 KPI。

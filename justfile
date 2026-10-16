@@ -241,7 +241,7 @@ test-tui-e2e-tmux verbosity=verbosity_default:
       verbose) cargo test -v --test tui_e2e -- --ignored tmux ;;
     esac
 
-# Engine demos live in packages/xylitol-tui/justfile (just demo-tui there).
+# Engine demos live in crates/xylitol-tui/justfile (just demo-tui there).
 
 # Sync designing tokens.css/js from src/app/tui/DESIGN.md frontmatter.
 sync-tui-tokens:

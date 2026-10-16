@@ -1,6 +1,6 @@
 //! Terminal UI application surface — host-driven on `xylitol_tui`.
 //!
-//! See `AGENTS.md` in this directory. Engine: `packages/xylitol-tui`.
+//! See `AGENTS.md` in this directory. Engine: `crates/xylitol-tui`.
 
 pub(crate) mod activity_fold;
 /// P2 无头产品帧挂载入口（package-tui-testing 契约）：

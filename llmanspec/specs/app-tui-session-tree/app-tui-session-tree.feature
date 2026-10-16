@@ -50,7 +50,7 @@
 
   @req:r1337
   规则: session-tree-filter
-    产品会话树打开时 须支持与 pi 对齐的 FilterMode（default / no-tools / user-only / labeled-only / all）：经 TreeSelector include_node 应用谓词，并与包增量搜索 AND；default 须隐藏 kind=meta；no-tools 须在 default 基础上隐藏 kind=tool；user-only 须仅 kind=user；labeled-only 须仅 annotation 有值；all 须显示全部；状态行 须在非 default 时追加 [no-tools]/[user]/[labeled]/[all] 之一，default 不得追加 [default]；不得在 packages/xylitol-tui 硬编码产品 FilterMode。
+    产品会话树打开时 须支持与 pi 对齐的 FilterMode（default / no-tools / user-only / labeled-only / all）：经 TreeSelector include_node 应用谓词，并与包增量搜索 AND；default 须隐藏 kind=meta；no-tools 须在 default 基础上隐藏 kind=tool；user-only 须仅 kind=user；labeled-only 须仅 annotation 有值；all 须显示全部；状态行 须在非 default 时追加 [no-tools]/[user]/[labeled]/[all] 之一，default 不得追加 [default]；不得在 crates/xylitol-tui 硬编码产品 FilterMode。
     场景: filter-modes-narrow-visible-list
       当 以样例树挂载 TreeSelector 并设置只含叶子的过滤
       那么 可见列表仅剩叶子且行完整重算
@@ -73,7 +73,7 @@
       那么 新建子会话并切换且树关闭
   @req:r1327
   规则: session-tree-slot-help-search
-    产品会话树槽打开时 须在 TreeSelector 列表上方渲染 Search 行与 TreeHelp 行：Search 在无查询时提示可键入搜索、有查询时显示 Search: 与当前串；TreeHelp 须根据 KeybindingsManager（或只读封装）解析当前键位展示 move/page/fold/unfold（折叠）/filters/cycle 等用途片段（可用 · 分隔并随宽度换行），不得再使用仅含 Up/Down Enter travel 的过时硬编码唯一提示行作为树槽唯一头行；不得把产品 FilterMode 硬编码进 packages/xylitol-tui。
+    产品会话树槽打开时 须在 TreeSelector 列表上方渲染 Search 行与 TreeHelp 行：Search 在无查询时提示可键入搜索、有查询时显示 Search: 与当前串；TreeHelp 须根据 KeybindingsManager（或只读封装）解析当前键位展示 move/page/fold/unfold（折叠）/filters/cycle 等用途片段（可用 · 分隔并随宽度换行），不得再使用仅含 Up/Down Enter travel 的过时硬编码唯一提示行作为树槽唯一头行；不得把产品 FilterMode 硬编码进 crates/xylitol-tui。
 
     场景: tree-slot-search-help-lines
       当 以主机泵挂载样例树数据后空编辑器双 Esc

@@ -14,7 +14,7 @@ categories = []
 
 [workspace]
 resolver = "2"
-members = ["packages/xylitol-tui", "packages/xylitol-ai-bridge"]
+members = ["crates/xylitol-tui", "crates/xylitol-ai-bridge"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -64,10 +64,10 @@ salvo = { version = "1.0.1", optional = true, default-features = false, features
 tokio-tungstenite = { version = "0.30", features = ["connect", "handshake"], optional = true }
 
 # ── terminal UI ──
-# Product TUI is host-driven on the xylitol-tui engine (packages/xylitol-tui);
+# Product TUI is host-driven on the xylitol-tui engine (crates/xylitol-tui);
 # in-tree product host/layout layers live under src/app/tui/.
-xylitol-tui = { path = "packages/xylitol-tui", optional = true }
-xylitol-ai-bridge = { path = "packages/xylitol-ai-bridge" }
+xylitol-tui = { path = "crates/xylitol-tui", optional = true }
+xylitol-ai-bridge = { path = "crates/xylitol-ai-bridge" }
 crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 http = "1"
 fory = "1.7.6"

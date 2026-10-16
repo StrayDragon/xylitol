@@ -13,7 +13,7 @@
 
 # 仓库级 Agent 指南
 
-用与用户相同的语言回复。`xylitol` 是 **开箱即用的个人 coding agent**（LLM 增强开发工具包）：Rust workspace——主 crate 加 `packages/`（`xylitol-tui` TUI 引擎、`xylitol-ai-bridge` provider 方言桥）；开发由 llman SDD 驱动。
+用与用户相同的语言回复。`xylitol` 是 **开箱即用的个人 coding agent**（LLM 增强开发工具包）：Rust workspace——主 crate 加 `crates/`（`xylitol-tui` TUI 引擎、`xylitol-ai-bridge` provider 方言桥）；开发由 llman SDD 驱动。
 
 术语表（黑话 ↔ 标准词 ↔ 英文对照总表；散文写作遇黑话首现时对照）：
 @docs/architecture/术语表.md
@@ -50,7 +50,7 @@
 | `infra/` | ports 实现与 vendor |
 | `app/` | 应用端 + `core` seam |
 | `utils/` | 纯叶工具（仅 std；非 `Xy*` 稳定 API） |
-| `packages/xylitol-tui` | 通用 TUI 引擎（零引用主 crate） |
+| `crates/xylitol-tui` | 通用 TUI 引擎（零引用主 crate） |
 
 `app → agent|infra → protocol`；`agent` ↛ `infra`；`infra` ↛ `agent`。
 
@@ -74,7 +74,7 @@
 - 非变更门禁脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进门禁。
 - **prek 与 `just qa` 正交**：prek hook 只承担文本 / 元数据卫生与 commit-msg 规约；cargo 级门禁（fmt / clippy / test / doc-test）**MUST NOT** 拆成独立 hook 进 prek；push 一致性由 CI 兜底。
 - 探查：`cargo run -- --help`；文档构建与检查：`just doc` / `just qa-doc-check`。
-- 一次性探针只落 `scripts/lab_*.py`（或包 examples `lab_*`）并直接 python 调用，**不**新增 just recipe；重复使用或需流程化才升 skill / 门禁。引擎 demo 入口在 `packages/xylitol-tui/justfile`。
+- 一次性探针只落 `scripts/lab_*.py`（或包 examples `lab_*`）并直接 python 调用，**不**新增 just recipe；重复使用或需流程化才升 skill / 门禁。引擎 demo 入口在 `crates/xylitol-tui/justfile`。
 - 门禁组成（quiet/verbose、真实网关 lab、环境自检、复杂度、元门禁）细则：`xylitol-dev` skill `references/qa-gates.md`。
 
 ### 试验 / 真实网关验证命名（`lab_`）

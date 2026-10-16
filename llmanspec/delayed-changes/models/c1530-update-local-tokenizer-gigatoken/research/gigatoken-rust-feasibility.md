@@ -2,7 +2,7 @@
 
 调研日：2026-07-26
 上游：https://github.com/marcelroed/gigatoken
-对照消费点：`packages/xylitol-ai-bridge` → `tokenize::encode_count_at_path`（`tokenizers::Tokenizer::from_file` + `encode`）
+对照消费点：`crates/xylitol-ai-bridge` → `tokenize::encode_count_at_path`（`tokenizers::Tokenizer::from_file` + `encode`）
 
 ## 一句话结论
 
@@ -115,7 +115,7 @@ Caveats：
 
 现状（本仓）：
 
-- `tokenizers = { version = "0.21", default-features = false, features = ["onig"] }`（`packages/xylitol-ai-bridge/Cargo.toml`）
+- `tokenizers = { version = "0.21", default-features = false, features = ["onig"] }`（`crates/xylitol-ai-bridge/Cargo.toml`）
 - `encode_count_at_path`：`Tokenizer::from_file` + `encode(text, false)` → `ids.len()`（`tokenize/mod.rs`）
 - 会话级短串、count-only、已缓存 `tokenizer.json`；闸默认 off
 
@@ -174,4 +174,4 @@ Caveats：
 - https://github.com/marcelroed/gigatoken/pull/42
 - https://crates.io/api/v1/crates/gigatoken （404）
 - https://pypi.org/pypi/gigatoken/json
-- 本仓：`packages/xylitol-ai-bridge/{Cargo.toml,src/tokenize/mod.rs}`、`rust-toolchain.toml`
+- 本仓：`crates/xylitol-ai-bridge/{Cargo.toml,src/tokenize/mod.rs}`、`rust-toolchain.toml`

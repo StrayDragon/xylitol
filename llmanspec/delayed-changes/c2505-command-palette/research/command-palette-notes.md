@@ -10,7 +10,7 @@
 - 执行路径：slash 解析 → pending → effects 泵 → Driver，**单一通道**
   （`src/app/tui/AGENTS.md`：禁止第二套 slash/steer 执行路径）。
 - 键位设施：keybindings manager 支持 `extend_definitions` 注册新 action +
-  `get_keys` 反查展示（`packages/xylitol-tui/src/keybindings.rs:200-256`）。
+  `get_keys` 反查展示（`crates/xylitol-tui/src/keybindings.rs:200-256`）。
 - **冻结约束**：面 AGENTS 明文「不做运行时 Settings/Plate 改配置；
   不绑定 Ctrl+P 打开 Command Plate stub」。本票是「命令面板」不是「Plate」，
   但入口若用 Ctrl+P 即触碰该条，必须先修订决议。

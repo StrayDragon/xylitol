@@ -40,7 +40,7 @@
       那么 使用唯一自动生成路径
   @req:r63
   规则: tui-e2e-isolation
-    TUI 端到端测试（portable-pty 与 tmux）须与主测试矩阵隔离：须位于 workspace 级 tests/tui_e2e/（非 packages/xylitol-tui/tests/），须标记 #[ignore] 或由 feature flag 门控，默认 cargo test 不运行，须经专用 justfile 目标（test-tui-e2e）调用。tmux smoke 须额外要求 tmux 二进制存在（缺失则 skip 并给出清晰消息），并为 spawned session 设置 TERM=xterm-256color。每个 tmux session 须使用唯一名称（基于 PID 或时间戳）以支持并行，须经 Drop guard 在 panic 时也 kill，避免泄漏 session。
+    TUI 端到端测试（portable-pty 与 tmux）须与主测试矩阵隔离：须位于 workspace 级 tests/tui_e2e/（非 crates/xylitol-tui/tests/），须标记 #[ignore] 或由 feature flag 门控，默认 cargo test 不运行，须经专用 justfile 目标（test-tui-e2e）调用。tmux smoke 须额外要求 tmux 二进制存在（缺失则 skip 并给出清晰消息），并为 spawned session 设置 TERM=xterm-256color。每个 tmux session 须使用唯一名称（基于 PID 或时间戳）以支持并行，须经 Drop guard 在 panic 时也 kill，避免泄漏 session。
 
     场景: tui-e2e-workspace-isolation
       当 读取 TUI 端到端测试布局

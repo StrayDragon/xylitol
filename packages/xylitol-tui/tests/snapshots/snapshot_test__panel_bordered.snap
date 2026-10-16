@@ -1,9 +1,0 @@
----
-source: packages/xylitol-tui/tests/snapshot_test.rs
-expression: "support::viewport_snapshot(harness)"
----
-0|
-1|  hello
-2|
-3|
-4|

@@ -5,7 +5,7 @@
 
 ## 现状核对（代码事实）
 
-- `packages/xylitol-tui/src/keybindings.rs`：
+- `crates/xylitol-tui/src/keybindings.rs`：
   - `matches_event`(:200) / `get_keys`(:211) / `get_definition`(:215)
   - `get_conflicts`(:219) 冲突检测已有
   - `set_user_bindings`(:223) 热重载（c1090）、`extend_definitions`(:256) 注册新 action

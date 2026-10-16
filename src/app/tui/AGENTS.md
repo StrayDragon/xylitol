@@ -1,6 +1,6 @@
 # src/app/tui/
 
-本端专属边界。分层与 seam：`src/AGENTS.md`。引擎：`packages/xylitol-tui/AGENTS.md`。写法：根 `AGENTS.md`。
+本端专属边界。分层与 seam：`src/AGENTS.md`。引擎：`crates/xylitol-tui/AGENTS.md`。写法：根 `AGENTS.md`。
 
 写/改本端：先读本节职责，再跟 `l8ng-write-tui`。刻意差异台账：[`PI_DELTAS.md`](./PI_DELTAS.md)（包层另有一份，不得静默覆盖）。
 
@@ -21,7 +21,7 @@
 
 **信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`docs/architecture/TUI信息呈现与固定区词汇.md`](../../../docs/architecture/TUI信息呈现与固定区词汇.md) 表内词——尤其 **滚动提示**、**通知条**、**通知栈**、**待办栏**、**尾插 / 顶插**；弃用词（挂账 / Status trail / chrome / 壳层 / system 消息等）以该表「弃用」节为准，表外旧称勿再引入。
 
-**与 `agent_demo` 分界**：包引擎演示，不是本端 SSOT、不是 designing。硬边界见 `packages/xylitol-tui/AGENTS.md`。
+**与 `agent_demo` 分界**：包引擎演示，不是本端 SSOT、不是 designing。硬边界见 `crates/xylitol-tui/AGENTS.md`。
 
 **跨端公共体验**：与第二产品端（gpui 桌面，尚未开放）共有能力一套学习成本——规则唯一约束板：[`docs/roadmaps/跨端同源.md`](../../../docs/roadmaps/跨端同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。端侧附加：改公共交互前先对齐全部端；未开放端不要写成现行 MUST，也不要在本端预埋第二套动作 id。
 
@@ -48,7 +48,7 @@
 | Agent 尽量跑 | `just test-tui-e2e-pty`（真终端） |
 | 人类 | 最短手测观感；**不**替代 harness |
 
-包侧验证分层（按键→状态 / snapshot / 时序 / 真终端 E2E）：`packages/xylitol-tui/AGENTS.md`「验证」+ skill `xylitol-dev`（`references/tui-harness.md`）。排障：`xylitol-dev`（`references/observability.md`）（勿整文件灌 log）。新增应用端：`l8ng-write-surface`。
+包侧验证分层（按键→状态 / snapshot / 时序 / 真终端 E2E）：`crates/xylitol-tui/AGENTS.md`「验证」+ skill `xylitol-dev`（`references/tui-harness.md`）。排障：`xylitol-dev`（`references/observability.md`）（勿整文件灌 log）。新增应用端：`l8ng-write-surface`。
 
 应用端无头帧挂载（BDD 直驱真实渲染）：`SceneBuilder`（经 `xylitol::app::tui` 导出；契约 `package-tui-testing`）。
 

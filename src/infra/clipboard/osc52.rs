@@ -32,7 +32,7 @@ pub(crate) fn base64_encode(input: &[u8]) -> String {
 ///
 /// Returns `None` when the base64 payload exceeds `MAX_OSC52_ENCODED_LENGTH` (100_000).
 ///
-/// Mirrored in `packages/xylitol-tui/src/selection.rs::format_osc52`: the TUI
+/// Mirrored in `crates/xylitol-tui/src/selection.rs::format_osc52`: the TUI
 /// package must not depend on the host crate, so the logic is duplicated —
 /// keep sequence format and the length cap in sync on both sides.
 pub fn format_osc52(text: &str) -> Option<String> {

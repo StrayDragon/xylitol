@@ -12,7 +12,7 @@ summary: "用 Gigatoken 替换 HuggingFace tokenizers 做本地 token 计数（�
 
 ## Why
 
-LocalTokenizer 档（`packages/xylitol-ai-bridge` → `tokenize::encode_count_at_path`）当前依赖 HuggingFace **`tokenizers` Rust crate**（`Tokenizer::from_file` + `encode`）对缓存/本地 `tokenizer.json` 做精确计数。
+LocalTokenizer 档（`crates/xylitol-ai-bridge` → `tokenize::encode_count_at_path`）当前依赖 HuggingFace **`tokenizers` Rust crate**（`Tokenizer::from_file` + `encode`）对缓存/本地 `tokenizer.json` 做精确计数。
 
 [Gigatoken](https://github.com/marcelroed/gigatoken) 宣称对常见 BPE 词表可达相对 HF tokenizers 数百倍～千倍吞吐（SIMD pretokenize + pretoken cache），且兼容模式下可对齐 HF encode 结果。若能作为本仓 LocalTokenizer 后端，可降低：
 
@@ -66,7 +66,7 @@ LocalTokenizer 档（`packages/xylitol-ai-bridge` → `tokenize::encode_count_at
 
 ## Impact
 
-- **代码**：主要 `packages/xylitol-ai-bridge`（`tokenize`、`Cargo.toml`）；主仓 `token_estimator` 宜保持 seam 不变
+- **代码**：主要 `crates/xylitol-ai-bridge`（`tokenize`、`Cargo.toml`）；主仓 `token_estimator` 宜保持 seam 不变
 - **依赖**：增 Gigatoken（git 或 crates.io）；视对齐策略决定是否保留 `tokenizers` 作回退
 - **行为**：LocalTokenizer `on` 时计数更快；provenance 仍为 LocalTokenizer；默认 off 用户无感
 - **测试**：bridge 单测 + 与 HF 对照 fixture；不要求改 BDD 热路径（paa3 不变）

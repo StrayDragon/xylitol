@@ -129,7 +129,7 @@
 
   @req:r1528
   规则: provider 包开闭
-    LLM 厂商差异 须收敛在 packages/xylitol-ai-bridge 的 adapter 族；主仓投影缝（agent 内 project_for_llm）仅负责 Env→LLM 折叠。新 OpenAI-like 或 Anthropic-like 兼容端 须以开闭方式扩展（新 adapter/配置），不得为某一网关修改 AgentMessage 角色集或 agent ReAct 核心；agent MAY 依赖 bridge DTO 组合 Llm 臂；agent/infra 不得依赖厂商 HTTP/SDK。
+    LLM 厂商差异 须收敛在 crates/xylitol-ai-bridge 的 adapter 族；主仓投影缝（agent 内 project_for_llm）仅负责 Env→LLM 折叠。新 OpenAI-like 或 Anthropic-like 兼容端 须以开闭方式扩展（新 adapter/配置），不得为某一网关修改 AgentMessage 角色集或 agent ReAct 核心；agent MAY 依赖 bridge DTO 组合 Llm 臂；agent/infra 不得依赖厂商 HTTP/SDK。
     场景: provider-diff-contained-in-bridge
       当 以 medium 与 off 档解析请求 thinking 并注入各族请求体
       那么 Responses 用 reasoning.effort 且 Completions 随 compat 分流且 Anthropic 随 compat 分流且 off 档省略字段

@@ -19,7 +19,7 @@ depends_on: []
 
 ## 开放决策（propose 时深挖）
 
-- 独立 workspace 成员（如 `packages/xylitol-gpui`）vs 主 crate feature——依赖树隔离与编译时间权衡。
+- 独立 workspace 成员（如 `crates/xylitol-gpui`）vs 主 crate feature——依赖树隔离与编译时间权衡。
 - gpui 上游未到 1.0：版本钉死策略、vendored 与否、破坏性漂移跟进成本上限。
 - 渲染投影源：冷恢复走 get_messages 快照（w8 语义）、实况走 mux 订阅——与 TUI 同一套 driver/client 缝还是平行实现。
 - M2 对话回路的键位映射表与 TUI 同构程度。

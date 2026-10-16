@@ -5,7 +5,7 @@
 
   @req:r1374
   规则: choice-prompt-not-stdio
-    产品 TUI 路径（默认裸跑或 tui 动词）在需要 Ask trust 时 须在 raw-mode TUI 内用 packages/xylitol-tui ChoicePrompt（替换 editor 槽）完成选择；不得调用 prompt_trust_options_stdio 或等价 stderr 数字菜单。
+    产品 TUI 路径（默认裸跑或 tui 动词）在需要 Ask trust 时 须在 raw-mode TUI 内用 crates/xylitol-tui ChoicePrompt（替换 editor 槽）完成选择；不得调用 prompt_trust_options_stdio 或等价 stderr 数字菜单。
 
     场景: trust-ask-uses-choice-prompt-in-tui
       假如 项目尚未信任

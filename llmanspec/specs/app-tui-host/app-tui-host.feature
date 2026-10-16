@@ -5,7 +5,7 @@
 
   @req:r1240
   规则: host-driven-engine
-    产品 TUI 须以 host 驱动引擎（事件分发、按需渲染、idle 心跳）驱动 packages/xylitol-tui；产品路径 不得进入引擎的阻塞主循环（包 demo 专用启动 API 勿用于生产面）。
+    产品 TUI 须以 host 驱动引擎（事件分发、按需渲染、idle 心跳）驱动 crates/xylitol-tui；产品路径 不得进入引擎的阻塞主循环（包 demo 专用启动 API 勿用于生产面）。
     场景: host-pump-is-the-single-engine-entry
       当 以主机泵在 idle 提交 bang 命令
       那么 execute_bash 收到命令体且未调用 run
