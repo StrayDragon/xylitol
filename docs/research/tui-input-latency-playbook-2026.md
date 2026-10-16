@@ -35,5 +35,5 @@
 
 ## 关联
 
-- 滚动交互产品语义（gutter/选中/follow）：`crates/xylitol-tui/llmanspec/spec/` 与 `src/app/tui/AGENTS.md`
+- 滚动交互产品语义（gutter/选中/follow）：`crates/xylitol-tui/llmanspec/specs/` 与 `src/app/tui/AGENTS.md`
 - 观测窄读操作：`xylitol-dev` skill（`references/observability.md`）
