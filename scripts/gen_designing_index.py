@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate designing/generated/AGENT-INDEX.md from designing/user_interfaces/*/modules.
+"""Generate designing/AGENT-INDEX.md from designing/user_interfaces/*/modules.
 
 Usage:
   python3 scripts/gen_designing_index.py
@@ -16,7 +16,7 @@ REPO = Path(__file__).resolve().parent.parent
 DESIGNING = REPO / "designing"
 # 设计稿按「端面」分组在 user_interfaces/ 下；surface 名 = 叶子目录名（tui / tui-lab）。
 SURFACES = DESIGNING / "user_interfaces"
-INDEX = DESIGNING / "generated" / "AGENT-INDEX.md"
+INDEX = DESIGNING / "AGENT-INDEX.md"
 
 
 def module_summary(intent: Path) -> str:

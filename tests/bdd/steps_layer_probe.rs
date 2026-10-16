@@ -340,7 +340,7 @@ pub(crate) fn t_activity_fold_defaults() {
 #[when("读取 token 同步脚本与生成物")]
 pub(crate) fn w_token_sync() {
     let script = la_load("scripts/sync_tui_tokens.py");
-    let js = la_load("designing/generated/tokens.js");
+    let js = la_load("designing/app/preview-tool/generated/tokens.js");
     let ok = script.contains("tokens.css") && script.contains("tokens.js") && js.contains("{");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(if ok { "1".into() } else { "0".into() }));
 }

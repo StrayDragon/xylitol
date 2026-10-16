@@ -6,7 +6,7 @@
 //! # or: just export-design-frame
 //! ```
 //!
-//! Writes `designing/generated/shell-frame.json` (span rows per frame) consumed
+//! Writes `designing/app/preview-tool/generated/shell-frame.json` (span rows per frame) consumed
 //! by `designing/app/preview-tool` — the shell view renders product truth, so refreshing the
 //! view after UI changes means re-running this lab, not hand-editing mockups.
 //!
@@ -36,7 +36,7 @@ mod export {
     const MODEL_DISPLAY: &str = "Ornith-1.5-35B";
     const OUTPUT: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/designing/generated/shell-frame.json"
+        "/designing/app/preview-tool/generated/shell-frame.json"
     );
 
     type Vt = VirtualTerminal;

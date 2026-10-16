@@ -11,8 +11,9 @@ Token 色板：[`src/app/tui/DESIGN.md`](../src/app/tui/DESIGN.md) frontmatter�
 ```text
 designing/
   AGENTS.md
+  AGENT-INDEX.md       # 生成物：模块清单索引（勿手改；`just gen-designing-index` 写出）
   app/preview-tool/    # 实验 / 快速查看的 web 交互工具（bun + Vite，无前端框架）；package.json 只在这里
-  generated/           # AGENT-INDEX.md、tokens.css/js、shell-frame.json；勿手改
+    generated/         # 预览工具消费的派生文件（tokens.css/js、shell-frame.json）；勿手改
   user_interfaces/     # 交互设计稿按「端面」分组；surface 名 = 叶子目录名 = 预览 endpoint 段
     tui/
       shell.regions.yaml # shell 页区域注解（module + 文本锚点 contains + rows 覆盖行数）
@@ -27,15 +28,15 @@ designing/
 
 ## 帧与区域（shell 页数据流）
 
-1. `just export-design-frame`：`src/app/tui/lab_design_frame.rs`（`#[ignore]` lab）用 harness 起真实会话渲染 busy / idle / short 三帧 → `generated/shell-frame.json`。改了产品 UI 就重跑，**勿手改 JSON**。
+1. `just export-design-frame`：`src/app/tui/lab_design_frame.rs`（`#[ignore]` lab）用 harness 起真实会话渲染 busy / idle / short 三帧 → `app/preview-tool/generated/shell-frame.json`。改了产品 UI 就重跑，**勿手改 JSON**。
 2. `user_interfaces/tui/shell.regions.yaml`：区域 = `module` + `contains`（行内文本锚点，渲染时定位首条命中行）+ `rows`（覆盖行数）。改布局重导出即可，锚点只在文案变化时跟随；`check_tui_designing` 校验 module 存在与锚点帧齐备。
 
 ## 给人 / 给 Agent
 
 | 受众 | 默认读 | 禁止默认读 |
 |---|---|---|
-| **Agent 改某端** | 产品代码 → `user_interfaces/tui/modules/<id>/intent.md` + `draft.yaml`（+ `states/*.yaml`） | `app/preview-tool/` 源码、`generated/*`、整包 HTML、`node_modules` |
-| **Agent 找路** | [`generated/AGENT-INDEX.md`](./generated/AGENT-INDEX.md) | `app/preview-tool/` 源码、整包 HTML |
+| **Agent 改某端** | 产品代码 → `user_interfaces/tui/modules/<id>/intent.md` + `draft.yaml`（+ `states/*.yaml`） | `app/preview-tool/` 源码、`app/preview-tool/generated/*`、整包 HTML、`node_modules` |
+| **Agent 找路** | [`AGENT-INDEX.md`](./AGENT-INDEX.md) | `app/preview-tool/` 源码、整包 HTML |
 | **人类** | `just open-designing` → `/tui`；tui-lab 经 `/tui-lab/<id>/<state>` | — |
 
 改模块后跑 `just gen-designing-index`；改了产品 UI 重跑 `just export-design-frame`（漏跑由 `scripts/check_tui_designing.py` 进 `just qa` 抓住区域/帧不齐）。
@@ -47,7 +48,7 @@ intent.md 只写 **可观察 MUST**（词表、禁止滑入、轨/flush、跨端
 | 规则 | 禁止 |
 |---|---|
 | 颜色 / 尺寸只引用 DESIGN token（YAML `token: muted` → `var(--muted)`） | 另立冲突 hex |
-| 改 token：`just sync-tui-tokens`；门禁 `just qa-check-tui-tokens`；生成物只在 `generated/` | 手改生成物 |
+| 改 token：`just sync-tui-tokens`；门禁 `just qa-check-tui-tokens`；生成物只在 `app/preview-tool/generated/`（+ `AGENT-INDEX.md`） | 手改生成物 |
 | 静图 UI 无「(包)」分层样式；无顶栏快捷键墙 | 把包分层样式当产品表达 |
 | **无独立快捷键设计**：组件自己的键写在该模块 `draft.yaml` `keys:`（仅当非空时页面展示） | 另立快捷键设计 / 在散文里钉键位 |
 | `agent_demo` 不是产品 playground / 固定区真值（硬边界见 `crates/xylitol-tui/AGENTS.md`） | 拿 demo 当产品定稿 |

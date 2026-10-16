@@ -3,7 +3,7 @@
 
 SSOT: src/app/tui/DESIGN.md → colors.* (dark) + colors_light.* (light)
 
-Writes: designing/generated/tokens.css + tokens.js
+Writes: designing/app/preview-tool/generated/tokens.css + tokens.js
 Checks (--check): that dest + crates/xylitol-tui Palette::dark/light hex.
 """
 
@@ -17,7 +17,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 DESIGN = REPO / "src" / "app" / "tui" / "DESIGN.md"
 PALETTE = REPO / "crates" / "xylitol-tui" / "src" / "theme" / "palette.rs"
-DESIGNING_GEN = REPO / "designing" / "generated"
+DESIGNING_GEN = REPO / "designing" / "app" / "preview-tool" / "generated"
 
 # DESIGN kebab → Palette snake field
 TOKEN_TO_FIELD = {

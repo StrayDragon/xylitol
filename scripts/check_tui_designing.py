@@ -25,7 +25,7 @@ DESIGNING = REPO / "designing"
 # 设计稿按「端面」分组在 user_interfaces/ 下；surface 名 = 叶子目录名。
 SURFACES = DESIGNING / "user_interfaces"
 APP = DESIGNING / "app" / "preview-tool"
-INDEX = DESIGNING / "generated" / "AGENT-INDEX.md"
+INDEX = DESIGNING / "AGENT-INDEX.md"
 GEN = REPO / "scripts" / "gen_designing_index.py"
 AGENTS = DESIGNING / "AGENTS.md"
 HEX_RE = re.compile(r"#[0-9a-fA-F]{6}")
@@ -170,7 +170,7 @@ def check_module(surface: str, mod: Path, errors: list[str]) -> None:
 def check_shell(errors: list[str]) -> None:
     """Shell 视图：帧数据与区域注解（module 存在、锚点可解析）。"""
     regions_path = SURFACES / "tui" / "shell.regions.yaml"
-    frame_path = DESIGNING / "generated" / "shell-frame.json"
+    frame_path = APP / "generated" / "shell-frame.json"
     if not regions_path.is_file():
         fail("missing designing/user_interfaces/tui/shell.regions.yaml", errors)
         return
@@ -191,7 +191,7 @@ def check_shell(errors: list[str]) -> None:
             if not isinstance(region, dict) or not region.get("contains") or not region.get("rows"):
                 fail(f"shell.regions.yaml: frames/{frame_id} 区域缺 contains/rows", errors)
     if not frame_path.is_file():
-        fail("missing designing/generated/shell-frame.json — run: just export-design-frame", errors)
+        fail("missing designing/app/preview-tool/generated/shell-frame.json — run: just export-design-frame", errors)
         return
     try:
         frame_doc = json.loads(frame_path.read_text(encoding="utf-8"))
@@ -235,9 +235,9 @@ def main() -> int:
         text=True,
     )
     if not INDEX.is_file():
-        fail("missing generated/AGENT-INDEX.md — run: just gen-designing-index", errors)
+        fail("missing designing/AGENT-INDEX.md — run: just gen-designing-index", errors)
     elif INDEX.read_text(encoding="utf-8") != want:
-        fail("stale generated/AGENT-INDEX.md — run: just gen-designing-index", errors)
+        fail("stale designing/AGENT-INDEX.md — run: just gen-designing-index", errors)
 
     if errors:
         print("check_tui_designing: FAIL", file=sys.stderr)
