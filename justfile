@@ -479,7 +479,7 @@ cargo-wt-env:
     scripts/cargo_worktree_env.sh --print
 
 # --- Observability / provider-trace inspect (maintenance; not in qa) ---
-# Token-efficient summaries. Skill: xylitol-inspect-runtime-logs.
+# Token-efficient summaries. Skill: xylitol-dev (references/observability.md).
 # Filters (--since / --request-id / --turn-id) and rarer subcommands
 # (requests / turns / lag / lifecycle / channel): pass via the python CLI, e.g.
 #   python3 scripts/inspect_provider_trace.py requests -n 8

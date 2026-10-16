@@ -1,5 +1,7 @@
 # Apache Fory 对 xylitol 的适配性（2026-09）
 
+> **⚠️ SUPERSEDED（历史底稿，结论已作废）**：本文「不引入 Fory 作产品编解码」**已被推翻**——产品线协议现用 **fory-v3 帧**（`WIRE_FORMAT_FORY_V3`，`host.describe` 只 advertise `fory-v3`）。沿革：`c2825 update-jsonrpc-product-envelope` 换 JSON-RPC 信封 → `c2834 add-v3-fory-flutter-poc` 引入 Fory v3 → `c2854 remove-jsonrpc-debug-wire` 移除 JSON-RPC（产品只剩 fory-v3）。现行真源：`src/protocol/wire/envelope.rs` 与 `xylitol-dev` skill `references/deps-candidates.md`。保留本文仅作选型沿革。
+>
 > **性质**：跨 change 主题级耐久底稿。不是实现计划，不改 live specs。
 > 产品方向正文：[`../architecture/库与多客户端.md`](../architecture/库与多客户端.md)、[`../architecture/远程体验与线协议.md`](../architecture/远程体验与线协议.md)、[`../roadmaps/Gpui桌面客户端.md`](../roadmaps/Gpui桌面客户端.md)、[`ui-runtime-tradeoffs-2026.md`](./ui-runtime-tradeoffs-2026.md)。
 

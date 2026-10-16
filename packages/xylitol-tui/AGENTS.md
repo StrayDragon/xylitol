@@ -80,7 +80,7 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 
 | 验什么 | 在哪跑 | 命令 |
 |---|---|---|
-| 包组件测试（按键→状态 / snapshot / 时序；proptest 未落地，落地时补 `tests/property_test.rs`），口径同 skill `xylitol-test-tui-harness` | 本包 `tests/` | `just test-tui` |
+| 包组件测试（按键→状态 / snapshot / 时序；proptest 未落地，落地时补 `tests/property_test.rs`），口径同 skill `xylitol-dev`（`references/tui-harness.md`） | 本包 `tests/` | `just test-tui` |
 | 真终端 E2E（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`：主场景 spawn **`agent_demo`**；另含产品 Fake smoke（`pty_product_*`，隔离 config） | `just test-tui-e2e`（或 `-pty` / `-tmux`） |
 | 仓库全量门禁（不含真终端 E2E） | 全仓 | `just qa` |
 | 全量门禁 + 真终端 E2E | 全仓 | `just qa-e2e` |
@@ -90,7 +90,7 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 
 - **包 E2E / `agent_demo*`**：引擎 + 通用组件 + 真终端协议；文案以 demo 自身为准。
 - **产品 TUI**：Driver / bridge / layout / 键位 → 应用端 harness。真终端 E2E 另有隔离 config 的产品 Fake smoke，日常不绑真 API。
-- 真终端 E2E 全 `#[ignore]`；缺 tmux 用 `just test-tui-e2e-pty`。真终端就绪针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs` 常量，改 demo 首帧文案须同步）。操作细则：`xylitol-test-tui-harness` skill。
+- 真终端 E2E 全 `#[ignore]`；缺 tmux 用 `just test-tui-e2e-pty`。真终端就绪针 `DEMO_READY_NEEDLE`（`tests/tui_e2e.rs` 常量，改 demo 首帧文案须同步）。操作细则：`xylitol-dev` skill（`references/tui-harness.md`）。
 
 ## Specs
 
@@ -100,11 +100,11 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 
 | 任务 | 去哪 |
 |---|---|
-| 改组件 / 引擎 / 扩测试 | `xylitol-test-tui-harness` skill（落点）；边界见上「验证」 |
+| 改组件 / 引擎 / 扩测试 | `xylitol-dev`（`references/tui-harness.md`）（落点）；边界见上「验证」 |
 | 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
 | 对照 / 合并 pi-tui 行为 | 先读 [`PI_DELTAS.md`](PI_DELTAS.md)；不得静默回退表中决议 |
 | 改产品 TUI 端 / UX / 视觉 | `l8ng-write-tui` + 产品代码 + `src/app/tui/DESIGN.md` + `just open-designing`；**勿**默认改 `agent_demo` 当产品落地 |
-| 改包引擎 / 通用组件 / demo | `xylitol-test-tui-harness`；包内 `just demo-tui` 仅验证包能力（demo recipe 在 `packages/xylitol-tui/justfile`，根 justfile 不收 demo） |
+| 改包引擎 / 通用组件 / demo | `xylitol-dev`（`references/tui-harness.md`）；包内 `just demo-tui` 仅验证包能力（demo recipe 在 `packages/xylitol-tui/justfile`，根 justfile 不收 demo） |
 | 改色板 | 只改 app `DESIGN.md` → `just sync-tui-tokens` → 对齐 `Palette`；`just qa-check-tui-tokens` |
 | 打开交互设计稿 | `just open-designing`（对照稿；≠ 产品真值；≠ demo） |
 | 日常 / 真终端门禁 | 上「验证」表 |

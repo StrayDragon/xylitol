@@ -1,7 +1,7 @@
 # Agent Eval 与回归基准
 
 > **主线**：用**同一模型**在主流 agent eval benchmark 上跑分——**先 SWE-bench，再 Terminal-Bench 2.x**；Docker/sandbox 驱动 xylitol 自主多轮，分数来自 harness 官方 grader。
-> **驱动端硬约束**：只经 `print` / headless（`XyDriver::run`）；**不做**自动驱动产品 TUI 作为 eval 主路径或前置（TUI 回归走既有 `xylitol-test-tui-harness`，与社区刻度正交）。
+> **驱动端硬约束**：只经 `print` / headless（`XyDriver::run`）；**不做**自动驱动产品 TUI 作为 eval 主路径或前置（TUI 回归走既有 `xylitol-dev` skill 的 TUI 验证 reference，与社区刻度正交）。
 > **旁路**：从 benchmark 失败或 Langfuse trace 钉回归集，做小集 CI 防退化——**不替代**社区刻度。
 > **参考**：[Artificial Analysis](https://artificialanalysis.ai/) Data API / Intelligence Index — 选模与同模型公开基线对照；**不是** xylitol 评测入口。
 > 现状对齐：2026-07-28。**开发者 / CI 后置**，非开箱默认体验。

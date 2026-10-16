@@ -1,5 +1,5 @@
 # Dated nightly pin (application; not rolling `nightly`).
-# Bump cadence: skill `xylitol-bump-toolchain`.
+# Bump cadence: skill `xylitol-dev` (`references/toolchain-bump.md`).
 [toolchain]
 channel = "nightly-2026-10-09"
 profile = "minimal"

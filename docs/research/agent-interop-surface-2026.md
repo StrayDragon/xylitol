@@ -1,5 +1,7 @@
 # 多语言互操作面：独特点不在 codec，在「标准 Agent + 更富 Host」（2026-09）
 
+> **⚠️ SUPERSEDED（历史底稿，结论已作废）**：本文「第一方面换 JSON-RPC（jsonrpsee）」的锁定**已被推翻**——`c2825 update-jsonrpc-product-envelope` 曾落地 JSON-RPC 信封，随后 `c2834 add-v3-fory-flutter-poc` 引入 Fory v3、`c2854 remove-jsonrpc-debug-wire` 移除 JSON-RPC，产品现只剩 **fory-v3**（`WIRE_FORMAT_FORY_V3`）。现行真源：`src/protocol/wire/envelope.rs` 与 `xylitol-dev` skill `references/deps-candidates.md`。保留本文仅作互操作选型沿革。
+>
 > **性质**：跨 change 主题级耐久底稿。不是实现计划，不改 live specs。
 > 前序：Fory 不适合产品编解码（`[apache-fory-fit-2026.md](./apache-fory-fit-2026.md)`）。本文回答「怎样让非 Rust 端不再为 Command/Event 付专有税，并形成相对其它 coding agent 的独特能力」。成本不作筛选条件。
 

@@ -1,24 +1,13 @@
----
-name: xylitol-dev-candidates
-description: >-
-  xylitol Host 监听器与线协议周边依赖候选：salvo（现行明文 loopback HTTP/WS）、
-  jsonrpsee（JSON-RPC 文本已退役）、axum（未在锁内）、Scalar/salvo-oapi（调试文档已拆）。
-  已退役本地词表 / RemoteCount：tiktoken-rs、HF tokenizers、gigatoken、
-  Anthropic count_tokens / OpenAI input_tokens HTTP。
-  在考虑换 HTTP 框架、复活 JSON 文本通道、加回 OpenAPI/Scalar、
-  或再引入本地词表 / RemoteCount 时使用。
----
+# 依赖候选与退役登记（Host 监听器 / 线协议周边）
 
-# xylitol 开发候选（Host 监听器 / 线协议周边）
-
-**边界**：何时再拿某依赖出来。一次性迁移步骤不进本 skill。现行产品真源：`POST /rpc` + `WS /rpc` 的 v3 fory 帧；`GET /healthz` 同端口。计量现行：Api usage → Heuristic（UTF-8 字节 `/3`）。
+**用途**：何时再拿某依赖出来。一次性迁移步骤不进本表。现行产品真源：`POST /rpc` + `WS /rpc` 的 **v3 fory 帧**；`GET /healthz` 同端口。计量现行：Api usage → Heuristic（UTF-8 字节 `/3`）。
 
 ## 现行
 
 | 件 | 角色 |
 |---|---|
 | salvo（`default-features=false`，`server` / `server-handle` / `http1` / `websocket` / `test`） | 明文 loopback Host：healthz + `/rpc` HTTP/WS |
-| fory（xlang） | 产品线协议编码 |
+| fory（xlang） | 产品线协议编码（`WIRE_FORMAT_FORY_V3`） |
 | 内部 `dispatch_raw` | Host 方法表仍吃 JSON 形载荷；**不是**对外 JSON-RPC 通道 |
 
 ## 已退役 / 未引入 — 何时再拿出来
@@ -36,7 +25,7 @@ description: >-
 
 ## 硬约束
 
-1. 产品 `/rpc` **MUST** 保持单一载体（当前 fory-v3）。加回 JSON 文本 = 行为合约变更，走 propose。
+1. 产品 `/rpc` **MUST** 保持单一载体（当前 fory-v3）。加回 JSON 文本 = 行为合约变更，走 SDD propose。
 2. 换框架 **MUST NOT** 改变方法表、租约、幂等、订阅 seq。
 3. 候选评估先看 Cargo feature 实际启用面与 `just qa`，再谈替换。
-4. 复活本地词表 / RemoteCount HTTP = 行为合约变更，走 propose。旧 YAML `tokenizers:` / `models.*.tokenizer` / `token_estimate.local_tokenizer` 静默忽略，**不加**加载 warn。
+4. 复活本地词表 / RemoteCount HTTP = 行为合约变更，走 SDD propose。旧 YAML `tokenizers:` / `models.*.tokenizer` / `token_estimate.local_tokenizer` 静默忽略，**不加**加载 warn。

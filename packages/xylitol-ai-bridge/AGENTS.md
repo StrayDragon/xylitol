@@ -45,7 +45,7 @@ OpenAI-like / Anthropic-like upstream
 | OpenAI Responses **流式**：`create_stream_byot::<_, Value>`，按事件 `type` 宽松匹配（兼容端常缺字段） | 把 SSE 默认绑死在 typed `ResponseStreamEvent`（如缺 `created_at` 的 `response.created` 会炸） |
 | hooks 经 SDK **middleware**（或文档化等价点）接到可移植 HeaderBag/JSON body | agent/protocol import 本包 `provider` / vendor SDK 类型 |
 | DTO **不含** session 环境角色的平行 enum；主仓 MAY `pub use` DTO 组合 `AgentMessage::Llm` | 与 `AgentMessage` 全量孪生 + JSON 往返「对齐」 |
-| accounting：Api → Heuristic（`HEURISTIC_BYTES_PER_TOKEN = 3`）；切点 / trailing 同源 | 把 Heuristic 标成 Api；TextDelta 热路径全文 encode；再引入 tiktoken / HF tokenizers / RemoteCount（见 xylitol-dev-candidates） |
+| accounting：Api → Heuristic（`HEURISTIC_BYTES_PER_TOKEN = 3`）；切点 / trailing 同源 | 把 Heuristic 标成 Api；TextDelta 热路径全文 encode；再引入 tiktoken / HF tokenizers / RemoteCount（见 `xylitol-dev` 的依赖候选 reference） |
 
 ## 包内模块边界
 

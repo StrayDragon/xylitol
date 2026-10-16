@@ -19,7 +19,7 @@
 
   @req:r1829
   规则: 文档指针
-    根 AGENTS.md 命令段与 xylitol-test-tui-harness skill 须写明 just qa 与 just qa-e2e 的分工，以及 live-provider 串行闸与专用配置路径；TUI 四层方法论仍以 package-tui-testing 与该 skill 为 SSOT，本闸仅统一入口。
+    根 AGENTS.md 命令段与 xylitol-dev skill 须写明 just qa 与 just qa-e2e 的分工，以及 live-provider 串行闸与专用配置路径；TUI 四层方法论仍以 package-tui-testing 与该 skill 的 TUI 验证 reference 为 SSOT，本闸仅统一入口。
     场景: docs-name-qa-split
       当 读取 qa 文档指针
       那么 文档写明 qa 与 e2e 分工

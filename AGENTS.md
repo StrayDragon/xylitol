@@ -71,26 +71,16 @@
 
 ## 命令与验证
 
-- 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；全量门禁 `just qa`（或 `ci`）；需要真终端（PTY / tmux）验证时再 `just qa-e2e`；新机器 / 环境异常先 `just doctor`（裸 `just` 会在有环境警告时自动提示；检查项集中在 `scripts/doctor_dev_env.py` 的 `CHECKS` 表，加一项 = 一个返回 `(ok, detail)` 的探针）。
-- `just qa` 串行跑 `test-live-provider`（连接真实网关的 lab；配置路径、`enabled` 门禁与 skip 语义见 `justfile` 与 `just gen-live-provider-example`；recipe 名 `qa-test-live-provider`）。产品示例配置 `configs/example.yaml` 由 `just gen-config-example` 生成（改 `scripts/gen_config_example.py` 模板，勿直接手改产物）。
-- `qa` 输出默认 quiet；`just qa normal` / `verbose` 或 `JUST_VERBOSITY=` 调整。
+- 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；全量门禁 `just qa`（或 `ci`）；需要真终端（PTY / tmux）再加 `just qa-e2e`；新机器 / 环境异常先 `just doctor`。
 - 非变更门禁脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进门禁。
-- **prek 与 `just qa` 正交**：prek hook（任何 stage）只承担文本/元数据卫生（空白、EOF、私钥、大文件等）与 commit-msg 规约，保持轻量；cargo 级门禁（fmt / clippy / test / doc-test）**MUST NOT** 拆成独立 hook 进 prek。`just qa` 是开发过程中的手动门禁，push 前跑不跑靠自觉；push 时点的强制一致性由 CI（GitHub Actions）兜底，不用本地 hook 卡推送。LFS pre-push 由 git-lfs 原生 hook 负责（`just setup` 经 `git lfs install --local` 确保安装）。
+- **prek 与 `just qa` 正交**：prek hook 只承担文本 / 元数据卫生与 commit-msg 规约；cargo 级门禁（fmt / clippy / test / doc-test）**MUST NOT** 拆成独立 hook 进 prek；push 一致性由 CI 兜底。
 - 探查：`cargo run -- --help`；文档构建与检查：`just doc` / `just qa-doc-check`。
 - 一次性探针只落 `scripts/lab_*.py`（或包 examples `lab_*`）并直接 python 调用，**不**新增 just recipe；重复使用或需流程化才升 skill / 门禁。引擎 demo 入口在 `packages/xylitol-tui/justfile`。
+- 门禁组成（quiet/verbose、真实网关 lab、环境自检、复杂度、元门禁）细则：`xylitol-dev` skill `references/qa-gates.md`。
 
 ### 试验 / 真实网关验证命名（`lab_`）
 
-试验性证据与真实网关探针 **统一前缀 `lab_`**（不再用 `evidence_` / `experiment_` / 试验性 `live_` 二进制名）：
-
-| 形态 | 约定 | 是否进 `just qa` |
-|---|---|---|
-| `packages/*/examples/lab_*.rs` | 人跑维护 lab（`cargo run -p … --example lab_…`） | **否** |
-| `packages/*/tests/lab_*.rs` | 可连接真实网关的 lab 二进制；是否纳入门禁看 just 接线 | **仅**已接线者（见 `just qa-test-live-provider`） |
-| `#[test] fn lab_*`（无 `#[ignore]`） | 门禁内契约实验（无网或假网） | **是**（随 crate 测） |
-| `#[ignore]` 的 `lab_*` 测试 / `src/**/lab_*.rs` lab 模块 | 人跑维护 lab（模块 doc 给命令） | **否** |
-
-配置文件名 `live-provider.yaml` / recipe `qa-test-live-provider` 保留「live 网关」语义，与代码符号前缀无关。新试验 **MUST** 用 `lab_`；禁止再引入 `evidence_` / `experiment_` 前缀。
+试验性证据与真实网关探针 **统一前缀 `lab_`**；新试验 **MUST** 用 `lab_`，**禁止**再引入 `evidence_` / `experiment_` 前缀。四形态 × 是否进 `just qa` 的矩阵与跑法：`xylitol-dev` skill `references/test-layering.md`。
 
 ## Worktree 并行开发
 
@@ -99,43 +89,17 @@
 
 ## 提交与测试
 
-- Conventional Commits；开 PR 前 `just qa`。
+- Conventional Commits；开 PR 前 `just qa`；不加 co-author / 不暴露 agent 身份。提交与协作细则：`xylitol-dev` skill `references/commit-and-collab.md`。
 - 单轨 feature-as-spec、capability 命名、spec 约束层级（产品级 WHAT，禁止钉代码组织）：`llmanspec/AGENTS.md`。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。
-- 测试分层：BDD 管端到端编排；单测管纯数据/组件边界，不重复全链路。
+- 测试分层：BDD 管端到端编排；单测管纯数据 / 组件边界，不重复全链路。细则：`xylitol-dev` skill `references/test-layering.md`。
 - 实现计划变更后同步 `llmanspec/`；读代码优先 `rg`。
 
 ## Skills
 
-SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`xylitol-test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建 / 磁盘调优：按当次 rust 版本即时调研，不固化结论（历史调优结论随版本更迭过期）。工具链与 crates.io 依赖 bump：`xylitol-bump-toolchain`。Host 监听器 / 线协议候选与周边依赖（清单 SSOT 为 skill 本体）：`xylitol-dev-candidates`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
+团队开发规范（门禁 / 测试分层 / 文档落点 / 提交协作 / 依赖候选 / 工具链 bump / TUI 验证 / 观测排障）总入口：`xylitol-dev`（正文在 `references/`）。SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。构建 / 磁盘调优：按当次 rust 版本即时调研，不固化结论。
 
 ## 编写与维护 AGENTS.md
 
-`AGENTS.md` = **稳定操作边界**，不是 README / 进度板。只收三类内容：**硬约束 / 稳定原则 / 宽泛索引（HOW 指针）**；API 名、调用序列、参数流水账等易腐细节一律以代码、skill 或 spec 为 SSOT，此处至多留一句指针——索引会过期，原则不会。
+`AGENTS.md` = **稳定操作边界**，不是 README / 进度板。只收**硬约束 / 稳定原则 / 宽泛索引（HOW 指针）**；易腐细节以代码 / skill / spec 为 SSOT，此处至多留指针。**移除即改写**：不留「曾／已退役／原名」墓碑。**同审** `.agents/skills/` 项目 skills：事实性断言对照代码复核，漂移即修。
 
-| 写 | 不写 |
-|---|---|
-| WHAT、硬约束、依赖方向、开闭规则 | 进度、行数快照、commit 列表、待办板 |
-| HOW 指针（skill / 命令 / `docs/architecture`） | 长教程、完整测试矩阵、API / 调用序列枚举（代码为 SSOT）、易腐文件地图 |
-| 与父级不同的本地例外 | 重复父级长文；复述他处 SSOT 已写全的事实（用指针替代）；钉死易变文件路径 / change id |
-
-### 写法正反例速查
-
-模式级对照，供直接套用；新增条目 MUST 长期为真（不钉具体文件名，勿随重构过时）：
-
-| 场景 | 反例 | 正例 |
-|---|---|---|
-| 移除后描述 | 「`X` 已退役，原由 `Y` 接管」「曾用 A 实现」 | 只写现状：「A 由 `Y` 承担」；沿革查 git / archive |
-| 字段 / 行为缺失 | 「`id` 字段作为死码已移除」 | 「关联只走 `rpcId`；无传输级 `id` 字段」 |
-| 接入步骤 | 枚举十几个方法名的调用链 | 一句 SSOT 指针（「完整序列以 `examples/foo.rs` 与导出文档为准」）+ 只留 MUST / 禁止 |
-| 版本特定结论 | 「Cargo 1.97 下 incremental 会 stale」钉进正文 | 「具体行为随工具链版本变化，按当次版本验证」 |
-| 易腐组成 / 步骤 | 内联枚举「fmt + clippy + 测试 + TUI harness + …」 | 短标签 + SSOT 指针：「全量门禁（组成见 justfile `qa`）」 |
-| 大而稳定的集合 | 并列长句，增删各改多处 | 一张宽泛索引表（分层 / 命令 / 术语），只列稳定成员 |
-| 进度 / 体量自述 | 「本模块 900 行，待拆」 | 软信号 `just complexity`；门禁见 `src/AGENTS.md` |
-| 跨层重复 | 子目录复述父级依赖表 | 「依赖方向见 `src/AGENTS.md`；本端仅例外：…」 |
-| 行为契约搬运 | 把 spec 场景抄进正文 | 「场景真源 `llmanspec/specs/<capability>/`」 |
-
-**偏好**：全局规则与架构不变量；落点用层名（`agent`/`infra`/…），细节去读代码；易腐事实写「怎么查」（SSOT 指针），不写「现在是什么」。子目录只补本端例外。
-
-放哪：全仓规则 → 根；目录边界 → 该目录 `AGENTS.md`；多步 how-to → skill；临时笔记 → `_HANDOFF` / `*.tmp.md`（勿升格规范）；**change 作用域调研** → `llmanspec/changes/<id>/research/`（细则 `llmanspec/AGENTS.md`，勿堆 `docs/research/`）。
-
-维护：六个月后是否仍真？否则不要进 AGENTS。移除即改写：不留「曾／已退役／原名」墓碑，描述对现状自解释（沿革查 git 与 archive）。同审 `.agents/skills/` 项目 skills（`xylitol-*` 等）：事实性断言（路径 / 命令 / 约束）对照代码复核，漂移即修——skill 与 AGENTS 同一抗衰老纪律。复杂度门禁与拆分默认策略在 `src/AGENTS.md`；**不**另维护超标表。
+落点：全仓规则 → 根；目录边界 → 该目录 `AGENTS.md`；多步 how-to → skill（团队 how-to 进 `xylitol-dev`）；临时笔记 → `_HANDOFF` / `*.tmp.md`；**change 作用域调研** → `llmanspec/changes/<id>/research/`。写什么 / 不写什么与正反例速查表：`xylitol-dev` skill `references/agents-authoring.md`。

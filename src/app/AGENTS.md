@@ -7,7 +7,7 @@
 | 新增或改造应用端 | `l8ng-write-surface` |
 | 死代码分诊 | `l8ng-audit-dead-code` |
 | TUI 产品端 | `tui/AGENTS.md` + `l8ng-write-tui`；刻意差异 → `tui/PI_DELTAS.md` |
-| TUI 包内验证 | `xylitol-test-tui-harness`；包 `AGENTS.md` |
+| TUI 包内验证 | `xylitol-dev`（`references/tui-harness.md`）；包 `AGENTS.md` |
 | steer / follow-up | `XyDriver` 队列；产品语义见 `docs/architecture/插话续跑与中止.md` |
 | 产品 slash 目录 | `app::product_commands`（SSOT）+ `XyDriver::get_commands` |
 | bang / session export | `XyDriver` / `app/core`（`bang_exec` / `session_export`）；能力边界见 `src/AGENTS.md` |
