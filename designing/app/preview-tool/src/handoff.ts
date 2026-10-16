@@ -25,7 +25,7 @@ export function handoffPaths(input: HandoffInput): string[] {
       `${base}/tui/shell.regions.yaml`,
       "designing/app/preview-tool/generated/shell-frame.json",
       "designing/AGENTS.md",
-      "designing/AGENT-INDEX.md",
+      "designing/INDEX.md",
       "src/app/tui/DESIGN.md",
       "src/app/tui/",
     ];
@@ -35,7 +35,7 @@ export function handoffPaths(input: HandoffInput): string[] {
     `${base}/${mod.surface}/modules/${mod.id}/draft.yaml`,
     `${base}/${mod.surface}/modules/${mod.id}/states/${route.state}.yaml`,
     "designing/AGENTS.md",
-    "designing/AGENT-INDEX.md",
+    "designing/INDEX.md",
     "src/app/tui/DESIGN.md",
     "src/app/tui/",
   ];

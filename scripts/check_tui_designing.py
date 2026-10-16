@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QA check: designing modules + generated AGENT-INDEX + state contracts.
+"""QA check: designing modules + generated INDEX + state contracts.
 
 Usage:
   python3 scripts/check_tui_designing.py --check
@@ -25,7 +25,7 @@ DESIGNING = REPO / "designing"
 # 设计稿按「端面」分组在 user_interfaces/ 下；surface 名 = 叶子目录名。
 SURFACES = DESIGNING / "user_interfaces"
 APP = DESIGNING / "app" / "preview-tool"
-INDEX = DESIGNING / "AGENT-INDEX.md"
+INDEX = DESIGNING / "INDEX.md"
 GEN = REPO / "scripts" / "gen_designing_index.py"
 AGENTS = DESIGNING / "AGENTS.md"
 HEX_RE = re.compile(r"#[0-9a-fA-F]{6}")
@@ -235,9 +235,9 @@ def main() -> int:
         text=True,
     )
     if not INDEX.is_file():
-        fail("missing designing/AGENT-INDEX.md — run: just gen-designing-index", errors)
+        fail("missing designing/INDEX.md — run: just gen-designing-index", errors)
     elif INDEX.read_text(encoding="utf-8") != want:
-        fail("stale designing/AGENT-INDEX.md — run: just gen-designing-index", errors)
+        fail("stale designing/INDEX.md — run: just gen-designing-index", errors)
 
     if errors:
         print("check_tui_designing: FAIL", file=sys.stderr)

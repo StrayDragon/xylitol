@@ -11,7 +11,7 @@ Token 色板：[`src/app/tui/DESIGN.md`](../src/app/tui/DESIGN.md) frontmatter�
 ```text
 designing/
   AGENTS.md
-  AGENT-INDEX.md       # 生成物：模块清单索引（勿手改；`just gen-designing-index` 写出）
+  INDEX.md             # 生成物：模块清单索引（勿手改；`just gen-designing-index` 写出）
   app/preview-tool/    # 实验 / 快速查看的 web 交互工具（bun + Vite，无前端框架）；package.json 只在这里
     generated/         # 预览工具消费的派生文件（tokens.css/js、shell-frame.json）；勿手改
   user_interfaces/     # 交互设计稿按「端面」分组；surface 名 = 叶子目录名 = 预览 endpoint 段
@@ -36,7 +36,7 @@ designing/
 | 受众 | 默认读 | 禁止默认读 |
 |---|---|---|
 | **Agent 改某端** | 产品代码 → `user_interfaces/tui/modules/<id>/intent.md` + `draft.yaml`（+ `states/*.yaml`） | `app/preview-tool/` 源码、`app/preview-tool/generated/*`、整包 HTML、`node_modules` |
-| **Agent 找路** | [`AGENT-INDEX.md`](./AGENT-INDEX.md) | `app/preview-tool/` 源码、整包 HTML |
+| **Agent 找路** | [`INDEX.md`](./INDEX.md) | `app/preview-tool/` 源码、整包 HTML |
 | **人类** | `just open-designing` → `/tui`；tui-lab 经 `/tui-lab/<id>/<state>` | — |
 
 改模块后跑 `just gen-designing-index`；改了产品 UI 重跑 `just export-design-frame`（漏跑由 `scripts/check_tui_designing.py` 进 `just qa` 抓住区域/帧不齐）。
@@ -48,7 +48,7 @@ intent.md 只写 **可观察 MUST**（词表、禁止滑入、轨/flush、跨端
 | 规则 | 禁止 |
 |---|---|
 | 颜色 / 尺寸只引用 DESIGN token（YAML `token: muted` → `var(--muted)`） | 另立冲突 hex |
-| 改 token：`just sync-tui-tokens`；门禁 `just qa-check-tui-tokens`；生成物只在 `app/preview-tool/generated/`（+ `AGENT-INDEX.md`） | 手改生成物 |
+| 改 token：`just sync-tui-tokens`；门禁 `just qa-check-tui-tokens`；生成物只在 `app/preview-tool/generated/`（+ `INDEX.md`） | 手改生成物 |
 | 静图 UI 无「(包)」分层样式；无顶栏快捷键墙 | 把包分层样式当产品表达 |
 | **无独立快捷键设计**：组件自己的键写在该模块 `draft.yaml` `keys:`（仅当非空时页面展示） | 另立快捷键设计 / 在散文里钉键位 |
 | `agent_demo` 不是产品 playground / 固定区真值（硬边界见 `crates/xylitol-tui/AGENTS.md`） | 拿 demo 当产品定稿 |
