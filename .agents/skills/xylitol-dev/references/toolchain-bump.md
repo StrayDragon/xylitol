@@ -1,3 +1,7 @@
+---
+brief: "工具链与依赖 bump（rustup / dated nightly / MSRV rust-version / cargo update Cargo.lock / worktree CARGO_TARGET_DIR）"
+---
+
 # 工具链与依赖 bump
 
 编译器钉 **dated nightly**（不追滚动 `channel = "nightly"`）；不为下游保留旧 rustc / 旧 crate 别名。构建 / 磁盘调优按当次 rust 版本**即时调研**，勿套历史结论。

@@ -1,3 +1,7 @@
+---
+brief: "写或改 AGENTS.md（抗衰老 / 墓碑描述清理 / 项目 skills 同审 / 文档放哪层 / 写法正反例）"
+---
+
 # AGENTS.md 编写与维护
 
 真源归属：根 `AGENTS.md` 是**稳定操作边界**（全仓），各目录 `AGENTS.md` 只补本端例外；`docs/AGENTS.md` 管产品文档闭环，`llmanspec/AGENTS.md` 管 change/spec，`src/AGENTS.md` 管代码架构。本 reference 讲**怎么写、怎么抗衰老**。
@@ -45,4 +49,5 @@ API 名、调用序列、参数流水账等易腐细节一律以代码、skill �
 - 六个月后是否仍真？否则不要进 AGENTS。
 - **移除即改写**：不留「曾／已退役／原名」墓碑，描述对现状自解释（沿革查 git 与 archive）。
 - **同审项目 skills**（`.agents/skills/` 下 `xylitol-*` 等）：事实性断言（路径 / 命令 / 约束）对照代码复核，漂移即修——skill 与 AGENTS 同一抗衰老纪律。
+- **触发面自 harness**：`references/*.md` frontmatter `brief:` 用一句自解释的话说明本 reference 覆盖什么（它同时就是该文件的触发面）；SKILL.md 描述里 marker 之后的尾串由 `just gen-skill-description` 按文件名顺序把各 `brief` 用 `；` 拼成（漂移由 `scripts/check_skill_description.py` 随 `just qa` 卡住）。**新增 reference 必须写 `brief:` 并跑生成器**，勿手改尾串。
 - 复杂度门禁与拆分默认策略在 `src/AGENTS.md`；**不**另维护超标表。

@@ -1,3 +1,7 @@
+---
+brief: "日志与 provider-trace 窄读排障（obs-* 子命令 / spinner 卡住 / RUST_LOG / XYLITOL_DEBUG / Langfuse / OTLP）"
+---
+
 # 观测 / Inspect（省 token）
 
 **边界**：窄读与分组摘要。日志开关 / schema SSOT → `src/AGENTS.md`（Provider / 观测）与 `app/cli/logging.rs`。

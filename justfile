@@ -356,6 +356,11 @@ open-designing:
 gen-designing-index:
     python3 scripts/gen_designing_index.py
 
+# Regenerate the skill description brief tail from references/*.md frontmatter
+# (drift gate: scripts/check_skill_description.py --check, wired via qa-check-scripts).
+gen-skill-description:
+    python3 scripts/gen_skill_description.py
+
 # Package TUI tests with default features (includes highlight) — layers 1–4.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 test-tui verbosity=verbosity_default:

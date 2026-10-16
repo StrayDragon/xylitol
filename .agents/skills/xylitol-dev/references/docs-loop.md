@@ -1,3 +1,7 @@
+---
+brief: "docs 落点与产品↔实现闭环（roadmap 兑现迁移 / 术语表 / 黑话对照 / 内部编号语义尾 / 跨端同源）"
+---
+
 # 文档落点与产品↔实现闭环
 
 **真源**：`docs/AGENTS.md`（docs 三层分工与闭环规则）、`llmanspec/AGENTS.md`（change/spec）、`src/AGENTS.md`（代码架构）。本文件只给**决策摘要 + 指针**，不复述全文。

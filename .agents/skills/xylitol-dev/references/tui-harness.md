@@ -1,3 +1,7 @@
+---
+brief: "TUI 分层验证 harness（按键→状态 / snapshot INSTA_UPDATE / 真终端 E2E tmux+PTY / agent_demo）"
+---
+
 # TUI 分层自动验证（harness）
 
 **边界 / 产品 vs 包 E2E 分工 SSOT**：`packages/xylitol-tui/AGENTS.md`「验证」。应用端接线：`src/app/tui/AGENTS.md`。门禁命令见 `references/qa-gates.md`（`just qa` / `just qa-e2e`）。合约 capability：`package-tui-testing`。

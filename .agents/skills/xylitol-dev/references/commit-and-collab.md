@@ -1,3 +1,7 @@
+---
+brief: "提交与 PR 卫生（Conventional Commits / 无 co-author / 无 AI 痕迹 / archive(sdd) 收口 / 会话交接 handoff）"
+---
+
 # 提交与 AI 协作约定
 
 ## 提交卫生

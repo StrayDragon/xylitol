@@ -1,12 +1,10 @@
 ---
 name: xylitol-dev
 description: >-
-  xylitol 团队开发规范与工程方法总入口。凡「在本仓按规范做事」的任务都先读本 skill：
-  写或改 AGENTS.md、新增或改造应用端、跑质量门禁 just qa 与 lab_ 试验命名、该写什么测试、
-  文档落哪一层（docs/architecture vs roadmaps vs llmanspec）、提交与 PR 卫生、AI 协作约定、
-  依赖选型与已退役件、Rust toolchain / crates.io 依赖 bump、TUI 分层验证 harness、
-  日志 provider-trace 窄读排障。即使只说「这个改动该放哪」「rustup 更新后 clippy 挂了」
-  「日志怎么看」「该写什么测试」也应触发。
+  xylitol 仓库的团队开发规范与工程方法总入口（不是产品 / 架构正文）。在本仓「按规范做事」先读本 skill，
+  再按路由表读对应 reference。即使只说「这个改动该放哪」「日志怎么看」也应触发。
+
+  以下相关内容也要触发（脚本生成，勿手改）：写或改 AGENTS.md（抗衰老 / 墓碑描述清理 / 项目 skills 同审 / 文档放哪层 / 写法正反例）；提交与 PR 卫生（Conventional Commits / 无 co-author / 无 AI 痕迹 / archive(sdd) 收口 / 会话交接 handoff）；依赖选型与已退役件（jsonrpsee / axum / tiktoken / RemoteCount / 线协议 fory / token 计数 Heuristic）；docs 落点与产品↔实现闭环（roadmap 兑现迁移 / 术语表 / 黑话对照 / 内部编号语义尾 / 跨端同源）；日志与 provider-trace 窄读排障（obs-* 子命令 / spinner 卡住 / RUST_LOG / XYLITOL_DEBUG / Langfuse / OTLP）；门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa 正交 / just doctor 自检 / 复杂度门禁 cccc / 元门禁）；测试分层与 lab_ 试验命名（快照 insta / wire 契约 wiremock / nextest 并行与 #[serial] / 禁 thread::sleep）；工具链与依赖 bump（rustup / dated nightly / MSRV rust-version / cargo update Cargo.lock / worktree CARGO_TARGET_DIR）；TUI 分层验证 harness（按键→状态 / snapshot INSTA_UPDATE / 真终端 E2E tmux+PTY / agent_demo）
 ---
 
 # xylitol 团队开发规范（总入口 / 路由）
@@ -23,7 +21,7 @@ description: >-
 
 | 任务 / 关键词 | 读 |
 |---|---|
-| 写 / 改 `AGENTS.md`、抗衰老纪律、墓碑清理 | `references/agents-authoring.md` |
+| 写 / 改 `AGENTS.md`、抗衰老纪律、墓碑描述清理 | `references/agents-authoring.md` |
 | 跑门禁 `just qa` / `qa-e2e`、加 `scripts/check_*.py`、prek 与 qa 正交、复杂度门禁 | `references/qa-gates.md` |
 | 该写什么测试、测试分层、`lab_` 命名、nextest 并行纪律、禁 `thread::sleep` | `references/test-layering.md` |
 | 产品↔实现闭环、roadmap 兑现后迁移、术语表用法 | `references/docs-loop.md` |

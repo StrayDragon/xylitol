@@ -1,3 +1,7 @@
+---
+brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa 正交 / just doctor 自检 / 复杂度门禁 cccc / 元门禁）"
+---
+
 # 质量门禁（`just qa` 及其纪律）
 
 命令入口（日常 / 全量 / 真终端 / doctor）见根 `AGENTS.md`「命令与验证」；**组成以 `justfile` 为 SSOT**，本文件只讲纪律与细则，不枚举步骤（枚举会腐化）。

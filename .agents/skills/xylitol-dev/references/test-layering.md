@@ -1,3 +1,7 @@
+---
+brief: "测试分层与 lab_ 试验命名（快照 insta / wire 契约 wiremock / nextest 并行与 #[serial] / 禁 thread::sleep）"
+---
+
 # 测试分层与 `lab_` 约定
 
 ## 分层（业务分工）

@@ -1,3 +1,7 @@
+---
+brief: "依赖选型与已退役件（jsonrpsee / axum / tiktoken / RemoteCount / 线协议 fory / token 计数 Heuristic）"
+---
+
 # 依赖候选与退役登记（Host 监听器 / 线协议周边）
 
 **用途**：何时再拿某依赖出来。一次性迁移步骤不进本表。现行产品真源：`POST /rpc` + `WS /rpc` 的 **v3 fory 帧**；`GET /healthz` 同端口。计量现行：Api usage → Heuristic（UTF-8 字节 `/3`）。
