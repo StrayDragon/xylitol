@@ -47,7 +47,7 @@
 | 5   | **缺 tool result ≠ 未执行**；不能证明则 park         | runtime-resume Phase 0–2        | 未建模 ⚠️                          |
 | 6   | **Stream / journal ≠ recovery authority**  | runtime-host Session Continuity | 冷恢复快照 + resync ✅                |
 | 7   | **Admission**：同 session 顶层 work 不并发        | Hosted Execution                | 单写者 + Busy 拒绝 ✅                 |
-| 8   | **Eval / 嵌入不 compose Runtime**             | `packages/eval/README.md`       | `embed` → `into_driver` ✅       |
+| 8   | **Eval / 嵌入不 compose Runtime**             | `../maka/packages/eval/README.md`       | `embed` → `into_driver` ✅       |
 | 9   | **Trust（资源加载）与 tool permission（执行审批）分开**   | sandbox README Boundaries       | 产品 MUST 已分道 ✅                   |
 
 
@@ -133,7 +133,7 @@
 | Resume                   | `../maka/docs/architecture/runtime-resume-architecture.zh-CN.md`                                        |
 | Compaction               | `../maka/docs/architecture/llm-compaction-events-log-projection-draft.zh-CN.md`                         |
 | 远程 Host                  | `../maka/docs/runtime-host-remote-access.zh-CN.md`                                                      |
-| Runtime / Sandbox / Eval | `../maka/packages/runtime/README.md`；`src/sandbox/README.md`；`../maka/packages/eval/README.md`          |
+| Runtime / Sandbox / Eval | `../maka/packages/runtime/README.md`；`../maka/packages/runtime/src/sandbox/README.md`；`../maka/packages/eval/README.md`          |
 | RFC one Host             | [https://github.com/apache/maka/issues/853](https://github.com/apache/maka/issues/853)                  |
 | xylitol SSOT             | `src/AGENTS.md`                                                                                         |
 | xylitol 产品架构             | `docs/architecture/库与多客户端.md`、`远程体验与线协议.md`、`会话与持久化.md`、`插话续跑与中止.md`、`工具与权限.md`、`信任与项目门禁.md`、`压缩与上下文.md` |

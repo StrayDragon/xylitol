@@ -22,7 +22,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
   - `verb` ∈ `add` / `update` / `remove` / `refactor` / `fix`（新 change 五选一；冻结档案存在历史 verb，不作范本）。
   - `priority` 为整数。**建议**用 5 的倍数（c05/c10/c1200）——目的是**预留加塞间隙**，方便后续插队；**非**强制 5 倍数。需要插队时直接占用相邻空位。priority **MUST 唯一**。预览下一个可用号：`llman-sdd change next-id`；`change new --from … --dry-run` 只渲染 id 不落盘。
 - **priority 是建议性排序**：实际执行先沿 `depends_on` 依赖边，priority 仅作并列时的 tiebreaker。
-- **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter。合法字段以 `llman-sdd` 工具 schema 为准：`depends_on`（list，无依赖用 `[]`）/ `blocks` / `branch` / `base_branch` / `base_sha` / `needs_specs_change`；`status`、`title`、`priority`、`author` 等会被 `llman-sdd validate` 拒绝。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）。`rules_touched` / `agent_acked` 已移除（v0.0.78；出现即 ERROR）。
+- **frontmatter**：每个 `proposal.md` MUST 含 YAML frontmatter。合法字段以 `llman-sdd` 工具 schema 为准：`depends_on`（list，无依赖用 `[]`）/ `blocks` / `branch` / `base_branch` / `base_sha` / `needs_specs_change`；`status`、`title`、`priority`、`author` 等会被 `llman-sdd validate` 拒绝。`needs_specs_change` 缺省 true（写 false = 本 change 免 landing specs）。
 - **依赖门禁**：`depends_on` 引用的 change 全部归档（移入 `changes/archive/`）前，本 change 不可 apply。引用不存在的 change = 校验错误，STOP。
 - **原子性**：每个 change 独立可校验、可归档。
 
@@ -53,11 +53,11 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 ## 语言
 
 - spec 的 `purpose` / requirement statement / scenario 步骤 **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。规则块场景名用 requirement title；验收场景名用英文 `scenario.id`。
-- **单轨 feature-as-spec（r131）**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；`spec.toon` 已退役，validate 拒绝读取。文件头部注释 `# language:` / `# capability:` / `# purpose:` / `# scope:` 必备。
+- **单轨 feature-as-spec**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；validate 只读取 `.feature`。文件头部注释 `# language:` / `# capability:` / `# purpose:` / `# scope:` 必备。
 - 场景语义（原生分层，完整格式以 `llman-sdd-propose` / `llman-sdd-ff` skill 内嵌 feature-contract 为 SSOT）：`@req:<id`> 挂 `规则:` 块头 = 全局唯一需求句柄（validate 查重）；嵌套 `场景:`（假如/当/那么）= 可执行示例，由 `tests/bdd/bindings_*.rs` 的 `#[scenario(path=…, name=…)]` 按**精确名与步骤文本**绑定；无嵌套场景 = 裸规则（review `pending` 计量；无法程序化表达的需求才保留，理由记 proposal/design）。增删改既有 `规则:` 块 = WARNING 报告制，不阻断 validate / finalize / diff；控制点 = git 分支对比 + `llman-sdd review` / `change diff`。
-- **情态动词词表（对齐 STC 简明技术中文 `dictionary/avoid.yaml` 强度词条）**：约束 statement 用中文情态——要求 `必须`，否定 `不得`／`禁止`，推荐 `宜`；避免 `应`／`应当`／`应该`／`务必`／`一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。
+- **情态动词词表（对齐 STC 简明技术中文词表强度词条）**：约束 statement 用中文情态——要求 `必须`，否定 `不得`／`禁止`，推荐 `宜`；避免 `应`／`应当`／`应该`／`务必`／`一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。
 - `背景:`（Background）MUST 紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
-- 在非默认 feature 分支直接编辑 live `.feature` → `llman-sdd change attach` → `llman-sdd change finalize`（自动合并进基准分支 + 归档改名 + 单提交；目标 `--into` > `base_branch` > 默认分支，方式 `--method` > `sdd.merge_method` 缺省 squash）。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。与 `tests/features/` 手写链路可并存。
+- 在非默认 feature 分支直接编辑 live `.feature` → `llman-sdd change attach` → `llman-sdd change finalize`（自动合并进基准分支 + 归档改名 + 单提交；目标 `--into` > `base_branch` > 默认分支，方式 `--method` > `sdd.merge_method` 缺省 squash）。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。
 
 ## spec 约束层级（产品级优先）
 
@@ -68,7 +68,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## spec 维护（产品级同步，直接编辑）
 
-- 因代码组织演进导致 spec 过期（主语/路径/迁移条款）→ **直接编辑** live `.feature` 并直接 commit，**免 change 生命周期**（无需 attach/checkpoint/finalize/archive）。
+- 因代码组织演进导致 spec 过期（主语/路径/迁移条款）→ **直接编辑** live `.feature` 并直接 commit，**免 change 生命周期**（无需 attach / finalize / archive）。
 - 新增/变更**产品行为**仍走标准 change 流程（propose → apply → verify → archive）。
 - 直接编辑仍 MUST 过结构门禁：`llman-sdd validate <cap>`（或 `--all`，BDD-on 下含 runner check）与相关 BDD 测试绿。
 - 删除 req 时同步清理：`.feature` 的规则块与 `@req:` 验收场景、`tests/bdd` 的 scenario binding。
@@ -77,7 +77,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ### finalize 提交序（MUST 知悉）
 
-`checkpoint` 已移除（调用即失败并指向 finalize）；闭环收尾用 `finalize`：
+闭环收尾用 `finalize`：
 
 ```text
 实现 live specs + 代码（工作区可脏）
@@ -89,7 +89,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 - `finalize` **不要求**干净树。
 - 审计仍可用：`git diff base_sha..HEAD` + `branch`。
-- 合并目标已被其他 worktree 占用时：输出 WARNING + 手动命令指引，不回滚 rename（r142）。
+- 合并目标已被其他 worktree 占用时：输出 WARNING + 手动命令指引，不回滚 rename。
 - 仅密封（merge + rename）不收实现时用 `llman-sdd change archive <id>`；保留 feature 多 commit 历史可 `--method ff` 或配置 `sdd.merge_method: ff`。
 - 结构门禁先跑：`llman-sdd validate <cap|change> --strict --no-check`（快）；再跑带 BDD 的全量 validate / finalize。
 - `finalize`/`archive` 的 `--no-interactive`：接受并忽略。
@@ -114,11 +114,11 @@ lifecycle v2 起 stage 为四档：`draft`（仅 proposal）→ `designed`（+de
 
 - park 内只放 proposal / design / tasks / research 等规划工件；**禁止** `specs/`（spec landing 只发生在 propose 之后）。
 - 启动实现 = 经 propose / ff 正式化迁回 `changes/`；**归档时必须删除 delayed 副本**（一 id 一处真值）。
-- 阶段性清淤时对照归档清点：已落地副本删除、已放弃提案删除、退役格式工件（如 `spec.toon`）不留。
+- 阶段性清淤时对照归档清点：已落地副本删除、已放弃提案删除、非现行格式的工件不留。
 
 ## 指针
 
 - 架构 SSOT（分层、不变量、seam、Xy\*、Provider 适配）：`src/AGENTS.md`。
-- 高维产品/业务图：`docs/architecture/`（入口 `README.md`）。
-- 命令与测试：根 `AGENTS.md`「命令」/「提交与测试」段。
+- 高维产品/业务图：`docs/architecture/`（产品架构总览）。
+- 命令与测试：根 `AGENTS.md`「命令与验证」/「提交与测试」段。
 - change 临时调研落点：上文「research（change 附属调研）」；耐久主题底稿才进 `docs/research/`。

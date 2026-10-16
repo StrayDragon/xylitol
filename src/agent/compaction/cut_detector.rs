@@ -26,9 +26,9 @@ const ESTIMATED_IMAGE_CHARS: u64 = 4800;
 /// Returns 0 when the entry has no context-visible message (skipped in accumulation).
 /// Message rows that fail typed deserialize still use a lax content walk (string or
 /// parts) so cut math stays usable for legacy / fixture wire shapes.
-/// c2848/r1924: cut 逐条度量与 unified 估算链（`accounting::heuristic_tokens`）
-/// 同源：对**投影后单条**消息按序列化字节 /3 计数（同一算法族、同一投影源），
-/// 不再使用独立的内容字符启发式作为决策 SSOT。不可行的反序列化走 lax 兜底。
+/// cut 逐条度量与 unified 估算链（`accounting::heuristic_tokens`）同源：
+/// 决策 SSOT = 对**投影后单条**消息按序列化字节 /3 计数（同一算法族、同一投影源）；
+/// 独立的内容字符启发式不参与决策。不可行的反序列化走 lax 兜底。
 ///
 /// 注意：unified 的启发式是逐条 `serde_json::to_string /3` 之和，本函数即它的
 /// 逐条切片——切点位置因此与决策/展示落在同一度量空间（中文会话不再 5x 失真）。

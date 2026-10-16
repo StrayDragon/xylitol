@@ -68,7 +68,7 @@ xylitol tui --trust          # 信任当前项目,加载它的 .xylitol/ 资源
 
 ```bash
 just setup    # 安装 prek hooks 与本地工具
-just qa       # 全量门禁:fmt + clippy + 测试 + TUI harness + 文档 + 检查脚本
+just qa       # 全量门禁（组成以 justfile `qa` 调用链为准）
 just qa-e2e   # 额外跑 PTY/tmux 端到端测试
 ```
 

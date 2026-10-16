@@ -129,7 +129,7 @@ WIT / wasm 组件仍是 **工具/插件沙箱**（已写在 `ui-runtime-tradeoff
 
 它看起来「也是 RPC」（有 method、有相关 id），但信封、错误模型和通道切分都是自研四象限。TUI 走的是 `src/protocol/wire/envelope.rs` + `src/app/server/http.rs`（`Message::text`），不是 JSON-RPC 客户端。
 
-**现状**如上；**目标**（c2825）是把第一方面换成主流 JSON-RPC 运行时，而不是继续自研四象限。外人面 ACP 仍后置：[`llmanspec/delayed-changes/c2305-update-acp-provider-adapter/proposal.md`](../llmanspec/delayed-changes/c2305-update-acp-provider-adapter/proposal.md)。词表与 ACP 方法表仍不同，本轮不译。
+**现状**如上；**目标**（c2825）是把第一方面换成主流 JSON-RPC 运行时，而不是继续自研四象限。外人面 ACP 仍后置：[`llmanspec/delayed-changes/c2305-update-acp-provider-adapter/proposal.md`](../../llmanspec/delayed-changes/c2305-update-acp-provider-adapter/proposal.md)。词表与 ACP 方法表仍不同，本轮不译。
 
 ## DeepSeek Harness 可借鉴处
 

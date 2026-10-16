@@ -106,7 +106,7 @@ Fory 真正强的地方：共享引用 / 环 / 多态对象图、分析型 row�
 
 ## 调试 OpenAPI 为什么升不成 TS SDK
 
-`src/app/server/oapi.rs` 从方法表生成 unary path，schema **故意**停在 `ClientRequest` / `ClientResponse` / `ServerResponse` / `RpcResult` / `RpcError`。`payload` / `value` 的文档句是「shape per Rust protocol wire types」。`components_are_envelope_level` 断言不得加 per-method schema。
+信封级 OpenAPI 从方法表派生 unary path，schema **故意**停在 `ClientRequest` / `ClientResponse` / `ServerResponse` / `RpcResult` / `RpcError`。`payload` / `value` 的文档句是「shape per Rust protocol wire types」。`components_are_envelope_level` 断言不得加 per-method schema。
 
 因此 `openapi-typescript` 生成的客户端对业务仍是 `unknown`。要让 OpenAPI 变得「可生成」，先得给 Command / Event derive `JsonSchema` 并写进 components——与 `src/AGENTS.md`「protocol 根类型默认只 serde；schemars 放 infra/config」相反，且制造第二词表。Web 要类型时走「从 Rust 导出」，不要改调试文档的职责。
 
@@ -163,6 +163,6 @@ Fory 真正强的地方：共享引用 / 环 / 多态对象图、分析型 row�
 ## 相关落点
 
 - 线协议代码：`src/protocol/wire/`
-- OpenAPI 调试文档：`src/app/server/oapi.rs`；合约 `llmanspec/specs/server-core`
+- 信封级 OpenAPI 合约：`llmanspec/specs/server-core`
 - 架构 SSOT：`src/AGENTS.md`
 - UI 运行时选型：`docs/research/ui-runtime-tradeoffs-2026.md`

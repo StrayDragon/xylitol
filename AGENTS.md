@@ -27,7 +27,7 @@
 - **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（Command/Event 是载荷）。硬边界：`src/AGENTS.md`；产品叙事：`docs/architecture/库与多客户端.md`。
 - **跨端公共体验**（TUI ↔ gpui 桌面）：动作语义一套学习成本；唯一约束板 `docs/roadmaps/跨端同源.md`。
 - 产品架构总览：`docs/architecture/`；候选方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
-- TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`docs/architecture/TUI信息呈现与固定区词汇.md`（端约束见 `src/app/tui/AGENTS.md`）。新文只用表内词；固定区旧称 chrome / 壳层仅允许出现在该表「弃用」对照行。
+- TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`docs/architecture/TUI信息呈现与固定区词汇.md`（端约束见 `src/app/tui/AGENTS.md`）。新文只用表内词；弃用 / 旧称统一收在该表「弃用」对照行，正文不复述。
 - 交互设计稿：仓库顶层 `designing/`（`just open-designing`）；运行时真值、tui-lab SOP 与快捷键约定见 `designing/AGENTS.md`。
 
 ## 工作原则
@@ -106,7 +106,7 @@
 
 ## Skills
 
-SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`xylitol-test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建 / 磁盘调优：按当次 rust 版本即时调研，不固化结论（历史调优结论随版本更迭过期）。工具链与 crates.io 依赖 bump：`xylitol-bump-toolchain`。Host 监听器/线协议候选与已退役件清单（现役/退役以 skill 本体为 SSOT）：`xylitol-dev-candidates`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
+SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-write-surface`、`l8ng-audit-dead-code`、`l8ng-write-tui`。TUI 验证：`xylitol-test-tui-harness`。观测窄读：`xylitol-inspect-runtime-logs`。构建 / 磁盘调优：按当次 rust 版本即时调研，不固化结论（历史调优结论随版本更迭过期）。工具链与 crates.io 依赖 bump：`xylitol-bump-toolchain`。Host 监听器 / 线协议候选与周边依赖（清单 SSOT 为 skill 本体）：`xylitol-dev-candidates`。TUI 参考：`tui-expert-of-codex`、`l8ng-terminal-tui-differential-rendering`（`l8ng-*` 均在 `~/.config/llman/skills/` 维护，不在本仓库，避免漂移）。外部锁定：`langfuse`（经 `skills-lock.json` 管理）。
 
 ## 编写与维护 AGENTS.md
 
@@ -128,11 +128,13 @@ SDD：`llman-sdd-*`（含 `llman-sdd-quick` 快速路径）。应用端：`l8ng-
 | 字段 / 行为缺失 | 「`id` 字段作为死码已移除」 | 「关联只走 `rpcId`；无传输级 `id` 字段」 |
 | 接入步骤 | 枚举十几个方法名的调用链 | 一句 SSOT 指针（「完整序列以 `examples/foo.rs` 与导出文档为准」）+ 只留 MUST / 禁止 |
 | 版本特定结论 | 「Cargo 1.97 下 incremental 会 stale」钉进正文 | 「具体行为随工具链版本变化，按当次版本验证」 |
+| 易腐组成 / 步骤 | 内联枚举「fmt + clippy + 测试 + TUI harness + …」 | 短标签 + SSOT 指针：「全量门禁（组成见 justfile `qa`）」 |
+| 大而稳定的集合 | 并列长句，增删各改多处 | 一张宽泛索引表（分层 / 命令 / 术语），只列稳定成员 |
 | 进度 / 体量自述 | 「本模块 900 行，待拆」 | 软信号 `just complexity`；门禁见 `src/AGENTS.md` |
 | 跨层重复 | 子目录复述父级依赖表 | 「依赖方向见 `src/AGENTS.md`；本端仅例外：…」 |
 | 行为契约搬运 | 把 spec 场景抄进正文 | 「场景真源 `llmanspec/specs/<capability>/`」 |
 
-**偏好**：全局规则与架构不变量；落点用层名（`agent`/`infra`/…），细节去读代码。子目录只补本端例外。
+**偏好**：全局规则与架构不变量；落点用层名（`agent`/`infra`/…），细节去读代码；易腐事实写「怎么查」（SSOT 指针），不写「现在是什么」。子目录只补本端例外。
 
 放哪：全仓规则 → 根；目录边界 → 该目录 `AGENTS.md`；多步 how-to → skill；临时笔记 → `_HANDOFF` / `*.tmp.md`（勿升格规范）；**change 作用域调研** → `llmanspec/changes/<id>/research/`（细则 `llmanspec/AGENTS.md`，勿堆 `docs/research/`）。
 
