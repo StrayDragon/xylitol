@@ -38,7 +38,6 @@
 | 黑话首次出现时附标准词或英文（总表：顶部 @ 引入的术语表）；内部编号（`c####` / `ath##`）单独引用时带 ≤12 字语义尾 | 黑话不加对照直接用；编号不带语义尾造成检索死端 |
 | 代码是真值源；架构规则读 `src/AGENTS.md`；设计史查 `llmanspec/changes/archive/` | 凭记忆改架构；向 archive 要现行规则 |
 | 动代码前读相关代码，沿目录树遵循最近的 `AGENTS.md` | 跳过上下文直接改 |
-| 提交不加 co-author / 不暴露 agent 身份 | 提交信息带 AI 痕迹 |
 
 ## 分层地图（摘要）
 
@@ -89,7 +88,7 @@
 
 ## 提交与测试
 
-- Conventional Commits；开 PR 前 `just qa`；不加 co-author / 不暴露 agent 身份。提交与协作细则：`xylitol-dev` skill `references/commit-and-collab.md`。
+- Conventional Commits；开 PR 前 `just qa`。提交与协作细则：`xylitol-dev` skill `references/commit-and-collab.md`。
 - 单轨 feature-as-spec、capability 命名、spec 约束层级（产品级 WHAT，禁止钉代码组织）：`llmanspec/AGENTS.md`。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。
 - 测试分层：BDD 管端到端编排；单测管纯数据 / 组件边界，不重复全链路。细则：`xylitol-dev` skill `references/test-layering.md`。
 - 实现计划变更后同步 `llmanspec/`；读代码优先 `rg`。

@@ -1,5 +1,5 @@
 ---
-brief: "提交与 PR 卫生（Conventional Commits / 无 co-author / 无 AI 痕迹 / archive(sdd) 收口 / 会话交接 handoff）"
+brief: "提交与 PR 卫生（Conventional Commits / archive(sdd) 收口 / 会话交接 handoff）"
 ---
 
 # 提交与 AI 协作约定
@@ -7,7 +7,6 @@ brief: "提交与 PR 卫生（Conventional Commits / 无 co-author / 无 AI 痕�
 ## 提交卫生
 
 - **Conventional Commits**；开 PR 前 `just qa`。
-- **不加 co-author / 不暴露 agent 身份**（提交信息不得带 AI 痕迹）。
 - 实现用 `feat` / `fix` / `refactor` / `perf` / `test` / `docs` / `build` / `ci` / `chore` / `style`；llman SDD 礼仪用 `chore(sdd):` / `docs(sdd):`；`change finalize` 收口用 `archive(sdd): <id>`；工具链升级用 `agentdev`（白名单见 `prek.toml`）。
 - 单轨 feature-as-spec、capability 命名、spec 约束层级：`llmanspec/AGENTS.md`。**禁止** `solidify` / `change delta` / 新建 `*.feature.delta.toon`。
 
