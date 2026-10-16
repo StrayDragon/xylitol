@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "tui-designing",
+      "name": "designing-preview-tool",
       "dependencies": {
         "marked": "^18.0.9",
         "yaml": "^2.9.0",
