@@ -11,7 +11,7 @@ export type Route = {
   view?: string;
 };
 
-const SURFACES = new Set(["tui", "web", "tui-lab"]);
+const SURFACES = new Set(["tui", "tui-lab"]);
 
 function truthy(raw: string | null): boolean {
   if (raw == null || raw === "") return false;

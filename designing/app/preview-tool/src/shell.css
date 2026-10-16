@@ -80,7 +80,7 @@ body[data-view="shell"] .shell-frame {
   margin: 0 auto;
 }
 
-/* --- 场景帧（designing/generated/shell-frame.json） --- */
+/* --- 场景帧（generated/shell-frame.json） --- */
 .shell-frame-wrap {
   flex: 1;
   min-height: 0;

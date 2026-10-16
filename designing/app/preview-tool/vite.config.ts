@@ -1,5 +1,5 @@
 import { defineConfig, type Plugin } from "vite";
-import { dirname, resolve } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(fileURLToPath(import.meta.url));
@@ -7,14 +7,7 @@ const root = dirname(fileURLToPath(import.meta.url));
 function surfaceSpaFallback(): Plugin {
   const rewrite = (url: string): string => {
     const [path, query] = url.split("?");
-    if (
-      path === "/tui" ||
-      path === "/web" ||
-      path === "/tui-lab" ||
-      path.startsWith("/tui/") ||
-      path.startsWith("/web/") ||
-      path.startsWith("/tui-lab/")
-    ) {
+    if (path === "/tui" || path === "/tui-lab" || path.startsWith("/tui/") || path.startsWith("/tui-lab/")) {
       return query ? `/index.html?${query}` : "/index.html";
     }
     return url;
@@ -47,11 +40,5 @@ export default defineConfig({
   },
   preview: {
     port: 5173,
-  },
-  resolve: {
-    alias: {
-      "@generated": resolve(root, "generated"),
-      "@modules": resolve(root, "../../user_interfaces/tui/modules"),
-    },
   },
 });

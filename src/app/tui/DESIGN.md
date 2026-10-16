@@ -217,7 +217,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | 宽 | 100–119 | 待办栏三栏（agent-todo spec）；diff 左右分屏 |
 | 极宽 | ≥120 | 无新增披露；内容自然占宽 |
 
-连续截断组件（footer / status / models picker / toast 通知）不设档位开关：放不下即右侧截断（`…`），档位表仅约束离散可见性。极窄档只保证核心对话流可用，不承诺全功能；固定态样例见 `designing/user_interfaces/tui/modules/{footer,status,editor}/states/tier-*.yaml` 与既有 `*-wide`（100）。会话侧栏自标准档（80）起渲染；极窄 / 窄档 `alt+u` 降级为覆盖弹出框（不占列），见硬规则 2 例外。
+连续截断组件（footer / status / models picker / toast 通知）不设档位开关：放不下即右侧截断（`…`），档位表仅约束离散可见性。极窄档只保证核心对话流可用，不承诺全功能；固定态样例见 `designing/user_interfaces/tui/modules/{footer,status,editor}/states/tier-*.yaml` 与 `models` 的 `wide` / `narrow`。会话侧栏自标准档（80）起渲染；极窄 / 窄档 `alt+u` 降级为覆盖弹出框（不占列），见硬规则 2 例外。
 
 ## Elevation & Depth
 
