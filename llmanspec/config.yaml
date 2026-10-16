@@ -10,7 +10,6 @@ extra_skills:
 - llman-sdd-wayfinder
 - llman-sdd-research
 specs:
-  check_transitions: true
   framework: rstest-bdd
   check_command: "cargo test --all-features --test bdd"
   verify_prompt: Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --all-features --test bdd` to confirm all scenarios pass.
