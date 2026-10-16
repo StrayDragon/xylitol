@@ -547,7 +547,7 @@ function pinMarkdown(moduleId: string): string {
     if (al["todo-bar"]) lines.push(`- 与待办栏：${al["todo-bar"]}`);
   }
   if (mod.notes) lines.push("", "```", mod.notes.trim(), "```");
-  lines.push("", `文档：designing/tui/modules/${mod.id}/intent.md`);
+  lines.push("", `文档：designing/user_interfaces/tui/modules/${mod.id}/intent.md`);
   return lines.join("\n");
 }
 

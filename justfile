@@ -349,7 +349,7 @@ qa-check-scripts verbosity=verbosity_default:
         fi
     done
 
-# Interactive design draft (TUI modules; later other surfaces under designing/).
+# Interactive design draft (TUI modules under designing/user_interfaces; preview shell designing/app).
 open-designing:
     bun run --cwd designing/app dev
 

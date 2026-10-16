@@ -121,13 +121,13 @@ components:
 
 > 规范：遵循 `common-design-md-zh`（中文正文 + YAML frontmatter tokens，值一律双引号）。
 > **Token SSOT**：本文件 frontmatter。
-> 组件级意图：仓库顶层 [`designing/`](../../../designing/)（`tui/modules` 的 `intent.md` + YAML 固定态）。
+> 组件级意图：仓库顶层 [`designing/`](../../../designing/)（`user_interfaces/tui/modules` 的 `intent.md` + YAML 固定态）。
 > 人类预览：`just open-designing`（交互设计稿，非产品真值）。
 > Agent：[`designing/AGENTS.md`](../../../designing/AGENTS.md)。包 `crates/xylitol-tui` 只提供引擎与通用组件；语义 token / layout / glyph 配置在本端。运行时以本目录代码为准。
 
 ## Token 引用
 
-色板查 `colors` / `spacing` / `components`；组件意图与固定态在仓库顶层 `designing/tui/modules/`。YAML `token: muted` 映射本文件同名色。模块 MUST NOT 另立冲突 hex。
+色板查 `colors` / `spacing` / `components`；组件意图与固定态在仓库顶层 `designing/user_interfaces/tui/modules/`。YAML `token: muted` 映射本文件同名色。模块 MUST NOT 另立冲突 hex。
 
 ## Overview
 
@@ -217,7 +217,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 | 宽 | 100–119 | 待办栏三栏（agent-todo spec）；diff 左右分屏 |
 | 极宽 | ≥120 | 无新增披露；内容自然占宽 |
 
-连续截断组件（footer / status / models picker / toast 通知）不设档位开关：放不下即右侧截断（`…`），档位表仅约束离散可见性。极窄档只保证核心对话流可用，不承诺全功能；固定态样例见 `designing/tui/modules/{footer,status,editor}/states/tier-*.yaml` 与既有 `*-wide`（100）。会话侧栏自标准档（80）起渲染；极窄 / 窄档 `alt+u` 降级为覆盖弹出框（不占列），见硬规则 2 例外。
+连续截断组件（footer / status / models picker / toast 通知）不设档位开关：放不下即右侧截断（`…`），档位表仅约束离散可见性。极窄档只保证核心对话流可用，不承诺全功能；固定态样例见 `designing/user_interfaces/tui/modules/{footer,status,editor}/states/tier-*.yaml` 与既有 `*-wide`（100）。会话侧栏自标准档（80）起渲染；极窄 / 窄档 `alt+u` 降级为覆盖弹出框（不占列），见硬规则 2 例外。
 
 ## Elevation & Depth
 
@@ -229,7 +229,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 
 ## Components
 
-组件级 MUST 与固定态在 [`designing/tui/modules/`](../../../designing/tui/modules/)——全集以索引 [`generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md) 为准（不在此维护枚举）。本目录不另维护组件子文档；子文档 token 表达式 → 本文件（见「Token 引用」）。
+组件级 MUST 与固定态在 [`designing/user_interfaces/tui/modules/`](../../../designing/user_interfaces/tui/modules/)——全集以索引 [`generated/AGENT-INDEX.md`](../../../designing/generated/AGENT-INDEX.md) 为准（不在此维护枚举）。本目录不另维护组件子文档；子文档 token 表达式 → 本文件（见「Token 引用」）。
 
 产品默认 **`Palette::dark()`**；**MUST NOT** 默认开 theme auto / OSC11。用户可经 **`/theme`** 切换内建色板（`theme` 设计模块）。
 

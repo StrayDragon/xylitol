@@ -19,6 +19,6 @@
   },
   "include": [
     "src",
-    "../tui/modules"
+    "../user_interfaces/tui/modules"
   ]
 }

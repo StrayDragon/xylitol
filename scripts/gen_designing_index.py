@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate designing/generated/AGENT-INDEX.md from designing/*/modules.
+"""Generate designing/generated/AGENT-INDEX.md from designing/user_interfaces/*/modules.
 
 Usage:
   python3 scripts/gen_designing_index.py
@@ -14,6 +14,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 DESIGNING = REPO / "designing"
+# 设计稿按「端面」分组在 user_interfaces/ 下；surface 名 = 叶子目录名（tui / tui-lab）。
+SURFACES = DESIGNING / "user_interfaces"
 INDEX = DESIGNING / "generated" / "AGENT-INDEX.md"
 
 
@@ -28,9 +30,9 @@ def module_summary(intent: Path) -> str:
 
 def iter_modules() -> list[tuple[str, Path]]:
     rows: list[tuple[str, Path]] = []
-    if not DESIGNING.is_dir():
+    if not SURFACES.is_dir():
         return rows
-    for surface in sorted(p for p in DESIGNING.iterdir() if p.is_dir()):
+    for surface in sorted(p for p in SURFACES.iterdir() if p.is_dir()):
         mods = surface / "modules"
         if not mods.is_dir():
             continue

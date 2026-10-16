@@ -8,7 +8,7 @@
 //! `text (url)`; no code fences or box-drawing tables; bold/italic = SGR only
 //! (no visible `**`/`*`); `` ` `` / `~~` retained; blockquotes use a muted
 //! `│ ` gutter (same token as quote body). UX SSOT:
-//! designing `markdown` module (`designing/tui/modules/markdown/`).
+//! designing `markdown` module (`designing/user_interfaces/tui/modules/markdown/`).
 //!
 //! The `MarkdownTheme` is deliberately a struct of boxed closures so consumers
 //! (e.g. the main crate with syntect) can inject their own styling pipeline

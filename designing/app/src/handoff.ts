@@ -11,17 +11,18 @@ export type HandoffInput = {
 
 export function handoffPaths(input: HandoffInput): string[] {
   const { route, mod } = input;
+  const base = "designing/user_interfaces";
   // shell 视图（state 为空）：路径指向所选区域的模块文档 + 帧与区域注解。
   if (!mod || !route.state) {
     const id = route.id || "";
     return [
       ...(id
         ? [
-            `designing/tui/modules/${id}/intent.md`,
-            `designing/tui/modules/${id}/draft.yaml`,
+            `${base}/tui/modules/${id}/intent.md`,
+            `${base}/tui/modules/${id}/draft.yaml`,
           ]
         : []),
-      "designing/tui/shell.regions.yaml",
+      `${base}/tui/shell.regions.yaml`,
       "designing/generated/shell-frame.json",
       "designing/AGENTS.md",
       "designing/generated/AGENT-INDEX.md",
@@ -30,9 +31,9 @@ export function handoffPaths(input: HandoffInput): string[] {
     ];
   }
   return [
-    `designing/${mod.surface}/modules/${mod.id}/intent.md`,
-    `designing/${mod.surface}/modules/${mod.id}/draft.yaml`,
-    `designing/${mod.surface}/modules/${mod.id}/states/${route.state}.yaml`,
+    `${base}/${mod.surface}/modules/${mod.id}/intent.md`,
+    `${base}/${mod.surface}/modules/${mod.id}/draft.yaml`,
+    `${base}/${mod.surface}/modules/${mod.id}/states/${route.state}.yaml`,
     "designing/AGENTS.md",
     "designing/generated/AGENT-INDEX.md",
     "src/app/tui/DESIGN.md",

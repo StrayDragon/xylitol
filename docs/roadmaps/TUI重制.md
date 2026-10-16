@@ -25,5 +25,5 @@
 ## 相关
 
 - 对照稿：仓库顶层 `designing/` · `just open-designing`（代码为运行时 SSOT）；晋级/淘汰 SOP：[`designing/AGENTS.md`](../../designing/AGENTS.md)
-- 现行：[`../architecture/TUI信息呈现与固定区词汇.md`](../architecture/TUI信息呈现与固定区词汇.md) · `designing/tui/modules/transcript` · `designing/tui/modules/expandable`
+- 现行：[`../architecture/TUI信息呈现与固定区词汇.md`](../architecture/TUI信息呈现与固定区词汇.md) · `designing/user_interfaces/tui/modules/transcript` · `designing/user_interfaces/tui/modules/expandable`
 - 索引：[README.md](./README.md)

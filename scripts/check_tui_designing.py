@@ -22,6 +22,8 @@ except ImportError:  # pragma: no cover
 
 REPO = Path(__file__).resolve().parent.parent
 DESIGNING = REPO / "designing"
+# 设计稿按「端面」分组在 user_interfaces/ 下；surface 名 = 叶子目录名。
+SURFACES = DESIGNING / "user_interfaces"
 APP = DESIGNING / "app"
 INDEX = DESIGNING / "generated" / "AGENT-INDEX.md"
 GEN = REPO / "scripts" / "gen_designing_index.py"
@@ -49,9 +51,9 @@ def fail(msg: str, errors: list[str]) -> None:
 
 def iter_modules() -> list[tuple[str, Path]]:
     rows: list[tuple[str, Path]] = []
-    if not DESIGNING.is_dir():
+    if not SURFACES.is_dir():
         return rows
-    for surface in sorted(p for p in DESIGNING.iterdir() if p.is_dir()):
+    for surface in sorted(p for p in SURFACES.iterdir() if p.is_dir()):
         mods = surface / "modules"
         if not mods.is_dir():
             continue
@@ -167,10 +169,10 @@ def check_module(surface: str, mod: Path, errors: list[str]) -> None:
 
 def check_shell(errors: list[str]) -> None:
     """Shell 视图：帧数据与区域注解（module 存在、锚点可解析）。"""
-    regions_path = DESIGNING / "tui" / "shell.regions.yaml"
+    regions_path = SURFACES / "tui" / "shell.regions.yaml"
     frame_path = DESIGNING / "generated" / "shell-frame.json"
     if not regions_path.is_file():
-        fail("missing designing/tui/shell.regions.yaml", errors)
+        fail("missing designing/user_interfaces/tui/shell.regions.yaml", errors)
         return
     try:
         regions_doc = load_yaml(regions_path)
@@ -221,7 +223,7 @@ def main() -> int:
             fail("designing/AGENTS.md must mention copy paths / handoff", errors)
     mods = iter_modules()
     if not mods:
-        fail("missing designing/*/modules", errors)
+        fail("missing designing/user_interfaces/*/modules", errors)
     for surface, mod in mods:
         check_module(surface, mod, errors)
     check_app(errors)

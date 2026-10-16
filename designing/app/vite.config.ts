@@ -51,7 +51,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@generated": resolve(root, "../generated"),
-      "@modules": resolve(root, "../tui/modules"),
+      "@modules": resolve(root, "../user_interfaces/tui/modules"),
     },
   },
 });

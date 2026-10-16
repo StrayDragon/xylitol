@@ -402,8 +402,8 @@ pub(crate) fn t_designing_lint_wired() {
 
 #[when("枚举 designing 固定态样例")]
 pub(crate) fn w_designing_static_slots() {
-    let regions = la_load("designing/tui/shell.regions.yaml");
-    let modules = std::fs::read_dir("designing/tui/modules")
+    let regions = la_load("designing/user_interfaces/tui/shell.regions.yaml");
+    let modules = std::fs::read_dir("designing/user_interfaces/tui/modules")
         .expect("modules 目录可读")
         .count();
     let ok = (regions.contains("models") && modules >= 3) as usize;

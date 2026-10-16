@@ -97,5 +97,5 @@
 ## 7. 相关
 
 - Roadmap：[`../roadmaps/键位与命令发现.md`](../roadmaps/键位与命令发现.md)
-- 设计合约：组件键写在 `designing/tui/modules/` 各模块 `draft.yaml` 的 `keys:`（无独立快捷键设计）
+- 设计合约：组件键写在 `designing/user_interfaces/tui/modules/` 各模块 `draft.yaml` 的 `keys:`（无独立快捷键设计）
 - Web：`../roadmaps/Cloud-Agent与Web控制台.md`、`../roadmaps/跨端同源.md`
