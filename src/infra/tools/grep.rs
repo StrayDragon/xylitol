@@ -41,7 +41,7 @@ pub struct GrepArgs {
     context: u32,
     #[serde(default = "default_grep_limit")]
     limit: u64,
-    /// Optional timeout in seconds; omitted means the default bound (120s).
+    /// Optional timeout in seconds; omitted means the per-tool default (60s).
     #[serde(default)]
     timeout: Option<i64>,
 }
@@ -100,7 +100,7 @@ impl TypedTool for GrepTool {
                 },
                 "timeout": {
                     "type": "integer",
-                    "description": "Optional timeout in seconds; the model may request longer runs (e.g. a 10-minute build). Values are clamped to a 600s ceiling. Zero/negative invalid."
+                    "description": "Optional timeout in seconds; default 60. Clamped to 600s. Zero/negative invalid."
                 }
             },
             "required": ["pattern"]
