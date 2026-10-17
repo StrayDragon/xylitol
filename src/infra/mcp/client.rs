@@ -4,18 +4,16 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::stream::{FuturesUnordered, StreamExt};
-use rmcp::model::{CallToolRequestParams, CallToolResult};
-use rmcp::service::RunningService;
-use rmcp::transport::child_process::TokioChildProcess;
-use rmcp::{RoleClient, serve_client};
 use serde_json::Value;
-use tokio::process::Command;
 use tokio::sync::Mutex;
 
 use super::types::{McpServerConfig, McpTransportKind};
 use crate::infra::config::types::AppConfig;
 
-type McpService = RunningService<RoleClient, ()>;
+#[cfg(feature = "mcp")]
+type McpService = rmcp::service::RunningService<rmcp::RoleClient, ()>;
+#[cfg(not(feature = "mcp"))]
+type McpService = ();
 
 /// Crate-private MCP client failures (connect / tool call). Sources preserved.
 #[derive(Debug, thiserror::Error)]
@@ -25,7 +23,7 @@ pub enum McpError {
     Spawn(#[source] std::io::Error),
     /// MCP initialize handshake failure (stdio / sse).
     #[error("init failed: {0}")]
-    Init(#[source] Box<rmcp::service::ClientInitializeError>),
+    Init(#[source] Box<dyn std::error::Error + Send + Sync>),
     /// SSE custom header name invalid.
     #[error("invalid header name {key:?}: {source}")]
     InvalidHeaderName {
@@ -46,7 +44,7 @@ pub enum McpError {
         server_id: String,
         tool_name: String,
         #[source]
-        source: Box<rmcp::service::ServiceError>,
+        source: Box<dyn std::error::Error + Send + Sync>,
     },
     /// Tool result serialization failure.
     #[error("serialize result: {0}")]
@@ -101,6 +99,7 @@ impl McpConnectProgress {
 
 /// Manages connections to MCP servers and dispatches tool calls.
 /// Per-request wall-clock bound for post-handshake MCP calls (c2425).
+#[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub const MCP_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 pub struct McpClientManager {
@@ -277,81 +276,106 @@ impl McpClientManager {
     }
 
     async fn connect_stdio(&self, name: &str, config: &McpServerConfig) -> Result<(), McpError> {
-        let command = config
-            .command
-            .as_ref()
-            .ok_or_else(|| McpError::Config("command is required for stdio transport".into()))?;
-        let args = config.args.as_deref().unwrap_or_default();
-
-        let mut cmd = Command::new(command);
-        cmd.args(args);
-        if let Some(ref env) = config.env {
-            for (k, v) in env {
-                cmd.env(k, v);
-            }
+        #[cfg(not(feature = "mcp"))]
+        {
+            let _ = (name, config);
+            return Err(McpError::Config(
+                "binary built without feature `mcp`".into(),
+            ));
         }
+        #[cfg(feature = "mcp")]
+        {
+            use rmcp::serve_client;
+            use rmcp::transport::child_process::TokioChildProcess;
+            use tokio::process::Command;
 
-        let transport = TokioChildProcess::new(cmd).map_err(McpError::Spawn)?;
+            let command = config.command.as_ref().ok_or_else(|| {
+                McpError::Config("command is required for stdio transport".into())
+            })?;
+            let args = config.args.as_deref().unwrap_or_default();
 
-        let service = serve_client((), transport)
-            .await
-            .map_err(|e| McpError::Init(Box::new(e)))?;
+            let mut cmd = Command::new(command);
+            cmd.args(args);
+            if let Some(ref env) = config.env {
+                for (k, v) in env {
+                    cmd.env(k, v);
+                }
+            }
 
-        let mut services = self.services.lock().await;
-        services.insert(name.to_string(), service);
-        self.transports
-            .lock()
-            .await
-            .insert(name.to_string(), McpTransportKind::Stdio);
-        log::info!(
-            "MCP server connected name={} transport={}",
-            { name },
-            "stdio"
-        );
-        Ok(())
+            let transport = TokioChildProcess::new(cmd).map_err(McpError::Spawn)?;
+
+            let service = serve_client((), transport)
+                .await
+                .map_err(|e| McpError::Init(Box::new(e)))?;
+
+            let mut services = self.services.lock().await;
+            services.insert(name.to_string(), service);
+            self.transports
+                .lock()
+                .await
+                .insert(name.to_string(), McpTransportKind::Stdio);
+            log::info!(
+                "MCP server connected name={} transport={}",
+                { name },
+                "stdio"
+            );
+            Ok(())
+        }
     }
 
     async fn connect_sse(&self, name: &str, config: &McpServerConfig) -> Result<(), McpError> {
-        use http::{HeaderName, HeaderValue};
-        use rmcp::transport::StreamableHttpClientTransport;
-        use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
-
-        let url = config
-            .url
-            .as_ref()
-            .ok_or_else(|| McpError::Config("url is required for sse transport".into()))?;
-        let mut transport_cfg = StreamableHttpClientTransportConfig::with_uri(url.clone());
-        if let Some(ref headers) = config.headers {
-            let mut custom = HashMap::new();
-            for (k, v) in headers {
-                let name = HeaderName::from_bytes(k.as_bytes()).map_err(|source| {
-                    McpError::InvalidHeaderName {
-                        key: k.clone(),
-                        source,
-                    }
-                })?;
-                let value =
-                    HeaderValue::from_str(v).map_err(|source| McpError::InvalidHeaderValue {
-                        key: k.clone(),
-                        source,
-                    })?;
-                custom.insert(name, value);
-            }
-            transport_cfg = transport_cfg.custom_headers(custom);
+        #[cfg(not(feature = "mcp"))]
+        {
+            let _ = (name, config);
+            return Err(McpError::Config(
+                "binary built without feature `mcp`".into(),
+            ));
         }
-        let transport = StreamableHttpClientTransport::from_config(transport_cfg);
-        let service = serve_client((), transport)
-            .await
-            .map_err(|e| McpError::Init(Box::new(e)))?;
+        #[cfg(feature = "mcp")]
+        {
+            use http::{HeaderName, HeaderValue};
+            use rmcp::serve_client;
+            use rmcp::transport::StreamableHttpClientTransport;
+            use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 
-        let mut services = self.services.lock().await;
-        services.insert(name.to_string(), service);
-        self.transports
-            .lock()
-            .await
-            .insert(name.to_string(), McpTransportKind::Sse);
-        log::info!("MCP server connected name={} transport={}", { name }, "sse");
-        Ok(())
+            let url = config
+                .url
+                .as_ref()
+                .ok_or_else(|| McpError::Config("url is required for sse transport".into()))?;
+            let mut transport_cfg = StreamableHttpClientTransportConfig::with_uri(url.clone());
+            if let Some(ref headers) = config.headers {
+                let mut custom = HashMap::new();
+                for (k, v) in headers {
+                    let name = HeaderName::from_bytes(k.as_bytes()).map_err(|source| {
+                        McpError::InvalidHeaderName {
+                            key: k.clone(),
+                            source,
+                        }
+                    })?;
+                    let value = HeaderValue::from_str(v).map_err(|source| {
+                        McpError::InvalidHeaderValue {
+                            key: k.clone(),
+                            source,
+                        }
+                    })?;
+                    custom.insert(name, value);
+                }
+                transport_cfg = transport_cfg.custom_headers(custom);
+            }
+            let transport = StreamableHttpClientTransport::from_config(transport_cfg);
+            let service = serve_client((), transport)
+                .await
+                .map_err(|e| McpError::Init(Box::new(e)))?;
+
+            let mut services = self.services.lock().await;
+            services.insert(name.to_string(), service);
+            self.transports
+                .lock()
+                .await
+                .insert(name.to_string(), McpTransportKind::Sse);
+            log::info!("MCP server connected name={} transport={}", { name }, "sse");
+            Ok(())
+        }
     }
 
     /// List all tools from all connected MCP servers.
@@ -359,50 +383,57 @@ impl McpClientManager {
     /// Returns `(server_id, tool_name, description, input_schema)` for each tool.
     /// Also refreshes [`Self::connected_servers`] tool-count cache.
     pub async fn list_all_tools(&self) -> Vec<(String, String, String, Value)> {
-        let mut result = Vec::new();
-        let mut counts: HashMap<String, usize> = HashMap::new();
-        let services = self.services.lock().await;
-        for (server_id, service) in services.iter() {
-            let tools = match tokio::time::timeout(MCP_CALL_TIMEOUT, service.list_all_tools()).await
-            {
-                Err(_) => {
-                    log::warn!(
-                        "list_all_tools timed out server_id={} timeout_secs={}",
-                        { server_id },
-                        MCP_CALL_TIMEOUT.as_secs()
-                    );
-                    counts.insert(server_id.clone(), 0);
-                    continue;
-                }
-                Ok(r) => r,
-            };
-            let tools = match tools {
-                Ok(t) => t,
-                Err(e) => {
-                    log::warn!(
-                        "list_all_tools failed server_id={} error={}",
-                        { server_id },
-                        e
-                    );
-                    counts.insert(server_id.clone(), 0);
-                    continue;
-                }
-            };
-            counts.insert(server_id.clone(), tools.len());
-            for tool in tools {
-                let description = tool.description.as_deref().unwrap_or("").to_string();
-                let schema = Value::Object(tool.input_schema.as_ref().clone());
-                result.push((
-                    server_id.clone(),
-                    tool.name.to_string(),
-                    description,
-                    schema,
-                ));
-            }
+        #[cfg(not(feature = "mcp"))]
+        {
+            Vec::new()
         }
-        drop(services);
-        *self.tool_counts.lock().await = counts;
-        result
+        #[cfg(feature = "mcp")]
+        {
+            let mut result = Vec::new();
+            let mut counts: HashMap<String, usize> = HashMap::new();
+            let services = self.services.lock().await;
+            for (server_id, service) in services.iter() {
+                let tools =
+                    match tokio::time::timeout(MCP_CALL_TIMEOUT, service.list_all_tools()).await {
+                        Err(_) => {
+                            log::warn!(
+                                "list_all_tools timed out server_id={} timeout_secs={}",
+                                { server_id },
+                                MCP_CALL_TIMEOUT.as_secs()
+                            );
+                            counts.insert(server_id.clone(), 0);
+                            continue;
+                        }
+                        Ok(r) => r,
+                    };
+                let tools = match tools {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log::warn!(
+                            "list_all_tools failed server_id={} error={}",
+                            { server_id },
+                            e
+                        );
+                        counts.insert(server_id.clone(), 0);
+                        continue;
+                    }
+                };
+                counts.insert(server_id.clone(), tools.len());
+                for tool in tools {
+                    let description = tool.description.as_deref().unwrap_or("").to_string();
+                    let schema = Value::Object(tool.input_schema.as_ref().clone());
+                    result.push((
+                        server_id.clone(),
+                        tool.name.to_string(),
+                        description,
+                        schema,
+                    ));
+                }
+            }
+            drop(services);
+            *self.tool_counts.lock().await = counts;
+            result
+        }
     }
 
     /// Call a tool on a specific MCP server.
@@ -412,43 +443,60 @@ impl McpClientManager {
         tool_name: &str,
         args: Value,
     ) -> Result<Value, McpError> {
-        let services = self.services.lock().await;
-        let service = services
-            .get(server_id)
-            .ok_or_else(|| McpError::ServerNotFound {
-                server_id: server_id.to_string(),
-            })?;
+        #[cfg(not(feature = "mcp"))]
+        {
+            let _ = (server_id, tool_name, args);
+            return Err(McpError::Config(
+                "binary built without feature `mcp`".into(),
+            ));
+        }
+        #[cfg(feature = "mcp")]
+        {
+            use rmcp::model::{CallToolRequestParams, CallToolResult};
 
-        let args_map = args.as_object().cloned().unwrap_or_default();
-        let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args_map);
-
-        let result: CallToolResult =
-            tokio::time::timeout(MCP_CALL_TIMEOUT, service.call_tool(params))
-                .await
-                .map_err(|_| {
-                    McpError::Timeout(format!(
-                        "mcp tool call timed out after {}s (server={server_id}, tool={tool_name})",
-                        MCP_CALL_TIMEOUT.as_secs()
-                    ))
-                })?
-                .map_err(|source| McpError::Call {
+            let services = self.services.lock().await;
+            let service = services
+                .get(server_id)
+                .ok_or_else(|| McpError::ServerNotFound {
                     server_id: server_id.to_string(),
-                    tool_name: tool_name.to_string(),
-                    source: Box::new(source),
                 })?;
 
-        let json = serde_json::to_value(&result).map_err(McpError::Serialize)?;
-        Ok(json)
+            let args_map = args.as_object().cloned().unwrap_or_default();
+            let params = CallToolRequestParams::new(tool_name.to_string()).with_arguments(args_map);
+
+            let result: CallToolResult = tokio::time::timeout(
+                MCP_CALL_TIMEOUT,
+                service.call_tool(params),
+            )
+            .await
+            .map_err(|_| {
+                McpError::Timeout(format!(
+                    "mcp tool call timed out after {}s (server={server_id}, tool={tool_name})",
+                    MCP_CALL_TIMEOUT.as_secs()
+                ))
+            })?
+            .map_err(|source| McpError::Call {
+                server_id: server_id.to_string(),
+                tool_name: tool_name.to_string(),
+                source: Box::new(source),
+            })?;
+
+            let json = serde_json::to_value(&result).map_err(McpError::Serialize)?;
+            Ok(json)
+        }
     }
 
     /// Gracefully shut down all MCP connections.
     pub async fn shutdown(&self) {
         let mut services = self.services.lock().await;
+        #[cfg(feature = "mcp")]
         for (name, mut service) in services.drain() {
             if let Err(e) = service.close().await {
                 log::warn!("MCP server shutdown error server={} error={}", name, e);
             }
         }
+        #[cfg(not(feature = "mcp"))]
+        services.clear();
         self.transports.lock().await.clear();
         self.tool_counts.lock().await.clear();
     }
