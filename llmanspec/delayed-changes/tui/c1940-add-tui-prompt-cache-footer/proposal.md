@@ -25,7 +25,7 @@ c1885 把 Prompt Cache 尺子落在 bridge + trace/Langfuse，**刻意不做 TUI
 ## Capabilities（意向）
 
 - `app-tui-fixed-zone`（或等价）
-- 跨面：跟 [`跨端同源`](../../../../docs/roadmaps/跨端同源.md) 约束
+- 跨面：跟 [`库与多客户端`](../../../../docs/architecture/库与多客户端.md) 同源 MUST；缓存方向 [#22](https://github.com/StrayDragon/xylitol/issues/22)
 
 ## Impact
 

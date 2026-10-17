@@ -4,7 +4,7 @@ depends_on: []
 
 # 第二产品面：gpui 桌面客户端（Linux/Wayland）
 
-产品面格局收敛为 **gpui 桌面 + TUI 双 Rust 面**（2026-08-22 拍板，2026-09-24 复核仍维持，见 `docs/research/ui-runtime-tradeoffs-2026.md`）。本票交付 gpui 面的第一可交付切片：attach 本机 Host（四象限信封）的只读观察者。方向正文：`docs/roadmaps/Gpui桌面客户端.md`。
+产品面格局收敛为 **gpui 桌面 + TUI 双 Rust 面**（2026-08-22 拍板，2026-09-24 复核仍维持）。本票交付 gpui 面的第一可交付切片：attach 本机 Host（四象限信封）的只读观察者。方向：[#12](https://github.com/StrayDragon/xylitol/issues/12)。
 
 ## Why
 
@@ -14,7 +14,7 @@ depends_on: []
 
 - 新桌面应用入口（独立 binary 或 feature）：经四象限信封 attach 本机 Host（同产品 TUI 拓扑），M1 只读渲染 transcript 与状态头卡。
 - 复用 protocol 类型闭集直连 serde，无跨语言类型闸负担；MUST NOT 发明第二套会话/命令词表。
-- 跨面同源：公共能力动作语义与 TUI 一致（约束板 `跨端同源.md`）；GUI 增强（点击/悬浮）仅为面内附加。
+- 跨面同源：公共能力动作语义与 TUI 一致（`docs/architecture/库与多客户端.md`；gpui 半边 [#11](https://github.com/StrayDragon/xylitol/issues/11)）；GUI 增强（点击/悬浮）仅为面内附加。
 - 本机集成（剪贴板/编辑器/通知）按 client 职责留面本地，M3 再议。
 
 ## 开放决策（propose 时深挖）

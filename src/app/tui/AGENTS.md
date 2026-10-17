@@ -23,7 +23,7 @@
 
 **与 `agent_demo` 分界**：包引擎演示，不是本端 SSOT。硬边界见 `crates/xylitol-tui/AGENTS.md`。
 
-**跨端公共体验**：与第二产品端（gpui 桌面，尚未开放）共有能力一套学习成本——规则唯一约束板：[`docs/roadmaps/跨端同源.md`](../../../docs/roadmaps/跨端同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。端侧附加：改公共交互前先对齐全部端；未开放端不要写成现行 MUST，也不要在本端预埋第二套动作 id。
+**跨端公共体验**：已开放端共有能力一套学习成本——细则：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。端侧附加：改公共交互前先对齐全部已开放端；未开放端（gpui）不要写成现行 MUST，也不要在本端预埋第二套动作 id。
 
 ## 硬约束
 

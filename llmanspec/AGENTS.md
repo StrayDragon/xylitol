@@ -96,7 +96,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ### 提交卫生（SHOULD）
 
-1. **Draft 可独提或一批提**：可从 `docs/roadmaps` 等意向一次 `change new` 多个草案并 `chore(sdd): draft …` 入库；**不**要求与实现同提。
+1. **Draft 可独提或一批提**：可从 GitHub feature request 等意向一次 `change new` 多个草案并 `chore(sdd): draft …` 入库；**不**要求与实现同提。
 2. **闭环收尾优先 `finalize`**（单 `archive(sdd): <id>` auto commit），减少礼仪 commit。
 3. **产品 vs 流程**：实现用 `feat`/`fix`/`refactor`；SDD 礼仪用 `chore(sdd):` / `docs(sdd):`。
 

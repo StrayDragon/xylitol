@@ -11,7 +11,7 @@ depends_on:
 > **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/next-todo`，未进活跃 graph。2026-08-10 排序 #8 作废。仅当状态栏真开 append-persist 后才考虑执行。
 > **来源**：深挖 [`c1895`](../c1895-add-agent-status-bar-subsystem/proposal.md) Q2/Q3。
 > **bootstrap 先行**：已落地的 `session_env` 在 compact/overflow 后的保证 → **[`c1906`](../c1906-ensure-session-env-after-compaction/proposal.md)**（不依赖本 change；可先归档落地）。本 change 只管全栏 `AgentStatusBar` 堆积。
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3 / §6；书 Ch2 压缩与状态栏（陈旧条 vs 注意力）。
+> **调研底稿**：[GitHub #22](https://github.com/StrayDragon/xylitol/issues/22)；书 Ch2 压缩与状态栏（陈旧条 vs 注意力）。
 > **工程约定**：code-first；策略未钉前 **禁止**假实现进主路径。
 
 ## Why

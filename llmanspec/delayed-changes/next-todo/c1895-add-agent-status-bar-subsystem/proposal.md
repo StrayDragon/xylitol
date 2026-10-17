@@ -10,8 +10,8 @@ depends_on:
 
 
 > **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/next-todo`，未进活跃 graph。2026-08-10 排序 #5 作废。默认 always-on 仪表盘对 coding 边际低；Todo 产品面已是 live `agent-todo`（勿再解析失效的 `c1955` 相对路径）。执行前提：明确需要「稀疏注入」通道，而不是再做一套仪表盘。
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §3（术语对照 §7）
-> **书指针**：《深入理解 AI Agent》Ch2「Agent 状态栏」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
+> **调研底稿**：[GitHub #22](https://github.com/StrayDragon/xylitol/issues/22)
+> **书指针**：《深入理解 AI Agent》Ch2「Agent 状态栏」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语**禁止**写入 live specs。
 > **自包含**：原意向 Runtime 列 + Agent 列壳；Todo 业务改由 **c1955**；Agent 列通道稿见同目录 [`c1896`](../c1896-add-status-bar-agent-lane/proposal.md)。
 > **已落地特殊类型**：[`c1905`](../c1905-update-system-prompt-stable-volatile-split/design.md) **`session_env`** —— 状态栏族 bootstrap（date/clock/cwd）；本 change 须扫描并钉合并策略。
 > **工程约定**：code-first；真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。

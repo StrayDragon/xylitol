@@ -1,7 +1,7 @@
 # Design: c1960 tool_search + MCP Deferred 发现
 
 > **轨 B**（非开箱）。轨 A 定稿冻表见已归档 [`c1900`](../archive/2026-08-05-c1900-update-mcp-first-turn-tool-freeze/design.md)。
-> **调研**：[`c1900 research`](../archive/2026-08-05-c1900-update-mcp-first-turn-tool-freeze/research/responses-tools-stable-id-and-resume-mcp-2026.md) + [`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §4.2。
+> **调研**：[`c1900 research`](../archive/2026-08-05-c1900-update-mcp-first-turn-tool-freeze/research/responses-tools-stable-id-and-resume-mcp-2026.md) + [#22](https://github.com/StrayDragon/xylitol/issues/22)。
 > **现状钩子**：`ContextPolicy.tools_mode` 已有 `Search`；`ToolsMode::Search` ⇒ `allows_midturn_tools_rewrite=false`；开箱默认仍 `Full`。
 
 ## 目标

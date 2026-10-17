@@ -1,11 +1,11 @@
 ---
-brief: "日志与 provider-trace 窄读排障（obs-* 子命令 / spinner 卡住 / RUST_LOG / XYLITOL_DEBUG / Langfuse / OTLP）"
+brief: "日志与 provider-trace 窄读排障（obs-* 子命令 / spinner 卡住 / 滚轮延迟 / RUST_LOG / XYLITOL_DEBUG / Langfuse / OTLP）"
 ---
 
 # 观测 / Inspect（省 token）
 
 **边界**：窄读与分组摘要。日志开关 / schema SSOT → `src/AGENTS.md`（Provider / 观测）与 `app/cli/logging.rs`。
-**产品前瞻**：检视台在 roadmaps；进程内底座在 `docs/architecture/进程内观测.md`。
+**产品前瞻**：进程内底座在 `docs/architecture/进程内观测.md`。未兑现观测方向（infra lane / 采样）不在仓内维护，见 GitHub feature request。
 
 ## 硬约束（agent）
 
@@ -110,6 +110,26 @@ just obs-tui-lag
 
 ≥80ms → warn（约一帧 Loader）；≥16ms → info。
 
+### TUI 输入延迟（滚动卡住）
+
+终端 TUI 滚动的顺滑 = **恒定小步长直跳 + 纪律性合帧，无动画层**。coalesce 是双刃剑：主动 drain 会把连吃事件并成单帧巨跳。tmux 等复用层可能把滚轮译成方向键——SGR 与键序列必须同等支持。
+
+| 律 | 内容 |
+|---|---|
+| 仪器先于药方 | 先建客观签名（延迟分布 / 帧计数 / 字节量），改前改后同秤 |
+| E2E 必须覆盖真输入链 | mock 直调函数漏集成层；真 PTY 注字节才算数 |
+| 先删后加 | 优先减法（删缓存 / 合并 / 抽象）；加机制前先证明删无可删 |
+| 观测随功能落 | lag/metrics 钩子与逻辑同 commit |
+
+排查 SOP：
+
+1. **产品内**：`host_wheel_paint` 分布——高→渲染内容成本；低→进 2
+2. **事件侧**：`xylitol::wheel` delta 序列——±10 以上巨值=合并过度；gap 长尾=到达节拍
+3. **真链**：`tests/tui_e2e/pty.rs::pty_product_wheel_latency_signature`（`just test-tui-e2e-pty`）——首响 p50 劣化=host 外；正常=回 1/2
+4. **外部**：以上全清白→终端模拟器差异（换终端 cross-check）
+
+窄读：`XYLITOL_DEBUG=1 RUST_LOG=xylitol::lag=info,xylitol::wheel=debug` → `just obs-tui-lag`。AO 性能 lab 在 `src/app/tui/lab_ao_perf.rs`（`#[ignore]`）。
+
 ### 阶段性基线（可选）
 
 需要「观测还活着」时跑一遍即可，勿灌全文：
@@ -125,10 +145,10 @@ just obs-tui-lag
 ## 人类可选（agent 仍优先脚本）
 
 - DuckDB / `lnav`：对 **`$LOG_DIR/provider-trace.jsonl`** 即席查；勿把大结果贴回 agent。
-- 「漂亮时间线」→ 可选 OTLP/HTTP → Langfuse（roadmap `OTEL与Langfuse观测.md`，配置 `[otel]`，默认 none）；当前默认产物仍是**专用 JSONL**，不是 OTLP。
+- 「漂亮时间线」→ 可选 OTLP/HTTP → Langfuse（配置 `[otel]`，默认 none）；当前默认产物仍是**专用 JSONL**，不是 OTLP。
 
 ## agent 约定
 
 - 先跑**一个**子命令，stdout 原样用于推理，再决定下一步。
 - `lag` / `lifecycle` / 健康检查已够则**停**，不要 `recent -n 500`。
-- 用户要 Jaeger / Langfuse → 指向 `[otel]` + roadmap；未配置时短期用本文件读 JSONL。
+- 用户要 Jaeger / Langfuse → 指向 `[otel]` + `docs/architecture/进程内观测.md`；未配置时短期用本文件读 JSONL。

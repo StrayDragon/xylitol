@@ -25,8 +25,8 @@
 - **Trust / MCP**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP 配置驱动、未配置零装配。产品规则：`docs/architecture/信任与项目门禁.md` / `扩展能力-MCP.md`；实现边界：`src/AGENTS.md`。
 - **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认 attach 本机 Host，未在听失败；Print 与库嵌入可同进程。端规则：`src/app/tui/AGENTS.md`；拓扑与线协议：`docs/architecture/库与多客户端.md` / `远程体验与线协议.md`。
 - **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（Command/Event 是载荷）。硬边界：`src/AGENTS.md`；产品叙事：`docs/architecture/库与多客户端.md`。
-- **跨端公共体验**（TUI ↔ gpui 桌面）：动作语义一套学习成本；唯一约束板 `docs/roadmaps/跨端同源.md`。
-- 产品架构总览：`docs/architecture/`；候选方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
+- **跨端公共体验**（已开放端 Print / TUI / Host）：动作语义一套学习成本；细则 `docs/architecture/库与多客户端.md`。未开放端（gpui 等）见 GitHub feature request，不要写成现行 MUST。
+- 产品架构总览：`docs/architecture/`；未兑现方向：GitHub Issues（roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)，FR 各一个）；文档闭环：`docs/AGENTS.md`。
 - TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`docs/architecture/TUI信息呈现与固定区词汇.md`（端约束见 `src/app/tui/AGENTS.md`）。新文只用表内词；弃用 / 旧称统一收在该表「弃用」对照行，正文不复述。
 - 产品 TUI 视觉色板：`src/app/tui/DESIGN.md`（frontmatter SSOT；`just qa-check-tui-tokens` 对照 Palette）。
 

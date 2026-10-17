@@ -18,6 +18,8 @@
 _HANDOFF/
 # Local planning spine (not a spec / not AGENTS). Do not commit.
 _TODO.md
+# One-shot local queues (gh issue create, etc.). Do not commit.
+.tmp/
 *~
 
 *.bak

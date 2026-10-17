@@ -11,8 +11,8 @@ depends_on:
 > **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/next-todo`，未进活跃 graph。2026-08-10「移入 active 待处理队列 / 排序 #7」作废。
 
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §6（术语对照 §7）
-> **书指针**：《深入理解 AI Agent》Ch2「上下文压缩策略」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
+> **调研底稿**：[GitHub #22](https://github.com/StrayDragon/xylitol/issues/22)
+> **书指针**：《深入理解 AI Agent》Ch2「上下文压缩策略」（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语**禁止**写入 live specs。
 > **自包含**：在已有 auto-compact 之上钉「冻结替换」与「不砍前缀」；不做 cache 命中优化本身。冻结表归属 Session SSOT（`c1930`）。
 > **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 

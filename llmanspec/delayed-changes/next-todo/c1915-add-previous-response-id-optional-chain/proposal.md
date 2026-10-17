@@ -11,8 +11,8 @@ depends_on:
 > **⚠️ deferred（2026-09-08）**：仍在 `delayed-changes/next-todo`，未进活跃 graph。2026-08-10「移入 active 待处理队列 / 排序 #15」作废。与 park 的 `c2620` 相关：产品默认仍不发 `previous_response_id`。
 
 
-> **调研底稿**：[`docs/research/responses-context-layout-and-cache-2026.md`](../../../docs/research/responses-context-layout-and-cache-2026.md) §5（术语对照 §7）
-> **书指针**：《深入理解 AI Agent》Ch2「Agent 如何调用大模型」多轮轨迹（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语仅经 research §7 术语表映射，**禁止**写入 live specs。
+> **调研底稿**：[GitHub #22](https://github.com/StrayDragon/xylitol/issues/22)
+> **书指针**：《深入理解 AI Agent》Ch2「Agent 如何调用大模型」多轮轨迹（姊妹仓 `ai-agent-book/book/chapter2.md`）；书语**禁止**写入 live specs。
 > **自包含**：默认仍全量重放；链式为 capability + 配置 opt-in。**断链**对齐 Codex：与上一请求比对 **非 input 字段**（model / instructions / tools / reasoning / …）；任一实质变化 → 回退全量 `response.create`（不引入独立 context epoch 计数）。
 > **工程约定（本波次）**：策略默认 **code-first**：`defaults.rs` 纯常量（改文件调试）；**不**新增 YAML 旋钮；**不**用 env 当未暴露配置面。用户面 YAML 仅既有字段（如 `api`）。真源见 [`c1880`](../archive/2026-08-04-c1880-update-responses-first-api-boundary/proposal.md)。
 

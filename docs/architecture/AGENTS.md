@@ -2,7 +2,7 @@
 
 > **只写高维产品/业务思考与流程图。**
 > 具体类型、API、文件路径、crate 选型 → `llmanspec/changes/*/design.md` 与代码。
-> 规范边界：根 / `src` `AGENTS.md`；**docs 闭环**（roadmaps 落地后迁入本目录）：[`docs/AGENTS.md`](../AGENTS.md)。
+> 规范边界：根 / `src` `AGENTS.md`；**docs 闭环**（GitHub FR 兑现后迁入本目录）：[`docs/AGENTS.md`](../AGENTS.md)。
 
 一个不熟悉代码的人应能从本目录回答：开箱有什么、后置什么、多 client 怎么共享体验、插话 / 事件 / 信任 / MCP 的产品规则是什么。
 
@@ -41,5 +41,5 @@
 | [扩展与开闭.md](./扩展与开闭.md) | 写：可插拔 ≠ 插件市场；扩展轴与后置接缝。不写：trait 清单与实现路径。 |
 | [进程内观测.md](./进程内观测.md) | 写：多总线边界、fastrace 能/不能、发射→消费心智、span 目录、理想 vs 现状。不写：Collector yaml 百科、自研检视台。 |
 
-实现与变更：`llmanspec/`。未兑现方向（统一候选）：[`docs/roadmaps/`](../roadmaps/README.md)。
+实现与变更：`llmanspec/`。未兑现方向：[GitHub roadmap #28](https://github.com/StrayDragon/xylitol/issues/28)。
 文档里尽量不钉 change id；需要追溯时用 `llman-sdd archive freeze --list`（冷归档 id → slug 清单）或 `llmanspec/changes/archive/`。
