@@ -121,7 +121,8 @@ tempfile = "3.27.0"
 # skill l8ng-test-methodology → rust.md for the pattern library.
 
 insta = { version = "1.49.0", features = ["filters", "glob"] }
-# Statistical micro-benchmarks (benches/); run via `cargo bench`, not qa.
+# Statistical micro-benchmarks in tests/inner/token_estimator_bench.rs
+# (`#[ignore]`); `cargo test -r --lib token_estimator -- --ignored`, not qa.
 criterion = "0.8"
 # portable-pty: end-to-end TUI integration tests (c405 layer 5a) — spawn the
 # real binary under a PTY, inject keys, read bytes back into a vte cell grid.
