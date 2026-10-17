@@ -86,4 +86,4 @@
 - 端操作边界：[`src/app/tui/AGENTS.md`](../../src/app/tui/AGENTS.md)。
 - **交互模型**：终端原生选区 vs 应用内选区（oneof）的跨端同源细则（库双入口、产品缺省、拖选 MUST、鼠标管道、`XYLITOL_TUI_MOUSE` 边界）→ [`../roadmaps/跨端同源.md`](../roadmaps/跨端同源.md)「支线与方向」表；词汇以本表 **Inline** / **ApplicationOwned** 词条为准。TUI 专属实现指针：段级 Activity 折叠见 `c1760`（activity 折叠，已归档）；Segment 鼠标命中见 `c2045`（剩余折叠目标）。
 - **归档 change**（`llmanspec/changes/archive/`）可保留当时旧词作史实；**新文 / 活 docs / 活 specs（产品端）** 只准用本表。
-- **designing**（仓库顶层 `designing/`）= 交互设计稿；`agent_demo` = 包演示，文案/固定区 **允许不同**。**禁止**把本表当成「必须改写 demo 字符串」的门禁。
+- `agent_demo` = 包演示，文案/固定区 **允许不同**。**禁止**把本表当成「必须改写 demo 字符串」的门禁。

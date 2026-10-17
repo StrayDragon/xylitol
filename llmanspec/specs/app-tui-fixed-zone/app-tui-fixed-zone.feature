@@ -28,20 +28,20 @@
       并且 折叠回退为 > 展开回退为 v 且各占单列
 
     场景: semantic-colors-from-single-token-source
-      当 读取 token 同步脚本与生成物
-      那么 单一脚本写出双端 token
+      当 读取 token 检查脚本与色板
+      那么 单一脚本对照 DESIGN 与 Palette
   @req:r1234
   规则: design-docs-ssot
-    产品 TUI 视觉与 UX 须有单一书面 SSOT（总索引 + 组件级子文档）；实现与 demo 引用组件规则时 须指向对应书面文档（尤其 diff-block 与 keybindings），不得仅依赖口头约定。文档落点（总索引与子文档目录）由面 AGENTS 维护。
+    产品 TUI 视觉须以 DESIGN.md frontmatter 为书面色板 SSOT，Palette 为运行时快照；组件行为以产品代码与面 AGENTS 为准。不得另立平行设计稿目录作为运行时真值。
 
-    场景: designing-lint-is-a-gate
-      当 读取 designing lint 闸接线
-      那么 designing lint 由 qa-check-scripts 执行
+    场景: token-check-is-a-gate
+      当 读取 token 闸接线
+      那么 token 闸由 qa-check-tui-tokens 执行
 
     场景: surface-agents-points-to-written-docs
       当 读取 tui 面 AGENTS 摘要
-      那么 摘要写明先读产品代码与默认忽略应用壳
-      并且 摘要写明改稿须跑 designing lint
+      那么 摘要写明先读产品代码与 DESIGN.md
+      并且 摘要写明改色板须跑 token 闸
   @req:r1235
   规则: demo-theme-auto-detect
     agent_demo 须默认使用 Dark token 集；当启用主题自动探测（环境变量或 harness API）时 须经 package terminal_colors 纯函数切换 Light/Dark，并在 layout 壳（footer 或系统行）暴露当前 theme_mode；不得将自动切换设为产品 MVP 默认。

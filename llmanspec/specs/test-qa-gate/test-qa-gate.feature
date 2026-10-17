@@ -40,9 +40,9 @@
 
   @req:r1832
   规则: ath12-entry-complexity-gate
-    仓库 须提供 scripts/check_complexity.py，并经 just qa 的 qa-check-scripts 强制 ath12 入口协调者的函数级复杂度（cccc-rs）；该脚本属 scripts/check_* 约定，不得仅作维护探针。入口名单与阈值数字由架构 AGENTS 体量策略维护，本 req 不得钉具体源文件路径。just complexity（--radar）MAY 报告更广子树且 不得作为硬失败条件。
+    仓库 须经 just qa 的 qa-check-complexity 强制 ath12 入口协调者的函数级复杂度（cccc-rs）；该闸属 justfile 直接调用，不得仅作维护探针。入口名单与阈值数字由架构 AGENTS 体量策略维护，本 req 不得钉具体源文件路径。just complexity MAY 报告更广子树且 不得作为硬失败条件。
     场景: complexity-gate-ssot
-      当 读取非变更闸脚本清单
+      当 读取 just 的 qa recipe 序列
       那么 复杂度闸以 cccc-rs 为 SSoT
 
   @req:r1833

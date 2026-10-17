@@ -15,7 +15,6 @@ export PATH := env_var_or_default("HOME", "/usr") + "/.cargo/bin:" + env_var("PA
 
 _default:
     @just --list
-    @python3 scripts/doctor_dev_env.py
 
 # Install prek hooks (+ optional complexity CLI into .tools/).
 setup:
@@ -27,19 +26,9 @@ setup:
     # LFS pre-push is owned by git-lfs's native hooks (pre-push + post-*),
     # NOT by prek. Idempotent; also fixes fresh clones missing hooks.
     git lfs install --local
-    # PyYAML is a hard dep of scripts/check_tui_designing.py (designing YAML parse).
-    python3 -m pip install --quiet --user pyyaml \
-      || echo "warn: PyYAML missing — scripts/check_tui_designing.py needs it" >&2
-    # Lazy install also happens in scripts/check_complexity.py; setup warms the cache.
     if ! command -v cccc-rs >/dev/null && [[ ! -x .tools/bin/cccc-rs ]]; then
       cargo install cccc-rs-cli --version 0.4.0 --locked --root .tools
     fi
-
-# Environment self-check (machine-local state: hooks, tools, worktree env,
-# live-provider config). Not a repo-code gate — never runs in just qa.
-# Bare `just` shows warnings only; silent when healthy.
-doctor:
-    python3 scripts/doctor_dev_env.py --full
 
 # Run cargo fmt (write).
 fmt:
@@ -181,7 +170,7 @@ gen-live-provider-example:
 gen-config-example:
     python3 scripts/gen_config_example.py
 
-# Wire v3 codegen (fbs -> Rust). Maintenance only (needs local apache/fory clone);
+# fory-v3 envelope codegen (fbs -> Rust). Maintenance only (needs local apache/fory clone);
 # `--check` verifies the checked-in artifact matches the fbs source of truth.
 codegen-wire *args:
     python3 scripts/gen_wire_v3.py {{ args }}
@@ -243,15 +232,7 @@ test-tui-e2e-tmux verbosity=verbosity_default:
 
 # Engine demos live in crates/xylitol-tui/justfile (just demo-tui there).
 
-# Sync designing tokens.css/js from src/app/tui/DESIGN.md frontmatter.
-sync-tui-tokens:
-    python3 scripts/sync_tui_tokens.py
-
-# Export real product TUI frames for the designing shell view (manual lab).
-export-design-frame:
-    cargo test -p xylitol --lib lab_design_frame_export -- --ignored --nocapture
-
-# Fail if designing tokens or package Palette diverge from DESIGN.md.
+# Fail if package Palette hex diverges from DESIGN.md frontmatter.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 qa-check-tui-tokens verbosity=verbosity_default:
     #!/usr/bin/env bash
@@ -260,19 +241,52 @@ qa-check-tui-tokens verbosity=verbosity_default:
     if [[ "{{verbosity}}" == "verbose" ]]; then
       args+=(--verbose)
     fi
-    python3 scripts/sync_tui_tokens.py "${args[@]}"
+    python3 scripts/check_tui_tokens.py "${args[@]}"
 
-# Soft complexity radar (cccc-rs top-cognitive). Not a hard gate — see
-# scripts/check_complexity.py (HARD entry limits run via qa-check-scripts / qa).
+# Resolve cccc-rs: XYLITOL_CCCC_RS, PATH, .tools/, else cargo install (crates.io latest pin).
+[private]
+_cccc-bin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -n "${XYLITOL_CCCC_RS:-}" && -x "${XYLITOL_CCCC_RS}" ]]; then
+      printf '%s' "${XYLITOL_CCCC_RS}"
+    elif command -v cccc-rs >/dev/null; then
+      command -v cccc-rs
+    elif [[ -x .tools/bin/cccc-rs ]]; then
+      printf '%s' .tools/bin/cccc-rs
+    else
+      cargo install cccc-rs-cli --version 0.4.0 --locked --root .tools >/dev/null
+      printf '%s' .tools/bin/cccc-rs
+    fi
+
+# HARD: ath12 TUI entry coordinators. Thresholds = src/AGENTS.md「复杂度与体量」.
+[arg('verbosity', pattern='quiet|normal|verbose')]
+qa-check-complexity verbosity=verbosity_default:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin="$(just _cccc-bin)"
+    entries=(
+      src/app/tui/host/mod.rs
+      src/app/tui/layout/root/mod.rs
+      src/app/tui/effects/mod.rs
+      src/app/tui/bridge/mod.rs
+    )
+    if [[ "{{verbosity}}" == "quiet" ]]; then
+      "$bin" --max-cognitive 32 --max-cyclomatic 27 "${entries[@]}" >/dev/null
+    else
+      "$bin" --max-cognitive 32 --max-cyclomatic 27 --table --min 8 "${entries[@]}"
+    fi
+
+# Soft complexity radar (cccc-rs top-cognitive). Not a hard gate.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 complexity verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
-    extra=()
-    if [[ "{{verbosity}}" == "verbose" ]]; then
-      extra+=(--verbose)
-    fi
-    python3 scripts/check_complexity.py --radar "${extra[@]}"
+    bin="$(just _cccc-bin)"
+    "$bin" --table --top-cognitive 20 --min 10 \
+      --exclude='**/tests.rs' --exclude='**/tests/**' --exclude='**/harness.rs' \
+      src
+    echo "(radar soft — not a qa hard gate; entry limits cognitive≤32 cyclomatic≤27)"
 
 # --- scripts/ QA checks -------------------------------------------------
 # Convention (normative for this repo):
@@ -284,7 +298,7 @@ complexity verbosity=verbosity_default:
 #
 # Meta-gate: every check_* script path must appear in this justfile, and `qa`
 # must depend on `qa-check-scripts-wired` + `qa-check-scripts`.
-# Complexity HARD gate: scripts/check_complexity.py (cccc-rs entry mods).
+# Complexity HARD gate: `qa-check-complexity` (cccc-rs on ath12 entry mods).
 [arg('verbosity', pattern='quiet|normal|verbose')]
 qa-check-scripts-wired verbosity=verbosity_default:
     #!/usr/bin/env bash
@@ -349,13 +363,6 @@ qa-check-scripts verbosity=verbosity_default:
         fi
     done
 
-# Interactive design draft (TUI modules under designing/user_interfaces; preview shell designing/app/preview-tool).
-open-designing:
-    bun run --cwd designing/app/preview-tool dev
-
-gen-designing-index:
-    python3 scripts/gen_designing_index.py
-
 # Regenerate the skill description brief tail from references/*.md frontmatter
 # (drift gate: scripts/check_skill_description.py --check, wired via qa-check-scripts).
 gen-skill-description:
@@ -395,6 +402,7 @@ qa verbosity=verbosity_default: \
     (qa-doc-check verbosity) \
     (qa-doc-test verbosity) \
     (qa-check-tui-tokens verbosity) \
+    (qa-check-complexity verbosity) \
     (qa-check-scripts-wired verbosity) \
     (qa-check-scripts verbosity) \
     (qa-spec-validate verbosity)

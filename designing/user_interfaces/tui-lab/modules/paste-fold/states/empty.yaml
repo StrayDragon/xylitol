@@ -1,8 +1,0 @@
-id: paste-fold.empty
-cols: 72
-must_not_contain:
-  - "[Pasted"
-  - "def "
-lines:
-  -
-    - { text: "❯ ", token: user }

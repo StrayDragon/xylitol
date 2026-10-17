@@ -31,8 +31,8 @@
 
     场景: index-points-to-per-capability-rules
       当 读取 tui 面 AGENTS 摘要
-      那么 摘要写明先读产品代码与默认忽略应用壳
-      并且 摘要写明改稿须跑 designing lint
+      那么 摘要写明先读产品代码与 DESIGN.md
+      并且 摘要写明改色板须跑 token 闸
   @req:r1162
   规则: TUI 只承担面本地
     产品 TUI 须只执行面本地能力（键盘、绘制、TTY、本机编辑器、剪贴板）。依赖工作区、模型、MCP 或会话生命周期的能力 须由 host 角色执行。载体切分与同进程保留见 app-tui-bridge atb4。不得把剪贴板等面本地能力交给远程 host 写入本机盘。

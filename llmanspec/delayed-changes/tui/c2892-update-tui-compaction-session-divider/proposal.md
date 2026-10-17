@@ -31,7 +31,7 @@ depends_on: []
 - 进行中 MUST 出现在对话条目主滚动区，MUST NOT 只靠状态条短词 `Compacting`。
 - 分割线宽度 MUST 随终端列宽计算，标签居中。
 - 完成后分割线仍是边界，不是带三角的工具块。点选 / 悬停规则在本票重画时一并定（预期：无可折叶块，c2860 的三角列可退役）。
-- `designing/user_interfaces/tui/modules/compaction/` 晋级时改 intent（今日写「进行中走 status、完成是可折块」）。
+- 产品 compaction 呈现以 `src/app/tui` 代码与 `DESIGN.md` 为准（今日写「进行中走 status、完成是可折块」）。
 
 ## 非目标
 
@@ -42,7 +42,7 @@ depends_on: []
 ## Capabilities（意向）
 
 - `app-tui-transcript`（r1359 三角列 / 完成块形态）
-- `designing/user_interfaces/tui/modules/compaction`
+- `src/app/tui/DESIGN.md`（compaction 呈现）
 
 ## Impact
 

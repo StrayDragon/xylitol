@@ -7,7 +7,7 @@ Copyright (c) 2025 Mario Zechner, licensed under the MIT License.
 `xylitol-tui` started as a Rust rewrite of that library. It is maintained as an
 **independent fork** for the xylitol project: APIs, input stack, components, and
 product wiring may diverge substantially and are **not** required to track
-upstream pi-tui 1:1. Intentional deltas are recorded in `PI_DELTAS.md`.
+upstream pi-tui 1:1.
 
 Portions Copyright (c) 2026 L8ng and xylitol contributors.
 

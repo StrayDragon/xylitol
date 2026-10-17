@@ -25,35 +25,34 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 | 同步库；产品端 host 驱动（tokio 仅 autocomplete 异步辅助，runtime 由消费方提供） | 拥有产品事件循环 |
 | `lib.rs` re-export = API 边界 SSOT | 应用层 theme token / 流式业务缓冲 / 产品 layout |
 
-历史对齐源（行为参考，非逐文件镜像、非强制同步）：`../pi/packages/tui`。
-**刻意差异台账（整合时防覆盖）**：本包 [`PI_DELTAS.md`](PI_DELTAS.md)。
+历史对齐源（行为参考，非逐文件镜像、非强制同步）：`../pi/packages/tui`。稳定边界以本文件硬约束与代码为准。
 
 ## 设计与实验场
 
-本仓 **产品视觉色板 MUST 只有一份**：[`src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md)。交互设计稿在仓库顶层 [`designing/`](../../designing/)（辅助，不是运行时真值）。
+本仓 **产品视觉色板 MUST 只有一份**：[`src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md)。
 
 | 角色 | 路径 | 说明 |
 |---|---|---|
-| **产品视觉 / 设计稿** | app `DESIGN.md` 色板 + 顶层 `designing/` 交互稿 | 固定态给人看；运行时以产品代码为准 |
-| **包交互演示** | `examples/agent_demo.rs`（Inline，包内 `just demo-tui`）· `examples/agent_demo_alt.rs`（ApplicationOwned / alt-screen，包内 `just demo-tui-alt-screen`）· `examples/host_loop_application_owned.rs`（最小 host，包内 `just demo-tui-host-loop`） | 引擎 / 通用组件试跑；**≠** designing；共享实现 `agent_demo_impl.rs` |
+| **产品视觉** | app `DESIGN.md` 色板 | 运行时以产品代码为准；Palette 为 DESIGN 快照 |
+| **包交互演示** | `examples/agent_demo.rs`（Inline，包内 `just demo-tui`）· `examples/agent_demo_alt.rs`（ApplicationOwned / alt-screen，包内 `just demo-tui-alt-screen`）· `examples/host_loop_application_owned.rs`（最小 host，包内 `just demo-tui-host-loop`） | 引擎 / 通用组件试跑；**≠** 产品视觉 SSOT；共享实现 `agent_demo_impl.rs` |
 | **运行时便利** | `Palette`（本包） | 对齐 DESIGN 的 Dark/Light 快照；组件仍只收闭包 |
 
 ### `agent_demo` 硬边界（防误导）
 
 | 是 | 不是 |
 |---|---|
-| 包引擎 / 通用组件的动态试跑（`agent_demo` / `agent_demo_alt` / 包内 `just demo-tui*`） | 产品 TUI 或 designing 交互稿 |
+| 包引擎 / 通用组件的动态试跑（`agent_demo` / `agent_demo_alt` / 包内 `just demo-tui*`） | 产品 TUI |
 | `XYLITOL_TUI_MOUSE` 仅 **Inline** demo（及以其为目标的 PTY e2e）生效；Inline 与 ApplicationOwned 用双 example 区分 | 产品 inline 鼠标开关；env 热切模式 |
 | demo 屏英文 / plate 文案以 demo 自身为准（人类明确要求除外），允许与产品中文 SSOT（队列条 / 滚动提示 / 命令面板…）不同 | 为「对齐产品固定区词汇表」改写 demo 文案 |
 | 形态学对照产品（rail 默认、中间队列条）；对照 ≠ 同一 SSOT | 把对照当落地 |
 | 产品固定区用词：[`docs/architecture/TUI信息呈现与固定区词汇.md`](../../docs/architecture/TUI信息呈现与固定区词汇.md)——**只约束产品端文档与 host** | 用它约束本包 demo 字符串 |
-| 改产品视觉 / 固定区：走 `src/app/tui/` 产品代码 + `just open-designing` 对照 / 产品测 | 默认先改 `agent_demo*` 当「落地」 |
+| 改产品视觉 / 固定区：走 `src/app/tui/` 产品代码 + `DESIGN.md` / 产品测 | 默认先改 `agent_demo*` 当「落地」 |
 
 分发本库后：代码零依赖主 crate；文档与 `Palette` **继续引用** monorepo 的 app DESIGN 为活 SSOT（嵌入方也可自备 token 注入闭包）。**不要**在本包另起平行 design 文档树。
 
-## 与 pi-tui 的刻意差异（不得回退成「必须完整 port」）
+## 与 pi-tui 的关系（不得回退成「必须完整 port」）
 
-目标：**差分渲染 + 可组合组件 + crossterm 原生输入**；产品壳与视觉在 `src/app/tui/`。上游 bugfix 可择优吸收，**默认不**为对齐而回退 [`PI_DELTAS.md`](PI_DELTAS.md) 的决议。主题对照、不移植清单、Overlay / Image 裁剪都以该台账为 SSOT，勿在本文件再抄一表。
+目标：**差分渲染 + 可组合组件 + crossterm 原生输入**；产品壳与视觉在 `src/app/tui/`。上游 bugfix 可择优吸收，**默认不**为对齐而回退本文件硬约束与代码现状。
 
 缺能力时：**先在本包补通用能力，再由应用端接线**——不要把准通用实现塞进 `src/app/tui/`。
 
@@ -63,7 +62,7 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 2. 异步事件合流在 `src/app/tui/`，不进本 package。
 3. `render` → `Vec<String>`（ANSI）；不引入结构化 `StyledLine` 层。
 4. 主题用闭包注入；语义 token 映射在应用端（`src/app/tui/DESIGN.md`）。
-5. 终端 I/O / 输入：优先 crossterm `Command`；硬切 `InputEvent::{Key,Paste,Mouse}`；不移植 `stdin-buffer` / 平台专属输入 / `writeLogPath`。细则 [`PI_DELTAS.md`](PI_DELTAS.md)。
+5. 终端 I/O / 输入：优先 crossterm `Command`；硬切 `InputEvent::{Key,Paste,Mouse}`；不移植 `stdin-buffer` / 平台专属输入 / `writeLogPath`。
 6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 **Inline** 不得经 env 自动开 capture。**ApplicationOwned**（alt-screen）经 `begin_application_owned_session` 挂 `ApplicationOwnedRuntime`（ScrollView 视口 + 选区 + dock 排除 + OSC52）。Inline 文档 MUST NOT 暗示「开了 mouse = 原生选区 + 应用点选」兼得。
 7. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
 8. **命名（代码 SSOT）**：交互模式 **MUST** 用 `InteractionMode::{Inline,ApplicationOwned}` 及对应 `ApplicationOwnedTui` / `ApplicationOwnedRuntime` / `finish_*`。**禁止**引入 `mode_a` / `mode_b` / `ModeA` / `ModeB` 符号。口语旧称仅允许出现在对照笔记时，且 MUST 立刻映射到 Inline / ApplicationOwned。勿加兼容别名。
@@ -102,11 +101,10 @@ Keep this managed block so `llman-sdd init --update` can refresh it.
 |---|---|
 | 改组件 / 引擎 / 扩测试 | `xylitol-dev`（`references/tui-harness.md`）（落点）；边界见上「验证」 |
 | 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
-| 对照 / 合并 pi-tui 行为 | 先读 [`PI_DELTAS.md`](PI_DELTAS.md)；不得静默回退表中决议 |
-| 改产品 TUI 端 / UX / 视觉 | `l8ng-write-tui` + 产品代码 + `src/app/tui/DESIGN.md` + `just open-designing`；**勿**默认改 `agent_demo` 当产品落地 |
+| 对照 / 合并 pi-tui 行为 | 择优吸收 bugfix；默认保留本文件硬约束与代码 |
+| 改产品 TUI 端 / UX / 视觉 | `l8ng-write-tui` + 产品代码 + `src/app/tui/DESIGN.md`；**勿**默认改 `agent_demo` 当产品落地 |
 | 改包引擎 / 通用组件 / demo | `xylitol-dev`（`references/tui-harness.md`）；包内 `just demo-tui` 仅验证包能力（demo recipe 在 `crates/xylitol-tui/justfile`，根 justfile 不收 demo） |
-| 改色板 | 只改 app `DESIGN.md` → `just sync-tui-tokens` → 对齐 `Palette`；`just qa-check-tui-tokens` |
-| 打开交互设计稿 | `just open-designing`（对照稿；≠ 产品真值；≠ demo） |
+| 改色板 | 只改 app `DESIGN.md` 并对齐 `Palette`；`just qa-check-tui-tokens` |
 | 日常 / 真终端门禁 | 上「验证」表 |
 
-裁剪与待补 API 随接线演进，以代码与 `PI_DELTAS.md` 为准，不在本文件维护进度清单。
+裁剪与待补 API 随接线演进，以代码为准，不在本文件维护进度清单。

@@ -2,7 +2,7 @@
 
 本端专属边界。分层与 seam：`src/AGENTS.md`。引擎：`crates/xylitol-tui/AGENTS.md`。写法：根 `AGENTS.md`。
 
-写/改本端：先读本节职责，再跟 `l8ng-write-tui`。刻意差异台账：[`PI_DELTAS.md`](./PI_DELTAS.md)（包层另有一份，不得静默覆盖）。
+写/改本端：先读本节职责，再跟 `l8ng-write-tui`。刻意差异台账：[`PI_DELTAS.md`](./PI_DELTAS.md)。
 
 ## 角色（按职责，不按文件表）
 
@@ -17,11 +17,11 @@
 | layout / widgets | 呈现与局部交互 | 直接调 Driver / 读写 session |
 | harness / tests | 合成切片护栏 | 与生产复杂度门禁混用（测试另计） |
 
-运行时真值：本目录产品代码。交互设计稿：[`designing/`](../../../designing/)（对照辅助）——阅读顺序、索引、tui-lab SOP 与快捷键约定见 [`designing/AGENTS.md`](../../../designing/AGENTS.md)；**默认忽略** `designing/app/preview-tool/`。改固定态跑 `scripts/check_tui_designing.py`（入 `just qa`）与 `check-tui-tokens`。现行词「固定区」= layout/widgets；勿用 `shell`/`scene` 命名。
+运行时真值：本目录产品代码。视觉色板 SSOT：[`DESIGN.md`](./DESIGN.md) frontmatter；改色板后跑 `just qa-check-tui-tokens`（Palette 对照）。现行词「固定区」= layout/widgets；勿用 `shell`/`scene` 命名。
 
 **信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`docs/architecture/TUI信息呈现与固定区词汇.md`](../../../docs/architecture/TUI信息呈现与固定区词汇.md) 表内词——尤其 **滚动提示**、**通知条**、**通知栈**、**待办栏**、**尾插 / 顶插**；弃用词（挂账 / Status trail / chrome / 壳层 / system 消息等）以该表「弃用」节为准，表外旧称勿再引入。
 
-**与 `agent_demo` 分界**：包引擎演示，不是本端 SSOT、不是 designing。硬边界见 `crates/xylitol-tui/AGENTS.md`。
+**与 `agent_demo` 分界**：包引擎演示，不是本端 SSOT。硬边界见 `crates/xylitol-tui/AGENTS.md`。
 
 **跨端公共体验**：与第二产品端（gpui 桌面，尚未开放）共有能力一套学习成本——规则唯一约束板：[`docs/roadmaps/跨端同源.md`](../../../docs/roadmaps/跨端同源.md)；落地心智：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。端侧附加：改公共交互前先对齐全部端；未开放端不要写成现行 MUST，也不要在本端预埋第二套动作 id。
 

@@ -1,6 +1,6 @@
 //! Diff component — copy-friendly unified / optional side-by-side rendering.
 //!
-//! UX: designing `diff` module (`designing/user_interfaces/tui/modules/diff/`). Engine: `similar` (in-package).
+//! UX: product `DESIGN.md` + this component. Engine: `similar` (in-package).
 
 use similar::{ChangeTag, TextDiff};
 

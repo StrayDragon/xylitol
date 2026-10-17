@@ -48,7 +48,7 @@ jobs:
         run: pipx install prek
 
       # cccc-rs-cli (complexity HARD gate) is lazy-installed into .tools/ by
-      # scripts/check_complexity.py; cache that install across runs.
+      # just qa-check-complexity; cache that install across runs.
       - name: Cache .tools (cccc-rs)
         uses: actions/cache@v4
         with:

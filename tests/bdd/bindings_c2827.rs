@@ -617,7 +617,7 @@ fn test_pg_r1213_static_slots() {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
-    name = "designing-lint-in-qa"
+    name = "token-check-in-qa"
 )]
 fn test_pg_r1211_lint_gate() {}
 
@@ -904,7 +904,7 @@ fn test_atq_slash_persist() {}
 fn test_atz_token_source() {}
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "designing-lint-is-a-gate"
+    name = "token-check-is-a-gate"
 )]
 fn test_atz_design_lint_gate() {}
 #[scenario(

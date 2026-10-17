@@ -59,7 +59,7 @@ impl<T: Terminal> TUI<T> {
     /// Force sets `previous_width/height` to [`FORCE_SIZE_SENTINEL`] (pi `-1`),
     /// which makes `width_changed`/`height_changed` true so `full_render`
     /// emits `\x1b[2J\x1b[H\x1b[3J`. First paint and ordinary soft renders still
-    /// use `previous_* = 0` / real sizes (no clear). See `PI_DELTAS.md` D19.
+    /// use `previous_* = 0` / real sizes (no clear).
     ///
     /// **Resize:** call with `force=false` (pi: soft `requestRender()` on
     /// stdout resize) so real size deltas drive the same clear path.

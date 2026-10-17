@@ -32,8 +32,6 @@ pub mod harness;
 #[cfg(test)]
 mod lab_ao_perf;
 #[cfg(test)]
-mod lab_design_frame;
-#[cfg(test)]
 mod tests;
 
 use std::time::Duration;

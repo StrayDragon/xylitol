@@ -1,9 +1,0 @@
-id: footer.tier-narrowest
-cols: 40
-must_contain:
-  - "~/"
-must_not_contain:
-  - "thinking"
-lines:
-  -
-    - { text: "~/xylitol · qwen3-coder:48b", token: muted }

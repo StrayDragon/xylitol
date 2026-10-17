@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""从 wire v3 fbs 真源重新生成 Rust 产物并(可选)校验无漂移。
+"""从 fory-v3 信封 fbs 真源重新生成 Rust 产物并(可选)校验无漂移。
 
-维护脚本(不进 `just qa` 门禁:依赖本地 apache/fory clone)。
+维护脚本(不进 `just qa` 门禁:依赖本地 apache/fory clone)。跨端协议帧，不是抽象「线协议」一词。
 
 用法:
   just codegen-wire            # 重新生成并写回 src/protocol/wire/v3/generated.rs

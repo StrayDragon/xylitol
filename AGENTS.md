@@ -28,7 +28,7 @@
 - **跨端公共体验**（TUI ↔ gpui 桌面）：动作语义一套学习成本；唯一约束板 `docs/roadmaps/跨端同源.md`。
 - 产品架构总览：`docs/architecture/`；候选方向：`docs/roadmaps/`（不维护进度列）；文档闭环：`docs/AGENTS.md`。
 - TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`docs/architecture/TUI信息呈现与固定区词汇.md`（端约束见 `src/app/tui/AGENTS.md`）。新文只用表内词；弃用 / 旧称统一收在该表「弃用」对照行，正文不复述。
-- 交互设计稿：仓库顶层 `designing/`（`just open-designing`）；运行时真值、tui-lab SOP 与快捷键约定见 `designing/AGENTS.md`。
+- 产品 TUI 视觉色板：`src/app/tui/DESIGN.md`（frontmatter SSOT；`just qa-check-tui-tokens` 对照 Palette）。
 
 ## 工作原则
 
@@ -70,12 +70,12 @@
 
 ## 命令与验证
 
-- 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；全量门禁 `just qa`（或 `ci`）；需要真终端（PTY / tmux）再加 `just qa-e2e`；新机器 / 环境异常先 `just doctor`。
+- 日常：`just setup` / `fmt` / `lint` / `test` / `test-tui`；全量门禁 `just qa`（或 `ci`）；需要真终端（PTY / tmux）再加 `just qa-e2e`。新机器先 `just setup`；缺工具在第一次触发 recipe 时安装或失败。
 - 非变更门禁脚本 `scripts/check_*.py` **MUST** 经 wiring 进 `qa`；维护脚本不进门禁。
 - **prek 与 `just qa` 正交**：prek hook 只承担文本 / 元数据卫生与 commit-msg 规约；cargo 级门禁（fmt / clippy / test / doc-test）**MUST NOT** 拆成独立 hook 进 prek；push 一致性由 CI 兜底。
 - 探查：`cargo run -- --help`；文档构建与检查：`just doc` / `just qa-doc-check`。
 - 一次性探针只落 `scripts/lab_*.py`（或包 examples `lab_*`）并直接 python 调用，**不**新增 just recipe；重复使用或需流程化才升 skill / 门禁。引擎 demo 入口在 `crates/xylitol-tui/justfile`。
-- 门禁组成（quiet/verbose、真实网关 lab、环境自检、复杂度、元门禁）细则：`xylitol-dev` skill `references/qa-gates.md`。
+- 门禁组成（quiet/verbose、真实网关 lab、复杂度、元门禁）细则：`xylitol-dev` skill `references/qa-gates.md`。
 
 ### 试验 / 真实网关验证命名（`lab_`）
 

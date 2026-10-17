@@ -337,20 +337,24 @@ pub(crate) fn t_activity_fold_defaults() {
     );
 }
 
-#[when("读取 token 同步脚本与生成物")]
+#[when("读取 token 检查脚本与色板")]
 pub(crate) fn w_token_sync() {
-    let script = la_load("scripts/sync_tui_tokens.py");
-    let js = la_load("designing/app/preview-tool/generated/tokens.js");
-    let ok = script.contains("tokens.css") && script.contains("tokens.js") && js.contains("{");
+    let script = la_load("scripts/check_tui_tokens.py");
+    let design = la_load("src/app/tui/DESIGN.md");
+    let palette = la_load("crates/xylitol-tui/src/theme/palette.rs");
+    let ok = script.contains("DESIGN.md")
+        && script.contains("Palette")
+        && design.contains("colors:")
+        && palette.contains("pub const fn dark");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(if ok { "1".into() } else { "0".into() }));
 }
 
-#[then("单一脚本写出双端 token")]
+#[then("单一脚本对照 DESIGN 与 Palette")]
 pub(crate) fn t_token_sync_single_source() {
     assert_eq!(
         LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑"),
         "1",
-        "tokens.css 与 tokens.js MUST 由同一同步脚本写出"
+        "check_tui_tokens.py MUST 对照 DESIGN.md 与 Palette"
     );
 }
 
@@ -359,63 +363,60 @@ pub(crate) fn w_tui_agents_summary() {
     LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/tui/AGENTS.md")));
 }
 
-#[then("摘要写明先读产品代码与默认忽略应用壳")]
+#[then("摘要写明先读产品代码与 DESIGN.md")]
 pub(crate) fn t_tui_agents_reading_order() {
     let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     assert!(
         text.contains("本目录产品代码"),
         "MUST 写明运行时真值在产品代码"
     );
-    assert!(text.contains("默认忽略"), "MUST 写明默认忽略应用壳");
+    assert!(text.contains("DESIGN.md"), "MUST 指向 DESIGN.md 色板 SSOT");
 }
 
-#[then("摘要写明改稿须跑 designing lint")]
+#[then("摘要写明改色板须跑 token 闸")]
 pub(crate) fn t_tui_agents_lint_pointers() {
     let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     assert!(
-        text.contains("check_tui_designing.py"),
-        "MUST 指向 designing lint 脚本"
+        text.contains("qa-check-tui-tokens") || text.contains("check-tui-tokens"),
+        "MUST 指向 token 闸"
     );
-    assert!(text.contains("check-tui-tokens"), "MUST 指向词表闸");
 }
 
-#[when("读取 designing lint 闸接线")]
+#[when("读取 token 闸接线")]
 pub(crate) fn w_designing_lint_wiring() {
-    let text = format!(
-        "{}{}",
-        la_load("justfile"),
-        la_load("scripts/check_scripts_convention.py")
-    );
-    let hit = text.contains("check_tui_designing.py") as usize;
+    let text = la_load("justfile");
+    let hit =
+        (text.contains("qa-check-tui-tokens") && text.contains("check_tui_tokens.py")) as usize;
     LA_PROBE.with(|p| *p.borrow_mut() = Some(hit.to_string()));
 }
 
-#[then("designing lint 由 qa-check-scripts 执行")]
+#[then("token 闸由 qa-check-tui-tokens 执行")]
 pub(crate) fn t_designing_lint_wired() {
     let hits: usize = LA_PROBE
         .with(|p| p.borrow().clone())
         .expect("探针已跑")
         .parse()
         .expect("计数可解析");
-    assert!(hits > 0, "designing lint 脚本 MUST 在 just 接线里出现");
+    assert!(
+        hits > 0,
+        "qa-check-tui-tokens MUST 接线 check_tui_tokens.py"
+    );
 }
 
-#[when("枚举 designing 固定态样例")]
+#[when("枚举产品视觉槽位")]
 pub(crate) fn w_designing_static_slots() {
-    let regions = la_load("designing/user_interfaces/tui/shell.regions.yaml");
-    let modules = std::fs::read_dir("designing/user_interfaces/tui/modules")
-        .expect("modules 目录可读")
-        .count();
-    let ok = (regions.contains("models") && modules >= 3) as usize;
+    let design = la_load("src/app/tui/DESIGN.md");
+    let ok = (design.contains("models") && design.contains("会话树") && design.contains("待办栏"))
+        as usize;
     LA_PROBE.with(|p| *p.borrow_mut() = Some(ok.to_string()));
 }
 
-#[then("固定态样例覆盖模型与树与待办")]
+#[then("视觉槽位覆盖模型与树与待办")]
 pub(crate) fn t_designing_static_slots_shape() {
     assert_eq!(
         LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑"),
         "1",
-        "固定态样例 MUST 覆盖模型列表等高频槽位"
+        "DESIGN.md MUST 覆盖 models / 会话树 / 待办栏"
     );
 }
 
@@ -516,7 +517,11 @@ pub(crate) fn t_check_scripts_wired() {
 
 #[then("复杂度闸以 cccc-rs 为 SSoT")]
 pub(crate) fn t_complexity_gate_ssot() {
-    let text = la_load("scripts/check_complexity.py");
+    let text = la_load("justfile");
+    assert!(
+        text.contains("qa-check-complexity"),
+        "qa MUST 串到 qa-check-complexity"
+    );
     assert!(
         text.to_lowercase().contains("cccc"),
         "复杂度闸 MUST 以 cccc-rs 指标为 SSoT"

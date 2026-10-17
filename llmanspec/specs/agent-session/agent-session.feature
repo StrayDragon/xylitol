@@ -255,7 +255,7 @@
       那么 构建对 leaf 分支回退压缩
   @req:r1084
   规则: resume-import-provider-prefix-path
-    resume_session / import_from_jsonl（或等价加载）后用于打模型的 history 须经与同进程续跑相同的唯一路径：SessionEntry → as_agent_message（或等价）→ project_for_llm → ResponsesAssembler；有损 Env 折叠文案 须形状稳定。不得在 infra 另建平行 Env 折叠；不得无显式 change 改稳定折叠串。system date 日界见相邻 c1905；tools 冻表见 c1900。由单测与维护 lab 覆盖，不得强制新 BDD step。
+    resume_session / import_from_jsonl（或等价加载）后用于打模型的 history 须经与同进程续跑相同的唯一路径：SessionEntry → as_agent_message（或等价）→ project_for_llm → ResponsesAssembler；有损 Env 折叠文案 须形状稳定。不得在 infra 另建平行 Env 折叠；不得无显式 change 改稳定折叠串。system date 日界见相邻 c1905；tools 冻表见 c1900。由单测覆盖，不得强制新 BDD step。
 
     场景: resume-single-import-path
       当 读取会话恢复原路径

@@ -22,7 +22,6 @@
 | 工具 | 用途 | 入口 |
 |---|---|---|
 | wheel 延迟签名 E2E | 真 PTY 注 SGR，量首响/排空/帧数——「卡」的客观回归界 | `tests/tui_e2e/pty.rs::pty_product_wheel_latency_signature`（`just test-tui-e2e-pty`） |
-| 管线 A/B/C example | 同壳变体（轮询节奏/合帧/纯 CSI）横向手感排除法 | `crates/xylitol-tui/examples/lab_wheel_pipeline.rs` |
 | AO 性能 lab | busy 混合/滚轮帧成本/输出字节量 | `src/app/tui/lab_ao_perf.rs`（`lab_ao_busy_mixed_perf` 等，`#[ignore]`） |
 | lag/wheel 观测 | 产品内 paint 耗时 + wheel delta 序列（顿挫 signatures） | `XYLITOL_DEBUG=1 RUST_LOG=xylitol::lag=info,xylitol::wheel=debug` → `just obs-tui-lag` |
 

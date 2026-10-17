@@ -3055,9 +3055,8 @@ impl FakeCodingAgentApp {
             "This demo (package `just demo-tui` / `agent_demo`) is the **package** Inline harness. \
              ApplicationOwned: package `just demo-tui-alt-screen` (`agent_demo_alt`). \
              It MAY differ from product chrome / copy. Product runtime = \
-             `src/app/tui` code; color tokens = `DESIGN.md`. Interactive draft = \
-             repo-root `designing/` (`just open-designing`). Tokens: DESIGN.md → \
-             `just sync-tui-tokens` → designing/app/preview-tool/generated; keep `Palette` aligned. Runtime MD: `/md` · plates `md-list-wrap` / \
+             `src/app/tui` code; color tokens = `DESIGN.md` (gate: `just qa-check-tui-tokens`). \
+             Runtime MD: `/md` · plates `md-list-wrap` / \
              `narrow-clamp`.",
         );
         self.set_status("Ready · try /md for runtime MD");

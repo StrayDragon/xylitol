@@ -1,10 +1,10 @@
 ---
-brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa 正交 / just doctor 自检 / 复杂度门禁 cccc / 元门禁）"
+brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa 正交 / 复杂度门禁 cccc / 元门禁）"
 ---
 
 # 质量门禁（`just qa` 及其纪律）
 
-命令入口（日常 / 全量 / 真终端 / doctor）见根 `AGENTS.md`「命令与验证」；**组成以 `justfile` 为 SSOT**，本文件只讲纪律与细则，不枚举步骤（枚举会腐化）。
+命令入口（日常 / 全量 / 真终端）见根 `AGENTS.md`「命令与验证」；**组成以 `justfile` 为 SSOT**，本文件只讲纪律与细则，不枚举步骤（枚举会腐化）。
 
 ## 门禁纪律（MUST）
 
@@ -13,9 +13,9 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa �
 3. **push 一致性由 CI 兜底**（GitHub Actions），不用本地 hook 卡推送。LFS pre-push 由 git-lfs 原生 hook 负责（`just setup` 经 `git lfs install --local` 确保安装）。
 4. `just qa` 是开发过程中的**手动门禁**，push 前跑不跑靠自觉；`qa` 输出默认 quiet，`just qa normal` / `verbose` 或 `JUST_VERBOSITY=` 调整。
 
-## 环境自检（doctor）
+## 环境
 
-新机器 / 环境异常先 `just doctor`（裸 `just` 会在有环境警告时自动提示）。检查项集中在 `scripts/doctor_dev_env.py` 的 `CHECKS` 表：加一项 = 一个返回 `(ok, detail)` 的探针。
+新机器先 `just setup`（hooks、LFS、可选 cccc 进 `.tools/`）。缺 `cccc-rs` 时 `qa-check-complexity` 会 `cargo install cccc-rs-cli`（pin 见 justfile）。其它缺工具在第一次触发对应 recipe 时失败，按报错补。
 
 ## 真网关 lab（live-provider）
 
@@ -23,8 +23,8 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa �
 
 ## 复杂度门禁
 
-- **TUI 端（HARD）**：产品 TUI 入口协调者的函数级复杂度经 `scripts/check_complexity.py`（cccc-rs）强制：Sonar cognitive ≤32 且 McCabe cyclomatic ≤27；测试专用模块不参与。硬门禁组成见 `justfile`。
-- **全树雷达（软信号）**：`just complexity`（`--radar`）报告全生产树 cccc-rs top-cognitive 排名，作 review 参照；**不以文件行数**作为质量约束（行数硬测会逼出假拆分）。
+- **TUI 端（HARD）**：产品 TUI 入口协调者的函数级复杂度经 `just qa-check-complexity`（cccc-rs）强制：Sonar cognitive ≤32 且 McCabe cyclomatic ≤27；测试专用模块不参与。硬门禁组成见 `justfile`。
+- **全树雷达（软信号）**：`just complexity` 报告全生产树 cccc-rs top-cognitive 排名，作 review 参照；**不以文件行数**作为质量约束（行数硬测会逼出假拆分）。
 - 阈值与豁免细则：`src/AGENTS.md`「复杂度与体量」。
 
 ## 元门禁（为什么「检查必被接线」）

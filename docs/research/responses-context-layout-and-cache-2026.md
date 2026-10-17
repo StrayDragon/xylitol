@@ -129,7 +129,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 ### 5.2 Lab：resume × reasoning 回放 × prompt cache（c1925 · 2026-08-06）
 
-> 维护脚本：`cargo run -p xylitol-ai-bridge --example lab_resume_prompt_cache`（**不进 qa**）。配置：`<global-dir>/dev/live-provider.yaml`（Ornith / llama.cpp）。试验命名统一 `lab_`（见根 `AGENTS.md`「试验 / 打网命名」）；qa 串行闸二进制为 `lab_responses_prompt_cache`。
+> 回归闸：`crates/xylitol-ai-bridge/tests/lab_responses_prompt_cache.rs`（`just qa` 串行 `qa-test-live-provider`）。配置：`<global-dir>/dev/live-provider.yaml`（Ornith / llama.cpp）。试验命名统一 `lab_`（见根 `AGENTS.md`「试验 / 打网命名」）。
 
 **产品策略（钉死）**：回放 **只有默认全量**——有合法 `thinkingSignature` 则原样进 `input`；**不**做 Strip/BestEffort 旋钮（改前缀易破 cache）。
 
@@ -150,7 +150,7 @@ coding agent 默认：环境类（cwd）可留 system；高变读数（工具计
 
 ### 5.3 Lab：session 前缀幂等 × resume/import（c1930 · 2026-08-06）
 
-> 维护脚本：`cargo run -p xylitol-ai-bridge --example lab_session_prefix_idempotency`（**不进 qa**）。规划/证据：`c1930` `landing.tmp.md` §5（c1930 已冻入 `llmanspec/changes/archive/freezed_changes.7z.archived`，经 `llman-sdd archive freeze --list` 检索）。
+> 回归闸：包内单测 `assemble_prefix_idempotent_and_serde_roundtrip`。规划/证据：`c1930` `landing.tmp.md` §5（c1930 已冻入 `llmanspec/changes/archive/freezed_changes.7z.archived`，经 `llman-sdd archive freeze --list` 检索）。
 
 **主钉**：resume/import 后 Responses `input`（+tools）前缀与同进程续跑在固定旋钮下规范化相等；**本波不做**状态栏。
 

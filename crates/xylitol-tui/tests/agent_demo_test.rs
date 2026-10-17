@@ -1094,12 +1094,12 @@ fn agent_demo_plate_playground_sync_mentions_c555() {
     h.render_result().expect("after playground-sync plate");
     let text = h.tui.terminal.scroll_buffer().join("\n");
     assert!(
-        text.contains("c555") && text.contains("sync-tui-tokens"),
-        "plate playground-sync should mention c555 sync; got:\n{text}"
+        text.contains("c555") && text.contains("qa-check-tui-tokens"),
+        "plate playground-sync should mention c555 token gate; got:\n{text}"
     );
     assert!(
-        text.contains("designing"),
-        "tip should point at repo-root designing draft; got:\n{text}"
+        text.contains("DESIGN.md"),
+        "tip should point at DESIGN.md color SSOT; got:\n{text}"
     );
 }
 

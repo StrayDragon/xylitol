@@ -1,9 +1,0 @@
-id: editor.tier-narrowest
-cols: 40
-must_contain:
-  - ">"
-must_not_contain:
-  - "enter submit"
-lines:
-  -
-    - { text: "> ", token: muted }

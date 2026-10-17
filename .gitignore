@@ -215,4 +215,5 @@ yarn-debug.log*
 
 dist/
 coverage/
-/llmanspec/.context
+# llman-sdd pageindex cache (root + crate instances).
+**/llmanspec/.context/
