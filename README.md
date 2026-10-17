@@ -42,7 +42,7 @@ cargo build --release --locked
 ```bash
 mkdir -p .xylitol
 cp configs/example.yaml .xylitol/config.yaml
-cp .xylitol/secret.env.example .xylitol/secret.env   # 填入你的 API key
+cp configs/secret.env.example .xylitol/secret.env   # 填入你的 API key
 ```
 
 然后编辑 `config.yaml`,取消注释 `default_model` 与至少一个 `models` 条目。API key 通过 `{{ secret.DEEPSEEK_API_KEY }}` 这样的模板从 `secret.env` 引用,不要写进会被提交的配置文件。`configs/example.yaml` 是带注释的完整样例,覆盖多模型、MCP 与 OTEL。
