@@ -319,9 +319,9 @@ pub(crate) mod install {
 
     pub(crate) fn try_build_otlp_reporter(cfg: &OtelConfig) -> Option<Box<dyn Reporter>> {
         if cfg.wants_otlp_http() {
-            note_otlp_disabled(
+            note_otlp_disabled(Some(
                 "otlp-http not effective: binary built without feature `otel`".to_string(),
-            );
+            ));
             log::warn!(
                 target: "xylitol::otel",
                 "otel config requests otlp-http but binary built without feature `otel`; remote export disabled"

@@ -116,6 +116,16 @@ def _probe_sccache() -> tuple[bool, str]:
     return False, "sccache not configured — optional, but cold builds are much slower"
 
 
+def _probe_mold() -> tuple[bool, str]:
+    """Linux rustflags in `.cargo/config.toml` call clang + mold."""
+    if os.uname().sysname != "Linux":
+        return True, "mold not required off Linux"
+    missing = [cmd for cmd in ("clang", "mold") if not _has(cmd)]
+    if missing:
+        return False, f"missing {', '.join(missing)} — Linux linker is clang -fuse-ld=mold"
+    return True, "clang + mold present (Linux linker)"
+
+
 def _probe_toolchain() -> tuple[bool, str]:
     """Effective cargo must be the dated nightly pinned by rust-toolchain.toml."""
     pin = ""
@@ -168,6 +178,7 @@ CHECKS: list[Check] = [
     Check("pyyaml", "warn", "python3 -m pip install --user pyyaml  (or just setup)", _probe_pyyaml),
     Check("worktree-target", "warn", 'eval "$(just cargo-wt-env)"', _probe_worktree_target),
     Check("sccache", "info", "cargo install sccache + RUSTC_WRAPPER（理由见 AGENTS.md Worktree 并行开发）", _probe_sccache),
+    Check("mold", "warn", "pacman -S clang mold  (or the distro equivalent)", _probe_mold),
     Check("live-provider", "info", "see `just gen-live-provider-example`", _probe_live_provider),
 ]
 

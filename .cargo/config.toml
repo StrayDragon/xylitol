@@ -1,0 +1,16 @@
+# rustflags 不合并：[target.*.rustflags] 会整体覆盖 [build].rustflags。
+# Linux 目标必须把 -Zshare-generics 与 mold 写在同一份。
+#
+# -Zshare-generics 是 nightly-only（本仓 pin 见 rust-toolchain.toml）。
+# 多集成测试二进制各自静态链接整树，靠它去掉重复泛型实例。
+
+[build]
+rustflags = ["-Zshare-generics"]
+
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-Zshare-generics", "-C", "link-arg=-fuse-ld=mold"]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-Zshare-generics", "-C", "link-arg=-fuse-ld=mold"]

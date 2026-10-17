@@ -18,6 +18,7 @@ pub(crate) mod debug_fixtures;
 #[cfg(feature = "cli")]
 pub mod cli;
 
+#[cfg(feature = "server")]
 pub mod server;
 
 // Test-support contract (spec `package-tui-testing` @req:r1668): headless frame

@@ -27,5 +27,8 @@ pub mod runtime;
 #[cfg(feature = "server")]
 pub mod subcommand;
 
+#[cfg(feature = "server")]
 pub mod wire_v3;
+
+#[cfg(feature = "server")]
 pub mod ws;

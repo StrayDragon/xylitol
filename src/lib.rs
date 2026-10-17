@@ -65,8 +65,10 @@ pub(crate) mod utils;
 
 // ── Curated `pub use` (c500 / architecture.ar09) ─────────────────────
 
+#[cfg(feature = "server")]
+pub use crate::app::core::attach::attach_preflight_with;
 pub use crate::app::core::attach::{
-    DEFAULT_ATTACH_URL, attach_fail_message, attach_preflight_with, probe_host, resolve_attach_url,
+    DEFAULT_ATTACH_URL, attach_fail_message, probe_host, resolve_attach_url,
 };
 #[cfg(feature = "server")]
 pub use crate::app::core::driver::{LinkHealth, LinkTunings, XyRemoteDriver};

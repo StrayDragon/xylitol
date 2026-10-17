@@ -15,6 +15,7 @@ mod in_process;
 #[cfg(feature = "server")]
 mod wire_v3_client;
 
+#[cfg(feature = "server")]
 pub use http_ws::dual_rail_event_parity;
 
 #[cfg(feature = "server")]

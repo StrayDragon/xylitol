@@ -16,6 +16,8 @@
 *.tmp.md
 # Temp notes (AGENTS: _HANDOFF / *.tmp.md, don't promote to norms)
 _HANDOFF/
+# Local planning spine (not a spec / not AGENTS). Do not commit.
+_TODO.md
 *~
 
 *.bak
