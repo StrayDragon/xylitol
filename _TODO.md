@@ -1,34 +1,54 @@
-# xylitol 大调整规划脊柱
+# xylitol 规划脊柱
 
 本文件是规划真值，进 git 便于 diff。不升格为 `AGENTS.md` / spec。
 进度只改本文件。稳定规则仍写进 `AGENTS.md`。行为合约仍写进 `llmanspec/`。
 
 交流风格: ../STC-Simplified-Technical-Chinese
 
-盘点日期：2026-10-17。
-依据：仓库实读 + `xylitol-dev` + `rust-build-tune` + `xylitol-x-rutis-temp/skills`。
+## 现在
 
-进度：完成列见 §4（附加说明链到 [附](#附) 同名 ID）。下一动作：§13 核心三面推荐列 → W0.1 基线 → 按列清理 → 再 W1.3b / W1.4 / W2.0。
+下一刀：**W1.3b**（otel 代码路径，default 仍开）→ **W1.4**（`image` feature-gate，default 仍开）→ **W2.0**（改 AGENTS crate 图）。
+
+| 要做的事 | 去哪 |
+|---|---|
+| 目标 crate 图、双写、ai-bridge | [§2](#TARGET) |
+| 未完成批次 | [§3](#BATCH) |
+| S0 必须带走什么 | [§4](#CORE) |
+| 预览（不进本轮） | [附录 C](#DESIGN-WASM) / [附录 D](#UI-WORKFLOW) |
+
+怎么读：先本节，再 §2 总图，再 §3 未完成表。附录 A/B 是盘点与完成记录，主线不依赖它们。
+
+顺序不得颠倒：工具链（WS0，已做）→ feature 真能关 → 契约叶 + 拆 ai-bridge HTTP → 新 crate 重写、旧 `src/` 双写。不为编译速度拆 crate。本轮不引入 rutis。
+
+Host 侧 crate 边界 = 插件的替换 / 开关 / 生命周期。客户端是独立 `xylitol-app-*`，不是 Host 插件。
+产品 TUI 默认 attach 本机监听（`xylitol-serve`）。MCP 有配置才装配，不得当死代码删。
+禁止预埋 gpui / LSP / DAP / Sub-Agent 空壳。`incremental = false` 保持。default features 仍含 `cli,tui,otel,server,mcp`，只让关掉时真能关。
+
+---
+
+## 目录
+
+| 节 | 内容 |
+|---|---|
+| [§1](#constraints) | 固定约束与 SDD 路由 |
+| [§2](#TARGET) | 目标 crate 图、双写、ai-bridge |
+| [§3](#BATCH) | W* 未完成批次 |
+| [§4](#CORE) | 核心三面（带走范围） |
+| [§5](#KEEP) | KEEP / SLIM / DELETE |
+| [§6](#NAMES) | 改名对照 |
+| [§7](#NO) | 本轮不做 |
+| [§8](#AGENTS) | 抽出契约叶前必须改的 AGENTS / spec |
+| [§9](#SRC) | 来源 |
+| [附录 A](#FACTS) | 现状盘点 |
+| [附录 B](#附) | 已完成批次说明 |
+| [附录 C](#DESIGN-WASM) | 预览：框选覆盖层 |
+| [附录 D](#UI-WORKFLOW) | 预览：工作流原语 |
+
+一事只在一节写全，他处用指针。
 
 ---
 
-## 0. 结论
-
-本轮做四件事，顺序不得颠倒：
-
-1. 工具链加速编译（profile / mold / sccache / `-Zshare-generics`）。
-2. 让已声明的 feature 真能关，并把非标准名字改到目标词表。
-3. 按插件边界抽出多 crate（S0，行为不变），给后续 rutis 聚合留落点。
-4. 记下 S1 起的 rutis 重写靶心。本轮不引入 rutis。
-
-不为编译速度拆 crate。编译慢先调工具链。
-crate 边界 = 插件的替换 / 开关 / 生命周期边界，不是 `protocol` / `agent` / `infra` / `app` 各一包。
-
-产品 TUI 默认 attach 本机 Host。HTTP Host **不得删**。
-MCP 是配置后置产品，**不得当死代码删**。
-未实现的 gpui / LSP / DAP / Sub-Agent **不得预埋空壳**。
-
----
+<a id="constraints"></a>
 
 ## 1. 固定约束
 
@@ -41,7 +61,7 @@ MCP 是配置后置产品，**不得当死代码删**。
 7. 同 crate 的不同 worktree **禁止**共用 `CARGO_TARGET_DIR`。
 8. 改名一次性改调用点。不留兼容别名，不留 `#[deprecated]`。
 
-### 1.1 SDD 路由（三条）
+### 1.1 SDD 路由
 
 | 类别 | 何时 | 做什么 |
 |---|---|---|
@@ -51,296 +71,253 @@ MCP 是配置后置产品，**不得当死代码删**。
 
 发现「以为组织改动、实际改了行为」时立刻停，转 propose。
 
----
-
-## 2. 现状盘点（事实）
-
-### 2.1 体量
-
-| 区域 | 约行数（tokei Code / 文件总行） | 来源 |
-|---|---|---|
-| `src/` 合计 | Code ~10.0 万 / 总行 ~11.8 万 | 356 个文件 |
-| `src/app` | Code ~5.4 万（其中 `app/tui` Code ~3.6 万） | 最大单块 |
-| `src/agent` | 总行 ~2.1 万 | ReAct / capabilities / prompt |
-| `src/infra` | 总行 ~2.1 万 | ports 实现 |
-| `src/protocol` | 总行 ~1.3 万 | 词表 + ports + wire |
-| `crates/xylitol-tui` | Code ~2.4 万 | 零引用主 crate |
-| `crates/xylitol-ai-bridge` | Code ~0.8 万 | 主 crate 必选 path 依赖 |
-| `tests/` | Code ~3.8 万 | 含 BDD |
-
-Workspace 成员：根包 `xylitol` + `crates/xylitol-tui` + `crates/xylitol-ai-bridge`。
-`vendor/gherkin` 是 `[patch.crates-io]`，不是 member。
-`cargo metadata` resolve 节点约 594 个。
-
-### 2.2 Feature 与依赖污染
-
-根 `Cargo.toml` default = `cli, tui, otel, server, mcp`。
-
-| 项 | 事实 |
-|---|---|
-| `cli = []` | 空 feature，不裁依赖 |
-| `server` | optional；W1.1 后可关（default 仍开） |
-| `mcp` | optional `rmcp`；W1.2 后可关（default 仍开；运行时仍需配置才装配） |
-| `image` / `fory` / `jsonschema` / `minijinja` / `schemars` / `fastrace` | 非 optional，始终进主 crate |
-| `salvo` / `tokio-tungstenite` / `xylitol-tui` / OTel 三件套 | 随 feature 可选 |
-
-### 2.3 编译配置
-
-已落地（磁盘优先，不是速度优先）：
-
-- dev：`opt-level = 0`，依赖 `opt-level = 3`，`debug = "line-tables-only"`，`incremental = false`，`codegen-units = 16`
-- release：`opt-level = "z"`，`lto = "thin"`，`strip = "symbols"`，`panic = "abort"`，`codegen-units = 1`
-
-已落地（续，W0）：`.cargo/config.toml` 里 Linux mold + `-Zshare-generics`（同一份 rustflags）；CI `apt install clang mold`。Cranelift 仍全局不用。
-主 worktree 用仓库内 `target/`；`scripts/cargo_worktree_env.sh` 只在额外 worktree / 显式 eval 时隔离（有 sccache 则导出 `RUSTC_WRAPPER`）。CI 缓存仍是 `Swatinem/rust-cache`，不强制 sccache。
-
-本机 `target/` 约 45G，其中 `debug/build` 约 44G（约 5087 个 fingerprint 目录，属历史堆积）。
-集成测试二进制 23 个（`xylitol-tui` 占 19 个）。BDD 收成 1 个 `tests/bdd.rs`。
-Cranelift 受 `aws-lc-rs` / `ring` 阻断，全局不用。
-
-说明：用户痛点是编译慢。现行 profile 用关增量换磁盘。这是真实冲突，见第 8 节决策 1。
-
-### 2.4 产品主线 vs 树内后置
-
-来源：`docs/architecture/产品分层总览.md`。
-
-主线：对话循环、内置工具、会话持久化 / 导出、压缩、两家模型 API、Trust、图像附件。
-默认入口：产品 TUI attach 本机 Host（未在听失败）。Print / 嵌入可同进程。
-后置：MCP（有配置才装配）、更多厂商。
-
-spec `layer-architecture.feature` `@req:r1532` 要求提供 server 应用面（`POST /rpc` + `WS /rpc`）。删 Host 会改行为合约。
-
-未实现：gpui、Web 控制台、DAP、LSP、Sub-Agent（GitHub FR，索引 [#28](https://github.com/StrayDragon/xylitol/issues/28)；草案在 `delayed-changes/`）。
-
-### 2.5 现行规则冲突点
-
-`src/AGENTS.md` / 根 `AGENTS.md`：单 crate 逻辑分层，**不为分层拆 crate**；禁止再抽 `xylitol-domain`。
-`layer-architecture.feature` purpose 注释写了「单 crate」。
-rutis 重写 skill：crate 边界镜像插件边界；S0 必先行。
-
-S0 第一批抽取之前必须改 AGENTS。spec 上的「单 crate」走 validate-only 直接编辑。
+提交：工具链 `build:` / `chore:`；重写 `feat:` / `refactor:`；行为 `fix:`；SDD `chore(sdd):` / `archive(sdd):`。
+不碰（除非该批次点名）：`docs/architecture/`、`_INTERVIEW/`、`delayed-changes/legacy/`。改行为才动 `llmanspec/`。
 
 ---
 
-## 3. 最终目标形态
+<a id="TARGET"></a>
 
-目标 workspace 约 16–18 个 crate（甜区 15–25）。
-来源：`xylitol-rutis-rewrite/references/crate-graph.md` + `crate-naming.md`。
+## 2. 目标形态（重写 + `src/` 双写）
+
+新 crate 按契约重写，禁止 `pub use` 旧 `src/` 模块凑编译。旧 `src/` 继续出产品二进制，对照 [§4](#CORE) 后再删对应旧模块。不留兼容 shim。
+
+三层分名：**角色**（执行权威）/ **服务提供方**（服务目录，`xylitol-runtime`）/ **载体**（直调或 WS，`xylitol-serve`）。crate 名只表达其中一层。不要 `xylitol-host`、`xylitol-client`、`xylitol-server-host`。
+
+`XyDriver` 是 runtime 侧应用协议。客户端只通过 attach（信封或直调）消费。S1 rutis 只装配 runtime 进程内的 Host 侧插件。`xylitol-app-tui` 不是 rutis fiber。
+
+### 2.1 总图
 
 ```text
 crates/
   xylitol-core/                 词表 + ports + errors
   xylitol-protocol/             四象限信封 + fory-v3 + PROTOCOL_VERSION
-  xylitol-kernel/               组合根 + trust + config→装配（S0 仍手工；S1 换 rutis）
-  xylitol-host/                 HostServer 载体 + 会话槽
-  xylitol-client/               XyDriver + 载体（in-process / http-ws）
-  xylitol-bin/                  CLI / Print
-  xylitol-tui/                  已存在，引擎
-  xylitol-ai-bridge/            LLM 叶：DTO + accounting + WirePolicy + FakeProvider（无 HTTP）
+                                可含很薄的 attach client 半；过厚再拆 xylitol-attach
+  xylitol-runtime/              执行权威 + 服务目录 + 组合根 / trust
+                                进程内直调合法。S1 在此换 rutis 装配
+  xylitol-serve/                只把 runtime 挂到 HTTP/WS。不是角色定义
+  xylitol-tui/                  TUI 引擎 lib。零引用产品。不改名
+  xylitol-app-tui/              产品 TUI 客户端。从 src/app/tui 重写，独立分发
+  xylitol-app-print/            Print 客户端。从 src/app/cli print 重写
+  xylitol-ai-bridge/            LLM 叶，无 HTTP。拆分见 2.2
   xylitol-rutis/                S1 才建；唯一 use rutis
-  plugins/
+  xylitol/                      极瘦 argv：选 app-tui / app-print / serve
+  plugins/                      仅 Host 侧能力，由 runtime 装配
     xylitol-core-plugin-react/
     xylitol-core-plugin-session/
     xylitol-core-plugin-compaction/
-    xylitol-core-plugin-provider-openai/      含 OpenAI HTTP（async-openai）
-    xylitol-core-plugin-provider-anthropic/   含 Anthropic HTTP（reqwest）
+    xylitol-core-plugin-provider-openai/
+    xylitol-core-plugin-provider-anthropic/
     xylitol-core-plugin-tools/
-    xylitol-core-plugin-mcp/     feature mcp；rmcp 只进这里
+    xylitol-core-plugin-mcp/
     xylitol-core-plugin-hooks/
-    xylitol-core-plugin-tui/     复用 xylitol-tui
 ```
 
-依赖方向：插件只依赖 `xylitol-core`（必要时只读 protocol DTO），插件不横向依赖。
-provider 方言插件额外依赖 `xylitol-ai-bridge` 叶（DTO / accounting），不依赖另一个方言插件。
-`kernel` → core + protocol。`host` / `client` → kernel。`bin` → host + client。
-S1 之后只有 `xylitol-rutis` 直接 `use rutis`。
+| 角色 | crate | 说明 |
+|---|---|---|
+| TUI 引擎 | `xylitol-tui` | lib。通用组件与合帧。demo ≠ 产品 |
+| 产品 TUI | `xylitol-app-tui` | 独立分发的客户端。依赖引擎 + protocol/attach。`cargo build -p xylitol-app-tui` |
+| Print | `xylitol-app-print` | 独立客户端。同进程直调 runtime 是载体，不是 Host 插件 |
+| 操作器 | `xylitol-runtime` | 服务目录；Print / 嵌入只链这里 |
+| 监听 | `xylitol-serve` | 产品 TUI 默认 attach 本机这一层 |
+| 进程入口 | 根包 `xylitol` | 只解析 argv |
 
-每个 crate **内部**仍守：`app → agent|infra → protocol`；`agent` ↛ `infra`；`wire` ↛ `ports`。
-禁止按层各拆一 crate。禁止 `xylitol-domain`。禁止把 LLM 叶从 bridge 搬回主仓。
+新客户端 = 新 `xylitol-app-*`，只依赖协议 + attach，不进 `plugins/`。
+Host 侧插件只依赖 `xylitol-core`（必要时只读 protocol DTO），插件不横向依赖。
+方言插件额外依赖 `xylitol-ai-bridge` 叶。
+`xylitol-app-tui` 额外依赖 `xylitol-tui`。
+`runtime` → core + protocol。`serve` → runtime + protocol。极瘦 bin → 所选 app 或 serve。
 
-内核（S1 起）必须不知道 ReAct、压缩、provider、TUI 的存在。
-S0 先把文件按插件边界切开；内核「不知情」在 S1 用依赖方向强制。
+每个 crate 内部仍守分层：`app → agent|infra → protocol`；`agent` ↛ `infra`；信封 ↛ ports。
+禁止按层各拆一 crate。禁止 `xylitol-domain`。禁止预埋 gpui / LSP / DAP 空壳。
+`vendor/gherkin` 保持上游包名 + path patch。
 
-`vendor/gherkin` 保持上游包名 + path patch。不加 `xylitol-` 前缀。
+双写：
+
+| 轨 | 做什么 | 编译 |
+|---|---|---|
+| 旧 | `src/` 出产品 `xylitol` | 照旧 |
+| 新 | `xylitol-runtime` / `xylitol-serve` / `xylitol-app-*` 按信封与 `.feature` 重写 | `cargo build -p …` |
+
+共享只允许：跨端协议形状、`.feature` 句子、固定区词汇、DESIGN 色板。
+每个 worktree 必须独立 `CARGO_TARGET_DIR`。
+Harness：引擎按键→状态在 `xylitol-tui`；产品场景 / 假 Host 预览在 `xylitol-app-tui`。
+
+S0 先做：契约叶、ai-bridge、工具链。不要把 `src/app` 原样搬成 `xylitol-host` / `xylitol-client`。
+
+<a id="AI-BRIDGE"></a>
+<a id="W2.2b"></a>
+
+### 2.2 ai-bridge 拆分
+
+现在的 `xylitol-ai-bridge` 把 LLM 叶和两套 HTTP 捆在一起。S0 必须拆。不要抽 `xylitol-llm-types`，不要把 DTO 搬回主仓。
+
+```text
+xylitol-ai-bridge                 叶：DTO / accounting / WirePolicy / FakeProvider / HeaderBag
+        ▲                                    ▲
+plugin-provider-openai            plugin-provider-anthropic
+（async-openai；Responses/Completions / deepseek）   （reqwest Messages）
+```
+
+`AiBridgeLlmAdapter` 留在叶上。主仓 `src/infra/provider` 的 `AdapterXyModel` / `map.rs` 搬进对应方言插件，不再包第三层。
+
+| 块 | 约行 | 热度 | 去向 |
+|---|---|---|---|
+| DTO（message / chunk / json_parse） | 594 | 流式块每 token | 叶 |
+| accounting | 189 | compaction `heuristic_token_count` | 叶。禁止 tiktoken / RemoteCount |
+| usage 类型 | 359 | 响应结束 | 类型留叶；`from_openai` / `from_anthropic` 跟方言 |
+| WirePolicy + defaults | 206 | 请求装配 | 叶 |
+| thinking 解析 | 480 | 请求前一次 | 解析留叶；`apply_thinking_*` 跟方言 |
+| FakeProvider | 571 | 测 / 预览 | 叶 |
+| error / hooks HeaderBag | 78 | 契约 | 叶 |
+| tool_wire | 115 | 工具名过网关 | 叶 |
+| OpenAI Responses + Completions + client + assembler + hooks mw | ~3510 | 热点；`async-openai` | `plugin-provider-openai` |
+| Anthropic Messages | 1194 | 热点；reqwest | `plugin-provider-anthropic` |
+| dialect/deepseek | 71 | 冷 | openai 插件 |
+| trace + obs_session + attribution | 1344 | 观测 | 方言插件；共享 attr 可留叶 |
+| config live-provider 路径 | 115 | lab | 叶 config 或 lab，不进内核 |
+| `src/infra/provider` map 壳 | 另计 | DTO→`XyChunk` | 各方言插件内 |
+
+行数来自 `crates/xylitol-ai-bridge/src` 的 `wc -l`，合计 9172。准入：P1 两个方言；P6 Anthropic 构建不得编 `async-openai`。
+
+不要：按文件再拆 assembler；DeepSeek 单独 crate；等 S1 再拆 HTTP；把 provider-trace 放进内核。
+
+批次：W2.2b，在 W2.2 之后、W2.3 之前。`package-ai-bridge*.feature` 若把单包 HTTP 写成主语，validate-only 改句子。
 
 ---
 
-## 4. 工作流
+<a id="BATCH"></a>
 
-### WS0 工具链（最先）
+## 3. 批次
 
-编译痛点在工具链，不在拆 crate。顺序：profile → mold → sccache → 泛型去重。crate 图最后。
+编译痛点在工具链，不在拆 crate。WS0 已完成，记录见 [附录 B](#附)。
 
-| ID | 项 | SDD | 回退 | 完成 |
-|---|---|---|---|---|
-| W0.1 | `lab_` 基线：`cargo --timings`、主路径墙钟、`du` 拆账 | skip-SDD | **临时**：本文件全部 W* 收口后删脚本或 freeze 归档 | [是](#W0.1) |
-| W0.2 | 新增 `.cargo/config.toml`：Linux mold。rustflags 必须与 share-generics 写在同一份 | skip-SDD | 删 config | [是](#W0.2) |
-| W0.3 | 主开发接通 sccache（`just cargo-wt-env` 已有脚本） | skip-SDD | 去掉 `RUSTC_WRAPPER` | [是](#W0.3) |
-| W0.4 | `-Zshare-generics`（23 个集成测试二进制） | skip-SDD | 去掉 rustflags | [是](#W0.4) |
-| W0.5 | `incremental` / `codegen-units`：等第 8 节决策 1 | skip-SDD | 复原现行磁盘 profile | [是](#W0.5) |
-| W0.6 | 授权后 `cargo clean` 清 45G 死历史 | skip-SDD | 不可逆；下一轮冷编译变慢 | [是](#W0.6) |
-| W0.7 | 补写或删除悬空 `docs/research/rust-disk-worktree-cache-2026.md` 指针 | skip-SDD | 复原注释 | [是](#W0.7) |
-| W0.8 | 全局 Cranelift | **不做** | — | — |
-
-### WS1 瘦身 + 改名（S0 之前）
-
-先缩小表面、改到目标词表，再搬文件。少一次全树 rename。
+### 3.1 现在做（WS1 剩余）
 
 | ID | 项 | SDD | 说明 | 完成 |
 |---|---|---|---|---|
-| W1.0 | 核心三面梳理：用户 / Host / 观测必须带走；其余暂不进 S0 | skip-SDD | 人改 [§13](#CORE) 推荐列后再动代码 | 否 |
-| W1.1 | 切断 `wire_v3` / `ws` 对 `HostState` 的无条件 import，让 `server` feature 真能关 | skip-SDD | default **仍含** `server` | [是](#W1.1) |
-| W1.1b | default 去掉 `server` | **must-SDD** | 改产品 TUI 启动。本轮默认不做 | — |
-| W1.2 | `rmcp` 下沉到 `mcp` feature；default 仍编进产品二进制 | skip-SDD | 编译隔离 ≠ 删除 MCP | [是](#W1.2) |
-| W1.2b | 默认二进制不再含 MCP | **must-SDD** | 本轮默认不做 | — |
-| W1.3 | `otel` 从 default 拿掉 | **must-SDD** | 本轮默认不做 | — |
-| W1.3b | 只修 otel 代码路径，default 不动 | skip-SDD | 可做 | [否](#W1.3b) |
+| W1.3b | 只修 otel 代码路径，default 不动 | skip-SDD | leftover [#27](https://github.com/StrayDragon/xylitol/issues/27) | [否](#W1.3b) |
 | W1.4 | `image` crate feature-gate，default 仍开 | skip-SDD | 模块小、依赖重 | 否 |
-| W1.5 | hooks 保持产品口；S0 再下沉到 plugin crate | skip-SDD | ~1.6k，不删 | 是 |
 | W1.6 | 审计 `debug_fixtures`（~653 行）：测试夹具下沉 `tests/` | skip-SDD | 若砍用户可达调试面 → must-SDD | 否 |
-| W1.7 | session export 保持主线 | 不改 | `app/core` 产品面 | 是 |
-| W1.8 | `wire` 模块随 `xylitol-protocol` 抽取改名（见 WS2） | skip-SDD + validate-only | 不单独做一次全树 rename | 否 |
-| W1.9 | 双 `model` 模块改名（protocol DTO vs agent 选择） | skip-SDD + validate-only | 不改 `XyModel` 语义 | 否 |
-| W1.10 | 内部类型：host 三义 → role / HostServer / carrier | skip-SDD | 改 embed 公开类型则 must-SDD | 否 |
-| W1.11 | `vendor/gherkin` 改 `xylitol-gherkin` | **不做** | 上游 patch | — |
 
-### WS2 S0 crate 抽取（行为不变）
+W1.8 / W1.9 / W1.10（`wire` 改名、双 `model`、host 三义）随 W2 搬 crate 时做，不单独全树 rename。
 
-验收：边界就位 + `just qa` 全绿。编译变快只是副产品。S0 无架构 kill，回退靠 git revert 该批。
+本轮默认不做：W1.1b（default 去掉 `server`）、W1.2b（默认二进制不含 MCP）、W1.3（`otel` 出 default）、W1.11（gherkin 改名）。
 
-建议分批，不一次搬 11.8 万行：
+已完成：W1.0 带走范围、W1.1 `server` 可关、W1.2 `mcp` 可关、W1.5 hooks、W1.7 session export、W1.12 删 CLI `resources` 与 `serve install`。说明见 [附录 B](#附)。
+
+### 3.2 WS2 契约叶 + 重写双写
+
+验收：边界就位 + `just qa` 全绿。编译变快只是副产品。回退靠 git revert 该批。
 
 | 批 | 抽什么 | 准入 | SDD | 完成 |
 |---|---|---|---|---|
-| W2.0 | 改写 `src/AGENTS.md` 与根 `AGENTS.md` 的「不拆 crate」 | 否则代理按旧规则回滚 | skip-SDD | 否 |
-| W2.0b | `layer-architecture.feature` purpose / 组织句：单 crate → 多 crate 插件边界；分层纪律留在 crate 内 | spec 钉了组织 | validate-only | 否 |
-| W2.1 | `xylitol-core`（词表 + ports + errors） | P5 发布契约 | skip-SDD + validate-only | 否 |
-| W2.2 | `xylitol-protocol`（信封 + fory 帧）；顺手消掉 `wire` 撞车名 | P5 | 同上 | 否 |
-| W2.2b | 拆 `xylitol-ai-bridge`：叶留下、HTTP 方言进 provider 插件。见 [§16](#AI-BRIDGE) | P1 / P6 | skip-SDD + validate-only | 否 |
-| W2.3 | `xylitol-core-plugin-mcp` / `-hooks` / `-provider-*`（方言插件吃 W2.2b 的 HTTP） | P1 / P2 / P6 | skip-SDD | 否 |
-| W2.4 | `xylitol-host` / `xylitol-client` / `xylitol-bin` | P2 / P4 / P5 | skip-SDD + validate-only | 否 |
-| W2.5 | `react` / `session` / `compaction` / `tools` / `tui` | P1 / P2 | skip-SDD + validate-only | 否 |
-| W2.6 | 每批后 `just qa`；TUI 批加 `just qa-e2e` | 门禁 | 强制 | 否 |
+| W2.0 | 改写 `src/AGENTS.md` 与根 `AGENTS.md`：crate 图见 [§2](#TARGET) | 否则代理按旧规则回滚 | skip-SDD | 否 |
+| W2.0b | `layer-architecture.feature` 组织句：多 crate；分层纪律留在 crate 内 | spec 钉了组织 | validate-only | 否 |
+| W2.1 | `xylitol-core`（词表 + ports + errors） | P5 | skip-SDD + validate-only | 否 |
+| W2.2 | `xylitol-protocol`（信封 + fory 帧）；顺手去掉 `wire` 撞车名 | P5 | 同上 | 否 |
+| W2.2b | 拆 `xylitol-ai-bridge`：叶留下、HTTP 进方言插件。见 [§2.2](#AI-BRIDGE) | P1 / P6 | skip-SDD + validate-only | 否 |
+| W2.3 | Host 侧 `plugin-mcp` / `-hooks` / `-provider-*` | P1 / P2 / P6 | skip-SDD | 否 |
+| W2.4 | 重写 `xylitol-runtime` + `xylitol-serve`；旧 `src/app/server` 与 `app/core` 仍出产品 | P2 / P4 / P5 | skip-SDD + 行为差 must-SDD | 否 |
+| W2.5 | 重写 `xylitol-app-tui` + `xylitol-app-print`；旧 `src/app/tui` / print 仍出产品 | P1 / P2 | 同上；TUI 加 `just qa-e2e` | 否 |
+| W2.6 | 每批后 `just qa` | 门禁 | 强制 | 否 |
 
-S0 **不**创建：`xylitol-rutis`、空 LSP/DAP crate、dylib 加载器。
+不创建：`xylitol-rutis`、`xylitol-host`、`xylitol-client`、`xylitol-core-plugin-tui`、空 LSP/DAP crate、dylib 加载器。
 
-### WS3 S1+ rutis（本文件只记靶心）
+### 3.3 WS3 S1+ rutis（只记靶心）
 
-| 阶段 | 动作 | 本轮 | 完成 |
-|---|---|---|---|
-| S1 | 引 rutis 只做组装运行时；热路径延迟不劣化 | 不做。这是整次重写的 go/no-go | — |
-| S2 | 会话 = instance；删 `RuntimePorts` 手工物化 | 不做 | — |
-| S3 | hooks→bus、MCP boot→loader、freeze→generation | 不做 | — |
-| S4 | 多语言叶 + dylib | 不做 | — |
-| S5 | TUI 作客户端事件订阅者 | 不做 | — |
+| 阶段 | 动作 | 本轮 |
+|---|---|---|
+| S1 | 引 rutis 只做组装运行时；热路径延迟不劣化 | 不做。这是整次重写的 go/no-go |
+| S2 | 会话 = instance；删 `RuntimePorts` 手工物化 | 不做 |
+| S3 | hooks→bus、MCP boot→loader、freeze→generation | 不做 |
+| S4 | 多语言叶 + dylib | 不做 |
+| S5 | TUI 作客户端事件订阅者 | 不做 |
 
-S1 失败则整次 rutis 重写可中止。S0 的内聚 crate 仍留下。
-
-### 附
-
-无附加则完成列只写 是 / 否 / —。有提交或落点才在此按 ID 开节（标题即锚点）。
-
-
-
-#### W0.1
-
-脚本：`python3 scripts/lab_compile_baseline.py`（`--cold` = `cargo clean -p` 三成员后重编）。本机 `CARGO_TARGET_DIR=~/.cache/cargo-targets/xylitol/3a096cc8d643`。
-
-| 条件 | 墙钟 | du target | bin |
-|---|---|---|---|
-| 指纹无改 | 0.2s | 8.1G→（后 `--cold` 落到 4.6G） | 260.3M |
-| `--cold` + sccache 全命中 | 1.7s | 4.6G | 260.3M |
-| `--cold` 且 `env -u RUSTC_WRAPPER` | **16.0s** | 4.6G | 260.3M |
-
-对照用最后一行（成员 crate 重编，依赖已在）。timings HTML：`.tmp/lab_compile_baseline/20261017T141652Z/`。全量 `cargo clean` 后再编依赖会到分钟级，不作为本基线。
-
-**临时脚本**：`scripts/lab_compile_baseline.py` 不进 qa。本文件全部 W* 完成后删除，或把 summary 进 freeze `research/` 再删脚本。禁止升格 just recipe。
-
-
-
-#### W0.2
-
-`073eccfc`。`.cargo/config.toml` Linux mold；rustflags 与 W0.4 同份。CI `apt install clang mold`。
-
-
-
-#### W0.3
-
-`scripts/cargo_worktree_env.sh`：有 sccache 则导出 `RUSTC_WRAPPER=sccache`。
-
-
-
-#### W0.4
-
-同 W0.2（`073eccfc`，`-Zshare-generics`）。
-
-
-
-#### W0.5
-
-锁定 §8.1 (a)：`incremental = false` 不动。
-
-
-
-#### W0.6
-
-已 `cargo clean`；`debug/build` 另补删。同 §8.6。
-
-
-
-#### W0.7
-
-`Cargo.toml` 注释改指 `.cargo/config.toml`。
-
-
-
-#### W1.1
-
-同 W0.2（`073eccfc`）。
-
-
-
-#### W1.2
-
-`b3acd3f8`。default 仍含 `mcp`。
-
-
-
-#### W1.3b
-
-产品 leftover [#27](https://github.com/StrayDragon/xylitol/issues/27)；本项只修 compile 路径，default 仍开 `otel`。
-
-
-
-#### CLEAN
-
-`a77a96c5`：删 `designing/`、一次性 lab、crate `PI_DELTAS`；cccc 内联；Palette 门。
-
-
-
-#### CONFIGS
-
-`e11f1e76`：`configs/secret.env.example`。
-
-
-
-#### DOC
-
-`c6dfaec8`。FR [#11](https://github.com/StrayDragon/xylitol/issues/11)–[#27](https://github.com/StrayDragon/xylitol/issues/27)；roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)。research 留 `maka-runtime-kernel-lessons-2026.md`。政策已写入 `docs/AGENTS.md`。
+S1 失败则整次 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 
 ---
 
-## 5. 瘦身表：KEEP / SLIM / DELETE
+<a id="CORE"></a>
 
-编译隔离与产品删除必须分开。本轮默认走保守：default features 不动，只让关 feature 真能关。激进方案见第 8 节决策 2。
+## 4. 核心三面（S0 带走范围）
+
+**三面 = 用户侧 + Host/服务端 + 可观测**。其余默认不进第一批 crate 图。
+
+推荐列：`核`（S0 必须搬走）/ `瘦`（代码留、先 feature-gate 或下沉测试）/ `推迟` / `删`。删用户可见面须改 `.feature`。
+
+### 4.1 用户侧
+
+| 能力 | 落点 | 现状 | 推荐 |
+|---|---|---|---|
+| TUI 默认入口（attach 本机 Host） | `app/tui` + `xylitol-tui` | 开箱 | 核 |
+| Print 一轮 | `app/cli` print | 已开放 | 核 |
+| 嵌入 `XyDriver` | `embed` / `app/core` | 已开放 | 核 |
+| slash 词表 | `app/product_commands` | session-* / model / reload / trust / theme / mcp / exit | 核 |
+| bang `!` / `!!` | `app/bang_exec` | 产品 | 核 |
+| `$skill` 注入 | TUI + resource loader | 产品 | 核 |
+| 会话树 / fork / clone / resume / new / name | Driver + TUI | 产品 | 核 |
+| 滚动区 / 固定区 / activity 折叠 | TUI + DESIGN.md | 产品 | 核 |
+| 换模 / thinking run 绑定 | `/model` + footer | 已落地 | 核 |
+| 图像粘贴 / 读图 | `infra/image` + bang | 主线；依赖重 | 核（compile 见 W1.4） |
+| `/debug` 场景 | `app/debug_fixtures` | 仅 debug_assertions | 瘦（下沉 tests，见 W1.6） |
+| 键位可视化 / `/hotkeys` | 未做 | GH #23 | 推迟 |
+| gpui 桌面 | 未做 | GH #12 | 推迟 |
+
+### 4.2 Host / 服务端
+
+| 能力 | 落点 | 现状 | 推荐 |
+|---|---|---|---|
+| Host 监听 + 四象限信封 | `app/server` + `protocol/wire` | 产品 TUI 默认依赖；HTTP **不得删** | 核 |
+| `XyDriver` 会话槽 / 单写者 ReAct | `app/core` + `agent/runtime` | 主线 | 核 |
+| 内置工具 read/write/edit/bash/grep/find/ls/todo/ask | `infra/tools` | 开箱 | 核 |
+| Trust 门禁 | `infra/trust` + CLI | 开箱 | 核 |
+| 会话持久化 / 导出 HTML+JSONL | `infra/session` + `session_export` | 主线 | 核 |
+| 自动压缩 + `/session-compact` | `agent/compaction` | 主线 | 核 |
+| OpenAI 兼容 + Anthropic | `xylitol-ai-bridge` + `infra/provider` | 主线 | 核 |
+| MCP（配置才装配） | `infra/mcp` | default feature 仍开 | 核（目标 `plugin-mcp`；未配置不连） |
+| hooks | `infra/hooks` + embed | 空配置零成本 | 核（目标 `plugin-hooks`） |
+| `infra/tools/patch` | `edit` 内部：模糊匹配 + diff | 无独立工具名 | 核（随 `edit` 进 `plugin-tools`） |
+| serve 生命周期 `stop` | 只印 SIGTERM 说明 | 无 lock-file | 瘦 |
+
+### 4.3 可观测侧
+
+| 能力 | 落点 | 现状 | 推荐 |
+|---|---|---|---|
+| `provider-trace.jsonl` + fastrace 过程树 | `infra/observability` | 对照底座 | 核 |
+| `xylitol.log`（`log`，永不 stdout） | `app/cli/logging` | 排障 | 核 |
+| 窄读 `just obs-summary` / `obs-recent` / `obs-tui-lag` | `scripts/inspect_provider_trace.py` | 开发核 | 核 |
+| inspect：requests / turns / lag / lifecycle / channel | 同脚本 | 人跑 | 核 |
+| 可选 OTLP（`[otel]` 默认 none） | feature `otel` | default 仍开；lane/采样未做 | 核（不扩；W1.3b 只修路径） |
+| samply `profile-suite` | `scripts/profile_tui_suite.py` | 维护 | 推迟（不进 crate 图） |
+| 自研检视台 / Jaeger 必选 | 无 | GH #27 leftover | 推迟 |
+
+### 4.4 暂不带走
+
+| 项 | 说明 | 推荐 |
+|---|---|---|
+| gpui / LSP / DAP / Sub-Agent / Loop / Computer-Use | 未实现；禁止空壳 crate | 推迟 |
+| delayed-changes 草案 | 不进 S0 文件搬家 | 推迟 |
+| `agent_demo*` / `host_loop` | 引擎演示，非产品 SSOT | 留在 `xylitol-tui` |
+| maka research | S1 对照 | 留 `docs/research/` |
+| 23 个集成测试二进制 | 不删测试 | 瘦（share-generics 已做） |
+| 预览（假 Host + 预览页） | [附录 D](#UI-WORKFLOW)；机制 [附录 C](#DESIGN-WASM) | 推迟 |
+
+---
+
+<a id="KEEP"></a>
+
+## 5. KEEP / SLIM / DELETE
+
+编译隔离与产品删除必须分开。default features 不动，只让关 feature 真能关。
 
 **KEEP（主线，S0 后仍默认装配）**
 
 1. Print + 产品 TUI。
-2. Host 操作器 + 本机监听载体（default 含 `server`）。
+2. `xylitol-runtime` 操作器 + `xylitol-serve` 本机监听（default 含 `server`）。
 3. 跨端信封 + `XyDriver` / `XyEvent`。
 4. ReAct、session store、compaction、OpenAI 兼容 / Anthropic、内置工具、trust。
-5. MCP（运行时：有配置才装配）。
+5. MCP（运行时：有配置才装配；目标 `xylitol-core-plugin-mcp`）。
 6. hooks（embed / `hooks_config` 已是产品口）。
 7. session export。
 8. `xylitol-ai-bridge`。
@@ -352,17 +329,21 @@ S1 失败则整次 rutis 重写可中止。S0 的内聚 crate 仍留下。
 2. `rmcp` → `mcp` feature / 未来 plugin crate。
 3. `image` crate → feature，default 仍开。
 4. `jsonschema` / `minijinja` / `schemars`：S0 下沉到使用方 crate，不预删。
-5. `cli = []`：S0 抽 `xylitol-bin` 时给它真实依赖，不单独发明空开关。
+5. `cli = []`：极瘦进程入口和 `xylitol-app-print` 给真实依赖，不单独发明空开关。
 6. 23 个集成测试二进制：不删测试；靠 `-Zshare-generics` 降重复。
 
-**DELETE（极窄）**
+**DELETE**
 
 1. 不新增 gpui / Web 控制台 / DAP / LSP / Sub-Agent 空壳。
 2. `debug_fixtures`：确认全是测试夹具后再下沉或删生产模块。
 3. 不删 `vendor/gherkin`。
 4. 不删 salvo / tokio-tungstenite 的产品用途。
+5. 不提供 CLI `xylitol resources`。
+6. 不提供 `xylitol serve install`。
 
 ---
+
+<a id="NAMES"></a>
 
 ## 6. 今日非标准名字
 
@@ -374,12 +355,14 @@ S1 失败则整次 rutis 重写可中止。S0 的内聚 crate 仍留下。
 | `HostState` / 角色 host / `HostClient` | host 一词三义 | 角色保持「执行权威」；提供方称 HostServer；进程内 / WS 称 carrier。`XyDriver`、`HostClient` 保留 |
 | `protocol/model*` 与 agent 侧 `model` | 双 `model` 顶栏 | 契约侧对齐 `XyModel`；agent 侧用选择 / 装配语义 |
 | 新公开类型第三套品牌 | `Xy*` 与 `AgentMessage` / `Command` / `Event` 混用本身合法 | `Xy*` = 库入口契约；`AgentMessage` = protocol 根词表；Command/Event = 信封载荷。新类型不得再发明第四套 |
-| 根包仍叫 `xylitol` 且含全部 lib | 布局不标准 | 根收缩为 `xylitol-bin`（或等价 bin crate）；家族 crate 全在 `crates/`，插件在 `crates/plugins/` |
-| feature 名 `server` | 产品词是 HostServer / 载体 | S0 可仍叫 `server`（Cargo 名）或改为 `host`；不得改 attach 行为 |
+| 根包仍叫 `xylitol` 且含全部 lib | 布局不标准 | 根缩成极瘦 argv；Print → `xylitol-app-print`；TUI 产品 → `xylitol-app-tui`；Host 侧插件在 `crates/plugins/` |
+| feature 名 `server` | 和 `xylitol-serve` 载体对应 | Cargo feature 可仍叫 `server`；不得改 attach 行为 |
 
-不改：`xylitol-tui`、`XyDriver`、`XyEvent`、`XyModel`、`vendor/gherkin` 包名。`xylitol-ai-bridge` 叶包名保留；HTTP 方言拆到 `xylitol-core-plugin-provider-*`（[§16](#AI-BRIDGE)）。
+不改：`xylitol-tui` 引擎包名、`XyDriver`、`XyEvent`、`XyModel`、`vendor/gherkin`。`xylitol-ai-bridge` 叶包名保留；HTTP 见 [§2.2](#AI-BRIDGE)。
 
 ---
+
+<a id="NO"></a>
 
 ## 7. 本轮明确不做
 
@@ -392,72 +375,34 @@ S1 失败则整次 rutis 重写可中止。S0 的内聚 crate 仍留下。
 7. 跨 worktree 共享 `CARGO_TARGET_DIR`。
 8. 把 `AGENTS.md` 写成进度板。
 9. 跳过 `just qa`。
-10. 为对称预拆 `xylitol-core-plugin-lsp` 等。
+10. 为对称预拆 `xylitol-core-plugin-lsp`、`xylitol-app-gpui` 空壳。
+11. 新建 `xylitol-host`、`xylitol-client`、`xylitol-core-plugin-tui`。
+12. 新 crate `pub use` 旧 `src/` 模块凑编译。
 
 ---
 
-## 8. 需要拍板（未决）
+<a id="AGENTS"></a>
 
-未拍板时执行保守默认（括号内）。
+## 8. 抽出契约叶前必须改的 AGENTS / spec
 
-1. **增量 vs 磁盘。** 已锁定 (a) 磁盘优先。`incremental = false` 不动。
-   - (a) 保持磁盘优先，只加 mold / sccache / share-generics（**已执行**）
-   - (b) `incremental = true` + 保持 `line-tables-only`，接受 `target/` 回涨
-   - (c) 另加 `dev-fast` profile，不改默认
-   说明：S0 之后 crate 变多，增量策略可能再变一次。
-2. **瘦身激进程度。**
-   - 保守：default 仍是 `cli,tui,otel,server`；只让关 feature 真能关；`rmcp` / `image` 变成可关（**默认**）
-   - 激进：default 去掉 `otel`，甚至默认不编 MCP / image（全部 must-SDD）
-3. **S0 一次切完 vs 分批。** 建议分批（W2.0 → W2.5）。一次切完与 ~11.8 万行、约 2493 个 `#[test]` 冲突更大。
-4. **crate 搬移是否跳过 SDD。** 规则已允许行为不变则 skip-SDD。需要一句授权：「S0 搬移 skip-SDD；仅当产品行为变化才 propose」。
-5. **mold 是否进 CI。** 续做时已写入 CI（`apt install clang mold`）。若要撤回，删 workflow 那两包，并改 `.cargo/config.toml` 不再强制 mold。
-6. **是否授权** `cargo clean`**。** 已执行。`cargo clean` 未删尽 `debug/build`，已补删。
-7. `wire` **改名时机。** 推荐随 W2.2 抽取做，不单独全树 rename。
+改写只换稳定规则，不写进度，不留墓碑。
 
----
+1. `src/AGENTS.md`「单 crate 逻辑分层（不为分层拆 crate）」→ 目标图见 [§2](#TARGET)。Host 侧 crate 边界 = 插件替换 / 开关 / 生命周期。客户端是 `xylitol-app-*`。禁止按层各一 crate。继续禁止 `xylitol-domain`。
+2. `protocol/{wire, ports, model, session}` 同一顶栏 → 信封进 `xylitol-protocol`，ports / 词表进 `xylitol-core`，session 实现进 plugin。信封 ↛ ports 升为跨 crate 规则。
+3. 「组合根才同时 import agent + infra」落点从 `app/core` → `xylitol-runtime`。S1 前仍是手工装配。
+4. 根 `AGENTS.md` 与 `src/AGENTS.md` 同步。`crates/` 角色表换成 [§2](#TARGET) 总图。
+5. `layer-architecture.feature` purpose「单 crate」→ validate-only 直接编辑。
+6. 「开箱 vs 配置后置」拆成两句：监听主线且 feature 真可关；MCP 配置后置且 compile 也可关。
+7. `RunId` 不得进 `XyEvent` / 信封。规则本身保留。
+8. `xylitol-core-plugin-*` 是官方静态 Host 侧 crate，不是插件市场，不是 dylib。客户端不进该前缀。
 
-## 9. S0 前必须改的 AGENTS / spec
-
-改写只换稳定规则，不写 TODO，不留墓碑。
-
-1. `src/AGENTS.md`「单 crate 逻辑分层（不为分层拆 crate）」→ crate 边界 = 插件替换 / 开关 / 生命周期；每个 crate 内部仍守分层；禁止按层各一 crate；继续禁止 `xylitol-domain`。
-2. 分层图里 `protocol/{wire, ports, model, session}` 同一 crate 顶栏 → `wire` 进 `xylitol-protocol`，ports / 词表进 `xylitol-core`，session 实现进 plugin。`wire` ↛ `ports` 升为跨 crate 规则。
-3. 「组合根才同时 import agent + infra」落点从 `app/core` → `xylitol-kernel`。S1 前仍是手工装配。
-4. 根 `AGENTS.md`「主 crate 内逻辑分层（不拆 crate）」与 `src/AGENTS.md` 同步。`crates/` 角色表换成目标图。
-5. `layer-architecture.feature` purpose「单 crate」→ validate-only 直接编辑。大的组织方向（分层依赖、crate 边界）可留在 spec。
-6. 「开箱 vs 配置后置」拆成两句：Server 主线且 feature 真可关；MCP 配置后置且 compile 也可关。
-7. `RunId` 不得进 `XyEvent` / wire → 「wire」换成跨端协议 / 信封。规则本身保留。
-8. 扩展开闭：S0 的 `xylitol-core-plugin-*` 是官方静态 crate 边界，不是插件市场，不是 dylib。S4 才涉及动态加载。必须写明，避免与「不为未来插件堆抽象」对打。
-
-不改的硬规则：Trust 门禁项目本地资源；工具开箱 allow-all；MCP 有配置才装配；产品 TUI 默认 attach 本机 Host；host ≠ 监听器定义；改名不留别名；`just qa`；worktree 独立 `CARGO_TARGET_DIR`。
+不改的硬规则：Trust 门禁项目本地资源；工具开箱 allow-all；MCP 有配置才装配；产品 TUI 默认 attach 本机监听；监听 ≠ 操作器定义；改名不留别名；`just qa`；worktree 独立 `CARGO_TARGET_DIR`。
 
 ---
 
-## 10. 执行备忘
+<a id="SRC"></a>
 
-下一动作：
-
-1. 改 [§13](#CORE) 推荐列（核 / 瘦 / 推迟 / 删）。未改列不删代码。
-2. 按 §13 推荐列做低价值清理（行为变则 must-SDD）。
-3. [W1.3b](#W1.3b) / W1.4，然后 W2.0。S0 里 `xylitol-ai-bridge` 拆分见 [W2.2b](#W2.2b) / [§16](#AI-BRIDGE)。
-4. 预览 / wasm 不进本轮；结论见 [§14](#DESIGN-WASM) / [§15](#UI-WORKFLOW)。
-
-每批提交信息（真正提交时）：
-
-- 工具链：`build:` / `chore:`
-- 组织搬移：`refactor:`
-- 行为：`feat:` / `fix:`
-- SDD 礼仪：`chore(sdd):` / `archive(sdd):`
-
----
-
-## 11. 文档精简
-
-完成：[是](#DOC)。不碰：`docs/architecture/`、`llmanspec/`、`_INTERVIEW/`、`delayed-changes/legacy/`。
-
----
-
-## 12. 来源
+## 9. 来源
 
 | 主题 | 路径 |
 |---|---|
@@ -473,82 +418,124 @@ S1 失败则整次 rutis 重写可中止。S0 的内聚 crate 仍留下。
 
 ---
 
+<a id="FACTS"></a>
 
+## 附录 A. 现状盘点
 
-## 13. 核心三面（拆 crate 前债务闸）
+盘点日期：2026-10-17。Workspace 成员：根包 `xylitol` + `crates/xylitol-tui` + `crates/xylitol-ai-bridge`。`vendor/gherkin` 是 `[patch.crates-io]`。`cargo metadata` resolve 节点约 594 个。
 
-拆 S0 之前先收口「必须带走什么」。**三面 = 用户侧 + Host/服务端 + 可观测**。其余默认不进第一批 crate 图。
-
-改 **推荐** 列：`核`（S0 必须搬走）/ `瘦`（代码留、先 feature-gate 或下沉测试）/ `推迟` / `删`。未改列 = 不准动。行为可见的删走 must-SDD。
-
-### 13.1 用户侧
-
-| 能力 | 落点 | 现状 | 推荐 |
-|---|---|---|---|
-| TUI 默认入口（attach 本机 Host） | `app/tui` + `xylitol-tui` | 开箱 | 核 |
-| Print 一轮 | `app/cli` print | 已开放 | 核 |
-| 嵌入 `XyDriver` | `embed` / `app/core` | 已开放 | 核 |
-| slash 词表 | `app/product_commands` | session-* / model / reload / trust / theme / mcp / exit | 核 |
-| bang `!` / `!!` | `app/bang_exec` | 产品 | 核 |
-| `$skill` 注入 | TUI + resource loader | 产品 | 核 |
-| 会话树 / fork / clone / resume / new / name | Driver + TUI | 产品 | 核 |
-| 滚动区 / 固定区 / activity 折叠 | TUI + DESIGN.md | 产品 | 核 |
-| 换模 / thinking run 绑定 | `/model` + footer | 已落地 | 核 |
-| 图像粘贴 / 读图 | `infra/image` + bang | 主线；依赖重 | 核（compile 见 W1.4） |
-| `/debug` 场景 | `app/debug_fixtures` | 仅 debug_assertions；模块自述可整删 | 瘦（下沉 tests，见 W1.6） |
-| `xylitol resources list\|info\|doctor` | `app/cli/resources` | 只读诊断 | 核 |
-| CLI `serve install` | stub「未实现」 | 空壳 | 删 |
-| 键位可视化 / `/hotkeys` | 未做 | GH #23 | 推迟 |
-| gpui 桌面 | 未做 | GH #12 | 推迟 |
-
-### 13.2 Host / 服务端
-
-| 能力 | 落点 | 现状 | 推荐 |
-|---|---|---|---|
-| Host 监听 + 四象限信封 | `app/server` + `protocol/wire` | 产品 TUI 默认依赖；HTTP **不得删** | 核 |
-| `XyDriver` 会话槽 / 单写者 ReAct | `app/core` + `agent/runtime` | 主线 | 核 |
-| 内置工具 read/write/edit/bash/grep/find/ls/todo/ask | `infra/tools` | 开箱 | 核 |
-| Trust 门禁 | `infra/trust` + CLI | 开箱 | 核 |
-| 会话持久化 / 导出 HTML+JSONL | `infra/session` + `session_export` | 主线 | 核 |
-| 自动压缩 + `/session-compact` | `agent/compaction` | 主线 | 核 |
-| OpenAI 兼容 + Anthropic | `xylitol-ai-bridge` + `infra/provider` | 主线 | 核 |
-| MCP（配置才装配） | `infra/mcp` | default feature 仍开 | 核（不删；零成本未配置） |
-| hooks | `infra/hooks` + embed | 空配置零成本 | 核（W1.5） |
-| `infra/tools/patch` | 模块在树，默认工具表未挂 | 无产品入口 | 删或并入 edit |
-| serve 生命周期 `stop` | 只印 SIGTERM 说明 | 无 lock-file | 瘦 |
-
-### 13.3 可观测侧
-
-| 能力 | 落点 | 现状 | 推荐 |
-|---|---|---|---|
-| `provider-trace.jsonl` + fastrace 过程树 | `infra/observability` | 对照底座 | 核 |
-| `xylitol.log`（`log`，永不 stdout） | `app/cli/logging` | 排障 | 核 |
-| 窄读 `just obs-summary` / `obs-recent` / `obs-tui-lag` | `scripts/inspect_provider_trace.py` | 开发核 | 核 |
-| inspect：requests / turns / lag / lifecycle / channel | 同脚本 | 人跑 | 核 |
-| 可选 OTLP（`[otel]` 默认 none） | feature `otel` | default 仍开；lane/采样未做 | 核（不扩；W1.3b 只修路径） |
-| samply `profile-suite` | `scripts/profile_tui_suite.py` | 维护 | 推迟（不进 crate 图） |
-| 自研检视台 / Jaeger 必选 | 无 | GH #27 leftover | 推迟 |
-
-### 13.4 暂不带走（债务）
-
-| 项 | 说明 | 推荐 |
+| 区域 | 约行数（tokei Code / 文件总行） | 来源 |
 |---|---|---|
-| gpui / LSP / DAP / Sub-Agent / Loop / Computer-Use | 未实现；禁止空壳 crate | 推迟 |
-| delayed-changes 草案 | 不进 S0 文件搬家 | 推迟 |
-| `agent_demo*` / `host_loop` | 引擎演示，非产品 SSOT | 留在 `xylitol-tui` |
-| maka research | S1 对照 | 留 `docs/research/` |
-| 23 个集成测试二进制 | 不删测试 | 瘦（share-generics 已做） |
-| 重做 designing（wasm 预览） | [§14](#DESIGN-WASM)：当前无 wasm 基础 | 推迟 |
+| `src/` 合计 | Code ~10.0 万 / 总行 ~11.8 万 | 356 个文件 |
+| `src/app` | Code ~5.4 万（其中 `app/tui` Code ~3.6 万） | 最大单块 |
+| `src/agent` | 总行 ~2.1 万 | ReAct / capabilities / prompt |
+| `src/infra` | 总行 ~2.1 万 | ports 实现 |
+| `src/protocol` | 总行 ~1.3 万 | 词表 + ports + wire |
+| `crates/xylitol-tui` | Code ~2.4 万 | 零引用主 crate |
+| `crates/xylitol-ai-bridge` | Code ~0.8 万 | 主 crate 必选 path 依赖 |
+| `tests/` | Code ~3.8 万 | 含 BDD |
+
+根 `Cargo.toml` default = `cli, tui, otel, server, mcp`。
+
+| 项 | 事实 |
+|---|---|
+| `cli = []` | 空 feature，不裁依赖 |
+| `server` | optional；W1.1 后可关（default 仍开） |
+| `mcp` | optional `rmcp`；W1.2 后可关（default 仍开；运行时仍需配置才装配） |
+| `image` / `fory` / `jsonschema` / `minijinja` / `schemars` / `fastrace` | 非 optional，始终进主 crate |
+| `salvo` / `tokio-tungstenite` / `xylitol-tui` / OTel 三件套 | 随 feature 可选 |
+
+dev：`opt-level = 0`，依赖 `opt-level = 3`，`debug = "line-tables-only"`，`incremental = false`，`codegen-units = 16`。
+release：`opt-level = "z"`，`lto = "thin"`，`strip = "symbols"`，`panic = "abort"`，`codegen-units = 1`。
+`.cargo/config.toml`：Linux mold + `-Zshare-generics`（同一份 rustflags）。Cranelift 不用（`aws-lc-rs` / `ring`）。
+主 worktree 用仓库内 `target/`；额外 worktree 须 `eval "$(just cargo-wt-env)"`。
+
+产品主线：对话循环、内置工具、会话持久化 / 导出、压缩、两家模型 API、Trust、图像附件。默认入口：产品 TUI attach 本机 Host（未在听失败）。后置：MCP。
+spec `@req:r1532` 要求 server 应用面。未实现：gpui、Web 控制台、DAP、LSP、Sub-Agent（索引 [#28](https://github.com/StrayDragon/xylitol/issues/28)）。
+
+抽出契约叶之前必须改 AGENTS（现行规则仍写「单 crate」）。见 [§8](#AGENTS)。
 
 ---
 
+<a id="附"></a>
 
+## 附录 B. 已完成批次说明
 
-## 14. 调研：人-agent 共用「眼睛」看真实 TUI（2026-10-17，v2）
+无附加则完成列只写 是 / 否 / —。有提交或落点才在此按 ID 开节（标题即锚点）。
 
-上一版（同日）答错了题：把问题收成「浏览器预览帧 / wasm 编不编过 crossterm」。你要的是：**真实产品组件出现在共享画面上，画面上有框选覆盖层（HTML inspect 那类），人和 LLM 对着同一套 UI/UX/状态讨论，并有可规范化的协作手续。** TUI 里很难直接画不破坏布局的覆盖层，所以才想到把 TUI app 编进 wasm、系统相关 patch 掉。本节按这个意图重写。未落地；不建 `designing/`、不装 wasm target、不进 S0。
+#### W0.1
 
-### 14.1 问题拆开
+脚本：`python3 scripts/lab_compile_baseline.py`（`--cold` = `cargo clean -p` 三成员后重编）。本机 `CARGO_TARGET_DIR=~/.cache/cargo-targets/xylitol/3a096cc8d643`。
+
+| 条件 | 墙钟 | du target | bin |
+|---|---|---|---|
+| 指纹无改 | 0.2s | 8.1G→（后 `--cold` 落到 4.6G） | 260.3M |
+| `--cold` + sccache 全命中 | 1.7s | 4.6G | 260.3M |
+| `--cold` 且 `env -u RUSTC_WRAPPER` | **16.0s** | 4.6G | 260.3M |
+
+对照用最后一行。timings HTML：`.tmp/lab_compile_baseline/20261017T141652Z/`。`scripts/lab_compile_baseline.py` 不进 qa。全部 W* 完成后删除，或把 summary 进 freeze `research/` 再删脚本。禁止升格 just recipe。
+
+#### W0.2
+
+`073eccfc`。`.cargo/config.toml` Linux mold；rustflags 与 W0.4 同份。CI `apt install clang mold`。
+
+#### W0.3
+
+`scripts/cargo_worktree_env.sh`：有 sccache 则导出 `RUSTC_WRAPPER=sccache`。
+
+#### W0.4
+
+同 W0.2（`073eccfc`，`-Zshare-generics`）。
+
+#### W0.5
+
+`incremental = false`。
+
+#### W0.6
+
+`cargo clean`；`debug/build` 另补删。
+
+#### W0.7
+
+`Cargo.toml` 注释改指 `.cargo/config.toml`。
+
+#### W1.1
+
+同 W0.2（`073eccfc`）。
+
+#### W1.2
+
+`b3acd3f8`。default 仍含 `mcp`。
+
+#### W1.3b
+
+产品 leftover [#27](https://github.com/StrayDragon/xylitol/issues/27)；本项只修 compile 路径，default 仍开 `otel`。
+
+#### W1.12
+
+删顶层 `xylitol resources` 与 `serve install`。发现仍走 `DefaultResourceLoader`。合约：`cli-entry` / `runtime-resource-discovery` / `runtime-config`。
+
+#### CLEAN
+
+`a77a96c5`：删 `designing/`、一次性 lab、crate `PI_DELTAS`；cccc 内联；Palette 门。
+
+#### CONFIGS
+
+`e11f1e76`：`configs/secret.env.example`。
+
+#### DOC
+
+`c6dfaec8`。FR [#11](https://github.com/StrayDragon/xylitol/issues/11)–[#27](https://github.com/StrayDragon/xylitol/issues/27)；roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)。research 留 `maka-runtime-kernel-lessons-2026.md`。政策已写入 `docs/AGENTS.md`。
+
+---
+
+<a id="DESIGN-WASM"></a>
+
+## 附录 C. 预览：框选覆盖层（机制）
+
+产品和引擎组件出现在共享画面上，画面上有框选覆盖层。人和 LLM 对着同一套 UI、交互、状态讨论。TUI 只有一层单元格，框不能画进 ANSI。未落地；不建 `designing/`、不装 wasm target、不进本轮主线。
+
+### C.1 问题拆开
 
 | 需要 | HTML 世界已有的 | TUI 为什么难 |
 |---|---|---|
@@ -562,7 +549,7 @@ wasm 是**运输**（把真组件送到「能叠 HTML overlay 的表面」），
 
 术语：框 = overlay box（网页层，不进 transcript）；格子 = 产品 `Component::render` 的单元格。固定区词汇仍走 `docs/architecture/TUI信息呈现与固定区词汇.md`（覆盖弹出框 / 侧栏 / 槽 / 通知条…）。
 
-### 14.2 仓库里已经像「眼睛」的东西
+### C.2 仓库里已经像「眼睛」的东西
 
 这些是 **inspect 的半成品**，不是预览壳。
 
@@ -576,11 +563,11 @@ wasm 是**运输**（把真组件送到「能叠 HTML overlay 的表面」），
 | 槽互斥脸 | `EditorSlot`（Editor / Tree / Models / …） | 状态枚举，可当 story 轴 |
 | scene 表 | `DEBUG_SCENES`：Resume / LiveXy / LiveTape / `FixedZoneOp` | 最接近 Storybook；只服务 `/debug` 手测 |
 | 视觉 SSOT | `DESIGN.md` Palette + insta | 回归用，不是讨论用 |
-| 旧预览 | 已删：`shell-frame.json` + TS `cell-grid.ts` | 有格子无框、无 agent 契约、且 TS 再绘 |
+| 不要 TS 再绘格子 | `shell-frame.json` + `cell-grid.ts` 形态 | 有格子无框、无 agent 契约 |
 
 结论：不必从零发明 hit-test。缺的是 **命名框目录（inspect tree）** 和 **不污染格子的 overlay 宿主**。
 
-### 14.3 HTML overlay 对 TUI 的正确类比
+### C.3 HTML overlay 对 TUI 的正确类比
 
 DevTools / Cursor 浏览器工具的分工：
 
@@ -610,7 +597,7 @@ Scene（/debug 或以后的 story）
 
 这就是「TUI 上很难、所以想去浏览器」的技术理由：浏览器提供 **格子层 + overlay 层分离**；真终端只有一层单元格。
 
-### 14.4 wasm 在这条链里扮演什么（patch 不是拦路牌）
+### C.4 wasm 在这条链里扮演什么（patch 不是拦路牌）
 
 若宿主是静态网页、不想每次 `cargo test` 出帧，才需要 wasm。编的不是「完整 xylitol TUI app」，是 **Inspect 切片**：scene → render_frame → InspectFrame。系统相关 **按切片 patch**，不是把 Host/MCP/fd 搬进浏览器。
 
@@ -618,7 +605,7 @@ Scene（/debug 或以后的 story）
 |---|---|---|
 | `Component::render` / layout / widgets | 要 | 原样 |
 | `Terminal` 实现 | 要一个 | `VirtualTerminal` 升库 API；或写格子到 JS。**不要** crossterm 的 TTY backend |
-| `crossterm::event` 类型 | 要（键鼠形状） | 可继续当纯数据；mio/TTY 用 `cfg(not(target_arch = "wasm32"))` 挡掉 `crossterm` 的 terminal 特性。上游 [crossterm#995](https://github.com/crossterm-rs/crossterm/issues/995) 仍开 → 我们 **自管 Terminal，不求 crossterm wasm** |
+| `crossterm::event` 类型 | 要（键鼠形状） | 可继续当纯数据；mio/TTY 用 `cfg(not(target_arch = "wasm32"))` 挡掉 `crossterm` 的 terminal 特性。上游 [crossterm#995](https://github.com/crossterm-rs/crossterm/issues/995) 仍开 → **自管 Terminal，不求 crossterm wasm** |
 | `PointerPipeline` / `HitRegionList` | 要 | 原样；inspect 框从这里 + 固定区 footprint **命名后**导出 |
 | `autocomplete_fd` / `std::process` | 不要 | `cfg` 掉 |
 | tokio rt | 尽量不要 | inspect 同步 `render_frame` 即可 |
@@ -628,9 +615,9 @@ Scene（/debug 或以后的 story）
 
 wasm32-unknown-unknown **可以**走通的前提是：Inspect 切片从第一天就不链 crossterm-tty / fd / Host。这是产品分层已经部分满足的（host 驱动 render），不是幻想。工作量仍大（独立 SDD），但是 **为 overlay 宿主服务**，不是为「能在浏览器里聊天」。
 
-对照业界：Termless（xterm.js/Ghostty 测终端 UI、可 PNG）解决的是「仿真器一致性」，**不**给组件框；Storybook 给 stories + inspect，但是 DOM。我们要的是二者的缝： **真 ANSI 组件 + Storybook 式框。**
+对照业界：Termless（xterm.js/Ghostty 测终端 UI、可 PNG）解决的是「仿真器一致性」，**不**给组件框；Storybook 给 stories + inspect，但是 DOM。要的是二者的缝：**真 ANSI 组件 + Storybook 式框。**
 
-### 14.5 三条宿主（同一契约，wasm 只是 C）
+### C.5 三条宿主（同一契约，wasm 只是 C）
 
 契约先于宿主。`InspectFrame` 稳定后，宿主可换。
 
@@ -642,7 +629,7 @@ wasm32-unknown-unknown **可以**走通的前提是：Inspect 切片从第一天
 
 旧结论「优先 B 不要 wasm」在 **预览帧** 意义上仍对；在 **眼睛** 意义上：A/B 已够人-agent 讨论；C 是交互密度升级，不是正确性升级。
 
-### 14.6 框目录（规范化的核心）
+### C.6 框目录（规范化的核心）
 
 没有命名框，overlay 只是好看的矩形。框必须能被人和 agent **用同一套词**指认。
 
@@ -665,9 +652,9 @@ wasm32-unknown-unknown **可以**走通的前提是：Inspect 切片从第一天
 4. z 与产品 overlay 一致：覆盖弹出框 / 槽在对话条目之上。
 5. 框 **不** 进入 `Component::render`。产品 hover tint 保持产品行为；inspect 高亮只在 HTML 层（或 dump 旁路）。
 
-§13 若把 `debug_fixtures` 标成「瘦」：inspect 若立项，它更接近 **核（story 源）**，不是手测垃圾。等你改完 §13 推荐再动刀。
+`debug_fixtures` 在 [§4](#CORE) 标「瘦」。inspect 立项时它是 story 源，改推荐列后再动。
 
-### 14.7 人-agent 协作手续（规范化，不是工具清单）
+### C.7 人-agent 协作手续（规范化，不是工具清单）
 
 最小闭环（对标 Cursor 浏览器：snapshot → 点 ref → 再 snapshot）：
 
@@ -679,17 +666,17 @@ wasm32-unknown-unknown **可以**走通的前提是：Inspect 切片从第一天
 
 agent 侧 skill 以后应读 JSON 框树，而不是先截图。截图只解决「色/间距好不好看」。
 
-### 14.8 明确不做
+### C.8 明确不做
 
 | 不做 | 原因 |
 |---|---|
 | 产品 TUI 全量进 wasm（Host/MCP/Trust/图像） | 眼睛不需要真模型循环；scene 注入即可 |
 | 在 ANSI 里画 inspect 框 | 破坏用户所见，也破坏 ApplicationOwned 选区 |
-| 复活 bun+Vite 组件实现 | 第二套 UI，正是已删 `designing/` 的失败模式 |
-| 为预览去 fork crossterm-wasm | 我们不需要它的 TTY；需要的是 VT |
-| 本轮建 `designing/`、装 wasm target、开 SDD | 你还在改 §13；这是调研 |
+| 用 bun+Vite 再绘一套格子 | 第二套 UI；不复活 `designing/` |
+| fork crossterm-wasm | 预览用 VT，不用 crossterm TTY |
+| 本轮建 `designing/`、装 wasm target | 预览不进本轮主线 |
 
-### 14.9 若立项，建议切片（仍不本轮）
+### C.9 若立项，建议切片（仍不本轮）
 
 | 步 | 产出 | skip-SDD？ |
 |---|---|---|
@@ -699,19 +686,19 @@ agent 侧 skill 以后应读 JSON 框树，而不是先截图。截图只解决�
 | 3 | agent 读框树的 skill / 约定 | 团队 how-to → xylitol-dev |
 | 4 | 可选 Inspect wasm 切片 | 独立 change，不进 S0 |
 
-**结论（v2）**：要「真实组件 + 眼睛 + 框选 + 人/LLM 规范协作」，关键产物是 `**InspectFrame`（真渲染格子 + 命名框目录）**，宿主可以是原生 dump、薄 HTML overlay、或以后的 wasm 切片。wasm 合理，但只编 Inspect 切片并把 TTY/`fd`/Host patch 掉；**不是**把产品 TUI app 塞进浏览器。现有 `HitRegion` + `debug_fixtures` + 固定区词汇已经覆盖「半只眼睛」；缺的是命名、overlay 层分离、以及 agent 与人共用的帧契约。本轮只记，不实现。
+关键产物是 `InspectFrame`（真渲染格子 + 命名框目录）。宿主可以是原生 dump、薄 HTML overlay、或以后的 wasm 切片。wasm 只编预览切片并把 TTY / `fd` / 真 Host patch 掉。现有 `HitRegion` + `debug_fixtures` + 固定区词汇覆盖半只眼睛；缺的是命名、overlay 层分离、以及 agent 与人共用的帧契约。预览不进本轮主线。
 
-工作流原语（story / xstate / BDD）与「rutis 之后 wasm 优先产品 TUI」见 [§15](#UI-WORKFLOW)。
+工作流原语见 [附录 D](#UI-WORKFLOW)。
 
 ---
 
+<a id="UI-WORKFLOW"></a>
 
+## 附录 D. 预览：工作流原语
 
-## 15. 调研：TUI 交互工作流原语，以及 rutis 后 wasm 优先？（2026-10-17）
+接附录 C。web 是 GUI 式人-agent 协作面（框选、指认、切态），不是第二套 UI。Story + 代码态机 + XState/BDD 收成从设计到迭代的原语。产品 TUI 入口仍是 TTY attach。未落地。
 
-接 §14：web 想要的是 **GUI 式人-agent 协作面**（框选、指认、切态），不是第二套 UI。本节回答两问：① story + 代码态机 + XState/BDD 能否收成从设计到迭代的原语；② rutis 插件化之后，产品 TUI **wasm 优先**是否可行。未落地。
-
-### 15.1 五层真值，不要压成一层
+### D.1 五层真值，不要压成一层
 
 | 层 | 写什么 | 今日落点 | 管什么 |
 |---|---|---|---|
@@ -719,13 +706,13 @@ agent 侧 skill 以后应读 JSON 框树，而不是先截图。截图只解决�
 | **图** | 闭集转移 `from / event / guard / to` | 场景大纲 + llman-sdd XState **E1–E4**（表结构 / 确定性 / 可达 / 死锁） | 「有没有漏态、双 dest、死岛」 |
 | **可执行抽样** | 假如/当/那么 + harness | `tests/bdd` + `TuiTestHarness` 按键→状态 | 这一跳在真组件上发生 |
 | **Story** | 命名可达态（给眼睛看） | `DEBUG_SCENES` / `/debug` | 「Models 槽打开、busy、短终端」这一帧 |
-| **眼睛** | 格子 + 命名框 | §14 `InspectFrame`；宿主宜 web | 人点框、agent 报 id |
+| **眼睛** | 格子 + 命名框 | 附录 C `InspectFrame`；宿主宜 web | 人点框、agent 报 id |
 
 XState 在本仓的角色是 **validate 时的图论门禁**，不是产品运行时。已用于 `RuntimePhase`（`agent-runtime` r2905）和 server 就绪态（`server-core` r1786）。**不要**在 TUI 里跑 xstate.js。运行时仍是 Rust 穷举枚举（`EditorSlot` 已是互斥脸）。
 
 漂移记一笔：c2922 曾把 `specs.check_transitions: true` 写入 config；现行 `llmanspec/config.yaml` **没有**该键。图门禁是否还在跑，立项前先核对，不在本轮修。
 
-### 15.2 用代码描述 UI/UX/状态——对，但分清三种「代码」
+### D.2 用代码描述 UI/UX/状态——对，但分清三种「代码」
 
 | 种类 | 该不该当 SSOT | 例 |
 |---|---|---|
@@ -750,20 +737,20 @@ web 在这条链上的位置：**协作宿主**（GUI 交互模式：点、框�
 
 这套对 **gpui / 以后任意端** 同样成立：图与 story 跨端同源；每端只换「格子怎么画」。端是 client（`app-tui` r1162）。设计态 wasm 绑的是 **Host 端口的 mock/磁带**，不是用户机器上的真 bash。
 
-### 15.3 rutis「插件化」到底卸掉什么
+### D.3 rutis「插件化」到底卸掉什么
 
 对照 `xylitol-x-rutis-temp`（S1 靶心，本轮不引入 rutis）：
 
 | 已钉 | 含义 |
 |---|---|
-| TUI = **客户端插件（轴 D）** | 订阅事件，**自己合帧** |
+| 产品 TUI = 独立客户端包 | `xylitol-app-tui` 自己合帧，不进 Host `plugins/` |
 | **TUI 合帧内部是红线** | 不把每帧拆成运行时插件 |
 | 产品信封 ≠ rutis-bridge | 新载体仍走四象限 RPC / `PROTOCOL_VERSION` |
 | 热数据不进跨进程插件 | 每帧/每 token 不经 rutis 叶子 |
 
-**词表（纠正）**：「插件」是大概念（可替换实现，按平台换绑）。rutis 只是其中一种带生命周期开销的运行时库。现行代码词是端口 + 组合根（`XyTool` / `XyModel` / `XySessionStore` / `XyPermission` / `BashOperations` / `RuntimePorts`）。内置 Rust 实现、feature 换绑、rutis fiber 都是这个大概念下的不同装配方式。单写者、信封、Trust 的产品语义仍可由内置 Rust 模块执行，不必先上 rutis。Core 能不能叫插件，以后再谈。
+「插件」是大概念（可替换实现，按平台换绑）。rutis 只是其中一种带生命周期开销的运行时库。现行代码词是端口 + 组合根。Host 侧官方能力用 `xylitol-core-plugin-*`。客户端用 `xylitol-app-*`。
 
-### 15.4 叫「预览」，不要叫 profile / 检视工坊
+### D.4 叫「预览」
 
 代码里已经有这个词：`PreviewInject`、产品 Preview、`/debug` 场景。前端也用同一个词：打开 Storybook 就是打开预览。
 
@@ -784,13 +771,7 @@ wasm 只是预览页的一种载体，方便叠 HTML 框选。wasm 不是形态�
 
 不要叫：profile、检视工坊、替身 Host、playground、sandbox、模拟器。harness 是按键到状态的测试机。预览会用到 harness，预览本身不是 harness。
 
-### 15.4b 先前写错的两句
-
-上一版把「wasm 优先」写成「默认入口从 TTY 换成浏览器」。你没说过要换默认。要的是预览，产品入口仍是 TTY attach。
-
-上一版把「bash/读盘/MCP/Trust 进 wasm」写成「不行」。那句话只对产品真 Host 成立，对预览的假 Host 不成立。见下。
-
-### 15.5 为什么「真」bash/盘/MCP/Trust 不能当浏览器主线（以及为什么 mock 可以）
+### D.5 产品真 Host 不进浏览器；预览用假 Host
 
 浏览器页 **没有** 用户那台机器的仓库、shell、MCP stdio 子进程、项目 `.xylitol/`。WASI/memfs 是页内沙箱，不是工作站。编码 agent 的产品承诺是改**真实仓库**；把真 `BashTool`/`MCP` 编进 wasm 仍摸不到那份盘，只是多一个假电脑。Trust 的产品语义是「是否加载**本机项目**资源」——页里没有「本机项目」，除非另有原生 Host 把仓库映射进来。MCP 同理：要 spawn 配置里的 server。
 
@@ -819,11 +800,11 @@ wasm 只是预览页的一种载体，方便叠 HTML 框选。wasm 不是形态�
 
 预期形状：同一 client；换 Host 实现；换预览页载体。wasm 只服务预览页，不是把工作站搬进标签页。
 
-### 15.6 和 rutis 的关系（收窄）
+### D.6 和 rutis 的关系（收窄）
 
 rutis 不决定预览能不能做。预览依赖的是端口已存在、组合根能换绑、以及格子导出。rutis 以后若来，换绑可以变成卸一个 fiber、挂另一个。现在用 Rust 内置实现加开关就够。Core 算不算插件、插件层级怎么切，以后再谈。这里只记：大概念插件不等于必须是 rutis。
 
-### 15.7 明确不做（修正后）
+### D.7 明确不做
 
 | 不做 | 原因 |
 |---|---|
@@ -833,70 +814,4 @@ rutis 不决定预览能不能做。预览依赖的是端口已存在、组合�
 | 用 xstate 解释器驱动产品 TUI | E1–E4 只看表 |
 | 现在就钉「core 必须是 rutis 插件」 | 架构另开；先端口 |
 
-**结论（v5）**：这形态叫 **预览**。同一套 TUI client，挂 **假 Host**，开在 **预览页** 上，用 **场景** 切换状态。代码里已有 `PreviewInject` 和 `/debug`。缺的是把假 Host 收成与真 Host 对称的组合根，以及带框选的预览页。本轮只记，不实现。
-
----
-
-<a id="AI-BRIDGE"></a>
-<a id="W2.2b"></a>
-
-## 16. 调研：拆 `xylitol-ai-bridge`（2026-10-18）
-
-结论：现在这个包把 LLM 叶 DTO 和两套 HTTP 栈捆在一起。S0 必须拆。叶留下；OpenAI / Anthropic HTTP 分别进 `xylitol-core-plugin-provider-*`。不要再抽 `xylitol-llm-types`，也不要把 DTO 搬回主仓。
-
-引用：`../rutis/xylitol-x-rutis-temp/skills/xylitol-rutis-rewrite/references/` 的 `crate-graph.md`、`crate-split-detail.md`、`split-principles.md`。那份调研把 `xylitol-ai-bridge` 标成「迁入 crates/ 不在范围」，并让两个 provider 插件都依赖整包。本仓要补上这一刀。
-
-准入：P1 两个真实方言；P6 `async-openai` 不得进 Anthropic 构建。行数来自 `crates/xylitol-ai-bridge/src` 的 `wc -l`，合计 9172。
-
-### 16.1 功能分类
-
-| 块 | 约行 | 热度 | 准入 | 去向 |
-|---|---|---|---|---|
-| DTO（`dto/message.rs` + `chunk.rs` + `json_parse.rs`） | 594 | 契约稳；流式块每 token | P5 | **叶** `xylitol-ai-bridge` |
-| accounting | 189 | compaction 切点（`heuristic_token_count`） | 与 DTO 同叶 | **叶**。禁止再引入 tiktoken / RemoteCount |
-| usage 正规化 | 359 | 响应结束时 | 跟方言 JSON 一起变 | 叶可留类型；from_openai / from_anthropic 函数跟方言走 |
-| WirePolicy + defaults | 206 | 请求装配 | 两方言共享常量 | **叶** |
-| thinking 解析 | 480 | 请求前一次 | 解析留叶；`apply_thinking_*` 跟方言 | 拆函数，不整文件跟 HTTP |
-| FakeProvider | 571 | 测 / 预览 | 无 HTTP | **叶** |
-| error / hooks HeaderBag | 78 | 契约 | P5 | **叶** |
-| OpenAI Responses + Completions + client + assembler + hooks mw | ~3510 | **变更热点**；`async-openai` 重 | P1 / P6 | **`xylitol-core-plugin-provider-openai`** |
-| Anthropic Messages | 1194 | 热点；栈是 reqwest | P1 / P6 | **`xylitol-core-plugin-provider-anthropic`** |
-| dialect/deepseek | 71 | 冷；OpenAI 兼容 courtesy | 跟 Completions 一起改 | openai 插件 |
-| tool_wire | 115 | 工具名过网关 | 两方言 | **叶** |
-| trace + obs_session + attribution | 1344 | 观测，非每 token 模型正文 | 随请求走 | 跟方言插件；共享 attr 可留叶 |
-| config（live-provider 路径） | 115 | lab | 冷 | lab / 叶 config，不进内核 |
-| 主仓 `src/infra/provider`（`AdapterXyModel` + `map.rs`） | 另计 | DTO→`XyChunk` 壳 | 跟方言装配 | 各方言插件内，不要第三层 wrapper crate |
-
-### 16.2 和目标图怎么接
-
-rutis 目标已经是 `xylitol-core-plugin-provider-openai` / `-anthropic`。缺的是：这两个插件今天若依赖整包 `xylitol-ai-bridge`，Anthropic 构建仍会编 `async-openai`。
-
-目标依赖：
-
-```text
-xylitol-ai-bridge          叶：DTO / accounting / WirePolicy / FakeProvider / 可移植 hooks 类型
-        ▲                         ▲
-plugin-provider-openai     plugin-provider-anthropic
-（async-openai）            （reqwest Messages）
-        ▲                         ▲
-              xylitol-bin / kernel 装配
-```
-
-插件不横向依赖。主仓 `infra/provider` 的 map 壳搬进对应插件。`AiBridgeLlmAdapter` trait 留在叶上。
-
-### 16.3 不要做
-
-| 不要 | 原因 |
-|---|---|
-| 抽 `xylitol-llm-types` | `crates/xylitol-ai-bridge/AGENTS.md` 禁止第三套类型包 |
-| DTO 搬回主仓 | 同上；叶仍是 LLM 形状 SSOT |
-| 按文件对称再拆 assembler / hooks mw / client | 和 Responses 一起改，拆开会让一次方言改动跨多个 crate（split-principles §2.1） |
-| 为 DeepSeek 单独 crate | 71 行 overlay，跟 Completions |
-| 等 S1 rutis 再拆 HTTP | P6 在 S0 就能隔离依赖 |
-| 把 provider-trace 当内核 | 观测跟 LLM 请求走 |
-
-### 16.4 批次
-
-W2.2b 在 W2.2 之后、W2.3 之前。行为不变则 skip-SDD；`package-ai-bridge*.feature` 主语若写成单包 HTTP，validate-only 改句子。
-
-本轮只记分类，不搬代码。
+这形态叫 **预览**。同一套 TUI client，挂 **假 Host**，开在 **预览页** 上，用 **场景** 切换状态。代码里已有 `PreviewInject` 和 `/debug`。缺的是把假 Host 收成与真 Host 对称的组合根，以及带框选的预览页。预览不进本轮主线。
