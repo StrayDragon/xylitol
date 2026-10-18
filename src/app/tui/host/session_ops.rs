@@ -188,7 +188,7 @@ impl<T: Terminal> HostSession<T> {
 
     fn apply_debug_live_ask_close(&mut self, json: &str) {
         for event in crate::app::tui::activity_fold::live_ask_close_events(json) {
-            // `/debug` 注入的合成 close tape 无本地 run（idle），必须绕过 idle tape 栅栏。
+            // designing 注入的合成 close tape 无本地 run（idle），必须绕过 idle tape 栅栏。
             self.apply_xy_unfenced(Box::new(event));
         }
     }

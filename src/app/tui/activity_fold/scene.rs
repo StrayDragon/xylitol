@@ -6,7 +6,7 @@
 //!   the same flushed/persisted entry fields that resume consumes;
 //! - the frame comes from the product root: [`crate::app::tui::layout::UiRoot`]
 //!   → `render_scrollback` → `root.render` (same call chain as
-//!   `/debug activity-fold-live`);
+//!   designing scene `activity-fold-live`);
 //! - the dump annotates rows with the chord the product paint made:
 //!   `L3 envelope` (`Worked for`) / `L2 cluster` (cluster head) /
 //!   `L1 block` (foldable middle content, when kids are expanded).

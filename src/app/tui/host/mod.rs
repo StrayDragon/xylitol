@@ -151,7 +151,7 @@ pub struct HostSession<T: Terminal> {
     mcp_blocks_agent: bool,
     /// TUI-only ask host (c1850); polls pending asks → ChoicePrompt.
     ask_gateway: Option<Arc<crate::app::tui::ask_host::AskHostGateway>>,
-    /// `/debug activity-fold-live`: after Choice, play scripted ToolEnd/idle (not ReAct).
+    /// Designing scene `activity-fold-live`: after Choice, play scripted ToolEnd/idle (not ReAct).
     debug_live_ask_close: bool,
     /// Designing composition (`xylitol tui designing`): scene slot + fake Host inject.
     designing: bool,
@@ -1209,7 +1209,7 @@ impl<T: Terminal> HostSession<T> {
     }
 
     /// Apply one XyEvent without the idle tape fence. Only for host-authored
-    /// injections that are tape-shaped by design (`/debug activity-fold-live`
+    /// injections that are tape-shaped by design (`activity-fold-live`
     /// ask-close replay); never for driver downlink.
     pub(crate) fn apply_xy_unfenced(&mut self, xy: Box<XyEvent>) {
         apply_xy_event(&mut self.ui_model, &xy);

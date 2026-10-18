@@ -1,4 +1,4 @@
-//! `/debug activity-fold-live` — inject the att33 live-window tape (no LLM).
+//! Designing scene `activity-fold-live` — inject the att33 live-window tape (no LLM).
 //!
 //! Reuses [`crate::app::tui::activity_fold::replay_live_window`]. Last frame
 //! stays painted; a scroll notice lists PASS/FAIL per checkpoint. Then the
@@ -60,7 +60,7 @@ pub(super) fn run_activity_fold_live<T: Terminal>(session: &mut HostSession<T>) 
     let _ = session.render_now();
 }
 
-/// `/debug activity-fold-live-xy` — LiveXy inject via `HostSession::step`,
+/// Designing scene `activity-fold-live-xy` — LiveXy inject via `HostSession::step`,
 /// not `apply_ui_model` stuffing. Tape matches the SceneBuilder live-xy test.
 pub(super) fn run_preview_live_xy<T: Terminal>(session: &mut HostSession<T>) {
     use crate::app::core::driver::XyEvent;

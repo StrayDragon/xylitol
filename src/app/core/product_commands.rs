@@ -14,10 +14,9 @@ pub struct ProductSlashCommand {
     pub argument_hint: Option<&'static str>,
 }
 
-/// Built-in product commands. Debug-only entries appear only under `debug_assertions`.
+/// Built-in product commands.
 pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
-    #[allow(unused_mut)]
-    let mut cmds = vec![
+    vec![
         ProductSlashCommand {
             name: "exit",
             description: "Quit TUI",
@@ -103,8 +102,7 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             description: "Show MCP servers and tools armed status",
             argument_hint: None,
         },
-    ];
-    cmds
+    ]
 }
 
 #[cfg(test)]

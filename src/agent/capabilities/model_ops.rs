@@ -5,7 +5,6 @@ use std::sync::{Arc, Mutex};
 use crate::agent::model::manager::ModelManager;
 use crate::protocol::error::XyError;
 use crate::protocol::model::XyModelMeta;
-use crate::protocol::ports::XyModel;
 use crate::protocol::session::{
     EntryBase, ModelChangeEntry, SessionEntry, ThinkingLevelChangeEntry,
 };
@@ -31,12 +30,6 @@ impl AgentCapabilities {
     /// Get the currently selected model metadata (clone for lock safety).
     pub fn current_model(&self) -> Option<XyModelMeta> {
         self.with_models(|mm| mm.current_model().cloned())
-    }
-
-    /// Build the selected model instance.
-    #[allow(dead_code)] // retained for callers outside compaction path
-    pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, XyError> {
-        self.with_models(|mm| mm.build_current_model())
     }
 
     /// Fixed per-request context (system prompt + tool schemas) for

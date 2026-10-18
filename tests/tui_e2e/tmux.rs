@@ -79,7 +79,6 @@ impl TmuxSession {
     /// Inject keys via `tmux send-keys`. Special keys (Enter, Escape, C-Left,
     /// M-Right, Up, etc.) are passed as separate args so tmux interprets them;
     /// use `send_text` for literal strings.
-    #[allow(dead_code)] // harness API; used by later editor-port E2E tests
     pub fn send(&self, keys: &[&str]) -> std::io::Result<()> {
         let mut cmd = Command::new("tmux");
         cmd.args(["send-keys", "-t", &self.name]);
@@ -91,7 +90,6 @@ impl TmuxSession {
     }
 
     /// Send a literal string (no key-name interpretation) via `send-keys -l`.
-    #[allow(dead_code)] // harness API; used by later editor-port E2E tests
     pub fn send_text(&self, text: &str) -> std::io::Result<()> {
         Command::new("tmux")
             .args(["send-keys", "-t", &self.name, "-l", text])

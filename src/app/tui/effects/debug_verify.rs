@@ -1,4 +1,4 @@
-//! `/debug verify-smoke` — UI-only product smoke (no real LLM / `/exit`).
+//! Designing scene `verify-smoke` — UI-only product smoke (no real LLM / `/exit`).
 //!
 //! Covers checklist-style B4/B7 style gates: open models overlay, Esc closes
 //! without quit, fixed zone still Ready. Harness owns full B1–B5; this is a hand /

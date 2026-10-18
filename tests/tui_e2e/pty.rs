@@ -191,17 +191,6 @@ impl PtySession {
         Self::spawn_example("agent_demo", cols, rows)
     }
 
-    /// Seed the editor via `XYLITOL_AGENT_DEMO_INITIAL_PROMPT` (slash-submit cases).
-    #[allow(dead_code)] // kept for prompt-seeded e2e; palette/settings use Ctrl+P/S + wait_for_raw
-    pub fn spawn_demo_with_prompt(cols: u16, rows: u16, prompt: &str) -> std::io::Result<Self> {
-        Self::spawn_example_with_env(
-            "agent_demo",
-            cols,
-            rows,
-            &[("XYLITOL_AGENT_DEMO_INITIAL_PROMPT", prompt)],
-        )
-    }
-
     /// Resize the PTY window (delivers a real crossterm `Resize` to the child).
     pub fn resize(&mut self, cols: u16, rows: u16) -> std::io::Result<()> {
         self._master

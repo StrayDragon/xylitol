@@ -2,9 +2,9 @@
 //!
 //! Same frames drive:
 //! - `cargo test` / UiRoot harness (`replay_live_window`)
-//! - `/debug activity-fold-live` (inject + Choice slot; not a real ReAct run)
+//! - designing scene `activity-fold-live` (inject + Choice slot; not a real ReAct run)
 //!
-//! Ended-session hand-test is `/debug activity-fold-resume` (seeded JSONL).
+//! Ended-session hand-test is designing scene `activity-fold-resume` (seeded JSONL).
 //!
 //! Reproduce: last painted frame stays on the transcript so a FAIL names the
 //! step (busy → Thinking → inflight tool → sealed -3 → open -2 → Ask).
@@ -62,7 +62,7 @@ pub const LIVE_ASK_TOOL_ID: &str = "ask1";
 /// Distinct closing assistant body after the debug Choice is answered / skipped.
 pub const LIVE_ASK_CLOSE_TEXT: &str = "Thanks — continuing from your answer.";
 
-/// Scripted UX after `/debug activity-fold-live` Choice finishes (no ReAct).
+/// Scripted UX after designing scene `activity-fold-live` Choice finishes (no ReAct).
 pub fn live_ask_close_events(result: &str) -> Vec<XyEvent> {
     vec![
         XyEvent::ToolExecutionEnd {
