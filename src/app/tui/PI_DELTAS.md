@@ -54,13 +54,13 @@
 
 | 现象 | 原因 | 怎么看到分叉 |
 |---|---|---|
-| `/debug session-tree-multiturn` / `labeled` 打开是一条脊 | 线性夹具 | 用 **`/debug session-tree-branched`**，或见下「同会话兄弟枝」手测 |
+| 预览场景 `session-tree-multiturn` / `labeled` 打开是一条脊 | 线性夹具 | 用 **`session-tree-branched`** 场景，或见下「同会话兄弟枝」手测 |
 | 一直 Fake 聊天、从不 travel | 每条消息挂在 tip leaf → 永远一条链 | 先 travel，再发 |
 | Shift+F / `/session-fork` 后树仍像一条链 | 你已切到 **新 session**；父会话树不会自动出现「旁路子会话」节点 | 在父会话里 travel+续聊看兄弟；或分别打开父子 session 对比 |
 
 **同会话兄弟枝（产品已有机制）**
 
-1. 有多轮历史（手聊或 `/debug session-tree-multiturn`），**或** 直接 `/debug session-tree-branched`。
+1. 有多轮历史（手聊或预览场景 `session-tree-multiturn`），**或** 直接选 `session-tree-branched`（`xylitol tui designing`）。
 2. 若未用 branched：双 Esc / `/session-tree` → 选中**中部**节点 → Enter travel → 再发一条用户消息。
 3. 开树：应能看到同一父节点下 **≥2 个孩子**（原枝 + 新枝）。fold / ←→ 分支跳转即可验。
 

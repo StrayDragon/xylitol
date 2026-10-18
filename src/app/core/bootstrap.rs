@@ -96,6 +96,8 @@ pub struct BootstrapInput {
     /// "tui", "list-models"). Appears in tracing spans so log readers can tell
     /// which surface triggered an assembly. Not used for control flow.
     pub caller: &'static str,
+    /// Preview / designing: sessions stay in-process. Never user JSONL.
+    pub ephemeral_sessions: bool,
 }
 
 /// Structured diagnostics produced during assembly, surfaced to the caller for
@@ -451,8 +453,12 @@ pub fn resolve_assembly_with(
     // ── Session dir + restore info ────────────────────────────────
     let agent_home = xylitol_home_dir(&get_env);
     let sessions_dir = agent_home.join("sessions");
-    std::fs::create_dir_all(&sessions_dir).ok();
-    let session_mgr = SessionManager::new(sessions_dir.clone());
+    let session_mgr = if input.ephemeral_sessions {
+        SessionManager::in_memory()
+    } else {
+        std::fs::create_dir_all(&sessions_dir).ok();
+        SessionManager::new(sessions_dir.clone())
+    };
     let session_file_exists = input
         .session
         .as_deref()

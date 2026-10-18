@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use xylitol_tui::{InputEvent, InputReaction, PointerClickPhase, RenderError, TUI, Terminal};
 
-use crate::app::core::driver::{XyDriverError, XyEvent};
+use crate::app::core::driver::{XyDriver, XyDriverError, XyEvent};
 use crate::protocol::ports::XyBashResult;
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
@@ -153,6 +153,8 @@ pub struct HostSession<T: Terminal> {
     ask_gateway: Option<Arc<crate::app::tui::ask_host::AskHostGateway>>,
     /// `/debug activity-fold-live`: after Choice, play scripted ToolEnd/idle (not ReAct).
     debug_live_ask_close: bool,
+    /// Preview composition (`xylitol tui designing`): scene slot + fake Host inject.
+    preview: bool,
     /// Product keybindings owned by this session (scoped for component matching).
     keybindings: Option<Rc<RefCell<xylitol_tui::KeybindingsManager>>>,
     /// Keeps [`xylitol_tui::KeybindingsScope`] alive for the session thread.
@@ -229,6 +231,7 @@ impl<T: Terminal> HostSession<T> {
             mcp_blocks_agent: false,
             ask_gateway: None,
             debug_live_ask_close: false,
+            preview: false,
             keybindings: None,
             _keybindings_scope: None,
             pointer_down_had_selection: false,
@@ -264,6 +267,44 @@ impl<T: Terminal> HostSession<T> {
     /// Attach TUI-only ask gateway for ChoicePrompt mounts (c1850).
     pub fn set_ask_gateway(&mut self, gateway: Arc<crate::app::tui::ask_host::AskHostGateway>) {
         self.ask_gateway = Some(gateway);
+    }
+
+    pub fn set_preview_mode(&mut self, on: bool) {
+        self.preview = on;
+    }
+
+    pub fn preview_mode(&self) -> bool {
+        self.preview
+    }
+
+    pub fn open_preview_scene_slot(&mut self) {
+        if !self.preview {
+            return;
+        }
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().mount_scenes_picker();
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn close_scenes_slot(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().close_slot();
+            self.sync_ui_root_from_model();
+        }
+    }
+
+    pub fn take_pending_scene_select(&mut self) -> Option<String> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_scene_select()
+    }
+
+    pub async fn inject_preview_scene(&mut self, driver: &mut dyn XyDriver, scene: &str) {
+        if !self.preview {
+            return;
+        }
+        crate::app::tui::effects::preview::inject_scene(self, driver, scene.to_string()).await;
     }
 
     /// Product empty UI: shared `UiRoot` + Ctrl+C / Esc / idle-Enter listeners.

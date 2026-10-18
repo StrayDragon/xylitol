@@ -3,7 +3,7 @@
 use xylitol_tui::{Component, InputEvent};
 
 use super::super::slots::{
-    EditorSlot, ImportAction, McpAction, ModelsAction, ThemesAction, TreeAction,
+    EditorSlot, ImportAction, McpAction, ModelsAction, ScenesAction, ThemesAction, TreeAction,
 };
 use super::UiRoot;
 use crate::app::tui::keybindings::matches_binding;
@@ -78,6 +78,12 @@ impl UiRoot {
             EditorSlot::Models(models) => {
                 if let ModelsAction::Select(choice) = models.handle_input(event) {
                     self.pending.model_select = Some(choice);
+                }
+                false
+            }
+            EditorSlot::Scenes(scenes) => {
+                if let ScenesAction::Select(id) = scenes.handle_input(event) {
+                    self.pending.scene_select = Some(id);
                 }
                 false
             }

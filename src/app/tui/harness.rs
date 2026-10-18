@@ -3331,55 +3331,30 @@ mod slice_tests {
     }
 
     #[tokio::test]
-    async fn h25_debug_list_load_and_arg_completion() {
-        use crate::app::tui::commands::{PendingSlash, parse_slash_command};
-        assert_eq!(
-            parse_slash_command("/debug"),
-            Some(PendingSlash::DebugScene("list".into()))
-        );
-        assert_eq!(
-            parse_slash_command("/debug session-tree-multiturn"),
-            Some(PendingSlash::DebugScene("session-tree-multiturn".into()))
-        );
-        // Colon form intentionally unsupported (use space).
+    async fn h25_preview_scene_slot_lists_and_injects() {
+        use crate::app::tui::commands::parse_slash_command;
+        assert_eq!(parse_slash_command("/debug"), None);
+        assert_eq!(parse_slash_command("/debug session-tree-multiturn"), None);
         assert_eq!(parse_slash_command("/debug:session-tree-multiturn"), None);
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
-        let mut stream = None;
-
-        root.borrow_mut().set_editor_text("/debug");
-        session.step(HostEvent::Input(enter_event())).unwrap();
-        pump_host_driver(&mut session, &mut driver, &mut stream)
-            .await
-            .unwrap();
-        let note = session
-            .ui_model()
-            .entries
-            .iter()
-            .rev()
-            .find_map(|e| match e {
-                crate::app::tui::UiEntry::ScrollNotice { text } => Some(text.as_str()),
-                _ => None,
-            })
-            .unwrap_or("");
+        session.set_preview_mode(true);
+        session.open_preview_scene_slot();
+        let joined = root.borrow_mut().render(80).join("\n");
         assert!(
-            note.contains("session-tree-multiturn"),
-            "list note should name scenes; got: {note}"
+            joined.contains("session-tree-multiturn"),
+            "scene slot should list ids; got:\n{joined}"
         );
         assert!(
-            note.contains("Multi-turn") || note.contains("MessageHistory"),
-            "list note should include description; got: {note}"
+            joined.contains("Multi-turn") || joined.contains("MessageHistory"),
+            "scene slot should include description; got:\n{joined}"
         );
 
-        root.borrow_mut()
-            .set_editor_text("/debug session-tree-multiturn");
-        session.step(HostEvent::Input(enter_event())).unwrap();
-        pump_host_driver(&mut session, &mut driver, &mut stream)
-            .await
-            .unwrap();
-        // c2740: scene applied in-process (memory store) — driver is not involved.
+        session
+            .inject_preview_scene(&mut driver, "session-tree-multiturn")
+            .await;
         let note = session
             .ui_model()
             .entries
@@ -3394,17 +3369,6 @@ mod slice_tests {
             note.contains("local in-memory session"),
             "multiturn load should report a local in-memory session; got: {note}"
         );
-
-        // `/debug ` arg completion (same path as `/model `).
-        for ch in "/debug sess".chars() {
-            session.step(HostEvent::Input(char_event(ch))).unwrap();
-        }
-        let frame = root.borrow_mut().render(80);
-        let joined = frame.join("\n");
-        assert!(
-            joined.contains("session-tree") || joined.contains("multiturn"),
-            "debug arg completion should list scene ids; got:\n{joined}"
-        );
     }
 
     #[tokio::test]
@@ -3412,12 +3376,10 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
-        let mut stream = None;
-        root.borrow_mut().set_editor_text("/debug verify-smoke");
-        session.step(HostEvent::Input(enter_event())).unwrap();
-        pump_host_driver(&mut session, &mut driver, &mut stream)
-            .await
-            .unwrap();
+        session.set_preview_mode(true);
+        session
+            .inject_preview_scene(&mut driver, "verify-smoke")
+            .await;
         assert!(!session.should_quit(), "verify-smoke must not quit");
         let note = session
             .ui_model()
@@ -3445,12 +3407,10 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        root.borrow_mut()
-            .set_editor_text("/debug activity-fold-live");
-        session.step(HostEvent::Input(enter_event())).unwrap();
-        pump_host_driver(&mut session, &mut driver, &mut stream)
-            .await
-            .unwrap();
+        session.set_preview_mode(true);
+        session
+            .inject_preview_scene(&mut driver, "activity-fold-live")
+            .await;
         let note = session
             .ui_model()
             .entries
@@ -3526,13 +3486,10 @@ mod slice_tests {
         driver.set_session_messages(
             crate::app::debug_fixtures::activity_fold_resume_stamped_entries(),
         );
-        let mut stream = None;
-        root.borrow_mut()
-            .set_editor_text("/debug activity-fold-resume");
-        session.step(HostEvent::Input(enter_event())).unwrap();
-        pump_host_driver(&mut session, &mut driver, &mut stream)
-            .await
-            .unwrap();
+        session.set_preview_mode(true);
+        session
+            .inject_preview_scene(&mut driver, "activity-fold-resume")
+            .await;
         assert!(
             !root.borrow().ask_choice_open(),
             "ended resume scene must not mount Choice"

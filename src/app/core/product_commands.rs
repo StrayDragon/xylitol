@@ -104,14 +104,6 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             argument_hint: None,
         },
     ];
-    #[cfg(debug_assertions)]
-    {
-        cmds.push(ProductSlashCommand {
-            name: "debug",
-            description: "Load fixture: /debug <scene>",
-            argument_hint: Some("<scene>"),
-        });
-    }
     cmds
 }
 

@@ -35,14 +35,16 @@
       当 在产品命令模块解析 "/model" 与 "/exit"
       那么 分别得到模型与退出待发命令
   @req:r1201
-  规则: debug-scene-slash
-    产品 TUI 在 debug 构建 idle 时 须解析斜杠 /debug 与 /debug <scene>（空格参数；不得要求冒号形式）：无 scene 时 须以系统提示列出可用场景及描述且 不得改当前 session；已知 scene（至少 session-tree-multiturn、session-tree-labeled）须仅在 TUI 进程内经非产品注入 API（harness/`cfg(debug_assertions)`）新建隔离 debug-* 会话、写入 fixture 后 switch 并重建 transcript；load_debug_scene 不得存在于 wire/Driver/Host 公开面（不进 protocol::Command、不进远程 unary）；未知 scene 须提示错误且 不得崩溃；debug 构建 须为 /debug 提供与 /model 同类的参数补全（SlashArgCompletionSource）；不得覆写用户装载前的当前 session 文件内容。
+  规则: debug-slash-retired
+    产品 TUI 与预览表面 不得解析斜杠 /debug、/debug <scene>（空格）或 /debug:<scene>（冒号）。SlashCommandSource 不得列出 debug。提交上述文本 须按未知斜杠短提示且 不得崩溃、不得注入场景。场景装载见 app-tui-preview。
 
-    场景: debug-slash-lists-and-rejects-colon
+    场景: debug-slash-not-recognized
       当 以主机泵在 idle 提交 "/debug"
-      那么 系统提示列出场景名与描述且未换会话
+      那么 按未知斜杠提示且未换会话
+      当 提交 "/debug session-tree-multiturn"
+      那么 按未知斜杠提示且未注入场景
       当 提交 "/debug:session-tree-multiturn"
-      那么 不识别冒号形式且按未知斜杠提示
+      那么 按未知斜杠提示
   @req:r1202
   规则: slash-session-tree-fork
     产品 TUI idle 时 须解析 /session-tree 与 /session-fork：/session-tree 须打开 MessageHistory 会话树（与双 Esc 同路径）；/session-fork 须对当前 session leaf 执行与树内 Shift+F 相同的产品 fork（user→Before、非 user→At）并 switch 到 child；busy 时二者 须拒绝并提示且 不得开树或 fork；SlashCommandSource 须列出 session-tree 与 session-fork；不得再将 /tree 或 /fork 识别为上述命令；不得发明平行 fork 语义（含 pi 式 user 消息选择器）。
@@ -128,7 +130,7 @@
       那么 主题直接应用且槽关闭
   @req:r1195
   规则: busy-slash-policy
-    产品 TUI agent/bang 忙碌且无 overlay 时，Enter 提交经 parse_slash_command 命中的 PendingSlash 须经单一穷尽 BusySlashPolicy::{Allow,Reject} 分流且 不得落入 steer/follow-up：Allow 至少含 SessionName、SetModel、HistoryCopyLast、SessionDump、Export、Exit、Compact、OpenMcp、Theme、OpenModels、OpenSessionResume；Reject 至少含 Reload、Trust、OpenTree、ForkAtLeaf、SessionNew、SessionClone、Import、DebugScene、Usage。OpenSessionResume Allow 仅覆盖打开/浏览；busy 下面板内 SwitchSession（及会写盘的 rename/delete 确认）须另闸拒绝并经通知条提示（见 atm10 / atc22），不得因 Allow 开面板而放行 switch。未识别且 looks_like_unknown_slash 的 `/…` 须短提示拒绝且 不得入 steer（严于 pi）。try_busy_input 不得再对个别命令散落特判。
+    产品 TUI agent/bang 忙碌且无 overlay 时，Enter 提交经 parse_slash_command 命中的 PendingSlash 须经单一穷尽 BusySlashPolicy::{Allow,Reject} 分流且 不得落入 steer/follow-up：Allow 至少含 SessionName、SetModel、HistoryCopyLast、SessionDump、Export、Exit、Compact、OpenMcp、Theme、OpenModels、OpenSessionResume；Reject 至少含 Reload、Trust、OpenTree、ForkAtLeaf、SessionNew、SessionClone、Import、Usage。OpenSessionResume Allow 仅覆盖打开/浏览；busy 下面板内 SwitchSession（及会写盘的 rename/delete 确认）须另闸拒绝并经通知条提示（见 atm10 / atc22），不得因 Allow 开面板而放行 switch。未识别且 looks_like_unknown_slash 的 `/…` 须短提示拒绝且 不得入 steer（严于 pi）。try_busy_input 不得再对个别命令散落特判。
 
     场景: busy-slash-allow-and-reject
       当 以主机泵开启忙碌流并提交 "/model"

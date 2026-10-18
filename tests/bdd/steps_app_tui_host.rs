@@ -1380,25 +1380,6 @@ pub(crate) fn t_c2826_session_name(host_pump_bdd: &HostPumpBdd) {
     assert_eq!(calls[0], "新名字");
 }
 
-#[then("系统提示列出场景名与描述且未换会话")]
-pub(crate) fn t_c2826_debug_list(host_pump_bdd: &HostPumpBdd) {
-    let note = c2826_last_notice(host_pump_bdd);
-    assert!(
-        note.contains("session-tree-multiturn"),
-        "c2826: /debug 应列场景：{note}"
-    );
-}
-
-#[then("不识别冒号形式且按未知斜杠提示")]
-pub(crate) fn t_c2826_debug_colon(host_pump_bdd: &HostPumpBdd) {
-    let s = stats(host_pump_bdd);
-    assert!(!s.should_quit);
-    assert!(
-        !c2826_last_notice(host_pump_bdd).is_empty(),
-        "c2826: 冒号形式应按未知斜杠提示"
-    );
-}
-
 #[then("会话树槽打开且经驱动取一次树")]
 pub(crate) fn t_c2826_tree_open(host_pump_bdd: &HostPumpBdd) {
     let s = stats(host_pump_bdd);

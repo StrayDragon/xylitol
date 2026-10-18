@@ -110,6 +110,24 @@ impl PtySession {
         Ok(session)
     }
 
+    /// Debug-only `xylitol tui designing` — no Host listener, preview scene slot.
+    pub fn spawn_tui_designing(
+        cols: u16,
+        rows: u16,
+        project_root: &Path,
+        config_dir: &Path,
+        home_dir: &Path,
+    ) -> std::io::Result<Self> {
+        let mut cmd = CommandBuilder::new("cargo");
+        cmd.args(["run", "--quiet", "--", "tui", "designing"]);
+        cmd.cwd(env!("CARGO_MANIFEST_DIR"));
+        cmd.env("TERM", "xterm-256color");
+        cmd.env("HOME", home_dir);
+        cmd.env("XYLITOL_CONFIG_DIR", config_dir);
+        cmd.env("XYLITOL_PROJECT_DIR", project_root);
+        Self::spawn_cmd(cmd, cols, rows)
+    }
+
     fn spawn_cmd(cmd: CommandBuilder, cols: u16, rows: u16) -> std::io::Result<Self> {
         let pty_system = NativePtySystem::default();
         let pair = pty_system
@@ -1048,27 +1066,23 @@ fn pty_product_fake_session_tree_opens_search_help() {
     assert_eq!(code, 0);
 }
 
-/// c705: product Fake — `/debug session-tree-labeled` + Shift+L opens label editor.
+/// c705: designing preview — session-tree-labeled + tree shows annotation.
 #[test]
 #[ignore = "E2E: product PTY + cargo build; run via `just test-tui-e2e-pty`"]
 fn pty_product_fake_session_tree_label_path() {
     const COLS: usize = 100;
     const ROWS: usize = 30;
-    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
+    let (mut session, _tmp) = spawn_tui_designing_ready(COLS as u16, ROWS as u16);
 
-    // c710 fixture: labeled tree without fighting Kitty printable typing.
-    // Dismiss arg-completion popup (Enter would apply, not submit) then submit.
     session
-        .send_keys("\x15/debug session-tree-labeled")
-        .expect("type debug scene");
-    session.drain(Duration::from_millis(200));
-    session.send_keys("\x1b").expect("dismiss completion");
-    session.drain(Duration::from_millis(100));
-    session.send_keys("\r").expect("submit debug scene");
-    // Cell-grid oracle goes stale under tall welcome; fixture notes live in raw PTY.
+        .wait_for_raw("session-tree-labeled", Duration::from_secs(20))
+        .expect("scene slot lists labeled");
+    session.send_keys("\x1b[B").expect("down to labeled");
+    session.drain(Duration::from_millis(80));
+    session.send_keys("\r").expect("select labeled scene");
     session
-        .wait_for_raw("debug scene", Duration::from_secs(20))
-        .expect("debug scene note");
+        .wait_for_raw("preview scene", Duration::from_secs(20))
+        .expect("preview scene note");
     session
         .wait_for_raw("labeled root", Duration::from_secs(15))
         .expect("fixture user in scrollback");
@@ -1157,18 +1171,16 @@ fn pty_product_fake_busy_model_list_keeps_running_lead() {
 fn pty_product_fake_large_scrollback_then_exit() {
     const COLS: usize = 100;
     const ROWS: usize = 30;
-    let (mut session, _tmp) = spawn_product_fake_ready(COLS as u16, ROWS as u16);
-
+    let (mut session, _tmp) = spawn_tui_designing_ready(COLS as u16, ROWS as u16);
     session
-        .send_keys("\x15/debug session-tree-branched")
-        .expect("type debug scene");
-    session.drain(Duration::from_millis(200));
-    session.send_keys("\x1b").expect("dismiss completion");
-    session.drain(Duration::from_millis(100));
-    session.send_keys("\r").expect("submit debug scene");
+        .wait_for_raw("session-tree-branched", Duration::from_secs(20))
+        .expect("scene slot lists branched");
+    session.send_keys("\x1b[B\x1b[B").expect("down to branched");
+    session.drain(Duration::from_millis(80));
+    session.send_keys("\r").expect("select branched scene");
     session
-        .wait_for_raw("debug scene", Duration::from_secs(20))
-        .expect("debug scene note in PTY stream");
+        .wait_for_raw("preview scene", Duration::from_secs(20))
+        .expect("preview scene note in PTY stream");
     session
         .wait_for_raw("alt leaf", Duration::from_secs(15))
         .expect("fixture alt leaf in PTY stream");
@@ -1263,6 +1275,23 @@ fn pty_product_fake_session_tree_branched() {
 
 fn spawn_product_fake_ready(cols: u16, rows: u16) -> (PtySession, tempfile::TempDir) {
     spawn_product_fake_ready_in(cols, rows, "project")
+}
+
+fn spawn_tui_designing_ready(cols: u16, rows: u16) -> (PtySession, tempfile::TempDir) {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let project = tmp.path().join("project");
+    let config_dir = tmp.path().join("config");
+    let home = tmp.path().join("home");
+    std::fs::create_dir_all(&project).expect("project dir");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+    std::fs::create_dir_all(&home).expect("home dir");
+    write_fake_project_config(&project).expect("fake config");
+    let mut session = PtySession::spawn_tui_designing(cols, rows, &project, &config_dir, &home)
+        .expect("spawn tui designing");
+    session
+        .wait_for_raw("scenes", Duration::from_secs(120))
+        .expect("designing TUI should open the scene slot");
+    (session, tmp)
 }
 
 /// Long nested project path — exercises startup-card wrap at narrow Ready widths.

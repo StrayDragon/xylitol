@@ -97,6 +97,8 @@ pub struct TuiRunOptions {
     /// Lab peek: CLI may pass `lab_interaction_mode_from_env` (`XYLITOL_TUI_INLINE`).
     /// That is **not** a product flag or setting.
     pub interaction_mode: xylitol_tui::InteractionMode,
+    /// Preview composition: scene slot + process-local inject (debug CLI leaf).
+    pub preview: bool,
 }
 
 impl Default for TuiRunOptions {
@@ -108,6 +110,7 @@ impl Default for TuiRunOptions {
             ask_gateway: None,
             client_storage: None,
             interaction_mode: xylitol_tui::InteractionMode::ApplicationOwned,
+            preview: false,
         }
     }
 }
@@ -255,6 +258,10 @@ async fn run_host_loop(
         session.set_client_storage(Some(storage));
     }
     session.set_activity_fold_settings(options.activity_fold);
+    session.set_preview_mode(options.preview);
+    if options.preview {
+        session.open_preview_scene_slot();
+    }
     if let Some(gw) = options.ask_gateway {
         session.set_ask_gateway(gw);
     }

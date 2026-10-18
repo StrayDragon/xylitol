@@ -7,6 +7,7 @@ mod ask;
 mod import;
 mod mcp;
 mod models;
+mod scenes;
 mod themes;
 mod tree;
 
@@ -16,6 +17,7 @@ pub use ask::AskSlot;
 pub use import::{ImportConfirmDecision, ImportSlot};
 pub use mcp::McpSlot;
 pub use models::ModelsSlot;
+pub use scenes::ScenesSlot;
 pub use themes::ThemesSlot;
 pub use tree::{TreeAction, TreeSlot};
 
@@ -31,6 +33,7 @@ pub(crate) fn is_select_nav_key(key: &crossterm::event::KeyEvent) -> bool {
 }
 pub(crate) use mcp::McpAction;
 pub(crate) use models::ModelsAction;
+pub(crate) use scenes::ScenesAction;
 pub(crate) use themes::ThemesAction;
 
 use crate::app::tui::session_resume::SessionResumePanel;
@@ -58,6 +61,8 @@ pub enum EditorSlot {
     Choice(AskSlot),
     #[strum_discriminants(strum(message = "Models"))]
     Models(ModelsSlot),
+    #[strum_discriminants(strum(message = "Scenes"))]
+    Scenes(ScenesSlot),
     #[strum_discriminants(strum(message = "Themes"))]
     Themes(ThemesSlot),
     #[strum_discriminants(strum(message = "Import confirm"))]
@@ -118,6 +123,7 @@ impl EditorSlot {
         match self {
             Self::Tree(s) => s.invalidate(),
             Self::Models(s) => s.invalidate(),
+            Self::Scenes(s) => s.invalidate(),
             Self::Themes(s) => s.invalidate(),
             Self::ImportConfirm(s) => s.invalidate(),
             Self::SessionResume(s) => s.invalidate(),

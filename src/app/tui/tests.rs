@@ -356,10 +356,7 @@ fn product_tui_source_has_no_tui_start_call() {
             "effects/slash/compact.rs",
             include_str!("effects/slash/compact.rs"),
         ),
-        (
-            "effects/slash/debug.rs",
-            include_str!("effects/slash/debug.rs"),
-        ),
+        ("effects/preview.rs", include_str!("effects/preview.rs")),
         (
             "effects/slash/model.rs",
             include_str!("effects/slash/model.rs"),
@@ -395,6 +392,10 @@ fn product_tui_source_has_no_tui_start_call() {
         (
             "effects/pending_ui/tree.rs",
             include_str!("effects/pending_ui/tree.rs"),
+        ),
+        (
+            "effects/pending_ui/scenes.rs",
+            include_str!("effects/pending_ui/scenes.rs"),
         ),
         ("effects/bang.rs", include_str!("effects/bang.rs")),
         ("commands.rs", include_str!("commands.rs")),

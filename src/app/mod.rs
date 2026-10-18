@@ -12,7 +12,7 @@ pub use core::session_export;
 /// Shared tool call/result presentation (TUI + Print; c1460).
 pub(crate) mod tool_display;
 
-/// Hand-test `/debug <scene>` fixtures (c710). Delete this module to remove them.
+/// Preview scene catalog (designing leaf; process-local inject).
 pub(crate) mod debug_fixtures;
 
 #[cfg(feature = "cli")]

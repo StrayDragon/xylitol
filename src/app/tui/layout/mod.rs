@@ -15,8 +15,8 @@ mod theme;
 mod tier;
 
 pub(crate) use fixed_zone_footprint::{
-    DEFAULT_MAX_VISIBLE, IMPORT_SLOT, MCP_SLOT_BASE, MODELS_SLOT, RESUME_SLOT, THEMES_SLOT,
-    TREE_SLOT, queue_strip_line_count, reserved_lower_fixed_zone, slot_body_budget,
+    DEFAULT_MAX_VISIBLE, IMPORT_SLOT, MCP_SLOT_BASE, MODELS_SLOT, RESUME_SLOT, SCENES_SLOT,
+    THEMES_SLOT, TREE_SLOT, queue_strip_line_count, reserved_lower_fixed_zone, slot_body_budget,
 };
 
 pub(crate) use models_picker::{ModelPickerRow, PendingModelChoice, status_next_turn_cue_text};

@@ -15,6 +15,7 @@
 //!     trust_override: Some(false),
 //!     interactive: false,
 //!     caller: "embed-example",
+//!     ephemeral_sessions: false,
 //! };
 //! // Then: `bootstrap(input)?.into_runtime()` → `XyDriver::run`.
 //! // Do not name `AgentRuntime` at the call site.

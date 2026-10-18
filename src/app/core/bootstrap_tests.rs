@@ -29,6 +29,7 @@ fn assembly_input(trust_override: Option<bool>) -> BootstrapInput {
         trust_override,
         interactive: false,
         caller: "test",
+        ephemeral_sessions: false,
     }
 }
 
@@ -565,6 +566,7 @@ fn missing_session_still_applies_settings_thinking_default() {
         trust_override: Some(true),
         interactive: false,
         caller: "test",
+        ephemeral_sessions: false,
     };
     let assembly =
         resolve_assembly_with(&input(), &get_env, Some(project.as_path())).expect("assembly");

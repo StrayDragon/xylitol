@@ -29,6 +29,10 @@ pub const MODELS_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 1,
     trailer: 0,
 };
+pub const SCENES_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
+    header: 1,
+    trailer: 0,
+};
 pub const THEMES_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 1,
     trailer: 0,

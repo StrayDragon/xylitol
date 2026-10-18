@@ -11,8 +11,6 @@ pub enum PendingSlash {
     /// Bare `/model` — open fuzzy picker (c630).
     OpenModels,
     SetModel(String),
-    /// `/debug` / `/debug <scene>` hand-test fixtures (c710; debug builds).
-    DebugScene(String),
     /// `/session-tree` — open MessageHistory tree (c700 / c1005).
     OpenTree,
     /// `/session-fork` — fork at current leaf (c700 / c1005).
@@ -180,10 +178,6 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
         },
-        PendingSlash::DebugScene(_) => SlashAllowances {
-            when_agent_busy: Reject,
-            exec: Exec::Queued,
-        },
         PendingSlash::Usage(_) => SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
@@ -217,7 +211,6 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::SessionNew => "/session-new",
         PendingSlash::SessionClone => "/session-clone",
         PendingSlash::Import { .. } => "/session-import",
-        PendingSlash::DebugScene(_) => "/debug",
         PendingSlash::Usage(_) => "slash",
         // Allow variants are not refuse-noted; keep arms for exhaustiveness.
         PendingSlash::Exit => "/exit",
@@ -284,7 +277,7 @@ pub fn parse_bang_command(text: &str) -> BangParse {
     }
 }
 
-/// Parse idle slash MVP (`/exit`, `/model` `id`, and debug-build `/debug` `scene`).
+/// Parse idle slash MVP (`/exit`, `/model` `id`).
 pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
     let trimmed = text.trim();
     let rest = trimmed.strip_prefix('/')?;
@@ -350,11 +343,6 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("theme", arg) => Some(PendingSlash::Theme { arg }),
         ("mcp" | "mcps", None) => Some(PendingSlash::OpenMcp),
         ("mcp" | "mcps", Some(_)) => Some(PendingSlash::Usage("usage: /mcp (no arguments)")),
-        // Space form only (`/debug scene`). Colon form intentionally unsupported.
-        #[cfg(debug_assertions)]
-        ("debug", None) => Some(PendingSlash::DebugScene("list".into())),
-        #[cfg(debug_assertions)]
-        ("debug", Some(scene)) => Some(PendingSlash::DebugScene(scene)),
         _ => None,
     }
 }
@@ -438,8 +426,7 @@ mod parse_tests {
     /// The whole idle-input command surface in one reviewable file: every
     /// slash verb, its usage-error paths, and bang forms. Adding/removing a
     /// verb MUST touch this snapshot (deliberate friction — the verb list is
-    /// product vocabulary). `/debug` is excluded: it only exists under
-    /// debug_assertions and would make the snapshot profile-dependent.
+    /// product vocabulary).
     #[test]
     fn slash_bang_parse_surface_snapshot() {
         let inputs = [
@@ -558,10 +545,6 @@ mod parse_tests {
             busy_slash_policy(&PendingSlash::Import {
                 path: "/tmp/x.jsonl".into()
             }),
-            BusySlashPolicy::Reject
-        );
-        assert_eq!(
-            busy_slash_policy(&PendingSlash::DebugScene(String::new())),
             BusySlashPolicy::Reject
         );
         assert_eq!(

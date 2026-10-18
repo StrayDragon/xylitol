@@ -180,15 +180,6 @@ pub trait XyDriver: crate::app::core::dispatch::SessionCommandExecutor + Send {
     /// Active MessageHistory leaf entry id for the current session (c700/c1005 `/session-fork`).
     fn leaf_entry_id(&self) -> Option<String>;
 
-    /// Load a named `/debug <scene>` fixture into a fresh `debug-*` session (c710).
-    ///
-    /// Returns session id + entries for transcript rebuild. Does not invent a
-    /// `protocol::Command` — XyDriver-only like session_tree. Fixtures live in
-    /// `app::debug_fixtures` (delete that module to remove).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the named scene is unknown.
     /// `(name, description)` for product `$skill` completion (c1130).
     ///
     /// Default empty (remote / scripted drivers). In-process uses Trust-filtered

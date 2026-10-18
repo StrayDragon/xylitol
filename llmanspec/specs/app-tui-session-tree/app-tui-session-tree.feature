@@ -44,7 +44,7 @@
   规则: tree-reflects-persisted-turn
     在 auto-persist 与稳定 session_id 就绪后，产品双 Esc 打开的 MessageHistory 树 须能反映已完成回合写入 store 的消息节点；一轮 user/assistant 成功结束后 Command::SessionTree（MessageHistory）不得因 store 仅有 header 而长期为 0 节点（空会话除外）。
     场景: tree-reflects-persisted-round
-      当 以主机泵在 idle 提交 "/debug session-tree-multiturn"
+      当 预览表面装载场景 "session-tree-multiturn"
       当 以主机泵空编辑器双 Esc 开树
       那么 会话树非空且含 fixture 用户正文
 
@@ -88,11 +88,11 @@
       当 在树槽编辑选中节点标签为 "重点"
       那么 标签经驱动写入且注解生效
   @req:r1329
-  规则: debug-scene-tree-fixture
-    经 /debug session-tree-multiturn 或 /debug session-tree-labeled 装载后，产品双 Esc 打开的 MessageHistory 树 须非空且可见 fixture user 正文；session-tree-labeled 须使至少一节点 annotation 有值以便 labeled-only 过滤可验。
+  规则: preview-scene-tree-fixture
+    经预览表面装载场景 session-tree-multiturn 或 session-tree-labeled 后，产品双 Esc 打开的 MessageHistory 树 须非空且可见 fixture user 正文；session-tree-labeled 须使至少一节点 annotation 有值以便 labeled-only 过滤可验。
 
     场景: debug-tree-fixture-nonempty
-      当 以主机泵在 idle 提交 "/debug session-tree-multiturn"
+      当 预览表面装载场景 "session-tree-multiturn"
       当 以主机泵空编辑器双 Esc 开树
       那么 会话树非空且含 fixture 用户正文
   @req:r1330

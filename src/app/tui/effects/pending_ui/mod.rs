@@ -4,6 +4,7 @@ mod clipboard;
 mod import;
 mod models;
 mod resume;
+mod scenes;
 mod theme;
 mod tree;
 
@@ -45,6 +46,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     }
     tree::label(session, driver).await;
     models::select(session, driver).await;
+    scenes::select(session, driver).await;
     theme::select(session).await;
     import::decide(session, driver).await;
     resume::select(session, driver).await;

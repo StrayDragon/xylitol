@@ -241,6 +241,7 @@ impl UiRoot {
             EditorSlot::Settings => vec![" Settings".to_string(), " (stub) Esc close".to_string()],
             EditorSlot::Choice(ask) => ask.render(width),
             EditorSlot::Models(models) => models.render(width, self.theme),
+            EditorSlot::Scenes(scenes) => scenes.render(width, self.theme),
             EditorSlot::Themes(themes) => themes.render(width, self.theme),
             EditorSlot::ImportConfirm(imp) => imp.render(width, self.theme),
             EditorSlot::SessionResume(panel) => panel.render(width.max(1)),

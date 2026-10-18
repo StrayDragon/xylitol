@@ -84,6 +84,9 @@ pub enum TuiAction {
         #[command(flatten)]
         surface: TuiSurfaceArgs,
     },
+    /// Preview composition: same TUI client, fake Host, scene slot. Debug builds only.
+    #[cfg(debug_assertions)]
+    Designing,
 }
 
 /// Surface flags for `xylitol print` (c1565 / c1620).
@@ -164,6 +167,30 @@ pub struct SurfaceBootstrap {
     pub no_trust: bool,
     pub attach: Option<String>,
     pub port: Option<u16>,
+}
+
+/// `xylitol tui designing` (debug builds): not a surface verb, skips attach.
+pub fn is_tui_designing(command: Option<&CliCommand>) -> bool {
+    #[cfg(debug_assertions)]
+    {
+        matches!(
+            command,
+            Some(CliCommand::Tui {
+                action: Some(TuiAction::Designing),
+                ..
+            })
+        )
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        let _ = command;
+        false
+    }
+}
+
+/// Product TUI attach fail-closed. Preview designing does not need a Host listener.
+pub fn tui_requires_host_listener(command: Option<&CliCommand>) -> bool {
+    matches!(command, Some(CliCommand::Tui { .. }) | None) && !is_tui_designing(command)
 }
 
 fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> TuiSurfaceArgs {
@@ -356,6 +383,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::IsTerminal;
     let stdin_is_tty = std::io::stdin().is_terminal();
     let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
+    #[cfg(feature = "tui")]
+    let designing = is_tui_designing(args.command.as_ref());
 
     #[cfg(feature = "tui")]
     let want_tui = !surface.list_models
@@ -365,7 +394,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let want_tui = false;
 
     #[cfg(all(feature = "tui", feature = "server"))]
-    if want_tui {
+    if want_tui && !designing {
         let url =
             crate::app::core::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
         if let Err(msg) = crate::app::core::attach::attach_preflight(&url).await {
@@ -376,7 +405,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // c490: Ask trust inside ChoicePrompt **before** bootstrap (no stdio menu).
     #[cfg(feature = "tui")]
-    if want_tui {
+    if want_tui && !designing {
         match trust_gate::run_trust_gate_if_needed(trust_override) {
             Ok(()) => {}
             Err(trust_gate::TrustGateError::Cancelled) => {
@@ -392,6 +421,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     #[cfg(all(feature = "tui", feature = "server"))]
+    if want_tui && designing {
+        return run_product_tui_designing(&surface).await;
+    }
+
+    #[cfg(all(feature = "tui", feature = "server"))]
     if want_tui {
         return run_product_tui_attached(&surface).await;
     }
@@ -404,6 +438,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         // c490: product TUI Ask is `run_trust_gate_if_needed` (ChoicePrompt), never stdio.
         interactive: false,
         caller: "cli",
+        ephemeral_sessions: false,
     };
 
     // `--list-models` needs the resolved registry before any agent build; it
@@ -567,11 +602,80 @@ async fn run_product_tui_attached(
                 crate::app::tui::storage::ClientStorage::from_env(),
             )),
             interaction_mode: crate::app::tui::lab_interaction_mode_from_env(),
+            preview: false,
         },
     )
     .await;
     maybe_print_resume_hint(&mut driver).await;
     tui_result.map_err(|e| e.into())
+}
+
+#[cfg(all(feature = "tui", feature = "server"))]
+async fn run_product_tui_designing(
+    surface: &SurfaceBootstrap,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::IsTerminal;
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        eprintln!("Error: TUI requires a TTY");
+        return Err("tui requires tty".into());
+    }
+    let bootstrap_input = BootstrapInput {
+        config_path: surface.config.as_ref().map(std::path::PathBuf::from),
+        session: None,
+        model: surface.model.clone(),
+        trust_override: Some(false),
+        interactive: false,
+        caller: "cli-designing",
+        ephemeral_sessions: true,
+    };
+    let bootstrapped = match bootstrap(bootstrap_input) {
+        Ok(b) => b,
+        Err(BootstrapError::NoModelsAvailable) => {
+            eprintln!(
+                "Error: {}",
+                provider_guidance::format_no_models_available_message()
+            );
+            return Err("no models available".into());
+        }
+        Err(BootstrapError::ConfigLoadFailed(e)) => {
+            eprintln!("Error: config load failed ({e})");
+            return Err(e.into());
+        }
+        Err(BootstrapError::ConfigLoadedZeroModels) => {
+            eprintln!("Error: {}", BootstrapError::ConfigLoadedZeroModels);
+            return Err("config loaded zero models".into());
+        }
+        Err(e) => return Err(e.into()),
+    };
+    render_warnings(&bootstrapped.warnings);
+    let runtime = bootstrapped.into_runtime();
+    let mut driver = runtime.driver;
+    let (seed_n, activity_fold) = match crate::infra::config::loader::load_app_config(
+        surface.config.as_ref().map(std::path::Path::new),
+    ) {
+        Ok(c) => (
+            c.tui.editor_history_seed_sessions,
+            c.tui.activity_fold.into(),
+        ),
+        Err(_) => (
+            1,
+            crate::app::tui::activity_fold::ActivityFoldSettings::default(),
+        ),
+    };
+    crate::app::tui::run(
+        &mut driver,
+        crate::app::tui::TuiRunOptions {
+            editor_history_seed_sessions: seed_n,
+            activity_fold,
+            restored_session: false,
+            ask_gateway: None,
+            client_storage: None,
+            interaction_mode: crate::app::tui::lab_interaction_mode_from_env(),
+            preview: true,
+        },
+    )
+    .await
+    .map_err(|e| e.into())
 }
 
 /// stderr resume line when the session was persisted (c1565).
@@ -717,6 +821,49 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn help_omits_toplevel_preview_and_designing() {
+        use clap::CommandFactory;
+        let mut cmd = CliArgs::command();
+        assert!(cmd.find_subcommand("preview").is_none());
+        assert!(cmd.find_subcommand("designing").is_none());
+        let help = cmd.render_long_help().to_string();
+        assert!(!help.contains("preview"), "{help}");
+        let commands_block = help.split("Commands:").nth(1).unwrap_or(&help);
+        assert!(!commands_block.contains("designing"), "{commands_block}");
+    }
+
+    #[test]
+    fn tui_designing_flag_is_not_a_surface_flag() {
+        assert!(CliArgs::try_parse_from(["xylitol", "tui", "--designing"]).is_err());
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn debug_tui_designing_parses_and_skips_attach() {
+        use clap::CommandFactory;
+        let args = CliArgs::try_parse_from(["xylitol", "tui", "designing"]).unwrap();
+        assert!(is_tui_designing(args.command.as_ref()));
+        assert!(!tui_requires_host_listener(args.command.as_ref()));
+        let mut cmd = CliArgs::command();
+        let tui = cmd.find_subcommand_mut("tui").expect("tui");
+        assert!(tui.find_subcommand("designing").is_some());
+        let help = tui.render_long_help().to_string();
+        assert!(help.contains("designing"), "{help}");
+    }
+
+    #[cfg(not(debug_assertions))]
+    #[test]
+    fn release_tui_omits_designing() {
+        use clap::CommandFactory;
+        assert!(CliArgs::try_parse_from(["xylitol", "tui", "designing"]).is_err());
+        let mut cmd = CliArgs::command();
+        let tui = cmd.find_subcommand_mut("tui").expect("tui");
+        assert!(tui.find_subcommand("designing").is_none());
+        let help = tui.render_long_help().to_string();
+        assert!(!help.contains("designing"), "{help}");
     }
 
     #[test]

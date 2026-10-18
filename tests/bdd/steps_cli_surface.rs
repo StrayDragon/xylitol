@@ -158,6 +158,11 @@ fn w_ce16_top_help(cli_help_bdd: &CliHelpBdd) {
 }
 
 #[then("Commands 含 serve 为顶层且不含 tokenizer 与 resources")]
+fn t_ce16_ops_toplevel_legacy(cli_help_bdd: &CliHelpBdd) {
+    t_ce16_ops_toplevel(cli_help_bdd);
+}
+
+#[then("Commands 含 serve 为顶层且不含 tokenizer、resources、preview 与 designing")]
 fn t_ce16_ops_toplevel(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
     let help = cli_help_bdd.out.borrow();
@@ -182,12 +187,109 @@ fn t_ce16_ops_toplevel(cli_help_bdd: &CliHelpBdd) {
         cmd.find_subcommand("server").is_none(),
         "server must not remain as a product verb"
     );
+    assert!(
+        cmd.find_subcommand("preview").is_none(),
+        "preview must not be a top-level surface"
+    );
+    assert!(
+        cmd.find_subcommand("designing").is_none(),
+        "designing must not be a top-level surface"
+    );
     let tui = cmd.find_subcommand_mut("tui").expect("tui subcommand");
     assert!(
         tui.find_subcommand("tokenizer").is_none()
             && tui.find_subcommand("resources").is_none()
             && tui.find_subcommand("serve").is_none(),
         "ops must not nest under tui"
+    );
+}
+
+#[given("CLI 已解析且为 debug 构建")]
+fn g_cli_debug(_cli_help_bdd: &CliHelpBdd) {}
+
+#[given("CLI 已解析且为 release 构建")]
+fn g_cli_release(_cli_help_bdd: &CliHelpBdd) {}
+
+#[given("本机 Host 未在听且为 debug 构建")]
+fn g_host_down_debug(_cli_help_bdd: &CliHelpBdd) {}
+
+#[when("xylitol tui --help")]
+fn w_tui_help(cli_help_bdd: &CliHelpBdd) {
+    use clap::CommandFactory;
+    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let help = cmd
+        .find_subcommand_mut("tui")
+        .expect("tui")
+        .render_long_help()
+        .to_string();
+    cli_help_bdd.out.replace(help);
+    cli_help_bdd.ok.set(true);
+}
+
+#[then("子命令含 designing")]
+fn t_tui_has_designing(cli_help_bdd: &CliHelpBdd) {
+    if !cfg!(debug_assertions) {
+        return;
+    }
+    use clap::CommandFactory;
+    let help = cli_help_bdd.out.borrow();
+    assert!(help.contains("designing"), "{help}");
+    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let tui = cmd.find_subcommand_mut("tui").expect("tui");
+    assert!(tui.find_subcommand("designing").is_some());
+}
+
+#[then("子命令不含 designing")]
+fn t_tui_omits_designing(cli_help_bdd: &CliHelpBdd) {
+    if cfg!(debug_assertions) {
+        return;
+    }
+    use clap::CommandFactory;
+    let help = cli_help_bdd.out.borrow();
+    assert!(!help.contains("designing"), "{help}");
+    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let tui = cmd.find_subcommand_mut("tui").expect("tui");
+    assert!(tui.find_subcommand("designing").is_none());
+}
+
+#[then("Commands 不含 preview 与 designing")]
+fn t_help_omits_preview_designing(cli_help_bdd: &CliHelpBdd) {
+    use clap::CommandFactory;
+    let cmd = xylitol::app::cli::CliArgs::command();
+    assert!(cmd.find_subcommand("preview").is_none());
+    assert!(cmd.find_subcommand("designing").is_none());
+    let help = cli_help_bdd.out.borrow();
+    let commands = help.split("Commands:").nth(1).unwrap_or(&help);
+    assert!(
+        !commands.contains("designing"),
+        "top-level Commands must omit designing: {commands}"
+    );
+}
+
+#[when("xylitol tui designing")]
+fn w_tui_designing(cli_help_bdd: &CliHelpBdd) {
+    use clap::Parser;
+    if !cfg!(debug_assertions) {
+        cli_help_bdd.ok.set(false);
+        return;
+    }
+    let args = xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "tui", "designing"])
+        .expect("debug builds parse tui designing");
+    assert!(xylitol::app::cli::is_tui_designing(args.command.as_ref()));
+    assert!(!xylitol::app::cli::tui_requires_host_listener(
+        args.command.as_ref()
+    ));
+    cli_help_bdd.ok.set(true);
+}
+
+#[then("进入预览组合且不得因未在听非零退出")]
+fn t_designing_skips_attach(cli_help_bdd: &CliHelpBdd) {
+    if !cfg!(debug_assertions) {
+        return;
+    }
+    assert!(
+        cli_help_bdd.ok.get(),
+        "tui designing must parse and skip Host attach"
     );
 }
 // ═══════════════════════════════════════════════════════════════════
@@ -532,6 +634,7 @@ fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
         trust_override: Some(true),
         interactive: false,
         caller: "bdd",
+        ephemeral_sessions: false,
     };
     // 隔离全局配置层：XYLITOL_CONFIG_DIR 指向空目录，避免开发机真实配置注入模型。
     let isolated_global = ws.ws("isolated-global-config");

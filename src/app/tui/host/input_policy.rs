@@ -280,7 +280,6 @@ impl<T: Terminal> HostSession<T> {
                 }
                 PendingSlash::OpenModels
                 | PendingSlash::SetModel(_)
-                | PendingSlash::DebugScene(_)
                 | PendingSlash::OpenTree
                 | PendingSlash::ForkAtLeaf
                 | PendingSlash::Compact { .. }

@@ -99,6 +99,7 @@ impl UiRoot {
                 self.slot = slot;
             }
             EditorSlot::Models(_)
+            | EditorSlot::Scenes(_)
             | EditorSlot::Themes(_)
             | EditorSlot::ImportConfirm(_)
             | EditorSlot::SessionResume(_)

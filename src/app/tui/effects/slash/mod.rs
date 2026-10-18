@@ -1,7 +1,6 @@
 //! PendingSlash side-effect arms (c1170). Still drained only via drain_pending.
 
 mod compact;
-mod debug;
 mod misc;
 mod model;
 mod session;
@@ -21,7 +20,6 @@ pub(super) async fn handle_slash<T: Terminal>(
         PendingSlash::Exit => misc::exit(session).await,
         PendingSlash::OpenModels => model::open(session, driver).await,
         PendingSlash::SetModel(model_id) => model::set(session, driver, model_id).await,
-        PendingSlash::DebugScene(scene) => debug::run(session, driver, scene).await,
         PendingSlash::OpenTree => session::open_tree(session).await,
         PendingSlash::ForkAtLeaf => session::fork_at_leaf(session, driver).await,
         PendingSlash::Compact { instructions } => {

@@ -10,6 +10,7 @@ mod models_slot;
 mod mount;
 mod pending_slot;
 mod render;
+mod scenes_slot;
 mod slot_input;
 mod slot_nav;
 mod theme_apply;
@@ -250,59 +251,45 @@ impl UiRoot {
     }
 
     fn install_completion_sources(&mut self) {
-        // Arg sources before SlashCommandSource so `/model ` / `/debug ` win.
+        // Arg sources before SlashCommandSource so `/model ` wins over the verb list.
         // Default: no bare — exact `/model` stays for slash list / c630 slot Enter.
-        let mut sources: Vec<Box<dyn CompletionSource>> = Vec::new();
-        #[cfg(debug_assertions)]
-        {
-            // Hand-test fixtures — see `app::debug_fixtures`.
-            sources.push(Box::new(
+        let sources: Vec<Box<dyn CompletionSource>> = vec![
+            Box::new(
+                SlashArgCompletionSource::new("model", self.model_arg_catalog.clone())
+                    .with_id("model-id"),
+            ),
+            // Static `/theme <dark|light|toggle>` args (c1115).
+            Box::new(
                 SlashArgCompletionSource::new(
-                    "debug",
-                    crate::app::debug_fixtures::completion_catalog(),
+                    "theme",
+                    vec![
+                        ("dark".into(), "Dark palette (default)".into()),
+                        ("light".into(), "Light palette".into()),
+                        ("toggle".into(), "Toggle dark ↔ light".into()),
+                    ],
                 )
-                .with_id("debug-scene"),
-            ));
-        }
-        sources.push(Box::new(
-            SlashArgCompletionSource::new("model", self.model_arg_catalog.clone())
-                .with_id("model-id"),
-        ));
-        // Static `/theme <dark|light|toggle>` args (c1115).
-        sources.push(Box::new(
-            SlashArgCompletionSource::new(
-                "theme",
-                vec![
-                    ("dark".into(), "Dark palette (default)".into()),
-                    ("light".into(), "Light palette".into()),
-                    ("toggle".into(), "Toggle dark ↔ light".into()),
-                ],
-            )
-            .with_id("theme-name"),
-        ));
-        // Static `/trust <self|parent|deny>` args (c1105) — same space-after-cmd probe as `/model `.
-        // `self` first so Tab/Enter after `/trust ` defaults to trust cwd (same as bare `/trust`).
-        sources.push(Box::new(
-            SlashArgCompletionSource::new(
-                "trust",
-                vec![
-                    (
-                        "self".into(),
-                        "Trust this project directory (default)".into(),
-                    ),
-                    ("parent".into(), "Trust parent folder".into()),
-                    ("deny".into(), "Do not trust this project".into()),
-                ],
-            )
-            .with_id("trust-mode"),
-        ));
-        sources.push(Box::new(SlashCommandSource::new(
-            product_slash_commands_for_editor(),
-        )));
-        sources.push(Box::new(AtPathSource::new(self.at_path_base.clone())));
-        sources.push(Box::new(DollarSkillSource::new(
-            self.dollar_skill_catalog.clone(),
-        )));
+                .with_id("theme-name"),
+            ),
+            // Static `/trust <self|parent|deny>` args (c1105) — same space-after-cmd probe as `/model `.
+            // `self` first so Tab/Enter after `/trust ` defaults to trust cwd (same as bare `/trust`).
+            Box::new(
+                SlashArgCompletionSource::new(
+                    "trust",
+                    vec![
+                        (
+                            "self".into(),
+                            "Trust this project directory (default)".into(),
+                        ),
+                        ("parent".into(), "Trust parent folder".into()),
+                        ("deny".into(), "Do not trust this project".into()),
+                    ],
+                )
+                .with_id("trust-mode"),
+            ),
+            Box::new(SlashCommandSource::new(product_slash_commands_for_editor())),
+            Box::new(AtPathSource::new(self.at_path_base.clone())),
+            Box::new(DollarSkillSource::new(self.dollar_skill_catalog.clone())),
+        ];
         self.editor.set_completion_sources(sources);
     }
 

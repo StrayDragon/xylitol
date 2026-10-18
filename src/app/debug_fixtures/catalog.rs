@@ -1,15 +1,15 @@
-//! Scene catalog: stable ids + human descriptions (for `/debug` list + completion).
+//! Scene catalog: stable ids + human descriptions (preview scene slot).
 
-/// How a product Preview / `/debug` scene is injected. Exhaustive = LSP
-/// completion. New fixtures MUST pick one; do not stuff `UiEntry`s.
+/// How a preview scene is injected. Exhaustive = LSP completion.
+/// New fixtures MUST pick one; do not stuff `UiEntry`s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewInject {
     /// `HostSession::step(HostEvent::Xy)` / `apply_xy_event`.
     ///
-    /// `/debug activity-fold-live-xy` steps Thinking + read through
-    /// `HostSession::step` (not JSONL, not the Choice live tape).
+    /// `activity-fold-live-xy`: Thinking + read through `HostSession::step`
+    /// (not JSONL, not the Choice live tape).
     LiveXy,
-    /// `/debug activity-fold-live` tape (Choice + scripted events; not JSONL seed).
+    /// `activity-fold-live` tape (Choice + scripted events; not JSONL seed).
     LiveTape,
     /// SessionEntry / JSONL seed → `rebuild_scrollback_from_travel`.
     Resume,
@@ -34,7 +34,7 @@ impl PreviewInject {
     }
 }
 
-/// One hand-test fixture exposed as `/debug <id>`.
+/// One hand-test fixture exposed in the preview scene slot.
 #[derive(Debug, Clone, Copy)]
 pub struct DebugSceneMeta {
     pub id: &'static str,
@@ -42,7 +42,7 @@ pub struct DebugSceneMeta {
     pub inject: PreviewInject,
 }
 
-/// All scenes. Prefer descriptive ids so `/debug <Tab>` is self-explanatory.
+/// All scenes. Prefer descriptive ids so the slot is self-explanatory.
 pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
     DebugSceneMeta {
         id: "session-tree-multiturn",
@@ -86,18 +86,17 @@ pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
     },
 ];
 
-/// `(id, description)` for [`xylitol_tui::SlashArgCompletionSource`].
-#[cfg(debug_assertions)]
-pub fn completion_catalog() -> Vec<(String, String)> {
+/// `(id, description)` for the preview scene slot.
+pub fn scene_catalog() -> Vec<(String, String)> {
     DEBUG_SCENES
         .iter()
         .map(|s| (s.id.to_string(), s.description.to_string()))
         .collect()
 }
 
-/// System-note body for bare `/debug` (list).
+/// Scroll-notice body listing the catalog (preview slot, not a slash).
 pub fn list_note() -> String {
-    let mut lines = vec!["debug scenes (try /debug <id>):".to_string()];
+    let mut lines = vec!["preview scenes:".to_string()];
     for s in DEBUG_SCENES {
         lines.push(format!("  {} — {}", s.id, s.description));
     }

@@ -103,12 +103,12 @@
       那么 stderr 不含 resume 提示行
   @req:r1385
   规则: cli-surface-vs-ops
-    CLI 须区分表面动词与管理动词：表面至少含 tui 与 print（xylitol tui 进入 TUI；xylitol print 进入一次性 print 且须非空 prompt）；管理动词 serve 须保持顶层，不得提供顶层 resources 或 tokenizer 动词，不得挪入 tui 子树；TTY 裸跑默认 TUI 的语义 须保持；不得提供顶层 --tui/--print/-p/--prompt 或位置 PROMPT 作为表面切换别名（print 的 --prompt/-p 仅允许挂在 print 子命令下）。
+    CLI 须区分表面动词与管理动词：表面至少含 tui 与 print（xylitol tui 进入产品 TUI；xylitol print 进入一次性 print 且须非空 prompt）；管理动词 serve 须保持顶层，不得提供顶层 resources、tokenizer、preview 或 designing 动词，不得挪入 tui 子树；TTY 裸跑默认产品 TUI 的语义 须保持，裸跑 不得进入预览；不得提供顶层 --tui/--print/-p/--prompt 或位置 PROMPT 作为表面切换别名（print 的 --prompt/-p 仅允许挂在 print 子命令下）。debug 构建的 tui designing 叶见 app-tui-preview，不是表面动词。
 
     场景: ops-stay-toplevel
       假如 CLI 已解析
       当 xylitol --help
-      那么 Commands 含 serve 为顶层且不含 tokenizer 与 resources
+      那么 Commands 含 serve 为顶层且不含 tokenizer、resources、preview 与 designing
   @req:r1386
   规则: config-load-fail-closed
     load_app_config（或等价）失败（含模板渲染、YAML 解析、IO）时，bootstrap 须返回硬错误且经其装配的全表面 须非零退出；不得仅 Warning 后继续并用 env 默认模型进入 TUI/print。
@@ -181,7 +181,7 @@
       那么 stderr 不含 resume 提示行
   @req:r1391
   规则: tui-attach-fail-closed
-    产品 TUI（含 TTY 默认进入 TUI 表面）在 attach 目标 Host 未在听时 须非零退出，并提示用 xylitol serve 启动 Host。不得静默改走同进程直握操作器。print 与库嵌入 不得适用本条。
+    产品 TUI（含 TTY 默认进入 TUI 表面）在 attach 目标 Host 未在听时 须非零退出，并提示用 xylitol serve 启动 Host。不得静默改走同进程直握操作器。print、库嵌入与 debug 构建的 tui designing 预览组合 不得适用本条。
 
     场景: tui-attach-host-down
       假如 本机 Host 未在听

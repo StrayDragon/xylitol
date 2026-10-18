@@ -148,6 +148,7 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
         trust_override: None,
         interactive: false,
         caller: "server",
+        ephemeral_sessions: false,
     })
     .map_err(|e| match e {
         BootstrapError::NoModelsAvailable => {

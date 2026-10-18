@@ -2,7 +2,7 @@
 
 use super::super::slots::EditorSlot;
 use super::super::{
-    IMPORT_SLOT, MCP_SLOT_BASE, MODELS_SLOT, RESUME_SLOT, THEMES_SLOT, TREE_SLOT,
+    IMPORT_SLOT, MCP_SLOT_BASE, MODELS_SLOT, RESUME_SLOT, SCENES_SLOT, THEMES_SLOT, TREE_SLOT,
     queue_strip_line_count, reserved_lower_fixed_zone, slot_body_budget,
 };
 use super::UiRoot;
@@ -32,6 +32,9 @@ impl UiRoot {
         match &mut self.slot {
             EditorSlot::Models(models) => {
                 models.set_max_visible(slot_body_budget(rows, reserved, MODELS_SLOT));
+            }
+            EditorSlot::Scenes(scenes) => {
+                scenes.set_max_visible(slot_body_budget(rows, reserved, SCENES_SLOT));
             }
             EditorSlot::Themes(themes) => {
                 themes.set_max_visible(slot_body_budget(rows, reserved, THEMES_SLOT));

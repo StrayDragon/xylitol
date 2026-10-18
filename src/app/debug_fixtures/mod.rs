@@ -1,20 +1,16 @@
-//! # Hand-test debug fixtures (c710)
+//! # Preview scene fixtures
 //!
-//! **Delete this whole module** to remove `/debug` scenes: also drop
-//! `PendingSlash::DebugScene`, the TUI `effects/slash/debug.rs` inject arm
-//! (slash/completion wiring in `layout/root/` / `commands.rs`), and E2E
-//! cases that call `/debug …`. Scenes are process-local (c2740): no wire.
-//!
-//! Slash + inline completion are registered only under `cfg(debug_assertions)`.
+//! Process-local catalog for `xylitol tui designing` (debug builds). Inject
+//! lives in `app::tui::effects::preview` — not a product slash, not on the wire.
 //!
 //! Scene table: [`catalog::DEBUG_SCENES`].
 
 mod catalog;
 mod seed;
 
-#[cfg(debug_assertions)]
-pub use catalog::completion_catalog;
-pub use catalog::{FixedZoneOp, PreviewInject, find_scene, list_note, resolve_scene_id};
+pub use catalog::{
+    FixedZoneOp, PreviewInject, find_scene, list_note, resolve_scene_id, scene_catalog,
+};
 #[cfg(test)]
 pub use seed::activity_fold_resume_stamped_entries;
 pub use seed::seed_scene;

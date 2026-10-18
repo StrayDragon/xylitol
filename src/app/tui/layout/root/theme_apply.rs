@@ -35,6 +35,7 @@ impl UiRoot {
             match &mut self.slot {
                 EditorSlot::Tree(tree) => tree.wipe_themed(theme),
                 EditorSlot::Models(models) => models.retheme(theme),
+                EditorSlot::Scenes(scenes) => scenes.retheme(theme),
                 EditorSlot::Themes(themes) => themes.retheme(theme),
                 EditorSlot::Mcp(mcp) => mcp.retheme(theme),
                 EditorSlot::ImportConfirm(imp) => imp.retheme(theme),

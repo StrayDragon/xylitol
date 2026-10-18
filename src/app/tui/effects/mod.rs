@@ -5,6 +5,7 @@ mod debug_activity_fold;
 mod debug_verify;
 mod helpers;
 mod pending_ui;
+pub(crate) mod preview;
 mod reload;
 mod slash;
 

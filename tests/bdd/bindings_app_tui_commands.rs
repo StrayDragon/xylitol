@@ -30,7 +30,7 @@ async fn test_c2826_session_name(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
-    name = "debug-slash-lists-and-rejects-colon"
+    name = "debug-slash-not-recognized"
 )]
 async fn test_c2826_debug(host_pump_bdd: HostPumpBdd) {}
 
