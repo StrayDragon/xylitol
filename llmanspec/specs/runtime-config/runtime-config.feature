@@ -129,7 +129,7 @@
       那么 全局 config.yaml 生效且不经 config.local.yaml 合并
   @req:r1732
   规则: config-local-unsupported
-    加载器 不得读取或深合并 config.local.yaml 或 config.local.yml（global 与 project）；磁盘上若存在这些文件 须忽略其内容且 不得提供自动迁移到 config.yaml/secret.env；MAY 经 resources doctor 或加载诊断提示已忽略。
+    加载器 不得读取或深合并 config.local.yaml 或 config.local.yml（global 与 project）；磁盘上若存在这些文件 须忽略其内容且 不得提供自动迁移到 config.yaml/secret.env；MAY 经加载诊断提示已忽略。
 
     场景: config-local-not-merged
       假如 仅存在 config.local.yaml 含可观测字段而无同层 config.yaml

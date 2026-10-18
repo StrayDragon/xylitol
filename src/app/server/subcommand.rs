@@ -8,8 +8,6 @@ use clap::Subcommand;
 /// Optional leaves under `xylitol serve` (omit to listen).
 #[derive(Subcommand, Debug)]
 pub enum ServeAction {
-    /// Register as a launchd/systemd service (macOS/Linux). Not implemented.
-    Install,
     /// Print how to stop a running listener (SIGTERM). Does not read a lock file.
     Stop,
 }
@@ -39,10 +37,6 @@ pub async fn run(
                     handle.shutdown();
                 }
             }
-            Ok(())
-        }
-        Some(ServeAction::Install) => {
-            eprintln!("Host install not yet implemented");
             Ok(())
         }
         Some(ServeAction::Stop) => {

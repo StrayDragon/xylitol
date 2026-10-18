@@ -125,7 +125,7 @@ fn w_ce8_serve_help(cli_help_bdd: &CliHelpBdd) {
     cli_help_bdd.ok.set(true);
 }
 
-#[then("可见 --host --port 与 stop、install，且无 server 或 run 别名")]
+#[then("可见 --host --port 与 stop，且无 install、server 或 run 别名")]
 fn t_ce8_serve_shape(cli_help_bdd: &CliHelpBdd) {
     use clap::{CommandFactory, Parser};
     let help = cli_help_bdd.out.borrow();
@@ -135,7 +135,7 @@ fn t_ce8_serve_shape(cli_help_bdd: &CliHelpBdd) {
     assert!(cmd.find_subcommand("server").is_none());
     let serve = cmd.find_subcommand_mut("serve").expect("serve");
     assert!(serve.find_subcommand("stop").is_some(), "{help}");
-    assert!(serve.find_subcommand("install").is_some(), "{help}");
+    assert!(serve.find_subcommand("install").is_none(), "{help}");
     assert!(serve.find_subcommand("run").is_none(), "{help}");
     assert!(
         xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "server"]).is_err(),
@@ -157,12 +157,11 @@ fn w_ce16_top_help(cli_help_bdd: &CliHelpBdd) {
     cli_help_bdd.ok.set(true);
 }
 
-#[then("Commands 含 resources 与 serve 为顶层且不含 tokenizer")]
+#[then("Commands 含 serve 为顶层且不含 tokenizer 与 resources")]
 fn t_ce16_ops_toplevel(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
     let help = cli_help_bdd.out.borrow();
     assert!(!help.contains("tokenizer"), "{help}");
-    assert!(help.contains("resources"), "{help}");
     assert!(help.contains("serve"), "{help}");
     assert!(help.contains("tui"), "{help}");
     assert!(help.contains("print"), "{help}");
@@ -174,6 +173,10 @@ fn t_ce16_ops_toplevel(cli_help_bdd: &CliHelpBdd) {
     assert!(
         cmd.find_subcommand("tokenizer").is_none(),
         "tokenizer must not remain a product verb"
+    );
+    assert!(
+        cmd.find_subcommand("resources").is_none(),
+        "resources must not remain a product verb"
     );
     assert!(
         cmd.find_subcommand("server").is_none(),

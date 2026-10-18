@@ -317,24 +317,6 @@ async fn test_rd_skills_reload(agent: AgentState, ws: Workspace) {}
 )]
 fn test_rd_themes(t2_res_bdd: T2ResBdd) {}
 
-#[scenario(
-    path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
-    name = "resource-info-missing-nonzero"
-)]
-fn test_rd_info_missing(t2_res_bdd: T2ResBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
-    name = "doctor-fails-on-diagnostics"
-)]
-fn test_rd_doctor_fail(t2_res_bdd: T2ResBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
-    name = "resource-commands-readonly"
-)]
-fn test_rd_readonly(t2_res_bdd: T2ResBdd) {}
-
 // infra-bash r1430/r1432/r1433/r1427/r1434
 #[scenario(
     path = "llmanspec/specs/infra-bash/infra-bash.feature",

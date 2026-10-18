@@ -142,12 +142,7 @@ fn test_t3_trust_ssot() {}
 )]
 fn test_t3_permission_advice() {}
 
-// runtime-resource-discovery r1766-1768（批 3）
-#[scenario(
-    path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
-    name = "resource-commands-reuse-loader"
-)]
-fn test_t3_resources_loader() {}
+// runtime-resource-discovery r1767-1768
 #[scenario(
     path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
     name = "source-info-public-shape"

@@ -400,12 +400,21 @@ fn g_pt3_prompts_dir(ws: &crate::bdd::fixtures::Workspace) {
 fn w_pt3_discover(ws: &crate::bdd::fixtures::Workspace, prompt_bdd: &PromptBdd) {
     use std::path::PathBuf;
 
-    use xylitol::app::cli::resources::{ResourcesAction, run_with_dirs};
+    use xylitol::infra::resource::DefaultResourceLoader;
 
     let cwd = PathBuf::from(ws.ws("."));
     let agent_dir = cwd.join(".xylitol");
-    let (code, list_out) = run_with_dirs(ResourcesAction::List, &cwd, &agent_dir);
-    assert_eq!(code, std::process::ExitCode::SUCCESS);
+    let loader = DefaultResourceLoader::new(cwd, agent_dir);
+    let (skills, _) = loader.get_skills();
+    let (themes, _) = loader.get_themes();
+    let mut list_out = String::from("skills:\n");
+    for s in skills {
+        list_out.push_str(&format!("  {}\n", s.name));
+    }
+    list_out.push_str("themes:\n");
+    for t in themes {
+        list_out.push_str(&format!("  {}\n", t.name));
+    }
     prompt_bdd.prompt.replace(list_out);
 }
 
@@ -418,11 +427,11 @@ fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
     let list_out = prompt_bdd.prompt.borrow();
     assert!(
         !list_out.contains("prompts:"),
-        "resources list must not have prompts section: {list_out}"
+        "loader dump must not have prompts section: {list_out}"
     );
     assert!(
         !list_out.contains("greet"),
-        "leftover prompts/greet.md must not appear in resources list: {list_out}"
+        "leftover prompts/greet.md must not appear in loader dump: {list_out}"
     );
     let builtins: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
     assert!(

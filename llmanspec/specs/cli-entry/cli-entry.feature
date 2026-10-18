@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: CLI 统一入口：默认 TUI；surface（tui/print）与 ops（resources/serve）；bootstrap/dispatch；产品 slash 以 session-* 为准。
+# purpose: CLI 统一入口：默认 TUI；surface（tui/print）与 ops（serve）；bootstrap/dispatch；产品 slash 以 session-* 为准。
 
 功能: cli-entry
 
@@ -30,7 +30,7 @@
 
     场景: cli-is-independent-surface
       当 xylitol --help
-      那么 Commands 含 resources 与 serve 为顶层且不含 tokenizer
+      那么 Commands 含 serve 为顶层且不含 tokenizer 与 resources
 
     场景: app-surface-reaches-agent-via-driver-seam
       当 检查 Driver 实现
@@ -52,12 +52,12 @@
       那么 装配 infra 运行时并按 session 槽注入 Driver，供 unary 处理器调用
   @req:r1393
   规则: serve-subcommand
-    CLI 须提供顶层动词 serve：无子命令时直接监听（默认 127.0.0.1:18790）；须接受 --host 与 --port（--port 0 让操作系统分配并打印实际端口）；叶子至少含 stop 与 install。不得提供 server 或 serve run 作为产品入口别名。
+    CLI 须提供顶层动词 serve：无子命令时直接监听（默认 127.0.0.1:18790）；须接受 --host 与 --port（--port 0 让操作系统分配并打印实际端口）；叶子含 stop。不得提供 install、server 或 serve run 作为产品入口。
 
     场景: serve-ops-verb
       假如 CLI 已解析
       当 xylitol serve --help
-      那么 可见 --host --port 与 stop、install，且无 server 或 run 别名
+      那么 可见 --host --port 与 stop，且无 install、server 或 run 别名
   @req:r1394
   规则: assembly-via-bootstrap
     cli 与 Host 监听器 须经共享 bootstrap 装配，不得内联第二套装配。
@@ -103,12 +103,12 @@
       那么 stderr 不含 resume 提示行
   @req:r1385
   规则: cli-surface-vs-ops
-    CLI 须区分表面动词与管理动词：表面至少含 tui 与 print（xylitol tui 进入 TUI；xylitol print 进入一次性 print 且须非空 prompt）；管理动词 resources、serve 须保持顶层，不得挪入 tui 子树，不得再提供顶层 tokenizer 动词；TTY 裸跑默认 TUI 的语义 须保持；不得提供顶层 --tui/--print/-p/--prompt 或位置 PROMPT 作为表面切换别名（print 的 --prompt/-p 仅允许挂在 print 子命令下）。
+    CLI 须区分表面动词与管理动词：表面至少含 tui 与 print（xylitol tui 进入 TUI；xylitol print 进入一次性 print 且须非空 prompt）；管理动词 serve 须保持顶层，不得提供顶层 resources 或 tokenizer 动词，不得挪入 tui 子树；TTY 裸跑默认 TUI 的语义 须保持；不得提供顶层 --tui/--print/-p/--prompt 或位置 PROMPT 作为表面切换别名（print 的 --prompt/-p 仅允许挂在 print 子命令下）。
 
     场景: ops-stay-toplevel
       假如 CLI 已解析
       当 xylitol --help
-      那么 Commands 含 resources 与 serve 为顶层且不含 tokenizer
+      那么 Commands 含 serve 为顶层且不含 tokenizer 与 resources
   @req:r1386
   规则: config-load-fail-closed
     load_app_config（或等价）失败（含模板渲染、YAML 解析、IO）时，bootstrap 须返回硬错误且经其装配的全表面 须非零退出；不得仅 Warning 后继续并用 env 默认模型进入 TUI/print。

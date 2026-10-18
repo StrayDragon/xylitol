@@ -1348,24 +1348,6 @@ pub(crate) fn t_permission_advice_doc() {
     );
 }
 
-#[when("读取资源命令装配")]
-pub(crate) fn w_resources_loader_reuse() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/cli/resources.rs")));
-}
-
-#[then("复用 DefaultResourceLoader 发现")]
-pub(crate) fn t_resources_loader_reuse() {
-    let src = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
-    assert!(
-        src.contains("DefaultResourceLoader"),
-        "资源命令 MUST 复用 loader"
-    );
-    assert!(
-        src.contains("cached") || src.contains("reuse"),
-        "MUST 复用缓存发现"
-    );
-}
-
 #[when("读取资源来源信息类型")]
 pub(crate) fn w_source_info_shape() {
     LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/source_info.rs")));

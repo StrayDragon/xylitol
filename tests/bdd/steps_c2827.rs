@@ -1495,14 +1495,12 @@ pub(crate) fn t_t2_res_list_no_prompts(prompt_bdd: &crate::bdd::steps_bridge::Pr
     );
 }
 
-// ── runtime-resource-discovery：resources CLI 三命令（r1761/r1763/r1764/r1765）──
+// ── runtime-resource-discovery：loader 发现（r1761）──
 
 pub struct T2ResBdd {
     pub cwd: RefCell<Option<std::path::PathBuf>>,
     pub agent_dir: RefCell<Option<std::path::PathBuf>>,
-    pub code: RefCell<Option<std::process::ExitCode>>,
     pub out: RefCell<String>,
-    pub snapshot: RefCell<Option<u64>>,
 }
 
 #[fixture]
@@ -1510,9 +1508,7 @@ pub fn t2_res_bdd() -> T2ResBdd {
     T2ResBdd {
         cwd: RefCell::new(None),
         agent_dir: RefCell::new(None),
-        code: RefCell::new(None),
         out: RefCell::new(String::new()),
-        snapshot: RefCell::new(None),
     }
 }
 
@@ -1539,7 +1535,15 @@ fn t2_res_mount(t2_res_bdd: &T2ResBdd) {
     std::mem::forget(tmp);
 }
 
-fn t2_res_run(t2_res_bdd: &T2ResBdd, action: xylitol::app::cli::resources::ResourcesAction) {
+#[given("资源目录含 demo 技能与 dark 主题")]
+pub(crate) fn g_t2_res_layout(t2_res_bdd: &T2ResBdd) {
+    t2_res_mount(t2_res_bdd);
+}
+
+#[when("经 loader 列出已发现资源")]
+pub(crate) fn w_t2_res_list(t2_res_bdd: &T2ResBdd) {
+    use xylitol::infra::resource::DefaultResourceLoader;
+
     let cwd = t2_res_bdd.cwd.borrow().as_ref().expect("cwd").clone();
     let agent_dir = t2_res_bdd
         .agent_dir
@@ -1547,176 +1551,30 @@ fn t2_res_run(t2_res_bdd: &T2ResBdd, action: xylitol::app::cli::resources::Resou
         .as_ref()
         .expect("agent")
         .clone();
-    let (code, out) = xylitol::app::cli::resources::run_with_dirs(action, &cwd, &agent_dir);
-    *t2_res_bdd.code.borrow_mut() = Some(code);
+    let loader = DefaultResourceLoader::new(cwd, agent_dir);
+    let (skills, _) = loader.get_skills();
+    let (themes, _) = loader.get_themes();
+    let mut out = String::from("skills:\n");
+    for s in skills {
+        out.push_str(&format!("  {}\n", s.name));
+    }
+    out.push_str("themes:\n");
+    for t in themes {
+        out.push_str(&format!("  {}\n", t.name));
+    }
     *t2_res_bdd.out.borrow_mut() = out;
 }
 
-fn t2_res_snapshot(t2_res_bdd: &T2ResBdd) -> u64 {
-    let agent_dir = t2_res_bdd
-        .agent_dir
-        .borrow()
-        .as_ref()
-        .expect("agent")
-        .clone();
-    let mut hash: u64 = 0xcbf29ce484222325;
-    fn walk(dir: &std::path::Path, hash: &mut u64) {
-        let Ok(entries) = std::fs::read_dir(dir) else {
-            return;
-        };
-        for e in entries.flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                walk(&p, hash);
-            } else {
-                for b in std::fs::read(&p).unwrap_or_default() {
-                    *hash = (*hash ^ b as u64).wrapping_mul(0x100000001b3);
-                }
-            }
-        }
-    }
-    walk(&agent_dir, &mut hash);
-    hash
-}
-
-#[given("资源目录含 demo 技能与 dark 主题")]
-pub(crate) fn g_t2_res_layout(t2_res_bdd: &T2ResBdd) {
-    t2_res_mount(t2_res_bdd);
-}
-
-#[when("以资源命令列出")]
-pub(crate) fn w_t2_res_list(t2_res_bdd: &T2ResBdd) {
-    t2_res_run(
-        t2_res_bdd,
-        xylitol::app::cli::resources::ResourcesAction::List,
-    );
-}
-
-#[then("退出码为零且输出含技能与主题")]
+#[then("列出技能名与主题 stem")]
 pub(crate) fn t_t2_res_list_ok(t2_res_bdd: &T2ResBdd) {
-    assert_eq!(
-        {
-            let code = t2_res_bdd.code.borrow();
-            let ok = matches!(*code, Some(std::process::ExitCode::SUCCESS));
-            if ok { Some(0) } else { Some(1) }
-        },
-        Some(0),
-        "c2827: List 应零退出"
-    );
     let out = t2_res_bdd.out.borrow().clone();
     assert!(
         out.contains("skills:") && out.contains("demo-skill"),
-        "c2827: List 应含技能：{out}"
+        "loader 应含技能：{out}"
     );
     assert!(
         out.contains("themes:") && out.contains("dark"),
-        "c2827: 主题名发现应列出 theme stem：{out}"
-    );
-}
-
-#[when("以资源命令查询详情 demo-skill")]
-pub(crate) fn w_t2_res_info(t2_res_bdd: &T2ResBdd) {
-    t2_res_run(
-        t2_res_bdd,
-        xylitol::app::cli::resources::ResourcesAction::Info {
-            name: "demo-skill".into(),
-        },
-    );
-}
-
-#[when("以资源命令查询不存在的资源")]
-pub(crate) fn w_t2_res_info_missing(t2_res_bdd: &T2ResBdd) {
-    t2_res_run(
-        t2_res_bdd,
-        xylitol::app::cli::resources::ResourcesAction::Info {
-            name: "no-such-thing".into(),
-        },
-    );
-}
-
-#[then("详情非零退出")]
-pub(crate) fn t_t2_res_info_missing_fails(t2_res_bdd: &T2ResBdd) {
-    assert_ne!(
-        {
-            let code = t2_res_bdd.code.borrow();
-            let ok = matches!(*code, Some(std::process::ExitCode::SUCCESS));
-            if ok { Some(0) } else { Some(1) }
-        },
-        Some(0),
-        "c2827: 未找到资源应以非零退出"
-    );
-}
-
-#[when("以资源命令运行 doctor")]
-pub(crate) fn w_t2_res_doctor(t2_res_bdd: &T2ResBdd) {
-    t2_res_run(
-        t2_res_bdd,
-        xylitol::app::cli::resources::ResourcesAction::Doctor,
-    );
-}
-
-#[when("以资源命令运行 doctor 且存在不可读技能")]
-pub(crate) fn w_t2_res_doctor_broken(t2_res_bdd: &T2ResBdd) {
-    let agent_dir = t2_res_bdd
-        .agent_dir
-        .borrow()
-        .as_ref()
-        .expect("agent")
-        .clone();
-    // 非法技能名（大写与空格）→ warning 级诊断。
-    let broken = agent_dir.join("skills").join("badname");
-    std::fs::create_dir_all(&broken).unwrap();
-    std::fs::write(
-        broken.join("SKILL.md"),
-        "---\nname: Bad Name!\ndescription: x\n---\nbody",
-    )
-    .unwrap();
-    t2_res_run(
-        t2_res_bdd,
-        xylitol::app::cli::resources::ResourcesAction::Doctor,
-    );
-}
-
-#[then("doctor 非零且含诊断")]
-pub(crate) fn t_t2_res_doctor_fails(t2_res_bdd: &T2ResBdd) {
-    assert_ne!(
-        {
-            let code = t2_res_bdd.code.borrow();
-            let ok = matches!(*code, Some(std::process::ExitCode::SUCCESS));
-            if ok { Some(0) } else { Some(1) }
-        },
-        Some(0),
-        "c2827: 存在诊断时 doctor 应非零退出"
-    );
-    assert!(!t2_res_bdd.out.borrow().is_empty(), "c2827: 应展示诊断内容");
-}
-
-#[then("doctor 零退出")]
-pub(crate) fn t_t2_res_doctor_ok(t2_res_bdd: &T2ResBdd) {
-    assert_eq!(
-        {
-            let code = t2_res_bdd.code.borrow();
-            let ok = matches!(*code, Some(std::process::ExitCode::SUCCESS));
-            if ok { Some(0) } else { Some(1) }
-        },
-        Some(0),
-        "c2827: 干净目录 doctor 应零退出：{}",
-        t2_res_bdd.out.borrow()
-    );
-}
-
-#[when("记录资源目录快照")]
-pub(crate) fn w_t2_res_snapshot(t2_res_bdd: &T2ResBdd) {
-    *t2_res_bdd.snapshot.borrow_mut() = Some(t2_res_snapshot(t2_res_bdd));
-}
-
-#[then("资源目录快照不变")]
-pub(crate) fn t_t2_res_readonly(t2_res_bdd: &T2ResBdd) {
-    let before = t2_res_bdd.snapshot.borrow().expect("snapshot");
-    let after = t2_res_snapshot(t2_res_bdd);
-    assert_eq!(
-        before, after,
-        "c2827: 资源命令 MUST 只读（目录内容不得变化）"
+        "loader 应列出 theme stem：{out}"
     );
 }
 

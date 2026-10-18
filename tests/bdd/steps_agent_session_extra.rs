@@ -499,16 +499,17 @@ pub(crate) fn g_sess_review_no_template(ws: &Workspace, agent: &AgentState) {
 pub(crate) fn w_prompt_process(agent: &AgentState, ws: &Workspace) {
     use std::path::PathBuf;
 
-    use xylitol::app::cli::resources::{ResourcesAction, run_with_dirs};
     use xylitol::app::product_commands::product_slash_commands;
+    use xylitol::infra::resource::DefaultResourceLoader;
 
     let cwd = PathBuf::from(ws.ws("."));
     let agent_dir = cwd.join(".xylitol");
-    let (code, list_out) = run_with_dirs(ResourcesAction::List, &cwd, &agent_dir);
-    assert_eq!(code, std::process::ExitCode::SUCCESS);
+    let loader = DefaultResourceLoader::new(cwd, agent_dir);
+    let (skills, _) = loader.get_skills();
+    let names: String = skills.iter().map(|s| s.name.as_str()).collect();
     assert!(
-        !list_out.contains("prompts:"),
-        "resources list must not include prompts section: {list_out}"
+        !names.contains("review") && !names.contains("greet"),
+        "loader must not register leftover prompts as skills: {names}"
     );
 
     let builtins: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();

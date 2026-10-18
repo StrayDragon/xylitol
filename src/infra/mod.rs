@@ -14,7 +14,7 @@ pub mod trust;
 pub mod settings;
 
 // ── resource loading ──
-pub(crate) mod resource;
+pub mod resource;
 
 // ── session is always-on core ──
 pub mod session;

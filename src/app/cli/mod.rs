@@ -12,7 +12,6 @@ pub use provider_guidance::{
     format_no_api_key_found_message, format_no_models_available_message, get_provider_login_help,
 };
 mod provider_guidance;
-pub mod resources;
 #[cfg(feature = "tui")]
 mod trust_gate;
 
@@ -41,7 +40,6 @@ impl From<crate::infra::config::types::TuiActivityFoldConfig>
 
 use clap::{Args, Parser, Subcommand};
 
-use crate::app::cli::resources::ResourcesAction;
 use crate::app::core::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, bootstrap, resolve_assembly,
 };
@@ -108,7 +106,7 @@ pub struct PrintSurfaceArgs {
 }
 
 /// Top-level subcommand. When absent: TTY → TUI; non-TTY → print (stdin).
-/// Surface verbs (`tui` / `print`) vs ops (`resources` / …). No flat surface aliases.
+/// Surface verbs (`tui` / `print`) vs ops (`serve`). No flat surface aliases.
 #[derive(Subcommand, Debug)]
 pub enum CliCommand {
     /// Interactive TUI surface (default on a TTY).
@@ -128,11 +126,6 @@ pub enum CliCommand {
         /// Prompt via flag (`--prompt` / `-p`) under `print` only.
         #[arg(short = 'p', long = "prompt", value_name = "TEXT")]
         prompt_flag: Option<String>,
-    },
-    /// Read-only resource listing and diagnostics.
-    Resources {
-        #[command(subcommand)]
-        action: ResourcesAction,
     },
     /// Host listener (default 127.0.0.1:18790). Closing the TUI does not stop it.
     #[cfg(feature = "server")]
@@ -345,13 +338,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // ── Ops subcommands: early exit, no session/MCP bootstrap ───────
     match args.command {
-        Some(CliCommand::Resources { action }) => {
-            let code = crate::app::cli::resources::run(action);
-            if code == std::process::ExitCode::FAILURE {
-                std::process::exit(1);
-            }
-            return Ok(());
-        }
         #[cfg(feature = "server")]
         Some(CliCommand::Serve { host, port, action }) => {
             return crate::app::server::subcommand::run(host, port, action).await;
@@ -885,7 +871,7 @@ mod tests {
         use clap::CommandFactory;
         let mut cmd = CliArgs::command();
         let help = cmd.render_long_help().to_string();
-        for name in ["tui", "print", "resources"] {
+        for name in ["tui", "print"] {
             assert!(
                 help.contains(name),
                 "expected `{name}` in top-level help:\n{help}"
@@ -894,6 +880,10 @@ mod tests {
         assert!(
             cmd.find_subcommand("tokenizer").is_none(),
             "tokenizer must not remain a product verb:\n{help}"
+        );
+        assert!(
+            cmd.find_subcommand("resources").is_none(),
+            "resources must not remain a product verb:\n{help}"
         );
         #[cfg(feature = "server")]
         {
@@ -915,7 +905,8 @@ mod tests {
         assert!(tui_help.contains("run"), "{tui_help}");
         assert!(
             tui.find_subcommand("tokenizer").is_none()
-                && tui.find_subcommand("resources").is_none(),
+                && tui.find_subcommand("resources").is_none()
+                && tui.find_subcommand("serve").is_none(),
             "ops must stay top-level, not under tui:\n{tui_help}"
         );
         assert!(
@@ -966,14 +957,10 @@ mod tests {
                 ..
             })
         ));
-        let install = CliArgs::try_parse_from(["xylitol", "serve", "install"]).unwrap();
-        assert!(matches!(
-            install.command,
-            Some(CliCommand::Serve {
-                action: Some(ServeAction::Install),
-                ..
-            })
-        ));
+        assert!(
+            CliArgs::try_parse_from(["xylitol", "serve", "install"]).is_err(),
+            "serve install must not parse"
+        );
 
         assert!(
             CliArgs::try_parse_from(["xylitol", "server"]).is_err(),
