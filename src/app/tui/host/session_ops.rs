@@ -539,7 +539,7 @@ impl<T: Terminal> HostSession<T> {
         self.request_footer_token_refresh();
     }
 
-    /// Apply `/debug <scene>` load: rebuild transcript and optional footer model (c710).
+    /// Apply a designing preview scene: rebuild transcript and optional footer model.
     pub fn apply_debug_scene(&mut self, load: crate::app::core::driver::DebugSceneLoad) {
         let leaf_id = crate::protocol::session::transcript_leaf_anchor(&load.entries, None);
         let travel = SessionTreeTravel {

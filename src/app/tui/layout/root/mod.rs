@@ -33,7 +33,7 @@ use xylitol_tui::{
 
 use super::dollar_skill_source::DollarSkillSource;
 use super::models_picker::PendingModelChoice;
-use super::slash_catalog::product_slash_commands_for_editor;
+use super::slash_catalog::slash_commands_for_editor;
 
 use super::session_tree::FilterMode;
 use super::slots::{AskSlot, EditorSlot, EditorSlotKind, ImportSlot, ThemesSlot, TreeSlot};
@@ -115,6 +115,8 @@ pub struct UiRoot {
     slot: EditorSlot,
     /// Handshake with host `drain_pending_ui` (outlives the live payload).
     pending: PendingSlotOps,
+    /// Designing composition (`xylitol tui designing`): `/designing` remounts the scene slot.
+    designing: bool,
     /// c2875 瞬态会话详情覆盖弹出框（屏幕右侧 overlay；非常驻分栏，DESIGN 硬规则 2 例外）。
     session_popup_open: bool,
     session_popup_id: String,
@@ -209,6 +211,7 @@ impl UiRoot {
             toast_notice: None,
             slot: EditorSlot::Editor,
             pending: PendingSlotOps::default(),
+            designing: false,
             session_popup_open: false,
             session_popup_id: String::new(),
             session_sidebar_on: false,
@@ -286,7 +289,14 @@ impl UiRoot {
                 )
                 .with_id("trust-mode"),
             ),
-            Box::new(SlashCommandSource::new(product_slash_commands_for_editor())),
+            Box::new({
+                let src = SlashCommandSource::new(slash_commands_for_editor(self.designing));
+                if self.designing {
+                    src.show_on_bare_slash()
+                } else {
+                    src
+                }
+            }),
             Box::new(AtPathSource::new(self.at_path_base.clone())),
             Box::new(DollarSkillSource::new(self.dollar_skill_catalog.clone())),
         ];

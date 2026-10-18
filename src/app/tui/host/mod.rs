@@ -153,8 +153,8 @@ pub struct HostSession<T: Terminal> {
     ask_gateway: Option<Arc<crate::app::tui::ask_host::AskHostGateway>>,
     /// `/debug activity-fold-live`: after Choice, play scripted ToolEnd/idle (not ReAct).
     debug_live_ask_close: bool,
-    /// Preview composition (`xylitol tui designing`): scene slot + fake Host inject.
-    preview: bool,
+    /// Designing composition (`xylitol tui designing`): scene slot + fake Host inject.
+    designing: bool,
     /// Product keybindings owned by this session (scoped for component matching).
     keybindings: Option<Rc<RefCell<xylitol_tui::KeybindingsManager>>>,
     /// Keeps [`xylitol_tui::KeybindingsScope`] alive for the session thread.
@@ -231,7 +231,7 @@ impl<T: Terminal> HostSession<T> {
             mcp_blocks_agent: false,
             ask_gateway: None,
             debug_live_ask_close: false,
-            preview: false,
+            designing: false,
             keybindings: None,
             _keybindings_scope: None,
             pointer_down_had_selection: false,
@@ -269,16 +269,19 @@ impl<T: Terminal> HostSession<T> {
         self.ask_gateway = Some(gateway);
     }
 
-    pub fn set_preview_mode(&mut self, on: bool) {
-        self.preview = on;
+    pub fn set_designing_mode(&mut self, on: bool) {
+        self.designing = on;
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().set_designing(on);
+        }
     }
 
-    pub fn preview_mode(&self) -> bool {
-        self.preview
+    pub fn designing_mode(&self) -> bool {
+        self.designing
     }
 
-    pub fn open_preview_scene_slot(&mut self) {
-        if !self.preview {
+    pub fn open_designing_scene_slot(&mut self) {
+        if !self.designing_mode() {
             return;
         }
         let Some(root) = self.ui_root.as_ref() else {
@@ -300,11 +303,11 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().take_pending_scene_select()
     }
 
-    pub async fn inject_preview_scene(&mut self, driver: &mut dyn XyDriver, scene: &str) {
-        if !self.preview {
+    pub async fn inject_designing_scene(&mut self, driver: &mut dyn XyDriver, scene: &str) {
+        if !self.designing_mode() {
             return;
         }
-        crate::app::tui::effects::preview::inject_scene(self, driver, scene.to_string()).await;
+        crate::app::tui::effects::designing::inject_scene(self, driver, scene.to_string()).await;
     }
 
     /// Product empty UI: shared `UiRoot` + Ctrl+C / Esc / idle-Enter listeners.

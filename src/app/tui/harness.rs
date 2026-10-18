@@ -3340,8 +3340,8 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
-        session.set_preview_mode(true);
-        session.open_preview_scene_slot();
+        session.set_designing_mode(true);
+        session.open_designing_scene_slot();
         let joined = root.borrow_mut().render(80).join("\n");
         assert!(
             joined.contains("session-tree-multiturn"),
@@ -3353,7 +3353,7 @@ mod slice_tests {
         );
 
         session
-            .inject_preview_scene(&mut driver, "session-tree-multiturn")
+            .inject_designing_scene(&mut driver, "session-tree-multiturn")
             .await;
         let note = session
             .ui_model()
@@ -3369,6 +3369,121 @@ mod slice_tests {
             note.contains("local in-memory session"),
             "multiturn load should report a local in-memory session; got: {note}"
         );
+        assert!(
+            note.contains("designing preview"),
+            "notice names the designing preview inject; got: {note}"
+        );
+    }
+
+    #[tokio::test]
+    async fn h25e_designing_scene_slot_closes_and_reopens() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        session.set_designing_mode(true);
+        session.open_designing_scene_slot();
+
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            !root.borrow().scenes_open(),
+            "confirm must close the scene catalog"
+        );
+        let first = session
+            .ui_model()
+            .entries
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                crate::app::tui::UiEntry::ScrollNotice { text } => Some(text.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        assert!(
+            first.contains("session-tree-multiturn"),
+            "first confirm injects the top catalog row; got: {first}"
+        );
+
+        root.borrow_mut().set_editor_text("/designing");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            root.borrow().scenes_open(),
+            "/designing must remount the scene slot after confirm"
+        );
+
+        session.step(HostEvent::Input(down_event())).unwrap();
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            !root.borrow().scenes_open(),
+            "second confirm must close the catalog again"
+        );
+        let second = session
+            .ui_model()
+            .entries
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                crate::app::tui::UiEntry::ScrollNotice { text } => Some(text.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        assert!(
+            second.contains("session-tree-labeled"),
+            "/designing then arrow+Enter must switch designing preview; got: {second}"
+        );
+
+        session.step(HostEvent::Input(char_event('/'))).unwrap();
+        assert!(
+            root.borrow().editor_autocomplete_open(),
+            "designing `/` must keep the slash catalog open"
+        );
+
+        root.borrow_mut().set_editor_text("/designing");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            root.borrow().scenes_open(),
+            "/designing must remount the scene slot after the catalog closed"
+        );
+
+        let mut product = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let product_root = product.ui_root().expect("ui").clone();
+        let mut product_driver = ScriptedDriver::new();
+        let mut product_stream = None;
+        product_root.borrow_mut().set_editor_text("/designing");
+        product.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut product, &mut product_driver, &mut product_stream)
+            .await
+            .unwrap();
+        assert!(
+            !product_root.borrow().scenes_open(),
+            "product TUI must not open the designing scene slot"
+        );
+        let unknown = product
+            .ui_model()
+            .entries
+            .iter()
+            .rev()
+            .find_map(|e| match e {
+                crate::app::tui::UiEntry::ScrollNotice { text } => Some(text.clone()),
+                _ => None,
+            })
+            .unwrap_or_default();
+        assert!(
+            unknown.contains("unknown command"),
+            "product /designing is an unknown slash; got: {unknown}"
+        );
     }
 
     #[tokio::test]
@@ -3376,9 +3491,9 @@ mod slice_tests {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
-        session.set_preview_mode(true);
+        session.set_designing_mode(true);
         session
-            .inject_preview_scene(&mut driver, "verify-smoke")
+            .inject_designing_scene(&mut driver, "verify-smoke")
             .await;
         assert!(!session.should_quit(), "verify-smoke must not quit");
         let note = session
@@ -3407,9 +3522,9 @@ mod slice_tests {
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
-        session.set_preview_mode(true);
+        session.set_designing_mode(true);
         session
-            .inject_preview_scene(&mut driver, "activity-fold-live")
+            .inject_designing_scene(&mut driver, "activity-fold-live")
             .await;
         let note = session
             .ui_model()
@@ -3486,9 +3601,9 @@ mod slice_tests {
         driver.set_session_messages(
             crate::app::debug_fixtures::activity_fold_resume_stamped_entries(),
         );
-        session.set_preview_mode(true);
+        session.set_designing_mode(true);
         session
-            .inject_preview_scene(&mut driver, "activity-fold-resume")
+            .inject_designing_scene(&mut driver, "activity-fold-resume")
             .await;
         assert!(
             !root.borrow().ask_choice_open(),

@@ -212,6 +212,8 @@ impl CompletionRegistry {
 
 pub struct SlashCommandSource {
     commands: Vec<(String, String)>,
+    /// When true, typing a lone `/` keeps the catalog open (designing pin).
+    show_on_bare_slash: bool,
 }
 
 impl SlashCommandSource {
@@ -221,7 +223,14 @@ impl SlashCommandSource {
                 .into_iter()
                 .map(|c| (c.name, c.description.unwrap_or_default()))
                 .collect(),
+            show_on_bare_slash: false,
         }
+    }
+
+    /// Keep the slash catalog visible while the buffer is exactly `/`.
+    pub fn show_on_bare_slash(mut self) -> Self {
+        self.show_on_bare_slash = true;
+        self
     }
 }
 
@@ -242,8 +251,8 @@ impl CompletionSource for SlashCommandSource {
     }
 
     fn should_dismiss(&self, _ctx: &CompletionContext<'_>, m: &CompletionMatch) -> bool {
-        // Lone `/` keeps the character but closes the popup.
-        m.prefix == "/"
+        // Lone `/` keeps the character but closes the popup (product default).
+        !self.show_on_bare_slash && m.prefix == "/"
     }
 
     fn suggestions(
@@ -621,6 +630,12 @@ mod tests {
         };
         let m = src.probe(&ctx).expect("probe /");
         assert!(src.should_dismiss(&ctx, &m));
+
+        let shown = slash().show_on_bare_slash();
+        assert!(!shown.should_dismiss(&ctx, &m));
+        let all = shown.suggestions(&ctx, &m).expect("bare / lists catalog");
+        assert_eq!(all.items[0].value, "help");
+        assert_eq!(all.items[1].value, "model");
     }
 
     #[test]

@@ -3,9 +3,9 @@
 mod bang;
 mod debug_activity_fold;
 mod debug_verify;
+pub(crate) mod designing;
 mod helpers;
 mod pending_ui;
-pub(crate) mod preview;
 mod reload;
 mod slash;
 

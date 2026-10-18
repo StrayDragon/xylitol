@@ -1,7 +1,8 @@
-//! Preview scene inject arm (process-local; not a product slash).
+//! Designing preview inject (process-local; not a product slash).
 //!
-//! c2740: scenes are seeded into an in-memory store and applied to the
+//! c2740/c2930: scenes are seeded into an in-memory store and applied to the
 //! transcript directly; no `protocol::Command` / remote unary.
+//! **designing preview** = 把命名场景注入同一 TUI 画布的预览设计。
 
 use xylitol_tui::Terminal;
 
@@ -37,25 +38,26 @@ pub(crate) async fn inject_scene<T: Terminal>(
             }
             (PreviewInject::Resume, _) => match load_and_bind_scene(driver, meta.id).await {
                 Ok(load) => session.apply_debug_scene(load),
-                Err(e) => note_load_err(session, "tui.preview_scene", &e, e.to_string()),
+                Err(e) => note_load_err(session, "tui.designing_preview", &e, e.to_string()),
             },
             (inject, id) => {
-                session
-                    .push_scroll_notice(format!("{id}: inject {inject:?} has no preview runner"));
+                session.push_scroll_notice(format!(
+                    "{id}: inject {inject:?} has no designing preview runner"
+                ));
             }
         }
     } else {
         match load_and_bind_scene(driver, &scene).await {
             Ok(load) => session.apply_debug_scene(load),
-            Err(e) => note_load_err(session, "tui.preview_scene", &e, e.to_string()),
+            Err(e) => note_load_err(session, "tui.designing_preview", &e, e.to_string()),
         }
     }
     let _ = session.render_now();
 }
 
-/// Seed a scene into the driver's store when the Host is in-process (preview
-/// designing uses an ephemeral store). Otherwise a throwaway in-memory
-/// manager — never the caller's current JSONL file, never the RPC surface.
+/// Seed a scene into the driver's store when the Host is in-process (designing
+/// uses an ephemeral store). Otherwise a throwaway in-memory manager — never
+/// the caller's current JSONL file, never the RPC surface.
 async fn load_and_bind_scene(
     driver: &mut dyn XyDriver,
     scene: &str,
@@ -65,11 +67,11 @@ async fn load_and_bind_scene(
     let short = &uuid::Uuid::new_v4().to_string()[..8];
     let canonical = crate::app::debug_fixtures::resolve_scene_id(scene).ok_or_else(|| {
         XyDriverError::invalid_input(format!(
-            "unknown preview scene: {scene}\n{}",
+            "unknown designing scene: {scene}\n{}",
             crate::app::debug_fixtures::list_note()
         ))
     })?;
-    let session_id = format!("preview-{canonical}-{short}");
+    let session_id = format!("designing-{canonical}-{short}");
     let owned = crate::infra::session::SessionManager::in_memory();
     let bound = driver.session_store();
     let store: &dyn XySessionStore = match bound.as_ref() {
@@ -92,7 +94,7 @@ async fn load_and_bind_scene(
         .await;
     }
     Ok(DebugSceneLoad {
-        note: format!("preview scene `{canonical}` → local in-memory session {session_id}"),
+        note: format!("designing preview `{canonical}` → local in-memory session {session_id}"),
         session_id,
         entries,
         model: None,

@@ -53,6 +53,8 @@ pub enum PendingSlash {
     },
     /// Bare `/mcp` / `/mcps` — MCP connection + armed panel (c1210).
     OpenMcp,
+    /// Bare `/designing` — remount the designing scene slot (designing composition only).
+    OpenDesigningScenes,
     /// Slash usage / arity error (no dispatch).
     Usage(&'static str),
 }
@@ -170,6 +172,10 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Inline,
         },
+        PendingSlash::OpenDesigningScenes => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Inline,
+        },
         PendingSlash::SetModel(_) => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
@@ -221,6 +227,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::SessionName { .. } => "/session-name",
         PendingSlash::HistoryCopyLast => "/history-copy-last",
         PendingSlash::OpenMcp => "/mcp",
+        PendingSlash::OpenDesigningScenes => "/designing",
     }
 }
 
@@ -347,6 +354,37 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
     }
 }
 
+/// Parse slash for the current TUI composition.
+///
+/// `/designing` is recognized only while the designing composition is on;
+/// product TUI keeps it as an unknown slash (not in the product SSOT).
+pub fn parse_slash_command_for_surface(text: &str, designing: bool) -> Option<PendingSlash> {
+    if designing && let Some(slash) = parse_designing_slash(text) {
+        return Some(slash);
+    }
+    parse_slash_command(text)
+}
+
+fn parse_designing_slash(text: &str) -> Option<PendingSlash> {
+    let trimmed = text.trim();
+    let rest = trimmed.strip_prefix('/')?;
+    if rest.is_empty() {
+        return None;
+    }
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let cmd = parts.next()?.to_ascii_lowercase();
+    let arg = parts
+        .next()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    match (cmd.as_str(), arg) {
+        ("designing", None) => Some(PendingSlash::OpenDesigningScenes),
+        ("designing", Some(_)) => Some(PendingSlash::Usage("usage: /designing (no arguments)")),
+        _ => None,
+    }
+}
+
 /// Map execute result → bang block tint.
 pub fn bash_block_status(result: &XyBashResult) -> BashBlockStatus {
     if result.cancelled {
@@ -420,7 +458,7 @@ pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry>
 mod parse_tests {
     use super::{
         BusySlashPolicy, PendingSlash, SlashPermit, busy_slash_policy, parse_bang_command,
-        parse_slash_command, slash_allowances,
+        parse_slash_command, parse_slash_command_for_surface, slash_allowances,
     };
 
     /// The whole idle-input command surface in one reviewable file: every
@@ -567,6 +605,10 @@ mod parse_tests {
             busy_slash_policy(&PendingSlash::OpenMcp),
             BusySlashPolicy::Allow
         );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::OpenDesigningScenes),
+            BusySlashPolicy::Allow
+        );
     }
 
     #[test]
@@ -684,6 +726,20 @@ mod parse_tests {
             Some(PendingSlash::Theme {
                 arg: Some("toggle".into())
             })
+        );
+    }
+
+    #[test]
+    fn parse_designing_slash_only_on_designing_surface() {
+        assert_eq!(parse_slash_command("/designing"), None);
+        assert_eq!(parse_slash_command_for_surface("/designing", false), None);
+        assert_eq!(
+            parse_slash_command_for_surface("/designing", true),
+            Some(PendingSlash::OpenDesigningScenes)
+        );
+        assert_eq!(
+            parse_slash_command_for_surface("/designing extra", true),
+            Some(PendingSlash::Usage("usage: /designing (no arguments)"))
         );
     }
 }

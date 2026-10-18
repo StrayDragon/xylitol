@@ -104,7 +104,7 @@ impl UiRoot {
             | EditorSlot::ImportConfirm(_)
             | EditorSlot::SessionResume(_)
             | EditorSlot::Mcp(_) => {
-                // Opened via mount_* after slash dispatch.
+                // Opened via mount_* after slash dispatch (`/designing` for Scenes).
             }
         }
     }

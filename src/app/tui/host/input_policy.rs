@@ -5,7 +5,7 @@ use xylitol_tui::{InputEvent, Terminal};
 use super::super::bridge::UiPhase;
 use super::super::commands::{
     BangParse, BusySlashPolicy, PendingBash, PendingSlash, busy_slash_policy,
-    busy_slash_refuse_label, parse_bang_command, parse_slash_command,
+    busy_slash_refuse_label, parse_bang_command, parse_slash_command_for_surface,
 };
 use super::super::keybindings::matches_binding;
 use super::HostSession;
@@ -167,7 +167,7 @@ impl<T: Terminal> HostSession<T> {
             if text.trim().is_empty() {
                 return true;
             }
-            match parse_slash_command(&text) {
+            match parse_slash_command_for_surface(&text, self.designing) {
                 Some(slash) => {
                     root.set_editor_text(String::new());
                     drop(root);
@@ -271,7 +271,7 @@ impl<T: Terminal> HostSession<T> {
         // the cached dock explicitly before clearing the submitted editor text.
         self.tui.mark_ao_components_stale();
 
-        if let Some(slash) = parse_slash_command(&text) {
+        if let Some(slash) = parse_slash_command_for_surface(&text, self.designing) {
             root.set_editor_text(String::new());
             drop(root);
             match slash {
@@ -295,6 +295,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::HistoryCopyLast
                 | PendingSlash::Theme { .. }
                 | PendingSlash::OpenMcp
+                | PendingSlash::OpenDesigningScenes
                 | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);
                 }

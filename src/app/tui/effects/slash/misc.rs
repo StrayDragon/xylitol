@@ -1,4 +1,4 @@
-//! Misc slash arms (exit, reload, trust, theme, mcp, copy-last).
+//! Misc slash arms (exit, reload, trust, theme, mcp, copy-last, designing).
 
 use xylitol_tui::Terminal;
 
@@ -109,6 +109,11 @@ pub(super) async fn open_mcp<T: Terminal>(session: &mut HostSession<T>, driver: 
 
 pub(super) async fn usage<T: Terminal>(session: &mut HostSession<T>, msg: &'static str) {
     session.push_scroll_notice(msg.to_string());
+    let _ = session.render_now();
+}
+
+pub(super) async fn open_designing_scenes<T: Terminal>(session: &mut HostSession<T>) {
+    session.open_designing_scene_slot();
     let _ = session.render_now();
 }
 

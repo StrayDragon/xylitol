@@ -282,7 +282,7 @@ fn w_tui_designing(cli_help_bdd: &CliHelpBdd) {
     cli_help_bdd.ok.set(true);
 }
 
-#[then("进入预览组合且不得因未在听非零退出")]
+#[then("进入 designing 组合且不得因未在听非零退出")]
 fn t_designing_skips_attach(cli_help_bdd: &CliHelpBdd) {
     if !cfg!(debug_assertions) {
         return;

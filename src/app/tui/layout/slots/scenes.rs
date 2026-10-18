@@ -1,4 +1,4 @@
-//! Preview scene catalog payload for [`super::EditorSlot::Scenes`].
+//! Designing scene catalog payload for [`super::EditorSlot::Scenes`].
 
 use xylitol_tui::components::select_list::{SelectItem, SelectList};
 use xylitol_tui::{Component, InputEvent};

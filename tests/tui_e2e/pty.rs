@@ -110,7 +110,7 @@ impl PtySession {
         Ok(session)
     }
 
-    /// Debug-only `xylitol tui designing` — no Host listener, preview scene slot.
+    /// Debug-only `xylitol tui designing` — no Host listener, designing scene slot.
     pub fn spawn_tui_designing(
         cols: u16,
         rows: u16,
@@ -1081,8 +1081,8 @@ fn pty_product_fake_session_tree_label_path() {
     session.drain(Duration::from_millis(80));
     session.send_keys("\r").expect("select labeled scene");
     session
-        .wait_for_raw("preview scene", Duration::from_secs(20))
-        .expect("preview scene note");
+        .wait_for_raw("designing preview", Duration::from_secs(20))
+        .expect("designing preview note");
     session
         .wait_for_raw("labeled root", Duration::from_secs(15))
         .expect("fixture user in scrollback");
@@ -1179,8 +1179,8 @@ fn pty_product_fake_large_scrollback_then_exit() {
     session.drain(Duration::from_millis(80));
     session.send_keys("\r").expect("select branched scene");
     session
-        .wait_for_raw("preview scene", Duration::from_secs(20))
-        .expect("preview scene note in PTY stream");
+        .wait_for_raw("designing preview", Duration::from_secs(20))
+        .expect("designing preview note in PTY stream");
     session
         .wait_for_raw("alt leaf", Duration::from_secs(15))
         .expect("fixture alt leaf in PTY stream");

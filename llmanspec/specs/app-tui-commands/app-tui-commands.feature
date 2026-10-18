@@ -36,7 +36,7 @@
       那么 分别得到模型与退出待发命令
   @req:r1201
   规则: debug-slash-retired
-    产品 TUI 与预览表面 不得解析斜杠 /debug、/debug <scene>（空格）或 /debug:<scene>（冒号）。SlashCommandSource 不得列出 debug。提交上述文本 须按未知斜杠短提示且 不得崩溃、不得注入场景。场景装载见 app-tui-preview。
+    产品 TUI 与 designing 组合 不得解析斜杠 /debug、/debug <scene>（空格）或 /debug:<scene>（冒号）。SlashCommandSource 不得列出 debug。提交上述文本 须按未知斜杠短提示且 不得崩溃、不得注入场景。场景装载见 app-tui-preview。
 
     场景: debug-slash-not-recognized
       当 以主机泵在 idle 提交 "/debug"

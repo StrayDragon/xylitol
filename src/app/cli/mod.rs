@@ -602,7 +602,7 @@ async fn run_product_tui_attached(
                 crate::app::tui::storage::ClientStorage::from_env(),
             )),
             interaction_mode: crate::app::tui::lab_interaction_mode_from_env(),
-            preview: false,
+            designing: false,
         },
     )
     .await;
@@ -671,7 +671,7 @@ async fn run_product_tui_designing(
             ask_gateway: None,
             client_storage: None,
             interaction_mode: crate::app::tui::lab_interaction_mode_from_env(),
-            preview: true,
+            designing: true,
         },
     )
     .await

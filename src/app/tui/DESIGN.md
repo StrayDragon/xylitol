@@ -195,7 +195,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 1. Viewport 贴尾：`previous_viewport_top = max(0, max(height, n) - height)`。
 2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。例外：**瞬态会话详情覆盖弹出框**（屏幕右侧 overlay，`alt+i` 显隐 / Esc 收起，app-tui-fixed-zone）与**实验性会话侧栏**（常驻右列 24 列，标准档 80+ 起可用，`alt+u` 显隐、窄档降级为弹出框，app-tui-fixed-zone r2904）——不引入 Workspace / Plan / Files 类通用侧栏。
 3. **不截断历史**冒充滚动；**分支 travel / 回看**走会话树，不走 Codex 式 transcript 浏览器。
-4. **无常驻 debug strip**；预览组合才有场景槽（`xylitol tui designing`，debug 构建）；产品 TUI 走日志或临时一行，不占 3 行底栏。
+4. **无常驻 debug strip**；designing 组合才有场景槽（`xylitol tui designing`，debug 构建）；产品 TUI 走日志或临时一行，不占 3 行底栏。
 5. **无常驻键墙 / debug header**；允许 **Codex 风边框启动卡片**（简约 meta）——名称 **MUST 全量展示**（换行），**MUST NOT** `...` 截断。会话名/路径仍并进 footer。
 6. 会话树 / 命令面板 / 设置：**替换 editor 槽**，不要 blit 到内容顶部。
 7. 居中 `show_overlay` **默认不用**；交互优先 editor 槽（树 / Ask / 板）。仅极短确认可选用 overlay。

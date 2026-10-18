@@ -37,6 +37,7 @@ pub(super) async fn handle_slash<T: Terminal>(
         PendingSlash::HistoryCopyLast => misc::history_copy_last(session, driver).await,
         PendingSlash::Theme { arg } => misc::theme(session, arg).await,
         PendingSlash::OpenMcp => misc::open_mcp(session, driver).await,
+        PendingSlash::OpenDesigningScenes => misc::open_designing_scenes(session).await,
         PendingSlash::Usage(msg) => misc::usage(session, msg).await,
     }
 }

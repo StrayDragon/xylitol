@@ -356,7 +356,7 @@ fn product_tui_source_has_no_tui_start_call() {
             "effects/slash/compact.rs",
             include_str!("effects/slash/compact.rs"),
         ),
-        ("effects/preview.rs", include_str!("effects/preview.rs")),
+        ("effects/designing.rs", include_str!("effects/designing.rs")),
         (
             "effects/slash/model.rs",
             include_str!("effects/slash/model.rs"),
@@ -493,6 +493,22 @@ fn product_slash_catalog_matches_agent_ssot() {
         catalog,
         ssot.iter().map(|s| (*s).to_string()).collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn designing_slash_is_pinned_and_absent_from_product_ssot() {
+    use crate::app::product_commands::product_slash_commands;
+    use crate::app::tui::layout::slash_commands_for_editor;
+
+    let ssot: Vec<&str> = product_slash_commands().iter().map(|c| c.name).collect();
+    assert!(
+        !ssot.contains(&"designing"),
+        "/designing must not join the product slash SSOT"
+    );
+    let product = slash_commands_for_editor(false);
+    assert!(product.iter().all(|c| c.name != "designing"));
+    let designing = slash_commands_for_editor(true);
+    assert_eq!(designing[0].name, "designing");
 }
 
 #[test]

@@ -1,6 +1,6 @@
-//! Scene catalog: stable ids + human descriptions (preview scene slot).
+//! Scene catalog: stable ids + human descriptions (designing scene slot).
 
-/// How a preview scene is injected. Exhaustive = LSP completion.
+/// How a designing preview scene is injected. Exhaustive = LSP completion.
 /// New fixtures MUST pick one; do not stuff `UiEntry`s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewInject {
@@ -34,7 +34,7 @@ impl PreviewInject {
     }
 }
 
-/// One hand-test fixture exposed in the preview scene slot.
+/// One hand-test fixture exposed in the designing scene slot.
 #[derive(Debug, Clone, Copy)]
 pub struct DebugSceneMeta {
     pub id: &'static str,
@@ -86,7 +86,7 @@ pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
     },
 ];
 
-/// `(id, description)` for the preview scene slot.
+/// `(id, description)` for the designing scene slot.
 pub fn scene_catalog() -> Vec<(String, String)> {
     DEBUG_SCENES
         .iter()
@@ -94,9 +94,9 @@ pub fn scene_catalog() -> Vec<(String, String)> {
         .collect()
 }
 
-/// Scroll-notice body listing the catalog (preview slot, not a slash).
+/// Scroll-notice body listing the catalog (designing scene slot, not a slash).
 pub fn list_note() -> String {
-    let mut lines = vec!["preview scenes:".to_string()];
+    let mut lines = vec!["designing scenes:".to_string()];
     for s in DEBUG_SCENES {
         lines.push(format!("  {} — {}", s.id, s.description));
     }

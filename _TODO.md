@@ -9,7 +9,7 @@
 
 下一刀：**W2.0**（改 AGENTS crate 图）。
 
-怎么读：先本节，再 §2 总图，再 §3 未完成表。附录 A/B 是盘点与完成记录。预览合约以已归档 c2930 为准，附录 C 只留指针。
+怎么读：先本节，再 §2 总图，再 §3 未完成表。附录 A/B 是盘点与完成记录。designing 合约以已归档 c2930 为准，附录 C 只留指针。
 
 顺序不得颠倒：工具链（WS0，已做）→ feature 真能关 → 契约叶 + 拆 ai-bridge HTTP → 新 crate 重写、旧 `src/` 双写。不为编译速度拆 crate。本轮不引入 rutis。
 
@@ -116,7 +116,7 @@ Host 侧插件只依赖 `xylitol-core`（必要时只读 protocol DTO），插�
 
 共享只允许：跨端协议形状、`.feature` 句子、固定区词汇、DESIGN 色板。
 每个 worktree 必须独立 `CARGO_TARGET_DIR`。
-Harness：引擎按键→状态在 `xylitol-tui`；产品场景 / 假 Host 预览在 `xylitol-app-tui`。
+Harness：引擎按键→状态在 `xylitol-tui`；产品场景 / 假 Host designing 在 `xylitol-app-tui`。
 
 S0 先做：契约叶、ai-bridge、工具链。不要把 `src/app` 原样搬成 `xylitol-host` / `xylitol-client`。
 
@@ -173,7 +173,7 @@ WS1 表已空。W1.8 / W1.9 / W1.10（`wire` 改名、双 `model`、host 三义�
 
 本轮默认不做：W1.1b（default 去掉 `server`）、W1.2b（默认二进制不含 MCP）、W1.3（`otel` 出 default）、W1.4（单包 `image` feature；解码器随 W2 工具集 crate 下沉）、W1.11（gherkin 改名）。
 
-已完成：W1.0 带走范围、W1.1 `server` 可关、W1.2 `mcp` 可关、W1.3b otel 路径可关、W1.5 hooks、W1.6 TUI 内预览（`xylitol tui designing`，废止 `/debug`）、W1.7 session export、W1.12 删 CLI `resources` 与 `serve install`。说明见 [附录 B](#附)。
+已完成：W1.0 带走范围、W1.1 `server` 可关、W1.2 `mcp` 可关、W1.3b otel 路径可关、W1.5 hooks、W1.6 TUI 内 designing（`xylitol tui designing`，废止 `/debug`）、W1.7 session export、W1.12 删 CLI `resources` 与 `serve install`。说明见 [附录 B](#附)。
 
 ### 3.2 WS2 契约叶 + 重写双写
 
@@ -229,7 +229,7 @@ S1 失败则整次 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留�
 | 滚动区 / 固定区 / activity 折叠 | TUI + DESIGN.md | 产品 | 核 |
 | 换模 / thinking run 绑定 | `/model` + footer | 已落地 | 核 |
 | 图像粘贴 / 读图 | `infra/image` + bang | 主线；依赖重 | 核（解码器随 W2 工具集 crate；不做单包 feature） |
-| 预览（场景槽 + 假 Host） | 产品 TUI 预览表面 | `xylitol tui designing`（仅 debug 构建） | 核（开发协作；[c2930](llmanspec/changes/archive/2026-10-18-c2930-add-tui-preview/)） |
+| designing（场景槽 + 假 Host） | 产品 TUI designing 组合 | `xylitol tui designing`（仅 debug 构建） | 核（开发协作；[c2930](llmanspec/changes/archive/2026-10-18-c2930-add-tui-preview/)） |
 | 键位可视化 / `/hotkeys` | 未做 | GH #23 | 推迟 |
 | gpui 桌面 | 未做 | GH #12 | 推迟 |
 
@@ -270,7 +270,7 @@ S1 失败则整次 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留�
 | `agent_demo*` / `host_loop` | 引擎演示，非产品 SSOT | 留在 `xylitol-tui` |
 | maka research | S1 对照 | 留 `docs/research/` |
 | 23 个集成测试二进制 | 不删测试 | 瘦（share-generics 已做） |
-| 预览框选 / Inspect wasm | 另 change；本轮只做 TUI 内场景槽 | 推迟（c2930 范围外） |
+| designing 框选 / Inspect wasm | 另 change；本轮只做 TUI 内场景槽 | 推迟（c2930 范围外） |
 
 ---
 
@@ -304,7 +304,7 @@ S1 失败则整次 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留�
 **DELETE**
 
 1. 不新增 gpui / Web 控制台 / DAP / LSP / Sub-Agent 空壳。
-2. 不把场景表当产品 slash；场景源归预览表面（已归档 c2930）。
+2. 不把场景表当产品 slash；场景源归 designing 组合（已归档 c2930）。
 3. 不删 `vendor/gherkin`。
 4. 不删 salvo / tokio-tungstenite 的产品用途。
 5. 不提供 CLI `xylitol resources`。
@@ -502,14 +502,14 @@ spec `@req:r1532` 要求 server 应用面。未实现：gpui、Web 控制台、D
 
 <a id="DESIGN-WASM"></a>
 
-## 附录 C. 预览
+## 附录 C. designing
 
-TUI 内预览（场景槽 + 假 Host，废止 `/debug`）：[c2930-add-tui-preview](llmanspec/changes/archive/2026-10-18-c2930-add-tui-preview/)。入口是 `xylitol tui designing`（仅 debug 构建），不是顶层 `preview` / `designing`。
+TUI 内 designing（场景槽 + 假 Host，废止 `/debug`）：[c2930-add-tui-preview](llmanspec/changes/archive/2026-10-18-c2930-add-tui-preview/)。入口是 `xylitol tui designing`（仅 debug 构建），不是顶层 `preview` / `designing`。designing preview = 把某场景注入画布的预览设计。
 
 框选覆盖层 / `InspectFrame` / 薄 HTML overlay / Inspect wasm **不在** c2930。另开 change。不建 `designing/`、本轮不装 wasm target。
 
 <a id="UI-WORKFLOW"></a>
 
-## 附录 D. 预览工作流
+## 附录 D. designing 工作流
 
 WHAT / 转移表 / BDD / 场景 / 眼睛 五层不要压成一层。c2930 只落地 **场景 + 假 Host + TUI 画布**。眼睛（命名框）后置。细则写在已归档 c2930 的 `design.md`，此处不复述。
