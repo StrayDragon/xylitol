@@ -3344,6 +3344,10 @@ mod slice_tests {
         session.open_designing_scene_slot();
         let joined = root.borrow_mut().render(80).join("\n");
         assert!(
+            joined.contains("scenes") && joined.contains("/designing"),
+            "scene slot title must hint /designing to reopen; got:\n{joined}"
+        );
+        assert!(
             joined.contains("session-tree-multiturn"),
             "scene slot should list ids; got:\n{joined}"
         );

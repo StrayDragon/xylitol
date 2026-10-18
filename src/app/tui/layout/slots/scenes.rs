@@ -61,7 +61,7 @@ impl ScenesSlot {
     pub fn render(&mut self, width: usize, theme: LayoutTheme) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push(theme.paint_muted(&xylitol_tui::truncate_to_width(
-            " scenes",
+            " scenes — use /designing to reopen",
             width.max(1),
             "",
             false,
