@@ -7,9 +7,9 @@
 
 ## 现在
 
-下一刀：**W2.0**（改 AGENTS crate 图）。
+下一刀：**W1.13**（架构组织描述 + BDD 按 STC 改写）。然后才是 W2.0（AGENTS crate 图）。
 
-怎么读：先本节，再 §2 总图，再 §3 未完成表。附录 A/B 是盘点与完成记录。designing 合约以已归档 c2930 为准，附录 C 只留指针。
+怎么读：先本节，再 [§3.1](#PRE) 重写前，再 [§2](#TARGET) 总图，再 [§3.2](#WS2) 未完成表。附录 A/B 是盘点与完成记录。designing 合约以已归档 c2930 为准，附录 C 只留指针。
 
 顺序不得颠倒：工具链（WS0，已做）→ feature 真能关 → 契约叶 + 拆 ai-bridge HTTP → 新 crate 重写、旧 `src/` 双写。不为编译速度拆 crate。本轮不引入 rutis。
 
@@ -162,18 +162,40 @@ plugin-provider-openai            plugin-provider-anthropic
 ---
 
 <a id="BATCH"></a>
+<a id="PRE"></a>
 
 ## 3. 批次
 
 编译痛点在工具链，不在拆 crate。WS0 已完成，记录见 [附录 B](#附)。
 
-### 3.1 现在做（WS1 剩余）
+### 3.1 大重写前（WS1 收口）
 
-WS1 表已空。W1.8 / W1.9 / W1.10（`wire` 改名、双 `model`、host 三义）随 W2 搬 crate 时做，不单独全树 rename。
+crate 拆分前只改描述和已错事实。不改标识符，不开新产品，不把目标 crate 图提前写进现行规则。
 
-本轮默认不做：W1.1b（default 去掉 `server`）、W1.2b（默认二进制不含 MCP）、W1.3（`otel` 出 default）、W1.4（单包 `image` feature；解码器随 W2 工具集 crate 下沉）、W1.11（gherkin 改名）。
+| 批 | 做什么 | 准入 | SDD | 完成 |
+|---|---|---|---|---|
+| W1.13 | 按 STC 改写架构组织描述与 `layer-architecture` BDD；顺手把已错规则句改成现状 | 重写时少跟错句子、少跟超长规则段 | skip-SDD（AGENTS / 产品文）+ validate-only（`.feature` + 步骤绑定） | 否 |
+| W1.14 | 死码分诊（`l8ng-audit-dead-code`），缩小搬家面 | 不挡 W2.0 | skip-SDD | 是 |
 
-已完成：W1.0 带走范围、W1.1 `server` 可关、W1.2 `mcp` 可关、W1.3b otel 路径可关、W1.5 hooks、W1.6 TUI 内 designing（`xylitol tui designing`，废止 `/debug`）、W1.7 session export、W1.12 删 CLI `resources` 与 `serve install`。说明见 [附录 B](#附)。
+W1.13 写什么：
+
+1. `src/AGENTS.md`、根 `AGENTS.md` 分层摘要：STC **for instruction writing**（强度只用必须 / 不得 / 宜 / 不宜 / 可 / 不必 / 能 / 不能）。现行事实仍是单 crate 逻辑分层。
+2. 组织级产品文：`docs/architecture/产品分层总览.md`、`库与多客户端.md`、`扩展与开闭.md`，以及 `docs/architecture/AGENTS.md`。STC **for document**。主语写名称，不用第一人称复数。
+3. `llmanspec/specs/layer-architecture/layer-architecture.feature` 规则句与绑定步骤：情态词用 `llmanspec/AGENTS.md` 的必须 / 不得 / 宜。purpose 仍写单 crate。多 crate 句子留给 W2.0b。
+4. 已错事实一并改：r1530 default 须含 `mcp`（`Cargo.toml` 已是 `cli,tui,otel,server,mcp`）；r1529 删不存在的 ACP / `infra-acp`，可选 flag 写成现用名，不虚构「域前缀」。
+5. 改 Gherkin 步骤文本时，同步改 `tests/bdd` 精确绑定。文档探针（`steps_layer_probe.rs`）只改中文，本批不删扫描闸。
+
+W1.13 不写什么：其余 `docs/architecture/` 能力细则（会话树、固定区等）；全量 `.feature` compact；[§2](#TARGET) crate 图（W2.0）；`layer-architecture` 改成多 crate（W2.0b）。
+
+规则：`/home/l8ng/Projects/__straydragon__/STC-Simplified-Technical-Chinese`。AGENTS 走 instruction；产品文走 document；spec / BDD 走 llman 情态词表。检查：`node …/tools/cli.mjs check <文件> --profile <场景> --anti-echo`。
+
+W1.8 / W1.9 / W1.10（`wire` 改名、双 `model`、host 三义）随 W2 搬 crate 时做，不单独全树 rename。
+
+本轮默认不做：W1.1b（default 去掉 `server`）、W1.2b（默认二进制不含 MCP）、W1.3（`otel` 出 default）、W1.4（单包 `image` feature；解码器随 W2 工具集 crate 下沉）、W1.11（gherkin 改名）。delayed-changes / next-todo 仍 park，不升格。Inspect wasm、键位可视化、gpui 仍推迟。
+
+已完成：W1.0 带走范围、W1.1 `server` 可关、W1.2 `mcp` 可关、W1.3b otel 路径可关、W1.5 hooks、W1.6 TUI 内 designing（`xylitol tui designing`，废止 `/debug`）、W1.7 session export、W1.12 删 CLI `resources` 与 `serve install`、W1.14 死码分诊。说明见 [附录 B](#附)。
+
+<a id="WS2"></a>
 
 ### 3.2 WS2 契约叶 + 重写双写
 
@@ -355,7 +377,7 @@ S1 失败则整次 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留�
 
 ## 8. 抽出契约叶前必须改的 AGENTS / spec
 
-改写只换稳定规则，不写进度，不留墓碑。
+改写只换稳定规则，不写进度，不留墓碑。先做 [W1.13](#PRE)（现行单 crate 事实按 STC 改写），再换 crate 图。两刀不要混在一次提交里。
 
 1. `src/AGENTS.md`「单 crate 逻辑分层（不为分层拆 crate）」→ 目标图见 [§2](#TARGET)。Host 侧 crate 边界 = 插件替换 / 开关 / 生命周期。客户端是 `xylitol-app-*`。禁止按层各一 crate。继续禁止 `xylitol-domain`。
 2. `protocol/{wire, ports, model, session}` 同一顶栏 → 信封进 `xylitol-protocol`，ports / 词表进 `xylitol-core`，session 实现进 plugin。信封 ↛ ports 升为跨 crate 规则。
@@ -377,6 +399,7 @@ S1 失败则整次 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留�
 | 主题 | 路径 |
 |---|---|
 | 团队怎么做 | `.claude/skills/xylitol-dev/SKILL.md` |
+| STC 简明技术中文 | `/home/l8ng/Projects/__straydragon__/STC-Simplified-Technical-Chinese` |
 | 代码架构 SSOT | `src/AGENTS.md` |
 | 产品主线 | `docs/architecture/产品分层总览.md` |
 | spec 组织句 | `llmanspec/specs/layer-architecture/layer-architecture.feature` |
@@ -485,6 +508,12 @@ spec `@req:r1532` 要求 server 应用面。未实现：gpui、Web 控制台、D
 #### W1.12
 
 删顶层 `xylitol resources` 与 `serve install`。发现仍走 `DefaultResourceLoader`。合约：`cli-entry` / `runtime-resource-discovery` / `runtime-config`。
+
+#### W1.14
+
+真死已删：`AgentCapabilities::build_current_model`（调用方走 `ModelManager`）、未接线的 `enable_modify_other_keys`（alt-screen rearm 已写同一 CSI）、无调用的 `PtySession::spawn_demo_with_prompt`、`product_slash_commands` 的空 `mut`。tmux `send` / `send_text` 有调用方，去掉假 `allow`。designing 注入路径注释不再写已退役 `/debug`。
+
+未删：BDD `@executable` 合约（session/settings/hooks/factory 等 `allow(dead_code)`）、`server`/`mcp`/`otel` feature 门、tui tests/support 分 target harness、`lab_*`、`agent_demo*`。搬家面没有因此明显变小；大量 `allow` 是 spec 缝，不是 crate 拆分对象。
 
 #### CLEAN
 
