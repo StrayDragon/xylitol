@@ -8,6 +8,9 @@ use crate::infra::config::types::{OtelConfig, OtelExporterKind};
 /// Resolve whether remote OTLP should be attempted and with which endpoint/headers.
 ///
 /// Returns `None` when export must stay off (default none, missing endpoint, etc.).
+/// Always compiled so unit tests cover the shape without the OTLP crates; the
+/// `install` caller is `cfg(feature = "otel")`.
+#[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 pub(crate) fn resolve_otlp_http_target(
     cfg: &OtelConfig,
 ) -> Option<(String, std::collections::HashMap<String, String>)> {
@@ -15,6 +18,7 @@ pub(crate) fn resolve_otlp_http_target(
 }
 
 /// Injectable variant — `get_env` supplies Langfuse base URL / auth keys.
+#[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 pub(crate) fn resolve_otlp_http_target_with(
     cfg: &OtelConfig,
     get_env: impl Fn(&str) -> Option<String>,
@@ -40,6 +44,7 @@ pub(crate) fn resolve_otlp_http_target_with(
 /// `opentelemetry-otlp` `.with_endpoint(...)` uses the URL **as-is** and does
 /// **not** append `/v1/traces` (unlike `OTEL_EXPORTER_OTLP_ENDPOINT` env).
 /// Langfuse base is `…/api/public/otel`; traces land at `…/otel/v1/traces`.
+#[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 fn normalize_otlp_http_traces_endpoint(endpoint: String) -> String {
     let endpoint = endpoint.trim().trim_end_matches('/').to_string();
     if endpoint.ends_with("/v1/traces") {
@@ -49,6 +54,7 @@ fn normalize_otlp_http_traces_endpoint(endpoint: String) -> String {
     }
 }
 
+#[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 fn endpoint_from_langfuse_env(get_env: impl Fn(&str) -> Option<String>) -> Option<String> {
     let base = get_env("LANGFUSE_BASE_URL")?;
     let base = base.trim().trim_end_matches('/');
@@ -58,6 +64,7 @@ fn endpoint_from_langfuse_env(get_env: impl Fn(&str) -> Option<String>) -> Optio
     Some(format!("{base}/api/public/otel"))
 }
 
+#[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 fn inject_langfuse_auth_headers(
     headers: &mut std::collections::HashMap<String, String>,
     get_env: impl Fn(&str) -> Option<String>,
@@ -103,6 +110,7 @@ static OTLP_DISABLED_DIAG: std::sync::OnceLock<String> = std::sync::OnceLock::ne
 ///
 /// `exporter != otlp-http` is an intentional off → no diag. Resolve failure is
 /// the missing-endpoint/env shape; resolve ok but build failed is the second shape.
+#[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 fn otlp_disabled_diag_message(
     exporter_is_otlp_http: bool,
     resolved: bool,
@@ -312,12 +320,13 @@ pub mod install {
 }
 
 #[cfg(not(feature = "otel"))]
-pub(crate) mod install {
+pub mod install {
     use fastrace::collector::Reporter;
 
     use super::*;
 
-    pub(crate) fn try_build_otlp_reporter(cfg: &OtelConfig) -> Option<Box<dyn Reporter>> {
+    /// Always `None` when the crate is built without feature `otel`.
+    pub fn try_build_otlp_reporter(cfg: &OtelConfig) -> Option<Box<dyn Reporter>> {
         if cfg.wants_otlp_http() {
             note_otlp_disabled(Some(
                 "otlp-http not effective: binary built without feature `otel`".to_string(),
@@ -359,6 +368,23 @@ mod tests {
         );
         // Channel up: no diag.
         assert_eq!(otlp_disabled_diag_message(true, true, false), None);
+    }
+
+    #[cfg(not(feature = "otel"))]
+    #[test]
+    fn feature_off_requested_otlp_returns_none_with_diag() {
+        let cfg = OtelConfig {
+            exporter: OtelExporterKind::OtlpHttp,
+            endpoint: Some("http://127.0.0.1:9/api/public/otel".into()),
+            ..OtelConfig::default()
+        };
+        assert!(install::try_build_otlp_reporter(&cfg).is_none());
+        let diag = otlp_disabled_diag().expect("feature-off diag");
+        assert!(
+            diag.contains("without feature"),
+            "feature-off diag must name the missing feature: {diag}"
+        );
+        assert!(!diag.contains("sk-"), "diag must not carry secrets");
     }
 
     #[test]
@@ -428,6 +454,7 @@ mod tests {
     // serial）+ 读 LANGFUSE_* env；#[ignore] 仅显式 live 时跑。消除路径：离线断言走
     // SpanCollectScope/ObsGateScope，live 保持 ignore + serial。
     // 手动 lab：cargo test -p xylitol --lib lab_live_langfuse -- --ignored --nocapture
+    #[cfg(feature = "otel")]
     #[test]
     #[ignore = "live Langfuse; needs LANGFUSE_* + network"]
     #[serial_test::serial(env_global, obs_global)]

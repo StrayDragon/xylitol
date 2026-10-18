@@ -7,14 +7,7 @@
 
 ## 现在
 
-下一刀：**W1.3b**（otel 代码路径，default 仍开）→ **W1.4**（`image` feature-gate，default 仍开）→ **W2.0**（改 AGENTS crate 图）。
-
-| 要做的事 | 去哪 |
-|---|---|
-| 目标 crate 图、双写、ai-bridge | [§2](#TARGET) |
-| 未完成批次 | [§3](#BATCH) |
-| S0 必须带走什么 | [§4](#CORE) |
-| 预览（不进本轮） | [附录 C](#DESIGN-WASM) / [附录 D](#UI-WORKFLOW) |
+下一刀：**W1.4**（`image` feature-gate，default 仍开）→ **W2.0**（改 AGENTS crate 图）。
 
 怎么读：先本节，再 §2 总图，再 §3 未完成表。附录 A/B 是盘点与完成记录，主线不依赖它们。
 
@@ -26,27 +19,7 @@ Host 侧 crate 边界 = 插件的替换 / 开关 / 生命周期。客户端是�
 
 ---
 
-## 目录
-
-| 节 | 内容 |
-|---|---|
-| [§1](#constraints) | 固定约束与 SDD 路由 |
-| [§2](#TARGET) | 目标 crate 图、双写、ai-bridge |
-| [§3](#BATCH) | W* 未完成批次 |
-| [§4](#CORE) | 核心三面（带走范围） |
-| [§5](#KEEP) | KEEP / SLIM / DELETE |
-| [§6](#NAMES) | 改名对照 |
-| [§7](#NO) | 本轮不做 |
-| [§8](#AGENTS) | 抽出契约叶前必须改的 AGENTS / spec |
-| [§9](#SRC) | 来源 |
-| [附录 A](#FACTS) | 现状盘点 |
-| [附录 B](#附) | 已完成批次说明 |
-| [附录 C](#DESIGN-WASM) | 预览：框选覆盖层 |
-| [附录 D](#UI-WORKFLOW) | 预览：工作流原语 |
-
 一事只在一节写全，他处用指针。
-
----
 
 <a id="constraints"></a>
 
@@ -196,7 +169,6 @@ plugin-provider-openai            plugin-provider-anthropic
 
 | ID | 项 | SDD | 说明 | 完成 |
 |---|---|---|---|---|
-| W1.3b | 只修 otel 代码路径，default 不动 | skip-SDD | leftover [#27](https://github.com/StrayDragon/xylitol/issues/27) | [否](#W1.3b) |
 | W1.4 | `image` crate feature-gate，default 仍开 | skip-SDD | 模块小、依赖重 | 否 |
 | W1.6 | 审计 `debug_fixtures`（~653 行）：测试夹具下沉 `tests/` | skip-SDD | 若砍用户可达调试面 → must-SDD | 否 |
 
@@ -204,7 +176,7 @@ W1.8 / W1.9 / W1.10（`wire` 改名、双 `model`、host 三义）随 W2 搬 cra
 
 本轮默认不做：W1.1b（default 去掉 `server`）、W1.2b（默认二进制不含 MCP）、W1.3（`otel` 出 default）、W1.11（gherkin 改名）。
 
-已完成：W1.0 带走范围、W1.1 `server` 可关、W1.2 `mcp` 可关、W1.5 hooks、W1.7 session export、W1.12 删 CLI `resources` 与 `serve install`。说明见 [附录 B](#附)。
+已完成：W1.0 带走范围、W1.1 `server` 可关、W1.2 `mcp` 可关、W1.3b otel 路径可关、W1.5 hooks、W1.7 session export、W1.12 删 CLI `resources` 与 `serve install`。说明见 [附录 B](#附)。
 
 ### 3.2 WS2 契约叶 + 重写双写
 
@@ -288,9 +260,9 @@ S1 失败则整次 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留�
 | `xylitol.log`（`log`，永不 stdout） | `app/cli/logging` | 排障 | 核 |
 | 窄读 `just obs-summary` / `obs-recent` / `obs-tui-lag` | `scripts/inspect_provider_trace.py` | 开发核 | 核 |
 | inspect：requests / turns / lag / lifecycle / channel | 同脚本 | 人跑 | 核 |
-| 可选 OTLP（`[otel]` 默认 none） | feature `otel` | default 仍开；lane/采样未做 | 核（不扩；W1.3b 只修路径） |
+| 可选 OTLP（`[otel]` 默认 none） | feature `otel` | default 仍开；lane/采样未做 | 核（不扩；W1.3b 路径已可关） |
 | samply `profile-suite` | `scripts/profile_tui_suite.py` | 维护 | 推迟（不进 crate 图） |
-| 自研检视台 / Jaeger 必选 | 无 | GH #27 leftover | 推迟 |
+| 自研检视台 / Jaeger 必选 | 无 | 推迟 | 推迟 |
 
 ### 4.4 暂不带走
 
@@ -442,8 +414,9 @@ S1 失败则整次 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留�
 | `cli = []` | 空 feature，不裁依赖 |
 | `server` | optional；W1.1 后可关（default 仍开） |
 | `mcp` | optional `rmcp`；W1.2 后可关（default 仍开；运行时仍需配置才装配） |
+| `otel` | optional OTLP 三件套；W1.3b 后可关（default 仍开；配置默认 none） |
 | `image` / `fory` / `jsonschema` / `minijinja` / `schemars` / `fastrace` | 非 optional，始终进主 crate |
-| `salvo` / `tokio-tungstenite` / `xylitol-tui` / OTel 三件套 | 随 feature 可选 |
+| `salvo` / `tokio-tungstenite` / `xylitol-tui` | 随 feature 可选 |
 
 dev：`opt-level = 0`，依赖 `opt-level = 3`，`debug = "line-tables-only"`，`incremental = false`，`codegen-units = 16`。
 release：`opt-level = "z"`，`lto = "thin"`，`strip = "symbols"`，`panic = "abort"`，`codegen-units = 1`。
@@ -509,7 +482,7 @@ spec `@req:r1532` 要求 server 应用面。未实现：gpui、Web 控制台、D
 
 #### W1.3b
 
-产品 leftover [#27](https://github.com/StrayDragon/xylitol/issues/27)；本项只修 compile 路径，default 仍开 `otel`。
+`just lint-all` 增加 default 减 `otel`（`cli,tui,server,mcp`）clippy。关 feature 时 resolve/diag 标 `dead_code`；`install` 两边都 `pub`，无 feature 返回 `None`。default 仍含 `otel`。
 
 #### W1.12
 

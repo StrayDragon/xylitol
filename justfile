@@ -46,8 +46,9 @@ lint verbosity=verbosity_default:
     esac
 
 # Clippy on all targets — local / pre-PR.
-# The no-default-features check covers the xylitol-tui highlight stub branch,
-# which no qa compile (all default features on) otherwise ever builds.
+# Extra compile-off paths that `just lint` (all-features) never builds:
+#   - xylitol-tui --no-default-features (highlight stub)
+#   - xylitol default minus otel (W1.3b stub; cli/tui/server/mcp still on)
 [arg('verbosity', pattern='quiet|normal|verbose')]
 lint-all verbosity=verbosity_default:
     #!/usr/bin/env bash
@@ -57,16 +58,19 @@ lint-all verbosity=verbosity_default:
         cargo clippy -q --all-features --all-targets --message-format=short -- -D warnings
         cargo clippy -q -p xylitol-tui --all-targets --message-format=short -- -D warnings
         cargo check -q -p xylitol-tui --no-default-features --message-format=short
+        cargo clippy -q -p xylitol --no-default-features --features cli,tui,server,mcp --message-format=short -- -D warnings
         ;;
       normal)
         cargo clippy --all-features --all-targets -- -D warnings
         cargo clippy -p xylitol-tui --all-targets -- -D warnings
         cargo check -p xylitol-tui --no-default-features
+        cargo clippy -p xylitol --no-default-features --features cli,tui,server,mcp -- -D warnings
         ;;
       verbose)
         cargo clippy -v --all-features --all-targets -- -D warnings
         cargo clippy -v -p xylitol-tui --all-targets -- -D warnings
         cargo check -v -p xylitol-tui --no-default-features
+        cargo clippy -v -p xylitol --no-default-features --features cli,tui,server,mcp -- -D warnings
         ;;
     esac
 

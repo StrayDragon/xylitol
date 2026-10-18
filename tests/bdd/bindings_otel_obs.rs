@@ -109,6 +109,7 @@ async fn test_c2826_single_estimate(agent: AgentState, ws: Workspace, otel_bdd: 
 
 // ── c2835 后继：infra-otel 裸规则回填 ──────────────────────────────
 
+#[cfg(feature = "otel")]
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
     name = "otlp-exit-built-on-fastrace"
