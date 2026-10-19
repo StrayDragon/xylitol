@@ -63,6 +63,31 @@ fn default_true() -> bool {
     true
 }
 
+/// Same priority as the main crate's `infra::config::paths::resolve_global_dir`.
+/// Lives in this lab binary so `xylitol-ai-bridge` does not export config paths.
+fn global_config_dir() -> Option<PathBuf> {
+    resolve_global_config_dir(|k| std::env::var(k).ok())
+}
+
+fn resolve_global_config_dir(get_env: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if let Some(dir) = get_env("XYLITOL_CONFIG_DIR").filter(|s| !s.is_empty()) {
+        return Some(PathBuf::from(dir));
+    }
+    if let Some(xdg) = get_env("XDG_CONFIG_HOME").filter(|s| !s.is_empty()) {
+        return Some(PathBuf::from(xdg).join("xylitol"));
+    }
+    get_env("HOME")
+        .filter(|s| !s.is_empty())
+        .map(|home| PathBuf::from(home).join(".config").join("xylitol"))
+}
+
+fn live_provider_config_path(
+    explicit: Option<PathBuf>,
+    global_dir: Option<PathBuf>,
+) -> Option<PathBuf> {
+    explicit.or_else(|| global_dir.map(|d| d.join("dev").join("live-provider.yaml")))
+}
+
 fn env_truthy(name: &str) -> Option<bool> {
     std::env::var(name).ok().map(|v| {
         matches!(
@@ -116,8 +141,6 @@ fn resolve_live_provider_from(
     explicit: Option<PathBuf>,
     global_dir: Option<PathBuf>,
 ) -> ResolveOutcome {
-    use xylitol_ai_bridge::config::live_provider_config_path;
-
     let Some(path) = live_provider_config_path(explicit, global_dir) else {
         return ResolveOutcome::Skip(
             "no XYLITOL_CONFIG_DIR/XDG_CONFIG_HOME/HOME to locate the global config dir".into(),
@@ -163,7 +186,7 @@ fn resolve_live_provider() -> ResolveOutcome {
         .ok()
         .filter(|s| !s.is_empty())
         .map(PathBuf::from);
-    let global_dir = xylitol_ai_bridge::config::global_config_dir();
+    let global_dir = global_config_dir();
     resolve_live_provider_from(explicit, global_dir)
 }
 
@@ -417,5 +440,75 @@ mod tests {
             ResolveOutcome::Skip(reason) => panic!("expected Run, got Skip: {reason}"),
         }
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn env_map<'a>(entries: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |k: &str| {
+            entries
+                .iter()
+                .find(|(name, _)| *name == k)
+                .map(|(_, v)| v.to_string())
+        }
+    }
+
+    #[test]
+    fn global_dir_prefers_xy_config_dir() {
+        let env = env_map(&[
+            ("XYLITOL_CONFIG_DIR", "/custom/cfg"),
+            ("XDG_CONFIG_HOME", "/xdg"),
+            ("HOME", "/home/u"),
+        ]);
+        assert_eq!(
+            resolve_global_config_dir(env),
+            Some(PathBuf::from("/custom/cfg"))
+        );
+    }
+
+    #[test]
+    fn global_dir_falls_back_to_xdg() {
+        let env = env_map(&[("XDG_CONFIG_HOME", "/xdg"), ("HOME", "/home/u")]);
+        assert_eq!(
+            resolve_global_config_dir(env),
+            Some(PathBuf::from("/xdg/xylitol"))
+        );
+    }
+
+    #[test]
+    fn global_dir_falls_back_to_home_config() {
+        let env = env_map(&[("HOME", "/home/u")]);
+        assert_eq!(
+            resolve_global_config_dir(env),
+            Some(PathBuf::from("/home/u/.config").join("xylitol"))
+        );
+    }
+
+    #[test]
+    fn global_dir_none_without_any_anchor() {
+        assert_eq!(resolve_global_config_dir(|_| None), None);
+        let env = env_map(&[("XYLITOL_CONFIG_DIR", ""), ("XDG_CONFIG_HOME", "")]);
+        assert_eq!(resolve_global_config_dir(env), None);
+    }
+
+    #[test]
+    fn live_provider_path_explicit_wins_over_global_dir() {
+        let explicit = Some(PathBuf::from("/tmp/explicit.yaml"));
+        let global = Some(PathBuf::from("/g"));
+        assert_eq!(
+            live_provider_config_path(explicit, global),
+            Some(PathBuf::from("/tmp/explicit.yaml"))
+        );
+        assert_eq!(
+            live_provider_config_path(Some(PathBuf::from("/tmp/explicit.yaml")), None),
+            Some(PathBuf::from("/tmp/explicit.yaml"))
+        );
+    }
+
+    #[test]
+    fn live_provider_path_defaults_to_dev_live_provider() {
+        assert_eq!(
+            live_provider_config_path(None, Some(PathBuf::from("/g"))),
+            Some(PathBuf::from("/g/dev/live-provider.yaml"))
+        );
+        assert_eq!(live_provider_config_path(None, None), None);
     }
 }
