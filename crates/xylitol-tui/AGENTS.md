@@ -13,7 +13,7 @@
 
 # crates/xylitol-tui
 
-本 package **稳定边界**。仓库规则与 AGENTS 写法：根 `AGENTS.md`。产品端接线：`src/app/tui/AGENTS.md`。产品视觉/UX：`src/app/tui/DESIGN.md`。
+本 package **稳定边界**。仓库规则与 AGENTS 写法：根 `AGENTS.md`。产品端接线：`crates/xylitol-app-tui/src/AGENTS.md`。产品视觉/UX：`crates/xylitol-app-tui/src/DESIGN.md`。
 
 `xylitol-tui` 是源自 `@earendil-works/pi-tui`（MIT）的 Rust **引擎 + 通用组件库**，按 xylitol 需求维护的 **独立 fork**（允许大幅分叉，不是持续 1:1 追平上游）。**零引用**主 crate `xylitol`。合规声明：本包 [`NOTICE`](NOTICE)。
 
@@ -29,7 +29,7 @@
 
 ## 设计与实验场
 
-本仓 **产品视觉色板 MUST 只有一份**：[`src/app/tui/DESIGN.md`](../../src/app/tui/DESIGN.md)。
+本仓 **产品视觉色板 MUST 只有一份**：[`crates/xylitol-app-tui/src/DESIGN.md`](../xylitol-app-tui/src/DESIGN.md)。
 
 | 角色 | 路径 | 说明 |
 |---|---|---|
@@ -46,22 +46,22 @@
 | demo 屏英文 / plate 文案以 demo 自身为准（人类明确要求除外），允许与产品中文 SSOT（队列条 / 滚动提示 / 命令面板…）不同 | 为「对齐产品固定区词汇表」改写 demo 文案 |
 | 形态学对照产品（rail 默认、中间队列条）；对照 ≠ 同一 SSOT | 把对照当落地 |
 | 产品固定区用词：[`docs/architecture/TUI信息呈现与固定区词汇.md`](../../docs/architecture/TUI信息呈现与固定区词汇.md)——**只约束产品端文档与 host** | 用它约束本包 demo 字符串 |
-| 改产品视觉 / 固定区：走 `src/app/tui/` 产品代码 + `DESIGN.md` / 产品测 | 默认先改 `agent_demo*` 当「落地」 |
+| 改产品视觉 / 固定区：走 `crates/xylitol-app-tui/` 产品代码 + `DESIGN.md` / 产品测 | 默认先改 `agent_demo*` 当「落地」 |
 
 分发本库后：代码零依赖主 crate；文档与 `Palette` **继续引用** monorepo 的 app DESIGN 为活 SSOT（嵌入方也可自备 token 注入闭包）。**不要**在本包另起平行 design 文档树。
 
 ## 与 pi-tui 的关系（不得回退成「必须完整 port」）
 
-目标：**差分渲染 + 可组合组件 + crossterm 原生输入**；产品壳与视觉在 `src/app/tui/`。上游 bugfix 可择优吸收，**默认不**为对齐而回退本文件硬约束与代码现状。
+目标：**差分渲染 + 可组合组件 + crossterm 原生输入**；产品壳与视觉在 `crates/xylitol-app-tui/`。上游 bugfix 可择优吸收，**默认不**为对齐而回退本文件硬约束与代码现状。
 
-缺能力时：**先在本包补通用能力，再由应用端接线**——不要把准通用实现塞进 `src/app/tui/`。
+缺能力时：**先在本包补通用能力，再由应用端接线**——不要把准通用实现塞进 `crates/xylitol-app-tui/`。
 
 ## 硬约束（不得回退）
 
 1. 产品路径用 `dispatch_event` / `request_render` / `try_render` / `idle_tick`；`TUI::start()` 仅 demo。
-2. 异步事件合流在 `src/app/tui/`，不进本 package。
+2. 异步事件合流在 `crates/xylitol-app-tui/`，不进本 package。
 3. `render` → `Vec<String>`（ANSI）；不引入结构化 `StyledLine` 层。
-4. 主题用闭包注入；语义 token 映射在应用端（`src/app/tui/DESIGN.md`）。
+4. 主题用闭包注入；语义 token 映射在应用端（`crates/xylitol-app-tui/src/DESIGN.md`）。
 5. 终端 I/O / 输入：优先 crossterm `Command`；硬切 `InputEvent::{Key,Paste,Mouse}`；不移植 `stdin-buffer` / 平台专属输入 / `writeLogPath`。
 6. `enable_mouse_capture` / `XYLITOL_TUI_MOUSE`：**包 API + lab/e2e 保留**；默认不 Enable。产品 **Inline** 不得经 env 自动开 capture。**ApplicationOwned**（alt-screen）经 `begin_application_owned_session` 挂 `ApplicationOwnedRuntime`（ScrollView 视口 + 选区 + dock 排除 + OSC52）。Inline 文档 MUST NOT 暗示「开了 mouse = 原生选区 + 应用点选」兼得。
 7. 默认隐藏硬件光标；有 `CURSOR_MARKER` 时可相对定位 IME，但不得无条件 `show_cursor`。
@@ -83,7 +83,7 @@
 | 真终端 E2E（crossterm / PTY / tmux） | 工作区 `tests/tui_e2e/`：主场景 spawn **`agent_demo`**；另含产品 Fake smoke（`pty_product_*`，隔离 config） | `just test-tui-e2e`（或 `-pty` / `-tmux`） |
 | 仓库全量门禁（不含真终端 E2E） | 全仓 | `just qa` |
 | 全量门禁 + 真终端 E2E | 全仓 | `just qa-e2e` |
-| 产品 host / `XyEvent` / slash 接线 | `src/app/tui/tests.rs` 等 | 随产品测；**不**替代上表 |
+| 产品 host / `XyEvent` / slash 接线 | `crates/xylitol-app-tui/src/tests.rs` 等 | 随产品测；**不**替代上表 |
 
 **分工（勿混）**
 
@@ -102,7 +102,7 @@
 | 改组件 / 引擎 / 扩测试 | `xylitol-dev`（`references/tui-harness.md`）（落点）；边界见上「验证」 |
 | 扩展 Editor 补全触发（`/` `@` `$` `^`…） | `CompletionSource` + `set_completion_sources`（`src/completion.rs`）；勿在 `editor.rs` 硬编码触发符 |
 | 对照 / 合并 pi-tui 行为 | 择优吸收 bugfix；默认保留本文件硬约束与代码 |
-| 改产品 TUI 端 / UX / 视觉 | `l8ng-write-tui` + 产品代码 + `src/app/tui/DESIGN.md`；**勿**默认改 `agent_demo` 当产品落地 |
+| 改产品 TUI 端 / UX / 视觉 | `l8ng-write-tui` + 产品代码 + `crates/xylitol-app-tui/src/DESIGN.md`；**勿**默认改 `agent_demo` 当产品落地 |
 | 改包引擎 / 通用组件 / demo | `xylitol-dev`（`references/tui-harness.md`）；包内 `just demo-tui` 仅验证包能力（demo recipe 在 `crates/xylitol-tui/justfile`，根 justfile 不收 demo） |
 | 改色板 | 只改 app `DESIGN.md` 并对齐 `Palette`；`just qa-check-tui-tokens` |
 | 日常 / 真终端门禁 | 上「验证」表 |

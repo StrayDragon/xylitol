@@ -5771,6 +5771,8 @@ dependencies = [
  "uuid",
  "vte 0.15.0",
  "wiremock",
+ "xylitol-app-print",
+ "xylitol-app-tui",
  "xylitol-official-plugin-compaction",
  "xylitol-official-plugin-hooks",
  "xylitol-official-plugin-mcp",
@@ -5789,10 +5791,43 @@ dependencies = [
 [[package]]
 name = "xylitol-app-print"
 version = "0.0.0-pre"
+dependencies = [
+ "futures",
+ "log",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "xylitol-runtime",
+]
 
 [[package]]
 name = "xylitol-app-tui"
 version = "0.0.0-pre"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "base64 0.22.1",
+ "crossterm",
+ "dirs",
+ "futures",
+ "libc",
+ "log",
+ "regex",
+ "serde",
+ "serde_json",
+ "strum",
+ "tempfile",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tokio-tungstenite",
+ "tokio-util",
+ "uuid",
+ "xylitol-plugin-sdk",
+ "xylitol-protocol",
+ "xylitol-tui",
+]
 
 [[package]]
 name = "xylitol-official-plugin-compaction"

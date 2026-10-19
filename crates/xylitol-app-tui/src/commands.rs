@@ -1,0 +1,745 @@
+//! Slash / bang parsing for the product TUI host (c480 / c492 / c494).
+
+use xylitol_plugin_sdk::ports::XyBashResult;
+
+use super::bridge::{BashBlockStatus, UiEntry};
+
+/// Idle slash resolved for the async host loop (or applied locally).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PendingSlash {
+    Exit,
+    /// Bare `/model` — open fuzzy picker (c630).
+    OpenModels,
+    SetModel(String),
+    /// `/session-tree` — open MessageHistory tree (c700 / c1005).
+    OpenTree,
+    /// `/session-fork` — fork at current leaf (c700 / c1005).
+    ForkAtLeaf,
+    /// `/session-compact` with optional focus instructions (c1670).
+    Compact {
+        instructions: Option<String>,
+    },
+    /// `/session-export` with optional path (c1010).
+    Export {
+        path: Option<String>,
+    },
+    /// `/session-import` with required path — confirm before dispatch (c1010).
+    Import {
+        path: String,
+    },
+    /// Bare `/session` — info/stats dump (c1015).
+    SessionDump,
+    /// Bare `/session-resume` — open session SelectList (c1015).
+    OpenSessionResume,
+    /// Bare `/session-new` — empty session (c1020).
+    SessionNew,
+    /// Bare `/session-clone` — fork leaf at At (c1020).
+    SessionClone,
+    /// `/session-name` with optional display name (c1020).
+    SessionName {
+        name: Option<String>,
+    },
+    /// Bare `/reload` — hot-reload runtime resources (c1120).
+    Reload,
+    /// `/trust` [parent|deny] — persist trust decision without auto-reload (c1105).
+    Trust {
+        mode: crate::driver::ProjectTrustMode,
+    },
+    /// Bare `/history-copy-last` — copy last assistant text (c1110; busy allowed).
+    HistoryCopyLast,
+    /// `/theme` [dark|light|toggle|cycle] — open picker or apply (c1115).
+    Theme {
+        arg: Option<String>,
+    },
+    /// Bare `/mcp` / `/mcps` — MCP connection + armed panel (c1210).
+    OpenMcp,
+    /// Bare `/designing` — remount the designing scene slot (designing composition only).
+    OpenDesigningScenes,
+    /// Slash usage / arity error (no dispatch).
+    Usage(&'static str),
+}
+
+/// Whether a parsed slash may run under a host gate (c1580 / c1210).
+///
+/// Exhaustive over [`PendingSlash`] via [`slash_allowances`] — new variants MUST
+/// fill every column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlashPermit {
+    /// Clear editor and enqueue `pending.slash` (or quit for Exit).
+    Allow,
+    /// Clear editor, scroll notice, MUST NOT dispatch.
+    Reject,
+}
+
+/// Alias kept for call sites / specs that say «busy slash policy» (c1580).
+pub type BusySlashPolicy = SlashPermit;
+
+/// Toast-notice body when Resume Enter would switch/rename/delete while busy
+/// (c1780 / c1800 / atm10). Render prefixes `Error: ` with warning paint.
+pub const BUSY_SESSION_SWITCH_NOTICE: &str =
+    "agent busy — finish turn or Esc abort before switching session";
+
+/// Soft-gate body while `/reload` is in flight (c1205 / ath28). Render prefixes `Error: `.
+pub const RELOADING_WAIT_NOTICE: &str = "reloading — wait";
+
+/// Toast body after user cancels an in-flight `/reload` (c1205).
+pub const RELOAD_CANCELLED_NOTICE: &str = "reload cancelled";
+
+/// Toast body when `/reload` fails (c1205); details stay in the ScrollNotice report.
+pub const RELOAD_FAILED_NOTICE: &str = "reload failed — see report";
+
+/// Default TTL for toast notice auto-clear (atc22 · ~3–5s).
+pub const TOAST_NOTICE_TTL: std::time::Duration = std::time::Duration::from_secs(4);
+
+/// Visible prefix for toast notice lines (atc22 / toast-notice.md).
+pub const TOAST_NOTICE_ERROR_PREFIX: &str = "Error: ";
+
+/// Per-slash allowances across host gates (c1210).
+///
+/// **Single exhaustive table**: add a [`PendingSlash`] arm → fill every field.
+/// Future gates (e.g. reload-in-flight) add a column here — do not fork parallel matches.
+/// MCP connecting no longer gates input (c1210); only `when_agent_busy` remains.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SlashAllowances {
+    pub when_agent_busy: SlashPermit,
+    /// 执行类（c2780/atm18）：`Inline` = 任何交互循环（含 bang）内立即执行
+    /// 且 effect 非阻塞（缓存/本地直出，MUST NOT await 远程 unary）；其余
+    /// 排队至循环归还。bang drain 只消费本列（c2790）。
+    pub exec: xylitol_protocol::registry::Exec,
+}
+
+/// Canonical slash gate table. Prefer this over ad-hoc matches.
+pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
+    use SlashPermit::*;
+    use xylitol_protocol::registry::Exec;
+    match slash {
+        // Leave / readonly / export / MCP panel
+        PendingSlash::Exit => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Exclusive,
+        },
+        PendingSlash::SessionDump => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Queued,
+        },
+        PendingSlash::HistoryCopyLast => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Inline,
+        },
+        PendingSlash::Export { .. } => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Queued,
+        },
+        PendingSlash::OpenMcp => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Queued,
+        },
+        // Instant lists (c1780): browse/open Allow; Resume switch gated in pending_ui.
+        PendingSlash::OpenSessionResume => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Queued,
+        },
+        PendingSlash::SessionNew => SlashAllowances {
+            when_agent_busy: Reject,
+            exec: Exec::Queued,
+        },
+        PendingSlash::SessionClone => SlashAllowances {
+            when_agent_busy: Reject,
+            exec: Exec::Queued,
+        },
+        PendingSlash::SessionName { .. } => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Queued,
+        },
+        PendingSlash::Import { .. } => SlashAllowances {
+            when_agent_busy: Reject,
+            exec: Exec::Queued,
+        },
+        PendingSlash::OpenTree => SlashAllowances {
+            when_agent_busy: Reject,
+            exec: Exec::Queued,
+        },
+        PendingSlash::ForkAtLeaf => SlashAllowances {
+            when_agent_busy: Reject,
+            exec: Exec::Queued,
+        },
+        // Misc / trust
+        PendingSlash::Theme { .. } => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Inline,
+        },
+        PendingSlash::OpenModels => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Inline,
+        },
+        PendingSlash::OpenDesigningScenes => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Inline,
+        },
+        PendingSlash::SetModel(_) => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Queued,
+        },
+        PendingSlash::Trust { .. } => SlashAllowances {
+            when_agent_busy: Reject,
+            exec: Exec::Queued,
+        },
+        PendingSlash::Usage(_) => SlashAllowances {
+            when_agent_busy: Reject,
+            exec: Exec::Queued,
+        },
+        PendingSlash::Compact { .. } => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Queued,
+        },
+        PendingSlash::Reload => SlashAllowances {
+            when_agent_busy: Reject,
+            exec: Exec::Queued,
+        },
+    }
+}
+
+/// Agent-busy column (c1580).
+pub fn busy_slash_policy(slash: &PendingSlash) -> SlashPermit {
+    slash_allowances(slash).when_agent_busy
+}
+
+/// Short label for refuse notes (`agent busy — /reload refused`).
+pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
+    match slash {
+        PendingSlash::Reload => "/reload",
+        PendingSlash::Trust { .. } => "/trust",
+        PendingSlash::Theme { .. } => "/theme",
+        PendingSlash::OpenModels => "/model",
+        PendingSlash::OpenTree => "/session-tree",
+        PendingSlash::ForkAtLeaf => "/session-fork",
+        PendingSlash::OpenSessionResume => "/session-resume",
+        PendingSlash::SessionNew => "/session-new",
+        PendingSlash::SessionClone => "/session-clone",
+        PendingSlash::Import { .. } => "/session-import",
+        PendingSlash::Usage(_) => "slash",
+        // Allow variants are not refuse-noted; keep arms for exhaustiveness.
+        PendingSlash::Exit => "/exit",
+        PendingSlash::SetModel(_) => "/model",
+        PendingSlash::Compact { .. } => "/session-compact",
+        PendingSlash::Export { .. } => "/session-export",
+        PendingSlash::SessionDump => "/session",
+        PendingSlash::SessionName { .. } => "/session-name",
+        PendingSlash::HistoryCopyLast => "/history-copy-last",
+        PendingSlash::OpenMcp => "/mcp",
+        PendingSlash::OpenDesigningScenes => "/designing",
+    }
+}
+
+/// Idle `!` / `!!` bash request for the async host loop (c492).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingBash {
+    pub command: String,
+    pub exclude_from_context: bool,
+}
+
+/// Parse trimmed editor text for bang-bash (c492).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BangParse {
+    NotBang,
+    /// `!` or `!!` with empty command body.
+    Empty {
+        exclude_from_context: bool,
+    },
+    Cmd {
+        command: String,
+        exclude_from_context: bool,
+    },
+}
+
+/// Classify idle input for `!` / `!!` bash (after slash handling).
+pub fn parse_bang_command(text: &str) -> BangParse {
+    let trimmed = text.trim();
+    if let Some(rest) = trimmed.strip_prefix("!!") {
+        let cmd = rest.trim();
+        if cmd.is_empty() {
+            BangParse::Empty {
+                exclude_from_context: true,
+            }
+        } else {
+            BangParse::Cmd {
+                command: cmd.to_string(),
+                exclude_from_context: true,
+            }
+        }
+    } else if let Some(rest) = trimmed.strip_prefix('!') {
+        let cmd = rest.trim();
+        if cmd.is_empty() {
+            BangParse::Empty {
+                exclude_from_context: false,
+            }
+        } else {
+            BangParse::Cmd {
+                command: cmd.to_string(),
+                exclude_from_context: false,
+            }
+        }
+    } else {
+        BangParse::NotBang
+    }
+}
+
+/// Parse idle slash MVP (`/exit`, `/model` `id`).
+pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
+    let trimmed = text.trim();
+    let rest = trimmed.strip_prefix('/')?;
+    if rest.is_empty() {
+        return None;
+    }
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let cmd = parts.next()?.to_ascii_lowercase();
+    let arg = parts
+        .next()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    match (cmd.as_str(), arg) {
+        ("exit" | "quit", _) => Some(PendingSlash::Exit),
+        ("model", None) => Some(PendingSlash::OpenModels),
+        ("model", Some(id)) => Some(PendingSlash::SetModel(id)),
+        ("session-tree", None) => Some(PendingSlash::OpenTree),
+        ("session-fork", None) => Some(PendingSlash::ForkAtLeaf),
+        ("session-compact", None) => Some(PendingSlash::Compact { instructions: None }),
+        ("session-compact", Some(text)) => Some(PendingSlash::Compact {
+            instructions: Some(text),
+        }),
+        ("session-export", path) => Some(PendingSlash::Export { path }),
+        ("session-import", None) => Some(PendingSlash::Usage("usage: /session-import <path>")),
+        ("session-import", Some(path)) => Some(PendingSlash::Import { path }),
+        ("session", None) => Some(PendingSlash::SessionDump),
+        ("session", Some(_)) => Some(PendingSlash::Usage("usage: /session (no arguments)")),
+        ("session-resume", None) => Some(PendingSlash::OpenSessionResume),
+        ("session-resume", Some(_)) => {
+            Some(PendingSlash::Usage("usage: /session-resume (no arguments)"))
+        }
+        ("session-new", None) => Some(PendingSlash::SessionNew),
+        ("session-new", Some(_)) => Some(PendingSlash::Usage("usage: /session-new (no arguments)")),
+        ("session-clone", None) => Some(PendingSlash::SessionClone),
+        ("session-clone", Some(_)) => {
+            Some(PendingSlash::Usage("usage: /session-clone (no arguments)"))
+        }
+        ("session-name", name) => Some(PendingSlash::SessionName { name }),
+        ("reload", None) => Some(PendingSlash::Reload),
+        ("reload", Some(_)) => Some(PendingSlash::Usage("usage: /reload (no arguments)")),
+        ("trust", None) => Some(PendingSlash::Trust {
+            mode: crate::driver::ProjectTrustMode::TrustCwd,
+        }),
+        ("trust", Some(arg)) => match arg.to_ascii_lowercase().as_str() {
+            "self" | "this_dir" | "this-dir" => Some(PendingSlash::Trust {
+                mode: crate::driver::ProjectTrustMode::TrustCwd,
+            }),
+            "parent" => Some(PendingSlash::Trust {
+                mode: crate::driver::ProjectTrustMode::TrustParent,
+            }),
+            "deny" | "no" => Some(PendingSlash::Trust {
+                mode: crate::driver::ProjectTrustMode::Deny,
+            }),
+            _ => Some(PendingSlash::Usage(
+                "usage: /trust [self|this_dir|parent|deny]",
+            )),
+        },
+        ("history-copy-last", None) => Some(PendingSlash::HistoryCopyLast),
+        ("history-copy-last", Some(_)) => Some(PendingSlash::Usage(
+            "usage: /history-copy-last (no arguments)",
+        )),
+        ("theme", arg) => Some(PendingSlash::Theme { arg }),
+        ("mcp" | "mcps", None) => Some(PendingSlash::OpenMcp),
+        ("mcp" | "mcps", Some(_)) => Some(PendingSlash::Usage("usage: /mcp (no arguments)")),
+        _ => None,
+    }
+}
+
+/// Parse slash for the current TUI composition.
+///
+/// `/designing` is recognized only while the designing composition is on;
+/// product TUI keeps it as an unknown slash (not in the product SSOT).
+pub fn parse_slash_command_for_surface(text: &str, designing: bool) -> Option<PendingSlash> {
+    if designing && let Some(slash) = parse_designing_slash(text) {
+        return Some(slash);
+    }
+    parse_slash_command(text)
+}
+
+fn parse_designing_slash(text: &str) -> Option<PendingSlash> {
+    let trimmed = text.trim();
+    let rest = trimmed.strip_prefix('/')?;
+    if rest.is_empty() {
+        return None;
+    }
+    let mut parts = rest.splitn(2, char::is_whitespace);
+    let cmd = parts.next()?.to_ascii_lowercase();
+    let arg = parts
+        .next()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    match (cmd.as_str(), arg) {
+        ("designing", None) => Some(PendingSlash::OpenDesigningScenes),
+        ("designing", Some(_)) => Some(PendingSlash::Usage("usage: /designing (no arguments)")),
+        _ => None,
+    }
+}
+
+/// Map execute result → bang block tint.
+pub fn bash_block_status(result: &XyBashResult) -> BashBlockStatus {
+    if result.cancelled {
+        BashBlockStatus::Cancelled
+    } else if result.exit_code.is_some_and(|c| c != 0) {
+        BashBlockStatus::Error
+    } else {
+        BashBlockStatus::Success
+    }
+}
+
+/// Format bang outcome body (no `$ cmd` header — lives on the Bash block).
+pub fn bash_output_body(result: &XyBashResult) -> String {
+    let code = result.exit_code;
+    let mut body = result.output.trim_end().to_string();
+    if body.len() > 4000 {
+        // Keep Full output footer if present near the end.
+        if let Some(idx) = body.rfind("\n[Full output:") {
+            let footer = body[idx + 1..].to_string();
+            let head = &body[..idx.min(4000)];
+            body = format!("{head}…\n{footer}");
+        } else {
+            body = format!("{}…", &body[..4000]);
+        }
+    }
+    if result.truncated && !body.contains("[Full output:") {
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        if let Some(path) = result.full_output_path.as_deref() {
+            body.push_str(&format!(
+                "[Full output: {path}. Truncated: (see file) lines shown (50.0KB limit)]"
+            ));
+        } else {
+            body.push_str("(truncated)");
+        }
+    }
+    if result.cancelled {
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        body.push_str("(cancelled)");
+    }
+    if let Some(c) = code {
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        body.push_str(&format!("(exit {c})"));
+    }
+    if body.is_empty() {
+        if result.cancelled {
+            return String::new();
+        }
+        return "(no output)".into();
+    }
+    body
+}
+
+/// Build a finished bang [`UiEntry::Bash`] (c668).
+pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry> {
+    vec![UiEntry::Bash {
+        id: crate::bridge::UiModel::bash_block_id_from_command(&[], command),
+        command: command.to_string(),
+        status: bash_block_status(result),
+        output: bash_output_body(result),
+        exclude_from_context: false,
+    }]
+}
+
+#[cfg(test)]
+mod parse_tests {
+    use super::{
+        BusySlashPolicy, PendingSlash, SlashPermit, busy_slash_policy, parse_bang_command,
+        parse_slash_command, parse_slash_command_for_surface, slash_allowances,
+    };
+
+    /// The whole idle-input command surface in one reviewable file: every
+    /// slash verb, its usage-error paths, and bang forms. Adding/removing a
+    /// verb MUST touch this snapshot (deliberate friction — the verb list is
+    /// product vocabulary).
+    #[test]
+    fn slash_bang_parse_surface_snapshot() {
+        let inputs = [
+            "",
+            "plain text",
+            "/",
+            "/unknown-verb",
+            "/exit",
+            "/quit",
+            "/model",
+            "/model gpt-x",
+            "/session-tree",
+            "/session-fork",
+            "/session-compact",
+            "/session-compact focus tests first",
+            "/session-export",
+            "/session-export /tmp/a.json",
+            "/session-import",
+            "/session-import x.json",
+            "/session",
+            "/session extra",
+            "/session-resume",
+            "/session-resume abc",
+            "/session-new",
+            "/session-new x",
+            "/session-clone",
+            "/session-clone x",
+            "/session-name",
+            "/session-name n1",
+            "/reload",
+            "/reload arg",
+            "/trust",
+            "/trust parent",
+            "/trust deny",
+            "/trust bogus",
+            "/history-copy-last",
+            "/history-copy-last arg",
+            "/theme dark",
+            "/mcp",
+            "/mcps arg",
+            "!",
+            "!!",
+            "!ls -la",
+            "!!make test",
+        ];
+        let mut lines = Vec::with_capacity(inputs.len());
+        for input in inputs {
+            lines.push(format!(
+                "{input:?} =>\n  slash={:?}\n  bang={:?}",
+                parse_slash_command(input),
+                parse_bang_command(input)
+            ));
+        }
+        insta::assert_snapshot!("slash_bang_parse_surface", lines.join("\n"));
+    }
+
+    #[test]
+    fn busy_policy_allow_and_reject_table() {
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SessionName {
+                name: Some("n".into())
+            }),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SetModel("m".into())),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::HistoryCopyLast),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SessionDump),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Export { path: None }),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Exit),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Compact { instructions: None }),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Reload),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Trust {
+                mode: crate::driver::ProjectTrustMode::TrustCwd
+            }),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::OpenTree),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::ForkAtLeaf),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SessionNew),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::SessionClone),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Import {
+                path: "/tmp/x.jsonl".into()
+            }),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::OpenModels),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Theme { arg: None }),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::OpenSessionResume),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::Usage("x")),
+            BusySlashPolicy::Reject
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::OpenMcp),
+            BusySlashPolicy::Allow
+        );
+        assert_eq!(
+            busy_slash_policy(&PendingSlash::OpenDesigningScenes),
+            BusySlashPolicy::Allow
+        );
+    }
+
+    #[test]
+    fn slash_allowances_busy_only_table() {
+        let a = slash_allowances(&PendingSlash::OpenSessionResume);
+        assert_eq!(a.when_agent_busy, SlashPermit::Allow);
+        let b = slash_allowances(&PendingSlash::Compact { instructions: None });
+        assert_eq!(b.when_agent_busy, SlashPermit::Allow);
+        let c = slash_allowances(&PendingSlash::Reload);
+        assert_eq!(c.when_agent_busy, SlashPermit::Reject);
+        let d = slash_allowances(&PendingSlash::OpenMcp);
+        assert_eq!(d.when_agent_busy, SlashPermit::Allow);
+        let e = slash_allowances(&PendingSlash::Theme { arg: None });
+        assert_eq!(e.when_agent_busy, SlashPermit::Allow);
+        let f = slash_allowances(&PendingSlash::OpenModels);
+        assert_eq!(f.when_agent_busy, SlashPermit::Allow);
+    }
+
+    #[test]
+    fn parse_mcp_bare() {
+        assert_eq!(parse_slash_command("/mcp"), Some(PendingSlash::OpenMcp));
+        assert_eq!(parse_slash_command("/mcps"), Some(PendingSlash::OpenMcp));
+        assert_eq!(
+            parse_slash_command("/mcp extra"),
+            Some(PendingSlash::Usage("usage: /mcp (no arguments)"))
+        );
+    }
+
+    #[test]
+    fn parse_reload_bare() {
+        assert_eq!(parse_slash_command("/reload"), Some(PendingSlash::Reload));
+        assert_eq!(
+            parse_slash_command("  /reload  "),
+            Some(PendingSlash::Reload)
+        );
+    }
+
+    #[test]
+    fn parse_reload_with_args_usage() {
+        assert_eq!(
+            parse_slash_command("/reload foo"),
+            Some(PendingSlash::Usage("usage: /reload (no arguments)"))
+        );
+    }
+
+    #[test]
+    fn parse_trust_modes() {
+        use crate::driver::ProjectTrustMode;
+        assert_eq!(
+            parse_slash_command("/trust"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::TrustCwd
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust self"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::TrustCwd
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust this_dir"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::TrustCwd
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust parent"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::TrustParent
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust deny"),
+            Some(PendingSlash::Trust {
+                mode: ProjectTrustMode::Deny
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/trust foo"),
+            Some(PendingSlash::Usage(
+                "usage: /trust [self|this_dir|parent|deny]"
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_history_copy_last() {
+        assert_eq!(
+            parse_slash_command("/history-copy-last"),
+            Some(PendingSlash::HistoryCopyLast)
+        );
+        assert_eq!(
+            parse_slash_command("/history-copy-last x"),
+            Some(PendingSlash::Usage(
+                "usage: /history-copy-last (no arguments)"
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_theme() {
+        assert_eq!(
+            parse_slash_command("/theme"),
+            Some(PendingSlash::Theme { arg: None })
+        );
+        assert_eq!(
+            parse_slash_command("/theme light"),
+            Some(PendingSlash::Theme {
+                arg: Some("light".into())
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/theme toggle"),
+            Some(PendingSlash::Theme {
+                arg: Some("toggle".into())
+            })
+        );
+    }
+
+    #[test]
+    fn parse_designing_slash_only_on_designing_surface() {
+        assert_eq!(parse_slash_command("/designing"), None);
+        assert_eq!(parse_slash_command_for_surface("/designing", false), None);
+        assert_eq!(
+            parse_slash_command_for_surface("/designing", true),
+            Some(PendingSlash::OpenDesigningScenes)
+        );
+        assert_eq!(
+            parse_slash_command_for_surface("/designing extra", true),
+            Some(PendingSlash::Usage("usage: /designing (no arguments)"))
+        );
+    }
+}

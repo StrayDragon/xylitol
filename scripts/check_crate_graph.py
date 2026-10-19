@@ -46,7 +46,7 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-runtime": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-serve": frozenset({"xylitol-runtime", "xylitol-protocol"}),
     "xylitol-app-print": frozenset({"xylitol-runtime"}),
-    "xylitol-app-tui": frozenset({"xylitol-protocol", "xylitol-tui"}),
+    "xylitol-app-tui": frozenset({"xylitol-protocol", "xylitol-tui", "xylitol-plugin-sdk"}),
     "xylitol-official-plugin-session": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-compaction": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-provider-openai": frozenset({"xylitol-plugin-sdk"}),

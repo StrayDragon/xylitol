@@ -274,10 +274,10 @@ qa-check-complexity verbosity=verbosity_default:
     set -euo pipefail
     bin="$(just _cccc-bin)"
     entries=(
-      src/app/tui/host/mod.rs
-      src/app/tui/layout/root/mod.rs
-      src/app/tui/effects/mod.rs
-      src/app/tui/bridge/mod.rs
+      crates/xylitol-app-tui/src/host/mod.rs
+      crates/xylitol-app-tui/src/layout/root/mod.rs
+      crates/xylitol-app-tui/src/effects/mod.rs
+      crates/xylitol-app-tui/src/bridge/mod.rs
     )
     if [[ "{{verbosity}}" == "quiet" ]]; then
       "$bin" --max-cognitive 32 --max-cyclomatic 27 "${entries[@]}" >/dev/null

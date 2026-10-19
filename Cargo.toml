@@ -78,9 +78,11 @@ salvo = { version = "1.0.1", optional = true, default-features = false, features
 tokio-tungstenite = { version = "0.30", features = ["connect", "handshake"], optional = true }
 
 # ── terminal UI ──
-# Product TUI is host-driven on the xylitol-tui engine (crates/xylitol-tui);
-# in-tree product host/layout layers live under src/app/tui/.
+# Product TUI is host-driven on the xylitol-tui engine; product host lives in
+# crates/xylitol-app-tui.
 xylitol-tui = { path = "crates/xylitol-tui", optional = true }
+xylitol-app-tui = { path = "crates/xylitol-app-tui", optional = true }
+xylitol-app-print = { path = "crates/xylitol-app-print" }
 xylitol-plugin-sdk = { path = "crates/xylitol-plugin-sdk" }
 xylitol-protocol = { path = "crates/xylitol-protocol" }
 xylitol-runtime = { path = "crates/xylitol-runtime" }
@@ -103,7 +105,7 @@ cli = []
 # HTTP/WebSocket Host carrier (product TUI attach default).
 server = ["dep:salvo", "dep:tokio-tungstenite"]
 # Terminal UI surface (host-driven on xylitol-tui).
-tui = ["dep:xylitol-tui", "dep:crossterm"]
+tui = ["dep:xylitol-tui", "dep:crossterm", "dep:xylitol-app-tui"]
 # MCP client (rmcp). Runtime still requires config; this only gates compile.
 mcp = ["xylitol-official-plugin-mcp/mcp"]
 # Optional OTLP/HTTP export (Langfuse / Collector). Default on for local agents;

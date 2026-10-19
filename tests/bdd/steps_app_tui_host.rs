@@ -38,7 +38,7 @@ pub struct HostPumpBdd {
     /// 交互模式探针（`{:?}` 形态）。
     pub mode_probe: RefCell<Option<String>>,
     /// c2895：观景态守望前态与最近一次映射提示。
-    pub observe_prev: RefCell<xylitol::app::core::driver::AttachObserve>,
+    pub observe_prev: RefCell<xylitol::app::tui::driver::AttachObserve>,
     pub observe_notice: RefCell<Option<&'static str>>,
     /// c2470：客户端存储通道（编辑器历史场景）。
     pub storage: RefCell<Option<std::sync::Arc<xylitol::app::tui::storage::ClientStorage>>>,
@@ -54,7 +54,7 @@ pub fn host_pump_bdd() -> HostPumpBdd {
         counts: RefCell::new(Vec::new()),
         log_probe: RefCell::new(None),
         mode_probe: RefCell::new(None),
-        observe_prev: RefCell::new(xylitol::app::core::driver::AttachObserve::Live),
+        observe_prev: RefCell::new(xylitol::app::tui::driver::AttachObserve::Live),
         observe_notice: RefCell::new(None),
         storage: RefCell::new(None),
     }
@@ -288,7 +288,7 @@ use xylitol::app::tui::harness::esc_event;
 fn esc_stream(
     after_ms: u64,
     backlog_esc: usize,
-) -> impl futures::Stream<Item = Result<HostEvent, xylitol::XyDriverError>> {
+) -> impl futures::Stream<Item = Result<HostEvent, xylitol::app::tui::XyDriverError>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(after_ms)).await;
@@ -688,7 +688,7 @@ fn char_keys(text: &str) -> Vec<xylitol_tui::InputEvent> {
 fn keys_then_escs_stream(
     mut prefix: Vec<xylitol_tui::InputEvent>,
     escs: usize,
-) -> impl futures::Stream<Item = Result<HostEvent, xylitol::XyDriverError>> {
+) -> impl futures::Stream<Item = Result<HostEvent, xylitol::app::tui::XyDriverError>> {
     use std::time::Duration;
     prefix.push(enter_event());
 
@@ -1188,7 +1188,7 @@ pub(crate) async fn t_ati43_reload_gate_toast(host_pump_bdd: &HostPumpBdd) {
 
 #[when("经输入流注入 Esc 取消挂起重载")]
 pub(crate) async fn w_ati43_cancel_hanging_reload(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::XyDriverError;
+    use xylitol::app::tui::XyDriverError;
     use xylitol::app::tui::harness::run_interactive_reload;
     // 结束软闸阶段，换成挂起重载再取消（c1205 形态）。
     let mut pump = take_pump(host_pump_bdd);
@@ -1562,7 +1562,7 @@ pub(crate) fn t_c2826_busy_model_open(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵注入含连接态的资源快照后提交 {cmd:string}")]
 pub(crate) async fn w_c2826_mcp_panel(host_pump_bdd: &HostPumpBdd, cmd: String) {
-    use xylitol::app::core::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+    use xylitol::app::tui::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
     let cmd = cmd.trim_matches('"');
     {
         let pump = host_pump_bdd
@@ -2086,7 +2086,7 @@ pub(crate) async fn w_c2826_connecting_bang(host_pump_bdd: &HostPumpBdd, cmd: St
             .borrow_mut()
             .take()
             .unwrap_or_else(fresh_pump);
-        use xylitol::app::core::driver::{
+        use xylitol::app::tui::driver::{
             LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
         };
         pump.driver
@@ -2125,7 +2125,7 @@ pub(crate) async fn w_c2826_mcp_pending_cue(host_pump_bdd: &HostPumpBdd) {
             .borrow_mut()
             .take()
             .unwrap_or_else(fresh_pump);
-        use xylitol::app::core::driver::{
+        use xylitol::app::tui::driver::{
             LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
         };
         pump.driver
@@ -2187,7 +2187,7 @@ pub(crate) async fn w_c2826_reload_soft_gate(host_pump_bdd: &HostPumpBdd) {
     set_editor(host_pump_bdd, "草稿上行");
     let mut pump = take_pump(host_pump_bdd);
     let input = futures::stream::iter(vec![
-        Ok::<HostEvent, xylitol::XyDriverError>(HostEvent::Tick),
+        Ok::<HostEvent, xylitol::app::tui::XyDriverError>(HostEvent::Tick),
         Ok(HostEvent::Input(enter_event())),
         Ok(HostEvent::Input(esc_event())),
     ]);
@@ -2490,8 +2490,8 @@ pub(crate) fn t_c2826_short_terminal_busy(host_pump_bdd: &HostPumpBdd) {
 
 #[when("读取产品 TUI 面 AGENTS 文档")]
 fn w_read_tui_agents_doc(host_pump_bdd: &HostPumpBdd) {
-    let text =
-        std::fs::read_to_string("src/app/tui/AGENTS.md").expect("src/app/tui/AGENTS.md 可读");
+    let text = std::fs::read_to_string("crates/xylitol-app-tui/src/AGENTS.md")
+        .expect("crates/xylitol-app-tui/src/AGENTS.md 可读");
     host_pump_bdd.doc_text.borrow_mut().replace(text);
 }
 
@@ -2897,7 +2897,7 @@ pub(crate) fn t_copied_last_msg_stack(host_pump_bdd: &HostPumpBdd) {
 
 // ── c2895 观景态提示（r2897）────────────────────────────────────
 
-use xylitol::app::core::driver::XyDriver as _;
+use xylitol::app::tui::driver::XyDriver as _;
 
 #[given("产品 TUI 主循环守望观景态")]
 fn g_c2895_observe_watch(host_pump_bdd: &HostPumpBdd) {
@@ -2906,16 +2906,15 @@ fn g_c2895_observe_watch(host_pump_bdd: &HostPumpBdd) {
     }
     let pump = take_pump(host_pump_bdd);
     // 主循环前态：Live（attach 完成后的首观）。
-    *host_pump_bdd.observe_prev.borrow_mut() = xylitol::app::core::driver::AttachObserve::Live;
-    *pump.driver.observe_state.lock().unwrap() = xylitol::app::core::driver::AttachObserve::Live;
+    *host_pump_bdd.observe_prev.borrow_mut() = xylitol::app::tui::driver::AttachObserve::Live;
+    *pump.driver.observe_state.lock().unwrap() = xylitol::app::tui::driver::AttachObserve::Live;
     put_pump(host_pump_bdd, pump);
 }
 
 #[when("远端驱动报告回合成中观景")]
 fn w_c2895_observe_inflight(host_pump_bdd: &HostPumpBdd) {
     let pump = take_pump(host_pump_bdd);
-    *pump.driver.observe_state.lock().unwrap() =
-        xylitol::app::core::driver::AttachObserve::Inflight;
+    *pump.driver.observe_state.lock().unwrap() = xylitol::app::tui::driver::AttachObserve::Inflight;
     let cur = pump.driver.attach_observe();
     let prev = *host_pump_bdd.observe_prev.borrow();
     let notice = xylitol::app::tui::observe_notice(prev, cur);
@@ -2937,7 +2936,7 @@ fn t_c2895_observe_inflight_notice(host_pump_bdd: &HostPumpBdd) {
 #[when("远端驱动报告对端回合已结束")]
 fn w_c2895_observe_ended(host_pump_bdd: &HostPumpBdd) {
     let pump = take_pump(host_pump_bdd);
-    *pump.driver.observe_state.lock().unwrap() = xylitol::app::core::driver::AttachObserve::Ended;
+    *pump.driver.observe_state.lock().unwrap() = xylitol::app::tui::driver::AttachObserve::Ended;
     let cur = pump.driver.attach_observe();
     let prev = *host_pump_bdd.observe_prev.borrow();
     let notice = xylitol::app::tui::observe_notice(prev, cur);

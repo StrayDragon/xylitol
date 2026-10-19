@@ -54,7 +54,7 @@ flowchart TB
     direction LR
     xylitol_serve["xylitol-serve<br/>监听 + mapping"]
     xylitol_app_print["xylitol-app-print"]
-    xylitol_app_tui["xylitol-app-tui"]
+    xylitol_app_tui["xylitol-app-tui<br/>信封 + tui + sdk词表投影"]
   end
 
   subgraph root["⑤ 组合根"]
@@ -74,6 +74,7 @@ flowchart TB
   xylitol_app_print --> xylitol_runtime
   xylitol_app_tui --> xylitol_protocol
   xylitol_app_tui --> xylitol_tui
+  xylitol_app_tui --> xylitol_plugin_sdk
   xylitol --> plugins
   xylitol --> xylitol_runtime
   xylitol --> xylitol_serve
@@ -88,7 +89,7 @@ flowchart TB
 | `xylitol-runtime` | `XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入。进程内直调合法 | 接线；依赖官方插件；依赖信封；为此编 fory |
 | `xylitol-serve` | 监听；`XyEvent` ↔ `v3::Event` mapping | 把 mapping 放进 protocol / plugin-sdk / runtime |
 | `xylitol-official-plugin-*` | 只依赖 plugin-sdk。依赖用端口声明，由组合根注入 | 插件之间 `use`；依赖 protocol；客户端进这个前缀 |
-| `xylitol-app-tui` | 只认信封 + `xylitol-tui` | 依赖 Host 插件、plugin-sdk、runtime |
+| `xylitol-app-tui` | 信封 + `xylitol-tui`；Host 词表（`XyEvent` / `SessionEntry`）经 attach 投影 | 依赖 runtime、官方插件 |
 | `xylitol-app-print` | 同进程直调 runtime | 依赖 serve / protocol；编 fory |
 | 根包 `xylitol` | argv + 默认接线。唯一列出官方插件的 `Cargo.toml` | 把组合根塞进 runtime |
 
@@ -96,7 +97,7 @@ flowchart TB
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
-每个 crate 内部仍守 `app → agent|infra → protocol`；`agent` 不得依赖 `infra`。抽出前，主 crate `src/` 按同一方向：`app → agent|infra → protocol`。
+每个 crate 内部仍守依赖方向（runtime ↛ 插件、↛ 信封；插件之间不得 `use`）。根包 `src/` 是组合根：CLI / composition / Host listen / `agent` facade。
 
 ### `AgentCapabilities` 职责边界
 
@@ -113,7 +114,7 @@ flowchart TB
 
 Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册并并入 `get_commands`，**不得**再塞回 `AgentCapabilities`。产品 builtin 列表只在 `XyDriver::get_commands` 组装。不得 `agent` → `app`。
 
-- **组合根**只在根包 `xylitol`（抽出前，接线代码在主 crate 入口）。靠 review + 行为测守住；**不得**源码 grep 元测试卡 import。
+- **组合根**只在根包 `xylitol`。靠 review + 行为测守住；**不得**源码 grep 元测试卡 import。
 - **应用端**：Print / TUI 走 `XyDriver::run` → `XyEvent` 流 → 端渲染。不够就扩 seam（`l8ng-write-surface`），不得绕过。
 - **产品角色（client / host）**：TUI 等端是 client（键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区 / trust 是 host 操作器角色。print / 库嵌入仍可同进程走同一方法表。**不得**把 host 等同于 HTTP 监听器；**产品 TUI** 默认 attach 本机监听器（未在听失败）。
 - **产品信封**：四象限（`POST /rpc` unary + `WS /rpc` 下行，同一方法表），载体为 fory-v3 二进制帧。Command/Event 是载荷；JSON-RPC 2.0 文本不是产品通道。跨进程不跳过信封直调 Driver。

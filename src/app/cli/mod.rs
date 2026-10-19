@@ -14,15 +14,17 @@ pub use provider_guidance::{
 mod provider_guidance;
 #[cfg(feature = "tui")]
 mod trust_gate;
+#[cfg(all(feature = "tui", feature = "server"))]
+mod tui_inprocess;
 
 /// Map `tui.activity_fold` config DTO → runtime knobs at the config-owning CLI
 /// boundary (the TUI widget layer does not import infra config types, c2277).
 #[cfg(feature = "tui")]
 impl From<crate::infra::config::types::TuiActivityFoldConfig>
-    for crate::app::tui::activity_fold::ActivityFoldSettings
+    for crate::app::tui::ActivityFoldSettings
 {
     fn from(c: crate::infra::config::types::TuiActivityFoldConfig) -> Self {
-        use crate::app::tui::activity_fold::SegmentLevel;
+        use crate::app::tui::SegmentLevel;
         use crate::infra::config::types::ActivityFoldStreamCollapse;
         let collapse_floor = match c.stream_collapse {
             ActivityFoldStreamCollapse::Envelope => SegmentLevel::L3,
@@ -558,12 +560,12 @@ async fn run_product_tui_attached(
     }
     let attach_url =
         crate::app::core::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
-    let mut driver = crate::app::core::driver::XyRemoteDriver::new_v3(
+    let mut driver = crate::app::tui::XyRemoteDriver::new_v3(
         attach_url,
         surface.session.clone().unwrap_or_default(),
     );
     if let Some(model_id) = surface.model.as_deref() {
-        crate::app::core::dispatch::dispatch(
+        crate::app::tui::dispatch::dispatch(
             &mut driver,
             crate::protocol::Command::SetModel {
                 provider: String::new(),
@@ -586,10 +588,7 @@ async fn run_product_tui_attached(
             c.tui.editor_history_seed_sessions,
             c.tui.activity_fold.into(),
         ),
-        Err(_) => (
-            1,
-            crate::app::tui::activity_fold::ActivityFoldSettings::default(),
-        ),
+        Err(_) => (1, crate::app::tui::ActivityFoldSettings::default()),
     };
     let tui_result = crate::app::tui::run(
         &mut driver,
@@ -606,7 +605,7 @@ async fn run_product_tui_attached(
         },
     )
     .await;
-    maybe_print_resume_hint(&mut driver).await;
+    maybe_print_resume_hint_tui(&mut driver).await;
     tui_result.map_err(|e| e.into())
 }
 
@@ -657,13 +656,11 @@ async fn run_product_tui_designing(
             c.tui.editor_history_seed_sessions,
             c.tui.activity_fold.into(),
         ),
-        Err(_) => (
-            1,
-            crate::app::tui::activity_fold::ActivityFoldSettings::default(),
-        ),
+        Err(_) => (1, crate::app::tui::ActivityFoldSettings::default()),
     };
+    let mut tui_driver = tui_inprocess::TuiInProcessAdapter::new(&mut driver);
     crate::app::tui::run(
-        &mut driver,
+        &mut tui_driver,
         crate::app::tui::TuiRunOptions {
             editor_history_seed_sessions: seed_n,
             activity_fold,
@@ -676,6 +673,26 @@ async fn run_product_tui_designing(
     )
     .await
     .map_err(|e| e.into())
+}
+
+/// stderr resume line when the session was persisted (c1565).
+#[cfg(all(feature = "tui", feature = "server"))]
+async fn maybe_print_resume_hint_tui(driver: &mut dyn crate::app::tui::XyDriver) {
+    let sid = driver.session_id();
+    let listed = match crate::app::tui::dispatch::dispatch(
+        driver,
+        crate::protocol::Command::ListSessions {},
+    )
+    .await
+    {
+        Ok(crate::app::tui::dispatch::DispatchOutcome::Sessions(list)) => sid
+            .as_deref()
+            .is_some_and(|id| list.iter().any(|e| e.id == id)),
+        _ => false,
+    };
+    if let Some(line) = resume_hint_line(sid.as_deref(), listed) {
+        eprintln!("{line}");
+    }
 }
 
 /// stderr resume line when the session was persisted (c1565).

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""QA check: crates/xylitol-tui Palette hex vs src/app/tui/DESIGN.md frontmatter.
+"""QA check: crates/xylitol-tui Palette hex vs crates/xylitol-app-tui/src/DESIGN.md frontmatter.
 
 SSOT: DESIGN.md colors.* (dark) + colors_light.* (light).
 """
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-DESIGN = REPO / "src" / "app" / "tui" / "DESIGN.md"
+DESIGN = REPO / "crates" / "xylitol-app-tui" / "src" / "DESIGN.md"
 PALETTE = REPO / "crates" / "xylitol-tui" / "src" / "theme" / "palette.rs"
 
 TOKEN_TO_FIELD = {

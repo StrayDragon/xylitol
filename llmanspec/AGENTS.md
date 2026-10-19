@@ -30,14 +30,17 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 - spec 目录名 = **capability**：领域名词、kebab-case，描述 **WHAT**（不写动作）。
   例：`runtime-config`（非 add-config）、`agent-runtime`（非 add-agent-loop）、`tool-system`。
-- **capability 前缀按层**（实测分布，normative）：
+- **capability 前缀按 crate**（实测分布，normative；历史 `app-*` / `agent-*` / `infra-*` 名可并存）：
   - `package-tui-*` — `crates/xylitol-tui`
   - `package-ai-bridge*` — `plugins/xylitol-official-plugin-provider-openai`（OpenAI 方言 + 共享 BDD；Anthropic 方言在 `plugins/xylitol-official-plugin-provider-anthropic`）
-  - `app-tui-*` — 产品 TUI（`src/app/tui`）；可多 capability，禁止把新产品合约堆进单体 `app-tui`
-  - `agent-*` / `domain-*` / `runtime-*` / `infra-*` / `protocol-*` / `server-*` / `cli-*` — 对应分层
+  - `app-tui-*` — `crates/xylitol-app-tui`；可多 capability，禁止把新产品合约堆进单体 `app-tui`
+  - `agent-*` / `runtime-*` / `domain-*` — `crates/xylitol-runtime`
+  - `infra-*` — 官方插件（`plugins/xylitol-official-plugin-*`）与根包接线
+  - `protocol-*` — `crates/xylitol-plugin-sdk`（词表）/ `crates/xylitol-protocol`（信封）
+  - `server-*` — `crates/xylitol-serve`
+  - `cli-*` — 根包 `xylitol` CLI
   - `test-*` — 测试基础设施（BDD harness、fake provider、qa-gate…）
   - `workspace-*` / `build-*` / `layer-*` / `user-*` / `architecture` — 仓库 meta / 跨层
-  - 历史名可并存。
 
 ### tasks
 

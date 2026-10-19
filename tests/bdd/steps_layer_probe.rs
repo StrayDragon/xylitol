@@ -363,7 +363,7 @@ pub(crate) fn t_activity_fold_defaults() {
 #[when("读取 token 检查脚本与色板")]
 pub(crate) fn w_token_sync() {
     let script = la_load("scripts/check_tui_tokens.py");
-    let design = la_load("src/app/tui/DESIGN.md");
+    let design = la_load("crates/xylitol-app-tui/src/DESIGN.md");
     let palette = la_load("crates/xylitol-tui/src/theme/palette.rs");
     let ok = script.contains("DESIGN.md")
         && script.contains("Palette")
@@ -383,7 +383,7 @@ pub(crate) fn t_token_sync_single_source() {
 
 #[when("读取 tui 面 AGENTS 摘要")]
 pub(crate) fn w_tui_agents_summary() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/tui/AGENTS.md")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("crates/xylitol-app-tui/src/AGENTS.md")));
 }
 
 #[then("摘要写明先读产品代码与 DESIGN.md")]
@@ -428,7 +428,7 @@ pub(crate) fn t_designing_lint_wired() {
 
 #[when("枚举产品视觉槽位")]
 pub(crate) fn w_designing_static_slots() {
-    let design = la_load("src/app/tui/DESIGN.md");
+    let design = la_load("crates/xylitol-app-tui/src/DESIGN.md");
     let ok = (design.contains("models") && design.contains("会话树") && design.contains("待办栏"))
         as usize;
     LA_PROBE.with(|p| *p.borrow_mut() = Some(ok.to_string()));
@@ -632,7 +632,7 @@ pub(crate) async fn w_thinking_render(t4_print_bdd: &T4PrintBdd) {
         assert_eq!(text.trim(), "ANSWER", "{thinking}");
         out.extend(text.as_bytes());
     }
-    let src = la_load("src/app/cli/print.rs");
+    let src = la_load("crates/xylitol-app-print/src/print.rs");
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() = Some(Ok(()));
     LA_PROBE.with(|p| *p.borrow_mut() = Some(src));
@@ -737,8 +737,8 @@ pub(crate) fn t_demo_theme_shape() {
 
 #[when("读取应用面对包组件的复用")]
 pub(crate) fn w_package_reuse_probe() {
-    let diff = la_load("src/app/tui/widgets/scrollback/diff.rs");
-    let paint = la_load("src/app/tui/widgets/scrollback/paint.rs");
+    let diff = la_load("crates/xylitol-app-tui/src/widgets/scrollback/diff.rs");
+    let paint = la_load("crates/xylitol-app-tui/src/widgets/scrollback/paint.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{diff}|{paint}")));
 }
 

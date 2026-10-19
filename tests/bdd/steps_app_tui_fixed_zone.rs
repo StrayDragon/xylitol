@@ -341,7 +341,7 @@ fn t_c2826_thinking_footer(fixed_zone_bdd: &FixedZoneBdd) {
 
 #[when("以含 skills 与 connecting MCP 的资源快照渲染头部卡")]
 fn w_c2826_loaded_resources(fixed_zone_bdd: &FixedZoneBdd) {
-    use xylitol::app::core::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+    use xylitol::app::tui::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
     let mut root = xylitol::app::tui::UiRoot::new();
     root.set_layout_meta("~/proj", "m1");
     root.set_loaded_resources(LoadedResourcesSnapshot {
@@ -424,7 +424,7 @@ async fn footer_with_estimate(
     use xylitol::protocol::model::ContextTokenEstimate;
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let mut driver = ScriptedDriver::new();
-    driver.set_current_model(xylitol::app::core::driver::ModelInfo {
+    driver.set_current_model(xylitol::app::tui::driver::ModelInfo {
         id: "Fake".into(),
         display_name: "Fake".into(),
         thinking: false,

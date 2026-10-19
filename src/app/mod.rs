@@ -9,12 +9,6 @@ pub use core::bang_exec;
 /// Session HTML/JSONL export-import (app-surface; stable seam is crate-root `SessionExporter`).
 pub use core::session_export;
 
-/// Shared tool call/result presentation (TUI + Print; c1460).
-pub(crate) mod tool_display;
-
-/// Preview scene catalog (designing leaf; process-local inject).
-pub(crate) mod debug_fixtures;
-
 #[cfg(feature = "cli")]
 pub mod cli;
 

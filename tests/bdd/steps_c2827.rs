@@ -10,10 +10,10 @@ use crate::bdd::prelude::*;
 use crate::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol::app::core::driver::ModelInfo;
 use xylitol::app::tui::TuiHostEvent as HostEvent;
 use xylitol::app::tui::TuiHostSession as HostSession;
 use xylitol::app::tui::UiEntry;
+use xylitol::app::tui::driver::ModelInfo;
 use xylitol::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
 use xylitol_tui::Component;
 
@@ -105,7 +105,7 @@ fn key_event(
 /// 单发 Esc 的延迟输入流（挂起 bang 的中止注入，r1279）。
 fn c2827_esc_stream(
     after_ms: u64,
-) -> impl futures::Stream<Item = Result<HostEvent, xylitol::XyDriverError>> {
+) -> impl futures::Stream<Item = Result<HostEvent, xylitol::app::tui::XyDriverError>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(after_ms)).await;
@@ -205,7 +205,7 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵提交挂起 bang 并注入事件后按 Esc")]
 pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::app::core::driver::XyDriver as _;
+    use xylitol::app::tui::driver::XyDriver as _;
     use xylitol::app::tui::harness::drain_pending;
 
     let mut pump = fresh_pump();
@@ -215,7 +215,7 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
     pump.session
         .step(HostEvent::Input(enter_event()))
         .expect("enter");
-    let mut stream: Option<xylitol::app::core::driver::EventStream> = None;
+    let mut stream: Option<xylitol::app::tui::driver::EventStream> = None;
     drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("drain start");
@@ -232,7 +232,7 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
         },
         XyEvent::AgentEnd { messages: vec![] },
     ]);
-    let mut agent_stream: Option<xylitol::app::core::driver::EventStream> =
+    let mut agent_stream: Option<xylitol::app::tui::driver::EventStream> =
         Some(pump.driver.run("bg").await);
     let bash = pump
         .session
@@ -1812,7 +1812,7 @@ pub fn t4_print_bdd() -> T4PrintBdd {
 
 pub(crate) fn t4_stream(
     events: Vec<xylitol::agent::runtime::XyEvent>,
-) -> xylitol::app::core::driver::EventStream {
+) -> xylitol::app::tui::driver::EventStream {
     Box::pin(futures::stream::iter(events))
 }
 
@@ -1853,7 +1853,8 @@ pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
     let mut out: Vec<u8> = Vec::new();
     let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
-    *t4_print_bdd.result.borrow_mut() = Some(r);
+    *t4_print_bdd.result.borrow_mut() =
+        Some(r.map_err(|e| xylitol::XyDriverError::message(e.to_string())));
 }
 
 #[then("stdout 恰为增量拼接且无前缀重复")]
@@ -1890,7 +1891,8 @@ pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
     let mut out: Vec<u8> = Vec::new();
     let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
-    *t4_print_bdd.result.borrow_mut() = Some(r);
+    *t4_print_bdd.result.borrow_mut() =
+        Some(r.map_err(|e| xylitol::XyDriverError::message(e.to_string())));
 }
 
 #[then("工具名与结果摘要按人话格式生成")]
@@ -1921,7 +1923,8 @@ pub(crate) async fn w_t4_render_error(t4_print_bdd: &T4PrintBdd) {
     let mut out: Vec<u8> = Vec::new();
     let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
-    *t4_print_bdd.result.borrow_mut() = Some(r);
+    *t4_print_bdd.result.borrow_mut() =
+        Some(r.map_err(|e| xylitol::XyDriverError::message(e.to_string())));
 }
 
 #[then("错误返回驱动错误而工具单败不退出")]
@@ -1954,7 +1957,8 @@ pub(crate) async fn w_t4_render_tool_fail(t4_print_bdd: &T4PrintBdd) {
     let mut out: Vec<u8> = Vec::new();
     let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
-    *t4_print_bdd.result.borrow_mut() = Some(r);
+    *t4_print_bdd.result.borrow_mut() =
+        Some(r.map_err(|e| xylitol::XyDriverError::message(e.to_string())));
 }
 
 #[then("单次工具失败不产生驱动错误")]

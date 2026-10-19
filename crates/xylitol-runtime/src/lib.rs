@@ -18,3 +18,4 @@ pub use trust::{
 pub use xylitol_plugin_sdk::lifecycle::XyEventError;
 pub use xylitol_plugin_sdk::model::{ContextTokenEstimate, TokenProvenance};
 pub use xylitol_plugin_sdk::session::TodoList;
+pub use xylitol_plugin_sdk::tool_name::{BuiltinToolName, is_mcp_tool_name};
