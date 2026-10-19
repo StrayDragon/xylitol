@@ -164,7 +164,7 @@ pub(crate) fn w_la_canonical_types() {
     for (path, decl) in [
         ("src/agent/capabilities/stats.rs", "pub struct ContextUsage"),
         (
-            "src/agent/compaction/settings.rs",
+            "plugins/xylitol-official-plugin-compaction/src/settings.rs",
             "pub struct CompactionSettings",
         ),
     ] {
@@ -768,7 +768,11 @@ pub(crate) fn t_rail_reuse_from_package() {
 
 #[when("以限幅选项缩放内存图片")]
 pub(crate) fn w_image_resize_constrained() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "plugins/xylitol-official-plugin-tools/src/image/resize.rs",
+        ))
+    });
 }
 
 #[then("输出 base64 且宽高与字节受限")]
@@ -785,7 +789,11 @@ pub(crate) fn t_image_resize_constrained() {
 
 #[when("请求将超限图片转为受限格式")]
 pub(crate) fn w_image_format_convert() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "plugins/xylitol-official-plugin-tools/src/image/resize.rs",
+        ))
+    });
 }
 
 #[then("输出采用压缩格式编码")]
@@ -803,7 +811,11 @@ thread_local! {
 
 #[when("读取 MCP 工具批调度标记")]
 pub(crate) fn w_mcp_barrier_marker() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/mcp/adapter.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "plugins/xylitol-official-plugin-mcp/src/adapter.rs",
+        ))
+    });
 }
 
 #[then("MCP 工具在批调度中为 Barrier 且不可进并行窗")]
@@ -852,7 +864,9 @@ pub(crate) fn t_loaded_resources_source() {
 
 #[when("读取 MCP 单次调用超时配置")]
 pub(crate) fn w_mcp_call_timeout() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/mcp/client.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load("plugins/xylitol-official-plugin-mcp/src/client.rs"))
+    });
 }
 
 #[then("每笔请求有调用期超时且可分类")]
@@ -868,7 +882,7 @@ pub(crate) fn t_mcp_call_timeout() {
 #[when("读取首回合工具定稿门禁")]
 pub(crate) fn w_first_turn_gate() {
     let a = la_load("src/app/core/driver/remote.rs");
-    let b = la_load("src/infra/mcp/adapter.rs");
+    let b = la_load("plugins/xylitol-official-plugin-mcp/src/adapter.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== adapter ===\n{b}")));
 }
 
@@ -910,7 +924,11 @@ pub(crate) fn t_shell_env_boundary() {
 
 #[when("读取外部工具进程回收边界")]
 pub(crate) fn w_child_wait_boundary() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/tools/process.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "plugins/xylitol-official-plugin-tools/src/tools/process.rs",
+        ))
+    });
 }
 
 #[then("等待退出取得状态且整树回收")]
@@ -967,7 +985,11 @@ pub(crate) fn t_obs_span_definition() {
 
 #[when("读取图像解码方向边界")]
 pub(crate) fn w_image_exif_boundary() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/image/resize.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "plugins/xylitol-official-plugin-tools/src/image/resize.rs",
+        ))
+    });
 }
 
 #[then("解码应用 EXIF 定向且像素校正在册")]
@@ -1090,7 +1112,11 @@ pub(crate) fn t_todo_snapshot_boundary() {
 
 #[when("读取 todo 工具调度分类")]
 pub(crate) fn w_todo_scheduling_class() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/tools/mod.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "plugins/xylitol-official-plugin-tools/src/tools/mod.rs",
+        ))
+    });
 }
 
 #[then("todo_rewrite 与 todo_update 为 Barrier 并发类")]
@@ -1122,7 +1148,7 @@ pub(crate) fn t_todo_status_bar_boundary() {
 #[when("读取首回合工具定稿清单")]
 pub(crate) fn w_first_turn_tool_freeze_list() {
     let a = la_load("src/agent/tools/freeze.rs");
-    let b = la_load("src/infra/tools/mod.rs");
+    let b = la_load("plugins/xylitol-official-plugin-tools/src/tools/mod.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== registry ===\n{b}")));
 }
 
@@ -1136,7 +1162,11 @@ pub(crate) fn t_first_turn_tool_freeze_list() {
 
 #[when("读取压缩触发边界")]
 pub(crate) fn w_compaction_trigger_boundary() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/compaction/settings.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "plugins/xylitol-official-plugin-compaction/src/settings.rs",
+        ))
+    });
 }
 
 #[then("按窗口与保留阈值在会话路径触发")]
@@ -1152,7 +1182,11 @@ pub(crate) fn t_compaction_trigger_boundary() {
 
 #[when("读取恢复会话校验顺序")]
 pub(crate) fn w_cwd_check_before_restore() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/session/manager/load.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "plugins/xylitol-official-plugin-session/src/manager/load.rs",
+        ))
+    });
 }
 
 #[then("恢复前完成同一 CWD 校验")]
@@ -1168,7 +1202,7 @@ pub(crate) fn t_cwd_check_before_restore() {
 #[when("读取会话存储端口实现")]
 pub(crate) fn w_session_store_port_impl() {
     let a = la_load("crates/xylitol-plugin-sdk/src/ports/session.rs");
-    let b = la_load("src/infra/session/manager/store.rs");
+    let b = la_load("plugins/xylitol-official-plugin-session/src/manager/store.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
 }
 
@@ -1223,7 +1257,7 @@ pub(crate) fn t_export_io_assembly() {
 #[when("读取会话持久化分层")]
 pub(crate) fn w_session_persistence_layers() {
     let a = la_load("crates/xylitol-plugin-sdk/src/ports/session.rs");
-    let b = la_load("src/infra/session/manager/store.rs");
+    let b = la_load("plugins/xylitol-official-plugin-session/src/manager/store.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
 }
 
@@ -1265,7 +1299,11 @@ pub(crate) fn t_agent_layer_trust_deps() {
 
 #[when("读取会话上下文压缩回溯")]
 pub(crate) fn w_compaction_aware_context() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/session/manager/store.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "plugins/xylitol-official-plugin-session/src/manager/store.rs",
+        ))
+    });
 }
 
 #[then("构建对 leaf 分支回退压缩")]
@@ -1281,7 +1319,7 @@ pub(crate) fn t_compaction_aware_context() {
 #[when("读取会话恢复原路径")]
 pub(crate) fn w_resume_single_path() {
     let a = la_load("src/agent/llm_project.rs");
-    let b = la_load("src/infra/session/manager/store.rs");
+    let b = la_load("plugins/xylitol-official-plugin-session/src/manager/store.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
 }
 

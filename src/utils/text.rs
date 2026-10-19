@@ -17,7 +17,8 @@ pub fn xml_escape(s: &str) -> String {
 }
 
 /// Format a byte count as human-readable size (`B` / `KB` / `MB`).
-pub fn format_size(bytes: u64) -> String {
+#[cfg(test)]
+fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
         format!("{bytes}B")
     } else if bytes < 1024 * 1024 {

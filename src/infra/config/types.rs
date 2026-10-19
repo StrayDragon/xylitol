@@ -452,36 +452,7 @@ impl AppConfig {
 // Hooks
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct HooksConfig {
-    pub global: Vec<HookEntry>,
-    pub project: Vec<HookEntry>,
-    pub user: Vec<HookEntry>,
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-pub struct HookEntry {
-    /// Shell command to execute (e.g., "python3 /path/to/hook.py").
-    pub command: String,
-    /// Event patterns to match (e.g., "pre.tool_call", "post.step_complete").
-    /// Supports exact and prefix matching.
-    #[serde(default)]
-    pub events: Vec<String>,
-    /// Optional timeout in seconds. Omit / null = dispatcher default (30s).
-    #[serde(default)]
-    pub timeout_secs: Option<u64>,
-    /// Optional phase filter: "pre", "post", or "" for both. When set, only
-    /// matches events of that phase.
-    #[serde(default)]
-    pub phase: String,
-    /// Whether this hook requires explicit user approval before execution.
-    #[serde(default)]
-    pub requires_approval: bool,
-    /// Extra environment variables for the hook process.
-    #[serde(default)]
-    pub env: std::collections::HashMap<String, String>,
-}
+pub use xylitol_official_plugin_hooks::{HookEntry, HooksConfig};
 
 // ---------------------------------------------------------------------------
 // Security
@@ -649,77 +620,7 @@ fn default_storage_backend() -> String {
 // MCP
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
-pub struct McpServerConfig {
-    pub name: String,
-    /// Transport kind: "stdio" or "sse".
-    #[serde(default = "default_mcp_transport")]
-    pub transport: McpTransportKind,
-    /// Command to spawn (stdio transport only).
-    #[serde(default)]
-    pub command: Option<String>,
-    /// Arguments for the command (stdio transport only).
-    #[serde(default)]
-    pub args: Option<Vec<String>>,
-    /// SSE / streamable-HTTP endpoint URL (sse transport only).
-    #[serde(default)]
-    pub url: Option<String>,
-    /// Extra environment variables for the child process (stdio transport only).
-    #[serde(default)]
-    pub env: Option<HashMap<String, String>>,
-    /// Extra HTTP headers for SSE / streamable-HTTP (e.g. API keys).
-    #[serde(default)]
-    pub headers: Option<HashMap<String, String>>,
-}
-
-impl Default for McpServerConfig {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            transport: default_mcp_transport(),
-            command: None,
-            args: None,
-            url: None,
-            env: None,
-            headers: None,
-        }
-    }
-}
-
-impl McpServerConfig {
-    /// Validate required fields for the selected transport (c1080 / mcp4).
-    pub fn validate(&self) -> Result<(), LoadError> {
-        if self.name.trim().is_empty() {
-            return Err(LoadError::validation("mcp server name must not be empty"));
-        }
-        match self.transport {
-            McpTransportKind::Stdio => match self.command.as_deref().map(str::trim) {
-                None | Some("") => Err(LoadError::validation(
-                    "command is required for stdio transport",
-                )),
-                Some(_) => Ok(()),
-            },
-            McpTransportKind::Sse => match self.url.as_deref().map(str::trim) {
-                None | Some("") => Err(LoadError::validation("url is required for sse transport")),
-                Some(u) if !(u.starts_with("http://") || u.starts_with("https://")) => Err(
-                    LoadError::validation(format!("url must be http(s) for sse transport: {u}")),
-                ),
-                Some(_) => Ok(()),
-            },
-        }
-    }
-}
-
-fn default_mcp_transport() -> McpTransportKind {
-    McpTransportKind::Stdio
-}
-
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum McpTransportKind {
-    Stdio,
-    Sse,
-}
+pub use xylitol_official_plugin_mcp::{McpServerConfig, McpTransportKind};
 
 #[cfg(test)]
 mod agent_profile_tests {

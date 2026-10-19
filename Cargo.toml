@@ -57,7 +57,6 @@ glob = "0.3.4"
 futures = "0.3.34"
 anyhow = "1.0.104"
 regex = "1.13.1"
-rmcp = { version = "3.5.1", optional = true, features = ["client", "transport-child-process", "transport-streamable-http-client", "transport-streamable-http-client-reqwest"] }
 sha2 = "0.11.0"
 time = { version = "0.3.55", features = ["formatting", "parsing", "macros"] }
 uuid = { version = "1.28.0", features = ["v4"] }
@@ -86,6 +85,11 @@ xylitol-plugin-sdk = { path = "crates/xylitol-plugin-sdk" }
 xylitol-protocol = { path = "crates/xylitol-protocol" }
 xylitol-official-plugin-provider-openai = { path = "plugins/xylitol-official-plugin-provider-openai" }
 xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-plugin-provider-anthropic" }
+xylitol-official-plugin-session = { path = "plugins/xylitol-official-plugin-session" }
+xylitol-official-plugin-compaction = { path = "plugins/xylitol-official-plugin-compaction" }
+xylitol-official-plugin-tools = { path = "plugins/xylitol-official-plugin-tools" }
+xylitol-official-plugin-mcp = { path = "plugins/xylitol-official-plugin-mcp", default-features = false }
+xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks" }
 crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 http = "1"
 fory = "1.7.6"
@@ -99,7 +103,7 @@ server = ["dep:salvo", "dep:tokio-tungstenite"]
 # Terminal UI surface (host-driven on xylitol-tui).
 tui = ["dep:xylitol-tui", "dep:crossterm"]
 # MCP client (rmcp). Runtime still requires config; this only gates compile.
-mcp = ["dep:rmcp"]
+mcp = ["xylitol-official-plugin-mcp/mcp"]
 # Optional OTLP/HTTP export (Langfuse / Collector). Default on for local agents;
 # config still defaults to exporter=none (zero remote traffic until configured).
 otel = [

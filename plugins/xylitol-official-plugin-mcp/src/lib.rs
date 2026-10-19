@@ -1,2 +1,22 @@
-//! Scaffold for the target crate graph. Filled in the matching W2 batch.
-//! Not a stable API.
+//! Official Host plugin: MCP client (config-gated).
+//!
+//! Provides [`McpClientManager`] to connect to MCP servers via stdio or SSE
+//! transport, and [`McpToolAdapter`] to expose MCP tools as [`xylitol_plugin_sdk::ports::XyTool`].
+//!
+//! This module is independent of the skills system and can be used standalone.
+
+mod adapter;
+mod assemble;
+mod client;
+mod defaults;
+pub(crate) mod types;
+
+pub use adapter::McpToolAdapter;
+pub use assemble::{connect_and_discover, connect_and_discover_with_progress, mcp_enabled};
+pub use client::{
+    ConnectedMcpServer, McpClientManager, McpConnectDiagnostic, McpConnectProgress, McpError,
+};
+pub use config::{McpServerConfig, McpTransportKind};
+pub use defaults::MCP_SERVER_CONNECT_TIMEOUT;
+
+pub mod config;

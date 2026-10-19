@@ -1145,7 +1145,7 @@ pub(crate) fn t_dead_code_allows_scoped(_ws: &Workspace) {
 
 #[when("读取工具执行类命名")]
 pub(crate) fn w_read_execution_mode_name(_ws: &Workspace) {
-    let text = std::fs::read_to_string("src/protocol/tools.rs")
+    let text = std::fs::read_to_string("crates/xylitol-plugin-sdk/src/ports/tool.rs")
         .or_else(|_| std::fs::read_to_string("src/protocol/mod.rs"))
         .expect("protocol 工具边界可读");
     let named = text.contains("XyToolExecutionMode");

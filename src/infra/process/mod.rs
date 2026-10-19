@@ -1,8 +1,8 @@
-//! Cross-platform process management.
-//!
-//! Provides shell discovery, process group management, and reliable
-//! child process waiting. Used by `infra/tools/bash.rs` and
-//! `infra/bash_exec`.
+//! Cross-platform process helpers — implementation lives in `xylitol-official-plugin-tools`.
 
-pub mod group;
-pub mod shell;
+pub mod group {
+    pub use xylitol_official_plugin_tools::process::group::*;
+}
+pub mod shell {
+    pub use xylitol_official_plugin_tools::process::shell::*;
+}

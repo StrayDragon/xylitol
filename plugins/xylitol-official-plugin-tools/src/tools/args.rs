@@ -1,0 +1,42 @@
+//! Shared serde helpers for built-in tool argument parsing.
+//!
+//! Trait boundary stays [`serde_json::Value`] (MCP / dynamic tools). Each built-in
+//! tool deserializes once into a typed `*Args` struct — either via
+//! [`super::typed::TypedTool`] blanket or at a manual `execute` entry.
+
+pub use xylitol_plugin_sdk::ports::parse_tool_args;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde::Deserialize;
+    use serde_json::json;
+    use xylitol_plugin_sdk::error::XyToolError;
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    struct SampleArgs {
+        pattern: String,
+        #[serde(default)]
+        ignore_case: bool,
+    }
+
+    #[test]
+    fn parse_maps_missing_required_to_invalid_args() {
+        let err = parse_tool_args::<SampleArgs>(json!({})).unwrap_err();
+        assert!(matches!(err, XyToolError::InvalidArgs(_)));
+    }
+
+    #[test]
+    fn parse_accepts_camel_case_aliases() {
+        let args: SampleArgs =
+            parse_tool_args(json!({"pattern": "foo", "ignoreCase": true})).unwrap();
+        assert_eq!(
+            args,
+            SampleArgs {
+                pattern: "foo".into(),
+                ignore_case: true,
+            }
+        );
+    }
+}

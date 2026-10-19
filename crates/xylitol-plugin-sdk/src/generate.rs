@@ -65,3 +65,75 @@ impl Default for XyGenerateOptions {
         }
     }
 }
+
+/// Fastrace attribute for Collector / consumer routing (`llm` | `infra`).
+pub const XYLITOL_OBS_LANE_ATTR: &str = "xylitol.obs.lane";
+/// LLM / agent product process-tree lane.
+pub const XYLITOL_OBS_LANE_LLM: &str = "llm";
+
+/// Property pairs for `xylitol.obs.lane`.
+pub fn xylitol_obs_lane_properties(lane: &str) -> Vec<(String, String)> {
+    vec![(XYLITOL_OBS_LANE_ATTR.into(), lane.to_string())]
+}
+
+/// Fastrace property pairs for Langfuse session mapping from an explicit snapshot.
+pub fn langfuse_session_properties_from(ctx: &ObsSessionContext) -> Vec<(String, String)> {
+    let mut out = Vec::with_capacity(6);
+    if let Some(id) = ctx.session_id.clone().filter(|s| !s.is_empty()) {
+        out.push(("langfuse.session.id".into(), id.clone()));
+        out.push(("xylitol.session.id".into(), id));
+    }
+    if let Some(gw) = ctx.llm_gateway_session_id.clone().filter(|s| !s.is_empty()) {
+        out.push(("xylitol.session.llm_gateway_session_id".into(), gw));
+    }
+    if let Some(parent) = ctx.parent_session_id.clone().filter(|s| !s.is_empty()) {
+        out.push(("xylitol.session.parent_session_id".into(), parent));
+    }
+    if let Some(cut) = ctx.fork_at_entry_id.clone().filter(|s| !s.is_empty()) {
+        out.push(("xylitol.session.fork_at_entry_id".into(), cut));
+    }
+    if let Some(name) = ctx.session_name.clone().filter(|s| !s.is_empty()) {
+        out.push(("langfuse.trace.metadata.session_name".into(), name));
+    }
+    if let Some(model) = ctx
+        .compaction_requested_model
+        .clone()
+        .filter(|s| !s.is_empty())
+    {
+        out.push(("xylitol.compaction.requested_model".into(), model));
+    }
+    if let Some(model) = ctx
+        .compaction_actual_model
+        .clone()
+        .filter(|s| !s.is_empty())
+    {
+        out.push(("xylitol.compaction.actual_model".into(), model));
+    }
+    if let Some(fallback) = ctx.compaction_model_fallback {
+        out.push((
+            "xylitol.compaction.model_fallback".into(),
+            fallback.to_string(),
+        ));
+    }
+    if let Some(rejected) = ctx.compaction_thinking_rejected {
+        out.push((
+            "xylitol.compaction.thinking_rejected".into(),
+            rejected.to_string(),
+        ));
+    }
+    out
+}
+
+/// Append Langfuse observation type (+ session + llm obs lane) from a snapshot.
+pub fn langfuse_observation_properties_from(
+    observation_type: &str,
+    ctx: &ObsSessionContext,
+) -> Vec<(String, String)> {
+    let mut out = vec![(
+        "langfuse.observation.type".into(),
+        observation_type.to_string(),
+    )];
+    out.extend(langfuse_session_properties_from(ctx));
+    out.extend(xylitol_obs_lane_properties(XYLITOL_OBS_LANE_LLM));
+    out
+}

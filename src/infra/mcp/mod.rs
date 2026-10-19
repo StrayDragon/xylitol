@@ -1,20 +1,4 @@
-//! MCP (Model Context Protocol) client integration.
-//!
-//! Provides [`McpClientManager`] to connect to MCP servers via stdio or SSE
-//! transport, and [`McpToolAdapter`] to expose MCP tools as [`crate::protocol::ports::XyTool`].
-//!
-//! This module is independent of the skills system and can be used standalone.
+//! MCP client — implementation lives in `xylitol-official-plugin-mcp`.
 
-mod adapter;
-mod assemble;
-mod client;
-mod defaults;
-pub(crate) mod types;
-
-pub use adapter::McpToolAdapter;
-pub use assemble::{connect_and_discover, connect_and_discover_with_progress, mcp_enabled};
-pub use client::{
-    ConnectedMcpServer, McpClientManager, McpConnectDiagnostic, McpConnectProgress, McpError,
-};
-pub use defaults::MCP_SERVER_CONNECT_TIMEOUT;
-pub use types::McpTransportKind;
+pub use xylitol_official_plugin_mcp::config::{McpServerConfig, McpTransportKind};
+pub use xylitol_official_plugin_mcp::*;

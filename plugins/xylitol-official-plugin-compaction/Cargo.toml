@@ -9,3 +9,18 @@ repository = "https://github.com/straydragon/xylitol"
 publish = false
 
 [dependencies]
+xylitol-plugin-sdk = { path = "../../crates/xylitol-plugin-sdk" }
+anyhow = "1"
+async-trait = "0.1"
+fastrace = { version = "0.7", features = ["enable"] }
+futures = "0.3"
+log = "0.4"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+strum = { version = "0.28", features = ["derive"] }
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

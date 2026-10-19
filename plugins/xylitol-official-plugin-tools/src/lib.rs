@@ -1,2 +1,8 @@
-//! Scaffold for the target crate graph. Filled in the matching W2 batch.
-//! Not a stable API.
+//! Official Host plugin: built-in tools.
+pub mod bash_exec;
+pub mod image;
+pub mod process;
+pub mod text;
+pub mod tools;
+
+pub use tools::*;

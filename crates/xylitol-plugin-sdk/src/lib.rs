@@ -7,13 +7,17 @@ pub mod dto;
 pub mod error;
 pub mod generate;
 pub mod lifecycle;
+pub mod llm_project;
 pub mod message;
 pub mod model;
 pub mod model_entry;
+pub mod obs_gate;
 pub mod ports;
 pub mod resource;
 pub mod session;
+pub mod session_env;
 pub mod source_info;
+pub mod status_bar;
 pub mod tool_name;
 pub mod tool_timeout;
 pub mod tool_wire;
@@ -28,13 +32,24 @@ pub use error::{
     AiBridgeError, XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError,
     XyTrustError,
 };
-pub use generate::{ObsSessionContext, XyGenerateOptions};
+pub use generate::{
+    ObsSessionContext, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_LLM, XyGenerateOptions,
+    langfuse_observation_properties_from, langfuse_session_properties_from,
+    xylitol_obs_lane_properties,
+};
 pub use lifecycle::{XyEvent, XyEventError};
+pub use llm_project::project_for_llm;
 pub use message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
 pub use model::{
     THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap, XyChunk, XyModelConfig,
     XyModelKind, XyModelMeta, XyToolSchema, last_declared_thinking_level,
     resolve_configured_levels, thinking_levels_are_adjustable, validate_thinking_level_map,
+};
+pub use obs_gate::{
+    OBSERVATION_IO_FULL_MAX, ObsGateScope, ObsGateState, ObservationIoTier,
+    PROVIDER_TRACE_TEXT_MAX, SpanCollectScope, observation_io_tier, provider_trace_active,
+    set_observation_io_tier, set_provider_trace_active, set_tool_observation_io_tier,
+    tool_observation_io_tier,
 };
 pub use ports::{
     BashExecOpts, HeaderBag, HttpHooks, LifecycleHandler, NoopHookBus, SessionListEntry,
@@ -43,6 +58,7 @@ pub use ports::{
     XyStream, XyTool, XyToolCtx, XyToolExecutionMode, flatten_session_forest, format_session_age,
     run_after_response, run_before_headers, run_before_request, sanitize_session_display_name,
 };
+pub use status_bar::{AgentStatusBar, project_outbound};
 pub use tool_name::{
     BuiltinToolName, MCP_PUBLIC_DELIMITER, is_mcp_tool_name, is_provider_safe_tool_name,
     mcp_tool_armed_prefix, mcp_tool_public_name,
