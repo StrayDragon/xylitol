@@ -10,13 +10,15 @@
 
 ## 现在
 
-下一刀：**[W1.13](#W113)**。然后 **[W2.0](#WS2)**（把 [§2](#TARGET) 写进现行 AGENTS）。两刀不要混在一次提交里。
+crate 图已拍板，见 [§2.0b](#SETTLED)。下一刀：**[W1.13](#W113)**（只改现行单 crate 的 STC 描述）。然后 **[W2.0](#WS2)** 才把 §2 写进 AGENTS。两刀不要混提交。
 
-读法：现在 → [W1.13](#W113) → [§2.0](#TERMS) 用语 → [§2.2](#GRAPH) 依赖图 → [§3.2](#WS2) 未做表。
+读法：现在 → [§2.0b](#SETTLED) → [W1.13](#W113) → [§2.2](#GRAPH) → [§3.2](#WS2)。
 
 本轮不引入 rutis。不为编译速度拆 crate。单包 default-on 的 Cargo feature 不省默认二进制。
 
 「不用就不付钱」分三层，不要混：编译（依赖写在会用它的 crate）→ 装配（没挂的插件不 start）→ 热路径（不在每 token / 每帧上）。
+
+W1.13 注意：`docs/architecture/术语表.md` 里的目标包名不当现行 crate。现行仍是单 crate；包名真源是本文件 §2。
 
 ---
 
@@ -70,7 +72,7 @@
 
 **信封**（RPC envelope）：client 与 Host 之间的四象限 RPC 帧（fory-v3）。信封不是发给模型的 JSON，也不是 `AgentMessage`。信封 crate 是 `xylitol-protocol`。线上形状是 `v3::Command` / `v3::Event`。不要用 protocol 承接 plugin-sdk。
 
-**组合根**（composition root）：唯一把「循环 + 工具 + 模型 + 会话」接在一起的地方。S0 落在根包 `xylitol`（argv + 默认接线）。`xylitol-runtime` 是执行权威，不接线、不依赖任何官方插件 crate、不依赖信封。插件之间不得互相 `use`；需要别人时由组合根注入。
+**组合根**（composition root）：唯一把「循环 + 工具 + 模型 + 会话」接在一起的地方。S0 落在根包 `xylitol`（argv + 默认接线）。循环本体在 `xylitol-runtime`；根包只把端口实现注入进去。`xylitol-runtime` 不接线、不依赖任何官方插件 crate、不依赖信封。插件之间不得互相 `use`；需要别人时由组合根注入。
 
 **mapping**：`XyEvent` ↔ `v3::Event` 是跨进程的活，落在载体 `xylitol-serve`。不进 protocol（信封不认识 `XyEvent`），不进 plugin-sdk，不进 runtime（Print 同进程直调，不得为此编 fory）。
 
@@ -79,6 +81,52 @@
 **内置插件**：官方插件且默认挂上，可以换实现。产品里的「内置工具」（read / write / bash 等）属于 `xylitol-official-plugin-tools`，不是内核。
 
 **配置启用插件**：仍是官方插件 crate。没有配置时组合根不调用 start。例子：MCP、hooks。
+
+**内环**：按步骤分类的 ReAct（问模型 → 工具批 → 再问）。在 `xylitol-runtime`，不是插件。
+
+**唤醒源**：谁有权开一个回合。用户 `Prompt`、steer、follow-up 已有；schedule / 监视 / 语音切句都打进同一道准入。
+
+**主路径**：会话 header 上绑定的工作目录（cwd）。不是树干前缀。
+
+**回合**：一次准入开跑到 `AgentEnd`（今日一条 `XyDriver::run` 流）。
+
+**步骤**：回合里的一拍：一次 generate + 可选工具批（今日事件名 `TurnStart` / `TurnEnd`）。
+
+<a id="SETTLED"></a>
+
+### 2.0b 拍板链路
+
+请求（默认产品 TUI attach）：
+
+```text
+我 → xylitol-app-tui → xylitol-protocol → xylitol-serve（mapping）
+   → xylitol-runtime（准入 + 内环 + 组稿）
+   → 端口：session / model / tools / compaction
+```
+
+Print：`我 → xylitol-app-print → xylitol-runtime`（不编 fory）。根包 `xylitol` 只在进程启动接线。
+
+数据：
+
+```text
+我 → 会话*（书签 + 主路径）
+      ├── 事实日志（只追加）
+      └── 回合* → 步骤*
+```
+
+书签 ≠ 主路径 ≠ 树干前缀。KV 只追加不改前缀。切主路径 = 追加高注意力事实。压缩追加切点，不重写旧行。组稿三槽：稳定系统提示 / 高注意力（最新主路径；压缩后仍要看见）/ 易变状态栏。改注入策略走 must-SDD。
+
+所有权：session 插件写事实；compaction 插件写摘要条；runtime 跑回合、步骤、投影组稿；端只消费事件。
+
+Cargo：`plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。runtime → sdk。插件 → sdk。serve → runtime + protocol。app-tui → protocol + tui。根包 → 插件 + runtime + 端 + 载体。图：[§2.2](#GRAPH)。
+
+官方插件七个：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks。没有 react。
+
+测循环用假端口。测端用 `ScriptedDriver`。插件依赖声明端口，由根包注入，兄弟 crate 不得 `use`。S1 的 `injects()` 同一句话。
+
+主动交互：唤醒源走准入，不换内环。schedule 是未来工具，不预埋 crate。
+
+已否：`xylitol-types`；protocol 承接 sdk；`xylitol-assemble` / `xylitol-kernel` / `xylitol-host`；`xylitol-official-plugin-react`；S0 一切皆插件（信封/词表/内环 Cordis 化）；`xylitol-app-voice`。
 
 <a id="LEVELS"></a>
 
@@ -90,13 +138,13 @@ crate 边界按替换、开关、生命周期来划，不按 `app / agent / infr
 
 | 级别 | 放什么 | 例 | 本轮 |
 |---|---|---|---|
-| 内核 | 词表、端口、错误、信封、trust、会话身份。不得知道 ReAct、压缩、具体厂商、TUI。不得接线 | `xylitol-plugin-sdk`、`xylitol-protocol`、`xylitol-runtime` | S0 建 |
-| 内置插件 | 官方静态 `xylitol-official-plugin-*`。默认挂。进程内 `apply` 取一次 `Arc`，之后直连 | react、session、compaction、provider-*、tools | S0 建并重写 |
+| 内核 | 词表、端口、错误、信封、trust、会话身份、**turn 循环（ReAct）**。不得知道压缩策略、具体厂商、TUI。不得接线 | `xylitol-plugin-sdk`、`xylitol-protocol`、`xylitol-runtime` | S0 建 |
+| 内置插件 | 官方静态 `xylitol-official-plugin-*`。默认挂。进程内 `apply` 取一次 `Arc`，之后直连 | session、compaction、provider-*、tools | S0 建并重写 |
 | 配置启用插件 | 仍是官方插件 crate；没配置不 start | mcp、hooks | S0 建；未配置不连 |
 | S1 装配 | 同一批插件，换 rutis 装配器 | `xylitol-rutis` | 不引入 |
 | 客户端 | 独立 `xylitol-app-*` + 引擎 `xylitol-tui`。不是 Host 插件 | app-tui / app-print / xylitol-tui | S0 重写 app；引擎不改名 |
 
-禁止为 rutis / LSP / DAP / gpui 预埋空壳。禁止客户端进 `xylitol-official-plugin-*`。
+禁止为 rutis / LSP / DAP / gpui / 语音端预埋空壳。禁止客户端进 `xylitol-official-plugin-*`。链路与已否见 [§2.0b](#SETTLED)。
 
 ### 2.2 目录总图
 
@@ -105,7 +153,7 @@ crates/
   xylitol-plugin-sdk/           词表 + 端口 + 错误（插件作者依赖这一包）
   xylitol-protocol/             四象限信封 + fory-v3 + PROTOCOL_VERSION
                                 可含很薄的 attach client 半；过厚再拆 xylitol-attach
-  xylitol-runtime/              执行权威：XyDriver + trust + 会话槽
+  xylitol-runtime/              执行权威：XyDriver + trust + 会话槽 + ReAct 内环 + 唤醒准入
                                 进程内直调合法。不接线、不依赖插件、不依赖信封
   xylitol-serve/                载体：把已装配的 runtime 挂到 HTTP/WS
                                 并做 XyEvent ↔ v3 Event mapping
@@ -115,7 +163,6 @@ crates/
   xylitol-rutis/                S1 才建；唯一 use rutis
   xylitol/                      组合根：argv + 默认接线（BusyBox 叶子）
   plugins/                      仅 Host 侧。Cargo 依赖只出现在根包
-    xylitol-official-plugin-react/
     xylitol-official-plugin-session/
     xylitol-official-plugin-compaction/
     xylitol-official-plugin-provider-openai/
@@ -149,9 +196,8 @@ flowchart TB
 
   subgraph plugins["② 官方插件 · 只依赖 xylitol-plugin-sdk"]
     direction TB
-    subgraph plugins_loop["循环 / 会话 / 压缩"]
+    subgraph plugins_loop["会话 / 压缩"]
       direction LR
-      xylitol_official_plugin_react["xylitol-official-plugin-react"]
       xylitol_official_plugin_session["xylitol-official-plugin-session"]
       xylitol_official_plugin_compaction["xylitol-official-plugin-compaction"]
     end
@@ -169,7 +215,7 @@ flowchart TB
   end
 
   subgraph kernel["③ 执行权威 · 不接线"]
-    xylitol_runtime["xylitol-runtime<br/>XyDriver + trust<br/>不依赖信封 / 不依赖插件"]
+    xylitol_runtime["xylitol-runtime<br/>XyDriver + 准入 + ReAct 内环<br/>不依赖信封 / 不依赖插件"]
   end
 
   subgraph surfaces["④ 载体与端 · 不列插件"]
@@ -183,7 +229,6 @@ flowchart TB
     xylitol["xylitol<br/>argv + 默认接线"]
   end
 
-  xylitol_official_plugin_react --> xylitol_plugin_sdk
   xylitol_official_plugin_session --> xylitol_plugin_sdk
   xylitol_official_plugin_compaction --> xylitol_plugin_sdk
   xylitol_official_plugin_provider_openai --> xylitol_plugin_sdk
@@ -211,11 +256,11 @@ flowchart TB
 
 | 原则 | 本图 |
 |---|---|
-| 宽而浅，不要链 | ② 八个插件并行。不把 react→session→compaction 串成链 |
+| 宽而浅，不要链 | ② 七个插件并行。不把 session→compaction 串成链。ReAct 在 runtime，不占插件位 |
 | 词表稳、易变在上 | ① 少变；② 易变；⑤ 接线名单最易变 |
 | 稳定不依赖易变 | sdk / protocol / tui 三包互不依赖。runtime ↛ 插件、↛ protocol |
 | 一个叶子收口 | 只有根包同时依赖插件 + runtime + 端 + 载体。不另建 `xylitol-assemble` |
-| 不为编译拆 | 不拆 `xylitol-types`。不把 tools 拆成每工具一包。不合并 react/session/compaction（变更理由不同，不是为并行而拆） |
+| 不为编译拆 | 不拆 `xylitol-types`。不把 tools 拆成每工具一包。不合并 session/compaction（变更理由不同）。不把 ReAct 拆成插件（无第二实现，测端已有 `ScriptedDriver`） |
 | P6 依赖卫生 | `rmcp` 只在 mcp 插件；`async-openai` 只在 openai 插件；`salvo` 只在 serve；fory 只在 protocol（serve mapping 与 TUI attach 传递用）。print / runtime 不编 fory |
 | 工具链先于拆 crate | mold / sccache / 每树独立 `CARGO_TARGET_DIR` / `-Zshare-generics` 已做 |
 | 端口非泛型 | `dyn XyModel` + `async_trait`。crate 边界不放厚泛型壳 |
@@ -224,7 +269,7 @@ flowchart TB
 
 规则：
 
-1. 插件只依赖 `xylitol-plugin-sdk`。插件之间不得 `use`。插件不依赖 `xylitol-protocol`。
+1. 插件只依赖 `xylitol-plugin-sdk`。插件之间不得 `use`。依赖用端口声明，由组合根注入。插件不依赖 `xylitol-protocol`。
 2. 方言插件只依赖 [§2.3](#LLM) 标成「词表薄留」的类型。
 3. ① 三包互不依赖。`protocol` 不认识端口，也不认识 `XyEvent`。`plugin-sdk` 不认识信封。
 4. `xylitol-runtime` 只依赖 `xylitol-plugin-sdk`。不得依赖信封，不得依赖任何 `xylitol-official-plugin-*`。
@@ -351,12 +396,12 @@ SDD：skip-SDD（AGENTS / 产品文）+ validate-only（`.feature` + 步骤绑�
 | W2.1 | `xylitol-plugin-sdk` | P5 | skip-SDD + validate-only |
 | W2.2 | `xylitol-protocol`；顺手改 `wire` 撞车名 | P5 | 同上 |
 | W2.2b | 按 [§2.3](#LLM) 重写两个 provider 插件；plugin-sdk 只收词表薄留；删 `xylitol-ai-bridge` | P1 / P6 | 同上 |
-| W2.3 | `xylitol-official-plugin-mcp` / `-hooks` / `-provider-*` | P1 / P2 / P6 | skip-SDD |
-| W2.4 | 重写 `xylitol-runtime`（无插件依赖、无信封依赖）+ `xylitol-serve`（mapping + 监听） | P2 / P4 / P5 | skip-SDD；行为差 must-SDD |
+| W2.3 | `xylitol-official-plugin-session` / `-compaction` / `-tools` / `-mcp` / `-hooks` / `-provider-*` | P1 / P2 / P6 | skip-SDD |
+| W2.4 | 重写 `xylitol-runtime`（含 ReAct；无插件依赖、无信封依赖）+ `xylitol-serve`（mapping + 监听） | P2 / P4 / P5 | skip-SDD；行为差 must-SDD |
 | W2.5 | 重写 `xylitol-app-tui` + `xylitol-app-print`；根包接线 | P1 / P2 | 同上；TUI 加 `just qa-e2e` |
 | W2.6 | 每批后 `just qa` | 门禁 | 强制 |
 
-不创建：`xylitol-rutis`、`xylitol-host`、`xylitol-client`、`xylitol-kernel`、`xylitol-assemble`、`xylitol-types`、`xylitol-official-plugin-tui`、空 LSP/DAP crate、dylib 加载器。
+不创建：`xylitol-rutis`、`xylitol-host`、`xylitol-client`、`xylitol-kernel`、`xylitol-assemble`、`xylitol-types`、`xylitol-official-plugin-react`、`xylitol-official-plugin-tui`、`xylitol-app-voice`、空 LSP/DAP crate、dylib 加载器。
 
 ### 3.3 WS3（本轮不做）
 
@@ -386,7 +431,7 @@ S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 
 **瘦**：serve `stop` 只印 SIGTERM；`server` / `mcp` feature 可关（default 仍开）；`jsonschema` / `minijinja` / `schemars` 下沉到使用方；`cli = []` 不单独发明空开关；23 个集成测试二进制靠 `-Zshare-generics`，不删测试。`incremental = false`。
 
-**推迟**：gpui、LSP、DAP、Sub-Agent、键位可视化、Inspect wasm / 框选、samply suite、Jaeger、delayed-changes。`agent_demo*` / `host_loop` 留在 `xylitol-tui`。maka 对照留 `docs/research/`。
+**推迟**：gpui、LSP、DAP、Sub-Agent、语音端 / 全双工 realtime、schedule/cron 唤醒源、键位可视化、Inspect wasm / 框选、samply suite、Jaeger、delayed-changes。`agent_demo*` / `host_loop` 留在 `xylitol-tui`。maka 对照留 `docs/research/`。
 
 ---
 
@@ -394,8 +439,8 @@ S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 
 ## 5. 本轮不做
 
-1. gpui / Web 控制台 / DAP / LSP / Sub-Agent 空壳 crate；`xylitol-official-plugin-lsp`、`xylitol-app-gpui`。
-2. S1–S5 rutis。
+1. gpui / Web 控制台 / DAP / LSP / Sub-Agent / 语音端空壳 crate；`xylitol-official-plugin-lsp`、`xylitol-official-plugin-react`、`xylitol-official-plugin-schedule`、`xylitol-app-gpui`、`xylitol-app-voice`。
+2. S1–S5 rutis。不为「一切皆插件」把信封 / 词表 / ReAct 内环提前 Cordis 化。
 3. 按 layer 拆 crate；抽 `xylitol-domain` / `xylitol-types` / `xylitol-assemble` / `xylitol-kernel`；`xylitol-host` / `xylitol-client` / `xylitol-official-plugin-tui`。
 4. 把发给模型的形状搬进主仓 `xylitol`；把 `xylitol-ai-bridge` 非 HTTP 整包倒进 `xylitol-plugin-sdk`；用 `xylitol-protocol` 承接 plugin-sdk。把组合根或 mapping 塞进 runtime。runtime 依赖信封或官方插件。
 5. 仅为编译速度拆 crate；全局 Cranelift；跨 worktree 共享 `CARGO_TARGET_DIR`。
@@ -415,12 +460,13 @@ S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 
 1. 「单 crate 逻辑分层（不为分层拆 crate）」→ [§2](#TARGET)。Host 侧 crate 边界 = 插件替换 / 开关 / 生命周期。客户端是 `xylitol-app-*`。禁止按层各一 crate。禁止 `xylitol-domain`。
 2. `protocol/{wire, ports, model, session}` 同一顶栏 → 信封进 `xylitol-protocol`，ports / 词表进 `xylitol-plugin-sdk`，session 实现进官方插件。① 三包互不依赖。mapping 在 serve。信封 ↛ ports 升为跨 crate 规则。
-3. 组合根落点从 `app/core` → 根包 `xylitol`（接线）。`xylitol-runtime` 只做执行权威。S1 前仍是手工装配。
+3. 组合根落点从 `app/core` → 根包 `xylitol`（接线）。`xylitol-runtime` 做执行权威 + 准入 + ReAct 内环。S1 前仍是手工装配。
 4. 根 `AGENTS.md` 与 `src/AGENTS.md` 同步。`crates/` 角色表换成 [§2](#TARGET)。
 5. `layer-architecture.feature` purpose 改为多 crate（W2.0b，validate-only）。
 6. 开箱 vs 配置后置拆成两句：监听主线且 feature 真可关；MCP 配置后置且 compile 也可关。
 7. `RunId` 不得进 `XyEvent` / 信封。
 8. `xylitol-official-plugin-*` 是官方静态 Host 侧 crate，不是插件市场，不是 dylib。
+9. 用户数据单元与唤醒源见 [§2.0b](#SETTLED)。插件依赖声明端口。ReAct 不是官方插件。
 
 不改的硬规则：Trust 门禁项目本地资源；工具开箱 allow-all；MCP 有配置才装配；产品 TUI 默认 attach 本机监听；监听 ≠ 操作器定义；改名不留别名；`just qa`；worktree 独立 `CARGO_TARGET_DIR`。
 
