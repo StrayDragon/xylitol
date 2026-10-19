@@ -10,7 +10,7 @@
 
 ## 现在
 
-crate 图已拍板，见 [§2.0b](#SETTLED)。**[W1.13](#W113)** 完成。重写前已撤 `layer-architecture` 的模块布局描述与源码扫描闸。下一刀：**[W2.0](#WS2)**（把 [§2](#TARGET) 写进现行 AGENTS）。两刀不要混提交。
+crate 图已拍板，见 [§2.0b](#SETTLED)。**[W2.0](#WS2)** 完成（§2 已写入 `src/AGENTS.md` 与根 `AGENTS.md`）。下一刀：**W2.1** `xylitol-plugin-sdk`。
 
 读法：现在 → [§2.0b](#SETTLED) → [§2.2](#GRAPH) → [§3.2](#WS2)。
 
@@ -18,7 +18,7 @@ crate 图已拍板，见 [§2.0b](#SETTLED)。**[W1.13](#W113)** 完成。重写
 
 「不用就不付钱」分三层，不要混：编译（依赖写在会用它的 crate）→ 装配（没挂的插件不 start）→ 热路径（不在每 token / 每帧上）。
 
-W1.13 注意：`docs/architecture/术语表.md` 里的目标包名不当现行 crate。现行仍是单 crate；包名真源是本文件 §2。
+现行 workspace 成员以根 `Cargo.toml` 为准。架构规则以 `src/AGENTS.md` 的目标 crate 图为准。包名真源是本文件 §2。
 
 ---
 
@@ -456,7 +456,7 @@ S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 
 ## 6. W2.0 改 AGENTS 时写什么
 
-改写只换稳定规则，不写进度，不留墓碑。W1.13 之后做；不要和 W1.13 混提交。
+**已完成**（写入 `src/AGENTS.md` 与根 `AGENTS.md`）。改写只换稳定规则，不写进度，不留墓碑。不要和 W2.1 混提交。
 
 1. 「单 crate 逻辑分层（不为分层拆 crate）」→ [§2](#TARGET)。Host 侧 crate 边界 = 插件替换 / 开关 / 生命周期。客户端是 `xylitol-app-*`。禁止按层各一 crate。禁止 `xylitol-domain`。
 2. `protocol/{wire, ports, model, session}` 同一顶栏 → 信封进 `xylitol-protocol`，ports / 词表进 `xylitol-plugin-sdk`，session 实现进官方插件。① 三包互不依赖。mapping 在 serve。信封 ↛ ports 升为跨 crate 规则。
@@ -480,7 +480,7 @@ S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 | STC | `/home/l8ng/Projects/__straydragon__/STC-Simplified-Technical-Chinese` |
 | 代码架构 | `src/AGENTS.md` |
 | 产品主线 | `docs/architecture/产品分层总览.md` |
-| spec 组织句 | 已撤。分层纪律在 `src/AGENTS.md`；目标 crate 图在本文件 §2 |
+| spec 组织句 | 已撤。分层纪律与目标 crate 图在 `src/AGENTS.md`；规划对照本文件 §2 |
 | 编译调优 | `~/.config/llman/skills/rust-build-tune/` |
 | rutis 方向 | `/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp/skills/xylitol-rutis-rewrite/` |
 | 拆分闸门 / crate 图 / 迁移 | 同上 `references/split-principles.md`（P1–P6）、`crate-graph.md`、`crate-naming.md`、`crate-split-detail.md`、`migration-stages.md` |
@@ -522,7 +522,7 @@ release：`opt-level = "z"`，`lto = "thin"`，`strip = "symbols"`，`panic = "a
 产品主线：对话循环、内置工具、会话持久化 / 导出、压缩、两家模型 API、Trust、图像附件。默认入口：产品 TUI attach 本机 Host（未在听失败）。后置：MCP。
 `@req:r1532` 要求 server 应用面。未实现方向见 [#28](https://github.com/StrayDragon/xylitol/issues/28)。
 
-现行 AGENTS 仍写单 crate。先 [W1.13](#W113)，再 [W2.0](#W20)。
+现行 workspace 仍是 `xylitol` + `xylitol-tui` + `xylitol-ai-bridge`。架构规则已换成目标 crate 图（`src/AGENTS.md`）。下一刀 [W2.1](#WS2)。
 
 ---
 

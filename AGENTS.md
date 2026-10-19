@@ -13,7 +13,7 @@
 
 # 仓库级 Agent 指南
 
-用与用户相同的语言回复。`xylitol` 是 **开箱即用的个人 coding agent**（LLM 增强开发工具包）：Rust workspace——主 crate 加 `crates/`（`xylitol-tui` TUI 引擎、`xylitol-ai-bridge` provider 方言桥）；开发由 llman SDD 驱动。
+用与用户相同的语言回复。`xylitol` 是 **开箱即用的个人 coding agent**（LLM 增强开发工具包）。Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成员以根 `Cargo.toml` 为准。开发由 llman SDD 驱动。
 
 术语表（黑话 ↔ 标准词 ↔ 英文对照总表；散文写作遇黑话首现时对照）：
 @docs/architecture/术语表.md
@@ -39,20 +39,24 @@
 | 代码是真值源；架构规则读 `src/AGENTS.md`；设计史查 `llmanspec/changes/archive/` | 凭记忆改架构；向 archive 要现行规则 |
 | 动代码前读相关代码，沿目录树遵循最近的 `AGENTS.md` | 跳过上下文直接改 |
 
-## 分层地图（摘要）
+## 目标 crate（摘要）
 
-主 crate 内逻辑分层（**不**拆 crate）。依赖与 seam 纪律 **只**在 `src/AGENTS.md`；此处一行角色：
+Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app / agent / infra` 各拆一 crate。依赖与 seam 纪律 **只**在 `src/AGENTS.md`。此处一行角色：
 
-| 层 | 角色 |
+| crate | 角色 |
 |---|---|
-| `protocol/` | wire + ports + 根上共享类型 |
-| `agent/` | 薄编排（ReAct、capabilities、投影 projection） |
-| `infra/` | ports 实现与 vendor |
-| `app/` | 应用端 + `core` seam |
-| `utils/` | 纯叶工具（仅 std；非 `Xy*` 稳定 API） |
-| `crates/xylitol-tui` | 通用 TUI 引擎（零引用主 crate） |
+| `xylitol-plugin-sdk` | 词表 + 端口 + 错误（插件作者只依赖这一包） |
+| `xylitol-protocol` | 四象限信封 + fory-v3。不认识端口，不认识 `XyEvent` |
+| `xylitol-runtime` | 执行权威：`XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入。不接线、不依赖插件、不依赖信封 |
+| `xylitol-serve` | 载体：监听 + `XyEvent` ↔ v3 mapping |
+| `xylitol-official-plugin-*` | 官方 Host 插件（七个：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks）。不是市场，不是 dylib |
+| `xylitol-app-tui` / `xylitol-app-print` | 产品端。TUI 只认信封；Print 同进程直调 runtime，不编 fory |
+| `xylitol-tui` | 通用 TUI 引擎（零引用产品） |
+| 根包 `xylitol` | 组合根：argv + 默认接线。唯一列出官方插件的 `Cargo.toml` |
 
-`app → agent|infra → protocol`；`agent` ↛ `infra`；`infra` ↛ `agent`。
+`plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。runtime → sdk。插件 → sdk。serve → runtime + protocol。app-tui → protocol + tui。根包 → 插件 + runtime + 端 + 载体。插件之间不得 `use`。
+
+开箱 vs 配置后置：产品 TUI 默认 attach 本机监听（`server` feature 可关，default 仍开）。MCP 有配置才装配（`mcp` feature 可关，default 仍开）。`otel` feature default 开，配置默认 none。
 
 ## 编码规则
 
@@ -60,13 +64,13 @@
 |---|---|
 | 遵循 `rustfmt.toml` / `.editorconfig`；排版交给 `just fmt` / `just lint` | 在 AGENTS 里重复排版细则 |
 | 命名：snake_case 模块与函数，PascalCase 类型 | 自创命名风格 |
-| 模块边界贴合分层；能内联不套 wrapper | 为对称性加 wrapper；加无要求的兼容 shim |
+| 模块边界贴合目标 crate 与 crate 内分层；能内联不套 wrapper | 为对称性加 wrapper；加无要求的兼容 shim |
 | 优先穷举类型 / 注册表；公共形状让 rust-analyzer 能跳转 | 字符串 magics；跳转不到的公共形状 |
 | `Xy*` 库契约与外部库包装准则：`src/AGENTS.md`“三层契约与 `Xy*`” | 凭感觉决定包不包一层 |
 
 ## Provider 交付范围
 
-交付 **OpenAI 兼容** 与 **Anthropic Messages** 两族（OAuth 等纳入是显式决策，不默认承诺）；网关 courtesy（如 Zen 会话归因）允许。产品细则：`docs/architecture/多厂商模型.md`；开闭规则（业务只依赖 `XyModel`，新兼容端 = adapter/配置）：`src/AGENTS.md`“Provider 与消息”。
+交付 **OpenAI 兼容** 与 **Anthropic Messages** 两族（OAuth 等纳入是显式决策，不默认承诺）；网关 courtesy（如 Zen 会话归因）允许。产品细则：`docs/architecture/多厂商模型.md`；开闭规则（业务只依赖 `XyModel`，新兼容端 = 方言插件 / 配置）：`src/AGENTS.md`“Provider 与消息”。
 
 ## 命令与验证
 
