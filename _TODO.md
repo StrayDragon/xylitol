@@ -392,7 +392,7 @@ temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（
 | `v7_layout.rs`；`plant_v7_*`；`then_header_v7_camelcase`；`test_c2826_v7_shell`。测试体里的 `v5_` / `v6_` 函数名 | 盘面代数进文件名 / 测试名 | `jsonl_layout` / `session_layout`。版本写进常量或断言消息 |
 | `wire_v3_client.rs`（`crates/xylitol-app-tui` 与 `src/app/core/host_client` 两份）；`wire_v3_mod.rs`；`src/app/server/wire_v3.rs`；`with_wire_v3`；`negotiate_wire_v3`；`WIRE_V3_ENV` 代码标识 | `wire` 与组合根 `wiring` 撞词。代数焊进每个文件名 | 客户端模块 `envelope_client`。API 用 `PROTOCOL_VERSION`。env 名见下行 must-SDD |
 | `crates/xylitol-protocol/src/v3/xy_wire_v3.fbs`；`scripts/gen_wire_v3.py`；`just codegen-wire`；`tests/bdd/steps_wire_v3.rs`；`bindings_wire_v3.rs` | 目录已是 `v3/`，文件名再带代数 | 见本小节「信封文件」：`v3/envelope.fbs`、`scripts/gen_envelope.py`、`just codegen-envelope`、`steps_envelope.rs`。**不改** fbs `namespace xy.wire.v3`、content-type、`WIRE_FORMAT_FORY_V3`。crate 根已有 `envelope.rs`（四象限外层），不要把 `pub mod v3` 改成 `pub mod envelope` |
-| sdk `dto::AiBridgeMessage`（现 `pub use` 为 `LlmMessage`）；`AiBridgeError`；`AiBridgeGenerateOptions` 等历史别名；openai/anthropic `pub mod dto`；`reqwest_bridge.rs` | 已不用的包前缀。`LlmMessage` 是词表叶，过 `XyModel` 口，要 `Xy*` | 类型名 `XyLlmMessage`（serde 标签仍是 `role`，JSONL 不改）。错误走 `XyError`。方言私有 DTO 不带 `AiBridge`。`reqwest_headers`。`AgentMessage` / `EnvMessage` / `AgentPart` 本批不改，除非单独点名 |
+| sdk `dto::AiBridgeMessage`（现 `pub use` 为 `LlmMessage`）；`AiBridgeError`；`AiBridgeGenerateOptions` 等历史别名；openai/anthropic `pub mod dto`；`reqwest_bridge.rs` | 已不用的包前缀。`LlmMessage` 是词表叶，过 `XyModel` 口，要 `Xy*` | 类型名 `XyLlmMessage`（serde 标签仍是 `role`，JSONL 不改）。错误走 `XyError`。方言私有 DTO 不带 `AiBridge`。`reqwest_headers` |
 | `package-ai-bridge.feature`；`package-ai-bridge-accounting.feature`；`bindings_package_ai_bridge.rs`；`steps_bridge.rs` 的 `AiBridgeBdd`；`llmanspec/AGENTS.md` 的 `package-ai-bridge*` 前缀 | capability / BDD 仍按旧包名 | `provider-openai*`（与 live 路径一致）。validate-only |
 | `xylitol::protocol::ports`（根 `src/protocol/mod.rs` 再导出 sdk）；BDD `tests/bdd` 走这条路径 | 信封 crate 不认识端口。路径撒谎 | `xylitol_plugin_sdk::{XyModel, …}`。见 [§3.2.3](#PORTS) |
 | `RuntimePorts`；`runtime/ports.rs`（runtime crate 与根 `src/agent` 两份）；`build_ports` / `build_ports_with_store` | 与 sdk 模块、TCP 端口三重撞名。S2 才删物化，标识符现在就不要再扩散 | 同批改 `RuntimeBaseline` / `build_baseline`。S2 再删物化 |
@@ -431,6 +431,7 @@ foryc 按 fbs 文件名出 `rust/<stem>.rs`。改文件名不必重跑 compiler�
 | `xylitol-tui` 的 `syntect_bridge.rs` | 引擎内部，零引用产品 |
 | `vendor/gherkin` | 上游包 |
 | `TRANSITION_EXEMPT`、根 `src/` 五文件 | S1 残差，见 [§3.1](#S1) |
+| `AgentMessage` / `EnvMessage` / `AgentPart` 是否加 `Xy` | **延后，不进本批。** 不宜加。`Xy*` 留给口与叶（`XyModel`、`XyLlmMessage`、`XyEvent`）。`AgentMessage` 是会话日志组合，不是可替换口。改成 `XyAgentMessage` 会把书签词表和库契约焊成一套品牌。`AgentPart` 若将来加前缀应叫 `XyPart`，也不进本批 |
 
 <a id="PORTS"></a>
 
