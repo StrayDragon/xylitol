@@ -2,7 +2,7 @@
 
 本文件是代码架构的单一真值源。覆盖目标 crate 图、依赖方向、seam、`Xy*`、消息/工具边界、扩展开闭、复杂度与体量策略。全局工作方式见根 `AGENTS.md`；产品心智见 `docs/architecture/`。子目录 `AGENTS.md` 只写本端例外，不重复本文件。
 
-**真值顺序**：代码与测试 → 本文件 → archive design。本文件写**稳定规则**，不写文件清单、change id 进度、超标表。现行 workspace 成员以根 `Cargo.toml` 为准。目标 crate 尚未进 workspace 时，对应代码仍在主 crate `src/`（或现有 `crates/xylitol-ai-bridge`）。新代码必须按目标依赖方向落点。
+**真值顺序**：代码与测试 → 本文件 → archive design。本文件写**稳定规则**，不写文件清单、change id 进度、超标表。现行 workspace 成员以根 `Cargo.toml` 为准。词表以 `xylitol-plugin-sdk` 为准。其余目标 crate 未填叶前，对应代码仍在主 crate `src/`（或现有 `crates/xylitol-ai-bridge`）。新代码必须按目标依赖方向落点。
 
 ## 目标 crate 图（normative）
 
@@ -143,7 +143,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 - **schemars**：放配置边界 / 使用方 crate；词表根类型默认只 serde。
 - **`XyEventSink`**：侧路生命周期（如 compaction），**不是**多 client turn 总线；turn 走 `XyDriver::run` 的事件流。
 
-端口清单与签名以词表 crate 代码为准（抽出前在 `src/protocol/ports`）。升格新 port 前先证明不能用配置开关或既有 `XyTool`/`XyModel`/`XyDriver`。异步 port 以 `dyn` 注入 → **维持 `async_trait`**（朴素 RPITIT 与 dyn 冲突）。
+端口清单与签名以 `xylitol-plugin-sdk` 代码为准。升格新 port 前先证明不能用配置开关或既有 `XyTool`/`XyModel`/`XyDriver`。异步 port 以 `dyn` 注入 → **维持 `async_trait`**（朴素 RPITIT 与 dyn 冲突）。
 
 ## 错误与观测
 

@@ -12,7 +12,7 @@
 
 检查点 tag **`v0.0.0-pre.old`**（`004a2e4d`，W2.0 AGENTS SSOT，胖 `src/` 仍出产品）。回退：`git switch -d v0.0.0-pre.old`。
 
-crate 图已拍板，见 [§2.0b](#SETTLED)。**[W2.0](#WS2)** 完成。走法：类型不双写、按 crate 切完就绿；先空壳 + 禁边门禁，再填叶。根 `src/` 终态 = CLI + wiring + embed，见 [§2.2.1](#ROOTSRC)。**[W2.0c](#WS2)** 完成（`just qa` 绿）。空壳在 `crates/` + `plugins/`；禁边闸 `scripts/check_crate_graph.py`。下一刀：**W2.1** 填 `xylitol-plugin-sdk`（类型不双写：填完主仓改 `use`，同批删旧模块）。搬旧模块前看 [§3.4](#GATES)。
+crate 图已拍板，见 [§2.0b](#SETTLED)。**[W2.0](#WS2)** / **[W2.0c](#WS2)** 完成。走法：类型不双写、按 crate 切完就绿。根 `src/` 终态 = CLI + wiring + embed，见 [§2.2.1](#ROOTSRC)。**[W2.1](#WS2)** 完成：词表在 `xylitol-plugin-sdk`（主仓 `src/protocol` 只剩 wire + re-export；ai-bridge DTO/选项 `pub use` sdk）。禁边闸 `scripts/check_crate_graph.py`。下一刀：**W2.2** 填 `xylitol-protocol`（迁 wire + fbs，删剩余 `src/protocol`）。搬旧模块前看 [§3.4](#GATES)。
 
 读法：现在 → [§2.0b](#SETTLED) → [§2.2](#GRAPH) → [§3.2](#WS2) → [§3.4](#GATES)。
 
@@ -442,6 +442,10 @@ SDD：skip-SDD（AGENTS / 产品文）+ validate-only（`.feature` + 步骤绑�
 
 S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 
+**S1 必读（勿忘）**：接入 rutis 必须先读 [`/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp`](/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp)（README 阅读序：assessment → host-server → plugin-policy → rewrite → overhead → dependency）。用它简化：IoC 从手工 `wiring.rs` 升到运行时、插件 `injects()`、实例/生命周期、开销红线、文件归位 `skills/xylitol-rutis-rewrite/references/crate-split-detail.md`。唯一 `use rutis` 落点是未来的 `xylitol-rutis`。
+
+不要照抄 temp 里已否的句子：ReAct 不是官方插件（在 `xylitol-runtime`）；包名是 `xylitol-official-plugin-*` 不是 `xylitol-core-plugin-*`；组合根是仓库根包，不是 `xylitol-assemble` / `xylitol-kernel`。
+
 <a id="GATES"></a>
 
 ### 3.4 重写闸（搬 `src/` 旧模块前）
@@ -529,8 +533,8 @@ W2.1 可以先**加** `xylitol-plugin-sdk`，主仓继续出二进制。闸在�
 | 产品主线 | `docs/architecture/产品分层总览.md` |
 | spec 组织句 | 已撤。分层纪律与目标 crate 图在 `src/AGENTS.md`；规划对照本文件 §2 |
 | 编译调优 | `~/.config/llman/skills/rust-build-tune/` |
-| rutis 方向 | `/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp/skills/xylitol-rutis-rewrite/` |
-| 拆分闸门 / crate 图 / 迁移 | 同上 `references/split-principles.md`（P1–P6）、`crate-graph.md`、`crate-naming.md`、`crate-split-detail.md`、`migration-stages.md` |
+| rutis 方向 | `/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp/`（整份 temp；S1 必读，见 [§3.3](#WS2)） |
+| 拆分闸门 / crate 图 / 迁移 | 同上 `skills/xylitol-rutis-rewrite/references/`：`split-principles.md`（P1–P6）、`crate-graph.md`、`crate-naming.md`、`crate-split-detail.md`、`migration-stages.md` |
 
 ---
 
@@ -569,7 +573,7 @@ release：`opt-level = "z"`，`lto = "thin"`，`strip = "symbols"`，`panic = "a
 产品主线：对话循环、内置工具、会话持久化 / 导出、压缩、两家模型 API、Trust、图像附件。默认入口：产品 TUI attach 本机 Host（未在听失败）。后置：MCP。
 `@req:r1532` 要求 server 应用面。未实现方向见 [#28](https://github.com/StrayDragon/xylitol/issues/28)。
 
-现行 workspace：根包 + `xylitol-tui` + `xylitol-ai-bridge` + W2.0c 空壳（sdk / protocol / runtime / serve / app-* / 七个 official-plugin）。产品仍从胖 `src/` 出。架构规则：`src/AGENTS.md`。下一刀 [W2.1](#WS2)。
+现行 workspace：根包 + `xylitol-tui` + `xylitol-ai-bridge` + 已填 `xylitol-plugin-sdk` + 其余 W2.0c 空壳（protocol / runtime / serve / app-* / 七个 official-plugin）。产品仍从胖 `src/` 出（protocol 词表已迁走）。架构规则：`src/AGENTS.md`。下一刀 [W2.2](#WS2)。
 
 ---
 

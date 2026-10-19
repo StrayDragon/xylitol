@@ -33,6 +33,7 @@ use crate::protocol::error::{XySessionStoreError, XyToolError};
 use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::ports::XySessionStore;
 use crate::protocol::ports::ask::{AskArgs, AskUserGateway};
+use crate::protocol::wire::ToWireEvent;
 use crate::protocol::wire::envelope::{
     ApprovalRequestedPayload, HostDescribeValue, PROTOCOL_VERSION, QuestionRequestedPayload,
     RpcMessage, RpcResult, SessionEventPayload, SessionResourcesPayload,

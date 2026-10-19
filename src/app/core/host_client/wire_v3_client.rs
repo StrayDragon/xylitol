@@ -16,7 +16,7 @@ use crate::protocol::wire::v3::{
 };
 use crate::protocol::wire::{
     ApprovalRequestedPayload, HostDescribeValue, QuestionRequestedPayload, SessionEventPayload,
-    SessionResourcesPayload, SessionResyncRequiredPayload, SessionSubscribedPayload,
+    SessionResourcesPayload, SessionResyncRequiredPayload, SessionSubscribedPayload, ToWireEvent,
     WIRE_FORMAT_FORY_V3, registry,
 };
 

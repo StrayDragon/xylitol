@@ -1,0 +1,408 @@
+//! Runtime boundary for session persistence.
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+
+use crate::error::{XySessionError, XySessionStoreError};
+use crate::session::{
+    EntryBase, SessionContext, SessionEntry, SessionInfoEntry, SessionTreeNode, build_session_tree,
+};
+
+pub use crate::session::ForkPosition;
+
+/// Row for session resume picker (XyDriver seam; mtime order is store-defined).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionListEntry {
+    pub id: String,
+    pub name: Option<String>,
+    /// First user-message preview (pi `firstMessage`); unnamed sessions use this as label.
+    pub first_message: Option<String>,
+    pub message_count: usize,
+    /// Last activity / file mtime (unix secs); used for relative age in the picker.
+    pub modified_unix: Option<u64>,
+    /// Parent session id when this session was forked/cloned (`SessionHeader.parent_session`).
+    pub parent_session_id: Option<String>,
+    /// Tree glyph prefix after forest flatten (`└─ ` / `├─ `…); empty for roots.
+    pub tree_prefix: String,
+    /// Session cwd from header (scope=Current filter).
+    pub cwd: Option<String>,
+    /// Persisted jsonl path when known (optional path display).
+    pub path: Option<String>,
+}
+
+/// Persistence port — abstracts session storage so the agent can be
+/// unit-tested without a real filesystem and the server can host
+/// sessions without coupling to the file store.
+///
+/// Methods are the **minimum** the ReAct loop and compaction call.
+/// Full session management (fork/navigate/export) stays on the concrete
+/// `infra::session::SessionManager` for the composition root.
+#[async_trait]
+pub trait XySessionStore: Send + Sync {
+    /// Check whether a session exists.
+    async fn exists(&self, session_id: &str) -> bool;
+
+    /// Load the raw typed session entries (for compaction / export).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
+    async fn load_entries(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError>;
+
+    /// Load entries on the current leaf→root branch (pi `getBranch`).
+    ///
+    /// Compaction prepare/cut MUST use this path so sibling branches are excluded.
+    /// Default falls back to [`Self::load_entries`] for linear/stub stores.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::load_entries`].
+    async fn load_leaf_branch(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        self.load_entries(session_id).await
+    }
+
+    /// Append a typed session entry (compaction summary, bash exec, etc.).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
+    async fn append_session_entry(
+        &self,
+        session_id: &str,
+        entry: &SessionEntry,
+    ) -> Result<(), XySessionStoreError>;
+
+    /// Commit a compaction entry and its storage-specific seal transaction.
+    ///
+    /// The default is append-only so lightweight stores and test doubles keep
+    /// their existing semantics. Persisted stores may override this to publish
+    /// new segments atomically.
+    async fn commit_compaction(
+        &self,
+        session_id: &str,
+        entry: &SessionEntry,
+    ) -> Result<(), XySessionStoreError> {
+        self.append_session_entry(session_id, entry).await
+    }
+
+    /// Load the session-wide set of done bash ids (c2770 pairing).
+    ///
+    /// ReAct history seeding and `build_session_context` call this instead of
+    /// a full `load_entries` just to compute the done set. The default is a
+    /// full-load fallback so lightweight stores and test doubles keep their
+    /// existing semantics; persisted stores may override to use sealed sidecars.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::load_entries`]. Callers MUST treat an `Err` as "fold
+    /// skipped" (no false interrupted notices), mirroring today's behavior.
+    async fn load_done_bash_ids(
+        &self,
+        session_id: &str,
+    ) -> Result<std::collections::HashSet<String>, XySessionStoreError> {
+        let entries = self.load_entries(session_id).await?;
+        Ok(crate::session::done_bash_ids(&entries))
+    }
+
+    /// Build the full session context (messages, thinking level, model).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
+    async fn build_session_context(
+        &self,
+        session_id: &str,
+    ) -> Result<SessionContext, XySessionStoreError>;
+
+    /// Create a new session (writes header, initializes leaf tracking).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the store cannot write the initial header / leaf state.
+    async fn create(
+        &self,
+        id: &str,
+        cwd: Option<&str>,
+        parent: Option<&str>,
+    ) -> Result<(), XySessionStoreError>;
+    /// Fork a session into a new child.
+    ///
+    /// Tree-positioned (not pure IO): missing `at_entry_id` is
+    /// [`XySessionError::EntryNotFound`]; persist failures stay
+    /// [`XySessionError::Store`].
+    ///
+    /// - [`ForkPosition::At`]: child path is `get_branch` through `at_entry_id` (re-chained).
+    /// - [`ForkPosition::Before`]: `at_entry_id` must be a user message; path ends at its
+    ///   parent (pi `/fork`); the user row is not copied.
+    ///
+    /// # Errors
+    ///
+    /// `Err(EntryNotFound)` when `at_entry_id` is not on the branch;
+    /// `Err(Store)` when the child session cannot be persisted.
+    async fn fork(
+        &self,
+        parent_id: &str,
+        child_id: &str,
+        at_entry_id: &str,
+        position: ForkPosition,
+    ) -> Result<(), XySessionError>;
+
+    /// Set the active leaf entry for branching / travel.
+    fn set_leaf(&self, session_id: &str, entry_id: Option<&str>);
+
+    /// Current leaf entry id, if any.
+    fn leaf_id(&self, session_id: &str) -> Option<String>;
+
+    /// Build the message-history session tree (default: load entries + `build_session_tree`).
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::load_entries`].
+    async fn message_history_tree(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionTreeNode>, XySessionStoreError> {
+        let entries = self.load_entries(session_id).await?;
+        Ok(build_session_tree(&entries))
+    }
+
+    /// List resumable sessions (mtime descending when persisted).
+    ///
+    /// Used by the XyDriver for `/session-resume` (not a `protocol::Command`).
+    /// Default returns an empty list so minimal store stubs stay usable.
+    ///
+    /// # Errors
+    ///
+    /// `Err` on store listing failure. Default returns `Ok(vec![])`.
+    async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XySessionStoreError> {
+        let _ = self;
+        Ok(Vec::new())
+    }
+
+    /// Latest display name from `session_info` entries (c1020 `/session-name`).
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
+    async fn get_session_name(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<String>, XySessionStoreError> {
+        let entries = self.load_entries(session_id).await?;
+        for entry in entries.iter().rev() {
+            if let SessionEntry::SessionInfo(si) = entry {
+                return Ok(si
+                    .name
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Append a sanitized session display name (CR/LF → space, trim; c1020).
+    ///
+    /// Returns the name actually stored.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
+    async fn set_session_name(
+        &self,
+        session_id: &str,
+        name: &str,
+    ) -> Result<String, XySessionStoreError> {
+        let sanitized = sanitize_session_display_name(name);
+        let entry = SessionEntry::SessionInfo(SessionInfoEntry {
+            base: EntryBase {
+                entry_type: "session_info".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            name: Some(sanitized.clone()),
+        });
+        self.append_session_entry(session_id, &entry).await?;
+        Ok(sanitized)
+    }
+
+    /// Delete a persisted session (XyDriver `/session-resume` panel; c1065).
+    ///
+    /// Default returns an error so minimal store stubs stay safe.
+    ///
+    /// # Errors
+    ///
+    /// `Err` when unsupported (default stub) or the store cannot delete.
+    async fn delete_session(&self, session_id: &str) -> Result<(), XySessionStoreError> {
+        let _ = session_id;
+        let _ = self;
+        Err(XySessionStoreError::unsupported("delete_session"))
+    }
+
+    /// Take process-local kernel write occupancy for a materialized session.
+    ///
+    /// Default is a no-op so in-memory stubs stay usable. Persisted stores
+    /// take a kernel occupancy on `session.lock` (r1950).
+    fn try_acquire_write_lock(&self, session_id: &str) -> Result<(), XySessionStoreError> {
+        let _ = session_id;
+        Ok(())
+    }
+
+    /// Release occupancy. Default no-op. MUST NOT unlink `session.lock`.
+    fn release_write_lock(&self, session_id: &str) {
+        let _ = session_id;
+    }
+
+    /// Read the most recent `limit` typed entries (server journal replay /
+    /// resume seeding / diagnostics).
+    ///
+    /// The default derives from a full [`Self::load_entries`] slice so
+    /// lightweight stores and test doubles inherit safe semantics; persisted
+    /// stores MAY override with a bounded read. Order is the append order.
+    ///
+    /// # Errors
+    ///
+    /// Same as [`Self::load_entries`].
+    async fn read_recent(
+        &self,
+        session_id: &str,
+        limit: usize,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        let all = self.load_entries(session_id).await?;
+        let skip = all.len().saturating_sub(limit);
+        Ok(all.into_iter().skip(skip).collect())
+    }
+}
+
+/// pi-aligned session display name sanitize (CR/LF runs → one space, then trim).
+pub fn sanitize_session_display_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut saw_nl = false;
+    for c in name.chars() {
+        if c == '\r' || c == '\n' {
+            if !saw_nl {
+                out.push(' ');
+                saw_nl = true;
+            }
+        } else {
+            saw_nl = false;
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::*;
+    use crate::session::MessageEntry;
+
+    struct MemStore {
+        entries: Mutex<Vec<SessionEntry>>,
+    }
+
+    #[async_trait]
+    impl XySessionStore for MemStore {
+        async fn exists(&self, _id: &str) -> bool {
+            false
+        }
+        async fn load_entries(&self, _id: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            Ok(self.entries.lock().unwrap().clone())
+        }
+        async fn append_session_entry(
+            &self,
+            _id: &str,
+            entry: &SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            self.entries.lock().unwrap().push(entry.clone());
+            Ok(())
+        }
+        async fn build_session_context(
+            &self,
+            _id: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
+            Err(XySessionStoreError::unsupported("build_session_context"))
+        }
+        async fn create(
+            &self,
+            _id: &str,
+            _cwd: Option<&str>,
+            _parent: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            Ok(())
+        }
+        async fn fork(
+            &self,
+            _parent_id: &str,
+            _child_id: &str,
+            _at_entry_id: &str,
+            _position: ForkPosition,
+        ) -> Result<(), XySessionError> {
+            Err(XySessionError::EntryNotFound {
+                entry_id: _at_entry_id.into(),
+            })
+        }
+        fn set_leaf(&self, _session_id: &str, _entry_id: Option<&str>) {}
+        fn leaf_id(&self, _session_id: &str) -> Option<String> {
+            None
+        }
+    }
+
+    fn text_entry(id: &str, text: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 1,
+            },
+            message: serde_json::to_value(crate::message::AgentMessage::assistant(
+                text.to_string(),
+            ))
+            .unwrap(),
+        })
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn read_recent_returns_last_n_in_append_order() {
+        let store = MemStore {
+            entries: Mutex::new(Vec::new()),
+        };
+        for i in 0..5 {
+            store
+                .append_session_entry("s", &text_entry(&format!("m{i}"), &format!("m{i}")))
+                .await
+                .unwrap();
+        }
+        let recent = store.read_recent("s", 2).await.unwrap();
+        assert_eq!(recent.len(), 2, "read_recent MUST 只返回最近 limit 条");
+        let last = recent.last().unwrap();
+        let text = last.as_agent_message().map(|m| m.text());
+        assert_eq!(text.as_deref(), Some("m4"), "返回条目 MUST 为最近");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn read_recent_over_limit_returns_all() {
+        let store = MemStore {
+            entries: Mutex::new(Vec::new()),
+        };
+        for i in 0..3 {
+            store
+                .append_session_entry("s", &text_entry(&format!("m{i}"), &format!("m{i}")))
+                .await
+                .unwrap();
+        }
+        let all = store.read_recent("s", 99).await.unwrap();
+        assert_eq!(all.len(), 3, "limit 超总量 MUST 返回全部");
+    }
+}

@@ -1,39 +1,22 @@
 //! Protocol — shared contracts for wire, ports, and cross-layer vocabulary.
 //!
-//! Layout (scheme B):
-//! - [`wire`] — client ↔ core `Command` / `Event` (transport-agnostic)
-//! - [`ports`] — agent ↔ infra replaceable traits (`XyModel`, `XyTool`, …)
-//! - clustered root types — `model`, `session`, plus flat modules
-//!   (`message`, `lifecycle`, …) that appear in port/wire signatures
-//!
-//! Dependency: root types MUST NOT depend on `wire`/`ports`; `wire` MUST NOT
-//! depend on `ports`; `ports` MAY use root types + bridge DTO. This module
-//! MUST NOT depend on `agent` or `infra`.
+//! Vocabulary, ports, and errors live in `xylitol-plugin-sdk`. This module
+//! re-exports them and keeps the remaining wire envelope until W2.2.
 
-// wire + ports stay `pub`: they are the sanctioned shared vocabulary beside the
-// crate-root `Xy*` re-exports. Flat leaf modules are `pub(crate)` — reach their
-// curated types via the re-exports above / at the crate root, not by deep path.
-pub mod ports;
+pub use xylitol_plugin_sdk::{
+    compaction_config, error, lifecycle, message, model, model_entry, ports, resource, session,
+    source_info,
+};
+pub(crate) use xylitol_plugin_sdk::{tool_name, tool_timeout};
+
 pub mod wire;
-
-pub mod compaction_config;
-pub mod error;
-pub mod lifecycle;
-pub mod message;
-pub mod model;
-pub mod model_entry;
-pub mod resource;
-pub mod session;
-pub mod source_info;
-pub(crate) mod tool_name;
-pub(crate) mod tool_timeout;
 
 // Wire Command/Event re-exported at protocol root — the canonical application-facing path.
 pub use wire::{
     ApprovalRequestedPayload, Command, DOWNLINK_METHODS, Event, HostDescribeValue,
     PROTOCOL_VERSION, QuestionRequestedPayload, RpcError, RpcMessage, RpcResult,
     SessionEventPayload, SessionResourcesPayload, SessionResyncRequiredPayload,
-    SessionSubscribedPayload, is_downlink_method, is_unary_method,
+    SessionSubscribedPayload, ToWireEvent, is_downlink_method, is_unary_method,
 };
 
 // Flat port re-exports for `crate::protocol::{XyModel, …}` call sites.
@@ -61,3 +44,6 @@ pub use tool_timeout::{
     DEFAULT_TOOL_TIMEOUT_SECS, MAX_EXTERNAL_WAIT_SECS, MAX_TOOL_TIMEOUT_SECS, ToolTimeout,
     ToolTimeoutError,
 };
+
+#[cfg(test)]
+mod session_fold_tests;

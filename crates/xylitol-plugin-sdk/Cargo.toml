@@ -9,3 +9,20 @@ repository = "https://github.com/straydragon/xylitol"
 publish = false
 
 [dependencies]
+anyhow = "1"
+async-trait = "0.1"
+fastrace = { version = "0.7", features = ["enable"] }
+futures = "0.3"
+log = "0.4"
+schemars = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["unbounded_depth"] }
+strum = { version = "0.28", features = ["derive"] }
+thiserror = "2"
+tokio = { version = "1", features = ["sync", "macros", "rt", "time"] }
+tokio-util = "0.7"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+insta = "1"
+yaml_serde = "0.10.7"

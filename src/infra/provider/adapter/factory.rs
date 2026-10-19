@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn model_entry_allows_compat_forbids_extra_policy_yaml() {
-        let src = include_str!("../../../protocol/model_entry.rs");
+        let src = include_str!("../../../../crates/xylitol-plugin-sdk/src/model_entry.rs");
         let entry = src
             .split("pub struct XyModelEntryConfig")
             .nth(1)

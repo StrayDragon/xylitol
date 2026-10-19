@@ -1,5 +1,6 @@
 use super::*;
 use crate::protocol::message::AgentMessage;
+use crate::protocol::wire::ToWireEvent;
 
 fn assistant_end() -> XyEvent {
     XyEvent::AgentEnd {

@@ -111,13 +111,18 @@ pub enum Event {
     },
 }
 
-impl XyEvent {
-    /// Convert a domain lifecycle event to its wire-protocol representation.
-    ///
-    /// Returns `None` for internal-only events that should not cross the
-    /// client boundary (auto-retry bookkeeping, etc.). [`XyEvent::QueueUpdate`]
-    /// and [`XyEvent::TodoUpdated`] are wire-visible (c540 / pa-todo1).
-    pub fn to_wire_event(&self) -> Option<Event> {
+/// Convert a domain lifecycle event to its wire-protocol representation.
+///
+/// Lives next to the wire [`Event`] enum (orphan-safe: local trait, foreign
+/// [`XyEvent`]). Returns `None` for internal-only events that should not cross
+/// the client boundary (auto-retry bookkeeping, etc.). [`XyEvent::QueueUpdate`]
+/// and [`XyEvent::TodoUpdated`] are wire-visible (c540 / pa-todo1).
+pub trait ToWireEvent {
+    fn to_wire_event(&self) -> Option<Event>;
+}
+
+impl ToWireEvent for XyEvent {
+    fn to_wire_event(&self) -> Option<Event> {
         match self {
             XyEvent::TextDelta(text) => Some(Event::TextDelta { text: text.clone() }),
             XyEvent::ThinkingDelta(text) => Some(Event::ThinkingDelta { text: text.clone() }),

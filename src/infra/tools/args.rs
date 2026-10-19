@@ -4,19 +4,12 @@
 //! tool deserializes once into a typed `*Args` struct — either via
 //! [`super::typed::TypedTool`] blanket or at a manual `execute` entry.
 
-use serde::de::DeserializeOwned;
-use serde_json::Value;
-
-use crate::protocol::error::XyToolError;
-
-/// Deserialize tool JSON args into `T`, mapping failures to [`XyToolError::InvalidArgs`].
-pub fn parse_tool_args<T: DeserializeOwned>(args: Value) -> Result<T, XyToolError> {
-    serde_json::from_value(args).map_err(|e| XyToolError::InvalidArgs(e.to_string()))
-}
+pub use xylitol_plugin_sdk::ports::parse_tool_args;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::error::XyToolError;
     use serde::Deserialize;
     use serde_json::json;
 

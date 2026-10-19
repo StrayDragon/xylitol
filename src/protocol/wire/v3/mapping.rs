@@ -25,7 +25,7 @@ use crate::protocol::wire::Command as WireCommand;
 /// Convert a domain lifecycle event to its v3 fory representation.
 ///
 /// Returns `None` for the same internal-only events as
-/// [`XyEvent::to_wire_event`] (auto-retry bookkeeping, session-info /
+/// [`crate::protocol::wire::ToWireEvent::to_wire_event`] (auto-retry bookkeeping, session-info /
 /// thinking-level projections covered elsewhere).
 pub fn xy_event_to_v3(ev: &XyEvent) -> Option<v3::Event> {
     match ev {

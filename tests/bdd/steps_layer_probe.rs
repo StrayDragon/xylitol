@@ -90,7 +90,7 @@ pub(crate) fn w_la_pi_refs() {
     let mut hits = 0usize;
     for path in [
         "src/protocol/wire/envelope.rs",
-        "src/protocol/model/meta.rs",
+        "crates/xylitol-plugin-sdk/src/model/meta.rs",
         "src/agent/runtime/react/mod.rs",
     ] {
         let text = la_load(path);
@@ -128,7 +128,10 @@ pub(crate) fn t_la_reexport_list() {
 #[when("读取配置边界的 schemars 派生")]
 pub(crate) fn w_la_schemars_boundary() {
     let mut hits = String::new();
-    for path in ["src/infra/config/types.rs", "src/protocol/session/mod.rs"] {
+    for path in [
+        "src/infra/config/types.rs",
+        "crates/xylitol-plugin-sdk/src/session/mod.rs",
+    ] {
         let text = la_load(path);
         let n = text.lines().filter(|l| l.contains("JsonSchema")).count();
         hits.push_str(&format!("{path}:{n};"));
@@ -212,7 +215,7 @@ pub(crate) fn t_provider_wrap_single() {
 
 #[when("扫描厂商类型的出现位置")]
 pub(crate) fn w_vendor_type_boundary() {
-    let port = la_load("src/protocol/ports/model.rs");
+    let port = la_load("crates/xylitol-plugin-sdk/src/ports/model.rs");
     let bridge = la_load("crates/xylitol-ai-bridge/src/provider/native/openai_responses.rs");
     let hits = format!(
         "{};{}",
@@ -238,7 +241,8 @@ pub(crate) fn t_vendor_type_boundary() {
 
 #[when("读取模型端口的消息入参形态")]
 pub(crate) fn w_model_port_input_shape() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/ports/model.rs")));
+    LA_PROBE
+        .with(|p| *p.borrow_mut() = Some(la_load("crates/xylitol-plugin-sdk/src/ports/model.rs")));
 }
 
 #[then("入参为 bridge DTO 且无 AgentMessage")]
@@ -256,7 +260,8 @@ pub(crate) fn t_model_port_input_shape() {
 
 #[when("读取 api 字面量全称集")]
 pub(crate) fn w_api_literal_fullnames() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/model/config.rs")));
+    LA_PROBE
+        .with(|p| *p.borrow_mut() = Some(la_load("crates/xylitol-plugin-sdk/src/model/config.rs")));
 }
 
 #[then("三全称在册且无简写别名")]
@@ -1032,7 +1037,8 @@ fn t3_scan_agent_trust_defs() -> String {
 
 #[when("读取 Todo 领域模型形状")]
 pub(crate) fn w_todo_model_shape() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/session/todo.rs")));
+    LA_PROBE
+        .with(|p| *p.borrow_mut() = Some(la_load("crates/xylitol-plugin-sdk/src/session/todo.rs")));
 }
 
 #[then("条目为有序集合且 content 与状态受约束")]
@@ -1048,7 +1054,7 @@ pub(crate) fn t_todo_model_shape() {
 
 #[when("读取 Todo 快照投影边界")]
 pub(crate) fn w_todo_snapshot_boundary() {
-    let a = la_load("src/protocol/session/todo.rs");
+    let a = la_load("crates/xylitol-plugin-sdk/src/session/todo.rs");
     let b = la_load("src/agent/prompt/status_bar.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== status_bar ===\n{b}")));
 }
@@ -1143,7 +1149,7 @@ pub(crate) fn t_cwd_check_before_restore() {
 
 #[when("读取会话存储端口实现")]
 pub(crate) fn w_session_store_port_impl() {
-    let a = la_load("src/protocol/ports/session.rs");
+    let a = la_load("crates/xylitol-plugin-sdk/src/ports/session.rs");
     let b = la_load("src/infra/session/manager/store.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
 }
@@ -1161,7 +1167,9 @@ pub(crate) fn t_session_store_port_impl() {
 
 #[when("读取会话日志访问接口")]
 pub(crate) fn w_journal_read_recent() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/ports/session.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load("crates/xylitol-plugin-sdk/src/ports/session.rs"))
+    });
 }
 
 #[then("read_recent 暴露给 server journal")]
@@ -1196,7 +1204,7 @@ pub(crate) fn t_export_io_assembly() {
 
 #[when("读取会话持久化分层")]
 pub(crate) fn w_session_persistence_layers() {
-    let a = la_load("src/protocol/ports/session.rs");
+    let a = la_load("crates/xylitol-plugin-sdk/src/ports/session.rs");
     let b = la_load("src/infra/session/manager/store.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
 }
@@ -1268,7 +1276,7 @@ pub(crate) fn t_resume_single_path() {
 
 #[when("读取消息词汇分层")]
 pub(crate) fn w_message_vocab_layers() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/message.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("crates/xylitol-plugin-sdk/src/message.rs")));
 }
 
 #[then("AgentMessage 以组合表达且协议词汇单一")]
@@ -1350,7 +1358,8 @@ pub(crate) fn t_permission_advice_doc() {
 
 #[when("读取资源来源信息类型")]
 pub(crate) fn w_source_info_shape() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/source_info.rs")));
+    LA_PROBE
+        .with(|p| *p.borrow_mut() = Some(la_load("crates/xylitol-plugin-sdk/src/source_info.rs")));
 }
 
 #[then("公共 SourceInfo 含来源与作用域字段")]
@@ -1367,7 +1376,8 @@ pub(crate) fn t_source_info_shape() {
 
 #[when("读取资源作用域枚举")]
 pub(crate) fn w_source_scope_enum() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/source_info.rs")));
+    LA_PROBE
+        .with(|p| *p.borrow_mut() = Some(la_load("crates/xylitol-plugin-sdk/src/source_info.rs")));
 }
 
 #[then("支持 user 与 project 与 temporary")]
@@ -1645,7 +1655,8 @@ pub(crate) fn t_provider_config_value_expression() {
 
 #[when("读取 provider 注册配置")]
 pub(crate) fn w_provider_registration_config() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/protocol/model/config.rs")));
+    LA_PROBE
+        .with(|p| *p.borrow_mut() = Some(la_load("crates/xylitol-plugin-sdk/src/model/config.rs")));
 }
 
 #[then("支持密钥与地址与请求头")]

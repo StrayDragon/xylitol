@@ -18,6 +18,6 @@ pub use envelope::{
     SessionResyncRequiredPayload, SessionSubscribedPayload, WIRE_FORMAT_FORY_V3,
     WIRE_FORMAT_JSONRPC,
 };
-pub use event::Event;
+pub use event::{Event, ToWireEvent};
 pub use method::{DOWNLINK_METHODS, is_downlink_method, is_unary_method};
 pub use registry::{Auth, Idem, MethodEntry, REGISTRY, Resp, lookup, names, parse_command};

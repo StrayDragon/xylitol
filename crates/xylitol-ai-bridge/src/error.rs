@@ -1,12 +1,4 @@
-#[derive(Debug, thiserror::Error)]
-pub enum AiBridgeError {
-    #[error("provider error: {0}")]
-    Provider(#[source] anyhow::Error),
-    #[error("aborted")]
-    Aborted,
-    #[error("{0}")]
-    Io(#[from] std::io::Error),
-}
+pub use xylitol_plugin_sdk::AiBridgeError;
 
 #[cfg(test)]
 mod tests {
