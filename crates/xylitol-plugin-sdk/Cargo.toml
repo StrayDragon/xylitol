@@ -1,0 +1,11 @@
+[package]
+name = "xylitol-plugin-sdk"
+version = "0.0.0-pre"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT"
+description = "Vocabulary, ports, and errors for Host plugins"
+repository = "https://github.com/straydragon/xylitol"
+publish = false
+
+[dependencies]

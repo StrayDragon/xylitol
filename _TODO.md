@@ -10,9 +10,11 @@
 
 ## 现在
 
-crate 图已拍板，见 [§2.0b](#SETTLED)。**[W2.0](#WS2)** 完成（§2 已写入 `src/AGENTS.md` 与根 `AGENTS.md`）。下一刀：**W2.1** `xylitol-plugin-sdk`。
+检查点 tag **`v0.0.0-pre.old`**（`004a2e4d`，W2.0 AGENTS SSOT，胖 `src/` 仍出产品）。回退：`git switch -d v0.0.0-pre.old`。
 
-读法：现在 → [§2.0b](#SETTLED) → [§2.2](#GRAPH) → [§3.2](#WS2)。
+crate 图已拍板，见 [§2.0b](#SETTLED)。**[W2.0](#WS2)** 完成。走法：类型不双写、按 crate 切完就绿；先空壳 + 禁边门禁，再填叶。根 `src/` 终态 = CLI + wiring + embed，见 [§2.2.1](#ROOTSRC)。**[W2.0c](#WS2)** 完成（`just qa` 绿）。空壳在 `crates/` + `plugins/`；禁边闸 `scripts/check_crate_graph.py`。下一刀：**W2.1** 填 `xylitol-plugin-sdk`（类型不双写：填完主仓改 `use`，同批删旧模块）。搬旧模块前看 [§3.4](#GATES)。
+
+读法：现在 → [§2.0b](#SETTLED) → [§2.2](#GRAPH) → [§3.2](#WS2) → [§3.4](#GATES)。
 
 本轮不引入 rutis。不为编译速度拆 crate。单包 default-on 的 Cargo feature 不省默认二进制。
 
@@ -149,19 +151,20 @@ crate 边界按替换、开关、生命周期来划，不按 `app / agent / infr
 ### 2.2 目录总图
 
 ```text
-crates/
-  xylitol-plugin-sdk/           词表 + 端口 + 错误（插件作者依赖这一包）
-  xylitol-protocol/             四象限信封 + fory-v3 + PROTOCOL_VERSION
+仓库根 xylitol/                 组合根 package（BusyBox bin + embed）。不要 crates/xylitol/
+  src/                          终态只留 CLI + wiring + embed，见 [§2.2.1](#ROOTSRC)
+  crates/
+    xylitol-plugin-sdk/         词表 + 端口 + 错误（插件作者依赖这一包）
+    xylitol-protocol/           四象限信封 + fory-v3 + PROTOCOL_VERSION
                                 可含很薄的 attach client 半；过厚再拆 xylitol-attach
-  xylitol-runtime/              执行权威：XyDriver + trust + 会话槽 + ReAct 内环 + 唤醒准入
+    xylitol-runtime/            执行权威：XyDriver + trust + 会话槽 + ReAct 内环 + 唤醒准入
                                 进程内直调合法。不接线、不依赖插件、不依赖信封
-  xylitol-serve/                载体：把已装配的 runtime 挂到 HTTP/WS
+    xylitol-serve/              载体：把已装配的 runtime 挂到 HTTP/WS
                                 并做 XyEvent ↔ v3 Event mapping
-  xylitol-tui/                  TUI 引擎。零引用产品。不改名
-  xylitol-app-tui/              产品 TUI 客户端（只认信封）
-  xylitol-app-print/            Print 客户端（只认 XyDriver）
-  xylitol-rutis/                S1 才建；唯一 use rutis
-  xylitol/                      组合根：argv + 默认接线（BusyBox 叶子）
+    xylitol-tui/                TUI 引擎。零引用产品。不改名
+    xylitol-app-tui/            产品 TUI 客户端（只认信封）
+    xylitol-app-print/          Print 客户端（只认 XyDriver）
+    xylitol-rutis/              S1 才建；唯一 use rutis
   plugins/                      仅 Host 侧。Cargo 依赖只出现在根包
     xylitol-official-plugin-session/
     xylitol-official-plugin-compaction/
@@ -179,7 +182,28 @@ crates/
 | Print | `xylitol-app-print`（同进程直调 runtime，不是插件，不编 fory） |
 | 操作器 | `xylitol-runtime`（执行权威；不是组合根） |
 | 监听 | `xylitol-serve`（产品 TUI 默认 attach 本机这一层） |
-| 组合根 | 根包 `xylitol`（argv + 默认接线；唯一列出官方插件的 Cargo.toml） |
+| 组合根 | 仓库根包 `xylitol`（argv + wiring + embed；唯一列出官方插件的 Cargo.toml） |
+
+<a id="ROOTSRC"></a>
+
+### 2.2.1 根 `src/` 终态
+
+拍板：组合根留在仓库根 package。`cargo run` 仍在仓库根。不要再做一个 `crates/xylitol/`。
+
+`src/` 终态只是 CLI 与 embed 入口，不是现在这棵胖树：
+
+```text
+src/
+  main.rs      tokio + run()
+  lib.rs       embed + 精选 Xy* 再导出
+  cli.rs       clap：无子命令 / tui / print / serve / --list-models
+  wiring.rs    new 七个官方插件，注入 runtime；没配置不 start mcp/hooks
+  embed.rs     库用户走同一套 wiring，不经 argv
+```
+
+里面没有 TUI 画布、Print 渲染、HTTP 监听、ReAct、工具实现。那些在 `xylitol-app-*` / `xylitol-serve` / `xylitol-runtime` / `official-plugin-*`。今日 `src/app/core` 里的 `XyDriver` / bang / export 也不属这层。
+
+过渡：旧 `src/` 继续出产品二进制。W2.5 收口后按模块删，不留 shim。不得把端实现嵌回 `src/app/tui`、`src/app/print`。
 
 <a id="GRAPH"></a>
 
@@ -281,8 +305,8 @@ flowchart TB
 
 | 轨 | 做什么 | 编译 |
 |---|---|---|
-| 旧 | `src/` 出产品 `xylitol` | 照旧 |
-| 新 | `xylitol-runtime` / `xylitol-serve` / `xylitol-app-*` 按信封与 `.feature` 重写 | `cargo build -p …` |
+| 旧 | 仓库根 `src/` 出产品 `xylitol`（过渡胖树） | 照旧，直到该批删对应旧模块 |
+| 新 | 目标 crate 按信封与 `.feature` 重写；根 `src/` 收成 [§2.2.1](#ROOTSRC) | `cargo build -p …` |
 
 共享只允许：跨端协议形状、`.feature` 句子、固定区词汇、DESIGN 色板。Harness：引擎按键→状态在 `xylitol-tui`；产品场景 / 假 Host designing 在 `xylitol-app-tui`。
 
@@ -345,7 +369,7 @@ S0 搬 crate 时顺手改。不单独全树 rename。
 | 规划名前缀 `xylitol-core-plugin-*` | `xylitol-official-plugin-*`（官方 Host 插件，不是内核） |
 | `HostState` / 角色 host / `HostClient` | 角色「执行权威」；提供方 HostServer；载体 carrier。`XyDriver`、`HostClient` 保留 |
 | `protocol/model*` 与 agent 侧 `model` | 契约侧对齐 `XyModel`；agent 侧用选择 / 装配 |
-| 根包含全部 lib | 根包 = 组合根（argv + 默认接线）。不要缩成只剩 argv，也不要把接线塞进 runtime |
+| 根包含全部 lib | 仓库根包 = 组合根。`src/` 终态 = CLI + wiring + embed，见 [§2.2.1](#ROOTSRC)。不要缩成只剩 argv，也不要把接线塞进 runtime |
 | `crates/xylitol-ai-bridge` | 删包；去留见 [§2.3](#LLM) |
 | feature 名 `server` | 可仍叫 `server`；不得改 attach 行为 |
 
@@ -365,7 +389,7 @@ S0 搬 crate 时顺手改。不单独全树 rename。
 
 ### 3.1 W1.13 — STC 改写现行单 crate 描述
 
-只改描述和已错事实。不改标识符，不开新产品，不把 [§2](#TARGET) 提前写进现行规则。
+**已完成**（随后 W2.0 已把 [§2](#TARGET) 写入 AGENTS）。下文是当时范围，不要再执行。
 
 SDD：skip-SDD（AGENTS / 产品文）+ validate-only（`.feature` + 步骤绑定）。
 
@@ -385,15 +409,18 @@ SDD：skip-SDD（AGENTS / 产品文）+ validate-only（`.feature` + 步骤绑�
 
 <a id="WS2"></a>
 
-### 3.2 WS2 契约叶 + 重写双写
+### 3.2 WS2 契约叶 + 按 crate 切完
 
-验收：边界就位 + `just qa` 全绿。编译变快只是副产品。回退靠 git revert 该批。
+验收：边界就位 + `just qa` 全绿。编译变快只是副产品。回退：检查点 `v0.0.0-pre.old`，或 git revert 该批。
+
+类型不双写：新 crate 就是 SSOT，主仓马上 `use`，旧模块同批删。不要一份类型留在 `src/protocol` 又抄进 plugin-sdk。产品 BDD 保持绿；先红的是禁边门禁，不是用户故事。
 
 | 批 | 做什么 | 准入 | SDD |
 |---|---|---|---|
 | W2.0 | `src/AGENTS.md` 与根 `AGENTS.md` 换成 [§2](#TARGET)；细则 [§6](#W20) | 否则代理按旧规则回滚 | skip-SDD |
 | W2.0b | 若产品场景步骤文本随 crate 路径改名，再改 `layer-architecture.feature`（现已不钉模块布局） | 行为测步骤过期 | validate-only |
-| W2.1 | `xylitol-plugin-sdk` | P5 | skip-SDD + validate-only |
+| W2.0c | 目标 crate 空壳进 workspace + `scripts/check_crate_graph.py`（禁边）进 `just qa`。根包仍出产品。 | 已种树 | skip-SDD |
+| W2.1 | 填 `xylitol-plugin-sdk` | P5 | skip-SDD + validate-only |
 | W2.2 | `xylitol-protocol`；顺手改 `wire` 撞车名 | P5 | 同上 |
 | W2.2b | 按 [§2.3](#LLM) 重写两个 provider 插件；plugin-sdk 只收词表薄留；删 `xylitol-ai-bridge` | P1 / P6 | 同上 |
 | W2.3 | `xylitol-official-plugin-session` / `-compaction` / `-tools` / `-mcp` / `-hooks` / `-provider-*` | P1 / P2 / P6 | skip-SDD |
@@ -401,7 +428,7 @@ SDD：skip-SDD（AGENTS / 产品文）+ validate-only（`.feature` + 步骤绑�
 | W2.5 | 重写 `xylitol-app-tui` + `xylitol-app-print`；根包接线 | P1 / P2 | 同上；TUI 加 `just qa-e2e` |
 | W2.6 | 每批后 `just qa` | 门禁 | 强制 |
 
-不创建：`xylitol-rutis`、`xylitol-host`、`xylitol-client`、`xylitol-kernel`、`xylitol-assemble`、`xylitol-types`、`xylitol-official-plugin-react`、`xylitol-official-plugin-tui`、`xylitol-app-voice`、空 LSP/DAP crate、dylib 加载器。
+不创建：`xylitol-rutis`、`xylitol-host`、`xylitol-client`、`xylitol-kernel`、`xylitol-assemble`、`xylitol-types`、`xylitol-official-plugin-react`、`xylitol-official-plugin-tui`、`xylitol-app-voice`、空 LSP/DAP crate、dylib 加载器、`crates/xylitol/`（组合根就是仓库根）。
 
 ### 3.3 WS3（本轮不做）
 
@@ -414,6 +441,26 @@ SDD：skip-SDD（AGENTS / 产品文）+ validate-only（`.feature` + 步骤绑�
 | S5 | TUI 作客户端事件订阅者 |
 
 S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
+
+<a id="GATES"></a>
+
+### 3.4 重写闸（搬 `src/` 旧模块前）
+
+W2.1 可以先**加** `xylitol-plugin-sdk`，主仓继续出二进制。闸在「从 `src/` **删**旧模块」的收口。优先把扫描改成产品可观察测，不要把路径闸抄进新 crate。
+
+**不挡 W2.1 建包。** 挡对应批的删模块。
+
+| 何时红 | 闸 | 处理 |
+|---|---|---|
+| W2.2b 删 `xylitol-ai-bridge` | `package-ai-bridge.feature` 规定仓库必须有该成员包；`infra-provider.feature` 钉 `AdapterXyModel` + 实现归属 ai-bridge；`domain-compaction.feature` 点名 ai-bridge accounting；`test-fake-provider.feature` 经 `AdapterXyModel` 装配 | 同批 validate-only：改成方言插件 / `impl XyModel`，删包名硬约束 |
+| W2.2 / 抽信封 | `tests/bdd/steps_wire_v3.rs` 读 `src/protocol/wire/v3/*.fbs` | 路径改到 `crates/xylitol-protocol` |
+| W2.3 / 工具与 session | `tests/bdd/steps_tools.rs` 读 `src/protocol/tools.rs`；`steps_task_model.rs` 读 `src/infra/provider/adapter/mod.rs` | 改绑定或改成行为测 |
+| W2.4 | `agent-runtime.feature`「经 app/core 助手」；`tests/bdd/steps_server.rs` `source_contains("src/app/server/…")`、`src/app/core/driver` | 步骤改产品行为；路径随 serve/runtime |
+| W2.5 | `just qa-check-complexity` 钉 `src/app/tui/{host,layout,effects,bridge}`；`scripts/check_tui_tokens.py` 与 `steps_app_tui_host.rs` 读 `src/app/tui/DESIGN.md` / `AGENTS.md` | 路径改到 `crates/xylitol-app-tui` |
+| 随手改 | `llmanspec/AGENTS.md` capability 前缀仍按 `app-*` / `agent-*` / `infra-*` 层 + `src/app/tui` + `package-ai-bridge*` | 不挡编译；新 spec 不要再按层取前缀 |
+| 已撤但仍占编译 | `tests/bdd/steps_layer_probe.rs` 大量 `la_load("src/…")`，layer-architecture 已不绑 | 确认无其它 scenario 引用后可删文件，不作为布局真源 |
+
+`src/app/tui/AGENTS.md`、根 `AGENTS.md` 里的产品端路径是**现行代码**指针，随 W2.5 改写，现在不要提前改成不存在的 crate 路径。
 
 ---
 
@@ -522,7 +569,7 @@ release：`opt-level = "z"`，`lto = "thin"`，`strip = "symbols"`，`panic = "a
 产品主线：对话循环、内置工具、会话持久化 / 导出、压缩、两家模型 API、Trust、图像附件。默认入口：产品 TUI attach 本机 Host（未在听失败）。后置：MCP。
 `@req:r1532` 要求 server 应用面。未实现方向见 [#28](https://github.com/StrayDragon/xylitol/issues/28)。
 
-现行 workspace 仍是 `xylitol` + `xylitol-tui` + `xylitol-ai-bridge`。架构规则已换成目标 crate 图（`src/AGENTS.md`）。下一刀 [W2.1](#WS2)。
+现行 workspace：根包 + `xylitol-tui` + `xylitol-ai-bridge` + W2.0c 空壳（sdk / protocol / runtime / serve / app-* / 七个 official-plugin）。产品仍从胖 `src/` 出。架构规则：`src/AGENTS.md`。下一刀 [W2.1](#WS2)。
 
 ---
 

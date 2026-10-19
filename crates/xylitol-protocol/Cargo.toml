@@ -1,0 +1,11 @@
+[package]
+name = "xylitol-protocol"
+version = "0.0.0-pre"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT"
+description = "Four-quadrant RPC envelope (fory-v3)"
+repository = "https://github.com/straydragon/xylitol"
+publish = false
+
+[dependencies]

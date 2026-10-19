@@ -14,7 +14,23 @@ categories = []
 
 [workspace]
 resolver = "2"
-members = ["crates/xylitol-tui", "crates/xylitol-ai-bridge"]
+members = [
+    "crates/xylitol-tui",
+    "crates/xylitol-ai-bridge",
+    "crates/xylitol-plugin-sdk",
+    "crates/xylitol-protocol",
+    "crates/xylitol-runtime",
+    "crates/xylitol-serve",
+    "crates/xylitol-app-tui",
+    "crates/xylitol-app-print",
+    "plugins/xylitol-official-plugin-session",
+    "plugins/xylitol-official-plugin-compaction",
+    "plugins/xylitol-official-plugin-provider-openai",
+    "plugins/xylitol-official-plugin-provider-anthropic",
+    "plugins/xylitol-official-plugin-tools",
+    "plugins/xylitol-official-plugin-mcp",
+    "plugins/xylitol-official-plugin-hooks",
+]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

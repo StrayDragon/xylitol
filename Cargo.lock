@@ -5805,6 +5805,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "xylitol-app-print"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-app-tui"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-official-plugin-compaction"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-official-plugin-hooks"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-official-plugin-mcp"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-official-plugin-provider-anthropic"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-official-plugin-provider-openai"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-official-plugin-session"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-official-plugin-tools"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-plugin-sdk"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-protocol"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-runtime"
+version = "0.0.0-pre"
+
+[[package]]
+name = "xylitol-serve"
+version = "0.0.0-pre"
+
+[[package]]
 name = "xylitol-tui"
 version = "0.1.0"
 dependencies = [

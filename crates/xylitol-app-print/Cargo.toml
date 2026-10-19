@@ -1,0 +1,11 @@
+[package]
+name = "xylitol-app-print"
+version = "0.0.0-pre"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT"
+description = "Print client (in-process XyDriver, no fory)"
+repository = "https://github.com/straydragon/xylitol"
+publish = false
+
+[dependencies]
