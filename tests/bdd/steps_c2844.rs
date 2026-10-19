@@ -124,6 +124,7 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
         xylitol::agent::capabilities::QueueMode::default(),
         None,
     );
+    session.install_compaction(xylitol::app::core::composition::official_compaction_factory());
     session.select_model("overflow-fake").await.unwrap();
     let mut agent = AgentRuntime::new(session);
     agent.bind_session(sid).expect("bind");

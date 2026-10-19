@@ -82,6 +82,7 @@ fn secs_between(start: Instant, end: Instant) -> Option<u64> {
     (secs > 0).then_some(secs)
 }
 
+#[allow(dead_code)]
 fn unix_now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -102,11 +103,13 @@ pub fn elapsed_from_persist_ms(
     })
 }
 
+#[allow(dead_code)]
 const STREAM_NODE_COUNT: usize = 8;
 
 /// Named wall-clock nodes on one assistant generate (O(1) stamp, subtract when read).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
+#[allow(dead_code)]
 pub enum StreamNode {
     AgentStart = 0,
     TurnStart = 1,
@@ -118,6 +121,7 @@ pub enum StreamNode {
     MessageEnd = 7,
 }
 
+#[allow(dead_code)]
 impl StreamNode {
     fn idx(self) -> usize {
         self as usize
@@ -150,11 +154,13 @@ impl StreamNode {
 
 /// Online node clock: start-class nodes write once; [`StreamNode::TextEnd`] last-writes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct StreamNodeClock {
     instants: [Option<Instant>; STREAM_NODE_COUNT],
     unix_ms: [Option<u64>; STREAM_NODE_COUNT],
 }
 
+#[allow(dead_code)]
 impl StreamNodeClock {
     pub fn new() -> Self {
         Self::default()

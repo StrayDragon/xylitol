@@ -1,0 +1,835 @@
+//! Low-frequency ReAct fastrace spans (c1265 Phase A; c1495 parent tree).
+//!
+//! Gated by [`xylitol_plugin_sdk::provider_trace_active`]. When
+//! off, helpers are no-ops (zero/near-zero cost) — no UUID allocation.
+//!
+//! Hierarchy (exported names):
+//! ```text
+//! agent.turn
+//!   ├─ agent.iteration
+//!   │    ├─ llm.request   (via XyGenerateOptions.obs_parent)
+//!   │    └─ tool.execute
+//!   └─ agent.compaction   (via agent/compaction/obs; may parent summarization llm.request)
+//! ```
+//!
+//! Do **not** hold [`LocalParentGuard`] across `.await` in the ReAct
+//! `async_stream` (guard is `!Send`). Children use `enter_with_parent` or
+//! `Span::root(name, SpanContext::from_span(parent))` with an owned parent
+//! `Span` kept alive for the turn/iteration. Must not import `crate::infra`.
+
+use fastrace::prelude::*;
+use xylitol_plugin_sdk::langfuse_observation_properties_from;
+use xylitol_plugin_sdk::{
+    observation_io_tier, provider_trace_active, tool_observation_io_tier, truncate_observation_text,
+};
+
+use xylitol_plugin_sdk::error::{XyError, XyToolError};
+
+/// How an [`AgentTurnSpan`] ended (c1720 / otel20).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TurnEndReason {
+    /// Normal completion (or non-abort early exit). MUST NOT mark ERROR.
+    Ok,
+    /// User cancel / cancel-token abort. Marks Langfuse ERROR + `aborted`.
+    Aborted,
+}
+
+/// Root span for one user-triggered agent run (`agent.turn`).
+pub(crate) struct AgentTurnSpan {
+    root: Span,
+    turn_id: String,
+    /// This run's obs session snapshot (otel24): children inherit it instead of
+    /// re-reading the process slot mid-run.
+    obs: xylitol_plugin_sdk::ObsSessionContext,
+}
+
+impl AgentTurnSpan {
+    /// Start a turn root. When `[otel].observation_io` ≠ none, `user_preview` is
+    /// attached as `langfuse.observation.input` for Langfuse Session list (c1555).
+    /// `model_api` (when known) is recorded as `xylitol.model.api` (c1600).
+    /// Idle / test helper: read the process (or TLS) obs slot.
+    #[cfg(test)]
+    pub(crate) fn start(user_preview: Option<&str>, model_api: Option<&str>) -> Option<Self> {
+        Self::start_with_session(
+            user_preview,
+            model_api,
+            &xylitol_plugin_sdk::obs_session_context(),
+        )
+    }
+
+    /// Start a turn root with an explicit bookmark snapshot (c2590 / otel23).
+    pub(crate) fn start_with_session(
+        user_preview: Option<&str>,
+        model_api: Option<&str>,
+        obs: &xylitol_plugin_sdk::ObsSessionContext,
+    ) -> Option<Self> {
+        if !provider_trace_active() {
+            return None;
+        }
+        let turn_id = uuid::Uuid::new_v4().to_string();
+        let obs = obs.clone();
+        let turn_id_attr = turn_id.clone();
+        let span_obs = obs.clone();
+        let root = Span::root("agent.turn", SpanContext::random()).with_properties(move || {
+            let mut props = vec![("turn_id".to_string(), turn_id_attr)];
+            props.extend(langfuse_observation_properties_from("agent", &span_obs));
+            if let Some(api) = model_api.filter(|s| !s.is_empty()) {
+                props.push(("xylitol.model.api".to_string(), api.to_string()));
+            }
+            if let Some(max) = observation_io_tier().max_chars()
+                && let Some(preview) = user_preview
+                && !preview.is_empty()
+            {
+                let (s, _) = truncate_observation_text(preview, max);
+                props.push(("langfuse.observation.input".to_string(), s));
+            }
+            props
+        });
+        root.add_event(Event::new("lifecycle").with_properties(|| {
+            [
+                ("kind", "lifecycle".to_string()),
+                ("phase", "start".to_string()),
+                ("name", "agent.turn".to_string()),
+            ]
+        }));
+        Some(Self { root, turn_id, obs })
+    }
+
+    pub(crate) fn turn_id(&self) -> &str {
+        &self.turn_id
+    }
+
+    /// This run's obs session snapshot (otel24).
+    pub(crate) fn obs(&self) -> &xylitol_plugin_sdk::ObsSessionContext {
+        &self.obs
+    }
+
+    pub(crate) fn span(&self) -> &Span {
+        &self.root
+    }
+
+    /// Attach terminal status then drop. Abort → ERROR/`aborted`
+    /// (aligned with `agent.compaction` / generation abort). Ok → no ERROR level.
+    pub(crate) fn finish(self, reason: TurnEndReason) {
+        match reason {
+            TurnEndReason::Aborted => {
+                self.root
+                    .add_property(|| ("langfuse.observation.level", "ERROR".to_string()));
+                self.root.add_property(|| {
+                    ("langfuse.observation.status_message", "aborted".to_string())
+                });
+            }
+            TurnEndReason::Ok => {}
+        }
+        let end = match reason {
+            TurnEndReason::Ok => "ok",
+            TurnEndReason::Aborted => "aborted",
+        };
+        self.root
+            .add_event(Event::new("lifecycle").with_properties(|| {
+                [
+                    ("kind", "lifecycle".to_string()),
+                    ("phase", "end".to_string()),
+                    ("name", "agent.turn".to_string()),
+                    ("end_reason", end.to_string()),
+                ]
+            }));
+        drop(self);
+    }
+}
+
+/// One ReAct loop step under [`AgentTurnSpan`] (`agent.iteration`).
+pub(crate) struct AgentIterationSpan {
+    span: Span,
+    turn_id: String,
+}
+
+impl AgentIterationSpan {
+    pub(crate) fn start(turn: Option<&AgentTurnSpan>, turn_index: usize) -> Option<Self> {
+        if !provider_trace_active() {
+            return None;
+        }
+        let turn_id = turn
+            .map(|t| t.turn_id().to_string())
+            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        // otel24: inherit the run snapshot from the turn; only turn-less
+        // (test / gate-off) iterations may fall back to the process slot.
+        let obs = turn
+            .map(|t| t.obs().clone())
+            .unwrap_or_else(xylitol_plugin_sdk::obs_session_context);
+        let span = match turn {
+            Some(t) => Span::enter_with_parent("agent.iteration", t.span()),
+            None => Span::root("agent.iteration", SpanContext::random()),
+        }
+        .with_properties(move || {
+            // `turn_id` lives on `agent.turn` span attrs only — same value on every
+            // iteration was Langfuse observation noise (parent chain correlates).
+            let mut props = vec![("turn_index".to_string(), turn_index.to_string())];
+            props.extend(langfuse_observation_properties_from("agent", &obs));
+            props
+        });
+        span.add_event(Event::new("lifecycle").with_properties(|| {
+            [
+                ("kind", "lifecycle".to_string()),
+                ("phase", "start".to_string()),
+                ("name", "agent.iteration".to_string()),
+                // Local JSONL / inspect correlation only (not a span attribute).
+                ("turn_id", turn_id.clone()),
+            ]
+        }));
+        Some(Self { span, turn_id })
+    }
+
+    pub(crate) fn turn_id(&self) -> &str {
+        &self.turn_id
+    }
+
+    pub(crate) fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+/// Span around a single tool execution (child of iteration when provided).
+pub(crate) struct ToolExecuteSpan {
+    span: Span,
+}
+
+impl ToolExecuteSpan {
+    #[cfg(test)]
+    pub(crate) fn start(name: &str, id: &str, parent: Option<&Span>) -> Option<Self> {
+        Self::start_with_batch(name, id, parent, None, None)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn start_with_batch(
+        name: &str,
+        id: &str,
+        parent: Option<&Span>,
+        batch_mode: Option<&str>,
+        barrier_index: Option<u32>,
+    ) -> Option<Self> {
+        Self::start_with_ctx(
+            name,
+            id,
+            parent.and_then(SpanContext::from_span),
+            batch_mode,
+            barrier_index,
+            &xylitol_plugin_sdk::ObsSessionContext::default(),
+        )
+    }
+
+    /// Child of a captured parent [`SpanContext`] (BarrierParallel fan-out).
+    ///
+    /// Capturing the context before `join_all` avoids racing concurrent tools
+    /// and avoids `SpanContext::random` roots for concurrent tools.
+    /// `obs` is the run's session snapshot (otel24) — never the process slot.
+    pub(crate) fn start_with_parent_ctx(
+        name: &str,
+        id: &str,
+        parent_ctx: Option<SpanContext>,
+        batch_mode: &str,
+        barrier_index: u32,
+        obs: &xylitol_plugin_sdk::ObsSessionContext,
+    ) -> Option<Self> {
+        Self::start_with_ctx(
+            name,
+            id,
+            parent_ctx,
+            Some(batch_mode),
+            Some(barrier_index),
+            obs,
+        )
+    }
+
+    fn start_with_ctx(
+        name: &str,
+        id: &str,
+        parent_ctx: Option<SpanContext>,
+        batch_mode: Option<&str>,
+        barrier_index: Option<u32>,
+        obs: &xylitol_plugin_sdk::ObsSessionContext,
+    ) -> Option<Self> {
+        if !provider_trace_active() {
+            return None;
+        }
+        let span = match parent_ctx {
+            Some(ctx) => Span::root("tool.execute", ctx),
+            None => Span::root("tool.execute", SpanContext::random()),
+        };
+        Some(Self::finish_start(
+            span,
+            name,
+            id,
+            batch_mode,
+            barrier_index,
+            obs,
+        ))
+    }
+
+    fn finish_start(
+        span: Span,
+        name: &str,
+        id: &str,
+        batch_mode: Option<&str>,
+        barrier_index: Option<u32>,
+        obs: &xylitol_plugin_sdk::ObsSessionContext,
+    ) -> Self {
+        let obs = obs.clone();
+        let span = span.with_properties(move || {
+            let mut props = vec![
+                ("tool_name".to_string(), name.to_string()),
+                ("tool_id".to_string(), id.to_string()),
+            ];
+            if let Some(m) = batch_mode {
+                props.push(("tool_batch.mode".to_string(), m.to_string()));
+            }
+            if let Some(i) = barrier_index {
+                props.push(("tool_batch.barrier_index".to_string(), i.to_string()));
+            }
+            props.extend(langfuse_observation_properties_from("tool", &obs));
+            props
+        });
+        span.add_event(Event::new("lifecycle").with_properties(|| {
+            [
+                ("kind", "lifecycle".to_string()),
+                ("phase", "start".to_string()),
+                ("name", "tool.execute".to_string()),
+            ]
+        }));
+        Self { span }
+    }
+
+    /// Attach args/result when `[otel].tool_observation_io` ≠ none (c1550).
+    pub(crate) fn attach_io(&self, input: &str, output: &str) {
+        let Some(max) = tool_observation_io_tier().max_chars() else {
+            return;
+        };
+        let (inn, _) = truncate_observation_text(input, max);
+        let (out, _) = truncate_observation_text(output, max);
+        self.span
+            .add_property(|| ("langfuse.observation.input", inn));
+        self.span
+            .add_property(|| ("langfuse.observation.output", out));
+    }
+}
+
+/// Log (+ optional fastrace) a hot-path [`XyError`] with stable `error.kind`.
+pub(crate) fn record_xy_error(
+    where_: &str,
+    err: &XyError,
+    turn_id: Option<&str>,
+    parent: Option<SpanContext>,
+    obs: &xylitol_plugin_sdk::ObsSessionContext,
+) {
+    let kind = err.kind();
+    let tid = turn_id.unwrap_or("");
+    log::warn!(
+        target: "xylitol::react",
+        "{where_} failed error.kind={kind} turn_id={tid} error={err}"
+    );
+    if !provider_trace_active() {
+        return;
+    }
+    let parent = parent.unwrap_or_else(SpanContext::random);
+    let obs = obs.clone();
+    let span = Span::root("react.error", parent).with_properties(move || {
+        let mut props = vec![
+            ("error.kind".to_string(), kind.to_string()),
+            ("where".to_string(), where_.to_string()),
+            ("turn_id".to_string(), tid.to_string()),
+        ];
+        props.extend(langfuse_observation_properties_from("span", &obs));
+        props
+    });
+    span.add_event(Event::new("error").with_properties(|| {
+        [
+            ("error.kind", kind.to_string()),
+            ("where", where_.to_string()),
+            ("message", err.to_string()),
+        ]
+    }));
+}
+
+/// Log (+ optional fastrace) a tool failure with stable `error.kind`.
+pub(crate) fn record_tool_error(
+    tool: &str,
+    err: &XyToolError,
+    turn_id: Option<&str>,
+    parent: Option<SpanContext>,
+    obs: &xylitol_plugin_sdk::ObsSessionContext,
+) {
+    let kind = err.kind();
+    let tid = turn_id.unwrap_or("");
+    log::warn!(
+        target: "xylitol::react",
+        "tool.execute failed tool={tool} error.kind={kind} turn_id={tid} error={err}"
+    );
+    if !provider_trace_active() {
+        return;
+    }
+    let parent = parent.unwrap_or_else(SpanContext::random);
+    let obs = obs.clone();
+    let span = Span::root("tool.error", parent).with_properties(move || {
+        let mut props = vec![
+            ("error.kind".to_string(), kind.to_string()),
+            ("tool_name".to_string(), tool.to_string()),
+            ("turn_id".to_string(), tid.to_string()),
+        ];
+        props.extend(langfuse_observation_properties_from("span", &obs));
+        props
+    });
+    span.add_event(Event::new("error").with_properties(|| {
+        [
+            ("error.kind", kind.to_string()),
+            ("tool_name", tool.to_string()),
+            ("message", err.to_string()),
+        ]
+    }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use xylitol_plugin_sdk::{
+        ObsGateScope, ObsGateState, ObservationIoTier, SpanCollectScope, set_observation_io_tier,
+        set_tool_observation_io_tier,
+    };
+
+    #[test]
+    fn inactive_helpers_are_none() {
+        let _g = ObsGateScope::enter(ObsGateState::OFF);
+        assert!(AgentTurnSpan::start(None, None).is_none());
+        assert!(AgentIterationSpan::start(None, 0).is_none());
+        assert!(ToolExecuteSpan::start("bash", "1", None).is_none());
+    }
+
+    #[test]
+    fn turn_finish_ok_has_no_error_level() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
+
+        {
+            let turn = AgentTurnSpan::start(Some("hello"), None).expect("turn");
+            turn.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+
+        let spans = collect.records();
+        let turn = spans
+            .iter()
+            .find(|s| s.name == "agent.turn")
+            .expect("turn span");
+        let props: std::collections::HashMap<_, _> = turn
+            .properties
+            .iter()
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
+            .collect();
+        assert!(
+            !props.contains_key("langfuse.observation.level"),
+            "ok finish must not mark ERROR: {props:?}"
+        );
+        assert!(
+            !props.contains_key("langfuse.observation.status_message"),
+            "ok finish must not set status_message: {props:?}"
+        );
+    }
+
+    #[test]
+    fn turn_finish_aborted_marks_error() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
+
+        {
+            let turn = AgentTurnSpan::start(Some("hello"), None).expect("turn");
+            turn.finish(TurnEndReason::Aborted);
+        }
+        fastrace::flush();
+
+        let spans = collect.records();
+        let turn = spans
+            .iter()
+            .find(|s| s.name == "agent.turn")
+            .expect("turn span");
+        let props: std::collections::HashMap<_, _> = turn
+            .properties
+            .iter()
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
+            .collect();
+        assert_eq!(props.get("langfuse.observation.level"), Some(&"ERROR"));
+        assert_eq!(
+            props.get("langfuse.observation.status_message"),
+            Some(&"aborted")
+        );
+    }
+
+    #[test]
+    fn turn_iteration_llm_share_trace_id() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
+
+        {
+            let turn = AgentTurnSpan::start(Some("hello turn"), None).expect("turn");
+            let iter = AgentIterationSpan::start(Some(&turn), 0).expect("iter");
+            let tool = ToolExecuteSpan::start("bash", "t1", Some(iter.span())).expect("tool");
+            tool.attach_io(r#"{"cmd":"echo"}"#, "ok");
+            let iter_ctx = SpanContext::from_span(iter.span());
+            let _llm = xylitol_plugin_sdk::ProviderRequestTrace::start_with_parent(
+                "openai-responses",
+                "m",
+                iter_ctx,
+            )
+            .expect("llm");
+            drop(_llm);
+            drop(tool);
+            drop(iter);
+            turn.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+
+        let spans = collect.records();
+        let turn = spans
+            .iter()
+            .find(|s| s.name == "agent.turn")
+            .expect("turn span");
+        let iter = spans
+            .iter()
+            .find(|s| s.name == "agent.iteration")
+            .expect("iter span");
+        let llm = spans
+            .iter()
+            .find(|s| s.name == "llm.request")
+            .expect("llm span");
+        let tool = spans
+            .iter()
+            .find(|s| s.name == "tool.execute")
+            .expect("tool span");
+
+        assert_eq!(iter.trace_id, turn.trace_id);
+        assert_eq!(llm.trace_id, turn.trace_id);
+        assert_eq!(tool.trace_id, turn.trace_id);
+        assert_eq!(iter.parent_id, turn.span_id);
+        assert_eq!(tool.parent_id, iter.span_id);
+        assert_eq!(llm.parent_id, iter.span_id);
+        // Attribute slim: single model key; no duplicate turn_id on iteration.
+        let llm_keys: Vec<&str> = llm.properties.iter().map(|(k, _)| k.as_ref()).collect();
+        assert!(
+            llm_keys.contains(&"langfuse.observation.model.name"),
+            "llm keys={llm_keys:?}"
+        );
+        assert!(
+            !llm_keys
+                .iter()
+                .any(|k| *k == "model" || *k == "gen_ai.request.model")
+        );
+        let iter_keys: Vec<&str> = iter.properties.iter().map(|(k, _)| k.as_ref()).collect();
+        assert!(iter_keys.contains(&"turn_index"), "{iter_keys:?}");
+        assert!(
+            !iter_keys.contains(&"turn_id"),
+            "iteration must not copy turn_id: {iter_keys:?}"
+        );
+        assert!(!spans.iter().any(|s| {
+            matches!(
+                s.name.as_ref(),
+                "react.turn" | "react.stream" | "provider.request"
+            )
+        }));
+    }
+
+    #[test]
+    fn turn_root_input_only_when_observation_io_set() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        {
+            let collect = SpanCollectScope::enter();
+            {
+                let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
+                turn.finish(TurnEndReason::Ok);
+            }
+            fastrace::flush();
+            let spans = collect.records();
+            let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
+            assert!(
+                !turn
+                    .properties
+                    .iter()
+                    .any(|(k, _)| k.as_ref() == "langfuse.observation.input"),
+                "none tier must not write turn input"
+            );
+        }
+        set_observation_io_tier(ObservationIoTier::Truncated);
+        {
+            let collect = SpanCollectScope::enter();
+            {
+                let turn = AgentTurnSpan::start(Some("secret prompt"), None).expect("turn");
+                turn.finish(TurnEndReason::Ok);
+            }
+            fastrace::flush();
+            let spans = collect.records();
+            let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
+            let input = turn
+                .properties
+                .iter()
+                .find(|(k, _)| k.as_ref() == "langfuse.observation.input")
+                .map(|(_, v)| v.as_ref());
+            assert_eq!(input, Some("secret prompt"));
+        }
+        set_observation_io_tier(ObservationIoTier::None);
+    }
+
+    #[test]
+    fn tool_io_only_when_tool_observation_io_set() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        {
+            let collect = SpanCollectScope::enter();
+            {
+                let tool = ToolExecuteSpan::start("bash", "t1", None).expect("tool");
+                tool.attach_io(r#"{"x":1}"#, "out");
+                drop(tool);
+            }
+            fastrace::flush();
+            let spans = collect.records();
+            let tool = spans
+                .iter()
+                .find(|s| s.name == "tool.execute")
+                .expect("tool");
+            assert!(
+                !tool.properties.iter().any(|(k, _)| {
+                    matches!(
+                        k.as_ref(),
+                        "langfuse.observation.input" | "langfuse.observation.output"
+                    )
+                }),
+                "none tier must not write tool I/O"
+            );
+        }
+        set_tool_observation_io_tier(ObservationIoTier::Truncated);
+        {
+            let collect = SpanCollectScope::enter();
+            {
+                let tool = ToolExecuteSpan::start("bash", "t2", None).expect("tool");
+                tool.attach_io(r#"{"x":1}"#, "out");
+                drop(tool);
+            }
+            fastrace::flush();
+            let spans = collect.records();
+            let tool = spans
+                .iter()
+                .find(|s| s.name == "tool.execute")
+                .expect("tool");
+            let keys: Vec<&str> = tool.properties.iter().map(|(k, _)| k.as_ref()).collect();
+            assert!(keys.contains(&"langfuse.observation.input"), "{keys:?}");
+            assert!(keys.contains(&"langfuse.observation.output"), "{keys:?}");
+        }
+        set_tool_observation_io_tier(ObservationIoTier::None);
+    }
+
+    #[test]
+    fn parallel_tool_spans_share_iteration_parent_via_captured_ctx() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
+
+        {
+            let turn = AgentTurnSpan::start(None, Some("openai-responses")).expect("turn");
+            let iter = AgentIterationSpan::start(Some(&turn), 1).expect("iter");
+            let parent_ctx = SpanContext::from_span(iter.span());
+            let t1 = ToolExecuteSpan::start_with_parent_ctx(
+                "slow_safe",
+                "c0",
+                parent_ctx,
+                "barrier_parallel",
+                0,
+                turn.obs(),
+            )
+            .expect("t1");
+            let t2 = ToolExecuteSpan::start_with_parent_ctx(
+                "slow_safe",
+                "c1",
+                parent_ctx,
+                "barrier_parallel",
+                0,
+                turn.obs(),
+            )
+            .expect("t2");
+            drop(t1);
+            drop(t2);
+            drop(iter);
+            turn.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+
+        let spans = collect.records();
+        let turn = spans.iter().find(|s| s.name == "agent.turn").expect("turn");
+        let turn_props: std::collections::HashMap<_, _> = turn
+            .properties
+            .iter()
+            .map(|(k, v)| (k.as_ref(), v.as_ref()))
+            .collect();
+        assert_eq!(
+            turn_props.get("xylitol.model.api"),
+            Some(&"openai-responses")
+        );
+        let iter = spans
+            .iter()
+            .find(|s| s.name == "agent.iteration")
+            .expect("iter");
+        let tools: Vec<_> = spans.iter().filter(|s| s.name == "tool.execute").collect();
+        assert_eq!(tools.len(), 2);
+        for t in &tools {
+            assert_eq!(t.trace_id, iter.trace_id);
+            assert_eq!(t.parent_id, iter.span_id);
+            let props: std::collections::HashMap<_, _> = t
+                .properties
+                .iter()
+                .map(|(k, v)| (k.as_ref(), v.as_ref()))
+                .collect();
+            assert_eq!(props.get("tool_batch.mode"), Some(&"barrier_parallel"));
+            assert_eq!(props.get("tool_batch.barrier_index"), Some(&"0"));
+        }
+    }
+
+    #[test]
+    fn overlapping_turn_roots_keep_own_session_id() {
+        use xylitol_plugin_sdk::ObsSessionContext;
+        use xylitol_plugin_sdk::{ObsSessionScope, set_obs_session};
+
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let _sess = ObsSessionScope::enter(ObsSessionContext {
+            session_id: Some("process-wrong".into()),
+            session_name: None,
+            ..Default::default()
+        });
+        let collect = SpanCollectScope::enter();
+
+        let a = ObsSessionContext {
+            session_id: Some("bookmark-a".into()),
+            session_name: None,
+            ..Default::default()
+        };
+        let b = ObsSessionContext {
+            session_id: Some("bookmark-b".into()),
+            session_name: None,
+            ..Default::default()
+        };
+        {
+            let ta = AgentTurnSpan::start_with_session(None, None, &a).expect("turn a");
+            set_obs_session("hijacked", None);
+            let tb = AgentTurnSpan::start_with_session(None, None, &b).expect("turn b");
+            ta.finish(TurnEndReason::Ok);
+            tb.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+
+        let spans = collect.records();
+        let ids: Vec<&str> = spans
+            .iter()
+            .filter(|s| s.name == "agent.turn")
+            .filter_map(|s| {
+                s.properties
+                    .iter()
+                    .find(|(k, _)| k.as_ref() == "langfuse.session.id")
+                    .map(|(_, v)| v.as_ref())
+            })
+            .collect();
+        assert!(ids.contains(&"bookmark-a"), "missing a: {ids:?}");
+        assert!(ids.contains(&"bookmark-b"), "missing b: {ids:?}");
+        assert!(
+            !ids.iter()
+                .any(|id| *id == "process-wrong" || *id == "hijacked"),
+            "process slot leaked: {ids:?}"
+        );
+    }
+
+    /// otel24 / c2610: mid-run slot stomps (reader materialization, another
+    /// runtime's bind) must not leak into iteration / tool / error spans.
+    #[test]
+    fn slot_stomp_between_turns_keeps_children_session_id() {
+        use xylitol_plugin_sdk::ObsSessionContext;
+        use xylitol_plugin_sdk::{ObsSessionScope, set_obs_session};
+
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let _sess = ObsSessionScope::enter(ObsSessionContext {
+            session_id: Some("bookmark-b".into()),
+            session_name: None,
+            ..Default::default()
+        });
+        let collect = SpanCollectScope::enter();
+
+        let b = ObsSessionContext {
+            session_id: Some("bookmark-b".into()),
+            session_name: None,
+            ..Default::default()
+        };
+        {
+            let turn = AgentTurnSpan::start_with_session(Some("hi"), None, &b).expect("turn");
+            // Reader materialization / another slot's bind stomps the process slot.
+            set_obs_session("old-session-a", None);
+
+            let iter = AgentIterationSpan::start(Some(&turn), 0).expect("iter");
+            let parent_ctx = SpanContext::from_span(iter.span());
+            let tool = ToolExecuteSpan::start_with_parent_ctx(
+                "bash",
+                "t1",
+                parent_ctx,
+                "barrier_parallel",
+                0,
+                turn.obs(),
+            )
+            .expect("tool");
+            drop(tool);
+            drop(iter);
+            turn.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+
+        let spans = collect.records();
+        let session_of = |name: &str| -> Option<&str> {
+            spans.iter().find(|s| s.name == name).and_then(|s| {
+                s.properties
+                    .iter()
+                    .find(|(k, _)| k.as_ref() == "langfuse.session.id")
+                    .map(|(_, v)| v.as_ref())
+            })
+        };
+        for name in ["agent.turn", "agent.iteration", "tool.execute"] {
+            assert_eq!(
+                session_of(name),
+                Some("bookmark-b"),
+                "{name} must keep the run snapshot after a slot stomp"
+            );
+        }
+    }
+
+    #[test]
+    fn turn_root_writes_xylitol_session_id_and_fork_edge_not_gateway_placeholder() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
+        let snap = xylitol_plugin_sdk::ObsSessionContext {
+            session_id: Some("child".into()),
+            parent_session_id: Some("parent".into()),
+            fork_at_entry_id: Some("u6".into()),
+            llm_gateway_session_id: None,
+            ..Default::default()
+        };
+        {
+            let turn = AgentTurnSpan::start_with_session(None, None, &snap).expect("turn");
+            turn.finish(TurnEndReason::Ok);
+        }
+        fastrace::flush();
+        let turn = collect
+            .records()
+            .into_iter()
+            .find(|s| s.name == "agent.turn")
+            .expect("turn");
+        let prop = |k: &str| {
+            turn.properties
+                .iter()
+                .find(|(kk, _)| kk.as_ref() == k)
+                .map(|(_, v)| v.as_ref())
+        };
+        assert_eq!(prop("langfuse.session.id"), Some("child"));
+        assert_eq!(prop("xylitol.session.id"), Some("child"));
+        assert_eq!(prop("xylitol.session.parent_session_id"), Some("parent"));
+        assert_eq!(prop("xylitol.session.fork_at_entry_id"), Some("u6"));
+        assert!(prop("xylitol.session.llm_gateway_session_id").is_none());
+    }
+}

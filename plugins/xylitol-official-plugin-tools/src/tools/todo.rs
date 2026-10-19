@@ -88,6 +88,10 @@ impl AgentTodoGateway for SessionAgentTodoGateway {
         self.persist(&list).await?;
         Ok(list)
     }
+
+    async fn bind_session(&self, session_id: Option<String>) {
+        SessionAgentTodoGateway::bind_session(self, session_id).await;
+    }
 }
 
 fn list_json(list: &TodoList) -> String {

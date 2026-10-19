@@ -17,6 +17,15 @@ pub const PROVIDER_TRACE_TEXT_MAX: usize = 4096;
 /// Hard cap for `observation_io = full` (protect OTLP batch size).
 pub const OBSERVATION_IO_FULL_MAX: usize = 65_536;
 
+/// Truncate for Langfuse observation I/O (shared by generation / tool / turn).
+pub fn truncate_observation_text(text: &str, max: usize) -> (String, bool) {
+    let count = text.chars().count();
+    if count <= max {
+        return (text.to_string(), false);
+    }
+    (text.chars().take(max).collect(), true)
+}
+
 static PROVIDER_TRACE_ACTIVE: AtomicBool = AtomicBool::new(false);
 static OBSERVATION_IO_TIER: AtomicU8 = AtomicU8::new(0);
 static TOOL_OBSERVATION_IO_TIER: AtomicU8 = AtomicU8::new(0);

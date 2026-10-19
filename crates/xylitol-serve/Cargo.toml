@@ -5,7 +5,12 @@ edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
 description = "HTTP/WS carrier and XyEvent ↔ v3 mapping"
-repository = "https://github.com/straydragon/xylitol"
+repository = "https://github.com/StrayDragon/xylitol"
 publish = false
 
 [dependencies]
+xylitol-runtime = { path = "../xylitol-runtime" }
+xylitol-protocol = { path = "../xylitol-protocol" }
+log = "0.4"
+serde_json = { version = "1", features = ["unbounded_depth"] }
+thiserror = "2"

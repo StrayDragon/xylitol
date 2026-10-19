@@ -39,42 +39,10 @@ pub use token_estimator::{EstimateOpts, FixedRequestContext, estimate_from_sessi
 use anyhow::Result;
 use serde_json::json;
 
-use xylitol_plugin_sdk::error::{XyError, XySessionError, XySessionStoreError};
 use xylitol_plugin_sdk::ports::XySessionStore;
 use xylitol_plugin_sdk::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
 
-/// Compaction failures: store IO vs product-copy policy gates.
-#[derive(Debug, thiserror::Error)]
-pub enum CompactionError {
-    #[error(transparent)]
-    Store(#[from] XySessionStoreError),
-    #[error(transparent)]
-    Session(#[from] XySessionError),
-    /// Model construction / selection failed; keeps the typed `XyError` (kind/source)
-    /// instead of being flattened into a `Policy` string (c2270 family).
-    #[error(transparent)]
-    Model(#[from] XyError),
-    #[error("{0}")]
-    Policy(String),
-}
-
-impl CompactionError {
-    pub fn policy(message: impl Into<String>) -> Self {
-        Self::Policy(message.into())
-    }
-}
-
-impl From<String> for CompactionError {
-    fn from(message: String) -> Self {
-        Self::Policy(message)
-    }
-}
-
-impl From<&str> for CompactionError {
-    fn from(message: &str) -> Self {
-        Self::Policy(message.to_string())
-    }
-}
+pub use xylitol_plugin_sdk::CompactionError;
 
 /// Unix-ms timestamp for new compaction entries persisted to session storage.
 fn timestamp_now() -> u64 {
@@ -143,19 +111,7 @@ pub fn projected_post_compact_tokens(
         + summary_placeholder
 }
 
-/// Effective threshold-auto trigger threshold (c2):
-/// `max(window − reserve, floor + floor/4)`. `floor == 0` (overhead unknown /
-/// not injected) degenerates to the pi reserve formula `window − reserve`, the
-/// same degeneration discipline as the c8 clamp.
-pub fn effective_trigger_threshold(
-    context_window: u64,
-    settings: &CompactionSettings,
-    post_compact_floor: u64,
-) -> u64 {
-    context_window
-        .saturating_sub(settings.reserve_tokens)
-        .max(post_compact_floor + post_compact_floor / 4)
-}
+pub use xylitol_plugin_sdk::effective_trigger_threshold;
 
 /// pi `prepareCompaction` gate: whether there is content worth summarizing.
 ///

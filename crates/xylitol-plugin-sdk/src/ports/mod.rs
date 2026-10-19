@@ -4,6 +4,7 @@
 
 pub mod ask;
 pub mod bash;
+pub mod compaction;
 pub mod event;
 pub mod export;
 pub mod hook;
@@ -22,6 +23,10 @@ pub mod typed;
 // from its submodule.
 pub use ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
 pub use bash::{BashChunk, BashExecOpts, BashOutputSink, XyBashExecutor, XyBashResult};
+pub use compaction::{
+    NoopCompaction, OverflowCompactOutcome, XyCompaction, XyCompactionFactory,
+    noop_compaction_factory, should_compact,
+};
 pub use event::{LifecycleHandler, XyEventSink};
 pub use export::XyExportIo;
 pub use hook::{NoopHookBus, XyHookBus, XyHookOutcome};

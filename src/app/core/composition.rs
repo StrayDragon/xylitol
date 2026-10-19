@@ -20,6 +20,15 @@ use crate::protocol::ports::{
 
 pub use crate::app::core::mcp_spec::{McpServerSpec, McpTransportSpec};
 
+/// Official compaction plugin factory. Runtime stays plugin-free; composition injects this.
+pub fn official_compaction_factory() -> xylitol_plugin_sdk::XyCompactionFactory {
+    std::sync::Arc::new(|settings| {
+        std::sync::Arc::new(
+            xylitol_official_plugin_compaction::CompactionOrchestrator::new(settings),
+        ) as std::sync::Arc<dyn xylitol_plugin_sdk::XyCompaction>
+    })
+}
+
 /// Options for [`build_agent`].
 pub struct BuildAgentOptions {
     pub model_registry: ModelRegistry,
@@ -118,6 +127,7 @@ pub fn build_ports_with_store(
     .append_system_prompt(options.append_system_prompt)
     .skills(options.skills)
     .compaction_settings(options.compaction_settings)
+    .compaction_factory(official_compaction_factory())
     .cwd(options.cwd)
     .steering_mode(options.steering_mode)
     .follow_up_mode(options.follow_up_mode)

@@ -1,2 +1,20 @@
-//! Scaffold for the target crate graph. Filled in the matching W2 batch.
-//! Not a stable API.
+//! Execution authority: ReAct loop, trust, and (later) XyDriver.
+//!
+//! Depends only on `xylitol-plugin-sdk`. Does not wire plugins and does not
+//! speak the RPC envelope.
+
+pub mod agent;
+pub mod trust;
+pub(crate) mod utils;
+
+pub use agent::{
+    AgentBuilder, AgentRuntime, HookBlockedError, MCP_FIRST_TURN_GATE_TIMEOUT, ModelRegistry,
+    QueueMode, QueueStats, RuntimePorts, SessionStats, XyEvent, XyEventStream, max_turns_stop_hook,
+};
+pub use trust::{
+    DefaultProjectTrust, TrustManager, TrustOption, TrustReason, TrustResolution,
+    format_trust_prompt, prompt_trust_options_stdio, resolve_project_trusted,
+};
+pub use xylitol_plugin_sdk::lifecycle::XyEventError;
+pub use xylitol_plugin_sdk::model::{ContextTokenEstimate, TokenProvenance};
+pub use xylitol_plugin_sdk::session::TodoList;

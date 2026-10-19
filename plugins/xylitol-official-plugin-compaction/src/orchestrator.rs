@@ -11,21 +11,13 @@ use crate::obs::{AgentCompactionSpan, export_skipped};
 use crate::overflow::{assistant_same_model, is_context_overflow_assistant};
 use crate::token_estimator::{EstimateOpts, FixedRequestContext};
 use crate::{CompactionError, CompactionSettings, compact_session, prepare_compaction};
+use xylitol_plugin_sdk::XyCompaction;
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::{AgentMessage, LlmMessage, XyStopReason};
 use xylitol_plugin_sdk::ports::{XyEventSink, XySessionStore};
 use xylitol_plugin_sdk::session::SessionEntry;
 
-/// Outcome of overflow Case1 auto-compact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OverflowCompactOutcome {
-    /// No overflow path taken (not overflow / skipped).
-    Skipped,
-    /// Compacted; `will_retry` means caller should continue the model loop.
-    Ran { will_retry: bool },
-    /// Second overflow after one recovery — failed with user-facing end event.
-    FailedOnce,
-}
+pub use xylitol_plugin_sdk::OverflowCompactOutcome;
 
 const OVERFLOW_ONCE_MSG: &str = "Context overflow recovery failed after one compact-and-retry attempt. Try reducing context or switching to a larger-context model.";
 
@@ -540,22 +532,7 @@ fn floor_diagnostic_notice(tokens_after: u64, context_window: u64) -> String {
     )
 }
 
-/// Check if compaction should trigger (c2 floor-aware threshold).
-///
-/// `post_compact_floor` is the [`crate::projected_post_compact_tokens`]
-/// projection; `0` degenerates to the pi reserve formula `window − reserve`.
-pub fn should_compact(
-    context_tokens: u64,
-    context_window: u64,
-    settings: &CompactionSettings,
-    post_compact_floor: u64,
-) -> bool {
-    if !settings.enabled || context_window == 0 {
-        return false;
-    }
-    context_tokens
-        > super::effective_trigger_threshold(context_window, settings, post_compact_floor)
-}
+pub use xylitol_plugin_sdk::should_compact;
 
 fn assistant_is_aborted(assistant: Option<&AgentMessage>) -> bool {
     matches!(
@@ -620,4 +597,104 @@ fn usage_anchor_stale_vs_compaction(entries: &[SessionEntry]) -> bool {
         }
     }
     false
+}
+
+#[async_trait::async_trait]
+impl XyCompaction for CompactionOrchestrator {
+    fn settings(&self) -> &CompactionSettings {
+        &self.settings
+    }
+
+    async fn compact(
+        &self,
+        store: &dyn XySessionStore,
+        sid: &str,
+        summary: &CompactionSummaryBinding,
+        event_sink: &dyn XyEventSink,
+        instructions: Option<String>,
+        context_window: u64,
+        fixed_context: Option<&FixedRequestContext>,
+        fallback_notice_emitted: &mut bool,
+    ) -> Result<(), CompactionError> {
+        CompactionOrchestrator::compact(
+            self,
+            store,
+            sid,
+            summary,
+            event_sink,
+            instructions,
+            context_window,
+            fixed_context,
+            fallback_notice_emitted,
+        )
+        .await
+    }
+
+    async fn maybe_overflow_compact(
+        &self,
+        store: &dyn XySessionStore,
+        sid: &str,
+        summary: &CompactionSummaryBinding,
+        event_sink: &dyn XyEventSink,
+        context_window: u64,
+        last_assistant: &AgentMessage,
+        current_provider: &str,
+        current_model_id: &str,
+        overflow_recovery_attempted: bool,
+        fixed_context: Option<&FixedRequestContext>,
+        turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+        fallback_notice_emitted: &mut bool,
+        floor_notice_emitted: Option<&mut bool>,
+    ) -> Result<OverflowCompactOutcome, CompactionError> {
+        CompactionOrchestrator::maybe_overflow_compact(
+            self,
+            store,
+            sid,
+            summary,
+            event_sink,
+            context_window,
+            last_assistant,
+            current_provider,
+            current_model_id,
+            overflow_recovery_attempted,
+            fixed_context,
+            turn_obs_parent,
+            fallback_notice_emitted,
+            floor_notice_emitted,
+        )
+        .await
+    }
+
+    async fn maybe_auto_compact(
+        &self,
+        store: &dyn XySessionStore,
+        sid: &str,
+        summary: &CompactionSummaryBinding,
+        event_sink: &dyn XyEventSink,
+        context_window: u64,
+        estimate_opts: &EstimateOpts,
+        last_assistant: Option<&AgentMessage>,
+        precomputed: Option<&xylitol_plugin_sdk::model::ContextTokenEstimate>,
+        fixed_context: Option<&FixedRequestContext>,
+        turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+        fallback_notice_emitted: &mut bool,
+        floor_notice_emitted: Option<&mut bool>,
+    ) -> Result<bool, CompactionError> {
+        CompactionOrchestrator::maybe_auto_compact(
+            self,
+            store,
+            sid,
+            summary,
+            event_sink,
+            context_window,
+            estimate_opts,
+            last_assistant,
+            precomputed,
+            fixed_context,
+            turn_obs_parent,
+            fallback_notice_emitted,
+            floor_notice_emitted,
+        )
+        .await
+    }
 }

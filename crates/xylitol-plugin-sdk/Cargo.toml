@@ -14,6 +14,7 @@ async-trait = "0.1"
 fastrace = { version = "0.7", features = ["enable"] }
 futures = "0.3"
 log = "0.4"
+regex = "1"
 schemars = { version = "1", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["unbounded_depth"] }

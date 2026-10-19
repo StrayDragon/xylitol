@@ -1,7 +1,10 @@
 //! Plugin vocabulary: ports, errors, and shared types (no HTTP, no envelope).
 
 pub mod accounting;
+pub mod compaction_binding;
 pub mod compaction_config;
+pub mod compaction_error;
+pub mod compaction_settings;
 pub mod compat;
 pub mod dto;
 pub mod error;
@@ -12,12 +15,16 @@ pub mod message;
 pub mod model;
 pub mod model_entry;
 pub mod obs_gate;
+pub mod obs_session;
+pub mod overflow;
 pub mod ports;
 pub mod resource;
 pub mod session;
 pub mod session_env;
+pub mod settlement;
 pub mod source_info;
 pub mod status_bar;
+pub mod token_estimator;
 pub mod tool_name;
 pub mod tool_timeout;
 pub mod tool_wire;
@@ -25,6 +32,11 @@ pub mod tool_wire;
 pub use accounting::{
     EstimateContextOpts, HEURISTIC_BYTES_PER_TOKEN, estimate_context, heuristic_token_count,
     total_context_tokens,
+};
+pub use compaction_binding::{CompactionModelAttribution, CompactionSummaryBinding};
+pub use compaction_error::CompactionError;
+pub use compaction_settings::{
+    CompactionSettings, effective_trigger_threshold, merge_compaction_runtime,
 };
 pub use compat::Compat;
 pub use dto::*;
@@ -45,20 +57,35 @@ pub use model::{
     XyModelKind, XyModelMeta, XyToolSchema, last_declared_thinking_level,
     resolve_configured_levels, thinking_levels_are_adjustable, validate_thinking_level_map,
 };
+pub use obs_gate::truncate_observation_text;
 pub use obs_gate::{
     OBSERVATION_IO_FULL_MAX, ObsGateScope, ObsGateState, ObservationIoTier,
     PROVIDER_TRACE_TEXT_MAX, SpanCollectScope, observation_io_tier, provider_trace_active,
     set_observation_io_tier, set_provider_trace_active, set_tool_observation_io_tier,
     tool_observation_io_tier,
 };
+pub use obs_session::{
+    ObsSessionScope, clear_obs_session, langfuse_generation_properties,
+    langfuse_generation_properties_from, langfuse_observation_properties,
+    langfuse_session_properties, obs_session_context, set_obs_session, set_obs_session_name,
+};
+pub use overflow::{
+    assistant_same_model, error_message_is_context_overflow, is_context_overflow_assistant,
+};
 pub use ports::{
-    BashExecOpts, HeaderBag, HttpHooks, LifecycleHandler, NoopHookBus, SessionListEntry,
-    XyBashExecutor, XyBashResult, XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome,
-    XyModel, XyModelBuilder, XyPermission, XyPermissionVerdict, XySecretResolver, XySessionStore,
-    XyStream, XyTool, XyToolCtx, XyToolExecutionMode, flatten_session_forest, format_session_age,
-    run_after_response, run_before_headers, run_before_request, sanitize_session_display_name,
+    AgentTodoGateway, BashExecOpts, HeaderBag, HttpHooks, LifecycleHandler, NoopCompaction,
+    NoopHookBus, OverflowCompactOutcome, SessionListEntry, XyBashExecutor, XyBashResult,
+    XyBatchMode, XyCompaction, XyCompactionFactory, XyEventSink, XyExportIo, XyHookBus,
+    XyHookOutcome, XyModel, XyModelBuilder, XyPermission, XyPermissionVerdict, XySecretResolver,
+    XySessionStore, XyStream, XyTool, XyToolCtx, XyToolExecutionMode, flatten_session_forest,
+    format_session_age, noop_compaction_factory, run_after_response, run_before_headers,
+    run_before_request, sanitize_session_display_name, should_compact,
+};
+pub use settlement::{
+    ContextTokenSettlement, ContextTokenSettlementReason, settle_from_session_entries,
 };
 pub use status_bar::{AgentStatusBar, project_outbound};
+pub use token_estimator::{EstimateOpts, FixedRequestContext, estimate_from_session_entries};
 pub use tool_name::{
     BuiltinToolName, MCP_PUBLIC_DELIMITER, is_mcp_tool_name, is_provider_safe_tool_name,
     mcp_tool_armed_prefix, mcp_tool_public_name,

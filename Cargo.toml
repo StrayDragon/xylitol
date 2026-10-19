@@ -83,6 +83,8 @@ tokio-tungstenite = { version = "0.30", features = ["connect", "handshake"], opt
 xylitol-tui = { path = "crates/xylitol-tui", optional = true }
 xylitol-plugin-sdk = { path = "crates/xylitol-plugin-sdk" }
 xylitol-protocol = { path = "crates/xylitol-protocol" }
+xylitol-runtime = { path = "crates/xylitol-runtime" }
+xylitol-serve = { path = "crates/xylitol-serve", default-features = false }
 xylitol-official-plugin-provider-openai = { path = "plugins/xylitol-official-plugin-provider-openai" }
 xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-plugin-provider-anthropic" }
 xylitol-official-plugin-session = { path = "plugins/xylitol-official-plugin-session" }

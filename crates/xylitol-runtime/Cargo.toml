@@ -5,7 +5,30 @@ edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
 description = "Execution authority: XyDriver, trust, session slots, ReAct"
-repository = "https://github.com/straydragon/xylitol"
+repository = "https://github.com/StrayDragon/xylitol"
 publish = false
 
+[lib]
+# Plugin-coupled unit tests stay in the xylitol crate / BDD until W2.5.
+test = false
+
 [dependencies]
+xylitol-plugin-sdk = { path = "../xylitol-plugin-sdk" }
+anyhow = "1"
+async-stream = "0.3"
+dirs = "7"
+async-trait = "0.1"
+fastrace = { version = "0.7", features = ["enable"] }
+futures = "0.3"
+log = "0.4"
+minijinja = { version = "3.0.0", features = ["json", "builtins", "serde"] }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["unbounded_depth"] }
+sha2 = "0.11"
+strum = { version = "0.28", features = ["derive"] }
+thiserror = "2"
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+tokio = { version = "1", features = ["fs", "macros", "rt", "rt-multi-thread", "sync", "time"] }
+tokio-util = "0.7"
+uuid = { version = "1", features = ["v4"] }

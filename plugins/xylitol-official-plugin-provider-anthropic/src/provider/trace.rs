@@ -24,13 +24,8 @@ pub use xylitol_plugin_sdk::obs_gate::{
     OBSERVATION_IO_FULL_MAX, ObsGateScope, ObsGateState, ObservationIoTier,
     PROVIDER_TRACE_TEXT_MAX, SpanCollectScope, observation_io_tier, provider_trace_active,
     set_observation_io_tier, set_provider_trace_active, set_tool_observation_io_tier,
-    tool_observation_io_tier,
+    tool_observation_io_tier, truncate_observation_text,
 };
-
-/// Truncate for Langfuse observation I/O (shared by generation / tool / turn).
-pub fn truncate_observation_text(text: &str, max: usize) -> (String, bool) {
-    truncate_text(text, max)
-}
 
 /// How a generation span closed (c1590).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

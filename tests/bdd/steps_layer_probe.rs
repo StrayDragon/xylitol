@@ -1164,7 +1164,7 @@ pub(crate) fn t_first_turn_tool_freeze_list() {
 pub(crate) fn w_compaction_trigger_boundary() {
     LA_PROBE.with(|p| {
         *p.borrow_mut() = Some(la_load(
-            "plugins/xylitol-official-plugin-compaction/src/settings.rs",
+            "crates/xylitol-plugin-sdk/src/compaction_settings.rs",
         ))
     });
 }

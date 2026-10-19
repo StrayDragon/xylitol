@@ -5780,6 +5780,8 @@ dependencies = [
  "xylitol-official-plugin-tools",
  "xylitol-plugin-sdk",
  "xylitol-protocol",
+ "xylitol-runtime",
+ "xylitol-serve",
  "xylitol-tui",
  "yaml_serde",
 ]
@@ -5945,6 +5947,7 @@ dependencies = [
  "futures",
  "insta",
  "log",
+ "regex",
  "schemars",
  "serde",
  "serde_json",
@@ -5970,10 +5973,38 @@ dependencies = [
 [[package]]
 name = "xylitol-runtime"
 version = "0.0.0-pre"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "dirs",
+ "fastrace",
+ "futures",
+ "log",
+ "minijinja",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "strum",
+ "thiserror 2.0.21",
+ "time",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "xylitol-plugin-sdk",
+]
 
 [[package]]
 name = "xylitol-serve"
 version = "0.0.0-pre"
+dependencies = [
+ "log",
+ "serde_json",
+ "thiserror 2.0.21",
+ "xylitol-protocol",
+ "xylitol-runtime",
+]
 
 [[package]]
 name = "xylitol-tui"

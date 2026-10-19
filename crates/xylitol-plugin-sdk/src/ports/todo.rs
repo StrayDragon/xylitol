@@ -17,4 +17,9 @@ pub trait AgentTodoGateway: Send + Sync {
 
     /// Patch items by id (batch); persist snapshot on success.
     async fn update(&self, patches: Vec<TodoItemPatch>) -> Result<TodoList, XyToolError>;
+
+    /// Bind (or clear) the active session for subsequent tool calls.
+    async fn bind_session(&self, session_id: Option<String>) {
+        let _ = session_id;
+    }
 }

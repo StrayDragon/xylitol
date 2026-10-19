@@ -73,6 +73,7 @@ pub(crate) fn make_agent_with_store(
         xylitol::agent::capabilities::QueueMode::default(),
         hook_bus,
     );
+    session.install_compaction(xylitol::app::core::composition::official_compaction_factory());
     // Harness often registers models without select; pick the first so ReAct can build.
     if session.current_model().is_none()
         && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())

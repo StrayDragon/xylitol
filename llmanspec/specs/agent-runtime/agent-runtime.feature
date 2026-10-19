@@ -147,14 +147,14 @@
 
   @req:r1035
   规则: Driver context 重载缝
-    InProcessDriver（经 app/core 助手）须能在 Trust 语义下重载磁盘 context/SYSTEM/APPEND 并应用到 agent；未信任 不得注入项目侧 context；重载 不得清空 transcript。
+    InProcessDriver（经 xylitol-runtime Trust 门禁）须能在 Trust 语义下重载磁盘 context/SYSTEM/APPEND 并应用到 agent；未信任 不得注入项目侧 context；重载 不得清空 transcript。
 
     场景: context-reload-trust-gated
       当 在项目目录写 AGENTS.md 并分别以信任与未信任重载 context
       那么 信任时项目 context 注入而未信任时被跳过且会话条目不变
   @req:r1037
   规则: Driver skills 重载缝
-    InProcessDriver（经 app/core 助手）须能在 Trust 语义下重载磁盘 skills 并应用到 agent；须能查询当前已加载 skill 名（供后续 $ 展开）；未信任 不得注入项目 skills；重载 不得清空 transcript；本要求 不得依赖 /session 或 /status skills UI。
+    InProcessDriver（经 xylitol-runtime Trust 门禁）须能在 Trust 语义下重载磁盘 skills 并应用到 agent；须能查询当前已加载 skill 名（供后续 $ 展开）；未信任 不得注入项目 skills；重载 不得清空 transcript；本要求 不得依赖 /session 或 /status skills UI。
 
     场景: skills-reload-trust-gated-and-queryable
       当 在项目目录写 skill 并分别以信任与未信任重载 skills
