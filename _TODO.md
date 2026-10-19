@@ -12,7 +12,7 @@
 
 检查点 tag **`v0.0.0-pre.old`**（`004a2e4d`，W2.0 AGENTS SSOT，胖 `src/` 仍出产品）。回退：`git switch -d v0.0.0-pre.old`。
 
-crate 图已拍板，见 [§2.0b](#SETTLED)。**[W2.0](#WS2)** / **[W2.0c](#WS2)** 完成。走法：类型不双写、按 crate 切完就绿。根 `src/` 终态 = CLI + wiring + embed，见 [§2.2.1](#ROOTSRC)。**[W2.1](#WS2)** 完成：词表在 `xylitol-plugin-sdk`（主仓 `src/protocol` 只剩 wire + re-export；ai-bridge DTO/选项 `pub use` sdk）。禁边闸 `scripts/check_crate_graph.py`。下一刀：**W2.2** 填 `xylitol-protocol`（迁 wire + fbs，删剩余 `src/protocol`）。搬旧模块前看 [§3.4](#GATES)。
+crate 图已拍板，见 [§2.0b](#SETTLED)。**[W2.0](#WS2)** / **[W2.0c](#WS2)** / **[W2.1](#WS2)** 完成。走法：类型不双写、按 crate 切完就绿。根 `src/` 终态 = CLI + wiring + embed，见 [§2.2.1](#ROOTSRC)。**[W2.2](#WS2)** 完成：信封在 `xylitol-protocol`（fbs + JSON Command/Event；不 `use` sdk、不认识 `XyEvent`）。主仓只留 `XyEvent` mapping。禁边闸 `scripts/check_crate_graph.py`。下一刀：**W2.2b** 两方言插件 + 删 `xylitol-ai-bridge`。搬旧模块前看 [§3.4](#GATES)。
 
 读法：现在 → [§2.0b](#SETTLED) → [§2.2](#GRAPH) → [§3.2](#WS2) → [§3.4](#GATES)。
 
@@ -573,7 +573,7 @@ release：`opt-level = "z"`，`lto = "thin"`，`strip = "symbols"`，`panic = "a
 产品主线：对话循环、内置工具、会话持久化 / 导出、压缩、两家模型 API、Trust、图像附件。默认入口：产品 TUI attach 本机 Host（未在听失败）。后置：MCP。
 `@req:r1532` 要求 server 应用面。未实现方向见 [#28](https://github.com/StrayDragon/xylitol/issues/28)。
 
-现行 workspace：根包 + `xylitol-tui` + `xylitol-ai-bridge` + 已填 `xylitol-plugin-sdk` + 其余 W2.0c 空壳（protocol / runtime / serve / app-* / 七个 official-plugin）。产品仍从胖 `src/` 出（protocol 词表已迁走）。架构规则：`src/AGENTS.md`。下一刀 [W2.2](#WS2)。
+现行 workspace：根包 + `xylitol-tui` + `xylitol-ai-bridge` + 已填 `xylitol-plugin-sdk` / `xylitol-protocol` + 其余空壳（runtime / serve / app-* / 七个 official-plugin）。产品仍从胖 `src/` 出。架构规则：`src/AGENTS.md`。下一刀 [W2.2b](#WS2)。
 
 ---
 

@@ -5,7 +5,7 @@ use xylitol_tui::Terminal;
 use crate::app::core::driver::XyDriver;
 use crate::app::tui::host::HostSession;
 use crate::app::tui::layout::map_session_tree_nodes;
-use crate::protocol::session::SessionTreeKind;
+use crate::protocol::wire::WireSessionTreeKind;
 
 use super::super::helpers::{deepest_tree_id, note_driver_err};
 
@@ -27,7 +27,7 @@ pub(super) async fn open<T: Terminal>(session: &mut HostSession<T>, driver: &mut
     match crate::app::core::dispatch::dispatch(
         driver,
         crate::protocol::Command::SessionTree {
-            kind: SessionTreeKind::MessageHistory,
+            kind: WireSessionTreeKind::MessageHistory,
         },
     )
     .await
@@ -61,7 +61,7 @@ pub(super) async fn travel<T: Terminal>(session: &mut HostSession<T>, driver: &m
     match crate::app::core::dispatch::dispatch(
         driver,
         crate::protocol::Command::TravelSessionTree {
-            kind: SessionTreeKind::MessageHistory,
+            kind: WireSessionTreeKind::MessageHistory,
             entry_id: entry_id.clone(),
         },
     )

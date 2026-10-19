@@ -4,8 +4,8 @@
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
-use std::convert::TryFrom;
 use xylitol::protocol::lifecycle::XyEvent;
+use xylitol::protocol::wire::FromWireEvent;
 use xylitol::protocol::wire::codec;
 use xylitol::protocol::{Command, Event, RpcMessage};
 
@@ -149,7 +149,7 @@ fn t_stream_events_project(protocol_bdd: &ProtocolBdd) {
         .iter()
         .find(|e| matches!(e, Event::ThinkingDelta { .. }))
         .expect("thinking_delta present");
-    let projected = XyEvent::try_from(thinking).expect("wire -> domain projection");
+    let projected = XyEvent::from_wire_event(thinking).expect("wire -> domain projection");
     match projected {
         XyEvent::ThinkingDelta(text) => assert_eq!(text, "reasoning"),
         other => panic!("expected ThinkingDelta projection, got {other:?}"),
@@ -385,18 +385,18 @@ fn t_error_kind_roundtrip(protocol_bdd: &ProtocolBdd) {
 
 #[when("对 TodoUpdated 快照事件做线协议往返")]
 fn w_todo_updated_roundtrip(protocol_bdd: &ProtocolBdd) {
-    use xylitol::protocol::session::{TodoItem, TodoList, TodoStatus};
+    use xylitol::protocol::wire::{WireTodoItem, WireTodoList, WireTodoStatus};
     let event = Event::TodoUpdated {
-        list: TodoList::new(vec![
-            TodoItem {
+        list: WireTodoList::new(vec![
+            WireTodoItem {
                 id: "t1".into(),
                 content: "压降 specs".into(),
-                status: TodoStatus::InProgress,
+                status: WireTodoStatus::InProgress,
             },
-            TodoItem {
+            WireTodoItem {
                 id: "t2".into(),
                 content: "收口报告".into(),
-                status: TodoStatus::Pending,
+                status: WireTodoStatus::Pending,
             },
         ]),
     };

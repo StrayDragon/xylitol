@@ -84,6 +84,7 @@ tokio-tungstenite = { version = "0.30", features = ["connect", "handshake"], opt
 # in-tree product host/layout layers live under src/app/tui/.
 xylitol-tui = { path = "crates/xylitol-tui", optional = true }
 xylitol-plugin-sdk = { path = "crates/xylitol-plugin-sdk" }
+xylitol-protocol = { path = "crates/xylitol-protocol" }
 xylitol-ai-bridge = { path = "crates/xylitol-ai-bridge" }
 crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 http = "1"

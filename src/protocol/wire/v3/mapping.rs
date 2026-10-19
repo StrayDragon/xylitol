@@ -19,6 +19,7 @@ use crate::protocol::session::{
     ThinkingLevelChangeEntry, TodoList, TodoStatus,
 };
 use crate::protocol::wire::Command as WireCommand;
+use xylitol_protocol::SessionTreeKind as WireSessionTreeKind;
 
 // ── XyEvent → v3 Event ─────────────────────────────────────
 
@@ -447,10 +448,10 @@ pub fn v3_to_command(cmd: &v3::Command) -> Option<WireCommand> {
         v3::Command::EstimateContext(_) => Some(WireCommand::EstimateContext {}),
         v3::Command::GetCommands(_) => Some(WireCommand::GetCommands {}),
         v3::Command::SessionTreeCmd(e) => Some(WireCommand::SessionTree {
-            kind: v3_session_tree_kind_to_xy(&e.kind),
+            kind: v3_session_tree_kind_to_wire(&e.kind),
         }),
         v3::Command::TravelSessionTree(e) => Some(WireCommand::TravelSessionTree {
-            kind: v3_session_tree_kind_to_xy(&e.kind),
+            kind: v3_session_tree_kind_to_wire(&e.kind),
             entry_id: e.entry_id.clone(),
         }),
         v3::Command::AppendEntryLabel(e) => Some(WireCommand::AppendEntryLabel {
@@ -531,10 +532,17 @@ fn token_provenance_from_str(provenance: &str) -> TokenProvenance {
     TokenProvenance::from_key(provenance)
 }
 
-fn session_tree_kind_to_v3(kind: SessionTreeKind) -> v3::SessionTreeKind {
+fn session_tree_kind_to_v3(kind: WireSessionTreeKind) -> v3::SessionTreeKind {
     match kind {
-        SessionTreeKind::MessageHistory => v3::SessionTreeKind::MessageHistory,
-        SessionTreeKind::FileBrowser => v3::SessionTreeKind::FileBrowser,
+        WireSessionTreeKind::MessageHistory => v3::SessionTreeKind::MessageHistory,
+        WireSessionTreeKind::FileBrowser => v3::SessionTreeKind::FileBrowser,
+    }
+}
+
+fn v3_session_tree_kind_to_wire(kind: &v3::SessionTreeKind) -> WireSessionTreeKind {
+    match kind {
+        v3::SessionTreeKind::MessageHistory => WireSessionTreeKind::MessageHistory,
+        v3::SessionTreeKind::FileBrowser => WireSessionTreeKind::FileBrowser,
     }
 }
 
@@ -842,7 +850,7 @@ pub fn v3_to_tree_nodes(result: &v3::TreeResult) -> Option<Vec<SessionTreeNode>>
 /// `travel_session_tree` 应答 → v3 强 schema union。
 pub fn travel_result_to_v3(travel: &SessionTreeTravel) -> v3::TravelResult {
     v3::TravelResult {
-        kind: session_tree_kind_to_v3(travel.kind),
+        kind: session_tree_kind_to_v3(crate::protocol::wire::wire_session_tree_kind(travel.kind)),
         selected_id: travel.selected_id.clone(),
         leaf_id: travel.leaf_id.clone(),
         editor_text: travel.editor_text.clone(),
@@ -1165,13 +1173,13 @@ mod tests {
             (WireCommand::GetCommands {}, "GetCommands"),
             (
                 WireCommand::SessionTree {
-                    kind: SessionTreeKind::MessageHistory,
+                    kind: WireSessionTreeKind::MessageHistory,
                 },
                 "SessionTreeCmd",
             ),
             (
                 WireCommand::TravelSessionTree {
-                    kind: SessionTreeKind::FileBrowser,
+                    kind: WireSessionTreeKind::FileBrowser,
                     entry_id: "e1".into(),
                 },
                 "TravelSessionTree",

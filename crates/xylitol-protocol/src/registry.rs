@@ -8,7 +8,7 @@
 
 use serde_json::{Value, json};
 
-use crate::protocol::Command;
+use crate::Command;
 
 /// 写占用准入：`Writer` 取会话内核占用，`Readonly` 不占。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -674,7 +674,7 @@ mod tests {
     /// 逐一对照（Command 实例手工构造成本高，按代表 + 类全集名单双保险）。
     #[test]
     fn exec_class_matches_registry_declaration() {
-        use crate::protocol::session::SessionTreeKind;
+        use crate::SessionTreeKind;
 
         // atm18：逐变体穷举对照——每个 command_backed REGISTRY 行的 Exec 列
         // MUST 与 `exec_class` 推导一致（Quit 无 wire 行，单独断言 Queued）。

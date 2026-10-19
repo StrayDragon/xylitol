@@ -1,6 +1,6 @@
 use super::*;
 use crate::protocol::message::AgentMessage;
-use crate::protocol::wire::ToWireEvent;
+use crate::protocol::wire::{FromWireEvent, ToWireEvent};
 
 fn assistant_end() -> XyEvent {
     XyEvent::AgentEnd {
@@ -79,7 +79,7 @@ fn tool_start_path_preview_matches_after_wire_roundtrip() {
     let encoded = serde_json::to_value(&wire).expect("wire serializes");
     let decoded: crate::protocol::wire::Event =
         serde_json::from_value(encoded).expect("wire deserializes");
-    let remote_event = XyEvent::try_from(&decoded).expect("roundtrip succeeds");
+    let remote_event = XyEvent::from_wire_event(&decoded).expect("roundtrip succeeds");
     let mut remote = UiModel::new();
     apply_xy_event(&mut remote, &remote_event);
 
@@ -223,7 +223,7 @@ fn message_update_tool_path_matches_after_wire_roundtrip() {
     let encoded = serde_json::to_value(&wire).expect("wire serializes");
     let decoded: crate::protocol::wire::Event =
         serde_json::from_value(encoded).expect("wire deserializes");
-    let remote_event = XyEvent::try_from(&decoded).expect("roundtrip succeeds");
+    let remote_event = XyEvent::from_wire_event(&decoded).expect("roundtrip succeeds");
     let mut remote = UiModel::new();
     apply_xy_event(&mut remote, &remote_event);
 

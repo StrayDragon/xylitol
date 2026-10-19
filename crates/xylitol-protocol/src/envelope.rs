@@ -101,7 +101,7 @@ pub struct RpcError {
 pub struct SessionEventPayload {
     pub session_id: String,
     pub seq: u64,
-    pub event: crate::protocol::Event,
+    pub event: crate::Event,
 }
 
 /// Downlink payload for `session/subscribed`.

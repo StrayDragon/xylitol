@@ -4,7 +4,7 @@
 维护脚本(不进 `just qa` 门禁:依赖本地 apache/fory clone)。跨端协议帧，不是抽象「线协议」一词。
 
 用法:
-  just codegen-wire            # 重新生成并写回 src/protocol/wire/v3/generated.rs
+  just codegen-wire            # 重新生成并写回 crates/xylitol-protocol/src/v3/generated.rs
   just codegen-wire --check    # 只校验 check-in 产物与真源一致(漂移即非零退出)
 
 前置:apache/fory clone 位于本仓库同级目录(默认 ../fory,可用 FORY_ROOT 覆盖),
@@ -22,8 +22,8 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FBS = REPO_ROOT / "src/protocol/wire/v3/xy_wire_v3.fbs"
-CHECKED_IN = REPO_ROOT / "src/protocol/wire/v3/generated.rs"
+FBS = REPO_ROOT / "crates/xylitol-protocol/src/v3/xy_wire_v3.fbs"
+CHECKED_IN = REPO_ROOT / "crates/xylitol-protocol/src/v3/generated.rs"
 FORY_ROOT = Path(os.environ.get("FORY_ROOT", REPO_ROOT.parent / "fory"))
 COMPILER = FORY_ROOT / "compiler"
 

@@ -1,114 +1,17 @@
-//! Event vocabulary — core → client messages.
+//! XyEvent ↔ wire Event mapping (envelope types live in xylitol-protocol).
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use xylitol_protocol::Event;
 
 use crate::protocol::lifecycle::XyEvent;
 
-/// An event from the core: a streamed occurrence during a turn.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum Event {
-    Error {
-        /// Stable classification aligned with `protocol::lifecycle` kinds.
-        kind: String,
-        message: String,
-    },
-    TextDelta {
-        text: String,
-    },
-    /// Streaming thinking / reasoning text (e.g. Anthropic extended thinking).
-    ThinkingDelta {
-        text: String,
-    },
-    ToolStart {
-        id: String,
-        name: String,
-        args: Value,
-    },
-    ToolEnd {
-        id: String,
-        name: String,
-        result: String,
-        /// Terminal failure marker (c2440); required on the wire.
-        is_error: bool,
-    },
-    AgentEnd,
-    ModelSelect {
-        provider: String,
-        model_id: String,
-    },
-    CompactionStart {
-        reason: String,
-    },
-    /// Turn started.
-    TurnStart {
-        turn_index: u32,
-    },
-    /// Turn ended.
-    TurnEnd {
-        turn_index: u32,
-    },
-    /// Message started.
-    MessageStart {
-        role: String,
-        message: Option<Value>,
-    },
-    /// Message ended.
-    MessageEnd {
-        role: String,
-        message: Option<Value>,
-    },
-    /// Streaming message update (replaces previous text/thinking for this message).
-    MessageUpdate {
-        text: String,
-        thinking: Option<String>,
-        message: Option<Value>,
-    },
-    /// Streaming tool execution output.
-    ToolExecutionUpdate {
-        id: String,
-        output: String,
-    },
-    /// Compaction completed — payload mirrors [`XyEvent::CompactionEnd`] so
-    /// attach clients render real token counts / expandable summary (pa-wire3).
-    CompactionEnd {
-        result: Option<String>,
-        #[serde(default)]
-        aborted: bool,
-        #[serde(default)]
-        reason: String,
-        #[serde(default)]
-        will_retry: bool,
-        error_message: Option<String>,
-        summary: Option<String>,
-        tokens_before: Option<u64>,
-        #[serde(default)]
-        tokens_after: Option<u64>,
-        #[serde(default)]
-        notice: Option<String>,
-    },
-    /// Shared context-token settlement (c1860) for footer / cross-client fixed zone.
-    ContextTokenSettlement {
-        tokens: u64,
-        provenance: String,
-        usage_tokens: u64,
-        trailing_tokens: u64,
-        last_usage_index: Option<usize>,
-        reason: String,
-        generation: u64,
-    },
-    /// Pending steer / follow-up queue depths (cross-client badge).
-    QueueUpdate {
-        steer_count: usize,
-        follow_up_count: usize,
-    },
-    /// Agent Todo checklist snapshot changed (atd13 / pa-todo1): attach clients
-    /// refresh the checklist projection from this payload, never from parsing
-    /// tool-result text.
-    TodoUpdated {
-        list: crate::protocol::session::TodoList,
-    },
+fn todo_list_to_wire(list: &crate::protocol::session::TodoList) -> xylitol_protocol::TodoList {
+    serde_json::from_value(serde_json::to_value(list).expect("todo list json"))
+        .expect("wire todo list")
+}
+
+fn todo_list_from_wire(list: &xylitol_protocol::TodoList) -> crate::protocol::session::TodoList {
+    serde_json::from_value(serde_json::to_value(list).expect("wire todo json"))
+        .expect("sdk todo list")
 }
 
 /// Convert a domain lifecycle event to its wire-protocol representation.
@@ -119,6 +22,11 @@ pub enum Event {
 /// and [`XyEvent::TodoUpdated`] are wire-visible (c540 / pa-todo1).
 pub trait ToWireEvent {
     fn to_wire_event(&self) -> Option<Event>;
+}
+
+/// Project a wire [`Event`] into a domain [`XyEvent`] (orphan-safe local trait).
+pub trait FromWireEvent: Sized {
+    fn from_wire_event(event: &Event) -> Result<Self, WireEventConvertError>;
 }
 
 impl ToWireEvent for XyEvent {
@@ -228,7 +136,9 @@ impl ToWireEvent for XyEvent {
                 steer_count: *steer_count,
                 follow_up_count: *follow_up_count,
             }),
-            XyEvent::TodoUpdated { list } => Some(Event::TodoUpdated { list: list.clone() }),
+            XyEvent::TodoUpdated { list } => Some(Event::TodoUpdated {
+                list: todo_list_to_wire(list),
+            }),
             // Degraded (not on the wire): process-local or REST-covered.
             XyEvent::AgentStart { .. }
             | XyEvent::AutoRetryStart { .. }
@@ -256,10 +166,8 @@ pub enum WireEventConvertError {
     Unmapped(String),
 }
 
-impl TryFrom<&Event> for XyEvent {
-    type Error = WireEventConvertError;
-
-    fn try_from(event: &Event) -> Result<Self, <Self as TryFrom<&Event>>::Error> {
+impl FromWireEvent for XyEvent {
+    fn from_wire_event(event: &Event) -> Result<Self, WireEventConvertError> {
         match event {
             Event::TextDelta { text } => Ok(XyEvent::TextDelta(text.clone())),
             Event::ThinkingDelta { text } => Ok(XyEvent::ThinkingDelta(text.clone())),
@@ -376,7 +284,9 @@ impl TryFrom<&Event> for XyEvent {
                 steer_count: *steer_count,
                 follow_up_count: *follow_up_count,
             }),
-            Event::TodoUpdated { list } => Ok(XyEvent::TodoUpdated { list: list.clone() }),
+            Event::TodoUpdated { list } => Ok(XyEvent::TodoUpdated {
+                list: todo_list_from_wire(list),
+            }),
         }
     }
 }
@@ -397,7 +307,7 @@ mod tests {
         let wire = domain
             .to_wire_event()
             .expect("MessageStart is wire-visible");
-        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&wire).expect("roundtrip");
         match back {
             XyEvent::MessageStart { role, message } => {
                 assert_eq!(role, "user");
@@ -415,7 +325,7 @@ mod tests {
             message: Some(crate::protocol::message::AgentMessage::user("follow text")),
         };
         let wire = domain.to_wire_event().expect("MessageEnd is wire-visible");
-        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&wire).expect("roundtrip");
         match back {
             XyEvent::MessageEnd { role, message } => {
                 assert_eq!(role, "user");
@@ -438,7 +348,7 @@ mod tests {
             } if text == "reasoning..."
         ));
 
-        let back = XyEvent::try_from(&wire).expect("roundtrip succeeds");
+        let back = XyEvent::from_wire_event(&wire).expect("roundtrip succeeds");
         assert!(matches!(
             back,
             XyEvent::ThinkingDelta(text) if text == "reasoning..."
@@ -461,7 +371,7 @@ mod tests {
                 follow_up_count: 1,
             }
         ));
-        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&wire).expect("roundtrip");
         assert!(matches!(
             back,
             XyEvent::QueueUpdate {
@@ -489,7 +399,7 @@ mod tests {
         assert_eq!(encoded["list"]["items"][0]["status"], "in_progress");
 
         let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
-        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&decoded).expect("roundtrip");
         assert!(matches!(
             back,
             XyEvent::TodoUpdated { ref list } if list.items.len() == 1
@@ -501,7 +411,7 @@ mod tests {
         let wire = cleared
             .to_wire_event()
             .expect("empty list still wire-visible");
-        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&wire).expect("roundtrip");
         assert!(matches!(
             back,
             XyEvent::TodoUpdated { ref list } if list.is_empty()
@@ -525,7 +435,7 @@ mod tests {
         let wire = domain
             .to_wire_event()
             .expect("ContextTokenSettlement is wire-visible (c1860)");
-        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&wire).expect("roundtrip");
         match back {
             XyEvent::ContextTokenSettlement {
                 estimate,
@@ -555,7 +465,7 @@ mod tests {
                 ref message,
             } if kind == "Provider" && message == "provider error: 503"
         ));
-        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&wire).expect("roundtrip");
         match back {
             XyEvent::Error(err) => {
                 assert_eq!(err.kind, "Provider");
@@ -585,7 +495,7 @@ mod tests {
         assert_eq!(encoded["args"], serde_json::json!({"path": "README.md"}));
 
         let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
-        let back = XyEvent::try_from(&decoded).expect("roundtrip succeeds");
+        let back = XyEvent::from_wire_event(&decoded).expect("roundtrip succeeds");
         assert!(matches!(
             back,
             XyEvent::ToolExecutionStart { args, .. }
@@ -627,7 +537,7 @@ mod tests {
         assert_eq!(encoded["message"], expected);
 
         let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
-        let back = XyEvent::try_from(&decoded).expect("roundtrip succeeds");
+        let back = XyEvent::from_wire_event(&decoded).expect("roundtrip succeeds");
         let XyEvent::MessageUpdate { message, .. } = back else {
             panic!("unexpected event");
         };
@@ -659,7 +569,7 @@ mod tests {
         assert!(decoded.is_err(), "missing is_error must be rejected");
 
         let decoded: Event = serde_json::from_value(encoded).expect("wire deserializes");
-        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&decoded).expect("roundtrip");
         let XyEvent::ToolExecutionEnd { is_error, .. } = back else {
             panic!("unexpected event");
         };
@@ -690,7 +600,7 @@ mod tests {
         assert_eq!(encoded["tokens_after"], 18_240);
         assert_eq!(encoded["summary"], "prior work summarized");
         let decoded: Event = serde_json::from_value(encoded.clone()).expect("wire deserializes");
-        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&decoded).expect("roundtrip");
         let XyEvent::CompactionEnd {
             result,
             aborted,
@@ -729,7 +639,7 @@ mod tests {
         let wire = failed
             .to_wire_event()
             .expect("CompactionEnd is wire-visible");
-        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&wire).expect("roundtrip");
         let XyEvent::CompactionEnd {
             error_message,
             reason,
@@ -758,7 +668,7 @@ mod tests {
         let wire = aborted
             .to_wire_event()
             .expect("CompactionEnd is wire-visible");
-        let back = XyEvent::try_from(&wire).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&wire).expect("roundtrip");
         assert!(matches!(back, XyEvent::CompactionEnd { aborted: true, .. }));
     }
 
@@ -768,7 +678,7 @@ mod tests {
         // decoding MUST NOT panic and MUST NOT fake a success completion.
         let decoded: Event = serde_json::from_value(serde_json::json!({"type": "compaction_end"}))
             .expect("legacy bare payload must decode");
-        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&decoded).expect("roundtrip");
         match back {
             XyEvent::CompactionEnd {
                 result,
@@ -810,7 +720,7 @@ mod tests {
         let wire = event.to_wire_event().expect("wire-visible");
         let encoded = serde_json::to_value(&wire).expect("serializes");
         let decoded: Event = serde_json::from_value(encoded).expect("decodes");
-        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&decoded).expect("roundtrip");
         let XyEvent::CompactionEnd {
             tokens_before,
             tokens_after,
@@ -828,7 +738,7 @@ mod tests {
         let decoded: Event =
             serde_json::from_value(serde_json::json!({"type": "compaction_end", "result": "ok"}))
                 .expect("legacy decode");
-        let back = XyEvent::try_from(&decoded).expect("roundtrip");
+        let back = XyEvent::from_wire_event(&decoded).expect("roundtrip");
         let XyEvent::CompactionEnd {
             tokens_after,
             notice,

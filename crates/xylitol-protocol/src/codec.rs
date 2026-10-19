@@ -21,11 +21,11 @@ pub fn encode_to_string(msg: &RpcMessage) -> Result<String, serde_json::Error> {
 
 /// 线上 JSON 深解析上限（r1927）：容纳实机深树（188）一个量级余量，
 /// 远低于 tokio worker 栈风险区。两处 `disable_recursion_limit` 入口共用。
-pub(crate) const JSON_DEPTH_LIMIT: u32 = 2048;
+pub const JSON_DEPTH_LIMIT: u32 = 2048;
 
 /// 单趟、转义感知：字符串字面量内的 `[`/`{` 不计入嵌套。超限即 `true`，
 /// 不再进入 serde 递归下降（c2851：无界 `disable_recursion_limit` 可打穿栈）。
-pub(crate) fn json_nesting_exceeds_limit(text: &str) -> bool {
+pub fn json_nesting_exceeds_limit(text: &str) -> bool {
     let mut depth: u32 = 0;
     let mut in_string = false;
     let mut escape = false;
@@ -226,7 +226,7 @@ pub fn jsonrpc_notification(method: &str, params: Value) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::RpcMessage;
+    use crate::RpcMessage;
     use serde_json::json;
 
     #[test]

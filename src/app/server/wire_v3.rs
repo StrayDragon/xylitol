@@ -211,8 +211,7 @@ pub(crate) fn downlink_frame(
         "session/event" => {
             let ev: crate::protocol::wire::SessionEventPayload =
                 serde_json::from_value(payload).map_err(|e| format!("event payload: {e}"))?;
-            let xy: crate::protocol::lifecycle::XyEvent = (&ev.event)
-                .try_into()
+            let xy = crate::protocol::wire::FromWireEvent::from_wire_event(&ev.event)
                 .map_err(|_| "wire event -> XyEvent".to_string())?;
             let v3_ev = crate::protocol::wire::v3::mapping::xy_event_to_v3(&xy)
                 .ok_or("XyEvent variant has no v3 projection")?;

@@ -791,12 +791,17 @@ impl crate::app::core::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 let estimate = XyInProcessDriver::estimate_context_tokens(self).await?;
                 Ok(DispatchOutcome::EstimateContext(estimate))
             }
-            Command::SessionTree { kind, .. } => {
-                Ok(DispatchOutcome::SessionTree(self.session_tree(kind).await?))
-            }
+            Command::SessionTree { kind, .. } => Ok(DispatchOutcome::SessionTree(
+                self.session_tree(crate::protocol::wire::sdk_session_tree_kind(kind))
+                    .await?,
+            )),
             Command::TravelSessionTree { kind, entry_id, .. } => {
                 Ok(DispatchOutcome::SessionTreeTravel(
-                    self.travel_session_tree(kind, &entry_id).await?,
+                    self.travel_session_tree(
+                        crate::protocol::wire::sdk_session_tree_kind(kind),
+                        &entry_id,
+                    )
+                    .await?,
                 ))
             }
             Command::AppendEntryLabel {

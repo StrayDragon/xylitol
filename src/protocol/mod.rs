@@ -13,7 +13,7 @@ pub mod wire;
 
 // Wire Command/Event re-exported at protocol root — the canonical application-facing path.
 pub use wire::{
-    ApprovalRequestedPayload, Command, DOWNLINK_METHODS, Event, HostDescribeValue,
+    ApprovalRequestedPayload, Command, DOWNLINK_METHODS, Event, FromWireEvent, HostDescribeValue,
     PROTOCOL_VERSION, QuestionRequestedPayload, RpcError, RpcMessage, RpcResult,
     SessionEventPayload, SessionResourcesPayload, SessionResyncRequiredPayload,
     SessionSubscribedPayload, ToWireEvent, is_downlink_method, is_unary_method,

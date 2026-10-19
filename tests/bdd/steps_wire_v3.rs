@@ -174,7 +174,7 @@ async fn t_codegen_clean() {
     // 「改了 fbs 但没重新生成」这类结构漂移。方法 ID 表对齐与字节 conformance
     // 由 lib 测试(`method_table_aligns_with_registry` / `codec_conformance_bytes_locked`) 覆盖。
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let schema_dir = root.join("src/protocol/wire/v3");
+    let schema_dir = root.join("crates/xylitol-protocol/src/v3");
     let fbs = std::fs::read_to_string(schema_dir.join("xy_wire_v3.fbs")).expect("fbs 真源");
     let generated =
         std::fs::read_to_string(schema_dir.join("generated.rs")).expect("check-in 生成物");

@@ -5774,6 +5774,7 @@ dependencies = [
  "wiremock",
  "xylitol-ai-bridge",
  "xylitol-plugin-sdk",
+ "xylitol-protocol",
  "xylitol-tui",
  "yaml_serde",
 ]
@@ -5866,6 +5867,14 @@ dependencies = [
 [[package]]
 name = "xylitol-protocol"
 version = "0.0.0-pre"
+dependencies = [
+ "fory",
+ "log",
+ "serde",
+ "serde_json",
+ "strum",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "xylitol-runtime"

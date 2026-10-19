@@ -15,6 +15,7 @@ use crate::app::core::host_client::{HostClient, HostClientError, HttpWsClient};
 use crate::protocol::model::THINKING_OFF;
 use crate::protocol::ports::XyBashResult;
 use crate::protocol::wire::Command;
+use crate::protocol::wire::FromWireEvent;
 use crate::protocol::wire::envelope::PROTOCOL_VERSION;
 use crate::protocol::{Event, RpcMessage};
 
@@ -355,7 +356,7 @@ where
             let Ok(ev) = serde_json::from_value::<Event>(event_val) else {
                 return;
             };
-            let Ok(agent_event) = XyEvent::try_from(&ev) else {
+            let Ok(agent_event) = XyEvent::from_wire_event(&ev) else {
                 return;
             };
             if let XyEvent::QueueUpdate {
@@ -1881,7 +1882,7 @@ mod tests {
     use crate::app::core::host_client::InProcessClient;
     use crate::app::server::host::HostState;
     use crate::app::server::runtime::{ServerConfig, serve};
-    use crate::protocol::session::SessionTreeKind;
+    use crate::protocol::wire::WireSessionTreeKind;
 
     #[test]
     fn empty_session_arg_mints_uuid() {
@@ -2436,7 +2437,7 @@ mod tests {
         let tree = match dispatch(
             &mut driver,
             Command::SessionTree {
-                kind: SessionTreeKind::MessageHistory,
+                kind: WireSessionTreeKind::MessageHistory,
             },
         )
         .await
@@ -2468,7 +2469,7 @@ mod tests {
         let labelled_tree = match dispatch(
             &mut driver,
             Command::SessionTree {
-                kind: SessionTreeKind::MessageHistory,
+                kind: WireSessionTreeKind::MessageHistory,
             },
         )
         .await
@@ -2484,7 +2485,7 @@ mod tests {
         let travel = match dispatch(
             &mut driver,
             Command::TravelSessionTree {
-                kind: SessionTreeKind::MessageHistory,
+                kind: WireSessionTreeKind::MessageHistory,
                 entry_id: target_id.clone(),
             },
         )

@@ -89,7 +89,7 @@ pub(crate) fn t_la_default_features() {
 pub(crate) fn w_la_pi_refs() {
     let mut hits = 0usize;
     for path in [
-        "src/protocol/wire/envelope.rs",
+        "crates/xylitol-protocol/src/envelope.rs",
         "crates/xylitol-plugin-sdk/src/model/meta.rs",
         "src/agent/runtime/react/mod.rs",
     ] {

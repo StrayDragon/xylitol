@@ -964,18 +964,18 @@ impl crate::app::core::dispatch::SessionCommandExecutor for ScriptedDriver {
                 Ok(DispatchOutcome::EstimateContext(est))
             }
             Command::SessionTree { kind, .. } => match kind {
-                crate::protocol::session::SessionTreeKind::MessageHistory => {
+                crate::protocol::wire::WireSessionTreeKind::MessageHistory => {
                     self.session_tree_calls.fetch_add(1, Ordering::SeqCst);
                     Ok(DispatchOutcome::SessionTree(
                         self.message_history_tree.clone(),
                     ))
                 }
-                crate::protocol::session::SessionTreeKind::FileBrowser => {
+                crate::protocol::wire::WireSessionTreeKind::FileBrowser => {
                     Err("scripted: file_browser tree not implemented".into())
                 }
             },
             Command::TravelSessionTree { kind, entry_id, .. } => match kind {
-                crate::protocol::session::SessionTreeKind::MessageHistory => {
+                crate::protocol::wire::WireSessionTreeKind::MessageHistory => {
                     self.travel_calls
                         .lock()
                         .expect("travel_calls")
@@ -987,7 +987,7 @@ impl crate::app::core::dispatch::SessionCommandExecutor for ScriptedDriver {
                         .map_err(XyDriverError::from)?;
                     Ok(DispatchOutcome::SessionTreeTravel(travel))
                 }
-                crate::protocol::session::SessionTreeKind::FileBrowser => {
+                crate::protocol::wire::WireSessionTreeKind::FileBrowser => {
                     Err("scripted: file_browser travel not implemented".into())
                 }
             },

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::session::SessionTreeKind;
+use crate::SessionTreeKind;
 
 /// A command from the client（传输级关联只走信封 `rpcId`；无传输级 `id` 字段）。
 #[derive(Debug, Clone, Serialize, Deserialize, strum::VariantNames, strum::IntoStaticStr)]
