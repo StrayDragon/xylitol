@@ -20,7 +20,6 @@ pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, 
 pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>)
 pub fn begin_tool_gating(&mut self)
 pub fn bind_event_tx(&self, run_id: RunId, tx: EventTx)
-pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, XyError>
 pub fn clear(&mut self)
 pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool)
 pub fn clear_steer_queue(&self)
