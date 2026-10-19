@@ -2,7 +2,7 @@
 name: "llman-sdd-propose"
 description: "为行为合约（需求语义）变更创建提案（proposal/tasks → 绑定分支 → 提交 specs）。小改动走 quick，记想法走 draft。"
 metadata:
-  version: "0.9.0"
+  version: "0.10.0"
 ---
 
 # LLMAN SDD Propose
@@ -11,9 +11,19 @@ metadata:
 
 ## Pipeline 位置
 
-## Git 分支生命周期（权威全图）
+## Git 分支生命周期
 
 两层别混：**分支生命周期**（绑定分支 → 提交 specs → `readyToImplement`）与 **skill 导航**（explore→propose→apply→verify→archive）。提交 specs **不是**独立 skill。
+
+### 速览
+
+1. **先**绑定分支（`change start` / `attach`）→ `stage=full`；**再**在绑定的非默认分支编辑 `llmanspec/specs/**` 并 commit（提交 specs）。
+2. 无合约编辑的 change 设 frontmatter `needs_specs_change: false`。`stage=full` 且 specs-landed 门通过（`specsLanded ∨ needs_specs_change=false`）即可进 apply；`readyToImplement=true`（gateChecks 全过，含 tasks-done）是 verify/finalize 前的完成信号。diff 范围一律现算 merge-base；存储的 `base_sha` 仅审计。
+3. 收口一律 `llman-sdd change finalize <id>`：自动提交 `archive(sdd): <id>`（实现 diff + 改名一笔）；`--no-commit` 跳过自动提交。change 分支上提交自由（分段或 finalize 一次收尾均可）。
+4. **不得**为过干净树门禁把 specs commit 到默认分支；已 attach 不得重复 `start`。
+5. worktree（可选）：`change start --worktree` 在独立 worktree 建分支、不动当前检出（`--base <branch>` 仅本地分支）记录分叉源；attach 缺省按运行时信号推导分叉源、偏离默认分支时输出 WARNING；finalize 目标即绑定分支时跳过合并就地收口，目标被其他 worktree 持有时自动在该 worktree 内执行（输出标注位置）。
+
+### 权威全图
 
 ```mermaid
 flowchart TB
@@ -46,11 +56,7 @@ flowchart TB
   F --> G --> H --> I --> J
 ```
 
-硬规则：
-1. **先** `change start` / `attach` 绑定分支（进入 full）；**再**在绑定的非默认分支编辑 `llmanspec/specs/**` 并 commit（提交 specs）。
-2. 无合约编辑的 change 设 frontmatter `needs_specs_change: false`。`stage=full` 且 specs-landed 门通过（specsLanded ∨ needs_specs_change=false）即可进 apply；`readyToImplement=true`（gateChecks 全过，含 tasks-done）是 verify/finalize 前的完成信号。diff 范围一律现算 merge-base；存储的 `base_sha` 仅审计。
-3. 收口一律 `llman-sdd change finalize <id>`：自动提交 `archive(sdd): <id>`（实现 diff + 改名一笔）；`--no-commit` 跳过自动提交。change 分支上提交自由（分段或 finalize 一次收尾均可）。
-4. **不得**为过干净树门禁把 specs commit 到默认分支；已 attach 不得重复 `start`。
+上图为权威全图，本单元即其唯一来源（无需另寻根 `AGENTS.md`）。
 
 Worktree 决策表：
 
@@ -86,12 +92,12 @@ flowchart LR
 ## 硬约束
 
 - **change id 非阻塞**：用户给了就用；否则从任务描述推导合法 kebab-case id（动词前缀，过 CLI id 检查，遵循 `llmanspec/AGENTS.md` 命名约定），宣布所用 id 与覆盖方式后继续，不得 等确认——绑定分支前换 id 成本很低。只想先记 idea（不得 id）时转 `llman-sdd-draft`。
-- **specs 是唯一事实来源**：只在绑定分支**之后**、在**绑定的非默认分支**上编辑 `llmanspec/specs/**`。不得**在默认分支改 specs。规划文档可短暂留在默认分支。
-- 不得问“要不得继续”**：一口气执行完 propose，生成工件并校验。
+- **specs 是唯一事实来源**：只在绑定分支**之后**、在**绑定的非默认分支**上编辑 `llmanspec/specs/**`。**不得**在默认分支改 specs。规划文档可短暂留在默认分支。
+- **不得问“是否继续”**：一口气执行完 propose，生成工件并校验。
 
 - **change 已存在**：STOP。specs-landed 门已绿 → 宜接 `llman-sdd-apply`；否则补规划文档 / 绑定分支 / 提交 specs（编辑 `llmanspec/changes/<id>/`，或配置 `extra_skills: [llman-sdd-continue]`）。
 
-- **frontmatter 有固定 schema**：`proposal.md` 只接受 `llmanspec/AGENTS.md`“Change Proposal Frontmatter SSOT”的合法字段（`depends_on`、`title`、`blocks`、`branch`、`base_sha`、`needs_specs_change` 等）；`title` 必须为非空的一句话概念式标题，不得复读 change id——缺失或为空串时 `llman-sdd validate` 报 ERROR；`status`/`priority`/`author` 等集外字段同样报 ERROR。生命周期阶段是推断量（用 `llman-sdd show`/`list` 查），不得写进 frontmatter。正文不得复读 frontmatter 字段；H1 宜保留人类可读标题（freeze 取 title 时 frontmatter 优先、H1 回退），不复读 change id。
+- **frontmatter 有固定 schema**：`proposal.md` 只接受 `llmanspec/AGENTS.md`“Change Proposal Frontmatter SSOT”的合法字段（`depends_on`、`title`、`blocks`、`branch`、`base_branch`、`base_sha`、`needs_specs_change` 等）；`title` 必须为非空的一句话概念式标题，不得复读 change id——缺失或为空串时 `llman-sdd validate` 报 ERROR；`status`/`priority`/`author` 等集外字段同样报 ERROR。生命周期阶段是推断量（用 `llman-sdd show`/`list` 查），不得写进 frontmatter。正文不得复读 frontmatter 字段；H1 宜保留人类可读标题（freeze 取 title 时 frontmatter 优先、H1 回退），不复读 change id。
 
 ## 快速记录分流
 
@@ -111,7 +117,7 @@ flowchart LR
    - **元规范变更**（SDD 模板/流程）→ 完整 SDD
    - 不确定选完整 SDD（保守）。
 2. 用 `llman-sdd context --task "<目标>" --paths "<范围>"` 找匹配 `<paths>` 的 specs。
-   - context 不可用 → 先 `llman-sdd index check`：stale/缺失则 `llman-sdd index rebuild`（默认 pageindex，免模型）后重试；fresh 仍不可用（`LLMAN_SDD_INDEX_CHAT_MODEL` 未设）→ 改用 `llman-sdd list --specs` + 直读 `.feature`——勿循环 rebuild。
+   - context 不可用(含 `quality: "unavailable"`)→ 先 `llman-sdd index check`:stale/缺失则 `llman-sdd index rebuild`(默认 pageindex,免模型)后重试;fresh 仍不可用(`LLMAN_SDD_INDEX_CHAT_MODEL` 未设)→ 改用 `llman-sdd list --specs` + 直读 `.feature`——勿循环 rebuild。
 3. 收集输入：简短变更描述；change id（用户给了就用，否则按非阻塞规则推导并宣布）；受影响 capability（命名 `specs/<capability>`）。
 
 ### 2) 确认项目已初始化
@@ -126,7 +132,7 @@ flowchart LR
 - **写 tasks.md 前确认测试边界（seam）**：列出要测的 seam 并与用户确认。seam = 由 `*.feature` GWT 步骤驱动的公共边界（CLI 子进程或公共接口）——必须 复用既有 harness seam，不得 脱离 `.feature` 凭空发明；没有 `.feature` 时，seam = 被测的 CLI 子命令或公共函数边界。
 - `tasks.md` 按**垂直切片**拆（每个 task 打穿 schema→API→UI→tests 一条窄而完整的路径，可独立验证），带 `[blocked-by: <task-id>]` 依赖标记。**大范围重构例外**（一个机械改动扫全库、单点编辑牵动数百处调用）：按先加后删排序（新的加在旧的旁边 → 分批迁移调用处 → 删旧的），不强拆垂直切片。**tasks.md 只列实现与验证任务**：收口（`change finalize` / `change archive`）是流水线步骤，不得 列为任务——收口的任务门要求全部任务已勾，列了必然自相矛盾（勾选即虚报、不勾则收口被拒，实施期 `validate --strict` 永红）。前后对比类完成判据（计数、基线）必须 注明在 change 分支上测量（相对 merge-base）——默认分支测得的值通常恒为基线。
 - **先** `llman-sdd change start <change-id>`（推荐；默认分支上工作树干净时；保留当前检出用 `--worktree`，非默认分叉源用 `--base <branch>`（仅本地分支））或手动建分支后 `change attach <change-id>`（attach 缺省按运行时信号推导分叉源，偏离默认分支时输出 WARNING）。
-- **再**在绑定的非默认分支编辑 `llmanspec/specs/<capability>.feature`（扁平，或目录 `llmanspec/specs/<capability>/` 内主文件）并 commit（提交 specs）。不得**在 start 前改 specs；不得**为过干净树门禁把 specs commit 到默认分支。已 attach 不得重复 `start`（specs 丢失用 checkout/重建 + `attach --force` 恢复）。
+- **再**在绑定的非默认分支编辑 `llmanspec/specs/<capability>.feature`（扁平，或目录 `llmanspec/specs/<capability>/` 内主文件）并 commit（提交 specs）。**不得**在 start 前改 specs；**不得**为过干净树门禁把 specs commit 到默认分支。已 attach 不得重复 `start`（specs 丢失用 checkout/重建 + `attach --force` 恢复）。
 - 无合约编辑的 change 设 frontmatter `needs_specs_change: false`。`llman-sdd show <id> --output json` 显示 `stage=full` 且 specs-landed 门通过即可进 apply；`readyToImplement=true`（全门）是 verify/finalize 的完成信号。
 - **破坏性合约变更**（移除/重命名字段、命令、tag 或 stage 值域）必须 规划升级路径：`migrations/v<from>-v<to>/` 下写 README（升级提示；一次性脚本可行时随仓库提供）——写进提案 What Changes。
 
@@ -143,11 +149,20 @@ llman-sdd validate <change-id>
 - **不得 静默添加 `specs:` 段**——总是先问。添加它会向全项目声明 BDD 执行入口。
 
 ### 4b) 单轨 feature 撰写
-- 规划文档可短暂留在默认分支；不得**在默认分支编辑 `llmanspec/specs/**`。绑定分支后，提交 specs 与实现都在绑定分支上。
+- 规划文档可短暂留在默认分支；**不得**在默认分支编辑 `llmanspec/specs/**`。绑定分支后，提交 specs 与实现都在绑定分支上。
 - **单轨**：每个 capability 只有一个 `<capability>.feature`。规范样式为原生 Gherkin 分层：`@req:<id>` 挂 `规则:` 块头，块内嵌套 `场景:`（假如/当/那么 步骤，绑定 runner 步骤代码并被执行——**默认首选形态**）；仅当需求无法程序化表达（抽象目标、架构决策、治理/人工约束）或暂不转写时，才留下无嵌套场景的 `规则:` 块（裸规则，描述自由文本）并在 proposal/design 记录理由。历史标签（@executable/@rule/@human/@manual）不再使用。
 - **描述可读性**：`规则:` 描述较长时拆成多行便于审查（官方解析器按行保留）；描述行不加 `- ` 列表前缀（会原样进入描述），也不得以 `假如/当/那么/而且`（en `Given/When/Then/And/But`）开头——会被 Gherkin 解析为步骤。
 - **结构化新增首选**：向既有 capability 追加规则/场景，优先 `llman-sdd spec next-req-id`（全局 rN 分配）+ `spec add-req`（追加 `规则:` 块）+ `spec add-scenario`（向规则块插入嵌套 `场景:`）。新建 capability 用 `spec skeleton <capability>`；rN 反查用 `spec resolve-req <rN>`。旧式标签文件先 `spec migrate-native`。手改 `.feature` 保留为逃生门（适合改既有条款）。
 - **可执行场景优先判据**（写新条款前先判定）：凡 GWT（假如/当/那么）可表达、绑定步骤代码的自动化判定行为 必须 落成嵌套 `场景:`——纯文字规则无行为守护。用例如下：行为可程序判定（如“当 运行 validate 后,那么 stdout 为 TOON 且退出码为 0”）→ 嵌套 `场景:`；抽象目标/架构决策暂不可程序判定 → 裸 `规则:` 块（无嵌套场景，聚合计数提示，交 specs-compact），并在 proposal/design 记录理由。
+
+## 单轨 Feature 合约规范
+
+每个 capability 只有一个 Gherkin 文件：扁平 `llmanspec/specs/<capability>.feature`（默认）或目录 `llmanspec/specs/<capability>/` 内同名主文件——二选一，同 id 两布局并存算冲突。它是唯一的 spec 工件（不存在 `spec.toon`）。
+
+- capability 即 discover 在实例内从路径分配后的 spec id，`功能:` 标题必须等于该 id；不得要求或生成 `# capability:` 头。
+- 头注释 `# language:`（方言）必填：缺失则解析器回退默认方言，条款可能按错误方言解析。
+- 覆盖分级：enforced（`规则:` 含嵌套 `场景:`）/ pending（裸 `规则:`）——`list --specs` 逐项输出；pending 由聚合计数与 specs-compact 承担压降。
+- 缩进层级两空格递进：块 `规则:` 2 格、嵌套 `场景:` 4 格、步骤 6 格。
 
 ### 5) 总结并宜接的下一步
 - 进入实现：`llman-sdd-apply`；需要再想清楚：`llman-sdd-explore`。
@@ -194,8 +209,8 @@ llman-sdd validate <change-id>
 - 先给人读摘要（结论 / 风险 / 待决策），机器细节随后。
 
 ## Ethics Governance
-- `ethics.risk_level`：low——仅读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时从其声明。
-- `ethics.prohibited_actions`：违反正文“硬约束”的动作；未经用户明确要求的 push / PR / 外部上传。
-- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman-sdd validate` 为准。
-- `ethics.refusal_contract`：门禁 CRITICAL 未清零 → 拒绝进入下一阶段；自修复达上限 → 报告 blocker。
-- `ethics.escalation_policy`：改动 SDD 合约/模板或执行不可逆动作前，暂停并请用户确认。
+- `ethics.risk_level`：low——只读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时按正文执行。
+- `ethics.prohibited_actions`：违反正文硬约束的动作；用户未明确要求时，不得 push、发 PR 或向外部上传。
+- `ethics.required_evidence`：结论必须给出命令输出或文件路径；门禁状态以 `llman-sdd validate` 输出为准。
+- `ethics.refusal_contract`：门禁 CRITICAL 未清零时，不得进入下一阶段；自修复达到上限时，报告 blocker。
+- `ethics.escalation_policy`：改动 SDD 合约、模板，或执行不可逆动作前，必须先取得用户确认。

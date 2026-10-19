@@ -1,14 +1,14 @@
 <!-- LLMANSPEC:START -->
 
-# LLMAN Spec-Driven Development
+# LLMAN 规范驱动开发
 
-This project uses llman SDD. Read `llmanspec/config.yaml` for SDD command behavior configuration, and `llmanspec/AGENTS.md` for additional project-specific rules.
+本项目使用 llman SDD。阅读 `llmanspec/config.yaml` 了解 SDD 命令行为配置，以及 `llmanspec/AGENTS.md` 获取项目附加规则。
 
-## SDD Pipeline
+## SDD 流水线
 
-Use `/llman-sdd-explore` to get started, then follow the pipeline: `/llman-sdd-propose` → `/llman-sdd-apply` → `/llman-sdd-verify` → `/llman-sdd-archive`.
+使用 `/llman-sdd-explore` 开始，然后按照 pipeline：`/llman-sdd-propose` → `/llman-sdd-apply` → `/llman-sdd-verify` → `/llman-sdd-archive`。
 
-Keep this managed block so `llman-sdd init --update` can refresh it.
+保留此托管块，便于 `llman-sdd init --update` 刷新。
 <!-- LLMANSPEC:END -->
 
 # crates/xylitol-ai-bridge

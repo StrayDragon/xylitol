@@ -2,7 +2,7 @@
 name: "llman-sdd-wayfinder"
 description: "把超出单会话的大型模糊工作拆成决策地图，逐个解决直到路径清晰。仅手动触发。"
 metadata:
-  version: "0.9.0"
+  version: "0.10.0"
 disable-model-invocation: true
 ---
 
@@ -71,7 +71,7 @@ disable-model-invocation: true
 ### 推进地图
 1. 加载地图（低分辨率视图，不用读每个 ticket 全文）。
 2. 选 ticket（用户指定或取可着手项第一个），先绑定分支（`change start` 或已有分支 `change attach`）占住它。规划文档可短暂在默认分支；ticket 要改 specs 时须在绑定分支提交。
-3. 解决它——按需深入（按 Notes 指名读 ticket 全文，调用 Notes 指定的 skill）；没把握时用逐问深挖。不得**在未绑定时改 `llmanspec/specs/**`。
+3. 解决它——按需深入（按 Notes 指名读 ticket 全文，调用 Notes 指定的 skill）；没把握时用逐问深挖。**不得**在未绑定时改 `llmanspec/specs/**`。
 4. 记录解决：答案写入该 ticket 的 proposal 并关闭它，在地图 Decisions-so-far 追加一行要点 + 指针。
 5. 新增 ticket（先建再接线）；答案让模糊点变清晰的，升级为 ticket 并移出尚未清晰区；答案揭示某 ticket 越过目的地的，归入范围外而非在路径上解决。
 
@@ -100,8 +100,8 @@ disable-model-invocation: true
 - 先给人读摘要（结论 / 风险 / 待决策），机器细节随后。
 
 ## Ethics Governance
-- `ethics.risk_level`：low——仅读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时从其声明。
-- `ethics.prohibited_actions`：违反正文“硬约束”的动作；未经用户明确要求的 push / PR / 外部上传。
-- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman-sdd validate` 为准。
-- `ethics.refusal_contract`：门禁 CRITICAL 未清零 → 拒绝进入下一阶段；自修复达上限 → 报告 blocker。
-- `ethics.escalation_policy`：改动 SDD 合约/模板或执行不可逆动作前，暂停并请用户确认。
+- `ethics.risk_level`：low——只读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时按正文执行。
+- `ethics.prohibited_actions`：违反正文硬约束的动作；用户未明确要求时，不得 push、发 PR 或向外部上传。
+- `ethics.required_evidence`：结论必须给出命令输出或文件路径；门禁状态以 `llman-sdd validate` 输出为准。
+- `ethics.refusal_contract`：门禁 CRITICAL 未清零时，不得进入下一阶段；自修复达到上限时，报告 blocker。
+- `ethics.escalation_policy`：改动 SDD 合约、模板，或执行不可逆动作前，必须先取得用户确认。

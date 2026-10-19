@@ -2,8 +2,8 @@
 
 # llmanspec AGENTS.md
 
-This file is referenced by the root `AGENTS.md` managed block. Use it to add
-project-specific rules, context, or conventions that you want AI agents to follow.
+此文件由根目录的 `AGENTS.md` 托管块引用。可在此添加项目特定的规则、
+上下文或约定，以便 AI 代理遵守。
 
-<!-- Add your rules below this line -->
+<!-- 在此行下方添加你的规则 -->
 <!-- LLMANSPEC:END -->

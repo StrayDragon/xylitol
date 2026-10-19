@@ -2,7 +2,7 @@
 name: "llman-sdd-quick"
 description: "快速路径：不改行为合约的小改动（重构/错字/性能）。要改行为合约（需求语义）就停，转 propose。"
 metadata:
-  version: "0.9.0"
+  version: "0.10.0"
 ---
 
 # LLMAN SDD Quick Path
@@ -27,7 +27,7 @@ flowchart LR
 
 ## 步骤
 1. 用 `llman-sdd context --task "..." --paths "..."` 确认无匹配 `<paths>` 的 spec 变更。
-   - context 返回 `quality: "unavailable"` → 先 `llman-sdd index check`：stale/缺失则 `llman-sdd index rebuild`（默认 pageindex，免模型）后重试；fresh 仍不可用（`LLMAN_SDD_INDEX_CHAT_MODEL` 未设）→ 改用 `llman-sdd list --specs` + 直读 `.feature`——勿循环 rebuild。
+   - context 不可用(含 `quality: "unavailable"`)→ 先 `llman-sdd index check`:stale/缺失则 `llman-sdd index rebuild`(默认 pageindex,免模型)后重试;fresh 仍不可用(`LLMAN_SDD_INDEX_CHAT_MODEL` 未设)→ 改用 `llman-sdd list --specs` + 直读 `.feature`——勿循环 rebuild。
 2. 直接改代码。
 3. 若要动 `llmanspec/specs/**`，STOP——除非已在绑定的非默认 change 分支上（迷你 change：`change start`/`attach` → 编辑 → commit）。不得在默认分支 commit specs，即使 typo 或仅收紧 scope 也不行。优先把 specs 维护路由到 `llman-sdd-propose`。
 4. git commit（message 写明 why）。无需 change 目录，无需 archive。

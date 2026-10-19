@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/StrayDragon/llman/main/artifacts/schema/configs/en/llmanspec-config.schema.json
 schema: spec-driven
-locale: en
+locale: zh-Hans
 
 # Optional extra skills (disabled by default, uncomment to enable).
 # On `llman-sdd init --update`, managed candidates are:
