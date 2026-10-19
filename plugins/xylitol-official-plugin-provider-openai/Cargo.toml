@@ -9,34 +9,34 @@ repository = "https://github.com/straydragon/xylitol"
 publish = false
 
 [dependencies]
-xylitol-plugin-sdk = { path = "../../crates/xylitol-plugin-sdk" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "2"
-anyhow = "1"
-async-trait = "0.1"
-futures = "0.3"
-async-stream = "0.3"
-tokio = { version = "1", features = ["time", "sync", "macros", "rt"] }
-tokio-util = "0.7"
-reqwest = { version = "0.13", features = ["stream", "json"] }
-eventsource-stream = "0.2"
-async-openai = { version = "0.42", default-features = false, features = [
+xylitol-plugin-sdk = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+async-stream = { workspace = true }
+tokio = { workspace = true, features = ["time", "sync", "macros", "rt"] }
+tokio-util = { workspace = true }
+reqwest = { workspace = true, features = ["stream", "json"] }
+eventsource-stream = { workspace = true }
+async-openai = { workspace = true, features = [
   "chat-completion",
   "responses",
   "byot",
   "middleware",
   "rustls",
 ] }
-tower = { version = "0.5", default-features = false, features = ["util"] }
-fastrace = { version = "0.7", features = ["enable"] }
-uuid = { version = "1", features = ["v4"] }
-log = "0.4"
-strum = { version = "0.28", features = ["derive"] }
-partial-json-fixer = "0.5.5"
+tower = { workspace = true, features = ["util"] }
+fastrace = { workspace = true, features = ["enable"] }
+uuid = { workspace = true, features = ["v4"] }
+log = { workspace = true }
+strum = { workspace = true, features = ["derive"] }
+partial-json-fixer = { workspace = true }
 
 [dev-dependencies]
-wiremock = "0.6"
-tempfile = "3"
-yaml_serde = "0.10.7"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+yaml_serde = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }

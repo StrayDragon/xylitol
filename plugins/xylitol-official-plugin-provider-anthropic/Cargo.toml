@@ -9,22 +9,22 @@ repository = "https://github.com/straydragon/xylitol"
 publish = false
 
 [dependencies]
-xylitol-plugin-sdk = { path = "../../crates/xylitol-plugin-sdk" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "2"
-anyhow = "1"
-async-trait = "0.1"
-futures = "0.3"
-async-stream = "0.3"
-tokio = { version = "1", features = ["time", "sync", "macros", "rt"] }
-reqwest = { version = "0.13", features = ["stream", "json"] }
-eventsource-stream = "0.2"
-fastrace = { version = "0.7", features = ["enable"] }
-uuid = { version = "1", features = ["v4"] }
-log = "0.4"
-partial-json-fixer = "0.5.5"
+xylitol-plugin-sdk = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+async-stream = { workspace = true }
+tokio = { workspace = true, features = ["time", "sync", "macros", "rt"] }
+reqwest = { workspace = true, features = ["stream", "json"] }
+eventsource-stream = { workspace = true }
+fastrace = { workspace = true, features = ["enable"] }
+uuid = { workspace = true, features = ["v4"] }
+log = { workspace = true }
+partial-json-fixer = { workspace = true }
 
 [dev-dependencies]
-wiremock = "0.6"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
+wiremock = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }

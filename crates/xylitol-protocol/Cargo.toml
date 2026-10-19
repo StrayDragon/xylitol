@@ -9,7 +9,7 @@ repository = "https://github.com/straydragon/xylitol"
 publish = false
 
 [dependencies]
-fory = "1.7.6"
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["unbounded_depth"] }
-strum = { version = "0.28", features = ["derive"] }
+fory = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+strum = { workspace = true, features = ["derive"] }

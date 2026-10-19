@@ -9,8 +9,8 @@ repository = "https://github.com/StrayDragon/xylitol"
 publish = false
 
 [dependencies]
-xylitol-runtime = { path = "../xylitol-runtime" }
-xylitol-protocol = { path = "../xylitol-protocol" }
-log = "0.4"
-serde_json = { version = "1", features = ["unbounded_depth"] }
-thiserror = "2"
+xylitol-runtime = { workspace = true }
+xylitol-protocol = { workspace = true }
+log = { workspace = true }
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+thiserror = { workspace = true }

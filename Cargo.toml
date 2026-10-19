@@ -31,72 +31,149 @@ members = [
     "plugins/xylitol-official-plugin-hooks",
 ]
 
-[dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["unbounded_depth"] }
-strum = { version = "0.28", features = ["derive"] }
-schemars = { version = "1", features = ["derive"] }
-jsonschema = "0.58"
-minijinja = { version = "3.0.0", features = ["json", "builtins", "serde"] }
-dirs = "7"
-thiserror = "2.0.21"
-# Timeline tracing (c1000): enable at the binary crate; FileReporter is file-only.
-fastrace = { version = "0.7.19", features = ["enable"] }
-# Optional OTLP export (c1475): fastrace → OpenTelemetry → Langfuse/Collector.
-fastrace-opentelemetry = { version = "0.18", optional = true }
-opentelemetry = { version = "0.32", default-features = false, features = ["trace"], optional = true }
-opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace"], optional = true }
-opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "http-json", "reqwest-client", "reqwest-rustls"], optional = true }
-log = "0.4"
-env_logger = "0.11"
-clap = { version = "4.6.7", features = ["derive"] }
-tokio = { version = "1.53.2", features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread", "signal", "sync", "time"] }
-async-trait = "0.1.92"
-similar = "3.2.0"
-glob = "0.3.4"
-futures = "0.3.34"
+[workspace.dependencies]
+xylitol-plugin-sdk = { path = "crates/xylitol-plugin-sdk" }
+xylitol-protocol = { path = "crates/xylitol-protocol" }
+xylitol-runtime = { path = "crates/xylitol-runtime" }
+xylitol-serve = { path = "crates/xylitol-serve" }
+xylitol-tui = { path = "crates/xylitol-tui" }
+xylitol-app-tui = { path = "crates/xylitol-app-tui" }
+xylitol-app-print = { path = "crates/xylitol-app-print" }
+xylitol-official-plugin-session = { path = "plugins/xylitol-official-plugin-session" }
+xylitol-official-plugin-compaction = { path = "plugins/xylitol-official-plugin-compaction" }
+xylitol-official-plugin-provider-openai = { path = "plugins/xylitol-official-plugin-provider-openai" }
+xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-plugin-provider-anthropic" }
+xylitol-official-plugin-tools = { path = "plugins/xylitol-official-plugin-tools" }
+xylitol-official-plugin-mcp = { path = "plugins/xylitol-official-plugin-mcp" }
+xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks" }
+
 anyhow = "1.0.104"
-regex = "1.13.1"
-sha2 = "0.11.0"
-time = { version = "0.3.55", features = ["formatting", "parsing", "macros"] }
-uuid = { version = "1.28.0", features = ["v4"] }
-# pid presence probe (`kill(pid, 0)`) on non-linux; already in the tree transitively.
-libc = "0.2"
-
-base64 = "0.22.1"
-
-# ── image processing ──
-image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
-url = { version = "2.5.8" }
-
-reqwest = { version = "0.13.5", default-features = false, features = ["stream", "json", "rustls", "charset", "http2", "system-proxy"] }
+async-openai = { version = "0.42", default-features = false }
 async-stream = "0.3.6"
+async-trait = "0.1.92"
+base64 = "0.22.1"
+clap = "4.6.7"
+criterion = "0.8"
+crossterm = "0.29"
+dirs = "7"
+env_logger = "0.11"
+eventsource-stream = "0.2"
+fastrace = "0.7.19"
+fastrace-opentelemetry = "0.18"
+fory = "1.7.6"
+futures = "0.3.34"
+glob = "0.3.4"
+http = "1"
+image = { version = "0.25.10", default-features = false }
+insta = "1.49.0"
+jsonschema = "0.58"
+libc = "0.2"
+log = "0.4"
+mermaid-text = "0.57"
+minijinja = "3.0.0"
+opentelemetry = { version = "0.32", default-features = false }
+opentelemetry_sdk = { version = "0.32", default-features = false }
+opentelemetry-otlp = { version = "0.32", default-features = false }
+partial-json-fixer = "0.5.5"
+portable-pty = "0.9"
+pulldown-cmark = "0.13"
+regex = "1.13.1"
+reqwest = "0.13.5"
+rmcp = "3.5.1"
+rstest = "0.27"
+rstest-bdd = "0.6.0"
+rstest-bdd-macros = "0.6.0"
+salvo = { version = "1.0.1", default-features = false }
+schemars = "1"
+serde = "1"
+serde_json = "1"
+serial_test = "4.0.1"
+sha2 = "0.11.0"
+similar = "3.2.0"
+strum = "0.28"
+syntect = { version = "5", default-features = false }
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+time = "0.3.55"
+tokio = "1.53.2"
+tokio-tungstenite = "0.30"
 tokio-util = "0.7.20"
+tower = { version = "0.5", default-features = false }
+two-face = { version = "0.5", default-features = false }
+unicode-segmentation = "1.12"
+unicode-width = "0.2"
+url = "2.5.8"
+uuid = "1.28.0"
+vte = "0.15"
+wiremock = "0.6.5"
 yaml_serde = "0.10.7"
 
-salvo = { version = "1.0.1", optional = true, default-features = false, features = ["server", "server-handle", "http1", "websocket", "test"] }
-tokio-tungstenite = { version = "0.30", features = ["connect", "handshake"], optional = true }
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+strum = { workspace = true, features = ["derive"] }
+schemars = { workspace = true, features = ["derive"] }
+jsonschema = { workspace = true }
+minijinja = { workspace = true, features = ["json", "builtins", "serde"] }
+dirs = { workspace = true }
+thiserror = { workspace = true }
+# Timeline tracing (c1000): enable at the binary crate; FileReporter is file-only.
+fastrace = { workspace = true, features = ["enable"] }
+# Optional OTLP export (c1475): fastrace → OpenTelemetry → Langfuse/Collector.
+fastrace-opentelemetry = { workspace = true, optional = true }
+opentelemetry = { workspace = true, features = ["trace"], optional = true }
+opentelemetry_sdk = { workspace = true, features = ["trace"], optional = true }
+opentelemetry-otlp = { workspace = true, features = ["trace", "http-proto", "http-json", "reqwest-client", "reqwest-rustls"], optional = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+tokio = { workspace = true, features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread", "signal", "sync", "time"] }
+async-trait = { workspace = true }
+similar = { workspace = true }
+glob = { workspace = true }
+futures = { workspace = true }
+anyhow = { workspace = true }
+regex = { workspace = true }
+sha2 = { workspace = true }
+time = { workspace = true, features = ["formatting", "parsing", "macros"] }
+uuid = { workspace = true, features = ["v4"] }
+# pid presence probe (`kill(pid, 0)`) on non-linux; already in the tree transitively.
+libc = { workspace = true }
+
+base64 = { workspace = true }
+
+# ── image processing ──
+image = { workspace = true, features = ["png", "jpeg", "gif", "webp"] }
+url = { workspace = true }
+
+reqwest = { workspace = true, default-features = false, features = ["stream", "json", "rustls", "charset", "http2", "system-proxy"] }
+async-stream = { workspace = true }
+tokio-util = { workspace = true }
+yaml_serde = { workspace = true }
+
+salvo = { workspace = true, optional = true, features = ["server", "server-handle", "http1", "websocket", "test"] }
+tokio-tungstenite = { workspace = true, features = ["connect", "handshake"], optional = true }
 
 # ── terminal UI ──
 # Product TUI is host-driven on the xylitol-tui engine; product host lives in
 # crates/xylitol-app-tui.
-xylitol-tui = { path = "crates/xylitol-tui", optional = true }
-xylitol-app-tui = { path = "crates/xylitol-app-tui", optional = true }
-xylitol-app-print = { path = "crates/xylitol-app-print" }
-xylitol-plugin-sdk = { path = "crates/xylitol-plugin-sdk" }
-xylitol-protocol = { path = "crates/xylitol-protocol" }
-xylitol-runtime = { path = "crates/xylitol-runtime" }
-xylitol-serve = { path = "crates/xylitol-serve", default-features = false }
-xylitol-official-plugin-provider-openai = { path = "plugins/xylitol-official-plugin-provider-openai" }
-xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-plugin-provider-anthropic" }
-xylitol-official-plugin-session = { path = "plugins/xylitol-official-plugin-session" }
-xylitol-official-plugin-compaction = { path = "plugins/xylitol-official-plugin-compaction" }
-xylitol-official-plugin-tools = { path = "plugins/xylitol-official-plugin-tools" }
-xylitol-official-plugin-mcp = { path = "plugins/xylitol-official-plugin-mcp", default-features = false }
-xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks" }
-crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
-http = "1"
-fory = "1.7.6"
+xylitol-tui = { workspace = true, optional = true }
+xylitol-app-tui = { workspace = true, optional = true }
+xylitol-app-print = { workspace = true }
+xylitol-plugin-sdk = { workspace = true }
+xylitol-protocol = { workspace = true }
+xylitol-runtime = { workspace = true }
+xylitol-serve = { workspace = true, default-features = false }
+xylitol-official-plugin-provider-openai = { workspace = true }
+xylitol-official-plugin-provider-anthropic = { workspace = true }
+xylitol-official-plugin-session = { workspace = true }
+xylitol-official-plugin-compaction = { workspace = true }
+xylitol-official-plugin-tools = { workspace = true }
+xylitol-official-plugin-mcp = { workspace = true, default-features = false }
+xylitol-official-plugin-hooks = { workspace = true }
+crossterm = { workspace = true, optional = true, features = ["event-stream"] }
+http = { workspace = true }
+fory = { workspace = true }
 
 [features]
 default = ["cli", "tui", "otel", "server", "mcp"]
@@ -142,24 +219,24 @@ panic = "abort"
 incremental = false
 
 [dev-dependencies]
-tempfile = "3.27.0"
+tempfile = { workspace = true }
 # Property-based invariants (roundtrip / idempotence / monotonicity); see
 # skill l8ng-test-methodology → rust.md for the pattern library.
 
-insta = { version = "1.49.0", features = ["filters", "glob"] }
+insta = { workspace = true, features = ["filters", "glob"] }
 # Statistical micro-benchmarks in tests/inner/token_estimator_bench.rs
 # (`#[ignore]`); `cargo test -r --lib token_estimator -- --ignored`, not qa.
-criterion = "0.8"
+criterion = { workspace = true }
 # portable-pty: end-to-end TUI integration tests (c405 layer 5a) — spawn the
 # real binary under a PTY, inject keys, read bytes back into a vte cell grid.
-portable-pty = "0.9"
+portable-pty = { workspace = true }
 # vte: ANSI parser for the E2E cell-grid oracle (shared by pty + tmux drivers).
-vte = "0.15"
-serial_test = "4.0.1"
-wiremock = "0.6.5"
-rstest = "0.27"
-rstest-bdd = "0.6.0"
-rstest-bdd-macros = "0.6.0"
+vte = { workspace = true }
+serial_test = { workspace = true }
+wiremock = { workspace = true }
+rstest = { workspace = true }
+rstest-bdd = { workspace = true }
+rstest-bdd-macros = { workspace = true }
 
 # compile-time-validation intentionally OFF: in this crate the macro's
 # compile-time step registry stays empty (one "step registry has no

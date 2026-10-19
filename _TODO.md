@@ -16,7 +16,7 @@
 
 根 `src/` 仍含 CLI、composition、Host listen、`agent` facade（BDD c2837）。终态五文件见 [§2.2.1](#ROOTSRC)，随 S1 再削。
 
-与 S1 并行、可 skip-SDD 的卫生债见 [§3.2](#HYGIENE)：`[workspace.dependencies]`、文件名、`ports` 模块改名。卫生债不挡 rutis。
+与 S1 并行、可 skip-SDD 的卫生债见 [§3.2.2](#NAMES) 命名、[§3.2.3](#PORTS) `ports`→`seams`。版本真源是根 `[workspace.dependencies]`，见 [§3.2.1](#WSDEP)。卫生债不挡 rutis。
 
 回退点 tag **`v0.0.0-pre.old`**（`004a2e4d`）。命令：`git switch -d v0.0.0-pre.old`。
 
@@ -377,13 +377,7 @@ temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（
 
 #### 3.2.1 `[workspace.dependencies]` + `workspace = true`
 
-**结论**：第三方依赖版本应以根 `Cargo.toml` 的 `[workspace.dependencies]` 为真源。成员只写 `workspace = true`，需要时覆盖 `features`。path 上的 `xylitol-*` 也宜进 workspace 表。
-
-**现状**：根包没有 `[workspace.dependencies]`。各成员自己钉版本，例如 `tokio = "1"`、`serde = { version = "1", features = ["derive"] }`。`Cargo.lock` 目前仍把解析钉死，所以此刻没有漂。
-
-**原因**：切 crate 时优先保编译绿，每个成员 `Cargo.toml` 从当时根包抄版本钉。rust-build-tune 正文要求的是 lock 级依赖裁剪、crate 图形状、profile / mold / 每树独立 `CARGO_TARGET_DIR`。rust-build-tune 没有写“必须 `workspace = true`”。缺的是 manifest 真源。下一次只 bump 一个成员时，版本会漂，维护面变大。
-
-**做法**：根表列出共用第三方 crate。成员改为 `tokio = { workspace = true, features = [...] }` 这种形式。features 仍按 crate 裁，遵守 P6。一次 hoist，不要分成员慢慢改。
+第三方依赖与 path 上的 `xylitol-*` 以根 `Cargo.toml` 的 `[workspace.dependencies]` 为版本真源。成员只写 `workspace = true`，需要时覆盖 `features` / `optional` / `default-features`。features 仍按 crate 裁，遵守 P6。`vendor/gherkin` 仍走 `[patch.crates-io]`，不进 workspace 表。新依赖先入根表，再在使用方引用。
 
 <a id="NAMES"></a>
 
@@ -485,7 +479,7 @@ temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（
 | `otel` | optional OTLP；default 开；配置默认 none；关 feature 真能关 |
 | `image` / `fory` / `jsonschema` / `minijinja` / `schemars` / `fastrace` | 非 optional |
 | `salvo` / `tokio-tungstenite` / `xylitol-tui` | 随 feature 可选 |
-| `[workspace.dependencies]` | 无。成员各自钉版本。债见 [§3.2.1](#WSDEP) |
+| `[workspace.dependencies]` | 版本真源。成员 `workspace = true`。见 [§3.2.1](#WSDEP) |
 
 dev：`opt-level = 0`，依赖 `opt-level = 3`，`debug = "line-tables-only"`，`incremental = false`，`codegen-units = 16`。
 release：`opt-level = "z"`，`lto = "thin"`，`strip = "symbols"`，`panic = "abort"`，`codegen-units = 1`。

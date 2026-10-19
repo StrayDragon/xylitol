@@ -9,11 +9,11 @@ repository = "https://github.com/straydragon/xylitol"
 publish = false
 
 [dependencies]
-xylitol-runtime = { path = "../xylitol-runtime" }
-futures = "0.3"
-serde_json = { version = "1", features = ["unbounded_depth"] }
-thiserror = "2"
-log = "0.4"
+xylitol-runtime = { workspace = true }
+futures = { workspace = true }
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+thiserror = { workspace = true }
+log = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
