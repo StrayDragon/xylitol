@@ -16,7 +16,7 @@
 
 根 `src/` 仍含 CLI、composition、Host listen、`agent` facade（BDD c2837）。终态五文件见 [§2.2.1](#ROOTSRC)，随 S1 再削。
 
-与 S1 并行、可 skip-SDD 的卫生债见 [§3.2.2](#NAMES) 命名、[§3.2.3](#PORTS) `ports`→`seams`。版本真源是根 `[workspace.dependencies]`，见 [§3.2.1](#WSDEP)。卫生债不挡 rutis。
+与 S1 并行、可 skip-SDD 的卫生债：[§3.2.2](#NAMES) 与 [§3.2.3](#PORTS) 同一批。版本真源是根 `[workspace.dependencies]`，见 [§3.2.1](#WSDEP)。卫生债不挡 rutis。
 
 回退点 tag **`v0.0.0-pre.old`**（`004a2e4d`）。命令：`git switch -d v0.0.0-pre.old`。
 
@@ -76,7 +76,7 @@
 
 **官方插件**是本仓库 Host 侧静态 crate，包名 `xylitol-official-plugin-*`。不是插件市场，不是 dylib。S4 才谈动态加载。
 
-**端口 / 可替换口**（replaceable seam）：`XyModel`、`XyTool`、`XySessionStore` 这类可替换接口。模块名现状与备选见 [§3.2.3](#PORTS)。
+**端口 / 可替换口**（replaceable seam）：`XyModel`、`XyTool`、`XySessionStore` 这类可替换接口。落在 `xylitol-plugin-sdk` 根。模块路径见 [§3.2.3](#PORTS)。
 
 **执行权威**是 runtime 侧角色：会话循环、trust、准入、ReAct 内环。crate 是 `xylitol-runtime`。`xylitol-runtime` 不是组合根。
 
@@ -381,36 +381,51 @@ temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（
 
 <a id="NAMES"></a>
 
-#### 3.2.2 命名
+#### 3.2.2 命名（与 [§3.2.3](#PORTS) 同一批）
 
-内部编号 `c####` / `ath##` 保留。单独引用时带 ≤12 字语义尾。下面这些把版本号、线协议代数、已不用的包前缀写进标识符，后续维护成本高。一批改完。
+内部编号 `c####` / `ath##` 保留。单独引用时带 ≤12 字语义尾。新代码不要再引入下表里的标识符。根 `src/` 与 `crates/` 仍有同名副本时，两边一起改。
 
-| 现状 | 问题 | 目标方向 |
+**改（skip-SDD）**
+
+| 现状 | 问题 | 目标 |
 |---|---|---|
-| `plugins/…/tests/v7_layout.rs`；`plant_v7_*`；`then_header_v7_camelcase`；`test_c2826_v7_shell` | 会话 JSONL 盘面代数进了文件名 / 测试名 | `jsonl_layout` / `session_layout`。版本写进常量或测试注释 |
-| `wire_v3_mod.rs`；`wire_v3_client.rs`；`src/app/server/wire_v3.rs`；`with_wire_v3` | `wire` 与组合根 `wiring` 撞词。crate 已是 protocol，文件名仍带代数 | 模块 `envelope` / 按象限分。API 用 `PROTOCOL_VERSION`，不把 `v3` 焊进每个文件名 |
-| 方言插件 `AiBridgeMessage` / `AiBridgeGenerateOptions` / `AiBridgeError` / `dto/` | 类型仍带已不用的包前缀 | 落在 crate 命名空间里：`Message` 或 `OpenAiMessage`。错误走 `XyError` |
-| `RuntimePorts` 手工物化 | 与 sdk `ports` 模块、网络端口三重撞名 | S2 随 rutis instance 删。改名前不要再扩散这个标识符 |
+| `v7_layout.rs`；`plant_v7_*`；`then_header_v7_camelcase`；`test_c2826_v7_shell`。测试体里的 `v5_` / `v6_` 函数名 | 盘面代数进文件名 / 测试名 | `jsonl_layout` / `session_layout`。版本写进常量或断言消息 |
+| `wire_v3_client.rs`（`crates/xylitol-app-tui` 与 `src/app/core/host_client` 两份）；`wire_v3_mod.rs`；`src/app/server/wire_v3.rs`；`with_wire_v3`；`negotiate_wire_v3`；`WIRE_V3_ENV` 代码标识；`scripts/gen_wire_v3.py`；`just gen-wire-v3`；`tests/bdd/steps_wire_v3.rs`；`bindings_wire_v3.rs` | `wire` 与组合根 `wiring` 撞词。代数焊进每个文件名 | 模块 / 脚本 `envelope`。API 用 `PROTOCOL_VERSION` |
+| `crates/xylitol-protocol/src/v3/xy_wire_v3.fbs` 与生成物 `xy_wire_v3.rs` | 目录已是 `v3/`，文件名再带代数 | `envelope.fbs` / `generated.rs`。gen 脚本与 BDD 路径闸同改 |
+| sdk `dto::AiBridgeMessage`（`LlmMessage` 是该类型的 `pub use` 别名）；`AiBridgeError`（sdk 与两方言插件）；`AiBridgeGenerateOptions` 等历史别名；openai/anthropic `pub mod dto`；`reqwest_bridge.rs` | 已不用的包前缀。`dto/` 与 sdk `message` 叠床 | 叶类型用 `LlmMessage` / `XyError`。方言私有 DTO 落在 crate 命名空间，不带 `AiBridge`。`reqwest_headers` |
+| `package-ai-bridge.feature`；`package-ai-bridge-accounting.feature`；`bindings_package_ai_bridge.rs`；`steps_bridge.rs` 的 `AiBridgeBdd`；`llmanspec/AGENTS.md` 的 `package-ai-bridge*` 前缀 | capability / BDD 仍按旧包名 | `provider-openai*`（与 live 路径一致）。validate-only |
+| `xylitol::protocol::ports`（根 `src/protocol/mod.rs` 再导出 sdk）；BDD `tests/bdd` 走这条路径 | 信封 crate 不认识端口。路径撒谎 | `xylitol_plugin_sdk::{XyModel, …}`。见 [§3.2.3](#PORTS) |
+| `RuntimePorts`；`runtime/ports.rs`（runtime crate 与根 `src/agent` 两份）；`build_ports` / `build_ports_with_store` | 与 sdk 模块、TCP 端口三重撞名。S2 才删物化，标识符现在就不要再扩散 | 同批改 `RuntimeBaseline` / `build_baseline`。S2 再删物化 |
+| `crates/xylitol-app-tui` 的 `host-itest` cfg（`[lib] test = false`，feature 未声明） | 死开关 | 删 cfg 与 `Cargo.toml` 的 `check-cfg` |
+| `src/infra/provider/adapter/` | 目录名还是第三层外壳 | 随根 `src/` 变薄删或并进方言插件。本批不要再往这里加类型 |
 
-先盘点再改。新代码不要再引入 `v7_*`、`wire_v3_*`、`AiBridge*` 这种标识符。
+**改但 must-SDD**
+
+| 现状 | 问题 | 目标 |
+|---|---|---|
+| 环境变量 `XYLITOL_WIRE_V3` | 用户可设。改名是可观察行为 | 本批只改代码标识。env 名另开 change |
+
+**不改**
+
+| 现状 | 原因 |
+|---|---|
+| `c####` / `ath##` | 内部编号，引用时带语义尾 |
+| `crates/xylitol-protocol/src/v3/` 目录 | 信封代数的落点，与 `PROTOCOL_VERSION` 对应 |
+| `OpenAiResponsesAdapter` / `OpenAiCompletionsAdapter` / `AnthropicMessagesAdapter` / `McpToolAdapter` / `TuiInProcessAdapter` | 实现侧类型，名字对 |
+| `app-tui-bridge` capability、`steps_app_tui_bridge.rs` | 产品 TUI 画布接线，不是 AiBridge。另议 |
+| `xylitol-tui` 的 `syntect_bridge.rs` | 引擎内部，零引用产品 |
+| `vendor/gherkin` | 上游包 |
+| `TRANSITION_EXEMPT`、根 `src/` 五文件 | S1 残差，见 [§3.1](#S1) |
 
 <a id="PORTS"></a>
 
-#### 3.2.3 `ports` 模块改名
+#### 3.2.3 `ports` 模块（与 [§3.2.2](#NAMES) 同一批）
 
-**结论**：`xylitol-plugin-sdk` 的模块 `ports` 改成 `seams`。类型名 `XyModel` / `XyTool` / `XySessionStore` 不动。全仓 rename 单独一批，现在只记录。
+**结论**：删 `xylitol-plugin-sdk` 的 `pub mod ports`。trait 已在 crate 根 `pub use`（`XyModel` / `XyTool` / `XySessionStore` 等）。调用点改到 `xylitol_plugin_sdk::XyModel`。不要把该模块改名为 `adapters`。
 
-**原因**：英文 `port` 同时指 TCP 端口、信封历史上的路径、六边形架构的可替换口。读者检索时对不上。中文 SSOT 是“可替换口”。术语表已有“缝 / seam”。
+**原因**：该模块装的是可替换口 trait，不是实现。实现已经叫 `OpenAiResponsesAdapter`、`McpToolAdapter`、`TuiInProcessAdapter`。再把 trait 模块叫 `adapters`，检索对不上。`seams` 能对上术语表“缝”，但 crate 根已经再导出，再留一层模块名没有收益。
 
-| 候选 | 取舍 |
-|---|---|
-| **`seams`（首选）** | 与术语表“缝”和 AGENTS“seam”同词。模块 = 可替换边界 |
-| `contracts`（次选） | 与“三层契约”对得上。词面更宽：线协议也是契约 |
-| 不选 `traits` | 太宽，Rust 到处是 trait |
-| 不选 `adapters` | 那是实现侧 |
-| 不选 `interfaces` | 泛，且 Java 味 |
-
-改名时同步：sdk `pub mod`、根 `AGENTS.md` / `src/AGENTS.md` 里的模块路径、注释里的 `protocol::ports`。产品文“端口”可继续作中文对照，第一次出现附“可替换口 / seam”。
+根包 `src/protocol/mod.rs` 的 `pub use … ports` 同批去掉。BDD 里的 `xylitol::protocol::ports::` 改到 sdk 根。`RuntimePorts` 见 [§3.2.2](#NAMES)。产品文“端口”第一次出现附“可替换口”。类型名 `Xy*` 不动。
 
 ---
 
@@ -446,7 +461,7 @@ temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（
 8. default 去掉 `server` / `mcp` / `otel`。
 9. CLI `xylitol resources`；`xylitol serve install`。
 10. 把场景表当产品 slash。
-11. 把 [§3.2](#HYGIENE) 的 rename / workspace hoist 跟 S1 捆在一次提交里。
+11. 把 [§3.2](#HYGIENE) 的 rename 跟 S1 捆在一次提交里。
 
 ---
 
