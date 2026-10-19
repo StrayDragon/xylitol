@@ -329,7 +329,7 @@ flowchart TB
 | feature 名 `server` | 可仍叫 `server`；不得改 attach 行为 |
 
 不改：`xylitol-tui`、`XyDriver`、`XyEvent`、`XyModel`、`vendor/gherkin`。
-`Xy*` = 库入口契约；`AgentMessage` / `XyEvent` = plugin-sdk 词表；Command/Event = 信封载荷（`v3::*`）。新类型不得再发明第四套品牌。
+`Xy*` = 库入口契约；`AgentMessage` / `XyLlmMessage` / `XyEvent` = plugin-sdk 词表；Command/Event = 信封载荷（`v3::*`）。新类型不得再发明第四套品牌。
 
 ---
 
@@ -390,14 +390,29 @@ temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（
 | 现状 | 问题 | 目标 |
 |---|---|---|
 | `v7_layout.rs`；`plant_v7_*`；`then_header_v7_camelcase`；`test_c2826_v7_shell`。测试体里的 `v5_` / `v6_` 函数名 | 盘面代数进文件名 / 测试名 | `jsonl_layout` / `session_layout`。版本写进常量或断言消息 |
-| `wire_v3_client.rs`（`crates/xylitol-app-tui` 与 `src/app/core/host_client` 两份）；`wire_v3_mod.rs`；`src/app/server/wire_v3.rs`；`with_wire_v3`；`negotiate_wire_v3`；`WIRE_V3_ENV` 代码标识；`scripts/gen_wire_v3.py`；`just gen-wire-v3`；`tests/bdd/steps_wire_v3.rs`；`bindings_wire_v3.rs` | `wire` 与组合根 `wiring` 撞词。代数焊进每个文件名 | 模块 / 脚本 `envelope`。API 用 `PROTOCOL_VERSION` |
-| `crates/xylitol-protocol/src/v3/xy_wire_v3.fbs` 与生成物 `xy_wire_v3.rs` | 目录已是 `v3/`，文件名再带代数 | `envelope.fbs` / `generated.rs`。gen 脚本与 BDD 路径闸同改 |
-| sdk `dto::AiBridgeMessage`（`LlmMessage` 是该类型的 `pub use` 别名）；`AiBridgeError`（sdk 与两方言插件）；`AiBridgeGenerateOptions` 等历史别名；openai/anthropic `pub mod dto`；`reqwest_bridge.rs` | 已不用的包前缀。`dto/` 与 sdk `message` 叠床 | 叶类型用 `LlmMessage` / `XyError`。方言私有 DTO 落在 crate 命名空间，不带 `AiBridge`。`reqwest_headers` |
+| `wire_v3_client.rs`（`crates/xylitol-app-tui` 与 `src/app/core/host_client` 两份）；`wire_v3_mod.rs`；`src/app/server/wire_v3.rs`；`with_wire_v3`；`negotiate_wire_v3`；`WIRE_V3_ENV` 代码标识 | `wire` 与组合根 `wiring` 撞词。代数焊进每个文件名 | 客户端模块 `envelope_client`。API 用 `PROTOCOL_VERSION`。env 名见下行 must-SDD |
+| `crates/xylitol-protocol/src/v3/xy_wire_v3.fbs`；`scripts/gen_wire_v3.py`；`just codegen-wire`；`tests/bdd/steps_wire_v3.rs`；`bindings_wire_v3.rs` | 目录已是 `v3/`，文件名再带代数 | 见本小节「信封文件」：`v3/envelope.fbs`、`scripts/gen_envelope.py`、`just codegen-envelope`、`steps_envelope.rs`。**不改** fbs `namespace xy.wire.v3`、content-type、`WIRE_FORMAT_FORY_V3`。crate 根已有 `envelope.rs`（四象限外层），不要把 `pub mod v3` 改成 `pub mod envelope` |
+| sdk `dto::AiBridgeMessage`（现 `pub use` 为 `LlmMessage`）；`AiBridgeError`；`AiBridgeGenerateOptions` 等历史别名；openai/anthropic `pub mod dto`；`reqwest_bridge.rs` | 已不用的包前缀。`LlmMessage` 是词表叶，过 `XyModel` 口，要 `Xy*` | 类型名 `XyLlmMessage`（serde 标签仍是 `role`，JSONL 不改）。错误走 `XyError`。方言私有 DTO 不带 `AiBridge`。`reqwest_headers`。`AgentMessage` / `EnvMessage` / `AgentPart` 本批不改，除非单独点名 |
 | `package-ai-bridge.feature`；`package-ai-bridge-accounting.feature`；`bindings_package_ai_bridge.rs`；`steps_bridge.rs` 的 `AiBridgeBdd`；`llmanspec/AGENTS.md` 的 `package-ai-bridge*` 前缀 | capability / BDD 仍按旧包名 | `provider-openai*`（与 live 路径一致）。validate-only |
 | `xylitol::protocol::ports`（根 `src/protocol/mod.rs` 再导出 sdk）；BDD `tests/bdd` 走这条路径 | 信封 crate 不认识端口。路径撒谎 | `xylitol_plugin_sdk::{XyModel, …}`。见 [§3.2.3](#PORTS) |
 | `RuntimePorts`；`runtime/ports.rs`（runtime crate 与根 `src/agent` 两份）；`build_ports` / `build_ports_with_store` | 与 sdk 模块、TCP 端口三重撞名。S2 才删物化，标识符现在就不要再扩散 | 同批改 `RuntimeBaseline` / `build_baseline`。S2 再删物化 |
 | `crates/xylitol-app-tui` 的 `host-itest` cfg（`[lib] test = false`，feature 未声明） | 死开关 | 删 cfg 与 `Cargo.toml` 的 `check-cfg` |
 | `src/infra/provider/adapter/` | 目录名还是第三层外壳 | 随根 `src/` 变薄删或并进方言插件。本批不要再往这里加类型 |
+
+信封文件对照（`v3/` 目录不动）：
+
+```text
+crates/xylitol-protocol/src/v3/xy_wire_v3.fbs  →  v3/envelope.fbs
+crates/xylitol-protocol/src/v3/generated.rs    留下（check-in 名已经对）
+scripts/gen_wire_v3.py                         →  scripts/gen_envelope.py
+  FBS 路径改 envelope.fbs
+  foryc 输出 stem 变为 rust/envelope.rs，再写回 generated.rs
+just codegen-wire                              →  just codegen-envelope
+tests/bdd/steps_wire_v3.rs                     →  tests/bdd/steps_envelope.rs
+tests/bdd/bindings_wire_v3.rs                  →  tests/bdd/bindings_envelope.rs
+```
+
+foryc 按 fbs 文件名出 `rust/<stem>.rs`。改文件名不必重跑 compiler：类型 ID 来自 `namespace xy.wire.v3` + table 名，不来自文件名。字节 conformance 锁不动。crate 根 `src/envelope.rs` 是四象限 `RpcMessage` / `PROTOCOL_VERSION`，与 `v3/envelope.fbs` 分工：外层版本号 vs 这一代二进制真源。
 
 **改但 must-SDD**
 
@@ -410,7 +425,7 @@ temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（
 | 现状 | 原因 |
 |---|---|
 | `c####` / `ath##` | 内部编号，引用时带语义尾 |
-| `crates/xylitol-protocol/src/v3/` 目录 | 信封代数的落点，与 `PROTOCOL_VERSION` 对应 |
+| `crates/xylitol-protocol/src/v3/` 目录；fbs `namespace xy.wire.v3`；content-type `application/x-fory-v3`；`WIRE_FORMAT_FORY_V3` | 代数与跨端类型 ID。改 namespace 等于删旧加新 |
 | `OpenAiResponsesAdapter` / `OpenAiCompletionsAdapter` / `AnthropicMessagesAdapter` / `McpToolAdapter` / `TuiInProcessAdapter` | 实现侧类型，名字对 |
 | `app-tui-bridge` capability、`steps_app_tui_bridge.rs` | 产品 TUI 画布接线，不是 AiBridge。另议 |
 | `xylitol-tui` 的 `syntect_bridge.rs` | 引擎内部，零引用产品 |
