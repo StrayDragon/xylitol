@@ -356,7 +356,9 @@ flowchart TB
 
 S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 
-**S1 必读**：接入 rutis 必须先读 [`/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp`](/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp)（README 阅读序：assessment → host-server → plugin-policy → rewrite → overhead → dependency）。用该目录简化：IoC 从手工 `wiring.rs` 升到运行时、插件 `injects()`、实例/生命周期、开销红线、文件归位 `skills/xylitol-rutis-rewrite/references/crate-split-detail.md`。唯一 `use rutis` 落点是未来的 `xylitol-rutis`。
+**S1 必读**：接入 rutis 必须先读 [`/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp`](/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp)（README 阅读序：assessment → host-server → plugin-policy → rewrite → overhead → dependency）。该工作树已快进到上游 `3d0bc0d` / 0.13.0（2026-10-19）。用该目录简化：IoC 从手工 `wiring.rs` 升到运行时、插件 `injects()`、实例/生命周期、开销红线、文件归位 `skills/xylitol-rutis-rewrite/references/crate-split-detail.md`。唯一 `use rutis` 落点是未来的 `xylitol-rutis`。
+
+0.13 起事件是五分发（`emit` / `parallel` / `serial` / `waterfall` / `bail`），跨进程、跨语言、跨节点同义；`filter` / `serial` / `bail` 可跨界；同步等待成环报 `SyncWaitCycle`。不要按 0.11 写「跨进程只通知 / waterfall 不跨界 / 外进程 hook 只能降级为通知」。内核依赖含 serde / serde_json。`#274` 热更与 `#192` 长跑已落地。
 
 temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（在 `xylitol-runtime`）；包名是 `xylitol-official-plugin-*` 不是 `xylitol-core-plugin-*`；组合根是仓库根包，不是 `xylitol-assemble` / `xylitol-kernel`。
 
