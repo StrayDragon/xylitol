@@ -3365,7 +3365,7 @@ pub(crate) async fn w_product_gutter_click_top(host_pump_bdd: &HostPumpBdd) {
     // host 每帧 paint 后 sync 的镜像：hit 注册先于点击（sync_pointer_hits 同序）。
     let hits = pump.session.tui.scroll_gutter_hit_set();
     pump.session.tui.replace_hits(hits);
-    let col = (pump.session.tui.terminal.columns() as u16).saturating_sub(1);
+    let col = pump.session.tui.terminal.columns().saturating_sub(1);
     for kind in [
         MouseEventKind::Down(MouseButton::Left),
         MouseEventKind::Up(MouseButton::Left),

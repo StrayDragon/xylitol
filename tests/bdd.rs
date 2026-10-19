@@ -13,5 +13,8 @@
 //!
 //! suite.rs 经 `#[path]` 挂载，`tests/bdd/**` 文件布局原样保留。
 
+// rstest-bdd scenario fns take one argument per example column / fixture.
+#![allow(clippy::too_many_arguments)]
+
 #[path = "bdd/suite.rs"]
 mod bdd;
