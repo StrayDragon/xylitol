@@ -1,8 +1,7 @@
 // Unit-test-only module wiring.
 //
-// Layering (agent ↛ infra, surfaces via seams) is normative in `src/AGENTS.md` and
-// `l8ng-write-surface` — enforced by review and seam/behavior tests, not by source-grep
-// meta-tests. See llmanspec `layer-architecture` (no arch_guard).
+// Layering is normative in `src/AGENTS.md` and `l8ng-write-surface` —
+// review and seam/behavior tests, not source-grep meta-tests.
 
 // In-crate test suites. `tests/` integration targets are separate compile
 // units and cannot see `pub(crate)` internals, so suites that exercise

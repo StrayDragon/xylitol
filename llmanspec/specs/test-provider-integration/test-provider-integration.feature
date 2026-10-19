@@ -32,12 +32,9 @@
       当 读取配置命令执行边界
       那么 命令带超时执行且缓存
   @req:r1825
-  规则: provider-in-infra
-    所有 LLM provider 实现（OpenAI、Anthropic、Fake、Mock）须位于 infra 层并实现 protocol 端口 XyModel；agent 层 不得托管 provider 实现子树；从模型配置到 XyModel 的构造 须位于 infra 层 factory，而非 agent 层。
+  规则: provider 走模型端口
+    LLM provider 必须实现 XyModel 端口并由装配注入；对话循环不得托管具体厂商实现子树。
 
-    场景: provider-impl-in-infra
-      当 读取 provider 分层
-      那么 实现位于 infra 且遵循端口
   @req:r1826
   规则: provider-port-injection
     agent 持有的 model registry 须以 Arc<dyn XyModel> 存储 provider；选择 provider 不得要求 agent 命名具体 provider struct。

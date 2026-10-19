@@ -60,10 +60,7 @@
 
   @req:r1740
   规则: 配置边界承载 JsonSchema
-    需要对外暴露 JSON Schema 的配置结构 须在 runtime/config 边界（infra/config 或 settings）定义或包装，并 须能映射到 domain 纯数据（若存在对应领域类型）。
-    场景: json-schema-at-config-edge
-      当 读取配置边界的 schemars 派生
-      那么 派生集中在 infra 配置边界且会话层不派生
+    需要对外暴露 JSON Schema 的配置结构必须在配置边界定义或包装，不得为 schema 去改会话词汇。
 
   @req:r1741
   规则: mcp_servers 配置字段

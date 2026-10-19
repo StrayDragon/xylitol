@@ -38,14 +38,14 @@ pub(crate) fn w_la_cargo_features() {
     LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("Cargo.toml")));
 }
 
-#[then("可选能力有域前缀 flag 且内置能力无条件")]
+#[then("可选能力 flag 为现用名且内置能力无 flag")]
 pub(crate) fn t_la_feature_flags() {
     let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     let block = text
         .split("[features]")
         .nth(1)
         .expect("Cargo.toml MUST 有 [features] 段");
-    for flag in ["cli", "tui", "otel", "server"] {
+    for flag in ["cli", "tui", "otel", "server", "mcp"] {
         assert!(
             block.contains(&format!("{flag} =")) || block.contains(&format!("{flag}=")),
             "可选能力 {flag} MUST 有同名 feature flag"
@@ -60,7 +60,7 @@ pub(crate) fn t_la_feature_flags() {
     }
 }
 
-#[then("默认集为 cli 与 tui 与 otel 与 server")]
+#[then("默认集为 cli 与 tui 与 otel 与 server 与 mcp")]
 pub(crate) fn t_la_default_features() {
     let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     let block = text
@@ -71,7 +71,7 @@ pub(crate) fn t_la_default_features() {
         .lines()
         .find(|l| l.trim_start().starts_with("default"))
         .expect("default MUST 有定义");
-    for item in ["cli", "tui", "otel", "server"] {
+    for item in ["cli", "tui", "otel", "server", "mcp"] {
         assert!(
             default_line.contains(item),
             "default MUST 含 {item}，实得 {default_line}"

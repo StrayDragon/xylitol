@@ -10,9 +10,9 @@
 
 ## 现在
 
-crate 图已拍板，见 [§2.0b](#SETTLED)。下一刀：**[W1.13](#W113)**（只改现行单 crate 的 STC 描述）。然后 **[W2.0](#WS2)** 才把 §2 写进 AGENTS。两刀不要混提交。
+crate 图已拍板，见 [§2.0b](#SETTLED)。**[W1.13](#W113)** 完成。重写前已撤 `layer-architecture` 的模块布局描述与源码扫描闸。下一刀：**[W2.0](#WS2)**（把 [§2](#TARGET) 写进现行 AGENTS）。两刀不要混提交。
 
-读法：现在 → [§2.0b](#SETTLED) → [W1.13](#W113) → [§2.2](#GRAPH) → [§3.2](#WS2)。
+读法：现在 → [§2.0b](#SETTLED) → [§2.2](#GRAPH) → [§3.2](#WS2)。
 
 本轮不引入 rutis。不为编译速度拆 crate。单包 default-on 的 Cargo feature 不省默认二进制。
 
@@ -392,7 +392,7 @@ SDD：skip-SDD（AGENTS / 产品文）+ validate-only（`.feature` + 步骤绑�
 | 批 | 做什么 | 准入 | SDD |
 |---|---|---|---|
 | W2.0 | `src/AGENTS.md` 与根 `AGENTS.md` 换成 [§2](#TARGET)；细则 [§6](#W20) | 否则代理按旧规则回滚 | skip-SDD |
-| W2.0b | `layer-architecture.feature`：多 crate；分层纪律留在 crate 内 | spec 钉了组织 | validate-only |
+| W2.0b | 若产品场景步骤文本随 crate 路径改名，再改 `layer-architecture.feature`（现已不钉模块布局） | 行为测步骤过期 | validate-only |
 | W2.1 | `xylitol-plugin-sdk` | P5 | skip-SDD + validate-only |
 | W2.2 | `xylitol-protocol`；顺手改 `wire` 撞车名 | P5 | 同上 |
 | W2.2b | 按 [§2.3](#LLM) 重写两个 provider 插件；plugin-sdk 只收词表薄留；删 `xylitol-ai-bridge` | P1 / P6 | 同上 |
@@ -462,7 +462,7 @@ S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 2. `protocol/{wire, ports, model, session}` 同一顶栏 → 信封进 `xylitol-protocol`，ports / 词表进 `xylitol-plugin-sdk`，session 实现进官方插件。① 三包互不依赖。mapping 在 serve。信封 ↛ ports 升为跨 crate 规则。
 3. 组合根落点从 `app/core` → 根包 `xylitol`（接线）。`xylitol-runtime` 做执行权威 + 准入 + ReAct 内环。S1 前仍是手工装配。
 4. 根 `AGENTS.md` 与 `src/AGENTS.md` 同步。`crates/` 角色表换成 [§2](#TARGET)。
-5. `layer-architecture.feature` purpose 改为多 crate（W2.0b，validate-only）。
+5. `layer-architecture.feature` 只留产品可观察场景，不在 spec 里写 crate 图。步骤文本若随路径改名，W2.0b 再改。
 6. 开箱 vs 配置后置拆成两句：监听主线且 feature 真可关；MCP 配置后置且 compile 也可关。
 7. `RunId` 不得进 `XyEvent` / 信封。
 8. `xylitol-official-plugin-*` 是官方静态 Host 侧 crate，不是插件市场，不是 dylib。
@@ -480,7 +480,7 @@ S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 | STC | `/home/l8ng/Projects/__straydragon__/STC-Simplified-Technical-Chinese` |
 | 代码架构 | `src/AGENTS.md` |
 | 产品主线 | `docs/architecture/产品分层总览.md` |
-| spec 组织句 | `llmanspec/specs/layer-architecture/layer-architecture.feature` |
+| spec 组织句 | 已撤。分层纪律在 `src/AGENTS.md`；目标 crate 图在本文件 §2 |
 | 编译调优 | `~/.config/llman/skills/rust-build-tune/` |
 | rutis 方向 | `/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp/skills/xylitol-rutis-rewrite/` |
 | 拆分闸门 / crate 图 / 迁移 | 同上 `references/split-principles.md`（P1–P6）、`crate-graph.md`、`crate-naming.md`、`crate-split-detail.md`、`migration-stages.md` |

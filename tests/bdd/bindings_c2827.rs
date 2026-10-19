@@ -659,12 +659,6 @@ async fn test_cb_r20_text_read(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "single-config-type-pair"
-)]
-async fn test_cp_r1400_single_type(agent: AgentState, ws: Workspace) {}
-
-#[scenario(
-    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "reserve-shares-footer-estimate"
 )]
 async fn test_cp_r1402_shared_estimate(agent: AgentState, ws: Workspace) {}

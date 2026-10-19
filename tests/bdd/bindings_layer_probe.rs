@@ -1,6 +1,5 @@
 //! 结构探针与测试基建 BDD bindings（c2853 按域从 bindings_c2827 拆出）。
 
-use crate::bdd::fixtures::{AgentState, Workspace, agent, ws};
 use rstest_bdd_macros::scenario;
 
 // infra-observability r1461/1464/1465（批 2）
@@ -77,11 +76,6 @@ fn test_t3_compaction_trigger() {}
 fn test_t3_cwd_check() {}
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
-    name = "session-manager-implements-port"
-)]
-fn test_t3_session_port() {}
-#[scenario(
-    path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
     name = "journal-read-recent-boundary"
 )]
 fn test_t3_journal_recent() {}
@@ -91,27 +85,7 @@ fn test_t3_journal_recent() {}
 )]
 fn test_t3_export_io() {}
 
-// agent-session r1077/1080/1083/1084（批 3）
-#[scenario(
-    path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "session-store-port-layered"
-)]
-fn test_t3_session_layers(ws: Workspace, agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "trust-outside-agent-layer"
-)]
-fn test_t3_trust_agent(ws: Workspace, agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "compaction-aware-session-context"
-)]
-fn test_t3_compaction_context(ws: Workspace, agent: AgentState) {}
-#[scenario(
-    path = "llmanspec/specs/agent-session/agent-session.feature",
-    name = "resume-single-import-path"
-)]
-fn test_t3_resume_path(ws: Workspace, agent: AgentState) {}
+// agent-session：分层扫描闸已撤（会话行为测仍在 bindings_agent_session）。
 
 // agent-llm-projection r1543/1559（批 3）
 #[scenario(
@@ -212,11 +186,6 @@ fn test_t4_cfg_cmd() {}
     name = "provider-registration-config"
 )]
 fn test_t4_provider_cfg() {}
-#[scenario(
-    path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
-    name = "provider-impl-in-infra"
-)]
-fn test_t4_provider_layers() {}
 #[scenario(
     path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
     name = "provider-port-injection"

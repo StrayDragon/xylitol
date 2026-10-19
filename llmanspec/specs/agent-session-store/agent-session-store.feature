@@ -304,11 +304,8 @@
       那么 恢复前完成同一 CWD 校验
   @req:r1115
   规则: SessionStore 端口实现
-    infra 层的 SessionManager 须实现 protocol 的 XySessionStore 端口（append、load、load_context、exists），仅覆盖 agent 循环与 compaction 所需；完整会话面（fork、navigate、export）MAY 留在具体结构体供组合根直接使用。
+    SessionStore 端口必须覆盖 append、load、load_context、exists；完整会话面（fork、navigate、export）可留在具体结构体。
 
-    场景: session-manager-implements-port
-      当 读取会话存储端口实现
-      那么 infra SessionManager 实现协议端口
   @req:r1117
   规则: 日志访问
     会话 store 须暴露 read_recent(session_id, limit) -> Vec<Event> 供 server journal；journal 容量 须可配置（默认 10000）。

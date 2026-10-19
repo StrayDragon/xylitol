@@ -218,9 +218,6 @@
   @req:r1400
   规则: 单一配置来源
     Compaction 配置 须有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens / keep_recent_tokens / model / thinking_level；model 为可选任务模型条目对象，thinking_level 为可选档名覆盖）；不得再保留 compaction_threshold 或重复 CompactionConfig 定义。
-    场景: single-config-type-pair
-      当 读取领域实体的规范类型声明
-      那么 每个领域概念只有一处规范声明
 
   @req:r1401
   规则: token 使用量类型统一与来源标注

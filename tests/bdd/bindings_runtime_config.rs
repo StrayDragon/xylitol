@@ -107,12 +107,6 @@ fn test_rc_local_ignored(rc_snap: RcSnap, tokenizer_bdd: TokenizerBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
-    name = "json-schema-at-config-edge"
-)]
-fn test_rc_jsonschema_edge() {}
-
-#[scenario(
-    path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "no-max-iterations-field"
 )]
 fn test_rc_no_max_iterations(rc_snap: RcSnap) {}

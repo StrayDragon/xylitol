@@ -9,8 +9,8 @@
 
     场景: three-app-surfaces-in-default-feature-set
       当 读取 Cargo 特性表
-      那么 默认集为 cli 与 tui 与 otel 与 server
-      并且 可选能力有域前缀 flag 且内置能力无条件
+      那么 默认集为 cli 与 tui 与 otel 与 server 与 mcp
+      并且 可选能力 flag 为现用名且内置能力无 flag
   @req:r1165
   规则: reuse-contract
     产品 TUI 须经协议契约、应用缝与 agent 公共入口导入，不得 reach agent 子模块内部或 infra；不得依赖已删除的独立 domain 顶栏。斜杠语义 须复用 protocol::Command。
