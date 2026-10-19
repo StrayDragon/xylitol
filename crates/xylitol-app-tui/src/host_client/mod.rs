@@ -14,8 +14,6 @@ mod envelope_client;
 mod http_ws;
 mod in_process;
 
-pub use http_ws::dual_rail_event_parity;
-
 pub use envelope_client::{client_request_bytes, server_response_to_result, stable_rpc_id};
 pub use http_ws::HttpWsClient;
 pub use in_process::InProcessClient;
