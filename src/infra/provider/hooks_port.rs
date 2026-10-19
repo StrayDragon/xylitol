@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
-use xylitol_ai_bridge::error::AiBridgeError;
-use xylitol_ai_bridge::hooks::{HeaderBag, HttpHooks};
+use xylitol_official_plugin_provider_openai::error::AiBridgeError;
+use xylitol_official_plugin_provider_openai::hooks::{HeaderBag, HttpHooks};
 
 use crate::infra::hooks::HookDispatcher;
 use crate::infra::hooks::http::{run_after_response, run_before_headers, run_before_request};

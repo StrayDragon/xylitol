@@ -16,7 +16,6 @@ categories = []
 resolver = "2"
 members = [
     "crates/xylitol-tui",
-    "crates/xylitol-ai-bridge",
     "crates/xylitol-plugin-sdk",
     "crates/xylitol-protocol",
     "crates/xylitol-runtime",
@@ -85,7 +84,8 @@ tokio-tungstenite = { version = "0.30", features = ["connect", "handshake"], opt
 xylitol-tui = { path = "crates/xylitol-tui", optional = true }
 xylitol-plugin-sdk = { path = "crates/xylitol-plugin-sdk" }
 xylitol-protocol = { path = "crates/xylitol-protocol" }
-xylitol-ai-bridge = { path = "crates/xylitol-ai-bridge" }
+xylitol-official-plugin-provider-openai = { path = "plugins/xylitol-official-plugin-provider-openai" }
+xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-plugin-provider-anthropic" }
 crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
 http = "1"
 fory = "1.7.6"

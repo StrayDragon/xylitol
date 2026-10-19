@@ -21,8 +21,8 @@ pub struct CompactionModelAttribution {
 impl CompactionModelAttribution {
     pub fn enrich_obs(
         &self,
-        obs: &xylitol_ai_bridge::ObsSessionContext,
-    ) -> xylitol_ai_bridge::ObsSessionContext {
+        obs: &xylitol_official_plugin_provider_openai::ObsSessionContext,
+    ) -> xylitol_official_plugin_provider_openai::ObsSessionContext {
         let mut out = obs.clone();
         out.compaction_requested_model = self.requested_model.clone();
         out.compaction_actual_model = Some(self.actual_model.clone());
@@ -103,7 +103,7 @@ impl CompactionSummaryBinding {
 pub fn resolve_compaction_summary(
     settings: &CompactionSettings,
     mm: &ModelManager,
-    obs_session: &xylitol_ai_bridge::ObsSessionContext,
+    obs_session: &xylitol_official_plugin_provider_openai::ObsSessionContext,
 ) -> Result<CompactionSummaryBinding, XyError> {
     let current_meta = mm
         .current_model()

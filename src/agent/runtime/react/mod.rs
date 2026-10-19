@@ -944,7 +944,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             .ok()
             .map(|entries| crate::protocol::session::session_fork_edge(&entries))
             .unwrap_or((None, None));
-        let obs_session = xylitol_ai_bridge::ObsSessionContext {
+        let obs_session = xylitol_official_plugin_provider_openai::ObsSessionContext {
             session_id: Some(session_id.clone()),
             session_name: obs_session_name,
             parent_session_id,

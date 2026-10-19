@@ -262,7 +262,9 @@ impl BootstrappedAgent {
             // c2843 Phase B: restore is an explicit writer event — set the runtime
             // owner fact and keep the default-identity slot in sync.
             self.agent.set_session_name_fact(Some(name.clone()));
-            xylitol_ai_bridge::provider::set_obs_session_name(Some(name.as_str()));
+            xylitol_official_plugin_provider_openai::provider::set_obs_session_name(Some(
+                name.as_str(),
+            ));
         }
         let driver = crate::app::core::driver::XyInProcessDriver::new(self.agent, self.store);
         let todo_gw = driver.todo_gateway();

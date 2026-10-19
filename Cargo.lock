@@ -5772,38 +5772,11 @@ dependencies = [
  "uuid",
  "vte 0.15.0",
  "wiremock",
- "xylitol-ai-bridge",
+ "xylitol-official-plugin-provider-anthropic",
+ "xylitol-official-plugin-provider-openai",
  "xylitol-plugin-sdk",
  "xylitol-protocol",
  "xylitol-tui",
- "yaml_serde",
-]
-
-[[package]]
-name = "xylitol-ai-bridge"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-openai",
- "async-stream",
- "async-trait",
- "eventsource-stream",
- "fastrace",
- "futures",
- "log",
- "partial-json-fixer",
- "reqwest",
- "serde",
- "serde_json",
- "strum",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
- "tower",
- "uuid",
- "wiremock",
- "xylitol-plugin-sdk",
  "yaml_serde",
 ]
 
@@ -5830,10 +5803,52 @@ version = "0.0.0-pre"
 [[package]]
 name = "xylitol-official-plugin-provider-anthropic"
 version = "0.0.0-pre"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "async-trait",
+ "eventsource-stream",
+ "fastrace",
+ "futures",
+ "log",
+ "partial-json-fixer",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "uuid",
+ "wiremock",
+ "xylitol-plugin-sdk",
+]
 
 [[package]]
 name = "xylitol-official-plugin-provider-openai"
 version = "0.0.0-pre"
+dependencies = [
+ "anyhow",
+ "async-openai",
+ "async-stream",
+ "async-trait",
+ "eventsource-stream",
+ "fastrace",
+ "futures",
+ "log",
+ "partial-json-fixer",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "strum",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-util",
+ "tower",
+ "uuid",
+ "wiremock",
+ "xylitol-plugin-sdk",
+ "yaml_serde",
+]
 
 [[package]]
 name = "xylitol-official-plugin-session"

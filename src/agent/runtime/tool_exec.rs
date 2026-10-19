@@ -36,7 +36,7 @@ pub(crate) struct ToolExecEnv<'a> {
     /// [`XyToolCtx`] so tools resolve relative paths / spawn shells in it.
     pub workspace: &'a str,
     /// This run's obs session snapshot (otel24): tool spans stamp it, not the slot.
-    pub obs_session: &'a xylitol_ai_bridge::ObsSessionContext,
+    pub obs_session: &'a xylitol_official_plugin_provider_openai::ObsSessionContext,
 }
 
 /// Capture parent for parallel fan-out (explicit; not the global parent slot).

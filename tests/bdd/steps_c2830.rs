@@ -12,11 +12,10 @@ use crate::bdd::prelude::*;
 use crate::bdd::steps_otel_obs::OtelBdd;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol::infra::provider::adapter::AdapterXyModel;
 use xylitol::protocol::model::XyChunk;
 use xylitol::protocol::ports::XyModel;
-use xylitol_ai_bridge::provider::AnthropicMessagesAdapter;
-use xylitol_ai_bridge::provider::trace::ObservationIoTier;
+use xylitol_official_plugin_provider_anthropic::provider::AnthropicMessagesAdapter;
+use xylitol_official_plugin_provider_openai::provider::trace::ObservationIoTier;
 
 pub(crate) const BDD_MODEL: &str = "claude-bdd-mock";
 
@@ -25,7 +24,7 @@ pub(crate) const BDD_MODEL: &str = "claude-bdd-mock";
 /// the per-owner collector filter.
 fn c2830_options() -> xylitol::protocol::XyGenerateOptions {
     xylitol::protocol::XyGenerateOptions {
-        obs_session: xylitol_ai_bridge::ObsSessionContext {
+        obs_session: xylitol_official_plugin_provider_openai::ObsSessionContext {
             session_id: Some(crate::bdd::steps_otel_obs::SESSION_UUID.into()),
             ..Default::default()
         },
@@ -150,13 +149,13 @@ pub fn mock_upstream_bdd() -> MockUpstreamBdd {
     }
 }
 
-fn build_model(addr: SocketAddr) -> AdapterXyModel {
-    AdapterXyModel::new(Arc::new(AnthropicMessagesAdapter::new(
+fn build_model(addr: SocketAddr) -> AnthropicMessagesAdapter {
+    AnthropicMessagesAdapter::new(
         "bdd-key".into(),
         BDD_MODEL.into(),
         Some(format!("http://{addr}")),
         None,
-    )))
+    )
 }
 
 // ── given ─────────────────────────────────────────────────────

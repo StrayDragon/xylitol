@@ -8,7 +8,7 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::infra::provider::adapter::{AdapterXyModel, factory::build_adapter};
+use crate::infra::provider::adapter::factory::build_adapter;
 use crate::infra::provider::{ScenarioStep, fake_xy_model};
 use crate::protocol::model::{XyModelConfig, XyModelKind};
 use crate::protocol::ports::XyModel;
@@ -71,10 +71,7 @@ pub fn build_provider_with_hooks(
     hooks: Option<Arc<crate::infra::hooks::HookDispatcher>>,
 ) -> Arc<dyn XyModel> {
     match config.kind {
-        XyModelKind::OpenAi | XyModelKind::Anthropic => {
-            let adapter = build_adapter(config, hooks);
-            Arc::new(AdapterXyModel::new(adapter)) as Arc<dyn XyModel>
-        }
+        XyModelKind::OpenAi | XyModelKind::Anthropic => build_adapter(config, hooks),
         XyModelKind::Fake => {
             let steps = {
                 let mut slow = FAKE_SLOW_STREAM.with(|c| c.borrow_mut().take());

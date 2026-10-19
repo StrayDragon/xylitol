@@ -7,7 +7,7 @@ single source for what a user copies to <global-dir>/dev/live-provider.yaml
 ~/.config/xylitol — shared across machines via the dotxylitol repo).
 
 Fields MUST stay aligned with `LiveProviderFile` in
-crates/xylitol-ai-bridge/tests/lab_responses_prompt_cache.rs:
+plugins/xylitol-official-plugin-provider-openai/tests/lab_responses_prompt_cache.rs:
 enabled / base_url / model / api_key / max_output_tokens / serial.
 
 Usage:

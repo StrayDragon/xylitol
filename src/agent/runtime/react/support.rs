@@ -37,7 +37,7 @@ pub(crate) fn prepare_turn_binding(
         // (provider default); only the compaction summary request budgets itself.
         max_output_tokens: None,
         obs_parent: None,
-        obs_session: xylitol_ai_bridge::ObsSessionContext::default(),
+        obs_session: xylitol_official_plugin_provider_openai::ObsSessionContext::default(),
     };
     let model = match run_model.as_ref() {
         Some((id, model)) if id == &model_id => Arc::clone(model),

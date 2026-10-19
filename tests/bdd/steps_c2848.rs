@@ -30,7 +30,7 @@ fn message_entry(id: &str, msg: AgentMessage) -> SessionEntry {
 /// 与实现同源的逐条分解：`project_for_llm` 投影后序列化字节 /3 + pi 图片成本。
 /// （`when` 用公共 API 重算，任何对切点度量的独立化回归都会破坏 `then` 等式。）
 fn unified_decomposition(entries: &[SessionEntry]) -> u64 {
-    use xylitol_ai_bridge::accounting::heuristic_token_count;
+    use xylitol_official_plugin_provider_openai::accounting::heuristic_token_count;
     const ESTIMATED_IMAGE_CHARS: u64 = 4800;
     let mut total = 0u64;
     for e in entries {

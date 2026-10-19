@@ -2,8 +2,7 @@
 """QA check: target crate graph membership and forbidden Cargo edges.
 
 Case: W2 rewrite (tag v0.0.0-pre.old). Empty shells must exist; xylitol-*
-dependencies may only follow src/AGENTS.md. Root package `xylitol` and
-`xylitol-ai-bridge` stay exempt until their cutover batches.
+dependencies may only follow src/AGENTS.md. Root package `xylitol` stays exempt until the W2.5 root cutover.
 
 Usage:
   python3 scripts/check_crate_graph.py
@@ -66,7 +65,7 @@ FORBIDDEN_DEPS: dict[str, frozenset[str]] = {
     "salvo": frozenset(ALLOWED_XYLITOL_DEPS) - {"xylitol-serve"},
 }
 
-TRANSITION_EXEMPT = frozenset({"xylitol", "xylitol-ai-bridge"})
+TRANSITION_EXEMPT = frozenset({"xylitol"})
 
 
 def dep_names(section: dict[str, object] | None) -> set[str]:
@@ -132,7 +131,7 @@ def main() -> int:
             if pkg in banned_in and crate in deps:
                 errors.append(f"{pkg}: must not depend on {crate}")
 
-    # Root / ai-bridge stay fat during transition; do not apply FORBIDDEN_DEPS.
+    # Root stays fat during transition; do not apply FORBIDDEN_DEPS.
     root_pkg = root.get("package")
     if isinstance(root_pkg, dict) and root_pkg.get("name") not in TRANSITION_EXEMPT:
         errors.append("root [package].name must stay xylitol")

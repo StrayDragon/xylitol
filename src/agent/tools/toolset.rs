@@ -46,7 +46,7 @@ impl ToolSet {
                 self.tools
                     .iter()
                     .find(|t| {
-                        xylitol_ai_bridge::provider::tool_wire::to_wire_tool_name(t.name()) == name
+                        xylitol_official_plugin_provider_openai::provider::tool_wire::to_wire_tool_name(t.name()) == name
                     })
                     .cloned()
             })

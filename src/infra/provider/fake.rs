@@ -1,22 +1,19 @@
-//! Domain-facing Fake provider — the bridge fake exposed through the unified
-//! adapter shell (pa1/pa6, r38: same assembly path as vendor models).
+//! Domain-facing Fake provider — [`FakeProvider`] implements [`XyModel`] directly.
 
 use std::sync::Arc;
 
-use crate::infra::provider::adapter::AdapterXyModel;
 use crate::protocol::ports::XyModel;
 
-pub use xylitol_ai_bridge::fake::{FakeProvider, ScenarioStep};
+pub use xylitol_official_plugin_provider_openai::fake::{FakeProvider, ScenarioStep};
 
-/// Build a scenario-driven fake `XyModel` via the single-layer adapter shell.
+/// Build a scenario-driven fake `XyModel`.
 pub fn fake_xy_model(name: impl Into<String>, steps: Vec<ScenarioStep>) -> Arc<dyn XyModel> {
     fake_xy_model_of(FakeProvider::new(name, steps))
 }
 
-/// Expose an already-configured [`FakeProvider`] (builder / custom mode) as an
-/// `XyModel` via the single-layer adapter shell.
+/// Expose an already-configured [`FakeProvider`] as an `XyModel`.
 pub fn fake_xy_model_of(provider: FakeProvider) -> Arc<dyn XyModel> {
-    Arc::new(AdapterXyModel::new(Arc::new(provider)))
+    Arc::new(provider)
 }
 
 #[cfg(test)]

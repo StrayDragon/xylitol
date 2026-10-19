@@ -4,8 +4,8 @@
 //! a runtime ↔ compaction cycle. Gated like `token.estimate` / ReAct low-freq spans.
 
 use fastrace::prelude::*;
-use xylitol_ai_bridge::provider::langfuse_observation_properties_from;
-use xylitol_ai_bridge::provider::trace::provider_trace_active;
+use xylitol_official_plugin_provider_openai::provider::langfuse_observation_properties_from;
+use xylitol_official_plugin_provider_openai::provider::trace::provider_trace_active;
 
 /// Normalize Start/End reason strings to product kinds.
 pub(crate) fn compaction_reason_kind(reason: &str) -> &'static str {
@@ -28,7 +28,7 @@ pub(crate) fn compaction_reason_kind(reason: &str) -> &'static str {
 pub(crate) fn export_skipped(
     reason_detail: &str,
     parent: Option<SpanContext>,
-    obs: &xylitol_ai_bridge::ObsSessionContext,
+    obs: &xylitol_official_plugin_provider_openai::ObsSessionContext,
 ) {
     if !provider_trace_active() {
         return;
@@ -41,7 +41,11 @@ pub(crate) fn export_skipped(
     )
     .with_properties(move || {
         let mut props = vec![("skip_reason".to_string(), detail)];
-        props.extend(xylitol_ai_bridge::provider::langfuse_session_properties_from(&obs));
+        props.extend(
+            xylitol_official_plugin_provider_openai::provider::langfuse_session_properties_from(
+                &obs,
+            ),
+        );
         props
     });
     span.add_event(Event::new("lifecycle").with_properties(|| {
@@ -70,7 +74,7 @@ impl AgentCompactionSpan {
     pub(crate) fn start(
         reason: &str,
         parent: Option<SpanContext>,
-        obs: &xylitol_ai_bridge::ObsSessionContext,
+        obs: &xylitol_official_plugin_provider_openai::ObsSessionContext,
     ) -> Option<Self> {
         if !provider_trace_active() {
             return None;
@@ -137,8 +141,10 @@ impl AgentCompactionSpan {
 mod tests {
     use super::*;
 
-    use xylitol_ai_bridge::provider::obs_session::ObsSessionContext;
-    use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
+    use xylitol_official_plugin_provider_openai::provider::obs_session::ObsSessionContext;
+    use xylitol_official_plugin_provider_openai::provider::trace::{
+        ObsGateScope, ObsGateState, SpanCollectScope,
+    };
 
     #[test]
     fn reason_kind_maps() {
@@ -240,7 +246,7 @@ mod tests {
         assert_eq!(props.get("langfuse.observation.type"), Some(&"span"));
         assert_eq!(
             props.get("xylitol.obs.lane"),
-            Some(&xylitol_ai_bridge::provider::XYLITOL_OBS_LANE_LLM)
+            Some(&xylitol_official_plugin_provider_openai::provider::XYLITOL_OBS_LANE_LLM)
         );
         assert_eq!(props.get("will_retry"), Some(&"false"));
         assert_eq!(props.get("aborted"), Some(&"false"));
@@ -280,7 +286,7 @@ mod tests {
         assert!(!props.contains_key("xylitol.session.llm_gateway_session_id"));
         assert_eq!(
             props.get("xylitol.obs.lane"),
-            Some(&xylitol_ai_bridge::provider::XYLITOL_OBS_LANE_LLM)
+            Some(&xylitol_official_plugin_provider_openai::provider::XYLITOL_OBS_LANE_LLM)
         );
         assert_eq!(props.get("langfuse.observation.level"), Some(&"ERROR"));
         assert!(
@@ -301,7 +307,7 @@ mod tests {
             let c = AgentCompactionSpan::start("overflow", turn_ctx, &ObsSessionContext::default())
                 .expect("compact");
             let compact_ctx = c.span_context();
-            let _llm = xylitol_ai_bridge::provider::trace::ProviderRequestTrace::start_with_parent(
+            let _llm = xylitol_official_plugin_provider_openai::provider::trace::ProviderRequestTrace::start_with_parent(
                 "openai-responses",
                 "m",
                 compact_ctx,

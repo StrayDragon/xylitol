@@ -9,3 +9,34 @@ repository = "https://github.com/straydragon/xylitol"
 publish = false
 
 [dependencies]
+xylitol-plugin-sdk = { path = "../../crates/xylitol-plugin-sdk" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+futures = "0.3"
+async-stream = "0.3"
+tokio = { version = "1", features = ["time", "sync", "macros", "rt"] }
+tokio-util = "0.7"
+reqwest = { version = "0.13", features = ["stream", "json"] }
+eventsource-stream = "0.2"
+async-openai = { version = "0.42", default-features = false, features = [
+  "chat-completion",
+  "responses",
+  "byot",
+  "middleware",
+  "rustls",
+] }
+tower = { version = "0.5", default-features = false, features = ["util"] }
+fastrace = { version = "0.7", features = ["enable"] }
+uuid = { version = "1", features = ["v4"] }
+log = "0.4"
+strum = { version = "0.28", features = ["derive"] }
+partial-json-fixer = "0.5.5"
+
+[dev-dependencies]
+wiremock = "0.6"
+tempfile = "3"
+yaml_serde = "0.10.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }

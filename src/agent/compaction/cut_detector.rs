@@ -5,7 +5,7 @@
 
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
 use crate::protocol::session::SessionEntry;
-use xylitol_ai_bridge::accounting::heuristic_token_count;
+use xylitol_official_plugin_provider_openai::accounting::heuristic_token_count;
 
 /// Result from [`find_cut_point`].
 #[derive(Debug, Clone)]

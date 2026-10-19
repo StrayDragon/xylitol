@@ -1,14 +1,13 @@
 //! Ports — boundary traits between the `agent` and `infra` layers.
 //!
-//! Trait contracts and signature-only associated types. Depends on protocol-root
-//! shared types (and MAY depend on `xylitol_ai_bridge::dto`). MUST NOT depend on
-//! [`crate::wire`], `agent/`, or `infra/` implementations.
+//! Trait contracts and signature-only associated types.
 
 pub mod ask;
 pub mod bash;
 pub mod event;
 pub mod export;
 pub mod hook;
+pub mod http;
 pub mod model;
 pub mod permission;
 pub mod secret;
@@ -26,6 +25,7 @@ pub use bash::{BashChunk, BashExecOpts, BashOutputSink, XyBashExecutor, XyBashRe
 pub use event::{LifecycleHandler, XyEventSink};
 pub use export::XyExportIo;
 pub use hook::{NoopHookBus, XyHookBus, XyHookOutcome};
+pub use http::{HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request};
 pub use model::{XyGenerateOptions, XyModel, XyModelBuilder, XyStream};
 pub use permission::{XyPermission, XyPermissionVerdict};
 pub use secret::XySecretResolver;

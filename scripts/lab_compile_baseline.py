@@ -28,7 +28,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT_ROOT = ROOT / ".tmp" / "lab_compile_baseline"
-MEMBERS = ("xylitol", "xylitol-tui", "xylitol-ai-bridge")
+MEMBERS = ("xylitol", "xylitol-tui", "xylitol-official-plugin-provider-openai")
 
 
 def run(cmd: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:

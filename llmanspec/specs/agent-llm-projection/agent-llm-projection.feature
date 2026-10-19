@@ -1,6 +1,6 @@
 # language: zh-CN
-# purpose: "AgentMessage 会话真源与 project_for_llm 投影缝：protocol 根消息词表、agent 投影边界、对 xylitol-ai-bridge DTO 的依赖分界。"
-# c2833 拆分承接：自 crates/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge 平移（bridge-rootside-rules），原文保 id。
+# purpose: "AgentMessage 会话真源与 project_for_llm 投影缝：protocol 根消息词表、agent 投影边界、对 xylitol-official-plugin-provider-openai DTO 的依赖分界。"
+# c2833 拆分承接：自 plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge 平移（bridge-rootside-rules），原文保 id。
 
 功能: agent-llm-projection
 
@@ -13,7 +13,7 @@
       那么 AgentMessage 以组合表达且协议词汇单一
   @req:r1559
   规则: 主仓映射层
-    主仓 agent 须经 project_for_llm（或等价）将 AgentMessage 投影为 Vec<AiBridgeMessage>：Llm 臂 须 passthrough；Env 折叠策略留在 agent。XyModel 调用方 须只传递投影后的 LLM DTO。agent MAY 依赖 bridge DTO 以组合 AgentMessage::Llm；agent 不得直接依赖 xylitol_ai_bridge 的 HTTP/vendor SDK 类型。
+    主仓 agent 须经 project_for_llm（或等价）将 AgentMessage 投影为 Vec<AiBridgeMessage>：Llm 臂 须 passthrough；Env 折叠策略留在 agent。XyModel 调用方 须只传递投影后的 LLM DTO。agent MAY 依赖 bridge DTO 以组合 AgentMessage::Llm；agent 不得直接依赖 xylitol_official_plugin_provider_openai 的 HTTP/vendor SDK 类型。
 
     场景: projection-via-llm-project
       当 读取主仓投影入口

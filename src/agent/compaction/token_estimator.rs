@@ -1,7 +1,9 @@
-//! Token estimation — multi-source accounting via xylitol-ai-bridge (c1030 / c1210).
+//! Token estimation — multi-source accounting via xylitol-official-plugin-provider-openai (c1030 / c1210).
 
-use xylitol_ai_bridge::accounting::{EstimateContextOpts, estimate_context, heuristic_token_count};
-use xylitol_ai_bridge::dto::AiBridgeMessage;
+use xylitol_official_plugin_provider_openai::accounting::{
+    EstimateContextOpts, estimate_context, heuristic_token_count,
+};
+use xylitol_official_plugin_provider_openai::dto::AiBridgeMessage;
 
 use crate::agent::prompt::project_outbound;
 use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
@@ -79,7 +81,7 @@ pub struct EstimateOpts {
     pub obs_parent: Option<fastrace::prelude::SpanContext>,
     /// Obs session snapshot for the `token.estimate` span (otel24 / c2610);
     /// empty default stamps no session attributes (quiet estimates never emit).
-    pub obs_session: xylitol_ai_bridge::ObsSessionContext,
+    pub obs_session: xylitol_official_plugin_provider_openai::ObsSessionContext,
 }
 
 /// Build a [`ContextTokenEstimate`] from persisted session entries (footer + compact).
@@ -186,7 +188,7 @@ pub fn estimate_context_tokens_with(
 /// share one emit; do not call this from every estimate caller.
 pub(crate) fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
     let backend = est.provenance.as_str();
-    if !xylitol_ai_bridge::provider::trace::provider_trace_active() {
+    if !xylitol_official_plugin_provider_openai::provider::trace::provider_trace_active() {
         return;
     }
     use fastrace::prelude::*;
@@ -204,10 +206,16 @@ pub(crate) fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &Estimat
     {
         props.push(("model_id".into(), model.to_string()));
     }
-    props.extend(xylitol_ai_bridge::provider::langfuse_session_properties_from(&opts.obs_session));
-    props.extend(xylitol_ai_bridge::provider::xylitol_obs_lane_properties(
-        xylitol_ai_bridge::provider::XYLITOL_OBS_LANE_LLM,
-    ));
+    props.extend(
+        xylitol_official_plugin_provider_openai::provider::langfuse_session_properties_from(
+            &opts.obs_session,
+        ),
+    );
+    props.extend(
+        xylitol_official_plugin_provider_openai::provider::xylitol_obs_lane_properties(
+            xylitol_official_plugin_provider_openai::provider::XYLITOL_OBS_LANE_LLM,
+        ),
+    );
     // Prefer explicit agent.turn parent; otherwise independent root (same session attrs).
     let parent = opts.obs_parent.unwrap_or_else(SpanContext::random);
     let span = Span::root("token.estimate", parent).with_properties(|| props);

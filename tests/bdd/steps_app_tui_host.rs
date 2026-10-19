@@ -2514,7 +2514,7 @@ fn t_tui_agents_doc_carries_layout_map(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以临时目录请求即时文件日志")]
 fn w_init_instant_file_logging(host_pump_bdd: &HostPumpBdd) {
-    use xylitol_ai_bridge::provider::trace as pt;
+    use xylitol_official_plugin_provider_openai::provider::trace as pt;
     // c2843 Phase B: hold the process-wide gate lock while mounting probes that
     // mutate the process atomics (`init_logging` arms the gate per its config),
     // so the gate probes in default-gate-off scenarios stay deterministic.

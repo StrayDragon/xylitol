@@ -504,7 +504,7 @@ async fn compute_after_compaction_settlement(
     sid: &str,
     fixed_context: Option<&FixedRequestContext>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-    obs_session: &xylitol_ai_bridge::ObsSessionContext,
+    obs_session: &xylitol_official_plugin_provider_openai::ObsSessionContext,
 ) -> Option<crate::agent::compaction::settlement::ContextTokenSettlement> {
     use crate::agent::compaction::settlement::{
         ContextTokenSettlementReason, settle_from_session_entries,
@@ -631,7 +631,9 @@ mod tests {
     use super::*;
 
     use async_trait::async_trait;
-    use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
+    use xylitol_official_plugin_provider_openai::provider::trace::{
+        ObsGateScope, ObsGateState, SpanCollectScope,
+    };
 
     use std::sync::Arc;
 
@@ -1209,7 +1211,7 @@ mod tests {
         let entries = vec![SessionEntry::Compaction(entry)];
         assert_eq!(
             crate::agent::compaction::summary_placeholder_tokens(&entries),
-            xylitol_ai_bridge::accounting::heuristic_token_count(8_192)
+            xylitol_official_plugin_provider_openai::accounting::heuristic_token_count(8_192)
         );
         assert_eq!(
             crate::agent::compaction::summary_placeholder_tokens(&[]),

@@ -75,7 +75,7 @@ lint-all verbosity=verbosity_default:
     esac
 
 # Workspace test matrix (nextest profile agent/ci, or cargo test fallback):
-# root package + xylitol-ai-bridge lib. NOT in this matrix:
+# root package + xylitol-official-plugin-provider-openai lib. NOT in this matrix:
 #   - xylitol-tui → sole runner is `just test-tui` (in-process #[serial]
 #     coordination, TUI harness methodology SSOT);
 #   - lab_responses_prompt_cache → serial-only via `qa-test-live-provider`.
@@ -108,22 +108,22 @@ test verbosity=verbosity_default:
       # and the live HTTP suite (parallel cargo test would hammer llama.cpp).
       case "{{verbosity}}" in
         quiet)
-          if ! out=$(cargo test -q --workspace --all-features --exclude xylitol-ai-bridge --exclude xylitol-tui 2>&1); then
+          if ! out=$(cargo test -q --workspace --all-features --exclude xylitol-official-plugin-provider-openai --exclude xylitol-tui 2>&1); then
             printf '%s\n' "$out"
             exit 1
           fi
-          if ! out=$(cargo test -q -p xylitol-ai-bridge --lib 2>&1); then
+          if ! out=$(cargo test -q -p xylitol-official-plugin-provider-openai --lib 2>&1); then
             printf '%s\n' "$out"
             exit 1
           fi
           ;;
         normal)
-          cargo test --workspace --all-features --exclude xylitol-ai-bridge --exclude xylitol-tui
-          cargo test -p xylitol-ai-bridge --lib
+          cargo test --workspace --all-features --exclude xylitol-official-plugin-provider-openai --exclude xylitol-tui
+          cargo test -p xylitol-official-plugin-provider-openai --lib
           ;;
         verbose)
-          cargo test -v --workspace --all-features --exclude xylitol-ai-bridge --exclude xylitol-tui
-          cargo test -v -p xylitol-ai-bridge --lib
+          cargo test -v --workspace --all-features --exclude xylitol-official-plugin-provider-openai --exclude xylitol-tui
+          cargo test -v -p xylitol-official-plugin-provider-openai --lib
           ;;
       esac
     fi
@@ -147,7 +147,7 @@ qa-test-live-provider verbosity=verbosity_default:
       quiet)
         # Keep --nocapture so RUN/SKIP lines exist; surface a one-liner so quiet qa
         # still shows the live gate ran (not only `just qa normal`).
-        if ! out=$(cargo test -q -p xylitol-ai-bridge --test lab_responses_prompt_cache -- --test-threads=1 --nocapture 2>&1); then
+        if ! out=$(cargo test -q -p xylitol-official-plugin-provider-openai --test lab_responses_prompt_cache -- --test-threads=1 --nocapture 2>&1); then
           printf '%s\n' "$out"
           exit 1
         fi
@@ -159,8 +159,8 @@ qa-test-live-provider verbosity=verbosity_default:
           echo "live-provider: ok"
         fi
         ;;
-      normal)  cargo test -p xylitol-ai-bridge --test lab_responses_prompt_cache -- --test-threads=1 --nocapture ;;
-      verbose) cargo test -v -p xylitol-ai-bridge --test lab_responses_prompt_cache -- --test-threads=1 --nocapture ;;
+      normal)  cargo test -p xylitol-official-plugin-provider-openai --test lab_responses_prompt_cache -- --test-threads=1 --nocapture ;;
+      verbose) cargo test -v -p xylitol-official-plugin-provider-openai --test lab_responses_prompt_cache -- --test-threads=1 --nocapture ;;
     esac
 
 # Generate configs/testing/live-provider.example.yaml (maintenance; not in qa).
@@ -192,12 +192,16 @@ test-provider-safe-tool-names verbosity=verbosity_default:
       verbose) vflag=(-v) ;;
     esac
     main_filters="tool_name:: provider_safe_names:: test_mcp_tool_adapter_name_format adapters_from_discovered_names"
-    bridge_filters="tool_wire:: build_body_mcp_tool_names_are_provider_safe completions_mcp_tool_names_are_provider_safe anthropic_mcp_tool_names_are_provider_safe"
+    openai_filters="tool_wire:: build_body_mcp_tool_names_are_provider_safe completions_mcp_tool_names_are_provider_safe"
+    anthropic_filters="anthropic_mcp_tool_names_are_provider_safe"
     for f in $main_filters; do
       cargo test "${qflag[@]}" "${vflag[@]}" --lib --all-features -- "$f"
     done
-    for f in $bridge_filters; do
-      cargo test "${qflag[@]}" "${vflag[@]}" -p xylitol-ai-bridge --lib -- "$f"
+    for f in $openai_filters; do
+      cargo test "${qflag[@]}" "${vflag[@]}" -p xylitol-official-plugin-provider-openai --lib -- "$f"
+    done
+    for f in $anthropic_filters; do
+      cargo test "${qflag[@]}" "${vflag[@]}" -p xylitol-official-plugin-provider-anthropic --lib -- "$f"
     done
 
 # TUI end-to-end integration tests (layer 5: PTY/tmux). Slow + needs a real

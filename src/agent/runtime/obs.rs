@@ -1,6 +1,6 @@
 //! Low-frequency ReAct fastrace spans (c1265 Phase A; c1495 parent tree).
 //!
-//! Gated by [`xylitol_ai_bridge::provider::trace::provider_trace_active`]. When
+//! Gated by [`xylitol_official_plugin_provider_openai::provider::trace::provider_trace_active`]. When
 //! off, helpers are no-ops (zero/near-zero cost) — no UUID allocation.
 //!
 //! Hierarchy (exported names):
@@ -18,8 +18,8 @@
 //! `Span` kept alive for the turn/iteration. Must not import `crate::infra`.
 
 use fastrace::prelude::*;
-use xylitol_ai_bridge::provider::langfuse_observation_properties_from;
-use xylitol_ai_bridge::provider::trace::{
+use xylitol_official_plugin_provider_openai::provider::langfuse_observation_properties_from;
+use xylitol_official_plugin_provider_openai::provider::trace::{
     observation_io_tier, provider_trace_active, tool_observation_io_tier, truncate_observation_text,
 };
 
@@ -40,7 +40,7 @@ pub(crate) struct AgentTurnSpan {
     turn_id: String,
     /// This run's obs session snapshot (otel24): children inherit it instead of
     /// re-reading the process slot mid-run.
-    obs: xylitol_ai_bridge::ObsSessionContext,
+    obs: xylitol_official_plugin_provider_openai::ObsSessionContext,
 }
 
 impl AgentTurnSpan {
@@ -53,7 +53,7 @@ impl AgentTurnSpan {
         Self::start_with_session(
             user_preview,
             model_api,
-            &xylitol_ai_bridge::provider::obs_session_context(),
+            &xylitol_official_plugin_provider_openai::provider::obs_session_context(),
         )
     }
 
@@ -61,7 +61,7 @@ impl AgentTurnSpan {
     pub(crate) fn start_with_session(
         user_preview: Option<&str>,
         model_api: Option<&str>,
-        obs: &xylitol_ai_bridge::ObsSessionContext,
+        obs: &xylitol_official_plugin_provider_openai::ObsSessionContext,
     ) -> Option<Self> {
         if !provider_trace_active() {
             return None;
@@ -100,7 +100,7 @@ impl AgentTurnSpan {
     }
 
     /// This run's obs session snapshot (otel24).
-    pub(crate) fn obs(&self) -> &xylitol_ai_bridge::ObsSessionContext {
+    pub(crate) fn obs(&self) -> &xylitol_official_plugin_provider_openai::ObsSessionContext {
         &self.obs
     }
 
@@ -156,7 +156,7 @@ impl AgentIterationSpan {
         // (test / gate-off) iterations may fall back to the process slot.
         let obs = turn
             .map(|t| t.obs().clone())
-            .unwrap_or_else(xylitol_ai_bridge::provider::obs_session_context);
+            .unwrap_or_else(xylitol_official_plugin_provider_openai::provider::obs_session_context);
         let span = match turn {
             Some(t) => Span::enter_with_parent("agent.iteration", t.span()),
             None => Span::root("agent.iteration", SpanContext::random()),
@@ -214,7 +214,7 @@ impl ToolExecuteSpan {
             parent.and_then(SpanContext::from_span),
             batch_mode,
             barrier_index,
-            &xylitol_ai_bridge::ObsSessionContext::default(),
+            &xylitol_official_plugin_provider_openai::ObsSessionContext::default(),
         )
     }
 
@@ -229,7 +229,7 @@ impl ToolExecuteSpan {
         parent_ctx: Option<SpanContext>,
         batch_mode: &str,
         barrier_index: u32,
-        obs: &xylitol_ai_bridge::ObsSessionContext,
+        obs: &xylitol_official_plugin_provider_openai::ObsSessionContext,
     ) -> Option<Self> {
         Self::start_with_ctx(
             name,
@@ -247,7 +247,7 @@ impl ToolExecuteSpan {
         parent_ctx: Option<SpanContext>,
         batch_mode: Option<&str>,
         barrier_index: Option<u32>,
-        obs: &xylitol_ai_bridge::ObsSessionContext,
+        obs: &xylitol_official_plugin_provider_openai::ObsSessionContext,
     ) -> Option<Self> {
         if !provider_trace_active() {
             return None;
@@ -272,7 +272,7 @@ impl ToolExecuteSpan {
         id: &str,
         batch_mode: Option<&str>,
         barrier_index: Option<u32>,
-        obs: &xylitol_ai_bridge::ObsSessionContext,
+        obs: &xylitol_official_plugin_provider_openai::ObsSessionContext,
     ) -> Self {
         let obs = obs.clone();
         let span = span.with_properties(move || {
@@ -319,7 +319,7 @@ pub(crate) fn record_xy_error(
     err: &XyError,
     turn_id: Option<&str>,
     parent: Option<SpanContext>,
-    obs: &xylitol_ai_bridge::ObsSessionContext,
+    obs: &xylitol_official_plugin_provider_openai::ObsSessionContext,
 ) {
     let kind = err.kind();
     let tid = turn_id.unwrap_or("");
@@ -356,7 +356,7 @@ pub(crate) fn record_tool_error(
     err: &XyToolError,
     turn_id: Option<&str>,
     parent: Option<SpanContext>,
-    obs: &xylitol_ai_bridge::ObsSessionContext,
+    obs: &xylitol_official_plugin_provider_openai::ObsSessionContext,
 ) {
     let kind = err.kind();
     let tid = turn_id.unwrap_or("");
@@ -391,7 +391,7 @@ pub(crate) fn record_tool_error(
 mod tests {
     use super::*;
 
-    use xylitol_ai_bridge::provider::trace::{
+    use xylitol_official_plugin_provider_openai::provider::trace::{
         ObsGateScope, ObsGateState, ObservationIoTier, SpanCollectScope, set_observation_io_tier,
         set_tool_observation_io_tier,
     };
@@ -474,7 +474,7 @@ mod tests {
             let tool = ToolExecuteSpan::start("bash", "t1", Some(iter.span())).expect("tool");
             tool.attach_io(r#"{"cmd":"echo"}"#, "ok");
             let iter_ctx = SpanContext::from_span(iter.span());
-            let _llm = xylitol_ai_bridge::provider::trace::ProviderRequestTrace::start_with_parent(
+            let _llm = xylitol_official_plugin_provider_openai::provider::trace::ProviderRequestTrace::start_with_parent(
                 "openai-responses",
                 "m",
                 iter_ctx,
@@ -689,8 +689,8 @@ mod tests {
 
     #[test]
     fn overlapping_turn_roots_keep_own_session_id() {
-        use xylitol_ai_bridge::ObsSessionContext;
-        use xylitol_ai_bridge::provider::{ObsSessionScope, set_obs_session};
+        use xylitol_official_plugin_provider_openai::ObsSessionContext;
+        use xylitol_official_plugin_provider_openai::provider::{ObsSessionScope, set_obs_session};
 
         let _g = ObsGateScope::enter(ObsGateState::active_none_io());
         let _sess = ObsSessionScope::enter(ObsSessionContext {
@@ -743,8 +743,8 @@ mod tests {
     /// runtime's bind) must not leak into iteration / tool / error spans.
     #[test]
     fn slot_stomp_between_turns_keeps_children_session_id() {
-        use xylitol_ai_bridge::ObsSessionContext;
-        use xylitol_ai_bridge::provider::{ObsSessionScope, set_obs_session};
+        use xylitol_official_plugin_provider_openai::ObsSessionContext;
+        use xylitol_official_plugin_provider_openai::provider::{ObsSessionScope, set_obs_session};
 
         let _g = ObsGateScope::enter(ObsGateState::active_none_io());
         let _sess = ObsSessionScope::enter(ObsSessionContext {
@@ -803,7 +803,7 @@ mod tests {
     fn turn_root_writes_xylitol_session_id_and_fork_edge_not_gateway_placeholder() {
         let _g = ObsGateScope::enter(ObsGateState::active_none_io());
         let collect = SpanCollectScope::enter();
-        let snap = xylitol_ai_bridge::ObsSessionContext {
+        let snap = xylitol_official_plugin_provider_openai::ObsSessionContext {
             session_id: Some("child".into()),
             parent_session_id: Some("parent".into()),
             fork_at_entry_id: Some("u6".into()),

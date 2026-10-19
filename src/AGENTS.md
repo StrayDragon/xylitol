@@ -2,7 +2,7 @@
 
 本文件是代码架构的单一真值源。覆盖目标 crate 图、依赖方向、seam、`Xy*`、消息/工具边界、扩展开闭、复杂度与体量策略。全局工作方式见根 `AGENTS.md`；产品心智见 `docs/architecture/`。子目录 `AGENTS.md` 只写本端例外，不重复本文件。
 
-**真值顺序**：代码与测试 → 本文件 → archive design。本文件写**稳定规则**，不写文件清单、change id 进度、超标表。现行 workspace 成员以根 `Cargo.toml` 为准。词表以 `xylitol-plugin-sdk` 为准。信封以 `xylitol-protocol` 为准（不认识 `XyEvent`）。其余目标 crate 未填叶前，对应代码仍在主 crate `src/`（或现有 `crates/xylitol-ai-bridge`）。新代码必须按目标依赖方向落点。
+**真值顺序**：代码与测试 → 本文件 → archive design。本文件写**稳定规则**，不写文件清单、change id 进度、超标表。现行 workspace 成员以根 `Cargo.toml` 为准。词表以 `xylitol-plugin-sdk` 为准。信封以 `xylitol-protocol` 为准（不认识 `XyEvent`）。其余目标 crate 未填叶前，对应代码仍在主 crate `src/`。新代码必须按目标依赖方向落点。
 
 ## 目标 crate 图（normative）
 

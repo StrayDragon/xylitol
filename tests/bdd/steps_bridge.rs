@@ -3,7 +3,7 @@ use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 
 pub struct AiBridgeBdd {
-    pub(crate) chunks: RefCell<Vec<xylitol_ai_bridge::dto::AiBridgeChunk>>,
+    pub(crate) chunks: RefCell<Vec<xylitol_official_plugin_provider_openai::dto::AiBridgeChunk>>,
     pub(crate) parse_value: RefCell<Option<serde_json::Value>>,
     pub(crate) input_items: RefCell<Vec<serde_json::Value>>,
     pub(crate) request_body: RefCell<Option<serde_json::Value>>,
@@ -29,8 +29,10 @@ pub fn ai_bridge_bdd() -> AiBridgeBdd {
     "Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done"
 )]
 fn g_pab13_responses_sse(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_ai_bridge::dto::AiBridgeChunk;
-    use xylitol_ai_bridge::provider::{ResponsesStreamState, map_responses_sse_event};
+    use xylitol_official_plugin_provider_openai::dto::AiBridgeChunk;
+    use xylitol_official_plugin_provider_openai::provider::{
+        ResponsesStreamState, map_responses_sse_event,
+    };
 
     let mut state = ResponsesStreamState::default();
     let mut out = Vec::new();
@@ -82,7 +84,7 @@ fn w_pab13_already_mapped(ai_bridge_bdd: &AiBridgeBdd) {
     "首个 args delta 之前或当时已有 ToolCallStart 且存在至少一次 ToolCallDelta 早于对应 ToolCallEnd"
 )]
 fn t_pab13_lifecycle(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_ai_bridge::dto::AiBridgeChunk;
+    use xylitol_official_plugin_provider_openai::dto::AiBridgeChunk;
     let chunks = ai_bridge_bdd.chunks.borrow();
     let start = chunks
         .iter()
@@ -110,7 +112,7 @@ fn g_pab14_partial_json(ai_bridge_bdd: &AiBridgeBdd) {
 
 #[when("调用 parse_streaming_json")]
 fn w_pab14_parse(ai_bridge_bdd: &AiBridgeBdd) {
-    let v = xylitol_ai_bridge::dto::parse_streaming_json(r#"{"command":"ls"#);
+    let v = xylitol_official_plugin_provider_openai::dto::parse_streaming_json(r#"{"command":"ls"#);
     ai_bridge_bdd.parse_value.replace(Some(v));
 }
 
@@ -127,9 +129,9 @@ fn t_pab14_ok(ai_bridge_bdd: &AiBridgeBdd) {
 
 #[given("Responses 组装且 system_prompt 非空且 thinking_level 为 medium")]
 fn g_pab15_system_developer(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_ai_bridge::dto::AiBridgeMessage;
-    use xylitol_ai_bridge::provider::messages_to_responses_input_with_options;
-    use xylitol_ai_bridge::thinking::AiBridgeGenerateOptions;
+    use xylitol_official_plugin_provider_openai::dto::AiBridgeMessage;
+    use xylitol_official_plugin_provider_openai::provider::messages_to_responses_input_with_options;
+    use xylitol_official_plugin_provider_openai::thinking::AiBridgeGenerateOptions;
 
     let opts = AiBridgeGenerateOptions {
         thinking_level: "medium".into(),
@@ -157,8 +159,10 @@ fn t_pab15_developer(ai_bridge_bdd: &AiBridgeBdd) {
 
 #[given("assistant 含 Thinking 无 signature 与 Text")]
 fn g_pab15_thinking_text(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_ai_bridge::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
-    use xylitol_ai_bridge::provider::messages_to_responses_input;
+    use xylitol_official_plugin_provider_openai::dto::{
+        AiBridgeMessage, AiBridgePart, AiBridgeStopReason,
+    };
+    use xylitol_official_plugin_provider_openai::provider::messages_to_responses_input;
 
     let msgs = vec![AiBridgeMessage::AssistantMessage {
         content: vec![
@@ -206,9 +210,9 @@ fn t_pab15_text_only(ai_bridge_bdd: &AiBridgeBdd) {
 
 #[given("Responses 组装且 thinking_level 为 medium 且 tools 非空")]
 fn g_pab16_body(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_ai_bridge::dto::{AiBridgeMessage, AiBridgeToolSchema};
-    use xylitol_ai_bridge::provider::ResponsesAssembler;
-    use xylitol_ai_bridge::thinking::AiBridgeGenerateOptions;
+    use xylitol_official_plugin_provider_openai::dto::{AiBridgeMessage, AiBridgeToolSchema};
+    use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
+    use xylitol_official_plugin_provider_openai::thinking::AiBridgeGenerateOptions;
 
     let tools = [AiBridgeToolSchema {
         name: "bash".into(),
@@ -259,7 +263,9 @@ fn t_pab16_fields(ai_bridge_bdd: &AiBridgeBdd) {
 
 #[given("Responses 流或非流输出含完整 type=reasoning 的 output item")]
 fn g_pab16_reasoning_item(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_ai_bridge::provider::{ResponsesStreamState, map_responses_sse_event};
+    use xylitol_official_plugin_provider_openai::provider::{
+        ResponsesStreamState, map_responses_sse_event,
+    };
 
     let mut state = ResponsesStreamState::default();
     let event = serde_json::json!({
@@ -285,7 +291,7 @@ fn w_pab16_map_chunks(ai_bridge_bdd: &AiBridgeBdd) {
     "存在带 thinkingSignature 的 Thinking 终态（ThinkingEnd 或等价）且 signature 可 JSON 解析为该 reasoning item"
 )]
 fn t_pab16_signature(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_ai_bridge::dto::AiBridgeChunk;
+    use xylitol_official_plugin_provider_openai::dto::AiBridgeChunk;
 
     let chunks = ai_bridge_bdd.chunks.borrow();
     let end = chunks.iter().find_map(|c| match c {
@@ -446,12 +452,12 @@ fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
 #[when("以 medium 与 off 档解析请求 thinking 并注入各族请求体")]
 fn w_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
     use std::collections::HashMap;
-    use xylitol_ai_bridge::thinking::{
+    use xylitol_official_plugin_provider_openai::thinking::{
         AiBridgeThinkingAdapterKind, apply_thinking_anthropic,
         apply_thinking_openai_completions_with_compat, apply_thinking_openai_responses,
         resolve_thinking_for_request,
     };
-    use xylitol_ai_bridge::wire_policy::Compat;
+    use xylitol_official_plugin_provider_openai::wire_policy::Compat;
 
     let empty_map: HashMap<String, Option<String>> = HashMap::new();
     let resolved_medium_openai = resolve_thinking_for_request(
@@ -487,14 +493,14 @@ fn w_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
     );
 
     let mut anthropic_generic = serde_json::json!({});
-    xylitol_ai_bridge::provider::dialect::apply_anthropic_thinking(
+    xylitol_official_plugin_provider_openai::provider::dialect::apply_anthropic_thinking(
         &mut anthropic_generic,
         &resolved_medium_anthropic,
         Compat::Generic,
     );
 
     let mut anthropic_deepseek = serde_json::json!({});
-    xylitol_ai_bridge::provider::dialect::apply_anthropic_thinking(
+    xylitol_official_plugin_provider_openai::provider::dialect::apply_anthropic_thinking(
         &mut anthropic_deepseek,
         &resolved_medium_anthropic,
         Compat::Deepseek,
@@ -565,7 +571,7 @@ fn t_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
 fn w_c2826_responses_error(ai_bridge_bdd: &AiBridgeBdd) {
     let raw = r#"error sending request: content:{"error":{"message":"upstream context overflow","type":"overloaded_error","code":429}}"#;
     let formatted =
-        xylitol_ai_bridge::provider::native::openai_responses::format_responses_error(&raw);
+        xylitol_official_plugin_provider_openai::provider::native::openai_responses::format_responses_error(&raw);
     ai_bridge_bdd
         .parse_value
         .replace(Some(serde_json::json!({ "message": formatted })));

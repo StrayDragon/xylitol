@@ -1,12 +1,12 @@
 # language: zh-CN
-# purpose: Provider 装配与映射：协议适配实现在 xylitol-ai-bridge；主仓 AdapterXyModel 单层外壳与 DTO 映射。
+# purpose: Provider 装配：方言插件直接 impl XyModel；组合根按 api/kind 调度工厂。
 # c2833: bridge 侧适配器行为已随 package-ai-bridge 迁子根；本 cap 收窄为根侧装配/结构 mandate（one-path-one-root）。
 
 功能: infra-provider
 
   @req:r1497
   规则: adapter-single-layer-wrap
-    System 须在 infra/provider/adapter 提供单层适配外壳 AdapterXyModel 直接包装 bridge adapter（AiBridgeLlmAdapter），经主仓 infra map 完成 DTO→XyStream 映射，并按 stream 入参分派 generate_stream / generate；不得在 XyModel 外壳与 bridge adapter 之间保留 1:1 包装 trait 层。
+    System 须让 OpenAI Responses/Completions 与 Anthropic Messages 方言直接 impl XyModel，按 stream 入参分派流式/非流式 HTTP；不得再保留 AdapterXyModel 或 AiBridgeLlmAdapter 第三层。
     场景: single-layer-adapter-wrap
       当 读取适配外壳结构
       那么 适配外壳仅一层且桥接 bridge adapter
@@ -42,14 +42,14 @@
       那么 每个 input item 均带 type 字段
   @req:r1505
   规则: 单一-XyModel-装配路径
-    System 须通过唯一装配路径将协议适配器暴露为 XyModel：具体接线实现归属 crates/xylitol-ai-bridge，经主仓映射与统一外壳（如 AdapterXyModel）注入；OpenAI 兼容 须可经 Responses 或 Completions 适配暴露；不得在主仓保留与包并行的第二套完整 adapter 实现。
+    System 须通过唯一装配路径将协议适配器暴露为 XyModel：OpenAI 兼容接线归属 plugins/xylitol-official-plugin-provider-openai，Anthropic Messages 归属 plugins/xylitol-official-plugin-provider-anthropic；组合根按 kind/api 调用各插件工厂。不得在主仓保留与包并行的第二套完整 adapter 实现。
     场景: single-xy-model-assembly-path
       当 读取适配外壳结构
       那么 适配外壳仅一层且桥接 bridge adapter
 
   @req:r1506
   规则: vendor-类型不出-infra与agent
-    async-openai 与各厂商 HTTP/SSE 具体类型 须仅出现在 crates/xylitol-ai-bridge（及其测试）与必要的主仓映射边界内；agent/ 不得 import 这些 vendor crate；主仓 infra 若保留映射模块 不得把 vendor 类型再导出给 agent。
+    async-openai 须仅出现在 plugins/xylitol-official-plugin-provider-openai（及其测试）；Anthropic 方言包不得依赖 async-openai。agent/ 不得 import 这些 vendor crate。
     场景: vendor-types-stay-in-bridge
       当 扫描厂商类型的出现位置
       那么 厂商类型仅现于 bridge 与映射边界

@@ -114,7 +114,9 @@ pub fn summary_placeholder_tokens(entries: &[SessionEntry]) -> u64 {
         .find_map(|e| match e {
             SessionEntry::Compaction(c) => {
                 let est =
-                    xylitol_ai_bridge::accounting::heuristic_token_count(c.summary.len() as u64);
+                    xylitol_official_plugin_provider_openai::accounting::heuristic_token_count(
+                        c.summary.len() as u64,
+                    );
                 Some(if est == 0 {
                     SUMMARY_PLACEHOLDER_TOKENS
                 } else {

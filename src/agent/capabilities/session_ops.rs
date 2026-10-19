@@ -55,8 +55,10 @@ impl AgentCapabilities {
     /// session id plus THIS runtime's display-name fact. Compaction / idle
     /// callers with a known session MUST build the snapshot here instead of
     /// re-reading the process slot.
-    pub(crate) fn obs_session_snapshot(&self) -> xylitol_ai_bridge::ObsSessionContext {
-        xylitol_ai_bridge::ObsSessionContext {
+    pub(crate) fn obs_session_snapshot(
+        &self,
+    ) -> xylitol_official_plugin_provider_openai::ObsSessionContext {
+        xylitol_official_plugin_provider_openai::ObsSessionContext {
             session_id: self.session_id.clone(),
             session_name: self.session_name.clone(),
             ..Default::default()
@@ -77,7 +79,7 @@ impl AgentCapabilities {
     /// Snapshot plus header tree edge (facts from disk). Idle callers may skip this.
     pub(crate) async fn obs_session_snapshot_from_store(
         &self,
-    ) -> xylitol_ai_bridge::ObsSessionContext {
+    ) -> xylitol_official_plugin_provider_openai::ObsSessionContext {
         let mut ctx = self.obs_session_snapshot();
         let Some(sid) = ctx.session_id.clone() else {
             return ctx;

@@ -239,7 +239,7 @@ impl super::XyInProcessDriver {
         // c2843 Phase B: writer rename updates BOTH the runtime owner fact and the
         // default-identity slot (explicit writer event; no obs_slot_writes gate).
         self.agent.set_session_name_fact(Some(out.clone()));
-        xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
+        xylitol_official_plugin_provider_openai::provider::set_obs_session_name(Some(out.as_str()));
         Ok(out)
     }
 
@@ -251,7 +251,9 @@ impl super::XyInProcessDriver {
         let out = self.store.set_session_name(session_id, name).await?;
         if self.agent.session_id() == Some(session_id) {
             self.agent.set_session_name_fact(Some(out.clone()));
-            xylitol_ai_bridge::provider::set_obs_session_name(Some(out.as_str()));
+            xylitol_official_plugin_provider_openai::provider::set_obs_session_name(Some(
+                out.as_str(),
+            ));
         }
         Ok(out)
     }

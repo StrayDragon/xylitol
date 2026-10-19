@@ -1,5 +1,4 @@
-//! Adapter factory — constructs a bridge adapter (pa1: the domain
-//! [`super::AdapterXyModel`] shell wraps it directly).
+//! Adapter factory — composition root dispatches to dialect plugin factories.
 
 use std::sync::Arc;
 
@@ -7,7 +6,7 @@ use crate::infra::hooks::HookDispatcher;
 use crate::infra::provider::adapter::{AdapterKind, default_for};
 use crate::infra::provider::hooks_port::to_http_hooks;
 use crate::protocol::model::XyModelConfig;
-use xylitol_ai_bridge::provider::AdapterRef as AiBridgeAdapterRef;
+use xylitol_official_plugin_provider_openai::provider::AdapterRef as AiBridgeAdapterRef;
 
 /// Resolve the adapter kind for a model config.
 pub fn resolve_adapter_kind(config: &XyModelConfig) -> AdapterKind {
@@ -18,16 +17,18 @@ pub fn resolve_adapter_kind(config: &XyModelConfig) -> AdapterKind {
         .unwrap_or_else(|| default_for(config.kind))
 }
 
-/// Resolve named YAML `compat` → bridge [`xylitol_ai_bridge::WirePolicy`].
+/// Resolve named YAML `compat` → bridge [`xylitol_official_plugin_provider_openai::WirePolicy`].
 ///
 /// Unknown / omitted → generic default. AdapterKind selection ignores WirePolicy (pa4).
-pub fn resolve_wire_policy(config: &XyModelConfig) -> xylitol_ai_bridge::WirePolicy {
+pub fn resolve_wire_policy(
+    config: &XyModelConfig,
+) -> xylitol_official_plugin_provider_openai::WirePolicy {
     let compat = config
         .compat
         .as_deref()
-        .and_then(xylitol_ai_bridge::Compat::parse)
+        .and_then(xylitol_official_plugin_provider_openai::Compat::parse)
         .unwrap_or_default();
-    xylitol_ai_bridge::WirePolicy::for_compat(compat)
+    xylitol_official_plugin_provider_openai::WirePolicy::for_compat(compat)
 }
 
 /// Build an adapter instance from a model config.
@@ -41,14 +42,29 @@ pub fn build_adapter(
     let kind = resolve_adapter_kind(config);
     let http_hooks = to_http_hooks(hooks);
     let wire_policy = resolve_wire_policy(config);
-    xylitol_ai_bridge::provider::factory::build_adapter_with_wire_policy(
-        config.api_key.clone(),
-        config.model.clone(),
-        config.base_url.clone(),
-        kind,
-        http_hooks,
-        wire_policy,
-    )
+    match kind {
+        AdapterKind::AnthropicMessages => {
+            let anthropic_policy =
+                xylitol_official_plugin_provider_anthropic::WirePolicy::for_compat(wire_policy.compat);
+            xylitol_official_plugin_provider_anthropic::provider::factory::build_adapter_with_wire_policy(
+                config.api_key.clone(),
+                config.model.clone(),
+                config.base_url.clone(),
+                http_hooks,
+                anthropic_policy,
+            )
+        }
+        AdapterKind::OpenAiResponses | AdapterKind::OpenAiCompletions => {
+            xylitol_official_plugin_provider_openai::provider::factory::build_adapter_with_wire_policy(
+                config.api_key.clone(),
+                config.model.clone(),
+                config.base_url.clone(),
+                kind,
+                http_hooks,
+                wire_policy,
+            )
+        }
+    }
 }
 
 #[cfg(test)]
@@ -82,7 +98,10 @@ mod tests {
             compat: Some("deepseek".into()),
         };
         let p = resolve_wire_policy(&cfg);
-        assert_eq!(p.compat, xylitol_ai_bridge::Compat::Deepseek);
+        assert_eq!(
+            p.compat,
+            xylitol_official_plugin_provider_openai::Compat::Deepseek
+        );
         assert!(!p.allows_reasoning_encrypted_include());
     }
 

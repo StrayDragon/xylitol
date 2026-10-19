@@ -97,7 +97,9 @@ mod tests {
     use super::*;
 
     use fastrace::prelude::*;
-    use xylitol_ai_bridge::provider::trace::{ObsGateScope, ObsGateState, SpanCollectScope};
+    use xylitol_official_plugin_provider_openai::provider::trace::{
+        ObsGateScope, ObsGateState, SpanCollectScope,
+    };
 
     use crate::protocol::message::AgentMessage;
     use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};

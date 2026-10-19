@@ -73,7 +73,7 @@ pub(crate) async fn close_iteration(
     steer_queue: &Arc<Mutex<PendingMessageQueue>>,
     follow_up_queue: &Arc<Mutex<PendingMessageQueue>>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-    obs_session: &xylitol_ai_bridge::ObsSessionContext,
+    obs_session: &xylitol_official_plugin_provider_openai::ObsSessionContext,
     cwd: &str,
     kind: IterationClose,
 ) -> FinishTurnResult {
@@ -171,7 +171,7 @@ pub(crate) async fn settle_turn_context(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     fixed_context: &crate::agent::compaction::FixedRequestContext,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-    obs_session: &xylitol_ai_bridge::ObsSessionContext,
+    obs_session: &xylitol_official_plugin_provider_openai::ObsSessionContext,
 ) -> Option<crate::agent::compaction::ContextTokenSettlement> {
     use crate::agent::compaction::{
         ContextTokenSettlementReason, EstimateOpts, settle_from_session_entries,
@@ -218,7 +218,7 @@ pub(crate) async fn try_turn_end_compaction(
     floor_notice_emitted: &mut bool,
     precomputed: Option<&crate::protocol::model::ContextTokenEstimate>,
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
-    obs_session: &xylitol_ai_bridge::ObsSessionContext,
+    obs_session: &xylitol_official_plugin_provider_openai::ObsSessionContext,
     cwd: &str,
 ) -> bool {
     use crate::agent::compaction::{CompactionOrchestrator, EstimateOpts, OverflowCompactOutcome};

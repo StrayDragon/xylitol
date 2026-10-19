@@ -57,8 +57,9 @@ mod tests {
         ));
         let set = crate::agent::tools::ToolSet::from_iter([mcp]);
         assert!(set.get("mcp__lspz__get_diagnostics").is_some());
-        let wire =
-            xylitol_ai_bridge::provider::tool_wire::to_wire_tool_name("mcp:lspz:get_diagnostics");
+        let wire = xylitol_official_plugin_provider_openai::provider::tool_wire::to_wire_tool_name(
+            "mcp:lspz:get_diagnostics",
+        );
         assert_eq!(wire, "mcp__lspz__get_diagnostics");
     }
 }

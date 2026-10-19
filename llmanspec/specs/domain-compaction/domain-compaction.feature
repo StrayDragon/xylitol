@@ -15,7 +15,7 @@
 
   @req:r1395
   规则: token 估算使用统一 Usage 与多源计量
-    System 须基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-ai-bridge accounting（或等价注入端口）按 Api 然后 Heuristic 的优先级解析；须继续使用 canonical XyUsage，不得再引入并行的第二套 usage 结构，不得经本地词表 encode 或独立 RemoteCount HTTP 作为估计档。
+    System 须基于当前消息与可选 XyUsage 锚点估计上下文占用，并经 xylitol-plugin-sdk accounting（或等价注入端口）按 Api 然后 Heuristic 的优先级解析；须继续使用 canonical XyUsage，不得再引入并行的第二套 usage 结构，不得经本地词表 encode 或独立 RemoteCount HTTP 作为估计档。
 
     场景: estimate-uses-priority
       假如 存在可信 XyUsage 锚点

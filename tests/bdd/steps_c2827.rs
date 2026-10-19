@@ -1632,9 +1632,9 @@ pub(crate) fn t_t2_bash_exclude_filtered() {
 
 #[given("Responses 组装且消息含 user 与 assistant")]
 pub(crate) fn g_t2_input_items(t2_schema_bdd: &T2SchemaBdd) {
-    use xylitol_ai_bridge::dto::AiBridgeMessage;
-    use xylitol_ai_bridge::provider::messages_to_responses_input_with_options;
-    use xylitol_ai_bridge::thinking::AiBridgeGenerateOptions;
+    use xylitol_official_plugin_provider_openai::dto::AiBridgeMessage;
+    use xylitol_official_plugin_provider_openai::provider::messages_to_responses_input_with_options;
+    use xylitol_official_plugin_provider_openai::thinking::AiBridgeGenerateOptions;
     let msgs = vec![
         AiBridgeMessage::user("问一下"),
         AiBridgeMessage::assistant("答一句"),

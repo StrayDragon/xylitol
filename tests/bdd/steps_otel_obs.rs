@@ -10,13 +10,25 @@ use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol::infra::provider::factory::{set_fake_text, set_fake_tool_call, set_fake_tool_result};
-use xylitol_ai_bridge::provider::trace::{
+use xylitol_official_plugin_provider_openai::provider::trace::{
     ObservationIoTier, SpanCollectScope, set_observation_io_tier, set_provider_trace_active,
     set_tool_observation_io_tier,
 };
-use xylitol_ai_bridge::provider::{clear_obs_session, set_obs_session};
+use xylitol_official_plugin_provider_openai::provider::{clear_obs_session, set_obs_session};
 
 pub(crate) const SESSION_UUID: &str = "aaagggg-hhhh-iiii-jjjj-kkkkllllmmmm";
+
+fn arm_anthropic_obs_gates(active: bool, tier: ObservationIoTier) {
+    use xylitol_official_plugin_provider_anthropic::provider::trace as ath;
+    let mapped = match tier {
+        ObservationIoTier::None => ath::ObservationIoTier::None,
+        ObservationIoTier::Truncated => ath::ObservationIoTier::Truncated,
+        ObservationIoTier::Full => ath::ObservationIoTier::Full,
+    };
+    ath::set_provider_trace_active(active);
+    ath::set_observation_io_tier(mapped);
+    ath::set_tool_observation_io_tier(mapped);
+}
 
 /// c2843 Phase B: process-wide gate-write lock for in-process BDD. The otel/c2830
 /// scenarios mutually exclude via `#[serial]`, but non-serial writers (e.g. the
@@ -55,6 +67,7 @@ impl Drop for OtelBdd {
             set_provider_trace_active(false);
             set_observation_io_tier(ObservationIoTier::None);
             set_tool_observation_io_tier(ObservationIoTier::None);
+            arm_anthropic_obs_gates(false, ObservationIoTier::None);
             clear_obs_session();
         }
     }
@@ -70,6 +83,7 @@ impl OtelBdd {
             set_provider_trace_active(true);
             set_observation_io_tier(tier);
             set_tool_observation_io_tier(tier);
+            arm_anthropic_obs_gates(true, tier);
             set_obs_session(SESSION_UUID, session_name.map(str::to_string));
         }
         drop(self.collect.borrow_mut().take());
@@ -376,7 +390,7 @@ async fn w_c2826_no_gate_run(agent: &AgentState, _otel_bdd: &OtelBdd) {
     // init_logging) can never flip the atomics between probe and run.
     let gate_off_at_rest = {
         let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        !xylitol_ai_bridge::provider::trace::provider_trace_active()
+        !xylitol_official_plugin_provider_openai::provider::trace::provider_trace_active()
     };
     set_fake_text("我来读文件");
     set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
@@ -396,7 +410,7 @@ async fn w_c2826_no_gate_run(agent: &AgentState, _otel_bdd: &OtelBdd) {
     // 回合结束后的常驻闸态仍应为关（本测试从未臂装）。
     let gate_off_after = {
         let _g = OBS_GATE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        !xylitol_ai_bridge::provider::trace::provider_trace_active()
+        !xylitol_official_plugin_provider_openai::provider::trace::provider_trace_active()
     };
     assert!(
         gate_off_at_rest && gate_off_after,
@@ -565,10 +579,11 @@ async fn w_c2826_compaction_span(sess: &crate::bdd::fixtures::XySessionStore, ot
     // c2843 Phase B: owner-attributed processing — give the compaction summary the
     // scenario session snapshot so its spans carry SESSION_UUID and the fixture's
     // per-owner records() keeps them (and parallel peers' spans stay excluded).
-    binding.generate_options.obs_session = xylitol_ai_bridge::ObsSessionContext {
-        session_id: Some(SESSION_UUID.into()),
-        ..Default::default()
-    };
+    binding.generate_options.obs_session =
+        xylitol_official_plugin_provider_openai::ObsSessionContext {
+            session_id: Some(SESSION_UUID.into()),
+            ..Default::default()
+        };
     let sink = std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut notice = false;
     xylitol::agent::compaction::CompactionOrchestrator::new(
@@ -659,7 +674,7 @@ fn g_c2827_otel_idle_gate(otel_bdd: &OtelBdd) {
 fn w_c2827_idle_settle(_otel_bdd: &OtelBdd) {
     // 无活跃 turn 上下文：settlement 不带 obs_parent → 独立根。
     let entries: Vec<SessionEntry> = Vec::new();
-    let obs_session = xylitol_ai_bridge::thinking::ObsSessionContext {
+    let obs_session = xylitol_official_plugin_provider_openai::thinking::ObsSessionContext {
         session_id: Some(SESSION_UUID.into()),
         ..Default::default()
     };

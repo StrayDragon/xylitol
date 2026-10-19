@@ -5,7 +5,7 @@
 
   @req:r38
   规则: fake-provider
-    System 须提供 FakeProvider，经统一装配路径（AdapterXyModel）暴露为 XyModel，经 ScenarioStep 序列返回预配置响应。
+    System 须提供 FakeProvider，直接 impl XyModel，经 ScenarioStep 序列返回预配置响应。
 
     场景: fake-provider-adapter-path
       当 读取 fake provider 装配

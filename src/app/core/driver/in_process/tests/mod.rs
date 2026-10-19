@@ -1,6 +1,6 @@
 // bind_session writes obs via ObsSessionScope — no process-slot race with CollectingReporter tests.
 use std::sync::Arc;
-use xylitol_ai_bridge::provider::{ObsSessionContext, ObsSessionScope};
+use xylitol_official_plugin_provider_openai::provider::{ObsSessionContext, ObsSessionScope};
 
 use super::*;
 use crate::agent::AgentBuilder;

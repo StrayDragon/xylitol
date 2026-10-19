@@ -32,7 +32,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
   例：`runtime-config`（非 add-config）、`agent-runtime`（非 add-agent-loop）、`tool-system`。
 - **capability 前缀按层**（实测分布，normative）：
   - `package-tui-*` — `crates/xylitol-tui`
-  - `package-ai-bridge*` — `crates/xylitol-ai-bridge`
+  - `package-ai-bridge*` — `plugins/xylitol-official-plugin-provider-openai`（OpenAI 方言 + 共享 BDD；Anthropic 方言在 `plugins/xylitol-official-plugin-provider-anthropic`）
   - `app-tui-*` — 产品 TUI（`src/app/tui`）；可多 capability，禁止把新产品合约堆进单体 `app-tui`
   - `agent-*` / `domain-*` / `runtime-*` / `infra-*` / `protocol-*` / `server-*` / `cli-*` — 对应分层
   - `test-*` — 测试基础设施（BDD harness、fake provider、qa-gate…）

@@ -37,11 +37,11 @@ pub use model::{
     resolve_configured_levels, thinking_levels_are_adjustable, validate_thinking_level_map,
 };
 pub use ports::{
-    BashExecOpts, LifecycleHandler, NoopHookBus, SessionListEntry, XyBashExecutor, XyBashResult,
-    XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome, XyModel, XyModelBuilder,
-    XyPermission, XyPermissionVerdict, XySecretResolver, XySessionStore, XyStream, XyTool,
-    XyToolCtx, XyToolExecutionMode, flatten_session_forest, format_session_age,
-    sanitize_session_display_name,
+    BashExecOpts, HeaderBag, HttpHooks, LifecycleHandler, NoopHookBus, SessionListEntry,
+    XyBashExecutor, XyBashResult, XyBatchMode, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome,
+    XyModel, XyModelBuilder, XyPermission, XyPermissionVerdict, XySecretResolver, XySessionStore,
+    XyStream, XyTool, XyToolCtx, XyToolExecutionMode, flatten_session_forest, format_session_age,
+    run_after_response, run_before_headers, run_before_request, sanitize_session_display_name,
 };
 pub use tool_name::{
     BuiltinToolName, MCP_PUBLIC_DELIMITER, is_mcp_tool_name, is_provider_safe_tool_name,

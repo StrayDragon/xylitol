@@ -24,7 +24,7 @@ brief: "仓库瘦身盘点（examples / scripts / 子包调用方交叉、删留
 | **现在删** | 无调用方的一次性 `lab_*`；无 assert 的 println 测试；误入库的 `llmanspec/.context`；人在推荐列写「删」的叶子 | 直接删。一次性 lab **有对应已归档 change 目录**时塞进该 dir 的 `research/` 再 `7z u` freeze 包，然后从树删除 |
 | **validate-only** | spec / 研究文档点名了要删的路径 | 先改 live `.feature` 或文档指针，再删；`llman-sdd validate` |
 | **must-SDD** | 用户能看见的面、默认二进制含什么、qa 组成语义变化 | 完整 change 生命周期。本闸管**行为合约**，不挡住工作表已拍板的删 |
-| **留** | 人在推荐列写「留」；子包本身（`xylitol-tui` / `xylitol-ai-bridge` / `vendor/gherkin`） | 只盘包内叶子 |
+| **留** | 人在推荐列写「留」；子包本身（`xylitol-tui` / 官方方言插件 / `vendor/gherkin`） | 只盘包内叶子 |
 
 ## 硬规则
 

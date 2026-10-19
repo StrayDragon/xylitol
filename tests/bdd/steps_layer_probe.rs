@@ -195,7 +195,16 @@ pub(crate) fn t_la_canonical_single() {
 #[when("读取适配外壳结构")]
 pub(crate) fn w_provider_wrap_shape() {
     LA_PROBE.with(|p| {
-        *p.borrow_mut() = Some(la_load("src/infra/provider/adapter/xy_model.rs"));
+        let openai = la_load(
+            "plugins/xylitol-official-plugin-provider-openai/src/provider/native/openai_responses.rs",
+        );
+        let completions = la_load(
+            "plugins/xylitol-official-plugin-provider-openai/src/provider/native/openai_completions.rs",
+        );
+        let anthropic = la_load(
+            "plugins/xylitol-official-plugin-provider-anthropic/src/provider/native/anthropic_messages.rs",
+        );
+        *p.borrow_mut() = Some(format!("{openai}\n{completions}\n{anthropic}"));
     });
 }
 
@@ -204,19 +213,28 @@ pub(crate) fn t_provider_wrap_single() {
     let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     let n = text
         .lines()
-        .filter(|l| l.trim_start().starts_with("pub struct AdapterXyModel"))
+        .filter(|l| l.contains("impl XyModel for"))
         .count();
-    assert_eq!(n, 1, "适配外壳 MUST 恰一处声明，实得 {n}");
     assert!(
-        text.contains("AiBridgeLlmAdapter"),
-        "外壳 MUST 直接桥接 bridge adapter"
+        n >= 3,
+        "方言 MUST 直接 impl XyModel（Responses/Completions/Anthropic），实得 {n}"
+    );
+    assert!(
+        !text.contains("pub struct AdapterXyModel"),
+        "不得再保留 AdapterXyModel 外壳"
+    );
+    assert!(
+        !text.contains("trait AiBridgeLlmAdapter"),
+        "不得再保留 AiBridgeLlmAdapter 第三层"
     );
 }
 
 #[when("扫描厂商类型的出现位置")]
 pub(crate) fn w_vendor_type_boundary() {
     let port = la_load("crates/xylitol-plugin-sdk/src/ports/model.rs");
-    let bridge = la_load("crates/xylitol-ai-bridge/src/provider/native/openai_responses.rs");
+    let bridge = la_load(
+        "plugins/xylitol-official-plugin-provider-openai/src/provider/native/openai_responses.rs",
+    );
     let hits = format!(
         "{};{}",
         port.lines().filter(|l| l.contains("async_openai")).count(),

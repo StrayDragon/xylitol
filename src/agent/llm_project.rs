@@ -305,9 +305,9 @@ mod tests {
     #[test]
     fn responses_assemble_after_mcp_remove_keeps_input_busts_tools() {
         use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
-        use xylitol_ai_bridge::AiBridgeGenerateOptions;
-        use xylitol_ai_bridge::dto::AiBridgeToolSchema;
-        use xylitol_ai_bridge::provider::ResponsesAssembler;
+        use xylitol_official_plugin_provider_openai::AiBridgeGenerateOptions;
+        use xylitol_official_plugin_provider_openai::dto::AiBridgeToolSchema;
+        use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
 
         let history = vec![
             AgentMessage::user("use ping"),
@@ -415,9 +415,9 @@ mod tests {
     #[test]
     fn responses_assemble_after_builtin_remove_rewrites_input_and_tools() {
         use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
-        use xylitol_ai_bridge::AiBridgeGenerateOptions;
-        use xylitol_ai_bridge::dto::AiBridgeToolSchema;
-        use xylitol_ai_bridge::provider::ResponsesAssembler;
+        use xylitol_official_plugin_provider_openai::AiBridgeGenerateOptions;
+        use xylitol_official_plugin_provider_openai::dto::AiBridgeToolSchema;
+        use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
 
         let history = vec![
             AgentMessage::user("use bash"),
@@ -598,7 +598,7 @@ mod tests {
         let projected = project_for_llm(std::slice::from_ref(&user));
         assert_eq!(projected.len(), 1);
         // Same type as bridge DTO (alias).
-        let _: xylitol_ai_bridge::dto::AiBridgeMessage = projected[0].clone();
+        let _: xylitol_official_plugin_provider_openai::dto::AiBridgeMessage = projected[0].clone();
     }
 
     /// c27 (agent seam): post-compact working history is CompactionSummary + firstKept.
@@ -689,9 +689,9 @@ mod tests {
             EntryBase, SESSION_VERSION, SessionEntry, SessionHeader, bash_execution_message_entry,
             parse_session_jsonl,
         };
-        use xylitol_ai_bridge::AiBridgeGenerateOptions;
-        use xylitol_ai_bridge::dto::AiBridgeToolSchema;
-        use xylitol_ai_bridge::provider::ResponsesAssembler;
+        use xylitol_official_plugin_provider_openai::AiBridgeGenerateOptions;
+        use xylitol_official_plugin_provider_openai::dto::AiBridgeToolSchema;
+        use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
 
         let sig = r#"{"type":"reasoning","id":"rs_c1930","summary":[]}"#;
         let memory: Vec<AgentMessage> = vec![
@@ -849,7 +849,7 @@ mod tests {
 
         // Serde round-trip of projected LLM rows (bridge DTO) must not drift input.
         let wire = serde_json::to_value(&projected).expect("serde");
-        let back: Vec<xylitol_ai_bridge::dto::AiBridgeMessage> =
+        let back: Vec<xylitol_official_plugin_provider_openai::dto::AiBridgeMessage> =
             serde_json::from_value(wire).expect("de");
         let body_serde = asm.assemble("lab-m", back, &tools, false, &opts);
         assert_eq!(body_serde["input"], body_a["input"]);
@@ -863,8 +863,8 @@ mod tests {
         use crate::protocol::session::{
             CompactionEntry, EntryBase, MessageEntry, SessionEntry, build_context_entries,
         };
-        use xylitol_ai_bridge::AiBridgeGenerateOptions;
-        use xylitol_ai_bridge::provider::ResponsesAssembler;
+        use xylitol_official_plugin_provider_openai::AiBridgeGenerateOptions;
+        use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
 
         fn msg(id: &str, parent: Option<&str>, agent: AgentMessage) -> SessionEntry {
             SessionEntry::Message(MessageEntry {

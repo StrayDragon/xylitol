@@ -481,15 +481,15 @@ async fn reader_switch_session_never_touches_obs_slot() {
     let target = "reader-target";
     store.create(target, Some("."), None).await.unwrap();
 
-    xylitol_ai_bridge::provider::clear_obs_session();
+    xylitol_official_plugin_provider_openai::provider::clear_obs_session();
     let (mut reader, _scope) = build_test_driver(store.clone()).await;
-    let writer_identity = xylitol_ai_bridge::provider::obs_session_context();
+    let writer_identity = xylitol_official_plugin_provider_openai::provider::obs_session_context();
 
     reader.switch_session(target).await.unwrap();
 
     assert_eq!(reader.session_id(), Some(target.to_string()));
     assert_eq!(
-        xylitol_ai_bridge::provider::obs_session_context(),
+        xylitol_official_plugin_provider_openai::provider::obs_session_context(),
         writer_identity,
         "switch must not write the process obs slot (runtime-owned identity)"
     );

@@ -233,14 +233,14 @@ fn test_at_fs_no_timeout(ws: Workspace, t2_schema_bdd: T2SchemaBdd) {}
 
 // accounting r1561
 #[scenario(
-    path = "crates/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
     name = "estimate-priority-api-first"
 )]
 fn test_acc_api_first(t2_est_bdd: T2EstBdd) {}
 
 // accounting r1564
 #[scenario(
-    path = "crates/xylitol-ai-bridge/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
     name = "aborted-usage-not-anchor"
 )]
 fn test_acc_aborted_anchor(t2_est_bdd: T2EstBdd) {}

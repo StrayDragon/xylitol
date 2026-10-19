@@ -4,14 +4,14 @@
 //! (`Llm` ∪ `Env`). Bridge DTOs are LLM-only; agent MUST call
 //! [`crate::agent::llm_project::project_for_llm`] before crossing into
 //! [`crate::protocol::ports::XyModel`]. `LlmMessage` ≡
-//! [`xylitol_ai_bridge::dto::AiBridgeMessage`]; `XyChunk` ≡ `AiBridgeChunk`.
+//! [`xylitol_official_plugin_provider_openai::dto::AiBridgeMessage`]; `XyChunk` ≡ `AiBridgeChunk`.
 //!
 //! This module maps error / token-estimate seams and stream error conversion —
 //! no `AgentMessage` folding paths.
 
 use futures::StreamExt;
-use xylitol_ai_bridge::dto::{AiBridgeStream, AiBridgeToolSchema};
-use xylitol_ai_bridge::error::AiBridgeError;
+use xylitol_official_plugin_provider_openai::dto::{AiBridgeStream, AiBridgeToolSchema};
+use xylitol_official_plugin_provider_openai::error::AiBridgeError;
 
 use crate::protocol::error::XyError;
 use crate::protocol::model::XyToolSchema;
@@ -46,7 +46,9 @@ pub fn to_xy_stream(stream: AiBridgeStream) -> XyStream {
 mod tests {
     use crate::protocol::message::XyStopReason;
     use crate::protocol::model::XyChunk;
-    use xylitol_ai_bridge::dto::{AiBridgeChunk, AiBridgeStopReason, AiBridgeUsage};
+    use xylitol_official_plugin_provider_openai::dto::{
+        AiBridgeChunk, AiBridgeStopReason, AiBridgeUsage,
+    };
 
     #[test]
     fn chunk_alias_done_usage() {
