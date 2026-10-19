@@ -5,7 +5,7 @@ use std::pin::Pin;
 use async_trait::async_trait;
 
 use crate::error::XyError;
-use crate::message::LlmMessage;
+use crate::message::XyLlmMessage;
 use crate::model::XyChunk;
 use crate::model::XyModelConfig;
 
@@ -34,7 +34,7 @@ pub type XyGenerateOptions = crate::generate::XyGenerateOptions;
 ///
 /// Callers MUST project session [`crate::message::AgentMessage`] history
 /// via `agent::llm_project::project_for_llm` before invoking this trait.
-/// [`LlmMessage`] is a type alias of bridge `AiBridgeMessage`.
+/// [`XyLlmMessage`] is the model-visible leaf (user / assistant / toolResult).
 #[async_trait]
 pub trait XyModel: Send + Sync {
     fn name(&self) -> &str;
@@ -42,7 +42,7 @@ pub trait XyModel: Send + Sync {
     /// Generate a streaming response from LLM-only message history.
     async fn generate_stream(
         &self,
-        messages: Vec<LlmMessage>,
+        messages: Vec<XyLlmMessage>,
         tools: &[crate::model::XyToolSchema],
         stream: bool,
         options: XyGenerateOptions,

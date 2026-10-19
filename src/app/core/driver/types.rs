@@ -182,7 +182,7 @@ impl LoadedResourcesSnapshot {
 pub use crate::agent::{QueueStats, SessionStats};
 
 /// Session resume list row (from [`crate::XySessionStore::list_sessions`]).
-pub use crate::protocol::ports::SessionListEntry;
+pub use xylitol_plugin_sdk::SessionListEntry;
 
 /// Build a [`crate::protocol::model::ContextTokenEstimate`] from persisted session entries (XyDriver seam).
 ///

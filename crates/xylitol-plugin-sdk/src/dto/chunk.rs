@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use strum::{EnumString, IntoStaticStr};
 
-use super::message::{AiBridgeStopReason, AiBridgeUsage};
-use crate::error::AiBridgeError;
+use super::message::{XyStopReason, XyUsage};
+use crate::error::XyError;
 
 /// A single chunk from a streaming LLM response.
 ///
@@ -16,7 +16,7 @@ use crate::error::AiBridgeError;
 /// [`Self::ToolCallDelta`] while arguments stream, and [`Self::ToolCallEnd`]
 /// when the call is complete — not only a single terminal event at stream end.
 #[derive(Debug, Clone)]
-pub enum AiBridgeChunk {
+pub enum XyChunk {
     TextDelta(String),
     ThinkingDelta(String),
     /// Reasoning item finalized (pi `thinking_end`); signature is opaque JSON for replay.
@@ -42,19 +42,19 @@ pub enum AiBridgeChunk {
         args: Value,
     },
     Done {
-        finish_reason: AiBridgeStopReason,
-        usage: Option<AiBridgeUsage>,
+        finish_reason: XyStopReason,
+        usage: Option<XyUsage>,
     },
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct AiBridgeToolSchema {
+pub struct XyToolSchema {
     pub name: String,
     pub description: String,
     pub parameters: Value,
 }
 
-pub type AiBridgeStream = Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>>;
+pub type XyStream = Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
 
 /// Provenance of a context-token estimate.
 ///

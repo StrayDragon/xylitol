@@ -7,10 +7,9 @@ pub mod provider;
 pub mod thinking;
 pub mod wire_policy;
 
-pub use error::AiBridgeError;
+pub use error::XyError;
 pub use provider::AnthropicMessagesAdapter;
 pub use thinking::{
-    AiBridgeGenerateOptions, AiBridgeResolvedThinking, apply_thinking_anthropic,
-    resolve_from_options,
+    ResolvedThinking, XyGenerateOptions, apply_thinking_anthropic, resolve_from_options,
 };
 pub use wire_policy::{Compat, WirePolicy};

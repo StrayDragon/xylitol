@@ -16,9 +16,8 @@ use super::types::{
 /// driver, so interactive bang loops can drain Inline effects mid-bang. Output
 /// chunks arrive independently via `set_bash_run_sink`; the wall-clock timeout
 /// (host client transport) resolves inside the future.
-pub type BashRun = Pin<
-    Box<dyn Future<Output = Result<xylitol_plugin_sdk::ports::XyBashResult, XyDriverError>> + Send>,
->;
+pub type BashRun =
+    Pin<Box<dyn Future<Output = Result<xylitol_plugin_sdk::XyBashResult, XyDriverError>> + Send>>;
 
 /// Downlink attachment health (ath42/c2480): drives the fixed-zone grace notice —
 /// never transcript error rows.
@@ -159,7 +158,7 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
     ///
     /// The caller (TUI) sets it before `Command::Bash` dispatch and clears it
     /// after. Default: no-op (scripted / drivers without live output).
-    fn set_bash_run_sink(&mut self, _sink: Option<xylitol_plugin_sdk::ports::BashOutputSink>) {}
+    fn set_bash_run_sink(&mut self, _sink: Option<xylitol_plugin_sdk::BashOutputSink>) {}
 
     /// Read-only context token estimate for the current leaf/path (c1030 / c1035).
     ///
@@ -193,9 +192,7 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
     /// In-process returns the shared store; remote / scripted drivers return `None`
     /// (caller falls back to awaiting a `Command::ListSessions` round-trip on
     /// the host task).
-    fn session_store(
-        &self,
-    ) -> Option<std::sync::Arc<dyn xylitol_plugin_sdk::ports::XySessionStore>> {
+    fn session_store(&self) -> Option<std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore>> {
         None
     }
 

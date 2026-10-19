@@ -3083,7 +3083,7 @@ async fn g_c2842_v3_subscribe_default_model(server_test: &ServerTest) {
     xylitol::app::server::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
-    let client = HttpWsClient::new(server_test.base_url()).with_wire_v3(true);
+    let client = HttpWsClient::new(server_test.base_url()).with_envelope(true);
     let r = client
         .unary(
             "subscribe",
@@ -3097,7 +3097,7 @@ async fn g_c2842_v3_subscribe_default_model(server_test: &ServerTest) {
 
 #[when("该客户端在 s-v3 上设置模型 fake-model")]
 async fn w_c2842_v3_set_model(server_test: &ServerTest) {
-    let client = HttpWsClient::new(server_test.base_url()).with_wire_v3(true);
+    let client = HttpWsClient::new(server_test.base_url()).with_envelope(true);
     let r = client
         .unary(
             "set_model",

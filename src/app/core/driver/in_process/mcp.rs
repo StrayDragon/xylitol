@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::types::LoadedResourcesSnapshot;
 
-pub(super) type McpToolList = Vec<Arc<dyn crate::protocol::ports::XyTool>>;
+pub(super) type McpToolList = Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>;
 pub(super) type McpDiscoverOk = Option<(Arc<crate::infra::mcp::McpClientManager>, McpToolList)>;
 
 /// Whether connecting progress should invalidate the TUI loaded-resources strip.

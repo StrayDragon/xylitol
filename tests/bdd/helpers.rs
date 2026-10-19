@@ -42,15 +42,12 @@ pub(crate) fn make_agent(agent: &AgentState) -> AgentRuntime {
 
 pub(crate) fn make_agent_with_store(
     agent: &AgentState,
-) -> (
-    AgentRuntime,
-    Arc<dyn xylitol::protocol::ports::XySessionStore>,
-) {
+) -> (AgentRuntime, Arc<dyn xylitol_plugin_sdk::XySessionStore>) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     use std::sync::Arc;
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr.clone());
-    let sink: Arc<dyn xylitol::protocol::ports::XyEventSink> =
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr.clone());
+    let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         Arc::new(xylitol::infra::event::EventBus::new());
     let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = agent
         .wiring_hook_log

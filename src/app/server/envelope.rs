@@ -20,7 +20,7 @@ use crate::protocol::wire::v3::{
 pub(crate) const CONTENT_TYPE: &str = "application/x-fory-v3";
 
 /// v3 帧识别:xlang 编码以 `0x01` 头字节开始;JSON 文本永不以该字节开头。
-pub(crate) fn looks_like_fory_v3(bytes: &[u8]) -> bool {
+pub(crate) fn looks_like_fory_envelope(bytes: &[u8]) -> bool {
     bytes.first() == Some(&0x01)
 }
 
@@ -327,9 +327,9 @@ mod tests {
 
     #[test]
     fn frame_detection() {
-        assert!(looks_like_fory_v3(&[0x01, 0xff, 0x22]));
-        assert!(!looks_like_fory_v3(b"{\"jsonrpc\""));
-        assert!(!looks_like_fory_v3(b""));
+        assert!(looks_like_fory_envelope(&[0x01, 0xff, 0x22]));
+        assert!(!looks_like_fory_envelope(b"{\"jsonrpc\""));
+        assert!(!looks_like_fory_envelope(b""));
     }
 
     #[test]

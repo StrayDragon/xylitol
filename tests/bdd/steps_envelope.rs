@@ -164,7 +164,7 @@ async fn t_toolstart_args_raw() {
 
 #[when("从协议真源 fbs 重新生成代码")]
 async fn w_codegen(_server_test: &ServerTest) {
-    // 本地维护命令(`just codegen-wire --check`,需 ../fory);CI 无 fory
+    // 本地维护命令(`just codegen-envelope --check`,需 ../fory);CI 无 fory
     // clone 时以 lib 层 conformance/方法表对齐测试代表。
 }
 
@@ -175,7 +175,7 @@ async fn t_codegen_clean() {
     // 由 lib 测试(`method_table_aligns_with_registry` / `codec_conformance_bytes_locked`) 覆盖。
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let schema_dir = root.join("crates/xylitol-protocol/src/v3");
-    let fbs = std::fs::read_to_string(schema_dir.join("xy_wire_v3.fbs")).expect("fbs 真源");
+    let fbs = std::fs::read_to_string(schema_dir.join("envelope.fbs")).expect("fbs 真源");
     let generated =
         std::fs::read_to_string(schema_dir.join("generated.rs")).expect("check-in 生成物");
     let first_word = |rest: &str| -> String {
@@ -215,14 +215,14 @@ async fn t_codegen_clean() {
     );
     assert_eq!(
         declared, emitted,
-        "fbs 真源与 check-in 生成物漂移（补生成：just codegen-wire）"
+        "fbs 真源与 check-in 生成物漂移（补生成：just codegen-envelope）"
     );
 
     // 字节级对拍需同一个 compiler：本地存在 ../fory clone 时才跑 --check。
     let fory = root.parent().unwrap().join("fory/compiler");
     if fory.is_dir() {
         let out = std::process::Command::new("python3")
-            .args(["scripts/gen_wire_v3.py", "--check"])
+            .args(["scripts/gen_envelope.py", "--check"])
             .current_dir(&root)
             .output()
             .expect("run codegen check");
@@ -539,7 +539,7 @@ async fn w_inject_textdelta(server_test: &ServerTest) {
     }
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let client = HttpWsClient::new(format!("http://127.0.0.1:{}", server_test.port.get()))
-        .with_wire_v3(true);
+        .with_envelope(true);
     let mut mux = client.mux().await.expect("v3 mux");
     let r = client
         .unary(

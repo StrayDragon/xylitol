@@ -14,7 +14,7 @@ use salvo::prelude::*;
 use salvo::server::ServerHandle;
 
 use crate::app::core::bootstrap::{BootstrapError, BootstrapInput, resolve_assembly};
-use crate::app::core::composition::build_ports;
+use crate::app::core::composition::build_baseline;
 use crate::app::server::host::{HostState, ReloadBaseline};
 use crate::app::server::http;
 use crate::app::server::registration::{self, Registration};
@@ -84,7 +84,7 @@ impl Drop for RunningServer {
 
 /// Configuration for starting the server.
 ///
-/// Agent assembly fields live in the shared `resolve_assembly` / `build_ports`
+/// Agent assembly fields live in the shared `resolve_assembly` / `build_baseline`
 /// path (spec ce9). Only transport-level knobs live here.
 pub struct ServerConfig {
     pub host: String,
@@ -139,7 +139,7 @@ pub async fn start(
     }
 }
 
-/// Config → assembly → RuntimePorts → HostState (the pre-bind startup work).
+/// Config → assembly → RuntimeBaseline → HostState (the pre-bind startup work).
 async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::error::Error>> {
     let assembly = resolve_assembly(&BootstrapInput {
         config_path: None,
@@ -173,11 +173,14 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
     let ports = if let Some(dir) = &config.sessions_dir {
-        let store: std::sync::Arc<dyn crate::protocol::ports::XySessionStore> =
+        let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
             std::sync::Arc::new(crate::infra::session::SessionManager::new(dir.clone()));
-        crate::app::core::composition::build_ports_with_store(assembly.into_build_options(), store)?
+        crate::app::core::composition::build_baseline_with_store(
+            assembly.into_build_options(),
+            store,
+        )?
     } else {
-        build_ports(assembly.into_build_options())?
+        build_baseline(assembly.into_build_options())?
     };
 
     Ok(HostState::from_bootstrap(

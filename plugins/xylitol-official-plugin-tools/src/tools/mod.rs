@@ -1,6 +1,6 @@
 //! Built-in tool implementations and the default registry factory.
 //!
-//! Each tool implements [`xylitol_plugin_sdk::ports::XyTool`] (directly or via
+//! Each tool implements [`xylitol_plugin_sdk::XyTool`] (directly or via
 //! [`typed::TypedTool`] blanket). The composition root (and tests) build a
 //! registry via [`default_tools`]; the agent holds the resulting registry as
 //! orchestration state without naming these types.
@@ -29,13 +29,13 @@ pub use todo::{SessionAgentTodoGateway, todo_tools};
 
 use std::sync::Arc;
 
-use xylitol_plugin_sdk::ports::{AgentTodoGateway, XyTool};
+use xylitol_plugin_sdk::{AgentTodoGateway, XyTool};
 
 /// Shared tool-test context (`XyToolCtx::new("test-call")`) for the
 /// per-tool `#[cfg(test)]` modules.
 #[cfg(test)]
-pub(crate) fn test_ctx() -> xylitol_plugin_sdk::ports::XyToolCtx {
-    xylitol_plugin_sdk::ports::XyToolCtx::new("test-call")
+pub(crate) fn test_ctx() -> xylitol_plugin_sdk::XyToolCtx {
+    xylitol_plugin_sdk::XyToolCtx::new("test-call")
 }
 
 /// Ephemeral in-memory Todo gateway for call sites that do not bind a session
@@ -113,7 +113,7 @@ pub fn default_tools_with_todo(todo: Arc<dyn AgentTodoGateway>) -> Vec<Arc<dyn X
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xylitol_plugin_sdk::ports::XyToolExecutionMode;
+    use xylitol_plugin_sdk::XyToolExecutionMode;
 
     #[test]
     fn builtin_concurrency_class_table() {

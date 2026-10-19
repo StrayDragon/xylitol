@@ -4,7 +4,7 @@
 //! tool deserializes once into a typed `*Args` struct — either via
 //! [`super::typed::TypedTool`] blanket or at a manual `execute` entry.
 
-pub use xylitol_plugin_sdk::ports::parse_tool_args;
+pub use xylitol_plugin_sdk::parse_tool_args;
 
 #[cfg(test)]
 mod tests {

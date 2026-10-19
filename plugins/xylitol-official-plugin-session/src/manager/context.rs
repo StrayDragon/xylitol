@@ -1,7 +1,7 @@
 use super::SessionManager;
 use crate::types::*;
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::{XySessionError, XySessionStoreError};
-use xylitol_plugin_sdk::ports::XySessionStore;
 
 impl SessionManager {
     /// Build session context from the stored entries.

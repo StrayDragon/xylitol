@@ -18,8 +18,8 @@ use tokio::process::Command;
 use tokio::time::timeout;
 
 use xylitol_plugin_sdk::ToolTimeout;
+use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
-use xylitol_plugin_sdk::ports::XyToolCtx;
 /// Per-tool wall-clock default when the model omits `timeout` (c2425).
 pub(crate) const BASH_TOOL_TIMEOUT_SECS: u64 = 120;
 
@@ -302,8 +302,8 @@ impl TypedTool for BashTool {
         })
     }
 
-    fn execution_mode(&self) -> xylitol_plugin_sdk::ports::XyToolExecutionMode {
-        xylitol_plugin_sdk::ports::XyToolExecutionMode::Sequential
+    fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
+        xylitol_plugin_sdk::XyToolExecutionMode::Sequential
     }
 
     async fn execute_typed(&self, ctx: &XyToolCtx, args: BashArgs) -> Result<String, XyToolError> {
@@ -375,7 +375,7 @@ impl BashTool {
         cwd: &Path,
     ) -> Result<String, XyToolError> {
         use crate::bash_exec::InfraBashExecutor;
-        use xylitol_plugin_sdk::ports::{BashExecOpts, XyBashExecutor};
+        use xylitol_plugin_sdk::{BashExecOpts, XyBashExecutor};
 
         let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
         let forward = tokio::spawn(async move {
@@ -448,7 +448,7 @@ mod tests {
     use super::*;
     use crate::tools::test_ctx;
     use std::path::PathBuf;
-    use xylitol_plugin_sdk::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
 
     #[tokio::test]
     async fn test_bash_echo() {

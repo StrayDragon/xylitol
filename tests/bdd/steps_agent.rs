@@ -169,9 +169,9 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let sid = "thinking-switch-test".to_string();
-    let store: std::sync::Arc<dyn xylitol::protocol::ports::XySessionStore> =
+    let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
-    let sink: std::sync::Arc<dyn xylitol::protocol::ports::XyEventSink> =
+    let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
@@ -425,9 +425,9 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     let level = strip_quotes(&level);
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: std::sync::Arc<dyn xylitol::protocol::ports::XySessionStore> =
+    let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
-    let sink: std::sync::Arc<dyn xylitol::protocol::ports::XyEventSink> =
+    let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),

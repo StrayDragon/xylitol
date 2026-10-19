@@ -9,13 +9,13 @@ use serde_json::Value;
 
 use crate::app::core::driver_error::XyDriverError;
 use crate::protocol::error::XySessionStoreError;
-use crate::protocol::ports::{XyExportIo, XySessionStore};
 use crate::protocol::session::{
     CompactionPolicySnapshot, MessageEntry, SESSION_VERSION, SessionEntry,
     enforce_legacy_session_version, enforce_session_version, message_role,
     parse_session_jsonl_lines,
 };
 use crate::utils::xml_escape;
+use xylitol_plugin_sdk::{XyExportIo, XySessionStore};
 
 /// Format a unix-ms session timestamp as RFC3339 for display (v6: RFC3339 is
 /// a display-side concern only; the on-disk format is unix-ms).

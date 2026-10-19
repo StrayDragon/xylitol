@@ -1,6 +1,6 @@
 //! Wire protocol v3 — fory 二进制信封(c2834 双轨数据面,spec r1902/r1904–r1910/r1911)。
 //!
-//! - 真源:[`xy_wire_v3.fbs`](../../../../../llmanspec/changes/c2834-update-v3-fory-flutter-poc/research/05-fbs-前端保留字实测.md)
+//! - 真源:[`envelope.fbs`](../../../../../llmanspec/changes/c2834-update-v3-fory-flutter-poc/research/05-fbs-前端保留字实测.md)
 //!   本目录同名的 fbs(fbs/FlatBuffers 前端,foryc 生成 Rust/Dart);字段名与既有
 //!   JSON 线一致(保留字经 fbs 原名保留),动态块按 `_json` 原文过线(spec r1906)。
 //! - 生成物:`generated.rs` check-in(与真源同步再生成;纪律见 fbs 头注释)。

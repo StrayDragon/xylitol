@@ -6,9 +6,9 @@
 use anyhow::Result;
 use futures::StreamExt;
 
-use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+use xylitol_plugin_sdk::XyModel;
+use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::model::XyChunk;
-use xylitol_plugin_sdk::ports::XyModel;
 use xylitol_plugin_sdk::project_for_llm;
 
 // ── Prompt constants ───────────────────────────────────────────────
@@ -104,10 +104,10 @@ Be concise. Focus on what's needed to understand the kept suffix."#;
 
 pub(super) async fn generate_complete(
     model: &dyn XyModel,
-    messages: Vec<LlmMessage>,
+    messages: Vec<XyLlmMessage>,
     max_tokens: u32,
     obs_parent: Option<fastrace::prelude::SpanContext>,
-    base_options: &xylitol_plugin_sdk::ports::XyGenerateOptions,
+    base_options: &xylitol_plugin_sdk::XyGenerateOptions,
 ) -> Result<String> {
     let mut options = base_options.clone();
     options.max_output_tokens = Some(max_tokens);
@@ -227,7 +227,7 @@ pub async fn generate_summary(
     previous_summary: Option<&str>,
     custom_instructions: Option<&str>,
     obs_parent: Option<fastrace::prelude::SpanContext>,
-    generate_options: &xylitol_plugin_sdk::ports::XyGenerateOptions,
+    generate_options: &xylitol_plugin_sdk::XyGenerateOptions,
 ) -> Result<String> {
     let conversation_text = serialize_conversation(messages);
 
@@ -265,7 +265,7 @@ pub async fn generate_turn_prefix_summary(
     model: &dyn XyModel,
     _reserve_tokens: u64,
     obs_parent: Option<fastrace::prelude::SpanContext>,
-    generate_options: &xylitol_plugin_sdk::ports::XyGenerateOptions,
+    generate_options: &xylitol_plugin_sdk::XyGenerateOptions,
 ) -> Result<String> {
     let conversation_text = serialize_conversation(messages);
     let prompt_text = format!(

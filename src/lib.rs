@@ -7,7 +7,7 @@
 //! The only externally reachable surface is the [`embed`] seam plus the
 //! curated re-exports below. `agent` / `infra` are public since c2837 (BDD
 //! independent integration-test target needs them reachable outside the
-//! crate); `utils` stays `pub(crate)`; `protocol::wire` / `protocol::ports`
+//! crate); `utils` stays `pub(crate)`; `protocol::wire`
 //! and the root `Xy*` re-exports are the shared vocabulary. There is no
 //! second stable face: deep module paths are not a stability promise —
 //! extend the seam instead.

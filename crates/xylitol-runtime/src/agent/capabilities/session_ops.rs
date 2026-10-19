@@ -5,9 +5,9 @@
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::{XyError, XySessionError};
 use xylitol_plugin_sdk::message::AgentMessage;
-use xylitol_plugin_sdk::ports::XySessionStore;
 
 use super::{AgentCapabilities, SessionStats, observe_hook};
 
@@ -138,7 +138,7 @@ impl AgentCapabilities {
     }
 
     /// Lifecycle event sink (compaction Start/End etc.).
-    pub(crate) fn event_sink(&self) -> Arc<dyn xylitol_plugin_sdk::ports::XyEventSink> {
+    pub(crate) fn event_sink(&self) -> Arc<dyn xylitol_plugin_sdk::XyEventSink> {
         self.sink.clone()
     }
 
@@ -200,7 +200,7 @@ impl AgentCapabilities {
 mod tests {
     use super::*;
     use crate::infra::session::SessionManager;
-    use xylitol_plugin_sdk::ports::XySessionStore;
+    use xylitol_plugin_sdk::XySessionStore;
     use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 
     fn message(id: &str, parent_id: Option<&str>, role: &str, text: &str) -> SessionEntry {

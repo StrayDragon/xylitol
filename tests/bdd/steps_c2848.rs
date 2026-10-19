@@ -38,11 +38,11 @@ fn unified_decomposition(entries: &[SessionEntry]) -> u64 {
             continue;
         };
         let image_tokens = match &msg {
-            AgentMessage::Llm(xylitol::protocol::message::LlmMessage::UserMessage {
+            AgentMessage::Llm(xylitol::protocol::message::XyLlmMessage::UserMessage {
                 content,
                 ..
             })
-            | AgentMessage::Llm(xylitol::protocol::message::LlmMessage::ToolResultMessage {
+            | AgentMessage::Llm(xylitol::protocol::message::XyLlmMessage::ToolResultMessage {
                 content,
                 ..
             }) => {

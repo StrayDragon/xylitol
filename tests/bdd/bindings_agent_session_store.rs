@@ -149,7 +149,7 @@ async fn test_s6_empty_boundary(sess: XySessionStore) {}
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
     name = "v7-shell-camelcase-and-bash-message"
 )]
-async fn test_c2826_v7_shell(sess: XySessionStore) {}
+async fn test_c2826_jsonl_shell(sess: XySessionStore) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",

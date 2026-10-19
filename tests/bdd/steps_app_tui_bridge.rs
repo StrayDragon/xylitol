@@ -7,7 +7,7 @@ use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol::app::tui::{BashBlockStatus, UiEntry, UiModel, UiPhase, apply_xy_event};
-use xylitol::protocol::{AgentMessage, AgentPart, LlmMessage};
+use xylitol::protocol::{AgentMessage, AgentPart, XyLlmMessage};
 
 /// One UiModel driven through the bridge seam.
 pub struct BridgeBdd {
@@ -26,7 +26,7 @@ fn apply(bdd: &BridgeBdd, event: XyEvent) {
 }
 
 fn assistant_message(parts: Vec<AgentPart>) -> AgentMessage {
-    AgentMessage::Llm(LlmMessage::AssistantMessage {
+    AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content: parts,
         stop_reason: None,
         usage: None,

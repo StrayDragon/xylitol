@@ -16,8 +16,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use xylitol_plugin_sdk::BuiltinToolName;
+use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
-use xylitol_plugin_sdk::ports::XyToolCtx;
 
 use super::mutation::FileMutationQueue;
 use super::patch;
@@ -198,8 +198,8 @@ impl TypedTool for EditTool {
         })
     }
 
-    fn execution_mode(&self) -> xylitol_plugin_sdk::ports::XyToolExecutionMode {
-        xylitol_plugin_sdk::ports::XyToolExecutionMode::Sequential
+    fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
+        xylitol_plugin_sdk::XyToolExecutionMode::Sequential
     }
     fn wait_bound(&self) -> Option<std::time::Duration> {
         Some(std::time::Duration::from_secs(
@@ -279,7 +279,7 @@ impl TypedTool for EditTool {
 mod tests {
     use super::*;
     use crate::tools::test_ctx;
-    use xylitol_plugin_sdk::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
 
     #[tokio::test]
     async fn test_edit_single_replace() {

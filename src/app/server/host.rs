@@ -1,4 +1,4 @@
-//! Host occupancy: one process-wide [`RuntimePorts`] baseline, lazy session slots.
+//! Host occupancy: one process-wide [`RuntimeBaseline`] baseline, lazy session slots.
 //!
 //! Occupancy unit is a **session slot** (journal + seq + writer engine). A
 //! single Driver still must not run two root submits or two session bindings
@@ -16,8 +16,8 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::RuntimePorts;
-use crate::app::core::composition::{BuildAgentOptions, McpServerSpec, build_ports_with_store};
+use crate::agent::RuntimeBaseline;
+use crate::app::core::composition::{BuildAgentOptions, McpServerSpec, build_baseline_with_store};
 use crate::app::core::dispatch::{DispatchOutcome, dispatch};
 use crate::app::core::driver::{
     LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode, RuntimeReloadReport, XyDriver,
@@ -31,8 +31,6 @@ use crate::app::server::ws::{
 use crate::infra::session::SessionManager;
 use crate::protocol::error::{XySessionStoreError, XyToolError};
 use crate::protocol::lifecycle::XyEvent;
-use crate::protocol::ports::XySessionStore;
-use crate::protocol::ports::ask::{AskArgs, AskUserGateway};
 use crate::protocol::wire::ToWireEvent;
 use crate::protocol::wire::envelope::{
     ApprovalRequestedPayload, HostDescribeValue, PROTOCOL_VERSION, QuestionRequestedPayload,
@@ -46,6 +44,8 @@ use crate::protocol::wire::registry::{
     METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_PERSIST_TRUST,
     METHOD_PROMPT, METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
+use xylitol_plugin_sdk::XySessionStore;
+use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 
 /// Bounded per-mux-connection queue. Must fit a full journal replay
 /// (`EventJournal` default 10_000) plus `session/subscribed`; overflow still
@@ -54,7 +54,7 @@ pub const MUX_CHAN_CAP: usize = 16_384;
 
 /// Shared Host process state (salvo Depot).
 pub struct HostState {
-    pub ports: RuntimePorts,
+    pub ports: RuntimeBaseline,
     pub reload: ReloadBaseline,
     pub sessions: RwLock<HashMap<String, Arc<SessionSlot>>>,
     /// Mux connections not yet bound by unary `subscribe`.
@@ -81,7 +81,7 @@ pub struct ReloadBaseline {
     pub project_trusted: bool,
     pub mcp_servers: Vec<McpServerSpec>,
     /// `models.default_model` (or CLI `--model`) applied when a writer is materialized.
-    /// `RuntimePorts::materialize_runtime` leaves ModelManager unset; Host MUST select.
+    /// `RuntimeBaseline::materialize_runtime` leaves ModelManager unset; Host MUST select.
     pub default_model_id: Option<String>,
 }
 
@@ -115,7 +115,11 @@ pub struct SessionSlot {
 }
 
 impl HostState {
-    pub fn new(ports: RuntimePorts, reload: ReloadBaseline, fallback_session: String) -> Arc<Self> {
+    pub fn new(
+        ports: RuntimeBaseline,
+        reload: ReloadBaseline,
+        fallback_session: String,
+    ) -> Arc<Self> {
         let (in_process_downlink, _) = broadcast::channel(MUX_CHAN_CAP);
         Arc::new(Self {
             ports,
@@ -139,9 +143,9 @@ impl HostState {
         self
     }
 
-    /// Production assembly (shared bootstrap ingredients → RuntimePorts).
+    /// Production assembly (shared bootstrap ingredients → RuntimeBaseline).
     pub fn from_bootstrap(
-        ports: RuntimePorts,
+        ports: RuntimeBaseline,
         reload: ReloadBaseline,
         fallback_session: String,
     ) -> Arc<Self> {
@@ -153,7 +157,7 @@ impl HostState {
         let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
         let sessions = dir.join("sessions");
         let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(sessions.clone()));
-        let ports = build_ports_with_store(BuildAgentOptions::default(), store)?;
+        let ports = build_baseline_with_store(BuildAgentOptions::default(), store)?;
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
         Ok(Self::new(
@@ -185,7 +189,7 @@ impl HostState {
         let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
         let sessions = dir.join("sessions");
         let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(sessions.clone()));
-        let ports = build_ports_with_store(BuildAgentOptions::default(), store)?;
+        let ports = build_baseline_with_store(BuildAgentOptions::default(), store)?;
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let agent_dir = crate::infra::resource::DefaultResourceLoader::default_agent_dir();
         Ok(Self::new(
@@ -238,7 +242,7 @@ impl HostState {
         let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
         let sessions = dir.join("sessions");
         let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(sessions.clone()));
-        let ports = build_ports_with_store(
+        let ports = build_baseline_with_store(
             BuildAgentOptions {
                 model_registry: registry,
                 ..Default::default()
@@ -737,7 +741,7 @@ impl SessionSlot {
     }
 
     /// Interactive bang output event (c2760). Not journaled (must not consume seq).
-    pub async fn push_bash_output(&self, chunk: crate::protocol::ports::BashChunk) {
+    pub async fn push_bash_output(&self, chunk: xylitol_plugin_sdk::BashChunk) {
         let msg = downlink_server_request(
             "session/bash_output",
             serde_json::json!({
@@ -1510,7 +1514,7 @@ async fn dispatch_writer_unary(
                 slot_push.push_bash_output(chunk).await;
             }
         });
-        driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink { tx, cancel }));
+        driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink { tx, cancel }));
         Some(fwd)
     } else {
         None

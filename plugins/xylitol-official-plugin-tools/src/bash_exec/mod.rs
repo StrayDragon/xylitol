@@ -8,7 +8,7 @@
 //!
 //! This module lives under `infra/` because it is a runtime facility
 //! (process spawn + output streaming). The agent consumes it only through the
-//! `XyBashExecutor` port in `protocol::ports`.
+//! `XyBashExecutor` port in `xylitol-plugin-sdk`.
 
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
@@ -19,7 +19,7 @@ use crate::tools::accumulator::OutputAccumulator;
 use crate::tools::process::kill_tree;
 use crate::tools::truncate::DEFAULT_MAX_BYTES;
 use xylitol_plugin_sdk::ToolTimeout;
-use xylitol_plugin_sdk::ports::{BashExecOpts, XyBashExecutor, XyBashResult};
+use xylitol_plugin_sdk::{BashExecOpts, XyBashExecutor, XyBashResult};
 
 /// Default infra bash executor.
 #[derive(Debug, Clone, Default)]

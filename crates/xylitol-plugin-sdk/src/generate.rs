@@ -1,4 +1,4 @@
-//! Generate-call options carried across the [`crate::ports::XyModel`] boundary.
+//! Generate-call options carried across the [`crate::XyModel`] boundary.
 
 use std::collections::HashMap;
 
@@ -29,7 +29,7 @@ pub struct ObsSessionContext {
     pub compaction_thinking_rejected: Option<bool>,
 }
 
-/// Options for a single [`crate::ports::XyModel::generate_stream`] call.
+/// Options for a single [`crate::XyModel::generate_stream`] call.
 #[derive(Debug, Clone)]
 pub struct XyGenerateOptions {
     /// Freeform configured level string; known names have Anthropic budget fallbacks.

@@ -13,8 +13,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::host_client::{HostClient, HostClientError, HttpWsClient};
 use crate::wire_event::FromWireEvent;
+use xylitol_plugin_sdk::XyBashResult;
 use xylitol_plugin_sdk::model::THINKING_OFF;
-use xylitol_plugin_sdk::ports::XyBashResult;
 use xylitol_protocol::Command;
 use xylitol_protocol::envelope::PROTOCOL_VERSION;
 use xylitol_protocol::{Event, RpcMessage};
@@ -172,14 +172,14 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     resources_dirty: Arc<AtomicBool>,
     /// Interactive bang output-event sink (c2760): runtime-injected by the TUI
     /// bang loop; downlink `session/bash_output` frames are forwarded into it.
-    bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::ports::BashOutputSink>>>,
+    bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>>,
 }
 
 impl XyRemoteDriver<HttpWsClient> {
     /// TUI attach uses the product carrier (`HttpWsClient` defaults on; this
-    /// constructor also forces `with_wire_v3(true)` so env cannot opt out).
+    /// constructor also forces `with_envelope(true)` so env cannot opt out).
     pub fn new_v3(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
-        Self::with_host(HttpWsClient::new(base_url).with_wire_v3(true), session_id)
+        Self::with_host(HttpWsClient::new(base_url).with_envelope(true), session_id)
     }
 
     /// Create a new XyRemoteDriver connected to `base_url`.
@@ -192,7 +192,7 @@ impl XyRemoteDriver<HttpWsClient> {
         } else {
             session_id
         };
-        Self::with_host(HttpWsClient::new(base_url).with_wire_v3(true), session_id)
+        Self::with_host(HttpWsClient::new(base_url).with_envelope(true), session_id)
     }
 
     pub fn host_client(&self) -> &HttpWsClient {
@@ -223,7 +223,7 @@ struct DownlinkCtx<C> {
     /// 收敛徽标（ModelInfo 缺失时回查已缓存可用模型表）。
     cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
     cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
-    bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::ports::BashOutputSink>>>,
+    bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>>,
     client_cwd: String,
     downlink_gen: Arc<AtomicU64>,
     fatal: Arc<std::sync::Mutex<Option<String>>>,
@@ -404,7 +404,7 @@ where
             method, payload, ..
         } if method == "session/bash_output" => {
             // c2760: non-journal bang output → injected sink (TUI bang loop).
-            let chunk = xylitol_plugin_sdk::ports::BashChunk {
+            let chunk = xylitol_plugin_sdk::BashChunk {
                 bash_id: payload
                     .get("bash_id")
                     .and_then(Value::as_str)
@@ -1295,7 +1295,7 @@ where
             .unwrap_or_default()
     }
 
-    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::ports::BashOutputSink>) {
+    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
         if let Ok(mut guard) = self.bash_run_sink.lock() {
             *guard = sink;
         }
@@ -1864,7 +1864,7 @@ where
     }
 }
 
-#[cfg(all(test, feature = "host-itest"))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::app::server::host::HostState;
@@ -2163,7 +2163,7 @@ mod tests {
         let slot = host.slot("bash-ev").await;
         let mut rx = host.in_process_downlink.subscribe();
         let seq_before = slot.journal.lock().await.max_seq();
-        slot.push_bash_output(xylitol_plugin_sdk::ports::BashChunk {
+        slot.push_bash_output(xylitol_plugin_sdk::BashChunk {
             bash_id: "b1".into(),
             seq: 1,
             data: "hello".into(),
@@ -2561,13 +2561,13 @@ mod tests {
         let mut driver = XyRemoteDriver::new(format!("http://127.0.0.1:{port}"), "sink-sess");
         driver.attach_session().await.expect("attach");
         let (tx, mut rx) = tokio::sync::mpsc::channel(8);
-        driver.set_bash_run_sink(Some(xylitol_plugin_sdk::ports::BashOutputSink {
+        driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink {
             tx,
             cancel: tokio_util::sync::CancellationToken::new(),
         }));
         host.slot("sink-sess")
             .await
-            .push_bash_output(xylitol_plugin_sdk::ports::BashChunk {
+            .push_bash_output(xylitol_plugin_sdk::BashChunk {
                 bash_id: "b1".into(),
                 seq: 1,
                 data: "streamed".into(),
@@ -3403,7 +3403,7 @@ mod tests {
     async fn model_tool_runs_in_client_workspace() {
         use crate::XyModelMeta;
         use crate::XySessionStore;
-        use crate::app::core::composition::build_ports_with_store;
+        use crate::app::core::composition::build_baseline_with_store;
         use crate::app::server::host::{ReloadBaseline, materialize_writer_at};
         use crate::infra::provider::factory::{reset_fake_state, set_fake_tool_call};
         use futures::StreamExt;
@@ -3449,7 +3449,7 @@ mod tests {
             model_registry: registry,
             ..Default::default()
         };
-        let ports = build_ports_with_store(options, store).expect("ports");
+        let ports = build_baseline_with_store(options, store).expect("ports");
         let host = HostState::new(
             ports,
             ReloadBaseline {

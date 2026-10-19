@@ -1,7 +1,7 @@
 //! Session statistics and context-usage estimation (spec c255 / as32).
 
 use crate::protocol::error::XyError;
-use crate::protocol::ports::XySessionStore;
+use xylitol_plugin_sdk::XySessionStore;
 
 /// Statistics for a session.
 #[derive(Debug, Clone)]

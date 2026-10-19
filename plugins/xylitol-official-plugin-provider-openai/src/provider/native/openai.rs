@@ -19,10 +19,10 @@ use async_openai::types::chat::{
 use futures::{Stream, StreamExt};
 use serde_json::Value;
 
-use crate::dto::AiBridgeStream;
-use crate::dto::{AiBridgeChunk, AiBridgeToolSchema};
-use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason, collect_text_parts};
-use crate::error::AiBridgeError;
+use crate::dto::XyStream;
+use crate::dto::{AgentPart, XyLlmMessage, XyStopReason, collect_text_parts};
+use crate::dto::{XyChunk, XyToolSchema};
+use crate::error::XyError;
 use crate::hooks::HttpHooks;
 use crate::provider::native::openai_client::OpenAiClientFactory;
 use crate::wire_policy::WirePolicy;
@@ -57,18 +57,18 @@ impl OpenAIProvider {
         }
     }
 
-    fn map_err(err: async_openai::error::OpenAIError) -> AiBridgeError {
-        AiBridgeError::Provider(anyhow::anyhow!("OpenAI Completions: {err}"))
+    fn map_err(err: async_openai::error::OpenAIError) -> XyError {
+        XyError::Provider(anyhow::anyhow!("OpenAI Completions: {err}"))
     }
 
-    /// Run a chat completion, returning a stream of [`AiBridgeChunk`]s.
+    /// Run a chat completion, returning a stream of [`XyChunk`]s.
     pub async fn generate_stream(
         &self,
-        messages: Vec<AiBridgeMessage>,
-        tools: &[AiBridgeToolSchema],
+        messages: Vec<XyLlmMessage>,
+        tools: &[XyToolSchema],
         stream: bool,
-        options: &crate::thinking::AiBridgeGenerateOptions,
-    ) -> Result<AiBridgeStream, AiBridgeError> {
+        options: &crate::thinking::XyGenerateOptions,
+    ) -> Result<XyStream, XyError> {
         let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent_obs(
             "openai-completions",
             &self.model,
@@ -80,7 +80,7 @@ impl OpenAIProvider {
 
         let resolved = crate::thinking::resolve_from_options(
             options,
-            crate::thinking::AiBridgeThinkingAdapterKind::OpenAi,
+            crate::thinking::ThinkingAdapterKind::OpenAi,
         );
 
         if stream {
@@ -97,7 +97,7 @@ impl OpenAIProvider {
                 .map_err(Self::map_err)?;
 
             let mut body = serde_json::to_value(&request).map_err(|e| {
-                AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
+                XyError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
             })?;
             if let Some(max_tokens) = options.max_output_tokens {
                 body["max_completion_tokens"] = serde_json::json!(max_tokens);
@@ -130,7 +130,7 @@ impl OpenAIProvider {
                 .map_err(Self::map_err)?;
 
             let mut body = serde_json::to_value(&request).map_err(|e| {
-                AiBridgeError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
+                XyError::Provider(anyhow::anyhow!("serialize completions request: {e}"))
             })?;
             if let Some(max_tokens) = options.max_output_tokens {
                 body["max_completion_tokens"] = serde_json::json!(max_tokens);
@@ -174,10 +174,10 @@ fn completions_sdk_stream(
     + 'static,
     trace: Option<crate::provider::trace::ProviderRequestTrace>,
     wire_policy: WirePolicy,
-) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
+) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         let mut tool_accumulators: HashMap<u32, (String, String, String, bool)> = HashMap::new();
-        let mut pending_usage: Option<crate::dto::AiBridgeUsage> = None;
+        let mut pending_usage: Option<crate::dto::XyUsage> = None;
 
         while let Some(item) = tokio::time::timeout(
                 crate::provider::native::wait_bounds::SSE_IDLE,
@@ -185,13 +185,13 @@ fn completions_sdk_stream(
             )
             .await
             .map_err(|_| {
-                AiBridgeError::Provider(anyhow::anyhow!(
+                XyError::Provider(anyhow::anyhow!(
                     "provider SSE idle: no bytes within {}s",
                     crate::provider::native::wait_bounds::SSE_IDLE.as_secs()
                 ))
             })? {
             let chunk = item.map_err(|e| {
-                AiBridgeError::Provider(anyhow::anyhow!("OpenAI Completions stream: {e}"))
+                XyError::Provider(anyhow::anyhow!("OpenAI Completions stream: {e}"))
             })?;
 
             if let Some(t) = &trace {
@@ -213,7 +213,7 @@ fn completions_sdk_stream(
 
             for choice in &chunk.choices {
                 if let Some(text) = choice.delta.content.as_ref().filter(|t| !t.is_empty()) {
-                    let out = AiBridgeChunk::TextDelta(text.clone());
+                    let out = XyChunk::TextDelta(text.clone());
                     if let Some(t) = &trace {
                         t.emit_mapped_chunk(&out);
                     }
@@ -235,7 +235,7 @@ fn completions_sdk_stream(
                             if let Some(args) = &func.arguments {
                                 if !entry.3 {
                                     entry.3 = true;
-                                    let start = AiBridgeChunk::ToolCallStart {
+                                    let start = XyChunk::ToolCallStart {
                                         id: entry.0.clone(),
                                         name: entry.1.clone(),
                                     };
@@ -245,7 +245,7 @@ fn completions_sdk_stream(
                                     yield start;
                                 }
                                 entry.2.push_str(args);
-                                let delta_out = AiBridgeChunk::ToolCallDelta {
+                                let delta_out = XyChunk::ToolCallDelta {
                                     id: entry.0.clone(),
                                     name: entry.1.clone(),
                                     args_delta: args.clone(),
@@ -257,7 +257,7 @@ fn completions_sdk_stream(
                                 yield delta_out;
                             } else if !entry.3 && (!entry.0.is_empty() || !entry.1.is_empty()) {
                                 entry.3 = true;
-                                let start = AiBridgeChunk::ToolCallStart {
+                                let start = XyChunk::ToolCallStart {
                                     id: entry.0.clone(),
                                     name: entry.1.clone(),
                                 };
@@ -278,7 +278,7 @@ fn completions_sdk_stream(
                             let args: Value = serde_json::from_str(&args_str)
                                 .unwrap_or_else(|_| crate::dto::parse_streaming_json(&args_str));
                             if !started {
-                                let start = AiBridgeChunk::ToolCallStart {
+                                let start = XyChunk::ToolCallStart {
                                     id: id.clone(),
                                     name: name.clone(),
                                 };
@@ -287,7 +287,7 @@ fn completions_sdk_stream(
                                 }
                                 yield start;
                             }
-                            let out = AiBridgeChunk::ToolCallEnd { name, args, id };
+                            let out = XyChunk::ToolCallEnd { name, args, id };
                             if let Some(t) = &trace {
                                 t.emit_mapped_chunk(&out);
                             }
@@ -295,11 +295,11 @@ fn completions_sdk_stream(
                         }
                     }
                     let reason = match finish_reason {
-                        FinishReason::Length => AiBridgeStopReason::MaxTokens,
-                        FinishReason::ToolCalls => AiBridgeStopReason::ToolUse,
-                        _ => AiBridgeStopReason::Stop,
+                        FinishReason::Length => XyStopReason::MaxTokens,
+                        FinishReason::ToolCalls => XyStopReason::ToolUse,
+                        _ => XyStopReason::Stop,
                     };
-                    let out = AiBridgeChunk::Done {
+                    let out = XyChunk::Done {
                         finish_reason: reason,
                         usage: pending_usage.take(),
                     };
@@ -315,7 +315,7 @@ fn completions_sdk_stream(
 
 // ── Tool conversion ────────────────────────────────────────────────
 
-fn convert_tools(tools: &[AiBridgeToolSchema]) -> Vec<ChatCompletionTools> {
+fn convert_tools(tools: &[XyToolSchema]) -> Vec<ChatCompletionTools> {
     tools
         .iter()
         .map(|t| {
@@ -333,7 +333,7 @@ fn convert_tools(tools: &[AiBridgeToolSchema]) -> Vec<ChatCompletionTools> {
 
 // ── Non-streaming response ─────────────────────────────────────────
 
-fn parse_nonstream_json(response: &Value, wire_policy: WirePolicy) -> Vec<AiBridgeChunk> {
+fn parse_nonstream_json(response: &Value, wire_policy: WirePolicy) -> Vec<XyChunk> {
     let mut chunks = Vec::new();
     let usage = response
         .get("usage")
@@ -349,7 +349,7 @@ fn parse_nonstream_json(response: &Value, wire_policy: WirePolicy) -> Vec<AiBrid
             .and_then(|v| v.as_str())
             .filter(|t| !t.is_empty())
         {
-            chunks.push(AiBridgeChunk::TextDelta(text.to_string()));
+            chunks.push(XyChunk::TextDelta(text.to_string()));
         }
 
         if let Some(tool_calls) = choice
@@ -372,19 +372,19 @@ fn parse_nonstream_json(response: &Value, wire_policy: WirePolicy) -> Vec<AiBrid
                     .and_then(|v| v.as_str())
                     .unwrap_or("{}");
                 let args: Value = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
-                chunks.push(AiBridgeChunk::ToolCallStart {
+                chunks.push(XyChunk::ToolCallStart {
                     id: id.clone(),
                     name: name.clone(),
                 });
-                chunks.push(AiBridgeChunk::ToolCallEnd { name, args, id });
+                chunks.push(XyChunk::ToolCallEnd { name, args, id });
             }
         }
 
         let reason = match choice.get("finish_reason").and_then(|v| v.as_str()) {
-            Some("length") => AiBridgeStopReason::MaxTokens,
-            _ => AiBridgeStopReason::Stop,
+            Some("length") => XyStopReason::MaxTokens,
+            _ => XyStopReason::Stop,
         };
-        chunks.push(AiBridgeChunk::Done {
+        chunks.push(XyChunk::Done {
             finish_reason: reason,
             usage,
         });
@@ -393,12 +393,12 @@ fn parse_nonstream_json(response: &Value, wire_policy: WirePolicy) -> Vec<AiBrid
     chunks
 }
 
-// ── AiBridgeMessage conversion ────────────────────────────────────
+// ── XyLlmMessage conversion ────────────────────────────────────
 
-/// Convert a slice of [`AiBridgeMessage`] values to OpenAI chat request
+/// Convert a slice of [`XyLlmMessage`] values to OpenAI chat request
 /// messages.
 pub fn convert_agent_messages(
-    messages: &[AiBridgeMessage],
+    messages: &[XyLlmMessage],
     system_prompt: Option<&str>,
 ) -> Vec<ChatCompletionRequestMessage> {
     let mut out = Vec::new();
@@ -418,7 +418,7 @@ pub fn convert_agent_messages(
 
     for msg in messages {
         match msg {
-            AiBridgeMessage::UserMessage { content, .. } => {
+            XyLlmMessage::UserMessage { content, .. } => {
                 let text = collect_text_parts(content);
                 if text.is_empty() {
                     continue;
@@ -430,12 +430,12 @@ pub fn convert_agent_messages(
                     },
                 ));
             }
-            AiBridgeMessage::AssistantMessage { content, .. } => {
+            XyLlmMessage::AssistantMessage { content, .. } => {
                 let text = collect_text_parts(content);
                 let tool_calls: Vec<ChatCompletionMessageToolCalls> = content
                     .iter()
                     .filter_map(|p| match p {
-                        AiBridgePart::ToolCall {
+                        AgentPart::ToolCall {
                             id,
                             name,
                             arguments,
@@ -473,7 +473,7 @@ pub fn convert_agent_messages(
                     },
                 ));
             }
-            AiBridgeMessage::ToolResultMessage {
+            XyLlmMessage::ToolResultMessage {
                 tool_use_id,
                 content,
                 ..
@@ -495,12 +495,12 @@ pub fn convert_agent_messages(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::{AiBridgeMessage, AiBridgeStopReason, PromptCacheRead};
+    use crate::dto::{PromptCacheRead, XyLlmMessage, XyStopReason};
     use crate::wire_policy::Compat;
 
     #[test]
     fn convert_user_message() {
-        let msgs = vec![AiBridgeMessage::user("hello world")];
+        let msgs = vec![XyLlmMessage::user("hello world")];
         let result = convert_agent_messages(&msgs, None);
         assert_eq!(result.len(), 1);
         match &result[0] {
@@ -516,7 +516,7 @@ mod tests {
 
     #[test]
     fn convert_system_prompt() {
-        let msgs = vec![AiBridgeMessage::user("hi")];
+        let msgs = vec![XyLlmMessage::user("hi")];
         let result = convert_agent_messages(&msgs, Some("You are helpful"));
         assert_eq!(result.len(), 2);
         match &result[0] {
@@ -532,16 +532,16 @@ mod tests {
 
     #[test]
     fn convert_assistant_with_tool_call() {
-        let msgs = vec![AiBridgeMessage::AssistantMessage {
+        let msgs = vec![XyLlmMessage::AssistantMessage {
             content: vec![
-                AiBridgePart::text("Let me check"),
-                AiBridgePart::ToolCall {
+                AgentPart::text("Let me check"),
+                AgentPart::ToolCall {
                     id: "call-1".into(),
                     name: "read".into(),
                     arguments: serde_json::json!({}),
                 },
             ],
-            stop_reason: Some(AiBridgeStopReason::ToolUse),
+            stop_reason: Some(XyStopReason::ToolUse),
             usage: None,
             api: String::new(),
             provider: String::new(),
@@ -564,10 +564,10 @@ mod tests {
 
     #[test]
     fn convert_tool_result() {
-        let msgs = vec![AiBridgeMessage::tool_result(
+        let msgs = vec![XyLlmMessage::tool_result(
             "call-1",
             "",
-            vec![AiBridgePart::text("done")],
+            vec![AgentPart::text("done")],
             false,
         )];
         let result = convert_agent_messages(&msgs, None);
@@ -582,7 +582,7 @@ mod tests {
 
     #[test]
     fn convert_projected_bash_as_user() {
-        let msgs = vec![AiBridgeMessage::user("$ ls -la\ntotal 42")];
+        let msgs = vec![XyLlmMessage::user("$ ls -la\ntotal 42")];
         let result = convert_agent_messages(&msgs, None);
         assert_eq!(result.len(), 1);
         match &result[0] {
@@ -597,11 +597,11 @@ mod tests {
         }
     }
 
-    fn done_usage(chunks: &[AiBridgeChunk]) -> crate::dto::AiBridgeUsage {
+    fn done_usage(chunks: &[XyChunk]) -> crate::dto::XyUsage {
         chunks
             .iter()
             .find_map(|c| match c {
-                AiBridgeChunk::Done { usage, .. } => *usage,
+                XyChunk::Done { usage, .. } => *usage,
                 _ => None,
             })
             .expect("Done usage")

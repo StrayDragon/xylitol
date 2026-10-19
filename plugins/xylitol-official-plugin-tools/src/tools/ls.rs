@@ -13,8 +13,8 @@ use serde_json::{Value, json};
 
 use super::path_utils::resolve_to_dir;
 use super::typed::TypedTool;
+use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
-use xylitol_plugin_sdk::ports::XyToolCtx;
 
 const DEFAULT_LS_LIMIT: usize = 200;
 
@@ -153,7 +153,7 @@ mod tests {
     use super::*;
     use crate::tools::test_ctx;
     use serde_json::json;
-    use xylitol_plugin_sdk::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
 
     #[tokio::test]
     async fn test_ls_empty_directory() {

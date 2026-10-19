@@ -13,9 +13,9 @@ use crate::token_estimator::{EstimateOpts, FixedRequestContext};
 use crate::{CompactionError, CompactionSettings, compact_session, prepare_compaction};
 use xylitol_plugin_sdk::XyCompaction;
 use xylitol_plugin_sdk::lifecycle::XyEvent;
-use xylitol_plugin_sdk::message::{AgentMessage, LlmMessage, XyStopReason};
-use xylitol_plugin_sdk::ports::{XyEventSink, XySessionStore};
+use xylitol_plugin_sdk::message::{AgentMessage, XyLlmMessage, XyStopReason};
 use xylitol_plugin_sdk::session::SessionEntry;
+use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 
 pub use xylitol_plugin_sdk::OverflowCompactOutcome;
 
@@ -176,7 +176,7 @@ impl CompactionOrchestrator {
 
         let will_retry = !matches!(
             last_assistant,
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 stop_reason: Some(XyStopReason::Stop),
                 ..
             })
@@ -537,7 +537,7 @@ pub use xylitol_plugin_sdk::should_compact;
 fn assistant_is_aborted(assistant: Option<&AgentMessage>) -> bool {
     matches!(
         assistant,
-        Some(AgentMessage::Llm(LlmMessage::AssistantMessage {
+        Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             stop_reason: Some(XyStopReason::Aborted),
             ..
         }))
@@ -546,7 +546,7 @@ fn assistant_is_aborted(assistant: Option<&AgentMessage>) -> bool {
 
 fn assistant_timestamp_ms(assistant: &AgentMessage) -> Option<u64> {
     match assistant {
-        AgentMessage::Llm(LlmMessage::AssistantMessage { timestamp, .. }) if *timestamp > 0 => {
+        AgentMessage::Llm(XyLlmMessage::AssistantMessage { timestamp, .. }) if *timestamp > 0 => {
             Some(*timestamp)
         }
         _ => None,
@@ -581,7 +581,7 @@ fn usage_anchor_stale_vs_compaction(entries: &[SessionEntry]) -> bool {
         let Some(msg) = entry.as_agent_message() else {
             continue;
         };
-        if let AgentMessage::Llm(LlmMessage::AssistantMessage {
+        if let AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             usage: Some(_),
             timestamp,
             ..

@@ -14,7 +14,7 @@ use crate::infra::event::EventBus;
 use crate::infra::hooks::HookDispatcher;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
-use crate::protocol::ports::{
+use xylitol_plugin_sdk::{
     XyBatchMode, XyEventSink, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
 };
 
@@ -71,24 +71,24 @@ impl Default for BuildAgentOptions {
     }
 }
 
-/// Construct a clonable [`crate::agent::RuntimePorts`] baseline from the given options.
+/// Construct a clonable [`crate::agent::RuntimeBaseline`] baseline from the given options.
 ///
 /// Host processes share one baseline and lazy-materialize isolated Drivers per
 /// session slot. Print/TUI embed still call [`build_agent`] (one actor).
-pub fn build_ports(
+pub fn build_baseline(
     options: BuildAgentOptions,
-) -> Result<crate::agent::RuntimePorts, XyDriverError> {
+) -> Result<crate::agent::RuntimeBaseline, XyDriverError> {
     let sessions_dir = SessionManager::default_dir();
     std::fs::create_dir_all(&sessions_dir).map_err(|e| format!("create sessions dir: {e}"))?;
     let session_mgr = SessionManager::new(sessions_dir);
-    build_ports_with_store(options, Arc::new(session_mgr))
+    build_baseline_with_store(options, Arc::new(session_mgr))
 }
 
-/// Like [`build_ports`], but injects an existing session store (tests / Host).
-pub fn build_ports_with_store(
+/// Like [`build_baseline`], but injects an existing session store (tests / Host).
+pub fn build_baseline_with_store(
     options: BuildAgentOptions,
     store: Arc<dyn XySessionStore>,
-) -> Result<crate::agent::RuntimePorts, XyDriverError> {
+) -> Result<crate::agent::RuntimeBaseline, XyDriverError> {
     let sink: Arc<dyn XyEventSink> = options
         .event_sink
         .unwrap_or_else(|| Arc::new(EventBus::new()));
@@ -138,7 +138,7 @@ pub fn build_ports_with_store(
         builder = builder.system_prompt(sp);
     }
 
-    Ok(builder.build_ports())
+    Ok(builder.build_baseline())
 }
 
 /// Construct a fully-wired `AgentRuntime` from the given options.
@@ -152,7 +152,7 @@ pub fn build_ports_with_store(
 /// The injected [`XyEventSink`] (default `EventBus`) is for side lifecycle
 /// (e.g. compaction); it is not the multi-client turn bus.
 pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverError> {
-    Ok(build_ports(options)?.materialize_runtime())
+    Ok(build_baseline(options)?.materialize_runtime())
 }
 
 /// Outcome of [`McpSession::reload`] (c1205).
@@ -338,8 +338,8 @@ mod tests {
     #[tokio::test]
     async fn reload_preserves_tui_ask_tool() {
         use crate::protocol::error::XyToolError;
-        use crate::protocol::ports::ask::{AskArgs, AskUserGateway};
         use async_trait::async_trait;
+        use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 
         struct SkipGateway;
         #[async_trait]
@@ -379,8 +379,8 @@ mod tests {
     async fn lab_reload_add_remove_updates_provider_tool_names() {
         use crate::agent::tools::ToolSet;
         use crate::protocol::error::XyToolError;
-        use crate::protocol::ports::{XyTool, XyToolCtx};
         use async_trait::async_trait;
+        use xylitol_plugin_sdk::{XyTool, XyToolCtx};
 
         struct StubMcpTool {
             name: &'static str,
@@ -499,8 +499,8 @@ mod tests {
     async fn lab_reload_cancel_keeps_provider_tools_despite_desired_add() {
         use crate::agent::tools::ToolSet;
         use crate::protocol::error::XyToolError;
-        use crate::protocol::ports::{XyTool, XyToolCtx};
         use async_trait::async_trait;
+        use xylitol_plugin_sdk::{XyTool, XyToolCtx};
 
         struct StubMcpTool;
         #[async_trait]

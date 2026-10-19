@@ -9,11 +9,11 @@ use tokio::sync::RwLock;
 
 use super::typed::TypedTool;
 use xylitol_plugin_sdk::error::XyToolError;
-use xylitol_plugin_sdk::ports::{AgentTodoGateway, XySessionStore, XyToolCtx, XyToolExecutionMode};
 use xylitol_plugin_sdk::session::{
     TodoItemDraft, TodoItemPatch, TodoList, apply_todo_patches, latest_agent_todo,
     normalize_rewrite_items,
 };
+use xylitol_plugin_sdk::{AgentTodoGateway, XySessionStore, XyToolCtx, XyToolExecutionMode};
 
 /// Store-backed Todo SSOT with interior-mutable active session id.
 ///
@@ -255,9 +255,7 @@ impl TypedTool for TodoUpdateTool {
 }
 
 /// Two Todo tools sharing `gateway`.
-pub fn todo_tools(
-    gateway: Arc<dyn AgentTodoGateway>,
-) -> Vec<Arc<dyn xylitol_plugin_sdk::ports::XyTool>> {
+pub fn todo_tools(gateway: Arc<dyn AgentTodoGateway>) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
     vec![
         Arc::new(TodoRewriteTool::new(gateway.clone())),
         Arc::new(TodoUpdateTool::new(gateway)),
@@ -267,8 +265,8 @@ pub fn todo_tools(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xylitol_plugin_sdk::ports::{XySessionStore, XyTool};
     use xylitol_plugin_sdk::session::{CUSTOM_TYPE_AGENT_TODO, SessionEntry, TodoStatus};
+    use xylitol_plugin_sdk::{XySessionStore, XyTool};
 
     struct MemStore {
         entries: tokio::sync::Mutex<Vec<SessionEntry>>,

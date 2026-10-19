@@ -1,7 +1,7 @@
 //! Agent status bar — code-maintained readings projected after history fold.
 
 use crate::llm_project::{project_for_llm, user_text};
-use crate::message::{AgentMessage, LlmMessage};
+use crate::message::{AgentMessage, XyLlmMessage};
 use crate::session::{SessionEntry, TodoList, latest_agent_todo};
 
 /// XML root for the outbound status-bar row.
@@ -65,7 +65,7 @@ fn render_todo(list: &TodoList) -> String {
 }
 
 /// History fold + status bar (generate and token estimate).
-pub fn project_outbound(messages: &[AgentMessage], bar: &AgentStatusBar) -> Vec<LlmMessage> {
+pub fn project_outbound(messages: &[AgentMessage], bar: &AgentStatusBar) -> Vec<XyLlmMessage> {
     let mut out = project_for_llm(messages);
     if let Some(body) = bar.render() {
         out.push(user_text(body));

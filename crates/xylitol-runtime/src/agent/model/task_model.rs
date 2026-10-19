@@ -7,7 +7,7 @@ use crate::agent::model::manager::ModelManager;
 use xylitol_plugin_sdk::error::XyError;
 use xylitol_plugin_sdk::model::{XyModelMeta, last_declared_thinking_level};
 use xylitol_plugin_sdk::model_entry::XyModelEntryConfig;
-use xylitol_plugin_sdk::ports::{XyGenerateOptions, XyModel};
+use xylitol_plugin_sdk::{XyGenerateOptions, XyModel};
 
 pub use xylitol_plugin_sdk::{CompactionModelAttribution, CompactionSummaryBinding};
 
@@ -105,7 +105,7 @@ mod tests {
     use crate::agent::model::registry::ModelRegistry;
     use xylitol_plugin_sdk::model::{THINKING_OFF, XyModelConfig, XyModelKind};
 
-    type ModelBuilderFn = xylitol_plugin_sdk::ports::XyModelBuilder;
+    type ModelBuilderFn = xylitol_plugin_sdk::XyModelBuilder;
 
     fn fake_builder() -> ModelBuilderFn {
         Arc::new(crate::infra::provider::factory::build_provider)

@@ -4,8 +4,8 @@
 维护脚本(不进 `just qa` 门禁:依赖本地 apache/fory clone)。跨端协议帧，不是抽象「线协议」一词。
 
 用法:
-  just codegen-wire            # 重新生成并写回 crates/xylitol-protocol/src/v3/generated.rs
-  just codegen-wire --check    # 只校验 check-in 产物与真源一致(漂移即非零退出)
+  just codegen-envelope            # 重新生成并写回 crates/xylitol-protocol/src/v3/generated.rs
+  just codegen-envelope --check    # 只校验 check-in 产物与真源一致(漂移即非零退出)
 
 前置:apache/fory clone 位于本仓库同级目录(默认 ../fory,可用 FORY_ROOT 覆盖),
 其 compiler 为纯 Python 零依赖,直接 PYTHONPATH 调用。
@@ -22,7 +22,7 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-FBS = REPO_ROOT / "crates/xylitol-protocol/src/v3/xy_wire_v3.fbs"
+FBS = REPO_ROOT / "crates/xylitol-protocol/src/v3/envelope.fbs"
 CHECKED_IN = REPO_ROOT / "crates/xylitol-protocol/src/v3/generated.rs"
 FORY_ROOT = Path(os.environ.get("FORY_ROOT", REPO_ROOT.parent / "fory"))
 COMPILER = FORY_ROOT / "compiler"
@@ -51,12 +51,16 @@ def main() -> int:
         ]
         env = dict(os.environ, PYTHONPATH=str(COMPILER))
         subprocess.run(cmd, check=True, env=env, cwd=tmp)
-        generated = (out / "rust/xy_wire_v3.rs").read_text()
+        rust_files = sorted((out / "rust").glob("*.rs"))
+        if len(rust_files) != 1:
+            print(f"foryc 产出不是单份 rust/*.rs: {rust_files}")
+            return 1
+        generated = rust_files[0].read_text()
 
     if args.check:
         current = CHECKED_IN.read_text()
         if generated == current:
-            print("codegen-wire --check: 生成物与真源一致")
+            print("codegen-envelope --check: 生成物与真源一致")
             return 0
         diff = "\n".join(
             difflib.unified_diff(

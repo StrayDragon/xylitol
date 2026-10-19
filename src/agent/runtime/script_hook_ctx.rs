@@ -6,7 +6,7 @@
 
 use serde_json::{Value, json};
 
-/// `(event_type, phase, context)` for [`crate::protocol::ports::XyHookBus::dispatch`].
+/// `(event_type, phase, context)` for [`xylitol_plugin_sdk::XyHookBus::dispatch`].
 pub type ScriptHookCtx = (&'static str, &'static str, Value);
 
 pub fn agent_start() -> ScriptHookCtx {

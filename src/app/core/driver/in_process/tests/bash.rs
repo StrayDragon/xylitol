@@ -75,7 +75,7 @@ async fn sink_cancel_reaches_execute_bash_out_of_band() {
     let (mut driver, _scope) = build_test_driver(store).await;
     let (tx, _rx) = tokio::sync::mpsc::channel(8);
     let cancel = tokio_util::sync::CancellationToken::new();
-    driver.set_bash_run_sink(Some(crate::protocol::ports::BashOutputSink {
+    driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink {
         tx,
         cancel: cancel.clone(),
     }));

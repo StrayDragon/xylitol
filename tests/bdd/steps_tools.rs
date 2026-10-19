@@ -1000,7 +1000,7 @@ fn w_tools_toolset_ops(_ws: &Workspace) {
         .with(|b| b.borrow_mut().take())
         .expect("given must build base toolset");
     let set = base
-        .plus(Arc::new(BashTool::default()) as Arc<dyn xylitol::protocol::ports::XyTool>)
+        .plus(Arc::new(BashTool::default()) as Arc<dyn xylitol_plugin_sdk::XyTool>)
         .remove("grep");
     let names: Vec<String> = set.iter().map(|t| t.name().to_string()).collect();
     tools_toolset::NAMES.with(|n| n.replace(names));

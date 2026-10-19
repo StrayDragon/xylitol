@@ -218,7 +218,7 @@ impl TuiDriver for TuiInProcessAdapter<'_> {
         RootDriver::session_id(self.inner)
     }
 
-    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::ports::BashOutputSink>) {
+    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
         RootDriver::set_bash_run_sink(self.inner, sink);
     }
 
@@ -245,9 +245,7 @@ impl TuiDriver for TuiInProcessAdapter<'_> {
         RootDriver::dollar_skill_catalog(self.inner)
     }
 
-    fn session_store(
-        &self,
-    ) -> Option<std::sync::Arc<dyn xylitol_plugin_sdk::ports::XySessionStore>> {
+    fn session_store(&self) -> Option<std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore>> {
         RootDriver::session_store(self.inner)
     }
 

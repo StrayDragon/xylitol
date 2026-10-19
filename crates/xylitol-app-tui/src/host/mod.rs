@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use xylitol_tui::{InputEvent, InputReaction, PointerClickPhase, RenderError, TUI, Terminal};
 
 use crate::driver::{XyDriver, XyDriverError, XyEvent};
-use xylitol_plugin_sdk::ports::XyBashResult;
+use xylitol_plugin_sdk::XyBashResult;
 
 use super::bridge::{UiEntry, UiModel, UiPhase, apply_xy_event};
 use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuild};
@@ -1232,7 +1232,7 @@ impl<T: Terminal> HostSession<T> {
                     matches!(
                         m,
                         xylitol_plugin_sdk::message::AgentMessage::Llm(
-                            xylitol_plugin_sdk::message::LlmMessage::AssistantMessage {
+                            xylitol_plugin_sdk::message::XyLlmMessage::AssistantMessage {
                                 usage: Some(_),
                                 ..
                             }

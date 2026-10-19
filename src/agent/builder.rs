@@ -4,17 +4,17 @@
 //! constructor. Every other capability is attached via consuming builder
 //! methods, with safe defaults (empty tool set, no optional surface I/O). This keeps the agent layer free of concrete `infra/` types.
 //!
-//! [`AgentBuilder::build_ports`] yields a clonable [`RuntimePorts`] baseline;
-//! `RuntimePorts::materialize_runtime` materializes one [`crate::agent::runtime::AgentRuntime`] from it.
+//! [`AgentBuilder::build_baseline`] yields a clonable [`RuntimeBaseline`] baseline;
+//! `RuntimeBaseline::materialize_runtime` materializes one [`crate::agent::runtime::AgentRuntime`] from it.
 
 use std::sync::Arc;
 
 use crate::agent::capabilities::QueueMode;
 use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
-use crate::agent::runtime::RuntimePorts;
+use crate::agent::runtime::RuntimeBaseline;
 use crate::agent::tools::ToolSet;
-use crate::protocol::ports::{
+use xylitol_plugin_sdk::{
     XyBatchMode, XyEventSink, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
 };
 
@@ -136,13 +136,13 @@ impl AgentBuilder {
         self
     }
 
-    /// Build a clonable [`RuntimePorts`] baseline (skills / batch_mode baked in).
+    /// Build a clonable [`RuntimeBaseline`] baseline (skills / batch_mode baked in).
     ///
-    /// Call [`RuntimePorts::materialize_runtime`] (or clone then materialize) to
+    /// Call [`RuntimeBaseline::materialize_runtime`] (or clone then materialize) to
     /// obtain isolated session actors that do not share ModelManager selection,
     /// queues, session id, coordinator, or compaction orchestrator state.
-    pub fn build_ports(self) -> RuntimePorts {
-        RuntimePorts {
+    pub fn build_baseline(self) -> RuntimeBaseline {
+        RuntimeBaseline {
             store: self.store,
             sink: self.sink,
             permission: self.permission,

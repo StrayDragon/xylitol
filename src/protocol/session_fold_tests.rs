@@ -1,6 +1,6 @@
 //! Projection tests that need `agent::llm_project` (cannot live in plugin-sdk).
 
-use crate::protocol::message::{AgentMessage, AgentPart, BashExecutionStatus, LlmMessage};
+use crate::protocol::message::{AgentMessage, AgentPart, BashExecutionStatus, XyLlmMessage};
 use crate::protocol::session::{
     SessionEntry, bash_execution_message_entry, done_bash_ids, fold_interrupted_bash_rows,
 };
@@ -31,9 +31,9 @@ fn mapped(entries: &[SessionEntry]) -> Vec<AgentMessage> {
         .collect()
 }
 
-fn user_text_of(msg: &LlmMessage) -> Option<String> {
+fn user_text_of(msg: &XyLlmMessage) -> Option<String> {
     match msg {
-        LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+        XyLlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
             AgentPart::Text { text } => Some(text.clone()),
             _ => None,
         }),
@@ -97,8 +97,9 @@ fn repeated_folds_are_byte_stable() {
         bash_row("b2", "serve", BashExecutionStatus::Running, false),
     ];
     let done = done_bash_ids(&entries);
-    let texts =
-        |rows: &Vec<LlmMessage>| -> Vec<String> { rows.iter().filter_map(user_text_of).collect() };
+    let texts = |rows: &Vec<XyLlmMessage>| -> Vec<String> {
+        rows.iter().filter_map(user_text_of).collect()
+    };
     let first = texts(&crate::agent::llm_project::project_for_llm(
         &fold_interrupted_bash_rows(mapped(&entries), &done),
     ));

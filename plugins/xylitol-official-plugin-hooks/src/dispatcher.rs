@@ -7,7 +7,7 @@ use log::warn;
 use super::script::{run_hook_script, run_hook_script_with_context};
 use super::{DispatchResult, HookAction, HookEvent, HookPhase, entry_matches_raw, event_matches};
 use crate::config::{HookEntry, HooksConfig};
-use xylitol_plugin_sdk::ports::{XyHookBus, XyHookOutcome};
+use xylitol_plugin_sdk::{XyHookBus, XyHookOutcome};
 
 /// Wall-clock default for hooks that omit `timeout_secs` (c2425): an
 /// unbounded hook script must not be able to stall the turn forever.

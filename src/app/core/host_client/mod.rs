@@ -10,19 +10,19 @@ use thiserror::Error;
 use crate::protocol::{RpcMessage, RpcResult};
 
 #[cfg(feature = "server")]
+mod envelope_client;
+#[cfg(feature = "server")]
 mod http_ws;
 mod in_process;
-#[cfg(feature = "server")]
-mod wire_v3_client;
 
 #[cfg(feature = "server")]
 pub use http_ws::dual_rail_event_parity;
 
 #[cfg(feature = "server")]
+pub use envelope_client::{client_request_bytes, server_response_to_result, stable_rpc_id};
+#[cfg(feature = "server")]
 pub use http_ws::HttpWsClient;
 pub use in_process::InProcessClient;
-#[cfg(feature = "server")]
-pub use wire_v3_client::{client_request_bytes, server_response_to_result, stable_rpc_id};
 
 /// Stream of downlink `ServerRequest` envelopes (and ignored carrier frames).
 pub type MuxStream =

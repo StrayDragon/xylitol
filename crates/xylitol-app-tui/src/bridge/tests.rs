@@ -190,9 +190,9 @@ fn todo_block_humanized_and_checklist_rides_typed_event() {
 
 #[test]
 fn message_update_tool_path_matches_after_wire_roundtrip() {
-    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 
-    let message = AgentMessage::Llm(LlmMessage::AssistantMessage {
+    let message = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content: vec![AgentPart::ToolCall {
             id: "read-1".into(),
             name: "read".into(),
@@ -657,7 +657,7 @@ fn thinking_elapsed_stops_at_first_text_delta() {
 
 #[test]
 fn message_update_tool_intent_flushes_thinking_first() {
-    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 
     let mut model = UiModel::new();
     model.begin_run("hi");
@@ -674,7 +674,7 @@ fn message_update_tool_intent_flushes_thinking_first() {
         "thinking still in streaming buffer"
     );
 
-    let partial = AgentMessage::Llm(LlmMessage::AssistantMessage {
+    let partial = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content: vec![
             AgentPart::thinking("plan…"),
             AgentPart::ToolCall {
@@ -723,11 +723,11 @@ fn message_update_tool_intent_flushes_thinking_first() {
 
 #[test]
 fn message_update_creates_tool_before_execution() {
-    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 
     let mut model = UiModel::new();
     model.begin_run("hi");
-    let partial = AgentMessage::Llm(LlmMessage::AssistantMessage {
+    let partial = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content: vec![AgentPart::ToolCall {
             id: "call-1".into(),
             name: "bash".into(),
@@ -790,12 +790,12 @@ fn message_update_creates_tool_before_execution() {
 
 #[test]
 fn message_update_streams_args_preview() {
-    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 
     let mut model = UiModel::new();
     model.begin_run("hi");
     let mk = |args: serde_json::Value| {
-        AgentMessage::Llm(LlmMessage::AssistantMessage {
+        AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             content: vec![AgentPart::ToolCall {
                 id: "call-1".into(),
                 name: "read".into(),

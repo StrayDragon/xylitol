@@ -176,8 +176,8 @@ gen-config-example:
 
 # fory-v3 envelope codegen (fbs -> Rust). Maintenance only (needs local apache/fory clone);
 # `--check` verifies the checked-in artifact matches the fbs source of truth.
-codegen-wire *args:
-    python3 scripts/gen_wire_v3.py {{ args }}
+codegen-envelope *args:
+    python3 scripts/gen_envelope.py {{ args }}
 
 # Provider-safe MCP tool naming gate (registry SSOT + wire encode on all three APIs).
 # Not live-network; safe in qa loops. Prefer this after changing MCP_PUBLIC_DELIMITER.

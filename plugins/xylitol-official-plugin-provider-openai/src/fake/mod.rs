@@ -4,10 +4,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::dto::{AiBridgeChunk, AiBridgeStopReason, AiBridgeStream};
-use crate::error::AiBridgeError;
-use crate::provider::map_xy_result;
-use xylitol_plugin_sdk::message::LlmMessage;
+use crate::dto::{XyChunk, XyStopReason};
+use xylitol_plugin_sdk::message::XyLlmMessage;
 use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSchema};
 
 // ---------------------------------------------------------------------------
@@ -223,8 +221,7 @@ impl FakeProviderBuilder {
 }
 
 // ---------------------------------------------------------------------------
-// AiBridgeLlmAdapter implementation — single track with vendor adapters; the
-// retired AiBridgeModel `stream: bool` flag maps onto generate/generate_stream.
+// XyModel implementation — single track with vendor adapters.
 // ---------------------------------------------------------------------------
 
 #[async_trait]
@@ -235,19 +232,19 @@ impl XyModel for FakeProvider {
 
     async fn generate_stream(
         &self,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<XyLlmMessage>,
         _tools: &[XyToolSchema],
         _stream: bool,
         _options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
-        map_xy_result(self.emit_next().await)
+        self.emit_next().await
     }
 }
 
 impl FakeProvider {
     /// Resolve and play the next scenario step (identical for both entry points;
     /// options are ignored by design, as before).
-    async fn emit_next(&self) -> Result<AiBridgeStream, AiBridgeError> {
+    async fn emit_next(&self) -> Result<XyStream, XyError> {
         let outcome = match self.resolve_next() {
             Some(o) => o,
             None => return Ok(Box::pin(futures::stream::empty())),
@@ -259,9 +256,9 @@ impl FakeProvider {
 
         match outcome.step {
             ScenarioStep::Text(text) => Ok(Box::pin(futures::stream::iter(vec![
-                Ok(AiBridgeChunk::TextDelta(text)),
-                Ok(AiBridgeChunk::Done {
-                    finish_reason: AiBridgeStopReason::Stop,
+                Ok(XyChunk::TextDelta(text)),
+                Ok(XyChunk::Done {
+                    finish_reason: XyStopReason::Stop,
                     usage: None,
                 }),
             ]))),
@@ -270,29 +267,29 @@ impl FakeProvider {
                     if !delay.is_zero() {
                         tokio::time::sleep(delay).await;
                     }
-                    yield Ok(AiBridgeChunk::TextDelta(text));
+                    yield Ok(XyChunk::TextDelta(text));
                 }
-                yield Ok(AiBridgeChunk::Done {
-                    finish_reason: AiBridgeStopReason::Stop,
+                yield Ok(XyChunk::Done {
+                    finish_reason: XyStopReason::Stop,
                     usage: None,
                 });
             })),
             ScenarioStep::ToolCall { name, args } => {
                 let id = format!("fake-call-{name}");
                 Ok(Box::pin(futures::stream::iter(vec![
-                    Ok(AiBridgeChunk::ToolCallStart {
+                    Ok(XyChunk::ToolCallStart {
                         id: id.clone(),
                         name: name.clone(),
                     }),
-                    Ok(AiBridgeChunk::ToolCallEnd { name, args, id }),
-                    Ok(AiBridgeChunk::Done {
-                        finish_reason: AiBridgeStopReason::Stop,
+                    Ok(XyChunk::ToolCallEnd { name, args, id }),
+                    Ok(XyChunk::Done {
+                        finish_reason: XyStopReason::Stop,
                         usage: None,
                     }),
                 ])))
             }
             ScenarioStep::Error { message, .. } => {
-                Err(AiBridgeError::Provider(anyhow::anyhow!("{message}")))
+                Err(XyError::Provider(anyhow::anyhow!("{message}")))
             }
             ScenarioStep::ToolResult { .. } | ScenarioStep::Delay(_) => {
                 Ok(Box::pin(futures::stream::empty()))
@@ -308,18 +305,18 @@ impl FakeProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::thinking::AiBridgeGenerateOptions;
+    use crate::thinking::XyGenerateOptions;
     use futures::StreamExt;
 
     #[tokio::test]
     async fn test_text_step() {
         let provider = FakeProvider::new("test", vec![ScenarioStep::text("Hello world")]);
         let mut stream = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let chunk = stream.next().await.unwrap().unwrap();
-        assert!(matches!(chunk, AiBridgeChunk::TextDelta(t) if t == "Hello world"));
+        assert!(matches!(chunk, XyChunk::TextDelta(t) if t == "Hello world"));
     }
 
     #[tokio::test]
@@ -332,17 +329,17 @@ mod tests {
             )],
         );
         let mut stream = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let start = stream.next().await.unwrap().unwrap();
         assert!(
-            matches!(start, AiBridgeChunk::ToolCallStart { name, .. } if name == "read"),
+            matches!(start, XyChunk::ToolCallStart { name, .. } if name == "read"),
             "expected ToolCallStart for 'read'"
         );
         let chunk = stream.next().await.unwrap().unwrap();
         assert!(
-            matches!(chunk, AiBridgeChunk::ToolCallEnd { name, .. } if name == "read"),
+            matches!(chunk, XyChunk::ToolCallEnd { name, .. } if name == "read"),
             "expected ToolCallEnd for 'read'"
         );
     }
@@ -359,29 +356,29 @@ mod tests {
         );
 
         let mut s1 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let c1 = s1.next().await.unwrap().unwrap();
-        assert!(matches!(c1, AiBridgeChunk::TextDelta(t) if t == "Hello!"));
+        assert!(matches!(c1, XyChunk::TextDelta(t) if t == "Hello!"));
 
         let mut s2 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let _start = s2.next().await.unwrap().unwrap();
         let c2 = s2.next().await.unwrap().unwrap();
-        assert!(matches!(c2, AiBridgeChunk::ToolCallEnd { name, .. } if name == "search"));
+        assert!(matches!(c2, XyChunk::ToolCallEnd { name, .. } if name == "search"));
 
         let mut s3 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let c3 = s3.next().await.unwrap().unwrap();
-        assert!(matches!(c3, AiBridgeChunk::TextDelta(t) if t == "Here are results."));
+        assert!(matches!(c3, XyChunk::TextDelta(t) if t == "Here are results."));
 
         let mut s4 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         assert!(s4.next().await.is_none());
@@ -394,7 +391,7 @@ mod tests {
             vec![ScenarioStep::error("simulated rate limit", true)],
         );
         let result = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await;
         assert!(result.is_err());
     }
@@ -411,7 +408,7 @@ mod tests {
         );
         let start = Instant::now();
         let mut stream = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let _chunk = stream.next().await.unwrap().unwrap();
@@ -428,18 +425,18 @@ mod tests {
 
         for _ in 0..3 {
             let mut s1 = provider
-                .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+                .generate_stream(vec![], &[], true, XyGenerateOptions::default())
                 .await
                 .unwrap();
             let c1 = s1.next().await.unwrap().unwrap();
-            assert!(matches!(c1, AiBridgeChunk::TextDelta(t) if t == "a"));
+            assert!(matches!(c1, XyChunk::TextDelta(t) if t == "a"));
 
             let mut s2 = provider
-                .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+                .generate_stream(vec![], &[], true, XyGenerateOptions::default())
                 .await
                 .unwrap();
             let c2 = s2.next().await.unwrap().unwrap();
-            assert!(matches!(c2, AiBridgeChunk::TextDelta(t) if t == "b"));
+            assert!(matches!(c2, XyChunk::TextDelta(t) if t == "b"));
         }
     }
 
@@ -458,26 +455,26 @@ mod tests {
         assert_eq!(provider.len(), 2);
 
         let mut s1 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let c1 = s1.next().await.unwrap().unwrap();
-        assert!(matches!(c1, AiBridgeChunk::TextDelta(t) if t == "step1"));
+        assert!(matches!(c1, XyChunk::TextDelta(t) if t == "step1"));
 
         let mut s2 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let _start = s2.next().await.unwrap().unwrap();
         let c2 = s2.next().await.unwrap().unwrap();
-        assert!(matches!(c2, AiBridgeChunk::ToolCallEnd { name, .. } if name == "tool1"));
+        assert!(matches!(c2, XyChunk::ToolCallEnd { name, .. } if name == "tool1"));
     }
 
     #[tokio::test]
     async fn test_empty_scenario() {
         let provider = FakeProvider::new("empty", vec![]);
         let mut stream = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         assert!(stream.next().await.is_none());
@@ -495,22 +492,22 @@ mod tests {
         );
 
         let mut s1 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let _start = s1.next().await.unwrap().unwrap();
         let c1 = s1.next().await.unwrap().unwrap();
-        assert!(matches!(c1, AiBridgeChunk::ToolCallEnd { name, .. } if name == "read"));
+        assert!(matches!(c1, XyChunk::ToolCallEnd { name, .. } if name == "read"));
 
         let mut s2 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let c2 = s2.next().await.unwrap().unwrap();
-        assert!(matches!(c2, AiBridgeChunk::TextDelta(t) if t == "Got the data"));
+        assert!(matches!(c2, XyChunk::TextDelta(t) if t == "Got the data"));
 
         let mut s3 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         assert!(s3.next().await.is_none());
@@ -530,7 +527,7 @@ mod tests {
 
         let start = Instant::now();
         let mut stream = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         let _chunk = stream.next().await.unwrap().unwrap();
@@ -542,20 +539,20 @@ mod tests {
         let provider = FakeProvider::new("test", vec![ScenarioStep::text("only")]);
 
         let mut s1 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         assert!(s1.next().await.is_some());
 
         let mut s2 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         assert!(s2.next().await.is_none());
 
         provider.reset();
         let mut s3 = provider
-            .generate_stream(vec![], &[], true, AiBridgeGenerateOptions::default())
+            .generate_stream(vec![], &[], true, XyGenerateOptions::default())
             .await
             .unwrap();
         assert!(s3.next().await.is_some());

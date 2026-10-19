@@ -10,7 +10,7 @@ use crate::protocol::error::XyError;
 use crate::protocol::model::{
     THINKING_OFF, ThinkingBudgets, XyModelMeta, last_declared_thinking_level,
 };
-use crate::protocol::ports::XyModel;
+use xylitol_plugin_sdk::XyModel;
 
 /// Manages model registry, current model selection, and thinking level.
 ///
@@ -31,7 +31,7 @@ pub struct ModelManager {
     /// Optional Settings Anthropic budget overrides for known level names.
     thinking_budgets: Option<ThinkingBudgets>,
     /// Injected provider factory (composition-root-supplied).
-    pub(crate) model_builder: crate::protocol::ports::XyModelBuilder,
+    pub(crate) model_builder: xylitol_plugin_sdk::XyModelBuilder,
 }
 
 impl ModelManager {
@@ -39,7 +39,7 @@ impl ModelManager {
     /// injected provider builder.
     pub fn new(
         registry: ModelRegistry,
-        model_builder: crate::protocol::ports::XyModelBuilder,
+        model_builder: xylitol_plugin_sdk::XyModelBuilder,
     ) -> Self {
         Self {
             registry,
@@ -190,7 +190,7 @@ mod tests {
     use crate::protocol::model::XyModelMeta;
     use crate::protocol::model::{XyModelConfig, XyModelKind};
 
-    type ModelBuilderFn = crate::protocol::ports::XyModelBuilder;
+    type ModelBuilderFn = xylitol_plugin_sdk::XyModelBuilder;
 
     fn empty_registry() -> ModelRegistry {
         ModelRegistry::new()

@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use tokio::sync::oneshot;
 use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion};
 
+use xylitol_plugin_sdk::ask::{AskArgs, AskModeArg, AskQuestionArg, AskUserGateway};
 use xylitol_plugin_sdk::error::XyToolError;
-use xylitol_plugin_sdk::ports::ask::{AskArgs, AskModeArg, AskQuestionArg, AskUserGateway};
 
 /// Pending ask waiting for the TUI Choice slot.
 pub struct PendingAsk {
@@ -46,7 +46,7 @@ impl AskHostGateway {
 
     /// Mux `approval/requested` / `question/requested` → local ChoicePrompt, then respond.
     pub fn push_from_server(&self, rpc_id: String, method: &str, payload: serde_json::Value) {
-        use xylitol_plugin_sdk::ports::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
+        use xylitol_plugin_sdk::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
         let questions = if method == "approval/requested" {
             vec![AskQuestionArg {
                 id: "approved".into(),

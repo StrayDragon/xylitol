@@ -2,19 +2,16 @@
 //!
 //! Dialects implement [`xylitol_plugin_sdk::XyModel`] directly.
 
-use futures::StreamExt;
 use std::sync::Arc;
 
-use crate::dto::AiBridgeStream;
-use crate::error::AiBridgeError;
-use xylitol_plugin_sdk::{XyError, XyModel, XyStream};
+use xylitol_plugin_sdk::XyModel;
 
 pub mod attribution;
 pub mod dialect;
 pub mod factory;
 pub mod native;
 pub mod obs_session;
-pub mod reqwest_bridge;
+pub mod reqwest_headers;
 pub mod tool_wire;
 pub mod trace;
 
@@ -68,11 +65,6 @@ impl std::fmt::Display for AdapterKind {
             AdapterKind::AnthropicMessages => write!(f, "anthropic-messages"),
         }
     }
-}
-
-/// Map a dialect stream onto the [`XyModel`] error type.
-pub fn map_xy_result(r: Result<AiBridgeStream, AiBridgeError>) -> Result<XyStream, XyError> {
-    Ok(Box::pin(r?.map(|item| item.map_err(XyError::from))))
 }
 
 pub type AdapterRef = Arc<dyn XyModel>;

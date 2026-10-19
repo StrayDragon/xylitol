@@ -356,7 +356,7 @@ impl SessionManager {
         self.get_leaf(session_id)
     }
 
-    /// Load entries for [`xylitol_plugin_sdk::ports::XySessionStore::list_sessions`] without mutating leaf tracking.
+    /// Load entries for [`xylitol_plugin_sdk::XySessionStore::list_sessions`] without mutating leaf tracking.
     ///
     /// Disk sessions: peek header version first so legacy files skip without a full JSONL parse.
     pub(super) async fn load_entries_for_list(

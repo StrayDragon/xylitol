@@ -19,7 +19,7 @@ use super::bridge::apply_xy_event;
 use super::host::{HostEvent, HostSession};
 use crate::driver::XyEvent;
 use crate::infra::session::SessionManager;
-use xylitol_plugin_sdk::ports::XySessionStore;
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
 
 struct LabTerminal {

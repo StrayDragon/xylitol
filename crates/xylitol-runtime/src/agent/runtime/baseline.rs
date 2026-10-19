@@ -1,8 +1,8 @@
 //! Clonable construction baseline for session-bound [`AgentRuntime`] actors.
 //!
-//! [`RuntimePorts`] holds shared Arc ports and cloneable config snapshots so a
+//! [`RuntimeBaseline`] holds shared Arc ports and cloneable config snapshots so a
 //! future factory can materialize multiple isolated runtimes from one baseline.
-//! Each [`RuntimePorts::materialize_runtime`] call gets fresh ModelManager
+//! Each [`RuntimeBaseline::materialize_runtime`] call gets fresh ModelManager
 //! selection, queues, session binding, coordinator / active turn, and
 //! compaction orchestrator — never shared history / pending / cancel / active
 //! turn.
@@ -14,17 +14,17 @@ use crate::agent::compaction::CompactionSettings;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::AgentRuntime;
 use crate::agent::tools::ToolSet;
-use crate::protocol::ports::{
+use xylitol_plugin_sdk::resource::SkillInfo;
+use xylitol_plugin_sdk::{
     XyBatchMode, XyEventSink, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
 };
-use crate::protocol::resource::SkillInfo;
 
 /// Clonable construction inputs for materializing isolated [`AgentRuntime`]s.
 ///
 /// Arc ports are cheaply shared; owned baselines (`ModelRegistry`, `ToolSet`,
 /// prompt / skills / compaction / queue modes) are cloned per materialization.
 #[derive(Clone)]
-pub struct RuntimePorts {
+pub struct RuntimeBaseline {
     pub store: Arc<dyn XySessionStore>,
     pub sink: Arc<dyn XyEventSink>,
     pub permission: Arc<dyn XyPermission>,
@@ -37,6 +37,7 @@ pub struct RuntimePorts {
     pub steering_mode: QueueMode,
     pub follow_up_mode: QueueMode,
     pub compaction_settings: Option<CompactionSettings>,
+    pub compaction_factory: crate::agent::compaction::XyCompactionFactory,
     /// Already [`Clone`] (`Vec<Arc<dyn XyTool>>`).
     pub tools: ToolSet,
     pub system_prompt: Option<String>,
@@ -46,7 +47,7 @@ pub struct RuntimePorts {
     pub batch_mode: XyBatchMode,
 }
 
-impl RuntimePorts {
+impl RuntimeBaseline {
     /// Materialize a fresh [`crate::agent::AgentCapabilities`] from this baseline.
     ///
     /// Always creates a new ModelManager (selection unset), new queue Arc,
@@ -69,6 +70,7 @@ impl RuntimePorts {
             self.follow_up_mode,
             self.hook_bus.clone(),
         );
+        caps.install_compaction(self.compaction_factory.clone());
         caps.set_tool_mode(self.batch_mode);
         if !self.skills.is_empty() {
             caps.apply_skills(self.skills.clone());
@@ -87,12 +89,14 @@ mod tests {
     use super::*;
     use crate::agent::runtime::RunPolicy;
     use crate::infra::session::SessionManager;
-    use crate::protocol::error::XyError;
-    use crate::protocol::message::LlmMessage;
-    use crate::protocol::model::{XyChunk, XyModelConfig, XyModelKind, XyModelMeta, XyToolSchema};
-    use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream};
     use futures::StreamExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use xylitol_plugin_sdk::error::XyError;
+    use xylitol_plugin_sdk::message::XyLlmMessage;
+    use xylitol_plugin_sdk::model::{
+        XyChunk, XyModelConfig, XyModelKind, XyModelMeta, XyToolSchema,
+    };
+    use xylitol_plugin_sdk::{XyGenerateOptions, XyModel, XyStream};
 
     fn mock_registry() -> ModelRegistry {
         let mut reg = ModelRegistry::new();
@@ -122,11 +126,11 @@ mod tests {
         reg
     }
 
-    fn baseline_ports(model_builder: XyModelBuilder) -> RuntimePorts {
+    fn baseline_ports(model_builder: XyModelBuilder) -> RuntimeBaseline {
         let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
         let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-        RuntimePorts {
+        RuntimeBaseline {
             store,
             sink,
             permission: crate::infra::permission::allow_all_permission(),
@@ -157,7 +161,7 @@ mod tests {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<LlmMessage>,
+            _messages: Vec<XyLlmMessage>,
             _tools: &[XyToolSchema],
             _stream: bool,
             _options: XyGenerateOptions,
@@ -170,7 +174,7 @@ mod tests {
                     yield Ok(XyChunk::TextDelta(format!("c{i}")));
                 }
                 yield Ok(XyChunk::Done {
-                    finish_reason: crate::protocol::message::XyStopReason::Stop,
+                    finish_reason: xylitol_plugin_sdk::message::XyStopReason::Stop,
                     usage: None,
                 });
             }))
@@ -217,7 +221,7 @@ mod tests {
 
     #[tokio::test]
     async fn abort_one_runtime_does_not_cancel_sibling() {
-        use crate::protocol::lifecycle::XyEvent;
+        use xylitol_plugin_sdk::lifecycle::XyEvent;
 
         let polled = Arc::new(AtomicUsize::new(0));
         let polled_for_builder = polled.clone();

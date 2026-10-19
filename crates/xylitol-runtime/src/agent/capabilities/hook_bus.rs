@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use xylitol_plugin_sdk::ports::XyHookBus;
+use xylitol_plugin_sdk::XyHookBus;
 
 /// Hook dispatched `Blocked { reason }` (product copy; not `Xy*`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -16,9 +16,7 @@ pub(crate) async fn cancel_hook(
     context: serde_json::Value,
 ) -> Result<(), HookBlockedError> {
     match bus.dispatch(event_type, phase, context).await {
-        xylitol_plugin_sdk::ports::XyHookOutcome::Blocked { reason } => {
-            Err(HookBlockedError(reason))
-        }
+        xylitol_plugin_sdk::XyHookOutcome::Blocked { reason } => Err(HookBlockedError(reason)),
         _ => Ok(()),
     }
 }
@@ -29,7 +27,7 @@ pub(crate) async fn observe_hook(
     phase: &str,
     context: serde_json::Value,
 ) {
-    if let xylitol_plugin_sdk::ports::XyHookOutcome::Blocked { reason } =
+    if let xylitol_plugin_sdk::XyHookOutcome::Blocked { reason } =
         bus.dispatch(event_type, phase, context).await
     {
         log::warn!(

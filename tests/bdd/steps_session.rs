@@ -965,7 +965,7 @@ async fn then_summary_empty(sess: &XySessionStore) {
 // ---- c2826 specs-compact：裸规则转场景补充步骤 ----
 
 /// 植入一个 v7 会话（2 条合法 user 消息）并向 active 段直接追加一行自定义内容。
-async fn plant_v7_with_extra_line(sess: &XySessionStore, id: &str, extra_line: &str) {
+async fn plant_jsonl_with_extra_line(sess: &XySessionStore, id: &str, extra_line: &str) {
     sess.ensure_mgr();
     sess.current_id.replace(Some(id.to_string()));
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
@@ -997,7 +997,7 @@ async fn plant_v7_with_extra_line(sess: &XySessionStore, id: &str, extra_line: &
 #[given("目录中植入含坏 JSON 行的 v7 会话 {id:string}")]
 async fn given_plant_bad_json_line(sess: &XySessionStore, id: String) {
     let id = strip_quotes(&id);
-    plant_v7_with_extra_line(sess, &id, "not-json{{broken").await;
+    plant_jsonl_with_extra_line(sess, &id, "not-json{{broken").await;
 }
 
 #[given("目录中植入含旧 untagged content 行的 v7 会话 {id:string}")]
@@ -1005,7 +1005,7 @@ async fn given_plant_legacy_untagged(sess: &XySessionStore, id: String) {
     let id = strip_quotes(&id);
     // 旧 c646 前形态：content 为裸字符串而非 dm1 tagged 数组。
     let line = r#"{"type":"message","id":"legacy-1","timestamp":1,"message":{"role":"user","content":"plain old string"}}"#;
-    plant_v7_with_extra_line(sess, &id, line).await;
+    plant_jsonl_with_extra_line(sess, &id, line).await;
 }
 
 #[then("坏行被跳过且其余条目正常加载")]
@@ -1101,7 +1101,7 @@ async fn then_header_lacks_cut(sess: &XySessionStore, id: String) {
 }
 
 #[then("新会话磁盘头 version 为 7 且外壳字段为 camelCase")]
-async fn then_header_v7_camelcase(sess: &XySessionStore) {
+async fn then_header_camelcase(sess: &XySessionStore) {
     let id = sess.current_id.borrow().clone().expect("current session");
     let header = first_disk_line(sess, &id);
     assert_eq!(header.get("version").and_then(|v| v.as_u64()), Some(7));

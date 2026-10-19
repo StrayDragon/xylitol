@@ -63,7 +63,7 @@ pub(crate) async fn _w_ar_react_run_collect(agent: &AgentState) {
     "MessageUpdate 含工具意图且早于任意 ToolExecutionStart；ToolExecutionStart 不早于 MessageEnd"
 )]
 pub(crate) fn _t_ar_intent_before_execution(agent: &AgentState) {
-    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, XyLlmMessage};
 
     let events = agent.events.borrow();
     let mut saw_intent = false;
@@ -73,7 +73,7 @@ pub(crate) fn _t_ar_intent_before_execution(agent: &AgentState) {
     for (i, evt) in events.iter().enumerate() {
         match evt {
             XyEvent::MessageUpdate {
-                message: Some(AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. })),
+                message: Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage { content, .. })),
                 ..
             } if content
                 .iter()
@@ -213,7 +213,7 @@ thread_local! {
     static AR_RUNNER_EVENTS: std::cell::RefCell<Vec<XyEvent>> =
         const { std::cell::RefCell::new(Vec::new()) };
     static AR_BANG_RESULT: std::cell::RefCell<
-        Option<Result<xylitol::protocol::ports::XyBashResult, XyDriverError>>,
+        Option<Result<xylitol_plugin_sdk::XyBashResult, XyDriverError>>,
     > = const { std::cell::RefCell::new(None) };
 }
 
@@ -526,7 +526,7 @@ pub(crate) fn _t_ar24_followup_not_injected(agent: &AgentState) {
     let history = agent_end.expect("expected AgentEnd");
     let injected = history.iter().any(|m| match m {
         xylitol::protocol::message::AgentMessage::Llm(
-            xylitol::protocol::message::LlmMessage::UserMessage { content, .. },
+            xylitol::protocol::message::XyLlmMessage::UserMessage { content, .. },
         ) => content.iter().any(|p| match p {
             xylitol::protocol::message::AgentPart::Text { text } => {
                 text.contains("停闸后不应注入的追问")
@@ -573,7 +573,7 @@ thread_local! {
 
 struct BddSlowTool {
     name: &'static str,
-    mode: xylitol::protocol::ports::XyToolExecutionMode,
+    mode: xylitol_plugin_sdk::XyToolExecutionMode,
     sleep_ms: u64,
 }
 
@@ -588,7 +588,7 @@ impl XyTool for BddSlowTool {
     fn parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({"type": "object", "properties": {}})
     }
-    fn execution_mode(&self) -> xylitol::protocol::ports::XyToolExecutionMode {
+    fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
         self.mode
     }
     async fn execute(
@@ -610,17 +610,17 @@ struct BddMultiToolModel {
 }
 
 #[async_trait::async_trait]
-impl xylitol::protocol::ports::XyModel for BddMultiToolModel {
+impl xylitol_plugin_sdk::XyModel for BddMultiToolModel {
     fn name(&self) -> &str {
         "bdd-batch-mock"
     }
     async fn generate_stream(
         &self,
-        _messages: Vec<xylitol::protocol::message::LlmMessage>,
+        _messages: Vec<xylitol::protocol::message::XyLlmMessage>,
         _tools: &[xylitol::protocol::model::XyToolSchema],
         _stream: bool,
-        _options: xylitol::protocol::ports::XyGenerateOptions,
-    ) -> Result<xylitol::protocol::ports::XyStream, xylitol::protocol::error::XyError> {
+        _options: xylitol_plugin_sdk::XyGenerateOptions,
+    ) -> Result<xylitol_plugin_sdk::XyStream, xylitol::protocol::error::XyError> {
         let chunks = self.rounds.lock().unwrap().remove(0);
         Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
     }
@@ -657,9 +657,9 @@ pub(crate) fn bdd_batch_make_runner(
     agent: &AgentState,
     tools: ToolSet,
     calls: &[(&str, &str)],
-    mode: xylitol::protocol::ports::XyBatchMode,
+    mode: xylitol_plugin_sdk::XyBatchMode,
 ) -> AgentRuntime {
-    use xylitol::protocol::ports::{XyEventSink, XyModel, XySessionStore};
+    use xylitol_plugin_sdk::{XyEventSink, XyModel, XySessionStore};
     BATCH_TIMING.with(|t| t.borrow_mut().clear());
     BATCH_EPOCH.with(|e| e.set(Some(std::time::Instant::now())));
     reset_fake_state();
@@ -669,7 +669,7 @@ pub(crate) fn bdd_batch_make_runner(
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn XySessionStore> = Arc::new(mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::infra::event::EventBus::new());
-    let builder: xylitol::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(BddMultiToolModel {
             rounds: std::sync::Mutex::new(rounds.clone()),
         }) as Arc<dyn XyModel>
@@ -705,14 +705,14 @@ pub(crate) fn _g_ar27_batch_default(agent: &AgentState, ws: &Workspace) {
     ws.init();
     let tools = ToolSet::from_iter(vec![Arc::new(BddSlowTool {
         name: "slow_safe",
-        mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+        mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
         sleep_ms: 80,
     }) as Arc<dyn XyTool>]);
     let runner = bdd_batch_make_runner(
         agent,
         tools,
         &[("slow_safe", r#"{"n":1}"#), ("slow_safe", r#"{"n":2}"#)],
-        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol_plugin_sdk::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -725,12 +725,12 @@ pub(crate) fn _g_ar28_overlap(agent: &AgentState, ws: &Workspace) {
     let tools = ToolSet::from_iter(vec![
         Arc::new(BddSlowTool {
             name: "slow_safe",
-            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 100,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
             name: "slow_barrier",
-            mode: xylitol::protocol::ports::XyToolExecutionMode::Sequential,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Sequential,
             sleep_ms: 40,
         }) as Arc<dyn XyTool>,
     ]);
@@ -742,7 +742,7 @@ pub(crate) fn _g_ar28_overlap(agent: &AgentState, ws: &Workspace) {
             ("slow_safe", r#"{"n":2}"#),
             ("slow_barrier", r#"{}"#),
         ],
-        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol_plugin_sdk::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -755,12 +755,12 @@ pub(crate) fn _g_ar28_windows(agent: &AgentState, ws: &Workspace) {
     let tools = ToolSet::from_iter(vec![
         Arc::new(BddSlowTool {
             name: "slow_safe",
-            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 60,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
             name: "slow_barrier",
-            mode: xylitol::protocol::ports::XyToolExecutionMode::Sequential,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Sequential,
             sleep_ms: 40,
         }) as Arc<dyn XyTool>,
     ]);
@@ -772,7 +772,7 @@ pub(crate) fn _g_ar28_windows(agent: &AgentState, ws: &Workspace) {
             ("slow_barrier", r#"{}"#),
             ("slow_safe", r#"{"n":2}"#),
         ],
-        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol_plugin_sdk::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -785,12 +785,12 @@ pub(crate) fn _g_ar28_mcp(agent: &AgentState, ws: &Workspace) {
     let tools = ToolSet::from_iter(vec![
         Arc::new(BddSlowTool {
             name: "slow_safe",
-            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 80,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
             name: "mcp__fake__x",
-            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 80,
         }) as Arc<dyn XyTool>,
     ]);
@@ -802,7 +802,7 @@ pub(crate) fn _g_ar28_mcp(agent: &AgentState, ws: &Workspace) {
             ("mcp__fake__x", r#"{}"#),
             ("slow_safe", r#"{"n":2}"#),
         ],
-        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol_plugin_sdk::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -813,12 +813,12 @@ pub(crate) fn _g_ar29_history(agent: &AgentState, ws: &Workspace) {
     let tools = ToolSet::from_iter(vec![
         Arc::new(BddSlowTool {
             name: "slow_a",
-            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 120,
         }) as Arc<dyn XyTool>,
         Arc::new(BddSlowTool {
             name: "slow_b",
-            mode: xylitol::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 30,
         }) as Arc<dyn XyTool>,
     ]);
@@ -826,7 +826,7 @@ pub(crate) fn _g_ar29_history(agent: &AgentState, ws: &Workspace) {
         agent,
         tools,
         &[("slow_a", r#"{}"#), ("slow_b", r#"{}"#)],
-        xylitol::protocol::ports::XyBatchMode::BarrierParallel,
+        xylitol_plugin_sdk::XyBatchMode::BarrierParallel,
     );
     ar_store_runner(runner);
 }
@@ -925,7 +925,7 @@ pub(crate) fn _t_ar29_history_order(agent: &AgentState) {
         .iter()
         .filter_map(|m| match m {
             xylitol::protocol::message::AgentMessage::Llm(
-                xylitol::protocol::message::LlmMessage::ToolResultMessage { tool_use_id, .. },
+                xylitol::protocol::message::XyLlmMessage::ToolResultMessage { tool_use_id, .. },
             ) => Some(tool_use_id.clone()),
             _ => None,
         })
@@ -941,7 +941,7 @@ pub(crate) fn _t_ar29_history_order(agent: &AgentState) {
 #[given("启动交互 bang 长命令后 abort")]
 pub(crate) async fn _g_ar10_abort_cancels_bang(_agent: &AgentState, _ws: &Workspace) {
     use xylitol::infra::bash_exec::InfraBashExecutor;
-    use xylitol::protocol::ports::{BashExecOpts, XyBashExecutor};
+    use xylitol_plugin_sdk::{BashExecOpts, XyBashExecutor};
     let executor = std::sync::Arc::new(InfraBashExecutor::new());
     let token = tokio_util::sync::CancellationToken::new();
     let exec_for_task = executor.clone();
@@ -1086,7 +1086,7 @@ pub(crate) fn t_c2826_first_turn_history(agent: &AgentState) {
 
 fn c2826_driver() -> (
     xylitol::app::core::driver::XyInProcessDriver,
-    std::sync::Arc<dyn xylitol::protocol::ports::XySessionStore>,
+    std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore>,
 ) {
     use std::sync::Arc;
     let agent = xylitol::app::core::composition::build_agent(
@@ -1096,7 +1096,7 @@ fn c2826_driver() -> (
     let mgr = xylitol::infra::session::SessionManager::new(
         tempfile::tempdir().unwrap().path().join("sessions"),
     );
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let driver = xylitol::app::core::driver::XyInProcessDriver::new(agent, store.clone());
     (driver, store)
 }

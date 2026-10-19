@@ -13,9 +13,9 @@ use crate::bdd::steps_otel_obs::OtelBdd;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol::protocol::model::XyChunk;
-use xylitol::protocol::ports::XyModel;
 use xylitol_official_plugin_provider_anthropic::provider::AnthropicMessagesAdapter;
 use xylitol_official_plugin_provider_openai::provider::trace::ObservationIoTier;
+use xylitol_plugin_sdk::XyModel;
 
 pub(crate) const BDD_MODEL: &str = "claude-bdd-mock";
 

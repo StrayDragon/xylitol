@@ -17,7 +17,7 @@ pub mod model_entry;
 pub mod obs_gate;
 pub mod obs_session;
 pub mod overflow;
-pub mod ports;
+mod ports;
 pub mod resource;
 pub mod session;
 pub mod session_env;
@@ -39,10 +39,12 @@ pub use compaction_settings::{
     CompactionSettings, effective_trigger_threshold, merge_compaction_runtime,
 };
 pub use compat::Compat;
-pub use dto::*;
+pub use dto::{
+    ContextTokenEstimate, Diagnostic, ImageContent, PromptCacheRead, TokenProvenance,
+    collect_text_parts, now_ms,
+};
 pub use error::{
-    AiBridgeError, XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError,
-    XyTrustError,
+    XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
 pub use generate::{
     ObsSessionContext, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_LLM, XyGenerateOptions,
@@ -51,7 +53,7 @@ pub use generate::{
 };
 pub use lifecycle::{XyEvent, XyEventError};
 pub use llm_project::project_for_llm;
-pub use message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
+pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
 pub use model::{
     THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap, XyChunk, XyModelConfig,
     XyModelKind, XyModelMeta, XyToolSchema, last_declared_thinking_level,
@@ -73,13 +75,15 @@ pub use overflow::{
     assistant_same_model, error_message_is_context_overflow, is_context_overflow_assistant,
 };
 pub use ports::{
-    AgentTodoGateway, BashExecOpts, HeaderBag, HttpHooks, LifecycleHandler, NoopCompaction,
-    NoopHookBus, OverflowCompactOutcome, SessionListEntry, XyBashExecutor, XyBashResult,
-    XyBatchMode, XyCompaction, XyCompactionFactory, XyEventSink, XyExportIo, XyHookBus,
-    XyHookOutcome, XyModel, XyModelBuilder, XyPermission, XyPermissionVerdict, XySecretResolver,
-    XySessionStore, XyStream, XyTool, XyToolCtx, XyToolExecutionMode, flatten_session_forest,
-    format_session_age, noop_compaction_factory, run_after_response, run_before_headers,
-    run_before_request, sanitize_session_display_name, should_compact,
+    AgentTodoGateway, AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway, BashChunk,
+    BashExecOpts, BashOutputSink, FS_TOOL_TIMEOUT_SECS, HeaderBag, HttpHooks, LifecycleHandler,
+    NoopCompaction, NoopHookBus, OverflowCompactOutcome, SessionListEntry, TypedTool,
+    XyBashExecutor, XyBashResult, XyBatchMode, XyCompaction, XyCompactionFactory, XyEventSink,
+    XyExportIo, XyHookBus, XyHookOutcome, XyModel, XyModelBuilder, XyPermission,
+    XyPermissionVerdict, XySecretResolver, XySessionStore, XyStream, XyTool, XyToolCtx,
+    XyToolExecutionMode, ask, bash, flatten_session_forest, format_session_age,
+    noop_compaction_factory, parse_tool_args, run_after_response, run_before_headers,
+    run_before_request, sanitize_session_display_name, should_compact, typed,
 };
 pub use settlement::{
     ContextTokenSettlement, ContextTokenSettlementReason, settle_from_session_entries,
@@ -94,8 +98,3 @@ pub use tool_timeout::{
     DEFAULT_TOOL_TIMEOUT_SECS, MAX_EXTERNAL_WAIT_SECS, MAX_TOOL_TIMEOUT_SECS, ToolTimeout,
     ToolTimeoutError,
 };
-
-/// Historical bridge alias; same type as [`XyGenerateOptions`].
-pub type AiBridgeGenerateOptions = XyGenerateOptions;
-/// Historical bridge alias; same type as [`ThinkingBudgets`].
-pub type AiBridgeThinkingBudgets = ThinkingBudgets;

@@ -1,6 +1,6 @@
 //! Product attach client: unary + notifications on one `WS /rpc`.
 //!
-//! Default carrier is the product binary frame. `with_wire_v3(false)` and
+//! Default carrier is the product binary frame. `with_envelope(false)` and
 //! `XYLITOL_WIRE_V3` are test injection; Host rejects JSON text as an illegal
 //! envelope. Handshake fails closed if the host does not advertise `fory-v3`.
 
@@ -24,8 +24,8 @@ use crate::protocol::RpcMessage;
 use crate::protocol::RpcResult;
 use crate::protocol::wire::codec;
 
-use super::wire_v3_client::WIRE_V3_ENV;
-use super::{HostClient, HostClientError, MuxStream, wire_v3_client};
+use super::envelope_client::ENVELOPE_FORMAT_ENV;
+use super::{HostClient, HostClientError, MuxStream, envelope_client};
 
 /// Product attach client. Unreachable Host is a hard error (no InProcess fallback).
 #[derive(Clone)]
@@ -35,7 +35,7 @@ pub struct HttpWsClient {
     idle_timeout: std::time::Duration,
     peer: Arc<tokio::sync::Mutex<Option<Arc<SharedWs>>>>,
     /// Test injection: `None` follows `XYLITOL_WIRE_V3` (unset = product on).
-    wire_v3: Option<bool>,
+    envelope: Option<bool>,
 }
 
 /// c2425 mux liveness knobs.
@@ -67,7 +67,7 @@ impl HttpWsClient {
             ping_interval: MUX_PING_INTERVAL,
             idle_timeout: MUX_IDLE_TIMEOUT,
             peer: Arc::new(tokio::sync::Mutex::new(None)),
-            wire_v3: None,
+            envelope: None,
         }
     }
 
@@ -83,17 +83,17 @@ impl HttpWsClient {
     }
 
     /// Test-only: force the product carrier on/off, bypassing `XYLITOL_WIRE_V3`.
-    pub fn with_wire_v3(mut self, on: bool) -> Self {
-        self.wire_v3 = Some(on);
+    pub fn with_envelope(mut self, on: bool) -> Self {
+        self.envelope = Some(on);
         self
     }
 
     /// Unset env → product carrier on. Connect-time freeze.
-    fn wire_v3_on(&self) -> bool {
-        self.wire_v3
-            .unwrap_or_else(|| match std::env::var_os(WIRE_V3_ENV) {
+    fn envelope_on(&self) -> bool {
+        self.envelope
+            .unwrap_or_else(|| match std::env::var_os(ENVELOPE_FORMAT_ENV) {
                 None => true,
-                Some(_) => wire_v3_client::env_enabled(),
+                Some(_) => envelope_client::env_enabled(),
             })
     }
 
@@ -194,7 +194,7 @@ impl HttpWsClient {
         let reader_peer = peer.clone();
         // c2834:连接的 v3 模式在 connect 时定格(首 binary 帧决定双方形态,
         // 运行中翻转 env 不追认既有连接)。
-        let v3 = self.wire_v3_on();
+        let v3 = self.envelope_on();
         tokio::spawn(async move {
             // v3 Event payload 的会话归属跟踪(Subscribed 帧填充)。
             let mut v3_session_id = String::new();
@@ -239,8 +239,8 @@ impl HttpWsClient {
                     },
                     Ok(Message::Binary(bytes)) if v3 => {
                         // c2834 task 3.1:下行 binary 帧(fory v3)。
-                        match wire_v3_client::decode_downlink(&bytes, &mut v3_session_id) {
-                            Ok(Some(wire_v3_client::Downlink::Response { rpc_id, result })) => {
+                        match envelope_client::decode_downlink(&bytes, &mut v3_session_id) {
+                            Ok(Some(envelope_client::Downlink::Response { rpc_id, result })) => {
                                 if let Some(tx) = reader_peer
                                     .pending
                                     .lock()
@@ -250,7 +250,7 @@ impl HttpWsClient {
                                     let _ = tx.send(Ok(result));
                                 }
                             }
-                            Ok(Some(wire_v3_client::Downlink::Notification(frame))) => {
+                            Ok(Some(envelope_client::Downlink::Notification(frame))) => {
                                 let _ = reader_peer.events.send(frame);
                             }
                             Ok(None) => {}
@@ -271,7 +271,7 @@ impl HttpWsClient {
 
         // c2834 task 3.3:开关开时首帧 binary describe 做格式硬闸(旧 host
         // 未宣告 fory-v3 = 致命,不静默降级、不重试风暴)。
-        if v3 && let Err(err) = negotiate_wire_v3(&peer, &url).await {
+        if v3 && let Err(err) = negotiate_envelope(&peer, &url).await {
             fail_peer(&peer, &err.to_string());
             return Err(err);
         }
@@ -293,12 +293,12 @@ impl HttpWsClient {
         // c2834 task 3.1:开关开时上行 fory binary 帧;pending 挂在数值
         // rpc_id(数字形态直通 / 非数字稳定哈希)之下,与 reader 的
         // `rpc_id.to_string()` 回填对齐。JSON 路径仍挂信封 rpcId,不动。
-        let (outgoing, pending_key) = if self.wire_v3_on() {
-            let bytes = wire_v3_client::client_request_bytes(rpc_id, method, &payload)
+        let (outgoing, pending_key) = if self.envelope_on() {
+            let bytes = envelope_client::client_request_bytes(rpc_id, method, &payload)
                 .map_err(|e| HostClientError::transport(format!("unary {method}: {e}")))?;
             (
                 Outgoing::Binary(bytes),
-                wire_v3_client::stable_rpc_id(rpc_id).to_string(),
+                envelope_client::stable_rpc_id(rpc_id).to_string(),
             )
         } else {
             let encoded = codec::jsonrpc_request(rpc_id, method, payload).to_string();
@@ -338,10 +338,10 @@ impl HttpWsClient {
 /// 连接下行切到 v3),describe 应答未宣告 `fory-v3`(旧 host 无 `formats`
 /// 字段 = 仅 jsonrpc)即致命失败——协议版本硬闸语义:不静默降级、不重试
 /// 风暴,错误信息指明退出路径。调用方负责 fail_peer 收尾半建连接。
-async fn negotiate_wire_v3(peer: &Arc<SharedWs>, url: &str) -> Result<(), HostClientError> {
+async fn negotiate_envelope(peer: &Arc<SharedWs>, url: &str) -> Result<(), HostClientError> {
     const NEGOTIATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
     // 协商发生在连接私有期(peer 尚未入库共享),专属 rpc_id 0 无碰撞。
-    let bytes = wire_v3_client::describe_request_bytes()
+    let bytes = envelope_client::describe_request_bytes()
         .map_err(|e| HostClientError::transport(format!("v3 negotiate: {e}")))?;
     let (tx, rx) = oneshot::channel();
     peer.pending
@@ -368,7 +368,7 @@ async fn negotiate_wire_v3(peer: &Arc<SharedWs>, url: &str) -> Result<(), HostCl
             None => "v3 negotiate: describe failed".into(),
         }));
     }
-    if !wire_v3_client::formats_advertise_v3(&result) {
+    if !envelope_client::formats_advertise_envelope(&result) {
         let formats = result
             .value
             .as_ref()
@@ -376,8 +376,8 @@ async fn negotiate_wire_v3(peer: &Arc<SharedWs>, url: &str) -> Result<(), HostCl
             .cloned()
             .unwrap_or(serde_json::Value::Null);
         return Err(HostClientError::transport(format!(
-            "{WIRE_V3_ENV}=1 but host {url} does not advertise wire format \"fory-v3\" \
-             (describe.formats={formats}); refusing downgrade — unset {WIRE_V3_ENV} or upgrade the host"
+            "{ENVELOPE_FORMAT_ENV}=1 but host {url} does not advertise wire format \"fory-v3\" \
+             (describe.formats={formats}); refusing downgrade — unset {ENVELOPE_FORMAT_ENV} or upgrade the host"
         )));
     }
     Ok(())
@@ -540,7 +540,7 @@ pub async fn dual_rail_event_parity()
     .map_err(|e| format!("serve: {e}"))?;
     let url = format!("http://127.0.0.1:{port}");
 
-    let client_v3 = HttpWsClient::new(url).with_wire_v3(true);
+    let client_v3 = HttpWsClient::new(url).with_envelope(true);
     let mut mux_v3 = client_v3.mux().await.map_err(|e| format!("v3 mux: {e}"))?;
 
     let d = client_v3
@@ -675,17 +675,17 @@ mod tests {
 
     /// c2854:产品默认 v3；覆盖旋钮仍可关（测试拒 JSON 文本）。
     #[test]
-    fn wire_v3_defaults_on() {
-        assert!(HttpWsClient::new("http://127.0.0.1:1").wire_v3_on());
+    fn envelope_defaults_on() {
+        assert!(HttpWsClient::new("http://127.0.0.1:1").envelope_on());
         assert!(
             HttpWsClient::new("http://127.0.0.1:1")
-                .with_wire_v3(true)
-                .wire_v3_on()
+                .with_envelope(true)
+                .envelope_on()
         );
         assert!(
             !HttpWsClient::new("http://127.0.0.1:1")
-                .with_wire_v3(false)
-                .wire_v3_on()
+                .with_envelope(false)
+                .envelope_on()
         );
     }
 
@@ -708,7 +708,7 @@ mod tests {
         )
         .await
         .expect("serve");
-        let client = HttpWsClient::new(format!("http://127.0.0.1:{port}")).with_wire_v3(true);
+        let client = HttpWsClient::new(format!("http://127.0.0.1:{port}")).with_envelope(true);
         let result = client
             .unary("host.describe", json!({}))
             .await
@@ -765,7 +765,7 @@ mod tests {
             }
         });
 
-        let client = HttpWsClient::new(format!("http://127.0.0.1:{port}")).with_wire_v3(true);
+        let client = HttpWsClient::new(format!("http://127.0.0.1:{port}")).with_envelope(true);
         let err = client
             .unary("host.describe", json!({}))
             .await

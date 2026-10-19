@@ -9,7 +9,8 @@ pub(crate) mod utils;
 
 pub use agent::{
     AgentBuilder, AgentRuntime, HookBlockedError, MCP_FIRST_TURN_GATE_TIMEOUT, ModelRegistry,
-    QueueMode, QueueStats, RuntimePorts, SessionStats, XyEvent, XyEventStream, max_turns_stop_hook,
+    QueueMode, QueueStats, RuntimeBaseline, SessionStats, XyEvent, XyEventStream,
+    max_turns_stop_hook,
 };
 pub use trust::{
     DefaultProjectTrust, TrustManager, TrustOption, TrustReason, TrustResolution,

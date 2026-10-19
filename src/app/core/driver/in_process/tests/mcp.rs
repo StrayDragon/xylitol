@@ -360,7 +360,7 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
     use crate::protocol::error::{XyError, XyToolError};
     use crate::protocol::message::XyStopReason;
     use crate::protocol::model::{XyChunk, XyModelConfig, XyModelMeta, XyToolSchema};
-    use crate::protocol::ports::{XyGenerateOptions, XyModel, XyStream, XyTool, XyToolCtx};
+    use xylitol_plugin_sdk::{XyGenerateOptions, XyModel, XyStream, XyTool, XyToolCtx};
 
     struct StubMcpTool(&'static str);
     #[async_trait]
@@ -393,7 +393,7 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _messages: Vec<crate::protocol::message::XyLlmMessage>,
             tools: &[XyToolSchema],
             _stream: bool,
             _options: XyGenerateOptions,
@@ -448,12 +448,12 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
         reg,
         builder,
         store_trait.clone(),
-        Arc::new(EventBus::new()) as Arc<dyn crate::protocol::ports::XyEventSink>,
+        Arc::new(EventBus::new()) as Arc<dyn xylitol_plugin_sdk::XyEventSink>,
         permission::allow_all_permission(),
     )
     .cwd(".")
     .tools(ToolSet::empty())
-    .build_ports()
+    .build_baseline()
     .materialize_runtime();
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();

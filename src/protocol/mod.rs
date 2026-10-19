@@ -1,10 +1,10 @@
-//! Protocol — shared contracts for wire, ports, and cross-layer vocabulary.
+//! Protocol — shared contracts for wire envelope and cross-layer vocabulary.
 //!
-//! Vocabulary, ports, and errors live in `xylitol-plugin-sdk`. This module
-//! re-exports them and keeps the remaining wire envelope until W2.2.
+//! Vocabulary, replaceable ports, and errors live in `xylitol-plugin-sdk`. This
+//! module re-exports them and keeps the remaining wire envelope until W2.2.
 
 pub use xylitol_plugin_sdk::{
-    compaction_config, error, lifecycle, message, model, model_entry, ports, resource, session,
+    compaction_config, error, lifecycle, message, model, model_entry, resource, session,
     source_info,
 };
 pub(crate) use xylitol_plugin_sdk::{tool_name, tool_timeout};
@@ -20,7 +20,7 @@ pub use wire::{
 };
 
 // Flat port re-exports for `crate::protocol::{XyModel, …}` call sites.
-pub use ports::{
+pub use xylitol_plugin_sdk::{
     BashExecOpts, LifecycleHandler, NoopHookBus, SessionListEntry, XyBashExecutor, XyBashResult,
     XyBatchMode, XyEventSink, XyExportIo, XyGenerateOptions, XyHookBus, XyHookOutcome, XyModel,
     XyModelBuilder, XyPermission, XyPermissionVerdict, XySecretResolver, XySessionStore, XyStream,
@@ -33,7 +33,7 @@ pub use error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
 pub use lifecycle::{XyEvent, XyEventError};
-pub use message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
+pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
 pub use model::{XyChunk, XyModelMeta, XyToolSchema};
 pub use model::{XyModelConfig, XyModelKind};
 pub use tool_name::{

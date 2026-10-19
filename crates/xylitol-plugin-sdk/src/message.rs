@@ -1,18 +1,13 @@
 //! Typed agent message types — session SSOT with LLM / Env composition (c1210).
 //!
-//! [`AgentMessage`] = `Llm(`[ `LlmMessage` ]`) | Env(`[ `EnvMessage` ]`)`.
-//! [`LlmMessage`] is a `pub use` alias of bridge `AiBridgeMessage` (wire-compatible).
+//! [`AgentMessage`] = `Llm(`[ `XyLlmMessage` ]`) | Env(`[ `EnvMessage` ]`)`.
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-// ── Bridge LLM leaf aliases (minimize call-site churn) ──────────────
-
 pub use crate::dto::{
-    AiBridgeImageContent as ImageContent, AiBridgeMessage as LlmMessage, AiBridgePart as AgentPart,
-    AiBridgeStopReason as XyStopReason, AiBridgeUsage as XyUsage, now_ms,
+    AgentPart, Diagnostic, ImageContent, XyLlmMessage, XyStopReason, XyUsage, XyUsageCost, now_ms,
 };
-pub use crate::dto::{AiBridgeUsageCost as XyUsageCost, Diagnostic};
 
 // ── EnvMessage / AgentMessage (domain composition) ─────────────────
 
@@ -194,12 +189,12 @@ fn custom_projection_text(content: &Value) -> Option<String> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AgentMessage {
-    Llm(LlmMessage),
+    Llm(XyLlmMessage),
     Env(EnvMessage),
 }
 
-impl From<LlmMessage> for AgentMessage {
-    fn from(value: LlmMessage) -> Self {
+impl From<XyLlmMessage> for AgentMessage {
+    fn from(value: XyLlmMessage) -> Self {
         Self::Llm(value)
     }
 }
@@ -211,7 +206,7 @@ impl From<EnvMessage> for AgentMessage {
 }
 
 impl AgentMessage {
-    pub fn as_llm(&self) -> Option<&LlmMessage> {
+    pub fn as_llm(&self) -> Option<&XyLlmMessage> {
         match self {
             Self::Llm(m) => Some(m),
             Self::Env(_) => None,
@@ -240,20 +235,20 @@ impl AgentMessage {
     }
 
     pub fn is_error(&self) -> bool {
-        self.as_llm().is_some_and(LlmMessage::is_error)
+        self.as_llm().is_some_and(XyLlmMessage::is_error)
     }
 
     pub fn user(text: impl Into<String>) -> Self {
-        Self::Llm(LlmMessage::user(text))
+        Self::Llm(XyLlmMessage::user(text))
     }
 
     /// User message with arbitrary parts (text + images, c1155 / dm7).
     pub fn user_parts(content: Vec<AgentPart>) -> Self {
-        Self::Llm(LlmMessage::user_parts(content))
+        Self::Llm(XyLlmMessage::user_parts(content))
     }
 
     pub fn assistant(text: impl Into<String>) -> Self {
-        Self::Llm(LlmMessage::assistant(text))
+        Self::Llm(XyLlmMessage::assistant(text))
     }
 
     pub fn tool_result(
@@ -272,7 +267,7 @@ impl AgentMessage {
         details: Option<Value>,
         is_error: bool,
     ) -> Self {
-        Self::Llm(LlmMessage::ToolResultMessage {
+        Self::Llm(XyLlmMessage::ToolResultMessage {
             tool_use_id: id.into(),
             tool_name: tool_name.into(),
             content,
@@ -336,7 +331,7 @@ mod tests {
 
     #[test]
     fn assistant_message_has_new_fields() {
-        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
+        let msg = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             content: vec![AgentPart::text("response")],
             stop_reason: Some(XyStopReason::Stop),
             usage: Some(XyUsage {
@@ -369,7 +364,7 @@ mod tests {
 
     #[test]
     fn assistant_error_message() {
-        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
+        let msg = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             content: vec![],
             stop_reason: Some(XyStopReason::Error),
             usage: None,
@@ -390,7 +385,7 @@ mod tests {
 
     #[test]
     fn tool_result_message_has_tool_name() {
-        let msg = AgentMessage::Llm(LlmMessage::ToolResultMessage {
+        let msg = AgentMessage::Llm(XyLlmMessage::ToolResultMessage {
             tool_use_id: "call-1".into(),
             tool_name: "read_file".into(),
             content: vec![AgentPart::text("file contents")],
@@ -474,7 +469,7 @@ mod tests {
 
     #[test]
     fn assistant_wire_uses_camel_case_stop_reason() {
-        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
+        let msg = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             content: vec![AgentPart::text("")],
             stop_reason: Some(XyStopReason::Error),
             usage: None,
@@ -534,7 +529,7 @@ mod tests {
         let msg: AgentMessage = serde_json::from_str(json).unwrap();
         assert!(matches!(
             msg,
-            AgentMessage::Llm(LlmMessage::UserMessage { .. })
+            AgentMessage::Llm(XyLlmMessage::UserMessage { .. })
         ));
     }
 
@@ -578,9 +573,9 @@ mod tests {
 
     #[test]
     fn llm_arm_is_bridge_dto_alias() {
-        // dm6: Llm leaf is bridge AiBridgeMessage (type alias), not a parallel enum.
-        let llm: LlmMessage = LlmMessage::user("hi");
-        let bridge: crate::dto::AiBridgeMessage = llm;
+        // dm6: Llm leaf is the sdk XyLlmMessage, not a parallel enum.
+        let llm: XyLlmMessage = XyLlmMessage::user("hi");
+        let bridge: crate::dto::XyLlmMessage = llm;
         assert_eq!(bridge.role_name(), "user");
     }
 

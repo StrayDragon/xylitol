@@ -1,7 +1,7 @@
 //! OpenAI Responses API adapter via `async-openai` [`Client`] (c1070).
 //!
 //! Streaming and non-streaming `/v1/responses` calls; reasoning text →
-//! [`AiBridgeChunk::ThinkingDelta`], output text → [`AiBridgeChunk::TextDelta`].
+//! [`XyChunk::ThinkingDelta`], output text → [`XyChunk::TextDelta`].
 
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -11,16 +11,12 @@ use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use serde_json::Value;
 
-use crate::dto::AiBridgeStream;
-use crate::dto::{AiBridgeChunk, AiBridgeToolSchema, Diagnostic};
-use crate::dto::{AiBridgeMessage, AiBridgePart, AiBridgeStopReason};
-use crate::error::AiBridgeError;
+use crate::dto::{AgentPart, Diagnostic, XyChunk, XyStopReason};
 use crate::hooks::HttpHooks;
 use crate::provider::native::openai_client::{OpenAiClientFactory, normalize_openai_v1_base};
 use crate::wire_policy::WirePolicy;
 
-use crate::provider::map_xy_result;
-use xylitol_plugin_sdk::message::LlmMessage;
+use xylitol_plugin_sdk::message::XyLlmMessage;
 use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSchema};
 
 /// Adapter for the OpenAI Responses API (`/v1/responses`).
@@ -64,10 +60,10 @@ impl OpenAiResponsesAdapter {
 
     fn build_body(
         &self,
-        messages: Vec<AiBridgeMessage>,
-        tools: &[AiBridgeToolSchema],
+        messages: Vec<XyLlmMessage>,
+        tools: &[XyToolSchema],
         stream: bool,
-        options: &crate::thinking::AiBridgeGenerateOptions,
+        options: &crate::thinking::XyGenerateOptions,
     ) -> Value {
         // Sole business-layout path for Responses bodies (c1890).
         super::assembler::ResponsesAssembler::new(self.wire_policy).assemble(
@@ -79,8 +75,8 @@ impl OpenAiResponsesAdapter {
         )
     }
 
-    fn map_err(err: async_openai::error::OpenAIError) -> AiBridgeError {
-        AiBridgeError::Provider(anyhow::anyhow!("{}", format_responses_error(&err)))
+    fn map_err(err: async_openai::error::OpenAIError) -> XyError {
+        XyError::Provider(anyhow::anyhow!("{}", format_responses_error(&err)))
     }
 }
 
@@ -145,10 +141,10 @@ fn extract_balanced_json_object(s: &str) -> Option<String> {
 /// Also returns full-replay omit diagnostics (illegal `thinkingSignature`).
 pub(crate) fn assemble_responses_body_with_diagnostics(
     model: &str,
-    messages: Vec<AiBridgeMessage>,
-    tools: &[AiBridgeToolSchema],
+    messages: Vec<XyLlmMessage>,
+    tools: &[XyToolSchema],
     stream: bool,
-    options: &crate::thinking::AiBridgeGenerateOptions,
+    options: &crate::thinking::XyGenerateOptions,
     wire_policy: &WirePolicy,
 ) -> (Value, Vec<Diagnostic>) {
     let (mut input_items, replay_diagnostics) =
@@ -194,14 +190,12 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
 
     let resolved = crate::thinking::resolve_from_options(
         options,
-        crate::thinking::AiBridgeThinkingAdapterKind::OpenAi,
+        crate::thinking::ThinkingAdapterKind::OpenAi,
     );
     crate::thinking::apply_thinking_openai_responses(&mut body, &resolved);
 
-    if matches!(
-        resolved,
-        crate::thinking::AiBridgeResolvedThinking::OpenAiEffort(_)
-    ) && wire_policy.allows_reasoning_encrypted_include()
+    if matches!(resolved, crate::thinking::ResolvedThinking::OpenAiEffort(_))
+        && wire_policy.allows_reasoning_encrypted_include()
     {
         body["include"] = serde_json::json!(["reasoning.encrypted_content"]);
     }
@@ -228,10 +222,10 @@ pub(crate) fn apply_responses_wire_policy(body: &mut Value, wire_policy: &WirePo
 impl OpenAiResponsesAdapter {
     async fn generate_sse(
         &self,
-        messages: Vec<AiBridgeMessage>,
-        tools: &[AiBridgeToolSchema],
-        options: crate::thinking::AiBridgeGenerateOptions,
-    ) -> Result<AiBridgeStream, AiBridgeError> {
+        messages: Vec<XyLlmMessage>,
+        tools: &[XyToolSchema],
+        options: crate::thinking::XyGenerateOptions,
+    ) -> Result<XyStream, XyError> {
         let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent_obs(
             "openai-responses",
             &self.model,
@@ -260,10 +254,10 @@ impl OpenAiResponsesAdapter {
 
     async fn generate_json(
         &self,
-        messages: Vec<AiBridgeMessage>,
-        tools: &[AiBridgeToolSchema],
-        options: crate::thinking::AiBridgeGenerateOptions,
-    ) -> Result<AiBridgeStream, AiBridgeError> {
+        messages: Vec<XyLlmMessage>,
+        tools: &[XyToolSchema],
+        options: crate::thinking::XyGenerateOptions,
+    ) -> Result<XyStream, XyError> {
         let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent_obs(
             "openai-responses",
             &self.model,
@@ -302,15 +296,15 @@ impl XyModel for OpenAiResponsesAdapter {
 
     async fn generate_stream(
         &self,
-        messages: Vec<LlmMessage>,
+        messages: Vec<XyLlmMessage>,
         tools: &[XyToolSchema],
         stream: bool,
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
         if stream {
-            map_xy_result(self.generate_sse(messages, tools, options).await)
+            self.generate_sse(messages, tools, options).await
         } else {
-            map_xy_result(self.generate_json(messages, tools, options).await)
+            self.generate_json(messages, tools, options).await
         }
     }
 }
@@ -322,7 +316,7 @@ fn responses_sdk_stream(
     + 'static,
     trace: Option<crate::provider::trace::ProviderRequestTrace>,
     wire_policy: WirePolicy,
-) -> Pin<Box<dyn Stream<Item = Result<AiBridgeChunk, AiBridgeError>> + Send>> {
+) -> Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>> {
     Box::pin(async_stream::try_stream! {
         let mut state = ResponsesStreamState {
             wire_policy,
@@ -335,13 +329,13 @@ fn responses_sdk_stream(
             )
             .await
             .map_err(|_| {
-                AiBridgeError::Provider(anyhow::anyhow!(
+                XyError::Provider(anyhow::anyhow!(
                     "provider SSE idle: no bytes within {}s",
                     crate::provider::native::wait_bounds::SSE_IDLE.as_secs()
                 ))
             })? {
             let data = item.map_err(|e| {
-                AiBridgeError::Provider(anyhow::anyhow!("{}", format_responses_error(&e)))
+                XyError::Provider(anyhow::anyhow!("{}", format_responses_error(&e)))
             })?;
 
             let event_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("");
@@ -381,21 +375,18 @@ pub struct ResponsesStreamState {
 /// `created_at`); those events are ignored rather than failing deserialization.
 ///
 /// Public for BDD / harness (c1250 pab13).
-pub fn map_responses_sse_event(
-    data: &Value,
-    state: &mut ResponsesStreamState,
-) -> Vec<AiBridgeChunk> {
+pub fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -> Vec<XyChunk> {
     let event_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("");
     match event_type {
         "response.reasoning_text.delta" => data
             .get("delta")
             .and_then(|v| v.as_str())
-            .map(|d| vec![AiBridgeChunk::ThinkingDelta(d.to_string())])
+            .map(|d| vec![XyChunk::ThinkingDelta(d.to_string())])
             .unwrap_or_default(),
         "response.output_text.delta" => data
             .get("delta")
             .and_then(|v| v.as_str())
-            .map(|d| vec![AiBridgeChunk::TextDelta(d.to_string())])
+            .map(|d| vec![XyChunk::TextDelta(d.to_string())])
             .unwrap_or_default(),
         "response.output_item.added" => {
             let Some(item) = data.get("item") else {
@@ -422,7 +413,7 @@ pub fn map_responses_sse_event(
             state
                 .function_calls
                 .insert(id.clone(), (name.clone(), String::new(), true));
-            vec![AiBridgeChunk::ToolCallStart { id, name }]
+            vec![XyChunk::ToolCallStart { id, name }]
         }
         "response.function_call_arguments.delta" => {
             let (Some(item_id), Some(delta)) = (
@@ -438,14 +429,14 @@ pub fn map_responses_sse_event(
             let mut out = Vec::new();
             if !entry.2 {
                 entry.2 = true;
-                out.push(AiBridgeChunk::ToolCallStart {
+                out.push(XyChunk::ToolCallStart {
                     id: item_id.to_string(),
                     name: entry.0.clone(),
                 });
             }
             entry.1.push_str(delta);
             let args = crate::dto::parse_streaming_json(&entry.1);
-            out.push(AiBridgeChunk::ToolCallDelta {
+            out.push(XyChunk::ToolCallDelta {
                 id: item_id.to_string(),
                 name: entry.0.clone(),
                 args_delta: delta.to_string(),
@@ -503,12 +494,12 @@ pub fn map_responses_sse_event(
                 .unwrap_or_else(|_| crate::dto::parse_streaming_json(&args_str));
             let mut out = Vec::new();
             if !started {
-                out.push(AiBridgeChunk::ToolCallStart {
+                out.push(XyChunk::ToolCallStart {
                     id: id.clone(),
                     name: name.clone(),
                 });
             }
-            out.push(AiBridgeChunk::ToolCallEnd { id, name, args });
+            out.push(XyChunk::ToolCallEnd { id, name, args });
             out
         }
         "response.usage" => {
@@ -525,10 +516,8 @@ pub fn map_responses_sse_event(
             }
             Vec::new()
         }
-        "response.completed" => finish_responses_terminal(data, state, AiBridgeStopReason::Stop),
-        "response.incomplete" => {
-            finish_responses_terminal(data, state, AiBridgeStopReason::MaxTokens)
-        }
+        "response.completed" => finish_responses_terminal(data, state, XyStopReason::Stop),
+        "response.incomplete" => finish_responses_terminal(data, state, XyStopReason::MaxTokens),
         // Partial lifecycle events (`response.created`, `response.in_progress`, …)
         // must not fail the stream on compatible APIs.
         _ => Vec::new(),
@@ -539,8 +528,8 @@ pub fn map_responses_sse_event(
 fn finish_responses_terminal(
     data: &Value,
     state: &mut ResponsesStreamState,
-    finish_reason: AiBridgeStopReason,
-) -> Vec<AiBridgeChunk> {
+    finish_reason: XyStopReason,
+) -> Vec<XyChunk> {
     if let Some(usage) = data
         .get("response")
         .and_then(|r| r.get("usage"))
@@ -573,7 +562,7 @@ fn finish_responses_terminal(
                 crate::dto::PromptCacheRead::NotApplicable
             };
             Some(
-                crate::dto::AiBridgeUsage {
+                crate::dto::XyUsage {
                     input: state.usage_input,
                     output: state.usage_output,
                     total_tokens: usage_total,
@@ -585,7 +574,7 @@ fn finish_responses_terminal(
             None
         }
     });
-    out.push(AiBridgeChunk::Done {
+    out.push(XyChunk::Done {
         finish_reason,
         usage,
     });
@@ -597,7 +586,7 @@ fn finish_responses_terminal(
 fn backfill_reasoning_encrypted_from_terminal(
     data: &Value,
     state: &mut ResponsesStreamState,
-) -> Vec<AiBridgeChunk> {
+) -> Vec<XyChunk> {
     let Some(output) = data
         .get("response")
         .and_then(|r| r.get("output"))
@@ -658,14 +647,14 @@ fn reasoning_item_display_text(item: &Value) -> String {
     join_texts("content")
 }
 
-fn thinking_end_from_reasoning_item(item: &Value) -> AiBridgeChunk {
-    AiBridgeChunk::ThinkingEnd {
+fn thinking_end_from_reasoning_item(item: &Value) -> XyChunk {
+    XyChunk::ThinkingEnd {
         thinking: reasoning_item_display_text(item),
         thinking_signature: Some(item.to_string()),
     }
 }
 
-fn parse_responses_output(json: &Value, wire_policy: WirePolicy) -> Vec<AiBridgeChunk> {
+fn parse_responses_output(json: &Value, wire_policy: WirePolicy) -> Vec<XyChunk> {
     let mut chunks = Vec::new();
 
     if let Some(output) = json.get("output").and_then(|v| v.as_array()) {
@@ -679,7 +668,7 @@ fn parse_responses_output(json: &Value, wire_policy: WirePolicy) -> Vec<AiBridge
                     if let Some(content) = item.get("content").and_then(|v| v.as_array()) {
                         for block in content {
                             if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
-                                chunks.push(AiBridgeChunk::TextDelta(text.to_string()));
+                                chunks.push(XyChunk::TextDelta(text.to_string()));
                             }
                         }
                     }
@@ -700,11 +689,11 @@ fn parse_responses_output(json: &Value, wire_policy: WirePolicy) -> Vec<AiBridge
                         Some(v) => v.clone(),
                         None => serde_json::json!({}),
                     };
-                    chunks.push(AiBridgeChunk::ToolCallStart {
+                    chunks.push(XyChunk::ToolCallStart {
                         id: id.clone(),
                         name: name.clone(),
                     });
-                    chunks.push(AiBridgeChunk::ToolCallEnd { id, name, args });
+                    chunks.push(XyChunk::ToolCallEnd { id, name, args });
                 }
                 _ => {}
             }
@@ -720,25 +709,25 @@ fn parse_responses_output(json: &Value, wire_policy: WirePolicy) -> Vec<AiBridge
         }
     });
 
-    chunks.push(AiBridgeChunk::Done {
-        finish_reason: AiBridgeStopReason::Stop,
+    chunks.push(XyChunk::Done {
+        finish_reason: XyStopReason::Stop,
         usage,
     });
 
     chunks
 }
 
-// ── AiBridgeMessage conversion ────────────────────────────────────
+// ── XyLlmMessage conversion ────────────────────────────────────
 
-/// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
-pub fn messages_to_responses_input(messages: &[AiBridgeMessage]) -> Vec<Value> {
+/// Convert a slice of [`XyLlmMessage`] values to OpenAI Responses `input` items.
+pub fn messages_to_responses_input(messages: &[XyLlmMessage]) -> Vec<Value> {
     messages_to_responses_input_with_diagnostics(messages).0
 }
 
 /// Like [`messages_to_responses_input`], also returning omit/replay diagnostics
 /// (e.g. illegal `thinkingSignature` JSON omitted under full-replay).
 pub fn messages_to_responses_input_with_diagnostics(
-    messages: &[AiBridgeMessage],
+    messages: &[XyLlmMessage],
 ) -> (Vec<Value>, Vec<Diagnostic>) {
     let mut diagnostics = Vec::new();
     let items = convert_messages_to_input_items(messages, &mut diagnostics);
@@ -747,8 +736,8 @@ pub fn messages_to_responses_input_with_diagnostics(
 
 /// Build Responses `input` with optional system/developer prepend (c1270 / pi align).
 pub fn messages_to_responses_input_with_options(
-    messages: &[AiBridgeMessage],
-    options: &crate::thinking::AiBridgeGenerateOptions,
+    messages: &[XyLlmMessage],
+    options: &crate::thinking::XyGenerateOptions,
 ) -> Vec<Value> {
     let (mut items, _) = messages_to_responses_input_with_diagnostics(messages);
     prepend_system_prompt_item(
@@ -783,16 +772,16 @@ fn prepend_system_prompt_item(
     );
 }
 
-/// Convert a slice of [`AiBridgeMessage`] values to OpenAI Responses `input` items.
+/// Convert a slice of [`XyLlmMessage`] values to OpenAI Responses `input` items.
 fn convert_messages_to_input_items(
-    messages: &[AiBridgeMessage],
+    messages: &[XyLlmMessage],
     diagnostics: &mut Vec<Diagnostic>,
 ) -> Vec<Value> {
     let mut items: Vec<Value> = Vec::new();
 
     for msg in messages {
         match msg {
-            AiBridgeMessage::UserMessage { content, .. } => {
+            XyLlmMessage::UserMessage { content, .. } => {
                 let text = collect_user_text_parts(content);
                 if !text.is_empty() {
                     // Responses API requires each input item to declare its
@@ -806,10 +795,10 @@ fn convert_messages_to_input_items(
                     }));
                 }
             }
-            AiBridgeMessage::AssistantMessage { content, .. } => {
+            XyLlmMessage::AssistantMessage { content, .. } => {
                 // Full-replay only: opaque thinkingSignature → reasoning item (pi).
                 for part in content {
-                    if let AiBridgePart::Thinking {
+                    if let AgentPart::Thinking {
                         thinking_signature: Some(sig),
                         ..
                     } = part
@@ -837,7 +826,7 @@ fn convert_messages_to_input_items(
                 let tool_calls: Vec<Value> = content
                     .iter()
                     .filter_map(|p| match p {
-                        AiBridgePart::ToolCall {
+                        AgentPart::ToolCall {
                             id,
                             name,
                             arguments,
@@ -865,7 +854,7 @@ fn convert_messages_to_input_items(
                     items.extend(tool_calls);
                 }
             }
-            AiBridgeMessage::ToolResultMessage {
+            XyLlmMessage::ToolResultMessage {
                 tool_use_id,
                 content,
                 ..
@@ -884,7 +873,7 @@ fn convert_messages_to_input_items(
 }
 
 /// User / tool-result text (Text + Thinking for tool output payloads).
-fn collect_user_text_parts(parts: &[AiBridgePart]) -> String {
+fn collect_user_text_parts(parts: &[AgentPart]) -> String {
     let mut buf = String::new();
     for part in parts {
         if let Some(text) = part.as_text() {
@@ -895,10 +884,10 @@ fn collect_user_text_parts(parts: &[AiBridgePart]) -> String {
 }
 
 /// Assistant `output_text` MUST be Text-only (c1270): never merge Thinking.
-fn collect_assistant_output_text(parts: &[AiBridgePart]) -> String {
+fn collect_assistant_output_text(parts: &[AgentPart]) -> String {
     let mut buf = String::new();
     for part in parts {
-        if let AiBridgePart::Text { text } = part {
+        if let AgentPart::Text { text } = part {
             buf.push_str(text);
         }
     }
@@ -908,7 +897,7 @@ fn collect_assistant_output_text(parts: &[AiBridgePart]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::{AiBridgeMessage, AiBridgePart};
+    use crate::dto::{AgentPart, XyLlmMessage};
 
     /// Every Responses API input item MUST declare a `type`, or OpenAI rejects
     /// the request with "Cannot determine type of 'item'" once non-message
@@ -916,8 +905,8 @@ mod tests {
     #[test]
     fn all_items_have_type_field() {
         let msgs = vec![
-            AiBridgeMessage::user("hello"),
-            AiBridgeMessage::assistant("hi there"),
+            XyLlmMessage::user("hello"),
+            XyLlmMessage::assistant("hi there"),
         ];
         let items = messages_to_responses_input(&msgs);
         for item in &items {
@@ -933,11 +922,11 @@ mod tests {
     #[test]
     fn tool_round_items_are_well_typed() {
         let msgs = vec![
-            AiBridgeMessage::user("list files"),
-            AiBridgeMessage::AssistantMessage {
+            XyLlmMessage::user("list files"),
+            XyLlmMessage::AssistantMessage {
                 content: vec![
-                    AiBridgePart::text("let me check"),
-                    AiBridgePart::ToolCall {
+                    AgentPart::text("let me check"),
+                    AgentPart::ToolCall {
                         id: "call-1".into(),
                         name: "ls".into(),
                         arguments: serde_json::json!({"path": "."}),
@@ -953,12 +942,7 @@ mod tests {
                 timestamp: 0,
                 diagnostics: Vec::new(),
             },
-            AiBridgeMessage::tool_result(
-                "call-1",
-                "ls",
-                vec![AiBridgePart::text("file.txt")],
-                false,
-            ),
+            XyLlmMessage::tool_result("call-1", "ls", vec![AgentPart::text("file.txt")], false),
         ];
         let items = messages_to_responses_input(&msgs);
         // user message, assistant message, function_call, function_call_output
@@ -989,8 +973,8 @@ mod tests {
     fn assistant_tool_only_round_emits_function_call_not_empty_message() {
         // Assistant round with a tool_call and NO text must not emit an empty
         // message item (would confuse the API); only the function_call item.
-        let msgs = vec![AiBridgeMessage::AssistantMessage {
-            content: vec![AiBridgePart::ToolCall {
+        let msgs = vec![XyLlmMessage::AssistantMessage {
+            content: vec![AgentPart::ToolCall {
                 id: "c1".into(),
                 name: "ls".into(),
                 arguments: serde_json::json!({}),
@@ -1036,7 +1020,7 @@ mod tests {
         let mut state = ResponsesStreamState::default();
         let chunks = map_responses_sse_event(&data, &mut state);
         assert_eq!(chunks.len(), 1);
-        assert!(matches!(&chunks[0], AiBridgeChunk::TextDelta(t) if t == "hello"));
+        assert!(matches!(&chunks[0], XyChunk::TextDelta(t) if t == "hello"));
     }
 
     #[test]
@@ -1051,7 +1035,7 @@ mod tests {
         let chunks = map_responses_sse_event(&data, &mut state);
         assert_eq!(chunks.len(), 1);
         match &chunks[0] {
-            AiBridgeChunk::Done { usage: Some(u), .. } => {
+            XyChunk::Done { usage: Some(u), .. } => {
                 assert_eq!(u.input, 3);
                 assert_eq!(u.output, 5);
                 assert_eq!(u.total_tokens, 8);
@@ -1071,7 +1055,7 @@ mod tests {
         let start = map_responses_sse_event(&added, &mut state);
         assert!(matches!(
             &start[..],
-            [AiBridgeChunk::ToolCallStart { id, name }] if id == "fc_1" && name == "ls"
+            [XyChunk::ToolCallStart { id, name }] if id == "fc_1" && name == "ls"
         ));
 
         let d1 = serde_json::json!({
@@ -1081,7 +1065,7 @@ mod tests {
         });
         let mid = map_responses_sse_event(&d1, &mut state);
         assert!(
-            matches!(&mid[..], [AiBridgeChunk::ToolCallDelta { id, args_delta, .. }] if id == "fc_1" && args_delta == "{\"path\":"),
+            matches!(&mid[..], [XyChunk::ToolCallDelta { id, args_delta, .. }] if id == "fc_1" && args_delta == "{\"path\":"),
             "got {mid:?}"
         );
 
@@ -1091,7 +1075,7 @@ mod tests {
             "delta": "\"/tmp\"}"
         });
         let mid2 = map_responses_sse_event(&d2, &mut state);
-        assert!(matches!(&mid2[..], [AiBridgeChunk::ToolCallDelta { .. }]));
+        assert!(matches!(&mid2[..], [XyChunk::ToolCallDelta { .. }]));
 
         let done = serde_json::json!({
             "type": "response.output_item.done",
@@ -1104,7 +1088,7 @@ mod tests {
         });
         let end = map_responses_sse_event(&done, &mut state);
         match &end[..] {
-            [AiBridgeChunk::ToolCallEnd { id, name, args }] => {
+            [XyChunk::ToolCallEnd { id, name, args }] => {
                 assert_eq!(id, "fc_1");
                 assert_eq!(name, "ls");
                 assert_eq!(args["path"], "/tmp");
@@ -1141,10 +1125,10 @@ mod tests {
     fn assemble_omits_wire_knobs_under_default_policy() {
         let (body, _) = assemble_responses_body_with_diagnostics(
             "m",
-            vec![AiBridgeMessage::user("hi")],
+            vec![XyLlmMessage::user("hi")],
             &[],
             false,
-            &crate::thinking::AiBridgeGenerateOptions::default(),
+            &crate::thinking::XyGenerateOptions::default(),
             &WirePolicy::default(),
         );
         assert!(body.get("previous_response_id").is_none());
@@ -1185,11 +1169,11 @@ mod tests {
     #[test]
     fn build_body_injects_reasoning_effort() {
         let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
-        let opts = crate::thinking::AiBridgeGenerateOptions {
+        let opts = crate::thinking::XyGenerateOptions {
             thinking_level: "medium".into(),
             ..Default::default()
         };
-        let body = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &opts);
+        let body = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &opts);
         assert_eq!(body["reasoning"]["effort"], "medium");
         assert_eq!(body["reasoning"]["summary"], "auto");
         assert_eq!(body["store"], false);
@@ -1198,15 +1182,15 @@ mod tests {
             serde_json::json!(["reasoning.encrypted_content"])
         );
 
-        let off = crate::thinking::AiBridgeGenerateOptions::default();
-        let body_off = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &off);
+        let off = crate::thinking::XyGenerateOptions::default();
+        let body_off = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &off);
         assert!(body_off.get("reasoning").is_none());
         assert_eq!(body_off["store"], false);
         assert!(body_off.get("include").is_none());
 
         let mut map = std::collections::HashMap::new();
         map.insert("high".into(), Some("max".into()));
-        let mapped = crate::thinking::AiBridgeGenerateOptions {
+        let mapped = crate::thinking::XyGenerateOptions {
             thinking_level: "high".into(),
             level_map: map,
             thinking_budgets: None,
@@ -1215,7 +1199,7 @@ mod tests {
             obs_session: Default::default(),
             max_output_tokens: None,
         };
-        let body_map = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &mapped);
+        let body_map = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &mapped);
         assert_eq!(body_map["reasoning"]["effort"], "max");
         assert_eq!(body_map["reasoning"]["summary"], "auto");
     }
@@ -1229,11 +1213,11 @@ mod tests {
             None,
             crate::wire_policy::WirePolicy::for_compat(crate::wire_policy::Compat::Deepseek),
         );
-        let opts = crate::thinking::AiBridgeGenerateOptions {
+        let opts = crate::thinking::XyGenerateOptions {
             thinking_level: "medium".into(),
             ..Default::default()
         };
-        let body = adapter.build_body(vec![AiBridgeMessage::user("hi")], &[], false, &opts);
+        let body = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &opts);
         assert_eq!(body["reasoning"]["effort"], "medium");
         assert_eq!(body["store"], false);
         assert!(
@@ -1247,27 +1231,27 @@ mod tests {
         let adapter =
             OpenAiResponsesAdapter::new("sk".into(), "deepseek-v4-flash".into(), None, None);
         let tools = [
-            AiBridgeToolSchema {
+            XyToolSchema {
                 name: "read".into(),
                 description: "r".into(),
                 parameters: serde_json::json!({"type": "object"}),
             },
-            AiBridgeToolSchema {
+            XyToolSchema {
                 name: "mcp__context7__resolve-library-id".into(),
                 description: "docs".into(),
                 parameters: serde_json::json!({"type": "object"}),
             },
-            AiBridgeToolSchema {
+            XyToolSchema {
                 name: "mcp__lspz__get_diagnostics".into(),
                 description: "lsp".into(),
                 parameters: serde_json::json!({"type": "object"}),
             },
         ];
         let body = adapter.build_body(
-            vec![AiBridgeMessage::user("hi")],
+            vec![XyLlmMessage::user("hi")],
             &tools,
             false,
-            &crate::thinking::AiBridgeGenerateOptions {
+            &crate::thinking::XyGenerateOptions {
                 thinking_level: "high".into(),
                 ..Default::default()
             },
@@ -1294,16 +1278,16 @@ mod tests {
     #[test]
     fn build_body_tools_strict_false() {
         let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
-        let tools = [AiBridgeToolSchema {
+        let tools = [XyToolSchema {
             name: "bash".into(),
             description: "run".into(),
             parameters: serde_json::json!({"type": "object"}),
         }];
         let body = adapter.build_body(
-            vec![AiBridgeMessage::user("hi")],
+            vec![XyLlmMessage::user("hi")],
             &tools,
             false,
-            &crate::thinking::AiBridgeGenerateOptions {
+            &crate::thinking::XyGenerateOptions {
                 thinking_level: "medium".into(),
                 ..Default::default()
             },
@@ -1327,7 +1311,7 @@ mod tests {
         let chunks = map_responses_sse_event(&event, &mut state);
         match &chunks[..] {
             [
-                AiBridgeChunk::ThinkingEnd {
+                XyChunk::ThinkingEnd {
                     thinking,
                     thinking_signature: Some(sig),
                 },
@@ -1343,8 +1327,8 @@ mod tests {
 
     #[test]
     fn system_prompt_prepends_developer_when_thinking_on() {
-        let msgs = vec![AiBridgeMessage::user("hi")];
-        let opts = crate::thinking::AiBridgeGenerateOptions {
+        let msgs = vec![XyLlmMessage::user("hi")];
+        let opts = crate::thinking::XyGenerateOptions {
             thinking_level: "medium".into(),
             system_prompt: Some("You are xylitol".into()),
             ..Default::default()
@@ -1357,8 +1341,8 @@ mod tests {
 
     #[test]
     fn system_prompt_prepends_system_when_thinking_off() {
-        let msgs = vec![AiBridgeMessage::user("hi")];
-        let opts = crate::thinking::AiBridgeGenerateOptions {
+        let msgs = vec![XyLlmMessage::user("hi")];
+        let opts = crate::thinking::XyGenerateOptions {
             system_prompt: Some("sys".into()),
             ..Default::default()
         };
@@ -1368,16 +1352,16 @@ mod tests {
 
     #[test]
     fn assistant_thinking_without_signature_not_in_output_text() {
-        let msgs = vec![AiBridgeMessage::AssistantMessage {
+        let msgs = vec![XyLlmMessage::AssistantMessage {
             content: vec![
-                AiBridgePart::Thinking {
+                AgentPart::Thinking {
                     thinking: "secret chain of thought".into(),
                     redacted: false,
                     thinking_signature: None,
                 },
-                AiBridgePart::text("visible"),
+                AgentPart::text("visible"),
             ],
-            stop_reason: Some(AiBridgeStopReason::Stop),
+            stop_reason: Some(XyStopReason::Stop),
             usage: None,
             api: "openai-responses".into(),
             provider: "test".into(),
@@ -1404,16 +1388,16 @@ mod tests {
             "id": "rs_1",
             "summary": [{"type": "summary_text", "text": "plan"}]
         });
-        let msgs = vec![AiBridgeMessage::AssistantMessage {
+        let msgs = vec![XyLlmMessage::AssistantMessage {
             content: vec![
-                AiBridgePart::Thinking {
+                AgentPart::Thinking {
                     thinking: "plan".into(),
                     redacted: false,
                     thinking_signature: Some(reasoning.to_string()),
                 },
-                AiBridgePart::text("ok"),
+                AgentPart::text("ok"),
             ],
-            stop_reason: Some(AiBridgeStopReason::Stop),
+            stop_reason: Some(XyStopReason::Stop),
             usage: None,
             api: "openai-responses".into(),
             provider: "test".into(),
@@ -1437,16 +1421,16 @@ mod tests {
             "encrypted_content": "",
             "summary": []
         });
-        let msgs = vec![AiBridgeMessage::AssistantMessage {
+        let msgs = vec![XyLlmMessage::AssistantMessage {
             content: vec![
-                AiBridgePart::Thinking {
+                AgentPart::Thinking {
                     thinking: "t".into(),
                     redacted: false,
                     thinking_signature: Some(reasoning.to_string()),
                 },
-                AiBridgePart::text("hi"),
+                AgentPart::text("hi"),
             ],
-            stop_reason: Some(AiBridgeStopReason::Stop),
+            stop_reason: Some(XyStopReason::Stop),
             usage: None,
             api: "openai-responses".into(),
             provider: "test".into(),
@@ -1464,16 +1448,16 @@ mod tests {
 
     #[test]
     fn illegal_thinking_signature_omitted_not_merged_into_text() {
-        let msgs = vec![AiBridgeMessage::AssistantMessage {
+        let msgs = vec![XyLlmMessage::AssistantMessage {
             content: vec![
-                AiBridgePart::Thinking {
+                AgentPart::Thinking {
                     thinking: "should-not-leak".into(),
                     redacted: false,
                     thinking_signature: Some("not-json{{{{".into()),
                 },
-                AiBridgePart::text("visible"),
+                AgentPart::text("visible"),
             ],
-            stop_reason: Some(AiBridgeStopReason::Stop),
+            stop_reason: Some(XyStopReason::Stop),
             usage: None,
             api: "openai-responses".into(),
             provider: "test".into(),
@@ -1511,11 +1495,11 @@ mod tests {
     #[test]
     fn compact_shaped_history_does_not_invent_old_reasoning_signature() {
         let msgs = vec![
-            AiBridgeMessage::user("[Context summary: prior turns summarized]"),
-            AiBridgeMessage::user("continue after compact"),
-            AiBridgeMessage::AssistantMessage {
-                content: vec![AiBridgePart::text("kept reply")],
-                stop_reason: Some(AiBridgeStopReason::Stop),
+            XyLlmMessage::user("[Context summary: prior turns summarized]"),
+            XyLlmMessage::user("continue after compact"),
+            XyLlmMessage::AssistantMessage {
+                content: vec![AgentPart::text("kept reply")],
+                stop_reason: Some(XyStopReason::Stop),
                 usage: None,
                 api: "openai-responses".into(),
                 provider: "test".into(),
@@ -1551,17 +1535,17 @@ mod tests {
             "summary": [{"type": "summary_text", "text": "plan"}]
         });
         let msgs = vec![
-            AiBridgeMessage::user("[Context summary: prior turns summarized]"),
-            AiBridgeMessage::AssistantMessage {
+            XyLlmMessage::user("[Context summary: prior turns summarized]"),
+            XyLlmMessage::AssistantMessage {
                 content: vec![
-                    AiBridgePart::Thinking {
+                    AgentPart::Thinking {
                         thinking: "plan".into(),
                         redacted: false,
                         thinking_signature: Some(reasoning.to_string()),
                     },
-                    AiBridgePart::text("kept"),
+                    AgentPart::text("kept"),
                 ],
-                stop_reason: Some(AiBridgeStopReason::Stop),
+                stop_reason: Some(XyStopReason::Stop),
                 usage: None,
                 api: "openai-responses".into(),
                 provider: "test".into(),
@@ -1604,7 +1588,7 @@ mod tests {
         let chunks_done = map_responses_sse_event(&done, &mut state);
         assert!(matches!(
             &chunks_done[..],
-            [AiBridgeChunk::ThinkingEnd {
+            [XyChunk::ThinkingEnd {
                 thinking_signature: Some(_),
                 ..
             }]
@@ -1626,11 +1610,11 @@ mod tests {
         assert!(chunks.len() >= 2, "backfill ThinkingEnd + Done: {chunks:?}");
         match &chunks[..] {
             [
-                AiBridgeChunk::ThinkingEnd {
+                XyChunk::ThinkingEnd {
                     thinking_signature: Some(sig),
                     ..
                 },
-                AiBridgeChunk::Done { .. },
+                XyChunk::Done { .. },
             ] => {
                 let parsed: Value = serde_json::from_str(sig).unwrap();
                 assert_eq!(parsed["encrypted_content"], "enc_blob");
@@ -1668,12 +1652,12 @@ mod tests {
         );
         match &chunks[..] {
             [
-                AiBridgeChunk::ThinkingEnd {
+                XyChunk::ThinkingEnd {
                     thinking_signature: Some(sig),
                     ..
                 },
-                AiBridgeChunk::Done {
-                    finish_reason: AiBridgeStopReason::MaxTokens,
+                XyChunk::Done {
+                    finish_reason: XyStopReason::MaxTokens,
                     ..
                 },
             ] => {

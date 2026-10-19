@@ -1,5 +1,5 @@
 use super::super::*;
-use xylitol_plugin_sdk::ports::XySessionStore;
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::session::{
     CompactionEntry, EntryBase, MessageEntry, SessionEntry, SessionManifest, SessionSegment,
 };

@@ -823,12 +823,12 @@ mod tests {
 
     #[test]
     fn write_path_sticky_across_content_only_upsert() {
-        use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+        use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");
         let mk = |args: serde_json::Value| {
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
                     id: "w1".into(),
                     name: "write".into(),
@@ -872,11 +872,11 @@ mod tests {
 
     #[test]
     fn edit_path_streams_from_partial_args() {
-        use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+        use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");
-        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
+        let msg = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             content: vec![AgentPart::ToolCall {
                 id: "e1".into(),
                 name: "edit".into(),
@@ -953,11 +953,11 @@ mod tests {
 
     #[test]
     fn end_preserves_streamed_write_path() {
-        use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+        use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");
-        let msg = AgentMessage::Llm(LlmMessage::AssistantMessage {
+        let msg = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             content: vec![AgentPart::ToolCall {
                 id: "w1".into(),
                 name: "write".into(),
@@ -1083,11 +1083,11 @@ mod tests {
 
     #[test]
     fn write_intent_streams_content_body() {
-        use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+        use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 
         let mut model = UiModel::new();
         model.begin_run("hi");
-        let partial = AgentMessage::Llm(LlmMessage::AssistantMessage {
+        let partial = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             content: vec![AgentPart::ToolCall {
                 id: "w1".into(),
                 name: "write".into(),

@@ -18,7 +18,7 @@ use super::permission_router::permission_target;
 use crate::agent::tools::ToolSet;
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
-use xylitol_plugin_sdk::ports::{XyBatchMode, XyHookBus, XyHookOutcome, XyToolCtx};
+use xylitol_plugin_sdk::{XyBatchMode, XyHookBus, XyHookOutcome, XyToolCtx};
 
 /// Permission gate: `(tool_name, target) -> Some(deny_reason)`.
 type PermissionCheckFn = dyn Fn(&str, &str) -> Option<String> + Send + Sync;

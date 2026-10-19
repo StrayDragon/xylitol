@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
+use crate::XyModel;
 use crate::generate::{ObsSessionContext, XyGenerateOptions};
 use crate::model::{THINKING_OFF, XyModelConfig, XyModelKind, XyModelMeta};
-use crate::ports::XyModel;
 
 /// Attribution for compaction summary model selection (obs + notice).
 #[derive(Debug, Clone, PartialEq, Eq)]

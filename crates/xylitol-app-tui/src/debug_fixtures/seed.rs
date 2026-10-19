@@ -3,8 +3,8 @@
 use serde_json::{Value, json};
 
 use crate::driver_error::XyDriverError;
-use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
-use xylitol_plugin_sdk::ports::XySessionStore;
+use xylitol_plugin_sdk::XySessionStore;
+use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage, XyStopReason};
 use xylitol_plugin_sdk::session::{
     EntryBase, LabelEntry, MessageEntry, SessionEntry, fixture_message_json,
 };
@@ -50,7 +50,7 @@ fn tool_call(id: &str, name: &str, args: Value) -> AgentPart {
 }
 
 fn assistant_parts(content: Vec<AgentPart>) -> SessionEntry {
-    agent_entry(AgentMessage::Llm(LlmMessage::AssistantMessage {
+    agent_entry(AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content,
         stop_reason: Some(XyStopReason::Stop),
         usage: None,

@@ -12,7 +12,7 @@ use xylitol::app::tui::TuiHostSession as HostSession;
 use xylitol::app::tui::UiRoot;
 use xylitol::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
 use xylitol::app::tui::{BashBlockStatus, UiEntry, UiModel};
-use xylitol::protocol::ports::XyBashResult;
+use xylitol_plugin_sdk::XyBashResult;
 use xylitol_tui::Component;
 use xylitol_tui::Terminal as _;
 
@@ -1632,7 +1632,7 @@ pub(crate) async fn w_c2826_resume_with_list(host_pump_bdd: &HostPumpBdd, cmd: S
             .take()
             .unwrap_or_else(fresh_pump);
         pump.driver
-            .set_session_list(vec![xylitol::protocol::ports::SessionListEntry {
+            .set_session_list(vec![xylitol_plugin_sdk::SessionListEntry {
                 id: "sess-1".into(),
                 name: Some("恢复样本".into()),
                 first_message: Some("预览".into()),

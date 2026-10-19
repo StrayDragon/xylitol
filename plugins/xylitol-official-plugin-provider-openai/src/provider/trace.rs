@@ -18,7 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use fastrace::prelude::*;
 
-use crate::dto::{AiBridgeChunk, AiBridgeUsage};
+use crate::dto::{XyChunk, XyUsage};
 
 pub use xylitol_plugin_sdk::obs_gate::{
     OBSERVATION_IO_FULL_MAX, ObsGateScope, ObsGateState, ObservationIoTier,
@@ -129,18 +129,18 @@ impl ProviderRequestTrace {
         }));
     }
 
-    pub fn emit_mapped_chunk(&self, chunk: &AiBridgeChunk) {
+    pub fn emit_mapped_chunk(&self, chunk: &XyChunk) {
         if !provider_trace_active() {
             return;
         }
         let (variant, text) = match chunk {
-            AiBridgeChunk::TextDelta(t) => ("TextDelta", t.as_str()),
-            AiBridgeChunk::ThinkingDelta(t) => ("ThinkingDelta", t.as_str()),
-            AiBridgeChunk::ThinkingEnd { thinking, .. } => ("ThinkingEnd", thinking.as_str()),
-            AiBridgeChunk::ToolCallStart { name, .. } => ("ToolCallStart", name.as_str()),
-            AiBridgeChunk::ToolCallDelta { name, .. } => ("ToolCallDelta", name.as_str()),
-            AiBridgeChunk::ToolCallEnd { name, .. } => ("ToolCallEnd", name.as_str()),
-            AiBridgeChunk::Done { .. } => ("Done", ""),
+            XyChunk::TextDelta(t) => ("TextDelta", t.as_str()),
+            XyChunk::ThinkingDelta(t) => ("ThinkingDelta", t.as_str()),
+            XyChunk::ThinkingEnd { thinking, .. } => ("ThinkingEnd", thinking.as_str()),
+            XyChunk::ToolCallStart { name, .. } => ("ToolCallStart", name.as_str()),
+            XyChunk::ToolCallDelta { name, .. } => ("ToolCallDelta", name.as_str()),
+            XyChunk::ToolCallEnd { name, .. } => ("ToolCallEnd", name.as_str()),
+            XyChunk::Done { .. } => ("Done", ""),
         };
         let (text, truncated) = truncate_text(text, PROVIDER_TRACE_TEXT_MAX);
         self.root
@@ -153,14 +153,14 @@ impl ProviderRequestTrace {
                 ]
             }));
 
-        if let AiBridgeChunk::TextDelta(t) = chunk
+        if let XyChunk::TextDelta(t) = chunk
             && observation_io_tier() != ObservationIoTier::None
             && let Ok(mut buf) = self.output_buf.lock()
         {
             append_capped(&mut buf, t, observation_io_tier().max_chars().unwrap_or(0));
         }
 
-        if let AiBridgeChunk::Done { usage, .. } = chunk {
+        if let XyChunk::Done { usage, .. } = chunk {
             if let Some(u) = usage {
                 self.attach_usage(u);
             }
@@ -186,7 +186,7 @@ impl ProviderRequestTrace {
         }
     }
 
-    fn attach_usage(&self, u: &AiBridgeUsage) {
+    fn attach_usage(&self, u: &XyUsage) {
         // Single usage channel: Langfuse `usage_details` (verbatim / exclusive
         // buckets, incl. optional cache). Do not also emit `gen_ai.usage.*` —
         // same mapped field with inclusive/normalize semantics that fight cache.
@@ -308,9 +308,9 @@ mod tests {
         let _g = ObsGateScope::enter(ObsGateState::active_none_io());
         let _collect = SpanCollectScope::enter();
         let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
-        t.emit_mapped_chunk(&AiBridgeChunk::Done {
-            finish_reason: crate::dto::AiBridgeStopReason::Stop,
-            usage: Some(AiBridgeUsage {
+        t.emit_mapped_chunk(&XyChunk::Done {
+            finish_reason: crate::dto::XyStopReason::Stop,
+            usage: Some(XyUsage {
                 input: 3,
                 output: 5,
                 total_tokens: 8,
@@ -331,10 +331,10 @@ mod tests {
         {
             let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
             t.capture_request_input(r#"{"model":"m","input":[{"role":"user","content":"hi"}]}"#);
-            t.emit_mapped_chunk(&AiBridgeChunk::TextDelta("hello".into()));
-            t.emit_mapped_chunk(&AiBridgeChunk::Done {
-                finish_reason: crate::dto::AiBridgeStopReason::Stop,
-                usage: Some(AiBridgeUsage {
+            t.emit_mapped_chunk(&XyChunk::TextDelta("hello".into()));
+            t.emit_mapped_chunk(&XyChunk::Done {
+                finish_reason: crate::dto::XyStopReason::Stop,
+                usage: Some(XyUsage {
                     input: 1,
                     output: 1,
                     total_tokens: 2,
@@ -359,15 +359,15 @@ mod tests {
         let collect = SpanCollectScope::enter();
         {
             let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
-            let usage = AiBridgeUsage {
+            let usage = XyUsage {
                 input: 10,
                 output: 2,
                 total_tokens: 12,
                 ..Default::default()
             }
             .with_prompt_cache_read(crate::dto::PromptCacheRead::NotReported);
-            t.emit_mapped_chunk(&AiBridgeChunk::Done {
-                finish_reason: crate::dto::AiBridgeStopReason::Stop,
+            t.emit_mapped_chunk(&XyChunk::Done {
+                finish_reason: crate::dto::XyStopReason::Stop,
                 usage: Some(usage),
             });
             drop(t);
@@ -389,15 +389,15 @@ mod tests {
         let collect = SpanCollectScope::enter();
         {
             let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
-            let usage = AiBridgeUsage {
+            let usage = XyUsage {
                 input: 10,
                 output: 2,
                 total_tokens: 12,
                 ..Default::default()
             }
             .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(7));
-            t.emit_mapped_chunk(&AiBridgeChunk::Done {
-                finish_reason: crate::dto::AiBridgeStopReason::Stop,
+            t.emit_mapped_chunk(&XyChunk::Done {
+                finish_reason: crate::dto::XyStopReason::Stop,
                 usage: Some(usage),
             });
             drop(t);
@@ -424,7 +424,7 @@ mod tests {
         {
             let t = ProviderRequestTrace::start("openai-responses", "m").expect("active");
             t.capture_request_input(r#"{"model":"m","stream":true}"#);
-            t.emit_mapped_chunk(&AiBridgeChunk::TextDelta("partial…".into()));
+            t.emit_mapped_chunk(&XyChunk::TextDelta("partial…".into()));
             drop(t);
         }
         fastrace::flush();
@@ -458,9 +458,9 @@ mod tests {
         {
             let t = ProviderRequestTrace::start("openai-completions", "m").expect("active");
             t.capture_request_input(r#"{"messages":[],"marker":"done-no-usage"}"#);
-            t.emit_mapped_chunk(&AiBridgeChunk::TextDelta("x".into()));
-            t.emit_mapped_chunk(&AiBridgeChunk::Done {
-                finish_reason: crate::dto::AiBridgeStopReason::Stop,
+            t.emit_mapped_chunk(&XyChunk::TextDelta("x".into()));
+            t.emit_mapped_chunk(&XyChunk::Done {
+                finish_reason: crate::dto::XyStopReason::Stop,
                 usage: None,
             });
             drop(t);
@@ -494,10 +494,10 @@ mod tests {
             "chat.completion.json",
             r#"{"messages":[{"role":"user","content":"hi"}]}"#,
         );
-        t.emit_mapped_chunk(&AiBridgeChunk::TextDelta("hello".into()));
-        t.emit_mapped_chunk(&AiBridgeChunk::Done {
-            finish_reason: crate::dto::AiBridgeStopReason::Stop,
-            usage: Some(AiBridgeUsage {
+        t.emit_mapped_chunk(&XyChunk::TextDelta("hello".into()));
+        t.emit_mapped_chunk(&XyChunk::Done {
+            finish_reason: crate::dto::XyStopReason::Stop,
+            usage: Some(XyUsage {
                 input: 1,
                 output: 1,
                 total_tokens: 2,

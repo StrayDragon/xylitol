@@ -5,13 +5,13 @@ use crate::agent::capabilities::AgentCapabilities;
 use crate::agent::model::registry::ModelRegistry;
 use crate::agent::runtime::RunPolicy;
 use crate::infra::session::SessionManager;
-use crate::protocol::message::LlmMessage;
+use crate::protocol::message::XyLlmMessage;
 use crate::protocol::model::XyModelConfig;
 use crate::protocol::model::XyModelMeta;
-use crate::protocol::ports::{XyEventSink, XyModel, XySessionStore, XyStream};
+use xylitol_plugin_sdk::{XyEventSink, XyModel, XySessionStore, XyStream};
 use crate::protocol::session::SessionEntry;
 
-type ModelBuilderFn = crate::protocol::ports::XyModelBuilder;
+type ModelBuilderFn = xylitol_plugin_sdk::XyModelBuilder;
 
 fn bind_session_or_panic(agent: &mut AgentRuntime, session_id: impl Into<String>) {
     agent.bind_session(session_id).expect("bind_session");
@@ -260,10 +260,10 @@ impl XyModel for MockModel {
 
     async fn generate_stream(
         &self,
-        _messages: Vec<crate::protocol::message::LlmMessage>,
+        _messages: Vec<crate::protocol::message::XyLlmMessage>,
         _tools: &[crate::protocol::model::XyToolSchema],
         _stream: bool,
-        _options: crate::protocol::ports::XyGenerateOptions,
+        _options: xylitol_plugin_sdk::XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
         use std::sync::atomic::Ordering;
         let n = self.calls.fetch_add(1, Ordering::SeqCst);
@@ -285,7 +285,7 @@ impl XyModel for MockModel {
 struct MockTool;
 
 #[async_trait::async_trait]
-impl crate::protocol::ports::XyTool for MockTool {
+impl xylitol_plugin_sdk::XyTool for MockTool {
     fn name(&self) -> &str {
         "mock_tool"
     }
@@ -305,7 +305,7 @@ impl crate::protocol::ports::XyTool for MockTool {
 
     async fn execute(
         &self,
-        _ctx: &crate::protocol::ports::XyToolCtx,
+        _ctx: &xylitol_plugin_sdk::XyToolCtx,
         _args: serde_json::Value,
     ) -> Result<String, crate::protocol::error::XyToolError> {
         Ok("executed".into())
@@ -316,7 +316,7 @@ impl crate::protocol::ports::XyTool for MockTool {
 struct StreamingMockTool;
 
 #[async_trait::async_trait]
-impl crate::protocol::ports::XyTool for StreamingMockTool {
+impl xylitol_plugin_sdk::XyTool for StreamingMockTool {
     fn name(&self) -> &str {
         "mock_tool"
     }
@@ -331,7 +331,7 @@ impl crate::protocol::ports::XyTool for StreamingMockTool {
 
     async fn execute(
         &self,
-        ctx: &crate::protocol::ports::XyToolCtx,
+        ctx: &xylitol_plugin_sdk::XyToolCtx,
         _args: serde_json::Value,
     ) -> Result<String, crate::protocol::error::XyToolError> {
         if let Some(tx) = &ctx.output_tx {
@@ -403,10 +403,10 @@ impl XyModel for FlakyOnceModel {
 
     async fn generate_stream(
         &self,
-        _messages: Vec<LlmMessage>,
+        _messages: Vec<XyLlmMessage>,
         _tools: &[crate::protocol::model::XyToolSchema],
         _stream: bool,
-        _options: crate::protocol::ports::XyGenerateOptions,
+        _options: xylitol_plugin_sdk::XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
         use crate::protocol::message::XyStopReason;
         use std::sync::atomic::Ordering;
@@ -513,7 +513,7 @@ fn make_agent_with_builder_and_store(
 
 #[tokio::test]
 async fn test_persist_done_usage() {
-    use crate::protocol::message::{AgentMessage, LlmMessage, XyStopReason, XyUsage};
+    use crate::protocol::message::{AgentMessage, XyLlmMessage, XyStopReason, XyUsage};
     use futures::StreamExt;
 
     let usage = XyUsage {
@@ -539,7 +539,7 @@ async fn test_persist_done_usage() {
         let SessionEntry::Message(m) = entry else {
             continue;
         };
-        let Ok(AgentMessage::Llm(LlmMessage::AssistantMessage {
+        let Ok(AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             usage: Some(u),
             stop_reason: Some(XyStopReason::Stop),
             ..
@@ -720,7 +720,7 @@ async fn test_stream_timing_shape_is_locked_and_typed() {
     // 2. Typed deserialization succeeds (unknown keys ignored) and is un-polluted.
     let typed: AgentMessage =
         serde_json::from_value(m.message.clone()).expect("typed deserialize with extra keys");
-    let AgentMessage::Llm(LlmMessage::AssistantMessage {
+    let AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content, timestamp, ..
     }) = typed
     else {
@@ -820,7 +820,7 @@ async fn test_persist_stream_timing_from_chunks() {
 #[tokio::test]
 async fn test_tool_intent_before_execution() {
     use crate::protocol::lifecycle::XyEvent;
-    use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use crate::protocol::message::{AgentMessage, AgentPart, XyLlmMessage};
     use futures::StreamExt;
 
     let chunks = vec![
@@ -853,7 +853,7 @@ async fn test_tool_intent_before_execution() {
     let mut agent = make_agent_with_tools(
         chunks,
         ToolSet::from_iter(vec![
-            Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
+            Arc::new(MockTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
         ]),
     );
 
@@ -866,7 +866,7 @@ async fn test_tool_intent_before_execution() {
     while let Some(evt) = stream.next().await {
         match evt {
             XyEvent::MessageUpdate {
-                message: Some(AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. })),
+                message: Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage { content, .. })),
                 ..
             } if !message_end_seen
                 && content.iter().any(|p| {
@@ -935,7 +935,7 @@ async fn test_tool_execution_streams_multiple_updates() {
     let mut agent = make_agent_with_tools(
         chunks,
         ToolSet::from_iter(vec![
-            Arc::new(StreamingMockTool) as Arc<dyn crate::protocol::ports::XyTool>
+            Arc::new(StreamingMockTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
         ]),
     );
 
@@ -982,7 +982,7 @@ async fn todo_rewrite_publishes_todo_updated_into_run_stream() {
     let store = crate::infra::session::SessionManager::new(
         tempfile::tempdir().unwrap().path().join("sessions"),
     );
-    let gateway: Arc<dyn crate::protocol::ports::AgentTodoGateway> =
+    let gateway: Arc<dyn xylitol_plugin_sdk::AgentTodoGateway> =
         crate::infra::tools::todo::SessionAgentTodoGateway::new(Arc::new(store));
     let tools =
         crate::agent::tools::ToolSet::from_iter(crate::infra::tools::todo::todo_tools(gateway));
@@ -1125,7 +1125,7 @@ async fn test_before_hook_denies_tool_call() {
     let mut agent = make_agent_with_tools(
         chunks,
         ToolSet::from_iter(vec![
-            Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
+            Arc::new(MockTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
         ]),
     );
 
@@ -1180,7 +1180,7 @@ async fn test_after_hook_modifies_tool_result() {
     let mut agent = make_agent_with_tools(
         chunks,
         ToolSet::from_iter(vec![
-            Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
+            Arc::new(MockTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
         ]),
     );
     agent.replace_hooks(hooks);
@@ -1217,7 +1217,7 @@ async fn test_set_tools_takes_effect_on_next_turn() {
     let mut agent = make_agent_with_tools(
         chunks.clone(),
         ToolSet::from_iter(vec![
-            Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
+            Arc::new(MockTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
         ]),
     );
 
@@ -1282,10 +1282,10 @@ impl XyModel for StatefulMockModel {
     }
     async fn generate_stream(
         &self,
-        _messages: Vec<crate::protocol::message::LlmMessage>,
+        _messages: Vec<crate::protocol::message::XyLlmMessage>,
         _tools: &[crate::protocol::model::XyToolSchema],
         _stream: bool,
-        _options: crate::protocol::ports::XyGenerateOptions,
+        _options: xylitol_plugin_sdk::XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
         let chunks = self.rounds.lock().unwrap().remove(0);
         Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
@@ -1296,7 +1296,7 @@ fn make_agent_with_rounds(
     rounds: Vec<Vec<crate::protocol::model::XyChunk>>,
     tools: ToolSet,
 ) -> AgentRuntime {
-    use crate::protocol::ports::XyModelBuilder;
+    use xylitol_plugin_sdk::XyModelBuilder;
     let reg = mock_model_registry();
     let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
@@ -1357,7 +1357,7 @@ async fn tool_call_then_continuation_round_reaches_final_text() {
     let mut agent = make_agent_with_rounds(
         rounds,
         ToolSet::from_iter(vec![
-            Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
+            Arc::new(MockTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
         ]),
     );
 
@@ -1417,7 +1417,7 @@ async fn tool_continuation_does_not_invoke_should_stop_until_settle() {
     let mut agent = make_agent_with_rounds(
         rounds,
         ToolSet::from_iter(vec![
-            Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
+            Arc::new(MockTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
         ]),
     );
     let calls = std::sync::Arc::new(AtomicUsize::new(0));
@@ -1470,7 +1470,7 @@ async fn max_turns_one_allows_tool_continuation() {
     let mut agent = make_agent_with_rounds(
         rounds,
         ToolSet::from_iter(vec![
-            Arc::new(MockTool) as Arc<dyn crate::protocol::ports::XyTool>
+            Arc::new(MockTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
         ]),
     );
     agent.set_should_stop_after_turn(Some(crate::agent::max_turns_stop_hook(1)));
@@ -1518,7 +1518,7 @@ async fn steer_before_run_is_injected_into_history() {
     let texts: Vec<String> = history
         .iter()
         .filter_map(|m| match m {
-            AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+            AgentMessage::Llm(XyLlmMessage::UserMessage { content, .. }) => {
                 content.iter().find_map(|p| match p {
                     AgentPart::Text { text: t } => Some(t.clone()),
                     _ => None,
@@ -1639,7 +1639,7 @@ async fn should_stop_after_turn_skips_follow_up_and_ends() {
     let new_user: Vec<String> = new_msgs
         .iter()
         .filter_map(|m| match m {
-            AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+            AgentMessage::Llm(XyLlmMessage::UserMessage { content, .. }) => {
                 content.iter().find_map(|p| match p {
                     AgentPart::Text { text: t } => Some(t.clone()),
                     _ => None,
@@ -1656,7 +1656,7 @@ async fn should_stop_after_turn_skips_follow_up_and_ends() {
     let user_texts: Vec<String> = history
         .iter()
         .filter_map(|m| match m {
-            AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+            AgentMessage::Llm(XyLlmMessage::UserMessage { content, .. }) => {
                 content.iter().find_map(|p| match p {
                     AgentPart::Text { text: t } => Some(t.clone()),
                     _ => None,
@@ -1761,10 +1761,10 @@ async fn abort_mid_stream_stops_polling_model_chunks() {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let polled = self.polled.clone();
             Ok(Box::pin(async_stream::stream! {
@@ -1787,7 +1787,7 @@ async fn abort_mid_stream_stops_polling_model_chunks() {
     let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(SlowMock {
             polled: polled_for_builder.clone(),
         }) as Arc<dyn XyModel>
@@ -1903,7 +1903,7 @@ async fn second_turn_model_input_includes_first_turn_messages() {
     };
 
     struct RecordingMockModel {
-        seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::protocol::message::LlmMessage>>>>,
+        seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::protocol::message::XyLlmMessage>>>>,
         chunks: Vec<crate::protocol::model::XyChunk>,
     }
 
@@ -1915,10 +1915,10 @@ async fn second_turn_model_input_includes_first_turn_messages() {
 
         async fn generate_stream(
             &self,
-            messages: Vec<crate::protocol::message::LlmMessage>,
+            messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             self.seen.lock().unwrap().push(messages);
             let chunks = self.chunks.clone();
@@ -1974,7 +1974,7 @@ async fn second_turn_model_input_includes_first_turn_messages() {
     let user_texts: Vec<String> = second_input
         .iter()
         .filter_map(|m| match m {
-            LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+            XyLlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
                 AgentPart::Text { text: t } => Some(t.clone()),
                 _ => None,
             }),
@@ -1993,8 +1993,8 @@ async fn system_prompt_via_options_not_user_history() {
     use futures::StreamExt;
 
     struct RecordingMockModel {
-        seen_msgs: std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::protocol::message::LlmMessage>>>>,
-        seen_opts: std::sync::Arc<std::sync::Mutex<Vec<crate::protocol::ports::XyGenerateOptions>>>,
+        seen_msgs: std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::protocol::message::XyLlmMessage>>>>,
+        seen_opts: std::sync::Arc<std::sync::Mutex<Vec<xylitol_plugin_sdk::XyGenerateOptions>>>,
     }
 
     #[async_trait::async_trait]
@@ -2005,10 +2005,10 @@ async fn system_prompt_via_options_not_user_history() {
 
         async fn generate_stream(
             &self,
-            messages: Vec<crate::protocol::message::LlmMessage>,
+            messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            options: crate::protocol::ports::XyGenerateOptions,
+            options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             self.seen_msgs.lock().unwrap().push(messages);
             self.seen_opts.lock().unwrap().push(options);
@@ -2077,7 +2077,7 @@ async fn system_prompt_via_options_not_user_history() {
     let texts: Vec<&str> = first
         .iter()
         .filter_map(|m| match m {
-            LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+            XyLlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
                 AgentPart::Text { text } => Some(text.as_str()),
                 _ => None,
             }),
@@ -2102,7 +2102,7 @@ async fn dollar_skill_expanded_for_model_history_stays_raw() {
     use futures::StreamExt;
 
     struct RecordingMockModel {
-        seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::protocol::message::LlmMessage>>>>,
+        seen: std::sync::Arc<std::sync::Mutex<Vec<Vec<crate::protocol::message::XyLlmMessage>>>>,
     }
 
     #[async_trait::async_trait]
@@ -2113,10 +2113,10 @@ async fn dollar_skill_expanded_for_model_history_stays_raw() {
 
         async fn generate_stream(
             &self,
-            messages: Vec<crate::protocol::message::LlmMessage>,
+            messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             self.seen.lock().unwrap().push(messages);
             Ok(Box::pin(futures::stream::iter(
@@ -2192,7 +2192,7 @@ async fn dollar_skill_expanded_for_model_history_stays_raw() {
     let model_user: Vec<String> = rounds[0]
         .iter()
         .filter_map(|m| match m {
-            LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+            XyLlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
                 AgentPart::Text { text: t } => Some(t.clone()),
                 _ => None,
             }),
@@ -2213,7 +2213,7 @@ async fn dollar_skill_expanded_for_model_history_stays_raw() {
     let hist_user: Vec<String> = history
         .iter()
         .filter_map(|m| match m {
-            AgentMessage::Llm(LlmMessage::UserMessage { content, .. }) => {
+            AgentMessage::Llm(XyLlmMessage::UserMessage { content, .. }) => {
                 content.iter().find_map(|p| match p {
                     AgentPart::Text { text: t } => Some(t.clone()),
                     _ => None,
@@ -2243,7 +2243,7 @@ use std::time::{Duration, Instant};
 
 struct SlowTool {
     name: &'static str,
-    mode: crate::protocol::ports::XyToolExecutionMode,
+    mode: xylitol_plugin_sdk::XyToolExecutionMode,
     sleep_ms: u64,
     /// Shared wall-clock log: (name, start_ms, end_ms) from a fixed epoch.
     log: Arc<Mutex<Vec<(String, u128, u128)>>>,
@@ -2251,7 +2251,7 @@ struct SlowTool {
 }
 
 #[async_trait::async_trait]
-impl crate::protocol::ports::XyTool for SlowTool {
+impl xylitol_plugin_sdk::XyTool for SlowTool {
     fn name(&self) -> &str {
         self.name
     }
@@ -2261,12 +2261,12 @@ impl crate::protocol::ports::XyTool for SlowTool {
     fn parameters_schema(&self) -> serde_json::Value {
         serde_json::json!({"type": "object", "properties": {}})
     }
-    fn execution_mode(&self) -> crate::protocol::ports::XyToolExecutionMode {
+    fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
         self.mode
     }
     async fn execute(
         &self,
-        _ctx: &crate::protocol::ports::XyToolCtx,
+        _ctx: &xylitol_plugin_sdk::XyToolCtx,
         _args: serde_json::Value,
     ) -> Result<String, crate::protocol::error::XyToolError> {
         let start = self.epoch.elapsed().as_millis();
@@ -2315,11 +2315,11 @@ async fn batch_default_sequential_no_overlap() {
     let epoch = Instant::now();
     let tools = ToolSet::from_iter(vec![Arc::new(SlowTool {
         name: "slow_safe",
-        mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+        mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
         sleep_ms: 80,
         log: log.clone(),
         epoch,
-    }) as Arc<dyn crate::protocol::ports::XyTool>]);
+    }) as Arc<dyn xylitol_plugin_sdk::XyTool>]);
     // Two calls to the same ParallelSafe tool — Sequential batch must not overlap.
     let rounds = multi_tool_rounds(vec![
         ("slow_safe", r#"{"n":1}"#),
@@ -2357,18 +2357,18 @@ async fn batch_barrier_parallel_overlap_then_barrier() {
         let tools = ToolSet::from_iter(vec![
             Arc::new(SlowTool {
                 name: "slow_safe",
-                mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+                mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
                 sleep_ms: 100,
                 log: log.clone(),
                 epoch,
-            }) as Arc<dyn crate::protocol::ports::XyTool>,
+            }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
             Arc::new(SlowTool {
                 name: "slow_barrier",
-                mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
+                mode: xylitol_plugin_sdk::XyToolExecutionMode::Sequential,
                 sleep_ms: 50,
                 log: log.clone(),
                 epoch,
-            }) as Arc<dyn crate::protocol::ports::XyTool>,
+            }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
         ]);
         let rounds = multi_tool_rounds(vec![
             ("slow_safe", r#"{"n":1}"#),
@@ -2435,18 +2435,18 @@ async fn batch_barrier_preserves_source_windows() {
     let tools = ToolSet::from_iter(vec![
         Arc::new(SlowTool {
             name: "slow_safe",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 60,
             log: log.clone(),
             epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
         Arc::new(SlowTool {
             name: "slow_barrier",
-            mode: crate::protocol::ports::XyToolExecutionMode::Sequential,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Sequential,
             sleep_ms: 40,
             log: log.clone(),
             epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
     ]);
     // safe → barrier → safe : second safe must start after barrier ends.
     let rounds = multi_tool_rounds(vec![
@@ -2493,18 +2493,18 @@ async fn batch_mcp_never_parallel_even_if_trait_lies() {
     let tools = ToolSet::from_iter(vec![
         Arc::new(SlowTool {
             name: "slow_safe",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 80,
             log: log.clone(),
             epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
         Arc::new(SlowTool {
             name: "mcp__fake__x",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel, // lie
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel, // lie
             sleep_ms: 80,
             log: log.clone(),
             epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
     ]);
     let rounds = multi_tool_rounds(vec![
         ("slow_safe", r#"{"n":1}"#),
@@ -2540,18 +2540,18 @@ async fn batch_history_source_order_despite_completion_order() {
     let tools = ToolSet::from_iter(vec![
         Arc::new(SlowTool {
             name: "slow_a",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 120,
             log: log.clone(),
             epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
         Arc::new(SlowTool {
             name: "slow_b",
-            mode: crate::protocol::ports::XyToolExecutionMode::Parallel,
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
             sleep_ms: 30,
             log: log.clone(),
             epoch,
-        }) as Arc<dyn crate::protocol::ports::XyTool>,
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
     ]);
     let rounds = multi_tool_rounds(vec![("slow_a", r#"{}"#), ("slow_b", r#"{}"#)]);
     let mut agent = make_agent_with_rounds(rounds, tools);
@@ -2571,7 +2571,7 @@ async fn batch_history_source_order_despite_completion_order() {
     let tool_results: Vec<_> = history
         .iter()
         .filter_map(|m| match m {
-            AgentMessage::Llm(crate::protocol::message::LlmMessage::ToolResultMessage {
+            AgentMessage::Llm(crate::protocol::message::XyLlmMessage::ToolResultMessage {
                 tool_use_id,
                 ..
             }) => Some(tool_use_id.clone()),
@@ -2604,10 +2604,10 @@ async fn reject_second_root_while_first_live() {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(Box::pin(async_stream::stream! {
@@ -2629,7 +2629,7 @@ async fn reject_second_root_while_first_live() {
     let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(SlowMock {
             calls: calls_b.clone(),
         }) as Arc<dyn XyModel>
@@ -2718,10 +2718,10 @@ async fn abort_and_replace_starts_after_cancel() {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let n = self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(Box::pin(async_stream::stream! {
@@ -2747,7 +2747,7 @@ async fn abort_and_replace_starts_after_cancel() {
     let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(SlowMock {
             calls: calls_b.clone(),
         }) as Arc<dyn XyModel>
@@ -2815,10 +2815,10 @@ async fn queue_after_run_fifo_and_drop_revokes() {
         }
         async fn generate_stream(
             &self,
-            messages: Vec<crate::protocol::message::LlmMessage>,
+            messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let n = self.calls.fetch_add(1, Ordering::SeqCst);
             let label = if n == 0 { "first" } else { "queued" };
@@ -2843,7 +2843,7 @@ async fn queue_after_run_fifo_and_drop_revokes() {
     let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(CountingMock {
             calls: calls_b.clone(),
         }) as Arc<dyn XyModel>
@@ -2915,10 +2915,10 @@ async fn abort_keeps_queued_root_after_active_cancels() {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let n = self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(Box::pin(async_stream::stream! {
@@ -2946,7 +2946,7 @@ async fn abort_keeps_queued_root_after_active_cancels() {
     let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(SlowThenFast {
             calls: calls_b.clone(),
         }) as Arc<dyn XyModel>
@@ -3027,10 +3027,10 @@ async fn abort_and_replace_keeps_new_run_event_tx_and_active_turn() {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let n = self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(Box::pin(async_stream::stream! {
@@ -3058,7 +3058,7 @@ async fn abort_and_replace_keeps_new_run_event_tx_and_active_turn() {
     let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(SlowMock {
             calls: calls_b.clone(),
         }) as Arc<dyn XyModel>
@@ -3147,7 +3147,7 @@ async fn queue_after_run_second_reads_persisted_history() {
 
     struct HistoryMock {
         calls: Arc<AtomicUsize>,
-        seen: Arc<std::sync::Mutex<Vec<Vec<LlmMessage>>>>,
+        seen: Arc<std::sync::Mutex<Vec<Vec<XyLlmMessage>>>>,
     }
 
     #[async_trait::async_trait]
@@ -3157,10 +3157,10 @@ async fn queue_after_run_second_reads_persisted_history() {
         }
         async fn generate_stream(
             &self,
-            messages: Vec<crate::protocol::message::LlmMessage>,
+            messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let n = self.calls.fetch_add(1, Ordering::SeqCst);
             self.seen.lock().unwrap().push(messages);
@@ -3190,7 +3190,7 @@ async fn queue_after_run_second_reads_persisted_history() {
     let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(HistoryMock {
             calls: calls_b.clone(),
             seen: seen_b.clone(),
@@ -3242,7 +3242,7 @@ async fn queue_after_run_second_reads_persisted_history() {
     let user_texts: Vec<String> = second_input
         .iter()
         .filter_map(|m| match m {
-            LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+            XyLlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
                 AgentPart::Text { text: t } => Some(t.clone()),
                 _ => None,
             }),
@@ -3259,7 +3259,7 @@ async fn queue_after_run_second_reads_persisted_history() {
     );
     let has_assistant = second_input
         .iter()
-        .any(|m| matches!(m, LlmMessage::AssistantMessage { .. }));
+        .any(|m| matches!(m, XyLlmMessage::AssistantMessage { .. }));
     assert!(
         has_assistant,
         "queued root must see first assistant in history: {second_input:?}"
@@ -3283,10 +3283,10 @@ async fn bind_session_rejects_while_busy() {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[crate::protocol::model::XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(Box::pin(async_stream::stream! {
@@ -3308,7 +3308,7 @@ async fn bind_session_rejects_while_busy() {
     let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
     let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
-    let builder: crate::protocol::ports::XyModelBuilder = Arc::new(move |_| {
+    let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(SlowMock {
             calls: calls_b.clone(),
         }) as Arc<dyn XyModel>

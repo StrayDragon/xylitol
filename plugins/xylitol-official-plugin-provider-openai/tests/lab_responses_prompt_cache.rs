@@ -18,12 +18,10 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use xylitol_official_plugin_provider_openai::dto::{
-    AiBridgeChunk, AiBridgeMessage, PromptCacheRead,
-};
+use xylitol_official_plugin_provider_openai::dto::{PromptCacheRead, XyChunk, XyLlmMessage};
 use xylitol_official_plugin_provider_openai::hooks::{HeaderBag, HttpHooks};
 use xylitol_official_plugin_provider_openai::provider::OpenAiResponsesAdapter;
-use xylitol_official_plugin_provider_openai::{AiBridgeError, AiBridgeGenerateOptions};
+use xylitol_official_plugin_provider_openai::{XyError, XyGenerateOptions};
 use xylitol_plugin_sdk::XyModel;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -199,11 +197,11 @@ struct CapTokens {
 
 #[async_trait]
 impl HttpHooks for CapTokens {
-    async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+    async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), XyError> {
         Ok(())
     }
 
-    async fn before_request(&self, _model: &str, body: &mut Value) -> Result<(), AiBridgeError> {
+    async fn before_request(&self, _model: &str, body: &mut Value) -> Result<(), XyError> {
         body["max_output_tokens"] = json!(self.max_output_tokens);
         body["store"] = json!(false);
         Ok(())
@@ -222,18 +220,18 @@ async fn one_call(
     adapter: &OpenAiResponsesAdapter,
     prefix: &str,
     user: &str,
-) -> xylitol_official_plugin_provider_openai::dto::AiBridgeUsage {
+) -> xylitol_official_plugin_provider_openai::dto::XyUsage {
     // 前缀载体放 user 段而非 system 段：vllm 类网关默认关闭 System-Prompt Cache，
     // 对 system 段前缀不产生 cached_tokens，warm 恒 0 致断言误报。前缀入 input
     // 单段后 vllm 通用 prefix cache 与 OpenAI Response `store` 均能命中，三态语义
     // （cold→warm hit→prefix break miss）保持不变。
-    let opts = AiBridgeGenerateOptions {
+    let opts = XyGenerateOptions {
         thinking_level: "off".into(),
         ..Default::default()
     };
     let mut stream = adapter
         .generate_stream(
-            vec![AiBridgeMessage::user(format!("{prefix}\n{user}"))],
+            vec![XyLlmMessage::user(format!("{prefix}\n{user}"))],
             &[],
             false,
             opts,
@@ -242,9 +240,7 @@ async fn one_call(
         .unwrap_or_else(|e| panic!("generate failed: {e}"));
     let mut usage = None;
     while let Some(item) = stream.next().await {
-        if let AiBridgeChunk::Done { usage: u, .. } =
-            item.unwrap_or_else(|e| panic!("chunk err: {e}"))
-        {
+        if let XyChunk::Done { usage: u, .. } = item.unwrap_or_else(|e| panic!("chunk err: {e}")) {
             usage = u
         }
     }

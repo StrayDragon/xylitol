@@ -14,8 +14,8 @@ use serde_json::{Value, json};
 use super::path_utils::resolve_to_dir;
 use super::truncate::{DEFAULT_MAX_BYTES, TruncationOptions, truncate_head};
 use super::typed::TypedTool;
+use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
-use xylitol_plugin_sdk::ports::XyToolCtx;
 
 /// Per-tool wall-clock default when the model omits `timeout` (c2425).
 pub(crate) const FIND_TOOL_TIMEOUT_SECS: u64 = 60;
@@ -183,7 +183,7 @@ mod tests {
     use super::*;
     use crate::tools::test_ctx;
     use serde_json::json;
-    use xylitol_plugin_sdk::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
 
     #[tokio::test]
     async fn test_find_basic() {

@@ -9,7 +9,7 @@ use xylitol_tui::Terminal;
 use crate::debug_fixtures::PreviewInject;
 use crate::driver::{DebugSceneLoad, XyDriver};
 use crate::host::HostSession;
-use xylitol_plugin_sdk::ports::XySessionStore;
+use xylitol_plugin_sdk::XySessionStore;
 
 pub(crate) async fn inject_scene<T: Terminal>(
     session: &mut HostSession<T>,

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::error::AiBridgeError;
+use crate::error::XyError;
 
 /// Portable header map for provider HTTP hooks.
 pub type HeaderBag = serde_json::Map<String, serde_json::Value>;
@@ -13,8 +13,8 @@ pub type HeaderBag = serde_json::Map<String, serde_json::Value>;
 /// Three-seam HTTP hooks (before headers, before JSON body, after response).
 #[async_trait]
 pub trait HttpHooks: Send + Sync {
-    async fn before_headers(&self, headers: &mut HeaderBag) -> Result<(), AiBridgeError>;
-    async fn before_request(&self, model: &str, body: &mut Value) -> Result<(), AiBridgeError>;
+    async fn before_headers(&self, headers: &mut HeaderBag) -> Result<(), XyError>;
+    async fn before_request(&self, model: &str, body: &mut Value) -> Result<(), XyError>;
     async fn after_response(&self, status: u16, headers: &HeaderBag);
 }
 
@@ -22,7 +22,7 @@ pub trait HttpHooks: Send + Sync {
 pub async fn run_before_headers(
     hooks: &Option<Arc<dyn HttpHooks>>,
     headers: &mut HeaderBag,
-) -> Result<(), AiBridgeError> {
+) -> Result<(), XyError> {
     if let Some(h) = hooks {
         h.before_headers(headers).await?;
     }
@@ -34,7 +34,7 @@ pub async fn run_before_request(
     hooks: &Option<Arc<dyn HttpHooks>>,
     model: &str,
     body: &mut Value,
-) -> Result<(), AiBridgeError> {
+) -> Result<(), XyError> {
     if let Some(h) = hooks {
         h.before_request(model, body).await?;
     }

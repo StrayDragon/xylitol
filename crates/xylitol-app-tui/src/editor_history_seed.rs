@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use crate::driver::{XyDriver, XyDriverError};
 use crate::session_resume::cwd_matches;
+use xylitol_plugin_sdk::SessionListEntry;
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::XySessionStoreError;
-use xylitol_plugin_sdk::ports::XySessionStore;
-use xylitol_plugin_sdk::ports::session::SessionListEntry;
 use xylitol_plugin_sdk::session::{SessionEntry, message_role, message_text};
 
 /// Extract user prompt texts from session entries (chronological order; skip `/…`).
@@ -222,7 +222,7 @@ mod tests {
     async fn collect_seed_from_store_skips_other_cwd() {
         use crate::infra::session::SessionManager;
         use std::sync::Arc;
-        use xylitol_plugin_sdk::ports::XySessionStore;
+        use xylitol_plugin_sdk::XySessionStore;
 
         let dir = tempfile::tempdir().unwrap();
         let mgr = SessionManager::new(dir.path().join("sessions"));
@@ -278,7 +278,7 @@ mod tests {
     async fn spawn_cli_session_load_returns_entries() {
         use crate::infra::session::SessionManager;
         use std::sync::Arc;
-        use xylitol_plugin_sdk::ports::XySessionStore;
+        use xylitol_plugin_sdk::XySessionStore;
 
         let dir = tempfile::tempdir().unwrap();
         let mgr = SessionManager::new(dir.path().join("sessions"));

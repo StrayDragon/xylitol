@@ -3,7 +3,7 @@
 use crate::agent::prompt::{self, SystemPromptOpts};
 use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
-use crate::protocol::ports::XyPermission;
+use xylitol_plugin_sdk::XyPermission;
 
 use super::AgentCapabilities;
 

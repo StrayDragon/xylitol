@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::infra::provider::adapter::factory::build_adapter;
 use crate::infra::provider::{ScenarioStep, fake_xy_model};
 use crate::protocol::model::{XyModelConfig, XyModelKind};
-use crate::protocol::ports::XyModel;
+use xylitol_plugin_sdk::XyModel;
 
 thread_local! {
     static FAKE_TEXT: RefCell<Option<String>> = const { RefCell::new(None) };

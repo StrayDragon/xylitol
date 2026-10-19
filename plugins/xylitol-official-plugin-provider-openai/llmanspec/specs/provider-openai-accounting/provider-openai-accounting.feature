@@ -1,8 +1,8 @@
 # language: zh-CN
-# capability: package-ai-bridge-accounting
+# capability: provider-openai-accounting
 # purpose: "plugin-sdk 上下文 token 计量：Api 优先，否则 Heuristic。"
 
-功能: package-ai-bridge-accounting
+功能: provider-openai-accounting
 
   @req:r1561
   规则: 计量优先级

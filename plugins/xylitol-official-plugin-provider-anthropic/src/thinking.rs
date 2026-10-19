@@ -4,18 +4,18 @@ use std::collections::HashMap;
 
 use serde_json::{Value, json};
 
-pub use xylitol_plugin_sdk::{AiBridgeGenerateOptions, AiBridgeThinkingBudgets, ObsSessionContext};
+pub use xylitol_plugin_sdk::{ObsSessionContext, ThinkingBudgets, XyGenerateOptions};
 
 /// Adapter family for resolve (Completions and Responses share effort semantics).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AiBridgeThinkingAdapterKind {
+pub enum ThinkingAdapterKind {
     OpenAi,
     Anthropic,
 }
 
 /// Resolved thinking parameter ready for JSON body injection.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum AiBridgeResolvedThinking {
+pub enum ResolvedThinking {
     Omit,
     OpenAiEffort(String),
     AnthropicBudget(u64),
@@ -28,9 +28,9 @@ pub enum AiBridgeResolvedThinking {
 /// vocabulary (exact spelling, canonical order). Levels stay opaque strings at
 /// runtime: this table is consumed for matching/budgets, never as a closed
 /// user-facing enum.
-pub struct AiBridgeBuiltinThinkingLevels;
+pub struct BuiltinThinkingLevels;
 
-impl AiBridgeBuiltinThinkingLevels {
+impl BuiltinThinkingLevels {
     pub const OFF: &'static str = "off";
     pub const MINIMAL: &'static str = "minimal";
     pub const LOW: &'static str = "low";
@@ -52,7 +52,7 @@ impl AiBridgeBuiltinThinkingLevels {
 
 /// Return a built-in level only when its configured spelling matches exactly.
 fn canonical_known_level(level: &str) -> Option<&'static str> {
-    AiBridgeBuiltinThinkingLevels::ALL
+    BuiltinThinkingLevels::ALL
         .iter()
         .copied()
         .find(|builtin| *builtin == level)
@@ -60,21 +60,21 @@ fn canonical_known_level(level: &str) -> Option<&'static str> {
 
 fn builtin_anthropic_budget(level: &str) -> u64 {
     match level {
-        AiBridgeBuiltinThinkingLevels::MINIMAL => 1024,
-        AiBridgeBuiltinThinkingLevels::LOW => 2048,
-        AiBridgeBuiltinThinkingLevels::MEDIUM => 8192,
-        AiBridgeBuiltinThinkingLevels::HIGH => 16384,
-        AiBridgeBuiltinThinkingLevels::XHIGH | AiBridgeBuiltinThinkingLevels::MAX => 32768,
+        BuiltinThinkingLevels::MINIMAL => 1024,
+        BuiltinThinkingLevels::LOW => 2048,
+        BuiltinThinkingLevels::MEDIUM => 8192,
+        BuiltinThinkingLevels::HIGH => 16384,
+        BuiltinThinkingLevels::XHIGH | BuiltinThinkingLevels::MAX => 32768,
         _ => unreachable!("budget only requested for canonical known level"),
     }
 }
 
-fn budget_for_level(level: &str, budgets: Option<&AiBridgeThinkingBudgets>) -> u64 {
+fn budget_for_level(level: &str, budgets: Option<&ThinkingBudgets>) -> u64 {
     let override_budget = budgets.and_then(|b| match level {
-        AiBridgeBuiltinThinkingLevels::MINIMAL => b.minimal,
-        AiBridgeBuiltinThinkingLevels::LOW => b.low,
-        AiBridgeBuiltinThinkingLevels::MEDIUM => b.medium,
-        AiBridgeBuiltinThinkingLevels::HIGH => b.high,
+        BuiltinThinkingLevels::MINIMAL => b.minimal,
+        BuiltinThinkingLevels::LOW => b.low,
+        BuiltinThinkingLevels::MEDIUM => b.medium,
+        BuiltinThinkingLevels::HIGH => b.high,
         _ => None,
     });
     override_budget.unwrap_or_else(|| builtin_anthropic_budget(level))
@@ -84,40 +84,36 @@ fn budget_for_level(level: &str, budgets: Option<&AiBridgeThinkingBudgets>) -> u
 pub fn resolve_thinking_for_request(
     level: &str,
     map: &HashMap<String, Option<String>>,
-    budgets: Option<&AiBridgeThinkingBudgets>,
-    adapter: AiBridgeThinkingAdapterKind,
-) -> AiBridgeResolvedThinking {
+    budgets: Option<&ThinkingBudgets>,
+    adapter: ThinkingAdapterKind,
+) -> ResolvedThinking {
     // Product support sets, map keys, and known built-in fallbacks all use exact
     // strings. No thinking-level spelling is normalized at this request boundary.
     if let Some(entry) = map.get(level) {
         return match entry {
-            None => AiBridgeResolvedThinking::Omit,
+            None => ResolvedThinking::Omit,
             Some(raw) => match adapter {
-                AiBridgeThinkingAdapterKind::OpenAi => {
-                    AiBridgeResolvedThinking::OpenAiEffort(raw.clone())
-                }
-                AiBridgeThinkingAdapterKind::Anthropic => {
-                    resolve_anthropic_map_string(level, raw, budgets)
-                }
+                ThinkingAdapterKind::OpenAi => ResolvedThinking::OpenAiEffort(raw.clone()),
+                ThinkingAdapterKind::Anthropic => resolve_anthropic_map_string(level, raw, budgets),
             },
         };
     }
 
     match adapter {
-        AiBridgeThinkingAdapterKind::OpenAi => {
+        ThinkingAdapterKind::OpenAi => {
             if canonical_known_level(level) == Some("off") {
-                AiBridgeResolvedThinking::Omit
+                ResolvedThinking::Omit
             } else {
-                AiBridgeResolvedThinking::OpenAiEffort(level.to_string())
+                ResolvedThinking::OpenAiEffort(level.to_string())
             }
         }
-        AiBridgeThinkingAdapterKind::Anthropic => {
+        ThinkingAdapterKind::Anthropic => {
             if canonical_known_level(level) == Some("off") {
-                AiBridgeResolvedThinking::Omit
+                ResolvedThinking::Omit
             } else if let Some(known) = canonical_known_level(level) {
-                AiBridgeResolvedThinking::AnthropicBudget(budget_for_level(known, budgets))
+                ResolvedThinking::AnthropicBudget(budget_for_level(known, budgets))
             } else {
-                AiBridgeResolvedThinking::Invalid(format!(
+                ResolvedThinking::Invalid(format!(
                     "Anthropic thinking level `{level}` requires a numeric or known-level thinking_level_map entry"
                 ))
             }
@@ -128,34 +124,34 @@ pub fn resolve_thinking_for_request(
 fn resolve_anthropic_map_string(
     level: &str,
     raw: &str,
-    budgets: Option<&AiBridgeThinkingBudgets>,
-) -> AiBridgeResolvedThinking {
+    budgets: Option<&ThinkingBudgets>,
+) -> ResolvedThinking {
     if let Ok(n) = raw.parse::<u64>() {
-        return AiBridgeResolvedThinking::AnthropicBudget(n);
+        return ResolvedThinking::AnthropicBudget(n);
     }
     let Some(as_level) = canonical_known_level(raw) else {
-        return AiBridgeResolvedThinking::Invalid(format!(
+        return ResolvedThinking::Invalid(format!(
             "Anthropic thinking_level_map `{level}: {raw}` must map to a token budget or known level"
         ));
     };
     if as_level == "off" {
-        return AiBridgeResolvedThinking::Omit;
+        return ResolvedThinking::Omit;
     }
-    AiBridgeResolvedThinking::AnthropicBudget(budget_for_level(as_level, budgets))
+    ResolvedThinking::AnthropicBudget(budget_for_level(as_level, budgets))
 }
 
 /// Inject OpenAI Completions `reasoning_effort` (generic / OpenAI-shaped).
-pub fn apply_thinking_openai_completions(body: &mut Value, resolved: &AiBridgeResolvedThinking) {
+pub fn apply_thinking_openai_completions(body: &mut Value, resolved: &ResolvedThinking) {
     match resolved {
-        AiBridgeResolvedThinking::Omit => {
+        ResolvedThinking::Omit => {
             if let Some(obj) = body.as_object_mut() {
                 obj.remove("reasoning_effort");
             }
         }
-        AiBridgeResolvedThinking::OpenAiEffort(effort) => {
+        ResolvedThinking::OpenAiEffort(effort) => {
             body["reasoning_effort"] = Value::String(effort.clone());
         }
-        AiBridgeResolvedThinking::AnthropicBudget(_) | AiBridgeResolvedThinking::Invalid(_) => {}
+        ResolvedThinking::AnthropicBudget(_) | ResolvedThinking::Invalid(_) => {}
     }
 }
 
@@ -165,7 +161,7 @@ pub fn apply_thinking_openai_completions(body: &mut Value, resolved: &AiBridgeRe
 /// this remains a thin public alias.
 pub fn apply_thinking_openai_completions_with_compat(
     body: &mut Value,
-    resolved: &AiBridgeResolvedThinking,
+    resolved: &ResolvedThinking,
     compat: crate::wire_policy::Compat,
 ) {
     let _ = compat;
@@ -173,43 +169,43 @@ pub fn apply_thinking_openai_completions_with_compat(
 }
 
 /// Inject OpenAI Responses `reasoning: { effort, summary }` (summary aligns with pi default `auto`).
-pub fn apply_thinking_openai_responses(body: &mut Value, resolved: &AiBridgeResolvedThinking) {
+pub fn apply_thinking_openai_responses(body: &mut Value, resolved: &ResolvedThinking) {
     match resolved {
-        AiBridgeResolvedThinking::Omit => {
+        ResolvedThinking::Omit => {
             if let Some(obj) = body.as_object_mut() {
                 obj.remove("reasoning");
             }
         }
-        AiBridgeResolvedThinking::OpenAiEffort(effort) => {
+        ResolvedThinking::OpenAiEffort(effort) => {
             body["reasoning"] = json!({ "effort": effort, "summary": "auto" });
         }
-        AiBridgeResolvedThinking::AnthropicBudget(_) | AiBridgeResolvedThinking::Invalid(_) => {}
+        ResolvedThinking::AnthropicBudget(_) | ResolvedThinking::Invalid(_) => {}
     }
 }
 
 /// Inject Anthropic Messages `thinking: { type: enabled, budget_tokens }`.
-pub fn apply_thinking_anthropic(body: &mut Value, resolved: &AiBridgeResolvedThinking) {
+pub fn apply_thinking_anthropic(body: &mut Value, resolved: &ResolvedThinking) {
     match resolved {
-        AiBridgeResolvedThinking::Omit => {
+        ResolvedThinking::Omit => {
             if let Some(obj) = body.as_object_mut() {
                 obj.remove("thinking");
             }
         }
-        AiBridgeResolvedThinking::AnthropicBudget(tokens) => {
+        ResolvedThinking::AnthropicBudget(tokens) => {
             body["thinking"] = json!({
                 "type": "enabled",
                 "budget_tokens": tokens,
             });
         }
-        AiBridgeResolvedThinking::OpenAiEffort(_) | AiBridgeResolvedThinking::Invalid(_) => {}
+        ResolvedThinking::OpenAiEffort(_) | ResolvedThinking::Invalid(_) => {}
     }
 }
 
 /// Resolve options for an adapter kind.
 pub fn resolve_from_options(
-    options: &AiBridgeGenerateOptions,
-    adapter: AiBridgeThinkingAdapterKind,
-) -> AiBridgeResolvedThinking {
+    options: &XyGenerateOptions,
+    adapter: ThinkingAdapterKind,
+) -> ResolvedThinking {
     resolve_thinking_for_request(
         &options.thinking_level,
         &options.level_map,
@@ -225,10 +221,10 @@ mod tests {
     #[test]
     fn builtin_levels_table_is_the_canonical_vocabulary() {
         assert_eq!(
-            AiBridgeBuiltinThinkingLevels::ALL,
+            BuiltinThinkingLevels::ALL,
             &["off", "minimal", "low", "medium", "high", "xhigh", "max"]
         );
-        for level in AiBridgeBuiltinThinkingLevels::ALL {
+        for level in BuiltinThinkingLevels::ALL {
             assert_eq!(canonical_known_level(level), Some(*level));
         }
         assert_eq!(canonical_known_level("vendor-max"), None);
@@ -241,38 +237,32 @@ mod tests {
             "medium",
             &HashMap::new(),
             None,
-            AiBridgeThinkingAdapterKind::OpenAi,
+            ThinkingAdapterKind::OpenAi,
         );
-        assert_eq!(r, AiBridgeResolvedThinking::OpenAiEffort("medium".into()));
+        assert_eq!(r, ResolvedThinking::OpenAiEffort("medium".into()));
     }
 
     #[test]
     fn openai_off_omits() {
-        let r = resolve_thinking_for_request(
-            "off",
-            &HashMap::new(),
-            None,
-            AiBridgeThinkingAdapterKind::OpenAi,
-        );
-        assert_eq!(r, AiBridgeResolvedThinking::Omit);
+        let r =
+            resolve_thinking_for_request("off", &HashMap::new(), None, ThinkingAdapterKind::OpenAi);
+        assert_eq!(r, ResolvedThinking::Omit);
     }
 
     #[test]
     fn null_map_omits() {
         let mut map = HashMap::new();
         map.insert("high".into(), None);
-        let r =
-            resolve_thinking_for_request("high", &map, None, AiBridgeThinkingAdapterKind::OpenAi);
-        assert_eq!(r, AiBridgeResolvedThinking::Omit);
+        let r = resolve_thinking_for_request("high", &map, None, ThinkingAdapterKind::OpenAi);
+        assert_eq!(r, ResolvedThinking::Omit);
     }
 
     #[test]
     fn map_override_high_to_max() {
         let mut map = HashMap::new();
         map.insert("high".into(), Some("max".into()));
-        let r =
-            resolve_thinking_for_request("high", &map, None, AiBridgeThinkingAdapterKind::OpenAi);
-        assert_eq!(r, AiBridgeResolvedThinking::OpenAiEffort("max".into()));
+        let r = resolve_thinking_for_request("high", &map, None, ThinkingAdapterKind::OpenAi);
+        assert_eq!(r, ResolvedThinking::OpenAiEffort("max".into()));
     }
 
     #[test]
@@ -281,14 +271,14 @@ mod tests {
             "low",
             &HashMap::new(),
             None,
-            AiBridgeThinkingAdapterKind::Anthropic,
+            ThinkingAdapterKind::Anthropic,
         );
-        assert_eq!(r, AiBridgeResolvedThinking::AnthropicBudget(2048));
+        assert_eq!(r, ResolvedThinking::AnthropicBudget(2048));
     }
 
     #[test]
     fn anthropic_budget_honors_settings_override() {
-        let budgets = AiBridgeThinkingBudgets {
+        let budgets = ThinkingBudgets {
             low: Some(4096),
             ..Default::default()
         };
@@ -296,9 +286,9 @@ mod tests {
             "low",
             &HashMap::new(),
             Some(&budgets),
-            AiBridgeThinkingAdapterKind::Anthropic,
+            ThinkingAdapterKind::Anthropic,
         );
-        assert_eq!(r, AiBridgeResolvedThinking::AnthropicBudget(4096));
+        assert_eq!(r, ResolvedThinking::AnthropicBudget(4096));
     }
 
     #[test]
@@ -307,9 +297,9 @@ mod tests {
             "vendor-max",
             &HashMap::new(),
             None,
-            AiBridgeThinkingAdapterKind::Anthropic,
+            ThinkingAdapterKind::Anthropic,
         );
-        assert!(matches!(r, AiBridgeResolvedThinking::Invalid(_)));
+        assert!(matches!(r, ResolvedThinking::Invalid(_)));
     }
 
     #[test]
@@ -318,9 +308,9 @@ mod tests {
             "HIGH",
             &HashMap::new(),
             None,
-            AiBridgeThinkingAdapterKind::OpenAi,
+            ThinkingAdapterKind::OpenAi,
         );
-        assert_eq!(r, AiBridgeResolvedThinking::OpenAiEffort("HIGH".into()));
+        assert_eq!(r, ResolvedThinking::OpenAiEffort("HIGH".into()));
     }
 
     #[test]
@@ -329,27 +319,27 @@ mod tests {
             "high",
             &HashMap::new(),
             None,
-            AiBridgeThinkingAdapterKind::Anthropic,
+            ThinkingAdapterKind::Anthropic,
         );
-        assert_eq!(high, AiBridgeResolvedThinking::AnthropicBudget(16_384));
+        assert_eq!(high, ResolvedThinking::AnthropicBudget(16_384));
 
         let off = resolve_thinking_for_request(
             "off",
             &HashMap::new(),
             None,
-            AiBridgeThinkingAdapterKind::Anthropic,
+            ThinkingAdapterKind::Anthropic,
         );
-        assert_eq!(off, AiBridgeResolvedThinking::Omit);
+        assert_eq!(off, ResolvedThinking::Omit);
 
         for level in ["HIGH", " high "] {
             let resolved = resolve_thinking_for_request(
                 level,
                 &HashMap::new(),
                 None,
-                AiBridgeThinkingAdapterKind::Anthropic,
+                ThinkingAdapterKind::Anthropic,
             );
             assert!(
-                matches!(resolved, AiBridgeResolvedThinking::Invalid(_)),
+                matches!(resolved, ResolvedThinking::Invalid(_)),
                 "{level:?} must not resolve as an Anthropic built-in level"
             );
         }
@@ -360,7 +350,7 @@ mod tests {
         let mut body = json!({"model": "m"});
         apply_thinking_openai_completions(
             &mut body,
-            &AiBridgeResolvedThinking::OpenAiEffort("medium".into()),
+            &ResolvedThinking::OpenAiEffort("medium".into()),
         );
         assert_eq!(body["reasoning_effort"], json!("medium"));
     }
@@ -368,10 +358,7 @@ mod tests {
     #[test]
     fn apply_responses_effort() {
         let mut body = json!({"model": "m"});
-        apply_thinking_openai_responses(
-            &mut body,
-            &AiBridgeResolvedThinking::OpenAiEffort("high".into()),
-        );
+        apply_thinking_openai_responses(&mut body, &ResolvedThinking::OpenAiEffort("high".into()));
         assert_eq!(body["reasoning"]["effort"], json!("high"));
         assert_eq!(body["reasoning"]["summary"], json!("auto"));
     }
@@ -379,11 +366,11 @@ mod tests {
     #[test]
     fn apply_anthropic_budget_and_off() {
         let mut body = json!({"model": "m"});
-        apply_thinking_anthropic(&mut body, &AiBridgeResolvedThinking::AnthropicBudget(8192));
+        apply_thinking_anthropic(&mut body, &ResolvedThinking::AnthropicBudget(8192));
         assert_eq!(body["thinking"]["type"], json!("enabled"));
         assert_eq!(body["thinking"]["budget_tokens"], json!(8192));
 
-        apply_thinking_anthropic(&mut body, &AiBridgeResolvedThinking::Omit);
+        apply_thinking_anthropic(&mut body, &ResolvedThinking::Omit);
         assert!(body.get("thinking").is_none());
     }
 }

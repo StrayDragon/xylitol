@@ -196,14 +196,14 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    if !super::wire_v3::looks_like_fory_v3(bytes) {
+    if !super::envelope::looks_like_fory_envelope(bytes) {
         illegal_envelope(res);
         return;
     }
-    match super::wire_v3::handle_uplink(&host, bytes).await {
+    match super::envelope::handle_uplink(&host, bytes).await {
         Ok(frame) => {
             res.status_code(StatusCode::OK);
-            let _ = res.add_header("Content-Type", super::wire_v3::CONTENT_TYPE, true);
+            let _ = res.add_header("Content-Type", super::envelope::CONTENT_TYPE, true);
             res.body(frame);
         }
         Err(_) => illegal_envelope(res),
@@ -270,7 +270,7 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
                     let RpcMessage::ServerRequest { method, payload, .. } = &msg else {
                         continue;
                     };
-                    match super::wire_v3::downlink_frame(method, payload.clone(), 0) {
+                    match super::envelope::downlink_frame(method, payload.clone(), 0) {
                         Ok(bytes) => {
                             if sink.send(Message::binary(bytes)).await.is_err() {
                                 break;
@@ -308,7 +308,7 @@ async fn handle_mux(ws: WebSocket, host: Arc<HostState>) {
             if !msg.is_binary() {
                 continue;
             }
-            match super::wire_v3::handle_uplink(&host, msg.as_bytes()).await {
+            match super::envelope::handle_uplink(&host, msg.as_bytes()).await {
                 Ok(frame) => {
                     if bin_tx.send(frame).await.is_err() {
                         break;

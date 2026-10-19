@@ -8,8 +8,8 @@
 //! - [`capabilities::AgentCapabilities`]：可插拔的能力聚合体
 //!   （models + io + tools + 编排状态）。被 `AgentRuntime` 持有；构造期由
 //!   [`AgentBuilder`] 装配。
-//! - [`RuntimePorts`]（[`runtime::RuntimePorts`]）：可克隆的构造基线；
-//!   `AgentBuilder::build_ports` → `materialize_runtime` 物化隔离 actor
+//! - [`RuntimeBaseline`]（[`runtime::RuntimeBaseline`]）：可克隆的构造基线；
+//!   `AgentBuilder::build_baseline` → `materialize_runtime` 物化隔离 actor
 //!   （未来 sub-agent factory 接缝；不共享 history / cancel / active turn）。
 //!
 //! 两者关系是 Runtime + Capabilities：`AgentRuntime` 以单写者方式跑 ReAct，
@@ -47,7 +47,7 @@ pub use crate::agent::capabilities::{
 /// ReAct 循环运行时（驱动 [`capabilities::AgentCapabilities`]）。
 pub use crate::agent::runtime::AgentRuntime;
 /// Clonable construction baseline for materializing isolated [`AgentRuntime`]s.
-pub use crate::agent::runtime::RuntimePorts;
+pub use crate::agent::runtime::RuntimeBaseline;
 pub use crate::agent::runtime::XyEventStream;
 pub use crate::agent::runtime::hooks::max_turns_stop_hook;
 pub use crate::agent::tools::MCP_FIRST_TURN_GATE_TIMEOUT;

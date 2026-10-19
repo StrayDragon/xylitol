@@ -3,16 +3,6 @@ use std::time::Duration;
 
 use strum::IntoStaticStr;
 
-#[derive(Debug, thiserror::Error)]
-pub enum AiBridgeError {
-    #[error("provider error: {0}")]
-    Provider(#[source] anyhow::Error),
-    #[error("aborted")]
-    Aborted,
-    #[error("{0}")]
-    Io(#[from] std::io::Error),
-}
-
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyError {
     #[error("provider error: {0}")]
@@ -31,16 +21,6 @@ impl XyError {
     /// Stable kind for logs / fastrace (`Provider`, `Tool`, …).
     pub fn kind(&self) -> &'static str {
         self.into()
-    }
-}
-
-impl From<AiBridgeError> for XyError {
-    fn from(value: AiBridgeError) -> Self {
-        match value {
-            AiBridgeError::Provider(e) => Self::Provider(e),
-            AiBridgeError::Aborted => Self::Aborted,
-            AiBridgeError::Io(e) => Self::Provider(e.into()),
-        }
     }
 }
 
@@ -65,7 +45,7 @@ impl XyToolError {
     }
 }
 
-/// Persistence failures from [`crate::ports::XySessionStore`].
+/// Persistence failures from [`crate::XySessionStore`].
 ///
 /// Control-plane misses (no bound session, busy mutation, in-memory tree
 /// travel) live on [`XySessionError`], not here.
@@ -164,7 +144,7 @@ impl XySessionStoreError {
     }
 }
 
-/// Filesystem (or equivalent) failures from [`crate::ports::XyExportIo`].
+/// Filesystem (or equivalent) failures from [`crate::XyExportIo`].
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyExportError {
     #[error("{op} {path}: {source}")]

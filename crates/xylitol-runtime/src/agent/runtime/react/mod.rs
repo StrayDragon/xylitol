@@ -46,10 +46,10 @@ use crate::agent::tools::ToolSet;
 use xylitol_plugin_sdk::error::{XyError, XySessionError};
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_plugin_sdk::model::{XyChunk, XyToolSchema};
-use xylitol_plugin_sdk::ports::{
+use xylitol_plugin_sdk::resource::SkillInfo;
+use xylitol_plugin_sdk::{
     XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyStream,
 };
-use xylitol_plugin_sdk::resource::SkillInfo;
 
 // ── AgentRuntime ───────────────────────────────────────────────────────
 
@@ -125,7 +125,7 @@ impl AgentRuntime {
         self.inner.queue_stats()
     }
 
-    pub fn session_store(&self) -> Arc<dyn xylitol_plugin_sdk::ports::XySessionStore> {
+    pub fn session_store(&self) -> Arc<dyn xylitol_plugin_sdk::XySessionStore> {
         self.inner.session_store()
     }
 
@@ -198,15 +198,15 @@ impl AgentRuntime {
         self.inner.hooks_mut().set_should_stop_after_turn(hook);
     }
 
-    pub fn set_permission(&mut self, permission: Arc<dyn xylitol_plugin_sdk::ports::XyPermission>) {
+    pub fn set_permission(&mut self, permission: Arc<dyn xylitol_plugin_sdk::XyPermission>) {
         self.inner.set_permission(permission);
     }
 
-    pub fn set_tool_mode(&mut self, mode: xylitol_plugin_sdk::ports::XyBatchMode) {
+    pub fn set_tool_mode(&mut self, mode: xylitol_plugin_sdk::XyBatchMode) {
         self.inner.set_tool_mode(mode);
     }
 
-    pub fn set_batch_mode(&mut self, mode: xylitol_plugin_sdk::ports::XyBatchMode) {
+    pub fn set_batch_mode(&mut self, mode: xylitol_plugin_sdk::XyBatchMode) {
         self.inner.set_tool_mode(mode);
     }
 
@@ -630,7 +630,7 @@ struct LiveReactArgs {
     store: Arc<dyn XySessionStore>,
     session_id: String,
     seeded_history: Vec<AgentMessage>,
-    event_sink_inner: Arc<dyn xylitol_plugin_sdk::ports::XyEventSink>,
+    event_sink_inner: Arc<dyn xylitol_plugin_sdk::XyEventSink>,
     /// Owner obs display-name fact for the turn (c2843 Phase B); never slot.
     obs_session_name: Option<String>,
 }
@@ -697,11 +697,10 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
     let steer_queue = queues.steer.clone();
     let follow_up_queue = queues.follow_up.clone();
     let (side_tx, side_rx) = tokio::sync::mpsc::unbounded_channel::<XyEvent>();
-    let event_sink: Arc<dyn xylitol_plugin_sdk::ports::XyEventSink> =
-        Arc::new(CompactionStreamTee {
-            inner: event_sink_inner,
-            tx: side_tx,
-        });
+    let event_sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> = Arc::new(CompactionStreamTee {
+        inner: event_sink_inner,
+        tx: side_tx,
+    });
 
     let (queue_tx, queue_rx) = tokio::sync::mpsc::unbounded_channel();
     queues.bind_event_tx(run_id, queue_tx);
@@ -805,12 +804,12 @@ pub(crate) fn combine_run_streams(
 /// Forward CompactionStart/End from the side lifecycle sink onto the turn stream
 /// so product TUI bridge can render the compaction block mid-run (c1730).
 struct CompactionStreamTee {
-    inner: Arc<dyn xylitol_plugin_sdk::ports::XyEventSink>,
+    inner: Arc<dyn xylitol_plugin_sdk::XyEventSink>,
     tx: tokio::sync::mpsc::UnboundedSender<XyEvent>,
 }
 
 #[async_trait::async_trait]
-impl xylitol_plugin_sdk::ports::XyEventSink for CompactionStreamTee {
+impl xylitol_plugin_sdk::XyEventSink for CompactionStreamTee {
     async fn emit(&self, event: &XyEvent) {
         self.inner.emit(event).await;
         if matches!(
@@ -856,7 +855,7 @@ struct ReActConfig {
     /// Trust-filtered catalog for `$skill` expand (c1130); clone kept raw in history.
     skills: Vec<SkillInfo>,
     /// Compaction lifecycle sink (Start/End).
-    event_sink: Arc<dyn xylitol_plugin_sdk::ports::XyEventSink>,
+    event_sink: Arc<dyn xylitol_plugin_sdk::XyEventSink>,
     /// Snapshot of compaction settings for turn-end threshold auto (c1640).
     compaction_settings: crate::agent::compaction::CompactionSettings,
     compaction: std::sync::Arc<dyn crate::agent::compaction::XyCompaction>,
@@ -1497,7 +1496,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 let tool = tools.get(name);
                                 super::tool_batch::classify(
                                     name,
-                                    tool.as_ref().map(|t| t.as_ref() as &dyn xylitol_plugin_sdk::ports::XyTool),
+                                    tool.as_ref().map(|t| t.as_ref() as &dyn xylitol_plugin_sdk::XyTool),
                                 )
                             })
                             .collect();

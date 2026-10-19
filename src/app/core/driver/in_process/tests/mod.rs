@@ -8,10 +8,10 @@ use crate::agent::tools::ToolSet;
 use crate::infra::event::EventBus;
 use crate::infra::permission;
 use crate::infra::session::SessionManager;
-use crate::protocol::ports::{XyEventSink, XySessionStore};
 use crate::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 
-type ModelBuilderFn = crate::protocol::ports::XyModelBuilder;
+type ModelBuilderFn = xylitol_plugin_sdk::XyModelBuilder;
 
 fn msg_entry(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
     SessionEntry::Message(MessageEntry {
@@ -46,7 +46,7 @@ async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, Ob
     )
     .cwd(".")
     .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-    .build_ports()
+    .build_baseline()
     .materialize_runtime();
     let sid = uuid::Uuid::new_v4().to_string();
     store_trait

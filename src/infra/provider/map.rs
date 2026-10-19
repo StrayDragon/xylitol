@@ -1,68 +1,29 @@
-//! Provider boundary maps (c1210 / c1220 / c1940).
+//! Provider boundary maps.
 //!
 //! Session vocabulary stays on [`crate::protocol::message::AgentMessage`]
-//! (`Llm` ∪ `Env`). Bridge DTOs are LLM-only; agent MUST call
+//! (`Llm` ∪ `Env`). Agent MUST call
 //! [`crate::agent::llm_project::project_for_llm`] before crossing into
-//! [`crate::protocol::ports::XyModel`]. `LlmMessage` ≡
-//! [`xylitol_official_plugin_provider_openai::dto::AiBridgeMessage`]; `XyChunk` ≡ `AiBridgeChunk`.
-//!
-//! This module maps error / token-estimate seams and stream error conversion —
-//! no `AgentMessage` folding paths.
-
-use futures::StreamExt;
-use xylitol_official_plugin_provider_openai::dto::{AiBridgeStream, AiBridgeToolSchema};
-use xylitol_official_plugin_provider_openai::error::AiBridgeError;
-
-use crate::protocol::error::XyError;
-use crate::protocol::model::XyToolSchema;
-use crate::protocol::ports::XyStream;
-
-/// `XyToolSchema` ≡ [`AiBridgeToolSchema`] — clone into owned vec for the bridge call.
-pub fn to_bridge_tools(tools: &[XyToolSchema]) -> Vec<AiBridgeToolSchema> {
-    tools.to_vec()
-}
-
-pub fn to_xy_error(err: AiBridgeError) -> XyError {
-    match err {
-        AiBridgeError::Provider(e) => XyError::Provider(e),
-        AiBridgeError::Aborted => XyError::Aborted,
-        AiBridgeError::Io(e) => XyError::Provider(anyhow::anyhow!("{e}")),
-    }
-}
-
-pub fn to_bridge_error(err: XyError) -> AiBridgeError {
-    match err {
-        XyError::Provider(e) => AiBridgeError::Provider(e),
-        XyError::Aborted => AiBridgeError::Aborted,
-        other => AiBridgeError::Provider(anyhow::anyhow!("{other}")),
-    }
-}
-
-pub fn to_xy_stream(stream: AiBridgeStream) -> XyStream {
-    Box::pin(stream.map(|item| item.map_err(to_xy_error)))
-}
+//! [`xylitol_plugin_sdk::XyModel`]. Dialect plugins use the same
+//! [`xylitol_plugin_sdk::XyLlmMessage`] / [`xylitol_plugin_sdk::XyChunk`] /
+//! [`xylitol_plugin_sdk::XyError`] types — no DTO conversion at this seam.
 
 #[cfg(test)]
 mod tests {
-    use crate::protocol::message::XyStopReason;
+    use crate::protocol::message::{XyStopReason, XyUsage};
     use crate::protocol::model::XyChunk;
-    use xylitol_official_plugin_provider_openai::dto::{
-        AiBridgeChunk, AiBridgeStopReason, AiBridgeUsage,
-    };
 
     #[test]
-    fn chunk_alias_done_usage() {
-        let chunk = AiBridgeChunk::Done {
-            finish_reason: AiBridgeStopReason::Stop,
-            usage: Some(AiBridgeUsage {
+    fn chunk_done_usage_is_sdk_vocabulary() {
+        let chunk = XyChunk::Done {
+            finish_reason: XyStopReason::Stop,
+            usage: Some(XyUsage {
                 input: 1,
                 output: 2,
                 total_tokens: 3,
                 ..Default::default()
             }),
         };
-        let as_xy: XyChunk = chunk;
-        match as_xy {
+        match chunk {
             XyChunk::Done {
                 finish_reason,
                 usage,

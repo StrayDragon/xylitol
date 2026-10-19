@@ -267,12 +267,12 @@ pub(crate) fn w_model_port_input_shape() {
 pub(crate) fn t_model_port_input_shape() {
     let text = LA_PROBE.with(|p| p.borrow().clone()).expect("探针已跑");
     assert!(
-        text.contains("messages: Vec<LlmMessage>"),
-        "端口入参 MUST 为 Vec<LlmMessage>（bridge DTO 别名）"
+        text.contains("messages: Vec<XyLlmMessage>"),
+        "端口入参 MUST 为 Vec<XyLlmMessage>（bridge DTO 别名）"
     );
     assert!(
-        text.contains("AiBridgeMessage"),
-        "LlmMessage MUST 注明为 bridge AiBridgeMessage 别名"
+        text.contains("XyLlmMessage"),
+        "XyLlmMessage MUST 注明为 bridge XyLlmMessage 别名"
     );
 }
 
@@ -1356,7 +1356,7 @@ pub(crate) fn t_llm_project_entry() {
     assert!(src.contains("project_for_llm"), "投影入口 MUST 在册");
     assert!(src.contains("AgentMessage"), "输入 MUST 为 AgentMessage");
     assert!(
-        src.contains("LlmMessage") || src.contains("AiBridgeMessage"),
+        src.contains("XyLlmMessage") || src.contains("XyLlmMessage"),
         "输出 MUST 为协议消息"
     );
 }
@@ -1914,8 +1914,8 @@ pub(crate) fn t_session_subcomponent_coverage() {
 #[when("读取库缝观察接线")]
 pub(crate) fn w_smoke_hook_wiring() {
     let a = la_load("src/app/core/composition.rs");
-    let b = la_load("src/agent/runtime/ports.rs");
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== ports ===\n{b}")));
+    let b = la_load("src/agent/runtime/baseline.rs");
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== baseline ===\n{b}")));
 }
 
 #[then("有经库缝触发的例子")]

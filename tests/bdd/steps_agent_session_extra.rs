@@ -184,7 +184,7 @@ pub(crate) async fn w_sess_as_msg(sess: &XySessionStore) {
 
 #[then("content 含独立 Thinking 与 Text 且 type 字段正确")]
 pub(crate) fn t_sess_split(sess: &XySessionStore) {
-    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, XyLlmMessage};
 
     let entries = sess.entries.borrow();
     let msg = entries
@@ -192,7 +192,7 @@ pub(crate) fn t_sess_split(sess: &XySessionStore) {
         .find_map(|e| e.as_agent_message())
         .expect("assistant message");
     match msg {
-        AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) => {
+        AgentMessage::Llm(XyLlmMessage::AssistantMessage { content, .. }) => {
             assert!(matches!(
                 content.as_slice(),
                 [
@@ -239,11 +239,11 @@ pub(crate) fn w_sess_legacy(sess: &XySessionStore) {
 
 #[then("不产生糊成一体的合法 Assistant Text；失败或跳过可观测")]
 pub(crate) fn t_sess_legacy_rejected(sess: &XySessionStore) {
-    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, XyLlmMessage};
 
     let entries = sess.entries.borrow();
     let mapped = entries.first().and_then(|e| e.as_agent_message());
-    if let Some(AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. })) = mapped {
+    if let Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage { content, .. })) = mapped {
         let merged_text_only = content.len() == 1
             && matches!(content.first(), Some(AgentPart::Text { text }) if text.contains("answer"));
         assert!(
@@ -395,8 +395,7 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
     // Build an AgentCapabilities, select "agent-a-model", then cycle
     let dir = tempfile::tempdir().unwrap();
     let mgr = xylitol::infra::session::SessionManager::new(dir.keep());
-    let store: std::sync::Arc<dyn xylitol::protocol::ports::XySessionStore> =
-        std::sync::Arc::new(mgr);
+    let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = std::sync::Arc::new(mgr);
     let sink: std::sync::Arc<dyn xylitol::XyEventSink> =
         std::sync::Arc::new(xylitol::infra::event::EventBus::new());
     let mut session = xylitol::agent::capabilities::AgentCapabilities::new(
@@ -666,7 +665,7 @@ pub(crate) async fn g_sess_persist_turn(agent: &AgentState, sess: &XySessionStor
     let _ = mgr.create(sid, Some("."), None).await;
     reset_fake_state();
     set_fake_text("assistant reply");
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let mut caps = make_test_capabilities(agent, store.clone());
     let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
     if let Some(id) = first_model_id {
@@ -689,19 +688,19 @@ pub(crate) async fn w_sess_load_entries(sess: &XySessionStore) {
 
 #[then("含本轮 user 与 assistant 的 SessionEntry::Message")]
 pub(crate) fn t_sess_has_user_assistant(sess: &XySessionStore) {
-    use xylitol::protocol::message::{AgentMessage, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, XyLlmMessage};
 
     let entries = sess.entries.borrow();
     let has_user = entries.iter().any(|e| {
         matches!(
             e.as_agent_message(),
-            Some(AgentMessage::Llm(LlmMessage::UserMessage { .. }))
+            Some(AgentMessage::Llm(XyLlmMessage::UserMessage { .. }))
         )
     });
     let has_assistant = entries.iter().any(|e| {
         matches!(
             e.as_agent_message(),
-            Some(AgentMessage::Llm(LlmMessage::AssistantMessage { .. }))
+            Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage { .. }))
         )
     });
     assert!(has_user, "missing user message");
@@ -717,7 +716,7 @@ pub(crate) async fn g_sess_persist_tool(agent: &AgentState, sess: &XySessionStor
     let sid = "persist-tool-result";
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(sid, Some("."), None).await;
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let mut caps = make_test_capabilities(agent, store);
     let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
     if let Some(id) = first_model_id {
@@ -737,12 +736,12 @@ pub(crate) async fn w_sess_tool_done(sess: &XySessionStore) {
 
 #[then("store 含对应 toolResult（或等价 tool）消息条目")]
 pub(crate) fn t_sess_has_tool_result(sess: &XySessionStore) {
-    use xylitol::protocol::message::{AgentMessage, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, XyLlmMessage};
 
     let has_tool = sess.entries.borrow().iter().any(|e| {
         matches!(
             e.as_agent_message(),
-            Some(AgentMessage::Llm(LlmMessage::ToolResultMessage { .. }))
+            Some(AgentMessage::Llm(XyLlmMessage::ToolResultMessage { .. }))
         )
     });
     assert!(has_tool, "session must contain tool result message entry");
@@ -824,13 +823,13 @@ pub(crate) async fn w_sess_message_end(agent: &AgentState, sess: &XySessionStore
 
 #[then("该消息已 append 到 session store")]
 pub(crate) fn t_sess_auto_persisted(sess: &XySessionStore) {
-    use xylitol::protocol::message::{AgentMessage, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, XyLlmMessage};
 
     assert!(
         sess.entries.borrow().iter().any(|e| {
             matches!(
                 e.as_agent_message(),
-                Some(AgentMessage::Llm(LlmMessage::AssistantMessage { .. }))
+                Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage { .. }))
             )
         }),
         "assistant message must be persisted"
@@ -873,7 +872,7 @@ pub(crate) fn t_sess_resume_ok(sess: &XySessionStore) {
 pub(crate) fn g_sess_resp_separated(agent: &AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let _caps = make_test_capabilities(agent, store);
     agent.last_result.replace(Some(Ok("constructed".into())));
 }
@@ -900,7 +899,7 @@ struct MockExportIo {
 }
 
 #[async_trait::async_trait]
-impl xylitol::protocol::ports::XyExportIo for MockExportIo {
+impl xylitol_plugin_sdk::XyExportIo for MockExportIo {
     async fn write_text(
         &self,
         _path: &std::path::Path,
@@ -934,9 +933,8 @@ pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStor
     let mock = sess_export::MOCK
         .with(|m| m.borrow().clone())
         .expect("mock export");
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
-    let exporter =
-        SessionExporter::new(Some(mock as Arc<dyn xylitol::protocol::ports::XyExportIo>));
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
+    let exporter = SessionExporter::new(Some(mock as Arc<dyn xylitol_plugin_sdk::XyExportIo>));
     let result = exporter
         .export_to_html(store.as_ref(), sid, out.as_path())
         .await;
@@ -981,7 +979,7 @@ pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
     use xylitol::app::bang_exec::BangExecHandler;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let bang = BangExecHandler::new(None);
     let result = bang
         .execute(
@@ -1063,11 +1061,11 @@ async fn append_interrupted_bash_row(
     let _ = mgr.append(&sid, &entry).await;
 }
 
-fn interrupted_user_texts(rows: &[xylitol::protocol::message::LlmMessage]) -> Vec<String> {
-    use xylitol::protocol::message::{AgentPart, LlmMessage};
+fn interrupted_user_texts(rows: &[xylitol::protocol::message::XyLlmMessage]) -> Vec<String> {
+    use xylitol::protocol::message::{AgentPart, XyLlmMessage};
     rows.iter()
         .filter_map(|m| match m {
-            LlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
+            XyLlmMessage::UserMessage { content, .. } => content.iter().find_map(|p| match p {
                 AgentPart::Text { text } => Some(text.clone()),
                 _ => None,
             }),
@@ -1143,7 +1141,7 @@ pub(crate) async fn w_sess_build_llm_history(agent: &AgentState, sess: &XySessio
     let sid = sess.current_id.borrow().clone().expect("session id");
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let caps = make_test_capabilities(agent, store);
     let first = caps
         .load_conversation_history(&sid)

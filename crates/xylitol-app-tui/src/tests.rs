@@ -6008,9 +6008,9 @@ fn scene_dump_covers_product_render_scrollback() {
 
 // ---- ask gateway ↔ Choice slot ↔ oneshot 端到端（ata3 / ata4 产品路径） ────
 
-fn ask_args_fixture() -> xylitol_plugin_sdk::ports::ask::AskArgs {
-    use xylitol_plugin_sdk::ports::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
-    xylitol_plugin_sdk::ports::ask::AskArgs {
+fn ask_args_fixture() -> xylitol_plugin_sdk::ask::AskArgs {
+    use xylitol_plugin_sdk::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
+    xylitol_plugin_sdk::ask::AskArgs {
         questions: vec![AskQuestionArg {
             id: "next".into(),
             prompt: "continue?".into(),
@@ -6043,7 +6043,7 @@ async fn harness_ask_gateway_submit_resolves_answered_payload() {
     let root = session.ui_root().expect("product ui").clone();
 
     let tool = {
-        use xylitol_plugin_sdk::ports::ask::AskUserGateway;
+        use xylitol_plugin_sdk::ask::AskUserGateway;
         let gw = gw.clone();
         tokio::spawn(async move { gw.prompt(ask_args_fixture()).await })
     };
@@ -6079,7 +6079,7 @@ async fn harness_ask_gateway_esc_resolves_skipped_success_payload() {
     let root = session.ui_root().expect("product ui").clone();
 
     let tool = {
-        use xylitol_plugin_sdk::ports::ask::AskUserGateway;
+        use xylitol_plugin_sdk::ask::AskUserGateway;
         let gw = gw.clone();
         tokio::spawn(async move { gw.prompt(ask_args_fixture()).await })
     };

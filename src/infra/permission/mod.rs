@@ -1,6 +1,6 @@
 //! Permission policy backends for the agent runtime.
 //!
-//! Provides the [`XyPermission`] trait (defined in [`crate::protocol::ports::permission`])
+//! Provides the [`XyPermission`] trait (defined in [`xylitol_plugin_sdk::XyPermission`])
 //! and concrete backends that enforce application-level path/domain matching.
 //!
 //! # Advisory only
@@ -18,10 +18,10 @@ use super::config::types::{
     PermissionProcessConfig,
 };
 
-// XyPermissionVerdict + XyPermission trait live in `protocol::ports::permission`.
+// XyPermissionVerdict + XyPermission trait live in `xylitol-plugin-sdk`.
 // Concrete backends below (AllowAllPermission, GlobPolicy, platform) implement
 // the port; re-exported here for existing `crate::infra::permission::*` references.
-pub use crate::protocol::ports::{XyPermission, XyPermissionVerdict};
+pub use xylitol_plugin_sdk::{XyPermission, XyPermissionVerdict};
 
 /// A permission backend that allows everything. Used when permission checks are
 /// disabled.

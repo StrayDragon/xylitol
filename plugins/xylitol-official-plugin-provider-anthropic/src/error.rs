@@ -1,1 +1,1 @@
-pub use xylitol_plugin_sdk::AiBridgeError;
+pub use xylitol_plugin_sdk::XyError;

@@ -3,7 +3,7 @@
 use crate::bdd::fixtures::*;
 use crate::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
-use crate::bdd::steps_bridge::{AiBridgeBdd, ai_bridge_bdd};
+use crate::bdd::steps_bridge::{ProviderBdd, provider_bdd};
 use crate::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
 use crate::bdd::steps_cli_surface::{SurfaceFlagsBdd, surface_flags_bdd};
 use crate::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
@@ -80,4 +80,4 @@ async fn test_la_r1513_session_unit(host_pump_bdd: HostPumpBdd) {}
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
     name = "provider-diff-contained-in-bridge"
 )]
-fn test_la_r1528_bridge_open_close(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_la_r1528_bridge_open_close(provider_bdd: ProviderBdd) {}

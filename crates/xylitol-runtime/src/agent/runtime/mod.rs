@@ -5,11 +5,11 @@
 //! guard. The `agent` module is the public entry; modules here are the loop's
 //! internals.
 
+pub mod baseline;
 pub mod event;
 pub mod hooks;
 pub(crate) mod obs;
 pub(crate) mod permission_router;
-pub mod ports;
 pub mod react;
 pub mod retry;
 pub mod script_hook_ctx;
@@ -19,9 +19,9 @@ pub(crate) mod tool_exec;
 pub(crate) mod tool_result_quiet;
 
 // Public surface of the loop (XyEvent/XyEventStream/AgentRuntime/AgentHooks are `pub`).
+pub use baseline::RuntimeBaseline;
 pub use event::XyEventStream;
 pub use hooks::AgentHooks;
-pub use ports::RuntimePorts;
 pub use react::AgentRuntime;
 pub use state::{
     RunCoordinator, RunId, RunPolicy, RuntimeControlError, RuntimePhase, SharedRunCoordinator,

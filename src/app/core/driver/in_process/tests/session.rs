@@ -52,7 +52,7 @@ async fn in_process_session_tree_ensures_missing_session() {
     )
     .cwd(".")
     .tools(ToolSet::from_iter(crate::infra::tools::default_tools()))
-    .build_ports()
+    .build_baseline()
     .materialize_runtime();
     // Orphan id: set on agent but never created on disk (wipe / pre-persist).
     let orphan = uuid::Uuid::new_v4().to_string();
@@ -206,7 +206,7 @@ async fn after_run_session_tree_reflects_persisted_turn() {
     use crate::protocol::message::XyStopReason;
     use crate::protocol::model::XyModelConfig;
     use crate::protocol::model::{XyChunk, XyModelMeta, XyToolSchema};
-    use crate::protocol::ports::{XyModel, XyStream};
+    use xylitol_plugin_sdk::{XyModel, XyStream};
 
     struct TextMockModel;
     #[async_trait]
@@ -217,10 +217,10 @@ async fn after_run_session_tree_reflects_persisted_turn() {
 
         async fn generate_stream(
             &self,
-            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             let chunks = vec![
                 Ok(XyChunk::TextDelta("reply".into())),
@@ -268,12 +268,12 @@ async fn after_run_session_tree_reflects_persisted_turn() {
         reg,
         builder,
         store_trait.clone(),
-        Arc::new(EventBus::new()) as Arc<dyn crate::protocol::ports::XyEventSink>,
+        Arc::new(EventBus::new()) as Arc<dyn xylitol_plugin_sdk::XyEventSink>,
         permission::allow_all_permission(),
     )
     .cwd(".")
     .tools(ToolSet::empty())
-    .build_ports()
+    .build_baseline()
     .materialize_runtime();
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();
@@ -356,7 +356,7 @@ async fn concurrent_run_rejects_second_with_busy() {
     use crate::protocol::error::XyError;
     use crate::protocol::message::XyStopReason;
     use crate::protocol::model::{XyChunk, XyModelConfig, XyModelMeta, XyToolSchema};
-    use crate::protocol::ports::{XyModel, XyStream};
+    use xylitol_plugin_sdk::{XyModel, XyStream};
 
     struct SlowMock {
         calls: Arc<AtomicUsize>,
@@ -368,10 +368,10 @@ async fn concurrent_run_rejects_second_with_busy() {
         }
         async fn generate_stream(
             &self,
-            _messages: Vec<crate::protocol::message::LlmMessage>,
+            _messages: Vec<crate::protocol::message::XyLlmMessage>,
             _tools: &[XyToolSchema],
             _stream: bool,
-            _options: crate::protocol::ports::XyGenerateOptions,
+            _options: xylitol_plugin_sdk::XyGenerateOptions,
         ) -> Result<XyStream, XyError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(Box::pin(async_stream::stream! {
@@ -428,12 +428,12 @@ async fn concurrent_run_rejects_second_with_busy() {
         reg,
         builder,
         store_trait.clone(),
-        Arc::new(EventBus::new()) as Arc<dyn crate::protocol::ports::XyEventSink>,
+        Arc::new(EventBus::new()) as Arc<dyn xylitol_plugin_sdk::XyEventSink>,
         permission::allow_all_permission(),
     )
     .cwd(".")
     .tools(ToolSet::empty())
-    .build_ports()
+    .build_baseline()
     .materialize_runtime();
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();

@@ -6,11 +6,11 @@
 use std::sync::Arc;
 
 use crate::agent::model::registry::ModelRegistry;
+use xylitol_plugin_sdk::XyModel;
 use xylitol_plugin_sdk::error::XyError;
 use xylitol_plugin_sdk::model::{
     THINKING_OFF, ThinkingBudgets, XyModelMeta, last_declared_thinking_level,
 };
-use xylitol_plugin_sdk::ports::XyModel;
 
 /// Manages model registry, current model selection, and thinking level.
 ///
@@ -31,16 +31,13 @@ pub struct ModelManager {
     /// Optional Settings Anthropic budget overrides for known level names.
     thinking_budgets: Option<ThinkingBudgets>,
     /// Injected provider factory (composition-root-supplied).
-    pub(crate) model_builder: xylitol_plugin_sdk::ports::XyModelBuilder,
+    pub(crate) model_builder: xylitol_plugin_sdk::XyModelBuilder,
 }
 
 impl ModelManager {
     /// Create a new ModelManager with the given registry, default index, and
     /// injected provider builder.
-    pub fn new(
-        registry: ModelRegistry,
-        model_builder: xylitol_plugin_sdk::ports::XyModelBuilder,
-    ) -> Self {
+    pub fn new(registry: ModelRegistry, model_builder: xylitol_plugin_sdk::XyModelBuilder) -> Self {
         Self {
             registry,
             current_index: None,
@@ -190,7 +187,7 @@ mod tests {
     use xylitol_plugin_sdk::model::XyModelMeta;
     use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind};
 
-    type ModelBuilderFn = xylitol_plugin_sdk::ports::XyModelBuilder;
+    type ModelBuilderFn = xylitol_plugin_sdk::XyModelBuilder;
 
     fn empty_registry() -> ModelRegistry {
         ModelRegistry::new()

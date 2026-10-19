@@ -1,8 +1,8 @@
-//! Session → LLM projection: fold environment roles into [`xylitol_plugin_sdk::LlmMessage`] rows.
+//! Session → LLM projection: fold environment roles into [`xylitol_plugin_sdk::XyLlmMessage`] rows.
 //!
 //! [`xylitol_plugin_sdk::AgentMessage`] remains the session SSOT (`Llm` ∪ `Env`). Before any
 //! provider call, history MUST pass through [`project_for_llm`].
-//! Llm arm is passthrough (`LlmMessage` ≡ bridge `AiBridgeMessage`).
+//! Llm arm is passthrough (`XyLlmMessage`).
 //!
 //! Env fold **shapes** are part of the resume/import provider-prefix contract
 //! (c1930 / as48): changing the bash or context-summary templates breaks
@@ -19,7 +19,7 @@ pub use xylitol_plugin_sdk::llm_project::{
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage, now_ms};
+    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage, now_ms};
 
     /// Zero every timestamp so the snapshot pins shape, not wall-clock.
     fn normalize_timestamps(value: &mut serde_json::Value) {
@@ -49,7 +49,7 @@ mod tests {
         let history = vec![
             AgentMessage::user("plan the refactor"),
             AgentMessage::assistant("I will read the entry first"),
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
                     id: "call_1".into(),
                     name: "read".into(),
@@ -217,7 +217,7 @@ mod tests {
     fn history_keeps_removed_mcp_tool_call_in_llm_projection() {
         let history = vec![
             AgentMessage::user("use ping"),
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
                     id: "call-gone".into(),
                     name: "mcp__fixture__ping".into(),
@@ -262,13 +262,13 @@ mod tests {
     #[test]
     fn responses_assemble_after_mcp_remove_keeps_input_busts_tools() {
         use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
-        use xylitol_official_plugin_provider_openai::AiBridgeGenerateOptions;
-        use xylitol_official_plugin_provider_openai::dto::AiBridgeToolSchema;
+        use xylitol_official_plugin_provider_openai::XyGenerateOptions;
+        use xylitol_official_plugin_provider_openai::dto::XyToolSchema;
         use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
 
         let history = vec![
             AgentMessage::user("use ping"),
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
                     id: "call-gone".into(),
                     name: "mcp__fixture__ping".into(),
@@ -294,7 +294,7 @@ mod tests {
         ];
         let projected = project_for_llm(&history);
 
-        let read = AiBridgeToolSchema {
+        let read = XyToolSchema {
             name: "read".into(),
             description: "read a file".into(),
             parameters: serde_json::json!({
@@ -302,7 +302,7 @@ mod tests {
                 "properties": {"path": {"type": "string"}},
             }),
         };
-        let ping = AiBridgeToolSchema {
+        let ping = XyToolSchema {
             name: "mcp__fixture__ping".into(),
             description: "fixture ping".into(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
@@ -327,7 +327,7 @@ mod tests {
             "MCP-only remove MUST NOT rewrite system Available tools (mcp names filtered)"
         );
 
-        let opts = AiBridgeGenerateOptions {
+        let opts = XyGenerateOptions {
             system_prompt: Some(prompt_with),
             thinking_level: "medium".into(),
             ..Default::default()
@@ -372,13 +372,13 @@ mod tests {
     #[test]
     fn responses_assemble_after_builtin_remove_rewrites_input_and_tools() {
         use crate::agent::prompt::{SystemPromptOpts, build_system_prompt};
-        use xylitol_official_plugin_provider_openai::AiBridgeGenerateOptions;
-        use xylitol_official_plugin_provider_openai::dto::AiBridgeToolSchema;
+        use xylitol_official_plugin_provider_openai::XyGenerateOptions;
+        use xylitol_official_plugin_provider_openai::dto::XyToolSchema;
         use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
 
         let history = vec![
             AgentMessage::user("use bash"),
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
                     id: "call-bash".into(),
                     name: "bash".into(),
@@ -399,7 +399,7 @@ mod tests {
         ];
         let projected = project_for_llm(&history);
 
-        let read = AiBridgeToolSchema {
+        let read = XyToolSchema {
             name: "read".into(),
             description: "read a file".into(),
             parameters: serde_json::json!({
@@ -407,7 +407,7 @@ mod tests {
                 "properties": {"path": {"type": "string"}},
             }),
         };
-        let bash = AiBridgeToolSchema {
+        let bash = XyToolSchema {
             name: "bash".into(),
             description: "run shell".into(),
             parameters: serde_json::json!({
@@ -444,7 +444,7 @@ mod tests {
             projected.clone(),
             &[read.clone(), bash],
             false,
-            &AiBridgeGenerateOptions {
+            &XyGenerateOptions {
                 system_prompt: Some(prompt_with),
                 thinking_level: "medium".into(),
                 ..Default::default()
@@ -455,7 +455,7 @@ mod tests {
             projected,
             &[read],
             false,
-            &AiBridgeGenerateOptions {
+            &XyGenerateOptions {
                 system_prompt: Some(prompt_without),
                 thinking_level: "medium".into(),
                 ..Default::default()
@@ -509,7 +509,7 @@ mod tests {
     fn aborted_and_error_assistants_skipped_for_llm() {
         use xylitol_plugin_sdk::message::XyStopReason;
 
-        let aborted = AgentMessage::Llm(LlmMessage::AssistantMessage {
+        let aborted = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             content: vec![AgentPart::text("partial draft")],
             stop_reason: Some(XyStopReason::Aborted),
             usage: None,
@@ -521,7 +521,7 @@ mod tests {
             timestamp: now_ms(),
             diagnostics: Vec::new(),
         });
-        let errored = AgentMessage::Llm(LlmMessage::AssistantMessage {
+        let errored = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
             content: vec![AgentPart::text("failed")],
             stop_reason: Some(XyStopReason::Error),
             usage: None,
@@ -555,7 +555,7 @@ mod tests {
         let projected = project_for_llm(std::slice::from_ref(&user));
         assert_eq!(projected.len(), 1);
         // Same type as bridge DTO (alias).
-        let _: xylitol_official_plugin_provider_openai::dto::AiBridgeMessage = projected[0].clone();
+        let _: xylitol_official_plugin_provider_openai::dto::XyLlmMessage = projected[0].clone();
     }
 
     /// c27 (agent seam): post-compact working history is CompactionSummary + firstKept.
@@ -573,7 +573,7 @@ mod tests {
                 modified_files: None,
             }),
             AgentMessage::user("continue after compact"),
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![
                     AgentPart::Thinking {
                         thinking: "kept plan".into(),
@@ -610,7 +610,7 @@ mod tests {
             "only kept assistant remains: {projected:?}"
         );
         match &projected[2] {
-            LlmMessage::AssistantMessage { content, .. } => {
+            XyLlmMessage::AssistantMessage { content, .. } => {
                 let sig = content.iter().find_map(|p| match p {
                     AgentPart::Thinking {
                         thinking_signature: Some(s),
@@ -642,8 +642,8 @@ mod tests {
     /// JSONL render/parse → as_agent_message → same assemble `input`/`tools`.
     #[test]
     fn resume_import_shaped_jsonl_matches_memory_assemble_prefix() {
-        use xylitol_official_plugin_provider_openai::AiBridgeGenerateOptions;
-        use xylitol_official_plugin_provider_openai::dto::AiBridgeToolSchema;
+        use xylitol_official_plugin_provider_openai::XyGenerateOptions;
+        use xylitol_official_plugin_provider_openai::dto::XyToolSchema;
         use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
         use xylitol_plugin_sdk::session::{
             EntryBase, SESSION_VERSION, SessionEntry, SessionHeader, bash_execution_message_entry,
@@ -661,7 +661,7 @@ mod tests {
                 read_files: None,
                 modified_files: None,
             }),
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![
                     AgentPart::Thinking {
                         thinking: "plan".into(),
@@ -689,12 +689,12 @@ mod tests {
         ];
 
         let projected = project_for_llm(&memory);
-        let opts = AiBridgeGenerateOptions {
+        let opts = XyGenerateOptions {
             system_prompt: Some("Current date: 2026-08-06\ncwd: /tmp/lab".into()),
             thinking_level: "medium".into(),
             ..Default::default()
         };
-        let tools = [AiBridgeToolSchema {
+        let tools = [XyToolSchema {
             name: "read".into(),
             description: "read a file".into(),
             parameters: serde_json::json!({
@@ -806,7 +806,7 @@ mod tests {
 
         // Serde round-trip of projected LLM rows (bridge DTO) must not drift input.
         let wire = serde_json::to_value(&projected).expect("serde");
-        let back: Vec<xylitol_official_plugin_provider_openai::dto::AiBridgeMessage> =
+        let back: Vec<xylitol_official_plugin_provider_openai::dto::XyLlmMessage> =
             serde_json::from_value(wire).expect("de");
         let body_serde = asm.assemble("lab-m", back, &tools, false, &opts);
         assert_eq!(body_serde["input"], body_a["input"]);
@@ -817,7 +817,7 @@ mod tests {
     /// summarized-away reasoning ids.
     #[test]
     fn compaction_cut_path_assemble_prefix_matches_working_history() {
-        use xylitol_official_plugin_provider_openai::AiBridgeGenerateOptions;
+        use xylitol_official_plugin_provider_openai::XyGenerateOptions;
         use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
         use xylitol_plugin_sdk::session::{
             CompactionEntry, EntryBase, MessageEntry, SessionEntry, build_context_entries,
@@ -843,7 +843,7 @@ mod tests {
             msg(
                 "a_old",
                 Some("u_old"),
-                AgentMessage::Llm(LlmMessage::AssistantMessage {
+                AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                     content: vec![
                         AgentPart::Thinking {
                             thinking: "old".into(),
@@ -871,7 +871,7 @@ mod tests {
             msg(
                 "a_keep",
                 Some("u_keep"),
-                AgentMessage::Llm(LlmMessage::AssistantMessage {
+                AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                     content: vec![
                         AgentPart::Thinking {
                             thinking: "kept".into(),
@@ -930,7 +930,7 @@ mod tests {
                 modified_files: None,
             }),
             AgentMessage::user("kept after cut"),
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![
                     AgentPart::Thinking {
                         thinking: "kept".into(),
@@ -952,7 +952,7 @@ mod tests {
             AgentMessage::user("continue after compact"),
         ];
 
-        let opts = AiBridgeGenerateOptions {
+        let opts = XyGenerateOptions {
             system_prompt: Some("Current date: 2026-08-06".into()),
             thinking_level: "medium".into(),
             ..Default::default()

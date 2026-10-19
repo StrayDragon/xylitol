@@ -7,7 +7,7 @@ use serde_json::Value;
 use super::adapter::McpToolAdapter;
 use super::client::McpClientManager;
 use super::types::McpServerConfig;
-use xylitol_plugin_sdk::ports::XyTool;
+use xylitol_plugin_sdk::XyTool;
 
 /// True when MCP should be assembled (non-empty server list).
 pub fn mcp_enabled(servers: &Option<Vec<McpServerConfig>>) -> bool {
@@ -196,7 +196,7 @@ mod tests {
             .expect("ping tool");
         let out = ping
             .execute(
-                &xylitol_plugin_sdk::ports::XyToolCtx::new("call-1"),
+                &xylitol_plugin_sdk::XyToolCtx::new("call-1"),
                 serde_json::json!({}),
             )
             .await

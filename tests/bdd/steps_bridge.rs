@@ -2,14 +2,14 @@ use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 
-pub struct AiBridgeBdd {
-    pub(crate) chunks: RefCell<Vec<xylitol_official_plugin_provider_openai::dto::AiBridgeChunk>>,
+pub struct ProviderBdd {
+    pub(crate) chunks: RefCell<Vec<xylitol_official_plugin_provider_openai::dto::XyChunk>>,
     pub(crate) parse_value: RefCell<Option<serde_json::Value>>,
     pub(crate) input_items: RefCell<Vec<serde_json::Value>>,
     pub(crate) request_body: RefCell<Option<serde_json::Value>>,
 }
 
-impl AiBridgeBdd {
+impl ProviderBdd {
     fn new() -> Self {
         Self {
             chunks: RefCell::new(Vec::new()),
@@ -21,15 +21,15 @@ impl AiBridgeBdd {
 }
 
 #[fixture]
-pub fn ai_bridge_bdd() -> AiBridgeBdd {
-    AiBridgeBdd::new()
+pub fn provider_bdd() -> ProviderBdd {
+    ProviderBdd::new()
 }
 
 #[given(
     "Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done"
 )]
-fn g_pab13_responses_sse(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_official_plugin_provider_openai::dto::AiBridgeChunk;
+fn g_pab13_responses_sse(provider_bdd: &ProviderBdd) {
+    use xylitol_official_plugin_provider_openai::dto::XyChunk;
     use xylitol_official_plugin_provider_openai::provider::{
         ResponsesStreamState, map_responses_sse_event,
     };
@@ -66,16 +66,16 @@ fn g_pab13_responses_sse(ai_bridge_bdd: &AiBridgeBdd) {
     }
     assert!(
         out.iter()
-            .any(|c| matches!(c, AiBridgeChunk::ToolCallStart { .. })),
+            .any(|c| matches!(c, XyChunk::ToolCallStart { .. })),
         "fixture must produce Start, got {out:?}"
     );
-    ai_bridge_bdd.chunks.replace(out);
+    provider_bdd.chunks.replace(out);
 }
 
-#[when("映射为 AiBridgeChunk 流")]
-fn w_pab13_already_mapped(ai_bridge_bdd: &AiBridgeBdd) {
+#[when("映射为 XyChunk 流")]
+fn w_pab13_already_mapped(provider_bdd: &ProviderBdd) {
     assert!(
-        !ai_bridge_bdd.chunks.borrow().is_empty(),
+        !provider_bdd.chunks.borrow().is_empty(),
         "expected chunks from given step"
     );
 }
@@ -83,18 +83,18 @@ fn w_pab13_already_mapped(ai_bridge_bdd: &AiBridgeBdd) {
 #[then(
     "首个 args delta 之前或当时已有 ToolCallStart 且存在至少一次 ToolCallDelta 早于对应 ToolCallEnd"
 )]
-fn t_pab13_lifecycle(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_official_plugin_provider_openai::dto::AiBridgeChunk;
-    let chunks = ai_bridge_bdd.chunks.borrow();
+fn t_pab13_lifecycle(provider_bdd: &ProviderBdd) {
+    use xylitol_official_plugin_provider_openai::dto::XyChunk;
+    let chunks = provider_bdd.chunks.borrow();
     let start = chunks
         .iter()
-        .position(|c| matches!(c, AiBridgeChunk::ToolCallStart { .. }));
+        .position(|c| matches!(c, XyChunk::ToolCallStart { .. }));
     let delta = chunks
         .iter()
-        .position(|c| matches!(c, AiBridgeChunk::ToolCallDelta { .. }));
+        .position(|c| matches!(c, XyChunk::ToolCallDelta { .. }));
     let end = chunks
         .iter()
-        .position(|c| matches!(c, AiBridgeChunk::ToolCallEnd { .. }));
+        .position(|c| matches!(c, XyChunk::ToolCallEnd { .. }));
     assert!(start.is_some(), "missing ToolCallStart in {chunks:?}");
     assert!(delta.is_some(), "missing ToolCallDelta in {chunks:?}");
     assert!(end.is_some(), "missing ToolCallEnd in {chunks:?}");
@@ -106,19 +106,19 @@ fn t_pab13_lifecycle(ai_bridge_bdd: &AiBridgeBdd) {
 }
 
 #[given("输入残缺工具参数 JSON")]
-fn g_pab14_partial_json(ai_bridge_bdd: &AiBridgeBdd) {
-    ai_bridge_bdd.parse_value.replace(None);
+fn g_pab14_partial_json(provider_bdd: &ProviderBdd) {
+    provider_bdd.parse_value.replace(None);
 }
 
 #[when("调用 parse_streaming_json")]
-fn w_pab14_parse(ai_bridge_bdd: &AiBridgeBdd) {
+fn w_pab14_parse(provider_bdd: &ProviderBdd) {
     let v = xylitol_official_plugin_provider_openai::dto::parse_streaming_json(r#"{"command":"ls"#);
-    ai_bridge_bdd.parse_value.replace(Some(v));
+    provider_bdd.parse_value.replace(Some(v));
 }
 
 #[then("返回 Value 且不 panic")]
-fn t_pab14_ok(ai_bridge_bdd: &AiBridgeBdd) {
-    let v = ai_bridge_bdd
+fn t_pab14_ok(provider_bdd: &ProviderBdd) {
+    let v = provider_bdd
         .parse_value
         .borrow()
         .clone()
@@ -128,52 +128,50 @@ fn t_pab14_ok(ai_bridge_bdd: &AiBridgeBdd) {
 }
 
 #[given("Responses 组装且 system_prompt 非空且 thinking_level 为 medium")]
-fn g_pab15_system_developer(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_official_plugin_provider_openai::dto::AiBridgeMessage;
+fn g_pab15_system_developer(provider_bdd: &ProviderBdd) {
+    use xylitol_official_plugin_provider_openai::dto::XyLlmMessage;
     use xylitol_official_plugin_provider_openai::provider::messages_to_responses_input_with_options;
-    use xylitol_official_plugin_provider_openai::thinking::AiBridgeGenerateOptions;
+    use xylitol_official_plugin_provider_openai::thinking::XyGenerateOptions;
 
-    let opts = AiBridgeGenerateOptions {
+    let opts = XyGenerateOptions {
         thinking_level: "medium".into(),
         system_prompt: Some("SYS_PROMPT_BDD".into()),
         ..Default::default()
     };
-    let items = messages_to_responses_input_with_options(&[AiBridgeMessage::user("hi")], &opts);
-    ai_bridge_bdd.input_items.replace(items);
+    let items = messages_to_responses_input_with_options(&[XyLlmMessage::user("hi")], &opts);
+    provider_bdd.input_items.replace(items);
 }
 
 #[when("转换为 input items")]
-fn w_pab15_already_converted(ai_bridge_bdd: &AiBridgeBdd) {
+fn w_pab15_already_converted(provider_bdd: &ProviderBdd) {
     assert!(
-        !ai_bridge_bdd.input_items.borrow().is_empty(),
+        !provider_bdd.input_items.borrow().is_empty(),
         "expected input items from given"
     );
 }
 
 #[then("首项 role 为 developer 且 content 为 system_prompt")]
-fn t_pab15_developer(ai_bridge_bdd: &AiBridgeBdd) {
-    let items = ai_bridge_bdd.input_items.borrow();
+fn t_pab15_developer(provider_bdd: &ProviderBdd) {
+    let items = provider_bdd.input_items.borrow();
     assert_eq!(items[0]["role"], "developer");
     assert_eq!(items[0]["content"], "SYS_PROMPT_BDD");
 }
 
 #[given("assistant 含 Thinking 无 signature 与 Text")]
-fn g_pab15_thinking_text(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_official_plugin_provider_openai::dto::{
-        AiBridgeMessage, AiBridgePart, AiBridgeStopReason,
-    };
+fn g_pab15_thinking_text(provider_bdd: &ProviderBdd) {
+    use xylitol_official_plugin_provider_openai::dto::{AgentPart, XyLlmMessage, XyStopReason};
     use xylitol_official_plugin_provider_openai::provider::messages_to_responses_input;
 
-    let msgs = vec![AiBridgeMessage::AssistantMessage {
+    let msgs = vec![XyLlmMessage::AssistantMessage {
         content: vec![
-            AiBridgePart::Thinking {
+            AgentPart::Thinking {
                 thinking: "HIDDEN_THINK".into(),
                 redacted: false,
                 thinking_signature: None,
             },
-            AiBridgePart::text("ONLY_TEXT"),
+            AgentPart::text("ONLY_TEXT"),
         ],
-        stop_reason: Some(AiBridgeStopReason::Stop),
+        stop_reason: Some(XyStopReason::Stop),
         usage: None,
         api: String::new(),
         provider: String::new(),
@@ -183,22 +181,22 @@ fn g_pab15_thinking_text(ai_bridge_bdd: &AiBridgeBdd) {
         timestamp: 0,
         diagnostics: Vec::new(),
     }];
-    ai_bridge_bdd
+    provider_bdd
         .input_items
         .replace(messages_to_responses_input(&msgs));
 }
 
 #[when("转换为 Responses input")]
-fn w_pab15_converted_again(ai_bridge_bdd: &AiBridgeBdd) {
+fn w_pab15_converted_again(provider_bdd: &ProviderBdd) {
     assert!(
-        !ai_bridge_bdd.input_items.borrow().is_empty(),
+        !provider_bdd.input_items.borrow().is_empty(),
         "expected input items"
     );
 }
 
 #[then("output_text 仅含 Text 且无 Thinking 正文")]
-fn t_pab15_text_only(ai_bridge_bdd: &AiBridgeBdd) {
-    let items = ai_bridge_bdd.input_items.borrow();
+fn t_pab15_text_only(provider_bdd: &ProviderBdd) {
+    let items = provider_bdd.input_items.borrow();
     let assistant = items
         .iter()
         .find(|i| i.get("role") == Some(&serde_json::json!("assistant")))
@@ -209,33 +207,33 @@ fn t_pab15_text_only(ai_bridge_bdd: &AiBridgeBdd) {
 }
 
 #[given("Responses 组装且 thinking_level 为 medium 且 tools 非空")]
-fn g_pab16_body(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_official_plugin_provider_openai::dto::{AiBridgeMessage, AiBridgeToolSchema};
+fn g_pab16_body(provider_bdd: &ProviderBdd) {
+    use xylitol_official_plugin_provider_openai::dto::{XyLlmMessage, XyToolSchema};
     use xylitol_official_plugin_provider_openai::provider::ResponsesAssembler;
-    use xylitol_official_plugin_provider_openai::thinking::AiBridgeGenerateOptions;
+    use xylitol_official_plugin_provider_openai::thinking::XyGenerateOptions;
 
-    let tools = [AiBridgeToolSchema {
+    let tools = [XyToolSchema {
         name: "bash".into(),
         description: "run".into(),
         parameters: serde_json::json!({"type": "object"}),
     }];
     let body = ResponsesAssembler::default().assemble(
         "m",
-        vec![AiBridgeMessage::user("hi")],
+        vec![XyLlmMessage::user("hi")],
         &tools,
         false,
-        &AiBridgeGenerateOptions {
+        &XyGenerateOptions {
             thinking_level: "medium".into(),
             ..Default::default()
         },
     );
-    ai_bridge_bdd.request_body.replace(Some(body));
+    provider_bdd.request_body.replace(Some(body));
 }
 
 #[when("构建请求体")]
-fn w_pab16_build(ai_bridge_bdd: &AiBridgeBdd) {
+fn w_pab16_build(provider_bdd: &ProviderBdd) {
     assert!(
-        ai_bridge_bdd.request_body.borrow().is_some(),
+        provider_bdd.request_body.borrow().is_some(),
         "expected request body from given"
     );
 }
@@ -243,8 +241,8 @@ fn w_pab16_build(ai_bridge_bdd: &AiBridgeBdd) {
 #[then(
     "store 为 false 且每个 tool 的 strict 为 false 且 reasoning.summary 存在且 include 含 reasoning.encrypted_content"
 )]
-fn t_pab16_fields(ai_bridge_bdd: &AiBridgeBdd) {
-    let body = ai_bridge_bdd.request_body.borrow().clone().expect("body");
+fn t_pab16_fields(provider_bdd: &ProviderBdd) {
+    let body = provider_bdd.request_body.borrow().clone().expect("body");
     assert_eq!(body["store"], false);
     let tools = body["tools"].as_array().expect("tools");
     assert!(!tools.is_empty());
@@ -262,7 +260,7 @@ fn t_pab16_fields(ai_bridge_bdd: &AiBridgeBdd) {
 }
 
 #[given("Responses 流或非流输出含完整 type=reasoning 的 output item")]
-fn g_pab16_reasoning_item(ai_bridge_bdd: &AiBridgeBdd) {
+fn g_pab16_reasoning_item(provider_bdd: &ProviderBdd) {
     use xylitol_official_plugin_provider_openai::provider::{
         ResponsesStreamState, map_responses_sse_event,
     };
@@ -277,25 +275,25 @@ fn g_pab16_reasoning_item(ai_bridge_bdd: &AiBridgeBdd) {
             "encrypted_content": "blob"
         }
     });
-    ai_bridge_bdd
+    provider_bdd
         .chunks
         .replace(map_responses_sse_event(&event, &mut state));
 }
 
-#[when("映射为 AiBridgeChunk")]
-fn w_pab16_map_chunks(ai_bridge_bdd: &AiBridgeBdd) {
-    assert!(!ai_bridge_bdd.chunks.borrow().is_empty(), "expected chunks");
+#[when("映射为 XyChunk")]
+fn w_pab16_map_chunks(provider_bdd: &ProviderBdd) {
+    assert!(!provider_bdd.chunks.borrow().is_empty(), "expected chunks");
 }
 
 #[then(
     "存在带 thinkingSignature 的 Thinking 终态（ThinkingEnd 或等价）且 signature 可 JSON 解析为该 reasoning item"
 )]
-fn t_pab16_signature(ai_bridge_bdd: &AiBridgeBdd) {
-    use xylitol_official_plugin_provider_openai::dto::AiBridgeChunk;
+fn t_pab16_signature(provider_bdd: &ProviderBdd) {
+    use xylitol_official_plugin_provider_openai::dto::XyChunk;
 
-    let chunks = ai_bridge_bdd.chunks.borrow();
+    let chunks = provider_bdd.chunks.borrow();
     let end = chunks.iter().find_map(|c| match c {
-        AiBridgeChunk::ThinkingEnd {
+        XyChunk::ThinkingEnd {
             thinking_signature: Some(sig),
             ..
         } => Some(sig.clone()),
@@ -330,7 +328,7 @@ pub fn prompt_bdd() -> PromptBdd {
 #[given("工具集含 bash 且其 prompt_guidelines 非空")]
 fn g_pt9_bash_guidelines(prompt_bdd: &PromptBdd) {
     use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
-    use xylitol::protocol::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
 
     let bash = BashTool::default();
     assert!(
@@ -450,30 +448,22 @@ fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
 // ---- c2826 specs-compact：裸规则转场景补充（r1538/r1544）----
 
 #[when("以 medium 与 off 档解析请求 thinking 并注入各族请求体")]
-fn w_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
+fn w_c2826_thinking_families(provider_bdd: &ProviderBdd) {
     use std::collections::HashMap;
     use xylitol_official_plugin_provider_openai::thinking::{
-        AiBridgeThinkingAdapterKind, apply_thinking_anthropic,
+        ThinkingAdapterKind, apply_thinking_anthropic,
         apply_thinking_openai_completions_with_compat, apply_thinking_openai_responses,
         resolve_thinking_for_request,
     };
     use xylitol_official_plugin_provider_openai::wire_policy::Compat;
 
     let empty_map: HashMap<String, Option<String>> = HashMap::new();
-    let resolved_medium_openai = resolve_thinking_for_request(
-        "medium",
-        &empty_map,
-        None,
-        AiBridgeThinkingAdapterKind::OpenAi,
-    );
-    let resolved_medium_anthropic = resolve_thinking_for_request(
-        "high",
-        &empty_map,
-        None,
-        AiBridgeThinkingAdapterKind::Anthropic,
-    );
+    let resolved_medium_openai =
+        resolve_thinking_for_request("medium", &empty_map, None, ThinkingAdapterKind::OpenAi);
+    let resolved_medium_anthropic =
+        resolve_thinking_for_request("high", &empty_map, None, ThinkingAdapterKind::Anthropic);
     let resolved_off =
-        resolve_thinking_for_request("off", &empty_map, None, AiBridgeThinkingAdapterKind::OpenAi);
+        resolve_thinking_for_request("off", &empty_map, None, ThinkingAdapterKind::OpenAi);
 
     let mut responses = serde_json::json!({"model": "m"});
     apply_thinking_openai_responses(&mut responses, &resolved_medium_openai);
@@ -510,7 +500,7 @@ fn w_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
         serde_json::json!({"thinking": {"type": "enabled", "budget_tokens": 1}});
     apply_thinking_anthropic(&mut anthropic_off, &resolved_off);
 
-    ai_bridge_bdd.request_body.replace(Some(serde_json::json!({
+    provider_bdd.request_body.replace(Some(serde_json::json!({
         "responses": responses,
         "completions_generic": completions_generic,
         "completions_deepseek": completions_deepseek,
@@ -523,8 +513,8 @@ fn w_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
 #[then(
     "Responses 用 reasoning.effort 且 Completions 随 compat 分流且 Anthropic 随 compat 分流且 off 档省略字段"
 )]
-fn t_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
-    let body = ai_bridge_bdd.request_body.borrow().clone().expect("bodies");
+fn t_c2826_thinking_families(provider_bdd: &ProviderBdd) {
+    let body = provider_bdd.request_body.borrow().clone().expect("bodies");
     assert_eq!(
         body["responses"]["reasoning"]["effort"], "medium",
         "c2826: Responses 应写 reasoning.effort"
@@ -568,18 +558,18 @@ fn t_c2826_thinking_families(ai_bridge_bdd: &AiBridgeBdd) {
 }
 
 #[when("格式化含嵌入 JSON 的 Responses 上游错误")]
-fn w_c2826_responses_error(ai_bridge_bdd: &AiBridgeBdd) {
+fn w_c2826_responses_error(provider_bdd: &ProviderBdd) {
     let raw = r#"error sending request: content:{"error":{"message":"upstream context overflow","type":"overloaded_error","code":429}}"#;
     let formatted =
         xylitol_official_plugin_provider_openai::provider::native::openai_responses::format_responses_error(&raw);
-    ai_bridge_bdd
+    provider_bdd
         .parse_value
         .replace(Some(serde_json::json!({ "message": formatted })));
 }
 
 #[then("错误文案暴露嵌入的 error.message 而非反序列化噪音")]
-fn t_c2826_responses_error(ai_bridge_bdd: &AiBridgeBdd) {
-    let v = ai_bridge_bdd.parse_value.borrow().clone().expect("error");
+fn t_c2826_responses_error(provider_bdd: &ProviderBdd) {
+    let v = provider_bdd.parse_value.borrow().clone().expect("error");
     let msg = v["message"].as_str().unwrap_or_default();
     assert!(
         msg.contains("upstream context overflow"),

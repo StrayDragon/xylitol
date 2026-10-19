@@ -19,8 +19,8 @@ use crate::driver::{
     CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, QueueStats, ReloadStepReport,
     RuntimeReloadReport, SessionListEntry, SessionStats, XyDriver, XyDriverError, XyEvent,
 };
+use xylitol_plugin_sdk::XyBashResult;
 use xylitol_plugin_sdk::model::THINKING_OFF;
-use xylitol_plugin_sdk::ports::XyBashResult;
 use xylitol_plugin_sdk::session::{
     SessionEntry, SessionTreeNode, SessionTreeTravel, plan_message_history_travel,
 };
@@ -114,7 +114,7 @@ pub struct ScriptedDriver {
     /// Mimic attach Remote `queue_stats` returning 0 after local strip enqueue.
     pub force_zero_queue_stats: AtomicBool,
     /// Interactive bang output-event sink injected by the bang loop (c2760).
-    bash_run_sink: Mutex<Option<xylitol_plugin_sdk::ports::BashOutputSink>>,
+    bash_run_sink: Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>,
 }
 
 impl ScriptedDriver {
@@ -564,7 +564,7 @@ impl XyDriver for ScriptedDriver {
             }
             // c2760: relay output through the injected sink like the real driver.
             if let Some(sink) = sink {
-                let _ = sink.tx.try_send(xylitol_plugin_sdk::ports::BashChunk {
+                let _ = sink.tx.try_send(xylitol_plugin_sdk::BashChunk {
                     bash_id: "scripted-bash".into(),
                     seq: 1,
                     data: result.output.clone(),
@@ -579,7 +579,7 @@ impl XyDriver for ScriptedDriver {
         self.aborted.store(true, Ordering::SeqCst);
     }
 
-    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::ports::BashOutputSink>) {
+    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
         *self.bash_run_sink.lock().expect("bash_run_sink") = sink;
     }
 
@@ -1027,7 +1027,7 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
                 self.session_name.lock().expect("session_name").clone(),
             )),
             Command::SetSessionName { name, .. } => {
-                let stored = xylitol_plugin_sdk::ports::sanitize_session_display_name(&name);
+                let stored = xylitol_plugin_sdk::sanitize_session_display_name(&name);
                 self.set_session_name_calls
                     .lock()
                     .expect("set_session_name_calls")
@@ -1038,7 +1038,7 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             Command::SetSessionNameFor {
                 session_id, name, ..
             } => {
-                let stored = xylitol_plugin_sdk::ports::sanitize_session_display_name(&name);
+                let stored = xylitol_plugin_sdk::sanitize_session_display_name(&name);
                 self.set_session_name_for_calls
                     .lock()
                     .expect("set_session_name_for_calls")
@@ -2856,8 +2856,8 @@ mod slice_tests {
             truncated: false,
             full_output_path: None,
         });
-        let (tx, mut rx) = tokio::sync::mpsc::channel::<xylitol_plugin_sdk::ports::BashChunk>(8);
-        driver.set_bash_run_sink(Some(xylitol_plugin_sdk::ports::BashOutputSink {
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<xylitol_plugin_sdk::BashChunk>(8);
+        driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink {
             tx,
             cancel: tokio_util::sync::CancellationToken::new(),
         }));

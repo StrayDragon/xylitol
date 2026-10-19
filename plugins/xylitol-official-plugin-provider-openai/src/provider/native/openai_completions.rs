@@ -2,8 +2,8 @@
 //!
 //! HTTP via current transport (reqwest) + portable hook three-seam (c998).
 //! Hooks use [`crate::hooks::HeaderBag`]; reqwest conversion stays
-//! in private `reqwest_bridge`. Public `XyModel` surface is only
-//! [`super::AdapterXyModel`] wrapping this [`crate::infra::provider::adapter::AiBridgeLlmAdapter`] (c505).
+//! in private `reqwest_headers`. Public `XyModel` surface is only
+//! [`super::OpenAiCompletionsAdapter`] (`impl XyModel`) (c505).
 
 use std::sync::Arc;
 
@@ -13,8 +13,7 @@ use crate::hooks::HttpHooks;
 use crate::provider::native::openai::OpenAIProvider;
 use crate::wire_policy::WirePolicy;
 
-use crate::provider::map_xy_result;
-use xylitol_plugin_sdk::message::LlmMessage;
+use xylitol_plugin_sdk::message::XyLlmMessage;
 use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSchema};
 
 /// Adapter for the OpenAI Chat Completions API.
@@ -55,16 +54,14 @@ impl XyModel for OpenAiCompletionsAdapter {
 
     async fn generate_stream(
         &self,
-        messages: Vec<LlmMessage>,
+        messages: Vec<XyLlmMessage>,
         tools: &[XyToolSchema],
         stream: bool,
         options: XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
-        map_xy_result(
-            self.inner
-                .generate_stream(messages, tools, stream, &options)
-                .await,
-        )
+        self.inner
+            .generate_stream(messages, tools, stream, &options)
+            .await
     }
 }
 
@@ -77,23 +74,19 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    use crate::dto::{AiBridgeMessage, AiBridgeToolSchema};
-    use crate::error::AiBridgeError;
+    use crate::dto::{XyLlmMessage, XyToolSchema};
+    use crate::error::XyError;
     use crate::hooks::{HeaderBag, HttpHooks};
 
     struct NoopHooks;
 
     #[async_trait]
     impl HttpHooks for NoopHooks {
-        async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+        async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), XyError> {
             Ok(())
         }
 
-        async fn before_request(
-            &self,
-            _model: &str,
-            _body: &mut Value,
-        ) -> Result<(), AiBridgeError> {
+        async fn before_request(&self, _model: &str, _body: &mut Value) -> Result<(), XyError> {
             Ok(())
         }
 
@@ -104,15 +97,11 @@ mod tests {
 
     #[async_trait]
     impl HttpHooks for ModifyBodyHooks {
-        async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+        async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), XyError> {
             Ok(())
         }
 
-        async fn before_request(
-            &self,
-            _model: &str,
-            body: &mut Value,
-        ) -> Result<(), AiBridgeError> {
+        async fn before_request(&self, _model: &str, body: &mut Value) -> Result<(), XyError> {
             body["cache_control"] = serde_json::json!({"type": "ephemeral"});
             Ok(())
         }
@@ -145,7 +134,7 @@ mod tests {
         );
         let mut stream = adapter
             .generate_stream(
-                vec![AiBridgeMessage::user("hi")],
+                vec![XyLlmMessage::user("hi")],
                 &[],
                 false,
                 Default::default(),
@@ -155,7 +144,7 @@ mod tests {
         let mut saw_text = false;
         while let Some(item) = stream.next().await {
             let chunk = item.expect("chunk");
-            if matches!(chunk, crate::dto::AiBridgeChunk::TextDelta(_)) {
+            if matches!(chunk, crate::dto::XyChunk::TextDelta(_)) {
                 saw_text = true;
             }
         }
@@ -190,7 +179,7 @@ mod tests {
         );
         let _ = adapter
             .generate_stream(
-                vec![AiBridgeMessage::user("hi")],
+                vec![XyLlmMessage::user("hi")],
                 &[],
                 false,
                 Default::default(),
@@ -225,12 +214,12 @@ mod tests {
             Some(server.uri()),
             Some(Arc::new(NoopHooks)),
         );
-        let opts = crate::thinking::AiBridgeGenerateOptions {
+        let opts = crate::thinking::XyGenerateOptions {
             thinking_level: "medium".into(),
             ..Default::default()
         };
         let _ = adapter
-            .generate_stream(vec![AiBridgeMessage::user("hi")], &[], false, opts)
+            .generate_stream(vec![XyLlmMessage::user("hi")], &[], false, opts)
             .await
             .expect("generate medium");
     }
@@ -248,15 +237,11 @@ mod tests {
 
         #[async_trait]
         impl HttpHooks for CaptureHooks {
-            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), XyError> {
                 Ok(())
             }
 
-            async fn before_request(
-                &self,
-                _model: &str,
-                body: &mut Value,
-            ) -> Result<(), AiBridgeError> {
+            async fn before_request(&self, _model: &str, body: &mut Value) -> Result<(), XyError> {
                 *self.body.lock().unwrap() = Some(body.clone());
                 Ok(())
             }
@@ -289,10 +274,10 @@ mod tests {
         );
         let _ = adapter
             .generate_stream(
-                vec![AiBridgeMessage::user("hi")],
+                vec![XyLlmMessage::user("hi")],
                 &[],
                 false,
-                crate::thinking::AiBridgeGenerateOptions::default(),
+                crate::thinking::XyGenerateOptions::default(),
             )
             .await
             .expect("generate off");
@@ -332,7 +317,7 @@ mod tests {
             Some(server.uri()),
             Some(Arc::new(NoopHooks)),
         );
-        let opts = crate::thinking::AiBridgeGenerateOptions {
+        let opts = crate::thinking::XyGenerateOptions {
             thinking_level: "high".into(),
             level_map: map,
             thinking_budgets: None,
@@ -342,7 +327,7 @@ mod tests {
             obs_session: Default::default(),
         };
         let _ = adapter
-            .generate_stream(vec![AiBridgeMessage::user("hi")], &[], false, opts)
+            .generate_stream(vec![XyLlmMessage::user("hi")], &[], false, opts)
             .await
             .expect("generate map override");
     }
@@ -362,15 +347,11 @@ mod tests {
 
         #[async_trait]
         impl HttpHooks for CaptureHooks {
-            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), XyError> {
                 Ok(())
             }
 
-            async fn before_request(
-                &self,
-                _model: &str,
-                body: &mut Value,
-            ) -> Result<(), AiBridgeError> {
+            async fn before_request(&self, _model: &str, body: &mut Value) -> Result<(), XyError> {
                 self.bodies.lock().unwrap().push(body.clone());
                 Ok(())
             }
@@ -404,10 +385,10 @@ mod tests {
 
         let _ = adapter
             .generate_stream(
-                vec![AiBridgeMessage::user("hi")],
+                vec![XyLlmMessage::user("hi")],
                 &[],
                 false,
-                crate::thinking::AiBridgeGenerateOptions {
+                crate::thinking::XyGenerateOptions {
                     thinking_level: "off".into(),
                     ..Default::default()
                 },
@@ -416,10 +397,10 @@ mod tests {
             .expect("off");
         let _ = adapter
             .generate_stream(
-                vec![AiBridgeMessage::user("hi")],
+                vec![XyLlmMessage::user("hi")],
                 &[],
                 false,
-                crate::thinking::AiBridgeGenerateOptions {
+                crate::thinking::XyGenerateOptions {
                     thinking_level: "high".into(),
                     ..Default::default()
                 },
@@ -452,15 +433,11 @@ mod tests {
 
         #[async_trait]
         impl HttpHooks for CaptureHooks {
-            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), AiBridgeError> {
+            async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), XyError> {
                 Ok(())
             }
 
-            async fn before_request(
-                &self,
-                _model: &str,
-                body: &mut Value,
-            ) -> Result<(), AiBridgeError> {
+            async fn before_request(&self, _model: &str, body: &mut Value) -> Result<(), XyError> {
                 *self.body.lock().unwrap() = Some(body.clone());
                 Ok(())
             }
@@ -492,17 +469,17 @@ mod tests {
             })),
         );
         let tools = [
-            AiBridgeToolSchema {
+            XyToolSchema {
                 name: "read".into(),
                 description: "r".into(),
                 parameters: serde_json::json!({"type": "object"}),
             },
-            AiBridgeToolSchema {
+            XyToolSchema {
                 name: "mcp__context7__resolve-library-id".into(),
                 description: "docs".into(),
                 parameters: serde_json::json!({"type": "object"}),
             },
-            AiBridgeToolSchema {
+            XyToolSchema {
                 name: "mcp:legacy:colon".into(),
                 description: "legacy".into(),
                 parameters: serde_json::json!({"type": "object"}),
@@ -510,7 +487,7 @@ mod tests {
         ];
         let _ = adapter
             .generate_stream(
-                vec![AiBridgeMessage::user("hi")],
+                vec![XyLlmMessage::user("hi")],
                 &tools,
                 false,
                 Default::default(),
@@ -586,7 +563,7 @@ mod tests {
             None,
         );
 
-        let opts_a = crate::thinking::AiBridgeGenerateOptions {
+        let opts_a = crate::thinking::XyGenerateOptions {
             obs_session: ObsSessionContext {
                 session_id: Some("bookmark-a".into()),
                 session_name: None,
@@ -594,7 +571,7 @@ mod tests {
             },
             ..Default::default()
         };
-        let opts_b = crate::thinking::AiBridgeGenerateOptions {
+        let opts_b = crate::thinking::XyGenerateOptions {
             obs_session: ObsSessionContext {
                 session_id: Some("bookmark-b".into()),
                 session_name: None,
@@ -604,8 +581,8 @@ mod tests {
         };
 
         let (ra, rb, _) = tokio::join!(
-            adapter.generate_stream(vec![AiBridgeMessage::user("a")], &[], false, opts_a),
-            adapter.generate_stream(vec![AiBridgeMessage::user("b")], &[], false, opts_b),
+            adapter.generate_stream(vec![XyLlmMessage::user("a")], &[], false, opts_a),
+            adapter.generate_stream(vec![XyLlmMessage::user("b")], &[], false, opts_b),
             async {
                 tokio::time::sleep(Duration::from_millis(40)).await;
                 set_obs_session("hijacked", None);

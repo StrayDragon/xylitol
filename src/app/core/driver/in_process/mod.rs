@@ -11,7 +11,7 @@ use crate::agent::runtime::RunPolicy;
 use crate::app::core::bang_exec::BangExecHandler;
 use crate::app::core::session_export::SessionExporter;
 use crate::protocol::error::XySessionError;
-use crate::protocol::ports::XySessionStore;
+use xylitol_plugin_sdk::XySessionStore;
 
 use super::types::{
     ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
@@ -63,12 +63,12 @@ pub struct XyInProcessDriver {
     /// When set, [`Self::poll_mcp_bootstrap`] freezes tools at settle or this deadline (TUI gate).
     tool_gate_deadline: Option<std::time::Instant>,
     /// TUI-only ask gateway; MCP reload MUST re-plus ask when this is set (c1850).
-    ask_gateway: Option<Arc<dyn crate::protocol::ports::ask::AskUserGateway>>,
+    ask_gateway: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
     /// Session-bound Todo SSOT gateway shared by `todo_*` builtins (c1955).
     todo_gateway: Arc<crate::infra::tools::SessionAgentTodoGateway>,
     /// Interactive bang output-event sink (c2760): runtime-injected, `&self`
     /// bash execution pushes chunks into it while running.
-    bash_run_sink: std::sync::Mutex<Option<crate::protocol::ports::BashOutputSink>>,
+    bash_run_sink: std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>,
 }
 
 impl XyInProcessDriver {
@@ -131,10 +131,7 @@ impl XyInProcessDriver {
     }
 
     /// Install TUI-only `ask` tool and remember the gateway for MCP reload.
-    pub fn install_ask_tool(
-        &mut self,
-        gateway: Arc<dyn crate::protocol::ports::ask::AskUserGateway>,
-    ) {
+    pub fn install_ask_tool(&mut self, gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>) {
         self.ask_gateway = Some(gateway.clone());
         self.set_tools(crate::agent::tools::ToolSet::from_iter(
             crate::infra::tools::default_tools_with_ask_and_todo(
@@ -145,12 +142,12 @@ impl XyInProcessDriver {
     }
 
     /// Gateway used when rebuilding builtins during MCP settle / reload (c1850).
-    pub fn ask_gateway(&self) -> Option<Arc<dyn crate::protocol::ports::ask::AskUserGateway>> {
+    pub fn ask_gateway(&self) -> Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>> {
         self.ask_gateway.clone()
     }
 
     /// Builtins for ToolSet rebuild: store-bound Todo (+ optional ask).
-    pub fn builtins_for_reload(&self) -> Vec<Arc<dyn crate::protocol::ports::XyTool>> {
+    pub fn builtins_for_reload(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
         match &self.ask_gateway {
             Some(g) => crate::infra::tools::default_tools_with_ask_and_todo(
                 g.clone(),
@@ -343,7 +340,7 @@ impl XyDriver for XyInProcessDriver {
         self.agent.session_id().map(String::from)
     }
 
-    fn set_bash_run_sink(&mut self, sink: Option<crate::protocol::ports::BashOutputSink>) {
+    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
         *self.bash_run_sink.lock().unwrap_or_else(|e| e.into_inner()) = sink;
     }
 
@@ -617,7 +614,7 @@ impl XyInProcessDriver {
     }
 }
 
-/// Relay executor output bytes to [`crate::protocol::ports::BashChunk`] events.
+/// Relay executor output bytes to [`xylitol_plugin_sdk::BashChunk`] events.
 ///
 /// Executor chunks are raw 8 KiB reads, so a multi-byte UTF-8 sequence can be
 /// split across a boundary; the incomplete tail is held back and prefixed to
@@ -626,9 +623,9 @@ impl XyInProcessDriver {
 async fn relay_bash_chunks(
     bash_id: String,
     mut rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
-    tx: tokio::sync::mpsc::Sender<crate::protocol::ports::BashChunk>,
+    tx: tokio::sync::mpsc::Sender<xylitol_plugin_sdk::BashChunk>,
 ) {
-    use crate::protocol::ports::BashChunk;
+    use xylitol_plugin_sdk::BashChunk;
 
     let mut seq: u64 = 0;
     let mut pending: Vec<u8> = Vec::new();

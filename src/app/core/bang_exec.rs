@@ -10,8 +10,8 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::protocol::error::XyError;
-use crate::protocol::ports::{BashExecOpts, XyBashExecutor, XyBashResult, XySessionStore};
 use crate::protocol::session::bash_execution_message_entry;
+use xylitol_plugin_sdk::{BashExecOpts, XyBashExecutor, XyBashResult, XySessionStore};
 
 /// Stateful bash-execution collaborator.
 #[derive(Clone)]
@@ -46,7 +46,7 @@ impl BangExecHandler {
     ///
     /// `bash_id`: correlation id for the start/done rows and output chunks.
     ///
-    /// `cancel`: run kill switch. Callers that inject a [`crate::protocol::ports::BashOutputSink`]
+    /// `cancel`: run kill switch. Callers that inject a [`xylitol_plugin_sdk::BashOutputSink`]
     /// pass its token so host `abort` can reach the run out-of-band while the
     /// writer lock is held by this executing call; other callers pass a fresh
     /// token and cancel via [`Self::abort`].

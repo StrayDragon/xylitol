@@ -2,8 +2,8 @@
 
 use serde_json::Value;
 
-use crate::dto::{AiBridgeMessage, AiBridgeToolSchema};
-use crate::thinking::AiBridgeGenerateOptions;
+use crate::dto::{XyLlmMessage, XyToolSchema};
+use crate::thinking::XyGenerateOptions;
 use crate::wire_policy::WirePolicy;
 
 use crate::provider::native::openai_responses::{
@@ -38,10 +38,10 @@ impl ResponsesAssembler {
     pub fn assemble(
         self,
         model: &str,
-        messages: Vec<AiBridgeMessage>,
-        tools: &[AiBridgeToolSchema],
+        messages: Vec<XyLlmMessage>,
+        tools: &[XyToolSchema],
         stream: bool,
-        options: &AiBridgeGenerateOptions,
+        options: &XyGenerateOptions,
     ) -> Value {
         self.assemble_with_diagnostics(model, messages, tools, stream, options)
             .0
@@ -52,10 +52,10 @@ impl ResponsesAssembler {
     pub fn assemble_with_diagnostics(
         self,
         model: &str,
-        messages: Vec<AiBridgeMessage>,
-        tools: &[AiBridgeToolSchema],
+        messages: Vec<XyLlmMessage>,
+        tools: &[XyToolSchema],
         stream: bool,
-        options: &AiBridgeGenerateOptions,
+        options: &XyGenerateOptions,
     ) -> (Value, Vec<crate::dto::Diagnostic>) {
         assemble_responses_body_with_diagnostics(
             model,
@@ -76,13 +76,13 @@ impl ResponsesAssembler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::AiBridgeMessage;
+    use crate::dto::XyLlmMessage;
     use crate::wire_policy::{Compat, ExtraPolicy};
 
     #[test]
     fn default_assembler_matches_assemble_fn() {
-        let msgs = vec![AiBridgeMessage::user("hi")];
-        let opts = AiBridgeGenerateOptions::default();
+        let msgs = vec![XyLlmMessage::user("hi")];
+        let opts = XyGenerateOptions::default();
         let (via_fn, _) = assemble_responses_body_with_diagnostics(
             "m",
             msgs.clone(),
@@ -121,18 +121,18 @@ mod tests {
 
     #[test]
     fn assemble_with_diagnostics_reports_illegal_signature_omit() {
-        use crate::dto::{AiBridgePart, AiBridgeStopReason};
+        use crate::dto::{AgentPart, XyStopReason};
 
-        let msgs = vec![AiBridgeMessage::AssistantMessage {
+        let msgs = vec![XyLlmMessage::AssistantMessage {
             content: vec![
-                AiBridgePart::Thinking {
+                AgentPart::Thinking {
                     thinking: "x".into(),
                     redacted: false,
                     thinking_signature: Some("not-json".into()),
                 },
-                AiBridgePart::text("ok"),
+                AgentPart::text("ok"),
             ],
-            stop_reason: Some(AiBridgeStopReason::Stop),
+            stop_reason: Some(XyStopReason::Stop),
             usage: None,
             api: String::new(),
             provider: String::new(),
@@ -142,7 +142,7 @@ mod tests {
             timestamp: 0,
             diagnostics: Vec::new(),
         }];
-        let opts = AiBridgeGenerateOptions::default();
+        let opts = XyGenerateOptions::default();
         let (body, diags) =
             ResponsesAssembler::default().assemble_with_diagnostics("m", msgs, &[], false, &opts);
         let input = body["input"].as_array().expect("input");
@@ -159,21 +159,21 @@ mod tests {
 
     #[test]
     fn assemble_prefix_idempotent_and_serde_roundtrip() {
-        use crate::dto::{AiBridgePart, AiBridgeStopReason, AiBridgeToolSchema};
+        use crate::dto::{AgentPart, XyStopReason, XyToolSchema};
 
         let sig = r#"{"type":"reasoning","id":"rs_pab27","summary":[]}"#;
         let msgs = vec![
-            AiBridgeMessage::user("hi"),
-            AiBridgeMessage::AssistantMessage {
+            XyLlmMessage::user("hi"),
+            XyLlmMessage::AssistantMessage {
                 content: vec![
-                    AiBridgePart::Thinking {
+                    AgentPart::Thinking {
                         thinking: "t".into(),
                         redacted: false,
                         thinking_signature: Some(sig.into()),
                     },
-                    AiBridgePart::text("reply"),
+                    AgentPart::text("reply"),
                 ],
-                stop_reason: Some(AiBridgeStopReason::Stop),
+                stop_reason: Some(XyStopReason::Stop),
                 usage: None,
                 api: "openai-responses".into(),
                 provider: "test".into(),
@@ -183,14 +183,14 @@ mod tests {
                 timestamp: 0,
                 diagnostics: Vec::new(),
             },
-            AiBridgeMessage::user("$ ls\na.txt"),
+            XyLlmMessage::user("$ ls\na.txt"),
         ];
-        let opts = AiBridgeGenerateOptions {
+        let opts = XyGenerateOptions {
             system_prompt: Some("Current date: 2026-08-06".into()),
             thinking_level: "medium".into(),
             ..Default::default()
         };
-        let tools = [AiBridgeToolSchema {
+        let tools = [XyToolSchema {
             name: "read".into(),
             description: "read".into(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
@@ -202,7 +202,7 @@ mod tests {
         assert_eq!(a["tools"], b["tools"]);
 
         let wire = serde_json::to_value(&msgs).expect("ser");
-        let back: Vec<AiBridgeMessage> = serde_json::from_value(wire).expect("de");
+        let back: Vec<XyLlmMessage> = serde_json::from_value(wire).expect("de");
         let c = asm.assemble("m", back, &tools, false, &opts);
         assert_eq!(
             c["input"], a["input"],

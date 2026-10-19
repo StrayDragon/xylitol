@@ -302,7 +302,7 @@ pub(crate) async fn w_c2827_resume_with_current(host_pump_bdd: &HostPumpBdd, cmd
     let mut pump = take_host(host_pump_bdd);
     let current = pump.driver.active_session_id();
     pump.driver
-        .set_session_list(vec![xylitol::protocol::ports::SessionListEntry {
+        .set_session_list(vec![xylitol_plugin_sdk::SessionListEntry {
             id: current,
             name: Some("当前样本".into()),
             first_message: Some("预览".into()),
@@ -924,8 +924,8 @@ fn t2_assistant_entry(
     usage: xylitol::protocol::message::XyUsage,
     stop: xylitol::protocol::message::XyStopReason,
 ) -> SessionEntry {
-    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
-    let asst = AgentMessage::Llm(LlmMessage::AssistantMessage {
+    use xylitol::protocol::message::{AgentMessage, AgentPart, XyLlmMessage};
+    let asst = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content: vec![AgentPart::text("ok")],
         stop_reason: Some(stop),
         usage: Some(usage),
@@ -1085,7 +1085,7 @@ pub fn t2_caps_bdd() -> T2CapsBdd {
 fn t2_make_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::bdd::fixtures::AgentState) {
     let dir = tempfile::tempdir().unwrap();
     let mgr = xylitol::infra::session::SessionManager::new(dir.keep());
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let caps = crate::bdd::steps_domain_compaction_extra::make_test_capabilities(agent, store);
     *t2_caps_bdd.caps.borrow_mut() = Some(caps);
 }
@@ -1269,7 +1269,7 @@ pub(crate) fn t_t2_fs_no_timeout(t2_schema_bdd: &T2SchemaBdd) {
 
 pub struct T2TodoBdd {
     pub gw: RefCell<Option<Arc<xylitol::infra::tools::todo::SessionAgentTodoGateway>>>,
-    pub store: RefCell<Option<Arc<dyn xylitol::protocol::ports::XySessionStore>>>,
+    pub store: RefCell<Option<Arc<dyn xylitol_plugin_sdk::XySessionStore>>>,
     pub sid: RefCell<String>,
     pub last_err: RefCell<Option<String>>,
 }
@@ -1290,7 +1290,7 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
     }
     let dir = tempfile::tempdir().unwrap();
     let mgr = xylitol::infra::session::SessionManager::new(dir.path().to_path_buf());
-    let store: Arc<dyn xylitol::protocol::ports::XySessionStore> = Arc::new(mgr);
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let sid = "s-todo-c2827".to_string();
     let sid2 = sid.clone();
     futures::executor::block_on(async {
@@ -1313,7 +1313,7 @@ fn t2_rewrite(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<Strin
         .find(|t| t.name() == "todo_rewrite")
         .expect("todo_rewrite")
         .clone();
-    let ctx = xylitol::protocol::ports::XyToolCtx::new("c2827");
+    let ctx = xylitol_plugin_sdk::XyToolCtx::new("c2827");
     futures::executor::block_on(async { tool.execute(&ctx, items).await })
         .map_err(|e| e.to_string())
 }
@@ -1326,7 +1326,7 @@ fn t2_update(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String
         .find(|t| t.name() == "todo_update")
         .expect("todo_update")
         .clone();
-    let ctx = xylitol::protocol::ports::XyToolCtx::new("c2827u");
+    let ctx = xylitol_plugin_sdk::XyToolCtx::new("c2827u");
     futures::executor::block_on(async { tool.execute(&ctx, items).await })
         .map_err(|e| e.to_string())
 }
@@ -1397,7 +1397,7 @@ pub(crate) fn t_t2_todo_overlong_rejected(t2_todo_bdd: &T2TodoBdd) {
     );
     // 原表不变：读回当前清单为空（此前未写入）。
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    use xylitol::protocol::ports::AgentTodoGateway as _;
+    use xylitol_plugin_sdk::AgentTodoGateway as _;
     let list = futures::executor::block_on(gw.list()).ok();
     assert!(
         list.as_ref().map(|l| l.items.len()).unwrap_or(0) == 0,
@@ -1419,7 +1419,7 @@ pub(crate) fn w_t2_todo_latest_wins(t2_todo_bdd: &T2TodoBdd) {
 
 #[then("读取当前清单为最新快照")]
 pub(crate) fn t_t2_todo_latest(t2_todo_bdd: &T2TodoBdd) {
-    use xylitol::protocol::ports::AgentTodoGateway as _;
+    use xylitol_plugin_sdk::AgentTodoGateway as _;
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
     let list = futures::executor::block_on(gw.list()).expect("list");
     assert_eq!(list.items.len(), 1, "c2827: 应为最新快照 B：{list:?}");
@@ -1632,15 +1632,14 @@ pub(crate) fn t_t2_bash_exclude_filtered() {
 
 #[given("Responses 组装且消息含 user 与 assistant")]
 pub(crate) fn g_t2_input_items(t2_schema_bdd: &T2SchemaBdd) {
-    use xylitol_official_plugin_provider_openai::dto::AiBridgeMessage;
+    use xylitol_official_plugin_provider_openai::dto::XyLlmMessage;
     use xylitol_official_plugin_provider_openai::provider::messages_to_responses_input_with_options;
-    use xylitol_official_plugin_provider_openai::thinking::AiBridgeGenerateOptions;
+    use xylitol_official_plugin_provider_openai::thinking::XyGenerateOptions;
     let msgs = vec![
-        AiBridgeMessage::user("问一下"),
-        AiBridgeMessage::assistant("答一句"),
+        XyLlmMessage::user("问一下"),
+        XyLlmMessage::assistant("答一句"),
     ];
-    let input =
-        messages_to_responses_input_with_options(&msgs, &AiBridgeGenerateOptions::default());
+    let input = messages_to_responses_input_with_options(&msgs, &XyGenerateOptions::default());
     let v = serde_json::to_value(&input).unwrap();
     *t2_schema_bdd.schemas.borrow_mut() = vec![("input".into(), v)];
 }
@@ -1819,7 +1818,7 @@ pub(crate) fn t4_stream(
 #[when("渲染 print 事件流到缓冲")]
 pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
     use xylitol::agent::runtime::XyEvent;
-    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, XyLlmMessage};
     let events = vec![
         XyEvent::MessageStart {
             role: "assistant".into(),
@@ -1834,7 +1833,7 @@ pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
         XyEvent::TextDelta("!".into()),
         XyEvent::MessageEnd {
             role: "assistant".into(),
-            message: Some(AgentMessage::Llm(LlmMessage::AssistantMessage {
+            message: Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::text("Hello!")],
                 stop_reason: None,
                 usage: None,

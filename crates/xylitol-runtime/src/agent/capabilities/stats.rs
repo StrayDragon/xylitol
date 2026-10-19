@@ -1,7 +1,7 @@
 //! Session statistics and context-usage estimation (spec c255 / as32).
 
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::XyError;
-use xylitol_plugin_sdk::ports::XySessionStore;
 
 /// Statistics for a session.
 #[derive(Debug, Clone)]

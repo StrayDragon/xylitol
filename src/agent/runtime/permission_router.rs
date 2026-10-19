@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 
-use crate::protocol::ports::{XyPermission, XyPermissionVerdict};
+use xylitol_plugin_sdk::{XyPermission, XyPermissionVerdict};
 
 /// Sandbox permission class used by the permission port.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

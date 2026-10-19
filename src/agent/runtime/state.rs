@@ -84,11 +84,11 @@ pub struct FrozenRootConfig {
     pub system_prompt: Option<String>,
     pub tools: crate::agent::tools::ToolSet,
     pub hooks: crate::agent::runtime::AgentHooks,
-    pub batch_mode: crate::protocol::ports::XyBatchMode,
+    pub batch_mode: xylitol_plugin_sdk::XyBatchMode,
     pub skills: Vec<crate::protocol::resource::SkillInfo>,
     pub compaction_settings: crate::agent::compaction::CompactionSettings,
-    pub permission: std::sync::Arc<dyn crate::protocol::ports::XyPermission>,
-    pub hook_bus: Option<std::sync::Arc<dyn crate::protocol::ports::XyHookBus>>,
+    pub permission: std::sync::Arc<dyn xylitol_plugin_sdk::XyPermission>,
+    pub hook_bus: Option<std::sync::Arc<dyn xylitol_plugin_sdk::XyHookBus>>,
     /// Workspace cwd for session_env bootstrap (c1905).
     pub cwd: String,
 }

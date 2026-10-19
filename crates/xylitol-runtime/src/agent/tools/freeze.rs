@@ -85,7 +85,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use xylitol_plugin_sdk::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
 
     struct Named {
         name: &'static str,
@@ -106,7 +106,7 @@ mod tests {
         }
         async fn execute(
             &self,
-            _: &xylitol_plugin_sdk::ports::XyToolCtx,
+            _: &xylitol_plugin_sdk::XyToolCtx,
             _: serde_json::Value,
         ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
             Ok("ok".into())

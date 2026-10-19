@@ -3,7 +3,7 @@
 //! Product carrier is v3 fory: `POST /rpc` unary + `WS /rpc` downlink.
 //! Occupancy is a **session slot** (journal + seq + writer Driver), not a
 //! process-wide `Mutex` Driver.
-//! The Host process shares one `RuntimePorts` baseline; slots lazy-materialize
+//! The Host process shares one `RuntimeBaseline` baseline; slots lazy-materialize
 //! isolated Drivers. Print / embed still use in-process Driver and do not bind.
 
 #[cfg(feature = "server")]
@@ -28,7 +28,7 @@ pub mod runtime;
 pub mod subcommand;
 
 #[cfg(feature = "server")]
-pub mod wire_v3;
+pub mod envelope;
 
 #[cfg(feature = "server")]
 pub mod ws;

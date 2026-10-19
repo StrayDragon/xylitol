@@ -1,7 +1,7 @@
 //! Official Host plugin: MCP client (config-gated).
 //!
 //! Provides [`McpClientManager`] to connect to MCP servers via stdio or SSE
-//! transport, and [`McpToolAdapter`] to expose MCP tools as [`xylitol_plugin_sdk::ports::XyTool`].
+//! transport, and [`McpToolAdapter`] to expose MCP tools as [`xylitol_plugin_sdk::XyTool`].
 //!
 //! This module is independent of the skills system and can be used standalone.
 

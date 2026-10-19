@@ -1,8 +1,8 @@
 use super::SessionManager;
 use super::load::session_display_name_from_entries;
 use crate::types::{SessionBackend, SessionEntry};
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::{XySessionError, XySessionStoreError};
-use xylitol_plugin_sdk::ports::XySessionStore;
 
 // ── XySessionStore impl ───────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ impl XySessionStore for SessionManager {
 
     async fn list_sessions(
         &self,
-    ) -> Result<Vec<xylitol_plugin_sdk::ports::SessionListEntry>, XySessionStoreError> {
+    ) -> Result<Vec<xylitol_plugin_sdk::SessionListEntry>, XySessionStoreError> {
         use std::time::{SystemTime, UNIX_EPOCH};
         use xylitol_plugin_sdk::session::{SessionEntry, is_user_message, message_text};
 
@@ -222,7 +222,7 @@ impl XySessionStore for SessionManager {
                         .map(|d| d.as_secs());
                 }
             }
-            out.push(xylitol_plugin_sdk::ports::SessionListEntry {
+            out.push(xylitol_plugin_sdk::SessionListEntry {
                 id,
                 name,
                 first_message,

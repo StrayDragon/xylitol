@@ -1,7 +1,7 @@
 //! Channel-based event bus for side-channel lifecycle (compaction, settings).
 //!
 //! Product code consumes lifecycle events exclusively through the
-//! [`XyEventSink`](crate::protocol::ports::XyEventSink) port (c2715) —
+//! [`XyEventSink`](xylitol_plugin_sdk::XyEventSink) port (c2715) —
 //! no product path subscribes by channel name (the test-only string-channel
 //! subscription surface was purged in c2750).
 
@@ -92,7 +92,7 @@ impl EventBus {
 }
 
 #[async_trait::async_trait]
-impl crate::protocol::ports::XyEventSink for EventBus {
+impl xylitol_plugin_sdk::XyEventSink for EventBus {
     async fn emit(&self, event: &XyEvent) {
         self.emit_lifecycle(event);
     }

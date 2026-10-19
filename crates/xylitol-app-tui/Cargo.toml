@@ -39,7 +39,7 @@ tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("host-itest", "server"))'] }
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("server"))'] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

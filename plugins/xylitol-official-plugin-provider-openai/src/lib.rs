@@ -12,13 +12,12 @@ pub mod usage;
 pub mod wire_policy;
 
 pub use dto::*;
-pub use error::AiBridgeError;
+pub use error::XyError;
 pub use thinking::{
-    AiBridgeBuiltinThinkingLevels, AiBridgeGenerateOptions, AiBridgeResolvedThinking,
-    AiBridgeThinkingAdapterKind, AiBridgeThinkingBudgets, ObsSessionContext,
-    apply_thinking_anthropic, apply_thinking_openai_completions,
-    apply_thinking_openai_completions_with_compat, apply_thinking_openai_responses,
-    resolve_from_options, resolve_thinking_for_request,
+    BuiltinThinkingLevels, ObsSessionContext, ResolvedThinking, ThinkingAdapterKind,
+    ThinkingBudgets, XyGenerateOptions, apply_thinking_anthropic,
+    apply_thinking_openai_completions, apply_thinking_openai_completions_with_compat,
+    apply_thinking_openai_responses, resolve_from_options, resolve_thinking_for_request,
 };
 pub use wire_policy::{Compat, ExtraPolicy, WirePolicy};
 

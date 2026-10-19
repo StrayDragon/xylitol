@@ -233,14 +233,14 @@ fn test_at_fs_no_timeout(ws: Workspace, t2_schema_bdd: T2SchemaBdd) {}
 
 // accounting r1561
 #[scenario(
-    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai-accounting/provider-openai-accounting.feature",
     name = "estimate-priority-api-first"
 )]
 fn test_acc_api_first(t2_est_bdd: T2EstBdd) {}
 
 // accounting r1564
 #[scenario(
-    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge-accounting/package-ai-bridge-accounting.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai-accounting/provider-openai-accounting.feature",
     name = "aborted-usage-not-anchor"
 )]
 fn test_acc_aborted_anchor(t2_est_bdd: T2EstBdd) {}
@@ -505,7 +505,7 @@ async fn test_mcp_config_driven(t6_mcp_bdd: T6McpBdd) {}
 async fn test_mcp_invalid(t6_mcp_bdd: T6McpBdd) {}
 
 // ── c2835 后继：infra-provider 裸规则回填 ──────────────────────────
-use crate::bdd::steps_bridge::{AiBridgeBdd, ai_bridge_bdd};
+use crate::bdd::steps_bridge::{ProviderBdd, provider_bdd};
 
 #[scenario(
     path = "llmanspec/specs/infra-provider/infra-provider.feature",
@@ -517,13 +517,13 @@ fn test_ip_r1497_single_wrap() {}
     path = "llmanspec/specs/infra-provider/infra-provider.feature",
     name = "responses-adapter-request-body"
 )]
-fn test_ip_r1498_responses_body(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_ip_r1498_responses_body(provider_bdd: ProviderBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-provider/infra-provider.feature",
     name = "anthropic-messages-thinking-branch"
 )]
-fn test_ip_r1502_anthropic_branch(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_ip_r1502_anthropic_branch(provider_bdd: ProviderBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-provider/infra-provider.feature",
@@ -553,7 +553,7 @@ fn test_ip_r1499_bridge_dto() {}
     path = "llmanspec/specs/infra-provider/infra-provider.feature",
     name = "named-compat-profile-injection"
 )]
-fn test_ip_r1500_named_compat(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_ip_r1500_named_compat(provider_bdd: ProviderBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-provider/infra-provider.feature",
@@ -757,7 +757,7 @@ fn test_ap_r1018_session_env() {}
     path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
     name = "system-prompt-single-copy"
 )]
-fn test_ap_r1019_single_copy(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_ap_r1019_single_copy(provider_bdd: ProviderBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-prompt/agent-prompt.feature",

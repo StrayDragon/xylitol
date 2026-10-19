@@ -25,5 +25,5 @@ pub use xylitol::infra::tools::{
 };
 pub use xylitol::protocol::model::XyModelMeta;
 pub use xylitol::protocol::model::{XyModelConfig, XyModelKind};
-pub use xylitol::protocol::ports::{XyTool, XyToolCtx};
 pub use xylitol::protocol::session::ForkPosition;
+pub use xylitol_plugin_sdk::{XyTool, XyToolCtx};

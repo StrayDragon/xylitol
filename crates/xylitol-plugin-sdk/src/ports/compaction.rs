@@ -6,8 +6,8 @@ use crate::compaction_error::CompactionError;
 use crate::compaction_settings::CompactionSettings;
 use crate::message::AgentMessage;
 use crate::model::ContextTokenEstimate;
-use crate::ports::{XyEventSink, XySessionStore};
 use crate::token_estimator::{EstimateOpts, FixedRequestContext};
+use crate::{XyEventSink, XySessionStore};
 
 /// Outcome of overflow Case1 auto-compact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

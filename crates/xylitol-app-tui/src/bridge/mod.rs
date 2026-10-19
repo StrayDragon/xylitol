@@ -133,9 +133,9 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
 /// order matches provider order (ThinkingDelta* → ToolCall*), not
 /// tool-row-then-late-flush-thinking.
 pub(crate) fn sync_tool_intent_from_message(model: &mut UiModel, message: &AgentMessage) {
-    use xylitol_plugin_sdk::message::{AgentPart, LlmMessage};
+    use xylitol_plugin_sdk::message::{AgentPart, XyLlmMessage};
 
-    let AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) = message else {
+    let AgentMessage::Llm(XyLlmMessage::AssistantMessage { content, .. }) = message else {
         return;
     };
     let has_tool = content

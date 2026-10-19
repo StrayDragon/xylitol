@@ -15,7 +15,7 @@
 
 use std::sync::{Arc, Mutex};
 
-pub(crate) use crate::protocol::ports::{XyEventSink, XySessionStore};
+pub(crate) use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 
 mod compact_ops;
 mod hook_bus;
@@ -42,7 +42,7 @@ use crate::agent::runtime::AgentHooks;
 use crate::agent::tools::{ToolFreezePhase, ToolSet, ToolTableFingerprint};
 use crate::protocol::message::AgentMessage;
 use crate::protocol::model::thinking_levels_are_adjustable;
-use crate::protocol::ports::{XyBatchMode, XyHookBus, XyPermission};
+use xylitol_plugin_sdk::{XyBatchMode, XyHookBus, XyPermission};
 
 // ── Model Registry ──────────────────────────────────────────────────
 
@@ -140,7 +140,7 @@ impl AgentCapabilities {
         append_system_prompt: Vec<String>,
         cwd: String,
         compaction_settings: Option<CompactionSettings>,
-        model_builder: crate::protocol::ports::XyModelBuilder,
+        model_builder: xylitol_plugin_sdk::XyModelBuilder,
         permission: Arc<dyn XyPermission>,
         steering_mode: QueueMode,
         follow_up_mode: QueueMode,
@@ -356,9 +356,9 @@ mod tests {
 
     fn make_session() -> AgentCapabilities {
         let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
-        let store: std::sync::Arc<dyn crate::protocol::ports::XySessionStore> =
+        let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
             std::sync::Arc::new(mgr);
-        let sink: std::sync::Arc<dyn crate::protocol::ports::XyEventSink> =
+        let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
             std::sync::Arc::new(crate::infra::event::EventBus::new());
         AgentCapabilities::new(
             ModelRegistry::new(),
@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn fingerprint_mismatch_when_schema_changes() {
-        use crate::protocol::ports::XyTool;
+        use xylitol_plugin_sdk::XyTool;
         use std::sync::Arc;
 
         struct Named(&'static str, &'static str, serde_json::Value);
@@ -538,7 +538,7 @@ mod tests {
             }
             async fn execute(
                 &self,
-                _: &crate::protocol::ports::XyToolCtx,
+                _: &xylitol_plugin_sdk::XyToolCtx,
                 _: serde_json::Value,
             ) -> Result<String, crate::protocol::error::XyToolError> {
                 Ok("ok".into())

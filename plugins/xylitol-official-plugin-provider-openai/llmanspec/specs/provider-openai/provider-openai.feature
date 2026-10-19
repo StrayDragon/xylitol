@@ -1,8 +1,8 @@
 # language: zh-CN
-# capability: package-ai-bridge
+# capability: provider-openai
 # purpose: "官方方言插件：OpenAI 兼容 / Anthropic Messages HTTP，词表在 xylitol-plugin-sdk。"
 
-功能: package-ai-bridge
+功能: provider-openai
 
   @req:r1536
   规则: workspace-包边界
@@ -12,7 +12,7 @@
     OpenAI 方言插件 MUST 含 Responses/Completions 接线、usage 归一化与 WirePolicy；Anthropic 方言插件 MUST 含 Messages 接线。词表形状（DTO / accounting 启发式）MUST 落在 xylitol-plugin-sdk。
   @req:r1557
   规则: 包内-DTO-独立
-    对外流式与消息类型 MUST 使用 plugin-sdk 词表（如 AiBridgeMessage / AiBridgeChunk / AiBridgeUsage，即 LlmMessage / XyChunk）；该 DTO MUST 仅表达发给模型的形状，MUST NOT 再定义与主仓 Env 平行的 bashExecution / compactionSummary / branchSummary / custom 等会话环境角色；方言插件 MUST NOT 依赖主仓 xylitol。
+    对外流式与消息类型 MUST 使用 plugin-sdk 词表（如 XyLlmMessage / XyChunk / XyUsage，即 XyLlmMessage / XyChunk）；该 DTO MUST 仅表达发给模型的形状，MUST NOT 再定义与主仓 Env 平行的 bashExecution / compactionSummary / branchSummary / custom 等会话环境角色；方言插件 MUST NOT 依赖主仓 xylitol。
   @req:r1560
   规则: provider-实现迁入
     OpenAI 兼容（Responses 与 Completions）MUST 以 xylitol-official-plugin-provider-openai 为实现归属；Anthropic Messages MUST 以 xylitol-official-plugin-provider-anthropic 为实现归属；方言 MUST 直接 impl XyModel。主仓 MUST NOT 保留与包并行的第二套完整 adapter 实现体（允许组合根装配）。
@@ -34,11 +34,11 @@
     provider HTTP 客户端 MUST 有连接超时与请求级等待界：流式请求以 chunk-gap idle 上界判定挂起（任何入站字节重置计时）；非流式请求有总时长上界；到期返回可分类超时错误并释放连接。
   @req:r1539
   规则: assistant-stream-toolcall-lifecycle
-    Responses、Completions 与 Anthropic Messages 的流式路径 MUST 将原生工具调用映射为 AiBridgeChunk 的 ToolCallStart / ToolCallDelta / ToolCallEnd 生命周期：在首个可判别的工具相关上游事件后 MUST 发出 ToolCallStart（或同轮首次 ToolCallDelta 前已有 Start）；参数 JSON 片段 MUST 经 ToolCallDelta 增量发出且携带 parse_streaming_json 渐进 args；完整参数 MUST 在块结束时经 ToolCallEnd 发出。MUST NOT 仅在 finish_reason / output_item.done / message stop 才首次暴露工具意图。MUST NOT 在核心路径解析文本通道伪工具 XML。
+    Responses、Completions 与 Anthropic Messages 的流式路径 MUST 将原生工具调用映射为 XyChunk 的 ToolCallStart / ToolCallDelta / ToolCallEnd 生命周期：在首个可判别的工具相关上游事件后 MUST 发出 ToolCallStart（或同轮首次 ToolCallDelta 前已有 Start）；参数 JSON 片段 MUST 经 ToolCallDelta 增量发出且携带 parse_streaming_json 渐进 args；完整参数 MUST 在块结束时经 ToolCallEnd 发出。MUST NOT 仅在 finish_reason / output_item.done / message stop 才首次暴露工具意图。MUST NOT 在核心路径解析文本通道伪工具 XML。
 
     场景: responses-toolcall-streams-before-done
       假如 Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done
-      当 映射为 AiBridgeChunk 流
+      当 映射为 XyChunk 流
       那么 首个 args delta 之前或当时已有 ToolCallStart 且存在至少一次 ToolCallDelta 早于对应 ToolCallEnd
   @req:r1540
   规则: parse-streaming-json
@@ -50,7 +50,7 @@
       那么 返回 Value 且不 panic
   @req:r1541
   规则: responses-input-align-pi
-    组装 OpenAI Responses 请求体时：AiBridgeGenerateOptions.system_prompt 非空 MUST 每请求前置 input 项，thinking_level 非 off 时 role 为 developer，否则为 system；assistant 历史回放 MUST 仅将 Text 部分写入 output_text；Thinking 有合法 JSON thinkingSignature 时 MUST 解析为 reasoning item 按现网顺序推入 input（同轮排在 assistant text / function_call 之前），此为唯一默认全量回放；无 signature 或非法 JSON 时 MUST 省略该 Thinking 且 MUST NOT 并入 output_text，MUST NOT 用展示用 thinking 文本冒充可回放 signature。Anthropic MUST 经 body.system 消费同一 options.system_prompt。
+    组装 OpenAI Responses 请求体时：XyGenerateOptions.system_prompt 非空 MUST 每请求前置 input 项，thinking_level 非 off 时 role 为 developer，否则为 system；assistant 历史回放 MUST 仅将 Text 部分写入 output_text；Thinking 有合法 JSON thinkingSignature 时 MUST 解析为 reasoning item 按现网顺序推入 input（同轮排在 assistant text / function_call 之前），此为唯一默认全量回放；无 signature 或非法 JSON 时 MUST 省略该 Thinking 且 MUST NOT 并入 output_text，MUST NOT 用展示用 thinking 文本冒充可回放 signature。Anthropic MUST 经 body.system 消费同一 options.system_prompt。
 
     场景: responses-system-as-developer
       假如 Responses 组装且 system_prompt 非空且 thinking_level 为 medium
@@ -72,11 +72,11 @@
 
     场景: responses-reasoning-item-sets-thinking-signature
       假如 Responses 流或非流输出含完整 type=reasoning 的 output item
-      当 映射为 AiBridgeChunk
+      当 映射为 XyChunk
       那么 存在带 thinkingSignature 的 Thinking 终态（ThinkingEnd 或等价）且 signature 可 JSON 解析为该 reasoning item
   @req:r1544
   规则: responses-error-message-surface
-    OpenAI Responses 适配器在将上游错误映射为 AiBridgeError 时，若错误串含嵌入 JSON（如 content:{...}）且其中 error.message 可读，MUST 将该 message（MAY 附 type）暴露在错误文案中；MUST NOT 仅因 error.code 为整数导致 SDK 反序列化失败而只展示 deserialize 噪音、掩盖 upstream overflow 等原文。
+    OpenAI Responses 适配器在将上游错误映射为 XyError 时，若错误串含嵌入 JSON（如 content:{...}）且其中 error.message 可读，MUST 将该 message（MAY 附 type）暴露在错误文案中；MUST NOT 仅因 error.code 为整数导致 SDK 反序列化失败而只展示 deserialize 噪音、掩盖 upstream overflow 等原文。
 
     场景: responses-error-embedded-message-surface
       当 格式化含嵌入 JSON 的 Responses 上游错误
@@ -92,22 +92,22 @@
     产品与桥接叙事 MUST 区分第一语言（厂商原生 API）与方言（他方实现该协议形状，如 DeepSeek 实现 openai-responses）。可识别 AdapterKind/api 字符串（openai-responses、openai-completions、anthropic-messages）选择协议族；MUST NOT 把第一语言称作方言。方言端默认走 compat=generic 的保守 WirePolicy，可经命名 compat 轮廓切换。由文档与单测约定覆盖，MUST NOT 单独扩 BDD step。
   @req:r1549
   规则: responses-prompt-cache-read-tri-state
-    Responses usage 映射 MUST 提供可区分的 Prompt Cache 读数三态（名以实现为准，如 PromptCacheRead）：NotApplicable（expects_prompt_cache_usage 为 false）、NotReported（期望但 JSON 无 cached_tokens 细节）、Tokens(n)（含 n=0）。AiBridgeUsage.cache_read（或等价）MAY 保留为派生 u64（仅 Tokens(n)→n，其余→0）供 accounting。MUST NOT 将「字段缺失」映射为「命中 0」。由包内单测覆盖，MUST NOT 单独扩 BDD step。
+    Responses usage 映射 MUST 提供可区分的 Prompt Cache 读数三态（名以实现为准，如 PromptCacheRead）：NotApplicable（expects_prompt_cache_usage 为 false）、NotReported（期望但 JSON 无 cached_tokens 细节）、Tokens(n)（含 n=0）。XyUsage.cache_read（或等价）MAY 保留为派生 u64（仅 Tokens(n)→n，其余→0）供 accounting。MUST NOT 将「字段缺失」映射为「命中 0」。由包内单测覆盖，MUST NOT 单独扩 BDD step。
   @req:r1550
   规则: prompt-cache-usage-obs-honesty
     当 ProviderRequestTrace（或等价）激活并附着 usage 时，MUST 将 Prompt Cache 三态透出到观测属性（Langfuse/trace 自定义 property 或等价）；langfuse.observation.usage_details 中的 cache_read 数字 MUST 仅在 Tokens(n) 语义下写入。MUST NOT 在 NotReported 或 NotApplicable 时写入 cache_read:0 冒充已回报命中。由包内单测覆盖，MUST NOT 单独扩 BDD step。本 req 不要求 TUI 固定区。
   @req:r1551
   规则: responses-assembler-sole-body
-    包 MUST 提供 ResponsesAssembler（或等价）作为构造 openai-responses 请求 JSON body 的唯一业务布局入口：消费投影后的 AiBridgeMessage、工具 schema、AiBridgeGenerateOptions 与 WirePolicy；默认档 MUST 等价于既有 assemble_responses_body / prepend_system_prompt_item / apply_responses_wire_policy 行为（允许规范化后比较）。Adapter 内 MUST NOT 二次重排业务布局（WirePolicy 字段子集差异除外）。单测 MAY 用不同 WirePolicy 字面量覆盖证明字段集 diff。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。
+    包 MUST 提供 ResponsesAssembler（或等价）作为构造 openai-responses 请求 JSON body 的唯一业务布局入口：消费投影后的 XyLlmMessage、工具 schema、XyGenerateOptions 与 WirePolicy；默认档 MUST 等价于既有 assemble_responses_body / prepend_system_prompt_item / apply_responses_wire_policy 行为（允许规范化后比较）。Adapter 内 MUST NOT 二次重排业务布局（WirePolicy 字段子集差异除外）。单测 MAY 用不同 WirePolicy 字面量覆盖证明字段集 diff。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。
   @req:r1552
   规则: responses-reasoning-full-replay-only
-    从 session 形 AiBridgeMessage（含 thinkingSignature）经 ResponsesAssembler 重建 input 时，回放策略 MUST 仅为全量回放：有合法 signature 则原样推入 reasoning item；MUST NOT 提供 Strip/BestEffort 产品旋钮或 ExtraPolicy 回放模式枚举；空字符串 encrypted_content 的 signature MUST 仍整包回放。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。
+    从 session 形 XyLlmMessage（含 thinkingSignature）经 ResponsesAssembler 重建 input 时，回放策略 MUST 仅为全量回放：有合法 signature 则原样推入 reasoning item；MUST NOT 提供 Strip/BestEffort 产品旋钮或 ExtraPolicy 回放模式枚举；空字符串 encrypted_content 的 signature MUST 仍整包回放。由包内 golden/单测覆盖，MUST NOT 单独扩 BDD step。
   @req:r1553
   规则: responses-reasoning-encrypted-backfill
     流式 Responses 路径在 response.completed 或 response.incomplete 时，若能按 reasoning id 将终端 output 中的非空 encrypted_content 合并进先前 ThinkingEnd 的 thinkingSignature，MUST 在随后的 Done 之前发出更新后的 ThinkingEnd（或文档化等价）；主路径 MUST NOT 因缺 encrypted 而崩溃。由包内合成 SSE 单测覆盖，MUST NOT 单独扩 BDD step。
   @req:r1554
   规则: responses-assemble-prefix-idempotent
-    对同一 Vec<AiBridgeMessage>、同一 AiBridgeGenerateOptions（含 system_prompt）、同一 tools schema 与 WirePolicy，ResponsesAssembler 构造的 openai-responses 请求体中业务布局（至少 input 项序列与 tools）MUST 规范化后幂等：连续组装两次相等；消息经 serde 或 JSONL 行往返后再组装 MUST 仍得相等前缀。MUST NOT 因仅序列化往返而重排或改写历史 input。由包内单测覆盖，MUST NOT 单独扩 BDD step。
+    对同一 Vec<XyLlmMessage>、同一 XyGenerateOptions（含 system_prompt）、同一 tools schema 与 WirePolicy，ResponsesAssembler 构造的 openai-responses 请求体中业务布局（至少 input 项序列与 tools）MUST 规范化后幂等：连续组装两次相等；消息经 serde 或 JSONL 行往返后再组装 MUST 仍得相等前缀。MUST NOT 因仅序列化往返而重排或改写历史 input。由包内单测覆盖，MUST NOT 单独扩 BDD step。
   @req:r1903
   规则: deepseek-prompt-cache-read-mapped
     命名轮廓 compat=deepseek 在解析上游 usage 时 MUST 把已出现的 Prompt Cache 读数映射为 Tokens(n)：Responses 认 input_tokens_details.cached_tokens；Completions 优先 prompt_cache_hit_tokens，否则 prompt_tokens_details.cached_tokens。MUST NOT 仅因方言而标 NotApplicable 从而丢掉这些字段。缺字段且轮廓期望缓存读数时 MUST 为 NotReported，MUST NOT 写成命中 0。encrypted include 与 previous_response_id 仍按该轮廓省略。由包内单测覆盖，MUST NOT 单独扩 BDD step。

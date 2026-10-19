@@ -1,14 +1,14 @@
-//! Normalize vendor usage JSON into [`AiBridgeUsage`].
+//! Normalize vendor usage JSON into [`XyUsage`].
 
 use serde_json::Value;
 
-use crate::dto::{AiBridgeUsage, PromptCacheRead};
+use crate::dto::{PromptCacheRead, XyUsage};
 use crate::wire_policy::WirePolicy;
 
-/// OpenAI Completions `{prompt_tokens, completion_tokens, ...}` → [`AiBridgeUsage`].
+/// OpenAI Completions `{prompt_tokens, completion_tokens, ...}` → [`XyUsage`].
 ///
 /// Uses [`WirePolicy::default()`] (expects prompt-cache usage by default).
-pub fn from_openai_usage(value: &Value) -> AiBridgeUsage {
+pub fn from_openai_usage(value: &Value) -> XyUsage {
     from_openai_usage_with_policy(value, WirePolicy::default())
 }
 
@@ -19,7 +19,7 @@ pub fn from_openai_usage(value: &Value) -> AiBridgeUsage {
 /// - `!expects_prompt_cache_usage()` → [`PromptCacheRead::NotApplicable`]
 /// - expects + a cache field present → [`PromptCacheRead::Tokens`] (including 0)
 /// - expects + both absent → [`PromptCacheRead::NotReported`]
-pub fn from_openai_usage_with_policy(value: &Value, policy: WirePolicy) -> AiBridgeUsage {
+pub fn from_openai_usage_with_policy(value: &Value, policy: WirePolicy) -> XyUsage {
     let input = value
         .get("prompt_tokens")
         .and_then(|v| v.as_u64())
@@ -32,14 +32,14 @@ pub fn from_openai_usage_with_policy(value: &Value, policy: WirePolicy) -> AiBri
         .get("total_tokens")
         .and_then(|v| v.as_u64())
         .unwrap_or(input + output);
-    AiBridgeUsage {
+    XyUsage {
         input,
         output,
         cache_write: 0,
         cache_write_1h: 0,
         total_tokens: total,
         cost: None,
-        ..AiBridgeUsage::default()
+        ..XyUsage::default()
     }
     .with_prompt_cache_read(completions_prompt_cache_read(value, policy))
 }
@@ -64,8 +64,8 @@ fn completions_prompt_cache_read(value: &Value, policy: WirePolicy) -> PromptCac
     PromptCacheRead::NotReported
 }
 
-/// Anthropic-style `{input_tokens, output_tokens, cache_*}` → [`AiBridgeUsage`].
-pub fn from_anthropic_usage(value: &Value) -> AiBridgeUsage {
+/// Anthropic-style `{input_tokens, output_tokens, cache_*}` → [`XyUsage`].
+pub fn from_anthropic_usage(value: &Value) -> XyUsage {
     let input = value
         .get("input_tokens")
         .and_then(|v| v.as_u64())
@@ -87,22 +87,22 @@ pub fn from_anthropic_usage(value: &Value) -> AiBridgeUsage {
         .and_then(|c| c.get("ephemeral_1h_input_tokens"))
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
-    AiBridgeUsage {
+    XyUsage {
         input,
         output,
         cache_write,
         cache_write_1h,
         total_tokens: input + output,
         cost: None,
-        ..AiBridgeUsage::default()
+        ..XyUsage::default()
     }
     .with_prompt_cache_read(PromptCacheRead::Tokens(cache_read))
 }
 
-/// OpenAI Responses `{input_tokens, output_tokens}` → [`AiBridgeUsage`].
+/// OpenAI Responses `{input_tokens, output_tokens}` → [`XyUsage`].
 ///
 /// Uses [`WirePolicy::default()`] (expects prompt-cache usage by default, c1885).
-pub fn from_responses_usage(value: &Value) -> AiBridgeUsage {
+pub fn from_responses_usage(value: &Value) -> XyUsage {
     from_responses_usage_with_policy(value, WirePolicy::default())
 }
 
@@ -111,7 +111,7 @@ pub fn from_responses_usage(value: &Value) -> AiBridgeUsage {
 /// - `!expects_prompt_cache_usage()` → [`PromptCacheRead::NotApplicable`]
 /// - expects + `input_tokens_details.cached_tokens` present → [`PromptCacheRead::Tokens`]
 /// - expects + field absent → [`PromptCacheRead::NotReported`]
-pub fn from_responses_usage_with_policy(value: &Value, policy: WirePolicy) -> AiBridgeUsage {
+pub fn from_responses_usage_with_policy(value: &Value, policy: WirePolicy) -> XyUsage {
     let input = value
         .get("input_tokens")
         .and_then(|v| v.as_u64())
@@ -132,21 +132,21 @@ pub fn from_responses_usage_with_policy(value: &Value, policy: WirePolicy) -> Ai
             None => PromptCacheRead::NotReported,
         }
     };
-    AiBridgeUsage {
+    XyUsage {
         input,
         output,
         cache_write: 0,
         cache_write_1h: 0,
         total_tokens: input + output,
         cost: None,
-        ..AiBridgeUsage::default()
+        ..XyUsage::default()
     }
     .with_prompt_cache_read(prompt_cache_read)
 }
 
 /// Optional cost fill from per-million token rates.
 pub fn apply_cost_rates(
-    usage: &mut AiBridgeUsage,
+    usage: &mut XyUsage,
     per_m_input: f64,
     per_m_output: f64,
     per_m_cache_read: f64,
@@ -160,7 +160,7 @@ pub fn apply_cost_rates(
     );
 }
 
-pub fn total_context_tokens(usage: &AiBridgeUsage) -> u64 {
+pub fn total_context_tokens(usage: &XyUsage) -> u64 {
     if usage.total_tokens > 0 {
         return usage.total_tokens;
     }
@@ -346,11 +346,11 @@ mod tests {
 
     #[test]
     fn apply_cost_rates_fills_cost() {
-        let mut u = AiBridgeUsage {
+        let mut u = XyUsage {
             input: 1_000_000,
             output: 0,
             total_tokens: 1_000_000,
-            ..AiBridgeUsage::default()
+            ..XyUsage::default()
         };
         apply_cost_rates(&mut u, 10.0, 30.0, 1.0, 5.0);
         let cost = u.cost.unwrap();

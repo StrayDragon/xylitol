@@ -18,9 +18,8 @@ pub mod todo;
 pub mod tool;
 pub mod typed;
 
-// Flat re-exports for the common case where callers import the boundary
-// trait directly from `protocol::ports` (or via `protocol` root) rather than
-// from its submodule.
+// Flat re-exports for callers that import the boundary trait from the
+// `xylitol-plugin-sdk` crate root.
 pub use ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
 pub use bash::{BashChunk, BashExecOpts, BashOutputSink, XyBashExecutor, XyBashResult};
 pub use compaction::{
@@ -31,7 +30,7 @@ pub use event::{LifecycleHandler, XyEventSink};
 pub use export::XyExportIo;
 pub use hook::{NoopHookBus, XyHookBus, XyHookOutcome};
 pub use http::{HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request};
-pub use model::{XyGenerateOptions, XyModel, XyModelBuilder, XyStream};
+pub use model::{XyModel, XyModelBuilder, XyStream};
 pub use permission::{XyPermission, XyPermissionVerdict};
 pub use secret::XySecretResolver;
 pub use session::{SessionListEntry, XySessionStore, sanitize_session_display_name};

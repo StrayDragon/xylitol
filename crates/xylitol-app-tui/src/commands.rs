@@ -1,6 +1,6 @@
 //! Slash / bang parsing for the product TUI host (c480 / c492 / c494).
 
-use xylitol_plugin_sdk::ports::XyBashResult;
+use xylitol_plugin_sdk::XyBashResult;
 
 use super::bridge::{BashBlockStatus, UiEntry};
 

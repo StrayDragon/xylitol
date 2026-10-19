@@ -409,7 +409,7 @@ async fn create_writes_session_version_seven() {
 
 #[tokio::test]
 async fn list_sessions_skips_unreadable_file() {
-    use xylitol_plugin_sdk::ports::XySessionStore;
+    use xylitol_plugin_sdk::XySessionStore;
     let dir = tempfile::tempdir().unwrap();
     let sessions = dir.path().join("sessions");
     let mgr = SessionManager::new(sessions.clone());
@@ -434,7 +434,7 @@ async fn list_sessions_skips_unreadable_file() {
 
 #[tokio::test]
 async fn list_sessions_skips_many_legacy_with_one_summary() {
-    use xylitol_plugin_sdk::ports::XySessionStore;
+    use xylitol_plugin_sdk::XySessionStore;
     let dir = tempfile::tempdir().unwrap();
     let sessions = dir.path().join("sessions");
     let mgr = SessionManager::new(sessions.clone());

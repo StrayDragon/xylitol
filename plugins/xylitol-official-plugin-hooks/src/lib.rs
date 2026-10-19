@@ -263,7 +263,7 @@ impl HookEvent {
         }
     }
 
-    /// Payload-only JSON for [`xylitol_plugin_sdk::ports::XyHookBus`] (no `event`/`phase` keys).
+    /// Payload-only JSON for [`xylitol_plugin_sdk::XyHookBus`] (no `event`/`phase` keys).
     ///
     /// Script stdin via typed [`Self::to_json_context`] still includes `event` + `phase`.
     /// Exercised by the module's own unit tests; no product caller.

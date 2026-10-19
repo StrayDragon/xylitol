@@ -18,10 +18,10 @@ pub fn now_ms() -> u64 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "camelCase")]
-pub enum AiBridgeMessage {
+pub enum XyLlmMessage {
     #[serde(rename = "user")]
     UserMessage {
-        content: Vec<AiBridgePart>,
+        content: Vec<AgentPart>,
         #[serde(default = "now_ms")]
         timestamp: u64,
     },
@@ -29,11 +29,11 @@ pub enum AiBridgeMessage {
     #[serde(rename = "assistant")]
     #[serde(rename_all = "camelCase")]
     AssistantMessage {
-        content: Vec<AiBridgePart>,
+        content: Vec<AgentPart>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        stop_reason: Option<AiBridgeStopReason>,
+        stop_reason: Option<XyStopReason>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        usage: Option<AiBridgeUsage>,
+        usage: Option<XyUsage>,
         #[serde(default)]
         api: String,
         #[serde(default)]
@@ -55,7 +55,7 @@ pub enum AiBridgeMessage {
         #[serde(rename = "toolCallId")]
         tool_use_id: String,
         tool_name: String,
-        content: Vec<AiBridgePart>,
+        content: Vec<AgentPart>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         details: Option<Value>,
         #[serde(default)]
@@ -65,7 +65,7 @@ pub enum AiBridgeMessage {
     },
 }
 
-impl AiBridgeMessage {
+impl XyLlmMessage {
     pub fn role_name(&self) -> &'static str {
         match self {
             Self::UserMessage { .. } => "user",
@@ -74,7 +74,7 @@ impl AiBridgeMessage {
         }
     }
 
-    pub fn content(&self) -> &[AiBridgePart] {
+    pub fn content(&self) -> &[AgentPart] {
         match self {
             Self::UserMessage { content, .. }
             | Self::AssistantMessage { content, .. }
@@ -94,7 +94,7 @@ impl AiBridgeMessage {
         matches!(
             self,
             Self::AssistantMessage {
-                stop_reason: Some(AiBridgeStopReason::Error | AiBridgeStopReason::Aborted),
+                stop_reason: Some(XyStopReason::Error | XyStopReason::Aborted),
                 ..
             }
         )
@@ -102,13 +102,13 @@ impl AiBridgeMessage {
 
     pub fn user(text: impl Into<String>) -> Self {
         Self::UserMessage {
-            content: vec![AiBridgePart::text(text)],
+            content: vec![AgentPart::text(text)],
             timestamp: now_ms(),
         }
     }
 
     /// User message with arbitrary parts (text + images).
-    pub fn user_parts(content: Vec<AiBridgePart>) -> Self {
+    pub fn user_parts(content: Vec<AgentPart>) -> Self {
         Self::UserMessage {
             content,
             timestamp: now_ms(),
@@ -117,8 +117,8 @@ impl AiBridgeMessage {
 
     pub fn assistant(text: impl Into<String>) -> Self {
         Self::AssistantMessage {
-            content: vec![AiBridgePart::text(text)],
-            stop_reason: Some(AiBridgeStopReason::Stop),
+            content: vec![AgentPart::text(text)],
+            stop_reason: Some(XyStopReason::Stop),
             usage: None,
             api: String::new(),
             provider: String::new(),
@@ -133,7 +133,7 @@ impl AiBridgeMessage {
     pub fn tool_result(
         id: impl Into<String>,
         tool_name: impl Into<String>,
-        content: Vec<AiBridgePart>,
+        content: Vec<AgentPart>,
         is_error: bool,
     ) -> Self {
         Self::ToolResultMessage {
@@ -149,11 +149,11 @@ impl AiBridgeMessage {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum AiBridgePart {
+pub enum AgentPart {
     Text {
         text: String,
     },
-    Image(AiBridgeImageContent),
+    Image(ImageContent),
     Thinking {
         thinking: String,
         #[serde(default)]
@@ -172,14 +172,14 @@ pub enum AiBridgePart {
     },
 }
 
-impl AiBridgePart {
+impl AgentPart {
     pub fn text(s: impl Into<String>) -> Self {
         Self::Text { text: s.into() }
     }
 
     /// Inline image part (base64 `data` + MIME).
     pub fn image(media_type: impl Into<String>, data: impl Into<String>) -> Self {
-        Self::Image(AiBridgeImageContent {
+        Self::Image(ImageContent {
             url: None,
             data: Some(data.into()),
             media_type: media_type.into(),
@@ -204,7 +204,7 @@ impl AiBridgePart {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AiBridgeImageContent {
+pub struct ImageContent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -246,7 +246,7 @@ impl PromptCacheRead {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AiBridgeUsage {
+pub struct XyUsage {
     pub input: u64,
     pub output: u64,
     #[serde(default)]
@@ -258,7 +258,7 @@ pub struct AiBridgeUsage {
     #[serde(skip)]
     pub total_tokens: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cost: Option<AiBridgeUsageCost>,
+    pub cost: Option<XyUsageCost>,
     /// Authoritative Prompt Cache read provenance (c1885). `cache_read` is derived.
     #[serde(default)]
     pub prompt_cache_read: PromptCacheRead,
@@ -266,7 +266,7 @@ pub struct AiBridgeUsage {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AiBridgeUsageCost {
+pub struct XyUsageCost {
     pub input: f64,
     pub output: f64,
     pub cache_read: f64,
@@ -274,7 +274,7 @@ pub struct AiBridgeUsageCost {
     pub total: f64,
 }
 
-impl Default for AiBridgeUsage {
+impl Default for XyUsage {
     fn default() -> Self {
         Self {
             input: 0,
@@ -289,7 +289,7 @@ impl Default for AiBridgeUsage {
     }
 }
 
-impl AiBridgeUsage {
+impl XyUsage {
     /// Build usage with authoritative prompt-cache provenance; syncs `cache_read`.
     pub fn with_prompt_cache_read(mut self, prompt_cache_read: PromptCacheRead) -> Self {
         self.prompt_cache_read = prompt_cache_read;
@@ -313,7 +313,7 @@ impl AiBridgeUsage {
         let output_c = to_cost(self.output, per_m_output);
         let cache_read_c = to_cost(self.cache_read, per_m_cache_read);
         let cache_write_c = to_cost(self.cache_write, per_m_cache_write);
-        self.cost = Some(AiBridgeUsageCost {
+        self.cost = Some(XyUsageCost {
             input: input_c,
             output: output_c,
             cache_read: cache_read_c,
@@ -325,7 +325,7 @@ impl AiBridgeUsage {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum AiBridgeStopReason {
+pub enum XyStopReason {
     Stop,
     #[serde(rename = "length")]
     MaxTokens,
@@ -341,11 +341,11 @@ pub struct Diagnostic {
     pub source: Option<String>,
 }
 
-pub fn collect_text_parts(parts: &[AiBridgePart]) -> String {
+pub fn collect_text_parts(parts: &[AgentPart]) -> String {
     parts
         .iter()
         .filter_map(|p| match p {
-            AiBridgePart::Text { text } | AiBridgePart::Thinking { thinking: text, .. } => {
+            AgentPart::Text { text } | AgentPart::Thinking { thinking: text, .. } => {
                 Some(text.as_str())
             }
             _ => None,
@@ -361,10 +361,10 @@ mod tests {
 
     #[test]
     fn assistant_wire_uses_camel_case_stop_reason() {
-        let msg = AiBridgeMessage::AssistantMessage {
-            content: vec![AiBridgePart::text("")],
-            stop_reason: Some(AiBridgeStopReason::Error),
-            usage: Some(AiBridgeUsage {
+        let msg = XyLlmMessage::AssistantMessage {
+            content: vec![AgentPart::text("")],
+            stop_reason: Some(XyStopReason::Error),
+            usage: Some(XyUsage {
                 input: 1,
                 output: 2,
                 cache_read: 3,
@@ -400,10 +400,10 @@ mod tests {
             "errorMessage": "legacy",
             "timestamp": 1u64,
         });
-        let msg: AiBridgeMessage = serde_json::from_value(v).unwrap();
+        let msg: XyLlmMessage = serde_json::from_value(v).unwrap();
         match msg {
-            AiBridgeMessage::AssistantMessage {
-                stop_reason: Some(AiBridgeStopReason::Error),
+            XyLlmMessage::AssistantMessage {
+                stop_reason: Some(XyStopReason::Error),
                 error_message: Some(m),
                 ..
             } => assert_eq!(m, "legacy"),
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn tool_result_wire_uses_camel_case() {
-        let msg = AiBridgeMessage::tool_result("c1", "bash", vec![AiBridgePart::text("ok")], true);
+        let msg = XyLlmMessage::tool_result("c1", "bash", vec![AgentPart::text("ok")], true);
         let v = serde_json::to_value(&msg).unwrap();
         assert_eq!(v["toolCallId"], "c1");
         assert_eq!(v["toolName"], "bash");

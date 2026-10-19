@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage};
+use crate::protocol::message::{AgentMessage, AgentPart, XyLlmMessage};
 use crate::protocol::resource::SkillInfo;
 
 /// Collect unique `$name` tokens left-to-right (`[A-Za-z0-9_-]+`).
@@ -100,7 +100,7 @@ pub fn expand_skills_in_agent_messages(messages: &mut [AgentMessage], skills: &[
         let AgentMessage::Llm(llm) = msg else {
             continue;
         };
-        let LlmMessage::UserMessage { content, .. } = llm else {
+        let XyLlmMessage::UserMessage { content, .. } = llm else {
             continue;
         };
         for part in content.iter_mut() {
@@ -173,7 +173,7 @@ mod tests {
         let skill_path = dir.path().join("SKILL.md");
         std::fs::write(&skill_path, "---\nname: demo\n---\n\nBODY_X\n").unwrap();
         let skills = vec![skill("demo", skill_path)];
-        let mut msgs = vec![AgentMessage::Llm(LlmMessage::user("hi $demo"))];
+        let mut msgs = vec![AgentMessage::Llm(XyLlmMessage::user("hi $demo"))];
         expand_skills_in_agent_messages(&mut msgs, &skills);
         let text = msgs[0].text();
         assert!(text.contains("hi $demo"));

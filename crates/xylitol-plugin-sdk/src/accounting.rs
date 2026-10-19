@@ -1,8 +1,6 @@
 //! Context token estimation with provenance: Api, else Heuristic.
 
-use crate::dto::{
-    AiBridgeMessage, AiBridgeStopReason, AiBridgeUsage, ContextTokenEstimate, TokenProvenance,
-};
+use crate::dto::{ContextTokenEstimate, TokenProvenance, XyLlmMessage, XyStopReason, XyUsage};
 
 /// Shared heuristic divisor: UTF-8 bytes, rounded up (r1929).
 pub const HEURISTIC_BYTES_PER_TOKEN: u64 = 3;
@@ -13,7 +11,7 @@ pub fn heuristic_token_count(byte_len: u64) -> u64 {
 }
 
 /// Usage totals for context accounting: prefer `total_tokens` when present.
-pub fn total_context_tokens(usage: &AiBridgeUsage) -> u64 {
+pub fn total_context_tokens(usage: &XyUsage) -> u64 {
     if usage.total_tokens > 0 {
         return usage.total_tokens;
     }
@@ -22,18 +20,18 @@ pub fn total_context_tokens(usage: &AiBridgeUsage) -> u64 {
 
 #[derive(Default)]
 pub struct EstimateContextOpts<'a> {
-    pub last_usage: Option<&'a AiBridgeUsage>,
-    pub stop_reason: Option<AiBridgeStopReason>,
+    pub last_usage: Option<&'a XyUsage>,
+    pub stop_reason: Option<XyStopReason>,
 }
 
-fn is_valid_api_anchor(stop_reason: Option<AiBridgeStopReason>) -> bool {
+fn is_valid_api_anchor(stop_reason: Option<XyStopReason>) -> bool {
     !matches!(
         stop_reason,
-        Some(AiBridgeStopReason::Error | AiBridgeStopReason::Aborted)
+        Some(XyStopReason::Error | XyStopReason::Aborted)
     )
 }
 
-fn heuristic_tokens(messages: &[AiBridgeMessage]) -> u64 {
+fn heuristic_tokens(messages: &[XyLlmMessage]) -> u64 {
     messages
         .iter()
         .map(|msg| {
@@ -44,10 +42,10 @@ fn heuristic_tokens(messages: &[AiBridgeMessage]) -> u64 {
 }
 
 /// Index of the last assistant message that carries usage (pi `lastUsageIndex`).
-fn last_assistant_usage_index(messages: &[AiBridgeMessage]) -> Option<usize> {
+fn last_assistant_usage_index(messages: &[XyLlmMessage]) -> Option<usize> {
     messages
         .iter()
-        .rposition(|m| matches!(m, AiBridgeMessage::AssistantMessage { usage: Some(_), .. }))
+        .rposition(|m| matches!(m, XyLlmMessage::AssistantMessage { usage: Some(_), .. }))
 }
 
 /// Estimate context tokens with priority: Api → Heuristic.
@@ -56,7 +54,7 @@ fn last_assistant_usage_index(messages: &[AiBridgeMessage]) -> Option<usize> {
 /// **after** the last usage-bearing assistant (pi `estimateContextTokens`). If that
 /// assistant is not present in `messages`, the whole slice is treated as trailing.
 pub fn estimate_context(
-    messages: &[AiBridgeMessage],
+    messages: &[XyLlmMessage],
     opts: EstimateContextOpts<'_>,
 ) -> ContextTokenEstimate {
     if let Some(usage) = opts.last_usage
@@ -93,18 +91,18 @@ mod tests {
 
     #[test]
     fn prefer_api_anchor_when_valid() {
-        let usage = AiBridgeUsage {
+        let usage = XyUsage {
             input: 1000,
             output: 200,
             total_tokens: 1200,
             ..Default::default()
         };
-        let msgs = vec![AiBridgeMessage::user("trailing")];
+        let msgs = vec![XyLlmMessage::user("trailing")];
         let est = estimate_context(
             &msgs,
             EstimateContextOpts {
                 last_usage: Some(&usage),
-                stop_reason: Some(AiBridgeStopReason::Stop),
+                stop_reason: Some(XyStopReason::Stop),
             },
         );
         assert_eq!(est.provenance, TokenProvenance::Api);
@@ -116,19 +114,19 @@ mod tests {
 
     #[test]
     fn api_trailing_only_after_usage_message() {
-        let usage = AiBridgeUsage {
+        let usage = XyUsage {
             input: 1000,
             output: 200,
             total_tokens: 1200,
             ..Default::default()
         };
-        let history = AiBridgeMessage::user("x".repeat(8_000));
+        let history = XyLlmMessage::user("x".repeat(8_000));
         let hist_alone = heuristic_tokens(std::slice::from_ref(&history));
         assert!(hist_alone > 500, "precondition: fat history heuristic");
 
-        let assistant = AiBridgeMessage::AssistantMessage {
+        let assistant = XyLlmMessage::AssistantMessage {
             content: vec![],
-            stop_reason: Some(AiBridgeStopReason::Stop),
+            stop_reason: Some(XyStopReason::Stop),
             usage: Some(usage),
             api: "test".into(),
             provider: "test".into(),
@@ -138,13 +136,13 @@ mod tests {
             timestamp: 1,
             diagnostics: Vec::new(),
         };
-        let trail = AiBridgeMessage::user("after");
+        let trail = XyLlmMessage::user("after");
         let msgs = vec![history, assistant, trail.clone()];
         let est = estimate_context(
             &msgs,
             EstimateContextOpts {
                 last_usage: Some(&usage),
-                stop_reason: Some(AiBridgeStopReason::Stop),
+                stop_reason: Some(XyStopReason::Stop),
             },
         );
         assert_eq!(est.provenance, TokenProvenance::Api);
@@ -158,18 +156,18 @@ mod tests {
 
     #[test]
     fn abort_usage_must_not_be_api_anchor() {
-        let usage = AiBridgeUsage {
+        let usage = XyUsage {
             input: 500,
             output: 0,
             total_tokens: 500,
             ..Default::default()
         };
-        let msgs = vec![AiBridgeMessage::user("hello")];
+        let msgs = vec![XyLlmMessage::user("hello")];
         let est = estimate_context(
             &msgs,
             EstimateContextOpts {
                 last_usage: Some(&usage),
-                stop_reason: Some(AiBridgeStopReason::Aborted),
+                stop_reason: Some(XyStopReason::Aborted),
             },
         );
         assert_ne!(est.provenance, TokenProvenance::Api);
@@ -178,7 +176,7 @@ mod tests {
 
     #[test]
     fn fallback_heuristic_without_anchor() {
-        let msgs = vec![AiBridgeMessage::user("hello world")];
+        let msgs = vec![XyLlmMessage::user("hello world")];
         let est = estimate_context(&msgs, EstimateContextOpts::default());
         assert_eq!(est.provenance, TokenProvenance::Heuristic);
         assert!(est.tokens > 0);

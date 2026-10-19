@@ -5,7 +5,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::infra::mcp::{McpClientManager, McpToolAdapter};
-    use crate::protocol::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
     use crate::protocol::{is_mcp_tool_name, is_provider_safe_tool_name, mcp_tool_public_name};
 
     #[test]

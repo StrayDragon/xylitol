@@ -1,4 +1,4 @@
-//! MCP tool adapter — wraps MCP tools as [`xylitol_plugin_sdk::ports::XyTool`].
+//! MCP tool adapter — wraps MCP tools as [`xylitol_plugin_sdk::XyTool`].
 
 use std::sync::Arc;
 
@@ -8,7 +8,7 @@ use serde_json::Value;
 use super::client::McpClientManager;
 use xylitol_plugin_sdk::tool_name::{is_provider_safe_tool_name, mcp_tool_public_name};
 
-/// Adapter wrapping an MCP tool as an [`xylitol_plugin_sdk::ports::XyTool`].
+/// Adapter wrapping an MCP tool as an [`xylitol_plugin_sdk::XyTool`].
 ///
 /// Public name via [`mcp_tool_public_name`] (provider-safe `[a-zA-Z0-9_-]+`).
 ///
@@ -48,7 +48,7 @@ impl McpToolAdapter {
 }
 
 #[async_trait]
-impl xylitol_plugin_sdk::ports::XyTool for McpToolAdapter {
+impl xylitol_plugin_sdk::XyTool for McpToolAdapter {
     fn name(&self) -> &str {
         &self.full_name
     }
@@ -65,7 +65,7 @@ impl xylitol_plugin_sdk::ports::XyTool for McpToolAdapter {
 
     async fn execute(
         &self,
-        _ctx: &xylitol_plugin_sdk::ports::XyToolCtx,
+        _ctx: &xylitol_plugin_sdk::XyToolCtx,
         args: Value,
     ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
         let result = self
@@ -88,16 +88,16 @@ impl xylitol_plugin_sdk::ports::XyTool for McpToolAdapter {
         })
     }
 
-    fn execution_mode(&self) -> xylitol_plugin_sdk::ports::XyToolExecutionMode {
+    fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
         // Barrier — MCP tools must never enter a parallel window (c1545 / mcp6).
-        xylitol_plugin_sdk::ports::XyToolExecutionMode::Sequential
+        xylitol_plugin_sdk::XyToolExecutionMode::Sequential
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xylitol_plugin_sdk::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
 
     #[test]
     fn test_mcp_tool_adapter_name_format() {
@@ -149,7 +149,7 @@ mod tests {
         );
         assert_eq!(
             adapter.execution_mode(),
-            xylitol_plugin_sdk::ports::XyToolExecutionMode::Sequential
+            xylitol_plugin_sdk::XyToolExecutionMode::Sequential
         );
     }
 }

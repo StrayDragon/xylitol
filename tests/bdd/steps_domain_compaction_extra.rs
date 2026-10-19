@@ -393,8 +393,8 @@ fn overflow_asst(
     model: &str,
     err: &str,
 ) -> xylitol::protocol::message::AgentMessage {
-    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
-    AgentMessage::Llm(LlmMessage::AssistantMessage {
+    use xylitol::protocol::message::{AgentMessage, AgentPart, XyLlmMessage, XyStopReason};
+    AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content: vec![AgentPart::text("")],
         stop_reason: Some(XyStopReason::Error),
         usage: None,
@@ -821,7 +821,7 @@ pub(crate) async fn g_comp_leaf_branch_sibling(sess: &XySessionStore) {
 #[when("执行 prepare 或 force compact")]
 pub(crate) async fn w_comp_prepare_on_leaf(agent: &AgentState, sess: &XySessionStore) {
     use xylitol::agent::compaction::{CompactionSettings, prepare_compaction};
-    use xylitol::protocol::ports::XySessionStore as _;
+    use xylitol_plugin_sdk::XySessionStore as _;
 
     let sid = sess.current_id.borrow().clone().expect("sid");
     let mgr = sess.mgr.borrow().as_ref().expect("mgr").clone();
@@ -1045,7 +1045,7 @@ Edit src/file5.rs and update Cargo.toml
         None,
         None,
         None,
-        &xylitol::protocol::ports::XyGenerateOptions::default(),
+        &xylitol_plugin_sdk::XyGenerateOptions::default(),
     )
     .await;
     agent
@@ -1159,9 +1159,9 @@ pub(crate) async fn t_comp_agent_entry_written(agent: &AgentState, sess: &XySess
 
 pub(crate) fn make_test_capabilities(
     agent: &AgentState,
-    store: Arc<dyn xylitol::protocol::ports::XySessionStore>,
+    store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
 ) -> AgentCapabilities {
-    let sink: Arc<dyn xylitol::protocol::ports::XyEventSink> =
+    let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> =
         Arc::new(xylitol::infra::event::EventBus::new());
     AgentCapabilities::new(
         agent.registry.borrow().clone(),
@@ -1276,7 +1276,7 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
         prev.as_deref(),
         None,
         None,
-        &xylitol::protocol::ports::XyGenerateOptions::default(),
+        &xylitol_plugin_sdk::XyGenerateOptions::default(),
     )
     .await;
     agent
@@ -1296,7 +1296,7 @@ pub(crate) fn t_comp_iterative_ok(agent: &AgentState) {
 
 #[given("消息含工具调用：read a.txt、write b.rs、edit c.py")]
 pub(crate) async fn g_comp_files_msgs(sess: &XySessionStore) {
-    use xylitol::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason};
+    use xylitol::protocol::message::{AgentMessage, AgentPart, XyLlmMessage, XyStopReason};
 
     let sid = "comp-files";
     sess.ensure_mgr();
@@ -1304,7 +1304,7 @@ pub(crate) async fn g_comp_files_msgs(sess: &XySessionStore) {
     let _ = mgr.create(sid, Some("."), None).await;
     let tool_msgs = [
         (
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
                     id: "tc-read".into(),
                     name: "read".into(),
@@ -1323,7 +1323,7 @@ pub(crate) async fn g_comp_files_msgs(sess: &XySessionStore) {
             "read a.txt",
         ),
         (
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
                     id: "tc-write".into(),
                     name: "write".into(),
@@ -1342,7 +1342,7 @@ pub(crate) async fn g_comp_files_msgs(sess: &XySessionStore) {
             "write b.rs",
         ),
         (
-            AgentMessage::Llm(LlmMessage::AssistantMessage {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
                     id: "tc-edit".into(),
                     name: "edit".into(),

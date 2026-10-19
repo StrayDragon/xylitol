@@ -1,6 +1,6 @@
 # language: zh-CN
 # purpose: Provider 装配：方言插件直接 impl XyModel；组合根按 api/kind 调度工厂。
-# c2833: bridge 侧适配器行为已随 package-ai-bridge 迁子根；本 cap 收窄为根侧装配/结构 mandate（one-path-one-root）。
+# c2833: bridge 侧适配器行为已随 provider-openai 迁子根；本 cap 收窄为根侧装配/结构 mandate（one-path-one-root）。
 
 功能: infra-provider
 
@@ -56,7 +56,7 @@
 
   @req:r1499
   规则: agent-projects-before-model
-    XyModel 端口的消息入参 须为 Vec<AiBridgeMessage>（或等价 LLM DTO），不得再接受 AgentMessage。agent 在调用 XyModel 之前 须经 project_for_llm（或等价）完成 Env 折叠；infra provider 装配 不得再以 AgentMessage→bridge 孪生映射为主路径。投影 须保留开闭：新环境消息变体的折叠策略落在 agent 投影层，不得要求 bridge 同步增加平行 session 角色。
+    XyModel 端口的消息入参 须为 Vec<XyLlmMessage>（或等价 LLM DTO），不得再接受 AgentMessage。agent 在调用 XyModel 之前 须经 project_for_llm（或等价）完成 Env 折叠；infra provider 装配 不得再以 AgentMessage→bridge 孪生映射为主路径。投影 须保留开闭：新环境消息变体的折叠策略落在 agent 投影层，不得要求 bridge 同步增加平行 session 角色。
     场景: model-port-takes-bridge-dto
       当 读取模型端口的消息入参形态
       那么 入参为 bridge DTO 且无 AgentMessage

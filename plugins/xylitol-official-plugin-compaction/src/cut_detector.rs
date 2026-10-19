@@ -4,7 +4,7 @@
 //! and find the nearest valid boundary (user / assistant / bash / custom / branch).
 
 use xylitol_plugin_sdk::accounting::heuristic_token_count;
-use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::session::SessionEntry;
 
 /// Result from [`find_cut_point`].
@@ -62,8 +62,8 @@ pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
 /// token）计——投影后的序列化只含图片元数据、不承载真实视觉载荷，必须显式建模。
 fn unified_projected_entry_token_estimate(agent_msg: &AgentMessage) -> u64 {
     let image_tokens = match agent_msg {
-        AgentMessage::Llm(LlmMessage::UserMessage { content, .. })
-        | AgentMessage::Llm(LlmMessage::ToolResultMessage { content, .. }) => {
+        AgentMessage::Llm(XyLlmMessage::UserMessage { content, .. })
+        | AgentMessage::Llm(XyLlmMessage::ToolResultMessage { content, .. }) => {
             content
                 .iter()
                 .filter(|p| matches!(p, AgentPart::Image(_)))

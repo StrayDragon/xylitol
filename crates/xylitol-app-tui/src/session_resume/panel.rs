@@ -11,7 +11,7 @@ use xylitol_tui::{
 use crate::driver::SessionListEntry;
 use crate::keybindings::matches_binding;
 use crate::layout::LayoutTheme;
-use xylitol_plugin_sdk::ports::format_session_age;
+use xylitol_plugin_sdk::format_session_age;
 
 use super::search::{NameFilter, SessionScope, SortMode, filter_and_sort};
 

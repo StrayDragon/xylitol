@@ -13,9 +13,9 @@ use serde_json::{Value, json};
 
 use crate::image::agent_part_from_image_path;
 use crate::text::format_size;
+use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::message::AgentPart;
-use xylitol_plugin_sdk::ports::XyToolCtx;
 
 use super::path_utils::resolve_to_dir;
 use super::truncate::{TruncationOptions, truncate_head};
@@ -204,7 +204,7 @@ mod tests {
     use super::*;
     use crate::tools::test_ctx;
     use image::{ImageBuffer, Rgb};
-    use xylitol_plugin_sdk::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
 
     #[tokio::test]
     async fn test_read_whole_file() {

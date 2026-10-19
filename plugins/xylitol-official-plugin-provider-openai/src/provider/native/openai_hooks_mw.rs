@@ -15,7 +15,7 @@ use crate::hooks::{
     HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request,
 };
 use crate::provider::obs_session::ObsSessionContext;
-use crate::provider::reqwest_bridge::{from_reqwest_headers, to_reqwest_headers};
+use crate::provider::reqwest_headers::{from_reqwest_headers, to_reqwest_headers};
 
 type BoxFut = Pin<Box<dyn Future<Output = Result<Response, OpenAIError>> + Send>>;
 

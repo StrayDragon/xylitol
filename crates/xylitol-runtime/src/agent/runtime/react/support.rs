@@ -10,8 +10,8 @@ use crate::utils::StreamNodeClock;
 use xylitol_plugin_sdk::error::XyError;
 use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::model::{XyChunk, XyToolSchema};
-use xylitol_plugin_sdk::ports::{XyHookBus, XyHookOutcome, XyModel, XySessionStore};
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
+use xylitol_plugin_sdk::{XyHookBus, XyHookOutcome, XyModel, XySessionStore};
 
 pub(crate) fn prepare_turn_binding(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
@@ -19,13 +19,7 @@ pub(crate) fn prepare_turn_binding(
     run_id: RunId,
     system_prompt: &Option<String>,
     run_model: &mut Option<(String, Arc<dyn XyModel>)>,
-) -> Result<
-    (
-        Arc<dyn XyModel>,
-        xylitol_plugin_sdk::ports::XyGenerateOptions,
-    ),
-    XyError,
-> {
+) -> Result<(Arc<dyn XyModel>, xylitol_plugin_sdk::XyGenerateOptions), XyError> {
     let mm = crate::utils::lock_mutex(model_manager);
     let thinking = mm.thinking_level();
     let binding = crate::agent::capabilities::ActiveTurnBinding::from_manager(&mm)
@@ -34,7 +28,7 @@ pub(crate) fn prepare_turn_binding(
         .current_model()
         .ok_or_else(|| XyError::Config("no model configured".into()))?;
     let model_id = meta.id.clone();
-    let generate_options = xylitol_plugin_sdk::ports::XyGenerateOptions {
+    let generate_options = xylitol_plugin_sdk::XyGenerateOptions {
         thinking_level: thinking,
         level_map: meta.thinking_level_map.clone(),
         thinking_budgets: mm.thinking_budgets().cloned(),
@@ -138,9 +132,9 @@ pub(crate) async fn observe_script_hook(
 /// 以便在尝试之间 yield `AutoRetryStart` / `AutoRetryEnd` 事件。
 pub(crate) async fn attempt_model_stream(
     model: &Arc<dyn XyModel>,
-    llm_messages: Vec<xylitol_plugin_sdk::message::LlmMessage>,
+    llm_messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
     tool_schemas: &[XyToolSchema],
-    options: &xylitol_plugin_sdk::ports::XyGenerateOptions,
+    options: &xylitol_plugin_sdk::XyGenerateOptions,
 ) -> Result<Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>, XyError> {
     model
         .generate_stream(llm_messages, tool_schemas, true, options.clone())

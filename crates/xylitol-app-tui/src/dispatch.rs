@@ -32,7 +32,7 @@ use crate::driver::{
     SessionState, XyDriver,
 };
 pub use crate::driver_error::XyDriverError;
-use xylitol_plugin_sdk::ports::XyBashResult;
+use xylitol_plugin_sdk::XyBashResult;
 use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeNode, SessionTreeTravel};
 use xylitol_protocol::Command;
 

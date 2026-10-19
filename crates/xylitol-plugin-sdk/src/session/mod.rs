@@ -406,7 +406,7 @@ mod session_tree_tests {
 #[cfg(test)]
 mod as_agent_message_tests {
     use super::*;
-    use crate::message::{AgentMessage, AgentPart, EnvMessage, LlmMessage};
+    use crate::message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
     use serde_json::{Value, json};
 
     fn entry(message: Value) -> SessionEntry {
@@ -444,7 +444,7 @@ mod as_agent_message_tests {
         }));
         let msg = e.as_agent_message().expect("assistant");
         match msg {
-            AgentMessage::Llm(LlmMessage::AssistantMessage { content, .. }) => {
+            AgentMessage::Llm(XyLlmMessage::AssistantMessage { content, .. }) => {
                 assert!(matches!(
                     content.as_slice(),
                     [

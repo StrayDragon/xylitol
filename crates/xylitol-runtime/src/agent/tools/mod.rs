@@ -10,7 +10,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
-    use xylitol_plugin_sdk::ports::XyTool;
+    use xylitol_plugin_sdk::XyTool;
 
     #[test]
     fn test_toolset_empty() {
@@ -23,7 +23,7 @@ mod tests {
     fn test_toolset_from_iter_and_get() {
         struct DummyTool;
         #[async_trait::async_trait]
-        impl xylitol_plugin_sdk::ports::XyTool for DummyTool {
+        impl xylitol_plugin_sdk::XyTool for DummyTool {
             fn name(&self) -> &str {
                 "dummy"
             }
@@ -35,7 +35,7 @@ mod tests {
             }
             async fn execute(
                 &self,
-                _: &xylitol_plugin_sdk::ports::XyToolCtx,
+                _: &xylitol_plugin_sdk::XyToolCtx,
                 _: serde_json::Value,
             ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
                 Ok("ok".into())
@@ -79,7 +79,7 @@ mod tests {
     fn overlay_by_name_double_rebuild_keeps_unique_names() {
         struct Named(&'static str);
         #[async_trait::async_trait]
-        impl xylitol_plugin_sdk::ports::XyTool for Named {
+        impl xylitol_plugin_sdk::XyTool for Named {
             fn name(&self) -> &str {
                 self.0
             }
@@ -91,7 +91,7 @@ mod tests {
             }
             async fn execute(
                 &self,
-                _: &xylitol_plugin_sdk::ports::XyToolCtx,
+                _: &xylitol_plugin_sdk::XyToolCtx,
                 _: serde_json::Value,
             ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
                 Ok("ok".into())

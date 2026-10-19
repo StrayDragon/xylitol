@@ -33,8 +33,8 @@ use crate::app::core::driver::{
 };
 pub use crate::app::core::driver_error::XyDriverError;
 use crate::protocol::Command;
-use crate::protocol::ports::XyBashResult;
 use crate::protocol::session::{SessionEntry, SessionTreeNode, SessionTreeTravel};
+use xylitol_plugin_sdk::XyBashResult;
 
 /// Executor for session-level Commands (c2710): a `Command` is the SSOT of a
 /// session operation. In-process handlers drive the runtime directly; remote

@@ -21,12 +21,12 @@ use xylitol::infra::provider::fake_xy_model;
 use xylitol::infra::session::SessionManager;
 use xylitol::infra::tools::default_tools;
 use xylitol::protocol::model::XyModelConfig;
-use xylitol::protocol::ports::XyModel;
+use xylitol_plugin_sdk::XyModel;
 
 pub(crate) struct CompactionProbe {
     pub(crate) runtime: RefCell<Option<AgentRuntime>>,
     pub(crate) events: RefCell<Vec<String>>,
-    pub(crate) store: RefCell<Option<(Arc<dyn xylitol::protocol::ports::XySessionStore>, String)>>,
+    pub(crate) store: RefCell<Option<(Arc<dyn xylitol_plugin_sdk::XySessionStore>, String)>>,
     pub(crate) summary: RefCell<Option<String>>,
 }
 
@@ -40,7 +40,7 @@ pub(crate) fn compaction_probe() -> CompactionProbe {
     }
 }
 
-fn overflow_error_builder() -> xylitol::protocol::ports::XyModelBuilder {
+fn overflow_error_builder() -> xylitol_plugin_sdk::XyModelBuilder {
     // c2844: the agent LLM replies with a context-overflow error so turn-end
     // overflow compaction (Case 1) fires through the real run stream.
     Arc::new(move |_cfg: &XyModelConfig| -> Arc<dyn XyModel> {
@@ -83,8 +83,8 @@ fn small_window_meta(id: &str) -> xylitol::protocol::model::XyModelMeta {
 
 #[given("以 overflow 错误响应模型装配可压缩运行库并预置可压缩历史")]
 async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &AgentState) {
-    use xylitol::protocol::ports::XyEventSink;
-    use xylitol::protocol::ports::XySessionStore;
+    use xylitol_plugin_sdk::XyEventSink;
+    use xylitol_plugin_sdk::XySessionStore;
 
     let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let sid = "c2844-overflow";
@@ -185,11 +185,11 @@ impl XyModel for ReasoningOnlyModel {
     }
     async fn generate_stream(
         &self,
-        _messages: Vec<xylitol::protocol::message::LlmMessage>,
+        _messages: Vec<xylitol::protocol::message::XyLlmMessage>,
         _tools: &[xylitol::protocol::model::XyToolSchema],
         _stream: bool,
-        _options: xylitol::protocol::ports::XyGenerateOptions,
-    ) -> Result<xylitol::protocol::ports::XyStream, xylitol::protocol::error::XyError> {
+        _options: xylitol_plugin_sdk::XyGenerateOptions,
+    ) -> Result<xylitol_plugin_sdk::XyStream, xylitol::protocol::error::XyError> {
         use futures::stream::iter;
         use xylitol::protocol::message::XyStopReason;
         Ok(Box::pin(iter(vec![
@@ -236,7 +236,7 @@ async fn g_c2844_reasoning_store(
     }
     let _ = sess;
     compaction_probe.store.replace(Some((
-        Arc::new(mgr.clone()) as Arc<dyn xylitol::protocol::ports::XySessionStore>,
+        Arc::new(mgr.clone()) as Arc<dyn xylitol_plugin_sdk::XySessionStore>,
         sid.to_string(),
     )));
 }

@@ -198,7 +198,7 @@ pub struct SessionStats {
 }
 
 /// Session resume list row (from [`crate::XySessionStore::list_sessions`]).
-pub use xylitol_plugin_sdk::ports::SessionListEntry;
+pub use xylitol_plugin_sdk::SessionListEntry;
 
 /// Build a [`xylitol_plugin_sdk::model::ContextTokenEstimate`] from persisted session entries (XyDriver seam).
 ///

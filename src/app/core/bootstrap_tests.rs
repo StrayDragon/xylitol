@@ -1,8 +1,8 @@
 use super::*;
 use crate::app::core::composition::{BuildAgentOptions, build_agent};
 use crate::app::core::driver::XyInProcessDriver;
-use crate::protocol::ports::XySessionStore;
 use std::sync::Arc;
+use xylitol_plugin_sdk::XySessionStore;
 
 fn make_driver() -> XyInProcessDriver {
     let agent = build_agent(BuildAgentOptions::default()).expect("build");

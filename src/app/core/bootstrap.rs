@@ -138,7 +138,7 @@ pub struct BootstrappedAgent {
     /// Surfaces construct an [`crate::app::core::driver::XyInProcessDriver`] from this + the agent so
     /// XyDriver session commands (SwitchSession/GetMessages) operate without
     /// reaching into agent internals.
-    pub store: Arc<dyn crate::protocol::ports::XySessionStore>,
+    pub store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
     /// MCP servers from loaded config (`None` / empty = disabled, zero-cost).
     pub mcp_servers: Option<Vec<crate::app::core::mcp_spec::McpServerSpec>>,
 }
@@ -208,7 +208,7 @@ struct RestoredSessionMetadata {
 }
 
 async fn load_restored_session_metadata(
-    store: Arc<dyn crate::protocol::ports::XySessionStore>,
+    store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
     session_id: String,
 ) -> RestoredSessionMetadata {
     let thinking_level = if !store.exists(&session_id).await {
@@ -303,7 +303,7 @@ pub struct ResolvedAssembly {
     pub skills: Vec<crate::protocol::resource::SkillInfo>,
     pub cwd: String,
     pub compaction_settings: Option<crate::agent::compaction::CompactionSettings>,
-    pub permission: Option<Arc<dyn crate::protocol::ports::XyPermission>>,
+    pub permission: Option<Arc<dyn xylitol_plugin_sdk::XyPermission>>,
     pub steering_mode: crate::agent::QueueMode,
     pub follow_up_mode: crate::agent::QueueMode,
     /// Resolved default profile's model id, if any (for startup model selection
@@ -324,7 +324,7 @@ pub struct ResolvedAssembly {
     /// Settings `thinkingBudgets` (camelCase JSON), if any.
     pub thinking_budgets: Option<crate::protocol::model::ThinkingBudgets>,
     /// `AppConfig.tool_batch.mode` (c1545).
-    pub batch_mode: crate::protocol::ports::XyBatchMode,
+    pub batch_mode: xylitol_plugin_sdk::XyBatchMode,
     /// `AppConfig.session.max_turns` when set (c1620).
     pub max_turns: Option<u32>,
 }
@@ -632,7 +632,7 @@ pub fn resolve_assembly_with(
 
     let batch_mode = app_config
         .as_ref()
-        .map(|c| crate::protocol::ports::XyBatchMode::from(c.tool_batch.mode))
+        .map(|c| xylitol_plugin_sdk::XyBatchMode::from(c.tool_batch.mode))
         .unwrap_or_default();
 
     let max_turns = app_config

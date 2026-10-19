@@ -1,5 +1,5 @@
 use crate::bdd::fixtures::*;
-use crate::bdd::steps_bridge::{AiBridgeBdd, PromptBdd, ai_bridge_bdd, prompt_bdd};
+use crate::bdd::steps_bridge::{PromptBdd, ProviderBdd, prompt_bdd, provider_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -18,40 +18,40 @@ fn test_hooks_wiring_cancel(agent: AgentState, event: String, op: String, block_
 )]
 async fn test_hooks_wiring_unknown_op(agent: AgentState) {}
 #[scenario(
-    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai/provider-openai.feature",
     name = "responses-toolcall-streams-before-done"
 )]
-fn test_pab13_responses_toolcall_stream(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_pab13_responses_toolcall_stream(provider_bdd: ProviderBdd) {}
 
 #[scenario(
-    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai/provider-openai.feature",
     name = "partial-args-object"
 )]
-fn test_pab14_partial_args(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_pab14_partial_args(provider_bdd: ProviderBdd) {}
 
 #[scenario(
-    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai/provider-openai.feature",
     name = "responses-system-as-developer"
 )]
-fn test_pab15_system_developer(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_pab15_system_developer(provider_bdd: ProviderBdd) {}
 
 #[scenario(
-    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai/provider-openai.feature",
     name = "responses-thinking-not-in-output-text"
 )]
-fn test_pab15_thinking_omit(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_pab15_thinking_omit(provider_bdd: ProviderBdd) {}
 
 #[scenario(
-    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai/provider-openai.feature",
     name = "responses-body-store-strict-summary-include"
 )]
-fn test_pab16_body_fields(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_pab16_body_fields(provider_bdd: ProviderBdd) {}
 
 #[scenario(
-    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/package-ai-bridge/package-ai-bridge.feature",
+    path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai/provider-openai.feature",
     name = "responses-reasoning-item-sets-thinking-signature"
 )]
-fn test_pab16_thinking_signature(ai_bridge_bdd: AiBridgeBdd) {}
+fn test_pab16_thinking_signature(provider_bdd: ProviderBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-prompt/agent-prompt.feature",

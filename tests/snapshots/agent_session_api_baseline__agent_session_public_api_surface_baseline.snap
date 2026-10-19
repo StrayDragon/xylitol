@@ -45,7 +45,7 @@ pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
 pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo]
 pub fn model_registry(&self) -> ModelRegistry
-pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: crate::protocol::ports::XyModelBuilder, permission: Arc<dyn XyPermission>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
+pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: xylitol_plugin_sdk::XyModelBuilder, permission: Arc<dyn XyPermission>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
 pub fn new(mode: QueueMode) -> Self
 pub fn new(steering_mode: QueueMode, follow_up_mode: QueueMode) -> Self
 pub fn notify_queue_update(&self)

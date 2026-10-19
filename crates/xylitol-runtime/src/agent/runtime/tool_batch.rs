@@ -3,9 +3,9 @@
 //! Pure data helpers — no I/O. ReAct BarrierParallel flush path consumes
 //! [`classify`] and [`plan_windows`] when batch mode is BarrierParallel.
 
-use xylitol_plugin_sdk::ports::{XyTool, XyToolExecutionMode};
+use xylitol_plugin_sdk::{XyTool, XyToolExecutionMode};
 
-/// A planned execution window for [`xylitol_plugin_sdk::ports::XyBatchMode::BarrierParallel`].
+/// A planned execution window for [`xylitol_plugin_sdk::XyBatchMode::BarrierParallel`].
 ///
 /// Indices refer to the source-order tool-call list.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,8 +76,8 @@ mod tests {
     use async_trait::async_trait;
     use serde_json::{Value, json};
 
+    use xylitol_plugin_sdk::XyToolCtx;
     use xylitol_plugin_sdk::error::XyToolError;
-    use xylitol_plugin_sdk::ports::XyToolCtx;
 
     struct ModeTool {
         name: &'static str,

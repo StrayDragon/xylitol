@@ -21,13 +21,13 @@ use crate::protocol::wire::{
 };
 
 /// Test injection env. Unset is treated as on by the attach client.
-pub(super) const WIRE_V3_ENV: &str = "XYLITOL_WIRE_V3";
+pub(super) const ENVELOPE_FORMAT_ENV: &str = "XYLITOL_WIRE_V3";
 
 /// 读进程 env 决定 v3 是否开启。
 ///
 /// 未设 `XYLITOL_WIRE_V3` 时产品默认开；显式 env 仍走本解析。
 pub(super) fn env_enabled() -> bool {
-    flag_truthy(std::env::var_os(WIRE_V3_ENV).as_deref())
+    flag_truthy(std::env::var_os(ENVELOPE_FORMAT_ENV).as_deref())
 }
 
 /// 纯解析(测试不碰进程 env):`"1"` / `"true"`(大小写不敏感、容忍空白)为真。
@@ -116,7 +116,7 @@ pub(super) fn describe_request_bytes() -> Result<Vec<u8>, String> {
 }
 
 /// describe 应答是否宣告 `fory-v3`(未宣告 / 旧 host 无 formats = 否)。
-pub(super) fn formats_advertise_v3(result: &RpcResult) -> bool {
+pub(super) fn formats_advertise_envelope(result: &RpcResult) -> bool {
     let Ok(describe) =
         serde_json::from_value::<HostDescribeValue>(result.value.clone().unwrap_or(Value::Null))
     else {
@@ -480,7 +480,7 @@ mod tests {
             Some(json!({"protocol": 2, "formats": ["jsonrpc", "fory-v3"]})),
             "describe value keeps the JSON-track HostDescribeValue shape"
         );
-        assert!(formats_advertise_v3(&result));
+        assert!(formats_advertise_envelope(&result));
 
         let err = ServerResponse {
             rpc_id: 6,
@@ -573,11 +573,11 @@ mod tests {
     #[test]
     fn negotiate_gate_rejects_without_fory_v3() {
         let jsonrpc_only = RpcResult::ok_value(json!({"protocol": 2, "formats": ["jsonrpc"]}));
-        assert!(!formats_advertise_v3(&jsonrpc_only));
+        assert!(!formats_advertise_envelope(&jsonrpc_only));
         let old_host = RpcResult::ok_value(json!({"protocol": 2}));
-        assert!(!formats_advertise_v3(&old_host));
+        assert!(!formats_advertise_envelope(&old_host));
         let dual = RpcResult::ok_value(json!({"protocol": 2, "formats": ["jsonrpc", "fory-v3"]}));
-        assert!(formats_advertise_v3(&dual));
+        assert!(formats_advertise_envelope(&dual));
     }
 
     /// task 2.5b：具名应答 union 还原为与 JSON 轨 `outcome_to_value` 同构的形状

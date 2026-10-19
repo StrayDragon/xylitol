@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::protocol::ports::XyModel;
+use xylitol_plugin_sdk::XyModel;
 
 pub use xylitol_official_plugin_provider_openai::fake::{FakeProvider, ScenarioStep};
 
@@ -20,8 +20,8 @@ pub fn fake_xy_model_of(provider: FakeProvider) -> Arc<dyn XyModel> {
 mod tests {
     use super::*;
     use crate::protocol::model::XyChunk;
-    use crate::protocol::ports::XyGenerateOptions;
     use futures::StreamExt;
+    use xylitol_plugin_sdk::XyGenerateOptions;
 
     #[tokio::test]
     async fn fake_xy_model_text() {

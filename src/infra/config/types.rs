@@ -137,7 +137,7 @@ pub enum ToolBatchMode {
     BarrierParallel,
 }
 
-impl From<ToolBatchMode> for crate::protocol::ports::XyBatchMode {
+impl From<ToolBatchMode> for xylitol_plugin_sdk::XyBatchMode {
     fn from(value: ToolBatchMode) -> Self {
         match value {
             ToolBatchMode::Sequential => Self::Sequential,
@@ -966,8 +966,8 @@ tui:
         let cfg: AppConfig = yaml_serde::from_str("models: {}").expect("minimal");
         assert_eq!(cfg.tool_batch.mode, ToolBatchMode::BarrierParallel);
         assert_eq!(
-            crate::protocol::ports::XyBatchMode::from(cfg.tool_batch.mode),
-            crate::protocol::ports::XyBatchMode::BarrierParallel
+            xylitol_plugin_sdk::XyBatchMode::from(cfg.tool_batch.mode),
+            xylitol_plugin_sdk::XyBatchMode::BarrierParallel
         );
     }
 

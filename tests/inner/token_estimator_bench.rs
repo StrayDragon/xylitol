@@ -12,7 +12,7 @@ use std::hint::black_box;
 
 use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_context_tokens_with};
 use crate::agent::prompt::AgentStatusBar;
-use crate::protocol::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
+use crate::protocol::message::{AgentMessage, AgentPart, XyLlmMessage, XyStopReason, XyUsage};
 use crate::protocol::model::TokenProvenance;
 
 fn sample_messages(turns: usize) -> Vec<AgentMessage> {
@@ -21,11 +21,11 @@ fn sample_messages(turns: usize) -> Vec<AgentMessage> {
             let user_text = format!("please review file src/lib.rs chunk {i} and summarize");
             let assistant_text = format!("here is the summary for chunk {i}: all good");
             [
-                AgentMessage::Llm(LlmMessage::UserMessage {
+                AgentMessage::Llm(XyLlmMessage::UserMessage {
                     content: vec![AgentPart::Text { text: user_text }],
                     timestamp: 0,
                 }),
-                AgentMessage::Llm(LlmMessage::AssistantMessage {
+                AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                     content: vec![AgentPart::Text {
                         text: assistant_text,
                     }],

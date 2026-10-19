@@ -31,7 +31,7 @@ pub fn from_wire_tool_name(wire: &str, canonical: &[impl AsRef<str>]) -> String 
 }
 
 /// Canonical names from a tool schema slice (for decode during stream).
-pub fn canonical_tool_names(tools: &[crate::dto::AiBridgeToolSchema]) -> Vec<String> {
+pub fn canonical_tool_names(tools: &[crate::dto::XyToolSchema]) -> Vec<String> {
     tools.iter().map(|t| t.name.clone()).collect()
 }
 
@@ -46,7 +46,7 @@ pub fn is_provider_safe_tool_name(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dto::AiBridgeToolSchema;
+    use crate::dto::XyToolSchema;
     use serde_json::json;
 
     #[test]
@@ -84,17 +84,17 @@ mod tests {
     #[test]
     fn convert_tools_style_payload_rejects_unsafe_names() {
         let tools = [
-            AiBridgeToolSchema {
+            XyToolSchema {
                 name: "read".into(),
                 description: "r".into(),
                 parameters: json!({"type": "object"}),
             },
-            AiBridgeToolSchema {
+            XyToolSchema {
                 name: "mcp__lspz__get_diagnostics".into(),
                 description: "d".into(),
                 parameters: json!({"type": "object"}),
             },
-            AiBridgeToolSchema {
+            XyToolSchema {
                 name: "mcp:should:not:reach:wire".into(),
                 description: "legacy".into(),
                 parameters: json!({"type": "object"}),

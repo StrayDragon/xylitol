@@ -247,7 +247,7 @@ pub(crate) mod xs_sec {
     use std::cell::RefCell;
     use std::sync::Arc;
     use xylitol::infra::config::types::AppConfig;
-    use xylitol::protocol::ports::{XyPermission, XyPermissionVerdict};
+    use xylitol_plugin_sdk::{XyPermission, XyPermissionVerdict};
     thread_local! {
         pub static SEC: RefCell<Option<Arc<dyn XyPermission>>> = const { RefCell::new(None) };
         pub static V: RefCell<Option<XyPermissionVerdict>> = const { RefCell::new(None) };
@@ -407,7 +407,7 @@ fn w_xy_tool_approval_call(_agent: &AgentState) {
 
 #[then("审批检查在 XyTool::execute 前运行且拒绝时阻止")]
 fn t_xy_tool_approval_blocks(_agent: &AgentState) {
-    use xylitol::protocol::ports::XyPermissionVerdict;
+    use xylitol_plugin_sdk::XyPermissionVerdict;
 
     xs_sec::V.with(|v| match v.borrow().as_ref() {
         Some(XyPermissionVerdict::Deny { .. }) => {}
@@ -590,7 +590,7 @@ fn w_ds_check_read() {
 
 #[then("返回 XyPermissionVerdict 且默认后端为 AllowAllPermission")]
 fn t_ds_allow_all_read() {
-    use xylitol::protocol::ports::XyPermissionVerdict;
+    use xylitol_plugin_sdk::XyPermissionVerdict;
     xs_sec::V.with(|v| match v.borrow().as_ref() {
         Some(XyPermissionVerdict::Allow) => {}
         other => panic!("AllowAllPermission must allow /tmp/test read, got {other:?}"),

@@ -3,7 +3,7 @@
 use regex::Regex;
 use std::sync::LazyLock;
 
-use crate::message::{AgentMessage, LlmMessage, XyStopReason};
+use crate::message::{AgentMessage, XyLlmMessage, XyStopReason};
 
 static OVERFLOW_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     [
@@ -64,7 +64,7 @@ pub fn error_message_is_context_overflow(error_message: &str) -> bool {
 
 /// pi `isContextOverflow(assistant, contextWindow)`.
 pub fn is_context_overflow_assistant(message: &AgentMessage, context_window: u64) -> bool {
-    let AgentMessage::Llm(LlmMessage::AssistantMessage {
+    let AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         stop_reason,
         error_message,
         usage,
@@ -109,7 +109,7 @@ pub fn is_context_overflow_assistant(message: &AgentMessage, context_window: u64
 
 /// Whether assistant provider+model matches the current model (pi `sameModel`).
 pub fn assistant_same_model(message: &AgentMessage, provider: &str, model_id: &str) -> bool {
-    let AgentMessage::Llm(LlmMessage::AssistantMessage {
+    let AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         provider: p,
         model: m,
         ..

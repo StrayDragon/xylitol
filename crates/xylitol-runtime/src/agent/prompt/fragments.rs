@@ -3,7 +3,7 @@
 //! Built-in short texts keyed by capability state (today: tool batch mode).
 //! Not user YAML; Session syncs fragments when mode changes.
 
-use xylitol_plugin_sdk::ports::XyBatchMode;
+use xylitol_plugin_sdk::XyBatchMode;
 
 /// Stable fragment id for tests / future observability.
 pub const FRAGMENT_TOOL_BATCH_BARRIER_PARALLEL: &str = "tool_batch.barrier_parallel";

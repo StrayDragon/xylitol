@@ -1,9 +1,7 @@
 //! Token estimation — multi-source accounting via xylitol-official-plugin-provider-openai (c1030 / c1210).
 
 use crate::accounting::{EstimateContextOpts, estimate_context, heuristic_token_count};
-use crate::dto::AiBridgeMessage;
-
-use crate::message::{AgentMessage, AgentPart, LlmMessage, XyStopReason, XyUsage};
+use crate::message::{AgentMessage, AgentPart, XyLlmMessage, XyStopReason, XyUsage};
 use crate::model::{ContextTokenEstimate, XyToolSchema};
 use crate::project_outbound;
 
@@ -37,9 +35,9 @@ impl FixedRequestContext {
     }
 
     /// Estimate-only pseudo rows folding the fixed context into message accounting.
-    fn pseudo_rows(&self) -> Vec<AiBridgeMessage> {
-        fn user_row(text: String) -> AiBridgeMessage {
-            LlmMessage::UserMessage {
+    fn pseudo_rows(&self) -> Vec<XyLlmMessage> {
+        fn user_row(text: String) -> XyLlmMessage {
+            XyLlmMessage::UserMessage {
                 content: vec![AgentPart::text(text)],
                 timestamp: 0,
             }
@@ -104,7 +102,7 @@ pub fn estimate_from_session_entries(
         if let SessionEntry::Message(m) = entry
             && let Ok(msg) = serde_json::from_value::<AgentMessage>(m.message.clone())
         {
-            if let AgentMessage::Llm(LlmMessage::AssistantMessage {
+            if let AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 usage: Some(u),
                 stop_reason: sr,
                 timestamp,
@@ -144,7 +142,7 @@ pub fn estimate_context_tokens_with(
 ) -> ContextTokenEstimate {
     // History fold + status bar (r1124). Compact summarizer does not
     // call this path; it uses `project_for_llm` only.
-    let mut bridge_msgs: Vec<AiBridgeMessage> = project_outbound(messages, bar);
+    let mut bridge_msgs: Vec<XyLlmMessage> = project_outbound(messages, bar);
     // c25: fold fixed request overhead (system prompt + tools) only when no Api
     // anchor carries it already.
     if last_usage.is_none()

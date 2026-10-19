@@ -10,9 +10,9 @@ use serde_json::{Value, json};
 
 use super::typed::TypedTool;
 use xylitol_plugin_sdk::BuiltinToolName;
+use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 use xylitol_plugin_sdk::error::XyToolError;
-use xylitol_plugin_sdk::ports::ask::{AskArgs, AskUserGateway};
-use xylitol_plugin_sdk::ports::{XyToolCtx, XyToolExecutionMode};
+use xylitol_plugin_sdk::{XyToolCtx, XyToolExecutionMode};
 
 /// Builtin `ask` — Barrier / Sequential; not in [`super::default_tools`].
 pub struct AskTool {
@@ -127,7 +127,7 @@ impl TypedTool for AskTool {
 #[allow(dead_code)] // BDD @executable contract, not product-called
 pub fn default_tools_with_ask(
     gateway: Arc<dyn AskUserGateway>,
-) -> Vec<Arc<dyn xylitol_plugin_sdk::ports::XyTool>> {
+) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
     let mut tools = super::default_tools();
     tools.push(Arc::new(AskTool::new(gateway)));
     tools
@@ -136,8 +136,8 @@ pub fn default_tools_with_ask(
 /// Session-bound Todo builtins + TUI-only `ask`.
 pub fn default_tools_with_ask_and_todo(
     ask: Arc<dyn AskUserGateway>,
-    todo: Arc<dyn xylitol_plugin_sdk::ports::AgentTodoGateway>,
-) -> Vec<Arc<dyn xylitol_plugin_sdk::ports::XyTool>> {
+    todo: Arc<dyn xylitol_plugin_sdk::AgentTodoGateway>,
+) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
     let mut tools = super::default_tools_with_todo(todo);
     tools.push(Arc::new(AskTool::new(ask)));
     tools
@@ -147,7 +147,7 @@ pub fn default_tools_with_ask_and_todo(
 mod tests {
     use super::*;
     use crate::default_tools;
-    use xylitol_plugin_sdk::ports::ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg};
+    use xylitol_plugin_sdk::ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg};
 
     struct MockGateway {
         payload: String,

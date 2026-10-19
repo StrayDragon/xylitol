@@ -35,9 +35,8 @@ where
     // sink channel is independent of the dispatch borrow, so abort stays a
     // simple post-loop action; the client-side cancel clone is inert (the
     // host's slot-registered token does the real kill).
-    let (chunk_tx, mut chunk_rx) =
-        tokio::sync::mpsc::channel::<xylitol_plugin_sdk::ports::BashChunk>(64);
-    driver.set_bash_run_sink(Some(xylitol_plugin_sdk::ports::BashOutputSink {
+    let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<xylitol_plugin_sdk::BashChunk>(64);
+    driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink {
         tx: chunk_tx,
         cancel: tokio_util::sync::CancellationToken::new(),
     }));

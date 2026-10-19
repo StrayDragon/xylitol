@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use serde_json::Value;
 
 use xylitol_plugin_sdk::lifecycle::XyEvent;
-use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, LlmMessage};
+use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 
 pub(crate) fn upsert_streaming_tool(
     tools: &mut Vec<(String, String, Value)>,
@@ -75,7 +75,7 @@ pub(crate) fn build_assistant_message(
     model: String,
     error_message: Option<String>,
 ) -> AgentMessage {
-    AgentMessage::Llm(LlmMessage::AssistantMessage {
+    AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content,
         stop_reason,
         usage,

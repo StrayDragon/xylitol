@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use crate::agent::capabilities::{PendingMessageQueue, observe_hook};
 use crate::agent::runtime::hooks::{AgentHooks, ShouldStopAfterTurnCtx};
 use crate::protocol::lifecycle::XyEvent;
-use crate::protocol::message::{AgentMessage, LlmMessage};
-use crate::protocol::ports::{XyHookBus, XySessionStore};
+use crate::protocol::message::{AgentMessage, XyLlmMessage};
+use xylitol_plugin_sdk::{XyHookBus, XySessionStore};
 
 pub(crate) fn should_stop_after_turn(hooks: &AgentHooks, ctx: &ShouldStopAfterTurnCtx) -> bool {
     hooks
@@ -58,7 +58,7 @@ pub(crate) async fn close_iteration(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
-    event_sink: &Arc<dyn crate::protocol::ports::XyEventSink>,
+    event_sink: &Arc<dyn xylitol_plugin_sdk::XyEventSink>,
     compaction_settings: &crate::agent::compaction::CompactionSettings,
     fixed_context: &crate::agent::compaction::FixedRequestContext,
     history: &mut Vec<AgentMessage>,
@@ -210,7 +210,7 @@ pub(crate) async fn try_turn_end_compaction(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
-    event_sink: &Arc<dyn crate::protocol::ports::XyEventSink>,
+    event_sink: &Arc<dyn xylitol_plugin_sdk::XyEventSink>,
     settings: &crate::agent::compaction::CompactionSettings,
     fixed_context: &crate::agent::compaction::FixedRequestContext,
     history: &mut Vec<AgentMessage>,
@@ -301,7 +301,7 @@ pub(crate) async fn try_turn_end_compaction(
                         );
                         if matches!(
                             history.last(),
-                            Some(AgentMessage::Llm(LlmMessage::AssistantMessage {
+                            Some(AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                                 stop_reason: Some(crate::protocol::message::XyStopReason::Error),
                                 ..
                             }))

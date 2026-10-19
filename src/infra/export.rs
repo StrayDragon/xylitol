@@ -5,7 +5,7 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use crate::protocol::error::XyExportError;
-use crate::protocol::ports::XyExportIo;
+use xylitol_plugin_sdk::XyExportIo;
 
 /// Filesystem-backed [`XyExportIo`] using `tokio::fs`.
 #[derive(Debug, Default, Clone)]

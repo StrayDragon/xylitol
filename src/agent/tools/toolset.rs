@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use crate::protocol::ports::XyTool;
+use xylitol_plugin_sdk::XyTool;
 
 /// A build-time-final set of tools.
 #[derive(Clone, Default)]

@@ -15,8 +15,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::protocol::lifecycle::XyEvent;
 use crate::protocol::message::AgentMessage;
-use crate::protocol::ports::{XyEventSink, XySessionStore};
 use crate::protocol::session::SessionEntry;
+use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 
 const WINDOW: u64 = 32_768;
 const RESERVE: u64 = 16_384;

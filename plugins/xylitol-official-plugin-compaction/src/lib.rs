@@ -39,7 +39,7 @@ pub use token_estimator::{EstimateOpts, FixedRequestContext, estimate_from_sessi
 use anyhow::Result;
 use serde_json::json;
 
-use xylitol_plugin_sdk::ports::XySessionStore;
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::session::{CompactionEntry, EntryBase, MessageEntry, SessionEntry};
 
 pub use xylitol_plugin_sdk::CompactionError;
