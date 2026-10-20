@@ -8,7 +8,6 @@ use xylitol_official_plugin_provider_openai::provider::{ObsSessionContext, ObsSe
 
 use super::*;
 use crate::wiring::event::EventBus;
-use crate::wiring::permission;
 use xylitol_official_plugin_session::SessionManager;
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
@@ -46,7 +45,7 @@ async fn build_test_driver(store: Arc<SessionManager>) -> (XyComposedDriver, Obs
         Arc::new(crate::wiring::provider::factory::build_provider),
         store_trait.clone(),
         Arc::new(EventBus::new()) as Arc<dyn XyEventSink>,
-        permission::allow_all_permission(),
+        xylitol_runtime::permission::allow_all_permission(),
     )
     .cwd(".")
     .tools(ToolSet::from_iter(

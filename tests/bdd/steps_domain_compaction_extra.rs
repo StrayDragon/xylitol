@@ -1186,7 +1186,7 @@ pub(crate) fn make_test_capabilities(
         ".".into(),
         None,
         Arc::new(xylitol::wiring::provider::factory::build_provider),
-        xylitol::wiring::permission::allow_all_permission(),
+        xylitol_runtime::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,

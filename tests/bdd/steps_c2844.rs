@@ -119,7 +119,7 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
         ".".into(),
         None,
         overflow_error_builder(),
-        xylitol::wiring::permission::allow_all_permission(),
+        xylitol_runtime::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,

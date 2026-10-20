@@ -411,7 +411,7 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         ".".into(),
         None,
         std::sync::Arc::new(xylitol::wiring::provider::factory::build_provider),
-        xylitol::wiring::permission::allow_all_permission(),
+        xylitol_runtime::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,

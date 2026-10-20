@@ -48,7 +48,7 @@ async fn in_process_session_tree_ensures_missing_session() {
         Arc::new(crate::wiring::provider::factory::build_provider),
         store_trait.clone(),
         Arc::new(EventBus::new()) as Arc<dyn XyEventSink>,
-        permission::allow_all_permission(),
+        xylitol_runtime::permission::allow_all_permission(),
     )
     .cwd(".")
     .tools(ToolSet::from_iter(
@@ -271,7 +271,7 @@ async fn after_run_session_tree_reflects_persisted_turn() {
         builder,
         store_trait.clone(),
         Arc::new(EventBus::new()) as Arc<dyn xylitol_plugin_sdk::XyEventSink>,
-        permission::allow_all_permission(),
+        xylitol_runtime::permission::allow_all_permission(),
     )
     .cwd(".")
     .tools(ToolSet::empty())
@@ -431,7 +431,7 @@ async fn concurrent_run_rejects_second_with_busy() {
         builder,
         store_trait.clone(),
         Arc::new(EventBus::new()) as Arc<dyn xylitol_plugin_sdk::XyEventSink>,
-        permission::allow_all_permission(),
+        xylitol_runtime::permission::allow_all_permission(),
     )
     .cwd(".")
     .tools(ToolSet::empty())

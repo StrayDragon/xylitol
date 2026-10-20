@@ -262,7 +262,6 @@ fn g_ds_forbidden(ws: &Workspace) {
     use xylitol::wiring::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
-    use xylitol::wiring::permission::build_permission;
     let c = PermissionConfig {
         enabled: true,
         backend: PermissionBackend::Glob,
@@ -273,14 +272,13 @@ fn g_ds_forbidden(ws: &Workspace) {
         },
         ..Default::default()
     };
-    xs_sec::SEC.with(|e| e.replace(Some(build_permission(&c))));
+    xs_sec::SEC.with(|e| e.replace(Some(c.to_permission())));
 }
 #[given("安全启用且无 MCP 允许列表")]
 fn g_ds_no_mcp() {
     use xylitol::wiring::config::types::{
         PermissionBackend, PermissionConfig, PermissionProcessConfig,
     };
-    use xylitol::wiring::permission::build_permission;
     let c = PermissionConfig {
         enabled: true,
         backend: PermissionBackend::Glob,
@@ -289,7 +287,7 @@ fn g_ds_no_mcp() {
         },
         ..Default::default()
     };
-    xs_sec::SEC.with(|e| e.replace(Some(build_permission(&c))));
+    xs_sec::SEC.with(|e| e.replace(Some(c.to_permission())));
 }
 #[given("全新安装无配置覆盖")]
 fn g_ds_fresh() {
@@ -302,7 +300,6 @@ fn g_ds_read_allowed() {
     use xylitol::wiring::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
-    use xylitol::wiring::permission::build_permission;
     let c = PermissionConfig {
         enabled: true,
         backend: PermissionBackend::Glob,
@@ -313,7 +310,7 @@ fn g_ds_read_allowed() {
         },
         ..Default::default()
     };
-    xs_sec::SEC.with(|e| e.replace(Some(build_permission(&c))));
+    xs_sec::SEC.with(|e| e.replace(Some(c.to_permission())));
 }
 
 #[when("grep 以 path='/etc/passwd' 调用")]
@@ -378,7 +375,6 @@ fn g_xy_tool_approval_given(_agent: &AgentState) {
     use xylitol::wiring::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
-    use xylitol::wiring::permission::build_permission;
 
     let config = PermissionConfig {
         enabled: true,
@@ -390,7 +386,7 @@ fn g_xy_tool_approval_given(_agent: &AgentState) {
         },
         ..Default::default()
     };
-    xs_sec::SEC.with(|e| e.replace(Some(build_permission(&config))));
+    xs_sec::SEC.with(|e| e.replace(Some(config.to_permission())));
 }
 
 #[when("调用工具")]
@@ -471,7 +467,6 @@ fn g_ds_forbidden_override() {
     use xylitol::wiring::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
-    use xylitol::wiring::permission::build_permission;
 
     let mut cfg = PermissionConfig {
         enabled: true,
@@ -485,7 +480,7 @@ fn g_ds_forbidden_override() {
     };
     // User overlay tries to allow a denied path.
     cfg.filesystem.write_allowed.push("/project/.env".into());
-    xs_sec::SEC.with(|e| e.replace(Some(build_permission(&cfg))));
+    xs_sec::SEC.with(|e| e.replace(Some(cfg.to_permission())));
 }
 
 #[when("合并配置")]
@@ -571,7 +566,7 @@ fn t_ds_perm_yaml_ok() {
 
 #[given("permission 后端实例已构造")]
 fn g_ds_perm_trait() {
-    xs_sec::SEC.with(|e| e.replace(Some(xylitol::wiring::permission::allow_all_permission())));
+    xs_sec::SEC.with(|e| e.replace(Some(xylitol_runtime::permission::allow_all_permission())));
 }
 
 #[when("调用 check_read(\"/tmp/test\")")]

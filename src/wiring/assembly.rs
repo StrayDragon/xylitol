@@ -8,7 +8,6 @@ use std::sync::Arc;
 use crate::wiring::composition::{BuildAgentOptions, official_compaction_factory};
 use crate::wiring::driver::XyDriverError;
 use crate::wiring::event::EventBus;
-use crate::wiring::permission;
 use xylitol_official_plugin_hooks::HookDispatcher;
 use xylitol_plugin_sdk::{XyEventSink, XyHookBus, XyModelBuilder, XySessionStore};
 use xylitol_runtime::agent::tools::ToolSet;
@@ -42,7 +41,7 @@ pub(crate) fn assemble_blocking(
 
     let permission = options
         .permission
-        .unwrap_or_else(permission::allow_all_permission);
+        .unwrap_or_else(xylitol_runtime::permission::allow_all_permission);
 
     let mut builder = xylitol_runtime::agent::AgentBuilder::new(
         options.model_registry,

@@ -14,14 +14,10 @@ pub mod dispatch;
 pub mod driver;
 pub mod event;
 pub mod export;
-pub(crate) mod lag;
-pub mod observability;
-pub mod permission;
 pub mod product_commands;
 pub mod provider;
 pub mod settings;
 pub mod timing;
-pub(crate) mod tool_spill;
 
 #[cfg(feature = "server")]
 pub mod occupancy;

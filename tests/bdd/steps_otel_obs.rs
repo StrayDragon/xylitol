@@ -434,7 +434,7 @@ async fn w_c2826_build_reporter_ok(otel_bdd: &OtelBdd) {
         endpoint: Some("http://127.0.0.1:9/api/public/otel".into()),
         ..Default::default()
     };
-    let built = xylitol::wiring::observability::otel::install::try_build_otlp_reporter(&cfg);
+    let built = xylitol::cli::logging::otel::install::try_build_otlp_reporter(&cfg);
     otel_bdd.mounted.set(built.is_some());
     drop(built);
 }
@@ -473,7 +473,7 @@ async fn w_c2826_build_reporter_bad(otel_bdd: &OtelBdd) {
             std::env::remove_var(key);
         }
     }
-    let built = xylitol::wiring::observability::otel::install::try_build_otlp_reporter(&cfg);
+    let built = xylitol::cli::logging::otel::install::try_build_otlp_reporter(&cfg);
     otel_bdd.mounted.set(built.is_none());
     drop(built);
     for (key, value) in saved {
@@ -485,7 +485,7 @@ async fn w_c2826_build_reporter_bad(otel_bdd: &OtelBdd) {
 
 #[then("构建安静返回 None 且产生 obs 诊断且不失败")]
 fn t_c2826_reporter_none_diag(otel_bdd: &OtelBdd) {
-    let diag = xylitol::wiring::observability::otel::otlp_disabled_diag();
+    let diag = xylitol::cli::logging::otel::otlp_disabled_diag();
     assert!(
         diag.is_some(),
         "c2826: otlp-http 未生效必须经 obs_diag 呈现（构建返回 None = {}）",

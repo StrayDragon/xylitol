@@ -10,19 +10,17 @@
 
 ## 现在
 
-没有下一刀实现，除非另开 [§4](#MAIN) 转向或认领 GitHub [#28](https://github.com/StrayDragon/xylitol/issues/28)。
+下一刀是**结构扫障**，不是再拆 crate，也不是写 rutis。产品回归（TUI / Host / MCP 门闸）仍走主线修复。GitHub [#28](https://github.com/StrayDragon/xylitol/issues/28) 仍是未开放端的认领口。
 
-**根 `src/` 结论：不拆成新 crate。** 组合根留在仓库根包。不为对称性再拆 `xylitol-host` / `xylitol-config`。不为编译速度拆 crate。依据见 [§3](#SRC)。
+**定位**（避免前后矛盾，细则 [§2.2](#POS)）：xylitol 是个人开箱即用的 coding agent。不是插件市场，不是 Extension Host。终端用户靠 YAML / MCP / hooks / skills 扩展。作者侧「跑起来后改接线、少重启」是工程性质，不是给第三方的热插拔承诺。
 
-crate 图真源：[§2](#TARGET) 指针到 `src/AGENTS.md`。
+**crate 图**作为静态边界已经够用。根包是组合根，不抽 `xylitol-host` / `xylitol-config` / `xylitol-app-cli`。不为编译速度拆 crate。依据见 [§3](#SRC)。真源：`src/AGENTS.md`。
 
-现行扩展靠 skills 与 MCP。转向（cordis 式随意插件 + 热重载）见 [§4](#MAIN)，现在不做。
+**rutis** 排在扫障之后，条件见 [§4](#MAIN)。现在不得 `use rutis`，不得再建进口隔离包，不得预埋空壳 `Plugin`。`Ctx` 不传回合消息。
 
-rutis 接入 [S2](#S2)–[S5](#S5) **停**。`Ctx` 不传回合消息（见 [§4](#MAIN)）。不得 `use rutis`。不得再建进口隔离包。
+扫障清单见 [§3.4](#PRE)。延后项见 [§6](#DEFER)。
 
-延后项见 [§6](#DEFER)。
-
-禁边闸：`scripts/check_crate_graph.py`。成员名单以根 `Cargo.toml` 为准。架构规则以 `src/AGENTS.md` 为准。
+禁边闸：`scripts/check_crate_graph.py`。成员名单以根 `Cargo.toml` 为准。
 
 回退点 tag **`v0.0.0-pre.old`**（`004a2e4d`）。命令：`git switch -d v0.0.0-pre.old`。
 
@@ -34,7 +32,7 @@ rutis 接入 [S2](#S2)–[S5](#S5) **停**。`Ctx` 不传回合消息（见 [§4
 | 装配 | 没挂的插件不 start |
 | 热路径 | 不在每 token / 每帧上计费 |
 
-读法：现在 → [§2](#TARGET) → [§3](#SRC) 根 `src/` → [§4](#MAIN) 停 → [§6](#DEFER)。
+读法：现在 → [§2](#TARGET) 形态与定位 → [§3](#SRC) 根包与扫障 → [§4](#MAIN) 转向日程 → [§5](#SCOPE) 产品核 → [§6](#DEFER)。
 
 ---
 
@@ -60,7 +58,7 @@ rutis 接入 [S2](#S2)–[S5](#S5) **停**。`Ctx` 不传回合消息（见 [§4
 提交：工具链 `build:` / `chore:`；重写 `feat:` / `refactor:`；行为 `fix:`；SDD `chore(sdd):` / `archive(sdd):`。
 不碰（除非该批次点名）：`docs/architecture/`、`_INTERVIEW/`、`delayed-changes/legacy/`。改行为才动 `llmanspec/`。
 
-不得创建：`xylitol-host`、`xylitol-client`、`xylitol-kernel`、`xylitol-assemble`、`xylitol-types`、`xylitol-official-plugin-react`、`xylitol-official-plugin-tui`、`xylitol-app-voice`、空 LSP/DAP crate、dylib 加载器、`crates/xylitol/`。
+不得创建：`xylitol-host`、`xylitol-client`、`xylitol-kernel`、`xylitol-assemble`、`xylitol-types`、`xylitol-app-cli`、`xylitol-config`、`xylitol-obs`、`xylitol-official-plugin-react`、`xylitol-official-plugin-tui`、`xylitol-app-voice`、空 LSP/DAP crate、dylib 加载器、`crates/xylitol/`。
 
 ---
 
@@ -82,7 +80,7 @@ crate 图、依赖方向、`Xy*`、开闭规则的真源是 `src/AGENTS.md`。�
 
 **P2 开关** 没配置不 start。mcp / hooks 仍是官方插件 crate。`server` / `mcp` feature 可从二进制拿掉。未配置不得为“将来插件”堆抽象。
 
-**P3 生命周期** 组合根注入 `Arc`。用户插入点仍是配置 / 文件，运行时承载见 [S2](#S2)。会话 instance 见 [S3](#S3)。dylib 见 [S4](#S4)，必须与否后定。不得预埋空壳。不得做 Extension Host。不得 `use rutis`。
+**P3 生命周期** 现行：组合根注入 `Arc`。用户插入点仍是配置 / 文件。S2 才把有配置的 MCP / hooks 挂到 fiber；未接入前不得预埋空壳 `Plugin` / `Ctx`。会话 instance 见 [S3](#S3)。dylib 见 [S4](#S4)，必须与否后定。不得做 Extension Host。不得 `use rutis`。
 
 **P4 热路径** 现行：ReAct 循环在 `xylitol-runtime`，无第二实现。测端已有 `ScriptedDriver`。这是现行边界，不是永禁；转向见 [§4](#MAIN)。
 
@@ -112,13 +110,37 @@ crate 图、依赖方向、`Xy*`、开闭规则的真源是 `src/AGENTS.md`。�
 
 主动交互：唤醒源走准入，不换内环。schedule 见 [D7](#D7)。
 
+<a id="POS"></a>
+
+### 2.2 定位（三条受众，不要混）
+
+产品心智真源：[产品分层总览.md](docs/architecture/产品分层总览.md)、[扩展与开闭.md](docs/architecture/扩展与开闭.md)。本文件只写规划时容易写拧的边界。
+
+| 受众 | xylitol 是什么 | 不是什么 |
+|---|---|---|
+| 使用 xylitol 写代码的人 | 开箱就能聊、能改仓库的个人 coding agent。默认 TUI attach 本机 Host | 插件市场、扩展平台、每个工具弹窗审批 |
+| 嵌 xylitol 的 Rust 作者 | `embed` + `XyDriver` + 精选 `Xy*` | 内部 `wiring` 当稳定 API |
+| 改 xylitol 本仓的人 | 组合根换端口实现；`/reload` 重读配置 / MCP / skills，不新开会话 | 不重启换内核；第三方 dylib；把官方插件当成市场货架 |
+
+三条不要合成一句「xylitol 要热插拔」。用户扩展 = 配置与文件。作者热换 = 进程内换接线。内核转向 = rutis / cordis，见 [§4](#MAIN)。
+
+现行已经能承诺的「少丢状态」：
+
+| 能 | 不能当现行必须 |
+|---|---|
+| `/reload` 换 MCP / skills / 提示，会话树还在 | 换 ReAct 实现而不停回合 |
+| 会话 JSONL 可续、可分支；Host linger 占槽 | 杀进程后恢复**在飞** agent loop |
+| Print / embed 同进程直调；TUI 默认跨进程 attach | 产品 TUI 当 Host 侧 fiber |
+
+主线与后置仍以 [§5](#SCOPE) 与产品分层总览为准。未开放端（gpui、LSP、DAP、语音）走 [#28](https://github.com/StrayDragon/xylitol/issues/28)，不得写成现行必须。
+
 ---
 
 <a id="SRC"></a>
 
 ## 3. 根 `src/`：组合根，不拆 crate
 
-结论：组合根留在根包 `xylitol`。不为对称性抽 `xylitol-host` / `xylitol-config` / `xylitol-cli`。不为编译速度拆 crate。行数不是闸。
+结论：组合根留在根包 `xylitol`。不为对称性抽 `xylitol-host` / `xylitol-config` / `xylitol-app-cli`。不为编译速度拆 crate。行数不是闸。
 
 ### 3.1 现行落点
 
@@ -132,9 +154,9 @@ crate 图、依赖方向、`Xy*`、开闭规则的真源是 `src/AGENTS.md`。�
 | `wiring/occupancy/` | serve 装配。占用政策在 `xylitol-serve` |
 | `wiring/bootstrap.rs` | 各端共用装配路径（`build_agent` 之前） |
 | `wiring/composition.rs` | 注入官方插件 `Arc`；`McpSession` |
-| `wiring/observability/` | 进程启动写 `xylitol.log` / 可选 OTLP |
+| `cli/logging/` | 进程启动写 `xylitol.log` / 可选 OTLP |
 | `wiring/settings/` | 用户设置落盘 |
-| `wiring/{provider,event,export,timing,permission}` | 组合根接线用的实现 |
+| `wiring/{provider,event,export,timing}` | 组合根接线用的实现 |
 
 TUI 画布、Print 渲染、HTTP 监听、ReAct、工具实现不在根 `src/`。分别在 `xylitol-app-*` / `xylitol-serve` / `xylitol-runtime` / `official-plugin-*`。
 
@@ -158,50 +180,69 @@ Cargo 按依赖 DAG 并行调度。宽而浅能并行；链状拆 crate 收益�
 
 编译参数按 rust-build-tune 磁盘优先，见 [附录 A](#FACTS)。不要为了再拆 crate 去动 profile。Rustls / reqwest 在根包依赖图里。Cranelift 不用。
 
-### 3.3 `/reload`：命令缝在 runtime，配方在根包
+### 3.3 `/reload`：Host 跑资源重载，TUI 跑端侧，CLI 不处理
 
-结论：`/reload` 不是「整段该不该进 runtime」的二选一。应用协议上的方法在 runtime；读配置、连 MCP、注入工具表的配方在组合根。两层合成一层会破坏 crate 图。
+改需求：资源重载（trust / YAML / MCP 重连 / skills / 工具表 re-freeze）归 **Host**。键位和主题归 **TUI**。CLI argv 与 Print **不暴露** `/reload`。
 
-**命令缝**（应用协议）是 `XyDriver::reload_runtime`。定义在 `xylitol-runtime`。默认实现返回空报告（no-op）。没有 reload 状态的 Driver、远端 `XyRemoteDriver`、测端 `ScriptedDriver` 都走这条默认或各自覆盖。产品 TUI 调这个方法，不读 YAML、不 `use` mcp 插件。键位和主题不走这条缝：产品 TUI host 自己编排。
+现行落点已经按这个切：
 
-**配方**（组合）是 `XyComposedDriver::reload_runtime`。顺序：
-
-1. 再读 trust 存储（`/trust` 之后的 `/reload` 要看见新决定）。
-2. `load_app_config` 重读 YAML。
-3. `McpSession::reload`：`xylitol-official-plugin-mcp` 重连；空列表零成本、只留内置工具。
-4. `reload_skills` / `reload_prompt_context`：与 bootstrap 同一套 Trust 门禁。
-5. 工具表 **re-freeze**（显式重冻，不是回合中途扩表）。
-
-配方留在根包的原因：
-
-| 若把配方搬进 `xylitol-runtime` | 后果 |
+| 面 | 谁跑 |
 |---|---|
-| 配方 `use xylitol_official_plugin_mcp` | runtime → 官方插件。`src/AGENTS.md`：runtime 不得接线、不得依赖官方插件 |
-| runtime 去读 `AppConfig` | 组合根（YAML 闸、`jsonschema`）塞进执行权威 |
-| 再抽 `XyReload` 端口，而配方只有这一套 | 空壳 port。开闭规则：新 port 须有第二套真实替换 |
-| 把 mcp 重连复制进 runtime，根包再留一份 | 两套装配，Trust / 空列表语义会漂 |
+| 产品 TUI attach | slash → unary `reload` → `HostState::reload_resources` → 工厂注入的引擎 |
+| TUI 本地 | `reload_keybindings` / `reload_themes`，不进信封 |
+| 进程内 TUI | 同一进程里的 Host（adapter 转发）。不是 CLI 处理 slash |
+| Print / CLI argv | 无 |
 
-`XyDriver` 上的默认 no-op 已经是第二实现。不需要再做一个只有一 impl 的 `XyReload`。
+配方文件仍在 `wiring/driver/in_process/reload.rs`，因为 occupancy 工厂在根包装配槽位，reload 是「同一套装配再跑一遍」。这不是 CLI 累赘，删掉会让产品 `/reload` 掉进 runtime 默认 no-op（静默空报告）。
 
-Print / embed 同进程走 `XyComposedDriver`，因此能 reload。产品 TUI 默认 attach 远端 Driver：slash `/reload` 经信封打到 Host，Host 侧仍是这条根包配方。
+不把配方搬进 `xylitol-serve`：载体会吞 YAML 与官方 mcp 插件，变成第二组合根。换房间不是清死代码。
 
-S2 若把 MCP 挂到 fiber 上，改的是生命周期承载，不是把配方下沉进 runtime。`/reload` 对外语义不变。
+扫障可清：过期注释把 dispatch 写成 REST / CLI 命令。不可清：`enable_reload_state`（工厂给 Host 用）和 `reload.rs` 本体。
+
+<a id="PRE"></a>
+
+### 3.4 rutis 之前还做什么
+
+结论：静态 crate 边界已经能撑主线。转向前只做**扫障**和**产品主线**。不靠再切包逼近「不重启改形态」。
+
+**保持的主线**（与 [§5](#SCOPE) / 产品分层总览一致）：
+
+- 用户：对话循环、内置工具、会话树 / 导出、压缩、OpenAI 兼容 + Anthropic、Trust、图像。默认入口 TUI attach 本机 Host。
+- 后置：MCP（有配置才装配）、hooks。
+- 跨端：Print / TUI / Host 同一套动作语义。未开放端不写进现行必须。
+- 工程：`plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`；runtime ↛ 插件；组合根唯一。
+
+**扫障（skip-SDD，不改产品语义）**
+
+| 做 | 不做 |
+|---|---|
+| 组合根职责可跳转：`XyComposedDriver` = 现行热换端口配方位 | 抽 `xylitol-app-cli` / `xylitol-host`，让 `src/`「只剩 wrapper」 |
+| CLI 留根包：`cli/args.rs` 词表、`cli/intent.rs` 意图、`run()` 调接线 | 把 bootstrap / `/reload` 配方搬进所谓 app-cli |
+| 文档与 crate 图用现行名；矛盾收口在 [§2.2](#POS) | 为 rutis 预埋 `Ctx` / `Plugin` / 进口隔离包 |
+| 产品回归优先：MCP 门闸期间回车须立刻有 Assembling / 队列条 | 把 Host 持锁等 MCP 的进度刷新当成转向前置 |
+
+**两条「少丢状态」不要写成同一句**
+
+1. **对话还在**：会话 JSONL + Host linger。杀 TUI、甚至 linger 窗口内杀客户端，树还在。这是现行主线。
+2. **在飞 loop 还在**：要 instance 回收语义（[S3](#S3)）之后才谈。杀 Host 进程等于停回合。不是 crate 切分能给的。
+
+`/reload` 是现行产品面上最接近「不换会话换接线」的刀。扫障时把它当原型护住，不要拆散。
 
 ---
 
 <a id="MAIN"></a>
 
-## 4. 停：rutis 接入与架构转向
+## 4. 转向日程：rutis
 
-停。现有产品靠 skills / MCP 扩展，稳定 coding agent 够用。理解浅时不接入、不预埋空壳。
+排在 [§3.4](#PRE) 扫障之后。终端用户扩展仍然是 skills / MCP / 配置，不因转向变成插件市场。
 
-重开条件（全满足）：自己用 rutis 跑通过；愿意改「不得 `use rutis`」；热路径延迟有基线可比。
+接入条件（全满足才写代码）：自己用 rutis 跑通过；愿意改「不得 `use rutis`」；热路径延迟有基线可比。未满足前不得预埋空壳。
 
 另开时先定：**根包直接 `use rutis`**（rutis 当基础库，用到的 crate 直接依赖）。不再做进口隔离包。届时改写 `src/AGENTS.md` 的「不得 `use rutis`」。
 
 **`Ctx` 不传回合消息。** 用户一轮、工具起止、token 增量走 `XyDriver` 队列与信封（`XyEvent` / fory-v3）。`Ctx` 是进程底板：服务注册表（`TypeKey` → `Arc`）、插件生命周期总线、fiber 表、instance。两通道不互转，见 [§2.1](#EXTEND)。`rutis-host` 持有根 `Ctx`，本身不是 Plugin。
 
-**现行 vs 转向。** 现行：官方库是端口实现；ReAct 在 runtime。这是当前预期，可以改。转向吸引点是 dsh 创造模式：cordis 上随意做插件并热重载。那一步等于换内核，另开。dsh 创造模式 / loop 当插件 **不等于 S2**。S2 只是 `Ctx` 当桌子常驻。loop 当 Plugin 是换内核，S2 之后另开。
+**现行 vs 转向。** 现行：官方库是端口实现；ReAct 在 runtime。这是当前预期，可以改。转向吸引点是作者侧进程内换形态（cordis 式插件生命周期 + 热重载）。那一步等于换内核，另开。它**不**把 xylitol 改成第三方扩展市场。dsh 创造模式 / loop 当插件 **不等于 S2**。S2 只是 `Ctx` 当桌子常驻。loop 当 Plugin 是换内核，S2 之后另开。
 
 读 [`/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp`](/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp) 时以 2026-10-20 对照为准。工作树：上游 `3d0bc0d` / rutis 0.13.0。
 
@@ -211,7 +252,7 @@ S2 若把 MCP 挂到 fiber 上，改的是生命周期承载，不是把配方�
 
 ### 4.1 S2 运行时承载走 rutis
 
-**停。** 另开前先定根包直接 `use rutis`（见本节开篇）。
+**未开。** 扫障完成且接入条件满足后再开。另开前先定根包直接 `use rutis`（见本节开篇）。
 
 用户仍写配置 / MCP / hooks / skills。有配置时生命周期挂在 fiber 上。空配置行为不变（r2911 / r2912）。终端用户不写 `Plugin` trait。
 
@@ -219,7 +260,7 @@ S2 若把 MCP 挂到 fiber 上，改的是生命周期承载，不是把配方�
 
 | 切片 | 状态 | 做什么 |
 |---|---|---|
-| S2a `Ctx` 常驻 | 停 | 进程一次 `Ctx::root()`。空 MCP / hooks 仍不挂 fiber。Print 仍不占端口。must-SDD |
+| S2a `Ctx` 常驻 | 未开 | 进程一次 `Ctx::root()`。空 MCP / hooks 仍不挂 fiber。Print 仍不占端口。must-SDD |
 | S2b hooks 走总线 | | 有配置才挂；空 hooks 不拉进程。旧 hook BDD 必须绿。must-SDD |
 | S2c MCP 走 loader | | 有配置才连；空列表无 `mcp` 前缀。`/reload` 语义不变。must-SDD |
 
@@ -229,7 +270,7 @@ S2 若把 MCP 挂到 fiber 上，改的是生命周期承载，不是把配方�
 
 ### 4.2 S3 会话 = instance
 
-**停。** 占用政策（linger、单写者）在 `xylitol-serve`。JSONL 树 / fork 仍在 session 插件。
+**未开。** 占用政策（linger、单写者）在 `xylitol-serve`。JSONL 树 / fork 仍在 session 插件。S2 之后才谈「杀进程仍保住在飞 loop」。
 
 | 切片 | 状态 | 做什么 |
 |---|---|---|
@@ -244,13 +285,13 @@ Kill：实例回收与快照 / 恢复冲突 → 隔离退回手写 HashMap，保
 
 ### 4.3 S4 多语言叶 + dylib
 
-**停。** 动态加载。官方 Host 插件在此之前保持静态 crate。必须交付或降为实验特性，做到那一刀再定。不得在 S2/S3 预埋加载器空壳。
+**未开。** 动态加载。官方 Host 插件在此之前保持静态 crate。必须交付或降为实验特性，做到那一刀再定。不得在 S2/S3 预埋加载器空壳。
 
 <a id="S5"></a>
 
 ### 4.4 S5 产品 TUI：客户端订阅
 
-**停。** 产品 TUI 仍走信封，不是 Host 侧 fiber。S5 只改端进程内合帧节奏。不改 `POST /rpc` + `WS /rpc` + fory-v3。不得做 `xylitol-official-plugin-tui`。端不得 `use rutis`。验收含 `just qa-e2e`。
+**未开。** 产品 TUI 仍走信封，不是 Host 侧 fiber。S5 只改端进程内合帧节奏。不改 `POST /rpc` + `WS /rpc` + fory-v3。不得做 `xylitol-official-plugin-tui`。端不得 `use rutis`。验收含 `just qa-e2e`。
 
 ---
 

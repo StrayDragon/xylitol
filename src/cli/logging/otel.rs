@@ -469,7 +469,7 @@ mod tests {
         let Some(reporter) = install::try_build_otlp_reporter(&cfg) else {
             panic!("expected OTLP reporter (set LANGFUSE_BASE_URL / keys)");
         };
-        let mut fanout = crate::wiring::observability::FanoutReporter::new(Vec::new());
+        let mut fanout = crate::cli::logging::FanoutReporter::new(Vec::new());
         fanout.push_box(reporter);
         fastrace::set_reporter(fanout, fastrace::collector::Config::default());
         {

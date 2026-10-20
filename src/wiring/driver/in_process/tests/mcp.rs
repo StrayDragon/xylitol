@@ -449,7 +449,7 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
         builder,
         store_trait.clone(),
         Arc::new(EventBus::new()) as Arc<dyn xylitol_plugin_sdk::XyEventSink>,
-        permission::allow_all_permission(),
+        xylitol_runtime::permission::allow_all_permission(),
     )
     .cwd(".")
     .tools(ToolSet::empty())

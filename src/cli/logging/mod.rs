@@ -16,12 +16,18 @@
 //! Remote OTLP is orthogonal: `[otel].exporter = otlp-http` (+ feature), default
 //! `none`.
 
+mod fanout;
+mod file_reporter;
+pub mod otel;
+
 use std::io::Write;
 use std::path::Path;
 use std::sync::Mutex;
 
+pub use fanout::FanoutReporter;
+pub use file_reporter::FileTraceReporter;
+
 use crate::wiring::config::types::{OtelConfig, OtelObservationIo};
-use crate::wiring::observability::{FanoutReporter, FileTraceReporter};
 use crate::wiring::provider::trace::{
     ObservationIoTier, set_observation_io_tier, set_provider_trace_active,
     set_tool_observation_io_tier,
@@ -36,7 +42,7 @@ const DEFAULT_FILTER: &str = "xylitol=debug,warn";
 pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
     let want_log = logging_requested();
     let want_provider = provider_trace_requested(want_log);
-    let otel_reporter = crate::wiring::observability::otel::install::try_build_otlp_reporter(otel);
+    let otel_reporter = otel::install::try_build_otlp_reporter(otel);
 
     if !want_log && !want_provider && otel_reporter.is_none() {
         set_provider_trace_active(false);

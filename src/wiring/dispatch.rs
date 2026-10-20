@@ -1,29 +1,14 @@
-//! Shared Command execution — the single execution path for `protocol::Command`
-//! variants, consumed by tui (spec ce10) and the server Host.
+//! Session `protocol::Command` execution for in-process Host and TUI.
 //!
-//! The session operation table IS the [`Command`] enum (c2710): a `Command`
-//! variant is dispatched to a [`SessionCommandExecutor`] — in-process drives the
-//! runtime directly, remote forwards via a single unary. [`xylitol_runtime::XyDriver`]
-//! no longer mirrors the command table; it carries surface/transport capabilities only.
+//! In-process: [`SessionCommandExecutor`] drives runtime. Attach: remote Driver
+//! forwards a unary to occupancy Host. Occupancy factory uses the same trait.
 //!
-//! What does NOT live here (by design, spec ip9):
-//! - `Prompt` — starts an event stream + is tied to the caller's run loop, so
-//!   the caller (tui) handles it directly.
-//! - `Quit` — controls the caller's loop, handled by the caller.
-//! - `Subscribe` / `ApproveTool` / `AnswerQuestion` — WebSocket-transport
-//!   specific; they remain in `app::server::ws`.
+//! Not dispatched here:
+//! - `Prompt` — event stream, caller run loop
+//! - `Quit` — caller loop
+//! - `Subscribe` / `ApproveTool` / `AnswerQuestion` — Host occupancy, not this table
 //!
-//! The `id: Option<String>` carried by every Command is a transport-level
-//! correlation handle; dispatch ignores it and
-//! lets the caller extract/echo it around the dispatch call.
-//!
-//! NOTE: dispatch is consumed by server REST and tui slash/effects.
-//! Under default features without `server`/`tui` the dispatcher still appears
-//! lightly used; unit tests cover it. `DispatchOutcome` payloads are allowed
-//! for dead_code at the enum (feature-gated readers).
-//!
-//! Outcome payload fields are read by server REST and tui slash wiring
-//! (`/model`, `/compact`, `/export`, …).
+//! Command `id` is a transport correlation handle; dispatch ignores it.
 
 use async_trait::async_trait;
 
@@ -50,15 +35,11 @@ pub trait SessionCommandExecutor: Send {
     ) -> Result<DispatchOutcome, XyDriverError>;
 }
 
-/// The result of executing a (non-Prompt, non-Quit, non-WS) Command.
+/// Result of a session Command that this table handles.
 ///
-/// Callers translate this into their transport-specific response shape
-/// (tui's inline message, server REST JSON, ...).
-///
-/// Payload fields are matched under `server` / tui feature paths; default
-/// `cargo build` may not see those reads — allow here instead of module-wide.
+/// Callers map it to TUI notice text or Host unary JSON.
 #[derive(Debug)]
-#[allow(dead_code)] // fields read by server REST + tui slash (feature-gated)
+#[allow(dead_code)] // fields read by Host occupancy + TUI slash (feature-gated)
 pub enum DispatchOutcome {
     /// `Abort` — whether an active loop was actually cancelled.
     Aborted { cancelled: bool },
@@ -202,17 +183,15 @@ pub fn validate_nonempty_thinking_level(s: &str) -> Result<(), XyDriverError> {
     Ok(())
 }
 
-/// Dispatch a non-Prompt, non-Quit, non-WS Command against `driver`.
-///
-/// `Prompt`, `Quit`, `Subscribe`, `ApproveTool`, `AnswerQuestion` are NOT
-/// handled here — callers must match those before calling this function.
-/// Reaching one of them here is a caller bug and returns an error.
-/// Variant name for a Command (log `where` / error messages); SSOT is the
-/// `strum::IntoStaticStr` derive on [`Command`].
+/// Variant name for a Command (log `where` / error messages).
 fn variant_name(cmd: &Command) -> &'static str {
     cmd.into()
 }
 
+/// Dispatch a session Command against `driver`.
+///
+/// `Prompt`, `Quit`, `Subscribe`, `ApproveTool`, `AnswerQuestion` are not
+/// handled here — callers must match those first.
 pub async fn dispatch(
     driver: &mut dyn SessionCommandExecutor,
     cmd: Command,

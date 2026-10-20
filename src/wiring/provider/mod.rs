@@ -6,7 +6,6 @@
 pub mod adapter;
 pub mod factory;
 pub mod hooks_port;
-pub mod map;
 
 mod fake;
 

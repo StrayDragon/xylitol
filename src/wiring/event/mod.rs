@@ -5,15 +5,12 @@
 //! no product path subscribes by channel name (the test-only string-channel
 //! subscription surface was purged in c2750).
 
-pub mod lifecycle;
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use futures::FutureExt;
 use serde_json::Value;
-
-use self::lifecycle::XyEvent;
+use xylitol_plugin_sdk::lifecycle::XyEvent;
 
 /// Extract the message from a caught panic payload (mirrors `JoinError` display).
 fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {

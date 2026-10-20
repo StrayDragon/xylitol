@@ -8,6 +8,17 @@ pub(super) type McpDiscoverOk = Option<(
     McpToolList,
 )>;
 
+fn otlp_obs_diag() -> Option<String> {
+    #[cfg(feature = "cli")]
+    {
+        crate::cli::logging::otel::otlp_disabled_diag()
+    }
+    #[cfg(not(feature = "cli"))]
+    {
+        None
+    }
+}
+
 /// Whether connecting progress should invalidate the TUI loaded-resources strip.
 ///
 /// `last_ui_label`: `None` = never published; `Some(label)` = last published value.
@@ -35,7 +46,6 @@ pub(super) enum McpBootState {
         handle: tokio::task::JoinHandle<xylitol_runtime::agent::tools::ToolSet>,
         manager: Arc<xylitol_official_plugin_mcp::McpClientManager>,
         tool_n: usize,
-        settle_started: std::time::Instant,
     },
     /// Tools already applied; system prompt text building off the tick path.
     Settling {
@@ -222,20 +232,11 @@ impl super::XyComposedDriver {
                 mcp_bootstrap_complete: true,
                 tools_table_frozen,
                 mcp_gate_notice: self.mcp_gate_notice.clone(),
-                obs_diag: crate::wiring::observability::otel::otlp_disabled_diag(),
+                obs_diag: otlp_obs_diag(),
                 ..LoadedResourcesSnapshot::default()
             };
         };
-        let connected = {
-            let t0 = std::time::Instant::now();
-            let c = state.mcp.connected_servers().await;
-            crate::wiring::lag::note_detail(
-                "loaded_snap_connected_servers",
-                t0,
-                &format!("servers={}", c.len()),
-            );
-            c
-        };
+        let connected = state.mcp.connected_servers().await;
         let diags = state.mcp.diagnostics().await;
         let mcp_servers = state
             .mcp_servers
@@ -280,7 +281,7 @@ impl super::XyComposedDriver {
             mcp_bootstrap_complete,
             tools_table_frozen,
             mcp_gate_notice: self.mcp_gate_notice.clone(),
-            obs_diag: crate::wiring::observability::otel::otlp_disabled_diag(),
+            obs_diag: otlp_obs_diag(),
         }
     }
 
@@ -400,9 +401,7 @@ impl super::XyComposedDriver {
             };
             match handle.await {
                 Ok(prompt) => {
-                    let t0 = std::time::Instant::now();
                     self.inner.agent.install_system_prompt_text(prompt);
-                    crate::wiring::lag::note("mcp_settle_install_prompt", t0);
                 }
                 Err(e) => {
                     log::warn!(target: "xylitol::mcp", "MCP settle prompt join failed: {e}");
@@ -431,7 +430,6 @@ impl super::XyComposedDriver {
                 handle,
                 manager,
                 tool_n,
-                settle_started,
             } = prev
             else {
                 return false;
@@ -444,11 +442,6 @@ impl super::XyComposedDriver {
                     return true;
                 }
             };
-            crate::wiring::lag::note_detail(
-                "mcp_settle_rebuild_tools",
-                settle_started,
-                &format!("mcp_tools={tool_n}"),
-            );
             if let Some(state) = self.reload.as_mut() {
                 state.mcp.set_manager(manager);
             }
@@ -461,22 +454,11 @@ impl super::XyComposedDriver {
                 self.mcp_boot = McpBootState::Settled;
                 return true;
             }
-            let t_set = std::time::Instant::now();
             let opts = self.inner.agent.set_tools_defer_prompt(set);
-            crate::wiring::lag::note_detail(
-                "mcp_settle_set_tools",
-                t_set,
-                &format!("mcp_tools={tool_n}"),
-            );
             let handle = tokio::task::spawn_blocking(move || {
                 xylitol_runtime::agent::prompt::build_system_prompt(&opts)
             });
             self.mcp_boot = McpBootState::Settling { handle };
-            crate::wiring::lag::note_detail(
-                "mcp_settle_total",
-                settle_started,
-                &format!("mcp_tools={tool_n} deferred_rebuild=1 deferred_prompt=1"),
-            );
             return true;
         }
 
@@ -509,7 +491,6 @@ impl super::XyComposedDriver {
         let boot_refreshed = match handle.await {
             Ok(Some((manager, tools))) => {
                 let tool_n = tools.len();
-                let settle_started = std::time::Instant::now();
                 let old = self.reload.as_mut().and_then(|s| s.mcp.take_manager());
                 // Do not await shutdown on the TUI tick path (spinner hitch).
                 if let Some(old) = old {
@@ -525,7 +506,6 @@ impl super::XyComposedDriver {
                     handle,
                     manager,
                     tool_n,
-                    settle_started,
                 };
                 // UI refresh waits until tools are applied (Rebuilding → Settling).
                 false

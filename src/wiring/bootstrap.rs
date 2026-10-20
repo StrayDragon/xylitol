@@ -30,7 +30,6 @@ use std::sync::Arc;
 
 use crate::wiring::composition::{BuildAgentOptions, build_agent};
 use crate::wiring::config::loader::load_app_config_detailed_with;
-use crate::wiring::permission;
 use crate::wiring::timing;
 use xylitol_official_plugin_session::SessionManager;
 use xylitol_plugin_sdk::model::XyModelMeta;
@@ -608,7 +607,7 @@ pub fn resolve_assembly_with(
             .permission
             .as_ref()
             .filter(|sc| sc.enabled)
-            .map(|sc| permission::build_permission(sc))
+            .map(|sc| sc.to_permission())
     });
 
     // ── Step 3c1: merge system-prompt sources ─────────────────────
