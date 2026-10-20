@@ -315,7 +315,9 @@ pub async fn drain_pending<T: Terminal>(
                 "tool freeze gate armed prompt_len={}",
                 prompt.len()
             );
-            driver.arm_tool_freeze_gate().await;
+            // Paint Assembling + queue strip BEFORE arming. Attach `arm_tool_freeze`
+            // waits MCP settle (r1923); blocking first hid the prompt until load
+            // finished (infra-mcp mcp8: TUI must not stall the tick without UI).
             session.set_gated_submit(prompt.clone());
             session
                 .ui_model_mut()
@@ -328,6 +330,7 @@ pub async fn drain_pending<T: Terminal>(
                 root.borrow_mut().refresh_mcp_short_cue();
             }
             let _ = session.render_now();
+            driver.arm_tool_freeze_gate().await;
             if driver.is_tools_frozen()
                 && let Some(prompt) = session.take_gated_submit()
             {

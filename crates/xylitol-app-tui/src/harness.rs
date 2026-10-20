@@ -111,6 +111,8 @@ pub struct ScriptedDriver {
     clipboard_text: Mutex<Option<String>>,
     /// c1900 first-turn freeze gate; default true (no gate) like trait default.
     tools_frozen: AtomicBool,
+    /// When set, [`XyDriver::arm_tool_freeze_gate`] waits until the sender fires.
+    arm_park: Option<tokio::sync::oneshot::Receiver<()>>,
     /// Mimic attach Remote `queue_stats` returning 0 after local strip enqueue.
     pub force_zero_queue_stats: AtomicBool,
     /// Interactive bang output-event sink injected by the bang loop (c2760).
@@ -230,6 +232,7 @@ impl ScriptedDriver {
             clipboard_image_error: Mutex::new(None),
             clipboard_text: Mutex::new(None),
             tools_frozen: AtomicBool::new(true),
+            arm_park: None,
             force_zero_queue_stats: AtomicBool::new(false),
             bash_run_sink: Mutex::new(None),
         }
@@ -238,6 +241,13 @@ impl ScriptedDriver {
     /// c1900: simulate pre-freeze / FROZEN for Assembling gate harness.
     pub fn set_tools_frozen(&self, frozen: bool) {
         self.tools_frozen.store(frozen, Ordering::SeqCst);
+    }
+
+    /// Park the next `arm_tool_freeze_gate` until the returned sender fires.
+    pub fn park_arm_tool_freeze(&mut self) -> tokio::sync::oneshot::Sender<()> {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        self.arm_park = Some(rx);
+        tx
     }
 
     /// Queue a fake clipboard image for the next [`XyDriver::stage_clipboard_image`] (c1155).
@@ -644,6 +654,9 @@ impl XyDriver for ScriptedDriver {
 
     async fn arm_tool_freeze_gate(&mut self) {
         // Scripted: freeze is toggled via [`Self::set_tools_frozen`] across ticks.
+        if let Some(rx) = self.arm_park.take() {
+            let _ = rx.await;
+        }
     }
 
     async fn reload_runtime(
@@ -5903,6 +5916,43 @@ mod slice_tests {
             frame.contains(crate::driver::MCP_PENDING_CUE),
             "busy row MUST paint right-aligned mcp pending (Loader pad must not eat cue): {frame}"
         );
+    }
+
+    #[tokio::test]
+    async fn assembling_paints_prompt_before_arm_tool_freeze_returns() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        driver.set_tools_frozen(false);
+        let release = driver.park_arm_tool_freeze();
+
+        root.borrow_mut().set_editor_text("hello while mcp");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+
+        {
+            let drain = drain_pending(&mut session, &mut driver, &mut stream);
+            tokio::pin!(drain);
+            tokio::select! {
+                result = &mut drain => {
+                    panic!("drain MUST stay parked on arm_tool_freeze: {result:?}");
+                }
+                () = tokio::time::sleep(Duration::from_millis(80)) => {}
+            }
+            let frame = root.borrow_mut().render(80).join("\n");
+            assert!(
+                frame.contains("Assembling"),
+                "Assembling MUST paint before arm returns: {frame}"
+            );
+            assert!(
+                frame.contains("hello while mcp"),
+                "prompt MUST be visible before arm returns: {frame}"
+            );
+            let _ = release.send(());
+            drain.await.unwrap();
+        }
+        assert_eq!(session.ui_model().status.as_deref(), Some("Assembling"));
+        assert!(driver.runs.is_empty(), "pre-freeze MUST NOT run yet");
     }
 
     #[tokio::test]

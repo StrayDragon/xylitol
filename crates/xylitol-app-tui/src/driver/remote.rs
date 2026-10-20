@@ -170,6 +170,9 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     gate_notice_consumed: Arc<AtomicBool>,
     /// Set when mux `session/resources` (or a snapshot unary) updates the cache.
     resources_dirty: Arc<AtomicBool>,
+    /// Attach freeze unary is in flight (r1923 bounded wait). Drain must not
+    /// await it or Assembling never paints while MCP is still connecting.
+    freeze_arm_inflight: Arc<AtomicBool>,
     /// Interactive bang output-event sink (c2760): runtime-injected by the TUI
     /// bang loop; downlink `session/bash_output` frames are forwarded into it.
     bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>>,
@@ -667,6 +670,7 @@ where
             cached_gate_notice: Arc::new(std::sync::Mutex::new(None)),
             gate_notice_consumed: Arc::new(AtomicBool::new(false)),
             resources_dirty: Arc::new(AtomicBool::new(false)),
+            freeze_arm_inflight: Arc::new(AtomicBool::new(false)),
             bash_run_sink: Arc::new(std::sync::Mutex::new(None)),
         }
     }
@@ -1359,16 +1363,57 @@ where
     }
 
     async fn arm_tool_freeze_gate(&mut self) {
-        let data = match self.unary("arm_tool_freeze", serde_json::json!({})).await {
-            Ok(data) => data,
-            Err(e) => {
-                e.log_failure("remote.arm_tool_freeze");
-                return;
-            }
-        };
-        if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(data) {
-            self.apply_resources_cache(snap);
+        if self.freeze_arm_inflight.swap(true, Ordering::SeqCst) {
+            return;
         }
+        let host = self.host.clone();
+        let payload = self.with_session(serde_json::json!({}));
+        let cached_skills = self.cached_skills.clone();
+        let gate_notice_consumed = self.gate_notice_consumed.clone();
+        let cached_gate_notice = self.cached_gate_notice.clone();
+        let cached_resources = self.cached_resources.clone();
+        let resources_dirty = self.resources_dirty.clone();
+        let inflight = self.freeze_arm_inflight.clone();
+        let life = self.session_life.clone();
+        tokio::spawn(async move {
+            let result = tokio::select! {
+                biased;
+                () = life.cancelled() => None,
+                result = host.unary("arm_tool_freeze", payload) => Some(result),
+            };
+            inflight.store(false, Ordering::SeqCst);
+            let Some(result) = result else {
+                return;
+            };
+            let data = match result {
+                Ok(rpc) => match rpc.into_std() {
+                    Ok(data) => data,
+                    Err(e) => {
+                        log::warn!(
+                            target: "xylitol::tui",
+                            "remote.arm_tool_freeze: {}: {}",
+                            e.code,
+                            e.details
+                        );
+                        return;
+                    }
+                },
+                Err(e) => {
+                    log::warn!(target: "xylitol::tui", "remote.arm_tool_freeze: {e}");
+                    return;
+                }
+            };
+            if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(data) {
+                store_resources_snapshot(
+                    &cached_skills,
+                    &gate_notice_consumed,
+                    &cached_gate_notice,
+                    &cached_resources,
+                    &resources_dirty,
+                    snap,
+                );
+            }
+        });
     }
 
     async fn poll_mcp_bootstrap(&mut self) -> bool {
