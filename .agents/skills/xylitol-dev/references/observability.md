@@ -5,7 +5,7 @@ brief: "日志与 provider-trace 窄读排障（obs-* 子命令 / spinner 卡住
 # 观测 / Inspect（省 token）
 
 **边界**：窄读与分组摘要。日志开关 / schema SSOT → `src/AGENTS.md`（Provider / 观测）与 `src/cli/logging/`。
-**产品前瞻**：进程内底座在 `docs/architecture/进程内观测.md`。未兑现观测方向（infra lane / 采样）不在仓内维护，见 GitHub feature request。
+**产品前瞻**：进程内底座在 `llmanspec/specs/infra-otel/`、`infra-observability/`。未兑现观测方向（infra lane / 采样）不在仓内维护，见 GitHub feature request。
 
 ## 硬约束（agent）
 
@@ -151,4 +151,4 @@ just obs-tui-lag
 
 - 先跑**一个**子命令，stdout 原样用于推理，再决定下一步。
 - `lag` / `lifecycle` / 健康检查已够则**停**，不要 `recent -n 500`。
-- 用户要 Jaeger / Langfuse → 指向 `[otel]` + `docs/architecture/进程内观测.md`；未配置时短期用本文件读 JSONL。
+- 用户要 Jaeger / Langfuse → 指向 `[otel]` + `llmanspec/specs/infra-otel/`；未配置时短期用本文件读 JSONL。

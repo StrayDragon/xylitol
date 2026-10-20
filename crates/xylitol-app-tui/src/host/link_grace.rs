@@ -12,13 +12,11 @@ pub const LINK_GRACE_INITIAL: Duration = Duration::from_secs(5);
 /// 重连宽限：已连接过的会话断线，抖动在此窗口内自愈则完全静默。
 pub const LINK_GRACE_RECONNECT: Duration = Duration::from_secs(1);
 
-/// 通知条文案（toast notice，E 类运行态；词表 SSOT：
-/// `docs/architecture/TUI信息呈现与固定区词汇.md`）。
+/// 通知条文案（toast notice，E 类运行态；词表 SSOT：`app-tui-fixed-zone` spec）。
 pub const LINK_DOWN_NOTICE: &str = "连接断开，重连中…";
 pub const LINK_RECOVERED_NOTICE: &str = "Host 连接已恢复";
 
-/// c2895 观景态提示（通知条，E 类运行态；词表 SSOT：
-/// `docs/architecture/TUI信息呈现与固定区词汇.md`）。
+/// c2895 观景态提示（通知条，E 类运行态；词表 SSOT：`app-tui-fixed-zone` spec）。
 pub const OBSERVE_INFLIGHT_NOTICE: &str =
     "另一端正在对话：已显示会话快照；结束后 /session-resume 收看与接管";
 pub const OBSERVE_ENDED_NOTICE: &str = "另一端回合已结束：/session-resume 收看刚才的回合";

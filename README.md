@@ -76,9 +76,9 @@ just qa-e2e   # 额外跑 PTY/tmux 端到端测试
 
 ## 文档
 
-- [docs/architecture/](docs/architecture/) — 产品架构总览(分层、配置、会话、TUI 术语)
 - [AGENTS.md](AGENTS.md) — 仓库约定与操作边界
-- [llmanspec/](llmanspec/) — SDD 规格与变更历史
+- [src/AGENTS.md](src/AGENTS.md) — 代码架构 SSOT
+- [llmanspec/](llmanspec/) — 行为合约（BDD specs）与 SDD 变更历史
 
 ## 致谢
 

@@ -45,7 +45,7 @@
 | `XYLITOL_TUI_MOUSE` 仅 **Inline** demo（及以其为目标的 PTY e2e）生效；Inline 与 ApplicationOwned 用双 example 区分 | 产品 inline 鼠标开关；env 热切模式 |
 | demo 屏英文 / plate 文案以 demo 自身为准（人类明确要求除外），允许与产品中文 SSOT（队列条 / 滚动提示 / 命令面板…）不同 | 为「对齐产品固定区词汇表」改写 demo 文案 |
 | 形态学对照产品（rail 默认、中间队列条）；对照 ≠ 同一 SSOT | 把对照当落地 |
-| 产品固定区用词：[`docs/architecture/TUI信息呈现与固定区词汇.md`](../../docs/architecture/TUI信息呈现与固定区词汇.md)——**只约束产品端文档与 host** | 用它约束本包 demo 字符串 |
+| 产品固定区用词：`llmanspec/specs/app-tui-fixed-zone/`——**只约束产品端文档与 host** | 用它约束本包 demo 字符串 |
 | 改产品视觉 / 固定区：走 `crates/xylitol-app-tui/` 产品代码 + `DESIGN.md` / 产品测 | 默认先改 `agent_demo*` 当「落地」 |
 
 分发本库后：代码零依赖主 crate；文档与 `Palette` **继续引用** monorepo 的 app DESIGN 为活 SSOT（嵌入方也可自备 token 注入闭包）。**不要**在本包另起平行 design 文档树。

@@ -43,7 +43,7 @@ c1940 已钉 api×compat；c1970/c1990 已钉配置声明档位与精确 opaque�
 - `runtime-config` — `catalog.*`
 - `cli-entry` — `catalog refresh|status|suggest`
 - `runtime-model-registry` — suggestion-only 边界
-- 文档：`docs/architecture/多厂商模型.md`
+- 文档：`llmanspec/specs/infra-provider/`
 
 ## Impact
 

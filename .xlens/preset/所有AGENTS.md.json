@@ -3,7 +3,6 @@
   "description": "",
   "files": [
     "AGENTS.md",
-    "docs/AGENTS.md",
     "llmanspec/AGENTS.md",
     "crates/xylitol-ai-bridge/AGENTS.md",
     "crates/xylitol-tui/AGENTS.md",

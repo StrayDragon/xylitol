@@ -15,19 +15,18 @@
 
 用与用户相同的语言回复。`xylitol` 是 **开箱即用的个人 coding agent**（LLM 增强开发工具包）。Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成员以根 `Cargo.toml` 为准。开发由 llman SDD 驱动。
 
-术语表（黑话 ↔ 标准词 ↔ 英文对照总表；散文写作遇黑话首现时对照）：
-@docs/architecture/术语表.md
+术语与写作：黑话首现时附标准词或英文；`规则:` 标题用标准词（细则 `llmanspec/AGENTS.md`「语言」）。内部编号（`c####` / `ath##`）单独引用时带 ≤12 字语义尾。
 
 ## 产品定调
 
-个人**开箱即用**的 coding harness：不是扩展市场 / 插件平台，不得为“未来插件”堆抽象；`xylitol-tui` 为源自 pi-tui 的独立 fork，不追平上游。取舍细则：`docs/architecture/产品分层总览.md`；扩展分界：`docs/architecture/扩展与开闭.md`。
+个人**开箱即用**的 coding harness：不是扩展市场 / 插件平台，不得为“未来插件”堆抽象；`xylitol-tui` 为源自 pi-tui 的独立 fork，不追平上游。分层与开闭：`src/AGENTS.md`；可验证行为：`llmanspec/specs/`。
 
-- **Trust / MCP**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP 配置驱动、未配置零装配。产品规则：`docs/architecture/信任与项目门禁.md` / `扩展能力-MCP.md`；实现边界：`src/AGENTS.md`。
-- **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认 attach 本机 Host，未在听失败；Print 与库嵌入可同进程。端规则：`crates/xylitol-app-tui/src/AGENTS.md`；拓扑与线协议：`docs/architecture/库与多客户端.md` / `远程体验与线协议.md`。
-- **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（Command/Event 是载荷）。硬边界：`src/AGENTS.md`；产品叙事：`docs/architecture/库与多客户端.md`。
-- **跨端公共体验**（已开放端 Print / TUI / Host）：动作语义一套学习成本；细则 `docs/architecture/库与多客户端.md`。未开放端（gpui 等）见 GitHub feature request，不得写成现行必须。
-- 产品架构总览：`docs/architecture/`；未兑现方向：GitHub Issues（roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)，FR 各一个）；文档写法见 `docs/AGENTS.md`。
-- TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`docs/architecture/TUI信息呈现与固定区词汇.md`（端约束见 `crates/xylitol-app-tui/src/AGENTS.md`）。新文只用表内词；弃用 / 旧称统一收在该表“弃用”对照行，正文不复述。
+- **Trust / MCP**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP 配置驱动、未配置零装配。产品规则：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`；实现边界：`src/AGENTS.md`。
+- **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认 attach 本机 Host，未在听失败；Print 与库嵌入可同进程。端规则：`crates/xylitol-app-tui/src/AGENTS.md`；拓扑与线协议：`llmanspec/specs/protocol-app/`、`server-core/`。
+- **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（Command/Event 是载荷）。硬边界：`src/AGENTS.md`。
+- **跨端公共体验**（已开放端 Print / TUI / Host）：动作语义一套学习成本；细则 `llmanspec/specs/protocol-app/` 与 `user-experience/`。未开放端（gpui 等）见 GitHub feature request，不得写成现行必须。
+- 未兑现方向：GitHub Issues（roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)，FR 各一个）。文档落点：`xylitol-dev` skill `references/docs-loop.md`。
+- TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`llmanspec/specs/app-tui-fixed-zone/`（端约束见 `crates/xylitol-app-tui/src/AGENTS.md`）。
 - 产品 TUI 视觉色板：`crates/xylitol-app-tui/src/DESIGN.md`（frontmatter SSOT；`just qa-check-tui-tokens` 对照 Palette）。
 
 ## 工作原则
@@ -35,7 +34,7 @@
 | 做 | 不做 |
 |---|---|
 | 目标不清先确认范围；改动聚焦 | 边界未清就动手；顺手改无关代码 |
-| 黑话首次出现时附标准词或英文（总表：顶部 @ 引入的术语表）；内部编号（`c####` / `ath##`）单独引用时带 ≤12 字语义尾 | 黑话不加对照直接用；编号不带语义尾造成检索死端 |
+| 黑话首次出现时附标准词或英文（见顶部「术语与写作」）；内部编号（`c####` / `ath##`）单独引用时带 ≤12 字语义尾 | 黑话不加对照直接用；编号不带语义尾造成检索死端 |
 | 代码是真值源；架构规则读 `src/AGENTS.md`；设计史查 `llmanspec/changes/archive/` | 凭记忆改架构；向 archive 要现行规则 |
 | 动代码前读相关代码，沿目录树遵循最近的 `AGENTS.md` | 跳过上下文直接改 |
 
@@ -70,7 +69,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 
 ## Provider 交付范围
 
-交付 **OpenAI 兼容** 与 **Anthropic Messages** 两族（OAuth 等纳入是显式决策，不默认承诺）；网关 courtesy（如 Zen 会话归因）允许。产品细则：`docs/architecture/多厂商模型.md`；开闭规则（业务只依赖 `XyModel`，新兼容端 = 方言插件 / 配置）：`src/AGENTS.md`“Provider 与消息”。
+交付 **OpenAI 兼容** 与 **Anthropic Messages** 两族（OAuth 等纳入是显式决策，不默认承诺）；网关 courtesy（如 Zen 会话归因）允许。产品细则：`llmanspec/specs/infra-provider/` 与插件侧 `provider-openai*`；开闭规则（业务只依赖 `XyModel`，新兼容端 = 方言插件 / 配置）：`src/AGENTS.md`“Provider 与消息”。
 
 ## 命令与验证
 

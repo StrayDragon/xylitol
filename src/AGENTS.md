@@ -1,6 +1,6 @@
 # 代码架构 SSOT
 
-本文件是代码架构的单一真值源。覆盖目标 crate 图、依赖方向、seam、`Xy*`、消息/工具边界、扩展开闭、复杂度与体量策略。全局工作方式见根 `AGENTS.md`；产品心智见 `docs/architecture/`。子目录 `AGENTS.md` 只写本端例外，不重复本文件。
+本文件是代码架构的单一真值源。覆盖目标 crate 图、依赖方向、seam、`Xy*`、消息/工具边界、扩展开闭、复杂度与体量策略。全局工作方式见根 `AGENTS.md`；可验证产品行为见 `llmanspec/specs/`。子目录 `AGENTS.md` 只写本端例外，不重复本文件。
 
 **真值顺序**：代码与测试 → 本文件 → archive design。本文件写**稳定规则**，不写文件清单、change id 进度、超标表。现行 workspace 成员以根 `Cargo.toml` 为准。词表以 `xylitol-plugin-sdk` 为准。信封以 `xylitol-protocol` 为准（不认识 `XyEvent`）。其余目标 crate 未填叶前，对应代码仍在主 crate `src/`。新代码必须按目标依赖方向落点。
 
@@ -121,7 +121,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 - **应用端**：Print / TUI 走 `XyDriver::run` → `XyEvent` 流 → 端渲染。不够就扩 seam（`l8ng-write-surface`），不得绕过。
 - **产品角色（client / host）**：TUI 等端是 client（键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区 / trust 是 host 操作器角色。print / 库嵌入仍可同进程走同一方法表。**不得**把 host 等同于 HTTP 监听器；**产品 TUI** 默认 attach 本机监听器（未在听失败）。
 - **产品信封**：四象限（`POST /rpc` unary + `WS /rpc` 下行，同一方法表），载体为 fory-v3 二进制帧。Command/Event 是载荷；JSON-RPC 2.0 文本不是产品通道。跨进程不跳过信封直调 Driver。
-- **steer / follow-up / abort**：只经 `XyDriver` 队列 API；端不得改 ReAct 内部队列。产品语义：`docs/architecture/插话续跑与中止.md`。
+- **steer / follow-up / abort**：只经 `XyDriver` 队列 API；端不得改 ReAct 内部队列。产品语义：`llmanspec/specs/agent-runtime/`。
 - **会话 actor（硬约束）**：一个 runtime **显式绑定一个 session** 后才可根提交；任意时刻至多一个 ReAct worker 可写该 session。根提交默认拒绝忙碌并发；busy 时 `steer` / `follow_up` 是轮内改向，不是第二次根提交。子 agent = **另建隔离 runtime**。Host 进程可 lazy 物化 N 个 session 槽 Driver。
 
 | 必须 | 不得 |
@@ -169,7 +169,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 
 ## 扩展开闭
 
-产品心智：`docs/architecture/扩展与开闭.md`。接线优先序：
+接线优先序（扩展开闭，本节下文）：
 
 1. **配置 / 会话开关 + 组合根接线**（未启用 zero-cost）
 2. **既有 port**。不得旁路第二套语义。
@@ -177,7 +177,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 
 不得做插件市场、Extension Host、为未交付能力预留空壳 `Xy*`、“已是统一口再包一层”。改名不留兼容别名 / 双解析路径（一次性改调用点）。死码分诊走 skill `l8ng-audit-dead-code`。不得为 LSP / DAP / gpui / 语音端预埋空壳 crate。
 
-Trust / Permission / MCP 产品语义分别见 `docs/architecture/` 对应文。边界：Trust 门禁**项目本地资源**；工具开箱 allow-all；MCP **有配置才装配**并支持重载。
+Trust / Permission / MCP 产品语义：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`。边界：Trust 门禁**项目本地资源**；工具开箱 allow-all；MCP **有配置才装配**并支持重载。
 
 ## Provider 与消息
 
@@ -191,7 +191,7 @@ Trust / Permission / MCP 产品语义分别见 `docs/architecture/` 对应文。
 | HTTP / SSE / 厂商 SDK | 对应方言插件 |
 | Fake `XyModel` | 测试支持，不进内核 |
 
-新兼容端 = 新方言插件或配置；**不改** ReAct / `AgentMessage`。`rmcp` 只在 mcp 插件；`async-openai` 只在 openai 插件。当前交付范围见 `docs/architecture/多厂商模型.md`。
+新兼容端 = 新方言插件或配置；**不改** ReAct / `AgentMessage`。`rmcp` 只在 mcp 插件；`async-openai` 只在 openai 插件。当前交付范围见 `llmanspec/specs/infra-provider/`。
 
 Hook 三条接缝只认可移植 JSON（headers map + body Value）；不把 reqwest/某一 SDK 类型泄漏进 hook。原始 SSE 诊断用进程内 provider trace，不进 hook。
 

@@ -34,7 +34,7 @@
 //!   them. Reach via crate modules only inside this crate.
 //! - `HookDispatcher` / `HookEvent` — script-hook implementation details.
 //!
-//! See `docs/architecture/库与多客户端.md`.
+//! See `llmanspec/specs/protocol-app/` and root `AGENTS.md` (client / host roles).
 
 pub use crate::wiring::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, BootstrappedAgent, BootstrappedRuntime,

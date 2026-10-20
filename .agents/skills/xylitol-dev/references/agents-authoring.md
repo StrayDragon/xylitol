@@ -4,7 +4,7 @@ brief: "写或改 AGENTS.md（抗衰老 / 墓碑描述清理 / 项目 skills 同
 
 # AGENTS.md 编写与维护
 
-真源归属：根 `AGENTS.md` 是**稳定操作边界**（全仓），各目录 `AGENTS.md` 只补本端例外；`docs/AGENTS.md` 管产品文档闭环，`llmanspec/AGENTS.md` 管 change/spec，`src/AGENTS.md` 管代码架构。本 reference 讲**怎么写、怎么抗衰老**。
+真源归属：根 `AGENTS.md` 是**稳定操作边界**（全仓），各目录 `AGENTS.md` 只补本端例外；`llmanspec/AGENTS.md` 管 change/spec，`src/AGENTS.md` 管代码架构；文档落点见 `references/docs-loop.md`。本 reference 讲**怎么写、怎么抗衰老**。
 
 ## 只收三类内容
 
@@ -19,7 +19,7 @@ API 名、调用序列、参数流水账等易腐细节一律以代码、skill �
 | 写 | 不写 |
 |---|---|
 | WHAT、硬约束、依赖方向、开闭规则 | 进度、行数快照、commit 列表、待办板 |
-| HOW 指针（skill / 命令 / `docs/architecture`） | 长教程、完整测试矩阵、API / 调用序列枚举（代码为 SSOT）、易腐文件地图 |
+| HOW 指针（skill / 命令 / `llmanspec/specs`） | 长教程、完整测试矩阵、API / 调用序列枚举（代码为 SSOT）、易腐文件地图 |
 | 与父级不同的本地例外 | 重复父级长文；复述他处 SSOT 已写全的事实（用指针替代）；钉死易变文件路径 / change id |
 
 ## 写法正反例速查
@@ -42,7 +42,7 @@ API 名、调用序列、参数流水账等易腐细节一律以代码、skill �
 
 全局规则与架构不变量；落点用层名（`agent`/`infra`/…），细节去读代码；易腐事实写「怎么查」（SSOT 指针），不写「现在是什么」。子目录只补本端例外。
 
-**放哪**：全仓规则 → 根；目录边界 → 该目录 `AGENTS.md`；多步 how-to → skill（本仓团队 how-to 进 `xylitol-dev`）；临时笔记 → `_HANDOFF` / `*.tmp.md`（勿升格规范）；**change 作用域调研** → `llmanspec/changes/<id>/research/`（细则 `llmanspec/AGENTS.md`，勿堆 `docs/research/`）。
+**放哪**：全仓规则 → 根；目录边界 → 该目录 `AGENTS.md`；多步 how-to → skill（本仓团队 how-to 进 `xylitol-dev`）；临时笔记 → `_HANDOFF` / `*.tmp.md`（勿升格规范）；**change 作用域调研** → `llmanspec/changes/<id>/research/`（细则 `llmanspec/AGENTS.md`）。
 
 ## 维护
 

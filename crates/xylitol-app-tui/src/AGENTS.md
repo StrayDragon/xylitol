@@ -19,21 +19,21 @@
 
 运行时真值：本目录产品代码。视觉色板 SSOT：[`DESIGN.md`](./DESIGN.md) frontmatter；改色板后跑 `just qa-check-tui-tokens`（Palette 对照）。现行词「固定区」= layout/widgets；勿用 `shell`/`scene` 命名。
 
-**信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`docs/architecture/TUI信息呈现与固定区词汇.md`](../../../docs/architecture/TUI信息呈现与固定区词汇.md) 表内词——尤其 **滚动提示**、**通知条**、**通知栈**、**待办栏**、**尾插 / 顶插**；弃用词（挂账 / Status trail / chrome / 壳层 / system 消息等）以该表「弃用」节为准，表外旧称勿再引入。
+**信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`llmanspec/specs/app-tui-fixed-zone/`](../../../../llmanspec/specs/app-tui-fixed-zone/) 与产品代码中的固定词——尤其 **滚动提示**、**通知条**、**通知栈**、**待办栏**、**尾插 / 顶插**；弃用旧称（挂账 / Status trail / chrome / 壳层 / system 消息等）勿再引入。
 
 **与 `agent_demo` 分界**：包引擎演示，不是本端 SSOT。硬边界见 `crates/xylitol-tui/AGENTS.md`。
 
-**跨端公共体验**：已开放端共有能力一套学习成本——细则：[`docs/architecture/库与多客户端.md`](../../../docs/architecture/库与多客户端.md)。端侧附加：改公共交互前先对齐全部已开放端；未开放端（gpui）不要写成现行 MUST，也不要在本端预埋第二套动作 id。
+**跨端公共体验**：已开放端共有能力一套学习成本——细则：`llmanspec/specs/protocol-app/`、`user-experience/`。端侧附加：改公共交互前先对齐全部已开放端；未开放端（gpui）不要写成现行 MUST，也不要在本端预埋第二套动作 id。
 
 ## 硬约束
 
 | 规则 | 禁止 |
 |---|---|
-| 滚动提示默认 **尾插**（跟底可见、保 paint-cache）；顶层原则与例外条件见 [`docs/architecture/TUI信息呈现与固定区词汇.md`](../../../docs/architecture/TUI信息呈现与固定区词汇.md)「信息分类 × 落点」；瞬时确认优先页脚 / 状态条 / 槽 | 无理由顶插；瞬时确认堆进滚动区 |
+| 滚动提示默认 **尾插**（跟底可见、保 paint-cache）；顶层原则与例外见 `app-tui-fixed-zone` spec 与本端代码；瞬时确认优先页脚 / 状态条 / 槽 | 无理由顶插；瞬时确认堆进滚动区 |
 | 渲染只用 `xylitol_tui`；缺能力先改包再接线；产品路径 **host 驱动** | 准通用实现塞进本端；产品调 demo 启动 API（`TUI::start()`） |
 | 鼠标默认 **ApplicationOwned**（host 启动构造时绑定，缺省 AO；应用内选区 + dock 排除）；命中/探针管线细节以包代码与 `package-tui-pointer` 合约为 SSOT；模式命名以包 AGENTS 硬约束为准（`Inline` / `ApplicationOwned`） | mid-session 热切；产品路径读/设 lab env（`XYLITOL_TUI_*`）或用 `HitPriorityFn` |
 | Agent 只经产品信封客户端（端侧）或 Host 内 `XyDriver`（依赖纪律同 `src/AGENTS.md`） | 产品 TUI 默认同进程直握操作器 |
-| Trust 在 CLI 门禁（见 `docs/architecture/信任与项目门禁.md`）；本端 `EditorSlot::Choice` 已解冻给内置 `ask` | Plate / Settings stub 冻结期间扩展其功能或抢先落对应 spec |
+| Trust 在 CLI 门禁（见 `llmanspec/specs/app-tui-trust/`、`domain-security/`）；本端 `EditorSlot::Choice` 已解冻给内置 `ask` | Plate / Settings stub 冻结期间扩展其功能或抢先落对应 spec |
 | 颜色走本端 theme token；已确认需求须先有 harness / BDD 护栏 | 另立 hex；没有护栏就先写实现 |
 | UiEntry：tool/bash/diff = status 左边轨 + gutter；user / assistant / thinking = flush；`Palette` = [`DESIGN.md`](./DESIGN.md) frontmatter 运行时快照 | 给 user / assistant 加轨或洗底 |
 | steer / follow-up 走 `src/AGENTS.md` 的 `XyDriver` 队列边界 | 本端持有 ReAct 内部队列 |

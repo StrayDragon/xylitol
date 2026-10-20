@@ -1,6 +1,6 @@
 # 三份身份（代码对照）
 
-探索备忘，自 c2580 伞移入 c2620（供应商键策略）。产品叙述见 `docs/architecture/会话与持久化.md`。
+探索备忘，自 c2580 伞移入 c2620（供应商键策略）。产品叙述见 `llmanspec/specs/agent-session/`、`agent-session-store/`。
 
 ## 今日接线
 

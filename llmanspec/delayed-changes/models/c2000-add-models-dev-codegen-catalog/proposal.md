@@ -70,7 +70,7 @@ c1980 `research/`：官方交叉校验与字段统计仍有效。
 
 - c1980：`llmanspec/changes/c1980-add-optional-models-dev-catalog/`（design 对照 pi、research 交叉校验）
 - pi：`packages/ai/scripts/generate-models.ts`（api.json）；`scripts/publish-model-catalog.mjs`（自有发布物）
-- 架构：`docs/architecture/多厂商模型.md`
+- 架构：`llmanspec/specs/infra-provider/`
 
 ## Ethics
 

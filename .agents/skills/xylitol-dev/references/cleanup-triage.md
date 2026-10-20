@@ -13,7 +13,7 @@ brief: "仓库瘦身盘点（examples / scripts / 子包调用方交叉、删留
 ## 步骤
 
 1. **盘点面**：`examples/`（根 + `crates/*/examples`）、`scripts/`、子包附件（误入库生成物、无 assert 的 lab 测试、孤立 recipe）。
-2. **交叉调用方**（缺一不可）：`justfile` recipe、live `.feature`、`docs/`、包 `AGENTS.md`。只搜文件名不够，还要搜 `[[example]]` / `cargo run --example` / `qa-check-scripts` glob。
+2. **交叉调用方**（缺一不可）：`justfile` recipe、live `.feature`、根/包 `AGENTS.md`。只搜文件名不够，还要搜 `[[example]]` / `cargo run --example` / `qa-check-scripts` glob。
 3. **工作表**（本地，不进 git）：路径 / 类 / 一句说明 / 删除影响 / 推荐（`删` / `留` / 推迟）。**推荐列是执行权威**：人改完后 agent **MUST** 按该列处理，不得用「事故门禁 / 以后重写」覆盖人的删留。
 4. **分闸后再动**（下表）。`just qa`；触及真终端再加 `just qa-e2e`。工作表处理完即删，不留墓碑。
 
