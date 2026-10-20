@@ -10,13 +10,13 @@
 
 ## 现在
 
-下一刀是 **[WS3](#S1) / S1**（rutis）。接入前必读 [§3.1](#S1) 的 `xylitol-x-rutis-temp`。本轮不引入 rutis。
+下一刀是 **[WS3](#S1) / S1**（rutis）。接入前必读 [§3.1](#S1) 的 `xylitol-x-rutis-temp`。装配适配层 crate 已进 workspace；组合根仍手写接线。结构图：`.tmp/装配与rutis.md`（临时；随本文件一起撤）。
 
 目标 crate 图见 [§2](#TARGET)。禁边闸 `scripts/check_crate_graph.py`。成员名单以根 `Cargo.toml` 为准。架构规则以 `src/AGENTS.md` 为准。包名真源是本文件 §2。
 
 根 `src/` 仍含 CLI、composition、Host listen、`agent` facade（BDD c2837）。终态五文件见 [§2.2.1](#ROOTSRC)，随 S1 再削。
 
-skip-SDD 卫生债：[§3.2.1](#WSDEP) 版本真源、[§3.2.2](#NAMES) 命名、[§3.2.3](#PORTS) 可替换口摊平，均已落地。剩下的是 env 名 must-SDD、S1 残差、`AgentMessage` 不加 `Xy`。不挡 rutis。
+skip-SDD 卫生债：[§3.2.1](#WSDEP) 版本真源、[§3.2.2](#NAMES) 命名、[§3.2.3](#PORTS) 适配器摊平，均已落地。剩下的是 env 名 must-SDD、S1 残差、`AgentMessage` 不加 `Xy`。不挡 rutis。
 
 回退点 tag **`v0.0.0-pre.old`**（`004a2e4d`）。命令：`git switch -d v0.0.0-pre.old`。
 
@@ -68,15 +68,15 @@ skip-SDD 卫生债：[§3.2.1](#WSDEP) 版本真源、[§3.2.2](#NAMES) 命名�
 
 本节名称在后文只按这里的意思用。对照总表：`docs/architecture/术语表.md`。
 
-**词表**（vocabulary，共享类型）是 Host 侧（插件 + runtime）都要 `use` 的那一组类型和端口 trait，几乎不含业务实现。例子：`AgentMessage`、`XyEvent`、`XyError`、`XyModel`。词表 crate 是 `xylitol-plugin-sdk`（插件作者依赖这一包）。产品 TUI 可依赖 sdk 做 `XyEvent` 投影，不得依赖官方插件，不得依赖 runtime。不要再拆 `xylitol-types`。
+**词表**（vocabulary，共享类型）是 Host 侧（插件 + runtime）都要 `use` 的那一组类型和适配器 trait，几乎不含业务实现。例子：`AgentMessage`、`XyEvent`、`XyError`、`XyModel`。词表 crate 是 `xylitol-plugin-sdk`（插件作者依赖这一包）。产品 TUI 可依赖 sdk 做 `XyEvent` 投影，不得依赖官方插件，不得依赖 runtime。不要再拆 `xylitol-types`。
 
 **词表薄留**：只把类型形状放进 `xylitol-plugin-sdk`。HTTP、假实现、观测实现不放进去。
 
-**产品信封**（envelope）是 client/server 四象限 RPC。crate 是 `xylitol-protocol`。只描述跨端形状。不认识端口，不认识 `XyEvent`。与 `xylitol-plugin-sdk` 互不依赖。
+**产品信封**（envelope）是 client/server 四象限 RPC。crate 是 `xylitol-protocol`。只描述跨端形状。不认识适配器，不认识 `XyEvent`。与 `xylitol-plugin-sdk` 互不依赖。
 
 **官方插件**是本仓库 Host 侧静态 crate，包名 `xylitol-official-plugin-*`。不是插件市场，不是 dylib。S4 才谈动态加载。
 
-**端口 / 可替换口**（replaceable seam）：`XyModel`、`XyTool`、`XySessionStore` 这类可替换接口。调用点 `xylitol_plugin_sdk::{XyModel, …}`。见 [§3.2.3](#PORTS)。
+**适配器**（adapter）：`XyModel`、`XyTool`、`XySessionStore` 这类可替换实现。调用点 `xylitol_plugin_sdk::{XyModel, …}`。不要写 seam / port / 可替换口。见 [§3.2.3](#PORTS)。
 
 **执行权威**是 runtime 侧角色：会话循环、trust、准入、ReAct 内环。crate 是 `xylitol-runtime`。`xylitol-runtime` 不是组合根。
 
@@ -122,7 +122,7 @@ Cargo：`plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。runtime → sdk。插件
 
 官方插件七个：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks。没有 react。
 
-测循环用假端口。测端用 `ScriptedDriver`。插件依赖声明端口，由根包注入，兄弟 crate 不得 `use`。S1 的 `injects()` 同一句话。
+测循环用假适配器。测端用 `ScriptedDriver`。插件依赖声明适配器，由根包注入，兄弟 crate 不得 `use`。S1 的 `injects()` 同一句话。
 
 主动交互：唤醒源走准入，不换内环。schedule 是未来工具，不预埋 crate。
 
@@ -136,13 +136,13 @@ crate 边界按替换、开关、生命周期来划，不按 `app / agent / infr
 
 | 级别 | 放什么 | 例 | 现状 |
 |---|---|---|---|
-| 内核 | 词表、端口、错误、信封、trust、会话身份、**turn 循环（ReAct）**。不得知道压缩策略、具体厂商、TUI。不得接线 | `xylitol-plugin-sdk`、`xylitol-protocol`、`xylitol-runtime` | 现行 |
+| 内核 | 词表、适配器、错误、信封、trust、会话身份、**turn 循环（ReAct）**。不得知道压缩策略、具体厂商、TUI。不得接线 | `xylitol-plugin-sdk`、`xylitol-protocol`、`xylitol-runtime` | 现行 |
 | 内置插件 | 官方静态 `xylitol-official-plugin-*`。默认挂。进程内 `apply` 取一次 `Arc`，之后直连 | session、compaction、provider-*、tools | 现行 |
 | 配置启用插件 | 仍是官方插件 crate；没配置不 start | mcp、hooks | 现行；未配置不连 |
-| S1 装配 | 同一批插件，换 rutis 装配器 | `xylitol-rutis` | 未建 |
+| S1 装配 | 同一批插件，换 rutis 装配器 | `xylitol-rutis` | 适配层 crate 现行；组合根仍手写 |
 | 客户端 | 独立 `xylitol-app-*` + 引擎 `xylitol-tui`。不是 Host 插件 | app-tui / app-print / xylitol-tui | 现行；引擎不改名 |
 
-禁止为 rutis / LSP / DAP / gpui / 语音端预埋空壳。禁止客户端进 `xylitol-official-plugin-*`。Cargo 边与禁名见 [§2.0b](#SETTLED)。
+禁止为 LSP / DAP / gpui / 语音端预埋空壳。禁止客户端进 `xylitol-official-plugin-*`。Cargo 边与禁名见 [§2.0b](#SETTLED)。
 
 ### 2.2 目录总图
 
@@ -150,7 +150,7 @@ crate 边界按替换、开关、生命周期来划，不按 `app / agent / infr
 仓库根 xylitol/                 组合根 package（BusyBox bin + embed）。不要 crates/xylitol/
   src/                          终态只留 CLI + wiring + embed，见 [§2.2.1](#ROOTSRC)
   crates/
-    xylitol-plugin-sdk/         词表 + 端口 + 错误（插件作者依赖这一包）
+    xylitol-plugin-sdk/         词表 + 适配器 + 错误（插件作者依赖这一包）
     xylitol-protocol/           四象限信封 + fory-v3 + PROTOCOL_VERSION
                                 可含很薄的 attach client 半；过厚再拆 xylitol-attach
     xylitol-runtime/            执行权威：XyDriver + trust + 会话槽 + ReAct 内环 + 唤醒准入
@@ -160,7 +160,7 @@ crate 边界按替换、开关、生命周期来划，不按 `app / agent / infr
     xylitol-tui/                TUI 引擎。零引用产品。不改名
     xylitol-app-tui/            产品 TUI 客户端（信封 + tui + sdk 投影）
     xylitol-app-print/          Print 客户端（只认 XyDriver）
-    xylitol-rutis/              S1 才建；唯一 use rutis
+    xylitol-rutis/              装配适配层；唯一 use rutis
   plugins/                      仅 Host 侧。Cargo 依赖只出现在根包
     xylitol-official-plugin-session/
     xylitol-official-plugin-compaction/
@@ -207,7 +207,7 @@ src/
 flowchart TB
   subgraph contracts["① 契约叶 · 框内三包互不依赖"]
     direction LR
-    xylitol_plugin_sdk["xylitol-plugin-sdk<br/>词表 + 端口"]
+    xylitol_plugin_sdk["xylitol-plugin-sdk<br/>词表 + 适配器"]
     xylitol_protocol["xylitol-protocol<br/>信封"]
     xylitol_tui["xylitol-tui<br/>引擎"]
   end
@@ -282,15 +282,15 @@ flowchart TB
 | 不为编译拆 | 不拆 `xylitol-types`。不把 tools 拆成每工具一包。不合并 session/compaction（变更理由不同）。不把 ReAct 拆成插件（无第二实现，测端已有 `ScriptedDriver`） |
 | P6 依赖卫生 | `rmcp` 只在 mcp 插件；`async-openai` 只在 openai 插件；`salvo` 只在 serve；fory 只在 protocol（serve mapping 与 TUI attach 传递用）。print / runtime 不编 fory |
 | 工具链先于拆 crate | mold / sccache / 每树独立 `CARGO_TARGET_DIR` / `-Zshare-generics` 已做 |
-| 端口非泛型 | `dyn XyModel` + `async_trait`。crate 边界不放厚泛型壳 |
+| 适配器非泛型 | `dyn XyModel` + `async_trait`。crate 边界不放厚泛型壳 |
 | 工件 m×n | 产品一个 BusyBox bin。集成测试多文件靠 share-generics，不靠再拆 crate |
 | 甜区 | 约 15 个 crate。禁止为对称冲到 25 |
 
 规则：
 
-1. 插件只依赖 `xylitol-plugin-sdk`。插件之间不得 `use`。依赖用端口声明，由组合根注入。插件不依赖 `xylitol-protocol`。
+1. 插件只依赖 `xylitol-plugin-sdk`。插件之间不得 `use`。依赖用适配器声明，由组合根注入。插件不依赖 `xylitol-protocol`。
 2. 方言插件只依赖 [§2.3](#LLM) 标成“词表薄留”的类型。
-3. ① 三包互不依赖。`protocol` 不认识端口，也不认识 `XyEvent`。`plugin-sdk` 不认识信封。
+3. ① 三包互不依赖。`protocol` 不认识适配器，也不认识 `XyEvent`。`plugin-sdk` 不认识信封。
 4. `xylitol-runtime` 只依赖 `xylitol-plugin-sdk`。不得依赖信封，不得依赖任何 `xylitol-official-plugin-*`。
 5. `xylitol-serve` 依赖 runtime + protocol。mapping 只在 serve。Print 只依赖 runtime，不依赖 serve，不依赖 protocol。
 6. `xylitol-app-tui` 依赖信封、`xylitol-tui`、plugin-sdk（`XyEvent` 投影）。不依赖 Host 插件，不依赖 runtime。
@@ -310,7 +310,7 @@ flowchart TB
 
 **词表薄留**（只把类型形状放进 `xylitol-plugin-sdk`，零 HTTP）：`AgentMessage::Llm` / `XyChunk`；产品 usage 形状；`HEURISTIC_BYTES_PER_TOKEN` + `heuristic_token_count`（禁止 tiktoken / RemoteCount；`estimate_context` 跟 compaction 插件）；`XyGenerateOptions` 字段与 `ObsSessionContext` 纯结构；`HeaderBag` 或直接 `serde_json::Map`；`tool_wire`（两插件不能互依）；`Compat` 名字（`generic` / `deepseek` 配置词）。
 
-**插件各自实现**：Responses / Completions / assembler / OpenCode attribution / DeepSeek overlay → openai 插件。Anthropic Messages → anthropic 插件。`json_parse` 方言私有。`WirePolicy` 跟 openai 插件。`HttpHooks` 由 hooks 插件提供，方言消费 port。假模型直接 `impl XyModel`，不进内核。工厂由根包接线时调用。
+**插件各自实现**：Responses / Completions / assembler / OpenCode attribution / DeepSeek overlay → openai 插件。Anthropic Messages → anthropic 插件。`json_parse` 方言私有。`WirePolicy` 跟 openai 插件。`HttpHooks` 由 hooks 插件提供，方言消费适配器。假模型直接 `impl XyModel`，不进内核。工厂由根包接线时调用。
 
 方言直接 `impl XyModel`，错误直接 `XyError`。观测只带 generate 快照，不设全局槽。
 
@@ -339,12 +339,12 @@ flowchart TB
 
 编译痛点在工具链，不在拆 crate。不为编译速度再拆 crate。
 
-禁止创建：`xylitol-rutis`（S1 才建）、`xylitol-host`、`xylitol-client`、`xylitol-kernel`、`xylitol-assemble`、`xylitol-types`、`xylitol-official-plugin-react`、`xylitol-official-plugin-tui`、`xylitol-app-voice`、空 LSP/DAP crate、dylib 加载器、`crates/xylitol/`（组合根就是仓库根）。
+禁止创建：`xylitol-host`、`xylitol-client`、`xylitol-kernel`、`xylitol-assemble`、`xylitol-types`、`xylitol-official-plugin-react`、`xylitol-official-plugin-tui`、`xylitol-app-voice`、空 LSP/DAP crate、dylib 加载器、`crates/xylitol/`（组合根就是仓库根）。
 
 <a id="S1"></a>
 <a id="WS2"></a>
 
-### 3.1 WS3 / S1（本轮不做接入，只记必读）
+### 3.1 WS3 / S1（适配层 + 装配合约已落；组合根未切）
 
 | 阶段 | 动作 |
 |---|---|
@@ -356,11 +356,11 @@ flowchart TB
 
 S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 仍留下。
 
-**S1 必读**：接入 rutis 必须先读 [`/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp`](/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp)（README 阅读序：assessment → host-server → plugin-policy → rewrite → overhead → dependency）。该工作树已快进到上游 `3d0bc0d` / 0.13.0（2026-10-19）。用该目录简化：IoC 从手工 `wiring.rs` 升到运行时、插件 `injects()`、实例/生命周期、开销红线、文件归位 `skills/xylitol-rutis-rewrite/references/crate-split-detail.md`。唯一 `use rutis` 落点是未来的 `xylitol-rutis`。
+**S1 必读**：接入 rutis 必须先读 [`/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp`](/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp)（README 阅读序：assessment → host-server → plugin-policy → rewrite → overhead → dependency）。该工作树已快进到上游 `3d0bc0d` / 0.13.0（2026-10-19）。用该目录简化：IoC 从手工 `wiring.rs` 升到运行时、插件 `injects()`、实例/生命周期、开销红线、文件归位 `skills/xylitol-rutis-rewrite/references/crate-split-detail.md`。唯一 `use rutis` 落点是 `xylitol-rutis`。
 
 0.13 起事件是五分发（`emit` / `parallel` / `serial` / `waterfall` / `bail`），跨进程、跨语言、跨节点同义；`filter` / `serial` / `bail` 可跨界；同步等待成环报 `SyncWaitCycle`。不要按 0.11 写「跨进程只通知 / waterfall 不跨界 / 外进程 hook 只能降级为通知」。内核依赖含 serde / serde_json。`#274` 热更与 `#192` 长跑已落地。
 
-temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（在 `xylitol-runtime`）；包名是 `xylitol-official-plugin-*` 不是 `xylitol-core-plugin-*`；组合根是仓库根包，不是 `xylitol-assemble` / `xylitol-kernel`。
+temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（在 `xylitol-runtime`）；包名是 `xylitol-official-plugin-*` 不是 `xylitol-core-plugin-*`；组合根是仓库根包，不是 `xylitol-assemble` / `xylitol-kernel`。结构说明：`.tmp/装配与rutis.md`（临时；随本文件一起撤）。
 
 随 S1 削的残差。卫生债见 [§3.2](#HYGIENE)。
 
@@ -396,7 +396,7 @@ temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（
 | 二进制真源 | `crates/xylitol-protocol/src/v3/envelope.fbs`；`scripts/gen_envelope.py`；`just codegen-envelope`；BDD `steps_envelope.rs` / `bindings_envelope.rs`。check-in 产物仍叫 `generated.rs` |
 | 词表叶 / 错误 | `XyLlmMessage`（serde 标签 `role`，JSONL 不改）；`XyError`；方言 HTTP 头 `reqwest_headers` |
 | 方言 capability | `provider-openai*`（与 live 路径一致） |
-| 可替换口 | `xylitol_plugin_sdk::{XyModel, …}`。见 [§3.2.3](#PORTS) |
+| 适配器 | `xylitol_plugin_sdk::{XyModel, …}`。见 [§3.2.3](#PORTS) |
 | 运行时构造基线 | `RuntimeBaseline` / `build_baseline`。S2 再删物化 |
 | Host listen 信封 | `src/app/server/envelope.rs` |
 
@@ -420,17 +420,31 @@ temp 里与现行拍板冲突的句子不要照抄：ReAct 不是官方插件（
 | `vendor/gherkin` | 上游包 |
 | `TRANSITION_EXEMPT`、根 `src/` 五文件 | S1 残差，见 [§3.1](#S1) |
 | `src/infra/provider/adapter/` | 随根 `src/` 变薄删或并进方言插件。不要再往这里加类型 |
-| `AgentMessage` / `EnvMessage` / `AgentPart` 是否加 `Xy` | 延后。不宜加。`Xy*` 留给口与叶（`XyModel`、`XyLlmMessage`、`XyEvent`）。`AgentMessage` 是会话日志组合，不是可替换口。改成 `XyAgentMessage` 会把书签词表和库契约焊成一套品牌。`AgentPart` 若将来加前缀应叫 `XyPart` |
+| `AgentMessage` / `EnvMessage` / `AgentPart` 是否加 `Xy` | 延后。不宜加。`Xy*` 留给适配器与叶（`XyModel`、`XyLlmMessage`、`XyEvent`）。`AgentMessage` 是会话日志组合，不是适配器。改成 `XyAgentMessage` 会把书签词表和库契约焊成一套品牌。`AgentPart` 若将来加前缀应叫 `XyPart` |
 
 <a id="PORTS"></a>
 
 #### 3.2.3 `ports` 模块（与 [§3.2.2](#NAMES) 同一批）
 
-`xylitol-plugin-sdk` 的 `ports` 是 crate 内私有模块。可替换口 trait 在 crate 根 `pub use`（`XyModel` / `XyTool` / `XySessionStore` / `AskUserGateway` / `BashChunk` 等）。调用点 `xylitol_plugin_sdk::XyModel`。不要把该模块改名为 `adapters`。
+概念词是**适配器**（`XyModel` / `XyTool` / `XySessionStore` / `AskUserGateway` / `BashChunk` 等）。产品文与规划文写适配器，不写 seam / port / 可替换口。
 
-原因：该模块装的是可替换口 trait，不是实现。实现已经叫 `OpenAiResponsesAdapter`、`McpToolAdapter`、`TuiInProcessAdapter`。再把 trait 模块叫 `adapters`，检索对不上。`seams` 能对上术语表“缝”，但 crate 根已经再导出，再留一层模块名没有收益。
+`xylitol-plugin-sdk` 的 `ports` 是 crate 内私有模块名（代码标识，不对外）。适配器 trait 在 crate 根 `pub use`。调用点 `xylitol_plugin_sdk::XyModel`。不要把该模块改名为 `adapters`：实现类型已经叫 `OpenAiResponsesAdapter`、`McpToolAdapter`、`TuiInProcessAdapter`，模块再叫 `adapters` 会把契约和实现检索焊在一起。根包 `src/protocol/mod.rs` 再导出 sdk 类型，不再导出 `ports` 模块。类型名 `Xy*` 不动。`RuntimeBaseline` 见 [§3.2.2](#NAMES)。
 
-根包 `src/protocol/mod.rs` 再导出 sdk 类型，不再导出 `ports` 模块。产品文“端口”第一次出现附“可替换口”。类型名 `Xy*` 不动。`RuntimeBaseline` 见 [§3.2.2](#NAMES)。
+<a id="FEATZH"></a>
+
+#### 3.2.4 其余 BDD `.feature` 按样板改写（延后，最低优先级，最后处理）
+
+**最后处理。** 不跟 S1 / 3.2.1–3.2.3 捆。S1 与残差清完之后再扫。样板：`llmanspec/specs/workspace-assembly/`。硬规则：`llmanspec/AGENTS.md` 语言节。
+
+从该样板收口的经验：
+
+- `规则:` = Gherkin Rule = 需求句，不执行。`@req:` 挂块头，validate 查重的是 req id。
+- `场景:` = Gherkin Scenario = 可执行例。rstest-bdd `#[scenario(name=)]` 只绑场景名，不绑规则标题。同文件场景名必须互异。
+- 「对齐」是两边都用术语表标准词，不是把规则标题复制成场景名。`validate` 不比较两层标题；同名合法，但一条规则加第二例会撞名。
+- 步骤 / purpose / 规则描述里的黑话改标准词（如「面」→「端」）。共用步骤先 `rg` 调用点再分批改。
+- 情态用必须 / 不得 / 宜。组织方向可写 crate 边界，不钉路径与类型名。不得为对齐改产品行为。
+
+处理其余 `llmanspec/specs/**/*.feature` 时：改 `规则:` / `场景:` / 步骤 → 同步 `tests/bdd/bindings_*.rs` 的 `name=` 与步骤函数 → `llman-sdd validate` + 该 capability 绑定测试。
 
 ---
 

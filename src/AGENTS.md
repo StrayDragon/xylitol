@@ -59,6 +59,7 @@ flowchart TB
 
   subgraph root["⑤ 组合根"]
     xylitol["xylitol<br/>argv + 默认接线"]
+    xylitol_rutis["xylitol-rutis<br/>唯一 use rutis"]
   end
 
   xylitol_official_plugin_session --> xylitol_plugin_sdk
@@ -82,6 +83,8 @@ flowchart TB
   xylitol --> xylitol_app_tui
 ```
 
+`xylitol-rutis` 是装配适配层，workspace 成员；组合根切装配器之前可以还不依赖它。执行权威 / 官方插件 / 产品端 **不得** 依赖它。
+
 | crate | 必须 | 不得 |
 |---|---|---|
 | `xylitol-plugin-sdk` | 词表 + 端口 + 错误。插件作者只依赖这一包 | 认识信封；放 HTTP / 假模型 / 观测写出；再拆 `xylitol-types` |
@@ -91,7 +94,8 @@ flowchart TB
 | `xylitol-official-plugin-*` | 只依赖 plugin-sdk。依赖用端口声明，由组合根注入 | 插件之间 `use`；依赖 protocol；客户端进这个前缀 |
 | `xylitol-app-tui` | 信封 + `xylitol-tui`；Host 词表（`XyEvent` / `SessionEntry`）经 attach 投影 | 依赖 runtime、官方插件 |
 | `xylitol-app-print` | 同进程直调 runtime | 依赖 serve / protocol；编 fory |
-| 根包 `xylitol` | argv + 默认接线。唯一列出官方插件的 `Cargo.toml` | 把组合根塞进 runtime |
+| `xylitol-rutis` | 唯一 `use rutis`。给组合根封装 `Ctx` / `Plugin` | 被 runtime、官方插件、产品端依赖；插件 `use rutis` |
+| 根包 `xylitol` | argv + 默认接线。唯一列出官方插件的 `Cargo.toml` | 把组合根塞进 runtime；直接 `use rutis` |
 
 官方插件七个：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks。没有 react。内置（默认挂）：session / compaction / provider-* / tools。配置启用：mcp / hooks。没配置则不 start。
 
@@ -172,7 +176,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 2. **既有 port**。不得旁路第二套语义。
 3. **新 port**（仅真实第二套替换，或嵌入/测试必须替换时）
 
-不得做插件市场、Extension Host、为未交付能力预留空壳 `Xy*`、“已是统一口再包一层”。改名不留兼容别名 / 双解析路径（一次性改调用点）。死码分诊走 skill `l8ng-audit-dead-code`。不得为 rutis / LSP / DAP / gpui / 语音端预埋空壳 crate。
+不得做插件市场、Extension Host、为未交付能力预留空壳 `Xy*`、“已是统一口再包一层”。改名不留兼容别名 / 双解析路径（一次性改调用点）。死码分诊走 skill `l8ng-audit-dead-code`。不得为 LSP / DAP / gpui / 语音端预埋空壳 crate。`xylitol-rutis` 是装配适配层，不是预埋空壳。
 
 Trust / Permission / MCP 产品语义分别见 `docs/architecture/` 对应文。边界：Trust 门禁**项目本地资源**；工具开箱 allow-all；MCP **有配置才装配**并支持重载。
 

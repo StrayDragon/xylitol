@@ -29,6 +29,7 @@ members = [
     "plugins/xylitol-official-plugin-tools",
     "plugins/xylitol-official-plugin-mcp",
     "plugins/xylitol-official-plugin-hooks",
+    "crates/xylitol-rutis",
 ]
 
 [workspace.dependencies]
@@ -46,6 +47,7 @@ xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-
 xylitol-official-plugin-tools = { path = "plugins/xylitol-official-plugin-tools" }
 xylitol-official-plugin-mcp = { path = "plugins/xylitol-official-plugin-mcp" }
 xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks" }
+rutis = "0.13.0"
 
 anyhow = "1.0.104"
 async-openai = { version = "0.42", default-features = false }

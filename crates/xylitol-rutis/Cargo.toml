@@ -1,0 +1,15 @@
+[package]
+name = "xylitol-rutis"
+version = "0.0.0-pre"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT"
+description = "Unique rutis import boundary for process assembly"
+repository = "https://github.com/straydragon/xylitol"
+publish = false
+
+[dependencies]
+rutis = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

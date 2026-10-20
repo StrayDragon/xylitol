@@ -36,6 +36,7 @@ REQUIRED_MEMBERS: dict[str, str] = {
     "plugins/xylitol-official-plugin-tools": "xylitol-official-plugin-tools",
     "plugins/xylitol-official-plugin-mcp": "xylitol-official-plugin-mcp",
     "plugins/xylitol-official-plugin-hooks": "xylitol-official-plugin-hooks",
+    "crates/xylitol-rutis": "xylitol-rutis",
 }
 
 # Maximum allowed xylitol-* Cargo deps (subset is OK for empty shells).
@@ -54,6 +55,7 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-official-plugin-tools": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-mcp": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-hooks": frozenset({"xylitol-plugin-sdk"}),
+    "xylitol-rutis": frozenset(),
 }
 
 # Third-party crates that must not appear in these packages' [dependencies].
@@ -66,6 +68,9 @@ FORBIDDEN_DEPS: dict[str, frozenset[str]] = {
 }
 
 TRANSITION_EXEMPT = frozenset({"xylitol"})
+
+# Only the assembly adapter may depend on rutis (including the fat root package).
+RUTIS_ADAPTER = "xylitol-rutis"
 
 
 def dep_names(section: dict[str, object] | None) -> set[str]:
@@ -119,6 +124,11 @@ def main() -> int:
             errors.append(f"{rel}: [package].name must be {pkg!r}")
             continue
         deps = dep_names(data.get("dependencies"))  # type: ignore[arg-type]
+        all_deps = (
+            deps
+            | dep_names(data.get("dev-dependencies"))  # type: ignore[arg-type]
+            | dep_names(data.get("build-dependencies"))  # type: ignore[arg-type]
+        )
         xy_deps = {d for d in deps if d.startswith("xylitol-")}
         allowed = ALLOWED_XYLITOL_DEPS[pkg]
         extra = xy_deps - allowed
@@ -130,11 +140,20 @@ def main() -> int:
         for crate, banned_in in FORBIDDEN_DEPS.items():
             if pkg in banned_in and crate in deps:
                 errors.append(f"{pkg}: must not depend on {crate}")
+        if "rutis" in all_deps and pkg != RUTIS_ADAPTER:
+            errors.append(f"{pkg}: only {RUTIS_ADAPTER} may depend on rutis")
 
     # Root stays fat during transition; do not apply FORBIDDEN_DEPS.
     root_pkg = root.get("package")
     if isinstance(root_pkg, dict) and root_pkg.get("name") not in TRANSITION_EXEMPT:
         errors.append("root [package].name must stay xylitol")
+    root_deps = (
+        dep_names(root.get("dependencies"))  # type: ignore[arg-type]
+        | dep_names(root.get("dev-dependencies"))  # type: ignore[arg-type]
+        | dep_names(root.get("build-dependencies"))  # type: ignore[arg-type]
+    )
+    if "rutis" in root_deps:
+        errors.append(f"xylitol: only {RUTIS_ADAPTER} may depend on rutis")
 
     if errors:
         print("error: crate graph gate failed:", file=sys.stderr)
