@@ -6,7 +6,7 @@
   @req:r1742
   规则: ModelRegistry provider
     ModelRegistry 须支持 register_provider(name, config) 与 has_configured_auth(model) / has_resolved_auth(model) 检查 API key 可用性。
-    场景: provider-registration-drives-round
+    场景: 厂商登记驱动回合
       假如 配置了 mock 模型 "test-model"
       当 启动 agent 会话并发送提示 "hi"
       那么 turn_end 事件触发
@@ -14,7 +14,7 @@
   @req:r1751
   规则: 模型发现
     ModelRegistry 须支持 get_available()，返回已注册 provider 的全部配置模型，按 provider 优先级排序。
-    场景: available-models-surface-in-list
+    场景: 可用模型表面于列表
       假如 驱动可用模型含 test-model
       当 以主机泵在 idle 提交 "/model"
       那么 模型列表槽打开且经驱动取可用模型
@@ -22,20 +22,20 @@
   @req:r1752
   规则: 模型默认值
     ModelRegistry 须仅为 openai 与 anthropic provider 维护默认模型 ID。Pre-1.0.0 其它 provider 不得有默认模型条目。默认模型 ID 须为有效、当前可用的模型标识（如 gpt-4o、claude-sonnet-4-20250514），不得为占位或不存在的模型名。该默认 ID 仅作显式解析/回退辅助，不得单独构成「用户已配置默认模型」的产品选中态；不得因仅存在 provider 环境变量而把该默认 ID 注册进可调用模型表（见 m12/m17）。
-    场景: builtin-defaults-two-families-ordered
+    场景: 内置缺省两族有序
       当 读取内置 provider 默认表
       那么 内置默认仅两族且优先级有序
 
   @req:r1753
   规则: 模型解析器
     System 须提供 resolve_model(pattern, available)，支持 provider/modelId 规范形式、裸 id 匹配、别名优先于带日期版本、以及 thinking-level:model pattern 解析。
-    场景: resolver-keeps-declared-levels
+    场景: 解析器保留已宣告档位
       假如 YAML 模型条目含 thinking_levels [off, high, max]
       当 加载配置并 resolve_model_meta
       那么 XyModelMeta.thinking_levels 与列表一致
 
   @req:r1754
-    场景: resolver-falls-back-to-session-model
+    场景: 解析器回落返回至会话模型
       假如 任务模型条目构建失败
       当 经任务级解析入口取模型
       那么 回退当前会话模型且回退态可观测
@@ -44,7 +44,7 @@
   规则: 模型回退
     目标模型 ID 不在 provider 可用列表时，ModelResolver 须构建回退 Model，保留用户意图并回退到同 provider 基础模型。
 
-    场景: resolver-fallback-keeps-intent
+    场景: 解析器回退保留意图
       假如 任务模型条目构建失败
       当 经任务级解析入口取模型
       那么 回退当前会话模型且回退态可观测
@@ -53,14 +53,14 @@
   规则: thinking-level-validate-clamp
     set_thinking_level（或 Driver 等价）在目标 level 不在当前模型支持集时 须拒绝且 不得更改当前值。匹配 须为精确字符串相等（与配置声明字面量一致）；不得因仅大小写或首尾空白差异而接受（例如声明 high 时 须拒绝 HIGH 与「 high 」）。换模、精确 /model <id> 或路径要求默认档时：可调模型 须采用支持集配置顺序的末项；仅精确 off 或不可调 须为 off。不得因 Settings.default_thinking_level 覆盖换模末项策略。会话 load/resume 还原分支末次 thinkingLevelChange 字符串时 须原样恢复，不得因集外而改写 JSONL 或自动追加 clamp 条目；配置漂移时 MAY 短暂 sticky 集外直至用户显式改档。产品面 须展示当前模型声明的档名列表；provider wire 差异经 thinking_level_map 与 api×compat 在请求边界生效。
 
-    场景: reject-unsupported
+    场景: 拒绝不支持
       假如 当前模型支持集为 off 与 high
       当 set_thinking_level 为 max
       那么 失败且当前 level 不变
   @req:r1744
   规则: thinking-level-on-generate
     Agent 在调用 generate_stream（或等价）时 须传入当前 thinking 档名字符串与模型 thinking_level_map（及可用的 thinking_budgets）；resolve 后 须影响下一轮 provider 请求体；不得仅更新会话/UI 状态而不影响请求组装。
-    场景: generate-carries-thinking-level
+    场景: 生成携带思考档位
       假如 当前模型支持集为 off 与 high
       当 set_thinking_level 为 high
       那么 getThinkingLevel 返回 "high"
@@ -69,14 +69,14 @@
   规则: thinking-level-exact-opaque
     运行时对 thinking 档名（支持集成员、set/cycle、Settings 默认是否 ∈ 支持集、可调判定中的关档字面量）须使用精确 opaque 字符串；关档约定字面量 须为精确 off。不得在匹配或可调判定中对档名做 ASCII 大小写折叠或 trim 归一。
 
-    场景: reject-case-variant
+    场景: 拒绝情形变体
       假如 当前模型支持集为 off 与 high
       当 set_thinking_level 为 HIGH
       那么 失败且当前 level 不变
   @req:r1745
   规则: no-silent-env-select
     bootstrap 不得在缺少用户显式模型别名配置时，仅因存在 provider API key 环境变量而向 ModelRegistry 注册 default_model_id_for_provider（或等价）默认模型；亦 不得自动将该默认 ID 设为当前选中模型。无显式模型配置时 registry 须为空且经 bootstrap 的表面 须硬失败（见 ce2）；未选中时应用面按 cli-entry ce18 展示。
-    场景: select-wins-over-settings-default
+    场景: 选择胜出越过设置缺省
       假如 Settings.default_thinking_level 为 off 且模型支持集为 off 与 high 与 max
       当 select_model 到该模型
       那么 thinking level 为 max
@@ -84,7 +84,7 @@
   @req:r1746
   规则: honor-model-entry-api
     bootstrap / resolve_model_meta（或等价装配）注册 XyModelMeta 时 须保留 ModelsConfig ModelEntry 的可选 api 字段写入 config.api 与 meta.api：省略 api 时 须走 AdapterKind::default_for（或等价）。显式可识别 api（含 openai-completions）须参与 adapter 选择；未识别字符串 须静默等同省略，不得为此单独报错。不得在注册路径把已配置的 api 字段写成 None。由单测覆盖，不得为静态接线单独扩 BDD step。
-    场景: entry-api-and-map-survive-resolve
+    场景: 入口API与映射存活解析
       假如 YAML 含 thinking_levels [off, high] 与 thinking_level_map high: max 与 off: null
       当 加载并 resolve_model_meta
       那么 meta 含 high→max 与 off→null
@@ -92,14 +92,14 @@
   @req:r1747
   规则: manifest-api-kind-default
     JSON model manifest 省略 api 时 须按 provider 选用与 AdapterKind::default_for 一致的协议族字符串（OpenAI→openai-responses，Anthropic→anthropic-messages）；显式 openai-completions 须可选且参与装配。由单测覆盖，不得为静态缺省单独扩 BDD step。
-    场景: manifest-api-default-by-provider
+    场景: 清单API缺省按厂商
       当 以 provider 种类读取适配器缺省
       那么 manifest 缺省按 provider 选协议族
 
   @req:r1749
   规则: explicit-model-entry-auth
     AppConfig ModelsConfig 中每个显式模型别名条目 须在 bootstrap 注册进 ModelRegistry（供 --list-models 与选模），不得因 API key 缺失或未解析而跳过注册。条目 api_key 省略或空串时注册 key 须为空；不得回落 provider kind 级环境变量（OPENAI_API_KEY / OPENAI_KEY / ANTHROPIC_API_KEY / ANTHROPIC_KEY）。真发请求时缺 key 须失败并走鉴权引导（m7/ux4）。由单测覆盖，不得为静态边界单独扩 BDD step。
-    场景: explicit-entry-registers-independent-model
+    场景: 显式入口登记独立模型
       假如 任务模型条目可构建
       当 经任务级解析入口取模型
       那么 返回独立实例且其模型标识与条目一致
@@ -108,12 +108,12 @@
   规则: 任务级模型解析
     System 须提供按任务用途解析模型的单一入口：给定任务模型条目（provider/model 等连接字段），经注入的 provider 构建器产出独立 XyModel 实例；条目缺失、解析或构建失败时 须回退当前会话模型，且回退 须可观测（归因标注 + 受控频率通知）；任务条目 不得注册进 ModelRegistry（不占 --list-models 与模型循环）；不得为每个任务角色复制解析逻辑。compact 摘要是第一个消费者（domain-compaction c7）；后续同类旁路任务复用同一入口，不预建未落地任务的抽象。
 
-    场景: task-model-resolves-independent
+    场景: 任务模型解析独立
       假如 任务模型条目可构建
       当 经任务级解析入口取模型
       那么 返回独立实例且其模型标识与条目一致
 
-    场景: task-model-build-failure-falls-back
+    场景: 任务模型构建失败回落返回
       假如 任务模型条目构建失败
       当 经任务级解析入口取模型
       那么 回退当前会话模型且回退态可观测

@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use crate::bdd::steps_server::{ServerTest, start_host};
 use rstest_bdd_macros::{given, then, when};
-use xylitol::wiring::host_client::{HostClient, HttpWsClient};
+use xylitol_app_tui::host_client::{HostClient, HttpWsClient};
 use xylitol_protocol::v3::generated::Event as V3Event;
 use xylitol_protocol::v3::{
     ClientRequest, Describe, DescribeResult, Frame, Notification, Request, ResponsePayload,
@@ -307,7 +307,7 @@ async fn g_dual_rail_prompt(_server_test: &ServerTest) {}
 async fn w_turn_finished(server_test: &ServerTest) {
     // 双路径事件流对拍(spec r1908):同一会话注入代表事件流,JSON 与 v3
     // 路径各自订阅收集,解码回领域 Event;结果存 fixture 供断言。
-    let pairs = xylitol::wiring::host_client::dual_rail_event_parity()
+    let pairs = xylitol::wiring::occupancy::runtime::dual_rail_event_parity()
         .await
         .expect("parity run");
     let ok = pairs.iter().all(|(a, b)| a == b);
@@ -645,5 +645,25 @@ async fn t_product_default_v3(server_test: &ServerTest) {
     assert!(
         formats.iter().any(|f| f == "fory-v3"),
         "default client MUST speak fory-v3: {formats:?}"
+    );
+}
+
+#[when("读取信封格式开关环境变量名")]
+fn w_envelope_env_name() {}
+
+#[then("名为 XYLITOL_ENVELOPE_V3 且未设时产品默认开")]
+fn t_envelope_env_name() {
+    assert_eq!(
+        xylitol_app_tui::host_client::ENVELOPE_FORMAT_ENV,
+        "XYLITOL_ENVELOPE_V3"
+    );
+    assert_ne!(
+        xylitol_app_tui::host_client::ENVELOPE_FORMAT_ENV,
+        "XYLITOL_WIRE_V3"
+    );
+    let client = HttpWsClient::new("http://127.0.0.1:1");
+    assert!(
+        client.envelope_on_for_test(),
+        "unset env MUST default the product carrier on"
     );
 }

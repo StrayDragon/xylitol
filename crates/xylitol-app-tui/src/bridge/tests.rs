@@ -1,6 +1,6 @@
 use super::*;
+use crate::wire_event::{FromWireEvent, ToWireEvent};
 use xylitol_plugin_sdk::message::AgentMessage;
-use xylitol_protocol::{FromWireEvent, ToWireEvent};
 
 fn assistant_end() -> XyEvent {
     XyEvent::AgentEnd {

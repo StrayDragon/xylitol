@@ -305,12 +305,12 @@ async fn seed_labeled(store: &dyn XySessionStore, session_id: &str) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::session::SessionManager;
+    use crate::debug_fixtures::InMemorySessionStore;
     use xylitol_plugin_sdk::session::message_text;
 
     #[tokio::test]
     async fn seed_multiturn_has_user_text() {
-        let mgr = SessionManager::in_memory();
+        let mgr = InMemorySessionStore::new();
         mgr.create("d1", Some("."), None).await.unwrap();
         let id = seed_scene(&mgr, "d1", "session-tree-multiturn")
             .await
@@ -332,7 +332,7 @@ mod tests {
 
     #[tokio::test]
     async fn seed_labeled_alias_has_label() {
-        let mgr = SessionManager::in_memory();
+        let mgr = InMemorySessionStore::new();
         mgr.create("d2", Some("."), None).await.unwrap();
         seed_scene(&mgr, "d2", "tree-labeled").await.unwrap();
         let entries = mgr.load_entries("d2").await.unwrap();
@@ -352,7 +352,7 @@ mod tests {
     async fn seed_branched_has_sibling_children() {
         use xylitol_plugin_sdk::session::build_session_tree;
 
-        let mgr = SessionManager::in_memory();
+        let mgr = InMemorySessionStore::new();
         mgr.create("d3", Some("."), None).await.unwrap();
         let id = seed_scene(&mgr, "d3", "branched").await.unwrap();
         assert_eq!(id, "session-tree-branched");
@@ -371,7 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn seed_ao_perf_scroll_has_many_messages() {
-        let mgr = SessionManager::in_memory();
+        let mgr = InMemorySessionStore::new();
         mgr.create("d4", Some("."), None).await.unwrap();
         let id = seed_scene(&mgr, "d4", "long-transcript").await.unwrap();
         assert_eq!(id, "ao-perf-scroll");
@@ -387,7 +387,7 @@ mod tests {
     async fn seed_activity_fold_resume_has_tools_ask_and_older_turns() {
         use xylitol_plugin_sdk::session::{count_tool_calls, is_tool_call_part, message_parts};
 
-        let mgr = SessionManager::in_memory();
+        let mgr = InMemorySessionStore::new();
         mgr.create("d5", Some("."), None).await.unwrap();
         let id = seed_scene(&mgr, "d5", "activity-fold-resume")
             .await

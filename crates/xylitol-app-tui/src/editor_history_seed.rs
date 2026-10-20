@@ -220,13 +220,11 @@ mod tests {
 
     #[tokio::test]
     async fn collect_seed_from_store_skips_other_cwd() {
-        use crate::infra::session::SessionManager;
+        use crate::debug_fixtures::InMemorySessionStore;
         use std::sync::Arc;
         use xylitol_plugin_sdk::XySessionStore;
 
-        let dir = tempfile::tempdir().unwrap();
-        let mgr = SessionManager::new(dir.path().join("sessions"));
-        let store: Arc<dyn XySessionStore> = Arc::new(mgr);
+        let store: Arc<dyn XySessionStore> = Arc::new(InMemorySessionStore::new());
 
         let here = format!("here-{}", uuid::Uuid::new_v4());
         let other = format!("other-{}", uuid::Uuid::new_v4());
@@ -276,13 +274,11 @@ mod tests {
 
     #[tokio::test]
     async fn spawn_cli_session_load_returns_entries() {
-        use crate::infra::session::SessionManager;
+        use crate::debug_fixtures::InMemorySessionStore;
         use std::sync::Arc;
         use xylitol_plugin_sdk::XySessionStore;
 
-        let dir = tempfile::tempdir().unwrap();
-        let mgr = SessionManager::new(dir.path().join("sessions"));
-        let store: Arc<dyn XySessionStore> = Arc::new(mgr);
+        let store: Arc<dyn XySessionStore> = Arc::new(InMemorySessionStore::new());
         let sid = format!("cli-{}", uuid::Uuid::new_v4());
         store.create(&sid, Some("."), None).await.unwrap();
         store

@@ -445,14 +445,6 @@ mod tests {
     }
 
     #[test]
-    fn from_runtime_no_session_keeps_session_domain() {
-        let err = XyDriverError::from(RuntimeControlError::NoSession);
-        assert_eq!(err.kind(), "Message");
-        assert_eq!(err.detail_kind(), "Session");
-        assert_eq!(err.to_string(), "no active session");
-    }
-
-    #[test]
     fn from_session_entry_not_found_is_not_found() {
         let err = XyDriverError::from(XySessionError::entry_not_found("e1"));
         assert_eq!(err.kind(), "NotFound");

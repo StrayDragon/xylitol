@@ -7,7 +7,7 @@
   规则: hooks-wiring-feature
     hooks 接线验收 须以场景大纲固定「观察型 / 可取消」库缝接线；与 agent-hooks（调度器机制）分工：本 capability 只证 Driver/XyHookBus 权威路径，不得用 HookDispatcher::dispatch 冒充。
 
-    场景大纲: wiring-observe-matrix
+    场景大纲: 接线观察矩阵
       假如 注册了匹配 <event> 的 hook
       当 执行操作 <op>
       那么 hook 被调用且上下文含键 <context_key>
@@ -21,7 +21,7 @@
         | "model_select"          | "选择模型 fake"     | model        |
         | "thinking_level_select" | "设置思考级别 high" | level        |
 
-    场景大纲: wiring-cancel-matrix
+    场景大纲: 接线取消矩阵
       假如 注册了匹配 <event> 的 hook 且返回 block <block_reason>
       当 执行操作 <op>
       那么 操作失败原因包含 <block_reason>
@@ -35,34 +35,34 @@
   规则: operation-dictionary-steps
     BDD runner 须提供可复用步骤：注册匹配事件的 hook、hook 返回 JSON、执行操作「操作名」、断言 hook 被调用、断言 hook 上下文包含键、断言操作被阻止；操作名 须经显式字典映射到权威路径，未知操作名 须失败且信息可读。
 
-    场景: unknown-op
+    场景: 未知操作
       当 执行操作 "未登记操作"
       那么 操作失败原因包含 "未知操作"
   @req:r1817
   规则: smoke-already-wired
     仓库 须至少有一条经库缝触发的观察型例子（如 session_start 或 agent_start），经 InProcessDriver 等库缝注入 XyHookBus 并录制 hook 调用；不得用直接 HookDispatcher::dispatch 冒充接线证明。
 
-    场景: smoke-hook-wired
+    场景: 冒烟钩子接线
       当 读取库缝观察接线
       那么 有经库缝触发的例子
   @req:r1818
   规则: provider-matrix-out-of-scope
     model_select 与 thinking_level_select 已有可执行场景；OpenAI Responses / Anthropic Messages 的 provider 三缝由 agent-hooks 覆盖。本 feature 不得挂会导致 CI 失败的 provider HTTP 三缝场景。
 
-    场景: provider-matrix-scenarios
+    场景: 厂商矩阵场景
       当 读取 provider 选择场景
       那么 已有可执行场景
   @req:r1819
   规则: curated-xy-hook-bus
     crate 根精选 pub use 须导出 XyHookBus 与 XyHookOutcome（及 NoopHookBus）；嵌入方 须能在不 import protocol 深层子路径的情况下引用这些符号；不得将 HookDispatcher 或 HookEvent 列为精选导出。
 
-    场景: curated-hook-bus-reexport
+    场景: 精选钩子总线再导出
       当 读取 crate 根再导出
       那么 精选导出总线与结果
   @req:r1820
   规则: wiring-model-ops
     hooks-wiring 操作字典 须支持「选择模型 fake」与「设置思考级别 high」；两操作的观察语义由 wiring-observe-matrix 的 case 4/5（event=model_select / thinking_level_select）固定，不另设独立场景。
 
-    场景: model-ops-covered-by-observe-matrix
+    场景: 模型操作覆盖按观察矩阵
       当 读取 provider 选择场景
       那么 观察矩阵覆盖模型与思考级别操作

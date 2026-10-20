@@ -7,12 +7,12 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai/provider-openai.feature",
-    name = "thinking-params-by-family-and-compat"
+    name = "思考参数按族与兼容"
 )]
 fn test_c2826_thinking_families(provider_bdd: ProviderBdd) {}
 
 #[scenario(
     path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai/provider-openai.feature",
-    name = "responses-error-embedded-message-surface"
+    name = "Responses错误内嵌消息表面"
 )]
 fn test_c2826_responses_error(provider_bdd: ProviderBdd) {}

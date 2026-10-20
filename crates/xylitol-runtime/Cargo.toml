@@ -9,8 +9,9 @@ repository = "https://github.com/StrayDragon/xylitol"
 publish = false
 
 [lib]
-# Plugin-coupled unit tests stay in the xylitol crate / BDD until W2.5.
+# Plugin-coupled unit tests stay in the xylitol crate / BDD.
 test = false
+doctest = false
 
 [dependencies]
 xylitol-plugin-sdk = { workspace = true }

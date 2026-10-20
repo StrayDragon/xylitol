@@ -4,333 +4,333 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "start-healthz"
+    name = "启动healthz"
 )]
 async fn test_server_start_healthz(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "second-instance-rejected"
+    name = "第二次实例拒绝"
 )]
 async fn test_server_second_instance_rejected(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "server-under-app"
+    name = "服务端低于应用"
 )]
 async fn test_sr1_server_under_app(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "product-path-rpc"
+    name = "产品路径RPC"
 )]
 async fn test_sr_env1_jsonrpc(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "server-rest-ws-under-app"
+    name = "服务端其余WebSocket低于应用"
 )]
 async fn test_sr2_routes(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "server-lock-under-app"
+    name = "服务端锁低于应用"
 )]
 async fn test_sr3_bind(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "reconnect-replay"
+    name = "重连回放"
 )]
 async fn test_sr4_replay(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "approval-roundtrip"
+    name = "审批往返"
 )]
 async fn test_sr5_approval(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "lock-file-json"
+    name = "锁文件JSON"
 )]
 async fn test_sr7_no_lock(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "port-retry-binds"
+    name = "端口重试绑定"
 )]
 async fn test_sr8_no_retry(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "run-endpoint-works"
+    name = "运行端点可用"
 )]
 async fn test_sr9_prompt(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "server-composition-export-io"
+    name = "服务端组合导出IO"
 )]
 fn test_sr10_export(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "no-bare-runtime"
+    name = "无裸运行时"
 )]
 fn test_sr_driver1(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "remote-commands"
+    name = "远端命令"
 )]
 fn test_sr_remote1(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "shared-path"
+    name = "共享路径"
 )]
 fn test_sr_dispatch1(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "rest-get-tree"
+    name = "其余读取树"
 )]
 async fn test_sr_st1_rest(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "remote-travel"
+    name = "远端旅行"
 )]
 fn test_sr_st1_remote(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "remote-session-methods"
+    name = "远端会话方法"
 )]
 fn test_sr_method1(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "remote-host-resource-methods"
+    name = "远端Host资源方法"
 )]
 fn test_sr_resource1(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "frame-serialize"
+    name = "帧序列化"
 )]
 fn test_w1(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "subscribe-frame"
+    name = "订阅帧"
 )]
 async fn test_w2(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "ws-text-unary-rejected"
+    name = "WebSocket文本一元拒绝"
 )]
 async fn test_w_ws_unary(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "ws-upgrade-mounted"
+    name = "WebSocket升级已挂载"
 )]
 async fn test_w3(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "seq-monotonic"
+    name = "序号单调"
 )]
 fn test_w4(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "resync-on-wrap"
+    name = "再同步时包裹"
 )]
 async fn test_w5(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "resync-recover"
+    name = "再同步恢复"
 )]
 async fn test_w6(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "ws-events-pushed"
+    name = "WebSocket事件已推送"
 )]
 async fn test_w7(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "cold-restore-snapshot-projection"
+    name = "冷恢复快照投影"
 )]
 async fn test_w8(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "replay-window-does-not-pollute-snapshot"
+    name = "回放窗口会不污染快照"
 )]
 async fn test_w8_replay_window(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "approve-roundtrip"
+    name = "批准往返"
 )]
 async fn test_approval_roundtrip(approval_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "tool-denied"
+    name = "工具拒绝"
 )]
 async fn test_approval_denied(approval_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "approval-broadcast"
+    name = "审批广播"
 )]
 async fn test_rr1(approval_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "first-wins"
+    name = "首次胜出"
 )]
 async fn test_rr2(approval_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "timeout-error"
+    name = "超时错误"
 )]
 async fn test_rr3(approval_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "second-answer-ignored"
+    name = "第二次作答忽略"
 )]
 async fn test_rr4(approval_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "two-process-write-conflict"
+    name = "两进程写入冲突"
 )]
 async fn test_sr_w1_two_process_write_conflict(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "holder-exit-releases"
+    name = "持有者退出释放"
 )]
 async fn test_sr_w1_holder_exit_releases(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "last-clean-disconnect-releases"
+    name = "最后干净断开释放"
 )]
 async fn test_sr_w1_last_clean_disconnect(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "linger-reconnect-same-process"
+    name = "滞留重连同一进程"
 )]
 async fn test_sr_w1_linger_reconnect(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "openapi-debug-doc"
+    name = "OpenAPI调试文档"
 )]
 async fn test_sr_oapi1_openapi_debug_doc(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "queue-stats-readonly-unary"
+    name = "队列统计只读一元"
 )]
 async fn test_sr_q1_queue_stats(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "reload-cooperative-cancel"
+    name = "重载协作取消"
 )]
 async fn test_sr_abort1_cancel(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "abort-idle-falls-back-to-session"
+    name = "中止空闲回落返回至会话"
 )]
 async fn test_sr_abort1_idle(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "subscription-survives-agent-end"
+    name = "订阅存活agent结束"
 )]
 async fn test_sr_sub1_alive(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "idempotent-replay-first-result"
+    name = "幂等回放首次结果"
 )]
 async fn test_sr_idem_replay(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "idempotency-conflict-differs"
+    name = "幂等冲突不同"
 )]
 async fn test_sr_idem_conflict(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "idempotency-inflight-wait"
+    name = "幂等在途等待"
 )]
 async fn test_sr_idem_inflight(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "starting-window-503"
+    name = "启动中窗口503"
 )]
 async fn test_sr_rdy1_starting_window(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "ready-flips-healthz"
+    name = "就绪翻转healthz"
 )]
 async fn test_sr_rdy1_ready_flips(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "failed-nonretryable"
+    name = "失败不可重试"
 )]
 async fn test_sr_rdy1_failed(server_test: ServerTest) {}
 
 // c2922：就绪状态机迁移表（xstate E1-E4 执行侧；sync fn 保 outline 全 case 展开）
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "readiness-phase-transition-table"
+    name = "就绪阶段转换表"
 )]
 fn test_sr_rdy1_transition_table(server_test: ServerTest, from: String, event: String, to: String) {
 }
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "serve-writes-registration-file"
+    name = "服务写入登记文件"
 )]
 async fn test_sr_reg1_writes_file(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "attach-diagnoses-stale-registration"
+    name = "attach诊断过期登记"
 )]
 async fn test_sr_reg1_stale_diagnosis(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "registration-takeover-evicts-old-daemon"
+    name = "登记接管驱逐旧守护进程"
 )]
 async fn test_sr_reg1_takeover(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "staged-wire-import"
+    name = "暂存线协议导入"
 )]
 async fn test_sr_imp1_staged_import(server_test: ServerTest) {}
 
@@ -338,118 +338,118 @@ async fn test_sr_imp1_staged_import(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "agent-end-keeps-mux-subscription"
+    name = "agent结束保留复用订阅"
 )]
 async fn test_ath36_agent_end_keeps_mux(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "cold-restore-single-snapshot"
+    name = "冷恢复单一快照"
 )]
 async fn test_ath37_cold_restore_single_snapshot(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "cold-restore-ignores-live-tape"
+    name = "冷恢复忽略在线磁带"
 )]
 async fn test_ath37_cold_restore_ignores_tape(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "subscription-idle-wait-is-bounded"
+    name = "订阅空闲等待为有界"
 )]
 async fn test_ath39_idle_wait_bounded(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "reconnect-grace-then-toast"
+    name = "重连宽限然后提示条"
 )]
 async fn test_ath43_reconnect_grace_then_toast(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "estimate-context-unary-registered-readonly"
+    name = "估算上下文一元已登记只读"
 )]
 fn test_sc_estimate_registered(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "fixed-zone-resources-frame-is-notification"
+    name = "固定区资源帧为通知"
 )]
 fn test_sc_fixed_zone_frame(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "fixed-zone-resources-method-on-product-table"
+    name = "固定区资源方法时产品表"
 )]
 fn test_sc_fixed_zone_method(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "estimate-context-host-source-not-self-estimate"
+    name = "估算上下文Host来源不自身估算"
 )]
 fn test_sc_estimate_host_source(t2_est_bdd: T2EstBdd) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "prompt-runs-on-subscribed-session"
+    name = "提示词运行时已订阅会话"
 )]
 async fn test_sr_c2841_prompt_session_identity(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "model-sync-on-bind"
+    name = "模型同步时绑定"
 )]
 async fn test_sr_c2841_model_sync_on_bind(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "model-sync-on-rebind-is-transient"
+    name = "模型同步时重绑为瞬时"
 )]
 async fn test_sr_c2850_model_sync_rebind_transient(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "command-keeps-session-identity"
+    name = "命令保留会话身份"
 )]
 async fn test_sr_c2842_v3_command_session_identity(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "get-state-reflects-writer-model"
+    name = "读取状态反映写者模型"
 )]
 async fn test_sr_c2842_get_state_writer_model(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "non-binary-body-is-illegal-envelope"
+    name = "非二进制正文为非法信封"
 )]
 async fn test_sr_r1928_nonbinary_body(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "arm-freeze-bounded-under-hanging-mcp"
+    name = "武装冻结有界低于挂起MCP"
 )]
 async fn test_sr_r1923_arm_freeze_bounded(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "arm-freeze-lease-free-under-write-conflict"
+    name = "武装冻结租约空闲低于写入冲突"
 )]
 async fn test_sr_r1925_arm_freeze_lease_free(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "inflight-cold-subscribe-observes"
+    name = "在途冷订阅观察"
 )]
 async fn test_sr_c2895_observe_bind(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "observe-passes-agent-end-only"
+    name = "观察传递agent结束仅"
 )]
 async fn test_sr_c2895_observe_filter(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "replay-targeted-to-new-subscriber"
+    name = "回放定向至新订阅者"
 )]
 async fn test_sr_c2895_targeted_replay(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "second-root-busy-rejected"
+    name = "第二次根忙碌拒绝"
 )]
 async fn test_sr_c2895_busy_reject(server_test: ServerTest) {}

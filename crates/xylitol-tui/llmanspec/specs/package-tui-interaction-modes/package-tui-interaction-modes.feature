@@ -8,7 +8,7 @@
   规则: dual-mode-seam
     xylitol-tui 须 支持两种交互模式：Inline（主屏差分 / 终端 scrollback 与终端原生选区）与 ApplicationOwned（应用自管视口 + 应用内选区）。库 须 提供可观察的**构造期**模式入口；一次会话 须 只有一个主模式。不得 在同一渲染栈上混用终端原生选区与应用内选区。产品 host 不得 提供运行中热切（改模式 = 新建 TUI/HostSession 或结束进程）；库 API 不得 把「改标志」包装成无感热切。
 
-    场景: default-mode-a-inline
+    场景: 缺省模式行内2
       假如 新建默认 TUI
       当 查询交互模式
       那么 模式为 Inline 且应用会话未激活
@@ -19,7 +19,7 @@
   规则: mode-b-drag-select
     ApplicationOwned 在 mouse capture 开启且应用会话已 begin 时 须 将未修饰左键拖选接到应用内选区：按下记录锚点、拖动更新焦点、选区高亮出现在绘出的 transcript 可见行上。空选（锚点与焦点重合）不得 触发复制成功路径。
 
-    场景: drag-select-copies-transcript
+    场景: 拖选选择复制誊本
       假如 ApplicationOwned 应用会话已 begin 且 transcript 有可拖选文本
       当 未修饰左键拖选非空范围并松开
       那么 发出 OSC52 剪贴板序列
@@ -30,7 +30,7 @@
   规则: mode-b-copy-on-release
     ApplicationOwned 在左键松开且选区非空时 须 默认将选中纯文本写入剪贴板。缺省路径 须 能发出 OSC52（经 Terminal::write，且在差分 batch 外），并 MAY 同时或回退到本地剪贴板后端。该默认 须 可配置关闭。空选 不得 发出复制。
 
-    场景: copy-on-release-osc52
+    场景: 复制时发布OSC52
       假如 ApplicationOwned 应用会话已 begin 且 transcript 有可拖选文本
       当 未修饰左键拖选非空范围并松开
       那么 发出 OSC52 剪贴板序列
@@ -38,7 +38,7 @@
   规则: mode-b-input-exclude
     ApplicationOwned 布局 须 将主输入面（Editor/Input 或等价 dock）置于 transcript 选区坐标系之外：绘出帧的底部 dock 行 不得 进入 transcript 选区文本抽取；指针在 dock 内按下时 不得 以 dock 文本作为 transcript 拖选起点。
 
-    场景: dock-row-excluded-from-selection
+    场景: 停靠栏行排除来自选区
       假如 transcript 拖选进行中
       当 指针拖入 dock 矩形
       那么 选区仍在且焦点夹在 transcript 底边
@@ -55,7 +55,7 @@
   规则: mode-b-wheel-app-scroll
     ApplicationOwned 应用会话激活时，落在 transcript 视口内的滚轮事件 须 滚动应用视口且在后续帧保持视口位置（非强制 follow-end），不得 依赖终端 scrollback 滚历史。用户滚回底部后 MAY 恢复跟随最新内容。
 
-    场景: wheel-sticky-viewport
+    场景: 滚轮粘滞视口
       假如 ApplicationOwned 视口已 follow 到底
       当 在 transcript 内滚轮向上并重绘
       那么 scroll_top 不回到底部
@@ -66,7 +66,7 @@
   规则: mode-b-dock-drag-clamp
     ApplicationOwned 在 transcript 拖选进行中，指针移入 dock 矩形时 须 将焦点夹到 transcript 视口底边（或等价）并继续扩展选区，不得 因此清除选区或提前触发复制取消；松手在 dock 内时 须 按正常松手路径结束选区（含默认复制）。已完成（非拖动中）的 transcript 选区在指针移过 dock 时 不得 被自动清除。按下始于 dock 时仍适用 ptim06（不启 transcript 选区）。
 
-    场景: dock-drag-clamp-keeps-selection
+    场景: 停靠栏拖选钳制保留选区
       假如 transcript 拖选进行中
       当 指针拖入 dock 矩形
       那么 选区仍在且焦点夹在 transcript 底边
@@ -74,7 +74,7 @@
   规则: mode-b-editor-selection
     ApplicationOwned 下主输入面（Editor 或等价）须 提供与 transcript 选区相互独立的应用内选区：未修饰拖选 须 能覆盖 Editor 缓冲中的多行；高亮与复制 须 仅作用于输入缓冲文本，不得 写入 transcript 选区状态。按下始于 dock/Editor 时，transcript 选区 MAY 被清除以让出交互。库 须 提供可测的 Editor 选区 seam（包级单测），供产品 TUI 下游接线。
 
-    场景: editor-multiline-selection
+    场景: 编辑器多行选区
       假如 ApplicationOwned 下 Editor 有多行缓冲
       当 在 Editor 内未修饰拖选跨行并松开
       那么 仅输入缓冲文本进入复制路径且 transcript 选区未写入
@@ -85,7 +85,7 @@
   规则: mode-b-copy-notice
     ApplicationOwned 在松手复制成功（非空选且实际发出复制路径）后 须 发出可观察的短时 copy-notice 信号（pending 标志、回调或等价），供 host/demo 展示用户可见提醒。空选、复制关闭或未发出复制时 不得 发出该信号。提示展示 不得 写入 transcript / ScrollNotice；展示 TTL 宜 约 1.5–3 秒后自动消失。库本身 MAY 只提供信号而不强制绘出文案；若库内绘出，落点 宜 在 dock 带内（输入面上方）单行。
 
-    场景: copy-notice-after-success
+    场景: 复制提示之后成功
       假如 ApplicationOwned 应用会话已 begin
       当 松手复制成功
       那么 copy-notice 信号可观察且空选不发

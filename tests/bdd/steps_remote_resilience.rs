@@ -12,8 +12,10 @@ use std::collections::VecDeque;
 use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
-use xylitol::{HostClient, HostClientError, MuxStream, XyDriver};
-use xylitol::{LinkTunings, XyRemoteDriver};
+use xylitol_app_tui::XyDriverError;
+use xylitol_app_tui::XyRemoteDriver;
+use xylitol_app_tui::driver::{LinkTunings, XyDriver};
+use xylitol_app_tui::host_client::{HostClient, HostClientError, MuxStream};
 use xylitol_protocol::RpcMessage;
 use xylitol_protocol::envelope::PROTOCOL_VERSION;
 
@@ -397,7 +399,7 @@ async fn g_stale_conn(resilience_bdd: &ResilienceBdd) {
 #[when("触发重订或换会话产生新代循环后旧代连接迟到推入事件")]
 async fn w_stale_late_frame(resilience_bdd: &ResilienceBdd) {
     let mut rig = take_rig(resilience_bdd);
-    xylitol::wiring::dispatch::dispatch(
+    xylitol_app_tui::dispatch::dispatch(
         &mut rig.driver,
         xylitol_protocol::Command::SwitchSession {
             session_path: "s-res-2".into(),

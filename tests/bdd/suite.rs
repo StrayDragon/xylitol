@@ -75,7 +75,7 @@ mod steps_domain_security;
 mod steps_envelope;
 mod steps_hooks;
 mod steps_infra_runtime;
-mod steps_layer_probe;
+mod steps_layer_invariants;
 mod steps_otel_obs;
 mod steps_package_tui_engine;
 mod steps_package_tui_interaction_modes;

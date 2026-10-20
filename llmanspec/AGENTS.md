@@ -55,7 +55,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 
 ## 语言
 
-- spec 的 `purpose` / requirement statement / scenario 步骤 **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。`规则:` 标题用术语表标准词写需求句。嵌套 `场景:` 名写这一例在测什么的独立中文名；不得英文 kebab，不得复制规则标题。存量英文 `场景:` 是卫生债，见 `_TODO.md` §3.2.4，不跟进行中的 change 捆。
+- spec 的 `purpose` / requirement statement / scenario 步骤 **MUST 中文**；技术标识符（类型名、路径、命令、req_id）保留英文。`规则:` 标题用术语表标准词写需求句。嵌套 `场景:` 名写这一例在测什么的独立中文名；不得英文 kebab，不得复制规则标题。
 - **单轨 feature-as-spec**：每个 capability 恰好一个 live spec 文件 `llmanspec/specs/<capability>/<capability>.feature`；validate 只读取 `.feature`。文件头部注释 `# language:` / `# capability:` / `# purpose:` / `# scope:` 必备。
 - 场景语义（原生分层，完整格式以 `llman-sdd-propose` / `llman-sdd-ff` skill 内嵌 feature-contract 为 SSOT）：`@req:<id`> 挂 `规则:` 块头 = 全局唯一需求句柄（validate 查重）；嵌套 `场景:`（假如/当/那么）= 可执行示例，由 `tests/bdd/bindings_*.rs` 的 `#[scenario(path=…, name=…)]` 按**精确名与步骤文本**绑定；无嵌套场景 = 裸规则（review `pending` 计量；无法程序化表达的需求才保留，理由记 proposal/design）。增删改既有 `规则:` 块 = WARNING 报告制，不阻断 validate / finalize / diff；控制点 = git 分支对比 + `llman-sdd review` / `change diff`。
 - **情态动词词表（对齐 STC 简明技术中文词表强度词条）**：约束 statement 用中文情态——要求 `必须`，否定 `不得`／`禁止`，推荐 `宜`；避免 `应`／`应当`／`应该`／`务必`／`一定要`。英文 MUST/SHALL/SHOULD 不用于中文陈述（引用原文、技术标识符除外），存量随触清。

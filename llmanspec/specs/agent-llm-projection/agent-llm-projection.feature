@@ -8,13 +8,13 @@
   规则: session-vs-llm-vocab
     AgentMessage 须作为 session/agent 真源语义，以组合表达：Llm(XyLlmMessage) 与 Env(EnvMessage)。物理模块 须位于 protocol 根（供 ports/wire 签名与 infra 可见）；agent 须提供 project_for_llm 并将类型再导出。agent MAY 依赖 bridge DTO；不得再维护平行 LLM 叶 enum；不得依赖 bridge HTTP/vendor SDK。发往模型前 须在 agent 内经 project_for_llm 得到 Vec<XyLlmMessage>。不得将 AgentMessage 作为 XyModel 端口入参。
 
-    场景: session-vs-llm-vocab-boundary
+    场景: 会话对照模型词表边界
       当 读取消息词汇分层
       那么 AgentMessage 以组合表达且协议词汇单一
   @req:r1559
   规则: 主仓映射层
     主仓 agent 须经 project_for_llm（或等价）将 AgentMessage 投影为 Vec<XyLlmMessage>：Llm 臂 须 passthrough；Env 折叠策略留在 agent。XyModel 调用方 须只传递投影后的 LLM DTO。agent MAY 依赖 bridge DTO 以组合 AgentMessage::Llm；agent 不得直接依赖 xylitol_official_plugin_provider_openai 的 HTTP/vendor SDK 类型。
 
-    场景: projection-via-llm-project
+    场景: 投影经模型项目
       当 读取主仓投影入口
       那么 AgentMessage 经投影为协议消息

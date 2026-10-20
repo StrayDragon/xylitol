@@ -12,6 +12,7 @@ use xylitol_serve::{Gateway, ListenConfig, OccupiedHost, RunningListener};
 
 use crate::wiring::bootstrap::{BootstrapError, BootstrapInput, resolve_assembly};
 use crate::wiring::composition::build_baseline;
+use crate::wiring::occupancy::factory::ProductOccupancyFactory;
 use crate::wiring::occupancy::host::{HostState, ReloadBaseline};
 
 /// Handle to a running server. Dropping this triggers graceful shutdown.
@@ -129,15 +130,23 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
         build_baseline(assembly.into_build_options())?
     };
 
+    let factory = Arc::new(ProductOccupancyFactory::new(
+        ports.clone(),
+        cwd.clone(),
+        agent_dir.clone(),
+        project_trusted,
+        mcp_servers,
+        default_model_id.clone(),
+    ));
     Ok(HostState::from_bootstrap(
         ports,
         ReloadBaseline {
             cwd,
             agent_dir,
             project_trusted,
-            mcp_servers,
             default_model_id,
         },
+        factory,
         fallback_session,
     ))
 }
@@ -174,13 +183,99 @@ pub async fn bind_serve(
     xylitol_serve::bind_listen(&config.listen(), gateway).await
 }
 
+/// Domain-object event parity: inject journal events, collect v3 mux frames.
+pub async fn dual_rail_event_parity()
+-> Result<Vec<(xylitol_protocol::Event, xylitol_protocol::Event)>, String> {
+    use futures::StreamExt;
+    use xylitol_app_tui::host_client::{HostClient, HttpWsClient};
+
+    let host = crate::wiring::occupancy::host_state_for_test().map_err(|e| format!("host: {e}"))?;
+    let (_running, port) = serve(
+        ServerConfig {
+            host: "127.0.0.1".into(),
+            port: 0,
+            sessions_dir: None,
+            registration_path: None,
+        },
+        host.clone(),
+    )
+    .await
+    .map_err(|e| format!("serve: {e}"))?;
+    let url = format!("http://127.0.0.1:{port}");
+
+    let client_v3 = HttpWsClient::new(url).with_envelope(true);
+    let mut mux_v3 = client_v3.mux().await.map_err(|e| format!("v3 mux: {e}"))?;
+
+    let d = client_v3
+        .unary("host.describe", serde_json::json!({}))
+        .await
+        .map_err(|e| format!("v3 describe: {e}"))?;
+    if !d.ok {
+        return Err(format!("v3 describe failed: {:?}", d.error));
+    }
+
+    let session = "s-parity";
+    let r = client_v3
+        .unary(
+            "subscribe",
+            serde_json::json!({"session_id": session, "last_seq": 0}),
+        )
+        .await
+        .map_err(|e| format!("subscribe: {e}"))?;
+    if !r.ok {
+        return Err(format!("subscribe failed: {:?}", r.error));
+    }
+
+    let injected = vec![
+        xylitol_protocol::Event::TextDelta {
+            text: "parity chunk".into(),
+        },
+        xylitol_protocol::Event::ToolStart {
+            id: "t-parity".into(),
+            name: "grep".into(),
+            args: serde_json::json!({"pattern": "TODO"}),
+        },
+        xylitol_protocol::Event::TurnEnd { turn_index: 1 },
+    ];
+    for ev in &injected {
+        host.slot(session).await.append_and_push(ev.clone()).await;
+    }
+
+    let mut got_v3 = Vec::new();
+    while let Ok(Some(Ok(frame))) =
+        tokio::time::timeout(std::time::Duration::from_secs(3), mux_v3.next()).await
+    {
+        if let xylitol_protocol::RpcMessage::ServerRequest {
+            method, payload, ..
+        } = &frame
+            && method == "session/event"
+            && let Some(ev) = payload
+                .get("event")
+                .cloned()
+                .and_then(|v| serde_json::from_value::<xylitol_protocol::Event>(v).ok())
+        {
+            got_v3.push(ev);
+            if got_v3.len() >= injected.len() {
+                break;
+            }
+        }
+    }
+    if got_v3.len() != injected.len() {
+        return Err(format!(
+            "v3 path collected {} events: {got_v3:?}",
+            got_v3.len()
+        ));
+    }
+    Ok(injected.into_iter().zip(got_v3).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
     async fn eaddrinuse_fails_without_port_plus_one() {
-        let host = HostState::for_test().expect("host");
+        let host = crate::wiring::occupancy::host_state_for_test().expect("host");
         let (running, port) = serve(
             ServerConfig {
                 host: "127.0.0.1".into(),
@@ -193,7 +288,7 @@ mod tests {
         .await
         .expect("first bind");
         let occupied = port;
-        let host2 = HostState::for_test().expect("host2");
+        let host2 = crate::wiring::occupancy::host_state_for_test().expect("host2");
         let second = serve(
             ServerConfig {
                 host: "127.0.0.1".into(),

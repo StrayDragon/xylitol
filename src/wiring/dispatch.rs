@@ -3,8 +3,8 @@
 //!
 //! The session operation table IS the [`Command`] enum (c2710): a `Command`
 //! variant is dispatched to a [`SessionCommandExecutor`] — in-process drives the
-//! runtime directly, remote forwards via a single unary. [`XyDriver`] no longer
-//! mirrors the command table; it carries surface/transport capabilities only.
+//! runtime directly, remote forwards via a single unary. [`xylitol_runtime::XyDriver`]
+//! no longer mirrors the command table; it carries surface/transport capabilities only.
 //!
 //! What does NOT live here (by design, spec ip9):
 //! - `Prompt` — starts an event stream + is tied to the caller's run loop, so
@@ -27,11 +27,11 @@
 
 use async_trait::async_trait;
 
+pub use crate::wiring::driver::XyDriverError;
 use crate::wiring::driver::{
     CommandInfo, LoadedResourcesSnapshot, ModelInfo, RuntimeReloadReport, SessionListEntry,
-    SessionState, XyDriver,
+    SessionState,
 };
-pub use crate::wiring::driver_error::XyDriverError;
 use xylitol_plugin_sdk::XyBashResult;
 use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeNode, SessionTreeTravel};
 use xylitol_protocol::Command;
@@ -116,6 +116,82 @@ pub enum DispatchOutcome {
     },
 }
 
+fn model_data(m: &ModelInfo) -> serde_json::Value {
+    serde_json::json!({
+        "id": m.id,
+        "display_name": m.display_name,
+        "thinking": m.thinking,
+        "thinking_levels": m.thinking_levels,
+        "context_window": m.context_window,
+    })
+}
+
+/// Translate a dispatch outcome into the Host unary JSON value.
+pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
+    use serde_json::{Value, json};
+    match outcome {
+        DispatchOutcome::Aborted { cancelled } => json!({ "cancelled": cancelled }),
+        DispatchOutcome::State(st) => json!({
+            "session_id": st.session_id,
+            "model": st.model.as_ref().map(model_data),
+            "thinking_level": st.thinking_level,
+            "leaf_entry_id": st.leaf_entry_id,
+        }),
+        DispatchOutcome::Model(model) => model_data(&model),
+        DispatchOutcome::Models(models) => {
+            json!({ "models": models.iter().map(model_data).collect::<Vec<_>>() })
+        }
+        DispatchOutcome::ThinkingLevel(level) => json!({ "thinking_level": level }),
+        DispatchOutcome::Bash(r) => json!({
+            "output": r.output,
+            "exit_code": r.exit_code,
+            "cancelled": r.cancelled,
+            "truncated": r.truncated,
+        }),
+        DispatchOutcome::Compacted(did) => json!({ "compacted": did }),
+        DispatchOutcome::SessionStats(v) => v,
+        DispatchOutcome::ExportedPath(p) => json!({ "path": p }),
+        DispatchOutcome::NewSession(id) | DispatchOutcome::SwitchedSession(id) => {
+            json!({ "session_id": id })
+        }
+        DispatchOutcome::Messages { entries, .. } => json!({
+            "entries": serde_json::to_value(entries).unwrap_or(Value::Null)
+        }),
+        DispatchOutcome::EstimateContext(estimate) => json!({
+            "estimate": serde_json::to_value(estimate).unwrap_or(Value::Null)
+        }),
+        DispatchOutcome::SessionTree(tree) => json!({
+            "tree": serde_json::to_value(tree).unwrap_or(Value::Null)
+        }),
+        DispatchOutcome::SessionTreeTravel(travel) => {
+            serde_json::to_value(travel).unwrap_or(Value::Null)
+        }
+        DispatchOutcome::Sessions(sessions) => json!({
+            "sessions": serde_json::to_value(sessions).unwrap_or(Value::Null)
+        }),
+        DispatchOutcome::SessionEntries(entries) => json!({
+            "entries": serde_json::to_value(entries).unwrap_or(Value::Null)
+        }),
+        DispatchOutcome::SessionName(name) => json!({ "name": name }),
+        DispatchOutcome::Reload(report) => serde_json::to_value(report).unwrap_or(Value::Null),
+        DispatchOutcome::LoadedResources(snapshot) => {
+            serde_json::to_value(snapshot).unwrap_or(Value::Null)
+        }
+        DispatchOutcome::Empty => json!({}),
+        DispatchOutcome::Commands(cmds) => {
+            let cmds: Vec<Value> = cmds
+                .into_iter()
+                .map(|c| json!({ "name": c.name, "description": c.description }))
+                .collect();
+            json!({ "commands": cmds })
+        }
+        DispatchOutcome::QueueStats {
+            steer_count,
+            follow_up_count,
+        } => json!({ "steer_count": steer_count, "follow_up_count": follow_up_count }),
+    }
+}
+
 /// Validate a freeform thinking-level request without changing its spelling.
 pub fn validate_nonempty_thinking_level(s: &str) -> Result<(), XyDriverError> {
     if s.trim().is_empty() {
@@ -138,11 +214,10 @@ fn variant_name(cmd: &Command) -> &'static str {
 }
 
 pub async fn dispatch(
-    driver: &mut dyn XyDriver,
+    driver: &mut dyn SessionCommandExecutor,
     cmd: Command,
 ) -> Result<DispatchOutcome, XyDriverError> {
-    // `XyDriver: SessionCommandExecutor` — every driver executes commands;
-    // in-process directly, remote over a single typed unary (c2710).
+    // Envelope-side executor (runtime `XyDriver` is protocol-free).
     let where_ = format!("dispatch.{}", variant_name(&cmd));
     match driver.execute_session_command(cmd).await {
         Ok(outcome) => Ok(outcome),
@@ -167,7 +242,7 @@ pub fn transport_variant_error(cmd: &Command) -> XyDriverError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::wiring::driver::ModelInfo;
+    use crate::wiring::driver::{ModelInfo, XyDriver};
     use async_trait::async_trait;
 
     /// Canned executor stub: dispatch is a thin wrapper (c2710) — the executor

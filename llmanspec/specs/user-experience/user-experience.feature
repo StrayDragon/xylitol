@@ -7,24 +7,24 @@
   规则: login-help
     System 须提供登录引导消息（或等价入口），返回引用 /login 与文档路径的引导。
 
-    场景: login-guidance-references-docs
+    场景: 登录引导引用文档
       那么 登录引导含 /login 与文档路径
   @req:r1839
   规则: no-models
     无可用模型时，System 须提供无模型提示消息（或等价入口）。
 
-    场景: no-models-guidance
+    场景: 无模型引导
       那么 无可用模型提示衔接登录引导
   @req:r1840
   规则: no-model-selected
     未选择模型时，System 须提供未选模型提示消息（或等价入口）。
 
-    场景: unset-model-display
+    场景: 未设模型显示
       那么 未选模型展示占位而非厂商默认名
   @req:r1841
   规则: no-api-key
     System 须提供无 API key 提示消息（或等价入口），含 provider 名称。
     # （c2827 合并：runtime-model-registry r1756 鉴权指引并入本条。）
 
-    场景: no-api-key-names-provider
+    场景: 无API键名称厂商
       那么 无 api key 提示含 provider 名

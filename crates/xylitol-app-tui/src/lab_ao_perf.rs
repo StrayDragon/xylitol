@@ -9,7 +9,6 @@
 //! # optional: XYLITOL_LAB_SESSION=<uuid> (memory profile: profile one real session)
 //! ```
 
-use std::path::PathBuf;
 use std::time::Instant;
 
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -17,8 +16,8 @@ use xylitol_tui::{InputEvent, Terminal};
 
 use super::bridge::apply_xy_event;
 use super::host::{HostEvent, HostSession};
+use crate::debug_fixtures::InMemorySessionStore;
 use crate::driver::XyEvent;
-use crate::infra::session::SessionManager;
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
 
@@ -95,14 +94,20 @@ impl Terminal for LabTerminal {
     }
 }
 
-fn default_sessions_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("XYLITOL_SESSIONS_DIR") {
-        return PathBuf::from(dir);
-    }
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".xylitol")
-        .join("sessions")
+async fn synthetic_ao_seed(session_id: &str) -> (String, Vec<SessionEntry>, String) {
+    let mgr = InMemorySessionStore::new();
+    mgr.create(session_id, Some("."), None)
+        .await
+        .expect("create");
+    crate::debug_fixtures::seed_scene(&mgr, session_id, "ao-perf-scroll")
+        .await
+        .expect("seed");
+    let entries = mgr.load_entries(session_id).await.expect("load");
+    (
+        session_id.to_string(),
+        entries,
+        format!("synthetic:ao-perf-scroll:{session_id}"),
+    )
 }
 
 fn mouse(kind: MouseEventKind, col: u16, row: u16) -> InputEvent {
@@ -143,42 +148,12 @@ fn rss_kb() -> u64 {
 async fn lab_ao_session_perf_report() {
     // Disk session is opt-in via XYLITOL_LAB_SESSION; default is the synthetic
     // seed so the probe runs on any machine (no hardcoded session UUIDs).
-    let (sid, entries, source) = match std::env::var("XYLITOL_LAB_SESSION").ok() {
-        Some(session_id) => {
-            let sessions_dir = default_sessions_dir();
-            let path = sessions_dir.join(format!("{session_id}.jsonl"));
-            assert!(
-                path.is_file(),
-                "XYLITOL_LAB_SESSION={session_id} not found at {}",
-                path.display()
-            );
-            let mgr = SessionManager::new(sessions_dir);
-            let entries = mgr
-                .load_entries(&session_id)
-                .await
-                .expect("load lab session");
-            (
-                session_id,
-                entries,
-                format!("disk:{path}", path = path.display()),
-            )
-        }
-        None => {
-            let mgr = SessionManager::in_memory();
-            mgr.create("lab-ao-perf", Some("."), None)
-                .await
-                .expect("create");
-            crate::debug_fixtures::seed_scene(&mgr, "lab-ao-perf", "ao-perf-scroll")
-                .await
-                .expect("seed ao-perf-scroll");
-            let entries = mgr.load_entries("lab-ao-perf").await.expect("load seed");
-            (
-                "lab-ao-perf".into(),
-                entries,
-                "synthetic:ao-perf-scroll".into(),
-            )
-        }
-    };
+    if let Ok(session_id) = std::env::var("XYLITOL_LAB_SESSION") {
+        eprintln!(
+            "XYLITOL_LAB_SESSION={session_id} ignored in xylitol-app-tui lab (no disk store); using synthetic seed"
+        );
+    }
+    let (sid, entries, source) = synthetic_ao_seed("lab-ao-perf").await;
 
     let mut session = HostSession::new_product_ui(LabTerminal::new(120, 40));
     session.apply_cli_restored_session(&sid, entries);
@@ -319,36 +294,7 @@ fn cpu_pct(j0: u64, j1: u64, wall_secs: f64) -> f64 {
 }
 
 async fn seed_long_session(session: &mut HostSession<LabTerminal>) {
-    // Disk session is opt-in via XYLITOL_LAB_SESSION (see session perf report);
-    // default runs on the synthetic seed so the probe is machine-portable.
-    let (sid, entries) = match std::env::var("XYLITOL_LAB_SESSION").ok() {
-        Some(session_id) => {
-            let sessions_dir = default_sessions_dir();
-            let path = sessions_dir.join(format!("{session_id}.jsonl"));
-            assert!(
-                path.is_file(),
-                "XYLITOL_LAB_SESSION={session_id} not found at {}",
-                path.display()
-            );
-            let mgr = SessionManager::new(sessions_dir);
-            let entries = mgr
-                .load_entries(&session_id)
-                .await
-                .expect("load lab session");
-            (session_id, entries)
-        }
-        None => {
-            let mgr = SessionManager::in_memory();
-            mgr.create("lab-ao-stream", Some("."), None)
-                .await
-                .expect("create");
-            crate::debug_fixtures::seed_scene(&mgr, "lab-ao-stream", "ao-perf-scroll")
-                .await
-                .expect("seed");
-            let entries = mgr.load_entries("lab-ao-stream").await.expect("load");
-            ("lab-ao-stream".into(), entries)
-        }
-    };
+    let (sid, entries, _) = synthetic_ao_seed("lab-ao-stream").await;
     session.apply_cli_restored_session(&sid, entries);
 }
 
@@ -495,7 +441,7 @@ fn msg_entry(role: &str, text: &str) -> SessionEntry {
 
 /// One turn = a short user line + a multi-line assistant block (CJK content,
 /// wraps like real output at 120 cols).
-async fn append_turn(store: &SessionManager, sid: &str, i: usize, block_lines: usize) {
+async fn append_turn(store: &dyn XySessionStore, sid: &str, i: usize, block_lines: usize) {
     let user = format!("q{i}: brief ask");
     let block = (0..block_lines)
         .map(|l| format!("answer {i}.{l}: {}", "字".repeat(40)))
@@ -532,33 +478,12 @@ async fn lab_ao_memory_profile() {
     let mut session = HostSession::new_product_ui(LabTerminal::new(TERM_COLS, TERM_ROWS));
 
     if let Ok(session_uuid) = std::env::var("XYLITOL_LAB_SESSION") {
-        let dir = default_sessions_dir();
-        if dir.join(format!("{session_uuid}.jsonl")).is_file() {
-            let mgr = SessionManager::new(dir);
-            let entries = mgr
-                .load_entries(&session_uuid)
-                .await
-                .expect("load lab session");
-            let warm = Instant::now();
-            session.apply_cli_restored_session(&session_uuid, entries);
-            session.tui.render_now().expect("warm render");
-            let perf = session.tui.last_render_perf();
-            eprintln!(
-                "REPORT lab_ao_memory_profile scale=disk entries_src={session_uuid} \
-                 component_lines={} paint_lines={} warm_render_ms={} rss_kb={}",
-                perf.component_lines,
-                perf.paint_lines,
-                warm.elapsed().as_millis(),
-                rss_kb()
-            );
-            return;
-        }
         eprintln!(
-            "XYLITOL_LAB_SESSION={session_uuid} not found on disk; falling back to synthetic ladder"
+            "XYLITOL_LAB_SESSION={session_uuid} ignored in xylitol-app-tui lab (no disk store); using synthetic ladder"
         );
     }
 
-    let mgr = SessionManager::in_memory();
+    let mgr = InMemorySessionStore::new();
     mgr.create("lab-ao-mem", Some("."), None)
         .await
         .expect("create session");

@@ -2,14 +2,12 @@
 
 use strum::IntoStaticStr;
 
-use crate::wiring::infra::clipboard::ClipboardError;
-use crate::wiring::infra::config::error::LoadError;
-use xylitol_official_plugin_mcp::McpError;
+use crate::agent::HookBlockedError;
+use crate::agent::compaction::CompactionError;
+use crate::agent::runtime::RuntimeControlError;
 use xylitol_plugin_sdk::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
-use xylitol_runtime::agent::compaction::CompactionError;
-use xylitol_runtime::agent::runtime::RuntimeControlError;
 
 /// Errors from [`super::driver::XyDriver`] (整机遥控器 / 多端共享应用协议).
 ///
@@ -360,42 +358,8 @@ impl From<RuntimeControlError> for XyDriverError {
     }
 }
 
-impl From<LoadError> for XyDriverError {
-    fn from(err: LoadError) -> Self {
-        match err {
-            LoadError::Io { .. } | LoadError::Yaml { .. } | LoadError::Deserialize(_) => {
-                Self::io(err.to_string())
-            }
-            LoadError::Template(message) | LoadError::Validation(message) => {
-                Self::invalid_input(message)
-            }
-        }
-    }
-}
-
-impl From<McpError> for XyDriverError {
-    fn from(err: McpError) -> Self {
-        match err {
-            McpError::ServerNotFound { .. } => Self::not_found(err.to_string()),
-            McpError::Config(message) => Self::invalid_input(message),
-            _ => Self::io(err.to_string()),
-        }
-    }
-}
-
-impl From<ClipboardError> for XyDriverError {
-    fn from(err: ClipboardError) -> Self {
-        match err {
-            ClipboardError::Io { context, source } => Self::io(format!("{context}: {source}")),
-            ClipboardError::Join(message) => Self::io(message),
-            ClipboardError::Unsupported(message) => Self::unsupported(message),
-            ClipboardError::Decode(message) => Self::invalid_input(message),
-        }
-    }
-}
-
-impl From<xylitol_runtime::agent::HookBlockedError> for XyDriverError {
-    fn from(err: xylitol_runtime::agent::HookBlockedError) -> Self {
+impl From<HookBlockedError> for XyDriverError {
+    fn from(err: HookBlockedError) -> Self {
         Self::message(err.0)
     }
 }
@@ -559,13 +523,6 @@ mod tests {
         let trust = XyDriverError::from(XyTrustError::Lock);
         assert_eq!(trust.kind(), "Io");
         assert_eq!(trust.to_string(), "io: failed to acquire trust store lock");
-    }
-
-    #[test]
-    fn from_clipboard_error_is_io() {
-        let err = XyDriverError::from(ClipboardError::join("Clipboard: join error: boom"));
-        assert_eq!(err.kind(), "Io");
-        assert_eq!(err.to_string(), "io: Clipboard: join error: boom");
     }
 
     #[test]

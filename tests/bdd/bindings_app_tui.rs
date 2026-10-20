@@ -8,26 +8,26 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/app-tui-bridge/app-tui-bridge.feature",
-    name = "remote-type-kept"
+    name = "远端类型保留"
 )]
 async fn test_atb4_remote_type_kept(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui/app-tui.feature",
-    name = "no-undriven-skeleton-files"
+    name = "无未驱动骨架文件"
 )]
 fn test_at_no_skeleton(ws: Workspace) {}
 
 // r1162 面本地 vs host 角色分界（c2922 补绑）
 #[scenario(
     path = "llmanspec/specs/app-tui/app-tui.feature",
-    name = "surface-local-clipboard-and-host-resources"
+    name = "表面本地剪贴板与Host资源"
 )]
 async fn test_at_surface_local(host_pump_bdd: HostPumpBdd) {}
 
 // r2893 产品 AO 滚动槽（c2922 补绑，步骤复用包侧语义）
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "product-gutter-click-jumps"
+    name = "产品槽点击跳转"
 )]
 async fn test_att_product_gutter(host_pump_bdd: HostPumpBdd) {}

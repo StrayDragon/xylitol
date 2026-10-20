@@ -344,7 +344,7 @@ fn inline_unhandled_mouse_down_does_not_request_render() {
 #[test]
 fn product_tui_source_has_no_tui_start_call() {
     let sources = [
-        ("mod.rs", include_str!("mod.rs")),
+        ("lib.rs", include_str!("lib.rs")),
         ("host/mod.rs", include_str!("host/mod.rs")),
         ("effects/mod.rs", include_str!("effects/mod.rs")),
         ("effects/slash/mod.rs", include_str!("effects/slash/mod.rs")),
@@ -458,14 +458,14 @@ fn shared_effect_pump_is_single_entry() {
         effects.contains("pub async fn drain_pending"),
         "effects must export drain_pending"
     );
-    let mod_src = include_str!("mod.rs");
+    let lib_src = include_str!("lib.rs");
     assert!(
-        mod_src.contains("drain_pending"),
+        lib_src.contains("drain_pending"),
         "production host loop must call drain_pending"
     );
     assert!(
-        !mod_src.contains("PendingSlash::Exit"),
-        "mod.rs must not duplicate PendingSlash match"
+        !lib_src.contains("PendingSlash::Exit"),
+        "lib.rs must not duplicate PendingSlash match"
     );
     let harness = include_str!("harness.rs");
     assert!(

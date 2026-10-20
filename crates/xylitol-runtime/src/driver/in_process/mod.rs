@@ -1,0 +1,624 @@
+//! In-process [`XyInProcessDriver`].
+
+use std::path::Path;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use tokio_util::sync::CancellationToken;
+
+use crate::agent::AgentRuntime;
+use crate::agent::runtime::RunPolicy;
+use crate::driver::bang_exec::BangExecHandler;
+use crate::driver::session_export::SessionExporter;
+use xylitol_plugin_sdk::AgentTodoGateway;
+use xylitol_plugin_sdk::XySessionStore;
+use xylitol_plugin_sdk::error::XySessionError;
+
+use super::types::{
+    CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode,
+    ProjectTrustPersistReport,
+};
+pub(super) use super::{XyDriver, XyDriverError, types};
+
+mod session;
+
+struct NoopTodo;
+
+#[async_trait]
+impl AgentTodoGateway for NoopTodo {
+    async fn list(
+        &self,
+    ) -> Result<xylitol_plugin_sdk::session::TodoList, xylitol_plugin_sdk::error::XyToolError> {
+        Ok(xylitol_plugin_sdk::session::TodoList { items: Vec::new() })
+    }
+    async fn rewrite(
+        &self,
+        _items: Vec<xylitol_plugin_sdk::session::TodoItemDraft>,
+    ) -> Result<xylitol_plugin_sdk::session::TodoList, xylitol_plugin_sdk::error::XyToolError> {
+        Ok(xylitol_plugin_sdk::session::TodoList { items: Vec::new() })
+    }
+    async fn update(
+        &self,
+        _patches: Vec<xylitol_plugin_sdk::session::TodoItemPatch>,
+    ) -> Result<xylitol_plugin_sdk::session::TodoList, xylitol_plugin_sdk::error::XyToolError> {
+        Ok(xylitol_plugin_sdk::session::TodoList { items: Vec::new() })
+    }
+}
+
+/// In-process driver wrapping the local agent module.
+///
+/// Composition root injects bang / export / tools / todo. This crate does not
+/// construct official plugins.
+pub struct XyInProcessDriver {
+    pub agent: AgentRuntime,
+    pub store: Arc<dyn XySessionStore>,
+    bang: BangExecHandler,
+    exporter: SessionExporter,
+    ask_gateway: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
+    todo_gateway: Arc<dyn AgentTodoGateway>,
+    bash_run_sink: std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>,
+    slash_commands: Vec<CommandInfo>,
+}
+
+impl XyInProcessDriver {
+    /// Construct from a built agent plus the store used to build it.
+    ///
+    /// Installs default bang + export I/O for product surfaces.
+    /// Use [`Self::with_surface_ops`] to override.
+    pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
+        Self::with_surface_ops(
+            agent,
+            store,
+            BangExecHandler::new(None),
+            SessionExporter::new(None),
+        )
+    }
+
+    /// Construct with explicit bang + export collaborators (tests / embed).
+    pub fn with_surface_ops(
+        agent: AgentRuntime,
+        store: Arc<dyn XySessionStore>,
+        bang: BangExecHandler,
+        exporter: SessionExporter,
+    ) -> Self {
+        Self {
+            agent,
+            store,
+            bang,
+            exporter,
+            ask_gateway: None,
+            todo_gateway: Arc::new(NoopTodo),
+            bash_run_sink: std::sync::Mutex::new(None),
+            slash_commands: Vec::new(),
+        }
+    }
+
+    /// Construct with an explicit bang handler (tests / embed without shell).
+    pub fn with_bang(
+        agent: AgentRuntime,
+        store: Arc<dyn XySessionStore>,
+        bang: BangExecHandler,
+    ) -> Self {
+        Self::with_surface_ops(agent, store, bang, SessionExporter::new(None))
+    }
+
+    pub fn set_todo_gateway(&mut self, todo: Arc<dyn AgentTodoGateway>) {
+        self.todo_gateway = todo;
+    }
+
+    pub fn set_slash_commands(&mut self, commands: Vec<CommandInfo>) {
+        self.slash_commands = commands;
+    }
+
+    /// Remember TUI-only ask gateway (composition root rebuilds ToolSet).
+    pub fn install_ask_tool(&mut self, gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>) {
+        self.ask_gateway = Some(gateway);
+    }
+
+    pub fn ask_gateway(&self) -> Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>> {
+        self.ask_gateway.clone()
+    }
+
+    async fn bind_todo_session(&self, session_id: Option<&str>) {
+        self.todo_gateway
+            .bind_session(session_id.map(str::to_string))
+            .await;
+    }
+
+    pub fn todo_gateway(&self) -> Arc<dyn AgentTodoGateway> {
+        self.todo_gateway.clone()
+    }
+
+    pub fn cancel_token(&self) -> CancellationToken {
+        self.agent.cancel_token()
+    }
+
+    /// Replace the tool set (next `run`). Used by composition MCP reload.
+    /// Ignored while FROZEN (c1900); prefer [`Self::freeze_tools`].
+    pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) {
+        self.agent.set_tools(tools);
+    }
+
+    /// Freeze provider-visible tools (c1900 轨 A). Used by MCP gate / `/reload` re-freeze.
+    pub fn freeze_tools(&mut self, tools: crate::agent::tools::ToolSet) {
+        self.agent.freeze_tools(tools);
+    }
+
+    pub fn reopen_tools_for_regate(&mut self) {
+        self.agent.reopen_tools_for_regate();
+    }
+
+    pub fn is_tools_frozen(&self) -> bool {
+        self.agent.is_tools_frozen()
+    }
+
+    async fn ensure_tool_table_frozen(&mut self) {
+        if self.agent.is_tools_frozen() {
+            return;
+        }
+        self.agent.begin_tool_gating();
+        let tools = self.agent.clone_tools();
+        self.agent.freeze_tools(tools);
+    }
+
+    pub fn persist_project_trust(
+        &mut self,
+        mode: ProjectTrustMode,
+    ) -> Result<ProjectTrustPersistReport, XyDriverError> {
+        let cwd = self.agent.cwd().to_string();
+        let mgr = crate::trust::TrustManager::new(crate::trust::TrustManager::default_dir());
+        let options = mgr.get_trust_options(&cwd, false);
+        let opt = match mode {
+            ProjectTrustMode::TrustCwd => options.first(),
+            ProjectTrustMode::TrustParent => {
+                options.iter().find(|o| o.label.starts_with("Trust parent"))
+            }
+            ProjectTrustMode::Deny => options.iter().find(|o| o.label == "Do not trust"),
+        };
+        let Some(opt) = opt else {
+            return Err(match mode {
+                ProjectTrustMode::TrustParent => {
+                    XyDriverError::invalid_input("no parent folder to trust")
+                }
+                _ => XyDriverError::invalid_input("trust option unavailable"),
+            });
+        };
+        if !opt.updates.is_empty() {
+            mgr.apply_updates(&opt.updates)?;
+        }
+        let saved = opt.saved_path.clone().unwrap_or_else(|| cwd.clone());
+        let verb = if opt.trusted { "trusted" } else { "denied" };
+        Ok(ProjectTrustPersistReport {
+            trusted: opt.trusted,
+            saved_path: Some(saved),
+            message: format!("Project {verb}. {}", ProjectTrustPersistReport::RELOAD_HINT),
+        })
+    }
+
+    /// Replace context / SYSTEM / APPEND for the next `run` (c1100).
+    /// Does not mutate session history.
+    pub fn apply_prompt_resources(
+        &mut self,
+        context_files: Vec<(String, String)>,
+        system_prompt: Option<String>,
+        append_system_prompt: Vec<String>,
+    ) {
+        self.agent
+            .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
+    }
+
+    /// Replace skills catalog for the next `run` (c1085). Does not mutate history.
+    pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>) {
+        self.agent.apply_skills(skills);
+    }
+
+    /// Names currently in the system `<available_skills>` catalog (c1085).
+    pub fn loaded_skill_names(&self) -> Vec<String> {
+        self.agent.loaded_skill_names()
+    }
+
+    /// Full skill catalog for `$` completion / expand (c1130).
+    pub fn loaded_skills(&self) -> Vec<xylitol_plugin_sdk::resource::SkillInfo> {
+        self.agent.loaded_skills()
+    }
+
+    pub fn agent_cwd_for_test(&self) -> String {
+        self.agent.cwd().to_string()
+    }
+
+    fn skill_catalog_pairs(&self) -> Vec<(String, String)> {
+        self.agent
+            .loaded_skills()
+            .iter()
+            .map(|s| (s.name.clone(), s.description.clone().unwrap_or_default()))
+            .collect()
+    }
+
+    /// Test/diagnostics: tool names currently registered.
+    pub fn tool_names_for_test(&self) -> Vec<String> {
+        self.agent.tool_names()
+    }
+
+    /// Test/diagnostics: assembled system prompt text (c1100).
+    // c2837: 测试辅助无条件化
+    pub fn system_prompt_for_test(&self) -> Option<String> {
+        self.agent.system_prompt().map(String::from)
+    }
+
+    /// Composition-root assembly: bind the configured default model without
+    /// persisting a `modelChange` row (attach-time restore, not a user change).
+    pub async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError> {
+        self.agent
+            .select_model_with_source(model_id, "restore")
+            .await
+            .map_err(XyDriverError::from)
+    }
+}
+
+fn bind_session_or_err(
+    agent: &mut AgentRuntime,
+    session_id: impl Into<String>,
+) -> Result<(), XyDriverError> {
+    agent.bind_session(session_id).map_err(XyDriverError::from)
+}
+
+fn require_active_session(agent: &AgentRuntime) -> Result<&str, XyDriverError> {
+    agent
+        .session_id()
+        .ok_or_else(|| XySessionError::NoActiveSession.into())
+}
+
+#[async_trait]
+impl XyDriver for XyInProcessDriver {
+    async fn run(&mut self, prompt: &str) -> EventStream {
+        self.ensure_tool_table_frozen().await;
+        if self.agent.session_id().is_none() {
+            let id = uuid::Uuid::new_v4().to_string();
+            if let Err(e) = bind_session_or_err(&mut self.agent, id.clone()) {
+                e.log_failure("driver.run.bind_session");
+            }
+            self.bind_todo_session(Some(&id)).await;
+        } else if let Some(sid) = self.agent.session_id() {
+            // Keep Todo gateway aligned if agent was bound before driver wiring.
+            self.bind_todo_session(Some(sid)).await;
+        }
+        let stream = self.agent.submit_root(prompt, RunPolicy::Reject).await;
+        Box::pin(stream)
+    }
+
+    fn abort(&self) {
+        self.bang.abort();
+        self.agent.abort();
+    }
+
+    fn current_model(&self) -> Option<ModelInfo> {
+        self.agent.current_model().map(|m| ModelInfo::from(&m))
+    }
+
+    fn active_turn(&self) -> Option<(String, String, bool)> {
+        let binding = self.agent.inflight_turn_binding()?;
+        Some((
+            binding.display_name,
+            binding.thinking,
+            binding.omit_thinking,
+        ))
+    }
+
+    fn has_active_turn(&self) -> bool {
+        self.agent.has_active_turn()
+    }
+
+    fn available_models(&self) -> Vec<ModelInfo> {
+        self.agent
+            .model_registry()
+            .list()
+            .iter()
+            .map(ModelInfo::from)
+            .collect()
+    }
+
+    fn thinking_level(&self) -> String {
+        self.agent.thinking_level()
+    }
+
+    fn session_id(&self) -> Option<String> {
+        self.agent.session_id().map(String::from)
+    }
+
+    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
+        *self.bash_run_sink.lock().unwrap_or_else(|e| e.into_inner()) = sink;
+    }
+
+    async fn estimate_context_tokens(
+        &self,
+    ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
+        XyInProcessDriver::estimate_context_tokens(self).await
+    }
+
+    fn get_commands(&self) -> Vec<CommandInfo> {
+        self.slash_commands.clone()
+    }
+
+    fn leaf_entry_id(&self) -> Option<String> {
+        XyInProcessDriver::leaf_entry_id(self)
+    }
+
+    fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {
+        Some(self.store.clone())
+    }
+
+    fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
+        self.skill_catalog_pairs()
+    }
+
+    async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+        LoadedResourcesSnapshot {
+            skill_names: self
+                .skill_catalog_pairs()
+                .into_iter()
+                .map(|(n, _)| n)
+                .collect(),
+            tools_table_frozen: self.agent.is_tools_frozen(),
+            mcp_bootstrap_complete: true,
+            ..LoadedResourcesSnapshot::default()
+        }
+    }
+
+    fn is_tools_frozen(&self) -> bool {
+        self.agent.is_tools_frozen()
+    }
+
+    /// c2790: owned bash completion — pre-hooks run eagerly (`&mut` phase);
+    /// the returned future holds only cloned Arc handles (store / bang / sink).
+    async fn bash_run(
+        &mut self,
+        command: &str,
+        exclude_from_context: bool,
+    ) -> Result<super::proto::BashRun, XyDriverError> {
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::user_bash(
+            command,
+            exclude_from_context,
+            self.agent.cwd(),
+        );
+        self.agent.script_hook_cancel(ty, phase, ctx).await?;
+
+        let bash_id = uuid::Uuid::new_v4().to_string();
+        let run = self
+            .bash_run_sink
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        let cancel = run
+            .as_ref()
+            .map(|run| run.cancel.clone())
+            .unwrap_or_default();
+        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
+        let relay =
+            run.map(|run| tokio::spawn(relay_bash_chunks(bash_id.clone(), chunk_rx, run.tx)));
+        let store = self.store.clone();
+        let bang = self.bang.clone();
+        let session_id = self.agent.session_id().map(str::to_string);
+        let cwd = self.agent.cwd().to_string();
+        let command = command.to_string();
+
+        Ok(Box::pin(async move {
+            let result = bang
+                .execute(
+                    store.as_ref(),
+                    session_id.as_deref(),
+                    &bash_id,
+                    &command,
+                    exclude_from_context,
+                    cancel,
+                    Some(chunk_tx),
+                    Some(cwd),
+                )
+                .await;
+            if let Some(relay) = relay {
+                let _ = relay.await;
+            }
+            result.map_err(XyDriverError::from)
+        }) as super::proto::BashRun)
+    }
+
+    async fn persist_project_trust(
+        &mut self,
+        mode: ProjectTrustMode,
+    ) -> Result<ProjectTrustPersistReport, XyDriverError> {
+        XyInProcessDriver::persist_project_trust(self, mode)
+    }
+}
+
+// ── Session operations: inherent (Command executor SSOT, c2710) ─────
+impl XyInProcessDriver {
+    pub async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
+        // Prefer registry id; only use unique upstream `config.model` as alias.
+        let registry = self.agent.model_registry();
+        let found = registry
+            .list()
+            .iter()
+            .find(|m| m.id == model_id)
+            .map(|m| m.id.clone())
+            .or_else(|| {
+                let hits: Vec<_> = registry
+                    .list()
+                    .iter()
+                    .filter(|m| m.config.model == model_id)
+                    .collect();
+                match hits.as_slice() {
+                    [only] => Some(only.id.clone()),
+                    _ => None,
+                }
+            })
+            .ok_or_else(|| XyDriverError::not_found(format!("model not found: {model_id}")))?;
+        self.agent
+            .select_model(&found)
+            .await
+            .map_err(XyDriverError::from)?;
+        // Re-read the resolved model to return authoritative info.
+        Ok(self
+            .agent
+            .current_model()
+            .map(|m| ModelInfo::from(&m))
+            .unwrap_or_else(|| ModelInfo {
+                id: found.clone(),
+                display_name: found,
+                thinking: true,
+                thinking_levels: Vec::new(),
+                context_window: 0,
+            }))
+    }
+
+    pub async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
+        let list = self.agent.model_registry().list().to_vec();
+        if list.is_empty() {
+            return Err(XyDriverError::not_found("no models available"));
+        }
+        let current_id = self.agent.current_model().map(|m| m.id.clone());
+        let current_idx = current_id
+            .as_ref()
+            .and_then(|cur| list.iter().position(|m| m.id == *cur))
+            .unwrap_or(0);
+        let next_idx = (current_idx + 1) % list.len();
+        let next_id = list[next_idx].id.clone();
+        self.agent
+            .select_model_with_source(&next_id, "cycle")
+            .await
+            .map_err(XyDriverError::from)?;
+        Ok(ModelInfo::from(&list[next_idx]))
+    }
+
+    pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
+        self.agent
+            .set_thinking_level(level)
+            .await
+            .map_err(XyDriverError::from)
+    }
+
+    /// Provider of a registered model id (registry truth; `ModelInfo` drops it).
+    pub fn model_provider(&self, model_id: &str) -> Option<String> {
+        self.agent
+            .model_registry()
+            .list()
+            .iter()
+            .find(|m| m.id == model_id)
+            .map(|m| m.provider.clone())
+    }
+
+    pub async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
+        // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
+        self.agent
+            .force_compact(instructions)
+            .await
+            .map(|()| true)
+            .map_err(XyDriverError::from)
+    }
+
+    pub async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        let sid = require_active_session(&self.agent)?.to_string();
+        self.exporter
+            .export_to_html(self.store.as_ref(), &sid, path)
+            .await?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        let sid = require_active_session(&self.agent)?.to_string();
+        self.exporter
+            .export_to_jsonl(self.store.as_ref(), &sid, path)
+            .await?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
+    pub async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
+        self.exporter
+            .import_from_jsonl(self.store.as_ref(), path)
+            .await
+    }
+
+    pub async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
+        self.agent.steer(message);
+        Ok(())
+    }
+
+    pub async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
+        self.agent.follow_up(message);
+        Ok(())
+    }
+
+    pub async fn clear_queue(
+        &mut self,
+        clear_steer: bool,
+        clear_follow_up: bool,
+    ) -> Result<(), XyDriverError> {
+        self.agent.clear_queues(clear_steer, clear_follow_up);
+        Ok(())
+    }
+
+    pub fn queue_stats(&self) -> crate::agent::QueueStats {
+        self.agent.queue_stats()
+    }
+}
+
+/// Relay executor output bytes to [`xylitol_plugin_sdk::BashChunk`] events.
+///
+/// Executor chunks are raw 8 KiB reads, so a multi-byte UTF-8 sequence can be
+/// split across a boundary; the incomplete tail is held back and prefixed to
+/// the next chunk. `String::from_utf8_lossy` only runs on complete sequences
+/// (invalid bytes → U+FFFD; a truncated sequence at stream end flushes as-is).
+pub async fn relay_bash_chunks(
+    bash_id: String,
+    mut rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    tx: tokio::sync::mpsc::Sender<xylitol_plugin_sdk::BashChunk>,
+) {
+    use xylitol_plugin_sdk::BashChunk;
+
+    let mut seq: u64 = 0;
+    let mut pending: Vec<u8> = Vec::new();
+    while let Some(bytes) = rx.recv().await {
+        pending.extend_from_slice(&bytes);
+        while !pending.is_empty() {
+            let n = utf8_emit_len(&pending);
+            if n == 0 {
+                break;
+            }
+            let data = String::from_utf8_lossy(&pending[..n]).into_owned();
+            pending.drain(..n);
+            seq += 1;
+            if tx
+                .send(BashChunk {
+                    bash_id: bash_id.clone(),
+                    seq,
+                    data,
+                })
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+    }
+    if !pending.is_empty() {
+        seq += 1;
+        let _ = tx
+            .send(BashChunk {
+                bash_id,
+                seq,
+                data: String::from_utf8_lossy(&pending).into_owned(),
+            })
+            .await;
+    }
+}
+
+/// Length of the prefix of `buf` that is safe to convert now: the whole buffer
+/// when it is valid UTF-8 or ends in invalid bytes (those emit as U+FFFD), or
+/// everything before a truncated multi-byte tail (kept for the next chunk).
+pub fn utf8_emit_len(buf: &[u8]) -> usize {
+    match std::str::from_utf8(buf) {
+        Ok(_) => buf.len(),
+        Err(e) => match e.error_len() {
+            None => e.valid_up_to(),
+            Some(bad) => e.valid_up_to() + bad,
+        },
+    }
+}

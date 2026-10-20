@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::types::LoadedResourcesSnapshot;
+use crate::wiring::driver::LoadedResourcesSnapshot;
 
 pub(super) type McpToolList = Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>;
 pub(super) type McpDiscoverOk = Option<(
@@ -83,10 +83,10 @@ impl super::XyInProcessDriver {
     pub async fn ensure_tool_table_frozen(&mut self) {
         use xylitol_runtime::agent::MCP_FIRST_TURN_GATE_TIMEOUT;
 
-        if self.agent.is_tools_frozen() {
+        if self.inner.agent.is_tools_frozen() {
             return;
         }
-        self.agent.begin_tool_gating();
+        self.inner.agent.begin_tool_gating();
 
         if matches!(self.mcp_boot, McpBootState::Idle) {
             if self
@@ -125,8 +125,8 @@ impl super::XyInProcessDriver {
             }
         }
 
-        let tools = self.agent.tools_snapshot();
-        self.agent.freeze_tools(tools);
+        let tools = self.inner.agent.tools_snapshot();
+        self.inner.agent.freeze_tools(tools);
     }
 
     /// Detach in-flight `Running` discover so UI can show Settled; apply later on poll.
@@ -149,10 +149,10 @@ impl super::XyInProcessDriver {
     /// [`Self::poll_mcp_bootstrap`] freezes at settle or [`xylitol_runtime::agent::MCP_FIRST_TURN_GATE_TIMEOUT`].
     pub(super) async fn arm_tool_freeze_gate_inner(&mut self) {
         use xylitol_runtime::agent::MCP_FIRST_TURN_GATE_TIMEOUT;
-        if self.agent.is_tools_frozen() {
+        if self.inner.agent.is_tools_frozen() {
             return;
         }
-        self.agent.begin_tool_gating();
+        self.inner.agent.begin_tool_gating();
         if self.tool_gate_deadline.is_none() {
             self.tool_gate_deadline = Some(std::time::Instant::now() + MCP_FIRST_TURN_GATE_TIMEOUT);
         }
@@ -173,7 +173,7 @@ impl super::XyInProcessDriver {
     }
 
     fn try_complete_armed_tool_gate(&mut self) -> bool {
-        if self.agent.is_tools_frozen() {
+        if self.inner.agent.is_tools_frozen() {
             self.tool_gate_deadline = None;
             return false;
         }
@@ -197,8 +197,8 @@ impl super::XyInProcessDriver {
         } else if self.mcp_blocks_agent() {
             return false;
         }
-        let tools = self.agent.tools_snapshot();
-        self.agent.freeze_tools(tools);
+        let tools = self.inner.agent.tools_snapshot();
+        self.inner.agent.freeze_tools(tools);
         self.tool_gate_deadline = None;
         true
     }
@@ -213,8 +213,8 @@ impl super::XyInProcessDriver {
         let mcp_bootstrap_complete =
             matches!(self.mcp_boot, McpBootState::Settled | McpBootState::Idle)
                 && self.late_mcp_discover.is_none();
-        let tools_table_frozen = self.agent.is_tools_frozen();
-        let tool_names = self.agent.tool_names();
+        let tools_table_frozen = self.inner.agent.is_tools_frozen();
+        let tool_names = self.inner.agent.tool_names();
         let Some(state) = self.reload.as_ref() else {
             return LoadedResourcesSnapshot {
                 skill_names,
@@ -348,7 +348,7 @@ impl super::XyInProcessDriver {
                     if let Some(state) = self.reload.as_mut() {
                         state.mcp.set_manager(manager);
                     }
-                    if self.agent.is_tools_frozen() {
+                    if self.inner.agent.is_tools_frozen() {
                         log::info!(
                             target: "xylitol::mcp",
                             "late MCP discover after gate: registry only (FROZEN) mcp_tools={tool_n}"
@@ -363,13 +363,13 @@ impl super::XyInProcessDriver {
                         })
                         .await;
                         if let Ok(set) = set {
-                            let opts = self.agent.set_tools_defer_prompt(set);
+                            let opts = self.inner.agent.set_tools_defer_prompt(set);
                             let prompt = tokio::task::spawn_blocking(move || {
                                 xylitol_runtime::agent::prompt::build_system_prompt(&opts)
                             })
                             .await;
                             if let Ok(prompt) = prompt {
-                                self.agent.install_system_prompt_text(prompt);
+                                self.inner.agent.install_system_prompt_text(prompt);
                             }
                             refreshed = true;
                         }
@@ -401,7 +401,7 @@ impl super::XyInProcessDriver {
             match handle.await {
                 Ok(prompt) => {
                     let t0 = std::time::Instant::now();
-                    self.agent.install_system_prompt_text(prompt);
+                    self.inner.agent.install_system_prompt_text(prompt);
                     crate::wiring::lag::note("mcp_settle_install_prompt", t0);
                 }
                 Err(e) => {
@@ -453,7 +453,7 @@ impl super::XyInProcessDriver {
                 state.mcp.set_manager(manager);
             }
             // c1900: after FROZEN, settle updates registry only — no provider tools expand.
-            if self.agent.is_tools_frozen() {
+            if self.inner.agent.is_tools_frozen() {
                 log::info!(
                     target: "xylitol::mcp",
                     "MCP settle ignored for provider tools (FROZEN); registry updated mcp_tools={tool_n}"
@@ -462,7 +462,7 @@ impl super::XyInProcessDriver {
                 return true;
             }
             let t_set = std::time::Instant::now();
-            let opts = self.agent.set_tools_defer_prompt(set);
+            let opts = self.inner.agent.set_tools_defer_prompt(set);
             crate::wiring::lag::note_detail(
                 "mcp_settle_set_tools",
                 t_set,

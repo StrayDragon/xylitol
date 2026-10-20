@@ -4,7 +4,7 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "threshold-reserve-gate"
+    name = "阈值预留门禁"
 )]
 fn test_compaction_threshold_gate(
     agent: AgentState,
@@ -16,7 +16,7 @@ fn test_compaction_threshold_gate(
 }
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "floor-aware-threshold"
+    name = "下限感知阈值"
 )]
 fn test_comp_floor_outline(
     agent: AgentState,
@@ -31,210 +31,210 @@ fn test_comp_floor_outline(
 }
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "retain-recent"
+    name = "保留最近"
 )]
 fn test_compaction_keep_recent(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "write-entry"
+    name = "写入入口"
 )]
 fn test_compaction_write(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "branch-summary"
+    name = "分支摘要"
 )]
 fn test_compaction_branch(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "estimate-uses-priority"
+    name = "估算使用优先级"
 )]
 fn test_comp_est_priority(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "estimate-fallback-heuristic"
+    name = "估算回退启发式"
 )]
 fn test_comp_est_fallback(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "find-cut"
+    name = "查找裁切"
 )]
 fn test_comp_find_cut(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "provenance-available"
+    name = "来源可用"
 )]
 fn test_comp_provenance(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "reserve-trigger-shares-footer-estimate"
+    name = "预留触发共享页脚估算"
 )]
 fn test_comp_reserve_trigger_shared(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "summarize"
+    name = "摘要"
 )]
 async fn test_comp_summarize_c3(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "generate-summary"
+    name = "生成摘要"
 )]
 async fn test_comp_generate_summary(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "agent"
+    name = "场景agent"
 )]
 async fn test_comp_agent_c12(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "persist"
+    name = "持久化"
 )]
 async fn test_comp_persist(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "branch"
+    name = "分支"
 )]
 fn test_comp_branch_c5(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "iterative"
+    name = "迭代"
 )]
 async fn test_comp_iterative(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "files"
+    name = "文件"
 )]
 async fn test_comp_files(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "entry"
+    name = "入口"
 )]
 async fn test_comp_entry(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "split-by-responsibility"
+    name = "拆分按职责"
 )]
 async fn test_comp_split(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "auto-over-threshold"
+    name = "自动越过阈值"
 )]
 fn test_comp_auto_over(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "auto-under-threshold"
+    name = "自动低于阈值"
 )]
 fn test_comp_auto_under(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "auto-disabled-no-compact"
+    name = "自动关闭无压缩"
 )]
 fn test_comp_auto_disabled(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "manual-force-bypasses-reserve"
+    name = "手动强制绕过预留"
 )]
 fn test_comp_manual_force(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "compact-uses-leaf-branch-path"
+    name = "压缩使用叶子分支路径"
 )]
 async fn test_comp_leaf_branch(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "stale-guard-after-compaction"
+    name = "过期守卫之后压缩"
 )]
 fn test_comp_stale_guard(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "cut-assistant"
+    name = "裁切助手"
 )]
 fn test_comp_cut_assistant(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "never-tool-result"
+    name = "从不工具结果"
 )]
 fn test_comp_never_tool(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "keep-budget"
+    name = "保留预算"
 )]
 fn test_comp_keep_budget(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "split-dual-summary"
+    name = "拆分双摘要"
 )]
 async fn test_comp_split_dual(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "tokens-before"
+    name = "词元之前"
 )]
 async fn test_comp_tokens_before(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "overflow-retry-ok"
+    name = "溢出重试成功"
 )]
 fn test_comp_overflow_retry_ok(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "overflow-once"
+    name = "溢出一次"
 )]
 fn test_comp_overflow_once(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "wrong-model"
+    name = "错误模型"
 )]
 fn test_comp_overflow_wrong_model(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "reason-overflow"
+    name = "原因溢出"
 )]
 fn test_comp_reason_overflow(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "summary-model-entry"
+    name = "摘要模型入口"
 )]
 async fn test_c7_summary_model_entry(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "summary-model-fallback-notice"
+    name = "摘要模型回退提示"
 )]
 async fn test_c7_summary_fallback(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "summary-thinking-override-out-of-set"
+    name = "摘要思考覆盖出设置"
 )]
 async fn test_c7_thinking_override(agent: AgentState, sess: XySessionStore, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "turn-end-overflow-events-before-agent-end"
+    name = "回合结束溢出事件之前agent结束"
 )]
 async fn test_c2844_turn_end_compaction_events(
     compaction_probe: crate::bdd::steps_c2844::CompactionProbe,
@@ -244,7 +244,7 @@ async fn test_c2844_turn_end_compaction_events(
 }
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "reasoning-only-summary-not-empty"
+    name = "推理仅摘要不空"
 )]
 async fn test_c2844_reasoning_only_summary(
     compaction_probe: crate::bdd::steps_c2844::CompactionProbe,
@@ -255,6 +255,6 @@ async fn test_c2844_reasoning_only_summary(
 }
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
-    name = "compaction-cut-metric-same-source"
+    name = "压缩裁切指标同一来源"
 )]
 fn test_c2848_cut_metric_same_source(agent: AgentState, ws: Workspace) {}

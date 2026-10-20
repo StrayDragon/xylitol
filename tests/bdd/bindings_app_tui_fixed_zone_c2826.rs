@@ -6,138 +6,138 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "idle-status-empty-busy-single-line"
+    name = "空闲状态空忙碌单一行"
 )]
 fn test_c2826_atc_idle_busy(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "footer-single-line-with-heuristic-provenance"
+    name = "页脚单一行带启发式来源"
 )]
 async fn test_c2826_atc_footer_heuristic(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "idle-editor-zone-keeps-compact-border"
+    name = "空闲编辑器区保留压缩边框"
 )]
 fn test_c2826_atc_editor_compact(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "busy-spinner-single-row-with-lead"
+    name = "忙碌旋转标单一行带前导"
 )]
 fn test_c2826_atc_spinner(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "user-message-keeps-prefix-no-wash"
+    name = "用户消息保留前缀无清洗"
 )]
 fn test_c2826_atc_user_prefix(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "compacting-status-stays-single-row"
+    name = "压缩中状态保持单一行"
 )]
 fn test_c2826_atc_compacting(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "abort-returns-status-to-idle"
+    name = "中止返回状态至空闲"
 )]
 async fn test_c2826_atc_abort_idle(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "idle-no-ready-wording"
+    name = "空闲无就绪措辞"
 )]
 fn test_c2826_atc_no_ready(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "unknown-theme-keeps-old-and-diagnoses"
+    name = "未知主题保留旧与诊断"
 )]
 async fn test_c2826_atc_theme_diag(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "theme-slot-esc-closes-without-change"
+    name = "主题槽Esc关闭无变更"
 )]
 async fn test_c2826_atc_theme_esc(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "thinking-level-shown-in-footer"
+    name = "思考档位显示于页脚"
 )]
 fn test_c2826_atc_thinking_footer(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "loaded-resources-card-renders-skills-and-mcp"
+    name = "已加载资源卡片渲染技能与MCP"
 )]
 fn test_c2826_atc_loaded_resources(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "footer-derived-percent-from-api-usage"
+    name = "页脚派生百分比来自API用量"
 )]
 async fn test_c2826_atc_footer_percent(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "toast-single-slot-replaces-with-error-prefix"
+    name = "提示条单一槽替换带错误前缀"
 )]
 fn test_c2826_atc_toast(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "footer-used-compact-k-notation"
+    name = "页脚使用压缩K记法"
 )]
 async fn test_c2826_atc_footer_compact(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "reload-status-lead-reloading"
+    name = "重载状态前导重载中"
 )]
 async fn test_c2826_atc_reload_status(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "tool-header-timeout-note-shown-when-requested"
+    name = "工具头超时注释显示当已请求"
 )]
 fn test_c2826_atc_tool_timeout(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "models-picker-footer-reflects-active"
+    name = "模型选择器页脚反映活动"
 )]
 async fn test_c2826_atc_models_footer(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "footer-token-refresh-single-estimate"
+    name = "页脚词元刷新单一估算"
 )]
 async fn test_c2826_atc_footer_refresh(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "short-terminal-busy-lead-visible"
+    name = "短终端忙碌前导可见"
 )]
 fn test_c2826_atc_short_terminal(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "notice-stack-copied-not-error-bar"
+    name = "提示栈已复制不错误栏"
 )]
 async fn test_c2855_notice_stack_copied(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "notice-stack-heuristic-once"
+    name = "提示栈启发式一次"
 )]
 async fn test_c2855_notice_stack_heuristic(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "notice-stack-copied-pins-scrolled-viewport"
+    name = "提示栈已复制钉住已滚动视口"
 )]
 fn test_notice_stack_copied_pins_scrolled_viewport(host_pump_bdd: HostPumpBdd) {}

@@ -545,7 +545,7 @@ fn w_atb4_inspect_drivers() {}
 fn t_atb4_attach_and_inprocess() {
     assert_eq!(xylitol::DEFAULT_ATTACH_URL, "http://127.0.0.1:18790");
     let inprocess = std::any::type_name::<xylitol::XyInProcessDriver>();
-    let http_ws = std::any::type_name::<xylitol::HttpWsClient>();
+    let http_ws = std::any::type_name::<xylitol_app_tui::host_client::HttpWsClient>();
     assert!(inprocess.contains("XyInProcessDriver"), "{inprocess}");
     assert!(http_ws.contains("HttpWsClient"), "{http_ws}");
 }

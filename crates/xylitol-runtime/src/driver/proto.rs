@@ -43,9 +43,8 @@ pub enum AttachObserve {
 
 /// XyDriver — interact with the core without knowing its internals.
 ///
-/// [`crate::wiring::driver::XyInProcessDriver`] keeps a cached `AgentRuntime` and is the local
-/// (single-process) implementation. The remote HTTP driver speaks the protocol over
-/// WS/REST to a xylitol server.
+/// [`crate::driver::XyInProcessDriver`] keeps a cached `AgentRuntime` and is the local
+/// (single-process) implementation. Remote HTTP drivers live in product clients.
 ///
 /// # Errors
 ///
@@ -55,7 +54,7 @@ pub enum AttachObserve {
 /// to `kind=NotFound`; `NoActiveSession` flattens to `kind=Message`,
 /// `detail_kind=Session`. Per-method docs below list the failing conditions.
 #[async_trait]
-pub trait XyDriver: crate::wiring::dispatch::SessionCommandExecutor + Send {
+pub trait XyDriver: Send {
     /// Submit a prompt and receive a stream of events.
     async fn run(&mut self, prompt: &str) -> EventStream;
 

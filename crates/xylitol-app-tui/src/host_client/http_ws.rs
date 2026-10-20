@@ -1,7 +1,7 @@
 //! Product attach client: unary + notifications on one `WS /rpc`.
 //!
 //! Default carrier is the product binary frame. `with_envelope(false)` and
-//! `XYLITOL_WIRE_V3` are test injection; Host rejects JSON text as an illegal
+//! `XYLITOL_ENVELOPE_V3` are test injection; Host rejects JSON text as an illegal
 //! envelope. Handshake fails closed if the host does not advertise `fory-v3`.
 
 use std::collections::HashMap;
@@ -34,7 +34,7 @@ pub struct HttpWsClient {
     ping_interval: std::time::Duration,
     idle_timeout: std::time::Duration,
     peer: Arc<tokio::sync::Mutex<Option<Arc<SharedWs>>>>,
-    /// Test injection: `None` follows `XYLITOL_WIRE_V3` (unset = product on).
+    /// Test injection: `None` follows `XYLITOL_ENVELOPE_V3` (unset = product on).
     envelope: Option<bool>,
 }
 
@@ -82,13 +82,17 @@ impl HttpWsClient {
         self
     }
 
-    /// Test-only: force the product carrier on/off, bypassing `XYLITOL_WIRE_V3`.
+    /// Test-only: force the product carrier on/off, bypassing `XYLITOL_ENVELOPE_V3`.
     pub fn with_envelope(mut self, on: bool) -> Self {
         self.envelope = Some(on);
         self
     }
 
     /// Unset env → product carrier on. Connect-time freeze.
+    pub fn envelope_on_for_test(&self) -> bool {
+        self.envelope_on()
+    }
+
     fn envelope_on(&self) -> bool {
         self.envelope
             .unwrap_or_else(|| match std::env::var_os(ENVELOPE_FORMAT_ENV) {

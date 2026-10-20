@@ -179,7 +179,7 @@ impl LoadedResourcesSnapshot {
 /// without importing `xylitol_runtime::agent::capabilities` directly (layering: surfaces use
 /// the XyDriver seam). Surfaces reference this as
 /// `crate::wiring::driver::SessionStats`.
-pub use xylitol_runtime::agent::{QueueStats, SessionStats};
+pub use crate::agent::{QueueStats, SessionStats};
 
 /// Session resume list row (from [`crate::XySessionStore::list_sessions`]).
 pub use xylitol_plugin_sdk::SessionListEntry;
@@ -191,11 +191,9 @@ pub use xylitol_plugin_sdk::SessionListEntry;
 pub fn estimate_from_session_entries(
     entries: &[SessionEntry],
     model_id: Option<String>,
-    fixed_context: Option<xylitol_runtime::agent::compaction::FixedRequestContext>,
+    fixed_context: Option<crate::agent::compaction::FixedRequestContext>,
 ) -> xylitol_plugin_sdk::model::ContextTokenEstimate {
-    use xylitol_runtime::agent::compaction::{
-        EstimateOpts, estimate_from_session_entries as estimate,
-    };
+    use crate::agent::compaction::{EstimateOpts, estimate_from_session_entries as estimate};
     estimate(
         entries,
         &EstimateOpts {

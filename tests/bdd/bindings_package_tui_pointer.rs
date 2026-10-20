@@ -5,7 +5,7 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
-    name = "hit-id-follows-live-scroll"
+    name = "命中标识跟随在线滚动"
 )]
 fn test_hit_id_follows_live_scroll(ws: Workspace) {
     let _ = ws;
@@ -13,7 +13,7 @@ fn test_hit_id_follows_live_scroll(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
-    name = "viewport-hit-stays-on-screen-cell"
+    name = "视口命中保持时屏幕单元格"
 )]
 fn test_viewport_hit_stays_on_screen_cell(ws: Workspace) {
     let _ = ws;
@@ -21,7 +21,7 @@ fn test_viewport_hit_stays_on_screen_cell(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
-    name = "default-down-swallow-up-silent"
+    name = "缺省向下吞掉向上静默"
 )]
 fn test_default_down_swallow_up_silent(ws: Workspace) {
     let _ = ws;
@@ -29,7 +29,7 @@ fn test_default_down_swallow_up_silent(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
-    name = "up-if-empty-click-without-copy"
+    name = "向上若空点击无复制"
 )]
 fn test_up_if_empty_click_without_copy(ws: Workspace) {
     let _ = ws;
@@ -37,7 +37,7 @@ fn test_up_if_empty_click_without_copy(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
-    name = "unarmed-moved-no-full-frame"
+    name = "未武装移动无完整帧"
 )]
 fn test_unarmed_moved_no_full_frame(ws: Workspace) {
     let _ = ws;
@@ -45,7 +45,7 @@ fn test_unarmed_moved_no_full_frame(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
-    name = "armed-hover-skips-unchanged-id"
+    name = "已武装悬停跳过未变标识"
 )]
 fn test_armed_hover_skips_unchanged_id(ws: Workspace) {
     let _ = ws;
@@ -53,7 +53,7 @@ fn test_armed_hover_skips_unchanged_id(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
-    name = "capture-blocks-transcript-drag"
+    name = "捕获块誊本拖选"
 )]
 fn test_capture_blocks_transcript_drag(ws: Workspace) {
     let _ = ws;
@@ -61,7 +61,7 @@ fn test_capture_blocks_transcript_drag(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
-    name = "hover-paint-does-not-stale-components"
+    name = "悬停绘制会不过期组件"
 )]
 fn test_hover_paint_does_not_stale_components(ws: Workspace) {
     let _ = ws;

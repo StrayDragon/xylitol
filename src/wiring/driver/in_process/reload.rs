@@ -1,7 +1,7 @@
-use super::XyDriverError;
 use super::mcp::McpBootState;
-use super::types::{
+use crate::wiring::driver::{
     ProjectTrustMode, ProjectTrustPersistReport, ReloadStepReport, RuntimeReloadReport,
+    XyDriverError,
 };
 
 impl super::XyInProcessDriver {

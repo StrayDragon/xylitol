@@ -1,28 +1,25 @@
-//! Server module — Host occupancy + assemble. Listen lives in `xylitol-serve`.
-//!
-//! Product carrier is v3 fory: `POST /rpc` unary + `WS /rpc` downlink.
-//! Occupancy is a **session slot** (journal + seq + writer Driver), not a
-//! process-wide `Mutex` Driver.
-//! The Host process shares one `RuntimeBaseline` baseline; slots lazy-materialize
-//! isolated Drivers. Print / embed still use in-process Driver and do not bind.
+//! Host occupancy assembly: factory + bind. Slot policy lives in `xylitol-serve`.
 
 #[cfg(feature = "server")]
-pub mod host;
-
+pub mod factory;
 #[cfg(feature = "server")]
-pub mod idempotency;
-
-#[cfg(feature = "server")]
-pub mod rpc_module;
-
+pub mod in_process_host;
 #[cfg(feature = "server")]
 pub mod runtime;
-
 #[cfg(feature = "server")]
 pub mod subcommand;
 
-#[cfg(feature = "server")]
-pub mod envelope;
+#[cfg(all(test, feature = "server"))]
+mod attach_driver_tests;
 
 #[cfg(feature = "server")]
-pub mod ws;
+pub use factory::{
+    ProductOccupancyFactory, host_state_for_test, host_state_for_test_with_default_model,
+    host_state_for_test_with_mcp,
+};
+#[cfg(feature = "server")]
+pub use in_process_host::in_process_client;
+#[cfg(feature = "server")]
+pub use xylitol_serve::occupancy as host;
+#[cfg(feature = "server")]
+pub use xylitol_serve::occupancy::{HostState, ReloadBaseline, SessionSlot, handle_unary};

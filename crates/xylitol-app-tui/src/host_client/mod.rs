@@ -14,9 +14,11 @@ mod envelope_client;
 mod http_ws;
 mod in_process;
 
-pub use envelope_client::{client_request_bytes, server_response_to_result, stable_rpc_id};
+pub use envelope_client::{
+    ENVELOPE_FORMAT_ENV, client_request_bytes, server_response_to_result, stable_rpc_id,
+};
 pub use http_ws::HttpWsClient;
-pub use in_process::InProcessClient;
+pub use in_process::{InProcessClient, InProcessHost};
 
 /// Stream of downlink `ServerRequest` envelopes (and ignored carrier frames).
 pub type MuxStream =

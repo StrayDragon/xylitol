@@ -11,7 +11,7 @@
   规则: agent-session
     System 须提供 agent 编排循环（prompt→model→tools→loop）并发出完整事件流；system prompt 须由配置的上下文（AGENTS.md、配置 system prompt、append prompts）组装，不得使用硬编码回退。
 
-    场景: prompt-from-loader
+    场景: 提示词来自加载器
       假如 项目含 AGENTS.md 且 CLI 组合根构造 agent
       当 agent 构建 system prompt
       那么 system prompt 含 AGENTS.md 内容且 loader 有值时 不回退硬编码占位符
@@ -19,18 +19,18 @@
   规则: 回合事件
     System 须每轮发出：turn_start、message_start、message_update（流式）、message_end。
 
-    场景: text-response
+    场景: 文本应答
       假如 mock 模型返回文本 "你好，我是一个AI助手"
       当 启动 agent 会话并发送提示 "打个招呼"
       那么 响应事件流包含 TextDelta "你好"
       并且 turn_end 事件触发
 
-    场景: turn-order
+    场景: 回合顺序
       假如 mock 模型返回文本 "分析完成"
       当 启动 agent 会话
       那么 事件按顺序为: turn_start, message_start, message_update, message_end, turn_end
 
-    场景: turn-events
+    场景: 回合事件
       假如 agent 处理含工具调用的回合
       当 回合开始
       那么 事件按序发出：turn_start message_start message_update* message_end turn_end
@@ -38,7 +38,7 @@
   规则: 工具事件
     System 须每次工具调用在 MessageEnd 之后发出 tool_execution_start，执行期发出至少一次 tool_execution_update（长输出工具宜多段），再 tool_execution_end；不得在助手消息流式阶段（MessageEnd 前）发出 tool_execution_start。
 
-    场景: tool-call
+    场景: 工具调用
       假如 mock 模型返回工具调用 "read" 参数 {"path":"src/main.rs"}
       并且 read 工具返回 "hello world"
       当 启动 agent 会话并发送提示 "读取文件"
@@ -46,7 +46,7 @@
       并且 tool_execution_end 事件包含结果 "hello world"
       并且 turn_end 事件包含 toolResult
 
-    场景: tool-stream
+    场景: 工具流
       假如 bash 工具流式输出
       当 tool_execution_start 触发
       那么 多次 tool_execution_update 后 tool_execution_end
@@ -54,7 +54,7 @@
   规则: 模型切换
     System 须支持运行时切换模型（select_model 或等价），切换 须钳制到可用模型集。
 
-    场景: switch-model
+    场景: 切换模型
       假如 agent 运行中
       当 调用 cycleForward
       那么 下一可用模型成为活动模型
@@ -62,18 +62,18 @@
   规则: thinking 级别
     System 须支持按当前模型声明的 thinking_levels 切换档位；显式 set 时目标∉支持集 须拒绝；会话 resume 须原样还原末次落盘档名字符串（见 m10），不得静默改写历史条目。
 
-    场景: thinking-switch
+    场景: 思考切换
       假如 当前思考级别为 "medium"
       当 切换思考级别到 "high"
       那么 getThinkingLevel 返回 "high"
       并且 thinking_level_change 记录写入会话
 
-    场景: thinking-clamp
+    场景: 思考钳制
       假如 当前模型不支持思考
       当 尝试将思考级别设为 "high"
       那么 实际思考级别为 "off" 或 set 被拒绝且保持 off
 
-    场景: thinking-toggle
+    场景: 思考切换2
       假如 模型支持 thinking
       当 变更 thinking level
       那么 新级别钳制到模型能力
@@ -81,7 +81,7 @@
   规则: abort·a6
     System 须支持中止当前 agent 操作（abort 或等价），并清理进行中的回合。
 
-    场景: abort
+    场景: 中止
       假如 agent 流式响应中
       当 调用 abort()
       那么 agent 循环终止并返回 abort 错误
@@ -89,7 +89,7 @@
   规则: 上下文用量
     System 须暴露上下文用量估计（get_context_usage 或等价），返回估计 token 数与上下文窗口百分比。
 
-    场景: context-usage
+    场景: 上下文用量
       假如 会话包含 20000 个 token 的消息
       并且 当前模型上下文窗口为 200000
       当 调用 getContextUsage
@@ -99,12 +99,12 @@
   规则: agent-session-store
     AgentCapabilities 或 ReAct 运行时 须在每条 user、assistant、toolResult 消息完成时（对齐 pi message_end）经 XySessionStore::append_session_entry 写入当前 session；tool 执行结束后 须持久化对应 toolResult；一轮结束后 session 文件或内存 backend 须含本轮消息。不得仅把对话留在 ReAct 本地 history 而不写入 store。
 
-    场景: persist-user-assistant
+    场景: 持久化用户助手
       假如 已绑定稳定 session_id 的 Agent 跑完一轮 user→assistant
       当 load_entries(session_id)
       那么 含本轮 user 与 assistant 的 SessionEntry::Message
 
-    场景: persist-tool-result
+    场景: 持久化工具结果
       假如 一轮含工具调用
       当 工具执行结束
       那么 store 含对应 toolResult（或等价 tool）消息条目
@@ -112,7 +112,7 @@
   规则: prompt 构造
     System 须构造完整 messages 数组：system prompt + context files + history + user prompt，每轮前置。
 
-    场景: prompt-build
+    场景: 提示词构建
       假如 system prompt 已配置上下文文件
       当 agent 开始回合
       那么 messages 数组为 system prompt、history、user message
@@ -120,7 +120,7 @@
   规则: slash 命令
     System 须提供产品 slash 命令目录（至少含 model、exit、session 等已实现项）及扩展注册命令，与各应用面同源；不得以已废弃 pi 短名表冒充产品命令清单；不得注册 slash prompt 模板命令（template: 或文件名模板）。
 
-    场景: product-names-in-get-commands
+    场景: 产品名称于读取命令
       假如 空扩展命令的能力聚合体
       当 调用 get_commands
       那么 含 session-tree 且不含短名 tree 作为内建主名
@@ -128,12 +128,12 @@
   规则: 命令分发
     以 / 开头的用户输入 须在产品面（idle 提交路径）分发到 slash 命令处理器，不得作为普通 prompt 送 LLM；不得提供 prompt 模板展开器路径。
 
-    场景: slash-dispatch
+    场景: 斜杠分发
       假如 用户发送 /compact
       当 prompt 被拦截
       那么 compact 处理器被调用
 
-    场景: no-template-dispatch
+    场景: 无模板分发
       假如 用户发送 /review 及参数且仅存在 prompts/review.md
       当 prompt 处理
       那么 不将 prompt 模板展开并送 LLM
@@ -141,7 +141,7 @@
   规则: 资源加载器
     System 须提供 ResourceLoader，聚合项目上下文文件（AGENTS.md、CLAUDE.md）、skills 与 CLI/配置 system prompt；不得将 prompts/*.md 发现为可注册 slash 模板。
 
-    场景: context-files-found
+    场景: 上下文文件找到
       假如 cwd 树存在 AGENTS.md
       当 调用 load_context_files
       那么 以 AGENTS.md 内容为首项返回
@@ -149,12 +149,12 @@
   规则: 事件总线生命周期
     AgentCapabilities 须在 turn 生命周期内发出 turn_start 与 turn_end（或等价 XyEvent）；并 须在消息完成时 auto-persist 到 session store（与 a8 一致），不得只依赖无人订阅的旁路。
 
-    场景: auto-persist
+    场景: 自动持久化
       假如 一个 turn 完成
       当 加载会话文件
       那么 该 turn 的消息记录已保存
 
-    场景: auto-persist-on-message-end
+    场景: 自动持久化时消息结束
       假如 已启用 session 的 Agent
       当 assistant message_end 发生
       那么 该消息已 append 到 session store
@@ -162,7 +162,7 @@
   规则: 会话生命周期
     System 须支持创建新会话（start_new_session 或等价，可选 parent 引用）与恢复已有会话（加载并校验，含 CWD 断言）。
 
-    场景: resume-validates-cwd
+    场景: 续跑校验工作目录
       假如 会话文件 cwd 指向存在目录
       当 调用 resume_session
       那么 会话加载成功
@@ -170,7 +170,7 @@
   规则: 内聚分解
     agent 编排层 须分解为聚焦协作者，覆盖模型管理、工具管理、compaction 编排、skill 激活，而非单一对象混杂无关职责。
 
-    场景: responsibilities-separated
+    场景: 职责分离
       假如 AgentCapabilities 与 SessionExporter 已构造
       当 分别调用 get_context_usage 与 export_to_html 入口
       那么 各 API 可独立调用且不 panic
@@ -181,7 +181,7 @@
   规则: 导出 IO 端口
     会话导出/导入 须经注入的导出 I/O 端口做文件 I/O（不得直接调用 std::fs），使导出实现无文件系统副作用，未来后端（gist、S3）可替换而不改导出逻辑。
 
-    场景: export-io-injected
+    场景: 导出IO注入
       假如 构造含 MockExportIo 的 Agent
       当 调用 export_to_html
       那么 MockExportIo.write 被调用且 agent/ 源码无 std::fs 引用
@@ -189,7 +189,7 @@
   规则: 可选 bash 导出
     未配置 bash 执行或导出后端时，对应操作（execute_bash / 导出 / 导入）须返回清晰的未配置错误；最小对话 agent 不必强制携带 bash 或导出能力。
 
-    场景: no-bash-configured
+    场景: 无bash已配置
       假如 构建无 bash executor 的 agent
       当 调用 execute_bash
       那么 返回提及 bash executor 未配置的错误且不 panic
@@ -200,12 +200,12 @@
   规则: 从 store 播种 history
     AgentRuntime::run_with_id（或等价入口）在已有 session 上开新一轮时 须经 leaf 分支路径、经与 pi buildContextEntries 同构的 compaction-aware 裁切（取路径上最新 CompactionEntry：保留该摘要，并仅保留 firstKeptEntryId 起至该 compaction 前的条目及 compaction 之后的条目；无 compaction 则保留整条 leaf），再经统一 SessionEntry→AgentMessage 投影灌入 history（含 type=message 内的 LLM/Env 角色，以及 compaction/branchSummary 投影；bang-bash 仅接受 message+role=bashExecution），再追加本轮 user prompt；须尊重 exclude_from_context。不得把 firstKept 之前已被摘要的消息再送入工作 history；不得每轮从空 history 起步；不得仅过滤 Message 行而永久丢弃合法 bang-bash 或摘要上下文；不得将旧顶层 type=bashExecution/bash_execution 提升为合法 history（此类行由 agent-session-store s20 跳过）。
 
-    场景: second-turn-sees-first
+    场景: 第二次回合看见首次
       假如 同一 session_id 第一轮 user/assistant 已在 store
       当 第二轮 run_with_id
       那么 送给模型的 history 含第一轮消息
 
-    场景: seed-includes-bash-and-summaries
+    场景: 种子包含bash与摘要
       假如 session 含 bang bashExecution（Message 内）与 compaction 条目且未 exclude
       当 run_with_id 播种 history
       那么 history 含折叠后的 bash/摘要上下文而非空跳过
@@ -213,13 +213,13 @@
   规则: bash-run-lifecycle-projection
     交互 bang 的持久化 须由生命周期条目组成：开始执行时写入 message+role=bashExecution 的 running 条目（含 bash_id、command，output 空），完成或取消时写入同 bash_id 的 done 结果条目（output 截断视图、exit_code、cancelled、truncated、full_output_path）。LLM 历史投影 须只使用 done 条目且字节稳定（running 条目 不得产出任何投影）；resume 重建的 history 在 bang 部分 须与实时增量一致（前缀不变量）；同 bash_id 仅 running 无 done（会话级 done 集配对，done 存在于 leaf 路径外也 不得误报）时 须投影一条简短 interrupted 提示，形状钉死为 `[interrupted] $ <command>`（command 原文，不含前导 `!`；同会话重复构建上下文 须逐字节一致）；须尊重 exclude_from_context（`!!` 的孤儿 running 不得投影）。旧条目无 bash_id/status 字段 须视为 done。
 
-    场景: interrupted-bang-llm-projection
+    场景: 中断bang模型投影
       假如 session 含孤儿 running bashExecution（command 为 "serve"，同 bash_id 无 done）
       当 经播种路径构建 LLM history
       那么 送给模型的 history 恰含一行 `[interrupted] $ serve`
       并且 重复构建上下文两次折叠文本逐字节一致
 
-    场景: interrupted-bang-excluded-and-done-pairing
+    场景: 中断bang排除与完成对拍
       假如 session 含 exclude_from_context 的孤儿 running bashExecution（command 为 "clean"）
       并且 另含一对同 bash_id 的 running 与 done
       当 经播种路径构建 LLM history
@@ -229,12 +229,12 @@
   规则: 持久化带 tag 的 agent 部件
     ReAct/session 将 AssistantMessage/UserMessage 持久化为 SessionEntry::Message 时 须写出 domain-message dm1 的 tagged content；从 store 恢复为 AgentMessage（as_agent_message 或等价）时 须只接受 tagged 部件；遇旧 untagged/裸字符串 content 不得静默当成合法对话上下文（须跳过该条目并可观测，对齐 agent-session-store s20），不得把 thinking 与 text 糊成单一 Text。
 
-    场景: persist-load-thinking
+    场景: 持久化加载思考
       假如 含 ThinkingDelta 与 TextDelta 的 assistant 已 persist
       当 load_entries 后 as_agent_message
       那么 content 含独立 Thinking 与 Text 且 type 字段正确
 
-    场景: legacy-content-rejected
+    场景: 旧版内容拒绝
       假如 JSONL message.content 为旧 untagged 形态
       当 as_agent_message 或恢复上下文
       那么 不产生糊成一体的合法 Assistant Text；失败或跳过可观测

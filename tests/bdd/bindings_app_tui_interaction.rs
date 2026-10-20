@@ -5,85 +5,85 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "tools-per-block-fold-click-and-alt-e-headless"
+    name = "工具每块折叠点击与Alt无头"
 )]
 fn test_att20_tools_per_block(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "thinking-per-id-fold-click-and-ctrl-t-headless"
+    name = "思考每标识折叠点击与CtrlT无头"
 )]
 fn test_att21_thinking_per_id(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "mouse-fold-leaf-triangle-still-toggles-headless"
+    name = "鼠标折叠叶子三角仍切换无头"
 )]
 fn test_att22_leaf_triangle_still_toggles(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "mouse-fold-leaf-header-full-width-headless"
+    name = "鼠标折叠叶子头完整宽度无头"
 )]
 fn test_att22_leaf_header_full_width(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "mouse-fold-leaf-empty-body-collapses-headless"
+    name = "鼠标折叠叶子空正文折叠无头"
 )]
 fn test_att22_leaf_empty_body(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "activity-fold-layered-collapse-hides-blocks-headless"
+    name = "活动折叠分层折叠隐藏块无头"
 )]
 fn test_att25_layered_collapse(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "cluster-fold-marker-mouse-precise-headless"
+    name = "簇折叠标记鼠标精确无头"
 )]
 fn test_att31_cluster_precise(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "cluster-header-full-width-mouse-headless"
+    name = "簇头完整宽度鼠标无头"
 )]
 fn test_att31_cluster_header_full_width(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "compaction-fold-triangle-mouse-headless"
+    name = "压缩折叠三角鼠标无头"
 )]
 fn test_att29_compaction_triangle(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "compaction-fold-summary-does-not-toggle-headless"
+    name = "压缩折叠摘要会不切换无头"
 )]
 fn test_att29_compaction_summary_no_toggle(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "output-viewport-hint-band-mouse-headless"
+    name = "输出视口提示带鼠标无头"
 )]
 fn test_att30_viewport_hint_band(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "output-viewport-fold-per-block-headless"
+    name = "输出视口折叠每块无头"
 )]
 fn test_att30_viewport_fold_per_block(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "remaining-fold-targets-unified-hit-table-headless"
+    name = "剩余折叠目标统一命中表无头"
 )]
 fn test_att32_unified_hit_table(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "expandable-block-fold-summary-and-chords-headless"
+    name = "可展开块折叠摘要与和弦键无头"
 )]
 fn test_att7_expandable_summary_chords(tui_interaction: TuiInteraction) {}
 
@@ -91,37 +91,37 @@ fn test_att7_expandable_summary_chords(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
-    name = "session-tree-filter-keys-headless"
+    name = "会话树过滤键无头"
 )]
 fn test_ati22_tree_filter_keys(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
-    name = "session-tree-fold-keys-headless"
+    name = "会话树折叠键无头"
 )]
 fn test_ati24_tree_fold_keys(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
-    name = "session-tree-fork-key-headless"
+    name = "会话树分叉键无头"
 )]
 fn test_ati25_tree_fork_key(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
-    name = "session-tree-cycle-backward-key-headless"
+    name = "会话树循环向后键无头"
 )]
 fn test_ati26_cycle_backward(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
-    name = "session-tree-label-keys-headless"
+    name = "会话树标签键无头"
 )]
 fn test_ati27_label_keys(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
-    name = "thinking-cycle-not-bound-editor-slot-headless"
+    name = "思考循环不已绑编辑器槽无头"
 )]
 fn test_ati36_no_thinking_cycle(tui_interaction: TuiInteraction) {}
 
@@ -129,6 +129,6 @@ fn test_ati36_no_thinking_cycle(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
-    name = "demo-fork-chord-to-host"
+    name = "演示分叉和弦键至Host"
 )]
 fn test_ats4_fork_chord_to_host(tui_interaction: TuiInteraction) {}

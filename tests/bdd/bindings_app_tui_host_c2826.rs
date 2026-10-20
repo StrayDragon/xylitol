@@ -6,60 +6,60 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "session-name-normalizes-crlf"
+    name = "会话名称规范化CRLF"
 )]
 async fn test_c2826_ath_name_norm(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "reload-orchestrates-foundations-report"
+    name = "重载编排基础报告"
 )]
 async fn test_c2826_ath_reload_report(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "silent-commit-model-and-theme-fixed-zone-only"
+    name = "静默提交模型与主题固定区仅"
 )]
 async fn test_c2826_ath_silent_commit(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "connecting-mcp-does-not-block-input"
+    name = "连接中MCP会不块输入"
 )]
 async fn test_c2826_ath_connecting_bang(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "mcp-pending-cue-in-status"
+    name = "MCP待处理提示于状态"
 )]
 async fn test_c2826_ath_mcp_cue(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "reload-soft-gate-enter-toast"
+    name = "重载软门禁回车提示条"
 )]
 async fn test_c2826_ath_reload_gate(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "copy-notice-fixed-zone-cue"
+    name = "复制提示固定区提示"
 )]
 fn test_c2826_ath_copy_notice(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "synthetic-harness-full-round-chain"
+    name = "合成夹具完整回合链"
 )]
 async fn test_c2826_ath_chain(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "fold-pointer-click-toggles-block"
+    name = "折叠指针点击切换块"
 )]
 fn test_c2826_ath_fold_click(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "session-switch-trails-not-stack"
+    name = "会话切换跟随不栈"
 )]
 fn test_session_switch_trails_not_stack(host_pump_bdd: HostPumpBdd) {}

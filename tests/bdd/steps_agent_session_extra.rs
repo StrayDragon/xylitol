@@ -925,7 +925,7 @@ pub(crate) fn g_sess_mock_export(_agent: &AgentState) {
 
 #[when("调用 export_to_html")]
 pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStore) {
-    use xylitol::wiring::session_export::SessionExporter;
+    use xylitol::wiring::driver::SessionExporter;
 
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("out.html");
@@ -978,7 +978,7 @@ pub(crate) fn g_sess_no_bash(_agent: &AgentState) {}
 
 #[when("调用 execute_bash")]
 pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
-    use xylitol::wiring::bang_exec::BangExecHandler;
+    use xylitol::wiring::driver::BangExecHandler;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);

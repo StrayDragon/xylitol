@@ -23,7 +23,7 @@
   规则: thinking-params-in-request-body
     方言插件在组装 OpenAI Responses / Completions 与 Anthropic Messages 请求体时 MUST 消费已解析的 thinking 参数：Responses 用 reasoning.effort；Completions 在 compat=generic 时用 reasoning_effort，compat=deepseek 时用 thinking.type（及可选 reasoning_effort）；Anthropic 在 compat=generic 时用 thinking budget（enabled + budget_tokens），compat=deepseek 时仅 thinking.type=enabled 且 MUST NOT 发送 budget_tokens；level 为精确 off 或映射为 null 时 MUST 省略对应字段（或显式 disabled）；用户 map 字符串 MUST 覆盖内置默认；识别内置档名（含关档 off 与 Anthropic 预算档）时 MUST 精确匹配配置/请求中的档名字面量，MUST NOT 因仅大小写或 trim 差异把 HIGH 等当成 high；MUST NOT 在无 map/默认时伪造未知厂商字段。
 
-    场景: thinking-params-by-family-and-compat
+    场景: 思考参数按族与兼容
       当 以 medium 与 off 档解析请求 thinking 并注入各族请求体
       那么 Responses 用 reasoning.effort 且 Completions 随 compat 分流且 Anthropic 随 compat 分流且 off 档省略字段
   @req:r1555
@@ -36,7 +36,7 @@
   规则: assistant-stream-toolcall-lifecycle
     Responses、Completions 与 Anthropic Messages 的流式路径 MUST 将原生工具调用映射为 XyChunk 的 ToolCallStart / ToolCallDelta / ToolCallEnd 生命周期：在首个可判别的工具相关上游事件后 MUST 发出 ToolCallStart（或同轮首次 ToolCallDelta 前已有 Start）；参数 JSON 片段 MUST 经 ToolCallDelta 增量发出且携带 parse_streaming_json 渐进 args；完整参数 MUST 在块结束时经 ToolCallEnd 发出。MUST NOT 仅在 finish_reason / output_item.done / message stop 才首次暴露工具意图。MUST NOT 在核心路径解析文本通道伪工具 XML。
 
-    场景: responses-toolcall-streams-before-done
+    场景: Responses工具调用流之前完成
       假如 Responses SSE 含 function_call 的 output_item.added 与多帧 function_call_arguments.delta 后才有 output_item.done
       当 映射为 XyChunk 流
       那么 首个 args delta 之前或当时已有 ToolCallStart 且存在至少一次 ToolCallDelta 早于对应 ToolCallEnd
@@ -44,7 +44,7 @@
   规则: parse-streaming-json
     包 MUST 提供 parse_streaming_json（或等价）：对不完整工具参数 JSON 尽最大努力解析为 serde_json::Value，非法中间态 MUST NOT panic，可回退为空对象。
 
-    场景: partial-args-object
+    场景: 部分参数对象
       假如 输入残缺工具参数 JSON
       当 调用 parse_streaming_json
       那么 返回 Value 且不 panic
@@ -52,12 +52,12 @@
   规则: responses-input-align-pi
     组装 OpenAI Responses 请求体时：XyGenerateOptions.system_prompt 非空 MUST 每请求前置 input 项，thinking_level 非 off 时 role 为 developer，否则为 system；assistant 历史回放 MUST 仅将 Text 部分写入 output_text；Thinking 有合法 JSON thinkingSignature 时 MUST 解析为 reasoning item 按现网顺序推入 input（同轮排在 assistant text / function_call 之前），此为唯一默认全量回放；无 signature 或非法 JSON 时 MUST 省略该 Thinking 且 MUST NOT 并入 output_text，MUST NOT 用展示用 thinking 文本冒充可回放 signature。Anthropic MUST 经 body.system 消费同一 options.system_prompt。
 
-    场景: responses-system-as-developer
+    场景: Responses系统作为developer
       假如 Responses 组装且 system_prompt 非空且 thinking_level 为 medium
       当 转换为 input items
       那么 首项 role 为 developer 且 content 为 system_prompt
 
-    场景: responses-thinking-not-in-output-text
+    场景: Responses思考不于输出文本
       假如 assistant 含 Thinking 无 signature 与 Text
       当 转换为 Responses input
       那么 output_text 仅含 Text 且无 Thinking 正文
@@ -65,12 +65,12 @@
   规则: responses-reasoning-lifecycle-align-pi
     组装 OpenAI Responses 请求体时 MUST 设置 store 为 false，且每个 tool 项 MUST 设置 strict 为 false；thinking_level 非 off 时 MUST 在 reasoning 对象写入 summary（默认 auto）；compat 允许时 MUST 设置 include 含 reasoning.encrypted_content，compat=deepseek（或文档化等价拒绝 include 的轮廓）时 MUST NOT 发送该 include。流式或非流式收到完整 reasoning output item 时 MUST 将其 JSON 写入 Thinking 的 thinkingSignature（经 ThinkingEnd 或文档化等价 chunk 交给调用方）；若流式 output_item.done 中缺非空 encrypted_content 而随后 response.completed 或 response.incomplete 的 response.output 同 id 项带有，MUST 在落盘材料最终确定前回填进 thinkingSignature（可再发 ThinkingEnd）；MUST NOT 仅累积 reasoning 文本而不保留可回放 signature；MUST NOT 伪造 encrypted_content。默认路径 MUST 对齐上述字段。
 
-    场景: responses-body-store-strict-summary-include
+    场景: Responses正文存储严格摘要包含
       假如 Responses 组装且 thinking_level 为 medium 且 tools 非空
       当 构建请求体
       那么 store 为 false 且每个 tool 的 strict 为 false 且 reasoning.summary 存在且 include 含 reasoning.encrypted_content
 
-    场景: responses-reasoning-item-sets-thinking-signature
+    场景: Responses推理项设置思考签名
       假如 Responses 流或非流输出含完整 type=reasoning 的 output item
       当 映射为 XyChunk
       那么 存在带 thinkingSignature 的 Thinking 终态（ThinkingEnd 或等价）且 signature 可 JSON 解析为该 reasoning item
@@ -78,7 +78,7 @@
   规则: responses-error-message-surface
     OpenAI Responses 适配器在将上游错误映射为 XyError 时，若错误串含嵌入 JSON（如 content:{...}）且其中 error.message 可读，MUST 将该 message（MAY 附 type）暴露在错误文案中；MUST NOT 仅因 error.code 为整数导致 SDK 反序列化失败而只展示 deserialize 噪音、掩盖 upstream overflow 等原文。
 
-    场景: responses-error-embedded-message-surface
+    场景: Responses错误内嵌消息表面
       当 格式化含嵌入 JSON 的 Responses 上游错误
       那么 错误文案暴露嵌入的 error.message 而非反序列化噪音
   @req:r1545

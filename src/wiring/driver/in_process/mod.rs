@@ -1,33 +1,31 @@
-//! In-process [`XyInProcessDriver`].
+//! Product in-process driver: runtime core + official plugin injection + MCP reload.
 
-use std::path::Path;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio_util::sync::CancellationToken;
 
-use crate::wiring::bang_exec::BangExecHandler;
-use crate::wiring::session_export::SessionExporter;
 use xylitol_plugin_sdk::XySessionStore;
-use xylitol_plugin_sdk::error::XySessionError;
 use xylitol_runtime::agent::AgentRuntime;
-use xylitol_runtime::agent::runtime::RunPolicy;
+use xylitol_runtime::{
+    BangExecHandler, SessionExporter, XyDriver, XyDriverError, XyInProcessDriver as RuntimeDriver,
+};
 
-use super::types::{
+use super::{
     ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
     ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport,
 };
-pub(super) use super::{XyDriver, XyDriverError, types};
 
 mod mcp;
 mod reload;
-mod session;
 #[cfg(test)]
 mod tests;
 
-use mcp::{McpBootState, McpDiscoverOk};
+#[cfg(test)]
+pub(crate) use xylitol_runtime::driver::{relay_bash_chunks, utf8_emit_len};
 
-// ── In-process driver ─────────────────────────────────────────────
+use mcp::McpBootState;
+use mcp::McpDiscoverOk;
 
 struct InProcessReloadState {
     cwd: std::path::PathBuf,
@@ -37,45 +35,32 @@ struct InProcessReloadState {
     mcp_servers: Vec<crate::wiring::mcp_spec::McpServerSpec>,
 }
 
-/// In-process driver wrapping the local agent module.
-///
-/// Constructed at the composition root (`app::cli` via `bootstrap`) which wires
-/// ports and agent together. This is the **only** place in the app surfaces
-/// that imports `agent`.
+/// Composition-root driver: runtime core plus MCP / plugin injection.
 pub struct XyInProcessDriver {
-    agent: AgentRuntime,
-    /// Session store, held so SwitchSession/GetMessages/Fork can operate. The
-    /// agent holds its own clone internally; this one is the surface's handle
-    /// for session-management commands.
-    store: Arc<dyn XySessionStore>,
-    /// Interactive bang (`!` / `!!`) executor — app-surface, not agent.
-    bang: BangExecHandler,
-    /// Session HTML/JSONL export-import — app-surface.
-    exporter: SessionExporter,
-    /// Optional reload state for `/reload` and MCP ownership (c1120).
+    pub inner: RuntimeDriver,
+    todo: Arc<xylitol_official_plugin_tools::SessionAgentTodoGateway>,
     reload: Option<InProcessReloadState>,
-    /// Background MCP bootstrap (c1200); independent of agent busy.
     mcp_boot: McpBootState,
-    /// Discover finished after gate timeout detached `Running` (apply on poll).
     late_mcp_discover: Option<tokio::task::JoinHandle<McpDiscoverOk>>,
-    /// User-visible notice after gate timeout subset freeze (TUI takes once).
     mcp_gate_notice: Option<String>,
-    /// When set, [`Self::poll_mcp_bootstrap`] freezes tools at settle or this deadline (TUI gate).
     tool_gate_deadline: Option<std::time::Instant>,
-    /// TUI-only ask gateway; MCP reload MUST re-plus ask when this is set (c1850).
-    ask_gateway: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
-    /// Session-bound Todo SSOT gateway shared by `todo_*` builtins (c1955).
-    todo_gateway: Arc<xylitol_official_plugin_tools::SessionAgentTodoGateway>,
-    /// Interactive bang output-event sink (c2760): runtime-injected, `&self`
-    /// bash execution pushes chunks into it while running.
-    bash_run_sink: std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>,
+}
+
+impl Deref for XyInProcessDriver {
+    type Target = RuntimeDriver;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for XyInProcessDriver {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
 }
 
 impl XyInProcessDriver {
     /// Construct from a built agent plus the store used to build it.
-    ///
-    /// Installs default bang + export I/O for product surfaces.
-    /// Use [`Self::with_surface_ops`] to override.
     pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
         Self::with_surface_ops(
             agent,
@@ -96,27 +81,30 @@ impl XyInProcessDriver {
         bang: BangExecHandler,
         exporter: SessionExporter,
     ) -> Self {
-        let todo_gateway =
-            xylitol_official_plugin_tools::SessionAgentTodoGateway::new(store.clone());
-        let mut driver = Self {
-            agent,
-            store,
-            bang,
-            exporter,
+        let todo = xylitol_official_plugin_tools::SessionAgentTodoGateway::new(store.clone());
+        let mut inner = RuntimeDriver::with_surface_ops(agent, store, bang, exporter);
+        inner.set_todo_gateway(todo.clone());
+        inner.set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
+            xylitol_official_plugin_tools::default_tools_with_todo(todo.clone()),
+        ));
+        inner.set_slash_commands(
+            crate::wiring::product_commands::product_slash_commands()
+                .into_iter()
+                .map(|c| CommandInfo {
+                    name: c.name.to_string(),
+                    description: c.description.to_string(),
+                })
+                .collect(),
+        );
+        Self {
+            inner,
+            todo,
             reload: None,
             mcp_boot: McpBootState::Idle,
             late_mcp_discover: None,
             mcp_gate_notice: None,
             tool_gate_deadline: None,
-            ask_gateway: None,
-            todo_gateway: todo_gateway.clone(),
-            bash_run_sink: std::sync::Mutex::new(None),
-        };
-        // Replace ephemeral MemoryTodoGateway from build_agent with store-bound SSOT.
-        driver.set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
-            xylitol_official_plugin_tools::default_tools_with_todo(todo_gateway),
-        ));
-        driver
+        }
     }
 
     /// Construct with an explicit bang handler (tests / embed without shell).
@@ -137,42 +125,29 @@ impl XyInProcessDriver {
 
     /// Install TUI-only `ask` tool and remember the gateway for MCP reload.
     pub fn install_ask_tool(&mut self, gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>) {
-        self.ask_gateway = Some(gateway.clone());
-        self.set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
-            xylitol_official_plugin_tools::default_tools_with_ask_and_todo(
-                gateway,
-                self.todo_gateway.clone(),
-            ),
-        ));
-    }
-
-    /// Gateway used when rebuilding builtins during MCP settle / reload (c1850).
-    pub fn ask_gateway(&self) -> Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>> {
-        self.ask_gateway.clone()
+        self.inner.install_ask_tool(gateway.clone());
+        self.inner
+            .set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
+                xylitol_official_plugin_tools::default_tools_with_ask_and_todo(
+                    gateway,
+                    self.todo.clone(),
+                ),
+            ));
     }
 
     /// Builtins for ToolSet rebuild: store-bound Todo (+ optional ask).
     pub fn builtins_for_reload(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
-        match &self.ask_gateway {
-            Some(g) => xylitol_official_plugin_tools::default_tools_with_ask_and_todo(
-                g.clone(),
-                self.todo_gateway.clone(),
-            ),
-            None => {
-                xylitol_official_plugin_tools::default_tools_with_todo(self.todo_gateway.clone())
+        match self.inner.ask_gateway() {
+            Some(g) => {
+                xylitol_official_plugin_tools::default_tools_with_ask_and_todo(g, self.todo.clone())
             }
+            None => xylitol_official_plugin_tools::default_tools_with_todo(self.todo.clone()),
         }
-    }
-
-    async fn bind_todo_session(&self, session_id: Option<&str>) {
-        self.todo_gateway
-            .bind_session(session_id.map(str::to_string))
-            .await;
     }
 
     /// Store-bound Todo gateway (shared with `todo_*` builtins).
     pub fn todo_gateway(&self) -> Arc<xylitol_official_plugin_tools::SessionAgentTodoGateway> {
-        self.todo_gateway.clone()
+        self.todo.clone()
     }
 
     /// Enable `/reload` and MCP ownership for the process lifetime (c1120).
@@ -191,192 +166,67 @@ impl XyInProcessDriver {
             mcp_servers,
         });
     }
-
-    pub fn cancel_token(&self) -> CancellationToken {
-        self.agent.cancel_token()
-    }
-
-    /// Replace the tool set (next `run`). Used by composition MCP reload.
-    /// Ignored while FROZEN (c1900); prefer [`Self::freeze_tools`].
-    pub fn set_tools(&mut self, tools: xylitol_runtime::agent::tools::ToolSet) {
-        self.agent.set_tools(tools);
-    }
-
-    /// Freeze provider-visible tools (c1900 轨 A). Used by MCP gate / `/reload` re-freeze.
-    pub fn freeze_tools(&mut self, tools: xylitol_runtime::agent::tools::ToolSet) {
-        self.agent.freeze_tools(tools);
-    }
-
-    pub fn reopen_tools_for_regate(&mut self) {
-        self.agent.reopen_tools_for_regate();
-    }
-
-    pub fn is_tools_frozen(&self) -> bool {
-        self.agent.is_tools_frozen()
-    }
-
-    /// Replace context / SYSTEM / APPEND for the next `run` (c1100).
-    /// Does not mutate session history.
-    pub fn apply_prompt_resources(
-        &mut self,
-        context_files: Vec<(String, String)>,
-        system_prompt: Option<String>,
-        append_system_prompt: Vec<String>,
-    ) {
-        self.agent
-            .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
-    }
-
-    /// Replace skills catalog for the next `run` (c1085). Does not mutate history.
-    pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>) {
-        self.agent.apply_skills(skills);
-    }
-
-    /// Names currently in the system `<available_skills>` catalog (c1085).
-    pub fn loaded_skill_names(&self) -> Vec<String> {
-        self.agent.loaded_skill_names()
-    }
-
-    /// Full skill catalog for `$` completion / expand (c1130).
-    pub fn loaded_skills(&self) -> Vec<xylitol_plugin_sdk::resource::SkillInfo> {
-        self.agent.loaded_skills()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn agent_cwd_for_test(&self) -> String {
-        self.agent.cwd().to_string()
-    }
-
-    fn skill_catalog_pairs(&self) -> Vec<(String, String)> {
-        self.agent
-            .loaded_skills()
-            .iter()
-            .map(|s| (s.name.clone(), s.description.clone().unwrap_or_default()))
-            .collect()
-    }
-
-    /// Test/diagnostics: tool names currently registered.
-    #[cfg(test)]
-    pub(crate) fn tool_names_for_test(&self) -> Vec<String> {
-        self.agent.tool_names()
-    }
-
-    /// Test/diagnostics: assembled system prompt text (c1100).
-    // c2837: 测试辅助无条件化
-    pub fn system_prompt_for_test(&self) -> Option<String> {
-        self.agent.system_prompt().map(String::from)
-    }
-
-    /// Composition-root assembly: bind the configured default model without
-    /// persisting a `modelChange` row (attach-time restore, not a user change).
-    pub async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError> {
-        self.agent
-            .select_model_with_source(model_id, "restore")
-            .await
-            .map_err(XyDriverError::from)
-    }
-}
-
-fn bind_session_or_err(
-    agent: &mut AgentRuntime,
-    session_id: impl Into<String>,
-) -> Result<(), XyDriverError> {
-    agent.bind_session(session_id).map_err(XyDriverError::from)
-}
-
-fn require_active_session(agent: &AgentRuntime) -> Result<&str, XyDriverError> {
-    agent
-        .session_id()
-        .ok_or_else(|| XySessionError::NoActiveSession.into())
 }
 
 #[async_trait]
 impl XyDriver for XyInProcessDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
         self.ensure_tool_table_frozen().await;
-        if self.agent.session_id().is_none() {
-            let id = uuid::Uuid::new_v4().to_string();
-            if let Err(e) = bind_session_or_err(&mut self.agent, id.clone()) {
-                e.log_failure("driver.run.bind_session");
-            }
-            self.bind_todo_session(Some(&id)).await;
-        } else if let Some(sid) = self.agent.session_id() {
-            // Keep Todo gateway aligned if agent was bound before driver wiring.
-            self.bind_todo_session(Some(sid)).await;
-        }
-        let stream = self.agent.submit_root(prompt, RunPolicy::Reject).await;
-        Box::pin(stream)
+        XyDriver::run(&mut self.inner, prompt).await
     }
 
     fn abort(&self) {
-        self.bang.abort();
-        self.agent.abort();
+        XyDriver::abort(&self.inner);
     }
 
     fn current_model(&self) -> Option<ModelInfo> {
-        self.agent.current_model().map(|m| ModelInfo::from(&m))
+        XyDriver::current_model(&self.inner)
     }
 
     fn active_turn(&self) -> Option<(String, String, bool)> {
-        let binding = self.agent.inflight_turn_binding()?;
-        Some((
-            binding.display_name,
-            binding.thinking,
-            binding.omit_thinking,
-        ))
+        XyDriver::active_turn(&self.inner)
     }
 
     fn has_active_turn(&self) -> bool {
-        self.agent.has_active_turn()
+        XyDriver::has_active_turn(&self.inner)
     }
 
     fn available_models(&self) -> Vec<ModelInfo> {
-        self.agent
-            .model_registry()
-            .list()
-            .iter()
-            .map(ModelInfo::from)
-            .collect()
+        XyDriver::available_models(&self.inner)
     }
 
     fn thinking_level(&self) -> String {
-        self.agent.thinking_level()
+        XyDriver::thinking_level(&self.inner)
     }
 
     fn session_id(&self) -> Option<String> {
-        self.agent.session_id().map(String::from)
+        XyDriver::session_id(&self.inner)
     }
 
     fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
-        *self.bash_run_sink.lock().unwrap_or_else(|e| e.into_inner()) = sink;
+        XyDriver::set_bash_run_sink(&mut self.inner, sink);
     }
 
     async fn estimate_context_tokens(
         &self,
     ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
-        XyInProcessDriver::estimate_context_tokens(self).await
+        XyDriver::estimate_context_tokens(&self.inner).await
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
-        crate::wiring::product_commands::product_slash_commands()
-            .into_iter()
-            .map(|c| CommandInfo {
-                name: c.name.to_string(),
-                description: c.description.to_string(),
-            })
-            .collect()
+        XyDriver::get_commands(&self.inner)
     }
 
     fn leaf_entry_id(&self) -> Option<String> {
-        XyInProcessDriver::leaf_entry_id(self)
+        XyDriver::leaf_entry_id(&self.inner)
     }
 
     fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {
-        Some(self.store.clone())
+        XyDriver::session_store(&self.inner)
     }
 
     fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
-        self.skill_catalog_pairs()
+        XyDriver::dollar_skill_catalog(&self.inner)
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
@@ -388,7 +238,7 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn is_tools_frozen(&self) -> bool {
-        self.agent.is_tools_frozen()
+        XyDriver::is_tools_frozen(&self.inner)
     }
 
     async fn arm_tool_freeze_gate(&mut self) {
@@ -407,57 +257,12 @@ impl XyDriver for XyInProcessDriver {
         XyInProcessDriver::poll_mcp_bootstrap(self).await
     }
 
-    /// c2790: owned bash completion — pre-hooks run eagerly (`&mut` phase);
-    /// the returned future holds only cloned Arc handles (store / bang / sink).
     async fn bash_run(
         &mut self,
         command: &str,
         exclude_from_context: bool,
-    ) -> Result<super::proto::BashRun, XyDriverError> {
-        let (ty, phase, ctx) = xylitol_runtime::agent::runtime::script_hook_ctx::user_bash(
-            command,
-            exclude_from_context,
-            self.agent.cwd(),
-        );
-        self.agent.script_hook_cancel(ty, phase, ctx).await?;
-
-        let bash_id = uuid::Uuid::new_v4().to_string();
-        let run = self
-            .bash_run_sink
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take();
-        let cancel = run
-            .as_ref()
-            .map(|run| run.cancel.clone())
-            .unwrap_or_default();
-        let (chunk_tx, chunk_rx) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
-        let relay =
-            run.map(|run| tokio::spawn(relay_bash_chunks(bash_id.clone(), chunk_rx, run.tx)));
-        let store = self.store.clone();
-        let bang = self.bang.clone();
-        let session_id = self.agent.session_id().map(str::to_string);
-        let cwd = self.agent.cwd().to_string();
-        let command = command.to_string();
-
-        Ok(Box::pin(async move {
-            let result = bang
-                .execute(
-                    store.as_ref(),
-                    session_id.as_deref(),
-                    &bash_id,
-                    &command,
-                    exclude_from_context,
-                    cancel,
-                    Some(chunk_tx),
-                    Some(cwd),
-                )
-                .await;
-            if let Some(relay) = relay {
-                let _ = relay.await;
-            }
-            result.map_err(XyDriverError::from)
-        }) as super::proto::BashRun)
+    ) -> Result<xylitol_runtime::BashRun, XyDriverError> {
+        XyDriver::bash_run(&mut self.inner, command, exclude_from_context).await
     }
 
     async fn reload_runtime(
@@ -487,412 +292,5 @@ impl XyDriver for XyInProcessDriver {
 
     async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
         super::clipboard::read_clipboard_text().await
-    }
-}
-
-// ── Session operations: inherent (Command executor SSOT, c2710) ─────
-impl XyInProcessDriver {
-    pub async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
-        // Prefer registry id; only use unique upstream `config.model` as alias.
-        let registry = self.agent.model_registry();
-        let found = registry
-            .list()
-            .iter()
-            .find(|m| m.id == model_id)
-            .map(|m| m.id.clone())
-            .or_else(|| {
-                let hits: Vec<_> = registry
-                    .list()
-                    .iter()
-                    .filter(|m| m.config.model == model_id)
-                    .collect();
-                match hits.as_slice() {
-                    [only] => Some(only.id.clone()),
-                    _ => None,
-                }
-            })
-            .ok_or_else(|| XyDriverError::not_found(format!("model not found: {model_id}")))?;
-        self.agent
-            .select_model(&found)
-            .await
-            .map_err(XyDriverError::from)?;
-        // Re-read the resolved model to return authoritative info.
-        Ok(self
-            .agent
-            .current_model()
-            .map(|m| ModelInfo::from(&m))
-            .unwrap_or_else(|| ModelInfo {
-                id: found.clone(),
-                display_name: found,
-                thinking: true,
-                thinking_levels: Vec::new(),
-                context_window: 0,
-            }))
-    }
-
-    pub(crate) async fn cycle_model(&mut self) -> Result<ModelInfo, XyDriverError> {
-        let list = self.agent.model_registry().list().to_vec();
-        if list.is_empty() {
-            return Err(XyDriverError::not_found("no models available"));
-        }
-        let current_id = self.agent.current_model().map(|m| m.id.clone());
-        let current_idx = current_id
-            .as_ref()
-            .and_then(|cur| list.iter().position(|m| m.id == *cur))
-            .unwrap_or(0);
-        let next_idx = (current_idx + 1) % list.len();
-        let next_id = list[next_idx].id.clone();
-        self.agent
-            .select_model_with_source(&next_id, "cycle")
-            .await
-            .map_err(XyDriverError::from)?;
-        Ok(ModelInfo::from(&list[next_idx]))
-    }
-
-    pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
-        self.agent
-            .set_thinking_level(level)
-            .await
-            .map_err(XyDriverError::from)
-    }
-
-    /// Provider of a registered model id (registry truth; `ModelInfo` drops it).
-    pub fn model_provider(&self, model_id: &str) -> Option<String> {
-        self.agent
-            .model_registry()
-            .list()
-            .iter()
-            .find(|m| m.id == model_id)
-            .map(|m| m.provider.clone())
-    }
-
-    pub async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
-        // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
-        self.agent
-            .force_compact(instructions)
-            .await
-            .map(|()| true)
-            .map_err(XyDriverError::from)
-    }
-
-    pub(crate) async fn export_html(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let sid = require_active_session(&self.agent)?.to_string();
-        self.exporter
-            .export_to_html(self.store.as_ref(), &sid, path)
-            .await?;
-        Ok(path.to_string_lossy().into_owned())
-    }
-
-    pub(crate) async fn export_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        let sid = require_active_session(&self.agent)?.to_string();
-        self.exporter
-            .export_to_jsonl(self.store.as_ref(), &sid, path)
-            .await?;
-        Ok(path.to_string_lossy().into_owned())
-    }
-
-    pub(crate) async fn import_jsonl(&mut self, path: &Path) -> Result<String, XyDriverError> {
-        self.exporter
-            .import_from_jsonl(self.store.as_ref(), path)
-            .await
-    }
-
-    pub(crate) async fn steer(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.agent.steer(message);
-        Ok(())
-    }
-
-    pub(crate) async fn follow_up(&mut self, message: &str) -> Result<(), XyDriverError> {
-        self.agent.follow_up(message);
-        Ok(())
-    }
-
-    pub(crate) async fn clear_queue(
-        &mut self,
-        clear_steer: bool,
-        clear_follow_up: bool,
-    ) -> Result<(), XyDriverError> {
-        self.agent.clear_queues(clear_steer, clear_follow_up);
-        Ok(())
-    }
-
-    pub(crate) fn queue_stats(&self) -> xylitol_runtime::agent::QueueStats {
-        self.agent.queue_stats()
-    }
-}
-
-/// Relay executor output bytes to [`xylitol_plugin_sdk::BashChunk`] events.
-///
-/// Executor chunks are raw 8 KiB reads, so a multi-byte UTF-8 sequence can be
-/// split across a boundary; the incomplete tail is held back and prefixed to
-/// the next chunk. `String::from_utf8_lossy` only runs on complete sequences
-/// (invalid bytes → U+FFFD; a truncated sequence at stream end flushes as-is).
-async fn relay_bash_chunks(
-    bash_id: String,
-    mut rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
-    tx: tokio::sync::mpsc::Sender<xylitol_plugin_sdk::BashChunk>,
-) {
-    use xylitol_plugin_sdk::BashChunk;
-
-    let mut seq: u64 = 0;
-    let mut pending: Vec<u8> = Vec::new();
-    while let Some(bytes) = rx.recv().await {
-        pending.extend_from_slice(&bytes);
-        while !pending.is_empty() {
-            let n = utf8_emit_len(&pending);
-            if n == 0 {
-                break;
-            }
-            let data = String::from_utf8_lossy(&pending[..n]).into_owned();
-            pending.drain(..n);
-            seq += 1;
-            if tx
-                .send(BashChunk {
-                    bash_id: bash_id.clone(),
-                    seq,
-                    data,
-                })
-                .await
-                .is_err()
-            {
-                return;
-            }
-        }
-    }
-    if !pending.is_empty() {
-        seq += 1;
-        let _ = tx
-            .send(BashChunk {
-                bash_id,
-                seq,
-                data: String::from_utf8_lossy(&pending).into_owned(),
-            })
-            .await;
-    }
-}
-
-/// Length of the prefix of `buf` that is safe to convert now: the whole buffer
-/// when it is valid UTF-8 or ends in invalid bytes (those emit as U+FFFD), or
-/// everything before a truncated multi-byte tail (kept for the next chunk).
-fn utf8_emit_len(buf: &[u8]) -> usize {
-    match std::str::from_utf8(buf) {
-        Ok(_) => buf.len(),
-        Err(e) => match e.error_len() {
-            None => e.valid_up_to(),
-            Some(bad) => e.valid_up_to() + bad,
-        },
-    }
-}
-
-// ── Command executor (c2710): Command is the SSOT of session operations ────
-#[async_trait]
-impl crate::wiring::dispatch::SessionCommandExecutor for XyInProcessDriver {
-    async fn execute_session_command(
-        &mut self,
-        cmd: xylitol_protocol::Command,
-    ) -> Result<crate::wiring::dispatch::DispatchOutcome, XyDriverError> {
-        use crate::wiring::dispatch::DispatchOutcome;
-        use xylitol_protocol::Command;
-        match cmd {
-            Command::Abort { .. } => {
-                crate::wiring::driver::XyDriver::abort(self);
-                Ok(DispatchOutcome::Aborted { cancelled: true })
-            }
-            Command::GetState { .. } => Ok(DispatchOutcome::State(
-                crate::wiring::driver::XyDriver::get_state(self),
-            )),
-            Command::SetModel { model_id, .. } => {
-                let m = self.select_model(&model_id).await?;
-                Ok(DispatchOutcome::Model(m))
-            }
-            Command::CycleModel { .. } => {
-                let m = self.cycle_model().await?;
-                Ok(DispatchOutcome::Model(m))
-            }
-            Command::GetAvailableModels { .. } => Ok(DispatchOutcome::Models(
-                crate::wiring::driver::XyDriver::available_models(self),
-            )),
-            Command::SetThinkingLevel { level, .. } => {
-                crate::wiring::dispatch::validate_nonempty_thinking_level(&level)?;
-                self.set_thinking_level(level.clone()).await?;
-                Ok(DispatchOutcome::ThinkingLevel(level))
-            }
-            Command::Bash {
-                command,
-                exclude_from_context,
-                ..
-            } => {
-                let run = XyDriver::bash_run(self, &command, exclude_from_context).await?;
-                let r = run.await?;
-                Ok(DispatchOutcome::Bash(r))
-            }
-            Command::Compact { instructions, .. } => {
-                let did = self.compact(instructions).await?;
-                Ok(DispatchOutcome::Compacted(did))
-            }
-            Command::GetSessionStats { .. } => {
-                let stats = self.get_session_stats().await?;
-                Ok(DispatchOutcome::SessionStats(serde_json::json!({
-                    "session_id": stats.session_id,
-                    "user_messages": stats.user_messages,
-                    "assistant_messages": stats.assistant_messages,
-                    "total_messages": stats.total_messages,
-                    "thinking_level": stats.thinking_level,
-                    "model": stats.model.map(|(p, m)| {
-                        serde_json::json!({ "provider": p, "model_id": m })
-                    }),
-                })))
-            }
-            Command::ExportHtml { output_path, .. } => {
-                let path = output_path
-                    .map(std::path::PathBuf::from)
-                    .unwrap_or_else(|| std::path::PathBuf::from("export.html"));
-                let written = self.export_html(&path).await?;
-                Ok(DispatchOutcome::ExportedPath(written))
-            }
-            Command::ExportJsonl { output_path, .. } => {
-                let path = output_path
-                    .map(std::path::PathBuf::from)
-                    .unwrap_or_else(|| std::path::PathBuf::from("export.jsonl"));
-                let written = self.export_jsonl(&path).await?;
-                Ok(DispatchOutcome::ExportedPath(written))
-            }
-            Command::ImportJsonl { input_path, .. } => {
-                let path = std::path::PathBuf::from(&input_path);
-                let new_id = self.import_jsonl(&path).await?;
-                Ok(DispatchOutcome::NewSession(new_id))
-            }
-            Command::SwitchSession { session_path, .. } => {
-                // Derive session id from path (file stem).
-                let new_id = std::path::Path::new(&session_path)
-                    .file_stem()
-                    .and_then(|st| st.to_str())
-                    .unwrap_or(&session_path)
-                    .to_string();
-                let switched = self.switch_session(&new_id).await?;
-                Ok(DispatchOutcome::SwitchedSession(switched))
-            }
-            Command::Fork {
-                entry_id, position, ..
-            } => {
-                let pos = match position.as_deref() {
-                    Some("before") => xylitol_plugin_sdk::session::ForkPosition::Before,
-                    _ => xylitol_plugin_sdk::session::ForkPosition::At,
-                };
-                let new_id = self.fork_session(&entry_id, pos).await?;
-                Ok(DispatchOutcome::NewSession(new_id))
-            }
-            Command::GetMessages { .. } => {
-                let entries = self.get_messages().await?;
-                let session_id =
-                    crate::wiring::driver::XyDriver::session_id(self).unwrap_or_default();
-                Ok(DispatchOutcome::Messages {
-                    session_id,
-                    entries,
-                })
-            }
-            Command::EstimateContext { .. } => {
-                let estimate = XyInProcessDriver::estimate_context_tokens(self).await?;
-                Ok(DispatchOutcome::EstimateContext(estimate))
-            }
-            Command::SessionTree { kind, .. } => Ok(DispatchOutcome::SessionTree(
-                self.session_tree(xylitol_serve::v3_mapping::sdk_session_tree_kind(kind))
-                    .await?,
-            )),
-            Command::TravelSessionTree { kind, entry_id, .. } => {
-                Ok(DispatchOutcome::SessionTreeTravel(
-                    self.travel_session_tree(
-                        xylitol_serve::v3_mapping::sdk_session_tree_kind(kind),
-                        &entry_id,
-                    )
-                    .await?,
-                ))
-            }
-            Command::AppendEntryLabel {
-                target_id, label, ..
-            } => {
-                self.append_entry_label(&target_id, label.as_deref())
-                    .await?;
-                Ok(DispatchOutcome::Empty)
-            }
-            Command::ListSessions { .. } => {
-                Ok(DispatchOutcome::Sessions(self.list_sessions().await?))
-            }
-            Command::LoadSessionEntries { session_id, .. } => Ok(DispatchOutcome::SessionEntries(
-                self.load_session_entries(&session_id).await?,
-            )),
-            Command::NewSession { .. } => {
-                Ok(DispatchOutcome::NewSession(self.new_session().await?))
-            }
-            Command::GetSessionName { .. } => {
-                Ok(DispatchOutcome::SessionName(self.get_session_name().await?))
-            }
-            Command::SetSessionName { name, .. } => Ok(DispatchOutcome::SessionName(Some(
-                self.set_session_name(&name).await?,
-            ))),
-            Command::SetSessionNameFor {
-                session_id, name, ..
-            } => Ok(DispatchOutcome::SessionName(Some(
-                self.set_session_name_for(&session_id, &name).await?,
-            ))),
-            Command::DeleteSession { session_id, .. } => {
-                self.delete_session(&session_id).await?;
-                Ok(DispatchOutcome::Empty)
-            }
-            Command::Reload { .. } => Ok(DispatchOutcome::Reload(
-                self.reload_runtime(&tokio_util::sync::CancellationToken::new())
-                    .await?,
-            )),
-            Command::LoadedResources { .. } => Ok(DispatchOutcome::LoadedResources(
-                crate::wiring::driver::XyDriver::loaded_resources_snapshot(self).await,
-            )),
-            Command::GetQueueStats { .. } => {
-                let stats = self.queue_stats();
-                Ok(DispatchOutcome::QueueStats {
-                    steer_count: stats.steer_count,
-                    follow_up_count: stats.follow_up_count,
-                })
-            }
-            Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
-                crate::wiring::driver::XyDriver::get_commands(self),
-            )),
-            Command::Steer { message, .. } => {
-                self.steer(&message).await?;
-                let stats = self.queue_stats();
-                Ok(DispatchOutcome::QueueStats {
-                    steer_count: stats.steer_count,
-                    follow_up_count: stats.follow_up_count,
-                })
-            }
-            Command::FollowUp { message, .. } => {
-                self.follow_up(&message).await?;
-                let stats = self.queue_stats();
-                Ok(DispatchOutcome::QueueStats {
-                    steer_count: stats.steer_count,
-                    follow_up_count: stats.follow_up_count,
-                })
-            }
-            Command::ClearQueue {
-                clear_steer,
-                clear_follow_up,
-                ..
-            } => {
-                self.clear_queue(clear_steer, clear_follow_up).await?;
-                let stats = self.queue_stats();
-                Ok(DispatchOutcome::QueueStats {
-                    steer_count: stats.steer_count,
-                    follow_up_count: stats.follow_up_count,
-                })
-            }
-
-            // These variants are the caller's responsibility (see dispatch module docs).
-            Command::Prompt { .. }
-            | Command::Quit { .. }
-            | Command::Subscribe { .. }
-            | Command::ApproveTool { .. }
-            | Command::AnswerQuestion { .. } => {
-                Err(crate::wiring::dispatch::transport_variant_error(&cmd))
-            }
-        }
     }
 }

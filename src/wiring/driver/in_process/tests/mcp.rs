@@ -461,8 +461,9 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
     let mut driver = XyInProcessDriver::new(agent, store_trait);
 
     // Epoch 1: freeze with alpha MCP tool, run once.
+    let builtins = driver.builtins_for_reload();
     driver.freeze_tools(ToolSet::rebuild_agent_tools(
-        driver.builtins_for_reload(),
+        builtins,
         vec![Arc::new(StubMcpTool("mcp__demo__alpha")) as Arc<dyn XyTool>],
     ));
     let mut s1 = driver.run("ping1").await;
@@ -477,7 +478,8 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
 
     // Epoch 2: reload-shaped remove (empty MCP install) then run again.
     driver.reopen_tools_for_regate();
-    driver.freeze_tools(ToolSet::from_iter(driver.builtins_for_reload()));
+    let builtins = driver.builtins_for_reload();
+    driver.freeze_tools(ToolSet::from_iter(builtins));
     let mut s2 = driver.run("ping2").await;
     while s2.next().await.is_some() {}
     let second = seen.lock().expect("seen")[1].clone();
@@ -490,8 +492,9 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
 
     // Epoch 3: add beta.
     driver.reopen_tools_for_regate();
+    let builtins = driver.builtins_for_reload();
     driver.freeze_tools(ToolSet::rebuild_agent_tools(
-        driver.builtins_for_reload(),
+        builtins,
         vec![Arc::new(StubMcpTool("mcp__demo__beta")) as Arc<dyn XyTool>],
     ));
     let mut s3 = driver.run("ping3").await;

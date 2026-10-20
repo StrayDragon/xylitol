@@ -6,14 +6,13 @@
 //!
 //! The only externally reachable surface is the [`embed`] seam plus the
 //! curated re-exports below. Composition lives in [`wiring`]. Occupancy
-//! (session slots) stays in [`wiring`] until `XyInProcessDriver` moves to
-//! `xylitol-runtime`.
+//! (session slots) lives in `xylitol-serve`; the root injects plugins.
 //!
 //! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
 //! [`XyModelBuilder`], [`XyHookBus`].
 //! Shared application protocol: [`XyDriver`], [`XyInProcessDriver`], [`XyDriverError`].
-//! Envelope client: [`HostClient`], [`InProcessClient`].
+//! Envelope client: `xylitol-app-tui` (`HostClient` / `XyRemoteDriver`).
 //! Events / stream: [`XyEvent`], [`XyChunk`], [`XyStream`].
 //! Hook outcomes: [`XyHookOutcome`], [`NoopHookBus`].
 //! Errors: [`XyError`], [`XyToolError`], [`XySessionStoreError`], [`XySessionError`], [`XyExportError`], [`XyTrustError`], [`XyDriverError`].
@@ -54,13 +53,8 @@ pub use crate::wiring::attach::attach_preflight_with;
 pub use crate::wiring::attach::{
     DEFAULT_ATTACH_URL, attach_fail_message, probe_host, resolve_attach_url,
 };
-#[cfg(feature = "server")]
-pub use crate::wiring::driver::{LinkHealth, LinkTunings, XyRemoteDriver};
+pub use crate::wiring::driver::SessionExporter;
 pub use crate::wiring::driver::{XyDriver, XyDriverError, XyInProcessDriver};
-#[cfg(feature = "server")]
-pub use crate::wiring::host_client::HttpWsClient;
-pub use crate::wiring::host_client::{HostClient, HostClientError, InProcessClient, MuxStream};
-pub use crate::wiring::session_export::SessionExporter;
 pub use xylitol_plugin_sdk::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };

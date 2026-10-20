@@ -3,107 +3,107 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "network-domain-block"
+    name = "网络领域块"
 )]
 fn test_domain_security_network_block() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "deny-write"
+    name = "拒绝写入"
 )]
 fn test_domain_security_deny_write() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "allow-write"
+    name = "允许写入"
 )]
 fn test_domain_security_allow_write() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "path-field-bypass"
+    name = "路径字段绕过"
 )]
 fn test_ds_path_bypass(ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "mcp-default-deny"
+    name = "MCP缺省拒绝"
 )]
 fn test_ds_mcp() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "default-enabled"
+    name = "缺省启用"
 )]
 fn test_ds_default_enabled() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "default-deny-read"
+    name = "缺省拒绝读取"
 )]
 fn test_ds_deny_read() {}
 
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "parent-inheritance"
+    name = "父继承"
 )]
 fn test_ds_parent() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "child-override"
+    name = "子项覆盖"
 )]
 fn test_ds_child() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "override-wins"
+    name = "覆盖胜出"
 )]
 fn test_ds_override() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "no-inputs-auto-trust"
+    name = "无输入自动信任"
 )]
 fn test_ds_no_inputs() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "fallback-deny-no-ui"
+    name = "回退拒绝无界面"
 )]
 fn test_ds_fallback() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "callback-invoked"
+    name = "回调被调用"
 )]
 fn test_ds_callback() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "untrusted-blocks-project-settings"
+    name = "未信任块项目设置"
 )]
 fn test_ds_untrusted_blocks() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "command-persists"
+    name = "命令持久化"
 )]
 fn test_ds_cmd_persists() {}
 
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "xy-tool-approval"
+    name = "Xy工具审批"
 )]
 fn test_ds_xy_tool_approval(_agent: AgentState) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "hook-kill-on-timeout"
+    name = "钩子杀死时超时"
 )]
 async fn test_ds_hook_kill_on_timeout(agent: AgentState) {}
 
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "forbidden-pattern-blocks-override"
+    name = "禁止模式块覆盖"
 )]
 fn test_ds_forbidden_override() {}
 
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "permission-config"
+    name = "权限配置"
 )]
 fn test_ds_permission_config() {}
 
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
-    name = "permission-trait"
+    name = "权限trait"
 )]
 fn test_ds_permission_trait() {}

@@ -9,8 +9,8 @@
 
 use std::sync::Arc;
 
-use crate::wiring::occupancy::host::HostState;
-use crate::wiring::occupancy::rpc_module::{self};
+use crate::occupancy::host::HostState;
+use crate::occupancy::rpc_module::{self};
 use xylitol_protocol::v3::{
     ClientRequest, DescribeResult, Frame, Request, ResponsePayload, RpcError, ServerResponse,
     method_name,
@@ -67,7 +67,7 @@ fn to_jsonrpc_request(req: &ClientRequest) -> Result<(String, String), String> {
 /// 生成物 `Command` 各变体载荷是具名 struct;serde 形状需要 `&wire::Command`。
 /// 由 `mapping::v3_to_command` 提供领域转换(未映射变体在此即为失败)。
 fn v3_command_ptr(cmd: &xylitol_protocol::v3::Command) -> xylitol_protocol::command::Command {
-    xylitol_serve::v3_mapping::v3_to_command(cmd)
+    crate::v3_mapping::v3_to_command(cmd)
         .unwrap_or_else(|| panic!("v3 Command variant unmapped: {cmd:?}"))
 }
 
@@ -132,9 +132,9 @@ fn response_from_raw(
 /// 降级是逐方法的：某方法内任一 unknown 变体就整份退回 `RawOk`，不拼半份
 /// 强 schema（对拍不断链，r1908）。
 fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePayload> {
+    use crate::v3_mapping;
     use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeTravel};
     use xylitol_protocol::registry;
-    use xylitol_serve::v3_mapping;
 
     match method {
         registry::METHOD_GET_MESSAGES | registry::METHOD_LOAD_SESSION_ENTRIES => {
@@ -167,7 +167,7 @@ fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePay
 /// 占用走内核锁，帧内 `writer_token` 忽略且应答恒为 `None`。非
 /// `ClientRequest` 帧与未知变体按 envelope 错误处理(调用方决定 400 或
 /// 断连)。
-pub(crate) async fn handle_uplink(host: &Arc<HostState>, bytes: &[u8]) -> Result<Vec<u8>, String> {
+pub async fn handle_uplink(host: &Arc<HostState>, bytes: &[u8]) -> Result<Vec<u8>, String> {
     let frame = Frame::from_bytes(bytes).map_err(|e| format!("v3 decode: {e}"))?;
     let Frame::ClientRequest(req) = frame else {
         return Err("expected ClientRequest frame".into());
@@ -188,7 +188,7 @@ pub(crate) async fn handle_uplink(host: &Arc<HostState>, bytes: &[u8]) -> Result
 /// 模式连接消费本函数产出的 binary 帧(spec r1905:seq 语义、resources 不
 /// 消耗 seq、approval/question 形态平移)。事件走 wire::Event → XyEvent →
 /// v3 两跳映射(两段都已存在,对拍点在领域对象层)。
-pub(crate) fn downlink_frame(
+pub fn downlink_frame(
     method: &str,
     payload: serde_json::Value,
     fallback_seq: u64,
@@ -201,9 +201,9 @@ pub(crate) fn downlink_frame(
         "session/event" => {
             let ev: xylitol_protocol::SessionEventPayload =
                 serde_json::from_value(payload).map_err(|e| format!("event payload: {e}"))?;
-            let xy = xylitol_serve::FromWireEvent::from_wire_event(&ev.event)
+            let xy = crate::FromWireEvent::from_wire_event(&ev.event)
                 .map_err(|_| "wire event -> XyEvent".to_string())?;
-            let v3_ev = xylitol_serve::v3_mapping::xy_event_to_v3(&xy)
+            let v3_ev = crate::v3_mapping::xy_event_to_v3(&xy)
                 .ok_or("XyEvent variant has no v3 projection")?;
             (ev.seq, Notification::Event(v3_ev))
         }
@@ -317,9 +317,9 @@ mod tests {
 
     #[test]
     fn frame_detection() {
-        assert!(xylitol_serve::looks_like_fory_envelope(&[0x01, 0xff, 0x22]));
-        assert!(!xylitol_serve::looks_like_fory_envelope(b"{\"jsonrpc\""));
-        assert!(!xylitol_serve::looks_like_fory_envelope(b""));
+        assert!(crate::looks_like_fory_envelope(&[0x01, 0xff, 0x22]));
+        assert!(!crate::looks_like_fory_envelope(b"{\"jsonrpc\""));
+        assert!(!crate::looks_like_fory_envelope(b""));
     }
 
     #[test]
@@ -377,7 +377,7 @@ mod tests {
         match decoded.payload.unwrap() {
             ResponsePayload::MessagesResult(m) => {
                 assert_eq!(m.entries.len(), 1, "一条条目不应丢");
-                let back = xylitol_serve::v3_mapping::v3_to_entries(&m).unwrap();
+                let back = crate::v3_mapping::v3_to_entries(&m).unwrap();
                 assert_eq!(
                     serde_json::to_value(&back).unwrap(),
                     serde_json::from_str::<serde_json::Value>(entries_json)
@@ -410,7 +410,7 @@ mod tests {
                     .expect("tree array");
                 assert_eq!(nodes.len(), 1);
                 // 兼容解码面：强 schema 仍可对旧端/旧帧往返（v3_to_tree_nodes）。
-                let typed = xylitol_serve::v3_mapping::tree_result_to_v3(
+                let typed = crate::v3_mapping::tree_result_to_v3(
                     &serde_json::from_value::<Vec<xylitol_plugin_sdk::session::SessionTreeNode>>(
                         value.get("tree").cloned().unwrap(),
                     )

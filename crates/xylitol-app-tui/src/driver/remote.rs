@@ -684,6 +684,11 @@ where
         self.reverse_rpc = Some(notify);
     }
 
+    /// Test seam: skip waiting for `session/subscribed` before `run`.
+    pub fn mark_subscribed_ok_for_test(&self) {
+        self.subscribed_ok.store(true, Ordering::SeqCst);
+    }
+
     fn cache_queue_from_value(&self, data: &Value) {
         let stats = QueueStats {
             steer_count: data.get("steer_count").and_then(Value::as_u64).unwrap_or(0) as usize,
@@ -711,7 +716,7 @@ where
 
     /// True for Agent/Turn/stream tape that a cold `last_seq=0` subscribe must not
     /// paint as live (c2307). Queue / error / fixed-zone facts still pass.
-    fn is_cold_replay_tape(ev: &XyEvent) -> bool {
+    pub fn is_cold_replay_tape(ev: &XyEvent) -> bool {
         matches!(
             ev,
             XyEvent::AgentStart { .. }
@@ -733,7 +738,7 @@ where
         )
     }
 
-    fn apply_resources_cache(&self, snap: LoadedResourcesSnapshot) {
+    pub fn apply_resources_cache(&self, snap: LoadedResourcesSnapshot) {
         store_resources_snapshot(
             &self.cached_skills,
             &self.gate_notice_consumed,
@@ -922,7 +927,7 @@ where
         Ok(())
     }
 
-    fn queue_stats(&self) -> QueueStats {
+    pub fn queue_stats(&self) -> QueueStats {
         self.cached_queue.lock().map(|s| *s).unwrap_or_default()
     }
 
@@ -963,7 +968,7 @@ where
         }
     }
 
-    async fn unary(
+    pub async fn unary(
         &self,
         method: &str,
         payload: serde_json::Value,

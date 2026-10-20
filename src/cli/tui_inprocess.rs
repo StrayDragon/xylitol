@@ -13,13 +13,13 @@ use xylitol_protocol::Command;
 use crate::wiring::dispatch::{
     DispatchOutcome as RootOutcome, SessionCommandExecutor as RootExecutor,
 };
+use crate::wiring::driver::XyDriverError as RootError;
 use crate::wiring::driver::{
     ClipboardCopyOutcome as RootClip, CommandInfo as RootCmd, LoadedResourcesSnapshot as RootSnap,
     McpServerPhase as RootPhase, ModelInfo as RootModel, ProjectTrustMode as RootTrust,
     ProjectTrustPersistReport as RootTrustReport, RuntimeReloadReport as RootReload,
     SessionState as RootState, XyDriver as RootDriver, XyInProcessDriver,
 };
-use crate::wiring::driver_error::XyDriverError as RootError;
 
 pub(crate) struct TuiInProcessAdapter<'a> {
     inner: &'a mut XyInProcessDriver,

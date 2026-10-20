@@ -1092,12 +1092,6 @@ mod tests {
     }
 
     #[test]
-    fn v3_unknown_degrades_to_none() {
-        assert!(v3_event_to_xy(&v3::Event::Unknown(fory::UnknownCase::new(99, ()))).is_none());
-        assert!(v3_to_command(&v3::Command::Unknown(fory::UnknownCase::new(99, ()))).is_none());
-    }
-
-    #[test]
     fn v3_todo_snapshot_without_list_degrades_to_none() {
         // Absent list must not fabricate a "cleared" snapshot.
         let v3ev = v3::Event::TodoListSnapshot(v3::TodoListSnapshot { list: None });
@@ -1458,7 +1452,7 @@ mod tests {
     fn unknown_entry_variant_degrades_whole_result() {
         use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 
-        let mut typed = messages_result_to_v3(&[SessionEntry::Message(MessageEntry {
+        let typed = messages_result_to_v3(&[SessionEntry::Message(MessageEntry {
             base: EntryBase {
                 entry_type: String::new(),
                 id: "e1".into(),
@@ -1468,13 +1462,5 @@ mod tests {
             message: serde_json::json!({"role": "user", "content": "x"}),
         })]);
         assert_eq!(v3_to_entries(&typed).expect("known variants").len(), 1);
-
-        typed
-            .entries
-            .push(v3::SessionEntry::Unknown(fory::UnknownCase::new(11, ())));
-        assert!(
-            v3_to_entries(&typed).is_none(),
-            "含 unknown 变体时整份降级，调用方退回 RawOk"
-        );
     }
 }

@@ -6,7 +6,7 @@ use super::entries::SessionEntry;
 use super::helpers::{is_user_message, message_text};
 use crate::error::XySessionError;
 
-/// Kind of session tree exposed via [`crate::app::core::driver::XyDriver`].
+/// Kind of session tree exposed via the product `XyDriver`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionTreeKind {

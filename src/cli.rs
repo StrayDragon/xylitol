@@ -696,7 +696,10 @@ async fn maybe_print_resume_hint_tui(driver: &mut dyn xylitol_app_tui::XyDriver)
 }
 
 /// stderr resume line when the session was persisted (c1565).
-async fn maybe_print_resume_hint(driver: &mut dyn crate::wiring::driver::XyDriver) {
+async fn maybe_print_resume_hint<D>(driver: &mut D)
+where
+    D: crate::wiring::driver::XyDriver + crate::wiring::dispatch::SessionCommandExecutor,
+{
     let sid = driver.session_id();
     let listed =
         match crate::wiring::dispatch::dispatch(driver, xylitol_protocol::Command::ListSessions {})

@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
-use crate::wiring::driver_error::XyDriverError;
-use crate::wiring::utils::xml_escape;
+use crate::driver::XyDriverError;
+use crate::utils::xml_escape;
 use xylitol_plugin_sdk::error::XySessionStoreError;
 use xylitol_plugin_sdk::session::{
     CompactionPolicySnapshot, MessageEntry, SESSION_VERSION, SessionEntry,

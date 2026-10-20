@@ -5,7 +5,7 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-scrollbar-gutter/package-tui-scrollbar-gutter.feature",
-    name = "gutter-stamped-on-right-edge"
+    name = "槽盖章时右边缘"
 )]
 fn test_gutter_stamped_on_right_edge(gutter_bdd: GutterBdd) {
     let _ = gutter_bdd;
@@ -13,7 +13,7 @@ fn test_gutter_stamped_on_right_edge(gutter_bdd: GutterBdd) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-scrollbar-gutter/package-tui-scrollbar-gutter.feature",
-    name = "gutter-hidden-when-no-overflow"
+    name = "槽隐藏当无溢出"
 )]
 fn test_gutter_hidden_when_no_overflow(gutter_bdd: GutterBdd) {
     let _ = gutter_bdd;
@@ -21,7 +21,7 @@ fn test_gutter_hidden_when_no_overflow(gutter_bdd: GutterBdd) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-scrollbar-gutter/package-tui-scrollbar-gutter.feature",
-    name = "top-click-scrolls-to-head"
+    name = "顶部点击滚动至头部"
 )]
 fn test_top_click_scrolls_to_head(gutter_bdd: GutterBdd) {
     let _ = gutter_bdd;
@@ -29,7 +29,7 @@ fn test_top_click_scrolls_to_head(gutter_bdd: GutterBdd) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-scrollbar-gutter/package-tui-scrollbar-gutter.feature",
-    name = "bottom-click-rearms-follow"
+    name = "底部点击再武装跟随"
 )]
 fn test_bottom_click_rearms_follow(gutter_bdd: GutterBdd) {
     let _ = gutter_bdd;
@@ -37,7 +37,7 @@ fn test_bottom_click_rearms_follow(gutter_bdd: GutterBdd) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-scrollbar-gutter/package-tui-scrollbar-gutter.feature",
-    name = "gutter-down-never-starts-selection"
+    name = "槽向下从不启动选区"
 )]
 fn test_gutter_down_never_starts_selection(gutter_bdd: GutterBdd) {
     let _ = gutter_bdd;
@@ -45,7 +45,7 @@ fn test_gutter_down_never_starts_selection(gutter_bdd: GutterBdd) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-scrollbar-gutter/package-tui-scrollbar-gutter.feature",
-    name = "thumb-reflect-scroll-ratio"
+    name = "滑块反映滚动比率"
 )]
 fn test_thumb_reflect_scroll_ratio(gutter_bdd: GutterBdd) {
     let _ = gutter_bdd;
@@ -53,7 +53,7 @@ fn test_thumb_reflect_scroll_ratio(gutter_bdd: GutterBdd) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-scrollbar-gutter/package-tui-scrollbar-gutter.feature",
-    name = "track-press-jumps-proportionally"
+    name = "轨道按下跳转按比例"
 )]
 fn test_track_press_jumps_proportionally(gutter_bdd: GutterBdd) {
     let _ = gutter_bdd;
@@ -61,7 +61,7 @@ fn test_track_press_jumps_proportionally(gutter_bdd: GutterBdd) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-scrollbar-gutter/package-tui-scrollbar-gutter.feature",
-    name = "drag-follows-pointer-until-release"
+    name = "拖选跟随指针直到发布"
 )]
 fn test_drag_follows_pointer_until_release(gutter_bdd: GutterBdd) {
     let _ = gutter_bdd;

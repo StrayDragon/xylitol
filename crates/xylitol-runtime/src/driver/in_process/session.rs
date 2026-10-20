@@ -5,14 +5,13 @@ use xylitol_plugin_sdk::session::{
 
 use super::XyDriver;
 use super::XyDriverError;
-use super::mcp::McpBootState;
 use super::types::{
     SessionListEntry, SessionStats, estimate_from_session_entries, session_tree_kind_unimplemented,
 };
 use super::{bind_session_or_err, require_active_session};
 
 impl super::XyInProcessDriver {
-    pub(crate) async fn fork_session(
+    pub async fn fork_session(
         &mut self,
         entry_id: &str,
         position: xylitol_plugin_sdk::session::ForkPosition,
@@ -31,15 +30,12 @@ impl super::XyInProcessDriver {
             return Err(XyDriverError::not_found(session_id.to_string()));
         }
         let (ty, phase, ctx) =
-            xylitol_runtime::agent::runtime::script_hook_ctx::session_before_switch(
-                "resume", session_id,
-            );
+            crate::agent::runtime::script_hook_ctx::session_before_switch("resume", session_id);
         self.agent.script_hook_cancel(ty, phase, ctx).await?;
-        let (ty, phase, ctx) =
-            xylitol_runtime::agent::runtime::script_hook_ctx::session_shutdown_resume(
-                session_id,
-                self.agent.session_id(),
-            );
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_shutdown_resume(
+            session_id,
+            self.agent.session_id(),
+        );
         self.agent.script_hook_observe(ty, phase, ctx).await;
         let context = self.store.build_session_context(session_id).await?;
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
@@ -54,16 +50,6 @@ impl super::XyInProcessDriver {
         // Fingerprint match/continue-freeze needs persisted fingerprint (same change wave MAY
         // add Custom/header storage); until then correctness prefers re-freeze.
         self.agent.clear_tool_freeze();
-        self.mcp_boot = McpBootState::Idle;
-        if self
-            .reload
-            .as_ref()
-            .is_some_and(|s| !s.mcp_servers.is_empty())
-        {
-            self.begin_mcp_bootstrap().await;
-        } else {
-            self.mcp_boot = McpBootState::Settled;
-        }
         // c2843 Phase B: switch/bind no longer writes the process obs slot —
         // materialized obs identity is this runtime's own facts. The slot is
         // only the "default identity" for optionless fallbacks and is updated by
@@ -76,19 +62,19 @@ impl super::XyInProcessDriver {
         Ok(session_id.to_string())
     }
 
-    pub(crate) async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
+    pub async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
         self.store.load_entries(sid).await.map_err(Into::into)
     }
 
-    pub(crate) async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
+    pub async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
         self.agent
             .get_session_stats()
             .await
             .map_err(XyDriverError::from)
     }
 
-    pub(crate) async fn estimate_context_tokens(
+    pub async fn estimate_context_tokens(
         &self,
     ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await?;
@@ -108,8 +94,7 @@ impl super::XyInProcessDriver {
     ) -> Result<Vec<SessionTreeNode>, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
         let kind_s = format!("{kind:?}");
-        let (ty, phase, ctx) =
-            xylitol_runtime::agent::runtime::script_hook_ctx::session_before_tree(&kind_s);
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_tree(&kind_s);
         self.agent.script_hook_cancel(ty, phase, ctx).await?;
         // Bootstrap may assign a fresh id before any persist; wiped HOME may leave
         // an orphan id. Ensure an empty session so double-Esc opens an empty tree.
@@ -126,13 +111,12 @@ impl super::XyInProcessDriver {
             }
         };
         let kind_s = format!("{kind:?}");
-        let (ty, phase, ctx) =
-            xylitol_runtime::agent::runtime::script_hook_ctx::session_tree(&kind_s);
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_tree(&kind_s);
         self.agent.script_hook_observe(ty, phase, ctx).await;
         Ok(tree)
     }
 
-    pub(crate) async fn travel_session_tree(
+    pub async fn travel_session_tree(
         &self,
         kind: SessionTreeKind,
         entry_id: &str,
@@ -140,9 +124,7 @@ impl super::XyInProcessDriver {
         let sid = require_active_session(&self.agent)?;
         let kind_s = format!("{kind:?}");
         let (ty, phase, ctx) =
-            xylitol_runtime::agent::runtime::script_hook_ctx::session_before_tree_travel(
-                &kind_s, entry_id,
-            );
+            crate::agent::runtime::script_hook_ctx::session_before_tree_travel(&kind_s, entry_id);
         self.agent.script_hook_cancel(ty, phase, ctx).await?;
         let travel = match kind {
             SessionTreeKind::MessageHistory => {
@@ -157,17 +139,16 @@ impl super::XyInProcessDriver {
                 )));
             }
         };
-        let (ty, phase, ctx) =
-            xylitol_runtime::agent::runtime::script_hook_ctx::session_tree_travel(
-                &kind_s,
-                entry_id,
-                travel.leaf_id.as_deref(),
-            );
+        let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_tree_travel(
+            &kind_s,
+            entry_id,
+            travel.leaf_id.as_deref(),
+        );
         self.agent.script_hook_observe(ty, phase, ctx).await;
         Ok(travel)
     }
 
-    pub(crate) async fn append_entry_label(
+    pub async fn append_entry_label(
         &mut self,
         target_id: &str,
         label: Option<&str>,
@@ -203,16 +184,16 @@ impl super::XyInProcessDriver {
             .map_err(Into::into)
     }
 
-    pub(crate) fn leaf_entry_id(&self) -> Option<String> {
+    pub fn leaf_entry_id(&self) -> Option<String> {
         let sid = self.agent.session_id()?;
         self.store.leaf_id(sid)
     }
 
-    pub(crate) async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
+    pub async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XyDriverError> {
         self.store.list_sessions().await.map_err(Into::into)
     }
 
-    pub(crate) async fn load_session_entries(
+    pub async fn load_session_entries(
         &self,
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XyDriverError> {
@@ -236,22 +217,22 @@ impl super::XyInProcessDriver {
         Ok(session_id)
     }
 
-    pub(crate) async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
+    pub async fn get_session_name(&self) -> Result<Option<String>, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
         self.store.get_session_name(sid).await.map_err(Into::into)
     }
 
-    pub(crate) async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
+    pub async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
         let out = self.store.set_session_name(sid, name).await?;
         // c2843 Phase B: writer rename updates BOTH the runtime owner fact and the
         // default-identity slot (explicit writer event; no obs_slot_writes gate).
         self.agent.set_session_name_fact(Some(out.clone()));
-        xylitol_official_plugin_provider_openai::provider::set_obs_session_name(Some(out.as_str()));
+        xylitol_plugin_sdk::set_obs_session_name(Some(out.as_str()));
         Ok(out)
     }
 
-    pub(crate) async fn set_session_name_for(
+    pub async fn set_session_name_for(
         &mut self,
         session_id: &str,
         name: &str,
@@ -259,14 +240,12 @@ impl super::XyInProcessDriver {
         let out = self.store.set_session_name(session_id, name).await?;
         if self.agent.session_id() == Some(session_id) {
             self.agent.set_session_name_fact(Some(out.clone()));
-            xylitol_official_plugin_provider_openai::provider::set_obs_session_name(Some(
-                out.as_str(),
-            ));
+            xylitol_plugin_sdk::set_obs_session_name(Some(out.as_str()));
         }
         Ok(out)
     }
 
-    pub(crate) async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
+    pub async fn delete_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
         self.store
             .delete_session(session_id)
             .await

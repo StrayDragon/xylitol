@@ -172,6 +172,10 @@ impl AgentRuntime {
         self.inner.freeze_tools(tools);
     }
 
+    pub fn clone_tools(&self) -> ToolSet {
+        self.inner.tools().clone()
+    }
+
     pub fn freeze_tools_defer_prompt(
         &mut self,
         tools: ToolSet,

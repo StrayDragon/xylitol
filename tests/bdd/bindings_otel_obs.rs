@@ -8,49 +8,49 @@ use serial_test::serial;
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otel-session-id-on-turn-root-headless"
+    name = "OTLP会话标识时回合根无头"
 )]
 #[serial]
 async fn test_otel6_session_id(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otel-session-name-metadata-headless"
+    name = "OTLP会话名称元数据无头"
 )]
 #[serial]
 async fn test_otel7_session_name(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otel-observation-types-headless"
+    name = "OTLP观测类型无头"
 )]
 #[serial]
 async fn test_otel8_observation_types(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otel-turn-span-tree-headless"
+    name = "OTLP回合跨度树无头"
 )]
 #[serial]
 async fn test_otel11_span_tree(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otel-product-span-names-headless"
+    name = "OTLP产品跨度名称无头"
 )]
 #[serial]
 async fn test_otel12_product_names(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otel-obs-lane-llm-headless"
+    name = "OTLP观测泳道模型无头"
 )]
 #[serial]
 async fn test_otel22_obs_lane(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otel-observation-io-tier-headless"
+    name = "OTLP观测IO档无头"
 )]
 #[serial]
 async fn test_otel10_io_tier(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
@@ -59,7 +59,7 @@ async fn test_otel10_io_tier(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otel-default-none-no-spans"
+    name = "OTLP缺省空无跨度"
 )]
 #[serial]
 async fn test_c2826_otel_default_none(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
@@ -67,42 +67,42 @@ async fn test_c2826_otel_default_none(agent: AgentState, ws: Workspace, otel_bdd
 #[cfg(feature = "otel")]
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otlp-config-arms-reporter"
+    name = "OTLP配置武装报告器"
 )]
 #[serial]
 async fn test_c2826_otlp_arms(otel_bdd: OtelBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otlp-bad-endpoint-falls-back-with-diag"
+    name = "OTLP坏端点回落返回带诊断"
 )]
 #[serial]
 async fn test_c2826_otlp_bad_endpoint(otel_bdd: OtelBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "tool-io-tier-truncated-only-tools"
+    name = "工具IO档已截断仅工具"
 )]
 #[serial]
 async fn test_c2826_tool_tier_only(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "compaction-span-over-prepare"
+    name = "压缩跨度越过准备"
 )]
 #[serial]
 async fn test_c2826_compaction_span(sess: XySessionStore, otel_bdd: OtelBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "turn-normal-completion-not-error"
+    name = "回合正常完成不错误"
 )]
 #[serial]
 async fn test_c2826_turn_not_error(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "settlement-single-token-estimate"
+    name = "结算单一词元估算"
 )]
 #[serial]
 async fn test_c2826_single_estimate(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
@@ -112,69 +112,69 @@ async fn test_c2826_single_estimate(agent: AgentState, ws: Workspace, otel_bdd: 
 #[cfg(feature = "otel")]
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "otlp-exit-built-on-fastrace"
+    name = "OTLP退出已构建时fastrace"
 )]
 #[serial]
 async fn test_otel_r1487_fastrace_only(otel_bdd: OtelBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "file-and-otlp-fan-out"
+    name = "文件与OTLP扇出出"
 )]
 #[serial]
 async fn test_otel_r1488_fan_out(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "generation-span-carries-llm-lane"
+    name = "生成跨度携带模型泳道"
 )]
 #[serial]
 async fn test_otel_r1492_generation_lane(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "parallel-tools-share-iteration-tree"
+    name = "并行工具共享轮次树"
 )]
 #[serial]
 async fn test_otel_r1475_parallel_tree(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "session-id-per-overlapping-processing"
+    name = "会话标识每重叠处理"
 )]
 #[serial]
 async fn test_otel_r1481_per_processing(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "whole-tree-one-session-id"
+    name = "整棵树一会话标识"
 )]
 #[serial]
 async fn test_otel_r1482_whole_tree(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "obs-slot-written-by-writer-path"
+    name = "观测槽已写按写者路径"
 )]
 #[serial]
 async fn test_otel_r1483_slot_discipline(sess: XySessionStore, otel_bdd: OtelBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "dual-session-identity-keys"
+    name = "双会话身份键"
 )]
 #[serial]
 async fn test_otel_r1484_dual_identity(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "skipped-compaction-single-estimate"
+    name = "已跳过压缩单一估算"
 )]
 #[serial]
 async fn test_otel_r1485_skipped_compaction(sess: XySessionStore, otel_bdd: OtelBdd) {}
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
-    name = "owner-scoped-otel-assertions"
+    name = "所有者限定OTLP断言"
 )]
 #[serial]
 async fn test_otel_r1918_owner_scoped(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}

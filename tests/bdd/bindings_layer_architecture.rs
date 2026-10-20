@@ -12,72 +12,72 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "server-surface-rpc-entry"
+    name = "服务端表面RPC入口"
 )]
 async fn test_la_server_jsonrpc_entry(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "second-writer-rejected-with-conflict"
+    name = "第二次写者拒绝带冲突"
 )]
 async fn test_c2826_one_writer(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "protocol-carries-shared-types"
+    name = "协议携带共享类型"
 )]
 fn test_la_r1520_protocol_shared(protocol_bdd: ProtocolBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "print-is-cli-submode"
+    name = "print为CLI子模式"
 )]
 fn test_la_r1531_print_submode(surface_flags_bdd: SurfaceFlagsBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "runtimes-live-in-infra"
+    name = "运行时在线于基建"
 )]
 async fn test_la_r1533_runtimes(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "agent-runs-without-session-binding"
+    name = "agent运行无会话绑定"
 )]
 async fn test_la_r1534_agent_indep(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "projection-in-agent-render-in-app"
+    name = "投影于agent渲染于应用"
 )]
 fn test_la_r1521_thin_agent(bridge_bdd: BridgeBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "reload-shared-by-server-and-print"
+    name = "重载共享按服务端与print"
 )]
 async fn test_la_r1519_reload_same_seam(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "mcp-config-via-embed-seam"
+    name = "MCP配置经嵌入缝"
 )]
 fn test_la_r1518_mcp_seam(t6_mcp_bdd: T6McpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "dispatch-consumed-by-tui"
+    name = "分发被消费按TUI"
 )]
 async fn test_la_r1516_dispatch_consumer(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "session-as-minimal-unit"
+    name = "会话作为最小单测"
 )]
 async fn test_la_r1513_session_unit(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
-    name = "provider-diff-contained-in-bridge"
+    name = "厂商diff收纳于桥缝"
 )]
 fn test_la_r1528_bridge_open_close(provider_bdd: ProviderBdd) {}

@@ -8,7 +8,7 @@
   规则: 计量优先级
     上下文 token 估计 MUST 按固定优先级解析来源：先 Api，否则 Heuristic；结果 MUST 携带 TokenProvenance（或等价枚举）标明实际采用的来源。MUST NOT 再经本地词表 encode 或独立 RemoteCount HTTP 作为估计档。
 
-    场景: estimate-priority-api-first
+    场景: 估算优先级API首次
       假如 会话条目含 stop 回合的 usage 锚点
       当 以同源估计器估计上下文
       那么 估计来源为 Api
@@ -16,7 +16,7 @@
   规则: Api-锚点规则
     当存在适用于当前会话 prefix/leaf 的可信厂商 usage 时 MUST 优先用作 Api 锚点；因 abort 或 error 结束的回合 usage、以及 compaction 之后不再描述当前 prefix 的旧 usage，MUST NOT 作为锚点。
 
-    场景: aborted-usage-not-anchor
+    场景: 已中止用量不锚点
       假如 会话条目仅含 abort 回合的 usage 锚点
       当 以同源估计器估计上下文
       那么 估计来源降级而非 Api
@@ -30,7 +30,7 @@
   规则: Heuristic-诚实标注
     当最终采用 Heuristic 时，ContextTokenEstimate 的 provenance MUST 为 Heuristic；下游展示层若使用该结果 MUST 能区分于 Api。本规则的可执行绑定在主仓 domain-compaction 同名场景（镜像；主仓 BDD runner 消费，包仓无 BDD 基建）。
 
-    场景: estimate-fallback-heuristic
+    场景: 估算回退启发式
       假如 无可信 XyUsage 锚点
       当 以同源估计器估计上下文
       那么 估计来源为 Heuristic 且不得标为 Api

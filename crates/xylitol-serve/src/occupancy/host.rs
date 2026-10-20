@@ -16,19 +16,13 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
-use crate::wiring::composition::{BuildAgentOptions, McpServerSpec, build_baseline_with_store};
-use crate::wiring::dispatch::{DispatchOutcome, dispatch};
-use crate::wiring::driver::{
-    LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode, RuntimeReloadReport, XyDriver,
-    XyInProcessDriver,
-};
-use crate::wiring::driver_error::XyDriverError;
-use crate::wiring::occupancy::idempotency::{Admission, IdempotencyLedger, conflict_result};
-use crate::wiring::occupancy::ws::{
+use crate::ToWireEvent;
+use crate::occupancy::engine::{OccupancyEngine, OccupancyFactory};
+use crate::occupancy::idempotency::{Admission, IdempotencyLedger, conflict_result};
+use crate::occupancy::ws::{
     EventJournal, ReverseRpcGateway, ReverseRpcResult, downlink_server_request,
 };
-use xylitol_official_plugin_session::SessionManager;
-use xylitol_plugin_sdk::XySessionStore;
+use crate::{MUX_CHAN_CAP, MuxSink, OccupiedHost};
 use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 use xylitol_plugin_sdk::error::{XySessionStoreError, XyToolError};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
@@ -44,19 +38,22 @@ use xylitol_protocol::registry::{
     METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_PERSIST_TRUST,
     METHOD_PROMPT, METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
 };
+use xylitol_runtime::XyDriverError;
 use xylitol_runtime::agent::RuntimeBaseline;
-use xylitol_serve::ToWireEvent;
-use xylitol_serve::{MUX_CHAN_CAP, MuxSink, OccupiedHost};
+use xylitol_runtime::driver::{
+    LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode, RuntimeReloadReport,
+};
 
 /// Shared Host process occupancy. Injected into `xylitol-serve` as [`OccupiedHost`].
 pub struct HostState {
     pub ports: RuntimeBaseline,
     pub reload: ReloadBaseline,
+    pub factory: Arc<dyn OccupancyFactory>,
     pub sessions: RwLock<HashMap<String, Arc<SessionSlot>>>,
     /// Mux connections not yet bound by unary `subscribe`.
     pub unbound_mux: Mutex<Vec<MuxSink>>,
     /// Host-level resource owner for `/reload` and `loaded_resources`.
-    pub resource_driver: Mutex<Option<XyInProcessDriver>>,
+    pub resource_driver: Mutex<Option<Box<dyn OccupancyEngine>>>,
     /// Downlink bus for the in-process Host carrier.
     pub in_process_downlink: broadcast::Sender<RpcMessage>,
     /// Cancellation token for the process-level reload currently in flight.
@@ -75,7 +72,6 @@ pub struct ReloadBaseline {
     pub cwd: PathBuf,
     pub agent_dir: PathBuf,
     pub project_trusted: bool,
-    pub mcp_servers: Vec<McpServerSpec>,
     /// `models.default_model` (or CLI `--model`) applied when a writer is materialized.
     /// `RuntimeBaseline::materialize_runtime` leaves ModelManager unset; Host MUST select.
     pub default_model_id: Option<String>,
@@ -85,7 +81,7 @@ pub struct ReloadBaseline {
 pub struct SessionSlot {
     pub session_id: String,
     pub journal: Mutex<EventJournal>,
-    pub driver: Arc<Mutex<Option<XyInProcessDriver>>>,
+    pub driver: Arc<Mutex<Option<Box<dyn OccupancyEngine>>>>,
     pub writer: AtomicBool,
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
     /// c2895 观景态订阅：回合中绑定者仅收 AgentEnd 生命周期帧，显式重挂后才看直播。
@@ -103,7 +99,7 @@ pub struct SessionSlot {
     mcp_watch_started: AtomicBool,
     /// Out-of-band cancel for the interactive bash currently holding the
     /// writer lock (c2760 follow-up: `abort` must reach it without the lock).
-    pub(crate) bash_run_cancel: std::sync::Mutex<Option<CancellationToken>>,
+    pub bash_run_cancel: std::sync::Mutex<Option<CancellationToken>>,
     /// Unary idempotency admission keyed by envelope `rpcId` (c2460).
     pub idempotency: IdempotencyLedger,
 }
@@ -112,12 +108,14 @@ impl HostState {
     pub fn new(
         ports: RuntimeBaseline,
         reload: ReloadBaseline,
+        factory: Arc<dyn OccupancyFactory>,
         fallback_session: String,
     ) -> Arc<Self> {
         let (in_process_downlink, _) = broadcast::channel(MUX_CHAN_CAP);
         Arc::new(Self {
             ports,
             reload,
+            factory,
             sessions: RwLock::new(HashMap::new()),
             unbound_mux: Mutex::new(Vec::new()),
             resource_driver: Mutex::new(None),
@@ -130,7 +128,7 @@ impl HostState {
         })
     }
 
-    fn remember_sessions_dir(self: Arc<Self>, sessions_dir: PathBuf) -> Arc<Self> {
+    pub fn remember_sessions_dir(self: Arc<Self>, sessions_dir: PathBuf) -> Arc<Self> {
         if let Ok(mut g) = self.sessions_dir.lock() {
             *g = sessions_dir;
         }
@@ -141,123 +139,17 @@ impl HostState {
     pub fn from_bootstrap(
         ports: RuntimeBaseline,
         reload: ReloadBaseline,
+        factory: Arc<dyn OccupancyFactory>,
         fallback_session: String,
     ) -> Arc<Self> {
-        Self::new(ports, reload, fallback_session)
+        Self::new(ports, reload, factory, fallback_session)
     }
 
-    /// Isolated store + default ports (BDD / unit tests; no user `~/.xylitol`).
-    pub fn for_test() -> Result<Arc<Self>, Box<dyn std::error::Error>> {
-        let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
-        let sessions = dir.join("sessions");
-        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(sessions.clone()));
-        let ports = build_baseline_with_store(BuildAgentOptions::default(), store)?;
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let agent_dir = crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir();
-        Ok(Self::new(
-            ports,
-            ReloadBaseline {
-                cwd,
-                agent_dir,
-                project_trusted: true,
-                mcp_servers: Vec::new(),
-                default_model_id: None,
-            },
-            "test-session".into(),
-        )
-        .remember_sessions_dir(sessions)
-        .arm_test_linger())
-    }
-
-    fn arm_test_linger(self: Arc<Self>) -> Arc<Self> {
+    pub fn arm_test_linger(self: Arc<Self>) -> Arc<Self> {
         if let Ok(mut g) = self.write_lock_linger.lock() {
             *g = Duration::from_millis(80);
         }
         self
-    }
-
-    /// Isolated host with configured MCP servers (parity tests).
-    pub fn for_test_with_mcp(
-        mcp_servers: Vec<McpServerSpec>,
-    ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
-        let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
-        let sessions = dir.join("sessions");
-        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(sessions.clone()));
-        let ports = build_baseline_with_store(BuildAgentOptions::default(), store)?;
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let agent_dir = crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir();
-        Ok(Self::new(
-            ports,
-            ReloadBaseline {
-                cwd,
-                agent_dir,
-                project_trusted: true,
-                mcp_servers,
-                default_model_id: None,
-            },
-            "test-session".into(),
-        )
-        .remember_sessions_dir(sessions)
-        .arm_test_linger())
-    }
-
-    /// Isolated host with one selectable model registered as the writer default
-    /// (c2841 model-state sync tests; selection is offline — no provider call).
-    pub fn for_test_with_default_model(
-        model_id: &str,
-    ) -> Result<Arc<Self>, Box<dyn std::error::Error>> {
-        use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind, XyModelMeta};
-        use xylitol_runtime::agent::model::registry::ModelRegistry;
-
-        let mut registry = ModelRegistry::new();
-        registry.register(XyModelMeta {
-            id: model_id.to_string(),
-            config: XyModelConfig {
-                kind: XyModelKind::Fake,
-                api_key: String::new(),
-                model: model_id.to_string(),
-                base_url: None,
-                api: None,
-                compat: None,
-            },
-            display_name: model_id.to_string(),
-            thinking: false,
-            context_window: 64_000,
-            api: String::new(),
-            provider: "fake".into(),
-            cost_input: 0.0,
-            cost_output: 0.0,
-            cost_cache_read: 0.0,
-            cost_cache_write: 0.0,
-            max_tokens: 0,
-            thinking_levels: vec!["off".into()],
-            thinking_level_map: Default::default(),
-        });
-        let dir = std::env::temp_dir().join(format!("xylitol-host-{}", uuid::Uuid::new_v4()));
-        let sessions = dir.join("sessions");
-        let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(sessions.clone()));
-        let ports = build_baseline_with_store(
-            BuildAgentOptions {
-                model_registry: registry,
-                ..Default::default()
-            },
-            store,
-        )?;
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let agent_dir = crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir();
-        Ok(Self::new(
-            ports,
-            ReloadBaseline {
-                cwd,
-                agent_dir,
-                project_trusted: true,
-                mcp_servers: Vec::new(),
-                default_model_id: Some(model_id.to_string()),
-            },
-            "test-session".into(),
-        )
-        .remember_sessions_dir(sessions)
-        .arm_test_linger())
     }
 
     pub async fn slot(&self, session_id: &str) -> Arc<SessionSlot> {
@@ -337,7 +229,7 @@ impl HostState {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .join(session_id)
-            .join(xylitol_official_plugin_session::SESSION_WRITE_LOCK_FILENAME)
+            .join("session.lock")
     }
 
     async fn live_subscriber_count(slot: &SessionSlot) -> usize {
@@ -365,18 +257,10 @@ impl HostState {
 
     async fn ensure_resource_driver(
         &self,
-    ) -> tokio::sync::MutexGuard<'_, Option<XyInProcessDriver>> {
+    ) -> tokio::sync::MutexGuard<'_, Option<Box<dyn OccupancyEngine>>> {
         let mut guard = self.resource_driver.lock().await;
         if guard.is_none() {
-            let agent = self.ports.materialize_runtime();
-            let mut driver = XyInProcessDriver::new(agent, self.ports.store.clone());
-            driver.enable_reload_state(
-                self.reload.cwd.clone(),
-                self.reload.agent_dir.clone(),
-                self.reload.project_trusted,
-                self.reload.mcp_servers.clone(),
-            );
-            *guard = Some(driver);
+            *guard = Some(self.factory.new_driver());
         }
         guard
     }
@@ -518,8 +402,7 @@ impl SessionSlot {
         self.run_inflight.store(on, Ordering::SeqCst);
     }
 
-    #[cfg(test)]
-    pub(crate) async fn flush_pending_runtime_for_test(&self) {
+    pub async fn flush_pending_runtime_for_test(&self) {
         self.flush_pending_runtime().await;
     }
 
@@ -842,15 +725,15 @@ impl AskUserGateway for SlotAskGateway {
         let rpc_id = uuid::Uuid::new_v4().to_string();
         let questions = serde_json::to_value(&args.questions).unwrap_or(Value::Null);
         let rx = self.slot.request_question(rpc_id.clone(), questions).await;
-        match timeout(crate::wiring::occupancy::ws::REVERSE_RPC_TIMEOUT, rx).await {
+        match timeout(crate::occupancy::ws::REVERSE_RPC_TIMEOUT, rx).await {
             Ok(Ok(ReverseRpcResult::Answered(s))) => Ok(s),
             Ok(Ok(ReverseRpcResult::Approved)) => Ok("{}".into()),
             Ok(Ok(ReverseRpcResult::Denied)) => Err(XyToolError::Aborted),
             Ok(Ok(ReverseRpcResult::Timeout)) | Ok(Err(_)) | Err(_) => {
                 self.slot.gateway.remove(&rpc_id);
-                Err(XyToolError::ExecutionFailed(anyhow::anyhow!(
-                    "approval/question timed out"
-                )))
+                Err(XyToolError::Timeout(
+                    crate::occupancy::ws::REVERSE_RPC_TIMEOUT,
+                ))
             }
         }
     }
@@ -871,13 +754,13 @@ impl OccupiedHost for HostState {
     }
 
     async fn handle_uplink(self: Arc<Self>, bytes: &[u8]) -> Result<Vec<u8>, ()> {
-        crate::wiring::occupancy::envelope::handle_uplink(&self, bytes)
+        crate::occupancy::envelope::handle_uplink(&self, bytes)
             .await
             .map_err(|_| ())
     }
 
     fn encode_downlink(&self, method: &str, payload: serde_json::Value) -> Result<Vec<u8>, String> {
-        crate::wiring::occupancy::envelope::downlink_frame(method, payload, 0)
+        crate::occupancy::envelope::downlink_frame(method, payload, 0)
     }
 
     async fn prune_mux(self: Arc<Self>, clean_close: bool) {
@@ -945,21 +828,12 @@ pub async fn materialize_writer_at(
         slot.ensure_mcp_resources_watch();
         return Ok(());
     }
-    let mut agent = host.ports.materialize_runtime();
-    agent.set_cwd(workspace.to_string_lossy().into_owned());
-    agent
-        .bind_session(slot.session_id.clone())
-        .map_err(|e| XyDriverError::from(e.to_string()))?;
-    let mut driver = XyInProcessDriver::new(agent, host.ports.store.clone());
-    driver.enable_reload_state(
-        workspace.to_path_buf(),
-        host.reload.agent_dir.clone(),
-        project_trusted_for(host, workspace),
-        host.reload.mcp_servers.clone(),
-    );
+    let mut driver = host.factory.new_driver_at(workspace);
+    let _ = project_trusted_for(host, workspace);
+    driver.bind_session(&slot.session_id)?;
     driver.install_ask_tool(Arc::new(SlotAskGateway { slot: slot.clone() }));
     driver.begin_mcp_bootstrap().await;
-    if let Some(id) = host.reload.default_model_id.as_deref()
+    if let Some(id) = host.factory.default_model_id().as_deref()
         && let Err(e) = driver.restore_model(id).await
     {
         log::warn!(
@@ -974,25 +848,14 @@ pub async fn materialize_writer_at(
     Ok(())
 }
 
-fn new_reader_driver(host: &HostState) -> XyInProcessDriver {
-    let agent = host.ports.materialize_runtime();
-    // c2843 Phase B: reader drivers need no obs-slot gate — materialized obs
-    // identity is runtime-owned, and readers never touch the writer-event paths
-    // that update the default-identity slot.
-    let mut driver = XyInProcessDriver::new(agent, host.ports.store.clone());
-    driver.enable_reload_state(
-        host.reload.cwd.clone(),
-        host.reload.agent_dir.clone(),
-        host.reload.project_trusted,
-        host.reload.mcp_servers.clone(),
-    );
-    driver
+fn new_reader_driver(host: &HostState) -> Box<dyn OccupancyEngine> {
+    host.factory.new_driver()
 }
 
 async fn materialize_reader(
     host: &HostState,
     session_id: &str,
-) -> Result<XyInProcessDriver, XyDriverError> {
+) -> Result<Box<dyn OccupancyEngine>, XyDriverError> {
     let mut driver = new_reader_driver(host);
     driver.switch_session(session_id).await?;
     Ok(driver)
@@ -1064,70 +927,6 @@ fn model_data(m: &ModelInfo) -> Value {
         "thinking_levels": m.thinking_levels,
         "context_window": m.context_window,
     })
-}
-
-pub fn outcome_to_value(outcome: DispatchOutcome) -> Value {
-    match outcome {
-        DispatchOutcome::Aborted { cancelled } => json!({ "cancelled": cancelled }),
-        DispatchOutcome::State(st) => json!({
-            "session_id": st.session_id,
-            "model": st.model.as_ref().map(model_data),
-            "thinking_level": st.thinking_level,
-            "leaf_entry_id": st.leaf_entry_id,
-        }),
-        DispatchOutcome::Model(model) => model_data(&model),
-        DispatchOutcome::Models(models) => {
-            json!({ "models": models.iter().map(model_data).collect::<Vec<_>>() })
-        }
-        DispatchOutcome::ThinkingLevel(level) => json!({ "thinking_level": level }),
-        DispatchOutcome::Bash(r) => json!({
-            "output": r.output,
-            "exit_code": r.exit_code,
-            "cancelled": r.cancelled,
-            "truncated": r.truncated,
-        }),
-        DispatchOutcome::Compacted(did) => json!({ "compacted": did }),
-        DispatchOutcome::SessionStats(v) => v,
-        DispatchOutcome::ExportedPath(p) => json!({ "path": p }),
-        DispatchOutcome::NewSession(id) | DispatchOutcome::SwitchedSession(id) => {
-            json!({ "session_id": id })
-        }
-        DispatchOutcome::Messages { entries, .. } => json!({
-            "entries": serde_json::to_value(entries).unwrap_or(Value::Null)
-        }),
-        DispatchOutcome::EstimateContext(estimate) => json!({
-            "estimate": serde_json::to_value(estimate).unwrap_or(Value::Null)
-        }),
-        DispatchOutcome::SessionTree(tree) => json!({
-            "tree": serde_json::to_value(tree).unwrap_or(Value::Null)
-        }),
-        DispatchOutcome::SessionTreeTravel(travel) => {
-            serde_json::to_value(travel).unwrap_or(Value::Null)
-        }
-        DispatchOutcome::Sessions(sessions) => json!({
-            "sessions": serde_json::to_value(sessions).unwrap_or(Value::Null)
-        }),
-        DispatchOutcome::SessionEntries(entries) => json!({
-            "entries": serde_json::to_value(entries).unwrap_or(Value::Null)
-        }),
-        DispatchOutcome::SessionName(name) => json!({ "name": name }),
-        DispatchOutcome::Reload(report) => serde_json::to_value(report).unwrap_or(Value::Null),
-        DispatchOutcome::LoadedResources(snapshot) => {
-            serde_json::to_value(snapshot).unwrap_or(Value::Null)
-        }
-        DispatchOutcome::Empty => json!({}),
-        DispatchOutcome::Commands(cmds) => {
-            let cmds: Vec<Value> = cmds
-                .into_iter()
-                .map(|c| json!({ "name": c.name, "description": c.description }))
-                .collect();
-            json!({ "commands": cmds })
-        }
-        DispatchOutcome::QueueStats {
-            steer_count,
-            follow_up_count,
-        } => json!({ "steer_count": steer_count, "follow_up_count": follow_up_count }),
-    }
 }
 
 fn rpc_err(e: XyDriverError) -> RpcResult {
@@ -1224,14 +1023,14 @@ pub async fn handle_unary(
 
     if method == METHOD_RELOAD {
         return match host.reload_resources().await {
-            Ok(report) => RpcResult::ok_value(outcome_to_value(DispatchOutcome::Reload(report))),
+            Ok(report) => RpcResult::ok_value(serde_json::to_value(report).unwrap_or(Value::Null)),
             Err(e) => rpc_err(e),
         };
     }
     if method == METHOD_LOADED_RESOURCES {
         let session_id = host.session_id_from_payload(&payload);
         let snapshot = host.loaded_resources_snapshot_for(&session_id).await;
-        return RpcResult::ok_value(outcome_to_value(DispatchOutcome::LoadedResources(snapshot)));
+        return RpcResult::ok_value(serde_json::to_value(snapshot).unwrap_or(Value::Null));
     }
     if method == METHOD_ABORT {
         // A running interactive bash holds the writer lock, so a `Command::Abort`
@@ -1542,9 +1341,8 @@ async fn dispatch_writer_unary(
     } else {
         None
     };
-    let result = match dispatch(driver, cmd).await {
-        Ok(outcome) => {
-            let mut value = outcome_to_value(outcome);
+    let result = match driver.execute_command(cmd).await {
+        Ok(mut value) => {
             if staged_export
                 && let Some(p) = value
                     .get("path")
@@ -1618,8 +1416,8 @@ async fn dispatch_readonly_unary(
                 Ok(c) => c,
                 Err(e) => return RpcResult::error("invalid_input", e),
             };
-            return match dispatch(&mut reader, cmd).await {
-                Ok(outcome) => RpcResult::ok_value(outcome_to_value(outcome)),
+            return match reader.execute_command(cmd).await {
+                Ok(outcome) => RpcResult::ok_value(outcome),
                 Err(e) => rpc_err(e),
             };
         }
@@ -1661,8 +1459,8 @@ async fn dispatch_readonly_unary(
             Ok(c) => c,
             Err(e) => return RpcResult::error("invalid_input", e),
         };
-        return match dispatch(&mut reader, cmd).await {
-            Ok(outcome) => RpcResult::ok_value(outcome_to_value(outcome)),
+        return match reader.execute_command(cmd).await {
+            Ok(outcome) => RpcResult::ok_value(outcome),
             Err(e) => rpc_err(e),
         };
     }
@@ -1675,173 +1473,8 @@ async fn dispatch_readonly_unary(
     let Some(driver) = g.as_mut() else {
         return RpcResult::error("unavailable", "no writer engine");
     };
-    match dispatch(driver, cmd).await {
-        Ok(outcome) => RpcResult::ok_value(outcome_to_value(outcome)),
+    match driver.execute_command(cmd).await {
+        Ok(outcome) => RpcResult::ok_value(outcome),
         Err(e) => rpc_err(e),
-    }
-}
-
-#[cfg(test)]
-mod occupancy_lifecycle_tests {
-    use super::*;
-    use xylitol_official_plugin_session::SESSION_WRITE_LOCK_FILENAME;
-    use xylitol_plugin_sdk::session::{
-        EntryBase, MessageEntry, SessionEntry, fixture_message_json,
-    };
-
-    fn assistant(text: &str) -> SessionEntry {
-        SessionEntry::Message(MessageEntry {
-            base: EntryBase {
-                entry_type: "message".into(),
-                id: String::new(),
-                parent_id: None,
-                timestamp: 0,
-            },
-            message: fixture_message_json("assistant", text),
-        })
-    }
-
-    async fn materialize(host: &HostState, sid: &str) {
-        host.ports
-            .store
-            .create(sid, Some("."), None)
-            .await
-            .expect("create");
-        host.ports
-            .store
-            .append_session_entry(sid, &assistant("hi"))
-            .await
-            .expect("append");
-        let lock = host.occupancy_lock_path(sid);
-        assert!(
-            lock.ends_with(SESSION_WRITE_LOCK_FILENAME),
-            "{}",
-            lock.display()
-        );
-        assert!(lock.exists(), "append MUST create session.lock");
-    }
-
-    #[cfg(unix)]
-    fn flock_probe(path: &Path) -> Option<i32> {
-        let script = format!(
-            "import fcntl, sys\nf=open({path:?}, 'r+')\ntry:\n fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\n sys.exit(0)\nexcept BlockingIOError:\n sys.exit(2)\n",
-            path = path
-        );
-        std::process::Command::new("python3")
-            .arg("-c")
-            .arg(&script)
-            .status()
-            .ok()
-            .and_then(|s| s.code())
-    }
-
-    #[tokio::test]
-    async fn last_clean_disconnect_releases_lock() {
-        let host = HostState::for_test().expect("host");
-        materialize(&host, "s-clean").await;
-        let lock = host.occupancy_lock_path("s-clean");
-        #[cfg(unix)]
-        assert_eq!(flock_probe(&lock), Some(2), "append holds the kernel lock");
-
-        let slot = host.slot("s-clean").await;
-        let (tx, rx) = mpsc::channel(8);
-        slot.add_subscriber(tx).await;
-        drop(rx);
-        prune_mux_and_maybe_release(&host, true).await;
-
-        #[cfg(unix)]
-        assert_eq!(
-            flock_probe(&lock),
-            Some(0),
-            "clean last disconnect MUST release immediately"
-        );
-        assert!(lock.exists(), "release MUST NOT unlink session.lock");
-    }
-
-    #[tokio::test]
-    async fn linger_reconnect_keeps_occupancy() {
-        let host = HostState::for_test().expect("host");
-        materialize(&host, "s-linger").await;
-        let lock = host.occupancy_lock_path("s-linger");
-        let slot = host.slot("s-linger").await;
-        let (tx, rx) = mpsc::channel(8);
-        slot.add_subscriber(tx).await;
-        drop(rx);
-        prune_mux_and_maybe_release(&host, false).await;
-
-        #[cfg(unix)]
-        assert_eq!(
-            flock_probe(&lock),
-            Some(2),
-            "abnormal disconnect MUST linger"
-        );
-
-        let (tx2, _rx2) = mpsc::channel(8);
-        host.register_unbound_mux(tx2).await;
-        let subscribed = host.bind_mux_to_session(&slot, 0).await;
-        assert!(subscribed.ok, "same-process reconnect MUST succeed");
-
-        #[cfg(unix)]
-        assert_eq!(flock_probe(&lock), Some(2), "reconnect MUST keep occupancy");
-    }
-
-    #[tokio::test]
-    async fn linger_expires_without_reconnect() {
-        let host = HostState::for_test().expect("host");
-        materialize(&host, "s-expire").await;
-        let lock = host.occupancy_lock_path("s-expire");
-        let slot = host.slot("s-expire").await;
-        let (tx, rx) = mpsc::channel(8);
-        slot.add_subscriber(tx).await;
-        drop(rx);
-        prune_mux_and_maybe_release(&host, false).await;
-        tokio::time::sleep(Duration::from_millis(160)).await;
-
-        #[cfg(unix)]
-        assert_eq!(
-            flock_probe(&lock),
-            Some(0),
-            "linger expiry MUST release when nobody returned"
-        );
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn foreign_process_blocks_writer_unary() {
-        let host = HostState::for_test().expect("host");
-        materialize(&host, "s-held").await;
-        host.ports.store.release_write_lock("s-held");
-        let lock = host.occupancy_lock_path("s-held");
-        assert_eq!(
-            flock_probe(&lock),
-            Some(0),
-            "lock MUST be free after Host release"
-        );
-        let script = format!(
-            "import fcntl, sys, time\nf=open({path:?}, 'r+')\nfcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\nsys.stdout.write('held\\n')\nsys.stdout.flush()\ntime.sleep(30)\n",
-            path = lock
-        );
-        let mut child = std::process::Command::new("python3")
-            .arg("-c")
-            .arg(&script)
-            .stdout(std::process::Stdio::piped())
-            .spawn()
-            .expect("python hold");
-        let mut stdout = child.stdout.take().expect("stdout");
-        let mut buf = [0u8; 5];
-        std::io::Read::read_exact(&mut stdout, &mut buf).expect("held");
-        assert_eq!(&buf, b"held\n");
-
-        let slot = host.slot("s-held").await;
-        let err = ensure_write_occupancy(&host, &slot, &host.reload.cwd)
-            .await
-            .expect_err("foreign holder MUST block");
-        assert_eq!(
-            err.error.as_ref().map(|e| e.code.as_str()),
-            Some("session_write_held"),
-            "{err:?}"
-        );
-        let _ = child.kill();
-        let _ = child.wait();
     }
 }

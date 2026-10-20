@@ -4,15 +4,15 @@
 //! (the remote driver is a client of the Host), so platform clipboard tools /
 //! OSC 52 act on the TUI machine. MUST NOT route through the Host (D1).
 
+use super::ClipboardCopyOutcome;
 use super::XyDriverError;
-use super::types::ClipboardCopyOutcome;
 
 pub(crate) async fn copy_text_to_clipboard(
     text: String,
 ) -> Result<ClipboardCopyOutcome, XyDriverError> {
     let plan = crate::wiring::infra::clipboard::plan_clipboard_copy_async(text)
         .await
-        .map_err(XyDriverError::from)?;
+        .map_err(|e| XyDriverError::io(e.to_string()))?;
     if !plan.will_succeed() {
         return Err(XyDriverError::io(plan.failure_message()));
     }
@@ -25,7 +25,7 @@ pub(crate) async fn stage_clipboard_image() -> Result<Option<std::path::PathBuf>
     let image = tokio::task::spawn_blocking(crate::wiring::infra::clipboard::read_clipboard_image)
         .await
         .map_err(|e| XyDriverError::io(format!("clipboard image task failed: {e}")))?
-        .map_err(XyDriverError::from)?;
+        .map_err(|e| XyDriverError::io(e.to_string()))?;
     let Some(image) = image else {
         return Ok(None);
     };
@@ -34,7 +34,7 @@ pub(crate) async fn stage_clipboard_image() -> Result<Option<std::path::PathBuf>
     })
     .await
     .map_err(|e| XyDriverError::io(format!("clipboard image write task failed: {e}")))?
-    .map_err(XyDriverError::from)?;
+    .map_err(|e| XyDriverError::io(e.to_string()))?;
     Ok(Some(path))
 }
 
@@ -42,5 +42,5 @@ pub(crate) async fn read_clipboard_text() -> Result<Option<String>, XyDriverErro
     tokio::task::spawn_blocking(crate::wiring::infra::clipboard::read_clipboard_text)
         .await
         .map_err(|e| XyDriverError::io(format!("clipboard text task failed: {e}")))?
-        .map_err(XyDriverError::from)
+        .map_err(|e| XyDriverError::io(e.to_string()))
 }

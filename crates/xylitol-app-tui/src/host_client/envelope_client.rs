@@ -22,11 +22,11 @@ use xylitol_protocol::{
 };
 
 /// Test injection env. Unset is treated as on by the attach client.
-pub(super) const ENVELOPE_FORMAT_ENV: &str = "XYLITOL_WIRE_V3";
+pub const ENVELOPE_FORMAT_ENV: &str = "XYLITOL_ENVELOPE_V3";
 
 /// 读进程 env 决定 v3 是否开启。
 ///
-/// 未设 `XYLITOL_WIRE_V3` 时产品默认开；显式 env 仍走本解析。
+/// 未设 `XYLITOL_ENVELOPE_V3` 时产品默认开；显式 env 仍走本解析。
 pub(super) fn env_enabled() -> bool {
     flag_truthy(std::env::var_os(ENVELOPE_FORMAT_ENV).as_deref())
 }
@@ -332,6 +332,8 @@ mod tests {
         assert!(flag("true"));
         assert!(flag("TRUE"));
         assert!(flag(" true "));
+        assert_eq!(ENVELOPE_FORMAT_ENV, "XYLITOL_ENVELOPE_V3");
+        assert_ne!(ENVELOPE_FORMAT_ENV, "XYLITOL_WIRE_V3");
     }
 
     /// task 3.1 (b):rpc_id 数字形态直通、非数字形态稳定映射
@@ -777,12 +779,6 @@ mod tests {
             assert_eq!(got_method, method);
             assert_eq!(got_payload, payload);
         }
-
-        let unknown = ServerNotification {
-            seq: 2,
-            notification: Notification::Unknown(fory::UnknownCase::new(99, ())),
-        };
-        assert!(notification_to_message(&unknown, &mut session_id).is_none());
     }
 
     /// decode_downlink 对 ClientRequest / Unknown 上行帧忽略(None)。

@@ -103,7 +103,7 @@ flowchart TB
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
-每个 crate 内部仍守依赖方向（runtime ↛ 插件、↛ 信封；插件之间不得 `use`）。根包 `src/` 是组合根：CLI / wiring / embed。占用与 Driver 暂在 `wiring` 内；监听与 `XyEvent` ↔ v3 mapping 在 `xylitol-serve`。
+每个 crate 内部仍守依赖方向（runtime ↛ 插件、↛ 信封；插件之间不得 `use`）。根包 `src/` 是组合根：CLI / wiring / embed。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由组合根注入。占用（session slot / linger / 单写者）在 `xylitol-serve`，装配与 MCP 物化由组合根注入。监听与 `XyEvent` ↔ v3 mapping 在 `xylitol-serve`。
 
 ### `AgentCapabilities` 职责边界
 
@@ -112,8 +112,8 @@ flowchart TB
 | 留 | 不留（归端 / Driver） |
 |---|---|
 | model 选择与 thinking | 产品 slash 词表（`wiring::product_commands`） |
-| tools + freeze / hooks / permission | bang `!` / `!!`（`wiring::bang_exec`） |
-| session id + store + fork/stats | HTML/JSONL export-import（`wiring::session_export`） |
+| tools + freeze / hooks / permission | bang `!` / `!!`（`xylitol-runtime` `BangExecHandler`；组合根注入 executor） |
+| session id + store + fork/stats | HTML/JSONL export-import（`xylitol-runtime` `SessionExporter`；组合根注入 I/O） |
 | context_policy + prompt 装配 | — |
 | compaction 门禁 | — |
 | steer / follow-up queues | — |

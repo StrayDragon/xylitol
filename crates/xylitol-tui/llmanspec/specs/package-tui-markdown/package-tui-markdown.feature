@@ -34,38 +34,38 @@
   @req:r1936
   规则: streaming-partial-closing-fence
     Markdown 在流式或完整文本以未闭合代码围栏结尾、且最后一行是短于该围栏 opener 的同字符反引号或波浪线时，须 在解析前去掉该半截闭合行。补全闭合围栏后，代码块可见行数 须 与去掉半截时相同。已闭合围栏、围栏外正文、以及并非 closer 前缀的末行 不得 被误删。不得 因此画出围栏铬或语言标签条（仍遵守代码块无围栏行）。不得 把修剪做成产品私有第二套解析。
-    场景: streaming-partial-fence-height-stable
+    场景: 流式部分围栏高度稳定
       当 渲染以半截闭合围栏结尾的围栏代码再补全该闭合围栏
       那么 两次代码块可见行数相同且无围栏铬
   @req:r1947
   规则: mermaid-fence-ascii-or-source
     Markdown 渲染围栏语言首词为 mermaid（大小写不敏感）的已闭合代码块时：能画成盒线且自然列宽不超过可用宽，须 输出 Unicode 盒线行，且 不得 输出围栏行、语言标签条或该围栏源码；画不成时（画图返回错误）须 先输出错误色提示「无法渲染 mermaid」，再按普通代码块呈现该代码块内源码（即使非法也原样；源码比提示多一档缩进，行内代码色，保持源码换行不按散文折）。失败呈现 不得 套标题装饰框，不得 输出围栏行。
 
-    场景: mermaid-closed-flowchart-draws-boxes
+    场景: Mermaid闭合流程图绘制框
       当 渲染已闭合的最小 flowchart TD mermaid 围栏
       那么 可见行含盒线且无围栏铬
 
-    场景: mermaid-unknown-type-stays-source
+    场景: Mermaid未知类型保持来源
       当 渲染已闭合但画不成盒线的 mermaid 围栏
       那么 可见行是代码块内源码并带无法渲染提示且无盒线图
   @req:r1948
   规则: mermaid-mode-final-open-fence
     Markdown mermaid 围栏默认模式为 final：当源在文件末尾仍有未闭合的 mermaid 围栏时，须 按普通代码块呈现，不得 输出盒线图，不得 输出无法渲染提示。模式为 off 时任何 mermaid 围栏 须 按普通代码块呈现，不得 输出无法渲染提示。模式为 streaming 时未闭合围栏 MAY 尝试画图，失败仍回源并带无法渲染提示。
 
-    场景: mermaid-final-open-fence-stays-source
+    场景: Mermaid终态打开围栏保持来源
       当 以默认 final 渲染末尾未闭合的 mermaid 围栏
       那么 可见行是源码且无盒线图
 
-    场景: mermaid-off-never-draws
+    场景: Mermaid关从不绘制
       当 以 off 模式渲染已闭合的最小 flowchart TD mermaid 围栏
       那么 可见行是源码且无盒线图
 
-    场景: mermaid-streaming-open-garbage-falls-back
+    场景: Mermaid流式打开垃圾回落返回
       当 以 streaming 模式渲染末尾未闭合且画不成盒线的 mermaid 围栏
       那么 可见行是代码块内源码并带无法渲染提示且无盒线图
   @req:r1949
   规则: mermaid-too-wide-fallback
     已闭合 mermaid 围栏若盒线自然列宽超过本次渲染可用宽（已扣除该代码块既有缩进），须 整块回退为代码块内源码并带无法渲染提示，不得 把盒线折行，不得 输出围栏行。
-    场景: mermaid-too-wide-falls-back
+    场景: Mermaid过过宽回落返回
       当 在窄于盒线自然宽的宽度渲染已闭合 mermaid 围栏
       那么 可见行是代码块内源码并带无法渲染提示且盒线未折行

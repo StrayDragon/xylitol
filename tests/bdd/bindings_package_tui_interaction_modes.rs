@@ -5,7 +5,7 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
-    name = "default-mode-a-inline"
+    name = "缺省模式行内2"
 )]
 fn test_default_inline(ws: Workspace) {
     let _ = ws;
@@ -13,7 +13,7 @@ fn test_default_inline(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
-    name = "copy-on-release-osc52"
+    name = "复制时发布OSC52"
 )]
 fn test_copy_on_release_osc52(ws: Workspace) {
     let _ = ws;
@@ -21,7 +21,7 @@ fn test_copy_on_release_osc52(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
-    name = "dock-drag-clamp-keeps-selection"
+    name = "停靠栏拖选钳制保留选区"
 )]
 fn test_dock_drag_clamp_keeps_selection(ws: Workspace) {
     let _ = ws;
@@ -29,7 +29,7 @@ fn test_dock_drag_clamp_keeps_selection(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
-    name = "wheel-sticky-viewport"
+    name = "滚轮粘滞视口"
 )]
 fn test_wheel_sticky_viewport(ws: Workspace) {
     let _ = ws;
@@ -37,7 +37,7 @@ fn test_wheel_sticky_viewport(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
-    name = "copy-notice-after-success"
+    name = "复制提示之后成功"
 )]
 fn test_copy_notice_after_success(ws: Workspace) {
     let _ = ws;
@@ -45,7 +45,7 @@ fn test_copy_notice_after_success(ws: Workspace) {
 
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
-    name = "editor-multiline-selection"
+    name = "编辑器多行选区"
 )]
 fn test_editor_multiline_selection(ws: Workspace) {
     let _ = ws;

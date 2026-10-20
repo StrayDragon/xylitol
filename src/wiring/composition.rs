@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::wiring::driver_error::XyDriverError;
+use crate::wiring::driver::XyDriverError;
 use crate::wiring::infra::config::types::HooksConfig;
 use xylitol_official_plugin_session::SessionManager;
 use xylitol_plugin_sdk::{XyBatchMode, XyEventSink, XyPermission, XySessionStore};
@@ -431,8 +431,9 @@ mod tests {
 
         // Without /reload reopen, FROZEN ignores silent expand (config change alone).
         let n = after_add.len();
+        let builtins = driver.builtins_for_reload();
         driver.set_tools(ToolSet::rebuild_agent_tools(
-            driver.builtins_for_reload(),
+            builtins,
             vec![
                 Arc::new(StubMcpTool {
                     name: "mcp__demo__beta",
@@ -484,8 +485,9 @@ mod tests {
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::wiring::driver::XyInProcessDriver::new(agent, store);
+        let builtins = driver.builtins_for_reload();
         driver.freeze_tools(ToolSet::rebuild_agent_tools(
-            driver.builtins_for_reload(),
+            builtins,
             vec![Arc::new(StubMcpTool) as Arc<dyn XyTool>],
         ));
         let before = driver.tool_names_for_test();
@@ -533,9 +535,8 @@ mod tests {
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::wiring::driver::XyInProcessDriver::new(agent, store);
-        driver.freeze_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
-            driver.builtins_for_reload(),
-        ));
+        let builtins = driver.builtins_for_reload();
+        driver.freeze_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(builtins));
         assert!(
             !driver
                 .tool_names_for_test()

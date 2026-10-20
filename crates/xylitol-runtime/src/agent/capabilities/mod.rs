@@ -4,7 +4,7 @@
 //! session id + store (+ fork/stats), context_policy + prompt assembly,
 //! compaction gate, steer/follow-up queues.
 //!
-//! **Out of scope (app / [`XyDriver`](crate::app::core::driver::XyDriver)):**
+//! **Out of scope (app / [`crate::XyDriver`]):**
 //! product slash catalog, bang (`!`/`!!`), session HTML/JSONL export-import.
 //! Skill/extension slash registration, when delivered, belongs on the Driver /
 //! app surface — not this aggregate.
@@ -81,7 +81,7 @@ impl ActiveTurnBinding {
 
 /// Engine capability aggregate (model / tools / session / prompt / compaction / queues).
 ///
-/// Product slash, bang, and session export live on [`XyDriver`](crate::app::core::driver::XyDriver).
+/// Product slash, bang, and session export live on [`crate::XyDriver`].
 pub struct AgentCapabilities {
     /// Model management (registry, selection, thinking level). Shared so ReAct
     /// can refresh at turn boundaries while surfaces call `select_model`.

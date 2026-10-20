@@ -6,7 +6,7 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "todo-bar-sits-between-queue-and-toast"
+    name = "待办栏位于介于队列与提示条"
 )]
 fn test_todo_bar_sits_between_queue_and_toast(fixed_zone_bdd: FixedZoneBdd) {}
 
@@ -14,22 +14,22 @@ fn test_todo_bar_sits_between_queue_and_toast(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
-    name = "resource-header-refreshed-from-snapshot"
+    name = "资源头已刷新来自快照"
 )]
 fn test_ath38_header_from_downlink(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "fixed-zone-slot-order"
+    name = "固定区槽顺序"
 )]
 fn test_atz_slot_order(fixed_zone_bdd: FixedZoneBdd) {}
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "footer-carries-no-queue-badge"
+    name = "页脚携带无队列徽标"
 )]
 fn test_atz_footer_no_badge(fixed_zone_bdd: FixedZoneBdd) {}
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "glyph-set-by-config-not-font-probe"
+    name = "字形设置按配置不字体探针"
 )]
 fn test_atz_glyph_config(transcript_bdd: TranscriptBdd) {}

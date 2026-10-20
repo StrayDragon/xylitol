@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use crate::wiring::composition::{BuildAgentOptions, official_compaction_factory};
-use crate::wiring::driver_error::XyDriverError;
+use crate::wiring::driver::XyDriverError;
 use crate::wiring::infra::event::EventBus;
 use crate::wiring::infra::permission;
 use xylitol_official_plugin_hooks::HookDispatcher;

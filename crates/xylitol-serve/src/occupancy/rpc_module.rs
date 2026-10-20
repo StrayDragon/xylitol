@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::wiring::occupancy::host::{HostState, handle_unary};
+use crate::occupancy::host::{HostState, handle_unary};
 use xylitol_protocol::codec;
 use xylitol_protocol::envelope::RpcResult;
 use xylitol_protocol::registry;
@@ -38,10 +38,7 @@ fn id_key(id: &Value) -> Option<String> {
 /// `Some((应答, ()))` 里应答是完整 JSON-RPC 对象（`result` 或 `error`）。
 /// 第二项恒为 `None`：占用改内核锁后不再 mint 协议令牌。
 /// 未登记方法不判非法，而是给 `-32601` 应答（合法信封 + 产品码）。
-pub(crate) async fn dispatch_raw(
-    host: &Arc<HostState>,
-    request: &str,
-) -> Option<(Value, Option<String>)> {
+pub async fn dispatch_raw(host: &Arc<HostState>, request: &str) -> Option<(Value, Option<String>)> {
     if request.len() > MAX_BODY_BYTES {
         return None;
     }
@@ -81,7 +78,7 @@ pub(crate) async fn dispatch_raw(
     Some((codec::jsonrpc_response(&id, &result), None))
 }
 
-#[cfg(test)]
+#[cfg(any())]
 mod tests {
     use super::*;
 

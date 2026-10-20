@@ -29,14 +29,14 @@
   规则: pointer-offer-before-focus
     Component 须 提供默认空操作的 set_screen_origin 与 offer_pointer。offer_pointer 收到指针且组件认领时 须 返回 true，未认领 须 返回 false。TUI::dispatch_event 在 listener 之后、焦点 overlay 或焦点根 child 之前 须 对可见 overlay 与根 child 调用 offer_pointer；任一返回 true 须 阻止焦点组件再收到该指针事件。Container 的 offer_pointer 须 按上次 render 各 child 占用的行把屏上事件转给命中的 child。键盘与粘贴 不得 经 offer_pointer 转发。Moved 被 offer_pointer 拒绝时 不得 仅因此强制整帧重绘。
 
-    场景: dispatch-offer-pointer-blocks-focus
+    场景: 分发提供指针块焦点
       假如 根 child 会认领指针且另一组件持有焦点
       当 dispatch_event 收到该指针
       那么 焦点组件收不到该事件
   @req:r1954
   规则: viewport-overlay-after-clip
     xylitol-tui 须 在可见帧拼好之后做视口叠层：ApplicationOwned 为 project_frame 与 reproject_frame 之后（含只投影的滚轮帧）；Inline 为 Component::render 之后。视口叠层 须 先按屏格 composite 已登记 overlay（锚点相对终端高宽，不得 blit 到未裁切内容缓冲），再对每个根 Component 调用默认空操作的 overlay_viewport(&self, lines, width, transcript_rows)。overlay_viewport 须 只改已裁切的 lines；transcript_rows 须 为可见 transcript 行数（不含 dock）；默认实现 须 为 no-op。不得 为视口装饰把组件树标为整段 stale。库 copy-notice 仍只发信号（r1640），不得 在引擎内画 Copied 文案。
-    场景: overlay-viewport-pins-after-reproject
+    场景: 覆盖层视口钉住之后再投影
       假如 ApplicationOwned 已 ingest 长内容且根组件 overlay_viewport 会在可见顶行写标记
       当 只 reproject_frame 且 scroll_top 大于 0
       那么 可见帧顶行含该标记且 ScrollView 内容第 0 行不含

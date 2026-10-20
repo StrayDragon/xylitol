@@ -7,37 +7,37 @@ use rstest_bdd_macros::scenario;
 
 #[scenario(
     path = "llmanspec/specs/app-tui-storage/app-tui-storage.feature",
-    name = "storage-channel-partition-and-segments"
+    name = "存储通道分区与段"
 )]
 fn test_cs_partition(storage_bdd: StorageBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-storage/app-tui-storage.feature",
-    name = "concurrent-writes-all-land-atomically"
+    name = "并发写入全部落地原子地"
 )]
 fn test_cs_concurrent(storage_bdd: StorageBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-storage/app-tui-storage.feature",
-    name = "corrupt-file-falls-back"
+    name = "损坏文件回落返回"
 )]
 fn test_cs_corrupt(storage_bdd: StorageBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-storage/app-tui-storage.feature",
-    name = "dual-instance-mutual-visibility"
+    name = "双实例相互可见性"
 )]
 fn test_cs_dual(storage_bdd: StorageBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-storage/app-tui-storage.feature",
-    name = "editor-history-persist-and-merge"
+    name = "编辑器历史持久化与合并"
 )]
 fn test_cs_editor_history(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-storage/app-tui-storage.feature",
-    name = "editor-history-merge-recall-order"
+    name = "编辑器历史合并召回顺序"
 )]
 fn test_cs_editor_history_recall_order(host_pump_bdd: HostPumpBdd) {}
 

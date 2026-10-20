@@ -7,34 +7,34 @@
   规则: image-resize
     System 须提供 resize_image()，将图片缩放到可配置 max width/height/bytes 内并保持宽高比。
 
-    场景: constrained-image-resize
+    场景: 受约束图片缩放
       当 以限幅选项缩放内存图片
       那么 输出 base64 且宽高与字节受限
   @req:r1441
   规则: exif-orientation
     System 须加载图片时应用 EXIF orientation 元数据并相应校正像素数据。
 
-    场景: exif-orientation-boundary
+    场景: EXIF方向边界
       当 读取图像解码方向边界
       那么 解码应用 EXIF 定向且像素校正在册
   @req:r1442
   规则: format-convert
     System 须支持常见图片格式（PNG、JPEG、WebP）互转，需要缩小时自动选择 JPEG 与可配置 quality。
 
-    场景: overlimit-image-format-convert
+    场景: 超限图片格式转换
       当 请求将超限图片转为受限格式
       那么 输出采用压缩格式编码
   @req:r1443
   规则: multi-modal-prep
     System 须产出适合 multimodal LLM 输入的输出：base64 编码 JPEG/PNG，载荷低于 4.5MB，含原始尺寸元数据。
 
-    场景: multimodal-payload-bounds
+    场景: 多模态载荷边界
       当 从图片文件产出多模态载荷
       那么 base64 载荷在带宽上限内且含媒体类型
   @req:r1444
   规则: path-to-multimodal-image
     System 须提供从本地图片路径产出 multimodal ImageContent（或等价 AgentPart::Image）的入口：读取文件、经图像缩放约束尺寸与载荷、填充 media_type 与 base64 data。路径不可读或超限失败 须返回描述性错误，不得静默跳过。
 
-    场景: path-to-image-part
+    场景: 路径至图片部件
       当 从本地图片路径装配图片构件
       那么 得到多模态图片构件

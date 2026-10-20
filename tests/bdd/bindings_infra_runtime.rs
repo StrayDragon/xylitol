@@ -5,48 +5,48 @@ use rstest_bdd_macros::scenario;
 // infra-image r1440-1444（批 2）
 #[scenario(
     path = "llmanspec/specs/infra-image/infra-image.feature",
-    name = "constrained-image-resize"
+    name = "受约束图片缩放"
 )]
 fn test_t2_image_resize() {}
 #[scenario(
     path = "llmanspec/specs/infra-image/infra-image.feature",
-    name = "exif-orientation-boundary"
+    name = "EXIF方向边界"
 )]
 fn test_t2_image_exif() {}
 #[scenario(
     path = "llmanspec/specs/infra-image/infra-image.feature",
-    name = "overlimit-image-format-convert"
+    name = "超限图片格式转换"
 )]
 fn test_t2_image_convert() {}
 #[scenario(
     path = "llmanspec/specs/infra-image/infra-image.feature",
-    name = "multimodal-payload-bounds"
+    name = "多模态载荷边界"
 )]
 fn test_t2_image_multimodal() {}
 #[scenario(
     path = "llmanspec/specs/infra-image/infra-image.feature",
-    name = "path-to-image-part"
+    name = "路径至图片部件"
 )]
 fn test_t2_image_part() {}
 
 // infra-process r1493-1496（批 2）
 #[scenario(
     path = "llmanspec/specs/infra-process/infra-process.feature",
-    name = "bash-path-discovery"
+    name = "bash路径发现"
 )]
 fn test_t2_proc_bash() {}
 #[scenario(
     path = "llmanspec/specs/infra-process/infra-process.feature",
-    name = "shell-env-path-lookup"
+    name = "shell环境变量路径查找"
 )]
 fn test_t2_proc_shell_env() {}
 #[scenario(
     path = "llmanspec/specs/infra-process/infra-process.feature",
-    name = "kill-process-tree-reaps"
+    name = "杀死进程树回收"
 )]
 fn test_t2_proc_kill_tree() {}
 #[scenario(
     path = "llmanspec/specs/infra-process/infra-process.feature",
-    name = "child-wait-with-reap-guard"
+    name = "子项等待带回收守卫"
 )]
 fn test_t2_proc_child_wait() {}

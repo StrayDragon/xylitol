@@ -8,14 +8,14 @@
   规则: tree-node-model
     包 须 提供 TreeNode（id/label/children）与可导航 TreeSelector 组件；不得 依赖主 crate xylitol 或 session 类型。
 
-    场景: tree-selector-navigable-model-headless
+    场景: 树选择器可导航模型无头
       当 以样例树挂载 TreeSelector
       那么 根与子节点行可见且选中态落在首项
   @req:r1683
   规则: include-node-filter
     TreeSelector 须 支持 include_node 钩子过滤可见节点，并在过滤后重算 indent/connector/gutter；不得 硬编码产品 FilterMode 枚举。
 
-    场景: include-node-filter-rebuilds-headless
+    场景: 包含节点过滤重建无头
       当 以样例树挂载 TreeSelector 并设置只含叶子的过滤
       那么 可见列表仅剩叶子且行完整重算
       当 设置放行全部的过滤
@@ -24,7 +24,7 @@
   规则: select-keybindings
     TreeSelector 导航 须 使用 tui.select.* 键绑定（up/down/page/confirm/cancel）；选中态 须 可用主题闭包（如 reverse）表达。
 
-    场景: select-keybindings-and-theme-cursor-headless
+    场景: 选择键绑定与主题光标无头
       当 以样例树挂载 TreeSelector
       当 按下 select down 再按下 select up
       那么 选中态回到首项
@@ -37,7 +37,7 @@
   规则: incremental-search
     TreeSelector 须 支持对可见节点 label 的增量搜索（可打印字符追加、Backspace 删除）；有搜索串时 Esc 须 先清空搜索而非触发 cancel；搜索 须 与 include_node 组合（AND）。
 
-    场景: incremental-search-esc-clears-first-headless
+    场景: 增量搜索Esc清除首次无头
       当 以样例树挂载 TreeSelector 并输入搜索串 "child"
       那么 可见列表收窄到匹配项
       当 退格删除一个字符
@@ -50,7 +50,7 @@
   规则: left-right-page
     TreeSelector 翻页 须 响应 ←/→（或等价 tui.editor.cursorLeft/cursorRight）以及既有 tui.select.pageUp/pageDown；步长为 max_visible。
 
-    场景: page-keys-move-by-max-visible-headless
+    场景: 页键移动按最大可见无头
       当 以 30 叶树挂载并作用域绑定翻页键
       当 按下 select pageDown
       那么 选中前进 max_visible
@@ -62,14 +62,14 @@
   规则: status-suffix
     TreeSelector 状态行 须 在 (i/n) 后可选附加 host 提供的 status_suffix（如 filter 标签）；不得 在包内硬编码产品 FilterMode 枚举。
 
-    场景: status-suffix-after-counter-headless
+    场景: 状态后缀之后计数器无头
       当 以样例树挂载并设置状态后缀 "[no-tools]"
       那么 状态行在 (i/n) 后附加该后缀
   @req:r1688
   规则: fold-and-branch-jump
     TreeSelector 须 支持折叠可见子树（⊞/⊟ 标记）并通过 tui.tree.foldOrUp / unfoldOrDown（默认 Ctrl/Alt+←→）在 fold 与分支段跳转间切换；搜索或 include_node 变更时 须 清空 folds。
 
-    场景: fold-and-branch-jump-keys-headless
+    场景: 折叠与分支跳转键无头
       当 以样例树挂载并把选中移到可折叠父节点
       当 按下 tree foldOrUp
       那么 该节点子树折叠且渲染出现折叠标记
@@ -81,7 +81,7 @@
   规则: node-annotation
     TreeNode 须 支持可选 annotation 与 annotation_at；渲染 须 在主 label 前显示 [annotation]；show_annotation_timestamps 为真时 须 显示 annotation_at。
 
-    场景: node-annotation-renders-headless
+    场景: 节点标注渲染无头
       当 以带注解与时间戳的样例树挂载
       那么 注解以括号形式先于主标签渲染
       当 开启时间戳显示
@@ -90,7 +90,7 @@
   规则: label-edit-callback
     TreeSelector 须 在 tui.tree.editLabel（默认 Shift+L）时调用 on_label_edit(id current_annotation)；须 在 tui.tree.toggleLabelTimestamp（默认 Shift+T）时切换时间戳显示。
 
-    场景: label-edit-and-timestamp-toggle-keys-headless
+    场景: 标签编辑与时间戳切换键无头
       当 以带注解的样例树挂载并选中该节点
       当 按下 tree editLabel
       那么 on_label_edit 收到 id 与当前注解
@@ -100,21 +100,21 @@
   规则: horizontal-viewport-pan
     TreeSelector 渲染 须 在行宽不足以同时显示 gutter 与选中行 body 时对 body 做水平平移（固定光标 gutter，平移 label/连接符区）；选中行的关键 label 内容在窄宽下 须 仍可见；不得 平移掉选中指示 gutter。
 
-    场景: horizontal-viewport-pan-narrow-width-headless
+    场景: 水平视口平移变窄宽度无头
       当 以超长标签树挂载并按窄宽渲染
       那么 选中行保留光标 gutter 且标签尾部内容仍可见
   @req:r1679
   规则: empty-visible-state
     当过滤或搜索导致无可见节点时，TreeSelector 须 渲染可辨识空态行（主题 no_match 或等价）；不得 静默输出完全空白列表且无提示。
 
-    场景: empty-visible-state-row-headless
+    场景: 空可见状态行无头
       当 以样例树挂载并过滤到空集
       那么 渲染出现可辨识空态行且计数为 (0/0)
   @req:r1680
   规则: selection-stable-on-filter
     include_node 或搜索串变更后，若先前选中 id 仍在可见列表中则 须 保持该选中；否则 须 将选中落到可见列表的合理默认项（通常为首项）。
 
-    场景: selection-stable-on-filter-change-headless
+    场景: 选区稳定时过滤变更无头
       当 以样例树挂载并选中仍可见的节点后变更过滤
       那么 选中保持该节点
       当 变更为排除该节点的过滤
@@ -123,7 +123,7 @@
   规则: node-kind
     TreeNode 须 支持可选 kind（字符串；包 不得 硬编码产品 role 枚举）；有 kind 时渲染 须 在 annotation 之后、主 label 之前经主题闭包输出 kind 前缀；无 kind 时 不得 强制前缀。
 
-    场景: node-kind-prefix-headless
+    场景: 节点种类前缀无头
       当 以带 kind 的样例树挂载
       那么 kind 前缀经主题闭包渲染在主标签前
       当 以无 kind 的样例树挂载
@@ -132,7 +132,7 @@
   规则: kind-in-search
     TreeSelector 增量搜索 须 将节点 kind（若有）纳入匹配；搜索 须 仍与 include_node 组合（AND）。
 
-    场景: kind-matches-in-search-headless
+    场景: 种类匹配于搜索无头
       当 以带 kind 的样例树挂载并搜索 kind 词
       那么 该节点经 kind 匹配保持可见
 

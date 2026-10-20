@@ -7,7 +7,7 @@
   规则: three-surfaces-coexist
     print（cli）、server（HTTP 监听器）与 tui（交互面）应用面 须共存；不得以统一为名删除任一传输面。
 
-    场景: three-app-surfaces-in-default-feature-set
+    场景: 三个应用表面于缺省feature设置
       当 读取 Cargo 特性表
       那么 默认集为 cli 与 tui 与 otel 与 server 与 mcp
       并且 可选能力 flag 为现用名且内置能力无 flag
@@ -15,21 +15,21 @@
   规则: reuse-contract
     产品 TUI 须经协议契约、应用缝与 agent 公共入口导入，不得 reach agent 子模块内部或 infra；不得依赖已删除的独立 domain 顶栏。斜杠语义 须复用 protocol::Command。
 
-    场景: tui-imports-via-public-contract-only
+    场景: TUI导入经公开契约仅
       当 读取库公开入口的重导出清单
       那么 清单覆盖 Xy 核心契约类型
   @req:r1166
   规则: no-skeleton-spray
     产品 TUI 面下每个新增源文件 须在同一变更内由真实入口驱动；不得用 #[allow(dead_code)] 落地未驱动骨架。死码分诊规则由架构 AGENTS 与 l8ng-audit-dead-code skill 承载。
 
-    场景: no-undriven-skeleton-files
+    场景: 无未驱动骨架文件
       当 读取 crate 根的死代码允许写法
       那么 无全局 allow 且单项抑制带理由
   @req:r1163
   规则: capability-index
     产品 TUI 行为细节 须由 app-tui-host / app-tui-bridge / app-tui-transcript / app-tui-fixed-zone / app-tui-input / app-tui-commands 各自约束；引擎与四层 harness 须由 package-tui-*（含 package-tui-testing）约束，不得在本索引重复实现史细节。
 
-    场景: index-points-to-per-capability-rules
+    场景: 索引指向至每能力规则
       当 读取 tui 面 AGENTS 摘要
       那么 摘要写明先读产品代码与 DESIGN.md
       并且 摘要写明改色板须跑 token 闸
@@ -37,7 +37,7 @@
   规则: TUI 只承担面本地
     产品 TUI 须只执行面本地能力（键盘、绘制、TTY、本机编辑器、剪贴板）。依赖工作区、模型、MCP 或会话生命周期的能力 须由 host 角色执行。载体切分与同进程保留见 app-tui-bridge atb4。不得把剪贴板等面本地能力交给远程 host 写入本机盘。
 
-    场景: surface-local-clipboard-and-host-resources
+    场景: 表面本地剪贴板与Host资源
       当 以主机泵注入剪贴板图片后按粘贴键
       那么 编辑器插入落盘路径文本且路径经 Driver 暂存
       当 以主机泵注入含连接态的资源快照后提交 "/mcp"
