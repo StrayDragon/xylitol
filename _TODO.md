@@ -10,13 +10,15 @@
 
 ## 现在
 
+下一刀是 **组合根下沉**剩余项：[§3](#PRE) 的 config / settings 瘦身。clipboard 在 `xylitol-app-tui`；resource / permission 在 `xylitol-runtime`；组合根直接注入 `Arc`。不为对称性再拆 `xylitol-host` / `xylitol-config`。
+
 crate 图见 [§2](#TARGET)。`just qa` 与 `just qa-e2e` 已通过。
 
-下一刀是 rutis 接入，另开讨论。[S2](#S2)–[S5](#S5) **停**。插入点见 [§2.0c](#EXTEND)。
+**顺序**：先 crates 化、边界内聚；再考虑架构转向。转向（cordis 式随意插件 + 热重载，对标 dsh 创造模式）不挡 §3。现行扩展靠 skills 与 MCP，稳定 coding agent 够用。
 
-延后项见 [§5](#DEFER)：D2 词表不加 `Xy`；D6 未开放端；D7 schedule；D8 观测后置。
+rutis 接入 [S2](#S2)–[S5](#S5) **停**：理解还浅，现有产品够用。`Ctx` 不传回合消息（见 [§4](#MAIN)）。无 `xylitol-rutis`。不得 `use rutis`。
 
-装配适配层 `xylitol-rutis` 在 workspace。组合根经它 `apply` 官方 Host 插件；`apply` 后立刻 `shutdown`。S2 起才改这条语义。
+延后项见 [§6](#DEFER)：D2 词表不加 `Xy`；D6 未开放端；D7 schedule；D8 观测后置。
 
 禁边闸：`scripts/check_crate_graph.py`。成员名单以根 `Cargo.toml` 为准。架构规则以 `src/AGENTS.md` 为准。
 
@@ -32,7 +34,7 @@ crate 图见 [§2](#TARGET)。`just qa` 与 `just qa-e2e` 已通过。
 
 不为编译速度拆 crate。单包 default-on 的 Cargo feature 不省默认二进制。
 
-读法：现在 → [§2](#TARGET) → [§3](#MAIN) → [§5](#DEFER)。
+读法：现在 → [§3](#PRE) 组合根下沉 → [§2](#TARGET) → [§4](#MAIN) rutis 停 → [§6](#DEFER)。
 
 ---
 
@@ -92,9 +94,7 @@ crate 按契约划分。不得 `pub use` 根 `src/` 模块凑编译。不得留�
 
 **载体**（carrier）是监听 + 编解码。本仓库实现是 `xylitol-serve`。占用政策（会话槽、linger、单写者、mux）在 serve。装配与 MCP 物化由组合根注入。
 
-**组合根**是唯一把循环 + 工具 + 模型 + 会话接在一起的地方。落在仓库根包 `xylitol`（argv + 默认接线）。经装配适配层 `apply` 官方 Host 插件。`xylitol-runtime` 不接线。
-
-**装配适配层**：`xylitol-rutis`。唯一允许 `use rutis`。
+**组合根**是唯一把循环 + 工具 + 模型 + 会话接在一起的地方。落在仓库根包 `xylitol`（argv + 默认接线）。把官方插件的 `Arc` 注入 runtime。`xylitol-runtime` 不接线。不得 `use rutis`。
 
 **客户端 / 端**（client / surface）是 `xylitol-app-*`。端认信封或 `XyDriver`。端不是 Host 插件。TUI 引擎 `xylitol-tui` 零引用产品。产品 TUI attach 走 `xylitol-app-tui` 的远端 Driver。
 
@@ -110,9 +110,9 @@ crate 按契约划分。不得 `pub use` 根 `src/` 模块凑编译。不得留�
 
 **P2 开关** 没配置不 start。mcp / hooks 仍是官方插件 crate。`server` / `mcp` feature 可从二进制拿掉。未配置不得为“将来插件”堆抽象。
 
-**P3 生命周期** 组合根经 `xylitol-rutis` `apply`。用户插入点仍是配置 / 文件，运行时承载见 [S2](#S2)。会话 instance 见 [S3](#S3)。dylib 见 [S4](#S4)，必须与否后定。不得预埋空壳。不得做 Extension Host。
+**P3 生命周期** 组合根注入 `Arc`。用户插入点仍是配置 / 文件，运行时承载见 [S2](#S2)。会话 instance 见 [S3](#S3)。dylib 见 [S4](#S4)，必须与否后定。不得预埋空壳。不得做 Extension Host。不得 `use rutis`。
 
-**P4 热路径** ReAct 循环在 `xylitol-runtime`。不做成官方插件。无第二实现。测端已有 `ScriptedDriver`。
+**P4 热路径** 现行：ReAct 循环在 `xylitol-runtime`，无第二实现。测端已有 `ScriptedDriver`。这是现行边界，不是永禁；转向见 [§4](#MAIN)，须先完成 [§3](#PRE)。
 
 **P5 稳定方向** `plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。runtime → sdk。runtime ↛ 插件、↛ 信封。插件之间不得 `use`。mapping 只在 serve。Print 只依赖 runtime。
 
@@ -136,21 +136,21 @@ crate 按契约划分。不得 `pub use` 根 `src/` 模块凑编译。不得留�
 
 ### 2.0c 插入点
 
-用户/agent 扩展能力，今天**不写** rutis `Plugin`。rutis 只给组合根 `apply` 官方插件。产品心智：[扩展与开闭.md](docs/architecture/扩展与开闭.md)。
+用户/agent 扩展能力，今天**不写** rutis `Plugin`。产品心智：[扩展与开闭.md](docs/architecture/扩展与开闭.md)。
 
-| 角色 | 怎么插 | 格式 | 经 rutis |
-|---|---|---|---|
-| 使用 xylitol 的人 / agent | 改配置和项目文件 | YAML、MCP、hook JSON、SKILL.md | 否 |
-| 嵌入库的 Rust 作者 | `embed` + `XyDriver` + 可选 `Xy*` | 词表 / Driver，不编 fory | 内部装配会 `apply` |
-| Host 插件作者 | `impl` plugin-sdk 端口，改根包接线 | `XyTool` 等；不编 fory、不 `use rutis` | 组合根替他 `apply` |
-| 多语言叶作者 | 无产品路径 | — | [S4](#S4) 才有 |
-| 新端作者 | 信封客户端 | fory-v3 | 否 |
+| 角色 | 怎么插 | 格式 |
+|---|---|---|
+| 使用 xylitol 的人 / agent | 改配置和项目文件 | YAML、MCP、hook JSON、SKILL.md |
+| 嵌入库的 Rust 作者 | `embed` + `XyDriver` + 可选 `Xy*` | 词表 / Driver，不编 fory |
+| Host 插件作者 | `impl` plugin-sdk 端口，改根包接线 | `XyTool` 等；不编 fory、不 `use rutis` |
+| 多语言叶作者 | 无产品路径 | [S4](#S4) 才有 |
+| 新端作者 | 信封客户端 | fory-v3 |
 
 现行插入点：模型配置；MCP；脚本 hooks；skills / `$skill`；slash / bang；Trust；`/reload`；会话内换模 / thinking。TUI 靠已有 `ToolStart` / `ToolEnd` 与文本增量呈现。不必为每个新工具改 fory schema。
 
 Host 端口真源：`xylitol-plugin-sdk`。接线优先序：配置开关 → 既有端口 → 新端口（须有第二实现）。新增第八个官方插件必须改根包 `Cargo.toml` 与组合根接线。
 
-两条通道不互转：端 ↔ Host 走信封 fory-v3；Host 进程内装配走 `TypeKey` + `Arc`。唯一产品映射是 serve 的 `XyEvent` ↔ `v3::Event`。S4 叶子才用 rutis-bridge serde，载荷是服务调用，不是信封帧。不得做 fory ↔ rutis 转码器。
+两条通道不互转：端 ↔ Host 走信封 fory-v3；Host 进程内装配走 `Arc` 注入。唯一产品映射是 serve 的 `XyEvent` ↔ `v3::Event`。不得做 fory ↔ rutis 转码器。
 
 主动交互：唤醒源走准入，不换内环。schedule 见 [D7](#D7)。
 
@@ -165,9 +165,9 @@ crate 边界按替换、开关、生命周期来划，不按 `app / agent / infr
 | 级别 | 放什么 | 例 |
 |---|---|---|
 | 内核 | 词表、适配器、错误、信封、trust、会话身份、ReAct 循环。不得知道压缩策略、具体厂商、TUI。不得接线 | `xylitol-plugin-sdk`、`xylitol-protocol`、`xylitol-runtime` |
-| 内置插件 | 官方静态 `xylitol-official-plugin-*`。默认挂。进程内 `apply` 取一次 `Arc`，之后直连 | session、compaction、provider-*、tools |
+| 内置插件 | 官方静态 `xylitol-official-plugin-*`。默认挂。组合根注入 `Arc`，之后直连 | session、compaction、provider-*、tools |
 | 配置启用插件 | 仍是官方插件 crate；没配置不 start | mcp、hooks |
-| 装配 | 同一批插件，rutis 装配器 | `xylitol-rutis` |
+| 装配 | 根包接线 | `src/wiring/assembly.rs` |
 | 客户端 | 独立 `xylitol-app-*` + 引擎 `xylitol-tui`。不是 Host 插件 | app-tui / app-print / xylitol-tui |
 
 不得为 LSP / DAP / gpui / 语音端预埋空壳。不得把客户端放进 `xylitol-official-plugin-*`。
@@ -187,7 +187,6 @@ crate 边界按替换、开关、生命周期来划，不按 `app / agent / infr
     xylitol-tui/                TUI 引擎。零引用产品。不改名
     xylitol-app-tui/            产品 TUI 客户端
     xylitol-app-print/          Print 客户端
-    xylitol-rutis/              装配适配层；唯一 use rutis
   plugins/                      仅 Host 侧。Cargo 依赖只出现在根包
     xylitol-official-plugin-*/
 ```
@@ -226,7 +225,6 @@ flowchart TB
 
   subgraph root["⑤ 组合根"]
     xylitol["xylitol<br/>argv + 默认接线"]
-    xylitol_rutis["xylitol-rutis<br/>唯一 use rutis"]
   end
 
   xylitol_official_plugin_session --> xylitol_plugin_sdk
@@ -249,7 +247,6 @@ flowchart TB
   xylitol --> xylitol_serve
   xylitol --> xylitol_app_print
   xylitol --> xylitol_app_tui
-  xylitol --> xylitol_rutis
 ```
 
 规则：
@@ -259,7 +256,7 @@ flowchart TB
 3. `xylitol-runtime` 只依赖 `xylitol-plugin-sdk`。不得依赖信封，不得依赖任何 `xylitol-official-plugin-*`。
 4. `xylitol-serve` 依赖 runtime + protocol。mapping 只在 serve。Print 只依赖 runtime。
 5. `xylitol-app-tui` 依赖信封、`xylitol-tui`、plugin-sdk。不依赖 Host 插件，不依赖 runtime。
-6. 根包是组合根：唯一列出默认官方插件的 `Cargo.toml`。新增官方插件只改根包接线，不改 runtime。根包依赖 `xylitol-rutis`，不得直接 `use rutis`。
+6. 根包是组合根：唯一列出默认官方插件的 `Cargo.toml`。新增官方插件只改根包接线，不改 runtime。不得 `use rutis`。
 7. 每个 crate 内部仍守 `app → agent|infra → protocol`；`agent` 不得依赖 `infra`。不得按这三层各拆一 crate。
 
 <a id="ROOTSRC"></a>
@@ -273,7 +270,7 @@ src/
   main.rs      tokio + run()
   lib.rs       embed + 精选 Xy* 再导出
   cli.rs       clap：无子命令 / tui / print / serve / --list-models
-  wiring.rs    apply 七个官方插件，注入 runtime；没配置不 start mcp/hooks
+  wiring.rs    注入官方插件 Arc；没配置不 start mcp/hooks
   embed.rs     库用户走同一套 wiring，不经 argv
 ```
 
@@ -295,21 +292,41 @@ src/
 
 ---
 
+<a id="PRE"></a>
+
+## 3. 主线：组合根下沉
+
+根 `src/*.rs` 是五文件。实现仍在 `src/wiring/`（约 15.5k 行）。不为对称性再拆 `xylitol-host` / `xylitol-config`。不为编译速度再拆 crate。
+
+| 块 | 约行 | 状态 |
+|---|---|---|
+| `infra/clipboard` | 1.1k | 完成。实现只在 `xylitol-app-tui`。根包 Driver 不实现剪贴板 |
+| `infra/resource` | 0.9k | 完成。`xylitol-runtime::resource` |
+| `infra/permission` | 0.5k | 完成。后端在 runtime；根包只把 YAML 映过去 |
+| `assembly.rs` + `xylitol-rutis` | — | 完成。直接注入 `Arc`。无 rutis 包 |
+| `infra/config` + `settings` | 3.0k | 装配置是接线，留根包；把过厚类型瘦下来 |
+| `infra/observability` | 0.8k | 进程级写出，留根包 |
+| `driver/` MCP·reload 包装 | 1.4k | 组合根回调，留根包 |
+
+agent loop 现行在 `xylitol-runtime`。转向见 [§4](#MAIN)，不挡本节。
+
 <a id="MAIN"></a>
 
-## 3. 主线：rutis 接入
+## 4. 停：rutis 接入与架构转向
 
-编译痛点在工具链，不在拆 crate。不为编译速度再拆 crate。
+停。先完成 [§3](#PRE) 内聚。现有产品靠 skills / MCP 扩展，稳定 coding agent 够用。理解浅时不接入。
 
-接入前读 [`/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp`](/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp)（阅读序：assessment → host-server → plugin-policy → rewrite → overhead → dependency）。工作树：上游 `3d0bc0d` / rutis 0.13.0。
+**`Ctx` 不传回合消息。** 用户一轮、工具起止、token 增量走 `XyDriver` 队列与信封（`XyEvent` / fory-v3）。`Ctx` 是进程底板：服务注册表（`TypeKey` → `Arc`）、插件生命周期总线、fiber 表、instance。两通道不互转，见 [§2.0c](#EXTEND)。`rutis-host` 持有根 `Ctx`，本身不是 Plugin。
 
-0.13 事件是五分发（`emit` / `parallel` / `serial` / `waterfall` / `bail`）。不要按 0.11 写「跨进程只通知」。temp 里与本文件冲突的句子不要照抄：ReAct 不是官方插件；包名是 `xylitol-official-plugin-*`；组合根是仓库根包。
+**现行 vs 转向。** 现行：官方库是端口实现；ReAct 在 runtime。这是当前预期，可以改。转向吸引点是 dsh 创造模式：cordis 上随意做插件并热重载。那一步等于换内核，须 crates 化且边界内聚之后另开。不要为转向预埋空壳。
 
-热路径延迟不劣化是整次接入的 go/no-go。契约叶与 `xylitol-app-*` 留下。
+读 [`/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp`](/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp) 时以 2026-10-20 对照为准。工作树：上游 `3d0bc0d` / rutis 0.13.0。
+
+热路径延迟不劣化仍是若接入时的 go/no-go。契约叶与 `xylitol-app-*` 留下。
 
 <a id="S1"></a>
 
-### 3.1 S1 装配运行时
+### 4.1 S1 装配运行时
 
 | 切片 | 状态 |
 |---|---|
@@ -317,7 +334,7 @@ src/
 
 <a id="S2"></a>
 
-### 3.2 S2 运行时承载走 rutis
+### 4.2 S2 运行时承载走 rutis
 
 **停。** 另开再谈。
 
@@ -335,13 +352,13 @@ src/
 
 <a id="S3"></a>
 
-### 3.3 S3 会话 = instance
+### 4.3 S3 会话 = instance
 
 **停。** 占用政策（linger、单写者）在 `xylitol-serve`。JSONL 树 / fork 仍在 session 插件。
 
 | 切片 | 状态 | 做什么 |
 |---|---|---|
-| S3a 实例 API | | `xylitol-rutis` 包 `register_instance` / `host_key_in` / `in_instance`。单测：两 instance 互不可见；卸载零残留；在飞恰好失败一次。不改 Host |
+| S3a 实例 API | | 若接入：instance 隔离 API。单测：两 instance 互不可见；卸载零残留；在飞恰好失败一次。不改 Host |
 | S3b 槽 = instance | | `materialize_writer_at` 在会话 instance 登记写者。删 `HostState.sessions` 作为物化权威。occupancy BDD 继续绿。双会话互不可见、结束零残留走 propose |
 | S3c 删基线 | | 删 `RuntimeBaseline` / `build_baseline*` / `AgentBuilder::build_baseline`。调用点一次改完，不留 shim。Print 仍能 `AgentEnd` |
 | S3d freeze → generation | | 工具表冻结挂 generation。超时仍冻结。`arm_tool_freeze` BDD 绿 |
@@ -350,23 +367,23 @@ Kill：实例回收与快照/恢复冲突 → 隔离退回手写 HashMap，保�
 
 <a id="S4"></a>
 
-### 3.4 S4 多语言叶 + dylib
+### 4.4 S4 多语言叶 + dylib
 
 **停。** 动态加载。官方 Host 插件在此之前保持静态 crate。必须交付或降为实验特性，做到那一刀再定。不得在 S2/S3 预埋加载器空壳。
 
 <a id="S5"></a>
 
-### 3.5 S5 产品 TUI：客户端订阅
+### 4.5 S5 产品 TUI：客户端订阅
 
-**停。** 产品 TUI 仍走信封，不是 Host 侧 fiber。S5 只改端进程内合帧节奏。不改 `POST /rpc` + `WS /rpc` + fory-v3。不得做 `xylitol-official-plugin-tui`。端若依赖 `xylitol-rutis`（仍不得 `use rutis`）须先 propose 修订 r2910。验收含 `just qa-e2e`。
+**停。** 产品 TUI 仍走信封，不是 Host 侧 fiber。S5 只改端进程内合帧节奏。不改 `POST /rpc` + `WS /rpc` + fory-v3。不得做 `xylitol-official-plugin-tui`。端不得 `use rutis`。验收含 `just qa-e2e`。
 
 ---
 
 <a id="SCOPE"></a>
 
-## 4. 产品范围
+## 5. 产品范围
 
-核 = 必须在现行 crate 图里。瘦 = 代码留、feature-gate 或下沉。删用户可见面须改 `.feature`。未列入本节的方向见 [§5](#DEFER) 或 GitHub [#28](https://github.com/StrayDragon/xylitol/issues/28)。
+核 = 必须在现行 crate 图里。瘦 = 代码留、feature-gate 或下沉。删用户可见面须改 `.feature`。未列入本节的方向见 [§6](#DEFER) 或 GitHub [#28](https://github.com/StrayDragon/xylitol/issues/28)。
 
 **核 — 用户侧**：TUI 默认 attach 本机 Host；Print；embed `XyDriver`；slash；bang；`$skill`；会话树；滚动区 / 固定区；换模 / thinking；图像粘贴 / 读图；designing（`xylitol tui designing`，仅 debug 构建；合约 [c2930](llmanspec/changes/archive/2026-10-18-c2930-add-tui-preview/)）。
 
@@ -380,7 +397,7 @@ Kill：实例回收与快照/恢复冲突 → 隔离退回手写 HashMap，保�
 
 <a id="DEFER"></a>
 
-## 5. 延后
+## 6. 延后
 
 现在不做。认领走 GitHub [#28](https://github.com/StrayDragon/xylitol/issues/28)。不得为这些方向预埋空壳 crate。
 
@@ -395,7 +412,7 @@ Kill：实例回收与快照/恢复冲突 → 隔离退回手写 HashMap，保�
 
 ---
 
-## 6. 来源
+## 7. 来源
 
 | 主题 | 路径 |
 |---|---|
@@ -405,7 +422,7 @@ Kill：实例回收与快照/恢复冲突 → 隔离退回手写 HashMap，保�
 | 产品主线 | `docs/architecture/产品分层总览.md` |
 | 编译调优 | `~/.config/llman/skills/rust-build-tune/` |
 | rutis 方向 | `/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp/` |
-| crate 图细则 | 同上 `skills/xylitol-rutis-rewrite/references/` |
+| crate 图细则 | `src/AGENTS.md` |
 
 ---
 
@@ -413,7 +430,7 @@ Kill：实例回收与快照/恢复冲突 → 隔离退回手写 HashMap，保�
 
 ## 附录 A. 现行 workspace
 
-成员：根包 + plugin-sdk / protocol / runtime / serve / app-tui / app-print / xylitol-tui / xylitol-rutis / 七个官方插件。`vendor/gherkin` 是 `[patch.crates-io]`。根 default = `cli, tui, otel, server, mcp`。
+成员：根包 + plugin-sdk / protocol / runtime / serve / app-tui / app-print / xylitol-tui / 七个官方插件。`vendor/gherkin` 是 `[patch.crates-io]`。根 default = `cli, tui, otel, server, mcp`。
 
 | 项 | 事实 |
 |---|---|

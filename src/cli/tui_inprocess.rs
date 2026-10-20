@@ -15,8 +15,8 @@ use crate::wiring::dispatch::{
 };
 use crate::wiring::driver::XyDriverError as RootError;
 use crate::wiring::driver::{
-    ClipboardCopyOutcome as RootClip, CommandInfo as RootCmd, LoadedResourcesSnapshot as RootSnap,
-    McpServerPhase as RootPhase, ModelInfo as RootModel, ProjectTrustMode as RootTrust,
+    CommandInfo as RootCmd, LoadedResourcesSnapshot as RootSnap, McpServerPhase as RootPhase,
+    ModelInfo as RootModel, ProjectTrustMode as RootTrust,
     ProjectTrustPersistReport as RootTrustReport, RuntimeReloadReport as RootReload,
     SessionState as RootState, XyDriver as RootDriver, XyInProcessDriver,
 };
@@ -305,23 +305,14 @@ impl TuiDriver for TuiInProcessAdapter<'_> {
         &mut self,
         text: &str,
     ) -> Result<ClipboardCopyOutcome, TuiError> {
-        RootDriver::copy_text_to_clipboard(self.inner, text)
-            .await
-            .map(|r: RootClip| ClipboardCopyOutcome {
-                pending_osc52: r.pending_osc52,
-            })
-            .map_err(map_err)
+        xylitol_app_tui::driver::copy_text_to_clipboard(text.to_string()).await
     }
 
     async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, TuiError> {
-        RootDriver::stage_clipboard_image(self.inner)
-            .await
-            .map_err(map_err)
+        xylitol_app_tui::driver::stage_clipboard_image().await
     }
 
     async fn read_clipboard_text(&mut self) -> Result<Option<String>, TuiError> {
-        RootDriver::read_clipboard_text(self.inner)
-            .await
-            .map_err(map_err)
+        xylitol_app_tui::driver::read_clipboard_text().await
     }
 }

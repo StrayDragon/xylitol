@@ -1,10 +1,9 @@
 //! Resource metadata vocabulary — pure data types for loaded resources.
 //!
 //! `AgentsFile`, `SkillInfo`, `ThemeInfo`, and
-//! `ResourceDiagnostic` are shared by `agent` (prompt assembly, session) and
-//! `infra` (resource loader). The `DefaultResourceLoader` runtime (file I/O,
-//! caching) stays in `infra::resource`; this module holds only the metadata
-//! shapes.
+//! `ResourceDiagnostic` are shared by prompt assembly and the resource loader.
+//! `DefaultResourceLoader` (file I/O, caching) lives in `xylitol-runtime`.
+//! This module holds only the metadata shapes.
 
 use std::path::PathBuf;
 

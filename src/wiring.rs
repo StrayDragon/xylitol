@@ -1,6 +1,6 @@
-//! Composition root: apply official Host plugins and inject runtime.
+//! Composition root: inject official Host plugins into runtime.
 //!
-//! Empty MCP / hooks skip `apply`. Occupancy policy lives in `xylitol-serve`;
+//! Empty MCP / hooks skip start. Occupancy policy lives in `xylitol-serve`;
 //! this module only assembles the factory and bind.
 
 pub(crate) mod assembly;

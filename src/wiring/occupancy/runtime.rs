@@ -120,7 +120,7 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
         )
     });
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let agent_dir = crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir();
+    let agent_dir = xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir();
     let ports = if let Some(dir) = &config.sessions_dir {
         let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = std::sync::Arc::new(
             xylitol_official_plugin_session::SessionManager::new(dir.clone()),

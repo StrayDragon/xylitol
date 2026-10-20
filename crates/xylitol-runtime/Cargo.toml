@@ -21,6 +21,7 @@ dirs = { workspace = true }
 async-trait = { workspace = true }
 fastrace = { workspace = true, features = ["enable"] }
 futures = { workspace = true }
+glob = { workspace = true }
 log = { workspace = true }
 minijinja = { workspace = true, features = ["json", "builtins", "serde"] }
 regex = { workspace = true }
@@ -33,3 +34,7 @@ time = { workspace = true, features = ["formatting", "parsing", "macros"] }
 tokio = { workspace = true, features = ["fs", "macros", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+xylitol-plugin-sdk = { workspace = true }

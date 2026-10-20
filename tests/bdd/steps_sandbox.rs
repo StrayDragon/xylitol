@@ -1,7 +1,7 @@
 mod sandbox_bdd {
     use rstest_bdd_macros::{given, then, when};
     use std::sync::Arc;
-    use xylitol::wiring::infra::permission::{XyPermission, XyPermissionVerdict};
+    use xylitol_plugin_sdk::{XyPermission, XyPermissionVerdict};
 
     thread_local! {
         static SANDBOX_ENGINE: std::cell::RefCell<Option<Arc<dyn XyPermission>>> =

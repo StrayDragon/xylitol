@@ -532,8 +532,7 @@ pub fn resolve_assembly_with(
         } else {
             std::env::temp_dir()
         };
-        let loader =
-            crate::wiring::infra::resource::DefaultResourceLoader::new(loader_cwd, agent_dir);
+        let loader = xylitol_runtime::resource::DefaultResourceLoader::new(loader_cwd, agent_dir);
         let ctx: Vec<(String, String)> = loader
             .get_agents_files()
             .iter()
@@ -770,10 +769,8 @@ pub fn reload_skills(
     } else {
         std::env::temp_dir()
     };
-    let loader = crate::wiring::infra::resource::DefaultResourceLoader::new(
-        loader_cwd,
-        agent_dir.to_path_buf(),
-    );
+    let loader =
+        xylitol_runtime::resource::DefaultResourceLoader::new(loader_cwd, agent_dir.to_path_buf());
     let skills = loader.get_skills().0.to_vec();
     let mut names: Vec<String> = skills.iter().map(|s| s.name.clone()).collect();
     names.sort();
@@ -813,10 +810,8 @@ pub fn reload_prompt_context(
     } else {
         std::env::temp_dir()
     };
-    let loader = crate::wiring::infra::resource::DefaultResourceLoader::new(
-        loader_cwd,
-        agent_dir.to_path_buf(),
-    );
+    let loader =
+        xylitol_runtime::resource::DefaultResourceLoader::new(loader_cwd, agent_dir.to_path_buf());
 
     let context_files: Vec<(String, String)> = loader
         .get_agents_files()

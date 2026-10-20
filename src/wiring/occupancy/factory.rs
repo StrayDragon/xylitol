@@ -190,7 +190,7 @@ fn host_state_for_test_with(
     }
     let ports = build_baseline_with_store(options, store)?;
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let agent_dir = crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir();
+    let agent_dir = xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir();
     let mcp = mcp_servers.unwrap_or_default();
     let default_model = default_model_id.map(str::to_string);
     let factory = Arc::new(ProductOccupancyFactory::new(

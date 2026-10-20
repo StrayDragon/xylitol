@@ -7,9 +7,7 @@
 use super::XyDriverError;
 use super::types::ClipboardCopyOutcome;
 
-pub(crate) async fn copy_text_to_clipboard(
-    text: String,
-) -> Result<ClipboardCopyOutcome, XyDriverError> {
+pub async fn copy_text_to_clipboard(text: String) -> Result<ClipboardCopyOutcome, XyDriverError> {
     let plan = crate::clipboard::plan_clipboard_copy_async(text)
         .await
         .map_err(XyDriverError::from)?;
@@ -21,7 +19,7 @@ pub(crate) async fn copy_text_to_clipboard(
     })
 }
 
-pub(crate) async fn stage_clipboard_image() -> Result<Option<std::path::PathBuf>, XyDriverError> {
+pub async fn stage_clipboard_image() -> Result<Option<std::path::PathBuf>, XyDriverError> {
     let image = tokio::task::spawn_blocking(crate::clipboard::read_clipboard_image)
         .await
         .map_err(|e| XyDriverError::io(format!("clipboard image task failed: {e}")))?
@@ -38,7 +36,7 @@ pub(crate) async fn stage_clipboard_image() -> Result<Option<std::path::PathBuf>
     Ok(Some(path))
 }
 
-pub(crate) async fn read_clipboard_text() -> Result<Option<String>, XyDriverError> {
+pub async fn read_clipboard_text() -> Result<Option<String>, XyDriverError> {
     tokio::task::spawn_blocking(crate::clipboard::read_clipboard_text)
         .await
         .map_err(|e| XyDriverError::io(format!("clipboard text task failed: {e}")))?

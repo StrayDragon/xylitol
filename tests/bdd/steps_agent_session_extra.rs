@@ -500,8 +500,8 @@ pub(crate) fn g_sess_review_no_template(ws: &Workspace, agent: &AgentState) {
 pub(crate) fn w_prompt_process(agent: &AgentState, ws: &Workspace) {
     use std::path::PathBuf;
 
-    use xylitol::wiring::infra::resource::DefaultResourceLoader;
     use xylitol::wiring::product_commands::product_slash_commands;
+    use xylitol_runtime::resource::DefaultResourceLoader;
 
     let cwd = PathBuf::from(ws.ws("."));
     let agent_dir = cwd.join(".xylitol");

@@ -1544,7 +1544,7 @@ pub(crate) fn g_t2_res_layout(t2_res_bdd: &T2ResBdd) {
 
 #[when("经 loader 列出已发现资源")]
 pub(crate) fn w_t2_res_list(t2_res_bdd: &T2ResBdd) {
-    use xylitol::wiring::infra::resource::DefaultResourceLoader;
+    use xylitol_runtime::resource::DefaultResourceLoader;
 
     let cwd = t2_res_bdd.cwd.borrow().as_ref().expect("cwd").clone();
     let agent_dir = t2_res_bdd

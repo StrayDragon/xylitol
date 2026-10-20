@@ -354,7 +354,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // release needs RUST_LOG / XYLITOL_DEBUG / XYLITOL_PROVIDER_TRACE.
     // Remote OTLP: `[otel]` + feature `otel`, default none. Never stdout/stderr.
     logging::init_logging(
-        &crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir(),
+        &xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir(),
         &early_otel,
     );
     struct FlushOnDrop;
@@ -504,7 +504,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .any(|w| matches!(w, BootstrapWarning::ProjectNotTrusted { .. }));
     let mut driver = runtime.driver;
     let cwd = std::env::current_dir().unwrap_or_default();
-    let agent_dir = crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir();
+    let agent_dir = xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir();
     let mcp_servers = runtime.mcp_servers.unwrap_or_default();
     driver.enable_reload_state(cwd, agent_dir, project_trusted, mcp_servers);
     #[cfg(all(feature = "tui", not(feature = "server")))]

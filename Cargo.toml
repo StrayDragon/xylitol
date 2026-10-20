@@ -29,7 +29,6 @@ members = [
     "plugins/xylitol-official-plugin-tools",
     "plugins/xylitol-official-plugin-mcp",
     "plugins/xylitol-official-plugin-hooks",
-    "crates/xylitol-rutis",
 ]
 
 [workspace.dependencies]
@@ -47,8 +46,6 @@ xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-
 xylitol-official-plugin-tools = { path = "plugins/xylitol-official-plugin-tools" }
 xylitol-official-plugin-mcp = { path = "plugins/xylitol-official-plugin-mcp" }
 xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks" }
-xylitol-rutis = { path = "crates/xylitol-rutis" }
-rutis = "0.13.0"
 
 anyhow = "1.0.104"
 async-openai = { version = "0.42", default-features = false }
@@ -133,7 +130,6 @@ clap = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["fs", "process", "io-util", "macros", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 async-trait = { workspace = true }
 similar = { workspace = true }
-glob = { workspace = true }
 futures = { workspace = true }
 anyhow = { workspace = true }
 regex = { workspace = true }
@@ -145,8 +141,6 @@ libc = { workspace = true }
 
 base64 = { workspace = true }
 
-# ── image processing ──
-image = { workspace = true, features = ["png", "jpeg", "gif", "webp"] }
 url = { workspace = true }
 
 reqwest = { workspace = true, default-features = false, features = ["stream", "json", "rustls", "charset", "http2", "system-proxy"] }
@@ -173,7 +167,6 @@ xylitol-official-plugin-compaction = { workspace = true }
 xylitol-official-plugin-tools = { workspace = true }
 xylitol-official-plugin-mcp = { workspace = true, default-features = false }
 xylitol-official-plugin-hooks = { workspace = true }
-xylitol-rutis = { workspace = true }
 crossterm = { workspace = true, optional = true, features = ["event-stream"] }
 http = { workspace = true }
 

@@ -37,7 +37,6 @@ REQUIRED_MEMBERS: dict[str, str] = {
     "plugins/xylitol-official-plugin-tools": "xylitol-official-plugin-tools",
     "plugins/xylitol-official-plugin-mcp": "xylitol-official-plugin-mcp",
     "plugins/xylitol-official-plugin-hooks": "xylitol-official-plugin-hooks",
-    "crates/xylitol-rutis": "xylitol-rutis",
 }
 
 # Maximum allowed xylitol-* Cargo deps (subset is OK for empty shells).
@@ -56,7 +55,6 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-official-plugin-tools": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-mcp": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-hooks": frozenset({"xylitol-plugin-sdk"}),
-    "xylitol-rutis": frozenset(),
 }
 
 ALL_PACKAGES = frozenset(ALLOWED_XYLITOL_DEPS) | {"xylitol"}
@@ -69,8 +67,7 @@ FORBIDDEN_DEPS: dict[str, frozenset[str]] = {
     "salvo": ALL_PACKAGES - {"xylitol-serve"},
 }
 
-# Only the assembly adapter may depend on rutis (including the composition root).
-RUTIS_ADAPTER = "xylitol-rutis"
+# rutis is not a workspace member. No xylitol package may depend on it.
 
 
 def dep_names(section: dict[str, object] | None) -> set[str]:
@@ -144,8 +141,8 @@ def main() -> int:
                 f"(max {sorted(allowed)})"
             )
         check_forbidden(pkg, deps, errors)
-        if "rutis" in all_deps and pkg != RUTIS_ADAPTER:
-            errors.append(f"{pkg}: only {RUTIS_ADAPTER} may depend on rutis")
+        if "rutis" in all_deps:
+            errors.append(f"{pkg}: must not depend on rutis")
 
     root_pkg = root.get("package")
     if not isinstance(root_pkg, dict) or root_pkg.get("name") != "xylitol":
@@ -158,7 +155,7 @@ def main() -> int:
     )
     check_forbidden("xylitol", root_deps, errors)
     if "rutis" in root_all_deps:
-        errors.append(f"xylitol: only {RUTIS_ADAPTER} may depend on rutis")
+        errors.append("xylitol: must not depend on rutis")
 
     if errors:
         print("error: crate graph gate failed:", file=sys.stderr)

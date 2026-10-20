@@ -12,8 +12,8 @@ use xylitol_runtime::{
 };
 
 use super::{
-    ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
-    ProjectTrustMode, ProjectTrustPersistReport, RuntimeReloadReport,
+    CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode,
+    ProjectTrustPersistReport, RuntimeReloadReport,
 };
 
 mod mcp;
@@ -277,20 +277,5 @@ impl XyDriver for XyInProcessDriver {
         mode: ProjectTrustMode,
     ) -> Result<ProjectTrustPersistReport, XyDriverError> {
         XyInProcessDriver::persist_project_trust(self, mode)
-    }
-
-    async fn copy_text_to_clipboard(
-        &mut self,
-        text: &str,
-    ) -> Result<ClipboardCopyOutcome, XyDriverError> {
-        super::clipboard::copy_text_to_clipboard(text.to_string()).await
-    }
-
-    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
-        super::clipboard::stage_clipboard_image().await
-    }
-
-    async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
-        super::clipboard::read_clipboard_text().await
     }
 }

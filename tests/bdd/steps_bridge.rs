@@ -404,7 +404,7 @@ fn g_pt3_prompts_dir(ws: &crate::bdd::fixtures::Workspace) {
 fn w_pt3_discover(ws: &crate::bdd::fixtures::Workspace, prompt_bdd: &PromptBdd) {
     use std::path::PathBuf;
 
-    use xylitol::wiring::infra::resource::DefaultResourceLoader;
+    use xylitol_runtime::resource::DefaultResourceLoader;
 
     let cwd = PathBuf::from(ws.ws("."));
     let agent_dir = cwd.join(".xylitol");

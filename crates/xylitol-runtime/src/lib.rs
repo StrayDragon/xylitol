@@ -1,10 +1,12 @@
-//! Execution authority: ReAct loop, trust, and [`XyDriver`].
+//! Execution authority: ReAct loop, trust, resource discovery, and [`XyDriver`].
 //!
 //! Depends only on `xylitol-plugin-sdk`. Does not wire plugins and does not
 //! speak the RPC envelope.
 
 pub mod agent;
 pub mod driver;
+pub mod permission;
+pub mod resource;
 pub mod trust;
 pub(crate) mod utils;
 
@@ -17,6 +19,11 @@ pub use driver::{
     AttachObserve, BangExecHandler, BashRun, LinkHealth, SessionExporter, XyDriver, XyDriverError,
     XyInProcessDriver,
 };
+pub use permission::{
+    AllowAllPermission, FilesystemRules, GlobPolicy, NetworkRules, PermissionRules, ProcessRules,
+    allow_all_permission, build_permission,
+};
+pub use resource::DefaultResourceLoader;
 pub use trust::{
     DefaultProjectTrust, TrustManager, TrustOption, TrustReason, TrustResolution,
     format_trust_prompt, prompt_trust_options_stdio, resolve_project_trusted,

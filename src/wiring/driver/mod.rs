@@ -3,7 +3,6 @@
 //! Runtime core lives in `xylitol-runtime`. This module adds the composition-root
 //! wrapper (official plugins + MCP reload). Remote attach lives in `xylitol-app-tui`.
 
-mod clipboard;
 mod in_process;
 
 pub use in_process::XyInProcessDriver;

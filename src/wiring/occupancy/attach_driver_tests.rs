@@ -1576,14 +1576,14 @@ async fn model_tool_runs_in_client_workspace() {
         ports.clone(),
         ReloadBaseline {
             cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            agent_dir: crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir(),
+            agent_dir: xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir(),
             project_trusted: true,
             default_model_id: Some("fake-ws".into()),
         },
         Arc::new(crate::wiring::occupancy::ProductOccupancyFactory::new(
             ports.clone(),
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir(),
+            xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir(),
             true,
             Vec::new(),
             Some("fake-ws".into()),
