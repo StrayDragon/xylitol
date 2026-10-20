@@ -1,4 +1,8 @@
-//! Occupancy + attach-driver tests. Driver implementation: `xylitol-app-tui`.
+//! Assembly-fixture tests: Host occupancy + attach Driver.
+//!
+//! These tests wire `xylitol-serve` occupancy with `xylitol-app-tui::XyRemoteDriver`.
+//! They are not root-package business logic. Kept as `#[cfg(test)]` in this crate
+//! so they do not add another integration-test binary (m×n link cost).
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -1525,7 +1529,7 @@ async fn model_tool_runs_in_client_workspace() {
     use crate::XyModelMeta;
     use crate::XySessionStore;
     use crate::wiring::composition::build_baseline_with_store;
-    use crate::wiring::infra::provider::factory::{reset_fake_state, set_fake_tool_call};
+    use crate::wiring::provider::factory::{reset_fake_state, set_fake_tool_call};
     use futures::StreamExt;
     use std::path::PathBuf;
     use std::sync::Arc;

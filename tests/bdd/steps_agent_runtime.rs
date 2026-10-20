@@ -668,7 +668,7 @@ pub(crate) fn bdd_batch_make_runner(
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn XySessionStore> = Arc::new(mgr);
-    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::wiring::infra::event::EventBus::new());
+    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::wiring::event::EventBus::new());
     let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(BddMultiToolModel {
             rounds: std::sync::Mutex::new(rounds.clone()),
@@ -685,7 +685,7 @@ pub(crate) fn bdd_batch_make_runner(
         ".".into(),
         None,
         builder,
-        xylitol::wiring::infra::permission::allow_all_permission(),
+        xylitol::wiring::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,
@@ -1019,7 +1019,7 @@ pub(crate) fn _t_ar7_tool_error_written() {
 
 #[when("运行一轮对话后检查持久化条目")]
 pub(crate) async fn w_c2826_first_turn_history(agent: &AgentState) {
-    xylitol::wiring::infra::provider::factory::set_fake_text("回复正文");
+    xylitol::wiring::provider::factory::set_fake_text("回复正文");
     let (mut runner, store) = make_agent_with_store(agent);
     crate::bdd::helpers::bind_session_or_panic(&mut runner, "c2826-first-turn");
     let mut stream = agent_submit_root(&mut runner, "用户第一句").await;
@@ -1087,7 +1087,7 @@ pub(crate) fn t_c2826_first_turn_history(agent: &AgentState) {
 }
 
 fn c2826_driver() -> (
-    xylitol::wiring::driver::XyInProcessDriver,
+    xylitol::wiring::driver::XyComposedDriver,
     std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore>,
 ) {
     use std::sync::Arc;
@@ -1099,7 +1099,7 @@ fn c2826_driver() -> (
         tempfile::tempdir().unwrap().path().join("sessions"),
     );
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
-    let driver = xylitol::wiring::driver::XyInProcessDriver::new(agent, store.clone());
+    let driver = xylitol::wiring::driver::XyComposedDriver::new(agent, store.clone());
     (driver, store)
 }
 
@@ -1227,10 +1227,10 @@ pub(crate) fn t_c2826_skills_reload_trust(agent: &AgentState) {
 
 #[when("经 Driver 启动会话并在首个 TextDelta 后 abort 并检查持久化条目")]
 pub(crate) async fn w_c2826_abort_persist(agent: &AgentState) {
-    use xylitol::embed::{XyDriver, XyInProcessDriver};
-    xylitol::wiring::infra::provider::factory::set_fake_slow_stream(40, 5);
+    use xylitol::embed::{XyComposedDriver, XyDriver};
+    xylitol::wiring::provider::factory::set_fake_slow_stream(40, 5);
     let (runtime, store) = make_agent_with_store(agent);
-    let mut driver = XyInProcessDriver::new(runtime, store.clone());
+    let mut driver = XyComposedDriver::new(runtime, store.clone());
     let sid = driver
         .new_session()
         .await

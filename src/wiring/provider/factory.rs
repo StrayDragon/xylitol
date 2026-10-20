@@ -8,8 +8,8 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 
-use crate::wiring::infra::provider::adapter::factory::build_adapter;
-use crate::wiring::infra::provider::{ScenarioStep, fake_xy_model};
+use crate::wiring::provider::adapter::factory::build_adapter;
+use crate::wiring::provider::{ScenarioStep, fake_xy_model};
 use xylitol_plugin_sdk::XyModel;
 use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind};
 

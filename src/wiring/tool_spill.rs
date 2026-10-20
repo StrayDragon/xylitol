@@ -2,7 +2,7 @@
 //!
 //! Composition roots / surfaces call [`install`] so tool output spill files
 //! write beside the session instead of a global system tmp. Surfaces MUST NOT
-//! import `infra::*` for this — use this seam.
+//! import config / provider modules for this — use this seam.
 
 use std::path::PathBuf;
 use std::sync::Mutex;

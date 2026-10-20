@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
+use crate::wiring::config::types::HooksConfig;
 use crate::wiring::driver::XyDriverError;
-use crate::wiring::infra::config::types::HooksConfig;
 use xylitol_official_plugin_session::SessionManager;
 use xylitol_plugin_sdk::{XyBatchMode, XyEventSink, XyPermission, XySessionStore};
 use xylitol_runtime::agent::AgentRuntime;
@@ -89,9 +89,9 @@ pub fn build_baseline_with_store(
 /// Construct a fully-wired `AgentRuntime` from the given options.
 ///
 /// This is the single composition-root helper used by CLI, RPC, server, and
-/// future TUI/GUI modes. It injects the concrete infra implementations
+/// future TUI/GUI modes. It injects the concrete implementations
 /// (`SessionManager`, `XyEventSink`, bang/export via Driver) into the
-/// agent without letting `agent/` know about `infra/` types.
+/// agent without letting runtime know about composition types.
 ///
 /// **Event paths:** turn progress is the `XyDriver::run` → `XyEvent` stream.
 /// The injected [`XyEventSink`] (default `EventBus`) is for side lifecycle
@@ -112,7 +112,7 @@ pub enum McpReloadOutcome {
 /// Owns MCP client connections for a local XyDriver session (composition seam).
 ///
 /// Held by the surface (cli/server) so connections stay alive across turns and
-/// can be shut down / replaced on reload without `XyDriver` importing infra.
+/// can be shut down / replaced on reload without `XyDriver` importing MCP YAML types.
 pub struct McpSession {
     manager: Option<Arc<xylitol_official_plugin_mcp::McpClientManager>>,
 }
@@ -168,7 +168,7 @@ impl McpSession {
     /// previous manager/tools untouched.
     pub async fn reload(
         &mut self,
-        driver: &mut crate::wiring::driver::XyInProcessDriver,
+        driver: &mut crate::wiring::driver::XyComposedDriver,
         servers: &[McpServerSpec],
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Result<McpReloadOutcome, XyDriverError> {
@@ -231,7 +231,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::wiring::driver::XyInProcessDriver::new(agent, store);
+        let mut driver = crate::wiring::driver::XyComposedDriver::new(agent, store);
         let mut mcp = McpSession::new();
         mcp.reload(
             &mut driver,
@@ -260,7 +260,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::wiring::driver::XyInProcessDriver::new(agent, store);
+        let mut driver = crate::wiring::driver::XyComposedDriver::new(agent, store);
         let before = driver.tool_names_for_test();
 
         let mut mcp = McpSession::new();
@@ -305,7 +305,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::wiring::driver::XyInProcessDriver::new(agent, store);
+        let mut driver = crate::wiring::driver::XyComposedDriver::new(agent, store);
         driver.install_ask_tool(Arc::new(SkipGateway));
         assert!(driver.tool_names_for_test().iter().any(|n| n == "ask"));
 
@@ -362,7 +362,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::wiring::driver::XyInProcessDriver::new(agent, store);
+        let mut driver = crate::wiring::driver::XyComposedDriver::new(agent, store);
 
         let builtins = driver.builtins_for_reload();
         let with_a = ToolSet::rebuild_agent_tools(
@@ -484,7 +484,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::wiring::driver::XyInProcessDriver::new(agent, store);
+        let mut driver = crate::wiring::driver::XyComposedDriver::new(agent, store);
         let builtins = driver.builtins_for_reload();
         driver.freeze_tools(ToolSet::rebuild_agent_tools(
             builtins,
@@ -534,7 +534,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::wiring::driver::XyInProcessDriver::new(agent, store);
+        let mut driver = crate::wiring::driver::XyComposedDriver::new(agent, store);
         let builtins = driver.builtins_for_reload();
         driver.freeze_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(builtins));
         assert!(
@@ -588,7 +588,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::wiring::driver::XyInProcessDriver::new(agent, store);
+        let mut driver = crate::wiring::driver::XyComposedDriver::new(agent, store);
         let mut mcp = McpSession::new();
 
         mcp.reload(

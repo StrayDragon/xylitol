@@ -1,7 +1,7 @@
 //! Documented embed seam for external crates and custom clients.
 //!
 //! Prefer this module plus the curated `Xy*` re-exports in the crate root over
-//! reaching into `agent::capabilities` or `infra` concrete types.
+//! reaching into `agent::capabilities` or wiring concrete types.
 //!
 //! Typical path:
 //!
@@ -32,7 +32,7 @@
 //!
 //! - `dispatch` / `XyRemoteDriver` — stay crate-internal until a surface wires
 //!   them. Reach via crate modules only inside this crate.
-//! - `HookDispatcher` / `HookEvent` — infra script implementation details.
+//! - `HookDispatcher` / `HookEvent` — script-hook implementation details.
 //!
 //! See `docs/architecture/库与多客户端.md`.
 
@@ -44,6 +44,6 @@ pub use crate::wiring::composition::{
     BuildAgentOptions, McpServerSpec, McpSession, McpTransportSpec, build_agent,
 };
 pub use crate::wiring::driver::{
-    CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, XyDriver, XyDriverError,
-    XyInProcessDriver,
+    CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, XyComposedDriver, XyDriver,
+    XyDriverError,
 };

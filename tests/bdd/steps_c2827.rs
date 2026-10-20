@@ -2023,7 +2023,7 @@ pub(crate) fn t_t4_no_api_key() {
 pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
     use crate::bdd::helpers::make_agent;
     use futures::StreamExt;
-    use xylitol::wiring::infra::provider::factory::{
+    use xylitol::wiring::provider::factory::{
         reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
     };
 
@@ -2068,15 +2068,12 @@ pub fn t6_mcp_bdd() -> T6McpBdd {
     }
 }
 
-fn t6_fixture_config(
-    name: &str,
-    tools: &str,
-) -> xylitol::wiring::infra::config::types::McpServerConfig {
+fn t6_fixture_config(name: &str, tools: &str) -> xylitol::wiring::config::types::McpServerConfig {
     let mut env = std::collections::HashMap::new();
     env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), tools.into());
-    xylitol::wiring::infra::config::types::McpServerConfig {
+    xylitol::wiring::config::types::McpServerConfig {
         name: name.into(),
-        transport: xylitol::wiring::infra::config::types::McpTransportKind::Stdio,
+        transport: xylitol::wiring::config::types::McpTransportKind::Stdio,
         command: Some("python3".into()),
         args: Some(vec![
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2091,7 +2088,7 @@ fn t6_fixture_config(
 
 async fn t6_discover(
     t6_mcp_bdd: &T6McpBdd,
-    servers: &[xylitol::wiring::infra::config::types::McpServerConfig],
+    servers: &[xylitol::wiring::config::types::McpServerConfig],
 ) {
     let result = xylitol_official_plugin_mcp::connect_and_discover(servers).await;
     let Some((manager, tools)) = result else {
@@ -2144,9 +2141,9 @@ pub(crate) fn t_t6_mcp_config_driven(_t6_mcp_bdd: &T6McpBdd) {
 
 #[when("以无效 MCP 条目装配")]
 pub(crate) async fn w_t6_mcp_invalid(t6_mcp_bdd: &T6McpBdd) {
-    let bad = xylitol::wiring::infra::config::types::McpServerConfig {
+    let bad = xylitol::wiring::config::types::McpServerConfig {
         name: "bad".into(),
-        transport: xylitol::wiring::infra::config::types::McpTransportKind::Stdio,
+        transport: xylitol::wiring::config::types::McpTransportKind::Stdio,
         command: None,
         ..Default::default()
     };

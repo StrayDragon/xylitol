@@ -1,4 +1,5 @@
-//! Product in-process driver: runtime core + official plugin injection + MCP reload.
+//! [`XyComposedDriver`]: runtime [`xylitol_runtime::XyInProcessDriver`] plus
+//! official plugin injection and MCP `/reload`.
 
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
@@ -36,7 +37,7 @@ struct InProcessReloadState {
 }
 
 /// Composition-root driver: runtime core plus MCP / plugin injection.
-pub struct XyInProcessDriver {
+pub struct XyComposedDriver {
     pub inner: RuntimeDriver,
     todo: Arc<xylitol_official_plugin_tools::SessionAgentTodoGateway>,
     reload: Option<InProcessReloadState>,
@@ -46,20 +47,20 @@ pub struct XyInProcessDriver {
     tool_gate_deadline: Option<std::time::Instant>,
 }
 
-impl Deref for XyInProcessDriver {
+impl Deref for XyComposedDriver {
     type Target = RuntimeDriver;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
-impl DerefMut for XyInProcessDriver {
+impl DerefMut for XyComposedDriver {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
     }
 }
 
-impl XyInProcessDriver {
+impl XyComposedDriver {
     /// Construct from a built agent plus the store used to build it.
     pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
         Self::with_surface_ops(
@@ -68,9 +69,7 @@ impl XyInProcessDriver {
             BangExecHandler::new(Some(Arc::new(
                 xylitol_official_plugin_tools::bash_exec::InfraBashExecutor::new(),
             ))),
-            SessionExporter::new(Some(Arc::new(
-                crate::wiring::infra::export::StdExportIo::new(),
-            ))),
+            SessionExporter::new(Some(Arc::new(crate::wiring::export::StdExportIo::new()))),
         )
     }
 
@@ -117,9 +116,7 @@ impl XyInProcessDriver {
             agent,
             store,
             bang,
-            SessionExporter::new(Some(Arc::new(
-                crate::wiring::infra::export::StdExportIo::new(),
-            ))),
+            SessionExporter::new(Some(Arc::new(crate::wiring::export::StdExportIo::new()))),
         )
     }
 
@@ -169,7 +166,7 @@ impl XyInProcessDriver {
 }
 
 #[async_trait]
-impl XyDriver for XyInProcessDriver {
+impl XyDriver for XyComposedDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
         self.ensure_tool_table_frozen().await;
         XyDriver::run(&mut self.inner, prompt).await
@@ -230,11 +227,11 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
-        XyInProcessDriver::loaded_resources_snapshot(self).await
+        XyComposedDriver::loaded_resources_snapshot(self).await
     }
 
     fn mcp_blocks_agent(&self) -> bool {
-        XyInProcessDriver::mcp_blocks_agent(self)
+        XyComposedDriver::mcp_blocks_agent(self)
     }
 
     fn is_tools_frozen(&self) -> bool {
@@ -250,11 +247,11 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn begin_mcp_bootstrap(&mut self) {
-        XyInProcessDriver::begin_mcp_bootstrap(self).await
+        XyComposedDriver::begin_mcp_bootstrap(self).await
     }
 
     async fn poll_mcp_bootstrap(&mut self) -> bool {
-        XyInProcessDriver::poll_mcp_bootstrap(self).await
+        XyComposedDriver::poll_mcp_bootstrap(self).await
     }
 
     async fn bash_run(
@@ -269,13 +266,13 @@ impl XyDriver for XyInProcessDriver {
         &mut self,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Result<RuntimeReloadReport, XyDriverError> {
-        XyInProcessDriver::reload_runtime(self, cancel).await
+        XyComposedDriver::reload_runtime(self, cancel).await
     }
 
     async fn persist_project_trust(
         &mut self,
         mode: ProjectTrustMode,
     ) -> Result<ProjectTrustPersistReport, XyDriverError> {
-        XyInProcessDriver::persist_project_trust(self, mode)
+        XyComposedDriver::persist_project_trust(self, mode)
     }
 }

@@ -397,7 +397,7 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
     let mgr = xylitol_official_plugin_session::SessionManager::new(dir.keep());
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = std::sync::Arc::new(mgr);
     let sink: std::sync::Arc<dyn xylitol::XyEventSink> =
-        std::sync::Arc::new(xylitol::wiring::infra::event::EventBus::new());
+        std::sync::Arc::new(xylitol::wiring::event::EventBus::new());
     let mut session = xylitol_runtime::agent::capabilities::AgentCapabilities::new(
         agent.registry.borrow().clone(),
         xylitol_runtime::agent::tools::ToolSet::from_iter(
@@ -410,8 +410,8 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::wiring::infra::provider::factory::build_provider),
-        xylitol::wiring::infra::permission::allow_all_permission(),
+        std::sync::Arc::new(xylitol::wiring::provider::factory::build_provider),
+        xylitol::wiring::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,
@@ -459,9 +459,9 @@ pub(crate) fn g_abort_streaming(agent: &AgentState, _ws: &Workspace) {
 
 #[when("调用 abort()")]
 pub(crate) fn w_abort_call(agent: &AgentState) {
-    use xylitol::embed::{XyDriver, XyInProcessDriver};
+    use xylitol::embed::{XyComposedDriver, XyDriver};
     let (runtime, store) = make_agent_with_store(agent);
-    let driver = XyInProcessDriver::new(runtime, store);
+    let driver = XyComposedDriver::new(runtime, store);
     driver.abort();
     agent.last_result.replace(Some(Ok("aborted".into())));
 }
@@ -548,13 +548,13 @@ pub(crate) async fn w_slash_intercepted(agent: &AgentState, _ws: &Workspace) {
         panic!("slash-dispatch scenario must use /compact, got: {marker}");
     }
 
-    use xylitol::embed::XyInProcessDriver;
+    use xylitol::embed::XyComposedDriver;
 
     let (mut runtime, store) = make_agent_with_store(agent);
     let sid = uuid::Uuid::new_v4().to_string();
     let _ = store.create(&sid, Some("."), None).await;
     bind_session_or_panic(&mut runtime, sid);
-    let mut driver = XyInProcessDriver::new(runtime, store);
+    let mut driver = XyComposedDriver::new(runtime, store);
     // Force compact on an empty session hits prepare gates (Nothing to compact /
     // Already compacted) — that still proves slash→Driver::compact dispatch.
     let did = match driver.compact(None).await {

@@ -10,7 +10,7 @@ mod sandbox_bdd {
             const { std::cell::RefCell::new(None) };
     }
 
-    use xylitol::wiring::infra::config::types::{
+    use xylitol::wiring::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig, PermissionNetworkConfig,
         PermissionProcessConfig,
     };
@@ -37,7 +37,7 @@ mod sandbox_bdd {
     #[given("沙箱引擎已初始化")]
     fn sandbox_engine_init() {
         SANDBOX_ENGINE.with(|e| {
-            *e.borrow_mut() = Some(xylitol::wiring::infra::permission::build_permission(
+            *e.borrow_mut() = Some(xylitol::wiring::permission::build_permission(
                 &default_sandbox(),
             ));
         });

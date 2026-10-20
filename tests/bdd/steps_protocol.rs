@@ -482,7 +482,7 @@ fn t_compaction_end_fidelity(protocol_bdd: &ProtocolBdd) {
 #[when("以不存在的文件调用导入会话")]
 async fn w_import_missing_file(protocol_bdd: &ProtocolBdd) {
     use xylitol::SessionExporter;
-    use xylitol::wiring::infra::export::StdExportIo;
+    use xylitol::wiring::export::StdExportIo;
     use xylitol_official_plugin_session::SessionManager;
     let dir = tempfile::tempdir().unwrap();
     let sessions = dir.path().join("sessions");

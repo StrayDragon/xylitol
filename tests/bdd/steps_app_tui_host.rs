@@ -2523,7 +2523,7 @@ fn w_init_instant_file_logging(host_pump_bdd: &HostPumpBdd) {
     let dir = std::env::temp_dir().join(format!("xy-bdd-logging-{}", std::process::id()));
     let installed = xylitol::cli::logging::init_logging(
         &dir,
-        &xylitol::wiring::infra::config::types::OtelConfig::default(),
+        &xylitol::wiring::config::types::OtelConfig::default(),
     )
     .is_some();
     pt::set_provider_trace_active(gate);

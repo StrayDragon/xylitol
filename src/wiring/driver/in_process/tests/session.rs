@@ -45,7 +45,7 @@ async fn in_process_session_tree_ensures_missing_session() {
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut agent = AgentBuilder::new(
         xylitol_runtime::agent::model::registry::ModelRegistry::new(),
-        Arc::new(crate::wiring::infra::provider::factory::build_provider),
+        Arc::new(crate::wiring::provider::factory::build_provider),
         store_trait.clone(),
         Arc::new(EventBus::new()) as Arc<dyn XyEventSink>,
         permission::allow_all_permission(),
@@ -59,7 +59,7 @@ async fn in_process_session_tree_ensures_missing_session() {
     // Orphan id: set on agent but never created on disk (wipe / pre-persist).
     let orphan = uuid::Uuid::new_v4().to_string();
     agent.bind_session(orphan.clone()).expect("bind_session");
-    let driver = XyInProcessDriver::new(agent, store);
+    let driver = XyComposedDriver::new(agent, store);
     let tree = driver
         .session_tree(SessionTreeKind::MessageHistory)
         .await
@@ -280,7 +280,7 @@ async fn after_run_session_tree_reflects_persisted_turn() {
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();
     agent.bind_session(sid).expect("bind_session");
-    let mut driver = XyInProcessDriver::new(agent, store_trait);
+    let mut driver = XyComposedDriver::new(agent, store_trait);
 
     let mut stream = driver.run("hello tree").await;
     while stream.next().await.is_some() {}
@@ -440,7 +440,7 @@ async fn concurrent_run_rejects_second_with_busy() {
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();
     agent.bind_session(sid).expect("bind_session");
-    let mut driver = XyInProcessDriver::new(agent, store_trait);
+    let mut driver = XyComposedDriver::new(agent, store_trait);
 
     let mut first = driver.run("one").await;
     let mut saw = false;

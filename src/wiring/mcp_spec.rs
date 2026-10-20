@@ -1,8 +1,8 @@
-//! Embed-facing MCP server description (no `infra::` in the public path).
+//! Embed-facing MCP server description.
 
 use std::collections::HashMap;
 
-use crate::wiring::infra::config::types::{McpServerConfig, McpTransportKind};
+use crate::wiring::config::types::{McpServerConfig, McpTransportKind};
 
 /// Transport kind for an MCP server at the application seam.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -13,7 +13,7 @@ pub enum McpTransportSpec {
 
 /// MCP server description for bootstrap → [`crate::wiring::composition::McpSession::reload`].
 ///
-/// Converted to infra config only inside the composition root.
+/// Converted to YAML config types only inside the composition root.
 #[derive(Clone, Debug)]
 pub struct McpServerSpec {
     pub name: String,
@@ -60,12 +60,12 @@ impl From<&McpServerSpec> for McpServerConfig {
 }
 
 impl McpServerSpec {
-    /// Map optional infra config list into seam specs (`None` stays `None`).
+    /// Map optional YAML config list into seam specs (`None` stays `None`).
     pub fn from_infra_list(servers: Option<Vec<McpServerConfig>>) -> Option<Vec<Self>> {
         servers.map(|v| v.iter().map(Self::from).collect())
     }
 
-    /// Map seam specs back to infra configs for connect/discover.
+    /// Map seam specs back to YAML configs for connect/discover.
     pub fn to_infra_list(servers: &[Self]) -> Vec<McpServerConfig> {
         servers.iter().map(McpServerConfig::from).collect()
     }

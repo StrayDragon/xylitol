@@ -1,10 +1,14 @@
+//! Tests for the composition-root [`XyComposedDriver`](super::XyComposedDriver):
+//! MCP gate, `/reload` re-freeze, session tree via the wrapper.
+//! Runtime inner-loop tests live in `xylitol-runtime`.
+//!
 // bind_session writes obs via ObsSessionScope — no process-slot race with CollectingReporter tests.
 use std::sync::Arc;
 use xylitol_official_plugin_provider_openai::provider::{ObsSessionContext, ObsSessionScope};
 
 use super::*;
-use crate::wiring::infra::event::EventBus;
-use crate::wiring::infra::permission;
+use crate::wiring::event::EventBus;
+use crate::wiring::permission;
 use xylitol_official_plugin_session::SessionManager;
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
@@ -34,12 +38,12 @@ fn entry_ms(id: &str) -> u64 {
             % 1_000_000
 }
 
-async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, ObsSessionScope) {
+async fn build_test_driver(store: Arc<SessionManager>) -> (XyComposedDriver, ObsSessionScope) {
     let scope = ObsSessionScope::enter(ObsSessionContext::default());
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut agent = AgentBuilder::new(
         xylitol_runtime::agent::model::registry::ModelRegistry::new(),
-        Arc::new(crate::wiring::infra::provider::factory::build_provider),
+        Arc::new(crate::wiring::provider::factory::build_provider),
         store_trait.clone(),
         Arc::new(EventBus::new()) as Arc<dyn XyEventSink>,
         permission::allow_all_permission(),
@@ -56,7 +60,7 @@ async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, Ob
         .await
         .expect("create session");
     agent.bind_session(sid).expect("bind_session");
-    (XyInProcessDriver::new(agent, store), scope)
+    (XyComposedDriver::new(agent, store), scope)
 }
 
 mod bash;

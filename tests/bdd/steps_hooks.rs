@@ -80,7 +80,7 @@ fn _g_hook_merge_combo(agent: &AgentState) {
         command: "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into(),
         ..Default::default()
     };
-    let config = xylitol::wiring::infra::config::types::HooksConfig {
+    let config = xylitol::wiring::config::types::HooksConfig {
         global: vec![global],
         project: vec![],
         user: vec![user.clone()],
@@ -203,7 +203,7 @@ async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
 #[when("hook 被加载")]
 fn _w_hook_loaded(agent: &AgentState) {
     // Materialize merge the same way production does (HookDispatcher::new).
-    let config = xylitol::wiring::infra::config::types::HooksConfig {
+    let config = xylitol::wiring::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         project: vec![],
         user: vec![],

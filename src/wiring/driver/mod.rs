@@ -5,7 +5,7 @@
 
 mod in_process;
 
-pub use in_process::XyInProcessDriver;
+pub use in_process::XyComposedDriver;
 pub use xylitol_runtime::driver::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
     MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot, ModelInfo, ProjectTrustMode,

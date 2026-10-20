@@ -172,7 +172,7 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-        std::sync::Arc::new(xylitol::wiring::infra::event::EventBus::new());
+        std::sync::Arc::new(xylitol::wiring::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
@@ -183,8 +183,8 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::wiring::infra::provider::factory::build_provider),
-        xylitol::wiring::infra::permission::allow_all_permission(),
+        std::sync::Arc::new(xylitol::wiring::provider::factory::build_provider),
+        xylitol::wiring::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,
@@ -374,10 +374,10 @@ pub(crate) fn _g_read_tool_result(_agent: &AgentState, result: String) {
 }
 #[when("经 Driver 启动会话并在首个 TextDelta 后 abort")]
 pub(crate) async fn _w_driver_abort_after_first_delta(agent: &AgentState) {
-    use xylitol::embed::{XyDriver, XyInProcessDriver};
+    use xylitol::embed::{XyComposedDriver, XyDriver};
 
     let (runtime, store) = make_agent_with_store(agent);
-    let mut driver = XyInProcessDriver::new(runtime, store);
+    let mut driver = XyComposedDriver::new(runtime, store);
     let mut stream = driver.run("abort-mid-stream").await;
     let mut local_events = Vec::new();
     let mut saw_delta = false;
@@ -428,7 +428,7 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-        std::sync::Arc::new(xylitol::wiring::infra::event::EventBus::new());
+        std::sync::Arc::new(xylitol::wiring::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
@@ -439,8 +439,8 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::wiring::infra::provider::factory::build_provider),
-        xylitol::wiring::infra::permission::allow_all_permission(),
+        std::sync::Arc::new(xylitol::wiring::provider::factory::build_provider),
+        xylitol::wiring::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,

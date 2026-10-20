@@ -458,7 +458,7 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();
     agent.bind_session(sid).expect("bind_session");
-    let mut driver = XyInProcessDriver::new(agent, store_trait);
+    let mut driver = XyComposedDriver::new(agent, store_trait);
 
     // Epoch 1: freeze with alpha MCP tool, run once.
     let builtins = driver.builtins_for_reload();

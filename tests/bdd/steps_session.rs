@@ -757,7 +757,7 @@ fn tmp_root(sess: &XySessionStore) -> std::path::PathBuf {
 }
 
 fn exporter() -> xylitol::SessionExporter {
-    use xylitol::wiring::infra::export::StdExportIo;
+    use xylitol::wiring::export::StdExportIo;
     xylitol::SessionExporter::new(Some(std::sync::Arc::new(StdExportIo::new())))
 }
 

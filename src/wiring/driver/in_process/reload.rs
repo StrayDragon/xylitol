@@ -4,7 +4,7 @@ use crate::wiring::driver::{
     XyDriverError,
 };
 
-impl super::XyInProcessDriver {
+impl super::XyComposedDriver {
     pub(super) async fn reload_runtime(
         &mut self,
         cancel: &tokio_util::sync::CancellationToken,
@@ -32,7 +32,7 @@ impl super::XyInProcessDriver {
             let cwd_str = st.cwd.display().to_string();
             st.project_trusted = trust_mgr.is_trusted(&cwd_str);
 
-            let app_config = crate::wiring::infra::config::loader::load_app_config(None).ok();
+            let app_config = crate::wiring::config::loader::load_app_config(None).ok();
             st.mcp_servers = crate::wiring::mcp_spec::McpServerSpec::from_infra_list(
                 app_config.as_ref().and_then(|c| c.mcp_servers.clone()),
             )

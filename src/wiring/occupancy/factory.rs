@@ -13,7 +13,7 @@ use xylitol_serve::occupancy::{OccupancyEngine, OccupancyFactory};
 
 use crate::wiring::composition::build_baseline_with_store;
 use crate::wiring::dispatch::{SessionCommandExecutor, outcome_to_value};
-use crate::wiring::driver::XyInProcessDriver;
+use crate::wiring::driver::XyComposedDriver;
 use crate::wiring::mcp_spec::McpServerSpec;
 use crate::wiring::occupancy::host::{HostState, ReloadBaseline};
 
@@ -49,7 +49,7 @@ impl ProductOccupancyFactory {
 impl OccupancyFactory for ProductOccupancyFactory {
     fn new_driver_at(&self, workspace: &Path) -> Box<dyn OccupancyEngine> {
         let agent = self.ports.materialize_runtime();
-        let mut driver = XyInProcessDriver::new(agent, self.ports.store.clone());
+        let mut driver = XyComposedDriver::new(agent, self.ports.store.clone());
         driver.enable_reload_state(
             workspace.to_path_buf(),
             self.agent_dir.clone(),
@@ -82,9 +82,9 @@ impl OccupancyFactory for ProductOccupancyFactory {
 }
 
 #[async_trait]
-impl OccupancyEngine for XyInProcessDriver {
+impl OccupancyEngine for XyComposedDriver {
     fn install_ask_tool(&mut self, gateway: Arc<dyn AskUserGateway>) {
-        XyInProcessDriver::install_ask_tool(self, gateway);
+        XyComposedDriver::install_ask_tool(self, gateway);
     }
 
     fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
@@ -118,7 +118,7 @@ impl OccupancyEngine for XyInProcessDriver {
     }
 
     async fn ensure_tool_table_frozen(&mut self) {
-        XyInProcessDriver::ensure_tool_table_frozen(self).await;
+        XyComposedDriver::ensure_tool_table_frozen(self).await;
     }
 
     async fn execute_command(&mut self, cmd: Command) -> Result<serde_json::Value, XyDriverError> {

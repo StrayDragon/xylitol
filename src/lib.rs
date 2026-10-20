@@ -11,7 +11,7 @@
 //! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
 //! [`XyModelBuilder`], [`XyHookBus`].
-//! Shared application protocol: [`XyDriver`], [`XyInProcessDriver`], [`XyDriverError`].
+//! Shared application protocol: [`XyDriver`], [`XyComposedDriver`], [`XyDriverError`].
 //! Envelope client: `xylitol-app-tui` (`HostClient` / `XyRemoteDriver`).
 //! Events / stream: [`XyEvent`], [`XyChunk`], [`XyStream`].
 //! Hook outcomes: [`XyHookOutcome`], [`NoopHookBus`].
@@ -23,7 +23,7 @@
 //!
 //! Multi-client / external-crate assembly: [`embed::bootstrap`],
 //! [`embed::BootstrappedRuntime`] / [`embed::BootstrappedAgent::into_runtime`],
-//! [`embed::XyInProcessDriver`], [`embed::XyDriver`], [`embed::BuildAgentOptions`],
+//! [`embed::XyComposedDriver`], [`embed::XyDriver`], [`embed::BuildAgentOptions`],
 //! [`embed::McpSession`]. Script hooks are configured via
 //! [`embed::BuildAgentOptions::hooks_config`]; replaceable port is [`XyHookBus`].
 //!
@@ -54,7 +54,7 @@ pub use crate::wiring::attach::{
     DEFAULT_ATTACH_URL, attach_fail_message, probe_host, resolve_attach_url,
 };
 pub use crate::wiring::driver::SessionExporter;
-pub use crate::wiring::driver::{XyDriver, XyDriverError, XyInProcessDriver};
+pub use crate::wiring::driver::{XyComposedDriver, XyDriver, XyDriverError};
 pub use xylitol_plugin_sdk::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };

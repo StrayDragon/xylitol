@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use crate::wiring::composition::{BuildAgentOptions, official_compaction_factory};
 use crate::wiring::driver::XyDriverError;
-use crate::wiring::infra::event::EventBus;
-use crate::wiring::infra::permission;
+use crate::wiring::event::EventBus;
+use crate::wiring::permission;
 use xylitol_official_plugin_hooks::HookDispatcher;
 use xylitol_plugin_sdk::{XyEventSink, XyHookBus, XyModelBuilder, XySessionStore};
 use xylitol_runtime::agent::tools::ToolSet;
@@ -30,10 +30,7 @@ pub(crate) fn assemble_blocking(
     let model_builder: XyModelBuilder = {
         let hooks = hooks_for_provider;
         Arc::new(move |config| {
-            crate::wiring::infra::provider::factory::build_provider_with_hooks(
-                config,
-                hooks.clone(),
-            )
+            crate::wiring::provider::factory::build_provider_with_hooks(config, hooks.clone())
         })
     };
 

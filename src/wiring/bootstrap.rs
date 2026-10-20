@@ -6,7 +6,7 @@
 //! own config-load / registry-build / resource-discovery logic (spec la20).
 //!
 //! What lives here vs in [`crate::wiring::composition`]:
-//! - `composition::build_agent` injects infra ports into an agent builder (the
+//! - `composition::build_agent` injects ports into an agent builder (the
 //!   innermost wiring step).
 //! - `bootstrap` runs everything *before* `build_agent`: config load →
 //!   ModelRegistry build → trust resolution → resource discovery
@@ -29,15 +29,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::wiring::composition::{BuildAgentOptions, build_agent};
-use crate::wiring::infra::config::loader::load_app_config_detailed_with;
-use crate::wiring::infra::permission;
-use crate::wiring::infra::timing;
+use crate::wiring::config::loader::load_app_config_detailed_with;
+use crate::wiring::permission;
+use crate::wiring::timing;
 use xylitol_official_plugin_session::SessionManager;
 use xylitol_plugin_sdk::model::XyModelMeta;
 use xylitol_runtime::agent::ModelRegistry;
 use xylitol_runtime::agent::model::resolver;
 
-/// Process-env getter matching [`crate::wiring::infra::config::paths::ConfigPaths::discover`]:
+/// Process-env getter matching [`crate::wiring::config::paths::ConfigPaths::discover`]:
 /// real `std::env`, with `HOME` falling back to `dirs::home_dir` when unset.
 fn process_get_env(k: &str) -> Option<String> {
     if let Ok(v) = std::env::var(k) {
@@ -135,7 +135,7 @@ pub struct BootstrappedAgent {
     /// Diagnostics produced during assembly (surface renders these).
     pub warnings: Vec<BootstrapWarning>,
     /// Session store handle, the same instance the agent holds internally.
-    /// Surfaces construct an [`crate::wiring::driver::XyInProcessDriver`] from this + the agent so
+    /// Surfaces construct an [`crate::wiring::driver::XyComposedDriver`] from this + the agent so
     /// XyDriver session commands (SwitchSession/GetMessages) operate without
     /// reaching into agent internals.
     pub store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
@@ -148,7 +148,7 @@ pub struct BootstrappedAgent {
 /// This is the preferred embed / multi-client handoff: no need to name
 /// `AgentRuntime` at the call site.
 pub struct BootstrappedRuntime {
-    pub driver: crate::wiring::driver::XyInProcessDriver,
+    pub driver: crate::wiring::driver::XyComposedDriver,
     pub session_id: String,
     pub warnings: Vec<BootstrapWarning>,
     /// MCP servers for [`crate::wiring::composition::McpSession::reload`].
@@ -242,7 +242,7 @@ async fn load_restored_session_metadata(
 }
 
 impl BootstrappedAgent {
-    /// Consume into an [`crate::wiring::driver::XyInProcessDriver`] plus side-products (preferred path).
+    /// Consume into an [`crate::wiring::driver::XyComposedDriver`] plus side-products (preferred path).
     pub fn into_runtime(mut self) -> BootstrappedRuntime {
         let restored_session = block_on_bootstrap_task(
             "restore session metadata",
@@ -266,7 +266,7 @@ impl BootstrappedAgent {
                 name.as_str(),
             ));
         }
-        let driver = crate::wiring::driver::XyInProcessDriver::new(self.agent, self.store);
+        let driver = crate::wiring::driver::XyComposedDriver::new(self.agent, self.store);
         let todo_gw = driver.todo_gateway();
         let sid = self.session_id.clone();
         let _ = block_on_bootstrap_task("bind todo session", async move {
@@ -281,9 +281,9 @@ impl BootstrappedAgent {
         }
     }
 
-    /// Consume into an [`crate::wiring::driver::XyInProcessDriver`] only (drops warnings / session id /
+    /// Consume into an [`crate::wiring::driver::XyComposedDriver`] only (drops warnings / session id /
     /// mcp config). Prefer [`Self::into_runtime`] when those are needed.
-    pub fn into_driver(self) -> crate::wiring::driver::XyInProcessDriver {
+    pub fn into_driver(self) -> crate::wiring::driver::XyComposedDriver {
         self.into_runtime().driver
     }
 }
@@ -318,7 +318,7 @@ pub struct ResolvedAssembly {
     /// MCP servers from YAML (`None` / empty = not enabled).
     pub mcp_servers: Option<Vec<crate::wiring::mcp_spec::McpServerSpec>>,
     /// Three-tier script hook configuration.
-    pub hooks_config: crate::wiring::infra::config::types::HooksConfig,
+    pub hooks_config: crate::wiring::config::types::HooksConfig,
     /// Settings `defaultThinkingLevel` (camelCase JSON), if any.
     pub default_thinking_level: Option<String>,
     /// Settings `thinkingBudgets` (camelCase JSON), if any.
@@ -575,7 +575,7 @@ pub fn resolve_assembly_with(
         } else {
             std::env::temp_dir()
         };
-        let settings_mgr = crate::wiring::infra::settings::SettingsManager::from_files(
+        let settings_mgr = crate::wiring::settings::SettingsManager::from_files(
             &settings_cwd,
             &agent_dir,
             project_trusted,
@@ -759,7 +759,7 @@ pub struct SkillsReloadReport {
 ///
 /// Trust semantics match bootstrap. Does **not** mutate session history.
 pub fn reload_skills(
-    driver: &mut crate::wiring::driver::XyInProcessDriver,
+    driver: &mut crate::wiring::driver::XyComposedDriver,
     cwd: &std::path::Path,
     agent_dir: &std::path::Path,
     project_trusted: bool,
@@ -799,7 +799,7 @@ pub struct PromptContextReloadReport {
 ///
 /// Does **not** mutate session history / transcript.
 pub fn reload_prompt_context(
-    driver: &mut crate::wiring::driver::XyInProcessDriver,
+    driver: &mut crate::wiring::driver::XyComposedDriver,
     cwd: &std::path::Path,
     agent_dir: &std::path::Path,
     project_trusted: bool,
@@ -834,13 +834,11 @@ pub fn reload_prompt_context(
 }
 
 fn queue_mode_from_settings(
-    mode: crate::wiring::infra::settings::types::SteeringMode,
+    mode: crate::wiring::settings::types::SteeringMode,
 ) -> xylitol_runtime::agent::QueueMode {
     match mode {
-        crate::wiring::infra::settings::types::SteeringMode::All => {
-            xylitol_runtime::agent::QueueMode::All
-        }
-        crate::wiring::infra::settings::types::SteeringMode::OneAtATime => {
+        crate::wiring::settings::types::SteeringMode::All => xylitol_runtime::agent::QueueMode::All,
+        crate::wiring::settings::types::SteeringMode::OneAtATime => {
             xylitol_runtime::agent::QueueMode::OneAtATime
         }
     }

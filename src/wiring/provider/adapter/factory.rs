@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use crate::wiring::infra::provider::adapter::{AdapterKind, default_for};
-use crate::wiring::infra::provider::hooks_port::to_http_hooks;
+use crate::wiring::provider::adapter::{AdapterKind, default_for};
+use crate::wiring::provider::hooks_port::to_http_hooks;
 use xylitol_official_plugin_hooks::HookDispatcher;
 use xylitol_official_plugin_provider_openai::provider::AdapterRef;
 use xylitol_plugin_sdk::model::XyModelConfig;
@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn model_entry_allows_compat_forbids_extra_policy_yaml() {
-        let src = include_str!("../../../../../crates/xylitol-plugin-sdk/src/model_entry.rs");
+        let src = include_str!("../../../../crates/xylitol-plugin-sdk/src/model_entry.rs");
         let entry = src
             .split("pub struct XyModelEntryConfig")
             .nth(1)

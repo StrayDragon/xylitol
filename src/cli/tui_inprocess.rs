@@ -18,15 +18,15 @@ use crate::wiring::driver::{
     CommandInfo as RootCmd, LoadedResourcesSnapshot as RootSnap, McpServerPhase as RootPhase,
     ModelInfo as RootModel, ProjectTrustMode as RootTrust,
     ProjectTrustPersistReport as RootTrustReport, RuntimeReloadReport as RootReload,
-    SessionState as RootState, XyDriver as RootDriver, XyInProcessDriver,
+    SessionState as RootState, XyComposedDriver, XyDriver as RootDriver,
 };
 
 pub(crate) struct TuiInProcessAdapter<'a> {
-    inner: &'a mut XyInProcessDriver,
+    inner: &'a mut XyComposedDriver,
 }
 
 impl<'a> TuiInProcessAdapter<'a> {
-    pub(crate) fn new(inner: &'a mut XyInProcessDriver) -> Self {
+    pub(crate) fn new(inner: &'a mut XyComposedDriver) -> Self {
         Self { inner }
     }
 }

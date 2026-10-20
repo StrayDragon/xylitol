@@ -3,7 +3,7 @@
 //! Only compiled with Cargo feature `otel`. Callers without the feature treat
 //! remote export as always-off (config may still deserialize).
 
-use crate::wiring::infra::config::types::{OtelConfig, OtelExporterKind};
+use crate::wiring::config::types::{OtelConfig, OtelExporterKind};
 
 /// Resolve whether remote OTLP should be attempted and with which endpoint/headers.
 ///
@@ -155,7 +155,7 @@ pub mod install {
     use opentelemetry_sdk::trace::{SpanData, SpanExporter as SdkSpanExporter};
 
     use super::*;
-    use crate::wiring::infra::config::types::OtelHttpProtocol;
+    use crate::wiring::config::types::OtelHttpProtocol;
 
     #[derive(Debug, thiserror::Error)]
     #[error("{0}")]
@@ -461,7 +461,7 @@ mod tests {
     fn lab_live_langfuse_otlp_json_http1_smoke() {
         let cfg = OtelConfig {
             exporter: OtelExporterKind::OtlpHttp,
-            protocol: crate::wiring::infra::config::types::OtelHttpProtocol::HttpJson,
+            protocol: crate::wiring::config::types::OtelHttpProtocol::HttpJson,
             environment: Some("dev".into()),
             service_name: Some("xylitol-smoke".into()),
             ..OtelConfig::default()
@@ -469,7 +469,7 @@ mod tests {
         let Some(reporter) = install::try_build_otlp_reporter(&cfg) else {
             panic!("expected OTLP reporter (set LANGFUSE_BASE_URL / keys)");
         };
-        let mut fanout = crate::wiring::infra::observability::FanoutReporter::new(Vec::new());
+        let mut fanout = crate::wiring::observability::FanoutReporter::new(Vec::new());
         fanout.push_box(reporter);
         fastrace::set_reporter(fanout, fastrace::collector::Config::default());
         {

@@ -544,9 +544,9 @@ fn w_atb4_inspect_drivers() {}
 #[then("默认 attach 且同进程驱动路径仍保留给 print 与嵌入")]
 fn t_atb4_attach_and_inprocess() {
     assert_eq!(xylitol::DEFAULT_ATTACH_URL, "http://127.0.0.1:18790");
-    let inprocess = std::any::type_name::<xylitol::XyInProcessDriver>();
+    let inprocess = std::any::type_name::<xylitol::XyComposedDriver>();
     let http_ws = std::any::type_name::<xylitol_app_tui::host_client::HttpWsClient>();
-    assert!(inprocess.contains("XyInProcessDriver"), "{inprocess}");
+    assert!(inprocess.contains("XyComposedDriver"), "{inprocess}");
     assert!(http_ws.contains("HttpWsClient"), "{http_ws}");
 }
 
@@ -694,10 +694,10 @@ fn t_c2826_unset_display(cli_entry_bdd: &CliEntryBdd) {
 
 #[when("对接好会话的驱动请求 file_browser 会话树")]
 async fn w_c2826_tree_kind_unsupported(agent: &AgentState) {
-    use xylitol::embed::XyInProcessDriver;
+    use xylitol::embed::XyComposedDriver;
     use xylitol_plugin_sdk::session::SessionTreeKind;
     let (runtime, store) = crate::bdd::helpers::make_agent_with_store(agent);
-    let mut driver = XyInProcessDriver::new(runtime, store);
+    let mut driver = XyComposedDriver::new(runtime, store);
     driver
         .new_session()
         .await
@@ -763,7 +763,7 @@ async fn g_c2841_configured_default(agent: &AgentState, cli_entry_bdd: &CliEntry
         }
     }
     let (runtime, store) = crate::bdd::helpers::make_agent_with_store(agent);
-    let mut driver = xylitol::embed::XyInProcessDriver::new(runtime, store);
+    let mut driver = xylitol::embed::XyComposedDriver::new(runtime, store);
     driver
         .restore_model("fake-model")
         .await

@@ -44,7 +44,7 @@ pub(super) enum McpBootState {
     Settled,
 }
 
-impl super::XyInProcessDriver {
+impl super::XyComposedDriver {
     /// One-line MCP status for startup logs (empty when reload/MCP disabled).
     pub async fn mcp_status_summary(&self) -> Option<String> {
         let state = self.reload.as_ref()?;
@@ -222,7 +222,7 @@ impl super::XyInProcessDriver {
                 mcp_bootstrap_complete: true,
                 tools_table_frozen,
                 mcp_gate_notice: self.mcp_gate_notice.clone(),
-                obs_diag: crate::wiring::infra::observability::otel::otlp_disabled_diag(),
+                obs_diag: crate::wiring::observability::otel::otlp_disabled_diag(),
                 ..LoadedResourcesSnapshot::default()
             };
         };
@@ -280,7 +280,7 @@ impl super::XyInProcessDriver {
             mcp_bootstrap_complete,
             tools_table_frozen,
             mcp_gate_notice: self.mcp_gate_notice.clone(),
-            obs_diag: crate::wiring::infra::observability::otel::otlp_disabled_diag(),
+            obs_diag: crate::wiring::observability::otel::otlp_disabled_diag(),
         }
     }
 

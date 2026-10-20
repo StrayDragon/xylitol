@@ -4,8 +4,12 @@
 //! the CLI provider-guidance helpers — they are pure CLI-surface presentation, not agent
 //! orchestration (la13).
 
+mod args;
+mod intent;
 pub mod logging;
 mod print;
+pub use args::*;
+pub use intent::*;
 pub use print::render_stream;
 pub use print::{format_tool_end_line, format_tool_start_lines};
 pub use provider_guidance::{
@@ -17,332 +21,26 @@ mod trust_gate;
 #[cfg(all(feature = "tui", feature = "server"))]
 mod tui_inprocess;
 
-/// Map `tui.activity_fold` config DTO → runtime knobs at the config-owning CLI
-/// boundary (the TUI widget layer does not import infra config types, c2277).
-#[cfg(feature = "tui")]
-impl From<crate::wiring::infra::config::types::TuiActivityFoldConfig>
-    for xylitol_app_tui::ActivityFoldSettings
-{
-    fn from(c: crate::wiring::infra::config::types::TuiActivityFoldConfig) -> Self {
-        use crate::wiring::infra::config::types::ActivityFoldStreamCollapse;
-        use xylitol_app_tui::SegmentLevel;
-        let collapse_floor = match c.stream_collapse {
-            ActivityFoldStreamCollapse::Envelope => SegmentLevel::L3,
-            ActivityFoldStreamCollapse::Clusters => SegmentLevel::L2,
-        };
-        Self {
-            enabled: c.enabled,
-            keep_recent_turns: c.keep_recent_turns,
-            auto_on_rebuild: c.auto_on_rebuild,
-            auto_on_turn_end: c.auto_on_turn_end,
-            collapse_floor,
-        }
-    }
-}
-
-use clap::{Args, Parser, Subcommand};
+use clap::Parser;
 
 use crate::wiring::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, bootstrap, resolve_assembly,
 };
 use crate::wiring::driver::XyDriver;
-use crate::wiring::infra::timing;
-#[cfg(feature = "server")]
+#[cfg(all(test, feature = "server"))]
 use crate::wiring::occupancy::subcommand::ServeAction;
-
-/// Surface flags for `xylitol tui` / `xylitol tui run` (c1565).
-#[derive(Args, Debug, Default, Clone, PartialEq, Eq)]
-pub struct TuiSurfaceArgs {
-    #[arg(long)]
-    pub session: Option<String>,
-    #[arg(long)]
-    pub model: Option<String>,
-    #[arg(long)]
-    pub config: Option<String>,
-    #[arg(long)]
-    pub list_models: bool,
-    #[arg(long)]
-    pub no_color: bool,
-    /// Trust the project directory and load its `.xylitol/` resources.
-    #[arg(long)]
-    pub trust: bool,
-    /// Do not trust the project directory; skip its `.xylitol/` resources.
-    #[arg(long)]
-    pub no_trust: bool,
-    /// Host origin to attach (`http://host:port`). Wins over `--port`.
-    #[arg(long)]
-    pub attach: Option<String>,
-    /// Attach `http://127.0.0.1:<port>` when `--attach` is omitted.
-    #[arg(long)]
-    pub port: Option<u16>,
-}
-
-/// Optional leaf under `xylitol tui` (default = run when omitted).
-/// Flags may sit on the parent (`tui --session …`) or on `run` (`tui run --session …`).
-#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
-pub enum TuiAction {
-    /// Open the interactive TUI (same as bare `xylitol tui`).
-    Run {
-        #[command(flatten)]
-        surface: TuiSurfaceArgs,
-    },
-    /// Preview composition: same TUI client, fake Host, scene slot. Debug builds only.
-    #[cfg(debug_assertions)]
-    Designing,
-}
-
-/// Surface flags for `xylitol print` (c1565 / c1620).
-#[derive(Args, Debug, Default, Clone, PartialEq, Eq)]
-pub struct PrintSurfaceArgs {
-    #[arg(long)]
-    pub session: Option<String>,
-    #[arg(long)]
-    pub model: Option<String>,
-    #[arg(long)]
-    pub config: Option<String>,
-    #[arg(long)]
-    pub no_color: bool,
-    /// Trust the project directory and load its `.xylitol/` resources.
-    #[arg(long)]
-    pub trust: bool,
-    /// Do not trust the project directory; skip its `.xylitol/` resources.
-    #[arg(long)]
-    pub no_trust: bool,
-}
-
-/// Top-level subcommand. When absent: TTY → TUI; non-TTY → print (stdin).
-/// Surface verbs (`tui` / `print`) vs ops (`serve`). No flat surface aliases.
-#[derive(Subcommand, Debug)]
-pub enum CliCommand {
-    /// Interactive TUI surface (default on a TTY).
-    Tui {
-        #[command(flatten)]
-        surface: TuiSurfaceArgs,
-        #[command(subcommand)]
-        action: Option<TuiAction>,
-    },
-    /// One-shot print surface (requires a non-empty prompt).
-    Print {
-        #[command(flatten)]
-        surface: PrintSurfaceArgs,
-        /// Positional one-shot prompt.
-        #[arg(value_name = "PROMPT")]
-        prompt: Option<String>,
-        /// Prompt via flag (`--prompt` / `-p`) under `print` only.
-        #[arg(short = 'p', long = "prompt", value_name = "TEXT")]
-        prompt_flag: Option<String>,
-    },
-    /// Host listener (default 127.0.0.1:18790). Closing the TUI does not stop it.
-    #[cfg(feature = "server")]
-    Serve {
-        /// Bind address.
-        #[arg(long, default_value = "127.0.0.1")]
-        host: String,
-        /// Bind port (`0` lets the OS assign and prints the actual port).
-        #[arg(long, default_value_t = 18790)]
-        port: u16,
-        #[command(subcommand)]
-        action: Option<ServeAction>,
-    },
-}
-
-#[derive(Parser, Debug)]
-#[command(
-    name = "xylitol",
-    version,
-    about = "Personal coding agent — default entry is the interactive TUI"
-)]
-pub struct CliArgs {
-    #[command(subcommand)]
-    pub command: Option<CliCommand>,
-}
-
-/// Resolved surface bootstrap knobs (from `tui` / `print` flatten args).
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct SurfaceBootstrap {
-    pub session: Option<String>,
-    pub model: Option<String>,
-    pub config: Option<String>,
-    pub list_models: bool,
-    pub no_color: bool,
-    pub trust: bool,
-    pub no_trust: bool,
-    pub attach: Option<String>,
-    pub port: Option<u16>,
-}
-
-/// `xylitol tui designing` (debug builds): not a surface verb, skips attach.
-pub fn is_tui_designing(command: Option<&CliCommand>) -> bool {
-    #[cfg(debug_assertions)]
-    {
-        matches!(
-            command,
-            Some(CliCommand::Tui {
-                action: Some(TuiAction::Designing),
-                ..
-            })
-        )
-    }
-    #[cfg(not(debug_assertions))]
-    {
-        let _ = command;
-        false
-    }
-}
-
-/// Product TUI attach fail-closed. Preview designing does not need a Host listener.
-pub fn tui_requires_host_listener(command: Option<&CliCommand>) -> bool {
-    matches!(command, Some(CliCommand::Tui { .. }) | None) && !is_tui_designing(command)
-}
-
-fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> TuiSurfaceArgs {
-    let Some(TuiAction::Run { surface: run }) = action else {
-        return parent.clone();
-    };
-    // Prefer whichever side set a value (`tui --session x run` vs `tui run --session x`).
-    TuiSurfaceArgs {
-        session: run.session.clone().or_else(|| parent.session.clone()),
-        model: run.model.clone().or_else(|| parent.model.clone()),
-        config: run.config.clone().or_else(|| parent.config.clone()),
-        list_models: run.list_models || parent.list_models,
-        no_color: run.no_color || parent.no_color,
-        trust: run.trust || parent.trust,
-        no_trust: run.no_trust || parent.no_trust,
-        attach: run.attach.clone().or_else(|| parent.attach.clone()),
-        port: run.port.or(parent.port),
-    }
-}
-
-/// Resolve surface-owned flags from a parsed CLI command (c1565).
-pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
-    match command {
-        Some(CliCommand::Tui { surface, action }) => {
-            let s = merge_tui_surface(surface, action.as_ref());
-            SurfaceBootstrap {
-                session: s.session,
-                model: s.model,
-                config: s.config,
-                list_models: s.list_models,
-                no_color: s.no_color,
-                trust: s.trust,
-                no_trust: s.no_trust,
-                attach: s.attach,
-                port: s.port,
-            }
-        }
-        Some(CliCommand::Print { surface, .. }) => SurfaceBootstrap {
-            session: surface.session.clone(),
-            model: surface.model.clone(),
-            config: surface.config.clone(),
-            list_models: false,
-            no_color: surface.no_color,
-            trust: surface.trust,
-            no_trust: surface.no_trust,
-            attach: None,
-            port: None,
-        },
-        _ => SurfaceBootstrap::default(),
-    }
-}
-
-fn merge_prompt_parts<'a>(flag: Option<&'a str>, positional: Option<&'a str>) -> Option<&'a str> {
-    flag.or(positional).map(str::trim).filter(|s| !s.is_empty())
-}
-
-/// stderr resume line when the session was persisted (c1565).
-pub fn resume_hint_line(session_id: Option<&str>, listed: bool) -> Option<String> {
-    let sid = session_id?;
-    listed.then(|| format!("Resume by $ xylitol tui --session {sid}"))
-}
-
-/// Resolve force-tui / explicit-print / one-shot prompt from surface verbs only.
-///
-/// Ops subcommands are handled before this; callers pass only `None` / `Tui` / `Print`.
-/// There are no flat `--tui` / `--print` / top-level `-p` aliases.
-pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Option<String>) {
-    match command {
-        Some(CliCommand::Tui { .. }) => (true, false, None),
-        Some(CliCommand::Print {
-            prompt,
-            prompt_flag,
-            ..
-        }) => {
-            let merged =
-                merge_prompt_parts(prompt_flag.as_deref(), prompt.as_deref()).map(str::to_string);
-            (false, true, merged)
-        }
-        None | Some(_) => (false, false, None),
-    }
-}
-
-/// Which interactive surface to open (after `--list-models` is ruled out).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SurfaceMode {
-    Tui,
-    Print,
-}
-
-/// Pure dispatch: TUI default on a TTY; print via `print` verb or non-TTY bare launch.
-pub fn select_surface_mode(
-    force_tui: bool,
-    explicit_print: bool,
-    has_one_shot_prompt: bool,
-    stdin_is_tty: bool,
-) -> SurfaceMode {
-    if force_tui {
-        return SurfaceMode::Tui;
-    }
-    if has_one_shot_prompt || explicit_print {
-        return SurfaceMode::Print;
-    }
-    if stdin_is_tty {
-        return SurfaceMode::Tui;
-    }
-    // Non-TTY bare launch: treat as print so the caller can read stdin or error (no Hello!).
-    SurfaceMode::Print
-}
-
-/// Resolve the print-mode prompt. Never returns a placeholder like `Hello!`.
-#[derive(Debug, thiserror::Error)]
-pub enum PrintPromptError {
-    #[error("failed to read stdin: {0}")]
-    Stdin(#[from] std::io::Error),
-    #[error(
-        "print mode requires a prompt: `xylitol print <PROMPT>`, `print --prompt TEXT`, \
-         or pipe stdin (bare TTY launch opens the TUI; use `tui` to force it)"
-    )]
-    MissingPrompt,
-}
-
-pub fn resolve_print_prompt(
-    one_shot: Option<&str>,
-    allow_stdin_pipe: bool,
-    stdin_is_tty: bool,
-    mut read_stdin: impl FnMut() -> std::io::Result<String>,
-) -> Result<String, PrintPromptError> {
-    if let Some(p) = one_shot.map(str::trim).filter(|s| !s.is_empty()) {
-        return Ok(p.to_string());
-    }
-    if allow_stdin_pipe && !stdin_is_tty {
-        let buf = read_stdin()?;
-        let trimmed = buf.trim();
-        if !trimmed.is_empty() {
-            return Ok(trimmed.to_string());
-        }
-    }
-    Err(PrintPromptError::MissingPrompt)
-}
+use crate::wiring::timing;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
     let surface = surface_from_command(args.command.as_ref());
 
     // Secrets first so `[otel]` / templates can see LANGFUSE_* from secret.env.
-    let paths = crate::wiring::infra::config::paths::ConfigPaths::discover();
-    let _ = crate::wiring::infra::config::secret_env::load_secret_env_files(&paths);
+    let paths = crate::wiring::config::paths::ConfigPaths::discover();
+    let _ = crate::wiring::config::secret_env::load_secret_env_files(&paths);
 
     // Best-effort early config for OTLP assembly (bootstrap reloads later).
-    let early_otel = crate::wiring::infra::config::loader::load_app_config(
+    let early_otel = crate::wiring::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
     )
     .map(|c| c.otel)
@@ -581,7 +279,7 @@ async fn run_product_tui_attached(
     driver.set_reverse_rpc_notify(std::sync::Arc::new(move |rpc_id, method, payload| {
         gw.push_from_server(rpc_id, &method, payload);
     }));
-    let (seed_n, activity_fold) = match crate::wiring::infra::config::loader::load_app_config(
+    let (seed_n, activity_fold) = match crate::wiring::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
     ) {
         Ok(c) => (
@@ -649,7 +347,7 @@ async fn run_product_tui_designing(
     render_warnings(&bootstrapped.warnings);
     let runtime = bootstrapped.into_runtime();
     let mut driver = runtime.driver;
-    let (seed_n, activity_fold) = match crate::wiring::infra::config::loader::load_app_config(
+    let (seed_n, activity_fold) = match crate::wiring::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
     ) {
         Ok(c) => (

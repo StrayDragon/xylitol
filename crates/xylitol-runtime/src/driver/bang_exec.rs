@@ -1,7 +1,7 @@
 //! Bang execution (`!cmd` / `!!cmd`) — app-surface collaborator.
 //!
 //! [`BangExecHandler`] owns the optional [`XyBashExecutor`] port and the
-//! in-flight cancellation token. Held by [`XyInProcessDriver`](crate::wiring::driver::XyInProcessDriver);
+//! in-flight cancellation token. Held by [`XyInProcessDriver`](crate::driver::XyInProcessDriver);
 //! session store is borrowed per call.
 
 use std::sync::{Arc, Mutex};

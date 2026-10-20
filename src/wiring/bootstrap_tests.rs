@@ -1,16 +1,16 @@
 use super::*;
 use crate::wiring::composition::{BuildAgentOptions, build_agent};
-use crate::wiring::driver::XyInProcessDriver;
+use crate::wiring::driver::XyComposedDriver;
 use std::sync::Arc;
 use xylitol_plugin_sdk::XySessionStore;
 
-fn make_driver() -> XyInProcessDriver {
+fn make_driver() -> XyComposedDriver {
     let agent = build_agent(BuildAgentOptions::default()).expect("build");
     let store: Arc<dyn XySessionStore> =
         Arc::new(xylitol_official_plugin_session::SessionManager::new(
             tempfile::tempdir().unwrap().path().join("sessions"),
         ));
-    XyInProcessDriver::new(agent, store)
+    XyComposedDriver::new(agent, store)
 }
 
 fn env_map<'a>(entries: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
@@ -323,10 +323,10 @@ fn yaml_model_api_is_honored_in_registry_config() {
     assert_eq!(by_id("completions-model").api, "openai-completions");
     // c1940: explicit Completions is first-class
     assert_eq!(
-        crate::wiring::infra::provider::adapter::factory::resolve_adapter_kind(
+        crate::wiring::provider::adapter::factory::resolve_adapter_kind(
             &by_id("completions-model").config
         ),
-        crate::wiring::infra::provider::adapter::AdapterKind::OpenAiCompletions
+        crate::wiring::provider::adapter::AdapterKind::OpenAiCompletions
     );
 
     assert_eq!(
@@ -334,19 +334,19 @@ fn yaml_model_api_is_honored_in_registry_config() {
         Some("openai-responses")
     );
     assert_eq!(
-        crate::wiring::infra::provider::adapter::factory::resolve_adapter_kind(
+        crate::wiring::provider::adapter::factory::resolve_adapter_kind(
             &by_id("responses-model").config
         ),
-        crate::wiring::infra::provider::adapter::AdapterKind::OpenAiResponses
+        crate::wiring::provider::adapter::AdapterKind::OpenAiResponses
     );
 
     // Omitted api → default_for(OpenAi) = Responses
     assert_eq!(by_id("default-api-model").config.api, None);
     assert_eq!(
-        crate::wiring::infra::provider::adapter::factory::resolve_adapter_kind(
+        crate::wiring::provider::adapter::factory::resolve_adapter_kind(
             &by_id("default-api-model").config
         ),
-        crate::wiring::infra::provider::adapter::AdapterKind::OpenAiResponses
+        crate::wiring::provider::adapter::AdapterKind::OpenAiResponses
     );
 }
 

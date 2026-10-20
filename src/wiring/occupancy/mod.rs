@@ -10,7 +10,7 @@ pub mod runtime;
 pub mod subcommand;
 
 #[cfg(all(test, feature = "server"))]
-mod attach_driver_tests;
+mod assembly_fixture_tests;
 
 #[cfg(feature = "server")]
 pub use factory::{

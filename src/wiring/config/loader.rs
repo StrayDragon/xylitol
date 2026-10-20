@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn compaction_model_inline_entry_parses() {
-        use crate::wiring::infra::config::types::AppConfig;
+        use crate::wiring::config::types::AppConfig;
 
         let cfg: AppConfig = yaml_serde::from_str(
             r"
@@ -330,7 +330,7 @@ compaction:
 
     #[test]
     fn compaction_model_yaml_anchor_snake_case_fields() {
-        use crate::wiring::infra::config::types::AppConfig;
+        use crate::wiring::config::types::AppConfig;
 
         let cfg: AppConfig = yaml_serde::from_str(
             r"
@@ -357,7 +357,7 @@ compaction:
 
     #[test]
     fn compaction_model_yaml_anchor_alias() {
-        use crate::wiring::infra::config::types::AppConfig;
+        use crate::wiring::config::types::AppConfig;
 
         let cfg: AppConfig = yaml_serde::from_str(
             r"
@@ -383,9 +383,9 @@ compaction:
 
     #[test]
     fn compaction_model_anchor_with_secret_render() {
-        use crate::wiring::infra::config::secret_env::SecretMap;
-        use crate::wiring::infra::config::template::render_config_template;
-        use crate::wiring::infra::config::types::AppConfig;
+        use crate::wiring::config::secret_env::SecretMap;
+        use crate::wiring::config::template::render_config_template;
+        use crate::wiring::config::types::AppConfig;
 
         let mut secrets = SecretMap::new();
         secrets.insert("SUMMARY_KEY".into(), "sk-summary".into());

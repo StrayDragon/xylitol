@@ -1,6 +1,6 @@
 //! Session export/import — app-surface collaborator (HTML / JSONL).
 //!
-//! Held by [`XyInProcessDriver`](crate::wiring::driver::XyInProcessDriver).
+//! Held by [`XyInProcessDriver`](crate::driver::XyInProcessDriver).
 //! Pure transformations over loaded session entries; file I/O via [`XyExportIo`].
 
 use std::sync::Arc;
