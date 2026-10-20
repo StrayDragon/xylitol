@@ -81,9 +81,10 @@ flowchart TB
   xylitol --> xylitol_serve
   xylitol --> xylitol_app_print
   xylitol --> xylitol_app_tui
+  xylitol --> xylitol_rutis
 ```
 
-`xylitol-rutis` 是装配适配层，workspace 成员；组合根切装配器之前可以还不依赖它。执行权威 / 官方插件 / 产品端 **不得** 依赖它。
+`xylitol-rutis` 是装配适配层。组合根经它 `apply` 官方 Host 插件。执行权威 / 官方插件 / 产品端 **不得** 依赖它。
 
 | crate | 必须 | 不得 |
 |---|---|---|

@@ -47,6 +47,7 @@ xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-
 xylitol-official-plugin-tools = { path = "plugins/xylitol-official-plugin-tools" }
 xylitol-official-plugin-mcp = { path = "plugins/xylitol-official-plugin-mcp" }
 xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks" }
+xylitol-rutis = { path = "crates/xylitol-rutis" }
 rutis = "0.13.0"
 
 anyhow = "1.0.104"
@@ -173,6 +174,7 @@ xylitol-official-plugin-compaction = { workspace = true }
 xylitol-official-plugin-tools = { workspace = true }
 xylitol-official-plugin-mcp = { workspace = true, default-features = false }
 xylitol-official-plugin-hooks = { workspace = true }
+xylitol-rutis = { workspace = true }
 crossterm = { workspace = true, optional = true, features = ["event-stream"] }
 http = { workspace = true }
 fory = { workspace = true }

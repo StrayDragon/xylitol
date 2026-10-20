@@ -5988,6 +5988,7 @@ dependencies = [
  "xylitol-plugin-sdk",
  "xylitol-protocol",
  "xylitol-runtime",
+ "xylitol-rutis",
  "xylitol-serve",
  "xylitol-tui",
  "yaml_serde",

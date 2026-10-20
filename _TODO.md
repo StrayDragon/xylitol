@@ -10,7 +10,7 @@
 
 ## 现在
 
-下一刀是 **[WS3](#S1) / S1**（rutis）。接入前必读 [§3.1](#S1) 的 `xylitol-x-rutis-temp`。装配适配层 crate 已进 workspace；组合根仍手写接线。结构图：`.tmp/装配与rutis.md`（临时；随本文件一起撤）。
+下一刀是 **[WS3](#S1) / S1** 残差（根 `src/` 五文件、listen 迁 `xylitol-serve`）。装配适配层 crate 已进 workspace；组合根经它 `apply` 官方 Host 插件。结构图：`.tmp/装配与rutis.md`（临时；随本文件一起撤）。
 
 目标 crate 图见 [§2](#TARGET)。禁边闸 `scripts/check_crate_graph.py`。成员名单以根 `Cargo.toml` 为准。架构规则以 `src/AGENTS.md` 为准。包名真源是本文件 §2。
 
@@ -344,7 +344,7 @@ flowchart TB
 <a id="S1"></a>
 <a id="WS2"></a>
 
-### 3.1 WS3 / S1（适配层 + 装配合约已落；组合根未切）
+### 3.1 WS3 / S1（适配层 + 组合根已切装配器；残差未削）
 
 | 阶段 | 动作 |
 |---|---|
