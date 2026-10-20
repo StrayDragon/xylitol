@@ -10,11 +10,11 @@ use crate::bdd::prelude::*;
 use crate::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol::app::tui::TuiHostEvent as HostEvent;
-use xylitol::app::tui::TuiHostSession as HostSession;
-use xylitol::app::tui::UiEntry;
-use xylitol::app::tui::driver::ModelInfo;
-use xylitol::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
+use xylitol_app_tui::TuiHostEvent as HostEvent;
+use xylitol_app_tui::TuiHostSession as HostSession;
+use xylitol_app_tui::UiEntry;
+use xylitol_app_tui::driver::ModelInfo;
+use xylitol_app_tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
 use xylitol_tui::Component;
 
 // ── fixtures / helpers ───────────────────────────────────────────
@@ -105,7 +105,7 @@ fn key_event(
 /// 单发 Esc 的延迟输入流（挂起 bang 的中止注入，r1279）。
 fn c2827_esc_stream(
     after_ms: u64,
-) -> impl futures::Stream<Item = Result<HostEvent, xylitol::app::tui::XyDriverError>> {
+) -> impl futures::Stream<Item = Result<HostEvent, xylitol_app_tui::XyDriverError>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(after_ms)).await;
@@ -176,7 +176,7 @@ pub(crate) fn g_c2827_tiny_terminal(host_pump_bdd: &HostPumpBdd) {
         .expect("resize to tiny");
     assert_eq!(
         pump.session.mode(),
-        xylitol::app::tui::LayoutMode::TooSmall,
+        xylitol_app_tui::LayoutMode::TooSmall,
         "c2827: 前置应为 TooSmall 布局"
     );
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
@@ -187,7 +187,7 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_host(host_pump_bdd);
     assert_eq!(
         pump.session.mode(),
-        xylitol::app::tui::LayoutMode::TooSmall,
+        xylitol_app_tui::LayoutMode::TooSmall,
         "c2827: 极端尺寸应切 TooSmall 布局"
     );
     let frames_before = pump.session.engine_frame_count();
@@ -205,8 +205,8 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵提交挂起 bang 并注入事件后按 Esc")]
 pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::app::tui::driver::XyDriver as _;
-    use xylitol::app::tui::harness::drain_pending;
+    use xylitol_app_tui::driver::XyDriver as _;
+    use xylitol_app_tui::harness::drain_pending;
 
     let mut pump = fresh_pump();
     pump.driver.set_hang_bash_until_abort(true);
@@ -215,7 +215,7 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
     pump.session
         .step(HostEvent::Input(enter_event()))
         .expect("enter");
-    let mut stream: Option<xylitol::app::tui::driver::EventStream> = None;
+    let mut stream: Option<xylitol_app_tui::driver::EventStream> = None;
     drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("drain start");
@@ -232,13 +232,13 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
         },
         XyEvent::AgentEnd { messages: vec![] },
     ]);
-    let mut agent_stream: Option<xylitol::app::tui::driver::EventStream> =
+    let mut agent_stream: Option<xylitol_app_tui::driver::EventStream> =
         Some(pump.driver.run("bg").await);
     let bash = pump
         .session
         .take_bash()
         .expect("hanging bang pending after drain");
-    xylitol::app::tui::harness::run_interactive_bang(
+    xylitol_app_tui::harness::run_interactive_bang(
         &mut pump.session,
         &mut pump.driver,
         bash,
@@ -424,7 +424,7 @@ pub(crate) fn t_c2827_no_repaint(c2827_bdd: &C2827Bdd) {
 #[when("指针探针已武装并注入落在折叠块头的鼠标移动")]
 pub(crate) fn w_c2827_armed_hover_header(c2827_bdd: &C2827Bdd) {
     use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
-    use xylitol::app::tui::FoldTarget;
+    use xylitol_app_tui::FoldTarget;
     let mut pump = take_c(c2827_bdd);
     assert!(
         pump.session.tui.pointer_probe_armed(),
@@ -541,7 +541,7 @@ pub(crate) async fn w_c2827_tree_fork(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_host(host_pump_bdd);
     // fork 执行器经 get_messages 解析选中条目——同步样例消息。
     pump.driver
-        .set_session_messages(xylitol::app::tui::harness::harness_sample_session_messages());
+        .set_session_messages(xylitol_app_tui::harness::harness_sample_session_messages());
     pump.session
         .step(HostEvent::Input(key_event(
             crossterm::event::KeyCode::Char('f'),
@@ -908,7 +908,7 @@ pub(crate) fn t_c2827_print_embed_done(host_pump_bdd: &HostPumpBdd) {
 
 pub struct T2EstBdd {
     pub entries: RefCell<Vec<SessionEntry>>,
-    pub est: RefCell<Option<xylitol::protocol::model::ContextTokenEstimate>>,
+    pub est: RefCell<Option<xylitol_plugin_sdk::model::ContextTokenEstimate>>,
 }
 
 #[fixture]
@@ -921,10 +921,10 @@ pub fn t2_est_bdd() -> T2EstBdd {
 
 fn t2_assistant_entry(
     id: &str,
-    usage: xylitol::protocol::message::XyUsage,
-    stop: xylitol::protocol::message::XyStopReason,
+    usage: xylitol_plugin_sdk::message::XyUsage,
+    stop: xylitol_plugin_sdk::message::XyStopReason,
 ) -> SessionEntry {
-    use xylitol::protocol::message::{AgentMessage, AgentPart, XyLlmMessage};
+    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
     let asst = AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         content: vec![AgentPart::text("ok")],
         stop_reason: Some(stop),
@@ -950,7 +950,7 @@ fn t2_assistant_entry(
 
 #[given("会话条目含 stop 回合的 usage 锚点")]
 pub(crate) fn g_t2_anchor_stop(t2_est_bdd: &T2EstBdd) {
-    use xylitol::protocol::message::{AgentMessage, XyStopReason, XyUsage};
+    use xylitol_plugin_sdk::message::{AgentMessage, XyStopReason, XyUsage};
     *t2_est_bdd.entries.borrow_mut() = vec![
         SessionEntry::Message(MessageEntry {
             base: EntryBase {
@@ -976,7 +976,7 @@ pub(crate) fn g_t2_anchor_stop(t2_est_bdd: &T2EstBdd) {
 
 #[given("会话条目仅含 abort 回合的 usage 锚点")]
 pub(crate) fn g_t2_anchor_aborted(t2_est_bdd: &T2EstBdd) {
-    use xylitol::protocol::message::{AgentMessage, XyStopReason, XyUsage};
+    use xylitol_plugin_sdk::message::{AgentMessage, XyStopReason, XyUsage};
     *t2_est_bdd.entries.borrow_mut() = vec![
         SessionEntry::Message(MessageEntry {
             base: EntryBase {
@@ -1003,9 +1003,9 @@ pub(crate) fn g_t2_anchor_aborted(t2_est_bdd: &T2EstBdd) {
 #[when("以同源估计器估计上下文")]
 pub(crate) fn w_t2_estimate(t2_est_bdd: &T2EstBdd) {
     let entries = t2_est_bdd.entries.borrow().clone();
-    let est = xylitol::agent::compaction::token_estimator::estimate_from_session_entries(
+    let est = xylitol_official_plugin_compaction::token_estimator::estimate_from_session_entries(
         &entries,
-        &xylitol::agent::compaction::token_estimator::EstimateOpts::default(),
+        &xylitol_official_plugin_compaction::token_estimator::EstimateOpts::default(),
     );
     *t2_est_bdd.est.borrow_mut() = Some(est);
 }
@@ -1015,7 +1015,7 @@ pub(crate) fn t_t2_prov_api(t2_est_bdd: &T2EstBdd) {
     let est = t2_est_bdd.est.borrow().as_ref().expect("estimate").clone();
     assert_eq!(
         est.provenance,
-        xylitol::protocol::model::TokenProvenance::Api,
+        xylitol_plugin_sdk::model::TokenProvenance::Api,
         "c2827: stop 回合 usage 应为 Api 锚点"
     );
 }
@@ -1025,7 +1025,7 @@ pub(crate) fn t_t2_prov_not_api(t2_est_bdd: &T2EstBdd) {
     let est = t2_est_bdd.est.borrow().as_ref().expect("estimate").clone();
     assert_ne!(
         est.provenance,
-        xylitol::protocol::model::TokenProvenance::Api,
+        xylitol_plugin_sdk::model::TokenProvenance::Api,
         "c2827: abort 回合 usage MUST NOT 作 Api 锚点"
     );
 }
@@ -1034,7 +1034,7 @@ pub(crate) fn t_t2_prov_not_api(t2_est_bdd: &T2EstBdd) {
 
 #[given("工具片段含 mcp 前缀工具")]
 pub(crate) fn g_t2_mcp_snippets(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
-    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
+    use xylitol_runtime::agent::prompt::{SystemPromptOpts, build_system_prompt};
     let opts = SystemPromptOpts {
         selected_tools: vec!["read".into(), "bash".into(), "mcp__fs__read".into()],
         tool_snippets: vec![
@@ -1072,7 +1072,7 @@ pub(crate) fn t_t2_no_mcp_names(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd
 // ── agent-prompt r1023 / r1024：资源与技能热应用 ─────────────────
 
 pub struct T2CapsBdd {
-    pub caps: RefCell<Option<xylitol::agent::capabilities::AgentCapabilities>>,
+    pub caps: RefCell<Option<xylitol_runtime::agent::capabilities::AgentCapabilities>>,
 }
 
 #[fixture]
@@ -1084,7 +1084,7 @@ pub fn t2_caps_bdd() -> T2CapsBdd {
 
 fn t2_make_caps(t2_caps_bdd: &T2CapsBdd, agent: &crate::bdd::fixtures::AgentState) {
     let dir = tempfile::tempdir().unwrap();
-    let mgr = xylitol::infra::session::SessionManager::new(dir.keep());
+    let mgr = xylitol_official_plugin_session::SessionManager::new(dir.keep());
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let caps = crate::bdd::steps_domain_compaction_extra::make_test_capabilities(agent, store);
     *t2_caps_bdd.caps.borrow_mut() = Some(caps);
@@ -1120,14 +1120,14 @@ pub(crate) fn t_t2_rebuilt(t2_caps_bdd: &T2CapsBdd) {
 #[when("热应用技能目录 greet")]
 pub(crate) fn w_t2_apply_skills(t2_caps_bdd: &T2CapsBdd) {
     let mut caps = t2_caps_bdd.caps.borrow_mut().take().expect("caps");
-    caps.apply_skills(vec![xylitol::protocol::resource::SkillInfo {
+    caps.apply_skills(vec![xylitol_plugin_sdk::resource::SkillInfo {
         name: "greet".into(),
         description: Some("greets".into()),
-        source_info: xylitol::protocol::source_info::SourceInfo {
+        source_info: xylitol_plugin_sdk::source_info::SourceInfo {
             path: std::path::PathBuf::from("/tmp/greet/SKILL.md"),
             source: "local".into(),
-            scope: xylitol::protocol::source_info::SourceScope::Temporary,
-            origin: xylitol::protocol::source_info::SourceOrigin::TopLevel,
+            scope: xylitol_plugin_sdk::source_info::SourceScope::Temporary,
+            origin: xylitol_plugin_sdk::source_info::SourceOrigin::TopLevel,
             base_dir: None,
         },
         disable_model_invocation: false,
@@ -1153,7 +1153,7 @@ pub(crate) fn t_t2_skills_listed(t2_caps_bdd: &T2CapsBdd) {
 // ── agent-prompt r1025：$name 注入 ───────────────────────────────
 
 pub struct T2SkillBdd {
-    pub skills: RefCell<Vec<xylitol::protocol::resource::SkillInfo>>,
+    pub skills: RefCell<Vec<xylitol_plugin_sdk::resource::SkillInfo>>,
     pub expanded: RefCell<String>,
 }
 
@@ -1177,14 +1177,14 @@ pub(crate) fn g_t2_skill_loaded(t2_skill_bdd: &T2SkillBdd, body: String) {
     .expect("write skill");
     // tempdir drop 会删文件——保留到进程尾（测试场景内足够）。
     std::mem::forget(dir);
-    *t2_skill_bdd.skills.borrow_mut() = vec![xylitol::protocol::resource::SkillInfo {
+    *t2_skill_bdd.skills.borrow_mut() = vec![xylitol_plugin_sdk::resource::SkillInfo {
         name: "greet".into(),
         description: None,
-        source_info: xylitol::protocol::source_info::SourceInfo {
+        source_info: xylitol_plugin_sdk::source_info::SourceInfo {
             path,
             source: "local".into(),
-            scope: xylitol::protocol::source_info::SourceScope::Temporary,
-            origin: xylitol::protocol::source_info::SourceOrigin::TopLevel,
+            scope: xylitol_plugin_sdk::source_info::SourceScope::Temporary,
+            origin: xylitol_plugin_sdk::source_info::SourceOrigin::TopLevel,
             base_dir: None,
         },
         disable_model_invocation: false,
@@ -1194,8 +1194,10 @@ pub(crate) fn g_t2_skill_loaded(t2_skill_bdd: &T2SkillBdd, body: String) {
 #[when("对含技能引用的输入展开技能")]
 pub(crate) fn w_t2_expand(t2_skill_bdd: &T2SkillBdd) {
     let skills = t2_skill_bdd.skills.borrow().clone();
-    let out =
-        xylitol::agent::prompt::skill_expand::expand_skill_refs("请执行 $greet 与 $nope", &skills);
+    let out = xylitol_runtime::agent::prompt::skill_expand::expand_skill_refs(
+        "请执行 $greet 与 $nope",
+        &skills,
+    );
     *t2_skill_bdd.expanded.borrow_mut() = out;
 }
 
@@ -1224,7 +1226,7 @@ pub fn t2_schema_bdd() -> T2SchemaBdd {
 
 #[when("检查内置工具的参数 schema")]
 pub(crate) fn w_t2_check_schemas(t2_schema_bdd: &T2SchemaBdd) {
-    let schemas = xylitol::infra::tools::default_tools()
+    let schemas = xylitol_official_plugin_tools::default_tools()
         .iter()
         .map(|t| (t.name().to_string(), t.parameters_schema()))
         .collect();
@@ -1268,7 +1270,7 @@ pub(crate) fn t_t2_fs_no_timeout(t2_schema_bdd: &T2SchemaBdd) {
 // ── agent-todo：SSOT 网关与两工具语义（r1119/r1121/r1123/r1125/r1126/r1842）──
 
 pub struct T2TodoBdd {
-    pub gw: RefCell<Option<Arc<xylitol::infra::tools::todo::SessionAgentTodoGateway>>>,
+    pub gw: RefCell<Option<Arc<xylitol_official_plugin_tools::todo::SessionAgentTodoGateway>>>,
     pub store: RefCell<Option<Arc<dyn xylitol_plugin_sdk::XySessionStore>>>,
     pub sid: RefCell<String>,
     pub last_err: RefCell<Option<String>>,
@@ -1289,14 +1291,14 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
         return;
     }
     let dir = tempfile::tempdir().unwrap();
-    let mgr = xylitol::infra::session::SessionManager::new(dir.path().to_path_buf());
+    let mgr = xylitol_official_plugin_session::SessionManager::new(dir.path().to_path_buf());
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
     let sid = "s-todo-c2827".to_string();
     let sid2 = sid.clone();
     futures::executor::block_on(async {
         store.create(&sid2, Some("/tmp"), None).await.unwrap();
     });
-    let gw = xylitol::infra::tools::todo::SessionAgentTodoGateway::new(store.clone());
+    let gw = xylitol_official_plugin_tools::todo::SessionAgentTodoGateway::new(store.clone());
     futures::executor::block_on(gw.bind_session(Some(sid.clone())));
     *t2_todo_bdd.sid.borrow_mut() = sid;
     *t2_todo_bdd.store.borrow_mut() = Some(store);
@@ -1307,7 +1309,7 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
 fn t2_rewrite(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
     t2_todo_mount(t2_todo_bdd);
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    let tools = xylitol::infra::tools::todo::todo_tools(gw);
+    let tools = xylitol_official_plugin_tools::todo::todo_tools(gw);
     let tool = tools
         .iter()
         .find(|t| t.name() == "todo_rewrite")
@@ -1320,7 +1322,7 @@ fn t2_rewrite(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<Strin
 
 fn t2_update(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    let tools = xylitol::infra::tools::todo::todo_tools(gw);
+    let tools = xylitol_official_plugin_tools::todo::todo_tools(gw);
     let tool = tools
         .iter()
         .find(|t| t.name() == "todo_update")
@@ -1441,7 +1443,7 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
     // 直接驱动保全：压后窗口无 todo → 重追加最新快照。
     futures::executor::block_on({
         let sid_ref: &str = &sid;
-        xylitol::agent::compaction::ensure_agent_todo_after_compact(
+        xylitol_official_plugin_compaction::ensure_agent_todo_after_compact(
             store.as_ref(),
             sid_ref,
             &entries_before,
@@ -1451,7 +1453,7 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
 
 #[then("最新快照被重追加到会话")]
 pub(crate) fn t_t2_todo_reappended(t2_todo_bdd: &T2TodoBdd) {
-    use xylitol::protocol::session::latest_agent_todo;
+    use xylitol_plugin_sdk::session::latest_agent_todo;
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
     let entries = futures::executor::block_on(store.load_leaf_branch(&sid)).expect("entries");
@@ -1464,7 +1466,7 @@ pub(crate) fn t_t2_todo_reappended(t2_todo_bdd: &T2TodoBdd) {
 
 #[then("导出条目含 agent_todo 自定义记录而非用户消息")]
 pub(crate) fn t_t2_todo_export(t2_todo_bdd: &T2TodoBdd) {
-    use xylitol::protocol::session::CUSTOM_TYPE_AGENT_TODO;
+    use xylitol_plugin_sdk::session::CUSTOM_TYPE_AGENT_TODO;
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
     let entries = futures::executor::block_on(store.load_entries(&sid)).expect("entries");
@@ -1542,7 +1544,7 @@ pub(crate) fn g_t2_res_layout(t2_res_bdd: &T2ResBdd) {
 
 #[when("经 loader 列出已发现资源")]
 pub(crate) fn w_t2_res_list(t2_res_bdd: &T2ResBdd) {
-    use xylitol::infra::resource::DefaultResourceLoader;
+    use xylitol::wiring::infra::resource::DefaultResourceLoader;
 
     let cwd = t2_res_bdd.cwd.borrow().as_ref().expect("cwd").clone();
     let agent_dir = t2_res_bdd
@@ -1587,9 +1589,9 @@ pub(crate) fn w_t2_bash_exclude() {
 
 #[then("排除的 bash 条目不进上下文而普通条目保留")]
 pub(crate) fn t_t2_bash_exclude_filtered() {
-    use xylitol::protocol::message::BashExecutionStatus;
-    use xylitol::protocol::session::build_context_entries;
-    let exclude = xylitol::protocol::session::bash_execution_message_entry(
+    use xylitol_plugin_sdk::message::BashExecutionStatus;
+    use xylitol_plugin_sdk::session::build_context_entries;
+    let exclude = xylitol_plugin_sdk::session::bash_execution_message_entry(
         "b1",
         "make test",
         "all ok",
@@ -1600,7 +1602,7 @@ pub(crate) fn t_t2_bash_exclude_filtered() {
         true, // exclude_from_context
         BashExecutionStatus::Done,
     );
-    let keep = xylitol::protocol::session::bash_execution_message_entry(
+    let keep = xylitol_plugin_sdk::session::bash_execution_message_entry(
         "b2",
         "make build",
         "ok",
@@ -1669,13 +1671,16 @@ pub(crate) fn t_t2_input_items_typed(t2_schema_bdd: &T2SchemaBdd) {
 #[when("以附加指令合成摘要请求前缀")]
 pub(crate) fn w_t4_additional_focus() {
     let base = "GOAL_SKELETON";
-    let with = xylitol::agent::compaction::llm_summarizer::with_additional_focus(
+    let with = xylitol_official_plugin_compaction::llm_summarizer::with_additional_focus(
         base,
         Some("重点看错误处理"),
     );
-    let blank =
-        xylitol::agent::compaction::llm_summarizer::with_additional_focus(base, Some("   "));
-    let none = xylitol::agent::compaction::llm_summarizer::with_additional_focus(base, None);
+    let blank = xylitol_official_plugin_compaction::llm_summarizer::with_additional_focus(
+        base,
+        Some("   "),
+    );
+    let none =
+        xylitol_official_plugin_compaction::llm_summarizer::with_additional_focus(base, None);
     T4_PRINT_OUT.with(|o| *o.borrow_mut() = format!("with:{with}\nblank:{blank}\nnone:{none}"));
 }
 
@@ -1705,7 +1710,7 @@ pub(crate) fn t_t4_focus_appended() {
 // ── domain-compaction r1416：policy 指纹 ─────────────────────────
 
 pub struct T4PolicyBdd {
-    pub entry: RefCell<Option<xylitol::infra::session::CompactionEntry>>,
+    pub entry: RefCell<Option<xylitol_official_plugin_session::CompactionEntry>>,
 }
 
 #[fixture]
@@ -1755,7 +1760,7 @@ pub(crate) fn t_t4_policy_fields(t4_policy_bdd: &T4PolicyBdd) {
 #[then("legacy 无快照条目不当作当前配置")]
 pub(crate) fn t_t4_policy_legacy() {
     // 缺失 policy 的 legacy 条目：字段为 None，消费端 MUST NOT 静默解释为当前配置。
-    let legacy: Option<xylitol::protocol::session::CompactionPolicySnapshot> = None;
+    let legacy: Option<xylitol_plugin_sdk::session::CompactionPolicySnapshot> = None;
     assert!(
         legacy.is_none(),
         "c2827: legacy 条目 MUST 以缺省标记与完整快照可区分"
@@ -1766,7 +1771,7 @@ pub(crate) fn t_t4_policy_legacy() {
 
 #[when("对产品命令样例做线协议序列化与反序列化往返")]
 pub(crate) fn w_t4_command_roundtrip() {
-    use xylitol::protocol::Command;
+    use xylitol_protocol::Command;
     let samples = vec![
         Command::SwitchSession {
             session_path: "s1".into(),
@@ -1810,15 +1815,15 @@ pub fn t4_print_bdd() -> T4PrintBdd {
 }
 
 pub(crate) fn t4_stream(
-    events: Vec<xylitol::agent::runtime::XyEvent>,
-) -> xylitol::app::tui::driver::EventStream {
+    events: Vec<xylitol_runtime::agent::runtime::XyEvent>,
+) -> xylitol_app_tui::driver::EventStream {
     Box::pin(futures::stream::iter(events))
 }
 
 #[when("渲染 print 事件流到缓冲")]
 pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
-    use xylitol::agent::runtime::XyEvent;
-    use xylitol::protocol::message::{AgentMessage, AgentPart, XyLlmMessage};
+    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
+    use xylitol_runtime::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::MessageStart {
             role: "assistant".into(),
@@ -1850,7 +1855,7 @@ pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() =
         Some(r.map_err(|e| xylitol::XyDriverError::message(e.to_string())));
@@ -1871,7 +1876,7 @@ pub(crate) fn t_t4_delta_only(t4_print_bdd: &T4PrintBdd) {
 
 #[when("渲染含工具执行的事件流到缓冲")]
 pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
-    use xylitol::agent::runtime::XyEvent;
+    use xylitol_runtime::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::ToolExecutionStart {
             id: "t1".into(),
@@ -1888,7 +1893,7 @@ pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() =
         Some(r.map_err(|e| xylitol::XyDriverError::message(e.to_string())));
@@ -1896,13 +1901,12 @@ pub(crate) async fn w_t4_render_tool(t4_print_bdd: &T4PrintBdd) {
 
 #[then("工具名与结果摘要按人话格式生成")]
 pub(crate) fn t_t4_tool_display() {
-    let start =
-        xylitol::app::cli::format_tool_start_lines("read", &serde_json::json!({"path": "a.rs"}));
+    let start = xylitol::cli::format_tool_start_lines("read", &serde_json::json!({"path": "a.rs"}));
     assert!(
         start.iter().any(|l| l.contains("read")),
         "c2827: 工具开始行应含工具名：{start:?}"
     );
-    let end = xylitol::app::cli::format_tool_end_line("read", "file body\nline2\nline3\nline4");
+    let end = xylitol::cli::format_tool_end_line("read", "file body\nline2\nline3\nline4");
     assert!(
         end.contains("read") && end.contains("file body"),
         "c2827: 工具结束行应含名称与结果摘要：{end}"
@@ -1911,16 +1915,16 @@ pub(crate) fn t_t4_tool_display() {
 
 #[when("渲染含错误的事件流到缓冲")]
 pub(crate) async fn w_t4_render_error(t4_print_bdd: &T4PrintBdd) {
-    use xylitol::agent::runtime::XyEvent;
+    use xylitol_runtime::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::TextDelta("partial".into()),
-        XyEvent::Error(xylitol::protocol::lifecycle::XyEventError::new(
+        XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
             "provider", "boom",
         )),
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() =
         Some(r.map_err(|e| xylitol::XyDriverError::message(e.to_string())));
@@ -1942,7 +1946,7 @@ pub(crate) fn t_t4_error_exit(t4_print_bdd: &T4PrintBdd) {
 
 #[when("渲染含单次工具失败的事件流到缓冲")]
 pub(crate) async fn w_t4_render_tool_fail(t4_print_bdd: &T4PrintBdd) {
-    use xylitol::agent::runtime::XyEvent;
+    use xylitol_runtime::agent::runtime::XyEvent;
     let events = vec![
         XyEvent::ToolExecutionEnd {
             id: "t1".into(),
@@ -1954,7 +1958,7 @@ pub(crate) async fn w_t4_render_tool_fail(t4_print_bdd: &T4PrintBdd) {
     ];
     let mut stream = t4_stream(events);
     let mut out: Vec<u8> = Vec::new();
-    let r = xylitol::app::cli::render_stream(&mut stream, &mut out).await;
+    let r = xylitol::cli::render_stream(&mut stream, &mut out).await;
     *t4_print_bdd.out.borrow_mut() = out;
     *t4_print_bdd.result.borrow_mut() =
         Some(r.map_err(|e| xylitol::XyDriverError::message(e.to_string())));
@@ -1975,7 +1979,7 @@ pub(crate) fn t_t4_tool_fail_ok(t4_print_bdd: &T4PrintBdd) {
 
 #[then("登录引导含 /login 与文档路径")]
 pub(crate) fn t_t4_login_help() {
-    let msg = xylitol::app::cli::get_provider_login_help();
+    let msg = xylitol::cli::get_provider_login_help();
     assert!(
         msg.contains("/login") && (msg.contains("providers.md") || msg.contains("docs")),
         "c2827: 登录引导应引用 /login 与文档：{msg}"
@@ -1984,7 +1988,7 @@ pub(crate) fn t_t4_login_help() {
 
 #[then("无可用模型提示衔接登录引导")]
 pub(crate) fn t_t4_no_models() {
-    let msg = xylitol::app::cli::format_no_models_available_message();
+    let msg = xylitol::cli::format_no_models_available_message();
     assert!(
         msg.contains("No models available") && msg.contains("/login"),
         "c2827: 无模型提示应存在并引导登录：{msg}"
@@ -1994,7 +1998,7 @@ pub(crate) fn t_t4_no_models() {
 #[then("未选模型展示占位而非厂商默认名")]
 pub(crate) fn t_t4_unset_model() {
     assert_eq!(
-        xylitol::app::core::bootstrap::UNSET_MODEL_DISPLAY,
+        xylitol::wiring::bootstrap::UNSET_MODEL_DISPLAY,
         "NOT-SET",
         "c2827: 未选模型占位 MUST NOT 冒充厂商默认模型名"
     );
@@ -2002,7 +2006,7 @@ pub(crate) fn t_t4_unset_model() {
 
 #[then("无 api key 提示含 provider 名")]
 pub(crate) fn t_t4_no_api_key() {
-    let msg = xylitol::app::cli::format_no_api_key_found_message("openai");
+    let msg = xylitol::cli::format_no_api_key_found_message("openai");
     assert!(
         msg.contains("openai"),
         "c2827: 无 key 提示应含 provider 名：{msg}"
@@ -2019,7 +2023,7 @@ pub(crate) fn t_t4_no_api_key() {
 pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
     use crate::bdd::helpers::make_agent;
     use futures::StreamExt;
-    use xylitol::infra::provider::factory::{
+    use xylitol::wiring::infra::provider::factory::{
         reset_fake_state, set_fake_text, set_fake_tool_call, set_fake_tool_result,
     };
 
@@ -2064,12 +2068,15 @@ pub fn t6_mcp_bdd() -> T6McpBdd {
     }
 }
 
-fn t6_fixture_config(name: &str, tools: &str) -> xylitol::infra::config::types::McpServerConfig {
+fn t6_fixture_config(
+    name: &str,
+    tools: &str,
+) -> xylitol::wiring::infra::config::types::McpServerConfig {
     let mut env = std::collections::HashMap::new();
     env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), tools.into());
-    xylitol::infra::config::types::McpServerConfig {
+    xylitol::wiring::infra::config::types::McpServerConfig {
         name: name.into(),
-        transport: xylitol::infra::config::types::McpTransportKind::Stdio,
+        transport: xylitol::wiring::infra::config::types::McpTransportKind::Stdio,
         command: Some("python3".into()),
         args: Some(vec![
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -2084,9 +2091,9 @@ fn t6_fixture_config(name: &str, tools: &str) -> xylitol::infra::config::types::
 
 async fn t6_discover(
     t6_mcp_bdd: &T6McpBdd,
-    servers: &[xylitol::infra::config::types::McpServerConfig],
+    servers: &[xylitol::wiring::infra::config::types::McpServerConfig],
 ) {
-    let result = xylitol::infra::mcp::connect_and_discover(servers).await;
+    let result = xylitol_official_plugin_mcp::connect_and_discover(servers).await;
     let Some((manager, tools)) = result else {
         panic!("c2829: 非空配置 MUST 构造 manager");
     };
@@ -2137,14 +2144,14 @@ pub(crate) fn t_t6_mcp_config_driven(_t6_mcp_bdd: &T6McpBdd) {
 
 #[when("以无效 MCP 条目装配")]
 pub(crate) async fn w_t6_mcp_invalid(t6_mcp_bdd: &T6McpBdd) {
-    let bad = xylitol::infra::config::types::McpServerConfig {
+    let bad = xylitol::wiring::infra::config::types::McpServerConfig {
         name: "bad".into(),
-        transport: xylitol::infra::config::types::McpTransportKind::Stdio,
+        transport: xylitol::wiring::infra::config::types::McpTransportKind::Stdio,
         command: None,
         ..Default::default()
     };
     // 无效条目不整体失败：仍构造 manager，坏条目留在诊断。
-    let result = xylitol::infra::mcp::connect_and_discover(&[bad]).await;
+    let result = xylitol_official_plugin_mcp::connect_and_discover(&[bad]).await;
     let Some((manager, tools)) = result else {
         panic!("c2829: 含无效条目的非空配置 MUST 仍构造 manager");
     };

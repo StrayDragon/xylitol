@@ -9,7 +9,7 @@
 crate 边界按替换、开关、生命周期划，**不得**按 `app / agent / infra` 各拆一 crate。**不得**再抽 `xylitol-domain` / `xylitol-types` / `xylitol-assemble` / `xylitol-kernel` / `xylitol-host`。**不得**用 `xylitol-protocol` 承接 plugin-sdk。**不得**把发给模型的形状搬进主仓 `xylitol`。分层纪律留在每个 crate 内部。
 
 ```text
-我 → xylitol-app-tui → xylitol-protocol → xylitol-serve（mapping）
+我 → xylitol-app-tui → xylitol-protocol → xylitol-serve（监听 + mapping）
    → xylitol-runtime（准入 + 内环 + 组稿）
    → 端口：session / model / tools / compaction
 
@@ -72,6 +72,7 @@ flowchart TB
   xylitol_runtime --> xylitol_plugin_sdk
   xylitol_serve --> xylitol_runtime
   xylitol_serve --> xylitol_protocol
+  xylitol_serve --> xylitol_plugin_sdk
   xylitol_app_print --> xylitol_runtime
   xylitol_app_tui --> xylitol_protocol
   xylitol_app_tui --> xylitol_tui
@@ -91,7 +92,7 @@ flowchart TB
 | `xylitol-plugin-sdk` | 词表 + 端口 + 错误。插件作者只依赖这一包 | 认识信封；放 HTTP / 假模型 / 观测写出；再拆 `xylitol-types` |
 | `xylitol-protocol` | 四象限信封 + fory-v3 + `PROTOCOL_VERSION` | 认识端口；认识 `XyEvent`；承接 plugin-sdk |
 | `xylitol-runtime` | `XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入。进程内直调合法 | 接线；依赖官方插件；依赖信封；为此编 fory |
-| `xylitol-serve` | 监听；`XyEvent` ↔ `v3::Event` mapping | 把 mapping 放进 protocol / plugin-sdk / runtime |
+| `xylitol-serve` | 监听；`XyEvent` ↔ `v3::Event` mapping（词表经 plugin-sdk） | 把 mapping 放进 protocol / plugin-sdk / runtime |
 | `xylitol-official-plugin-*` | 只依赖 plugin-sdk。依赖用端口声明，由组合根注入 | 插件之间 `use`；依赖 protocol；客户端进这个前缀 |
 | `xylitol-app-tui` | 信封 + `xylitol-tui`；Host 词表（`XyEvent` / `SessionEntry`）经 attach 投影 | 依赖 runtime、官方插件 |
 | `xylitol-app-print` | 同进程直调 runtime | 依赖 serve / protocol；编 fory |
@@ -102,7 +103,7 @@ flowchart TB
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
-每个 crate 内部仍守依赖方向（runtime ↛ 插件、↛ 信封；插件之间不得 `use`）。根包 `src/` 是组合根：CLI / composition / Host listen / `agent` facade。
+每个 crate 内部仍守依赖方向（runtime ↛ 插件、↛ 信封；插件之间不得 `use`）。根包 `src/` 是组合根：CLI / wiring / embed。占用与 Driver 暂在 `wiring` 内；监听与 `XyEvent` ↔ v3 mapping 在 `xylitol-serve`。
 
 ### `AgentCapabilities` 职责边界
 
@@ -110,9 +111,9 @@ flowchart TB
 
 | 留 | 不留（归端 / Driver） |
 |---|---|
-| model 选择与 thinking | 产品 slash 词表（`app::product_commands`） |
-| tools + freeze / hooks / permission | bang `!` / `!!`（`app::bang_exec`） |
-| session id + store + fork/stats | HTML/JSONL export-import（`app::session_export`） |
+| model 选择与 thinking | 产品 slash 词表（`wiring::product_commands`） |
+| tools + freeze / hooks / permission | bang `!` / `!!`（`wiring::bang_exec`） |
+| session id + store + fork/stats | HTML/JSONL export-import（`wiring::session_export`） |
 | context_policy + prompt 装配 | — |
 | compaction 门禁 | — |
 | steer / follow-up queues | — |

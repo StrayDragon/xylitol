@@ -757,7 +757,7 @@ fn tmp_root(sess: &XySessionStore) -> std::path::PathBuf {
 }
 
 fn exporter() -> xylitol::SessionExporter {
-    use xylitol::infra::export::StdExportIo;
+    use xylitol::wiring::infra::export::StdExportIo;
     xylitol::SessionExporter::new(Some(std::sync::Arc::new(StdExportIo::new())))
 }
 
@@ -904,7 +904,7 @@ async fn then_cwd_validate_err_both(
 
 #[when("向会话追加关联 {call_id:string} 的工具结果消息 {text:string}")]
 async fn when_append_tool_result(sess: &XySessionStore, call_id: String, text: String) {
-    use xylitol::protocol::message::{AgentMessage, AgentPart};
+    use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
     sess.ensure_mgr();
     let id = sess.current_id.borrow().clone().expect("current session");
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();

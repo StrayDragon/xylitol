@@ -327,8 +327,8 @@ pub fn prompt_bdd() -> PromptBdd {
 
 #[given("工具集含 bash 且其 prompt_guidelines 非空")]
 fn g_pt9_bash_guidelines(prompt_bdd: &PromptBdd) {
-    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
     use xylitol_plugin_sdk::XyTool;
+    use xylitol_runtime::agent::prompt::{SystemPromptOpts, build_system_prompt};
 
     let bash = BashTool::default();
     assert!(
@@ -367,7 +367,7 @@ fn t_pt9_guidelines(prompt_bdd: &PromptBdd) {
 
 #[given("custom_prompt 或 SYSTEM.md 整段替换默认正文且未附 Available tools")]
 fn g_pt9_custom(prompt_bdd: &PromptBdd) {
-    use xylitol::agent::prompt::{SystemPromptOpts, build_system_prompt};
+    use xylitol_runtime::agent::prompt::{SystemPromptOpts, build_system_prompt};
 
     let opts = SystemPromptOpts {
         custom_prompt: Some("CUSTOM_ONLY_BODY".into()),
@@ -404,7 +404,7 @@ fn g_pt3_prompts_dir(ws: &crate::bdd::fixtures::Workspace) {
 fn w_pt3_discover(ws: &crate::bdd::fixtures::Workspace, prompt_bdd: &PromptBdd) {
     use std::path::PathBuf;
 
-    use xylitol::infra::resource::DefaultResourceLoader;
+    use xylitol::wiring::infra::resource::DefaultResourceLoader;
 
     let cwd = PathBuf::from(ws.ws("."));
     let agent_dir = cwd.join(".xylitol");
@@ -426,7 +426,7 @@ fn w_pt3_discover(ws: &crate::bdd::fixtures::Workspace, prompt_bdd: &PromptBdd) 
     "get_commands 不含 template:greet 或 /greet 模板命令且 loader 不将 greet 注册为 prompt 模板"
 )]
 fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
-    use xylitol::app::product_commands::product_slash_commands;
+    use xylitol::wiring::product_commands::product_slash_commands;
 
     let list_out = prompt_bdd.prompt.borrow();
     assert!(

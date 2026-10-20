@@ -5,15 +5,9 @@
 //! ## Public API = `embed` + curated `Xy*` re-exports
 //!
 //! The only externally reachable surface is the [`embed`] seam plus the
-//! curated re-exports below. `agent` / `infra` are public since c2837 (BDD
-//! independent integration-test target needs them reachable outside the
-//! crate); `utils` stays `pub(crate)`; `protocol::wire`
-//! and the root `Xy*` re-exports are the shared vocabulary. There is no
-//! second stable face: deep module paths are not a stability promise —
-//! extend the seam instead.
-
-// c2838: intra-doc 链接已逐处治理（BROKEN 补路径、PRIVATE 改文本），
-// 移除 allow——rustdoc 链接 lint 恢复为默认告警完整性。
+//! curated re-exports below. Composition lives in [`wiring`]. Occupancy
+//! (session slots) stays in [`wiring`] until `XyInProcessDriver` moves to
+//! `xylitol-runtime`.
 //!
 //! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
@@ -34,17 +28,10 @@
 //! [`embed::McpSession`]. Script hooks are configured via
 //! [`embed::BuildAgentOptions::hooks_config`]; replaceable port is [`XyHookBus`].
 //!
-//! Not exported from `embed`: `dispatch`, `XyRemoteDriver`, infra concrete types
-//! (`HookDispatcher`, `HookEvent`).
-//!
 //! Visibility is enforced by the compiler, not convention:
 //!
-//! Since c2837, `agent` / `infra` are public (the BDD independent
-//! integration-test target reaches them as `xylitol::agent::…`); `utils`
-//! remains `pub(crate)` and is still a hard boundary:
-//!
 //! ```compile_fail
-//! // `utils` is `pub(crate)` — external crates cannot reach it.
+//! // Internal helpers are not a public crate root module.
 //! use xylitol::utils::sync::lock_mutex;
 //! ```
 //!
@@ -54,37 +41,34 @@
 //! use xylitol::XyDriver as _;
 //! ```
 
-// `agent`/`infra` 由 pub(crate) 升 pub：BDD 独立集成测试 target（tests/bdd.rs）
-// 只能访问 lib 的 pub 项；纯可见性扩张，无行为变化（c2837 编译隔离）。
-pub mod agent;
-pub mod app;
 pub mod embed;
-pub mod infra;
-pub mod protocol;
-pub(crate) mod utils;
+pub mod wiring;
 
-// ── Curated `pub use` (c500 / architecture.ar09) ─────────────────────
+#[cfg(feature = "cli")]
+pub mod cli;
+
+// ── Curated `pub use` ───────────────────────────────────────────────
 
 #[cfg(feature = "server")]
-pub use crate::app::core::attach::attach_preflight_with;
-pub use crate::app::core::attach::{
+pub use crate::wiring::attach::attach_preflight_with;
+pub use crate::wiring::attach::{
     DEFAULT_ATTACH_URL, attach_fail_message, probe_host, resolve_attach_url,
 };
 #[cfg(feature = "server")]
-pub use crate::app::core::driver::{LinkHealth, LinkTunings, XyRemoteDriver};
-pub use crate::app::core::driver::{XyDriver, XyDriverError, XyInProcessDriver};
+pub use crate::wiring::driver::{LinkHealth, LinkTunings, XyRemoteDriver};
+pub use crate::wiring::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 #[cfg(feature = "server")]
-pub use crate::app::core::host_client::HttpWsClient;
-pub use crate::app::core::host_client::{HostClient, HostClientError, InProcessClient, MuxStream};
-/// att ex 族：无头导出/导入协作者（BDD 直驱；真身 app::core 私有链）。
-pub use crate::app::core::session_export::SessionExporter;
-pub use crate::protocol::error::{
+pub use crate::wiring::host_client::HttpWsClient;
+pub use crate::wiring::host_client::{HostClient, HostClientError, InProcessClient, MuxStream};
+pub use crate::wiring::session_export::SessionExporter;
+pub use xylitol_plugin_sdk::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
-pub use crate::protocol::lifecycle::{XyEvent, XyEventError};
-pub use crate::protocol::model::{XyChunk, XyModelMeta, XyToolSchema};
-pub use crate::protocol::model::{XyModelConfig, XyModelKind};
-pub use crate::protocol::{
+pub use xylitol_plugin_sdk::lifecycle::{XyEvent, XyEventError};
+pub use xylitol_plugin_sdk::model::{
+    XyChunk, XyModelConfig, XyModelKind, XyModelMeta, XyToolSchema,
+};
+pub use xylitol_plugin_sdk::{
     NoopHookBus, XyBashExecutor, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome, XyModel,
     XyModelBuilder, XyPermission, XySecretResolver, XySessionStore, XyStream, XyTool,
 };
@@ -92,8 +76,21 @@ pub use crate::protocol::{
 /// Application entry point.
 #[cfg(feature = "cli")]
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    app::cli::run().await
+    cli::run().await
 }
 
 #[cfg(test)]
-mod tests;
+#[path = "../tests/inner/provider_http_stream_abort.rs"]
+mod provider_http_stream_abort;
+
+#[cfg(test)]
+#[path = "../tests/inner/token_estimator_bench.rs"]
+mod token_estimator_bench;
+
+#[cfg(test)]
+#[path = "../tests/inner/lab_compaction_replay.rs"]
+mod lab_compaction_replay;
+
+#[cfg(test)]
+#[path = "../tests/inner/session_fold.rs"]
+mod session_fold;

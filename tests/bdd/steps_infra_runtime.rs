@@ -40,11 +40,11 @@ fn t2_base64_ok(data: &str) -> bool {
 pub(crate) fn w_image_multimodal_payload() {
     let p = std::env::temp_dir().join(format!("xylitol_t2_load_{}.png", std::process::id()));
     std::fs::write(&p, T2_NOISE_PNG).expect("写临时图");
-    let r = xylitol::infra::image::agent_part_from_image_path(&p);
+    let r = xylitol_official_plugin_tools::image::agent_part_from_image_path(&p);
     let _ = std::fs::remove_file(&p);
     let part = r.expect("路径可读 MUST 产出多模态载荷");
     let (mime, data) = match part {
-        xylitol::protocol::message::AgentPart::Image(ic) => {
+        xylitol_plugin_sdk::message::AgentPart::Image(ic) => {
             (ic.media_type, ic.data.unwrap_or_default())
         }
         _ => panic!("MUST 得图片构件"),
@@ -65,11 +65,11 @@ pub(crate) fn t_image_multimodal_payload() {
 pub(crate) fn w_image_part_from_path() {
     let p = std::env::temp_dir().join(format!("xylitol_t2_part_{}.png", std::process::id()));
     std::fs::write(&p, T2_NOISE_PNG).expect("写临时图");
-    let r = xylitol::infra::image::agent_part_from_image_path(&p);
+    let r = xylitol_official_plugin_tools::image::agent_part_from_image_path(&p);
     let _ = std::fs::remove_file(&p);
     let is_image = matches!(
         r.expect("路径 → 构件 MUST 成功"),
-        xylitol::protocol::message::AgentPart::Image(_)
+        xylitol_plugin_sdk::message::AgentPart::Image(_)
     );
     T2_IMG.with(|s| {
         *s.borrow_mut() = Some((
@@ -91,7 +91,7 @@ pub(crate) fn t_image_part_from_path() {
 
 #[when("请求跨平台 bash 定位")]
 pub(crate) fn w_bash_discovery() {
-    let cfg = xylitol::infra::process::shell::find_bash(None);
+    let cfg = xylitol_official_plugin_tools::process::shell::find_bash(None);
     T2_PROC.with(|s| {
         *s.borrow_mut() = Some((
             cfg.shell.to_string_lossy().into_owned(),
@@ -112,7 +112,7 @@ pub(crate) fn t_bash_discovery() {
 pub(crate) async fn w_kill_process_tree() {
     let exited = with_test_timeout(|| async {
         let mut child = t2_spawn_long_child();
-        xylitol::infra::process::group::kill_process_tree(child.id());
+        xylitol_official_plugin_tools::process::group::kill_process_tree(child.id());
         loop {
             if let Ok(Some(_)) = child.try_wait() {
                 return true;

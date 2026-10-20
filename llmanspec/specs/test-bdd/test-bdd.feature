@@ -41,7 +41,7 @@
 
   @req:r1913
   规则: BDD 独立测试目标承载
-    BDD 场景 须由独立集成测试目标承载（tests/bdd.rs，经 cargo test --test bdd 全量执行），不得以 src/tests.rs mod bdd 挂回 lib 测试配置（编译隔离：BDD 曾占 lib 测试编译 ≈53%，独立 target 后 lib 测试编译回落到 ≈20s）。
+    BDD 场景 须由独立集成测试目标承载（tests/bdd.rs，经 cargo test --test bdd 全量执行），不得以 lib 测试配置 mod bdd 挂回（编译隔离：BDD 曾占 lib 测试编译 ≈53%，独立 target 后 lib 测试编译回落到 ≈20s）。
 
     场景: bdd-isolated-target-bound
       当 读取 BDD 挂载接线

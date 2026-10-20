@@ -13,9 +13,9 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::protocol::lifecycle::XyEvent;
-use crate::protocol::message::AgentMessage;
-use crate::protocol::session::SessionEntry;
+use xylitol_plugin_sdk::lifecycle::XyEvent;
+use xylitol_plugin_sdk::message::AgentMessage;
+use xylitol_plugin_sdk::session::SessionEntry;
 use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 
 const WINDOW: u64 = 32_768;
@@ -66,7 +66,7 @@ async fn lab_compaction_replay_floor_invariants() {
     let entries = load_fixture_entries(&fixture).expect("fixture loads");
     assert!(!entries.is_empty(), "fixture must contain entries");
 
-    let mgr = crate::infra::session::SessionManager::in_memory();
+    let mgr = xylitol_official_plugin_session::SessionManager::in_memory();
     let sid = "lab-replay";
     mgr.create(sid, Some("."), None).await.unwrap();
     for entry in &entries {
@@ -74,27 +74,27 @@ async fn lab_compaction_replay_floor_invariants() {
     }
 
     let sink = Arc::new(RecordingSink(Mutex::new(Vec::new())));
-    let orch = crate::agent::compaction::CompactionOrchestrator::new(
-        crate::agent::compaction::CompactionSettings {
+    let orch = xylitol_official_plugin_compaction::CompactionOrchestrator::new(
+        xylitol_runtime::agent::compaction::CompactionSettings {
             enabled: true,
             reserve_tokens: RESERVE,
             keep_recent_tokens: KEEP_RECENT,
             ..Default::default()
         },
     );
-    let fixed = crate::agent::compaction::FixedRequestContext {
+    let fixed = xylitol_runtime::agent::compaction::FixedRequestContext {
         system_prompt: Some("S".repeat(36_000)), // ≈9k tokens, measured shape
         tool_schemas: Vec::new(),
     };
-    let opts = crate::agent::compaction::EstimateOpts {
+    let opts = xylitol_runtime::agent::compaction::EstimateOpts {
         fixed_context: Some(fixed.clone()),
         ..Default::default()
     };
 
     // Round 0: force compact the real history.
-    let model = crate::infra::provider::fake_xy_model(
+    let model = crate::wiring::infra::provider::fake_xy_model(
         "lab-replay",
-        vec![crate::infra::provider::ScenarioStep::text(
+        vec![crate::wiring::infra::provider::ScenarioStep::text(
             "## Goal\nreplayed summary",
         )],
     );
@@ -102,7 +102,10 @@ async fn lab_compaction_replay_floor_invariants() {
     orch.compact(
         &mgr,
         sid,
-        &crate::agent::model::task_model::CompactionSummaryBinding::for_test(model, "lab-replay"),
+        &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding::for_test(
+            model,
+            "lab-replay",
+        ),
         sink.as_ref(),
         None,
         WINDOW,
@@ -170,8 +173,8 @@ async fn lab_compaction_replay_floor_invariants() {
             };
             mgr.append(
                 sid,
-                &SessionEntry::Message(crate::protocol::session::MessageEntry {
-                    base: crate::protocol::session::EntryBase {
+                &SessionEntry::Message(xylitol_plugin_sdk::session::MessageEntry {
+                    base: xylitol_plugin_sdk::session::EntryBase {
                         entry_type: "message".into(),
                         id,
                         parent_id: None,
@@ -183,9 +186,9 @@ async fn lab_compaction_replay_floor_invariants() {
             .await
             .unwrap();
         }
-        let model = crate::infra::provider::fake_xy_model(
+        let model = crate::wiring::infra::provider::fake_xy_model(
             "lab-replay",
-            vec![crate::infra::provider::ScenarioStep::text(
+            vec![crate::wiring::infra::provider::ScenarioStep::text(
                 "## Goal\nreplayed summary",
             )],
         );
@@ -193,7 +196,7 @@ async fn lab_compaction_replay_floor_invariants() {
             .maybe_auto_compact(
                 &mgr,
                 sid,
-                &crate::agent::model::task_model::CompactionSummaryBinding::for_test(
+                &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding::for_test(
                     model,
                     "lab-replay",
                 ),

@@ -10,10 +10,10 @@
 use criterion::{BenchmarkId, Criterion};
 use std::hint::black_box;
 
-use crate::agent::compaction::token_estimator::{EstimateOpts, estimate_context_tokens_with};
-use crate::agent::prompt::AgentStatusBar;
-use crate::protocol::message::{AgentMessage, AgentPart, XyLlmMessage, XyStopReason, XyUsage};
-use crate::protocol::model::TokenProvenance;
+use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage, XyStopReason, XyUsage};
+use xylitol_plugin_sdk::model::TokenProvenance;
+use xylitol_plugin_sdk::token_estimator::{EstimateOpts, estimate_context_tokens_with};
+use xylitol_runtime::agent::prompt::AgentStatusBar;
 
 fn sample_messages(turns: usize) -> Vec<AgentMessage> {
     (0..turns)

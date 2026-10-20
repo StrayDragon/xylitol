@@ -10,7 +10,9 @@
 
 ## 现在
 
-下一刀是 **[S1 残差](#S1)**：Host listen 迁入 `xylitol-serve`；根 `src/` 收到 [§2.2.1](#ROOTSRC) 五文件；取消 `TRANSITION_EXEMPT`。
+下一刀是 **[S2](#S2)**：会话 = instance。S1 完成。
+
+S1d 收口：根 `src/*.rs` 只剩 [§2.2.1](#ROOTSRC) 五文件。占用 / Driver 在 `wiring` 内；迁进 `xylitol-serve` 要等 `XyInProcessDriver` 进 runtime，不挡 S2。
 
 主线是 rutis 接入，顺序 **S1 → S2 → S3 → S4 → S5**，crate 图以 [§2](#TARGET) 为准。延后项见 [§5](#DEFER)，不插入主线。
 
@@ -217,6 +219,7 @@ flowchart TB
   xylitol_runtime --> xylitol_plugin_sdk
   xylitol_serve --> xylitol_runtime
   xylitol_serve --> xylitol_protocol
+  xylitol_serve --> xylitol_plugin_sdk
   xylitol_app_print --> xylitol_runtime
   xylitol_app_tui --> xylitol_protocol
   xylitol_app_tui --> xylitol_tui
@@ -253,6 +256,8 @@ src/
   wiring.rs    apply 七个官方插件，注入 runtime；没配置不 start mcp/hooks
   embed.rs     库用户走同一套 wiring，不经 argv
 ```
+
+`cli/`、`wiring/` 是对应 `.rs` 的子模块。现行 `wiring/` 仍含占用与 Driver；迁进 serve 等 `XyInProcessDriver` 进 runtime。
 
 里面没有 TUI 画布、Print 渲染、HTTP 监听、ReAct、工具实现。那些在 `xylitol-app-*` / `xylitol-serve` / `xylitol-runtime` / `official-plugin-*`。不得把端实现嵌回 `src/app/tui`、`src/app/print`。
 
@@ -292,8 +297,8 @@ S1 失败则 rutis 接入可中止。契约叶与 `xylitol-app-*` 留下。
 |---|---|---|
 | S1a 适配层 + 装配合约 | 完成 | `xylitol-rutis`；`workspace-assembly` 锁定空 MCP/hooks、信封 fory-v3、ReAct 在执行权威 |
 | S1b 组合根切装配器 | 完成 | 根包经 `apply` 挂同一批官方 Host 插件；空 hooks / mcp 不建 fiber |
-| S1c listen 迁载体 | **下一刀** | Host listen 从 `src/app/server` 迁到 `xylitol-serve`。取消 `TRANSITION_EXEMPT` |
-| S1d 根 `src/` 五文件 | 未做 | 收到 [§2.2.1](#ROOTSRC)。`agent` facade（BDD c2837）随变薄改绑定或删 |
+| S1c listen 迁载体 | 完成 | 监听 / 注册 / Gateway 在 `xylitol-serve`；占用经 `OccupiedHost` 注入。根包 `[dependencies]` 无 `salvo` / `fory`。`FORBIDDEN_DEPS` 套到根包 |
+| S1d 根 `src/` 五文件 | 完成 | 根 `src/*.rs` 仅 `main.rs` / `lib.rs` / `cli.rs` / `wiring.rs` / `embed.rs`。门面已删；BDD 改绑 runtime / 官方插件 / `xylitol-app-tui` / plugin-sdk。v3 mapping 在 `xylitol-serve`。占用 / Driver / 剩余 infra 收进 `src/wiring/`。迁占用进 serve 等 `XyInProcessDriver` 进 runtime（runtime ↛ 信封 / 插件），不挡 S2 |
 
 <a id="S2"></a>
 

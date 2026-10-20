@@ -6,7 +6,7 @@
 //! snapshot MUST remain byte-identical — directly verifying spec as31
 //! ("facade-retained": public API unchanged).
 //!
-//! Mechanism: at test time we read `src/agent/capabilities/`, extract every line
+//! Mechanism: at test time we read `crates/xylitol-runtime/src/agent/capabilities/`, extract every line
 //! beginning a `pub` item, normalize trailing args, sort, and compare against
 //! the accepted insta snapshot. A signature change fails the test until the
 //! snapshot is intentionally reviewed and accepted.
@@ -23,7 +23,7 @@ use insta::assert_snapshot;
 /// Locate the capabilities module sources regardless of test working directory.
 fn session_sources() -> Vec<PathBuf> {
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    dir.push("src/agent/capabilities");
+    dir.push("crates/xylitol-runtime/src/agent/capabilities");
     assert!(
         dir.is_dir(),
         "cannot locate capabilities module at {}",

@@ -4,18 +4,18 @@ use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 
 pub struct RcSnap {
-    pub(crate) settings: RefCell<xylitol::infra::settings::Settings>,
-    pub(crate) mgr: RefCell<Option<xylitol::infra::settings::SettingsManager>>,
-    pub(crate) app_config: RefCell<Option<xylitol::infra::config::types::AppConfig>>,
+    pub(crate) settings: RefCell<xylitol::wiring::infra::settings::Settings>,
+    pub(crate) mgr: RefCell<Option<xylitol::wiring::infra::settings::SettingsManager>>,
+    pub(crate) app_config: RefCell<Option<xylitol::wiring::infra::config::types::AppConfig>>,
     pub(crate) local_yaml: RefCell<Option<String>>,
-    pub(crate) compaction: RefCell<Option<xylitol::agent::compaction::CompactionSettings>>,
+    pub(crate) compaction: RefCell<Option<xylitol_official_plugin_compaction::CompactionSettings>>,
     pub(crate) meta: RefCell<Option<XyModelMeta>>,
-    pub(crate) mm: RefCell<Option<xylitol::agent::model::ModelManager>>,
+    pub(crate) mm: RefCell<Option<xylitol_runtime::agent::model::ModelManager>>,
 }
 impl RcSnap {
     fn new() -> Self {
         Self {
-            settings: RefCell::new(xylitol::infra::settings::Settings::default()),
+            settings: RefCell::new(xylitol::wiring::infra::settings::Settings::default()),
             mgr: RefCell::new(None),
             app_config: RefCell::new(None),
             local_yaml: RefCell::new(None),
@@ -27,10 +27,9 @@ impl RcSnap {
 
     fn load_settings_mgr(&self) {
         let s = self.settings.borrow().clone();
-        self.mgr
-            .replace(Some(xylitol::infra::settings::SettingsManager::in_memory(
-                s,
-            )));
+        self.mgr.replace(Some(
+            xylitol::wiring::infra::settings::SettingsManager::in_memory(s),
+        ));
     }
 }
 
@@ -43,14 +42,14 @@ pub(crate) mod rc_load_flag {
 }
 
 fn rc_make_model_manager(
-    cfg: &xylitol::infra::config::types::AppConfig,
-) -> xylitol::agent::model::ModelManager {
+    cfg: &xylitol::wiring::infra::config::types::AppConfig,
+) -> xylitol_runtime::agent::model::ModelManager {
     let meta = cfg.resolve_model_meta("m").expect("resolve_model_meta");
     let mut reg = ModelRegistry::new();
     reg.register(meta);
-    xylitol::agent::model::ModelManager::new(
+    xylitol_runtime::agent::model::ModelManager::new(
         reg,
-        Arc::new(xylitol::infra::provider::factory::build_provider),
+        Arc::new(xylitol::wiring::infra::provider::factory::build_provider),
     )
 }
 #[fixture]
@@ -62,7 +61,7 @@ pub fn rc_snap() -> RcSnap {
 #[given("settings.json 中 steering_mode 设为 one-at-a-time")]
 fn g_rc_steering(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().steering_mode =
-        Some(xylitol::infra::settings::SteeringMode::OneAtATime);
+        Some(xylitol::wiring::infra::settings::SteeringMode::OneAtATime);
 }
 #[given("settings 未配置 steering_mode 与 follow_up_mode")]
 fn g_rc_mode_defaults(rc_snap: &RcSnap) {
@@ -95,12 +94,12 @@ fn g_rc_compaction_anchor(rc_snap: &RcSnap, tokenizer_bdd: &TokenizerBdd) {
 #[given("settings.json 的 compaction 块含 model 或 thinkingLevel 键")]
 fn g_rc_compaction_settings_ignored(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().compaction = Some(
-        xylitol::protocol::compaction_config::XyCompactionSettingsConfig {
+        xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig {
             enabled: Some(true),
             reserve_tokens: Some(1024),
             keep_recent_tokens: Some(2048),
-            model: Some(xylitol::protocol::model_entry::XyModelEntryConfig {
-                provider: xylitol::protocol::model::XyModelKind::Fake,
+            model: Some(xylitol_plugin_sdk::model_entry::XyModelEntryConfig {
+                provider: xylitol_plugin_sdk::model::XyModelKind::Fake,
                 model: "ignored".into(),
                 ..Default::default()
             }),
@@ -250,15 +249,13 @@ fn w_rc_check_settings_no_prompts(rc_snap: &RcSnap) {
 fn w_rc_load_compaction(rc_snap: &RcSnap) {
     let cfg = rc_snap.app_config.borrow().clone().expect("app config");
     let comp = cfg.compaction.expect("compaction section");
-    rc_snap
-        .compaction
-        .replace(Some(xylitol::agent::compaction::CompactionSettings::from(
-            comp,
-        )));
+    rc_snap.compaction.replace(Some(
+        xylitol_official_plugin_compaction::CompactionSettings::from(comp),
+    ));
 }
 #[when("读取默认配置")]
 fn w_rc_default_config(rc_snap: &RcSnap) {
-    let cfg = xylitol::infra::config::types::AppConfig::default();
+    let cfg = xylitol::wiring::infra::config::types::AppConfig::default();
     rc_snap.app_config.replace(Some(cfg));
 }
 #[when("加载配置并 resolve_model_meta")]
@@ -325,7 +322,7 @@ fn t_rc_steering(rc_snap: &RcSnap) {
     let mgr = mgr.as_ref().expect("settings loaded");
     assert_eq!(
         mgr.get_steering_mode(),
-        xylitol::infra::settings::SteeringMode::OneAtATime
+        xylitol::wiring::infra::settings::SteeringMode::OneAtATime
     );
 }
 #[then("二者均为 OneAtATime")]
@@ -334,11 +331,11 @@ fn t_rc_both(rc_snap: &RcSnap) {
     let mgr = mgr.as_ref().expect("settings loaded");
     assert_eq!(
         mgr.get_steering_mode(),
-        xylitol::infra::settings::SteeringMode::OneAtATime
+        xylitol::wiring::infra::settings::SteeringMode::OneAtATime
     );
     assert_eq!(
         mgr.get_follow_up_mode(),
-        xylitol::infra::settings::SteeringMode::OneAtATime
+        xylitol::wiring::infra::settings::SteeringMode::OneAtATime
     );
 }
 #[then("Settings 仅含已接线交付字段")]
@@ -370,7 +367,7 @@ fn t_rc_no_prompts_field(rc_snap: &RcSnap) {
         !v.get("prompts").is_some_and(|p| !p.is_null()),
         "Settings must not expose prompts list field"
     );
-    let legacy: xylitol::infra::settings::Settings =
+    let legacy: xylitol::wiring::infra::settings::Settings =
         serde_json::from_str(r#"{"prompts":["legacy"]}"#).unwrap();
     let legacy_v = serde_json::to_value(&legacy).unwrap();
     assert!(
@@ -390,7 +387,7 @@ fn t_rc_compaction_anchor(rc_snap: &RcSnap) {
 }
 #[then("两键被忽略且不进入运行时 CompactionSettings")]
 fn t_rc_compaction_settings_ignored(rc_snap: &RcSnap) {
-    let merged = xylitol::agent::compaction::settings::merge_compaction_runtime(
+    let merged = xylitol_official_plugin_compaction::settings::merge_compaction_runtime(
         None,
         rc_snap.settings.borrow().compaction.as_ref(),
     );
@@ -476,7 +473,7 @@ fn t_rc_empty_map(tokenizer_bdd: &TokenizerBdd) {
 }
 #[then("该字段不生效（local 被忽略）")]
 fn t_rc_local(rc_snap: &RcSnap) {
-    let cfg = xylitol::infra::config::types::AppConfig::default();
+    let cfg = xylitol::wiring::infra::config::types::AppConfig::default();
     assert!(cfg.model.default_model.is_none());
     let local = rc_snap
         .local_yaml

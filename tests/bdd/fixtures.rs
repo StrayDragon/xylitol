@@ -3,11 +3,11 @@ use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
 use xylitol::XyDriverError;
-use xylitol::agent::capabilities::{ContextUsage, ModelRegistry};
-use xylitol::agent::runtime::XyEvent;
-use xylitol::infra::config::types::HookEntry;
-use xylitol::infra::hooks::DispatchResult;
-use xylitol::infra::session::{SessionEntry, SessionManager};
+use xylitol::wiring::infra::config::types::HookEntry;
+use xylitol_official_plugin_hooks::DispatchResult;
+use xylitol_official_plugin_session::{SessionEntry, SessionManager};
+use xylitol_runtime::agent::capabilities::{ContextUsage, ModelRegistry};
+use xylitol_runtime::agent::runtime::XyEvent;
 
 pub struct Workspace {
     pub dir: RefCell<Option<tempfile::TempDir>>,
@@ -140,10 +140,10 @@ pub struct AgentState {
     /// When set, injected as `XyHookBus` for library-seam wiring BDD (c990).
     pub(crate) wiring_hook_log: RefCell<Option<Arc<WiringHookLog>>>,
     pub(crate) last_op_error: RefCell<Option<String>>,
-    pub compaction_task_model: RefCell<Option<xylitol::protocol::model_entry::XyModelEntryConfig>>,
+    pub compaction_task_model: RefCell<Option<xylitol_plugin_sdk::model_entry::XyModelEntryConfig>>,
     pub compaction_thinking_level: RefCell<Option<String>>,
     pub compaction_binding:
-        RefCell<Option<xylitol::agent::model::task_model::CompactionSummaryBinding>>,
+        RefCell<Option<xylitol_runtime::agent::model::task_model::CompactionSummaryBinding>>,
     pub compaction_notice_count: Cell<u32>,
 }
 impl AgentState {

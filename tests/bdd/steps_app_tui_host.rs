@@ -7,11 +7,11 @@
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol::app::tui::TuiHostEvent as HostEvent;
-use xylitol::app::tui::TuiHostSession as HostSession;
-use xylitol::app::tui::UiRoot;
-use xylitol::app::tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
-use xylitol::app::tui::{BashBlockStatus, UiEntry, UiModel};
+use xylitol_app_tui::TuiHostEvent as HostEvent;
+use xylitol_app_tui::TuiHostSession as HostSession;
+use xylitol_app_tui::UiRoot;
+use xylitol_app_tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
+use xylitol_app_tui::{BashBlockStatus, UiEntry, UiModel};
 use xylitol_plugin_sdk::XyBashResult;
 use xylitol_tui::Component;
 use xylitol_tui::Terminal as _;
@@ -38,10 +38,10 @@ pub struct HostPumpBdd {
     /// 交互模式探针（`{:?}` 形态）。
     pub mode_probe: RefCell<Option<String>>,
     /// c2895：观景态守望前态与最近一次映射提示。
-    pub observe_prev: RefCell<xylitol::app::tui::driver::AttachObserve>,
+    pub observe_prev: RefCell<xylitol_app_tui::driver::AttachObserve>,
     pub observe_notice: RefCell<Option<&'static str>>,
     /// c2470：客户端存储通道（编辑器历史场景）。
-    pub storage: RefCell<Option<std::sync::Arc<xylitol::app::tui::storage::ClientStorage>>>,
+    pub storage: RefCell<Option<std::sync::Arc<xylitol_app_tui::storage::ClientStorage>>>,
 }
 
 #[fixture]
@@ -54,7 +54,7 @@ pub fn host_pump_bdd() -> HostPumpBdd {
         counts: RefCell::new(Vec::new()),
         log_probe: RefCell::new(None),
         mode_probe: RefCell::new(None),
-        observe_prev: RefCell::new(xylitol::app::tui::driver::AttachObserve::Live),
+        observe_prev: RefCell::new(xylitol_app_tui::driver::AttachObserve::Live),
         observe_notice: RefCell::new(None),
         storage: RefCell::new(None),
     }
@@ -245,7 +245,7 @@ pub(crate) async fn t_att11_rail_no_wash(host_pump_bdd: &HostPumpBdd) {
         .lines()
         .find(|l| l.contains("echo done"))
         .unwrap_or_else(|| panic!("bang header line in frame:\n{ansi}"));
-    let theme = xylitol::app::tui::LayoutTheme::product_dark();
+    let theme = xylitol_app_tui::LayoutTheme::product_dark();
     let p = theme.palette();
     let prefix = rail_prefix(xylitol_tui::mix_rgb(p.surface, p.success, 0.72));
     assert!(
@@ -281,14 +281,14 @@ fn alt_enter_event() -> xylitol_tui::InputEvent {
     })
 }
 
-use xylitol::app::tui::harness::esc_event;
+use xylitol_app_tui::harness::esc_event;
 
 /// HostEvent stream for hanging bang/reload: pause, then Esc (+optional
 /// backlog), then park forever (no EOF).
 fn esc_stream(
     after_ms: u64,
     backlog_esc: usize,
-) -> impl futures::Stream<Item = Result<HostEvent, xylitol::app::tui::XyDriverError>> {
+) -> impl futures::Stream<Item = Result<HostEvent, xylitol_app_tui::XyDriverError>> {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(after_ms)).await;
@@ -313,7 +313,7 @@ fn open_busy(bdd: &HostPumpBdd) {
 
 /// Mount a fresh pump with sample tree data (for tree-slot keys).
 fn open_tree_ready(bdd: &HostPumpBdd) {
-    use xylitol::app::tui::harness::harness_sample_message_history_tree;
+    use xylitol_app_tui::harness::harness_sample_message_history_tree;
     let mut pump = fresh_pump();
     pump.driver
         .set_message_history_tree(harness_sample_message_history_tree());
@@ -342,7 +342,7 @@ fn step_key(bdd: &HostPumpBdd, ev: xylitol_tui::InputEvent) {
 }
 
 async fn drain(bdd: &HostPumpBdd) {
-    use xylitol::app::tui::harness::drain_pending;
+    use xylitol_app_tui::harness::drain_pending;
     let mut pump = take_pump(bdd);
     let mut stream = None;
     drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
@@ -688,7 +688,7 @@ fn char_keys(text: &str) -> Vec<xylitol_tui::InputEvent> {
 fn keys_then_escs_stream(
     mut prefix: Vec<xylitol_tui::InputEvent>,
     escs: usize,
-) -> impl futures::Stream<Item = Result<HostEvent, xylitol::app::tui::XyDriverError>> {
+) -> impl futures::Stream<Item = Result<HostEvent, xylitol_app_tui::XyDriverError>> {
     use std::time::Duration;
     prefix.push(enter_event());
 
@@ -733,7 +733,7 @@ pub(crate) async fn g_ath45_hanging_bang(host_pump_bdd: &HostPumpBdd) {
 
 #[when("提交声明为 Inline 的无参 /model")]
 pub(crate) async fn w_atm18_inline_model(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::app::tui::harness::run_interactive_bang;
+    use xylitol_app_tui::harness::run_interactive_bang;
     let mut pump = take_pump(host_pump_bdd);
     let bash = pump.session.take_bash().expect("pending bang");
     let mut stream = None;
@@ -787,7 +787,7 @@ pub(crate) async fn t_atm18_inline_mounted(host_pump_bdd: &HostPumpBdd) {
 
 #[when("提交 busy-Allow 且执行类为 Queued 的 /session-export")]
 pub(crate) async fn w_ath45_queued_export(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::app::tui::harness::run_interactive_bang;
+    use xylitol_app_tui::harness::run_interactive_bang;
     let mut pump = take_pump(host_pump_bdd);
     let bash = pump.session.take_bash().expect("pending bang");
     let mut stream = None;
@@ -837,7 +837,7 @@ pub(crate) async fn t_ath45_executes_after_return(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵提交挂起 bang 并经输入流注入 Esc")]
 pub(crate) async fn w_ati19_hanging_bang_esc(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::app::tui::harness::run_interactive_bang;
+    use xylitol_app_tui::harness::run_interactive_bang;
     let pump = fresh_pump_with_hanging_bash();
     put_pump(host_pump_bdd, pump);
     set_editor(host_pump_bdd, "!sleep 99");
@@ -992,7 +992,7 @@ pub(crate) async fn t_ati28_tree_not_a_verb(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵提交挂起 bang 并注入 Esc 加积压 Esc")]
 pub(crate) async fn w_ati30_first_bang_esc_backlog(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::app::tui::harness::run_interactive_bang;
+    use xylitol_app_tui::harness::run_interactive_bang;
     let pump = fresh_pump_with_hanging_bash();
     put_pump(host_pump_bdd, pump);
     set_editor(host_pump_bdd, "!sleep 1");
@@ -1015,7 +1015,7 @@ pub(crate) async fn w_ati30_first_bang_esc_backlog(host_pump_bdd: &HostPumpBdd) 
 
 #[when("再提交第二条挂起 bang 并注入 Esc")]
 pub(crate) async fn w_ati30_second_bang_esc(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::app::tui::harness::run_interactive_bang;
+    use xylitol_app_tui::harness::run_interactive_bang;
     set_editor(host_pump_bdd, "!sleep 2");
     step_key(host_pump_bdd, enter_event());
     drain(host_pump_bdd).await;
@@ -1061,7 +1061,7 @@ pub(crate) async fn t_ati30_second_still_abortable(host_pump_bdd: &HostPumpBdd) 
 
 #[when("以主机泵开启忙碌流注入正文增量后按下 Esc 再注入迟到增量")]
 pub(crate) async fn w_ati31_late_xy(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::agent::runtime::XyEvent;
+    use xylitol_runtime::agent::runtime::XyEvent;
     open_busy(host_pump_bdd);
     let mut pump = take_pump(host_pump_bdd);
     pump.session
@@ -1188,8 +1188,8 @@ pub(crate) async fn t_ati43_reload_gate_toast(host_pump_bdd: &HostPumpBdd) {
 
 #[when("经输入流注入 Esc 取消挂起重载")]
 pub(crate) async fn w_ati43_cancel_hanging_reload(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::app::tui::XyDriverError;
-    use xylitol::app::tui::harness::run_interactive_reload;
+    use xylitol_app_tui::XyDriverError;
+    use xylitol_app_tui::harness::run_interactive_reload;
     // 结束软闸阶段，换成挂起重载再取消（c1205 形态）。
     let mut pump = take_pump(host_pump_bdd);
     pump.session.end_reload();
@@ -1266,13 +1266,13 @@ async fn c2826_submit_slash(host_pump_bdd: &HostPumpBdd, text: &str) {
         .await
         .expect("pump");
     // Exclusive/Queued 类命令（reload/export 等）在循环归还后由 drain_pending 执行。
-    xylitol::app::tui::harness::drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
+    xylitol_app_tui::harness::drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("drain");
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
 }
 
-fn c2826_slot(host_pump_bdd: &HostPumpBdd) -> xylitol::app::tui::EditorSlotKind {
+fn c2826_slot(host_pump_bdd: &HostPumpBdd) -> xylitol_app_tui::EditorSlotKind {
     let pump = take_pump(host_pump_bdd);
     let root = pump.session.ui_root().expect("ui").clone();
     let slot = root.borrow().slot();
@@ -1435,7 +1435,7 @@ pub(crate) fn t_c2826_lifecycle(host_pump_bdd: &HostPumpBdd) {
     assert!(
         forks
             .iter()
-            .any(|(_, pos)| matches!(pos, xylitol::protocol::session::ForkPosition::At)),
+            .any(|(_, pos)| matches!(pos, xylitol_plugin_sdk::session::ForkPosition::At)),
         "c2826: /session-clone 应走 Fork(At)：{forks:?}"
     );
     assert_eq!(names.len(), 1, "c2826: /session-name 应写入一次");
@@ -1479,7 +1479,7 @@ pub(crate) fn t_c2826_trust(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵完成一轮含已提交 assistant 的对话后提交 {cmd:string}")]
 pub(crate) async fn w_c2826_copy_last(host_pump_bdd: &HostPumpBdd, cmd: String) {
-    use xylitol::agent::runtime::XyEvent;
+    use xylitol_runtime::agent::runtime::XyEvent;
     let cmd = cmd.trim_matches('"');
     {
         let mut pump = host_pump_bdd
@@ -1562,7 +1562,7 @@ pub(crate) fn t_c2826_busy_model_open(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵注入含连接态的资源快照后提交 {cmd:string}")]
 pub(crate) async fn w_c2826_mcp_panel(host_pump_bdd: &HostPumpBdd, cmd: String) {
-    use xylitol::app::tui::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
+    use xylitol_app_tui::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
     let cmd = cmd.trim_matches('"');
     {
         let pump = host_pump_bdd
@@ -1912,7 +1912,7 @@ pub(crate) fn t_c2826_paste_image(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以主机泵开启含正文的忙碌流并在首个增量后 abort 并渲染")]
 pub(crate) async fn w_c2826_abort_partial(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::agent::runtime::XyEvent;
+    use xylitol_runtime::agent::runtime::XyEvent;
     open_busy(host_pump_bdd);
     let mut pump = take_pump(host_pump_bdd);
     pump.session
@@ -1943,7 +1943,7 @@ pub(crate) fn t_c2826_abort_partial(host_pump_bdd: &HostPumpBdd) {
         "c2826: partial 正文应留驻 scrollback：{frame}"
     );
     let pump = take_pump(host_pump_bdd);
-    let has_aborted = xylitol::app::tui::trailing_aborted_note(&pump.session.ui_model().entries);
+    let has_aborted = xylitol_app_tui::trailing_aborted_note(&pump.session.ui_model().entries);
     put_pump(host_pump_bdd, pump);
     assert!(
         has_aborted || frame.to_lowercase().contains("abort"),
@@ -2047,7 +2047,7 @@ pub(crate) async fn w_c2826_submit_multiline(host_pump_bdd: &HostPumpBdd, cmd: S
     pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("pump");
-    xylitol::app::tui::harness::drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
+    xylitol_app_tui::harness::drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("drain");
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
@@ -2086,9 +2086,7 @@ pub(crate) async fn w_c2826_connecting_bang(host_pump_bdd: &HostPumpBdd, cmd: St
             .borrow_mut()
             .take()
             .unwrap_or_else(fresh_pump);
-        use xylitol::app::tui::driver::{
-            LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
-        };
+        use xylitol_app_tui::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
         pump.driver
             .set_loaded_resources_for_driver(LoadedResourcesSnapshot {
                 mcp_configured: 1,
@@ -2125,9 +2123,7 @@ pub(crate) async fn w_c2826_mcp_pending_cue(host_pump_bdd: &HostPumpBdd) {
             .borrow_mut()
             .take()
             .unwrap_or_else(fresh_pump);
-        use xylitol::app::tui::driver::{
-            LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot,
-        };
+        use xylitol_app_tui::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
         pump.driver
             .set_loaded_resources_for_driver(LoadedResourcesSnapshot {
                 mcp_configured: 1,
@@ -2187,11 +2183,11 @@ pub(crate) async fn w_c2826_reload_soft_gate(host_pump_bdd: &HostPumpBdd) {
     set_editor(host_pump_bdd, "草稿上行");
     let mut pump = take_pump(host_pump_bdd);
     let input = futures::stream::iter(vec![
-        Ok::<HostEvent, xylitol::app::tui::XyDriverError>(HostEvent::Tick),
+        Ok::<HostEvent, xylitol_app_tui::XyDriverError>(HostEvent::Tick),
         Ok(HostEvent::Input(enter_event())),
         Ok(HostEvent::Input(esc_event())),
     ]);
-    xylitol::app::tui::run_interactive_reload(&mut pump.session, &mut pump.driver, input)
+    xylitol_app_tui::run_interactive_reload(&mut pump.session, &mut pump.driver, input)
         .await
         .expect("reload loop");
     put_pump(host_pump_bdd, pump);
@@ -2259,7 +2255,7 @@ pub(crate) fn t_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以合成验收链驱动一整轮含工具与 abort 的会话并 /exit")]
 pub(crate) async fn w_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::agent::runtime::XyEvent;
+    use xylitol_runtime::agent::runtime::XyEvent;
     // 1) 提交 → 流式 + 工具 + 完成
     {
         let mut pump = host_pump_bdd
@@ -2440,36 +2436,35 @@ pub(crate) fn t_c2826_single_estimate_refresh(host_pump_bdd: &HostPumpBdd) {
 
 #[when("以固定估计驱动一次 footer token 刷新")]
 pub(crate) async fn w_c2826_footer_refresh_once(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::protocol::model::ContextTokenEstimate;
+    use xylitol_plugin_sdk::model::ContextTokenEstimate;
     let mut pump = host_pump_bdd
         .pump
         .borrow_mut()
         .take()
         .unwrap_or_else(fresh_pump);
     pump.driver
-        .set_session_messages(xylitol::app::tui::harness::harness_sample_session_messages());
+        .set_session_messages(xylitol_app_tui::harness::harness_sample_session_messages());
     pump.driver
         .set_estimate_override(Some(ContextTokenEstimate {
             tokens: 1_234,
-            provenance: xylitol::protocol::model::TokenProvenance::Api,
+            provenance: xylitol_plugin_sdk::model::TokenProvenance::Api,
             usage_tokens: 1_234,
             trailing_tokens: 0,
             last_usage_index: None,
         }));
-    xylitol::app::tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
+    xylitol_app_tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
 }
 
 #[when("以小高度终端渲染忙碌帧")]
 pub(crate) fn w_c2826_short_terminal_busy(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::app::tui::TuiHostSession as HostSession;
+    use xylitol_app_tui::TuiHostSession as HostSession;
     let mut pump = host_pump_bdd
         .pump
         .borrow_mut()
         .take()
         .unwrap_or_else(fresh_pump);
-    pump.session =
-        HostSession::new_product_ui(xylitol::app::tui::harness::TestTerminal::new(80, 10));
+    pump.session = HostSession::new_product_ui(xylitol_app_tui::harness::TestTerminal::new(80, 10));
     pump.session.on_run_started("hi");
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
     let frame = c2826_frame(host_pump_bdd);
@@ -2526,9 +2521,9 @@ fn w_init_instant_file_logging(host_pump_bdd: &HostPumpBdd) {
     let io_tier = pt::observation_io_tier();
     let tool_io_tier = pt::tool_observation_io_tier();
     let dir = std::env::temp_dir().join(format!("xy-bdd-logging-{}", std::process::id()));
-    let installed = xylitol::app::cli::logging::init_logging(
+    let installed = xylitol::cli::logging::init_logging(
         &dir,
-        &xylitol::infra::config::types::OtelConfig::default(),
+        &xylitol::wiring::infra::config::types::OtelConfig::default(),
     )
     .is_some();
     pt::set_provider_trace_active(gate);
@@ -2743,14 +2738,14 @@ pub(crate) fn t_notice_stack_copied(host_pump_bdd: &HostPumpBdd) {
 
 #[given("footer 同源估计为 Heuristic")]
 pub(crate) fn g_heuristic_estimate(host_pump_bdd: &HostPumpBdd) {
-    use xylitol::protocol::model::{ContextTokenEstimate, TokenProvenance};
+    use xylitol_plugin_sdk::model::{ContextTokenEstimate, TokenProvenance};
     let mut pump = host_pump_bdd
         .pump
         .borrow_mut()
         .take()
         .unwrap_or_else(fresh_pump);
     pump.driver
-        .set_session_messages(xylitol::app::tui::harness::harness_sample_session_messages());
+        .set_session_messages(xylitol_app_tui::harness::harness_sample_session_messages());
     pump.driver
         .set_estimate_override(Some(ContextTokenEstimate {
             tokens: 42,
@@ -2765,8 +2760,8 @@ pub(crate) fn g_heuristic_estimate(host_pump_bdd: &HostPumpBdd) {
 #[when("连续两次以 Heuristic 刷新估计")]
 pub(crate) async fn w_heuristic_refresh_twice(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_pump(host_pump_bdd);
-    xylitol::app::tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
-    xylitol::app::tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
+    xylitol_app_tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
+    xylitol_app_tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
     pump.session.render_now().expect("render");
     put_pump(host_pump_bdd, pump);
     let _ = paint_clipped_viewport(host_pump_bdd);
@@ -2842,7 +2837,7 @@ pub(crate) fn w_idle_session_switch(host_pump_bdd: &HostPumpBdd) {
         .unwrap_or_else(fresh_pump);
     pump.session.apply_resume_session(
         "newer",
-        xylitol::app::tui::harness::harness_sample_session_messages(),
+        xylitol_app_tui::harness::harness_sample_session_messages(),
     );
     pump.session.render_now().expect("switch render");
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
@@ -2897,7 +2892,7 @@ pub(crate) fn t_copied_last_msg_stack(host_pump_bdd: &HostPumpBdd) {
 
 // ── c2895 观景态提示（r2897）────────────────────────────────────
 
-use xylitol::app::tui::driver::XyDriver as _;
+use xylitol_app_tui::driver::XyDriver as _;
 
 #[given("产品 TUI 主循环守望观景态")]
 fn g_c2895_observe_watch(host_pump_bdd: &HostPumpBdd) {
@@ -2906,18 +2901,18 @@ fn g_c2895_observe_watch(host_pump_bdd: &HostPumpBdd) {
     }
     let pump = take_pump(host_pump_bdd);
     // 主循环前态：Live（attach 完成后的首观）。
-    *host_pump_bdd.observe_prev.borrow_mut() = xylitol::app::tui::driver::AttachObserve::Live;
-    *pump.driver.observe_state.lock().unwrap() = xylitol::app::tui::driver::AttachObserve::Live;
+    *host_pump_bdd.observe_prev.borrow_mut() = xylitol_app_tui::driver::AttachObserve::Live;
+    *pump.driver.observe_state.lock().unwrap() = xylitol_app_tui::driver::AttachObserve::Live;
     put_pump(host_pump_bdd, pump);
 }
 
 #[when("远端驱动报告回合成中观景")]
 fn w_c2895_observe_inflight(host_pump_bdd: &HostPumpBdd) {
     let pump = take_pump(host_pump_bdd);
-    *pump.driver.observe_state.lock().unwrap() = xylitol::app::tui::driver::AttachObserve::Inflight;
+    *pump.driver.observe_state.lock().unwrap() = xylitol_app_tui::driver::AttachObserve::Inflight;
     let cur = pump.driver.attach_observe();
     let prev = *host_pump_bdd.observe_prev.borrow();
-    let notice = xylitol::app::tui::observe_notice(prev, cur);
+    let notice = xylitol_app_tui::observe_notice(prev, cur);
     *host_pump_bdd.observe_prev.borrow_mut() = cur;
     *host_pump_bdd.observe_notice.borrow_mut() = notice;
     put_pump(host_pump_bdd, pump);
@@ -2936,10 +2931,10 @@ fn t_c2895_observe_inflight_notice(host_pump_bdd: &HostPumpBdd) {
 #[when("远端驱动报告对端回合已结束")]
 fn w_c2895_observe_ended(host_pump_bdd: &HostPumpBdd) {
     let pump = take_pump(host_pump_bdd);
-    *pump.driver.observe_state.lock().unwrap() = xylitol::app::tui::driver::AttachObserve::Ended;
+    *pump.driver.observe_state.lock().unwrap() = xylitol_app_tui::driver::AttachObserve::Ended;
     let cur = pump.driver.attach_observe();
     let prev = *host_pump_bdd.observe_prev.borrow();
-    let notice = xylitol::app::tui::observe_notice(prev, cur);
+    let notice = xylitol_app_tui::observe_notice(prev, cur);
     *host_pump_bdd.observe_prev.borrow_mut() = cur;
     *host_pump_bdd.observe_notice.borrow_mut() = notice;
     put_pump(host_pump_bdd, pump);
@@ -2958,7 +2953,7 @@ fn t_c2895_observe_ended_notice(host_pump_bdd: &HostPumpBdd) {
 // ── c2470 编辑器历史入通道（app-tui-storage r2902）───────────────
 
 use std::sync::Arc as StdArc;
-use xylitol::app::tui::storage::ClientStorage as StorageClient;
+use xylitol_app_tui::storage::ClientStorage as StorageClient;
 
 fn c2470_storage(host_pump_bdd: &HostPumpBdd) -> StdArc<StorageClient> {
     if let Some(s) = host_pump_bdd.storage.borrow().clone() {
@@ -3023,7 +3018,7 @@ async fn w_c2470_twin_and_up(host_pump_bdd: &HostPumpBdd) {
     // 使用点懒并盘（c2915）：↑ 按键路径内先并通道历史，再召回。
     let mut pump = take_pump(host_pump_bdd);
     pump.session
-        .step(HostEvent::Input(xylitol::app::tui::harness::key_event(
+        .step(HostEvent::Input(xylitol_app_tui::harness::key_event(
             crossterm::event::KeyCode::Up,
             crossterm::event::KeyModifiers::NONE,
         )))
@@ -3068,7 +3063,7 @@ async fn w_c2917_twin_old_new_and_up(host_pump_bdd: &HostPumpBdd) {
     // 使用点懒并盘（c2915）：↑ 按键路径内先并通道历史，再召回。
     let mut pump = take_pump(host_pump_bdd);
     pump.session
-        .step(HostEvent::Input(xylitol::app::tui::harness::key_event(
+        .step(HostEvent::Input(xylitol_app_tui::harness::key_event(
             crossterm::event::KeyCode::Up,
             crossterm::event::KeyModifiers::NONE,
         )))
@@ -3084,7 +3079,7 @@ fn t_c2917_recall_is_newest(host_pump_bdd: &HostPumpBdd) {
 
 // ── c2875 会话详情覆盖弹出框（app-tui-fixed-zone r2903）───────────────
 
-use xylitol::app::tui::harness::key_event as c2875_key_event;
+use xylitol_app_tui::harness::key_event as c2875_key_event;
 
 fn g2875_mount(host_pump_bdd: &HostPumpBdd) {
     if host_pump_bdd.pump.borrow().is_none() {

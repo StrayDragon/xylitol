@@ -2,11 +2,11 @@ use std::cell::RefCell;
 use std::sync::Arc;
 
 use xylitol::XyDriverError;
-use xylitol::agent::capabilities::AgentCapabilities;
-use xylitol::agent::runtime::{AgentRuntime, RunPolicy};
-use xylitol::agent::tools::ToolSet;
-use xylitol::infra::hooks::{HookDispatcher, HookEvent, HookPhase};
-use xylitol::infra::session::SessionManager;
+use xylitol_official_plugin_hooks::{HookDispatcher, HookEvent, HookPhase};
+use xylitol_official_plugin_session::SessionManager;
+use xylitol_runtime::agent::capabilities::AgentCapabilities;
+use xylitol_runtime::agent::runtime::{AgentRuntime, RunPolicy};
+use xylitol_runtime::agent::tools::ToolSet;
 
 use crate::bdd::fixtures::AgentState;
 
@@ -48,7 +48,7 @@ pub(crate) fn make_agent_with_store(
     use std::sync::Arc;
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr.clone());
     let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-        Arc::new(xylitol::infra::event::EventBus::new());
+        Arc::new(xylitol::wiring::infra::event::EventBus::new());
     let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = agent
         .wiring_hook_log
         .borrow()
@@ -56,7 +56,7 @@ pub(crate) fn make_agent_with_store(
         .map(|log| log as Arc<dyn xylitol::XyHookBus>);
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
-        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
+        ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
         store.clone(),
         sink,
         Some("you are helpful".into()),
@@ -64,13 +64,13 @@ pub(crate) fn make_agent_with_store(
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
-        xylitol::infra::permission::allow_all_permission(),
-        xylitol::agent::capabilities::QueueMode::default(),
-        xylitol::agent::capabilities::QueueMode::default(),
+        std::sync::Arc::new(xylitol::wiring::infra::provider::factory::build_provider),
+        xylitol::wiring::infra::permission::allow_all_permission(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
         hook_bus,
     );
-    session.install_compaction(xylitol::app::core::composition::official_compaction_factory());
+    session.install_compaction(xylitol::wiring::composition::official_compaction_factory());
     // Harness often registers models without select; pick the first so ReAct can build.
     if session.current_model().is_none()
         && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
@@ -87,7 +87,7 @@ pub(crate) fn bind_session_or_panic(agent: &mut AgentRuntime, session_id: impl I
 pub(crate) async fn agent_submit_root(
     agent: &mut AgentRuntime,
     prompt: &str,
-) -> xylitol::agent::XyEventStream {
+) -> xylitol_runtime::agent::XyEventStream {
     if agent.session_id().is_none() {
         bind_session_or_panic(agent, uuid::Uuid::new_v4().to_string());
     }
@@ -98,7 +98,7 @@ pub(crate) async fn agent_submit_root_with_id(
     agent: &mut AgentRuntime,
     prompt: &str,
     session_id: &str,
-) -> xylitol::agent::XyEventStream {
+) -> xylitol_runtime::agent::XyEventStream {
     bind_session_or_panic(agent, session_id.to_string());
     agent.submit_root(prompt, RunPolicy::Reject).await
 }
@@ -110,7 +110,7 @@ pub(crate) async fn run_wiring_operation(
     op: &str,
 ) -> Result<(), XyDriverError> {
     use xylitol::embed::XyInProcessDriver;
-    use xylitol::protocol::session::SessionTreeKind;
+    use xylitol_plugin_sdk::session::SessionTreeKind;
 
     match op {
         "确保新会话" => {
@@ -169,7 +169,7 @@ pub(crate) async fn run_wiring_operation(
             let _ = agent.ensure_wiring_hook_log();
             let (runtime, store) = make_agent_with_store(agent);
             let mut driver = XyInProcessDriver::new(runtime, store);
-            xylitol::app::core::driver::XyDriver::bash_run(&mut driver, "true", false)
+            xylitol::wiring::driver::XyDriver::bash_run(&mut driver, "true", false)
                 .await?
                 .await
                 .map(|_| ())
@@ -179,8 +179,8 @@ pub(crate) async fn run_wiring_operation(
 }
 
 pub(crate) fn ensure_wiring_fake_model(agent: &AgentState, thinking: bool) {
-    use xylitol::protocol::model::XyModelMeta;
-    use xylitol::protocol::model::{XyModelConfig, XyModelKind};
+    use xylitol_plugin_sdk::model::XyModelMeta;
+    use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind};
     let mut reg = agent.registry.borrow_mut();
     if reg.find("fake").is_some() {
         return;
@@ -218,7 +218,7 @@ pub(crate) async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: H
     agent
         .last_hook_stdin
         .replace(Some(event.to_json_context(phase)));
-    let dispatcher = HookDispatcher::new(&xylitol::infra::config::types::HooksConfig {
+    let dispatcher = HookDispatcher::new(&xylitol::wiring::infra::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         project: vec![],
         user: vec![],

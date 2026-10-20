@@ -13,15 +13,15 @@ use crate::bdd::fixtures::AgentState;
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol::agent::capabilities::AgentCapabilities;
-use xylitol::agent::runtime::RunPolicy;
-use xylitol::agent::tools::ToolSet;
-use xylitol::infra::provider::ScenarioStep;
-use xylitol::infra::provider::fake_xy_model;
-use xylitol::infra::session::SessionManager;
-use xylitol::infra::tools::default_tools;
-use xylitol::protocol::model::XyModelConfig;
+use xylitol::wiring::infra::provider::ScenarioStep;
+use xylitol::wiring::infra::provider::fake_xy_model;
+use xylitol_official_plugin_session::SessionManager;
+use xylitol_official_plugin_tools::default_tools;
 use xylitol_plugin_sdk::XyModel;
+use xylitol_plugin_sdk::model::XyModelConfig;
+use xylitol_runtime::agent::capabilities::AgentCapabilities;
+use xylitol_runtime::agent::runtime::RunPolicy;
+use xylitol_runtime::agent::tools::ToolSet;
 
 pub(crate) struct CompactionProbe {
     pub(crate) runtime: RefCell<Option<AgentRuntime>>,
@@ -54,8 +54,8 @@ fn overflow_error_builder() -> xylitol_plugin_sdk::XyModelBuilder {
     })
 }
 
-fn small_window_meta(id: &str) -> xylitol::protocol::model::XyModelMeta {
-    use xylitol::protocol::model::{XyModelConfig, XyModelKind, XyModelMeta};
+fn small_window_meta(id: &str) -> xylitol_plugin_sdk::model::XyModelMeta {
+    use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind, XyModelMeta};
     XyModelMeta {
         id: id.into(),
         config: XyModelConfig {
@@ -91,7 +91,7 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
     mgr.create(sid, Some("."), None).await.unwrap();
     // Summarizable history so the overflow turn-end compaction has content to cut.
     for i in 0..60 {
-        use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+        use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
         let e = SessionEntry::Message(MessageEntry {
             base: EntryBase {
                 entry_type: "message".into(),
@@ -104,10 +104,10 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
         mgr.append(sid, &e).await.unwrap();
     }
 
-    let mut reg = xylitol::agent::model::registry::ModelRegistry::new();
+    let mut reg = xylitol_runtime::agent::model::registry::ModelRegistry::new();
     reg.register(small_window_meta("overflow-fake"));
     let store: Arc<dyn XySessionStore> = Arc::new(mgr.clone());
-    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::infra::event::EventBus::new());
+    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::wiring::infra::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         reg,
         ToolSet::from_iter(default_tools()),
@@ -119,12 +119,12 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
         ".".into(),
         None,
         overflow_error_builder(),
-        xylitol::infra::permission::allow_all_permission(),
-        xylitol::agent::capabilities::QueueMode::default(),
-        xylitol::agent::capabilities::QueueMode::default(),
+        xylitol::wiring::infra::permission::allow_all_permission(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,
     );
-    session.install_compaction(xylitol::app::core::composition::official_compaction_factory());
+    session.install_compaction(xylitol::wiring::composition::official_compaction_factory());
     session.select_model("overflow-fake").await.unwrap();
     let mut agent = AgentRuntime::new(session);
     agent.bind_session(sid).expect("bind");
@@ -185,22 +185,22 @@ impl XyModel for ReasoningOnlyModel {
     }
     async fn generate_stream(
         &self,
-        _messages: Vec<xylitol::protocol::message::XyLlmMessage>,
-        _tools: &[xylitol::protocol::model::XyToolSchema],
+        _messages: Vec<xylitol_plugin_sdk::message::XyLlmMessage>,
+        _tools: &[xylitol_plugin_sdk::model::XyToolSchema],
         _stream: bool,
         _options: xylitol_plugin_sdk::XyGenerateOptions,
-    ) -> Result<xylitol_plugin_sdk::XyStream, xylitol::protocol::error::XyError> {
+    ) -> Result<xylitol_plugin_sdk::XyStream, xylitol_plugin_sdk::error::XyError> {
         use futures::stream::iter;
-        use xylitol::protocol::message::XyStopReason;
+        use xylitol_plugin_sdk::message::XyStopReason;
         Ok(Box::pin(iter(vec![
-            Ok(xylitol::protocol::model::XyChunk::ThinkingDelta(
+            Ok(xylitol_plugin_sdk::model::XyChunk::ThinkingDelta(
                 "## Goal\nreasoning-only checkpoint content\n## Next Steps\n1. finish".into(),
             )),
-            Ok(xylitol::protocol::model::XyChunk::ThinkingEnd {
+            Ok(xylitol_plugin_sdk::model::XyChunk::ThinkingEnd {
                 thinking: String::new(),
                 thinking_signature: None,
             }),
-            Ok(xylitol::protocol::model::XyChunk::Done {
+            Ok(xylitol_plugin_sdk::model::XyChunk::Done {
                 finish_reason: XyStopReason::Stop,
                 usage: None,
             }),
@@ -213,12 +213,12 @@ async fn g_c2844_reasoning_store(
     sess: &crate::bdd::fixtures::XySessionStore,
     compaction_probe: &CompactionProbe,
 ) {
-    use xylitol::infra::session::SessionManager;
+    use xylitol_official_plugin_session::SessionManager;
     let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let sid = "c2844-reasoning";
     mgr.create(sid, Some("."), None).await.unwrap();
     for i in 0..120 {
-        use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+        use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
         let e = SessionEntry::Message(MessageEntry {
             base: EntryBase {
                 entry_type: "message".into(),
@@ -226,10 +226,9 @@ async fn g_c2844_reasoning_store(
                 parent_id: None,
                 timestamp: 1704067200000 + i as u64,
             },
-            message: serde_json::to_value(xylitol::protocol::message::AgentMessage::user(format!(
-                "turn {i} {}",
-                "y".repeat(400)
-            )))
+            message: serde_json::to_value(xylitol_plugin_sdk::message::AgentMessage::user(
+                format!("turn {i} {}", "y".repeat(400)),
+            ))
             .unwrap(),
         });
         mgr.append(sid, &e).await.unwrap();
@@ -243,10 +242,10 @@ async fn g_c2844_reasoning_store(
 
 #[when("触发一次压缩")]
 async fn w_c2844_reasoning_compact(compaction_probe: &CompactionProbe) {
-    use xylitol::agent::compaction::CompactionOrchestrator;
-    use xylitol::agent::compaction::CompactionSettings;
-    use xylitol::agent::model::task_model::CompactionSummaryBinding;
-    use xylitol::infra::event::EventBus;
+    use xylitol::wiring::infra::event::EventBus;
+    use xylitol_official_plugin_compaction::CompactionOrchestrator;
+    use xylitol_official_plugin_compaction::CompactionSettings;
+    use xylitol_runtime::agent::model::task_model::CompactionSummaryBinding;
 
     let (store, sid) = compaction_probe
         .store
@@ -281,7 +280,7 @@ async fn w_c2844_reasoning_compact(compaction_probe: &CompactionProbe) {
         .iter()
         .rev()
         .find_map(|e| match e {
-            xylitol::protocol::session::SessionEntry::Compaction(c) => Some(c.clone()),
+            xylitol_plugin_sdk::session::SessionEntry::Compaction(c) => Some(c.clone()),
             _ => None,
         })
         .expect("compaction entry must exist");

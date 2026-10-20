@@ -1,0 +1,3636 @@
+//! Remote HTTP/WS [`XyRemoteDriver`] (feature = "server").
+
+use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Duration;
+
+use async_trait::async_trait;
+use futures::StreamExt;
+use serde_json::Value;
+use tokio::sync::Notify;
+use tokio_util::sync::CancellationToken;
+
+use crate::wiring::host_client::{HostClient, HostClientError, HttpWsClient};
+use xylitol_plugin_sdk::XyBashResult;
+use xylitol_plugin_sdk::model::THINKING_OFF;
+use xylitol_protocol::Command;
+use xylitol_protocol::envelope::PROTOCOL_VERSION;
+use xylitol_protocol::{Event, RpcMessage};
+use xylitol_serve::FromWireEvent;
+
+use super::AttachObserve;
+use super::XyDriver;
+use super::XyDriverError;
+use super::proto::BashRun;
+use super::types::{
+    ClipboardCopyOutcome, CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo,
+    ProjectTrustMode, ProjectTrustPersistReport, QueueStats, ReloadStepReport, RuntimeReloadReport,
+    XyEvent,
+};
+
+/// Notify the product TUI of mux reverse-RPC (approval/question).
+pub type ReverseRpcNotify = Arc<dyn Fn(String, String, Value) + Send + Sync>;
+
+#[derive(Clone)]
+struct SharedDownlink {
+    events: Arc<std::sync::Mutex<VecDeque<XyEvent>>>,
+    notify: Arc<Notify>,
+    started: Arc<AtomicBool>,
+    /// ath43 coalescing window in millis (trailing-edge debounce).
+    window_ms: Arc<AtomicU64>,
+    notify_scheduled: Arc<AtomicBool>,
+}
+
+impl SharedDownlink {
+    fn new() -> Self {
+        Self {
+            events: Arc::new(std::sync::Mutex::new(VecDeque::new())),
+            notify: Arc::new(Notify::new()),
+            started: Arc::new(AtomicBool::new(false)),
+            window_ms: Arc::new(AtomicU64::new(10)),
+            notify_scheduled: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    /// Inject the coalescing window (c2480 tunings; MUST precede the first
+    /// downlink burst to matter).
+    fn set_window(&self, window: Duration) {
+        self.window_ms
+            .store(window.as_millis() as u64, Ordering::SeqCst);
+    }
+
+    fn push(&self, ev: XyEvent) {
+        if let Ok(mut q) = self.events.lock() {
+            q.push_back(ev);
+        }
+        self.request_notify();
+    }
+
+    /// One notify per burst: pushes inside the window share a single wake, so
+    /// the consumer drains the whole batch as one projection pass.
+    fn request_notify(&self) {
+        if self.notify_scheduled.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let notify = self.notify.clone();
+        let scheduled = self.notify_scheduled.clone();
+        let window_ms = self.window_ms.load(Ordering::SeqCst);
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(window_ms)).await;
+            // Re-arm before waking: a push landing between these two lines
+            // schedules a fresh debounce instead of racing a spent permit.
+            scheduled.store(false, Ordering::SeqCst);
+            notify.notify_one();
+        });
+    }
+
+    fn drain(&self) -> Vec<XyEvent> {
+        self.events
+            .lock()
+            .map(|mut q| q.drain(..).collect())
+            .unwrap_or_default()
+    }
+
+    fn push_front_batch(&self, rest: Vec<XyEvent>) {
+        if rest.is_empty() {
+            return;
+        }
+        if let Ok(mut q) = self.events.lock() {
+            for ev in rest.into_iter().rev() {
+                q.push_front(ev);
+            }
+        }
+    }
+}
+
+/// c2480 connection-resilience knobs. Product constants by default; tests
+/// inject micro-second values through [`XyRemoteDriver::with_tunings`] —
+/// there is deliberately no user-facing config surface for these.
+#[derive(Debug, Clone)]
+pub struct LinkTunings {
+    /// First reconnect delay; every young connection doubles it.
+    pub backoff_base: Duration,
+    /// Escalation ceiling.
+    pub backoff_cap: Duration,
+    /// A connection that lived at least this long resets backoff to base —
+    /// flapping links (die young) escalate instead of hammering the port.
+    pub survive_threshold: Duration,
+    /// Downlink event coalescing window (ath43): one notify per burst.
+    pub coalesce_window: Duration,
+}
+
+impl Default for LinkTunings {
+    fn default() -> Self {
+        Self {
+            backoff_base: Duration::from_millis(200),
+            backoff_cap: Duration::from_secs(5),
+            survive_threshold: Duration::from_secs(1),
+            coalesce_window: Duration::from_millis(10),
+        }
+    }
+}
+
+/// Remote driver — [`XyDriver`] over a [`HostClient`] carrier.
+#[cfg(feature = "server")]
+pub struct XyRemoteDriver<C = HttpWsClient> {
+    host: C,
+    session_id: String,
+    session_life: CancellationToken,
+    turn_cancel: Arc<std::sync::Mutex<CancellationToken>>,
+    thinking: std::sync::Mutex<String>,
+    leaf_entry_id: Arc<std::sync::Mutex<Option<String>>>,
+    last_seq: Arc<AtomicU64>,
+    /// c2480 downlink generation: bumped on every (re)start so a stale loop's
+    /// late pushes cannot reach the shared projection.
+    downlink_gen: Arc<AtomicU64>,
+    /// Set when the downlink loop dies irrecoverably (e.g. protocol mismatch,
+    /// ath44): `wait_subscribed` fails fast with this message instead of
+    /// riding out its full deadline.
+    fatal: Arc<std::sync::Mutex<Option<String>>>,
+    tunings: Arc<LinkTunings>,
+    reverse_rpc: Option<ReverseRpcNotify>,
+    downlink: SharedDownlink,
+    resync_needed: Arc<AtomicBool>,
+    subscribed_ok: Arc<AtomicBool>,
+    /// When true, mux drops Agent/Turn/tool tape from a `last_seq=0` subscribe
+    /// (cold attach). Cleared on `session/subscribed`. Mid-turn reconnect uses
+    /// `last_seq>0` and keeps replay.
+    skip_cold_replay: Arc<AtomicBool>,
+    /// c2895 观景态：attach 落在回合成中时的降级订阅（tape 冻结待重挂）。
+    attach_observe: Arc<std::sync::Mutex<AttachObserve>>,
+    /// TUI process cwd; injected on every unary so Host can bind the session workspace.
+    client_cwd: String,
+    cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
+    cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
+    cached_commands: Arc<std::sync::Mutex<Option<Vec<CommandInfo>>>>,
+    cached_queue: Arc<std::sync::Mutex<QueueStats>>,
+    cached_resources: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
+    cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+    cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
+    gate_notice_consumed: Arc<AtomicBool>,
+    /// Set when mux `session/resources` (or a snapshot unary) updates the cache.
+    resources_dirty: Arc<AtomicBool>,
+    /// Interactive bang output-event sink (c2760): runtime-injected by the TUI
+    /// bang loop; downlink `session/bash_output` frames are forwarded into it.
+    bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>>,
+}
+
+#[cfg(feature = "server")]
+impl XyRemoteDriver<HttpWsClient> {
+    /// TUI attach uses the product carrier (`HttpWsClient` defaults on; this
+    /// constructor also forces `with_envelope(true)` so env cannot opt out).
+    pub fn new_v3(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
+        Self::with_host(HttpWsClient::new(base_url).with_envelope(true), session_id)
+    }
+
+    /// Create a new XyRemoteDriver connected to `base_url`.
+    ///
+    /// `base_url` should be the server root, e.g. `http://127.0.0.1:18790`.
+    pub fn new(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
+        let session_id = session_id.into();
+        let session_id = if session_id.trim().is_empty() {
+            uuid::Uuid::new_v4().to_string()
+        } else {
+            session_id
+        };
+        Self::with_host(HttpWsClient::new(base_url).with_envelope(true), session_id)
+    }
+
+    pub fn host_client(&self) -> &HttpWsClient {
+        &self.host
+    }
+}
+
+#[cfg(feature = "server")]
+/// Per-generation downlink state: the driver's shared handles cloned once for
+/// one spawned reconnect loop, plus the loop's generation snapshot (c2480).
+struct DownlinkCtx<C> {
+    host: C,
+    session_id: String,
+    last_seq: Arc<AtomicU64>,
+    reverse_rpc: Option<ReverseRpcNotify>,
+    downlink: SharedDownlink,
+    life: CancellationToken,
+    resync_needed: Arc<AtomicBool>,
+    subscribed_ok: Arc<AtomicBool>,
+    skip_cold_replay: Arc<AtomicBool>,
+    attach_observe: Arc<std::sync::Mutex<AttachObserve>>,
+    cached_queue: Arc<std::sync::Mutex<QueueStats>>,
+    cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
+    cached_resources: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
+    cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
+    gate_notice_consumed: Arc<AtomicBool>,
+    resources_dirty: Arc<AtomicBool>,
+    /// c2841：Host 绑定/装配同步的生效模型事件 → 写入缓存，供 current_model()
+    /// 收敛徽标（ModelInfo 缺失时回查已缓存可用模型表）。
+    cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
+    cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
+    bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>>,
+    client_cwd: String,
+    downlink_gen: Arc<AtomicU64>,
+    fatal: Arc<std::sync::Mutex<Option<String>>>,
+    tunings: Arc<LinkTunings>,
+    /// Generation this loop belongs to (ath41): frames from a superseded
+    /// generation are dropped before they reach the projection.
+    my_gen: u64,
+}
+
+#[cfg(feature = "server")]
+/// Cache a resources snapshot and flip the dirty flag — shared by the
+/// driver-side snapshot paths (`apply_resources_cache`) and the downlink
+/// `session/resources` arm.
+fn store_resources_snapshot(
+    cached_skills: &std::sync::Mutex<Vec<(String, String)>>,
+    gate_notice_consumed: &AtomicBool,
+    cached_gate_notice: &std::sync::Mutex<Option<String>>,
+    cached_resources: &std::sync::Mutex<LoadedResourcesSnapshot>,
+    resources_dirty: &AtomicBool,
+    snap: LoadedResourcesSnapshot,
+) {
+    let skills: Vec<(String, String)> = snap
+        .skill_names
+        .iter()
+        .map(|name| (name.clone(), String::new()))
+        .collect();
+    if let Ok(mut cached) = cached_skills.lock() {
+        *cached = skills;
+    }
+    if let Some(notice) = snap.mcp_gate_notice.as_ref()
+        && !gate_notice_consumed.load(Ordering::SeqCst)
+        && let Ok(mut cached) = cached_gate_notice.lock()
+    {
+        *cached = Some(notice.clone());
+    }
+    if let Ok(mut cached) = cached_resources.lock() {
+        *cached = snap;
+    }
+    resources_dirty.store(true, Ordering::SeqCst);
+}
+
+#[cfg(feature = "server")]
+/// Per-generation downlink state: the driver's shared handles cloned once for
+/// one spawned reconnect loop, plus the loop's generation snapshot (c2480).
+impl<C> DownlinkCtx<C>
+where
+    C: HostClient + Clone + 'static,
+{
+    /// 按 id 从已缓存可用模型表解析完整 `ModelInfo`（c2841 生效模型同步）。
+    /// 首次 attach 时可用模型表可能尚未就绪，未命中则拉取一次 `get_available_models`
+    /// 后重试；仍无则返回 None（徽标停留 NOT-SET，不失败）。
+    async fn resolve_model_info(&self, model_id: &str) -> Option<ModelInfo> {
+        let find = |models: &[ModelInfo]| models.iter().find(|m| m.id == model_id).cloned();
+        let from_cache = || {
+            self.cached_models
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+                .unwrap_or_default()
+        };
+        if let Some(hit) = find(&from_cache()) {
+            return Some(hit);
+        }
+        let Ok(data) = self
+            .host
+            .unary("get_available_models", serde_json::json!({}))
+            .await
+        else {
+            return None;
+        };
+        let models = data
+            .value
+            .as_ref()
+            .and_then(|v| v.get("models"))
+            .and_then(|v| v.as_array())?;
+        let parsed: Vec<ModelInfo> = models
+            .iter()
+            .filter_map(|m| {
+                Some(ModelInfo {
+                    id: m.get("id").and_then(|x| x.as_str())?.to_string(),
+                    display_name: m
+                        .get("display_name")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                    thinking: m.get("thinking").and_then(|x| x.as_bool()).unwrap_or(false),
+                    thinking_levels: m
+                        .get("thinking_levels")
+                        .and_then(|x| x.as_array())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|x| x.as_str().map(str::to_string))
+                                .collect()
+                        })
+                        .unwrap_or_else(|| vec![THINKING_OFF.into()]),
+                    context_window: m
+                        .get("context_window")
+                        .and_then(|x| x.as_u64())
+                        .unwrap_or(0),
+                })
+            })
+            .collect();
+        if let Ok(mut g) = self.cached_models.lock() {
+            *g = Some(parsed.clone());
+        }
+        find(&parsed)
+    }
+}
+
+#[cfg(feature = "server")]
+/// One downlink frame arm (connected phase): session event tape,
+/// subscribe/resync/resources lifecycle, reverse-RPC prompts. Unknown frames
+/// are ignored; a malformed event is a no-op — recovery is driven by
+/// reconnect, never by frame errors (ath42).
+async fn handle_frame<C>(ctx: &DownlinkCtx<C>, push_current: &impl Fn(XyEvent), frame: RpcMessage)
+where
+    C: HostClient + Clone + 'static,
+{
+    match frame {
+        RpcMessage::ServerRequest {
+            method, payload, ..
+        } if method == "session/event" => {
+            if let Some(s) = payload.get("seq").and_then(Value::as_u64) {
+                ctx.last_seq.store(s, Ordering::SeqCst);
+            }
+            let event_val = payload.get("event").cloned().unwrap_or(payload);
+            let Ok(ev) = serde_json::from_value::<Event>(event_val) else {
+                return;
+            };
+            let Ok(agent_event) = XyEvent::from_wire_event(&ev) else {
+                return;
+            };
+            if let XyEvent::QueueUpdate {
+                steer_count,
+                follow_up_count,
+            } = &agent_event
+                && let Ok(mut cached) = ctx.cached_queue.lock()
+            {
+                *cached = QueueStats {
+                    steer_count: *steer_count,
+                    follow_up_count: *follow_up_count,
+                };
+            }
+            // c2841:Host 在会话绑定/装配时同步的生效模型事件(含用户显式配置
+            // 的默认模型)→ 写入缓存,供 current_model() 收敛徽标而非停在
+            // NOT-SET。事件仅载 provider/model_id,完整 ModelInfo 从已缓存
+            // 可用模型表按 id 解析;首次 attach 时可用模型表可能尚未就绪,
+            // 未命中则拉取一次后重试——本分支在 push_current 前完成,保证
+            // TUI 侧收到事件时缓存已就绪可立即刷新徽标。
+            if let XyEvent::ModelSelect { model_id, .. } = &agent_event {
+                let found = ctx.resolve_model_info(model_id).await;
+                log::debug!(
+                    target: "xylitol::tui",
+                    "host-synced model {model_id} resolved=> {}",
+                    found.as_ref().map(|m| m.id.clone()).unwrap_or_default()
+                );
+                if let Some(found) = found
+                    && let Ok(mut cached) = ctx.cached_model.lock()
+                {
+                    *cached = Some(found);
+                }
+            }
+            if ctx.skip_cold_replay.load(Ordering::SeqCst)
+                && XyRemoteDriver::<C>::is_cold_replay_tape(&agent_event)
+            {
+                return;
+            }
+            // c2895：观景态下对端回合结束 → 可重挂。
+            if matches!(agent_event, XyEvent::AgentEnd { .. })
+                && let Ok(mut g) = ctx.attach_observe.lock()
+                && *g == AttachObserve::Inflight
+            {
+                *g = AttachObserve::Ended;
+            }
+            push_current(agent_event);
+        }
+        RpcMessage::ServerRequest { method, .. } if method == "session/subscribed" => {
+            ctx.skip_cold_replay.store(false, Ordering::SeqCst);
+        }
+        RpcMessage::ServerRequest {
+            method, payload, ..
+        } if method == "session/bash_output" => {
+            // c2760: non-journal bang output → injected sink (TUI bang loop).
+            let chunk = xylitol_plugin_sdk::BashChunk {
+                bash_id: payload
+                    .get("bash_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                seq: payload.get("seq").and_then(Value::as_u64).unwrap_or(0),
+                data: payload
+                    .get("data")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+            };
+            if let Ok(guard) = ctx.bash_run_sink.lock()
+                && let Some(sink) = guard.as_ref()
+            {
+                let _ = sink.tx.try_send(chunk);
+            }
+        }
+        RpcMessage::ServerRequest {
+            method, payload, ..
+        } if method == "session/resources" => {
+            let snap_val = payload.get("snapshot").cloned().unwrap_or(payload);
+            if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(snap_val) {
+                store_resources_snapshot(
+                    &ctx.cached_skills,
+                    &ctx.gate_notice_consumed,
+                    &ctx.cached_gate_notice,
+                    &ctx.cached_resources,
+                    &ctx.resources_dirty,
+                    snap,
+                );
+            }
+        }
+        RpcMessage::ServerRequest { method, .. } if method == "session/resync_required" => {
+            ctx.last_seq.store(0, Ordering::SeqCst);
+            ctx.resync_needed.store(true, Ordering::SeqCst);
+            let _ = ctx
+                .host
+                .unary(
+                    "subscribe",
+                    serde_json::json!({
+                        "session_id": ctx.session_id,
+                        "last_seq": 0,
+                        "cwd": ctx.client_cwd,
+                    }),
+                )
+                .await;
+        }
+        RpcMessage::ServerRequest {
+            rpc_id,
+            method,
+            payload,
+        } if method == "approval/requested" || method == "question/requested" => {
+            let call_id = payload
+                .get("call_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or(rpc_id.as_str())
+                .to_string();
+            if let Some(notify) = &ctx.reverse_rpc {
+                notify(call_id, method, payload);
+            }
+        }
+        _ => {}
+    }
+}
+
+#[cfg(feature = "server")]
+/// ath42: silent reconnect pause — apply the flapping-aware backoff rule
+/// (ath41), then sleep until the pause elapses or the lifecycle token
+/// cancels. `None` = cancelled: stop the loop instead of reconnecting.
+async fn reconnect_pause<C>(
+    ctx: &DownlinkCtx<C>,
+    backoff: Duration,
+    lived: Duration,
+    next_backoff: impl Fn(Duration, Duration) -> Duration,
+) -> Option<Duration> {
+    if ctx.life.is_cancelled() {
+        return None;
+    }
+    let backoff = next_backoff(backoff, lived);
+    tokio::select! {
+        _ = ctx.life.cancelled() => None,
+        _ = tokio::time::sleep(backoff) => Some(backoff),
+    }
+}
+
+#[cfg(feature = "server")]
+/// The downlink reconnect loop: connect → subscribe → dispatch until the
+/// lifecycle token cancels. Split from the former inline `ensure_downlink`
+/// body; ath41/ath42/ath44 and c2480 semantics are unchanged.
+async fn downlink_loop<C>(ctx: DownlinkCtx<C>)
+where
+    C: HostClient + Clone + 'static,
+{
+    // ath41/c2480: pushes from a downlink generation are dropped the
+    // moment the driver moves past it — stale frames never reach the
+    // shared projection.
+    let push_current = {
+        let downlink = ctx.downlink.clone();
+        let downlink_gen = ctx.downlink_gen.clone();
+        let my_gen = ctx.my_gen;
+        move |ev: XyEvent| {
+            if downlink_gen.load(Ordering::SeqCst) == my_gen {
+                downlink.push(ev);
+            }
+        }
+    };
+    // ath41: a connection that survived the threshold earned a
+    // backoff reset; one that died young escalates (flapping ≠ outage).
+    let next_backoff = {
+        let tunings = ctx.tunings.clone();
+        move |backoff: Duration, lived: Duration| -> Duration {
+            if lived >= tunings.survive_threshold {
+                tunings.backoff_base
+            } else {
+                (backoff * 2).min(tunings.backoff_cap)
+            }
+        }
+    };
+    let mut backoff = ctx.tunings.backoff_base;
+    loop {
+        if ctx.life.is_cancelled() {
+            break;
+        }
+        let connected_at = tokio::time::Instant::now();
+        match ctx.host.mux().await {
+            Ok(mut mux) => {
+                // ath44: host.describe result already validated protocol;
+                // mux frames are JSON-RPC notifications.
+                let seq = ctx.last_seq.load(Ordering::SeqCst);
+                ctx.skip_cold_replay.store(seq == 0, Ordering::SeqCst);
+                match ctx
+                    .host
+                    .unary(
+                        "subscribe",
+                        serde_json::json!({
+                            "session_id": ctx.session_id,
+                            "last_seq": seq,
+                            "cwd": ctx.client_cwd,
+                        }),
+                    )
+                    .await
+                {
+                    Err(_) => {
+                        // ath42: silent — reconnect churn must not paint
+                        // the transcript; fixed-zone grace UX handles notice.
+                        ctx.subscribed_ok.store(false, Ordering::SeqCst);
+                        match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff)
+                            .await
+                        {
+                            Some(next) => backoff = next,
+                            None => return,
+                        }
+                        continue;
+                    }
+                    Ok(result) => {
+                        // c2895：应答 `inflight` = 绑定时刻回合成况；冷订阅（seq==0）
+                        // 且 inflight ⇒ 观景态（tape 冻结，显式重挂后复直播）。
+                        let inflight = result
+                            .into_std()
+                            .ok()
+                            .and_then(|v| v.get("inflight").and_then(Value::as_bool))
+                            .unwrap_or(false);
+                        if let Ok(mut g) = ctx.attach_observe.lock() {
+                            *g = if inflight && seq == 0 {
+                                AttachObserve::Inflight
+                            } else {
+                                AttachObserve::Live
+                            };
+                        }
+                    }
+                }
+                ctx.subscribed_ok.store(true, Ordering::SeqCst);
+                loop {
+                    tokio::select! {
+                        _ = ctx.life.cancelled() => return,
+                        msg = mux.next() => {
+                            match msg {
+                                Some(Ok(frame)) => {
+                                    handle_frame(&ctx, &push_current, frame).await;
+                                }
+                                Some(Err(_)) => {
+                                    // ath42: silent break — the frame
+                                    // error is a connection fact, not
+                                    // a transcript event; reconnect
+                                    // and re-subscribe handle recovery.
+                                    break;
+                                }
+                                None => break,
+                            }
+                        }
+                    }
+                }
+                // Connection ended: report Down for the grace UX
+                // (ath42), survive-or-escalate, then retry.
+                ctx.subscribed_ok.store(false, Ordering::SeqCst);
+                match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff).await {
+                    Some(next) => backoff = next,
+                    None => return,
+                }
+            }
+            Err(e) if matches!(e, HostClientError::ProtocolMismatch { .. }) => {
+                // ath44: a version the client cannot speak is fatal,
+                // never a transient failure — surface once and stop.
+                let msg = e.to_string();
+                if let Ok(mut slot) = ctx.fatal.lock() {
+                    *slot = Some(msg.clone());
+                }
+                push_current(XyEvent::error_msg(msg));
+                return;
+            }
+            Err(_) => {
+                // ath42: silent — reconnect churn must not paint the
+                // transcript; fixed-zone grace UX handles the notice.
+                ctx.subscribed_ok.store(false, Ordering::SeqCst);
+                match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff).await {
+                    Some(next) => backoff = next,
+                    None => return,
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "server")]
+impl<C> XyRemoteDriver<C>
+where
+    C: HostClient + Clone + 'static,
+{
+    pub fn with_host(host: C, session_id: impl Into<String>) -> Self {
+        let session_id = session_id.into();
+        let session_id = if session_id.trim().is_empty() {
+            uuid::Uuid::new_v4().to_string()
+        } else {
+            session_id
+        };
+        Self {
+            host,
+            session_id,
+            session_life: CancellationToken::new(),
+            turn_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
+            thinking: std::sync::Mutex::new(THINKING_OFF.into()),
+            leaf_entry_id: Arc::new(std::sync::Mutex::new(None)),
+            last_seq: Arc::new(AtomicU64::new(0)),
+            downlink_gen: Arc::new(AtomicU64::new(0)),
+            fatal: Arc::new(std::sync::Mutex::new(None)),
+            tunings: Arc::new(LinkTunings::default()),
+            reverse_rpc: None,
+            downlink: SharedDownlink::new(),
+            resync_needed: Arc::new(AtomicBool::new(false)),
+            subscribed_ok: Arc::new(AtomicBool::new(false)),
+            skip_cold_replay: Arc::new(AtomicBool::new(false)),
+            attach_observe: Arc::new(std::sync::Mutex::new(AttachObserve::Live)),
+            client_cwd: std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| ".".into()),
+            cached_model: Arc::new(std::sync::Mutex::new(None)),
+            cached_models: Arc::new(std::sync::Mutex::new(None)),
+            cached_commands: Arc::new(std::sync::Mutex::new(None)),
+            cached_queue: Arc::new(std::sync::Mutex::new(QueueStats::default())),
+            cached_resources: Arc::new(std::sync::Mutex::new(LoadedResourcesSnapshot::default())),
+            cached_skills: Arc::new(std::sync::Mutex::new(Vec::new())),
+            cached_gate_notice: Arc::new(std::sync::Mutex::new(None)),
+            gate_notice_consumed: Arc::new(AtomicBool::new(false)),
+            resources_dirty: Arc::new(AtomicBool::new(false)),
+            bash_run_sink: Arc::new(std::sync::Mutex::new(None)),
+        }
+    }
+
+    /// Builder-style resilience tuning injection (tests / labs only; product
+    /// code uses the [`LinkTunings::default`] constants). MUST be called
+    /// before the first attach so the downlink loop is spawned with it.
+    pub fn with_tunings(mut self, tunings: LinkTunings) -> Self {
+        self.downlink.set_window(tunings.coalesce_window);
+        self.tunings = Arc::new(tunings);
+        self
+    }
+
+    pub fn set_reverse_rpc_notify(&mut self, notify: ReverseRpcNotify) {
+        self.reverse_rpc = Some(notify);
+    }
+
+    fn cache_queue_from_value(&self, data: &Value) {
+        let stats = QueueStats {
+            steer_count: data.get("steer_count").and_then(Value::as_u64).unwrap_or(0) as usize,
+            follow_up_count: data
+                .get("follow_up_count")
+                .and_then(Value::as_u64)
+                .unwrap_or(0) as usize,
+        };
+        if let Ok(mut cached) = self.cached_queue.lock() {
+            *cached = stats;
+        }
+    }
+
+    fn cache_model(&self, model: ModelInfo) {
+        if let Ok(mut cached) = self.cached_model.lock() {
+            *cached = Some(model);
+        }
+    }
+
+    fn cache_model_unset(&self) {
+        if let Ok(mut cached) = self.cached_model.lock() {
+            *cached = None;
+        }
+    }
+
+    /// True for Agent/Turn/stream tape that a cold `last_seq=0` subscribe must not
+    /// paint as live (c2307). Queue / error / fixed-zone facts still pass.
+    fn is_cold_replay_tape(ev: &XyEvent) -> bool {
+        matches!(
+            ev,
+            XyEvent::AgentStart { .. }
+                | XyEvent::AgentEnd { .. }
+                | XyEvent::TurnStart { .. }
+                | XyEvent::TurnEnd { .. }
+                | XyEvent::MessageStart { .. }
+                | XyEvent::MessageUpdate { .. }
+                | XyEvent::MessageEnd { .. }
+                | XyEvent::TextDelta(_)
+                | XyEvent::ThinkingDelta(_)
+                | XyEvent::ToolExecutionStart { .. }
+                | XyEvent::ToolExecutionUpdate { .. }
+                | XyEvent::ToolExecutionEnd { .. }
+                | XyEvent::CompactionStart { .. }
+                | XyEvent::CompactionEnd { .. }
+                | XyEvent::AutoRetryStart { .. }
+                | XyEvent::AutoRetryEnd { .. }
+        )
+    }
+
+    fn apply_resources_cache(&self, snap: LoadedResourcesSnapshot) {
+        store_resources_snapshot(
+            &self.cached_skills,
+            &self.gate_notice_consumed,
+            &self.cached_gate_notice,
+            &self.cached_resources,
+            &self.resources_dirty,
+            snap,
+        );
+    }
+
+    async fn restart_downlink(&mut self) {
+        // c2480: the new generation invalidates the old loop's late pushes.
+        self.downlink_gen.fetch_add(1, Ordering::SeqCst);
+        self.session_life.cancel();
+        self.session_life = CancellationToken::new();
+        self.subscribed_ok.store(false, Ordering::SeqCst);
+        self.downlink.started.store(false, Ordering::SeqCst);
+        // HTTP/WS mux is one shared socket bound at connect into Host
+        // `unbound_mux`. Reusing it after SwitchSession leaves the sink on
+        // the parent slot, so child prompt events have no subscriber.
+        let _ = self.host.reset_mux().await;
+        self.ensure_downlink();
+    }
+
+    /// Session identity changed: the journal seq space belongs to the OLD
+    /// session, so re-subscribe cold (last_seq=0). The downlink loop arms
+    /// `skip_cold_replay` iff seq==0, which filters the new session's journal
+    /// replay — the transcript is rebuilt from `get_messages` instead. Without
+    /// this reset the stale seq made the daemon replay the new session's tape
+    /// from an arbitrary offset, and the bridge rendered the mid-message tail
+    /// as a live stream appended after the switch notice (resume 渲染修复).
+    async fn restart_downlink_for_switched_session(&mut self) {
+        self.last_seq.store(0, Ordering::SeqCst);
+        // Always restart: DownlinkCtx.session_id is a spawn-time snapshot.
+        // Skipping when `started` is false leaves the next subscribe on the
+        // old session, and a subsequent prompt on the child has no mux.
+        self.restart_downlink().await;
+    }
+
+    async fn check_host_protocol(&self) -> Result<(), XyDriverError> {
+        match self
+            .host
+            .unary("host.describe", serde_json::json!({}))
+            .await
+        {
+            Err(e @ HostClientError::ProtocolMismatch { .. }) => {
+                let msg = e.to_string();
+                if let Ok(mut slot) = self.fatal.lock() {
+                    *slot = Some(msg.clone());
+                }
+                self.downlink.push(XyEvent::error_msg(msg.clone()));
+                Err(XyDriverError::remote(msg))
+            }
+            Err(e) => Err(XyDriverError::remote(e.to_string())),
+            Ok(result) => {
+                let got = result
+                    .value
+                    .as_ref()
+                    .and_then(|v| v.get("protocol"))
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+                if got != PROTOCOL_VERSION {
+                    let err = HostClientError::ProtocolMismatch {
+                        got,
+                        expected: PROTOCOL_VERSION,
+                    };
+                    let msg = err.to_string();
+                    if let Ok(mut slot) = self.fatal.lock() {
+                        *slot = Some(msg.clone());
+                    }
+                    self.downlink.push(XyEvent::error_msg(msg.clone()));
+                    return Err(XyDriverError::remote(msg));
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn ensure_downlink(&self)
+    where
+        C: HostClient + Clone + 'static,
+    {
+        if self.downlink.started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        if let Ok(mut slot) = self.fatal.lock() {
+            *slot = None;
+        }
+        let ctx = DownlinkCtx {
+            host: self.host.clone(),
+            session_id: self.session_id.clone(),
+            last_seq: self.last_seq.clone(),
+            reverse_rpc: self.reverse_rpc.clone(),
+            downlink: self.downlink.clone(),
+            life: self.session_life.clone(),
+            resync_needed: self.resync_needed.clone(),
+            subscribed_ok: self.subscribed_ok.clone(),
+            skip_cold_replay: self.skip_cold_replay.clone(),
+            attach_observe: self.attach_observe.clone(),
+            cached_queue: self.cached_queue.clone(),
+            cached_skills: self.cached_skills.clone(),
+            cached_resources: self.cached_resources.clone(),
+            cached_gate_notice: self.cached_gate_notice.clone(),
+            gate_notice_consumed: self.gate_notice_consumed.clone(),
+            resources_dirty: self.resources_dirty.clone(),
+            cached_model: self.cached_model.clone(),
+            cached_models: self.cached_models.clone(),
+            bash_run_sink: self.bash_run_sink.clone(),
+            client_cwd: self.client_cwd.clone(),
+            downlink_gen: self.downlink_gen.clone(),
+            fatal: self.fatal.clone(),
+            tunings: self.tunings.clone(),
+            my_gen: self.downlink_gen.load(Ordering::SeqCst),
+        };
+        tokio::spawn(downlink_loop(ctx));
+    }
+
+    async fn wait_subscribed(&self) -> Result<(), XyDriverError> {
+        let wait_deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+        while !self.subscribed_ok.load(Ordering::SeqCst) {
+            if let Some(msg) = self.fatal.lock().ok().and_then(|mut slot| slot.take()) {
+                return Err(XyDriverError::remote(msg));
+            }
+            if tokio::time::Instant::now() > wait_deadline {
+                return Err(XyDriverError::remote("subscribe timed out"));
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Ok(())
+    }
+
+    async fn refresh_fixed_zone_caches(&self) -> Result<(), XyDriverError> {
+        if let Ok(data) = self.unary_cmd(Command::GetState {}).await {
+            self.update_leaf_from_state(&data);
+            if let Some(m) = data.get("model").filter(|m| !m.is_null())
+                && let Ok(model) = Self::model_from_value(m)
+            {
+                self.cache_model(model);
+            } else {
+                self.cache_model_unset();
+            }
+        }
+        if let Ok(data) = self.unary_cmd(Command::GetAvailableModels {}).await {
+            let arr = data
+                .get("models")
+                .and_then(|m| m.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if let Ok(models) = arr
+                .iter()
+                .map(Self::model_from_value)
+                .collect::<Result<Vec<_>, _>>()
+                && let Ok(mut cached) = self.cached_models.lock()
+            {
+                *cached = Some(models);
+            }
+        }
+        if let Ok(data) = self.unary_cmd(Command::GetCommands {}).await {
+            let arr = data
+                .get("commands")
+                .and_then(|c| c.as_array())
+                .cloned()
+                .unwrap_or_default();
+            let cmds = arr
+                .iter()
+                .filter_map(|c| {
+                    Some(CommandInfo {
+                        name: c.get("name")?.as_str()?.to_string(),
+                        description: c
+                            .get("description")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                })
+                .collect();
+            if let Ok(mut cached) = self.cached_commands.lock() {
+                *cached = Some(cmds);
+            }
+        }
+        let snap = match self.unary_cmd(Command::LoadedResources {}).await {
+            Ok(data) => serde_json::from_value(data).unwrap_or_default(),
+            Err(_) => LoadedResourcesSnapshot::default(),
+        };
+        self.apply_resources_cache(snap);
+        Ok(())
+    }
+
+    fn queue_stats(&self) -> QueueStats {
+        self.cached_queue.lock().map(|s| *s).unwrap_or_default()
+    }
+
+    fn with_session(&self, mut payload: serde_json::Value) -> serde_json::Value {
+        let Some(map) = payload.as_object_mut() else {
+            return payload;
+        };
+        let has_sid = map
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty());
+        if !has_sid {
+            map.insert(
+                "session_id".into(),
+                serde_json::Value::String(self.session_id.clone()),
+            );
+        }
+        let has_cwd = map
+            .get("cwd")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty());
+        if !has_cwd {
+            map.insert(
+                "cwd".into(),
+                serde_json::Value::String(self.client_cwd.clone()),
+            );
+        }
+        payload
+    }
+
+    fn update_leaf_from_state(&self, data: &Value) {
+        let leaf = data
+            .get("leaf_entry_id")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        if let Ok(mut cached) = self.leaf_entry_id.lock() {
+            *cached = leaf;
+        }
+    }
+
+    async fn unary(
+        &self,
+        method: &str,
+        payload: serde_json::Value,
+    ) -> Result<serde_json::Value, XyDriverError> {
+        let result = self
+            .host
+            .unary(method, self.with_session(payload))
+            .await
+            .map_err(|e| XyDriverError::remote(e.to_string()))?;
+        result
+            .into_std()
+            .map_err(|e| XyDriverError::remote(format!("{}: {}", e.code, e.details)))
+    }
+
+    /// Typed unary send (c2530)：方法名与载荷都从 `Command` 自身派生——
+    /// wire tag 就是 serde tag，字符串与手搓载荷无从漂移。
+    async fn unary_cmd(&self, cmd: Command) -> Result<serde_json::Value, XyDriverError> {
+        let value = serde_json::to_value(&cmd).map_err(|e| XyDriverError::remote(e.to_string()))?;
+        let Some(method) = value
+            .get("type")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+        else {
+            return Err(XyDriverError::remote("command missing wire tag"));
+        };
+        self.unary(&method, value).await
+    }
+
+    fn model_from_value(v: &serde_json::Value) -> Result<ModelInfo, XyDriverError> {
+        let thinking = v.get("thinking").and_then(|x| x.as_bool()).unwrap_or(false);
+        let thinking_levels = v
+            .get("thinking_levels")
+            .and_then(|x| x.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_else(|| vec![THINKING_OFF.into()]);
+        Ok(ModelInfo {
+            id: v
+                .get("id")
+                .or_else(|| v.get("model"))
+                .and_then(|x| x.as_str())
+                .ok_or("missing model id")?
+                .to_string(),
+            display_name: v
+                .get("display_name")
+                .and_then(|x| x.as_str())
+                .unwrap_or("")
+                .to_string(),
+            thinking,
+            thinking_levels,
+            context_window: v
+                .get("context_window")
+                .and_then(|x| x.as_u64())
+                .unwrap_or(0),
+        })
+    }
+}
+
+impl<C> Drop for XyRemoteDriver<C> {
+    fn drop(&mut self) {
+        self.session_life.cancel();
+    }
+}
+
+#[cfg(feature = "server")]
+#[async_trait]
+impl<C> XyDriver for XyRemoteDriver<C>
+where
+    C: HostClient + Clone + 'static,
+{
+    async fn attach_session(&mut self) -> Result<(), XyDriverError> {
+        self.check_host_protocol().await?;
+        self.ensure_downlink();
+        self.wait_subscribed().await?;
+        self.refresh_fixed_zone_caches().await
+    }
+
+    /// c2790: owned bash completion — payload serialized eagerly so the returned
+    /// future holds only the cloned host client, never `self`.
+    async fn bash_run(
+        &mut self,
+        command: &str,
+        exclude_from_context: bool,
+    ) -> Result<BashRun, XyDriverError> {
+        self.ensure_downlink();
+        self.wait_subscribed().await?;
+        let host = self.host.clone();
+        let cmd = Command::Bash {
+            command: command.to_string(),
+            exclude_from_context,
+        };
+        let payload = self.with_session(
+            serde_json::to_value(&cmd).map_err(|e| XyDriverError::remote(e.to_string()))?,
+        );
+        let fut = async move {
+            let data = host
+                .unary("bash", payload)
+                .await
+                .map_err(|e| XyDriverError::remote(e.to_string()))?
+                .into_std()
+                .map_err(|e| XyDriverError::remote(format!("{}: {}", e.code, e.details)))?;
+            Ok(XyBashResult {
+                output: data
+                    .get("output")
+                    .and_then(|o| o.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                exit_code: data
+                    .get("exit_code")
+                    .and_then(|c| c.as_i64())
+                    .map(|c| c as i32),
+                cancelled: data
+                    .get("cancelled")
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false),
+                timed_out: data
+                    .get("timed_out")
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false),
+                truncated: data
+                    .get("truncated")
+                    .and_then(|c| c.as_bool())
+                    .unwrap_or(false),
+                full_output_path: None,
+            })
+        };
+        Ok(Box::pin(fut) as BashRun)
+    }
+
+    async fn refresh_surface_caches(&mut self) -> Result<(), XyDriverError> {
+        self.refresh_fixed_zone_caches().await
+    }
+
+    fn drain_idle_events(&mut self) -> Vec<XyEvent> {
+        self.downlink.drain()
+    }
+
+    /// ath42/c2480: attachment health tracks the mux subscription; fixed-zone
+    /// grace UX (never transcript error rows) consumes it.
+    fn link_health(&self) -> super::LinkHealth {
+        if self.subscribed_ok.load(Ordering::SeqCst) {
+            super::LinkHealth::Up
+        } else {
+            super::LinkHealth::Down
+        }
+    }
+
+    fn attach_observe(&self) -> super::AttachObserve {
+        *self
+            .attach_observe
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn take_resync_rebuild(&mut self) -> bool {
+        self.resync_needed.swap(false, Ordering::SeqCst)
+    }
+
+    async fn run(&mut self, prompt: &str) -> EventStream {
+        self.ensure_downlink();
+        if let Err(e) = self.wait_subscribed().await {
+            let err = e.to_string();
+            let stream = async_stream::stream! {
+                yield XyEvent::error_msg(err);
+            };
+            return Box::pin(stream);
+        }
+        // Live turn tape must paint even if `session/subscribed` has not yet
+        // cleared the cold-subscribe skip (last_seq=0 after SwitchSession).
+        self.skip_cold_replay.store(false, Ordering::SeqCst);
+        let turn = {
+            let mut g = self.turn_cancel.lock().unwrap_or_else(|e| e.into_inner());
+            if g.is_cancelled() {
+                *g = CancellationToken::new();
+            }
+            g.clone()
+        };
+        let host = self.host.clone();
+        let prompt = prompt.to_string();
+        let session_id = self.session_id.clone();
+        let leaf_entry_id = self.leaf_entry_id.clone();
+        let downlink = self.downlink.clone();
+        let client_cwd = self.client_cwd.clone();
+        let model_id = self.current_model().map(|m| m.id);
+        let thinking_level = self
+            .thinking
+            .lock()
+            .ok()
+            .map(|t| t.clone())
+            .filter(|t| !t.is_empty());
+
+        let stream = async_stream::stream! {
+            let mut body = serde_json::json!({
+                "message": prompt,
+                "session_id": session_id,
+                "cwd": client_cwd,
+            });
+            if let Some(id) = model_id {
+                body["model_id"] = serde_json::Value::String(id);
+            }
+            if let Some(level) = thinking_level {
+                body["thinking_level"] = serde_json::Value::String(level);
+            }
+            match host.unary("prompt", body).await {
+                Err(e) => {
+                    yield XyEvent::error_msg(format!("prompt failed: {e}"));
+                    return;
+                }
+                Ok(result) if !result.ok => {
+                    let details = result.error.map(|e| e.details).unwrap_or_default();
+                    yield XyEvent::error_msg(if details.is_empty() {
+                        "prompt failed".into()
+                    } else {
+                        format!("prompt failed: {details}")
+                    });
+                    return;
+                }
+                Ok(_) => {}
+            }
+
+            loop {
+                let batch = downlink.drain();
+                if batch.is_empty() {
+                    tokio::select! {
+                        _ = turn.cancelled() => {
+                            let _ = host.unary("abort", serde_json::json!({
+                                "session_id": session_id,
+                            })).await;
+                            break;
+                        }
+                        _ = downlink.notify.notified() => {}
+                    }
+                    continue;
+                }
+                let mut ended = false;
+                let mut rest = Vec::new();
+                for ev in batch {
+                    if ended {
+                        rest.push(ev);
+                        continue;
+                    }
+                    let is_end = matches!(ev, XyEvent::AgentEnd { .. });
+                    if is_end
+                        && let Ok(result) = host
+                            .unary(
+                                "get_state",
+                                serde_json::json!({
+                                    "session_id": session_id,
+                                }),
+                            )
+                            .await
+                        && let Some(leaf) = result
+                            .value
+                            .as_ref()
+                            .and_then(|value| value.get("leaf_entry_id"))
+                            .and_then(Value::as_str)
+                        && let Ok(mut cached) = leaf_entry_id.lock()
+                    {
+                        *cached = Some(leaf.to_string());
+                    }
+                    yield ev;
+                    if is_end {
+                        ended = true;
+                    }
+                }
+                downlink.push_front_batch(rest);
+                if ended {
+                    break;
+                }
+            }
+        };
+
+        Box::pin(stream)
+    }
+
+    fn abort(&self) {
+        if let Ok(g) = self.turn_cancel.lock() {
+            g.cancel();
+        }
+        let host = self.host.clone();
+        let payload = self.with_session(serde_json::json!({}));
+        tokio::spawn(async move {
+            let _ = host.unary("abort", payload).await;
+        });
+    }
+
+    fn current_model(&self) -> Option<ModelInfo> {
+        // Product TUI ticks / footer sync call this synchronously. HTTP `block_on`
+        // here freezes input (and `/model`) while MCP or Host unary is in flight.
+        self.cached_model
+            .lock()
+            .ok()
+            .and_then(|cached| cached.clone())
+    }
+
+    fn available_models(&self) -> Vec<ModelInfo> {
+        self.cached_models
+            .lock()
+            .ok()
+            .and_then(|cached| cached.clone())
+            .unwrap_or_default()
+    }
+
+    fn thinking_level(&self) -> String {
+        self.thinking.lock().unwrap().clone()
+    }
+
+    fn session_id(&self) -> Option<String> {
+        Some(self.session_id.clone())
+    }
+
+    async fn estimate_context_tokens(
+        &self,
+    ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
+        // Remote surface: the host owns the system prompt + tool schemas —
+        // estimate there, never locally.
+        let data = self.unary_cmd(Command::EstimateContext {}).await?;
+        serde_json::from_value(data.get("estimate").cloned().unwrap_or(Value::Null))
+            .map_err(|e| XyDriverError::remote(format!("estimate_context payload: {e}")))
+    }
+
+    fn get_commands(&self) -> Vec<CommandInfo> {
+        self.cached_commands
+            .lock()
+            .ok()
+            .and_then(|cached| cached.clone())
+            .unwrap_or_default()
+    }
+
+    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
+        if let Ok(mut guard) = self.bash_run_sink.lock() {
+            *guard = sink;
+        }
+    }
+
+    fn leaf_entry_id(&self) -> Option<String> {
+        self.leaf_entry_id.lock().ok().and_then(|leaf| leaf.clone())
+    }
+
+    async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+        let snap = match self.unary_cmd(Command::LoadedResources {}).await {
+            Ok(data) => serde_json::from_value(data).unwrap_or_else(|e| LoadedResourcesSnapshot {
+                mcp_diag_short: vec![format!("remote loaded_resources decode: {e}")],
+                ..LoadedResourcesSnapshot::default()
+            }),
+            Err(e) => LoadedResourcesSnapshot {
+                mcp_diag_short: vec![format!("remote loaded_resources: {e}")],
+                ..LoadedResourcesSnapshot::default()
+            },
+        };
+        self.apply_resources_cache(snap.clone());
+        snap
+    }
+
+    fn loaded_resources_cached(&self) -> Option<LoadedResourcesSnapshot> {
+        self.cached_resources.lock().ok().map(|snap| snap.clone())
+    }
+
+    fn mcp_blocks_agent(&self) -> bool {
+        self.cached_resources
+            .lock()
+            .map(|snap| snap.mcp_configured > 0 && !snap.mcp_bootstrap_complete)
+            .unwrap_or(false)
+    }
+
+    fn is_tools_frozen(&self) -> bool {
+        self.cached_resources
+            .lock()
+            .map(|snap| snap.mcp_configured == 0 || snap.tools_table_frozen)
+            .unwrap_or(true)
+    }
+
+    fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
+        self.cached_skills
+            .lock()
+            .map(|skills| skills.clone())
+            .unwrap_or_default()
+    }
+
+    fn take_mcp_gate_notice(&mut self) -> Option<String> {
+        self.gate_notice_consumed.store(true, Ordering::SeqCst);
+        self.cached_gate_notice
+            .lock()
+            .ok()
+            .and_then(|mut notice| notice.take())
+    }
+
+    async fn arm_tool_freeze_gate(&mut self) {
+        let data = match self.unary("arm_tool_freeze", serde_json::json!({})).await {
+            Ok(data) => data,
+            Err(e) => {
+                e.log_failure("remote.arm_tool_freeze");
+                return;
+            }
+        };
+        if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(data) {
+            self.apply_resources_cache(snap);
+        }
+    }
+
+    async fn poll_mcp_bootstrap(&mut self) -> bool {
+        // Attach observes writer MCP via mux `session/resources`, not 16Hz unary.
+        self.resources_dirty.swap(false, Ordering::SeqCst)
+    }
+
+    async fn reload_runtime(
+        &mut self,
+        cancel: &CancellationToken,
+    ) -> Result<RuntimeReloadReport, XyDriverError> {
+        self.gate_notice_consumed.store(false, Ordering::SeqCst);
+        // ath37 / sr-abort1: honour the injected cancel token. On cancel, ask the
+        // Host to cooperatively cancel the in-flight process-level reload via the
+        // existing `abort` unary, then finish locally as cancelled instead of
+        // waiting for the original call.
+        let data = {
+            let fut = self.unary("reload", serde_json::json!({}));
+            tokio::pin!(fut);
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => {
+                    let _ = self.unary("abort", serde_json::json!({})).await;
+                    return Ok(RuntimeReloadReport {
+                        steps: Vec::new(),
+                        cancelled: true,
+                    });
+                }
+                data = &mut fut => data?,
+            }
+        };
+        let cancelled = data
+            .get("cancelled")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let steps = data
+            .get("steps")
+            .and_then(|value| value.as_array())
+            .map(|values| {
+                values
+                    .iter()
+                    .map(|value| ReloadStepReport {
+                        step: match value.get("step").and_then(|v| v.as_str()) {
+                            Some("skills") => "skills",
+                            Some("mcp") => "mcp",
+                            Some("context") => "context",
+                            _ => "runtime",
+                        },
+                        ok: value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
+                        message: value
+                            .get("message")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(RuntimeReloadReport { steps, cancelled })
+    }
+
+    /// Client-local clipboard semantics live in `super::clipboard` (shared
+    /// with the in-process driver; MUST NOT route through the Host, D1).
+    async fn copy_text_to_clipboard(
+        &mut self,
+        text: &str,
+    ) -> Result<ClipboardCopyOutcome, XyDriverError> {
+        super::clipboard::copy_text_to_clipboard(text.to_string()).await
+    }
+
+    async fn stage_clipboard_image(&mut self) -> Result<Option<std::path::PathBuf>, XyDriverError> {
+        super::clipboard::stage_clipboard_image().await
+    }
+
+    async fn read_clipboard_text(&mut self) -> Result<Option<String>, XyDriverError> {
+        super::clipboard::read_clipboard_text().await
+    }
+
+    /// Trust is a Host fact (gate + persistence live with the writer), so this
+    /// routes through a Host unary scoped to the session workspace — the TUI
+    /// MUST NOT write the Host's agent dir itself (D2).
+    async fn persist_project_trust(
+        &mut self,
+        mode: ProjectTrustMode,
+    ) -> Result<ProjectTrustPersistReport, XyDriverError> {
+        let mode_str = match mode {
+            ProjectTrustMode::TrustCwd => "trust_cwd",
+            ProjectTrustMode::TrustParent => "trust_parent",
+            ProjectTrustMode::Deny => "deny",
+        };
+        let data = self
+            .unary("persist_trust", serde_json::json!({ "mode": mode_str }))
+            .await?;
+        Ok(ProjectTrustPersistReport {
+            trusted: data
+                .get("trusted")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            saved_path: data
+                .get("saved_path")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            message: data
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        })
+    }
+}
+
+// ── Command executor (c2710): Command is the SSOT of session operations ────
+#[async_trait]
+impl<C> crate::wiring::dispatch::SessionCommandExecutor for XyRemoteDriver<C>
+where
+    C: HostClient + Clone + 'static,
+{
+    async fn execute_session_command(
+        &mut self,
+        cmd: xylitol_protocol::Command,
+    ) -> Result<crate::wiring::dispatch::DispatchOutcome, XyDriverError> {
+        use crate::wiring::dispatch::DispatchOutcome;
+        use xylitol_protocol::Command;
+
+        match cmd {
+            Command::Abort { .. } => {
+                crate::wiring::driver::XyDriver::abort(self);
+                Ok(DispatchOutcome::Aborted { cancelled: true })
+            }
+            Command::GetState { .. } => Ok(DispatchOutcome::State(
+                crate::wiring::driver::XyDriver::get_state(self),
+            )),
+            Command::GetAvailableModels { .. } => Ok(DispatchOutcome::Models(
+                crate::wiring::driver::XyDriver::available_models(self),
+            )),
+            Command::SetModel { model_id, .. } => {
+                let data = self
+                    .unary_cmd(Command::SetModel {
+                        provider: String::new(),
+                        model_id: model_id.clone(),
+                    })
+                    .await?;
+                let selected = if data.get("id").is_some() {
+                    Self::model_from_value(&data)?
+                } else {
+                    ModelInfo {
+                        id: data
+                            .get("model")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or(&model_id)
+                            .to_string(),
+                        display_name: data
+                            .get("display_name")
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        thinking: false,
+                        thinking_levels: Vec::new(),
+                        context_window: 0,
+                    }
+                };
+                let default = selected
+                    .thinking_levels
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| THINKING_OFF.into());
+                *self.thinking.lock().unwrap() = default;
+                self.cache_model(selected.clone());
+                Ok(DispatchOutcome::Model(selected))
+            }
+            Command::CycleModel { .. } => {
+                let data = self.unary_cmd(Command::CycleModel {}).await?;
+                let selected = Self::model_from_value(&data)?;
+                *self.thinking.lock().unwrap() = selected
+                    .thinking_levels
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| THINKING_OFF.into());
+                self.cache_model(selected.clone());
+                Ok(DispatchOutcome::Model(selected))
+            }
+            Command::SetThinkingLevel { level, .. } => {
+                self.unary_cmd(Command::SetThinkingLevel {
+                    level: level.clone(),
+                })
+                .await?;
+                *self.thinking.lock().unwrap() = level.clone();
+                Ok(DispatchOutcome::ThinkingLevel(level))
+            }
+            Command::Bash {
+                command,
+                exclude_from_context,
+                ..
+            } => {
+                let run = XyDriver::bash_run(self, &command, exclude_from_context).await?;
+                let result = run.await?;
+                Ok(DispatchOutcome::Bash(result))
+            }
+            Command::Compact { instructions, .. } => {
+                let data = self.unary_cmd(Command::Compact { instructions }).await?;
+                Ok(DispatchOutcome::Compacted(
+                    data.get("compacted")
+                        .and_then(|c| c.as_bool())
+                        .unwrap_or(false),
+                ))
+            }
+            Command::GetSessionStats { .. } => {
+                let data = self.unary_cmd(Command::GetSessionStats {}).await?;
+                Ok(DispatchOutcome::SessionStats(data))
+            }
+            Command::ExportHtml { output_path, .. } => {
+                let path = output_path.unwrap_or_else(|| "export.html".to_string());
+                let data = self
+                    .unary_cmd(Command::ExportHtml { output_path: None })
+                    .await?;
+                let written = if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
+                    std::fs::write(&path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
+                    path.clone()
+                } else {
+                    data.get("path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or(&path)
+                        .to_string()
+                };
+                Ok(DispatchOutcome::ExportedPath(written))
+            }
+            Command::ExportJsonl { output_path, .. } => {
+                let path = output_path.unwrap_or_else(|| "export.jsonl".to_string());
+                let data = self
+                    .unary_cmd(Command::ExportJsonl { output_path: None })
+                    .await?;
+                let written = if let Some(content) = data.get("content").and_then(|c| c.as_str()) {
+                    std::fs::write(&path, content).map_err(|e| XyDriverError::io(e.to_string()))?;
+                    path.clone()
+                } else {
+                    data.get("path")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or(&path)
+                        .to_string()
+                };
+                Ok(DispatchOutcome::ExportedPath(written))
+            }
+            Command::ImportJsonl { input_path, .. } => {
+                let content = std::fs::read_to_string(&input_path)
+                    .map_err(|e| XyDriverError::io(e.to_string()))?;
+                let data = self
+                    .unary("import_jsonl", serde_json::json!({ "content": content }))
+                    .await?;
+                Ok(DispatchOutcome::NewSession(
+                    data.get("session_id")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                ))
+            }
+            Command::SwitchSession { session_path, .. } => {
+                let data = self
+                    .unary_cmd(Command::SwitchSession {
+                        session_path: session_path.clone(),
+                    })
+                    .await?;
+                let id = data
+                    .get("session_id")
+                    .and_then(|p| p.as_str())
+                    .unwrap_or(&session_path)
+                    .to_string();
+                self.session_id = id.clone();
+                if let Ok(mut leaf) = self.leaf_entry_id.lock() {
+                    *leaf = None;
+                }
+                self.restart_downlink_for_switched_session().await;
+                Ok(DispatchOutcome::SwitchedSession(id))
+            }
+            Command::Fork {
+                entry_id, position, ..
+            } => {
+                let data = self
+                    .unary_cmd(Command::Fork {
+                        entry_id: entry_id.clone(),
+                        position: Some(
+                            match position.as_deref() {
+                                Some("before") => "before",
+                                _ => "at",
+                            }
+                            .to_string(),
+                        ),
+                    })
+                    .await?;
+                Ok(DispatchOutcome::NewSession(
+                    data.get("session_id")
+                        .and_then(|p| p.as_str())
+                        .unwrap_or("")
+                        .to_string(),
+                ))
+            }
+            Command::GetMessages { .. } => {
+                let data = self.unary_cmd(Command::GetMessages {}).await?;
+                let entries = data
+                    .get("entries")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
+                let entries = serde_json::from_value(entries)
+                    .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::Messages {
+                    session_id: self.session_id.clone(),
+                    entries,
+                })
+            }
+            Command::EstimateContext { .. } => {
+                let data = self.unary_cmd(Command::EstimateContext {}).await?;
+                let estimate =
+                    serde_json::from_value(data.get("estimate").cloned().unwrap_or(Value::Null))
+                        .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::EstimateContext(estimate))
+            }
+            Command::SessionTree { kind, .. } => {
+                let data = self.unary_cmd(Command::SessionTree { kind }).await?;
+                let tree = serde_json::from_value(data.get("tree").cloned().unwrap_or(Value::Null))
+                    .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::SessionTree(tree))
+            }
+            Command::TravelSessionTree { kind, entry_id, .. } => {
+                let data = self
+                    .unary_cmd(Command::TravelSessionTree {
+                        kind,
+                        entry_id: entry_id.clone(),
+                    })
+                    .await?;
+                let travel = serde_json::from_value(data)
+                    .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::SessionTreeTravel(travel))
+            }
+            Command::AppendEntryLabel {
+                target_id, label, ..
+            } => {
+                self.unary_cmd(Command::AppendEntryLabel {
+                    target_id: target_id.clone(),
+                    label: label.clone(),
+                })
+                .await?;
+                Ok(DispatchOutcome::Empty)
+            }
+            Command::ListSessions { .. } => {
+                let data = self.unary_cmd(Command::ListSessions {}).await?;
+                let sessions =
+                    serde_json::from_value(data.get("sessions").cloned().unwrap_or(Value::Null))
+                        .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::Sessions(sessions))
+            }
+            Command::LoadSessionEntries { session_id, .. } => {
+                let data = self
+                    .unary_cmd(Command::LoadSessionEntries {
+                        session_id: session_id.clone(),
+                    })
+                    .await?;
+                let entries =
+                    serde_json::from_value(data.get("entries").cloned().unwrap_or(Value::Null))
+                        .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                Ok(DispatchOutcome::SessionEntries(entries))
+            }
+            Command::NewSession { .. } => {
+                let data = self.unary_cmd(Command::NewSession {}).await?;
+                let id = data
+                    .get("session_id")
+                    .and_then(|value| value.as_str())
+                    .ok_or_else(|| {
+                        XyDriverError::remote("new_session response missing session_id")
+                    })?
+                    .to_string();
+                self.session_id = id.clone();
+                if let Ok(mut leaf) = self.leaf_entry_id.lock() {
+                    *leaf = None;
+                }
+                self.restart_downlink_for_switched_session().await;
+                Ok(DispatchOutcome::NewSession(id))
+            }
+            Command::GetSessionName { .. } => {
+                let data = self.unary_cmd(Command::GetSessionName {}).await?;
+                Ok(DispatchOutcome::SessionName(
+                    data.get("name")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string),
+                ))
+            }
+            Command::SetSessionName { name, .. } => {
+                let data = self
+                    .unary_cmd(Command::SetSessionName { name: name.clone() })
+                    .await?;
+                Ok(DispatchOutcome::SessionName(Some(
+                    data.get("name")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                        .ok_or_else(|| {
+                            XyDriverError::remote("set_session_name response missing name")
+                        })?,
+                )))
+            }
+            Command::SetSessionNameFor {
+                session_id, name, ..
+            } => {
+                let data = self
+                    .unary_cmd(Command::SetSessionNameFor {
+                        session_id: session_id.clone(),
+                        name: name.clone(),
+                    })
+                    .await?;
+                Ok(DispatchOutcome::SessionName(Some(
+                    data.get("name")
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                        .ok_or_else(|| {
+                            XyDriverError::remote("set_session_name_for response missing name")
+                        })?,
+                )))
+            }
+            Command::DeleteSession { session_id, .. } => {
+                self.unary_cmd(Command::DeleteSession {
+                    session_id: session_id.clone(),
+                })
+                .await?;
+                Ok(DispatchOutcome::Empty)
+            }
+            Command::Reload { .. } => {
+                let report = crate::wiring::driver::XyDriver::reload_runtime(
+                    self,
+                    &tokio_util::sync::CancellationToken::new(),
+                )
+                .await?;
+                Ok(DispatchOutcome::Reload(report))
+            }
+            Command::LoadedResources { .. } => Ok(DispatchOutcome::LoadedResources(
+                crate::wiring::driver::XyDriver::loaded_resources_snapshot(self).await,
+            )),
+            Command::GetQueueStats { .. } => {
+                let data = self.unary_cmd(Command::GetQueueStats {}).await?;
+                self.cache_queue_from_value(&data);
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
+                crate::wiring::driver::XyDriver::get_commands(self),
+            )),
+            Command::Steer { message, .. } => {
+                let data = self
+                    .unary_cmd(Command::Steer {
+                        message: message.clone(),
+                    })
+                    .await?;
+                self.cache_queue_from_value(&data);
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::FollowUp { message, .. } => {
+                let data = self
+                    .unary_cmd(Command::FollowUp {
+                        message: message.clone(),
+                    })
+                    .await?;
+                self.cache_queue_from_value(&data);
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+            Command::ClearQueue {
+                clear_steer,
+                clear_follow_up,
+                ..
+            } => {
+                let data = self
+                    .unary_cmd(Command::ClearQueue {
+                        clear_steer,
+                        clear_follow_up,
+                    })
+                    .await?;
+                self.cache_queue_from_value(&data);
+                let stats = self.queue_stats();
+                Ok(DispatchOutcome::QueueStats {
+                    steer_count: stats.steer_count,
+                    follow_up_count: stats.follow_up_count,
+                })
+            }
+
+            // These variants are the caller's responsibility (see dispatch module docs).
+            Command::Prompt { .. }
+            | Command::Quit { .. }
+            | Command::Subscribe { .. }
+            | Command::ApproveTool { .. }
+            | Command::AnswerQuestion { .. } => {
+                Err(crate::wiring::dispatch::transport_variant_error(&cmd))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::wiring::host_client::InProcessClient;
+    use crate::wiring::occupancy::host::HostState;
+    use crate::wiring::occupancy::runtime::{ServerConfig, serve};
+    use xylitol_protocol::SessionTreeKind;
+
+    #[test]
+    fn empty_session_arg_mints_uuid() {
+        let driver = XyRemoteDriver::new("http://127.0.0.1:9", "");
+        let sid = driver.session_id().expect("session");
+        assert!(uuid::Uuid::parse_str(&sid).is_ok(), "{sid}");
+        let kept = XyRemoteDriver::new("http://127.0.0.1:9", "keep-me");
+        assert_eq!(kept.session_id().as_deref(), Some("keep-me"));
+    }
+
+    #[derive(Clone)]
+    struct SnapClient {
+        calls: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl HostClient for SnapClient {
+        async fn unary(
+            &self,
+            _method: &str,
+            _payload: Value,
+        ) -> Result<xylitol_protocol::RpcResult, crate::wiring::host_client::HostClientError>
+        {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            panic!("poll_mcp_bootstrap must not unary");
+        }
+
+        async fn respond(
+            &self,
+            _rpc_id: &str,
+            _payload: Value,
+        ) -> Result<(), crate::wiring::host_client::HostClientError> {
+            Ok(())
+        }
+
+        async fn mux(
+            &self,
+        ) -> Result<
+            crate::wiring::host_client::MuxStream,
+            crate::wiring::host_client::HostClientError,
+        > {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
+    #[derive(Clone)]
+    struct FailPromptClient;
+
+    #[async_trait]
+    impl HostClient for FailPromptClient {
+        async fn unary(
+            &self,
+            method: &str,
+            _payload: Value,
+        ) -> Result<xylitol_protocol::RpcResult, crate::wiring::host_client::HostClientError>
+        {
+            if method == "prompt" {
+                return Ok(xylitol_protocol::RpcResult::error(
+                    "session_write_held",
+                    "session s is being written by another process",
+                ));
+            }
+            Ok(xylitol_protocol::RpcResult::ok_value(serde_json::json!({})))
+        }
+
+        async fn respond(
+            &self,
+            _rpc_id: &str,
+            _payload: Value,
+        ) -> Result<(), crate::wiring::host_client::HostClientError> {
+            Ok(())
+        }
+
+        async fn mux(
+            &self,
+        ) -> Result<
+            crate::wiring::host_client::MuxStream,
+            crate::wiring::host_client::HostClientError,
+        > {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
+    #[tokio::test]
+    async fn prompt_business_error_ends_run_stream() {
+        let mut driver = XyRemoteDriver::with_host(FailPromptClient, "s");
+        driver.subscribed_ok.store(true, Ordering::SeqCst);
+        let mut stream = driver.run("hi").await;
+        let mut events = Vec::new();
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, XyEvent::Error(err) if err.message.contains("prompt failed"))),
+            "business error MUST yield Error: {events:?}"
+        );
+        assert!(
+            !events.iter().any(|e| matches!(e, XyEvent::AgentEnd { .. })),
+            "MUST NOT wait for AgentEnd after prompt failure: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn poll_mcp_bootstrap_is_cache_dirty_only() {
+        let client = SnapClient {
+            calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+        };
+        let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
+        assert!(!driver.poll_mcp_bootstrap().await);
+        assert_eq!(client.calls.load(Ordering::SeqCst), 0);
+        driver.apply_resources_cache(LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_bootstrap_complete: false,
+            tools_table_frozen: false,
+            mcp_connecting_label: Some("connecting 0/1".into()),
+            ..LoadedResourcesSnapshot::default()
+        });
+        assert!(driver.poll_mcp_bootstrap().await);
+        assert!(!driver.poll_mcp_bootstrap().await);
+        assert_eq!(client.calls.load(Ordering::SeqCst), 0);
+    }
+
+    /// ath37 / sr-abort1 (c2340): cancelling `reload_runtime` mid-flight MUST
+    /// ask the Host to cooperatively cancel the in-flight reload via the
+    /// existing `abort` unary and finish locally as cancelled.
+    #[derive(Clone)]
+    struct ReloadCancelClient {
+        abort_called: Arc<std::sync::atomic::AtomicBool>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait]
+    impl HostClient for ReloadCancelClient {
+        async fn unary(
+            &self,
+            method: &str,
+            _payload: Value,
+        ) -> Result<xylitol_protocol::RpcResult, crate::wiring::host_client::HostClientError>
+        {
+            if method == "reload" {
+                // Hold the reload open until the cooperative abort arrives.
+                let release = self.release.clone();
+                let _ = tokio::select! {
+                    _ = release.notified() => {}
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
+                };
+                return Ok(xylitol_protocol::RpcResult::ok_value(
+                    serde_json::json!({ "cancelled": true, "steps": [] }),
+                ));
+            }
+            if method == "abort" {
+                self.abort_called.store(true, Ordering::SeqCst);
+                self.release.notify_waiters();
+                return Ok(xylitol_protocol::RpcResult::ok_value(
+                    serde_json::json!({ "cancelled": true }),
+                ));
+            }
+            Err(crate::wiring::host_client::HostClientError::Transport(
+                format!("unexpected unary: {method}"),
+            ))
+        }
+
+        async fn respond(
+            &self,
+            _rpc_id: &str,
+            _payload: Value,
+        ) -> Result<(), crate::wiring::host_client::HostClientError> {
+            Ok(())
+        }
+
+        async fn mux(
+            &self,
+        ) -> Result<
+            crate::wiring::host_client::MuxStream,
+            crate::wiring::host_client::HostClientError,
+        > {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
+    #[tokio::test]
+    async fn reload_cancel_requests_host_cooperative_abort() {
+        use std::sync::atomic::AtomicBool;
+
+        let client = ReloadCancelClient {
+            abort_called: Arc::new(AtomicBool::new(false)),
+            release: Arc::new(tokio::sync::Notify::new()),
+        };
+        let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
+        let token = CancellationToken::new();
+        let cancel_token = token.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            cancel_token.cancel();
+        });
+
+        let report = driver.reload_runtime(&token).await.expect("reload report");
+        assert!(
+            report.cancelled,
+            "report MUST be cancelled after token fires"
+        );
+        assert!(
+            client.abort_called.load(Ordering::SeqCst),
+            "cancel MUST reach the Host as a cooperative abort unary"
+        );
+    }
+
+    #[derive(Clone, Default)]
+    struct CountingClient {
+        unaries: Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl HostClient for CountingClient {
+        async fn unary(
+            &self,
+            _method: &str,
+            _payload: Value,
+        ) -> Result<xylitol_protocol::RpcResult, crate::wiring::host_client::HostClientError>
+        {
+            self.unaries.fetch_add(1, Ordering::SeqCst);
+            Ok(xylitol_protocol::RpcResult::error(
+                "not_expected",
+                "clipboard MUST NOT unary the host",
+            ))
+        }
+
+        async fn respond(
+            &self,
+            _rpc_id: &str,
+            _payload: Value,
+        ) -> Result<(), crate::wiring::host_client::HostClientError> {
+            Ok(())
+        }
+
+        async fn mux(
+            &self,
+        ) -> Result<
+            crate::wiring::host_client::MuxStream,
+            crate::wiring::host_client::HostClientError,
+        > {
+            Ok(Box::pin(futures::stream::empty()))
+        }
+    }
+
+    /// Empty PATH so `plan_clipboard_copy` cannot spawn wl-copy/xclip/pbcopy.
+    /// Restored on drop. `env_global` covers the cargo-test in-process fallback
+    /// (nextest is already process-per-test).
+    struct StarveNativeClipboard {
+        saved_path: Option<std::ffi::OsString>,
+    }
+
+    impl StarveNativeClipboard {
+        fn enter() -> Self {
+            let saved_path = std::env::var_os("PATH");
+            unsafe {
+                std::env::set_var("PATH", "");
+            }
+            Self { saved_path }
+        }
+    }
+
+    impl Drop for StarveNativeClipboard {
+        fn drop(&mut self) {
+            unsafe {
+                match self.saved_path.take() {
+                    Some(path) => std::env::set_var("PATH", path),
+                    None => std::env::remove_var("PATH"),
+                }
+            }
+        }
+    }
+
+    // env_global: this test clears PATH so native clipboard tools are not
+    // spawned (would clobber the developer clipboard). Elimination path:
+    // inject get_env into Driver clipboard helpers.
+    #[tokio::test]
+    #[serial_test::serial(env_global)]
+    async fn clipboard_ops_stay_client_local() {
+        let _starve = StarveNativeClipboard::enter();
+        let client = CountingClient::default();
+        let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
+
+        let outcome = driver
+            .copy_text_to_clipboard("copy-me")
+            .await
+            .expect("OSC52 fallback MUST make copy succeed without native tools");
+        assert!(
+            outcome.pending_osc52.is_some(),
+            "empty PATH MUST take OSC52 fallback, not native copy"
+        );
+        let _ = driver.stage_clipboard_image().await;
+        let _ = driver.read_clipboard_text().await;
+        assert_eq!(
+            client.unaries.load(Ordering::SeqCst),
+            0,
+            "clipboard ops MUST NOT unary the host (D1 client-local)"
+        );
+    }
+
+    #[tokio::test]
+    async fn push_bash_output_is_not_journaled() {
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("bash-ev").await;
+        let mut rx = host.in_process_downlink.subscribe();
+        let seq_before = slot.journal.lock().await.max_seq();
+        slot.push_bash_output(xylitol_plugin_sdk::BashChunk {
+            bash_id: "b1".into(),
+            seq: 1,
+            data: "hello".into(),
+        })
+        .await;
+        let msg = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("downlink")
+            .expect("msg");
+        match msg {
+            RpcMessage::ServerRequest {
+                method, payload, ..
+            } => {
+                assert_eq!(method, "session/bash_output");
+                assert_eq!(payload["bash_id"], "b1");
+                assert_eq!(payload["data"], "hello");
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        assert_eq!(
+            slot.journal.lock().await.max_seq(),
+            seq_before,
+            "session/bash_output MUST NOT consume journal seq (c2760)"
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_cancels_running_bash_out_of_band() {
+        use crate::wiring::occupancy::host::handle_unary;
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("abort-bash").await;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        *slot.bash_run_cancel.lock().unwrap() = Some(cancel.clone());
+        let result = handle_unary(
+            &host,
+            None,
+            "abort",
+            serde_json::json!({ "session_id": "abort-bash" }),
+        )
+        .await;
+        assert_eq!(
+            result.value.as_ref().and_then(|v| v["cancelled"].as_bool()),
+            Some(true)
+        );
+        assert!(
+            cancel.is_cancelled(),
+            "abort must cancel the registered bash run"
+        );
+    }
+
+    #[tokio::test]
+    async fn abort_without_running_bash_keeps_fallback_path() {
+        use crate::wiring::occupancy::host::handle_unary;
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("idle-abort").await;
+        let cancel = tokio_util::sync::CancellationToken::new();
+        *slot.bash_run_cancel.lock().unwrap() = Some(cancel.clone());
+        // A different session id must not reach this slot's registration.
+        let result = handle_unary(
+            &host,
+            None,
+            "abort",
+            serde_json::json!({ "session_id": "other-session" }),
+        )
+        .await;
+        assert!(
+            !cancel.is_cancelled(),
+            "foreign abort must not cancel our run"
+        );
+        // No registration on the target slot: falls through to the plain
+        // `Command::Abort` dispatch (for_test materializes a writer), which
+        // must still report a cancelled run.
+        assert_eq!(
+            result.value.as_ref().and_then(|v| v["cancelled"].as_bool()),
+            Some(true)
+        );
+    }
+
+    #[tokio::test]
+    async fn push_resources_is_not_journaled() {
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("res").await;
+        let mut rx = host.in_process_downlink.subscribe();
+        slot.push_resources(LoadedResourcesSnapshot {
+            mcp_configured: 1,
+            mcp_connecting_label: Some("connecting 0/1".into()),
+            ..LoadedResourcesSnapshot::default()
+        })
+        .await;
+        let msg = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("downlink")
+            .expect("msg");
+        match msg {
+            RpcMessage::ServerRequest {
+                method, payload, ..
+            } => {
+                assert_eq!(method, "session/resources");
+                assert_eq!(payload["session_id"], "res");
+                assert_eq!(payload["snapshot"]["mcp_configured"], 1);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        assert_eq!(
+            slot.journal.lock().await.max_seq(),
+            0,
+            "session/resources MUST NOT consume journal seq"
+        );
+    }
+
+    /// c2850/r1926: attach 期 ModelSelect 同步不进 journal、不消耗 seq；
+    /// 重复调用仍向订阅者推送（语义幂等）。
+    #[tokio::test]
+    async fn sync_model_downlink_is_not_journaled() {
+        use crate::wiring::occupancy::host::materialize_writer;
+
+        let host = HostState::for_test_with_default_model("fake-model").expect("host");
+        let slot = host.slot("model-sync").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        let seq_before = slot.journal.lock().await.max_seq();
+        let mut rx = host.in_process_downlink.subscribe();
+        slot.sync_model_downlink().await;
+        slot.sync_model_downlink().await;
+
+        let mut seen = 0u8;
+        for _ in 0..16 {
+            if seen >= 2 {
+                break;
+            }
+            let msg = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+                .await
+                .expect("downlink")
+                .expect("msg");
+            let RpcMessage::ServerRequest {
+                method, payload, ..
+            } = msg
+            else {
+                continue;
+            };
+            if method != "session/event" {
+                continue;
+            }
+            let ev = payload.get("event").cloned().unwrap_or_default();
+            if ev.get("type").and_then(|v| v.as_str()) == Some("model_select") {
+                assert_eq!(
+                    ev.get("model_id").and_then(|v| v.as_str()),
+                    Some("fake-model")
+                );
+                seen += 1;
+            }
+        }
+        assert_eq!(seen, 2, "两次 sync MUST 各推一帧 ModelSelect");
+        assert_eq!(
+            slot.journal.lock().await.max_seq(),
+            seq_before,
+            "attach ModelSelect MUST NOT consume journal seq"
+        );
+    }
+
+    #[tokio::test]
+    async fn minted_session_subscribe_does_not_require_cli_flag() {
+        let host = HostState::for_test().expect("host");
+        let (running, port) = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+                sessions_dir: None,
+                registration_path: None,
+            },
+            host,
+        )
+        .await
+        .expect("bind");
+        let driver = XyRemoteDriver::new(format!("http://127.0.0.1:{port}"), "");
+        let result = driver
+            .unary("subscribe", serde_json::json!({ "last_seq": 0 }))
+            .await;
+        running.shutdown();
+        result.expect("subscribe must accept the minted session_id");
+    }
+
+    async fn exercise_session_and_host_capabilities<C>(mut driver: XyRemoteDriver<C>)
+    where
+        C: HostClient + Clone + 'static,
+    {
+        use crate::wiring::dispatch::{DispatchOutcome, dispatch};
+        use xylitol_protocol::Command;
+
+        let session_id = match dispatch(&mut driver, Command::NewSession {})
+            .await
+            .expect("new session")
+        {
+            DispatchOutcome::NewSession(id) => id,
+            other => panic!("new session outcome: {other:?}"),
+        };
+        let listed = match dispatch(&mut driver, Command::ListSessions {})
+            .await
+            .expect("list sessions")
+        {
+            DispatchOutcome::Sessions(list) => list,
+            other => panic!("list sessions outcome: {other:?}"),
+        };
+        assert!(listed.iter().any(|entry| entry.id == session_id));
+
+        let stored_name = match dispatch(
+            &mut driver,
+            Command::SetSessionName {
+                name: " remote name\n".into(),
+            },
+        )
+        .await
+        .expect("set name")
+        {
+            DispatchOutcome::SessionName(Some(name)) => name,
+            other => panic!("set name outcome: {other:?}"),
+        };
+        assert_eq!(stored_name, "remote name");
+        let fetched = match dispatch(&mut driver, Command::GetSessionName {})
+            .await
+            .expect("get name")
+        {
+            DispatchOutcome::SessionName(name) => name,
+            other => panic!("get name outcome: {other:?}"),
+        };
+        assert_eq!(fetched.as_deref(), Some("remote name"));
+
+        let entries = match dispatch(
+            &mut driver,
+            Command::LoadSessionEntries {
+                session_id: session_id.clone(),
+            },
+        )
+        .await
+        .expect("load entries")
+        {
+            DispatchOutcome::SessionEntries(entries) => entries,
+            other => panic!("load entries outcome: {other:?}"),
+        };
+        assert_eq!(entries.len(), 2);
+
+        let tree = match dispatch(
+            &mut driver,
+            Command::SessionTree {
+                kind: SessionTreeKind::MessageHistory,
+            },
+        )
+        .await
+        .expect("session tree")
+        {
+            DispatchOutcome::SessionTree(tree) => tree,
+            other => panic!("session tree outcome: {other:?}"),
+        };
+        driver
+            .refresh_surface_caches()
+            .await
+            .expect("refresh fixed zone caches");
+        let _ = driver.current_model();
+        assert!(driver.leaf_entry_id().is_some());
+        let target_id = tree
+            .first()
+            .and_then(|node| node.entry.entry_id())
+            .map(str::to_string)
+            .expect("session tree entry");
+        dispatch(
+            &mut driver,
+            Command::AppendEntryLabel {
+                target_id: target_id.clone(),
+                label: Some("important".into()),
+            },
+        )
+        .await
+        .expect("append label");
+        let labelled_tree = match dispatch(
+            &mut driver,
+            Command::SessionTree {
+                kind: SessionTreeKind::MessageHistory,
+            },
+        )
+        .await
+        .expect("labelled tree")
+        {
+            DispatchOutcome::SessionTree(tree) => tree,
+            other => panic!("labelled tree outcome: {other:?}"),
+        };
+        assert_eq!(
+            labelled_tree.first().and_then(|node| node.label.as_deref()),
+            Some("important")
+        );
+        let travel = match dispatch(
+            &mut driver,
+            Command::TravelSessionTree {
+                kind: SessionTreeKind::MessageHistory,
+                entry_id: target_id.clone(),
+            },
+        )
+        .await
+        .expect("travel")
+        {
+            DispatchOutcome::SessionTreeTravel(travel) => travel,
+            other => panic!("travel outcome: {other:?}"),
+        };
+        assert_eq!(travel.selected_id, target_id);
+        let named = match dispatch(
+            &mut driver,
+            Command::SetSessionNameFor {
+                session_id: session_id.clone(),
+                name: "named for session".into(),
+            },
+        )
+        .await
+        .expect("set name for")
+        {
+            DispatchOutcome::SessionName(Some(name)) => name,
+            other => panic!("set name for outcome: {other:?}"),
+        };
+        assert_eq!(named, "named for session");
+        let fetched = match dispatch(&mut driver, Command::GetSessionName {})
+            .await
+            .expect("get name")
+        {
+            DispatchOutcome::SessionName(name) => name,
+            other => panic!("get name outcome: {other:?}"),
+        };
+        assert_eq!(fetched.as_deref(), Some("named for session"));
+
+        let snapshot = driver.loaded_resources_snapshot().await;
+        assert!(snapshot.mcp_diag_short.is_empty());
+        driver.arm_tool_freeze_gate().await;
+        assert!(
+            driver.is_tools_frozen(),
+            "arm_tool_freeze MUST freeze when no MCP is configured"
+        );
+        dispatch(
+            &mut driver,
+            Command::Steer {
+                message: "nudge".into(),
+            },
+        )
+        .await
+        .expect("steer");
+        assert_eq!(driver.queue_stats().steer_count, 1);
+        let queued = driver
+            .unary("queue_stats", serde_json::json!({}))
+            .await
+            .expect("queue_stats unary");
+        assert_eq!(queued.get("steer_count").and_then(Value::as_u64), Some(1));
+        dispatch(
+            &mut driver,
+            Command::ClearQueue {
+                clear_steer: true,
+                clear_follow_up: true,
+            },
+        )
+        .await
+        .expect("clear queue");
+        let report = driver
+            .reload_runtime(&CancellationToken::new())
+            .await
+            .expect("reload");
+        assert!(!report.steps.is_empty());
+        dispatch(
+            &mut driver,
+            Command::DeleteSession {
+                session_id: session_id.clone(),
+            },
+        )
+        .await
+        .expect("delete session");
+        let listed = match dispatch(&mut driver, Command::ListSessions {})
+            .await
+            .expect("list after delete")
+        {
+            DispatchOutcome::Sessions(list) => list,
+            other => panic!("list after delete outcome: {other:?}"),
+        };
+        assert!(!listed.iter().any(|entry| entry.id == session_id));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn remote_forwards_bash_output_frames_to_sink() {
+        let host = HostState::for_test().expect("host");
+        let (running, port) = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+                sessions_dir: None,
+                registration_path: None,
+            },
+            host.clone(),
+        )
+        .await
+        .expect("bind");
+        let mut driver = XyRemoteDriver::new(format!("http://127.0.0.1:{port}"), "sink-sess");
+        driver.attach_session().await.expect("attach");
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink {
+            tx,
+            cancel: tokio_util::sync::CancellationToken::new(),
+        }));
+        host.slot("sink-sess")
+            .await
+            .push_bash_output(xylitol_plugin_sdk::BashChunk {
+                bash_id: "b1".into(),
+                seq: 1,
+                data: "streamed".into(),
+            })
+            .await;
+        let chunk = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("chunk delivery")
+            .expect("chunk");
+        assert_eq!(chunk.bash_id, "b1");
+        assert_eq!(chunk.data, "streamed");
+        running.shutdown();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn session_and_host_capabilities_roundtrip_over_host() {
+        let host = HostState::for_test().expect("host");
+        let (running, port) = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+                sessions_dir: None,
+                registration_path: None,
+            },
+            host,
+        )
+        .await
+        .expect("bind");
+        exercise_session_and_host_capabilities(XyRemoteDriver::new(
+            format!("http://127.0.0.1:{port}"),
+            "remote-seed",
+        ))
+        .await;
+        running.shutdown();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn session_and_host_capabilities_match_in_process_carrier() {
+        let host = HostState::for_test().expect("host");
+        let client = InProcessClient::host_state(host);
+        exercise_session_and_host_capabilities(XyRemoteDriver::with_host(
+            client,
+            "in-process-seed",
+        ))
+        .await;
+    }
+
+    fn fixture_mcp(name: &str) -> crate::wiring::mcp_spec::McpServerSpec {
+        use crate::wiring::mcp_spec::{McpServerSpec, McpTransportSpec};
+        use std::collections::HashMap;
+
+        let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/support/mcp_fixture_server.py");
+        let mut env = HashMap::new();
+        env.insert("XYLITOL_MCP_FIXTURE_TOOLS".into(), "ping".into());
+        McpServerSpec {
+            name: name.into(),
+            transport: McpTransportSpec::Stdio,
+            command: Some("python3".into()),
+            args: Some(vec![script.display().to_string()]),
+            url: None,
+            env: Some(env),
+            headers: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn loaded_resources_reads_writer_mcp_not_hollow_shell() {
+        use crate::wiring::occupancy::host::materialize_writer;
+
+        let host =
+            HostState::for_test_with_mcp(vec![fixture_mcp("a"), fixture_mcp("b")]).expect("host");
+        let slot = host.slot("mcp-sess").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        {
+            let mut guard = slot.driver.lock().await;
+            let driver = guard.as_mut().expect("writer");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            while std::time::Instant::now() < deadline {
+                let _ = driver.poll_mcp_bootstrap().await;
+                if !driver.mcp_blocks_agent() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        }
+        let snap = host.loaded_resources_snapshot().await;
+        assert_eq!(snap.mcp_configured, 2);
+        assert!(
+            !snap.mcp_connected.is_empty()
+                || !snap.mcp_diag_short.is_empty()
+                || snap.mcp_connecting_label.is_some(),
+            "loaded_resources MUST NOT stay at configured-only hollow shell: {snap:?}"
+        );
+        if snap.mcp_bootstrap_complete {
+            assert!(
+                !snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty(),
+                "settled snapshot MUST NOT be fake-complete 0 connected: {snap:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn loaded_resources_snapshot_applies_writer_mcp_without_direct_poll() {
+        use crate::wiring::occupancy::host::materialize_writer;
+
+        let host =
+            HostState::for_test_with_mcp(vec![fixture_mcp("a"), fixture_mcp("b")]).expect("host");
+        let slot = host.slot("mcp-attach").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        // Attach TUI only hits `loaded_resources` unary — never `XyDriver::poll_mcp`
+        // on the writer. Snapshot MUST join/install so the header can leave
+        // `2 configured · 0 connected`.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut snap = host.loaded_resources_snapshot().await;
+        while std::time::Instant::now() < deadline {
+            if !snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            snap = host.loaded_resources_snapshot().await;
+        }
+        assert_eq!(snap.mcp_configured, 2);
+        assert!(
+            !snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty(),
+            "attach-path snapshot MUST apply MCP without a direct writer poll: {snap:?}"
+        );
+        if snap.mcp_bootstrap_complete {
+            assert!(
+                !snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty(),
+                "settled attach snapshot MUST NOT be 0 connected: {snap:?}"
+            );
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn resources_watch_pushes_one_frame_on_snapshot_change() {
+        use crate::wiring::occupancy::host::materialize_writer;
+
+        // r1790：写者侧 poll MCP bootstrap，快照变化才向订阅连接广播
+        // `session/resources` notification（bootstrap 过程可有多次变化、
+        // 各推一帧）；payload 与 loaded_resources unary 同形；不消耗
+        // journal seq；快照稳定后不重复推帧。
+        let host = HostState::for_test_with_mcp(vec![fixture_mcp("a")]).expect("host");
+        let slot = host.slot("res-watch").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        let mut rx = host.in_process_downlink.subscribe();
+        slot.ensure_mcp_resources_watch();
+
+        // 等 bootstrap 落定（与近邻 MCP 测试同一判据）。
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut snap = host.loaded_resources_snapshot_for("res-watch").await;
+        while std::time::Instant::now() < deadline {
+            if snap.mcp_bootstrap_complete
+                && (!snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty())
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            snap = host.loaded_resources_snapshot_for("res-watch").await;
+        }
+        assert!(
+            snap.mcp_bootstrap_complete,
+            "fixture MCP bootstrap must settle: {snap:?}"
+        );
+        // 非阻塞排空 + 轮询：等到出现「与已落定快照同形」那一帧（相对判据，
+        // 不靠固定 sleep 猜 poll 间隔；收集到的帧仍逐帧可查）。
+        let mut frames: Vec<Value> = Vec::new();
+        // 帧与「unary 同形」比较须剥离 settle 探测字段：mcp_bootstrap_complete
+        // 属 host 装配状态（测试 settle 判据），非 resources 帧语义——其翻转
+        // 不一定伴随推帧（产品契约：仅资源面变化才推）。其余字段必须逐字一致。
+        let strip = |v: &Value| -> Value {
+            let mut m = v.as_object().cloned().unwrap_or_default();
+            m.remove("mcp_bootstrap_complete");
+            Value::Object(m)
+        };
+        // 计时只在「曾收到帧」后启用：冷启动首帧可能晚于 snap 落定，若在
+        // 首帧前就按 5 秒收口会误判。收到帧后无进展才按窗口收口；
+        // 另设 30 秒绝对保险，防产品 watch 异常导致测试挂死。
+        let mut drain_deadline: Option<std::time::Instant> = None;
+        let hard_cap = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        loop {
+            let before = frames.len();
+            while let Ok(msg) = rx.try_recv() {
+                if let RpcMessage::ServerRequest {
+                    method, payload, ..
+                } = msg
+                    && method == "session/resources"
+                {
+                    frames.push(payload);
+                }
+            }
+            if std::time::Instant::now() >= hard_cap {
+                break;
+            }
+            // 静默收口：从「曾收到帧」起静默 5s 视为稳定（产品契约：资源面稳定后
+            // 不重复推帧）。mcp_bootstrap_complete 为 settle 探测字段、非资源面，
+            // 不要求其翻转伴随推帧——故后续「资源面一致帧」断言在其剔除后判断。
+            if frames.len() != before {
+                drain_deadline =
+                    Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
+            } else if let Some(dl) = drain_deadline
+                && std::time::Instant::now() >= dl
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let final_snap =
+            serde_json::to_value(host.loaded_resources_snapshot_for("res-watch").await)
+                .unwrap_or(Value::Null);
+        let resource_stable_matched = frames
+            .iter()
+            .any(|f| strip(&f["snapshot"]) == strip(&final_snap));
+        assert!(
+            resource_stable_matched,
+            "存在一帧的资源面与最终 loaded_resources unary 一致（剔除 mcp_bootstrap_complete 逐字同形）——帧={frames:?} final={final_snap:?}"
+        );
+        assert!(
+            !frames.is_empty(),
+            "watch loop must push frames on snapshot change"
+        );
+        let last = frames.last().expect("frames nonempty");
+        assert_eq!(
+            last["session_id"], "res-watch",
+            "frame MUST carry the session id"
+        );
+        assert_eq!(
+            slot.journal.lock().await.max_seq(),
+            0,
+            "resources frames MUST NOT consume journal seq"
+        );
+
+        // 快照稳定后不再重复广播（仅变化时推帧；其他下行帧不算）。
+        let quiet = tokio::time::timeout(std::time::Duration::from_millis(700), rx.recv()).await;
+        if let Ok(Ok(RpcMessage::ServerRequest { method, .. })) = quiet {
+            assert_ne!(
+                method, "session/resources",
+                "stable snapshot MUST NOT repeat the resources frame"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn arm_tool_freeze_unary_freezes_after_mcp_settle() {
+        use crate::wiring::occupancy::host::materialize_writer;
+
+        let host =
+            HostState::for_test_with_mcp(vec![fixture_mcp("a"), fixture_mcp("b")]).expect("host");
+        let slot = host.slot("mcp-freeze").await;
+        materialize_writer(&host, &slot)
+            .await
+            .expect("materialize writer");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut snap = host.loaded_resources_snapshot().await;
+        while std::time::Instant::now() < deadline {
+            if snap.mcp_bootstrap_complete
+                && (!snap.mcp_connected.is_empty() || !snap.mcp_diag_short.is_empty())
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            snap = host.loaded_resources_snapshot().await;
+        }
+        assert!(
+            !snap.tools_table_frozen,
+            "settle MUST NOT freeze until first-turn gate: {snap:?}"
+        );
+        let result = crate::wiring::occupancy::host::handle_unary(
+            &host,
+            None,
+            "arm_tool_freeze",
+            serde_json::json!({ "session_id": "mcp-freeze" }),
+        )
+        .await;
+        assert!(result.ok, "arm_tool_freeze unary failed: {result:?}");
+        let snap: LoadedResourcesSnapshot =
+            serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
+        assert!(
+            snap.tools_table_frozen,
+            "first-turn arm MUST freeze after MCP settle: {snap:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn loaded_resources_before_writer_is_not_fake_complete() {
+        let host = HostState::for_test_with_mcp(vec![fixture_mcp("pre")]).expect("host");
+        let snap = host.loaded_resources_snapshot().await;
+        assert_eq!(snap.mcp_configured, 1);
+        assert!(
+            !snap.mcp_bootstrap_complete
+                || snap.mcp_connecting_label.is_some()
+                || !snap.mcp_connected.is_empty()
+                || !snap.mcp_diag_short.is_empty(),
+            "pre-subscribe snapshot MUST NOT be Idle-complete 0 connected: {snap:?}"
+        );
+    }
+
+    /// c2849 / c2893：`arm_tool_freeze` 不占写锁，已有写引擎时仍须返回冻结快照。
+    #[tokio::test]
+    async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
+        use crate::wiring::occupancy::host::materialize_writer;
+
+        let host = HostState::for_test_with_mcp(vec![fixture_mcp("a")]).expect("host");
+        let slot = host.slot("conflict-sess").await;
+        materialize_writer(&host, &slot).await.expect("materialize");
+        // 由另一写者建立租约：先以一个 token 调用一次写 unary（set_model 走租约）。
+        let first = crate::wiring::occupancy::host::handle_unary(
+            &host,
+            None,
+            "set_model",
+            serde_json::json!({ "provider": "", "model_id": "keep", "session_id": "conflict-sess" }),
+        )
+        .await;
+        let _ = first;
+        let result = crate::wiring::occupancy::host::handle_unary(
+            &host,
+            None,
+            "arm_tool_freeze",
+            serde_json::json!({ "session_id": "conflict-sess" }),
+        )
+        .await;
+        assert!(
+            result.ok,
+            "arm_tool_freeze MUST succeed without taking occupancy: {result:?}"
+        );
+        let snap: LoadedResourcesSnapshot =
+            serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
+        assert!(
+            snap.tools_table_frozen,
+            "lease-free arm MUST still resolve frozen: {snap:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
+        // c2847 回归：配置了但永远连不上的 MCP，`arm_tool_freeze` unary MUST NOT
+        // 无限等待——`ensure_tool_table_frozen` 在门时限内 detach 并冻结 armed 子集，
+        // 返回 frozen+complete 快照；否则 TUI 的 Assembling 门死锁（旧行为：立即
+        // 返回未冻结快照，客户端无限等待）。
+        use crate::wiring::mcp_spec::{McpServerSpec, McpTransportSpec};
+        use crate::wiring::occupancy::host::materialize_writer;
+
+        let hang = McpServerSpec {
+            name: "hang-forever".into(),
+            transport: McpTransportSpec::Stdio,
+            command: Some("sleep".into()),
+            args: Some(vec!["300".into()]),
+            url: None,
+            env: None,
+            headers: None,
+        };
+        let host = HostState::for_test_with_mcp(vec![hang]).expect("host");
+        let slot = host.slot("hang-freeze").await;
+        materialize_writer(&host, &slot).await.expect("materialize");
+
+        let t0 = std::time::Instant::now();
+        let result = crate::wiring::occupancy::host::handle_unary(
+            &host,
+            None,
+            "arm_tool_freeze",
+            serde_json::json!({ "session_id": "hang-freeze" }),
+        )
+        .await;
+        let elapsed = t0.elapsed();
+        assert_eq!(result.error.as_ref().map(|e| e.code.as_str()), None);
+        assert!(
+            result.ok,
+            "arm_tool_freeze unary MUST resolve within gate window: {result:?}"
+        );
+        assert!(
+            elapsed < std::time::Duration::from_secs(30),
+            "MUST be bounded by the first-turn gate window, took {elapsed:?}"
+        );
+        let snap: LoadedResourcesSnapshot =
+            serde_json::from_value(result.value.expect("snapshot")).expect("decode snapshot");
+        assert!(
+            snap.tools_table_frozen,
+            "timeout MUST freeze armed subset (deadlock guard): {snap:?}"
+        );
+        assert!(
+            snap.mcp_bootstrap_complete,
+            "timeout MUST settle bootstrap (no eternal connecting): {snap:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn materialize_writer_does_not_wait_mcp_bootstrap() {
+        use crate::wiring::mcp_spec::{McpServerSpec, McpTransportSpec};
+        use crate::wiring::occupancy::host::materialize_writer;
+
+        let hang = McpServerSpec {
+            name: "hang".into(),
+            transport: McpTransportSpec::Stdio,
+            command: Some("sleep".into()),
+            args: Some(vec!["30".into()]),
+            url: None,
+            env: None,
+            headers: None,
+        };
+        let host = HostState::for_test_with_mcp(vec![hang]).expect("host");
+        let slot = host.slot("hang-sess").await;
+        let t0 = std::time::Instant::now();
+        materialize_writer(&host, &slot).await.expect("materialize");
+        assert!(
+            t0.elapsed() < std::time::Duration::from_secs(2),
+            "writer unary MUST NOT wait MCP connect: {:?}",
+            t0.elapsed()
+        );
+        let t1 = std::time::Instant::now();
+        let result = crate::wiring::occupancy::host::handle_unary(
+            &host,
+            None,
+            "set_model",
+            serde_json::json!({
+                "provider": "",
+                "model_id": "missing",
+                "session_id": "hang-sess",
+            }),
+        )
+        .await;
+        assert!(
+            t1.elapsed() < std::time::Duration::from_secs(2),
+            "set_model MUST NOT wait MCP: {:?} result={result:?}",
+            t1.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn attach_mux_survives_after_idle_and_receives_later_events() {
+        use crate::wiring::host_client::InProcessClient;
+        use xylitol_protocol::Event;
+
+        let host = HostState::for_test().expect("host");
+        let client = InProcessClient::host_state(host.clone());
+        let mut driver = XyRemoteDriver::with_host(client, "mux-sess");
+        driver.attach_session().await.expect("attach");
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let slot = host.slot("mux-sess").await;
+        slot.append_and_push(Event::QueueUpdate {
+            steer_count: 1,
+            follow_up_count: 0,
+        })
+        .await;
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let first = driver.drain_idle_events();
+        assert!(
+            first
+                .iter()
+                .any(|e| matches!(e, XyEvent::QueueUpdate { steer_count: 1, .. })),
+            "first downlink event missing: {first:?}"
+        );
+        slot.append_and_push(Event::AgentEnd).await;
+        tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+        let _ = driver.drain_idle_events();
+        slot.append_and_push(Event::QueueUpdate {
+            steer_count: 0,
+            follow_up_count: 1,
+        })
+        .await;
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let later = driver.drain_idle_events();
+        assert!(
+            later.iter().any(|e| matches!(
+                e,
+                XyEvent::QueueUpdate {
+                    follow_up_count: 1,
+                    ..
+                }
+            )),
+            "mux MUST still deliver after AgentEnd: {later:?}"
+        );
+    }
+
+    #[test]
+    fn cold_replay_tape_drops_agent_keeps_queue() {
+        assert!(XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
+            &XyEvent::AgentStart {
+                session_id: "s".into(),
+                model: "m".into(),
+            }
+        ));
+        assert!(XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
+            &XyEvent::TextDelta("hi".into())
+        ));
+        assert!(!XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
+            &XyEvent::QueueUpdate {
+                steer_count: 1,
+                follow_up_count: 0,
+            }
+        ));
+        assert!(!XyRemoteDriver::<InProcessClient>::is_cold_replay_tape(
+            &XyEvent::error_msg("boom")
+        ));
+    }
+
+    #[tokio::test]
+    async fn cold_subscribe_drops_replay_tape_and_stays_live() {
+        use crate::wiring::host_client::InProcessClient;
+        use xylitol_protocol::Event;
+
+        let host = HostState::for_test().expect("host");
+        {
+            let slot = host.slot("s-cold").await;
+            let mut j = slot.journal.lock().await;
+            j.append(Event::TextDelta {
+                text: "tape-1".into(),
+            });
+            j.append(Event::TextDelta {
+                text: "tape-2".into(),
+            });
+        }
+        let client = InProcessClient::host_state(host.clone());
+        let mut driver = XyRemoteDriver::with_host(client, "s-cold");
+        driver.attach_session().await.expect("attach");
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let replay = driver.drain_idle_events();
+        assert!(
+            !replay
+                .iter()
+                .any(|e| matches!(e, XyEvent::TextDelta(t) if t.contains("tape"))),
+            "cold-replay tape MUST NOT reach the transcript stream (ath36): {replay:?}"
+        );
+        let slot = host.slot("s-cold").await;
+        slot.append_and_push(Event::QueueUpdate {
+            steer_count: 0,
+            follow_up_count: 2,
+        })
+        .await;
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let live = driver.drain_idle_events();
+        assert!(
+            live.iter().any(|e| matches!(
+                e,
+                XyEvent::QueueUpdate {
+                    follow_up_count: 2,
+                    ..
+                }
+            )),
+            "stream MUST stay live after the recovery window: {live:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn switch_session_resubscribes_cold_and_drops_new_session_tape() {
+        // resume-render 修复: SwitchSession 用旧 session 的 last_seq 重订阅新 session 时，
+        // journal 从任意偏移重放，mid-message TextDelta 尾巴会涌进 transcript。
+        // 重订阅必须 cold（last_seq=0 → skip_cold_replay 武装）。
+        use crate::wiring::dispatch::{DispatchOutcome, dispatch};
+        use crate::wiring::host_client::InProcessClient;
+        use xylitol_protocol::{Command, Event};
+
+        let host = HostState::for_test().expect("host");
+        host.ports
+            .store
+            .create("s-target", None, None)
+            .await
+            .expect("seed target session");
+        {
+            let slot = host.slot("s-target").await;
+            let mut j = slot.journal.lock().await;
+            j.append(Event::TextDelta {
+                text: "我是你的编码助手，".into(),
+            });
+            j.append(Event::TextDelta {
+                text: "主要帮你在这个 `xylitol` 项目里干活。".into(),
+            });
+        }
+        let client = InProcessClient::host_state(host.clone());
+        let mut driver = XyRemoteDriver::with_host(client, "s-other");
+        driver.attach_session().await.expect("attach");
+        // 在旧 session 上积累非零 last_seq（模拟看过一轮直播）。
+        {
+            let slot = host.slot("s-other").await;
+            slot.append_and_push(Event::QueueUpdate {
+                steer_count: 0,
+                follow_up_count: 0,
+            })
+            .await;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+        let _ = driver.drain_idle_events();
+
+        let outcome = dispatch(
+            &mut driver,
+            Command::SwitchSession {
+                session_path: "s-target".into(),
+            },
+        )
+        .await
+        .expect("switch");
+        assert!(matches!(outcome, DispatchOutcome::SwitchedSession(_)));
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let evs = driver.drain_idle_events();
+        assert!(
+            !evs.iter().any(|e| matches!(
+                e,
+                XyEvent::TextDelta(t) if t.contains("xylitol")
+            )),
+            "switch 后旧偏移的 journal 重放不得作为直播尾巴到达 transcript: {evs:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn prompt_after_fork_switch_delivers_live_text() {
+        use crate::wiring::dispatch::{DispatchOutcome, dispatch};
+        use crate::wiring::host_client::InProcessClient;
+        use futures::StreamExt;
+        use xylitol_protocol::Command;
+
+        let host = HostState::for_test_with_default_model("fake-model").expect("host");
+        let client = InProcessClient::host_state(host.clone());
+        let mut driver = XyRemoteDriver::with_host(client, "s-fork-live");
+        driver.attach_session().await.expect("attach");
+
+        let mut stream = driver.run("main branch").await;
+        let mut saw_hello = false;
+        while let Some(ev) = stream.next().await {
+            if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                saw_hello = true;
+            }
+            if matches!(ev, XyEvent::AgentEnd { .. }) {
+                break;
+            }
+        }
+        assert!(saw_hello, "trunk Fake reply MUST arrive");
+
+        let leaf = driver.leaf_entry_id().expect("leaf after trunk");
+        let child = match dispatch(
+            &mut driver,
+            Command::Fork {
+                entry_id: leaf,
+                position: Some("at".into()),
+            },
+        )
+        .await
+        .expect("fork")
+        {
+            DispatchOutcome::NewSession(id) => id,
+            other => panic!("fork outcome: {other:?}"),
+        };
+        dispatch(
+            &mut driver,
+            Command::SwitchSession {
+                session_path: child,
+            },
+        )
+        .await
+        .expect("switch");
+
+        let mut stream = driver.run("alt branch").await;
+        let mut saw_hello = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        while let Ok(Some(ev)) = tokio::time::timeout(
+            deadline.saturating_duration_since(tokio::time::Instant::now()),
+            stream.next(),
+        )
+        .await
+        {
+            if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                saw_hello = true;
+            }
+            if matches!(ev, XyEvent::AgentEnd { .. }) {
+                break;
+            }
+        }
+        assert!(
+            saw_hello,
+            "forked child prompt MUST deliver live Fake text, not hang"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn prompt_after_fork_switch_delivers_live_text_http() {
+        use crate::wiring::dispatch::{DispatchOutcome, dispatch};
+        use futures::StreamExt;
+        use xylitol_protocol::Command;
+
+        let host = HostState::for_test_with_default_model("fake-model").expect("host");
+        let (running, port) = serve(
+            ServerConfig {
+                host: "127.0.0.1".into(),
+                port: 0,
+                sessions_dir: None,
+                registration_path: None,
+            },
+            host,
+        )
+        .await
+        .expect("bind");
+        let mut driver = XyRemoteDriver::new(format!("http://127.0.0.1:{port}"), "s-fork-http");
+        let attach = driver.attach_session().await;
+        if let Err(e) = attach {
+            running.shutdown();
+            panic!("attach: {e}");
+        }
+
+        let mut stream = driver.run("main branch").await;
+        let mut saw_hello = false;
+        while let Some(ev) = stream.next().await {
+            if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                saw_hello = true;
+            }
+            if matches!(ev, XyEvent::AgentEnd { .. }) {
+                break;
+            }
+        }
+        if !saw_hello {
+            running.shutdown();
+            panic!("trunk Fake reply MUST arrive over HTTP");
+        }
+
+        let leaf = match driver.leaf_entry_id() {
+            Some(leaf) => leaf,
+            None => {
+                running.shutdown();
+                panic!("leaf after trunk");
+            }
+        };
+        let child = match dispatch(
+            &mut driver,
+            Command::Fork {
+                entry_id: leaf,
+                position: Some("at".into()),
+            },
+        )
+        .await
+        {
+            Ok(DispatchOutcome::NewSession(id)) => id,
+            other => {
+                running.shutdown();
+                panic!("fork outcome: {other:?}");
+            }
+        };
+        if let Err(e) = dispatch(
+            &mut driver,
+            Command::SwitchSession {
+                session_path: child,
+            },
+        )
+        .await
+        {
+            running.shutdown();
+            panic!("switch: {e}");
+        }
+
+        let mut stream = driver.run("alt branch").await;
+        let mut saw_hello = false;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+        while let Ok(Some(ev)) = tokio::time::timeout(
+            deadline.saturating_duration_since(tokio::time::Instant::now()),
+            stream.next(),
+        )
+        .await
+        {
+            if matches!(&ev, XyEvent::TextDelta(t) if t.contains("Hello from fake")) {
+                saw_hello = true;
+            }
+            if matches!(ev, XyEvent::AgentEnd { .. }) {
+                break;
+            }
+        }
+        running.shutdown();
+        assert!(
+            saw_hello,
+            "HTTP forked child prompt MUST deliver live Fake text, not hang"
+        );
+    }
+
+    #[tokio::test]
+    async fn materialize_writer_binds_client_workspace_cwd() {
+        use crate::wiring::occupancy::host::materialize_writer_at;
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("ws-cwd").await;
+        let dir = tempfile::tempdir().expect("tmp");
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+        let guard = slot.driver.lock().await;
+        let cwd = guard.as_ref().expect("writer").agent_cwd_for_test();
+        assert_eq!(
+            std::path::Path::new(&cwd),
+            dir.path(),
+            "writer cwd MUST be the TUI workspace, not serve cwd"
+        );
+    }
+
+    #[tokio::test]
+    async fn bash_unary_runs_in_client_workspace() {
+        use crate::wiring::occupancy::host::{handle_unary, materialize_writer_at};
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("ws-bang").await;
+        let dir = tempfile::tempdir().expect("tmp");
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+        let result = handle_unary(
+            &host,
+            None,
+            "bash",
+            serde_json::json!({ "session_id": "ws-bang", "command": "pwd" }),
+        )
+        .await;
+        assert!(result.ok, "bash unary MUST succeed: {result:?}");
+        let output = result
+            .value
+            .as_ref()
+            .and_then(|v| v.get("output"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let got = std::path::PathBuf::from(output.trim());
+        assert_eq!(
+            got.canonicalize().unwrap(),
+            dir.path().canonicalize().unwrap(),
+            "attach bang MUST run in the session workspace, not serve cwd; got: {output}"
+        );
+    }
+
+    /// ws1 (c2335): the model-side tool execution surface MUST run in the
+    /// session workspace bound at writer materialization — a scripted fake
+    /// model emits a `bash pwd` tool call and the result MUST be the
+    /// workspace, not the serve process cwd.
+    #[tokio::test]
+    async fn model_tool_runs_in_client_workspace() {
+        use crate::XyModelMeta;
+        use crate::XySessionStore;
+        use crate::wiring::composition::build_baseline_with_store;
+        use crate::wiring::infra::provider::factory::{reset_fake_state, set_fake_tool_call};
+        use crate::wiring::occupancy::host::{ReloadBaseline, materialize_writer_at};
+        use futures::StreamExt;
+        use std::path::PathBuf;
+        use std::sync::Arc;
+        use xylitol_plugin_sdk::lifecycle::XyEvent;
+        use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind};
+
+        reset_fake_state();
+        set_fake_tool_call("bash", r#"{"command":"pwd"}"#);
+
+        let dir = tempfile::tempdir().expect("tmp");
+        let store: Arc<dyn XySessionStore> =
+            Arc::new(xylitol_official_plugin_session::SessionManager::new(
+                std::env::temp_dir()
+                    .join(format!("xylitol-host-ws-{}", uuid::Uuid::new_v4()))
+                    .join("sessions"),
+            ));
+        let mut registry = xylitol_runtime::agent::ModelRegistry::new();
+        registry.register(XyModelMeta {
+            id: "fake-ws".into(),
+            config: XyModelConfig {
+                kind: XyModelKind::Fake,
+                api_key: String::new(),
+                model: "fake-model".into(),
+                base_url: None,
+                api: None,
+                compat: None,
+            },
+            display_name: "Fake WS".into(),
+            thinking: false,
+            context_window: 200_000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
+        });
+        let options = crate::wiring::composition::BuildAgentOptions {
+            model_registry: registry,
+            ..Default::default()
+        };
+        let ports = build_baseline_with_store(options, store).expect("ports");
+        let host = HostState::new(
+            ports,
+            ReloadBaseline {
+                cwd: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+                agent_dir: crate::wiring::infra::resource::DefaultResourceLoader::default_agent_dir(
+                ),
+                project_trusted: true,
+                mcp_servers: Vec::new(),
+                default_model_id: Some("fake-ws".into()),
+            },
+            "ws-model-tool-fallback".into(),
+        );
+
+        let slot = host.slot("ws-model-tool").await;
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+
+        let mut tool_end_result: Option<String> = None;
+        {
+            let mut guard = slot.driver.lock().await;
+            let driver = guard.as_mut().expect("writer driver");
+            driver.select_model("fake-ws").await.expect("select fake");
+            let mut stream = driver.run("run pwd via tool").await;
+            while let Some(event) = stream.next().await {
+                if let XyEvent::ToolExecutionEnd { ref result, .. } = event {
+                    tool_end_result = Some(result.clone());
+                }
+                if matches!(event, XyEvent::AgentEnd { .. }) {
+                    break;
+                }
+            }
+        }
+
+        let result = tool_end_result.expect("bash tool must execute during the run");
+        assert!(
+            !result.contains("error"),
+            "model-side bash tool MUST succeed; got {result}"
+        );
+        assert!(
+            result.contains(
+                &dir.path()
+                    .canonicalize()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string()
+            ),
+            "model-side bash tool MUST run in the session workspace; got {result}"
+        );
+    }
+
+    #[tokio::test]
+    async fn persist_trust_unary_routes_to_writer() {
+        use crate::wiring::occupancy::host::{handle_unary, materialize_writer_at};
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("ws-trust").await;
+        let dir = tempfile::tempdir().expect("tmp");
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+        let result = handle_unary(
+            &host,
+            None,
+            "persist_trust",
+            serde_json::json!({ "session_id": "ws-trust", "mode": "trust_cwd" }),
+        )
+        .await;
+        assert!(
+            result.ok,
+            "persist_trust MUST route to the writer: {result:?}"
+        );
+        let value = result.value.as_ref().expect("value");
+        assert!(
+            value.get("trusted").is_some() && value.get("message").is_some(),
+            "report shape MUST surface trusted/message: {value}"
+        );
+    }
+
+    #[tokio::test]
+    async fn export_unary_returns_content_and_cleans_stage() {
+        use crate::wiring::occupancy::host::{handle_unary, materialize_writer_at};
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("ws-export").await;
+        let dir = tempfile::tempdir().expect("tmp");
+        materialize_writer_at(&host, &slot, dir.path())
+            .await
+            .expect("materialize");
+        let minted = handle_unary(
+            &host,
+            None,
+            "new_session",
+            serde_json::json!({ "session_id": "ws-export" }),
+        )
+        .await;
+        assert!(minted.ok, "new_session MUST succeed: {minted:?}");
+        let result = handle_unary(
+            &host,
+            None,
+            "export_jsonl",
+            serde_json::json!({ "session_id": "ws-export" }),
+        )
+        .await;
+        assert!(result.ok, "export unary MUST succeed: {result:?}");
+        let value = result.value.as_ref().expect("value");
+        let content = value
+            .get("content")
+            .and_then(Value::as_str)
+            .expect("export response MUST carry content bytes for the TUI to write locally");
+        assert!(!content.is_empty(), "jsonl export should have header rows");
+        let staged = value
+            .get("path")
+            .and_then(Value::as_str)
+            .map(std::path::PathBuf::from)
+            .expect("staged path");
+        assert!(
+            !staged.exists(),
+            "Host-side stage file MUST be cleaned up: {}",
+            staged.display()
+        );
+    }
+
+    #[tokio::test]
+    async fn inflight_set_thinking_does_not_apply_until_flush() {
+        use crate::wiring::occupancy::host::{handle_unary, materialize_writer};
+
+        let host = HostState::for_test().expect("host");
+        let slot = host.slot("th").await;
+        materialize_writer(&host, &slot).await.expect("writer");
+        let before = {
+            let g = slot.driver.lock().await;
+            g.as_ref().expect("driver").thinking_level()
+        };
+        slot.mark_run_inflight_for_test(true);
+        let result = handle_unary(
+            &host,
+            None,
+            "set_thinking_level",
+            serde_json::json!({ "session_id": "th", "level": "high" }),
+        )
+        .await;
+        assert!(result.ok, "defer thinking MUST succeed: {result:?}");
+        let during = {
+            let g = slot.driver.lock().await;
+            g.as_ref().expect("driver").thinking_level()
+        };
+        assert_eq!(
+            during, before,
+            "busy thinking MUST NOT retune the in-flight run"
+        );
+        slot.mark_run_inflight_for_test(false);
+        slot.flush_pending_runtime_for_test().await;
+    }
+}

@@ -12,7 +12,7 @@ use rstest_bdd_macros::{given, then, when};
 // ═══════════════════════════════════════════════════════════════════
 
 pub struct SurfaceBdd {
-    pub(crate) mode: Cell<Option<xylitol::app::cli::SurfaceMode>>,
+    pub(crate) mode: Cell<Option<xylitol::cli::SurfaceMode>>,
     pub(crate) print_err: RefCell<String>,
     pub(crate) is_tty: Cell<bool>,
     pub(crate) has_prompt: Cell<bool>,
@@ -42,7 +42,7 @@ fn g_ce16_tty(surface_bdd: &SurfaceBdd) {
 #[when("xylitol tui")]
 fn w_ce16_tui(surface_bdd: &SurfaceBdd) {
     use clap::Parser;
-    use xylitol::app::cli::{CliArgs, resolve_surface_intent, select_surface_mode};
+    use xylitol::cli::{CliArgs, resolve_surface_intent, select_surface_mode};
     assert!(surface_bdd.is_tty.get(), "given TTY must arm is_tty");
     let args = CliArgs::try_parse_from(["xylitol", "tui"]).expect("parse tui");
     let (force_tui, print_flag, one_shot) = resolve_surface_intent(args.command.as_ref());
@@ -56,10 +56,7 @@ fn w_ce16_tui(surface_bdd: &SurfaceBdd) {
 
 #[then("进入产品 TUI")]
 fn t_ce16_enters_tui(surface_bdd: &SurfaceBdd) {
-    assert_eq!(
-        surface_bdd.mode.get(),
-        Some(xylitol::app::cli::SurfaceMode::Tui)
-    );
+    assert_eq!(surface_bdd.mode.get(), Some(xylitol::cli::SurfaceMode::Tui));
 }
 
 #[given("无 prompt")]
@@ -70,7 +67,7 @@ fn g_ce16_no_prompt(surface_bdd: &SurfaceBdd) {
 #[when("xylitol print")]
 fn w_ce16_print(surface_bdd: &SurfaceBdd) {
     use clap::Parser;
-    use xylitol::app::cli::{CliArgs, resolve_print_prompt, resolve_surface_intent};
+    use xylitol::cli::{CliArgs, resolve_print_prompt, resolve_surface_intent};
     assert!(
         !surface_bdd.has_prompt.get(),
         "given 无 prompt must clear has_prompt"
@@ -115,7 +112,7 @@ fn g_ce_cli_parsed(_cli_help_bdd: &CliHelpBdd) {}
 #[when("xylitol serve --help")]
 fn w_ce8_serve_help(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
-    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let mut cmd = xylitol::cli::CliArgs::command();
     let help = cmd
         .find_subcommand_mut("serve")
         .expect("serve subcommand")
@@ -131,18 +128,18 @@ fn t_ce8_serve_shape(cli_help_bdd: &CliHelpBdd) {
     let help = cli_help_bdd.out.borrow();
     assert!(help.contains("--host"), "{help}");
     assert!(help.contains("--port"), "{help}");
-    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let mut cmd = xylitol::cli::CliArgs::command();
     assert!(cmd.find_subcommand("server").is_none());
     let serve = cmd.find_subcommand_mut("serve").expect("serve");
     assert!(serve.find_subcommand("stop").is_some(), "{help}");
     assert!(serve.find_subcommand("install").is_none(), "{help}");
     assert!(serve.find_subcommand("run").is_none(), "{help}");
     assert!(
-        xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "server"]).is_err(),
+        xylitol::cli::CliArgs::try_parse_from(["xylitol", "server"]).is_err(),
         "server alias must not parse"
     );
     assert!(
-        xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "serve", "run"]).is_err(),
+        xylitol::cli::CliArgs::try_parse_from(["xylitol", "serve", "run"]).is_err(),
         "serve run must not parse"
     );
 }
@@ -150,7 +147,7 @@ fn t_ce8_serve_shape(cli_help_bdd: &CliHelpBdd) {
 #[when("xylitol --help")]
 fn w_ce16_top_help(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
-    let help = xylitol::app::cli::CliArgs::command()
+    let help = xylitol::cli::CliArgs::command()
         .render_long_help()
         .to_string();
     cli_help_bdd.out.replace(help);
@@ -170,7 +167,7 @@ fn t_ce16_ops_toplevel(cli_help_bdd: &CliHelpBdd) {
     assert!(help.contains("serve"), "{help}");
     assert!(help.contains("tui"), "{help}");
     assert!(help.contains("print"), "{help}");
-    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let mut cmd = xylitol::cli::CliArgs::command();
     assert!(
         cmd.find_subcommand("serve").is_some(),
         "serve must be a top-level verb"
@@ -216,7 +213,7 @@ fn g_host_down_debug(_cli_help_bdd: &CliHelpBdd) {}
 #[when("xylitol tui --help")]
 fn w_tui_help(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
-    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let mut cmd = xylitol::cli::CliArgs::command();
     let help = cmd
         .find_subcommand_mut("tui")
         .expect("tui")
@@ -234,7 +231,7 @@ fn t_tui_has_designing(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
     let help = cli_help_bdd.out.borrow();
     assert!(help.contains("designing"), "{help}");
-    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let mut cmd = xylitol::cli::CliArgs::command();
     let tui = cmd.find_subcommand_mut("tui").expect("tui");
     assert!(tui.find_subcommand("designing").is_some());
 }
@@ -247,7 +244,7 @@ fn t_tui_omits_designing(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
     let help = cli_help_bdd.out.borrow();
     assert!(!help.contains("designing"), "{help}");
-    let mut cmd = xylitol::app::cli::CliArgs::command();
+    let mut cmd = xylitol::cli::CliArgs::command();
     let tui = cmd.find_subcommand_mut("tui").expect("tui");
     assert!(tui.find_subcommand("designing").is_none());
 }
@@ -255,7 +252,7 @@ fn t_tui_omits_designing(cli_help_bdd: &CliHelpBdd) {
 #[then("Commands 不含 preview 与 designing")]
 fn t_help_omits_preview_designing(cli_help_bdd: &CliHelpBdd) {
     use clap::CommandFactory;
-    let cmd = xylitol::app::cli::CliArgs::command();
+    let cmd = xylitol::cli::CliArgs::command();
     assert!(cmd.find_subcommand("preview").is_none());
     assert!(cmd.find_subcommand("designing").is_none());
     let help = cli_help_bdd.out.borrow();
@@ -273,10 +270,10 @@ fn w_tui_designing(cli_help_bdd: &CliHelpBdd) {
         cli_help_bdd.ok.set(false);
         return;
     }
-    let args = xylitol::app::cli::CliArgs::try_parse_from(["xylitol", "tui", "designing"])
+    let args = xylitol::cli::CliArgs::try_parse_from(["xylitol", "tui", "designing"])
         .expect("debug builds parse tui designing");
-    assert!(xylitol::app::cli::is_tui_designing(args.command.as_ref()));
-    assert!(!xylitol::app::cli::tui_requires_host_listener(
+    assert!(xylitol::cli::is_tui_designing(args.command.as_ref()));
+    assert!(!xylitol::cli::tui_requires_host_listener(
         args.command.as_ref()
     ));
     cli_help_bdd.ok.set(true);
@@ -327,7 +324,7 @@ fn g_ce19_cli_ready(surface_flags_bdd: &SurfaceFlagsBdd) {
 #[when("xylitol tui --session sid --model m --trust")]
 fn w_ce19_tui_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
     use clap::Parser;
-    use xylitol::app::cli::{CliArgs, surface_from_command};
+    use xylitol::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from([
         "xylitol",
         "tui",
@@ -354,7 +351,7 @@ fn t_ce19_flags_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
 #[when("xylitol tui run --session sid")]
 fn w_ce19_tui_run_session(surface_flags_bdd: &SurfaceFlagsBdd) {
     use clap::Parser;
-    use xylitol::app::cli::{CliArgs, surface_from_command};
+    use xylitol::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from(["xylitol", "tui", "run", "--session", "sid"])
         .expect("parse tui run --session");
     let s = surface_from_command(args.command.as_ref());
@@ -371,7 +368,7 @@ fn t_ce19_session_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
 #[when("xylitol tui --attach http://127.0.0.1:9 --port 11")]
 fn w_ce19_tui_attach(surface_flags_bdd: &SurfaceFlagsBdd) {
     use clap::Parser;
-    use xylitol::app::cli::{CliArgs, surface_from_command};
+    use xylitol::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from([
         "xylitol",
         "tui",
@@ -395,7 +392,7 @@ fn t_ce19_attach_wins(surface_flags_bdd: &SurfaceFlagsBdd) {
 #[when("xylitol print --session sid --no-color hi")]
 fn w_ce19_print_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
     use clap::Parser;
-    use xylitol::app::cli::CliArgs;
+    use xylitol::cli::CliArgs;
     CliArgs::try_parse_from(["xylitol", "print", "--session", "sid", "--no-color", "hi"])
         .expect("parse print flags");
     surface_flags_bdd.parse_ok.set(true);
@@ -404,7 +401,7 @@ fn w_ce19_print_flags(surface_flags_bdd: &SurfaceFlagsBdd) {
 #[when("xylitol print --session sid --trust --model m hi")]
 fn w_ce19_print_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
     use clap::Parser;
-    use xylitol::app::cli::{CliArgs, surface_from_command};
+    use xylitol::cli::{CliArgs, surface_from_command};
     let args = CliArgs::try_parse_from([
         "xylitol",
         "print",
@@ -427,7 +424,7 @@ fn w_ce19_print_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
 #[when("xylitol print --session sid --no-trust hi")]
 fn w_ce19_print_no_trust(surface_flags_bdd: &SurfaceFlagsBdd) {
     use clap::Parser;
-    use xylitol::app::cli::{CliArgs, surface_from_command};
+    use xylitol::cli::{CliArgs, surface_from_command};
     let args =
         CliArgs::try_parse_from(["xylitol", "print", "--session", "sid", "--no-trust", "hi"])
             .expect("parse print --no-trust");
@@ -446,7 +443,7 @@ fn t_ce19_parse_ok(surface_flags_bdd: &SurfaceFlagsBdd) {
 #[when("xylitol --session sid")]
 fn w_ce19_toplevel_session(surface_flags_bdd: &SurfaceFlagsBdd) {
     use clap::Parser;
-    use xylitol::app::cli::CliArgs;
+    use xylitol::cli::CliArgs;
     surface_flags_bdd
         .parse_ok
         .set(CliArgs::try_parse_from(["xylitol", "--session", "sid"]).is_ok());
@@ -462,7 +459,7 @@ fn g_ce20_listed(surface_flags_bdd: &SurfaceFlagsBdd) {
     surface_flags_bdd.session.replace(Some("uuid-1".into()));
     surface_flags_bdd
         .hint
-        .replace(xylitol::app::cli::resume_hint_line(Some("uuid-1"), true));
+        .replace(xylitol::cli::resume_hint_line(Some("uuid-1"), true));
 }
 
 #[given("当前 session 未持久化")]
@@ -470,7 +467,7 @@ fn g_ce20_unlisted(surface_flags_bdd: &SurfaceFlagsBdd) {
     surface_flags_bdd.session.replace(Some("uuid-2".into()));
     surface_flags_bdd
         .hint
-        .replace(xylitol::app::cli::resume_hint_line(Some("uuid-2"), false));
+        .replace(xylitol::cli::resume_hint_line(Some("uuid-2"), false));
 }
 
 #[when("TUI 或 print 正常退出")]
@@ -580,7 +577,7 @@ pub fn cli_entry_bdd() -> CliEntryBdd {
 
 #[when("在产品命令模块解析 {a:string} 与 {b:string}")]
 fn w_c2826_parse_slash_pair(cli_entry_bdd: &CliEntryBdd, a: String, b: String) {
-    use xylitol::app::tui::parse_slash_command;
+    use xylitol_app_tui::parse_slash_command;
     let first = parse_slash_command(a.trim_matches('"'));
     let second = parse_slash_command(b.trim_matches('"'));
     let summary = format!("first={:?} second={:?}", first.is_some(), second.is_some());
@@ -627,7 +624,7 @@ fn g_c2826_zero_model_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
 fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
     let path = cli_entry_bdd.detail.borrow().clone();
     assert!(!path.is_empty(), "config path not prepared");
-    let input = xylitol::app::core::bootstrap::BootstrapInput {
+    let input = xylitol::wiring::bootstrap::BootstrapInput {
         config_path: Some(path.into()),
         session: None,
         model: None,
@@ -647,7 +644,7 @@ fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
         }
     };
     let cwd = ws.root();
-    let result = xylitol::app::core::bootstrap::resolve_assembly_with(
+    let result = xylitol::wiring::bootstrap::resolve_assembly_with(
         &input,
         env_probe,
         Some(std::path::Path::new(&cwd)),
@@ -684,7 +681,7 @@ fn t_c2826_zero_models_hard_fail(cli_entry_bdd: &CliEntryBdd) {
 
 #[when("产品面读取未选中模型的展示名")]
 fn w_c2826_unset_model_display(cli_entry_bdd: &CliEntryBdd) {
-    let shown = xylitol::app::core::bootstrap::UNSET_MODEL_DISPLAY.to_string();
+    let shown = xylitol::wiring::bootstrap::UNSET_MODEL_DISPLAY.to_string();
     cli_entry_bdd.detail.replace(shown);
 }
 
@@ -698,7 +695,7 @@ fn t_c2826_unset_display(cli_entry_bdd: &CliEntryBdd) {
 #[when("对接好会话的驱动请求 file_browser 会话树")]
 async fn w_c2826_tree_kind_unsupported(agent: &AgentState) {
     use xylitol::embed::XyInProcessDriver;
-    use xylitol::protocol::session::SessionTreeKind;
+    use xylitol_plugin_sdk::session::SessionTreeKind;
     let (runtime, store) = crate::bdd::helpers::make_agent_with_store(agent);
     let mut driver = XyInProcessDriver::new(runtime, store);
     driver
@@ -736,7 +733,7 @@ fn t_c2826_tree_kind_error(agent: &AgentState) {
 
 #[given("已显式配置默认模型 fake-model 且未显式选择模型")]
 async fn g_c2841_configured_default(agent: &AgentState, cli_entry_bdd: &CliEntryBdd) {
-    use xylitol::protocol::model::{XyModelConfig, XyModelKind, XyModelMeta};
+    use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind, XyModelMeta};
     {
         let mut reg = agent.registry.borrow_mut();
         if reg.find("fake-model").is_none() {
@@ -787,7 +784,7 @@ fn t_c2841_configured_default_shown(cli_entry_bdd: &CliEntryBdd) {
 
 /// 产品面模型展示名规则（与 TUI sync_fixed_zone 的派生一致）：
 /// 已解析模型按 display_name（空则 id），否则 NOT-SET 占位。
-fn model_display_name(model: Option<&xylitol::app::core::driver::ModelInfo>) -> String {
+fn model_display_name(model: Option<&xylitol::wiring::driver::ModelInfo>) -> String {
     match model {
         Some(m) => {
             if m.display_name.is_empty() {
@@ -796,6 +793,6 @@ fn model_display_name(model: Option<&xylitol::app::core::driver::ModelInfo>) -> 
                 m.display_name.clone()
             }
         }
-        None => xylitol::app::core::bootstrap::UNSET_MODEL_DISPLAY.to_string(),
+        None => xylitol::wiring::bootstrap::UNSET_MODEL_DISPLAY.to_string(),
     }
 }

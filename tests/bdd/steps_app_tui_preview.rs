@@ -2,13 +2,13 @@
 
 use crate::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
 use rstest_bdd_macros::{then, when};
-use xylitol::app::tui::TuiHostEvent as HostEvent;
-use xylitol::app::tui::TuiHostSession as HostSession;
-use xylitol::app::tui::UiEntry;
-use xylitol::app::tui::harness::{
+use xylitol_app_tui::TuiHostEvent as HostEvent;
+use xylitol_app_tui::TuiHostSession as HostSession;
+use xylitol_app_tui::UiEntry;
+use xylitol_app_tui::harness::{
     ScriptedDriver, TestTerminal, enter_event, esc_event, pump_host_driver,
 };
-use xylitol::protocol::Command;
+use xylitol_protocol::Command;
 use xylitol_tui::Component;
 
 fn take_pump(bdd: &HostPumpBdd) -> HostPump {

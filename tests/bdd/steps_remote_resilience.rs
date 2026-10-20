@@ -12,10 +12,10 @@ use std::collections::VecDeque;
 use std::sync::Mutex as StdMutex;
 use std::time::{Duration, Instant};
 
-use xylitol::protocol::RpcMessage;
-use xylitol::protocol::wire::envelope::PROTOCOL_VERSION;
 use xylitol::{HostClient, HostClientError, MuxStream, XyDriver};
 use xylitol::{LinkTunings, XyRemoteDriver};
+use xylitol_protocol::RpcMessage;
+use xylitol_protocol::envelope::PROTOCOL_VERSION;
 
 /// Tunings small enough for millisecond-scale timing assertions.
 fn micro_tunings() -> LinkTunings {
@@ -98,7 +98,7 @@ impl HostClient for ScriptedMuxHost {
         &self,
         method: &str,
         payload: serde_json::Value,
-    ) -> Result<xylitol::protocol::RpcResult, HostClientError> {
+    ) -> Result<xylitol_protocol::RpcResult, HostClientError> {
         if method == "subscribe" {
             let seq = payload
                 .get("last_seq")
@@ -128,7 +128,7 @@ impl HostClient for ScriptedMuxHost {
             "loaded_resources" => serde_json::json!({ "mcp_configured": 0 }),
             _ => serde_json::json!({}),
         };
-        Ok(xylitol::protocol::RpcResult::ok_value(value))
+        Ok(xylitol_protocol::RpcResult::ok_value(value))
     }
 
     async fn respond(
@@ -265,7 +265,7 @@ fn t_hello_fatal(resilience_bdd: &ResilienceBdd) {
     let fatal = drained.iter().any(|ev| {
         matches!(
             ev,
-            xylitol::agent::runtime::XyEvent::Error(err)
+            xylitol_runtime::agent::runtime::XyEvent::Error(err)
                 if err.message.contains("protocol mismatch") && err.message.contains("99")
         )
     });
@@ -397,9 +397,9 @@ async fn g_stale_conn(resilience_bdd: &ResilienceBdd) {
 #[when("触发重订或换会话产生新代循环后旧代连接迟到推入事件")]
 async fn w_stale_late_frame(resilience_bdd: &ResilienceBdd) {
     let mut rig = take_rig(resilience_bdd);
-    xylitol::app::core::dispatch::dispatch(
+    xylitol::wiring::dispatch::dispatch(
         &mut rig.driver,
-        xylitol::protocol::Command::SwitchSession {
+        xylitol_protocol::Command::SwitchSession {
             session_path: "s-res-2".into(),
         },
     )
@@ -426,7 +426,7 @@ fn t_stale_dropped(resilience_bdd: &ResilienceBdd) {
     let texts: Vec<String> = drained
         .iter()
         .filter_map(|ev| match ev {
-            xylitol::agent::runtime::XyEvent::TextDelta(t) => Some(t.clone()),
+            xylitol_runtime::agent::runtime::XyEvent::TextDelta(t) => Some(t.clone()),
             _ => None,
         })
         .collect();
@@ -471,7 +471,7 @@ async fn w_coalesce_burst(resilience_bdd: &ResilienceBdd) {
             tokio::select! {
                 _ = tokio::time::sleep_until(deadline) => break,
                 item = stream.next() => match item {
-                    Some(xylitol::agent::runtime::XyEvent::TextDelta(t)) => {
+                    Some(xylitol_runtime::agent::runtime::XyEvent::TextDelta(t)) => {
                         sink.lock().unwrap().push((Instant::now(), t));
                     }
                     Some(_) => {}

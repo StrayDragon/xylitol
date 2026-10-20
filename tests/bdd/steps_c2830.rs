@@ -12,18 +12,18 @@ use crate::bdd::prelude::*;
 use crate::bdd::steps_otel_obs::OtelBdd;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol::protocol::model::XyChunk;
 use xylitol_official_plugin_provider_anthropic::provider::AnthropicMessagesAdapter;
 use xylitol_official_plugin_provider_openai::provider::trace::ObservationIoTier;
 use xylitol_plugin_sdk::XyModel;
+use xylitol_plugin_sdk::model::XyChunk;
 
 pub(crate) const BDD_MODEL: &str = "claude-bdd-mock";
 
 /// c2843 Phase B: direct provider drives must be owner-attributed too — carry the
 /// scenario session snapshot in the generate options so `llm.request` spans pass
 /// the per-owner collector filter.
-fn c2830_options() -> xylitol::protocol::XyGenerateOptions {
-    xylitol::protocol::XyGenerateOptions {
+fn c2830_options() -> xylitol_plugin_sdk::XyGenerateOptions {
+    xylitol_plugin_sdk::XyGenerateOptions {
         obs_session: xylitol_official_plugin_provider_openai::ObsSessionContext {
             session_id: Some(crate::bdd::steps_otel_obs::SESSION_UUID.into()),
             ..Default::default()

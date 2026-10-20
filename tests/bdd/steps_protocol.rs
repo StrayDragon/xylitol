@@ -4,10 +4,10 @@
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
-use xylitol::protocol::lifecycle::XyEvent;
-use xylitol::protocol::wire::FromWireEvent;
-use xylitol::protocol::wire::codec;
-use xylitol::protocol::{Command, Event, RpcMessage};
+use xylitol_plugin_sdk::lifecycle::XyEvent;
+use xylitol_protocol::codec;
+use xylitol_protocol::{Command, Event, RpcMessage};
+use xylitol_serve::FromWireEvent;
 
 /// Shared state for protocol-layer scenarios.
 pub struct ProtocolBdd {
@@ -299,7 +299,7 @@ fn t_queue_update_fidelity(protocol_bdd: &ProtocolBdd) {
 
 #[when("序列化含 thinking 与 text 的 assistant content 为会话部件")]
 fn w_agent_part_tagged(protocol_bdd: &ProtocolBdd) {
-    use xylitol::protocol::AgentPart;
+    use xylitol_plugin_sdk::AgentPart;
     let parts = vec![
         AgentPart::Thinking {
             thinking: "隐式推理".into(),
@@ -341,7 +341,7 @@ fn t_agent_part_tagged(protocol_bdd: &ProtocolBdd) {
 
 #[when("对含 thinking 与 text 的消息提取纯文本摘要")]
 fn w_preview_text(protocol_bdd: &ProtocolBdd) {
-    use xylitol::protocol::session::message_text;
+    use xylitol_plugin_sdk::session::message_text;
     let msg = serde_json::json!({
         "role": "assistant",
         "content": [
@@ -385,7 +385,9 @@ fn t_error_kind_roundtrip(protocol_bdd: &ProtocolBdd) {
 
 #[when("对 TodoUpdated 快照事件做线协议往返")]
 fn w_todo_updated_roundtrip(protocol_bdd: &ProtocolBdd) {
-    use xylitol::protocol::wire::{WireTodoItem, WireTodoList, WireTodoStatus};
+    use xylitol_protocol::{
+        TodoItem as WireTodoItem, TodoList as WireTodoList, TodoStatus as WireTodoStatus,
+    };
     let event = Event::TodoUpdated {
         list: WireTodoList::new(vec![
             WireTodoItem {
@@ -480,8 +482,8 @@ fn t_compaction_end_fidelity(protocol_bdd: &ProtocolBdd) {
 #[when("以不存在的文件调用导入会话")]
 async fn w_import_missing_file(protocol_bdd: &ProtocolBdd) {
     use xylitol::SessionExporter;
-    use xylitol::infra::export::StdExportIo;
-    use xylitol::infra::session::SessionManager;
+    use xylitol::wiring::infra::export::StdExportIo;
+    use xylitol_official_plugin_session::SessionManager;
     let dir = tempfile::tempdir().unwrap();
     let sessions = dir.path().join("sessions");
     std::fs::create_dir_all(&sessions).unwrap();

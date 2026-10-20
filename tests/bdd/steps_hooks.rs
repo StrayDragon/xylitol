@@ -80,13 +80,13 @@ fn _g_hook_merge_combo(agent: &AgentState) {
         command: "echo '{\"action\":\"allow\",\"source\":\"user\"}'".into(),
         ..Default::default()
     };
-    let config = xylitol::infra::config::types::HooksConfig {
+    let config = xylitol::wiring::infra::config::types::HooksConfig {
         global: vec![global],
         project: vec![],
         user: vec![user.clone()],
     };
     // Production path: HookDispatcher::new runs three-tier merge_hooks.
-    let dispatcher = xylitol::infra::hooks::HookDispatcher::new(&config);
+    let dispatcher = xylitol_official_plugin_hooks::HookDispatcher::new(&config);
     assert_eq!(
         dispatcher.hook_count(),
         1,
@@ -203,12 +203,12 @@ async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
 #[when("hook 被加载")]
 fn _w_hook_loaded(agent: &AgentState) {
     // Materialize merge the same way production does (HookDispatcher::new).
-    let config = xylitol::infra::config::types::HooksConfig {
+    let config = xylitol::wiring::infra::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         project: vec![],
         user: vec![],
     };
-    let dispatcher = xylitol::infra::hooks::HookDispatcher::new(&config);
+    let dispatcher = xylitol_official_plugin_hooks::HookDispatcher::new(&config);
     assert!(
         !dispatcher.is_empty(),
         "expected at least one merged hook after load"

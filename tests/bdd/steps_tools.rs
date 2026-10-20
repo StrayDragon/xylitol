@@ -666,7 +666,7 @@ fn t_tools_txt_no_img(ws: &Workspace) {
 
 #[given("工具注册表含全部 9 个工具")]
 fn g_tools_all_nine(_ws: &Workspace) {
-    let tools = xylitol::infra::tools::default_tools();
+    let tools = xylitol_official_plugin_tools::default_tools();
     assert_eq!(tools.len(), 9);
     for n in ["todo_rewrite", "todo_update"] {
         assert!(tools.iter().any(|t| t.name() == n), "missing builtin {n}");
@@ -752,7 +752,7 @@ async fn w_tools_smoke_all(ws: &Workspace) {
         .collect();
     // One default_tools() so todo_* share the same MemoryTodoGateway.
     {
-        let tools = xylitol::infra::tools::default_tools();
+        let tools = xylitol_official_plugin_tools::default_tools();
         let by = |n: &str| tools.iter().find(|t| t.name() == n).cloned().unwrap();
         if let Err(e) = by("todo_rewrite")
             .execute(
@@ -862,7 +862,7 @@ fn t_tools_missing_arg(ws: &Workspace) {
 fn g_tools_invalid_args(ws: &Workspace) {
     ws.init();
     ws.last_result.replace(Some(Err(XyDriverError::from(
-        xylitol::protocol::error::XyToolError::InvalidArgs("bad args".into()).to_string(),
+        xylitol_plugin_sdk::error::XyToolError::InvalidArgs("bad args".into()).to_string(),
     ))));
 }
 
@@ -941,12 +941,12 @@ fn t_tools_cancelled(ws: &Workspace) {
 
 #[given("工具集含全部内置工具")]
 fn g_tools_registry(_ws: &Workspace) {
-    assert_eq!(xylitol::infra::tools::default_tools().len(), 9);
+    assert_eq!(xylitol_official_plugin_tools::default_tools().len(), 9);
 }
 
 #[when("列举工具名")]
 fn w_tools_list_names(ws: &Workspace) {
-    let names: Vec<String> = xylitol::infra::tools::default_tools()
+    let names: Vec<String> = xylitol_official_plugin_tools::default_tools()
         .iter()
         .map(|t| t.name().to_string())
         .collect();
@@ -983,7 +983,7 @@ fn t_tools_infra_ok(ws: &Workspace) {
 #[given("工具集含 read 与 grep")]
 fn g_tools_toolset_base() {
     let set = ToolSet::from_iter(
-        xylitol::infra::tools::default_tools()
+        xylitol_official_plugin_tools::default_tools()
             .into_iter()
             .filter(|t| matches!(t.name(), "read" | "grep")),
     );
@@ -1016,7 +1016,7 @@ fn t_tools_toolset_final(_ws: &Workspace) {
 
 mod tools_toolset {
     use std::cell::RefCell;
-    use xylitol::agent::tools::ToolSet;
+    use xylitol_runtime::agent::tools::ToolSet;
     thread_local! {
         pub static NAMES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
         pub static BASE: RefCell<Option<ToolSet>> = const { RefCell::new(None) };
@@ -1146,7 +1146,7 @@ pub(crate) fn t_dead_code_allows_scoped(_ws: &Workspace) {
 #[when("读取工具执行类命名")]
 pub(crate) fn w_read_execution_mode_name(_ws: &Workspace) {
     let text = std::fs::read_to_string("crates/xylitol-plugin-sdk/src/ports/tool.rs")
-        .or_else(|_| std::fs::read_to_string("src/protocol/mod.rs"))
+        .or_else(|_| std::fs::read_to_string("crates/xylitol-plugin-sdk/src/lib.rs"))
         .expect("protocol 工具边界可读");
     let named = text.contains("XyToolExecutionMode");
     TOOL_PROBE.with(|p| {

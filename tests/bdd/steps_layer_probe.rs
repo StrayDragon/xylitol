@@ -91,7 +91,7 @@ pub(crate) fn w_la_pi_refs() {
     for path in [
         "crates/xylitol-protocol/src/envelope.rs",
         "crates/xylitol-plugin-sdk/src/model/meta.rs",
-        "src/agent/runtime/react/mod.rs",
+        "crates/xylitol-runtime/src/agent/runtime/react/mod.rs",
     ] {
         let text = la_load(path);
         hits += text
@@ -129,7 +129,7 @@ pub(crate) fn t_la_reexport_list() {
 pub(crate) fn w_la_schemars_boundary() {
     let mut hits = String::new();
     for path in [
-        "src/infra/config/types.rs",
+        "src/wiring/infra/config/types.rs",
         "crates/xylitol-plugin-sdk/src/session/mod.rs",
     ] {
         let text = la_load(path);
@@ -162,7 +162,10 @@ pub(crate) fn t_la_schemars_boundary_shape() {
 pub(crate) fn w_la_canonical_types() {
     let mut hits = String::new();
     for (path, decl) in [
-        ("src/agent/capabilities/stats.rs", "pub struct ContextUsage"),
+        (
+            "crates/xylitol-runtime/src/agent/capabilities/stats.rs",
+            "pub struct ContextUsage",
+        ),
         (
             "plugins/xylitol-official-plugin-compaction/src/settings.rs",
             "pub struct CompactionSettings",
@@ -296,7 +299,7 @@ pub(crate) fn t_api_literal_fullnames() {
 
 #[when("读取配置节字段缺省")]
 pub(crate) fn w_config_section_defaults() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/types.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/config/types.rs")));
 }
 
 #[then("tui 历史种子缺省为一")]
@@ -320,7 +323,7 @@ pub(crate) fn t_otel_section_default_none() {
 
 #[when("读取模板 vars 命名空间")]
 pub(crate) fn w_template_vars_namespace() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/config/template.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/config/template.rs")));
 }
 
 #[then("vars 仅暴露 home")]
@@ -579,8 +582,8 @@ pub(crate) fn t_pty_e2e_present() {
 pub(crate) fn w_default_system_template() {
     let assembled = format!(
         "{}{}",
-        la_load("src/agent/prompt/templates/default_system.j2"),
-        la_load("src/agent/prompt/system.rs")
+        la_load("crates/xylitol-runtime/src/agent/prompt/templates/default_system.j2"),
+        la_load("crates/xylitol-runtime/src/agent/prompt/system.rs")
     );
     LA_PROBE.with(|p| *p.borrow_mut() = Some(assembled));
 }
@@ -606,7 +609,7 @@ pub(crate) fn t_default_template_shape() {
 
 #[when("以 thinking 与自带标签两种流分别渲染 print 输出")]
 pub(crate) async fn w_thinking_render(t4_print_bdd: &T4PrintBdd) {
-    use xylitol::agent::runtime::XyEvent;
+    use xylitol_runtime::agent::runtime::XyEvent;
     let mut out: Vec<u8> = Vec::new();
     let open = String::from("<") + "think" + ">";
     let close = String::from("<") + "think" + ">";
@@ -625,7 +628,7 @@ pub(crate) async fn w_thinking_render(t4_print_bdd: &T4PrintBdd) {
             },
         ]);
         let mut buf: Vec<u8> = Vec::new();
-        xylitol::app::cli::render_stream(&mut stream, &mut buf)
+        xylitol::cli::render_stream(&mut stream, &mut buf)
             .await
             .expect("render 成功");
         let text = String::from_utf8(buf).unwrap();
@@ -666,7 +669,7 @@ pub(crate) fn t_thinking_single_wrap(t4_print_bdd: &T4PrintBdd) {
 
 #[when("读取 trust 选择器主题与取消收口")]
 pub(crate) fn w_trust_gate_probe() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/cli/trust_gate.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/cli/trust_gate.rs")));
 }
 
 #[then("主题出自 dark 且取消记为不信任")]
@@ -688,8 +691,8 @@ pub(crate) fn t_trust_gate_shape() {
 
 #[when("读取 trust slash 的缝接线")]
 pub(crate) fn w_trust_slash_probe() {
-    let seam = la_load("src/app/core/driver/proto.rs");
-    let body = la_load("src/app/core/driver/in_process/reload.rs");
+    let seam = la_load("src/wiring/driver/proto.rs");
+    let body = la_load("src/wiring/driver/in_process/reload.rs");
     let start = body.find("fn persist_project_trust").unwrap_or(0);
     let block = &body[start.min(body.len())..body.len().min(start.saturating_add(2600))];
     LA_PROBE.with(|p| {
@@ -830,7 +833,7 @@ pub(crate) fn t_mcp_barrier_marker() {
 
 #[when("读取产品启动装配顺序")]
 pub(crate) fn w_bootstrap_assembly() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/app/core/bootstrap.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/bootstrap.rs")));
 }
 
 #[then("MCP 连接不阻塞应用面打开")]
@@ -846,8 +849,8 @@ pub(crate) fn t_bootstrap_assembly() {
 
 #[when("读取已加载资源快照装配")]
 pub(crate) fn w_loaded_resources_source() {
-    let a = la_load("src/app/core/driver/types.rs");
-    let b = la_load("src/app/core/driver/remote.rs");
+    let a = la_load("src/wiring/driver/types.rs");
+    let b = la_load("src/wiring/driver/remote.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== remote ===\n{b}")));
 }
 
@@ -881,7 +884,7 @@ pub(crate) fn t_mcp_call_timeout() {
 
 #[when("读取首回合工具定稿门禁")]
 pub(crate) fn w_first_turn_gate() {
-    let a = la_load("src/app/core/driver/remote.rs");
+    let a = la_load("src/wiring/driver/remote.rs");
     let b = la_load("plugins/xylitol-official-plugin-mcp/src/adapter.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== adapter ===\n{b}")));
 }
@@ -897,7 +900,7 @@ pub(crate) fn t_first_turn_gate() {
 pub(crate) fn w_shell_env_boundary() {
     let mut base = std::collections::BTreeMap::new();
     base.insert("PATH".into(), "/usr/bin:/bin".into());
-    let env = xylitol::infra::process::shell::shell_env_with_agent_bin(base);
+    let env = xylitol_official_plugin_tools::process::shell::shell_env_with_agent_bin(base);
     let path = env.get("PATH").cloned().unwrap_or_default();
     T2_PROC.with(|s| *s.borrow_mut() = Some((path, false, false)));
 }
@@ -914,7 +917,7 @@ pub(crate) fn t_shell_env_boundary() {
         .expect("current exe dir");
     assert_eq!(head, bin, "agent bin 目录 MUST 前置");
     assert!(
-        !xylitol::infra::process::shell::find_bash(Some(&head))
+        !xylitol_official_plugin_tools::process::shell::find_bash(Some(&head))
             .shell
             .to_string_lossy()
             .is_empty(),
@@ -940,8 +943,8 @@ pub(crate) fn t_child_wait_boundary() {
 
 #[when("读取观测后端装配")]
 pub(crate) fn w_obs_backend_assembly() {
-    let a = la_load("src/infra/observability/file_reporter.rs");
-    let b = la_load("src/app/core/bootstrap.rs");
+    let a = la_load("src/wiring/infra/observability/file_reporter.rs");
+    let b = la_load("src/wiring/bootstrap.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== bootstrap ===\n{b}")));
 }
 
@@ -972,7 +975,9 @@ pub(crate) fn t_obs_dependency_list() {
 
 #[when("读取低频观测 span 定义")]
 pub(crate) fn w_obs_span_definition() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/runtime/obs.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load("crates/xylitol-runtime/src/agent/runtime/obs.rs"))
+    });
 }
 
 #[then("agent.turn 与每步 span 可关联")]
@@ -1006,7 +1011,7 @@ pub(crate) fn t_image_exif_boundary() {
 
 #[when("读取计时收集器边界")]
 pub(crate) fn w_timing_collector() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/timing.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/timing.rs")));
 }
 
 #[then("收集器由 XYLITOL_TIMING 门控且含重置与计时")]
@@ -1019,8 +1024,8 @@ pub(crate) fn t_timing_collector() {
 
 #[when("读取计时调用点清单")]
 pub(crate) fn w_timing_call_sites() {
-    let a = la_load("src/app/core/bootstrap.rs");
-    let b = la_load("src/app/cli/mod.rs");
+    let a = la_load("src/wiring/bootstrap.rs");
+    let b = la_load("src/cli.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== cli ===\n{b}")));
 }
 
@@ -1032,7 +1037,7 @@ pub(crate) fn t_timing_call_sites() {
 
 #[when("读取计时输出格式")]
 pub(crate) fn w_timing_output_format() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/timing.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/timing.rs")));
 }
 
 #[then("每步 ms 与合计可观测")]
@@ -1046,7 +1051,7 @@ pub(crate) fn t_timing_output_format() {
 
 fn t3_scan_agent_trust_defs() -> String {
     let mut hits = Vec::new();
-    let mut stack = vec![std::path::PathBuf::from("src/agent")];
+    let mut stack = vec![std::path::PathBuf::from("crates/xylitol-runtime/src/agent")];
     while let Some(dir) = stack.pop() {
         let Ok(rd) = std::fs::read_dir(&dir) else {
             continue;
@@ -1095,7 +1100,7 @@ pub(crate) fn t_todo_model_shape() {
 #[when("读取 Todo 快照投影边界")]
 pub(crate) fn w_todo_snapshot_boundary() {
     let a = la_load("crates/xylitol-plugin-sdk/src/session/todo.rs");
-    let b = la_load("src/agent/prompt/status_bar.rs");
+    let b = la_load("crates/xylitol-runtime/src/agent/prompt/status_bar.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== status_bar ===\n{b}")));
 }
 
@@ -1132,7 +1137,11 @@ pub(crate) fn t_todo_scheduling_class() {
 
 #[when("读取 Todo SSOT 只读边界")]
 pub(crate) fn w_todo_status_bar_boundary() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/prompt/status_bar.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load(
+            "crates/xylitol-runtime/src/agent/prompt/status_bar.rs",
+        ))
+    });
 }
 
 #[then("待办栏摘要只读自 SSOT")]
@@ -1147,7 +1156,7 @@ pub(crate) fn t_todo_status_bar_boundary() {
 
 #[when("读取首回合工具定稿清单")]
 pub(crate) fn w_first_turn_tool_freeze_list() {
-    let a = la_load("src/agent/tools/freeze.rs");
+    let a = la_load("crates/xylitol-runtime/src/agent/tools/freeze.rs");
     let b = la_load("plugins/xylitol-official-plugin-tools/src/tools/mod.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== registry ===\n{b}")));
 }
@@ -1243,7 +1252,7 @@ pub(crate) fn t_journal_read_recent() {
 
 #[when("读取导出 I/O 装配")]
 pub(crate) fn w_export_io_assembly() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/export.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/export.rs")));
 }
 
 #[then("StdExportIo 经端口注入组合根")]
@@ -1273,7 +1282,7 @@ pub(crate) fn t_session_persistence_layers() {
 
 fn load_trust_store_probe() {
     let hits = t3_scan_agent_trust_defs();
-    let store = la_load("src/infra/trust/store.rs");
+    let store = la_load("crates/xylitol-runtime/src/trust/store.rs");
     LA_PROBE.with(|p| {
         *p.borrow_mut() = Some(format!(
             "AGENT_DEFS_START\n{hits}\nAGENT_DEFS_END\n=== store ===\n{store}"
@@ -1318,7 +1327,7 @@ pub(crate) fn t_compaction_aware_context() {
 
 #[when("读取会话恢复原路径")]
 pub(crate) fn w_resume_single_path() {
-    let a = la_load("src/agent/llm_project.rs");
+    let a = la_load("crates/xylitol-runtime/src/agent/llm_project.rs");
     let b = la_load("plugins/xylitol-official-plugin-session/src/manager/store.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== store ===\n{b}")));
 }
@@ -1347,7 +1356,9 @@ pub(crate) fn t_message_vocab_layers() {
 
 #[when("读取主仓投影入口")]
 pub(crate) fn w_llm_project_entry() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/agent/llm_project.rs")));
+    LA_PROBE.with(|p| {
+        *p.borrow_mut() = Some(la_load("crates/xylitol-runtime/src/agent/llm_project.rs"))
+    });
 }
 
 #[then("AgentMessage 经投影为协议消息")]
@@ -1363,7 +1374,7 @@ pub(crate) fn t_llm_project_entry() {
 
 #[when("读取网络权限裁决")]
 pub(crate) fn w_network_permission_gate() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/permission/mod.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/permission/mod.rs")));
 }
 
 #[then("域名按 allow/deny 列表裁决并默认拒绝")]
@@ -1395,7 +1406,7 @@ pub(crate) fn t_trust_single_source() {
 
 #[when("读取权限边界文档")]
 pub(crate) fn w_permission_advice_doc() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/permission/mod.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/permission/mod.rs")));
 }
 
 #[then("明示建议性且不阻塞主机级访问")]
@@ -1511,7 +1522,7 @@ fn t4_count_needle(root: &str, needle: &str) -> usize {
 
 #[when("读取 faux provider 装配入口")]
 pub(crate) fn w_faux_provider_entry() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/provider/fake.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/provider/fake.rs")));
 }
 
 #[then("按响应步骤返回且无需网络")]
@@ -1613,9 +1624,9 @@ pub(crate) fn t_tui_e2e_layout() {
 #[when("读取配置值解析机制")]
 pub(crate) fn w_config_value_parser() {
     let lookup = |name: &str| (name == "HOME").then(|| "/home/u".to_string());
-    let a = xylitol::infra::config::resolver::resolve_value("plain-string", &lookup)
+    let a = xylitol::wiring::infra::config::resolver::resolve_value("plain-string", &lookup)
         .expect("字面值 MUST 直通");
-    let b = xylitol::infra::config::resolver::resolve_value("$HOME", &lookup)
+    let b = xylitol::wiring::infra::config::resolver::resolve_value("$HOME", &lookup)
         .expect("环境值 MUST 解析");
     T2_PROC.with(|s| *s.borrow_mut() = Some((a, b == "/home/u", false)));
 }
@@ -1630,9 +1641,9 @@ pub(crate) fn t_config_value_parser() {
 #[when("读取环境变量插值能力")]
 pub(crate) fn w_env_var_interpolation() {
     let lookup = |name: &str| (name == "HOME").then(|| "/home/u".to_string());
-    let a = xylitol::infra::config::resolver::resolve_value("${HOME}", &lookup)
+    let a = xylitol::wiring::infra::config::resolver::resolve_value("${HOME}", &lookup)
         .expect("${VAR} MUST 插值");
-    let b = xylitol::infra::config::resolver::resolve_value("${UNSET:-fallback}", &lookup)
+    let b = xylitol::wiring::infra::config::resolver::resolve_value("${UNSET:-fallback}", &lookup)
         .expect("默认值 MUST 生效");
     T2_PROC.with(|s| *s.borrow_mut() = Some((a, b == "fallback", false)));
 }
@@ -1646,14 +1657,14 @@ pub(crate) fn t_env_var_interpolation() {
 
 #[when("读取配置命令执行边界")]
 pub(crate) fn w_config_command_boundary() {
-    xylitol::infra::config::resolver::reset_shell_cache();
+    xylitol::wiring::infra::config::resolver::reset_shell_cache();
     let lookup = |_name: &str| None;
-    let out = xylitol::infra::config::resolver::resolve_value("!printf ok", &lookup)
+    let out = xylitol::wiring::infra::config::resolver::resolve_value("!printf ok", &lookup)
         .expect("shell 命令 MUST 执行");
     // `$$` 是 shell PID：缓存命中时两次结果相同（进程生命周期缓存证据）。
-    let c1 = xylitol::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
+    let c1 = xylitol::wiring::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
         .expect("shell PID 值一");
-    let c2 = xylitol::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
+    let c2 = xylitol::wiring::infra::config::resolver::resolve_value("!printf %s $$", &lookup)
         .expect("shell PID 值二");
     T2_PROC.with(|s| *s.borrow_mut() = Some((out, c1 == c2, true)));
 }
@@ -1682,7 +1693,7 @@ pub(crate) fn w_provider_config_value_expression() {
         "XYLITOL_CONFIG_DIR" => Some(cfgdir_s.clone()),
         _ => None,
     };
-    let loaded = xylitol::infra::config::loader::load_app_config_with(None, env, None)
+    let loaded = xylitol::wiring::infra::config::loader::load_app_config_with(None, env, None)
         .expect("装配 MUST 成功");
     let shell = loaded
         .model
@@ -1728,8 +1739,8 @@ pub(crate) fn t_provider_registration_config() {
 
 #[when("读取 provider 分层")]
 pub(crate) fn w_provider_layering() {
-    let a = la_load("src/infra/provider/adapter/mod.rs");
-    let b = la_load("src/agent/model/registry.rs");
+    let a = la_load("src/wiring/infra/provider/adapter/mod.rs");
+    let b = la_load("crates/xylitol-runtime/src/agent/model/registry.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== registry ===\n{b}")));
 }
 
@@ -1742,8 +1753,8 @@ pub(crate) fn t_provider_layering() {
 
 #[when("读取模型注册表存储")]
 pub(crate) fn w_model_registry_storage() {
-    let a = la_load("src/agent/model/manager.rs");
-    let b = la_load("src/agent/model/task_model.rs");
+    let a = la_load("crates/xylitol-runtime/src/agent/model/manager.rs");
+    let b = la_load("crates/xylitol-runtime/src/agent/model/task_model.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== task ===\n{b}")));
 }
 
@@ -1760,7 +1771,7 @@ pub(crate) fn t_model_registry_storage() {
 #[when("读取 BDD 套件接线")]
 pub(crate) fn w_bdd_suite_wiring() {
     let a = la_load("tests/bdd/suite.rs");
-    let b = la_load("src/agent/model/mod.rs");
+    let b = la_load("crates/xylitol-runtime/src/agent/model/mod.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== model ===\n{b}")));
 }
 
@@ -1775,7 +1786,7 @@ pub(crate) fn t_bdd_suite_wiring() {
 #[when("读取 BDD 挂载接线")]
 pub(crate) fn w_bdd_mount_wiring() {
     let a = la_load("tests/bdd.rs");
-    let b = la_load("src/tests.rs");
+    let b = la_load("src/lib.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== lib-mount ===\n{b}")));
 }
 
@@ -1839,8 +1850,8 @@ pub(crate) fn t_bdd_binding_mechanism() {
 
 #[when("读取配置行为测试分层")]
 pub(crate) fn w_config_unit_coverage() {
-    let a = la_load("src/infra/config/types.rs");
-    let b = la_load("src/infra/config/template.rs");
+    let a = la_load("src/wiring/infra/config/types.rs");
+    let b = la_load("src/wiring/infra/config/template.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== template ===\n{b}")));
 }
 
@@ -1868,8 +1879,8 @@ pub(crate) fn t_bdd_unit_boundary_doc() {
 
 #[when("扫描核心类型测试覆盖")]
 pub(crate) fn w_core_data_type_coverage() {
-    let n = t4_count_cfg_test("src/protocol");
-    let m = t4_count_needle("src/protocol", "#[test]");
+    let n = t4_count_cfg_test("crates/xylitol-plugin-sdk/src");
+    let m = t4_count_needle("crates/xylitol-plugin-sdk/src", "#[test]");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{n};{m}")));
 }
 
@@ -1883,8 +1894,8 @@ pub(crate) fn t_core_data_type_coverage() {
 
 #[when("扫描纯逻辑组件测试")]
 pub(crate) fn w_pure_logic_coverage() {
-    let n = t4_count_cfg_test("src/agent");
-    let m = t4_count_needle("src/agent", "#[test]");
+    let n = t4_count_cfg_test("crates/xylitol-runtime/src/agent");
+    let m = t4_count_needle("crates/xylitol-runtime/src/agent", "#[test]");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{n};{m}")));
 }
 
@@ -1898,8 +1909,8 @@ pub(crate) fn t_pure_logic_coverage() {
 
 #[when("扫描会话子组件测试")]
 pub(crate) fn w_session_subcomponent_coverage() {
-    let n = t4_count_cfg_test("src/agent/capabilities");
-    let m = t4_count_needle("src/agent/capabilities", "#[test]");
+    let n = t4_count_cfg_test("crates/xylitol-runtime/src/agent/capabilities");
+    let m = t4_count_needle("crates/xylitol-runtime/src/agent/capabilities", "#[test]");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{n};{m}")));
 }
 
@@ -1913,8 +1924,8 @@ pub(crate) fn t_session_subcomponent_coverage() {
 
 #[when("读取库缝观察接线")]
 pub(crate) fn w_smoke_hook_wiring() {
-    let a = la_load("src/app/core/composition.rs");
-    let b = la_load("src/agent/runtime/baseline.rs");
+    let a = la_load("src/wiring/composition.rs");
+    let b = la_load("crates/xylitol-runtime/src/agent/runtime/baseline.rs");
     LA_PROBE.with(|p| *p.borrow_mut() = Some(format!("{a}\n=== baseline ===\n{b}")));
 }
 
@@ -1971,7 +1982,7 @@ pub(crate) fn t_curated_hook_bus_reexport() {
 
 #[when("读取 fake provider 装配")]
 pub(crate) fn w_fake_provider_assembly() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/provider/fake.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/provider/fake.rs")));
 }
 
 #[then("经统一路径暴露且按步骤返回")]
@@ -1984,7 +1995,7 @@ pub(crate) fn t_fake_provider_assembly() {
 
 #[when("读取场景编排能力")]
 pub(crate) fn w_scenario_orchestration() {
-    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/infra/provider/fake.rs")));
+    LA_PROBE.with(|p| *p.borrow_mut() = Some(la_load("src/wiring/infra/provider/fake.rs")));
 }
 
 #[then("支持多步与延迟与错误注入")]

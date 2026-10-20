@@ -9,7 +9,7 @@ use crate::bdd::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
-use xylitol::app::tui::{FoldTarget, InteractionBdd, SceneBuilder, UiModel};
+use xylitol_app_tui::{FoldTarget, InteractionBdd, SceneBuilder, UiModel};
 use xylitol_tui::TreeNode;
 
 /// Shared state for interaction scenes.

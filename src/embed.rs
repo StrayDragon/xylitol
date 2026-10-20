@@ -26,24 +26,24 @@
 //!
 //! Configure via [`BuildAgentOptions::hooks_config`] (empty = zero-cost).
 //! The replaceable port is crate-root [`crate::XyHookBus`] / [`crate::XyHookOutcome`]
-//! (and [`crate::NoopHookBus`]). Prefer those over `infra::hooks` types.
+//! (and [`crate::NoopHookBus`]). Prefer those over `xylitol_official_plugin_hooks` types.
 //!
 //! ## Not exported here
 //!
 //! - `dispatch` / `XyRemoteDriver` — stay crate-internal until a surface wires
-//!   them. Reach via `app::core` only inside this crate.
+//!   them. Reach via crate modules only inside this crate.
 //! - `HookDispatcher` / `HookEvent` — infra script implementation details.
 //!
 //! See `docs/architecture/库与多客户端.md`.
 
-pub use crate::app::core::bootstrap::{
+pub use crate::wiring::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, BootstrappedAgent, BootstrappedRuntime,
     bootstrap,
 };
-pub use crate::app::core::composition::{
+pub use crate::wiring::composition::{
     BuildAgentOptions, McpServerSpec, McpSession, McpTransportSpec, build_agent,
 };
-pub use crate::app::core::driver::{
+pub use crate::wiring::driver::{
     CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, XyDriver, XyDriverError,
     XyInProcessDriver,
 };

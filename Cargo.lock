@@ -5958,7 +5958,6 @@ dependencies = [
  "rstest",
  "rstest-bdd",
  "rstest-bdd-macros",
- "salvo",
  "schemars",
  "serde",
  "serde_json",
@@ -6248,9 +6247,20 @@ dependencies = [
 name = "xylitol-serve"
 version = "0.0.0-pre"
 dependencies = [
+ "async-trait",
+ "dirs",
+ "fory",
+ "futures",
  "log",
+ "salvo",
+ "serde",
  "serde_json",
+ "strum",
  "thiserror 2.0.21",
+ "tokio",
+ "url",
+ "uuid",
+ "xylitol-plugin-sdk",
  "xylitol-protocol",
  "xylitol-runtime",
 ]

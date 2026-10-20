@@ -7,27 +7,27 @@ use rstest_bdd_macros::{given, then, when};
 
 #[given("任务模型条目可构建")]
 pub(crate) fn g_m18_task_entry_ok(agent: &AgentState) {
-    agent
-        .compaction_task_model
-        .replace(Some(xylitol::protocol::model_entry::XyModelEntryConfig {
-            provider: xylitol::protocol::model::XyModelKind::Fake,
+    agent.compaction_task_model.replace(Some(
+        xylitol_plugin_sdk::model_entry::XyModelEntryConfig {
+            provider: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "summary-task".into(),
             thinking: false,
             ..Default::default()
-        }));
+        },
+    ));
 }
 
 #[given("任务模型条目构建失败")]
 pub(crate) fn g_m18_task_entry_fail(agent: &AgentState) {
-    agent
-        .compaction_task_model
-        .replace(Some(xylitol::protocol::model_entry::XyModelEntryConfig {
-            provider: xylitol::protocol::model::XyModelKind::Fake,
+    agent.compaction_task_model.replace(Some(
+        xylitol_plugin_sdk::model_entry::XyModelEntryConfig {
+            provider: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "bad-summary".into(),
             thinking: true,
             thinking_levels: Some(vec!["".into()]),
             ..Default::default()
-        }));
+        },
+    ));
 }
 
 #[when("经任务级解析入口取模型")]
@@ -35,10 +35,10 @@ pub(crate) fn w_m18_resolve(agent: &AgentState) {
     use std::sync::Arc;
 
     let mut reg = ModelRegistry::new();
-    let meta = xylitol::protocol::model::XyModelMeta {
+    let meta = xylitol_plugin_sdk::model::XyModelMeta {
         id: "main".into(),
-        config: xylitol::protocol::model::XyModelConfig {
-            kind: xylitol::protocol::model::XyModelKind::Fake,
+        config: xylitol_plugin_sdk::model::XyModelConfig {
+            kind: xylitol_plugin_sdk::model::XyModelKind::Fake,
             api_key: String::new(),
             model: "main-wire".into(),
             base_url: None,
@@ -59,17 +59,17 @@ pub(crate) fn w_m18_resolve(agent: &AgentState) {
         thinking_level_map: Default::default(),
     };
     reg.register(meta);
-    let mut mm = xylitol::agent::model::ModelManager::new(
+    let mut mm = xylitol_runtime::agent::model::ModelManager::new(
         reg,
-        Arc::new(xylitol::infra::provider::factory::build_provider),
+        Arc::new(xylitol::wiring::infra::provider::factory::build_provider),
     );
     mm.select_model("main").expect("select main");
 
-    let settings = xylitol::agent::compaction::CompactionSettings {
+    let settings = xylitol_official_plugin_compaction::CompactionSettings {
         model: agent.compaction_task_model.borrow().clone(),
         ..Default::default()
     };
-    let binding = xylitol::agent::model::task_model::resolve_compaction_summary(
+    let binding = xylitol_runtime::agent::model::task_model::resolve_compaction_summary(
         &settings,
         &mm,
         &Default::default(),
@@ -120,7 +120,7 @@ thread_local! {
 
 #[when("读取内置 provider 默认表")]
 pub(crate) fn w_read_provider_builtin_defaults() {
-    use xylitol::agent::model::registry::{ProviderApi, ProviderConfig};
+    use xylitol_runtime::agent::model::registry::{ProviderApi, ProviderConfig};
     let openai = ProviderConfig::openai(Some("k".into()));
     let anthropic = ProviderConfig::anthropic(Some("k".into()));
     let custom = ProviderConfig::custom("lm", ProviderApi::OpenAiCompatible, "http://x", None);
@@ -142,8 +142,8 @@ pub(crate) fn t_provider_builtin_defaults_ordered() {
 
 #[when("以 provider 种类读取适配器缺省")]
 pub(crate) fn w_read_adapter_kind_default() {
-    let text = std::fs::read_to_string("src/infra/provider/adapter/mod.rs")
-        .expect("src/infra/provider/adapter/mod.rs 可读");
+    let text = std::fs::read_to_string("src/wiring/infra/provider/adapter/mod.rs")
+        .expect("src/wiring/infra/provider/adapter/mod.rs 可读");
     let anthropic_hit =
         text.contains("\"anthropic-messages\" => AdapterKind::AnthropicMessages") as usize;
     let openai_hit = text.contains("=> AdapterKind::OpenAiResponses") as usize;

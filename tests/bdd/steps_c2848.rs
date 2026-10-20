@@ -5,10 +5,10 @@
 use std::cell::RefCell;
 
 use rstest_bdd_macros::{given, then, when};
-use xylitol::agent::compaction::cut_detector::estimate_tokens_entry_for_cut;
-use xylitol::agent::llm_project::project_for_llm;
-use xylitol::protocol::message::{AgentMessage, AgentPart};
-use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry};
+use xylitol_official_plugin_compaction::cut_detector::estimate_tokens_entry_for_cut;
+use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
+use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
+use xylitol_runtime::agent::llm_project::project_for_llm;
 
 type Measure = (u64, u64);
 thread_local! {
@@ -38,11 +38,11 @@ fn unified_decomposition(entries: &[SessionEntry]) -> u64 {
             continue;
         };
         let image_tokens = match &msg {
-            AgentMessage::Llm(xylitol::protocol::message::XyLlmMessage::UserMessage {
+            AgentMessage::Llm(xylitol_plugin_sdk::message::XyLlmMessage::UserMessage {
                 content,
                 ..
             })
-            | AgentMessage::Llm(xylitol::protocol::message::XyLlmMessage::ToolResultMessage {
+            | AgentMessage::Llm(xylitol_plugin_sdk::message::XyLlmMessage::ToolResultMessage {
                 content,
                 ..
             }) => {

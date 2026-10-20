@@ -2,7 +2,8 @@
 """QA check: target crate graph membership and forbidden Cargo edges.
 
 Case: W2 rewrite (tag v0.0.0-pre.old). Empty shells must exist; xylitol-*
-dependencies may only follow src/AGENTS.md. Root package `xylitol` stays exempt until the W2.5 root cutover.
+dependencies may only follow src/AGENTS.md. Root package `xylitol` is the
+composition crate and is subject to FORBIDDEN_DEPS (P6).
 
 Usage:
   python3 scripts/check_crate_graph.py
@@ -45,7 +46,7 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-protocol": frozenset(),
     "xylitol-tui": frozenset(),
     "xylitol-runtime": frozenset({"xylitol-plugin-sdk"}),
-    "xylitol-serve": frozenset({"xylitol-runtime", "xylitol-protocol"}),
+    "xylitol-serve": frozenset({"xylitol-runtime", "xylitol-protocol", "xylitol-plugin-sdk"}),
     "xylitol-app-print": frozenset({"xylitol-runtime"}),
     "xylitol-app-tui": frozenset({"xylitol-protocol", "xylitol-tui", "xylitol-plugin-sdk"}),
     "xylitol-official-plugin-session": frozenset({"xylitol-plugin-sdk"}),
@@ -58,18 +59,17 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-rutis": frozenset(),
 }
 
+ALL_PACKAGES = frozenset(ALLOWED_XYLITOL_DEPS) | {"xylitol"}
+
 # Third-party crates that must not appear in these packages' [dependencies].
 FORBIDDEN_DEPS: dict[str, frozenset[str]] = {
-    "fory": frozenset(ALLOWED_XYLITOL_DEPS) - {"xylitol-protocol"},
-    "async-openai": frozenset(ALLOWED_XYLITOL_DEPS)
-    - {"xylitol-official-plugin-provider-openai"},
-    "rmcp": frozenset(ALLOWED_XYLITOL_DEPS) - {"xylitol-official-plugin-mcp"},
-    "salvo": frozenset(ALLOWED_XYLITOL_DEPS) - {"xylitol-serve"},
+    "fory": ALL_PACKAGES - {"xylitol-protocol"},
+    "async-openai": ALL_PACKAGES - {"xylitol-official-plugin-provider-openai"},
+    "rmcp": ALL_PACKAGES - {"xylitol-official-plugin-mcp"},
+    "salvo": ALL_PACKAGES - {"xylitol-serve"},
 }
 
-TRANSITION_EXEMPT = frozenset({"xylitol"})
-
-# Only the assembly adapter may depend on rutis (including the fat root package).
+# Only the assembly adapter may depend on rutis (including the composition root).
 RUTIS_ADAPTER = "xylitol-rutis"
 
 
@@ -82,6 +82,12 @@ def dep_names(section: dict[str, object] | None) -> set[str]:
 def load_toml(path: Path) -> dict[str, object]:
     with path.open("rb") as fh:
         return tomllib.load(fh)
+
+
+def check_forbidden(pkg: str, deps: set[str], errors: list[str]) -> None:
+    for crate, banned_in in FORBIDDEN_DEPS.items():
+        if pkg in banned_in and crate in deps:
+            errors.append(f"{pkg}: must not depend on {crate}")
 
 
 def main() -> int:
@@ -137,22 +143,21 @@ def main() -> int:
                 f"{pkg}: xylitol-* deps {sorted(extra)} not allowed "
                 f"(max {sorted(allowed)})"
             )
-        for crate, banned_in in FORBIDDEN_DEPS.items():
-            if pkg in banned_in and crate in deps:
-                errors.append(f"{pkg}: must not depend on {crate}")
+        check_forbidden(pkg, deps, errors)
         if "rutis" in all_deps and pkg != RUTIS_ADAPTER:
             errors.append(f"{pkg}: only {RUTIS_ADAPTER} may depend on rutis")
 
-    # Root stays fat during transition; do not apply FORBIDDEN_DEPS.
     root_pkg = root.get("package")
-    if isinstance(root_pkg, dict) and root_pkg.get("name") not in TRANSITION_EXEMPT:
-        errors.append("root [package].name must stay xylitol")
-    root_deps = (
-        dep_names(root.get("dependencies"))  # type: ignore[arg-type]
+    if not isinstance(root_pkg, dict) or root_pkg.get("name") != "xylitol":
+        errors.append("root [package].name must be xylitol")
+    root_deps = dep_names(root.get("dependencies"))  # type: ignore[arg-type]
+    root_all_deps = (
+        root_deps
         | dep_names(root.get("dev-dependencies"))  # type: ignore[arg-type]
         | dep_names(root.get("build-dependencies"))  # type: ignore[arg-type]
     )
-    if "rutis" in root_deps:
+    check_forbidden("xylitol", root_deps, errors)
+    if "rutis" in root_all_deps:
         errors.append(f"xylitol: only {RUTIS_ADAPTER} may depend on rutis")
 
     if errors:

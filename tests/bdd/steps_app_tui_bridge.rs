@@ -6,8 +6,8 @@
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol::app::tui::{BashBlockStatus, UiEntry, UiModel, UiPhase, apply_xy_event};
-use xylitol::protocol::{AgentMessage, AgentPart, XyLlmMessage};
+use xylitol_app_tui::{BashBlockStatus, UiEntry, UiModel, UiPhase, apply_xy_event};
+use xylitol_plugin_sdk::{AgentMessage, AgentPart, XyLlmMessage};
 
 /// One UiModel driven through the bridge seam.
 pub struct BridgeBdd {
@@ -156,7 +156,7 @@ fn g_r1952_busy_working(bridge_bdd: &BridgeBdd) {
 fn w_r1952_non_abort_error(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
-        XyEvent::Error(xylitol::protocol::lifecycle::XyEventError::new(
+        XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
             "Config",
             "agent config error: no model configured",
         )),
@@ -899,7 +899,7 @@ fn t_atb13_line_range(bridge_bdd: &BridgeBdd) {
 fn w_atb14_provider_error(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
-        XyEvent::Error(xylitol::protocol::lifecycle::XyEventError::new(
+        XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
             "Provider",
             "gateway 502",
         )),

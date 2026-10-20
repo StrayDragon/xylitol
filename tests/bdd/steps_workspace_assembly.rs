@@ -4,7 +4,9 @@ use std::cell::RefCell;
 use std::process::Command;
 
 use rstest_bdd_macros::{then, when};
-use xylitol::infra::hooks::{DispatchResult, HookDispatcher, HookEvent, HookPhase, HooksConfig};
+use xylitol_official_plugin_hooks::{
+    DispatchResult, HookDispatcher, HookEvent, HookPhase, HooksConfig,
+};
 
 thread_local! {
     static EMPTY_HOOKS: RefCell<Option<(bool, DispatchResult)>> = const { RefCell::new(None) };

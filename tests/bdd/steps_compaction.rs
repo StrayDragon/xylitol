@@ -5,10 +5,10 @@ use rstest_bdd_macros::{given, then, when};
 
 mod comp_fixture {
     use std::cell::RefCell;
-    use xylitol::infra::session::SessionEntry;
+    use xylitol_official_plugin_session::SessionEntry;
     thread_local! {
         pub static BRANCH_SKIPPED: RefCell<Vec<SessionEntry>> = const { RefCell::new(Vec::new()) };
-        pub static LAST_COMPACTION: RefCell<Option<xylitol::infra::session::CompactionEntry>> =
+        pub static LAST_COMPACTION: RefCell<Option<xylitol_official_plugin_session::CompactionEntry>> =
             const { RefCell::new(None) };
     }
 }
@@ -22,7 +22,7 @@ pub(crate) async fn comp_run_compact(
     sid: &str,
     keep_recent_tokens: u64,
 ) {
-    use xylitol::agent::compaction::{CompactionSettings, compact_session};
+    use xylitol_official_plugin_compaction::{CompactionSettings, compact_session};
 
     reset_fake_state();
     set_fake_text(
@@ -30,9 +30,9 @@ pub(crate) async fn comp_run_compact(
     );
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let model = xylitol::infra::provider::factory::build_provider(
-        &xylitol::protocol::model::XyModelConfig {
-            kind: xylitol::protocol::model::XyModelKind::Fake,
+    let model = xylitol::wiring::infra::provider::factory::build_provider(
+        &xylitol_plugin_sdk::model::XyModelConfig {
+            kind: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "fake".into(),
             api_key: String::new(),
             base_url: None,
@@ -49,7 +49,9 @@ pub(crate) async fn comp_run_compact(
     let result = compact_session(
         &mgr,
         sid,
-        &xylitol::agent::model::task_model::CompactionSummaryBinding::for_test(model, "fake"),
+        &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding::for_test(
+            model, "fake",
+        ),
         &settings,
         None,
         0,
@@ -75,7 +77,7 @@ pub(crate) async fn comp_run_compact(
 
 pub(crate) fn compaction_entry_from_sess(
     sess: &XySessionStore,
-) -> xylitol::infra::session::CompactionEntry {
+) -> xylitol_official_plugin_session::CompactionEntry {
     if let Some(e) = comp_fixture::LAST_COMPACTION.with(|c| c.borrow().clone()) {
         return e;
     }
@@ -94,7 +96,7 @@ pub(crate) fn compaction_entry_from_sess(
 /// `session_env` bootstrap rows (c1906 post-compact ensure) count toward total active
 /// records but **not** toward the "轮" (turn) count in retain-recent assertions.
 pub(crate) fn comp_active_record_counts(entries: &[SessionEntry]) -> (usize, usize) {
-    use xylitol::protocol::session::build_context_entries;
+    use xylitol_plugin_sdk::session::build_context_entries;
     let ctx = build_context_entries(entries);
     let mut msgs = 0usize;
     let mut turn_msgs = 0usize;
@@ -103,9 +105,9 @@ pub(crate) fn comp_active_record_counts(entries: &[SessionEntry]) -> (usize, usi
             continue;
         }
         msgs += 1;
-        let is_session_env = e
-            .as_agent_message()
-            .is_some_and(|m| xylitol::agent::prompt::session_env_from_message(&m).is_some());
+        let is_session_env = e.as_agent_message().is_some_and(|m| {
+            xylitol_runtime::agent::prompt::session_env_from_message(&m).is_some()
+        });
         if !is_session_env {
             turn_msgs += 1;
         }
@@ -153,7 +155,7 @@ pub(crate) fn _g_comp_enabled_flag(agent: &AgentState, flag: bool) {
 
 #[when("调用 shouldCompact")]
 pub(crate) fn _w_comp_check(agent: &AgentState) {
-    use xylitol::agent::compaction::{
+    use xylitol_official_plugin_compaction::{
         projected_post_compact_tokens, should_compact, summary_placeholder_tokens,
     };
     let tokens: u64 = agent
@@ -164,7 +166,7 @@ pub(crate) fn _w_comp_check(agent: &AgentState) {
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
     let window = agent.context_window.get();
-    let settings = xylitol::agent::compaction::CompactionSettings {
+    let settings = xylitol_official_plugin_compaction::CompactionSettings {
         enabled: agent.compaction_enabled.get(),
         reserve_tokens: agent.compaction_reserve_tokens.get(),
         keep_recent_tokens: agent.compaction_keep_tokens.get(),
@@ -283,7 +285,7 @@ pub(crate) fn _t_comp_has_tokensbefore(sess: &XySessionStore) {
 
 #[given("用户在树中导航到分支点")]
 pub(crate) async fn _g_comp_navigate_branch(sess: &XySessionStore) {
-    use xylitol::protocol::session::ForkPosition;
+    use xylitol_plugin_sdk::session::ForkPosition;
 
     let sid = "branch-bound-parent";
     comp_seed_turns(sess, sid, 12).await;
@@ -343,7 +345,7 @@ pub(crate) fn _t_comp_context_coherent(agent: &AgentState, sess: &XySessionStore
 }
 
 pub(crate) async fn comp_seed_turns(sess: &XySessionStore, sid: &str, turns: usize) {
-    use xylitol::protocol::message::AgentMessage;
+    use xylitol_plugin_sdk::message::AgentMessage;
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
     let _ = mgr.create(sid, Some("."), None).await;

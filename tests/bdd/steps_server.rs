@@ -4,15 +4,16 @@ use rstest_bdd_macros::{given, then, when};
 use std::time::Duration;
 
 use crate::bdd::helpers::with_test_timeout;
-use xylitol::app::server::host::HostState;
-use xylitol::app::server::runtime::{RunningServer, ServerConfig, bind_serve, serve};
-use xylitol::app::server::ws::{EventJournal, ReverseRpcResult};
-use xylitol::protocol::Event;
-use xylitol::protocol::wire::codec;
-use xylitol::protocol::wire::envelope::{PROTOCOL_VERSION, RpcMessage};
+use xylitol::wiring::occupancy::host::HostState;
+use xylitol::wiring::occupancy::runtime::{RunningServer, ServerConfig, bind_serve, serve};
+use xylitol::wiring::occupancy::ws::{EventJournal, ReverseRpcResult};
 use xylitol::{
     HostClient, HttpWsClient, LinkHealth, LinkTunings, MuxStream, XyDriver, XyRemoteDriver,
 };
+use xylitol_protocol::Event;
+use xylitol_protocol::codec;
+use xylitol_protocol::envelope::{PROTOCOL_VERSION, RpcMessage};
+use xylitol_serve::Gateway;
 
 /// c2841 场景族会话 id（W7：与 v3 族常量分列，禁止跨规则隐式借用）。
 const SESSION_C2841: &str = "s-c2841";
@@ -42,7 +43,7 @@ pub struct ServerTest {
     pub idem_exec_file: RefCell<Option<std::path::PathBuf>>,
     pub idem_task: RefCell<Option<tokio::task::JoinHandle<()>>>,
     /// c2465 sr-rdy1：就绪窗口场景的网关与最近一次 healthz 应答。
-    pub gateway: RefCell<Option<Arc<xylitol::app::server::http::Gateway>>>,
+    pub gateway: RefCell<Option<Arc<Gateway>>>,
     pub rdy_status: Cell<u16>,
     pub rdy_body: RefCell<Option<String>>,
     /// c2475 sr-reg1：注册文件路径与自检驱逐信号。
@@ -193,10 +194,10 @@ async fn post_rpc(
     params: serde_json::Value,
     writer: Option<&str>,
 ) -> (u16, Option<String>, String) {
-    use xylitol::app::core::host_client::{
+    use xylitol::wiring::host_client::{
         client_request_bytes, server_response_to_result, stable_rpc_id,
     };
-    use xylitol::protocol::wire::v3::Frame;
+    use xylitol_protocol::v3::Frame;
 
     let url = format!("http://127.0.0.1:{port}/rpc");
     let bytes = client_request_bytes(id, method, &params).expect("v3 encode");
@@ -318,13 +319,16 @@ async fn w_server_app_start(server_test: &ServerTest) {
 
 #[then("装配 infra 运行时并按 session 槽注入 Driver，供 unary 处理器调用")]
 fn t_sr1(_server_test: &ServerTest) {
-    assert!(source_contains("src/app/server/host.rs", "SessionSlot"));
     assert!(source_contains(
-        "src/app/server/host.rs",
+        "src/wiring/occupancy/host.rs",
+        "SessionSlot"
+    ));
+    assert!(source_contains(
+        "src/wiring/occupancy/host.rs",
         "XyInProcessDriver"
     ));
     assert!(source_contains(
-        "src/app/server/host.rs",
+        "src/wiring/occupancy/host.rs",
         "materialize_writer"
     ));
 }
@@ -580,10 +584,13 @@ fn w_check_mutex(_server_test: &ServerTest) {}
 #[then("不依赖锁文件 JSON 的 port、pid、hostname")]
 fn t_sr7(_server_test: &ServerTest) {
     assert!(!source_contains(
-        "src/app/server/runtime.rs",
+        "src/wiring/occupancy/runtime.rs",
         "xylitol-server.lock"
     ));
-    assert!(!source_contains("src/app/server/runtime.rs", "ServerLock"));
+    assert!(!source_contains(
+        "src/wiring/occupancy/runtime.rs",
+        "ServerLock"
+    ));
 }
 
 #[given("18790 被其它进程占用")]
@@ -666,11 +673,11 @@ fn w_sr10(_server_test: &ServerTest) {}
 #[then("向 Agent 传入 Arc<dyn ExportIo>")]
 fn t_sr10(_server_test: &ServerTest) {
     assert!(source_contains(
-        "src/app/core/driver/in_process/mod.rs",
+        "src/wiring/driver/in_process/mod.rs",
         "SessionExporter"
     ));
     assert!(source_contains(
-        "src/app/core/driver/in_process/mod.rs",
+        "src/wiring/driver/in_process/mod.rs",
         "StdExportIo"
     ));
 }
@@ -683,8 +690,11 @@ fn w_check_types(_server_test: &ServerTest) {}
 
 #[then("按 session 槽持有 Driver；handlers 不直接以 Mutex AgentRuntime 作为唯一入口")]
 fn t_driver1(_server_test: &ServerTest) {
-    assert!(source_contains("src/app/server/host.rs", "SessionSlot"));
-    let http = std::fs::read_to_string("src/app/server/http.rs").unwrap();
+    assert!(source_contains(
+        "src/wiring/occupancy/host.rs",
+        "SessionSlot"
+    ));
+    let http = std::fs::read_to_string("crates/xylitol-serve/src/listen.rs").unwrap();
     assert!(!http.contains("Mutex<AgentRuntime>"));
 }
 
@@ -693,10 +703,7 @@ fn w_remote_steer(_server_test: &ServerTest) {}
 
 #[then("经 HostClient 到达 Host")]
 fn t_remote1(_server_test: &ServerTest) {
-    assert!(source_contains(
-        "src/app/core/driver/remote.rs",
-        "host.unary"
-    ));
+    assert!(source_contains("src/wiring/driver/remote.rs", "host.unary"));
 }
 
 #[then("未登记方法不发明 REST")]
@@ -706,7 +713,7 @@ fn t_no_invented_rest(_server_test: &ServerTest) {
         "\"list_sessions\""
     ));
     assert!(!source_contains(
-        "src/app/core/driver/remote.rs",
+        "src/wiring/driver/remote.rs",
         "list_sessions is not a v1 unary method"
     ));
 }
@@ -716,7 +723,7 @@ fn w_review_handlers(_server_test: &ServerTest) {}
 
 #[then("调用 dispatch 或共享 helper；与 InProcessDriver 语义一致")]
 fn t_dispatch1(_server_test: &ServerTest) {
-    assert!(source_contains("src/app/server/host.rs", "dispatch("));
+    assert!(source_contains("src/wiring/occupancy/host.rs", "dispatch("));
 }
 
 #[given("server 上存在 session 与消息树")]
@@ -758,11 +765,11 @@ fn t_tree_registered(_server_test: &ServerTest) {
     // c2710: remote session operations are the unified Command executor
     // (`unary_cmd(Command::…)`), not per-method trait wrappers.
     assert!(source_contains(
-        "src/app/core/driver/remote.rs",
+        "src/wiring/driver/remote.rs",
         "Command::SessionTree"
     ));
     assert!(source_contains(
-        "src/app/core/driver/remote.rs",
+        "src/wiring/driver/remote.rs",
         "Command::TravelSessionTree"
     ));
 }
@@ -904,7 +911,7 @@ fn t_product_unary_describe(server_test: &ServerTest) {
         .borrow()
         .clone()
         .expect("product unary body");
-    let result: xylitol::protocol::RpcResult = serde_json::from_str(&body).expect("RpcResult");
+    let result: xylitol_protocol::RpcResult = serde_json::from_str(&body).expect("RpcResult");
     assert!(result.ok, "{body}");
     assert!(result.error.is_none(), "{body}");
     let protocol = result
@@ -984,7 +991,7 @@ fn t_w3_upgraded(_server_test: &ServerTest) {}
 
 #[then("不把会话绑在 /api/v1/session/x/ws")]
 fn t_w3_no_old_ws(_server_test: &ServerTest) {
-    let http = std::fs::read_to_string("src/app/server/http.rs").unwrap();
+    let http = std::fs::read_to_string("crates/xylitol-serve/src/listen.rs").unwrap();
     let product = http.split("#[cfg(test)]").next().unwrap_or(&http);
     assert!(
         !product.contains("/api/v1/session"),
@@ -1608,8 +1615,10 @@ fn t_rr4(approval_test: &ServerTest) {
 
 const OCCUPANCY_SID: &str = "s-occ";
 
-fn occupancy_assistant() -> xylitol::protocol::session::SessionEntry {
-    use xylitol::protocol::session::{EntryBase, MessageEntry, SessionEntry, fixture_message_json};
+fn occupancy_assistant() -> xylitol_plugin_sdk::session::SessionEntry {
+    use xylitol_plugin_sdk::session::{
+        EntryBase, MessageEntry, SessionEntry, fixture_message_json,
+    };
     SessionEntry::Message(MessageEntry {
         base: EntryBase {
             entry_type: "message".into(),
@@ -1718,7 +1727,7 @@ async fn g_sr_w1_one_sub_holds(server_test: &ServerTest) {
 #[when("该连接干净关闭")]
 async fn w_sr_w1_clean_close(server_test: &ServerTest) {
     let host = server_test.host.borrow().as_ref().expect("host").clone();
-    xylitol::app::server::host::prune_mux_and_maybe_release(&host, true).await;
+    xylitol::wiring::occupancy::host::prune_mux_and_maybe_release(&host, true).await;
 }
 
 #[then("写占用已释放且后续同机进程可取得")]
@@ -1739,7 +1748,7 @@ async fn g_sr_w1_linger_window(server_test: &ServerTest) {
     let (tx, rx) = tokio::sync::mpsc::channel(8);
     slot.add_subscriber(tx).await;
     drop(rx);
-    xylitol::app::server::host::prune_mux_and_maybe_release(&host, false).await;
+    xylitol::wiring::occupancy::host::prune_mux_and_maybe_release(&host, false).await;
 }
 
 #[when("同一进程再次订阅该会话")]
@@ -2176,7 +2185,7 @@ async fn t_idem_inflight_wait(server_test: &ServerTest) {
 
 #[given("监听器已绑定端口但装配未完成")]
 async fn g_rdy_starting(server_test: &ServerTest) {
-    let gateway = xylitol::app::server::http::Gateway::starting();
+    let gateway = Gateway::starting();
     let (running, port) = bind_serve(
         &ServerConfig {
             host: "127.0.0.1".into(),
@@ -2259,7 +2268,7 @@ async fn t_rdy_ready(server_test: &ServerTest) {
 
 #[given("装配失败")]
 async fn g_rdy_failed(server_test: &ServerTest) {
-    let gateway = xylitol::app::server::http::Gateway::starting();
+    let gateway = Gateway::starting();
     gateway.mark_failed();
     let (running, port) = bind_serve(
         &ServerConfig {
@@ -2291,10 +2300,8 @@ async fn t_rdy_failed(server_test: &ServerTest) {
 
 // ---- c2475 sr-reg1：serve 注册文件发现契约 ----
 
-use xylitol::app::server::registration::{
-    Registration, read_registration, run_self_check, write_registration,
-};
-use xylitol::app::server::runtime::serve_registered;
+use xylitol::wiring::occupancy::runtime::serve_registered;
+use xylitol_serve::{Registration, read_registration, run_self_check, write_registration};
 
 fn temp_reg_path() -> std::path::PathBuf {
     std::env::temp_dir().join(format!("xylitol-bdd-reg-{}.json", uuid::Uuid::new_v4()))
@@ -2747,7 +2754,7 @@ fn w_lookup_session_methods(server_test: &ServerTest) {
     let missing: Vec<&str> = names
         .iter()
         .copied()
-        .filter(|n| xylitol::protocol::wire::registry::lookup(n).is_none())
+        .filter(|n| xylitol_protocol::registry::lookup(n).is_none())
         .collect();
     server_test
         .unary_body
@@ -2767,7 +2774,7 @@ fn w_lookup_resource_methods(server_test: &ServerTest) {
     let missing: Vec<&str> = ["reload", "loaded_resources"]
         .iter()
         .copied()
-        .filter(|n| xylitol::protocol::wire::registry::lookup(n).is_none())
+        .filter(|n| xylitol_protocol::registry::lookup(n).is_none())
         .collect();
     server_test
         .unary_body
@@ -2787,7 +2794,7 @@ fn t_resource_methods_registered(server_test: &ServerTest) {
 
 #[when("查询方法表的 estimate_context")]
 fn w_lookup_estimate_context(server_test: &ServerTest) {
-    let registered = xylitol::protocol::wire::registry::lookup("estimate_context").is_some();
+    let registered = xylitol_protocol::registry::lookup("estimate_context").is_some();
     server_test
         .unary_body
         .replace(Some(format!("registered={registered}")));
@@ -2868,7 +2875,7 @@ async fn g_c2841_writer_with_default_model(server_test: &ServerTest) {
     start_host_with_default_model(server_test, "fake-model").await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot(SESSION_C2841).await;
-    xylitol::app::server::host::materialize_writer(&host, &slot)
+    xylitol::wiring::occupancy::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
     let mut g = slot.driver.lock().await;
@@ -3080,7 +3087,7 @@ async fn g_c2842_v3_subscribe_default_model(server_test: &ServerTest) {
     start_host_with_default_model(server_test, "fake-model").await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot(SESSION_V3).await;
-    xylitol::app::server::host::materialize_writer(&host, &slot)
+    xylitol::wiring::occupancy::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
     let client = HttpWsClient::new(server_test.base_url()).with_envelope(true);
@@ -3190,8 +3197,8 @@ fn t_nonbinary_illegal(server_test: &ServerTest) {
 
 // ── r1923 / r1925 arm_tool_freeze 有界决议 ─────────────────────
 
-fn arm_freeze_fixture_mcp(name: &str) -> xylitol::app::core::composition::McpServerSpec {
-    use xylitol::app::core::composition::{McpServerSpec, McpTransportSpec};
+fn arm_freeze_fixture_mcp(name: &str) -> xylitol::wiring::composition::McpServerSpec {
+    use xylitol::wiring::composition::{McpServerSpec, McpTransportSpec};
     let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/support/mcp_fixture_server.py");
     let mut env = std::collections::HashMap::new();
@@ -3209,7 +3216,7 @@ fn arm_freeze_fixture_mcp(name: &str) -> xylitol::app::core::composition::McpSer
 
 #[given("宿主配置了连不上的 MCP 且会话写者已物化")]
 async fn g_arm_freeze_hang_mcp(server_test: &ServerTest) {
-    use xylitol::app::core::composition::{McpServerSpec, McpTransportSpec};
+    use xylitol::wiring::composition::{McpServerSpec, McpTransportSpec};
     let hang = McpServerSpec {
         name: "hang-forever-bdd".into(),
         transport: McpTransportSpec::Stdio,
@@ -3221,7 +3228,7 @@ async fn g_arm_freeze_hang_mcp(server_test: &ServerTest) {
     };
     let host = HostState::for_test_with_mcp(vec![hang]).expect("host");
     let slot = host.slot("freeze-gate-hang").await;
-    xylitol::app::server::host::materialize_writer(&host, &slot)
+    xylitol::wiring::occupancy::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
     *server_test.host.borrow_mut() = Some(host);
@@ -3233,11 +3240,11 @@ async fn g_arm_freeze_lease_held(server_test: &ServerTest) {
     let host =
         HostState::for_test_with_mcp(vec![arm_freeze_fixture_mcp("fixture-bdd")]).expect("host");
     let slot = host.slot("freeze-gate-conflict").await;
-    xylitol::app::server::host::materialize_writer(&host, &slot)
+    xylitol::wiring::occupancy::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
     // 以一次写 unary 建立租约（与单测同路径：set_model 走租约）。
-    let first = xylitol::app::server::host::handle_unary(
+    let first = xylitol::wiring::occupancy::host::handle_unary(
         &host,
         None,
         "set_model",
@@ -3254,7 +3261,7 @@ async fn w_arm_tool_freeze(server_test: &ServerTest) {
     let host = server_test.host.borrow().clone().expect("host present");
     let session = server_test.freeze_session.borrow().clone();
     let t0 = std::time::Instant::now();
-    let result = xylitol::app::server::host::handle_unary(
+    let result = xylitol::wiring::occupancy::host::handle_unary(
         &host,
         None,
         "arm_tool_freeze",
@@ -3427,7 +3434,7 @@ async fn w_observe_inject(server_test: &ServerTest) {
 #[when("任一连接对该会话再发根提交")]
 async fn w_busy_second_root(server_test: &ServerTest) {
     let host = server_test.host.borrow().clone().expect("host present");
-    let result = xylitol::app::server::host::handle_unary(
+    let result = xylitol::wiring::occupancy::host::handle_unary(
         &host,
         None,
         "prompt",
@@ -3507,11 +3514,11 @@ fn t_busy_rejected(server_test: &ServerTest) {
 // ---- c2922 sr-rdy1：就绪状态机迁移表（xstate E1-E4 守卫的执行侧） ----
 // 表行驱动 Gateway 单元语义：given 造对应初态的独立 Gateway，when 施加转移，then 观测 phase。
 
-fn rdy_fresh_gateway(phase: &str) -> Arc<xylitol::app::server::http::Gateway> {
-    let g = xylitol::app::server::http::Gateway::starting();
+fn rdy_fresh_gateway(phase: &str) -> Arc<Gateway> {
+    let g = Gateway::starting();
     match phase {
         "ready" => {
-            g.set_host(xylitol::app::server::host::HostState::for_test().expect("HostState"))
+            g.set_host(xylitol::wiring::occupancy::host::HostState::for_test().expect("HostState"))
         }
         "failed" => g.mark_failed(),
         "starting" => {}
@@ -3534,9 +3541,8 @@ async fn w_rdy_transition(server_test: &ServerTest, event: String) {
         .expect("gateway held by given");
     match event.as_str() {
         // set_host 幂等填 host 并翻 ready（首写者胜，与生产装配完成路径同函数）。
-        "assembly_complete" => {
-            gateway.set_host(xylitol::app::server::host::HostState::for_test().expect("HostState"))
-        }
+        "assembly_complete" => gateway
+            .set_host(xylitol::wiring::occupancy::host::HostState::for_test().expect("HostState")),
         "assembly_fail" => gateway.mark_failed(),
         other => panic!("unknown assembly event: {other}"),
     }

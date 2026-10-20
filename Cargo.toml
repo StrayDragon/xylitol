@@ -154,7 +154,6 @@ async-stream = { workspace = true }
 tokio-util = { workspace = true }
 yaml_serde = { workspace = true }
 
-salvo = { workspace = true, optional = true, features = ["server", "server-handle", "http1", "websocket", "test"] }
 tokio-tungstenite = { workspace = true, features = ["connect", "handshake"], optional = true }
 
 # ── terminal UI ──
@@ -177,14 +176,13 @@ xylitol-official-plugin-hooks = { workspace = true }
 xylitol-rutis = { workspace = true }
 crossterm = { workspace = true, optional = true, features = ["event-stream"] }
 http = { workspace = true }
-fory = { workspace = true }
 
 [features]
 default = ["cli", "tui", "otel", "server", "mcp"]
 # CLI composition root.
 cli = []
 # HTTP/WebSocket Host carrier (product TUI attach default).
-server = ["dep:salvo", "dep:tokio-tungstenite"]
+server = ["xylitol-serve/listen", "dep:tokio-tungstenite"]
 # Terminal UI surface (host-driven on xylitol-tui).
 tui = ["dep:xylitol-tui", "dep:crossterm", "dep:xylitol-app-tui"]
 # MCP client (rmcp). Runtime still requires config; this only gates compile.
@@ -223,6 +221,7 @@ panic = "abort"
 incremental = false
 
 [dev-dependencies]
+fory = { workspace = true }
 tempfile = { workspace = true }
 # Property-based invariants (roundtrip / idempotence / monotonicity); see
 # skill l8ng-test-methodology → rust.md for the pattern library.

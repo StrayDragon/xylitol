@@ -5,19 +5,19 @@ expression: "all_items.join(\"\\n\")"
 pub async fn emit_leaf_changed_settlement(&self)
 pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError>
 pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), CompactionError>
-pub async fn fork_session( &self, at_entry_id: &str, position: crate::protocol::session::ForkPosition, ) -> Result<String, XyError>
+pub async fn fork_session( &self, at_entry_id: &str, position: xylitol_plugin_sdk::session::ForkPosition, ) -> Result<String, XyError>
 pub async fn get_session_stats(&self) -> Result<SessionStats, XyError>
 pub async fn load_conversation_history( &self, session_id: &str, ) -> Result<Vec<AgentMessage>, XyError>
 pub async fn load_conversation_history_from_store( store: &dyn XySessionStore, session_id: &str, ) -> Result<Vec<AgentMessage>, XyError>
 pub async fn maybe_auto_compact(&self) -> Result<bool, CompactionError>
-pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&crate::protocol::message::AgentMessage>, ) -> Result<bool, CompactionError>
+pub async fn maybe_auto_compact_with( &self, estimate_opts: &crate::agent::compaction::EstimateOpts, last_assistant: Option<&xylitol_plugin_sdk::message::AgentMessage>, ) -> Result<bool, CompactionError>
 pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError>
 pub async fn select_model_with_source( &mut self, model_id: &str, source: &str, ) -> Result<(), XyError>
 pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError>
 pub enum QueueMode
 pub fn apply_default_thinking_level(&mut self, raw: Option<&str>)
 pub fn apply_prompt_resources( &mut self, context_files: Vec<(String, String)>, system_prompt: Option<String>, append_system_prompt: Vec<String>, )
-pub fn apply_skills(&mut self, skills: Vec<crate::protocol::resource::SkillInfo>)
+pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>)
 pub fn begin_tool_gating(&mut self)
 pub fn bind_event_tx(&self, run_id: RunId, tx: EventTx)
 pub fn clear(&mut self)
@@ -30,7 +30,7 @@ pub fn drain(&mut self) -> Vec<AgentMessage>
 pub fn enqueue(&mut self, message: AgentMessage)
 pub fn fixed_request_context(&self) -> crate::agent::compaction::FixedRequestContext
 pub fn follow_up(&self, message: impl Into<String>)
-pub fn follow_up_parts(&self, parts: Vec<crate::protocol::message::AgentPart>)
+pub fn follow_up_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>)
 pub fn freeze_tools(&mut self, tools: ToolSet)
 pub fn freeze_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
 pub fn frozen_fingerprint_matches_set(&self, candidate: &ToolSet) -> bool
@@ -38,12 +38,13 @@ pub fn frozen_tool_fingerprint(&self) -> Option<&ToolTableFingerprint>
 pub fn get_context_usage( token_estimate: u64, context_window: u64, settings: &crate::agent::compaction::CompactionSettings, ) -> ContextUsage
 pub fn get_permission(&self) -> std::sync::Arc<dyn XyPermission>
 pub fn has_active_turn(&self) -> bool
+pub fn install_compaction(&mut self, factory: XyCompactionFactory)
 pub fn install_system_prompt_text(&mut self, prompt: String)
 pub fn is_empty(&self) -> bool
 pub fn is_tools_frozen(&self) -> bool
 pub fn len(&self) -> usize
 pub fn loaded_skill_names(&self) -> Vec<String>
-pub fn loaded_skills(&self) -> &[crate::protocol::resource::SkillInfo]
+pub fn loaded_skills(&self) -> &[xylitol_plugin_sdk::resource::SkillInfo]
 pub fn model_registry(&self) -> ModelRegistry
 pub fn new( model_registry: ModelRegistry, tool_registry: ToolSet, store: Arc<dyn XySessionStore>, sink: Arc<dyn XyEventSink>, system_prompt: Option<String>, context_files: Vec<(String, String)>, append_system_prompt: Vec<String>, cwd: String, compaction_settings: Option<CompactionSettings>, model_builder: xylitol_plugin_sdk::XyModelBuilder, permission: Arc<dyn XyPermission>, steering_mode: QueueMode, follow_up_mode: QueueMode, hook_bus: Option<Arc<dyn XyHookBus>>, ) -> Self
 pub fn new(mode: QueueMode) -> Self
@@ -60,12 +61,12 @@ pub fn set_cwd(&mut self, cwd: impl Into<String>)
 pub fn set_permission(&mut self, permission: std::sync::Arc<dyn XyPermission>)
 pub fn set_session(&mut self, session_id: String)
 pub fn set_system_prompt(&mut self, prompt: Option<String>)
-pub fn set_thinking_budgets( &mut self, budgets: Option<crate::protocol::model::ThinkingBudgets>, )
+pub fn set_thinking_budgets( &mut self, budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets>, )
 pub fn set_tools(&mut self, tools: ToolSet)
 pub fn set_tools_defer_prompt(&mut self, tools: ToolSet) -> SystemPromptOpts
 pub fn stats(&self) -> QueueStats
 pub fn steer(&self, message: impl Into<String>)
-pub fn steer_parts(&self, parts: Vec<crate::protocol::message::AgentPart>)
+pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>)
 pub fn system_prompt(&self) -> Option<&str>
 pub fn thinking_level(&self) -> String
 pub fn tool_freeze_phase(&self) -> ToolFreezePhase
@@ -82,7 +83,7 @@ pub struct HookBlockedError(pub String)
 pub struct PendingMessageQueue
 pub struct QueueStats
 pub struct SessionStats
-pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::orchestrator::should_compact
+pub tokens: u64, pub context_window: u64, pub percent: u64, pub should_compact: bool, } pub use crate::agent::compaction::should_compact
 pub use crate::agent::model::registry::ModelRegistry
 pub use self::hook_bus::HookBlockedError
 pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats}

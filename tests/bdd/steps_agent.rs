@@ -34,7 +34,7 @@ pub(crate) fn _g_agent_mock_model(agent: &AgentState, ws: &Workspace, name: Stri
 
 #[given("工具注册表包含 9 个内置工具")]
 pub(crate) fn _g_agent_tools_ready(_agent: &AgentState) {
-    let tools = xylitol::infra::tools::default_tools();
+    let tools = xylitol_official_plugin_tools::default_tools();
     assert_eq!(tools.len(), 9, "builtin tool registry must expose 9 tools");
 }
 
@@ -172,10 +172,10 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-        std::sync::Arc::new(xylitol::infra::event::EventBus::new());
+        std::sync::Arc::new(xylitol::wiring::infra::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
-        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
+        ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
         store.clone(),
         sink,
         None,
@@ -183,10 +183,10 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
-        xylitol::infra::permission::allow_all_permission(),
-        xylitol::agent::capabilities::QueueMode::default(),
-        xylitol::agent::capabilities::QueueMode::default(),
+        std::sync::Arc::new(xylitol::wiring::infra::provider::factory::build_provider),
+        xylitol::wiring::infra::permission::allow_all_permission(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,
     );
     let first_model_id = agent.registry.borrow().list().first().map(|m| m.id.clone());
@@ -203,7 +203,7 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
             entry_type: "thinking_level_change".into(),
             id: format!("tlc-{}", uuid::Uuid::new_v4()),
             parent_id: None,
-            timestamp: xylitol::protocol::message::now_ms(),
+            timestamp: xylitol_plugin_sdk::message::now_ms(),
         },
         thinking_level: session.thinking_level(),
     });
@@ -217,7 +217,7 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
 
 mod thinking_persist {
     use std::cell::RefCell;
-    use xylitol::infra::session::SessionManager;
+    use xylitol_official_plugin_session::SessionManager;
     thread_local! {
         pub static SID: RefCell<Option<String>> = const { RefCell::new(None) };
         pub static MGR: RefCell<Option<SessionManager>> = const { RefCell::new(None) };
@@ -306,7 +306,7 @@ pub(crate) fn _w_agent_context_usage(agent: &AgentState) {
         .and_then(|s| s.strip_prefix("tokens:").and_then(|n| n.parse().ok()))
         .unwrap_or(0);
     let window = agent.context_window.get().max(1);
-    let settings = xylitol::agent::compaction::CompactionSettings::default();
+    let settings = xylitol_official_plugin_compaction::CompactionSettings::default();
     agent
         .context_usage
         .replace(Some(get_context_usage(tokens, window, &settings)));
@@ -428,10 +428,10 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-        std::sync::Arc::new(xylitol::infra::event::EventBus::new());
+        std::sync::Arc::new(xylitol::wiring::infra::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
-        ToolSet::from_iter(xylitol::infra::tools::default_tools()),
+        ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
         store,
         sink,
         None,
@@ -439,10 +439,10 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::infra::provider::factory::build_provider),
-        xylitol::infra::permission::allow_all_permission(),
-        xylitol::agent::capabilities::QueueMode::default(),
-        xylitol::agent::capabilities::QueueMode::default(),
+        std::sync::Arc::new(xylitol::wiring::infra::provider::factory::build_provider),
+        xylitol::wiring::infra::permission::allow_all_permission(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,
     );
     if session.current_model().is_none()

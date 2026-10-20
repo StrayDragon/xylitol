@@ -6,7 +6,7 @@ use rstest_bdd_macros::{given, then, when};
 use std::cell::Cell;
 use std::path::PathBuf;
 use std::sync::Arc;
-use xylitol::app::tui::storage::{ClientStorage, KEY_EDITOR_HISTORY};
+use xylitol_app_tui::storage::{ClientStorage, KEY_EDITOR_HISTORY};
 
 pub struct StorageBdd {
     pub root: RefCell<Option<PathBuf>>,
