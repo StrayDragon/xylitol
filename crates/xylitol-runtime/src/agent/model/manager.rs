@@ -16,8 +16,7 @@ use xylitol_plugin_sdk::model::{
 ///
 /// Owned by [`AgentCapabilities`](crate::agent::capabilities::AgentCapabilities) as a composed field.
 /// The provider is built via an injected `model_builder` (the agent layer must
-/// not call `infra::provider::factory::build_provider` directly; the composition
-/// root supplies the builder).
+/// not construct providers itself; the composition root supplies the builder).
 pub struct ModelManager {
     /// Model registry for provider/model lookup.
     pub(crate) registry: ModelRegistry,
@@ -179,8 +178,6 @@ impl ModelManager {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use super::ModelManager;
     use crate::agent::model::registry::ModelRegistry;
     use xylitol_plugin_sdk::error::XyError;
@@ -194,7 +191,7 @@ mod tests {
     }
 
     fn fake_builder() -> ModelBuilderFn {
-        Arc::new(crate::infra::provider::factory::build_provider)
+        crate::test_support::dummy_model_builder()
     }
 
     fn meta(id: &str, thinking: bool, levels: &[&str]) -> XyModelMeta {

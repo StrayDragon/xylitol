@@ -49,26 +49,12 @@ mod tests {
     }
 
     #[test]
-    fn test_toolset_default_tools_contains_all() {
-        let set = ToolSet::from_iter(crate::infra::tools::default_tools());
-        let names: Vec<&str> = set.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"read"));
-        assert!(names.contains(&"write"));
-        assert!(names.contains(&"edit"));
-        assert!(names.contains(&"bash"));
-        assert!(names.contains(&"grep"));
-        assert!(names.contains(&"find"));
-        assert!(names.contains(&"ls"));
-        assert!(names.contains(&"todo_rewrite"));
-        assert!(names.contains(&"todo_update"));
-        assert_eq!(names.len(), 9);
-    }
-
-    #[test]
     fn test_toolset_remove_and_retain() {
-        let set = ToolSet::from_iter(crate::infra::tools::default_tools())
-            .remove("bash")
-            .retain(|t| matches!(t.name(), "read" | "write" | "edit" | "grep" | "find" | "ls"));
+        let set = crate::test_support::named_tools(&[
+            "read", "write", "edit", "bash", "grep", "find", "ls",
+        ])
+        .remove("bash")
+        .retain(|t| matches!(t.name(), "read" | "write" | "edit" | "grep" | "find" | "ls"));
         let names: Vec<&str> = set.iter().map(|t| t.name()).collect();
         assert!(!names.contains(&"bash"));
         assert!(names.contains(&"read"));

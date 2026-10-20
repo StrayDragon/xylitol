@@ -88,7 +88,7 @@ impl RuntimeBaseline {
 mod tests {
     use super::*;
     use crate::agent::runtime::RunPolicy;
-    use crate::infra::session::SessionManager;
+    use crate::test_support::{MemoryStore, NoopSink, dummy_model_builder};
     use futures::StreamExt;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use xylitol_plugin_sdk::error::XyError;
@@ -127,13 +127,12 @@ mod tests {
     }
 
     fn baseline_ports(model_builder: XyModelBuilder) -> RuntimeBaseline {
-        let session_mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
-        let store: Arc<dyn XySessionStore> = Arc::new(session_mgr);
-        let sink: Arc<dyn XyEventSink> = Arc::new(crate::infra::event::EventBus::new());
+        let store: Arc<dyn XySessionStore> = Arc::new(MemoryStore::new());
+        let sink: Arc<dyn XyEventSink> = Arc::new(NoopSink);
         RuntimeBaseline {
             store,
             sink,
-            permission: crate::infra::permission::allow_all_permission(),
+            permission: crate::permission::allow_all_permission(),
             hook_bus: None,
             model_registry: mock_registry(),
             model_builder,
@@ -141,6 +140,7 @@ mod tests {
             steering_mode: QueueMode::default(),
             follow_up_mode: QueueMode::default(),
             compaction_settings: None,
+            compaction_factory: crate::agent::compaction::noop_compaction_factory(),
             tools: ToolSet::empty(),
             system_prompt: None,
             context_files: Vec::new(),
@@ -183,7 +183,7 @@ mod tests {
 
     #[tokio::test]
     async fn cloned_ports_yield_independent_sessions_and_model_selection() {
-        let ports = baseline_ports(Arc::new(crate::infra::provider::factory::build_provider));
+        let ports = baseline_ports(dummy_model_builder());
         let mut a = ports.clone().materialize_runtime();
         let mut b = ports.materialize_runtime();
 

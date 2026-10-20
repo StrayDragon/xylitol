@@ -108,7 +108,7 @@ mod tests {
     type ModelBuilderFn = xylitol_plugin_sdk::XyModelBuilder;
 
     fn fake_builder() -> ModelBuilderFn {
-        Arc::new(crate::infra::provider::factory::build_provider)
+        crate::test_support::dummy_model_builder()
     }
 
     fn meta(id: &str, thinking: bool, levels: &[&str]) -> XyModelMeta {

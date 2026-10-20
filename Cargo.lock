@@ -6014,6 +6014,7 @@ dependencies = [
  "fastrace",
  "futures",
  "glob",
+ "insta",
  "log",
  "minijinja",
  "regex",

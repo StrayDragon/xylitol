@@ -2,10 +2,6 @@
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
-    use crate::infra::mcp::{McpClientManager, McpToolAdapter};
-    use xylitol_plugin_sdk::XyTool;
     use xylitol_plugin_sdk::{is_mcp_tool_name, is_provider_safe_tool_name, mcp_tool_public_name};
 
     #[test]
@@ -19,17 +15,9 @@ mod tests {
     }
 
     #[test]
-    fn adapter_and_default_tools_all_provider_safe() {
-        let manager = Arc::new(McpClientManager::new());
-        let mcp: Arc<dyn XyTool> = Arc::new(McpToolAdapter::new(
-            "context7".into(),
-            "resolve-library-id".into(),
-            "docs".into(),
-            None,
-            manager,
-        ));
-        let set =
-            crate::agent::tools::ToolSet::from_iter(crate::infra::tools::default_tools()).plus(mcp);
+    fn fixture_and_mcp_names_all_provider_safe() {
+        let mcp = crate::test_support::named_tool("mcp__context7__resolve-library-id");
+        let set = crate::test_support::named_tools(&["read", "write"]).plus(mcp);
         let names: Vec<_> = set.iter().map(|t| t.name().to_string()).collect();
         assert!(
             names
@@ -47,15 +35,7 @@ mod tests {
 
     #[test]
     fn toolset_get_finds_mcp_double_underscore_name() {
-        let manager = Arc::new(McpClientManager::new());
-        let mcp: Arc<dyn XyTool> = Arc::new(McpToolAdapter::new(
-            "lspz".into(),
-            "get_diagnostics".into(),
-            "d".into(),
-            None,
-            manager,
-        ));
-        let set = crate::agent::tools::ToolSet::from_iter([mcp]);
+        let set = crate::test_support::named_tools(&["mcp__lspz__get_diagnostics"]);
         assert!(set.get("mcp__lspz__get_diagnostics").is_some());
         let wire = xylitol_plugin_sdk::tool_wire::to_wire_tool_name("mcp:lspz:get_diagnostics");
         assert_eq!(wire, "mcp__lspz__get_diagnostics");

@@ -15,7 +15,7 @@
 //! Do **not** hold [`LocalParentGuard`] across `.await` in the ReAct
 //! `async_stream` (guard is `!Send`). Children use `enter_with_parent` or
 //! `Span::root(name, SpanContext::from_span(parent))` with an owned parent
-//! `Span` kept alive for the turn/iteration. Must not import `crate::infra`.
+//! `Span` kept alive for the turn/iteration. Must not import composition-root wiring.
 
 use fastrace::prelude::*;
 use xylitol_plugin_sdk::langfuse_observation_properties_from;
@@ -473,14 +473,9 @@ mod tests {
             let iter = AgentIterationSpan::start(Some(&turn), 0).expect("iter");
             let tool = ToolExecuteSpan::start("bash", "t1", Some(iter.span())).expect("tool");
             tool.attach_io(r#"{"cmd":"echo"}"#, "ok");
-            let iter_ctx = SpanContext::from_span(iter.span());
-            let _llm = xylitol_plugin_sdk::ProviderRequestTrace::start_with_parent(
-                "openai-responses",
-                "m",
-                iter_ctx,
-            )
-            .expect("llm");
-            drop(_llm);
+            let llm = Span::enter_with_parent("llm.request", iter.span());
+            llm.add_property(|| ("langfuse.observation.model.name", "m".to_string()));
+            drop(llm);
             drop(tool);
             drop(iter);
             turn.finish(TurnEndReason::Ok);

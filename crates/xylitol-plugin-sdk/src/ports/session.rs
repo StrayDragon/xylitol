@@ -35,8 +35,8 @@ pub struct SessionListEntry {
 /// sessions without coupling to the file store.
 ///
 /// Methods are the **minimum** the ReAct loop and compaction call.
-/// Full session management (fork/navigate/export) stays on the concrete
-/// `infra::session::SessionManager` for the composition root.
+/// Full session management (fork/navigate/export) stays on the session
+/// plugin for the composition root.
 #[async_trait]
 pub trait XySessionStore: Send + Sync {
     /// Check whether a session exists.

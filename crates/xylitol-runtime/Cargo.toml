@@ -9,8 +9,7 @@ repository = "https://github.com/StrayDragon/xylitol"
 publish = false
 
 [lib]
-# Plugin-coupled unit tests stay in the xylitol crate / BDD.
-test = false
+# Plugin behavior stays in the xylitol crate / BDD. Lib tests use crate-local fakes.
 doctest = false
 
 [dependencies]
@@ -36,5 +35,6 @@ tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
+insta = { workspace = true }
 tempfile = { workspace = true }
 xylitol-plugin-sdk = { workspace = true }

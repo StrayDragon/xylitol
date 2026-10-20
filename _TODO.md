@@ -10,13 +10,15 @@
 
 ## 现在
 
-§3 组合根下沉完成。clipboard 在 `xylitol-app-tui`；resource / permission 在 `xylitol-runtime`；组合根直接注入 `Arc`。config 只留真正接线的 YAML 字段。观测写出与 MCP reload 留根包（原因见 [§3](#PRE) 表）。不为对称性再拆 `xylitol-host` / `xylitol-config`。
+主线 crate 化完成。没有下一刀实现，除非另开 [§4](#MAIN) 转向或认领 GitHub [#28](https://github.com/StrayDragon/xylitol/issues/28)。
+
+clipboard 在 `xylitol-app-tui`；resource / permission 在 `xylitol-runtime`；组合根注入 `Arc`。config 只留接线字段。观测写出与 MCP reload 留根包（见 [§3](#PRE)）。不为对称性再拆 `xylitol-host` / `xylitol-config`。
 
 crate 图见 [§2](#TARGET)。`just qa` 与 `just qa-e2e` 已通过。
 
-**顺序**：先 crates 化、边界内聚；再考虑架构转向。转向（cordis 式随意插件 + 热重载，对标 dsh 创造模式）不挡 §3。现行扩展靠 skills 与 MCP，稳定 coding agent 够用。
+现行扩展靠 skills 与 MCP，稳定 coding agent 够用。转向（cordis 式随意插件 + 热重载）见 [§4](#MAIN)，现在不做。
 
-rutis 接入 [S2](#S2)–[S5](#S5) **停**：理解还浅，现有产品够用。`Ctx` 不传回合消息（见 [§4](#MAIN)）。无 `xylitol-rutis`。不得 `use rutis`。
+rutis 接入 [S2](#S2)–[S5](#S5) **停**：理解还浅。`Ctx` 不传回合消息（见 [§4](#MAIN)）。无 `xylitol-rutis`。不得 `use rutis`。
 
 延后项见 [§6](#DEFER)：D2 词表不加 `Xy`；D6 未开放端；D7 schedule；D8 观测后置。
 
@@ -34,7 +36,7 @@ rutis 接入 [S2](#S2)–[S5](#S5) **停**：理解还浅，现有产品够用�
 
 不为编译速度拆 crate。单包 default-on 的 Cargo feature 不省默认二进制。
 
-读法：现在 → [§3](#PRE) 组合根下沉 → [§2](#TARGET) → [§4](#MAIN) rutis 停 → [§6](#DEFER)。
+读法：现在 → [§2](#TARGET) 现行图 → [§4](#MAIN) 停 → [§6](#DEFER)。[§3](#PRE) 已完成。
 
 ---
 
@@ -112,7 +114,7 @@ crate 按契约划分。不得 `pub use` 根 `src/` 模块凑编译。不得留�
 
 **P3 生命周期** 组合根注入 `Arc`。用户插入点仍是配置 / 文件，运行时承载见 [S2](#S2)。会话 instance 见 [S3](#S3)。dylib 见 [S4](#S4)，必须与否后定。不得预埋空壳。不得做 Extension Host。不得 `use rutis`。
 
-**P4 热路径** 现行：ReAct 循环在 `xylitol-runtime`，无第二实现。测端已有 `ScriptedDriver`。这是现行边界，不是永禁；转向见 [§4](#MAIN)，须先完成 [§3](#PRE)。
+**P4 热路径** 现行：ReAct 循环在 `xylitol-runtime`，无第二实现。测端已有 `ScriptedDriver`。这是现行边界，不是永禁；转向见 [§4](#MAIN)。
 
 **P5 稳定方向** `plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。runtime → sdk。runtime ↛ 插件、↛ 信封。插件之间不得 `use`。mapping 只在 serve。Print 只依赖 runtime。
 
@@ -294,9 +296,9 @@ src/
 
 <a id="PRE"></a>
 
-## 3. 主线：组合根下沉
+## 3. 已完成：组合根下沉
 
-根 `src/*.rs` 是五文件。实现仍在 `src/wiring/`（约 15.5k 行）。不为对称性再拆 `xylitol-host` / `xylitol-config`。不为编译速度再拆 crate。
+根 `src/*.rs` 是五文件。实现仍在 `src/wiring/`（约 6k 行），全是组合根该留的。不为对称性再拆 `xylitol-host` / `xylitol-config`。不为编译速度再拆 crate。
 
 | 块 | 约行 | 状态 |
 |---|---|---|
@@ -308,17 +310,21 @@ src/
 | `infra/observability` | 0.8k | 留根包。进程启动才知道写 `xylitol.log` / 是否装 OTLP；`otel` feature 在根包。runtime 只打 ReAct span 名，不认文件路径和网关 |
 | `driver/` MCP·reload 包装 | 1.4k | 留根包。runtime 不得依赖官方 mcp 插件；`/reload` 读配置、重连、把新工具表注入 Driver，就是组合根 |
 
-agent loop 现行在 `xylitol-runtime`。转向见 [§4](#MAIN)，不挡本节。
+agent loop 现行在 `xylitol-runtime`。转向见 [§4](#MAIN)。
 
 <a id="MAIN"></a>
 
 ## 4. 停：rutis 接入与架构转向
 
-停。先完成 [§3](#PRE) 内聚。现有产品靠 skills / MCP 扩展，稳定 coding agent 够用。理解浅时不接入。
+停。主线 crate 化已完成。现有产品靠 skills / MCP 扩展，稳定 coding agent 够用。理解浅时不接入、不预埋空壳。
+
+重开条件（全满足）：自己用 rutis 跑通过；愿意改「不得 `use rutis`」；热路径延迟有基线可比。
+
+另开时先定：**根包直接 `use rutis`**（rutis 当基础库，用到的 crate 直接依赖）。不再做进口隔离包。届时改写 `src/AGENTS.md` 的「不得 `use rutis`」。
 
 **`Ctx` 不传回合消息。** 用户一轮、工具起止、token 增量走 `XyDriver` 队列与信封（`XyEvent` / fory-v3）。`Ctx` 是进程底板：服务注册表（`TypeKey` → `Arc`）、插件生命周期总线、fiber 表、instance。两通道不互转，见 [§2.0c](#EXTEND)。`rutis-host` 持有根 `Ctx`，本身不是 Plugin。
 
-**现行 vs 转向。** 现行：官方库是端口实现；ReAct 在 runtime。这是当前预期，可以改。转向吸引点是 dsh 创造模式：cordis 上随意做插件并热重载。那一步等于换内核，须 crates 化且边界内聚之后另开。不要为转向预埋空壳。
+**现行 vs 转向。** 现行：官方库是端口实现；ReAct 在 runtime。这是当前预期，可以改。转向吸引点是 dsh 创造模式：cordis 上随意做插件并热重载。那一步等于换内核，另开。dsh 创造模式 / loop 当插件 **不等于 S2**。S2 只是 `Ctx` 当桌子常驻。loop 当 Plugin 是换内核，S2 之后另开。
 
 读 [`/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp`](/home/l8ng/Projects/__straydragon__/rutis/xylitol-x-rutis-temp) 时以 2026-10-20 对照为准。工作树：上游 `3d0bc0d` / rutis 0.13.0。
 
@@ -336,17 +342,17 @@ agent loop 现行在 `xylitol-runtime`。转向见 [§4](#MAIN)，不挡本节�
 
 ### 4.2 S2 运行时承载走 rutis
 
-**停。** 另开再谈。
+**停。** 另开前先定根包直接 `use rutis`（见本节开篇）。
 
 用户仍写配置 / MCP / hooks / skills。有配置时生命周期挂在 fiber 上。空配置行为不变（r2911 / r2912）。终端用户不写 `Plugin` trait。
 
-没有常驻 `Ctx`，hooks / MCP 无法挂 fiber。assemble 末尾不得再 `shutdown`。
+没有常驻 `Ctx`，hooks / MCP 无法挂 fiber。
 
 | 切片 | 状态 | 做什么 |
 |---|---|---|
-| S2a `Ctx` 常驻 | 停 | Host / Print 启动一次 `process_root`；去掉 assemble 返回前的 `ctx.shutdown()`；每进程只建一个根 `Ctx`。Print 仍不占端口 |
-| S2b hooks 走总线 | | 有配置时脚本 hooks 挂 rutis 事件。空 hooks 仍不 `apply`、不拉进程。旧 hook BDD 必须绿 |
-| S2c MCP 走 loader | | 有配置时连接生命周期走 loader。空列表仍无 mcp 前缀工具。`/reload` 语义不变 |
+| S2a `Ctx` 常驻 | 停 | 进程一次 `Ctx::root()`。空 MCP / hooks 仍不挂 fiber。Print 仍不占端口。must-SDD |
+| S2b hooks 走总线 | | 有配置才挂；空 hooks 不拉进程。旧 hook BDD 必须绿。must-SDD |
+| S2c MCP 走 loader | | 有配置才连；空列表无 `mcp` 前缀。`/reload` 语义不变。must-SDD |
 
 过：`just qa` 全绿。`workspace-assembly` 五场景绿。`host.describe` 仍含 fory-v3。
 
@@ -391,7 +397,7 @@ Kill：实例回收与快照/恢复冲突 → 隔离退回手写 HashMap，保�
 
 **核 — 观测**：`provider-trace.jsonl` + fastrace；`xylitol.log`（永不 stdout）；`just obs-*`；inspect 脚本；`otel` feature（default 开，配置默认 none，关 feature 真能关）。不得再引入 `tracing` 双栈。
 
-**瘦**：serve `stop` 只印 SIGTERM；`server` / `mcp` feature 可关（default 仍开）；`jsonschema` / `minijinja` / `schemars` 下沉到使用方；`cli = []` 不单独发明空开关。`incremental = false`。
+**瘦**：serve `stop` 只印 SIGTERM；`server` / `mcp` feature 可关（default 仍开）；`jsonschema` / `schemars` 留根包装载闸（sdk / mcp / hooks 已有 `schemars`），不为下沉再拆 `xylitol-config`；`minijinja` 根包装载 + runtime prompt；`cli = []` 已是空 feature，不发明新开关。`incremental = false`。
 
 ---
 
@@ -401,14 +407,14 @@ Kill：实例回收与快照/恢复冲突 → 隔离退回手写 HashMap，保�
 
 现在不做。认领走 GitHub [#28](https://github.com/StrayDragon/xylitol/issues/28)。不得为这些方向预埋空壳 crate。
 
-| 项 | 内容 |
-|---|---|
-| D2 | `AgentMessage` / `EnvMessage` / `AgentPart` 不加 `Xy`。`Xy*` 留给适配器与叶。`AgentPart` 若将来加前缀应叫 `XyPart` |
-| D6 | gpui、LSP、DAP、Sub-Agent、语音端 / 全双工 realtime、键位可视化、Inspect wasm / 框选 |
-| D7 | schedule / cron 唤醒源。唤醒源走准入，不换内环 |
-| D8 | samply suite、Jaeger。`agent_demo*` / `host_loop` 留在 `xylitol-tui`。maka 对照留 `docs/research/` |
+| 项 | 内容 | 若认领 |
+|---|---|---|
+| D2 | `AgentMessage` / `EnvMessage` / `AgentPart` 不加 `Xy`。`Xy*` 留给适配器与叶 | 改名前 must-SDD。`AgentPart` 将来前缀叫 `XyPart` |
+| D6 | gpui、LSP、DAP、Sub-Agent、语音端 / 全双工 realtime、键位可视化、Inspect wasm / 框选 | 各一个 FR。不得 `xylitol-app-voice` / 空 LSP crate |
+| D7 | schedule / cron 唤醒源。唤醒源走准入，不换内环 | must-SDD |
+| D8 | samply suite、Jaeger。`agent_demo*` / `host_loop` 留在 `xylitol-tui`。maka 对照留 `docs/research/` | 观测后置 |
 
-信封标识：`crates/xylitol-protocol/src/v3/`；fbs `namespace xy.wire.v3`；content-type `application/x-fory-v3`；`WIRE_FORMAT_FORY_V3`。
+信封标识已定，不再是任务：`xy.wire.v3` / `application/x-fory-v3`。实现见 `crates/xylitol-protocol/src/v3/`。
 
 ---
 

@@ -10,6 +10,9 @@ pub mod resource;
 pub mod trust;
 pub(crate) mod utils;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 pub use agent::{
     AgentBuilder, AgentRuntime, HookBlockedError, MCP_FIRST_TURN_GATE_TIMEOUT, ModelRegistry,
     QueueMode, QueueStats, RuntimeBaseline, SessionStats, XyEvent, XyEventStream,

@@ -79,8 +79,8 @@ impl XyModelConfig {
 
 /// Fully resolved agent profile — runtime representation of an agent configuration.
 ///
-/// Produced by [`AppConfig::resolve_profile`](crate::infra::config::types::AppConfig)
-/// from config-level profile entries.
+/// Produced by the composition-root profile resolver from config-level
+/// profile entries.
 #[derive(Debug, Clone)]
 pub struct ResolvedProfile {
     /// Registry alias (`models.models` key / CLI `--model`) this profile's

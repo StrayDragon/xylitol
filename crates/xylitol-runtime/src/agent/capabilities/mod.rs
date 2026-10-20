@@ -363,17 +363,16 @@ impl AgentCapabilities {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::session::SessionManager;
+    use crate::test_support::{MemoryStore, NoopSink, dummy_model_builder, fixture_tools};
 
     fn make_session() -> AgentCapabilities {
-        let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
         let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
-            std::sync::Arc::new(mgr);
+            std::sync::Arc::new(MemoryStore::new());
         let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-            std::sync::Arc::new(crate::infra::event::EventBus::new());
+            std::sync::Arc::new(NoopSink);
         AgentCapabilities::new(
             ModelRegistry::new(),
-            ToolSet::from_iter(crate::infra::tools::default_tools()),
+            fixture_tools(),
             store,
             sink,
             Some("you are helpful".into()),
@@ -381,8 +380,8 @@ mod tests {
             Vec::new(),
             ".".into(),
             None,
-            std::sync::Arc::new(crate::infra::provider::factory::build_provider),
-            crate::infra::permission::allow_all_permission(),
+            dummy_model_builder(),
+            crate::permission::allow_all_permission(),
             QueueMode::default(),
             QueueMode::default(),
             None,
@@ -434,7 +433,7 @@ mod tests {
         assert!(!before.is_empty());
 
         // Rebuild with the same builtins — metadata refresh is enough to prove defer.
-        let tools = ToolSet::from_iter(crate::infra::tools::default_tools());
+        let tools = fixture_tools();
         let opts = session.set_tools_defer_prompt(tools);
         assert!(
             session.tools().iter().any(|t| t.name() == "read"),
@@ -483,7 +482,7 @@ mod tests {
     fn freeze_includes_todo_builtins_first_turn() {
         let mut session = make_session();
         session.begin_tool_gating();
-        let core = ToolSet::from_iter(crate::infra::tools::default_tools());
+        let core = fixture_tools();
         session.freeze_tools(core);
         let fp = session.frozen_tool_fingerprint().cloned().expect("fp");
         for n in ["todo_rewrite", "todo_update"] {
@@ -494,7 +493,7 @@ mod tests {
             );
         }
         // Mid-turn set_tools must not expand with duplicate todo names.
-        session.set_tools(ToolSet::from_iter(crate::infra::tools::default_tools()));
+        session.set_tools(fixture_tools());
         assert_eq!(
             session.tools().iter().count(),
             fp.names.len(),
@@ -509,7 +508,7 @@ mod tests {
         session.begin_tool_gating();
         assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Gating);
 
-        let core = ToolSet::from_iter(crate::infra::tools::default_tools());
+        let core = fixture_tools();
         let n_core = core.iter().count();
         session.freeze_tools(core);
         assert!(session.is_tools_frozen());
@@ -526,7 +525,7 @@ mod tests {
         session.reopen_tools_for_regate();
         assert_eq!(session.tool_freeze_phase(), ToolFreezePhase::Gating);
         assert!(session.frozen_tool_fingerprint().is_none());
-        session.freeze_tools(ToolSet::from_iter(crate::infra::tools::default_tools()));
+        session.freeze_tools(fixture_tools());
         assert!(session.is_tools_frozen());
     }
 
@@ -715,17 +714,15 @@ mod tests {
     fn make_session_with_models(
         models: Vec<xylitol_plugin_sdk::model::XyModelMeta>,
     ) -> AgentCapabilities {
-        let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
-        let store: std::sync::Arc<dyn XySessionStore> = std::sync::Arc::new(mgr);
-        let sink: std::sync::Arc<dyn XyEventSink> =
-            std::sync::Arc::new(crate::infra::event::EventBus::new());
+        let store: std::sync::Arc<dyn XySessionStore> = std::sync::Arc::new(MemoryStore::new());
+        let sink: std::sync::Arc<dyn XyEventSink> = std::sync::Arc::new(NoopSink);
         let mut registry = ModelRegistry::new();
         for m in models {
             registry.register(m);
         }
         AgentCapabilities::new(
             registry,
-            ToolSet::from_iter(crate::infra::tools::default_tools()),
+            fixture_tools(),
             store.clone(),
             sink,
             Some("you are helpful".into()),
@@ -733,8 +730,8 @@ mod tests {
             Vec::new(),
             ".".into(),
             None,
-            std::sync::Arc::new(crate::infra::provider::factory::build_provider),
-            crate::infra::permission::allow_all_permission(),
+            dummy_model_builder(),
+            crate::permission::allow_all_permission(),
             QueueMode::default(),
             QueueMode::default(),
             None,

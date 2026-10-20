@@ -14,7 +14,7 @@ use super::ToolSet;
 /// Wall-clock budget for first-turn / re-gate MCP settle before subset freeze.
 ///
 /// Code-first (c1900); not YAML this wave. Per-server connect budget lives in
-/// [`crate::infra::mcp::MCP_SERVER_CONNECT_TIMEOUT`].
+/// `xylitol_official_plugin_mcp::MCP_SERVER_CONNECT_TIMEOUT`.
 pub const MCP_FIRST_TURN_GATE_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Session-side tool-table phase (轨 A).
