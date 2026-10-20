@@ -10,7 +10,7 @@
 
 ## 现在
 
-下一刀是 **组合根下沉**剩余项：[§3](#PRE) 的 config / settings 瘦身。clipboard 在 `xylitol-app-tui`；resource / permission 在 `xylitol-runtime`；组合根直接注入 `Arc`。不为对称性再拆 `xylitol-host` / `xylitol-config`。
+§3 组合根下沉完成。clipboard 在 `xylitol-app-tui`；resource / permission 在 `xylitol-runtime`；组合根直接注入 `Arc`。config 只留真正接线的 YAML 字段。观测写出与 MCP reload 留根包（原因见 [§3](#PRE) 表）。不为对称性再拆 `xylitol-host` / `xylitol-config`。
 
 crate 图见 [§2](#TARGET)。`just qa` 与 `just qa-e2e` 已通过。
 
@@ -304,9 +304,9 @@ src/
 | `infra/resource` | 0.9k | 完成。`xylitol-runtime::resource` |
 | `infra/permission` | 0.5k | 完成。后端在 runtime；根包只把 YAML 映过去 |
 | `assembly.rs` + `xylitol-rutis` | — | 完成。直接注入 `Arc`。无 rutis 包 |
-| `infra/config` + `settings` | 3.0k | 装配置是接线，留根包；把过厚类型瘦下来 |
-| `infra/observability` | 0.8k | 进程级写出，留根包 |
-| `driver/` MCP·reload 包装 | 1.4k | 组合根回调，留根包 |
+| `infra/config` + `settings` | — | 完成。删未接线的 `tools.*` / `session.storage` / `execution.max_retries`。装配置仍是接线，留根包 |
+| `infra/observability` | 0.8k | 留根包。进程启动才知道写 `xylitol.log` / 是否装 OTLP；`otel` feature 在根包。runtime 只打 ReAct span 名，不认文件路径和网关 |
+| `driver/` MCP·reload 包装 | 1.4k | 留根包。runtime 不得依赖官方 mcp 插件；`/reload` 读配置、重连、把新工具表注入 Driver，就是组合根 |
 
 agent loop 现行在 `xylitol-runtime`。转向见 [§4](#MAIN)，不挡本节。
 

@@ -55,7 +55,6 @@ models:
     #   api_key: "{{ secret.ANTHROPIC_API_KEY }}"
 
 execution:
-  max_retries: 3
   # system_prompt: "Custom system prompt override"
   # model: "deepseek-v4-flash"  # override default per-execution
 
@@ -75,13 +74,6 @@ security:
       denied_domains: []
     process:
       allowed_paths: []
-
-tools:
-  allowlist: []
-  blocklist: []
-  max_results: 1000
-  max_file_size: 10485760  # 10 MB
-  max_dir_entries: 1000
 
 hooks:
   pre_tool_call: []

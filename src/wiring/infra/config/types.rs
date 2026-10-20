@@ -20,13 +20,8 @@ pub struct AppConfig {
     pub model: ModelsConfig,
     pub agents: AgentsConfig,
     pub execution: ExecutionConfig,
-
-    // ── always compiled ──────────────────────────────────────────────
     pub hooks: HooksConfig,
     pub security: SecurityConfig,
-    pub tools: ToolsConfig,
-
-    // ── always compiled ────────────────────────────────────────────────
     pub session: Option<SessionConfig>,
     /// YAML loading-phase compaction config. Mapped to runtime
     /// `CompactionSettings` (in `agent::compaction::settings`)
@@ -268,7 +263,7 @@ pub type ModelEntry = xylitol_plugin_sdk::model_entry::XyModelEntryConfig;
 // Execution
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ExecutionConfig {
     /// Override model for execution steps.
     #[serde(default)]
@@ -276,23 +271,6 @@ pub struct ExecutionConfig {
     /// System prompt for the execution agent.
     #[serde(default)]
     pub system_prompt: Option<String>,
-    /// Maximum retries on failure.
-    #[serde(default = "default_max_retries")]
-    pub max_retries: u8,
-}
-
-impl Default for ExecutionConfig {
-    fn default() -> Self {
-        Self {
-            model: None,
-            system_prompt: None,
-            max_retries: default_max_retries(),
-        }
-    }
-}
-
-fn default_max_retries() -> u8 {
-    3
 }
 
 // ---------------------------------------------------------------------------
@@ -539,81 +517,16 @@ pub struct PermissionProcessConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Tools
+// Session
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct ToolsConfig {
-    #[serde(default)]
-    pub allowlist: Vec<String>,
-    #[serde(default)]
-    pub blocklist: Vec<String>,
-
-    #[serde(default = "default_max_results")]
-    pub max_results: u32,
-    #[serde(default = "default_max_file_size")]
-    pub max_file_size: u64,
-    #[serde(default = "default_max_dir_entries")]
-    pub max_dir_entries: u32,
-}
-
-fn default_max_results() -> u32 {
-    1000
-}
-
-fn default_max_file_size() -> u64 {
-    10 * 1024 * 1024
-}
-
-fn default_max_dir_entries() -> u32 {
-    1000
-}
-
-// ---------------------------------------------------------------------------
-// Session & Compaction
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct SessionConfig {
-    #[serde(default)]
-    pub auto_snapshot: bool,
-    #[serde(default = "default_max_snapshots")]
-    pub max_snapshots: u16,
-    pub storage: SessionStorageConfig,
     /// Optional ReAct turn cap (c1620). When set, bootstrap installs
     /// `should_stop_after_turn` so the run ends after N completed turns.
     /// Absent / null = no turn-count stop hook (product default).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_turns: Option<u32>,
-}
-
-impl Default for SessionConfig {
-    fn default() -> Self {
-        Self {
-            auto_snapshot: false,
-            max_snapshots: default_max_snapshots(),
-            storage: SessionStorageConfig::default(),
-            max_turns: None,
-        }
-    }
-}
-
-fn default_max_snapshots() -> u16 {
-    50
-}
-
-#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(default)]
-pub struct SessionStorageConfig {
-    #[serde(default = "default_storage_backend")]
-    pub backend: String,
-    #[serde(default)]
-    pub path: Option<String>,
-}
-
-fn default_storage_backend() -> String {
-    "file".into()
 }
 
 // ---------------------------------------------------------------------------
@@ -665,7 +578,6 @@ mod session_max_turns_tests {
         let cfg: AppConfig = yaml_serde::from_str(
             r#"
 session:
-  storage: {}
   max_turns: 12
 "#,
         )
@@ -679,7 +591,6 @@ session:
         let cfg: AppConfig = yaml_serde::from_str(
             r#"
 session:
-  storage: {}
   max_turns: 0
 "#,
         )

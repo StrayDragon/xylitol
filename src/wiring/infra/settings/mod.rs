@@ -2,9 +2,8 @@
 //!
 //! Three-tier deep merge (global < project < overrides), file locking with
 //! retry. Settings changes apply on next bootstrap; there is no live hot-reload wiring.
-//!
-//! NOTE(c35): New module. Old `src/infra/config/` is project configuration
-//! (models, tools, hooks). SettingsManager lives alongside it for user prefs.
+//! Project YAML (`config.yaml`) is `infra::config`. This module is user prefs
+//! (`settings.json`).
 
 pub mod manager;
 pub mod storage;
