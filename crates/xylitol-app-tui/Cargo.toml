@@ -4,7 +4,7 @@ version = "0.0.0-pre"
 edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
-description = "Product TUI client (envelope + xylitol-tui)"
+description = "Product TUI client (JSON-RPC host client + xylitol-tui)"
 repository = "https://github.com/straydragon/xylitol"
 publish = false
 
@@ -13,6 +13,7 @@ doctest = false
 
 [dependencies]
 xylitol-protocol = { workspace = true }
+xylitol-wire = { workspace = true }
 xylitol-tui = { workspace = true }
 xylitol-plugin-sdk = { workspace = true }
 anyhow = { workspace = true }

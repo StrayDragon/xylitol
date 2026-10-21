@@ -10,27 +10,32 @@ use tokio::sync::{Mutex, RwLock, broadcast, mpsc};
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
-use crate::ToWireEvent;
 use crate::occupancy::engine::{OccupancyEngine, OccupancyFactory};
+use crate::occupancy::envelope;
 use crate::occupancy::idempotency::{Admission, IdempotencyLedger, conflict_result};
+use crate::occupancy::rpc_module::describe_value;
 use crate::occupancy::ws::{
-    EventJournal, ReverseRpcGateway, ReverseRpcResult, downlink_server_request,
+    EventJournal, ReverseRpcGateway, ReverseRpcResult, downlink_notification,
 };
+use crate::wire::Reply;
 use crate::{MUX_CHAN_CAP, MuxSink, OccupiedHost};
 use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 use xylitol_plugin_sdk::error::{XySessionStoreError, XyToolError};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
-use xylitol_protocol::envelope::{
-    ApprovalRequestedPayload, HostDescribeValue, PROTOCOL_VERSION, QuestionRequestedPayload,
-    RpcMessage, RpcResult, SessionEventPayload, SessionResourcesPayload,
-    SessionResyncRequiredPayload, SessionSubscribedPayload,
+use xylitol_protocol::method::{
+    APPROVAL_REQUESTED, BASH_OUTPUT, QUESTION_REQUESTED, SESSION_EVENT, SESSION_RESOURCES,
+    SESSION_RESYNC_REQUIRED, SESSION_SUBSCRIBED, is_unary_method,
 };
-use xylitol_protocol::method::is_unary_method;
 use xylitol_protocol::registry::parse_command;
 use xylitol_protocol::registry::{
     METHOD_ABORT, METHOD_ARM_TOOL_FREEZE, METHOD_EXPORT_JSONL, METHOD_GET_AVAILABLE_MODELS,
     METHOD_HOST_DESCRIBE, METHOD_IMPORT_JSONL, METHOD_LOADED_RESOURCES, METHOD_PERSIST_TRUST,
     METHOD_PROMPT, METHOD_RELOAD, METHOD_SESSION_TREE, METHOD_SUBSCRIBE,
+};
+use xylitol_protocol::{
+    ApprovalRequestedPayload, BashOutputPayload, Notification, QuestionRequestedPayload, RpcResult,
+    SessionEventPayload, SessionResourcesPayload, SessionResyncRequiredPayload,
+    SessionSubscribedPayload,
 };
 use xylitol_runtime::XyDriverError;
 use xylitol_runtime::agent::RuntimeBaseline;
@@ -45,7 +50,7 @@ pub struct HostState {
     pub sessions: RwLock<HashMap<String, Arc<SessionSlot>>>,
     pub unbound_mux: Mutex<Vec<MuxSink>>,
     pub resource_driver: Mutex<Option<Box<dyn OccupancyEngine>>>,
-    pub in_process_downlink: broadcast::Sender<RpcMessage>,
+    pub in_process_downlink: broadcast::Sender<Notification>,
     pub reload_cancel: Mutex<Option<CancellationToken>>,
     pub shutting_down: AtomicBool,
     pub fallback_session: String,
@@ -70,7 +75,7 @@ pub struct SessionSlot {
     observing: Mutex<HashSet<u64>>,
     linger_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     pub gateway: Arc<ReverseRpcGateway>,
-    pub in_process_downlink: broadcast::Sender<RpcMessage>,
+    pub in_process_downlink: broadcast::Sender<Notification>,
     next_conn: AtomicU64,
     resync_offered: AtomicBool,
     run_inflight: AtomicBool,
@@ -324,7 +329,7 @@ impl HostState {
 impl SessionSlot {
     pub fn new(
         session_id: impl Into<String>,
-        in_process_downlink: broadcast::Sender<RpcMessage>,
+        in_process_downlink: broadcast::Sender<Notification>,
     ) -> Arc<Self> {
         let session_id = session_id.into();
         Arc::new(Self {
@@ -393,16 +398,21 @@ impl SessionSlot {
         self.flush_pending_runtime().await;
     }
 
-    fn subscribed_value(&self, seq: u64, inflight: bool) -> Value {
-        let mut v = serde_json::to_value(SessionSubscribedPayload {
+    fn subscribed_payload(&self, seq: u64, inflight: bool) -> SessionSubscribedPayload {
+        SessionSubscribedPayload {
             session_id: self.session_id.clone(),
             seq,
-        })
-        .unwrap_or(Value::Null);
-        if let Some(o) = v.as_object_mut() {
-            o.insert("inflight".into(), Value::Bool(inflight));
+            inflight,
         }
-        v
+    }
+
+    fn resync_notification(&self) -> Notification {
+        downlink_notification(
+            SESSION_RESYNC_REQUIRED,
+            SessionResyncRequiredPayload {
+                session_id: self.session_id.clone(),
+            },
+        )
     }
 
     async fn replay_or_resync(
@@ -417,93 +427,70 @@ impl SessionSlot {
             journal.is_full() && last_seq < journal.min_seq() && journal.min_seq() > 1;
         if wrapped_gap && !self.resync_offered.swap(true, Ordering::SeqCst) {
             drop(journal);
-            let msg = downlink_server_request(
-                "session/resync_required",
-                serde_json::to_value(SessionResyncRequiredPayload {
-                    session_id: self.session_id.clone(),
-                })
-                .unwrap_or(Value::Null),
-            );
-            self.broadcast(msg).await;
-            return RpcResult::ok_value(self.subscribed_value(0, inflight));
+            self.broadcast(self.resync_notification()).await;
+            return RpcResult::ok_value(self.subscribed_result(0, inflight));
         }
         match journal.replay_from(last_seq) {
             None => {
                 drop(journal);
                 self.resync_offered.store(true, Ordering::SeqCst);
-                let msg = downlink_server_request(
-                    "session/resync_required",
-                    serde_json::to_value(SessionResyncRequiredPayload {
-                        session_id: self.session_id.clone(),
-                    })
-                    .unwrap_or(Value::Null),
-                );
-                self.broadcast(msg).await;
-                RpcResult::ok_value(self.subscribed_value(0, inflight))
+                self.broadcast(self.resync_notification()).await;
+                RpcResult::ok_value(self.subscribed_result(0, inflight))
             }
             Some(events) => {
                 let seq = journal.max_seq();
                 drop(journal);
                 if !observe {
                     for (ev_seq, event) in events {
-                        let msg = downlink_server_request(
-                            "session/event",
-                            serde_json::to_value(SessionEventPayload {
+                        let msg = downlink_notification(
+                            SESSION_EVENT,
+                            SessionEventPayload {
                                 session_id: self.session_id.clone(),
                                 seq: ev_seq,
                                 event,
-                            })
-                            .unwrap_or(Value::Null),
+                            },
                         );
                         for id in bound {
                             self.send_to(*id, &msg).await;
                         }
                     }
                 }
-                let subscribed = downlink_server_request(
-                    "session/subscribed",
-                    serde_json::to_value(SessionSubscribedPayload {
-                        session_id: self.session_id.clone(),
-                        seq,
-                    })
-                    .unwrap_or(Value::Null),
-                );
-                self.broadcast(subscribed).await;
-                RpcResult::ok_value(self.subscribed_value(seq, inflight))
+                self.broadcast(downlink_notification(
+                    SESSION_SUBSCRIBED,
+                    self.subscribed_payload(seq, inflight),
+                ))
+                .await;
+                RpcResult::ok_value(self.subscribed_result(seq, inflight))
             }
         }
     }
 
-    fn observe_passes(msg: &RpcMessage) -> bool {
-        match msg {
-            RpcMessage::ServerRequest {
-                method, payload, ..
-            } if method == "session/event" => payload
-                .get("event")
-                .and_then(|v| serde_json::from_value::<xylitol_protocol::Event>(v.clone()).ok())
-                .map(|ev| matches!(ev, xylitol_protocol::Event::AgentEnd))
-                .unwrap_or(true),
-            _ => true,
+    fn subscribed_result(&self, seq: u64, inflight: bool) -> Value {
+        serde_json::to_value(self.subscribed_payload(seq, inflight)).unwrap_or(Value::Null)
+    }
+
+    fn observe_passes(note: &Notification) -> bool {
+        if note.method != SESSION_EVENT {
+            return true;
         }
+        note.params
+            .get("event")
+            .and_then(|v| serde_json::from_value::<xylitol_protocol::Event>(v.clone()).ok())
+            .map(|ev| matches!(ev, xylitol_protocol::Event::AgentEnd))
+            .unwrap_or(true)
     }
 
     pub async fn observe<I: IntoIterator<Item = u64>>(&self, ids: I) {
         self.observing.lock().await.extend(ids);
     }
 
-    pub async fn broadcast(&self, msg: RpcMessage) {
+    pub async fn broadcast(&self, msg: Notification) {
         let _ = self.in_process_downlink.send(msg.clone());
         let observe_filter = !Self::observe_passes(&msg);
         let mut subs = self.subscribers.lock().await;
         let mut observing = self.observing.lock().await;
         let mut dead = Vec::new();
-        let resync = downlink_server_request(
-            "session/resync_required",
-            serde_json::to_value(SessionResyncRequiredPayload {
-                session_id: self.session_id.clone(),
-            })
-            .unwrap_or(Value::Null),
-        );
+        let resync = self.resync_notification();
         for (id, tx) in subs.iter() {
             if observe_filter && observing.contains(id) {
                 continue;
@@ -524,7 +511,7 @@ impl SessionSlot {
         }
     }
 
-    async fn send_to(&self, id: u64, msg: &RpcMessage) -> bool {
+    async fn send_to(&self, id: u64, msg: &Notification) -> bool {
         let subs = self.subscribers.lock().await;
         match subs.get(&id) {
             Some(tx) => tx.send(msg.clone()).await.is_ok(),
@@ -532,21 +519,27 @@ impl SessionSlot {
         }
     }
 
-    pub async fn append_and_push(&self, event: xylitol_protocol::Event) {
+    pub async fn append_and_push(&self, event: &XyEvent) {
+        let event = match xylitol_wire::event_to_wire(event) {
+            Ok(event) => event,
+            Err(e) => {
+                log::error!(target: "xylitol::host", "session event dropped: {e}");
+                return;
+            }
+        };
         let seq = {
             let mut j = self.journal.lock().await;
             j.append(event.clone())
         };
-        let msg = downlink_server_request(
-            "session/event",
-            serde_json::to_value(SessionEventPayload {
+        self.broadcast(downlink_notification(
+            SESSION_EVENT,
+            SessionEventPayload {
                 session_id: self.session_id.clone(),
                 seq,
                 event,
-            })
-            .unwrap_or(Value::Null),
-        );
-        self.broadcast(msg).await;
+            },
+        ))
+        .await;
     }
 
     pub async fn sync_model_downlink(&self) -> () {
@@ -554,16 +547,15 @@ impl SessionSlot {
             return;
         };
         let seq = self.journal.lock().await.max_seq();
-        let msg = downlink_server_request(
-            "session/event",
-            serde_json::to_value(SessionEventPayload {
+        self.broadcast(downlink_notification(
+            SESSION_EVENT,
+            SessionEventPayload {
                 session_id: self.session_id.clone(),
                 seq,
                 event: xylitol_protocol::Event::ModelSelect { provider, model_id },
-            })
-            .unwrap_or(Value::Null),
-        );
-        self.broadcast(msg).await;
+            },
+        ))
+        .await;
     }
 
     async fn writer_model(&self) -> Option<(String, String)> {
@@ -575,28 +567,27 @@ impl SessionSlot {
     }
 
     pub async fn push_resources(&self, snap: LoadedResourcesSnapshot) {
-        let msg = downlink_server_request(
-            "session/resources",
-            serde_json::to_value(SessionResourcesPayload {
+        self.broadcast(downlink_notification(
+            SESSION_RESOURCES,
+            SessionResourcesPayload {
                 session_id: self.session_id.clone(),
                 snapshot: serde_json::to_value(&snap).unwrap_or(Value::Null),
-            })
-            .unwrap_or(Value::Null),
-        );
-        self.broadcast(msg).await;
+            },
+        ))
+        .await;
     }
 
     pub async fn push_bash_output(&self, chunk: xylitol_plugin_sdk::BashChunk) {
-        let msg = downlink_server_request(
-            "session/bash_output",
-            serde_json::json!({
-                "session_id": self.session_id.clone(),
-                "bash_id": chunk.bash_id,
-                "seq": chunk.seq,
-                "data": chunk.data,
-            }),
-        );
-        self.broadcast(msg).await;
+        self.broadcast(downlink_notification(
+            BASH_OUTPUT,
+            BashOutputPayload {
+                session_id: self.session_id.clone(),
+                bash_id: chunk.bash_id,
+                seq: chunk.seq,
+                data: chunk.data,
+            },
+        ))
+        .await;
     }
 
     pub fn ensure_mcp_resources_watch(self: &Arc<Self>) {
@@ -631,48 +622,28 @@ impl SessionSlot {
 
     pub async fn request_approval(
         &self,
-        rpc_id: String,
+        call_id: String,
     ) -> tokio::sync::oneshot::Receiver<ReverseRpcResult> {
-        let rx = self.gateway.register(rpc_id.clone());
-        let msg = downlink_server_request(
-            "approval/requested",
-            serde_json::to_value(ApprovalRequestedPayload {
-                call_id: rpc_id.clone(),
-            })
-            .unwrap_or(Value::Null),
-        );
-        let RpcMessage::ServerRequest {
-            method, payload, ..
-        } = msg
-        else {
-            unreachable!("downlink helper always builds ServerRequest");
-        };
-        self.broadcast(RpcMessage::ServerRequest {
-            rpc_id,
-            method,
-            payload,
-        })
+        let rx = self.gateway.register(call_id.clone());
+        self.broadcast(downlink_notification(
+            APPROVAL_REQUESTED,
+            ApprovalRequestedPayload { call_id },
+        ))
         .await;
         rx
     }
 
     pub async fn request_question(
         &self,
-        rpc_id: String,
+        call_id: String,
         questions: serde_json::Value,
     ) -> tokio::sync::oneshot::Receiver<ReverseRpcResult> {
-        let rx = self.gateway.register(rpc_id.clone());
-        let mut payload = serde_json::to_value(QuestionRequestedPayload {
-            call_id: rpc_id.clone(),
-        })
-        .unwrap_or(Value::Null);
-        if let Some(obj) = payload.as_object_mut() {
-            obj.insert("questions".into(), questions);
-        }
-        self.broadcast(RpcMessage::ServerRequest {
-            rpc_id,
-            method: "question/requested".into(),
-            payload,
+        let rx = self.gateway.register(call_id.clone());
+        let payload = serde_json::to_value(QuestionRequestedPayload { call_id, questions })
+            .unwrap_or(Value::Null);
+        self.broadcast(Notification {
+            method: QUESTION_REQUESTED.into(),
+            params: payload,
         })
         .await;
         rx
@@ -717,14 +688,8 @@ impl OccupiedHost for HostState {
         HostState::register_unbound_mux(self, tx).await;
     }
 
-    async fn handle_uplink(self: Arc<Self>, bytes: &[u8]) -> Result<Vec<u8>, ()> {
-        crate::occupancy::envelope::handle_uplink(&self, bytes)
-            .await
-            .map_err(|_| ())
-    }
-
-    fn encode_downlink(&self, method: &str, payload: serde_json::Value) -> Result<Vec<u8>, String> {
-        crate::occupancy::envelope::downlink_frame(method, payload, 0)
+    async fn dispatch_text(self: Arc<Self>, body: &[u8]) -> Reply {
+        envelope::dispatch_text(&self, body).await
     }
 
     async fn prune_mux(self: Arc<Self>, clean_close: bool) {
@@ -876,7 +841,10 @@ async fn defer_runtime_setting(slot: &SessionSlot, method: &str, payload: &Value
             }
             RpcResult::ok_value(json!({ "thinking_level": level }))
         }
-        _ => RpcResult::error("not_found", format!("unregistered method {method}")),
+        _ => RpcResult::error(
+            "unregistered_method",
+            format!("unregistered method {method}"),
+        ),
     }
 }
 
@@ -891,7 +859,22 @@ fn model_data(m: &ModelInfo) -> Value {
 }
 
 fn rpc_err(e: XyDriverError) -> RpcResult {
-    RpcResult::error(e.kind(), e.to_string())
+    RpcResult::error(stable_business_code(e.kind()), e.to_string())
+}
+
+fn stable_business_code(kind: &str) -> String {
+    let mut code = String::with_capacity(kind.len() + 4);
+    for (i, ch) in kind.char_indices() {
+        if ch.is_ascii_uppercase() {
+            if i > 0 {
+                code.push('_');
+            }
+            code.push(ch.to_ascii_lowercase());
+        } else {
+            code.push(ch);
+        }
+    }
+    code
 }
 
 fn occupancy_err(err: XySessionStoreError) -> RpcResult {
@@ -965,16 +948,13 @@ pub async fn handle_unary(
     payload: Value,
 ) -> RpcResult {
     if method == METHOD_HOST_DESCRIBE {
-        return RpcResult::ok_value(
-            serde_json::to_value(HostDescribeValue {
-                protocol: PROTOCOL_VERSION,
-                formats: vec![xylitol_protocol::WIRE_FORMAT_FORY_V3.into()],
-            })
-            .unwrap_or(Value::Null),
-        );
+        return RpcResult::ok_value(describe_value());
     }
     if !is_unary_method(method) {
-        return RpcResult::error("not_found", format!("unregistered method {method}"));
+        return RpcResult::error(
+            "unregistered_method",
+            format!("unregistered method {method}"),
+        );
     }
 
     if method == METHOD_RELOAD {
@@ -1121,9 +1101,7 @@ async fn dispatch_session_unary(
             };
             let mut stream = stream;
             while let Some(event) = stream.next().await {
-                if let Some(pe) = event.to_wire_event() {
-                    slot_push.append_and_push(pe).await;
-                }
+                slot_push.append_and_push(&event).await;
                 if matches!(event, XyEvent::AgentEnd { .. }) {
                     break;
                 }
@@ -1388,5 +1366,189 @@ async fn dispatch_readonly_unary(
     match driver.execute_command(cmd).await {
         Ok(outcome) => RpcResult::ok_value(outcome),
         Err(e) => rpc_err(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use xylitol_plugin_sdk::BashChunk;
+
+    #[test]
+    fn stable_business_code_is_snake_case_of_domain_kind() {
+        assert_eq!(stable_business_code("NotFound"), "not_found");
+        assert_eq!(stable_business_code("NoSession"), "no_session");
+        assert_eq!(stable_business_code("Busy"), "busy");
+    }
+
+    fn slot() -> Arc<SessionSlot> {
+        SessionSlot::new("s0", broadcast::channel(16).0)
+    }
+
+    fn text_delta(text: &str) -> XyEvent {
+        XyEvent::TextDelta(text.into())
+    }
+
+    async fn subscribe(slot: &SessionSlot) -> (u64, mpsc::Receiver<Notification>) {
+        let (tx, rx) = mpsc::channel(32);
+        let id = slot.add_subscriber(tx).await;
+        (id, rx)
+    }
+
+    #[tokio::test]
+    async fn append_and_push_wraps_the_domain_event_as_session_event() {
+        let slot = slot();
+        let (_, mut rx) = subscribe(&slot).await;
+        slot.append_and_push(&text_delta("hi")).await;
+        let note = rx.recv().await.expect("notification");
+        assert_eq!(note.method, SESSION_EVENT);
+        assert_eq!(note.params["session_id"], "s0");
+        assert_eq!(note.params["seq"], 1);
+        assert_eq!(
+            note.params["event"],
+            json!({"type": "text_delta", "text": "hi"})
+        );
+    }
+
+    #[tokio::test]
+    async fn non_event_downlinks_do_not_consume_journal_seq() {
+        let slot = slot();
+        slot.append_and_push(&text_delta("a")).await;
+        let _rx = slot.request_approval("c1".into()).await;
+        assert_eq!(slot.journal.lock().await.current_seq(), 2);
+        slot.push_bash_output(BashChunk {
+            bash_id: "b1".into(),
+            seq: 1,
+            data: "out".into(),
+        })
+        .await;
+        assert_eq!(slot.journal.lock().await.current_seq(), 2);
+    }
+
+    #[tokio::test]
+    async fn bash_output_is_its_own_method_with_bash_payload() {
+        let slot = slot();
+        let (_, mut rx) = subscribe(&slot).await;
+        slot.push_bash_output(BashChunk {
+            bash_id: "b1".into(),
+            seq: 4,
+            data: "out".into(),
+        })
+        .await;
+        let note = rx.recv().await.expect("notification");
+        assert_eq!(note.method, "bash/output");
+        assert_eq!(
+            note.params,
+            json!({"session_id": "s0", "bash_id": "b1", "seq": 4, "data": "out"})
+        );
+    }
+
+    #[tokio::test]
+    async fn approval_request_registers_the_gateway_and_announces_call_id() {
+        let slot = slot();
+        let (_, mut rx) = subscribe(&slot).await;
+        let answer = slot.request_approval("c1".into()).await;
+        let note = rx.recv().await.expect("notification");
+        assert_eq!(note.method, APPROVAL_REQUESTED);
+        assert_eq!(note.params, json!({"call_id": "c1"}));
+        assert!(
+            slot.gateway
+                .handle_respond("c1", &json!({"approved": true}))
+        );
+        assert_eq!(answer.await, Ok(ReverseRpcResult::Approved));
+    }
+
+    #[tokio::test]
+    async fn question_request_carries_call_id_and_questions() {
+        let slot = slot();
+        let (_, mut rx) = subscribe(&slot).await;
+        let _answer = slot
+            .request_question("q1".into(), json!([{"question": "?"}]))
+            .await;
+        let note = rx.recv().await.expect("notification");
+        assert_eq!(note.method, QUESTION_REQUESTED);
+        assert_eq!(
+            note.params,
+            json!({"call_id": "q1", "questions": [{"question": "?"}]})
+        );
+        assert_eq!(slot.gateway.pending_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn subscribe_continuation_replays_only_newer_events_then_subscribed() {
+        let slot = slot();
+        for text in ["a", "b", "c"] {
+            slot.append_and_push(&text_delta(text)).await;
+        }
+        let (id, mut rx) = subscribe(&slot).await;
+        let result = slot.replay_or_resync(&[id], false, false, 1).await;
+        let first = rx.recv().await.expect("event 2");
+        let second = rx.recv().await.expect("event 3");
+        let subscribed = rx.recv().await.expect("subscribed");
+        assert_eq!(first.method, SESSION_EVENT);
+        assert_eq!(first.params["seq"], 2);
+        assert_eq!(second.params["seq"], 3);
+        assert_eq!(subscribed.method, SESSION_SUBSCRIBED);
+        let expected = json!({"session_id": "s0", "seq": 3, "inflight": false});
+        assert_eq!(subscribed.params, expected);
+        assert_eq!(result, RpcResult::ok_value(expected));
+    }
+
+    #[tokio::test]
+    async fn subscribe_continuation_reports_inflight_in_result_and_notification() {
+        let slot = slot();
+        slot.append_and_push(&text_delta("a")).await;
+        let (id, mut rx) = subscribe(&slot).await;
+        let result = slot.replay_or_resync(&[id], true, true, 0).await;
+        let subscribed = rx.recv().await.expect("subscribed");
+        let expected = json!({"session_id": "s0", "seq": 1, "inflight": true});
+        assert_eq!(subscribed.params, expected);
+        assert_eq!(result, RpcResult::ok_value(expected));
+    }
+
+    #[tokio::test]
+    async fn wrapped_journal_offers_resync_and_reports_seq_zero() {
+        let slot = slot();
+        *slot.journal.lock().await = EventJournal::new("s0", 2);
+        for text in ["a", "b", "c"] {
+            slot.append_and_push(&text_delta(text)).await;
+        }
+        let (id, mut rx) = subscribe(&slot).await;
+        let result = slot.replay_or_resync(&[id], false, false, 0).await;
+        let resync = rx.recv().await.expect("resync");
+        assert_eq!(resync.method, SESSION_RESYNC_REQUIRED);
+        assert_eq!(resync.params, json!({"session_id": "s0"}));
+        assert_eq!(
+            result,
+            RpcResult::ok_value(json!({"session_id": "s0", "seq": 0, "inflight": false}))
+        );
+    }
+
+    #[test]
+    fn observers_only_pass_agent_end_session_events() {
+        let event = |wire| {
+            downlink_notification(
+                SESSION_EVENT,
+                SessionEventPayload {
+                    session_id: "s0".into(),
+                    seq: 1,
+                    event: wire,
+                },
+            )
+        };
+        assert!(SessionSlot::observe_passes(&event(
+            xylitol_protocol::Event::AgentEnd
+        )));
+        assert!(!SessionSlot::observe_passes(&event(
+            xylitol_protocol::Event::TextDelta { text: "x".into() }
+        )));
+        let approval = downlink_notification(
+            APPROVAL_REQUESTED,
+            ApprovalRequestedPayload {
+                call_id: "c".into(),
+            },
+        );
+        assert!(SessionSlot::observe_passes(&approval));
     }
 }

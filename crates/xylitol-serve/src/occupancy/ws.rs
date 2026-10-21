@@ -6,47 +6,16 @@ use std::time::Duration;
 
 use tokio::sync::oneshot;
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use serde_json::Value;
 
-use xylitol_protocol::Event;
-use xylitol_protocol::RpcMessage;
+use xylitol_protocol::{Event, Notification};
 
-pub fn downlink_server_request(method: impl Into<String>, payload: Value) -> RpcMessage {
-    RpcMessage::ServerRequest {
-        rpc_id: uuid::Uuid::new_v4().to_string(),
-        method: method.into(),
-        payload,
+pub fn downlink_notification(method: &str, payload: impl Serialize) -> Notification {
+    Notification {
+        method: method.to_string(),
+        params: serde_json::to_value(payload).unwrap_or(Value::Null),
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-#[allow(dead_code)]
-pub enum ServerFrame {
-    Ack {
-        seq: u64,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
-    },
-    Event {
-        session_id: String,
-        seq: u64,
-        event: Event,
-    },
-    ResyncRequired {
-        session_id: String,
-    },
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-#[allow(dead_code)]
-pub enum ClientFrame {
-    Subscribe { session_id: String, last_seq: u64 },
-    ApproveTool { call_id: String, approved: bool },
-    AnswerQuestion { call_id: String, answer: String },
-    Ping,
 }
 
 pub const DEFAULT_JOURNAL_CAPACITY: usize = 10_000;
@@ -199,8 +168,6 @@ impl Default for ReverseRpcGateway {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use xylitol_protocol::Event;
-    use xylitol_protocol::codec;
 
     fn dummy_event() -> Event {
         Event::TextDelta {
@@ -284,34 +251,13 @@ mod tests {
     }
 
     #[test]
-    fn four_quadrant_type_tag_is_not_a_wire_frame() {
-        let json = codec::encode_to_string(&RpcMessage::ServerRequest {
-            rpc_id: "n1".into(),
-            method: "session/event".into(),
-            payload: serde_json::json!({}),
-        })
-        .unwrap();
-        assert!(json.contains("\"type\":\"server-request\""), "{json}");
-        assert!(
-            codec::decode_str(&json).is_err(),
-            "handshake is host.describe, not a mux type tag"
+    fn downlink_notification_has_no_id_and_serializes_payload() {
+        let note = downlink_notification(
+            "session/resync_required",
+            serde_json::json!({"session_id": "s0"}),
         );
-    }
-
-    #[test]
-    fn client_frame_deserialization() {
-        let json = r#"{"type":"subscribe","session_id":"s0","last_seq":5}"#;
-        let frame: ClientFrame = serde_json::from_str(json).unwrap();
-        match frame {
-            ClientFrame::Subscribe {
-                session_id,
-                last_seq,
-            } => {
-                assert_eq!(session_id, "s0");
-                assert_eq!(last_seq, 5);
-            }
-            _ => panic!("expected Subscribe"),
-        }
+        assert_eq!(note.method, "session/resync_required");
+        assert_eq!(note.params, serde_json::json!({"session_id": "s0"}));
     }
 
     #[test]

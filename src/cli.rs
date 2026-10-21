@@ -240,7 +240,7 @@ async fn run_product_tui_attached(
     }
     let attach_url =
         xylitol_kernel::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
-    let mut driver = xylitol_app_tui::XyRemoteDriver::new_v3(
+    let mut driver = xylitol_app_tui::XyRemoteDriver::new(
         attach_url,
         surface.session.clone().unwrap_or_default(),
     );

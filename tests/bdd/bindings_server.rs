@@ -130,9 +130,15 @@ async fn test_w2(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "WebSocket文本一元拒绝"
+    name = "WebSocket文本一元受理"
 )]
 async fn test_w_ws_unary(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "WebSocket二进制帧拒绝"
+)]
+async fn test_w_ws_binary_rejected(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
@@ -402,7 +408,7 @@ async fn test_sr_c2850_model_sync_rebind_transient(server_test: ServerTest) {}
     path = "llmanspec/specs/server-core/server-core.feature",
     name = "命令保留会话身份"
 )]
-async fn test_sr_c2842_v3_command_session_identity(server_test: ServerTest) {}
+async fn test_sr_c2842_command_session_identity(server_test: ServerTest) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
     name = "读取状态反映写者模型"
@@ -411,9 +417,69 @@ async fn test_sr_c2842_get_state_writer_model(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
-    name = "非二进制正文为非法信封"
+    name = "非 JSON-RPC 正文为非法信封"
 )]
 async fn test_sr_r1928_nonbinary_body(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "JSON-RPC 文本往返"
+)]
+async fn test_jsonrpc_text_roundtrip(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "JSON文本RPC受理"
+)]
+async fn test_jsonrpc_text_accepted(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "描述宣告格式"
+)]
+async fn test_describe_declares_formats(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "未知格式致命"
+)]
+async fn test_unknown_format_fatal(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "未知方法名稳定失败"
+)]
+async fn test_unknown_method_name_stable_fail(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "事件携带序号"
+)]
+async fn test_event_carries_seq(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "工具启动参数原文"
+)]
+async fn test_tool_start_args_raw(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "未知变体降级"
+)]
+async fn test_unknown_variant_degrades(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "会话树原文载体"
+)]
+async fn test_session_tree_raw_carrier(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "会话树深恢复"
+)]
+async fn test_session_tree_deep_restore(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",

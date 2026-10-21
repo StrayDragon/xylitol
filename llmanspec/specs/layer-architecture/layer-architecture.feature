@@ -24,7 +24,7 @@
     场景: 服务端表面RPC入口
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 host.describe
-      那么 应答为产品成功且 rpc_id 回显
+      那么 应答为产品成功且 id 回显
       并且 不暴露 /api/v1 产品 REST
 
   @req:r1533

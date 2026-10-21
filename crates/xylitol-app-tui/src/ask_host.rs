@@ -6,6 +6,7 @@ use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion};
 
 use xylitol_plugin_sdk::ask::{AskArgs, AskModeArg, AskQuestionArg, AskUserGateway};
 use xylitol_plugin_sdk::error::XyToolError;
+use xylitol_protocol::method::APPROVAL_REQUESTED;
 
 pub struct PendingAsk {
     pub questions: Vec<AskQuestionArg>,
@@ -35,9 +36,9 @@ impl AskHostGateway {
         self.pending.lock().ok()?.take()
     }
 
-    pub fn push_from_server(&self, rpc_id: String, method: &str, payload: serde_json::Value) {
+    pub fn push_from_server(&self, call_id: String, method: &str, payload: serde_json::Value) {
         use xylitol_plugin_sdk::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
-        let questions = if method == "approval/requested" {
+        let questions = if method == APPROVAL_REQUESTED {
             vec![AskQuestionArg {
                 id: "approved".into(),
                 prompt: "Host requests tool approval".into(),
@@ -77,7 +78,7 @@ impl AskHostGateway {
             });
         }
         let host = self.host.lock().ok().and_then(|g| g.clone());
-        let kind_approval = method == "approval/requested";
+        let kind_approval = method == APPROVAL_REQUESTED;
         tokio::spawn(async move {
             let answered = rx.await;
             let Some(host) = host else {
@@ -97,7 +98,7 @@ impl AskHostGateway {
                     }
                 }
             };
-            let _ = host.respond(&rpc_id, payload).await;
+            let _ = host.respond(&call_id, payload).await;
         });
     }
 }

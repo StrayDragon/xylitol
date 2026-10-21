@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::broadcast;
 
-use xylitol_protocol::{RpcMessage, RpcResult, is_unary_method};
+use xylitol_protocol::registry::METHOD_HOST_DESCRIBE;
+use xylitol_protocol::{
+    Notification, PROTOCOL_VERSION, RpcResult, WIRE_FORMAT_JSONRPC, is_unary_method,
+};
 
 use super::{HostClient, HostClientError, MuxStream};
 
@@ -13,12 +16,12 @@ const DOWNLINK_CAP: usize = 256;
 #[async_trait]
 pub trait InProcessHost: Send + Sync {
     async fn handle_unary(&self, method: &str, payload: Value) -> RpcResult;
-    async fn handle_respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError>;
-    fn subscribe_downlink(&self) -> broadcast::Receiver<RpcMessage>;
+    async fn handle_respond(&self, call_id: &str, payload: Value) -> Result<(), HostClientError>;
+    fn subscribe_downlink(&self) -> broadcast::Receiver<Notification>;
 }
 
 pub struct EchoHost {
-    downlink: broadcast::Sender<RpcMessage>,
+    downlink: broadcast::Sender<Notification>,
 }
 
 impl EchoHost {
@@ -27,8 +30,8 @@ impl EchoHost {
         Arc::new(Self { downlink })
     }
 
-    pub fn push_downlink(&self, msg: RpcMessage) {
-        let _ = self.downlink.send(msg);
+    pub fn push_downlink(&self, note: Notification) {
+        let _ = self.downlink.send(note);
     }
 }
 
@@ -36,21 +39,22 @@ impl EchoHost {
 impl InProcessHost for EchoHost {
     async fn handle_unary(&self, method: &str, payload: Value) -> RpcResult {
         if !is_unary_method(method) {
-            return RpcResult::error("unknown_method", method);
+            return RpcResult::error("unregistered_method", method);
         }
-        if method == "host.describe" {
+        if method == METHOD_HOST_DESCRIBE {
             return RpcResult::ok_value(serde_json::json!({
-                "protocol": xylitol_protocol::envelope::PROTOCOL_VERSION
+                "protocol": PROTOCOL_VERSION,
+                "formats": [WIRE_FORMAT_JSONRPC],
             }));
         }
         RpcResult::ok_value(payload)
     }
 
-    async fn handle_respond(&self, _rpc_id: &str, _payload: Value) -> Result<(), HostClientError> {
+    async fn handle_respond(&self, _call_id: &str, _payload: Value) -> Result<(), HostClientError> {
         Ok(())
     }
 
-    fn subscribe_downlink(&self) -> broadcast::Receiver<RpcMessage> {
+    fn subscribe_downlink(&self) -> broadcast::Receiver<Notification> {
         self.downlink.subscribe()
     }
 }
@@ -100,7 +104,6 @@ mod tests {
     use super::*;
     use crate::host_client::HostClient;
     use futures::StreamExt;
-    use xylitol_protocol::RpcMessage;
 
     #[tokio::test]
     async fn echo_unary_and_unknown_method() {
@@ -112,23 +115,36 @@ mod tests {
         assert!(ok.ok);
         let err = client.unary("quit", serde_json::json!({})).await.unwrap();
         assert!(!err.ok);
-        assert_eq!(err.error.as_ref().unwrap().code, "unknown_method");
+        assert_eq!(err.error.as_ref().unwrap().code, "unregistered_method");
     }
 
     #[tokio::test]
-    async fn mux_delivers_server_request() {
+    async fn echo_describe_advertises_protocol_and_jsonrpc_format() {
+        let (client, _) = InProcessClient::echo();
+        let described = client
+            .unary("host.describe", serde_json::json!({}))
+            .await
+            .unwrap();
+        assert_eq!(
+            described.value,
+            Some(serde_json::json!({
+                "protocol": PROTOCOL_VERSION,
+                "formats": [WIRE_FORMAT_JSONRPC],
+            }))
+        );
+    }
+
+    #[tokio::test]
+    async fn mux_delivers_downlink_notification() {
         let (client, host) = InProcessClient::echo();
         let mut mux = client.mux().await.unwrap();
-        host.push_downlink(RpcMessage::ServerRequest {
-            rpc_id: "e1".into(),
+        host.push_downlink(Notification {
             method: "session/event".into(),
-            payload: serde_json::json!({"seq": 1}),
+            params: serde_json::json!({"seq": 1}),
         });
         let frame = mux.next().await.unwrap().unwrap();
-        match frame {
-            RpcMessage::ServerRequest { method, .. } => assert_eq!(method, "session/event"),
-            other => panic!("unexpected {other:?}"),
-        }
+        assert_eq!(frame.method, "session/event");
+        assert_eq!(frame.params, serde_json::json!({"seq": 1}));
     }
 
     #[cfg(feature = "server")]

@@ -22,9 +22,9 @@ async fn test_wa_unconfigured_hooks_start_no_process() {}
 
 #[scenario(
     path = "llmanspec/specs/workspace-assembly/workspace-assembly.feature",
-    name = "host.describe 宣告 fory-v3"
+    name = "host.describe 宣告 jsonrpc"
 )]
-async fn test_wa_envelope_describe_declares_fory_v3(server_test: ServerTest) {}
+async fn test_wa_envelope_describe_declares_jsonrpc(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/workspace-assembly/workspace-assembly.feature",

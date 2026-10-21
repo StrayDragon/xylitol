@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use xylitol_app_tui::host_client::{HostClientError, InProcessClient, InProcessHost};
-use xylitol_protocol::{RpcMessage, RpcResult};
+use xylitol_protocol::{Notification, RpcResult};
 
 use xylitol_serve::occupancy::{HostState, handle_unary};
 
@@ -29,7 +29,7 @@ impl InProcessHost for HostStateHost {
         Ok(())
     }
 
-    fn subscribe_downlink(&self) -> broadcast::Receiver<RpcMessage> {
+    fn subscribe_downlink(&self) -> broadcast::Receiver<Notification> {
         self.host.in_process_downlink.subscribe()
     }
 }

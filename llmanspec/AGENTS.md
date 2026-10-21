@@ -61,6 +61,12 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 - `背景:`（Background）MUST 紧跟 `功能:` 行（中间不得有空行）——rstest-bdd 才会执行其步骤。
 - 在非默认 feature 分支直接编辑 live `.feature` → `llman-sdd change attach` → `llman-sdd change finalize`（自动合并进基准分支 + 归档改名 + 单提交；目标 `--into` > `base_branch` > 默认分支，方式 `--method` > `sdd.merge_method` 缺省 squash）。**禁止** `solidify`、`change delta`、新建 `*.feature.delta.toon`。
 
+## 版本化命名
+
+- 线协议与代码标识符 **MUST NOT** 带版本后缀（如 `v3`、`new_v3`、`V4`、`_v2`）。协议版本只用 `PROTOCOL_VERSION` 整数（当前 4）经 `host.describe` 宣告；字段级演进走可选字段与 `Unknown` 降级，不靠版本号分叉。
+- capability 名、scenario 名与步骤文本 **MUST NOT** 嵌入版本标签（如 `-v3` 后缀）。
+- 门禁：`scripts/check_no_version_names.py --check`，经 `just qa` 的 `check_*.py` glob 接线；白名单与排除规则见脚本。
+
 ## spec 约束层级（产品级优先）
 
 - requirement statement MUST 描述**产品可观察行为 / 数据契约**（WHAT），中文；**禁止硬约束代码组织**：具体路径、文件/模块名、类型名、行数、方法归属、迁移清单。

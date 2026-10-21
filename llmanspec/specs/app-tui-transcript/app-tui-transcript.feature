@@ -61,7 +61,7 @@
       并且 思考块旁注为括号完整和弦 Ctrl+T
   @req:r1373
   规则: product-bash-result-scrollback
-    产品 TUI 在 idle bang 提交时 须立即将命令写入 live scrollback 可着色块；执行中 须为 pending 轨色，且输出事件（session/bash_output）到达时 须在同一块内增量刷新（保持 pending 轨）；完成后 须按成功或失败或 cancelled 切换轨色；resume 重建时，同一 bash_id 有 done 结果 须只显示 done（不得重复），仅 running 无 done 的 须组合渲染为 interrupted（命令 + 中断提示，全文路径若在）；bang Esc 取消 须在该块内呈现 (cancelled) 而非 agent 的 Aborted；exit_code 非 0 须以 error 前景或 error 轨强调；不得默认整行铺 tool-*-bg；不得为此引入 Codex 式 TranscriptView。
+    产品 TUI 在 idle bang 提交时 须立即将命令写入 live scrollback 可着色块；执行中 须为 pending 轨色，且输出事件（bash/output）到达时 须在同一块内增量刷新（保持 pending 轨）；完成后 须按成功或失败或 cancelled 切换轨色；resume 重建时，同一 bash_id 有 done 结果 须只显示 done（不得重复），仅 running 无 done 的 须组合渲染为 interrupted（命令 + 中断提示，全文路径若在）；bang Esc 取消 须在该块内呈现 (cancelled) 而非 agent 的 Aborted；exit_code 非 0 须以 error 前景或 error 轨强调；不得默认整行铺 tool-*-bg；不得为此引入 Codex 式 TranscriptView。
 
     场景: 产品bash块生命周期无头
       当 以主机泵提交 bang 命令并注入分段输出与成功结果

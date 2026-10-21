@@ -1,18 +1,20 @@
 use crate::bdd::prelude::*;
+use crate::bdd::steps_server::ServerTest;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
-use xylitol_protocol::codec;
-use xylitol_protocol::{Command, Event, RpcMessage};
-use xylitol_serve::FromWireEvent;
+use xylitol_protocol::codec::{self, Inbound, Rejected};
+use xylitol_protocol::{Command, Event, Message, Outcome, RequestId};
+use xylitol_wire::event_from_wire;
 
 pub struct ProtocolBdd {
     pub cmds: RefCell<Vec<Result<Command, String>>>,
     pub events: RefCell<Vec<Event>>,
-    pub tool_end_pair: RefCell<Option<(String, bool)>>,
-    pub msgs: RefCell<Vec<RpcMessage>>,
     pub text_out: RefCell<String>,
-    pub last_decode: RefCell<Option<Result<(), String>>>,
+    pub legacy_rejected: Cell<Option<bool>>,
+    pub import_kind: RefCell<Option<(String, bool)>>,
+    pub depth_guard: Cell<Option<bool>>,
+    pub last_decode: RefCell<Option<Result<Message, Rejected>>>,
 }
 
 #[fixture]
@@ -20,9 +22,10 @@ pub fn protocol_bdd() -> ProtocolBdd {
     ProtocolBdd {
         cmds: RefCell::new(Vec::new()),
         events: RefCell::new(Vec::new()),
-        tool_end_pair: RefCell::new(None),
-        msgs: RefCell::new(Vec::new()),
         text_out: RefCell::new(String::new()),
+        legacy_rejected: Cell::new(None),
+        import_kind: RefCell::new(None),
+        depth_guard: Cell::new(None),
         last_decode: RefCell::new(None),
     }
 }
@@ -141,16 +144,32 @@ fn t_stream_events_project(protocol_bdd: &ProtocolBdd) {
         .iter()
         .find(|e| matches!(e, Event::ThinkingDelta { .. }))
         .expect("thinking_delta present");
-    let projected = XyEvent::from_wire_event(thinking).expect("wire -> domain projection");
+    let projected: XyEvent = event_from_wire(thinking).expect("wire -> domain projection");
     match projected {
         XyEvent::ThinkingDelta(text) => assert_eq!(text, "reasoning"),
         other => panic!("expected ThinkingDelta projection, got {other:?}"),
     }
 }
 
-#[when("对携带工具参数的 tool_start 做线协议往返")]
+#[when("对未知 type 的线协议事件做反序列化")]
+fn w_unknown_wire_event(protocol_bdd: &ProtocolBdd) {
+    let event: Event = serde_json::from_str(r#"{"type":"totally_unknown_variant","x":1}"#)
+        .expect("unknown wire type MUST degrade to Unknown, not fail");
+    *protocol_bdd.events.borrow_mut() = vec![event];
+}
+
+#[then("落入 Unknown 变体且不 panic")]
+fn t_unknown_wire_event_degrades(protocol_bdd: &ProtocolBdd) {
+    let events = protocol_bdd.events.borrow();
+    assert!(
+        matches!(events.as_slice(), [Event::Unknown]),
+        "unknown wire type MUST land in Event::Unknown: {events:?}"
+    );
+}
+
+#[when("对携带工具参数的 tool_execution_start 做线协议往返")]
 fn w_tool_start_roundtrip(protocol_bdd: &ProtocolBdd) {
-    let orig = Event::ToolStart {
+    let orig = Event::ToolExecutionStart {
         id: "t1".into(),
         name: "read".into(),
         args: serde_json::json!({"path": "/a b/c.txt", "limit": 5}),
@@ -169,17 +188,17 @@ fn w_tool_start_roundtrip(protocol_bdd: &ProtocolBdd) {
 fn t_tool_start_args_kept(protocol_bdd: &ProtocolBdd) {
     let events = protocol_bdd.events.borrow();
     match &events[0] {
-        Event::ToolStart { args, .. } => {
+        Event::ToolExecutionStart { args, .. } => {
             assert_eq!(args["path"], "/a b/c.txt");
             assert_eq!(args["limit"], 5);
         }
-        other => panic!("expected ToolStart, got {other:?}"),
+        other => panic!("expected ToolExecutionStart, got {other:?}"),
     }
 }
 
-#[when("序列化 is_error 失败标记的 tool_end 并构造缺省旧载荷")]
+#[when("序列化 is_error 失败标记的 tool_execution_end 并构造缺省旧载荷")]
 fn w_tool_end_flag(protocol_bdd: &ProtocolBdd) {
-    let full = Event::ToolEnd {
+    let full = Event::ToolExecutionEnd {
         id: "t1".into(),
         name: "bash".into(),
         result: "boom".into(),
@@ -201,53 +220,24 @@ fn w_tool_end_flag(protocol_bdd: &ProtocolBdd) {
     let legacy_text = legacy_value.to_string();
     let legacy_rejected = serde_json::from_str::<Event>(&legacy_text).is_err();
 
-    *protocol_bdd.tool_end_pair.borrow_mut() = Some((full_text, legacy_rejected));
+    protocol_bdd.legacy_rejected.set(Some(legacy_rejected));
+    *protocol_bdd.events.borrow_mut() = vec![back];
 }
 
 #[then("完整载荷保真失败态且缺失标记的载荷被拒绝")]
 fn t_tool_end_flag_semantics(protocol_bdd: &ProtocolBdd) {
-    let (_, legacy_rejected) = protocol_bdd
-        .tool_end_pair
-        .borrow()
-        .clone()
-        .expect("tool_end pair");
+    let events = protocol_bdd.events.borrow();
     assert!(
-        legacy_rejected,
+        matches!(
+            events.first(),
+            Some(Event::ToolExecutionEnd { is_error: true, .. })
+        ),
+        "failure state must survive the wire: {events:?}"
+    );
+    assert_eq!(
+        protocol_bdd.legacy_rejected.get(),
+        Some(true),
         "missing is_error must fail wire parse (required on the wire)"
-    );
-}
-
-#[when("解析 JSON-RPC 信封样例（request / result / notification）")]
-fn w_jsonrpc_envelopes(protocol_bdd: &ProtocolBdd) {
-    let samples = [
-        r#"{"jsonrpc":"2.0","id":"r1","method":"prompt","params":{}}"#,
-        r#"{"jsonrpc":"2.0","id":"r1","result":{}}"#,
-        r#"{"jsonrpc":"2.0","method":"session/event","params":{}}"#,
-    ];
-    let mut msgs = Vec::new();
-    for s in samples {
-        let m = codec::decode_str(s).unwrap_or_else(|e| panic!("parse {s}: {e}"));
-        msgs.push(m);
-    }
-    *protocol_bdd.msgs.borrow_mut() = msgs;
-}
-
-#[then("JSON-RPC 形态与 id 回显成立")]
-fn t_jsonrpc_shape(protocol_bdd: &ProtocolBdd) {
-    let msgs = protocol_bdd.msgs.borrow();
-    assert!(
-        matches!(&msgs[0], RpcMessage::ClientRequest { rpc_id, method, .. }
-            if rpc_id == "r1" && method == "prompt"),
-        "{msgs:?}"
-    );
-    assert!(
-        matches!(&msgs[1], RpcMessage::ServerResponse { rpc_id, .. } if rpc_id == "r1"),
-        "result must echo request id, got {msgs:?}"
-    );
-    assert!(
-        matches!(&msgs[2], RpcMessage::ServerRequest { method, rpc_id, .. }
-            if method == "session/event" && rpc_id.is_empty()),
-        "event downlink is a notification (no id), got {msgs:?}"
     );
 }
 
@@ -260,27 +250,27 @@ fn w_queue_update_roundtrip(protocol_bdd: &ProtocolBdd) {
     let text = serde_json::to_string(&event).expect("encode QueueUpdate");
     let back: Event = serde_json::from_str(&text).expect("decode QueueUpdate");
     assert_eq!(serde_json::to_string(&back).unwrap(), text);
-    protocol_bdd.events.replace(vec![back]);
-    let unknown = serde_json::from_str::<Event>(r#"{"type":"totally_unknown_variant","x":1}"#);
-    let verdict = if unknown.is_err() { "err" } else { "ok" };
-    protocol_bdd.text_out.replace(verdict.to_string());
+    let unknown: Event = serde_json::from_str(r#"{"type":"totally_unknown_variant","x":1}"#)
+        .expect("unknown type MUST degrade, not panic");
+    *protocol_bdd.events.borrow_mut() = vec![back, unknown];
 }
 
-#[then("队列计数保真且未知 type 解析为错误而非 panic")]
+#[then("队列计数保真且未知 type 落入 Unknown 而非 panic")]
 fn t_queue_update_fidelity(protocol_bdd: &ProtocolBdd) {
     let events = protocol_bdd.events.borrow();
-    let Some(Event::QueueUpdate {
-        steer_count,
-        follow_up_count,
-    }) = events.first()
-    else {
-        panic!("c2826: 期望 QueueUpdate，实际 {:?}", events.first());
-    };
-    assert_eq!((*steer_count, *follow_up_count), (2, 1));
-    let verdict = protocol_bdd.text_out.borrow().clone();
-    assert_eq!(
-        verdict, "err",
-        "c2826: 未知 type MUST 解析失败（可降级忽略）而非 panic"
+    assert!(
+        matches!(
+            events.first(),
+            Some(Event::QueueUpdate {
+                steer_count: 2,
+                follow_up_count: 1,
+            })
+        ),
+        "c2826: 期望 QueueUpdate 计数保真: {events:?}"
+    );
+    assert!(
+        matches!(events.get(1), Some(Event::Unknown)),
+        "c2826: 未知 type MUST 落入 Unknown 而非 panic: {events:?}"
     );
 }
 
@@ -357,7 +347,7 @@ fn w_error_kind_roundtrip(protocol_bdd: &ProtocolBdd) {
     };
     let text = serde_json::to_string(&event).expect("encode error");
     let back: Event = serde_json::from_str(&text).expect("decode error");
-    protocol_bdd.events.replace(vec![back]);
+    *protocol_bdd.events.borrow_mut() = vec![back];
 }
 
 #[then("kind 往返保真")]
@@ -392,7 +382,7 @@ fn w_todo_updated_roundtrip(protocol_bdd: &ProtocolBdd) {
     let text = serde_json::to_string(&event).expect("encode TodoUpdated");
     let back: Event = serde_json::from_str(&text).expect("decode TodoUpdated");
     assert_eq!(serde_json::to_string(&back).unwrap(), text);
-    protocol_bdd.events.replace(vec![back]);
+    *protocol_bdd.events.borrow_mut() = vec![back];
 }
 
 #[then("清单快照载荷保真")]
@@ -422,10 +412,9 @@ fn w_compaction_end_roundtrip(protocol_bdd: &ProtocolBdd) {
     let text = serde_json::to_string(&event).expect("encode CompactionEnd");
     let back: Event = serde_json::from_str(&text).expect("decode CompactionEnd");
     assert_eq!(serde_json::to_string(&back).unwrap(), text);
-    protocol_bdd.events.replace(vec![back]);
     let legacy: Event = serde_json::from_str(r#"{"type":"compaction_end"}"#)
         .expect("c2826: 旧无载荷形态必须可解码为缺省载荷");
-    protocol_bdd.events.borrow_mut().push(legacy);
+    *protocol_bdd.events.borrow_mut() = vec![back, legacy];
 }
 
 #[then("全载荷保真且旧形态解码为缺省载荷")]
@@ -486,14 +475,14 @@ async fn w_import_missing_file(protocol_bdd: &ProtocolBdd) {
         .await
         .expect_err("missing file import must fail again");
     protocol_bdd
-        .tool_end_pair
+        .import_kind
         .replace(Some((e1.kind().to_string(), e1.kind() == e2.kind())));
 }
 
 #[then("错误携带稳定 kind 且非文案猜测")]
 fn t_import_stable_kind(protocol_bdd: &ProtocolBdd) {
     let (kind, stable) = protocol_bdd
-        .tool_end_pair
+        .import_kind
         .borrow()
         .clone()
         .expect("import error captured");
@@ -512,16 +501,17 @@ fn deep_array_envelope(depth: usize) -> String {
 
 fn decode_envelope(protocol_bdd: &ProtocolBdd, depth: usize) {
     let env = deep_array_envelope(depth);
-    protocol_bdd.last_decode.replace(Some(
-        codec::decode_str(&env)
-            .map(|_| ())
-            .map_err(|e| e.to_string()),
-    ));
+    protocol_bdd
+        .depth_guard
+        .set(Some(codec::json_nesting_exceeds_limit(&env)));
+    protocol_bdd
+        .last_decode
+        .replace(Some(codec::decode_message(&env)));
 }
 
 #[when("对超过深度上限的线上 JSON 信封做解码")]
 fn w_json_depth_over_limit(protocol_bdd: &ProtocolBdd) {
-    decode_envelope(protocol_bdd, 2049);
+    decode_envelope(protocol_bdd, codec::JSON_DEPTH_LIMIT as usize);
 }
 
 #[when("对实机深树量级的合法线上信封做解码")]
@@ -531,20 +521,198 @@ fn w_json_depth_tree_scale(protocol_bdd: &ProtocolBdd) {
 
 #[then("深解析有界早退且超限按降级语义拒绝")]
 fn t_json_depth_bounded(protocol_bdd: &ProtocolBdd) {
-    let r = protocol_bdd
+    assert_eq!(
+        protocol_bdd.depth_guard.get(),
+        Some(true),
+        "超限信封 MUST 在深解析前被探测为超限"
+    );
+    let rejected = protocol_bdd
         .last_decode
         .borrow()
         .clone()
-        .expect("decode executed");
-    assert!(r.is_err(), "超限深解析 MUST 拒绝: {r:?}");
+        .expect("decode executed")
+        .expect_err("超限深解析 MUST 拒绝");
+    assert_eq!(rejected.error.code, -32700, "{rejected:?}");
+    assert!(rejected.id.is_none(), "{rejected:?}");
 }
 
 #[then("深度上限不误伤常规深树")]
 fn t_json_depth_tree_ok(protocol_bdd: &ProtocolBdd) {
-    let r = protocol_bdd
+    assert_eq!(protocol_bdd.depth_guard.get(), Some(false));
+    let decoded = protocol_bdd
         .last_decode
         .borrow()
         .clone()
         .expect("decode executed");
-    assert!(r.is_ok(), "实机深树量级 MUST 通过: {r:?}");
+    assert!(
+        matches!(&decoded, Ok(Message::Request(req)) if req.method == "host.describe"),
+        "实机深树量级 MUST 通过: {decoded:?}"
+    );
+}
+
+async fn post_rpc_text(server_test: &ServerTest, body: &str) {
+    let url = format!("http://127.0.0.1:{}/rpc", server_test.port.get());
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .header("content-type", "application/json")
+        .body(body.to_string())
+        .send()
+        .await
+        .expect("POST /rpc");
+    let status = resp.status().as_u16();
+    let text = resp.text().await.expect("read /rpc body");
+    server_test.unary_status.set(status);
+    *server_test.unary_body.borrow_mut() = Some(text);
+}
+
+fn stored_unary(server_test: &ServerTest) -> (u16, String) {
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    (server_test.unary_status.get(), body)
+}
+
+fn assert_error_response(
+    server_test: &ServerTest,
+    status: u16,
+    code: i64,
+    data_code: Option<&str>,
+) {
+    let (actual, body) = stored_unary(server_test);
+    assert_eq!(actual, status, "{body}");
+    let Ok(Message::Response(resp)) = codec::decode_message(&body) else {
+        panic!("JSON-RPC response expected: {body}");
+    };
+    let Outcome::Error(err) = resp.outcome else {
+        panic!("error response expected: {body}");
+    };
+    assert_eq!(err.code, code, "{body}");
+    if let Some(data_code) = data_code {
+        assert_eq!(err.data_code.as_deref(), Some(data_code), "{body}");
+    }
+}
+
+#[when("POST /rpc 发送 host.describe 的 JSON-RPC 请求且 id 为 1")]
+async fn w_jsonrpc_describe_id_one(server_test: &ServerTest) {
+    post_rpc_text(
+        server_test,
+        r#"{"jsonrpc":"2.0","id":1,"method":"host.describe","params":{}}"#,
+    )
+    .await;
+}
+
+#[then("应答为 JSON-RPC 成功 response 且 id 回显为 1")]
+fn t_jsonrpc_success_echoes_id_one(server_test: &ServerTest) {
+    let (status, body) = stored_unary(server_test);
+    assert_eq!(status, 200, "{body}");
+    let Ok(Message::Response(resp)) = codec::decode_message(&body) else {
+        panic!("JSON-RPC response expected: {body}");
+    };
+    assert_eq!(resp.id, Some(RequestId::Int(1)), "{body}");
+    assert!(matches!(resp.outcome, Outcome::Result(_)), "{body}");
+}
+
+#[when("POST /rpc 发送无 id 的 host.describe notification")]
+async fn w_jsonrpc_describe_notification(server_test: &ServerTest) {
+    post_rpc_text(
+        server_test,
+        r#"{"jsonrpc":"2.0","method":"host.describe","params":{}}"#,
+    )
+    .await;
+}
+
+#[then("HTTP 200 且 body 为空")]
+fn t_http_200_empty_body(server_test: &ServerTest) {
+    let (status, body) = stored_unary(server_test);
+    assert_eq!(status, 200, "{body}");
+    assert!(body.is_empty(), "notification MUST NOT be answered: {body}");
+}
+
+#[when("POST /rpc 发送含两个 request 与一个 notification 的 batch")]
+async fn w_jsonrpc_mixed_batch(server_test: &ServerTest) {
+    post_rpc_text(
+        server_test,
+        r#"[{"jsonrpc":"2.0","id":"b1","method":"host.describe","params":{}},{"jsonrpc":"2.0","method":"host.describe","params":{}},{"jsonrpc":"2.0","id":"b2","method":"host.describe","params":{}}]"#,
+    )
+    .await;
+}
+
+#[then("返回两个 response 且 id 对应、notification 无应答")]
+fn t_batch_responses_in_order(server_test: &ServerTest) {
+    let (status, body) = stored_unary(server_test);
+    assert_eq!(status, 200, "{body}");
+    let Ok(Inbound::Batch(items)) = codec::parse_text(&body) else {
+        panic!("batch answer must be a JSON array: {body}");
+    };
+    let ids: Vec<Option<RequestId>> = items
+        .into_iter()
+        .map(|item| match item {
+            Ok(Message::Response(resp)) => resp.id,
+            other => panic!("only responses expected, got {other:?}: {body}"),
+        })
+        .collect();
+    assert_eq!(
+        ids,
+        vec![
+            Some(RequestId::Str("b1".into())),
+            Some(RequestId::Str("b2".into())),
+        ],
+        "{body}"
+    );
+}
+
+#[when("POST /rpc 发送空数组 batch")]
+async fn w_jsonrpc_empty_batch(server_test: &ServerTest) {
+    post_rpc_text(server_test, "[]").await;
+}
+
+#[then("HTTP 400 且 error.code 为 -32600")]
+fn t_http_400_invalid_request(server_test: &ServerTest) {
+    assert_error_response(server_test, 400, -32600, None);
+}
+
+#[when("POST /rpc 发送非法 JSON")]
+async fn w_jsonrpc_illegal_json(server_test: &ServerTest) {
+    post_rpc_text(server_test, r#"{"jsonrpc":"2.0","#).await;
+}
+
+#[then("HTTP 400 且 error.code 为 -32700")]
+fn t_http_400_parse_error(server_test: &ServerTest) {
+    assert_error_response(server_test, 400, -32700, None);
+}
+
+#[when("POST /rpc 发送缺少 method 的 JSON-RPC 对象")]
+async fn w_jsonrpc_missing_method(server_test: &ServerTest) {
+    post_rpc_text(server_test, r#"{"jsonrpc":"2.0","id":"m1","params":{}}"#).await;
+}
+
+#[when("POST /rpc 调用 set_model 且缺少 model_id")]
+async fn w_jsonrpc_set_model_without_model_id(server_test: &ServerTest) {
+    post_rpc_text(
+        server_test,
+        r#"{"jsonrpc":"2.0","id":"sm1","method":"set_model","params":{}}"#,
+    )
+    .await;
+}
+
+#[then("error.code 为 -32602 且 data.code 为 invalid_input")]
+fn t_invalid_params_stable_code(server_test: &ServerTest) {
+    assert_error_response(server_test, 200, -32602, Some("invalid_input"));
+}
+
+#[then("error.code 为 -32000 且 data.code 为 not_found")]
+fn t_business_error_stable_code(server_test: &ServerTest) {
+    assert_error_response(server_test, 200, -32000, Some("not_found"));
+}
+
+#[when("POST /rpc 调用 plugin/call")]
+async fn w_jsonrpc_plugin_call(server_test: &ServerTest) {
+    post_rpc_text(
+        server_test,
+        r#"{"jsonrpc":"2.0","id":"pc1","method":"plugin/call","params":{}}"#,
+    )
+    .await;
+}
+
+#[then("error.code 为 -32601 且 data.code 为 unregistered_method")]
+fn t_plugin_prefix_unregistered(server_test: &ServerTest) {
+    assert_error_response(server_test, 200, -32601, Some("unregistered_method"));
 }

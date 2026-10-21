@@ -101,7 +101,7 @@
 | `session/resync_required` | `{session_id}` | 不消耗 | journal 无法覆盖 `last_seq` |
 | `session/resources` | `{session_id, snapshot}` | 不消耗、不写 journal | MCP / skills 固定区快照 |
 | `approval/requested` | `{call_id}` | 不消耗 | 审批；客户端以 `approve_tool` unary 应答 |
-| `question/requested` | `{call_id}` | 不消耗 | 问卷；客户端以 `answer_question` unary 应答 |
+| `question/requested` | `{call_id, questions}`（`questions` 为问卷 JSON 原文） | 不消耗 | 问卷；客户端以 `answer_question` unary 应答 |
 | `bash/output` | `{session_id, bash_id, seq, data}` | 不消耗 journal | bang 输出流（原 `session/bash_output`） |
 
 下行 notification 无作答义务；客户端不得对事件 notification 回应。
@@ -171,7 +171,7 @@
 | crate | 文件 | 职责 |
 |---|---|---|
 | protocol | `message.rs` | `RequestId`、`Request`、`Notification`、`Response`、`Outcome`、`ErrorObject`、`Message`、`RpcResult` / `RpcError`（业务）、`HostDescribeValue`、下行参数结构；`PROTOCOL_VERSION`、`WIRE_FORMAT_JSONRPC` |
-| protocol | `codec.rs` | `parse_text` / `parse_payload`（batch）/ `decode_message`（客户端）/ `encode`；深度守卫；错误码与业务码映射 |
+| protocol | `codec.rs` | `parse_text`（含 batch 与深度守卫）/ `parse_bytes`（UTF-8 入口）/ `decode_message`（客户端）/ `*_value` 编码函数（`request_value`、`notification_value`、`response_value`）；错误码与业务码映射 |
 | protocol | `command.rs` | 不变：`Command` serde 类型 |
 | protocol | `event.rs` | `Event` 24 变体（23 + `Unknown`） |
 | protocol | `method.rs` | 下行方法名常量、`is_unary_method`、`is_downlink_method` |
@@ -181,7 +181,7 @@
 | wire | `lib.rs` | 再导出 |
 | serve | `wire.rs` | `CONTENT_TYPE`、`MAX_BODY_BYTES`、`Reply`、HTTP 状态映射 |
 | serve | `listen.rs` | salvo handler：`POST /rpc`、WS、`healthz`、`OccupiedHost` 接口 |
-| serve | `occupancy/envelope.rs` | 上行：`parse_payload` → 逐条 dispatch → `Reply`；下行：`downlink_notification` 与 `encode` |
+| serve | `occupancy/envelope.rs` | 上行：`respond_to_body`（`parse_bytes` → 逐条 `dispatch_request` → `Reply`）；下行：`downlink_text`（经 `notification_value` 序列化） |
 | serve | `occupancy/rpc_module.rs` | `dispatch_request(host, id, method, params) -> Outcome`；反向方法；`handle_unary` 调用；恢复原 `#[cfg(any())]` 测试 |
 | serve | `occupancy/ws.rs` | `EventJournal`、`ReverseRpcGateway`（不变）；删除 `ServerFrame` / `ClientFrame` 死枚举 |
 | serve | `occupancy/host.rs` | `append_and_push` 经 `event_to_wire`；`push_resources`、`push_bash_output` 等改为 `Notification` |
@@ -226,11 +226,11 @@
 
 ## 10. 测试策略
 
-- `xylitol-protocol`（单元）：`parse_payload` 的 request / notification / batch / 空 batch / 非法 id / 非法 method / 深度 2048 边界 / 非 UTF-8；`encode` 形状；`RequestId` 原样回显；`business_error` 码映射表全覆盖；`Event` 24 变体 serde 往返与 `Unknown` 降级；`REGISTRY` 保留现有测试。
+- `xylitol-protocol`（单元）：`parse_text` 的 request / notification / batch / 空 batch / 非法 id / 非法 method / 深度 2048 边界 / 非 UTF-8；`*_value` 编码形状；`RequestId` 原样回显；`business_error` 码映射表全覆盖；`Event` 24 变体 serde 往返与 `Unknown` 降级；`REGISTRY` 保留现有测试。
 - `xylitol-wire`（单元）：23 个 `XyEvent` 变体逐一往返（表驱动）；`AgentEnd` 的 `messages` 本地语义断言；`Unknown` → `WireEventError::Unknown`；`TodoUpdated` 逐字段。
 - `xylitol-serve`：`rpc_module`（恢复 `#[cfg(any())]` 测试并改写）：未登记 `-32601`、参数形状 `-32602`、reverse 方法、`subscribe` 续传；`envelope`：batch 按序、notification 无应答、`[]` → 400；`listen`：`POST` 413 / 400 / 200、WS text 往返、WS binary 关闭 1003。
 - `xylitol-app-tui`：`json_rpc.rs` 请求文本与 downlink 解码；describe 校验（protocol 与 formats 两条不匹配路径）；`http_ws.rs` 仅 text。
-- BDD：`tests/bdd/bindings_jsonrpc.rs` + `steps_jsonrpc.rs` 覆盖 prompt 草稿中的 6.1–6.5 场景；`steps_server.rs` / `steps_protocol.rs` / `steps_remote_resilience.rs` / `steps_hooks.rs` / `bindings_workspace_assembly.rs` 等改为 JSON 文本断言。场景名与步骤文本逐字一致。
+- BDD：JSON-RPC 场景绑定按现有 per-feature 约定落在 `tests/bdd/bindings_server.rs`、`tests/bdd/bindings_protocol_app.rs`（不新增 `bindings_jsonrpc.rs` / `steps_jsonrpc.rs`），覆盖 prompt 草稿中的 6.1–6.5 场景；`steps_server.rs` / `steps_protocol.rs` / `steps_remote_resilience.rs` / `steps_hooks.rs` / `bindings_workspace_assembly.rs` 等改为 JSON 文本断言。场景名与步骤文本逐字一致。
 - 门禁：`just fmt`、`just lint`、`just test`、`just qa`；`llman-sdd validate c2940-refactor-jsonrpc-wire --strict`；`cargo tree -i fory` 为空。
 
 ## 11. 不做的事

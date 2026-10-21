@@ -4,7 +4,7 @@ use std::sync::Arc;
 use serde_json::Value;
 use tokio::sync::{Mutex, watch};
 
-use xylitol_protocol::envelope::RpcResult;
+use xylitol_protocol::RpcResult;
 
 pub const LEDGER_CAP: usize = 128;
 

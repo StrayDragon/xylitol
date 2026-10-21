@@ -113,16 +113,12 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 Ok(DispatchOutcome::EstimateContext(estimate))
             }
             Command::SessionTree { kind, .. } => Ok(DispatchOutcome::SessionTree(
-                self.session_tree(xylitol_serve::v3_mapping::sdk_session_tree_kind(kind))
-                    .await?,
+                self.session_tree(sdk_session_tree_kind(kind)).await?,
             )),
             Command::TravelSessionTree { kind, entry_id, .. } => {
                 Ok(DispatchOutcome::SessionTreeTravel(
-                    self.travel_session_tree(
-                        xylitol_serve::v3_mapping::sdk_session_tree_kind(kind),
-                        &entry_id,
-                    )
-                    .await?,
+                    self.travel_session_tree(sdk_session_tree_kind(kind), &entry_id)
+                        .await?,
                 ))
             }
             Command::AppendEntryLabel {
@@ -207,6 +203,19 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
             | Command::Subscribe { .. }
             | Command::ApproveTool { .. }
             | Command::AnswerQuestion { .. } => Err(crate::dispatch::transport_variant_error(&cmd)),
+        }
+    }
+}
+
+fn sdk_session_tree_kind(
+    kind: xylitol_protocol::SessionTreeKind,
+) -> xylitol_plugin_sdk::session::SessionTreeKind {
+    match kind {
+        xylitol_protocol::SessionTreeKind::MessageHistory => {
+            xylitol_plugin_sdk::session::SessionTreeKind::MessageHistory
+        }
+        xylitol_protocol::SessionTreeKind::FileBrowser => {
+            xylitol_plugin_sdk::session::SessionTreeKind::FileBrowser
         }
     }
 }

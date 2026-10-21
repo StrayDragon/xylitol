@@ -1,6 +1,6 @@
 use super::*;
-use crate::wire_event::{FromWireEvent, ToWireEvent};
 use xylitol_plugin_sdk::message::AgentMessage;
+use xylitol_wire::{event_from_wire, event_to_wire};
 
 fn assistant_end() -> XyEvent {
     XyEvent::AgentEnd {
@@ -75,11 +75,11 @@ fn tool_start_path_preview_matches_after_wire_roundtrip() {
     let mut local = UiModel::new();
     apply_xy_event(&mut local, &event);
 
-    let wire = event.to_wire_event().expect("ToolStart is wire-visible");
+    let wire = event_to_wire(&event).expect("ToolStart is wire-visible");
     let encoded = serde_json::to_value(&wire).expect("wire serializes");
     let decoded: xylitol_protocol::Event =
         serde_json::from_value(encoded).expect("wire deserializes");
-    let remote_event = XyEvent::from_wire_event(&decoded).expect("roundtrip succeeds");
+    let remote_event = event_from_wire(&decoded).expect("roundtrip succeeds");
     let mut remote = UiModel::new();
     apply_xy_event(&mut remote, &remote_event);
 
@@ -213,13 +213,11 @@ fn message_update_tool_path_matches_after_wire_roundtrip() {
     let mut local = UiModel::new();
     apply_xy_event(&mut local, &event);
 
-    let wire = event
-        .to_wire_event()
-        .expect("MessageUpdate is wire-visible");
+    let wire = event_to_wire(&event).expect("MessageUpdate is wire-visible");
     let encoded = serde_json::to_value(&wire).expect("wire serializes");
     let decoded: xylitol_protocol::Event =
         serde_json::from_value(encoded).expect("wire deserializes");
-    let remote_event = XyEvent::from_wire_event(&decoded).expect("roundtrip succeeds");
+    let remote_event = event_from_wire(&decoded).expect("roundtrip succeeds");
     let mut remote = UiModel::new();
     apply_xy_event(&mut remote, &remote_event);
 

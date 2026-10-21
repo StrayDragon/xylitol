@@ -1,5 +1,5 @@
 ---
-brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa 正交 / 复杂度门禁 cccc / 元门禁）"
+brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名闸 / prek 与 qa 正交 / 复杂度门禁 cccc / 元门禁）"
 ---
 
 # 质量门禁（`just qa` 及其纪律）
@@ -36,14 +36,12 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa �
 
 **从事故沉淀自动化**：新增 `scripts/check_*.py` 时，若源自一次真实事故（而非假设），在脚本 docstring 记录案例，让防护可追溯、可理解。
 
-## 注释闸（uncomment，只读）
+## 版本命名闸（只读）
 
-- **策略 SSOT**：根目录 `.uncomment.toml`（AST 识别注释，不碰字符串里的 `//`）。
-- **入闸**：`scripts/check_uncomment.py`，由 `qa-check-scripts` glob 自动执行；**仅** `uncomment --check --changed-lines`（相对 `UNCOMMENT_BASE` / `origin/HEAD` / `main`），**禁止**在 `just qa` 里跑删除或 `lint --fix`，避免污染工作区。
-- **渐进**：只卡相对 base **有改动的行**；历史行内注释不挡整树。
-- **保留**：TODO/FIXME、工具指令（clippy/noqa/…）、`~keep` / `NOTE:` 等 `preserve_patterns`；`///` / docstring 默认可移除（`remove_docs = true`）。追溯以 specs / 提交信息为 SSOT。
-- **手工**：全树盘点 `uncomment scan`；批量删除仅本地显式 `uncomment .`（不进 `qa`）。可选 `uncomment lint` 见 `[lint]`（默认 `enabled = false`）。
-- **跳过 / CI**：`XYLITOL_SKIP_UNCOMMENT=1`；CI 安装 `uncomment` 且 `checkout` 需 `fetch-depth: 0`（PR merge-base）。
+- **入闸**：`scripts/check_no_version_names.py`，由 `qa-check-scripts` glob 自动接线；只读，无写入模式，违例输出 `file:line`。
+- **卡两类**：①禁用字面量（线协议旧载体名及其变体，大小写规则与清单见脚本常量），扫描范围内文件的原始行都算；②`.rs` / `.py` 标识符中的版本段（`_v<digits>` 或 CamelCase 的 `V<digits>`），注释与字符串不参与②。
+- **白名单只放外部契约**：`uuid` 的 `new_v4` / `new_v7`、URL 路径（如 `/v1`）、会话落盘版本（`v5`–`v7`）、外部模型名。线协议与产品 API 名不得借白名单豁免。
+- **处理**：改为语义名；协议版本只经 `PROTOCOL_VERSION` 与 `host.describe` 协商。清单以脚本为 SSOT，本文件不复述。
 
 ## 注释闸（uncomment，只读）
 

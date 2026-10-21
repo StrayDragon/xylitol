@@ -4,7 +4,7 @@ version = "0.0.0-pre"
 edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
-description = "Print client (in-process XyDriver, no fory)"
+description = "Print client (in-process XyDriver)"
 repository = "https://github.com/straydragon/xylitol"
 publish = false
 

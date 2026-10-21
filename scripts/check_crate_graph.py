@@ -20,6 +20,7 @@ ROOT_MANIFEST = REPO / "Cargo.toml"
 REQUIRED_MEMBERS: dict[str, str] = {
     "crates/xylitol-plugin-sdk": "xylitol-plugin-sdk",
     "crates/xylitol-protocol": "xylitol-protocol",
+    "crates/xylitol-wire": "xylitol-wire",
     "crates/xylitol-runtime": "xylitol-runtime",
     "crates/xylitol-serve": "xylitol-serve",
     "crates/xylitol-app-tui": "xylitol-app-tui",
@@ -40,11 +41,16 @@ REQUIRED_MEMBERS: dict[str, str] = {
 ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-plugin-sdk": frozenset(),
     "xylitol-protocol": frozenset(),
+    "xylitol-wire": frozenset({"xylitol-protocol", "xylitol-plugin-sdk"}),
     "xylitol-tui": frozenset(),
     "xylitol-runtime": frozenset({"xylitol-plugin-sdk"}),
-    "xylitol-serve": frozenset({"xylitol-runtime", "xylitol-protocol", "xylitol-plugin-sdk"}),
+    "xylitol-serve": frozenset(
+        {"xylitol-runtime", "xylitol-protocol", "xylitol-wire", "xylitol-plugin-sdk"}
+    ),
     "xylitol-app-print": frozenset({"xylitol-runtime", "xylitol-plugin-sdk"}),
-    "xylitol-app-tui": frozenset({"xylitol-protocol", "xylitol-tui", "xylitol-plugin-sdk"}),
+    "xylitol-app-tui": frozenset(
+        {"xylitol-protocol", "xylitol-wire", "xylitol-tui", "xylitol-plugin-sdk"}
+    ),
     "xylitol-official-plugin-session": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-compaction": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-provider-openai": frozenset({"xylitol-plugin-sdk"}),
@@ -86,11 +92,19 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
 ALL_PACKAGES = frozenset(ALLOWED_XYLITOL_DEPS) | {"xylitol"}
 
 FORBIDDEN_DEPS: dict[str, frozenset[str]] = {
-    "fory": ALL_PACKAGES - {"xylitol-protocol"},
     "async-openai": ALL_PACKAGES - {"xylitol-official-plugin-provider-openai"},
     "rmcp": ALL_PACKAGES - {"xylitol-official-plugin-mcp"},
     "salvo": ALL_PACKAGES - {"xylitol-serve"},
 }
+
+PLUGIN_PREFIX = "xylitol-official-plugin-"
+PLUGIN_PEER_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("xylitol-official-plugin-config", "xylitol-official-plugin-hooks"),
+        ("xylitol-official-plugin-config", "xylitol-official-plugin-mcp"),
+        ("xylitol-official-plugin-obs", "xylitol-official-plugin-config"),
+    }
+)
 
 RUTIS_ALLOWED = frozenset({"xylitol-plugin-sdk", "xylitol-kernel"})
 RUTIS_LOADER_ALLOWED = frozenset({"xylitol-kernel"})
@@ -111,6 +125,16 @@ def check_forbidden(pkg: str, deps: set[str], errors: list[str]) -> None:
     for crate, banned_in in FORBIDDEN_DEPS.items():
         if pkg in banned_in and crate in deps:
             errors.append(f"{pkg}: must not depend on {crate}")
+
+
+def check_plugin_peers(pkg: str, xy_deps: set[str], errors: list[str]) -> None:
+    if not pkg.startswith(PLUGIN_PREFIX):
+        return
+    for dep in sorted(xy_deps):
+        if dep.startswith(PLUGIN_PREFIX) and (pkg, dep) not in PLUGIN_PEER_EXCEPTIONS:
+            errors.append(
+                f"{pkg}: must not use plugin {dep} (plugins talk via services / events)"
+            )
 
 
 def check_rutis(pkg: str, all_deps: set[str], errors: list[str]) -> None:
@@ -174,6 +198,7 @@ def main() -> int:
                 f"(max {sorted(allowed)})"
             )
         check_forbidden(pkg, deps, errors)
+        check_plugin_peers(pkg, xy_deps, errors)
         check_rutis(pkg, all_deps, errors)
 
     root_pkg = root.get("package")

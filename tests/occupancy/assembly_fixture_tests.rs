@@ -12,7 +12,7 @@ use xylitol_app_tui::driver::{
     LoadedResourcesSnapshot as AppLoadedResourcesSnapshot, XyDriver, XyEvent,
 };
 use xylitol_app_tui::host_client::{HostClient, HostClientError, InProcessClient, MuxStream};
-use xylitol_protocol::RpcMessage;
+use xylitol_protocol::Notification;
 use xylitol_protocol::SessionTreeKind;
 use xylitol_runtime::driver::LoadedResourcesSnapshot;
 use xylitol_serve::occupancy::{
@@ -292,20 +292,14 @@ async fn push_bash_output_is_not_journaled() {
         .await
         .expect("downlink")
         .expect("msg");
-    match msg {
-        RpcMessage::ServerRequest {
-            method, payload, ..
-        } => {
-            assert_eq!(method, "session/bash_output");
-            assert_eq!(payload["bash_id"], "b1");
-            assert_eq!(payload["data"], "hello");
-        }
-        other => panic!("unexpected {other:?}"),
-    }
+    let Notification { method, params } = msg;
+    assert_eq!(method, "bash/output");
+    assert_eq!(params["bash_id"], "b1");
+    assert_eq!(params["data"], "hello");
     assert_eq!(
         slot.journal.lock().await.max_seq(),
         seq_before,
-        "session/bash_output MUST NOT consume journal seq (c2760)"
+        "bash/output MUST NOT consume journal seq (c2760)"
     );
 }
 
@@ -372,16 +366,10 @@ async fn push_resources_is_not_journaled() {
         .await
         .expect("downlink")
         .expect("msg");
-    match msg {
-        RpcMessage::ServerRequest {
-            method, payload, ..
-        } => {
-            assert_eq!(method, "session/resources");
-            assert_eq!(payload["session_id"], "res");
-            assert_eq!(payload["snapshot"]["mcp_configured"], 1);
-        }
-        other => panic!("unexpected {other:?}"),
-    }
+    let Notification { method, params } = msg;
+    assert_eq!(method, "session/resources");
+    assert_eq!(params["session_id"], "res");
+    assert_eq!(params["snapshot"]["mcp_configured"], 1);
     assert_eq!(
         slot.journal.lock().await.max_seq(),
         0,
@@ -412,16 +400,11 @@ async fn sync_model_downlink_is_not_journaled() {
             .await
             .expect("downlink")
             .expect("msg");
-        let RpcMessage::ServerRequest {
-            method, payload, ..
-        } = msg
-        else {
-            continue;
-        };
+        let Notification { method, params } = msg;
         if method != "session/event" {
             continue;
         }
-        let ev = payload.get("event").cloned().unwrap_or_default();
+        let ev = params.get("event").cloned().unwrap_or_default();
         if ev.get("type").and_then(|v| v.as_str()) == Some("model_select") {
             assert_eq!(
                 ev.get("model_id").and_then(|v| v.as_str()),
@@ -852,12 +835,9 @@ async fn resources_watch_pushes_one_frame_on_snapshot_change() {
     loop {
         let before = frames.len();
         while let Ok(msg) = rx.try_recv() {
-            if let RpcMessage::ServerRequest {
-                method, payload, ..
-            } = msg
-                && method == "session/resources"
-            {
-                frames.push(payload);
+            let Notification { method, params } = msg;
+            if method == "session/resources" {
+                frames.push(params);
             }
         }
         if std::time::Instant::now() >= hard_cap {
@@ -897,7 +877,7 @@ async fn resources_watch_pushes_one_frame_on_snapshot_change() {
     );
 
     let quiet = tokio::time::timeout(std::time::Duration::from_millis(700), rx.recv()).await;
-    if let Ok(Ok(RpcMessage::ServerRequest { method, .. })) = quiet {
+    if let Ok(Ok(Notification { method, .. })) = quiet {
         assert_ne!(
             method, "session/resources",
             "stable snapshot MUST NOT repeat the resources frame"
@@ -1131,15 +1111,13 @@ async fn materialize_writer_does_not_wait_session_prepare() {
 
 #[tokio::test]
 async fn attach_mux_survives_after_idle_and_receives_later_events() {
-    use xylitol_protocol::Event;
-
     let host = host_state_for_test().expect("host");
     let client = in_process_client(host.clone());
     let mut driver = XyRemoteDriver::with_host(client, "mux-sess");
     driver.attach_session().await.expect("attach");
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;
     let slot = host.slot("mux-sess").await;
-    slot.append_and_push(Event::QueueUpdate {
+    slot.append_and_push(&xylitol_plugin_sdk::XyEvent::QueueUpdate {
         steer_count: 1,
         follow_up_count: 0,
     })
@@ -1152,10 +1130,13 @@ async fn attach_mux_survives_after_idle_and_receives_later_events() {
             .any(|e| matches!(e, XyEvent::QueueUpdate { steer_count: 1, .. })),
         "first downlink event missing: {first:?}"
     );
-    slot.append_and_push(Event::AgentEnd).await;
+    slot.append_and_push(&xylitol_plugin_sdk::XyEvent::AgentEnd {
+        messages: Vec::new(),
+    })
+    .await;
     tokio::time::sleep(std::time::Duration::from_millis(40)).await;
     let _ = driver.drain_idle_events();
-    slot.append_and_push(Event::QueueUpdate {
+    slot.append_and_push(&xylitol_plugin_sdk::XyEvent::QueueUpdate {
         steer_count: 0,
         follow_up_count: 1,
     })
@@ -1223,7 +1204,7 @@ async fn cold_subscribe_drops_replay_tape_and_stays_live() {
         "cold-replay tape MUST NOT reach the transcript stream (ath36): {replay:?}"
     );
     let slot = host.slot("s-cold").await;
-    slot.append_and_push(Event::QueueUpdate {
+    slot.append_and_push(&xylitol_plugin_sdk::XyEvent::QueueUpdate {
         steer_count: 0,
         follow_up_count: 2,
     })
@@ -1268,7 +1249,7 @@ async fn switch_session_resubscribes_cold_and_drops_new_session_tape() {
     driver.attach_session().await.expect("attach");
     {
         let slot = host.slot("s-other").await;
-        slot.append_and_push(Event::QueueUpdate {
+        slot.append_and_push(&xylitol_plugin_sdk::XyEvent::QueueUpdate {
             steer_count: 0,
             follow_up_count: 0,
         })

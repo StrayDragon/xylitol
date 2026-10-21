@@ -2,6 +2,9 @@
 depends_on: []
 title: 产品线协议一步到位迁移为 JSON-RPC 2.0 文本信封（salvo 载体）
 needs_specs_change: true
+branch: sdd/c2940-refactor-jsonrpc-wire
+base_branch: main
+base_sha: 0da3e7c6d1c54976be465bcfc08ff7d500a82ed7
 ---
 
 # 产品线协议一步到位迁移为 JSON-RPC 2.0 文本信封（salvo 载体）
@@ -26,7 +29,7 @@ needs_specs_change: true
 - **命名纪律**：线协议标识符、模块、文件、常量与环境变量不再带版本后缀；删除 `XYLITOL_ENVELOPE_V3`、`WIRE_FORMAT_FORY_V3`、`application/x-fory-v3`、`xy.wire.v3`。新增 `scripts/check_no_version_names.py` 门禁（经 `just qa` 接入）。
 - **构建**：删除 `fory` 依赖与 `codegen-envelope` recipe；`scripts/gen_envelope.py` 删除；`scripts/check_crate_graph.py` 增加 `xylitol-wire`，`kernel → protocol` 边合法化。
 - **Specs（live）**：改写 `protocol-app`、`server-core`、`workspace-assembly`、`app-tui-bridge`、`app-tui-host`、`app-tui-transcript` 中线协议措辞；删除 `r1910`（IDL 单源生成）、`r1940`（信封开关环境变量）、`r1908`（双轨对拍）、`r1909`（迁移期保活）。`session/bash_output` 改名 `bash/output`。
-- **BDD**：删除 `steps_envelope.rs`、`bindings_envelope.rs`、`dual_rail.rs`；新增 `bindings_jsonrpc.rs` 与 `steps_jsonrpc.rs`；更新其余受影响 steps 与 occupancy 测试。
+- **BDD**：删除 `steps_envelope.rs`、`bindings_envelope.rs`、`dual_rail.rs`；JSON-RPC 场景绑定落在现有 per-feature 绑定文件（不新增 `bindings_jsonrpc.rs` / `steps_jsonrpc.rs`）；更新其余受影响 steps 与 occupancy 测试。
 - **文档**：根 `AGENTS.md`、`src/AGENTS.md`、`crates/xylitol-app-tui/src/AGENTS.md`、`llmanspec/AGENTS.md`、`xylitol-dev` skill 相关 reference 同步。
 
 ## Capabilities

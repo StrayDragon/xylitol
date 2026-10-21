@@ -4,12 +4,11 @@ version = "0.0.0-pre"
 edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
-description = "Four-quadrant RPC envelope (fory-v3)"
+description = "JSON-RPC 2.0 product wire protocol (methods, notifications, events)"
 repository = "https://github.com/straydragon/xylitol"
 publish = false
 
 [dependencies]
-fory = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["unbounded_depth"] }
 strum = { workspace = true, features = ["derive"] }

@@ -55,13 +55,6 @@ impl ThoughtClock {
         let end = self.ended_at?;
         secs_between(start, end)
     }
-
-    #[cfg(test)]
-    pub fn elapsed_secs_until(&self, until: Instant) -> Option<u64> {
-        let start = self.started_at?;
-        let end = self.ended_at.unwrap_or(until);
-        secs_between(start, end)
-    }
 }
 
 fn secs_between(start: Instant, end: Instant) -> Option<u64> {

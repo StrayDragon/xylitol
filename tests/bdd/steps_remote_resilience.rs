@@ -10,8 +10,7 @@ use xylitol_app_tui::XyDriverError;
 use xylitol_app_tui::XyRemoteDriver;
 use xylitol_app_tui::driver::{LinkTunings, XyDriver};
 use xylitol_app_tui::host_client::{HostClient, HostClientError, MuxStream};
-use xylitol_protocol::RpcMessage;
-use xylitol_protocol::envelope::PROTOCOL_VERSION;
+use xylitol_protocol::{Notification, PROTOCOL_VERSION};
 
 fn micro_tunings() -> LinkTunings {
     LinkTunings {
@@ -33,7 +32,7 @@ struct ScriptState {
     script: VecDeque<MuxScript>,
     mux_calls: Vec<Instant>,
     subscribes: Vec<u64>,
-    senders: Vec<tokio::sync::mpsc::UnboundedSender<RpcMessage>>,
+    senders: Vec<tokio::sync::mpsc::UnboundedSender<Notification>>,
     describe_protocol: Option<u32>,
 }
 
@@ -47,7 +46,7 @@ impl ScriptedMuxHost {
         self.state.lock().unwrap().script = script.into();
     }
 
-    fn send_frame(&self, conn: usize, frame: RpcMessage) {
+    fn send_frame(&self, conn: usize, frame: Notification) {
         if let Some(tx) = self.state.lock().unwrap().senders.get(conn) {
             let _ = tx.send(frame);
         }
@@ -62,22 +61,21 @@ impl ScriptedMuxHost {
     }
 }
 
-fn session_event(seq: u64, text: &str) -> RpcMessage {
-    RpcMessage::ServerRequest {
-        rpc_id: uuid::Uuid::new_v4().to_string(),
+fn session_event(seq: u64, text: &str) -> Notification {
+    Notification {
         method: "session/event".into(),
-        payload: serde_json::json!({
+        params: serde_json::json!({
+            "session_id": "s-res",
             "seq": seq,
             "event": { "type": "text_delta", "text": text },
         }),
     }
 }
 
-fn session_subscribed() -> RpcMessage {
-    RpcMessage::ServerRequest {
-        rpc_id: uuid::Uuid::new_v4().to_string(),
+fn session_subscribed() -> Notification {
+    Notification {
         method: "session/subscribed".into(),
-        payload: serde_json::json!({ "session_id": "s-res", "seq": 0 }),
+        params: serde_json::json!({ "session_id": "s-res", "seq": 0 }),
     }
 }
 
@@ -109,7 +107,7 @@ impl HostClient for ScriptedMuxHost {
                         expected: PROTOCOL_VERSION,
                     });
                 }
-                serde_json::json!({ "protocol": got })
+                serde_json::json!({ "protocol": got, "formats": ["jsonrpc"] })
             }
             "get_state" => serde_json::json!({ "leaf_entry_id": null, "model": null }),
             "get_available_models" => serde_json::json!({ "models": [] }),
@@ -122,7 +120,7 @@ impl HostClient for ScriptedMuxHost {
 
     async fn respond(
         &self,
-        _rpc_id: &str,
+        _call_id: &str,
         _payload: serde_json::Value,
     ) -> Result<(), HostClientError> {
         Ok(())
@@ -140,7 +138,7 @@ impl HostClient for ScriptedMuxHost {
         match behavior {
             MuxScript::FailTransport(message) => Err(HostClientError::transport(message)),
             MuxScript::Live { life } => {
-                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<RpcMessage>();
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Notification>();
                 self.state.lock().unwrap().senders.push(tx);
                 Ok(Box::pin(async_stream::stream! {
                     let deadline = life.map(|l| tokio::time::Instant::now() + l);

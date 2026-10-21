@@ -50,13 +50,13 @@
       并且 正文快照不写入 streaming 缓冲
   @req:r1182
   规则: attach-default-inprocess-retained
-    产品 TUI 默认 须经产品客户端 attach Host：unary 与下行 须共用同一条 WS /rpc；不得默认同进程直握操作器。POST /rpc 仍为 HTTP 产品入口（二进制），不得删除。同进程驱动路径 须保留给 print、库嵌入与符合性闸，不得删除。表面切换 须只换客户端实现（seam 稳定），不得为产品 TUI 静默改回同进程直握。
+    产品 TUI 默认 须经产品客户端 attach Host：unary 与下行 须共用同一条 WS /rpc；不得默认同进程直握操作器。POST /rpc 仍为 HTTP 产品入口（JSON-RPC 文本），不得删除。同进程驱动路径 须保留给 print、库嵌入与符合性闸，不得删除。表面切换 须只换客户端实现（seam 稳定），不得为产品 TUI 静默改回同进程直握。
 
     场景: 远端类型保留
       当 服务端在空闲端口上启动
       并且 检查 Driver 实现
       并且 POST /rpc 调用 host.describe
-      那么 应答为产品成功且 rpc_id 回显
+      那么 应答为产品成功且 id 回显
       当 产品客户端经 WS /rpc 调用 host.describe
       那么 产品 unary 成功且 result 含协议版本
       并且 默认 attach 且同进程驱动路径仍保留给 print 与嵌入
@@ -109,7 +109,7 @@
       那么 块状态切换为终态
   @req:r1187
   规则: bash-event-append
-    产品 bridge 须提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价），输入为交互 bang 的输出事件（session/bash_output → 面级 sink）；增量追加期间 status 须保持 pending tint；BashDone 或取消收口时 须经既有 finish/cancelled 路径切换终态；不得每 chunk 新建独立滚动提示行。
+    产品 bridge 须提供对最后一条 Pending Bash 块的增量追加 API（append_bash_output 或等价），输入为交互 bang 的输出事件（bash/output → 面级 sink）；增量追加期间 status 须保持 pending tint；BashDone 或取消收口时 须经既有 finish/cancelled 路径切换终态；不得每 chunk 新建独立滚动提示行。
 
     场景: bash块追加于位置
       当 以桥缝创建 pending Bash 块并增量追加输出

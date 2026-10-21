@@ -30,8 +30,6 @@ exclude = [
   "crates/**/llmanspec/specs/**/*.feature",
   "plugins/**/llmanspec/specs/**/*.feature",
   "docs/book/**",
-  # fory-v3 compiler output (ASF header / Type ID comments are the artifact).
-  "crates/xylitol-protocol/src/v3/generated.rs",
 ]
 use_default_ignores = false
 respect_gitignore = true

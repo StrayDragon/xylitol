@@ -25,7 +25,8 @@ DEFAULT_FEATURES = ("cli", "tui", "otel", "server", "mcp")
 OPTIONAL_FEATURES = ("cli", "tui", "otel", "server", "mcp")
 BUILTIN_NO_FLAG = ("tools", "hooks", "security", "print-mode")
 PI_REF_FILES = (
-    "crates/xylitol-protocol/src/envelope.rs",
+    "crates/xylitol-protocol/src/message.rs",
+    "crates/xylitol-protocol/src/codec.rs",
     "crates/xylitol-plugin-sdk/src/model/meta.rs",
     "crates/xylitol-runtime/src/agent/runtime/react/mod.rs",
 )

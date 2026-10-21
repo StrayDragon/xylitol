@@ -49,7 +49,7 @@
 
   @req:r1279
   规则: single-mux-loop
-    产品 TUI host 须以单一扇入模型同时等待终端输入、idle tick、可选 agent EventStream、可选 bang 完成与 bang 输出事件：生产主环与 harness 须调用同一共享 bang/主环事件臂（或单一 select 拓扑）；不得保留与共享入口分叉的第三套 bang Esc select；bang 进行中 Esc 须仍可达 Driver（或等价）abort 并走取消说明；bash 输出事件（session/bash_output）到达 须仅标记 dirty 并在 Tick 或 BangDone 时按需渲染，不得每事件强制全屏重绘；进行中的 bang 须仍可 poll agent EventStream（不得 bang-only 饿死 agent）。
+    产品 TUI host 须以单一扇入模型同时等待终端输入、idle tick、可选 agent EventStream、可选 bang 完成与 bang 输出事件：生产主环与 harness 须调用同一共享 bang/主环事件臂（或单一 select 拓扑）；不得保留与共享入口分叉的第三套 bang Esc select；bang 进行中 Esc 须仍可达 Driver（或等价）abort 并走取消说明；bash 输出事件（bash/output）到达 须仅标记 dirty 并在 Tick 或 BangDone 时按需渲染，不得每事件强制全屏重绘；进行中的 bang 须仍可 poll agent EventStream（不得 bang-only 饿死 agent）。
 
     场景: bangEsc单一循环
       假如 交互 bang 正在运行且驱动为 ScriptedDriver

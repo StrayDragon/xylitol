@@ -1,39 +1,36 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures::StreamExt;
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use salvo::conn::tcp::TcpAcceptor;
 use salvo::http::StatusCode;
 use salvo::prelude::*;
 use salvo::server::ServerHandle;
 use salvo::websocket::{Message, WebSocket, WebSocketUpgrade};
 use tokio::sync::mpsc;
-use xylitol_protocol::RpcMessage;
+use xylitol_protocol::Notification;
 
+use crate::occupancy::downlink_text;
 use crate::registration::{self, Registration};
+use crate::wire::{CONTENT_TYPE, MAX_BODY_BYTES, Reply};
 
 pub const MUX_CHAN_CAP: usize = 16_384;
 
-pub const CONTENT_TYPE: &str = "application/x-fory-v3";
+const WS_UNSUPPORTED_DATA: u16 = 1003;
 
-pub type MuxSink = mpsc::Sender<RpcMessage>;
+pub type MuxSink = mpsc::Sender<Notification>;
 
 #[async_trait]
 pub trait OccupiedHost: Send + Sync + 'static {
     fn is_shutting_down(&self) -> bool;
     fn mark_shutting_down(&self);
     async fn register_unbound_mux(&self, tx: MuxSink);
-    async fn handle_uplink(self: Arc<Self>, bytes: &[u8]) -> Result<Vec<u8>, ()>;
-    fn encode_downlink(&self, method: &str, payload: serde_json::Value) -> Result<Vec<u8>, String>;
+    async fn dispatch_text(self: Arc<Self>, body: &[u8]) -> Reply;
     async fn prune_mux(self: Arc<Self>, clean_close: bool);
-}
-
-pub fn looks_like_fory_envelope(bytes: &[u8]) -> bool {
-    bytes.first() == Some(&0x01)
 }
 
 #[derive(Clone, Debug)]
@@ -353,32 +350,20 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         res.status_code(StatusCode::INTERNAL_SERVER_ERROR);
         return;
     };
-    let bytes = match req.payload().await {
-        Ok(bytes) => bytes,
-        Err(_) => {
-            illegal_envelope(res);
-            return;
-        }
+    let reply = match req.payload_with_max_size(MAX_BODY_BYTES).await {
+        Ok(body) => host.dispatch_text(body).await,
+        Err(salvo::http::ParseError::PayloadTooLarge) => Reply::too_large(),
+        Err(_) => Reply::unreadable(),
     };
-    if !looks_like_fory_envelope(bytes) {
-        illegal_envelope(res);
-        return;
-    }
-    match host.handle_uplink(bytes).await {
-        Ok(frame) => {
-            res.status_code(StatusCode::OK);
-            let _ = res.add_header("Content-Type", CONTENT_TYPE, true);
-            res.body(frame);
-        }
-        Err(_) => illegal_envelope(res),
-    }
+    write_reply(res, &reply);
 }
 
-fn illegal_envelope(res: &mut Response) {
-    res.status_code(StatusCode::BAD_REQUEST);
-    res.render(Json(serde_json::json!({
-        "error": "illegal envelope"
-    })));
+fn write_reply(res: &mut Response, reply: &Reply) {
+    res.status_code(reply.status());
+    if let Some(body) = reply.body() {
+        let _ = res.add_header("content-type", CONTENT_TYPE, true);
+        res.body(body.into_bytes());
+    }
 }
 
 #[handler]
@@ -395,6 +380,7 @@ async fn mux_upgrade(
     };
     WebSocketUpgrade::new()
         .check_origin(mux_origin_allowed)
+        .max_message_size(MAX_BODY_BYTES)
         .upgrade(req, res, move |ws| handle_mux(ws, host))
         .await
 }
@@ -415,72 +401,100 @@ fn mux_origin_allowed(origin: Option<&str>) -> bool {
 }
 
 async fn handle_mux(ws: WebSocket, host: Arc<dyn OccupiedHost>) {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    let (sink, stream) = ws.split();
+    serve_mux(host, stream, sink).await;
+}
 
-    use futures::SinkExt;
-    let (mut sink, mut stream) = ws.split();
-    let (tx, mut rx) = mpsc::channel::<RpcMessage>(MUX_CHAN_CAP);
-    let (bin_tx, mut bin_rx) = mpsc::channel::<Vec<u8>>(MUX_CHAN_CAP);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FrameKind {
+    Text,
+    Unsupported,
+    Control,
+}
+
+fn frame_kind(frame: &Message) -> FrameKind {
+    if frame.is_text() {
+        FrameKind::Text
+    } else if frame.is_binary() {
+        FrameKind::Unsupported
+    } else {
+        FrameKind::Control
+    }
+}
+
+async fn serve_mux<S, K>(host: Arc<dyn OccupiedHost>, mut inbound: S, mut outbound: K)
+where
+    S: Stream<Item = Result<Message, salvo::Error>> + Unpin,
+    K: Sink<Message> + Unpin,
+{
+    let (tx, mut rx) = mpsc::channel::<Notification>(MUX_CHAN_CAP);
+    let (reply_tx, mut reply_rx) = mpsc::channel::<String>(MUX_CHAN_CAP);
     host.register_unbound_mux(tx).await;
     let clean_close = AtomicBool::new(false);
+    let unsupported = AtomicBool::new(false);
 
     let send_loop = async {
         loop {
             tokio::select! {
-                msg = rx.recv() => {
-                    let Some(msg) = msg else { break };
-                    let RpcMessage::ServerRequest { method, payload, .. } = &msg else {
-                        continue;
-                    };
-                    match host.encode_downlink(method, payload.clone()) {
-                        Ok(bytes) => {
-                            if sink.send(Message::binary(bytes)).await.is_err() {
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            log::warn!(target: "xylitol::server",
-                                "v3 downlink unmapped method={method} skipped: {e}");
-                        }
+                note = rx.recv() => {
+                    let Some(note) = note else { break };
+                    if outbound.send(Message::text(downlink_text(&note))).await.is_err() {
+                        break;
                     }
                 }
-                bin = bin_rx.recv() => {
-                    let Some(frame) = bin else { break };
-                    if sink.send(Message::binary(frame)).await.is_err() {
+                text = reply_rx.recv() => {
+                    let Some(text) = text else { break };
+                    if outbound.send(Message::text(text)).await.is_err() {
                         break;
                     }
                 }
             }
         }
     };
+
     let recv_loop = async {
-        while let Some(item) = stream.next().await {
-            let Ok(msg) = item else {
+        while let Some(item) = inbound.next().await {
+            let Ok(frame) = item else {
                 break;
             };
-            if msg.is_close() {
+            if frame.is_close() {
                 clean_close.store(true, Ordering::SeqCst);
                 break;
             }
-            if msg.is_text() {
-                continue;
-            }
-            if !msg.is_binary() {
-                continue;
-            }
-            match host.clone().handle_uplink(msg.as_bytes()).await {
-                Ok(frame) => {
-                    if bin_tx.send(frame).await.is_err() {
+            match frame_kind(&frame) {
+                FrameKind::Text => {
+                    let reply = host.clone().dispatch_text(frame.as_bytes()).await;
+                    let Some(text) = reply.body() else {
+                        continue;
+                    };
+                    if reply_tx.send(text).await.is_err() {
                         break;
                     }
                 }
-                Err(_) => break,
+                FrameKind::Unsupported => {
+                    unsupported.store(true, Ordering::SeqCst);
+                    break;
+                }
+                FrameKind::Control => {}
             }
         }
     };
+
     tokio::select! {
         _ = send_loop => {}
         _ = recv_loop => {}
+    }
+
+    if unsupported.load(Ordering::SeqCst) {
+        while let Ok(text) = reply_rx.try_recv() {
+            if outbound.send(Message::text(text)).await.is_err() {
+                break;
+            }
+        }
+        let _ = outbound
+            .send(Message::close_with(WS_UNSUPPORTED_DATA, "unsupported data"))
+            .await;
+        let _ = outbound.close().await;
     }
     host.prune_mux(clean_close.load(Ordering::SeqCst)).await;
 }
@@ -488,25 +502,19 @@ async fn handle_mux(ws: WebSocket, host: Arc<dyn OccupiedHost>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::AtomicUsize;
 
+    use futures::channel::mpsc as futures_mpsc;
     use salvo::test::{ResponseExt, TestClient};
-    use xylitol_protocol::PROTOCOL_VERSION;
-    use xylitol_protocol::WIRE_FORMAT_FORY_V3;
-    use xylitol_protocol::v3::{
-        ClientRequest, Describe, DescribeResult, Frame, Request, ResponsePayload, ServerResponse,
-    };
+    use serde_json::{Value, json};
+    use xylitol_protocol::message::METHOD_NOT_FOUND;
 
+    #[derive(Default)]
     struct FakeHost {
         shutting_down: AtomicBool,
-    }
-
-    impl FakeHost {
-        fn ready() -> Arc<dyn OccupiedHost> {
-            Arc::new(Self {
-                shutting_down: AtomicBool::new(false),
-            })
-        }
+        muxes: std::sync::Mutex<Vec<MuxSink>>,
+        dispatched: AtomicUsize,
+        last_prune: std::sync::Mutex<Option<bool>>,
     }
 
     #[async_trait]
@@ -519,46 +527,89 @@ mod tests {
             self.shutting_down.store(true, Ordering::Relaxed);
         }
 
-        async fn register_unbound_mux(&self, _tx: MuxSink) {}
+        async fn register_unbound_mux(&self, tx: MuxSink) {
+            self.muxes.lock().expect("muxes").push(tx);
+        }
 
-        async fn handle_uplink(self: Arc<Self>, bytes: &[u8]) -> Result<Vec<u8>, ()> {
-            let frame = Frame::from_bytes(bytes).map_err(|_| ())?;
-            let Frame::ClientRequest(req) = frame else {
-                return Err(());
-            };
-            let payload = match req.request {
-                Request::Describe(_) => Some(ResponsePayload::DescribeResult(DescribeResult {
-                    protocol: PROTOCOL_VERSION,
-                    formats: vec![WIRE_FORMAT_FORY_V3.into()],
-                })),
-                _ => None,
-            };
-            Frame::ServerResponse(ServerResponse {
-                rpc_id: req.rpc_id,
-                ok: true,
-                error: None,
-                payload,
-                writer_token: None,
+        async fn dispatch_text(self: Arc<Self>, body: &[u8]) -> Reply {
+            let dispatched = &self.dispatched;
+            crate::occupancy::respond_to_body(body, |req| {
+                dispatched.fetch_add(1, Ordering::SeqCst);
+                std::future::ready(fake_response(req))
             })
-            .to_bytes()
-            .map_err(|_| ())
+            .await
         }
 
-        fn encode_downlink(
-            &self,
-            _method: &str,
-            _payload: serde_json::Value,
-        ) -> Result<Vec<u8>, String> {
-            Err("unmapped".into())
+        async fn prune_mux(self: Arc<Self>, clean_close: bool) {
+            *self.last_prune.lock().expect("prune") = Some(clean_close);
         }
+    }
 
-        async fn prune_mux(self: Arc<Self>, _clean_close: bool) {}
+    fn fake_response(req: xylitol_protocol::Request) -> xylitol_protocol::Response {
+        let outcome = if req.method == "host.describe" {
+            xylitol_protocol::Outcome::Result(json!({
+                "protocol": xylitol_protocol::PROTOCOL_VERSION,
+                "formats": [xylitol_protocol::WIRE_FORMAT_JSONRPC],
+            }))
+        } else {
+            xylitol_protocol::Outcome::Error(xylitol_protocol::ErrorObject::new(
+                METHOD_NOT_FOUND,
+                "Method not found",
+                "unregistered_method",
+            ))
+        };
+        xylitol_protocol::Response {
+            id: Some(req.id),
+            outcome,
+        }
+    }
+
+    fn describe_request(id: &str) -> String {
+        json!({"jsonrpc": "2.0", "id": id, "method": "host.describe", "params": {}}).to_string()
+    }
+
+    fn service(host: &Arc<FakeHost>) -> Service {
+        let gateway = Gateway::starting();
+        gateway.set_host(host.clone());
+        Service::new(router(gateway))
+    }
+
+    fn json_of(frame: &Message) -> Value {
+        serde_json::from_str(frame.as_str().expect("text frame")).expect("json frame")
+    }
+
+    async fn next_frame(rx: &mut futures_mpsc::UnboundedReceiver<Message>) -> Message {
+        tokio::time::timeout(Duration::from_secs(5), rx.next())
+            .await
+            .expect("frame within 5s")
+            .expect("connection still open")
+    }
+
+    struct WsHarness {
+        host: Arc<FakeHost>,
+        to_server: futures_mpsc::UnboundedSender<Result<Message, salvo::Error>>,
+        from_server: futures_mpsc::UnboundedReceiver<Message>,
+        task: tokio::task::JoinHandle<()>,
+    }
+
+    fn ws_harness() -> WsHarness {
+        let host = Arc::new(FakeHost::default());
+        let (to_server, inbound) = futures_mpsc::unbounded();
+        let (outbound, from_server) = futures_mpsc::unbounded();
+        let dyn_host: Arc<dyn OccupiedHost> = host.clone();
+        let task = tokio::spawn(serve_mux(dyn_host, inbound, outbound));
+        WsHarness {
+            host,
+            to_server,
+            from_server,
+            task,
+        }
     }
 
     #[tokio::test]
     async fn healthz_ok_json() {
         let gateway = Gateway::starting();
-        gateway.set_host(FakeHost::ready());
+        gateway.set_host(Arc::new(FakeHost::default()));
         let service = Service::new(router(gateway));
         let mut resp = TestClient::get("http://127.0.0.1:0/healthz")
             .send(&service)
@@ -569,64 +620,140 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn post_binary_describe_v3() {
-        let gateway = Gateway::starting();
-        gateway.set_host(FakeHost::ready());
-        let service = Service::new(router(gateway));
-
-        let uplink = Frame::ClientRequest(ClientRequest {
-            rpc_id: 21,
-            request: Request::Describe(Describe {}),
-            writer_token: None,
-        })
-        .to_bytes()
-        .unwrap();
-
+    async fn post_describe_answers_200_json_with_the_request_id() {
+        let host = Arc::new(FakeHost::default());
+        let service = service(&host);
         let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
-            .add_header("Content-Type", CONTENT_TYPE, true)
-            .body(uplink)
+            .json(&json!({"jsonrpc": "2.0", "id": "d1", "method": "host.describe", "params": {}}))
             .send(&service)
             .await;
         assert_eq!(resp.status_code.unwrap(), StatusCode::OK);
-
-        let body = resp.take_bytes(None).await.unwrap();
-        let frame = Frame::from_bytes(&body).expect("v3 response frame");
-        let Frame::ServerResponse(resp) = frame else {
-            panic!("expected ServerResponse, got {frame:?}")
-        };
-        assert_eq!(resp.rpc_id, 21);
-        assert!(resp.ok);
-        match resp.payload {
-            Some(ResponsePayload::DescribeResult(d)) => {
-                assert_eq!(d.protocol, PROTOCOL_VERSION);
-                assert_eq!(d.formats, vec!["fory-v3".to_string()], "{d:?}");
-            }
-            other => panic!("expected DescribeResult, got {other:?}"),
-        }
+        assert_eq!(
+            resp.headers()
+                .get("content-type")
+                .and_then(|v| v.to_str().ok()),
+            Some("application/json")
+        );
+        let v: Value = serde_json::from_str(&resp.take_string().await.unwrap()).unwrap();
+        assert_eq!(v["jsonrpc"], "2.0");
+        assert_eq!(v["id"], "d1");
+        assert_eq!(v["result"]["protocol"], xylitol_protocol::PROTOCOL_VERSION);
+        assert_eq!(v["result"]["formats"], json!(["jsonrpc"]));
     }
 
     #[tokio::test]
-    async fn json_rpc_text_is_illegal_envelope() {
-        let gateway = Gateway::starting();
-        gateway.set_host(FakeHost::ready());
-        let service = Service::new(router(gateway));
-        let body = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": "r1",
-            "method": "host.describe",
-            "params": {}
-        });
-        let resp = TestClient::post("http://127.0.0.1:0/rpc")
-            .json(&body)
+    async fn post_notification_is_200_with_empty_body_and_never_runs() {
+        let host = Arc::new(FakeHost::default());
+        let service = service(&host);
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+            .json(&json!({"jsonrpc": "2.0", "method": "host.describe"}))
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::OK);
+        assert_eq!(resp.take_string().await.unwrap(), "");
+        assert_eq!(host.dispatched.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn post_batch_answers_in_order_and_skips_notifications() {
+        let host = Arc::new(FakeHost::default());
+        let service = service(&host);
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+            .json(&json!([
+                {"jsonrpc": "2.0", "id": 1, "method": "host.describe"},
+                {"jsonrpc": "2.0", "method": "host.describe"},
+                {"jsonrpc": "2.0", "id": "x", "method": "no_such_method"}
+            ]))
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::OK);
+        let v: Value = serde_json::from_str(&resp.take_string().await.unwrap()).unwrap();
+        assert_eq!(v.as_array().map(Vec::len), Some(2), "{v}");
+        assert_eq!(v[0]["id"], 1);
+        assert!(v[0]["result"].is_object(), "{v}");
+        assert_eq!(v[1]["id"], "x");
+        assert_eq!(v[1]["error"]["code"], -32601);
+        assert_eq!(v[1]["error"]["data"]["code"], "unregistered_method");
+        assert_eq!(host.dispatched.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn post_empty_batch_is_400_invalid_request() {
+        let host = Arc::new(FakeHost::default());
+        let service = service(&host);
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+            .raw_json("[]")
             .send(&service)
             .await;
         assert_eq!(resp.status_code.unwrap(), StatusCode::BAD_REQUEST);
+        let v: Value = serde_json::from_str(&resp.take_string().await.unwrap()).unwrap();
+        assert_eq!(v["error"]["code"], -32600);
+        assert_eq!(host.dispatched.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn post_unparseable_body_is_400_with_null_id() {
+        let host = Arc::new(FakeHost::default());
+        let service = service(&host);
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+            .bytes(vec![0x01, 0xff, 0x22])
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::BAD_REQUEST);
+        let v: Value = serde_json::from_str(&resp.take_string().await.unwrap()).unwrap();
+        assert_eq!(v["id"], Value::Null);
+        assert_eq!(v["error"]["code"], -32700);
+    }
+
+    #[tokio::test]
+    async fn post_response_only_body_is_400_with_id_echoed() {
+        let host = Arc::new(FakeHost::default());
+        let service = service(&host);
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+            .raw_json(r#"{"jsonrpc":"2.0","id":"r9","result":{}}"#)
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::BAD_REQUEST);
+        let v: Value = serde_json::from_str(&resp.take_string().await.unwrap()).unwrap();
+        assert_eq!(v["id"], "r9");
+        assert_eq!(host.dispatched.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn post_oversized_body_is_413_with_payload_too_large_envelope() {
+        let host = Arc::new(FakeHost::default());
+        let service = service(&host);
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+            .bytes(vec![b' '; MAX_BODY_BYTES + 1])
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::PAYLOAD_TOO_LARGE);
+        let v: Value = serde_json::from_str(&resp.take_string().await.unwrap()).unwrap();
+        assert_eq!(v["id"], Value::Null);
+        assert_eq!(v["error"]["code"], -32600);
+        assert_eq!(v["error"]["message"], "payload too large");
+        assert_eq!(v["error"]["data"]["code"], "payload_too_large");
+        assert_eq!(host.dispatched.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn unregistered_method_is_a_200_business_error() {
+        let host = Arc::new(FakeHost::default());
+        let service = service(&host);
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+            .json(&json!({"jsonrpc": "2.0", "id": "u1", "method": "no_such_method"}))
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::OK);
+        let v: Value = serde_json::from_str(&resp.take_string().await.unwrap()).unwrap();
+        assert_eq!(v["id"], "u1");
+        assert_eq!(v["error"]["code"], -32601);
     }
 
     #[tokio::test]
     async fn openapi_and_docs_are_absent() {
         let gateway = Gateway::starting();
-        gateway.set_host(FakeHost::ready());
+        gateway.set_host(Arc::new(FakeHost::default()));
         let service = Service::new(router(gateway));
         for path in ["/openapi.json", "/docs"] {
             let resp = TestClient::get(format!("http://127.0.0.1:0{path}"))
@@ -655,7 +782,7 @@ mod tests {
             "{body}"
         );
 
-        let body = serde_json::json!({
+        let body = json!({
             "jsonrpc": "2.0",
             "id": "r-window",
             "method": "host.describe",
@@ -671,7 +798,7 @@ mod tests {
             "unary must be gated in the window"
         );
 
-        gateway.set_host(FakeHost::ready());
+        gateway.set_host(Arc::new(FakeHost::default()));
         let resp = TestClient::get("http://127.0.0.1:0/healthz")
             .send(&service)
             .await;
@@ -688,18 +815,121 @@ mod tests {
         assert!(!mux_origin_allowed(Some("null")));
     }
 
-    #[tokio::test]
-    async fn v1_rest_is_not_mounted() {
-        let gateway = Gateway::starting();
-        gateway.set_host(FakeHost::ready());
-        let service = Service::new(router(gateway));
-        let resp = TestClient::post("http://127.0.0.1:0/api/v1/session/x/run")
-            .send(&service)
-            .await;
-        let code = resp.status_code.unwrap();
-        assert!(
-            code == StatusCode::NOT_FOUND || code == StatusCode::BAD_REQUEST,
-            "REST must not be a product path, got {code}"
+    #[test]
+    fn frame_kinds_split_text_binary_and_control() {
+        assert_eq!(frame_kind(&Message::text("{}")), FrameKind::Text);
+        assert_eq!(
+            frame_kind(&Message::binary(vec![1u8])),
+            FrameKind::Unsupported
         );
+        assert_eq!(
+            frame_kind(&Message::ping(Vec::<u8>::new())),
+            FrameKind::Control
+        );
+        assert_eq!(
+            frame_kind(&Message::pong(Vec::<u8>::new())),
+            FrameKind::Control
+        );
+    }
+
+    #[tokio::test]
+    async fn ws_text_request_is_answered_with_a_text_frame() {
+        let mut h = ws_harness();
+        h.to_server
+            .unbounded_send(Ok(Message::text(describe_request("w1"))))
+            .unwrap();
+        let frame = next_frame(&mut h.from_server).await;
+        assert!(frame.is_text());
+        let v = json_of(&frame);
+        assert_eq!(v["id"], "w1");
+        assert_eq!(v["result"]["protocol"], xylitol_protocol::PROTOCOL_VERSION);
+        drop(h.to_server);
+        h.task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn ws_parse_error_is_a_text_frame_and_the_connection_stays_open() {
+        let mut h = ws_harness();
+        h.to_server.unbounded_send(Ok(Message::text("{"))).unwrap();
+        let err = json_of(&next_frame(&mut h.from_server).await);
+        assert_eq!(err["id"], Value::Null);
+        assert_eq!(err["error"]["code"], -32700);
+
+        h.to_server
+            .unbounded_send(Ok(Message::text(describe_request("after"))))
+            .unwrap();
+        let ok = json_of(&next_frame(&mut h.from_server).await);
+        assert_eq!(ok["id"], "after");
+        drop(h.to_server);
+        h.task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn ws_notification_text_gets_no_frame() {
+        let mut h = ws_harness();
+        h.to_server
+            .unbounded_send(Ok(Message::text(
+                json!({"jsonrpc": "2.0", "method": "host.describe"}).to_string(),
+            )))
+            .unwrap();
+        h.to_server
+            .unbounded_send(Ok(Message::text(describe_request("next"))))
+            .unwrap();
+        let first = json_of(&next_frame(&mut h.from_server).await);
+        assert_eq!(first["id"], "next", "notification must not produce a frame");
+        drop(h.to_server);
+        h.task.await.unwrap();
+        assert_eq!(h.host.dispatched.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn ws_binary_frame_closes_with_1003_and_executes_nothing() {
+        let mut h = ws_harness();
+        h.to_server
+            .unbounded_send(Ok(Message::binary(describe_request("bin").into_bytes())))
+            .unwrap();
+        let close = next_frame(&mut h.from_server).await;
+        assert_eq!(close.close_frame(), Some((1003, "unsupported data")));
+        assert!(
+            h.from_server.next().await.is_none(),
+            "socket ends after close"
+        );
+        h.task.await.unwrap();
+        assert_eq!(h.host.dispatched.load(Ordering::SeqCst), 0);
+        assert_eq!(*h.host.last_prune.lock().unwrap(), Some(false));
+    }
+
+    #[tokio::test]
+    async fn ws_downlink_notification_is_a_text_frame_without_id() {
+        let mut h = ws_harness();
+        h.to_server
+            .unbounded_send(Ok(Message::text(describe_request("sync"))))
+            .unwrap();
+        let _ = next_frame(&mut h.from_server).await;
+        let tx = h.host.muxes.lock().unwrap()[0].clone();
+        tx.send(Notification {
+            method: "session/resync_required".into(),
+            params: json!({"session_id": "s0"}),
+        })
+        .await
+        .unwrap();
+        let frame = next_frame(&mut h.from_server).await;
+        assert!(frame.is_text());
+        assert_eq!(
+            json_of(&frame),
+            json!({
+                "jsonrpc": "2.0",
+                "method": "session/resync_required",
+                "params": {"session_id": "s0"}
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn ws_close_frame_prunes_as_a_clean_close() {
+        let h = ws_harness();
+        h.to_server.unbounded_send(Ok(Message::close())).unwrap();
+        h.task.await.unwrap();
+        assert_eq!(*h.host.last_prune.lock().unwrap(), Some(true));
     }
 }

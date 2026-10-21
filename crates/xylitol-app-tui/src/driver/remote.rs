@@ -9,13 +9,13 @@ use serde_json::Value;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
-use crate::host_client::{HostClient, HostClientError, HttpWsClient};
-use crate::wire_event::FromWireEvent;
+use crate::host_client::json_rpc::{self, Downlink};
+use crate::host_client::{HostClient, HttpWsClient};
 use xylitol_plugin_sdk::XyBashResult;
 use xylitol_plugin_sdk::model::THINKING_OFF;
-use xylitol_protocol::Command;
-use xylitol_protocol::envelope::PROTOCOL_VERSION;
-use xylitol_protocol::{Event, RpcMessage};
+use xylitol_protocol::registry::{METHOD_HOST_DESCRIBE, METHOD_SUBSCRIBE};
+use xylitol_protocol::{Command, Notification};
+use xylitol_wire::{WireEventError, event_from_wire};
 
 use super::AttachObserve;
 use super::XyDriver;
@@ -26,6 +26,9 @@ use super::types::{
     ProjectTrustMode, ProjectTrustPersistReport, QueueStats, ReloadStepReport, RuntimeReloadReport,
     XyEvent,
 };
+
+#[cfg(test)]
+mod tests;
 
 pub type ReverseRpcNotify = Arc<dyn Fn(String, String, Value) + Send + Sync>;
 
@@ -145,18 +148,8 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
 }
 
 impl XyRemoteDriver<HttpWsClient> {
-    pub fn new_v3(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
-        Self::with_host(HttpWsClient::new(base_url).with_envelope(true), session_id)
-    }
-
     pub fn new(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
-        let session_id = session_id.into();
-        let session_id = if session_id.trim().is_empty() {
-            uuid::Uuid::new_v4().to_string()
-        } else {
-            session_id
-        };
-        Self::with_host(HttpWsClient::new(base_url).with_envelope(true), session_id)
+        Self::with_host(HttpWsClient::new(base_url), session_id)
     }
 
     pub fn host_client(&self) -> &HttpWsClient {
@@ -281,23 +274,31 @@ where
     }
 }
 
-async fn handle_frame<C>(ctx: &DownlinkCtx<C>, push_current: &impl Fn(XyEvent), frame: RpcMessage)
+async fn handle_frame<C>(ctx: &DownlinkCtx<C>, push_current: &impl Fn(XyEvent), note: Notification)
 where
     C: HostClient + Clone + 'static,
 {
+    let frame = match json_rpc::decode_downlink(note) {
+        Ok(Some(frame)) => frame,
+        Ok(None) => return,
+        Err(e) => {
+            log::warn!(target: "xylitol::tui", "downlink frame dropped: {e}");
+            return;
+        }
+    };
     match frame {
-        RpcMessage::ServerRequest {
-            method, payload, ..
-        } if method == "session/event" => {
-            if let Some(s) = payload.get("seq").and_then(Value::as_u64) {
-                ctx.last_seq.store(s, Ordering::SeqCst);
-            }
-            let event_val = payload.get("event").cloned().unwrap_or(payload);
-            let Ok(ev) = serde_json::from_value::<Event>(event_val) else {
-                return;
-            };
-            let Ok(agent_event) = XyEvent::from_wire_event(&ev) else {
-                return;
+        Downlink::SessionEvent(payload) => {
+            ctx.last_seq.store(payload.seq, Ordering::SeqCst);
+            let agent_event = match event_from_wire(&payload.event) {
+                Ok(ev) => ev,
+                Err(WireEventError::Unknown) => {
+                    log::warn!(target: "xylitol::tui", "session event skipped: unknown wire variant");
+                    return;
+                }
+                Err(e) => {
+                    log::error!(target: "xylitol::tui", "session event skipped: {e}");
+                    return;
+                }
             };
             if let XyEvent::QueueUpdate {
                 steer_count,
@@ -336,24 +337,14 @@ where
             }
             push_current(agent_event);
         }
-        RpcMessage::ServerRequest { method, .. } if method == "session/subscribed" => {
+        Downlink::SessionSubscribed(_) => {
             ctx.skip_cold_replay.store(false, Ordering::SeqCst);
         }
-        RpcMessage::ServerRequest {
-            method, payload, ..
-        } if method == "session/bash_output" => {
+        Downlink::BashOutput(payload) => {
             let chunk = xylitol_plugin_sdk::BashChunk {
-                bash_id: payload
-                    .get("bash_id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
-                seq: payload.get("seq").and_then(Value::as_u64).unwrap_or(0),
-                data: payload
-                    .get("data")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string(),
+                bash_id: payload.bash_id,
+                seq: payload.seq,
+                data: payload.data,
             };
             if let Ok(guard) = ctx.bash_run_sink.lock()
                 && let Some(sink) = guard.as_ref()
@@ -361,11 +352,8 @@ where
                 let _ = sink.tx.try_send(chunk);
             }
         }
-        RpcMessage::ServerRequest {
-            method, payload, ..
-        } if method == "session/resources" => {
-            let snap_val = payload.get("snapshot").cloned().unwrap_or(payload);
-            if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(snap_val) {
+        Downlink::SessionResources(payload) => {
+            if let Ok(snap) = serde_json::from_value::<LoadedResourcesSnapshot>(payload.snapshot) {
                 store_resources_snapshot(
                     &ctx.cached_skills,
                     &ctx.gate_notice_consumed,
@@ -376,13 +364,13 @@ where
                 );
             }
         }
-        RpcMessage::ServerRequest { method, .. } if method == "session/resync_required" => {
+        Downlink::SessionResyncRequired(_) => {
             ctx.last_seq.store(0, Ordering::SeqCst);
             ctx.resync_needed.store(true, Ordering::SeqCst);
             let _ = ctx
                 .host
                 .unary(
-                    "subscribe",
+                    METHOD_SUBSCRIBE,
                     serde_json::json!({
                         "session_id": ctx.session_id,
                         "last_seq": 0,
@@ -391,21 +379,15 @@ where
                 )
                 .await;
         }
-        RpcMessage::ServerRequest {
-            rpc_id,
+        Downlink::Interaction {
             method,
-            payload,
-        } if method == "approval/requested" || method == "question/requested" => {
-            let call_id = payload
-                .get("call_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or(rpc_id.as_str())
-                .to_string();
+            call_id,
+            params,
+        } => {
             if let Some(notify) = &ctx.reverse_rpc {
-                notify(call_id, method, payload);
+                notify(call_id, method.to_string(), params);
             }
         }
-        _ => {}
     }
 }
 
@@ -462,7 +444,7 @@ where
                 match ctx
                     .host
                     .unary(
-                        "subscribe",
+                        METHOD_SUBSCRIBE,
                         serde_json::json!({
                             "session_id": ctx.session_id,
                             "last_seq": seq,
@@ -519,7 +501,7 @@ where
                     None => return,
                 }
             }
-            Err(e) if matches!(e, HostClientError::ProtocolMismatch { .. }) => {
+            Err(e) if e.is_fatal_mismatch() => {
                 let msg = e.to_string();
                 if let Ok(mut slot) = ctx.fatal.lock() {
                     *slot = Some(msg.clone());
@@ -671,12 +653,14 @@ where
     }
 
     async fn check_host_protocol(&self) -> Result<(), XyDriverError> {
-        match self
+        let described = self
             .host
-            .unary("host.describe", serde_json::json!({}))
+            .unary(METHOD_HOST_DESCRIBE, serde_json::json!({}))
             .await
-        {
-            Err(e @ HostClientError::ProtocolMismatch { .. }) => {
+            .and_then(|result| json_rpc::check_describe(&result));
+        match described {
+            Ok(()) => Ok(()),
+            Err(e) if e.is_fatal_mismatch() => {
                 let msg = e.to_string();
                 if let Ok(mut slot) = self.fatal.lock() {
                     *slot = Some(msg.clone());
@@ -685,27 +669,6 @@ where
                 Err(XyDriverError::remote(msg))
             }
             Err(e) => Err(XyDriverError::remote(e.to_string())),
-            Ok(result) => {
-                let got = result
-                    .value
-                    .as_ref()
-                    .and_then(|v| v.get("protocol"))
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(0) as u32;
-                if got != PROTOCOL_VERSION {
-                    let err = HostClientError::ProtocolMismatch {
-                        got,
-                        expected: PROTOCOL_VERSION,
-                    };
-                    let msg = err.to_string();
-                    if let Ok(mut slot) = self.fatal.lock() {
-                        *slot = Some(msg.clone());
-                    }
-                    self.downlink.push(XyEvent::error_msg(msg.clone()));
-                    return Err(XyDriverError::remote(msg));
-                }
-                Ok(())
-            }
         }
     }
 
@@ -719,7 +682,11 @@ where
         if let Ok(mut slot) = self.fatal.lock() {
             *slot = None;
         }
-        let ctx = DownlinkCtx {
+        tokio::spawn(downlink_loop(self.downlink_ctx()));
+    }
+
+    fn downlink_ctx(&self) -> DownlinkCtx<C> {
+        DownlinkCtx {
             host: self.host.clone(),
             session_id: self.session_id.clone(),
             last_seq: self.last_seq.clone(),
@@ -744,8 +711,7 @@ where
             fatal: self.fatal.clone(),
             tunings: self.tunings.clone(),
             my_gen: self.downlink_gen.load(Ordering::SeqCst),
-        };
-        tokio::spawn(downlink_loop(ctx));
+        }
     }
 
     async fn wait_subscribed(&self) -> Result<(), XyDriverError> {

@@ -135,7 +135,7 @@
     应用面/bridge 对未识别 XyEvent 变体 须降级（日志），不得 panic。由 protocol 单元测试覆盖。
     场景: 未知队列类型降级
       当 对 QueueUpdate 事件做线协议序列化与反序列化往返
-      那么 队列计数保真且未知 type 解析为错误而非 panic
+      那么 队列计数保真且未知 type 落入 Unknown 而非 panic
 
   @req:r1032
   规则: defaults

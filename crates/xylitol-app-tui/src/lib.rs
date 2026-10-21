@@ -9,9 +9,6 @@ pub(crate) mod lag;
 pub mod product_commands;
 pub(crate) mod tool_display;
 pub(crate) mod utils;
-#[allow(dead_code)]
-pub(crate) mod v3_mapping;
-pub(crate) mod wire_event;
 
 pub const UNSET_MODEL_DISPLAY: &str = "NOT-SET";
 pub use activity_fold::scene::{SceneBuilder, SemanticDump};

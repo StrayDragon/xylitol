@@ -25,7 +25,7 @@ Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成�
 
 - **Trust / MCP**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP 配置驱动、未配置零装配。产品规则：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`；实现边界：`src/AGENTS.md`。
 - **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认 attach 本机 Host，未在听失败；Print 与库嵌入可同进程。端规则：`crates/xylitol-app-tui/src/AGENTS.md`；拓扑与线协议：`llmanspec/specs/protocol-app/`、`server-core/`。
-- **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（Command/Event 是载荷）。硬边界：`src/AGENTS.md`。
+- **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（JSON-RPC 2.0 文本：`POST /rpc` unary + `WS /rpc` 双向 text 帧；Command/Event 是载荷）。硬边界：`src/AGENTS.md`。
 - **跨端公共体验**（已开放端 Print / TUI / Host）：动作语义一套学习成本；细则 `llmanspec/specs/protocol-app/` 与 `user-experience/`。未开放端（gpui 等）见 GitHub feature request，不得写成现行必须。
 - 未兑现方向：GitHub Issues（roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)，FR 各一个；第三方插件 [#29](https://github.com/StrayDragon/xylitol/issues/29)）。文档落点：`xylitol-dev` skill `references/docs-loop.md`。
 - TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`llmanspec/specs/app-tui-fixed-zone/`（端约束见 `crates/xylitol-app-tui/src/AGENTS.md`）。
@@ -47,16 +47,17 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 | crate | 角色 |
 |---|---|
 | `xylitol-plugin-sdk` | 词表 + 端口 + 错误 + `rt` 再导出（插件作者只依赖这一包） |
-| `xylitol-protocol` | 四象限信封 + fory-v3。不认识端口，不认识 `XyEvent` |
+| `xylitol-protocol` | 四象限信封（JSON-RPC 2.0 文本）+ `PROTOCOL_VERSION`。不认识端口，不认识 `XyEvent` |
 | `xylitol-runtime` | 执行权威：`XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入。不依赖信封 |
 | `xylitol-kernel` | 进程内核：`Kernel::boot`、核心插件、Builtins、admit。`rutis-loader` 只在这里 |
-| `xylitol-serve` | 载体：监听 + `XyEvent` ↔ v3 mapping；Host profile 插件 |
+| `xylitol-serve` | 载体：监听 + JSON-RPC 分派；Host profile 插件 |
+| `xylitol-wire` | `XyEvent` ↔ wire `Event` 的唯一映射（依赖 protocol + sdk） |
 | `xylitol-official-plugin-*` | 官方可替换插件（session / compaction / provider-* / tools / mcp / hooks / config / obs）。不是市场，不是 dylib |
-| `xylitol-app-tui` / `xylitol-app-print` | 产品端。TUI 只认信封；Print 同进程直调，不编 fory |
+| `xylitol-app-tui` / `xylitol-app-print` | 产品端。TUI 只认线协议（经 `xylitol-wire` 映射）；Print 同进程直调，不编线协议 |
 | `xylitol-tui` | 通用 TUI 引擎（零引用产品） |
 | 根包 `xylitol` | argv + profile 选择。默认接线经 kernel |
 
-`plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。runtime → sdk。插件 → sdk。kernel → runtime + 插件 + sdk + loader。serve → runtime + protocol。app-tui → protocol + tui。根包 → kernel + 端。插件之间不得 `use`（只经服务 / 事件）。
+`plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。`wire` → protocol + sdk。runtime → sdk。插件 → sdk。kernel → runtime + 插件 + sdk + loader + protocol。serve → runtime + protocol + wire。app-tui → protocol + wire + tui。根包 → kernel + 端。插件之间不得 `use`（只经服务 / 事件）。
 
 开箱 vs 配置后置：产品 TUI 默认 attach 本机监听（`server` feature 可关，default 仍开）。MCP 有配置才装配（`mcp` feature 可关，default 仍开）。`otel` feature default 开，配置默认 none。
 
@@ -68,6 +69,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 | 命名：snake_case 模块与函数，PascalCase 类型 | 自创命名风格 |
 | 模块边界贴合目标 crate 与 crate 内分层；能内联不套 wrapper | 为对称性加 wrapper；加无要求的兼容 shim |
 | 优先穷举类型 / 注册表；公共形状让 rust-analyzer 能跳转 | 字符串 magics；跳转不到的公共形状 |
+| 线协议标识符按语义命名（方法名、事件 `type`、类型名）；协议版本只经 `PROTOCOL_VERSION` 与 `host.describe` 协商 | 标识符带版本段（`new_v3`、`V4`、`*_v3` 等）；为旧名保留别名或双解析路径（由 `just qa` 的版本命名闸卡住） |
 | `Xy*` 库契约与外部库包装准则：`src/AGENTS.md`“三层契约与 `Xy*`” | 凭感觉决定包不包一层 |
 
 ## Provider 交付范围
@@ -81,7 +83,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 - **prek 与 `just qa` 正交**：prek hook 只承担文本 / 元数据卫生与 commit-msg 规约；cargo 级门禁（fmt / clippy / test / doc-test）**不得**拆成独立 hook 进 prek；push 一致性由 CI 兜底。
 - 探查：`cargo run -- --help`；文档构建与检查：`just doc` / `just qa-doc-check`。
 - 一次性探针只落 `scripts/lab_*.py`（或包 examples `lab_*`）并直接 python 调用，**不**新增 just recipe；重复使用或需流程化才升 skill / 门禁。引擎 demo 入口在 `crates/xylitol-tui/justfile`。
-- 门禁组成（quiet/verbose、真实网关 lab、复杂度、元门禁、注释只读闸）细则：`xylitol-dev` skill `references/qa-gates.md`。
+- 门禁组成（quiet/verbose、真实网关 lab、复杂度、元门禁、注释只读闸、版本命名闸）细则：`xylitol-dev` skill `references/qa-gates.md`。
 - **注释闸（uncomment，只读）**：策略见根 `.uncomment.toml`；`just qa` 经 `scripts/check_uncomment.py` 仅跑 `uncomment --check --changed-lines`（不删注释、不 `--fix`）。默认移除行内说明与 `///`/`//!`/docstring（`remove_docs = true`）；保留 TODO/FIXME、工具指令与 `~keep`。追溯以 specs/提交信息为 SSOT，**改动行**上不得新增可移除注释。跳过：`XYLITOL_SKIP_UNCOMMENT=1`。
 
 ### 试验 / 真实网关验证命名（`lab_`）

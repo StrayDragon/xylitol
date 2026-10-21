@@ -916,8 +916,10 @@ fn w_atb15_roundtrip(bridge_bdd: &BridgeBdd) {
         name: "read".into(),
         args: serde_json::json!({ "path": "real/path.rs" }),
     };
-    let wire = serde_json::to_string(&event).expect("serialize");
-    let event: XyEvent = serde_json::from_str(&wire).expect("deserialize");
+    let wire_event = xylitol_wire::event_to_wire(&event).expect("project to wire");
+    let text = serde_json::to_string(&wire_event).expect("serialize");
+    let decoded: xylitol_protocol::Event = serde_json::from_str(&text).expect("deserialize");
+    let event = xylitol_wire::event_from_wire(&decoded).expect("project back to domain");
     apply(bridge_bdd, event);
 }
 

@@ -37,6 +37,7 @@ API 名、调用序列、参数流水账等易腐细节一律以代码、skill �
 | 进度 / 体量自述 | 「本模块 900 行，待拆」 | 软信号 `just complexity` / `just crap`；硬门禁见 `src/AGENTS.md` |
 | 跨层重复 | 子目录复述父级依赖表 | 「依赖方向见 `src/AGENTS.md`；本端仅例外：…」 |
 | 行为契约搬运 | 把 spec 场景抄进正文 | 「场景真源 `llmanspec/specs/<capability>/`」 |
+| 版本段写进正文 | 「`v3` 映射」「`V4` 方法名」 | 「线协议映射」；协议版本只见 `PROTOCOL_VERSION` 与 `host.describe` 协商（版本段进标识符由命名闸卡住，见 `references/qa-gates.md`） |
 
 ## 偏好
 

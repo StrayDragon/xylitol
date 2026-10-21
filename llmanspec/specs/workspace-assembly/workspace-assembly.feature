@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: 装配官方插件时，未配置的 MCP 与 hooks 不得连外进程。ReAct 循环留在执行权威，作为不可配置核心插件。跨端仍走信封 fory-v3。仅 plugin-sdk 与 kernel 可声明 rutis；仅 kernel 可声明 rutis-loader。
+# purpose: 装配官方插件时，未配置的 MCP 与 hooks 不得连外进程。ReAct 循环留在执行权威，作为不可配置核心插件。跨端仍走 JSON-RPC 2.0 文本信封（wire 格式 jsonrpc）。仅 plugin-sdk 与 kernel 可声明 rutis；仅 kernel 可声明 rutis-loader。
 # scope-note: 不写会话实例化、hooks 改走事件总线、热路径耗时。叶子插件经装配适配层使用 rutis-bridge 不在本文件范围。不钉 crate 路径与类型名。未配置 MCP、信封宣告、无会话跑一轮 与既有 capability 同观察点，本文件从装配视角再锁。
 
 功能: workspace-assembly
@@ -28,10 +28,10 @@
 
   @req:r2913
   规则: 产品端与 Host 之间走信封
-    产品端与 Host 之间必须走信封。host.describe 必须宣告 fory-v3。不得把这一通道换成 rutis-bridge。
-    场景: host.describe 宣告 fory-v3
+    产品端与 Host 之间必须走 JSON-RPC 2.0 文本信封。host.describe 必须宣告 jsonrpc 格式。不得把这一通道换成 rutis-bridge。
+    场景: host.describe 宣告 jsonrpc
       当 服务端在空闲端口上启动
-      那么 host.describe 的 result 携带 wire 格式集合且含 fory-v3
+      那么 host.describe 的 result 携带 wire 格式集合且含 jsonrpc
 
   @req:r2914
   规则: ReAct 循环留在执行权威

@@ -4,18 +4,18 @@ version = "0.0.0-pre"
 edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
-description = "HTTP/WS carrier and XyEvent ↔ v3 mapping"
+description = "HTTP/WS carrier for the JSON-RPC product wire"
 repository = "https://github.com/StrayDragon/xylitol"
 publish = false
 
 [dependencies]
-xylitol-runtime = { workspace = true }
-xylitol-plugin-sdk = { workspace = true }
-xylitol-protocol = { workspace = true }
-log = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["unbounded_depth"] }
-thiserror = { workspace = true }
+xylitol-runtime = { workspace = true, optional = true }
+xylitol-plugin-sdk = { workspace = true, optional = true }
+xylitol-protocol = { workspace = true, optional = true }
+xylitol-wire = { workspace = true, optional = true }
+log = { workspace = true, optional = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+serde_json = { workspace = true, features = ["unbounded_depth"], optional = true }
 async-trait = { workspace = true, optional = true }
 dirs = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
@@ -25,10 +25,22 @@ tokio-util = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true, features = ["v4"] }
 
-[dev-dependencies]
-fory = { workspace = true }
-strum = { workspace = true, features = ["derive"] }
-
 [features]
 default = ["listen"]
-listen = ["dep:async-trait", "dep:dirs", "dep:futures", "dep:salvo", "dep:tokio", "dep:tokio-util", "dep:url", "dep:uuid"]
+listen = [
+    "dep:async-trait",
+    "dep:dirs",
+    "dep:futures",
+    "dep:log",
+    "dep:salvo",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:url",
+    "dep:uuid",
+    "dep:xylitol-plugin-sdk",
+    "dep:xylitol-protocol",
+    "dep:xylitol-runtime",
+    "dep:xylitol-wire",
+]
