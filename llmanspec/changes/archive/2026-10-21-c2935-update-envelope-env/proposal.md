@@ -1,8 +1,10 @@
 ---
 depends_on: []
 title: 信封格式开关环境变量改为 XYLITOL_ENVELOPE_V3
-needs_specs_change: true
+needs_specs_change: false
 branch: sdd/c2935-update-envelope-env
+base_branch: main
+base_sha: 0e498b2cc444bff0aed1559c894d48deb3df195d
 ---
 
 # 信封格式开关环境变量改为 XYLITOL_ENVELOPE_V3
