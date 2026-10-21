@@ -16,8 +16,8 @@ preserve_patterns = [
   "NOTE:",
   "WORKAROUND",
   "NOSONAR",
-  # Internal ids (substring match on comment text; uncomment has no regex here):
-  # - change / capability c#### — any decimal id contains some c{d}, d in 0..9
+  # ~keep
+  # Internal ids (substring match; no regex): c#### via c0..c9; r####; ath## via ath0..ath9.
   # - requirement r#### in trace comments (e.g. r1035/r1827)
   # - acceptance ath## (e.g. ath37) — ath{d} avoids matching plain "path"
   "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9",
@@ -25,6 +25,7 @@ preserve_patterns = [
   "ath0", "ath1", "ath2", "ath3", "ath4", "ath5", "ath6", "ath7", "ath8", "ath9",
 ]
 exclude = [
+  ".uncomment.toml",
   "vendor/**",
   "target/**",
   ".tools/**",

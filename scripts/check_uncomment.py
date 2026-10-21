@@ -25,8 +25,23 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-# Guardrail: `.uncomment.toml` must keep digit tails so c#### / r#### / ath## trace
-# comments stay preserved (uncomment uses substring `preserve_patterns`, not regex).
+# c0: repo scan roots only (do not pass `.` — avoids walks outside the tree).
+_SCAN_PATHS = (
+    "src",
+    "crates",
+    "plugins",
+    "scripts",
+    "tests",
+    "llmanspec",
+    "configs",
+    ".github",
+    "Cargo.toml",
+    "justfile",
+    "AGENTS.md",
+    "README.md",
+)
+
+# ~keep: guardrail — `.uncomment.toml` must list c0..c9 / r0..r9 / ath0..ath9 preserve tails.
 _REQUIRED_PRESERVE_TAILS = (
     tuple(f"c{d}" for d in range(10))
     + tuple(f"r{d}" for d in range(10))
@@ -73,7 +88,7 @@ def run_uncomment_check(base: str) -> int:
         "--changed-only",
         "--base",
         base,
-        ".",
+        *_SCAN_PATHS,
     ]
     return subprocess.run(cmd, cwd=REPO).returncode
 

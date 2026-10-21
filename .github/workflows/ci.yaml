@@ -24,7 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # uncomment --changed-lines needs merge-base history on pull requests.
           fetch-depth: 0
 
       # No `toolchain` input: rust-toolchain.toml pins the dated nightly
