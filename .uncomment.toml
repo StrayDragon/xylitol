@@ -1,0 +1,99 @@
+#:schema https://raw.githubusercontent.com/Goldziher/uncomment/main/schema/uncomment.schema.json
+#
+# xylitol: AST-accurate comment policy (uncomment).
+# - Keep rustdoc / docstrings and tooling directives by default.
+# - Gate *new* removable inline comments via `scripts/check_uncomment.py`
+#   (`--check --changed-lines`), not a one-shot strip of the whole tree.
+# - Mark anything you must keep with `~keep` on the line above or in the comment.
+
+[global]
+remove_todos = false
+remove_fixme = false
+remove_docs = false
+preserve_patterns = [
+  "~keep",
+  "LLMANSPEC",
+  "NOTE:",
+  "WORKAROUND",
+  "NOSONAR",
+  # Internal ids (substring match on comment text; uncomment has no regex here):
+  # - change / capability c#### — any decimal id contains some c{d}, d in 0..9
+  # - requirement r#### in trace comments (e.g. r1035/r1827)
+  # - acceptance ath## (e.g. ath37) — ath{d} avoids matching plain "path"
+  "c0", "c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9",
+  "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9",
+  "ath0", "ath1", "ath2", "ath3", "ath4", "ath5", "ath6", "ath7", "ath8", "ath9",
+]
+exclude = [
+  "vendor/**",
+  "target/**",
+  ".tools/**",
+  "**/snapshots/**",
+  "**/*.snap",
+  "llmanspec/changes/archive/**",
+  "llmanspec/delayed-changes/**",
+  "llmanspec/specs/**/*.feature",
+  "crates/**/llmanspec/specs/**/*.feature",
+  "plugins/**/llmanspec/specs/**/*.feature",
+  "docs/book/**",
+]
+use_default_ignores = true
+respect_gitignore = true
+traverse_git_repos = false
+
+[languages.rust]
+name = "Rust"
+extensions = [".rs"]
+comment_nodes = ["line_comment", "block_comment"]
+doc_comment_nodes = ["doc_comment"]
+preserve_patterns = ["clippy:", "allow", "deny", "warn", "forbid", "rustfmt::skip", "cfg("]
+remove_docs = false
+
+[languages.python]
+name = "Python"
+extensions = [".py", ".pyw", ".pyi"]
+comment_nodes = ["comment"]
+preserve_patterns = ["mypy:", "type:", "noqa:", "pragma:", "pylint:", "ruff:", "fmt:"]
+remove_docs = false
+
+[languages.javascript]
+name = "JavaScript"
+extensions = [".js", ".jsx", ".mjs", ".cjs"]
+comment_nodes = ["comment"]
+preserve_patterns = ["@ts-expect-error", "@ts-ignore", "eslint-", "prettier-ignore", "biome-ignore"]
+
+[languages.yaml]
+name = "YAML"
+extensions = [".yml", ".yaml"]
+comment_nodes = ["comment"]
+preserve_patterns = ["yamllint"]
+
+[languages.toml]
+name = "TOML"
+extensions = [".toml"]
+comment_nodes = ["comment"]
+
+[languages.markdown]
+name = "Markdown"
+extensions = [".md", ".markdown"]
+comment_nodes = ["html_block"]
+preserve_patterns = ["markdownlint", "prettier-ignore", "vale ", "doctoc", "~keep"]
+
+# Gherkin `.feature` specs are excluded (grammar not wired); BDD prose stays untouched.
+
+[patterns."tests/**/*.rs"]
+# Test modules: still remove explanatory `//` on touched lines; keep section headers
+# that cite capability ids (matched via global preserve_patterns).
+
+[patterns."**/*.generated.*"]
+remove_docs = true
+remove_todos = true
+
+# Tag-comment lint is manual only (`uncomment lint …`); `just qa` runs `--check` only.
+[lint]
+enabled = false
+canonical_tag = "TODO"
+tags = ["TODO", "FIXME", "HACK", "XXX"]
+key_pattern = '^\s*(?:TODO|FIXME|HACK|XXX)\((?<key>#\d+)\)\s*:'
+case_sensitive_tags = false
+include_doc_comments = false

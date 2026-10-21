@@ -23,6 +23,9 @@ jobs:
       XYLITOL_SKIP_LIVE: "1"
     steps:
       - uses: actions/checkout@v7
+        with:
+          # uncomment --changed-lines needs merge-base history on pull requests.
+          fetch-depth: 0
 
       # No `toolchain` input: rust-toolchain.toml pins the dated nightly
       # (+ rustfmt/clippy components) and setup-rust-toolchain installs it.
@@ -46,6 +49,9 @@ jobs:
       # prek hooks run inside `just qa` (text hygiene only, no cargo gates).
       - name: Install prek
         run: pipx install prek
+
+      - name: Install uncomment
+        run: pipx install uncomment
 
       # cccc-rs-cli (complexity HARD gate) is lazy-installed into .tools/ by
       # just qa-check-complexity; cache that install across runs.

@@ -79,7 +79,8 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 - **prek 与 `just qa` 正交**：prek hook 只承担文本 / 元数据卫生与 commit-msg 规约；cargo 级门禁（fmt / clippy / test / doc-test）**不得**拆成独立 hook 进 prek；push 一致性由 CI 兜底。
 - 探查：`cargo run -- --help`；文档构建与检查：`just doc` / `just qa-doc-check`。
 - 一次性探针只落 `scripts/lab_*.py`（或包 examples `lab_*`）并直接 python 调用，**不**新增 just recipe；重复使用或需流程化才升 skill / 门禁。引擎 demo 入口在 `crates/xylitol-tui/justfile`。
-- 门禁组成（quiet/verbose、真实网关 lab、复杂度、元门禁）细则：`xylitol-dev` skill `references/qa-gates.md`。
+- 门禁组成（quiet/verbose、真实网关 lab、复杂度、元门禁、注释只读闸）细则：`xylitol-dev` skill `references/qa-gates.md`。
+- **注释闸（uncomment，只读）**：策略见根 `.uncomment.toml`；`just qa` 经 `scripts/check_uncomment.py` 仅跑 `uncomment --check --changed-lines`（不删注释、不 `--fix`）。含 `c####` / `r####` / `ath##` 追溯的注释经 `preserve_patterns` 保留；其余行内说明在**改动行**上须删或标 `~keep`。跳过：`XYLITOL_SKIP_UNCOMMENT=1`。
 
 ### 试验 / 真实网关验证命名（`lab_`）
 

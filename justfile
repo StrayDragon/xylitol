@@ -396,7 +396,8 @@ test-tui verbosity=verbosity_default:
 
 # Unified daily / PR gate (no TUI layer-5 E2E — needs PTY/tmux).
 # Order: fmt → clippy → workspace tests → live-provider (serial) → package TUI
-# harness → docs (qa-doc-check + qa-doc-test) → DESIGN tokens → scripts/check_* →
+# harness → docs (qa-doc-check + qa-doc-test) → DESIGN tokens → scripts/check_*
+# (incl. check_uncomment: uncomment --check --changed-lines only) →
 # prek (text-hygiene-only hooks; cargo gates never in prek — see AGENTS.md).
 # Default verbosity=quiet (agent-friendly). Pass `normal` / `verbose` for humans.
 # Skip options (env): XYLITOL_SKIP_LIVE=1 skips the live-provider gate (CI).
