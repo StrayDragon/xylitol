@@ -18,6 +18,7 @@ preserve_patterns = [
 ]
 exclude = [
   ".uncomment.toml",
+  "configs/**",
   "vendor/**",
   "target/**",
   ".tools/**",

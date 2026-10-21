@@ -1,3 +1,16 @@
+//! Live Responses prompt-cache counterexample (`lab_responses_prompt_cache`).
+//!
+//! Config: `<global-dir>/dev/live-provider.yaml` (or `XYLITOL_LIVE_PROVIDER_CONFIG`).
+//! Global dir: `XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`.
+//!
+//! YAML fields (`LiveProviderFile`): `enabled`, `base_url`, `model`, `api_key`,
+//! `max_output_tokens`, `serial` (documented intent; `just qa-test-live-provider` always
+//! uses `--test-threads=1`).
+//!
+//! Env overrides: `XYLITOL_LIVE_PROVIDER`, `XYLITOL_LIVE_BASE_URL`, `XYLITOL_LIVE_MODEL`,
+//! `XYLITOL_LIVE_API_KEY` / `OPENAI_API_KEY`, `XYLITOL_LIVE_MAX_OUTPUT_TOKENS`.
+//! Missing file or `enabled: false` → skip (pass). `enabled: true` → must hit gateway.
+
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -129,7 +142,7 @@ fn resolve_live_provider_from(
     };
     if !path.is_file() {
         return ResolveOutcome::Skip(format!(
-            "no dedicated config at {} (copy configs/testing/live-provider.example.yaml → <global-dir>/dev/live-provider.yaml, or run `just gen-live-provider-example`)",
+            "no dedicated config at {} (create <global-dir>/dev/live-provider.yaml with enabled/base_url/model/api_key; see module docs in lab_responses_prompt_cache.rs)",
             path.display()
         ));
     }

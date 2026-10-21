@@ -19,7 +19,7 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa �
 
 ## 真网关 lab（live-provider）
 
-`just qa` 串行跑 `qa-test-live-provider`（连接真实网关的 lab）：配置路径、`enabled` 门禁与 skip 语义见 `justfile` 与 `just gen-live-provider-example`。产品示例配置 `configs/example.yaml` 由 `just gen-config-example` 生成（改 `scripts/gen_config_example.py` 模板，**勿**直接手改产物）。
+`just qa` 串行跑 `qa-test-live-provider`（连接真实网关的 lab）：配置路径、YAML 字段与 `enabled` 门禁见 `justfile` 与 `plugins/xylitol-official-plugin-provider-openai/tests/lab_responses_prompt_cache.rs` 模块文档。产品示例配置 `configs/example.yaml` 由 `just gen-config-example` 生成（改 `scripts/gen_config_example.py` 模板，**勿**直接手改产物）。
 
 ## 复杂度门禁
 

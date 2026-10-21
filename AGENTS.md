@@ -13,7 +13,9 @@
 
 # 仓库级 Agent 指南
 
-用与用户相同的语言回复。`xylitol` 是 **开箱即用的个人 coding agent**（LLM 增强开发工具包）。Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成员以根 `Cargo.toml` 为准。开发由 llman SDD 驱动。
+`xylitol` 是一个 **coding agent** 实现
+
+Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成员以根 `Cargo.toml` 为准。开发由 llman SDD 驱动。
 
 术语与写作：黑话首现时附标准词或英文；`规则:` 标题用标准词（细则 `llmanspec/AGENTS.md`「语言」）。内部编号（`c####` / `ath##`）单独引用时带 ≤12 字语义尾。
 

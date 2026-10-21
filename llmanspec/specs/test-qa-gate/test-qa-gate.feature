@@ -47,7 +47,7 @@
 
   @req:r1833
   规则: live-provider-serial-in-qa
-    just qa 须在 workspace 测试之后以严格串行（单 test binary、`--test-threads=1`）调用 `just qa-test-live-provider`；配置 须为全局共享目录专用文件 `<global-dir>/dev/live-provider.yaml`（`global-dir` 解析优先级：`XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`；示例为仓库 `configs/testing/live-provider.example.yaml`，由维护脚本生成），由测试程序化解析（`enabled` / base_url / model / api_key），不得从全局 AppConfig `config.yaml` 合并 live-provider 参数。缺失配置或 `enabled=false` 时 须 skip（通过）；`enabled=true` 时 须对配置的 Responses 端点做 prompt-cache 反例验证。该套件 不得进入 nextest 默认并行矩阵，以免压垮本地 llama.cpp。
+    just qa 须在 workspace 测试之后以严格串行（单 test binary、`--test-threads=1`）调用 `just qa-test-live-provider`；配置 须为全局共享目录专用文件 `<global-dir>/dev/live-provider.yaml`（`global-dir` 解析优先级：`XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`；字段契约以 `lab_responses_prompt_cache` 集成测试模块文档与 `LiveProviderFile` 为 SSOT），由测试程序化解析（`enabled` / base_url / model / api_key），不得从全局 AppConfig `config.yaml` 合并 live-provider 参数。缺失配置或 `enabled=false` 时 须 skip（通过）；`enabled=true` 时 须对配置的 Responses 端点做 prompt-cache 反例验证。该套件 不得进入 nextest 默认并行矩阵，以免压垮本地 llama.cpp。
     场景: 在线门禁串行带超时
       当 读取 just 的 qa recipe 序列
       那么 live 闸走串行且带超时

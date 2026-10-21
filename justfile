@@ -163,12 +163,6 @@ qa-test-live-provider verbosity=verbosity_default:
       verbose) cargo test -v -p xylitol-official-plugin-provider-openai --test lab_responses_prompt_cache -- --test-threads=1 --nocapture ;;
     esac
 
-# Generate configs/testing/live-provider.example.yaml (maintenance; not in qa).
-# Live-provider config lives at <global-dir>/dev/live-provider.yaml (shared via
-# dotxylitol); the repo only ships this auto-generated example.
-gen-live-provider-example:
-    python3 scripts/gen_live_provider_example.py
-
 # Generate configs/example.yaml (maintenance; not in qa).
 # Edit scripts/gen_config_example.py TEMPLATE, then re-run this recipe.
 gen-config-example:
