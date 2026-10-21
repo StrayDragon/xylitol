@@ -92,6 +92,8 @@ pub struct FrozenRootConfig {
     pub hook_bus: Option<std::sync::Arc<dyn xylitol_plugin_sdk::XyHookBus>>,
     /// Workspace cwd for session_env bootstrap (c1905).
     pub cwd: String,
+    /// Prepare increment Env; None when fingerprint unchanged / empty.
+    pub pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
 }
 
 pub struct PendingRoot {

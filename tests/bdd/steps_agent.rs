@@ -374,10 +374,10 @@ pub(crate) fn _g_read_tool_result(_agent: &AgentState, result: String) {
 }
 #[when("经 Driver 启动会话并在首个 TextDelta 后 abort")]
 pub(crate) async fn _w_driver_abort_after_first_delta(agent: &AgentState) {
-    use xylitol::embed::{XyComposedDriver, XyDriver};
+    use xylitol::embed::{XyDriver, assemble_driver};
 
     let (runtime, store) = make_agent_with_store(agent);
-    let mut driver = XyComposedDriver::new(runtime, store);
+    let mut driver = assemble_driver(runtime, store);
     let mut stream = driver.run("abort-mid-stream").await;
     let mut local_events = Vec::new();
     let mut saw_delta = false;

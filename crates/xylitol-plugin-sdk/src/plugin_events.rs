@@ -63,3 +63,33 @@ impl Event for TrustPreLoad {
     const NAME: &'static str = "trust/pre-load";
     type Value = Option<String>;
 }
+
+/// Why `session/prepare` was fired.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionPrepareReason {
+    Switch,
+    Resume,
+    Reload,
+    Generate,
+}
+
+/// `session/prepare`: wait/timeout waterfall. Switch/resume/reload fire without
+/// waiting; generate waits (or times out) before assembling outbound tools[].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionPrepare {
+    pub session_id: String,
+    pub reason: SessionPrepareReason,
+}
+
+impl Event for SessionPrepare {
+    const NAME: &'static str = "session/prepare";
+    type Value = SessionPrepareResult;
+}
+
+/// Fingerprint + Env body accumulated by prepare listeners (mcp first).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionPrepareResult {
+    pub fingerprint: String,
+    pub env_body: String,
+}

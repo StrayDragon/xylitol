@@ -2,13 +2,13 @@
 
 use async_trait::async_trait;
 
-use super::XyComposedDriver;
 use super::XyDriver;
 use super::XyDriverError;
+use super::XyInProcessDriver;
 
 // ── Command executor (c2710): Command is the SSOT of session operations ────
 #[async_trait]
-impl crate::dispatch::SessionCommandExecutor for XyComposedDriver {
+impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
     async fn execute_session_command(
         &mut self,
         cmd: xylitol_protocol::Command,
@@ -113,7 +113,7 @@ impl crate::dispatch::SessionCommandExecutor for XyComposedDriver {
                 })
             }
             Command::EstimateContext { .. } => {
-                let estimate = XyComposedDriver::estimate_context_tokens(self).await?;
+                let estimate = XyInProcessDriver::estimate_context_tokens(self).await?;
                 Ok(DispatchOutcome::EstimateContext(estimate))
             }
             Command::SessionTree { kind, .. } => Ok(DispatchOutcome::SessionTree(

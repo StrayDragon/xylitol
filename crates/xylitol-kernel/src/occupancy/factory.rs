@@ -7,13 +7,18 @@ use async_trait::async_trait;
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::ask::AskUserGateway;
 use xylitol_protocol::Command;
+use xylitol_runtime::XyDriver;
 use xylitol_runtime::XyDriverError;
 use xylitol_runtime::agent::RuntimeBaseline;
+use xylitol_runtime::driver::{
+    CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode,
+    ProjectTrustPersistReport, RuntimeReloadReport,
+};
 use xylitol_serve::occupancy::{OccupancyEngine, OccupancyFactory};
 
 use crate::composition::build_baseline_with_store;
 use crate::dispatch::{SessionCommandExecutor, outcome_to_value};
-use crate::driver::XyComposedDriver;
+use crate::driver::{XyInProcessDriver, assemble_driver};
 use crate::mcp_spec::McpServerSpec;
 use crate::occupancy::host::{HostState, ReloadBaseline};
 
@@ -24,6 +29,9 @@ pub struct ProductOccupancyFactory {
     project_trusted: bool,
     mcp_servers: Vec<McpServerSpec>,
     default_model_id: Option<String>,
+    ctx: Option<xylitol_plugin_sdk::rt::Ctx>,
+    /// Keeps core plugins (mcp `session/prepare` listener + hub) alive.
+    _loader: Option<rutis_loader::Loader>,
 }
 
 impl ProductOccupancyFactory {
@@ -42,25 +50,48 @@ impl ProductOccupancyFactory {
             project_trusted,
             mcp_servers,
             default_model_id,
+            ctx: None,
+            _loader: None,
         }
+    }
+
+    pub fn with_prepare_ctx(
+        mut self,
+        ctx: xylitol_plugin_sdk::rt::Ctx,
+        loader: rutis_loader::Loader,
+    ) -> Self {
+        self.ctx = Some(ctx);
+        self._loader = Some(loader);
+        self
     }
 }
 
 impl OccupancyFactory for ProductOccupancyFactory {
     fn new_driver_at(&self, workspace: &Path) -> Box<dyn OccupancyEngine> {
         let agent = self.ports.materialize_runtime();
-        let mut driver = XyComposedDriver::new(agent, self.ports.store.clone());
+        let mut driver = assemble_driver(agent, self.ports.store.clone());
         driver.enable_reload_state(
             workspace.to_path_buf(),
             self.agent_dir.clone(),
             self.project_trusted(workspace),
-            self.mcp_servers.clone(),
         );
+        if let Some(ctx) = &self.ctx {
+            driver.attach_ctx(ctx.clone());
+            if let Some(hub) = ctx.get_as::<dyn xylitol_plugin_sdk::SessionPrepareHub>(
+                xylitol_plugin_sdk::session_prepare_hub_key(),
+            ) {
+                driver.set_prepare_hub(hub);
+            }
+        } else if !self.mcp_servers.is_empty() {
+            let servers = crate::mcp_spec::McpServerSpec::to_infra_list(&self.mcp_servers);
+            driver.set_prepare_hub(std::sync::Arc::new(
+                xylitol_official_plugin_mcp::McpPrepareHub::new(servers),
+            ));
+        }
         driver
-            .inner
             .agent
             .set_cwd(workspace.to_string_lossy().into_owned());
-        Box::new(driver)
+        Box::new(OccupancyDriver { inner: driver })
     }
 
     fn project_trusted(&self, workspace: &Path) -> bool {
@@ -81,10 +112,107 @@ impl OccupancyFactory for ProductOccupancyFactory {
     }
 }
 
+/// Kernel-local occupancy adapter: both `OccupancyEngine` and
+/// `XyInProcessDriver` are foreign, so the adapter lives here.
+struct OccupancyDriver {
+    inner: XyInProcessDriver,
+}
+
 #[async_trait]
-impl OccupancyEngine for XyComposedDriver {
+impl XyDriver for OccupancyDriver {
+    async fn run(&mut self, prompt: &str) -> EventStream {
+        XyDriver::run(&mut self.inner, prompt).await
+    }
+    async fn bash_run(
+        &mut self,
+        command: &str,
+        exclude_from_context: bool,
+    ) -> Result<xylitol_runtime::BashRun, XyDriverError> {
+        XyDriver::bash_run(&mut self.inner, command, exclude_from_context).await
+    }
+    fn abort(&self) {
+        XyDriver::abort(&self.inner)
+    }
+    fn current_model(&self) -> Option<ModelInfo> {
+        XyDriver::current_model(&self.inner)
+    }
+    fn active_turn(&self) -> Option<(String, String, bool)> {
+        XyDriver::active_turn(&self.inner)
+    }
+    fn has_active_turn(&self) -> bool {
+        XyDriver::has_active_turn(&self.inner)
+    }
+    fn available_models(&self) -> Vec<ModelInfo> {
+        XyDriver::available_models(&self.inner)
+    }
+    fn thinking_level(&self) -> String {
+        XyDriver::thinking_level(&self.inner)
+    }
+    fn session_id(&self) -> Option<String> {
+        XyDriver::session_id(&self.inner)
+    }
+    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
+        XyDriver::set_bash_run_sink(&mut self.inner, sink)
+    }
+    async fn estimate_context_tokens(
+        &self,
+    ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
+        XyDriver::estimate_context_tokens(&self.inner).await
+    }
+    fn get_commands(&self) -> Vec<CommandInfo> {
+        XyDriver::get_commands(&self.inner)
+    }
+    fn leaf_entry_id(&self) -> Option<String> {
+        XyDriver::leaf_entry_id(&self.inner)
+    }
+    fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
+        XyDriver::dollar_skill_catalog(&self.inner)
+    }
+    fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {
+        XyDriver::session_store(&self.inner)
+    }
+    async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
+        XyDriver::loaded_resources_snapshot(&self.inner).await
+    }
+    fn mcp_blocks_agent(&self) -> bool {
+        XyDriver::mcp_blocks_agent(&self.inner)
+    }
+    fn is_tools_frozen(&self) -> bool {
+        XyDriver::is_tools_frozen(&self.inner)
+    }
+    async fn arm_tool_freeze_gate(&mut self) {
+        XyDriver::arm_tool_freeze_gate(&mut self.inner).await
+    }
+    fn take_mcp_gate_notice(&mut self) -> Option<String> {
+        XyDriver::take_mcp_gate_notice(&mut self.inner)
+    }
+    async fn begin_session_prepare(&mut self) {
+        XyDriver::begin_session_prepare(&mut self.inner).await
+    }
+    async fn poll_prepare_progress(&mut self) -> bool {
+        XyDriver::poll_prepare_progress(&mut self.inner).await
+    }
+    async fn wait_session_prepare(&mut self) {
+        XyDriver::wait_session_prepare(&mut self.inner).await
+    }
+    async fn reload_runtime(
+        &mut self,
+        cancel: &tokio_util::sync::CancellationToken,
+    ) -> Result<RuntimeReloadReport, XyDriverError> {
+        XyDriver::reload_runtime(&mut self.inner, cancel).await
+    }
+    async fn persist_project_trust(
+        &mut self,
+        mode: ProjectTrustMode,
+    ) -> Result<ProjectTrustPersistReport, XyDriverError> {
+        XyDriver::persist_project_trust(&mut self.inner, mode).await
+    }
+}
+
+#[async_trait]
+impl OccupancyEngine for OccupancyDriver {
     fn install_ask_tool(&mut self, gateway: Arc<dyn AskUserGateway>) {
-        XyComposedDriver::install_ask_tool(self, gateway);
+        crate::driver::install_product_ask_tool(&mut self.inner, gateway);
     }
 
     fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
@@ -95,39 +223,36 @@ impl OccupancyEngine for XyComposedDriver {
     }
 
     async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError> {
-        self.inner.restore_model(model_id).await
+        XyInProcessDriver::restore_model(&mut self.inner, model_id).await
     }
 
     async fn switch_session(&mut self, session_id: &str) -> Result<String, XyDriverError> {
-        self.inner.switch_session(session_id).await
+        XyInProcessDriver::switch_session(&mut self.inner, session_id).await
     }
 
-    async fn select_model(
-        &mut self,
-        model_id: &str,
-    ) -> Result<xylitol_runtime::driver::ModelInfo, XyDriverError> {
-        self.inner.select_model(model_id).await
+    async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
+        XyInProcessDriver::select_model(&mut self.inner, model_id).await
     }
 
     fn model_provider(&self, model_id: &str) -> Option<String> {
-        self.inner.model_provider(model_id)
+        XyInProcessDriver::model_provider(&self.inner, model_id)
     }
 
     async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
-        self.inner.set_thinking_level(level).await
+        XyInProcessDriver::set_thinking_level(&mut self.inner, level).await
     }
 
     async fn ensure_tool_table_frozen(&mut self) {
-        XyComposedDriver::ensure_tool_table_frozen(self).await;
+        XyInProcessDriver::ensure_tool_table_frozen(&mut self.inner).await;
     }
 
     async fn execute_command(&mut self, cmd: Command) -> Result<serde_json::Value, XyDriverError> {
-        let outcome = SessionCommandExecutor::execute_session_command(self, cmd).await?;
+        let outcome = SessionCommandExecutor::execute_session_command(&mut self.inner, cmd).await?;
         Ok(outcome_to_value(outcome))
     }
 
     fn agent_cwd_for_test(&self) -> String {
-        self.inner.agent_cwd_for_test()
+        XyInProcessDriver::agent_cwd_for_test(&self.inner)
     }
 }
 

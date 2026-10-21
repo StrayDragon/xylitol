@@ -273,7 +273,7 @@
 
   @req:r1052
   规则: mcp-tool-table-freeze-gate
-    轨 A：Agent/session 须在首次 generate（会话尚未工具定稿）前执行 MCP 门闸（对齐 infra-mcp mcp8）：等待 settle 或超时后定稿 provider 可见工具表；定稿后 须忽略会扩表的 settle 热并；idle `/reload` 须按 name upsert 重定稿；本波 resume/切会话 须清冻再门闸（指纹持久化后的一致续冻另波，对齐 mcp8）。tools_mode=search（c1960）不在本要求交付范围。由单测覆盖，不得单独扩 BDD step。
+    轨 A：Agent/session 必须在首次 generate（会话尚未工具定稿）前执行会话准备门闸（对齐 infra-mcp mcp8）：等待准备事件 settle 或超时后定稿 provider 可见工具表；定稿后 须忽略会扩表的 settle 热并；idle `/reload` 与 resume/切会话 必须清冻并开火准备事件（unary 不得 wait），下一次 generate 才 wait 并按 name upsert 重定稿（指纹持久化后的一致续冻另波，对齐 mcp8）。tools_mode=search（c1960）不在本要求交付范围。由单测覆盖，不得单独扩 BDD step。
     场景: 首次生成冻结工具表
       当 以两组不同工具集的 fixture 配置先后装配
       那么 工具集随配置变化

@@ -50,7 +50,7 @@ impl Plugin for SessionStorePlugin {
                     .sessions_dir
                     .as_deref()
                     .map(PathBuf::from)
-                    .unwrap_or_else(|| PathBuf::from("."));
+                    .unwrap_or_else(SessionManager::default_dir);
                 Arc::new(SessionManager::new(dir))
             };
             ctx.provide_as(session_store_key(), store)?;

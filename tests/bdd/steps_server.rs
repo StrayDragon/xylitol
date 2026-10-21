@@ -4,12 +4,12 @@ use rstest_bdd_macros::{given, then, when};
 use std::time::Duration;
 
 use crate::bdd::helpers::with_test_timeout;
-use xylitol::wiring::occupancy::host::HostState;
-use xylitol::wiring::occupancy::runtime::{RunningServer, ServerConfig, bind_serve, serve};
 use xylitol_app_tui::XyRemoteDriver;
 use xylitol_app_tui::driver::LinkTunings;
 use xylitol_app_tui::driver::{LinkHealth, XyDriver};
 use xylitol_app_tui::host_client::{HostClient, HttpWsClient, MuxStream};
+use xylitol_kernel::occupancy::host::HostState;
+use xylitol_kernel::occupancy::runtime::{RunningServer, ServerConfig, bind_serve, serve};
 use xylitol_protocol::Event;
 use xylitol_protocol::codec;
 use xylitol_protocol::envelope::{PROTOCOL_VERSION, RpcMessage};
@@ -136,7 +136,7 @@ pub fn approval_test() -> ServerTest {
 }
 
 pub async fn start_host(t: &ServerTest) {
-    let host = xylitol::wiring::occupancy::host_state_for_test().expect("HostState");
+    let host = xylitol_kernel::occupancy::host_state_for_test().expect("HostState");
     let (running, port) = with_test_timeout(|| {
         let host = host.clone();
         async move {
@@ -278,7 +278,7 @@ async fn g_already_listening(server_test: &ServerTest) {
 
 #[when("第二个服务端绑定同一地址端口")]
 async fn w_second_bind(server_test: &ServerTest) {
-    let host2 = xylitol::wiring::occupancy::host_state_for_test().expect("host2");
+    let host2 = xylitol_kernel::occupancy::host_state_for_test().expect("host2");
     let err = serve(
         ServerConfig {
             host: "127.0.0.1".into(),
@@ -315,7 +315,7 @@ async fn w_server_app_start(server_test: &ServerTest) {
 #[then("装配 infra 运行时并按 session 槽注入 Driver，供 unary 处理器调用")]
 fn t_sr1(_server_test: &ServerTest) {
     assert!(
-        std::any::type_name::<xylitol::wiring::occupancy::HostState>().contains("HostState"),
+        std::any::type_name::<xylitol_kernel::occupancy::HostState>().contains("HostState"),
         "occupancy host must be HostState"
     );
 }
@@ -570,7 +570,7 @@ fn w_check_mutex(_server_test: &ServerTest) {}
 
 #[then("不依赖锁文件 JSON 的 port、pid、hostname")]
 fn t_sr7(_server_test: &ServerTest) {
-    let _ = xylitol::wiring::occupancy::runtime::ServerConfig {
+    let _ = xylitol_kernel::occupancy::runtime::ServerConfig {
         host: "127.0.0.1".into(),
         port: 0,
         sessions_dir: None,
@@ -592,7 +592,7 @@ fn g_occupy_18790(server_test: &ServerTest) {
 
 #[when("server 在 18790 启动")]
 async fn w_start_18790(server_test: &ServerTest) {
-    let host = xylitol::wiring::occupancy::host_state_for_test().expect("host");
+    let host = xylitol_kernel::occupancy::host_state_for_test().expect("host");
     let err = serve(
         ServerConfig {
             host: "127.0.0.1".into(),
@@ -668,7 +668,7 @@ fn w_check_types(_server_test: &ServerTest) {}
 
 #[then("按 session 槽持有 Driver；handlers 不直接以 Mutex AgentRuntime 作为唯一入口")]
 fn t_driver1(_server_test: &ServerTest) {
-    let _ = std::any::type_name::<xylitol::wiring::occupancy::SessionSlot>();
+    let _ = std::any::type_name::<xylitol_kernel::occupancy::SessionSlot>();
 }
 
 #[when("调用 RemoteDriver 已登记 unary（如 steer）")]
@@ -1681,7 +1681,7 @@ async fn g_sr_w1_one_sub_holds(server_test: &ServerTest) {
 #[when("该连接干净关闭")]
 async fn w_sr_w1_clean_close(server_test: &ServerTest) {
     let host = server_test.host.borrow().as_ref().expect("host").clone();
-    xylitol::wiring::occupancy::host::prune_mux_and_maybe_release(&host, true).await;
+    xylitol_kernel::occupancy::host::prune_mux_and_maybe_release(&host, true).await;
 }
 
 #[then("写占用已释放且后续同机进程可取得")]
@@ -1702,7 +1702,7 @@ async fn g_sr_w1_linger_window(server_test: &ServerTest) {
     let (tx, rx) = tokio::sync::mpsc::channel(8);
     slot.add_subscriber(tx).await;
     drop(rx);
-    xylitol::wiring::occupancy::host::prune_mux_and_maybe_release(&host, false).await;
+    xylitol_kernel::occupancy::host::prune_mux_and_maybe_release(&host, false).await;
 }
 
 #[when("同一进程再次订阅该会话")]
@@ -2254,7 +2254,7 @@ async fn t_rdy_failed(server_test: &ServerTest) {
 
 // ---- c2475 sr-reg1：serve 注册文件发现契约 ----
 
-use xylitol::wiring::occupancy::runtime::serve_registered;
+use xylitol_kernel::occupancy::runtime::serve_registered;
 use xylitol_serve::{Registration, read_registration, run_self_check, write_registration};
 
 fn temp_reg_path() -> std::path::PathBuf {
@@ -2263,7 +2263,7 @@ fn temp_reg_path() -> std::path::PathBuf {
 
 #[given("serve 已装配完成并在空闲端口监听")]
 async fn g_reg_serving(server_test: &ServerTest) {
-    let host = xylitol::wiring::occupancy::host_state_for_test().expect("host");
+    let host = xylitol_kernel::occupancy::host_state_for_test().expect("host");
     let reg_path = temp_reg_path();
     let (running, port) = serve_registered(
         ServerConfig {
@@ -2798,7 +2798,7 @@ fn t_c2826_same_process_not_token_conflict(server_test: &ServerTest) {
 // ---- c2841: prompt 会话身份保真 / 生效模型状态同步 ----
 
 async fn start_host_with_default_model(t: &ServerTest, model_id: &str) {
-    let host = xylitol::wiring::occupancy::host_state_for_test_with_default_model(model_id)
+    let host = xylitol_kernel::occupancy::host_state_for_test_with_default_model(model_id)
         .expect("host with default model");
     let (running, port) = with_test_timeout(|| {
         let host = host.clone();
@@ -2830,7 +2830,7 @@ async fn g_c2841_writer_with_default_model(server_test: &ServerTest) {
     start_host_with_default_model(server_test, "fake-model").await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot(SESSION_C2841).await;
-    xylitol::wiring::occupancy::host::materialize_writer(&host, &slot)
+    xylitol_kernel::occupancy::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
     let mut g = slot.driver.lock().await;
@@ -3042,7 +3042,7 @@ async fn g_c2842_v3_subscribe_default_model(server_test: &ServerTest) {
     start_host_with_default_model(server_test, "fake-model").await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot(SESSION_V3).await;
-    xylitol::wiring::occupancy::host::materialize_writer(&host, &slot)
+    xylitol_kernel::occupancy::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
     let client = HttpWsClient::new(server_test.base_url()).with_envelope(true);
@@ -3181,9 +3181,9 @@ async fn g_arm_freeze_hang_mcp(server_test: &ServerTest) {
         env: None,
         headers: None,
     };
-    let host = xylitol::wiring::occupancy::host_state_for_test_with_mcp(vec![hang]).expect("host");
+    let host = xylitol_kernel::occupancy::host_state_for_test_with_mcp(vec![hang]).expect("host");
     let slot = host.slot("freeze-gate-hang").await;
-    xylitol::wiring::occupancy::host::materialize_writer(&host, &slot)
+    xylitol_kernel::occupancy::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
     *server_test.host.borrow_mut() = Some(host);
@@ -3193,16 +3193,16 @@ async fn g_arm_freeze_hang_mcp(server_test: &ServerTest) {
 #[given("会话写租约已被其他写者持有")]
 async fn g_arm_freeze_lease_held(server_test: &ServerTest) {
     let host =
-        xylitol::wiring::occupancy::host_state_for_test_with_mcp(vec![arm_freeze_fixture_mcp(
+        xylitol_kernel::occupancy::host_state_for_test_with_mcp(vec![arm_freeze_fixture_mcp(
             "fixture-bdd",
         )])
         .expect("host");
     let slot = host.slot("freeze-gate-conflict").await;
-    xylitol::wiring::occupancy::host::materialize_writer(&host, &slot)
+    xylitol_kernel::occupancy::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
     // 以一次写 unary 建立租约（与单测同路径：set_model 走租约）。
-    let first = xylitol::wiring::occupancy::host::handle_unary(
+    let first = xylitol_kernel::occupancy::host::handle_unary(
         &host,
         None,
         "set_model",
@@ -3219,7 +3219,7 @@ async fn w_arm_tool_freeze(server_test: &ServerTest) {
     let host = server_test.host.borrow().clone().expect("host present");
     let session = server_test.freeze_session.borrow().clone();
     let t0 = std::time::Instant::now();
-    let result = xylitol::wiring::occupancy::host::handle_unary(
+    let result = xylitol_kernel::occupancy::host::handle_unary(
         &host,
         None,
         "arm_tool_freeze",
@@ -3338,7 +3338,7 @@ fn observe_agent_ends(frames: &[(String, Option<Event>)]) -> usize {
 
 #[given("会话回合成中且已有一路直播订阅")]
 async fn g_observe_inflight(server_test: &ServerTest) {
-    let host = xylitol::wiring::occupancy::host_state_for_test().expect("host");
+    let host = xylitol_kernel::occupancy::host_state_for_test().expect("host");
     let rx_a = observe_bind_a(&host).await;
     observe_seed_journal(&host).await;
     host.slot(OBSERVE_SESSION)
@@ -3356,7 +3356,7 @@ async fn g_observe_bound(server_test: &ServerTest) {
 
 #[given("一路订阅在订且 journal 含历史事件")]
 async fn g_observe_idle_journal(server_test: &ServerTest) {
-    let host = xylitol::wiring::occupancy::host_state_for_test().expect("host");
+    let host = xylitol_kernel::occupancy::host_state_for_test().expect("host");
     let rx_a = observe_bind_a(&host).await;
     observe_seed_journal(&host).await;
     *server_test.host.borrow_mut() = Some(host);
@@ -3365,7 +3365,7 @@ async fn g_observe_idle_journal(server_test: &ServerTest) {
 
 #[given("会话回合进行中")]
 async fn g_busy_inflight(server_test: &ServerTest) {
-    let host = xylitol::wiring::occupancy::host_state_for_test().expect("host");
+    let host = xylitol_kernel::occupancy::host_state_for_test().expect("host");
     host.slot(OBSERVE_SESSION)
         .await
         .mark_run_inflight_for_test(true);
@@ -3392,7 +3392,7 @@ async fn w_observe_inject(server_test: &ServerTest) {
 #[when("任一连接对该会话再发根提交")]
 async fn w_busy_second_root(server_test: &ServerTest) {
     let host = server_test.host.borrow().clone().expect("host present");
-    let result = xylitol::wiring::occupancy::host::handle_unary(
+    let result = xylitol_kernel::occupancy::host::handle_unary(
         &host,
         None,
         "prompt",
@@ -3475,9 +3475,7 @@ fn t_busy_rejected(server_test: &ServerTest) {
 fn rdy_fresh_gateway(phase: &str) -> Arc<Gateway> {
     let g = Gateway::starting();
     match phase {
-        "ready" => {
-            g.set_host(xylitol::wiring::occupancy::host_state_for_test().expect("HostState"))
-        }
+        "ready" => g.set_host(xylitol_kernel::occupancy::host_state_for_test().expect("HostState")),
         "failed" => g.mark_failed(),
         "starting" => {}
         other => panic!("unknown readiness phase: {other}"),
@@ -3500,7 +3498,7 @@ async fn w_rdy_transition(server_test: &ServerTest, event: String) {
     match event.as_str() {
         // set_host 幂等填 host 并翻 ready（首写者胜，与生产装配完成路径同函数）。
         "assembly_complete" => {
-            gateway.set_host(xylitol::wiring::occupancy::host_state_for_test().expect("HostState"))
+            gateway.set_host(xylitol_kernel::occupancy::host_state_for_test().expect("HostState"))
         }
         "assembly_fail" => gateway.mark_failed(),
         other => panic!("unknown assembly event: {other}"),

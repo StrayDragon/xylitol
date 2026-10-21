@@ -20,7 +20,10 @@ use super::types::{
 };
 pub(super) use super::{XyDriver, XyDriverError, types};
 
+mod prepare;
 mod session;
+
+pub use prepare::InProcessReloadHook;
 
 struct NoopTodo;
 
@@ -58,6 +61,14 @@ pub struct XyInProcessDriver {
     todo_gateway: Arc<dyn AgentTodoGateway>,
     bash_run_sink: std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>,
     slash_commands: Vec<CommandInfo>,
+    ctx: Option<xylitol_plugin_sdk::rt::Ctx>,
+    prepare_hub: Option<Arc<dyn xylitol_plugin_sdk::SessionPrepareHub>>,
+    reload_hook: Option<Arc<dyn InProcessReloadHook>>,
+    reload_cwd: Option<std::path::PathBuf>,
+    reload_agent_dir: Option<std::path::PathBuf>,
+    last_ui_mcp_label: Option<Option<String>>,
+    mcp_gate_notice: Option<String>,
+    prepare_acked: bool,
 }
 
 impl XyInProcessDriver {
@@ -90,6 +101,14 @@ impl XyInProcessDriver {
             todo_gateway: Arc::new(NoopTodo),
             bash_run_sink: std::sync::Mutex::new(None),
             slash_commands: Vec::new(),
+            ctx: None,
+            prepare_hub: None,
+            reload_hook: None,
+            reload_cwd: None,
+            reload_agent_dir: None,
+            last_ui_mcp_label: None,
+            mcp_gate_notice: None,
+            prepare_acked: true,
         }
     }
 
@@ -152,21 +171,31 @@ impl XyInProcessDriver {
         self.agent.is_tools_frozen()
     }
 
-    async fn ensure_tool_table_frozen(&mut self) {
+    pub async fn ensure_tool_table_frozen(&mut self) {
         if self.agent.is_tools_frozen() {
             return;
         }
         self.agent.begin_tool_gating();
+        let _ = self.join_session_prepare().await;
         let tools = self.agent.clone_tools();
         self.agent.freeze_tools(tools);
+        self.prepare_acked = true;
     }
 
     pub fn persist_project_trust(
         &mut self,
         mode: ProjectTrustMode,
     ) -> Result<ProjectTrustPersistReport, XyDriverError> {
-        let cwd = self.agent.cwd().to_string();
-        let mgr = crate::trust::TrustManager::new(crate::trust::TrustManager::default_dir());
+        let cwd = self
+            .reload_cwd
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| self.agent.cwd().to_string());
+        let mgr = crate::trust::TrustManager::new(
+            self.reload_agent_dir
+                .clone()
+                .unwrap_or_else(crate::trust::TrustManager::default_dir),
+        );
         let options = mgr.get_trust_options(&cwd, false);
         let opt = match mode {
             ProjectTrustMode::TrustCwd => options.first(),
@@ -237,6 +266,16 @@ impl XyInProcessDriver {
     /// Test/diagnostics: tool names currently registered.
     pub fn tool_names_for_test(&self) -> Vec<String> {
         self.agent.tool_names()
+    }
+
+    /// Builtin (non-MCP) tools for a reload re-freeze.
+    pub fn builtins_for_reload(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
+        self.agent
+            .clone_tools()
+            .iter()
+            .filter(|t| !xylitol_plugin_sdk::is_mcp_tool_name(t.name()))
+            .cloned()
+            .collect()
     }
 
     /// Test/diagnostics: assembled system prompt text (c1100).
@@ -352,20 +391,77 @@ impl XyDriver for XyInProcessDriver {
     }
 
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
-        LoadedResourcesSnapshot {
-            skill_names: self
-                .skill_catalog_pairs()
-                .into_iter()
-                .map(|(n, _)| n)
-                .collect(),
-            tools_table_frozen: self.agent.is_tools_frozen(),
-            mcp_bootstrap_complete: true,
-            ..LoadedResourcesSnapshot::default()
+        self.prepare_loaded_resources().await
+    }
+
+    fn mcp_blocks_agent(&self) -> bool {
+        self.prepare_hub
+            .as_ref()
+            .is_some_and(|h| h.view().configured > 0 && !self.prepare_acked)
+    }
+
+    async fn begin_session_prepare(&mut self) {
+        self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);
+    }
+
+    async fn poll_prepare_progress(&mut self) -> bool {
+        let dirty = self.prepare_poll_dirty();
+        let complete = self.prepare_hub.as_ref().is_none_or(|h| h.view().complete);
+        if !complete {
+            return dirty;
+        }
+        self.apply_prepare_tools();
+        if !self.prepare_acked {
+            self.prepare_acked = true;
+            return true;
+        }
+        dirty
+    }
+
+    async fn wait_session_prepare(&mut self) {
+        let _ = self.join_session_prepare().await;
+    }
+
+    async fn reload_runtime(
+        &mut self,
+        cancel: &CancellationToken,
+    ) -> Result<super::types::RuntimeReloadReport, XyDriverError> {
+        self.agent.clear_tool_freeze();
+        self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Reload);
+        if let Some(hook) = self.reload_hook.clone() {
+            hook.reload(self, cancel).await
+        } else {
+            Ok(super::types::RuntimeReloadReport::noop())
         }
     }
 
     fn is_tools_frozen(&self) -> bool {
         self.agent.is_tools_frozen()
+    }
+
+    fn take_mcp_gate_notice(&mut self) -> Option<String> {
+        self.mcp_gate_notice
+            .take()
+            .or_else(|| self.prepare_hub.as_ref().and_then(|h| h.take_notice()))
+    }
+
+    async fn arm_tool_freeze_gate(&mut self) {
+        if self.agent.is_tools_frozen() {
+            return;
+        }
+        self.agent.begin_tool_gating();
+        let complete = self.prepare_hub.as_ref().is_none_or(|h| {
+            let view = h.view();
+            view.configured == 0 || view.complete
+        });
+        if complete {
+            self.apply_prepare_tools();
+            let tools = self.agent.clone_tools();
+            self.agent.freeze_tools(tools);
+            self.prepare_acked = true;
+        } else {
+            self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Switch);
+        }
     }
 
     /// c2790: owned bash completion — pre-hooks run eagerly (`&mut` phase);

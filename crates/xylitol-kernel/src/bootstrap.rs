@@ -134,7 +134,7 @@ pub struct BootstrappedAgent {
     /// Diagnostics produced during assembly (surface renders these).
     pub warnings: Vec<BootstrapWarning>,
     /// Session store handle, the same instance the agent holds internally.
-    /// Surfaces construct an [`crate::driver::XyComposedDriver`] from this + the agent so
+    /// Surfaces construct an [`crate::driver::XyInProcessDriver`] from this + the agent so
     /// XyDriver session commands (SwitchSession/GetMessages) operate without
     /// reaching into agent internals.
     pub store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
@@ -147,7 +147,7 @@ pub struct BootstrappedAgent {
 /// This is the preferred embed / multi-client handoff: no need to name
 /// `AgentRuntime` at the call site.
 pub struct BootstrappedRuntime {
-    pub driver: crate::driver::XyComposedDriver,
+    pub driver: crate::driver::XyInProcessDriver,
     pub session_id: String,
     pub warnings: Vec<BootstrapWarning>,
     /// MCP servers for [`crate::composition::McpSession::reload`].
@@ -241,7 +241,7 @@ async fn load_restored_session_metadata(
 }
 
 impl BootstrappedAgent {
-    /// Consume into an [`crate::driver::XyComposedDriver`] plus side-products (preferred path).
+    /// Consume into an [`crate::driver::XyInProcessDriver`] plus side-products (preferred path).
     pub fn into_runtime(mut self) -> BootstrappedRuntime {
         let restored_session = block_on_bootstrap_task(
             "restore session metadata",
@@ -265,7 +265,7 @@ impl BootstrappedAgent {
                 name.as_str(),
             ));
         }
-        let driver = crate::driver::XyComposedDriver::new(self.agent, self.store);
+        let driver = crate::driver::assemble_driver(self.agent, self.store);
         let todo_gw = driver.todo_gateway();
         let sid = self.session_id.clone();
         let _ = block_on_bootstrap_task("bind todo session", async move {
@@ -280,9 +280,9 @@ impl BootstrappedAgent {
         }
     }
 
-    /// Consume into an [`crate::driver::XyComposedDriver`] only (drops warnings / session id /
+    /// Consume into an [`crate::driver::XyInProcessDriver`] only (drops warnings / session id /
     /// mcp config). Prefer [`Self::into_runtime`] when those are needed.
-    pub fn into_driver(self) -> crate::driver::XyComposedDriver {
+    pub fn into_driver(self) -> crate::driver::XyInProcessDriver {
         self.into_runtime().driver
     }
 }
@@ -761,7 +761,7 @@ pub struct SkillsReloadReport {
 ///
 /// Trust semantics match bootstrap. Does **not** mutate session history.
 pub fn reload_skills(
-    driver: &mut crate::driver::XyComposedDriver,
+    driver: &mut crate::driver::XyInProcessDriver,
     cwd: &std::path::Path,
     agent_dir: &std::path::Path,
     project_trusted: bool,
@@ -801,7 +801,7 @@ pub struct PromptContextReloadReport {
 ///
 /// Does **not** mutate session history / transcript.
 pub fn reload_prompt_context(
-    driver: &mut crate::driver::XyComposedDriver,
+    driver: &mut crate::driver::XyInProcessDriver,
     cwd: &std::path::Path,
     agent_dir: &std::path::Path,
     project_trusted: bool,

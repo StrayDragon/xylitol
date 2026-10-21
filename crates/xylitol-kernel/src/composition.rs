@@ -168,7 +168,7 @@ impl McpSession {
     /// previous manager/tools untouched.
     pub async fn reload(
         &mut self,
-        driver: &mut crate::driver::XyComposedDriver,
+        driver: &mut crate::driver::XyInProcessDriver,
         servers: &[McpServerSpec],
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Result<McpReloadOutcome, XyDriverError> {
@@ -231,7 +231,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::driver::XyComposedDriver::new(agent, store);
+        let mut driver = crate::driver::assemble_driver(agent, store);
         let mut mcp = McpSession::new();
         mcp.reload(
             &mut driver,
@@ -260,7 +260,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::driver::XyComposedDriver::new(agent, store);
+        let mut driver = crate::driver::assemble_driver(agent, store);
         let before = driver.tool_names_for_test();
 
         let mut mcp = McpSession::new();
@@ -305,8 +305,8 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::driver::XyComposedDriver::new(agent, store);
-        driver.install_ask_tool(Arc::new(SkipGateway));
+        let mut driver = crate::driver::assemble_driver(agent, store);
+        crate::driver::install_product_ask_tool(&mut driver, Arc::new(SkipGateway));
         assert!(driver.tool_names_for_test().iter().any(|n| n == "ask"));
 
         let mut mcp = McpSession::new();
@@ -362,7 +362,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::driver::XyComposedDriver::new(agent, store);
+        let mut driver = crate::driver::assemble_driver(agent, store);
 
         let builtins = driver.builtins_for_reload();
         let with_a = ToolSet::rebuild_agent_tools(
@@ -484,7 +484,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::driver::XyComposedDriver::new(agent, store);
+        let mut driver = crate::driver::assemble_driver(agent, store);
         let builtins = driver.builtins_for_reload();
         driver.freeze_tools(ToolSet::rebuild_agent_tools(
             builtins,
@@ -534,7 +534,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::driver::XyComposedDriver::new(agent, store);
+        let mut driver = crate::driver::assemble_driver(agent, store);
         let builtins = driver.builtins_for_reload();
         driver.freeze_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(builtins));
         assert!(
@@ -588,7 +588,7 @@ mod tests {
             Arc::new(xylitol_official_plugin_session::SessionManager::new(
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
-        let mut driver = crate::driver::XyComposedDriver::new(agent, store);
+        let mut driver = crate::driver::assemble_driver(agent, store);
         let mut mcp = McpSession::new();
 
         mcp.reload(

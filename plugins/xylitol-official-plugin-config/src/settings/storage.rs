@@ -95,30 +95,26 @@ impl SettingsStorage for FileSettingsStorage {
             SettingsScope::Project => &self.project_path,
         };
 
-        // Ensure parent dir exists
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-
-        // Try to acquire lock (best-effort)
-        let locked = self.acquire_with_retry(path).is_ok();
-
+        // Reads must not mkdir: cargo test CWD is the crate dir, so creating
+        // `<cwd>/.xylitol` on every SettingsManager load pollutes the tree.
         let current = std::fs::read_to_string(path).ok();
         let current_ref = current.as_deref();
         let next = f(current_ref);
 
         if let Some(content) = next {
-            // Atomic write: temp file + rename
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let locked = self.acquire_with_retry(path).is_ok();
             let tmp = path.with_extension("json.tmp");
             if let Err(e) = std::fs::write(&tmp, format!("{content}\n")) {
                 log::warn!("write settings temp file: {e}");
             } else if let Err(e) = std::fs::rename(&tmp, path) {
                 log::warn!("rename settings temp file: {e}");
             }
-        }
-
-        if locked {
-            self.release(path);
+            if locked {
+                self.release(path);
+            }
         }
     }
 }
@@ -199,5 +195,20 @@ mod tests {
             None
         });
         assert!(found.contains("gpt-4o"));
+    }
+
+    #[test]
+    fn read_does_not_create_project_xylitol_dir() {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let project = dir.path().join("proj");
+        std::fs::create_dir_all(&project).unwrap();
+        let agent = dir.path().join("agent");
+        std::fs::create_dir_all(&agent).unwrap();
+        let storage = FileSettingsStorage::new(&project, &agent);
+        storage.with_lock(SettingsScope::Project, &mut |_current| None);
+        assert!(
+            !project.join(".xylitol").exists(),
+            "reading project settings must not mkdir <cwd>/.xylitol"
+        );
     }
 }

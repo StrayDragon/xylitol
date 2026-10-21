@@ -389,6 +389,7 @@ pub async fn compact_session(
 
     // c1906: after cut, leaf context may lack session_env — ensure + persist.
     ensure_session_env_after_compact(store, session_id, &entries).await;
+    ensure_session_prepare_after_compact(store, session_id, &entries).await;
     // c1955: if cut dropped every agent_todo snapshot, re-append latest.
     ensure_agent_todo_after_compact(store, session_id, &entries).await;
 
@@ -471,5 +472,49 @@ async fn ensure_session_env_after_compact(
     });
     if let Err(e) = store.append_session_entry(session_id, &entry).await {
         log::warn!("post-compact session_env persist failed: {e}");
+    }
+}
+
+async fn ensure_session_prepare_after_compact(
+    store: &dyn XySessionStore,
+    session_id: &str,
+    entries_before_reload: &[SessionEntry],
+) {
+    let before: Vec<_> = entries_before_reload
+        .iter()
+        .filter_map(|e| e.as_agent_message())
+        .collect();
+    let Some(snap) = xylitol_plugin_sdk::last_session_prepare(&before) else {
+        return;
+    };
+    let entries = match store.load_leaf_branch(session_id).await {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("post-compact session_prepare ensure: reload failed ({e})");
+            return;
+        }
+    };
+    let cut = xylitol_plugin_sdk::session::build_context_entries(&entries);
+    let mut history: Vec<_> = cut.iter().filter_map(|e| e.as_agent_message()).collect();
+    if !xylitol_plugin_sdk::ensure_session_prepare_in_history(&mut history, &snap) {
+        return;
+    }
+    let Some(msg) = history.last() else {
+        return;
+    };
+    let Ok(message) = serde_json::to_value(msg) else {
+        return;
+    };
+    let entry = SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: String::new(),
+            parent_id: None,
+            timestamp: 0,
+        },
+        message,
+    });
+    if let Err(e) = store.append_session_entry(session_id, &entry).await {
+        log::warn!("post-compact session_prepare persist failed: {e}");
     }
 }

@@ -8,7 +8,7 @@ pub use rutis::{
 };
 
 /// sdk public API version. Bumps when events, service keys, or `rt` types break.
-pub const SDK_API_VERSION: &str = "0.1.0";
+pub const SDK_API_VERSION: &str = "0.2.0";
 
 /// Locked rutis crate version re-exported through this sdk.
 pub const RUTIS_LOCK: &str = "0.13.0";

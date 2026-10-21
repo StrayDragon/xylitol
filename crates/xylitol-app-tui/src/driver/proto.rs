@@ -204,7 +204,7 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
 
     /// Last loaded-resources snapshot already held by the driver (**no I/O**).
     ///
-    /// After [`Self::poll_mcp_bootstrap`] returns true, product hosts SHOULD apply
+    /// After [`Self::poll_prepare_progress`] returns true, product hosts SHOULD apply
     /// this instead of awaiting [`Self::loaded_resources_snapshot`] again: Remote
     /// poll is a dirty flag on the mux cache. In-process returns `None`
     /// (snapshot is local and cheap).
@@ -212,7 +212,7 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
         None
     }
 
-    /// True while MCP bootstrap is in flight and agent prompt must wait (c1200).
+    /// True while session prepare is in flight and agent prompt must wait (c1200).
     fn mcp_blocks_agent(&self) -> bool {
         false
     }
@@ -231,31 +231,31 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
         None
     }
 
-    /// Start background MCP connect when configured (c1200). Idempotent.
-    async fn begin_mcp_bootstrap(&mut self) {}
+    /// Fire `session/prepare` without waiting (switch / resume / idle reload).
+    async fn begin_session_prepare(&mut self) {}
 
-    /// Poll background MCP bootstrap; returns true when loaded-resources should refresh
-    /// (connecting label changed, tools applied, or bootstrap phase advanced).
+    /// Poll session-prepare progress; returns true when loaded-resources should refresh
+    /// (connecting label changed, tools applied, or prepare complete flipped).
     ///
-    /// In-process: observe local boot state — **MUST NOT** report dirty every tick.
+    /// In-process: observe hub view — **MUST NOT** report dirty every tick.
     /// Remote: **MUST NOT** unary on the TUI tick. Host pushes `session/resources`
     /// when the writer poll is dirty; this method returns true when that cache
     /// update has not yet been applied to the TUI. Unchanged ticks MUST NOT
     /// refresh TUI catalogs (slash popup / skill list).
     ///
-    /// **Contract (sticky cue)**: `Settling → Settled` (deferred system-prompt install
-    /// finished) MUST return `true` even when no tool-freeze gate is armed. Hosts only
-    /// call `refresh_loaded_resources` when this is true; skipping the signal leaves a
-    /// stale snap with `mcp_bootstrap_complete=false` and sticky-restores
+    /// **Contract (sticky cue)**: connecting → complete (deferred system-prompt
+    /// install finished) MUST return `true` even when no tool-freeze gate is armed.
+    /// Hosts only call `refresh_loaded_resources` when this is true; skipping the
+    /// signal leaves a stale snap with `mcp_bootstrap_complete=false` and sticky-restores
     /// `mcp pending (see /mcp)` after the welcome card already shows connected.
-    async fn poll_mcp_bootstrap(&mut self) -> bool {
+    async fn poll_prepare_progress(&mut self) -> bool {
         false
     }
 
-    /// Block until MCP bootstrap settles (print / tests). No-op when idle.
-    async fn wait_mcp_bootstrap(&mut self) {
+    /// Wait for session prepare settle or timeout (print / generate). No-op when idle.
+    async fn wait_session_prepare(&mut self) {
         while self.mcp_blocks_agent() {
-            let _ = self.poll_mcp_bootstrap().await;
+            let _ = self.poll_prepare_progress().await;
             tokio::task::yield_now().await;
         }
     }

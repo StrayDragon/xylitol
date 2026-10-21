@@ -11,7 +11,7 @@
 //! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
 //! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
 //! [`XyModelBuilder`], [`XyHookBus`].
-//! Shared application protocol: [`XyDriver`], [`XyComposedDriver`], [`XyDriverError`].
+//! Shared application protocol: [`XyDriver`], [`XyInProcessDriver`], [`XyDriverError`].
 //! Envelope client: `xylitol-app-tui` (`HostClient` / `XyRemoteDriver`).
 //! Events / stream: [`XyEvent`], [`XyChunk`], [`XyStream`].
 //! Hook outcomes: [`XyHookOutcome`], [`NoopHookBus`].
@@ -23,7 +23,7 @@
 //!
 //! Multi-client / external-crate assembly: [`embed::boot`], [`embed::bootstrap`],
 //! [`embed::BootstrappedRuntime`] / [`embed::BootstrappedAgent::into_runtime`],
-//! [`embed::XyComposedDriver`], [`embed::XyDriver`], [`embed::BuildAgentOptions`],
+//! [`embed::XyInProcessDriver`], [`embed::XyDriver`], [`embed::BuildAgentOptions`],
 //! [`embed::McpSession`]. Script hooks are configured via
 //! [`embed::BuildAgentOptions::hooks_config`]; replaceable port is [`XyHookBus`].
 //!
@@ -41,7 +41,6 @@
 //! ```
 
 pub mod embed;
-pub mod wiring;
 
 #[cfg(feature = "cli")]
 pub mod cli;
@@ -54,7 +53,7 @@ pub use xylitol_kernel::attach::{
     DEFAULT_ATTACH_URL, attach_fail_message, probe_host, resolve_attach_url,
 };
 pub use xylitol_kernel::driver::SessionExporter;
-pub use xylitol_kernel::driver::{XyComposedDriver, XyDriver, XyDriverError};
+pub use xylitol_kernel::driver::{XyDriver, XyDriverError, XyInProcessDriver};
 pub use xylitol_plugin_sdk::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
@@ -72,6 +71,10 @@ pub use xylitol_plugin_sdk::{
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     cli::run().await
 }
+
+#[cfg(all(test, feature = "server"))]
+#[path = "../tests/occupancy/mod.rs"]
+mod occupancy_tests;
 
 #[cfg(test)]
 #[path = "../tests/inner/provider_http_stream_abort.rs"]

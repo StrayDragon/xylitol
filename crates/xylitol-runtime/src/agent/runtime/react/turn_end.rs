@@ -77,6 +77,7 @@ pub(crate) async fn close_iteration(
     obs_session: &xylitol_plugin_sdk::ObsSessionContext,
     cwd: &str,
     kind: IterationClose,
+    pending_prepare: Option<&xylitol_plugin_sdk::SessionPrepareSnapshot>,
 ) -> FinishTurnResult {
     let turn_index = turn as u32;
     let settlement = match kind {
@@ -130,6 +131,7 @@ pub(crate) async fn close_iteration(
         turn_obs_parent,
         obs_session,
         cwd,
+        pending_prepare,
     )
     .await;
     if will_continue {
@@ -223,6 +225,7 @@ pub(crate) async fn try_turn_end_compaction(
     turn_obs_parent: Option<fastrace::prelude::SpanContext>,
     obs_session: &xylitol_plugin_sdk::ObsSessionContext,
     cwd: &str,
+    pending_prepare: Option<&xylitol_plugin_sdk::SessionPrepareSnapshot>,
 ) -> bool {
     use crate::agent::compaction::{EstimateOpts, OverflowCompactOutcome};
 
@@ -293,6 +296,16 @@ pub(crate) async fn try_turn_end_compaction(
                                 store,
                                 session_id,
                                 history.last().expect("session_env"),
+                            )
+                            .await;
+                        }
+                        if let Some(prep) = pending_prepare
+                            && xylitol_plugin_sdk::ensure_session_prepare_in_history(history, prep)
+                        {
+                            super::support::persist_agent_message(
+                                store,
+                                session_id,
+                                history.last().expect("session_prepare"),
                             )
                             .await;
                         }

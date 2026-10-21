@@ -109,7 +109,7 @@ pub(crate) async fn run_wiring_operation(
     agent: &AgentState,
     op: &str,
 ) -> Result<(), XyDriverError> {
-    use xylitol::embed::XyComposedDriver;
+    use xylitol::embed::assemble_driver;
     use xylitol_plugin_sdk::session::SessionTreeKind;
 
     match op {
@@ -118,7 +118,7 @@ pub(crate) async fn run_wiring_operation(
             let (mut runtime, store) = make_agent_with_store(agent);
             let orphan = uuid::Uuid::new_v4().to_string();
             bind_session_or_panic(&mut runtime, orphan);
-            let driver = XyComposedDriver::new(runtime, store);
+            let driver = assemble_driver(runtime, store);
             driver.session_tree(SessionTreeKind::MessageHistory).await?;
             Ok(())
         }
@@ -126,7 +126,7 @@ pub(crate) async fn run_wiring_operation(
             let _ = agent.ensure_wiring_hook_log();
             ensure_wiring_fake_model(agent, true);
             let (runtime, store) = make_agent_with_store(agent);
-            let mut driver = XyComposedDriver::new(runtime, store);
+            let mut driver = assemble_driver(runtime, store);
             driver.select_model("fake").await.map(|_| ())
         }
         "设置思考级别 high" => {
@@ -134,7 +134,7 @@ pub(crate) async fn run_wiring_operation(
             ensure_wiring_fake_model(agent, true);
             let (runtime, store) = make_agent_with_store(agent);
             // Select fake first so a model exists; then change thinking.
-            let mut driver = XyComposedDriver::new(runtime, store);
+            let mut driver = assemble_driver(runtime, store);
             driver.select_model("fake").await?;
             // Clear recorder so only thinking_level_select remains for key asserts.
             if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
@@ -148,7 +148,7 @@ pub(crate) async fn run_wiring_operation(
             let (mut runtime, store) = make_agent_with_store(agent);
             let orphan = uuid::Uuid::new_v4().to_string();
             bind_session_or_panic(&mut runtime, orphan);
-            let driver = XyComposedDriver::new(runtime, store);
+            let driver = assemble_driver(runtime, store);
             driver
                 .session_tree(SessionTreeKind::MessageHistory)
                 .await
@@ -162,13 +162,13 @@ pub(crate) async fn run_wiring_operation(
             store.create(&current, Some("."), None).await?;
             store.create(&target, Some("."), None).await?;
             bind_session_or_panic(&mut runtime, current);
-            let mut driver = XyComposedDriver::new(runtime, store);
+            let mut driver = assemble_driver(runtime, store);
             driver.switch_session(&target).await.map(|_| ())
         }
         "执行 bash" => {
             let _ = agent.ensure_wiring_hook_log();
             let (runtime, store) = make_agent_with_store(agent);
-            let mut driver = XyComposedDriver::new(runtime, store);
+            let mut driver = assemble_driver(runtime, store);
             xylitol_kernel::driver::XyDriver::bash_run(&mut driver, "true", false)
                 .await?
                 .await

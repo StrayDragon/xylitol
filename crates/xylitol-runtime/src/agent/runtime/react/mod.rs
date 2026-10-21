@@ -57,6 +57,7 @@ use xylitol_plugin_sdk::{
 pub struct AgentRuntime {
     inner: AgentCapabilities,
     coordinator: SharedRunCoordinator,
+    pending_prepare: std::sync::Mutex<Option<xylitol_plugin_sdk::SessionPrepareSnapshot>>,
 }
 
 impl AgentRuntime {
@@ -66,7 +67,18 @@ impl AgentRuntime {
         inner.set_midturn_active_probe(Arc::new(move || {
             probe_coord.with(|c| c.has_active_run() || c.has_active_turn())
         }));
-        Self { inner, coordinator }
+        Self {
+            inner,
+            coordinator,
+            pending_prepare: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// Queue a prepare Env row for the next generate.
+    pub fn set_pending_prepare(&self, snap: xylitol_plugin_sdk::SessionPrepareSnapshot) {
+        if let Ok(mut g) = self.pending_prepare.lock() {
+            *g = Some(snap);
+        }
     }
 
     /// Explicitly bind this actor to a session. Only allowed while idle.
@@ -480,6 +492,7 @@ impl AgentRuntime {
             permission: self.inner.get_permission(),
             hook_bus: self.inner.hook_bus(),
             cwd: self.inner.cwd().to_string(),
+            pending_prepare: self.pending_prepare.lock().ok().and_then(|g| g.clone()),
         }
     }
 
@@ -666,6 +679,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         permission,
         hook_bus,
         cwd,
+        pending_prepare,
     } = frozen;
 
     type PermissionCheck = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
@@ -733,6 +747,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         compaction,
         cwd,
         obs_session_name,
+        pending_prepare,
     }));
 
     combine_run_streams(react, side_rx, queue_rx)
@@ -867,6 +882,7 @@ struct ReActConfig {
     cwd: String,
     /// Owner obs display-name fact for the turn (c2843 Phase B); never slot.
     obs_session_name: Option<String>,
+    pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
 }
 
 // ── Core ReAct loop ─────────────────────────────────────────────────
@@ -896,6 +912,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         compaction,
         cwd,
         obs_session_name,
+        pending_prepare,
     } = cfg;
     // c25: fixed per-request overhead for overhead-aware settlement / cut clamp.
     let fixed_context = crate::agent::compaction::FixedRequestContext {
@@ -923,6 +940,16 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let env_snap = crate::agent::prompt::snapshot_for_cwd(&cwd);
         if crate::agent::prompt::ensure_session_env_in_history(&mut history, &env_snap) {
             persist_agent_message(&store, &session_id, history.last().expect("session_env")).await;
+        }
+        if let Some(prep) = pending_prepare.as_ref()
+            && xylitol_plugin_sdk::ensure_session_prepare_in_history(&mut history, prep)
+        {
+            persist_agent_message(
+                &store,
+                &session_id,
+                history.last().expect("session_prepare"),
+            )
+            .await;
         }
 
         // Add user message (text and/or images, c1155).
@@ -1171,6 +1198,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             turn_obs_parent,
                             &obs_session,
                             &cwd,
+                            pending_prepare.as_ref(),
                         )
                         .await;
                         if will_continue {
@@ -1444,6 +1472,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         &obs_session,
                         &cwd,
                         IterationClose::Settle,
+                        pending_prepare.as_ref(),
                     )
                     .await;
                     for event in finished.events {
@@ -1627,6 +1656,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     &obs_session,
                     &cwd,
                     IterationClose::ContinueTools,
+                    pending_prepare.as_ref(),
                 )
                 .await;
                 for event in finished.events {

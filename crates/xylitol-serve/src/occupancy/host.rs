@@ -266,14 +266,41 @@ impl HostState {
     }
 
     pub async fn reload_resources(&self) -> Result<RuntimeReloadReport, XyDriverError> {
-        let mut guard = self.ensure_resource_driver().await;
         let cancel = CancellationToken::new();
         *self.reload_cancel.lock().await = Some(cancel.clone());
-        let result = guard
-            .as_mut()
-            .expect("resource driver initialized")
-            .reload_runtime(&cancel)
-            .await;
+        let slots: Vec<Arc<SessionSlot>> = {
+            let sessions = self.sessions.read().await;
+            sessions.values().cloned().collect()
+        };
+        let mut report = None;
+        for slot in slots {
+            let mut g = slot.driver.lock().await;
+            if let Some(driver) = g.as_mut() {
+                report = Some(driver.reload_runtime(&cancel).await);
+                if matches!(&report, Some(Err(_))) {
+                    break;
+                }
+            }
+        }
+        let result = match report {
+            Some(r) => {
+                if r.is_ok() {
+                    let mut guard = self.resource_driver.lock().await;
+                    if let Some(driver) = guard.as_mut() {
+                        let _ = driver.reload_runtime(&cancel).await;
+                    }
+                }
+                r
+            }
+            None => {
+                let mut guard = self.ensure_resource_driver().await;
+                guard
+                    .as_mut()
+                    .expect("resource driver initialized")
+                    .reload_runtime(&cancel)
+                    .await
+            }
+        };
         *self.reload_cancel.lock().await = None;
         result
     }
@@ -295,9 +322,9 @@ impl HostState {
     /// Poll the writer for `session_id` when present; otherwise first occupied slot
     /// or the process-level resource driver.
     ///
-    /// Drop `sessions` before polling: `poll_mcp_bootstrap` joins a finished
-    /// connect task and installs the manager. Attach TUI never calls that on
-    /// the writer (Remote poll is cache-only); without this, progress hits
+    /// Drop `sessions` before polling: `poll_prepare_progress` applies newly
+    /// armed tools and acks connecting. Attach TUI never calls that on the
+    /// writer (Remote poll is cache-only); without this, progress hits
     /// `connecting n/n` then the header sticks at `N configured · 0 connected`.
     pub async fn loaded_resources_snapshot_for(&self, session_id: &str) -> LoadedResourcesSnapshot {
         if !session_id.is_empty() {
@@ -308,7 +335,7 @@ impl HostState {
             if let Some(slot) = slot {
                 let mut guard = slot.driver.lock().await;
                 if let Some(driver) = guard.as_mut() {
-                    let _ = driver.poll_mcp_bootstrap().await;
+                    let _ = driver.poll_prepare_progress().await;
                     return driver.loaded_resources_snapshot().await;
                 }
             }
@@ -320,14 +347,14 @@ impl HostState {
         for slot in slots {
             let mut guard = slot.driver.lock().await;
             if let Some(driver) = guard.as_mut() {
-                let _ = driver.poll_mcp_bootstrap().await;
+                let _ = driver.poll_prepare_progress().await;
                 return driver.loaded_resources_snapshot().await;
             }
         }
         let mut guard = self.ensure_resource_driver().await;
         let driver = guard.as_mut().expect("resource driver initialized");
-        driver.begin_mcp_bootstrap().await;
-        let _ = driver.poll_mcp_bootstrap().await;
+        driver.begin_session_prepare().await;
+        let _ = driver.poll_prepare_progress().await;
         driver.loaded_resources_snapshot().await
     }
 }
@@ -631,13 +658,16 @@ impl SessionSlot {
         self.broadcast(msg).await;
     }
 
-    /// Poll the writer locally and push `session/resources` when dirty.
+    /// Poll the writer locally and push `session/resources` when the snapshot
+    /// changes. Unary `loaded_resources` also polls (applies tools / acks);
+    /// the watch must not rely on that one-shot dirty flag exclusively.
     pub fn ensure_mcp_resources_watch(self: &Arc<Self>) {
         if self.mcp_watch_started.swap(true, Ordering::SeqCst) {
             return;
         }
         let weak = Arc::downgrade(self);
         tokio::spawn(async move {
+            let mut last: Option<LoadedResourcesSnapshot> = None;
             loop {
                 let Some(slot) = weak.upgrade() else {
                     return;
@@ -649,13 +679,11 @@ impl SessionSlot {
                         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                         continue;
                     };
-                    if driver.poll_mcp_bootstrap().await {
-                        Some(driver.loaded_resources_snapshot().await)
-                    } else {
-                        None
-                    }
+                    let _ = driver.poll_prepare_progress().await;
+                    driver.loaded_resources_snapshot().await
                 };
-                if let Some(snap) = snap {
+                if last.as_ref() != Some(&snap) {
+                    last = Some(snap.clone());
                     slot.push_resources(snap).await;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -832,7 +860,7 @@ pub async fn materialize_writer_at(
     let _ = project_trusted_for(host, workspace);
     driver.bind_session(&slot.session_id)?;
     driver.install_ask_tool(Arc::new(SlotAskGateway { slot: slot.clone() }));
-    driver.begin_mcp_bootstrap().await;
+    driver.begin_session_prepare().await;
     if let Some(id) = host.factory.default_model_id().as_deref()
         && let Err(e) = driver.restore_model(id).await
     {
@@ -1148,42 +1176,29 @@ async fn dispatch_session_unary(
             .map(str::to_string);
         tokio::spawn(async move {
             let stream = {
-                let deadline = std::time::Instant::now()
-                    + xylitol_runtime::agent::MCP_FIRST_TURN_GATE_TIMEOUT
-                    + std::time::Duration::from_millis(250);
-                loop {
-                    let mut g = driver.lock().await;
-                    let Some(d) = g.as_mut() else {
-                        slot_push.run_inflight.store(false, Ordering::SeqCst);
-                        return;
-                    };
-                    d.arm_tool_freeze_gate().await;
-                    let _ = d.poll_mcp_bootstrap().await;
-                    if d.is_tools_frozen() || std::time::Instant::now() >= deadline {
-                        slot_push.clear_pending_runtime();
-                        if let Some(id) = prompt_model.as_deref()
-                            && let Err(e) = d.select_model(id).await
-                        {
-                            log::warn!(
-                                target: "xylitol::host",
-                                "prompt model_id={id} select failed: {e}"
-                            );
-                        }
-                        if let Some(level) = prompt_thinking.as_deref()
-                            && let Err(e) = d.set_thinking_level(level.to_string()).await
-                        {
-                            log::warn!(
-                                target: "xylitol::host",
-                                "prompt thinking_level select failed: {e}"
-                            );
-                        }
-                        let stream = d.run(&message).await;
-                        drop(g);
-                        break stream;
-                    }
-                    drop(g);
-                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                let mut g = driver.lock().await;
+                let Some(d) = g.as_mut() else {
+                    slot_push.run_inflight.store(false, Ordering::SeqCst);
+                    return;
+                };
+                slot_push.clear_pending_runtime();
+                if let Some(id) = prompt_model.as_deref()
+                    && let Err(e) = d.select_model(id).await
+                {
+                    log::warn!(
+                        target: "xylitol::host",
+                        "prompt model_id={id} select failed: {e}"
+                    );
                 }
+                if let Some(level) = prompt_thinking.as_deref()
+                    && let Err(e) = d.set_thinking_level(level.to_string()).await
+                {
+                    log::warn!(
+                        target: "xylitol::host",
+                        "prompt thinking_level select failed: {e}"
+                    );
+                }
+                d.run(&message).await
             };
             let mut stream = stream;
             while let Some(event) = stream.next().await {

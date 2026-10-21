@@ -30,7 +30,7 @@ impl Plugin for ConfigPlugin {
                 .map_err(|e| CordisError::PluginFailed(Box::new(e)))?;
             let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
             let agent_dir = dirs::home_dir()
-                .unwrap_or_else(|| PathBuf::from("."))
+                .unwrap_or_else(std::env::temp_dir)
                 .join(".xylitol");
             ctx.provide(ConfigService {
                 app: loaded.config,

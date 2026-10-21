@@ -26,3 +26,7 @@ pub fn permission_key() -> TypeKey {
 pub fn tool_vec_key() -> TypeKey {
     TypeKey::of::<Vec<std::sync::Arc<dyn XyTool>>>()
 }
+
+pub fn session_prepare_hub_key() -> TypeKey {
+    TypeKey::of::<dyn crate::session_prepare::SessionPrepareHub>()
+}

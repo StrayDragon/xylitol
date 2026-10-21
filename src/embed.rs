@@ -47,6 +47,6 @@ pub use xylitol_kernel::composition::{
     BuildAgentOptions, McpServerSpec, McpSession, McpTransportSpec, build_agent,
 };
 pub use xylitol_kernel::driver::{
-    CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, XyComposedDriver, XyDriver,
-    XyDriverError,
+    CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, XyDriver, XyDriverError,
+    XyInProcessDriver, assemble_driver,
 };

@@ -420,7 +420,7 @@ async fn run_host_loop(
                         session.push_toast_notice(notice);
                     }
                     observe_prev = observe;
-                    if driver.poll_mcp_bootstrap().await {
+                    if driver.poll_prepare_progress().await {
                         let t0 = std::time::Instant::now();
                         if let Some(snap) = driver.loaded_resources_cached() {
                             session.refresh_loaded_resources_from_snap(snap);

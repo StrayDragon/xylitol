@@ -9,6 +9,7 @@ mod adapter;
 mod assemble;
 mod client;
 mod defaults;
+mod hub;
 pub mod plugin;
 pub(crate) mod types;
 
@@ -19,5 +20,6 @@ pub use client::{
 };
 pub use config::{McpServerConfig, McpTransportKind};
 pub use defaults::MCP_SERVER_CONNECT_TIMEOUT;
+pub use hub::McpPrepareHub;
 
 pub mod config;

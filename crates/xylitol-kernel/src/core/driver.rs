@@ -1,8 +1,7 @@
 //! Core plugin: `XyDriver` façade (protocol-agnostic).
 //!
-//! `XyComposedDriver` is the in-process implementation assembled after this
-//! fiber is Active. Per-token deltas stay on `XyDriver::run`; they do not
-//! enter the rutis bus.
+//! In-process `XyDriver` is assembled after this fiber is Active.
+//! Per-token deltas stay on `XyDriver::run`; they do not enter the rutis bus.
 
 use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin};
 

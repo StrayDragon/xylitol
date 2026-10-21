@@ -26,6 +26,7 @@ pub mod resource;
 pub mod rt;
 pub mod session;
 pub mod session_env;
+pub mod session_prepare;
 pub mod settlement;
 pub mod source_info;
 pub mod status_bar;
@@ -81,13 +82,20 @@ pub use overflow::{
 };
 pub use plugin_config::EmptyPluginConfig;
 pub use plugin_events::{
-    AgentPreStep, HttpBeforeRequest, ToolPostExecute, ToolPreExecute, TrustPreLoad,
+    AgentPreStep, HttpBeforeRequest, SessionPrepare, SessionPrepareReason, SessionPrepareResult,
+    ToolPostExecute, ToolPreExecute, TrustPreLoad,
 };
 pub use plugin_keys::{
-    compaction_key, hook_bus_key, model_key, permission_key, session_store_key, tool_vec_key,
+    compaction_key, hook_bus_key, model_key, permission_key, session_prepare_hub_key,
+    session_store_key, tool_vec_key,
 };
 pub use registry::{HostRegistries, Registry, SkillEntry};
 pub use rt::{RUTIS_LOCK, SDK_API_VERSION};
+pub use session_prepare::{
+    CUSTOM_TYPE_SESSION_PREPARE, SESSION_PREPARE_TIMEOUT_NOTICE, SessionPrepareHub,
+    SessionPrepareSnapshot, SessionPrepareView, ensure_session_prepare_in_history,
+    last_session_prepare, session_prepare_from_message, should_append_session_prepare,
+};
 
 #[cfg(test)]
 mod contract_tests {
@@ -95,7 +103,7 @@ mod contract_tests {
 
     #[test]
     fn sdk_api_version_and_rutis_lock() {
-        assert_eq!(SDK_API_VERSION, "0.1.0");
+        assert_eq!(SDK_API_VERSION, "0.2.0");
         assert_eq!(RUTIS_LOCK, "0.13.0");
     }
 }

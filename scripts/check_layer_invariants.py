@@ -18,7 +18,7 @@ import tomllib
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-ROOTSRC = frozenset({"main.rs", "lib.rs", "cli.rs", "wiring.rs", "embed.rs"})
+ROOTSRC = frozenset({"main.rs", "lib.rs", "cli.rs", "embed.rs"})
 XY_EXPORTS = ("XyModel", "XyTool", "XySessionStore", "XyEvent", "XyChunk")
 TRACING_CRATES = frozenset({"tracing", "tracing-subscriber", "fastrace-tracing"})
 DEFAULT_FEATURES = ("cli", "tui", "otel", "server", "mcp")
@@ -45,7 +45,7 @@ def must_exist(rel: str, errors: list[str]) -> Path | None:
 
 def must_not_exist(rel: str, errors: list[str]) -> None:
     if (REPO / rel).exists():
-        errors.append(f"retired path still present: {rel}")
+        errors.append(f"forbidden path present: {rel}")
 
 
 def walk_rs(root: Path):
@@ -125,9 +125,8 @@ def check_runtime_serve_plugins(errors: list[str]) -> None:
 
 def check_moved_occupancy(errors: list[str]) -> None:
     must_exist("crates/xylitol-serve/src/occupancy/host.rs", errors)
-    must_not_exist("src/wiring/occupancy/host.rs", errors)
-    must_not_exist("src/wiring/driver/remote.rs", errors)
-    must_not_exist("src/wiring/host_client", errors)
+    must_not_exist("src/wiring.rs", errors)
+    must_not_exist("src/wiring", errors)
     must_exist("crates/xylitol-app-tui/src/driver/remote.rs", errors)
     must_exist("crates/xylitol-kernel/src/occupancy/factory.rs", errors)
 

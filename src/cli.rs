@@ -21,13 +21,13 @@ mod trust_gate;
 
 use clap::Parser;
 
-#[cfg(all(test, feature = "server"))]
-use crate::wiring::occupancy::subcommand::ServeAction;
 use xylitol_kernel::boot::{BootOptions, Profile, boot};
 use xylitol_kernel::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, resolve_assembly,
 };
 use xylitol_kernel::driver::XyDriver;
+#[cfg(all(test, feature = "server"))]
+use xylitol_kernel::occupancy::subcommand::ServeAction;
 use xylitol_kernel::timing;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -62,11 +62,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let _flush = FlushOnDrop;
 
-    // ── Ops subcommands: early exit, no session/MCP bootstrap ───────
+    // ── Ops subcommands: early exit, no session / prepare ───────
     match args.command {
         #[cfg(feature = "server")]
         Some(CliCommand::Serve { host, port, action }) => {
-            return crate::wiring::occupancy::subcommand::run(host, port, action).await;
+            return xylitol_kernel::occupancy::subcommand::run(host, port, action).await;
         }
         Some(CliCommand::Tui { .. } | CliCommand::Print { .. }) | None => {}
     }
@@ -205,8 +205,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut driver = runtime.driver;
     let cwd = std::env::current_dir().unwrap_or_default();
     let agent_dir = xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir();
-    let mcp_servers = runtime.mcp_servers.unwrap_or_default();
-    driver.enable_reload_state(cwd, agent_dir, project_trusted, mcp_servers);
+    driver.enable_reload_state(cwd, agent_dir, project_trusted);
     #[cfg(all(feature = "tui", not(feature = "server")))]
     if want_tui {
         eprintln!("Error: product TUI requires the server feature to attach Host");
@@ -214,8 +213,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // print / non-TUI: settle MCP before the oneshot prompt (c1200).
-    driver.begin_mcp_bootstrap().await;
-    driver.wait_mcp_bootstrap().await;
+    driver.begin_session_prepare().await;
+    driver.wait_session_prepare().await;
     if let Some(summary) = driver.mcp_status_summary().await {
         if summary.contains("diagnostics:") {
             eprintln!("Warning: {summary}");

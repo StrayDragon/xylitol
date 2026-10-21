@@ -24,11 +24,11 @@ use xylitol_serve::occupancy::{
     HostState, handle_unary, materialize_writer, materialize_writer_at,
 };
 
-use super::host_state_for_test;
-use super::host_state_for_test_with_default_model;
-use super::host_state_for_test_with_mcp;
-use super::in_process_client;
-use crate::wiring::occupancy::runtime::{ServerConfig, serve};
+use super::in_process_host::in_process_client;
+use xylitol_kernel::occupancy::runtime::{ServerConfig, serve};
+use xylitol_kernel::occupancy::{
+    host_state_for_test, host_state_for_test_with_default_model, host_state_for_test_with_mcp,
+};
 
 #[test]
 fn empty_session_arg_mints_uuid() {
@@ -52,7 +52,7 @@ impl HostClient for SnapClient {
         _payload: Value,
     ) -> Result<xylitol_protocol::RpcResult, HostClientError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        panic!("poll_mcp_bootstrap must not unary");
+        panic!("poll_prepare_progress must not unary");
     }
 
     async fn respond(&self, _rpc_id: &str, _payload: Value) -> Result<(), HostClientError> {
@@ -114,12 +114,12 @@ async fn prompt_business_error_ends_run_stream() {
 }
 
 #[tokio::test]
-async fn poll_mcp_bootstrap_is_cache_dirty_only() {
+async fn poll_prepare_progress_is_cache_dirty_only() {
     let client = SnapClient {
         calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     };
     let mut driver = XyRemoteDriver::with_host(client.clone(), "s");
-    assert!(!driver.poll_mcp_bootstrap().await);
+    assert!(!driver.poll_prepare_progress().await);
     assert_eq!(client.calls.load(Ordering::SeqCst), 0);
     driver.apply_resources_cache(AppLoadedResourcesSnapshot {
         mcp_configured: 1,
@@ -128,8 +128,8 @@ async fn poll_mcp_bootstrap_is_cache_dirty_only() {
         mcp_connecting_label: Some("connecting 0/1".into()),
         ..AppLoadedResourcesSnapshot::default()
     });
-    assert!(driver.poll_mcp_bootstrap().await);
-    assert!(!driver.poll_mcp_bootstrap().await);
+    assert!(driver.poll_prepare_progress().await);
+    assert!(!driver.poll_prepare_progress().await);
     assert_eq!(client.calls.load(Ordering::SeqCst), 0);
 }
 
@@ -746,9 +746,9 @@ async fn session_and_host_capabilities_match_in_process_carrier() {
         .await;
 }
 
-fn fixture_mcp(name: &str) -> crate::wiring::mcp_spec::McpServerSpec {
-    use crate::wiring::mcp_spec::{McpServerSpec, McpTransportSpec};
+fn fixture_mcp(name: &str) -> xylitol_kernel::mcp_spec::McpServerSpec {
     use std::collections::HashMap;
+    use xylitol_kernel::mcp_spec::{McpServerSpec, McpTransportSpec};
 
     let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/support/mcp_fixture_server.py");
@@ -780,7 +780,7 @@ async fn loaded_resources_reads_writer_mcp_not_hollow_shell() {
         let driver = guard.as_mut().expect("writer");
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
         while std::time::Instant::now() < deadline {
-            let _ = driver.poll_mcp_bootstrap().await;
+            let _ = driver.poll_prepare_progress().await;
             if !driver.mcp_blocks_agent() {
                 break;
             }
@@ -813,8 +813,8 @@ async fn loaded_resources_snapshot_applies_writer_mcp_without_direct_poll() {
     materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
-    // Attach TUI only hits `loaded_resources` unary — never `XyDriver::poll_mcp`
-    // on the writer. Snapshot MUST join/install so the header can leave
+    // Attach TUI only hits `loaded_resources` unary — never `XyDriver::poll_prepare_progress`
+    // on the writer. Snapshot MUST apply armed tools so the header can leave
     // `2 configured · 0 connected`.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     let mut snap = host.loaded_resources_snapshot().await;
@@ -842,7 +842,7 @@ async fn loaded_resources_snapshot_applies_writer_mcp_without_direct_poll() {
 async fn resources_watch_pushes_one_frame_on_snapshot_change() {
     use materialize_writer;
 
-    // r1790：写者侧 poll MCP bootstrap，快照变化才向订阅连接广播
+    // r1790：写者侧 poll session prepare，快照变化才向订阅连接广播
     // `session/resources` notification（bootstrap 过程可有多次变化、
     // 各推一帧）；payload 与 loaded_resources unary 同形；不消耗
     // journal seq；快照稳定后不重复推帧。
@@ -988,6 +988,51 @@ async fn arm_tool_freeze_unary_freezes_after_mcp_settle() {
 }
 
 #[tokio::test]
+async fn idle_reload_clears_occupied_writer_tool_freeze() {
+    use materialize_writer;
+
+    let host = host_state_for_test_with_mcp(vec![fixture_mcp("a")]).expect("host");
+    let slot = host.slot("mcp-reload").await;
+    materialize_writer(&host, &slot)
+        .await
+        .expect("materialize writer");
+    let arm = handle_unary(
+        &host,
+        None,
+        "arm_tool_freeze",
+        serde_json::json!({ "session_id": "mcp-reload" }),
+    )
+    .await;
+    assert!(arm.ok, "arm_tool_freeze unary failed: {arm:?}");
+    let frozen: LoadedResourcesSnapshot =
+        serde_json::from_value(arm.value.expect("snapshot")).expect("decode snapshot");
+    assert!(
+        frozen.tools_table_frozen,
+        "precondition: writer MUST be frozen: {frozen:?}"
+    );
+
+    let t0 = std::time::Instant::now();
+    let result = handle_unary(
+        &host,
+        None,
+        "reload",
+        serde_json::json!({ "session_id": "mcp-reload" }),
+    )
+    .await;
+    let elapsed = t0.elapsed();
+    assert!(result.ok, "idle /reload unary failed: {result:?}");
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "idle /reload MUST fire without waiting MCP, took {elapsed:?}"
+    );
+    let snap = host.loaded_resources_snapshot_for("mcp-reload").await;
+    assert!(
+        !snap.tools_table_frozen,
+        "idle /reload MUST clear occupied writer freeze: {snap:?}"
+    );
+}
+
+#[tokio::test]
 async fn loaded_resources_before_writer_is_not_fake_complete() {
     let host = host_state_for_test_with_mcp(vec![fixture_mcp("pre")]).expect("host");
     let snap = host.loaded_resources_snapshot().await;
@@ -1043,8 +1088,8 @@ async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
     // 无限等待——`ensure_tool_table_frozen` 在门时限内 detach 并冻结 armed 子集，
     // 返回 frozen+complete 快照；否则 TUI 的 Assembling 门死锁（旧行为：立即
     // 返回未冻结快照，客户端无限等待）。
-    use crate::wiring::mcp_spec::{McpServerSpec, McpTransportSpec};
     use materialize_writer;
+    use xylitol_kernel::mcp_spec::{McpServerSpec, McpTransportSpec};
 
     let hang = McpServerSpec {
         name: "hang-forever".into(),
@@ -1090,9 +1135,9 @@ async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
 }
 
 #[tokio::test]
-async fn materialize_writer_does_not_wait_mcp_bootstrap() {
-    use crate::wiring::mcp_spec::{McpServerSpec, McpTransportSpec};
+async fn materialize_writer_does_not_wait_session_prepare() {
     use materialize_writer;
+    use xylitol_kernel::mcp_spec::{McpServerSpec, McpTransportSpec};
 
     let hang = McpServerSpec {
         name: "hang".into(),
@@ -1528,11 +1573,11 @@ async fn bash_unary_runs_in_client_workspace() {
 async fn model_tool_runs_in_client_workspace() {
     use crate::XyModelMeta;
     use crate::XySessionStore;
-    use crate::wiring::composition::build_baseline_with_store;
-    use crate::wiring::provider::factory::{reset_fake_state, set_fake_tool_call};
     use futures::StreamExt;
     use std::path::PathBuf;
     use std::sync::Arc;
+    use xylitol_kernel::composition::build_baseline_with_store;
+    use xylitol_kernel::provider::factory::{reset_fake_state, set_fake_tool_call};
     use xylitol_plugin_sdk::lifecycle::XyEvent;
     use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind};
     use xylitol_serve::occupancy::{ReloadBaseline, materialize_writer_at};
@@ -1571,7 +1616,7 @@ async fn model_tool_runs_in_client_workspace() {
         thinking_levels: Vec::new(),
         thinking_level_map: Default::default(),
     });
-    let options = crate::wiring::composition::BuildAgentOptions {
+    let options = xylitol_kernel::composition::BuildAgentOptions {
         model_registry: registry,
         ..Default::default()
     };
@@ -1584,7 +1629,7 @@ async fn model_tool_runs_in_client_workspace() {
             project_trusted: true,
             default_model_id: Some("fake-ws".into()),
         },
-        Arc::new(crate::wiring::occupancy::ProductOccupancyFactory::new(
+        Arc::new(xylitol_kernel::occupancy::ProductOccupancyFactory::new(
             ports.clone(),
             std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir(),

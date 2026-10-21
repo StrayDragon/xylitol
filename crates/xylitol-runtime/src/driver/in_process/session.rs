@@ -50,6 +50,7 @@ impl super::XyInProcessDriver {
         // Fingerprint match/continue-freeze needs persisted fingerprint (same change wave MAY
         // add Custom/header storage); until then correctness prefers re-freeze.
         self.agent.clear_tool_freeze();
+        self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Resume);
         // c2843 Phase B: switch/bind no longer writes the process obs slot —
         // materialized obs identity is this runtime's own facts. The slot is
         // only the "default identity" for optionless fallbacks and is updated by

@@ -1,20 +1,45 @@
-use super::super::mcp::mcp_progress_needs_ui_refresh;
 use super::*;
+use crate::mcp_spec::{McpServerSpec, McpTransportSpec};
+
+fn attach_mcp(driver: &mut XyInProcessDriver, specs: Vec<McpServerSpec>) {
+    let servers = McpServerSpec::to_infra_list(&specs);
+    driver.set_prepare_hub(std::sync::Arc::new(
+        xylitol_official_plugin_mcp::McpPrepareHub::new(servers),
+    ));
+}
+
+fn bad_mcp(name: &str) -> McpServerSpec {
+    McpServerSpec {
+        name: name.into(),
+        transport: McpTransportSpec::Stdio,
+        command: None,
+        args: None,
+        url: None,
+        env: None,
+        headers: None,
+    }
+}
+
+fn mcp_progress_needs_ui_refresh(
+    last_ui_label: &mut Option<Option<String>>,
+    current: Option<String>,
+) -> bool {
+    if last_ui_label.as_ref() == Some(&current) {
+        return false;
+    }
+    *last_ui_label = Some(current);
+    true
+}
 
 #[tokio::test]
 
-async fn begin_mcp_bootstrap_empty_settles_immediately() {
+async fn begin_session_prepare_empty_settles_immediately() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
-    driver.enable_reload_state(
-        dir.path().to_path_buf(),
-        dir.path().join(".xylitol"),
-        true,
-        Vec::new(),
-    );
+    driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     assert!(!driver.mcp_blocks_agent());
-    driver.begin_mcp_bootstrap().await;
+    driver.begin_session_prepare().await;
     assert!(
         !driver.mcp_blocks_agent(),
         "empty mcp_servers MUST settle without gating"
@@ -25,59 +50,42 @@ async fn begin_mcp_bootstrap_empty_settles_immediately() {
 }
 
 #[tokio::test]
-async fn poll_settled_armed_gate_freezes_tools_table() {
+async fn poll_complete_armed_gate_freezes_tools_table() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
-    driver.enable_reload_state(
-        dir.path().to_path_buf(),
-        dir.path().join(".xylitol"),
-        true,
-        Vec::new(),
-    );
-    driver.begin_mcp_bootstrap().await;
-    // Attach TUI arms the gate after bootstrap may already be Settled.
+    driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
+    driver.begin_session_prepare().await;
+    // Attach TUI arms the gate after prepare may already be complete.
     driver.arm_tool_freeze_gate().await;
     if !driver.is_tools_frozen() {
-        let _ = driver.poll_mcp_bootstrap().await;
+        let _ = driver.poll_prepare_progress().await;
     }
     assert!(
         driver.is_tools_frozen(),
-        "Settled + armed first-turn gate MUST freeze so Assembling can release"
+        "complete + armed first-turn gate MUST freeze so Assembling can release"
     );
 }
 
 #[tokio::test]
 
 async fn mcp_settle_defers_system_prompt_off_tick() {
-    use crate::mcp_spec::{McpServerSpec, McpTransportSpec};
-
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
-    let bad = McpServerSpec {
-        name: "bad".into(),
-        transport: McpTransportSpec::Stdio,
-        command: None,
-        args: None,
-        url: None,
-        env: None,
-        headers: None,
-    };
-    driver.enable_reload_state(
-        dir.path().to_path_buf(),
-        dir.path().join(".xylitol"),
-        true,
-        vec![bad],
-    );
+    attach_mcp(&mut driver, vec![bad_mcp("bad")]);
+    driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     let prompt_before = driver.system_prompt_for_test();
     assert!(prompt_before.is_some());
 
-    driver.begin_mcp_bootstrap().await;
-    assert!(driver.mcp_blocks_agent(), "Running must gate wait_mcp");
+    driver.begin_session_prepare().await;
+    assert!(
+        driver.mcp_blocks_agent(),
+        "connecting must gate wait_session_prepare"
+    );
 
     // Durable sticky-cue contract: any poll that leaves mcp_blocks_agent
-    // (Settling→Settled, or failed Running→Settled) MUST return true so the
+    // (connecting→complete, including failed complete) MUST return true so the
     // TUI host refreshes loaded-resources (mcp_bootstrap_complete flips).
     let mut saw_ungate_with_refresh = false;
     let mut saw_tools_while_gated = false;
@@ -86,7 +94,7 @@ async fn mcp_settle_defers_system_prompt_off_tick() {
         + std::time::Duration::from_secs(2);
     while std::time::Instant::now() < deadline {
         let before = driver.mcp_blocks_agent();
-        let refresh = driver.poll_mcp_bootstrap().await;
+        let refresh = driver.poll_prepare_progress().await;
         let after = driver.mcp_blocks_agent();
         if before
             && driver.tool_names_for_test().iter().any(|n| n == "read")
@@ -100,7 +108,7 @@ async fn mcp_settle_defers_system_prompt_off_tick() {
         if before && !after {
             assert!(
                 refresh,
-                "leaving mcp_blocks_agent MUST return true (Settling→Settled sticky cue)"
+                "leaving mcp_blocks_agent MUST return true (connecting→complete sticky cue)"
             );
             saw_ungate_with_refresh = true;
             break;
@@ -109,7 +117,7 @@ async fn mcp_settle_defers_system_prompt_off_tick() {
     }
     assert!(
         saw_tools_while_gated,
-        "must observe tools applied while still gated (Settling)"
+        "must observe tools applied while still gated (connecting)"
     );
     assert!(
         saw_ungate_with_refresh,
@@ -131,28 +139,14 @@ async fn mcp_settle_defers_system_prompt_off_tick() {
 #[tokio::test]
 
 async fn leaving_mcp_gate_must_signal_ui_refresh() {
-    use crate::mcp_spec::{McpServerSpec, McpTransportSpec};
-
     // Narrow regression for sticky "mcp pending" after welcome shows connected:
-    // host only refreshes when poll_mcp_bootstrap returns true.
+    // host only refreshes when poll_prepare_progress returns true.
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
-    driver.enable_reload_state(
-        dir.path().to_path_buf(),
-        dir.path().join(".xylitol"),
-        true,
-        vec![McpServerSpec {
-            name: "bad".into(),
-            transport: McpTransportSpec::Stdio,
-            command: None,
-            args: None,
-            url: None,
-            env: None,
-            headers: None,
-        }],
-    );
-    driver.begin_mcp_bootstrap().await;
+    driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
+    attach_mcp(&mut driver, vec![bad_mcp("bad")]);
+    driver.begin_session_prepare().await;
     assert!(driver.mcp_blocks_agent());
 
     let mut ok = false;
@@ -161,12 +155,12 @@ async fn leaving_mcp_gate_must_signal_ui_refresh() {
         + std::time::Duration::from_secs(2);
     while std::time::Instant::now() < deadline {
         let before = driver.mcp_blocks_agent();
-        let refresh = driver.poll_mcp_bootstrap().await;
+        let refresh = driver.poll_prepare_progress().await;
         let after = driver.mcp_blocks_agent();
         if before && !after {
             assert!(
                 refresh,
-                "Settling→Settled (or Running fail→Settled) MUST signal UI refresh"
+                "connecting→complete (including failed complete) MUST signal UI refresh"
             );
             ok = true;
             break;
@@ -240,10 +234,10 @@ fn mcp_tools_pending_while_connecting_label() {
 }
 
 #[test]
-fn mcp_tools_pending_pre_freeze_while_settling_even_if_armed() {
+fn mcp_tools_pending_pre_freeze_while_incomplete_even_if_armed() {
     use crate::driver::{McpServerPhase, McpServerSnapshot};
 
-    // Resume: prior mcp tools still armed, bootstrap Settling (label cleared).
+    // Resume: prior mcp tools still armed, prepare incomplete (label cleared).
     let snap = LoadedResourcesSnapshot {
         mcp_configured: 1,
         mcp_bootstrap_complete: false,
@@ -287,14 +281,9 @@ async fn ensure_freeze_on_empty_mcp_and_ignore_expand() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
-    driver.enable_reload_state(
-        dir.path().to_path_buf(),
-        dir.path().join(".xylitol"),
-        true,
-        Vec::new(),
-    );
+    driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     assert!(!driver.is_tools_frozen());
-    driver.begin_mcp_bootstrap().await;
+    driver.begin_session_prepare().await;
     driver.ensure_tool_table_frozen().await;
     assert!(driver.is_tools_frozen());
     let names = driver.tool_names_for_test();
@@ -312,12 +301,7 @@ async fn reload_re_freezes_tools() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
-    driver.enable_reload_state(
-        dir.path().to_path_buf(),
-        dir.path().join(".xylitol"),
-        true,
-        Vec::new(),
-    );
+    driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     driver.ensure_tool_table_frozen().await;
     assert!(driver.is_tools_frozen());
     let report = driver
@@ -325,6 +309,11 @@ async fn reload_re_freezes_tools() {
         .await
         .expect("reload");
     assert!(report.steps.iter().any(|s| s.step == "mcp"));
+    assert!(
+        !driver.is_tools_frozen(),
+        "idle /reload fires prepare and must not wait/freeze"
+    );
+    driver.ensure_tool_table_frozen().await;
     assert!(driver.is_tools_frozen());
     assert!(driver.tool_names_for_test().iter().any(|n| n == "read"));
 }
@@ -335,14 +324,9 @@ async fn arm_tool_freeze_gate_empty_mcp_freezes_immediately() {
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
-    driver.enable_reload_state(
-        dir.path().to_path_buf(),
-        dir.path().join(".xylitol"),
-        true,
-        Vec::new(),
-    );
+    driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     assert!(!driver.is_tools_frozen());
-    driver.arm_tool_freeze_gate_inner().await;
+    driver.arm_tool_freeze_gate().await;
     assert!(driver.is_tools_frozen());
     let snap = driver.loaded_resources_snapshot().await;
     assert!(snap.mcp_connecting_label.is_none());
@@ -458,7 +442,7 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();
     agent.bind_session(sid).expect("bind_session");
-    let mut driver = XyComposedDriver::new(agent, store_trait);
+    let mut driver = assemble_driver(agent, store_trait);
 
     // Epoch 1: freeze with alpha MCP tool, run once.
     let builtins = driver.builtins_for_reload();

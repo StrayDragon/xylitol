@@ -307,7 +307,7 @@ async fn g_dual_rail_prompt(_server_test: &ServerTest) {}
 async fn w_turn_finished(server_test: &ServerTest) {
     // 双路径事件流对拍(spec r1908):同一会话注入代表事件流,JSON 与 v3
     // 路径各自订阅收集,解码回领域 Event;结果存 fixture 供断言。
-    let pairs = xylitol::wiring::occupancy::runtime::dual_rail_event_parity()
+    let pairs = crate::bdd::dual_rail::dual_rail_event_parity()
         .await
         .expect("parity run");
     let ok = pairs.iter().all(|(a, b)| a == b);

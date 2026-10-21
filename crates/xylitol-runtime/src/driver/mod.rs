@@ -9,7 +9,7 @@ mod types;
 
 pub use bang_exec::BangExecHandler;
 pub use error::XyDriverError;
-pub use in_process::{XyInProcessDriver, relay_bash_chunks, utf8_emit_len};
+pub use in_process::{InProcessReloadHook, XyInProcessDriver, relay_bash_chunks, utf8_emit_len};
 pub use proto::{AttachObserve, BashRun, LinkHealth, XyDriver};
 pub use session_export::SessionExporter;
 pub use types::{

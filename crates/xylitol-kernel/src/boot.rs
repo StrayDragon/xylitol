@@ -49,7 +49,20 @@ pub struct Kernel {
 
 pub async fn boot(opts: BootOptions) -> Result<Kernel, BootstrapError> {
     let (ctx, loader) = boot_ctx(&opts).await?;
-    let runtime = bootstrap(BootstrapInput::from(&opts))?.into_runtime();
+    let mut runtime = bootstrap(BootstrapInput::from(&opts))?.into_runtime();
+    runtime.driver.attach_ctx(ctx.clone());
+    if let Some(hub) = ctx.get_as::<dyn xylitol_plugin_sdk::SessionPrepareHub>(
+        xylitol_plugin_sdk::session_prepare_hub_key(),
+    ) {
+        runtime.driver.set_prepare_hub(hub);
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let agent_dir = dirs::home_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join(".xylitol");
+    runtime
+        .driver
+        .enable_reload_state(cwd, agent_dir, opts.trust_override.unwrap_or(true));
     Ok(Kernel {
         ctx,
         loader,
@@ -72,7 +85,7 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
     let loader_view = ctx.plugin(plugin);
     (&loader_view).await.map_err(cordis_to_bootstrap)?;
 
-    let rows = default_rows(opts.profile);
+    let rows = default_rows(opts, &ctx);
     loader
         .reconcile(vec![Layer::new("base", rows)], None)
         .await
@@ -111,15 +124,29 @@ async fn mount_core(ctx: &Ctx, opts: &BootOptions) -> Result<(), BootstrapError>
     Ok(())
 }
 
-fn default_rows(profile: Profile) -> Vec<Patch> {
+fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
+    let session_row = if opts.ephemeral_sessions {
+        serde_json::json!({
+            "id": "session-store",
+            "name": "session-store",
+            "config": { "in_memory": true }
+        })
+    } else {
+        serde_json::json!({ "id": "session-store", "name": "session-store" })
+    };
+    let mcp_servers = ctx
+        .get::<xylitol_official_plugin_config::plugin::ConfigService>()
+        .and_then(|cfg| cfg.app.mcp_servers.clone())
+        .unwrap_or_default();
     let mut insert = vec![
-        serde_json::json!({ "id": "session-store", "name": "session-store" }),
+        session_row,
         serde_json::json!({ "id": "compaction", "name": "compaction" }),
         serde_json::json!({ "id": "tools-builtin", "name": "tools-builtin" }),
+        serde_json::json!({ "id": "mcp", "name": "mcp", "config": { "servers": mcp_servers } }),
         serde_json::json!({ "id": "provider-openai", "name": "provider-openai" }),
         serde_json::json!({ "id": "provider-anthropic", "name": "provider-anthropic" }),
     ];
-    match profile {
+    match opts.profile {
         Profile::Print | Profile::Embed => {
             insert.push(serde_json::json!({ "id": "app-print", "name": "app-print" }));
         }

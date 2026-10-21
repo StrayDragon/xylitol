@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: MCP 客户端：stdio / url·sse 传输、零配置零成本、工具前缀与进程内重载。首轮门为 watch+超时（默认 15s）后放行，迟到工具在下一 turn 边界重新冻结。
+# purpose: MCP 客户端：stdio / url·sse 传输、零配置零成本、工具前缀与进程内重载。准备门为会话瀑布事件 session/prepare：切会话开火不 wait，generate 才 wait+超时（默认 15s）后放行；迟到工具在下一 turn 边界重新冻结。
 
 功能: infra-mcp
 
@@ -48,7 +48,7 @@
       那么 MCP 工具在批调度中为 Barrier 且不可进并行窗
   @req:r1452
   规则: nonblocking-ui-parallel-startup
-    当 mcp_servers 非空时，产品启动路径 不得在打开 TUI 应用面（或 print 进入可观测启动）之前阻塞等待全部 MCP 连接完成；CLI `--session` resume 须能在 MCP 未完成时投影历史。多服务器连接 须并行尝试（单失败 须仍可观察且 不得拖死其余，对齐 mcp4）。连接过程 须经 Driver/composition 只读缝暴露可轮询的进度或快照（至少：配置数、已连接摘要、进行中/完成态或等价；每 server 或汇总的 tools armed 态，供 `/mcp` 面板与短 cue）。TUI 在 MCP 未结算前 不得因 connecting 拒绝用户键入、提交普通 agent prompt、bang 或 slash（含面内 session-resume、`/reload` 与 `/mcp`）（agent busy 既有闸除外）；须允许滚历史。Host 为 session 物化写者或处理 SetModel 等 unary 时 不得在该 unary 返回前等待全部 MCP 连接完成（门闸仍见 mcp8，跨 tick）。结算成功 须经单一入口更新内部 MCP registry/armed 快照（保留内置、同名不重复）；**不得** 在工具表已定稿（FROZEN）后静默把新 settle 结果热扩进 provider 可见 `tools[]`（定稿/重定稿语义见 mcp8）。替换 manager 前 须 shutdown 旧 MCP client/子进程，不得静默堆叠无法管理的连接进程。不得往 session 历史插入宣告 MCP ready 的假 system/user 行。无配置路径 须仍满足 mcp1 zero-cost。
+    当 mcp_servers 非空时，产品启动路径 不得在打开 TUI 应用面（或 print 进入可观测启动）之前阻塞等待全部 MCP 连接完成；CLI `--session` resume 须能在 MCP 未完成时投影历史。多服务器连接 须并行尝试（单失败 须仍可观察且 不得拖死其余，对齐 mcp4）。连接过程 须经只读缝暴露可轮询的进度或快照（至少：配置数、已连接摘要、进行中/完成态或等价；每 server 或汇总的 tools armed 态，供 `/mcp` 面板与短 cue）。TUI 在 MCP 未结算前 不得因 connecting 拒绝用户键入、提交普通 agent prompt、bang 或 slash（含面内 session-resume、`/reload` 与 `/mcp`）（agent busy 既有闸除外）；须允许滚历史。Host 为 session 物化写者、resume/切会话或处理 SetModel 等 unary 时 必须开火会话准备事件且 不得在该 unary 返回前等待全部 MCP 连接完成（门闸仍见 mcp8，跨 tick）。结算成功 须经单一入口更新内部 MCP registry/armed 快照（保留内置、同名不重复）；**不得** 在工具表已定稿（FROZEN）后静默把新 settle 结果热扩进 provider 可见 `tools[]`（定稿/重定稿语义见 mcp8）。替换 manager 前 须 shutdown 旧 MCP client/子进程，不得静默堆叠无法管理的连接进程。不得往 session 历史插入宣告 MCP ready 的假聊天行（准备增量 Env 行见 agent-prompt，不是此类宣告）。无配置路径 须仍满足 mcp1 zero-cost。
 
     场景: 非阻塞界面并行启动
       当 读取产品启动装配顺序
@@ -69,7 +69,7 @@
       那么 每笔请求有调用期超时且可分类
   @req:r1453
   规则: first-turn-tool-freeze
-    轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 须立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）须等待 MCP settle 或 code-first 门闸超时后再定稿；单 server 连接 须有 code-first 墙钟超时（挂死不得让 bootstrap 永 Running）。门闸超时 须以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），不得自动重试连接。TUI 不得在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 须冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿；重定稿 须按 tool name upsert（有则替换、无则追加），不得留下同名多行。本波 resume/切会话 须清冻再门闸（指纹持久化后的一致续冻另波）；重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
+    轨 A（开箱定稿，非 c1960 search）：无 mcp_servers 时 须立即以仅核心工具定稿。有配置时，会话首次 agent generate（及尚未 FROZEN 时）必须等待会话准备事件 settle 或 code-first 门闸超时后再定稿；单 server 连接 须有 code-first 墙钟超时（挂死不得让准备永 Running）。门闸超时 须以当时已武装子集定稿、收口 connecting UI、并暴露用户可见诊断（可 `/reload`），不得自动重试连接。TUI 不得在 host tick 上阻塞长等门闸（可跨 tick Assembling）。定稿后 provider 可见工具表 须冻结，直至 idle `/reload` 或 resume/切会话触发的重定稿。idle `/reload` 与 resume/切会话 必须清冻、开火准备事件且 unary 不得 wait；下一次 generate 才 wait 并按 tool name upsert 重定稿（有则替换、无则追加），不得留下同名多行。正确性优先于供应商 KV cache：准备结果有变时须在下一用户提问前追加 Env 行（见 agent-prompt），不得改写既有 turn；无变不得追加。重定稿 MAY 用 mcp pending / 超时 notice 作可见 cue。由单测覆盖门闸/冻结/upsert/超时收口；产品 cue 可由 host 场景覆盖。
 
     场景: 首次回合工具冻结门禁
       当 读取首回合工具定稿门禁

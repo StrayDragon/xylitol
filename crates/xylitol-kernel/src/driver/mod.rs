@@ -1,11 +1,14 @@
 //! XyDriver abstraction — the single dependency of interactive layers.
 //!
-//! Runtime core lives in `xylitol-runtime`. This module adds the composition-root
-//! wrapper (official plugins + MCP reload). Remote attach lives in `xylitol-app-tui`.
+//! In-process driver is runtime [`XyInProcessDriver`]; this module assembles
+//! official tools / todo / slash. Remote attach lives in `xylitol-app-tui`.
 
 mod in_process;
 
-pub use in_process::XyComposedDriver;
+pub use in_process::{
+    XyInProcessDriver, assemble_driver, assemble_driver_with_bang, assemble_driver_with_ops,
+    install_product_ask_tool,
+};
 pub use xylitol_runtime::driver::{
     ClipboardCopyOutcome, CommandInfo, DebugSceneLoad, EventStream, LoadedResourcesSnapshot,
     MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot, ModelInfo, ProjectTrustMode,

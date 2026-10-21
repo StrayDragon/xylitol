@@ -100,11 +100,11 @@ pub struct LoadedResourcesSnapshot {
     pub mcp_configured: usize,
     /// Short failure lines (`server: message`); no secrets.
     pub mcp_diag_short: Vec<String>,
-    /// When MCP bootstrap is in flight: `connecting 0/3` … `2/3` (c1200).
+    /// When session prepare is in flight: `connecting 0/3` … `2/3` (c1200).
     pub mcp_connecting_label: Option<String>,
     /// Per-server connection + tools-armed rows for `/mcp` (c1210).
     pub mcp_servers: Vec<McpServerSnapshot>,
-    /// True when bootstrap is no longer in-flight (`Settled` / empty idle).
+    /// True when prepare is no longer in-flight (complete / empty idle).
     pub mcp_bootstrap_complete: bool,
     /// Provider-visible tools already FROZEN (c1900). While false, Connected-but-unarmed
     /// still warrants `mcp pending` (resume / first-turn gate).
@@ -144,7 +144,7 @@ impl LoadedResourcesSnapshot {
     /// MCP configured and still discovering / mid-settle arming / pre-freeze gap.
     ///
     /// - `connecting_label` or any `Connecting` → pending
-    /// - tools **not** frozen and bootstrap incomplete (Running→Settling; resume re-gate)
+    /// - tools **not** frozen and prepare incomplete (connecting; resume re-gate)
     /// - `Connected && !tools_armed` while tools table **not** frozen
     /// - After freeze: Failed / Connected-unarmed MUST NOT sticky (details in `/mcp`)
     pub fn mcp_tools_pending(&self) -> bool {
@@ -164,8 +164,8 @@ impl LoadedResourcesSnapshot {
         if self.tools_table_frozen {
             return false;
         }
-        // Resume/re-gate: old tools may still look "armed" while Settling/Rebuilding —
-        // keep the short cue until bootstrap completes (then freeze on submit).
+        // Resume/re-gate: old tools may still look "armed" while connecting —
+        // keep the short cue until prepare completes (then freeze on submit).
         if !self.mcp_bootstrap_complete {
             return true;
         }

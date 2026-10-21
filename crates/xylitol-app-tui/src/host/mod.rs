@@ -147,7 +147,7 @@ pub struct HostSession<T: Terminal> {
     editor_history_seed_sessions: u32,
     /// Background ↑/↓ history seed (startup / `/session-new`); host loop merges into select.
     editor_history_seed_job: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)>,
-    /// MCP bootstrap in flight — gate agent prompt / bang / some slash (c1200).
+    /// Session prepare in flight — gate agent prompt / bang / some slash (c1200).
     mcp_blocks_agent: bool,
     /// TUI-only ask host (c1850); polls pending asks → ChoicePrompt.
     ask_gateway: Option<Arc<crate::ask_host::AskHostGateway>>,

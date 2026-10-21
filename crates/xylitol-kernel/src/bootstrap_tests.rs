@@ -1,16 +1,16 @@
 use super::*;
 use crate::composition::{BuildAgentOptions, build_agent};
-use crate::driver::XyComposedDriver;
+use crate::driver::{XyInProcessDriver, assemble_driver};
 use std::sync::Arc;
 use xylitol_plugin_sdk::XySessionStore;
 
-fn make_driver() -> XyComposedDriver {
+fn make_driver() -> XyInProcessDriver {
     let agent = build_agent(BuildAgentOptions::default()).expect("build");
     let store: Arc<dyn XySessionStore> =
         Arc::new(xylitol_official_plugin_session::SessionManager::new(
             tempfile::tempdir().unwrap().path().join("sessions"),
         ));
-    XyComposedDriver::new(agent, store)
+    assemble_driver(agent, store)
 }
 
 fn env_map<'a>(entries: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {

@@ -459,9 +459,9 @@ pub(crate) fn g_abort_streaming(agent: &AgentState, _ws: &Workspace) {
 
 #[when("调用 abort()")]
 pub(crate) fn w_abort_call(agent: &AgentState) {
-    use xylitol::embed::{XyComposedDriver, XyDriver};
+    use xylitol::embed::{XyDriver, assemble_driver};
     let (runtime, store) = make_agent_with_store(agent);
-    let driver = XyComposedDriver::new(runtime, store);
+    let driver = assemble_driver(runtime, store);
     driver.abort();
     agent.last_result.replace(Some(Ok("aborted".into())));
 }
@@ -548,13 +548,13 @@ pub(crate) async fn w_slash_intercepted(agent: &AgentState, _ws: &Workspace) {
         panic!("slash-dispatch scenario must use /compact, got: {marker}");
     }
 
-    use xylitol::embed::XyComposedDriver;
+    use xylitol::embed::assemble_driver;
 
     let (mut runtime, store) = make_agent_with_store(agent);
     let sid = uuid::Uuid::new_v4().to_string();
     let _ = store.create(&sid, Some("."), None).await;
     bind_session_or_panic(&mut runtime, sid);
-    let mut driver = XyComposedDriver::new(runtime, store);
+    let mut driver = assemble_driver(runtime, store);
     // Force compact on an empty session hits prepare gates (Nothing to compact /
     // Already compacted) — that still proves slash→Driver::compact dispatch.
     let did = match driver.compact(None).await {

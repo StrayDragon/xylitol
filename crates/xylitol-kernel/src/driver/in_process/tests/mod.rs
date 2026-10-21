@@ -1,4 +1,4 @@
-//! Tests for the composition-root [`XyComposedDriver`](super::XyComposedDriver):
+//! Tests for the composition-root [`XyInProcessDriver`](super::XyInProcessDriver):
 //! MCP gate, `/reload` re-freeze, session tree via the wrapper.
 //! Runtime inner-loop tests live in `xylitol-runtime`.
 //!
@@ -11,6 +11,7 @@ use crate::event::EventBus;
 use xylitol_official_plugin_session::SessionManager;
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
+use xylitol_runtime::XyDriver;
 use xylitol_runtime::agent::AgentBuilder;
 use xylitol_runtime::agent::tools::ToolSet;
 
@@ -37,7 +38,7 @@ fn entry_ms(id: &str) -> u64 {
             % 1_000_000
 }
 
-async fn build_test_driver(store: Arc<SessionManager>) -> (XyComposedDriver, ObsSessionScope) {
+async fn build_test_driver(store: Arc<SessionManager>) -> (XyInProcessDriver, ObsSessionScope) {
     let scope = ObsSessionScope::enter(ObsSessionContext::default());
     let store_trait: Arc<dyn XySessionStore> = store.clone();
     let mut agent = AgentBuilder::new(
@@ -59,7 +60,7 @@ async fn build_test_driver(store: Arc<SessionManager>) -> (XyComposedDriver, Obs
         .await
         .expect("create session");
     agent.bind_session(sid).expect("bind_session");
-    (XyComposedDriver::new(agent, store), scope)
+    (assemble_driver(agent, store), scope)
 }
 
 mod bash;

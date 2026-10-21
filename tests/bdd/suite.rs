@@ -51,6 +51,7 @@ mod bindings_runtime_model_registry;
 mod bindings_server;
 mod bindings_storage;
 mod bindings_workspace_assembly;
+mod dual_rail;
 mod fixtures;
 mod prelude;
 mod steps_agent;

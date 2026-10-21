@@ -1087,7 +1087,7 @@ pub(crate) fn t_c2826_first_turn_history(agent: &AgentState) {
 }
 
 fn c2826_driver() -> (
-    xylitol_kernel::driver::XyComposedDriver,
+    xylitol_kernel::driver::XyInProcessDriver,
     std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore>,
 ) {
     use std::sync::Arc;
@@ -1099,7 +1099,7 @@ fn c2826_driver() -> (
         tempfile::tempdir().unwrap().path().join("sessions"),
     );
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
-    let driver = xylitol_kernel::driver::XyComposedDriver::new(agent, store.clone());
+    let driver = xylitol_kernel::driver::assemble_driver(agent, store.clone());
     (driver, store)
 }
 
@@ -1227,10 +1227,10 @@ pub(crate) fn t_c2826_skills_reload_trust(agent: &AgentState) {
 
 #[when("经 Driver 启动会话并在首个 TextDelta 后 abort 并检查持久化条目")]
 pub(crate) async fn w_c2826_abort_persist(agent: &AgentState) {
-    use xylitol::embed::{XyComposedDriver, XyDriver};
+    use xylitol::embed::{XyDriver, assemble_driver};
     xylitol_kernel::provider::factory::set_fake_slow_stream(40, 5);
     let (runtime, store) = make_agent_with_store(agent);
-    let mut driver = XyComposedDriver::new(runtime, store.clone());
+    let mut driver = assemble_driver(runtime, store.clone());
     let sid = driver
         .new_session()
         .await

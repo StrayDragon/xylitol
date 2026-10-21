@@ -3,7 +3,7 @@
 use clap::{Args, Parser, Subcommand};
 
 #[cfg(feature = "server")]
-use crate::wiring::occupancy::subcommand::ServeAction;
+use xylitol_kernel::occupancy::subcommand::ServeAction;
 
 /// Map `tui.activity_fold` config DTO → runtime knobs at the config-owning CLI
 /// boundary (the TUI widget layer does not import wiring config types, c2277).

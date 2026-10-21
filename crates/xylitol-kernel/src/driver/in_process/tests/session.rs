@@ -59,7 +59,7 @@ async fn in_process_session_tree_ensures_missing_session() {
     // Orphan id: set on agent but never created on disk (wipe / pre-persist).
     let orphan = uuid::Uuid::new_v4().to_string();
     agent.bind_session(orphan.clone()).expect("bind_session");
-    let driver = XyComposedDriver::new(agent, store);
+    let driver = assemble_driver(agent, store);
     let tree = driver
         .session_tree(SessionTreeKind::MessageHistory)
         .await
@@ -280,7 +280,7 @@ async fn after_run_session_tree_reflects_persisted_turn() {
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();
     agent.bind_session(sid).expect("bind_session");
-    let mut driver = XyComposedDriver::new(agent, store_trait);
+    let mut driver = assemble_driver(agent, store_trait);
 
     let mut stream = driver.run("hello tree").await;
     while stream.next().await.is_some() {}
@@ -440,7 +440,7 @@ async fn concurrent_run_rejects_second_with_busy() {
     agent.select_model("mock").await.expect("select mock");
     let sid = uuid::Uuid::new_v4().to_string();
     agent.bind_session(sid).expect("bind_session");
-    let mut driver = XyComposedDriver::new(agent, store_trait);
+    let mut driver = assemble_driver(agent, store_trait);
 
     let mut first = driver.run("one").await;
     let mut saw = false;

@@ -92,7 +92,7 @@ impl SessionManager {
     /// Default sessions directory: ~/.xylitol/sessions/
     pub fn default_dir() -> PathBuf {
         dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
+            .unwrap_or_else(std::env::temp_dir)
             .join(".xylitol")
             .join("sessions")
     }

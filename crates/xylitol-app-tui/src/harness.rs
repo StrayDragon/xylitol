@@ -5816,9 +5816,9 @@ mod slice_tests {
             LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
         };
 
-        // Welcome card "2 connected · …" can appear while Settling still has
-        // mcp_bootstrap_complete=false (pending cue). After Settled refresh,
-        // connected+armed+complete MUST clear the cue (not sticky).
+        // Welcome card "2 connected · …" can appear while prepare is still
+        // incomplete (pending cue). After complete refresh, connected+armed+complete
+        // MUST clear the cue (not sticky).
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let driver = ScriptedDriver::new();
@@ -5851,7 +5851,7 @@ mod slice_tests {
         assert_eq!(
             root.borrow().status_next_turn_cue_for_test().as_deref(),
             Some(MCP_PENDING_CUE),
-            "Settling (bootstrap incomplete) keeps cue even when connected+armed"
+            "incomplete prepare keeps cue even when connected+armed"
         );
 
         driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {

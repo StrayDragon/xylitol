@@ -1,279 +1,83 @@
-//! [`XyComposedDriver`]: the driver plugin's in-process `XyDriver`.
-//! Runtime [`xylitol_runtime::XyInProcessDriver`] plus MCP first-turn gate
-//! (tool-table timeout) and `/reload`.
+//! Product in-process driver: [`xylitol_runtime::XyInProcessDriver`] plus official tools.
 
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-
-use async_trait::async_trait;
 
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_runtime::agent::AgentRuntime;
-use xylitol_runtime::{
-    BangExecHandler, SessionExporter, XyDriver, XyDriverError, XyInProcessDriver as RuntimeDriver,
-};
+use xylitol_runtime::{BangExecHandler, SessionExporter, XyInProcessDriver as RuntimeDriver};
 
-use super::{
-    CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode,
-    ProjectTrustPersistReport, RuntimeReloadReport,
-};
+use super::CommandInfo;
 
-mod mcp;
 mod reload;
 #[cfg(test)]
 mod tests;
 
+pub use reload::ProductReload;
+pub use xylitol_runtime::XyInProcessDriver;
 #[cfg(test)]
-pub(crate) use xylitol_runtime::driver::{relay_bash_chunks, utf8_emit_len};
+pub use xylitol_runtime::driver::{
+    LoadedResourcesSnapshot, ProjectTrustMode, relay_bash_chunks, utf8_emit_len,
+};
 
-use mcp::McpBootState;
-use mcp::McpDiscoverOk;
-
-struct InProcessReloadState {
-    cwd: std::path::PathBuf,
-    agent_dir: std::path::PathBuf,
-    project_trusted: bool,
-    mcp: crate::composition::McpSession,
-    mcp_servers: Vec<crate::mcp_spec::McpServerSpec>,
+/// Assemble the product in-process driver (official tools / todo / slash / reload).
+pub fn assemble_driver(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> RuntimeDriver {
+    assemble_driver_with_ops(
+        agent,
+        store,
+        BangExecHandler::new(Some(Arc::new(
+            xylitol_official_plugin_tools::bash_exec::InfraBashExecutor::new(),
+        ))),
+        SessionExporter::new(Some(Arc::new(crate::export::StdExportIo::new()))),
+    )
 }
 
-/// Composition-root driver: runtime core plus MCP / plugin injection.
-pub struct XyComposedDriver {
-    pub inner: RuntimeDriver,
-    todo: Arc<xylitol_official_plugin_tools::SessionAgentTodoGateway>,
-    reload: Option<InProcessReloadState>,
-    mcp_boot: McpBootState,
-    late_mcp_discover: Option<tokio::task::JoinHandle<McpDiscoverOk>>,
-    mcp_gate_notice: Option<String>,
-    tool_gate_deadline: Option<std::time::Instant>,
+pub fn assemble_driver_with_ops(
+    agent: AgentRuntime,
+    store: Arc<dyn XySessionStore>,
+    bang: BangExecHandler,
+    exporter: SessionExporter,
+) -> RuntimeDriver {
+    let todo = xylitol_official_plugin_tools::SessionAgentTodoGateway::new(store.clone());
+    let mut inner = RuntimeDriver::with_surface_ops(agent, store, bang, exporter);
+    inner.set_todo_gateway(todo.clone());
+    inner.set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
+        xylitol_official_plugin_tools::default_tools_with_todo(todo),
+    ));
+    inner.set_slash_commands(
+        crate::product_commands::product_slash_commands()
+            .into_iter()
+            .map(|c| CommandInfo {
+                name: c.name.to_string(),
+                description: c.description.to_string(),
+            })
+            .collect(),
+    );
+    inner.set_reload_hook(Arc::new(ProductReload));
+    inner
 }
 
-impl Deref for XyComposedDriver {
-    type Target = RuntimeDriver;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
+/// Product Ask tool: remember the gateway and rebuild the official tool set.
+pub fn install_product_ask_tool(
+    driver: &mut RuntimeDriver,
+    gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>,
+) {
+    driver.install_ask_tool(gateway.clone());
+    let todo = xylitol_official_plugin_tools::SessionAgentTodoGateway::new(driver.store.clone());
+    driver.set_todo_gateway(todo.clone());
+    driver.set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
+        xylitol_official_plugin_tools::default_tools_with_ask_and_todo(gateway, todo),
+    ));
 }
 
-impl DerefMut for XyComposedDriver {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
-    }
-}
-
-impl XyComposedDriver {
-    /// Construct from a built agent plus the store used to build it.
-    pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
-        Self::with_surface_ops(
-            agent,
-            store,
-            BangExecHandler::new(Some(Arc::new(
-                xylitol_official_plugin_tools::bash_exec::InfraBashExecutor::new(),
-            ))),
-            SessionExporter::new(Some(Arc::new(crate::export::StdExportIo::new()))),
-        )
-    }
-
-    /// Construct with explicit bang + export collaborators (tests / embed).
-    pub fn with_surface_ops(
-        agent: AgentRuntime,
-        store: Arc<dyn XySessionStore>,
-        bang: BangExecHandler,
-        exporter: SessionExporter,
-    ) -> Self {
-        let todo = xylitol_official_plugin_tools::SessionAgentTodoGateway::new(store.clone());
-        let mut inner = RuntimeDriver::with_surface_ops(agent, store, bang, exporter);
-        inner.set_todo_gateway(todo.clone());
-        inner.set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
-            xylitol_official_plugin_tools::default_tools_with_todo(todo.clone()),
-        ));
-        inner.set_slash_commands(
-            crate::product_commands::product_slash_commands()
-                .into_iter()
-                .map(|c| CommandInfo {
-                    name: c.name.to_string(),
-                    description: c.description.to_string(),
-                })
-                .collect(),
-        );
-        Self {
-            inner,
-            todo,
-            reload: None,
-            mcp_boot: McpBootState::Idle,
-            late_mcp_discover: None,
-            mcp_gate_notice: None,
-            tool_gate_deadline: None,
-        }
-    }
-
-    /// Construct with an explicit bang handler (tests / embed without shell).
-    pub fn with_bang(
-        agent: AgentRuntime,
-        store: Arc<dyn XySessionStore>,
-        bang: BangExecHandler,
-    ) -> Self {
-        Self::with_surface_ops(
-            agent,
-            store,
-            bang,
-            SessionExporter::new(Some(Arc::new(crate::export::StdExportIo::new()))),
-        )
-    }
-
-    /// Install TUI-only `ask` tool and remember the gateway for MCP reload.
-    pub fn install_ask_tool(&mut self, gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>) {
-        self.inner.install_ask_tool(gateway.clone());
-        self.inner
-            .set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
-                xylitol_official_plugin_tools::default_tools_with_ask_and_todo(
-                    gateway,
-                    self.todo.clone(),
-                ),
-            ));
-    }
-
-    /// Builtins for ToolSet rebuild: store-bound Todo (+ optional ask).
-    pub fn builtins_for_reload(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
-        match self.inner.ask_gateway() {
-            Some(g) => {
-                xylitol_official_plugin_tools::default_tools_with_ask_and_todo(g, self.todo.clone())
-            }
-            None => xylitol_official_plugin_tools::default_tools_with_todo(self.todo.clone()),
-        }
-    }
-
-    /// Store-bound Todo gateway (shared with `todo_*` builtins).
-    pub fn todo_gateway(&self) -> Arc<xylitol_official_plugin_tools::SessionAgentTodoGateway> {
-        self.todo.clone()
-    }
-
-    /// Enable `/reload` and MCP ownership for the process lifetime (c1120).
-    pub fn enable_reload_state(
-        &mut self,
-        cwd: std::path::PathBuf,
-        agent_dir: std::path::PathBuf,
-        project_trusted: bool,
-        mcp_servers: Vec<crate::mcp_spec::McpServerSpec>,
-    ) {
-        self.reload = Some(InProcessReloadState {
-            cwd,
-            agent_dir,
-            project_trusted,
-            mcp: crate::composition::McpSession::new(),
-            mcp_servers,
-        });
-    }
-}
-
-#[async_trait]
-impl XyDriver for XyComposedDriver {
-    async fn run(&mut self, prompt: &str) -> EventStream {
-        self.ensure_tool_table_frozen().await;
-        XyDriver::run(&mut self.inner, prompt).await
-    }
-
-    fn abort(&self) {
-        XyDriver::abort(&self.inner);
-    }
-
-    fn current_model(&self) -> Option<ModelInfo> {
-        XyDriver::current_model(&self.inner)
-    }
-
-    fn active_turn(&self) -> Option<(String, String, bool)> {
-        XyDriver::active_turn(&self.inner)
-    }
-
-    fn has_active_turn(&self) -> bool {
-        XyDriver::has_active_turn(&self.inner)
-    }
-
-    fn available_models(&self) -> Vec<ModelInfo> {
-        XyDriver::available_models(&self.inner)
-    }
-
-    fn thinking_level(&self) -> String {
-        XyDriver::thinking_level(&self.inner)
-    }
-
-    fn session_id(&self) -> Option<String> {
-        XyDriver::session_id(&self.inner)
-    }
-
-    fn set_bash_run_sink(&mut self, sink: Option<xylitol_plugin_sdk::BashOutputSink>) {
-        XyDriver::set_bash_run_sink(&mut self.inner, sink);
-    }
-
-    async fn estimate_context_tokens(
-        &self,
-    ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
-        XyDriver::estimate_context_tokens(&self.inner).await
-    }
-
-    fn get_commands(&self) -> Vec<CommandInfo> {
-        XyDriver::get_commands(&self.inner)
-    }
-
-    fn leaf_entry_id(&self) -> Option<String> {
-        XyDriver::leaf_entry_id(&self.inner)
-    }
-
-    fn session_store(&self) -> Option<Arc<dyn XySessionStore>> {
-        XyDriver::session_store(&self.inner)
-    }
-
-    fn dollar_skill_catalog(&self) -> Vec<(String, String)> {
-        XyDriver::dollar_skill_catalog(&self.inner)
-    }
-
-    async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
-        XyComposedDriver::loaded_resources_snapshot(self).await
-    }
-
-    fn mcp_blocks_agent(&self) -> bool {
-        XyComposedDriver::mcp_blocks_agent(self)
-    }
-
-    fn is_tools_frozen(&self) -> bool {
-        XyDriver::is_tools_frozen(&self.inner)
-    }
-
-    async fn arm_tool_freeze_gate(&mut self) {
-        self.arm_tool_freeze_gate_inner().await
-    }
-
-    fn take_mcp_gate_notice(&mut self) -> Option<String> {
-        self.take_mcp_gate_notice_inner()
-    }
-
-    async fn begin_mcp_bootstrap(&mut self) {
-        XyComposedDriver::begin_mcp_bootstrap(self).await
-    }
-
-    async fn poll_mcp_bootstrap(&mut self) -> bool {
-        XyComposedDriver::poll_mcp_bootstrap(self).await
-    }
-
-    async fn bash_run(
-        &mut self,
-        command: &str,
-        exclude_from_context: bool,
-    ) -> Result<xylitol_runtime::BashRun, XyDriverError> {
-        XyDriver::bash_run(&mut self.inner, command, exclude_from_context).await
-    }
-
-    async fn reload_runtime(
-        &mut self,
-        cancel: &tokio_util::sync::CancellationToken,
-    ) -> Result<RuntimeReloadReport, XyDriverError> {
-        XyComposedDriver::reload_runtime(self, cancel).await
-    }
-
-    async fn persist_project_trust(
-        &mut self,
-        mode: ProjectTrustMode,
-    ) -> Result<ProjectTrustPersistReport, XyDriverError> {
-        XyComposedDriver::persist_project_trust(self, mode)
-    }
+pub fn assemble_driver_with_bang(
+    agent: AgentRuntime,
+    store: Arc<dyn XySessionStore>,
+    bang: BangExecHandler,
+) -> RuntimeDriver {
+    assemble_driver_with_ops(
+        agent,
+        store,
+        bang,
+        SessionExporter::new(Some(Arc::new(crate::export::StdExportIo::new()))),
+    )
 }

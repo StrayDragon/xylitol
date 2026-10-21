@@ -9,7 +9,7 @@ async fn persist_project_trust_writes_store_under_agent_dir() {
     std::fs::create_dir_all(cwd.join(".xylitol")).unwrap();
     let store = Arc::new(SessionManager::new(home.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
-    driver.enable_reload_state(cwd.clone(), agent_dir.clone(), false, Vec::new());
+    driver.enable_reload_state(cwd.clone(), agent_dir.clone(), false);
     let report = driver
         .persist_project_trust(ProjectTrustMode::TrustCwd)
         .expect("persist");

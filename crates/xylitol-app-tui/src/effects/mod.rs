@@ -325,7 +325,7 @@ pub async fn drain_pending<T: Terminal>(
             session.ui_model_mut().set_busy_status("Assembling");
             session.sync_ui_root_from_model();
             // Assembling (busy lead) MUST keep right-aligned MCP cue when still pending
-            // (resume Settling/re-gate — see mcp_tools_pending).
+            // (resume connecting / re-gate — see mcp_tools_pending).
             if let Some(root) = session.ui_root() {
                 root.borrow_mut().refresh_mcp_short_cue();
             }

@@ -206,7 +206,7 @@ impl McpClientManager {
 
         // When a shared progress Arc is owned by bootstrap, leave `connecting=true`
         // until discover + manager merge (caller clears). Clearing here flashes
-        // "N configured · 0 connected" while McpBootState is still Running.
+        // "N configured · 0 connected" while the prepare hub is still connecting.
         let clear = progress_out.is_none();
         self.write_progress(&progress_out, !clear, total, finished, None)
             .await;

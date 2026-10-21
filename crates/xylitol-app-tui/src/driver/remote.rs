@@ -1416,7 +1416,7 @@ where
         });
     }
 
-    async fn poll_mcp_bootstrap(&mut self) -> bool {
+    async fn poll_prepare_progress(&mut self) -> bool {
         // Attach observes writer MCP via mux `session/resources`, not 16Hz unary.
         self.resources_dirty.swap(false, Ordering::SeqCst)
     }
