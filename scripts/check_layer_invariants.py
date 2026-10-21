@@ -189,7 +189,7 @@ def check_print_thinking_wrap(errors: list[str]) -> None:
 def check_contains(errors: list[str]) -> None:
     pairs = [
         ("crates/xylitol-runtime/src/agent/prompt/templates/default_system.j2", "Available tools:"),
-        ("crates/xylitol-runtime/src/agent/prompt/system.rs", "session_env"),
+        ("crates/xylitol-runtime/src/agent/prompt/session_env.rs", "session_env"),
         ("crates/xylitol-app-tui/src/driver/remote.rs", "Command::SessionTree"),
         ("crates/xylitol-protocol/src/registry.rs", '"list_sessions"'),
         ("crates/xylitol-protocol/src/registry.rs", '"session_tree"'),

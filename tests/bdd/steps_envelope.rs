@@ -205,7 +205,8 @@ async fn t_codegen_clean() {
             .expect("run codegen check");
         assert!(
             out.status.success(),
-            "codegen --check failed: {}",
+            "codegen --check failed: {}{}",
+            String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         );
     }
