@@ -1,0 +1,22 @@
+# cargo-crap SSOT. Local: `just coverage-lcov` → `just crap`; duplicates: `just crap-duplicates`.
+# CI: `.github/workflows/crap.yaml` (CRAP regression) + `crap-duplicates.yaml`.
+
+threshold = 30
+uncovered-hints = true
+fail-regression = false
+
+exclude = [
+  "**/v3/generated.rs",
+  "**/harness.rs",
+  "**/tests/**",
+  "**/test_*.rs",
+]
+
+# Structural duplicates: `just crap-duplicates` / CI `crap-duplicates.yaml` (--duplicates).
+# Triage needs API keys — keep off unless configured.
+[duplicates]
+enabled = false
+
+# cargo-crap ≥0.10 (crates.io): enable + wire `just crap-signals` / CI when released.
+# [signals]
+# enabled = true

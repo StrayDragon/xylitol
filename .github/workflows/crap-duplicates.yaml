@@ -1,0 +1,34 @@
+name: CRAP duplicates
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crap-dup-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  duplicates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install cargo-crap
+        run: cargo install cargo-crap --version 0.9.0 --locked
+
+      - name: Structural duplicate radar (informational)
+        run: |
+          cargo crap --workspace --duplicates --summary --format markdown \
+            > "${RUNNER_TEMP}/crap-duplicates.md"
+          cat "${RUNNER_TEMP}/crap-duplicates.md" >> "$GITHUB_STEP_SUMMARY"

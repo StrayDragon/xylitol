@@ -34,7 +34,7 @@ API 名、调用序列、参数流水账等易腐细节一律以代码、skill �
 | 版本特定结论 | 「Cargo 1.97 下 incremental 会 stale」钉进正文 | 「具体行为随工具链版本变化，按当次版本验证」 |
 | 易腐组成 / 步骤 | 内联枚举「fmt + clippy + 测试 + TUI harness + …」 | 短标签 + SSOT 指针：「全量门禁（组成见 justfile `qa`）」 |
 | 大而稳定的集合 | 并列长句，增删各改多处 | 一张宽泛索引表（分层 / 命令 / 术语），只列稳定成员 |
-| 进度 / 体量自述 | 「本模块 900 行，待拆」 | 软信号 `just complexity`；门禁见 `src/AGENTS.md` |
+| 进度 / 体量自述 | 「本模块 900 行，待拆」 | 软信号 `just complexity` / `just crap`；硬门禁见 `src/AGENTS.md` |
 | 跨层重复 | 子目录复述父级依赖表 | 「依赖方向见 `src/AGENTS.md`；本端仅例外：…」 |
 | 行为契约搬运 | 把 spec 场景抄进正文 | 「场景真源 `llmanspec/specs/<capability>/`」 |
 

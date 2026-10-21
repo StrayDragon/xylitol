@@ -208,11 +208,16 @@ Hook 三条接缝只认可移植 JSON（headers map + body Value）；不把 req
 
 ## 复杂度与体量
 
-生产模块避免无结构 God 文件。**不得以文件物理行数作为质量约束**。行数与可维护性无直接映射；行数硬测会逼出按 impl 块散落的假拆分。质量信号只走函数级复杂度指标（cccc-rs 的 Sonar cognitive / McCabe cyclomatic）。
+生产模块避免无结构 God 文件。**不得以文件物理行数作为质量约束**。行数与可维护性无直接映射；行数硬测会逼出按 impl 块散落的假拆分。函数级质量信号用 **两套互补工具**（对比实验临时脚本：`xylitol-dev` skill `references/complexity-cccc-crap.md`）：
 
-**TUI 端复杂度门禁（HARD）**：产品 TUI 入口协调者（host 入口、layout 根、effects 入口、bridge 入口）的函数级复杂度，经 `just qa` 的 `qa-check-complexity`（cccc-rs）强制。Sonar cognitive ≤32 且 McCabe cyclomatic ≤27。测试专用模块不参与本门禁。
+| 工具 | 度量 | 门禁 |
+|---|---|---|
+| **cccc-rs** | Sonar **cognitive** + McCabe cyclomatic | **HARD**：ath12 TUI 入口四文件（`qa-check-complexity`）cognitive≤32、cyclomatic≤27 |
+| **cargo-crap** | CRAP（cyclomatic × 未覆盖行）+ 结构重复 | **CI 回归**（`.github/workflows/crap.yaml`）；重复扫描（`crap-duplicates.yaml`）；不进 `just qa` |
 
-**全树复杂度雷达（review 信号）**：`just complexity` 对全生产树（排除测试文件）报告 cccc-rs top-cognitive 排名，作为 review 参照；软信号，非硬门禁。复杂度高的函数优先拆分/重构，不用行数 KPI。
+**不得**用 cargo-crap 替代 cccc 硬闸：CRAP 无 cognitive 维度。本地软雷达：`just complexity`（cccc 认知）、`just crap-duplicates`、`just coverage-lcov` + `just crap`（有 LCOV 时）。
+
+**全树认知雷达**：`just complexity`。复杂度高的函数优先拆分/重构，不用行数 KPI。
 
 **默认不为行数大拆**：ReAct（剧本可与行为测同居；state machine 未开放）、session manager、已拆开的 driver 子树。功能逼出或编辑痛点明确时再拆；复杂度超门禁必须拆分或显式豁免。**不得**在本文件维护超标清单。不为编译速度拆 crate。
 

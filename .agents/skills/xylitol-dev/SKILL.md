@@ -23,6 +23,7 @@ description: >-
 |---|---|
 | 写 / 改 `AGENTS.md`、抗衰老纪律、墓碑描述清理 | `references/agents-authoring.md` |
 | 跑门禁 `just qa` / `qa-e2e`、加 `scripts/check_*.py`、prek 与 qa 正交、复杂度门禁 | `references/qa-gates.md` |
+| cccc vs cargo-crap 对比实验（临时，不进 scripts/） | `references/complexity-cccc-crap.md` |
 | 该写什么测试、测试分层、`lab_` 命名、nextest 并行纪律、禁 `thread::sleep` | `references/test-layering.md` |
 | 产品↔实现闭环、GitHub FR 兑现后 landing specs、术语写作 | `references/docs-loop.md` |
 | 提交信息、PR、会话交接 handoff | `references/commit-and-collab.md` |

@@ -293,8 +293,97 @@ complexity verbosity=verbosity_default:
     bin="$(just _cccc-bin)"
     "$bin" --table --top-cognitive 20 --min 10 \
       --exclude='**/tests.rs' --exclude='**/tests/**' --exclude='**/harness.rs' \
-      src
-    echo "(radar soft — not a qa hard gate; entry limits cognitive≤32 cyclomatic≤27)"
+      --exclude='**/examples/**' \
+      src crates plugins
+    echo "(cccc cognitive radar — HARD gate: qa-check-complexity; CRAP: just crap / crap-duplicates)"
+
+[arg('verbosity', pattern='quiet|normal|verbose')]
+crap-duplicates verbosity=verbosity_default:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cargo-crap >/dev/null; then
+      echo "error: cargo-crap not in PATH" >&2
+      exit 1
+    fi
+    case "{{verbosity}}" in
+      quiet)   cargo crap --workspace --duplicates --summary ;;
+      normal)  cargo crap --workspace --duplicates --top 15 ;;
+      verbose) cargo crap --workspace --duplicates ;;
+    esac
+
+crap-signals:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ver="$(cargo crap --version | awk '{print $2}')"
+    need="0.10.0"
+    if [[ "$(printf '%s\n' "$need" "$ver" | sort -V | head -1)" != "$need" ]]; then
+      echo "cargo-crap $ver: structural [signals] need ≥$need (crates.io); see .cargo-crap.toml stub." >&2
+      exit 2
+    fi
+    cargo crap --workspace --format json >/dev/null
+    echo "signals: run with [signals] enabled in .cargo-crap.toml (cargo-crap ≥0.10)"
+
+# CRAP radar (complexity × untested code). Needs LCOV from llvm-cov ≥0.9.1 — not in `just qa`.
+[private]
+_cargo-llvm-cov-bin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    need_min="0.9.1"
+    if command -v cargo-llvm-cov >/dev/null; then
+      have="$(cargo llvm-cov --version | awk '{print $2}')"
+      if [[ "$(printf '%s\n' "$need_min" "$have" | sort -V | head -1)" == "$need_min" ]]; then
+        exit 0
+      fi
+    fi
+    cargo install cargo-llvm-cov --version "$need_min" --locked
+
+# Same nextest matrix as `just test` (no xylitol-tui; no live-provider binary).
+[arg('verbosity', pattern='quiet|normal|verbose')]
+coverage-lcov verbosity=verbosity_default lcov="lcov.info":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _cargo-llvm-cov-bin >/dev/null
+    unset CARGO_LLVM_COV_SHOW_ENV
+    matrix=(-E 'not (package(xylitol-tui) or binary(lab_responses_prompt_cache))')
+    lcov_path="{{lcov}}"
+    if command -v cargo-nextest >/dev/null; then
+      case "{{verbosity}}" in
+        quiet)
+          cargo llvm-cov nextest --workspace --all-features --profile ci \
+            "${matrix[@]}" --lcov --output-path "$lcov_path" --show-progress none
+          ;;
+        normal|verbose)
+          cargo llvm-cov nextest --workspace --all-features --profile ci \
+            "${matrix[@]}" --lcov --output-path "$lcov_path"
+          ;;
+      esac
+    else
+      cargo llvm-cov test --workspace --all-features \
+        --exclude xylitol-tui \
+        --lcov --output-path "$lcov_path"
+      cargo llvm-cov test -p xylitol-official-plugin-provider-openai --lib \
+        --lcov --output-path "$lcov_path" --append
+    fi
+
+[arg('verbosity', pattern='quiet|normal|verbose')]
+crap verbosity=verbosity_default lcov="lcov.info":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    lcov_path="{{lcov}}"
+    if [[ ! -f "$lcov_path" ]]; then
+      echo "error: missing $lcov_path — run: just coverage-lcov" >&2
+      exit 1
+    fi
+    if ! command -v cargo-crap >/dev/null; then
+      echo "error: cargo-crap not in PATH (cargo binstall cargo-crap | cargo install cargo-crap --locked)" >&2
+      exit 1
+    fi
+    case "{{verbosity}}" in
+      quiet)   cargo crap --workspace --lcov "$lcov_path" --summary ;;
+      normal)  cargo crap --workspace --lcov "$lcov_path" --top 25 ;;
+      verbose) cargo crap --workspace --lcov "$lcov_path" --min 10 ;;
+    esac
+    echo "(CRAP soft — not a qa hard gate; CI regression gate: .github/workflows/crap.yaml)"
 
 # --- scripts/ QA checks -------------------------------------------------
 # Convention (normative for this repo):
