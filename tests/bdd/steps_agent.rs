@@ -172,7 +172,7 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-        std::sync::Arc::new(xylitol::wiring::event::EventBus::new());
+        std::sync::Arc::new(xylitol_kernel::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
@@ -183,7 +183,7 @@ pub(crate) async fn _w_agent_switch_thinking(agent: &AgentState, verb: String, l
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::wiring::provider::factory::build_provider),
+        std::sync::Arc::new(xylitol_kernel::provider::factory::build_provider),
         xylitol_runtime::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
@@ -428,7 +428,7 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> =
         std::sync::Arc::new(mgr.clone());
     let sink: std::sync::Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-        std::sync::Arc::new(xylitol::wiring::event::EventBus::new());
+        std::sync::Arc::new(xylitol_kernel::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
@@ -439,7 +439,7 @@ pub(crate) fn _w_agent_try_thinking_level(agent: &AgentState, level: String) {
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::wiring::provider::factory::build_provider),
+        std::sync::Arc::new(xylitol_kernel::provider::factory::build_provider),
         xylitol_runtime::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),

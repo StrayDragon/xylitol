@@ -129,7 +129,7 @@ def check_moved_occupancy(errors: list[str]) -> None:
     must_not_exist("src/wiring/driver/remote.rs", errors)
     must_not_exist("src/wiring/host_client", errors)
     must_exist("crates/xylitol-app-tui/src/driver/remote.rs", errors)
-    must_exist("src/wiring/occupancy/factory.rs", errors)
+    must_exist("crates/xylitol-kernel/src/occupancy/factory.rs", errors)
 
 
 def check_docs_and_exports(errors: list[str]) -> None:
@@ -197,7 +197,7 @@ def check_contains(errors: list[str]) -> None:
         ("crates/xylitol-protocol/src/registry.rs", '"reload"'),
         ("crates/xylitol-serve/src/occupancy/host.rs", "SessionSlot"),
         ("crates/xylitol-serve/src/occupancy/host.rs", "materialize_writer"),
-        ("src/wiring/driver/in_process/mod.rs", "SessionExporter"),
+        ("crates/xylitol-kernel/src/driver/in_process/mod.rs", "SessionExporter"),
         ("tests/bdd.rs", "mod bdd"),  # may fail — check below
     ]
     for rel, needle in pairs:

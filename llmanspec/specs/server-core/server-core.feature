@@ -13,7 +13,7 @@
 
   @req:r1794
   规则: server 托管 agent
-    app::server 须在启动时装配 infra 运行时并注入 agent 端口；组合根 须持有可按 session 槽取用的 Driver（或等价缝），供 unary 处理器调用，不得以无槽的裸 Agent 作为唯一生产入口。
+    app::server 须在启动时经 Kernel::boot（Host profile）装配 infra 运行时并注入 agent 端口；组合根 须持有可按 session 槽取用的 Driver（或等价缝），供 unary 处理器调用，不得以无槽的裸 Agent 作为唯一生产入口。serve 是 Host profile 的载体插件。
 
     场景: 服务端低于应用
       当 server 应用面启动

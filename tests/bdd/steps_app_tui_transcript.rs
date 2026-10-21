@@ -1761,7 +1761,7 @@ fn when_todo_bar_three_zone(transcript_bdd: &TranscriptBdd) {
     let mut model = UiModel::new();
     apply_xy_event(
         &mut model,
-        &xylitol::wiring::driver::XyEvent::TodoUpdated {
+        &xylitol_kernel::driver::XyEvent::TodoUpdated {
             list: TodoList::new(vec![
                 TodoItem {
                     id: "1".into(),

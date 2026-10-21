@@ -3,6 +3,7 @@
 pub mod dto;
 pub mod error;
 pub mod hooks;
+pub mod plugin;
 pub mod provider;
 pub mod thinking;
 pub mod wire_policy;

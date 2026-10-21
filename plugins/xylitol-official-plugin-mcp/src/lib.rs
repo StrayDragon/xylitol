@@ -9,6 +9,7 @@ mod adapter;
 mod assemble;
 mod client;
 mod defaults;
+pub mod plugin;
 pub(crate) mod types;
 
 pub use adapter::McpToolAdapter;

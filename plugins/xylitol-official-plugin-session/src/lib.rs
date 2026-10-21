@@ -9,6 +9,7 @@
 //! - Kernel write occupancy on `session.lock` (POSIX flock / Windows named object)
 
 pub(crate) mod manager;
+pub mod plugin;
 mod sync;
 pub mod types;
 

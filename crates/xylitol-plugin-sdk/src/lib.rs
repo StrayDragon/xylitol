@@ -17,8 +17,13 @@ pub mod model_entry;
 pub mod obs_gate;
 pub mod obs_session;
 pub mod overflow;
+pub mod plugin_config;
+pub mod plugin_events;
+pub mod plugin_keys;
 mod ports;
+pub mod registry;
 pub mod resource;
+pub mod rt;
 pub mod session;
 pub mod session_env;
 pub mod settlement;
@@ -74,6 +79,26 @@ pub use obs_session::{
 pub use overflow::{
     assistant_same_model, error_message_is_context_overflow, is_context_overflow_assistant,
 };
+pub use plugin_config::EmptyPluginConfig;
+pub use plugin_events::{
+    AgentPreStep, HttpBeforeRequest, ToolPostExecute, ToolPreExecute, TrustPreLoad,
+};
+pub use plugin_keys::{
+    compaction_key, hook_bus_key, model_key, permission_key, session_store_key, tool_vec_key,
+};
+pub use registry::{HostRegistries, Registry, SkillEntry};
+pub use rt::{RUTIS_LOCK, SDK_API_VERSION};
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    #[test]
+    fn sdk_api_version_and_rutis_lock() {
+        assert_eq!(SDK_API_VERSION, "0.1.0");
+        assert_eq!(RUTIS_LOCK, "0.13.0");
+    }
+}
 pub use ports::{
     AgentTodoGateway, AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway, BashChunk,
     BashExecOpts, BashOutputSink, FS_TOOL_TIMEOUT_SECS, HeaderBag, HttpHooks, LifecycleHandler,

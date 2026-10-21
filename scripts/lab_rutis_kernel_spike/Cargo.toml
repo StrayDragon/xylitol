@@ -1,0 +1,18 @@
+[workspace]
+
+[package]
+name = "lab_rutis_kernel_spike"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99.0"
+publish = false
+license = "MIT"
+description = "One-off M0 spike: rutis 0.13.0 + loader as xylitol kernel substrate"
+
+[dependencies]
+rutis = "=0.13.0"
+rutis-loader = "=0.13.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+schemars = "1"

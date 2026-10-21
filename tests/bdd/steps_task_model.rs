@@ -61,7 +61,7 @@ pub(crate) fn w_m18_resolve(agent: &AgentState) {
     reg.register(meta);
     let mut mm = xylitol_runtime::agent::model::ModelManager::new(
         reg,
-        Arc::new(xylitol::wiring::provider::factory::build_provider),
+        Arc::new(xylitol_kernel::provider::factory::build_provider),
     );
     mm.select_model("main").expect("select main");
 
@@ -142,8 +142,8 @@ pub(crate) fn t_provider_builtin_defaults_ordered() {
 
 #[when("以 provider 种类读取适配器缺省")]
 pub(crate) fn w_read_adapter_kind_default() {
-    let text = std::fs::read_to_string("src/wiring/provider/adapter/mod.rs")
-        .expect("src/wiring/provider/adapter/mod.rs 可读");
+    let text = std::fs::read_to_string("crates/xylitol-kernel/src/provider/adapter/mod.rs")
+        .expect("crates/xylitol-kernel/src/provider/adapter/mod.rs 可读");
     let anthropic_hit =
         text.contains("\"anthropic-messages\" => AdapterKind::AnthropicMessages") as usize;
     let openai_hit = text.contains("=> AdapterKind::OpenAiResponses") as usize;

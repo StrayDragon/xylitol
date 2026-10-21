@@ -668,7 +668,7 @@ pub(crate) fn bdd_batch_make_runner(
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn XySessionStore> = Arc::new(mgr);
-    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::wiring::event::EventBus::new());
+    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol_kernel::event::EventBus::new());
     let builder: xylitol_plugin_sdk::XyModelBuilder = Arc::new(move |_| {
         Arc::new(BddMultiToolModel {
             rounds: std::sync::Mutex::new(rounds.clone()),
@@ -1019,7 +1019,7 @@ pub(crate) fn _t_ar7_tool_error_written() {
 
 #[when("运行一轮对话后检查持久化条目")]
 pub(crate) async fn w_c2826_first_turn_history(agent: &AgentState) {
-    xylitol::wiring::provider::factory::set_fake_text("回复正文");
+    xylitol_kernel::provider::factory::set_fake_text("回复正文");
     let (mut runner, store) = make_agent_with_store(agent);
     crate::bdd::helpers::bind_session_or_panic(&mut runner, "c2826-first-turn");
     let mut stream = agent_submit_root(&mut runner, "用户第一句").await;
@@ -1087,19 +1087,19 @@ pub(crate) fn t_c2826_first_turn_history(agent: &AgentState) {
 }
 
 fn c2826_driver() -> (
-    xylitol::wiring::driver::XyComposedDriver,
+    xylitol_kernel::driver::XyComposedDriver,
     std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore>,
 ) {
     use std::sync::Arc;
-    let agent = xylitol::wiring::composition::build_agent(
-        xylitol::wiring::composition::BuildAgentOptions::default(),
+    let agent = xylitol_kernel::composition::build_agent(
+        xylitol_kernel::composition::BuildAgentOptions::default(),
     )
     .expect("build agent for reload seam");
     let mgr = xylitol_official_plugin_session::SessionManager::new(
         tempfile::tempdir().unwrap().path().join("sessions"),
     );
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);
-    let driver = xylitol::wiring::driver::XyComposedDriver::new(agent, store.clone());
+    let driver = xylitol_kernel::driver::XyComposedDriver::new(agent, store.clone());
     (driver, store)
 }
 
@@ -1117,7 +1117,7 @@ pub(crate) async fn w_c2826_context_reload_trust(
     .unwrap();
     let agent_dir = tempfile::tempdir().unwrap();
     let (mut trusted_driver, _s1) = c2826_driver();
-    let trusted = xylitol::wiring::bootstrap::reload_prompt_context(
+    let trusted = xylitol_kernel::bootstrap::reload_prompt_context(
         &mut trusted_driver,
         std::path::Path::new(&project),
         agent_dir.path(),
@@ -1125,7 +1125,7 @@ pub(crate) async fn w_c2826_context_reload_trust(
         None,
     );
     let (mut untrusted_driver, _s2) = c2826_driver();
-    let untrusted = xylitol::wiring::bootstrap::reload_prompt_context(
+    let untrusted = xylitol_kernel::bootstrap::reload_prompt_context(
         &mut untrusted_driver,
         std::path::Path::new(&project),
         agent_dir.path(),
@@ -1185,14 +1185,14 @@ pub(crate) fn w_c2826_skills_reload_trust(
     .unwrap();
     let agent_dir = tempfile::tempdir().unwrap();
     let (mut trusted_driver, _s1) = c2826_driver();
-    let trusted = xylitol::wiring::bootstrap::reload_skills(
+    let trusted = xylitol_kernel::bootstrap::reload_skills(
         &mut trusted_driver,
         std::path::Path::new(&project),
         agent_dir.path(),
         true,
     );
     let (mut untrusted_driver, _s2) = c2826_driver();
-    let untrusted = xylitol::wiring::bootstrap::reload_skills(
+    let untrusted = xylitol_kernel::bootstrap::reload_skills(
         &mut untrusted_driver,
         std::path::Path::new(&project),
         agent_dir.path(),
@@ -1228,7 +1228,7 @@ pub(crate) fn t_c2826_skills_reload_trust(agent: &AgentState) {
 #[when("经 Driver 启动会话并在首个 TextDelta 后 abort 并检查持久化条目")]
 pub(crate) async fn w_c2826_abort_persist(agent: &AgentState) {
     use xylitol::embed::{XyComposedDriver, XyDriver};
-    xylitol::wiring::provider::factory::set_fake_slow_stream(40, 5);
+    xylitol_kernel::provider::factory::set_fake_slow_stream(40, 5);
     let (runtime, store) = make_agent_with_store(agent);
     let mut driver = XyComposedDriver::new(runtime, store.clone());
     let sid = driver

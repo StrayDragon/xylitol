@@ -24,7 +24,7 @@ fn test_preview_toplevel_help(cli_help_bdd: CliHelpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-preview/app-tui-preview.feature",
-    name = "designing会不需要Host监听"
+    name = "designing须attach Host"
 )]
 fn test_preview_designing_no_attach(cli_help_bdd: CliHelpBdd) {}
 

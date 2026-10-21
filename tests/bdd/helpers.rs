@@ -48,7 +48,7 @@ pub(crate) fn make_agent_with_store(
     use std::sync::Arc;
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr.clone());
     let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-        Arc::new(xylitol::wiring::event::EventBus::new());
+        Arc::new(xylitol_kernel::event::EventBus::new());
     let hook_bus: Option<Arc<dyn xylitol::XyHookBus>> = agent
         .wiring_hook_log
         .borrow()
@@ -64,13 +64,13 @@ pub(crate) fn make_agent_with_store(
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::wiring::provider::factory::build_provider),
+        std::sync::Arc::new(xylitol_kernel::provider::factory::build_provider),
         xylitol_runtime::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         hook_bus,
     );
-    session.install_compaction(xylitol::wiring::composition::official_compaction_factory());
+    session.install_compaction(xylitol_kernel::composition::official_compaction_factory());
     // Harness often registers models without select; pick the first so ReAct can build.
     if session.current_model().is_none()
         && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
@@ -169,7 +169,7 @@ pub(crate) async fn run_wiring_operation(
             let _ = agent.ensure_wiring_hook_log();
             let (runtime, store) = make_agent_with_store(agent);
             let mut driver = XyComposedDriver::new(runtime, store);
-            xylitol::wiring::driver::XyDriver::bash_run(&mut driver, "true", false)
+            xylitol_kernel::driver::XyDriver::bash_run(&mut driver, "true", false)
                 .await?
                 .await
                 .map(|_| ())
@@ -218,7 +218,7 @@ pub(crate) async fn dispatch_hook(agent: &AgentState, event: HookEvent, phase: H
     agent
         .last_hook_stdin
         .replace(Some(event.to_json_context(phase)));
-    let dispatcher = HookDispatcher::new(&xylitol::wiring::config::types::HooksConfig {
+    let dispatcher = HookDispatcher::new(&xylitol_kernel::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         project: vec![],
         user: vec![],

@@ -6,7 +6,7 @@
 
 mod args;
 mod intent;
-pub mod logging;
+pub use xylitol_official_plugin_obs as logging;
 mod print;
 pub use args::*;
 pub use intent::*;
@@ -18,29 +18,28 @@ pub use provider_guidance::{
 mod provider_guidance;
 #[cfg(feature = "tui")]
 mod trust_gate;
-#[cfg(all(feature = "tui", feature = "server"))]
-mod tui_inprocess;
 
 use clap::Parser;
 
-use crate::wiring::bootstrap::{
-    BootstrapError, BootstrapInput, BootstrapWarning, bootstrap, resolve_assembly,
-};
-use crate::wiring::driver::XyDriver;
 #[cfg(all(test, feature = "server"))]
 use crate::wiring::occupancy::subcommand::ServeAction;
-use crate::wiring::timing;
+use xylitol_kernel::boot::{BootOptions, Profile, boot};
+use xylitol_kernel::bootstrap::{
+    BootstrapError, BootstrapInput, BootstrapWarning, resolve_assembly,
+};
+use xylitol_kernel::driver::XyDriver;
+use xylitol_kernel::timing;
 
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
     let surface = surface_from_command(args.command.as_ref());
 
     // Secrets first so `[otel]` / templates can see LANGFUSE_* from secret.env.
-    let paths = crate::wiring::config::paths::ConfigPaths::discover();
-    let _ = crate::wiring::config::secret_env::load_secret_env_files(&paths);
+    let paths = xylitol_kernel::config::paths::ConfigPaths::discover();
+    let _ = xylitol_kernel::config::secret_env::load_secret_env_files(&paths);
 
     // Best-effort early config for OTLP assembly (bootstrap reloads later).
-    let early_otel = crate::wiring::config::loader::load_app_config(
+    let early_otel = xylitol_kernel::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
     )
     .map(|c| c.otel)
@@ -84,9 +83,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let stdin_is_tty = std::io::stdin().is_terminal();
     let (force_tui, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
     #[cfg(feature = "tui")]
-    let designing = is_tui_designing(args.command.as_ref());
-
-    #[cfg(feature = "tui")]
     let want_tui = !surface.list_models
         && select_surface_mode(force_tui, explicit_print, one_shot.is_some(), stdin_is_tty)
             == SurfaceMode::Tui;
@@ -94,10 +90,10 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let want_tui = false;
 
     #[cfg(all(feature = "tui", feature = "server"))]
-    if want_tui && !designing {
+    if want_tui {
         let url =
-            crate::wiring::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
-        if let Err(msg) = crate::wiring::attach::attach_preflight(&url).await {
+            xylitol_kernel::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
+        if let Err(msg) = xylitol_kernel::attach::attach_preflight(&url).await {
             eprintln!("{msg}");
             return Err("host not listening".into());
         }
@@ -105,7 +101,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // c490: Ask trust inside ChoicePrompt **before** bootstrap (no stdio menu).
     #[cfg(feature = "tui")]
-    if want_tui && !designing {
+    if want_tui {
         match trust_gate::run_trust_gate_if_needed(trust_override) {
             Ok(()) => {}
             Err(trust_gate::TrustGateError::Cancelled) => {
@@ -121,13 +117,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     #[cfg(all(feature = "tui", feature = "server"))]
-    if want_tui && designing {
-        return run_product_tui_designing(&surface).await;
-    }
-
-    #[cfg(all(feature = "tui", feature = "server"))]
     if want_tui {
-        return run_product_tui_attached(&surface).await;
+        return run_product_tui_attached(&surface, is_tui_designing(args.command.as_ref())).await;
     }
 
     let bootstrap_input = BootstrapInput {
@@ -173,9 +164,20 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // ── print / tui: build once via bootstrap ────────────────────
-    let bootstrapped = match bootstrap(bootstrap_input) {
-        Ok(b) => b,
+    // ── print: Kernel::boot (core plugins + official rows + assembly) ─
+    let kernel = match boot(BootOptions {
+        profile: Profile::Print,
+        config_path: bootstrap_input.config_path,
+        session: bootstrap_input.session,
+        model: bootstrap_input.model,
+        trust_override: bootstrap_input.trust_override,
+        interactive: bootstrap_input.interactive,
+        caller: bootstrap_input.caller,
+        ephemeral_sessions: bootstrap_input.ephemeral_sessions,
+    })
+    .await
+    {
+        Ok(k) => k,
         Err(BootstrapError::NoModelsAvailable) => {
             eprintln!(
                 "Error: {}",
@@ -193,8 +195,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Err(e) => return Err(e.into()),
     };
-    render_warnings(&bootstrapped.warnings);
-    let runtime = bootstrapped.into_runtime();
+    render_warnings(&kernel.runtime.warnings);
+    let runtime = kernel.runtime;
     let session_id = runtime.session_id;
     let project_trusted = !runtime
         .warnings
@@ -250,6 +252,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(all(feature = "tui", feature = "server"))]
 async fn run_product_tui_attached(
     surface: &SurfaceBootstrap,
+    designing: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::IsTerminal;
     if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
@@ -257,7 +260,7 @@ async fn run_product_tui_attached(
         return Err("tui requires tty".into());
     }
     let attach_url =
-        crate::wiring::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
+        xylitol_kernel::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
     let mut driver = xylitol_app_tui::XyRemoteDriver::new_v3(
         attach_url,
         surface.session.clone().unwrap_or_default(),
@@ -279,12 +282,12 @@ async fn run_product_tui_attached(
     driver.set_reverse_rpc_notify(std::sync::Arc::new(move |rpc_id, method, payload| {
         gw.push_from_server(rpc_id, &method, payload);
     }));
-    let (seed_n, activity_fold) = match crate::wiring::config::loader::load_app_config(
+    let (seed_n, activity_fold) = match xylitol_kernel::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
     ) {
         Ok(c) => (
             c.tui.editor_history_seed_sessions,
-            c.tui.activity_fold.into(),
+            crate::cli::activity_fold_settings(c.tui.activity_fold),
         ),
         Err(_) => (1, xylitol_app_tui::ActivityFoldSettings::default()),
     };
@@ -299,78 +302,12 @@ async fn run_product_tui_attached(
                 xylitol_app_tui::storage::ClientStorage::from_env(),
             )),
             interaction_mode: xylitol_app_tui::lab_interaction_mode_from_env(),
-            designing: false,
+            designing,
         },
     )
     .await;
     maybe_print_resume_hint_tui(&mut driver).await;
     tui_result.map_err(|e| e.into())
-}
-
-#[cfg(all(feature = "tui", feature = "server"))]
-async fn run_product_tui_designing(
-    surface: &SurfaceBootstrap,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::IsTerminal;
-    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-        eprintln!("Error: TUI requires a TTY");
-        return Err("tui requires tty".into());
-    }
-    let bootstrap_input = BootstrapInput {
-        config_path: surface.config.as_ref().map(std::path::PathBuf::from),
-        session: None,
-        model: surface.model.clone(),
-        trust_override: Some(false),
-        interactive: false,
-        caller: "cli-designing",
-        ephemeral_sessions: true,
-    };
-    let bootstrapped = match bootstrap(bootstrap_input) {
-        Ok(b) => b,
-        Err(BootstrapError::NoModelsAvailable) => {
-            eprintln!(
-                "Error: {}",
-                provider_guidance::format_no_models_available_message()
-            );
-            return Err("no models available".into());
-        }
-        Err(BootstrapError::ConfigLoadFailed(e)) => {
-            eprintln!("Error: config load failed ({e})");
-            return Err(e.into());
-        }
-        Err(BootstrapError::ConfigLoadedZeroModels) => {
-            eprintln!("Error: {}", BootstrapError::ConfigLoadedZeroModels);
-            return Err("config loaded zero models".into());
-        }
-        Err(e) => return Err(e.into()),
-    };
-    render_warnings(&bootstrapped.warnings);
-    let runtime = bootstrapped.into_runtime();
-    let mut driver = runtime.driver;
-    let (seed_n, activity_fold) = match crate::wiring::config::loader::load_app_config(
-        surface.config.as_ref().map(std::path::Path::new),
-    ) {
-        Ok(c) => (
-            c.tui.editor_history_seed_sessions,
-            c.tui.activity_fold.into(),
-        ),
-        Err(_) => (1, xylitol_app_tui::ActivityFoldSettings::default()),
-    };
-    let mut tui_driver = tui_inprocess::TuiInProcessAdapter::new(&mut driver);
-    xylitol_app_tui::run(
-        &mut tui_driver,
-        xylitol_app_tui::TuiRunOptions {
-            editor_history_seed_sessions: seed_n,
-            activity_fold,
-            restored_session: false,
-            ask_gateway: None,
-            client_storage: None,
-            interaction_mode: xylitol_app_tui::lab_interaction_mode_from_env(),
-            designing: true,
-        },
-    )
-    .await
-    .map_err(|e| e.into())
 }
 
 /// stderr resume line when the session was persisted (c1565).
@@ -396,18 +333,20 @@ async fn maybe_print_resume_hint_tui(driver: &mut dyn xylitol_app_tui::XyDriver)
 /// stderr resume line when the session was persisted (c1565).
 async fn maybe_print_resume_hint<D>(driver: &mut D)
 where
-    D: crate::wiring::driver::XyDriver + crate::wiring::dispatch::SessionCommandExecutor,
+    D: xylitol_kernel::driver::XyDriver + xylitol_kernel::dispatch::SessionCommandExecutor,
 {
     let sid = driver.session_id();
-    let listed =
-        match crate::wiring::dispatch::dispatch(driver, xylitol_protocol::Command::ListSessions {})
-            .await
-        {
-            Ok(crate::wiring::dispatch::DispatchOutcome::Sessions(list)) => sid
-                .as_deref()
-                .is_some_and(|id| list.iter().any(|e| e.id == id)),
-            _ => false,
-        };
+    let listed = match xylitol_kernel::dispatch::dispatch(
+        driver,
+        xylitol_protocol::Command::ListSessions {},
+    )
+    .await
+    {
+        Ok(xylitol_kernel::dispatch::DispatchOutcome::Sessions(list)) => sid
+            .as_deref()
+            .is_some_and(|id| list.iter().any(|e| e.id == id)),
+        _ => false,
+    };
     if let Some(line) = resume_hint_line(sid.as_deref(), listed) {
         eprintln!("{line}");
     }
@@ -558,11 +497,17 @@ mod tests {
 
     #[cfg(debug_assertions)]
     #[test]
-    fn debug_tui_designing_parses_and_skips_attach() {
+    fn debug_tui_designing_parses_and_attaches() {
         use clap::CommandFactory;
         let args = CliArgs::try_parse_from(["xylitol", "tui", "designing"]).unwrap();
         assert!(is_tui_designing(args.command.as_ref()));
-        assert!(!tui_requires_host_listener(args.command.as_ref()));
+        assert!(tui_requires_host_listener(args.command.as_ref()));
+        let trusted =
+            CliArgs::try_parse_from(["xylitol", "tui", "--trust", "--port", "9", "designing"])
+                .unwrap();
+        let surface = surface_from_command(trusted.command.as_ref());
+        assert!(surface.trust, "tui --trust designing must set trust");
+        assert_eq!(surface.port, Some(9));
         let mut cmd = CliArgs::command();
         let tui = cmd.find_subcommand_mut("tui").expect("tui");
         assert!(tui.find_subcommand("designing").is_some());
@@ -846,7 +791,7 @@ mod tests {
         let s = surface_from_command(b.command.as_ref());
         assert_eq!(s.port, Some(9));
         assert_eq!(
-            crate::wiring::attach::resolve_attach_url(s.attach.as_deref(), s.port),
+            xylitol_kernel::attach::resolve_attach_url(s.attach.as_deref(), s.port),
             "http://127.0.0.1:9"
         );
 
@@ -861,7 +806,7 @@ mod tests {
         .unwrap();
         let s = surface_from_command(c.command.as_ref());
         assert_eq!(
-            crate::wiring::attach::resolve_attach_url(s.attach.as_deref(), s.port),
+            xylitol_kernel::attach::resolve_attach_url(s.attach.as_deref(), s.port),
             "http://127.0.0.1:77"
         );
 

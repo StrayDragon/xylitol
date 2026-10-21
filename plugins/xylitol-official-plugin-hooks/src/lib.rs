@@ -11,6 +11,7 @@ use strum::{EnumString, IntoStaticStr};
 pub mod config;
 pub mod dispatcher;
 pub mod http;
+pub mod plugin;
 pub mod script;
 
 pub use config::{HookEntry, HooksConfig};

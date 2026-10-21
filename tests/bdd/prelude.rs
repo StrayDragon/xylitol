@@ -4,8 +4,8 @@ pub use std::sync::Arc;
 
 pub use futures::StreamExt;
 pub use xylitol::XyDriverError;
-pub use xylitol::wiring::config::types::HookEntry;
-pub use xylitol::wiring::provider::factory::{
+pub use xylitol_kernel::config::types::HookEntry;
+pub use xylitol_kernel::provider::factory::{
     reset_fake_state, set_fake_slow_stream, set_fake_text, set_fake_tool_call, set_fake_tool_result,
 };
 pub use xylitol_official_plugin_compaction::should_compact;

@@ -1,0 +1,51 @@
+[package]
+name = "xylitol-kernel"
+version = "0.0.0-pre"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT"
+description = "Host kernel: rutis boot, core plugins, official Builtins, admit"
+repository = "https://github.com/straydragon/xylitol"
+publish = false
+
+[dependencies]
+xylitol-plugin-sdk = { workspace = true }
+xylitol-runtime = { workspace = true }
+xylitol-protocol = { workspace = true }
+xylitol-serve = { workspace = true, default-features = false }
+xylitol-app-print = { workspace = true }
+xylitol-official-plugin-session = { workspace = true }
+xylitol-official-plugin-compaction = { workspace = true }
+xylitol-official-plugin-provider-openai = { workspace = true }
+xylitol-official-plugin-provider-anthropic = { workspace = true }
+xylitol-official-plugin-tools = { workspace = true }
+xylitol-official-plugin-mcp = { workspace = true, default-features = false }
+xylitol-official-plugin-hooks = { workspace = true }
+xylitol-official-plugin-config = { workspace = true }
+xylitol-official-plugin-obs = { workspace = true }
+rutis-loader = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+dirs = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+thiserror = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true, default-features = false, features = ["stream", "json", "rustls", "charset", "http2", "system-proxy"] }
+tokio = { workspace = true, features = ["fs", "macros", "rt", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+async-stream = { workspace = true }
+tempfile = { workspace = true }
+serial_test = { workspace = true }
+
+[features]
+default = ["server", "mcp"]
+server = ["xylitol-serve/listen"]
+mcp = ["xylitol-official-plugin-mcp/mcp"]
+otel = ["xylitol-official-plugin-obs/otel"]

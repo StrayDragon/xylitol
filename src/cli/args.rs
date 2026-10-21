@@ -8,23 +8,21 @@ use crate::wiring::occupancy::subcommand::ServeAction;
 /// Map `tui.activity_fold` config DTO → runtime knobs at the config-owning CLI
 /// boundary (the TUI widget layer does not import wiring config types, c2277).
 #[cfg(feature = "tui")]
-impl From<crate::wiring::config::types::TuiActivityFoldConfig>
-    for xylitol_app_tui::ActivityFoldSettings
-{
-    fn from(c: crate::wiring::config::types::TuiActivityFoldConfig) -> Self {
-        use crate::wiring::config::types::ActivityFoldStreamCollapse;
-        use xylitol_app_tui::SegmentLevel;
-        let collapse_floor = match c.stream_collapse {
-            ActivityFoldStreamCollapse::Envelope => SegmentLevel::L3,
-            ActivityFoldStreamCollapse::Clusters => SegmentLevel::L2,
-        };
-        Self {
-            enabled: c.enabled,
-            keep_recent_turns: c.keep_recent_turns,
-            auto_on_rebuild: c.auto_on_rebuild,
-            auto_on_turn_end: c.auto_on_turn_end,
-            collapse_floor,
-        }
+pub fn activity_fold_settings(
+    c: xylitol_kernel::config::types::TuiActivityFoldConfig,
+) -> xylitol_app_tui::ActivityFoldSettings {
+    use xylitol_app_tui::SegmentLevel;
+    use xylitol_kernel::config::types::ActivityFoldStreamCollapse;
+    let collapse_floor = match c.stream_collapse {
+        ActivityFoldStreamCollapse::Envelope => SegmentLevel::L3,
+        ActivityFoldStreamCollapse::Clusters => SegmentLevel::L2,
+    };
+    xylitol_app_tui::ActivityFoldSettings {
+        enabled: c.enabled,
+        keep_recent_turns: c.keep_recent_turns,
+        auto_on_rebuild: c.auto_on_rebuild,
+        auto_on_turn_end: c.auto_on_turn_end,
+        collapse_floor,
     }
 }
 

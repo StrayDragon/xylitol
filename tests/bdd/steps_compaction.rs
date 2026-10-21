@@ -30,7 +30,7 @@ pub(crate) async fn comp_run_compact(
     );
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let model = xylitol::wiring::provider::factory::build_provider(
+    let model = xylitol_kernel::provider::factory::build_provider(
         &xylitol_plugin_sdk::model::XyModelConfig {
             kind: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "fake".into(),

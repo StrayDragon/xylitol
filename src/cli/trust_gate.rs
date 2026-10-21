@@ -1,6 +1,6 @@
 //! Pre-bootstrap trust ChoicePrompt gate (c490).
 //!
-//! Runs in raw mode **before** [`crate::wiring::bootstrap::bootstrap`] so
+//! Runs in raw mode **before** [`xylitol_kernel::boot`] so
 //! project resources load after the store decision. Product TUI MUST NOT use
 //! `prompt_trust_options_stdio`.
 //!

@@ -1,10 +1,6 @@
 #!/usr/bin/env python3
 """QA check: target crate graph membership and forbidden Cargo edges.
 
-Case: W2 rewrite (tag v0.0.0-pre.old). Empty shells must exist; xylitol-*
-dependencies may only follow src/AGENTS.md. Root package `xylitol` is the
-composition crate and is subject to FORBIDDEN_DEPS (P6).
-
 Usage:
   python3 scripts/check_crate_graph.py
   python3 scripts/check_crate_graph.py --check
@@ -21,7 +17,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 ROOT_MANIFEST = REPO / "Cargo.toml"
 
-# path relative to repo → package name
 REQUIRED_MEMBERS: dict[str, str] = {
     "crates/xylitol-plugin-sdk": "xylitol-plugin-sdk",
     "crates/xylitol-protocol": "xylitol-protocol",
@@ -30,6 +25,7 @@ REQUIRED_MEMBERS: dict[str, str] = {
     "crates/xylitol-app-tui": "xylitol-app-tui",
     "crates/xylitol-app-print": "xylitol-app-print",
     "crates/xylitol-tui": "xylitol-tui",
+    "crates/xylitol-kernel": "xylitol-kernel",
     "plugins/xylitol-official-plugin-session": "xylitol-official-plugin-session",
     "plugins/xylitol-official-plugin-compaction": "xylitol-official-plugin-compaction",
     "plugins/xylitol-official-plugin-provider-openai": "xylitol-official-plugin-provider-openai",
@@ -37,16 +33,17 @@ REQUIRED_MEMBERS: dict[str, str] = {
     "plugins/xylitol-official-plugin-tools": "xylitol-official-plugin-tools",
     "plugins/xylitol-official-plugin-mcp": "xylitol-official-plugin-mcp",
     "plugins/xylitol-official-plugin-hooks": "xylitol-official-plugin-hooks",
+    "plugins/xylitol-official-plugin-config": "xylitol-official-plugin-config",
+    "plugins/xylitol-official-plugin-obs": "xylitol-official-plugin-obs",
 }
 
-# Maximum allowed xylitol-* Cargo deps (subset is OK for empty shells).
 ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-plugin-sdk": frozenset(),
     "xylitol-protocol": frozenset(),
     "xylitol-tui": frozenset(),
     "xylitol-runtime": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-serve": frozenset({"xylitol-runtime", "xylitol-protocol", "xylitol-plugin-sdk"}),
-    "xylitol-app-print": frozenset({"xylitol-runtime"}),
+    "xylitol-app-print": frozenset({"xylitol-runtime", "xylitol-plugin-sdk"}),
     "xylitol-app-tui": frozenset({"xylitol-protocol", "xylitol-tui", "xylitol-plugin-sdk"}),
     "xylitol-official-plugin-session": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-compaction": frozenset({"xylitol-plugin-sdk"}),
@@ -55,11 +52,39 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-official-plugin-tools": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-mcp": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-hooks": frozenset({"xylitol-plugin-sdk"}),
+    "xylitol-official-plugin-config": frozenset(
+        {
+            "xylitol-plugin-sdk",
+            "xylitol-runtime",
+            "xylitol-official-plugin-hooks",
+            "xylitol-official-plugin-mcp",
+        }
+    ),
+    "xylitol-official-plugin-obs": frozenset(
+        {"xylitol-plugin-sdk", "xylitol-official-plugin-config"}
+    ),
+    "xylitol-kernel": frozenset(
+        {
+            "xylitol-plugin-sdk",
+            "xylitol-runtime",
+            "xylitol-protocol",
+            "xylitol-serve",
+            "xylitol-app-print",
+            "xylitol-official-plugin-session",
+            "xylitol-official-plugin-compaction",
+            "xylitol-official-plugin-provider-openai",
+            "xylitol-official-plugin-provider-anthropic",
+            "xylitol-official-plugin-tools",
+            "xylitol-official-plugin-mcp",
+            "xylitol-official-plugin-hooks",
+            "xylitol-official-plugin-config",
+            "xylitol-official-plugin-obs",
+        }
+    ),
 }
 
 ALL_PACKAGES = frozenset(ALLOWED_XYLITOL_DEPS) | {"xylitol"}
 
-# Third-party crates that must not appear in these packages' [dependencies].
 FORBIDDEN_DEPS: dict[str, frozenset[str]] = {
     "fory": ALL_PACKAGES - {"xylitol-protocol"},
     "async-openai": ALL_PACKAGES - {"xylitol-official-plugin-provider-openai"},
@@ -67,7 +92,8 @@ FORBIDDEN_DEPS: dict[str, frozenset[str]] = {
     "salvo": ALL_PACKAGES - {"xylitol-serve"},
 }
 
-# rutis is not a workspace member. No xylitol package may depend on it.
+RUTIS_ALLOWED = frozenset({"xylitol-plugin-sdk", "xylitol-kernel"})
+RUTIS_LOADER_ALLOWED = frozenset({"xylitol-kernel"})
 
 
 def dep_names(section: dict[str, object] | None) -> set[str]:
@@ -85,6 +111,13 @@ def check_forbidden(pkg: str, deps: set[str], errors: list[str]) -> None:
     for crate, banned_in in FORBIDDEN_DEPS.items():
         if pkg in banned_in and crate in deps:
             errors.append(f"{pkg}: must not depend on {crate}")
+
+
+def check_rutis(pkg: str, all_deps: set[str], errors: list[str]) -> None:
+    if "rutis" in all_deps and pkg not in RUTIS_ALLOWED:
+        errors.append(f"{pkg}: must not depend on rutis")
+    if "rutis-loader" in all_deps and pkg not in RUTIS_LOADER_ALLOWED:
+        errors.append(f"{pkg}: must not depend on rutis-loader")
 
 
 def main() -> int:
@@ -141,8 +174,7 @@ def main() -> int:
                 f"(max {sorted(allowed)})"
             )
         check_forbidden(pkg, deps, errors)
-        if "rutis" in all_deps:
-            errors.append(f"{pkg}: must not depend on rutis")
+        check_rutis(pkg, all_deps, errors)
 
     root_pkg = root.get("package")
     if not isinstance(root_pkg, dict) or root_pkg.get("name") != "xylitol":
@@ -154,8 +186,7 @@ def main() -> int:
         | dep_names(root.get("build-dependencies"))  # type: ignore[arg-type]
     )
     check_forbidden("xylitol", root_deps, errors)
-    if "rutis" in root_all_deps:
-        errors.append("xylitol: must not depend on rutis")
+    check_rutis("xylitol", root_all_deps, errors)
 
     if errors:
         print("error: crate graph gate failed:", file=sys.stderr)

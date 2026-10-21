@@ -19,13 +19,13 @@
 
 ## 产品定调
 
-个人**开箱即用**的 coding harness：不是扩展市场 / 插件平台，不得为“未来插件”堆抽象；`xylitol-tui` 为源自 pi-tui 的独立 fork，不追平上游。分层与开闭：`src/AGENTS.md`；可验证行为：`llmanspec/specs/`。
+个人**开箱即用**的 coding harness。插件生态（第三方可写可装）是方向、未交付；现行扩展入口 = 官方插件 + 配置 + MCP / shell hook。不得为未交付市场堆清单 / 注册中心 / dylib。`xylitol-tui` 为源自 pi-tui 的独立 fork，不追平上游。分层与开闭：`src/AGENTS.md`；可验证行为：`llmanspec/specs/`。
 
 - **Trust / MCP**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP 配置驱动、未配置零装配。产品规则：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`；实现边界：`src/AGENTS.md`。
 - **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认 attach 本机 Host，未在听失败；Print 与库嵌入可同进程。端规则：`crates/xylitol-app-tui/src/AGENTS.md`；拓扑与线协议：`llmanspec/specs/protocol-app/`、`server-core/`。
 - **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（Command/Event 是载荷）。硬边界：`src/AGENTS.md`。
 - **跨端公共体验**（已开放端 Print / TUI / Host）：动作语义一套学习成本；细则 `llmanspec/specs/protocol-app/` 与 `user-experience/`。未开放端（gpui 等）见 GitHub feature request，不得写成现行必须。
-- 未兑现方向：GitHub Issues（roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)，FR 各一个）。文档落点：`xylitol-dev` skill `references/docs-loop.md`。
+- 未兑现方向：GitHub Issues（roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)，FR 各一个；第三方插件 [#29](https://github.com/StrayDragon/xylitol/issues/29)）。文档落点：`xylitol-dev` skill `references/docs-loop.md`。
 - TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`llmanspec/specs/app-tui-fixed-zone/`（端约束见 `crates/xylitol-app-tui/src/AGENTS.md`）。
 - 产品 TUI 视觉色板：`crates/xylitol-app-tui/src/DESIGN.md`（frontmatter SSOT；`just qa-check-tui-tokens` 对照 Palette）。
 
@@ -44,16 +44,17 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 
 | crate | 角色 |
 |---|---|
-| `xylitol-plugin-sdk` | 词表 + 端口 + 错误（插件作者只依赖这一包） |
+| `xylitol-plugin-sdk` | 词表 + 端口 + 错误 + `rt` 再导出（插件作者只依赖这一包） |
 | `xylitol-protocol` | 四象限信封 + fory-v3。不认识端口，不认识 `XyEvent` |
-| `xylitol-runtime` | 执行权威：`XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入。不接线、不依赖插件、不依赖信封 |
-| `xylitol-serve` | 载体：监听 + `XyEvent` ↔ v3 mapping |
-| `xylitol-official-plugin-*` | 官方 Host 插件（七个：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks）。不是市场，不是 dylib |
-| `xylitol-app-tui` / `xylitol-app-print` | 产品端。TUI 只认信封；Print 同进程直调 runtime，不编 fory |
+| `xylitol-runtime` | 执行权威：`XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入。不依赖信封 |
+| `xylitol-kernel` | 进程内核：`Kernel::boot`、核心插件、Builtins、admit。`rutis-loader` 只在这里 |
+| `xylitol-serve` | 载体：监听 + `XyEvent` ↔ v3 mapping；Host profile 插件 |
+| `xylitol-official-plugin-*` | 官方可替换插件（session / compaction / provider-* / tools / mcp / hooks / config / obs）。不是市场，不是 dylib |
+| `xylitol-app-tui` / `xylitol-app-print` | 产品端。TUI 只认信封；Print 同进程直调，不编 fory |
 | `xylitol-tui` | 通用 TUI 引擎（零引用产品） |
-| 根包 `xylitol` | 组合根：argv + 默认接线。唯一列出官方插件的 `Cargo.toml` |
+| 根包 `xylitol` | argv + profile 选择。默认接线经 kernel |
 
-`plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。runtime → sdk。插件 → sdk。serve → runtime + protocol。app-tui → protocol + tui。根包 → 插件 + runtime + 端 + 载体。插件之间不得 `use`。
+`plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。runtime → sdk。插件 → sdk。kernel → runtime + 插件 + sdk + loader。serve → runtime + protocol。app-tui → protocol + tui。根包 → kernel + 端。插件之间不得 `use`（只经服务 / 事件）。
 
 开箱 vs 配置后置：产品 TUI 默认 attach 本机监听（`server` feature 可关，default 仍开）。MCP 有配置才装配（`mcp` feature 可关，default 仍开）。`otel` feature default 开，配置默认 none。
 

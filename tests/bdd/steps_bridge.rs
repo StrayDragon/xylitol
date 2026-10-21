@@ -426,7 +426,7 @@ fn w_pt3_discover(ws: &crate::bdd::fixtures::Workspace, prompt_bdd: &PromptBdd) 
     "get_commands 不含 template:greet 或 /greet 模板命令且 loader 不将 greet 注册为 prompt 模板"
 )]
 fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
-    use xylitol::wiring::product_commands::product_slash_commands;
+    use xylitol_kernel::product_commands::product_slash_commands;
 
     let list_out = prompt_bdd.prompt.borrow();
     assert!(

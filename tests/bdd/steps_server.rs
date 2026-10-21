@@ -657,7 +657,7 @@ fn w_sr10(_server_test: &ServerTest) {}
 
 #[then("向 Agent 传入 Arc<dyn ExportIo>")]
 fn t_sr10(_server_test: &ServerTest) {
-    let _ = std::any::type_name::<xylitol::wiring::driver::SessionExporter>();
+    let _ = std::any::type_name::<xylitol_kernel::driver::SessionExporter>();
 }
 
 #[given("审查 server 组合根")]
@@ -3152,8 +3152,8 @@ fn t_nonbinary_illegal(server_test: &ServerTest) {
 
 // ── r1923 / r1925 arm_tool_freeze 有界决议 ─────────────────────
 
-fn arm_freeze_fixture_mcp(name: &str) -> xylitol::wiring::composition::McpServerSpec {
-    use xylitol::wiring::composition::{McpServerSpec, McpTransportSpec};
+fn arm_freeze_fixture_mcp(name: &str) -> xylitol_kernel::composition::McpServerSpec {
+    use xylitol_kernel::composition::{McpServerSpec, McpTransportSpec};
     let script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tests/support/mcp_fixture_server.py");
     let mut env = std::collections::HashMap::new();
@@ -3171,7 +3171,7 @@ fn arm_freeze_fixture_mcp(name: &str) -> xylitol::wiring::composition::McpServer
 
 #[given("宿主配置了连不上的 MCP 且会话写者已物化")]
 async fn g_arm_freeze_hang_mcp(server_test: &ServerTest) {
-    use xylitol::wiring::composition::{McpServerSpec, McpTransportSpec};
+    use xylitol_kernel::composition::{McpServerSpec, McpTransportSpec};
     let hang = McpServerSpec {
         name: "hang-forever-bdd".into(),
         transport: McpTransportSpec::Stdio,

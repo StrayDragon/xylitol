@@ -9,7 +9,7 @@ use crate::bdd::fixtures::AgentState;
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol::wiring::provider::factory::{set_fake_text, set_fake_tool_call, set_fake_tool_result};
+use xylitol_kernel::provider::factory::{set_fake_text, set_fake_tool_call, set_fake_tool_result};
 use xylitol_official_plugin_provider_openai::provider::trace::{
     ObservationIoTier, SpanCollectScope, set_observation_io_tier, set_provider_trace_active,
     set_tool_observation_io_tier,
@@ -428,7 +428,7 @@ fn t_c2826_no_gate_no_export() {
 #[cfg(feature = "otel")]
 #[when("以合法 otlp-http 配置尝试构建 OTLP reporter")]
 async fn w_c2826_build_reporter_ok(otel_bdd: &OtelBdd) {
-    use xylitol::wiring::config::types::{OtelConfig, OtelExporterKind};
+    use xylitol_kernel::config::types::{OtelConfig, OtelExporterKind};
     let cfg = OtelConfig {
         exporter: OtelExporterKind::OtlpHttp,
         endpoint: Some("http://127.0.0.1:9/api/public/otel".into()),
@@ -450,7 +450,7 @@ fn t_c2826_reporter_built(otel_bdd: &OtelBdd) {
 
 #[when("以缺失 endpoint 的 otlp-http 配置尝试构建 OTLP reporter")]
 async fn w_c2826_build_reporter_bad(otel_bdd: &OtelBdd) {
-    use xylitol::wiring::config::types::{OtelConfig, OtelExporterKind};
+    use xylitol_kernel::config::types::{OtelConfig, OtelExporterKind};
     let cfg = OtelConfig {
         exporter: OtelExporterKind::OtlpHttp,
         endpoint: None,
@@ -564,7 +564,7 @@ async fn w_c2826_compaction_span(sess: &crate::bdd::fixtures::XySessionStore, ot
     otel_bdd.mounted.set(true);
     // 经编排器手动压缩（span 守卫在 orchestrator，不在裸 compact_session）。
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let model = xylitol::wiring::provider::factory::build_provider(
+    let model = xylitol_kernel::provider::factory::build_provider(
         &xylitol_plugin_sdk::model::XyModelConfig {
             kind: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "fake".into(),
@@ -585,7 +585,7 @@ async fn w_c2826_compaction_span(sess: &crate::bdd::fixtures::XySessionStore, ot
             session_id: Some(SESSION_UUID.into()),
             ..Default::default()
         };
-    let sink = std::sync::Arc::new(xylitol::wiring::event::EventBus::new());
+    let sink = std::sync::Arc::new(xylitol_kernel::event::EventBus::new());
     let mut notice = false;
     xylitol_official_plugin_compaction::CompactionOrchestrator::new(
         xylitol_official_plugin_compaction::CompactionSettings {

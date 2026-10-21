@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: CLI 统一入口：默认 TUI；surface（tui/print）与 ops（serve）；bootstrap/dispatch；产品 slash 以 session-* 为准。
+# purpose: CLI 统一入口：默认 TUI；surface（tui/print）与 ops（serve）；argv → profile → Kernel::boot；产品 slash 以 session-* 为准。
 
 功能: cli-entry
 
@@ -60,7 +60,7 @@
       那么 可见 --host --port 与 stop，且无 install、server 或 run 别名
   @req:r1394
   规则: assembly-via-bootstrap
-    cli 与 Host 监听器 须经共享 bootstrap 装配，不得内联第二套装配。
+    cli 与 Host 监听器 须经共享 Kernel::boot 装配（同一 profile 路径），不得内联第二套装配。
 
     场景: CLI与服务端共享一引导
       当 app::server 运行时经 app::core::composition 组装 Agent
@@ -181,7 +181,7 @@
       那么 stderr 不含 resume 提示行
   @req:r1391
   规则: tui-attach-fail-closed
-    产品 TUI（含 TTY 默认进入 TUI 表面）在 attach 目标 Host 未在听时 须非零退出，并提示用 xylitol serve 启动 Host。不得静默改走同进程直握操作器。print、库嵌入与 debug 构建的 tui designing 组合 不得适用本条。
+    产品 TUI（含 TTY 默认进入 TUI 表面与 debug 构建的 tui designing）在 attach 目标 Host 未在听时 须非零退出，并提示用 xylitol serve 启动 Host。不得静默改走同进程直握操作器。print 与库嵌入 不得适用本条。
 
     场景: TUIattachHost向下
       假如 本机 Host 未在听

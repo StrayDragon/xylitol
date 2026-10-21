@@ -13,8 +13,8 @@ use crate::bdd::fixtures::AgentState;
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-use xylitol::wiring::provider::ScenarioStep;
-use xylitol::wiring::provider::fake_xy_model;
+use xylitol_kernel::provider::ScenarioStep;
+use xylitol_kernel::provider::fake_xy_model;
 use xylitol_official_plugin_session::SessionManager;
 use xylitol_official_plugin_tools::default_tools;
 use xylitol_plugin_sdk::XyModel;
@@ -107,7 +107,7 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
     let mut reg = xylitol_runtime::agent::model::registry::ModelRegistry::new();
     reg.register(small_window_meta("overflow-fake"));
     let store: Arc<dyn XySessionStore> = Arc::new(mgr.clone());
-    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol::wiring::event::EventBus::new());
+    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol_kernel::event::EventBus::new());
     let mut session = AgentCapabilities::new(
         reg,
         ToolSet::from_iter(default_tools()),
@@ -124,7 +124,7 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,
     );
-    session.install_compaction(xylitol::wiring::composition::official_compaction_factory());
+    session.install_compaction(xylitol_kernel::composition::official_compaction_factory());
     session.select_model("overflow-fake").await.unwrap();
     let mut agent = AgentRuntime::new(session);
     agent.bind_session(sid).expect("bind");
@@ -242,7 +242,7 @@ async fn g_c2844_reasoning_store(
 
 #[when("触发一次压缩")]
 async fn w_c2844_reasoning_compact(compaction_probe: &CompactionProbe) {
-    use xylitol::wiring::event::EventBus;
+    use xylitol_kernel::event::EventBus;
     use xylitol_official_plugin_compaction::CompactionOrchestrator;
     use xylitol_official_plugin_compaction::CompactionSettings;
     use xylitol_runtime::agent::model::task_model::CompactionSummaryBinding;

@@ -1,23 +1,11 @@
-//! Composition root: inject official Host plugins into runtime.
-//!
-//! Empty MCP / hooks skip start. Occupancy policy lives in `xylitol-serve`;
-//! this module only assembles the factory and bind.
+//! Root façade over `xylitol-kernel`. Occupancy extras that need the TUI client
+//! stay here because the kernel crate graph cannot depend on `xylitol-app-tui`.
 
-pub(crate) mod assembly;
-pub mod bootstrap;
-pub mod composition;
-pub(crate) mod mcp_spec;
-
-pub mod attach;
-pub mod config;
-pub mod dispatch;
-pub mod driver;
-pub mod event;
-pub mod export;
-pub mod product_commands;
-pub mod provider;
-pub mod settings;
-pub mod timing;
+pub use xylitol_kernel::{
+    BootOptions, Kernel, Profile, admit, assembly, attach, boot, boot_ctx, bootstrap, builtins,
+    composition, core, dispatch, driver, event, export, mcp_spec, product_commands, provider,
+};
+pub use xylitol_kernel::{config, obs, settings, timing};
 
 #[cfg(feature = "server")]
 pub mod occupancy;

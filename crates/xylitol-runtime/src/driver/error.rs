@@ -116,7 +116,7 @@ impl XyDriverError {
         match self {
             Self::Agent(inner) => {
                 log::warn!(
-                    target: "xylitol::wiring::driver",
+                    target: "xylitol::driver",
                     "{where_} failed error.kind={} agent.kind={} error={self}",
                     self.kind(),
                     inner.kind()
@@ -125,14 +125,14 @@ impl XyDriverError {
             other => {
                 if let Some(src) = other.source_kind() {
                     log::warn!(
-                        target: "xylitol::wiring::driver",
+                        target: "xylitol::driver",
                         "{where_} failed error.kind={} source.kind={} error={self}",
                         other.kind(),
                         src
                     );
                 } else {
                     log::warn!(
-                        target: "xylitol::wiring::driver",
+                        target: "xylitol::driver",
                         "{where_} failed error.kind={} error={self}",
                         other.kind()
                     );

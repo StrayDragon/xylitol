@@ -6,27 +6,28 @@
 
 ## 目标 crate 图（normative）
 
-crate 边界按替换、开关、生命周期划，**不得**按 `app / agent / infra` 各拆一 crate。**不得**再抽 `xylitol-domain` / `xylitol-types` / `xylitol-assemble` / `xylitol-kernel` / `xylitol-host`。**不得**用 `xylitol-protocol` 承接 plugin-sdk。**不得**把发给模型的形状搬进主仓 `xylitol`。分层纪律留在每个 crate 内部。
+crate 边界按替换、开关、生命周期划，**不得**按 `app / agent / infra` 各拆一 crate。**不得**再抽 `xylitol-domain` / `xylitol-types` / `xylitol-assemble` / `xylitol-host`。**不得**用 `xylitol-protocol` 承接 plugin-sdk。**不得**把发给模型的形状搬进主仓 `xylitol`。分层纪律留在每个 crate 内部。
 
 ```text
 我 → xylitol-app-tui → xylitol-protocol → xylitol-serve（监听 + mapping）
-   → xylitol-runtime（准入 + 内环 + 组稿）
+   → xylitol-kernel（boot + 核心/官方插件）
+   → xylitol-runtime（准入 + 内环）
    → 端口：session / model / tools / compaction
 
-Print：我 → xylitol-app-print → xylitol-runtime（不编 fory）
-根包 xylitol：只在进程启动接线
+Print：我 → xylitol-app-print → xylitol-kernel → xylitol-runtime（不编 fory）
+根包 xylitol：argv + profile → Kernel::boot
 ```
 
 ```mermaid
 flowchart TB
   subgraph contracts["① 契约叶 · 框内三包互不依赖"]
     direction LR
-    xylitol_plugin_sdk["xylitol-plugin-sdk<br/>词表 + 端口"]
+    xylitol_plugin_sdk["xylitol-plugin-sdk<br/>词表 + 端口 + rt"]
     xylitol_protocol["xylitol-protocol<br/>信封"]
     xylitol_tui["xylitol-tui<br/>引擎"]
   end
 
-  subgraph plugins["② 官方插件 · 只依赖 xylitol-plugin-sdk"]
+  subgraph plugins["② 官方可替换插件 · 只依赖 xylitol-plugin-sdk"]
     direction TB
     subgraph plugins_loop["会话 / 压缩"]
       direction LR
@@ -44,10 +45,16 @@ flowchart TB
       xylitol_official_plugin_mcp["xylitol-official-plugin-mcp"]
       xylitol_official_plugin_hooks["xylitol-official-plugin-hooks"]
     end
+    subgraph plugins_host["配置 / 观测"]
+      direction LR
+      xylitol_official_plugin_config["xylitol-official-plugin-config"]
+      xylitol_official_plugin_obs["xylitol-official-plugin-obs"]
+    end
   end
 
-  subgraph kernel["③ 执行权威 · 不接线"]
+  subgraph exec["③ 执行权威与内核"]
     xylitol_runtime["xylitol-runtime<br/>XyDriver + 准入 + ReAct 内环"]
+    xylitol_kernel["xylitol-kernel<br/>boot / 核心插件 / Builtins / admit"]
   end
 
   subgraph surfaces["④ 载体与端"]
@@ -57,8 +64,8 @@ flowchart TB
     xylitol_app_tui["xylitol-app-tui<br/>信封 + tui + sdk词表投影"]
   end
 
-  subgraph root["⑤ 组合根"]
-    xylitol["xylitol<br/>argv + 默认接线"]
+  subgraph root["⑤ 根包"]
+    xylitol["xylitol<br/>argv + profile"]
   end
 
   xylitol_official_plugin_session --> xylitol_plugin_sdk
@@ -68,7 +75,12 @@ flowchart TB
   xylitol_official_plugin_tools --> xylitol_plugin_sdk
   xylitol_official_plugin_mcp --> xylitol_plugin_sdk
   xylitol_official_plugin_hooks --> xylitol_plugin_sdk
+  xylitol_official_plugin_config --> xylitol_plugin_sdk
+  xylitol_official_plugin_obs --> xylitol_plugin_sdk
   xylitol_runtime --> xylitol_plugin_sdk
+  xylitol_kernel --> xylitol_plugin_sdk
+  xylitol_kernel --> xylitol_runtime
+  xylitol_kernel --> plugins
   xylitol_serve --> xylitol_runtime
   xylitol_serve --> xylitol_protocol
   xylitol_serve --> xylitol_plugin_sdk
@@ -76,31 +88,30 @@ flowchart TB
   xylitol_app_tui --> xylitol_protocol
   xylitol_app_tui --> xylitol_tui
   xylitol_app_tui --> xylitol_plugin_sdk
-  xylitol --> plugins
-  xylitol --> xylitol_runtime
-  xylitol --> xylitol_serve
+  xylitol --> xylitol_kernel
   xylitol --> xylitol_app_print
   xylitol --> xylitol_app_tui
 ```
 
-组合根把官方插件的 `Arc` 注入 runtime。执行权威 / 官方插件 / 产品端 **不得** `use rutis`。
+`rutis` 只出现在 `xylitol-plugin-sdk` 与 `xylitol-kernel` 的 `Cargo.toml`（精确锁 `=0.13.0`）。`rutis-loader` 只在 kernel。官方插件与 runtime 只依赖 sdk（经 `xylitol_plugin_sdk::rt`），**不得** `use rutis`。产品端不得依赖 rutis。
 
 | crate | 必须 | 不得 |
 |---|---|---|
-| `xylitol-plugin-sdk` | 词表 + 端口 + 错误。插件作者只依赖这一包 | 认识信封；放 HTTP / 假模型 / 观测写出；再拆 `xylitol-types` |
+| `xylitol-plugin-sdk` | 词表 + 端口 + 错误 + `rt` 再导出。插件作者只依赖这一包 | 认识信封；放 HTTP / 假模型 / 观测写出；再拆 `xylitol-types` |
 | `xylitol-protocol` | 四象限信封 + fory-v3 + `PROTOCOL_VERSION` | 认识端口；认识 `XyEvent`；承接 plugin-sdk |
-| `xylitol-runtime` | `XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入 + 资源发现 + 权限后端。进程内直调合法 | 接线；依赖官方插件；依赖信封；为此编 fory |
+| `xylitol-runtime` | `XyDriver` + trust + 会话槽 + ReAct 内环 + 唤醒准入 + 资源发现 + 权限后端。进程内直调合法 | 依赖官方插件；依赖信封；为此编 fory；`use rutis` |
+| `xylitol-kernel` | `Kernel::boot`；核心插件挂载；loader rows；admit | 依赖 `xylitol-app-tui`；把每 token delta 送上 rutis 总线 |
 | `xylitol-serve` | 监听；`XyEvent` ↔ `v3::Event` mapping（词表经 plugin-sdk） | 把 mapping 放进 protocol / plugin-sdk / runtime |
-| `xylitol-official-plugin-*` | 只依赖 plugin-sdk。依赖用端口声明，由组合根注入 | 插件之间 `use`；依赖 protocol；客户端进这个前缀 |
+| `xylitol-official-plugin-*` | 只依赖 plugin-sdk（config/obs 可依赖 sdk + 配置类型）。依赖用端口 / 服务声明 | 插件之间 `use` 实现；依赖 protocol；客户端进这个前缀 |
 | `xylitol-app-tui` | 信封 + `xylitol-tui`；Host 词表（`XyEvent` / `SessionEntry`）经 attach 投影；客户端剪贴板 | 依赖 runtime、官方插件 |
 | `xylitol-app-print` | 同进程直调 runtime | 依赖 serve / protocol；编 fory |
-| 根包 `xylitol` | argv + 默认接线。唯一列出官方插件的 `Cargo.toml` | 把组合根塞进 runtime；`use rutis` |
+| 根包 `xylitol` | argv + profile。列出官方插件的 `Cargo.toml` 经 kernel 转发 | 把装配逻辑塞回 `src/wiring`；`use rutis` |
 
-官方插件七个：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks。没有 react。内置（默认挂）：session / compaction / provider-* / tools。配置启用：mcp / hooks。没配置则不 start。
+官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks、config、obs。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools。配置启用：mcp / hooks。没配置则不 start。第三方插件是方向、未交付；只留 Chain 解析器与 admit 准入位。
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
-每个 crate 内部仍守依赖方向（runtime ↛ 插件、↛ 信封；插件之间不得 `use`）。根包 `src/` 是组合根：CLI / wiring / embed。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由组合根注入。占用（session slot / linger / 单写者）在 `xylitol-serve`，装配与 MCP 物化由组合根注入。监听与 `XyEvent` ↔ v3 mapping 在 `xylitol-serve`。
+每个 crate 内部仍守依赖方向（runtime ↛ 官方插件、↛ 信封；插件之间不得 `use`，只经服务 / 事件）。根包 `src/` 是 argv + profile。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由 kernel 挂载。占用（session slot / linger / 单写者）在 `xylitol-serve`。监听与 `XyEvent` ↔ v3 mapping 在 `xylitol-serve`。
 
 ### `AgentCapabilities` 职责边界
 
@@ -108,7 +119,7 @@ flowchart TB
 
 | 留 | 不留（归端 / Driver） |
 |---|---|
-| model 选择与 thinking | 产品 slash 词表（`wiring::product_commands`） |
+| model 选择与 thinking | 产品 slash 词表（kernel `product_commands`） |
 | tools + freeze / hooks / permission | bang `!` / `!!`（`xylitol-runtime` `BangExecHandler`；组合根注入 executor） |
 | session id + store + fork/stats | HTML/JSONL export-import（`xylitol-runtime` `SessionExporter`；组合根注入 I/O） |
 | context_policy + prompt 装配 | — |
@@ -117,7 +128,7 @@ flowchart TB
 
 Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册并并入 `get_commands`，**不得**再塞回 `AgentCapabilities`。产品 builtin 列表只在 `XyDriver::get_commands` 组装。不得 `agent` → `app`。
 
-- **组合根**只在根包 `xylitol`。靠 review + 行为测守住；**不得**源码 grep 元测试卡 import。
+- **组合根**在 `xylitol-kernel`（根包只做 argv → profile）。靠 review + 行为测守住；**不得**源码 grep 元测试卡 import。
 - **应用端**：Print / TUI 走 `XyDriver::run` → `XyEvent` 流 → 端渲染。不够就扩 seam（`l8ng-write-surface`），不得绕过。
 - **产品角色（client / host）**：TUI 等端是 client（键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区 / trust 是 host 操作器角色。print / 库嵌入仍可同进程走同一方法表。**不得**把 host 等同于 HTTP 监听器；**产品 TUI** 默认 attach 本机监听器（未在听失败）。
 - **产品信封**：四象限（`POST /rpc` unary + `WS /rpc` 下行，同一方法表），载体为 fory-v3 二进制帧。Command/Event 是载荷；JSON-RPC 2.0 文本不是产品通道。跨进程不跳过信封直调 Driver。
@@ -171,11 +182,11 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 
 接线优先序（扩展开闭，本节下文）：
 
-1. **配置 / 会话开关 + 组合根接线**（未启用 zero-cost）
-2. **既有 port**。不得旁路第二套语义。
+1. **配置 / 会话开关 + kernel 接线**（未启用 zero-cost）
+2. **既有 port / 服务 / 瀑布事件**。不得旁路第二套语义。
 3. **新 port**（仅真实第二套替换，或嵌入/测试必须替换时）
 
-不得做插件市场、Extension Host、为未交付能力预留空壳 `Xy*`、“已是统一口再包一层”。改名不留兼容别名 / 双解析路径（一次性改调用点）。死码分诊走 skill `l8ng-audit-dead-code`。不得为 LSP / DAP / gpui / 语音端预埋空壳 crate。
+插件生态是方向、未交付。不得为未交付市场预埋清单 / 注册中心 / dylib / 空壳 `Xy*`、“已是统一口再包一层”。改名不留兼容别名 / 双解析路径（一次性改调用点）。死码分诊走 skill `l8ng-audit-dead-code`。不得为 LSP / DAP / gpui / 语音端预埋空壳 crate。
 
 Trust / Permission / MCP 产品语义：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`。边界：Trust 门禁**项目本地资源**；工具开箱 allow-all；MCP **有配置才装配**并支持重载。
 

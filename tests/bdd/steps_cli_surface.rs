@@ -273,20 +273,20 @@ fn w_tui_designing(cli_help_bdd: &CliHelpBdd) {
     let args = xylitol::cli::CliArgs::try_parse_from(["xylitol", "tui", "designing"])
         .expect("debug builds parse tui designing");
     assert!(xylitol::cli::is_tui_designing(args.command.as_ref()));
-    assert!(!xylitol::cli::tui_requires_host_listener(
+    assert!(xylitol::cli::tui_requires_host_listener(
         args.command.as_ref()
     ));
     cli_help_bdd.ok.set(true);
 }
 
-#[then("进入 designing 组合且不得因未在听非零退出")]
+#[then("进入 designing 组合且须走 Host attach 预检")]
 fn t_designing_skips_attach(cli_help_bdd: &CliHelpBdd) {
     if !cfg!(debug_assertions) {
         return;
     }
     assert!(
         cli_help_bdd.ok.get(),
-        "tui designing must parse and skip Host attach"
+        "tui designing must parse and attach Host"
     );
 }
 // ═══════════════════════════════════════════════════════════════════
@@ -624,7 +624,7 @@ fn g_c2826_zero_model_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
 fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
     let path = cli_entry_bdd.detail.borrow().clone();
     assert!(!path.is_empty(), "config path not prepared");
-    let input = xylitol::wiring::bootstrap::BootstrapInput {
+    let input = xylitol_kernel::bootstrap::BootstrapInput {
         config_path: Some(path.into()),
         session: None,
         model: None,
@@ -644,7 +644,7 @@ fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
         }
     };
     let cwd = ws.root();
-    let result = xylitol::wiring::bootstrap::resolve_assembly_with(
+    let result = xylitol_kernel::bootstrap::resolve_assembly_with(
         &input,
         env_probe,
         Some(std::path::Path::new(&cwd)),
@@ -681,7 +681,7 @@ fn t_c2826_zero_models_hard_fail(cli_entry_bdd: &CliEntryBdd) {
 
 #[when("产品面读取未选中模型的展示名")]
 fn w_c2826_unset_model_display(cli_entry_bdd: &CliEntryBdd) {
-    let shown = xylitol::wiring::bootstrap::UNSET_MODEL_DISPLAY.to_string();
+    let shown = xylitol_kernel::bootstrap::UNSET_MODEL_DISPLAY.to_string();
     cli_entry_bdd.detail.replace(shown);
 }
 
@@ -784,7 +784,7 @@ fn t_c2841_configured_default_shown(cli_entry_bdd: &CliEntryBdd) {
 
 /// 产品面模型展示名规则（与 TUI sync_fixed_zone 的派生一致）：
 /// 已解析模型按 display_name（空则 id），否则 NOT-SET 占位。
-fn model_display_name(model: Option<&xylitol::wiring::driver::ModelInfo>) -> String {
+fn model_display_name(model: Option<&xylitol_kernel::driver::ModelInfo>) -> String {
     match model {
         Some(m) => {
             if m.display_name.is_empty() {
@@ -793,6 +793,6 @@ fn model_display_name(model: Option<&xylitol::wiring::driver::ModelInfo>) -> Str
                 m.display_name.clone()
             }
         }
-        None => xylitol::wiring::bootstrap::UNSET_MODEL_DISPLAY.to_string(),
+        None => xylitol_kernel::bootstrap::UNSET_MODEL_DISPLAY.to_string(),
     }
 }

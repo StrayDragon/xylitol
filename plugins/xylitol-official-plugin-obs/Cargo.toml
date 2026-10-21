@@ -1,0 +1,39 @@
+[package]
+name = "xylitol-official-plugin-obs"
+version = "0.0.0-pre"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT"
+description = "Official core plugin: process logging, provider-trace, optional OTLP"
+repository = "https://github.com/straydragon/xylitol"
+publish = false
+
+[dependencies]
+xylitol-plugin-sdk = { workspace = true }
+xylitol-official-plugin-config = { workspace = true }
+base64 = { workspace = true }
+env_logger = { workspace = true }
+fastrace = { workspace = true, features = ["enable"] }
+log = { workspace = true }
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+reqwest = { workspace = true, default-features = false, features = ["json", "rustls"], optional = true }
+fastrace-opentelemetry = { workspace = true, optional = true }
+opentelemetry = { workspace = true, features = ["trace"], optional = true }
+opentelemetry_sdk = { workspace = true, features = ["trace"], optional = true }
+opentelemetry-otlp = { workspace = true, features = ["trace", "http-proto", "http-json", "reqwest-client", "reqwest-rustls"], optional = true }
+
+[dev-dependencies]
+serial_test = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+default = []
+otel = [
+    "dep:fastrace-opentelemetry",
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:reqwest",
+]

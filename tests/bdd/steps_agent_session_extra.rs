@@ -397,7 +397,7 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
     let mgr = xylitol_official_plugin_session::SessionManager::new(dir.keep());
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = std::sync::Arc::new(mgr);
     let sink: std::sync::Arc<dyn xylitol::XyEventSink> =
-        std::sync::Arc::new(xylitol::wiring::event::EventBus::new());
+        std::sync::Arc::new(xylitol_kernel::event::EventBus::new());
     let mut session = xylitol_runtime::agent::capabilities::AgentCapabilities::new(
         agent.registry.borrow().clone(),
         xylitol_runtime::agent::tools::ToolSet::from_iter(
@@ -410,7 +410,7 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         Vec::new(),
         ".".into(),
         None,
-        std::sync::Arc::new(xylitol::wiring::provider::factory::build_provider),
+        std::sync::Arc::new(xylitol_kernel::provider::factory::build_provider),
         xylitol_runtime::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
@@ -500,7 +500,7 @@ pub(crate) fn g_sess_review_no_template(ws: &Workspace, agent: &AgentState) {
 pub(crate) fn w_prompt_process(agent: &AgentState, ws: &Workspace) {
     use std::path::PathBuf;
 
-    use xylitol::wiring::product_commands::product_slash_commands;
+    use xylitol_kernel::product_commands::product_slash_commands;
     use xylitol_runtime::resource::DefaultResourceLoader;
 
     let cwd = PathBuf::from(ws.ws("."));
@@ -781,7 +781,7 @@ pub(crate) fn t_sess_prompt_build_order(agent: &AgentState) {
 
 #[given("空扩展命令的能力聚合体")]
 pub(crate) fn g_sess_get_commands(_agent: &AgentState) {
-    use xylitol::wiring::product_commands::product_slash_commands;
+    use xylitol_kernel::product_commands::product_slash_commands;
     let names: Vec<String> = product_slash_commands()
         .iter()
         .map(|c| c.name.to_string())
@@ -925,7 +925,7 @@ pub(crate) fn g_sess_mock_export(_agent: &AgentState) {
 
 #[when("调用 export_to_html")]
 pub(crate) async fn w_sess_export_html(agent: &AgentState, _sess: &XySessionStore) {
-    use xylitol::wiring::driver::SessionExporter;
+    use xylitol_kernel::driver::SessionExporter;
 
     let dir = tempfile::tempdir().unwrap();
     let out = dir.path().join("out.html");
@@ -978,7 +978,7 @@ pub(crate) fn g_sess_no_bash(_agent: &AgentState) {}
 
 #[when("调用 execute_bash")]
 pub(crate) async fn w_sess_execute_bash_no_executor(agent: &AgentState) {
-    use xylitol::wiring::driver::BangExecHandler;
+    use xylitol_kernel::driver::BangExecHandler;
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.keep());
     let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(mgr);

@@ -19,7 +19,7 @@ pub struct BangExecHandler {
     /// Injected bash executor port. `None` means `!cmd` is unavailable.
     executor: Option<Arc<dyn XyBashExecutor>>,
     /// Active bash-execution cancellation token (`Some` while a `!`/`!!` runs).
-    /// `Arc` so [`XyDriver::abort`](crate::wiring::driver::XyDriver::abort) can cancel
+    /// `Arc` so [`XyDriver::abort`](crate::driver::XyDriver::abort) can cancel
     /// without `&mut` (and tests can abort concurrent with [`Self::execute`]).
     cancel: Arc<Mutex<Option<CancellationToken>>>,
 }
@@ -104,7 +104,7 @@ impl BangExecHandler {
         Ok(result)
     }
 
-    /// Abort any in-flight bash execution (`&self` for [`XyDriver::abort`](crate::wiring::driver::XyDriver::abort)).
+    /// Abort any in-flight bash execution (`&self` for [`XyDriver::abort`](crate::driver::XyDriver::abort)).
     pub fn abort(&self) {
         if let Some(cancel) = crate::utils::lock_mutex(&self.cancel).take() {
             cancel.cancel();

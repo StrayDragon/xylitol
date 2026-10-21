@@ -6,7 +6,7 @@ use rstest::fixture;
 use rstest_bdd_macros::{then, when};
 
 pub struct TokenizerBdd {
-    pub(crate) config: RefCell<xylitol::wiring::config::types::AppConfig>,
+    pub(crate) config: RefCell<xylitol_kernel::config::types::AppConfig>,
     pub(crate) cfg_ok: Cell<bool>,
     pub(crate) cfg_err: RefCell<String>,
 }
@@ -14,7 +14,7 @@ pub struct TokenizerBdd {
 impl TokenizerBdd {
     fn new() -> Self {
         Self {
-            config: RefCell::new(xylitol::wiring::config::types::AppConfig::default()),
+            config: RefCell::new(xylitol_kernel::config::types::AppConfig::default()),
             cfg_ok: Cell::new(false),
             cfg_err: RefCell::new(String::new()),
         }
@@ -28,8 +28,8 @@ pub fn tokenizer_bdd() -> TokenizerBdd {
 
 pub fn parse_app_config_yaml(
     yaml: &str,
-) -> Result<xylitol::wiring::config::types::AppConfig, String> {
-    let cfg: xylitol::wiring::config::types::AppConfig =
+) -> Result<xylitol_kernel::config::types::AppConfig, String> {
+    let cfg: xylitol_kernel::config::types::AppConfig =
         yaml_serde::from_str(yaml).map_err(|e| e.to_string())?;
     cfg.validate_thinking_levels().map_err(|e| e.to_string())?;
     cfg.validate_session_max_turns()

@@ -24,6 +24,7 @@ time = { workspace = true, features = ["formatting", "parsing", "macros"] }
 tokio = { workspace = true, features = ["sync", "macros", "rt", "time"] }
 tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+rutis = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

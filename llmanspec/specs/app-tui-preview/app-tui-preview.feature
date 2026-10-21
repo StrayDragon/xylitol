@@ -5,7 +5,7 @@
 
   @req:r2906
   规则: tui-designing-debug-entry
-    designing 是交互表面的 debug 叶，不是顶层表面动词。debug 构建 须提供 xylitol tui designing：打开产品 TUI designing 组合（假 Host + 场景槽）。release 构建 不得 列出 designing，xylitol tui designing 须按未知子命令失败。不得提供顶层 preview 或 designing；不得提供 tui --designing 旗标；不得放进 serve 子树。TTY 裸跑 不得进入 designing。designing 不得 因本机 Host 未在听而失败。
+    designing 是交互表面的 debug 叶，不是顶层表面动词。debug 构建 须提供 xylitol tui designing：打开产品 TUI designing 组合（场景槽，仍 attach 本机 Host）。release 构建 不得 列出 designing，xylitol tui designing 须按未知子命令失败。不得提供顶层 preview 或 designing；不得提供 tui --designing 旗标；不得放进 serve 子树。TTY 裸跑 不得进入 designing。designing 须与产品 TUI 一样 attach 本机 Host；未在听须非零退出。
 
     场景: 调试TUI帮助列出designing
       假如 CLI 已解析且为 debug 构建
@@ -22,10 +22,10 @@
       当 xylitol --help
       那么 Commands 不含 preview 与 designing
 
-    场景: designing会不需要Host监听
+    场景: designing须attach Host
       假如 本机 Host 未在听且为 debug 构建
       当 xylitol tui designing
-      那么 进入 designing 组合且不得因未在听非零退出
+      那么 进入 designing 组合且须走 Host attach 预检
 
   @req:r2907
   规则: designing-scene-slot

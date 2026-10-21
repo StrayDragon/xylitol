@@ -3,6 +3,8 @@ pub mod accounting;
 pub mod dto;
 pub mod error;
 pub mod fake;
+pub mod fake_plugin;
+pub mod plugin;
 
 pub use fake::{FakeProvider, FakeProviderBuilder, FakeProviderMode, ScenarioStep};
 pub mod hooks;

@@ -947,14 +947,14 @@ async fn ensure_write_occupancy(
     host: &HostState,
     slot: &Arc<SessionSlot>,
     workspace: &Path,
-) -> Result<(), RpcResult> {
+) -> Result<(), Box<RpcResult>> {
     HostState::cancel_write_linger(slot).await;
     if let Err(e) = host.ports.store.try_acquire_write_lock(&slot.session_id) {
-        return Err(occupancy_err(e));
+        return Err(Box::new(occupancy_err(e)));
     }
     materialize_writer_at(host, slot, workspace)
         .await
-        .map_err(rpc_err)?;
+        .map_err(|e| Box::new(rpc_err(e)))?;
     Ok(())
 }
 
@@ -1117,7 +1117,7 @@ async fn dispatch_session_unary(
             return RpcResult::error("invalid_input", "missing message");
         }
         if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
-            return e;
+            return *e;
         }
         // c2895 一回合一演员：根提交准入 CAS——回合成中再发根提交稳定拒绝
         // （对齐「忙碌时二次根提交有明确拒绝」），并关闭第二 `d.run()` 重叠流。
@@ -1226,7 +1226,7 @@ async fn dispatch_session_unary(
 
     if method == METHOD_PERSIST_TRUST {
         if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
-            return e;
+            return *e;
         }
         let mode = match payload.get("mode").and_then(Value::as_str) {
             Some("trust_cwd") | None => ProjectTrustMode::TrustCwd,
@@ -1270,7 +1270,7 @@ async fn dispatch_writer_unary(
     workspace: &Path,
 ) -> RpcResult {
     if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
-        return e;
+        return *e;
     }
     if slot.run_inflight.load(Ordering::SeqCst)
         && matches!(method, "set_model" | "cycle_model" | "set_thinking_level")

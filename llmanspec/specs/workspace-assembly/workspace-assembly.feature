@@ -1,12 +1,12 @@
 # language: zh-CN
-# purpose: 装配官方插件时，未配置的 MCP 与 hooks 不得连外进程。ReAct 循环留在执行权威，不是官方插件。跨端仍走信封 fory-v3。仅装配适配层可依赖 rutis。
+# purpose: 装配官方插件时，未配置的 MCP 与 hooks 不得连外进程。ReAct 循环留在执行权威，作为不可配置核心插件。跨端仍走信封 fory-v3。仅 plugin-sdk 与 kernel 可声明 rutis；仅 kernel 可声明 rutis-loader。
 # scope-note: 不写会话实例化、hooks 改走事件总线、热路径耗时。叶子插件经装配适配层使用 rutis-bridge 不在本文件范围。不钉 crate 路径与类型名。未配置 MCP、信封宣告、无会话跑一轮 与既有 capability 同观察点，本文件从装配视角再锁。
 
 功能: workspace-assembly
 
   @req:r2910
   规则: 仅装配适配层依赖 rutis
-    执行权威、官方插件、产品端不得依赖 rutis。直接依赖 rutis 的 crate 必须是装配适配层。
+    执行权威、官方插件、产品端不得直接依赖 rutis。直接依赖 rutis 的 crate 必须是 plugin-sdk 或 kernel；直接依赖 rutis-loader 的 crate 必须是 kernel。
     场景: 扫描工作区仅装配适配层声明 rutis
       当 扫描工作区各包对 rutis 的 Cargo 依赖
       那么 仅装配适配层声明了 rutis
@@ -35,7 +35,7 @@
 
   @req:r2914
   规则: ReAct 循环留在执行权威
-    ReAct 循环必须留在执行权威。不得做成可卸的官方插件。未绑定 session 时，无工具 agent 必须仍能跑完一轮并出现 AgentEnd。
+    ReAct 循环必须留在执行权威，并作为不可经 loader rows 替换的核心插件。不得做成可卸的官方插件。未绑定 session 时，无工具 agent 必须仍能跑完一轮并出现 AgentEnd。
     场景: 无会话无工具仍跑完一轮
       假如 未注册 should_stop_after_turn 的无工具 agent
       当 运行 AgentRuntime

@@ -110,7 +110,7 @@ impl PtySession {
         Ok(session)
     }
 
-    /// Debug-only `xylitol tui designing` — no Host listener, designing scene slot.
+    /// Debug-only `xylitol tui designing` — attach Host, then open the scene slot.
     pub fn spawn_tui_designing(
         cols: u16,
         rows: u16,
@@ -118,14 +118,28 @@ impl PtySession {
         config_dir: &Path,
         home_dir: &Path,
     ) -> std::io::Result<Self> {
+        let (port, serve) = spawn_ephemeral_host(project_root, config_dir, home_dir)?;
         let mut cmd = CommandBuilder::new("cargo");
-        cmd.args(["run", "--quiet", "--", "tui", "designing"]);
+        cmd.args([
+            "run",
+            "--quiet",
+            "--",
+            "tui",
+            "--trust",
+            "--model",
+            "fake",
+            "--port",
+            &port.to_string(),
+            "designing",
+        ]);
         cmd.cwd(env!("CARGO_MANIFEST_DIR"));
         cmd.env("TERM", "xterm-256color");
         cmd.env("HOME", home_dir);
         cmd.env("XYLITOL_CONFIG_DIR", config_dir);
         cmd.env("XYLITOL_PROJECT_DIR", project_root);
-        Self::spawn_cmd(cmd, cols, rows)
+        let mut session = Self::spawn_cmd(cmd, cols, rows)?;
+        session.serve = Some(serve);
+        Ok(session)
     }
 
     fn spawn_cmd(cmd: CommandBuilder, cols: u16, rows: u16) -> std::io::Result<Self> {
@@ -1277,6 +1291,12 @@ fn spawn_tui_designing_ready(cols: u16, rows: u16) -> (PtySession, tempfile::Tem
     write_fake_project_config(&project).expect("fake config");
     let mut session = PtySession::spawn_tui_designing(cols, rows, &project, &config_dir, &home)
         .expect("spawn tui designing");
+    if session
+        .wait_for_raw("Trust project", Duration::from_secs(8))
+        .is_ok()
+    {
+        session.send_keys("\r").expect("confirm trust");
+    }
     session
         .wait_for_raw("scenes", Duration::from_secs(120))
         .expect("designing TUI should open the scene slot");

@@ -178,7 +178,7 @@ impl LoadedResourcesSnapshot {
 /// Re-export so XyDriver implementors under surfaces can name the return type
 /// without importing `xylitol_runtime::agent::capabilities` directly (layering: surfaces use
 /// the XyDriver seam). Surfaces reference this as
-/// `crate::wiring::driver::SessionStats`.
+/// `crate::driver::SessionStats`.
 pub use crate::agent::{QueueStats, SessionStats};
 
 /// Session resume list row (from [`crate::XySessionStore::list_sessions`]).

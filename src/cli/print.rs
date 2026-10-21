@@ -1,6 +1,6 @@
 //! Print mode — non-interactive, streaming stdout output.
 
-use crate::wiring::driver::{XyDriver, XyDriverError};
+use xylitol_kernel::driver::{XyDriver, XyDriverError};
 
 pub use xylitol_app_print::{format_tool_end_line, format_tool_start_lines, render_stream};
 

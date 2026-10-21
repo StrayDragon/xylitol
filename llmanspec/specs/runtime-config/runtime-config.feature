@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: 运行时配置 — 深合并、secret.env、settings；仅 config.yaml + secret.env，不支持 config.local。
+# purpose: 运行时配置 — 核心 config 插件分层加载（global → project → --config）、深合并、secret.env、settings；仅 config.yaml + secret.env，不支持 config.local。
 
 功能: runtime-config
 

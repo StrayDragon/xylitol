@@ -216,17 +216,17 @@ mod trust_bdd {
 
     #[then("项目范围 settings 不合并到有效 settings")]
     pub fn t_settings_block() {
-        let s = xylitol::wiring::settings::storage::InMemorySettingsStorage::default();
+        let s = xylitol_kernel::settings::storage::InMemorySettingsStorage::default();
         let m =
-            xylitol::wiring::settings::manager::SettingsManager::from_storage(Box::new(s), false);
+            xylitol_kernel::settings::manager::SettingsManager::from_storage(Box::new(s), false);
         assert!(!m.is_project_trusted());
         assert_eq!(
             m.get_project_settings(),
-            &xylitol::wiring::settings::Settings::default()
+            &xylitol_kernel::settings::Settings::default()
         );
         assert_eq!(
             m.get_settings(),
-            &xylitol::wiring::settings::Settings::default()
+            &xylitol_kernel::settings::Settings::default()
         );
     }
 
@@ -246,7 +246,7 @@ mod trust_bdd {
 pub(crate) mod xs_sec {
     use std::cell::RefCell;
     use std::sync::Arc;
-    use xylitol::wiring::config::types::AppConfig;
+    use xylitol_kernel::config::types::AppConfig;
     use xylitol_plugin_sdk::{XyPermission, XyPermissionVerdict};
     thread_local! {
         pub static SEC: RefCell<Option<Arc<dyn XyPermission>>> = const { RefCell::new(None) };
@@ -259,7 +259,7 @@ pub(crate) mod xs_sec {
 #[given("安全启用且 forbidden_patterns=['/etc/**']")]
 fn g_ds_forbidden(ws: &Workspace) {
     ws.init();
-    use xylitol::wiring::config::types::{
+    use xylitol_kernel::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
     let c = PermissionConfig {
@@ -276,7 +276,7 @@ fn g_ds_forbidden(ws: &Workspace) {
 }
 #[given("安全启用且无 MCP 允许列表")]
 fn g_ds_no_mcp() {
-    use xylitol::wiring::config::types::{
+    use xylitol_kernel::config::types::{
         PermissionBackend, PermissionConfig, PermissionProcessConfig,
     };
     let c = PermissionConfig {
@@ -291,13 +291,13 @@ fn g_ds_no_mcp() {
 }
 #[given("全新安装无配置覆盖")]
 fn g_ds_fresh() {
-    let c: xylitol::wiring::config::types::SecurityConfig =
+    let c: xylitol_kernel::config::types::SecurityConfig =
         serde_json::from_str("{}").expect("default SecurityConfig");
     assert!(c.enabled, "fresh install must default security enabled");
 }
 #[given("permission.filesystem.read_allowed=['/home/user/project']")]
 fn g_ds_read_allowed() {
-    use xylitol::wiring::config::types::{
+    use xylitol_kernel::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
     let c = PermissionConfig {
@@ -329,7 +329,7 @@ fn w_ds_mcp() {
 }
 #[when("SecurityEngine 初始化")]
 fn w_ds_init() {
-    let c: xylitol::wiring::config::types::SecurityConfig = serde_json::from_str("{}").unwrap();
+    let c: xylitol_kernel::config::types::SecurityConfig = serde_json::from_str("{}").unwrap();
     assert!(c.enabled);
 }
 #[when("read 工具读取 /etc/passwd")]
@@ -355,7 +355,7 @@ fn t_ds_blocked_reason() {
 }
 #[then("enabled 字段为 true")]
 fn t_ds_enabled() {
-    let c: xylitol::wiring::config::types::SecurityConfig = serde_json::from_str("{}").unwrap();
+    let c: xylitol_kernel::config::types::SecurityConfig = serde_json::from_str("{}").unwrap();
     assert!(c.enabled);
 }
 #[then("permission engine 返回 access-denied")]
@@ -372,7 +372,7 @@ fn t_ds_access_denied() {
 
 #[given("需审批的工具被 SecurityToolWrapper 包装")]
 fn g_xy_tool_approval_given(_agent: &AgentState) {
-    use xylitol::wiring::config::types::{
+    use xylitol_kernel::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
 
@@ -464,7 +464,7 @@ fn t_hook_killed_block(agent: &AgentState) {
 
 #[given("user 配置试图允许禁止 pattern")]
 fn g_ds_forbidden_override() {
-    use xylitol::wiring::config::types::{
+    use xylitol_kernel::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig,
     };
 
@@ -534,7 +534,7 @@ security:
 
 #[when("加载安全配置")]
 fn w_ds_load_yaml() {
-    use xylitol::wiring::config::types::AppConfig;
+    use xylitol_kernel::config::types::AppConfig;
     let yaml = xs_sec::LAST_YAML.with(|y| y.borrow().clone().expect("yaml"));
     let cfg: AppConfig = yaml_serde::from_str(&yaml).expect("parse permission yaml");
     xs_sec::PARSED_CFG.with(|c| c.replace(Some(cfg)));

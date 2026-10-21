@@ -22,6 +22,9 @@ members = [
     "crates/xylitol-serve",
     "crates/xylitol-app-tui",
     "crates/xylitol-app-print",
+    "crates/xylitol-kernel",
+    "plugins/xylitol-official-plugin-config",
+    "plugins/xylitol-official-plugin-obs",
     "plugins/xylitol-official-plugin-session",
     "plugins/xylitol-official-plugin-compaction",
     "plugins/xylitol-official-plugin-provider-openai",
@@ -39,7 +42,12 @@ xylitol-serve = { path = "crates/xylitol-serve" }
 xylitol-tui = { path = "crates/xylitol-tui" }
 xylitol-app-tui = { path = "crates/xylitol-app-tui" }
 xylitol-app-print = { path = "crates/xylitol-app-print" }
+xylitol-kernel = { path = "crates/xylitol-kernel" }
 xylitol-official-plugin-session = { path = "plugins/xylitol-official-plugin-session" }
+xylitol-official-plugin-config = { path = "plugins/xylitol-official-plugin-config" }
+xylitol-official-plugin-obs = { path = "plugins/xylitol-official-plugin-obs" }
+rutis = { version = "=0.13.0", default-features = false }
+rutis-loader = { version = "=0.13.0", default-features = false }
 xylitol-official-plugin-compaction = { path = "plugins/xylitol-official-plugin-compaction" }
 xylitol-official-plugin-provider-openai = { path = "plugins/xylitol-official-plugin-provider-openai" }
 xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-plugin-provider-anthropic" }
@@ -157,6 +165,9 @@ xylitol-tui = { workspace = true, optional = true }
 xylitol-app-tui = { workspace = true, optional = true }
 xylitol-app-print = { workspace = true }
 xylitol-plugin-sdk = { workspace = true }
+xylitol-kernel = { workspace = true, default-features = false }
+xylitol-official-plugin-obs = { workspace = true }
+xylitol-official-plugin-config = { workspace = true }
 xylitol-protocol = { workspace = true }
 xylitol-runtime = { workspace = true }
 xylitol-serve = { workspace = true, default-features = false }
@@ -175,11 +186,11 @@ default = ["cli", "tui", "otel", "server", "mcp"]
 # CLI composition root.
 cli = []
 # HTTP/WebSocket Host carrier (product TUI attach default).
-server = ["xylitol-serve/listen", "dep:tokio-tungstenite"]
+server = ["xylitol-serve/listen", "dep:tokio-tungstenite", "xylitol-kernel/server"]
 # Terminal UI surface (host-driven on xylitol-tui).
 tui = ["dep:xylitol-tui", "dep:crossterm", "dep:xylitol-app-tui"]
 # MCP client (rmcp). Runtime still requires config; this only gates compile.
-mcp = ["xylitol-official-plugin-mcp/mcp"]
+mcp = ["xylitol-official-plugin-mcp/mcp", "xylitol-kernel/mcp"]
 # Optional OTLP/HTTP export (Langfuse / Collector). Default on for local agents;
 # config still defaults to exporter=none (zero remote traffic until configured).
 otel = [
@@ -187,6 +198,8 @@ otel = [
     "dep:opentelemetry",
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
+    "xylitol-kernel/otel",
+    "xylitol-official-plugin-obs/otel",
 ]
 
 [[bin]]

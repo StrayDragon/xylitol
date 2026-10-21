@@ -251,7 +251,7 @@ pub(crate) async fn g_comp_split_dual(sess: &XySessionStore) {
 
 #[when("执行 split-turn compact_session")]
 pub(crate) async fn w_comp_session_split(agent: &AgentState, sess: &XySessionStore) {
-    use xylitol::wiring::provider::{ScenarioStep, fake_xy_model};
+    use xylitol_kernel::provider::{ScenarioStep, fake_xy_model};
     use xylitol_official_plugin_compaction::{CompactionSettings, compact_session};
     let sid = sess
         .current_id
@@ -325,7 +325,7 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
             )
             .await;
     }
-    let model = xylitol::wiring::provider::factory::build_provider(
+    let model = xylitol_kernel::provider::factory::build_provider(
         &xylitol_plugin_sdk::model::XyModelConfig {
             kind: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "fake".into(),
@@ -923,7 +923,7 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
     let sid = "summarize-c3";
     sess.ensure_mgr();
     let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
-    let model = xylitol::wiring::provider::factory::build_provider(
+    let model = xylitol_kernel::provider::factory::build_provider(
         &xylitol_plugin_sdk::model::XyModelConfig {
             kind: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "fake".into(),
@@ -1038,7 +1038,7 @@ Edit src/file5.rs and update Cargo.toml
 1. Review src/file5.rs changes
 "#;
     set_fake_text(fake_summary);
-    let model = xylitol::wiring::provider::factory::build_provider(
+    let model = xylitol_kernel::provider::factory::build_provider(
         &xylitol_plugin_sdk::model::XyModelConfig {
             kind: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "fake".into(),
@@ -1110,7 +1110,7 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
         });
         let _ = mgr.append(sid, &e).await;
     }
-    let model = xylitol::wiring::provider::factory::build_provider(
+    let model = xylitol_kernel::provider::factory::build_provider(
         &xylitol_plugin_sdk::model::XyModelConfig {
             kind: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "fake".into(),
@@ -1174,7 +1174,7 @@ pub(crate) fn make_test_capabilities(
     store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
 ) -> AgentCapabilities {
     let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> =
-        Arc::new(xylitol::wiring::event::EventBus::new());
+        Arc::new(xylitol_kernel::event::EventBus::new());
     AgentCapabilities::new(
         agent.registry.borrow().clone(),
         ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
@@ -1185,7 +1185,7 @@ pub(crate) fn make_test_capabilities(
         Vec::new(),
         ".".into(),
         None,
-        Arc::new(xylitol::wiring::provider::factory::build_provider),
+        Arc::new(xylitol_kernel::provider::factory::build_provider),
         xylitol_runtime::permission::allow_all_permission(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         xylitol_runtime::agent::capabilities::QueueMode::default(),
@@ -1271,7 +1271,7 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
     set_fake_text(
         "## Goal\nContinue\n\n## Progress\n### Done\n- [x] prior item\n\n## Next Steps\n1. New work\n",
     );
-    let model = xylitol::wiring::provider::factory::build_provider(
+    let model = xylitol_kernel::provider::factory::build_provider(
         &xylitol_plugin_sdk::model::XyModelConfig {
             kind: xylitol_plugin_sdk::model::XyModelKind::Fake,
             model: "fake".into(),
@@ -1526,7 +1526,7 @@ fn c2811_model_manager(levels: &[&str]) -> xylitol_runtime::agent::model::ModelM
     reg.register(c2811_session_meta("main-wire", levels));
     let mut mm = xylitol_runtime::agent::model::ModelManager::new(
         reg,
-        Arc::new(xylitol::wiring::provider::factory::build_provider),
+        Arc::new(xylitol_kernel::provider::factory::build_provider),
     );
     mm.select_model("main-wire").expect("select session model");
     mm

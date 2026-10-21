@@ -8,6 +8,7 @@
 //! - [`llm_summarizer`] — LLM-based summarization
 
 pub mod binding;
+pub mod plugin;
 pub use binding::{CompactionModelAttribution, CompactionSummaryBinding};
 pub mod cut_detector;
 pub mod file_ops;

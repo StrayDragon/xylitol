@@ -92,9 +92,9 @@ async fn lab_compaction_replay_floor_invariants() {
     };
 
     // Round 0: force compact the real history.
-    let model = crate::wiring::provider::fake_xy_model(
+    let model = xylitol_kernel::provider::fake_xy_model(
         "lab-replay",
-        vec![crate::wiring::provider::ScenarioStep::text(
+        vec![xylitol_kernel::provider::ScenarioStep::text(
             "## Goal\nreplayed summary",
         )],
     );
@@ -186,9 +186,9 @@ async fn lab_compaction_replay_floor_invariants() {
             .await
             .unwrap();
         }
-        let model = crate::wiring::provider::fake_xy_model(
+        let model = xylitol_kernel::provider::fake_xy_model(
             "lab-replay",
-            vec![crate::wiring::provider::ScenarioStep::text(
+            vec![xylitol_kernel::provider::ScenarioStep::text(
                 "## Goal\nreplayed summary",
             )],
         );

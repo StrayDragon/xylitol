@@ -1,5 +1,5 @@
 # language: zh-CN
-# purpose: MCP 客户端：stdio / url·sse 传输、零配置零成本、工具前缀与进程内重载。
+# purpose: MCP 客户端：stdio / url·sse 传输、零配置零成本、工具前缀与进程内重载。首轮门为 watch+超时（默认 15s）后放行，迟到工具在下一 turn 边界重新冻结。
 
 功能: infra-mcp
 

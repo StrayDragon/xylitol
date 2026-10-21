@@ -3,12 +3,14 @@
 //! Prefer this module plus the curated `Xy*` re-exports in the crate root over
 //! reaching into `agent::capabilities` or wiring concrete types.
 //!
-//! Typical path:
+//! Typical path: [`boot`] / [`BootOptions`] / [`Profile`], or the synchronous
+//! [`bootstrap`] seam.
 //!
 //! ```rust
-//! use xylitol::embed::BootstrapInput;
+//! use xylitol::embed::{BootOptions, Profile};
 //!
-//! let input = BootstrapInput {
+//! let opts = BootOptions {
+//!     profile: Profile::Embed,
 //!     config_path: None,
 //!     session: None,
 //!     model: None,
@@ -17,9 +19,9 @@
 //!     caller: "embed-example",
 //!     ephemeral_sessions: false,
 //! };
-//! // Then: `bootstrap(input)?.into_runtime()` → `XyDriver::run`.
+//! // Then: `boot(opts).await?.runtime.driver` → `XyDriver::run`.
 //! // Do not name `AgentRuntime` at the call site.
-//! let _ = input.caller;
+//! let _ = opts.caller;
 //! ```
 //!
 //! ## Script hooks (library port)
@@ -36,14 +38,15 @@
 //!
 //! See `llmanspec/specs/protocol-app/` and root `AGENTS.md` (client / host roles).
 
-pub use crate::wiring::bootstrap::{
+pub use xylitol_kernel::boot::{BootOptions, Kernel, Profile, boot};
+pub use xylitol_kernel::bootstrap::{
     BootstrapError, BootstrapInput, BootstrapWarning, BootstrappedAgent, BootstrappedRuntime,
     bootstrap,
 };
-pub use crate::wiring::composition::{
+pub use xylitol_kernel::composition::{
     BuildAgentOptions, McpServerSpec, McpSession, McpTransportSpec, build_agent,
 };
-pub use crate::wiring::driver::{
+pub use xylitol_kernel::driver::{
     CommandInfo, EventStream, ModelInfo, SessionState, SessionStats, XyComposedDriver, XyDriver,
     XyDriverError,
 };

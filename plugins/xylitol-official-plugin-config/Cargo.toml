@@ -1,0 +1,28 @@
+[package]
+name = "xylitol-official-plugin-config"
+version = "0.0.0-pre"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT"
+description = "Official core plugin: layered app config and settings"
+repository = "https://github.com/straydragon/xylitol"
+publish = false
+
+[dependencies]
+xylitol-plugin-sdk = { workspace = true }
+xylitol-runtime = { workspace = true }
+xylitol-official-plugin-hooks = { workspace = true }
+xylitol-official-plugin-mcp = { workspace = true, default-features = false }
+dirs = { workspace = true }
+jsonschema = { workspace = true }
+log = { workspace = true }
+minijinja = { workspace = true, features = ["json", "builtins", "serde"] }
+schemars = { workspace = true, features = ["derive"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+thiserror = { workspace = true }
+yaml_serde = { workspace = true }
+
+[dev-dependencies]
+serial_test = { workspace = true }
+tempfile = { workspace = true }

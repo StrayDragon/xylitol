@@ -10,7 +10,7 @@ mod sandbox_bdd {
             const { std::cell::RefCell::new(None) };
     }
 
-    use xylitol::wiring::config::types::{
+    use xylitol_kernel::config::types::{
         PermissionBackend, PermissionConfig, PermissionFilesystemConfig, PermissionNetworkConfig,
         PermissionProcessConfig,
     };

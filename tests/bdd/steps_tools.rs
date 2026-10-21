@@ -1101,7 +1101,10 @@ mod _accum_mode {
 pub(crate) fn w_read_dead_code_allows(_ws: &Workspace) {
     let mut global = 0usize;
     let mut item_level = 0usize;
-    let mut stack = vec![std::path::PathBuf::from("src")];
+    let mut stack = vec![
+        std::path::PathBuf::from("src"),
+        std::path::PathBuf::from("crates/xylitol-kernel/src"),
+    ];
     while let Some(dir) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&dir) else {
             continue;

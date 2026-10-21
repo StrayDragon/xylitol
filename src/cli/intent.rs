@@ -2,7 +2,7 @@
 
 use super::args::{CliCommand, SurfaceBootstrap, TuiAction, TuiSurfaceArgs};
 
-/// `xylitol tui designing` (debug builds): not a surface verb, skips attach.
+/// `xylitol tui designing` (debug builds): debug subcommand; still attaches Host.
 pub fn is_tui_designing(command: Option<&CliCommand>) -> bool {
     #[cfg(debug_assertions)]
     {
@@ -21,9 +21,9 @@ pub fn is_tui_designing(command: Option<&CliCommand>) -> bool {
     }
 }
 
-/// Product TUI attach fail-closed. Preview designing does not need a Host listener.
+/// Product TUI attach fail-closed. All TUI surfaces attach Host.
 pub fn tui_requires_host_listener(command: Option<&CliCommand>) -> bool {
-    matches!(command, Some(CliCommand::Tui { .. }) | None) && !is_tui_designing(command)
+    matches!(command, Some(CliCommand::Tui { .. }) | None)
 }
 
 fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> TuiSurfaceArgs {
