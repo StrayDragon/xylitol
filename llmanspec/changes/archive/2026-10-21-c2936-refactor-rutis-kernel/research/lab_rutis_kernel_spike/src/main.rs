@@ -1,7 +1,7 @@
 //! M0 spike: rutis 0.13.0 + rutis-loader as xylitol kernel substrate.
 //!
-//! Not a workspace member. Run:
-//! `eval "$(just cargo-wt-env)"; cargo run --manifest-path scripts/lab_rutis_kernel_spike/Cargo.toml`
+//! Archived with c2936. Not a workspace member. Re-run:
+//! `eval "$(just cargo-wt-env)"; cargo run --manifest-path llmanspec/changes/archive/2026-10-21-c2936-refactor-rutis-kernel/research/lab_rutis_kernel_spike/Cargo.toml`
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

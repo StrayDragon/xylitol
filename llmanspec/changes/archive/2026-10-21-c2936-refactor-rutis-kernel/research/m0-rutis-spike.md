@@ -1,7 +1,7 @@
 # M0 spike：rutis 0.13.0 + loader
 
 日期：2026-10-20
-探针：`scripts/lab_rutis_kernel_spike`（非 workspace 成员；`cargo run --manifest-path scripts/lab_rutis_kernel_spike/Cargo.toml`）
+探针：`research/lab_rutis_kernel_spike/`（一次性；非 workspace 成员）
 上游：crates.io `rutis =0.13.0` / `rutis-loader =0.13.0`
 工具链：仓库 rust-toolchain.toml（edition 2024 nightly + mold/sccache）
 
