@@ -217,10 +217,8 @@ def wait_pane(name: str, needle: str, timeout: float = 45.0) -> None:
 
 
 def find_xylitol_pid(bin_path: Path, home: Path) -> int:
-    # Prefer exact binary path match.
     r = run(["pgrep", "-af", str(bin_path)], capture_output=True, check=False)
     lines = [ln for ln in (r.stdout or "").splitlines() if str(bin_path) in ln]
-    # Prefer processes with our HOME in environ via cwd heuristic: list /proc
     candidates: list[int] = []
     for ln in lines:
         try:
@@ -280,12 +278,8 @@ def run_scenario(
         sid = seed_long_session(sessions, cwd, n_pairs=b_pairs, sid="profile-scroll-b")
         session_arg = ["--session", sid]
     elif scenario == "C-stream":
-        # ~40 chunks * 15ms + long grapheme payload
         extra_env["XYLITOL_FAKE_SLOW_STREAM"] = "50,12,64"
     elif scenario == "E-hist-stream":
-        # Long history already loaded; TextDelta bumps upper_gen → warm flatten path.
-        # Stream MUST fill most of the samply window — short C-style streams (~0.6s)
-        # leave idle that dilutes scroll_render% and hides n-scaling.
         sid = seed_long_session(
             sessions, cwd, n_pairs=b_pairs, sid="profile-hist-stream-e"
         )
@@ -302,7 +296,6 @@ def run_scenario(
         seed_resume_sessions(sessions, cwd, n=45)
 
     name = f"xyl_prof_{scenario.replace('-', '_')}_{os.getpid()}"
-    # Kill leftover
     tmux(["kill-session", "-t", name])
 
     env_exports = " ".join(
@@ -335,25 +328,19 @@ def run_scenario(
         die(f"tmux new-session failed: {r.stderr}")
 
     try:
-        # Product chrome usually shows model id or path-ish footer.
-        # E with large seed may need longer first paint before "fake" appears.
         boot_timeout = 120.0 if scenario == "E-hist-stream" and b_pairs >= 200 else 60.0
         wait_pane(name, "fake", timeout=boot_timeout)
         time.sleep(0.5)
 
-        # Scenario-specific prep before/during sampling
         if scenario == "D-resume":
             send_literal(name, "/session-resume")
             send_keys(name, "Enter")
-            # list_sessions → Loading N/N paint, then picker paint can be slow
-            # (width/ANSI on many rows); do not require "Resume" too early.
             wait_pane(name, "Loading sessions", timeout=30.0)
             wait_pane(name, "Resume Session", timeout=30.0)
 
         pid = find_xylitol_pid(bin_path, home)
         out_gz = out_dir / f"{scenario}.json.gz"
         err = out_dir / f"samply-{scenario}.err"
-        # Attach samply; drive keys while recording via background thread timing.
         samply_cmd = [
             "samply",
             "record",
@@ -370,7 +357,6 @@ def run_scenario(
         with err.open("w", encoding="utf-8") as ef:
             proc = subprocess.Popen(samply_cmd, stdout=ef, stderr=ef)
 
-        # Actions during recording window
         t0 = time.time()
         if scenario == "A-idle":
             while time.time() - t0 < duration - 1:
@@ -398,7 +384,6 @@ def run_scenario(
                 send_keys(name, "Down")
                 time.sleep(0.08)
 
-        # samply -p sometimes ignores -d; stop explicitly after the window.
         deadline = t0 + duration
         while time.time() < deadline:
             if proc.poll() is not None:
@@ -413,11 +398,9 @@ def run_scenario(
                 proc.wait(timeout=10)
                 die(f"samply hung; see {err}")
         rc = proc.returncode
-        # SIGINT exit may be non-zero; accept if profile exists.
         if not out_gz.is_file():
             die(f"samply failed (rc={rc}); missing {out_gz}; see {err}")
 
-        # Summarize
         summary = out_dir / f"{scenario}.summary.txt"
         run(
             [

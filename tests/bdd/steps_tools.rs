@@ -3,7 +3,6 @@ use crate::bdd::helpers::*;
 use crate::bdd::prelude::*;
 use rstest_bdd_macros::{given, then, when};
 
-// 结构探针（死代码 allow / 执行类命名）。
 thread_local! {
     pub(crate) static TOOL_PROBE: RefCell<Option<(usize, usize)>> = const { RefCell::new(None) };
 }
@@ -13,8 +12,6 @@ async fn _w_edit_single(ws: &Workspace, path: String, old: String, new: String) 
     let full = ws.ws(&path);
     let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
     let ctx = XyToolCtx::new("test");
-    // The {string} placeholder captures escaped quotes from the feature file as-is;
-    // we need to unescape \" → " for the edit tool to match.
     let old_clean = old.replace("\\\"", "\"");
     let new_clean = new.replace("\\\"", "\"");
     tool_call!(
@@ -228,7 +225,6 @@ async fn _w_find_limit(ws: &Workspace, pattern: String, path: String, limit: u32
 
 #[when("调用ls 不传路径参数")]
 async fn _w_ls_no_path(ws: &Workspace) {
-    // Use the workspace root as the path, not process CWD
     let root_path = {
         let root = ws.dir.borrow();
         root.as_ref()
@@ -282,7 +278,6 @@ async fn _w_edit_dup(ws: &Workspace, path: String) {
     let full = ws.ws(&path);
     let tool = EditTool::new(Arc::new(FileMutationQueue::new()));
     let ctx = XyToolCtx::new("test");
-    // Two edits with the same oldText should be rejected (non-unique)
     tool_call!(
         tool,
         ctx,
@@ -296,7 +291,6 @@ async fn _w_edit_dup(ws: &Workspace, path: String) {
         ws
     );
 }
-// ═══════════════════════════════════════════════════════════════════
 
 #[given("存在 50MB 文件")]
 fn g_tools_large(ws: &Workspace) {
@@ -443,7 +437,6 @@ fn t_tools_find_ok(ws: &Workspace) {
 #[given("bash 输出在上限边界以不完整 UTF-8 序列结束")]
 fn g_tools_multibyte(ws: &Workspace) {
     ws.init();
-    // Marker consumed by truncate when — incomplete multi-byte at truncation edge.
     tools_pending::MULTIBYTE.with(|f| f.set(true));
 }
 #[when("调用 truncate_output")]
@@ -662,7 +655,6 @@ fn t_tools_txt_no_img(ws: &Workspace) {
     assert!(r.contains("hello from txt"));
     assert!(!r.contains("base64") && !r.contains("image/png"));
 }
-// ── agent-tools: unbound tool scenarios (continued) ───────────────
 
 #[given("工具注册表含全部 9 个工具")]
 fn g_tools_all_nine(_ws: &Workspace) {
@@ -750,7 +742,6 @@ async fn w_tools_smoke_all(ws: &Workspace) {
         .into_iter()
         .filter_map(|(name, r)| r.err().map(|e| format!("{name}:{e}")))
         .collect();
-    // One default_tools() so todo_* share the same MemoryTodoGateway.
     {
         let tools = xylitol_official_plugin_tools::default_tools();
         let by = |n: &str| tools.iter().find(|t| t.name() == n).cloned().unwrap();
@@ -1034,12 +1025,9 @@ mod tools_pending {
     }
 }
 
-// ── ws1: tool execution in the session workspace (c2335) ─────────────
-
 #[when("以会话工作区调用write工具 路径 {path:string} 内容 {content:string}")]
 async fn _w_write_file_in_session_workspace(ws: &Workspace, path: String, content: String) {
     let ctx = XyToolCtx::new("test").with_workspace(ws.root());
-    // Deliberately pass the RELATIVE path — resolution is the behavior under test.
     tool_call!(
         WriteTool::new(Arc::new(FileMutationQueue::new())),
         ctx,
@@ -1094,8 +1082,6 @@ mod _accum_mode {
     use std::cell::Cell;
     thread_local! { pub static LARGE: Cell<bool> = const { Cell::new(false) }; }
 }
-
-// ── c2835 后继：结构类裸规则（crate 根 allow / 执行类命名）──────────
 
 #[when("读取 crate 根的死代码允许写法")]
 pub(crate) fn w_read_dead_code_allows(_ws: &Workspace) {

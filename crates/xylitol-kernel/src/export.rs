@@ -1,5 +1,3 @@
-//! Standard filesystem implementation of the [`XyExportIo`] port.
-
 use std::path::Path;
 
 use async_trait::async_trait;
@@ -7,7 +5,6 @@ use async_trait::async_trait;
 use xylitol_plugin_sdk::XyExportIo;
 use xylitol_plugin_sdk::error::XyExportError;
 
-/// Filesystem-backed [`XyExportIo`] using `tokio::fs`.
 #[derive(Debug, Default, Clone)]
 pub struct StdExportIo;
 

@@ -1,10 +1,5 @@
-//! Streaming / partial JSON helpers (pi `parseStreamingJson` analogue).
-
 use serde_json::Value;
 
-/// Best-effort parse of incomplete tool-argument JSON.
-///
-/// Never panics: empty / unsalvageable input yields `{}`.
 pub fn parse_streaming_json(partial: &str) -> Value {
     let trimmed = partial.trim();
     if trimmed.is_empty() {

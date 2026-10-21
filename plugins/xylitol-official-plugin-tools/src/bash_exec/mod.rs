@@ -1,15 +1,3 @@
-//! Persistent bash executor — user/RPC-initiated shell execution with recording.
-//!
-//! Unlike `tools/bash.rs` (the LLM tool-call entry point), this serves
-//! interactive/RPC `!cmd` and `!!cmd` execution: it streams output bytes via
-//! an optional bounded `chunk_tx` (`BashExecOpts`), supports cancellation via
-//! a [`CancellationToken`], truncates output, and spills the full output to a
-//! temp file when the rolling buffer overflows.
-//!
-//! This module lives under `infra/` because it is a runtime facility
-//! (process spawn + output streaming). The agent consumes it only through the
-//! `XyBashExecutor` port in `xylitol-plugin-sdk`.
-
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::sync::mpsc;
@@ -21,12 +9,10 @@ use crate::tools::truncate::DEFAULT_MAX_BYTES;
 use xylitol_plugin_sdk::ToolTimeout;
 use xylitol_plugin_sdk::{BashExecOpts, XyBashExecutor, XyBashResult};
 
-/// Default infra bash executor.
 #[derive(Debug, Clone, Default)]
 pub struct InfraBashExecutor;
 
 impl InfraBashExecutor {
-    /// Create a new infra bash executor.
     pub fn new() -> Self {
         Self
     }
@@ -71,7 +57,6 @@ impl InfraBashExecutor {
         match tx.try_send(pending) {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(v)) | Err(mpsc::error::TrySendError::Closed(v)) => {
-                // Last-chance: drop if still full / closed — Accumulator remains SSOT.
                 let _ = v;
             }
         }
@@ -106,7 +91,6 @@ impl XyBashExecutor for InfraBashExecutor {
             .arg(command)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        // r1494 shell-env：把 agent bin 目录前置到子进程 PATH（其余环境继承）。
         let shell_env = crate::process::shell::shell_env_with_agent_bin(
             std::env::vars().collect::<std::collections::BTreeMap<_, _>>(),
         );
@@ -130,14 +114,10 @@ impl XyBashExecutor for InfraBashExecutor {
 
         let pid = child.id().unwrap_or(0);
 
-        // Merge stdout + stderr via two reader tasks feeding a channel, so the
-        // combined stream can be chunked and accumulated while still respecting
-        // cancellation and timeout.
         let (tx, mut rx) = mpsc::channel::<Vec<u8>>(64);
         let tx_err = tx.clone();
         spawn_reader(child.stdout.take().expect("stdout piped"), tx);
         spawn_reader(child.stderr.take().expect("stderr piped"), tx_err);
-        // tx dropped here (only clones in tasks); channel closes when readers done.
 
         let mut acc = OutputAccumulator::new();
         let mut cancelled = false;
@@ -162,7 +142,7 @@ impl XyBashExecutor for InfraBashExecutor {
                             acc.append(&bytes);
                             Self::emit_chunk(&chunk_tx, &mut coalesce, &bytes);
                         }
-                        None => break, // both readers finished
+                        None => break,
                     }
                 }
                 _ = sleep_until_opt(deadline) => {
@@ -177,7 +157,6 @@ impl XyBashExecutor for InfraBashExecutor {
         if cancelled || timed_out {
             kill_tree(pid).await;
         }
-        // Reap the child and capture its exit status.
         let exit_code = child.wait().await.ok().and_then(|s| s.code());
 
         let snapshot = acc.finish();

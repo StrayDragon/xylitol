@@ -1,5 +1,3 @@
-//! Adapter factory — composition root dispatches to dialect plugin factories.
-
 use std::sync::Arc;
 
 use crate::provider::adapter::{AdapterKind, default_for};
@@ -8,7 +6,6 @@ use xylitol_official_plugin_hooks::HookDispatcher;
 use xylitol_official_plugin_provider_openai::provider::AdapterRef;
 use xylitol_plugin_sdk::model::XyModelConfig;
 
-/// Resolve the adapter kind for a model config.
 pub fn resolve_adapter_kind(config: &XyModelConfig) -> AdapterKind {
     config
         .api
@@ -17,9 +14,6 @@ pub fn resolve_adapter_kind(config: &XyModelConfig) -> AdapterKind {
         .unwrap_or_else(|| default_for(config.kind))
 }
 
-/// Resolve named YAML `compat` → bridge [`xylitol_official_plugin_provider_openai::WirePolicy`].
-///
-/// Unknown / omitted → generic default. AdapterKind selection ignores WirePolicy (pa4).
 pub fn resolve_wire_policy(
     config: &XyModelConfig,
 ) -> xylitol_official_plugin_provider_openai::WirePolicy {
@@ -31,10 +25,6 @@ pub fn resolve_wire_policy(
     xylitol_official_plugin_provider_openai::WirePolicy::for_compat(compat)
 }
 
-/// Build an adapter instance from a model config.
-///
-/// WirePolicy comes from named `compat` profiles in the bridge (c1940); free-form
-/// `extra_policy` YAML is not accepted. AdapterKind still ignores WirePolicy.
 pub fn build_adapter(config: &XyModelConfig, hooks: Option<Arc<HookDispatcher>>) -> AdapterRef {
     let kind = resolve_adapter_kind(config);
     let http_hooks = to_http_hooks(hooks);

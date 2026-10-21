@@ -51,8 +51,7 @@ pub(crate) async fn g_sess_first_turn(sess: &XySessionStore, agent: &AgentState)
         .replace(Some(Ok("history-includes-turn-1".into())));
 }
 #[when("第二轮 run_with_id")]
-pub(crate) fn w_sess_second_turn(_agent: &AgentState) { /* result set in given */
-}
+pub(crate) fn w_sess_second_turn(_agent: &AgentState) {}
 #[then("送给模型的 history 含第一轮消息")]
 pub(crate) fn t_sess_turn_1_in_history(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("history-includes-turn-1"));
@@ -80,7 +79,7 @@ pub(crate) async fn g_sess_bang(sess: &XySessionStore) {
     );
     if let SessionEntry::Message(ref mut m) = bash_entry {
         m.base.id = "bash-1".into();
-        m.base.timestamp = 1704067200000; // 2024-01-01T00:00:00Z (unix-ms)
+        m.base.timestamp = 1704067200000;
     }
     let _ = mgr.append(sid, &bash_entry).await;
 
@@ -262,11 +261,8 @@ pub(crate) fn t_sess_legacy_rejected(sess: &XySessionStore) {
     );
 }
 
-// ── agent-session: turn-events ────────────────────────────────────
-
 #[given("agent 处理含工具调用的回合")]
 pub(crate) fn g_turn_events_setup(_agent: &AgentState, _ws: &Workspace) {
-    // Reuse existing mock-tool setup: Background gives mock model + workspace
     set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
     set_fake_tool_result("hello world");
 }
@@ -300,11 +296,8 @@ pub(crate) fn t_turn_events_ordered(agent: &AgentState) {
     }
 }
 
-// ── agent-session: tool-stream ────────────────────────────────────
-
 #[given("bash 工具流式输出")]
 pub(crate) fn g_tool_stream_setup(_agent: &AgentState, _ws: &Workspace) {
-    // Setup mock tool call to trigger tool execution
     set_fake_tool_call("bash", r#"{"command":"echo streaming"}"#);
     set_fake_tool_result("line1\nline2\nline3");
 }
@@ -335,12 +328,9 @@ pub(crate) fn t_tool_stream_updates_before_end(agent: &AgentState) {
     assert!(end_idx.is_some(), "expected ToolExecutionEnd");
 }
 
-// ── agent-session: switch-model ───────────────────────────────────
-
 #[given("agent 运行中")]
 pub(crate) fn g_switch_model_setup(agent: &AgentState) {
     reset_fake_state();
-    // Register two models so we have something to switch between
     let mut reg = agent.registry.borrow_mut();
     reg.register(XyModelMeta {
         id: "agent-a-model".into(),
@@ -392,7 +382,6 @@ pub(crate) fn g_switch_model_setup(agent: &AgentState) {
 
 #[when("调用 cycleForward")]
 pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
-    // Build an AgentCapabilities, select "agent-a-model", then cycle
     let dir = tempfile::tempdir().unwrap();
     let mgr = xylitol_official_plugin_session::SessionManager::new(dir.keep());
     let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = std::sync::Arc::new(mgr);
@@ -416,12 +405,10 @@ pub(crate) fn w_switch_model_cycle(agent: &AgentState) {
         xylitol_runtime::agent::capabilities::QueueMode::default(),
         None,
     );
-    // Select first model then cycle to the next
     let _ = futures::executor::block_on(session.select_model("agent-a-model"));
     assert!(session.current_model().is_some(), "model selected");
     let models = agent.registry.borrow();
     let available = models.get_available();
-    // Find a model different from current to simulate cycling
     let current = session.current_model().unwrap();
     let next = available.iter().find(|m| m.id != current.id);
     if let Some(next_model) = next {
@@ -448,8 +435,6 @@ pub(crate) fn t_switch_model_activated(agent: &AgentState) {
     );
 }
 
-// ── agent-session: abort ──────────────────────────────────────────
-
 #[given("agent 流式响应中")]
 pub(crate) fn g_abort_streaming(agent: &AgentState, _ws: &Workspace) {
     reset_fake_state();
@@ -468,16 +453,12 @@ pub(crate) fn w_abort_call(agent: &AgentState) {
 
 #[then("agent 循环终止并返回 abort 错误")]
 pub(crate) fn t_abort_stops_agent(agent: &AgentState) {
-    // abort() is a signal; the actual error surfaces on the next event poll.
-    // The step verifies that abort was called without panic.
     let result = agent.last_result.borrow();
     assert!(
         result.as_ref().unwrap().is_ok(),
         "abort() should not error itself"
     );
 }
-
-// ── agent-session: slash-dispatch ─────────────────────────────────
 
 #[given("用户发送 /compact")]
 pub(crate) fn g_slash_compact(agent: &AgentState) {
@@ -555,8 +536,6 @@ pub(crate) async fn w_slash_intercepted(agent: &AgentState, _ws: &Workspace) {
     let _ = store.create(&sid, Some("."), None).await;
     bind_session_or_panic(&mut runtime, sid);
     let mut driver = assemble_driver(runtime, store);
-    // Force compact on an empty session hits prepare gates (Nothing to compact /
-    // Already compacted) — that still proves slash→Driver::compact dispatch.
     let did = match driver.compact(None).await {
         Ok(did) => did,
         Err(e) => {
@@ -581,8 +560,6 @@ pub(crate) fn t_slash_compact_called(agent: &AgentState) {
         "compact handler must run via dispatch, got: {msg}"
     );
 }
-
-// ── agent-session: unbound scenarios ──────────────────────────────
 
 #[given("项目含 AGENTS.md 且 CLI 组合根构造 agent")]
 pub(crate) fn g_sess_prompt_loader(ws: &Workspace, agent: &AgentState) {
@@ -1018,16 +995,13 @@ pub(crate) fn t_sess_no_bash_err(agent: &AgentState) {
     );
 }
 
-// ── agent-session: interrupted-bang projection (c2770 / as-bang1) ────
-
 mod sess_interrupted {
     use std::cell::RefCell;
 
     use xylitol_plugin_sdk::message::AgentMessage;
 
     thread_local! {
-        /// 播种路径的两次构建（折叠文本逐字节一致断言用）。
-        pub static BUILDS: RefCell<Vec<Vec<AgentMessage>>> = const { RefCell::new(Vec::new()) };
+                pub static BUILDS: RefCell<Vec<Vec<AgentMessage>>> = const { RefCell::new(Vec::new()) };
     }
 }
 

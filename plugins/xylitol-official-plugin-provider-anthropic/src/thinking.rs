@@ -1,33 +1,23 @@
-//! Thinking level → provider request-body resolution (c1165).
-
 use std::collections::HashMap;
 
 use serde_json::{Value, json};
 
 pub use xylitol_plugin_sdk::{ObsSessionContext, ThinkingBudgets, XyGenerateOptions};
 
-/// Adapter family for resolve (Completions and Responses share effort semantics).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThinkingAdapterKind {
     OpenAi,
     Anthropic,
 }
 
-/// Resolved thinking parameter ready for JSON body injection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ResolvedThinking {
     Omit,
     OpenAiEffort(String),
     AnthropicBudget(u64),
-    /// A configured level cannot be represented by Anthropic's token-budget
-    /// protocol. Providers turn this into an observable request error.
     Invalid(String),
 }
 
-/// Builtin canonical thinking-level names — the single-source request
-/// vocabulary (exact spelling, canonical order). Levels stay opaque strings at
-/// runtime: this table is consumed for matching/budgets, never as a closed
-/// user-facing enum.
 pub struct BuiltinThinkingLevels;
 
 impl BuiltinThinkingLevels {
@@ -38,7 +28,6 @@ impl BuiltinThinkingLevels {
     pub const HIGH: &'static str = "high";
     pub const XHIGH: &'static str = "xhigh";
     pub const MAX: &'static str = "max";
-    /// All builtin names, canonical order (off first, max last).
     pub const ALL: &'static [&'static str] = &[
         Self::OFF,
         Self::MINIMAL,
@@ -50,7 +39,6 @@ impl BuiltinThinkingLevels {
     ];
 }
 
-/// Return a built-in level only when its configured spelling matches exactly.
 fn canonical_known_level(level: &str) -> Option<&'static str> {
     BuiltinThinkingLevels::ALL
         .iter()
@@ -80,15 +68,12 @@ fn budget_for_level(level: &str, budgets: Option<&ThinkingBudgets>) -> u64 {
     override_budget.unwrap_or_else(|| builtin_anthropic_budget(level))
 }
 
-/// Resolve thinking options into a concrete request-body directive.
 pub fn resolve_thinking_for_request(
     level: &str,
     map: &HashMap<String, Option<String>>,
     budgets: Option<&ThinkingBudgets>,
     adapter: ThinkingAdapterKind,
 ) -> ResolvedThinking {
-    // Product support sets, map keys, and known built-in fallbacks all use exact
-    // strings. No thinking-level spelling is normalized at this request boundary.
     if let Some(entry) = map.get(level) {
         return match entry {
             None => ResolvedThinking::Omit,
@@ -140,7 +125,6 @@ fn resolve_anthropic_map_string(
     ResolvedThinking::AnthropicBudget(budget_for_level(as_level, budgets))
 }
 
-/// Inject OpenAI Completions `reasoning_effort` (generic / OpenAI-shaped).
 pub fn apply_thinking_openai_completions(body: &mut Value, resolved: &ResolvedThinking) {
     match resolved {
         ResolvedThinking::Omit => {
@@ -155,10 +139,6 @@ pub fn apply_thinking_openai_completions(body: &mut Value, resolved: &ResolvedTh
     }
 }
 
-/// Completions thinking inject gated by [`crate::wire_policy::Compat`].
-///
-/// Prefer [`crate::provider::dialect::apply_completions_thinking`] at call sites;
-/// this remains a thin public alias.
 pub fn apply_thinking_openai_completions_with_compat(
     body: &mut Value,
     resolved: &ResolvedThinking,
@@ -168,7 +148,6 @@ pub fn apply_thinking_openai_completions_with_compat(
     apply_thinking_openai_completions(body, resolved);
 }
 
-/// Inject OpenAI Responses `reasoning: { effort, summary }` (summary aligns with pi default `auto`).
 pub fn apply_thinking_openai_responses(body: &mut Value, resolved: &ResolvedThinking) {
     match resolved {
         ResolvedThinking::Omit => {
@@ -183,7 +162,6 @@ pub fn apply_thinking_openai_responses(body: &mut Value, resolved: &ResolvedThin
     }
 }
 
-/// Inject Anthropic Messages `thinking: { type: enabled, budget_tokens }`.
 pub fn apply_thinking_anthropic(body: &mut Value, resolved: &ResolvedThinking) {
     match resolved {
         ResolvedThinking::Omit => {
@@ -201,7 +179,6 @@ pub fn apply_thinking_anthropic(body: &mut Value, resolved: &ResolvedThinking) {
     }
 }
 
-/// Resolve options for an adapter kind.
 pub fn resolve_from_options(
     options: &XyGenerateOptions,
     adapter: ThinkingAdapterKind,

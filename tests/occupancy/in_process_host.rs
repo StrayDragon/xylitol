@@ -1,5 +1,3 @@
-//! In-process envelope carrier over serve occupancy (tests / same-process Host).
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -10,7 +8,6 @@ use xylitol_protocol::{RpcMessage, RpcResult};
 
 use xylitol_serve::occupancy::{HostState, handle_unary};
 
-/// Local host half that dispatches unary into [`HostState`].
 pub struct HostStateHost {
     host: Arc<HostState>,
 }
@@ -37,7 +34,6 @@ impl InProcessHost for HostStateHost {
     }
 }
 
-/// Product in-process client bound to a serve occupancy host.
 pub fn in_process_client(host: Arc<HostState>) -> InProcessClient {
     InProcessClient::new(HostStateHost::new(host))
 }

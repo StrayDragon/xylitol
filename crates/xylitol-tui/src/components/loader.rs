@@ -27,7 +27,6 @@ impl Default for LoaderIndicatorOptions {
     }
 }
 
-/// Loader component with optional spinning animation.
 pub struct Loader {
     text: Text,
     frames: Vec<String>,
@@ -105,8 +104,6 @@ impl Loader {
 
 impl Component for Loader {
     fn render(&mut self, width: usize) -> Vec<String> {
-        // Keep a spacer row, but never emit lines wider than the budget
-        // (Text padding_x=1 can otherwise overflow at width 0/1).
         let mut lines = Vec::new();
         if width > 0 {
             lines.push(String::new());
@@ -126,9 +123,6 @@ impl Component for Loader {
         self.text.invalidate();
     }
     fn tick(&mut self) -> bool {
-        // Advance the spinner frame; signal a re-render so the host repaints.
-        // (Only meaningful when more than one frame exists — single-frame
-        // loaders are static.)
         if self.frames.len() > 1 {
             self.tick();
             true

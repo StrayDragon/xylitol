@@ -14,7 +14,6 @@ fn clamp(value: usize, min: usize, max: usize) -> usize {
     value.max(min).min(max)
 }
 
-/// Hard width budget for popup rows (c545): theme wrappers must not escape `width`.
 fn clamp_line_to_width(line: &str, width: usize) -> String {
     if visible_width(line) <= width {
         line.to_string()
@@ -47,8 +46,6 @@ impl SelectItem {
     }
 }
 
-/// Theme for SelectList styling.
-// Clone not derived — Box<dyn Fn> is not Clone
 pub struct SelectListTheme {
     pub selected_prefix: Box<dyn Fn(&str) -> String>,
     pub selected_text: Box<dyn Fn(&str) -> String>,
@@ -69,8 +66,6 @@ impl Default for SelectListTheme {
     }
 }
 
-/// Prefix filter over item values, case-insensitive (pure; `SelectList::set_filter`'s
-/// semantics). Empty filter keeps every item.
 pub fn filter_by_prefix(items: &[SelectItem], filter: &str) -> Vec<SelectItem> {
     let filter_lower = filter.to_lowercase();
     items
@@ -397,7 +392,6 @@ mod tests {
     fn test_select_list_selection_indicator() {
         let mut list = SelectList::new(items(), 10, theme(), default_layout());
         let lines = list.render(80);
-        // First item (index 0) should have "→" prefix
         assert!(
             lines[0].contains("→"),
             "expected selection arrow: {}",
@@ -423,7 +417,7 @@ mod tests {
     fn test_select_list_wraps_selection_up() {
         use crossterm::event::KeyCode;
         let mut list = SelectList::new(items(), 10, theme(), default_layout());
-        feed(&mut list, KeyCode::Up); // up wraps to bottom
+        feed(&mut list, KeyCode::Up);
         assert_eq!(list.selected_index, 2);
     }
 
@@ -431,9 +425,9 @@ mod tests {
     fn test_select_list_wraps_selection_down() {
         use crossterm::event::KeyCode;
         let mut list = SelectList::new(items(), 10, theme(), default_layout());
-        feed(&mut list, KeyCode::Down); // 0->1
-        feed(&mut list, KeyCode::Down); // 1->2
-        feed(&mut list, KeyCode::Down); // wrap to 0
+        feed(&mut list, KeyCode::Down);
+        feed(&mut list, KeyCode::Down);
+        feed(&mut list, KeyCode::Down);
         assert_eq!(list.selected_index, 0);
     }
 
@@ -487,7 +481,7 @@ mod tests {
     #[test]
     fn test_select_list_get_selected() {
         let mut list = SelectList::new(items(), 10, theme(), default_layout());
-        feed(&mut list, crossterm::event::KeyCode::Down); // move to 1
+        feed(&mut list, crossterm::event::KeyCode::Down);
         let selected = list.get_selected_item().unwrap();
         assert_eq!(selected.value, "banana");
     }

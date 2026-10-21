@@ -1,13 +1,3 @@
-//! Agent execution loop — core ReAct loop with full event stream, hooks, and tool batch modes.
-//!
-//! `async_stream` keeps the turn loop as one yield-capable block; helpers below extract
-//! repeated MessageUpdate / turn-end / assistant assembly without a sub-turn state machine.
-//! Soft ~1200 / hard ~2000 LOC (see `src/AGENTS.md`); further split only when edit pain
-//! forces a state machine.
-//!
-//! Tool batch scheduling lives in `tool_batch` + `tool_exec` (c1545). Product default is
-//! Sequential (source-order await); BarrierParallel fans out ParallelSafe windows.
-
 mod assistant;
 pub(crate) mod support;
 mod turn_end;
@@ -51,9 +41,6 @@ use xylitol_plugin_sdk::{
     XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyStream,
 };
 
-// ── AgentRuntime ───────────────────────────────────────────────────────
-
-/// Session-bound ReAct actor: one bound session, one live root turn at a time.
 pub struct AgentRuntime {
     inner: AgentCapabilities,
     coordinator: SharedRunCoordinator,
@@ -74,14 +61,12 @@ impl AgentRuntime {
         }
     }
 
-    /// Queue a prepare Env row for the next generate.
     pub fn set_pending_prepare(&self, snap: xylitol_plugin_sdk::SessionPrepareSnapshot) {
         if let Ok(mut g) = self.pending_prepare.lock() {
             *g = Some(snap);
         }
     }
 
-    /// Explicitly bind this actor to a session. Only allowed while idle.
     pub fn bind_session(
         &mut self,
         session_id: impl Into<String>,
@@ -93,24 +78,18 @@ impl AgentRuntime {
         Ok(())
     }
 
-    /// Set an obs display-name fact for this runtime (c2843 Phase B). Callers:
-    /// driver rename / host restore / tests — the runtime's own identity, never
-    /// the process obs slot.
     pub fn set_session_name_fact(&mut self, name: Option<String>) {
         self.inner.set_session_name_fact(name);
     }
 
-    /// Currently bound session id, if any.
     pub fn session_id(&self) -> Option<&str> {
         self.inner.session_id()
     }
 
-    /// Cancellation token for the active (or last) root turn.
     pub fn cancel_token(&self) -> CancellationToken {
         self.coordinator.with(|c| c.cancel_token())
     }
 
-    /// Abort the active root turn. Clears steer; keeps follow-up and queued roots.
     pub fn abort(&self) {
         self.coordinator.with_mut(|c| {
             c.cancel_active(false);
@@ -256,12 +235,10 @@ impl AgentRuntime {
         self.inner.system_prompt()
     }
 
-    /// Fixed per-request context for overhead-aware estimates (c25 / c16).
     pub fn fixed_request_context(&self) -> crate::agent::compaction::FixedRequestContext {
         self.inner.fixed_request_context()
     }
 
-    /// Resume / session-activation settlement (c26 LeafChanged).
     pub async fn emit_leaf_changed_settlement(&self) {
         self.inner.emit_leaf_changed_settlement().await
     }
@@ -290,9 +267,6 @@ impl AgentRuntime {
         self.inner.hook_bus()
     }
 
-    /// Cancel-path script hook (pre-flight): dispatch on the hook bus when
-    /// present; a `Blocked` outcome maps to [`crate::agent::capabilities::HookBlockedError`]. No bus is a
-    /// no-op `Ok`.
     pub async fn script_hook_cancel(
         &self,
         event_type: &str,
@@ -307,8 +281,6 @@ impl AgentRuntime {
         }
     }
 
-    /// Observe-path script hook: fail-open (`Blocked` only logs). No bus is a
-    /// no-op.
     pub async fn script_hook_observe(
         &self,
         event_type: &str,
@@ -413,7 +385,6 @@ impl AgentRuntime {
         self.inner.maybe_auto_compact().await
     }
 
-    /// Submit a text root turn for the bound session.
     pub async fn submit_root(&mut self, prompt: &str, policy: RunPolicy) -> XyEventStream {
         self.submit_parts(
             vec![xylitol_plugin_sdk::message::AgentPart::text(prompt)],
@@ -422,7 +393,6 @@ impl AgentRuntime {
         .await
     }
 
-    /// Submit a multi-part root turn for the bound session.
     pub async fn submit_parts(
         &mut self,
         parts: Vec<xylitol_plugin_sdk::message::AgentPart>,
@@ -437,7 +407,6 @@ impl AgentRuntime {
 
         let frozen = self.freeze_root_config(parts);
 
-        // Policy decision before any await / mutation beyond the frozen snapshot.
         enum Admit {
             Immediate {
                 run_id: RunId,
@@ -508,15 +477,12 @@ impl AgentRuntime {
         let queues = self.inner.queues();
         let event_sink_inner = self.inner.event_sink();
         let cwd = self.inner.cwd().to_string();
-        // c2843 Phase B: capture the owner obs name fact before the stream
-        // closure (must not borrow `self` past the method).
         let obs_session_name = self.inner.session_name().map(str::to_string);
 
         let lease = RunLease::new(coordinator.clone(), run_id, Some(queues.clone()));
 
         let inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>> = Box::pin(async_stream::stream! {
             let Ok(frozen) = rx.await else {
-                // Revoked (drop) or replace cleared pending — end quietly.
                 return;
             };
             let cancel = match coordinator.with(|c| c.take_started_token(run_id)) {
@@ -648,7 +614,6 @@ struct LiveReactArgs {
     session_id: String,
     seeded_history: Vec<AgentMessage>,
     event_sink_inner: Arc<dyn xylitol_plugin_sdk::XyEventSink>,
-    /// Owner obs display-name fact for the turn (c2843 Phase B); never slot.
     obs_session_name: Option<String>,
 }
 
@@ -753,20 +718,6 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
     combine_run_streams(react, side_rx, queue_rx)
 }
 
-/// Combine the core ReAct tape with the side lifecycle channel (compaction /
-/// settlement via [`CompactionStreamTee`]) and the queue-update channel (c1730).
-///
-/// Ordering contract: when the core tape closes (`AgentEnd` or stream end), any
-/// events already buffered on the side / queue channels MUST be yielded BEFORE
-/// the terminal `AgentEnd` — every consumer that stops reading at `AgentEnd`
-/// (server run loop, remote driver downlink) would otherwise silently drop a
-/// turn-end `CompactionEnd` / `ContextTokenSettlement` / `QueueUpdate`.
-///
-/// The legacy `biased` select prefers `react.next`; a turn-end overflow
-/// compaction emits its End on the side channel immediately before `AgentEnd`
-/// with no interleaving await (script hook bus absent) — the side event would
-/// sit queued and be lost. c2844 guards the tail: drain ready side/queue events
-/// before yielding `AgentEnd` / at stream end.
 pub(crate) fn combine_run_streams(
     react: Pin<Box<dyn Stream<Item = XyEvent> + Send>>,
     mut side_rx: tokio::sync::mpsc::UnboundedReceiver<XyEvent>,
@@ -781,8 +732,6 @@ pub(crate) fn combine_run_streams(
                     match ev {
                         Some(e) => {
                             if matches!(e, XyEvent::AgentEnd { .. }) {
-                                // c2844: flush side/queue leftovers BEFORE the
-                                // terminal tape event (ordering preserved).
                                 while let Ok(ev2) = side_rx.try_recv() {
                                     yield ev2;
                                 }
@@ -815,13 +764,9 @@ pub(crate) fn combine_run_streams(
                 }
             }
         }
-        // Queue unbind is owned by RunLease (AgentEnd / Drop), not this tail —
-        // XyEventStream stops polling after AgentEnd so this block may not run.
     }
 }
 
-/// Forward CompactionStart/End from the side lifecycle sink onto the turn stream
-/// so product TUI bridge can render the compaction block mid-run (c1730).
 struct CompactionStreamTee {
     inner: Arc<dyn xylitol_plugin_sdk::XyEventSink>,
     tx: tokio::sync::mpsc::UnboundedSender<XyEvent>,
@@ -842,50 +787,33 @@ impl xylitol_plugin_sdk::XyEventSink for CompactionStreamTee {
     }
 }
 
-// ── Core ReAct loop config ─────────────────────────────────────────
-
-/// Parameters for the ReAct agent loop.
 struct ReActConfig {
     run_id: RunId,
     coordinator: SharedRunCoordinator,
-    /// Shared selected model/thinking; refreshed at each turn boundary (c1470).
     model_manager: Arc<Mutex<crate::agent::model::manager::ModelManager>>,
-    /// System prompt snapshot for this run (ar6: next-run only).
     system_prompt: Option<String>,
     tools: ToolSet,
     tool_schemas: Vec<XyToolSchema>,
     user_parts: Vec<xylitol_plugin_sdk::message::AgentPart>,
     cancel: CancellationToken,
-    /// Optional permission check. Called with (tool_name, target_path_or_domain).
-    /// Returns Some(reason) if the operation is denied.
     #[allow(clippy::type_complexity)]
     permission_check: Option<std::sync::Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
-    /// Hooks consulted at tool-call boundaries and optional after-turn stop.
     hooks: AgentHooks,
-    /// Optional script hook bus (pi-aligned lifecycle + tool/context bridge).
     hook_bus: Option<Arc<dyn XyHookBus>>,
-    /// Tool batch scheduling mode snapshot for this run (c1545).
     batch_mode: XyBatchMode,
     steer_queue: Arc<Mutex<PendingMessageQueue>>,
     follow_up_queue: Arc<Mutex<PendingMessageQueue>>,
     store: Arc<dyn XySessionStore>,
     session_id: String,
     seeded_history: Vec<AgentMessage>,
-    /// Trust-filtered catalog for `$skill` expand (c1130); clone kept raw in history.
     skills: Vec<SkillInfo>,
-    /// Compaction lifecycle sink (Start/End).
     event_sink: Arc<dyn xylitol_plugin_sdk::XyEventSink>,
-    /// Snapshot of compaction settings for turn-end threshold auto (c1640).
     compaction_settings: crate::agent::compaction::CompactionSettings,
     compaction: std::sync::Arc<dyn crate::agent::compaction::XyCompaction>,
-    /// Workspace cwd for session_env (c1905).
     cwd: String,
-    /// Owner obs display-name fact for the turn (c2843 Phase B); never slot.
     obs_session_name: Option<String>,
     pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
 }
-
-// ── Core ReAct loop ─────────────────────────────────────────────────
 
 fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
     let ReActConfig {
@@ -914,7 +842,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         obs_session_name,
         pending_prepare,
     } = cfg;
-    // c25: fixed per-request overhead for overhead-aware settlement / cut clamp.
     let fixed_context = crate::agent::compaction::FixedRequestContext {
         system_prompt: system_prompt.clone(),
         tool_schemas: tool_schemas.clone(),
@@ -931,12 +858,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         }
 
         let mut history: Vec<AgentMessage> = seeded_history;
-        // System prompt rides on `generate_options.system_prompt` (c1270 / pi align).
-        // MUST NOT stuff it into history as a fake user turn.
-        // pi `newMessages`: everything this run appends (exclude pre-seed).
         let run_baseline = history.len();
 
-        // c1905/c1906: session_env bootstrap — ensure then persist when appended.
         let env_snap = crate::agent::prompt::snapshot_for_cwd(&cwd);
         if crate::agent::prompt::ensure_session_env_in_history(&mut history, &env_snap) {
             persist_agent_message(&store, &session_id, history.last().expect("session_env")).await;
@@ -952,23 +875,17 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             .await;
         }
 
-        // Add user message (text and/or images, c1155).
         history.push(AgentMessage::user_parts(user_parts.clone()));
         persist_agent_message(&store, &session_id, history.last().expect("user message")).await;
 
         let retry_state = RetryState::new(3, 1000);
-        // Steering queued before/at run start is injected before the first model call.
         let mut pending: Vec<AgentMessage> = drain_queue(&steer_queue);
         let mut turn: usize = 0;
-        // Per-run model instance: reuse while selected id is unchanged (NextTurn).
         let mut run_model: Option<(String, Arc<dyn XyModel>)> = None;
-        // c1660: at most one overflow compact-and-retry per run.
         let mut overflow_recovery_attempted = false;
-        // c28: one-shot post-compact floor diagnostic, once per session/run.
         let mut compaction_floor_notice_emitted = false;
         let mut stream_clock = StreamNodeClock::new();
         stream_clock.stamp(StreamNode::AgentStart);
-        // One OTEL/fastrace tree per user-triggered run (c1495 / c1555 turn preview).
         let user_preview = super::tool_exec::parts_preview_text(&user_parts);
         let model_api = {
             let mm = crate::utils::lock_mutex(&model_manager);
@@ -996,17 +913,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let turn_obs_parent = super::tool_exec::capture_iteration_parent(
             agent_turn_span.as_ref().map(|s| s.span()),
         );
-        // c1720: mark turn root aborted when cancel token ends the run.
         let mut turn_aborted = false;
 
-        // Outer loop: continues when follow-up messages arrive after the agent
-        // would otherwise stop (pi runLoop semantics).
         'outer: loop {
             let mut continue_after_tools = true;
 
             while continue_after_tools || !pending.is_empty() {
                 if cancel.is_cancelled() {
-                    // Bridge maps this to a dim scroll notice + idle (not a sticky fault).
                     turn_aborted = true;
                     yield XyEvent::aborted();
                     break 'outer;
@@ -1029,8 +942,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     .map(|t| t.turn_id().to_string())
                     .or_else(|| agent_turn_span.as_ref().map(|t| t.turn_id().to_string()));
 
-                // Inject pending messages (steering / follow-up) before the model call.
-                // Emit user MessageStart/End so surfaces can 上行 scrollback (pi chat).
                 if !pending.is_empty() {
                     for message in pending.drain(..) {
                         yield XyEvent::MessageStart {
@@ -1061,7 +972,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 let mut messages = history.clone();
-                // Expand `$skill` only on the model-bound clone (history stays raw).
                 expand_skills_in_agent_messages(&mut messages, &skills);
                 if let Some(bus) = &hook_bus
                     && let (ty, phase, ctx) =
@@ -1073,7 +983,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     break 'outer;
                 }
 
-                // NextTurn: re-read selected model + thinking at turn boundary (c1470).
                 let (model, mut generate_options) = match prepare_turn_binding(
                     &model_manager,
                     &coordinator,
@@ -1090,10 +999,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 generate_options.obs_parent = iteration_parent;
                 generate_options.obs_session = obs_session.clone();
 
-                // Race cancel against connect/retry so Esc aborts hung `send()`
-                // (reqwest drop-cancels the in-flight HTTP future).
-                // 重试环在生成器内联:AutoRetryStart 在 backoff 等待「前」yield,
-                // bridge 才能在等待期间显示 Retry attempt/max(atb6)。
                 let bar = match store.load_leaf_branch(&session_id).await {
                     Ok(branch) => AgentStatusBar::from_session_entries(&branch),
                     Err(_) => AgentStatusBar::default(),
@@ -1169,7 +1074,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         chunk_stream = s;
                     }
                     Some(Err(e)) => {
-                        // c1660: overflow on connect → synthesize error assistant + Case1.
                         let err_text = e.to_string();
                         let (provider, model_id) = current_provider_model(&model_manager);
                         let err_asst = build_assistant_message(
@@ -1225,16 +1129,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 let mut done_stop_reason: Option<xylitol_plugin_sdk::message::XyStopReason> = None;
                 let mut done_error_message: Option<String> = None;
 
-                // Mid-stream abort: drop `chunk_stream` so adapter/reqwest closes
-                // the HTTP body (c680). Surfaces inherit via XyDriver::abort → token.
                 loop {
                     let chunk_result = tokio::select! {
                         biased;
                         _ = cancel.cancelled() => {
                             drop(chunk_stream);
-                            // c1595 / pi: keep partial assistant in session with
-                            // stop_reason=Aborted (skip empty); project_for_llm
-                            // filters it from the next model call.
                             let assistant_parts = streaming_assistant_parts(
                                 &text_acc,
                                 &thinking_acc,
@@ -1344,7 +1243,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 );
                             }
                             XyChunk::ToolCallEnd { name, args, id } => {
-                                // Intent only — execute after MessageEnd (c1255 / ar21).
                                 stream_clock.on_tool_intent();
                                 upsert_streaming_tool(&mut tool_calls, id, name, args);
                                 yield streaming_message_update(
@@ -1358,7 +1256,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 finish_reason,
                                 usage,
                             } => {
-                                // Persist usage/stop for Api-anchor estimates (c1420 / ar23).
                                 done_stop_reason = Some(finish_reason);
                                 if usage.is_some() {
                                     done_usage = usage;
@@ -1514,8 +1411,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 };
                 let parent_ctx = iteration_parent;
 
-                // Collect (window_index, call indices) for Sequential as one Barrier each,
-                // or BarrierParallel via plan_windows.
                 let planned: Vec<super::tool_batch::PlannedWindow> = match batch_mode {
                     XyBatchMode::Sequential => tool_calls
                         .iter()
@@ -1618,7 +1513,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     }
                                 }
                             };
-                            // History / toolResults: source order (join_all preserves idxs order).
                             for msg in msgs {
                                 history.push(msg.clone());
                                 persist_agent_message(
@@ -1681,7 +1575,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
             }
 
-            // Would stop — drain follow-up; if non-empty, continue outer loop.
             let follow_ups = drain_queue(&follow_up_queue);
             if follow_ups.is_empty() {
                 break;
@@ -1695,14 +1588,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         }
 
         if let Some(bus) = &hook_bus {
-            // pi agent_settled: no retry/compaction/follow-up left before AgentEnd.
             let (ty, phase, ctx) = super::script_hook_ctx::agent_settled();
             observe_script_hook(bus, ty, phase, ctx).await;
             let (ty, phase, ctx) = super::script_hook_ctx::agent_end();
             observe_script_hook(bus, ty, phase, ctx).await;
         }
-        // Keep `agent.turn` open for the whole run (NLL would otherwise drop early).
-        // c1720 / otel20: explicit terminal status before span drop.
         if let Some(span) = agent_turn_span {
             use super::obs::TurnEndReason;
             span.finish(if turn_aborted {

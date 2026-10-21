@@ -1,10 +1,3 @@
-//! Cross-process write occupancy for one session directory (r1950).
-//!
-//! Aligns with deepseek-harness: the arbiter is the kernel. POSIX `flock`s an
-//! unchanging `session.lock` (never rewrite, never unlink). Windows holds a
-//! named semaphore derived from that path and never file-locks session data.
-//! Same-process dual clients are serialized by Host `run_inflight`, not here.
-
 use std::fs::{File, OpenOptions};
 use std::path::{Path, PathBuf};
 
@@ -13,12 +6,9 @@ use crate::sync::lock_mutex;
 use crate::types::SessionBackend;
 use xylitol_plugin_sdk::error::XySessionStoreError;
 
-/// Base name of the kernel lock file inside a session directory (dsh).
 pub const SESSION_WRITE_LOCK_FILENAME: &str = "session.lock";
 
-/// Guard whose Drop releases the kernel exclusive occupancy.
 pub struct SessionWriteLock {
-    /// Held so Drop closes the POSIX fd or Windows semaphore handle.
     #[allow(dead_code)]
     inner: Inner,
 }
@@ -37,7 +27,6 @@ enum Inner {
 }
 
 impl SessionWriteLock {
-    /// Take occupancy for a materialized session directory.
     pub fn try_acquire(dir: &Path, session_id: &str) -> Result<Self, XySessionStoreError> {
         let path = dir.join(SESSION_WRITE_LOCK_FILENAME);
         #[cfg(unix)]
@@ -58,9 +47,6 @@ impl SessionManager {
             .join(SESSION_WRITE_LOCK_FILENAME)
     }
 
-    /// Take (or keep) process-local occupancy for a materialized session.
-    ///
-    /// No-op for in-memory stores and sessions with no manifest yet.
     pub fn acquire_write_lock(&self, session_id: &str) -> Result<(), XySessionStoreError> {
         if matches!(self.backend, SessionBackend::InMemory) {
             return Ok(());
@@ -77,7 +63,6 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Close the occupancy. Kernel releases; `session.lock` stays on disk.
     pub fn release_write_lock(&self, session_id: &str) {
         lock_mutex(&self.write_locks).remove(session_id);
     }
@@ -94,8 +79,6 @@ fn posix_acquire(path: &Path, session_id: &str) -> Result<SessionWriteLock, XySe
         std::fs::create_dir_all(parent)
             .map_err(|e| XySessionStoreError::io("create session dir for write lock", e))?;
     }
-    // Bounded retry: locking an inode a releasing creator unlinked (or a
-    // recreated path) re-opens the fresh file; dsh does three passes.
     for _ in 0..3 {
         let file = OpenOptions::new()
             .read(true)

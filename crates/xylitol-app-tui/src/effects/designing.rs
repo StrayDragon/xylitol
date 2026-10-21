@@ -1,9 +1,3 @@
-//! Designing preview inject (process-local; not a product slash).
-//!
-//! c2740/c2930: scenes are seeded into an in-memory store and applied to the
-//! transcript directly; no `protocol::Command` / remote unary.
-//! **designing preview** = 把命名场景注入同一 TUI 画布的预览设计。
-
 use xylitol_tui::Terminal;
 
 use crate::debug_fixtures::PreviewInject;
@@ -61,9 +55,6 @@ pub(crate) async fn inject_scene<T: Terminal>(
     let _ = session.render_now();
 }
 
-/// Seed a scene into the driver's store when the Host is in-process (designing
-/// uses an ephemeral store). Otherwise a throwaway in-memory manager — never
-/// the caller's current JSONL file, never the RPC surface.
 async fn load_and_bind_scene(
     driver: &mut dyn XyDriver,
     scene: &str,
@@ -114,8 +105,6 @@ fn note_load_err<T: Terminal>(
     session.push_toast_notice(text);
 }
 
-/// Throwaway in-memory store for designing when the driver has no session_store
-/// (scripted / remote). Never the caller's JSONL file.
 struct EphemeralStore {
     sessions: std::sync::Mutex<
         std::collections::HashMap<String, Vec<xylitol_plugin_sdk::session::SessionEntry>>,

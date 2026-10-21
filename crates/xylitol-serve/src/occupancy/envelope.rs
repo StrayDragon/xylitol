@@ -1,12 +1,3 @@
-//! wire v3(fory 二进制)上行处理 — c2834 tasks 2.1–2.4(spec r1902/r1904)。
-//!
-//! v3 是**纯编码层**:上行帧解码后转为 JSON-RPC 2.0 文本喂既有
-//! `rpc_module::dispatch_raw`，方法表 / 幂等 / 写者租约 / 审批执行面零分叉
-//! (对拍纪律 spec r1908:两路径由同一 dispatch 与事件源支撑)。
-//! 下行 v3 事件通知由 mux 侧编码(见 `xylitol-serve` listen binary 通道);应答侧
-//! `host.describe` 与 task 2.5b 已接的三类(会话条目 / 会话树 / travel)走具名
-//! union,其余方法以 `RawOk`(JSON 原文)承载。
-
 use std::sync::Arc;
 
 use crate::occupancy::host::HostState;
@@ -16,11 +7,6 @@ use xylitol_protocol::v3::{
     method_name,
 };
 
-/// 上行帧 → JSON-RPC 请求文本与目标方法名。
-///
-/// `Request::Command` 的 method 名直接取 serde type tag(`steer` / `queue_stats`
-/// 等与 registry SSOT 名一致,由 tag 漂移测试锁定);`Request::Raw` 携带
-/// registry 名单内的 RAW 方法(`arm_tool_freeze` / `persist_trust`)。
 fn to_jsonrpc_request(req: &ClientRequest) -> Result<(String, String), String> {
     let method = match &req.request {
         Request::Command(cmd) => {
@@ -64,18 +50,11 @@ fn to_jsonrpc_request(req: &ClientRequest) -> Result<(String, String), String> {
     ))
 }
 
-/// 生成物 `Command` 各变体载荷是具名 struct;serde 形状需要 `&wire::Command`。
-/// 由 `mapping::v3_to_command` 提供领域转换(未映射变体在此即为失败)。
 fn v3_command_ptr(cmd: &xylitol_protocol::v3::Command) -> xylitol_protocol::command::Command {
     crate::v3_mapping::v3_to_command(cmd)
         .unwrap_or_else(|| panic!("v3 Command variant unmapped: {cmd:?}"))
 }
 
-/// JSON-RPC 应答文本 → v3 `ServerResponse` 帧。
-///
-/// `host.describe` 特判为 `DescribeResult`(承载 wire 格式能力,spec r1911);
-/// 其余成功应答第一版为 `RawOk`(result JSON 原文)。产品错误码取
-/// `error.data.code`(缺失回落信封 message),对齐 `polish_rpc_json` 语义。
 fn response_from_raw(
     rpc_id: u64,
     method: &str,
@@ -126,11 +105,6 @@ fn response_from_raw(
     })
 }
 
-/// 强 schema 应答（c2834 task 2.5b）：会话条目 / 会话树 / travel 三类载荷走
-/// 具名 union,拿到完整体积收益;其余方法（含未命中与解码降级）走 `RawOk`。
-///
-/// 降级是逐方法的：某方法内任一 unknown 变体就整份退回 `RawOk`，不拼半份
-/// 强 schema（对拍不断链，r1908）。
 fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePayload> {
     use crate::v3_mapping;
     use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeTravel};
@@ -144,14 +118,6 @@ fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePay
                 v3_mapping::messages_result_to_v3(&entries),
             ))
         }
-        // c2845: session_tree 刻意不走强 schema `TreeResult`。
-        //
-        // `SessionTreeNode.children` 在生成的 binary codec 中按树深逐层递归
-        // （debug 帧巨大）：历史上 ~185 层深树即可让 tokio worker 默认栈
-        // 溢出 abort（serve `/session-tree`）。该方法改走 `RawOk`——载荷与
-        // JSON 轨逐字面同构（`{"tree": [...]}`），由客户端 serde 解析（小帧、
-        // 深度安全），把「按深度递归」从传输路径整体移除。强 schema
-        // `TreeResult` / `v3_to_tree_nodes` 保留供兼容解码与旧端对拍。
         registry::METHOD_TRAVEL_SESSION_TREE => {
             let travel: SessionTreeTravel = serde_json::from_value(result.clone()).ok()?;
             Some(ResponsePayload::TravelResult(
@@ -162,11 +128,6 @@ fn typed_payload(method: &str, result: &serde_json::Value) -> Option<ResponsePay
     }
 }
 
-/// 处理一条 v3 上行帧,产出 v3 应答帧字节(POST 与 WS binary 共用)。
-///
-/// 占用走内核锁，帧内 `writer_token` 忽略且应答恒为 `None`。非
-/// `ClientRequest` 帧与未知变体按 envelope 错误处理(调用方决定 400 或
-/// 断连)。
 pub async fn handle_uplink(host: &Arc<HostState>, bytes: &[u8]) -> Result<Vec<u8>, String> {
     let frame = Frame::from_bytes(bytes).map_err(|e| format!("v3 decode: {e}"))?;
     let Frame::ClientRequest(req) = frame else {
@@ -182,12 +143,6 @@ pub async fn handle_uplink(host: &Arc<HostState>, bytes: &[u8]) -> Result<Vec<u8
         .map_err(|e| format!("v3 encode: {e}"))
 }
 
-/// 下行:JSON-RPC notification(method + params)→ v3 `ServerNotification` 帧。
-///
-/// mux 的下行源是 `RpcMessage::ServerRequest`(method + serde payload);v3
-/// 模式连接消费本函数产出的 binary 帧(spec r1905:seq 语义、resources 不
-/// 消耗 seq、approval/question 形态平移)。事件走 wire::Event → XyEvent →
-/// v3 两跳映射(两段都已存在,对拍点在领域对象层)。
 pub fn downlink_frame(
     method: &str,
     payload: serde_json::Value,
@@ -276,7 +231,7 @@ pub fn downlink_frame(
                 .unwrap_or_default()
                 .to_string();
             (
-                0, // bash 直播不消耗 journal seq(r1703/c2760)
+                0,
                 Notification::BashOutput(xylitol_protocol::v3::BashOutput {
                     session_id,
                     bash_id,
@@ -296,7 +251,6 @@ pub fn downlink_frame(
 mod tests {
     use super::*;
 
-    /// JSON-RPC 应答形状的测试夹具（与 dispatch 产出的 Value 同构）。
     fn json_of(raw: &str) -> serde_json::Value {
         serde_json::from_str(raw).expect("fixture json")
     }
@@ -359,7 +313,6 @@ mod tests {
 
     #[test]
     fn typed_payloads_cover_session_results() {
-        // task 2.5b:会话条目 / 会话树 / travel 走具名 union，其余仍走 RawOk。
         let entries_json = r#"{"entries":[{"type":"message","id":"e1","parentId":null,"timestamp":7,"message":{"role":"user","content":"hi"}}]}"#;
         let resp = response_from_raw(
             1,
@@ -391,8 +344,6 @@ mod tests {
             other => panic!("expected MessagesResult, got {other:?}"),
         }
 
-        // c2845: `session_tree` 刻意走 RawOk（深度安全）——所返回载荷与 JSON 轨
-        // 逐字面同构，MUST NOT 再用递归强 schema TreeResult（深树会爆 worker 栈）。
         let tree = response_from_raw(
             2,
             "session_tree",
@@ -409,7 +360,6 @@ mod tests {
                     .and_then(serde_json::Value::as_array)
                     .expect("tree array");
                 assert_eq!(nodes.len(), 1);
-                // 兼容解码面：强 schema 仍可对旧端/旧帧往返（v3_to_tree_nodes）。
                 let typed = crate::v3_mapping::tree_result_to_v3(
                     &serde_json::from_value::<Vec<xylitol_plugin_sdk::session::SessionTreeNode>>(
                         value.get("tree").cloned().unwrap(),
@@ -437,7 +387,6 @@ mod tests {
             other => panic!("expected TravelResult, got {other:?}"),
         }
 
-        // 未接强 schema 的方法保持 RawOk(JSON 原文)。
         let raw = response_from_raw(
             4,
             "get_state",

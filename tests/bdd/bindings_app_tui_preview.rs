@@ -1,5 +1,3 @@
-//! app-tui-preview BDD 绑定（c2930）。
-
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_cli_surface::{CliHelpBdd, cli_help_bdd};
 use rstest_bdd_macros::scenario;

@@ -8,14 +8,9 @@ use crate::dto::{XyChunk, XyStopReason};
 use xylitol_plugin_sdk::message::XyLlmMessage;
 use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSchema};
 
-// ---------------------------------------------------------------------------
-// ScenarioStep
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Clone)]
 pub enum ScenarioStep {
     Text(String),
-    /// Many text deltas with a delay between each (abort / cancel evidence).
     SlowStream {
         chunks: Vec<String>,
         delay: Duration,
@@ -70,20 +65,12 @@ impl ScenarioStep {
     }
 }
 
-// ---------------------------------------------------------------------------
-// FakeProviderMode
-// ---------------------------------------------------------------------------
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum FakeProviderMode {
     #[default]
     Scenario,
     Cyclic,
 }
-
-// ---------------------------------------------------------------------------
-// FakeProvider
-// ---------------------------------------------------------------------------
 
 #[derive(Debug)]
 pub struct FakeProvider {
@@ -180,10 +167,6 @@ struct StepOutcome {
     delay: Duration,
 }
 
-// ---------------------------------------------------------------------------
-// Builder
-// ---------------------------------------------------------------------------
-
 #[derive(Debug)]
 pub struct FakeProviderBuilder {
     name: String,
@@ -220,10 +203,6 @@ impl FakeProviderBuilder {
     }
 }
 
-// ---------------------------------------------------------------------------
-// XyModel implementation — single track with vendor adapters.
-// ---------------------------------------------------------------------------
-
 #[async_trait]
 impl XyModel for FakeProvider {
     fn name(&self) -> &str {
@@ -242,8 +221,6 @@ impl XyModel for FakeProvider {
 }
 
 impl FakeProvider {
-    /// Resolve and play the next scenario step (identical for both entry points;
-    /// options are ignored by design, as before).
     async fn emit_next(&self) -> Result<XyStream, XyError> {
         let outcome = match self.resolve_next() {
             Some(o) => o,
@@ -297,10 +274,6 @@ impl FakeProvider {
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

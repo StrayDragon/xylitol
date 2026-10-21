@@ -1,14 +1,5 @@
-//! Optional OTLP/HTTP exporter wired through `fastrace-opentelemetry`.
-//!
-//! Only compiled with Cargo feature `otel`. Callers without the feature treat
-//! remote export as always-off (config may still deserialize).
-
 use xylitol_official_plugin_config::types::{OtelConfig, OtelExporterKind};
 
-/// Resolve whether remote OTLP should be attempted and with which endpoint/headers.
-///
-/// Returns `None` when export must stay off (default none, missing endpoint, etc.).
-/// Always compiled so unit tests cover the shape without the OTLP crates; the
 /// `install` caller is `cfg(feature = "otel")`.
 #[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 pub(crate) fn resolve_otlp_http_target(
@@ -17,7 +8,6 @@ pub(crate) fn resolve_otlp_http_target(
     resolve_otlp_http_target_with(cfg, |k| std::env::var(k).ok())
 }
 
-/// Injectable variant — `get_env` supplies Langfuse base URL / auth keys.
 #[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 pub(crate) fn resolve_otlp_http_target_with(
     cfg: &OtelConfig,
@@ -41,9 +31,6 @@ pub(crate) fn resolve_otlp_http_target_with(
     Some((endpoint, headers))
 }
 
-/// `opentelemetry-otlp` `.with_endpoint(...)` uses the URL **as-is** and does
-/// **not** append `/v1/traces` (unlike `OTEL_EXPORTER_OTLP_ENDPOINT` env).
-/// Langfuse base is `…/api/public/otel`; traces land at `…/otel/v1/traces`.
 #[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 fn normalize_otlp_http_traces_endpoint(endpoint: String) -> String {
     let endpoint = endpoint.trim().trim_end_matches('/').to_string();
@@ -99,17 +86,8 @@ fn inject_langfuse_auth_headers(
     }
 }
 
-/// One-line reason the configured OTLP exporter is not effective (otel3).
-///
-/// Process-level because logging init runs once; the loaded-resources snapshot
-/// reads it for the startup card. Short config-shape reason only — no secrets,
-/// no full env, no error chains (they may carry header material).
 static OTLP_DISABLED_DIAG: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
-/// Pure reason selector (`OnceLock` itself is not resettable in tests).
-///
-/// `exporter != otlp-http` is an intentional off → no diag. Resolve failure is
-/// the missing-endpoint/env shape; resolve ok but build failed is the second shape.
 #[cfg_attr(not(any(test, feature = "otel")), allow(dead_code))]
 fn otlp_disabled_diag_message(
     exporter_is_otlp_http: bool,
@@ -134,8 +112,6 @@ fn note_otlp_disabled(message: Option<String>) {
     }
 }
 
-/// Diagnostics for the loaded-resources card: why the configured OTLP channel
-/// is off. `None` when the channel is up or `exporter: none` (intentional).
 pub fn otlp_disabled_diag() -> Option<String> {
     OTLP_DISABLED_DIAG.get().cloned()
 }
@@ -167,9 +143,6 @@ pub mod install {
         }
     }
 
-    /// fastrace-opentelemetry 0.18 maps spans with `TraceFlags::default()`
-    /// (not sampled). Langfuse (and OTEL exporters generally) drop those.
-    /// Force SAMPLED before the OTLP wire encode.
     #[derive(Debug)]
     struct ForceSampledExporter {
         inner: opentelemetry_otlp::SpanExporter,
@@ -205,7 +178,6 @@ pub mod install {
         }
     }
 
-    /// Build an OTLP reporter or `None` on any failure (caller logs + continues).
     pub fn try_build_otlp_reporter(cfg: &OtelConfig) -> Option<Box<dyn Reporter>> {
         let requested = matches!(cfg.exporter, OtelExporterKind::OtlpHttp);
         let (endpoint, headers) = match resolve_otlp_http_target(cfg) {
@@ -238,10 +210,6 @@ pub mod install {
             OtelHttpProtocol::HttpJson => Protocol::HttpJson,
         };
 
-        // Prefer HTTP/1: some Langfuse self-hosts close HTTP/2 with an empty reply.
-        // MUST use async reqwest here: init_logging runs inside the app Tokio
-        // runtime; building reqwest::blocking::Client nests/drops another runtime
-        // and panics ("Cannot drop a runtime in a context where blocking is not allowed").
         let timeout_secs = cfg.export_timeout_secs.max(1);
         let http_client = reqwest::Client::builder()
             .http1_only()
@@ -273,8 +241,6 @@ pub mod install {
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
-            // Langfuse maps both `deployment.environment` and `langfuse.environment`
-            // to the same field — emit the OTel SemConv key only.
             attrs.push(KeyValue::new("deployment.environment", env.to_string()));
         }
 
@@ -283,9 +249,6 @@ pub mod install {
             .with_version(env!("CARGO_PKG_VERSION"))
             .build();
 
-        // Async reqwest needs a Tokio runtime. Prefer the app Handle when the
-        // fastrace reporter happens to run inside it; otherwise use a private
-        // one-thread runtime (reporter thread has no Handle).
         let reporter = OpenTelemetryReporter::new(exporter, Cow::Owned(resource), scope)
             .with_block_on(otel_block_on);
 
@@ -325,7 +288,6 @@ pub mod install {
 
     use super::*;
 
-    /// Always `None` when the crate is built without feature `otel`.
     pub fn try_build_otlp_reporter(cfg: &OtelConfig) -> Option<Box<dyn Reporter>> {
         if cfg.wants_otlp_http() {
             note_otlp_disabled(Some(
@@ -352,21 +314,17 @@ mod tests {
 
     #[test]
     fn disabled_diag_reasons() {
-        // exporter=none: intentional off, no diag.
         assert_eq!(otlp_disabled_diag_message(false, false, false), None);
-        // Requested but resolve failed: missing endpoint/env shape.
         assert!(
             otlp_disabled_diag_message(true, false, false)
                 .expect("diag")
                 .contains("missing [otel].endpoint")
         );
-        // Resolved but build failed.
         assert!(
             otlp_disabled_diag_message(true, true, true)
                 .expect("diag")
                 .contains("build failed")
         );
-        // Channel up: no diag.
         assert_eq!(otlp_disabled_diag_message(true, true, false), None);
     }
 
@@ -450,10 +408,6 @@ mod tests {
         );
     }
 
-    // serial(env_global, obs_global): live smoke 真装 fastrace 全局 reporter（obs_global 必须
-    // serial）+ 读 LANGFUSE_* env；#[ignore] 仅显式 live 时跑。消除路径：离线断言走
-    // SpanCollectScope/ObsGateScope，live 保持 ignore + serial。
-    // 手动 lab：cargo test -p xylitol --lib lab_live_langfuse -- --ignored --nocapture
     #[cfg(feature = "otel")]
     #[test]
     #[ignore = "live Langfuse; needs LANGFUSE_* + network"]
@@ -486,7 +440,6 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_millis(5));
         }
         fastrace::flush();
-        // Give Langfuse a moment to ingest before the process exits.
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 }

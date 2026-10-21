@@ -1,4 +1,3 @@
-//! xylitol-official-plugin-provider-openai — client→LLM provider wiring + token accounting.
 pub mod accounting;
 pub mod dto;
 pub mod error;
@@ -27,7 +26,6 @@ pub use wire_policy::{Compat, ExtraPolicy, WirePolicy};
 mod boundary_tests {
     use std::path::PathBuf;
 
-    /// Compile-time guard: this package must not depend on the main `xylitol` crate.
     #[test]
     fn package_does_not_depend_on_main_crate() {
         let manifest = include_str!("../Cargo.toml");
@@ -51,7 +49,6 @@ mod boundary_tests {
         }
     }
 
-    /// Metering side must not import provider (HTTP/SSE) modules.
     #[test]
     fn accounting_does_not_import_provider() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");

@@ -1,47 +1,26 @@
-//! Track-A tool-table freeze (c1900): phase + fingerprint + upsert helpers.
-//!
-//! Provider-visible `tools[]` becomes immutable after freeze until an explicit
-//! re-gate (`/reload` idle, or resume/switch which **clears freeze** this wave).
-//! Fingerprint continue-freeze needs persisted fingerprint (later wave).
-//! Upsert = [`ToolSet::overlay_by_name`].
-
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 
 use super::ToolSet;
 
-/// Wall-clock budget for first-turn / re-gate MCP settle before subset freeze.
-///
-/// Code-first (c1900); not YAML this wave. Per-server connect budget lives in
-/// `xylitol_official_plugin_mcp::MCP_SERVER_CONNECT_TIMEOUT`.
 pub const MCP_FIRST_TURN_GATE_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Session-side tool-table phase (轨 A).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToolFreezePhase {
-    /// Not frozen; settle may still install into the session tool table.
     #[default]
     Unfrozen,
-    /// Gate started: waiting settle or timeout before freeze.
     Gating,
-    /// Provider-visible table frozen; settle must not expand it.
     Frozen,
 }
 
-/// Fingerprint of a provider-visible tool table (ordered names + content digest).
-///
-/// Digest covers each tool's `name`, `description`, and canonical JSON schema in
-/// name order — enough to detect add/remove/rename/schema drift on resume.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ToolTableFingerprint {
     pub names: Vec<String>,
-    /// Lowercase hex SHA-256 of the canonical content stream.
     pub content_digest: String,
 }
 
 impl ToolTableFingerprint {
-    /// Build a fingerprint from a [`ToolSet`] (iteration order = provider order).
     pub fn from_toolset(set: &ToolSet) -> Self {
         let mut names = Vec::new();
         let mut hasher = Sha256::new();
@@ -64,7 +43,6 @@ impl ToolTableFingerprint {
         }
     }
 
-    /// True when name order and content digest both match.
     pub fn matches(&self, other: &Self) -> bool {
         self == other
     }

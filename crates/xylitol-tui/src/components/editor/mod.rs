@@ -1,7 +1,3 @@
-//! Multi-line editor component with kill-ring, undo, history, VisualLine
-//! vertical cursor movement, PasteBurst integration, and autocomplete popup.
-//! Ported from pi's `components/editor.ts` (c425 VL+sticky+PasteBurst + c430 autocomplete).
-
 #![allow(
     clippy::type_complexity,
     clippy::needless_range_loop,
@@ -61,8 +57,6 @@ impl Default for EditorOptions {
     }
 }
 
-// ── Editor ──────────────────────────────────────────────────────────────────
-
 pub struct Editor {
     state: EditorState,
     focused: bool,
@@ -70,9 +64,7 @@ pub struct Editor {
     padding_x: usize,
     terminal_rows: usize,
     last_width: usize,
-    /// Visible content rows painted on the last render (excludes borders).
     last_content_rows: usize,
-    /// Full width passed to the last [`Self::render`].
     last_paint_width: usize,
     scroll_offset: usize,
     history: Vec<String>,
@@ -84,29 +76,22 @@ pub struct Editor {
     jump_mode: Option<bool>,
     pastes: HashMap<usize, String>,
     paste_counter: usize,
-    // c425 new fields
     preferred_visual_col: Option<usize>,
     snapped_from_cursor_col: Option<usize>,
     paste_burst: PasteBurst,
-    /// After a paste-burst paint-suppress window ends, force one catch-up frame.
     paste_burst_needs_paint: bool,
     clock: Box<dyn Clock>,
-    // c430 autocomplete integration (CompletionSource registry)
     completion: CompletionRegistry,
     autocomplete_list: Option<SelectList>,
     autocomplete_state: Option<AutocompleteMode>,
     autocomplete_prefix: String,
     autocomplete_max_visible: usize,
     autocomplete_start_token: usize,
-    /// ApplicationOwned editor-owned selection (independent of transcript SelectionController).
     selection: EditorSelection,
-    /// Default on — OSC52 sequences land in [`Self::take_pending_clipboard`].
     pub copy_on_release: bool,
     pending_clipboard: Vec<String>,
-    /// Absolute screen origin of the editor's top-left paint cell (ApplicationOwned hit-test).
     screen_origin_row: u16,
     screen_origin_col: u16,
-    /// Last mouse handler dirtied selection / clipboard (for rerender policy).
     mouse_dirty: bool,
     pub on_submit: Option<Box<dyn FnMut(String)>>,
     pub on_change: Option<Box<dyn FnMut(&str)>>,
@@ -161,12 +146,10 @@ impl Editor {
         self.state.lines.join("\n")
     }
 
-    /// Cursor as `(line, col)` — after [`Self::set_text`], line/col are at buffer end (pi parity).
     pub fn cursor_position(&self) -> (usize, usize) {
         (self.state.cursor_line, self.state.cursor_col)
     }
 
-    /// Replace the border ANSI wrapper used when painting editor chrome.
     pub fn set_border_color(&mut self, border_color: Box<dyn Fn(&str) -> String>) {
         self.theme.border_color = border_color;
     }
@@ -183,32 +166,26 @@ impl Editor {
             .replace("\r\n", "\n")
             .replace('\r', "\n");
         self.push_undo();
-        // pi `setText` → `setTextInternal(..., "end")` — cursor at end of buffer.
         self.set_text_internal(&n, CursorPlacement::End);
     }
 
-    /// Whether the editor currently has a non-empty multi-cell selection.
     pub fn has_selection(&self) -> bool {
         self.selection.has_selection()
     }
 
-    /// True while an unmodified left-drag selection is in progress.
     pub fn is_selection_dragging(&self) -> bool {
         self.selection.dragging
     }
 
-    /// Ordered `(start, end)` in logical buffer coordinates, if non-empty.
     pub fn selection_bounds(&self) -> Option<(CellPoint, CellPoint)> {
         self.selection.bounds().filter(|(a, b)| a != b)
     }
 
-    /// Selected plain text from the editor buffer (not transcript).
     pub fn selected_text(&self) -> Option<String> {
         let (start, end) = self.selection_bounds()?;
         Some(extract_editor_range(&self.state.lines, start, end))
     }
 
-    /// Drain OSC52 (or empty) sequences produced by copy-on-release.
     pub fn take_pending_clipboard(&mut self) -> Vec<String> {
         std::mem::take(&mut self.pending_clipboard)
     }
@@ -217,10 +194,6 @@ impl Editor {
         self.selection.clear();
     }
 
-    /// Set absolute screen origin of this editor's top-left paint cell.
-    ///
-    /// ApplicationOwned hosts MUST update this when the dock moves so mouse hit-testing
-    /// maps screen coordinates into editor-local space for [`Self::handle_mouse_local`].
     pub fn set_screen_origin(&mut self, row: u16, col: u16) {
         self.screen_origin_row = row;
         self.screen_origin_col = col;
@@ -241,7 +214,6 @@ impl Editor {
         }
     }
 
-    /// Replace ↑/↓ send history (c1560 session seed). Texts oldest→newest.
     pub fn replace_history(&mut self, texts: impl IntoIterator<Item = String>) {
         self.exit_history_browsing();
         self.history.clear();
@@ -251,9 +223,6 @@ impl Editor {
         }
     }
 
-    /// c2470：并入外部（跨实例 / 存储通道）历史。输入 Texts oldest→newest
-    /// （同 [`Self::replace_history`] 约定）；未见于现史者作为块整体置于现史
-    /// 之上（合并后最新在最前），超限截断；不动历史浏览态以外的状态。
     pub fn merge_history(&mut self, external: impl IntoIterator<Item = String>) {
         for text in external {
             let t = text.trim().to_string();
@@ -267,7 +236,6 @@ impl Editor {
         }
     }
 
-    /// c2470：当前 ↑/↓ 历史快照（新→旧；诊断 / 断言用）。
     pub fn history_texts(&self) -> Vec<String> {
         self.history.clone()
     }
@@ -288,13 +256,11 @@ impl Editor {
             };
         }
 
-        // Undo
         if k!("tui.editor.undo") {
             self.undo();
             return;
         }
 
-        // ── c430: autocomplete active routing (align pi: Tab=apply, Enter on `/`=apply+submit)
         if self.autocomplete_state.is_some() && self.autocomplete_list.is_some() {
             if k!("tui.select.cancel") {
                 self.cancel_autocomplete();
@@ -307,36 +273,29 @@ impl Editor {
                 return;
             }
             if k!("tui.input.tab") {
-                // Refresh prefix against the live buffer before apply (stale
-                // prefix can survive paste-burst char floods).
                 self.handle_autocomplete_on_edit();
-                self.apply_selected_autocomplete(/* chain_next */ true);
+                self.apply_selected_autocomplete(true);
                 return;
             }
             if k!("tui.select.confirm") {
                 let prefix = self.autocomplete_prefix.clone();
-                let applied = self.apply_selected_autocomplete(/* chain_next */ false);
-                if applied && prefix.starts_with('/') {
-                    // pi: slash confirm falls through to submit (no Tab required).
-                    if !self.disable_submit {
-                        let now = self.clock.now();
-                        if self
-                            .paste_burst
-                            .should_insert_newline_instead_of_submit(now)
-                        {
-                            self.paste_burst.extend_window(now);
-                            self.newline();
-                        } else {
-                            self.submit();
-                        }
+                let applied = self.apply_selected_autocomplete(false);
+                if applied && prefix.starts_with('/') && !self.disable_submit {
+                    let now = self.clock.now();
+                    if self
+                        .paste_burst
+                        .should_insert_newline_instead_of_submit(now)
+                    {
+                        self.paste_burst.extend_window(now);
+                        self.newline();
+                    } else {
+                        self.submit();
                     }
                 }
                 return;
             }
         }
-        // ── end c430 autocomplete routing ────────────────────────────
 
-        // Deletion / kill ring
         if k!("tui.editor.yankPop") {
             self.yank_pop();
         } else if k!("tui.editor.yank") {
@@ -355,9 +314,7 @@ impl Editor {
         } else if k!("tui.editor.deleteCharForward") || matches_key_event(key, "shift+delete") {
             self.fwd_delete();
             self.handle_autocomplete_on_edit();
-        }
-        // Cursor movement
-        else if k!("tui.editor.cursorLineStart") {
+        } else if k!("tui.editor.cursorLineStart") {
             self.line_start();
         } else if k!("tui.editor.cursorLineEnd") {
             self.line_end();
@@ -375,13 +332,9 @@ impl Editor {
             self.page_scroll(-1);
         } else if k!("tui.editor.pageDown") {
             self.page_scroll(1);
-        }
-        // Tab — trigger completion (c430)
-        else if k!("tui.input.tab") && self.autocomplete_state.is_none() {
+        } else if k!("tui.input.tab") && self.autocomplete_state.is_none() {
             self.handle_tab_completion();
-        }
-        // Newline / Submit with PasteBurst
-        else if k!("tui.input.newLine") {
+        } else if k!("tui.input.newLine") {
             let now = self.clock.now();
             if self
                 .paste_burst
@@ -398,15 +351,12 @@ impl Editor {
             }
             let now = self.clock.now();
             let line = &self.state.lines[self.state.cursor_line];
-            // Backslash-Escape: insert newline instead of submit
             if self.state.cursor_col > 0
                 && line.as_bytes().get(self.state.cursor_col - 1) == Some(&b'\\')
             {
                 self.backspace();
                 self.newline();
-            }
-            // PasteBurst check: rapid paste → insert newline instead of submit
-            else if self
+            } else if self
                 .paste_burst
                 .should_insert_newline_instead_of_submit(now)
             {
@@ -415,9 +365,7 @@ impl Editor {
             } else {
                 self.submit();
             }
-        }
-        // Arrow navigation with VisualLine+history
-        else if k!("tui.editor.cursorUp") {
+        } else if k!("tui.editor.cursorUp") {
             if (self.is_on_first_visual_line() || self.state.cursor_col == 0)
                 && (self.is_editor_empty() || self.history_index > -1)
             {
@@ -443,15 +391,11 @@ impl Editor {
         } else if k!("tui.editor.cursorRight") {
             self.move_cursor(0, 1);
             self.handle_autocomplete_on_edit();
-        }
-        // Printable chars
-        else if matches_key_event(key, "shift+space") {
+        } else if matches_key_event(key, "shift+space") {
             self.insert_ch(" ");
         } else if let Some(p) = printable_from_key_event(key) {
             self.insert_ch(&p);
-        }
-        // Everything else → reset paste burst
-        else {
+        } else {
             self.paste_burst.reset();
         }
     }

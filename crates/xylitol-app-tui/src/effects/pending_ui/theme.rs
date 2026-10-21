@@ -1,5 +1,3 @@
-//! Themes picker confirm → reload_themes.
-
 use xylitol_tui::Terminal;
 
 use crate::host::HostSession;

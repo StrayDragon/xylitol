@@ -1,11 +1,3 @@
-//! Salvo HTTP + mux routes and bind.
-//!
-//! Occupancy stays in the composition root and is injected as [`OccupiedHost`].
-//!
-//! - `GET /healthz`
-//! - `POST /rpc` (v3 fory unary)
-//! - `GET /rpc` (mux WebSocket; v3 binary downlink)
-
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
@@ -24,18 +16,12 @@ use xylitol_protocol::RpcMessage;
 
 use crate::registration::{self, Registration};
 
-/// Bounded per-mux-connection queue. Must fit a full journal replay
-/// (`EventJournal` default 10_000) plus `session/subscribed`.
 pub const MUX_CHAN_CAP: usize = 16_384;
 
-/// v3 应答帧的 HTTP content-type。
 pub const CONTENT_TYPE: &str = "application/x-fory-v3";
 
-/// Mux downlink sink (JSON-RPC `ServerRequest` envelopes before v3 encode).
 pub type MuxSink = mpsc::Sender<RpcMessage>;
 
-/// Occupancy the listener binds after assembly. Implemented by the composition
-/// root's `HostState`; this crate must not depend on the root package.
 #[async_trait]
 pub trait OccupiedHost: Send + Sync + 'static {
     fn is_shutting_down(&self) -> bool;
@@ -46,12 +32,10 @@ pub trait OccupiedHost: Send + Sync + 'static {
     async fn prune_mux(self: Arc<Self>, clean_close: bool);
 }
 
-/// v3 帧识别:xlang 编码以 `0x01` 头字节开始;JSON 文本永不以该字节开头。
 pub fn looks_like_fory_envelope(bytes: &[u8]) -> bool {
     bytes.first() == Some(&0x01)
 }
 
-/// Bind knobs (transport only). Assembly lives in the composition root.
 #[derive(Clone, Debug)]
 pub struct ListenConfig {
     pub host: String,
@@ -67,18 +51,14 @@ impl Default for ListenConfig {
     }
 }
 
-/// Handle to a running listener. Dropping this triggers graceful shutdown.
 pub struct RunningListener {
     handle: ServerHandle,
     gateway: Arc<Gateway>,
-    /// Fires when the self-check detects the registration file was taken over
-    /// or removed (c2475). Never fires unless registration is armed.
     evicted: tokio::sync::watch::Receiver<bool>,
     registration_path: Option<PathBuf>,
 }
 
 impl RunningListener {
-    /// Signal the server to shut down gracefully.
     pub fn shutdown(&self) {
         if let Some(host) = self.gateway.host() {
             host.mark_shutting_down();
@@ -86,13 +66,10 @@ impl RunningListener {
         self.handle.stop_graceful(Duration::from_secs(30));
     }
 
-    /// Resolves when the self-check detects registration takeover/removal
-    /// (c2475 self-eviction).
     pub async fn evicted(&mut self) {
         let _ = self.evicted.changed().await;
     }
 
-    /// Write the registration file and arm the self-eviction watch (c2475).
     pub fn arm_registration(
         &mut self,
         url: String,
@@ -128,7 +105,6 @@ impl Drop for RunningListener {
     }
 }
 
-/// Bind and serve with an explicit gateway — the assembly-window seam.
 pub async fn bind_listen(
     config: &ListenConfig,
     gateway: Arc<Gateway>,
@@ -168,7 +144,6 @@ pub async fn bind_listen(
     ))
 }
 
-/// Bind and serve an already-built occupancy (tests / custom assembly).
 pub async fn serve(
     config: ListenConfig,
     host: Arc<dyn OccupiedHost>,
@@ -178,7 +153,6 @@ pub async fn serve(
     bind_listen(&config, gateway).await
 }
 
-/// Pre-assembled variant that also arms the registration contract.
 pub async fn serve_registered(
     config: ListenConfig,
     host: Arc<dyn OccupiedHost>,
@@ -225,19 +199,13 @@ async fn shutdown_signal(handle: ServerHandle) {
     handle.stop_graceful(Duration::from_secs(30));
 }
 
-/// Readiness phase of the listener (c2465 sr-rdy1).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
-    /// Bound, assembly not finished yet.
     Starting,
-    /// Assembled and serving.
     Ready,
-    /// Assembly failed (non-retryable).
     Failed,
 }
 
-/// Host cell + readiness phase. Created at bind time with an empty cell; the
-/// host is filled after assembly and the phase flips to [`Phase::Ready`].
 pub struct Gateway {
     phase: AtomicU8,
     host: OnceLock<Arc<dyn OccupiedHost>>,
@@ -255,7 +223,6 @@ impl Gateway {
         })
     }
 
-    /// Fill the host and flip to ready (idempotent fill: first writer wins).
     pub fn set_host(&self, host: Arc<dyn OccupiedHost>) {
         let _ = self.host.set(host);
         self.phase.store(Self::READY, Ordering::SeqCst);
@@ -282,7 +249,6 @@ fn gateway_from(depot: &Depot) -> Option<Arc<Gateway>> {
     depot.get_typed::<Arc<Gateway>>().ok().cloned()
 }
 
-/// 503 with the phase's semantic body (c2465 D3).
 fn render_unavailable(res: &mut Response, phase: Phase) {
     res.status_code(StatusCode::SERVICE_UNAVAILABLE);
     if phase == Phase::Starting {
@@ -296,9 +262,6 @@ fn render_unavailable(res: &mut Response, phase: Phase) {
     }
 }
 
-/// Injects the [`Gateway`]. Every route except `/healthz` is short-circuited
-/// with a semantic 503 until ready (c2465: requests in the window MUST NOT
-/// half-execute).
 struct GatewayHoop(Arc<Gateway>);
 
 #[async_trait]
@@ -327,7 +290,6 @@ impl Handler for GatewayHoop {
     }
 }
 
-/// Product router (no `/api/v1` REST).
 pub fn router(gateway: Arc<Gateway>) -> Router {
     Router::new()
         .hoop(GatewayHoop(gateway))
@@ -335,7 +297,6 @@ pub fn router(gateway: Arc<Gateway>) -> Router {
         .push(Router::with_path("rpc").post(rpc).get(mux_upgrade))
 }
 
-/// Healthz body with the daemon identity fields (c2475 sr-reg1).
 fn healthz_body(status: &str, extra: serde_json::Value) -> serde_json::Value {
     let mut v = serde_json::json!({
         "status": status,
@@ -438,7 +399,6 @@ async fn mux_upgrade(
         .await
 }
 
-/// Native clients omit Origin. Loopback pages may send one; anything else waits c2303 `--trusted-host`.
 fn mux_origin_allowed(origin: Option<&str>) -> bool {
     let Some(raw) = origin.filter(|s| !s.is_empty()) else {
         return true;
@@ -459,7 +419,6 @@ async fn handle_mux(ws: WebSocket, host: Arc<dyn OccupiedHost>) {
 
     use futures::SinkExt;
     let (mut sink, mut stream) = ws.split();
-    // Handshake is host.describe result, not a mux ServerHello frame (c2825).
     let (tx, mut rx) = mpsc::channel::<RpcMessage>(MUX_CHAN_CAP);
     let (bin_tx, mut bin_rx) = mpsc::channel::<Vec<u8>>(MUX_CHAN_CAP);
     host.register_unbound_mux(tx).await;
@@ -609,8 +568,6 @@ mod tests {
         assert!(body.contains("ok"), "{body}");
     }
 
-    /// c2834 spec r1902/r1911:v3 binary 上行经 POST /rpc 可服务,应答为
-    /// fory 帧;describe 只宣告 fory-v3。
     #[tokio::test]
     async fn post_binary_describe_v3() {
         let gateway = Gateway::starting();

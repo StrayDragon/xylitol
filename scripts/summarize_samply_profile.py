@@ -22,8 +22,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-# Agent tools / build toolchain often appear in the same samply session when the
-# profiled xylitol run invokes MCP (lspz), cargo check, etc. Filter them out.
 EXCLUDE_EXACT = {
     "rustc",
     "cc1",
@@ -161,7 +159,6 @@ def bucket(func: str, loc: str) -> str:
     return "other"
 
 
-# Inclusive stack buckets for c1505 / TUI hotspots (any frame in sample stack).
 INCLUSIVE_RULES: list[tuple[str, tuple[str, ...]]] = [
     ("scroll_render", ("render_scrollback", "scrollback.rs")),
     ("wrap", ("wrap_text_with_ansi", "wrap_text")),
@@ -217,7 +214,6 @@ def inclusive_hotspots(
     funcs = ft.get("func") or []
     fname = (th.get("funcTable") or {}).get("name") or []
 
-    # Collect unique native addresses used on any sample stack.
     used_addrs: set[int] = set()
     sample_frames: list[list[int]] = []
     for i in range(min(length, len(stacks))):
@@ -236,11 +232,7 @@ def inclusive_hotspots(
     if not used_addrs:
         return lines
 
-    # Firefox profiler / samply often store runtime-relative addresses.
-    # Match prior leaf path: stringArray already has 0x… for unknown leaves;
-    # for inclusive we resolve via address hex like the leaf path when present.
     hex_addrs = [f"0x{a:x}" for a in sorted(used_addrs)]
-    # Cap addr2line batch size for speed
     if len(hex_addrs) > 4000:
         hex_addrs = hex_addrs[:4000]
 
@@ -255,7 +247,6 @@ def inclusive_hotspots(
             continue
         texts: list[str] = []
         for fr in frames:
-            # Prefer demangled func table name when present
             if fr < len(funcs) and funcs[fr] is not None:
                 name = string_at(th, funcs[fr])
                 if name:

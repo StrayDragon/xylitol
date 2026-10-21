@@ -1,11 +1,8 @@
-//! Editor border + thinking-level UI sync for [`UiRoot`] (c1150 / ati15).
-
 use xylitol_tui::{ThinkingBorderLevel, apply_thinking_border};
 
 use super::UiRoot;
 
 impl UiRoot {
-    /// Sync UI thinking level (border + footer); silent — no transcript.
     pub fn set_thinking_level_ui(&mut self, level: String) {
         self.thinking_level = level;
         self.sync_editor_border();
@@ -16,13 +13,10 @@ impl UiRoot {
         self.thinking_level.clone()
     }
 
-    /// Map known level names to the package border palette; freeform names use
-    /// the neutral off palette but remain visible in the footer/picker.
     fn thinking_border_level(&self) -> ThinkingBorderLevel {
         ThinkingBorderLevel::parse(&self.thinking_level).unwrap_or(ThinkingBorderLevel::Off)
     }
 
-    /// Sync operation-zone border: bash accent overrides; else thinking level.
     pub fn sync_editor_border(&mut self) {
         let bash = self.editor.get_text().trim_start().starts_with('!');
         self.bash_mode = bash;

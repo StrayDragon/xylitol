@@ -1,5 +1,3 @@
-//! Session-tree open / travel / fork / label pending ops.
-
 use xylitol_tui::Terminal;
 
 use crate::driver::XyDriver;
@@ -9,7 +7,6 @@ use xylitol_protocol::SessionTreeKind as WireSessionTreeKind;
 
 use super::super::helpers::{deepest_tree_id, note_driver_err};
 
-/// Turn an unexpected `DispatchOutcome` into a driver error for UI notices (c2710).
 pub(super) fn outcome_error(
     op: &str,
     outcome: &crate::dispatch::DispatchOutcome,
@@ -98,7 +95,6 @@ pub(super) async fn travel<T: Terminal>(session: &mut HostSession<T>, driver: &m
     let _ = session.render_now();
 }
 
-/// Returns `false` if the pump must abort remaining UI ops (parent get_messages failed).
 pub(super) async fn fork<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,

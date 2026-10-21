@@ -58,7 +58,6 @@ pub fn rc_snap() -> RcSnap {
     RcSnap::new()
 }
 
-// --- given ---
 #[given("settings.json 中 steering_mode 设为 one-at-a-time")]
 fn g_rc_steering(rc_snap: &RcSnap) {
     rc_snap.settings.borrow_mut().steering_mode =
@@ -126,12 +125,9 @@ fn g_rc_thinking_select(rc_snap: &RcSnap) {
 }
 #[given("配置加载器已就绪")]
 fn g_rc_docs(rc_snap: &RcSnap) {
-    // Narrative scenario only needs in-memory AppConfig (see w_rc_narrative);
-    // no process-env loader injection.
     let _ = rc_snap;
 }
 
-// TokenizerBdd-backed givens for rc config-load scenarios
 #[given("YAML 模型条目含 thinking_levels [off, high, max]")]
 fn g_rc_parse_list(tokenizer_bdd: &TokenizerBdd) {
     match parse_app_config_yaml(
@@ -224,8 +220,6 @@ fn g_rc_parse_map(tokenizer_bdd: &TokenizerBdd) {
 }
 #[given("仅存在 config.local.yaml 含可观测字段而无同层 config.yaml")]
 fn g_rc_local_not_merged(tokenizer_bdd: &TokenizerBdd, rc_snap: &RcSnap) {
-    // Asserts local-only content is ignored via default AppConfig + parse of the
-    // local body (t_rc_local) — no process-env loader side effects.
     let local_yaml = "models:\n  default_model: from-local\n  models:\n    from-local:\n      provider: fake\n      model: fake\n";
     rc_snap.local_yaml.replace(Some(local_yaml.to_string()));
     rc_load_flag::LOCAL_YAML.with(|l| l.replace(Some(local_yaml.to_string())));
@@ -233,7 +227,6 @@ fn g_rc_local_not_merged(tokenizer_bdd: &TokenizerBdd, rc_snap: &RcSnap) {
     tokenizer_bdd.cfg_ok.set(true);
 }
 
-// --- when ---
 #[when("加载 settings")]
 fn w_rc_load(rc_snap: &RcSnap) {
     rc_snap.load_settings_mgr();
@@ -316,7 +309,6 @@ fn w_rc_narrative(rc_snap: &RcSnap) {
     ));
 }
 
-// --- then ---
 #[then("Settings.steering_mode 为 OneAtATime")]
 fn t_rc_steering(rc_snap: &RcSnap) {
     let mgr = rc_snap.mgr.borrow();
@@ -498,7 +490,3 @@ fn t_rc_docs(rc_snap: &RcSnap) {
         "config.local.yaml must not be merged"
     );
 }
-
-// TokenizerBdd-backed When 加载配置 / Then 失败 live in steps_tokenizer.rs.
-
-// --- scenario bindings ---

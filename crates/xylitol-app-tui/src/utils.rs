@@ -1,8 +1,5 @@
-//! Client-side clocks used by the product TUI.
-
 use std::time::Instant;
 
-/// Wall-clock stamps for one live thinking burst.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ThoughtClock {
     started_at: Option<Instant>,
@@ -72,7 +69,6 @@ fn secs_between(start: Instant, end: Instant) -> Option<u64> {
     (secs > 0).then_some(secs)
 }
 
-/// Resume helper: prefer stored secs, else `ended_ms - started_ms`.
 pub fn elapsed_from_persist_ms(
     elapsed_secs: Option<u64>,
     started_at_ms: Option<u64>,

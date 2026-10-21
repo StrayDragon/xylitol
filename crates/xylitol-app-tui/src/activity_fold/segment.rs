@@ -1,12 +1,9 @@
-//! Activity segment partition — stable ids for live ≡ rebuild (att23).
-
 use std::ops::Range;
 
 use crate::bridge::UiEntry;
 
 use super::atom::activity_atom;
 
-/// Segment ladder (no segment-level L1 — that is block fold / c2040).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SegmentLevel {
     L0,
@@ -29,7 +26,6 @@ impl SegmentLevel {
             Self::L2 => Self::L3,
             Self::L3 => Self::L3,
         };
-        // Clamp to floor coarseness (L3 coarsest); never below floor when collapsing.
         if next.rank() > floor.rank() {
             floor
         } else {
@@ -54,30 +50,21 @@ impl SegmentLevel {
     }
 }
 
-/// One cluster inside an envelope (split by displayable assistant body or
-/// Compaction seal, att34).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivityCluster {
-    /// `seg-{user_idx}:c{ord}`
     pub id: String,
     pub middle: Range<usize>,
-    /// Assistant row that sealed this cluster, if any.
     pub seal_assistant_idx: Option<usize>,
 }
 
-/// One Activity envelope: User + foldable middles (possibly several clusters) + last Assistant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActivitySegment {
-    /// Stable id: `seg-{user_idx}` (entry index of the User row).
     pub id: String,
     pub user_idx: usize,
-    /// Inclusive start .. exclusive end covering all cluster middles.
     pub middle: Range<usize>,
     pub clusters: Vec<ActivityCluster>,
     pub assistant_idx: Option<usize>,
-    /// Assistant rows in this turn that are not the last one (hidden when envelope collapsed).
     pub mid_assistant_idxs: Vec<usize>,
-    /// 0 = oldest activity segment in the transcript.
     pub turn_ordinal: usize,
 }
 
@@ -89,11 +76,6 @@ fn assistant_displayable(text: &str) -> bool {
     text.chars().any(|c| !c.is_whitespace())
 }
 
-/// Partition `entries` into Activity envelopes (att23 / att34).
-///
-/// ScrollNotice / Error / bang Bash are never middles. Compaction / Todo are middles (in envelope).
-/// Cluster boundaries = displayable assistant body, plus Compaction which seals the
-/// open cluster and forms its own singleton cluster (thinking does not split).
 pub fn partition_segments(entries: &[UiEntry]) -> Vec<ActivitySegment> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -136,8 +118,6 @@ pub fn partition_segments(entries: &[UiEntry]) -> Vec<ActivitySegment> {
 
         for (j, entry) in entries.iter().enumerate().take(turn_end).skip(i) {
             match entry {
-                // Compaction seals the open cluster and stands alone as a
-                // singleton (att34); the existing omit-header reveal path paints it.
                 UiEntry::Compaction { .. } => {
                     seal_open(&mut clusters, &mut open_mids, &mut cluster_ord, None);
                     open_mids.push(j);
@@ -178,7 +158,6 @@ pub fn partition_segments(entries: &[UiEntry]) -> Vec<ActivitySegment> {
     out
 }
 
-/// Foldable entry indices belonging to `seg` (includes Compaction / Todo).
 pub fn middle_entry_indices(entries: &[UiEntry], seg: &ActivitySegment) -> Vec<usize> {
     seg.middle
         .clone()
@@ -186,7 +165,6 @@ pub fn middle_entry_indices(entries: &[UiEntry], seg: &ActivitySegment) -> Vec<u
         .collect()
 }
 
-/// Foldable entry indices belonging to one cluster.
 pub fn cluster_middle_indices(entries: &[UiEntry], cluster: &ActivityCluster) -> Vec<usize> {
     cluster
         .middle

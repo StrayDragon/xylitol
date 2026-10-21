@@ -1,12 +1,7 @@
-//! System prompt / skills / context-policy methods on [`AgentCapabilities`].
-
 use super::AgentCapabilities;
 use crate::agent::prompt;
 
 impl AgentCapabilities {
-    // ── Dynamic system prompt ────────────────────────────────────
-
-    /// Rebuild the system prompt from current options.
     pub fn rebuild_system_prompt(&mut self) {
         let t0 = std::time::Instant::now();
         let tool_n = self.prompt_opts.selected_tools.len();
@@ -31,9 +26,6 @@ impl AgentCapabilities {
         }
     }
 
-    /// Replace context / SYSTEM / APPEND resources and rebuild the system prompt (c1100).
-    ///
-    /// Affects the **next** `run` only. Does **not** mutate session history or store entries.
     pub fn apply_prompt_resources(
         &mut self,
         context_files: Vec<(String, String)>,
@@ -46,15 +38,11 @@ impl AgentCapabilities {
         self.rebuild_system_prompt();
     }
 
-    /// Replace the skills catalog in the system prompt (c1085).
-    ///
-    /// Affects the **next** `run` only. Does **not** mutate session history.
     pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>) {
         self.prompt_opts.skills = skills;
         self.rebuild_system_prompt();
     }
 
-    /// Names of skills currently injected into the system prompt (for `$` expand / reload).
     pub fn loaded_skill_names(&self) -> Vec<String> {
         self.prompt_opts
             .skills
@@ -63,12 +51,10 @@ impl AgentCapabilities {
             .collect()
     }
 
-    /// Full skill catalog (paths for `$` SKILL.md expand; c1130).
     pub fn loaded_skills(&self) -> &[xylitol_plugin_sdk::resource::SkillInfo] {
         &self.prompt_opts.skills
     }
 
-    /// Set the active system prompt text and rebuild.
     pub fn set_system_prompt(&mut self, prompt: Option<String>) {
         self.prompt_opts.system_prompt = prompt.clone();
         self.system_prompt = prompt;

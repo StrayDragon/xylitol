@@ -1,5 +1,3 @@
-//! `/session-import` Yes/No confirm payload for [`super::EditorSlot::ImportConfirm`].
-
 use xylitol_tui::components::select_list::{SelectItem, SelectList};
 use xylitol_tui::{Component, InputEvent};
 
@@ -7,7 +5,6 @@ use super::super::theme::LayoutTheme;
 use crate::keybindings::matches_binding;
 use crate::layout::DEFAULT_MAX_VISIBLE;
 
-/// User choice from `/session-import` confirm slot (c1010).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportConfirmDecision {
     Accepted { path: String },

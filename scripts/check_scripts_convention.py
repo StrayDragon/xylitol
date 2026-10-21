@@ -44,7 +44,6 @@ def main() -> int:
         return 1
 
     just = JUSTFILE.read_text(encoding="utf-8")
-    # `qa:` or `qa verbosity=…:` may continue across `\` lines.
     qa_chunks: list[str] = []
     grabbing = False
     for ln in just.splitlines():
@@ -71,7 +70,6 @@ def main() -> int:
             *SCRIPTS.glob("check-*.py"),
         ]
     )
-    # This file must be among them when present.
     me = Path(__file__).resolve()
     if me not in {p.resolve() for p in checks}:
         print(f"error: self not matched as check_*.py: {me}", file=sys.stderr)

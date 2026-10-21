@@ -1,8 +1,3 @@
-//! ModelManager — model registry, selection, and thinking level.
-//!
-//! Extracted from [`AgentCapabilities`](crate::agent::capabilities::AgentCapabilities) to isolate
-//! model-related responsibilities into a focused component.
-
 use std::sync::Arc;
 
 use crate::agent::model::registry::ModelRegistry;
@@ -12,30 +7,16 @@ use xylitol_plugin_sdk::model::{
     THINKING_OFF, ThinkingBudgets, XyModelMeta, last_declared_thinking_level,
 };
 
-/// Manages model registry, current model selection, and thinking level.
-///
-/// Owned by [`AgentCapabilities`](crate::agent::capabilities::AgentCapabilities) as a composed field.
-/// The provider is built via an injected `model_builder` (the agent layer must
-/// not construct providers itself; the composition root supplies the builder).
 pub struct ModelManager {
-    /// Model registry for provider/model lookup.
     pub(crate) registry: ModelRegistry,
-    /// Index of the currently selected model in the registry (`None` = unset).
     pub(crate) current_index: Option<usize>,
-    /// Current session level. This is intentionally a raw, vendor-declared string:
-    /// a restored level may remain sticky after the configuration support set changes.
     pub(crate) thinking_level: String,
-    /// Preferred default from Settings (`default_thinking_level`), if any.
     preferred_default: Option<String>,
-    /// Optional Settings Anthropic budget overrides for known level names.
     thinking_budgets: Option<ThinkingBudgets>,
-    /// Injected provider factory (composition-root-supplied).
     pub(crate) model_builder: xylitol_plugin_sdk::XyModelBuilder,
 }
 
 impl ModelManager {
-    /// Create a new ModelManager with the given registry, default index, and
-    /// injected provider builder.
     pub fn new(registry: ModelRegistry, model_builder: xylitol_plugin_sdk::XyModelBuilder) -> Self {
         Self {
             registry,
@@ -47,31 +28,23 @@ impl ModelManager {
         }
     }
 
-    /// Store Settings `default_thinking_level` for initial session assembly.
     pub fn set_preferred_default(&mut self, level: Option<String>) {
         self.preferred_default = level;
     }
 
-    /// Store Settings `thinkingBudgets` for Anthropic (and mapped) budget resolve.
     pub fn set_thinking_budgets(&mut self, budgets: Option<ThinkingBudgets>) {
         self.thinking_budgets = budgets;
     }
 
-    /// Current Settings thinking budgets, if any.
     pub fn thinking_budgets(&self) -> Option<&ThinkingBudgets> {
         self.thinking_budgets.as_ref()
     }
 
-    // ── Current model ────────────────────────────────────────────
-
-    /// Get the currently selected model metadata.
     pub fn current_model(&self) -> Option<&XyModelMeta> {
         let idx = self.current_index?;
         self.registry.list().get(idx)
     }
 
-    /// Build a provider instance from the current model config (via the
-    /// injected builder).
     pub fn build_current_model(&self) -> Result<Arc<dyn XyModel>, XyError> {
         let meta = self
             .current_model()
@@ -79,15 +52,11 @@ impl ModelManager {
         Ok((self.model_builder)(&meta.config))
     }
 
-    // ── Thinking level ───────────────────────────────────────────
-
-    /// Declared levels supported by the current model (`off`-only when disabled).
     pub fn supported_levels(&self) -> Option<Vec<String>> {
         let meta = self.current_model()?;
         Some(Self::levels_for_meta(meta))
     }
 
-    /// Levels for an arbitrary meta (picker / UI).
     pub fn levels_for_meta(meta: &XyModelMeta) -> Vec<String> {
         if !meta.thinking || meta.thinking_levels.is_empty() {
             return vec![THINKING_OFF.into()];
@@ -95,13 +64,10 @@ impl ModelManager {
         meta.thinking_levels.clone()
     }
 
-    /// Get the exact current level, including a sticky out-of-set restored value.
     pub fn thinking_level(&self) -> String {
         self.thinking_level.clone()
     }
 
-    /// Set a new thinking level. Rejects if current model has a support set
-    /// that does not include `level` (current value unchanged).
     pub fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
         let levels = self
             .supported_levels()
@@ -116,13 +82,10 @@ impl ModelManager {
         Ok(())
     }
 
-    /// Restore an exact session value without validation or persistence.
     pub(crate) fn restore_thinking_level(&mut self, level: String) {
         self.thinking_level = level;
     }
 
-    /// Session-first assembly: Settings default if declared, otherwise the
-    /// final configured list item. Never use this after a model switch.
     pub fn apply_preferred_or_last(&mut self) {
         let Some(levels) = self.supported_levels() else {
             self.thinking_level = THINKING_OFF.into();
@@ -139,7 +102,6 @@ impl ModelManager {
         self.thinking_level = last_declared_thinking_level(&levels);
     }
 
-    /// Default thinking for a freshly selected model (the declared final item).
     pub fn default_thinking_for_current(&mut self) {
         let Some(levels) = self.supported_levels() else {
             self.thinking_level = THINKING_OFF.into();
@@ -148,15 +110,11 @@ impl ModelManager {
         self.thinking_level = last_declared_thinking_level(&levels);
     }
 
-    // ── Model switching ──────────────────────────────────────────
-
-    /// Select a model by its ID. Thinking defaults to the final declared item (m10).
     pub fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
         let model = self
             .registry
             .find(model_id)
             .ok_or_else(|| XyError::Config(format!("model not found: {model_id}")))?;
-        // Find index by identity
         let idx = self
             .registry
             .list()
@@ -168,9 +126,6 @@ impl ModelManager {
         Ok(())
     }
 
-    // ── Accessors ────────────────────────────────────────────────
-
-    /// Get the model registry (read-only).
     pub fn registry(&self) -> &ModelRegistry {
         &self.registry
     }

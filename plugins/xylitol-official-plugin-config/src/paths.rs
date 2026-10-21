@@ -1,38 +1,18 @@
-//! Config directory discovery.
-//!
-//! Resolves global config dir (XDG / env override), project config dir
-//! (CWD walk for `.xylitol/`), and exposes `ConfigPaths`.
-
 use std::path::{Path, PathBuf};
 
-/// Resolved config paths consumed by the loader and downstream modules.
 #[derive(Clone, Debug)]
 pub struct ConfigPaths {
-    /// Global config directory (e.g. `~/.config/xylitol/`).
     pub(crate) global_dir: PathBuf,
-    /// Project `.xylitol/` directory, if found.
     pub(crate) project_dir: Option<PathBuf>,
 }
 
 impl ConfigPaths {
-    /// Discover all config paths from the process environment and CWD.
-    ///
-    /// Uses:
-    /// - `XYLITOL_CONFIG_DIR` env var to override global config dir.
-    /// - `XYLITOL_PROJECT_DIR` env var to pin the project root.
-    /// - CWD ancestor walk to find `.xylitol/` as the project config marker.
-    ///
-    /// Global **AppConfig** SSOT is `~/.config/xylitol/` (or XDG / env override),
-    /// **not** `~/.xylitol/` (that remains the data/agent dir for skills/sessions/logs).
-    /// On discover, missing global config files are one-shot copied from legacy
-    /// `~/.xylitol/{config.yaml,config.yml,secret.env}` when present (`config.local.*` skipped).
     pub fn discover() -> Self {
         Self::discover_with(
             |k| {
                 if let Ok(v) = std::env::var(k) {
                     return Some(v);
                 }
-                // Match resolve_global_dir: dirs when HOME unset.
                 if k == "HOME" {
                     return dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
                 }
@@ -42,10 +22,6 @@ impl ConfigPaths {
         )
     }
 
-    /// Injectable discovery for tests (no `std::env::set_var`).
-    ///
-    /// `get_env` should return `None` for unset keys. `cwd` is used only when
-    /// `XYLITOL_PROJECT_DIR` is unset.
     pub(crate) fn discover_with(
         get_env: impl Fn(&str) -> Option<String>,
         cwd: Option<&Path>,
@@ -59,12 +35,6 @@ impl ConfigPaths {
     }
 }
 
-/// Resolve the global config directory from an env getter.
-///
-/// Priority:
-/// 1. `$XYLITOL_CONFIG_DIR`
-/// 2. `$XDG_CONFIG_HOME/xylitol/`
-/// 3. `$HOME/.config/xylitol/` (or `dirs::home_dir` when `HOME` unset)
 fn resolve_global_dir_with(get_env: &impl Fn(&str) -> Option<String>) -> PathBuf {
     if let Some(dir) = get_env("XYLITOL_CONFIG_DIR").filter(|s| !s.is_empty()) {
         return PathBuf::from(dir);

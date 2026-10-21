@@ -1,12 +1,3 @@
-//! Clonable construction baseline for session-bound [`AgentRuntime`] actors.
-//!
-//! [`RuntimeBaseline`] holds shared Arc ports and cloneable config snapshots so a
-//! future factory can materialize multiple isolated runtimes from one baseline.
-//! Each [`RuntimeBaseline::materialize_runtime`] call gets fresh ModelManager
-//! selection, queues, session binding, coordinator / active turn, and
-//! compaction orchestrator — never shared history / pending / cancel / active
-//! turn.
-
 use std::sync::Arc;
 
 use crate::agent::capabilities::{AgentCapabilities, QueueMode};
@@ -19,26 +10,19 @@ use xylitol_plugin_sdk::{
     XyBatchMode, XyEventSink, XyHookBus, XyModelBuilder, XyPermission, XySessionStore,
 };
 
-/// Clonable construction inputs for materializing isolated [`AgentRuntime`]s.
-///
-/// Arc ports are cheaply shared; owned baselines (`ModelRegistry`, `ToolSet`,
-/// prompt / skills / compaction / queue modes) are cloned per materialization.
 #[derive(Clone)]
 pub struct RuntimeBaseline {
     pub store: Arc<dyn XySessionStore>,
     pub sink: Arc<dyn XyEventSink>,
     pub permission: Arc<dyn XyPermission>,
     pub hook_bus: Option<Arc<dyn XyHookBus>>,
-    /// Already [`Clone`] (owned maps + `Arc` secret resolver).
     pub model_registry: ModelRegistry,
-    /// `XyModelBuilder` is `Arc`-backed.
     pub model_builder: XyModelBuilder,
     pub cwd: String,
     pub steering_mode: QueueMode,
     pub follow_up_mode: QueueMode,
     pub compaction_settings: Option<CompactionSettings>,
     pub compaction_factory: crate::agent::compaction::XyCompactionFactory,
-    /// Already [`Clone`] (`Vec<Arc<dyn XyTool>>`).
     pub tools: ToolSet,
     pub system_prompt: Option<String>,
     pub context_files: Vec<(String, String)>,
@@ -48,11 +32,6 @@ pub struct RuntimeBaseline {
 }
 
 impl RuntimeBaseline {
-    /// Materialize a fresh [`crate::agent::AgentCapabilities`] from this baseline.
-    ///
-    /// Always creates a new ModelManager (selection unset), new queue Arc,
-    /// `session_id = None`, midturn probe false initially, and a new
-    /// compaction orchestrator instance.
     pub(crate) fn materialize_capabilities(&self) -> AgentCapabilities {
         let mut caps = AgentCapabilities::new(
             self.model_registry.clone(),
@@ -78,7 +57,6 @@ impl RuntimeBaseline {
         caps
     }
 
-    /// Materialize a fresh session-bound [`AgentRuntime`] actor.
     pub fn materialize_runtime(&self) -> AgentRuntime {
         AgentRuntime::new(self.materialize_capabilities())
     }
@@ -187,7 +165,6 @@ mod tests {
         let mut a = ports.clone().materialize_runtime();
         let mut b = ports.materialize_runtime();
 
-        // Select before bind: persistence only runs once a session id is set.
         a.select_model("mock").await.expect("select on a");
         assert!(a.current_model().is_some());
         assert!(
@@ -241,7 +218,6 @@ mod tests {
         let mut stream_a = a.submit_root("go-a", RunPolicy::Reject).await;
         let mut stream_b = b.submit_root("go-b", RunPolicy::Reject).await;
 
-        // Wait until both actors report an active turn.
         let mut saw_a = false;
         let mut saw_b = false;
         for _ in 0..40 {
@@ -277,7 +253,6 @@ mod tests {
         );
         assert!(!b.cancel_token().is_cancelled());
 
-        // Let sibling finish cleanly.
         while stream_b.next().await.is_some() {}
         assert!(!b.has_active_turn());
     }

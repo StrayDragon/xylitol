@@ -197,7 +197,7 @@ def check_contains(errors: list[str]) -> None:
         ("crates/xylitol-serve/src/occupancy/host.rs", "SessionSlot"),
         ("crates/xylitol-serve/src/occupancy/host.rs", "materialize_writer"),
         ("crates/xylitol-kernel/src/driver/in_process/mod.rs", "SessionExporter"),
-        ("tests/bdd.rs", "mod bdd"),  # may fail — check below
+        ("tests/bdd.rs", "mod bdd"),
     ]
     for rel, needle in pairs:
         path = REPO / rel
@@ -206,7 +206,6 @@ def check_contains(errors: list[str]) -> None:
             continue
         text = path.read_text(encoding="utf-8")
         if needle not in text:
-            # tests/bdd.rs is the isolated target; it may not contain `mod bdd`.
             if rel == "tests/bdd.rs" and needle == "mod bdd":
                 if "suite" not in text:
                     errors.append("tests/bdd.rs must be the isolated BDD target")

@@ -1,11 +1,8 @@
-//! Mount admission: core plugin names may not appear in loader rows.
-
 use std::sync::Arc;
 
 use rutis_loader::{LoaderError, Resolved, Resolver};
 use xylitol_plugin_sdk::rt::BoxFuture;
 
-/// Names the kernel mounts itself. Rows using these names are rejected.
 pub const CORE_PLUGIN_NAMES: &[&str] = &[
     "config",
     "obs",
@@ -21,8 +18,6 @@ pub fn is_core_plugin_name(name: &str) -> bool {
     CORE_PLUGIN_NAMES.contains(&name)
 }
 
-/// Wraps a resolver and refuses core names with a non-NotFound error
-/// so a [`rutis_loader::Chain`] cannot fall through to a later ring.
 pub struct Admit<R> {
     pub inner: R,
 }

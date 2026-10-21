@@ -1,8 +1,3 @@
-//! XyDriver abstraction — the single dependency of interactive layers.
-//!
-//! In-process driver is runtime [`XyInProcessDriver`]; this module assembles
-//! official tools / todo / slash. Remote attach lives in `xylitol-app-tui`.
-
 mod in_process;
 
 pub use in_process::{
@@ -19,5 +14,4 @@ pub use xylitol_runtime::{
     AttachObserve, BangExecHandler, BashRun, LinkHealth, SessionExporter, XyDriver, XyDriverError,
 };
 
-/// Envelope `Command` dispatch lives beside the product driver (runtime has no envelope).
 mod command_exec;

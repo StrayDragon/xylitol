@@ -1,5 +1,3 @@
-//! Agent / turn / message lifecycle events.
-
 use crate::bridge::{UiModel, UiPhase, push_user_entry_dedup, sync_tool_intent_from_message};
 use crate::driver::XyEvent;
 
@@ -15,14 +13,12 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
             true
         }
         XyEvent::TurnStart { .. } => {
-            // Intermediate ReAct boundary — keep busy; do not clear streaming.
             if model.phase == UiPhase::Busy {
                 model.status = Some("Working".into());
             }
             true
         }
         XyEvent::TurnEnd { .. } => {
-            // MUST NOT treat as user-visible round end / idle reset.
             log::trace!(
                 target: "xylitol::tui",
                 "TurnEnd (intermediate); UI stays busy"
@@ -35,8 +31,6 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
             if role == "assistant" {
                 model.set_busy_status("Drafting reply");
             } else if role == "user" {
-                // Steer / follow-up inject (and any future user MessageStart):
-                // commit into scrollback so queued strip can leave without losing text.
                 if let Some(msg) = message {
                     let text = msg.text();
                     if !text.trim().is_empty() {
@@ -50,10 +44,6 @@ pub fn apply_agent_family(model: &mut UiModel, event: &XyEvent) -> bool {
             true
         }
         XyEvent::MessageUpdate { message, .. } => {
-            // Text/thinking top-level fields are snapshots — TextDelta/ThinkingDelta
-            // already stream increments (must not re-apply). ToolCall parts in
-            // `message` are intent-only: flush streaming first (order), then
-            // mount/update Tool row (c1260).
             if let Some(msg) = message {
                 sync_tool_intent_from_message(model, msg);
             }

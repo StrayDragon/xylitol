@@ -1,5 +1,3 @@
-//! Queue / compaction / retry / error / metadata events.
-
 use crate::bridge::{CompactionBlockStatus, UiEntry, UiModel, UiPhase, trailing_aborted_note};
 use crate::driver::XyEvent;
 
@@ -53,15 +51,12 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     *tokens_after,
                     None,
                 );
-                // c28: one-shot actionable diagnostic rides as a scroll notice;
-                // the compaction block itself keeps its fold state.
                 if let Some(text) = notice {
                     model
                         .entries
                         .push(UiEntry::ScrollNotice { text: text.clone() });
                 }
             }
-            // Sticky Compacting would block layout status; restore like ToolExecutionEnd.
             if model.phase == UiPhase::Busy {
                 model.status = Some("Working".into());
             }
@@ -87,9 +82,7 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
             true
         }
         XyEvent::Error(err) => {
-            // Esc abort: cancel note + idle — not a sticky Error wall (c482 / c665).
             if err.is_aborted() {
-                // c1595: keep partial (flush) + footer; do not wipe already-committed assistant.
                 model.flush_streaming();
                 if !trailing_aborted_note(&model.entries) {
                     model.entries.push(UiEntry::ScrollNotice {
@@ -111,8 +104,6 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
                     err.kind,
                     err.message
                 );
-                // Non-abort kinds stay sticky Error rows; message is Display-shaped
-                // when sourced from XyError (Config/Session/Provider/Tool/…).
                 model.entries.push(UiEntry::Error {
                     text: err.message.clone(),
                 });
@@ -127,7 +118,6 @@ pub fn apply_lifecycle_family(model: &mut UiModel, event: &XyEvent) -> bool {
         | XyEvent::ThinkingLevelChanged { .. }
         | XyEvent::SessionInfoChanged { .. }
         | XyEvent::ContextTokenSettlement { .. } => {
-            // Settlement is applied by host footer (c1860), not UiModel.
             log::debug!(target: "xylitol::tui", "XyEvent ignored by bridge (metadata) event={}", event.description());
             true
         }

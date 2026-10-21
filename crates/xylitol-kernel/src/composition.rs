@@ -1,5 +1,3 @@
-//! Shared agent construction for all application entry points.
-
 use std::sync::Arc;
 
 use crate::driver::XyDriverError;
@@ -14,7 +12,6 @@ use xylitol_runtime::agent::tools::ToolSet;
 
 pub use crate::mcp_spec::{McpServerSpec, McpTransportSpec};
 
-/// Official compaction plugin factory. Runtime stays plugin-free; composition injects this.
 pub fn official_compaction_factory() -> xylitol_plugin_sdk::XyCompactionFactory {
     std::sync::Arc::new(|settings| {
         std::sync::Arc::new(
@@ -23,25 +20,19 @@ pub fn official_compaction_factory() -> xylitol_plugin_sdk::XyCompactionFactory 
     })
 }
 
-/// Options for [`build_agent`].
 pub struct BuildAgentOptions {
     pub model_registry: ModelRegistry,
     pub system_prompt: Option<String>,
     pub context_files: Vec<(String, String)>,
     pub append_system_prompt: Vec<String>,
-    /// Skills catalog for `<available_skills>` (c1085).
     pub skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>,
     pub cwd: String,
     pub compaction_settings: Option<CompactionSettings>,
     pub permission: Option<Arc<dyn XyPermission>>,
     pub steering_mode: QueueMode,
     pub follow_up_mode: QueueMode,
-    /// Optional lifecycle sink (compaction etc.). Default: in-process `EventBus`.
-    /// Turn UX still uses the `XyDriver::run` EventStream, not this bus.
     pub event_sink: Option<Arc<dyn XyEventSink>>,
-    /// Three-tier script hook configuration (empty = zero-cost no-op).
     pub hooks_config: HooksConfig,
-    /// Same-turn tool batch mode from `AppConfig.tool_batch` (c1545).
     pub batch_mode: XyBatchMode,
 }
 
@@ -65,10 +56,6 @@ impl Default for BuildAgentOptions {
     }
 }
 
-/// Construct a clonable [`xylitol_runtime::agent::RuntimeBaseline`] baseline from the given options.
-///
-/// Host processes share one baseline and lazy-materialize isolated Drivers per
-/// session slot. Print/TUI embed still call [`build_agent`] (one actor).
 pub fn build_baseline(
     options: BuildAgentOptions,
 ) -> Result<xylitol_runtime::agent::RuntimeBaseline, XyDriverError> {
@@ -78,7 +65,6 @@ pub fn build_baseline(
     build_baseline_with_store(options, Arc::new(session_mgr))
 }
 
-/// Like [`build_baseline`], but injects an existing session store (tests / Host).
 pub fn build_baseline_with_store(
     options: BuildAgentOptions,
     store: Arc<dyn XySessionStore>,
@@ -86,33 +72,16 @@ pub fn build_baseline_with_store(
     crate::assembly::assemble_blocking(options, store)
 }
 
-/// Construct a fully-wired `AgentRuntime` from the given options.
-///
-/// This is the single composition-root helper used by CLI, RPC, server, and
-/// future TUI/GUI modes. It injects the concrete implementations
-/// (`SessionManager`, `XyEventSink`, bang/export via Driver) into the
-/// agent without letting runtime know about composition types.
-///
-/// **Event paths:** turn progress is the `XyDriver::run` → `XyEvent` stream.
-/// The injected [`XyEventSink`] (default `EventBus`) is for side lifecycle
-/// (e.g. compaction); it is not the multi-client turn bus.
 pub fn build_agent(options: BuildAgentOptions) -> Result<AgentRuntime, XyDriverError> {
     Ok(build_baseline(options)?.materialize_runtime())
 }
 
-/// Outcome of [`McpSession::reload`] (c1205).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum McpReloadOutcome {
-    /// New tools installed (or empty→builtins re-freeze).
     Installed,
-    /// Cancelled before install; previous manager/tools left untouched.
     Cancelled,
 }
 
-/// Owns MCP client connections for a local XyDriver session (composition seam).
-///
-/// Held by the surface (cli/server) so connections stay alive across turns and
-/// can be shut down / replaced on reload without `XyDriver` importing MCP YAML types.
 pub struct McpSession {
     manager: Option<Arc<xylitol_official_plugin_mcp::McpClientManager>>,
 }
@@ -133,7 +102,6 @@ impl McpSession {
         self.manager.is_some()
     }
 
-    /// Read-only connected MCP snapshot (c1080 / mcp5). Empty when no manager.
     pub async fn connected_servers(&self) -> Vec<xylitol_official_plugin_mcp::ConnectedMcpServer> {
         match &self.manager {
             Some(m) => m.connected_servers().await,
@@ -141,7 +109,6 @@ impl McpSession {
         }
     }
 
-    /// Diagnostics from the last connect/reload (c1080 / mcp4).
     pub async fn diagnostics(&self) -> Vec<xylitol_official_plugin_mcp::McpConnectDiagnostic> {
         match &self.manager {
             Some(m) => m.diagnostics().await,
@@ -149,8 +116,6 @@ impl McpSession {
         }
     }
 
-    /// Install a freshly discovered manager (c1200). Caller updates driver tools separately
-    /// when borrow-split is required.
     pub fn set_manager(&mut self, manager: Arc<xylitol_official_plugin_mcp::McpClientManager>) {
         self.manager = Some(manager);
     }
@@ -159,13 +124,6 @@ impl McpSession {
         self.manager.take()
     }
 
-    /// Reload MCP tools onto `driver` (empty servers → builtins only, zero-cost).
-    ///
-    /// c1900: reopens the freeze gate and **re-freezes** via upsert rebuild (not silent
-    /// mid-session `set_tools` expand).
-    ///
-    /// c1205: keep the old manager until the new one is ready; on `cancel`, leave the
-    /// previous manager/tools untouched.
     pub async fn reload(
         &mut self,
         driver: &mut crate::driver::XyInProcessDriver,
@@ -196,14 +154,12 @@ impl McpSession {
         };
 
         if cancel.is_cancelled() {
-            // Discover finished but user cancelled before install — drop orphan manager.
             if let Some((manager, _)) = discovered {
                 manager.shutdown().await;
             }
             return Ok(McpReloadOutcome::Cancelled);
         }
 
-        // Install only after discover succeeds (or empty path).
         driver.reopen_tools_for_regate();
         let mut tools = ToolSet::from_iter(builtins.clone());
         let prev = self.manager.take();
@@ -325,8 +281,6 @@ mod tests {
         assert!(names.iter().any(|n| n == "read"));
     }
 
-    /// c1205 / c1900 lab: add→remove MCP-like tools through the same
-    /// reopen + rebuild + freeze path `McpSession::reload` uses on install.
     #[tokio::test]
     async fn lab_reload_add_remove_updates_provider_tool_names() {
         use async_trait::async_trait;
@@ -381,7 +335,6 @@ mod tests {
             "precondition: alpha armed in provider table"
         );
 
-        // User removes MCP server from config → empty discover → install builtins only.
         let mut mcp = McpSession::new();
         mcp.set_manager(Arc::new(
             xylitol_official_plugin_mcp::McpClientManager::new(),
@@ -410,7 +363,6 @@ mod tests {
             "empty reload clears previous manager after install"
         );
 
-        // User adds a different MCP tool (simulate install overlay without live MCP).
         driver.reopen_tools_for_regate();
         let with_b = ToolSet::rebuild_agent_tools(
             driver.builtins_for_reload(),
@@ -429,7 +381,6 @@ mod tests {
             "add path MUST NOT revive removed alpha: {after_add:?}"
         );
 
-        // Without /reload reopen, FROZEN ignores silent expand (config change alone).
         let n = after_add.len();
         let builtins = driver.builtins_for_reload();
         driver.set_tools(ToolSet::rebuild_agent_tools(
@@ -450,7 +401,6 @@ mod tests {
         );
     }
 
-    /// Cancel before install: provider table stays on the pre-reload freeze epoch.
     #[tokio::test]
     async fn lab_reload_cancel_keeps_provider_tools_despite_desired_add() {
         use async_trait::async_trait;
@@ -526,7 +476,6 @@ mod tests {
         }
     }
 
-    /// Real MCP stdio: /reload install adds ping, then empty reload strips it.
     #[tokio::test]
     async fn real_mcp_reload_add_then_remove_updates_provider_tools() {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");
@@ -580,7 +529,6 @@ mod tests {
         assert!(!mcp.has_manager());
     }
 
-    /// Real MCP: ping→ping,echo rediscover expands provider table.
     #[tokio::test]
     async fn real_mcp_reload_can_expand_tools_on_same_server() {
         let agent = build_agent(BuildAgentOptions::default()).expect("build");

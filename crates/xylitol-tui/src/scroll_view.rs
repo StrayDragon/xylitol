@@ -1,20 +1,13 @@
-//! Application-owned scroll viewport for ApplicationOwned sessions (c2070).
-
-/// Content-backed viewport: scroll is owned by the app, not the terminal scrollback.
 #[derive(Debug, Clone, Default)]
 pub struct ScrollView {
     lines: Vec<String>,
-    /// Index of the first visible content line.
     scroll_top: usize,
-    /// Visible row count (transcript pane height).
     viewport_height: usize,
 }
 
 impl ScrollView {
-    /// Three rows per physical wheel notch, matching the expected alt-screen pace.
     pub const WHEEL_NOTCH: isize = 3;
 
-    /// Selection edge-drag quantum per busy tick (precise content targeting).
     pub fn motion_step(_viewport_height: usize) -> isize {
         1
     }
@@ -78,7 +71,6 @@ impl ScrollView {
         self.scroll_top = self.max_scroll();
     }
 
-    /// 回顶（c2891 跳转底部对称）。已在顶时 false（无谓 repaint）。
     pub fn scroll_home(&mut self) -> bool {
         if self.scroll_top == 0 {
             return false;
@@ -87,20 +79,16 @@ impl ScrollView {
         true
     }
 
-    /// True when the viewport already shows the last content page.
     pub fn at_bottom(&self) -> bool {
         self.scroll_top >= self.max_scroll()
     }
 
-    /// Visible content lines for the current scroll window (length ≤ viewport_height).
     pub fn visible_lines(&self) -> &[String] {
         let start = self.scroll_top.min(self.lines.len());
         let end = (start + self.viewport_height).min(self.lines.len());
         &self.lines[start..end]
     }
 
-    /// Map a screen row within the transcript pane (0 = top of pane) to a content
-    /// line index, or `None` if outside content.
     pub fn content_row_at_screen(&self, screen_row: usize) -> Option<usize> {
         if screen_row >= self.viewport_height {
             return None;

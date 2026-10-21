@@ -1,15 +1,5 @@
-//! Provider-guidance messages — user-facing text for model configuration.
-//!
-//! Pure CLI-surface presentation (la13): login help, no-model, and
-//! no-API-key messages. Not authentication logic — API-key-based only;
-//! OAuth login is not supported until after 1.0.0. Lives under interactive/cli/
-//! because it is presentation, not agent orchestration.
-
 use xylitol_plugin_sdk::model::XyModelKind;
 
-/// Get help text for provider auth configuration.
-///
-/// References the `/login` command and the provider/model docs (ux1).
 pub fn get_provider_login_help() -> String {
     "Configure models in config.yaml under models.models, and set each entry's\n\
      \x20 api_key (or {{ secret.NAME }} in secret.env). Examples:\n\
@@ -19,12 +9,10 @@ pub fn get_provider_login_help() -> String {
         .to_string()
 }
 
-/// Format a message when no models are available.
 pub fn format_no_models_available_message() -> String {
     format!("No models available.\n\n{}", get_provider_login_help())
 }
 
-/// Format a message when no model is selected.
 pub fn format_no_model_selected_message() -> String {
     format!(
         "No model selected.\n\n{}\n\nThen use /model to select a model.",
@@ -32,7 +20,6 @@ pub fn format_no_model_selected_message() -> String {
     )
 }
 
-/// Format a message when no API key is found for a provider.
 pub fn format_no_api_key_found_message(provider: &str) -> String {
     let env_var = match XyModelKind::from_provider_name(provider) {
         Some(XyModelKind::OpenAi) => "OPENAI_API_KEY",

@@ -1,12 +1,3 @@
-//! Layer-1 **native** protocol implementations (first language).
-//!
-//! | Module | `api` |
-//! |---|---|
-//! | [`openai_responses`] | `openai-responses` |
-//! | [`openai_completions`] / [`openai`] | `openai-completions` |
-//!
-//! Third-party quirks that *adjust* these natives live in [`super::dialect`].
-
 pub mod assembler;
 pub mod openai;
 pub mod openai_client;
@@ -22,7 +13,6 @@ pub use openai_responses::{
     messages_to_responses_input_with_diagnostics, messages_to_responses_input_with_options,
 };
 
-/// Program-authority wait bounds for provider HTTP (c2425).
 pub mod wait_bounds {
     use std::time::Duration;
     pub const CONNECT: Duration = Duration::from_secs(10);

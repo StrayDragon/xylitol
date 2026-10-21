@@ -1,5 +1,3 @@
-//! Turn-end settlement, compaction, and finish_turn control flow.
-
 use std::sync::{Arc, Mutex};
 
 use crate::agent::capabilities::{PendingMessageQueue, observe_hook};
@@ -28,7 +26,6 @@ pub(crate) fn queue_counts(
     (steer_count, follow_up_count)
 }
 
-/// Events + control-flow decision after a turn settles (text-only or post-tools).
 pub(crate) enum FinishTurnOutcome {
     ContinueOuterForCompaction,
     StopRun,
@@ -43,16 +40,12 @@ pub(crate) struct FinishTurnResult {
     pub(crate) outcome: FinishTurnOutcome,
 }
 
-/// How this iteration closes (c2820). Exhaustive: do not add a third "quiet skip".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum IterationClose {
-    /// Tool calls remain; the inner loop will generate again. Pair `TurnEnd` only.
     ContinueTools,
-    /// No further tools (or overflow-error recovery). Settlement + precheck + should_stop.
     Settle,
 }
 
-/// Close one iteration. [`IterationClose::Settle`] is the historical `finish_turn` body.
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn close_iteration(
     store: &Arc<dyn XySessionStore>,
@@ -168,7 +161,6 @@ pub(crate) async fn close_iteration(
     }
 }
 
-/// Settle context tokens for turn-end (c1860) — emit via caller `yield`.
 pub(crate) async fn settle_turn_context(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,
@@ -195,7 +187,6 @@ pub(crate) async fn settle_turn_context(
         &entries,
         &EstimateOpts {
             model_id,
-            // c25: footer / gate share the overhead-aware estimate (c16).
             fixed_context: Some(fixed_context.clone()),
             obs_parent: turn_obs_parent,
             obs_session: obs_session.clone(),
@@ -205,10 +196,6 @@ pub(crate) async fn settle_turn_context(
     ))
 }
 
-/// Turn-end compaction: Case1 overflow then Case2 threshold (c1640/c1660).
-///
-/// Returns `true` when overflow recovery asks the ReAct loop to continue
-/// (compact succeeded with willRetry).
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn try_turn_end_compaction(
     store: &Arc<dyn XySessionStore>,
@@ -284,12 +271,10 @@ pub(crate) async fn try_turn_end_compaction(
         Ok(OverflowCompactOutcome::Ran { will_retry }) => {
             if will_retry {
                 *overflow_recovery_attempted = true;
-                // Reload compaction-aware leaf context (pi: rebuild after compact).
                 match store.load_leaf_branch(session_id).await {
                     Ok(entries) => {
                         let cut = xylitol_plugin_sdk::session::build_context_entries(&entries);
                         *history = cut.iter().filter_map(|e| e.as_agent_message()).collect();
-                        // c1906: cut may drop early session_env — ensure before retry generate.
                         let env_snap = crate::agent::prompt::snapshot_for_cwd(cwd);
                         if crate::agent::prompt::ensure_session_env_in_history(history, &env_snap) {
                             super::support::persist_agent_message(

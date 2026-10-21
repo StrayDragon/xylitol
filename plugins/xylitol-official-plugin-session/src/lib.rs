@@ -1,18 +1,7 @@
-//! Session persistence — manifest-backed JSONL segment storage.
-//!
-//! Key behaviors:
-//! - JSONL segments (one JSON object per line, append-only active segment)
-//! - Stored in ~/.xylitol/sessions/`<id>/`
-//! - Entry types: message, compaction, branch_summary, model_change, thinking_level_change, custom
-//! - Session tree via parentSession header field
-//! - Version gate: current manifests load; the supported legacy file is migrated once
-//! - Kernel write occupancy on `session.lock` (POSIX flock / Windows named object)
-
 pub(crate) mod manager;
 pub mod plugin;
 mod sync;
 pub mod types;
 
 pub use manager::{SESSION_WRITE_LOCK_FILENAME, SessionManager};
-// Test-support re-export (in-crate tests import via this facade).
 pub use types::*;

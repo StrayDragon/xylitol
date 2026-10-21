@@ -1,5 +1,3 @@
-//! Kernel-mounted core plugins (not loader rows).
-
 pub mod agent_react;
 pub mod driver;
 pub mod registries;

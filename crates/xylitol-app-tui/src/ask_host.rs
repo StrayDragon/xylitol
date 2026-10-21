@@ -1,5 +1,3 @@
-//! Process-local ask gateway: tool execute ↔ ChoicePrompt oneshot (c1850).
-
 use std::sync::Mutex;
 
 use async_trait::async_trait;
@@ -9,16 +7,11 @@ use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion};
 use xylitol_plugin_sdk::ask::{AskArgs, AskModeArg, AskQuestionArg, AskUserGateway};
 use xylitol_plugin_sdk::error::XyToolError;
 
-/// Pending ask waiting for the TUI Choice slot.
 pub struct PendingAsk {
     pub questions: Vec<AskQuestionArg>,
     pub reply: oneshot::Sender<Result<String, XyToolError>>,
 }
 
-/// Channel-based [`AskUserGateway`] shared by AskTool and the TUI host.
-///
-/// When a [`crate::HostClient`] is set (product TUI attach), reverse-RPC answers go
-/// through `approve_tool` / `answer_question` unary instead of a local fake.
 pub struct AskHostGateway {
     pending: Mutex<Option<PendingAsk>>,
     host: Mutex<Option<std::sync::Arc<dyn crate::host_client::HostClient>>>,
@@ -32,19 +25,16 @@ impl AskHostGateway {
         }
     }
 
-    /// Attach-mode: answers are posted to Host via [`crate::HostClient::respond`].
     pub fn set_host_client(&self, client: std::sync::Arc<dyn crate::host_client::HostClient>) {
         if let Ok(mut slot) = self.host.lock() {
             *slot = Some(client);
         }
     }
 
-    /// Take one pending ask (if any) for the host to mount ChoicePrompt.
     pub fn take_pending(&self) -> Option<PendingAsk> {
         self.pending.lock().ok()?.take()
     }
 
-    /// Mux `approval/requested` / `question/requested` → local ChoicePrompt, then respond.
     pub fn push_from_server(&self, rpc_id: String, method: &str, payload: serde_json::Value) {
         use xylitol_plugin_sdk::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
         let questions = if method == "approval/requested" {
@@ -143,7 +133,6 @@ impl AskUserGateway for AskHostGateway {
     }
 }
 
-/// Convert ask tool args → package ChoicePrompt questions.
 pub fn ask_questions_to_choice(questions: Vec<AskQuestionArg>) -> Vec<ChoiceQuestion> {
     questions
         .into_iter()

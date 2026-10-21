@@ -1,5 +1,3 @@
-//! Steps for `package-tui-tabs` (c2880 / r1938–r1945).
-
 use crate::bdd::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use rstest::fixture;

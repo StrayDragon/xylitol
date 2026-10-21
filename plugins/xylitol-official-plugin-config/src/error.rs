@@ -1,6 +1,3 @@
-//! Config load / validate / template failures (crate-private; not `Xy*`).
-
-/// Errors from config loading and field validation.
 #[derive(Debug, thiserror::Error)]
 pub enum LoadError {
     #[error("I/O error reading {path}: {source}")]

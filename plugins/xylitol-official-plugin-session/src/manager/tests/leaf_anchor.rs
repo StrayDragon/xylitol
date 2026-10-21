@@ -1,7 +1,3 @@
-//! Resume projection anchor: trailing parent-less bookkeeping rows (modelChange
-//! written by cold materialize before any leaf is known) must not truncate
-//! `get_branch` — the projection source for transcript rebuild and LLM context.
-
 use super::super::*;
 use xylitol_plugin_sdk::session::{
     EntryBase, MessageEntry, ModelChangeEntry, SessionEntry, fixture_message_json,
@@ -42,8 +38,6 @@ async fn seed_session_with_trailing_model_change(mgr: &SessionManager, sid: &str
         msg("a1", Some("u1"), "assistant", "reply one"),
         msg("u2", Some("a1"), "user", "second"),
         msg("a2", Some("u2"), "assistant", "reply two"),
-        // Cold materialize artifact: bookkeeping row appended before any leaf
-        // was known, so it carries no parent and sits at the tail.
         parentless_model_change("mc_tail"),
     ] {
         match &mgr.backend {
@@ -66,7 +60,6 @@ async fn get_branch_after_restart_anchors_past_parentless_model_change() {
         let mgr = SessionManager::new(dir.path().join("sessions"));
         seed_session_with_trailing_model_change(&mgr, sid).await;
     }
-    // Fresh process: leaf map empty (resume after restart).
     let fresh = SessionManager::new(dir.path().join("sessions"));
     let branch = fresh.get_branch(sid, None).await.unwrap();
     let ids: Vec<_> = branch.iter().filter_map(|e| e.entry_id()).collect();
@@ -82,8 +75,6 @@ async fn get_branch_with_metadata_leaf_hint_anchors_past_it() {
     let mgr = SessionManager::in_memory();
     seed_session_with_trailing_model_change(&mgr, "s-anchor-meta").await;
 
-    // Polluted stored leaf: update_leaf_from_entry kept the parent-less
-    // bookkeeping row as leaf.
     let branch = mgr
         .get_branch("s-anchor-meta", Some("mc_tail"))
         .await
@@ -107,8 +98,6 @@ async fn get_branch_splices_seam_when_messages_chain_through_parentless_bookkeep
     for e in [
         msg("u1", None, "user", "first"),
         msg("a1", Some("u1"), "assistant", "reply one"),
-        // Historical pollution: the seam row took the chain; later messages
-        // chained through it while it itself has no parent.
         parentless_model_change("mc_seam"),
         msg("u2", Some("mc_seam"), "user", "second"),
         msg("a2", Some("u2"), "assistant", "reply two"),

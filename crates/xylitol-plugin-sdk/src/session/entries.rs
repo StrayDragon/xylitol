@@ -1,37 +1,23 @@
-//! Session entry vocabulary — persisted entry shapes and SessionEntry.
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::message::{AgentMessage, BashExecutionStatus, EnvMessage};
 
-/// Current session format version.
-/// v3: legacy (no id/parentId tree)
-/// v4: tree-aware with id/parentId (snake_case / untagged AgentPart era)
-/// v5: camelCase entry shell + tagged AgentPart content (c646 / pi-aligned)
-/// v6: v5 semantics + shell/header timestamps are u64 unix-ms; no serde aliases
-/// Current storage: manifest + active/sealed JSONL segments
 pub const SESSION_VERSION: u32 = 7;
 pub const LEGACY_SESSION_VERSION: u32 = 6;
 
-/// Where a session fork cuts the parent tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ForkPosition {
-    /// Include `at_entry_id` in the child path (pi `position: "at"` / clone).
     #[default]
     At,
-    /// User-message only: path ends at the user's **parent**; the user entry is
-    /// **not** copied (pi `/fork` default `position: "before"`).
     Before,
 }
-
-// ── Header ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionHeader {
     #[serde(skip, default)]
-    pub entry_type: String, // "session" — provided by enum tag
+    pub entry_type: String,
     #[serde(default = "default_version")]
     pub version: u32,
     pub id: String,
@@ -39,7 +25,6 @@ pub struct SessionHeader {
     pub cwd: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent_session: Option<String>,
-    /// Fork cut: the `at_entry_id` passed to `fork` (s23). Absent on non-fork / old files.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fork_at_entry_id: Option<String>,
 }
@@ -47,8 +32,6 @@ pub struct SessionHeader {
 fn default_version() -> u32 {
     SESSION_VERSION
 }
-
-// ── Entry base ──────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,23 +43,14 @@ pub struct EntryBase {
     pub timestamp: u64,
 }
 
-// ── Message entry ───────────────────────────────────────────────────
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageEntry {
     #[serde(flatten)]
     pub base: EntryBase,
-    pub message: Value, // AgentMessage equivalent — serialized to JSON
+    pub message: Value,
 }
 
-// ── Compaction entry ───────────────────────────────────────────────
-
-/// The policy snapshot captured when a compaction summary was produced.
-///
-/// Current entries carry all four values. Migrated v6 entries use
-/// `status = "legacy/unknown"` and leave the values absent so diagnostics
-/// cannot mistake them for the current runtime policy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompactionPolicySnapshot {
@@ -146,8 +120,6 @@ pub struct CompactionEntry {
     pub policy: Option<CompactionPolicySnapshot>,
 }
 
-// ── Branch summary entry ───────────────────────────────────────────
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BranchSummaryEntry {
@@ -161,8 +133,6 @@ pub struct BranchSummaryEntry {
     pub from_hook: Option<bool>,
 }
 
-// ── Model change entry ─────────────────────────────────────────────
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelChangeEntry {
@@ -172,8 +142,6 @@ pub struct ModelChangeEntry {
     pub model_id: String,
 }
 
-// ── Thinking level change entry ────────────────────────────────────
-
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThinkingLevelChangeEntry {
@@ -181,8 +149,6 @@ pub struct ThinkingLevelChangeEntry {
     pub base: EntryBase,
     pub thinking_level: String,
 }
-
-// ── Custom entry ───────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -192,8 +158,6 @@ pub struct CustomEntry {
     pub custom_type: String,
     pub data: Value,
 }
-
-// ── Custom message entry (participates in LLM context) ─────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -207,9 +171,6 @@ pub struct CustomMessageEntry {
     pub details: Option<Value>,
 }
 
-// ── Label entry ──────────────────────────────────────────────────────
-
-/// Label entry for user-defined bookmarks/markers on entries.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LabelEntry {
@@ -219,9 +180,6 @@ pub struct LabelEntry {
     pub label: Option<String>,
 }
 
-// ── Session info entry ──────────────────────────────────────────────
-
-/// Session metadata entry (e.g., user-defined display name).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfoEntry {
@@ -230,18 +188,12 @@ pub struct SessionInfoEntry {
     pub name: Option<String>,
 }
 
-// ── Session context (reconstructed LLM messages) ───────────────────
-
-/// Reconstructed session context from stored entries.
-/// Messages use Value to avoid circular agent dependency in types.
 #[derive(Debug, Clone)]
 pub struct SessionContext {
-    pub messages: Vec<serde_json::Value>, // Vec<AgentMessage> in JSON form
+    pub messages: Vec<serde_json::Value>,
     pub thinking_level: String,
-    pub model: Option<(String, String)>, // (provider, model_id)
+    pub model: Option<(String, String)>,
 }
-
-// ── Unified entry enum ─────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -307,13 +259,6 @@ impl SessionEntry {
         self.base().and_then(|b| b.parent_id.as_deref())
     }
 
-    /// True when this entry kind participates in the message chain and may
-    /// anchor transcript projection / tree travel (leaf).
-    ///
-    /// Bookkeeping rows (`session` header / `modelChange` /
-    /// `thinkingLevelChange`) never anchor: they project no transcript rows and
-    /// cold materialize may append them before any leaf is known (parent-less
-    /// tail), which would collapse an ancestry walk to that row alone.
     pub fn anchors_transcript(&self) -> bool {
         !matches!(
             self,
@@ -323,11 +268,6 @@ impl SessionEntry {
         )
     }
 
-    /// Convert a persisted entry into an [`AgentMessage`] for context / ReAct seed.
-    ///
-    /// Includes: Message (all roles including nested `bashExecution`), compaction /
-    /// branch summaries as Env. Honors `exclude_from_context` (returns `None`).
-    /// Non-context entry kinds → `None`. Top-level bash is not a legal SSOT type.
     pub fn as_agent_message(&self) -> Option<AgentMessage> {
         match self {
             SessionEntry::Message(msg) => {
@@ -375,11 +315,6 @@ impl SessionEntry {
     }
 }
 
-/// Session-scoped set of `bash_id`s that have a done row (c2770 / as-bang1).
-///
-/// Pairing is session-wide on purpose: a done row off the resumed leaf path
-/// (fork / travel to an earlier leaf) still proves the command finished, so it
-/// MUST suppress the interrupted notice.
 pub fn done_bash_ids(entries: &[SessionEntry]) -> std::collections::HashSet<String> {
     entries
         .iter()
@@ -395,14 +330,6 @@ pub fn done_bash_ids(entries: &[SessionEntry]) -> std::collections::HashSet<Stri
         .collect()
 }
 
-/// Fold orphan running bash rows into one stable interrupted notice (c2770).
-///
-/// Orphan = running row whose `bash_id` has no done row in `done_bash_ids`
-/// (session-scoped — see [`done_bash_ids`]). The orphan becomes
-/// [`EnvMessage::interrupted_bash`]; excluded (`!!`) rows and running rows
-/// paired with a done keep the c2760 no-projection behavior. Call this once on
-/// the post-cut message list, in every SessionEntry → AgentMessage assembly
-/// that feeds the model (as48 single path).
 pub fn fold_interrupted_bash_rows(
     messages: Vec<AgentMessage>,
     done_bash_ids: &std::collections::HashSet<String>,
@@ -424,11 +351,6 @@ pub fn fold_interrupted_bash_rows(
         .collect()
 }
 
-/// Build LLM context entries from a leaf branch path (pi `buildContextEntries`).
-///
-/// Takes the **latest** compaction on `path`. Returns that compaction entry first,
-/// then entries from `firstKeptEntryId` up to (but not including) the compaction,
-/// then entries after the compaction. With no compaction, returns `path` unchanged.
 pub fn build_context_entries(path: &[SessionEntry]) -> Vec<SessionEntry> {
     let mut latest: Option<(usize, &CompactionEntry)> = None;
     for (i, entry) in path.iter().enumerate() {

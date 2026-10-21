@@ -1,12 +1,3 @@
-//! Activity-fold (c1760): segment L0/L2/L3 plane, orthogonal to block L1 (c2040).
-//!
-//! Summary-marker mouse hits → [`crate::widgets::FoldTarget::Segment`]
-//! are wired by c2045 Wave B (scrollback + `toggle_one_step`); this module owns
-//! segment state / nearest expand·collapse only.
-//!
-//! New transcript block: add `UiEntry` variant + arm in `activity_atom` +
-//! (tools) `tool_activity_role`. Fold counts atoms only.
-
 mod atom;
 mod degrade;
 mod live_tape;
@@ -15,11 +6,6 @@ mod settings;
 mod state;
 mod summary;
 
-/// Semantic scene dump (c2200 scene slice): product path chords (L3/L2/L1)
-/// over the product render. Tests in [`crate::tests`] assert the
-/// c1762 lessons 1–3 on product frames.
-///
-/// tt08：该模块同时是对外测试支撑合约（BDD 经 `xylitol_app_tui` 直驱产品渲染），
 /// 故不再限 `#[cfg(test)]`。
 pub mod scene;
 
@@ -50,7 +36,6 @@ use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeTravel};
 #[cfg(test)]
 pub(crate) use scene::SemanticDump;
 
-/// Parse session / ISO / unix-ish timestamps; `None` when unreliable.
 pub fn parse_timestamp(raw: &str) -> Option<OffsetDateTime> {
     let raw = raw.trim();
     if raw.is_empty() {
@@ -60,14 +45,12 @@ pub fn parse_timestamp(raw: &str) -> Option<OffsetDateTime> {
         return Some(dt);
     }
     if let Ok(n) = raw.parse::<i64>() {
-        // Heuristic: ms vs s
         let secs = if n > 10_000_000_000 { n / 1000 } else { n };
         return OffsetDateTime::from_unix_timestamp(secs).ok();
     }
     None
 }
 
-/// After rebuild: map ancestry session stamps onto segment clocks (att24).
 pub fn ingest_rebuild_clocks(
     state: &mut ActivityFoldState,
     ui_entries: &[UiEntry],
@@ -76,7 +59,6 @@ pub fn ingest_rebuild_clocks(
 ) {
     let segs = partition_segments(ui_entries);
     let path_ids = ancestry_path_ids(session_entries, travel.leaf_id.as_deref());
-    // Walk path messages in order; pair User / last assistant-ish stamps by turn.
     let mut user_stamps: Vec<Option<OffsetDateTime>> = Vec::new();
     let mut asst_stamps: Vec<Option<OffsetDateTime>> = Vec::new();
     let mut cur_user: Option<OffsetDateTime> = None;
@@ -118,8 +100,6 @@ pub fn ingest_rebuild_clocks(
         asst_stamps.push(cur_asst);
     }
 
-    // Map activity segments (which skip empty turns) onto user-turn stamps by
-    // counting User rows in ui_entries.
     let mut user_ord = 0usize;
     for (idx, e) in ui_entries.iter().enumerate() {
         if !matches!(e, UiEntry::User { .. }) {

@@ -1,7 +1,3 @@
-//! Provider adapter layer — L1 native APIs + L2 dialect overlays.
-//!
-//! Dialects implement [`xylitol_plugin_sdk::XyModel`] directly.
-
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::XyModel;
@@ -38,7 +34,6 @@ pub use tool_wire::{
 };
 pub use trace::{ObsGateScope, ObsGateState, SpanCollectScope};
 
-/// Supported adapter kinds (L1 protocol family).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdapterKind {
     OpenAiResponses,

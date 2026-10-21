@@ -1,5 +1,3 @@
-//! `/mcp` SelectList slot methods for [`UiRoot`] (c1215).
-
 use super::super::slots::{EditorSlot, McpSlot};
 use super::UiRoot;
 use crate::driver::LoadedResourcesSnapshot;
@@ -9,7 +7,6 @@ impl UiRoot {
         matches!(&self.slot, EditorSlot::Mcp(_))
     }
 
-    /// Whether `/mcp` can sync-mount from the in-root loaded-resources cache (c1215).
     pub fn mcp_cache_usable_for_open(&self) -> bool {
         mcp_cache_usable(&self.loaded_resources)
     }
@@ -19,12 +16,10 @@ impl UiRoot {
         self.status_next_turn_cue.clone()
     }
 
-    /// Mount `/mcp` SelectList from a loaded-resources snapshot (c1215).
     pub fn mount_mcp_panel(&mut self, snap: &LoadedResourcesSnapshot) {
         self.slot = EditorSlot::Mcp(McpSlot::mount(self.theme, snap));
     }
 
-    /// Sync-mount `/mcp` from the UiRoot loaded-resources cache (c1215).
     pub fn mount_mcp_from_loaded_resources(&mut self) {
         let snap = self.loaded_resources.clone();
         self.mount_mcp_panel(&snap);
@@ -55,7 +50,6 @@ impl UiRoot {
     }
 }
 
-/// Cache is usable when it already carries MCP discovery signal (c1215).
 pub(crate) fn mcp_cache_usable(snap: &LoadedResourcesSnapshot) -> bool {
     snap.mcp_configured > 0 || !snap.mcp_servers.is_empty() || snap.mcp_connecting_label.is_some()
 }

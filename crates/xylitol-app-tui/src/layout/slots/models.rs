@@ -1,5 +1,3 @@
-//! Fuzzy model picker payload for [`super::EditorSlot::Models`].
-
 use xylitol_tui::components::select_list::{SelectItem, SelectList};
 use xylitol_tui::{
     Component, InputEvent, fuzzy_filter, matches_key_event, printable_from_key_event,
@@ -22,9 +20,6 @@ pub struct ModelsSlot {
     rows: Vec<ModelPickerRow>,
     filter: String,
     last_width: usize,
-    /// Enter-confirmed model id (c2790 quick). The picker stays open while a
-    /// bang keeps the main loop stopped; the confirm line renders only while
-    /// the focused row still matches, so re-navigation simply drops the badge.
     confirmed_id: Option<String>,
 }
 
@@ -181,8 +176,6 @@ impl ModelsSlot {
         } else {
             format!(" filter: {}", self.filter)
         };
-        // c2790 quick: immediate Enter feedback while a bang keeps the confirm
-        // pending — the picker stays open and the focused row is flagged.
         let confirmed = self
             .confirmed_id
             .as_ref()

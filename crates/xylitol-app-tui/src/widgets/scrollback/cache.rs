@@ -7,7 +7,6 @@ use super::diff::diff_fold_key;
 use super::paint::StreamingAssistantPaint;
 use super::{ScrollbackFold, ScrollbackFoldDefaultsKey};
 
-/// Relative fold-hit within a cached block (row offset from block start).
 #[derive(Debug, Clone)]
 pub(super) struct CachedFoldHit {
     pub(super) row_offset: usize,
@@ -17,16 +16,12 @@ pub(super) struct CachedFoldHit {
     pub(super) target: FoldTarget,
 }
 
-/// Per-entry paint cache so streaming/spinner frames do not re-Markdown the
-/// entire transcript (ath25).
 #[derive(Debug, Default)]
 pub struct ScrollbackPaintCache {
     width: usize,
     fold_defaults: Option<ScrollbackFoldDefaultsKey>,
     pub(super) entries: Vec<(u64, Vec<String>, Vec<CachedFoldHit>)>,
-    /// Test/obs: how many committed entries were freshly painted.
     pub(crate) entry_misses: u64,
-    /// Streaming assistant incremental paint (ath26).
     pub(crate) streaming_assistant: StreamingAssistantPaint,
 }
 
@@ -36,15 +31,12 @@ impl ScrollbackPaintCache {
         self.width = 0;
         self.fold_defaults = None;
         self.streaming_assistant.invalidate();
-        // keep entry_misses / stream counters cumulative unless cleared
     }
 
-    // c2837: 测试探针无条件化
     pub fn clear_misses(&mut self) {
         self.entry_misses = 0;
     }
 
-    /// Full-clear only on width / fold **defaults** change — not override-map identity.
     pub(super) fn prepare(&mut self, width: usize, fold: &ScrollbackFold) {
         let key = fold.defaults_key();
         if self.width != width || self.fold_defaults != Some(key) {

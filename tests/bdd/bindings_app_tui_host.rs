@@ -1,5 +1,3 @@
-//! app-tui-transcript / app-tui-input host-pump BDD 绑定（att9/att11 + ati busy 族）。
-
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use rstest_bdd_macros::scenario;
 
@@ -99,8 +97,6 @@ async fn test_atm18_inline_model_during_bang(host_pump_bdd: HostPumpBdd) {}
 )]
 async fn test_ath45_queued_survives_bang(host_pump_bdd: HostPumpBdd) {}
 
-// ── c2835 后继：裸规则回填（app-tui-host 无场景规则 → 可执行示例）──────
-
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "Host泵为单一引擎入口"
@@ -178,8 +174,6 @@ async fn test_ath42_shared_effect_pump(host_pump_bdd: HostPumpBdd) {}
     name = "夹具验证无真实TTY"
 )]
 fn test_ath3_harness_without_tty(host_pump_bdd: HostPumpBdd) {}
-
-// ── c2835 后继：会话树族裸规则回填（宿主侧）────────────────────────
 
 #[scenario(
     path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",

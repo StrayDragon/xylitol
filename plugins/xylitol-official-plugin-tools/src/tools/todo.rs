@@ -1,5 +1,3 @@
-//! Builtin Todo tools (`todo_rewrite` / `todo_update`) + session gateway.
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -15,10 +13,6 @@ use xylitol_plugin_sdk::session::{
 };
 use xylitol_plugin_sdk::{AgentTodoGateway, XySessionStore, XyToolCtx, XyToolExecutionMode};
 
-/// Store-backed Todo SSOT with interior-mutable active session id.
-///
-/// When `session_id` is unset, mutates stay in an in-memory fallback (unit tests /
-/// pre-bind). Product paths bind the session via [`Self::bind_session`].
 pub struct SessionAgentTodoGateway {
     store: Arc<dyn XySessionStore>,
     session_id: RwLock<Option<String>>,
@@ -34,7 +28,6 @@ impl SessionAgentTodoGateway {
         })
     }
 
-    /// Bind (or clear) the active session for subsequent tool calls.
     pub async fn bind_session(&self, session_id: Option<String>) {
         *self.session_id.write().await = session_id;
     }
@@ -103,8 +96,6 @@ const TODO_STATUS_ENUM: [&str; 3] = ["pending", "in_progress", "completed"];
 const TODO_UPDATE_GUIDELINES: &[&str] = &[
     "todo_rewrite for a new/replaced plan; todo_update to tick existing ids (batch in items[]). Do not rewrite the list to mark one item done. The current list is under <todo> in the <agent_status_bar> message when non-empty.",
 ];
-
-// ── todo_rewrite ────────────────────────────────────────────────────
 
 pub struct TodoRewriteTool {
     gateway: Arc<dyn AgentTodoGateway>,
@@ -175,8 +166,6 @@ impl TypedTool for TodoRewriteTool {
         Ok(list_json(&list))
     }
 }
-
-// ── todo_update ─────────────────────────────────────────────────────
 
 pub struct TodoUpdateTool {
     gateway: Arc<dyn AgentTodoGateway>,
@@ -254,7 +243,6 @@ impl TypedTool for TodoUpdateTool {
     }
 }
 
-/// Two Todo tools sharing `gateway`.
 pub fn todo_tools(gateway: Arc<dyn AgentTodoGateway>) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
     vec![
         Arc::new(TodoRewriteTool::new(gateway.clone())),

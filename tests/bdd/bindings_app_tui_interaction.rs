@@ -1,5 +1,3 @@
-//! app-tui-transcript BDD 绑定（P3：键鼠交互折叠族）。
-
 use crate::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
 use rstest_bdd_macros::scenario;
 
@@ -87,8 +85,6 @@ fn test_att32_unified_hit_table(tui_interaction: TuiInteraction) {}
 )]
 fn test_att7_expandable_summary_chords(tui_interaction: TuiInteraction) {}
 
-// ── app-tui-input: session-tree slot key family ──
-
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
     name = "会话树过滤键无头"
@@ -124,8 +120,6 @@ fn test_ati27_label_keys(tui_interaction: TuiInteraction) {}
     name = "思考循环不已绑编辑器槽无头"
 )]
 fn test_ati36_no_thinking_cycle(tui_interaction: TuiInteraction) {}
-
-// ── c2835 后继：会话树 fork 和弦交给主机 ────────────────────────────
 
 #[scenario(
     path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",

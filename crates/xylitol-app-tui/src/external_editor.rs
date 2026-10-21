@@ -1,17 +1,8 @@
-//! Product Ctrl+G external editor (c650) — independent of `agent_demo` / package.
-//!
-//! Package provides only [`xylitol_tui::TUI::with_terminal_suspended`].
-//! This module owns `$VISUAL`/`$EDITOR` resolve, tempfile, and spawn.
-
 use std::io::IsTerminal;
 use std::process::Command;
 
 use super::error::TuiSurfaceError;
 
-/// Prefer real `$EDITOR` path (interactive TTY). Harness / tests / non-TTY → stub.
-///
-/// - `XYLITOL_TUI_EDITOR_STUB=1` → always stub
-/// - `XYLITOL_TUI_REAL_EDITOR=1` → force real path (manual / targeted tests)
 /// - `cfg(test)` → stub unless `XYLITOL_TUI_REAL_EDITOR=1`
 pub fn prefer_real_external_editor() -> bool {
     if env_flag("XYLITOL_TUI_EDITOR_STUB") {
@@ -32,7 +23,6 @@ fn env_flag(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Strict resolve: non-empty `$VISUAL`, else non-empty `$EDITOR`. No nano/notepad default.
 pub fn resolve_external_editor_command() -> Result<String, TuiSurfaceError> {
     resolve_external_editor_command_from(
         std::env::var("VISUAL").ok().as_deref(),
@@ -55,8 +45,6 @@ pub fn resolve_external_editor_command_from(
     ))
 }
 
-/// Write `initial` to a tempfile, spawn `editor_cmd`, return new text on exit 0.
-/// Terminal must already be suspended by the caller.
 pub fn run_external_editor_process_with_command(
     editor_cmd: &str,
     initial: &str,
@@ -136,7 +124,6 @@ mod tests {
 
     #[test]
     fn run_with_script_rewrites_file() {
-        // Unique per invocation — avoid /tmp pid collisions under cargo test.
         let script =
             std::env::temp_dir().join(format!("xylitol-c650-editor-{}.sh", uuid::Uuid::new_v4()));
         std::fs::write(&script, "#!/bin/sh\nprintf 'edited' > \"$1\"\n").unwrap();

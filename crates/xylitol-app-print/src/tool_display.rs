@@ -1,42 +1,30 @@
-//! Cross-surface helpers for tool call/result display (TUI + Print).
-//!
-//! MCP tools ship machine JSON; keep presentation shared so Print and scrollback
-//! stay aligned. No CallToolResult content extraction here (c1460).
-
 use serde_json::Value;
 
-/// MCP tools are registered as `mcp__{server_id}__{tool_name}` (legacy `mcp:` /
-/// transition `mcp-` / `mcp_` still detected).
 pub(crate) fn is_mcp_tool_name(name: &str) -> bool {
     xylitol_runtime::is_mcp_tool_name(name)
 }
 
-/// Builtin `ask` tool (choice gateway, c1850): TUI renders it as an interactive choice.
 #[allow(dead_code)]
 pub(crate) fn is_ask_tool(name: &str) -> bool {
     xylitol_runtime::BuiltinToolName::from_name(name) == Some(xylitol_runtime::BuiltinToolName::Ask)
 }
 
-/// Builtin `write` tool: file-write entries carry a content preview body.
 #[allow(dead_code)]
 pub(crate) fn is_write_tool(name: &str) -> bool {
     xylitol_runtime::BuiltinToolName::from_name(name)
         == Some(xylitol_runtime::BuiltinToolName::Write)
 }
 
-/// Builtin `edit` tool: file-edit entries carry a diff body.
 #[allow(dead_code)]
 pub(crate) fn is_edit_tool(name: &str) -> bool {
     xylitol_runtime::BuiltinToolName::from_name(name)
         == Some(xylitol_runtime::BuiltinToolName::Edit)
 }
 
-/// Pretty-print a JSON [`Value`]; falls back to compact `to_string` on failure.
 pub(crate) fn pretty_json_value(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
 }
 
-/// If `text` is valid JSON, return pretty-printed form; otherwise return `text` unchanged.
 pub(crate) fn pretty_json_text(text: &str) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -48,7 +36,6 @@ pub(crate) fn pretty_json_text(text: &str) -> String {
     }
 }
 
-/// Body text for a pending/done MCP tool: call args (pretty) then optional result (pretty).
 #[allow(dead_code)]
 pub(crate) fn mcp_tool_body(args: Option<&Value>, result: Option<&str>) -> String {
     let mut parts: Vec<String> = Vec::new();
@@ -66,7 +53,6 @@ pub(crate) fn mcp_tool_body(args: Option<&Value>, result: Option<&str>) -> Strin
     parts.join("\n\n")
 }
 
-/// Recover call args from a pending MCP body (`args:\\n{…}`), ignoring any streamed junk after.
 #[allow(dead_code)]
 pub(crate) fn extract_mcp_args_value(body: &str) -> Option<Value> {
     let rest = body.strip_prefix("args:")?.trim_start();

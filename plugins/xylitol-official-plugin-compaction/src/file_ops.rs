@@ -1,8 +1,5 @@
-//! File operation tracking — extract read/write/edit ops from tool calls.
-
 use xylitol_plugin_sdk::session::CompactionEntry;
 
-/// Tracked file operations from tool calls.
 #[derive(Debug, Clone, Default)]
 pub struct FileOps {
     pub read: Vec<String>,
@@ -22,7 +19,6 @@ impl FileOps {
     }
 }
 
-/// Extract file operations from `AgentMessage` messages.
 pub fn extract_file_ops_from_messages(
     messages: &[xylitol_plugin_sdk::message::AgentMessage],
     prev_compaction: Option<&CompactionEntry>,
@@ -78,7 +74,6 @@ pub fn extract_file_ops_from_messages(
     ops
 }
 
-/// Compute final file lists: read_only = read \ (edited ∪ written), modified = edited ∪ written.
 pub fn compute_file_lists(ops: &FileOps) -> (Vec<String>, Vec<String>) {
     let modified_set: std::collections::BTreeSet<&str> = ops
         .edited_set()
@@ -94,7 +89,6 @@ pub fn compute_file_lists(ops: &FileOps) -> (Vec<String>, Vec<String>) {
     (read_only, modified)
 }
 
-/// Format file operations as XML tags for the summary suffix.
 pub fn format_file_ops_xml(read_files: &[String], modified_files: &[String]) -> String {
     let mut parts = Vec::new();
     if !read_files.is_empty() {

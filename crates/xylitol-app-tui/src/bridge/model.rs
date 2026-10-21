@@ -1,11 +1,8 @@
-//! UI-only model types and methods (c1170).
-
 use strum::IntoStaticStr;
 
 use crate::utils::ThoughtClock;
 use xylitol_plugin_sdk::session::TodoList;
 
-/// Decode complete UTF-8 prefix from `buf`, leaving a trailing incomplete sequence.
 fn drain_utf8_prefix(buf: &mut Vec<u8>) -> String {
     match std::str::from_utf8(buf) {
         Ok(s) => {
@@ -17,11 +14,9 @@ fn drain_utf8_prefix(buf: &mut Vec<u8>) -> String {
             let valid = e.valid_up_to();
             if valid == 0 {
                 if e.error_len().is_some() {
-                    // Invalid byte — skip one and continue.
                     buf.remove(0);
                     return drain_utf8_prefix(buf);
                 }
-                // Incomplete sequence at end — wait for more bytes.
                 return String::new();
             }
             let out = String::from_utf8_lossy(&buf[..valid]).into_owned();
@@ -32,7 +27,6 @@ fn drain_utf8_prefix(buf: &mut Vec<u8>) -> String {
     }
 }
 
-/// True when the last scrollback line is already an abort note (same-event dedupe).
 pub fn trailing_aborted_note(entries: &[UiEntry]) -> bool {
     matches!(
         entries.last(),
@@ -44,7 +38,6 @@ pub fn trailing_aborted_note(entries: &[UiEntry]) -> bool {
     )
 }
 
-/// True when the last line is already a bang `(cancelled)` note (pi bash status).
 pub(crate) fn trailing_bash_cancelled_note(entries: &[UiEntry]) -> bool {
     match entries.last() {
         Some(UiEntry::Bash {
@@ -60,21 +53,18 @@ pub(crate) fn trailing_bash_cancelled_note(entries: &[UiEntry]) -> bool {
     }
 }
 
-/// User-visible busy vs idle (idle ⇒ status row is 0 lines).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiPhase {
     Idle,
     Busy,
 }
 
-/// Queue badge counts from [`xylitol_plugin_sdk::lifecycle::XyEvent::QueueUpdate`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct QueueBadge {
     pub steer_count: usize,
     pub follow_up_count: usize,
 }
 
-/// Bang / interactive bash block tint state (c668; aligns demo tool tint).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BashBlockStatus {
     Pending,
@@ -83,7 +73,6 @@ pub enum BashBlockStatus {
     Cancelled,
 }
 
-/// Builtin `ask` scrollback phase (c1850; rail semantic colors).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AskPhase {
     Waiting,
@@ -91,20 +80,14 @@ pub enum AskPhase {
     Skipped,
 }
 
-/// Transcript compaction block phase (c1730; aligns pi CompactionSummaryMessageComponent).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CompactionBlockStatus {
-    /// CompactionStart placeholder.
     Pending,
-    /// CompactionEnd success / resume CompactionEntry.
     Complete,
-    /// CompactionEnd aborted.
     Aborted,
-    /// CompactionEnd failed (error_message).
     Failed,
 }
 
-/// One scrollback / transcript entry — UI-only, no domain types.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiEntry {
     User {
@@ -114,31 +97,22 @@ pub enum UiEntry {
         text: String,
     },
     Thinking {
-        /// Stable per-block id (hash+ordinal); live flush and session rebuild MUST agree.
         id: String,
         text: String,
-        /// Wall-clock secs from thinking start node to thinking end node; `None` if <1s.
-        /// Resume prefers persisted `thinkingElapsedSecs`, else `streamTiming` node ms.
         elapsed_secs: Option<u64>,
     },
     Tool {
         id: String,
         name: String,
         args_preview: String,
-        /// Sticky path from streaming args / End backfill (c1320).
         tool_path: Option<String>,
-        /// Streaming write body (args.content); shown with Head viewport (c1300).
         write_content: Option<String>,
-        /// Edit display_diff merged into the same tool row (c1300).
         display_diff: Option<String>,
         output: String,
         is_error: bool,
         done: bool,
-        /// Model-requested execution bound in seconds (c2435); `None` when the
-        /// call omitted `timeout` (tool default armed, no header note).
         timeout_secs: Option<u64>,
     },
-    /// Builtin `ask` questionnaire (c1850) — dedicated rail entry, not generic Tool wash.
     Ask {
         id: String,
         summary: String,
@@ -150,26 +124,18 @@ pub enum UiEntry {
         summary: String,
         display_diff: String,
     },
-    /// Interactive `!` / `!!` bash block (c668).
     Bash {
-        /// Stable per-block id (att30 output-viewport fold key). Live path
-        /// allocates `bash-live-{ordinal}`; rebuild prefers the persisted
-        /// `bashId` (command-hash fallback otherwise). The two need not agree:
-        /// fold overrides are in-memory UI state and reset on resume.
         id: String,
         command: String,
         status: BashBlockStatus,
         output: String,
         exclude_from_context: bool,
     },
-    /// Context compaction transcript block (c1730).
     Compaction {
         status: CompactionBlockStatus,
         summary: String,
         tokens_before: u64,
-        /// AfterCompaction settlement tokens (c2810); `None` = legacy/resume, no M.
         tokens_after: Option<u64>,
-        /// Short failure / abort detail when not Complete.
         detail: Option<String>,
     },
     ScrollNotice {
@@ -180,16 +146,8 @@ pub enum UiEntry {
     },
 }
 
-/// Identity of the in-flight thinking burst (not yet a [`UiEntry::Thinking`]).
-/// Distinct from [`allocate_thinking_id`] (`{hash}-{n}`).
 pub const STREAMING_THINK_ID: &str = "live:streaming";
 
-/// Stable Thinking id: short text-hash + ordinal among existing Thinking entries
-/// that share the same hash (live flush and session rebuild MUST agree).
-///
-/// `entries` is any slice-like source of already-projected rows; rebuild paths
-/// chain prior rows with the current message's local rows so ordinals count
-/// globally (att21: same id for the same logical block).
 pub fn allocate_thinking_id<'a>(
     entries: impl IntoIterator<Item = &'a UiEntry>,
     text: &str,
@@ -209,13 +167,10 @@ pub fn allocate_thinking_id<'a>(
     format!("{short}-{ordinal}")
 }
 
-/// Role of an in-flight streaming tail rendered in scrollback.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr)]
 #[strum(serialize_all = "lowercase")]
 pub enum StreamingTailKind {
-    /// Model reasoning text (foldable / muted).
     Thinking,
-    /// Visible assistant answer text.
     Assistant,
 }
 
@@ -225,32 +180,20 @@ impl StreamingTailKind {
     }
 }
 
-/// Product TUI state produced solely by [`super::apply_xy_event`] / [`UiModel::begin_run`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiModel {
     pub entries: Vec<UiEntry>,
     pub phase: UiPhase,
     pub queue: QueueBadge,
-    /// Local copies of queued steer texts for queue strip (pi `Steering:` lines).
     pub pending_steer: Vec<String>,
-    /// Local copies of queued follow-up texts for queue strip (pi `Follow-up:` lines).
     pub pending_follow_up: Vec<String>,
-    /// Busy-only short status; [`None`] when idle (layout status: 0 rows).
     pub status: Option<String>,
-    /// In-progress assistant text (not yet committed as an entry).
-    // c2837: 测试断言字段对外（BDD 独立 target）
     pub streaming_assistant: String,
-    /// In-progress thinking text.
     pub(crate) streaming_thinking: String,
-    /// Live burst id ([`STREAMING_THINK_ID`]) while deltas are in flight.
-    /// Paint MUST key off this, not `streaming_thinking.is_empty()`.
     pub(crate) streaming_think_id: Option<String>,
-    /// Online thought interval (start = first ThinkingDelta; end = channel switch).
     pub(crate) thought_clock: ThoughtClock,
     pub(crate) current_role: Option<String>,
-    /// Incomplete UTF-8 bytes across bang stream chunks (c669).
     bash_utf8_pending: Vec<u8>,
-    /// Latest-wins Todo list for the lower-dock 待办栏 (not a transcript row).
     pub todo: TodoList,
 }
 
@@ -279,7 +222,6 @@ impl UiModel {
         }
     }
 
-    /// Align badge counts and trim strip message lists from the front (FIFO).
     pub fn sync_queue(&mut self, steer_count: usize, follow_up_count: usize) {
         self.queue = QueueBadge {
             steer_count,
@@ -295,19 +237,16 @@ impl UiModel {
         }
     }
 
-    /// Enqueue a steer message for strip + badge (host local; XyDriver follows).
     pub fn enqueue_steer_strip(&mut self, text: String) {
         self.pending_steer.push(text);
         self.queue.steer_count = self.pending_steer.len();
     }
 
-    /// Enqueue a follow-up message for strip + badge (host local; XyDriver follows).
     pub fn enqueue_follow_up_strip(&mut self, text: String) {
         self.pending_follow_up.push(text);
         self.queue.follow_up_count = self.pending_follow_up.len();
     }
 
-    /// Drop one follow-up strip entry (c1900: gate visual consumed when run starts).
     pub fn pop_follow_up_strip_matching(&mut self, text: &str) {
         if let Some(pos) = self.pending_follow_up.iter().rposition(|t| t == text) {
             self.pending_follow_up.remove(pos);
@@ -315,7 +254,6 @@ impl UiModel {
         }
     }
 
-    /// Drop one steer strip entry (idle lane conversion consumes it with the lane).
     pub fn pop_steer_strip_matching(&mut self, text: &str) {
         if let Some(pos) = self.pending_steer.iter().rposition(|t| t == text) {
             self.pending_steer.remove(pos);
@@ -323,7 +261,6 @@ impl UiModel {
         }
     }
 
-    /// Drain strip queues into one editor blob (pi Alt+Up restore).
     pub fn take_queued_for_editor(&mut self) -> Vec<String> {
         let mut all = Vec::new();
         all.append(&mut self.pending_steer);
@@ -332,7 +269,6 @@ impl UiModel {
         all
     }
 
-    /// Local submit / steer kickoff before the first stream event arrives.
     pub fn begin_run(&mut self, user_text: &str) {
         let trimmed = user_text.trim();
         if !trimmed.is_empty() {
@@ -344,7 +280,6 @@ impl UiModel {
         self.status = Some("Working".into());
     }
 
-    /// Plain-text scrollback lines for the placeholder transcript widget.
     pub fn scrollback_lines(&self) -> Vec<String> {
         let mut lines = Vec::new();
         for entry in &self.entries {
@@ -439,7 +374,6 @@ impl UiModel {
         lines
     }
 
-    /// In-flight streaming tails for layout scrollback (role, text).
     pub(crate) fn streaming_scrollback_tails(&self) -> Vec<(StreamingTailKind, &str)> {
         let mut out = Vec::new();
         if self.streaming_think_id.is_some() && !self.streaming_thinking.is_empty() {
@@ -457,9 +391,6 @@ impl UiModel {
         out
     }
 
-    /// User Esc/Ctrl+C abort: flush streamed partial into scrollback + abort footer (c1595 / pi).
-    /// Dedupes only a trailing abort note (Esc repeat / same-event `Error("aborted")`).
-    /// Bang Esc uses [`Self::note_bash_cancelled`] instead (pi `(cancelled)`).
     pub fn note_user_abort(&mut self) {
         self.flush_streaming();
         if !trailing_aborted_note(&self.entries) {
@@ -474,7 +405,6 @@ impl UiModel {
         }
     }
 
-    /// Drop in-flight stream drafts (c670 / c720 Esc latch before drain).
     pub fn clear_streaming_buffers(&mut self) {
         self.streaming_thinking.clear();
         self.streaming_think_id = None;
@@ -483,7 +413,6 @@ impl UiModel {
         self.current_role = None;
     }
 
-    /// Bang Esc abort: mark last pending Bash cancelled + `(cancelled)` (pi).
     pub fn note_bash_cancelled(&mut self) {
         self.bash_utf8_pending.clear();
         let mut updated = false;
@@ -516,7 +445,6 @@ impl UiModel {
         }
     }
 
-    /// Start a bang block (pending tint) at submit.
     pub fn begin_bash_block(&mut self, command: &str, exclude_from_context: bool) {
         let ordinal = self
             .entries
@@ -535,9 +463,6 @@ impl UiModel {
         self.status = Some("Running".into());
     }
 
-    /// Deterministic Bash block id fallback (att30 fold key) when no persisted
-    /// `bashId` exists: command hash + Bash ordinal within `prior`, so identical
-    /// commands still get distinct fold keys. (The normative id is `bashId`.)
     pub fn bash_block_id_from_command(prior: &[UiEntry], command: &str) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -550,8 +475,6 @@ impl UiModel {
         format!("bash-cmd-{:016x}-{ordinal}", h.finish())
     }
 
-    /// Append live bang output bytes to the last Pending Bash block (c669).
-    /// Incomplete UTF-8 sequences are held across calls.
     pub fn append_bash_output(&mut self, chunk: &[u8]) {
         self.bash_utf8_pending.extend_from_slice(chunk);
         let decoded = drain_utf8_prefix(&mut self.bash_utf8_pending);
@@ -568,7 +491,6 @@ impl UiModel {
         }
     }
 
-    /// Finish the last pending bang block with preformatted output body + status.
     pub fn finish_bash_block(&mut self, status: BashBlockStatus, body: String) {
         self.bash_utf8_pending.clear();
         for entry in self.entries.iter_mut().rev() {
@@ -585,7 +507,6 @@ impl UiModel {
         }
     }
 
-    /// Stream ended without a clean AgentEnd — idle if no pending follow-up.
     pub fn on_stream_closed_without_agent_end(&mut self) {
         if self.phase == UiPhase::Busy && self.queue.follow_up_count == 0 {
             self.phase = UiPhase::Idle;
@@ -597,11 +518,6 @@ impl UiModel {
         self.flush_streaming_elapsed(None);
     }
 
-    /// Same as [`Self::flush_streaming`], but pin thinking wall-clock.
-    ///
-    /// Live production passes `None` (use [`ThoughtClock`] stamps). Scene /
-    /// resume-shaped tests pass `Some` because they cannot steer
-    /// [`std::time::Instant`].
     pub(crate) fn flush_streaming_elapsed(&mut self, elapsed_override: Option<u64>) {
         self.flush_thinking_elapsed(elapsed_override);
         if !self.streaming_assistant.is_empty() {
@@ -611,7 +527,6 @@ impl UiModel {
         }
     }
 
-    /// Seal in-flight thinking into a [`UiEntry::Thinking`] without touching assistant text.
     pub(crate) fn flush_thinking_elapsed(&mut self, elapsed_override: Option<u64>) {
         if self.streaming_thinking.is_empty() {
             return;
@@ -642,9 +557,6 @@ impl UiModel {
     }
 
     pub(crate) fn maybe_idle_after_agent_end(&mut self) {
-        // Follow-ups are drained inside the same XyDriver::run before AgentEnd on
-        // the happy path. After abort, follow_up may remain — stay busy so layout
-        // can restore (c480); counts still come from QueueUpdate.
         if self.queue.follow_up_count == 0 {
             self.phase = UiPhase::Idle;
             self.status = None;

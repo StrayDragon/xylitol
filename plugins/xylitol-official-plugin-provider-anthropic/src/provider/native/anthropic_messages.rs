@@ -17,7 +17,6 @@ use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSc
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-/// Anthropic Messages API adapter (L1 native).
 pub struct AnthropicMessagesAdapter {
     client: reqwest::Client,
     api_key: String,
@@ -29,7 +28,6 @@ pub struct AnthropicMessagesAdapter {
 }
 
 impl AnthropicMessagesAdapter {
-    /// Create a new Anthropic Messages adapter with [`WirePolicy::default`].
     pub fn new(
         api_key: String,
         model: String,
@@ -45,7 +43,6 @@ impl AnthropicMessagesAdapter {
         )
     }
 
-    /// Create with an explicit dialect / wire profile (L2).
     pub fn with_wire_policy(
         api_key: String,
         model: String,
@@ -171,8 +168,6 @@ impl AnthropicMessagesAdapter {
             .post(&url)
             .headers(to_reqwest_headers(&headers))
             .json(&body);
-        // Program authority (c2425): non-streaming gets a hard total bound;
-        // streaming stays total-free and relies on the SSE idle guard.
         if !stream {
             request = request.timeout(crate::provider::native::wait_bounds::NON_STREAM_TOTAL);
         }
@@ -368,13 +363,11 @@ fn anthropic_stream(
                         .and_then(|d| d.get("stop_reason"))
                         .and_then(|v| v.as_str());
 
-                    // Capture output tokens from message_delta
                     if let Some(u) = data.get("usage").and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()) {
                         usage_output = u;
                     }
 
                     if stop_reason.is_some() {
-                        // Finalize any tool blocks that missed content_block_stop.
                         let mut sorted: Vec<_> = tool_accumulators.drain().collect();
                         sorted.sort_by_key(|(idx, _)| *idx);
                         for (_, (id, name, args_str)) in sorted {
@@ -418,7 +411,6 @@ fn anthropic_stream(
                 }
 
                 "message_start" => {
-                    // Capture input tokens from message_start
                     if let Some(msg) = data.get("message")
                         && let Some(u) = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()) {
                             usage_input = u;
@@ -476,7 +468,6 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
         _ => XyStopReason::Stop,
     };
 
-    // Parse usage from non-streaming response
     let usage = json.get("usage").and_then(|u| {
         let input = u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
         let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -504,10 +495,6 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
     chunks
 }
 
-// ── XyLlmMessage conversion ────────────────────────────────────
-
-/// Convert a slice of [`XyLlmMessage`] values to Anthropic request body
-/// (returns `(system_prompt, messages)` tuple).
 pub fn convert_agent_messages_for_anthropic(
     messages: &[XyLlmMessage],
 ) -> (Option<String>, Vec<Value>) {
@@ -786,7 +773,6 @@ mod tests {
 
     #[tokio::test]
     async fn anthropic_body_max_tokens_follows_options_budget() {
-        // c2810: options.max_output_tokens overrides the adapter default 8192.
         use std::sync::Arc;
         use wiremock::matchers::{method, path};
         use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -1104,13 +1090,6 @@ mod tests {
         assert_eq!(arr[2]["name"].as_str(), Some("mcp__legacy__colon"));
     }
 
-    /// r1556：流式请求以 chunk-gap idle 上界判定挂起——半帧后静默的上游
-    /// MUST 产生可分类的 `provider SSE idle` 超时错误。SSE_IDLE 为 90s
-    /// 程序权威常量（c2425），paused time 的 auto-advance 瞬时烧完等待。
-    ///
-    /// 时钟暂停放在 `generate_stream` 之后：connect 阶段的 10s 定时器（reqwest
-    /// / hyper 自带）与 paused clock 的 auto-advance 会抢在 socket 就绪前到期，
-    /// 故先以实时时钟完成握手，再 pause 让 90s idle 上界瞬时到期。
     #[tokio::test(flavor = "current_thread")]
     async fn sse_idle_bound_fires_classifiable_error() {
         use futures::StreamExt;
@@ -1136,7 +1115,6 @@ mod tests {
                 return;
             }
             let _ = sock.flush().await;
-            // 半帧后永久静默：连接保持，不再写任何字节（chunk-gap 无穷大）。
             let () = futures::future::pending().await;
         });
 
@@ -1150,8 +1128,6 @@ mod tests {
             .generate_stream(vec![], &[], true, Default::default())
             .await
             .expect("stream established");
-        // 握手已完成（connect 定时器已消费），此刻暂停时钟 → 唯一待触发的
-        // 定时器是 SSE_IDLE，auto-advance 瞬时烧完 90s。
         tokio::time::pause();
         let mut idle_err = None;
         while let Some(item) = stream.next().await {

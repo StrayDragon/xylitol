@@ -1,5 +1,3 @@
-//! Escape / slot open-close navigation (c1170).
-
 use std::time::{Duration, Instant};
 
 use super::super::slots::EditorSlot;
@@ -8,8 +6,6 @@ use crate::bridge::UiPhase;
 
 impl UiRoot {
     pub fn on_escape(&mut self) -> bool {
-        // c2914：覆盖弹出框为最上层瞬态面（c2875 审计④）——闲置 Esc 先收框且
-        // 不记双击链；忙碌态让位中止链（词表 E 类），框保持开启由中止路径处理。
         if self.session_popup_open && !self.status_busy {
             self.close_session_popup();
             return true;
@@ -90,7 +86,6 @@ impl UiRoot {
         }
     }
 
-    /// Open a non-Editor slot (replaces any current overlay).
     pub fn open_slot(&mut self, slot: EditorSlot) {
         match slot {
             EditorSlot::Editor => self.close_slot(),
@@ -103,9 +98,7 @@ impl UiRoot {
             | EditorSlot::Themes(_)
             | EditorSlot::ImportConfirm(_)
             | EditorSlot::SessionResume(_)
-            | EditorSlot::Mcp(_) => {
-                // Opened via mount_* after slash dispatch (`/designing` for Scenes).
-            }
+            | EditorSlot::Mcp(_) => {}
         }
     }
 }

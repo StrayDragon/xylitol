@@ -1,5 +1,3 @@
-//! Product TUI host — event step machine (testable without a real TTY).
-
 mod editor_history;
 mod input_policy;
 mod link_grace;
@@ -27,11 +25,9 @@ use super::layout::{UiRoot, install_ui_root_key_listeners, shared_ui_root_rebuil
 
 pub use super::commands::{PendingBash, PendingSlash, bash_block_status, bash_output_body};
 
-/// Minimum usable terminal size (ath4).
 pub const MIN_COLS: u16 = 40;
 pub const MIN_ROWS: u16 = 6;
 
-/// Compact path for display (`$HOME` / `%USERPROFILE%` → `~`).
 pub fn display_path(path: impl AsRef<std::path::Path>) -> String {
     let abs = path.as_ref().display().to_string();
     let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
@@ -44,22 +40,17 @@ pub fn display_path(path: impl AsRef<std::path::Path>) -> String {
     abs
 }
 
-/// Compact cwd for footer (`$HOME` → `~`).
 pub fn display_cwd() -> String {
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     display_path(cwd)
 }
 
-/// Friendly prompt when the terminal is too small.
 pub const TOO_SMALL_HINT: &str = "请放大终端";
 
-/// Whether the terminal is below the product minimum.
 pub fn is_too_small(cols: u16, rows: u16) -> bool {
     cols < MIN_COLS || rows < MIN_ROWS
 }
 
-/// Events the host loop can process. Production maps crossterm → these;
-/// harnesses inject them directly (ath5).
 #[derive(Debug, Clone)]
 pub enum HostEvent {
     Input(InputEvent),
@@ -69,9 +60,7 @@ pub enum HostEvent {
     },
     Tick,
     Quit,
-    /// Agent lifecycle event from `XyDriver::run` EventStream (c465).
     Xy(Box<XyEvent>),
-    /// Background footer token estimate finished (must not block input/render).
     FooterTokens {
         job_id: u64,
         label: Option<String>,
@@ -79,92 +68,53 @@ pub enum HostEvent {
     },
 }
 
-/// Layout mode after applying size policy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LayoutMode {
-    /// Normal product UI root (transcript / editor / footer).
     Ready,
     TooSmall,
 }
 
-/// One host-driven TUI session. Does **not** call [`TUI::start`](xylitol_tui::TUI::start).
 pub struct HostSession<T: Terminal> {
     pub tui: TUI<T>,
     mode: LayoutMode,
     quit: bool,
-    /// Set by InputListener (Ctrl+C on empty editor).
     quit_flag: Arc<AtomicBool>,
-    /// Shared UI root when constructed via [`Self::new_product_ui`].
     ui_root: Option<Rc<RefCell<UiRoot>>>,
-    /// Rebuild root children when mode flips.
     rebuild: Box<dyn FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>>>,
-    /// UI-only model; updated solely via [`apply_xy_event`] / submit.
     ui_model: UiModel,
-    /// Side effects for [`crate::effects::drain_pending`] (c730).
     pending: PendingOps,
-    /// True while a `XyDriver::run` stream is open (blocks duplicate submit).
     run_active: bool,
-    /// True while interactive `!`/`!!` bash is in flight (c665 Esc abort).
     bash_active: bool,
-    /// True while idle `/reload` interactive pump is in flight (c1205).
     reload_active: bool,
-    /// Cancel token for the in-flight `/reload` (host cancels; driver observes).
     reload_cancel: Option<tokio_util::sync::CancellationToken>,
-    /// Absorb leftover Esc / key-repeat after an abort while **idle** so the next
-    /// bang is not cancelled at submit. Cleared on non-Esc input and when a new
-    /// busy period starts (`begin_bash_exec` / `on_run_started`). MUST NOT gate
-    /// Esc while busy — that made the second bang un-abortable (pi: no suppress
-    /// on bash Esc; fresh cancel each run).
     suppress_idle_esc: bool,
-    /// After Esc abort: drop agent `XyEvent`s until this run's EventStream ends (c670).
     suppress_xy_until_stream_end: bool,
-    /// Bang chunk / deferred content: Tick must paint even if Loader idle (ath24 / ath7).
     paint_dirty: bool,
     layout_cwd: String,
-    /// Active theme preference for `/reload` (c1120 / c1095). `None` → keep current default.
     theme_preference: Option<String>,
-    /// Test-only: force real external-editor path (skip harness stub gate).
     #[cfg(test)]
     force_real_external_editor: bool,
-    /// Test-only: override `$VISUAL`/`$EDITOR` resolve (avoids process-wide env races).
     #[cfg(test)]
     external_editor_cmd_override: Option<Result<String, super::error::TuiSurfaceError>>,
-    /// Latest footer-token job generation (stale results discarded).
     footer_token_gen: u64,
-    /// Background estimate results → host `select!` (production).
     footer_token_tx: tokio::sync::mpsc::UnboundedSender<(u64, Option<String>, bool)>,
     footer_token_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, Option<String>, bool)>,
-    /// Throttle mid-turn Api usage footer refresh (c1730).
     last_mid_turn_footer_refresh: Option<std::time::Instant>,
-    /// c1860: this run already applied a TurnSettled (or AfterCompaction) settlement —
-    /// stream close must not kick a second estimate / independent-root span.
     run_applied_token_settlement: bool,
-    /// Pending settlement snapshot to paint on next drain (with driver context_window).
     pending_settlement_estimate: Option<xylitol_plugin_sdk::model::ContextTokenEstimate>,
-    /// c2470 client-local 存储通道（None = labs / 测试不落地）。
     pub(crate) client_storage: Option<std::sync::Arc<crate::storage::ClientStorage>>,
-    /// `tui.editor_history_seed_sessions` (c1560).
     editor_history_seed_sessions: u32,
-    /// Background ↑/↓ history seed (startup / `/session-new`); host loop merges into select.
     editor_history_seed_job: Option<(std::time::Instant, tokio::task::JoinHandle<Vec<String>>)>,
-    /// Session prepare in flight — gate agent prompt / bang / some slash (c1200).
     mcp_blocks_agent: bool,
-    /// TUI-only ask host (c1850); polls pending asks → ChoicePrompt.
     ask_gateway: Option<Arc<crate::ask_host::AskHostGateway>>,
-    /// Designing scene `activity-fold-live`: after Choice, play scripted ToolEnd/idle (not ReAct).
     debug_live_ask_close: bool,
-    /// Designing composition (`xylitol tui designing`): scene slot + fake Host inject.
     designing: bool,
-    /// Product keybindings owned by this session (scoped for component matching).
     keybindings: Option<Rc<RefCell<xylitol_tui::KeybindingsManager>>>,
-    /// Keeps [`xylitol_tui::KeybindingsScope`] alive for the session thread.
     _keybindings_scope: Option<xylitol_tui::KeybindingsScope>,
-    /// Snapshot at Left Down: existing transcript selection blocks fold Up.
     pointer_down_had_selection: bool,
 }
 
 impl<T: Terminal> HostSession<T> {
-    /// Create a session (Inline interaction mode). `rebuild(mode)` supplies the root tree.
     pub fn new(
         terminal: T,
         rebuild: impl FnMut(LayoutMode) -> Vec<Box<dyn xylitol_tui::Component>> + 'static,
@@ -172,10 +122,6 @@ impl<T: Terminal> HostSession<T> {
         Self::new_with_interaction_mode(terminal, xylitol_tui::InteractionMode::Inline, rebuild)
     }
 
-    /// Create a session with a fixed interaction mode chosen at construction.
-    ///
-    /// Product hosts MUST pick the mode here (or via
-    /// [`Self::new_product_ui_with_meta_mode`]) — **no** mid-session restack API.
     pub fn new_with_interaction_mode(
         terminal: T,
         interaction_mode: xylitol_tui::InteractionMode,
@@ -193,8 +139,6 @@ impl<T: Terminal> HostSession<T> {
             tui.add_child(child);
         }
         tui.set_focus(Some(0));
-        // Soft pending paint — pi `start()` also uses soft `requestRender()`.
-        // force=true would set the clear sentinel and wipe the screen on mount.
         tui.request_render(false);
         let (footer_token_tx, footer_token_rx) = tokio::sync::mpsc::unbounded_channel();
         Self {
@@ -238,8 +182,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Register lower fixed zone as ApplicationOwned dock (status/editor/footer…).
-    /// Prefers last-frame measured rows; falls back to a fixed-zone estimate.
     pub fn sync_dock_rows(&mut self) {
         let rows = if let Some(root) = self.ui_root.as_ref() {
             let r = root.borrow();
@@ -255,7 +197,6 @@ impl<T: Terminal> HostSession<T> {
         self.tui.set_dock_rows(rows.max(4));
     }
 
-    /// Sync MCP connecting gate from the driver (c1200).
     pub fn set_mcp_blocks_agent(&mut self, blocks: bool) {
         self.mcp_blocks_agent = blocks;
     }
@@ -264,7 +205,6 @@ impl<T: Terminal> HostSession<T> {
         self.mcp_blocks_agent
     }
 
-    /// Attach TUI-only ask gateway for ChoicePrompt mounts (c1850).
     pub fn set_ask_gateway(&mut self, gateway: Arc<crate::ask_host::AskHostGateway>) {
         self.ask_gateway = Some(gateway);
     }
@@ -310,12 +250,10 @@ impl<T: Terminal> HostSession<T> {
         crate::effects::designing::inject_scene(self, driver, scene.to_string()).await;
     }
 
-    /// Product empty UI: shared `UiRoot` + Ctrl+C / Esc / idle-Enter listeners.
     pub fn new_product_ui(terminal: T) -> Self {
         Self::new_product_ui_with_meta(terminal, display_cwd(), crate::UNSET_MODEL_DISPLAY.into())
     }
 
-    /// Product UI with footer identity (`cwd · model`); ApplicationOwned by default (ath30).
     pub fn new_product_ui_with_meta(terminal: T, cwd: String, model: String) -> Self {
         Self::new_product_ui_with_meta_mode(
             terminal,
@@ -325,18 +263,12 @@ impl<T: Terminal> HostSession<T> {
         )
     }
 
-    /// Product UI with a fixed interaction mode chosen at construction (ath30).
-    ///
-    /// **No mid-session mode switch** — pass the desired mode here (or rebuild
-    /// the whole host). ApplicationOwned begins alt+mouse after the fixed zone is wired.
     pub fn new_product_ui_with_meta_mode(
         terminal: T,
         cwd: String,
         model: String,
         interaction_mode: xylitol_tui::InteractionMode,
     ) -> Self {
-        // c1090: install tui.* + app.* before any input listeners run.
-        // Owned + thread-local scope — no process-global write (tests stay parallel).
         let manager = {
             #[cfg(test)]
             {
@@ -373,7 +305,6 @@ impl<T: Terminal> HostSession<T> {
                 .tui
                 .set_pointer_click_phase(PointerClickPhase::UpIfEmptySelection);
             session.tui.arm_pointer_probe(true);
-            // c2891：产品默认开最右列滚动槽（包层 opt-in 契约的产品侧翻转，仅 AO）。
             session
                 .tui
                 .set_scroll_gutter(Some(xylitol_tui::ScrollGutter));
@@ -385,7 +316,6 @@ impl<T: Terminal> HostSession<T> {
         session
     }
 
-    /// Keep fold hit table scroll/pane geometry aligned with AO viewport.
     fn sync_fold_hit_viewport(&mut self) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -407,8 +337,6 @@ impl<T: Terminal> HostSession<T> {
         let mut clicks = root.fold_hits().pointer_click_hits();
         let hovers = root.fold_hits().pointer_hover_hits();
         drop(root);
-        // c2891：gutter hits 随帧并入（引擎 single-truth，隐藏/未启用为空）；
-        // 后入表 = z 序高，与 fold 列区间不重叠（carve 保证）。
         clicks.extend(self.tui.scroll_gutter_hit_set());
         self.tui.replace_hits(clicks);
         self.tui.replace_hover_hits(hovers);
@@ -422,15 +350,10 @@ impl<T: Terminal> HostSession<T> {
         self.quit || self.quit_flag.load(Ordering::SeqCst)
     }
 
-    /// Teardown probe (c2827 r1248): whether the engine's `finish()` ran —
-    /// production run loop calls it on every exit path (mod.rs host loop tail).
-    // c2837: 测试探针无条件化
     pub fn engine_stopped(&self) -> bool {
         self.tui.stop_requested()
     }
 
-    /// Repaint probe (c2827 r1253/r1258): frames actually painted.
-    // c2837: 测试探针无条件化
     pub fn engine_frame_count(&self) -> u64 {
         self.tui.frame_count()
     }
@@ -439,12 +362,10 @@ impl<T: Terminal> HostSession<T> {
         self.quit = true;
     }
 
-    /// Shared UI root handle (product construction only).
     pub fn ui_root(&self) -> Option<&Rc<RefCell<UiRoot>>> {
         self.ui_root.as_ref()
     }
 
-    /// UI-only model (harness / status).
     pub fn ui_model(&self) -> &UiModel {
         &self.ui_model
     }
@@ -457,14 +378,10 @@ impl<T: Terminal> HostSession<T> {
         self.ui_model.phase == UiPhase::Busy || self.run_active || self.bash_active
     }
 
-    /// c1205: `/reload` in-flight (soft-gate; not agent `run_active`).
     pub fn reload_active(&self) -> bool {
         self.reload_active
     }
 
-    /// Tick / Loader while reload or agent/bang busy, **or** a throttled
-    /// non-wheel paint is pending. AO wheel reprojects have an exact deadline
-    /// wake in the host loop; selection edge-drag still uses this busy cadence.
     pub fn wants_busy_tick(&self) -> bool {
         self.is_busy()
             || self.reload_active
@@ -480,7 +397,6 @@ impl<T: Terminal> HostSession<T> {
         self.pending.reload = true;
     }
 
-    /// Arm interactive `/reload` (status Reloading + cancel token).
     pub fn begin_reload(&mut self) {
         let cancel = tokio_util::sync::CancellationToken::new();
         self.reload_cancel = Some(cancel);
@@ -502,7 +418,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Clear reload fixed-zone state after success / cancel / fail.
     pub fn end_reload(&mut self) {
         self.reload_active = false;
         self.reload_cancel = None;
@@ -520,8 +435,6 @@ impl<T: Terminal> HostSession<T> {
         self.run_active
     }
 
-    /// Re-read `agent_dir/keybindings.json` into this session's manager (c1090).
-    /// Failure keeps the previous bindings.
     pub fn reload_keybindings(
         &self,
         agent_dir: &std::path::Path,
@@ -533,10 +446,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Apply a built-in theme name to the product UI (c1095).
-    ///
-    /// Unknown names return `Err` and leave the current theme unchanged.
-    /// Does not clear transcript.
     pub fn reload_themes(&mut self, theme_name: &str) -> Result<(), XyDriverError> {
         let theme = super::themes::layout_theme_from_name(theme_name)?;
         if let Some(root) = &self.ui_root {
@@ -554,10 +463,8 @@ impl<T: Terminal> HostSession<T> {
         self.bash_active
     }
 
-    /// Mark bang bash started: uplink Bash pending block, busy status `Running`.
     pub fn begin_bash_exec(&mut self, command: &str, exclude_from_context: bool) {
         self.pending.abort = false;
-        // New bang = fresh cancel window; do not inherit post-abort Esc suppress.
         self.suppress_idle_esc = false;
         self.bash_active = true;
         self.ui_model
@@ -565,7 +472,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Clear bang busy after execute finishes (cancelled or not).
     pub fn end_bash_exec(&mut self) {
         self.bash_active = false;
         self.pending.abort = false;
@@ -576,21 +482,16 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Immediate Esc abort feedback: flush partial + System `Operation aborted`, idle (c1595).
-    /// Drops further agent Xy events until the current EventStream ends (c670).
     pub fn note_user_abort(&mut self) {
         self.ui_model.note_user_abort();
         self.bash_active = false;
         self.run_active = false;
         self.pending.abort = false;
         self.suppress_xy_until_stream_end = true;
-        // Crossterm may still deliver Esc Press/Repeat while idle after abort;
-        // eat those only until the next non-Esc key or a new busy period.
         self.suppress_idle_esc = true;
         self.sync_ui_root_from_model();
     }
 
-    /// Bang Esc abort: `(cancelled)` under `$ cmd` (pi); idle + Esc backlog suppress.
     pub fn note_bash_cancelled(&mut self) {
         self.ui_model.note_bash_cancelled();
         self.bash_active = false;
@@ -600,7 +501,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Take an idle-Enter submit request, if any.
     pub fn take_submit(&mut self) -> Option<String> {
         self.pending.take_submit()
     }
@@ -617,8 +517,6 @@ impl<T: Terminal> HostSession<T> {
         self.pending.peek_gated_submit()
     }
 
-    /// Cancel MCP first-turn Assembling wait (Alt+Up withdrew gated prompt).
-    /// Returns to idle when no agent/bash run is active.
     pub fn end_gated_assemble_idle(&mut self) {
         if self.run_active || self.bash_active {
             return;
@@ -640,7 +538,6 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_abort()
     }
 
-    /// Consume the bang-Esc cancel latch (set by [`Self::note_bash_cancelled`]).
     pub fn take_bash_cancelled(&mut self) -> bool {
         self.pending.take_bash_cancelled()
     }
@@ -649,47 +546,39 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_slash()
     }
 
-    /// Put back an unexecuted slash (c2790 bang inline drain put-back).
     pub fn put_slash(&mut self, slash: PendingSlash) {
         self.pending.put_slash(slash);
     }
 
-    /// Take a pending idle bash (`!` / `!!`) request.
     pub fn take_bash(&mut self) -> Option<PendingBash> {
         self.pending.take_bash()
     }
 
-    /// Append bash outcome into the pending Bash block (c668).
     pub fn push_bash_result(&mut self, _command: &str, result: &XyBashResult) {
         self.ui_model
             .finish_bash_block(bash_block_status(result), bash_output_body(result));
         self.sync_ui_root_from_model();
     }
 
-    /// Append live bang output chunk (c669); mark paint_dirty — Tick merges render (ath7/ath24).
     pub fn append_bash_chunk(&mut self, chunk: &[u8]) {
         self.ui_model.append_bash_output(chunk);
         self.sync_ui_root_from_model();
         self.paint_dirty = true;
     }
 
-    /// Refresh queue badge from driver stats (after local steer/follow-up/abort).
     pub fn set_queue_badge(&mut self, steer_count: usize, follow_up_count: usize) {
         self.ui_model.sync_queue(steer_count, follow_up_count);
         self.sync_ui_root_from_model();
     }
 
-    /// Take a pending Alt+Up dequeue request (clear both driver queues).
     pub fn take_dequeue(&mut self) -> bool {
         self.pending.take_dequeue()
     }
 
-    /// Take pending clipboard-image paste (c1155).
     pub fn take_paste_image(&mut self) -> bool {
         self.pending.take_paste_image()
     }
 
-    /// Update footer model name after `/model`.
     pub fn set_footer_model(&mut self, model: impl Into<String>) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -699,7 +588,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Silent UI sync for thinking level (border + footer only).
     pub fn apply_thinking_level_ui(&mut self, level: String) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -707,7 +595,6 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_thinking_level_ui(level);
     }
 
-    /// Sync footer active fixed zone + optional next-turn cue from driver (c1470).
     pub fn sync_fixed_zone(&mut self, driver: &dyn crate::driver::XyDriver) {
         let selected = driver.current_model();
         let selected_label = selected
@@ -758,7 +645,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Set or clear footer token usage fragment (c1035).
     pub fn set_footer_token_label(&mut self, label: Option<String>) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -773,12 +659,10 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().maybe_heuristic_estimate_notice(heuristic);
     }
 
-    /// Request a XyDriver estimate refresh on the next `drain_pending` (c1035).
     pub fn request_footer_token_refresh(&mut self) {
         self.pending.footer_token_refresh = true;
     }
 
-    /// Mid-turn Api usage refresh with cooldown (MUST NOT per-TextDelta encode).
     pub fn request_footer_token_refresh_throttled(&mut self) {
         const MIN_INTERVAL: std::time::Duration = std::time::Duration::from_millis(750);
         let now = std::time::Instant::now();
@@ -796,7 +680,6 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_footer_token_refresh()
     }
 
-    /// Footer estimate job: bump generation, clone tx, poll/await rx, read gen.
     pub fn begin_footer_token_job(&mut self) -> u64 {
         self.footer_token_gen = self.footer_token_gen.wrapping_add(1);
         self.footer_token_gen
@@ -820,7 +703,6 @@ impl<T: Terminal> HostSession<T> {
         self.footer_token_gen
     }
 
-    /// Push a scrollback notice (slash errors, nav/ops feedback).
     pub fn push_scroll_notice(&mut self, text: impl Into<String>) {
         self.ui_model
             .entries
@@ -828,7 +710,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Push toast notice (shell notice above status; not `UiEntry`).
     pub fn push_toast_notice(&mut self, text: impl Into<String>) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().push_toast_notice(text);
@@ -836,8 +717,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Informational client-stack notice (muted, no `Error: ` prefix). Heuristic
-    /// estimate (session-nav is ScrollNotice).
     pub fn push_toast_info_notice(&mut self, text: impl Into<String>) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().push_toast_info_notice(text);
@@ -845,7 +724,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Arm `/history-copy-last` success on the client notice stack.
     pub fn arm_copy_last_msg_notice(&mut self) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().arm_copy_last_msg_notice();
@@ -853,7 +731,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Push an error line (`UiEntry::Error` / `errors.md` one-liner).
     pub fn push_error_note(&mut self, text: impl Into<String>) {
         self.ui_model
             .entries
@@ -861,13 +738,11 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Test harness: force Ctrl+G down the real-editor path (no stub).
     #[cfg(test)]
     pub fn set_force_real_external_editor(&mut self, force: bool) {
         self.force_real_external_editor = force;
     }
 
-    /// Test harness: override editor command resolve (`Err` = missing config).
     #[cfg(test)]
     pub(crate) fn set_external_editor_cmd_override(
         &mut self,
@@ -876,7 +751,6 @@ impl<T: Terminal> HostSession<T> {
         self.external_editor_cmd_override = cmd;
     }
 
-    /// Mark that `XyDriver::run` has started; seeds the user entry + busy phase.
     pub fn on_run_started(&mut self, prompt: &str) {
         self.suppress_idle_esc = false;
         self.suppress_xy_until_stream_end = false;
@@ -886,11 +760,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Stream ended (None) — clear run flag; idle only if bridge already did.
-    ///
-    /// Footer refresh: only when this run did **not** already apply a token
-    /// settlement (c1860). Prefer TurnSettled / AfterCompaction events over a
-    /// post-close estimate (avoids independent-root `token.estimate`).
     pub fn on_run_stream_closed(&mut self) {
         self.run_active = false;
         self.suppress_xy_until_stream_end = false;
@@ -901,7 +770,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Apply a shared context-token settlement (c1860) — paint on next drain.
     pub fn note_context_token_settlement(
         &mut self,
         estimate: xylitol_plugin_sdk::model::ContextTokenEstimate,
@@ -927,16 +795,10 @@ impl<T: Terminal> HostSession<T> {
         let mut root = root.borrow_mut();
         root.set_term_rows(rows);
         root.apply_ui_model(&self.ui_model);
-        // Entries / fixed zone changed — ApplicationOwned must not reproject stale cache.
         drop(root);
         self.tui.mark_ao_components_stale();
     }
 
-    /// Apply one host event and attempt a throttled render.
-    ///
-    /// Stream text/thinking deltas only arm `request_render` — the busy ticker
-    /// (~60Hz) owns the paint cadence so slow Ornith tokens do not each force
-    /// a full ApplicationOwned rebuild when they arrive >16ms apart.
     pub fn step(&mut self, event: HostEvent) -> Result<(), XyDriverError> {
         let defer_stream_paint = matches!(
             &event,
@@ -978,7 +840,6 @@ impl<T: Terminal> HostSession<T> {
                 if job_id == self.footer_token_gen {
                     self.maybe_heuristic_estimate_notice(heuristic);
                     self.set_footer_token_label(label);
-                    // Differential engine: only footer line should rewrite.
                     self.tui.request_render(false);
                 }
             }
@@ -990,10 +851,7 @@ impl<T: Terminal> HostSession<T> {
         self.step_paint_only()
     }
 
-    /// Throttled paint after model/fixed-zone updates (shared by `step` and stream coalesce).
     pub(crate) fn step_paint_only(&mut self) -> Result<(), XyDriverError> {
-        // Dock sync only when fixed-zone/content may have changed. Reproject-only
-        // wheel frames keep the prior dock measurement.
         let may_paint = self.tui.is_render_requested();
         let need_dock_sync =
             may_paint && self.tui.application_session_active() && self.tui.ao_components_stale();
@@ -1006,7 +864,6 @@ impl<T: Terminal> HostSession<T> {
                 if painted {
                     crate::lag::note("host_step_paint", t_render);
                     self.paint_dirty = false;
-                    // After a full component paint, refresh measured dock rows.
                     if self.tui.application_session_active()
                         && !self.tui.last_render_perf().ao_reprojected
                     {
@@ -1022,7 +879,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Apply coalesced ApplicationOwned wheel deltas and attempt one paint.
     pub fn apply_ao_wheel_delta(&mut self, delta: isize) -> Result<(), XyDriverError> {
         if delta == 0 || !self.tui.application_session_active() {
             return Ok(());
@@ -1045,27 +901,21 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn handle_resize(&mut self, cols: u16, rows: u16) {
-        // Prefer crossterm Resize payload: ioctl refresh can lag/stale.
         let prev_cols = self.tui.terminal.columns();
         let prev_rows = self.tui.terminal.rows();
         self.tui.terminal.refresh_size();
         self.tui.terminal.set_size_hint(cols, rows);
         let size_changed =
             self.tui.terminal.columns() != prev_cols || self.tui.terminal.rows() != prev_rows;
-        // Cursor / multiplexers often flood identical Resize; skip paint.
         if size_changed {
             self.sync_layout_from_terminal();
             if self.tui.application_session_active() {
                 self.sync_dock_rows();
             }
-            // Align pi: resize → soft requestRender(); doRender sees
-            // width/heightChanged → fullRender(true) with 2J/H/3J.
-            // force=true would zero/sentinel-skip that path incorrectly.
             self.tui.request_render(false);
         }
     }
 
-    /// c2891：gutter id 空间与 fold index+1 disjoint，先 match 再回落 fold。
     fn dispatch_pointer_click(&mut self, id: xylitol_tui::HitId) {
         match id {
             xylitol_tui::GUTTER_TOP_HIT_ID => {
@@ -1086,7 +936,6 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn handle_input(&mut self, input: InputEvent) {
-        // c2915 使用点懒并盘：↑ 召回前并入通道历史（同通道他实例写入即见；无通道 no-op）。
         if let InputEvent::Key(ref key) = input
             && key.code == crossterm::event::KeyCode::Up
             && key.modifiers.is_empty()
@@ -1119,13 +968,11 @@ impl<T: Terminal> HostSession<T> {
                 || self.try_idle_enter_submit(&input)
                 || self.try_ctrl_g(&input)
             {
-                // Host consumed a key/chord — always paint (status / editor / toast).
                 InputReaction::Rerender
             } else {
                 self.tui.dispatch_event(input)
             }
         } else {
-            // TooSmall / other modes: ignore input; no paint from mouse floods.
             InputReaction::rerender_if(!matches!(input, InputEvent::Mouse(_)))
         };
         if left_up {
@@ -1140,14 +987,11 @@ impl<T: Terminal> HostSession<T> {
             if let Some(root) = self.ui_root.as_ref() {
                 let mut root = root.borrow_mut();
                 root.sync_editor_screen_origin();
-                // Fold toggles dirty the component tree; force a full AO project
-                // so the next paint rebuilds hits (ath33 / att20).
                 if root.take_fold_dirty() {
                     drop(root);
                     self.tui.mark_ao_components_stale();
                 }
             }
-            // ptim15 → ath31: library edge → fixed-zone «Copied» (not Error: toast).
             if self.tui.take_copy_notice()
                 && let Some(root) = self.ui_root.as_ref()
             {
@@ -1160,10 +1004,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Transcript-mutating agent-tape family (resume-render 修复). These events are only
-    /// meaningful while a locally-started run is streaming; the idle fence in
-    /// [`Self::handle_xy`] drops them. Metadata events (settlement / queue /
-    /// compaction / model) stay outside the fence.
     fn is_agent_tape_event(xy: &XyEvent) -> bool {
         matches!(
             xy,
@@ -1186,15 +1026,10 @@ impl<T: Terminal> HostSession<T> {
 
     pub(crate) fn handle_xy(&mut self, xy: Box<XyEvent>) {
         if self.suppress_xy_until_stream_end {
-            // c670: abort already noted — do not revive busy via deltas / AgentEnd.
             self.tui.request_render(false);
             return;
         }
         if !self.run_active && Self::is_agent_tape_event(xy.as_ref()) {
-            // resume-render 修复: idle-received agent tape is stale (daemon journal replay /
-            // resync / foreign mid-stream join). The transcript's idle truth is
-            // the persisted entries from `get_messages` — applying a partial
-            // tape appended a mid-message "tail" after the switch notice.
             log::debug!(
                 target: "xylitol::tui",
                 "agent tape event dropped while idle"
@@ -1204,15 +1039,11 @@ impl<T: Terminal> HostSession<T> {
         self.apply_xy_unfenced(xy);
     }
 
-    /// Apply one XyEvent without the idle tape fence. Only for host-authored
-    /// injections that are tape-shaped by design (`activity-fold-live`
-    /// ask-close replay); never for driver downlink.
     pub(crate) fn apply_xy_unfenced(&mut self, xy: Box<XyEvent>) {
         apply_xy_event(&mut self.ui_model, &xy);
         match xy.as_ref() {
             XyEvent::AgentEnd { .. } => {
                 self.run_active = false;
-                // Footer: settlement event or stream-close fallback (c1860).
             }
             XyEvent::ContextTokenSettlement {
                 estimate, reason, ..
@@ -1220,14 +1051,10 @@ impl<T: Terminal> HostSession<T> {
                 self.note_context_token_settlement(estimate.clone(), reason);
             }
             XyEvent::CompactionEnd { .. } => {
-                // Fallback if AfterCompaction settlement is absent (tests / older paths).
                 self.request_footer_token_refresh();
             }
-            XyEvent::TurnEnd { .. } => {
-                // Footer comes from ContextTokenSettlement before TurnEnd (c1860).
-            }
+            XyEvent::TurnEnd { .. } => {}
             XyEvent::MessageEnd { role, message } => {
-                // Mid-turn Api usage: assistant MessageEnd often carries usage.
                 let has_usage = message.as_ref().is_some_and(|m| {
                     matches!(
                         m,
@@ -1249,14 +1076,11 @@ impl<T: Terminal> HostSession<T> {
         if matches!(xy.as_ref(), XyEvent::AgentEnd { .. })
             && let Some(root) = self.ui_root.as_ref()
         {
-            // ActivityFold turn-end auto crush (att26); after model sync.
             root.borrow_mut().apply_activity_after_turn_end();
         }
         self.tui.request_render(false);
     }
 
-    /// ath4: min-size shows a hint; only exit if even the hint cannot paint.
-    /// Overflow at a "valid" size degrades to TooSmall instead of freezing/exiting.
     fn recover_from_render_error(&mut self) -> Result<(), XyDriverError> {
         let cols = self.tui.terminal.columns();
         let rows = self.tui.terminal.rows();
@@ -1267,7 +1091,6 @@ impl<T: Terminal> HostSession<T> {
                 self.tui.add_child(child);
             }
             self.tui.set_focus(Some(0));
-            // Force clearing redraw so Ready fixed zone does not ghost over the hint.
             self.tui.request_render(true);
             if self.tui.render_now().is_ok() {
                 log::warn!(
@@ -1285,16 +1108,10 @@ impl<T: Terminal> HostSession<T> {
         Err(err)
     }
 
-    /// Toggle terminal task progress (OSC 9;4) — used while loading session list.
     pub fn set_task_progress(&mut self, active: bool) {
         self.tui.terminal.set_progress(active);
     }
 
-    /// Emit a preformatted OSC 52 clipboard sequence on the host/UI thread.
-    ///
-    /// Must run outside differential render batches (caller: slash effect after
-    /// `XyDriver::copy_text_to_clipboard`, before `render_now`). Never call from
-    /// a blocking-pool clipboard worker.
     pub fn emit_clipboard_osc52(&mut self, sequence: &str) {
         self.tui.terminal.write(sequence);
         self.tui.terminal.flush();
@@ -1307,7 +1124,6 @@ impl<T: Terminal> HostSession<T> {
         match self.tui.render_now() {
             Ok(_) => {
                 self.paint_dirty = false;
-                // Next frame uses measured dock from this paint (ath30).
                 if self.tui.application_session_active() {
                     self.sync_dock_rows();
                 }
@@ -1321,8 +1137,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Re-evaluate layout from the terminal's current size (after an external
-    /// size mutation on a test double).
     pub fn sync_layout_from_terminal(&mut self) {
         let cols = self.tui.terminal.columns();
         let rows = self.tui.terminal.rows();

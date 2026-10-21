@@ -1,11 +1,3 @@
-//! Steps for c2844 — turn-end overflow compaction event delivery contract.
-//!
-//! Drives a REAL AgentRuntime whose model replies with a context-overflow error
-//! (overflow Case 1), so the run's own turn-end compaction emits CompactionStart
-//! / CompactionEnd onto the run stream (c1730 tee). The scenario pins the order
-//! contract: CompactionEnd MUST be delivered BEFORE AgentEnd — never silently
-//! dropped by stream-tail starvation (the c2844 bug).
-
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -41,8 +33,6 @@ pub(crate) fn compaction_probe() -> CompactionProbe {
 }
 
 fn overflow_error_builder() -> xylitol_plugin_sdk::XyModelBuilder {
-    // c2844: the agent LLM replies with a context-overflow error so turn-end
-    // overflow compaction (Case 1) fires through the real run stream.
     Arc::new(move |_cfg: &XyModelConfig| -> Arc<dyn XyModel> {
         fake_xy_model(
             "overflow-fake",
@@ -89,7 +79,6 @@ async fn g_c2844_overflow_runtime(compaction_probe: &CompactionProbe, _agent: &A
     let mgr = SessionManager::new(tempfile::tempdir().unwrap().path().join("sessions"));
     let sid = "c2844-overflow";
     mgr.create(sid, Some("."), None).await.unwrap();
-    // Summarizable history so the overflow turn-end compaction has content to cut.
     for i in 0..60 {
         use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
         let e = SessionEntry::Message(MessageEntry {
@@ -173,8 +162,6 @@ fn t_c2844_order(compaction_probe: &CompactionProbe) {
         "CompactionEnd MUST arrive BEFORE AgentEnd: {names:?}"
     );
 }
-
-// ── r1920: reasoning-only summarizer response must not fall back ─────────
 
 pub(crate) struct ReasoningOnlyModel;
 

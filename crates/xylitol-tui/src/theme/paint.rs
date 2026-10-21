@@ -1,21 +1,14 @@
-//! Truecolor SGR paint helpers (39 / 49 reset), shared by palette factories.
-
 use crate::terminal_colors::RgbColor;
 use crate::utils::{truncate_to_width, visible_width};
 
-/// Foreground truecolor + reset to default fg (`39`).
 pub fn fg_rgb(rgb: RgbColor, s: &str) -> String {
     format!("\x1b[38;2;{};{};{}m{s}\x1b[39m", rgb.r, rgb.g, rgb.b)
 }
 
-/// Background truecolor + reset to default bg (`49`).
 pub fn bg_rgb(rgb: RgbColor, s: &str) -> String {
     format!("\x1b[48;2;{};{};{}m{s}\x1b[49m", rgb.r, rgb.g, rgb.b)
 }
 
-/// Word / span tint: set word bg + fg, then restore row fg + row bg (not `49m`).
-///
-/// Diff word highlights need this so the line wash stays continuous.
 pub fn fg_bg_rgb(fg: RgbColor, word_bg: RgbColor, row_bg: RgbColor, s: &str) -> String {
     format!(
         "\x1b[48;2;{};{};{}m\x1b[38;2;{};{};{}m{s}\x1b[38;2;{};{};{}m\x1b[48;2;{};{};{}m",
@@ -34,7 +27,6 @@ pub fn fg_bg_rgb(fg: RgbColor, word_bg: RgbColor, row_bg: RgbColor, s: &str) -> 
     )
 }
 
-/// Linear blend `from → to` by `amount` (0..=1).
 pub fn mix_rgb(from: RgbColor, to: RgbColor, amount: f32) -> RgbColor {
     let t = amount.clamp(0.0, 1.0);
     let lerp =
@@ -46,7 +38,6 @@ pub fn mix_rgb(from: RgbColor, to: RgbColor, amount: f32) -> RgbColor {
     }
 }
 
-/// Slightly lighten toward white.
 pub fn shade_toward_white(base: RgbColor, amount: f32) -> RgbColor {
     mix_rgb(
         base,
@@ -59,9 +50,6 @@ pub fn shade_toward_white(base: RgbColor, amount: f32) -> RgbColor {
     )
 }
 
-/// Slightly darken `base` toward black.
-///
-/// Kept for general tinting; word-diff prefers [`word_wash_bg`].
 pub fn shade_toward_black(base: RgbColor, amount: f32) -> RgbColor {
     let t = amount.clamp(0.0, 1.0);
     let scale = 1.0 - t;
@@ -72,12 +60,6 @@ pub fn shade_toward_black(base: RgbColor, amount: f32) -> RgbColor {
     }
 }
 
-/// Word-diff wash: **bright polarity tint** on the current block/row bg.
-///
-/// - `polarity`: added → green (`diff_added`), removed → red (`diff_removed`)
-/// - Mixes block bg toward a lightly lifted polarity color so `+`/`-` words read
-///   as soft green/red highlights without reverse-video white flash.
-/// - Mix amount ~**0.32** (subtle); raise toward 0.42 if you need more pop.
 pub fn word_wash_bg(block_bg: RgbColor, polarity: RgbColor) -> RgbColor {
     let bright = shade_toward_white(polarity, 0.22);
     mix_rgb(block_bg, bright, 0.32)
@@ -103,10 +85,6 @@ pub fn strikethrough(s: &str) -> String {
     format!("\x1b[9m{s}\x1b[29m")
 }
 
-/// Left status rail: `[1-cell bg][1 plain gutter][fitted content…]`.
-///
-/// Content is truncated/padded to `width - 2` (or less on narrow terminals).
-/// Does not panic when `width < 2` — prefix consumes the budget first.
 pub fn paint_left_rail_line(line: &str, width: usize, rgb: RgbColor) -> String {
     const RAIL_COLS: usize = 1;
     const GUTTER_COLS: usize = 1;
@@ -129,7 +107,6 @@ pub fn paint_left_rail_line(line: &str, width: usize, rgb: RgbColor) -> String {
     format!("{rail}{gutter}{clipped}{}", " ".repeat(pad))
 }
 
-/// Paint `$name` with `skill_ref` (bold); leave other text unstyled (A10 / c1130).
 pub fn highlight_dollar_skill_refs(text: &str, skill_ref: RgbColor) -> String {
     let bytes = text.as_bytes();
     let mut out = String::new();
@@ -209,7 +186,6 @@ mod tests {
         };
         let add = word_wash_bg(block, green);
         let rem = word_wash_bg(block, red);
-        // Added wash pulls greener; removed pulls redder than the tool block.
         assert!(add.g > block.g, "added wash should lift green: {add:?}");
         assert!(rem.r > block.r, "removed wash should lift red: {rem:?}");
         assert_ne!(add, rem);
@@ -229,7 +205,6 @@ mod tests {
         );
         assert!(s.contains("\x1b[49m"), "rail bg must reset with 49: {s:?}");
         assert!(s.contains("hello"), "content missing: {s:?}");
-        // After rail+reset, a plain gutter space then content.
         let after_reset = s.split("\x1b[49m").nth(1).expect("49 reset");
         assert!(
             after_reset.starts_with(' '),

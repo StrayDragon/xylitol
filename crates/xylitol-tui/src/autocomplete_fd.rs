@@ -1,19 +1,7 @@
-//! fd-based recursive filesystem search for autocomplete.
-//!
-//! Ported from pi's `walkDirectoryWithFd` in `autocomplete.ts`. Spawns the
-//! `fd(1)` subprocess and parses its output. When `fd_path` is `None`, the
-//! caller must fall back to the non-recursive `read_dir` path in
-//! [`crate::autocomplete`].
-
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 use tokio_util::sync::CancellationToken;
 
-/// Build a query string for `fd`'s `--full-path` mode.
-///
-/// Normalizes backslashes to forward slashes and constructs a regex pattern
-/// matching path segments joined by separators. Aligns with pi
-/// `buildFdPathQuery()`.
 pub fn build_fd_path_query(query: &str) -> String {
     let normalized = query.replace('\\', "/");
     if !normalized.contains('/') {
@@ -57,14 +45,6 @@ fn regex_escape(value: &str) -> String {
     out
 }
 
-/// Walk `base_dir` with `fd`, returning matching file/directory paths.
-///
-/// Returns `Vec<(path: String, is_directory: bool)>`. Directories have a
-/// trailing `/` in the path from fd output; we strip it for the string but
-/// return `true` in the flag.
-///
-/// When `ct.is_cancelled()`, the subprocess is killed and an empty vec is
-/// returned.
 pub fn walk_directory_with_fd(
     base_dir: &str,
     fd_path: &str,
@@ -153,7 +133,6 @@ pub fn walk_directory_with_fd(
             display_line
         };
 
-        // Filter .git entries (fd should have excluded these, but belt-and-suspenders).
         if normalized_path == ".git"
             || normalized_path.starts_with(".git/")
             || normalized_path.contains("/.git/")
@@ -164,7 +143,6 @@ pub fn walk_directory_with_fd(
         results.push((normalized_path, is_directory));
     }
 
-    // Drain remaining output before waiting for child exit.
     let _ = child.wait();
     results
 }

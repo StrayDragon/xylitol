@@ -1,8 +1,3 @@
-//! Segmented session layout primitives.
-//!
-//! This module owns filesystem vocabulary and crash-atomic file replacement.
-//! Tree projection and compaction policy stay in their existing modules.
-
 use std::path::{Component, Path, PathBuf};
 
 use tokio::io::AsyncWriteExt;
@@ -67,8 +62,6 @@ impl SessionManager {
         Ok(self.session_dir_path(session_id).join(relative))
     }
 
-    /// Resolve an optional sidecar `indexPath`, validating it stays inside the
-    /// session root (same rule as segment paths).
     pub(super) fn resolve_index_path(
         &self,
         session_id: &str,
@@ -77,9 +70,6 @@ impl SessionManager {
         self.resolve_segment_path(session_id, index_path)
     }
 
-    /// Build the conventional sidecar filename for a sealed segment path.
-    ///
-    /// `segments/0000...-sealed.jsonl` → `segments/0000...-sealed.index.json`.
     pub(super) fn sidecar_path_for(segment_path: &str) -> String {
         let Some(stem) = segment_path.strip_suffix(".jsonl") else {
             return format!("{segment_path}.index.json");
@@ -87,7 +77,6 @@ impl SessionManager {
         format!("{stem}.index.json")
     }
 
-    /// Atomically write a sealed sidecar next to its sealed segment.
     pub(super) async fn write_sealed_index_atomically(
         &self,
         session_id: &str,
@@ -100,10 +89,6 @@ impl SessionManager {
         write_file_atomically(&path, &format!("{content}\n")).await
     }
 
-    /// Best-effort read of a sealed sidecar; `Ok(None)` on missing/corrupt.
-    ///
-    /// Callers MUST treat `None` as "scan the sealed segment" — never as a
-    /// negative result (no false negatives from a bad index).
     pub(super) async fn read_sealed_index_opt(
         &self,
         session_id: &str,
@@ -341,7 +326,6 @@ impl SessionManager {
                 .map(|segment| segment.path.clone())
                 .collect();
             old_paths.push(old.active_segment.path.clone());
-            // Sealed segments carry an optional sidecar; remove it alongside.
             old_paths.extend(
                 old.sealed_segments
                     .iter()
@@ -360,16 +344,7 @@ impl SessionManager {
     }
 }
 
-/// Actionable error for a legacy-only session (zero-compat boundary).
-///
-/// No migration, no headerless repair, no background cleanup: the old file is
-/// preserved so an explicit `delete_session` still works, and list skips the
-/// entry after recording limited diagnostics. The returned `Unsupported`
-/// carries a static, actionable `op` with an explanatory message in
-/// `Validation`-style detail where needed.
 pub(super) fn legacy_unsupported_error(session_id: &str) -> XySessionStoreError {
-    // `Unsupported` maps to a stable `kind()` for logs while the message stays
-    // actionable for the user (export from an older version, then import).
     log::warn!(
         target: "xylitol::session",
         "legacy session {session_id} rejected: no v7 manifest, no automatic migration (zero-compat)"

@@ -1,5 +1,3 @@
-//! Overlay focus-restore (c575 / D08) — host-driven, no real TTY.
-
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::sync::{Arc, Mutex};
 use xylitol_tui::{Component, FocusTarget, InputEvent, OverlayOptions, OverlayUnfocusOptions, TUI};
@@ -74,7 +72,6 @@ fn f2_set_focus_steal_reclaims_on_dispatch() {
     let (overlay, overlay_log) = Recorder::new("OVL");
     let handle = tui.show_overlay(Box::new(overlay), OverlayOptions::default());
     assert!(handle.is_focused(&tui));
-    // Temporary steal to root — next input must reclaim overlay.
     tui.set_focus(Some(0));
     assert!(!handle.is_focused(&tui));
     tui.dispatch_event(key('r'));
@@ -157,7 +154,6 @@ fn f7_unfocus_target_while_blocked() {
     tui.add_child(Box::new(replacement));
     let (overlay, overlay_log) = Recorder::new("OVL");
     let handle = tui.show_overlay(Box::new(overlay), OverlayOptions::default());
-    // Steal to replacement → blocked.
     tui.set_focus(Some(1));
     assert!(!handle.is_focused(&tui));
     handle.unfocus(
@@ -166,11 +162,9 @@ fn f7_unfocus_target_while_blocked() {
             target: Some(FocusTarget::Root(0)),
         }),
     );
-    // Replacement still focused until it yields.
     assert!(!handle.is_focused(&tui));
     tui.dispatch_event(key('1'));
     assert_eq!(*repl_log.lock().unwrap(), vec!['1']);
-    // Yield: set_focus(None) while blocked-by replacement → resume to target (editor).
     tui.set_focus(None);
     tui.dispatch_event(key('e'));
     assert_eq!(*editor_log.lock().unwrap(), vec!['e']);

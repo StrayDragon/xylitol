@@ -1,8 +1,3 @@
-//! OpenAI Completions via `async-openai` [`Client`] (c1070).
-//!
-//! Transport is the official Client with [`crate::provider::openai_hooks_mw::HooksHttpService`]
-//! for portable [`crate::hooks::HttpHooks`]. Request shapes use async-openai chat types.
-
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -61,7 +56,6 @@ impl OpenAIProvider {
         XyError::Provider(anyhow::anyhow!("OpenAI Completions: {err}"))
     }
 
-    /// Run a chat completion, returning a stream of [`XyChunk`]s.
     pub async fn generate_stream(
         &self,
         messages: Vec<XyLlmMessage>,
@@ -313,8 +307,6 @@ fn completions_sdk_stream(
     })
 }
 
-// ── Tool conversion ────────────────────────────────────────────────
-
 fn convert_tools(tools: &[XyToolSchema]) -> Vec<ChatCompletionTools> {
     tools
         .iter()
@@ -330,8 +322,6 @@ fn convert_tools(tools: &[XyToolSchema]) -> Vec<ChatCompletionTools> {
         })
         .collect()
 }
-
-// ── Non-streaming response ─────────────────────────────────────────
 
 fn parse_nonstream_json(response: &Value, wire_policy: WirePolicy) -> Vec<XyChunk> {
     let mut chunks = Vec::new();
@@ -393,10 +383,6 @@ fn parse_nonstream_json(response: &Value, wire_policy: WirePolicy) -> Vec<XyChun
     chunks
 }
 
-// ── XyLlmMessage conversion ────────────────────────────────────
-
-/// Convert a slice of [`XyLlmMessage`] values to OpenAI chat request
-/// messages.
 pub fn convert_agent_messages(
     messages: &[XyLlmMessage],
     system_prompt: Option<&str>,

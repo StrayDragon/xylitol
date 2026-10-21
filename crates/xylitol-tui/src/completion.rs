@@ -1,39 +1,9 @@
-//! Pluggable editor completion sources.
-//!
-//! The [`Editor`](crate::Editor) owns popup lifecycle (SelectList, ↑↓/Tab/Enter/Esc).
-//! Applications register [`CompletionSource`]s for each trigger paradigm:
-//!
-//! - [`SlashCommandSource`] — `/help`, `/model`, … (line-leading, **no** space yet)
-//! - [`SlashArgCompletionSource`] — `/model <prefix>` argument ids (`/cmd `…;
-//!   optional bare `/cmd` via [`SlashArgCompletionSource::with_bare_command`])
-//! - [`AtPathSource`] — `@path/to/file` (inline attachment)
-//! - Future: `$skill`, `^agent`, etc. — implement [`CompletionSource`] and register;
-//!   `$` SHOULD use [`extract_dollar_prefix`](crate::extract_dollar_prefix) so it
-//!   behaves like `@` (mid-line reference), not like slash.
-//!
-//! ```ignore
-//! editor.set_completion_sources(vec![
-//!     Box::new(
-//!         SlashArgCompletionSource::new("model", model_catalog)
-//!             .with_id("model-id")
-//!             .with_bare_command(true), // demo: exact `/model` opens catalog
-//!     ),
-//!     Box::new(SlashCommandSource::new(commands)),
-//!     Box::new(AtPathSource::new(cwd)),
-//! ]);
-//! ```
-//!
-//! Probe order: first hit wins. With default (no bare), slash name and slash-arg
-//! probes are mutually exclusive (`/`… vs `/cmd `…). With `with_bare_command(true)`,
-//! register the arg source **before** slash so exact `/cmd` opens the catalog.
 use crate::autocomplete::{
     AutocompleteItem, AutocompleteSuggestions, SlashCommand, expand_home_path, extract_at_prefix,
     parse_path_prefix, path_autocomplete_item,
 };
 use crate::fuzzy::fuzzy_match;
 use std::path::PathBuf;
-
-// ── context / match ─────────────────────────────────────────────────────────
 
 pub struct CompletionContext<'a> {
     pub lines: &'a [String],
@@ -53,23 +23,14 @@ impl CompletionContext<'_> {
 }
 
 pub struct CompletionMatch {
-    /// Text being completed (e.g. "/hel", "@src/").
     pub prefix: String,
 }
 
-// ── trait ───────────────────────────────────────────────────────────────────
-
-/// One completable trigger paradigm (`/`, `@`, future `$` / `^`, …).
-///
-/// Editor probes sources in registry order; first [`probe`](Self::probe) hit wins.
 pub trait CompletionSource: Send {
     fn id(&self) -> &'static str;
 
-    /// Does this source own the cursor context?
     fn probe(&self, ctx: &CompletionContext<'_>) -> Option<CompletionMatch>;
 
-    /// While popup is open for this source: close without editing when true
-    /// (e.g. slash backspaced to lone `/`).
     fn should_dismiss(&self, ctx: &CompletionContext<'_>, m: &CompletionMatch) -> bool;
 
     fn suggestions(
@@ -88,11 +49,8 @@ pub trait CompletionSource: Send {
     ) -> (Vec<String>, usize, usize);
 }
 
-// ── registry ────────────────────────────────────────────────────────────────
-
 pub struct CompletionRegistry {
     sources: Vec<Box<dyn CompletionSource>>,
-    /// Index of the source that owns the open popup.
     active: Option<usize>,
 }
 
@@ -132,7 +90,6 @@ impl CompletionRegistry {
         self.active = None;
     }
 
-    /// Probe all sources in order; return first match and its index.
     pub fn probe_first(&self, ctx: &CompletionContext<'_>) -> Option<(usize, CompletionMatch)> {
         for (i, src) in self.sources.iter().enumerate() {
             if let Some(m) = src.probe(ctx) {
@@ -155,14 +112,6 @@ impl CompletionRegistry {
         }
     }
 
-    /// Probe (or keep active) and fetch suggestions. Sets `active` on success.
-    ///
-    /// Always re-runs [`probe_first`] so a higher-priority source can take over
-    /// (e.g. slash `/mod…` → exact `/model` with bare [`SlashArgCompletionSource`]).
-    ///
-    /// `should_dismiss` applies only while that same source already owns the
-    /// popup (e.g. slash backspaced to lone `/`). Opening on a fresh `/` still
-    /// shows all commands.
     pub fn open_or_refresh(
         &mut self,
         ctx: &CompletionContext<'_>,
@@ -194,7 +143,6 @@ impl CompletionRegistry {
         Some(src.apply(lines, cursor_line, cursor_col, item, prefix))
     }
 
-    /// Apply using whichever source currently probes (for Tab auto-apply before popup).
     pub fn apply_probed(
         &self,
         source_index: usize,
@@ -208,11 +156,8 @@ impl CompletionRegistry {
     }
 }
 
-// ── SlashCommandSource ──────────────────────────────────────────────────────
-
 pub struct SlashCommandSource {
     commands: Vec<(String, String)>,
-    /// When true, typing a lone `/` keeps the catalog open (designing pin).
     show_on_bare_slash: bool,
 }
 
@@ -227,7 +172,6 @@ impl SlashCommandSource {
         }
     }
 
-    /// Keep the slash catalog visible while the buffer is exactly `/`.
     pub fn show_on_bare_slash(mut self) -> Self {
         self.show_on_bare_slash = true;
         self
@@ -251,7 +195,6 @@ impl CompletionSource for SlashCommandSource {
     }
 
     fn should_dismiss(&self, _ctx: &CompletionContext<'_>, m: &CompletionMatch) -> bool {
-        // Lone `/` keeps the character but closes the popup (product default).
         !self.show_on_bare_slash && m.prefix == "/"
     }
 
@@ -304,20 +247,10 @@ impl CompletionSource for SlashCommandSource {
     }
 }
 
-// ── SlashArgCompletionSource ────────────────────────────────────────────────
-
-/// `/<command> <arg-prefix>` completion (e.g. `/model dee` → model ids).
-///
-/// By default, bare `/<command>` (**no** trailing space) does **not** probe —
-/// leave that to [`SlashCommandSource`] / product editor-slot pickers.
-/// Call [`SlashArgCompletionSource::with_bare_command`] when the host wants
-/// exact `/command` to open the arg catalog immediately (agent_demo).
 pub struct SlashArgCompletionSource {
     command: String,
     source_id: &'static str,
-    /// When true, exact `/command` (no space) also probes with an empty arg.
     bare_command: bool,
-    /// `(value/label, description)` — fuzzy-filtered by the arg fragment.
     catalog: Vec<(String, String)>,
 }
 
@@ -336,7 +269,6 @@ impl SlashArgCompletionSource {
         self
     }
 
-    /// Exact `/command` opens the catalog (same as `/command ` with empty arg).
     pub fn with_bare_command(mut self, enabled: bool) -> Self {
         self.bare_command = enabled;
         self
@@ -356,9 +288,6 @@ impl SlashArgCompletionSource {
     }
 }
 
-/// If `before` is `/<command><space><arg…>`, return the arg fragment (may be empty).
-///
-/// Bare `/command` with no space → [`None`].
 pub fn extract_slash_arg_prefix<'a>(before: &'a str, command: &str) -> Option<&'a str> {
     if command.is_empty() || command.contains(|c: char| c.is_whitespace()) {
         return None;
@@ -374,10 +303,7 @@ impl CompletionSource for SlashArgCompletionSource {
 
     fn probe(&self, ctx: &CompletionContext<'_>) -> Option<CompletionMatch> {
         let arg = self.arg_prefix(ctx.before_cursor())?;
-        Some(CompletionMatch {
-            // Arg fragment only — Editor apply replaces `prefix.len()` before cursor.
-            prefix: arg,
-        })
+        Some(CompletionMatch { prefix: arg })
     }
 
     fn should_dismiss(&self, ctx: &CompletionContext<'_>, _m: &CompletionMatch) -> bool {
@@ -426,13 +352,11 @@ impl CompletionSource for SlashArgCompletionSource {
         let current = lines[cursor_line].clone();
         let before = &current[..cursor_col.saturating_sub(prefix.len())];
         let after = &current[cursor_col..];
-        // Bare `/command` → normalize to `/command ` before writing the id.
         let head = if before == format!("/{}", self.command) {
             format!("/{} ", self.command)
         } else {
             before.to_string()
         };
-        // Keep `/command ` head; write selected id; trailing space for Enter submit.
         let suffix = if after.is_empty() {
             " "
         } else if after.starts_with(' ') {
@@ -451,8 +375,6 @@ impl CompletionSource for SlashArgCompletionSource {
     }
 }
 
-// ── AtPathSource ────────────────────────────────────────────────────────────
-
 pub struct AtPathSource {
     base_path: PathBuf,
 }
@@ -466,9 +388,6 @@ impl AtPathSource {
         let (raw, is_at, is_quoted) = parse_path_prefix(query);
         let expanded = expand_home_path(raw);
 
-        // If the query looks like a directory prefix (`src/`), list that dir;
-        // otherwise list base and fuzzy-filter by the file name fragment.
-        // `display_prefix` is the path stem kept in `value` (pi: displayPrefix + name).
         let (search_dir, filter, display_prefix) = if expanded.ends_with('/') {
             let dir = if expanded.starts_with('/') {
                 PathBuf::from(&expanded)
@@ -538,7 +457,6 @@ impl CompletionSource for AtPathSource {
     }
 
     fn should_dismiss(&self, ctx: &CompletionContext<'_>, _m: &CompletionMatch) -> bool {
-        // Dismiss when `@` token is gone. Bare `@` stays open (list cwd).
         extract_at_prefix(ctx.before_cursor()).is_none()
     }
 
@@ -849,7 +767,6 @@ mod tests {
             Box::new(slash()),
         ]);
 
-        // Start on slash while typing `/mod`.
         let mid = vec!["/mod".into()];
         let ctx = CompletionContext {
             lines: &mid,
@@ -860,7 +777,6 @@ mod tests {
         assert!(s.items.iter().any(|i| i.value == "model"));
         assert_eq!(reg.active_index(), Some(1));
 
-        // Exact `/model` must hand off to bare model-id without cancel+reopen.
         let exact = vec!["/model".into()];
         let ctx = CompletionContext {
             lines: &exact,

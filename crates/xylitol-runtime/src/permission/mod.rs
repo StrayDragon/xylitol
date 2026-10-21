@@ -1,15 +1,9 @@
-//! Advisory permission backends for the agent runtime.
-//!
-//! Checks are in-process guardrails, not a security boundary. Real isolation
-//! needs OS / container / VM limits.
-
 pub mod policy;
 
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::{XyPermission, XyPermissionVerdict};
 
-/// Filesystem glob rules for [`GlobPolicy`].
 #[derive(Clone, Debug, Default)]
 pub struct FilesystemRules {
     pub read_allowed: Vec<String>,
@@ -17,20 +11,17 @@ pub struct FilesystemRules {
     pub write_denied: Vec<String>,
 }
 
-/// Network domain rules for [`GlobPolicy`].
 #[derive(Clone, Debug, Default)]
 pub struct NetworkRules {
     pub allowed_domains: Vec<String>,
     pub denied_domains: Vec<String>,
 }
 
-/// Process path rules for [`GlobPolicy`].
 #[derive(Clone, Debug, Default)]
 pub struct ProcessRules {
     pub allowed_paths: Vec<String>,
 }
 
-/// Input to [`build_permission`]. Config YAML maps here at the composition root.
 #[derive(Clone, Debug, Default)]
 pub struct PermissionRules {
     pub enabled: bool,
@@ -39,7 +30,6 @@ pub struct PermissionRules {
     pub process: ProcessRules,
 }
 
-/// Allow everything. Used when permission checks are off.
 #[derive(Clone, Debug)]
 pub struct AllowAllPermission;
 
@@ -61,7 +51,6 @@ impl XyPermission for AllowAllPermission {
     }
 }
 
-/// Application-level permission backend using glob-based pattern matching.
 #[derive(Clone, Debug)]
 pub struct GlobPolicy {
     filesystem: FilesystemRules,
@@ -139,9 +128,6 @@ impl XyPermission for GlobPolicy {
     }
 }
 
-/// Build a permission backend from rules.
-///
-/// Returns [`AllowAllPermission`] when `enabled` is false.
 pub fn build_permission(rules: &PermissionRules) -> Arc<dyn XyPermission> {
     if !rules.enabled {
         return Arc::new(AllowAllPermission);
@@ -149,7 +135,6 @@ pub fn build_permission(rules: &PermissionRules) -> Arc<dyn XyPermission> {
     Arc::new(GlobPolicy::new(rules))
 }
 
-/// Allow-all backend (permission checks disabled).
 pub fn allow_all_permission() -> Arc<dyn XyPermission> {
     Arc::new(AllowAllPermission)
 }

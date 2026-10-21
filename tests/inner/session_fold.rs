@@ -1,5 +1,3 @@
-//! Projection tests that need `agent::llm_project` (cannot live in plugin-sdk).
-
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, BashExecutionStatus, XyLlmMessage};
 use xylitol_plugin_sdk::session::{
     SessionEntry, bash_execution_message_entry, done_bash_ids, fold_interrupted_bash_rows,

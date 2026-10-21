@@ -1,10 +1,5 @@
 use crate::tui::{Component, InputEvent};
 
-/// Vertical stack of child components. Renders by concatenating each child's
-/// `render(width)` lines in order. Does **not** fan out keyboard or paste via
-/// `handle_input` — focus routing stays with the TUI / host (mirrors pi
-/// `Container`). Pointer events are an exception: [`Self::offer_pointer`]
-/// forwards to the child whose last-render row span contains the pointer.
 pub struct Container {
     children: Vec<Box<dyn Component>>,
     origin: (u16, u16),
@@ -69,9 +64,7 @@ impl Component for Container {
         lines
     }
 
-    fn handle_input(&mut self, _event: InputEvent) {
-        // Intentionally no keyboard/paste fan-out — see r1614 / package-tui-engine.
-    }
+    fn handle_input(&mut self, _event: InputEvent) {}
 
     fn invalidate(&mut self) {
         for child in &mut self.children {

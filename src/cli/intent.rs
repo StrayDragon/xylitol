@@ -1,8 +1,5 @@
-//! Surface intent: which mode to open and which flags it owns.
-
 use super::args::{CliCommand, SurfaceBootstrap, TuiAction, TuiSurfaceArgs};
 
-/// `xylitol tui designing` (debug builds): debug subcommand; still attaches Host.
 pub fn is_tui_designing(command: Option<&CliCommand>) -> bool {
     #[cfg(debug_assertions)]
     {
@@ -21,7 +18,6 @@ pub fn is_tui_designing(command: Option<&CliCommand>) -> bool {
     }
 }
 
-/// Product TUI attach fail-closed. All TUI surfaces attach Host.
 pub fn tui_requires_host_listener(command: Option<&CliCommand>) -> bool {
     matches!(command, Some(CliCommand::Tui { .. }) | None)
 }
@@ -30,7 +26,6 @@ fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> Tui
     let Some(TuiAction::Run { surface: run }) = action else {
         return parent.clone();
     };
-    // Prefer whichever side set a value (`tui --session x run` vs `tui run --session x`).
     TuiSurfaceArgs {
         session: run.session.clone().or_else(|| parent.session.clone()),
         model: run.model.clone().or_else(|| parent.model.clone()),
@@ -44,7 +39,6 @@ fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> Tui
     }
 }
 
-/// Resolve surface-owned flags from a parsed CLI command (c1565).
 pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
     match command {
         Some(CliCommand::Tui { surface, action }) => {
@@ -80,16 +74,11 @@ fn merge_prompt_parts<'a>(flag: Option<&'a str>, positional: Option<&'a str>) ->
     flag.or(positional).map(str::trim).filter(|s| !s.is_empty())
 }
 
-/// stderr resume line when the session was persisted (c1565).
 pub fn resume_hint_line(session_id: Option<&str>, listed: bool) -> Option<String> {
     let sid = session_id?;
     listed.then(|| format!("Resume by $ xylitol tui --session {sid}"))
 }
 
-/// Resolve force-tui / explicit-print / one-shot prompt from surface verbs only.
-///
-/// Ops subcommands are handled before this; callers pass only `None` / `Tui` / `Print`.
-/// There are no flat `--tui` / `--print` / top-level `-p` aliases.
 pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Option<String>) {
     match command {
         Some(CliCommand::Tui { .. }) => (true, false, None),
@@ -106,14 +95,12 @@ pub fn resolve_surface_intent(command: Option<&CliCommand>) -> (bool, bool, Opti
     }
 }
 
-/// Which interactive surface to open (after `--list-models` is ruled out).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SurfaceMode {
     Tui,
     Print,
 }
 
-/// Pure dispatch: TUI default on a TTY; print via `print` verb or non-TTY bare launch.
 pub fn select_surface_mode(
     force_tui: bool,
     explicit_print: bool,
@@ -129,11 +116,9 @@ pub fn select_surface_mode(
     if stdin_is_tty {
         return SurfaceMode::Tui;
     }
-    // Non-TTY bare launch: treat as print so the caller can read stdin or error (no Hello!).
     SurfaceMode::Print
 }
 
-/// Resolve the print-mode prompt. Never returns a placeholder like `Hello!`.
 #[derive(Debug, thiserror::Error)]
 pub enum PrintPromptError {
     #[error("failed to read stdin: {0}")]

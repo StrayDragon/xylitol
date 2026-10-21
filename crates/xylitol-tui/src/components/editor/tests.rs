@@ -11,9 +11,6 @@ fn t() -> EditorTheme {
     }
 }
 
-/// Default test clock: each `now()` is ≥20ms after the previous, so rapid
-/// `insert_ch` in unit tests looks like human typing (no false paste coalesce).
-/// Paste-burst tests pass an explicit frozen/`advance(1ms)` [`MockClock`] instead.
 #[derive(Clone)]
 struct TypingClock {
     t: std::cell::Cell<std::time::Instant>,
@@ -59,7 +56,6 @@ fn empty_draft_renders_one_content_row() {
     );
     e.set_focused(true);
     let lines = e.render(40);
-    // top border + 1 content + bottom border
     assert_eq!(lines.len(), 3, "empty draft must stay compact: {lines:?}");
     e.set_text("a\nb\nc\nd\ne\nf".into());
     let grown = e.render(40);
@@ -126,8 +122,6 @@ fn submit_cb() {
     assert!(e.get_text().is_empty());
 }
 
-// c425 new tests
-
 #[test]
 fn visual_line_map_wraps_long_lines() {
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
@@ -164,7 +158,6 @@ fn move_cursor_up_down_preserves_visual_col() {
     e.state.cursor_col = 3;
     e.move_cursor(-1, 0);
     assert_eq!(e.state.cursor_line, 1);
-    // On a non-wrapped line, visual col = cursor col = 3
     assert_eq!(e.state.cursor_col, 3, "up-arrow should stay at same column");
 }
 
@@ -175,9 +168,7 @@ fn preferred_visual_col_cleared_on_horizontal() {
     e.last_width = 80;
     e.state.cursor_line = 2;
     e.state.cursor_col = 3;
-    // Move up — this sets preferred_visual_col via compute_vertical_move_column
     e.move_cursor(-1, 0);
-    // Now move left — preferred should be cleared by set_cursor_col
     e.move_cursor(0, -1);
     assert!(
         e.preferred_visual_col.is_none(),
@@ -195,14 +186,12 @@ fn page_scroll_moves_by_page_size() {
         },
         clk(),
     );
-    // 50 single-char lines — page size = 12
     let lines: Vec<String> = (0..50).map(|i| format!("line {}", i)).collect();
     e.set_text(lines.join("\n"));
     e.state.cursor_line = 5;
     e.state.cursor_col = 0;
     e.last_width = 80;
     e.page_scroll(1);
-    // Should have moved ~12 visual lines (all single-line lines → 12 logical lines)
     assert!(
         e.state.cursor_line >= 15,
         "page_down from line 5 should go to ~17 (5+12), got {}",
@@ -257,13 +246,11 @@ fn paste_burst_enter_inserts_newline_not_submit() {
     use std::time::Duration;
     let theme = t();
     let mut clock = MockClock::new();
-    // Type 8 fast chars → burst detected
     let mut e = Editor::new(theme, EditorOptions::default(), Box::new(clock.clone()));
     for _ in 0..8 {
         e.insert_ch("x");
         clock.advance(Duration::from_millis(1));
     }
-    // Now Enter should be suppressed
     let now = clock.now();
     assert!(
         e.paste_burst.should_insert_newline_instead_of_submit(now),
@@ -286,7 +273,6 @@ fn paste_burst_reset_on_nonprintable() {
         e.paste_burst
             .should_insert_newline_instead_of_submit(clock.now())
     );
-    // Simulate a non-printable key (CursorLeft)
     e.paste_burst.reset();
     assert!(
         !e.paste_burst
@@ -301,11 +287,9 @@ fn history_draft_restored_on_back_past_first() {
     e.add_to_history("line 1".to_string());
     e.add_to_history("line 2".to_string());
     e.set_text("current".to_string());
-    // Navigate through history
-    e.navigate_history(-1); // → line 2
-    e.navigate_history(-1); // → line 1
-    // Now go back past first
-    e.navigate_history(1); // → line 2
+    e.navigate_history(-1);
+    e.navigate_history(-1);
+    e.navigate_history(1);
     assert_eq!(e.get_text(), "line 2");
 }
 
@@ -314,15 +298,12 @@ fn merge_history_oldest_to_newest_block_order() {
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
     e.add_to_history("mine".to_string());
     e.merge_history(["old".to_string(), "new".to_string()]);
-    // 输入 oldest→newest：外部块整体置于现史之上，块内最新在最前。
     assert_eq!(
         e.history_texts(),
         vec!["new".to_string(), "old".to_string(), "mine".to_string()]
     );
-    // ↑ 首次召回外部最新条目。
     e.navigate_history(-1);
     assert_eq!(e.get_text(), "new");
-    // 已在史条目去重。
     e.merge_history(["new".to_string(), "dup".to_string()]);
     assert_eq!(
         e.history_texts(),
@@ -341,7 +322,6 @@ fn exit_history_on_edit() {
     e.add_to_history("old".to_string());
     e.navigate_history(-1);
     assert_eq!(e.history_index, 0);
-    // Typing a character should exit history browsing
     e.insert_ch("x");
     assert_eq!(e.history_index, -1, "edit should exit history browsing");
 }
@@ -351,9 +331,7 @@ fn visual_line_map_multiple_logical_lines() {
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
     e.set_text("short\nloooooooooooooooooooooooooooooong\nshort".to_string());
     let vls = e.build_visual_line_map(20);
-    // Line 0: 1 VL, Line 1: wraps to ~2 VLs, Line 2: 1 VL → total ≥ 4
     assert!(vls.len() >= 4, "expected >=4 VLs, got {}", vls.len());
-    // All VLs should have correct logical_line mapping
     assert_eq!(vls[0].logical_line, 0);
     assert_eq!(vls[vls.len() - 1].logical_line, 2);
 }
@@ -361,14 +339,12 @@ fn visual_line_map_multiple_logical_lines() {
 #[test]
 fn find_current_visual_line_at_end_of_wrapped_line() {
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
-    // Long-ish line in 30-col editor → wraps to multiple VLs
     e.set_text("abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ0123".to_string());
     let vls = e.build_visual_line_map(30);
     assert!(
         vls.len() >= 2,
         "long line at width 30 should wrap to ≥2 VLs"
     );
-    // Cursor at end of line should be on the last VL
     e.state.cursor_col = e.state.lines[0].len();
     let ci = e.find_current_visual_line(&vls);
     assert_eq!(
@@ -393,7 +369,7 @@ fn set_text_internal_end_placement() {
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
     e.set_text_internal("hello\nworld", CursorPlacement::End);
     assert_eq!(e.state.cursor_line, 1);
-    assert_eq!(e.state.cursor_col, 5); // "world".len()
+    assert_eq!(e.state.cursor_col, 5);
 }
 
 #[test]
@@ -419,7 +395,6 @@ fn editor_multiline_drag_select_and_copy() {
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
     e.set_text("alpha\nbeta\ngamma".into());
     let _ = e.render(40);
-    // Local coords: row 0 = top border; content starts at row 1.
     let mut sink = RecordingClipboardSink::default();
     assert!(e.handle_mouse_local(
         &mouse(MouseEventKind::Down(MouseButton::Left), 0, 1),
@@ -475,7 +450,6 @@ fn editor_double_click_selects_whole_word_on_release() {
     e.set_text("say apple pie".into());
     let _ = e.render(40);
     let mut sink = RecordingClipboardSink::default();
-    // Content row 1; 'l' of apple is display column 7.
     let col = 7u16;
     let row = 1u16;
     e.handle_mouse_local(
@@ -552,14 +526,12 @@ fn editor_selection_clears_on_key() {
 
 #[test]
 fn editor_click_on_scrolled_top_row_does_not_ghost_select() {
-    // Regression: former edge-zone scroll on Down/tick remapped focus to
-    // earlier buffer cells, so a plain click looked like "select all before".
     use crate::selection::RecordingClipboardSink;
     let mut e = Editor::new(
         t(),
         EditorOptions {
             padding_x: 0,
-            terminal_rows: 8, // max_vis ≈ 5
+            terminal_rows: 8,
         },
         clk(),
     );
@@ -576,12 +548,10 @@ fn editor_click_on_scrolled_top_row_does_not_ghost_select() {
         "expected scrolled editor, offset={offset_before}"
     );
     let mut sink = RecordingClipboardSink::default();
-    // Click mid first visible content row (edge zone under old logic).
     e.handle_mouse_local(
         &mouse(MouseEventKind::Down(MouseButton::Left), 2, 1),
         &mut sink,
     );
-    // Simulate terminal Moved flood + idle tick while button held.
     let _ = e.handle_mouse_local(&mouse(MouseEventKind::Moved, 2, 1), &mut sink);
     assert!(!e.tick(), "click hold must not edge-scroll the viewport");
     e.handle_mouse_local(
@@ -598,7 +568,6 @@ fn editor_click_on_scrolled_top_row_does_not_ghost_select() {
 
 #[test]
 fn editor_drag_onto_more_border_does_not_autoscroll() {
-    // Product cut: no editor viewport edge auto-scroll while selecting.
     use crate::selection::RecordingClipboardSink;
     let mut e = Editor::new(
         t(),
@@ -672,8 +641,6 @@ fn shift_enter_inserts_newline() {
 
 #[test]
 fn ghostty_shift_enter_char_lf_inserts_newline() {
-    // Ghostty (kitty-active): Shift+Enter → text `\n` → crossterm Char('\n')
-    // without SHIFT (pi keys.ts). Must not submit / must not be printable.
     use crate::keys::with_kitty_protocol_active;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     with_kitty_protocol_active(true, || {
@@ -689,7 +656,6 @@ fn ghostty_shift_enter_char_lf_inserts_newline() {
 
 #[test]
 fn external_editor_path_expands_paste_markers() {
-    // Ctrl+G / $EDITOR must see real paste bodies, not `[paste #N …]`.
     let mut e = Editor::new(t(), EditorOptions::default(), clk());
     let pasted = (0..26)
         .map(|i| format!("body-line-{i}"))
@@ -713,7 +679,6 @@ fn external_editor_path_expands_paste_markers() {
 fn paste_burst_suppresses_mid_burst_rerender() {
     use crate::clock::MockClock;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    // Frozen MockClock: all insert_ch share one Instant → consecutive burst.
     let mut e = Editor::new(t(), EditorOptions::default(), Box::new(MockClock::new()));
     for ch in ["a", "b", "c", "d", "e", "f", "g"] {
         e.insert_ch(ch);
@@ -725,7 +690,7 @@ fn paste_burst_suppresses_mid_burst_rerender() {
             "below burst threshold must still want paint"
         );
     }
-    e.insert_ch("h"); // 8th → paste burst
+    e.insert_ch("h");
     assert_eq!(e.get_text(), "abcdefgh", "model must keep all chars");
     assert!(
         !e.input_wants_rerender(&InputEvent::Key(KeyEvent::new(
@@ -755,7 +720,6 @@ fn editor_mouse_down_wants_rerender_after_handle() {
     e.set_text("primary flow".into());
     let _ = e.render(40);
     let ev = InputEvent::Mouse(mouse(MouseEventKind::Down(MouseButton::Left), 0, 1));
-    // Before handle: no drag yet → default mouse policy is quiet.
     assert!(!Component::input_wants_rerender(&e, &ev));
     Component::handle_input(&mut e, ev.clone());
     assert!(
@@ -772,10 +736,6 @@ fn editor_mouse_down_wants_rerender_after_handle() {
     assert!(!e.has_selection(), "empty click must clear selection");
 }
 
-/// Regression (c2795): with `padding_x > 0` a full-width chunk plus the
-/// end-of-line reverse-video cursor cell painted `width + 1` columns →
-/// RenderError → host degraded the whole UI to the TooSmall hint while typing
-/// past one line. The wrap width must reserve the cursor column at any padding.
 #[test]
 fn typing_past_full_width_line_never_overflows() {
     fn assert_rows_fit(e: &mut Editor, width: usize, ctx: &str) {
@@ -787,7 +747,6 @@ fn typing_past_full_width_line_never_overflows() {
             );
         }
     }
-    // Product padding (root/mod.rs uses padding_x: 1).
     let mk = || {
         Editor::new(
             t(),
@@ -816,7 +775,6 @@ fn typing_past_full_width_line_never_overflows() {
             e.handle_input(key(ch));
             assert_rows_fit(&mut e, width, &format!("{name}/typing/{ch}"));
         }
-        // Resize after typing must re-wrap under the new width, cursor at EOL.
         for w in [39usize, 40, 80, 120] {
             assert_rows_fit(&mut e, w, &format!("{name}/resize@{w}"));
         }

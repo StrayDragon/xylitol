@@ -1,5 +1,3 @@
-//! syntect → ANSI lines for Markdown fences (Catppuccin Mocha).
-
 use std::sync::OnceLock;
 
 use syntect::easy::HighlightLines;
@@ -7,9 +5,7 @@ use syntect::highlighting::{Style, Theme};
 use syntect::parsing::SyntaxSet;
 use syntect::util::{LinesWithEndings, as_24_bit_terminal_escaped};
 
-/// Skip highlighting above this many UTF-8 bytes.
 pub const MAX_HIGHLIGHT_BYTES: usize = 512 * 1024;
-/// Skip highlighting above this many lines.
 pub const MAX_HIGHLIGHT_LINES: usize = 10_000;
 
 static SYNTAX_SET: OnceLock<SyntaxSet> = OnceLock::new();
@@ -31,7 +27,6 @@ fn plain_lines(code: &str) -> Vec<String> {
     code.lines().map(str::to_string).collect()
 }
 
-/// Highlight `code` for optional language id; returns ANSI-escaped lines.
 pub fn highlight_code(code: &str, lang: Option<&str>) -> Vec<String> {
     if code.len() > MAX_HIGHLIGHT_BYTES || code.lines().count() > MAX_HIGHLIGHT_LINES {
         return plain_lines(code);

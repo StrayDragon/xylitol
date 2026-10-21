@@ -143,8 +143,6 @@ async fn test_s19_tool_call_id_key(sess: XySessionStore) {}
 )]
 async fn test_s6_empty_boundary(sess: XySessionStore) {}
 
-// ---- c2826 specs-compact：裸规则转场景绑定 ----
-
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
     name = "v7shell驼峰与bash消息"

@@ -1,10 +1,3 @@
-//! Steps for c2830 — native HTTP mock 上游（r1462 / r1473 / r1474）。
-//!
-//! 真 `AnthropicMessagesAdapter`（base_url → 127.0.0.1 脚本化 SSE mock）在
-//! 观测闸 + `SpanCollectScope` 下驱动，`llm.request` 断言落在收集到的
-//! `SpanRecord`（properties + events）。r1556（SSE idle 上界）由 bridge
-//! 包内 paused-time 单测承载：90s 程序权威常量在真实时间等不起。
-
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -19,9 +12,6 @@ use xylitol_plugin_sdk::model::XyChunk;
 
 pub(crate) const BDD_MODEL: &str = "claude-bdd-mock";
 
-/// c2843 Phase B: direct provider drives must be owner-attributed too — carry the
-/// scenario session snapshot in the generate options so `llm.request` spans pass
-/// the per-owner collector filter.
 fn c2830_options() -> xylitol_plugin_sdk::XyGenerateOptions {
     xylitol_plugin_sdk::XyGenerateOptions {
         obs_session: xylitol_official_plugin_provider_openai::ObsSessionContext {
@@ -32,13 +22,8 @@ fn c2830_options() -> xylitol_plugin_sdk::XyGenerateOptions {
     }
 }
 
-/// 脚本化 mock 上游的一帧。
 enum Frame {
-    Sse {
-        event: &'static str,
-        data: String,
-    },
-    /// 头帧后永久静默（连接保持，不再写任何字节）。
+    Sse { event: &'static str, data: String },
     Stall,
 }
 
@@ -107,7 +92,6 @@ async fn spawn_mock(script: Vec<Frame>) -> SocketAddr {
         let Ok((mut sock, _)) = listener.accept().await else {
             return;
         };
-        // 排掉请求头即可开写（POST body 未读净对 TCP 无害，雏形同法）。
         let mut buf = vec![0u8; 64 * 1024];
         let _ = tokio::time::timeout(Duration::from_secs(5), sock.read(&mut buf)).await;
         let head =
@@ -130,12 +114,10 @@ async fn spawn_mock(script: Vec<Frame>) -> SocketAddr {
                 }
             }
         }
-        // socket drop = EOF → 适配器 SSE 循环自然收尾（Done 已先至）。
     });
     addr
 }
 
-/// 场景内共享的 mock 上游地址与驱动状态。
 pub struct MockUpstreamBdd {
     pub(crate) addr: RefCell<Option<SocketAddr>>,
     pub(crate) saw_text: std::cell::Cell<bool>,
@@ -158,8 +140,6 @@ fn build_model(addr: SocketAddr) -> AnthropicMessagesAdapter {
     )
 }
 
-// ── given ─────────────────────────────────────────────────────
-
 #[given("mock 上游按正常完成脚本回放 Anthropic SSE")]
 pub(crate) async fn g_c2830_mock_happy(mock_upstream_bdd: &MockUpstreamBdd) {
     let addr = spawn_mock(happy_script()).await;
@@ -171,8 +151,6 @@ pub(crate) async fn g_c2830_mock_stall(mock_upstream_bdd: &MockUpstreamBdd) {
     let addr = spawn_mock(stall_after_text_script()).await;
     *mock_upstream_bdd.addr.borrow_mut() = Some(addr);
 }
-
-// ── when ──────────────────────────────────────────────────────
 
 #[when("以 io=truncated 的观测闸对 mock 上游驱动一次流式生成并耗尽全部事件")]
 pub(crate) async fn w_c2830_drive(otel_bdd: &OtelBdd, mock_upstream_bdd: &MockUpstreamBdd) {
@@ -213,8 +191,6 @@ pub(crate) async fn w_c2830_abort(otel_bdd: &OtelBdd, mock_upstream_bdd: &MockUp
     drop(stream);
 }
 
-// ── then ──────────────────────────────────────────────────────
-
 fn prop<'a>(record: &'a fastrace::collector::SpanRecord, key: &str) -> Option<&'a str> {
     record
         .properties
@@ -245,8 +221,6 @@ fn event_has(span: &fastrace::collector::SpanRecord, name: &str, key: &str, valu
     })
 }
 
-/// r1462：provider tracing 激活时原始协议事件与映射后 XyChunk 变体
-/// 在同一 fastrace 请求 span 上成对。
 #[then("同一 llm.request span 上同时记录 raw 与 mapped 事件")]
 pub(crate) fn t_c2830_raw_mapped(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();
@@ -268,10 +242,6 @@ pub(crate) fn t_c2830_raw_mapped(otel_bdd: &OtelBdd) {
     );
 }
 
-/// r1473：observation_input 优先来自适配器 HTTP 前捕获的请求体。
-/// Anthropic 流的 raw 事件名（message_start 等）不在 legacy 请求体事件名
-/// （response.json / chat.completion.json / message.json）之列，因此该
-/// input 只可能来自 capture_request_input——断言即诚实。
 #[then("llm.request 携带来自适配器 HTTP 前捕获的观测输入")]
 pub(crate) fn t_c2830_input(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();
@@ -284,7 +254,6 @@ pub(crate) fn t_c2830_input(otel_bdd: &OtelBdd) {
     );
 }
 
-/// r1474：未见 Done 提前结束 → ERROR/aborted、按档 flush、不伪造 usage。
 #[then("llm.request 以 ERROR/aborted 收口并按档 flush 输入输出且不伪造 usage")]
 pub(crate) fn t_c2830_abort(otel_bdd: &OtelBdd) {
     let records = otel_bdd.records();

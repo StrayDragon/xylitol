@@ -1,29 +1,3 @@
-//! Shared application bootstrap — the single assembly path from CLI args to a
-//! constructed [`xylitol_runtime::agent::runtime::AgentRuntime`], reused by the print / tui / server surfaces.
-//!
-//! This module is the seam that prevents assembly drift across surfaces: every
-//! surface that needs a ready-to-run agent calls [`bootstrap`]; none inlines its
-//! own config-load / registry-build / resource-discovery logic (spec la20).
-//!
-//! What lives here vs in [`crate::composition`]:
-//! - `composition::build_agent` injects ports into an agent builder (the
-//!   innermost wiring step).
-//! - `bootstrap` runs everything *before* `build_agent`: config load →
-//!   ModelRegistry build → trust resolution → resource discovery
-//!   resource discovery (context_files/system_prompt/append/skills) → compaction settings →
-//!   permission → `build_agent` → model select.
-//!
-//! Surfaces that need the *resolved ingredients* without constructing an agent
-//! (e.g. `--list-models`, which only needs the registry) call
-//! `resolve_assembly` directly; surfaces that need a ready-to-run agent call
-//! [`bootstrap`].
-//!
-//! Layering note: this module emits diagnostics only via the returned
-//! [`ResolvedAssembly::warnings`] list (structured strings). It MUST NOT depend
-//! on any surface's presentation module (e.g. `app::cli::provider_guidance`) —
-//! surfaces decide how to render warnings. This keeps `app::core` free of
-//! reverse dependencies on surfaces.
-
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -36,8 +10,6 @@ use xylitol_plugin_sdk::model::XyModelMeta;
 use xylitol_runtime::agent::ModelRegistry;
 use xylitol_runtime::agent::model::resolver;
 
-/// Process-env getter matching [`xylitol_official_plugin_config::paths::ConfigPaths::discover`]:
-/// real `std::env`, with `HOME` falling back to `dirs::home_dir` when unset.
 fn process_get_env(k: &str) -> Option<String> {
     if let Ok(v) = std::env::var(k) {
         return Some(v);
@@ -48,8 +20,6 @@ fn process_get_env(k: &str) -> Option<String> {
     None
 }
 
-/// `~/.xylitol` from injectable `HOME`, with `dirs::home_dir` fallback (same as
-/// `SessionManager::default_dir` / trust / agent dir defaults — without calling them).
 fn xylitol_home_dir(get_env: &impl Fn(&str) -> Option<String>) -> PathBuf {
     get_env("HOME")
         .filter(|s| !s.is_empty())
@@ -59,9 +29,6 @@ fn xylitol_home_dir(get_env: &impl Fn(&str) -> Option<String>) -> PathBuf {
         .join(".xylitol")
 }
 
-/// Sync bootstrap bridging into the async model/thinking mutators (their
-/// session persistence is awaited; same pattern as the remote driver's
-/// `block_on`).
 fn block_on<T>(fut: impl std::future::Future<Output = T>) -> T {
     match tokio::runtime::Handle::try_current() {
         Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut)),
@@ -73,92 +40,43 @@ fn block_on<T>(fut: impl std::future::Future<Output = T>) -> T {
     }
 }
 
-/// Inputs to [`bootstrap`] / `resolve_assembly`, mirroring the CLI flags that
-/// drive assembly.
-///
-/// Fields are the minimal set needed to reproduce the print-mode assembly path;
-/// they do NOT include presentation concerns (prompt text, mode flags) which
-/// stay in the surface.
 pub struct BootstrapInput {
-    /// `--config` path override.
     pub config_path: Option<std::path::PathBuf>,
-    /// `--session` restore id.
     pub session: Option<String>,
-    /// `--model` explicit selection (overrides resolved default profile).
     pub model: Option<String>,
-    /// `--trust` / `--no-trust` override; `None` = use trust-store resolution.
     pub trust_override: Option<bool>,
-    /// Whether to run interactively (affects trust UI callback). print/server
-    /// pass `false`; product TUI passes `true` so Ask can prompt on stdio.
     pub interactive: bool,
-    /// Diagnostic label identifying the calling surface (e.g. "print", "server",
-    /// "tui", "list-models"). Appears in tracing spans so log readers can tell
-    /// which surface triggered an assembly. Not used for control flow.
     pub caller: &'static str,
-    /// Preview / designing: sessions stay in-process. Never user JSONL.
     pub ephemeral_sessions: bool,
 }
 
-/// Structured diagnostics produced during assembly, surfaced to the caller for
-/// rendering. Each variant maps to a user-visible message; surfaces decide the
-/// exact wording (e.g. cli's `provider_guidance` enriches `NoModelsAvailable`).
 #[derive(Debug)]
 pub enum BootstrapWarning {
-    /// A single model entry had a non-fatal config issue (skipped that entry).
     ModelEntrySkipped(String),
-    /// A provider entry had no resolvable API key.
     NoApiKey { provider: String },
-    /// The project CWD is not trusted; `.xylitol/` resources were skipped.
     ProjectNotTrusted { reason: String },
-    /// Restoring an existing session.
     RestoringSession { session: String, path: String },
-    /// Model id did not resolve cleanly (fuzzy/partial match with a warning).
     ModelResolutionWarning(String),
-    /// Model id failed to resolve entirely; no model pre-selected.
     ModelResolutionFailed(String),
 }
 
-/// Product display when no model is selected (cli-entry ce18).
 pub const UNSET_MODEL_DISPLAY: &str = "NOT-SET";
 
-/// A fully-assembled agent plus the resolved side-products surfaces need.
-///
-/// Assemble the runtime via [`Self::into_runtime`] / [`Self::into_driver`];
-/// internal fields are not part of the embed seam.
 pub struct BootstrappedAgent {
-    /// The constructed, ready-to-run agent (crate-internal; embedders go
-    /// through [`Self::into_runtime`] / [`Self::into_driver`]).
     pub(crate) agent: xylitol_runtime::agent::AgentRuntime,
-    /// Session id (restored or freshly generated).
     pub session_id: String,
-    /// Diagnostics produced during assembly (surface renders these).
     pub warnings: Vec<BootstrapWarning>,
-    /// Session store handle, the same instance the agent holds internally.
-    /// Surfaces construct an [`crate::driver::XyInProcessDriver`] from this + the agent so
-    /// XyDriver session commands (SwitchSession/GetMessages) operate without
-    /// reaching into agent internals.
     pub store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
-    /// MCP servers from loaded config (`None` / empty = disabled, zero-cost).
     pub mcp_servers: Option<Vec<crate::mcp_spec::McpServerSpec>>,
 }
 
-/// XyDriver-ready result of [`BootstrappedAgent::into_runtime`].
-///
-/// This is the preferred embed / multi-client handoff: no need to name
-/// `AgentRuntime` at the call site.
 pub struct BootstrappedRuntime {
     pub driver: crate::driver::XyInProcessDriver,
     pub session_id: String,
     pub warnings: Vec<BootstrapWarning>,
-    /// MCP servers for [`crate::composition::McpSession::reload`].
     pub mcp_servers: Option<Vec<crate::mcp_spec::McpServerSpec>>,
 }
 
-/// Run a short async bootstrap operation from synchronous assembly code.
-///
-/// Tokio permits `block_in_place` only on a multi-thread runtime. Current-thread
-/// callers instead use a one-shot worker runtime so bootstrap remains usable in
-/// current-thread tests and embedded callers.
 fn block_on_bootstrap_task<T>(
     operation: &'static str,
     task: impl Future<Output = T> + Send + 'static,
@@ -241,7 +159,6 @@ async fn load_restored_session_metadata(
 }
 
 impl BootstrappedAgent {
-    /// Consume into an [`crate::driver::XyInProcessDriver`] plus side-products (preferred path).
     pub fn into_runtime(mut self) -> BootstrappedRuntime {
         let restored_session = block_on_bootstrap_task(
             "restore session metadata",
@@ -252,14 +169,9 @@ impl BootstrappedAgent {
             .bind_session(self.session_id.clone())
             .expect("bootstrap bind_session");
         if let Some(level) = restored_session.thinking_level {
-            // Session restoration is observational: retain the persisted literal
-            // without validating it against today's support set or writing a
-            // compensating history entry.
             self.agent.restore_thinking_level(level);
         }
         if let Some(name) = restored_session.session_name {
-            // c2843 Phase B: restore is an explicit writer event — set the runtime
-            // owner fact and keep the default-identity slot in sync.
             self.agent.set_session_name_fact(Some(name.clone()));
             xylitol_official_plugin_provider_openai::provider::set_obs_session_name(Some(
                 name.as_str(),
@@ -280,57 +192,35 @@ impl BootstrappedAgent {
         }
     }
 
-    /// Consume into an [`crate::driver::XyInProcessDriver`] only (drops warnings / session id /
-    /// mcp config). Prefer [`Self::into_runtime`] when those are needed.
     pub fn into_driver(self) -> crate::driver::XyInProcessDriver {
         self.into_runtime().driver
     }
 }
 
-/// Resolved assembly inputs — the *ingredients* ready for `build_agent`, prior
-/// to construction. Returned by `resolve_assembly` and consumed by callers that need ingredients without building (e.g. --list-models, which
-/// rebuilds the agent per command) and by [`bootstrap`] (which builds once).
-///
-/// Exposing this lets ingredient-only callers share resolution without forcing a full build via
-/// the single-built-agent model.
 pub struct ResolvedAssembly {
     pub model_registry: ModelRegistry,
     pub system_prompt: Option<String>,
     pub context_files: Vec<(String, String)>,
     pub append_system_prompt: Vec<String>,
-    /// Skills discovered under Trust semantics (c1085).
     pub skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>,
     pub cwd: String,
     pub compaction_settings: Option<xylitol_runtime::agent::compaction::CompactionSettings>,
     pub permission: Option<Arc<dyn xylitol_plugin_sdk::XyPermission>>,
     pub steering_mode: xylitol_runtime::agent::QueueMode,
     pub follow_up_mode: xylitol_runtime::agent::QueueMode,
-    /// Resolved default profile's model id, if any (for startup model selection
-    /// when `BootstrapInput::model` is absent).
     pub default_profile_model: Option<String>,
-    /// Resolved session id (restored or freshly generated).
     pub session_id: String,
-    /// Whether the requested `--session` already exists on disk.
     pub session_file_exists: bool,
-    /// Diagnostics produced during resolution.
     pub warnings: Vec<BootstrapWarning>,
-    /// MCP servers from YAML (`None` / empty = not enabled).
     pub mcp_servers: Option<Vec<crate::mcp_spec::McpServerSpec>>,
-    /// Three-tier script hook configuration.
     pub hooks_config: xylitol_official_plugin_config::types::HooksConfig,
-    /// Settings `defaultThinkingLevel` (camelCase JSON), if any.
     pub default_thinking_level: Option<String>,
-    /// Settings `thinkingBudgets` (camelCase JSON), if any.
     pub thinking_budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets>,
-    /// `AppConfig.tool_batch.mode` (c1545).
     pub batch_mode: xylitol_plugin_sdk::XyBatchMode,
-    /// `AppConfig.session.max_turns` when set (c1620).
     pub max_turns: Option<u32>,
 }
 
 impl ResolvedAssembly {
-    /// Fold into [`BuildAgentOptions`] for `composition::build_agent`.
-    /// Drops the side-products (warnings) the builder does not consume.
     pub fn into_build_options(self) -> BuildAgentOptions {
         BuildAgentOptions {
             model_registry: self.model_registry,
@@ -350,18 +240,12 @@ impl ResolvedAssembly {
     }
 }
 
-/// Error when assembly cannot proceed (no models available, build failure).
 #[derive(Debug)]
 pub enum BootstrapError {
-    /// YAML / template / IO config load failed (fail-closed; ce17).
     ConfigLoadFailed(String),
-    /// Config YAML layers loaded but contributed zero registerable models (ce2).
     ConfigLoadedZeroModels,
-    /// No models could be loaded from config or environment.
     NoModelsAvailable,
-    /// `build_agent` returned an error.
     BuildFailed(String),
-    /// Rutis kernel boot / self-check failed.
     KernelFailed(String),
 }
 
@@ -383,11 +267,6 @@ impl std::fmt::Display for BootstrapError {
 
 impl std::error::Error for BootstrapError {}
 
-/// Resolve all assembly inputs (config → registry → trust → resources →
-/// compaction → permission) without constructing the agent.
-///
-/// Shared by [`bootstrap`] (build-once surfaces) and ingredient-only callers (e.g. --list-models).
-/// Surfaces that need a single agent should call [`bootstrap`] directly.
 pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, BootstrapError> {
     resolve_assembly_with(
         input,
@@ -396,9 +275,6 @@ pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, Boot
     )
 }
 
-/// Injectable [`resolve_assembly`] for tests: config discovery, `~/.xylitol`
-/// paths, and trust/resource cwd come from `get_env` / `cwd` instead of the
-/// process environment.
 pub fn resolve_assembly_with(
     input: &BootstrapInput,
     get_env: impl Fn(&str) -> Option<String>,
@@ -407,7 +283,6 @@ pub fn resolve_assembly_with(
     let cli_config_path = input.config_path.as_deref();
     let mut warnings: Vec<BootstrapWarning> = Vec::new();
 
-    // ── Step 1: load YAML config ──────────────────────────────────
     let loaded = match load_app_config_detailed_with(cli_config_path, &get_env, cwd) {
         Ok(loaded) => loaded,
         Err(e) => return Err(BootstrapError::ConfigLoadFailed(e.to_string())),
@@ -416,13 +291,11 @@ pub fn resolve_assembly_with(
     let app_config = Some(loaded.config);
     timing::time("config.load");
 
-    // ── Step 2: build ModelRegistry ───────────────────────────────
     let mut model_registry = ModelRegistry::new();
 
     if let Some(ref cfg) = app_config {
         let mut missing_key_providers = std::collections::BTreeSet::new();
         for (alias, entry) in &cfg.model.models {
-            // m17: explicit YAML aliases always register; missing key → empty (no kind-env fallback).
             let api_key = entry.normalized_api_key();
             if api_key.is_empty() {
                 missing_key_providers.insert(entry.provider.provider_name().to_string());
@@ -442,19 +315,16 @@ pub fn resolve_assembly_with(
         }
     }
 
-    // ce2: YAML present but zero explicit model aliases → hard fail (no env gpt-4o).
     if from_yaml_layers && model_registry.is_empty() {
         return Err(BootstrapError::ConfigLoadedZeroModels);
     }
 
-    // m12: never invent registry entries from OPENAI_/ANTHROPIC_ env alone.
     timing::time("model_registry.load");
 
     if model_registry.is_empty() {
         return Err(BootstrapError::NoModelsAvailable);
     }
 
-    // ── Session dir + restore info ────────────────────────────────
     let agent_home = xylitol_home_dir(&get_env);
     let sessions_dir = agent_home.join("sessions");
     let session_mgr = if input.ephemeral_sessions {
@@ -477,18 +347,13 @@ pub fn resolve_assembly_with(
     }
     timing::time("session.restore");
 
-    // ── Step 3: resolve default profile (drives system_prompt/model) ──
     let resolved_profile = app_config
         .as_ref()
         .and_then(|cfg| cfg.resolve_default_profile().ok());
     let config_system_prompt = resolved_profile
         .as_ref()
         .and_then(|p| p.system_prompt.clone());
-    let default_profile_model = resolved_profile
-        .as_ref()
-        // Registry alias (not the raw vendor id): consumers select by registry
-        // identity (`registry.find(alias)`); raw names fail when alias ≠ model.
-        .map(|p| p.model_id.clone());
+    let default_profile_model = resolved_profile.as_ref().map(|p| p.model_id.clone());
 
     let cwd_path = cwd
         .map(Path::to_path_buf)
@@ -496,7 +361,6 @@ pub fn resolve_assembly_with(
         .unwrap_or_default();
     let cwd = cwd_path.to_string_lossy().to_string();
 
-    // ── Step 3b: resolve trust + discover resources ───────────────
     let trust_manager = xylitol_runtime::trust::TrustManager::new(&agent_home);
     let trust_cwd = cwd.clone();
     let trust_resolution = xylitol_runtime::trust::resolve_project_trusted(
@@ -563,7 +427,6 @@ pub fn resolve_assembly_with(
         );
     }
 
-    // ── Step 3b2: compaction + queue settings ─────────────────────
     let (
         compaction_settings,
         steering_mode,
@@ -604,7 +467,6 @@ pub fn resolve_assembly_with(
         )
     };
 
-    // ── Step 3c: permission engine ────────────────────────────────
     let permission_engine = app_config.as_ref().and_then(|cfg| {
         cfg.security
             .permission
@@ -613,7 +475,6 @@ pub fn resolve_assembly_with(
             .map(|sc| sc.to_permission())
     });
 
-    // ── Step 3c1: merge system-prompt sources ─────────────────────
     let system_prompt = loader_system_prompt.or(config_system_prompt);
 
     let session_id = input
@@ -664,10 +525,6 @@ pub fn resolve_assembly_with(
     })
 }
 
-/// Bootstrap a fully-assembled agent: resolve inputs, build once, select model.
-///
-/// Used by print / tui / server — surfaces that hold a single agent for their
-/// lifetime. Ingredient-only paths (e.g. --list-models) use `resolve_assembly` directly.
 pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapError> {
     bootstrap_with(
         input,
@@ -676,8 +533,6 @@ pub fn bootstrap(input: BootstrapInput) -> Result<BootstrappedAgent, BootstrapEr
     )
 }
 
-/// Injectable [`bootstrap`] for tests (same `get_env` / `cwd` semantics as
-/// [`resolve_assembly_with`]).
 pub fn bootstrap_with(
     input: BootstrapInput,
     get_env: impl Fn(&str) -> Option<String>,
@@ -722,15 +577,9 @@ pub fn bootstrap_with(
         }
     }
 
-    // Settings are only a first-session preference. A resumed session restores
-    // its exact persisted level later, and model switching always uses the
-    // declared list's final item.
     if !session_file_exists {
         agent.apply_default_thinking_level(default_thinking_level.as_deref());
     }
-    // A `model:thinkingLevel` request is more specific than the Settings
-    // first-session preference. Unsupported values leave the selected model
-    // default unchanged.
     if let Some(level) = requested_thinking_level
         && let Err(error) = block_on(agent.set_thinking_level(level.clone()))
     {
@@ -738,7 +587,6 @@ pub fn bootstrap_with(
     }
     agent.set_thinking_budgets(thinking_budgets);
 
-    // Reuse the same session store injected into the agent at composition time.
     let store = agent.session_store();
 
     Ok(BootstrappedAgent {
@@ -750,16 +598,12 @@ pub fn bootstrap_with(
     })
 }
 
-/// Report from [`reload_skills`] (c1085).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SkillsReloadReport {
     pub names: Vec<String>,
     pub count: usize,
 }
 
-/// Re-discover skills from disk and apply to `driver` (c1085).
-///
-/// Trust semantics match bootstrap. Does **not** mutate session history.
 pub fn reload_skills(
     driver: &mut crate::driver::XyInProcessDriver,
     cwd: &std::path::Path,
@@ -785,7 +629,6 @@ pub fn reload_skills(
     report
 }
 
-/// Report from [`reload_prompt_context`] (c1100).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromptContextReloadReport {
     pub context_file_count: usize,
@@ -793,13 +636,6 @@ pub struct PromptContextReloadReport {
     pub append_count: usize,
 }
 
-/// Re-discover AGENTS/SYSTEM/APPEND from disk and apply to `driver` (c1100).
-///
-/// Trust semantics match bootstrap: when `project_trusted` is false, project CWD
-/// is replaced with a temp path so project-local resources are skipped.
-/// `config_system_prompt` is the profile fallback when no SYSTEM.md is found.
-///
-/// Does **not** mutate session history / transcript.
 pub fn reload_prompt_context(
     driver: &mut crate::driver::XyInProcessDriver,
     cwd: &std::path::Path,

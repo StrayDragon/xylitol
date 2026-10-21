@@ -1,5 +1,3 @@
-//! Cluster / envelope summary lines (att24 / att27).
-
 use time::OffsetDateTime;
 
 use crate::bridge::{UiEntry, UiModel};
@@ -11,37 +9,25 @@ use super::atom::{ActivityAtom, ExploreKind, STREAMING_THINK_ID, activity_atom};
 use super::segment::SegmentLevel;
 use super::segment::{ActivityCluster, cluster_middle_indices};
 
-/// Observable activity for one cluster header (att24).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ActivityCounts {
-    /// Unique edit/write paths (first-seen order). Pathless edits use a placeholder.
     pub edit_paths: Vec<String>,
-    /// Unique read/ls/search paths.
     pub explore_paths: Vec<String>,
-    /// Search ran with no usable path — still qualifies Explored, no fake N.
     pub search_no_path: bool,
-    /// Explore invocations by category (c2510/att35 head suffix): invocation
-    /// count, not the deduped-path count of `explore_paths`. Pathless
-    /// searches count here too.
     pub read_calls: u32,
     pub search_calls: u32,
     pub commands: u32,
     pub thinking: u32,
-    /// MCP / unknown / todo_* display names (first-seen, unique; N=1 header).
     pub used_names: Vec<String>,
-    /// Invocation count of those tools (Ran-style; N>1 header). Checklist row is not a call.
     pub used_calls: u32,
     pub asks: u32,
     pub compaction: u32,
-    /// Reliable +/- from Diff / edit display_diff only.
     pub diff_plus: Option<u32>,
     pub diff_minus: Option<u32>,
-    /// In-flight thinking burst id ([`STREAMING_THINK_ID`]), not a global stream flag.
     pub live_think_id: Option<String>,
 }
 
 impl ActivityCounts {
-    /// Compaction-only: no cluster header (att23); paint the compaction block itself.
     pub fn omits_cluster_header(&self) -> bool {
         self.compaction > 0
             && self.edit_paths.is_empty()
@@ -66,10 +52,6 @@ impl ActivityCounts {
             && self.compaction == 0
     }
 
-    /// Merge an in-flight thinking burst into this cluster only.
-    ///
-    /// Callers MUST pass this only for the open live cluster. Identity is
-    /// [`STREAMING_THINK_ID`], not `UiModel.streaming_thinking`.
     pub fn with_live_think(mut self, id: impl Into<String>) -> Self {
         if self.thinking == 0 {
             self.thinking = 1;
@@ -79,7 +61,6 @@ impl ActivityCounts {
     }
 }
 
-/// Counts for one cluster only (open-cluster -2 vs frozen -3).
 pub fn count_cluster(entries: &[UiEntry], cluster: &ActivityCluster) -> ActivityCounts {
     count_middles(entries, &cluster_middle_indices(entries, cluster))
 }
@@ -88,15 +69,10 @@ pub fn cluster_omits_header(entries: &[UiEntry], cluster: &ActivityCluster) -> b
     count_cluster(entries, cluster).omits_cluster_header()
 }
 
-/// Thought-only cluster: fold into the Thinking/Thought header, no second L1 row.
 pub fn cluster_is_thought_only(entries: &[UiEntry], cluster: &ActivityCluster) -> bool {
     count_cluster(entries, cluster).is_thought_only()
 }
 
-/// Which live thinking burst this cluster owns, if any.
-///
-/// Keys off [`UiModel::streaming_think_id`], never `streaming_thinking` emptiness.
-/// Unflushed bursts use [`STREAMING_THINK_ID`] and only attach to the open live cluster.
 pub fn live_think_id_for_cluster(
     model: &UiModel,
     cluster: &ActivityCluster,
@@ -116,7 +92,6 @@ pub fn live_think_id_for_cluster(
     None
 }
 
-/// Counts for a live thinking stream before it is flushed to a Thinking entry.
 pub fn streaming_thought_counts() -> ActivityCounts {
     counts_from_atoms(std::iter::once(ActivityAtom::streaming_think()))
 }
@@ -194,7 +169,6 @@ fn counts_from_atoms(atoms: impl IntoIterator<Item = ActivityAtom>) -> ActivityC
     c
 }
 
-/// Shared count pluralization (files / tools / commands / reads / searches).
 fn plural_word<'a>(n: u32, single: &'a str, many: &'a str) -> &'a str {
     if n == 1 { single } else { many }
 }
@@ -211,8 +185,6 @@ fn command_word(n: u32) -> &'static str {
     plural_word(n, "command", "commands")
 }
 
-/// `· 5 reads · 2 searches` body (without the leading separator); empty when
-/// the cluster has no explore invocations.
 fn explore_calls_clause(counts: &ActivityCounts) -> String {
     let mut parts = Vec::new();
     if counts.read_calls > 0 {
@@ -233,8 +205,6 @@ fn explore_calls_clause(counts: &ActivityCounts) -> String {
 }
 
 fn file_clause(verb: &str, paths: &[String]) -> String {
-    // c2540: count-only — basenames echoed user content on a metrics row;
-    // concrete files live in the cluster's expandable children.
     let n = paths.len() as u32;
     format!("{verb} {n} {}", files_word(n))
 }
@@ -244,7 +214,6 @@ pub fn format_l2_body(counts: &ActivityCounts) -> String {
     format_cluster_body(counts, false)
 }
 
-/// Open-cluster progressive vs sealed (att24).
 pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String {
     if counts.omits_cluster_header() {
         return String::new();
@@ -264,8 +233,6 @@ pub fn format_cluster_body(counts: &ActivityCounts, progressive: bool) -> String
         } else {
             explore_verb.to_string()
         };
-        // c2510/att35: invocation-category counts after the file clause —
-        // real calls, not another deduped-path figure.
         let calls = explore_calls_clause(counts);
         if !calls.is_empty() {
             clause.push_str(" · ");
@@ -316,8 +283,6 @@ pub fn format_duration(start: OffsetDateTime, end: OffsetDateTime) -> Option<Str
     Some(format_elapsed_secs(secs as u64))
 }
 
-/// Whole-second elapsed label (`17s`, `2m`, `1h 3m`). `0` → `"0s"` for callers
-/// that already decided to show a number; paint omits Thought duration at 0.
 pub fn format_elapsed_secs(secs: u64) -> String {
     if secs < 60 {
         format!("{secs}s")
@@ -364,7 +329,6 @@ fn pretty_chord(raw: &str) -> String {
         .join("+")
 }
 
-/// Full-chord parenthetical for a product binding id (att27).
 pub fn binding_chord_hint(binding_id: &'static str) -> String {
     crate::keybindings::ensure_product_catalog();
     let raw: Option<String> = with_keybindings(|kb| kb.get_keys(binding_id).into_iter().next());
@@ -374,7 +338,6 @@ pub fn binding_chord_hint(binding_id: &'static str) -> String {
     }
 }
 
-/// Envelope header (`Worked for`). Stays visible when expanded (▾) so it can fold again.
 pub fn format_envelope_line(glyphs: GlyphSet, duration: Option<&str>, expanded: bool) -> String {
     let marker = if expanded {
         glyphs.unfold()
@@ -393,10 +356,6 @@ pub fn format_envelope_line(glyphs: GlyphSet, duration: Option<&str>, expanded: 
     format!("{marker} {body}  {hint}")
 }
 
-/// Paint one envelope summary row (marker + body + chord hint).
-///
-/// Cluster heads use [`format_cluster_header`]; this is envelope-only.
-/// MUST NOT write `(Alt+E)`.
 #[cfg(test)]
 pub fn format_summary_line(
     level: SegmentLevel,
@@ -407,8 +366,6 @@ pub fn format_summary_line(
     format_envelope_line(glyphs, duration, !matches!(level, SegmentLevel::L3))
 }
 
-/// Cluster header (L2/L0). `progressive` is the live open cluster.
-/// Live Thinking vs Thought is bound to [`ActivityCounts::live_think_id`].
 pub fn format_cluster_header(
     glyphs: GlyphSet,
     counts: &ActivityCounts,
@@ -494,7 +451,6 @@ mod tests {
         let s = format_l2_body(&c);
         assert!(s.contains("Explored 1 file · 2 reads · 1 search"), "{s}");
         assert!(!s.contains("Explored 2"), "{s}");
-        // c2510/att35: invocation counts are real, no fake file figure.
         assert!(s.contains("· 2 reads · 1 search"), "{s}");
         let live = format_cluster_body(&c, true);
         assert!(
@@ -506,7 +462,6 @@ mod tests {
 
     #[test]
     fn explore_head_suffix_single_category_and_counts() {
-        // three reads, one pathless search on top → both categories listed
         let entries = vec![
             tool("read", Some("a.rs")),
             tool("read", Some("b.rs")),
@@ -518,20 +473,17 @@ mod tests {
         let s = format_l2_body(&c);
         assert!(s.contains("Explored 3 files · 3 reads · 2 searches"), "{s}");
 
-        // single category → only that category listed, singular form kept
         let reads_only = vec![tool("read", Some("a.rs"))];
         let c = count_middles(&reads_only, &[0]);
         let s = format_l2_body(&c);
         assert!(s.contains("Explored 1 file · 1 read"), "{s}");
         assert!(!s.contains("search"), "{s}");
 
-        // pathless searches only → bare verb carries the search count
         let searches_only = vec![tool("grep", None), tool("grep", None)];
         let c = count_middles(&searches_only, &[0, 1]);
         let s = format_l2_body(&c);
         assert_eq!(s, "Explored · 2 searches");
 
-        // Edited head takes no explore suffix (att24 file-layer mutex)
         let mixed = vec![tool("read", Some("a.rs")), tool("edit", Some("b.rs"))];
         let c = count_middles(&mixed, &[0, 1]);
         let s = format_l2_body(&c);

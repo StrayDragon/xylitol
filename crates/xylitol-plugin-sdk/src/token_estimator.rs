@@ -1,18 +1,10 @@
-//! Token estimation — multi-source accounting via xylitol-official-plugin-provider-openai (c1030 / c1210).
-
 use crate::accounting::{EstimateContextOpts, estimate_context, heuristic_token_count};
 use crate::message::{AgentMessage, AgentPart, XyLlmMessage, XyStopReason, XyUsage};
 use crate::model::{ContextTokenEstimate, XyToolSchema};
 use crate::project_outbound;
 
-/// Stable identifier for the estimate algorithm recorded in compaction history.
 pub const ESTIMATOR_VERSION: &str = "context-estimate-v1";
 
-/// Fixed per-request context outside the session transcript (c25 / c16).
-///
-/// System prompt + tool schemas ride every provider call but live outside the
-/// session entries; estimates MUST fold them in on non-Api provenance so the
-/// footer / reserve gate see the real next-request size.
 #[derive(Debug, Clone, Default)]
 pub struct FixedRequestContext {
     pub system_prompt: Option<String>,
@@ -20,7 +12,6 @@ pub struct FixedRequestContext {
 }
 
 impl FixedRequestContext {
-    /// `/3` estimate of the fixed overhead (same unit as the cut walk, c8).
     pub fn overhead_tokens(&self) -> u64 {
         let mut chars: u64 = self
             .system_prompt
@@ -34,7 +25,6 @@ impl FixedRequestContext {
         heuristic_token_count(chars)
     }
 
-    /// Estimate-only pseudo rows folding the fixed context into message accounting.
     fn pseudo_rows(&self) -> Vec<XyLlmMessage> {
         fn user_row(text: String) -> XyLlmMessage {
             XyLlmMessage::UserMessage {
@@ -61,26 +51,15 @@ impl FixedRequestContext {
     }
 }
 
-/// Options for [`estimate_context_tokens_with`].
 #[derive(Debug, Clone, Default)]
 pub struct EstimateOpts {
     pub model_id: Option<String>,
-    /// Fixed per-request overhead folded in when no Api anchor exists (c25).
-    /// Api provenance MUST NOT receive this — usage.input already covers the
-    /// full request; folding it in would double-count.
     pub fixed_context: Option<FixedRequestContext>,
-    /// When true, emit a `token.estimate` fastrace span (c1860). Default **false** —
-    /// settlement paths call `emit_token_estimate_obs` explicitly so callers do not
-    /// each create duplicate OTel observations.
     pub emit_obs: bool,
-    /// Optional `agent.turn` parent for `token.estimate` nesting.
     pub obs_parent: Option<fastrace::prelude::SpanContext>,
-    /// Obs session snapshot for the `token.estimate` span (otel24 / c2610);
-    /// empty default stamps no session attributes (quiet estimates never emit).
     pub obs_session: crate::ObsSessionContext,
 }
 
-/// Build a [`ContextTokenEstimate`] from persisted session entries (footer + compact).
 pub fn estimate_from_session_entries(
     entries: &[crate::session::SessionEntry],
     opts: &EstimateOpts,
@@ -121,9 +100,6 @@ pub fn estimate_from_session_entries(
         }
     }
 
-    // c25: a usage anchor not newer than the latest compaction describes the
-    // pre-compact request — drop it so the post-cut estimate (placeholder)
-    // falls back to per-message accounting instead of overstating.
     if usage_anchor_ms > 0 && usage_anchor_ms <= latest_compaction_ms {
         last_usage = None;
         stop_reason = None;
@@ -132,7 +108,6 @@ pub fn estimate_from_session_entries(
     estimate_context_tokens_with(&messages, last_usage.as_ref(), stop_reason, opts, &bar)
 }
 
-/// Estimate context tokens via accounting priority: Api → Heuristic.
 pub fn estimate_context_tokens_with(
     messages: &[AgentMessage],
     last_usage: Option<&XyUsage>,
@@ -140,11 +115,7 @@ pub fn estimate_context_tokens_with(
     opts: &EstimateOpts,
     bar: &crate::AgentStatusBar,
 ) -> ContextTokenEstimate {
-    // History fold + status bar (r1124). Compact summarizer does not
-    // call this path; it uses `project_for_llm` only.
     let mut bridge_msgs: Vec<XyLlmMessage> = project_outbound(messages, bar);
-    // c25: fold fixed request overhead (system prompt + tools) only when no Api
-    // anchor carries it already.
     if last_usage.is_none()
         && let Some(fixed) = &opts.fixed_context
     {
@@ -178,10 +149,6 @@ pub fn estimate_context_tokens_with(
     result
 }
 
-/// Record which estimate backend won (fastrace), gated like provider-trace.
-///
-/// Prefer [`super::settlement::settle_from_session_entries`] so compact + footer
-/// share one emit; do not call this from every estimate caller.
 pub fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) {
     let backend = est.provenance.as_str();
     if !crate::provider_trace_active() {
@@ -206,7 +173,6 @@ pub fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) 
     props.extend(crate::xylitol_obs_lane_properties(
         crate::XYLITOL_OBS_LANE_LLM,
     ));
-    // Prefer explicit agent.turn parent; otherwise independent root (same session attrs).
     let parent = opts.obs_parent.unwrap_or_else(SpanContext::random);
     let span = Span::root("token.estimate", parent).with_properties(|| props);
     span.add_event(Event::new("token.estimate").with_properties(|| {
@@ -216,6 +182,5 @@ pub fn emit_token_estimate_obs(est: &ContextTokenEstimate, opts: &EstimateOpts) 
             ("tokens", est.tokens.to_string()),
         ]
     }));
-    // Drop span → flush via reporter.
     drop(span);
 }

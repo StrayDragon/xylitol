@@ -1,5 +1,3 @@
-//! CompletionSource registry wiring through Editor (no slash/`@` hardcoding).
-
 mod support;
 
 use support::TuiTestHarness;
@@ -15,8 +13,6 @@ use xylitol_tui::components::editor::{Editor, EditorOptions, EditorTheme};
 use xylitol_tui::extract_dollar_prefix;
 use xylitol_tui::utils::visible_width;
 
-/// Test-only `$` trigger — proves a third source can register without product semantics.
-/// Probe/apply mirror `@`: inline `$skill` anywhere before the cursor.
 struct DollarStubSource {
     skills: Vec<(&'static str, &'static str)>,
 }
@@ -147,7 +143,6 @@ fn empty_registry_ignores_slash() {
     h.keys("/help");
     h.render_result().expect("slash with empty registry");
     let text = h.tui.terminal.viewport().join("\n");
-    // Editor still contains typed text; no SelectList description chrome.
     assert!(
         text.contains("/help"),
         "typed slash text should remain; got:\n{text}"
@@ -178,7 +173,6 @@ fn third_dollar_stub_source_registers_and_opens() {
     .focus(Some(0));
 
     h.render_result().expect("render");
-    // Inline like `@`: mid-line `$` must open the stub source.
     h.keys("use $");
     h.render_result().expect("inline $ stub popup");
     h.assert_text_contains("demo");
@@ -210,8 +204,6 @@ fn dollar_stub_opens_mid_line_without_leading_dollar() {
 
 #[test]
 fn slash_popup_keeps_fixed_height_while_filtering() {
-    // Many slash commands → filter down to one; editor paint height must stay
-    // reserved so ApplicationOwned transcript dock does not jump (c2071 human).
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use xylitol_tui::Component;
     use xylitol_tui::InputEvent;

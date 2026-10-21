@@ -1,8 +1,3 @@
-//! Host occupancy: session slots, linger, single writer, mux journal.
-//!
-//! Assembly (official plugins / MCP) stays in the composition root and is
-//! injected via [`OccupancyFactory`].
-
 mod engine;
 mod envelope;
 mod host;

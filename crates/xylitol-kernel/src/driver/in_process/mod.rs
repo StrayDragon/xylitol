@@ -1,5 +1,3 @@
-//! Product in-process driver: [`xylitol_runtime::XyInProcessDriver`] plus official tools.
-
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::XySessionStore;
@@ -19,7 +17,6 @@ pub use xylitol_runtime::driver::{
     LoadedResourcesSnapshot, ProjectTrustMode, relay_bash_chunks, utf8_emit_len,
 };
 
-/// Assemble the product in-process driver (official tools / todo / slash / reload).
 pub fn assemble_driver(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> RuntimeDriver {
     assemble_driver_with_ops(
         agent,
@@ -56,7 +53,6 @@ pub fn assemble_driver_with_ops(
     inner
 }
 
-/// Product Ask tool: remember the gateway and rebuild the official tool set.
 pub fn install_product_ask_tool(
     driver: &mut RuntimeDriver,
     gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>,

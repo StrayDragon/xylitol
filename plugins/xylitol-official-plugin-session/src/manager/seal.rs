@@ -1,12 +1,9 @@
-//! Compaction seal transaction for segmented sessions.
-
 use super::SessionManager;
 use crate::sync::lock_rwlock_read;
 use crate::types::{SessionBackend, SessionEntry};
 use xylitol_plugin_sdk::error::XySessionStoreError;
 
 impl SessionManager {
-    /// Append a session entry without applying compaction-specific storage policy.
     pub async fn append_session_entry(
         &self,
         session_id: &str,
@@ -15,7 +12,6 @@ impl SessionManager {
         self.append(session_id, entry).await
     }
 
-    /// Commit a compaction entry, sealing its summarized prefix when possible.
     pub async fn commit_compaction(
         &self,
         session_id: &str,
@@ -43,8 +39,6 @@ impl SessionManager {
             return Err(super::segments::legacy_unsupported_error(session_id));
         }
         if !self.manifest_path(session_id).exists() {
-            // Compaction normally follows an assistant flush. Keep the seam
-            // robust for imported/pending sessions as well.
             self.create(session_id, Some("."), None).await?;
             if lock_rwlock_read(&self.pending_store).contains_key(session_id) {
                 self.flush_pending_to_disk(session_id).await?;
@@ -85,7 +79,6 @@ impl SessionManager {
         let cold_path = format!("segments/{generation:020}-sealed.jsonl");
         let active_path = format!("active-{generation}.jsonl");
         let mut cold_segment = Self::segment_descriptor(cold_path, generation, prefix);
-        // Sealed segments carry an immutable sidecar index for cold lookups.
         cold_segment.index_path = Some(Self::sidecar_path_for(&cold_segment.path));
         let index_path = cold_segment.index_path.clone().expect("just set");
 
@@ -99,9 +92,6 @@ impl SessionManager {
         next_manifest.active_segment = active_segment.clone();
         next_manifest.leaf_entry_id = compaction.entry_id().map(str::to_owned);
 
-        // Seal transaction (design T3): cold JSONL → sidecar → new active →
-        // manifest last. Any failure cleans up this round's orphans; the
-        // manifest remains the only commit point.
         let sealed_index = xylitol_plugin_sdk::session::SealedIndex::from_entries(prefix);
         let cold_result = self
             .write_segment_atomically(session_id, &cold_segment, prefix)
@@ -130,8 +120,6 @@ impl SessionManager {
             return Err(error);
         }
 
-        // The manifest is the commit point. The old active remains recoverable
-        // until this point and is safe to remove afterwards.
         self.remove_segment_if_present(session_id, &manifest.active_segment)
             .await;
         self.set_leaf_from_entry(session_id, &compaction);
@@ -183,12 +171,9 @@ impl SessionManager {
     }
 }
 
-/// Remove one or more session-relative paths best-effort (seal cleanup path).
 async fn remove_paths(session_id: &str, sessions_dir: &std::path::Path, paths: &[&str]) {
     let session_root = sessions_dir.join(session_id);
     for relative in paths {
-        // Mirrors the manager's resolve rule: refuse absolute / parent-dir
-        // escapes before touching the filesystem.
         let path = std::path::Path::new(relative);
         if path.is_absolute()
             || path

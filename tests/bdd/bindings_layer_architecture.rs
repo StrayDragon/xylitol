@@ -1,5 +1,3 @@
-//! layer-architecture BDD：只绑产品可观察场景（不扫模块布局）。
-
 use crate::bdd::fixtures::*;
 use crate::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};

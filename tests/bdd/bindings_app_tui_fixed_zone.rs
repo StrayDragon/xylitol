@@ -1,5 +1,3 @@
-//! app-tui-fixed-zone BDD — 待办栏下缘堆叠（r21）。
-
 use crate::bdd::steps_app_tui_fixed_zone::{FixedZoneBdd, fixed_zone_bdd};
 use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use rstest_bdd_macros::scenario;
@@ -9,8 +7,6 @@ use rstest_bdd_macros::scenario;
     name = "待办栏位于介于队列与提示条"
 )]
 fn test_todo_bar_sits_between_queue_and_toast(fixed_zone_bdd: FixedZoneBdd) {}
-
-// ── c2835 后继：attach 头卡由下行快照驱动 ────────────────────────────
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",

@@ -1,5 +1,3 @@
-//! Steps for app-tui-preview: designing CLI leaf + scene slot + designing preview inject.
-
 use crate::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
 use rstest_bdd_macros::{then, when};
 use xylitol_app_tui::TuiHostEvent as HostEvent;

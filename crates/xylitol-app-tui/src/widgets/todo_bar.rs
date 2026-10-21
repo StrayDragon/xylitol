@@ -1,5 +1,3 @@
-//! Lower-dock 待办栏: three-zone view, wrap (no ellipsis), height cap.
-
 use xylitol_tui::{fg_rgb, overflow_more_border, visible_width};
 
 use super::GlyphSet;
@@ -21,8 +19,6 @@ enum TodoBarMode {
     Columns,
 }
 
-/// One painted run. Wide mode zips three columns onto one row; emphasis stays
-/// on the doing cell, so a row is spans rather than one flag for the whole line.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct LayoutSpan {
     text: String,
@@ -333,8 +329,6 @@ fn pending_header(n: usize, open: bool, glyphs: GlyphSet) -> Option<String> {
 
 const MIN_COL: usize = 8;
 
-/// Wide-mode column inner widths (gutters excluded). Order: doing | pending | past.
-/// Slots stay equal thirds regardless of fold so chevrons and sibling wrap do not jump.
 fn column_widths(inner: usize) -> [usize; 3] {
     let equal = (inner / 3).max(MIN_COL);
     let leftover = inner.saturating_sub(equal.saturating_mul(3));

@@ -1,10 +1,3 @@
-//! Steps for c2827 specs-compact wave 2（app-tui 域为主）。
-//!
-//! r1248 teardown / r1270 min-size / r1279 单扇入环 / r1244 GetMessages 失败显错 /
-//! r1247 Resume 删除守卫 / r1253+r1258 按需重绘 / r1262 空输入 Enter /
-//! 会话树 fork·help·label·debug fixture / 输入补全族 / 超大 diff 截断 /
-//! trust Esc=deny / print 嵌入同进程。
-
 use crate::bdd::fixtures::AgentState;
 use crate::bdd::prelude::*;
 use crate::bdd::steps_app_tui_host::{HostPump, HostPumpBdd};
@@ -17,12 +10,8 @@ use xylitol_app_tui::driver::ModelInfo;
 use xylitol_app_tui::harness::{ScriptedDriver, TestTerminal, enter_event, pump_host_driver};
 use xylitol_tui::Component;
 
-// ── fixtures / helpers ───────────────────────────────────────────
-
-/// Pump + repaint probe baseline（r1253/r1258）。
 pub struct C2827Bdd {
     pub pump: RefCell<Option<HostPump>>,
-    /// given 时记录的 engine frame_count。
     pub frames: RefCell<Vec<u64>>,
 }
 
@@ -102,7 +91,6 @@ fn key_event(
     })
 }
 
-/// 单发 Esc 的延迟输入流（挂起 bang 的中止注入，r1279）。
 fn c2827_esc_stream(
     after_ms: u64,
 ) -> impl futures::Stream<Item = Result<HostEvent, xylitol_app_tui::XyDriverError>> {
@@ -147,14 +135,11 @@ fn editor_text_of(pump: &HostPump) -> String {
     root.borrow().editor_text()
 }
 
-/// 无前置挂载时自动挂载空闲泵（场景允许只有 当/那么 两步）。
 fn mount_if_needed(bdd: &HostPumpBdd) {
     if bdd.pump.borrow().is_none() {
         *bdd.pump.borrow_mut() = Some(fresh_pump());
     }
 }
-
-// ── r1248 teardown ───────────────────────────────────────────────
 
 #[then("会话请求退出且终端已恢复")]
 pub(crate) fn t_c2827_exit_restores(host_pump_bdd: &HostPumpBdd) {
@@ -165,8 +150,6 @@ pub(crate) fn t_c2827_exit_restores(host_pump_bdd: &HostPumpBdd) {
         "c2827: 退出路径应已 finish()（终端恢复）"
     );
 }
-
-// ── r1270 min-size ───────────────────────────────────────────────
 
 #[given("以小于最小尺寸的终端挂载主机泵")]
 pub(crate) fn g_c2827_tiny_terminal(host_pump_bdd: &HostPumpBdd) {
@@ -191,8 +174,6 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
         "c2827: 极端尺寸应切 TooSmall 布局"
     );
     let frames_before = pump.session.engine_frame_count();
-    // TooSmallHint 挂在 TUI 顶层：干净渲染（不 panic / 不卡死）即为本步合约；
-    // 提示文案由 mount.rs 单测钉死（TooSmallHint renders at width）。
     pump.session.render_now().expect("TooSmallHint must render");
     assert!(
         pump.session.engine_frame_count() > frames_before,
@@ -200,8 +181,6 @@ pub(crate) fn t_c2827_min_size_hint(host_pump_bdd: &HostPumpBdd) {
     );
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
 }
-
-// ── r1279 bang 单扇入环（agent 流不被饿死） ─────────────────────
 
 #[when("以主机泵提交挂起 bang 并注入事件后按 Esc")]
 pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
@@ -219,7 +198,6 @@ pub(crate) async fn w_c2827_bang_events_esc(host_pump_bdd: &HostPumpBdd) {
     drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("drain start");
-    // bang 进行中注入 agent 流事件（单扇入环 MUST 仍 poll EventStream）。
     pump.driver.push_script(vec![
         XyEvent::MessageStart {
             role: "assistant".into(),
@@ -262,8 +240,6 @@ pub(crate) fn t_c2827_bang_events_consumed(host_pump_bdd: &HostPumpBdd) {
     assert_eq!(s.aborts, 1, "c2827: 应恰中止一次");
 }
 
-// ── r1244 GetMessages 失败显错 ──────────────────────────────────
-
 #[given("驱动对消息快照返回失败")]
 pub(crate) fn g_c2827_get_messages_error(host_pump_bdd: &HostPumpBdd) {
     mount_if_needed(host_pump_bdd);
@@ -292,8 +268,6 @@ pub(crate) fn t_c2827_get_messages_surfaced(host_pump_bdd: &HostPumpBdd) {
         "c2827: GetMessages 失败必须显错而非静默，实际 entries={texts:?}"
     );
 }
-
-// ── r1247 Resume 删除守卫 ────────────────────────────────────────
 
 #[when("以主机泵注入含当前会话的可恢复列表后提交 {cmd:string}")]
 pub(crate) async fn w_c2827_resume_with_current(host_pump_bdd: &HostPumpBdd, cmd: String) {
@@ -373,8 +347,6 @@ pub(crate) fn t_c2827_delete_once(host_pump_bdd: &HostPumpBdd) {
     let calls = pump.driver.delete_session_calls();
     assert_eq!(calls.len(), 1, "c2827: 确认后应恰删除一次：{calls:?}");
 }
-
-// ── r1253 / r1258 按需重绘 ──────────────────────────────────────
 
 #[given("以主机泵在空闲态渲染基线帧")]
 pub(crate) fn g_c2827_idle_baseline(c2827_bdd: &C2827Bdd) {
@@ -488,8 +460,6 @@ pub(crate) fn t_c2827_hover_delivered_cheap(c2827_bdd: &C2827Bdd) {
     put_c(c2827_bdd, pump);
 }
 
-// ── r1262 空输入 Enter ───────────────────────────────────────────
-
 #[when("空输入按下 Enter")]
 pub(crate) async fn w_c2827_empty_enter(host_pump_bdd: &HostPumpBdd) {
     mount_if_needed(host_pump_bdd);
@@ -516,8 +486,6 @@ pub(crate) fn t_c2827_empty_enter_no_submit(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ── 会话树：r1326 fork / r1327 help / r1328 label / r1329 debug ─
-
 #[when("以主机泵空编辑器双 Esc 开树")]
 pub(crate) async fn w_c2827_open_tree(host_pump_bdd: &HostPumpBdd) {
     use crossterm::event::KeyModifiers;
@@ -539,7 +507,6 @@ pub(crate) async fn w_c2827_open_tree(host_pump_bdd: &HostPumpBdd) {
 pub(crate) async fn w_c2827_tree_fork(host_pump_bdd: &HostPumpBdd) {
     use crossterm::event::KeyModifiers;
     let mut pump = take_host(host_pump_bdd);
-    // fork 执行器经 get_messages 解析选中条目——同步样例消息。
     pump.driver
         .set_session_messages(xylitol_app_tui::harness::harness_sample_session_messages());
     pump.session
@@ -618,8 +585,6 @@ pub(crate) fn t_c2827_debug_tree_fixture(host_pump_bdd: &HostPumpBdd) {
         "c2827: 树应含 fixture 用户正文 hello：{frame}"
     );
 }
-
-// ── 输入补全族：r1298 /model、r1309 @、r1310 粘贴、r1315 $ ──────
 
 #[given("驱动可用模型含 test-model")]
 pub(crate) fn g_c2827_available_model(host_pump_bdd: &HostPumpBdd) {
@@ -788,13 +753,10 @@ pub(crate) fn t_c2827_skill_popup_apply(host_pump_bdd: &HostPumpBdd, expected: S
     );
 }
 
-// ── r1347 超大 diff 截断 ────────────────────────────────────────
-
 #[when("注入含 {n:u32} 行 display_diff 的 edit 成功结果")]
 pub(crate) fn w_c2827_huge_diff(host_pump_bdd: &HostPumpBdd, n: u32) {
     mount_if_needed(host_pump_bdd);
     let mut pump = take_host(host_pump_bdd);
-    // 工具条目仅在 run 上下文中落 scrollback（与产品事件路径一致）。
     pump.session.on_run_started("edit big file");
     let args = serde_json::json!({ "path": "big.rs", "old_text": "a", "new_text": "b" });
     pump.session
@@ -822,7 +784,6 @@ pub(crate) fn w_c2827_huge_diff(host_pump_bdd: &HostPumpBdd, n: u32) {
         })))
         .expect("tool end");
     pump.session.on_run_stream_closed();
-    // 展开 ActivityFold 折叠簇，diff 正文才进入渲染帧。
     pump.session
         .step(HostEvent::Input(key_event(
             crossterm::event::KeyCode::Char('e'),
@@ -869,8 +830,6 @@ pub(crate) fn t_c2827_diff_capped(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ── layer-architecture r1512 print 嵌入同进程 ───────────────────
-
 #[when("以同进程驱动完成一轮 print 对话")]
 pub(crate) async fn w_c2827_print_embed_round(host_pump_bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
@@ -899,12 +858,6 @@ pub(crate) fn t_c2827_print_embed_done(host_pump_bdd: &HostPumpBdd) {
     let s = snap(&pump);
     assert!(!s.should_quit, "c2827: 对话完成不应退出");
 }
-
-// ═══════════════════════════════════════════════════════════════════
-// c2827 T2：agent 域（accounting / prompt / tools）
-// ═══════════════════════════════════════════════════════════════════
-
-// ── accounting r1561 / r1564：计量优先级与 abort 锚点 ────────────
 
 pub struct T2EstBdd {
     pub entries: RefCell<Vec<SessionEntry>>,
@@ -1030,8 +983,6 @@ pub(crate) fn t_t2_prov_not_api(t2_est_bdd: &T2EstBdd) {
     );
 }
 
-// ── agent-prompt r1017：Available tools 无 mcp 名 ────────────────
-
 #[given("工具片段含 mcp 前缀工具")]
 pub(crate) fn g_t2_mcp_snippets(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd) {
     use xylitol_runtime::agent::prompt::{SystemPromptOpts, build_system_prompt};
@@ -1068,8 +1019,6 @@ pub(crate) fn t_t2_no_mcp_names(prompt_bdd: &crate::bdd::steps_bridge::PromptBdd
         "c2827: 应含 MCP 引导句：{p}"
     );
 }
-
-// ── agent-prompt r1023 / r1024：资源与技能热应用 ─────────────────
 
 pub struct T2CapsBdd {
     pub caps: RefCell<Option<xylitol_runtime::agent::capabilities::AgentCapabilities>>,
@@ -1150,8 +1099,6 @@ pub(crate) fn t_t2_skills_listed(t2_caps_bdd: &T2CapsBdd) {
     );
 }
 
-// ── agent-prompt r1025：$name 注入 ───────────────────────────────
-
 pub struct T2SkillBdd {
     pub skills: RefCell<Vec<xylitol_plugin_sdk::resource::SkillInfo>>,
     pub expanded: RefCell<String>,
@@ -1175,7 +1122,6 @@ pub(crate) fn g_t2_skill_loaded(t2_skill_bdd: &T2SkillBdd, body: String) {
         format!("---\nname: greet\ndescription: greets\n---\n{body}"),
     )
     .expect("write skill");
-    // tempdir drop 会删文件——保留到进程尾（测试场景内足够）。
     std::mem::forget(dir);
     *t2_skill_bdd.skills.borrow_mut() = vec![xylitol_plugin_sdk::resource::SkillInfo {
         name: "greet".into(),
@@ -1210,8 +1156,6 @@ pub(crate) fn t_t2_expanded(t2_skill_bdd: &T2SkillBdd) {
     );
     assert!(out.contains("$nope"), "c2827: 未知名 MUST 透传：{out}");
 }
-
-// ── agent-tools r1149 / r1153：schema timeout 面 ─────────────────
 
 pub struct T2SchemaBdd {
     pub schemas: RefCell<Vec<(String, serde_json::Value)>>,
@@ -1266,8 +1210,6 @@ pub(crate) fn t_t2_fs_no_timeout(t2_schema_bdd: &T2SchemaBdd) {
         );
     }
 }
-
-// ── agent-todo：SSOT 网关与两工具语义（r1119/r1121/r1123/r1125/r1126/r1842）──
 
 pub struct T2TodoBdd {
     pub gw: RefCell<Option<Arc<xylitol_official_plugin_tools::todo::SessionAgentTodoGateway>>>,
@@ -1397,7 +1339,6 @@ pub(crate) fn t_t2_todo_overlong_rejected(t2_todo_bdd: &T2TodoBdd) {
         t2_todo_bdd.last_err.borrow().is_some(),
         "c2827: 超 80 标量 content MUST 拒绝"
     );
-    // 原表不变：读回当前清单为空（此前未写入）。
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
     use xylitol_plugin_sdk::AgentTodoGateway as _;
     let list = futures::executor::block_on(gw.list()).ok();
@@ -1433,14 +1374,12 @@ pub(crate) fn w_t2_todo_compact_ensure(t2_todo_bdd: &T2TodoBdd) {
     t2_todo_mount(t2_todo_bdd);
     let store = t2_todo_bdd.store.borrow().as_ref().expect("store").clone();
     let sid = t2_todo_bdd.sid.borrow().clone();
-    // 先写一份快照（落 Custom 条目）。
     let items = serde_json::json!({
         "items": [{"id": "k", "content": "keep me", "status": "pending"}]
     });
     t2_rewrite(t2_todo_bdd, items).expect("seed todo");
     let entries_before =
         futures::executor::block_on(store.load_leaf_branch(&sid)).expect("entries before");
-    // 直接驱动保全：压后窗口无 todo → 重追加最新快照。
     futures::executor::block_on({
         let sid_ref: &str = &sid;
         xylitol_official_plugin_compaction::ensure_agent_todo_after_compact(
@@ -1475,7 +1414,6 @@ pub(crate) fn t_t2_todo_export(t2_todo_bdd: &T2TodoBdd) {
         _ => false,
     });
     assert!(has_custom, "c2827: 导出应含 agent_todo Custom 条目");
-    // MUST NOT 伪装用户消息：todo 快照不得以 user 角色消息存在。
     let as_user = entries.iter().any(|e| {
         e.as_agent_message()
             .map(|m| m.role_name() == "user" && format!("{m:?}").contains("keep me"))
@@ -1496,8 +1434,6 @@ pub(crate) fn t_t2_res_list_no_prompts(prompt_bdd: &crate::bdd::steps_bridge::Pr
         "c2827: prompts/*.md MUST NOT 列为资源：{out}"
     );
 }
-
-// ── runtime-resource-discovery：loader 发现（r1761）──
 
 pub struct T2ResBdd {
     pub cwd: RefCell<Option<std::path::PathBuf>>,
@@ -1533,7 +1469,6 @@ fn t2_res_mount(t2_res_bdd: &T2ResBdd) {
     std::fs::write(agent_dir.join("themes").join("dark.json"), "{}").unwrap();
     *t2_res_bdd.cwd.borrow_mut() = Some(cwd);
     *t2_res_bdd.agent_dir.borrow_mut() = Some(agent_dir);
-    // tempdir 生命周期：场景内遗忘（进程尾回收）。
     std::mem::forget(tmp);
 }
 
@@ -1580,12 +1515,8 @@ pub(crate) fn t_t2_res_list_ok(t2_res_bdd: &T2ResBdd) {
     );
 }
 
-// ── infra-bash r1434：exclude 条目不进 LLM history ──────────────
-
 #[when("以压后上下文检查 bash 排除")]
-pub(crate) fn w_t2_bash_exclude() {
-    // 行为断言在 then：build_context_entries 跳过 exclude_from_context 条目。
-}
+pub(crate) fn w_t2_bash_exclude() {}
 
 #[then("排除的 bash 条目不进上下文而普通条目保留")]
 pub(crate) fn t_t2_bash_exclude_filtered() {
@@ -1599,7 +1530,7 @@ pub(crate) fn t_t2_bash_exclude_filtered() {
         false,
         false,
         None,
-        true, // exclude_from_context
+        true,
         BashExecutionStatus::Done,
     );
     let keep = xylitol_plugin_sdk::session::bash_execution_message_entry(
@@ -1630,8 +1561,6 @@ pub(crate) fn t_t2_bash_exclude_filtered() {
     );
 }
 
-// ── infra-provider r1504：Responses input items 带 type ─────────
-
 #[given("Responses 组装且消息含 user 与 assistant")]
 pub(crate) fn g_t2_input_items(t2_schema_bdd: &T2SchemaBdd) {
     use xylitol_official_plugin_provider_openai::dto::XyLlmMessage;
@@ -1659,14 +1588,6 @@ pub(crate) fn t_t2_input_items_typed(t2_schema_bdd: &T2SchemaBdd) {
         );
     }
 }
-
-// ── infra-mcp r1445：无 MCP 配置零装配 ──────────────────────────
-
-// ═══════════════════════════════════════════════════════════════════
-// c2827 T4：domain-compaction / protocol-app / cli-print / user-experience
-// ═══════════════════════════════════════════════════════════════════
-
-// ── domain-compaction r1411：force 可选 instructions ─────────────
 
 #[when("以附加指令合成摘要请求前缀")]
 pub(crate) fn w_t4_additional_focus() {
@@ -1706,8 +1627,6 @@ pub(crate) fn t_t4_focus_appended() {
         );
     });
 }
-
-// ── domain-compaction r1416：policy 指纹 ─────────────────────────
 
 pub struct T4PolicyBdd {
     pub entry: RefCell<Option<xylitol_official_plugin_session::CompactionEntry>>,
@@ -1759,15 +1678,12 @@ pub(crate) fn t_t4_policy_fields(t4_policy_bdd: &T4PolicyBdd) {
 
 #[then("legacy 无快照条目不当作当前配置")]
 pub(crate) fn t_t4_policy_legacy() {
-    // 缺失 policy 的 legacy 条目：字段为 None，消费端 MUST NOT 静默解释为当前配置。
     let legacy: Option<xylitol_plugin_sdk::session::CompactionPolicySnapshot> = None;
     assert!(
         legacy.is_none(),
         "c2827: legacy 条目 MUST 以缺省标记与完整快照可区分"
     );
 }
-
-// ── protocol-app r1693：Command 枚举线协议往返 ───────────────────
 
 #[when("对产品命令样例做线协议序列化与反序列化往返")]
 pub(crate) fn w_t4_command_roundtrip() {
@@ -1798,8 +1714,6 @@ pub(crate) fn t_t4_command_roundtrip() {
         assert!(o.contains("s1"), "c2827: 载荷应保真：{o}");
     });
 }
-
-// ── cli-print r34/r43/r52/r55：print 输出面 ─────────────────────
 
 pub struct T4PrintBdd {
     pub out: RefCell<Vec<u8>>,
@@ -1975,8 +1889,6 @@ pub(crate) fn t_t4_tool_fail_ok(t4_print_bdd: &T4PrintBdd) {
     assert!(ok, "c2827: 工具单次失败 MUST NOT 使 print 非零退出");
 }
 
-// ── user-experience：引导消息族（r1838–r1841） ───────────────────
-
 #[then("登录引导含 /login 与文档路径")]
 pub(crate) fn t_t4_login_help() {
     let msg = xylitol::cli::get_provider_login_help();
@@ -2013,12 +1925,6 @@ pub(crate) fn t_t4_no_api_key() {
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// c2829 批 2：幽灵规则裁决（r1122 修正 + MCP fixture 三场景）
-// ═══════════════════════════════════════════════════════════════════
-
-// ── r1122：回合内 todo_* 成功 → run 流含类型化 TodoUpdated ──────
-
 #[when("以触发 todo_update 工具的回合收集事件")]
 pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
     use crate::bdd::helpers::make_agent;
@@ -2050,8 +1956,6 @@ pub(crate) async fn w_t6_todo_event_round(agent: &AgentState) {
     reset_fake_state();
     T6_TODO_EVENT2.with(|c| *c.borrow_mut() = (saw_todo_updated, list_len));
 }
-
-// ── r1447/r1448/r1449：MCP fixture 装配面 ────────────────────────
 
 pub struct T6McpBdd {
     pub tool_names: RefCell<Vec<String>>,
@@ -2135,9 +2039,7 @@ pub(crate) async fn w_t6_mcp_config_driven(t6_mcp_bdd: &T6McpBdd) {
 }
 
 #[then("工具集随配置变化")]
-pub(crate) fn t_t6_mcp_config_driven(_t6_mcp_bdd: &T6McpBdd) {
-    // 断言在 when 内逐组完成（两轮 discover 的差集即配置驱动证据）。
-}
+pub(crate) fn t_t6_mcp_config_driven(_t6_mcp_bdd: &T6McpBdd) {}
 
 #[when("以无效 MCP 条目装配")]
 pub(crate) async fn w_t6_mcp_invalid(t6_mcp_bdd: &T6McpBdd) {
@@ -2147,7 +2049,6 @@ pub(crate) async fn w_t6_mcp_invalid(t6_mcp_bdd: &T6McpBdd) {
         command: None,
         ..Default::default()
     };
-    // 无效条目不整体失败：仍构造 manager，坏条目留在诊断。
     let result = xylitol_official_plugin_mcp::connect_and_discover(&[bad]).await;
     let Some((manager, tools)) = result else {
         panic!("c2829: 含无效条目的非空配置 MUST 仍构造 manager");

@@ -1,5 +1,3 @@
-//! Tool args preview, path display, and quiet success output helpers.
-
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -7,8 +5,6 @@ use xylitol_tui::{ASK_HEADER_A_MAX, ASK_HEADER_Q_MAX, ellipsize_ask_frag};
 
 use xylitol_plugin_sdk::session::{TodoList, TodoStatus};
 
-/// Shared todo status glyph — 待办栏 items and todo_* tool-block body
-/// MUST use this one table (att36).
 pub(crate) fn todo_status_glyph(status: TodoStatus) -> &'static str {
     match status {
         TodoStatus::Pending => "[ ]",
@@ -17,11 +13,8 @@ pub(crate) fn todo_status_glyph(status: TodoStatus) -> &'static str {
     }
 }
 
-/// att36 fixed empty-list body word (muted parenthetical display family,
-/// same register as `(Alt+E)` / `0 items`).
 pub const TODO_EMPTY_BODY_HINT: &str = "(empty list)";
 
-/// Checklist body lines (status glyph + content), one per item.
 pub(crate) fn todo_list_body_lines(list: &TodoList) -> Vec<String> {
     list.items
         .iter()
@@ -41,9 +34,6 @@ pub(crate) fn compact_json_preview(value: &Value, max_chars: usize) -> String {
     format!("{truncated}…")
 }
 
-/// Display path for tool output: under process cwd → relative; otherwise absolute.
-///
-/// Aligns with VS Code / CLI path disclosure (not `~/` shortening).
 pub(crate) fn display_fs_path(path: &str) -> String {
     if path.is_empty() {
         return path.to_string();
@@ -69,7 +59,6 @@ pub(crate) fn display_fs_path(path: &str) -> String {
     abs.to_string_lossy().replace('\\', "/")
 }
 
-/// Streaming / empty path placeholder (pi `renderToolPath` → `...`).
 const PATH_PLACEHOLDER: &str = "...";
 
 fn json_u64(v: &Value) -> Option<u64> {
@@ -77,7 +66,6 @@ fn json_u64(v: &Value) -> Option<u64> {
         .or_else(|| v.as_i64().and_then(|i| u64::try_from(i).ok()))
 }
 
-/// Top-level or edits[0] path (`path` / `file_path` / `file`).
 pub(crate) fn extract_tool_path(args: &Value) -> Option<String> {
     for key in ["path", "file_path", "file"] {
         if let Some(s) = args
@@ -100,7 +88,6 @@ pub(crate) fn extract_tool_path(args: &Value) -> Option<String> {
         })
 }
 
-/// Path from write/edit success JSON (End backfill).
 pub(crate) fn extract_result_path(result: &str) -> Option<String> {
     let value: Value = serde_json::from_str(result).ok()?;
     extract_tool_path(&value)
@@ -113,7 +100,6 @@ fn path_slot(path: Option<&str>) -> String {
     }
 }
 
-/// VS Code–style location suffix: `:line`, `:line:col`, or `:start-end`.
 fn format_read_line_range(args: &Value) -> String {
     let offset = args.get("offset").and_then(json_u64);
     let limit = args.get("limit").and_then(json_u64);
@@ -139,7 +125,6 @@ fn format_read_line_range(args: &Value) -> String {
     }
 }
 
-/// Title-case tool name for scrollback display (`read` → `Read`).
 pub(crate) fn display_tool_title(name: &str) -> String {
     let mut chars = name.chars();
     match chars.next() {
@@ -148,11 +133,6 @@ pub(crate) fn display_tool_title(name: &str) -> String {
     }
 }
 
-/// Human-readable collapsed tool **location** (no tool-name prefix; name painted separately).
-///
-/// Shape: `<path>[:line[:col]|:start-end]` or `$ <cmd>` for bash.
-///
-/// `path_override`: sticky path when args lack one (partial JSON). `None` = derive from args.
 pub(crate) fn human_tool_args_preview_with_path(
     name: &str,
     args: &Value,
@@ -241,9 +221,6 @@ pub fn human_tool_args_preview(name: &str, args: &Value, max_chars: usize) -> St
     human_tool_args_preview_with_path(name, args, None, max_chars)
 }
 
-/// Map built-in tool `result` → TUI body text (no machine JSON remnants).
-///
-/// Returns `None` when the result should stay as-is (errors, unknown shapes, plain text).
 pub(crate) fn humanize_tool_result_for_tui(
     name: &str,
     result: &str,
@@ -263,21 +240,16 @@ pub(crate) fn humanize_tool_result_for_tui(
         }
         "read" => humanize_read_tool_output(result),
         "bash" | "shell" => humanize_bash_tool_output(result),
-        "todo_rewrite" | "todo_update" => {
-            // att36: block body is the checklist (shared glyph table), not the
-            // raw items JSON. Empty list → explicit empty hint, never a
-            // silent body.
-            serde_json::from_str::<Value>(result)
-                .ok()
-                .and_then(|v| TodoList::from_data_value(&v).ok())
-                .map(|list| {
-                    if list.is_empty() {
-                        TODO_EMPTY_BODY_HINT.to_string()
-                    } else {
-                        todo_list_body_lines(&list).join("\n")
-                    }
-                })
-        }
+        "todo_rewrite" | "todo_update" => serde_json::from_str::<Value>(result)
+            .ok()
+            .and_then(|v| TodoList::from_data_value(&v).ok())
+            .map(|list| {
+                if list.is_empty() {
+                    TODO_EMPTY_BODY_HINT.to_string()
+                } else {
+                    todo_list_body_lines(&list).join("\n")
+                }
+            }),
         "ask" => {
             let (phase, summary, _) = humanize_ask_result(result, false);
             let _ = phase;
@@ -287,10 +259,6 @@ pub(crate) fn humanize_tool_result_for_tui(
     }
 }
 
-/// Parse ask-tool JSON into scrollback phase + human lines (no raw JSON primary).
-///
-/// Header (`summary`) keeps a compact `Ask · q → a · …` shape with ellipsized
-/// question ids / answers; expandable `detail_lines` stay full.
 pub(crate) fn humanize_ask_result(
     result: &str,
     is_error: bool,
@@ -364,7 +332,6 @@ pub(crate) fn humanize_ask_result(
     }
 }
 
-/// True when `text` is a JSON object that still looks like tool wire remnants.
 pub(crate) fn output_looks_like_machine_json(text: &str) -> bool {
     let trimmed = text.trim();
     if !(trimmed.starts_with('{') && trimmed.ends_with('}')) {
@@ -390,7 +357,6 @@ pub(crate) fn output_looks_like_machine_json(text: &str) -> bool {
         "truncated_by",
         "remaining_lines",
     ];
-    // read-shaped: content + total_lines (or offset-only envelope)
     if obj.contains_key("content")
         && (obj.contains_key("total_lines")
             || obj.contains_key("offset")
@@ -398,7 +364,6 @@ pub(crate) fn output_looks_like_machine_json(text: &str) -> bool {
     {
         return true;
     }
-    // todo-shaped: full-snapshot envelope (att36 safety net for orphans).
     if obj.contains_key("items") && obj.get("items").is_some_and(Value::is_array) && obj.len() == 1
     {
         return true;
@@ -409,7 +374,6 @@ pub(crate) fn output_looks_like_machine_json(text: &str) -> bool {
 fn humanize_read_tool_output(result: &str) -> Option<String> {
     let value: Value = serde_json::from_str(result).ok()?;
     let obj = value.as_object()?;
-    // Read success envelope always has `content` (may be empty).
     if !obj.contains_key("content") {
         return None;
     }
@@ -433,7 +397,6 @@ fn humanize_read_tool_output(result: &str) -> Option<String> {
         }
     }
     if let Some(note) = obj.get("note").and_then(Value::as_str) {
-        // e.g. offset exceeds file length
         if body.is_empty() {
             return Some(note.to_string());
         }
@@ -445,13 +408,11 @@ fn humanize_read_tool_output(result: &str) -> Option<String> {
     Some(body)
 }
 
-/// Turn bash/shell tool JSON into shell-like stdout/stderr text (not raw JSON remnants).
 pub(crate) fn humanize_bash_tool_output(result: &str) -> Option<String> {
     let value: Value = serde_json::from_str(result).ok()?;
     if !value.is_object() {
         return None;
     }
-    // Require at least one bash-shaped key so we don't swallow unknown tools.
     let has_bash_shape = value.get("exit_code").is_some()
         || value.get("combined").is_some()
         || value.get("stdout").is_some();
@@ -521,7 +482,6 @@ pub(crate) fn humanize_bash_tool_output(result: &str) -> Option<String> {
     Some(body)
 }
 
-/// Line-range suffix from edit `display_diff` (`:start-end` on the new side).
 pub(crate) fn extract_line_range_from_display_diff(diff: &str) -> Option<String> {
     let mut min_new = u32::MAX;
     let mut max_new = 0u32;
@@ -548,7 +508,6 @@ pub(crate) fn extract_line_range_from_display_diff(diff: &str) -> Option<String>
             }
             continue;
         }
-        // display_diff rows: "     NNNN | …" (new-only) or "OOOO NNNN | …"
         if let Some((a, b)) = parse_display_diff_line_nos(line) {
             found = true;
             if let Some(n) = b.or(a) {
@@ -569,7 +528,6 @@ pub(crate) fn extract_line_range_from_display_diff(diff: &str) -> Option<String>
 }
 
 fn parse_unified_new_span(hunk_after_at: &str) -> Option<(u32, u32)> {
-    // " -12,5 +14,7 @@ …" or " -12 +14 @@"
     let rest = hunk_after_at.trim();
     let mut parts = rest.split_whitespace();
     let _old = parts.next()?.strip_prefix('-')?;
@@ -597,7 +555,6 @@ fn parse_display_diff_line_nos(line: &str) -> Option<(Option<u32>, Option<u32>)>
     Some((a, b))
 }
 
-/// Append `:range` to a path-only preview if missing.
 pub(crate) fn merge_path_preview_with_range(preview: &str, range: &str) -> String {
     if preview.is_empty() || range.is_empty() || preview.starts_with('$') {
         return preview.to_string();
@@ -613,7 +570,6 @@ pub(crate) fn merge_path_preview_with_range(preview: &str, range: &str) -> Strin
     format!("{preview}{range}")
 }
 
-/// Pull pi-shaped `[Full output: …]` line from bash tool JSON / plain result.
 pub(crate) fn extract_full_output_notice(result: &str) -> Option<String> {
     if let Ok(value) = serde_json::from_str::<Value>(result) {
         for key in ["combined", "stdout", "output"] {
@@ -631,7 +587,6 @@ pub(crate) fn extract_full_output_notice(result: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// When tool JSON is hard-truncated, return the truncated display body (att16).
 pub(crate) fn extract_truncated_tool_display(result: &str) -> Option<String> {
     let value: Value = serde_json::from_str(result).ok()?;
     let truncated = value.get("truncated").and_then(|v| v.as_bool())?;
@@ -648,7 +603,6 @@ pub(crate) fn extract_truncated_tool_display(result: &str) -> Option<String> {
     None
 }
 
-/// Pull `display_diff` from edit-tool JSON result (shape is intentionally fragile).
 pub fn extract_display_diff(result: &str) -> Option<String> {
     let value: Value = serde_json::from_str(result).ok()?;
     value
@@ -657,13 +611,11 @@ pub fn extract_display_diff(result: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// True when header still has no real path slot (`...` or empty).
 pub(crate) fn preview_lacks_real_path(_name: &str, preview: &str) -> bool {
     let rest = preview.trim();
     rest.is_empty() || rest == PATH_PLACEHOLDER || rest.starts_with("...")
 }
 
-/// Prefer keeping a richer streaming header over a weaker later snapshot.
 pub(crate) fn preview_is_downgrade(name: &str, old: &str, new: &str) -> bool {
     if old.is_empty() || old == new {
         return false;
@@ -1304,7 +1256,6 @@ mod tests {
 
     #[test]
     fn builtin_tool_results_never_leak_machine_json_in_tui() {
-        // Typical success envelopes from infra tools → TUI body must not be raw JSON remnants.
         let cases: &[(&str, &str, &str)] = &[
             ("write", r#"{"success":true,"path":"a.py","bytes":12}"#, ""),
             (
@@ -1352,7 +1303,6 @@ mod tests {
 
     #[test]
     fn todo_args_preview_is_item_count_not_json() {
-        // att13: count summary; in_progress suffix only when non-zero.
         let preview = human_tool_args_preview(
             "todo_rewrite",
             &serde_json::json!({"items": [
@@ -1368,7 +1318,6 @@ mod tests {
             80,
         );
         assert_eq!(solo, "1 item");
-        // Empty items array still counts (0 items), never a placeholder.
         assert_eq!(
             human_tool_args_preview("todo_rewrite", &serde_json::json!({"items": []}), 80),
             "0 items"
@@ -1389,7 +1338,6 @@ mod tests {
 
     #[test]
     fn humanize_todo_result_is_glyph_checklist() {
-        // att36: block body is the checklist via the shared glyph table.
         let out = humanize_tool_result_for_tui(
             "todo_rewrite",
             r#"{"items":[{"id":"a","content":"one","status":"in_progress"},{"id":"b","content":"two","status":"completed"}]}"#,
@@ -1399,14 +1347,12 @@ mod tests {
         assert_eq!(out, "[~] one\n[x] two");
         assert!(!output_looks_like_machine_json(&out));
 
-        // Cleared list → explicit empty hint (att36), still no JSON remnants.
         let empty = humanize_tool_result_for_tui("todo_update", r#"{"items":[]}"#, false);
         assert_eq!(empty.as_deref(), Some(TODO_EMPTY_BODY_HINT));
         assert!(
             !output_looks_like_machine_json(empty.as_deref().unwrap_or_default()),
             "empty hint must not read as machine JSON"
         );
-        // Errors keep raw text (early return), never the checklist.
         assert_eq!(
             humanize_tool_result_for_tui("todo_rewrite", "unknown todo id: x", true),
             None
@@ -1419,8 +1365,6 @@ mod tests {
         assert!(output_looks_like_machine_json(
             r#"{"items":[{"id":"a","content":"x","status":"pending"}]}"#
         ));
-        // Mixed-shape objects (e.g. MCP payloads that happen to have `items`)
-        // stay unrecognized — only the exact single-key snapshot envelope.
         assert!(!output_looks_like_machine_json(
             r#"{"items":[1],"total":1}"#
         ));
@@ -1457,7 +1401,6 @@ mod tests {
 
     #[test]
     fn ls_grep_find_plain_text_results_pass_through() {
-        // These tools already return human text — humanize returns None; body stays plain.
         for name in ["ls", "grep", "find"] {
             assert!(
                 humanize_tool_result_for_tui(name, "src/a.rs\nsrc/b.rs\n", false).is_none(),

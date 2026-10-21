@@ -1,18 +1,8 @@
-//! File-path and slash-command autocomplete provider.
-//!
-//! Ported from pi's `autocomplete.ts`. The sync provider walks the filesystem
-//! (via `std::fs`) and uses [`crate::fuzzy::fuzzy_match`] for filtering; an
-//! `fd`-based async path is also built in
-//! ([`crate::autocomplete_fd::walk_directory_with_fd`], enabled via
-//! `new_with_fd`).
-
 use crate::autocomplete_fd::walk_directory_with_fd;
 use crate::fuzzy::fuzzy_match;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
-
-// ── types ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct AutocompleteItem {
@@ -26,24 +16,19 @@ pub struct SlashCommand {
     pub name: String,
     pub description: Option<String>,
     pub argument_hint: Option<String>,
-    /// Return argument completions for a given prefix; `None` = not supported.
     pub get_argument_completions: Option<Box<dyn Fn(&str) -> Option<Vec<AutocompleteItem>>>>,
 }
 
 pub struct AutocompleteSuggestions {
     pub items: Vec<AutocompleteItem>,
-    /// What we're matching against (e.g. "/" or "src/").
     pub prefix: String,
 }
 
 pub trait AutocompleteProvider {
-    /// Characters that should naturally trigger this provider at token boundaries.
     fn trigger_characters(&self) -> &[char] {
         &[]
     }
 
-    /// Get autocomplete suggestions for current text/cursor position.
-    /// Returns `None` if no suggestions available.
     fn get_suggestions(
         &self,
         lines: &[String],
@@ -52,7 +37,6 @@ pub trait AutocompleteProvider {
         force: bool,
     ) -> Option<AutocompleteSuggestions>;
 
-    /// Apply the selected item. Returns the new text and cursor position.
     fn apply_completion(
         &self,
         lines: &[String],
@@ -62,7 +46,6 @@ pub trait AutocompleteProvider {
         prefix: &str,
     ) -> (Vec<String>, usize, usize);
 
-    /// Whether file completion should trigger on explicit Tab.
     fn should_trigger_file_completion(
         &self,
         _lines: &[String],
@@ -72,8 +55,6 @@ pub trait AutocompleteProvider {
         true
     }
 }
-
-// ── Combined provider: slash commands + file paths ──────────────────────────
 
 pub struct CombinedAutocompleteProvider {
     commands: Vec<(String, String)>,
@@ -118,7 +99,6 @@ impl AutocompleteProvider for CombinedAutocompleteProvider {
         let current = lines.get(cursor_line)?.clone();
         let before_cursor = &current[..cursor_col.min(current.len())];
 
-        // @ file attachments (fuzzy path)
         if let Some(prefix) = self.extract_at_prefix(before_cursor) {
             let (_raw, _is_at, is_quoted) = parse_path_prefix(&prefix);
             let suggestions = self.get_fuzzy_file_suggestions(&prefix, is_quoted);
@@ -131,11 +111,9 @@ impl AutocompleteProvider for CombinedAutocompleteProvider {
             });
         }
 
-        // Slash commands
         if before_cursor.starts_with('/') {
             let space_idx = before_cursor.find(' ');
             if space_idx.is_none() {
-                // Completing command name.
                 let prefix = before_cursor.strip_prefix('/').unwrap_or("");
                 let items: Vec<AutocompleteItem> = self
                     .commands
@@ -161,11 +139,9 @@ impl AutocompleteProvider for CombinedAutocompleteProvider {
                     prefix: before_cursor.to_string(),
                 });
             }
-            // Command argument completion — skipped for now (no command objects).
             return None;
         }
 
-        // File paths
         if let Some(path_match) = self.extract_path_prefix(before_cursor, force) {
             let suggestions = self.get_file_suggestions(&path_match);
             if suggestions.is_empty() {
@@ -192,7 +168,6 @@ impl AutocompleteProvider for CombinedAutocompleteProvider {
         let before = &current[..cursor_col.saturating_sub(prefix.len())];
         let after = &current[cursor_col..];
 
-        // Slash command completion: "/" + name + " "
         if prefix.starts_with('/') && before.trim().is_empty() {
             let new_line = format!("/{} {}", item.value, after);
             let mut new_lines = lines.to_vec();
@@ -200,7 +175,6 @@ impl AutocompleteProvider for CombinedAutocompleteProvider {
             return (new_lines, cursor_line, before.len() + item.value.len() + 2);
         }
 
-        // @-attachment
         if prefix.starts_with('@') {
             let is_dir = item.label.ends_with('/');
             let has_trailing_quote = item.value.ends_with('"');
@@ -221,7 +195,6 @@ impl AutocompleteProvider for CombinedAutocompleteProvider {
             );
         }
 
-        // Regular file path completion
         let has_trailing_quote = item.value.ends_with('"');
         let is_dir = item.label.ends_with('/');
         let cursor_offset = if is_dir && has_trailing_quote {
@@ -237,12 +210,7 @@ impl AutocompleteProvider for CombinedAutocompleteProvider {
     }
 }
 
-// ── async methods ──────────────────────────────────────────────────────────
-
 impl CombinedAutocompleteProvider {
-    /// Async version of `get_suggestions` that supports CancellationToken-based
-    /// cancellation of in-flight fd queries. Falls back to the sync path when
-    /// fd_path is None or for slash-command completions.
     pub async fn get_suggestions_async(
         &self,
         lines: &[String],
@@ -254,7 +222,6 @@ impl CombinedAutocompleteProvider {
         let current = lines.get(cursor_line)?.clone();
         let before_cursor = &current[..cursor_col.min(current.len())];
 
-        // @ file attachments — async fuzzy with fd
         if let Some(prefix) = self.extract_at_prefix(before_cursor) {
             let (_raw, _is_at, is_quoted) = parse_path_prefix(&prefix);
             let suggestions = self
@@ -269,7 +236,6 @@ impl CombinedAutocompleteProvider {
             });
         }
 
-        // Slash commands — sync (no I/O)
         if before_cursor.starts_with('/') {
             let space_idx = before_cursor.find(' ');
             if space_idx.is_none() {
@@ -301,7 +267,6 @@ impl CombinedAutocompleteProvider {
             return None;
         }
 
-        // File paths — sync read_dir (no fd needed for prefix completion)
         if let Some(path_match) = self.extract_path_prefix(before_cursor, force) {
             let suggestions = self.get_file_suggestions(&path_match);
             if suggestions.is_empty() {
@@ -316,8 +281,6 @@ impl CombinedAutocompleteProvider {
         None
     }
 
-    /// Fuzzy file search using fd subprocess (async), with CancellationToken
-    /// support. When fd_path is None, falls back to the sync read_dir stub.
     async fn get_fuzzy_file_suggestions_async(
         &self,
         query: &str,
@@ -327,7 +290,6 @@ impl CombinedAutocompleteProvider {
         let (raw, is_at, _is_quoted_unused) = parse_path_prefix(query);
         let _ = is_quoted;
 
-        // 已配置 fd 的查询被取消:取消语义 MUST 生效,不得静默降级到同步读目录。
         if self.fd_path.is_some() && ct.is_cancelled() {
             return Vec::new();
         }
@@ -340,7 +302,6 @@ impl CombinedAutocompleteProvider {
                 return self.get_fuzzy_file_suggestions(query, is_quoted);
             }
 
-            // Score entries using fuzzy match (aligns with pi's scoreEntry)
             let lower_query = raw.to_lowercase();
             let mut scored: Vec<(usize, String, bool)> = entries
                 .into_iter()
@@ -359,7 +320,6 @@ impl CombinedAutocompleteProvider {
                         .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or(&path);
-                    // fd returns paths relative to walk root; keep parent in value.
                     let parent = std::path::Path::new(&path)
                         .parent()
                         .and_then(|p| p.to_str())
@@ -374,8 +334,6 @@ impl CombinedAutocompleteProvider {
         self.get_fuzzy_file_suggestions(query, is_quoted)
     }
 
-    /// Score an entry against the query (higher = better).
-    /// Aligns with pi's `scoreEntry` in autocomplete.ts.
     fn score_entry(&self, file_path: &str, query: &str, is_directory: bool) -> usize {
         let file_name = std::path::Path::new(file_path)
             .file_name()
@@ -404,28 +362,6 @@ impl CombinedAutocompleteProvider {
     }
 }
 
-// ── DebouncedAutocomplete ───────────────────────────────────────────────────
-
-/// Wraps an autocomplete provider with debounce logic.
-///
-/// Successive calls to `get_suggestions` within `delay` cancel the previous
-/// in-flight query (via `CancellationToken`) and start a fresh timer. After
-/// `delay` elapses without a new call, the latest query actually executes.
-///
-/// ## Examples
-///
-/// ```ignore
-/// use std::time::Duration;
-/// use tokio_util::sync::CancellationToken;
-///
-/// let provider = CombinedAutocompleteProvider::new(vec![], PathBuf::from("."));
-/// let mut debounced = DebouncedAutocomplete::new(
-///     provider,
-///     Duration::from_millis(250),
-/// );
-/// let ct = CancellationToken::new();
-/// let result = debounced.get_suggestions(&lines, 0, 5, false, ct).await;
-/// ```
 pub struct DebouncedAutocomplete {
     provider: CombinedAutocompleteProvider,
     delay: Duration,
@@ -441,9 +377,6 @@ impl DebouncedAutocomplete {
         }
     }
 
-    /// Debounced async autocomplete. Cancels any in-flight query, waits
-    /// `delay`, then runs the latest query. The caller's `ct` can additionally
-    /// cancel the entire operation.
     pub async fn get_suggestions(
         &mut self,
         lines: &[String],
@@ -452,24 +385,18 @@ impl DebouncedAutocomplete {
         force: bool,
         ct: CancellationToken,
     ) -> Option<AutocompleteSuggestions> {
-        // Cancel the previous in-flight query.
         if let Some(ref token) = self.last_token {
             token.cancel();
         }
         let new_token = CancellationToken::new();
         self.last_token = Some(new_token.clone());
 
-        // Wait for the debounce delay, unless the upstream ct fires first.
         tokio::select! {
             _ = tokio::time::sleep(self.delay) => {},
             _ = ct.cancelled() => return None,
             _ = new_token.cancelled() => return None,
         }
 
-        // Run the latest query; the upstream ct and the debounce token (cancelled
-        // by the next call) both flow into the query itself, so no merge helper
-        // task is needed — dropping the query future on `ct` also releases the
-        // in-flight fd subprocess.
         tokio::select! {
             _ = ct.cancelled() => None,
             result = self
@@ -478,13 +405,10 @@ impl DebouncedAutocomplete {
         }
     }
 
-    /// Returns a reference to the inner provider.
     pub fn provider(&self) -> &CombinedAutocompleteProvider {
         &self.provider
     }
 }
-
-// ── private helpers ─────────────────────────────────────────────────────────
 
 impl CombinedAutocompleteProvider {
     fn extract_path_prefix(&self, text: &str, force: bool) -> Option<String> {
@@ -556,7 +480,6 @@ impl CombinedAutocompleteProvider {
             })
             .collect();
 
-        // Sort: dirs first, then alphabetical.
         suggestions.sort_by(|a, b| {
             let a_dir = a.value.ends_with('/');
             let b_dir = b.value.ends_with('/');
@@ -572,18 +495,10 @@ impl CombinedAutocompleteProvider {
         suggestions
     }
 
-    /// Fuzzy file search (without fd, using local read_dir). The real pi
-    /// implementation uses `fd` for fast recursive walking; the fd path here is
-    /// [`Self::get_fuzzy_file_suggestions_async`], so this sync method stays
-    /// the graceful fallback for the trait contract.
     fn get_fuzzy_file_suggestions(&self, query: &str, _is_quoted: bool) -> Vec<AutocompleteItem> {
         let (raw, is_at, is_quoted) = parse_path_prefix(query);
         let expanded = expand_home_path(raw);
 
-        // Non-fd fallback mirrors AtPathSource: bare fragment lists the base dir
-        // fuzzy-filtered, `src/` lists that dir, `src/m` lists src/ filtered by
-        // `m`. Recursive fuzzy search needs the fd subprocess — this is the
-        // graceful degradation, not a second walk.
         let (search_dir, filter, display_prefix) = if expanded.ends_with('/') {
             if expanded.starts_with('/') {
                 (PathBuf::from(&expanded), String::new(), expanded.clone())
@@ -640,15 +555,12 @@ impl CombinedAutocompleteProvider {
     }
 }
 
-// ── path utilities ──────────────────────────────────────────────────────────
-
 const PATH_DELIMITERS: &[char] = &[' ', '\t', '"', '\'', '='];
 
 pub(crate) fn to_display_path(value: &str) -> String {
     value.replace('\\', "/")
 }
 
-/// Extract `@…` / `@\"…` token before cursor (shared by Combined + AtPathSource).
 pub fn extract_at_prefix(text: &str) -> Option<String> {
     let quoted = extract_quoted_prefix(text);
     if let Some(ref q) = quoted
@@ -665,10 +577,6 @@ pub fn extract_at_prefix(text: &str) -> Option<String> {
     None
 }
 
-/// Extract an inline `$skill` token before the cursor (same delimiter rules as `@`).
-///
-/// Unlike slash commands, `$` is an attachment-style reference and MAY appear mid-line
-/// (e.g. `use $demo`). Returns the `$…` fragment from the last delimiter to end of `text`.
 pub fn extract_dollar_prefix(text: &str) -> Option<String> {
     let delim = find_last_delimiter(text);
     let start = if delim < 0 { 0 } else { (delim + 1) as usize };
@@ -783,7 +691,6 @@ fn resolve_search_dir(base: &Path, expanded: &str, raw: &str) -> Result<ResolveR
         return Ok((search_dir, String::new(), raw.to_string()));
     }
 
-    // Split into directory and file prefix
     let path = Path::new(expanded);
     let search_dir = path
         .parent()
@@ -808,7 +715,6 @@ fn resolve_search_dir(base: &Path, expanded: &str, raw: &str) -> Result<ResolveR
     Ok((search_dir, file_prefix, display_prefix))
 }
 
-/// Construct a display-relative path from a display prefix and entry name.
 pub(crate) fn construct_relative_path(display_prefix: &str, name: &str) -> String {
     if display_prefix.ends_with('/') {
         format!("{display_prefix}{name}")
@@ -827,8 +733,6 @@ pub(crate) fn construct_relative_path(display_prefix: &str, name: &str) -> Strin
     }
 }
 
-/// Build a path completion item (pi-aligned): `value` keeps directory prefix;
-/// `label` is basename; `description` is relative path only when it differs.
 pub(crate) fn path_autocomplete_item(
     display_prefix: &str,
     name: &str,
@@ -907,7 +811,7 @@ mod dollar_prefix_tests {
     #[test]
     fn ignores_when_no_dollar_token() {
         assert_eq!(extract_dollar_prefix("use skill"), None);
-        assert_eq!(extract_dollar_prefix("price is 5$"), None); // $ not at token start
-        assert_eq!(extract_dollar_prefix("use $demo more"), None); // cursor after space → last token is "more"
+        assert_eq!(extract_dollar_prefix("price is 5$"), None);
+        assert_eq!(extract_dollar_prefix("use $demo more"), None);
     }
 }

@@ -1,5 +1,3 @@
-//! workspace-assembly：装配边界（空配置不连外进程、信封不变）。
-
 use std::cell::RefCell;
 use std::process::Command;
 

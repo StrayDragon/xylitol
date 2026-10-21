@@ -1,9 +1,3 @@
-//! Steps for the attach connection-resilience family (ath41/ath43/ath44, c2480).
-//!
-//! Seam: [`XyRemoteDriver`] over a scripted mock [`HostClient`] — the same
-//! shape as the in-crate `driver/remote.rs` tests, with injected micro-second
-//! tunings so backoff/coalesce timing assertions finish in milliseconds.
-
 use crate::bdd::helpers::with_test_timeout;
 use crate::bdd::prelude::*;
 use rstest::fixture;
@@ -19,7 +13,6 @@ use xylitol_app_tui::host_client::{HostClient, HostClientError, MuxStream};
 use xylitol_protocol::RpcMessage;
 use xylitol_protocol::envelope::PROTOCOL_VERSION;
 
-/// Tunings small enough for millisecond-scale timing assertions.
 fn micro_tunings() -> LinkTunings {
     LinkTunings {
         backoff_base: Duration::from_millis(40),
@@ -32,10 +25,7 @@ fn micro_tunings() -> LinkTunings {
 #[derive(Debug)]
 enum MuxScript {
     FailTransport(String),
-    /// A live connection with an injectable frame channel; `life` ends it.
-    Live {
-        life: Option<Duration>,
-    },
+    Live { life: Option<Duration> },
 }
 
 #[derive(Default)]
@@ -57,9 +47,6 @@ impl ScriptedMuxHost {
         self.state.lock().unwrap().script = script.into();
     }
 
-    /// Frame injection tolerant of an already-dead connection: a closed
-    /// channel means the old generation's loop exited before consuming —
-    /// which also satisfies the "late frame must not surface" property.
     fn send_frame(&self, conn: usize, frame: RpcMessage) {
         if let Some(tx) = self.state.lock().unwrap().senders.get(conn) {
             let _ = tx.send(frame);
@@ -187,11 +174,9 @@ struct ResilienceRig {
 
 pub struct ResilienceBdd {
     rig: RefCell<Option<ResilienceRig>>,
-    /// (receive instant, text) pairs collected from a `run` stream.
     pub received: RefCell<Vec<(Instant, String)>>,
     pub push_t0: RefCell<Option<Instant>>,
     pub attach_result: RefCell<Option<Result<(), XyDriverError>>>,
-    /// ath38 探针：(drain 到的事件条数, 该次 drain 的微秒耗时)。
     pub drain_probe: RefCell<Option<(usize, u64)>>,
 }
 
@@ -228,8 +213,6 @@ fn mount_rig(host: ScriptedMuxHost) -> ResilienceRig {
     let driver = XyRemoteDriver::with_host(host.clone(), "s-res").with_tunings(micro_tunings());
     ResilienceRig { host, driver }
 }
-
-// ── ath44 hello mismatch (mock seam) ───────────────────────────────
 
 #[given("mock HostClient 握手返回不符协议版本")]
 fn g_hello_mismatch(resilience_bdd: &ResilienceBdd) {
@@ -276,8 +259,6 @@ fn t_hello_fatal(resilience_bdd: &ResilienceBdd) {
         "driver MUST surface the version error, got {drained:?}"
     );
 }
-
-// ── ath41 backoff escalation (mock seam) ───────────────────────────
 
 #[given("以注入短常量的 mock HostClient 驱动 attach 重连")]
 async fn g_backoff_rig(resilience_bdd: &ResilienceBdd) {
@@ -340,7 +321,6 @@ fn t_backoff_escalates(resilience_bdd: &ResilienceBdd) {
     let calls = rig.host.state.lock().unwrap().mux_calls.clone();
     assert!(calls.len() >= 4, "need four attempts, got {}", calls.len());
     let young = Duration::from_millis(20);
-    // implied backoff = gap between attempts minus the scripted young life
     let implied = |gap: Duration| gap.saturating_sub(young);
     let b2 = implied(calls[1] - calls[0]);
     let b3 = implied(calls[2] - calls[1]);
@@ -364,7 +344,6 @@ fn t_backoff_resets(resilience_bdd: &ResilienceBdd) {
     let rig = rig.as_ref().expect("rig mounted");
     let calls = rig.host.state.lock().unwrap().mux_calls.clone();
     assert!(calls.len() >= 4, "need four attempts, got {}", calls.len());
-    // conn3 lived 250ms ≥ survive threshold(150ms) → next backoff resets
     let long = Duration::from_millis(250);
     let b4 = (calls[3] - calls[2]).saturating_sub(long);
     assert!(
@@ -372,8 +351,6 @@ fn t_backoff_resets(resilience_bdd: &ResilienceBdd) {
         "survived connection MUST reset backoff to base(40ms), got {b4:?}"
     );
 }
-
-// ── ath41 stale generation (mock seam) ─────────────────────────────
 
 #[given("已有一条订阅中的 mock mux 连接")]
 async fn g_stale_conn(resilience_bdd: &ResilienceBdd) {
@@ -390,7 +367,6 @@ async fn g_stale_conn(resilience_bdd: &ResilienceBdd) {
         "first connection",
     )
     .await;
-    // clear the cold-replay filter so scripted tape passes as live
     rig.host.send_frame(0, session_subscribed());
     tokio::time::sleep(Duration::from_millis(30)).await;
     put_rig(resilience_bdd, rig);
@@ -413,7 +389,6 @@ async fn w_stale_late_frame(resilience_bdd: &ResilienceBdd) {
         "second connection",
     )
     .await;
-    // clear cold-replay on the new generation, then inject frames
     rig.host.send_frame(1, session_subscribed());
     rig.host.send_frame(0, session_event(1, "stale-payload"));
     rig.host.send_frame(1, session_event(2, "fresh-payload"));
@@ -441,8 +416,6 @@ fn t_stale_dropped(resilience_bdd: &ResilienceBdd) {
         "old generation late frame MUST be dropped, got {texts:?}"
     );
 }
-
-// ── ath43 coalescing burst (mock seam) ─────────────────────────────
 
 #[given("合帧窗口开启")]
 async fn g_coalesce_window(resilience_bdd: &ResilienceBdd) {
@@ -482,7 +455,6 @@ async fn w_coalesce_burst(resilience_bdd: &ResilienceBdd) {
             }
         }
     });
-    // a tight burst inside one coalesce window
     *resilience_bdd.push_t0.borrow_mut() = Some(Instant::now());
     for seq in 1..=6u64 {
         rig.host
@@ -515,8 +487,6 @@ fn t_coalesce_single_batch(resilience_bdd: &ResilienceBdd) {
         "one window ⇒ one projection batch: spread {spread:?}"
     );
 }
-
-// ── ath38 tick 不被 unary 阻塞（mock seam）────────────────────────
 
 #[given("以注入短常量的 mock HostClient 完成 attach")]
 async fn g_attach_rig(resilience_bdd: &ResilienceBdd) {

@@ -1,10 +1,7 @@
-//! Steer / follow-up queue strip between scrollback and status (pi morphology).
-
 use xylitol_tui::truncate_to_width;
 
 use crate::layout::LayoutTheme;
 
-/// Dim `Steering:` / `Follow-up:` lines + Alt+Up hint. Empty when both queues empty.
 pub fn render_queue_strip(
     theme: LayoutTheme,
     pending_steer: &[String],
@@ -15,7 +12,6 @@ pub fn render_queue_strip(
         return Vec::new();
     }
     let mut lines = Vec::new();
-    // One blank spacer row before the queue block.
     if width > 0 {
         lines.push(String::new());
     }

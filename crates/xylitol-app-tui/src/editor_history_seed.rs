@@ -1,5 +1,3 @@
-//! Editor ↑/↓ send-history seeds from session store (c1560 / ati41).
-
 use std::sync::Arc;
 
 use crate::driver::{XyDriver, XyDriverError};
@@ -9,7 +7,6 @@ use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::XySessionStoreError;
 use xylitol_plugin_sdk::session::{SessionEntry, message_role, message_text};
 
-/// Extract user prompt texts from session entries (chronological order; skip `/…`).
 pub fn user_prompt_texts_from_entries(entries: &[SessionEntry]) -> Vec<String> {
     let mut out = Vec::new();
     for entry in entries {
@@ -29,11 +26,6 @@ pub fn user_prompt_texts_from_entries(entries: &[SessionEntry]) -> Vec<String> {
     out
 }
 
-/// Shared seed pipeline tail: same-cwd filter → mtime desc → take `n` →
-/// oldest-first ordering → per-session user prompt texts.
-///
-/// `load_entries` returns `None` when the session's entries are unreadable;
-/// the failure has already been logged by the caller-side closure.
 async fn seed_texts_from_listed<F, Fut>(
     listed: Vec<SessionListEntry>,
     current_cwd: &str,
@@ -56,7 +48,6 @@ where
             .cmp(&a.modified_unix.unwrap_or(0))
     });
     matched.truncate(n as usize);
-    // Process older sessions first so ↑ lands on globally newest prompt.
     matched.reverse();
     let mut texts = Vec::new();
     for entry in matched {
@@ -74,7 +65,6 @@ where
     texts
 }
 
-/// Prior same-cwd sessions via [`XySessionStore`] (spawn-safe; no `&dyn XyDriver`).
 pub async fn collect_new_session_seed_from_store(
     store: &dyn XySessionStore,
     current_cwd: &str,
@@ -100,7 +90,6 @@ pub async fn collect_new_session_seed_from_store(
     .await
 }
 
-/// Prior same-cwd sessions (mtime desc, exclude `current_id`), take `n`, oldest→newest texts.
 pub async fn collect_new_session_seed(
     driver: &mut dyn XyDriver,
     current_cwd: &str,
@@ -131,7 +120,6 @@ pub async fn collect_new_session_seed(
             .cmp(&a.modified_unix.unwrap_or(0))
     });
     matched.truncate(n as usize);
-    // Process older sessions first so ↑ lands on globally newest prompt.
     matched.reverse();
     let mut texts = Vec::new();
     for entry in matched {
@@ -165,7 +153,6 @@ pub async fn collect_new_session_seed(
     Ok(texts)
 }
 
-/// Background ↑/↓ history seed (product in-process driver).
 pub fn spawn_new_session_seed(
     store: Arc<dyn XySessionStore>,
     current_cwd: String,
@@ -178,7 +165,6 @@ pub fn spawn_new_session_seed(
     })
 }
 
-/// Background CLI `--session` JSONL load (same data as [`XyDriver::get_messages`](crate::driver::XyDriver::get_messages)).
 pub fn spawn_cli_session_load(
     store: Arc<dyn XySessionStore>,
     session_id: String,

@@ -9,7 +9,6 @@ repository = "https://github.com/StrayDragon/xylitol"
 publish = false
 
 [lib]
-# Plugin behavior stays in the xylitol crate / BDD. Lib tests use crate-local fakes.
 doctest = false
 
 [dependencies]

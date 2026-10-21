@@ -1,16 +1,3 @@
-//! Lab replay harness — compaction pipeline invariants on a real session (c2810).
-//!
-//! 人跑维护 lab（`#[ignore]`，不进 `just qa`）：以真实 session JSONL 为 fixture
-//! 回放压缩管线，断言——每次 compact 后投影单调下降、切点合法（c8：firstKept
-//! 不落 toolResult）、摘要规模有界、固定新内容下 compact 次数有界（地板感知
-//! 阈值的防回归实证）。fixture 不入库：env 指向用户本地文件，仓库零用户数据。
-//!
-//! Run:
-//! ```text
-//! XYLITOL_COMPACTION_REPLAY_FIXTURE=~/.xylitol/sessions/<id>.jsonl \
-//!   cargo test -p xylitol --lib lab_compaction_replay -- --ignored --nocapture
-//! ```
-
 use std::sync::{Arc, Mutex};
 
 use xylitol_plugin_sdk::lifecycle::XyEvent;
@@ -21,7 +8,6 @@ use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
 const WINDOW: u64 = 32_768;
 const RESERVE: u64 = 16_384;
 const KEEP_RECENT: u64 = 20_000;
-/// Synthetic turns appended between replay rounds (≈200 tokens each).
 const APPEND_TURNS: usize = 120;
 
 struct RecordingSink(Mutex<Vec<XyEvent>>);
@@ -45,7 +31,6 @@ fn load_fixture_entries(path: &str) -> Result<Vec<SessionEntry>, String> {
         .collect()
 }
 
-/// c8: a firstKept target MUST be a leaf entry and MUST NOT be a toolResult.
 fn first_kept_is_legal(entries: &[SessionEntry], first_kept_id: &str) -> bool {
     entries.iter().any(|e| {
         e.base().map(|b| b.id.as_str()) == Some(first_kept_id)
@@ -55,7 +40,6 @@ fn first_kept_is_legal(entries: &[SessionEntry], first_kept_id: &str) -> bool {
     })
 }
 
-/// Replay the compaction pipeline over a real session and assert its invariants.
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "lab: needs XYLITOL_COMPACTION_REPLAY_FIXTURE pointing at a local session JSONL"]
 async fn lab_compaction_replay_floor_invariants() {
@@ -83,7 +67,7 @@ async fn lab_compaction_replay_floor_invariants() {
         },
     );
     let fixed = xylitol_runtime::agent::compaction::FixedRequestContext {
-        system_prompt: Some("S".repeat(36_000)), // ≈9k tokens, measured shape
+        system_prompt: Some("S".repeat(36_000)),
         tool_schemas: Vec::new(),
     };
     let opts = xylitol_runtime::agent::compaction::EstimateOpts {
@@ -91,7 +75,6 @@ async fn lab_compaction_replay_floor_invariants() {
         ..Default::default()
     };
 
-    // Round 0: force compact the real history.
     let model = xylitol_kernel::provider::fake_xy_model(
         "lab-replay",
         vec![xylitol_kernel::provider::ScenarioStep::text(
@@ -125,20 +108,17 @@ async fn lab_compaction_replay_floor_invariants() {
         })
         .expect("replay wrote a CompactionEntry");
 
-    // c8: the cut lands on a legal entry, never a toolResult.
     assert!(
         first_kept_is_legal(&leaf, &compaction.first_kept_entry_id),
         "firstKept must be a legal cut target: {}",
         compaction.first_kept_entry_id
     );
-    // Summary bounded: heuristic ≈ placeholder scale, not runaway.
     assert!(
         compaction.summary.len() / 4 <= 8 * 2_048,
         "summary must stay bounded: {} chars",
         compaction.summary.len()
     );
 
-    // Monotone: the AfterCompaction projection sits below the pre-compact size.
     let after_events = sink.0.lock().unwrap().clone();
     let settled = after_events
         .iter()
@@ -156,8 +136,6 @@ async fn lab_compaction_replay_floor_invariants() {
         compaction.tokens_before
     );
 
-    // Convergence: APPEND_TURNS of fixed synthetic content must compact a bounded
-    // number of times (floor-aware threshold), not once per turn-end.
     let mut flag = false;
     let mut fallback_notice = false;
     let mut rounds = 0usize;
@@ -216,7 +194,6 @@ async fn lab_compaction_replay_floor_invariants() {
             rounds += 1;
         }
     }
-    // Hysteresis band ≈ floor/4 ⇒ expected cycles ≈ APPEND_TURNS×200 / 4_600 ≪ bound.
     assert!(
         rounds <= APPEND_TURNS / 8,
         "floor threshold must bound churn: {rounds} compacts for {APPEND_TURNS} turns"

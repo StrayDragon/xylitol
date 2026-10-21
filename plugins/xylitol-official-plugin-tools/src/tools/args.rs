@@ -1,9 +1,3 @@
-//! Shared serde helpers for built-in tool argument parsing.
-//!
-//! Trait boundary stays [`serde_json::Value`] (MCP / dynamic tools). Each built-in
-//! tool deserializes once into a typed `*Args` struct — either via
-//! [`super::typed::TypedTool`] blanket or at a manual `execute` entry.
-
 pub use xylitol_plugin_sdk::parse_tool_args;
 
 #[cfg(test)]

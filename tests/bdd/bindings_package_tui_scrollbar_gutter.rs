@@ -1,5 +1,3 @@
-//! BDD bindings for `package-tui-scrollbar-gutter` (c2891).
-
 use crate::bdd::steps_package_tui_scrollbar_gutter::{GutterBdd, gutter_bdd};
 use rstest_bdd_macros::scenario;
 

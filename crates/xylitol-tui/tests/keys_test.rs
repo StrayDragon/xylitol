@@ -148,7 +148,6 @@ fn test_kitty_super_modifier() {
 #[test]
 fn test_kitty_non_latin_layout() {
     with_kitty_protocol_active(true, || {
-        // Cyrillic 'с' = 1089, base key 'c' = 99
         assert!(matches_key("\x1b[1089::99;5u", "ctrl+c"));
     });
 }
@@ -206,7 +205,6 @@ fn matches_key_event_shift_tab_accepts_back_tab() {
     });
 }
 
-/// Foot / legacy: Alt+Shift+B often arrives as uppercase `B` + ALT, no SHIFT bit.
 #[test]
 fn matches_key_event_alt_shift_letter_accepts_uppercase_without_shift_flag() {
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -255,9 +253,7 @@ fn test_decode_kitty_printable() {
     with_kitty_protocol_active(false, || {
         assert_eq!(decode_kitty_printable("\x1b[97u"), Some("a".to_string()));
         assert_eq!(decode_kitty_printable("\x1b[49u"), Some("1".to_string()));
-        // KP keys
         assert_eq!(decode_kitty_printable("\x1b[57400u"), Some("1".to_string()));
-        // Navigation keys should not decode
         assert_eq!(decode_kitty_printable("\x1b[57417u"), None);
     });
 }
@@ -278,7 +274,6 @@ fn test_backspace() {
     with_kitty_protocol_active(false, || {
         assert!(matches_key("\x7f", "backspace"));
         assert!(matches_key("\x08", "backspace"));
-        // \x08 matches ctrl+h
         assert!(matches_key("\x08", "ctrl+h"));
     });
 }

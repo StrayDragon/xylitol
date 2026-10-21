@@ -1,5 +1,3 @@
-//! session/prepare fire / wait and reload hook mount.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,7 +17,6 @@ use super::{XyDriverError, XyInProcessDriver};
 use crate::agent::MCP_FIRST_TURN_GATE_TIMEOUT;
 use crate::agent::tools::ToolSet;
 
-/// Kernel-mounted `/reload` body (skills + config). MCP reconnect is the hub.
 #[async_trait]
 pub trait InProcessReloadHook: Send + Sync {
     async fn reload(

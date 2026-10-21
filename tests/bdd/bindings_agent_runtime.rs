@@ -108,8 +108,6 @@ async fn test_ar_batch_mcp_never_parallel(agent: AgentState, ws: Workspace) {}
 )]
 async fn test_ar_batch_history_source_order(agent: AgentState, ws: Workspace) {}
 
-// ---- c2826 specs-compact：裸规则转场景绑定 ----
-
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "首次回合历史为真实用户"
@@ -140,7 +138,6 @@ async fn test_c2826_abort_persist(agent: AgentState, ws: Workspace) {}
 )]
 async fn test_c2826_two_iterations(agent: AgentState, ws: Workspace) {}
 
-// ── c2835 后继：agent-runtime 裸规则回填 ────────────────────────────
 use crate::bdd::steps_app_tui_bridge::{BridgeBdd, bridge_bdd};
 use crate::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
 use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
@@ -231,7 +228,6 @@ async fn test_ar13_stream_node_timings(
 ) {
 }
 
-// c2924：RuntimePhase 迁移表（xstate E1-E4 执行侧；sync fn 保全 case 展开）
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "阶段转换矩阵"

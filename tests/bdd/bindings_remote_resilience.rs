@@ -1,5 +1,3 @@
-//! app-tui-host attach-resilience BDD bindings (ath41/ath43/ath44, c2480).
-
 use crate::bdd::steps_remote_resilience::{ResilienceBdd, resilience_bdd};
 use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;
@@ -34,7 +32,6 @@ async fn test_ath41_stale_generation(resilience_bdd: ResilienceBdd) {}
 )]
 async fn test_ath43_coalesce(resilience_bdd: ResilienceBdd) {}
 
-/// Real-wire seam (ath44): real serve, real HttpWsClient handshake.
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "真实杀死重连日志续跑"
@@ -42,8 +39,6 @@ async fn test_ath43_coalesce(resilience_bdd: ResilienceBdd) {}
 async fn test_ath44_real_reconnect(server_test: ServerTest) {
     let _ = server_test;
 }
-
-// ── c2835 后继：attach tick 不被 unary 阻塞 ──────────────────────────
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",

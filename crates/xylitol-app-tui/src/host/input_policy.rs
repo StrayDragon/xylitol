@@ -1,5 +1,3 @@
-//! Busy/idle input policy for HostSession::step (c1170 / ath12).
-
 use xylitol_tui::{InputEvent, Terminal};
 
 use super::super::bridge::UiPhase;
@@ -11,8 +9,6 @@ use super::super::keybindings::matches_binding;
 use super::HostSession;
 
 impl<T: Terminal> HostSession<T> {
-    /// Main editor Enter follows the live transcript even when the editor is
-    /// empty. Non-Editor slots retain Enter for their own confirm semantics.
     pub(super) fn follow_bottom_on_submit_key(&mut self, input: &InputEvent) {
         let InputEvent::Key(key) = input else {
             return;
@@ -28,20 +24,14 @@ impl<T: Terminal> HostSession<T> {
         self.tui.application_owned_scroll_to_end();
     }
 
-    /// Drop Esc backlog after abort while idle so the next bang is not cancelled
-    /// at submit. Never suppress Esc while busy (second bang must stay abortable).
     pub(super) fn try_suppress_stale_esc(&mut self, input: &InputEvent) -> bool {
         if !self.suppress_idle_esc {
             return false;
         }
-        // New busy work owns Esc for abort — clear suppress and do not consume.
         if self.is_busy() || self.reload_active {
             self.suppress_idle_esc = false;
             return false;
         }
-        // An open overlay owns Esc for its own close (models / tree / …); the
-        // stale backlog only guards the editor's next bang submit. Without this
-        // a picker mounted after the abort could never be Esc-closed.
         if self
             .ui_root
             .as_ref()
@@ -50,7 +40,6 @@ impl<T: Terminal> HostSession<T> {
             return false;
         }
         let InputEvent::Key(key) = input else {
-            // Paste / other input: user moved on; clear suppress.
             self.suppress_idle_esc = false;
             return false;
         };
@@ -58,13 +47,10 @@ impl<T: Terminal> HostSession<T> {
             self.pending.abort = false;
             return true;
         }
-        // Any other key (typing the next `!cmd`) ends idle Esc suppress.
         self.suppress_idle_esc = false;
         false
     }
 
-    /// c1205: `/reload` soft-gate — before agent busy / idle Enter paths.
-    /// Esc/Ctrl+C cancel; Enter → toast; typing falls through to editor.
     pub(super) fn try_reload_input(&mut self, input: &InputEvent) -> bool {
         use super::super::commands::RELOADING_WAIT_NOTICE;
 
@@ -91,7 +77,6 @@ impl<T: Terminal> HostSession<T> {
         false
     }
 
-    /// Busy Enter / Alt+Enter / Esc / Alt+Up (c480). Returns true when consumed.
     pub(super) fn try_busy_input(&mut self, input: &InputEvent) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
             return false;
@@ -108,11 +93,7 @@ impl<T: Terminal> HostSession<T> {
 
         if matches_binding(key, "app.interrupt") || matches_binding(key, "app.clear") {
             self.pending.abort = true;
-            // Drop untaken local steer so loop does not re-enqueue after abort.
             self.pending.steer = None;
-            // c720 / c1595: flush partial into entries immediately so late Xy cannot
-            // revive UI; drain_pending still calls XyDriver::abort + note_user_abort.
-            // c1570: Ctrl+C (app.clear) shares this latch while busy — MUST NOT quit.
             self.suppress_xy_until_stream_end = true;
             self.ui_model.flush_streaming();
             return true;
@@ -148,7 +129,6 @@ impl<T: Terminal> HostSession<T> {
             root.set_editor_text(String::new());
             drop(root);
             self.persist_client_history(&text);
-            // pi queue strip: dim Follow-up: above status — not a scrollback [steer] wall.
             self.ui_model.enqueue_follow_up_strip(text.clone());
             self.pending.follow_up = Some(text);
             self.sync_ui_root_from_model();
@@ -157,9 +137,6 @@ impl<T: Terminal> HostSession<T> {
 
         if matches_binding(key, "tui.input.submit") {
             let mut root = root.borrow_mut();
-            // Same as idle Enter: apply highlighted slash/`/model <id>` first.
-            // Otherwise `/mode` stays literal while the command bar is open, or
-            // follow-up/steer steals the key before the picker can confirm.
             if root.editor_autocomplete_open() {
                 let _ = root.confirm_editor_autocomplete();
             }
@@ -207,8 +184,6 @@ impl<T: Terminal> HostSession<T> {
                 }
                 None => {}
             }
-            // c669 / ati32: hard-reject bang while bash_active or agent busy
-            // (must not steer literal `!cmd`).
             let reject_bang = self.bash_active || self.run_active || self.is_busy();
             if reject_bang {
                 match parse_bang_command(&text) {
@@ -238,8 +213,6 @@ impl<T: Terminal> HostSession<T> {
         false
     }
 
-    /// Idle Enter: slash or prompt submit. Steer / Alt+Enter are busy-only.
-    /// Returns true when Enter was consumed.
     pub(super) fn try_idle_enter_submit(&mut self, input: &InputEvent) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
             return false;
@@ -257,9 +230,6 @@ impl<T: Terminal> HostSession<T> {
         if root.slot().is_overlay() {
             return false;
         }
-        // Product steals Enter before Editor; when the slash/fuzzy popup is open,
-        // apply the highlighted item first (pi select.confirm), then parse.
-        // Otherwise `/new` stays literal → unknown while `session-new` is selected.
         if root.editor_autocomplete_open() {
             let _ = root.confirm_editor_autocomplete();
         }
@@ -267,8 +237,6 @@ impl<T: Terminal> HostSession<T> {
         if text.trim().is_empty() {
             return false;
         }
-        // The host consumed the key before TUI::dispatch_event, so invalidate
-        // the cached dock explicitly before clearing the submitted editor text.
         self.tui.mark_ao_components_stale();
 
         if let Some(slash) = parse_slash_command_for_surface(&text, self.designing) {
@@ -346,7 +314,6 @@ impl<T: Terminal> HostSession<T> {
         true
     }
 
-    /// Ctrl+V / `app.paste.image`: stage clipboard image via XyDriver (c1155).
     pub(super) fn try_paste_image(&mut self, input: &InputEvent) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
             return false;
@@ -364,7 +331,6 @@ impl<T: Terminal> HostSession<T> {
         true
     }
 
-    /// Ctrl+G: external editor (c650 / ati17) — TTY real path or harness stub.
     pub(super) fn try_ctrl_g(&mut self, input: &InputEvent) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
             return false;
@@ -475,29 +441,18 @@ impl<T: Terminal> HostSession<T> {
                 self.push_error_note(message);
             }
         }
-        // Soft render via step(); suspend kept previous_lines for differential
-        // (no full-screen clear — inline TUI preserves scrollback above).
         true
     }
 }
 
-/// True when idle Enter should treat leading `/` as an unknown slash (not a filesystem path).
-///
-/// Absolute paths like `/tmp/xylitol-paste-….png` (c1155 / pi) contain another `/` after the
-/// root slash; slash commands are a single token (`/model`, `/session-new`).
 fn looks_like_unknown_slash_command(text: &str) -> bool {
     let first = text.split_whitespace().next().unwrap_or("");
     if !first.starts_with('/') {
         return false;
     }
-    // `/tmp/…`, `/home/…`, `//unc` → prompt text, not a slash command.
     first.matches('/').count() <= 1
 }
 
-/// `(try /exit, /model, …)` hint for unknown-slash notices.
-///
-/// Generated from the product slash SSOT (`app::product_commands`) so adding a
-/// slash can never leave this notice stale (c1175; same source as slash_catalog).
 fn product_slash_hint() -> String {
     let names = crate::product_commands::product_slash_commands();
     let joined = names

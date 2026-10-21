@@ -4,8 +4,6 @@ use crate::types::{SessionBackend, SessionEntry};
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::{XySessionError, XySessionStoreError};
 
-// ── XySessionStore impl ───────────────────────────────────────────────
-
 #[async_trait::async_trait]
 impl XySessionStore for SessionManager {
     async fn exists(&self, session_id: &str) -> bool {
@@ -40,19 +38,13 @@ impl XySessionStore for SessionManager {
         session_id: &str,
     ) -> Result<std::collections::HashSet<String>, XySessionStoreError> {
         if matches!(&self.backend, SessionBackend::InMemory) {
-            // In-memory sessions have no segments to skip — compute directly.
             let entries = XySessionStore::load_entries(self, session_id).await?;
             return Ok(xylitol_plugin_sdk::session::done_bash_ids(&entries));
         }
-        // Active segment scanned directly; sealed segments prefer the immutable
-        // sidecar, falling back to scanning when absent/corrupt/old-manifest.
         if !self.manifest_path(session_id).exists() {
-            // Legacy-only session: no auto migration (zero-compat) — surface as
-            // unsupported rather than silently treating it as empty.
             if self.legacy_session_path(session_id).exists() {
                 return Err(super::segments::legacy_unsupported_error(session_id));
             }
-            // No manifest and no legacy file: pending-only session.
             let entries = self.read_entries(session_id).await?;
             return Ok(xylitol_plugin_sdk::session::done_bash_ids(&entries));
         }
@@ -62,8 +54,6 @@ impl XySessionStore for SessionManager {
             .await
             .map(|entries| xylitol_plugin_sdk::session::done_bash_ids(&entries))?;
         for segment in &manifest.sealed_segments {
-            // Old manifests / missing or corrupt sidecars fall back to scanning
-            // the sealed JSONL so pairing never produces false negatives.
             let segment_done: std::collections::HashSet<String> = match segment
                 .index_path
                 .as_deref()
@@ -154,7 +144,6 @@ impl XySessionStore for SessionManager {
             } else {
                 None
             };
-            // One read per id; no leaf mutation (listing must not thrash active leaf).
             let entries = match SessionManager::load_entries_for_list(self, &id).await {
                 Ok(e) => e,
                 Err(e) => {

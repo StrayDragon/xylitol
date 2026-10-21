@@ -1,9 +1,3 @@
-//! Thinking-level editor border colors (c1140) — package-local, no domain dependency.
-//!
-//! Color ramp synced from pi `coding-agent` themes:
-//! `packages/coding-agent/src/modes/interactive/theme/{dark,light}.json`
-//! (`thinkingOff` … `thinkingMax`).
-
 use strum::{EnumString, IntoStaticStr};
 
 use crate::components::editor::Editor;
@@ -11,7 +5,6 @@ use crate::terminal_colors::RgbColor;
 use crate::theme::paint::fg_rgb;
 use crate::theme::palette::Palette;
 
-/// Package-local thinking border palette level, independent of product config strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, IntoStaticStr, EnumString)]
 #[strum(serialize_all = "lowercase", ascii_case_insensitive)]
 pub enum ThinkingBorderLevel {
@@ -57,26 +50,24 @@ impl ThinkingBorderLevel {
     }
 }
 
-/// pi dark.json thinking* hex (resolved vars).
 const DARK_THINKING: [RgbColor; 7] = [
-    rgb(0x50, 0x50, 0x50), // off ← darkGray
-    rgb(0x6e, 0x6e, 0x6e), // minimal
-    rgb(0x5f, 0x87, 0xaf), // low
-    rgb(0x81, 0xa2, 0xbe), // medium
-    rgb(0xb2, 0x94, 0xbb), // high
-    rgb(0xd1, 0x83, 0xe8), // xhigh
-    rgb(0xff, 0x5f, 0xff), // max
+    rgb(0x50, 0x50, 0x50),
+    rgb(0x6e, 0x6e, 0x6e),
+    rgb(0x5f, 0x87, 0xaf),
+    rgb(0x81, 0xa2, 0xbe),
+    rgb(0xb2, 0x94, 0xbb),
+    rgb(0xd1, 0x83, 0xe8),
+    rgb(0xff, 0x5f, 0xff),
 ];
 
-/// pi light.json thinking* hex (resolved vars).
 const LIGHT_THINKING: [RgbColor; 7] = [
-    rgb(0xb0, 0xb0, 0xb0), // off ← lightGray
-    rgb(0x76, 0x76, 0x76), // minimal
-    rgb(0x54, 0x7d, 0xa7), // low ← blue
-    rgb(0x5a, 0x80, 0x80), // medium ← teal
-    rgb(0x87, 0x5f, 0x87), // high
-    rgb(0x8b, 0x00, 0x8b), // xhigh
-    rgb(0xaf, 0x00, 0x5f), // max
+    rgb(0xb0, 0xb0, 0xb0),
+    rgb(0x76, 0x76, 0x76),
+    rgb(0x54, 0x7d, 0xa7),
+    rgb(0x5a, 0x80, 0x80),
+    rgb(0x87, 0x5f, 0x87),
+    rgb(0x8b, 0x00, 0x8b),
+    rgb(0xaf, 0x00, 0x5f),
 ];
 
 const fn rgb(r: u8, g: u8, b: u8) -> RgbColor {
@@ -87,7 +78,6 @@ fn thinking_ramp_for(palette: Palette) -> &'static [RgbColor; 7] {
     if palette == Palette::light() {
         &LIGHT_THINKING
     } else {
-        // Dark MVP + any custom that is not exactly light().
         &DARK_THINKING
     }
 }
@@ -105,12 +95,10 @@ fn level_index(level: ThinkingBorderLevel) -> usize {
 }
 
 impl Palette {
-    /// Border color for a thinking level (pi thinkingOff…thinkingMax ramp).
     pub fn thinking_border_rgb(self, level: ThinkingBorderLevel) -> RgbColor {
         thinking_ramp_for(self)[level_index(level)]
     }
 
-    /// Truecolor paint closure for editor border chrome.
     pub fn thinking_border_paint(
         self,
         level: ThinkingBorderLevel,
@@ -120,7 +108,6 @@ impl Palette {
     }
 }
 
-/// Apply thinking border via [`Editor::set_border_color`] without rebuilding the editor.
 pub fn apply_thinking_border(editor: &mut Editor, palette: &Palette, level: ThinkingBorderLevel) {
     editor.set_border_color(palette.thinking_border_paint(level));
 }

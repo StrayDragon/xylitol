@@ -1,5 +1,3 @@
-//! Terminal lifecycle — panic hook + signal exit flag (ath2).
-
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::error::TuiSurfaceError;
@@ -7,10 +5,8 @@ use xylitol_tui::Terminal;
 
 static EXIT_REQUESTED: AtomicBool = AtomicBool::new(false);
 
-/// True after a panic hook has restored the terminal once.
 static PANIC_RESTORED: AtomicBool = AtomicBool::new(false);
 
-/// Hooks installed at most once per process.
 static HOOKS_INSTALLED: std::sync::Once = std::sync::Once::new();
 
 pub fn exit_requested() -> bool {
@@ -21,7 +17,6 @@ pub fn request_exit() {
     EXIT_REQUESTED.store(true, Ordering::SeqCst);
 }
 
-/// Install panic restore + Unix signal listeners (idempotent).
 pub fn install_lifecycle_hooks() {
     HOOKS_INSTALLED.call_once(|| {
         install_panic_hook();
@@ -29,11 +24,8 @@ pub fn install_lifecycle_hooks() {
     });
 }
 
-/// Best-effort restore when no `CrosstermTerminal` handle is available.
 pub fn emergency_restore() {
     use std::io::Write;
-    // Deep-pop Kitty keyboard stacks (main + whatever screen is active).
-    // Without this, Ghostty keeps emitting CSI-u (`c9;1:3u…`) into the shell.
     let _ = std::io::stdout().write_all(b"\x1b[<8u");
     let _ = crossterm::terminal::disable_raw_mode();
     let _ = crossterm::execute!(
@@ -80,7 +72,6 @@ fn install_signal_handlers() {
     }
 }
 
-/// RAII: `terminal.start()` on create, `stop()` on Drop.
 pub struct TerminalGuard {
     terminal: Option<xylitol_tui::CrosstermTerminal>,
 }
@@ -92,10 +83,6 @@ impl TerminalGuard {
             .map_err(|e| TuiSurfaceError::io("open terminal", e))?;
         terminal.hide_cursor();
         terminal.start();
-        // Product TUI does not enable mouse via TerminalGuard / XYLITOL_TUI_MOUSE.
-        // ApplicationOwned sessions enable capture when the host is constructed
-        // (`HostSession::new_product_ui_with_meta_mode`) — see c2070 / ath30.
-        // Keep DisableMouseCapture in `emergency_restore` for leaked sessions.
         Ok(Self {
             terminal: Some(terminal),
         })

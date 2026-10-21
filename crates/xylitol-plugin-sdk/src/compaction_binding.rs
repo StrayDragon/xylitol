@@ -1,12 +1,9 @@
-//! Resolved compaction summary model + generate options.
-
 use std::sync::Arc;
 
 use crate::XyModel;
 use crate::generate::{ObsSessionContext, XyGenerateOptions};
 use crate::model::{THINKING_OFF, XyModelConfig, XyModelKind, XyModelMeta};
 
-/// Attribution for compaction summary model selection (obs + notice).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompactionModelAttribution {
     pub requested_model: Option<String>,
@@ -41,7 +38,6 @@ impl CompactionModelAttribution {
     }
 }
 
-/// Resolved compaction summary model + generate options.
 #[derive(Clone)]
 pub struct CompactionSummaryBinding {
     pub model: Arc<dyn XyModel>,
@@ -52,7 +48,6 @@ pub struct CompactionSummaryBinding {
 }
 
 impl CompactionSummaryBinding {
-    /// Test/BDD helper: wrap a built model without task-entry resolution.
     pub fn for_test(model: Arc<dyn XyModel>, wire_id: &str) -> Self {
         let meta = XyModelMeta {
             id: wire_id.into(),

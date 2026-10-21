@@ -1,13 +1,3 @@
-//! Current xylitol session identity for Langfuse OTEL attributes (c1480).
-//!
-//! Resolution (Keybindings-style) for **idle** paths (no generate options):
-//! 1. thread-local [`ObsSessionScope`] if entered (tests / sync inject)
-//! 2. else process `Mutex` slot (production — survives tokio worker hops)
-//!
-//! Materialized sessions MUST derive identity from the owning runtime's facts
-//! and MUST NOT read this slot. The process slot is a fallback for optionless
-//! paths and tests.
-
 use std::cell::RefCell;
 use std::sync::{Mutex, OnceLock};
 
@@ -21,11 +11,9 @@ fn slot() -> &'static Mutex<ObsSessionContext> {
 }
 
 thread_local! {
-    /// Tests / sync inject: prefer this over the process slot while the guard lives.
-    static SCOPED: RefCell<Option<ObsSessionContext>> = const { RefCell::new(None) };
+        static SCOPED: RefCell<Option<ObsSessionContext>> = const { RefCell::new(None) };
 }
 
-/// RAII install of a thread-local obs session context.
 pub struct ObsSessionScope {
     prev: Option<ObsSessionContext>,
 }
@@ -56,7 +44,6 @@ fn with_active_mut<R>(f: impl FnOnce(&mut ObsSessionContext) -> R) -> R {
     f(&mut g)
 }
 
-/// Replace session id; clears name unless `name` is `Some`.
 pub fn set_obs_session(session_id: impl Into<String>, name: Option<String>) {
     let id = session_id.into();
     let id = id.trim();
@@ -73,7 +60,6 @@ pub fn set_obs_session(session_id: impl Into<String>, name: Option<String>) {
     });
 }
 
-/// Update display name only (keeps session id). Empty / whitespace clears name.
 pub fn set_obs_session_name(name: Option<&str>) {
     with_active_mut(|g| {
         g.session_name = name
@@ -94,18 +80,14 @@ pub fn obs_session_context() -> ObsSessionContext {
     slot().lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
-/// Idle-path session properties (process slot / TLS). Generate MUST use
-/// [`langfuse_session_properties_from`] with the options snapshot instead.
 pub fn langfuse_session_properties() -> Vec<(String, String)> {
     langfuse_session_properties_from(&obs_session_context())
 }
 
-/// Idle-path observation properties (process slot / TLS).
 pub fn langfuse_observation_properties(observation_type: &str) -> Vec<(String, String)> {
     langfuse_observation_properties_from(observation_type, &obs_session_context())
 }
 
-/// Generation helpers from an explicit session snapshot (overlapping generate).
 pub fn langfuse_generation_properties_from(
     model: &str,
     ctx: &ObsSessionContext,
@@ -117,7 +99,6 @@ pub fn langfuse_generation_properties_from(
     out
 }
 
-/// Idle-path generation helpers (process slot / TLS).
 pub fn langfuse_generation_properties(model: &str) -> Vec<(String, String)> {
     langfuse_generation_properties_from(model, &obs_session_context())
 }

@@ -1,6 +1,3 @@
-//! infra-image / infra-process 真行为步骤（c2853 从 steps_c2827 按域拆出）。
-//! 步骤注册文本与拆分前一致。
-
 use crate::bdd::helpers::with_test_timeout;
 use crate::bdd::prelude::*;
 use rstest_bdd_macros::{then, when};

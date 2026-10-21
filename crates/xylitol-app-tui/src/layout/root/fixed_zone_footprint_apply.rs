@@ -1,5 +1,3 @@
-//! Fixed-Zone Footprint apply path for [`UiRoot`] (atc23 / c1810).
-
 use super::super::slots::EditorSlot;
 use super::super::{
     IMPORT_SLOT, MCP_SLOT_BASE, MODELS_SLOT, RESUME_SLOT, SCENES_SLOT, THEMES_SLOT, TREE_SLOT,
@@ -8,8 +6,6 @@ use super::super::{
 use super::UiRoot;
 
 impl UiRoot {
-    /// Terminal height for Fixed-Zone Footprint budgets (atc23). Host MUST sync on
-    /// construct / resize / before paint.
     pub fn set_term_rows(&mut self, rows: usize) {
         self.term_rows = rows.max(1);
     }
@@ -18,7 +14,6 @@ impl UiRoot {
         self.term_rows
     }
 
-    /// Apply term-aware `max_visible` to the live flex list/tree slot (atc23).
     pub(crate) fn apply_fixed_zone_footprint(&mut self, todo_lines: usize) {
         let queue_lines = queue_strip_line_count(
             self.ui_model.pending_steer.len(),

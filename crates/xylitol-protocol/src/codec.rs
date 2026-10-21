@@ -1,10 +1,3 @@
-//! Product wire bytes for the RPC envelope.
-//!
-//! Decode accepts JSON-RPC 2.0 objects (`"jsonrpc":"2.0"`) only. Product
-//! encode helpers are `jsonrpc_request` / `jsonrpc_response` /
-//! `jsonrpc_notification`. Internal [`RpcMessage`] serde (`type` tags) is not
-//! a wire dialect.
-
 use serde::Deserialize as _;
 use serde::de::Error as _;
 use serde_json::{Value, json};
@@ -19,12 +12,8 @@ pub fn encode_to_string(msg: &RpcMessage) -> Result<String, serde_json::Error> {
     serde_json::to_string(msg)
 }
 
-/// 线上 JSON 深解析上限（r1927）：容纳实机深树（188）一个量级余量，
-/// 远低于 tokio worker 栈风险区。两处 `disable_recursion_limit` 入口共用。
 pub const JSON_DEPTH_LIMIT: u32 = 2048;
 
-/// 单趟、转义感知：字符串字面量内的 `[`/`{` 不计入嵌套。超限即 `true`，
-/// 不再进入 serde 递归下降（c2851：无界 `disable_recursion_limit` 可打穿栈）。
 pub fn json_nesting_exceeds_limit(text: &str) -> bool {
     let mut depth: u32 = 0;
     let mut in_string = false;
@@ -55,10 +44,6 @@ pub fn json_nesting_exceeds_limit(text: &str) -> bool {
     false
 }
 
-/// c2846/r1922: 线载荷深解析须绕过 serde_json 默认 128 层递归上限——
-/// `session_tree` 深树（实机 188 层）通过 JSON 轨到达时会触发
-/// `recursion limit exceeded`（v3 轨 RawOk 同法见 host_client）。
-/// c2851/r1927: 绕过默认上限前先做显式深度闸，超限早退。
 fn parse_json_value(text: &str) -> Result<Value, serde_json::Error> {
     if json_nesting_exceeds_limit(text) {
         return Err(serde_json::Error::custom("json depth limit exceeded"));
@@ -153,11 +138,6 @@ fn jsonrpc_to_message(v: &Value) -> Result<RpcMessage, serde_json::Error> {
     ))
 }
 
-/// JSON-RPC 2.0 success or application error. Envelope numeric codes are
-/// carriers; product codes live in `error.data.code`.
-///
-/// `id` MUST 逐字回显（保留原 JSON 类型：数字仍是数字）。
-/// `id` 为 [`Value::Null`] 时按通知处理（无 id 可回显）。
 pub fn jsonrpc_response(id: &Value, result: &RpcResult) -> Value {
     if result.ok {
         json!({
@@ -179,7 +159,6 @@ pub fn jsonrpc_response(id: &Value, result: &RpcResult) -> Value {
     }
 }
 
-/// Unregistered method: carrier code `-32601`, product code in `data.code`.
 pub fn jsonrpc_method_not_found(id: &Value) -> Value {
     json!({
         "jsonrpc": "2.0",
@@ -192,8 +171,6 @@ pub fn jsonrpc_method_not_found(id: &Value) -> Value {
     })
 }
 
-/// Malformed envelope (missing `method`, wrong `jsonrpc` member, oversized body):
-/// carrier code `-32600`; product code `illegal_envelope`.
 pub fn jsonrpc_invalid_request(id: &Value) -> Value {
     json!({
         "jsonrpc": "2.0",

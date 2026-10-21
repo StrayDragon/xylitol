@@ -1,5 +1,3 @@
-//! BDD bindings for `package-tui-markdown` (c2865 / c2890).
-
 use crate::bdd::steps_package_tui_markdown::{
     MarkdownFenceBdd, MarkdownMermaidBdd, markdown_fence_bdd, markdown_mermaid_bdd,
 };

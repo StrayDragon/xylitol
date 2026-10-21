@@ -1,10 +1,6 @@
 use crate::tui::Component;
 use crate::utils::{BgFn, apply_background_to_line, visible_width};
 
-/// Panel component - a container that applies padding and background to all children.
-///
-/// Renders children sequentially within a padded area, with optional background color
-/// applied to every line. Uses a render cache keyed on width, child output, and background.
 pub struct Panel {
     children: Vec<Box<dyn Component>>,
     padding_x: usize,
@@ -79,7 +75,6 @@ impl Component for Panel {
         let content_width = std::cmp::max(1, width.saturating_sub(self.padding_x * 2));
         let left_pad = " ".repeat(self.padding_x);
 
-        // Render all children into flat line list with left padding
         let mut child_lines: Vec<String> = Vec::new();
         for child in &mut self.children {
             let lines = child.render(content_width);
@@ -92,28 +87,22 @@ impl Component for Panel {
             return vec![];
         }
 
-        // Sample bgFn output to detect changes
         let bg_sample: Option<String> = self.bg_fn.as_ref().map(|f| f("test"));
 
-        // Check cache
         if self.match_cache(width, &child_lines, &bg_sample) {
             return self.cache.as_ref().unwrap().lines.clone();
         }
 
-        // Apply background and padding
         let mut result: Vec<String> = Vec::new();
 
-        // Top padding
         for _ in 0..self.padding_y {
             result.push(self.apply_bg("", width));
         }
 
-        // Content
         for line in &child_lines {
             result.push(self.apply_bg(line, width));
         }
 
-        // Bottom padding
         for _ in 0..self.padding_y {
             result.push(self.apply_bg("", width));
         }
@@ -175,9 +164,7 @@ mod tests {
         panel.add_child(Box::new(Text::new("hello".into(), 0, 0)));
 
         let lines = panel.render(10);
-        // Top padding (1), content " hello" padded to 10, bottom padding (1) = 3 lines
         assert_eq!(lines.len(), 3);
-        // Content line has 1 space left pad + "hello" + 4 spaces right pad = 10
         assert_eq!(lines[1].len(), 10);
         assert!(lines[1].starts_with(" hello"));
     }
@@ -188,7 +175,6 @@ mod tests {
         panel.add_child(Box::new(Text::new("hi".into(), 0, 0)));
 
         let lines = panel.render(8);
-        // One content line: "  hi" + pad
         assert_eq!(lines.len(), 1);
         assert!(lines[0].starts_with("  hi"));
     }
@@ -214,7 +200,6 @@ mod tests {
         panel.add_child(Box::new(Text::new("second".into(), 0, 0)));
 
         let lines = panel.render(10);
-        // Both children rendered with left padding
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains("first"));
         assert!(lines[1].contains("second"));
@@ -225,9 +210,7 @@ mod tests {
         let mut panel = Panel::new(1, 0, None);
         panel.add_child(Box::new(Text::new("cached".into(), 0, 0)));
 
-        // First render caches
         let lines1 = panel.render(20);
-        // Second render with same width and content returns cached
         let lines2 = panel.render(20);
         assert_eq!(lines1, lines2);
     }
@@ -239,7 +222,6 @@ mod tests {
 
         let lines1 = panel.render(20);
         let lines2 = panel.render(40);
-        // Different widths should produce different output
         assert_ne!(lines1, lines2);
     }
 
@@ -276,7 +258,6 @@ mod tests {
 
         let lines = panel.render(10);
         assert_eq!(lines.len(), 1);
-        // No left padding, text starts immediately
         assert!(lines[0].starts_with("zero"));
     }
 
@@ -286,9 +267,7 @@ mod tests {
         panel.add_child(Box::new(Text::new("content".into(), 0, 0)));
 
         let lines = panel.render(10);
-        // 2 top + 1 content + 2 bottom = 5
         assert_eq!(lines.len(), 5);
-        // Top padding lines are empty (spaces padded to width)
         assert!(lines[0].trim().is_empty());
         assert!(lines[1].trim().is_empty());
         assert_eq!(lines[2].trim(), "content");
@@ -304,7 +283,6 @@ mod tests {
         panel.add_child(Box::new(Text::new("b".into(), 0, 0)));
 
         let lines = panel.render(10);
-        // text "a" + 2 empty spacer lines + text "b" = 4 lines
         assert_eq!(lines.len(), 4);
         assert!(lines[0].contains("a"));
         assert!(lines[1].trim().is_empty());

@@ -1,5 +1,3 @@
-//! Steps for `package-tui-interaction-modes` (c2070 ApplicationOwned).
-
 use std::cell::RefCell;
 
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -381,7 +379,6 @@ fn when_wheel_up_repaint() {
         harness.tui.request_render(false);
         let _ = harness.tui.render_now();
         let raw = harness.tui.terminal.writes.concat();
-        // Follow-end shows L14..L17 (40x6, dock=2). One WHEEL_NOTCH up → L11..L14.
         LAST_BOOL.with(|b| *b.borrow_mut() = raw.contains("L11"));
     });
 }
@@ -396,7 +393,6 @@ fn when_editor_drag_multiline() {
     EDITOR.with(|slot| {
         let mut editor = slot.borrow_mut();
         let editor = editor.as_mut().expect("editor");
-        // Local coords: row 0 = top border, content starts at row 1.
         let down = mouse(MouseEventKind::Down(MouseButton::Left), 0, 1);
         let drag = mouse(MouseEventKind::Drag(MouseButton::Left), 4, 2);
         let up = mouse(MouseEventKind::Up(MouseButton::Left), 4, 2);

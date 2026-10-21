@@ -53,17 +53,14 @@ pub struct OverlayOptions {
     pub non_capturing: bool,
 }
 
-/// Focus routing target: a root child index or an overlay id (c575 / D08).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FocusTarget {
     Root(usize),
     Overlay(u64),
 }
 
-/// Options for [`OverlayHandle::unfocus`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OverlayUnfocusOptions {
-    /// Explicit target after releasing this overlay (may be `None` = clear focus).
     pub target: Option<FocusTarget>,
 }
 
@@ -95,18 +92,12 @@ pub(super) enum OverlayFocusRestore {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct OverlayStackEntry {
     overlay_id: u64,
-    /// Focus target before this overlay opened (root or overlay); restored on hide.
     pub(super) pre_focus: Option<FocusTarget>,
     pub(super) hidden: bool,
     focus_order: u64,
-    /// Last painted overlay box in screen cells (for pointer capture).
     pub(super) last_screen_rect: Option<ScreenRect>,
 }
 
-/// Handle returned by [`TUI::show_overlay`] for controlling one overlay entry.
-///
-/// Operations take `&mut TUI` because the overlay component is owned by the
-/// TUI. After [`Self::hide`], further calls are no-ops (id no longer on stack).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OverlayHandle {
     overlay_id: u64,
@@ -117,7 +108,6 @@ impl OverlayHandle {
         self.overlay_id
     }
 
-    /// Permanently remove this overlay (cannot be shown again via this handle).
     pub fn hide<T: Terminal>(self, tui: &mut TUI<T>) {
         tui.hide_overlay(self);
     }
@@ -134,14 +124,12 @@ impl OverlayHandle {
         tui.focus_overlay(self);
     }
 
-    /// Release focus (optional explicit [`OverlayUnfocusOptions::target`]).
     pub fn unfocus<T: Terminal>(self, tui: &mut TUI<T>, options: Option<OverlayUnfocusOptions>) {
         tui.unfocus_overlay(self, options);
     }
 }
 
 impl<T: Terminal> TUI<T> {
-    /// Show an overlay and return a handle for hide / focus control.
     pub fn show_overlay(
         &mut self,
         component: Box<dyn Component>,
@@ -389,7 +377,6 @@ impl<T: Terminal> TUI<T> {
         }
     }
 
-    /// Permanently remove the overlay identified by `handle`.
     pub fn hide_overlay(&mut self, handle: OverlayHandle) {
         let Some(index) = self.overlay_index(handle.overlay_id) else {
             return;
@@ -450,7 +437,6 @@ impl<T: Terminal> TUI<T> {
                 .is_some_and(|i| !self.overlays[i].2.hidden)
     }
 
-    /// Bring overlay to the visual front and capture focus (including non_capturing).
     pub fn focus_overlay(&mut self, handle: OverlayHandle) {
         let Some(index) = self.overlay_index(handle.overlay_id) else {
             return;
@@ -467,7 +453,6 @@ impl<T: Terminal> TUI<T> {
         self.request_render(false);
     }
 
-    /// Release focus from this overlay (optional explicit target).
     pub fn unfocus_overlay(
         &mut self,
         handle: OverlayHandle,
@@ -545,7 +530,6 @@ impl<T: Terminal> TUI<T> {
             .collect();
         indices.sort_by_key(|&i| self.overlays[i].2.focus_order);
 
-        // Collect layout info before rendering (avoid borrow conflicts)
         struct LayoutInfo {
             width: usize,
             max_height: Option<usize>,
@@ -571,7 +555,6 @@ impl<T: Terminal> TUI<T> {
             });
         }
 
-        // Render each overlay
         let mut rendered: Vec<(Vec<String>, usize, usize)> = Vec::new();
         for (idx, layout) in indices.iter().zip(layouts.iter()) {
             let ov_lines = {
@@ -598,10 +581,6 @@ impl<T: Terminal> TUI<T> {
             rendered.push((ov_lines, row, col));
         }
 
-        // workingHeight = max(content, screen, minLinesNeeded). Deliberately
-        // excludes maxLinesRendered — including it historically caused
-        // self-reinforcing scrollback growth on width changes (pi tui.ts:1067).
-        // minLinesNeeded covers overlays anchored below the content end.
         let min_lines_needed = rendered
             .iter()
             .map(|(ov, row, _)| row + ov.len())
@@ -610,8 +589,6 @@ impl<T: Terminal> TUI<T> {
         let working_height = lines.len().max(term_height).max(min_lines_needed);
         lines.resize(working_height, String::new());
 
-        // Overlay screen coords are relative to the visible viewport top; map
-        // them to absolute buffer rows via viewportStart (pi tui.ts:1074).
         let viewport_start = working_height.saturating_sub(term_height);
 
         for (ov_lines, row, col) in rendered {
@@ -633,7 +610,6 @@ impl<T: Terminal> TUI<T> {
         _tw: usize,
         _th: usize,
     ) -> (usize, usize) {
-        // Simplified anchor-based positioning
         let anchor = _opts.anchor.unwrap_or(OverlayAnchor::Center);
         let mt = _opts.margin.unwrap_or_default().top.unwrap_or(0);
         let ml = _opts.margin.unwrap_or_default().left.unwrap_or(0);
@@ -673,25 +649,18 @@ impl<T: Terminal> TUI<T> {
         let after_start = col + ow;
         let after_len = total_width.saturating_sub(after_start);
 
-        // Single pass: split the base into before[0,col) and after[afterStart,...).
-        // after inherits the SGR active at col so an overlay laid mid-line doesn't
-        // leave the trailing content unstyled (pi compositeLineAt via extractSegments).
         let seg = extract_segments(base, col, after_start, after_len, true);
 
-        // Overlay slice (strict — reject wide chars crossing the overlay's right
-        // edge). Truncate the overlay to its declared width if it overflows.
         let overlay_slice = if ow > 0 {
             slice_with_width(overlay, 0, ow, true).0
         } else {
             String::new()
         };
 
-        // Pad before up to col, then reset, then overlay, then reset.
         let before_pad = " ".repeat(col.saturating_sub(seg.before_width));
         let before_part = format!("{}{}{}", seg.before, before_pad, reset);
 
         let overlay_part = if after_len == 0 {
-            // No room for after; overlay (truncated) + reset is all that fits.
             format!("{}{}", overlay_slice, reset)
         } else {
             let after_pad = " ".repeat(after_len.saturating_sub(seg.after_width));
@@ -703,8 +672,6 @@ impl<T: Terminal> TUI<T> {
 
         let mut result = format!("{}{}", before_part, overlay_part);
 
-        // Final safety net (pi compositeLineAt tui.ts:1218): if anything still
-        // overflowed (wide-char rounding, unexpected ANSI), hard-slice to width.
         if visible_width(&result) > total_width {
             result = slice_by_column(&result, 0, total_width);
         }

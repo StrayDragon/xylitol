@@ -1,10 +1,3 @@
-//! # Preview scene fixtures
-//!
-//! Process-local catalog for `xylitol tui designing` (debug builds). Inject
-//! lives in `app::tui::effects::preview` — not a product slash, not on the wire.
-//!
-//! Scene table: [`catalog::DEBUG_SCENES`].
-
 mod catalog;
 mod seed;
 #[cfg(test)]

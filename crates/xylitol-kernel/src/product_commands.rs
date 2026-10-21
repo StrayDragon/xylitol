@@ -1,12 +1,3 @@
-//! Product slash-command SSOT (c1175) — app-surface catalog.
-//!
-//! Single catalog for [`XyDriver::get_commands`](crate::driver::XyDriver)
-//! and the product TUI `SlashCommandSource`. Names follow PI_DELTAS A03 (`session-*`);
-//! legacy short names are intentionally absent.
-//!
-//! Ownership: **app** (not agent). Agent must not grow product slash builtins.
-
-/// One product-facing slash command (no leading `/`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProductSlashCommand {
     pub name: &'static str,
@@ -14,7 +5,6 @@ pub struct ProductSlashCommand {
     pub argument_hint: Option<&'static str>,
 }
 
-/// Built-in product commands.
 pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
     vec![
         ProductSlashCommand {

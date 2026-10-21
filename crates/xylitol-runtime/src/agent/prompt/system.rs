@@ -1,58 +1,24 @@
-//! System prompt construction.
-//!
-//! Dynamically composes custom prompt, tool snippets, guidelines,
-//! skills, context files — **stable** prefix only by default (c1905).
-//!
-//! # Fragment labels (c1905; documentation + test mental model)
-//!
-//! | Label | Contents |
-//! |---|---|
-//! | **stable** | SYSTEM/custom/default body, tool snippets, context files, APPEND_SYSTEM, skills metadata, Guidelines, runtime_policy |
-//! | **session_env** | date / clock / cwd — **status-bar family bootstrap** ([`super::session_env`]); not in system by default |
-//! | **volatile** | high-churn readings — **MUST NOT** enter this prefix (→ status bar / tools) |
-//!
-//! Default assemble order (system):
-//! `stable body → append/context/APPEND → skills → Guidelines → runtime_policy`
-//! (no `Current date` / `Current working directory`; date/cwd ride session_env).
-//!
-//! Key functions:
-//! - `build_system_prompt(opts)` — explicit options
-//! - default body path uses sandboxed minijinja (`super::sandbox`)
-
 use crate::agent::tools::ToolSet;
 
 use super::sandbox::render_default_base;
 
-/// Options for building the system prompt.
 #[derive(Debug, Clone, Default)]
 pub struct SystemPromptOpts {
-    /// User-provided custom prompt (replaces the default).
     pub custom_prompt: Option<String>,
-    /// Selected tool names (for snippet/guideline inclusion).
     pub selected_tools: Vec<String>,
-    /// One-line tool snippets keyed by tool name.
     pub tool_snippets: Vec<(String, String)>,
-    /// Additional guideline bullets.
     pub prompt_guidelines: Vec<String>,
-    /// Text appended to the end of the prompt.
     pub append_prompt: Option<String>,
-    /// Project-specific context files (path => content).
     pub context_files: Vec<(String, String)>,
-    /// Available skills (name + description + source info for XML rendering).
     pub skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>,
-    /// System prompt from SYSTEM.md (will be prepended to the output).
     pub system_prompt: Option<String>,
-    /// Append system prompt lines from APPEND_SYSTEM.md.
     pub append_system_prompt: Vec<String>,
-    /// Built-in runtime policy fragments (c1605); injected as `<runtime_policy>`.
     pub runtime_policy_fragments: Vec<String>,
 }
 
-/// Build a system prompt dynamically based on options.
 pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
     let mut prompt = String::new();
 
-    // Use system prompt (SYSTEM.md) if available, then custom_prompt, then default
     if let Some(ref sp) = opts.system_prompt {
         prompt.push_str(sp);
     } else if let Some(ref custom) = opts.custom_prompt {
@@ -64,13 +30,11 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         ));
     }
 
-    // Append section (explicit append_prompt)
     if let Some(ref append) = opts.append_prompt {
         prompt.push_str("\n\n");
         prompt.push_str(append);
     }
 
-    // Project context files
     if !opts.context_files.is_empty() {
         prompt.push_str("\n\n<project_context>\n\n");
         prompt.push_str("Project-specific instructions and guidelines:\n\n");
@@ -82,7 +46,6 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         prompt.push_str("</project_context>\n");
     }
 
-    // Append system prompt (APPEND_SYSTEM.md from loader)
     if !opts.append_system_prompt.is_empty() {
         for append in &opts.append_system_prompt {
             prompt.push_str("\n\n");
@@ -90,8 +53,6 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         }
     }
 
-    // Skills section — XML format for agentskills.io-compatible catalogs.
-    // (`disable-model-invocation` skills omitted; intro tells model to read SKILL.md).
     let visible_skills: Vec<_> = opts
         .skills
         .iter()
@@ -116,7 +77,6 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         prompt.push_str("</available_skills>\n");
     }
 
-    // Guidelines
     if !opts.prompt_guidelines.is_empty() {
         prompt.push_str("\nGuidelines:\n");
         for g in &opts.prompt_guidelines {
@@ -124,8 +84,6 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         }
     }
 
-    // Runtime policy fragments (c1605) — after user APPEND / guidelines, before date.
-    // Bodies are Session-deduped by fragment id; still unique-by-content here.
     if !opts.runtime_policy_fragments.is_empty() {
         prompt.push_str("\n\n<runtime_policy>\n");
         let mut seen = std::collections::HashSet::new();
@@ -145,13 +103,9 @@ pub fn build_system_prompt(opts: &SystemPromptOpts) -> String {
         prompt.push_str("</runtime_policy>\n");
     }
 
-    // No `Current date` / cwd here: session_env carries date/cwd as Env→user
-    // (c1905); the placement knob was removed (c2730).
-
     prompt
 }
 
-/// Build the default prompt base with tool snippets via sandboxed minijinja.
 fn default_prompt_base(selected_tools: &[String], snippets: &[(String, String)]) -> String {
     let tools: Vec<(String, String)> = selected_tools
         .iter()
@@ -166,7 +120,6 @@ fn default_prompt_base(selected_tools: &[String], snippets: &[(String, String)])
     render_default_base(&tools)
 }
 
-/// Collect tool snippets from a ToolSet.
 pub(crate) fn collect_tool_snippets(
     tool_registry: &ToolSet,
     selected: &[String],
@@ -182,7 +135,6 @@ pub(crate) fn collect_tool_snippets(
         .collect()
 }
 
-/// Flatten non-empty `XyTool::prompt_guidelines` for selected tools (pi Guidelines section).
 pub(crate) fn collect_tool_guidelines(tool_registry: &ToolSet, selected: &[String]) -> Vec<String> {
     selected
         .iter()
@@ -353,7 +305,6 @@ mod tests {
         };
         let prompt = build_system_prompt(&opts);
         assert!(prompt.contains("Custom SYSTEM.md content"));
-        // system_prompt takes priority over custom_prompt
         assert!(!prompt.contains("expert coding assistant"));
     }
 

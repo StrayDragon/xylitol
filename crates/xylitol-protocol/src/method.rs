@@ -1,11 +1,5 @@
-//! Product method vocabulary. Unary names live on [`super::registry`] (c2530);
-//! this module keeps the downlink closure and re-exports the unary gate.
-
 use super::registry;
 
-/// Downlink `ServerRequest.method` values (not unary).
-///
-/// Version handshake is `host.describe` result (c2825), not a mux `ServerHello` frame.
 pub const DOWNLINK_METHODS: &[&str] = &[
     "session/event",
     "session/subscribed",

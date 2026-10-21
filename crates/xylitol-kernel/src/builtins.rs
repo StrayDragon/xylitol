@@ -1,5 +1,3 @@
-//! Official replaceable plugin factories for the loader `Builtins` map.
-
 use rutis_loader::Builtins;
 use xylitol_official_plugin_compaction::plugin::CompactionFactory;
 use xylitol_official_plugin_hooks::HooksConfig;

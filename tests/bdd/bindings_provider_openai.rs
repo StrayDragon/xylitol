@@ -1,9 +1,5 @@
-//! provider-openai BDD 绑定。
-
 use crate::bdd::steps_bridge::{ProviderBdd, provider_bdd};
 use rstest_bdd_macros::scenario;
-
-// ---- c2826 specs-compact：裸规则转场景绑定 ----
 
 #[scenario(
     path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai/provider-openai.feature",

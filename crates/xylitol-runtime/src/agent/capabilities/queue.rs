@@ -1,8 +1,3 @@
-//! Steer / follow-up pending-message queues (c525).
-//!
-//! Short-lock [`VecDeque`] buffers + optional [`EventTx`] so enqueue/clear can
-//! push [`XyEvent::QueueUpdate`] onto the **active** EventStream (not EventBus).
-
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
@@ -10,27 +5,21 @@ use crate::agent::runtime::state::RunId;
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::AgentMessage;
 
-/// Drain policy for a pending-message queue.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum QueueMode {
-    /// Drain every queued message in one call.
     All,
-    /// Drain only the oldest message; leave the rest queued (product default; c1585).
     #[default]
     OneAtATime,
 }
 
-/// Snapshot of queue depths for XyDriver / dispatch.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct QueueStats {
     pub steer_count: usize,
     pub follow_up_count: usize,
 }
 
-/// Sender bound to the active `XyDriver::run` / ReAct EventStream (may be absent).
 pub type EventTx = tokio::sync::mpsc::UnboundedSender<XyEvent>;
 
-/// FIFO queue of [`AgentMessage`] with mode-aware drain.
 #[derive(Debug, Clone)]
 pub struct PendingMessageQueue {
     messages: VecDeque<AgentMessage>,
@@ -38,7 +27,6 @@ pub struct PendingMessageQueue {
 }
 
 impl PendingMessageQueue {
-    /// Create an empty queue with the given drain mode.
     pub fn new(mode: QueueMode) -> Self {
         Self {
             messages: VecDeque::new(),
@@ -46,23 +34,18 @@ impl PendingMessageQueue {
         }
     }
 
-    /// Append a message to the end of the queue.
     pub fn enqueue(&mut self, message: AgentMessage) {
         self.messages.push_back(message);
     }
 
-    /// Number of queued messages.
     pub fn len(&self) -> usize {
         self.messages.len()
     }
 
-    /// Whether the queue is empty (c2837: clippy len-without-is-empty on the
-    /// now externally-referenced public API).
     pub fn is_empty(&self) -> bool {
         self.messages.is_empty()
     }
 
-    /// Drain according to [`QueueMode`]: all messages, or only the first.
     pub fn drain(&mut self) -> Vec<AgentMessage> {
         match self.mode {
             QueueMode::All => self.messages.drain(..).collect(),
@@ -70,17 +53,14 @@ impl PendingMessageQueue {
         }
     }
 
-    /// Remove all messages without returning them.
     pub fn clear(&mut self) {
         self.messages.clear();
     }
 }
 
-/// Steer + follow-up channels and the optional active-run event sender.
 pub struct AsyncQueueRuntime {
     pub steer: Arc<Mutex<PendingMessageQueue>>,
     pub follow_up: Arc<Mutex<PendingMessageQueue>>,
-    /// Bound as `(RunId, tx)` so a stale stream cannot clear a newer run's sender.
     event_tx: Arc<Mutex<Option<(RunId, EventTx)>>>,
 }
 
@@ -102,12 +82,10 @@ impl AsyncQueueRuntime {
         }
     }
 
-    /// Bind the active run's EventStream sender (replaces any previous).
     pub fn bind_event_tx(&self, run_id: RunId, tx: EventTx) {
         *crate::utils::lock_mutex(&self.event_tx) = Some((run_id, tx));
     }
 
-    /// Clear the active-run sender only when `run_id` still owns the binding.
     pub fn unbind_event_tx(&self, run_id: RunId) {
         let mut guard = crate::utils::lock_mutex(&self.event_tx);
         if guard.as_ref().is_some_and(|(id, _)| *id == run_id) {
@@ -115,7 +93,6 @@ impl AsyncQueueRuntime {
         }
     }
 
-    /// Notify the active EventStream with current depths (no-op if unbound).
     pub fn notify_queue_update(&self) {
         let stats = self.stats();
         let event = XyEvent::QueueUpdate {
@@ -202,7 +179,6 @@ mod tests {
             }
             other => panic!("unexpected {other:?}"),
         }
-        // Stale unbind must not clear a newer binding.
         let (tx2, mut rx2) = tokio::sync::mpsc::unbounded_channel();
         let run2 = RunId::from_raw_for_test(2);
         rt.bind_event_tx(run2, tx2);

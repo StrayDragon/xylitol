@@ -1,21 +1,4 @@
-//! Observability bootstrap — fastrace reporters + `log` file logger.
-//!
-//! File-only sinks never write stdout/stderr so TUI Inline + DSR stay intact.
-//! Optional OTLP/HTTP (feature `otel` + `[otel]` config) is also file/network
-//! only — never console.
-//!
-//! Local file activation (no CLI flag):
-//! - `RUST_LOG` set → level filter from env
-//! - else `XYLITOL_DEBUG=1` → `xylitol=debug,warn`
 //! - else debug builds (`cfg(debug_assertions)`) → same default
-//! - release with neither → off
-//!
-//! Provider timeline (`provider-trace.jsonl`) follows the same gate, or
-//! `XYLITOL_PROVIDER_TRACE=1` alone in release.
-//!
-//! Remote OTLP is orthogonal: `[otel].exporter = otlp-http` (+ feature), default
-//! `none`.
-
 mod fanout;
 mod file_reporter;
 pub mod otel;
@@ -38,10 +21,6 @@ use xylitol_plugin_sdk::{
 
 const DEFAULT_FILTER: &str = "xylitol=debug,warn";
 
-/// Install file-only log + fastrace reporters when requested.
-///
-/// `otel` controls optional remote OTLP (ignored / degraded when feature off or
-/// misconfigured). Returns `Some(())` when any backend was installed.
 pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
     let want_log = logging_requested();
     let want_provider = provider_trace_requested(want_log);
@@ -101,8 +80,6 @@ pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
     }
 
     let mut fanout = FanoutReporter::new(Vec::new());
-    // Span emission (provider_trace_active) is on when any sink needs spans:
-    // local JSONL and/or OTLP. FileReporter alone still follows env/build gate.
     let mut emit_spans = false;
 
     if want_provider {
@@ -151,7 +128,6 @@ pub fn init_logging(agent_dir: &Path, otel: &OtelConfig) -> Option<()> {
     Some(())
 }
 
-/// Flush fastrace before process exit (file + OTLP batch).
 pub fn flush_observability() {
     fastrace::flush();
 }
@@ -220,7 +196,6 @@ fn is_falsey(v: std::ffi::OsString) -> bool {
     )
 }
 
-/// `env_logger::Target::Pipe` needs `Write`; Mutex around File is Sync.
 struct MutexWriter(Mutex<std::fs::File>);
 
 impl Write for MutexWriter {

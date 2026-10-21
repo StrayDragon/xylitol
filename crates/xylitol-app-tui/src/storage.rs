@@ -1,12 +1,3 @@
-//! Client-local storage channel (c2470): multi-instance shared surface state.
-//!
-//! 磁盘为真值 + 写路径 flock 串行化（读→改→临时文件原子 rename）；外部变更
-//! 经使用点懒并盘感知（c2915：↑ 召回前重读，无常驻 watcher）。路径按 channel
-//! 分桶：`<root>/<channel>/tui/<key>.json`，一 key 一文件；同 channel 多实例
-//! 天然共享，跨 channel（dev / default）互不污染。只承载 client-local 态
-//! （偏好 / 布局 / 历史）；会话数据归 Host，渲染包 `xylitol-tui` 不感知本
-//! 模块（app 层接线）。
-
 use std::fs;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
@@ -15,7 +6,6 @@ use std::path::{Path, PathBuf};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-/// channel / key 段约束（防路径逃逸；首字符字母数字，其余字母数字与 . _ -）。
 fn valid_segment(s: &str) -> bool {
     let mut chars = s.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphanumeric())
@@ -23,22 +13,16 @@ fn valid_segment(s: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'))
 }
 
-/// 编辑器 ↑/↓ 发送历史 key（首个迁移条目；cap 与进程内 editor 一致）。
 pub const KEY_EDITOR_HISTORY: &str = "editor-history";
 
-/// 编辑器历史上限（对齐包内 editor `add_to_history` 截断）。
 const EDITOR_HISTORY_CAP: usize = 100;
 
-/// client-local 存储通道句柄（进程内共享 `Arc`）。
 #[derive(Debug, Clone)]
 pub struct ClientStorage {
-    /// `<root>/<channel>/tui`。
     dir: PathBuf,
 }
 
 impl ClientStorage {
-    /// 环境派生：根 `XYLITOL_STATE_ROOT`（缺省 `~/.xylitol/state`），通道
-    /// `XYLITOL_CHANNEL`（缺省 `default`；dev 并行调试设 `dev`）。非法段回落缺省。
     pub fn from_env() -> Self {
         let root = std::env::var("XYLITOL_STATE_ROOT")
             .ok()
@@ -58,7 +42,6 @@ impl ClientStorage {
             .unwrap_or_else(|_| Self::new(root, "default").expect("default"))
     }
 
-    /// 显式构造；`channel` 须为合法段。
     pub fn new(root: impl Into<PathBuf>, channel: &str) -> Result<Self, String> {
         if !valid_segment(channel) {
             return Err(format!("invalid channel segment: {channel}"));
@@ -68,7 +51,6 @@ impl ClientStorage {
         })
     }
 
-    /// 存储目录（测试 / 诊断用）。
     pub fn dir(&self) -> &Path {
         &self.dir
     }
@@ -80,15 +62,12 @@ impl ClientStorage {
         Ok(self.dir.join(format!("{key}.json")))
     }
 
-    /// 读；缺失 / 损坏 / 非法 key → `None`（调用方回退 initial，最坏读到旧值）。
     pub fn load<T: DeserializeOwned>(&self, key: &str) -> Option<T> {
         let path = self.key_path(key).ok()?;
         let raw = fs::read_to_string(path).ok()?;
         serde_json::from_str(&raw).ok()
     }
 
-    /// 串行化更新：目录内独占锁下 读盘 → mutate → 临时文件原子 rename。
-    /// 返回落盘后的最终值；锁等待为阻塞式（写临界区仅读盘 + rename，毫秒级）。
     pub fn update<T, F>(&self, key: &str, default: T, mutate: F) -> Result<T, String>
     where
         T: Serialize + DeserializeOwned,
@@ -124,7 +103,6 @@ impl ClientStorage {
                 fs::rename(&tmp, &path).map_err(|e| e.to_string())
             })();
             if persisted.is_err() {
-                // 失败路径清理半成品，不残留 .tmp（r2899 落盘语义）。
                 let _ = fs::remove_file(&tmp);
             }
             persisted?;
@@ -136,8 +114,6 @@ impl ClientStorage {
         result
     }
 
-    /// 编辑器 ↑/↓ 历史：跨进程记录（去重置顶、cap 截断）。失败静默
-    /// （best-effort；最坏丢一条本地历史）。
     pub fn record_editor_prompt(&self, text: &str) {
         let text = text.trim().to_string();
         if text.is_empty() {
@@ -150,7 +126,6 @@ impl ClientStorage {
         });
     }
 
-    /// 编辑器 ↑/↓ 历史：读盘（缺失 / 损坏 → 空）。
     pub fn editor_history(&self) -> Vec<String> {
         self.load::<Vec<String>>(KEY_EDITOR_HISTORY)
             .unwrap_or_default()
@@ -212,7 +187,6 @@ mod tests {
     fn update_failure_cleans_up_tmp() {
         let storage = ClientStorage::new(tmp_root("tmpclean"), "default").unwrap();
         fs::create_dir_all(storage.dir()).unwrap();
-        // key 落点被同名目录占位 → rename 失败，走失败清理路径。
         let target = storage.key_path(KEY_EDITOR_HISTORY).unwrap();
         fs::create_dir(&target).unwrap();
         let _err = storage

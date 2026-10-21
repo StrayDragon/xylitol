@@ -1,27 +1,11 @@
-//! Test-only virtual terminal backed by `vte` for cell-grid oracle assertions.
-//!
-//! Mirrors pi-tui's `test/virtual-terminal.ts` (which uses @xterm/headless): it
-//! implements the `Terminal` trait so a `TUI` can render into it, while keeping
-//! an internal cell grid and cursor so tests can assert what actually landed on
-//! screen — the only reliable way to verify differential rendering, overlay
-//! compositing, and style leaks.
-//!
 //! Not part of the public API; `#[cfg(test)]` / test-crates only.
-//!
 //! `#[allow(dead_code)]` 说明：Cargo 自动发现 tests/ 下 12 个 integration
-//! target，每个 target 独立 `mod support`（一个 target = 一个编译单元），
-//! 只有本 target 引到的符号才算活。下面各 allow 是「harness API 跨 target
-//! 完整性」所需，不是死码压制——去 allow 会在未引用的 target 上爆
-//! `dead_code`。引用矩阵见
-//! `llmanspec/changes/archive/2026-08-17-c2220-update-pre-release-hygiene/research/dead-code-triage.md`。
-
 pub mod vt_feed;
 
 use vte::{Params, Perform};
 
 use xylitol_tui::terminal::Terminal;
 
-/// One terminal cell: the printed char plus the SGR attributes in effect.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Cell {
     pub ch: char,
@@ -34,46 +18,31 @@ pub struct Cell {
     pub reverse: bool,
 }
 
-/// Terminal color resolution. Matches the SGR color parameter space.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Color {
-    /// Default terminal foreground/background.
     #[default]
     Default,
-    /// Indexed: 0-15 the standard 16, 16-255 the xterm 256-cube.
     Indexed(u8),
-    /// 24-bit true color.
     Rgb(u8, u8, u8),
 }
 
-/// A virtual terminal that parses ANSI written to it and maintains a cell grid.
-///
-/// Implements `Terminal` so it can be plugged straight into `TUI::new`. Test
-/// helpers (`viewport`, `cell`, `cursor`) read the resulting grid.
 pub struct VirtualTerminal {
     cols: u16,
     rows: u16,
-    /// Active DECSTBM scroll region, inclusive and viewport-relative.
     scroll_top: usize,
     scroll_bottom: usize,
-    /// Row-major grid; row 0 is the top of the current viewport. Grown lazily
-    /// when content scrolls past `rows` (we keep the full scrollback so tests
-    /// can assert on overflow/scroll behavior like pi's scroll buffer).
     grid: Vec<Vec<Cell>>,
-    /// Cursor row/col (0-based) in the same coordinate space as `grid`.
     cursor_row: usize,
     cursor_col: usize,
     auto_wrap: bool,
-    /// Pending SGR attributes applied to the next printed char.
     attrs: Cell,
-    /// Last set window title (OSC 0/2), if any.
     title: Option<String>,
     mouse_capture_desired: bool,
     mouse_capture_active: bool,
     alternate_screen_active: bool,
 }
 
-#[allow(dead_code)] // harness API; direct: interaction_modes/overlay_focus/virtual_terminal; via Deref/harness: agent_demo/completion_source/harness/snapshot (per-target `mod support`)
+#[allow(dead_code)]
 impl VirtualTerminal {
     pub fn new(cols: u16, rows: u16) -> Self {
         let rows_us = rows as usize;
@@ -95,9 +64,7 @@ impl VirtualTerminal {
         }
     }
 
-    /// Resize the grid to `cols` x `rows`. Existing content in the top-left
-    /// overlap is preserved; new cells are blank. Cursor is clamped.
-    #[allow(dead_code)] // harness API; only interaction_modes/virtual_terminal reach it via Terminal::set_size_hint (per-target `mod support`)
+    #[allow(dead_code)]
     pub fn resize(&mut self, cols: u16, rows: u16) {
         let new_rows = rows as usize;
         let new_cols = cols as usize;
@@ -113,8 +80,6 @@ impl VirtualTerminal {
         self.cursor_col = self.cursor_col.min(new_cols.saturating_sub(1));
     }
 
-    /// Return the visible viewport as plain text, trimming trailing blanks per
-    /// line (matches pi's `translateToString(true)`).
     pub fn viewport(&self) -> Vec<String> {
         let top = self.viewport_top();
         let height = self.rows as usize;
@@ -129,20 +94,15 @@ impl VirtualTerminal {
             .collect()
     }
 
-    /// Return the entire scrollback buffer (all rows ever written, including
-    /// those scrolled off-screen). Matches pi's `getScrollBuffer()`.
     pub fn scroll_buffer(&self) -> Vec<String> {
         self.grid.iter().map(|r| row_to_trimmed_string(r)).collect()
     }
 
-    /// The grid row index of the current viewport's top. With scrollback
-    /// growth this is `grid.len() - rows`.
     fn viewport_top(&self) -> usize {
         let height = self.rows as usize;
         self.grid.len().saturating_sub(height)
     }
 
-    /// Cell at absolute grid `(row, col)`. Out-of-range yields a blank cell.
     pub fn cell(&self, row: usize, col: usize) -> Cell {
         self.grid
             .get(row)
@@ -151,43 +111,33 @@ impl VirtualTerminal {
             .unwrap_or_default()
     }
 
-    /// Read a viewport-relative cell (row 0 = top of visible area).
-    #[allow(dead_code)] // harness API; used by agent_demo/interaction_modes targets
+    #[allow(dead_code)]
     pub fn viewport_cell(&self, row: usize, col: usize) -> Cell {
         let abs = self.viewport_top() + row;
         self.cell(abs, col)
     }
 
-    /// Cursor position as `(x, y)` in the current viewport (0-based, top-left
-    /// origin). Matches pi's `getCursorPosition()`.
     pub fn cursor_position(&self) -> (usize, usize) {
         let top = self.viewport_top();
         (self.cursor_col, self.cursor_row.saturating_sub(top))
     }
 
-    // ── c405 layer 2: snapshot helpers need grid introspection ──
-
-    /// Public viewport-top for the snapshot renderer.
     pub fn viewport_top_pub(&self) -> usize {
         self.viewport_top()
     }
 
-    /// Number of grid rows (including scrollback).
     pub fn grid_len(&self) -> usize {
         self.grid.len()
     }
 
-    /// Borrow a grid row (for the snapshot annotation helper).
     pub fn grid_row(&self, row: usize) -> &[Cell] {
         self.grid.get(row).map(|r| r.as_slice()).unwrap_or(&[])
     }
 
-    #[allow(dead_code)] // 预留：OSC 标题断言；落地条件：需要断言 OSC 0/2 标题的测试接入后启用
+    #[allow(dead_code)]
     pub fn title(&self) -> Option<&str> {
         self.title.as_deref()
     }
-
-    // --- grid mutation helpers ---
 
     fn ensure_row(&mut self, row: usize) {
         let cols = self.cols as usize;
@@ -203,10 +153,6 @@ impl VirtualTerminal {
         let cols = self.cols as usize;
         if col < cols {
             let cell = Cell { ch, ..self.attrs };
-            // Wide-char (CJK) placeholder: write the char and, if the next cell
-            // exists and is currently blank, mark it as a continuation so the
-            // grid stays aligned. We approximate: don't advance into the wide
-            // char's trail cell.
             self.grid[row][col] = cell;
         }
         self.cursor_col += 1;
@@ -224,7 +170,6 @@ impl VirtualTerminal {
     fn line_feed(&mut self) {
         self.cursor_row += 1;
         self.ensure_row(self.cursor_row);
-        // Ensure the new row exists at full width.
         let cols = self.cols as usize;
         if self.grid[self.cursor_row].len() < cols {
             self.grid[self.cursor_row].resize(cols, Cell::default());
@@ -236,7 +181,6 @@ impl VirtualTerminal {
     }
 
     fn move_cursor_to(&mut self, row: usize, col: usize) {
-        // CSI sequences are 1-based; clamp to grid.
         let cols = self.cols.max(1) as usize;
         let target_row = row.saturating_sub(1);
         let target_col = col.saturating_sub(1).min(cols.saturating_sub(1));
@@ -253,7 +197,7 @@ impl VirtualTerminal {
 
     fn move_cursor_col(&mut self, delta: isize) {
         let cols = self.cols as usize;
-        let target = self.cursor_row as isize; // unused guard
+        let target = self.cursor_row as isize;
         let _ = target;
         let new_col = (self.cursor_col as isize + delta).max(0) as usize;
         self.cursor_col = new_col.min(cols.saturating_sub(1));
@@ -263,20 +207,17 @@ impl VirtualTerminal {
         let cols = self.cols as usize;
         match mode {
             2 | 3 => {
-                // Whole screen (+ scrollback for mode 3); xterm also homes cursor.
                 self.grid = vec![vec![Cell::default(); cols]; self.rows as usize];
                 self.cursor_row = 0;
                 self.cursor_col = 0;
             }
             0 => {
-                // From cursor to end of screen.
                 self.clear_row_range(self.cursor_row, self.cursor_col, cols);
                 for r in (self.cursor_row + 1)..self.grid.len() {
                     self.clear_row_range(r, 0, cols);
                 }
             }
             1 => {
-                // From start of screen to cursor (inclusive).
                 for r in 0..self.cursor_row {
                     self.clear_row_range(r, 0, cols);
                 }
@@ -301,7 +242,6 @@ impl VirtualTerminal {
         self.clear_row_range(self.cursor_row, start, end);
     }
 
-    /// Blank cells `start..end` on `row`, clamped to the row's length.
     fn clear_row_range(&mut self, row: usize, start: usize, end: usize) {
         if let Some(r) = self.grid.get_mut(row) {
             for c in start..end.min(r.len()) {
@@ -314,7 +254,6 @@ impl VirtualTerminal {
         let last = self.rows.saturating_sub(1) as usize;
         self.scroll_top = top.min(last);
         self.scroll_bottom = bottom.min(last).max(self.scroll_top);
-        // DECSTBM homes the cursor when origin mode is disabled.
         self.cursor_row = 0;
         self.cursor_col = 0;
     }
@@ -368,10 +307,6 @@ impl VirtualTerminal {
     }
 
     fn apply_sgr(&mut self, params: &Params) {
-        // Flatten all params (including subparams) into a flat stream, then
-        // walk with a cursor. `\x1b[38;5;208m` yields three top-level params
-        // `[38],[5],[208]`; `\x1b[38:5:208m` yields one subparam slice
-        // `[38,5,208]`. Flattening makes both forms identical to parse.
         let flat: Vec<u16> = params.iter().flat_map(|s| s.iter().copied()).collect();
         let mut i = 0;
         while i < flat.len() {
@@ -392,7 +327,6 @@ impl VirtualTerminal {
                 27 => self.attrs.reverse = false,
                 30..=37 => self.attrs.fg = Color::Indexed((v - 30) as u8),
                 38 => {
-                    // Extended fg: 38;5;N (256) or 38;2;R;G;B (truecolor).
                     if let Some(c) = parse_extended_color(&flat, &mut i) {
                         self.attrs.fg = c;
                     }
@@ -414,21 +348,15 @@ impl VirtualTerminal {
     }
 }
 
-/// Parse a `38;5;N` / `38;2;R;G;B` (or bg `48;...`) tail starting just after the
-/// `38`/`48` at `*i`. Advances `*i` to the last consumed index and returns the
-/// resolved color, or `None` if the sequence is malformed.
 fn parse_extended_color(flat: &[u16], i: &mut usize) -> Option<Color> {
-    // `*i` points at 38/48; the next element selects the mode.
     let mode = flat.get(*i + 1).copied()?;
     match mode {
         5 => {
-            // indexed: 38;5;N
             let idx = flat.get(*i + 2).copied()? as u8;
             *i += 2;
             Some(Color::Indexed(idx))
         }
         2 => {
-            // rgb: 38;2;R;G;B
             let r = flat.get(*i + 2).copied()? as u8;
             let g = flat.get(*i + 3).copied()? as u8;
             let b = flat.get(*i + 4).copied()? as u8;
@@ -439,7 +367,6 @@ fn parse_extended_color(flat: &[u16], i: &mut usize) -> Option<Color> {
     }
 }
 
-/// Render a row's cells as a string, trimming trailing blank cells.
 fn row_to_trimmed_string(row: &[Cell]) -> String {
     let s: String = row
         .iter()
@@ -448,9 +375,6 @@ fn row_to_trimmed_string(row: &[Cell]) -> String {
     s.trim_end().to_string()
 }
 
-/// Read the first value of the n-th CSI parameter (1-based semantics flattened
-/// across top-level params). vte's `Params` has no direct index access, so we
-/// walk its iterator.
 fn nth_param(params: &Params, n: usize) -> Option<u16> {
     params
         .iter()
@@ -470,12 +394,8 @@ impl Terminal for VirtualTerminal {
     fn rows(&self) -> u16 {
         self.rows
     }
-    fn hide_cursor(&mut self) {
-        // `?25l` — tracked via DEC private modes if needed; no grid effect.
-    }
-    fn show_cursor(&mut self) {
-        // `?25h` — see hide_cursor.
-    }
+    fn hide_cursor(&mut self) {}
+    fn show_cursor(&mut self) {}
     fn clear_line(&mut self) {
         self.erase_in_line(2);
     }
@@ -485,9 +405,7 @@ impl Terminal for VirtualTerminal {
     fn clear_screen(&mut self) {
         self.erase_in_display(2);
     }
-    fn flush(&mut self) {
-        // Synchronous grid updates; nothing buffered.
-    }
+    fn flush(&mut self) {}
 
     fn set_size_hint(&mut self, cols: u16, rows: u16) {
         self.resize(cols, rows);
@@ -509,8 +427,6 @@ impl Terminal for VirtualTerminal {
 
     fn enter_alternate_screen(&mut self) {
         self.alternate_screen_active = true;
-        // Record CSI for LoggingVirtualTerminal via write when wrapped — here
-        // we only flip state; LoggingVT records the sequence itself.
     }
 
     fn leave_alternate_screen(&mut self) {
@@ -528,13 +444,11 @@ impl Terminal for VirtualTerminal {
     }
 
     fn stop(&mut self) {
-        // Release active capture; keep desire for resume (mirrors CrosstermTerminal).
         self.mouse_capture_active = false;
         self.alternate_screen_active = false;
     }
 }
 
-/// `vte::Perform` implementation forwarding parsed sequences into the grid.
 struct VTPerformer<'a> {
     vt: &'a mut VirtualTerminal,
 }
@@ -549,12 +463,10 @@ impl Perform for VTPerformer<'_> {
             b'\n' | 0x0B | 0x0C => self.vt.line_feed(),
             b'\r' => self.vt.carriage_return(),
             b'\t' => {
-                // Advance to next 8-col tab stop.
                 let next = ((self.vt.cursor_col / 8) + 1) * 8;
                 self.vt.cursor_col = next.min(self.vt.cols as usize - 1);
             }
             0x08 => {
-                // Backspace.
                 self.vt.move_cursor_col(-1);
             }
             _ => {}
@@ -630,7 +542,6 @@ impl Perform for VTPerformer<'_> {
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
-        // OSC 0 / 2 = set window title.
         if let Some(p) = params.first()
             && (p.starts_with(b"0;") || p.starts_with(b"2;"))
             && let Ok(s) = std::str::from_utf8(&p[2..])
@@ -640,14 +551,9 @@ impl Perform for VTPerformer<'_> {
     }
 }
 
-/// A `VirtualTerminal` wrapper that records every byte written, so tests can
-/// assert what the engine actually emitted on a given frame (the differential
-/// render contract: "only the changed lines"). Mirrors pi's
-/// `LoggingVirtualTerminal`.
 pub struct LoggingVirtualTerminal {
     inner: VirtualTerminal,
     writes: Vec<String>,
-    /// Tracks `show_cursor` / `hide_cursor` (DEC `?25h` / `?25l` semantics).
     cursor_visible: bool,
     show_cursor_calls: u32,
     hide_cursor_calls: u32,
@@ -657,7 +563,7 @@ pub struct LoggingVirtualTerminal {
     alt_leave_calls: u32,
 }
 
-#[allow(dead_code)] // harness API; direct use in interaction_modes/virtual_terminal targets, indirect via TuiTestHarness (per-target `mod support`)
+#[allow(dead_code)]
 impl LoggingVirtualTerminal {
     pub fn new(cols: u16, rows: u16) -> Self {
         Self {
@@ -673,19 +579,15 @@ impl LoggingVirtualTerminal {
         }
     }
 
-    /// Per-`write()` call records, in order. 预留：未来差分渲染断言需 per-call
-    /// 分解（pi `clearWrites` 模式）；落地条件：差分渲染断言测试接入后启用。
     #[allow(dead_code)]
     pub fn raw_writes(&self) -> &[String] {
         &self.writes
     }
 
-    /// Concatenated bytes of all recorded writes.
     pub fn all_writes(&self) -> String {
         self.writes.concat()
     }
 
-    /// Number of `write()` calls recorded.
     pub fn write_count(&self) -> usize {
         self.writes.len()
     }
@@ -694,7 +596,6 @@ impl LoggingVirtualTerminal {
         self.writes.clear();
     }
 
-    /// Whether the last cursor visibility command left the cursor shown.
     pub fn cursor_visible(&self) -> bool {
         self.cursor_visible
     }
@@ -723,16 +624,11 @@ impl LoggingVirtualTerminal {
         self.alt_leave_calls
     }
 
-    /// Delegate to the inner virtual terminal for grid/cursor assertions when
-    /// a test needs an explicit `&VirtualTerminal` (most use `Deref`).
-    /// 预留：需要显式 `&VirtualTerminal` 的断言；落地条件：首个不走 `Deref`
-    /// 的断言测试接入后启用。
     #[allow(dead_code)]
     pub fn inner(&self) -> &VirtualTerminal {
         &self.inner
     }
 
-    /// Count occurrences of a literal needle across all recorded writes.
     pub fn count_occurrences(&self, needle: &str) -> usize {
         self.writes.iter().map(|w| w.matches(needle).count()).sum()
     }
@@ -838,15 +734,12 @@ impl Terminal for LoggingVirtualTerminal {
     }
 }
 
-// Deref-style access for grid queries without re-typing each helper.
 impl std::ops::Deref for LoggingVirtualTerminal {
     type Target = VirtualTerminal;
     fn deref(&self) -> &VirtualTerminal {
         &self.inner
     }
 }
-
-// ── c405 layer 1: generalized test harness ─────────────────────────────────
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -855,26 +748,11 @@ use xylitol_tui::RenderError;
 use xylitol_tui::TUI;
 use xylitol_tui::tui::{Component, InputEvent};
 
-/// A component whose render output is backed by shared mutable state, so a
-/// test can mutate the content between frames without rebuilding the TUI
-/// (the prior workaround in `virtual_terminal_test.rs` rebuilt a
-/// second TUI instance because `Box<dyn Component>` is owned). Generalized
-/// from the single-test-local definition so any test can mount a widget,
-/// drive keys, and mutate across frames.
-///
-/// Usage:
-/// ```
-/// let lines = Rc::new(RefCell::new(vec!["hello".to_string()]));
-/// harness.mount_shared(lines.clone());
-/// lines.borrow_mut().push("world".into());
-/// harness.render();
-/// ```
 pub struct MutableComponent {
-    /// Shared with the test; the component clones it on each `render`.
     pub lines: Rc<RefCell<Vec<String>>>,
 }
 
-#[allow(dead_code)] // harness API; constructed by virtual_terminal target, shared via mount_shared in harness target
+#[allow(dead_code)]
 impl Component for MutableComponent {
     fn render(&mut self, _width: usize) -> Vec<String> {
         self.lines.borrow().clone()
@@ -883,42 +761,29 @@ impl Component for MutableComponent {
     fn invalidate(&mut self) {}
 }
 
-/// A high-level test harness wrapping `TUI<LoggingVirtualTerminal>` with
-/// ergonomic key-sequence + assertion helpers (spec tt02). Drives the same
-/// TUI instance across multiple frames (no rebuild workaround).
-///
-/// Mirrors helix's `test_key_sequence` + pi's `sendInput/waitForRender`.
 pub struct TuiTestHarness {
-    /// Public so tests can access `terminal.viewport()` / `.cell()` directly
-    /// when the convenience helpers don't fit.
     pub tui: TUI<LoggingVirtualTerminal>,
 }
 
-#[allow(dead_code)] // harness API; 5 targets use methods (agent_demo/completion_source/harness/snapshot/virtual_terminal), each target compiles its own `mod support`
+#[allow(dead_code)]
 impl TuiTestHarness {
-    /// Create a harness with a `cols x rows` logging virtual terminal.
     pub fn new(cols: u16, rows: u16) -> Self {
         Self {
             tui: TUI::new(LoggingVirtualTerminal::new(cols, rows)),
         }
     }
 
-    /// Add a component to the render tree root.
     pub fn mount(&mut self, component: Box<dyn Component>) -> &mut Self {
         self.tui.add_child(component);
         self
     }
 
-    /// Mount a `MutableComponent` sharing `lines` with the test, and return
-    /// nothing (the test keeps its `Rc<RefCell<Vec<String>>>` handle).
-    #[allow(dead_code)] // harness API; used by harness_test target only (per-target `mod support`)
+    #[allow(dead_code)]
     pub fn mount_shared(&mut self, lines: Rc<RefCell<Vec<String>>>) -> &mut Self {
         self.tui.add_child(Box::new(MutableComponent { lines }));
         self
     }
 
-    /// Parse a VT / control-byte sequence into `InputEvent`s and dispatch each
-    /// (e.g. `"abc\x1b[D\x7f"` = type a,b,c then Left then Backspace).
     pub fn keys(&mut self, seq: &str) -> &mut Self {
         for ev in vt_feed::parse_vt_to_input_events(seq) {
             self.tui.dispatch_event(ev);
@@ -926,33 +791,25 @@ impl TuiTestHarness {
         self
     }
 
-    /// Set which child index is focused.
     pub fn focus(&mut self, index: Option<usize>) -> &mut Self {
         self.tui.set_focus(index);
         self
     }
 
-    /// Render one frame (no throttle).
     pub fn render(&mut self) -> &mut Self {
         self.render_result().expect("render_frame failed in test")
     }
 
-    /// Render one frame and return the engine result so acceptance tests can
-    /// assert "no RenderError" on a real flow without forcing an immediate panic.
     pub fn render_result(&mut self) -> Result<&mut Self, RenderError> {
         self.tui.render_frame()?;
         Ok(self)
     }
 
-    /// Advance the harness through one idle tick without injecting input.
     pub fn tick(&mut self) -> &mut Self {
         self.tui.idle_tick();
         self
     }
 
-    // ── assertions (chainable) ──
-
-    /// Assert the concatenated viewport text contains `needle`.
     pub fn assert_text_contains(&self, needle: &str) -> &Self {
         let text = self.tui.terminal.viewport().join("\n");
         assert!(
@@ -962,8 +819,6 @@ impl TuiTestHarness {
         self
     }
 
-    /// Assert the cursor is at viewport-relative `(col, row)`.
-    /// 预留：未来 editor-port 变更激活；落地条件：editor-port 测试接入。
     #[allow(dead_code)]
     pub fn assert_cursor_at(&self, col: usize, row: usize) -> &Self {
         let (c, r) = self.tui.terminal.cursor_position();
@@ -975,8 +830,6 @@ impl TuiTestHarness {
         self
     }
 
-    /// Assert the cell at viewport-relative `(row, col)` has char `ch`.
-    /// 预留：未来 editor-port 变更激活；落地条件：editor-port 测试接入。
     #[allow(dead_code)]
     pub fn assert_cell_text(&self, row: usize, col: usize, ch: char) -> &Self {
         let cell = self.tui.terminal.cell(row, col);
@@ -988,25 +841,9 @@ impl TuiTestHarness {
     }
 }
 
-// ── c405 layer 2: insta snapshot helper (spec tt03) ────────────────────────
-// Shared across test targets; each target compiles its own `mod support` and
 // only snapshot_test references these, so they carry #[allow(dead_code)]
-// (harness API 跨 target 完整性，非死码压制；矩阵见 triage doc).
 
-#[allow(dead_code)] // harness API; used by snapshot_test target only
-/// Render the harness viewport into a human-readable multi-line string with
-/// inline SGR annotations, suitable for `insta::assert_snapshot!`. Each row is
-/// prefixed with its index; styled runs are wrapped like `[bold]text[/]`.
-///
-/// Example output:
-/// ```text
-/// 0| [bold]Title[/]
-/// 1| body text
-/// 2|
-/// ```
-///
-/// This is the whole-screen regression oracle: a layout/color/wrap change
-/// surfaces as a snapshot diff for human review (`cargo insta review`).
+#[allow(dead_code)]
 pub fn viewport_snapshot(harness: &TuiTestHarness) -> String {
     let term = &harness.tui.terminal;
     let top = term.viewport_top_pub();
@@ -1019,9 +856,6 @@ pub fn viewport_snapshot(harness: &TuiTestHarness) -> String {
             } else {
                 String::new()
             };
-            // Avoid a trailing space when the row is empty (e.g. "0| ") so the
-            // snapshot stays free of trailing whitespace (prek's hook strips it
-            // otherwise, causing snapshot churn).
             if row_text.is_empty() {
                 format!("{idx}|")
             } else {
@@ -1032,9 +866,7 @@ pub fn viewport_snapshot(harness: &TuiTestHarness) -> String {
         .join("\n")
 }
 
-/// Annotate a row's cells: wrap consecutive styled runs in `[bold]…[/]`-style
-/// tags so a snapshot diff highlights where styles change, not just text.
-#[allow(dead_code)] // private helper of viewport_snapshot (same module)
+#[allow(dead_code)]
 fn render_row_annotated(row: &[Cell]) -> String {
     let mut out = String::new();
     let mut cur_tag = String::new();
@@ -1057,9 +889,7 @@ fn render_row_annotated(row: &[Cell]) -> String {
     out.trim_end().to_string()
 }
 
-/// Compact style tag for a cell (empty if default). Order: bold,dim,italic,
-/// underline,reverse, then fg if non-default.
-#[allow(dead_code)] // private helper of render_row_annotated (same module)
+#[allow(dead_code)]
 fn style_tag(cell: &Cell) -> String {
     let mut parts: Vec<&str> = Vec::new();
     if cell.bold {

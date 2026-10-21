@@ -1,5 +1,3 @@
-//! `PluginFactory` entry: built-in tools.
-
 use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin, PluginFactory};
 use xylitol_plugin_sdk::{EmptyPluginConfig, HostRegistries};
 

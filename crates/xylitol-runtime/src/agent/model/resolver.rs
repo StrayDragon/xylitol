@@ -1,27 +1,12 @@
-//! ModelResolver — pattern-based model resolution.
-//!
-//! Provides:
-//! - Exact match: `provider/modelId` or bare `id`
-//! - Fuzzy match: partial id or name substring match
-//! - Alias preference: shorter/cleaner ids over dated versions
-//! - `model:thinkingLevel` suffix parsing
-//! - Fallback model construction
-
 use xylitol_plugin_sdk::model::XyModelConfig;
 #[cfg(test)]
 use xylitol_plugin_sdk::model::XyModelKind;
 use xylitol_plugin_sdk::model::XyModelMeta;
 
-// ── Resolved Model ──────────────────────────────────────────────────
-
-/// Result of resolving a model pattern against the available models.
 #[derive(Debug, Clone)]
 pub struct ResolvedModel {
-    /// The resolved model metadata.
     pub model: XyModelMeta,
-    /// Optional thinking level parsed from `model:level` suffix.
     pub thinking_level: Option<String>,
-    /// Warning message, e.g., when using a fallback.
     pub warning: Option<String>,
 }
 
@@ -40,17 +25,10 @@ impl ResolvedModel {
     }
 }
 
-// ── Resolution ──────────────────────────────────────────────────────
-
-/// Empty catalog — the only hard failure from pattern resolution.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("no models available")]
 pub struct EmptyModelCatalog;
 
-/// Resolve a model by pattern string against available models.
-///
-/// Tries the complete pattern as an exact id, then a `model:thinkingLevel`
-/// suffix, then exact/fuzzy matching, then fallback to the requested pattern.
 pub fn resolve_model(
     pattern: &str,
     available: &[&XyModelMeta],
@@ -60,8 +38,6 @@ pub fn resolve_model(
         return Err(EmptyModelCatalog);
     }
 
-    // Preserve a colon-bearing configured model id before treating the final
-    // segment as a thinking-level suffix.
     if let Some(found) = exact_match_bare_id(pattern, available) {
         return Ok(ResolvedModel::new(found.clone()));
     }
@@ -79,10 +55,6 @@ pub fn resolve_model(
     ))
 }
 
-/// Resolve an already configured model, without synthesizing a fallback.
-///
-/// This distinction keeps an unknown `model:variant` intact as a model pattern
-/// instead of incorrectly treating `variant` as a thinking level.
 fn resolve_existing_model(pattern: &str, available: &[&XyModelMeta]) -> Option<ResolvedModel> {
     if let Some(found) = provider_model_match(pattern, available) {
         return Some(ResolvedModel::new(found.clone()));
@@ -98,15 +70,11 @@ fn resolve_existing_model(pattern: &str, available: &[&XyModelMeta]) -> Option<R
     })
 }
 
-/// Resolve a pattern while retaining the existing fallback behavior.
 fn resolve_model_with_fallback(
     pattern: &str,
     available: &[&XyModelMeta],
     default_provider: Option<&str>,
 ) -> ResolvedModel {
-    // Keep the legacy provider-pattern fallback for a complete model request.
-    // Suffix parsing uses `resolve_existing_model` above so this fallback cannot
-    // make an unknown base look like a resolved model.
     if let Some(found) = exact_match_provider_model(pattern, available) {
         return ResolvedModel::new(found.clone());
     }
@@ -124,7 +92,6 @@ fn resolve_model_with_fallback(
             .with_warning(format!("Model '{}' not found. Using fallback.", pattern));
     }
 
-    // Last resort — first available. `available` was checked by resolve_model.
     let first = available.first().expect("non-empty: checked above");
     ResolvedModel::new((*first).clone()).with_warning(format!(
         "Model '{}' not found. Using first available: {}",
@@ -132,21 +99,11 @@ fn resolve_model_with_fallback(
     ))
 }
 
-// ── Thinking Level Parsing ──────────────────────────────────────────
-
-/// Parse `model:thinkingLevel` suffix.
-///
-/// Returns a base model pattern and a non-empty freeform suffix.
 fn parse_thinking_suffix(pattern: &str) -> Option<(&str, &str)> {
     let (base, suffix) = pattern.rsplit_once(':')?;
     (!base.is_empty() && !suffix.is_empty()).then_some((base, suffix))
 }
 
-// ── Exact Matching ──────────────────────────────────────────────────
-
-/// Exact match by "provider/modelId" form.
-///
-/// Splits pattern on "/", then matches provider name and model id parts.
 fn exact_match_provider_model<'a>(
     pattern: &str,
     available: &'a [&'a XyModelMeta],
@@ -161,7 +118,6 @@ fn exact_match_provider_model<'a>(
         .find(|model| model.config.provider_name() == provider)
 }
 
-/// Match a configured provider/model without falling back to another model.
 fn provider_model_match<'a>(
     pattern: &str,
     available: &'a [&'a XyModelMeta],
@@ -186,12 +142,6 @@ fn provider_model_match<'a>(
         })
 }
 
-/// Exact match by bare model id (no provider prefix).
-///
-/// Prefer `XyModelMeta.id` (alias / registry key). Only fall back to
-/// `config.model` (upstream wire id) when that match is **unique** — otherwise
-/// two aliases sharing one upstream id (e.g. `deepseek-v4-flash` vs
-/// `deepseek-v4-flash-anthropic`) would pick whichever HashMap/list order wins.
 fn exact_match_bare_id<'a>(
     pattern: &str,
     available: &'a [&'a XyModelMeta],
@@ -210,12 +160,6 @@ fn exact_match_bare_id<'a>(
     }
 }
 
-// ── Fuzzy Matching ──────────────────────────────────────────────────
-
-/// Fuzzy match: substring in id or display_name.
-///
-/// Prefers shorter ids (aliases without version/date suffixes) over
-/// longer dated versions when both match the same pattern.
 fn fuzzy_match<'a>(pattern: &str, available: &'a [&'a XyModelMeta]) -> Option<&'a XyModelMeta> {
     let pattern_lower = pattern.to_lowercase();
 
@@ -232,43 +176,26 @@ fn fuzzy_match<'a>(pattern: &str, available: &'a [&'a XyModelMeta]) -> Option<&'
         return None;
     }
 
-    // Sort: prefer shorter ids (aliases without versions/date suffixes)
-    // then by exact display name match
     candidates.sort_by_key(|m| {
         let id_len = m.id.len();
         let display_exact = m.display_name.to_lowercase() == pattern_lower;
-        (
-            !display_exact, // exact match first (false < true)
-            id_len,         // shorter ids first (aliases)
-        )
+        (!display_exact, id_len)
     });
 
     candidates.first().copied().copied()
 }
 
-// ── Fallback Model ──────────────────────────────────────────────────
-
-/// Build a fallback model when the requested model ID is not found.
-///
-/// Strategy:
-/// 1. If the pattern looks like "provider/model", use that provider's default model
-/// 2. If `default_provider` is given, use its default model
-/// 3. Otherwise use the first available model
-///
-/// The fallback model preserves the user's requested id as a reference name.
 pub(crate) fn build_fallback_model(
     pattern: &str,
     available: &[&XyModelMeta],
     default_provider: Option<&str>,
 ) -> Option<XyModelMeta> {
-    // Try to determine the intended provider from the pattern
     let provider_hint = if let Some(slash_pos) = pattern.find('/') {
         Some(&pattern[..slash_pos])
     } else {
         default_provider
     };
 
-    // Find a model from the hinted provider
     if let Some(provider) = provider_hint
         && let Some(template) = available
             .iter()
@@ -299,7 +226,6 @@ pub(crate) fn build_fallback_model(
         });
     }
 
-    // Last resort: clone first available with user's requested id
     available.first().map(|template| XyModelMeta {
         id: pattern.to_string(),
         config: template.config.clone(),
@@ -317,8 +243,6 @@ pub(crate) fn build_fallback_model(
         thinking_level_map: Default::default(),
     })
 }
-
-// ── Helper: apply thinking level to ResolvedModel ───────────────────
 
 impl ResolvedModel {
     fn with_thinking_level(mut self, level: String) -> Self {
@@ -444,8 +368,6 @@ mod tests {
 
     #[test]
     fn test_resolve_bare_id_prefers_alias_over_shared_upstream_model() {
-        // Two aliases share upstream wire id `deepseek-v4-flash`; selecting the
-        // shorter alias must not land on the anthropic variant via HashMap order.
         let models = vec![
             XyModelMeta {
                 id: "deepseek-v4-flash-anthropic".into(),
@@ -514,7 +436,7 @@ mod tests {
         let available = refs(&models);
         let result = resolve_model("4o-mini", &available, None).unwrap();
         assert!(result.model.id.contains("4o-mini"));
-        assert!(result.warning.is_some()); // fuzzy match warns
+        assert!(result.warning.is_some());
     }
 
     #[test]
@@ -600,12 +522,10 @@ mod tests {
     fn test_resolve_with_default_provider() {
         let models = make_available();
         let available = refs(&models);
-        // "gpt-4o-mini" exists as bare match already, but "gpt-4.1" doesn't
         let result = resolve_model("gpt-4.1", &available, Some("openai")).unwrap();
         assert!(result.warning.is_some());
-        // Should get a fallback with gpt-4o as the underlying model
         assert_eq!(result.model.id, "gpt-4.1");
-        assert_eq!(result.model.config.model, "gpt-4o"); // fallback base from openai
+        assert_eq!(result.model.config.model, "gpt-4o");
     }
 
     #[test]
@@ -668,7 +588,6 @@ mod tests {
             },
         ];
         let available = refs(&models);
-        // Both match "claude" — alias (shorter id) should be preferred
         let result = resolve_model("claude", &available, None).unwrap();
         assert_eq!(result.model.id, "claude-sonnet");
     }

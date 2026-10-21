@@ -1,14 +1,7 @@
-//! Auto-retry for transient LLM errors.
-//!
-//! Uses regex-based pattern matching for retryable error detection,
-//! plus exponential backoff.
-
 use regex::Regex;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
-
-// ── Pattern matching ───────────────────────────────────────────────
 
 static RETRYABLE_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)overloaded|provider.?returned.?error|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|internal.?error|network.?error|connection.?refused|connection.?lost|websocket.?closed|websocket.?error|fetch failed|upstream.?connect|reset before headers|socket hang up|ended without|stream ended before|timed? out|timeout|terminated|retry delay")
@@ -20,8 +13,6 @@ static NON_RETRYABLE_RE: LazyLock<Regex> = LazyLock::new(|| {
         .expect("static regex literal for non-retryable errors")
 });
 
-/// Check if an error message indicates a retryable transient error.
-/// Returns false for context overflow (handled by compaction Case1).
 pub(crate) fn is_retryable_error(error_msg: &str) -> bool {
     if crate::agent::compaction::error_message_is_context_overflow(error_msg) {
         return false;
@@ -31,8 +22,6 @@ pub(crate) fn is_retryable_error(error_msg: &str) -> bool {
     }
     RETRYABLE_RE.is_match(error_msg)
 }
-
-// ── RetryState ─────────────────────────────────────────────────────
 
 pub(crate) struct RetryState {
     max_retries: u32,
@@ -53,7 +42,6 @@ impl RetryState {
         self.attempt.load(Ordering::Acquire) < self.max_retries
     }
 
-    /// 已调度的重试次数（不含首次尝试；`next_delay` 每次自增）。
     pub(crate) fn attempt(&self) -> u32 {
         self.attempt.load(Ordering::Acquire)
     }
@@ -116,15 +104,15 @@ mod tests {
         assert!(state.can_retry());
 
         let d1 = state.next_delay();
-        assert_eq!(d1, Duration::from_millis(1000)); // attempt 1: base
+        assert_eq!(d1, Duration::from_millis(1000));
 
         let d2 = state.next_delay();
-        assert_eq!(d2, Duration::from_millis(2000)); // attempt 2: base*2
+        assert_eq!(d2, Duration::from_millis(2000));
 
         let d3 = state.next_delay();
-        assert_eq!(d3, Duration::from_millis(4000)); // attempt 3: base*4
+        assert_eq!(d3, Duration::from_millis(4000));
 
         let d4 = state.next_delay();
-        assert_eq!(d4, Duration::from_millis(8000)); // attempt 4: base*8
+        assert_eq!(d4, Duration::from_millis(8000));
     }
 }

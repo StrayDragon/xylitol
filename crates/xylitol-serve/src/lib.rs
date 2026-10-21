@@ -1,10 +1,3 @@
-//! HTTP/WS carrier and `XyEvent` ↔ v3 mapping.
-//!
-//! Envelope types live in `xylitol-protocol`. Domain events live in
-//! `xylitol-runtime`. This crate is the only place that maps between them.
-//! Occupancy policy lives in [`occupancy`]; assembly (plugins / MCP) is injected
-//! via [`occupancy::OccupancyFactory`]. This crate does not assemble Host plugins.
-
 pub mod mapping;
 pub mod v3_mapping;
 

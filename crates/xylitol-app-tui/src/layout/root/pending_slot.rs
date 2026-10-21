@@ -1,9 +1,6 @@
-//! Pending slot-handshake flags for [`super::UiRoot`] (host drain, not live widgets).
-
 use super::super::models_picker::PendingModelChoice;
 use super::super::slots::ImportConfirmDecision;
 
-/// Confirm / open requests that outlive the editor-slot payload until `drain_pending_ui`.
 #[derive(Debug, Default)]
 pub(super) struct PendingSlotOps {
     pub tree_open: bool,
@@ -17,14 +14,11 @@ pub(super) struct PendingSlotOps {
     pub session_resume_select: Option<String>,
     pub session_resume_rename: Option<(String, String)>,
     pub session_resume_delete: Option<String>,
-    /// c2875 会话详情覆盖弹出框：打开请求（显隐切换的显示半段）。
     pub session_popup: bool,
-    /// c2905 会话侧栏：打开请求。
     pub session_sidebar: bool,
 }
 
 impl PendingSlotOps {
-    /// Overlay close: cancel in-flight picker confirms that MUST NOT fire after Esc.
     pub fn clear_cancelled_on_close(&mut self) {
         self.model_select = None;
         self.scene_select = None;

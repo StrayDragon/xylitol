@@ -1,22 +1,3 @@
-//! Low-frequency ReAct fastrace spans (c1265 Phase A; c1495 parent tree).
-//!
-//! Gated by [`xylitol_plugin_sdk::provider_trace_active`]. When
-//! off, helpers are no-ops (zero/near-zero cost) — no UUID allocation.
-//!
-//! Hierarchy (exported names):
-//! ```text
-//! agent.turn
-//!   ├─ agent.iteration
-//!   │    ├─ llm.request   (via XyGenerateOptions.obs_parent)
-//!   │    └─ tool.execute
-//!   └─ agent.compaction   (via agent/compaction/obs; may parent summarization llm.request)
-//! ```
-//!
-//! Do **not** hold [`LocalParentGuard`] across `.await` in the ReAct
-//! `async_stream` (guard is `!Send`). Children use `enter_with_parent` or
-//! `Span::root(name, SpanContext::from_span(parent))` with an owned parent
-//! `Span` kept alive for the turn/iteration. Must not import composition-root wiring.
-
 use fastrace::prelude::*;
 use xylitol_plugin_sdk::langfuse_observation_properties_from;
 use xylitol_plugin_sdk::{
@@ -25,29 +6,19 @@ use xylitol_plugin_sdk::{
 
 use xylitol_plugin_sdk::error::{XyError, XyToolError};
 
-/// How an [`AgentTurnSpan`] ended (c1720 / otel20).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TurnEndReason {
-    /// Normal completion (or non-abort early exit). MUST NOT mark ERROR.
     Ok,
-    /// User cancel / cancel-token abort. Marks Langfuse ERROR + `aborted`.
     Aborted,
 }
 
-/// Root span for one user-triggered agent run (`agent.turn`).
 pub(crate) struct AgentTurnSpan {
     root: Span,
     turn_id: String,
-    /// This run's obs session snapshot (otel24): children inherit it instead of
-    /// re-reading the process slot mid-run.
     obs: xylitol_plugin_sdk::ObsSessionContext,
 }
 
 impl AgentTurnSpan {
-    /// Start a turn root. When `[otel].observation_io` ≠ none, `user_preview` is
-    /// attached as `langfuse.observation.input` for Langfuse Session list (c1555).
-    /// `model_api` (when known) is recorded as `xylitol.model.api` (c1600).
-    /// Idle / test helper: read the process (or TLS) obs slot.
     #[cfg(test)]
     pub(crate) fn start(user_preview: Option<&str>, model_api: Option<&str>) -> Option<Self> {
         Self::start_with_session(
@@ -57,7 +28,6 @@ impl AgentTurnSpan {
         )
     }
 
-    /// Start a turn root with an explicit bookmark snapshot (c2590 / otel23).
     pub(crate) fn start_with_session(
         user_preview: Option<&str>,
         model_api: Option<&str>,
@@ -99,7 +69,6 @@ impl AgentTurnSpan {
         &self.turn_id
     }
 
-    /// This run's obs session snapshot (otel24).
     pub(crate) fn obs(&self) -> &xylitol_plugin_sdk::ObsSessionContext {
         &self.obs
     }
@@ -108,8 +77,6 @@ impl AgentTurnSpan {
         &self.root
     }
 
-    /// Attach terminal status then drop. Abort → ERROR/`aborted`
-    /// (aligned with `agent.compaction` / generation abort). Ok → no ERROR level.
     pub(crate) fn finish(self, reason: TurnEndReason) {
         match reason {
             TurnEndReason::Aborted => {
@@ -138,7 +105,6 @@ impl AgentTurnSpan {
     }
 }
 
-/// One ReAct loop step under [`AgentTurnSpan`] (`agent.iteration`).
 pub(crate) struct AgentIterationSpan {
     span: Span,
     turn_id: String,
@@ -152,8 +118,6 @@ impl AgentIterationSpan {
         let turn_id = turn
             .map(|t| t.turn_id().to_string())
             .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        // otel24: inherit the run snapshot from the turn; only turn-less
-        // (test / gate-off) iterations may fall back to the process slot.
         let obs = turn
             .map(|t| t.obs().clone())
             .unwrap_or_else(xylitol_plugin_sdk::obs_session_context);
@@ -162,8 +126,6 @@ impl AgentIterationSpan {
             None => Span::root("agent.iteration", SpanContext::random()),
         }
         .with_properties(move || {
-            // `turn_id` lives on `agent.turn` span attrs only — same value on every
-            // iteration was Langfuse observation noise (parent chain correlates).
             let mut props = vec![("turn_index".to_string(), turn_index.to_string())];
             props.extend(langfuse_observation_properties_from("agent", &obs));
             props
@@ -173,7 +135,6 @@ impl AgentIterationSpan {
                 ("kind", "lifecycle".to_string()),
                 ("phase", "start".to_string()),
                 ("name", "agent.iteration".to_string()),
-                // Local JSONL / inspect correlation only (not a span attribute).
                 ("turn_id", turn_id.clone()),
             ]
         }));
@@ -189,7 +150,6 @@ impl AgentIterationSpan {
     }
 }
 
-/// Span around a single tool execution (child of iteration when provided).
 pub(crate) struct ToolExecuteSpan {
     span: Span,
 }
@@ -218,11 +178,6 @@ impl ToolExecuteSpan {
         )
     }
 
-    /// Child of a captured parent [`SpanContext`] (BarrierParallel fan-out).
-    ///
-    /// Capturing the context before `join_all` avoids racing concurrent tools
-    /// and avoids `SpanContext::random` roots for concurrent tools.
-    /// `obs` is the run's session snapshot (otel24) — never the process slot.
     pub(crate) fn start_with_parent_ctx(
         name: &str,
         id: &str,
@@ -299,7 +254,6 @@ impl ToolExecuteSpan {
         Self { span }
     }
 
-    /// Attach args/result when `[otel].tool_observation_io` ≠ none (c1550).
     pub(crate) fn attach_io(&self, input: &str, output: &str) {
         let Some(max) = tool_observation_io_tier().max_chars() else {
             return;
@@ -313,7 +267,6 @@ impl ToolExecuteSpan {
     }
 }
 
-/// Log (+ optional fastrace) a hot-path [`XyError`] with stable `error.kind`.
 pub(crate) fn record_xy_error(
     where_: &str,
     err: &XyError,
@@ -350,7 +303,6 @@ pub(crate) fn record_xy_error(
     }));
 }
 
-/// Log (+ optional fastrace) a tool failure with stable `error.kind`.
 pub(crate) fn record_tool_error(
     tool: &str,
     err: &XyToolError,
@@ -506,7 +458,6 @@ mod tests {
         assert_eq!(iter.parent_id, turn.span_id);
         assert_eq!(tool.parent_id, iter.span_id);
         assert_eq!(llm.parent_id, iter.span_id);
-        // Attribute slim: single model key; no duplicate turn_id on iteration.
         let llm_keys: Vec<&str> = llm.properties.iter().map(|(k, _)| k.as_ref()).collect();
         assert!(
             llm_keys.contains(&"langfuse.observation.model.name"),
@@ -734,8 +685,6 @@ mod tests {
         );
     }
 
-    /// otel24 / c2610: mid-run slot stomps (reader materialization, another
-    /// runtime's bind) must not leak into iteration / tool / error spans.
     #[test]
     fn slot_stomp_between_turns_keeps_children_session_id() {
         use xylitol_plugin_sdk::ObsSessionContext;
@@ -756,7 +705,6 @@ mod tests {
         };
         {
             let turn = AgentTurnSpan::start_with_session(Some("hi"), None, &b).expect("turn");
-            // Reader materialization / another slot's bind stomps the process slot.
             set_obs_session("old-session-a", None);
 
             let iter = AgentIterationSpan::start(Some(&turn), 0).expect("iter");

@@ -1,8 +1,3 @@
-//! PoC / evidence: dropping a reqwest response body stream closes the TCP
-//! connection so the server stops writing (foundation for Esc abort → stop billing).
-//!
-//! Run: `cargo test -p xylitol --test provider_http_stream_abort -- --nocapture`
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::Duration;
@@ -26,8 +21,6 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) {
     }
 }
 
-/// Slow chunked SSE-ish body. Counts successful writes; sets `disconnected` when
-/// a write fails after the client dropped the body.
 async fn serve_slow_chunked(
     listener: TcpListener,
     writes: Arc<AtomicUsize>,
@@ -96,7 +89,6 @@ async fn dropping_reqwest_bytes_stream_stops_server_writes() {
             break;
         }
         if writes.load(Ordering::SeqCst) > writes_at_drop + 30 {
-            // Still pumping long after drop — cancel did not reach the peer.
             panic!(
                 "server kept writing after client drop: at_drop={writes_at_drop} now={} disconnected={}",
                 writes.load(Ordering::SeqCst),
@@ -144,14 +136,10 @@ async fn anthropic_adapter_drop_stream_stops_server_writes() {
         None,
     );
 
-    // Anthropic path POSTs /v1/messages; our stub ignores method/path and streams.
     let mut stream = XyModel::generate_stream(&adapter, vec![], &[], true, Default::default())
         .await
         .expect("adapter stream");
 
-    // Drain until we get a parseable event or a few byte polls — server keeps
-    // writing SSE JSON; adapter may skip bad events. Force progress by awaiting
-    // with timeout then drop regardless.
     let _ = tokio::time::timeout(Duration::from_millis(200), stream.next()).await;
 
     let writes_at_drop = writes.load(Ordering::SeqCst);

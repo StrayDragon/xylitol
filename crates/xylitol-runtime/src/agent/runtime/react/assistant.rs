@@ -1,5 +1,3 @@
-//! Streaming assistant message assembly helpers for the ReAct loop.
-
 use std::sync::Mutex;
 
 use serde_json::Value;

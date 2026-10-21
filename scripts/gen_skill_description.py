@@ -33,13 +33,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SKILLS = REPO / ".agents" / "skills"
 
-# Any line in the description block containing MARKER is the seam: the base runs
-# up to and including it, the generated tail replaces everything after.
 MARKER = "以下相关内容也要触发"
 MARKER_LINE = f"{MARKER}（脚本生成，勿手改）："
 BRIEF_SEP = "；"
 
-# agentskills.io guidance: the description is the sole trigger mechanism.
 MAX_DESCRIPTION_CHARS = 1024
 
 
@@ -111,7 +108,6 @@ def render(skill_md: Path) -> tuple[str, dict[str, object]]:
     """Return the fully regenerated SKILL.md text + a small report."""
     text = skill_md.read_text(encoding="utf-8")
     if MARKER not in text:
-        # Opt-in harness: skills that never mention the marker are left untouched.
         return text, {"skill": skill_md.parent.name, "skipped": True}
     lines = text.splitlines()
     fm_start, fm_end = _frontmatter_span(lines)

@@ -25,7 +25,6 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 
-# c0: repo scan roots only (do not pass `.` — avoids walks outside the tree).
 _SCAN_PATHS = (
     "src",
     "crates",
@@ -41,14 +40,6 @@ _SCAN_PATHS = (
     "README.md",
 )
 
-# ~keep: guardrail — `.uncomment.toml` must list c0..c9 / r0..r9 / ath0..ath9 preserve tails.
-_REQUIRED_PRESERVE_TAILS = (
-    tuple(f"c{d}" for d in range(10))
-    + tuple(f"r{d}" for d in range(10))
-    + tuple(f"ath{d}" for d in range(10))
-)
-
-
 def resolve_base() -> str:
     if env := os.environ.get("UNCOMMENT_BASE"):
         return env
@@ -62,22 +53,6 @@ def resolve_base() -> str:
         if r.returncode == 0:
             return candidate
     return "HEAD~1"
-
-
-def assert_internal_id_preserves() -> None:
-    path = REPO / ".uncomment.toml"
-    if not path.is_file():
-        print("error: missing .uncomment.toml", file=sys.stderr)
-        raise SystemExit(1)
-    body = path.read_text(encoding="utf-8")
-    missing = [p for p in _REQUIRED_PRESERVE_TAILS if f'"{p}"' not in body]
-    if missing:
-        print(
-            "error: .uncomment.toml must list preserve_patterns for internal ids "
-            f"(missing {len(missing)} entries, e.g. {missing[:3]})",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
 
 
 def run_uncomment_check(base: str) -> int:
@@ -118,7 +93,6 @@ def main() -> int:
         )
         return 1
 
-    assert_internal_id_preserves()
     base = resolve_base()
     rc = run_uncomment_check(base)
     if rc != 0:

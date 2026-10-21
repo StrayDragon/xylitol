@@ -5,8 +5,6 @@ use crate::utils::{is_whitespace_char, truncate_to_width, visible_width};
 use crossterm::event::MouseEvent;
 use unicode_segmentation::UnicodeSegmentation;
 
-// ── word-wrap ───────────────────────────────────────────────────────────────
-
 fn word_wrap_line(line: &str, max_width: usize) -> Vec<TextChunk> {
     let vis = visible_width(line);
     if vis <= max_width {
@@ -86,8 +84,6 @@ fn word_wrap_line(line: &str, max_width: usize) -> Vec<TextChunk> {
 }
 
 impl super::Editor {
-    // ── VisualLine system (c425 ed01) ──────────────────────────────────────
-
     pub fn build_visual_line_map(&self, width: usize) -> Vec<VisualLine> {
         let mut vls = Vec::new();
         for (i, line) in self.state.lines.iter().enumerate() {
@@ -138,36 +134,30 @@ impl super::Editor {
         self.find_visual_line_at(vls, self.state.cursor_line, self.state.cursor_col)
     }
 
-    // ── sticky column + vertical movement (c425 ed02) ─────────────────────
-
     pub(super) fn compute_vertical_move_column(
         &mut self,
         current_visual_col: usize,
         src_max: usize,
         tgt_max: usize,
     ) -> usize {
-        let has_pref = self.preferred_visual_col.is_some(); // P
-        let in_middle = current_visual_col < src_max; // S
-        let tgt_too_short = tgt_max < current_visual_col; // T
+        let has_pref = self.preferred_visual_col.is_some();
+        let in_middle = current_visual_col < src_max;
+        let tgt_too_short = tgt_max < current_visual_col;
 
         if !has_pref || in_middle {
             if tgt_too_short {
-                // Cases 2 and 7: target shorter than current → remember current as preferred
                 self.preferred_visual_col = Some(current_visual_col);
                 return tgt_max;
             }
-            // Cases 1 and 6: target fits → clear preferred
             self.preferred_visual_col = None;
             return current_visual_col;
         }
 
         let pref = self.preferred_visual_col.unwrap();
-        let tgt_cant_fit_pref = tgt_max < pref; // U
+        let tgt_cant_fit_pref = tgt_max < pref;
         if tgt_too_short || tgt_cant_fit_pref {
-            // Cases 4 and 5: keep preferred, go to end of target
             return tgt_max;
         }
-        // Case 3: target fits preferred → use it and clear
         self.preferred_visual_col = None;
         pref
     }
@@ -192,7 +182,7 @@ impl super::Editor {
             self.state.cursor_col.wrapping_sub(cur.start_col)
         };
 
-        let is_last_src = target_vl as isize == -1 // never true in practice, placeholder for correct bound check
+        let is_last_src = target_vl as isize == -1
             || current_vl + 1 >= vls.len()
             || vls[current_vl + 1].logical_line != cur.logical_line;
         let src_max = if is_last_src {
@@ -216,8 +206,6 @@ impl super::Editor {
         let logical = &self.state.lines[tgt.logical_line];
         self.state.cursor_col = target_col.min(logical.len());
 
-        // Snap to segment boundary for multi-grapheme units
-        // Single-grapheme segments pass through
         let gs: Vec<(usize, &str)> =
             UnicodeSegmentation::grapheme_indices(logical.as_str(), true).collect();
         for (idx, grav) in &gs {
@@ -229,7 +217,6 @@ impl super::Editor {
             }
             let seg_end = idx + grav.len();
             if self.state.cursor_col < seg_end && *idx >= tgt.start_col {
-                // Inside an atomic multi-grapheme segment → snap to its start
                 self.snapped_from_cursor_col = Some(self.state.cursor_col);
                 self.state.cursor_col = *idx;
                 return;
@@ -237,8 +224,6 @@ impl super::Editor {
         }
         self.snapped_from_cursor_col = None;
     }
-
-    // ── page scroll (c425 ed03) ────────────────────────────────────────────
 
     pub(super) fn page_scroll(&mut self, direction: isize) {
         self.last_action = None;
@@ -252,8 +237,6 @@ impl super::Editor {
             self.move_to_visual_line(&vls, current as usize, target);
         }
     }
-
-    // ── layout / render ────────────────────────────────────────────────────
 
     pub(super) fn layout_text(&self, content_width: usize) -> Vec<LayoutLine> {
         let mut layout = Vec::new();
@@ -323,28 +306,20 @@ impl super::Editor {
         max_vis
     }
 
-    /// Paint ↑/↓ more chrome; prefer the cue text over decorative dashes when narrow.
     pub(super) fn render_more_border(&self, width: usize, up: bool, count: usize) -> String {
         (self.theme.border_color)(&crate::utils::overflow_more_border(width, up, count))
     }
 }
-
-// ── Component impl ──────────────────────────────────────────────────────────
 
 impl Component for super::Editor {
     fn render(&mut self, width: usize) -> Vec<String> {
         let max_pad = width.saturating_sub(1) / 2;
         let px = self.padding_x.min(max_pad);
         let cw = width.saturating_sub(px * 2).max(1);
-        // Reserve one column for the end-of-line cursor cell on every row: with
-        // padding_x > 0 a full chunk plus the reverse-video cursor space used to
-        // paint width+1 columns → RenderError → host degraded to the TooSmall hint.
         let lw = cw.saturating_sub(1).max(1);
         self.last_width = lw;
         self.last_paint_width = width;
         let layout = self.layout_text(lw);
-        // Empty draft: keep a single content row (cursor) so the operation zone
-        // stays compact — product chrome / agent_demo idle parity (c477).
         let max_vis = self.content_max_visible();
         let cur_idx = layout.iter().position(|l| l.has_cursor).unwrap_or(0);
         if cur_idx < self.scroll_offset {
@@ -361,7 +336,6 @@ impl Component for super::Editor {
         let mut result = Vec::new();
         let marker = if self.focused { CURSOR_MARKER } else { "" };
 
-        // Top border — keep the "↑ N more" cue readable even on narrow widths.
         if self.scroll_offset > 0 {
             result.push(self.render_more_border(width, true, self.scroll_offset));
         } else {
@@ -374,11 +348,9 @@ impl Component for super::Editor {
             if ll.has_cursor
                 && let Some(cp) = ll.cursor_pos
             {
-                // Cursor paint uses the pre-highlight plain offsets on `ll.text`.
                 let plain = &ll.text;
                 let before = &plain[..cp.min(plain.len())];
                 let after = &plain[cp.min(plain.len())..];
-                // Re-apply selection on before/after pieces then insert cursor.
                 let before_h = self.apply_selection_highlight(
                     &LayoutLine {
                         text: before.to_string(),
@@ -423,10 +395,6 @@ impl Component for super::Editor {
             result.push((self.theme.border_color)(&"─".repeat(width.max(1))));
         }
 
-        // c430/c545: append autocomplete popup below border; clamp to content width.
-        // While open, reserve a fixed band (max_visible + optional pagination row)
-        // so filtering `/e` → `/ex` → `/exi` does not resize the dock / jump the
-        // transcript. Cancel / clear releases the band (height restores).
         if let Some(ref mut ac_list) = self.autocomplete_list
             && self.autocomplete_state.is_some()
         {
@@ -471,7 +439,6 @@ impl Component for super::Editor {
                 self.handle_key(&key);
             }
             InputEvent::Mouse(mouse) => {
-                // Absolute screen → editor-local (top-left of last paint).
                 let local = MouseEvent {
                     kind: mouse.kind,
                     column: mouse.column.saturating_sub(self.screen_origin_col),
@@ -512,8 +479,6 @@ impl Component for super::Editor {
     }
 
     fn tick(&mut self) -> bool {
-        // Paste-burst catch-up only. Editor selection does not auto-scroll the
-        // viewport while dragging (edge-scroll removed — caused click ghosts).
         if self.paste_burst_needs_paint && !self.paste_burst_paint_suppressed() {
             self.paste_burst_needs_paint = false;
             return true;
@@ -524,8 +489,6 @@ impl Component for super::Editor {
     fn invalidate(&mut self) {}
 }
 
-/// Sink used when [`super::Editor::handle_input`] receives mouse without an external sink.
-/// OSC52 still accumulates on [`super::Editor::pending_clipboard`] via [`super::Editor::maybe_copy_selection`].
 struct DiscardClipboardSink;
 
 impl ClipboardSink for DiscardClipboardSink {

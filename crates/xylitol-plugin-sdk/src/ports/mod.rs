@@ -1,7 +1,3 @@
-//! Ports — boundary traits between the `agent` and `infra` layers.
-//!
-//! Trait contracts and signature-only associated types.
-
 pub mod ask;
 pub mod bash;
 pub mod compaction;
@@ -18,8 +14,6 @@ pub mod todo;
 pub mod tool;
 pub mod typed;
 
-// Flat re-exports for callers that import the boundary trait from the
-// `xylitol-plugin-sdk` crate root.
 pub use ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
 pub use bash::{BashChunk, BashExecOpts, BashOutputSink, XyBashExecutor, XyBashResult};
 pub use compaction::{

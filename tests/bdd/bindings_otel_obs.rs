@@ -1,5 +1,3 @@
-//! infra-otel BDD 绑定（otel6/7/8/10/11/12/22 低频观测族）。
-
 use crate::bdd::fixtures::*;
 use crate::bdd::fixtures::{Workspace, ws};
 use crate::bdd::steps_otel_obs::{OtelBdd, otel_bdd};
@@ -55,8 +53,6 @@ async fn test_otel22_obs_lane(otel_bdd: OtelBdd, agent: AgentState, ws: Workspac
 #[serial]
 async fn test_otel10_io_tier(otel_bdd: OtelBdd, agent: AgentState, ws: Workspace) {}
 
-// ---- c2826 specs-compact：裸规则转场景绑定 ----
-
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
     name = "OTLP缺省空无跨度"
@@ -106,8 +102,6 @@ async fn test_c2826_turn_not_error(agent: AgentState, ws: Workspace, otel_bdd: O
 )]
 #[serial]
 async fn test_c2826_single_estimate(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
-
-// ── c2835 后继：infra-otel 裸规则回填 ──────────────────────────────
 
 #[cfg(feature = "otel")]
 #[scenario(

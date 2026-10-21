@@ -1,15 +1,6 @@
-//! CLI-surface BDD steps: surface verbs, owned flags, resume hint and
-//! attach fail-closed (ce8/ce16/ce19/ce20/ce21), plus the atb4
-//! attach-vs-inprocess pair. Serves `tests/features/cli-entry.feature`
-//! (surface half) and app-tui-bridge `remote-type-kept`.
-
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
-
-// ═══════════════════════════════════════════════════════════════════
-// c1390 — CLI surface verbs (ce16)
-// ═══════════════════════════════════════════════════════════════════
 
 pub struct SurfaceBdd {
     pub(crate) mode: Cell<Option<xylitol::cli::SurfaceMode>>,
@@ -86,7 +77,6 @@ fn t_ce16_print_no_hello(surface_bdd: &SurfaceBdd) {
     assert!(!err.contains("Hello!"), "{err}");
 }
 
-/// Minimal CLI help-output holder for serve/top-level help steps (ce8/ce16).
 pub struct CliHelpBdd {
     pub(crate) out: RefCell<String>,
     pub(crate) ok: Cell<bool>,
@@ -289,9 +279,6 @@ fn t_designing_skips_attach(cli_help_bdd: &CliHelpBdd) {
         "tui designing must parse and attach Host"
     );
 }
-// ═══════════════════════════════════════════════════════════════════
-// c1565 — surface-owned flags + resume hint (ce19/ce20)
-// ═══════════════════════════════════════════════════════════════════
 
 pub struct SurfaceFlagsBdd {
     pub(crate) parse_ok: Cell<bool>,
@@ -472,7 +459,6 @@ fn g_ce20_unlisted(surface_flags_bdd: &SurfaceFlagsBdd) {
 
 #[when("TUI 或 print 正常退出")]
 fn w_ce20_exit(surface_flags_bdd: &SurfaceFlagsBdd) {
-    // Exit path: resume hint is prepared in given from list_sessions membership.
     assert!(
         surface_flags_bdd.session.borrow().is_some(),
         "normal exit requires a current session prepared by given"
@@ -493,10 +479,6 @@ fn t_ce20_hint_present(surface_flags_bdd: &SurfaceFlagsBdd) {
 fn t_ce20_hint_absent(surface_flags_bdd: &SurfaceFlagsBdd) {
     assert!(surface_flags_bdd.hint.borrow().is_none());
 }
-
-// ═══════════════════════════════════════════════════════════════════
-// c2290 — TUI attach fail-closed (ce21)
-// ═══════════════════════════════════════════════════════════════════
 
 pub struct AttachBdd {
     pub(crate) err: RefCell<Option<String>>,
@@ -551,10 +533,6 @@ fn t_atb4_attach_and_inprocess() {
 }
 
 use crate::bdd::fixtures::{AgentState, Workspace};
-
-// ═══════════════════════════════════════════════════════════════════
-// c2826 specs-compact — 新增裸规则场景步骤（r69/r70/r1378/r1386/r1387/r1389）
-// ═══════════════════════════════════════════════════════════════════
 
 pub struct CliEntryBdd {
     pub(crate) ok: Cell<bool>,
@@ -633,7 +611,6 @@ fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
         caller: "bdd",
         ephemeral_sessions: false,
     };
-    // 隔离全局配置层：XYLITOL_CONFIG_DIR 指向空目录，避免开发机真实配置注入模型。
     let isolated_global = ws.ws("isolated-global-config");
     std::fs::create_dir_all(&isolated_global).unwrap();
     let env_probe = move |k: &str| -> Option<String> {
@@ -727,10 +704,6 @@ fn t_c2826_tree_kind_error(agent: &AgentState) {
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// c2841 — r1387 已显式配置默认模型的展示（configured-default-shown）
-// ═══════════════════════════════════════════════════════════════════
-
 #[given("已显式配置默认模型 fake-model 且未显式选择模型")]
 async fn g_c2841_configured_default(agent: &AgentState, cli_entry_bdd: &CliEntryBdd) {
     use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind, XyModelMeta};
@@ -782,8 +755,6 @@ fn t_c2841_configured_default_shown(cli_entry_bdd: &CliEntryBdd) {
     assert_ne!(shown.as_str(), "NOT-SET");
 }
 
-/// 产品面模型展示名规则（与 TUI sync_fixed_zone 的派生一致）：
-/// 已解析模型按 display_name（空则 id），否则 NOT-SET 占位。
 fn model_display_name(model: Option<&xylitol_kernel::driver::ModelInfo>) -> String {
     match model {
         Some(m) => {

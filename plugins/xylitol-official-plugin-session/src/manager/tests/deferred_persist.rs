@@ -99,8 +99,6 @@ async fn defer_before_assistant_keeps_disk_clean_then_flushes() {
 
 #[tokio::test]
 async fn append_before_create_auto_inserts_header_and_create_is_idempotent() {
-    // Reproduce bind-then-`/model` race: body row lands in pending before
-    // `create` / `ensure_session`. Load must still see a session header.
     let dir = tempfile::tempdir().unwrap();
     let mgr = SessionManager::new(dir.path().join("sessions"));
     let sid = "bind-before-create";
@@ -132,7 +130,6 @@ async fn append_with_id_after_create_persists_header_and_body() {
     let sid = "append-with-id-flush";
 
     mgr.create(sid, Some("."), None).await.unwrap();
-    // No explicit flush — append_with_id must promote pending header first.
     mgr.append_with_id(
         sid,
         &SessionEntry::Message(MessageEntry {
@@ -183,7 +180,6 @@ async fn flush_pending_merges_when_file_already_has_body() {
     let sid = "merge-pending";
 
     mgr.create(sid, Some("."), None).await.unwrap();
-    // Simulate pre-fix append_with_id: body on disk, header still pending.
     let path = mgr.session_path(sid);
     tokio::fs::create_dir_all(path.parent().unwrap())
         .await
@@ -290,8 +286,6 @@ async fn write_entries_to_disk_failure_keeps_original_intact() {
     let file = mgr.get_session_file(sid).unwrap();
     let original = tokio::fs::read_to_string(&file).await.unwrap();
 
-    // Read-only session root makes the generation replacement fail; the
-    // manifest and active segment must stay intact.
     let session_root = sessions.join(sid);
     let mut perms = std::fs::metadata(&session_root).unwrap().permissions();
     perms.set_mode(0o555);

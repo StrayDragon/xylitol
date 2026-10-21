@@ -1,7 +1,3 @@
-//! c2848/r1924 BDD：切点度量与统一估算**同源不变量**（防回归独立字符口径）。
-//! 步骤为自包含属性断言（无 store/agent 依赖）：when 在同一线程内构造夹具并
-//! 计算两个数字，then 断言同源等式与「非独立字符计数」双重锁定。
-
 use std::cell::RefCell;
 
 use rstest_bdd_macros::{given, then, when};
@@ -27,8 +23,6 @@ fn message_entry(id: &str, msg: AgentMessage) -> SessionEntry {
     })
 }
 
-/// 与实现同源的逐条分解：`project_for_llm` 投影后序列化字节 /3 + pi 图片成本。
-/// （`when` 用公共 API 重算，任何对切点度量的独立化回归都会破坏 `then` 等式。）
 fn unified_decomposition(entries: &[SessionEntry]) -> u64 {
     use xylitol_official_plugin_provider_openai::accounting::heuristic_token_count;
     const ESTIMATED_IMAGE_CHARS: u64 = 4800;

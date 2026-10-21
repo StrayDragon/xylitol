@@ -1,5 +1,3 @@
-//! MessageHistory tree payload for [`super::EditorSlot::Tree`].
-
 use xylitol_tui::{Component, Input, InputEvent, TreeNode, TreeSelector, TreeSelectorOptions};
 
 use super::super::session_tree::{FilterMode, tree_help_line, tree_search_line, wrap_help_line};
@@ -48,7 +46,6 @@ impl TreeSlot {
         self.filter
     }
 
-    /// Whether a node-label edit session is open (Shift+L; Esc cancels it).
     pub fn is_label_editing(&self) -> bool {
         self.label_edit.is_some()
     }

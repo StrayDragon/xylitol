@@ -1,10 +1,7 @@
-//! Dialect overlays on Anthropic Messages (DeepSeek compat).
-
 use crate::thinking::ResolvedThinking;
 use crate::wire_policy::Compat;
 use serde_json::{Value, json};
 
-/// Apply Anthropic Messages thinking fields for the active compat profile.
 pub fn apply_anthropic_thinking(body: &mut Value, resolved: &ResolvedThinking, compat: Compat) {
     match compat {
         Compat::Generic => crate::thinking::apply_thinking_anthropic(body, resolved),

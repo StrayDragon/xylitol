@@ -1,18 +1,12 @@
-//! Session JSONL parse and version enforcement.
-
 use super::entries::{LEGACY_SESSION_VERSION, SESSION_VERSION, SessionEntry};
 use crate::error::XySessionStoreError;
 
-/// Parse session JSONL content: skip unparseable / non-SSOT lines with warn≤3 then `...`.
-///
-/// Requires a header with [`SESSION_VERSION`]; does not migrate older versions.
 pub fn parse_session_jsonl(content: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
     let (entries, _) = parse_session_jsonl_lines(content);
     enforce_session_version(&entries)?;
     Ok(entries)
 }
 
-/// Line parse with skip/warn, without header-version enforcement (flush merge).
 pub fn parse_session_jsonl_lines(content: &str) -> (Vec<SessionEntry>, usize) {
     let mut entries = Vec::new();
     let mut warn_count = 0usize;
@@ -40,7 +34,6 @@ fn emit_session_load_warn(warn_count: &mut usize, msg: &str) {
     }
 }
 
-/// Reject sessions whose header is missing or not the current [`SESSION_VERSION`].
 pub fn enforce_session_version(entries: &[SessionEntry]) -> Result<(), XySessionStoreError> {
     let version = entries.iter().find_map(|e| match e {
         SessionEntry::Header(h) => Some(h.version),
@@ -57,7 +50,6 @@ pub fn enforce_session_version(entries: &[SessionEntry]) -> Result<(), XySession
     }
 }
 
-/// Validate the one legacy format that may be lazily migrated to the current format.
 pub fn enforce_legacy_session_version(entries: &[SessionEntry]) -> Result<(), XySessionStoreError> {
     let version = entries.iter().find_map(|e| match e {
         SessionEntry::Header(h) => Some(h.version),

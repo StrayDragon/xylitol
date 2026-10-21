@@ -1,13 +1,7 @@
-//! Fastrace / Langfuse span for session compaction (`agent.compaction`, c1700).
-//!
-//! Lives here (not `agent/runtime/obs`) so `CompactionOrchestrator` can emit without
-//! a runtime ↔ compaction cycle. Gated like `token.estimate` / ReAct low-freq spans.
-
 use fastrace::prelude::*;
 use xylitol_plugin_sdk::langfuse_observation_properties_from;
 use xylitol_plugin_sdk::provider_trace_active;
 
-/// Normalize Start/End reason strings to product kinds.
 pub(crate) fn compaction_reason_kind(reason: &str) -> &'static str {
     if reason.starts_with("overflow") {
         "overflow"
@@ -18,13 +12,6 @@ pub(crate) fn compaction_reason_kind(reason: &str) -> &'static str {
     }
 }
 
-/// Lightweight marker for prepare-guard early exits (`agent.compaction.skipped`,
-/// otel27).
-///
-/// otel19 reserves `agent.compaction` for post-prepare attempts; otel22 bars
-/// gate early-exits from masquerading as LLM-lane spans — so this carries only
-/// the skip reason and the session identity, never the llm lane, and the auto
-/// path still emits no `CompactionEnd`.
 pub(crate) fn export_skipped(
     reason_detail: &str,
     parent: Option<SpanContext>,
@@ -51,22 +38,14 @@ pub(crate) fn export_skipped(
             ("name", "agent.compaction.skipped".to_string()),
         ]
     }));
-    // Drop → flush via reporter (token.estimate template).
     drop(span);
 }
 
-/// Timed observation wrapping one compact attempt (`agent.compaction`).
 pub(crate) struct AgentCompactionSpan {
     span: Span,
 }
 
 impl AgentCompactionSpan {
-    /// Start after `prepare_compaction` succeeds (manual / threshold / overflow).
-    ///
-    /// `parent` is typically the active `agent.turn` context when compacting inside
-    /// a turn; `None` starts an independent root (slash / out-of-turn compact).
-    /// `obs` is the caller's session snapshot (otel24 / c2610) — never a mid-run
-    /// read of the process slot.
     pub(crate) fn start(
         reason: &str,
         parent: Option<SpanContext>,
@@ -97,12 +76,10 @@ impl AgentCompactionSpan {
         Some(Self { span })
     }
 
-    /// Captured parent context for summarization `llm.request` nesting.
     pub(crate) fn span_context(&self) -> Option<SpanContext> {
         SpanContext::from_span(&self.span)
     }
 
-    /// Attach end-of-compact attributes then drop.
     pub(crate) fn finish(self, will_retry: bool, aborted: bool, error_message: Option<&str>) {
         self.span
             .add_property(|| ("will_retry", will_retry.to_string()));

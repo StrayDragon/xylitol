@@ -1,5 +1,3 @@
-//! Anthropic Messages dialect (`impl XyModel`).
-
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::XyModel;

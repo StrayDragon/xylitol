@@ -1,5 +1,3 @@
-//! MCP client manager — connects to MCP servers and dispatches tool calls.
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -14,30 +12,24 @@ type McpService = rmcp::service::RunningService<rmcp::RoleClient, ()>;
 #[cfg(not(feature = "mcp"))]
 type McpService = ();
 
-/// Crate-private MCP client failures (connect / tool call). Sources preserved.
 #[derive(Debug, thiserror::Error)]
 pub enum McpError {
-    /// stdio transport spawn failure.
     #[error("spawn failed: {0}")]
     Spawn(#[source] std::io::Error),
-    /// MCP initialize handshake failure (stdio / sse).
     #[error("init failed: {0}")]
     Init(#[source] Box<dyn std::error::Error + Send + Sync>),
-    /// SSE custom header name invalid.
     #[error("invalid header name {key:?}: {source}")]
     InvalidHeaderName {
         key: String,
         #[source]
         source: http::header::InvalidHeaderName,
     },
-    /// SSE custom header value invalid.
     #[error("invalid header value for {key}: {source}")]
     InvalidHeaderValue {
         key: String,
         #[source]
         source: http::header::InvalidHeaderValue,
     },
-    /// Tool call failure on a connected server.
     #[error("call {server_id}/{tool_name} failed: {source}")]
     Call {
         server_id: String,
@@ -45,10 +37,8 @@ pub enum McpError {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
-    /// Tool result serialization failure.
     #[error("serialize result: {0}")]
     Serialize(#[from] serde_json::Error),
-    /// Requested server is not connected.
     #[error("MCP server not found: {server_id}")]
     ServerNotFound { server_id: String },
     #[error("{0}")]
@@ -57,14 +47,12 @@ pub enum McpError {
     Timeout(String),
 }
 
-/// Diagnostic from validate / connect (c1080 / mcp4).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct McpConnectDiagnostic {
     pub server: String,
     pub message: String,
 }
 
-/// Read-only snapshot of a successfully connected MCP server (c1080 / mcp5).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectedMcpServer {
     pub id: String,
@@ -72,10 +60,8 @@ pub struct ConnectedMcpServer {
     pub tool_count: usize,
 }
 
-/// Live connect progress for loaded-resources / gates (c1200).
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct McpConnectProgress {
-    /// True while [`McpClientManager::connect_servers`] is in flight.
     pub connecting: bool,
     pub total: usize,
     pub finished: usize,
@@ -83,10 +69,6 @@ pub struct McpConnectProgress {
 }
 
 impl McpConnectProgress {
-    /// Short label for the mcp header row (`connecting 0/2`, `1/2`, …).
-    ///
-    /// Numerator is **ready/finished** count. Do **not** append a server id: with
-    /// parallel connect the last-finished name reads like "currently connecting".
     pub fn connecting_label(&self) -> Option<String> {
         if !self.connecting || self.total == 0 {
             return None;
@@ -96,16 +78,12 @@ impl McpConnectProgress {
     }
 }
 
-/// Manages connections to MCP servers and dispatches tool calls.
-/// Per-request wall-clock bound for post-handshake MCP calls (c2425).
 #[cfg_attr(not(feature = "mcp"), allow(dead_code))]
 pub const MCP_CALL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
 pub struct McpClientManager {
     services: Mutex<HashMap<String, McpService>>,
     transports: Mutex<HashMap<String, McpTransportKind>>,
-    /// Tool counts from the last successful [`Self::list_all_tools`] (or connect-time list).
-    /// `connected_servers` MUST use this cache — MUST NOT re-RPC `list_all_tools` (TUI hitch).
     tool_counts: Mutex<HashMap<String, usize>>,
     diagnostics: Mutex<Vec<McpConnectDiagnostic>>,
     progress: Mutex<McpConnectProgress>,
@@ -128,7 +106,6 @@ impl McpClientManager {
         }
     }
 
-    /// Connect to all MCP servers (empty / none = no-op).
     pub async fn connect(self: &Arc<Self>, servers: Option<&[McpServerConfig]>) {
         match servers {
             Some(servers) if !servers.is_empty() => self.connect_servers(servers).await,
@@ -136,15 +113,10 @@ impl McpClientManager {
         }
     }
 
-    /// Connect to an explicit server list (empty = no-op). Parallel per server (c1200).
-    ///
-    /// Invalid configs and connection failures are recorded as diagnostics and
-    /// logged; remaining servers still attempt connect (mcp4).
     pub async fn connect_servers(self: &Arc<Self>, servers: &[McpServerConfig]) {
         self.connect_servers_with_progress(servers, None).await
     }
 
-    /// Like [`Self::connect_servers`], optionally mirroring progress into `progress_out`.
     pub async fn connect_servers_with_progress(
         self: &Arc<Self>,
         servers: &[McpServerConfig],
@@ -204,9 +176,6 @@ impl McpClientManager {
                 .await;
         }
 
-        // When a shared progress Arc is owned by bootstrap, leave `connecting=true`
-        // until discover + manager merge (caller clears). Clearing here flashes
-        // "N configured · 0 connected" while the prepare hub is still connecting.
         let clear = progress_out.is_none();
         self.write_progress(&progress_out, !clear, total, finished, None)
             .await;
@@ -239,16 +208,10 @@ impl McpClientManager {
             .push(McpConnectDiagnostic { server, message });
     }
 
-    /// Diagnostics from the last [`Self::connect_servers`] (validate + connect failures).
     pub async fn diagnostics(&self) -> Vec<McpConnectDiagnostic> {
         self.diagnostics.lock().await.clone()
     }
 
-    /// Connected servers with tool counts (mcp5). Does not create new connections.
-    ///
-    /// Uses cached counts from the last [`Self::list_all_tools`] (discover / reload).
-    /// MUST NOT call per-server `list_all_tools` RPC here — that blocked the TUI tick
-    /// loop for hundreds of ms when the welcome card flipped to `N connected`.
     pub async fn connected_servers(&self) -> Vec<ConnectedMcpServer> {
         let services = self.services.lock().await;
         let transports = self.transports.lock().await;
@@ -373,10 +336,6 @@ impl McpClientManager {
         }
     }
 
-    /// List all tools from all connected MCP servers.
-    ///
-    /// Returns `(server_id, tool_name, description, input_schema)` for each tool.
-    /// Also refreshes [`Self::connected_servers`] tool-count cache.
     pub async fn list_all_tools(&self) -> Vec<(String, String, String, Value)> {
         #[cfg(not(feature = "mcp"))]
         {
@@ -431,7 +390,6 @@ impl McpClientManager {
         }
     }
 
-    /// Call a tool on a specific MCP server.
     pub async fn call_tool(
         &self,
         server_id: &str,
@@ -481,7 +439,6 @@ impl McpClientManager {
         }
     }
 
-    /// Gracefully shut down all MCP connections.
     pub async fn shutdown(&self) {
         let mut services = self.services.lock().await;
         #[cfg(feature = "mcp")]
@@ -583,7 +540,6 @@ mod tests {
                 ..Default::default()
             },
         ];
-        // Must not Err the whole batch.
         manager.connect_servers(&servers).await;
         let diags = manager.diagnostics().await;
         assert!(diags.len() >= 2, "both failures observable; got {diags:?}");
@@ -599,8 +555,6 @@ mod tests {
 
     #[tokio::test]
     async fn connected_servers_reads_cached_counts_without_relisting() {
-        // After discover, list_all_tools fills tool_counts; connected_servers must
-        // not re-issue MCP list RPCs (would hitch the TUI welcome-card refresh).
         let manager = Arc::new(McpClientManager::new());
         let _ = manager.list_all_tools().await;
         let t0 = std::time::Instant::now();

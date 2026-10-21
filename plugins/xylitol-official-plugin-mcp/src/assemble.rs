@@ -1,5 +1,3 @@
-//! MCP assembly helpers — zero-cost gate, discover → `XyTool`, reload support.
-
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -9,12 +7,10 @@ use super::client::McpClientManager;
 use super::types::McpServerConfig;
 use xylitol_plugin_sdk::XyTool;
 
-/// True when MCP should be assembled (non-empty server list).
 pub fn mcp_enabled(servers: &Option<Vec<McpServerConfig>>) -> bool {
     servers.as_ref().is_some_and(|s| !s.is_empty())
 }
 
-/// Build [`McpToolAdapter`]s from already-discovered tool rows (pure; testable).
 pub fn adapters_from_discovered(
     manager: Arc<McpClientManager>,
     rows: &[(String, String, String, Value)],
@@ -32,23 +28,12 @@ pub fn adapters_from_discovered(
         .collect()
 }
 
-/// Connect to the given servers (if any), discover tools, return manager + adapters.
-///
-/// Empty input returns `None` without constructing a manager. A non-empty list
-/// always returns `Some`: connect/discover failures do **not** travel through
-/// this `Option`. Observe them via [`McpClientManager::diagnostics`] (and the
-/// zero-tool / zero-connected snapshots). Partial success is a manager with
-/// whatever servers actually connected.
 pub async fn connect_and_discover(
     servers: &[McpServerConfig],
 ) -> Option<(Arc<McpClientManager>, Vec<Arc<dyn XyTool>>)> {
     connect_and_discover_with_progress(servers, None).await
 }
 
-/// Like [`connect_and_discover`], mirroring connect progress when `progress` is set (c1200).
-///
-/// Same `Option` contract: `None` only for an empty server list; per-server
-/// failures stay on [`McpClientManager::diagnostics`].
 pub async fn connect_and_discover_with_progress(
     servers: &[McpServerConfig],
     progress: Option<std::sync::Arc<tokio::sync::Mutex<super::client::McpConnectProgress>>>,
@@ -70,12 +55,6 @@ pub async fn connect_and_discover_with_progress(
     }
     Some((manager, tools))
 }
-
-// Convenience: pull servers from [`AppConfig`] and assemble.
-//
-// Missing / empty `mcp_servers` → `None`. Configured servers follow
-// [`connect_and_discover`]: failures are diagnostics, not `None`.
-// Removed in c2750 (zero callers); assembly goes through `connect_and_discover`.
 
 #[cfg(test)]
 mod tests {
@@ -129,7 +108,6 @@ mod tests {
 
     #[tokio::test]
     async fn connect_and_discover_invalid_still_returns_manager() {
-        // Invalid entries must not fail the Result; manager may exist with zero tools.
         let servers = [McpServerConfig {
             name: "bad".into(),
             transport: crate::McpTransportKind::Stdio,
@@ -164,7 +142,6 @@ mod tests {
         }
     }
 
-    /// Real stdio MCP: discover exposes `mcp__fixture__ping`.
     #[tokio::test]
     async fn connect_and_discover_fixture_exposes_ping_tool() {
         let script = fixture_server_script();
@@ -208,7 +185,6 @@ mod tests {
         manager.shutdown().await;
     }
 
-    /// Real stdio MCP: tools env change (add echo) is visible on rediscover.
     #[tokio::test]
     async fn connect_and_discover_fixture_can_add_echo_tool() {
         let (manager, tools) = connect_and_discover(&[fixture_mcp_config("fixture", "ping,echo")])

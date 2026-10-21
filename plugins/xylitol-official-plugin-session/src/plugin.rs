@@ -1,5 +1,3 @@
-//! `PluginFactory` entry: JSONL session store.
-
 use std::path::PathBuf;
 use std::sync::Arc;
 

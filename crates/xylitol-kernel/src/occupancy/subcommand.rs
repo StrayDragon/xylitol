@@ -1,18 +1,10 @@
-//! Host lifecycle ops dispatched from the CLI `serve` verb.
-//!
-//! Bare `xylitol serve` binds the listener. `stop` prints how to SIGTERM it.
-//! There is no lock-file mutex and no `server` / `run` alias.
-
 use clap::Subcommand;
 
-/// Optional leaves under `xylitol serve` (omit to listen).
 #[derive(Subcommand, Debug)]
 pub enum ServeAction {
-    /// Print how to stop a running listener (SIGTERM). Does not read a lock file.
     Stop,
 }
 
-/// Run a `serve` invocation.
 pub async fn run(
     host: String,
     port: u16,

@@ -1,12 +1,3 @@
-//! Find tool — uses `fd` to search for files by glob pattern.
-//!
-//! Key behaviors:
-//! - Uses external `fd` process via tokio::process::Command
-//! - Respects .gitignore via fd's default behavior
-//! - Returns Posix-relative paths
-//! - Supports result limit (default 1000)
-//! - Supports `--full-path` mode for path-containing patterns
-
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -17,7 +8,6 @@ use super::typed::TypedTool;
 use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
 
-/// Per-tool wall-clock default when the model omits `timeout` (c2425).
 pub(crate) const FIND_TOOL_TIMEOUT_SECS: u64 = 60;
 
 const DEFAULT_LIMIT: usize = 1000;
@@ -30,7 +20,6 @@ pub struct FindArgs {
     path: String,
     #[serde(default = "default_find_limit")]
     limit: u64,
-    /// Optional timeout in seconds; omitted means the per-tool default (60s).
     #[serde(default)]
     timeout: Option<i64>,
 }
@@ -97,7 +86,6 @@ impl TypedTool for FindTool {
             return Err(XyToolError::Aborted);
         }
 
-        // Build fd args
         let mut fd_args: Vec<String> = vec![
             "--glob".to_string(),
             "--color=never".to_string(),
@@ -132,7 +120,6 @@ impl TypedTool for FindTool {
             return Ok("No files found matching pattern".to_string());
         }
 
-        // Relativize against search root
         let mut relativized: Vec<String> = Vec::new();
         for raw_line in stdout.lines() {
             let line = raw_line.trim();

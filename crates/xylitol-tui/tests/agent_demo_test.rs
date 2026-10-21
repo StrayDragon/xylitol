@@ -109,15 +109,12 @@ fn agent_demo_slash_command_popup_filters_and_completes() {
 
     h.render_result()
         .expect("initial empty editor should render");
-    // Open CommandPopup by typing `/` on the first line.
     h.keys("/");
     h.render_result()
         .expect("slash popup must stay within width budget");
     h.assert_text_contains("help");
     h.assert_text_contains("Show key help in transcript");
-    // "palette" may be below SelectList max_visible; assert via filter instead.
 
-    // Prefix filter: `/hel` should keep help, drop unrelated commands.
     h.keys("hel");
     h.render_result()
         .expect("filtered slash popup must stay within width");
@@ -131,7 +128,6 @@ fn agent_demo_slash_command_popup_filters_and_completes() {
         "prefix /hel should hide /diff; got:\n{filtered}"
     );
 
-    // Tab completes into the editor (does not submit); user submits with Enter later.
     h.keys("\t");
     h.render_result()
         .expect("slash completion into editor must stay within width");
@@ -160,7 +156,7 @@ fn agent_demo_slash_command_popup_backspace_to_slash_closes() {
     h.keys("/h");
     h.render_result().expect("slash popup with filter");
     h.assert_text_contains("Show key help in transcript");
-    h.keys("\x7f"); // Backspace → `/` only → close popup, keep `/`
+    h.keys("\x7f");
     h.render_result()
         .expect("backspace to lone slash must stay within width");
     let text = h.tui.terminal.viewport().join("\n");
@@ -184,7 +180,7 @@ fn agent_demo_slash_command_popup_esc_dismisses() {
     h.keys("/");
     h.render_result().expect("slash popup open");
     h.assert_text_contains("Show key help in transcript");
-    h.keys("\x1b"); // Esc → Editor cancels autocomplete
+    h.keys("\x1b");
     h.render_result().expect("Esc dismisses slash popup");
     let dismissed = h.tui.terminal.viewport().join("\n");
     assert!(
@@ -323,7 +319,6 @@ fn agent_demo_selector_stays_visible_after_long_transcript() {
     ))))
     .focus(Some(0));
 
-    // Grow transcript past the viewport via scripted ticks, then open palette.
     h.render_result().expect("initial render should succeed");
     h.keys("\r");
     for _ in 0..1200 {
@@ -338,8 +333,6 @@ fn agent_demo_selector_stays_visible_after_long_transcript() {
     h.keys("\x10");
     h.render_result()
         .expect("palette after long transcript must stay within width");
-    // Viewport is only the last 24 rows; absolute-top blit would hide the
-    // palette. Editor-slot replacement keeps it in the visible bottom.
     h.assert_text_contains("Command Plate");
     h.assert_text_contains("Markdown full grammar (stream)");
 }
@@ -387,8 +380,6 @@ fn agent_demo_idle_omits_status_row() {
     );
 }
 
-/// Idle reserves one blank above the editor; busy keeps Loader's leading blank
-/// so the spinner sits flush against input (pi statusContainer).
 #[test]
 fn agent_demo_status_keeps_blank_above_editor() {
     let mut app = FakeCodingAgentApp::new(Arc::new(AtomicBool::new(false)));
@@ -449,7 +440,6 @@ fn agent_demo_default_hides_hardware_cursor_during_stream() {
 
 #[test]
 fn agent_demo_layout_is_minimal_single_column() {
-    // Tall enough that seed (all blocks expanded) still shows the top of transcript.
     let mut h = TuiTestHarness::new(172, 80);
     h.mount(Box::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
@@ -507,15 +497,13 @@ fn agent_demo_thinking_typewriter_expands_then_collapses() {
         "thinking should typewriter with body visible while streaming"
     );
 
-    // Mid-stream ^T must stick even as more chunks arrive.
-    h.keys("\x14"); // Ctrl+T → collapse (any_collapsed path)
+    h.keys("\x14");
     let mut stayed_collapsed = true;
     for _ in 0..40 {
         h.tick();
         h.render_result()
             .expect("collapsed thinking stream must stay within width");
         let text = h.tui.terminal.viewport().join("\n");
-        // While still in Thinking status, body of the *active* stream should stay hidden.
         if text.contains("Drafting reply") || text.contains("收到，我已经接住") {
             break;
         }
@@ -529,7 +517,6 @@ fn agent_demo_thinking_typewriter_expands_then_collapses() {
         "Ctrl+T during thinking stream must not be overridden by later chunks"
     );
 
-    // Finish the turn; thinking should collapse again.
     for _ in 0..400 {
         h.tick();
         h.render_result()
@@ -561,7 +548,7 @@ fn agent_demo_ctrl_t_toggles_thinking_block() {
         "seed thinking starts expanded; got:\n{before}"
     );
 
-    h.keys("\x14"); // Ctrl+T collapses when any thinking is open
+    h.keys("\x14");
     h.render_result()
         .expect("collapse thinking must stay within width");
     let after = h.tui.terminal.viewport().join("\n");
@@ -590,7 +577,7 @@ fn agent_demo_alt_e_toggles_tool_block() {
         "seed tool starts expanded; got:\n{before}"
     );
 
-    h.keys("\x1be"); // Alt+E collapses all tool/diff when any are open
+    h.keys("\x1be");
     h.render_result()
         .expect("collapse tools must stay within width");
     let after = h.tui.terminal.viewport().join("\n");
@@ -610,7 +597,7 @@ fn agent_demo_alt_g_cycles_glyph_set_to_ascii() {
 
     h.render_result().expect("initial render should succeed");
     h.assert_text_contains("❯");
-    h.keys("\x1bg"); // Alt+G (glyphs; Ctrl+G is external editor)
+    h.keys("\x1bg");
     h.render_result()
         .expect("glyph cycle must stay within width");
     let text = h.tui.terminal.viewport().join("\n");
@@ -642,7 +629,7 @@ fn agent_demo_ctrl_c_clears_editor_then_quits() {
     h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
         .focus(Some(0));
 
-    h.keys("\x03"); // Ctrl+C
+    h.keys("\x03");
     assert!(
         !quit.load(Ordering::SeqCst),
         "non-empty editor must clear, not quit"
@@ -670,7 +657,6 @@ fn agent_demo_escape_aborts_active_stream() {
     h.render_result().expect("initial render");
     h.keys("\r");
     h.render_result().expect("after submit");
-    // Esc while scripted turn is active
     h.keys("\x1b");
     h.render_result().expect("after abort");
     h.assert_text_contains("stream aborted");
@@ -686,7 +672,6 @@ fn agent_demo_seed_rust_fence_is_highlighted() {
     )))
     .focus(Some(0));
     h.render_result().expect("initial render");
-    // Prefer short stream-rust plate item over full md-full typewriter.
     h.keys("\x10stream-rust\r");
     let mut saw = false;
     for i in 0..4000 {
@@ -717,7 +702,6 @@ fn agent_demo_streaming_fence_emits_ansi_when_closed() {
     ))))
     .focus(Some(0));
     h.render_result().expect("initial render");
-    // Clear seed writes; submit to start scripted turn with streamed code block.
     h.tui.terminal.clear_writes();
     h.keys("\r");
     let mut saw_accept_fn = false;
@@ -747,12 +731,10 @@ fn agent_demo_seed_markdown_showcase_c530() {
     )))
     .focus(Some(0));
     h.render_result().expect("initial render");
-    // Slash popup steals Enter for selection — Tab completes, then Enter submits.
     h.keys("/md\t\r");
     let mut text = String::new();
     for i in 0..8000 {
         h.tick();
-        // Render every N ticks — irregular stream is long; full render each tick is costly.
         if i % 8 == 0 {
             h.render_result().ok();
         }
@@ -861,7 +843,6 @@ fn agent_demo_slash_md_injects_showcase() {
         text.contains("Markdown grammar stub"),
         "/md should stream showcase body:\n{text}"
     );
-    // B color enhance: bold → accent RGB, italic → warning RGB (cell attrs; scroll text strips ANSI).
     assert!(
         saw_accent || scrollback_has_fg_rgb(&h, (137, 180, 250)),
         "/md bold/heading should paint DESIGN accent RGB on cells"
@@ -892,7 +873,7 @@ fn agent_demo_simulated_edit_tool_pops_expanded_diff() {
     ))))
     .focus(Some(0));
     h.render_result().expect("initial render");
-    h.keys("\r"); // submit seed prompt → scripted turn includes Edit
+    h.keys("\r");
     let mut saw_edit = false;
     for _ in 0..3000 {
         h.tick();
@@ -986,7 +967,6 @@ fn agent_demo_dollar_stub_source_opens_and_plate_mentions_c545() {
         tip.contains("$demo") && tip.contains("$narrow-clamp-skill"),
         "multi-$ user row should appear in scrollback; got:\n{tip}"
     );
-    // skill-ref mauve (dark DESIGN): #cba6f7 — cell FG, not plain scroll text
     assert!(
         scrollback_has_fg_rgb(&h, (0xcb, 0xa6, 0xf7)),
         "user row $tokens should paint skill_ref fg in cell grid"
@@ -1014,7 +994,6 @@ fn agent_demo_dollar_stub_source_opens_and_plate_mentions_c545() {
         );
     }
 
-    // Mid-prompt `$` (like `@`), not line-leading only.
     h.keys("use $");
     h.render_result()
         .expect("inline dollar stub popup must stay within width");
@@ -1055,7 +1034,6 @@ fn agent_demo_plate_expandable_head_shows_c550_more_hint() {
         text.contains("c550") && text.contains("more lines"),
         "plate expandable-head should surface c550 Head tip; got:\n{text}"
     );
-    // Isolate the Read tool block (seed may still contain Tail "earlier lines").
     let read_idx = text
         .find("Read expandable_output.rs")
         .expect("Read tool header");
@@ -1394,7 +1372,6 @@ fn agent_demo_scripted_tool_flips_pending_to_success_bg() {
     let app = Rc::new(RefCell::new(FakeCodingAgentApp::new(Arc::new(
         AtomicBool::new(false),
     ))));
-    // Isolate from seed: user/system washes share tool_pending_bg RGB.
     {
         let mut a = app.borrow_mut();
         a.freeze_script_for_test();
@@ -1459,7 +1436,6 @@ fn agent_demo_parallel_tools_flip_by_index_not_last() {
         "both tools start pending"
     );
 
-    // Complete only A — B must stay · running (regression: old code flipped "last").
     app.borrow_mut().complete_tool_at_for_test(a);
     h.render_result().ok();
     let text = h.tui.terminal.viewport().join("\n");
@@ -1530,7 +1506,6 @@ fn agent_demo_idle_returns_to_ready_after_tool_flips() {
         AtomicBool::new(false),
     ))));
     let (a, b) = app.borrow_mut().inject_parallel_pending_tools_for_test();
-    // Drop scheduled flips — complete manually to assert Ready sync.
     app.borrow_mut().clear_scheduled_actions_for_test();
     app.borrow_mut().freeze_script_for_test();
 
@@ -1572,7 +1547,6 @@ fn agent_demo_diff_body_shares_tool_wash_no_row_tints() {
         ToolBlockStatus::Success.rgb(&p).1,
         ToolBlockStatus::Success.rgb(&p).2,
     );
-    // Mocha diff-*-bg must stay unused when demo embeds body in tool wash (pi).
     let removed_bg = Color::Rgb(0x2b, 0x1e, 0x24);
     let added_bg = Color::Rgb(0x1e, 0x2b, 0x22);
     let height = h.tui.terminal.viewport().len();
@@ -1626,7 +1600,6 @@ fn agent_demo_tool_detail_does_not_echo_command() {
         AtomicBool::new(false),
     ))));
     app.borrow_mut().freeze_script_for_test();
-    // Simulate a completed scripted tool via apply path: push like apply_event does.
     {
         let mut a = app.borrow_mut();
         a.push_tool_for_test(
@@ -1654,7 +1627,6 @@ fn agent_demo_tool_detail_does_not_echo_command() {
     );
 }
 
-/// True if any scrollback cell has truecolor foreground `rgb`.
 fn scrollback_has_fg_rgb(h: &TuiTestHarness, rgb: (u8, u8, u8)) -> bool {
     use support::Color;
     let want = Color::Rgb(rgb.0, rgb.1, rgb.2);
@@ -1668,7 +1640,6 @@ fn scrollback_has_fg_rgb(h: &TuiTestHarness, rgb: (u8, u8, u8)) -> bool {
     false
 }
 
-/// True if any viewport cell has truecolor background `rgb`.
 fn viewport_has_bg_rgb(h: &TuiTestHarness, rgb: (u8, u8, u8)) -> bool {
     use support::Color;
     let want = Color::Rgb(rgb.0, rgb.1, rgb.2);
@@ -1688,9 +1659,6 @@ fn viewport_has_bg_rgb(h: &TuiTestHarness, rgb: (u8, u8, u8)) -> bool {
     false
 }
 
-/// True if a viewport row whose text contains `needle` has truecolor bg `rgb`.
-/// Prefer this over full-viewport scans — idle blanks / stale shrink rows can
-/// retain unrelated cells, and user/system washes share `tool_pending_bg`.
 fn viewport_row_with_text_has_bg_rgb(h: &TuiTestHarness, needle: &str, rgb: (u8, u8, u8)) -> bool {
     use support::Color;
     let want = Color::Rgb(rgb.0, rgb.1, rgb.2);
@@ -1751,7 +1719,6 @@ fn agent_demo_session_tree_slot_replaces_editor() {
         "tree should stay open until Esc/Enter"
     );
 
-    // Ctrl+T → no-tools (demo filter; hides kind=tool rows)
     h.keys("\x14");
     h.render_result().expect("after no-tools filter");
     let filtered = h.tui.terminal.viewport().join("\n");
@@ -1772,7 +1739,6 @@ fn agent_demo_session_tree_slot_replaces_editor() {
         "expected search chrome; got:\n{searched}"
     );
 
-    // Esc clears search first
     h.keys("\x1b");
     h.render_result().expect("clear search");
     assert!(
@@ -1811,7 +1777,6 @@ fn agent_demo_double_esc_opens_session_tree_when_editor_empty() {
     h.mount(Box::new(SharedFakeCodingAgentApp(app.clone())))
         .focus(Some(0));
     h.render_result().expect("initial");
-    // Two Esc within 500ms (empty editor) → tree.
     h.keys("\x1b\x1b");
     h.render_result().expect("after double Esc");
     assert!(
@@ -1943,7 +1908,6 @@ fn agent_demo_session_tree_travel_rebuilds_history_along_path() {
         "main-branch user turn must not remain after travel to fork; got:\n{plain}"
     );
 
-    // Re-open tree: active leaf is af (• on path).
     app.borrow_mut().open_session_tree_for_test();
     h.render_result().expect("tree after travel");
     let tree = h.tui.terminal.viewport().join("\n");
@@ -2040,7 +2004,6 @@ fn agent_demo_travel_to_assistant_does_not_prefill_user_body() {
 fn agent_demo_steer_does_not_abort_busy_turn() {
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();
-    // Start a turn (busy).
     app.submit_text_for_test("first turn prompt");
     assert!(
         app.status_text_for_test() == "Thinking"
@@ -2057,7 +2020,6 @@ fn agent_demo_steer_does_not_abort_busy_turn() {
         app.session_tree_contains_label_for_test("[steer] steer while busy"),
         "steer must grow a tree node without aborting"
     );
-    // Still busy / first turn not wiped into Ready-only by a second queue_simulated_turn clear.
     assert!(
         app.steer_queue_len_for_test() == 1,
         "steer stays queued until turn finishes"
@@ -2185,8 +2147,6 @@ fn agent_demo_apply_external_editor_places_cursor_at_end() {
 
 #[test]
 fn agent_demo_ctrl_g_defaults_to_stub_without_tty() {
-    // Unit-test builds must not arm real-editor pending from an inherited TTY
-    // (interactive `just qa`); only XYLITOL_AGENT_DEMO_REAL_EDITOR=1 forces real.
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();
     app.set_editor_text_for_test("no tty");
@@ -2311,13 +2271,11 @@ fn agent_demo_model_arg_completion_tab() {
     .focus(Some(0));
 
     h.render_result().expect("initial");
-    // Bare `/model` opens the catalog immediately (demo bare_command opt-in).
     h.keys("/model");
     h.render_result().expect("bare /model catalog");
     h.assert_text_contains("deepseek-v4-flash");
     h.assert_text_contains("opencode-go");
 
-    // Esc, then `/model ` (space) must also auto-open without Tab.
     h.keys("\x1b");
     h.render_result().expect("Esc closes");
     h.keys(" ");
@@ -2368,7 +2326,6 @@ fn agent_demo_session_tree_fork_stays_on_node_and_branches() {
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();
 
-    // u1 already has one child (a1) in the sample tree.
     let before = app.session_tree_child_count_for_test("u1");
     assert!(before >= 1, "sample tree u1 should have children");
 
@@ -2405,7 +2362,6 @@ fn agent_demo_session_tree_fork_stays_on_node_and_branches() {
         !plain.trim_start().starts_with("forked @"),
         "forked @ MUST NOT lead transcript; got:\n{plain}"
     );
-    // u1's path is root→u1 only; child assistant must not appear (unlike travel spine).
     assert!(
         !plain.contains("plan + tools"),
         "fork must not include child assistant reply; got:\n{plain}"
@@ -2429,7 +2385,6 @@ fn agent_demo_tool_event_grows_session_tree() {
     let mut app = FakeCodingAgentApp::new_with_prompt(Arc::new(AtomicBool::new(false)), "");
     app.freeze_script_for_test();
     app.submit_text_for_test("need tools in tree");
-    // Drive script until a tool lands.
     let mut saw_tool = false;
     for _ in 0..400 {
         let _ = app.tick_for_test();
@@ -2484,7 +2439,7 @@ fn agent_demo_ctrl_o_expands_tool_output_viewport() {
         .focus(Some(0));
     h.render_result().expect("initial");
     assert!(!app.borrow().tools_output_expanded_for_test());
-    h.keys("\x0f"); // Ctrl+O
+    h.keys("\x0f");
     h.render_result().expect("after Ctrl+O");
     assert!(app.borrow().tools_output_expanded_for_test());
     let text = h.tui.terminal.viewport().join("\n");
@@ -2559,7 +2514,6 @@ fn agent_demo_thinking_border_cycle_changes_level_and_paint() {
     );
     let after = app.editor_render_for_test(40).join("\n");
     assert_ne!(before, after, "cycle must change editor border paint");
-    // pi dark thinkingHigh #b294bb
     assert!(
         after.contains("38;2;178;148;187"),
         "high border should use pi #b294bb; got:\n{after}"
@@ -2576,7 +2530,6 @@ fn agent_demo_shift_tab_cycles_thinking_border() {
         app.thinking_border_level_for_test(),
         xylitol_tui::ThinkingBorderLevel::Medium
     );
-    // Kitty/CSI style: Tab + SHIFT
     app.handle_input(InputEvent::Key(KeyEvent::new(
         KeyCode::Tab,
         KeyModifiers::SHIFT,
@@ -2585,7 +2538,6 @@ fn agent_demo_shift_tab_cycles_thinking_border() {
         app.thinking_border_level_for_test(),
         xylitol_tui::ThinkingBorderLevel::High
     );
-    // Legacy VT: BackTab often has no SHIFT bit
     app.handle_input(InputEvent::Key(KeyEvent::new(
         KeyCode::BackTab,
         KeyModifiers::NONE,
@@ -2595,7 +2547,6 @@ fn agent_demo_shift_tab_cycles_thinking_border() {
         xylitol_tui::ThinkingBorderLevel::Xhigh
     );
     let painted = app.editor_render_for_test(40).join("\n");
-    // pi dark thinkingXhigh #d183e8
     assert!(
         painted.contains("38;2;209;131;232"),
         "xhigh border should use pi #d183e8; got:\n{painted}"

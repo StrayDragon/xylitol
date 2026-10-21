@@ -1,5 +1,3 @@
-//! Session resume search / sort (pi `session-selector-search` port).
-
 use regex::Regex;
 use xylitol_tui::fuzzy_match;
 
@@ -78,7 +76,6 @@ pub struct ParsedSearchQuery {
     pub tokens: Vec<String>,
 }
 
-/// Parse filter text: `re:<pattern>`, `"exact phrase"`, and fuzzy tokens.
 pub fn parse_search_query(raw: &str) -> ParsedSearchQuery {
     let mut out = ParsedSearchQuery::default();
     let mut i = 0;
@@ -129,7 +126,6 @@ fn entry_search_text(entry: &SessionListEntry) -> String {
     format!("{primary} {}", entry.id)
 }
 
-/// Whether `entry` matches the parsed query (regex / phrase / fuzzy tokens).
 pub fn match_session(entry: &SessionListEntry, query: &ParsedSearchQuery) -> bool {
     let hay = entry_search_text(entry);
     if let Some(re) = &query.regex
@@ -212,7 +208,6 @@ pub fn is_named(entry: &SessionListEntry) -> bool {
     entry.name.as_deref().is_some_and(|s| !s.trim().is_empty())
 }
 
-/// Filter by scope / name / search, then sort per mode.
 pub fn filter_and_sort(
     entries: &[SessionListEntry],
     scope: SessionScope,

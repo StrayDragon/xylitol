@@ -1,5 +1,3 @@
-//! Steps for `package-tui-engine` r1946 (c2880 pointer offer).
-
 use crate::bdd::prelude::*;
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use rstest::fixture;

@@ -1,5 +1,3 @@
-//! Builtin `ask` ChoicePrompt payload for [`super::EditorSlot::Choice`].
-
 use std::cell::RefCell;
 use std::rc::Rc;
 

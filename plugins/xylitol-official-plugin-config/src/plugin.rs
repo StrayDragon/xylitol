@@ -1,5 +1,3 @@
-//! Core plugin: layered config load. Kernel-mounted, not a loader row.
-
 use std::path::PathBuf;
 
 use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin};
@@ -7,7 +5,6 @@ use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin};
 use crate::loader::load_app_config_detailed;
 use crate::types::AppConfig;
 
-/// Snapshot of the loaded app config plus process paths.
 pub struct ConfigService {
     pub app: AppConfig,
     pub agent_dir: PathBuf,

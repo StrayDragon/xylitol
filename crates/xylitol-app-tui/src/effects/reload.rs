@@ -1,5 +1,3 @@
-//! Interactive `/reload` pump (c1205) — bang-shaped select! so ticks/Esc stay live.
-
 use std::time::Duration;
 
 use futures::Stream;
@@ -32,7 +30,6 @@ fn reload_notice_title(cancelled: bool) -> &'static str {
     }
 }
 
-/// Run `/reload` with live Tick/Input (Esc → cooperative cancel). Shared by host + harness.
 pub async fn run_interactive_reload<T, S>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -53,7 +50,7 @@ where
     };
 
     let agent_dir = default_agent_dir();
-    let mut lines = vec![String::new()]; // title filled after report
+    let mut lines = vec![String::new()];
     lines.push(format_keybindings_reload(
         session.reload_keybindings(&agent_dir),
     ));

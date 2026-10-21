@@ -14,7 +14,7 @@ use super::super::glyphs::GlyphSet;
 use super::ScrollbackFold;
 use super::paint::{inter_block_spacer, key_hint, push_wrapped};
 
-#[allow(clippy::too_many_arguments)] // paint planes: lines, hits, activity, theme
+#[allow(clippy::too_many_arguments)]
 pub(super) fn paint_envelope_header_row(
     lines: &mut Vec<String>,
     fold_hits: &mut FoldHitTable,
@@ -47,7 +47,7 @@ pub(super) fn paint_envelope_header_row(
     *need_spacer = true;
 }
 
-#[allow(clippy::too_many_arguments)] // paint planes: lines, hits, segments, activity, theme
+#[allow(clippy::too_many_arguments)]
 pub(super) fn paint_cluster_header_row(
     lines: &mut Vec<String>,
     fold_hits: &mut FoldHitTable,
@@ -97,17 +97,7 @@ pub(super) fn paint_cluster_header_row(
     *need_spacer = true;
 }
 
-/// ActivityFold on: streaming Think paints a Thinking bar (att33 / att37).
-///
-/// Thought-only open cluster: the cluster header already is the Thinking bar
-/// (merged rows), so the body streams as its kid — no second L1 row.
-/// Mixed open cluster (tools / Ask kids): the burst keeps its own L1 Thinking
-/// bar, body default-folded, so it stays an independently collapsible block
-/// below the tool blocks and matches the sealed `Thought` row
-/// `paint_thinking_block` paints on flush. Cluster id matches the cluster
-/// `partition_segments` will assign when the stream flushes, so a user expand
-/// survives ToolStart / MessageEnd.
-#[allow(clippy::too_many_arguments)] // paint planes: lines, hits, fold, activity, theme
+#[allow(clippy::too_many_arguments)]
 pub(super) fn paint_folded_streaming_thought(
     lines: &mut Vec<String>,
     fold_hits: &mut FoldHitTable,
@@ -125,11 +115,9 @@ pub(super) fn paint_folded_streaming_thought(
 ) {
     if live_open_cluster {
         if !live_open_cluster_expanded {
-            // Kids hidden under the cluster header: the stream hides with them.
             return;
         }
         if live_open_cluster_thought_only {
-            // Header already painted (Thinking/Thought) — body is the kid.
             push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
             return;
         }

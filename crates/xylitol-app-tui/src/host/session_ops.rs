@@ -1,5 +1,3 @@
-//! Session tree / models / resume mount + apply helpers (c1170 / ath12).
-
 use crate::debug_fixtures::FixedZoneOp;
 use crate::driver::{ModelInfo, XyDriver};
 use crate::layout::{WidthTier, width_tier};
@@ -10,10 +8,6 @@ use super::super::bridge::session_tree::{rebuild_scrollback_from_travel, travel_
 use super::HostSession;
 
 impl<T: Terminal> HostSession<T> {
-    /// c2875：覆盖弹出框 pending / 上屏透传。
-    /// c2905/c2910/c2918：每轮 drain 对账侧栏让宽——以终端物理宽经布局口径
-    /// 推导（开启且标准档可用才让宽），包层选中 rect / gutter 几何 / 滚轮分区
-    /// 与根渲染共用同一真值源；开关切换、缩放与重建后均自愈。
     pub fn sync_session_sidebar_reserve(&mut self) {
         let cols = Terminal::columns(&self.tui.terminal) as usize;
         let n = self
@@ -24,12 +18,10 @@ impl<T: Terminal> HostSession<T> {
         self.tui.set_extra_reserved_cols(n as u16);
     }
 
-    /// c2918：侧栏可用性——标准档及以上（物理宽口径，与根渲染同源）。
     pub fn session_sidebar_available(&self) -> bool {
         width_tier(Terminal::columns(&self.tui.terminal) as usize) >= WidthTier::Standard
     }
 
-    /// c2905：侧栏 pending / 上屏透传。
     pub fn take_pending_session_sidebar(&mut self) -> bool {
         let root = self.ui_root.as_ref().expect("product ui").clone();
         root.borrow_mut().take_pending_session_sidebar()
@@ -59,14 +51,12 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().take_pending_tree_open()
     }
 
-    /// Queue a MessageHistory tree open (c700/c1005 `/session-tree`).
     pub fn request_session_tree_open(&mut self) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().request_tree_open();
         }
     }
 
-    /// Queue fork at `entry_id` (c700/c1005 `/session-fork` / tree Shift+F).
     pub fn request_session_tree_fork(&mut self, entry_id: impl Into<String>) {
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().request_tree_fork(entry_id.into());
@@ -135,7 +125,6 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
-    /// Mount ChoicePrompt for a pending ask tool call (c1850).
     pub fn mount_ask_choice(
         &mut self,
         questions: Vec<xylitol_tui::ChoiceQuestion>,
@@ -153,12 +142,10 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Arm scripted live-window close after the next Choice result (debug tape).
     pub fn arm_debug_live_ask_close(&mut self) {
         self.debug_live_ask_close = true;
     }
 
-    /// Complete ask oneshot when ChoicePrompt finished.
     pub fn complete_ask_if_ready(&mut self) -> Option<String> {
         let root = self.ui_root.as_ref()?;
         let json = root.borrow_mut().complete_ask_if_ready()?;
@@ -166,7 +153,6 @@ impl<T: Terminal> HostSession<T> {
         Some(json)
     }
 
-    /// Poll ask gateway + complete finished ChoicePrompt (c1850).
     pub fn poll_ask_host(&mut self) {
         if let Some(json) = self.complete_ask_if_ready() {
             if self.debug_live_ask_close {
@@ -188,7 +174,6 @@ impl<T: Terminal> HostSession<T> {
 
     fn apply_debug_live_ask_close(&mut self, json: &str) {
         for event in crate::activity_fold::live_ask_close_events(json) {
-            // designing 注入的合成 close tape 无本地 run（idle），必须绕过 idle tape 栅栏。
             self.apply_xy_unfenced(Box::new(event));
         }
     }
@@ -297,7 +282,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Seed `/model <id>` completion catalog without opening the picker (c999).
     pub fn set_model_arg_catalog_from_models(&mut self, models: &[ModelInfo]) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -316,7 +300,6 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_model_arg_catalog(catalog);
     }
 
-    /// Seed `$skill` completion catalog (c1130).
     pub fn set_dollar_skill_catalog(&mut self, catalog: Vec<(String, String)>) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -324,13 +307,11 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_dollar_skill_catalog(catalog);
     }
 
-    /// Refresh loaded-resources header from XyDriver (c1135). Startup + `/reload`.
     pub async fn refresh_loaded_resources(&mut self, driver: &dyn XyDriver) {
         let snap = driver.loaded_resources_snapshot().await;
         self.refresh_loaded_resources_from_snap(snap);
     }
 
-    /// Apply a loaded-resources snapshot into UiRoot (c1215 cache path).
     pub fn refresh_loaded_resources_from_snap(
         &mut self,
         snap: crate::driver::LoadedResourcesSnapshot,
@@ -341,7 +322,6 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_loaded_resources(snap);
     }
 
-    /// Whether `/mcp` can sync-mount without awaiting Driver snapshot (c1215).
     pub fn mcp_cache_usable_for_open(&self) -> bool {
         let Some(root) = self.ui_root.as_ref() else {
             return false;
@@ -349,7 +329,6 @@ impl<T: Terminal> HostSession<T> {
         root.borrow().mcp_cache_usable_for_open()
     }
 
-    /// Sync-mount `/mcp` from UiRoot's cached loaded-resources (c1215).
     pub fn mount_mcp_from_cache(&mut self) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -358,7 +337,6 @@ impl<T: Terminal> HostSession<T> {
         self.sync_ui_root_from_model();
     }
 
-    /// Mount `/mcp` SelectList from a snapshot (c1215). Allowed in any host state.
     pub fn mount_mcp_panel(&mut self, snap: &crate::driver::LoadedResourcesSnapshot) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
@@ -408,11 +386,9 @@ impl<T: Terminal> HostSession<T> {
         }
         self.sync_ui_root_from_model();
         self.finish_activity_after_rebuild(&entries, &travel);
-        // Trailing notice (above input / end of scrollback) — never prepend via rebuild.
         self.push_scroll_notice(note);
     }
 
-    /// After XyDriver fork+switch: rebuild transcript from child entries and optional prefill.
     pub fn apply_session_tree_fork(
         &mut self,
         child_id: &str,
@@ -434,12 +410,10 @@ impl<T: Terminal> HostSession<T> {
         }
         self.sync_ui_root_from_model();
         self.finish_activity_after_rebuild(&entries, &travel);
-        // Single trailing note; rebuild no longer emits history @ (travel-only).
         self.push_scroll_notice(format!("forked → session {child_id}"));
         self.seed_editor_history_from_entries(&entries);
     }
 
-    /// After import + switch: rebuild transcript from imported entries (c1010).
     pub fn apply_import_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
         self.apply_switched_session(
             session_id,
@@ -452,7 +426,6 @@ impl<T: Terminal> HostSession<T> {
         );
     }
 
-    /// After CLI `--session` restore: rebuild transcript like `/session-resume` (c1560 gap).
     pub fn apply_cli_restored_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
         self.apply_switched_session(
             session_id,
@@ -463,7 +436,6 @@ impl<T: Terminal> HostSession<T> {
         );
     }
 
-    /// After `/session-resume` switch: rebuild transcript and clear overlays (c1015).
     pub fn apply_resume_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
         self.apply_switched_session(
             session_id,
@@ -477,7 +449,6 @@ impl<T: Terminal> HostSession<T> {
         );
     }
 
-    /// After `/session-new`: empty (or near-empty) transcript (c1020).
     pub fn apply_new_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
         self.apply_switched_session(
             session_id,
@@ -491,7 +462,6 @@ impl<T: Terminal> HostSession<T> {
         );
     }
 
-    /// After `/session-clone` (fork At + switch) (c1020).
     pub fn apply_clone_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
         self.apply_switched_session(
             session_id,
@@ -510,7 +480,6 @@ impl<T: Terminal> HostSession<T> {
         entries: Vec<SessionEntry>,
         note: String,
         close_overlays: impl FnOnce(&mut super::super::layout::UiRoot),
-        // When true, seed ↑/↓ from prior sessions (session-new); else from `entries`.
         seed_as_new: bool,
     ) {
         let leaf_id = xylitol_plugin_sdk::session::transcript_leaf_anchor(&entries, None);
@@ -531,15 +500,10 @@ impl<T: Terminal> HostSession<T> {
         }
         self.sync_ui_root_from_model();
         self.finish_activity_after_rebuild(&entries, &travel);
-        // Trailing ScrollNotice after rebuild: next rebuild drops the old tip
-        // (not a SessionEntry), same model as `forked →` / `history @`.
         self.push_scroll_notice(note);
-        // Resume / restore / clone / import must refresh footer without waiting for
-        // a new turn (c1035 was stream-close only; CLI --session left token blank).
         self.request_footer_token_refresh();
     }
 
-    /// Apply a designing preview scene: rebuild transcript and optional footer model.
     pub fn apply_debug_scene(&mut self, load: crate::driver::DebugSceneLoad) {
         let leaf_id = xylitol_plugin_sdk::session::transcript_leaf_anchor(&load.entries, None);
         let travel = SessionTreeTravel {
@@ -567,7 +531,6 @@ impl<T: Terminal> HostSession<T> {
         self.push_scroll_notice(load.note);
     }
 
-    /// Apply a typed fixed-zone inject (toast / cue / slot). Not transcript stuffing.
     pub fn apply_fixed_zone_op(&mut self, op: FixedZoneOp) {
         match op {
             FixedZoneOp::Toast => {

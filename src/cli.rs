@@ -1,9 +1,3 @@
-//! CLI argument parsing and mode dispatch.
-//!
-//! Provider-guidance messages (login help, no-model/no-api-key text) live in
-//! the CLI provider-guidance helpers — they are pure CLI-surface presentation, not agent
-//! orchestration (la13).
-
 mod args;
 mod intent;
 pub use xylitol_official_plugin_obs as logging;
@@ -34,22 +28,15 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = CliArgs::parse();
     let surface = surface_from_command(args.command.as_ref());
 
-    // Secrets first so `[otel]` / templates can see LANGFUSE_* from secret.env.
     let paths = xylitol_kernel::config::paths::ConfigPaths::discover();
     let _ = xylitol_kernel::config::secret_env::load_secret_env_files(&paths);
 
-    // Best-effort early config for OTLP assembly (bootstrap reloads later).
     let early_otel = xylitol_kernel::config::loader::load_app_config(
         surface.config.as_ref().map(std::path::Path::new),
     )
     .map(|c| c.otel)
     .unwrap_or_default();
 
-    // ── Install file-only observability (fastrace + log) + optional OTLP ─
-    // Done before any mode dispatch so every surface (print / TUI / RPC /
-    // subcommands) is covered. Debug builds default on for local file sinks;
-    // release needs RUST_LOG / XYLITOL_DEBUG / XYLITOL_PROVIDER_TRACE.
-    // Remote OTLP: `[otel]` + feature `otel`, default none. Never stdout/stderr.
     logging::init_logging(
         &xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir(),
         &early_otel,
@@ -62,7 +49,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let _flush = FlushOnDrop;
 
-    // ── Ops subcommands: early exit, no session / prepare ───────
     match args.command {
         #[cfg(feature = "server")]
         Some(CliCommand::Serve { host, port, action }) => {
@@ -99,7 +85,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // c490: Ask trust inside ChoicePrompt **before** bootstrap (no stdio menu).
     #[cfg(feature = "tui")]
     if want_tui {
         match trust_gate::run_trust_gate_if_needed(trust_override) {
@@ -126,14 +111,11 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         session: surface.session.clone(),
         model: surface.model.clone(),
         trust_override,
-        // c490: product TUI Ask is `run_trust_gate_if_needed` (ChoicePrompt), never stdio.
         interactive: false,
         caller: "cli",
         ephemeral_sessions: false,
     };
 
-    // `--list-models` needs the resolved registry before any agent build; it
-    // resolves assembly (cheap — no agent construction) and returns early.
     if surface.list_models {
         let assembly = match resolve_assembly(&bootstrap_input) {
             Ok(a) => a,
@@ -164,7 +146,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // ── print: Kernel::boot (core plugins + official rows + assembly) ─
     let kernel = match boot(BootOptions {
         profile: Profile::Print,
         config_path: bootstrap_input.config_path,
@@ -212,7 +193,6 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Err("tui requires server feature".into());
     }
 
-    // print / non-TUI: settle MCP before the oneshot prompt (c1200).
     driver.begin_session_prepare().await;
     driver.wait_session_prepare().await;
     if let Some(summary) = driver.mcp_status_summary().await {
@@ -309,7 +289,6 @@ async fn run_product_tui_attached(
     tui_result.map_err(|e| e.into())
 }
 
-/// stderr resume line when the session was persisted (c1565).
 #[cfg(all(feature = "tui", feature = "server"))]
 async fn maybe_print_resume_hint_tui(driver: &mut dyn xylitol_app_tui::XyDriver) {
     let sid = driver.session_id();
@@ -329,7 +308,6 @@ async fn maybe_print_resume_hint_tui(driver: &mut dyn xylitol_app_tui::XyDriver)
     }
 }
 
-/// stderr resume line when the session was persisted (c1565).
 async fn maybe_print_resume_hint<D>(driver: &mut D)
 where
     D: xylitol_kernel::driver::XyDriver + xylitol_kernel::dispatch::SessionCommandExecutor,
@@ -351,11 +329,6 @@ where
     }
 }
 
-/// Render bootstrap diagnostics as CLI warnings (print-mode byte-compat).
-///
-/// `provider_guidance` enriches the bare warning text (login help etc.) — this
-/// is the single place where structured [`BootstrapWarning`]s become user-facing
-/// CLI text, keeping `app::core::bootstrap` free of presentation deps.
 fn render_warnings(warnings: &[BootstrapWarning]) {
     for w in warnings {
         match w {
@@ -656,7 +629,6 @@ mod tests {
             CliArgs::try_parse_from(["xylitol", "hello"]).is_err(),
             "top-level positional prompt must not exist"
         );
-        // `-p` lives only under `print`
         let args = CliArgs::try_parse_from(["xylitol", "print", "-p", "x"]).unwrap();
         let (_, explicit_print, one_shot) = resolve_surface_intent(args.command.as_ref());
         assert!(explicit_print);

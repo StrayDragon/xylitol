@@ -1,5 +1,3 @@
-//! Adapt [`HookDispatcher`] to bridge [`HttpHooks`] (c1030).
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -12,7 +10,6 @@ use xylitol_official_plugin_hooks::http::{
     run_after_response, run_before_headers, run_before_request,
 };
 
-/// Wrap a [`HookDispatcher`] as the package's HTTP hooks port.
 pub struct DispatcherHttpHooks(pub Arc<HookDispatcher>);
 
 #[async_trait]

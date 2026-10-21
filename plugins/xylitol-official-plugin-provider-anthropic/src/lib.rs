@@ -1,5 +1,3 @@
-//! Official Host plugin: Anthropic Messages HTTP (`impl XyModel`).
-
 pub mod dto;
 pub mod error;
 pub mod hooks;

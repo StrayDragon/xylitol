@@ -1,5 +1,3 @@
-//! Runtime boundary for tool execution.
-
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
@@ -11,31 +9,12 @@ use crate::error::XyToolError;
 use crate::lifecycle::XyEvent;
 use crate::message::AgentPart;
 
-/// Context passed to tool execution.
 #[derive(Clone)]
 pub struct XyToolCtx {
-    /// Unique identifier for this tool call.
     pub call_id: String,
-    /// Cancellation token — tools should check this and abort if cancelled.
     pub cancel: CancellationToken,
-    /// Optional live output uplink for [`crate::lifecycle::XyEvent::ToolExecutionUpdate`].
-    ///
-    /// Long-running tools (e.g. bash) SHOULD send progressive chunks here while
-    /// executing. ReAct drains this channel and emits Update events. `None` for
-    /// tools that only report a final result.
     pub output_tx: Option<mpsc::Sender<String>>,
-    /// Optional typed state-event uplink (atd13) for tools that mutate
-    /// host-owned semantic state (e.g. `todo_*` publishing
-    /// [`XyEvent::TodoUpdated`]). ReAct drains and re-emits verbatim into the
-    /// run stream, so both in-process and attach clients see the event.
-    /// `publish_state` is a no-op when unset.
     state_events: Option<mpsc::UnboundedSender<XyEvent>>,
-    /// Workspace base directory for tool execution.
-    ///
-    /// File tools resolve relative paths against it and shell tools spawn in
-    /// it. Defaults to the process cwd; the runtime MUST inject the frozen
-    /// session workspace so multi-workspace hosts execute in the session's
-    /// directory, not the server process directory.
     pub workspace: PathBuf,
 }
 
@@ -60,30 +39,22 @@ impl XyToolCtx {
         }
     }
 
-    /// Attach a live output channel (c1255 bash / long-tool streaming).
     pub fn with_output_tx(mut self, tx: mpsc::Sender<String>) -> Self {
         self.output_tx = Some(tx);
         self
     }
 
-    /// Attach the typed state-event uplink (atd13).
     pub fn with_state_event_tx(mut self, tx: mpsc::UnboundedSender<XyEvent>) -> Self {
         self.state_events = Some(tx);
         self
     }
 
-    /// Publish a typed domain-state event from this tool call (atd13).
-    ///
-    /// Silent no-op without an uplink (unit tests / surfaces that don't consume
-    /// state projections) — MUST NOT be load-bearing for SSOT persistence.
     pub fn publish_state(&self, event: XyEvent) {
         if let Some(tx) = &self.state_events {
             let _ = tx.send(event);
         }
     }
 
-    /// Bind the execution workspace (session cwd). Relative paths in tool args
-    /// and spawned shells resolve against it.
     pub fn with_workspace(mut self, workspace: impl AsRef<Path>) -> Self {
         self.workspace = workspace.as_ref().to_path_buf();
         self
@@ -94,44 +65,21 @@ fn fallback_workspace() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
-/// Session / config tool-batch scheduling mode (c1545).
-///
-/// Distinct from per-tool [`XyToolExecutionMode`] (concurrency class).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum XyBatchMode {
-    /// Source-order one-by-one await.
     Sequential,
-    /// Consecutive ParallelSafe tools fan out; Barrier tools flush then run alone.
-    /// Product default (c1610); was experimental opt-in under c1545.
     #[default]
     BarrierParallel,
 }
 
-/// Per-tool concurrency class used when batch mode is [`XyBatchMode::BarrierParallel`].
-///
-/// - [`Self::Parallel`] = ParallelSafe (may share a parallel window)
-/// - [`Self::Sequential`] = Barrier (flush window, then run alone)
-///
-/// Default for undeclared / self-registered tools is Barrier ([`Self::Sequential`]).
-/// Built-in read-family tools opt into ParallelSafe via [`XyTool::execution_mode`].
-/// MCP / unknown names are forced to Barrier by the scheduler (`mcp__` / transition
-/// `mcp-` / `mcp_` / legacy `mcp:` prefix / missing tool), independent of this trait value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize)]
 pub enum XyToolExecutionMode {
-    /// ParallelSafe — may run concurrently with other ParallelSafe tools in a window.
     Parallel,
-    /// Barrier — must not share a parallel window; flush first, then run alone.
     #[default]
     Sequential,
 }
 
-/// Tool contract — all tools must implement this.
-///
-/// The `execute` method receives a [`XyToolCtx`] which contains a
-/// [`CancellationToken`]. Tools MUST:
-/// 1. Check `ctx.cancel.is_cancelled()` at appropriate checkpoints.
-/// 2. Return [`XyToolError::Aborted`] when cancellation is detected.
 #[async_trait]
 pub trait XyTool: Send + Sync {
     fn name(&self) -> &str;
@@ -139,10 +87,6 @@ pub trait XyTool: Send + Sync {
     fn parameters_schema(&self) -> Value;
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError>;
 
-    /// Multimodal tool result (text + images). Default wraps [`Self::execute`] as a text part.
-    ///
-    /// `read` overrides this for image files (c1155 / t21). React MUST prefer this over
-    /// wrapping `execute` alone so Image parts reach the provider.
     async fn execute_as_parts(
         &self,
         ctx: &XyToolCtx,
@@ -159,9 +103,6 @@ pub trait XyTool: Send + Sync {
         &[]
     }
 
-    /// Per-tool concurrency class (ParallelSafe / Barrier). See [`XyToolExecutionMode`].
-    ///
-    /// Default is Barrier ([`XyToolExecutionMode::Sequential`]) for undeclared tools.
     fn execution_mode(&self) -> XyToolExecutionMode {
         XyToolExecutionMode::Sequential
     }
@@ -210,7 +151,6 @@ mod tests {
 
     #[test]
     fn batch_mode_default_is_barrier_parallel() {
-        // Product default after c1610.
         assert_eq!(XyBatchMode::default(), XyBatchMode::BarrierParallel);
     }
 
@@ -312,7 +252,6 @@ mod tests {
     #[tokio::test]
     async fn mock_tool_defaults() {
         let tool = MockTool;
-        // Default prepare_arguments should pass through
         let args = json!("raw");
         assert_eq!(tool.prepare_arguments(args.clone()), args);
     }

@@ -15,8 +15,6 @@ env:
 
 jobs:
   qa:
-    # Same gate as local `just qa`, minus the live-provider lab (no gateway
-    # credentials on CI): XYLITOL_SKIP_LIVE=1 is the documented qa skip option.
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -26,8 +24,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # No `toolchain` input: rust-toolchain.toml pins the dated nightly
-      # (+ rustfmt/clippy components) and setup-rust-toolchain installs it.
       - uses: actions-rust-lang/setup-rust-toolchain@v2
 
       - uses: Swatinem/rust-cache@v2
@@ -37,23 +33,18 @@ jobs:
         with:
           tool: just,cargo-nextest
 
-      # grep/find tools spawn external rg/fd; tool tests fail without them.
-      # Ubuntu's fd-find package installs the binary as `fdfind`.
       - name: Install rg + fd + mold (test deps / Linux linker)
         run: |
           sudo apt-get update
           sudo apt-get install -y ripgrep fd-find clang mold
           sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
-      # prek hooks run inside `just qa` (text hygiene only, no cargo gates).
       - name: Install prek
         run: pipx install prek
 
       - name: Install uncomment
         run: pipx install uncomment
 
-      # cccc-rs-cli (complexity HARD gate) is lazy-installed into .tools/ by
-      # just qa-check-complexity; cache that install across runs.
       - name: Cache .tools (cccc-rs)
         uses: actions/cache@v4
         with:

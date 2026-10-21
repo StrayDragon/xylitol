@@ -1,25 +1,5 @@
-//! Wire protocol v3 — fory 二进制信封(c2834 双轨数据面,spec r1902/r1904–r1910/r1911)。
-//!
-//! - 真源:[`envelope.fbs`](../../../../../llmanspec/changes/c2834-update-v3-fory-flutter-poc/research/05-fbs-前端保留字实测.md)
-//!   本目录同名的 fbs(fbs/FlatBuffers 前端,foryc 生成 Rust/Dart);字段名与既有
-//!   JSON 线一致(保留字经 fbs 原名保留),动态块按 `_json` 原文过线(spec r1906)。
-//! - 生成物:`generated.rs` check-in(与真源同步再生成;纪律见 fbs 头注释)。
-//! - 生成器:fory compiler fbs 前端(dev 963cb37);运行时依赖 crates.io `fory` 1.7.5
-//!   (已验证跨版本兼容生成物属性)。
-//! - 手写补充见下方 impl：foryc 对递归类型(`SessionTreeNode`)保守省略
-//!   `Clone`/`PartialEq`，链式拖累 `TreeResult`/`ResponsePayload`/`Frame`。
-//! - 应答 union 产出面（task 2.5b）：`host.describe` → `DescribeResult`；
-//!   `get_messages` / `load_session_entries` → `MessagesResult`；`session_tree` →
-//!   `TreeResult`；`travel_session_tree` → `TravelResult`。其余方法走 `RawOk`
-//!   (JSON 原文)；`SubscribeResult` 仅客户端侧兼容读取。
-//!
-//! 本模块只承载词表与信封形状,不承载传输;上行/下行路由接线在
-//! `app::server` / `app::core::host_client`(双轨期与 JSON-RPC 并存,spec r1902)。
-
 pub mod generated;
 pub use generated::*;
-
-// ── foryc 递归类型 trait 补充(生成器保守降级,见模块 doc)────────────
 
 impl Clone for SessionTreeNode {
     fn clone(&self) -> Self {
@@ -71,7 +51,6 @@ impl PartialEq for Frame {
 
 impl Eq for Frame {}
 
-/// Debug 格式稳定化辅助(供 PartialEq 与测试断言;生成物自带 `Debug`)。
 trait DebugRepr {
     fn debug_repr(&self) -> String;
 }
@@ -95,13 +74,10 @@ impl Frame {
 
 impl DebugRepr for Frame {
     fn debug_repr(&self) -> String {
-        // 判别名前缀,避免不同变体 Debug 恰好同串的极端撞车。
         format!("{} {:?}", self.kind_name(), self)
     }
 }
 
-/// `Method` 判别值 ↔ 产品方法名(spec r1904;与 `wire::registry` SSOT 对齐,
-/// 由 `tests::method_table_aligns_with_registry` 单测锁定)。
 pub const METHOD_NAMES: &[(Method, &str)] = &[
     (Method::HostDescribe, crate::registry::METHOD_HOST_DESCRIBE),
     (Method::Prompt, crate::registry::METHOD_PROMPT),
@@ -188,7 +164,6 @@ pub const METHOD_NAMES: &[(Method, &str)] = &[
     (Method::PersistTrust, crate::registry::METHOD_PERSIST_TRUST),
 ];
 
-/// `Method` 的产品方法名(找不到时 panic——表由对齐测试守卫,不会发生)。
 pub fn method_name(method: &Method) -> &'static str {
     METHOD_NAMES
         .iter()
@@ -197,14 +172,6 @@ pub fn method_name(method: &Method) -> &'static str {
         .unwrap_or_else(|| panic!("unmapped v3 Method discriminant {method:?}"))
 }
 
-/// 帧 dump 调试工具(task 5.4):二进制帧 → 可读文本(生成物 `Debug`)。
-///
-/// xlang compatible 模式自描述,任何合法帧都可离线解析;补偿二进制化
-/// 损失的 curl 调试面。调试入口(rust 调用 / 未来 CLI 子命令):
-///
-/// ```ignore
-/// let text = xylitol::protocol::wire::v3::dump_frame(&bytes)?;
-/// ```
 pub fn dump_frame(bytes: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
     let frame = Frame::from_bytes(bytes)?;
     Ok(format!("{frame:#?}"))
@@ -225,7 +192,6 @@ mod tests {
         })
     }
 
-    /// task 5.4:dump 工具输出可读且失败有界(非法字节报错不 panic)。
     #[test]
     fn dump_frame_readable_and_bounded() {
         let f = Frame::ClientRequest(ClientRequest {
@@ -239,9 +205,6 @@ mod tests {
         assert!(dump_frame(&[0x01, 0x00]).is_err(), "非法字节稳定报错");
     }
 
-    /// spec r1904:v3 方法 ID 表与 registry SSOT 双向对齐。
-    /// registry 全部方法必须可寻址;Method 表除三个非 registry 命令
-    /// (approve_tool / answer_question / quit)外不得混入未登记方法。
     #[test]
     fn method_table_aligns_with_registry() {
         let v3_names: std::collections::BTreeSet<&str> =
@@ -262,9 +225,6 @@ mod tests {
         assert_eq!(METHOD_NAMES.len(), 41, "方法判别值集合大小漂移");
     }
 
-    /// spec r1910/codegen 纪律:字节级 conformance(锁 fory 1.7.5 codec 与
-    /// 真源形状)。此断言失败 = codec 或 schema 变更,须有意识地重录并评审
-    /// (fory 升级 / fbs 字段增删),不允许顺手改常量蒙混。
     #[test]
     fn codec_conformance_bytes_locked() {
         let toolstart = Frame::ServerNotification(ServerNotification {
@@ -293,14 +253,6 @@ mod tests {
         );
     }
 
-    /// 体积基准(c2834 tasks 1.5):大 transcript 快照 v3 vs 今日 JSON 形态。
-    /// 断言宽松(0.95)防脆弱;比例变化显著时人工复核体积收益叙事。
-    ///
-    /// 两个比例分属不同通路，引用时别串位：
-    /// - 0.73（本测试）= 强 schema union，即已接入产品面的 `MessagesResult`
-    ///   (`get_messages` / `load_session_entries`)；
-    /// - ≈ 1.0006 = 仍走 `RawOk` 的方法（JSON 原文入 string，100KB 载荷仅
-    ///   +64B 信封开销）。
     #[test]
     fn size_baseline_vs_json_large_transcript() {
         let entries: Vec<SessionEntry> = (0..500)
@@ -358,7 +310,6 @@ mod tests {
         Frame::from_bytes(&bytes).expect("decode")
     }
 
-    /// spec r1902:v3 帧编解码往返(上行 Command union + 幂等键)。
     #[test]
     fn client_request_roundtrip() {
         let f = Frame::ClientRequest(ClientRequest {
@@ -371,7 +322,6 @@ mod tests {
         assert_eq!(roundtrip(&f), f);
     }
 
-    /// spec r1905:下行通知(seq + Event + nullable 载荷)。
     #[test]
     fn notification_with_compaction_end_roundtrip() {
         let f = Frame::ServerNotification(ServerNotification {
@@ -391,7 +341,6 @@ mod tests {
         assert_eq!(roundtrip(&f), f);
     }
 
-    /// get_messages 大载荷(嵌套 SessionEntry 全变体抽样)。
     #[test]
     fn messages_result_roundtrip() {
         let f = Frame::ServerResponse(ServerResponse {
@@ -416,7 +365,6 @@ mod tests {
         assert_eq!(roundtrip(&f), f);
     }
 
-    /// session_tree 递归节点(生成器递归类型 trait 补充的守护测试)。
     #[test]
     fn recursive_tree_roundtrip() {
         let f = Frame::ServerResponse(ServerResponse {
@@ -448,7 +396,6 @@ mod tests {
         assert_eq!(back, f, "recursive tree with manual trait impls");
     }
 
-    /// 错误应答(payload 缺省,spec r1904 产品码语义载体)。
     #[test]
     fn error_response_roundtrip() {
         let f = Frame::ServerResponse(ServerResponse {
@@ -464,7 +411,6 @@ mod tests {
         assert_eq!(roundtrip(&f), f);
     }
 
-    /// spec r1906:动态块(工具参数)JSON 原文逐字节保真。
     #[test]
     fn tool_start_args_json_survives_wire() {
         let raw = r#"{"pattern":"TODO","max":100}"#;

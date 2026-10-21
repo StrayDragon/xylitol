@@ -1,9 +1,6 @@
-//! `PluginFactory` entry: fake provider (tests / profile only).
-
 use xylitol_plugin_sdk::EmptyPluginConfig;
 use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin, PluginFactory};
 
-/// Marker that the fake dialect plugin is mounted.
 pub struct FakeDialect;
 
 pub struct FakeFactory;

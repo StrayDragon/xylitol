@@ -1,10 +1,3 @@
-//! Single-tool execution helpers extracted from ReAct (c1545).
-//!
-//! Emits lifecycle events on a channel so the ReAct `async_stream` can `yield`
-//! them (including live Update mux) while awaiting Sequential or BarrierParallel
-//! fan-out. History messages are returned to the caller for **source-order**
-//! persist — independent of End completion order.
-
 use std::sync::Arc;
 
 use fastrace::prelude::*;
@@ -20,10 +13,8 @@ use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_plugin_sdk::{XyBatchMode, XyHookBus, XyHookOutcome, XyToolCtx};
 
-/// Permission gate: `(tool_name, target) -> Some(deny_reason)`.
 type PermissionCheckFn = dyn Fn(&str, &str) -> Option<String> + Send + Sync;
 
-/// Shared environment for one tool-batch flush / Sequential run_one.
 pub(crate) struct ToolExecEnv<'a> {
     pub tools: &'a ToolSet,
     pub hooks: &'a AgentHooks,
@@ -32,14 +23,10 @@ pub(crate) struct ToolExecEnv<'a> {
     pub cancel: &'a CancellationToken,
     pub turn_id: Option<&'a str>,
     pub batch_mode: XyBatchMode,
-    /// Frozen session workspace for this run — injected into every
-    /// [`XyToolCtx`] so tools resolve relative paths / spawn shells in it.
     pub workspace: &'a str,
-    /// This run's obs session snapshot (otel24): tool spans stamp it, not the slot.
     pub obs_session: &'a xylitol_plugin_sdk::ObsSessionContext,
 }
 
-/// Capture parent for parallel fan-out (explicit; not the global parent slot).
 pub(crate) fn capture_iteration_parent(parent: Option<&Span>) -> Option<SpanContext> {
     parent.and_then(SpanContext::from_span)
 }
@@ -68,9 +55,6 @@ fn emit(tx: &mpsc::UnboundedSender<XyEvent>, event: XyEvent) {
     let _ = tx.send(event);
 }
 
-/// Run one tool call end-to-end: Start → preflight → exec(+Update) → after → End.
-///
-/// Returns the history tool-result message (caller persists in source order).
 pub(crate) async fn run_one(
     env: &ToolExecEnv<'_>,
     id: &str,
@@ -102,8 +86,6 @@ pub(crate) async fn run_one(
     let tool = env.tools.get(name);
     let tool_missing = tool.is_none();
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<String>(64);
-    // Typed state-event uplink (atd13): tools publishing domain-state events
-    // (todo_* → TodoUpdated) ride the same run stream as tool tape.
     let (state_tx, mut state_rx) = mpsc::unbounded_channel::<XyEvent>();
     let ctx = XyToolCtx::with_cancel(id, env.cancel.clone())
         .with_output_tx(out_tx)

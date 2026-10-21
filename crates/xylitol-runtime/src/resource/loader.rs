@@ -1,50 +1,24 @@
-//! DefaultResourceLoader — unified resource discovery and caching.
-//!
-//! Central resource layer that discovers:
-//! - Project context files (AGENTS.md, CLAUDE.md) by walking cwd → root
-//! - Skills via skills loader integration
-//! - Themes from global and project directories
-//! - System prompt files (SYSTEM.md, APPEND_SYSTEM.md)
-//!
-//! All resources are loaded once and cached.
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub use xylitol_plugin_sdk::resource::{AgentsFile, ResourceDiagnostic, SkillInfo, ThemeInfo};
 
-// ── DefaultResourceLoader ─────────────────────────────────────────────
-
-/// Aggregates all resources needed by the agent session.
-///
-/// Resources are loaded eagerly in `new()`.
-/// Accessors provide read-only views of cached resources.
 pub struct DefaultResourceLoader {
-    /// Current working directory.
     cwd: PathBuf,
-    /// Global agent directory (~/.xylitol/).
     agent_dir: PathBuf,
 
-    // ── Cached resources ──
     context_files: Vec<AgentsFile>,
     skills: Vec<SkillInfo>,
     themes: Vec<ThemeInfo>,
     system_prompt: Option<String>,
     append_system_prompt: Vec<String>,
 
-    // ── Diagnostics ──
     context_diagnostics: Vec<ResourceDiagnostic>,
     skills_diagnostics: Vec<ResourceDiagnostic>,
     themes_diagnostics: Vec<ResourceDiagnostic>,
 }
 
-// ── DefaultResourceLoader ─────────────────────────────────────────
-
 impl DefaultResourceLoader {
-    /// Create a new DefaultResourceLoader and load all resources eagerly.
-    ///
-    /// `agent_dir` is typically `~/.xylitol/`.
-    /// `cwd` is the project root directory.
     pub fn new(cwd: PathBuf, agent_dir: PathBuf) -> Self {
         let mut loader = Self {
             cwd,
@@ -62,7 +36,6 @@ impl DefaultResourceLoader {
         loader
     }
 
-    /// Default agent directory: ~/.xylitol/
     pub fn default_agent_dir() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
@@ -76,34 +49,26 @@ impl DefaultResourceLoader {
         self.discover_system_prompt();
     }
 
-    // ── Getters ───────────────────────────────────────────────────────
-
-    /// Get the loaded context files (AGENTS.md, CLAUDE.md).
     pub fn get_agents_files(&self) -> &[AgentsFile] {
         &self.context_files
     }
 
-    /// Get loaded skills.
     pub fn get_skills(&self) -> (&[SkillInfo], &[ResourceDiagnostic]) {
         (&self.skills, &self.skills_diagnostics)
     }
 
-    /// Get loaded themes.
     pub fn get_themes(&self) -> (&[ThemeInfo], &[ResourceDiagnostic]) {
         (&self.themes, &self.themes_diagnostics)
     }
 
-    /// Get the discovered system prompt content (SYSTEM.md).
     pub fn get_system_prompt(&self) -> Option<&str> {
         self.system_prompt.as_deref()
     }
 
-    /// Get the discovered append system prompt lines (APPEND_SYSTEM.md).
     pub fn get_append_system_prompt(&self) -> &[String] {
         &self.append_system_prompt
     }
 
-    /// Get all diagnostics aggregated.
     pub fn get_all_diagnostics(&self) -> Vec<&ResourceDiagnostic> {
         self.context_diagnostics
             .iter()
@@ -112,20 +77,10 @@ impl DefaultResourceLoader {
             .collect()
     }
 
-    // ── Context files ─────────────────────────────────────────────────
-
-    /// Load project context files by walking from `cwd` up to `/`.
-    ///
-    /// Looks for `AGENTS.md` and `CLAUDE.md` (plus `AGENTS.MD`, `CLAUDE.MD`) at each
-    /// directory level. Files from ancestor directories are included (ancestor order).
-    /// The global agent dir is also checked for AGENTS.md/CLAUDE.md.
-    ///
-    /// Each filename is discovered at most once (closest to cwd wins).
     fn load_context_files(&mut self) {
         let candidate_names = ["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
         let mut seen_names: HashMap<String, AgentsFile> = HashMap::new();
 
-        // Walk from cwd up to /
         let mut current = Some(self.cwd.as_path());
         while let Some(dir) = current {
             for &name in &candidate_names {
@@ -157,7 +112,6 @@ impl DefaultResourceLoader {
             current = dir.parent();
         }
 
-        // Also check global agent dir
         for &name in &candidate_names {
             let normalised = name.to_lowercase();
             if seen_names.contains_key(&normalised) {
@@ -185,14 +139,12 @@ impl DefaultResourceLoader {
             }
         }
 
-        // Build ordered list: AGENTS.md first, then CLAUDE.md
         let mut files: Vec<AgentsFile> = Vec::new();
         for &name in &["agents.md", "claude.md"] {
             if let Some(f) = seen_names.remove(name) {
                 files.push(f);
             }
         }
-        // Any remaining (case variants we didn't sort)
         for (_, f) in seen_names {
             files.push(f);
         }
@@ -200,11 +152,7 @@ impl DefaultResourceLoader {
         self.context_files = files;
     }
 
-    // ── System prompt files ───────────────────────────────────────────
-
-    /// Discover SYSTEM.md and APPEND_SYSTEM.md from project and global dirs.
     fn discover_system_prompt(&mut self) {
-        // Project-level SYSTEM.md (takes priority if trusted)
         let project_config = self.cwd.join(".xylitol");
         let project_system = project_config.join("SYSTEM.md");
         let global_system = self.agent_dir.join("SYSTEM.md");
@@ -235,7 +183,6 @@ impl DefaultResourceLoader {
             }
         }
 
-        // Project-level APPEND_SYSTEM.md
         let project_append = project_config.join("APPEND_SYSTEM.md");
         let global_append = self.agent_dir.join("APPEND_SYSTEM.md");
 
@@ -268,7 +215,6 @@ impl DefaultResourceLoader {
         }
     }
 
-    // ── Skills ────────────────────────────────────────────────────────
     fn source_info_for_path(
         &self,
         path: &std::path::Path,
@@ -294,9 +240,6 @@ impl DefaultResourceLoader {
         )
     }
 
-    // ── Skills ────────────────────────────────────────────────────────
-
-    /// User-level `~/.agents/skills` (sibling of `agent_dir` / `~/.xylitol`).
     fn user_agents_skills_dir(&self) -> PathBuf {
         self.agent_dir
             .parent()
@@ -305,11 +248,6 @@ impl DefaultResourceLoader {
             .join("skills")
     }
 
-    /// Load skills from `.xylitol/skills` and `.agents/skills` (project + user).
-    ///
-    /// Load order (low → high precedence; name collision → later wins):
-    /// `~/.agents` → `~/.xylitol` → `{cwd}/.agents` → `{cwd}/.xylitol`.
-    /// So **`.xylitol` beats `.agents`**, and **project beats user**.
     fn load_skills_internal(&mut self) {
         let user_agents = self.user_agents_skills_dir();
         let user_xylitol = self.agent_dir.join("skills");
@@ -322,7 +260,6 @@ impl DefaultResourceLoader {
         self.dedup_skills_project_wins();
     }
 
-    /// Keep first occurrence when iterating reverse (project loaded last → wins).
     fn dedup_skills_project_wins(&mut self) {
         let mut seen = std::collections::HashSet::new();
         let mut deduped = Vec::new();
@@ -410,9 +347,6 @@ impl DefaultResourceLoader {
         }
     }
 
-    // ── Themes ────────────────────────────────────────────────────────
-
-    /// Load themes from global and project directories.
     fn load_themes(&mut self) {
         let global_themes_dir = self.agent_dir.join("themes");
         let project_themes_dir = self.cwd.join(".xylitol").join("themes");
@@ -420,10 +354,8 @@ impl DefaultResourceLoader {
         self.load_themes_from_dir(&global_themes_dir);
         self.load_themes_from_dir(&project_themes_dir);
 
-        // Deduplicate by name (project wins)
         let mut seen = std::collections::HashSet::new();
         let mut deduped = Vec::new();
-        // Reverse so project (loaded last) wins
         for theme in self.themes.iter().rev() {
             if seen.insert(theme.name.clone()) {
                 deduped.push(theme.clone());
@@ -461,10 +393,6 @@ impl DefaultResourceLoader {
     }
 }
 
-// ── Frontmatter Parsing ───────────────────────────────────────────────
-
-/// Parse SKILL.md frontmatter to extract name and description.
-/// Parsed SKILL.md frontmatter (pi-aligned subset).
 struct ParsedSkillFrontmatter {
     name: Option<String>,
     description: Option<String>,
@@ -514,7 +442,6 @@ fn parse_skill_frontmatter(content: &str) -> ParsedSkillFrontmatter {
     }
 }
 
-/// Agent Skills name rules (pi / agentskills.io subset) — warnings only.
 fn validate_skill_name(name: &str) -> Vec<String> {
     let mut errors = Vec::new();
     if name.len() > 64 {

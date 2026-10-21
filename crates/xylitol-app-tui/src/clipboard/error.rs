@@ -1,20 +1,15 @@
-//! Clipboard transport failures (crate-private; not `Xy*`).
-
 use std::io;
 
 use strum::IntoStaticStr;
 
-/// Native tool / OSC 52 / join failures. Display keeps the original body.
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum ClipboardError {
-    /// Native clipboard tool / filesystem failure (source preserved).
     #[error("{context}: {source}")]
     Io {
         context: &'static str,
         #[source]
         source: std::io::Error,
     },
-    /// Blocking-pool join failure — opaque payload only.
     #[error("{0}")]
     Join(String),
     #[error("{0}")]

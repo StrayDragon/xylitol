@@ -1,17 +1,13 @@
-//! Domain-facing Fake provider — [`FakeProvider`] implements [`XyModel`] directly.
-
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::XyModel;
 
 pub use xylitol_official_plugin_provider_openai::fake::{FakeProvider, ScenarioStep};
 
-/// Build a scenario-driven fake `XyModel`.
 pub fn fake_xy_model(name: impl Into<String>, steps: Vec<ScenarioStep>) -> Arc<dyn XyModel> {
     fake_xy_model_of(FakeProvider::new(name, steps))
 }
 
-/// Expose an already-configured [`FakeProvider`] as an `XyModel`.
 pub fn fake_xy_model_of(provider: FakeProvider) -> Arc<dyn XyModel> {
     Arc::new(provider)
 }

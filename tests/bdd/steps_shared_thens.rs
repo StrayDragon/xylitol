@@ -31,12 +31,6 @@ fn _t_file_has_bom(ws: &Workspace, path: String) {
     );
 }
 
-// "结果包含 unified patch" ambiguous with "结果包含 {text}" — removed
-// "结果包含 带行号的 display diff" ambiguous — removed
-
-// "结果包含 unified patch" — use generic "_t_result_contains" (feature file uses {text} pattern)
-// "结果包含 带行号的 display diff" — same
-
 #[then("edit调用应该失败 包含错误信息 {msg}")]
 fn _t_edit_failed(ws: &Workspace, msg: String) {
     let r = ws.last_result.borrow();
@@ -78,7 +72,6 @@ fn _t_exit_code_is(ws: &Workspace, code: i32) {
 fn _t_stdout_has(ws: &Workspace, text: String) {
     let r = result_ok_str(&ws.last_result);
     let t = strip_quotes(&text);
-    // Parse JSON to extract stdout field; fall back to contains on raw string
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r)
         && let Some(s) = v["stdout"].as_str()
     {
@@ -92,7 +85,6 @@ fn _t_stdout_has(ws: &Workspace, text: String) {
 fn _t_combined_has(ws: &Workspace, text: String) {
     let r = result_ok_str(&ws.last_result);
     let t = strip_quotes(&text);
-    // Parse JSON to extract combined field; fall back to contains on raw string
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r)
         && let Some(s) = v["combined"].as_str()
     {
@@ -160,7 +152,6 @@ fn _t_bash_no_full_stdout_dump(ws: &Workspace) {
         .and_then(|x| x.as_str())
         .or_else(|| v.get("combined").and_then(|x| x.as_str()))
         .unwrap_or(&r);
-    // Truncated display must stay near DEFAULT_MAX_BYTES (50KiB) + footer.
     assert!(
         stdout.len() < 60 * 1024,
         "stdout/combined still looks like a full dump: {} bytes",
@@ -208,7 +199,6 @@ fn _t_remaining_hint(ws: &Workspace) {
 fn _t_read_content(ws: &Workspace, text: String) {
     let r = result_ok_str(&ws.last_result);
     let t = strip_quotes(&text);
-    // Check JSON content field first
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&r)
         && let Some(s) = v["content"].as_str()
     {
@@ -246,7 +236,6 @@ fn _t_result_empty_or_no_match(ws: &Workspace) {
     );
 }
 
-// 通用 "结果列出 {entry}" — 用于 ls_with_files 和 ls_default_path
 #[then("结果列出 {entry:string}")]
 fn _t_ls_lists(ws: &Workspace, entry: String) {
     assert!(
@@ -277,7 +266,6 @@ fn _t_ls_limit_hint(ws: &Workspace) {
 fn _t_result_contains(ws: &Workspace, text: String) {
     let r = result_ok_str(&ws.last_result);
     let t = strip_quotes(&text);
-    // Support OR clauses like "A" 或 "B"
     if t.contains(" 或 ") {
         if !check_or_contains(&r, &text) {
             panic!("result doesn't match any of '{}', result: {}", t, r);

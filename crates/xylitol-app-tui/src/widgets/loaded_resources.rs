@@ -1,28 +1,10 @@
-//! Codex-style startup card: minimal meta card (c1135 polish).
-
 use xylitol_tui::{fg_rgb, truncate_to_width, visible_width, wrap_text_with_ansi};
 
 use crate::driver::LoadedResourcesSnapshot;
 use crate::layout::LayoutTheme;
 
-/// Accent for `>_` (logo stroke `#38BDF8`).
 const ACCENT_RGB: (u8, u8, u8) = (0x38, 0xbd, 0xf8);
 
-/// Render product startup header as a minimal Codex-like bordered card.
-///
-/// ```text
-/// ╭──────────────────────────────────────────────╮
-/// │ >_ xylitol (v…)                              │
-/// │                                              │
-/// │ directory: ~/…                               │
-/// │ skills(N): a · b · c                         │
-/// │ mcp:       2 connected · …                   │
-/// ╰──────────────────────────────────────────────╯
-/// ```
-///
-/// - Skills / MCP wrap inside the card — **no `...` truncation**.
-/// - Every line is padded to exact `width` (helps differential resize).
-/// - MUST NOT list prompt templates / 「木糖醇」文案 / ASCII logo art.
 pub fn render_loaded_resources(
     theme: LayoutTheme,
     snap: &LoadedResourcesSnapshot,
@@ -93,9 +75,6 @@ pub fn render_loaded_resources(
         ));
     }
 
-    // otel3: short diag when the configured OTLP exporter came up off
-    // (missing endpoint/env, build failure). Warning color separates it from
-    // the success-colored mcp line.
     if let Some(diag) = snap.obs_diag.as_deref() {
         meta.extend(field_lines(
             theme,
@@ -181,8 +160,6 @@ fn wrap_plain(text: &str, max_width: usize) -> Vec<String> {
     if max_width == 0 {
         return vec![text.to_string()];
     }
-    // Library wrap is grapheme-safe; the previous char-peel loop could spin on
-    // long path/model tokens at narrow card widths (Ready @ 40–44 hung forever).
     wrap_text_with_ansi(text, max_width)
 }
 
@@ -277,7 +254,6 @@ mod tests {
 
     #[test]
     fn card_at_narrow_widths_does_not_hang() {
-        // Use this checkout's path so each clone exercises its own cwd length.
         let long_cwd = crate::host::display_path(env!("CARGO_MANIFEST_DIR"));
         let cases: &[(usize, &str)] = &[
             (72, "~/x"),

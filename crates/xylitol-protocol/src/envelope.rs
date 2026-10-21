@@ -1,31 +1,17 @@
-//! Four-quadrant RPC envelope (product wire outer layer).
-//!
-//! Command/Event stay payload / frame content. Not JSON-RPC 2.0.
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Stable protocol version returned by `host.describe`.
-///
-/// 3 = 产品路径为 v3 二进制帧（fory）；JSON-RPC 2.0 文本不是产品通道。
-/// attach 预检是硬等值：不等即致命，不降级、不重试风暴。
 pub const PROTOCOL_VERSION: u32 = 3;
 
-/// Discriminated four-quadrant message.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum RpcMessage {
     ClientRequest {
-        /// Caller-generated identity of this request. Doubles as correlation
-        /// id and idempotency admission key (c2460): a retry of the same
-        /// logical command MUST reuse it, and the host replays the first
-        /// result for duplicates (first-wins).
         #[serde(rename = "rpcId")]
         rpc_id: String,
         method: String,
         #[serde(default)]
         payload: Value,
-        /// Unused wire leftover (always None). Occupancy is a kernel lock, not a token.
         #[serde(default, rename = "writerToken")]
         writer_token: Option<String>,
     },
@@ -43,7 +29,6 @@ pub enum RpcMessage {
     },
 }
 
-/// Unary / respond result. HTTP 200 means the envelope parsed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RpcResult {
     pub ok: bool,
@@ -51,7 +36,6 @@ pub struct RpcResult {
     pub value: Option<Value>,
     #[serde(default)]
     pub error: Option<RpcError>,
-    /// Unused leftover; occupancy is a kernel lock. Always `None` on product paths.
     #[serde(default, skip)]
     pub writer_token: Option<String>,
 }
@@ -96,7 +80,6 @@ pub struct RpcError {
     pub details: String,
 }
 
-/// Downlink payload for `session/event`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionEventPayload {
     pub session_id: String,
@@ -104,49 +87,40 @@ pub struct SessionEventPayload {
     pub event: crate::Event,
 }
 
-/// Downlink payload for `session/subscribed`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionSubscribedPayload {
     pub session_id: String,
     pub seq: u64,
 }
 
-/// Downlink payload for `session/resync_required`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionResyncRequiredPayload {
     pub session_id: String,
 }
 
-/// Downlink payload for `session/resources` (MCP/skills fixed-zone snapshot; not journaled).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionResourcesPayload {
     pub session_id: String,
     pub snapshot: Value,
 }
 
-/// Downlink payload for `approval/requested` (stable `rpcId` on the envelope).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ApprovalRequestedPayload {
     pub call_id: String,
 }
 
-/// Downlink payload for `question/requested` (stable `rpcId` on the envelope).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuestionRequestedPayload {
     pub call_id: String,
 }
 
-/// `host.describe` result.value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HostDescribeValue {
     pub protocol: u32,
-    /// Supported wire formats (c2854): product advertises `fory-v3` only.
-    /// Absent on old hosts; an unknown demanded format is fatal (no downgrade).
     #[serde(default)]
     pub formats: Vec<String>,
 }
 
-/// Wire format capability names advertised via `host.describe` (spec r1911).
 pub const WIRE_FORMAT_JSONRPC: &str = "jsonrpc";
 pub const WIRE_FORMAT_FORY_V3: &str = "fory-v3";
 

@@ -98,9 +98,6 @@ fn tool_start_path_preview_matches_after_wire_roundtrip() {
     assert_ne!(preview(&remote), "Read ...");
 }
 
-/// atd13 / att36: todo block header is the item-count summary, body is the
-/// glyph checklist; the checklist projection row rides the typed TodoUpdated
-/// event only — the End event alone MUST NOT create it.
 #[test]
 fn todo_block_humanized_and_checklist_rides_typed_event() {
     use xylitol_plugin_sdk::session::{TodoItem, TodoList, TodoStatus};
@@ -175,7 +172,6 @@ fn todo_block_humanized_and_checklist_rides_typed_event() {
     assert_eq!(model.todo.items[0].status, TodoStatus::InProgress);
     assert_eq!(model.todo.items[1].content, "two");
 
-    // Empty list clears the 待办栏 (rewrite-to-empty semantics).
     apply_xy_event(
         &mut model,
         &XyEvent::TodoUpdated {
@@ -943,7 +939,6 @@ fn compaction_end_notice_tail_inserts_scroll_notice() {
         "diagnostic must land as a scroll notice: {:?}",
         model.entries
     );
-    // The compaction block itself stays Complete; the notice must come after it.
     let block_pos = model
         .entries
         .iter()
@@ -1094,7 +1089,6 @@ fn mcp_tool_shows_pretty_args_and_result() {
         "pending body must show pretty args: {body}"
     );
 
-    // Simulate provider streaming the raw result before End (regression: duplicated body).
     let raw = r#"{"content":[{"type":"text","text":"ok"}],"isError":false}"#;
     apply_xy_event(
         &mut model,
@@ -1158,7 +1152,6 @@ fn mcp_end_rebuilds_even_if_buffer_was_polluted() {
             args: serde_json::json!({}),
         },
     );
-    // Force-pollute as if an older build appended Update.
     for e in &mut model.entries {
         if let UiEntry::Tool { id, output, .. } = e
             && id == "m2"
@@ -1200,7 +1193,6 @@ fn tool_entry_captures_model_requested_timeout() {
     };
     assert_eq!(*timeout_secs, Some(600));
 
-    // Omitted → None (default armed silently, no header note).
     upsert_tool_entry(
         &mut model,
         "b2",
@@ -1212,7 +1204,6 @@ fn tool_entry_captures_model_requested_timeout() {
     };
     assert_eq!(*timeout_secs, None);
 
-    // fs tools never advertise (no knob).
     upsert_tool_entry(
         &mut model,
         "r1",
@@ -1224,7 +1215,6 @@ fn tool_entry_captures_model_requested_timeout() {
     };
     assert_eq!(*timeout_secs, None);
 
-    // Negative / zero rejected upstream; here treated as absent.
     upsert_tool_entry(
         &mut model,
         "g1",

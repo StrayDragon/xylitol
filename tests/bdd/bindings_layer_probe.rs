@@ -1,8 +1,5 @@
-//! 结构探针与测试基建 BDD bindings（c2853 按域从 bindings_c2827 拆出）。
-
 use rstest_bdd_macros::scenario;
 
-// infra-observability r1461/1464/1465（批 2）
 #[scenario(
     path = "llmanspec/specs/infra-observability/infra-observability.feature",
     name = "组合根单一观测出口"
@@ -19,7 +16,6 @@ fn test_t2_obs_stack() {}
 )]
 fn test_t2_obs_spans() {}
 
-// infra-diagnostics r1437-1439（批 2）
 #[scenario(
     path = "llmanspec/specs/infra-diagnostics/infra-diagnostics.feature",
     name = "计时收集器门控"
@@ -36,7 +32,6 @@ fn test_t2_timing_sites() {}
 )]
 fn test_t2_timing_output() {}
 
-// agent-todo r1118-1128/1120（批 3）
 #[scenario(
     path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "待办严格模型形状"
@@ -63,7 +58,6 @@ fn test_t3_todo_status_bar() {}
 )]
 fn test_t3_todo_freeze() {}
 
-// agent-session-store r41/1114-1117/1116（批 3）
 #[scenario(
     path = "llmanspec/specs/agent-session-store/agent-session-store.feature",
     name = "压缩触发时预留超出"
@@ -85,9 +79,6 @@ fn test_t3_journal_recent() {}
 )]
 fn test_t3_export_io() {}
 
-// agent-session：分层扫描闸已撤（会话行为测仍在 bindings_agent_session）。
-
-// agent-llm-projection r1543/1559（批 3）
 #[scenario(
     path = "llmanspec/specs/agent-llm-projection/agent-llm-projection.feature",
     name = "会话对照模型词表边界"
@@ -99,7 +90,6 @@ fn test_t3_vocab_layers() {}
 )]
 fn test_t3_projection() {}
 
-// domain-security r66/71/1425（批 3）
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
     name = "bash网址网络门禁"
@@ -116,7 +106,6 @@ fn test_t3_trust_ssot() {}
 )]
 fn test_t3_permission_advice() {}
 
-// runtime-resource-discovery r1767-1768
 #[scenario(
     path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
     name = "来源信息公开形状"
@@ -128,7 +117,6 @@ fn test_t3_source_info() {}
 )]
 fn test_t3_scope_enum() {}
 
-// test-infra r39-63（批 4）
 #[scenario(
     path = "llmanspec/specs/test-infra/test-infra.feature",
     name = "伪厂商无网络"
@@ -160,7 +148,6 @@ fn test_t4_no_fixed_tmp() {}
 )]
 fn test_t4_tui_e2e() {}
 
-// test-provider-integration r1821-1826 + r1912（批 4 / c2836）
 #[scenario(
     path = "llmanspec/specs/test-provider-integration/test-provider-integration.feature",
     name = "配置值解析器边界"
@@ -192,7 +179,6 @@ fn test_t4_provider_cfg() {}
 )]
 fn test_t4_provider_port() {}
 
-// test-bdd r37/1811-1814（批 4）
 #[scenario(
     path = "llmanspec/specs/test-bdd/test-bdd.feature",
     name = "BDD套件全量接线"
@@ -224,7 +210,6 @@ fn test_t4_bdd_binding() {}
 )]
 fn test_t4_cfg_unit() {}
 
-// test-standards r1834-1837（批 4）
 #[scenario(
     path = "llmanspec/specs/test-standards/test-standards.feature",
     name = "BDD单测边界文档"
@@ -246,7 +231,6 @@ fn test_t4_pure_logic() {}
 )]
 fn test_t4_subcomp() {}
 
-// test-hooks-wiring r1817-1819（批 4）
 #[scenario(
     path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
     name = "冒烟钩子接线"
@@ -263,14 +247,12 @@ fn test_t4_provider_matrix() {}
 )]
 fn test_t4_hook_reexport() {}
 
-// test-hooks-wiring r1820（c2922：模型操作经观察矩阵覆盖）
 #[scenario(
     path = "llmanspec/specs/test-hooks-wiring/test-hooks-wiring.feature",
     name = "模型操作覆盖按观察矩阵"
 )]
 fn test_t4_model_ops_covered() {}
 
-// test-fake-provider r38/45（批 4）
 #[scenario(
     path = "llmanspec/specs/test-fake-provider/test-fake-provider.feature",
     name = "假厂商适配器路径"

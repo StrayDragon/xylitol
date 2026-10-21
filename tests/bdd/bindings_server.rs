@@ -302,7 +302,6 @@ async fn test_sr_rdy1_ready_flips(server_test: ServerTest) {}
 )]
 async fn test_sr_rdy1_failed(server_test: ServerTest) {}
 
-// c2922：就绪状态机迁移表（xstate E1-E4 执行侧；sync fn 保 outline 全 case 展开）
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
     name = "就绪阶段转换表"
@@ -333,8 +332,6 @@ async fn test_sr_reg1_takeover(server_test: ServerTest) {}
     name = "暂存线协议导入"
 )]
 async fn test_sr_imp1_staged_import(server_test: ServerTest) {}
-
-// ── c2835 后继：app-tui-host 的 attach 族裸规则回填 ───────────────────
 
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",

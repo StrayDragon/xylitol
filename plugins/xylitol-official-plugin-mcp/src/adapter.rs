@@ -1,5 +1,3 @@
-//! MCP tool adapter — wraps MCP tools as [`xylitol_plugin_sdk::XyTool`].
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,12 +6,6 @@ use serde_json::Value;
 use super::client::McpClientManager;
 use xylitol_plugin_sdk::tool_name::{is_provider_safe_tool_name, mcp_tool_public_name};
 
-/// Adapter wrapping an MCP tool as an [`xylitol_plugin_sdk::XyTool`].
-///
-/// Public name via [`mcp_tool_public_name`] (provider-safe `[a-zA-Z0-9_-]+`).
-///
-/// `server_id` / `tool_name` are stored for execute — public names MUST NOT be
-/// reverse-parsed (`SEP` and tool names can both contain `-` / `_`).
 pub struct McpToolAdapter {
     full_name: String,
     server_id: String,
@@ -89,7 +81,6 @@ impl xylitol_plugin_sdk::XyTool for McpToolAdapter {
     }
 
     fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
-        // Barrier — MCP tools must never enter a parallel window (c1545 / mcp6).
         xylitol_plugin_sdk::XyToolExecutionMode::Sequential
     }
 }

@@ -1,10 +1,3 @@
-//! Built-in tool implementations and the default registry factory.
-//!
-//! Each tool implements [`xylitol_plugin_sdk::XyTool`] (directly or via
-//! [`typed::TypedTool`] blanket). The composition root (and tests) build a
-//! registry via [`default_tools`]; the agent holds the resulting registry as
-//! orchestration state without naming these types.
-
 pub mod accumulator;
 pub mod args;
 pub mod ask;
@@ -31,16 +24,12 @@ use std::sync::Arc;
 
 use xylitol_plugin_sdk::{AgentTodoGateway, XyTool};
 
-/// Shared tool-test context (`XyToolCtx::new("test-call")`) for the
 /// per-tool `#[cfg(test)]` modules.
 #[cfg(test)]
 pub(crate) fn test_ctx() -> xylitol_plugin_sdk::XyToolCtx {
     xylitol_plugin_sdk::XyToolCtx::new("test-call")
 }
 
-/// Ephemeral in-memory Todo gateway for call sites that do not bind a session
-/// (unit / BDD name tables). Product surfaces SHOULD prefer
-/// [`default_tools_with_todo`] with a [`SessionAgentTodoGateway`].
 struct MemoryTodoGateway {
     list: tokio::sync::RwLock<TodoListMem>,
 }
@@ -86,15 +75,10 @@ impl AgentTodoGateway for MemoryTodoGateway {
     }
 }
 
-/// Return all built-in tools as trait objects (9-tool closed set).
-///
-/// Uses an ephemeral Todo gateway (no session persistence). Product composition
-/// SHOULD call [`default_tools_with_todo`] with a store-bound gateway.
 pub fn default_tools() -> Vec<Arc<dyn XyTool>> {
     default_tools_with_todo(MemoryTodoGateway::new())
 }
 
-/// Builtins with an injected Todo gateway (Print + TUI base).
 pub fn default_tools_with_todo(todo: Arc<dyn AgentTodoGateway>) -> Vec<Arc<dyn XyTool>> {
     let mq = Arc::new(mutation::FileMutationQueue::new());
     let mut tools: Vec<Arc<dyn XyTool>> = vec![

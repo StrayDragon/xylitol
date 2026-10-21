@@ -44,9 +44,6 @@ fn append_rewrite_lines(buf: &mut String, lines: &[String], start: usize, end: u
 }
 
 impl<T: Terminal> TUI<T> {
-    /// Find the first/last changed line index comparing new_lines to
-    /// previous_lines. Returns (first, last, appended) with -1 meaning "none".
-    /// Mirrors pi's firstChanged/lastChanged + append detection.
     pub(super) fn compute_line_diff(&self, new_lines: &[String]) -> (isize, isize, bool) {
         let mut first_changed: isize = -1;
         let mut last_changed: isize = -1;
@@ -102,9 +99,6 @@ impl<T: Terminal> TUI<T> {
         None
     }
 
-    /// Shift only terminal rows for an AO wheel frame, without DECSTBM or CSI
-    /// S/T. IL/DL leave the hardware cursor at the explicit CUP origin; redraw
-    /// the exposed transcript edge and dock in the same synchronized batch.
     pub(super) fn application_owned_vertical_shift_render(
         &mut self,
         new_lines: &[String],
@@ -154,13 +148,10 @@ impl<T: Terminal> TUI<T> {
     ) {
         let prev_viewport_top = self.previous_viewport_top;
 
-        // All-deletions branch: content only shrank. Clear the surplus lines.
-        // Full-clear guards already handled in `do_render` (`deletions_need_full`).
         if first_changed_in >= new_lines.len() as isize {
             if self.previous_lines.len() > new_lines.len() {
                 let mut buf = String::from(BEGIN_RENDER_BATCH);
                 let target = new_lines.len().saturating_sub(1);
-                // Viewport-relative move (pi computeLineDiff).
                 let current_screen = (self.hardware_cursor_row as isize
                     - prev_viewport_top as isize)
                     .clamp(0, height.saturating_sub(1) as isize);
@@ -209,10 +200,6 @@ impl<T: Terminal> TUI<T> {
         let mut buf = String::from(BEGIN_RENDER_BATCH);
         let mut hardware_cursor_row = self.hardware_cursor_row;
 
-        // Viewport scroll (pi Step 5C, tui.ts:1466-1478): if the changed region
-        // falls below the previous viewport bottom, CUD to the screen's last row
-        // then emit `\r\n` to scroll the terminal — lifting prevViewportTop so
-        // the diff writes land on visible rows instead of past the screen edge.
         let mut prev_viewport_top = self.previous_viewport_top;
         let prev_viewport_bottom = prev_viewport_top + height.saturating_sub(1);
         if move_target > prev_viewport_bottom {
@@ -228,12 +215,9 @@ impl<T: Terminal> TUI<T> {
                 buf.push_str(&"\r\n".repeat(scroll));
             }
             prev_viewport_top += scroll;
-            // pi: hardwareCursorRow = moveTargetRow after scroll.
             hardware_cursor_row = move_target;
         }
 
-        // Move to the target row (relative to the current viewport top) and
-        // start the changed region.
         let screen_row = move_target as isize - prev_viewport_top as isize;
         let cursor_diff = screen_row - (hardware_cursor_row as isize - prev_viewport_top as isize);
         if cursor_diff > 0 {
@@ -253,8 +237,6 @@ impl<T: Terminal> TUI<T> {
             buf.push_str(line);
         }
 
-        // Shrink cleanup in the same sync batch (pi tui.ts:1555-1568): move to
-        // content end if we stopped early, clear surplus rows, step back.
         let mut final_cursor_row = end;
         if self.previous_lines.len() > new_lines.len() && !appended {
             let content_end = new_lines.len().saturating_sub(1);

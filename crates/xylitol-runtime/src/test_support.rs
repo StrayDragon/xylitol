@@ -1,5 +1,3 @@
-//! Crate-local fakes for lib tests. Runtime must not reach official plugins.
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 

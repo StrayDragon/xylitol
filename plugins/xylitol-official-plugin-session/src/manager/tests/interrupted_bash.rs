@@ -1,8 +1,3 @@
-//! Interrupted-bash fold in `build_session_context` (c2770 / as-bang1): the
-//! session-context assembly path MUST apply the same orphan-running fold as
-//! the ReAct seeding path (as48 single path); pairing is session-scoped, so a
-//! done row anywhere suppresses the notice.
-
 use super::super::*;
 use xylitol_plugin_sdk::message::BashExecutionStatus;
 use xylitol_plugin_sdk::session::bash_execution_message_entry;

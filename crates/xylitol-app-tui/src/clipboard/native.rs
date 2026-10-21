@@ -1,52 +1,27 @@
-//! Platform-native clipboard tool wrappers.
-//!
-//! Strategy order:
-//! 1. Platform tools — pbcopy / clip / termux / wl-copy (spawn+unref) / xclip / xsel
-//! 2. OSC 52 when remote **or** native failed
-//!
-//! Hard rules for TUI safety:
-//! - Never probe tools by executing them with inherited stdin (`xclip`/`wl-copy` block).
-//! - Never `wait()` a daemonized `wl-copy` — Rust `Child::drop` waits; use `forget`.
-//! - Bound waits for sync pipe tools (~5s).
-//! - Never emit OSC 52 from a blocking-pool worker while the product TUI owns
-//!   stdout — return a deferred sequence for the host thread (`Terminal::write`).
-
 use std::process::{Command, Stdio};
 
 use super::error::ClipboardError;
 use super::osc52::{format_osc52, is_remote_session_with};
 
-/// Result of a clipboard copy attempt.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClipboardResult {
-    /// Clipboard was set successfully.
     Copied,
-    /// This particular method is not available on the current platform.
     Unsupported,
-    /// The tool was found but execution failed.
     Failed(String),
 }
 
-/// Planned clipboard copy: native attempt + optional deferred OSC 52.
-///
-/// TUI hosts apply [`ClipboardPlan::osc52_sequence`] via `Terminal` on the UI
-/// thread; the stdout/CLI appliers were removed in c2750 (zero callers).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClipboardPlan {
     pub native_copied: bool,
-    /// Policy wants OSC 52 (remote session or native miss).
     pub want_osc52: bool,
-    /// Preformatted OSC 52 when `want_osc52` and payload fits the size limit.
     pub osc52_sequence: Option<String>,
 }
 
 impl ClipboardPlan {
-    /// True when native succeeded and/or a writable OSC 52 sequence is ready.
     pub fn will_succeed(&self) -> bool {
         self.native_copied || self.osc52_sequence.is_some()
     }
 
-    /// Error string when [`Self::will_succeed`] is false.
     pub fn failure_message(&self) -> String {
         if self.want_osc52 && self.osc52_sequence.is_none() && !self.native_copied {
             "Clipboard: text exceeds OSC 52 size limit (100KB encoded) \
@@ -58,15 +33,10 @@ impl ClipboardPlan {
     }
 }
 
-/// Plan a copy: try native tools; format OSC 52 when policy requires it.
-///
-/// Does **not** write to stdout — safe to call from `spawn_blocking`.
 pub fn plan_clipboard_copy(text: &str) -> ClipboardPlan {
     plan_clipboard_copy_with(text, |k| std::env::var(k).ok())
 }
 
-/// Injectable plan — `get_env` supplies `PATH` (native tool lookup) and SSH/MOSH
-/// remote markers.
 pub fn plan_clipboard_copy_with(
     text: &str,
     get_env: impl Fn(&str) -> Option<String>,
@@ -77,7 +47,6 @@ pub fn plan_clipboard_copy_with(
         ClipboardResult::Copied
     );
     let remote = is_remote_session_with(&get_env);
-    // pi: OSC 52 when remote OR native did not copy.
     let want_osc52 = remote || !native_copied;
     let osc52_sequence = if want_osc52 { format_osc52(text) } else { None };
     ClipboardPlan {
@@ -87,14 +56,12 @@ pub fn plan_clipboard_copy_with(
     }
 }
 
-/// Async plan — native tools on Tokio's blocking pool; OSC 52 deferred.
 pub async fn plan_clipboard_copy_async(text: String) -> Result<ClipboardPlan, ClipboardError> {
     tokio::task::spawn_blocking(move || plan_clipboard_copy(&text))
         .await
         .map_err(|e| ClipboardError::join(format!("Clipboard: join error: {e}")))
 }
 
-/// Try platform-native clipboard tools (PATH from `path_value`).
 fn try_native_copy_with(text: &str, path_value: Option<&str>) -> ClipboardResult {
     if cfg!(target_os = "macos") {
         copy_macos(text, path_value)
@@ -106,8 +73,6 @@ fn try_native_copy_with(text: &str, path_value: Option<&str>) -> ClipboardResult
         ClipboardResult::Unsupported
     }
 }
-
-// ── macOS: pbcopy ────────────────────────────────────────────────────
 
 #[cfg(target_os = "macos")]
 fn copy_macos(text: &str, path_value: Option<&str>) -> ClipboardResult {
@@ -122,8 +87,6 @@ fn copy_macos(_text: &str, _path_value: Option<&str>) -> ClipboardResult {
     ClipboardResult::Unsupported
 }
 
-// ── Windows: clip ────────────────────────────────────────────────────
-
 #[cfg(target_os = "windows")]
 fn copy_windows(text: &str, path_value: Option<&str>) -> ClipboardResult {
     if !tool_on_path_with("clip", path_value) {
@@ -137,15 +100,12 @@ fn copy_windows(_text: &str, _path_value: Option<&str>) -> ClipboardResult {
     ClipboardResult::Unsupported
 }
 
-// ── Linux: wl-copy → xclip → xsel → termux-clipboard-set ────────────
-
 #[cfg(target_os = "linux")]
 fn copy_linux(text: &str, path_value: Option<&str>) -> ClipboardResult {
     if std::env::var("TERMUX_VERSION").is_ok() {
         return pipe_to_command("termux-clipboard-set", &[], text);
     }
 
-    // Align with pi `isWaylandSession` + WAYLAND_DISPLAY gate.
     let has_wayland_display = std::env::var_os("WAYLAND_DISPLAY").is_some();
     let is_wayland = has_wayland_display
         || std::env::var("XDG_SESSION_TYPE")
@@ -153,12 +113,11 @@ fn copy_linux(text: &str, path_value: Option<&str>) -> ClipboardResult {
             .unwrap_or(false);
     let has_x11 = std::env::var_os("DISPLAY").is_some();
 
-    // pi: Wayland first (spawn+unref); on tool/spawn failure fall through to X11.
     if is_wayland && has_wayland_display && tool_on_path_with("wl-copy", path_value) {
         match spawn_unref_pipe_command("wl-copy", &[], text) {
             ClipboardResult::Copied => return ClipboardResult::Copied,
             other if !has_x11 => return other,
-            _ => { /* fall through to xclip/xsel */ }
+            _ => {}
         }
     }
 
@@ -179,10 +138,6 @@ fn copy_linux(_text: &str, _path_value: Option<&str>) -> ClipboardResult {
     ClipboardResult::Unsupported
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
-
-/// PATH presence check — never execute the tool (pi uses `which wl-copy`).
-/// Used by every platform branch so the injected `PATH` is honoured uniformly.
 fn tool_on_path_with(cmd: &str, path_value: Option<&str>) -> bool {
     let Some(path) = path_value else {
         return false;
@@ -209,7 +164,6 @@ fn tool_on_path_with(cmd: &str, path_value: Option<&str>) -> bool {
     false
 }
 
-/// Pipe text to a command via stdin; wait up to 5s (pi `timeout: 5000`).
 fn pipe_to_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
     use std::io::Write;
 
@@ -254,10 +208,6 @@ fn pipe_to_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
     }
 }
 
-/// pi: `spawn`; stdin.write; stdin.end; proc.unref()` — do not wait.
-///
-/// Rust `Child` Drop waits for the process; forgetting the handle is the unref
-/// equivalent so a daemonized wl-copy cannot freeze the TUI.
 #[cfg(any(test, target_os = "linux"))]
 fn spawn_unref_pipe_command(cmd: &str, args: &[&str], text: &str) -> ClipboardResult {
     use std::io::Write;
@@ -280,12 +230,10 @@ fn spawn_unref_pipe_command(cmd: &str, args: &[&str], text: &str) -> ClipboardRe
         let _ = child.wait();
         return ClipboardResult::Failed(e.to_string());
     }
-    // stdin Drop (above take) closes the pipe (pi `stdin.end()`).
 
     match child.try_wait() {
         Ok(Some(_)) => ClipboardResult::Copied,
         Ok(None) => {
-            // Still alive — daemon holding selection. Forget = unref.
             std::mem::forget(child);
             ClipboardResult::Copied
         }
@@ -317,7 +265,6 @@ mod tests {
 
     #[test]
     fn plan_defers_osc52_without_requiring_stdout() {
-        // Empty PATH → native miss → want OSC52 with a sequence (local non-remote).
         let plan = plan_clipboard_copy_with("defer-me", |k| match k {
             "PATH" => Some(String::new()),
             "SSH_CONNECTION" | "SSH_CLIENT" | "MOSH_CONNECTION" => None,
@@ -361,7 +308,6 @@ mod tests {
     fn spawn_unref_returns_without_waiting_for_hanging_child() {
         let dir = tempfile::tempdir().expect("tempdir");
         let hang = dir.path().join("hang-unref");
-        // Read stdin then sleep — mimics wl-copy holding the pipe open as daemon.
         std::fs::write(&hang, "#!/bin/sh\ncat >/dev/null\nsleep 120\n").expect("write");
         #[cfg(unix)]
         {
@@ -372,9 +318,6 @@ mod tests {
         }
         let start = std::time::Instant::now();
         let result = spawn_unref_pipe_command(hang.to_str().unwrap(), &[], "payload");
-        // The contract is "returns without waiting for the child" (child would
-        // block ≥120s), not sub-second latency: under a fully parallel test
-        // run, spawn jitter alone can exceed 500ms on loaded machines.
         assert!(
             start.elapsed() < std::time::Duration::from_secs(5),
             "unref/forget path must not wait for the hanging child, elapsed={:?}",
@@ -386,8 +329,6 @@ mod tests {
     #[tokio::test]
     async fn plan_async_completes_within_pipe_timeout() {
         let start = std::time::Instant::now();
-        // Empty PATH → native miss. MUST NOT call `plan_clipboard_copy_async`
-        // (that reads the real PATH and would spawn wl-copy/xclip/pbcopy).
         let plan = tokio::task::spawn_blocking(|| {
             plan_clipboard_copy_with("xylitol async clipboard probe", |k| match k {
                 "PATH" => Some(String::new()),

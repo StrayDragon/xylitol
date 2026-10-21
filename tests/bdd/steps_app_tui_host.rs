@@ -1,9 +1,3 @@
-//! Steps for the host-pump family (att9 / att11, later ati busy keys).
-//!
-//! ati30 contract: BDD reuses [`HostSession`] + [`ScriptedDriver`] +
-//! [`pump_host_driver`] — the very same pump the unit slice tests use; never a
-//! second side-effect pump.
-
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
@@ -16,8 +10,6 @@ use xylitol_plugin_sdk::XyBashResult;
 use xylitol_tui::Component;
 use xylitol_tui::Terminal as _;
 
-/// One mounted host pump (session + scripted driver). Steps take it out,
-/// mutate, and put it back — `HostSession` is not shareable behind `&self`.
 pub struct HostPump {
     pub session: HostSession<TestTerminal>,
     pub driver: ScriptedDriver,
@@ -25,22 +17,14 @@ pub struct HostPump {
 
 pub struct HostPumpBdd {
     pub pump: RefCell<Option<HostPump>>,
-    /// Frames rendered for assertions (ANSI), newest last.
     pub ansi_frames: RefCell<Vec<String>>,
-    /// 文本探针：面 AGENTS 文档 / PTY 登记原文。
     pub doc_text: RefCell<Option<String>>,
-    /// 绘制缓存探针：(live root, 其 UiModel)。
     pub paint_probe: RefCell<Option<(UiRoot, UiModel)>>,
-    /// 计数探针（paint cache / full parse 次数），按步序追加。
     pub counts: RefCell<Vec<u64>>,
-    /// 即时文件日志探针：(是否装到后端, 日志目录)。
     pub log_probe: RefCell<Option<(bool, std::path::PathBuf)>>,
-    /// 交互模式探针（`{:?}` 形态）。
     pub mode_probe: RefCell<Option<String>>,
-    /// c2895：观景态守望前态与最近一次映射提示。
     pub observe_prev: RefCell<xylitol_app_tui::driver::AttachObserve>,
     pub observe_notice: RefCell<Option<&'static str>>,
-    /// c2470：客户端存储通道（编辑器历史场景）。
     pub storage: RefCell<Option<std::sync::Arc<xylitol_app_tui::storage::ClientStorage>>>,
 }
 
@@ -75,7 +59,6 @@ fn put_pump(bdd: &HostPumpBdd, pump: HostPump) {
     *bdd.pump.borrow_mut() = Some(pump);
 }
 
-/// Submit `command` through the real host key path (editor text + Enter + pump).
 async fn submit_bang(bdd: &HostPumpBdd, command: &str) {
     let mut pump = take_pump(bdd);
     let root = pump.session.ui_root().expect("ui").clone();
@@ -99,7 +82,6 @@ fn render_frame(bdd: &HostPumpBdd, width: usize) -> String {
     frame
 }
 
-/// (command, output, status) of the newest Bash block in the scrollback.
 fn last_bash_entry(bdd: &HostPumpBdd) -> (String, String, BashBlockStatus) {
     let pump = take_pump(bdd);
     let out = pump
@@ -121,8 +103,6 @@ fn last_bash_entry(bdd: &HostPumpBdd) -> (String, String, BashBlockStatus) {
     put_pump(bdd, pump);
     out
 }
-
-// ---- att9：bang 块生命周期（进块 / 同块刷新 / 成功 / 取消 / 非零） ----
 
 #[when("以主机泵提交 bang 命令并注入分段输出与成功结果")]
 pub(crate) async fn w_att9_submit_success(host_pump_bdd: &HostPumpBdd) {
@@ -223,8 +203,6 @@ pub(crate) async fn t_att9_error_rail(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ---- att11：bang 块 rail 复用（轨+gutter，无整行洗底） ----
-
 #[when("以主机泵提交 bang 命令并完成成功结果")]
 pub(crate) async fn w_att11_submit_done(host_pump_bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
@@ -259,8 +237,6 @@ pub(crate) async fn t_att11_rail_no_wash(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ---- ati busy 键序族（ati2/3/10/14/16/19/20/28/30/31/32/43） ----
-
 fn ctrl_c_event() -> xylitol_tui::InputEvent {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     xylitol_tui::InputEvent::Key(KeyEvent {
@@ -283,8 +259,6 @@ fn alt_enter_event() -> xylitol_tui::InputEvent {
 
 use xylitol_app_tui::harness::esc_event;
 
-/// HostEvent stream for hanging bang/reload: pause, then Esc (+optional
-/// backlog), then park forever (no EOF).
 fn esc_stream(
     after_ms: u64,
     backlog_esc: usize,
@@ -304,14 +278,12 @@ fn esc_stream(
     )
 }
 
-/// Start a busy agent turn on a fresh pump and mount it.
 fn open_busy(bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
     pump.session.on_run_started("hello");
     put_pump(bdd, pump);
 }
 
-/// Mount a fresh pump with sample tree data (for tree-slot keys).
 fn open_tree_ready(bdd: &HostPumpBdd) {
     use xylitol_app_tui::harness::harness_sample_message_history_tree;
     let mut pump = fresh_pump();
@@ -360,7 +332,6 @@ async fn pump_once(bdd: &HostPumpBdd) {
     put_pump(bdd, pump);
 }
 
-/// Read-only probe of (session state, driver counters).
 #[derive(Clone, Debug)]
 struct PumpStats {
     is_busy: bool,
@@ -409,13 +380,10 @@ fn stats(bdd: &HostPumpBdd) -> PumpStats {
     s
 }
 
-/// Submit current editor text with a key event, then pump.
 async fn submit_with(bdd: &HostPumpBdd, ev: xylitol_tui::InputEvent) {
     step_key(bdd, ev);
     pump_once(bdd).await;
 }
-
-// ati2 ─────────────────────────────────────────────────────────
 
 #[when("以主机泵开启忙碌流并按下 Esc")]
 pub(crate) async fn w_ati2_busy_esc(host_pump_bdd: &HostPumpBdd) {
@@ -457,12 +425,10 @@ pub(crate) async fn t_ati2_ctrl_c_same_semantics(host_pump_bdd: &HostPumpBdd) {
 
 #[when("打开样例树槽后按下 Ctrl+C")]
 pub(crate) async fn w_ati2_tree_ctrl_c(host_pump_bdd: &HostPumpBdd) {
-    // 新 idle 语境（abort 后 suppress_idle_esc 会吞首个 idle Esc，树阶段
-    // 独立开局），aborts 计数从零起证「未新增」。
     open_tree_ready(host_pump_bdd);
     step_key(host_pump_bdd, esc_event());
     step_key(host_pump_bdd, esc_event());
-    pump_once(host_pump_bdd).await; // 树抓取经 driver 异步泵入
+    pump_once(host_pump_bdd).await;
     let s = stats(host_pump_bdd);
     assert!(s.tree_open, "double Esc must open the tree first: {s:?}");
     step_key(host_pump_bdd, ctrl_c_event());
@@ -506,8 +472,6 @@ pub(crate) async fn t_ati2_quit_requested(host_pump_bdd: &HostPumpBdd) {
     assert!(s.should_quit, "idle empty-editor Ctrl+C quits the TUI");
 }
 
-// ati3 ─────────────────────────────────────────────────────────
-
 #[when("以主机泵开启忙碌流并输入 nudge 后按 Enter")]
 pub(crate) async fn w_ati3_steer(host_pump_bdd: &HostPumpBdd) {
     open_busy(host_pump_bdd);
@@ -539,8 +503,6 @@ pub(crate) async fn t_ati3_follow_up_queued(host_pump_bdd: &HostPumpBdd) {
     assert!(s.runs.is_empty());
 }
 
-// ati10 ────────────────────────────────────────────────────────
-
 #[when("以主机泵开启忙碌流并按下 Esc 后收流关闭")]
 pub(crate) async fn w_ati10_busy_esc(host_pump_bdd: &HostPumpBdd) {
     open_busy(host_pump_bdd);
@@ -557,8 +519,6 @@ pub(crate) async fn t_ati10_no_tree(host_pump_bdd: &HostPumpBdd) {
     assert!(!s.tree_open, "busy Esc MUST NOT open the session tree");
     assert_eq!(s.tree_calls, 0);
 }
-
-// ati14 ────────────────────────────────────────────────────────
 
 #[then("run 不再活跃且 abort 已计一次")]
 pub(crate) async fn t_ati14_run_closed(host_pump_bdd: &HostPumpBdd) {
@@ -601,8 +561,6 @@ pub(crate) async fn t_ati14_runs_again(host_pump_bdd: &HostPumpBdd) {
         s.notices
     );
 }
-
-// ati16 ────────────────────────────────────────────────────────
 
 #[when("以主机泵在 idle 提交 bang 命令")]
 pub(crate) async fn w_ati16_bang(host_pump_bdd: &HostPumpBdd) {
@@ -658,15 +616,11 @@ pub(crate) async fn t_ati16_empty_rejected(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ati19 ────────────────────────────────────────────────────────
-
 fn fresh_pump_with_hanging_bash() -> HostPump {
     let pump = fresh_pump();
     pump.driver.set_hang_bash_until_abort(true);
     pump
 }
-
-// atm18 / ath45 ── c2790: bang 循环 drain Inline 命令 ──────────────────────
 
 fn char_keys(text: &str) -> Vec<xylitol_tui::InputEvent> {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
@@ -682,9 +636,6 @@ fn char_keys(text: &str) -> Vec<xylitol_tui::InputEvent> {
         .collect()
 }
 
-/// Keys typed mid-bang, then `escs` Esc presses (picker close → abort), park.
-/// `prefix` MUST end with the submit Enter — busy Enter is what parses the
-/// slash into `pending.slash`; bare chars only fill the editor buffer.
 fn keys_then_escs_stream(
     mut prefix: Vec<xylitol_tui::InputEvent>,
     escs: usize,
@@ -711,8 +662,6 @@ fn keys_then_escs_stream(
     )
 }
 
-/// Shared body for both c2790 bang-Given phrasings (atm18 names the driver
-/// seam; ath45 is the generic host contract — same fixture setup).
 async fn g_c2790_hanging_bang_body(host_pump_bdd: &HostPumpBdd) {
     let pump = fresh_pump_with_hanging_bash();
     put_pump(host_pump_bdd, pump);
@@ -758,16 +707,6 @@ pub(crate) async fn t_atm18_inline_mounted(host_pump_bdd: &HostPumpBdd) {
         .bash_calls()
         .iter()
         .any(|(c, _)| c == "sleep 99");
-    // Mount evidence: the picker row marker `→ * fake` is rendered by the
-    // Models slot only while mounted (SelectList cursor + focused mark) — the
-    // Mount evidence: the picker row marker `→ * Fake` is rendered by the
-    // Models slot only while mounted (SelectList cursor + focused mark). The
-    // label is the harness model's display_name (`Fake`); the PTY seam waits
-    // on `→ * fake` because the attach-cache model renders its id — each seam
-    // asserts its own rendered screen. The diff frame log preserves frame
-    // order, so the mount frame must precede the post-abort `(cancelled)`
-    // frame: mounted DURING the bang, closed by the first Esc before the
-    // second Esc aborts.
     let frames = pump.session.tui.terminal.frames();
     let mount_idx = frames.iter().position(|f| f.contains("→ * Fake"));
     let cancel_idx = frames.iter().position(|f| f.contains("(cancelled)"));
@@ -892,8 +831,6 @@ pub(crate) async fn t_ati19_no_agent_aborted(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ati20 ────────────────────────────────────────────────────────
-
 #[when("以主机泵令 bash 执行中并提交第二条 bang")]
 pub(crate) async fn w_ati20_second_bang(host_pump_bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
@@ -927,8 +864,6 @@ pub(crate) async fn t_ati20_no_second_bash(host_pump_bdd: &HostPumpBdd) {
         s.bash_calls
     );
 }
-
-// ati28 ────────────────────────────────────────────────────────
 
 #[when("以主机泵在 idle 提交斜杠 session-tree")]
 pub(crate) async fn w_ati28_slash_tree(host_pump_bdd: &HostPumpBdd) {
@@ -987,8 +922,6 @@ pub(crate) async fn t_ati28_tree_not_a_verb(host_pump_bdd: &HostPumpBdd) {
         s.notices
     );
 }
-
-// ati30 ────────────────────────────────────────────────────────
 
 #[when("以主机泵提交挂起 bang 并注入 Esc 加积压 Esc")]
 pub(crate) async fn w_ati30_first_bang_esc_backlog(host_pump_bdd: &HostPumpBdd) {
@@ -1057,8 +990,6 @@ pub(crate) async fn t_ati30_second_still_abortable(host_pump_bdd: &HostPumpBdd) 
     );
 }
 
-// ati31 ────────────────────────────────────────────────────────
-
 #[when("以主机泵开启忙碌流注入正文增量后按下 Esc 再注入迟到增量")]
 pub(crate) async fn w_ati31_late_xy(host_pump_bdd: &HostPumpBdd) {
     use xylitol_runtime::agent::runtime::XyEvent;
@@ -1113,8 +1044,6 @@ pub(crate) async fn t_ati31_abort_note(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ati32 ────────────────────────────────────────────────────────
-
 #[when("以主机泵开启忙碌流并提交 bang 前缀文本")]
 pub(crate) async fn w_ati32_busy_bang_prefix(host_pump_bdd: &HostPumpBdd) {
     open_busy(host_pump_bdd);
@@ -1152,8 +1081,6 @@ pub(crate) async fn t_ati32_no_steer_no_bash(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ati43 ────────────────────────────────────────────────────────
-
 #[when("以主机泵开启重载并输入草稿后按 Enter")]
 pub(crate) async fn w_ati43_reload_gate(host_pump_bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
@@ -1190,7 +1117,6 @@ pub(crate) async fn t_ati43_reload_gate_toast(host_pump_bdd: &HostPumpBdd) {
 pub(crate) async fn w_ati43_cancel_hanging_reload(host_pump_bdd: &HostPumpBdd) {
     use xylitol_app_tui::XyDriverError;
     use xylitol_app_tui::harness::run_interactive_reload;
-    // 结束软闸阶段，换成挂起重载再取消（c1205 形态）。
     let mut pump = take_pump(host_pump_bdd);
     pump.session.end_reload();
     pump.driver.set_hang_reload_until_cancel(true);
@@ -1247,9 +1173,6 @@ pub(crate) async fn t_ati43_idle_rules_restored(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ── c2826 specs-compact：app-tui-commands 斜杠族场景 ───────────────
-
-/// 以真实编辑器路径提交一条 slash 并驱动泵（无前置挂载时自动挂载）。
 async fn c2826_submit_slash(host_pump_bdd: &HostPumpBdd, text: &str) {
     let mut pump = host_pump_bdd
         .pump
@@ -1265,7 +1188,6 @@ async fn c2826_submit_slash(host_pump_bdd: &HostPumpBdd, text: &str) {
     pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("pump");
-    // Exclusive/Queued 类命令（reload/export 等）在循环归还后由 drain_pending 执行。
     xylitol_app_tui::harness::drain_pending(&mut pump.session, &mut pump.driver, &mut stream)
         .await
         .expect("drain");
@@ -1300,7 +1222,6 @@ fn c2826_last_notice(host_pump_bdd: &HostPumpBdd) -> String {
 fn c2826_counters(
     host_pump_bdd: &HostPumpBdd,
 ) -> (usize, usize, usize, usize, usize, usize, usize, usize) {
-    // (models, tree, compact, export_jsonl, export_html, new_session, list_sessions, reload)
     let pump = take_pump(host_pump_bdd);
     let c = (
         pump.driver.models_calls(),
@@ -1357,7 +1278,6 @@ pub(crate) fn t_c2826_unknown_slash(host_pump_bdd: &HostPumpBdd) {
 
 #[then("有参直设经模型执行器更新且仅更新固定区")]
 pub(crate) fn t_c2826_model_arg(host_pump_bdd: &HostPumpBdd) {
-    // 直设路径成功即回到 Editor 槽（未开列表），无滚动确认块。
     assert_eq!(format!("{:?}", c2826_slot(host_pump_bdd)), "Editor");
     let s = stats(host_pump_bdd);
     assert!(
@@ -1454,7 +1374,6 @@ pub(crate) fn t_c2826_reload_once(host_pump_bdd: &HostPumpBdd) {
 pub(crate) fn t_c2826_reload_busy_rejected(host_pump_bdd: &HostPumpBdd) {
     let s = stats(host_pump_bdd);
     assert!(s.run_active || s.is_busy, "c2826: 前置应为忙碌态");
-    // 忙碌提交经新挂载泵（open_busy 换新 ScriptedDriver）：本泵内重载计数必须为 0。
     let reloads = c2826_counters(host_pump_bdd).7;
     assert_eq!(reloads, 0, "c2826: busy /reload 不得触发运行时重载");
     let note = c2826_last_notice(host_pump_bdd);
@@ -1503,7 +1422,6 @@ pub(crate) async fn w_c2826_copy_last(host_pump_bdd: &HostPumpBdd, cmd: String) 
         ]);
         let root = pump.session.ui_root().expect("ui").clone();
         root.borrow_mut().set_editor_text("提问");
-        // idle Enter 直接发起 run（不得预臂 busy，否则会被当 steer）。
         pump.session
             .step(HostEvent::Input(enter_event()))
             .expect("enter");
@@ -1648,14 +1566,10 @@ pub(crate) async fn w_c2826_resume_with_list(host_pump_bdd: &HostPumpBdd, cmd: S
     c2826_submit_slash(host_pump_bdd, cmd).await;
 }
 
-// ── c2826 specs-compact：fixed-zone 的 host-pump 场景步骤 ──────────
-
 fn c2826_frame(host_pump_bdd: &HostPumpBdd) -> String {
     render_frame(host_pump_bdd, 100)
 }
 
-/// Clipped ApplicationOwned paint (post 视口叠层). Stack assertions MUST use
-/// this, not unclipped `UiRoot::render`.
 fn paint_clipped_viewport(host_pump_bdd: &HostPumpBdd) -> String {
     let mut pump = take_pump(host_pump_bdd);
     pump.session.render_now().expect("clipped viewport render");
@@ -1697,7 +1611,6 @@ pub(crate) async fn w_c2826_abort_idle_render(host_pump_bdd: &HostPumpBdd) {
     open_busy(host_pump_bdd);
     step_key(host_pump_bdd, esc_event());
     pump_once(host_pump_bdd).await;
-    // 收流关闭：泵至事件流结束（busy 轮收尾）。
     drain(host_pump_bdd).await;
 }
 
@@ -1743,8 +1656,6 @@ pub(crate) fn t_c2826_reload_status(host_pump_bdd: &HostPumpBdd) {
         "c2826: reload 态 status 应显示 Reloading：{frame}"
     );
 }
-
-// ── c2826 specs-compact：app-tui-input 场景步骤 ────────────────────
 
 pub(crate) fn c2826_alt_up_event_pub() -> xylitol_tui::InputEvent {
     c2826_alt_up_event()
@@ -2028,8 +1939,6 @@ pub(crate) fn t_c2826_queue_strip_alt_up(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ── c2826 specs-compact：app-tui-host 场景步骤 ─────────────────────
-
 #[when("以主机泵在 idle 提交带换行的 {cmd:string}")]
 pub(crate) async fn w_c2826_submit_multiline(host_pump_bdd: &HostPumpBdd, cmd: String) {
     let cmd = cmd.trim_matches('"').replace("\\n", "\n");
@@ -2139,7 +2048,6 @@ pub(crate) async fn w_c2826_mcp_pending_cue(host_pump_bdd: &HostPumpBdd) {
             });
         *host_pump_bdd.pump.borrow_mut() = Some(pump);
     }
-    // 经产品刷新路径装载快照（connecting + 未冻表 → 短 cue）。
     let mut pump = take_pump(host_pump_bdd);
     let driver = std::mem::take(&mut pump.driver);
     pump.session.refresh_loaded_resources(&driver).await;
@@ -2179,7 +2087,6 @@ pub(crate) async fn w_c2826_reload_soft_gate(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_pump(host_pump_bdd);
     assert!(pump.session.take_reload(), "c2826: reload 应处于待执行态");
     put_pump(host_pump_bdd, pump);
-    // reload 进行中输入草稿并提交上行 → 软闸。
     set_editor(host_pump_bdd, "草稿上行");
     let mut pump = take_pump(host_pump_bdd);
     let input = futures::stream::iter(vec![
@@ -2256,7 +2163,6 @@ pub(crate) fn t_c2826_copy_notice(host_pump_bdd: &HostPumpBdd) {
 #[when("以合成验收链驱动一整轮含工具与 abort 的会话并 /exit")]
 pub(crate) async fn w_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
     use xylitol_runtime::agent::runtime::XyEvent;
-    // 1) 提交 → 流式 + 工具 + 完成
     {
         let mut pump = host_pump_bdd
             .pump
@@ -2295,7 +2201,6 @@ pub(crate) async fn w_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
         *host_pump_bdd.pump.borrow_mut() = Some(pump);
     }
     c2826_submit_slash(host_pump_bdd, "第一问").await;
-    // 2) busy → steer（同一泵内标记 busy，避免重挂丢失计数）
     {
         let mut pump = take_pump(host_pump_bdd);
         pump.session.on_run_started("插一句");
@@ -2308,13 +2213,10 @@ pub(crate) async fn w_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
         .expect("steer enter");
     put_pump(host_pump_bdd, pump);
     pump_once(host_pump_bdd).await;
-    // 3) busy → abort
     step_key(host_pump_bdd, esc_event());
     pump_once(host_pump_bdd).await;
     drain(host_pump_bdd).await;
-    // 4) 再提交
     c2826_submit_slash(host_pump_bdd, "第二问").await;
-    // 5) /exit
     c2826_submit_slash(host_pump_bdd, "/exit").await;
 }
 
@@ -2344,8 +2246,6 @@ pub(crate) fn t_c2826_synthetic_chain(host_pump_bdd: &HostPumpBdd) {
     assert!(has_tool, "c2826: 工具执行应留块");
 }
 
-// ── c2826 specs-compact：最后一批（input/fixed-zone 收尾）──────────
-
 fn c2826_ctrl_g_event() -> xylitol_tui::InputEvent {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     xylitol_tui::InputEvent::Key(KeyEvent {
@@ -2358,7 +2258,6 @@ fn c2826_ctrl_g_event() -> xylitol_tui::InputEvent {
 
 #[when("以主机泵在无编辑器环境变量下输入草稿后按 Ctrl+G")]
 pub(crate) async fn w_c2826_ctrl_g_stub(host_pump_bdd: &HostPumpBdd) {
-    // harness / 非 TTY 路径 MUST NOT spawn 真实编辑器（保持 stub）。
     if host_pump_bdd.pump.borrow().is_none() {
         *host_pump_bdd.pump.borrow_mut() = Some(fresh_pump());
     }
@@ -2399,7 +2298,6 @@ pub(crate) fn w_c2826_keybindings_bad(host_pump_bdd: &HostPumpBdd) {
         .unwrap_or_else(fresh_pump);
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("keybindings.json"), "not-json{{").unwrap();
-    // 泵内会话键位重载：失败保留旧绑定并出诊断。
     let _ = pump.session.reload_keybindings(dir.path());
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
 }
@@ -2481,8 +2379,6 @@ pub(crate) fn t_c2826_short_terminal_busy(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-// ── 裸规则回填（c2835 后继）：文档 / 即时日志 / 绘制缓存 / 交互模式 / PTY 登记 ──
-
 #[when("读取产品 TUI 面 AGENTS 文档")]
 fn w_read_tui_agents_doc(host_pump_bdd: &HostPumpBdd) {
     let text = std::fs::read_to_string("crates/xylitol-app-tui/src/AGENTS.md")
@@ -2510,10 +2406,6 @@ fn t_tui_agents_doc_carries_layout_map(host_pump_bdd: &HostPumpBdd) {
 #[when("以临时目录请求即时文件日志")]
 fn w_init_instant_file_logging(host_pump_bdd: &HostPumpBdd) {
     use xylitol_official_plugin_provider_openai::provider::trace as pt;
-    // c2843 Phase B: hold the process-wide gate lock while mounting probes that
-    // mutate the process atomics (`init_logging` arms the gate per its config),
-    // so the gate probes in default-gate-off scenarios stay deterministic.
-    // 探针会写进程级闸态；跑完即复位，不依赖同进程里其他场景的执行顺序。
     let _g = crate::bdd::steps_otel_obs::OBS_GATE_LOCK
         .lock()
         .unwrap_or_else(|e| e.into_inner());
@@ -2597,7 +2489,6 @@ fn g_streaming_stable_prefix(host_pump_bdd: &HostPumpBdd) {
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
     model.begin_run("hi");
-    // 足够多的完整段落，使稳定前缀非空（与单测同形）。
     model.streaming_assistant = "alpha para\n\nbeta para\n\n".into();
     root.apply_ui_model(&model);
     let _ = root.render(80);
@@ -2890,8 +2781,6 @@ pub(crate) fn t_copied_last_msg_stack(host_pump_bdd: &HostPumpBdd) {
     assert!(!line.contains("Error"), "must not use Error prefix: {line}");
 }
 
-// ── c2895 观景态提示（r2897）────────────────────────────────────
-
 use xylitol_app_tui::driver::XyDriver as _;
 
 #[given("产品 TUI 主循环守望观景态")]
@@ -2900,7 +2789,6 @@ fn g_c2895_observe_watch(host_pump_bdd: &HostPumpBdd) {
         put_pump(host_pump_bdd, fresh_pump());
     }
     let pump = take_pump(host_pump_bdd);
-    // 主循环前态：Live（attach 完成后的首观）。
     *host_pump_bdd.observe_prev.borrow_mut() = xylitol_app_tui::driver::AttachObserve::Live;
     *pump.driver.observe_state.lock().unwrap() = xylitol_app_tui::driver::AttachObserve::Live;
     put_pump(host_pump_bdd, pump);
@@ -2949,8 +2837,6 @@ fn t_c2895_observe_ended_notice(host_pump_bdd: &HostPumpBdd) {
         "可重挂提示须指引: {notice}"
     );
 }
-
-// ── c2470 编辑器历史入通道（app-tui-storage r2902）───────────────
 
 use std::sync::Arc as StdArc;
 use xylitol_app_tui::storage::ClientStorage as StorageClient;
@@ -3015,7 +2901,6 @@ async fn w_c2470_twin_and_up(host_pump_bdd: &HostPumpBdd) {
         .to_path_buf();
     let twin = StorageClient::new(root, "default").unwrap();
     twin.record_editor_prompt("c2470-twin");
-    // 使用点懒并盘（c2915）：↑ 按键路径内先并通道历史，再召回。
     let mut pump = take_pump(host_pump_bdd);
     pump.session
         .step(HostEvent::Input(xylitol_app_tui::harness::key_event(
@@ -3060,7 +2945,6 @@ async fn w_c2917_twin_old_new_and_up(host_pump_bdd: &HostPumpBdd) {
     let twin = StorageClient::new(root, "default").unwrap();
     twin.record_editor_prompt("c2917-old");
     twin.record_editor_prompt("c2917-new");
-    // 使用点懒并盘（c2915）：↑ 按键路径内先并通道历史，再召回。
     let mut pump = take_pump(host_pump_bdd);
     pump.session
         .step(HostEvent::Input(xylitol_app_tui::harness::key_event(
@@ -3076,8 +2960,6 @@ fn t_c2917_recall_is_newest(host_pump_bdd: &HostPumpBdd) {
     let text = editor_text(host_pump_bdd);
     assert_eq!(text.trim(), "c2917-new", "召回须最新优先: {text:?}");
 }
-
-// ── c2875 会话详情覆盖弹出框（app-tui-fixed-zone r2903）───────────────
 
 use xylitol_app_tui::harness::key_event as c2875_key_event;
 
@@ -3164,8 +3046,6 @@ fn t_c2875_hidden(host_pump_bdd: &HostPumpBdd) {
     assert!(!frame.contains("会话详情"), "覆盖弹出框须收起");
 }
 
-// c2914 收起语义护栏：闲置 Esc 收框不入双击链；忙碌 Esc 透传中止不收框。
-
 #[when("按 Esc 收起覆盖弹出框")]
 async fn w_c2875_esc_close(host_pump_bdd: &HostPumpBdd) {
     c2875_press(
@@ -3200,7 +3080,6 @@ async fn w_c2875_busy_esc(host_pump_bdd: &HostPumpBdd) {
     let mut pump = take_pump(host_pump_bdd);
     pump.session.on_run_started("c2875-busy");
     put_pump(host_pump_bdd, pump);
-    // 先泵一轮同步模型 → root.status_busy = true，Esc 才走中止而非收框。
     pump_once(host_pump_bdd).await;
     c2875_press(
         host_pump_bdd,
@@ -3217,8 +3096,6 @@ fn t_c2875_busy_esc_abort(host_pump_bdd: &HostPumpBdd) {
     let frame = c2875_frame(host_pump_bdd);
     assert!(frame.contains("会话详情"), "忙碌 Esc 不得收起覆盖弹出框");
 }
-
-// ── c2905 会话侧栏（app-tui-fixed-zone r2904）───────────────
 
 #[when("切换侧栏")]
 async fn w_c2905_sidebar_toggle(host_pump_bdd: &HostPumpBdd) {
@@ -3293,7 +3170,6 @@ fn t_c2905_off(host_pump_bdd: &HostPumpBdd) {
 #[given("产品 TUI 会话就绪于窄终端")]
 fn g_c2918_narrow_mount(host_pump_bdd: &HostPumpBdd) {
     if host_pump_bdd.pump.borrow().is_none() {
-        // 78 列 = 窄档（60–79）：低于侧栏标准档门槛（80）。
         *host_pump_bdd.pump.borrow_mut() = Some(HostPump {
             session: HostSession::new_product_ui(TestTerminal::new(78, 40)),
             driver: ScriptedDriver::new(),
@@ -3346,8 +3222,6 @@ fn t_c2905_coexist(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
 }
 
-// ── 产品 AO 滚动槽（c2922：app-tui-transcript r2893 产品侧翻转）──────────────
-
 #[given("产品 ApplicationOwned 会话已向下滚动")]
 pub(crate) fn g_product_ao_scrolled(host_pump_bdd: &HostPumpBdd) {
     g_tall_scrolled_viewport(host_pump_bdd);
@@ -3357,7 +3231,6 @@ pub(crate) fn g_product_ao_scrolled(host_pump_bdd: &HostPumpBdd) {
 pub(crate) async fn w_product_gutter_click_top(host_pump_bdd: &HostPumpBdd) {
     use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
     let mut pump = take_pump(host_pump_bdd);
-    // host 每帧 paint 后 sync 的镜像：hit 注册先于点击（sync_pointer_hits 同序）。
     let hits = pump.session.tui.scroll_gutter_hit_set();
     pump.session.tui.replace_hits(hits);
     let col = pump.session.tui.terminal.columns().saturating_sub(1);

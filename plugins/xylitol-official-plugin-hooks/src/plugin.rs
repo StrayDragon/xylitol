@@ -1,5 +1,3 @@
-//! `PluginFactory` entry: script hooks as waterfall listeners + `XyHookBus`.
-
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::rt::{

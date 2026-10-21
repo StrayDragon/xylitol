@@ -1,5 +1,3 @@
-//! Tool execution + edit diff extraction.
-
 use crate::bridge::preview::humanize_ask_result;
 use crate::bridge::session_tree::sync_todo_checklist;
 use crate::bridge::{
@@ -12,8 +10,6 @@ use crate::tool_display::is_ask_tool;
 pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
     match event {
         XyEvent::TodoUpdated { list } => {
-            // atd13: 待办栏 rides the typed event — clients never
-            // re-parse tool-result strings to stay current.
             sync_todo_checklist(model, list.clone());
             true
         }
@@ -33,8 +29,6 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             }) = find_tool_mut(&mut model.entries, id)
             {
                 use crate::tool_display::is_mcp_tool_name;
-                // MCP body is owned by Start/End (args + pretty result). Streaming the raw
-                // CallToolResult into the buffer glues onto `args:` and duplicates under result.
                 if is_mcp_tool_name(name) && buf.starts_with("args:") {
                     return true;
                 }

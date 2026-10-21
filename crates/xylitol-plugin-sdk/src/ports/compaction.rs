@@ -1,4 +1,3 @@
-//! Compaction orchestration port — runtime calls this; the official plugin implements it.
 #![allow(clippy::too_many_arguments)]
 
 use crate::compaction_binding::CompactionSummaryBinding;
@@ -9,18 +8,13 @@ use crate::model::ContextTokenEstimate;
 use crate::token_estimator::{EstimateOpts, FixedRequestContext};
 use crate::{XyEventSink, XySessionStore};
 
-/// Outcome of overflow Case1 auto-compact.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverflowCompactOutcome {
-    /// No overflow path taken (not overflow / skipped).
     Skipped,
-    /// Compacted; `will_retry` means caller should continue the model loop.
     Ran { will_retry: bool },
-    /// Second overflow after one recovery — failed with user-facing end event.
     FailedOnce,
 }
 
-/// Trigger formula matches pi `shouldCompact`.
 pub fn should_compact(
     context_tokens: u64,
     context_window: u64,
@@ -38,7 +32,6 @@ pub fn should_compact(
         )
 }
 
-/// Compaction orchestration — threshold checks and execution.
 #[async_trait::async_trait]
 pub trait XyCompaction: Send + Sync {
     fn settings(&self) -> &CompactionSettings;
@@ -92,7 +85,6 @@ pub trait XyCompaction: Send + Sync {
     ) -> Result<bool, CompactionError>;
 }
 
-/// No-op compaction used when composition has not injected a plugin.
 pub struct NoopCompaction {
     settings: CompactionSettings,
 }
@@ -161,11 +153,9 @@ impl XyCompaction for NoopCompaction {
     }
 }
 
-/// Factory that turns settings into a live [`XyCompaction`] (composition injects the plugin).
 pub type XyCompactionFactory =
     std::sync::Arc<dyn Fn(CompactionSettings) -> std::sync::Arc<dyn XyCompaction> + Send + Sync>;
 
-/// Default factory: [`NoopCompaction`].
 pub fn noop_compaction_factory() -> XyCompactionFactory {
     std::sync::Arc::new(|settings| {
         std::sync::Arc::new(NoopCompaction::new(settings)) as std::sync::Arc<dyn XyCompaction>

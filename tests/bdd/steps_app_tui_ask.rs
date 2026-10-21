@@ -1,5 +1,3 @@
-//! Steps for `app-tui-ask` (c1850) — public-seam asserts.
-
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -95,20 +93,16 @@ fn given_ask_finished() {
 
 #[given("项目尚未信任")]
 fn given_project_untrusted() {
-    // Trust path is independent of ask registration.
     assert!(default_tools().iter().all(|t| t.name() != "ask"));
 }
 
 #[when("查询装配后的 ToolSet")]
 fn when_query_toolset() {
-    // ToolSet already prepared in Given.
     TOOLSET.with(|t| assert!(t.borrow().is_some(), "ToolSet not prepared"));
 }
 
 #[when("产品 TUI 渲染 editor 槽")]
-fn when_render_choice_slot() {
-    // Conversion seam already asserted in Given; caption " Ask" is layout contract.
-}
+fn when_render_choice_slot() {}
 
 #[when("按 Esc")]
 fn when_press_esc() {
@@ -141,9 +135,7 @@ fn when_render_scrollback() {
 }
 
 #[when("启动需 Trust 闸的路径")]
-fn when_trust_gate_path() {
-    // Trust uses bootstrap ChoicePrompt, not AskTool — ask remains out of default_tools.
-}
+fn when_trust_gate_path() {}
 
 #[then("含名为 ask 的内置工具")]
 fn then_has_ask() {
@@ -166,7 +158,6 @@ fn then_omits_ask() {
 
 #[then("槽为 ChoicePrompt 且标题含 Ask")]
 fn then_choice_caption_ask() {
-    // Product render uses accent " Ask" caption (see UiRoot Choice slot).
     let caption = " Ask";
     assert!(caption.contains("Ask"));
 }
@@ -204,8 +195,6 @@ fn then_trust_not_ask() {
         let _ = s;
     });
 }
-
-// ── c2827 r1445：无 MCP 配置零装配 ──────────────────────────────
 
 #[then("装配不含 mcp 前缀工具")]
 pub(crate) fn t_c2827_toolset_no_mcp() {

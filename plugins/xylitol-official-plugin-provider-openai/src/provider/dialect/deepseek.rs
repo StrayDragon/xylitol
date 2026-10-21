@@ -1,16 +1,7 @@
-//! DeepSeek dialect overlays on native OpenAI / Anthropic APIs.
-//!
-//! | Native `api` | DeepSeek base / quirk |
-//! |---|---|
-//! | `openai-responses` | `https://api.deepseek.com` — no `include: reasoning.encrypted_content` (via WirePolicy) |
-//! | `openai-completions` | Zen / Completions — `thinking: { type }` (+ optional `reasoning_effort`) |
-//! | `anthropic-messages` | `https://api.deepseek.com/anthropic` — thinking enabled; `budget_tokens` ignored by server |
-
 use serde_json::{Value, json};
 
 use crate::thinking::ResolvedThinking;
 
-/// pi `thinkingFormat: deepseek` for Chat Completions.
 pub fn apply_completions_thinking(body: &mut Value, resolved: &ResolvedThinking) {
     match resolved {
         ResolvedThinking::Omit => {
@@ -27,7 +18,6 @@ pub fn apply_completions_thinking(body: &mut Value, resolved: &ResolvedThinking)
     }
 }
 
-/// DeepSeek Anthropic-compatible Messages: `thinking.type` only (`budget_tokens` ignored upstream).
 pub fn apply_anthropic_thinking(body: &mut Value, resolved: &ResolvedThinking) {
     match resolved {
         ResolvedThinking::Omit => {
@@ -36,7 +26,6 @@ pub fn apply_anthropic_thinking(body: &mut Value, resolved: &ResolvedThinking) {
             }
         }
         ResolvedThinking::AnthropicBudget(_) => {
-            // Server ignores budget_tokens; still enable thinking without claiming a budget.
             body["thinking"] = json!({ "type": "enabled" });
         }
         ResolvedThinking::OpenAiEffort(_) | ResolvedThinking::Invalid(_) => {}

@@ -4,12 +4,6 @@ use crate::types::*;
 use xylitol_plugin_sdk::error::XySessionStoreError;
 
 impl SessionManager {
-    /// Load only the segments needed to resolve the requested leaf ancestry.
-    ///
-    /// The active segment is always hot. Sealed segments are opened from newest
-    /// to oldest only when a missing parent id requires them; full logical
-    /// loading remains available through [`Self::load`]. When the current
-    /// branch reaches a compaction, ancestry stops at its first kept entry.
     pub(super) async fn load_branch_entries(
         &self,
         session_id: &str,
@@ -19,8 +13,6 @@ impl SessionManager {
             return self.read_entries(session_id).await;
         }
 
-        // Zero-compat legacy boundary: a legacy-only file is rejected with an
-        // actionable error and preserved (no migration, no repair).
         if self.legacy_session_path(session_id).exists() && !self.manifest_path(session_id).exists()
         {
             return Err(super::segments::legacy_unsupported_error(session_id));
@@ -70,9 +62,6 @@ impl SessionManager {
                 let mut found = None;
                 let sealed_count = manifest.sealed_segments.len();
 
-                // Phase 1 — index screen: open only segments whose intact sidecar
-                // nominates the id. Segments without a sidecar (old manifest /
-                // missing / corrupt) stay unread so they fall through to phase 2.
                 let mut candidates: Vec<usize> = Vec::new();
                 for index in (0..sealed_count).rev() {
                     let segment = &manifest.sealed_segments[index];
@@ -102,10 +91,6 @@ impl SessionManager {
                     }
                 }
 
-                // Phase 2 — fallback scan: full newest→oldest sweep over segments
-                // not yet read (no sidecar / bad index / screened miss), so an
-                // index failure never produces a false negative. Already-read
-                // segments are skipped.
                 if found.is_none() {
                     for index in (0..sealed_count).rev() {
                         if sealed_entries[index].is_some() {
@@ -158,7 +143,6 @@ impl SessionManager {
         Ok(entries)
     }
 
-    /// Read all entries without changing the current leaf.
     pub(super) async fn read_entries(
         &self,
         session_id: &str,
@@ -191,10 +175,6 @@ impl SessionManager {
         Ok(entries)
     }
 
-    /// Load all entries from a session (latest [`SESSION_VERSION`] only).
-    /// For persisted sessions, reads from the JSONL file or pending memory.
-    /// For in-memory sessions, returns from the in-memory store and updates
-    /// the leaf to the final logical entry.
     pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
         let entries = self.read_entries(session_id).await?;
         if let Some(last) = entries.last() {
@@ -208,14 +188,7 @@ impl SessionManager {
         Ok(entries)
     }
 
-    /// Load and validate that the session's CWD exists.
-    ///
-    /// If the CWD from the session header does not exist, tries `fallback_cwd`.
-    /// Returns an error if neither directory is accessible.
-    ///
-    /// Spec @executable contract (`resume_session` BDD steps); no product caller
-    /// today — product resume goes through `XySessionStore::load_entries`.
-    #[allow(dead_code)] // spec @executable contract, not product-called
+    #[allow(dead_code)]
     pub async fn load_validated(
         &self,
         session_id: &str,
@@ -226,7 +199,6 @@ impl SessionManager {
         Ok(entries)
     }
 
-    /// Delete a session file and in-memory tracking (c1065 resume panel).
     pub async fn delete_session(&self, session_id: &str) -> Result<(), XySessionStoreError> {
         {
             let mut pending = lock_rwlock_write(&self.pending_store);
@@ -260,15 +232,10 @@ impl SessionManager {
         }
     }
 
-    /// List all session IDs with metadata.
-    ///
-    /// Includes on-disk session directories, legacy files and not-yet-flushed pending sessions
-    /// (created / user-only before first assistant flush).
     pub async fn list(&self) -> Result<Vec<String>, XySessionStoreError> {
         let dir = match tokio::fs::read_dir(&self.sessions_dir).await {
             Ok(d) => d,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                // Still surface pending-only sessions below.
                 let pending = lock_rwlock_read(&self.pending_store);
                 let mut pending_ids: Vec<_> = pending.keys().cloned().collect();
                 pending_ids.sort();
@@ -312,9 +279,6 @@ impl SessionManager {
                 if self.session_dir_path(&id).join("manifest.json").exists() {
                     continue;
                 }
-                // Zero-compat (c2810): legacy-only files are not resumable v7
-                // sessions, so they must not appear in the list (s21, r1099);
-                // the file is preserved and explicit delete still works.
                 log::debug!(
                     target: "xylitol::session",
                     "list skips legacy-only session {id} (no v7 manifest, zero-compat)"
@@ -338,10 +302,7 @@ impl SessionManager {
         Ok(ids)
     }
 
-    // ── Tree navigation ─────────────────────────────────────────
-
-    /// Get an entry by id (BDD label bookkeeping path; no product caller).
-    #[allow(dead_code)] // BDD @executable label steps, not product-called
+    #[allow(dead_code)]
     pub async fn get_entry(
         &self,
         session_id: &str,
@@ -351,14 +312,10 @@ impl SessionManager {
         Ok(entries.into_iter().find(|e| e.entry_id() == Some(entry_id)))
     }
 
-    /// Get the current leaf id.
     pub fn get_leaf_id(&self, session_id: &str) -> Option<String> {
         self.get_leaf(session_id)
     }
 
-    /// Load entries for [`xylitol_plugin_sdk::XySessionStore::list_sessions`] without mutating leaf tracking.
-    ///
-    /// Disk sessions: peek header version first so legacy files skip without a full JSONL parse.
     pub(super) async fn load_entries_for_list(
         &self,
         session_id: &str,
@@ -377,8 +334,6 @@ impl SessionManager {
                     let manifest = self.read_manifest(session_id).await?;
                     self.load_entries(session_id, &manifest).await
                 } else if self.legacy_session_path(session_id).exists() {
-                    // Zero-compat: list callers (XySessionStore::list_sessions)
-                    // treat this Err as "skip this session with diagnostics".
                     Err(super::segments::legacy_unsupported_error(session_id))
                 } else {
                     let entries = lock_rwlock_read(&self.pending_store)
@@ -393,8 +348,6 @@ impl SessionManager {
     }
 }
 
-/// Latest non-empty `session_info.name` (same rule as the removed
-/// `SessionManager::get_session_name`; drives list/resume display).
 pub(super) fn session_display_name_from_entries(entries: &[SessionEntry]) -> Option<String> {
     for entry in entries.iter().rev() {
         if let SessionEntry::SessionInfo(si) = entry {
@@ -404,17 +357,10 @@ pub(super) fn session_display_name_from_entries(entries: &[SessionEntry]) -> Opt
     None
 }
 
-// ── CWD Validation ──────────────────────────────────────────────────
-
-/// Validate that the session's working directory exists.
-///
-/// Checks the CWD stored in the session header. If the directory does not
-/// exist, tries `fallback_cwd`. Returns an error if neither is accessible.
 pub fn assert_session_cwd_exists(
     entries: &[SessionEntry],
     fallback_cwd: &str,
 ) -> Result<(), XySessionStoreError> {
-    // Find the session header
     let header = entries
         .iter()
         .find_map(|e| {
@@ -437,7 +383,6 @@ pub fn assert_session_cwd_exists(
         return Ok(());
     }
 
-    // Try fallback
     let fallback_path = std::path::Path::new(fallback_cwd);
     if fallback_path.is_dir() {
         return Ok(());

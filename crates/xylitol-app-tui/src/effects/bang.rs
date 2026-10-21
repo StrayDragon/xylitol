@@ -1,5 +1,3 @@
-//! Interactive bang loop shared by production and harness (c715 / ath9).
-
 use std::time::Duration;
 
 use futures::Stream;
@@ -11,11 +9,6 @@ use crate::driver::{EventStream, XyDriver, XyDriverError};
 use super::super::commands::PendingBash;
 use super::super::host::{HostEvent, HostSession};
 
-/// Interactive bang loop shared by production `run_host_loop` and harness (c715 / ath9).
-///
-/// `input` yields terminal-side [`HostEvent`]s (Input / Paste / Resize). Tick is owned
-/// here (16ms). Esc → `XyDriver::abort` + [`HostSession::note_bash_cancelled`] (not agent
-/// Aborted). Empty `input` is valid for fire-and-forget bang that completes without Esc.
 pub async fn run_interactive_bang<T, S>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -31,20 +24,12 @@ where
     log::info!(target: "xylitol::tui", "Command::Bash (interactive bang) command_len={} exclude={}", bash.command.len(), bash.exclude_from_context);
     session.begin_bash_exec(&bash.command, bash.exclude_from_context);
     let _ = session.render_now();
-    // c2760: inject the output-event sink and dispatch `Command::Bash`. The
-    // sink channel is independent of the dispatch borrow, so abort stays a
-    // simple post-loop action; the client-side cancel clone is inert (the
-    // host's slot-registered token does the real kill).
     let (chunk_tx, mut chunk_rx) = tokio::sync::mpsc::channel::<xylitol_plugin_sdk::BashChunk>(64);
     driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink {
         tx: chunk_tx,
         cancel: tokio_util::sync::CancellationToken::new(),
     }));
     let (bash_result, aborted_during_bash) = {
-        // c2790: owned completion (`XyDriver::bash_run`) — the select loop holds
-        // NO driver borrow, so the tick arm can drain Inline effects (atm18/ath45)
-        // while the bash runs; Esc abort still breaks first and calls
-        // `driver.abort()` after the receiver is dropped (out-of-band kill).
         let mut bash_run = driver
             .bash_run(&bash.command, bash.exclude_from_context)
             .await?;
@@ -75,8 +60,6 @@ where
                         Some(Ok(ev)) => {
                             session.step(ev)?;
                             if session.take_abort() {
-                                // Abort after the select releases the dispatch
-                                // borrow: cancel the run loop / kill the bash tree.
                                 log::info!(target: "xylitol::tui", "Command::Abort during bang");
                                 abort_requested = true;
                                 break None;
@@ -84,10 +67,6 @@ where
                         }
                         Some(Err(e)) => {
                             e.log_failure("tui.bang.input");
-                            // Tear the bang down like every other exit: kill the
-                            // bash tree out-of-band, unregister the sink, and
-                            // balance `begin_bash_exec` — a bare return would
-                            // leave the process running and the state latched.
                             driver.abort();
                             driver.set_bash_run_sink(None);
                             session.end_bash_exec();
@@ -147,9 +126,6 @@ where
         }
         Err(e) => {
             e.log_failure("tui.execute_bash");
-            // Esc cancel is reported solely by the in-block `(cancelled)`
-            // (app-tui-bridge: bang Esc MUST NOT impersonate agent Aborted /
-            // failure); the notice is for genuine driver failures only.
             if !aborted_during_bash {
                 session.push_scroll_notice(format!("bash failed: {e}"));
             }

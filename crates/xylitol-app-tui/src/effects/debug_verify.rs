@@ -1,9 +1,3 @@
-//! Designing scene `verify-smoke` — UI-only product smoke (no real LLM / `/exit`).
-//!
-//! Covers checklist-style B4/B7 style gates: open models overlay, Esc closes
-//! without quit, fixed zone still Ready. Harness owns full B1–B5; this is a hand /
-//! slash entry that reuses the same UI mounts.
-
 use xylitol_tui::Terminal;
 
 use crate::dispatch::{DispatchOutcome, dispatch};
@@ -12,7 +6,6 @@ use xylitol_protocol::Command;
 
 use super::super::host::{HostEvent, HostSession, LayoutMode};
 
-/// Run UI-only verify smoke and report via scroll notice.
 pub(super) async fn run_verify_smoke<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn crate::driver::XyDriver,
@@ -39,7 +32,6 @@ pub(super) async fn run_verify_smoke<T: Terminal>(
         pass(&mut report, "ready");
     }
 
-    // B4: bare /model opens picker
     match dispatch(driver, Command::GetAvailableModels {}).await {
         Ok(DispatchOutcome::Models(models)) => {
             let current = driver.current_model().map(|m| m.id);
@@ -71,7 +63,6 @@ pub(super) async fn run_verify_smoke<T: Terminal>(
         ),
     }
 
-    // B7: Esc closes overlay without quit
     let _ = session.step(HostEvent::Input(esc_event()));
     let still_open = session
         .ui_root()
@@ -95,7 +86,6 @@ pub(super) async fn run_verify_smoke<T: Terminal>(
         pass(&mut report, "B7 Esc no-quit");
     }
 
-    // B5 is intentionally NOT run here — real `/exit` tears down the TTY.
     report.push("SKIP B5 /exit (use harness h8 or hand `/exit`)".into());
     report.push("SKIP B1–B3 (need Fake/stream; see harness H1–H9)".into());
 

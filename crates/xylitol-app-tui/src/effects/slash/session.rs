@@ -1,5 +1,3 @@
-//! Session lifecycle slash arms (`/session-*`, tree, fork, export, import).
-
 use xylitol_tui::Terminal;
 
 use crate::dispatch::{DispatchOutcome, dispatch};
@@ -83,8 +81,6 @@ pub(super) async fn open_resume<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
 ) {
-    // c1780: busy Allow browse; switch/rename/delete gated in pending_ui.
-    // pi-style load UX: slot shows loaded/total; OSC 9;4 while scanning.
     session.mount_session_resume_loading(0, 0);
     session.set_task_progress(true);
     let _ = session.render_now();

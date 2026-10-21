@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-/// Expand `[paste #N …]` markers using the editor's paste table (pi `expandPasteMarkers`).
 pub(super) fn expand_paste_markers(text: &str, pastes: &HashMap<usize, String>) -> String {
     let mut result = text.to_string();
     for (&id, content) in pastes {
@@ -20,7 +19,6 @@ pub(super) fn expand_paste_markers(text: &str, pastes: &HashMap<usize, String>) 
     result
 }
 
-/// End index (exclusive) of a paste marker that starts with `[paste #N` ending at `after_prefix`.
 fn paste_marker_end(text: &str, after_prefix: usize) -> Option<usize> {
     let rest = text.get(after_prefix..)?;
     if rest.starts_with(']') {
@@ -30,8 +28,6 @@ fn paste_marker_end(text: &str, after_prefix: usize) -> Option<usize> {
     let close = stripped.find(']')?;
     Some(after_prefix + 1 + close + 1)
 }
-
-// ── types ───────────────────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub(super) struct EditorState {
@@ -50,21 +46,18 @@ impl Default for EditorState {
     }
 }
 
-/// A visual line — one row on screen after word-wrap.
 pub struct VisualLine {
     pub logical_line: usize,
     pub start_col: usize,
     pub len: usize,
 }
 
-/// Where to place cursor after set_text_internal.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum CursorPlacement {
     Start,
     End,
 }
 
-/// Autocomplete popup mode.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum AutocompleteMode {
     Regular,
@@ -75,9 +68,7 @@ pub(super) struct LayoutLine {
     pub(super) text: String,
     pub(super) has_cursor: bool,
     pub(super) cursor_pos: Option<usize>,
-    /// Logical buffer line this visual row belongs to.
     pub(super) logical_line: usize,
-    /// Byte offset into the logical line where `text` begins.
     pub(super) start_index: usize,
 }
 

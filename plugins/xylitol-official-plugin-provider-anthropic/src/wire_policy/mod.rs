@@ -1,14 +1,7 @@
-//! Wire-side policy for API req/resp (not agent capabilities).
-//!
-//! Defaults live in [`defaults`] — change constants there to debug unexposed knobs.
-
 pub mod defaults;
 
 pub use xylitol_plugin_sdk::Compat;
 
-/// API request/response maintenance flags only (c1880).
-///
-/// MUST NOT hold agent/ContextPolicy knobs (`tool_search`, status bar, …).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExtraPolicy {
     pub prompt_cache_usage: bool,
@@ -26,7 +19,6 @@ impl Default for ExtraPolicy {
     }
 }
 
-/// `api` × this policy drives wire field subsets / usage expectations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WirePolicy {
     pub compat: Compat,
@@ -43,16 +35,12 @@ impl Default for WirePolicy {
 }
 
 impl WirePolicy {
-    /// Named profile → WirePolicy (defaults board + dialect quirks).
     pub fn for_compat(compat: Compat) -> Self {
         match compat {
             Compat::Generic => Self::default(),
             Compat::Deepseek => Self {
                 compat: Compat::Deepseek,
                 extra_policy: ExtraPolicy {
-                    // DeepSeek reports cache reads (Completions hit_tokens / details;
-                    // Responses input_tokens_details). Still omit encrypted include
-                    // and previous_response_id.
                     prompt_cache_usage: true,
                     prompt_cache_key: false,
                     previous_response_id: false,
@@ -61,22 +49,18 @@ impl WirePolicy {
         }
     }
 
-    /// Whether usage mapping may expect first-language cache read fields.
     pub fn expects_prompt_cache_usage(self) -> bool {
         self.extra_policy.prompt_cache_usage
     }
 
-    /// Whether request assembly may attach a prompt cache key.
     pub fn allows_prompt_cache_key(self) -> bool {
         self.extra_policy.prompt_cache_key
     }
 
-    /// Whether chained `previous_response_id` may be enabled.
     pub fn allows_previous_response_id(self) -> bool {
         self.extra_policy.previous_response_id
     }
 
-    /// Whether Responses assemble may request encrypted reasoning include.
     pub fn allows_reasoning_encrypted_include(self) -> bool {
         self.compat.allows_reasoning_encrypted_include()
     }
@@ -135,7 +119,6 @@ mod tests {
 
     #[test]
     fn extra_policy_has_no_agent_capability_fields() {
-        // Compile-time / structural guard: ExtraPolicy only exposes the three wire bits.
         let ep = ExtraPolicy::default();
         let _ = (
             ep.prompt_cache_usage,

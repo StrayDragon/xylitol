@@ -1,10 +1,3 @@
-//! SettingsManager — three-tier user preference merge and persistence.
-//!
-//! Three-tier deep merge (global < project < overrides), file locking with
-//! retry. Settings changes apply on next bootstrap; there is no live hot-reload wiring.
-//! Project YAML (`config.yaml`) is the config plugin. This module is user prefs
-//! (`settings.json`).
-
 pub mod manager;
 pub mod storage;
 pub mod types;

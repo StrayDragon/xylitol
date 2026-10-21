@@ -1,5 +1,3 @@
-//! LLM-visible message / chunk vocabulary (no HTTP).
-
 mod chunk;
 mod message;
 

@@ -1,14 +1,3 @@
-//! Lab: ApplicationOwned render cost on a restored / synthetic long session.
-//!
-//! Not a qa gate (`#[ignore]`). Run:
-//! ```bash
-//! eval "$(just cargo-wt-env)"
-//! cargo test -p xylitol --lib lab_ao_session_perf_report -- --ignored --nocapture
-//! cargo test -p xylitol --lib lab_ao_stream_delta_perf_report -- --ignored --nocapture
-//! cargo test -p xylitol --lib lab_ao_memory_profile -- --ignored --nocapture
-//! # optional: XYLITOL_LAB_SESSION=<uuid> (memory profile: profile one real session)
-//! ```
-
 use std::time::Instant;
 
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -28,7 +17,6 @@ struct LabTerminal {
     stopped: bool,
     mouse_capture_active: bool,
     alternate_screen_active: bool,
-    /// 诊断：write 字节留存（lab_wheel_frame_bytes）。
     pub writes: Vec<String>,
 }
 
@@ -127,7 +115,6 @@ fn percentile(sorted: &[u64], p: f64) -> u64 {
     sorted[idx.min(sorted.len() - 1)]
 }
 
-/// Resident set size in kB from `/proc/self/status` (Linux lab only).
 fn rss_kb() -> u64 {
     let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
     for line in status.lines() {
@@ -146,8 +133,6 @@ fn rss_kb() -> u64 {
 #[tokio::test]
 #[ignore = "lab: AO perf report against disk session or synthetic seed"]
 async fn lab_ao_session_perf_report() {
-    // Disk session is opt-in via XYLITOL_LAB_SESSION; default is the synthetic
-    // seed so the probe runs on any machine (no hardcoded session UUIDs).
     if let Ok(session_id) = std::env::var("XYLITOL_LAB_SESSION") {
         eprintln!(
             "XYLITOL_LAB_SESSION={session_id} ignored in xylitol-app-tui lab (no disk store); using synthetic seed"
@@ -168,7 +153,6 @@ async fn lab_ao_session_perf_report() {
     for _ in 0..30 {
         let t0 = Instant::now();
         session.step(HostEvent::Tick).expect("tick");
-        // Force paint path like a dirty spinner would.
         session.tui.request_render(false);
         session.tui.render_now().expect("idle paint");
         idle_us.push(t0.elapsed().as_micros() as u64);
@@ -279,14 +263,13 @@ async fn lab_ao_session_perf_report() {
 fn cpu_jiffies_self() -> Option<u64> {
     let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
     let parts: Vec<&str> = stat.split_whitespace().collect();
-    // fields 14/15 are utime/stime (1-based → indices 13/14)
     let utime: u64 = parts.get(13)?.parse().ok()?;
     let stime: u64 = parts.get(14)?.parse().ok()?;
     Some(utime.saturating_add(stime))
 }
 
 fn cpu_pct(j0: u64, j1: u64, wall_secs: f64) -> f64 {
-    let hz = 100.0; // Linux USER_HZ default; good enough for lab ratios
+    let hz = 100.0;
     if wall_secs <= 0.0 {
         return 0.0;
     }
@@ -298,22 +281,17 @@ async fn seed_long_session(session: &mut HostSession<LabTerminal>) {
     session.apply_cli_restored_session(&sid, entries);
 }
 
-/// Compare per-delta forced paints vs tick-paced stream paints (production path).
-///
-/// Automated answer to "did stream coalesce / defer help?" — paint counts,
-/// Σ do_render_us, and /proc self CPU% for each strategy.
 #[tokio::test]
 #[ignore = "lab: stream delta paint/CPU report"]
 async fn lab_ao_stream_delta_perf_report() {
     const DELTAS: usize = 160;
-    /// Simulate busy ticker: one paint every N deferred deltas (~60Hz vs token rate).
     const TICK_EVERY: usize = 8;
 
     let mut session = HostSession::new_product_ui(LabTerminal::new(120, 40));
     seed_long_session(&mut session).await;
     session.tui.render_now().expect("warm");
 
-    session.on_run_started("lab"); // F6：否则 idle fence 吞 TextDelta（research/latency-findings.md）
+    session.on_run_started("lab");
     session
         .step(HostEvent::Xy(Box::new(XyEvent::AgentStart {
             session_id: "lab".into(),
@@ -327,7 +305,6 @@ async fn lab_ao_stream_delta_perf_report() {
         })))
         .expect("msg start");
 
-    // --- A: legacy worst case (every token forces paint) ---
     let j0 = cpu_jiffies_self();
     let t0 = Instant::now();
     let mut uncoal_us = 0u64;
@@ -355,7 +332,6 @@ async fn lab_ao_stream_delta_perf_report() {
     session.sync_ui_root_from_model();
     session.tui.render_now().expect("reset paint");
 
-    // --- B: production tick-paced (step defers TextDelta; paint ≤ once / N tokens) ---
     let j1 = cpu_jiffies_self();
     let t1 = Instant::now();
     let mut paced_us = 0u64;
@@ -425,8 +401,6 @@ async fn lab_ao_stream_delta_perf_report() {
     );
 }
 
-// ---- c2490: memory profile (transcript scale → resident memory) ----
-
 fn msg_entry(role: &str, text: &str) -> SessionEntry {
     SessionEntry::Message(MessageEntry {
         base: EntryBase {
@@ -439,8 +413,6 @@ fn msg_entry(role: &str, text: &str) -> SessionEntry {
     })
 }
 
-/// One turn = a short user line + a multi-line assistant block (CJK content,
-/// wraps like real output at 120 cols).
 async fn append_turn(store: &dyn XySessionStore, sid: &str, i: usize, block_lines: usize) {
     let user = format!("q{i}: brief ask");
     let block = (0..block_lines)
@@ -457,16 +429,11 @@ async fn append_turn(store: &dyn XySessionStore, sid: &str, i: usize, block_line
         .expect("append assistant entry");
 }
 
-/// Resident-memory profile: synthetic transcript ladder 1k → 1w → 10w display
-/// lines in one process (models a session growing in place); RSS sampled from
-/// `/proc/self/status` after a settled warm render per scale.
-/// `XYLITOL_LAB_SESSION=<uuid>` profiles one real disk session instead.
 #[tokio::test]
 #[ignore = "lab: memory profile across transcript scales"]
 async fn lab_ao_memory_profile() {
     const TERM_COLS: u16 = 120;
     const TERM_ROWS: u16 = 40;
-    /// Display lines per assistant block (pre-wrap; actual lines measured live).
     const BLOCK_LINES: usize = 8;
     const SCALES: &[(&str, usize)] = &[("1k", 1_000), ("1w", 10_000), ("10w", 100_000)];
 
@@ -531,8 +498,6 @@ async fn lab_ao_memory_profile() {
     }
 }
 
-/// E1 基线/验收 lab（c2898）：busy 动画 tick × wheel 交错，量交互帧 p95 与重排次数。
-/// 拍板见 changes/c2898…/design.md D1；验收 D3：dev <5ms release <1ms（busy wheel p95）。
 #[ignore = "lab: busy mixed tick+wheel report"]
 #[tokio::test]
 async fn lab_ao_busy_mixed_perf() {
@@ -558,9 +523,7 @@ async fn lab_ao_busy_mixed_perf() {
     let mut tick_us = Vec::with_capacity(ROUNDS);
     let mut wheel_reprojected = 0u32;
     for i in 0..ROUNDS {
-        // 真 80ms 节拍：否则 loader gate（elapsed>=interval）永不触发、测不到动画全重排
         tokio::time::sleep(std::time::Duration::from_millis(80)).await;
-        // 交替：1 tick（busy 动画帧）+ 1 wheel
         let t0 = Instant::now();
         session.step(HostEvent::Tick).expect("tick");
         let tick = t0.elapsed();
@@ -579,7 +542,6 @@ async fn lab_ao_busy_mixed_perf() {
         }
         tick_us.push(tick.as_micros() as u64);
         if i % 40 == 39 {
-            // 周期性文本 delta：模拟流式内容增长与 reflow
             session
                 .step(HostEvent::Xy(Box::new(XyEvent::TextDelta(format!(
                     "tok{i} Lorem ipsum dolor sit amet "
@@ -608,7 +570,6 @@ async fn lab_ao_busy_mixed_perf() {
     );
 }
 
-/// 诊断：滚 1 行的输出字节量/行数（vs zellij chunk 粒度对照）。
 #[ignore = "lab: wheel frame output size"]
 #[tokio::test]
 async fn lab_wheel_frame_bytes() {

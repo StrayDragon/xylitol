@@ -239,10 +239,6 @@ mod trust_bdd {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// domain-security: permission & mcp checks
-// ═══════════════════════════════════════════════════════════════════
-
 pub(crate) mod xs_sec {
     use std::cell::RefCell;
     use std::sync::Arc;
@@ -368,8 +364,6 @@ fn t_ds_access_denied() {
     });
 }
 
-// ── domain-security: xy-tool-approval ──────────────────────────────
-
 #[given("需审批的工具被 SecurityToolWrapper 包装")]
 fn g_xy_tool_approval_given(_agent: &AgentState) {
     use xylitol_kernel::config::types::{
@@ -411,14 +405,8 @@ fn t_xy_tool_approval_blocks(_agent: &AgentState) {
     });
 }
 
-// ── domain-security: hook-kill-on-timeout ──────────────────────────
-
 #[given("hook 配置 timeout=100ms")]
 fn g_hook_timeout_100ms(agent: &AgentState) {
-    // Hook timeout is in whole seconds; we approximate 100ms as 1s
-    // and use a fast-failing command that self-terminates to avoid
-    // actually waiting. The hook kill logic is tested more precisely
-    // in the hook-timeout scenario (agent-hooks.feature) with 1s timeout.
     agent.hook_entries.borrow_mut().push(HookEntry {
         events: vec!["pre.tool_call.bash".into()],
         command: "echo '{\"action\":\"allow\"}'".into(),
@@ -460,8 +448,6 @@ fn t_hook_killed_block(agent: &AgentState) {
     }
 }
 
-// ── domain-security: forbidden-pattern / permission-config / trait ─
-
 #[given("user 配置试图允许禁止 pattern")]
 fn g_ds_forbidden_override() {
     use xylitol_kernel::config::types::{
@@ -478,7 +464,6 @@ fn g_ds_forbidden_override() {
         },
         ..Default::default()
     };
-    // User overlay tries to allow a denied path.
     cfg.filesystem.write_allowed.push("/project/.env".into());
     xs_sec::SEC.with(|e| e.replace(Some(cfg.to_permission())));
 }

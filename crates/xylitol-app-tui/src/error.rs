@@ -1,21 +1,13 @@
-//! Product-TUI surface failures (crate-private; not `Xy*`).
-
 use crate::driver::XyDriverError;
 
-/// Keybindings / theme / terminal / external-editor failures.
-///
-/// `InvalidInput` vs `Io` is the stable split; payloads keep the original
-/// body so Driver Display is unchanged. Real io sources are preserved.
 #[derive(Debug, thiserror::Error)]
 pub enum TuiSurfaceError {
-    /// Local io failure with a static context label.
     #[error("{context}: {source}")]
     Io {
         context: &'static str,
         #[source]
         source: std::io::Error,
     },
-    /// External-editor process spawn failure.
     #[error("spawn {program}: {source}")]
     Spawn {
         program: String,

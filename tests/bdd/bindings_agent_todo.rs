@@ -1,5 +1,3 @@
-//! agent-todo BDD — 待办栏投影（r1129 / r1130）。
-
 use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use rstest_bdd_macros::scenario;
 

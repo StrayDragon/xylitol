@@ -1,21 +1,13 @@
-//! Shared process helpers for external-process tools (bash, grep, find).
-//!
-//! Delegates to [`crate::process`] for cross-platform implementation.
-
 use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::{ToolTimeout, ToolTimeoutError};
 
-/// Kill a process tree by process group ID.
-///
-/// Uses `kill -9 -<pid>` on Unix, `taskkill /F /T` on Windows.
 pub(crate) async fn kill_tree(pid: u32) {
     crate::process::group::kill_process_tree(pid);
 }
 
-/// Parse the shared `timeout` tool argument: validate → default → clamp.
 pub(crate) fn parse_tool_timeout(
     raw: Option<i64>,
     default_secs: u64,
@@ -26,8 +18,6 @@ pub(crate) fn parse_tool_timeout(
     Ok(timeout.or_default(default_secs).clamped())
 }
 
-/// Spawn an external search tool (`rg` / `fd`) with piped stdio and wait under
-/// cancel + deadline supervision; the process tree is killed when either fires.
 pub(crate) async fn run_search_tool(
     program: &str,
     args: &[String],
@@ -70,7 +60,6 @@ pub(crate) async fn run_search_tool(
     child_result.map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("wait {program}: {e}")))
 }
 
-/// Map a non-success external-tool exit to `ExecutionFailed`, preferring stderr.
 pub(crate) fn external_tool_failure(output: &std::process::Output, program: &str) -> XyToolError {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let msg = if !stderr.is_empty() {

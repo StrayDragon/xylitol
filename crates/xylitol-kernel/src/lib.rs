@@ -1,5 +1,3 @@
-//! Host kernel: rutis boot, core plugins, official Builtins, admit.
-
 pub mod assembly;
 pub mod bootstrap;
 pub mod composition;

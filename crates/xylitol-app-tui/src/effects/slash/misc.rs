@@ -1,5 +1,3 @@
-//! Misc slash arms (exit, reload, trust, theme, mcp, copy-last, designing).
-
 use xylitol_tui::Terminal;
 
 use crate::bridge::UiEntry;
@@ -13,8 +11,6 @@ pub(super) async fn exit<T: Terminal>(session: &mut HostSession<T>) {
 }
 
 pub(super) async fn reload<T: Terminal>(session: &mut HostSession<T>) {
-    // Agent/bang busy: refuse. Reloading soft-gate is handled in try_reload_input
-    // (Enter never queues a second Reload while reload_active).
     if session.run_active() || session.bash_active() {
         session.push_scroll_notice("agent busy — /reload refused");
     } else if session.reload_active() {
@@ -48,7 +44,6 @@ pub(super) async fn history_copy_last<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
 ) {
-    // c1110: busy allowed (readonly). Native copy async; OSC52 on host thread.
     match last_assistant_text(&session.ui_model().entries) {
         None => session.push_scroll_notice("no assistant message to copy"),
         Some(text) => {
@@ -73,7 +68,6 @@ pub(super) async fn history_copy_last<T: Terminal>(
 }
 
 pub(super) async fn theme<T: Terminal>(session: &mut HostSession<T>, arg: Option<String>) {
-    // c1780: busy Allow covers theme open/apply.
     match arg.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         None => session.mount_themes_picker(),
         Some(name) => {
@@ -96,7 +90,6 @@ pub(super) async fn theme<T: Terminal>(session: &mut HostSession<T>, arg: Option
 }
 
 pub(super) async fn open_mcp<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
-    // Prefer sync mount from UiRoot cache; await snapshot only when empty/stale (c1215).
     if session.mcp_cache_usable_for_open() {
         session.mount_mcp_from_cache();
     } else {
@@ -124,7 +117,6 @@ fn last_assistant_text(entries: &[UiEntry]) -> Option<&str> {
     })
 }
 
-/// Resolve `/theme` argument to a built-in name (c1115).
 fn resolve_theme_arg<T: Terminal>(
     session: &HostSession<T>,
     arg: &str,

@@ -1,5 +1,3 @@
-//! package-tui-tree-selector BDD 绑定（pts1–pts14）。
-
 use crate::bdd::steps_package_tui_tree_selector::{TreeSelBdd, tree_sel_bdd};
 use rstest_bdd_macros::scenario;
 
@@ -86,8 +84,6 @@ fn test_pts13_kind_prefix(tree_sel_bdd: TreeSelBdd) {}
     name = "种类匹配于搜索无头"
 )]
 fn test_pts14_kind_search(tree_sel_bdd: TreeSelBdd) {}
-
-// ── c2835 后继：app-tui-session-tree 裸规则回填（包侧可观察）────────
 
 #[scenario(
     path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",

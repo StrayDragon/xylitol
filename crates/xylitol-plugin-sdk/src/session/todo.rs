@@ -1,25 +1,13 @@
-//! Agent Todo SSOT vocabulary (`custom_type = "agent_todo"`).
-//!
-//! Persist via [`crate::session::SessionEntry::Custom`]; never
-//! [`crate::session::CustomMessageEntry`] / session_env (those enter
-//! Request-time AgentStatusBar inject is a projection, not SSOT.
-
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use strum::IntoStaticStr;
 
 use super::entries::{CustomEntry, EntryBase, SessionEntry};
 
-/// Wire discriminator for Todo Custom snapshots.
 pub const CUSTOM_TYPE_AGENT_TODO: &str = "agent_todo";
 
-/// Max Unicode scalars in a trimmed item `content` (write reject, no clip).
 pub const TODO_CONTENT_MAX_CHARS: usize = 80;
 
-/// Closed status set for Todo items.
-///
-/// `IntoStaticStr` keeps one snake_case SSOT shared by [`Self::as_str`] and the
-/// serde wire form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -35,7 +23,6 @@ impl TodoStatus {
     }
 }
 
-/// One Todo row.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TodoItem {
     pub id: String,
@@ -43,7 +30,6 @@ pub struct TodoItem {
     pub status: TodoStatus,
 }
 
-/// Ordered Todo list (empty is legal).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TodoList {
     pub items: Vec<TodoItem>,
@@ -58,7 +44,6 @@ impl TodoList {
         self.items.is_empty()
     }
 
-    /// Completed count over total (for TUI summary).
     pub fn done_total(&self) -> (usize, usize) {
         let done = self
             .items
@@ -77,8 +62,6 @@ impl TodoList {
         json!({ "items": self.items })
     }
 
-    /// Load a snapshot. Rows with status `cancelled` are dropped so old JSONL
-    /// still yields a list; other invalid rows fail the whole payload.
     pub fn from_data_value(data: &Value) -> Result<Self, TodoValidationError> {
         let Some(items) = data.get("items").and_then(Value::as_array) else {
             return Err(TodoValidationError(
@@ -111,7 +94,6 @@ impl TodoList {
     }
 }
 
-/// Validation error for Todo mutate paths.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TodoValidationError(pub String);
 
@@ -123,8 +105,6 @@ impl std::fmt::Display for TodoValidationError {
 
 impl std::error::Error for TodoValidationError {}
 
-/// Validate domain rules: non-empty trimmed content, closed status set (via
-/// deserialize), content length cap.
 pub fn validate_todo_list(list: &TodoList) -> Result<(), TodoValidationError> {
     for (idx, item) in list.items.iter().enumerate() {
         if item.id.trim().is_empty() {
@@ -148,7 +128,6 @@ pub fn validate_todo_list(list: &TodoList) -> Result<(), TodoValidationError> {
     Ok(())
 }
 
-/// Latest-wins fold over a **full leaf** branch (not the LLM context window).
 pub fn latest_agent_todo(entries: &[SessionEntry]) -> Option<TodoList> {
     entries.iter().rev().find_map(|e| match e {
         SessionEntry::Custom(c) if c.custom_type == CUSTOM_TYPE_AGENT_TODO => {
@@ -172,7 +151,6 @@ fn mint_todo_id(existing: &[TodoItem]) -> String {
     }
 }
 
-/// Normalize rewrite inputs: generate missing ids; trim content.
 pub fn normalize_rewrite_items(items: Vec<TodoItemDraft>) -> Result<TodoList, TodoValidationError> {
     let mut out = Vec::with_capacity(items.len());
     for draft in items {
@@ -191,7 +169,6 @@ pub fn normalize_rewrite_items(items: Vec<TodoItemDraft>) -> Result<TodoList, To
     Ok(list)
 }
 
-/// Rewrite draft row (`id` optional).
 #[derive(Debug, Clone, Deserialize)]
 pub struct TodoItemDraft {
     pub id: Option<String>,
@@ -204,7 +181,6 @@ fn default_pending() -> TodoStatus {
     TodoStatus::Pending
 }
 
-/// One `todo_update` patch row.
 #[derive(Debug, Clone, Deserialize)]
 pub struct TodoItemPatch {
     pub id: String,
@@ -213,7 +189,6 @@ pub struct TodoItemPatch {
     pub after_id: Option<String>,
 }
 
-/// Apply `todo_update` patches in order (validate after).
 pub fn apply_todo_patches(
     list: &TodoList,
     patches: &[TodoItemPatch],

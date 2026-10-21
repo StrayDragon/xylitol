@@ -4,10 +4,6 @@ use crate::utils::visible_width;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use unicode_segmentation::UnicodeSegmentation;
 
-/// Independent multi-line selection inside the Editor buffer (ptim13).
-///
-/// Coordinates are **logical buffer** space (`row` = line index, `col` = byte
-/// offset), not screen cells and not transcript [`crate::SelectionController`].
 #[derive(Debug, Clone)]
 pub(super) struct EditorSelection {
     pub(super) anchor: Option<CellPoint>,
@@ -16,7 +12,6 @@ pub(super) struct EditorSelection {
     pub(super) granularity: SelectionGranularity,
     pub(super) click_count: u8,
     pub(super) last_click_at: Option<std::time::Instant>,
-    /// Editor-local `(col, row)` of the last Down (for double/triple click).
     pub(super) last_click_cell: Option<(usize, usize)>,
 }
 
@@ -40,7 +35,6 @@ impl EditorSelection {
         self.focus = None;
         self.dragging = false;
         self.granularity = SelectionGranularity::Character;
-        // Keep click_count / last_click_* so a second Down can still double-click.
     }
 
     pub(super) fn has_selection(&self) -> bool {
@@ -80,7 +74,6 @@ fn ordered_cell(a: CellPoint, b: CellPoint) -> (CellPoint, CellPoint) {
     }
 }
 
-/// Expand selection endpoints for editor buffer coords (byte offsets).
 fn expand_editor_range(
     a: CellPoint,
     b: CellPoint,
@@ -131,7 +124,6 @@ fn word_byte_bounds_containing(line: &str, byte_at: usize) -> (usize, usize) {
     } else if indices[i].0 > byte_at && i > 0 {
         i -= 1;
     } else if indices[i].0 > byte_at {
-        // byte_at before first char
         i = 0;
     }
     let word_char = |c: char| c.is_alphanumeric() || c == '_';
@@ -157,15 +149,6 @@ fn word_byte_bounds_containing(line: &str, byte_at: usize) -> (usize, usize) {
 }
 
 impl super::Editor {
-    // ── ApplicationOwned editor selection (ptim13) ─────────────────────────
-
-    /// Handle a mouse event in **editor-local** coordinates: `(0,0)` is the
-    /// top-left of the editor's last render (top border row). Hosts that receive
-    /// absolute screen coords MUST remap into this space before dispatch.
-    ///
-    /// Returns whether presentation changed (caller should rerender).
-    /// Double-click selects the word under the pointer; triple-click selects the
-    /// logical line (same habit as transcript ApplicationOwned selection).
     pub fn handle_mouse_local(&mut self, event: &MouseEvent, sink: &mut dyn ClipboardSink) -> bool {
         let (col, row) = (event.column as usize, event.row as usize);
         match event.kind {
@@ -211,8 +194,6 @@ impl super::Editor {
                 {
                     self.apply_editor_focus_cell(cell);
                 }
-                // Character click (no span): clear ghost highlight; do not copy.
-                // Word/line multi-click keeps the expanded range and may copy.
                 if !self.selection.has_selection() {
                     self.selection.clear();
                     return true;
@@ -248,8 +229,6 @@ impl super::Editor {
         }
     }
 
-    /// Map editor-local `(col, row)` onto a logical buffer cell.
-    /// Content rows are `1..=last_content_rows` (row 0 = top border).
     pub(super) fn local_to_buffer(&self, col: usize, row: usize) -> Option<CellPoint> {
         if self.last_content_rows == 0 || row == 0 || row > self.last_content_rows {
             return None;
@@ -280,8 +259,6 @@ impl super::Editor {
         if layout.is_empty() {
             return None;
         }
-        // Above top border → start of first visible content row.
-        // Below last content row → end of last visible content row.
         let content_row = if row == 0 {
             0
         } else if row > self.last_content_rows {
@@ -307,7 +284,6 @@ impl super::Editor {
         }
         let line_start = CellPoint::new(ll.logical_line, ll.start_index);
         let line_end = CellPoint::new(ll.logical_line, ll.start_index + ll.text.len());
-        // No overlap with this visual chunk.
         if (ll.logical_line < start.row || ll.logical_line > end.row)
             || (ll.logical_line == start.row && line_end.col <= start.col)
             || (ll.logical_line == end.row && line_start.col >= end.col)

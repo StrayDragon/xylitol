@@ -11,7 +11,6 @@ use xylitol_tui::components::{
 };
 use xylitol_tui::{Component, OverlayAnchor, OverlayMargin, OverlayOptions, TUI};
 
-/// Virtual terminal for testing.
 struct TestTerminal {
     cols: u16,
     rows: u16,
@@ -44,21 +43,17 @@ impl xylitol_tui::Terminal for TestTerminal {
     fn flush(&mut self) {}
 }
 
-/// Test TUI with a single component renders without panic.
 #[test]
 fn test_tui_renders_simple_component() {
     let term = TestTerminal::new(80, 24);
     let mut tui = TUI::new(term);
     tui.add_child(Box::new(Text::new("hello".into(), 0, 0)));
-    // Trigger render manually (we can't call start() in test since it blocks)
-    // Instead, test components directly
     let mut text = Text::new("hello".into(), 0, 0);
     let lines = text.render(80);
     assert!(!lines.is_empty());
     assert!(lines[0].contains("hello"));
 }
 
-/// Test that container renders multiple children.
 #[test]
 fn test_container_renders_children() {
     let mut text1 = Text::new("first".into(), 0, 0);
@@ -71,7 +66,6 @@ fn test_container_renders_children() {
     assert!(lines2[0].contains("second"));
 }
 
-/// Test Panel with multiple children and background.
 #[test]
 fn test_tui_panel_with_background() {
     let mut panel = Panel::new(
@@ -84,14 +78,11 @@ fn test_tui_panel_with_background() {
     panel.add_child(Box::new(Text::new("Body text".into(), 0, 0)));
 
     let lines = panel.render(30);
-    // Top padding + Title + Spacer + Body + Bottom padding = 5 lines
     assert_eq!(lines.len(), 5);
-    // All content lines have background
     assert!(lines[1].contains("\x1b[44m"));
     assert!(lines[3].contains("\x1b[44m"));
 }
 
-/// Test SelectList navigation.
 #[test]
 fn test_tui_select_list_navigation() {
     let items = vec![
@@ -111,25 +102,20 @@ fn test_tui_select_list_navigation() {
         },
     );
 
-    // Render check
     let lines = list.render(80);
     assert!(lines[0].contains("→"), "first item selected");
     assert!(lines[0].contains("Alpha"));
 
-    // Navigate down
     feed_vt(&mut list, "\x1b[B");
     assert_eq!(list.get_selected_item().unwrap().value, "b");
 
-    // Navigate down
     feed_vt(&mut list, "\x1b[B");
     assert_eq!(list.get_selected_item().unwrap().value, "c");
 
-    // Wrap around
     feed_vt(&mut list, "\x1b[B");
     assert_eq!(list.get_selected_item().unwrap().value, "a");
 }
 
-/// Test SelectList filter.
 #[test]
 fn test_tui_select_list_filter() {
     let items = vec![
@@ -154,33 +140,27 @@ fn test_tui_select_list_filter() {
     assert_eq!(list.filtered_items[1].value, "apricot");
 }
 
-/// Test Input cursor operations.
 #[test]
 fn test_tui_input_cursor_operations() {
     let mut input = Input::new();
     input.set_focused(true);
 
-    // Type text
     feed_vt(&mut input, "hello");
     assert_eq!(input.value(), "hello");
 
-    // Move left and insert
     feed_vt(&mut input, "\x1b[D");
     feed_vt(&mut input, "\x1b[D");
     feed_vt(&mut input, "X");
     assert_eq!(input.value(), "helXlo");
 
-    // Home and insert
     feed_vt(&mut input, "\x1b[H");
     feed_vt(&mut input, "Y");
     assert_eq!(input.value(), "YhelXlo");
 
-    // Backspace
     feed_vt(&mut input, "\x7f");
     assert_eq!(input.value(), "helXlo");
 }
 
-/// Test word wrap with ANSI.
 #[test]
 fn test_tui_word_wrap_ansi() {
     use xylitol_tui::wrap_text_with_ansi;
@@ -190,7 +170,6 @@ fn test_tui_word_wrap_ansi() {
     assert!(lines[0].contains("red text"));
 }
 
-/// Test truncate to width.
 #[test]
 fn test_tui_truncate() {
     use xylitol_tui::truncate_to_width;
@@ -201,7 +180,6 @@ fn test_tui_truncate() {
     assert_eq!(truncate_to_width("hi", 10, "...", false), "hi");
 }
 
-/// Test visible_width with ANSI.
 #[test]
 fn test_tui_visible_width_ansi() {
     use xylitol_tui::visible_width;
@@ -209,18 +187,15 @@ fn test_tui_visible_width_ansi() {
     assert_eq!(visible_width("\x1b[34m\x1b[1mbold blue\x1b[0m"), 9);
 }
 
-/// Test overlay positioning logic.
 #[test]
 fn test_tui_overlay_center() {
     let opts = OverlayOptions {
         anchor: Some(OverlayAnchor::Center),
         ..Default::default()
     };
-    // Overlay anchors resolve in the TUI; just test construction
     assert!(matches!(opts.anchor, Some(OverlayAnchor::Center)));
 }
 
-/// Test overlay with margins.
 #[test]
 fn test_tui_overlay_margins() {
     let opts = OverlayOptions {
@@ -237,7 +212,6 @@ fn test_tui_overlay_margins() {
     assert_eq!(m.bottom, Some(3));
 }
 
-/// Test SizeValue parsing.
 #[test]
 fn test_size_value_resolve() {
     use xylitol_tui::SizeValue;
@@ -246,7 +220,6 @@ fn test_size_value_resolve() {
     assert_eq!(SizeValue::Percent(25.0).resolve(80), 20);
 }
 
-/// Test Loader component.
 #[test]
 fn test_tui_loader_renders() {
     let mut loader = Loader::new(
@@ -257,12 +230,10 @@ fn test_tui_loader_renders() {
     );
 
     let lines = loader.render(30);
-    // First line empty + text line
     assert_eq!(lines.len(), 2);
     assert!(lines[1].contains("Working..."));
 }
 
-/// Test that spaces don't break TUI content.
 #[test]
 fn test_tui_spacer_renders_empty_lines() {
     let mut spacer = Spacer::new(3);
@@ -271,7 +242,6 @@ fn test_tui_spacer_renders_empty_lines() {
     assert!(lines.iter().all(|l| l.is_empty()));
 }
 
-/// Test key binding config works.
 #[test]
 fn test_tui_keybinding_config_complete() {
     use std::collections::HashMap;
@@ -280,7 +250,6 @@ fn test_tui_keybinding_config_complete() {
     let defs = create_default_definitions();
     let kb = KeybindingsManager::new(defs, HashMap::new());
 
-    // Verify all expected bindings exist
     let expected = [
         "tui.editor.cursorUp",
         "tui.editor.cursorDown",

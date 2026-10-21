@@ -280,9 +280,6 @@ impl Input {
         }
         if with_keybindings(|kb| kb.matches_event(key, "tui.input.submit")) {
             if let Some(ref mut cb) = self.on_submit {
-                // pi fires onSubmit(this.value) WITHOUT clearing; the consumer
-                // owns reset. Clearing here would lose the submitted text, so we
-                // hand over a clone and leave value/cursor untouched.
                 cb(self.value.clone());
             }
             return;
@@ -373,7 +370,6 @@ impl Component for Input {
         let prompt_w = visible_width(prompt);
         let available = width.saturating_sub(prompt_w);
         if available == 0 {
-            // Prompt alone doesn't fit — show a clipped prompt, never overflow.
             return vec![truncate_to_width(prompt, width, "", false)];
         }
 

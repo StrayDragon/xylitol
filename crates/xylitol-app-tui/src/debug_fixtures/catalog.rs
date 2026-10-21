@@ -1,23 +1,11 @@
-//! Scene catalog: stable ids + human descriptions (designing scene slot).
-
-/// How a designing preview scene is injected. Exhaustive = LSP completion.
-/// New fixtures MUST pick one; do not stuff `UiEntry`s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreviewInject {
-    /// `HostSession::step(HostEvent::Xy)` / `apply_xy_event`.
-    ///
-    /// `activity-fold-live-xy`: Thinking + read through `HostSession::step`
-    /// (not JSONL, not the Choice live tape).
     LiveXy,
-    /// `activity-fold-live` tape (Choice + scripted events; not JSONL seed).
     LiveTape,
-    /// SessionEntry / JSONL seed → `rebuild_scrollback_from_travel`.
     Resume,
-    /// `mount_*` / toast / footer / slash-only UI smoke.
     FixedZone(FixedZoneOp),
 }
 
-/// Fixed-zone-plane inject (not transcript `UiEntry`s).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixedZoneOp {
     Toast,
@@ -28,13 +16,11 @@ pub enum FixedZoneOp {
 }
 
 impl PreviewInject {
-    /// JSONL seed via the process-local inject arm (resume rebuild; c2740).
     pub const fn seeds_jsonl(self) -> bool {
         matches!(self, Self::Resume)
     }
 }
 
-/// One hand-test fixture exposed in the designing scene slot.
 #[derive(Debug, Clone, Copy)]
 pub struct DebugSceneMeta {
     pub id: &'static str,
@@ -42,7 +28,6 @@ pub struct DebugSceneMeta {
     pub inject: PreviewInject,
 }
 
-/// All scenes. Prefer descriptive ids so the slot is self-explanatory.
 pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
     DebugSceneMeta {
         id: "session-tree-multiturn",
@@ -86,7 +71,6 @@ pub const DEBUG_SCENES: &[DebugSceneMeta] = &[
     },
 ];
 
-/// `(id, description)` for the designing scene slot.
 pub fn scene_catalog() -> Vec<(String, String)> {
     DEBUG_SCENES
         .iter()
@@ -94,7 +78,6 @@ pub fn scene_catalog() -> Vec<(String, String)> {
         .collect()
 }
 
-/// Scroll-notice body listing the catalog (designing scene slot, not a slash).
 pub fn list_note() -> String {
     let mut lines = vec!["designing scenes:".to_string()];
     for s in DEBUG_SCENES {
@@ -103,13 +86,11 @@ pub fn list_note() -> String {
     lines.join("\n")
 }
 
-/// Look up a catalog row by canonical id (not aliases).
 pub fn find_scene(raw: &str) -> Option<&'static DebugSceneMeta> {
     let key = raw.trim().to_ascii_lowercase();
     DEBUG_SCENES.iter().find(|s| s.id == key)
 }
 
-/// Seedable scene ids (JSONL resume inject only).
 pub fn resolve_scene_id(raw: &str) -> Option<&'static str> {
     let key = raw.trim().to_ascii_lowercase();
     if key.is_empty() || key == "list" {
@@ -118,7 +99,6 @@ pub fn resolve_scene_id(raw: &str) -> Option<&'static str> {
     if let Some(s) = find_scene(&key) {
         return s.inject.seeds_jsonl().then_some(s.id);
     }
-    // Short aliases so old muscle memory still works once.
     match key.as_str() {
         "tree-branch" | "multiturn" => Some("session-tree-multiturn"),
         "tree-labeled" | "labeled" => Some("session-tree-labeled"),

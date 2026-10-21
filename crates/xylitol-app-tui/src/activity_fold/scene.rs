@@ -1,21 +1,3 @@
-//! Semantic scene dump for the product ActivityFold paint (c2200 scene slice).
-//!
-//! Scene = product path, not a test-only paint:
-//! - entries are the same [`UiEntry`] shapes the product builds — via
-//!   [`apply_xy_event`] (same seam as `live_tape.rs`) or, for sealed states,
-//!   the same flushed/persisted entry fields that resume consumes;
-//! - the frame comes from the product root: [`crate::layout::UiRoot`]
-//!   → `render_scrollback` → `root.render` (same call chain as
-//!   designing scene `activity-fold-live`);
-//! - the dump annotates rows with the chord the product paint made:
-//!   `L3 envelope` (`Worked for`) / `L2 cluster` (cluster head) /
-//!   `L1 block` (foldable middle content, when kids are expanded).
-//!
-//! Chord truth comes from the product decision points:
-//! `partition_segments` (segment.rs) · `count_cluster` / `format_cluster_body`
-//! (summary.rs) · `paint_envelope_header_row` / `paint_cluster_header_row`
-//! (widgets/scrollback/live.rs).
-
 use super::summary::{count_cluster, format_cluster_body};
 use crate::activity_fold::{
     format_elapsed_secs, partition_segments, strip_ansi_live_window, thought_header_body,
@@ -25,35 +7,24 @@ use crate::driver::XyEvent;
 use crate::widgets::GlyphSet;
 use xylitol_tui::Component;
 
-/// One semantic row: line index in the plain frame + chord + cluster head body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SceneDumpRow {
     pub line_idx: usize,
     pub chord: &'static str,
-    /// Cluster head body (e.g. `Used 4 tools`, `Thought 1s`); empty for
-    /// envelope rows and L1 blocks.
     pub cluster_head: String,
 }
 
-/// Pure-text semantic dump over a plain (ANSI-stripped) product frame.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct SemanticDump {
     pub line_rows: Vec<SceneDumpRow>,
 }
 
 impl SemanticDump {
-    /// Build the dump from a plain frame + the entries the product painted.
-    ///
-    /// Anchors are the cluster head bodies the product formatter produces for
-    /// sealed clusters (progressive/live adjustments are product paint
-    /// behavior; the anchor only names the row). Rows are matched top-down so
-    /// wrapped entries do not shift attribution.
     pub fn from_product_frame(plain: &str, entries: &[UiEntry]) -> Self {
         let segs = partition_segments(entries);
         let glyphs = GlyphSet::from_env();
         let markers = [glyphs.fold().to_string(), glyphs.unfold().to_string()];
 
-        // Expected cluster head bodies, in paint order.
         let mut anchors: Vec<(&'static str, String)> = Vec::new();
         for seg in &segs {
             for cl in &seg.clusters {
@@ -93,7 +64,6 @@ impl SemanticDump {
                 });
                 continue;
             }
-            // Match the next cluster head anchor (top-down; skips content rows).
             if let Some((chord, body)) = anchors.get(anchor_at)
                 && is_marker_row(line)
                 && line.contains(body.as_str())
@@ -106,11 +76,6 @@ impl SemanticDump {
                 anchor_at += 1;
                 continue;
             }
-            // Inflight thinking stream paints a live row: a thought-only burst
-            // is the cluster head (`paint_folded_streaming_thought`), while a
-            // burst inside a mixed cluster keeps its own L1 Thinking bar
-            // (Ctrl+T chord, like `paint_thinking_block`). Neither is a sealed
-            // anchor.
             if is_marker_row(line) && line.contains("Thinking") {
                 let chord = if line.contains("Ctrl+T") {
                     "L1 block"
@@ -124,7 +89,6 @@ impl SemanticDump {
                 });
                 continue;
             }
-            // Foldable middle content (kids expanded) — L1 block rows.
             if is_marker_row(line) {
                 line_rows.push(SceneDumpRow {
                     line_idx,
@@ -151,14 +115,11 @@ impl SemanticDump {
         out
     }
 
-    /// Rows of one chord.
     pub fn rows_with_chord(&self, chord: &'static str) -> impl Iterator<Item = &SceneDumpRow> {
         self.line_rows.iter().filter(move |r| r.chord == chord)
     }
 }
 
-/// Sum of persisted thinking wall-clock secs for a cluster (mirrors
-/// `widgets/scrollback/live.rs::thought_duration_label`, the product duration source).
 fn thought_duration_label(
     entries: &[UiEntry],
     cluster: &crate::activity_fold::ActivityCluster,
@@ -176,9 +137,6 @@ fn thought_duration_label(
     (secs > 0).then(|| format_elapsed_secs(secs))
 }
 
-/// Build a product scene by replaying [`XyEvent`]s through `apply_xy_event` —
-/// the exact seam the live tape and harness use, so tool intent, thinking
-/// flush, todo projection and Ask shapes are the product's, not fixtures'.
 pub struct SceneBuilder {
     model: UiModel,
     live: Vec<XyEvent>,
@@ -212,7 +170,6 @@ impl SceneBuilder {
         })
     }
 
-    /// Plain tool end (no todo projection).
     pub fn tool_end(&mut self, id: &str, name: &str) -> &mut Self {
         self.push_xy(XyEvent::ToolExecutionEnd {
             id: id.into(),
@@ -222,10 +179,6 @@ impl SceneBuilder {
         })
     }
 
-    /// todo_* result through the product projection: `TodoUpdated` (atd13)
-    /// drives the checklist row, End drives the block body — the checklist row
-    /// is a projection, not a Used call (lesson 1). Event order matches the
-    /// real run stream (typed state event drains before ToolExecutionEnd).
     pub fn todo_result(&mut self, id: &str, name: &str, result: &str) -> &mut Self {
         if let Ok(list) = serde_json::from_str::<xylitol_plugin_sdk::session::TodoList>(result) {
             self.push_xy(XyEvent::TodoUpdated { list });
@@ -242,8 +195,6 @@ impl SceneBuilder {
         self.push_xy(XyEvent::TextDelta(text.into()))
     }
 
-    /// Compaction through the product projection: Start placeholder then End
-    /// completion, matching the real run stream (c1730 / att34).
     pub fn compaction(&mut self, summary: &str, tokens_before: u64) -> &mut Self {
         self.push_xy(XyEvent::CompactionStart {
             reason: "threshold".into(),
@@ -261,7 +212,6 @@ impl SceneBuilder {
         })
     }
 
-    /// Flush streaming buffers the way MessageEnd does (product handler).
     pub fn message_end(&mut self) -> &mut Self {
         self.push_xy(XyEvent::MessageEnd {
             role: "assistant".into(),
@@ -269,25 +219,16 @@ impl SceneBuilder {
         })
     }
 
-    /// Seal a thinking burst the product way: [`XyEvent::ThinkingDelta`] then
-    /// `UiModel::flush_streaming_elapsed` (same flush `MessageEnd` uses).
-    ///
-    /// Elapsed is pinned because a scene cannot steer
-    /// [`std::time::Instant`]. This is **not** stuffing `UiEntry::Thinking`.
     pub fn thinking_flushed(&mut self, text: &str, elapsed_secs: u64) -> &mut Self {
         apply_xy_event(&mut self.model, &XyEvent::ThinkingDelta(text.into()));
         self.model.flush_streaming_elapsed(Some(elapsed_secs));
         self
     }
 
-    /// Inflight stream for the live window. Identity is
-    /// `STREAMING_THINK_ID`, not a nonempty buffer.
     pub fn live_thinking(&mut self, text: &str) -> &mut Self {
         self.push_xy(XyEvent::ThinkingDelta(text.into()))
     }
 
-    /// Live Xy events for `HostSession::step(HostEvent::Xy)`. Does not include
-    /// [`Self::thinking_flushed`] (pinned elapsed is Resume-shaped).
     pub fn live_events(&self) -> &[XyEvent] {
         &self.live
     }
@@ -296,19 +237,14 @@ impl SceneBuilder {
         &self.model.entries
     }
 
-    /// Hand the built model to an [`InteractionBdd`](crate::InteractionBdd)
-    /// for key/mouse interaction
-    /// scenes (att20–att32): the model itself moves, nothing is re-applied.
     pub fn into_model(self) -> UiModel {
         self.model
     }
 
-    /// Live thinking buffers must be empty after a product flush.
     pub fn live_think_idle(&self) -> bool {
         self.model.streaming_think_id.is_none() && self.model.streaming_thinking.is_empty()
     }
 
-    /// Product render of the current scene state (entries + inflight streams).
     pub fn render(&self, width: usize) -> (String, SemanticDump) {
         let mut root = crate::layout::UiRoot::new();
         root.apply_ui_model(&self.model);

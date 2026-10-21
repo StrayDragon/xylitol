@@ -1,8 +1,5 @@
-//! Session resume list helpers (preview flatten / relative age).
-
 use super::SessionListEntry;
 
-/// Format a unix-secs age for session selectors (`6m`, `19h`, `1d`, …).
 pub fn format_session_age(modified_unix: Option<u64>, now_unix: u64) -> String {
     let Some(ts) = modified_unix else {
         return "—".into();
@@ -28,10 +25,6 @@ pub fn format_session_age(modified_unix: Option<u64>, now_unix: u64) -> String {
     }
 }
 
-/// Re-order sessions into a parent/child forest (pi "threaded") and set `tree_prefix`.
-///
-/// Roots = no parent, or parent missing from the list. Siblings keep mtime order
-/// (input should already be mtime-desc among roots / children).
 pub fn flatten_session_forest(entries: Vec<SessionListEntry>) -> Vec<SessionListEntry> {
     if entries.is_empty() {
         return entries;
@@ -54,8 +47,7 @@ pub fn flatten_session_forest(entries: Vec<SessionListEntry>) -> Vec<SessionList
         }
     }
 
-    // Preserve mtime-desc among siblings (list_sessions already sorted that way).
-    let mut out_idx: Vec<(usize /*entry_idx*/, String /*prefix*/)> = Vec::new();
+    let mut out_idx: Vec<(usize, String)> = Vec::new();
     fn walk(
         idx: usize,
         prefix: String,
@@ -71,7 +63,6 @@ pub fn flatten_session_forest(entries: Vec<SessionListEntry>) -> Vec<SessionList
         for (k, &child) in kids.iter().enumerate() {
             let is_last = k + 1 == kids.len();
             let branch = if is_last { "└─ " } else { "├─ " };
-            // Indent with spaces under ancestors (pi uses │ for continuing; MVP: spaces).
             let child_prefix = format!("   {branch}");
             walk(child, child_prefix, children, entries, out);
         }
@@ -80,7 +71,6 @@ pub fn flatten_session_forest(entries: Vec<SessionListEntry>) -> Vec<SessionList
         walk(r, String::new(), &children, &entries, &mut out_idx);
     }
 
-    // Orphans already in roots; if something was missed, append.
     if out_idx.len() < entries.len() {
         let seen: std::collections::HashSet<usize> = out_idx.iter().map(|(i, _)| *i).collect();
         for i in 0..entries.len() {
@@ -128,7 +118,6 @@ mod tests {
 
     #[test]
     fn forest_puts_child_under_parent() {
-        // mtime-desc input: child newer than parent still nests under parent.
         let flat = flatten_session_forest(vec![
             row("child", Some("parent"), 200),
             row("parent", None, 100),

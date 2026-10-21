@@ -1,10 +1,3 @@
-//! wire v3 client-side codec helpers (c2834 tasks 3.1/3.3)。
-//!
-//! 纯编码 / 解码层,无传输:给 [`super::HttpWsClient`] 用的 fory v3 上行帧
-//! 构造与下行帧 → `RpcMessage` 还原。下行还原以 JSON 路径的 reader 产出为
-//! 准(`session/event` 等 payload 与 `codec::decode_str` 的通知形状同构,
-//! 下游消费零改动)。产品默认开；[`env_enabled`] 只解析显式 env（测试注入）。
-
 use serde_json::Value;
 
 use crate::v3_mapping;
@@ -21,29 +14,18 @@ use xylitol_protocol::{
     WIRE_FORMAT_FORY_V3, registry,
 };
 
-/// Test injection env. Unset is treated as on by the attach client.
 pub const ENVELOPE_FORMAT_ENV: &str = "XYLITOL_ENVELOPE_V3";
 
-/// 读进程 env 决定 v3 是否开启。
-///
-/// 未设 `XYLITOL_ENVELOPE_V3` 时产品默认开；显式 env 仍走本解析。
 pub(super) fn env_enabled() -> bool {
     flag_truthy(std::env::var_os(ENVELOPE_FORMAT_ENV).as_deref())
 }
 
-/// 纯解析(测试不碰进程 env):`"1"` / `"true"`(大小写不敏感、容忍空白)为真。
 fn flag_truthy(raw: Option<&std::ffi::OsStr>) -> bool {
     let Some(raw) = raw else { return false };
     let normalized = raw.to_string_lossy().trim().to_ascii_lowercase();
     normalized == "1" || normalized == "true"
 }
 
-/// 信封 rpcId(字符串)→ v3 数值 `rpc_id`。
-///
-/// 数字形态直通;其余(`unary` 生成的 UUID 等)经 `DefaultHasher::new()`
-/// (零 key SipHash,跨调用 / 跨进程稳定)做稳定哈希映射——幂等语义
-/// (c2460)要求同一 rpcId 字符串复用同一 `rpc_id`,host 才能对重放取
-/// 首次结果;64 位空间下不同非数字 id 并发碰撞概率 ~2⁻⁶⁴,实验轨道接受。
 pub fn stable_rpc_id(rpc_id: &str) -> u64 {
     match rpc_id.parse::<u64>() {
         Ok(n) => n,
@@ -56,7 +38,6 @@ pub fn stable_rpc_id(rpc_id: &str) -> u64 {
     }
 }
 
-/// 产品方法名 → `Method` 判别值(`method_name` 正表的客户端侧反查)。
 fn method_discriminant(method: &str) -> Option<v3::Method> {
     v3::METHOD_NAMES
         .iter()
@@ -64,21 +45,6 @@ fn method_discriminant(method: &str) -> Option<v3::Method> {
         .map(|(m, _)| m.clone())
 }
 
-/// unary(method, params)→ v3 上行 `ClientRequest`。
-///
-/// - `host.describe` → [`Request::Describe`](承载格式能力协商);
-/// - 其余全部方法 → [`Request::Raw`],payload JSON 原文过线(c2842)。
-///
-/// v3 上行是**透明信封**:除 describe 外一律 RAW 原文过线,与 JSON 轨
-/// (params 透传)逐字节同语义。原因:remote driver 的 `unary` 经
-/// `with_session` 给每个命令注入 `session_id`/`cwd` 及 run 上下文字段
-/// (model_id / thinking_level),typed `Command` schema 只载各命令业务字段
-/// 而不含这些注入字段——压缩进 typed 变体会把命令从已订阅会话上脱锚,
-/// 服务端回落 fallback session(无订阅者):run 事件丢失、TUI 挂死;
-/// set_model/get_state/steer 等打错槽(状态侧写)。
-/// JSON 轨 params 透传一直正确,RAW 使 v3 恢复「纯编码层、语义不变」契约。
-/// 服务端仍保留 typed `Command` 解码(v3_to_command)以兼容旧端 / Flutter
-/// POC 等仍发 typed 帧的对端。
 fn build_request(method: &str, payload: &Value) -> Result<Request, String> {
     if method == registry::METHOD_HOST_DESCRIBE {
         return Ok(Request::Describe(Describe {}));
@@ -91,7 +57,6 @@ fn build_request(method: &str, payload: &Value) -> Result<Request, String> {
     }))
 }
 
-/// v3 上行帧字节(WS binary 帧)。
 pub fn client_request_bytes(
     rpc_id: &str,
     method: &str,
@@ -105,8 +70,6 @@ pub fn client_request_bytes(
     frame.to_bytes().map_err(|e| format!("v3 encode: {e}"))
 }
 
-/// v3 协商用的 describe 帧字节(rpc_id 固定 0:协商发生在连接私有期,
-/// pending 表此刻无并发写者,专属 id 不与业务请求碰撞)。
 pub(super) fn describe_request_bytes() -> Result<Vec<u8>, String> {
     let frame = Frame::ClientRequest(ClientRequest {
         rpc_id: 0,
@@ -116,7 +79,6 @@ pub(super) fn describe_request_bytes() -> Result<Vec<u8>, String> {
     frame.to_bytes().map_err(|e| format!("v3 encode: {e}"))
 }
 
-/// describe 应答是否宣告 `fory-v3`(未宣告 / 旧 host 无 formats = 否)。
 pub(super) fn formats_advertise_envelope(result: &RpcResult) -> bool {
     let Ok(describe) =
         serde_json::from_value::<HostDescribeValue>(result.value.clone().unwrap_or(Value::Null))
@@ -126,19 +88,11 @@ pub(super) fn formats_advertise_envelope(result: &RpcResult) -> bool {
     describe.formats.iter().any(|f| f == WIRE_FORMAT_FORY_V3)
 }
 
-/// reader 侧一条 binary 帧的解析产物。
 pub(super) enum Downlink {
-    /// unary 应答:按 `rpc_id`(数字形态)回填 pending。
     Response { rpc_id: u64, result: RpcResult },
-    /// 下行通知:与 JSON 路径 reader 产出同构的 `ServerRequest`。
     Notification(RpcMessage),
 }
 
-/// WS binary 帧 → [`Downlink`]。
-///
-/// `session_id` 是 Event payload 的会话归属:v3 `ServerNotification` 不携带
-/// session_id,由调用方在 `Subscribed` 帧上跟踪(reader loop 本地状态,
-/// 首个 Subscribed 之前为空串——事件实际总在 subscribe 之后流动)。
 pub(super) fn decode_downlink(
     bytes: &[u8],
     session_id: &mut String,
@@ -152,12 +106,10 @@ pub(super) fn decode_downlink(
         Frame::ServerNotification(note) => {
             notification_to_message(&note, session_id).map(Downlink::Notification)
         }
-        // 服务端不会上行 ClientRequest;schema-ahead 帧降级为忽略。
         Frame::ClientRequest(_) | Frame::Unknown(_) => None,
     })
 }
 
-/// v3 `ServerResponse` → `RpcResult`(对齐 JSON 路径的应答语义)。
 pub fn server_response_to_result(resp: &ServerResponse) -> RpcResult {
     if resp.ok {
         RpcResult::ok_value(payload_value(resp.payload.as_ref()))
@@ -167,17 +119,6 @@ pub fn server_response_to_result(resp: &ServerResponse) -> RpcResult {
     }
 }
 
-/// 成功载荷 → JSON value(`RawOk` 原文解析;describe 还原为
-/// `HostDescribeValue` 形状——与 JSON 轨 describe result 同构)。
-///
-/// c2846: 深度安全地解析 RawOk 原文。
-///
-/// `session_tree` 深树 JSON 可超过 serde_json 默认 **128 层**递归解析上限
-/// （实机深会话 188 层），默认 `from_str` 会 `recursion limit exceeded` 并被
-/// 调用方静默降级为 `Null`（下游再报 `invalid type: null`）。服务端序列化
-/// 无此上限（仅在反序列化侧），故对 RAW 原文禁用默认递归上限，但 c2851/r1927
-/// 加显式深度闸（与 codec 共用 `JSON_DEPTH_LIMIT`）——超限仍按 r1907 退化
-/// `Null`，不拼半份形状、不进无界递归下降。
 fn parse_raw_json(json: &str) -> Value {
     use serde::Deserialize as _;
     if xylitol_protocol::codec::json_nesting_exceeds_limit(json) {
@@ -188,9 +129,6 @@ fn parse_raw_json(json: &str) -> Value {
     Value::deserialize(&mut de).unwrap_or(Value::Null)
 }
 
-/// 强 schema 应答(task 2.5b)以领域条目为中间物回到 serde,因此与
-/// `host::outcome_to_value` 的 JSON 形状逐字节同构(同一组 Serialize)。
-/// unknown 变体(r1907)使整份载荷降级 `Null`,不拼半份形状。
 fn payload_value(payload: Option<&ResponsePayload>) -> Value {
     match payload {
         Some(ResponsePayload::DescribeResult(d)) => serde_json::to_value(HostDescribeValue {
@@ -198,7 +136,6 @@ fn payload_value(payload: Option<&ResponsePayload>) -> Value {
             formats: d.formats.clone(),
         })
         .unwrap_or(Value::Null),
-        // 会话条目与树:强 schema union 还原为 `{"entries": […]}` / `{"tree": […]}`。
         Some(ResponsePayload::MessagesResult(m)) => match v3_mapping::v3_to_entries(m) {
             Some(entries) => {
                 serde_json::json!({ "entries": serde_json::to_value(entries).unwrap_or(Value::Null) })
@@ -211,13 +148,10 @@ fn payload_value(payload: Option<&ResponsePayload>) -> Value {
             }
             None => Value::Null,
         },
-        // travel 结果是平对象(闭集枚举),与 JSON 轨 `to_value(travel)` 一致。
         Some(ResponsePayload::TravelResult(t)) => {
             serde_json::to_value(v3_mapping::v3_to_travel_result(t)).unwrap_or(Value::Null)
         }
-        // 其余未接强 schema 的方法一律 RawOk(JSON 原文)。
         Some(ResponsePayload::RawOk(raw)) => parse_raw_json(&raw.json),
-        // 防御:SubscribeResult 与 JSON 轨 subscribe result 同构，不断链。
         Some(ResponsePayload::SubscribeResult(s)) => {
             serde_json::to_value(SessionSubscribedPayload {
                 session_id: s.session_id.clone(),
@@ -229,9 +163,6 @@ fn payload_value(payload: Option<&ResponsePayload>) -> Value {
     }
 }
 
-/// v3 `ServerNotification` → JSON 路径同构的 `RpcMessage::ServerRequest`
-/// (rpc_id 空、method / payload 与 `codec::decode_str` 的通知产物一致)。
-/// 不可映射(Union Unknown、降级事件)返回 `None`,调用方跳过该帧。
 pub(super) fn notification_to_message(
     note: &ServerNotification,
     session_id: &mut String,
@@ -295,7 +226,6 @@ pub(super) fn notification_to_message(
             });
             ("session/bash_output", payload)
         }
-        // schema-ahead union member(更新对端):降级跳过,不断链。
         Notification::Unknown(_) => return None,
     };
     let (method, payload) = mapped;
@@ -319,8 +249,6 @@ mod tests {
         Frame::from_bytes(bytes).expect("roundtrip decode")
     }
 
-    /// task 3.3:开关纯解析——未设 / 乱值为关,仅 "1"/"true" 开(库默认;
-    /// 产品面切换在 TUI attach 入口,见 task 5.1 备注)。
     #[test]
     fn env_flag_parsing() {
         let flag = |v: &str| flag_truthy(Some(std::ffi::OsStr::new(v)));
@@ -336,8 +264,6 @@ mod tests {
         assert_ne!(ENVELOPE_FORMAT_ENV, "XYLITOL_WIRE_V3");
     }
 
-    /// task 3.1 (b):rpc_id 数字形态直通、非数字形态稳定映射
-    /// (同一 rpcId 两次映射一致 = 幂等语义可复用)。
     #[test]
     fn stable_rpc_id_numeric_and_hashed() {
         assert_eq!(stable_rpc_id("42"), 42);
@@ -349,7 +275,6 @@ mod tests {
         assert_ne!(a, c);
     }
 
-    /// task 3.1 (b):describe / RAW / Command 三族请求形状。
     #[test]
     fn request_family_shapes() {
         let bytes = client_request_bytes("7", "host.describe", &json!({})).unwrap();
@@ -372,9 +297,6 @@ mod tests {
             other => panic!("expected Raw, got {other:?}"),
         }
 
-        // 手搓载荷(无 type tag)经 tag 注入仍可构帧;subscribe 亦走 RAW(c2842),
-        // 注入的 cwd 必须保留(typed Subscribe 无 cwd 会让服务端在错误 workspace
-        // 装配写者)。
         let bytes = client_request_bytes(
             "9",
             "subscribe",
@@ -396,9 +318,6 @@ mod tests {
         }
         assert!(req.writer_token.is_none(), "MUST NOT stamp writer_token");
 
-        // 回归锁：prompt 必须走 RAW 原文(c2842 起全部命令走 RAW,字段全程保真;
-        // 早先 typed Command::Prompt 只载 message 会把 run 从已订阅 session
-        // 脱锚到 fallback,事件 broadcast 丢失、TUI 挂死)。
         let bytes = client_request_bytes(
             "10",
             "prompt",
@@ -419,11 +338,9 @@ mod tests {
             other => panic!("expected RAW prompt, got {other:?}"),
         }
 
-        // 非 registry、非白名单方法无 v3 映射(显式失败,不静默错发)。
         assert!(client_request_bytes("1", "no_such_method", &json!({})).is_err());
     }
 
-    /// task 3.1 (b):approve_tool(非 registry 命令)亦走 RAW 原文过线。
     #[test]
     fn non_registry_command_maps() {
         let bytes = client_request_bytes(
@@ -446,8 +363,6 @@ mod tests {
         }
     }
 
-    /// task 3.1 (b):ServerResponse → RpcResult(ok / error /
-    /// RawOk 与 DescribeResult 的 value 形状)。占用不走协议令牌。
     #[test]
     fn server_response_to_result_shapes() {
         let ok = ServerResponse {
@@ -506,12 +421,8 @@ mod tests {
         );
     }
 
-    /// c2846: RawOk 原文解析禁用递归上限——深树 JSON（实机 188 层 > 默认 128）
-    /// 必须还原为完整 Value，不得被静默降级 Null（旧行为让下游报
-    /// `invalid type: null, expected a sequence`）。
     #[test]
     fn raw_ok_parses_beyond_default_recursion_limit() {
-        // 构造 150 层（>128）嵌套 JSON，纯字符串拼接避免夹具自身触发默认上限。
         let mut leaf = r#"{"entry":"e0","children":[]}"#.to_string();
         for i in 1..150u32 {
             leaf = format!(r#"{{"entry":"e{i}","children":[{leaf}]}}"#);
@@ -535,7 +446,6 @@ mod tests {
         );
     }
 
-    /// c2851/r1927: 超过共享深度上限的 RawOk 按 r1907 退化 Null，不进无界递归。
     #[test]
     fn raw_ok_over_json_depth_limit_degrades_to_null() {
         use xylitol_protocol::codec::JSON_DEPTH_LIMIT;
@@ -572,7 +482,6 @@ mod tests {
         assert!(value.is_array(), "200 层数组 MUST 解析为 Array: {value:?}");
     }
 
-    /// 协商门:旧 host(formats 缺失)与未宣告 fory-v3 都必须判否。
     #[test]
     fn negotiate_gate_rejects_without_fory_v3() {
         let jsonrpc_only = RpcResult::ok_value(json!({"protocol": 2, "formats": ["jsonrpc"]}));
@@ -583,8 +492,6 @@ mod tests {
         assert!(formats_advertise_envelope(&dual));
     }
 
-    /// task 2.5b：具名应答 union 还原为与 JSON 轨 `outcome_to_value` 同构的形状
-    /// (条目/树多一层包裹键,travel 是平对象)。
     #[test]
     fn typed_payloads_restore_json_track_shape() {
         use xylitol_plugin_sdk::session::{
@@ -668,8 +575,6 @@ mod tests {
         );
     }
 
-    /// task 3.1 (b):ServerNotification(Event / Subscribed)→ 与 JSON 路径
-    /// reader 同构的 `RpcMessage::ServerRequest` 形状。
     #[test]
     fn notification_event_and_subscribed_shapes() {
         let mut session_id = String::new();
@@ -714,7 +619,6 @@ mod tests {
         assert_eq!(method, "session/subscribed");
         assert_eq!(payload, json!({"session_id": "s-7", "seq": 12}));
 
-        // Subscribed 之后的事件携带上跟踪到的 session_id。
         let note = ServerNotification {
             seq: 13,
             notification: Notification::Event(V3Event::TextDelta(V3TextDelta { text: "x".into() })),
@@ -728,7 +632,6 @@ mod tests {
         assert_eq!(payload["event"]["type"], "text_delta");
     }
 
-    /// 其余通知变体同样落到 JSON 路径形状;Unknown 降级跳过。
     #[test]
     fn notification_other_variants_and_unknown() {
         let mut session_id = String::new();
@@ -781,7 +684,6 @@ mod tests {
         }
     }
 
-    /// decode_downlink 对 ClientRequest / Unknown 上行帧忽略(None)。
     #[test]
     fn decode_downlink_ignores_non_server_frames() {
         let mut session_id = String::new();

@@ -5,7 +5,6 @@ use rstest_bdd_macros::{given, then, when};
 
 #[given("mock 模型先 tool 后无 tool")]
 pub(crate) fn _g_ar_react_setup(agent: &AgentState, ws: &Workspace) {
-    // Isolate from prior scenarios that left a prepared AR_RUNNER.
     AR_RUNNER.with(|r| *r.borrow_mut() = None);
     AR_RUNNER_EVENTS.with(|e| e.borrow_mut().clear());
     reset_fake_state();
@@ -38,7 +37,6 @@ pub(crate) fn _g_ar_react_setup(agent: &AgentState, ws: &Workspace) {
 }
 #[when("运行 AgentRuntime")]
 pub(crate) async fn _w_ar_react_run(agent: &AgentState) {
-    // Prefer a runner prepared by a prior Given (e.g. stop-hook / queues).
     let mut runner = AR_RUNNER
         .with(|r| r.borrow_mut().take())
         .unwrap_or_else(|| make_agent(agent));
@@ -109,12 +107,10 @@ pub(crate) fn _t_ar_intent_before_execution(agent: &AgentState) {
 #[then("先执行工具再结束且无 adk 类型")]
 pub(crate) fn _t_ar_react_terminates(agent: &AgentState) {
     let events = agent.events.borrow();
-    // 先执行工具：事件流中存在 ToolCall 相关事件
     let has_tool = events
         .iter()
         .any(|e| !matches!(e, XyEvent::TextDelta(_)) && format!("{e:?}").contains("Tool"));
     assert!(has_tool, "expected tool execution, got {:?}", events);
-    // 无 adk 类型：XyEvent 是闭集，不存在 adk 变体（编译期保证），此处仅断言非空结束
     assert!(
         events.iter().any(|e| matches!(e, XyEvent::TurnEnd { .. })),
         "expected TurnEnd, got {:?}",
@@ -167,7 +163,6 @@ pub(crate) async fn _w_ar_stream_poll(agent: &AgentState) {
 pub(crate) fn _t_ar_stream_is_xyevent(agent: &AgentState) {
     let events = agent.events.borrow();
     assert!(!events.is_empty(), "expected non-empty event stream");
-    // 每项已是 XyEvent（Vec<XyEvent> 编译期保证）；断言含文本增量
     assert!(
         events.iter().any(|e| matches!(e, XyEvent::TextDelta(_))),
         "expected TextDelta in stream, got {:?}",
@@ -175,7 +170,6 @@ pub(crate) fn _t_ar_stream_is_xyevent(agent: &AgentState) {
     );
 }
 
-// ar12 abort-drops-sse：复用 agent abort 词表（单 given 自足装配，因 solidify 无 Background）。
 #[given("配置了 mock 模型 test-model 且慢速流式 40 段间隔 20 毫秒")]
 pub(crate) fn _g_ar_abort_slow_stream(agent: &AgentState, ws: &Workspace) {
     reset_fake_state();
@@ -206,7 +200,6 @@ pub(crate) fn _g_ar_abort_slow_stream(agent: &AgentState, ws: &Workspace) {
     set_fake_slow_stream(40, 20);
 }
 
-// ── ar8–ar12 / ar7：队列、abort、before-hook（共享 helper，避免 step 体复制）────────
 thread_local! {
     static AR_RUNNER: std::cell::RefCell<Option<AgentRuntime>> =
         const { std::cell::RefCell::new(None) };
@@ -243,7 +236,6 @@ pub(crate) fn ar_register_fake(agent: &AgentState, id: &str) {
     });
 }
 
-/// 自足装配：reset fake + workspace + 注册模型 + 选中 + make_agent。
 pub(crate) fn ar_make_runner(agent: &AgentState, ws: &Workspace) -> AgentRuntime {
     reset_fake_state();
     ws.init();
@@ -294,7 +286,6 @@ pub(crate) async fn ar_take_run_store(prompt: &str) {
     ar_store_events(local);
 }
 
-// ar8 steer-before-model
 #[given("装配并运行入队 steer 的 agent")]
 pub(crate) async fn _g_ar8_steer_before_model(agent: &AgentState, ws: &Workspace) {
     set_fake_text("steer ack");
@@ -306,7 +297,6 @@ pub(crate) async fn _g_ar8_steer_before_model(agent: &AgentState, ws: &Workspace
 
 #[when("检查队列与历史")]
 pub(crate) fn _w_ar8_check_queue() {
-    // 断言落在 then；此处仅确认 runner 仍在。
     let _ = ar_with_runner(|r| r.queue_stats());
 }
 
@@ -317,7 +307,6 @@ pub(crate) fn _t_ar8_steer_drained() {
     });
 }
 
-// ar8 followup-extends
 #[given("装配无工具 agent 并入队 follow_up")]
 pub(crate) async fn _g_ar8_followup_extends(agent: &AgentState, ws: &Workspace) {
     set_fake_text("followup ack");
@@ -339,7 +328,6 @@ pub(crate) fn _t_ar8_followup_continues() {
     );
 }
 
-// ar9 queue-update
 #[given("装配 agent 并入队 steer")]
 pub(crate) async fn _g_ar9_queue_update(agent: &AgentState, ws: &Workspace) {
     set_fake_text("queue ack");
@@ -365,7 +353,6 @@ pub(crate) fn _t_ar9_queue_update_emitted() {
     );
 }
 
-// ar10 abort-clears-steer
 #[given("装配 agent 并入队 steer 与 follow_up")]
 pub(crate) async fn _g_ar10_abort_clears(agent: &AgentState, ws: &Workspace) {
     set_fake_text("abort queue ack");
@@ -389,7 +376,6 @@ pub(crate) fn _t_ar10_queue_semantics() {
     });
 }
 
-// ar11 second-run-after-abort
 #[given("装配慢速 agent 并在首轮 abort 后")]
 pub(crate) async fn _g_ar11_second_run_after_abort(agent: &AgentState, ws: &Workspace) {
     reset_fake_state();
@@ -432,7 +418,6 @@ pub(crate) fn _t_ar11_second_run_ok() {
     assert!(ended, "second run must complete with TurnEnd");
 }
 
-// ar24 should-stop-emits-agent-end / should-stop-skips-followup
 #[given("注册 should_stop_after_turn 在首次 TurnEnd 后返回 true")]
 pub(crate) async fn _g_ar24_should_stop(agent: &AgentState, ws: &Workspace) {
     set_fake_text("stop-after-turn ack");
@@ -565,7 +550,6 @@ pub(crate) fn _t_ar24_no_hook_open_end(agent: &AgentState) {
     );
 }
 
-// ── c1545 tool batch (ar27–ar29) ─────────────────────────────────────
 thread_local! {
     static BATCH_TIMING: RefCell<Vec<(String, u128, u128)>> = const { RefCell::new(Vec::new()) };
     static BATCH_EPOCH: Cell<Option<std::time::Instant>> = const { Cell::new(None) };
@@ -904,7 +888,6 @@ pub(crate) fn _t_ar28_mcp_no_overlap() {
 
 #[when("检查 session history 中 toolResult")]
 pub(crate) async fn _w_ar29_check_history(agent: &AgentState) {
-    // Prefer prepared runner; run if events empty.
     if agent.events.borrow().is_empty() {
         _w_ar_react_run(agent).await;
     }
@@ -939,7 +922,6 @@ pub(crate) fn _t_ar29_history_order(agent: &AgentState) {
     );
 }
 
-// ar10 abort-cancels-bang
 #[given("启动交互 bang 长命令后 abort")]
 pub(crate) async fn _g_ar10_abort_cancels_bang(_agent: &AgentState, _ws: &Workspace) {
     use xylitol_official_plugin_tools::bash_exec::InfraBashExecutor;
@@ -979,7 +961,6 @@ pub(crate) fn _t_ar10_bang_cancelled() {
     });
 }
 
-// ar7 before-denies
 #[given("注册匹配 bash 的 before 拒绝 hook")]
 pub(crate) async fn _g_ar7_before_denies(agent: &AgentState, ws: &Workspace) {
     let mut runner = ar_make_runner(agent, ws);
@@ -1014,8 +995,6 @@ pub(crate) fn _t_ar7_tool_error_written() {
         events
     );
 }
-
-// ── c2826 specs-compact：裸规则转场景补充（r1035/r1037/r1039/r1043/r1843）──
 
 #[when("运行一轮对话后检查持久化条目")]
 pub(crate) async fn w_c2826_first_turn_history(agent: &AgentState) {
@@ -1303,11 +1282,8 @@ pub(crate) fn t_c2826_two_iterations_one_settlement(agent: &AgentState) {
     );
 }
 
-// ── c2924：RunCoordinator phase 迁移表（xstate E1-E4 执行侧；RunCoordinator 单元直驱）────
-
 thread_local! {
-    /// 迁移表执行态：R1=主 run_id（given 初态用），R2=备用（stale 守卫相用）。
-    static COORD_STATE: RefCell<Option<(xylitol_runtime::agent::runtime::SharedRunCoordinator, u64, u64)>> =
+        static COORD_STATE: RefCell<Option<(xylitol_runtime::agent::runtime::SharedRunCoordinator, u64, u64)>> =
         const { RefCell::new(None) };
 }
 
@@ -1334,7 +1310,6 @@ fn phase_name(p: xylitol_runtime::agent::runtime::RuntimePhase) -> &'static str 
     }
 }
 
-/// 造初态：idle 直建；starting/streaming/cancelling 经真实转移序列抵达。
 fn coord_seed(
     phase: &str,
 ) -> (
@@ -1375,7 +1350,6 @@ pub(crate) fn _w_coord_transition(event: String, guard: String) {
             let _began = c.with_mut(|co| co.try_begin_immediate()).is_some();
         }
         ("begin", "phase_busy") => {
-            // 拒绝相：非 Idle 时 try_begin 返回 None，相保持不变。
             let began = c.with_mut(|co| co.try_begin_immediate());
             assert!(began.is_none(), "busy coordinator must refuse begin");
         }
@@ -1386,8 +1360,6 @@ pub(crate) fn _w_coord_transition(event: String, guard: String) {
             }
         }
         ("stream", "run_id_stale") => {
-            // 构造 stale：记下活动 id，finish 归 Idle（槽清空），再对该旧 id mark_streaming
-            // ——守卫失败，相保持 Idle 不变形。
             let stale_id = c.with(|co| co.phase().active_run_id());
             if let Some(id) = stale_id {
                 c.with_mut(|co| co.finish_run(id));
@@ -1404,8 +1376,6 @@ pub(crate) fn _w_coord_transition(event: String, guard: String) {
             }
         }
         ("finish", "run_id_stale") => {
-            // stale 复刻单测场景：R1 活动 → cancel → finish(R1) 归 Idle →
-            // begin 新 R2（相回 Starting/新 id）→ finish(R1) 为 stale，守卫失败相保持。
             let old = c.with(|co| co.phase().active_run_id());
             if let Some(old) = old {
                 c.with_mut(|co| co.cancel_active(false));

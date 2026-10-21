@@ -1,11 +1,8 @@
-//! Models picker: model + xylitol thinking levels (c1470).
-
 use crate::driver::ModelInfo;
 use xylitol_plugin_sdk::model::{THINKING_OFF, thinking_levels_are_adjustable};
 use xylitol_tui::SelectItem;
 use xylitol_tui::visible_width;
 
-/// One row in the models picker catalog.
 #[derive(Debug, Clone)]
 pub struct ModelPickerRow {
     pub id: String,
@@ -102,14 +99,12 @@ fn format_levels_wide(levels: &[String], active: &str) -> String {
         .join(" ")
 }
 
-/// Pending confirm from models picker.
 #[derive(Debug, Clone)]
 pub struct PendingModelChoice {
     pub model_id: String,
     pub thinking: String,
 }
 
-/// Next-turn cue copy for selected ≠ active (c1470).
 pub fn status_next_turn_cue_text(
     active_model: &str,
     active_thinking: &str,

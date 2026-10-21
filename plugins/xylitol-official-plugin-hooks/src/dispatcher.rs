@@ -1,5 +1,3 @@
-//! HookDispatcher — event dispatch with serial execution and timeout control.
-
 use std::time::Duration;
 
 use log::warn;
@@ -9,27 +7,14 @@ use super::{DispatchResult, HookAction, HookEvent, HookPhase, entry_matches_raw,
 use crate::config::{HookEntry, HooksConfig};
 use xylitol_plugin_sdk::{XyHookBus, XyHookOutcome};
 
-/// Wall-clock default for hooks that omit `timeout_secs` (c2425): an
-/// unbounded hook script must not be able to stall the turn forever.
 pub const DEFAULT_HOOK_TIMEOUT_SECS: u64 = 30;
 
-/// Hook event dispatcher.
-///
-/// Manages a merged list of hooks from three tiers (global/project/user) and
-/// provides [`dispatch`](HookDispatcher::dispatch) to execute matching hooks
-/// serially. A hook that returns `block` immediately terminates the chain.
-///
-/// When no hooks are configured, dispatch is a no-op returning `Allowed`.
 #[derive(Debug, Default)]
 pub struct HookDispatcher {
-    /// Merged hook entries (user overrides project overrides global).
     hooks: Vec<HookEntry>,
 }
 
 impl HookDispatcher {
-    /// Create a new dispatcher from the three-tier config.
-    ///
-    /// Merges hooks by event pattern: user > project > global.
     pub fn new(config: &HooksConfig) -> Self {
         let hooks = merge_hooks(config);
         Self { hooks }
@@ -41,11 +26,6 @@ impl HookDispatcher {
         ))
     }
 
-    /// Dispatch an event to all matching hooks.
-    ///
-    /// Hooks are executed in order: global → project → user. If any hook
-    /// returns `Block`, the chain terminates immediately. A `Modify` result
-    /// updates the args for subsequent hooks.
     pub async fn dispatch(&self, event: &HookEvent, phase: HookPhase) -> DispatchResult {
         let mut modified_args: Option<serde_json::Value> = None;
 
@@ -59,9 +39,7 @@ impl HookDispatcher {
             let result = run_hook_script(&hook.command, event, phase, timeout, &hook.env).await;
 
             match result {
-                HookAction::Allow => {
-                    // Continue to next hook.
-                }
+                HookAction::Allow => {}
                 HookAction::Block { reason } => {
                     warn!(
                         "Hook blocked operation event={} phase={} hook={} reason={}",
@@ -85,21 +63,15 @@ impl HookDispatcher {
         }
     }
 
-    /// Number of registered hooks (BDD @executable hook scenarios assert counts).
-    #[allow(dead_code)] // BDD @executable contract, not product-called
+    #[allow(dead_code)]
     pub fn hook_count(&self) -> usize {
         self.hooks.len()
     }
 
-    /// Whether any hooks are registered.
     pub fn is_empty(&self) -> bool {
         self.hooks.is_empty()
     }
 
-    /// Dispatch using pi-aligned event type strings and a JSON context.
-    ///
-    /// When no hooks are registered this is a zero-overhead no-op returning
-    /// [`DispatchResult::Allowed`].
     pub async fn dispatch_raw(
         &self,
         event_type: &str,
@@ -161,21 +133,12 @@ impl XyHookBus for HookDispatcher {
     }
 }
 
-/// Merge three-tier hooks into a single list.
-///
-/// Rules:
-/// - Hooks with the same primary event pattern (first in `events`) are dedup'd:
-///   user overrides project, project overrides global.
-/// - Non-overlapping event patterns are unioned.
 fn merge_hooks(config: &HooksConfig) -> Vec<HookEntry> {
-    // Collect all hooks keyed by primary event pattern.
     let mut merged: Vec<HookEntry> = Vec::new();
 
-    // Helper: insert or replace by primary event pattern.
     let mut upsert = |entry: HookEntry| {
         let primary = entry.events.first().cloned().unwrap_or_default();
         if primary.is_empty() {
-            // No event pattern — always append.
             merged.push(entry);
             return;
         }
@@ -183,15 +146,12 @@ fn merge_hooks(config: &HooksConfig) -> Vec<HookEntry> {
             .iter()
             .position(|h| h.events.first().map(|s| s.as_str()) == Some(primary.as_str()))
         {
-            // Replace existing entry (later tier wins).
             merged[pos] = entry;
         } else {
             merged.push(entry);
         }
     };
 
-    // Apply in order: global → project → user.
-    // Later calls overwrite earlier ones with same primary event pattern.
     for entry in &config.global {
         upsert(entry.clone());
     }
@@ -204,10 +164,6 @@ fn merge_hooks(config: &HooksConfig) -> Vec<HookEntry> {
 
     merged
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -280,13 +236,11 @@ mod tests {
             make_entry(vec!["step_complete"]),
             make_entry(vec!["model_query"]),
         ];
-        let user = vec![make_entry(vec!["step_complete"])]; // overrides project
+        let user = vec![make_entry(vec!["step_complete"])];
 
         let config = make_config(global, project, user);
         let hooks = merge_hooks(&config);
-        // tool_call (global), step_complete (user→overrides), model_query (project)
         assert_eq!(hooks.len(), 3);
-        // step_complete should be the user entry (which uses defaults)
         let sc = hooks
             .iter()
             .find(|h| h.events.first().map(|s| s.as_str()) == Some("step_complete"))

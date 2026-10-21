@@ -1,5 +1,3 @@
-//! Context-overflow detection — pi `isContextOverflow` aligned.
-
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -51,7 +49,6 @@ static NON_OVERFLOW_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     .collect()
 });
 
-/// Whether `error_message` matches overflow patterns (and not non-overflow exclusions).
 pub fn error_message_is_context_overflow(error_message: &str) -> bool {
     if NON_OVERFLOW_PATTERNS
         .iter()
@@ -62,7 +59,6 @@ pub fn error_message_is_context_overflow(error_message: &str) -> bool {
     OVERFLOW_PATTERNS.iter().any(|p| p.is_match(error_message))
 }
 
-/// pi `isContextOverflow(assistant, contextWindow)`.
 pub fn is_context_overflow_assistant(message: &AgentMessage, context_window: u64) -> bool {
     let AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         stop_reason,
@@ -74,7 +70,6 @@ pub fn is_context_overflow_assistant(message: &AgentMessage, context_window: u64
         return false;
     };
 
-    // Case 1: error message patterns
     if *stop_reason == Some(XyStopReason::Error)
         && let Some(msg) = error_message.as_deref()
         && error_message_is_context_overflow(msg)
@@ -91,12 +86,10 @@ pub fn is_context_overflow_assistant(message: &AgentMessage, context_window: u64
     };
     let input_tokens = u.input + u.cache_read;
 
-    // Case 2: silent overflow (successful but usage exceeds window)
     if *stop_reason == Some(XyStopReason::Stop) && input_tokens > context_window {
         return true;
     }
 
-    // Case 3: length-stop with zero output filling the window
     if *stop_reason == Some(XyStopReason::MaxTokens)
         && u.output == 0
         && input_tokens >= (context_window as f64 * 0.99) as u64
@@ -107,7 +100,6 @@ pub fn is_context_overflow_assistant(message: &AgentMessage, context_window: u64
     false
 }
 
-/// Whether assistant provider+model matches the current model (pi `sameModel`).
 pub fn assistant_same_model(message: &AgentMessage, provider: &str, model_id: &str) -> bool {
     let AgentMessage::Llm(XyLlmMessage::AssistantMessage {
         provider: p,
@@ -117,7 +109,6 @@ pub fn assistant_same_model(message: &AgentMessage, provider: &str, model_id: &s
     else {
         return false;
     };
-    // Empty tags on a just-produced turn: treat as same (legacy / partial fill).
     if p.is_empty() && m.is_empty() {
         return true;
     }

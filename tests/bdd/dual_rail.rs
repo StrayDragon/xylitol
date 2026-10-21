@@ -1,6 +1,3 @@
-//! Domain-object event parity: inject journal events, collect v3 mux frames.
-//! Lives in BDD tests because kernel must not depend on `xylitol-app-tui`.
-
 use futures::StreamExt;
 use xylitol_app_tui::host_client::{HostClient, HttpWsClient};
 

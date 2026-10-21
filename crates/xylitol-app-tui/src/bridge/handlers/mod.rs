@@ -1,5 +1,3 @@
-//! XyEvent handler families — called only from [`super::apply_xy_event`].
-
 mod agent;
 mod lifecycle;
 mod stream;

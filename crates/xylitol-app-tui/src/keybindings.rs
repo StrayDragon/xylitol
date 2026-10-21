@@ -1,8 +1,3 @@
-//! Product keybinding catalog + disk hot-reload (c1090).
-//!
-//! Merges `app.*` defaults into the package [`KeybindingsManager`], loads
-//! `keybindings.json` from the agent dir, and exposes [`reload_keybindings`].
-
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -13,7 +8,6 @@ use xylitol_tui::{
     set_keybindings, with_keybindings_mut,
 };
 
-/// Product action defaults (pi-aligned ids; chords match previous hardcoding).
 static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
     ("app.interrupt", &["escape"], Some("Cancel or abort")),
     (
@@ -142,20 +136,11 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
     ),
 ];
 
-/// Result of a reload attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReloadOutcome {
-    /// File missing — defaults kept / restored from empty override.
-    NoFile {
-        path: PathBuf,
-    },
-    Applied {
-        path: PathBuf,
-    },
-    Failed {
-        path: PathBuf,
-        error: String,
-    },
+    NoFile { path: PathBuf },
+    Applied { path: PathBuf },
+    Failed { path: PathBuf, error: String },
 }
 
 fn app_definitions() -> HashMap<&'static str, KeybindingDefinition> {
@@ -176,14 +161,12 @@ fn keybindings_path(agent_dir: &Path) -> PathBuf {
     agent_dir.join("keybindings.json")
 }
 
-/// Default agent directory (`~/.xylitol/`) without reaching `infra`.
 pub fn default_agent_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".xylitol")
 }
 
-/// Parse `keybindings.json` object: `{ "id": ["chord", ...] | "chord" }`.
 pub fn parse_keybindings_json(raw: &str) -> Result<KeybindingsConfig, TuiSurfaceError> {
     let value: serde_json::Value = serde_json::from_str(raw)
         .map_err(|e| TuiSurfaceError::invalid(format!("invalid JSON: {e}")))?;
@@ -225,20 +208,16 @@ fn load_from_path(path: &Path) -> Result<KeybindingsConfig, TuiSurfaceError> {
     parse_keybindings_json(&raw)
 }
 
-/// Build package `tui.*` + product `app.*` manager (no process-global write).
 pub fn build_product_keybindings(user: KeybindingsConfig) -> KeybindingsManager {
     let mut defs = create_default_definitions();
     defs.extend(app_definitions());
     KeybindingsManager::new(defs, user)
 }
 
-/// Install package `tui.*` + product `app.*` with no disk overrides into the
-/// process-global manager (demo / tests that intentionally touch globals).
 pub fn install_product_keybindings_defaults_only() {
     set_keybindings(build_product_keybindings(KeybindingsConfig::new()));
 }
 
-/// Convenience: match a product/package id against the scoped or global manager.
 pub fn matches_binding(event: &crossterm::event::KeyEvent, id: &'static str) -> bool {
     ensure_product_catalog();
     with_keybindings(|kb| kb.matches_event(event, id))
@@ -251,7 +230,6 @@ pub(crate) fn ensure_product_catalog() {
     }
 }
 
-/// Load product keybindings from `agent_dir` without touching process globals.
 pub fn load_product_keybindings(agent_dir: &Path) -> (KeybindingsManager, ReloadOutcome) {
     let path = keybindings_path(agent_dir);
     match load_from_path(&path) {
@@ -274,7 +252,6 @@ pub fn load_product_keybindings(agent_dir: &Path) -> (KeybindingsManager, Reload
     }
 }
 
-/// Re-read `keybindings.json` into `kb`. On parse/IO failure, keep current bindings.
 pub fn reload_keybindings_into(kb: &mut KeybindingsManager, agent_dir: &Path) -> ReloadOutcome {
     let path = keybindings_path(agent_dir);
     if !path.exists() {
@@ -293,8 +270,6 @@ pub fn reload_keybindings_into(kb: &mut KeybindingsManager, agent_dir: &Path) ->
     }
 }
 
-/// Re-read `keybindings.json` into the scoped or process-global manager.
-/// On parse/IO failure, keep current bindings.
 pub fn reload_keybindings(agent_dir: &Path) -> ReloadOutcome {
     with_keybindings_mut(|kb| reload_keybindings_into(kb, agent_dir))
 }
@@ -349,7 +324,6 @@ mod tests {
         std::fs::write(&path, "{ not json").unwrap();
         let failed = reload_keybindings(dir.path());
         assert!(matches!(failed, ReloadOutcome::Failed { .. }));
-        // Bad reload keeps previous successful override.
         assert!(matches_binding(
             &KeyEvent::new(KeyCode::Char('x'), KeyModifiers::CONTROL),
             "app.interrupt"

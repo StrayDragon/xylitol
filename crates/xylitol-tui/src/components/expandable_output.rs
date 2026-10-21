@@ -1,28 +1,12 @@
-//! Expandable multi-line output with a max-height viewport (pi bash/tool preview).
-//!
-//! Collapsed **Tail** (default): last `max_preview_lines` with dim
-//! `... (N earlier lines, …)` **below** the window (block footer).
-//! Collapsed **Head**: first N lines with dim `... (N more lines, …)` **below**.
-//! Expanded: full content; when it exceeds the collapsed viewport, a dim
-//! `... (expanded, {fold_hint})` fold-back footer is appended (peo3).
-//! `width == 0` returns empty (c550). Host owns the expand keybinding
-//! (pi: `Ctrl+O` / `app.tools.expand`).
-
 use crate::tui::Component;
 use crate::utils::{TruncateFrom, VisualTruncateResult, truncate_to_visual_lines};
 
-/// Options for collapsed preview rendering.
 #[derive(Debug, Clone)]
 pub struct ExpandableOutputOptions {
-    /// Max visual lines when collapsed (pi bash tool = 5, bash-mode = 20).
     pub max_preview_lines: usize,
-    /// Tail = last-N (logs/bash); Head = first-N (read/grep style).
     pub from: TruncateFrom,
-    /// Trailing phrase after the skipped count, e.g. `"ctrl+o to expand"`.
     pub expand_hint: String,
-    /// Trailing phrase of the expanded fold-back footer, e.g. `"ctrl+o to fold"`.
     pub fold_hint: String,
-    /// Optional style for the hint line (defaults to dim SGR).
     pub hint_style: Option<fn(&str) -> String>,
 }
 
@@ -42,26 +26,18 @@ fn default_dim(s: &str) -> String {
     format!("\x1b[2m{s}\x1b[22m")
 }
 
-/// Render preview or full output (pure function for tests / composition).
-///
-/// Returns the rendered lines plus the **hint-band row index** when a footer
-/// exists (collapsed expand hint, or expanded fold-back footer per peo3) so
-/// hosts can hit-test the band without string sniffing.
 pub fn render_expandable_output(
     text: &str,
     width: usize,
     expanded: bool,
     opts: &ExpandableOutputOptions,
 ) -> (Vec<String>, Option<usize>) {
-    // c550: zero width is a no-op surface (empty), never panic via wrap-at-1.
     if width == 0 {
         return (Vec::new(), None);
     }
     if expanded || text.is_empty() {
         let VisualTruncateResult { visual_lines, .. } =
             truncate_to_visual_lines(text, usize::MAX, width, TruncateFrom::Tail);
-        // peo3: only content that would actually fold gets a fold-back footer;
-        // short/empty expanded content stays hint-free.
         if expanded && !text.is_empty() && visual_lines.len() > opts.max_preview_lines.max(1) {
             let style = opts.hint_style.unwrap_or(default_dim);
             let mut out = visual_lines;
@@ -90,8 +66,6 @@ pub fn render_expandable_output(
     let style = opts.hint_style.unwrap_or(default_dim);
     let hint = style(&hint_raw);
 
-    // Hint is always a block footer (after the visible window) so it sits under
-    // tool body lines, not under the tool header / first command line.
     let mut out = Vec::with_capacity(visual_lines.len() + 1);
     out.extend(visual_lines);
     out.push(hint);
@@ -99,7 +73,6 @@ pub fn render_expandable_output(
     (out, Some(footer_row))
 }
 
-/// Component wrapper: host toggles [`Self::set_expanded`]; content may stream via [`Self::set_text`].
 pub struct ExpandableOutput {
     text: String,
     expanded: bool,
@@ -173,7 +146,7 @@ mod tests {
             !lines[0].contains("earlier lines"),
             "hint must NOT sit above the tail window: {lines:?}"
         );
-        assert_eq!(lines.len(), 4); // 3 body + hint
+        assert_eq!(lines.len(), 4);
         assert!(
             lines[2].contains("line-20"),
             "tail window ends with latest: {lines:?}"
@@ -197,7 +170,7 @@ mod tests {
         };
         let (lines, footer) = render_expandable_output(&text, 40, true, &opts);
         assert_eq!(footer, Some(8), "fold footer row reported: {lines:?}");
-        assert_eq!(lines.len(), 9); // 8 body + fold footer
+        assert_eq!(lines.len(), 9);
         assert!(!lines.iter().any(|l| l.contains("earlier")));
         let last = lines.last().expect("fold footer");
         assert!(
@@ -252,7 +225,6 @@ mod tests {
                 .any(|l| l.contains("row1\n") || l == "row1" || l.ends_with("row1")),
             "early rows hidden: {lines:?}"
         );
-        // row1 alone would match row10 — check prefix carefully
         assert!(
             !lines
                 .iter()
@@ -293,7 +265,7 @@ mod tests {
             last.contains("17 more lines") && last.contains("ctrl+o to expand"),
             "Head hint below body: {lines:?}"
         );
-        assert_eq!(lines.len(), 4); // 3 body + hint
+        assert_eq!(lines.len(), 4);
         assert!(
             lines.iter().any(|l| l.contains("line-3")),
             "preview includes head window: {lines:?}"

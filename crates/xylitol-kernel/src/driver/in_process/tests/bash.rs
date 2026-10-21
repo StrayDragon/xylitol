@@ -1,6 +1,3 @@
-//! Interactive bash run relay (c2760 follow-up): chunk → event UTF-8
-//! reassembly and the out-of-band sink cancel.
-
 use super::*;
 
 #[test]
@@ -11,16 +8,13 @@ fn utf8_emit_len_complete_input() {
 
 #[test]
 fn utf8_emit_len_holds_back_split_multibyte() {
-    // "你" = E4 B8 AD, split mid-sequence.
     assert_eq!(super::utf8_emit_len(&[0xE4]), 0);
     assert_eq!(super::utf8_emit_len(&[0xE4, 0xB8]), 0);
-    // A valid prefix before the truncated tail still emits.
     assert_eq!(super::utf8_emit_len(&[b'a', 0xE4, 0xB8]), 1);
 }
 
 #[test]
 fn utf8_emit_len_emits_invalid_bytes_now() {
-    // A lone continuation byte is invalid, not a truncated lead.
     assert_eq!(super::utf8_emit_len(&[0x80]), 1);
     assert_eq!(super::utf8_emit_len(&[b'x', 0xFF, b'y']), 2);
 }
@@ -79,8 +73,6 @@ async fn sink_cancel_reaches_execute_bash_out_of_band() {
         tx,
         cancel: cancel.clone(),
     }));
-    // Cancel before dispatch: stands in for host `abort` racing the running
-    // bash unary (which holds the writer lock, so dispatch cannot reach it).
     cancel.cancel();
     let run = crate::driver::XyDriver::bash_run(&mut driver, "sleep 30", false)
         .await

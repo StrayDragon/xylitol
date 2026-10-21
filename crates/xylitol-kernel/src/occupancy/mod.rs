@@ -1,5 +1,3 @@
-//! Host occupancy assembly: factory + bind. Slot policy lives in `xylitol-serve`.
-
 #[cfg(feature = "server")]
 pub mod factory;
 #[cfg(feature = "server")]

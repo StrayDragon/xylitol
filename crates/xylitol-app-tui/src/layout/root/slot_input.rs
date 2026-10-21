@@ -1,5 +1,3 @@
-//! UiRoot slot input routing (c1170 / ath12).
-
 use xylitol_tui::{Component, InputEvent};
 
 use super::super::slots::{
@@ -34,7 +32,6 @@ impl UiRoot {
                 _ => {}
             }
         }
-        // c2875 覆盖弹出框键位：切换显影 / Esc 收起；先于槽派发（任意槽可用）。
         if let InputEvent::Key(ref key) = event {
             if matches_binding(key, "app.session.popup") {
                 if self.session_popup_open {
@@ -139,10 +136,6 @@ impl UiRoot {
                 return;
             }
             if matches_binding(key, "app.tools.expand") {
-                // Ctrl+O = global default flip + clear per-block overrides
-                // (att30; same default+overrides model as Alt+E / Ctrl+T).
-                // No full-cache clear (ath25): entry fingerprints carry
-                // per-block `output_effective`, so only viewport blocks repaint.
                 self.fold.tools_output_expanded = !self.fold.tools_output_expanded;
                 self.fold.clear_output_overrides();
                 self.bump_upper_gen();

@@ -1,8 +1,3 @@
-//! Live scrollback rendering — Markdown / Expandable / Diff (c476 / c668).
-//!
-//! Morphology SSOT: `agent_demo` + `design/{markdown,expandable,diff-block,bash-mode}.md`.
-//! Not a Codex TranscriptView — lines go into the engine scrollback stack.
-
 mod cache;
 mod diff;
 mod live;
@@ -11,9 +6,7 @@ mod paint;
 mod tests;
 
 pub use cache::ScrollbackPaintCache;
-// Keep `scrollback::{StreamingAssistantPaint, find_stable_markdown_prefix_end}`
 // as the public module path (widgets re-exports the latter under cfg(test)).
-/// Thousands-separated token count for cross-plane compaction word forms (c2810).
 pub(crate) use paint::format_token_count;
 #[allow(unused_imports)]
 pub use paint::{StreamingAssistantPaint, find_stable_markdown_prefix_end};
@@ -42,22 +35,14 @@ use paint::{
     paint_user_block, push_wrapped,
 };
 
-/// Fold defaults + per-block overrides (att7 / att20 / att21). Not `Copy` — holds maps.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScrollbackFold {
     pub thinking_expanded: bool,
-    /// Alt+E — tool/diff **block** show/hide detail.
     pub tools_expanded: bool,
-    /// Ctrl+O — tool/bash detail **viewport** collapsed ↔ full (orthogonal to Alt+E).
     pub tools_output_expanded: bool,
-    /// Per-block output-viewport overrides (Ctrl+O hint / fold-band click, att30);
-    /// prefer over [`Self::tools_output_expanded`].
     pub output_overrides: HashMap<String, bool>,
-    /// Alt+E — compaction summary (default collapsed; shares chord with tools).
     pub compaction_expanded: bool,
-    /// Per-block tools-family overrides (Tool / Diff / Ask); prefer over [`Self::tools_expanded`].
     pub tools_overrides: HashMap<String, bool>,
-    /// Per-id thinking overrides; prefer over [`Self::thinking_expanded`].
     pub thinking_overrides: HashMap<String, bool>,
 }
 
@@ -65,11 +50,9 @@ impl Default for ScrollbackFold {
     fn default() -> Self {
         Self {
             thinking_expanded: false,
-            // Product default: tool bodies open; Ctrl+O still clamps viewport height.
             tools_expanded: true,
             tools_output_expanded: false,
             output_overrides: HashMap::new(),
-            // Product default: compaction summary collapsed (c1730 / pi).
             compaction_expanded: false,
             tools_overrides: HashMap::new(),
             thinking_overrides: HashMap::new(),
@@ -77,11 +60,6 @@ impl Default for ScrollbackFold {
     }
 }
 
-/// Defaults that MAY full-clear the paint cache on change.
-///
-/// `tools_output_expanded` / `compaction_expanded` MUST stay
-/// out of this key (ath25 / att29–att30): entry fingerprints already carry them,
-/// so Compaction / Ctrl+O toggles only re-paint affected blocks.
 pub type ScrollbackFoldDefaultsKey = (bool, bool);
 
 impl ScrollbackFold {
@@ -138,10 +116,6 @@ impl ScrollbackFold {
     }
 }
 
-/// Fold planning for one paint pass (planning ↔ painting split): which entry
-/// indices are skipped (L2/L3 foldable middles), where envelope / cluster header
-/// rows land, thought-only middles, and the live-open-cluster state that the
-/// streaming thinking paint keys off.
 struct SegmentPlan {
     skip_middle: HashSet<usize>,
     skip_mid_asst: HashSet<usize>,
@@ -172,8 +146,6 @@ fn plan_segments(
     for (si, seg) in segments.iter().enumerate() {
         let live_seg = live_seg_idx == Some(si);
         let level = activity.effective_level(&seg.id);
-        // Envelope header only when the envelope is in play (L2 expanded / L3
-        // collapsed). Keep-window L0 and live window stay cluster heads only.
         if activity.settings.paints_envelope_header() && !live_seg && level != SegmentLevel::L0 {
             let mids = middle_entry_indices(&model.entries, seg);
             if let Some(&first) = mids.first() {
@@ -201,9 +173,6 @@ fn plan_segments(
                 .iter()
                 .any(|&idx| model.entries.get(idx).is_some_and(is_inflight_hidden));
             let expanded = activity.cluster_kids_visible(&seg.id, &cl.id);
-            // Live open cluster with tools (including inflight) gets a foldable
-            // cluster header. Kids stay collapsed until the user opens them —
-            // paint must not auto-expand (avoids popping bodies and per-frame HashSet writes).
             let paint_header =
                 !omit_header && !(is_open && !sealed_nonempty && !has_inflight_tools);
             if paint_header && let Some(&first) = mids.first() {
@@ -226,7 +195,6 @@ fn plan_segments(
                     continue;
                 }
                 if omit_header {
-                    // Envelope is already expanded here; show the compaction block.
                     continue;
                 }
                 if !expanded {
@@ -238,15 +206,7 @@ fn plan_segments(
     plan
 }
 
-/// Render UiModel entries into scrollback lines for the product host.
-///
-/// Fills `fold_hits.regions` with content-relative rows (caller adds loaded-resources
-/// offset). Does not touch `scroll_top` / `transcript_rows`.
-///
-/// L2/L3 segments skip foldable middles and emit one summary row; segment→row
-/// spans land in `activity.row_spans`, and the summary fold marker is also
-/// registered on [`FoldHitTable`] as [`FoldTarget::Segment`] (att31 / c2045).
-#[allow(clippy::too_many_arguments)] // fold + activity + cache + hits are distinct paint planes
+#[allow(clippy::too_many_arguments)]
 pub fn render_scrollback(
     model: &UiModel,
     glyphs: GlyphSet,
@@ -470,7 +430,6 @@ pub fn render_scrollback(
                         width,
                     );
                 } else {
-                    // att8 / att21: without ActivityFold, streaming thinking stays expanded.
                     let marker = glyphs.unfold();
                     let header =
                         theme.paint_muted(&format!("{marker} Thinking  {}", key_hint("Ctrl+T")));

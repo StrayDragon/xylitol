@@ -1,49 +1,29 @@
-//! Resource source-info vocabulary.
-//!
-//! Pure data types describing where a loaded resource (skill, prompt, theme,
-//! command) came from. Zero crate-internal dependencies — both `agent` and
-//! `infra` reference these.
-
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// The scope of a resource: where it was loaded from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SourceScope {
-    /// User-level resource (e.g., `~/.xylitol/skills/`, `~/.agents/skills/`).
     User,
-    /// Project-level resource (e.g., `<cwd>/.xylitol/skills/`, `<cwd>/.agents/skills/`).
     Project,
-    /// Temporary or synthetic resource (not persisted).
     Temporary,
 }
 
-/// The origin of a resource: how it was installed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SourceOrigin {
-    /// Installed via a package manager (npm, git).
     Package,
-    /// Directly placed by the user (top-level dir or file).
     TopLevel,
 }
 
-/// Provenance information for a loaded resource.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceInfo {
-    /// Absolute path to the resource file.
     pub path: PathBuf,
-    /// Human-readable source description (e.g., "local", "npm:foo", "git:...").
     pub source: String,
-    /// Scope of the resource.
     pub scope: SourceScope,
-    /// Origin of the resource.
     pub origin: SourceOrigin,
-    /// Optional base directory for relative path resolution.
     pub base_dir: Option<PathBuf>,
 }
 
-/// Create a SourceInfo from a resolved path and metadata.
 pub fn create_source_info(
     path: PathBuf,
     source: String,

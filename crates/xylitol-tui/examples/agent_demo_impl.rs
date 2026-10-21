@@ -39,8 +39,6 @@ use xylitol_tui::{
     parse_terminal_color_scheme_report,
 };
 
-/// Demo slash commands (static; product would load from Driver / protocol).
-/// Names omit the leading `/` — Editor's CombinedAutocompleteProvider adds it.
 const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("help", "Show key help in transcript"),
     ("md", "Stream full Markdown grammar stub (typewriter)"),
@@ -63,7 +61,6 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("diff", "Inject unified + side-by-side diffs"),
 ];
 
-/// Demo-only `$` CompletionSource (c545) — not product skill semantics.
 const DEMO_DOLLAR_SKILLS: &[(&str, &str)] = &[
     ("demo", "c545 stub skill — third CompletionSource"),
     (
@@ -72,7 +69,6 @@ const DEMO_DOLLAR_SKILLS: &[(&str, &str)] = &[
     ),
 ];
 
-/// Stub SKILL.md bodies keyed by demo skill name (A10 inject assert — not product IO).
 fn demo_skill_md_body(name: &str) -> Option<&'static str> {
     match name {
         "demo" => Some("# demo\n\nStub SKILL.md body for agent_demo inject assert."),
@@ -83,7 +79,6 @@ fn demo_skill_md_body(name: &str) -> Option<&'static str> {
     }
 }
 
-/// Collect `$name` tokens (name = `[A-Za-z0-9_-]+`) in left-to-right order.
 fn dollar_skill_names(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let bytes = text.as_bytes();
@@ -108,7 +103,6 @@ fn dollar_skill_names(text: &str) -> Vec<String> {
     out
 }
 
-/// Resolve known demo `$` refs → (name, stub SKILL.md body). Unknown `$` skipped.
 fn resolve_demo_skill_injections(text: &str) -> Vec<(String, String)> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
@@ -136,7 +130,6 @@ impl CompletionSource for DemoDollarSource {
     }
 
     fn should_dismiss(&self, ctx: &CompletionContext<'_>, _m: &CompletionMatch) -> bool {
-        // Like `@`: bare `$` stays open; dismiss only when the `$…` token is gone.
         xylitol_tui::extract_dollar_prefix(ctx.before_cursor()).is_none()
     }
 
@@ -173,7 +166,6 @@ impl CompletionSource for DemoDollarSource {
         item: &AutocompleteItem,
         prefix: &str,
     ) -> (Vec<String>, usize, usize) {
-        // Inline replace like `@path`: keep text before the `$…` token.
         let current = lines[cursor_line].clone();
         let before = &current[..cursor_col.saturating_sub(prefix.len())];
         let after = &current[cursor_col..];
@@ -189,7 +181,6 @@ impl CompletionSource for DemoDollarSource {
     }
 }
 
-/// Command-plate row (c535): id drives routing; label/description feed SelectList.
 #[derive(Debug, Clone, Copy)]
 struct DemoPlateItem {
     id: &'static str,
@@ -197,7 +188,6 @@ struct DemoPlateItem {
     description: &'static str,
 }
 
-/// Demo catalog — Ctrl+P / `/palette` list is generated from this table only.
 const DEMO_PLATE: &[DemoPlateItem] = &[
     DemoPlateItem {
         id: "md-full",
@@ -355,7 +345,6 @@ fn slash_commands() -> Vec<SlashCommand> {
         .collect()
 }
 
-/// Demo model catalog for [`SlashArgCompletionSource`] (`/model <id>`).
 const DEMO_MODELS: &[(&str, &str)] = &[
     ("sonnet-4", "anthropic"),
     ("claude-sonnet-4", "anthropic"),
@@ -377,7 +366,6 @@ fn cyan(s: &str) -> String {
     format!("\x1b[36m{s}\x1b[39m")
 }
 
-/// Wrap a key chord for block-adjacent hints: `(Ctrl+T)`.
 fn key_hint(chord: &str) -> String {
     dim(&format!("({chord})"))
 }
@@ -446,7 +434,6 @@ impl SessionTreeFilter {
     fn include(self, node: &TreeNode) -> bool {
         let kind = node.kind.as_deref().unwrap_or("");
         match self {
-            // demo default ≈ all (see c456 design.md)
             Self::Default | Self::All => true,
             Self::NoTools => kind != "tool",
             Self::UserOnly => kind == "user",
@@ -497,7 +484,6 @@ fn find_session_node<'a>(roots: &'a [TreeNode], id: &str) -> Option<&'a TreeNode
     None
 }
 
-/// `None` = not found; `Some(None)` = `target` is a forest root; `Some(Some(id))` = parent id.
 fn parent_id_of(roots: &[TreeNode], target: &str) -> Option<Option<String>> {
     fn walk(node: &TreeNode, target: &str, parent: Option<&str>) -> Option<Option<String>> {
         if node.id == target {
@@ -527,7 +513,6 @@ fn tree_label_preview(text: &str) -> String {
     }
 }
 
-/// Root→target id path in a session tree (inclusive). Demo history travel uses this.
 fn path_ids_to(roots: &[TreeNode], target: &str) -> Option<Vec<String>> {
     fn walk(node: &TreeNode, target: &str, path: &mut Vec<String>) -> bool {
         path.push(node.id.clone());
@@ -551,7 +536,6 @@ fn path_ids_to(roots: &[TreeNode], target: &str) -> Option<Vec<String>> {
     None
 }
 
-/// Built-in payloads for the seed sample tree (live nodes use `history_payloads`).
 fn seed_history_entry(id: &str) -> Option<TranscriptEntry> {
     match id {
         "root" => None,
@@ -598,7 +582,6 @@ pub enum ToolBlockStatus {
 
 #[cfg(test)]
 impl ToolBlockStatus {
-    /// RGB from active palette (`tool-*-bg`).
     pub fn rgb(self, palette: &Palette) -> (u8, u8, u8) {
         let c = match self {
             Self::Pending => palette.tool_pending_bg,
@@ -609,7 +592,6 @@ impl ToolBlockStatus {
     }
 }
 
-/// Richer unified sample via pi edit format (aligned `±N content`).
 fn sample_unified_pair() -> DiffInput {
     DiffInput::from_edit_pair(
         "fn ready() -> bool {\n    true\n}\n",
@@ -617,7 +599,6 @@ fn sample_unified_pair() -> DiffInput {
     )
 }
 
-/// Side-by-side sample — LinePair so SBS layout is exercised; compact gutters by default.
 fn sample_sbs_pair() -> DiffInput {
     DiffInput::LinePair {
         old: "status: Ready\nfooter: cwd · model\n".into(),
@@ -626,7 +607,6 @@ fn sample_sbs_pair() -> DiffInput {
     }
 }
 
-/// c540: SBS with CJK so visible_width budgeting is obvious in demo.
 fn sample_sbs_cjk_pair() -> DiffInput {
     DiffInput::LinePair {
         old: "标题：验收路径\n说明：窄宽折行\n".into(),
@@ -635,7 +615,6 @@ fn sample_sbs_cjk_pair() -> DiffInput {
     }
 }
 
-/// c540: delete-only hunk → empty right half (no fake line number).
 fn sample_sbs_empty_half_pair() -> DiffInput {
     DiffInput::LinePair {
         old: "only_old_line\n".into(),
@@ -644,7 +623,6 @@ fn sample_sbs_empty_half_pair() -> DiffInput {
     }
 }
 
-/// Legacy display_diff gutter sample (still exercised). No `--- a/` / `+++ b/` — path is on the header.
 fn sample_display_diff() -> String {
     [
         "  10    10 |     Component, CrosstermTerminal,",
@@ -654,7 +632,6 @@ fn sample_display_diff() -> String {
     .join("\n")
 }
 
-/// Long tool stdout for expandable viewport (morphology only; content is filler).
 fn sample_long_bash_output() -> String {
     let mut lines: Vec<String> = (1..=24)
         .map(|i| format!("(pass) suite-{i:02} · case ok"))
@@ -669,7 +646,6 @@ fn sample_long_bash_output() -> String {
     lines.join("\n")
 }
 
-/// Long file-style body for Head viewport (c550) — first lines stay visible when collapsed.
 fn sample_long_read_output() -> String {
     let mut lines: Vec<String> = vec![
         "// crates/xylitol-tui/src/components/expandable_output.rs".into(),
@@ -681,7 +657,6 @@ fn sample_long_read_output() -> String {
     lines.join("\n")
 }
 
-/// Prefer workspace-relative path when under `cwd`; otherwise absolute.
 fn format_edit_path(path: impl AsRef<std::path::Path>, cwd: &std::path::Path) -> String {
     let path = path.as_ref();
     let abs = if path.is_absolute() {
@@ -695,7 +670,6 @@ fn format_edit_path(path: impl AsRef<std::path::Path>, cwd: &std::path::Path) ->
     }
 }
 
-/// Larger edit-tool style sample (context + change) for simulated Edit steps.
 fn sample_edit_tool_pair() -> DiffInput {
     DiffInput::from_edit_pair(
         "pub fn footer_note(cwd: &str, model: &str) -> String {\n    format!(\"{cwd} · {model}\")\n}\n",
@@ -707,16 +681,10 @@ fn demo_markdown_theme(scheme: TerminalColorScheme) -> MarkdownTheme {
     Palette::from(scheme).markdown_theme()
 }
 
-/// Richer streamed assistant body used when prompt asks for markdown / md.
 fn markdown_showcase_stream_focus() -> &'static str {
     "本轮按 c530 打字机流式铺全语法 stub：标题分级、行内标记、链接/图、列表/任务、引用、表、多语言代码。"
 }
 
-/// Diff theme for demo blocks embedded in a tool wash (pi edit path).
-///
-/// Fg polarity + word spans on a **bright red/green wash** mixed from the block
-/// bg toward polarity (not reverse, not a darker-only shade).
-/// No row `diff-*-bg` — the expandable shell's `tool-*-bg` owns the block wash.
 fn demo_diff_theme(scheme: TerminalColorScheme, block_bg: xylitol_tui::RgbColor) -> DiffTheme {
     let p = Palette::from(scheme);
     let added = p.diff_added;
@@ -738,8 +706,6 @@ fn demo_diff_theme(scheme: TerminalColorScheme, block_bg: xylitol_tui::RgbColor)
     }
 }
 
-/// Full Markdown grammar stub for c530 / c535 — streamed via plate `md-full` or `/md`.
-/// Source keeps fences so syntect can highlight; display has no fence chrome.
 fn markdown_grammar_stub() -> &'static str {
     "\
 # Markdown grammar stub (c530)
@@ -880,7 +846,6 @@ this is not a diagram
 完：打字机流式应逐段重绘标题 / 列表 / 表 / 高亮；粗体斜体靠 SGR，语义靠（加粗）/（斜体）标注。"
 }
 
-/// Focused nested-list sample for plate `md-list-wrap` (library reference).
 fn markdown_list_wrap_stub() -> &'static str {
     "\
 ### 列表嵌套 · 悬挂缩进（prewrapped）
@@ -904,7 +869,6 @@ fn markdown_list_wrap_stub() -> &'static str {
 窄终端下第 3 项应折行且续行保留与 `3. ` 对齐的空格，**不得**二次折行把悬挂缩进冲掉。"
 }
 
-/// Full Markdown grammar for c530 (via `/md` or Ctrl+P → md-full).
 fn markdown_showcase_seed() -> &'static str {
     markdown_grammar_stub()
 }
@@ -928,9 +892,6 @@ fn env_flag(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-// Demo-entry helpers below are exercised by the example binaries
-// (`agent_demo` / `agent_demo_alt`); the `agent_demo_test` target includes this
-// file privately and never reaches them, so `dead_code` fires only there.
 #[allow(dead_code)]
 fn print_application_owned_acceptance_checklist() {
     eprintln!(
@@ -949,11 +910,7 @@ xylitol-tui agent_demo_alt · ApplicationOwned (alt-screen)
     );
 }
 
-/// Interactive TTY → real `$EDITOR`; harness / non-TTY / explicit stub → stub.
-///
 /// Under `cfg(test)` (agent_demo included by `agent_demo_test`), never auto-prefer
-/// real editor from inherited stdin TTY — otherwise interactive `just qa` flakes
-/// while CI/pipe runs pass. Force real path with `XYLITOL_AGENT_DEMO_REAL_EDITOR=1`.
 fn prefer_real_external_editor() -> bool {
     if env_flag("XYLITOL_AGENT_DEMO_EDITOR_STUB") {
         return false;
@@ -982,8 +939,6 @@ fn resolve_external_editor_command() -> Option<String> {
         })
 }
 
-/// Write `initial` to a tempfile, spawn `$VISUAL`/`$EDITOR`, return new text on
-/// exit 0 (pi-compatible). Terminal must already be suspended by the caller.
 #[allow(dead_code)]
 fn run_external_editor_process(initial: &str) -> Result<Option<String>, String> {
     let editor_cmd = resolve_external_editor_command()
@@ -1019,7 +974,6 @@ fn run_external_editor_process(initial: &str) -> Result<Option<String>, String> 
 
     let result = if status.success() {
         let new_content = std::fs::read_to_string(&path).map_err(|e| format!("read back: {e}"))?;
-        // Match pi: drop a single trailing newline from the file.
         Some(
             new_content
                 .strip_suffix('\n')
@@ -1033,10 +987,6 @@ fn run_external_editor_process(initial: &str) -> Result<Option<String>, String> 
     Ok(result)
 }
 
-/// Shared demo entry. Binaries pick the mode at compile/link time — no env switch.
-///
-/// - `agent_demo` → [`InteractionMode::Inline`]
-/// - `agent_demo_alt` → [`InteractionMode::ApplicationOwned`]
 #[allow(dead_code)]
 pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
     let defs = create_default_definitions();
@@ -1053,13 +1003,10 @@ pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         TUI::new(term)
     };
-    // Inline lab only: `XYLITOL_TUI_MOUSE=1` → EnableMouseCapture.
-    // ApplicationOwned enables mouse via begin_application_owned_session (inside start).
     if !application_owned && xylitol_tui::env_requests_mouse_capture() {
         tui.enable_mouse_capture();
     }
     if application_owned {
-        // First-frame floor; refined from FakeCodingAgentApp dock measure.
         tui.set_dock_rows(8);
     }
     let quit_flag = Arc::new(AtomicBool::new(false));
@@ -1072,10 +1019,6 @@ pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
     )));
     FakeCodingAgentApp::install_input_listeners(&app, &mut tui);
 
-    // Theme auto uses COLORFGBG only under crossterm — do NOT write OSC11/CSI
-    // queries here: replies land on stdin as garbage keys (can fake Ctrl+G → $EDITOR).
-
-    // After Ctrl+G sets pending: suspend terminal → `$EDITOR` → restore (pi shape).
     let app_hook = app.clone();
     tui.set_after_dispatch_hook(move |tui| {
         if tui.application_session_active() {
@@ -1083,7 +1026,6 @@ pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
             app_hook.borrow_mut().set_term_rows_for_mouse(rows);
             let dock = app_hook.borrow().last_dock_rows();
             tui.set_dock_rows(dock);
-            // Editor independent selection copy (ptim13) → same OSC52 flush path.
             let editor_clip = app_hook.borrow_mut().take_editor_clipboard();
             if !editor_clip.is_empty() {
                 tui.enqueue_clipboard_sequences(editor_clip);
@@ -1127,7 +1069,6 @@ pub fn run(mode: InteractionMode) -> Result<(), Box<dyn std::error::Error>> {
     tui.start_with_flag(&quit_flag)
 }
 
-/// Thin `Component` wrapper so input listeners can share the same app state.
 pub struct SharedFakeCodingAgentApp(pub Rc<RefCell<FakeCodingAgentApp>>);
 
 impl Component for SharedFakeCodingAgentApp {
@@ -1172,7 +1113,6 @@ impl Component for SharedFakeCodingAgentApp {
     }
 }
 
-/// Library-atom showcases that replace the editor slot (like Settings / plate).
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum LibAtomKind {
     TruncatedText,
@@ -1187,8 +1127,6 @@ enum Role {
     ScrollNotice,
 }
 
-/// App-layer glyph config (DESIGN.md): no font probing — env / Alt+G only.
-/// (Ctrl+G is external-editor stub — see `open_external_editor_stub`.)
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum GlyphSet {
     Unicode,
@@ -1255,9 +1193,7 @@ impl GlyphSet {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EntryStyle {
-    /// Full-row tool/user wash (legacy pi-ish).
     Wash,
-    /// 1-cell status bg strip on tools/diff/bash; user/assistant/thinking flush.
     Rail,
 }
 
@@ -1280,7 +1216,6 @@ impl EntryStyle {
         }
     }
 
-    /// Slash / footer token (`rail` | `wash`). Demo-native; product chrome vocab is separate.
     fn label(self) -> &'static str {
         match self {
             Self::Wash => "wash",
@@ -1295,33 +1230,27 @@ enum TranscriptEntry {
         role: Role,
         text: String,
     },
-    /// Collapsible thinking block (pi-style ExpandableText preview).
     Thinking {
         expanded: bool,
         body: String,
     },
-    /// Collapsible tool block: one-line summary; detail when expanded.
     Tool {
         expanded: bool,
         status: ToolBlockStatus,
         summary: String,
         detail: String,
     },
-    /// Collapsible Diff block (c451 `Diff` / `render_diff_lines`).
     Diff {
         expanded: bool,
         status: ToolBlockStatus,
         summary: String,
         input: DiffInput,
-        /// `None` = always unified; `Some(n)` = side-by-side when width ≥ n.
         side_by_side_min_width: Option<usize>,
     },
-    /// Ask tool: human summary in scrollback with fixed left rail (not tool wash).
     Ask {
         expanded: bool,
         summary: String,
         detail_lines: Vec<String>,
-        /// pending | answered | skipped — drives rail color.
         phase: AskPhase,
     },
 }
@@ -1335,16 +1264,8 @@ enum AskPhase {
 
 enum ScriptEvent {
     Tool(String),
-    /// Long bash stdout streamed into Tool detail (expandable viewport demo).
-    StreamingBash {
-        summary: String,
-        lines: Vec<String>,
-    },
-    /// Agent Edit tool: summary line + expanded pi-format Diff (pops open like pi).
-    Edit {
-        summary: String,
-        input: DiffInput,
-    },
+    StreamingBash { summary: String, lines: Vec<String> },
+    Edit { summary: String, input: DiffInput },
     Assistant(String),
     MarkPlan(usize),
     File(String),
@@ -1356,19 +1277,15 @@ enum TimedAction {
     StreamStart(StreamKind),
     StreamChunk(StreamKind, String),
     StreamFinish(StreamKind),
-    /// Flip a specific Tool/Diff entry (must bind index — never "last").
     SetToolStatus {
         index: usize,
         status: ToolBlockStatus,
     },
-    /// Append to a Tool entry's detail (streaming bash/tool output; viewport sticks to tail).
     AppendToolDetail {
         index: usize,
         chunk: String,
     },
-    /// Demo chrome status (c493 Compacting / Retry).
     SetStatus(String),
-    /// Demo scrollback ScrollNotice.
     PushScrollNotice(String),
 }
 
@@ -1391,38 +1308,24 @@ pub struct FakeCodingAgentApp {
     submit_slot: Rc<RefCell<Option<String>>>,
     palette_open: bool,
     palette: SelectList,
-    /// Typeahead filter for command plate (SelectList::set_filter).
     palette_filter: String,
     settings_open: bool,
     settings: SettingsList,
-    /// Library-atom editor-slot showcase (TruncatedText / CancellableLoader / Panel).
     lib_atom: Option<LibAtomKind>,
-    /// Live spinner for `LibAtomKind::CancellableLoader` (Esc aborts).
     atom_loader: Option<CancellableLoader>,
-    /// Built once when opening `LibAtomKind::Panel`.
     atom_panel: Option<Panel>,
-    /// Pending ask-tool demo: complete tool block when ChoicePrompt finishes.
     ask_tool_pending_idx: Option<usize>,
     choice_prompt: Option<ChoicePrompt>,
-    /// Shared slot filled by ChoicePrompt on_done.
     choice_pending: Option<Rc<RefCell<Option<ChoiceResult>>>>,
-    /// Double-Esc session tree (c454/c456).
     tree_open: bool,
     tree: TreeSelector,
     tree_filter: SessionTreeFilter,
-    /// When set, tree slot shows annotation editor instead of browse chrome.
     tree_label_edit: Option<(String, Input)>,
-    /// Live session graph (starts as sample; grows on submit / assistant finish).
     session_tree: Vec<TreeNode>,
-    /// Payloads for live nodes (seed ids use [`seed_history_entry`]).
     history_payloads: HashMap<String, TranscriptEntry>,
-    /// Monotonic id suffix for live tree nodes (`live-u-1`, `live-a-2`, …).
     next_node_seq: u64,
-    /// Current history leaf (tree `active_id` / Enter travel target). Demo only.
     history_leaf_id: String,
-    /// Steer: Enter while busy — applied when the current turn finishes (demo).
     steer_queue: VecDeque<String>,
-    /// Follow-up: Alt+Enter — applied only when fully idle.
     follow_up_queue: VecDeque<String>,
     last_esc_at: Option<Instant>,
     loader: Loader,
@@ -1437,44 +1340,26 @@ pub struct FakeCodingAgentApp {
     script_tick: u64,
     scheduled_tail_tick: u64,
     rng_state: u64,
-    /// Rotates default streamed fence language when prompt has no lang keyword.
     fence_rotate: usize,
     auto_started: bool,
     last_tick_at: Instant,
     quit_flag: Arc<AtomicBool>,
     glyph_set: GlyphSet,
-    /// Workspace root for Edit path display (`format_edit_path`) and `@` completion.
     cwd: std::path::PathBuf,
-    /// Global tool-output viewport (pi `toolsExpanded` / Ctrl+O). Collapsed = last N
-    /// visual lines + `... (N earlier lines, ctrl+o to expand)`; expanded = full detail.
     tools_output_expanded: bool,
-    /// Max visual lines when collapsed (pi bash tool = 5).
     tools_output_max_lines: usize,
-    /// Editor `!` prefix → bash-mode border (c457).
     bash_mode: bool,
-    /// Ctrl+G external-editor stub invocation count (harness).
     external_editor_invocations: u32,
-    /// Set by Ctrl+G when real editor path is chosen; consumed by TUI after-dispatch hook.
     pending_external_editor: bool,
-    /// Opt-in theme auto-detect (`XYLITOL_AGENT_DEMO_THEME_AUTO=1` or harness).
     theme_auto: bool,
-    /// Resolved Dark/Light token set (c458).
     theme_mode: TerminalColorScheme,
-    /// Entry paint: full-row wash (legacy) vs left rail (product default; demo may differ).
     entry_style: EntryStyle,
-    /// Editor thinking-level border (c1140); bash success border still wins while `!`.
     thinking_border_level: ThinkingBorderLevel,
-    /// Last submit's resolved `$skill` → stub SKILL.md bodies (demo inject assert).
     last_skill_injections: Vec<(String, String)>,
-    /// ApplicationOwned dock rows from last paint (status + editor slot + footer).
     last_dock_rows: usize,
-    /// Status band height inside the dock (for remapping screen → editor-local).
     last_status_rows: usize,
-    /// Editor slot height inside the dock (borders included).
     last_editor_rows: usize,
-    /// Last known terminal rows (ApplicationOwned mouse remap).
     term_rows: u16,
-    /// ApplicationOwned copy-success cue above the editor (`Copied`, ~2s TTL).
     copy_notice_until: Option<Instant>,
 }
 
@@ -1487,7 +1372,6 @@ impl FakeCodingAgentApp {
         )
     }
 
-    /// Register pre-focus listeners for Ctrl+C / Esc (c455).
     pub fn install_input_listeners(
         app: &Rc<RefCell<Self>>,
         tui: &mut TUI<impl xylitol_tui::Terminal>,
@@ -1508,7 +1392,6 @@ impl FakeCodingAgentApp {
         });
     }
 
-    /// Ctrl+C: clear editor when non-empty; otherwise quit.
     pub fn on_ctrl_c(&mut self) {
         if !self.input.get_text().is_empty() {
             self.input.set_text(String::new());
@@ -1518,39 +1401,31 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Test helper: current editor text (collapsed markers).
     pub fn input_text_for_test(&self) -> String {
         self.input.get_text()
     }
 
     #[cfg(test)]
-    /// Test helper: footer metadata line (`cwd · model`).
     pub fn footer_note_for_test(&self) -> &str {
         &self.footer_note
     }
 
-    /// ApplicationOwned dock rows measured on the last render (status + editor + footer).
     pub fn last_dock_rows(&self) -> usize {
         self.last_dock_rows.max(1)
     }
 
-    /// Update terminal size used to remap ApplicationOwned mouse into the editor.
-    #[allow(dead_code)] // live via example binaries; dead only under agent_demo_test include (see file note)
+    #[allow(dead_code)]
     pub fn set_term_rows_for_mouse(&mut self, rows: u16) {
         self.term_rows = rows.max(1);
     }
 
-    /// Drain OSC52 sequences produced by Editor copy-on-release.
     pub fn take_editor_clipboard(&mut self) -> Vec<String> {
         self.input.take_pending_clipboard()
     }
 
-    /// Remap absolute ApplicationOwned screen mouse → Editor via canonical origin path
-    /// ([`xylitol_tui::editor_screen_origin`] + [`Editor::set_screen_origin`]).
     fn handle_editor_mouse(&mut self, mouse: crossterm::event::MouseEvent) {
         use crossterm::event::MouseEventKind;
         use xylitol_tui::{editor_screen_origin, mouse_in_dock};
-        // Only left-button selection traffic; ignore wheel over dock here.
         if !matches!(
             mouse.kind,
             MouseEventKind::Down(crossterm::event::MouseButton::Left)
@@ -1560,7 +1435,6 @@ impl FakeCodingAgentApp {
         ) {
             return;
         }
-        // Selectors replace the editor slot — don't steal their mouse.
         if self.palette_open
             || self.settings_open
             || self.tree_open
@@ -1576,12 +1450,10 @@ impl FakeCodingAgentApp {
         }
         let (origin_row, origin_col) =
             editor_screen_origin(self.term_rows, dock, self.last_status_rows);
-        // Clicks on the status band (not dragging) stay out of the editor.
         if !dragging && mouse.row < origin_row {
             return;
         }
         self.input.set_screen_origin(origin_row, origin_col);
-        // Absolute screen coords — Editor subtracts origin in handle_input.
         self.input.handle_input(InputEvent::Mouse(mouse));
     }
 
@@ -1589,8 +1461,7 @@ impl FakeCodingAgentApp {
         self.input.input_wants_rerender(event)
     }
 
-    /// Arm the ApplicationOwned «Copied» dock cue (~2s). Not a ScrollNotice / transcript line.
-    #[allow(dead_code)] // live via example binaries; dead only under agent_demo_test include (see file note)
+    #[allow(dead_code)]
     pub fn arm_copy_notice(&mut self) {
         self.copy_notice_until = Some(Instant::now() + Duration::from_millis(2000));
     }
@@ -1601,7 +1472,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Test helper: replace editor text (does not auto-sync bash border).
     pub fn set_editor_text_for_test(&mut self, text: impl Into<String>) {
         self.input.set_text(text.into());
     }
@@ -1617,7 +1487,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Harness: status stack above the editor (idle blank / busy blank+spinner).
     pub fn status_lines_for_test(&mut self, width: usize) -> Vec<String> {
         self.status_lines(width)
     }
@@ -1628,7 +1497,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Stop idle fallback turns from interfering with harness injects.
     pub fn freeze_script_for_test(&mut self) {
         self.auto_started = true;
         self.scripted_turn = 99;
@@ -1636,7 +1504,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Harness: push a pending tool (no long scripted turn). Returns transcript index.
     pub fn inject_pending_tool_for_test(&mut self) -> usize {
         let index = self.transcript.len();
         self.push_tool(
@@ -1649,25 +1516,21 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Harness: push an already-finished tool (header has cmd; detail has no `$` echo).
     pub fn push_tool_for_test(&mut self, summary: impl Into<String>, detail: impl Into<String>) {
         self.push_tool(summary, detail, ToolBlockStatus::Success);
     }
 
     #[cfg(test)]
-    /// Harness: transcript length (index of next push).
     pub fn transcript_len_for_test(&self) -> usize {
         self.transcript.len()
     }
 
     #[cfg(test)]
-    /// Rendered transcript lines (including block spacers) for harness asserts.
     pub fn transcript_render_lines_for_test(&self, width: usize) -> Vec<String> {
         self.transcript_lines(width)
     }
 
     #[cfg(test)]
-    /// Replace transcript with two short messages (block-gap tests).
     pub fn seed_two_user_blocks_for_test(&mut self) {
         self.transcript.clear();
         self.push_message(Role::User, "block-alpha");
@@ -1675,13 +1538,11 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Clear all transcript entries (harness).
     pub fn clear_transcript_for_test(&mut self) {
         self.transcript.clear();
     }
 
     #[cfg(test)]
-    /// Harness: global tool-output viewport expand (Ctrl+O).
     pub fn tools_output_expanded_for_test(&self) -> bool {
         self.tools_output_expanded
     }
@@ -1692,22 +1553,18 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Harness: append to a Tool detail (streaming viewport).
     pub fn append_tool_detail_for_test(&mut self, index: usize, chunk: impl Into<String>) {
         self.append_tool_detail_at(index, &chunk.into());
     }
 
     #[cfg(test)]
-    /// Harness: flip a specific tool/diff entry to success.
     pub fn complete_tool_at_for_test(&mut self, index: usize) {
         self.set_tool_status_at(index, ToolBlockStatus::Success);
     }
 
     #[cfg(test)]
-    /// Harness: schedule independent flips for two pending tools (parallel feel).
     pub fn inject_parallel_pending_tools_for_test(&mut self) -> (usize, usize) {
         let a = self.inject_pending_tool_for_test();
-        // Second tool with a distinct summary.
         let b = self.transcript.len();
         self.push_tool(
             "inject-tool-b · running",
@@ -1731,8 +1588,6 @@ impl FakeCodingAgentApp {
         (a, b)
     }
 
-    /// Esc: close overlays/tree; abort stream; double-Esc (empty editor) opens tree.
-    /// Returns true if the event was consumed.
     pub fn on_escape(&mut self) -> bool {
         if self.tree_open {
             if self.tree_label_edit.take().is_some() {
@@ -1750,10 +1605,8 @@ impl FakeCodingAgentApp {
             return true;
         }
         if self.choice_prompt.is_some() {
-            // Forward Esc into ChoicePrompt (cancel) via handle_input path.
             return false;
         }
-        // CancellableLoader Esc is handled in handle_input (component on_abort).
         if matches!(self.lib_atom, Some(LibAtomKind::CancellableLoader)) {
             return false;
         }
@@ -1817,7 +1670,6 @@ impl FakeCodingAgentApp {
 
     fn choice_theme(&self) -> ChoicePromptTheme {
         let mut theme = self.palette().choice_prompt_theme();
-        // Demo-only: wash = pi-style flush ChoicePrompt; product Ask stays rail.
         if matches!(self.entry_style, EntryStyle::Wash) {
             theme.rail = None;
         }
@@ -1907,8 +1759,6 @@ impl FakeCodingAgentApp {
                     Box::new(cyan),
                     Box::new(dim),
                     "working — Esc aborts".into(),
-                    // Full braille cycle (10 frames). A truncated prefix looks like
-                    // the spinner only completes half a turn.
                     Some(LoaderIndicatorOptions::default()),
                 );
                 loader.on_abort = Some(Box::new(|| {}));
@@ -1944,7 +1794,6 @@ impl FakeCodingAgentApp {
             .or_else(|| seed_history_entry(id))
     }
 
-    /// Append a child under the current history leaf and advance the leaf.
     fn grow_session_tree(&mut self, id: String, kind: &str, label: String, entry: TranscriptEntry) {
         let parent = self.history_leaf_id.clone();
         let node = TreeNode::new(id.clone(), label).with_kind(kind);
@@ -1964,15 +1813,11 @@ impl FakeCodingAgentApp {
         format!("live-{kind}-{}", self.next_node_seq)
     }
 
-    /// Enter on session tree: pi `navigateTree` morphology.
-    /// - `kind=user`: leaf = parent; user body prefills editor; transcript = path to parent.
-    /// - otherwise: leaf = id; rebuild path to id; do not prefill user body.
     pub fn travel_to_history(&mut self, id: &str) {
         self.pending_events.clear();
         self.scheduled_actions.clear();
         self.active_stream_entry = None;
         self.steer_queue.clear();
-        // Keep follow-ups — they are for after idle, independent of travel.
 
         let is_user = find_session_node(&self.session_tree, id).and_then(|n| n.kind.as_deref())
             == Some("user");
@@ -1998,7 +1843,6 @@ impl FakeCodingAgentApp {
                     self.transcript.push(entry);
                 }
             }
-            // Trailing notice (above input) — same shape as product travel.
             self.push_message(
                 Role::ScrollNotice,
                 format!("history @ {id} · leaf={parent} · path: {path_label}"),
@@ -2038,11 +1882,9 @@ impl FakeCodingAgentApp {
             self.history_leaf_id = id.to_string();
         }
 
-        self.close_session_tree(); // Ready — banner lives in transcript, not a spinning status
+        self.close_session_tree();
     }
 
-    /// Shift+F: fork at selected node (same session). Unlike travel, does **not** follow
-    /// the linear reply spine — leaf stays on `id` so the next submit becomes a sibling branch.
     pub fn fork_from_history(&mut self, id: &str) {
         self.pending_events.clear();
         self.scheduled_actions.clear();
@@ -2058,13 +1900,11 @@ impl FakeCodingAgentApp {
                 self.transcript.push(entry);
             }
         }
-        // Trailing notice (above input) — same shape as travel / product fork notes.
         self.push_message(
             Role::ScrollNotice,
             format!("forked @ {id} · path: {path_label} · edit & Enter to branch"),
         );
 
-        // Prefill editor from user payload at the fork point (pi /fork morphology).
         if let Some(TranscriptEntry::Message {
             role: Role::User,
             text,
@@ -2091,7 +1931,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Child count of a session-tree node (harness — fork creates siblings).
     pub fn session_tree_child_count_for_test(&self, id: &str) -> usize {
         find_session_node(&self.session_tree, id)
             .map(|n| n.children.len())
@@ -2099,13 +1938,11 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Harness: submit text as if the editor fired on_submit (bypasses paste-burst).
     pub fn submit_text_for_test(&mut self, text: impl Into<String>) {
         self.process_submit(text.into());
     }
 
     #[cfg(test)]
-    /// Harness: drive one Component tick (script / streams / queues).
     pub fn tick_for_test(&mut self) -> bool {
         self.tick()
     }
@@ -2141,7 +1978,6 @@ impl FakeCodingAgentApp {
         pending
     }
 
-    /// c493: Compacting status + ScrollNotice, then restore Working.
     fn demo_compaction_status(&mut self) {
         self.set_status("Compacting");
         self.push_message(
@@ -2161,18 +1997,15 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Harness: run c493 compaction status demo.
     pub fn demo_compaction_status_for_test(&mut self) {
         self.demo_compaction_status();
     }
 
     #[cfg(test)]
-    /// Harness: run c493 retry status demo.
     pub fn demo_retry_status_for_test(&mut self) {
         self.demo_retry_status();
     }
 
-    /// c493: Retry n/m then fail note + Working.
     fn demo_retry_status(&mut self) {
         self.set_status("Retry 1/3");
         self.push_message(
@@ -2192,7 +2025,6 @@ impl FakeCodingAgentApp {
     }
 
     pub fn apply_external_editor_text(&mut self, text: String) {
-        // `Editor::set_text` places the cursor at buffer end (pi setText parity).
         self.input.set_text(text);
         self.sync_editor_border();
         self.push_message(
@@ -2202,17 +2034,15 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Test helper: editor cursor `(line, col)` after external-editor writeback.
     pub fn editor_cursor_for_test(&self) -> (usize, usize) {
         self.input.cursor_position()
     }
 
-    #[allow(dead_code)] // live via example binaries; dead only under agent_demo_test include (see file note)
+    #[allow(dead_code)]
     pub fn push_system(&mut self, text: String) {
         self.push_message(Role::ScrollNotice, text);
     }
 
-    /// Ctrl+G: real `$EDITOR` when TTY (or REAL_EDITOR=1); else harness-safe stub.
     fn request_external_editor(&mut self) {
         if prefer_real_external_editor() {
             self.external_editor_invocations = self.external_editor_invocations.saturating_add(1);
@@ -2238,7 +2068,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Harness: stub SKILL.md bodies injected on last user submit (A10 demo path).
     pub fn last_skill_injections_for_test(&self) -> &[(String, String)] {
         &self.last_skill_injections
     }
@@ -2256,13 +2085,11 @@ impl FakeCodingAgentApp {
         }
     }
 
-    /// Active semantic palette (Dark=Mocha DESIGN, Light=Latte).
     pub fn palette(&self) -> Palette {
         Palette::from(self.theme_mode)
     }
 
     #[cfg(test)]
-    /// Harness: apply OSC11 / COLORFGBG / CSI997 sources when auto is on.
     pub fn apply_theme_detect_for_test(
         &mut self,
         osc11_response: Option<&str>,
@@ -2284,7 +2111,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Host-driven live reply (OSC11 or CSI 997). No-op unless `theme_auto`.
     pub fn feed_terminal_color_reply(&mut self, data: &str) {
         if !self.theme_auto || !is_terminal_color_reply(data) {
             return;
@@ -2318,7 +2144,6 @@ impl FakeCodingAgentApp {
         });
     }
 
-    /// Explicit theme switch (disables auto-detect so COLORFGBG does not fight).
     pub fn apply_theme_command(&mut self, scheme: TerminalColorScheme) {
         self.theme_auto = false;
         self.theme_mode = scheme;
@@ -2341,7 +2166,6 @@ impl FakeCodingAgentApp {
         self.apply_theme_command(next);
     }
 
-    /// Parse `/theme` / `:theme` [dark|light|toggle]. Returns true if consumed.
     fn try_theme_command(&mut self, last_line: &str) -> bool {
         let body = last_line
             .strip_prefix('/')
@@ -2369,7 +2193,6 @@ impl FakeCodingAgentApp {
         true
     }
 
-    /// Parse `/entry-style` [rail|wash|toggle] — left-bg rail vs full wash.
     fn try_entry_style_command(&mut self, last_line: &str) -> bool {
         let body = last_line
             .strip_prefix('/')
@@ -2406,7 +2229,6 @@ impl FakeCodingAgentApp {
         true
     }
 
-    /// Apply `/model <id>` (SetModel-style). Bare `/model` tips without changing footer.
     fn try_model_command(&mut self, last_line: &str) -> bool {
         let body = last_line
             .strip_prefix('/')
@@ -2436,7 +2258,6 @@ impl FakeCodingAgentApp {
         true
     }
 
-    /// Re-apply editor border colors from the active palette (ignores bash early-return).
     fn refresh_editor_border_theme(&mut self) {
         let bash = self.input.get_text().trim_start().starts_with('!');
         self.bash_mode = bash;
@@ -2457,7 +2278,6 @@ impl FakeCodingAgentApp {
         }
     }
 
-    /// Muted chrome from active palette.
     fn muted_paint(&self, s: &str) -> String {
         fg_rgb(self.palette().muted, s)
     }
@@ -2478,7 +2298,6 @@ impl FakeCodingAgentApp {
         }
     }
 
-    /// Cycle thinking border level (c1140). Non-bash applies immediately.
     pub fn cycle_thinking_border_level(&mut self) {
         self.thinking_border_level = self.thinking_border_level.cycle_next();
         if !self.bash_mode {
@@ -2501,7 +2320,6 @@ impl FakeCodingAgentApp {
         self.refresh_editor_border_theme();
     }
 
-    /// Parse `/thinking-level` / `:thinking-level` [cycle]. Returns true if consumed.
     fn try_thinking_level_command(&mut self, last_line: &str) -> bool {
         let body = last_line
             .strip_prefix('/')
@@ -2539,10 +2357,8 @@ impl FakeCodingAgentApp {
         true
     }
 
-    /// Ctrl+G: external editor — real `$EDITOR` on TTY via TUI suspend; stub in harness.
     fn open_external_editor_stub(&mut self) {
         self.external_editor_invocations = self.external_editor_invocations.saturating_add(1);
-        // Expand paste markers so stub / harness see real content (pi getExpandedText).
         let text = self.input.get_expanded_text();
         self.push_message(
             Role::ScrollNotice,
@@ -2581,7 +2397,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Whether a label substring appears anywhere in the live session tree (harness).
     pub fn session_tree_contains_label_for_test(&self, needle: &str) -> bool {
         fn walk(nodes: &[TreeNode], needle: &str) -> bool {
             nodes
@@ -2592,7 +2407,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Flattened plain text from transcript messages/tool summaries (harness).
     pub fn transcript_plain_for_test(&self) -> String {
         let mut out = String::new();
         for entry in &self.transcript {
@@ -2691,7 +2505,6 @@ impl FakeCodingAgentApp {
     #[cfg(test)]
     pub fn tree_select_id_for_test(&mut self, id: &str) {
         if let Some(idx) = self.tree.filtered_nodes().iter().position(|n| n.id == id) {
-            // Move selection by repeated down/up from 0
             while self.tree.selected_id() != Some(id) {
                 let cur = self.tree.selected_id().unwrap_or("");
                 let cur_i = self
@@ -2720,7 +2533,6 @@ impl FakeCodingAgentApp {
     }
 
     #[cfg(test)]
-    /// Harness: clear editor then open tree (skips double-Esc timing).
     pub fn open_session_tree_for_test(&mut self) {
         self.input.set_text(String::new());
         self.open_session_tree();
@@ -2739,7 +2551,6 @@ impl FakeCodingAgentApp {
         Self::new_with_prompt_at(quit_flag, initial_prompt, cwd)
     }
 
-    /// Like [`new_with_prompt`] but pins `@` path completion to `cwd` (tests / demos).
     pub fn new_with_prompt_at(
         quit_flag: Arc<AtomicBool>,
         initial_prompt: &str,
@@ -2750,7 +2561,6 @@ impl FakeCodingAgentApp {
 
         let mut input = Editor::new(
             EditorTheme {
-                // Muted operation-zone border (DESIGN.md / fig2).
                 border_color: Box::new(dim),
                 select_list_theme: SelectListTheme::default(),
             },
@@ -2764,7 +2574,6 @@ impl FakeCodingAgentApp {
         input.on_submit = Some(Box::new(move |text| {
             *submit_clone.borrow_mut() = Some(text);
         }));
-        // Pluggable CompletionSources: `/model <id>` + `/` + `@` + demo `$` stub.
         input.set_completion_sources(vec![
             Box::new(
                 SlashArgCompletionSource::new("model", demo_model_catalog())
@@ -2887,7 +2696,6 @@ impl FakeCodingAgentApp {
             ],
             changed_files: vec!["crates/xylitol-tui/examples/agent_demo.rs".into()],
             recent_tools: vec!["read_file examples/agent_demo.rs".into()],
-            // Keep short: 80-col harness must fit note + glyph + key cues.
             footer_note: "~/xylitol · sonnet-4".into(),
             last_submitted: String::new(),
             status_text: "Ready".into(),
@@ -2929,7 +2737,6 @@ impl FakeCodingAgentApp {
     }
 
     fn seed_transcript(&mut self) {
-        // Slim chrome (c535): short pointer + compact kit. Full Markdown → plate `/md`.
         self.push_message(
             Role::ScrollNotice,
             "demo · /entry-style rail|wash · ! bash · busy Enter=steer · Alt+Enter=follow-up · /help",
@@ -3022,11 +2829,9 @@ impl FakeCodingAgentApp {
              (no per-skill tint blocks; no status count). Type `use $` for completion popup \
              (c545).",
         );
-        // Drive inject path so plate alone proves resolve without Enter.
         self.last_skill_injections = resolve_demo_skill_injections(
             "Please run $demo and also $narrow-clamp-skill-with-a-very-long-identifier together.",
         );
-        // A10: no status/footer skills:N — inject evidence is `last_skill_injections` only.
         self.set_status("Ready");
     }
 
@@ -3043,7 +2848,6 @@ impl FakeCodingAgentApp {
             sample_long_read_output(),
             ToolBlockStatus::Success,
         );
-        // Keep viewport collapsed so the more-lines hint is visible.
         self.tools_output_expanded = false;
         self.set_status("Head viewport · Ctrl+O to expand");
     }
@@ -3091,7 +2895,6 @@ impl FakeCodingAgentApp {
              Loader clamps Text padding. Try: type `zzz` here in Settings search, or Ctrl+P then \
              filter `zzz`. Playground: slot Widgets (key 8).",
         );
-        // Rebuild settings with search so library users can demo empty-match live.
         self.settings = SettingsList::new(
             vec![
                 SettingItem {
@@ -3363,14 +3166,12 @@ impl FakeCodingAgentApp {
         self.set_status("Ready");
     }
 
-    /// Typewriter-stream the full grammar stub (steadier pace than normal reply jitter).
     fn stream_markdown_grammar(&mut self) {
         self.push_message(Role::User, "/md · request Markdown showcase");
         self.pending_events.clear();
         self.scheduled_actions.clear();
         self.scheduled_tail_tick = self.script_tick;
         self.active_stream_entry = None;
-        // Prevent idle `tick` fallback (scripted_turn 0/1 tool wave) from interleaving.
         self.auto_started = true;
         self.scripted_turn = self.scripted_turn.max(2);
         self.set_status("Drafting reply");
@@ -3476,8 +3277,6 @@ impl FakeCodingAgentApp {
     }
 
     fn toggle_thinking_blocks(&mut self) {
-        // If anything is open, close all (so mid-stream ^T can hide the live
-        // typewriter). Only expand when every thinking block is already closed.
         let any_expanded = self
             .transcript
             .iter()
@@ -3542,8 +3341,6 @@ impl FakeCodingAgentApp {
         if last_line == "/md" || last_line == ":md" {
             self.input.set_text(String::new());
             self.stream_markdown_grammar();
-            // Do not advance_script — that would enqueue the idle fallback tool wave
-            // on top of the Markdown typewriter.
             return;
         }
 
@@ -3597,7 +3394,6 @@ impl FakeCodingAgentApp {
             return;
         }
 
-        // Busy Enter = steer (do not abort the in-flight turn).
         if self.is_turn_busy() {
             self.enqueue_steer(trimmed);
             return;
@@ -3606,7 +3402,6 @@ impl FakeCodingAgentApp {
         self.commit_user_turn(trimmed);
     }
 
-    /// Alt+Enter: queue until idle, or submit immediately when idle.
     fn process_follow_up(&mut self, text: String) {
         let trimmed = text.trim().to_string();
         if trimmed.is_empty() {
@@ -3636,7 +3431,6 @@ impl FakeCodingAgentApp {
             Role::ScrollNotice,
             format!("steer queued ({}) · {text}", self.steer_queue.len()),
         );
-        // Grow tree now so the steer is visible in the session graph without aborting tools.
         let id = self.alloc_node_id("u");
         self.grow_session_tree(
             id,
@@ -3679,7 +3473,6 @@ impl FakeCodingAgentApp {
         self.queue_simulated_turn(&trimmed);
     }
 
-    /// After a turn goes idle: drain steer first, then one follow-up.
     fn drain_message_queues(&mut self) {
         if self.is_turn_busy() {
             return;
@@ -3689,7 +3482,6 @@ impl FakeCodingAgentApp {
                 Role::ScrollNotice,
                 format!("steer apply · {} remaining", self.steer_queue.len()),
             );
-            // Steer node already grown at enqueue time — just run the turn from current leaf.
             self.last_submitted = text.clone();
             self.auto_started = true;
             self.scripted_turn = self.scripted_turn.max(2);
@@ -3711,8 +3503,6 @@ impl FakeCodingAgentApp {
     }
 
     fn spinner_active(&self) -> bool {
-        // Only agent-busy labels spin. Informational statuses (Session tree, history @ …)
-        // must not keep the loader alive after the work is done.
         let busy_label = matches!(
             self.status_text.as_str(),
             "Working" | "Thinking" | "Drafting reply" | "Running tools" | "Compacting"
@@ -3733,7 +3523,6 @@ impl FakeCodingAgentApp {
         min + (self.rng_state % (max - min + 1))
     }
 
-    /// Uneven delay: mostly short, sometimes a hitch (avoids metronome feel).
     fn jitter_ticks(&mut self, short_lo: u64, short_hi: u64) -> u64 {
         match self.random_between(0, 9) {
             0 => self.random_between(short_hi.saturating_add(8), short_hi.saturating_add(28)),
@@ -3751,7 +3540,6 @@ impl FakeCodingAgentApp {
         });
     }
 
-    /// Schedule relative to *now* (not the serial event tail) — for independent tool flips.
     fn schedule_from_now(&mut self, delay_ticks: u64, action: TimedAction) {
         let at = self.script_tick.saturating_add(delay_ticks.max(1));
         self.scheduled_actions.push_back(ScheduledAction {
@@ -3766,7 +3554,6 @@ impl FakeCodingAgentApp {
     }
 
     fn queue_stream(&mut self, kind: StreamKind, text: &str) {
-        // Pause before first token (model "spin up").
         let start_delay = self.jitter_ticks(6, 14);
         self.schedule_after_ticks(start_delay, TimedAction::StreamStart(kind));
 
@@ -3774,12 +3561,11 @@ impl FakeCodingAgentApp {
         let mut index = 0usize;
         while index < chars.len() {
             let current = chars[index];
-            // Burst vs drip: occasionally dump a longer run, often 1–3 chars.
             let take = if current == '\n' {
                 1
             } else {
                 match self.random_between(0, 9) {
-                    0..=1 => self.random_between(6, 14) as usize, // burst
+                    0..=1 => self.random_between(6, 14) as usize,
                     2..=4 => self.random_between(3, 6) as usize,
                     _ => {
                         if current.is_ascii() {
@@ -3792,7 +3578,6 @@ impl FakeCodingAgentApp {
             };
             let end = (index + take).min(chars.len());
             let chunk: String = chars[index..end].iter().collect();
-            // Thinking streams a bit slower / hitchier than the final reply.
             let chunk_delay = match kind {
                 StreamKind::Thinking => self.jitter_ticks(2, 7),
                 StreamKind::Assistant => self.jitter_ticks(1, 5),
@@ -3813,9 +3598,7 @@ impl FakeCodingAgentApp {
         self.queue_stream(StreamKind::Assistant, text);
     }
 
-    /// Irregular typewriter for Markdown stubs — slower, hitchy, more human.
     fn queue_markdown_typewriter(&mut self, text: &str) {
-        // Spin-up pause before first glyph.
         let start_delay = self.jitter_ticks(10, 22);
         self.schedule_after_ticks(start_delay, TimedAction::StreamStart(StreamKind::Assistant));
         let chars: Vec<char> = text.chars().collect();
@@ -3826,21 +3609,20 @@ impl FakeCodingAgentApp {
                 1
             } else {
                 match self.random_between(0, 11) {
-                    0 => self.random_between(8, 16) as usize, // rare burst
+                    0 => self.random_between(8, 16) as usize,
                     1..=3 => self.random_between(3, 6) as usize,
                     4..=7 if current.is_ascii() => self.random_between(1, 3) as usize,
                     4..=7 => 1,
-                    _ => 1, // drip
+                    _ => 1,
                 }
             };
             let end = (index + take).min(chars.len());
             let chunk: String = chars[index..end].iter().collect();
-            // Mostly short delays; occasional hitch / think-pause (esp. after newline).
             let chunk_delay = if current == '\n' {
                 self.jitter_ticks(4, 14)
             } else {
                 match self.random_between(0, 9) {
-                    0 => self.random_between(12, 28), // long hitch
+                    0 => self.random_between(12, 28),
                     1..=2 => self.random_between(6, 12),
                     _ => self.random_between(2, 6),
                 }
@@ -3858,9 +3640,6 @@ impl FakeCodingAgentApp {
         );
     }
 
-    /// Pick streamed code sample: keyword wins; else rotate rust→python→ts→json.
-    /// Source still uses fenced Markdown so syntect can highlight when the block closes;
-    /// rendered output has no fence chrome (c530).
     fn pick_stream_fence(&mut self, prompt: &str) -> (&'static str, &'static str) {
         let p = prompt.to_ascii_lowercase();
         let (lang, focus) = if p.contains("python") || p.contains("py ") {
@@ -3969,10 +3748,8 @@ impl FakeCodingAgentApp {
         let thinking_body = format!(
             "User asked: {prompt}\n\nI'll search the tree, run acceptance, then stream a reply.\n\n(hesitating on width budget vs scrollback…)"
         );
-        // Typewriter the thinking block first (auto-expanded while streaming).
         self.queue_thinking_stream(&thinking_body);
 
-        // After thinking: spawn a parallel-ish tool wave (tight appear, independent flips).
         let think_dwell = self.jitter_ticks(8, 18);
         self.queue_event(think_dwell, ScriptEvent::Status("Running tools".into()));
         self.queue_event(
@@ -3997,7 +3774,6 @@ impl FakeCodingAgentApp {
             },
         );
         self.queue_event(1, ScriptEvent::MarkPlan(3));
-        // Let overlapping Pending flips breathe before drafting.
         let drafting_delay = self.jitter_ticks(18, 36);
         self.queue_event(drafting_delay, ScriptEvent::Status("Drafting reply".into()));
         let reply = self.build_assistant_reply(prompt);
@@ -4009,7 +3785,6 @@ impl FakeCodingAgentApp {
         match kind {
             StreamKind::Thinking => {
                 self.transcript.push(TranscriptEntry::Thinking {
-                    // Expanded while streaming so the typewriter is visible.
                     expanded: true,
                     body: String::new(),
                 });
@@ -4032,7 +3807,6 @@ impl FakeCodingAgentApp {
         if let Some(index) = self.active_stream_entry {
             match (kind, self.transcript.get_mut(index)) {
                 (StreamKind::Thinking, Some(TranscriptEntry::Thinking { body, .. })) => {
-                    // Append only — do not force expand. ^T during stream must stick.
                     body.push_str(chunk);
                 }
                 (StreamKind::Assistant, Some(TranscriptEntry::Message { text, .. })) => {
@@ -4048,8 +3822,6 @@ impl FakeCodingAgentApp {
             && kind == StreamKind::Thinking
             && let Some(TranscriptEntry::Thinking { expanded, .. }) = self.transcript.get_mut(index)
         {
-            // Default tidy: collapse when the stream ends. User can ^T reopen.
-            // (Does not fight mid-stream ^T — that only mattered while appending.)
             *expanded = false;
         }
         if kind == StreamKind::Assistant
@@ -4081,7 +3853,6 @@ impl FakeCodingAgentApp {
     }
 
     fn process_due_actions(&mut self) -> bool {
-        // Flips use schedule_from_now and may interleave past serial events — drain all due.
         let tick = self.script_tick;
         let mut due = Vec::new();
         let mut rest = VecDeque::new();
@@ -4145,7 +3916,6 @@ impl FakeCodingAgentApp {
             })
     }
 
-    /// After tool tint flips: keep Working while any block is Pending; else Ready if idle.
     fn sync_status_after_tools(&mut self) {
         if self.active_stream_entry.is_some() {
             return;
@@ -4192,7 +3962,6 @@ impl FakeCodingAgentApp {
         self.tools_output_expanded = !self.tools_output_expanded;
     }
 
-    /// Schedule a streaming bash tool: detail grows line-by-line (collapsed viewport sticks to tail).
     fn push_streaming_bash_tool(&mut self, summary: impl Into<String>, lines: &[String]) {
         self.set_status("Working");
         let summary = summary.into();
@@ -4233,7 +4002,6 @@ impl FakeCodingAgentApp {
         let fallback = match self.scripted_turn {
             0 => Some(vec![
                 ScriptEvent::Status("Running acceptance harness".into()),
-                // Tight burst: both Pending at once, independent flips.
                 ScriptEvent::Tool("cargo test -p xylitol-tui --test agent_demo_test".into()),
                 ScriptEvent::Tool("cargo test --test tui_e2e -- --ignored".into()),
                 ScriptEvent::StreamingBash {
@@ -4297,7 +4065,6 @@ impl FakeCodingAgentApp {
                         detail,
                     },
                 );
-                // Independent completion — wide jitter so multiple Pending overlap.
                 let flip = self.jitter_ticks(10, 28);
                 self.schedule_from_now(
                     flip,
@@ -4328,7 +4095,6 @@ impl FakeCodingAgentApp {
                 self.recent_tools.insert(0, summary.clone());
                 self.recent_tools.truncate(4);
                 let index = self.transcript.len();
-                // pi Edit: unified compact Diff, expanded (pops open). Never SBS.
                 self.push_diff_ex(
                     format!("{summary} · running"),
                     input.clone(),
@@ -4390,7 +4156,6 @@ impl FakeCodingAgentApp {
             }
             ScriptEvent::Status(text) => {
                 let t = text;
-                // Don't clobber Working while tool blocks are still Pending.
                 if t == "Ready" && self.any_pending_tool_blocks() {
                     self.set_status("Working");
                 } else {
@@ -4402,10 +4167,7 @@ impl FakeCodingAgentApp {
 
     fn role_prefix(&self, role: Role) -> String {
         match role {
-            Role::User => {
-                // Palette mauve — matches DESIGN user token (not hardcoded ANSI 35).
-                fg_rgb(self.palette().user, self.glyph_set.user())
-            }
+            Role::User => fg_rgb(self.palette().user, self.glyph_set.user()),
             Role::Assistant => String::new(),
             Role::ScrollNotice => dim(self.glyph_set.system()),
         }
@@ -4430,7 +4192,6 @@ impl FakeCodingAgentApp {
         }
     }
 
-    /// Left layout via package `paint_left_rail_line` (rail + gutter + content).
     fn paint_rail_line(line: &str, width: usize, rgb: xylitol_tui::RgbColor) -> String {
         paint_left_rail_line(line, width, rgb)
     }
@@ -4461,7 +4222,6 @@ impl FakeCodingAgentApp {
         }
     }
 
-    /// Status rail: mix surface←status so a 1-cell strip reads clearly without neon wash.
     fn rail_rgb_for_tool(&self, status: ToolBlockStatus) -> xylitol_tui::RgbColor {
         let p = self.palette();
         let vivid = match status {
@@ -4476,7 +4236,6 @@ impl FakeCodingAgentApp {
         let mut lines = Vec::new();
         let g = self.glyph_set;
         let spacer = |w: usize| format!("{}\x1b[49m", " ".repeat(w.max(1)));
-        // Rail+gutter = 2 cols for tool/diff/bash. User / assistant / thinking stay flush.
         let rail_inner = match self.entry_style {
             EntryStyle::Rail => width.saturating_sub(2).max(1),
             EntryStyle::Wash => width,
@@ -4490,7 +4249,6 @@ impl FakeCodingAgentApp {
             match entry {
                 TranscriptEntry::Message { role, text } => {
                     if matches!(role, Role::Assistant) {
-                        // Flush left — no rail indent (rail on tools only).
                         let mut md = Markdown::new(
                             text.clone(),
                             0,
@@ -4510,7 +4268,6 @@ impl FakeCodingAgentApp {
                         };
                         Self::push_wrapped(&mut lines, &raw, width);
                     } else {
-                        // User: only ❯ + body — no left bg rail / no extra gutter.
                         let prefix = self.role_prefix(*role);
                         let body = if matches!(role, Role::User) {
                             let p = self.palette();
@@ -4540,7 +4297,6 @@ impl FakeCodingAgentApp {
                     }
                 }
                 TranscriptEntry::Thinking { expanded, body } => {
-                    // Flush like assistant — thinking is content; rail is for tools/bash/diff only.
                     let marker = if *expanded { g.unfold() } else { g.fold() };
                     let header = format!("{marker} thinking  {}", key_hint("Ctrl+T"));
                     Self::push_wrapped(&mut lines, &header, width);
@@ -4555,7 +4311,6 @@ impl FakeCodingAgentApp {
                     detail,
                 } => {
                     let marker = if *expanded { g.unfold() } else { g.fold() };
-                    // Rail: no ⚙ — product expandable uses Name/path only; wash keeps demo glyph.
                     let header = match self.entry_style {
                         EntryStyle::Rail => {
                             format!("{marker} {summary}  {}", key_hint("Alt+E"))
@@ -4674,7 +4429,6 @@ impl FakeCodingAgentApp {
                         AskPhase::Answered => self.palette().success,
                         AskPhase::Skipped => self.palette().muted,
                     };
-                    // Demo honors /entry-style (rail|wash). Product src app: rail only.
                     let rgb = match self.entry_style {
                         EntryStyle::Rail => mix_rgb(self.palette().surface, vivid, 0.72),
                         EntryStyle::Wash => mix_rgb(self.palette().surface, vivid, 0.22),
@@ -4686,10 +4440,6 @@ impl FakeCodingAgentApp {
         lines
     }
 
-    /// Status / breathing room above the editor (pi `statusContainer`).
-    ///
-    /// - Busy: `Loader::render` → leading blank + spinner (keep both; do not strip).
-    /// - Idle: one blank so input is never flush against transcript.
     fn status_lines(&mut self, width: usize) -> Vec<String> {
         if self.spinner_active() {
             let mut lines: Vec<String> = self
@@ -4698,13 +4448,11 @@ impl FakeCodingAgentApp {
                 .into_iter()
                 .map(|line| Self::fit(&line, width))
                 .collect();
-            // Busy: keep spinner; append cue so it still sits above the editor.
             if self.copy_notice_visible() {
                 lines.push(Self::fit(&dim("Copied"), width));
             }
             return lines;
         }
-        // Idle: reuse the blank status row so ApplicationOwned dock height stays stable.
         if self.copy_notice_visible() {
             vec![Self::fit(&dim("Copied"), width)]
         } else {
@@ -4712,8 +4460,6 @@ impl FakeCodingAgentApp {
         }
     }
 
-    /// pi `showSelector`: replace the editor slot (bottom of the stack) so the
-    /// popup stays in the viewport as transcript grows into scrollback.
     fn render_editor_slot(&mut self, width: usize) -> Vec<String> {
         if self.tree_open {
             return self.render_tree_slot(width);
@@ -4802,7 +4548,6 @@ impl FakeCodingAgentApp {
     fn render_choice_slot(&mut self, width: usize) -> Vec<String> {
         let mut lines = Vec::new();
         let accent = self.palette().accent;
-        // Brand on scrollback `Ask · …` only — no duplicate slot caption.
         let rail = match self.entry_style {
             EntryStyle::Rail => Some(accent),
             EntryStyle::Wash => None,
@@ -4887,17 +4632,14 @@ impl FakeCodingAgentApp {
 
 impl Component for FakeCodingAgentApp {
     fn render(&mut self, width: usize) -> Vec<String> {
-        // Minimal stack: transcript → queue strip → status → editor → footer.
         let mut lines = Vec::new();
         lines.extend(self.transcript_lines(width));
         lines.extend(self.queue_strip_lines(width));
         let status = self.status_lines(width);
         let editor = self.render_editor_slot(width);
-        // ApplicationOwned dock excludes transcript+queue (c2070 / ptim06).
         self.last_status_rows = status.len();
         self.last_editor_rows = editor.len();
         self.last_dock_rows = status.len().saturating_add(editor.len()).saturating_add(1);
-        // Canonical ApplicationOwned editor hit-test origin (ptim14) — same helper as product.
         let (origin_row, origin_col) = xylitol_tui::editor_screen_origin(
             self.term_rows,
             self.last_dock_rows,
@@ -4915,10 +4657,7 @@ impl Component for FakeCodingAgentApp {
         {
             "esc close · ↑↓ · Enter"
         } else {
-            // Compact cue strip — full list is in the seed ScrollNotice.
-            // Queue chrome = mid strip only; no footer q:sN|fM badge.
             footer_owned = format!(
-                // c535 pad4: metadata only — chords live in /help / plate help-keys.
                 "{} · {} · {} · entry:{}",
                 self.footer_note,
                 self.theme_label(),
@@ -4986,7 +4725,6 @@ impl Component for FakeCodingAgentApp {
         if matches_key_event(key, "escape") && self.on_escape() {
             return;
         }
-        // Fall through so Editor can dismiss slash CommandPopup (Esc).
 
         if matches_key_event(key, "alt+enter") {
             let text = self.input.get_text();
@@ -5066,7 +4804,6 @@ impl Component for FakeCodingAgentApp {
                     self.palette_filter.clear();
                     self.palette.set_filter("");
                     self.run_demo_plate(&id);
-                    // md-full / stream-* schedule their own work; skip idle fallback.
                     if !matches!(
                         id.as_str(),
                         "md-full"
@@ -5105,15 +4842,11 @@ impl Component for FakeCodingAgentApp {
         }
 
         if self.settings_open {
-            // Forward all keys (search printable, backspace, arrows, Enter/Space,
-            // Esc via SettingsList cancel) — not only up/down/enter. Otherwise
-            // typing a filter like `zzz` is swallowed and the list never empties.
             self.settings.handle_input(event);
             return;
         }
 
         if self.lib_atom.is_some() {
-            // Atoms own the editor slot; printable must not leak into Editor.
             return;
         }
 
@@ -5134,7 +4867,6 @@ impl Component for FakeCodingAgentApp {
             return;
         }
         if matches_key_event(key, "ctrl+o") {
-            // Tree-open path handled above; here tools viewport expand (pi).
             self.toggle_tools_output_expanded();
             return;
         }
@@ -5142,9 +4874,6 @@ impl Component for FakeCodingAgentApp {
             self.advance_script();
             return;
         }
-        // App-level toggles (DESIGN expandable blocks / glyph config). Not bare
-        // letters — those must stay available for typing in the editor.
-        // Shift+Tab — pi `app.thinking.cycle` (product will wire in c1150; demo first).
         if matches_key_event(key, "shift+tab") {
             self.cycle_thinking_border_level();
             return;
@@ -5153,8 +4882,6 @@ impl Component for FakeCodingAgentApp {
             self.toggle_thinking_blocks();
             return;
         }
-        // Alt+E / Alt+G — not Ctrl+E (editor cursorLineEnd) or Ctrl+G (external
-        // editor stub). App-level toggles stay off the Editor keybinding table.
         if matches_key_event(key, "alt+e") {
             self.toggle_tool_blocks();
             return;

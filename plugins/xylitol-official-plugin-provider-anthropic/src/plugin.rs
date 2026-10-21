@@ -1,9 +1,6 @@
-//! `PluginFactory` entry: Anthropic Messages dialect is present in the process.
-
 use xylitol_plugin_sdk::EmptyPluginConfig;
 use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin, PluginFactory};
 
-/// Marker that the Anthropic dialect plugin is mounted.
 pub struct AnthropicDialect;
 
 pub struct AnthropicFactory;

@@ -1,48 +1,30 @@
-//! Scroll gutter (c2891): transcript 最右 1 列 `^ | v`（跳转顶部 / 轨道 / 跳转底部）。
-//!
-//! Opt-in（[`ScrollGutter`]，默认关）：开启时正文按少一列排版（宿主 carve，
-//! 见 change design D2），本模块只负责末列 stamp 与可见性判定。
-//! 隐藏三条件见 [`gutter_active`]——stamp / carve / hit 注册 MUST 共用同一判定。
-
 use crate::pointer::{Hit, HitId};
 use crate::utils::ansi_escape_len;
 use unicode_width::UnicodeWidthChar;
 
-/// 极窄阈值：可用宽低于此不占列（对齐 c2520 档位精神，窄屏不挤正文）。
 pub const GUTTER_MIN_WIDTH: usize = 20;
 
-/// 顶行跳转顶部按钮字符。
 pub const GUTTER_TOP: char = '^';
-/// 底行跳转底部按钮字符。
 pub const GUTTER_BOTTOM: char = 'v';
-/// 轨道字符（pi 同款；中段非 thumb 区）。
 pub const GUTTER_TRACK: char = '│';
-/// thumb 字符（拖拽中改粗的粗体观感由后续主题票承接入）。
 pub const GUTTER_THUMB: char = '┃';
 
-/// 跳转顶部 hit id（与产品 FoldHitTable 的 index+1 空间天然不相交）。
 pub const GUTTER_TOP_HIT_ID: HitId = 1 << 62;
-/// 跳转底部 hit id。
 pub const GUTTER_BOTTOM_HIT_ID: HitId = 1 << 62 | 1;
 
-/// 滚动槽开关（v1 无载荷；字符 / 颜色可后票扩展为字段）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ScrollGutter;
 
-/// 滚动槽可见性：内容超屏 **且** 视口 ≥2 行（顶底异格）**且** 宽度达极窄阈值。
-/// stamp / carve / hit 注册三方共用，不得各自复算。
 #[must_use]
 pub fn gutter_active(content_len: usize, viewport_h: usize, term_cols: usize) -> bool {
     content_len > viewport_h && viewport_h >= 2 && term_cols >= GUTTER_MIN_WIDTH
 }
 
-/// 可拖拽内域行数：排除顶 / 底按钮行（按钮恒占，thumb 域内缩）。
 #[must_use]
 pub fn gutter_inner_rows(viewport_h: usize) -> usize {
     viewport_h.saturating_sub(2)
 }
 
-/// thumb 高度：视口 / 全文比例，下限 2（pi `minThumbHeight`）且不超内域。
 #[must_use]
 pub fn gutter_thumb_len(content_len: usize, viewport_h: usize) -> usize {
     let inner = gutter_inner_rows(viewport_h);
@@ -54,7 +36,6 @@ pub fn gutter_thumb_len(content_len: usize, viewport_h: usize) -> usize {
     min_len.max(proportional)
 }
 
-/// thumb 起始内域偏移（0 基，相对视口第 1 行）：滚动比例映射。
 #[must_use]
 pub fn gutter_thumb_offset(scroll_top: usize, content_len: usize, viewport_h: usize) -> usize {
     let inner = gutter_inner_rows(viewport_h);
@@ -70,7 +51,6 @@ pub fn gutter_thumb_offset(scroll_top: usize, content_len: usize, viewport_h: us
     (scroll_top * max_thumb) / max_scroll
 }
 
-/// 反演：内域 pointer 行（0 基）+ grab → 目标 scroll_top（pi `scrollScrollbarToPointer`）。
 #[must_use]
 pub fn gutter_scroll_for_pointer(
     pointer_inner: usize,
@@ -92,9 +72,6 @@ pub fn gutter_scroll_for_pointer(
     (offset * max_scroll) / max_thumb
 }
 
-/// 于 `visible` 每行最右 `term_cols - 1` 列 stamp 按钮字符：首行 top、末行 bottom、中间 track。
-///
-/// 行宽不足时先补普通空格（内容经 carve ≤ 该列，正常不覆盖；宽出则 ANSI 感知截断该列起尾部——零宽 SGR 保留）。调用方 MUST 已做过 [`gutter_active`] 判定。
 pub fn stamp_gutter(
     visible: &mut [String],
     term_cols: usize,
@@ -124,8 +101,6 @@ pub fn stamp_gutter(
     }
 }
 
-/// 当前应注册的滚动槽命中集：active 时顶/底按钮两枚（非 capture，见上）；
-/// 隐藏 / 未启用 / 内域不足时空。拖拽走 runtime 状态机，不经 hit。
 #[must_use]
 pub fn gutter_hit_set(term_cols: u16, transcript_rows: u16, active: bool) -> Vec<Hit> {
     if !active {
@@ -144,8 +119,6 @@ pub fn gutter_hit_set(term_cols: u16, transcript_rows: u16, active: bool) -> Vec
     ]
 }
 
-/// ANSI 感知地把 `col` 处显示格置为 `glyph`：不足补空格；跨越 `col` 的宽字符
-/// 连同其后内容截除（carve 后不该发生，防御分支）。
 fn set_col_glyph(line: &str, col: usize, glyph: char) -> String {
     let mut out = String::with_capacity(line.len() + 8);
     let mut width = 0usize;
@@ -167,10 +140,8 @@ fn set_col_glyph(line: &str, col: usize, glyph: char) -> String {
             continue;
         }
         if width < col {
-            // 宽字符跨越目标列：截到它之前（防御，carve 后不可达）。
             break;
         }
-        // width > col：已越过目标列，丢弃余下正文（正常不可达）。
         break;
     }
     while width < col {
@@ -202,7 +173,6 @@ mod tests {
 
     #[test]
     fn stamps_top_thumb_track_bottom() {
-        // 6 行视口：inner=4、thumb=2（顶部）→ ┃ 与 │ 并存，按钮恒占首尾
         let mut v: Vec<String> = ["a", "b", "c", "d", "e", "f"]
             .iter()
             .map(|s| s.to_string())
@@ -221,7 +191,6 @@ mod tests {
     #[test]
     fn thumb_follows_scroll_ratio() {
         let mut v: Vec<String> = (0..6).map(|_| String::new()).collect();
-        // content=20 vh=6: inner=4 thumb=2 max_thumb=2; scroll 12/12 → offset 2
         stamp_gutter(&mut v, 10, 12, 20);
         assert!(v[1].ends_with('\u{2502}'));
         assert!(v[3].ends_with('\u{2503}'), "thumb bottom at scroll end");
@@ -249,13 +218,11 @@ mod tests {
 
     #[test]
     fn wide_char_spanning_gutter_col_is_cut_defensively() {
-        // cols=2 → gutter_col=1 落在“你”（占 0..2）右半——防御性截除后补格。
         let mut v = vec!["你".into()];
         let n = v.len();
         stamp_gutter(&mut v, 2, 0, n);
         assert_eq!(v[0], " ^");
         assert_eq!(width_of(&v[0]), 2);
-        // 对照：cols=3 → gutter_col=2，宽字符完整在列前，保留。
         let mut v = vec!["你".into()];
         let n = v.len();
         stamp_gutter(&mut v, 3, 0, n);
@@ -272,7 +239,6 @@ mod tests {
         for hit in gutter_hit_set(40, 8, true) {
             list.mark(hit);
         }
-        // Viewport 语义：滚动前后同一屏幕格命中同一 id
         assert_eq!(list.hit_at(39, 0, 0, 8), Some(GUTTER_TOP_HIT_ID));
         assert_eq!(list.hit_at(39, 0, 12, 8), Some(GUTTER_TOP_HIT_ID));
         assert_eq!(list.hit_at(39, 7, 0, 8), Some(GUTTER_BOTTOM_HIT_ID));
@@ -284,7 +250,6 @@ mod tests {
     fn hits_are_uncaptured_and_hidden_set_empty() {
         for hit in gutter_hit_set(40, 8, true) {
             let region = hit.into_region();
-            // capture 分支吞 pending_click，与 UpIfEmptySelection 不相容——必须非 capture
             assert!(!region.capturing);
             assert_eq!(region.height, 1);
         }

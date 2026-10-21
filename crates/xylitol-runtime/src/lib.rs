@@ -1,8 +1,3 @@
-//! Execution authority: ReAct loop, trust, resource discovery, and [`XyDriver`].
-//!
-//! Depends only on `xylitol-plugin-sdk`. Does not wire plugins and does not
-//! speak the RPC envelope.
-
 pub mod agent;
 pub mod driver;
 pub mod permission;

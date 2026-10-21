@@ -1,12 +1,9 @@
-//! Shared helpers for effects drain (c1170).
-
 use xylitol_tui::Terminal;
 
 use crate::driver::{XyDriver, XyDriverError};
 
 use super::super::host::HostSession;
 
-/// Log `error.kind` then push a scroll notice (direct Driver calls, not via dispatch).
 pub(super) fn note_driver_err<T: Terminal>(
     session: &mut HostSession<T>,
     where_: &str,
@@ -17,7 +14,6 @@ pub(super) fn note_driver_err<T: Terminal>(
     session.push_scroll_notice(note);
 }
 
-/// Log `error.kind` then push an error-styled note.
 pub(super) fn note_driver_err_styled<T: Terminal>(
     session: &mut HostSession<T>,
     where_: &str,
@@ -47,7 +43,6 @@ pub(super) enum SwitchRebuildKind {
     Resume,
 }
 
-/// Shared import/resume path: `switch_session` → rebuild transcript (c1010 / c1015).
 pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -113,12 +108,10 @@ pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
             }
         }
     }
-    // Resume/import clears freeze + may restart MCP — refresh cue / /mcp cache now.
     session.refresh_loaded_resources(driver).await;
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
 }
 
-/// Turn an unexpected `DispatchOutcome` into a driver error for UI notices (c2710).
 pub(super) fn outcome_error(
     op: &str,
     outcome: &crate::dispatch::DispatchOutcome,
@@ -126,7 +119,6 @@ pub(super) fn outcome_error(
     crate::driver::XyDriverError::invalid_input(format!("{op}: unexpected outcome {outcome:?}"))
 }
 
-/// Pi-aligned session info/stats text block for `/session` (c1015).
 pub(super) fn format_session_stats_dump(
     stats: &serde_json::Value,
     state: &crate::driver::SessionState,

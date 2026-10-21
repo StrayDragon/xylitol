@@ -1,5 +1,3 @@
-//! AppConfig type definitions with serde + schemars derives.
-
 use std::collections::HashMap;
 
 use schemars::JsonSchema;
@@ -7,11 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use super::error::LoadError;
 
-// ---------------------------------------------------------------------------
-// Top-level config
-// ---------------------------------------------------------------------------
-
-/// The root configuration object for xylitol.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct AppConfig {
@@ -23,34 +16,25 @@ pub struct AppConfig {
     pub hooks: HooksConfig,
     pub security: SecurityConfig,
     pub session: Option<SessionConfig>,
-    /// YAML loading-phase compaction config. Mapped to runtime
-    /// `CompactionSettings` (in `agent::compaction::settings`)
-    /// via `From<XyCompactionSettingsConfig>`.
     pub compaction: Option<xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig>,
 
     pub mcp_servers: Option<Vec<McpServerConfig>>,
 
-    /// Optional remote OTLP export (c1475). Default exporter=none (no remote traffic).
     #[serde(default)]
     pub otel: OtelConfig,
 
-    /// Product TUI surface settings (c1560).
     #[serde(default)]
     pub tui: TuiConfig,
 
-    /// Same-turn tool batch scheduling (c1545). Default sequential.
     #[serde(default)]
     pub tool_batch: ToolBatchConfig,
 }
 
-/// Product TUI knobs under top-level `tui:` (c1560 / c1761).
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(default)]
 pub struct TuiConfig {
-    /// How many prior same-cwd sessions seed ↑/↓ send history on a pure new session.
     #[serde(default = "default_editor_history_seed_sessions")]
     pub editor_history_seed_sessions: u32,
-    /// Nested ActivityFold (envelope / cluster / live window).
     #[serde(default)]
     pub activity_fold: TuiActivityFoldConfig,
 }
@@ -76,7 +60,6 @@ fn default_keep_recent_turns() -> u32 {
     2
 }
 
-/// `tui.activity_fold` (c1761 / rc28).
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct TuiActivityFoldConfig {
@@ -104,7 +87,6 @@ impl Default for TuiActivityFoldConfig {
     }
 }
 
-/// How ended / distant turns collapse (`tui.activity_fold.stream_collapse`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ActivityFoldStreamCollapse {
@@ -113,9 +95,6 @@ pub enum ActivityFoldStreamCollapse {
     Clusters,
 }
 
-/// `[tool_batch]` — same-turn tool call scheduling (c1545 / rc26).
-///
-/// Only `mode` is accepted. Extra fields (e.g. MCP allowlists) fail load.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(default, deny_unknown_fields)]
 pub struct ToolBatchConfig {
@@ -123,7 +102,6 @@ pub struct ToolBatchConfig {
     pub mode: ToolBatchMode,
 }
 
-/// `tool_batch.mode` wire values.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ToolBatchMode {
@@ -141,43 +119,25 @@ impl From<ToolBatchMode> for xylitol_plugin_sdk::XyBatchMode {
     }
 }
 
-/// Remote OpenTelemetry export settings (`[otel]`). Orthogonal to local file
-/// provider-trace gates (`XYLITOL_PROVIDER_TRACE` / debug build).
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(default)]
 pub struct OtelConfig {
-    /// `none` (default) or `otlp-http`.
     #[serde(default)]
     pub exporter: OtelExporterKind,
-    /// OTLP/HTTP base or traces endpoint (e.g. `http://host:3000/api/public/otel`).
     #[serde(default)]
     pub endpoint: Option<String>,
-    /// Wire encoding for OTLP/HTTP.
     #[serde(default)]
     pub protocol: OtelHttpProtocol,
-    /// Resource `deployment.environment` / Langfuse environment hint.
     #[serde(default)]
     pub environment: Option<String>,
-    /// Resource `service.name` (default: `xylitol`).
     #[serde(default)]
     pub service_name: Option<String>,
-    /// Extra OTLP HTTP headers (e.g. `Authorization`). Prefer `{{ secret.* }}` /
-    /// env; Langfuse Basic Auth MAY also be derived from `LANGFUSE_*` env.
     #[serde(default)]
     pub headers: HashMap<String, String>,
-    /// Whether generation spans attach observation input/output (c1485).
-    /// Default `none` — metadata/usage only. Also gates `agent.turn` root
-    /// user-prompt preview for Langfuse Session list (c1555).
     #[serde(default)]
     pub observation_io: OtelObservationIo,
-    /// Whether `tool.execute` spans attach args/result observation I/O (c1550).
-    /// Separate from [`Self::observation_io`] — tool payloads often differ in sensitivity.
-    /// Default `none`.
     #[serde(default)]
     pub tool_observation_io: OtelObservationIo,
-    /// OTLP/HTTP client timeout seconds (default 60). Large batches over LAN
-    /// often exceed the previous hard-coded 10s and surface as generic
-    /// `network error` even when Langfuse itself is healthy.
     #[serde(default = "default_otel_export_timeout_secs")]
     pub export_timeout_secs: u64,
 }
@@ -202,7 +162,6 @@ impl Default for OtelConfig {
     }
 }
 
-/// `[otel].observation_io` / `tool_observation_io` — observation I/O on Langfuse.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum OtelObservationIo {
@@ -212,7 +171,6 @@ pub enum OtelObservationIo {
     Full,
 }
 
-/// `[otel].exporter` — remote export off by default.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum OtelExporterKind {
@@ -221,10 +179,6 @@ pub enum OtelExporterKind {
     OtlpHttp,
 }
 
-/// `[otel].protocol` for OTLP/HTTP.
-///
-/// Default is JSON: Langfuse self-host (v3.x) reliably ingests OTLP/HTTP JSON;
-/// protobuf binary has been observed to flush without creating traces.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum OtelHttpProtocol {
@@ -234,87 +188,42 @@ pub enum OtelHttpProtocol {
 }
 
 impl OtelConfig {
-    /// Effective remote export enabled (config only; feature gate is separate).
     pub fn wants_otlp_http(&self) -> bool {
         matches!(self.exporter, OtelExporterKind::OtlpHttp)
     }
 }
 
-// ---------------------------------------------------------------------------
-// Model
-// ---------------------------------------------------------------------------
-
-/// Top-level model configuration section.
-/// Split from agent-level [`XyModelConfig`](xylitol_plugin_sdk::model::XyModelConfig) —
-/// this is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct ModelsConfig {
-    /// Default model ID (or alias key) to use when no model is specified.
     pub default_model: Option<String>,
-    /// Named model entries keyed by alias.
     pub models: HashMap<String, ModelEntry>,
 }
 
-/// YAML wire model alias entry — SSOT [`XyModelEntryConfig`](xylitol_plugin_sdk::model_entry::XyModelEntryConfig).
 pub type ModelEntry = xylitol_plugin_sdk::model_entry::XyModelEntryConfig;
-
-// ---------------------------------------------------------------------------
-// Execution
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct ExecutionConfig {
-    /// Override model for execution steps.
     #[serde(default)]
     pub model: Option<String>,
-    /// System prompt for the execution agent.
     #[serde(default)]
     pub system_prompt: Option<String>,
 }
 
-// ---------------------------------------------------------------------------
-// Agent Profiles
-// ---------------------------------------------------------------------------
-
-/// Agent profile — binds model, prompt, tools.
-///
-/// Flat struct to support YAML anchor/alias merge keys:
-/// ```yaml
-/// agents:
-///   profiles:
-///     default: &default-agent
-///       model: gpt-4o
-///     planning:
-///       <<: *default-agent
-///       model: claude-opus
-///       system_prompt: "You are a planning agent."
-/// ```
-///
-/// Unknown fields (including removed `max_iterations`) are rejected.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AgentProfile {
-    /// Model alias referencing a key in `model.models`, or a raw model ID.
-    /// When `None`, falls back to config-level defaults.
     #[serde(default)]
     pub model: Option<String>,
-    /// System prompt / instruction for this agent.
     #[serde(default)]
     pub system_prompt: Option<String>,
 }
 
-/// Agent profiles container.
-///
-/// When entirely absent from config, falls back to single-model behavior
-/// using config-level model resolution.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct AgentsConfig {
-    /// The profile name used when no profile is explicitly specified.
     #[serde(default = "default_profile_name")]
     pub default_profile: String,
-    /// Named agent profiles.
     #[serde(default)]
     pub profiles: HashMap<String, AgentProfile>,
 }
@@ -324,7 +233,6 @@ fn default_profile_name() -> String {
 }
 
 impl AppConfig {
-    /// Validate freeform thinking lists and maps for every model entry.
     pub fn validate_thinking_levels(&self) -> Result<(), LoadError> {
         for (alias, entry) in &self.model.models {
             entry
@@ -334,7 +242,6 @@ impl AppConfig {
         Ok(())
     }
 
-    /// `session.max_turns` must be absent or a positive integer (c1620 / rc27).
     pub fn validate_session_max_turns(&self) -> Result<(), LoadError> {
         match self.session.as_ref().and_then(|s| s.max_turns) {
             None => Ok(()),
@@ -345,10 +252,6 @@ impl AppConfig {
         }
     }
 
-    /// Resolve a model alias to a runtime [`XyModelConfig`](xylitol_plugin_sdk::model::XyModelConfig).
-    ///
-    /// Only explicit `models.models` aliases resolve. Omitted/`""` `api_key` → empty string;
-    /// MUST NOT fall back to kind-level env (c2010 / m17).
     pub fn resolve_model(
         &self,
         model_id: &str,
@@ -361,10 +264,6 @@ impl AppConfig {
         Ok(entry.to_model_config())
     }
 
-    /// Resolve a model alias to [`XyModelMeta`](xylitol_plugin_sdk::model::XyModelMeta) for the registry.
-    ///
-    /// Composes [`resolve_model`](Self::resolve_model) with per‑model metadata (thinking support,
-    /// context window size) from [`ModelEntry`] or sensible defaults.
     pub fn resolve_model_meta(
         &self,
         model_id: &str,
@@ -377,7 +276,6 @@ impl AppConfig {
         entry.to_model_meta(model_id).map_err(LoadError::validation)
     }
 
-    /// Resolve a named agent profile to a [`xylitol_plugin_sdk::model::ResolvedProfile`].
     pub fn resolve_profile(
         &self,
         name: &str,
@@ -399,21 +297,14 @@ impl AppConfig {
                         .to_string(),
                 )
             })?;
-        // Validate the alias resolves against `models.models` even though
-        // callers rebuild the vendor config via [`Self::resolve_model`] — an
-        // unknown alias must fail at resolve time, not at first provider use.
         self.resolve_model(model_id)?;
 
         Ok(xylitol_plugin_sdk::model::ResolvedProfile {
-            // Registry alias the model resolved from; raw vendor id lives in
-            // `models.models.<id>.model` (bootstrap c2330-followup: host writer
-            // restore must select by alias, not raw name).
             model_id: model_id.to_string(),
             system_prompt,
         })
     }
 
-    /// Resolve the default agent profile.
     pub fn resolve_default_profile(
         &self,
     ) -> Result<xylitol_plugin_sdk::model::ResolvedProfile, LoadError> {
@@ -426,19 +317,10 @@ impl AppConfig {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Hooks
-// ---------------------------------------------------------------------------
-
 pub use xylitol_official_plugin_hooks::{HookEntry, HooksConfig};
-
-// ---------------------------------------------------------------------------
-// Security
-// ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct SecurityConfig {
-    /// Master toggle — enabled by default for safety.
     #[serde(default = "default_security_enabled")]
     pub enabled: bool,
     pub permission: Option<PermissionConfig>,
@@ -451,20 +333,14 @@ fn default_security_enabled() -> bool {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct PermissionConfig {
-    /// Master toggle.
     #[serde(default)]
     pub enabled: bool,
-    /// Backend selection. Only `"glob"` (app-level pattern matching) is
-    /// delivered. Default: `"glob"`.
     #[serde(default = "default_permission_backend")]
     pub backend: PermissionBackend,
-    /// Filesystem permission rules.
     #[serde(default)]
     pub filesystem: PermissionFilesystemConfig,
-    /// Network permission rules (applied to bash URLs).
     #[serde(default)]
     pub network: PermissionNetworkConfig,
-    /// Process execution rules.
     #[serde(default)]
     pub process: PermissionProcessConfig,
 }
@@ -477,7 +353,6 @@ fn default_permission_backend() -> PermissionBackend {
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
 pub enum PermissionBackend {
-    /// Pure application-level glob pattern matching (default).
     #[default]
     Glob,
 }
@@ -485,14 +360,10 @@ pub enum PermissionBackend {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct PermissionFilesystemConfig {
-    /// Paths allowed for read. Empty = allow all.
     #[serde(default)]
     pub read_allowed: Vec<String>,
-    /// Paths denied for write. Write always denied when read_allowed is set
-    /// and path is not in read_allowed (default-deny).
     #[serde(default)]
     pub write_allowed: Vec<String>,
-    /// Paths explicitly denied for write (takes precedence over allowed).
     #[serde(default)]
     pub write_denied: Vec<String>,
 }
@@ -500,10 +371,8 @@ pub struct PermissionFilesystemConfig {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct PermissionNetworkConfig {
-    /// Domains allowed for network requests. Empty = allow all.
     #[serde(default)]
     pub allowed_domains: Vec<String>,
-    /// Domains explicitly denied.
     #[serde(default)]
     pub denied_domains: Vec<String>,
 }
@@ -511,27 +380,15 @@ pub struct PermissionNetworkConfig {
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct PermissionProcessConfig {
-    /// Paths where subprocess execution is allowed. Empty = allow all.
     #[serde(default)]
     pub allowed_paths: Vec<String>,
 }
 
-// ---------------------------------------------------------------------------
-// Session
-// ---------------------------------------------------------------------------
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct SessionConfig {
-    /// Optional ReAct turn cap (c1620). When set, bootstrap installs
-    /// `should_stop_after_turn` so the run ends after N completed turns.
-    /// Absent / null = no turn-count stop hook (product default).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_turns: Option<u32>,
 }
-
-// ---------------------------------------------------------------------------
-// MCP
-// ---------------------------------------------------------------------------
 
 pub use xylitol_official_plugin_mcp::{McpServerConfig, McpTransportKind};
 
@@ -941,9 +798,6 @@ tool_batch:
 mod resolve_profile_model_id_tests {
     use super::*;
 
-    // Host writer default-model restore selects by registry alias; the
-    // resolved profile must carry the alias key, not the raw vendor model id
-    // (alias ≠ model name previously failed `registry.find` at restore time).
     #[test]
     fn resolved_profile_carries_alias_not_raw_model_name() {
         let cfg: AppConfig = yaml_serde::from_str(

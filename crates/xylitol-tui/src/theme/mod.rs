@@ -1,13 +1,3 @@
-//! Optional semantic theme helpers for hosts (demo / app).
-//!
-//! Components still take closure `*Theme` only. This module is a **typed palette**
-//! plus paint helpers — not a TypeScript-style Theme service / JSON market.
-//!
-//! ```ignore
-//! let p = Palette::from(TerminalColorScheme::Light);
-//! let md = p.markdown_theme();
-//! ```
-
 mod paint;
 mod palette;
 mod thinking_border;

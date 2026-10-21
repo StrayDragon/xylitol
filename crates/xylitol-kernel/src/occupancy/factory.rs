@@ -1,5 +1,3 @@
-//! Composition-root occupancy factory: injects official plugins into serve slots.
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -30,7 +28,6 @@ pub struct ProductOccupancyFactory {
     mcp_servers: Vec<McpServerSpec>,
     default_model_id: Option<String>,
     ctx: Option<xylitol_plugin_sdk::rt::Ctx>,
-    /// Keeps core plugins (mcp `session/prepare` listener + hub) alive.
     _loader: Option<rutis_loader::Loader>,
 }
 
@@ -112,8 +109,6 @@ impl OccupancyFactory for ProductOccupancyFactory {
     }
 }
 
-/// Kernel-local occupancy adapter: both `OccupancyEngine` and
-/// `XyInProcessDriver` are foreign, so the adapter lives here.
 struct OccupancyDriver {
     inner: XyInProcessDriver,
 }
@@ -256,7 +251,6 @@ impl OccupancyEngine for OccupancyDriver {
     }
 }
 
-/// Isolated store + default ports (BDD / unit tests; no user `~/.xylitol`).
 pub fn host_state_for_test() -> Result<Arc<HostState>, Box<dyn std::error::Error>> {
     host_state_for_test_with(None, None)
 }

@@ -1,5 +1,3 @@
-//! Core plugin: project trust store. Third-party mount admission lands here later.
-
 use std::sync::Arc;
 
 use xylitol_official_plugin_config::plugin::ConfigService;

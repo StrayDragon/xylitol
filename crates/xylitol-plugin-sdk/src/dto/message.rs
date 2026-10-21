@@ -1,14 +1,7 @@
-//! Typed bridge LLM message types (c1070: session roles live only on AgentMessage).
-//!
-//! Variants are limited to model-visible roles: user / assistant / toolResult.
-//! Environment folding (bash, compact, branch, custom) happens in the main crate
-//! via `domain::llm_project::project_for_llm` before crossing this boundary.
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Current timestamp in milliseconds since Unix epoch.
 pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -25,7 +18,6 @@ pub enum XyLlmMessage {
         #[serde(default = "now_ms")]
         timestamp: u64,
     },
-    /// Wire fields camelCase (`stopReason`, `errorMessage`).
     #[serde(rename = "assistant")]
     #[serde(rename_all = "camelCase")]
     AssistantMessage {
@@ -107,7 +99,6 @@ impl XyLlmMessage {
         }
     }
 
-    /// User message with arbitrary parts (text + images).
     pub fn user_parts(content: Vec<AgentPart>) -> Self {
         Self::UserMessage {
             content,
@@ -177,7 +168,6 @@ impl AgentPart {
         Self::Text { text: s.into() }
     }
 
-    /// Inline image part (base64 `data` + MIME).
     pub fn image(media_type: impl Into<String>, data: impl Into<String>) -> Self {
         Self::Image(ImageContent {
             url: None,
@@ -216,17 +206,13 @@ pub struct ImageContent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PromptCacheRead {
-    /// WirePolicy does not expect first-language cache usage fields.
     #[default]
     NotApplicable,
-    /// Expected, but the response omitted cache detail fields.
     NotReported,
-    /// Explicit token count from the provider (including zero).
     Tokens(u64),
 }
 
 impl PromptCacheRead {
-    /// Derived `cache_read` tokens for accounting (`Tokens(n)` only).
     pub fn tokens(self) -> u64 {
         match self {
             Self::Tokens(n) => n,
@@ -234,7 +220,6 @@ impl PromptCacheRead {
         }
     }
 
-    /// Stable observation label (`xylitol.prompt_cache_read`).
     pub fn as_status_str(self) -> &'static str {
         match self {
             Self::NotApplicable => "not_applicable",
@@ -259,7 +244,6 @@ pub struct XyUsage {
     pub total_tokens: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<XyUsageCost>,
-    /// Authoritative Prompt Cache read provenance (c1885). `cache_read` is derived.
     #[serde(default)]
     pub prompt_cache_read: PromptCacheRead,
 }
@@ -290,7 +274,6 @@ impl Default for XyUsage {
 }
 
 impl XyUsage {
-    /// Build usage with authoritative prompt-cache provenance; syncs `cache_read`.
     pub fn with_prompt_cache_read(mut self, prompt_cache_read: PromptCacheRead) -> Self {
         self.prompt_cache_read = prompt_cache_read;
         self.cache_read = prompt_cache_read.tokens();
@@ -392,7 +375,6 @@ mod tests {
 
     #[test]
     fn assistant_deserializes_camel_case_wire() {
-        // c2260 dropped legacy snake_case aliases (v6 disk format); wire is camelCase.
         let v = json!({
             "role": "assistant",
             "content": [{"type": "text", "text": ""}],

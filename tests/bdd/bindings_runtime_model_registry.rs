@@ -25,7 +25,6 @@ fn test_m18_task_model_ok(agent: AgentState) {}
 )]
 fn test_m18_task_model_fallback(agent: AgentState) {}
 
-// ── c2835 后继：runtime-model-registry 裸规则回填 ──────────────────
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_runtime_config::{RcSnap, rc_snap};
 use crate::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};

@@ -1,12 +1,3 @@
-//! Context compaction — LLM-based structured summarization + cut-point detection.
-//!
-//! Submodules:
-//! - [`settings`] — compact
-//! - [`token_estimator`] — token/heuristic counting
-//! - [`cut_detector`] — cut-point detection
-//! - [`file_ops`] — file operation tracking
-//! - [`llm_summarizer`] — LLM-based summarization
-
 pub mod binding;
 pub mod plugin;
 pub use binding::{CompactionModelAttribution, CompactionSummaryBinding};
@@ -22,16 +13,15 @@ pub mod token_estimator;
 
 pub use orchestrator::{CompactionOrchestrator, OverflowCompactOutcome};
 
+pub use cut_detector::estimate_tokens_entry_for_cut;
 pub use cut_detector::{estimate_tokens_entry, find_cut_point};
+pub use file_ops::FileOps;
 pub use file_ops::{compute_file_lists, extract_file_ops_from_messages, format_file_ops_xml};
 pub use llm_summarizer::{generate_summary, generate_turn_prefix_summary};
-pub use overflow::error_message_is_context_overflow;
-pub use settings::CompactionSettings;
-// Test-support re-exports (in-crate tests import via this facade).
-pub use cut_detector::estimate_tokens_entry_for_cut;
-pub use file_ops::FileOps;
 pub use orchestrator::should_compact;
+pub use overflow::error_message_is_context_overflow;
 pub use overflow::{assistant_same_model, is_context_overflow_assistant};
+pub use settings::CompactionSettings;
 pub use settlement::{
     ContextTokenSettlement, ContextTokenSettlementReason, settle_from_session_entries,
 };
@@ -45,17 +35,10 @@ use xylitol_plugin_sdk::session::{CompactionEntry, EntryBase, MessageEntry, Sess
 
 pub use xylitol_plugin_sdk::CompactionError;
 
-/// Unix-ms timestamp for new compaction entries persisted to session storage.
 fn timestamp_now() -> u64 {
     xylitol_plugin_sdk::message::now_ms()
 }
 
-/// Keep-window budget coordinated with the reserve gate (c8 / c25).
-///
-/// `min(keep_recent_tokens, window − reserve − fixed overhead)`; degenerates to
-/// `keep_recent_tokens` when the window is unknown (0) or overhead not injected.
-/// Without this clamp a keep budget ≥ the threshold makes every cut land on the
-/// first valid entry (keep-everything) and compaction stops shrinking context.
 pub(crate) fn effective_keep_budget(
     settings: &CompactionSettings,
     context_window: u64,
@@ -71,13 +54,8 @@ pub(crate) fn effective_keep_budget(
     )
 }
 
-/// Summary output budget assumed for the c2 floor when the leaf has no prior
-/// CompactionEntry to measure from. ≈2k tokens of structured summary.
 const SUMMARY_PLACEHOLDER_TOKENS: u64 = 2_048;
 
-/// `/3` estimate of the latest summary on the leaf (c2 summary placeholder);
-/// falls back to `SUMMARY_PLACEHOLDER_TOKENS` when there is no CompactionEntry
-/// or the summary is empty.
 pub fn summary_placeholder_tokens(entries: &[SessionEntry]) -> u64 {
     entries
         .iter()
@@ -97,10 +75,6 @@ pub fn summary_placeholder_tokens(entries: &[SessionEntry]) -> u64 {
         .unwrap_or(SUMMARY_PLACEHOLDER_TOKENS)
 }
 
-/// Post-compaction floor projection (c2): fixed request overhead (c16 folding) +
-/// effective keep tail (c8 clamp) + summary placeholder — what the next main
-/// request will weigh right after a compact. The summary request itself carries
-/// no tool schemas; this floor models the *conversation* request.
 pub fn projected_post_compact_tokens(
     settings: &CompactionSettings,
     context_window: u64,
@@ -114,11 +88,6 @@ pub fn projected_post_compact_tokens(
 
 pub use xylitol_plugin_sdk::effective_trigger_threshold;
 
-/// pi `prepareCompaction` gate: whether there is content worth summarizing.
-///
-/// Force-path error strings: `Already compacted` stays pi-aligned; empty /
-/// no-summarizable-history strings diverge from pi `session too small`
-/// (c1875 / `PI_DELTAS` A12) so footer-% misunderstandings are harder.
 pub fn prepare_compaction(
     entries: &[SessionEntry],
     settings: &CompactionSettings,
@@ -182,10 +151,6 @@ pub fn prepare_compaction(
     Ok(())
 }
 
-/// Compact a session by summarizing old entries and writing a CompactionEntry.
-///
-/// `custom_instructions` is only for the force/manual path (pi `customInstructions`);
-/// auto callers MUST pass `None`.
 #[allow(clippy::too_many_arguments)]
 pub async fn compact_session(
     store: &dyn XySessionStore,
@@ -229,8 +194,6 @@ pub async fn compact_session(
 
     let boundary_end = entries.len();
 
-    // Prefer session-context estimate (pi tokensBefore via buildSessionContext);
-    // fall back to boundary heuristic when estimate cannot parse messages.
     let estimated = estimate_from_session_entries(&entries, &EstimateOpts::default()).tokens;
     let tokens_before = if estimated > 0 {
         estimated
@@ -387,10 +350,8 @@ pub async fn compact_session(
         .commit_compaction(session_id, &SessionEntry::Compaction(entry.clone()))
         .await?;
 
-    // c1906: after cut, leaf context may lack session_env — ensure + persist.
     ensure_session_env_after_compact(store, session_id, &entries).await;
     ensure_session_prepare_after_compact(store, session_id, &entries).await;
-    // c1955: if cut dropped every agent_todo snapshot, re-append latest.
     ensure_agent_todo_after_compact(store, session_id, &entries).await;
 
     Ok(entry)
@@ -403,8 +364,6 @@ fn session_cwd_from_entries(entries: &[SessionEntry]) -> Option<&str> {
     })
 }
 
-/// If compaction/cut leaves no `agent_todo` in the post-cut context window,
-/// re-append the latest pre-cut snapshot so tip / resume / request-time inject stay aligned.
 pub async fn ensure_agent_todo_after_compact(
     store: &dyn XySessionStore,
     session_id: &str,

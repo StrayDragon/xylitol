@@ -1,8 +1,3 @@
-//! XyEvent → UI-only model seam (c465 / c494).
-//!
-//! Render / `UiRoot` MUST consume [`UiModel`] only — never match [`XyEvent`].
-//! Event-family logic lives in per-family handler modules; [`apply_xy_event`] remains the sole entry.
-
 mod handlers;
 mod model;
 mod preview;
@@ -13,10 +8,8 @@ pub use model::{
     AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, STREAMING_THINK_ID,
     StreamingTailKind, UiEntry, UiModel, UiPhase, allocate_thinking_id,
 };
-/// att36：todo 空列表 body 固定词（窄导出，供 BDD 断言单一词源）。
 pub use preview::TODO_EMPTY_BODY_HINT;
 pub use preview::extract_display_diff;
-/// att13：折叠态工具人话摘要（窄导出，供 BDD 直驱纯函数合约）。
 pub use preview::human_tool_args_preview;
 pub(crate) use preview::{
     display_tool_title, extract_full_output_notice, extract_line_range_from_display_diff,
@@ -25,7 +18,6 @@ pub(crate) use preview::{
     merge_path_preview_with_range, output_looks_like_machine_json, preview_is_downgrade,
     preview_lacks_real_path, todo_status_glyph,
 };
-/// att12/att18：travel 重建 seam（history rebuild 的正常路径入口）。
 pub use session_tree::{rebuild_scrollback_from_travel, travel_history_note};
 
 use serde_json::Value;
@@ -34,10 +26,6 @@ use crate::driver::XyEvent;
 use crate::tool_display::{is_ask_tool, is_edit_tool, is_write_tool};
 use xylitol_plugin_sdk::message::AgentMessage;
 
-/// Single seam: translate one [`XyEvent`] into UI-only mutations.
-///
-/// Unhandled / metadata variants are logged and ignored — never panic.
-/// Family handlers live in per-family modules; this remains the only public entry.
 pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
     if handlers::apply_agent_family(model, event)
         || handlers::apply_stream_family(model, event)
@@ -49,12 +37,10 @@ pub fn apply_xy_event(model: &mut UiModel, event: &XyEvent) {
     log::debug!(target: "xylitol::tui", "XyEvent unhandled by bridge event={}", event.description());
 }
 
-/// Upsert a pending tool row from streaming intent (MessageUpdate) or execution start.
 pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args: &Value) {
     use crate::tool_display::{is_mcp_tool_name, mcp_tool_body};
 
     let fresh_path = extract_tool_path(args);
-    // c2435: model-requested bound (bash/grep/find only) becomes header note.
     let timeout_secs = matches!(name, "bash" | "grep" | "find")
         .then(|| args.get("timeout"))
         .flatten()
@@ -70,7 +56,6 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         .flatten()
         .filter(|s| !s.is_empty());
     let mcp = is_mcp_tool_name(name);
-    // Header: no args section for mcp (body owns `args:` — avoids `{}` / compact JSON redundancy).
     let mcp_preview = mcp.then(String::new);
     let mcp_pending_body = mcp.then(|| mcp_tool_body(Some(args), None));
     if let Some(UiEntry::Tool {
@@ -100,7 +85,6 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
         if write_content.is_some() {
             *wc = write_content;
         }
-        // Refresh pretty call args while still pending (no streamed result yet).
         if let Some(body) = mcp_pending_body
             && !*done
             && (output.is_empty() || output.starts_with("args:"))
@@ -127,11 +111,6 @@ pub(crate) fn upsert_tool_entry(model: &mut UiModel, id: &str, name: &str, args:
     });
 }
 
-/// Sync ToolCall parts from a partial assistant message (c1255 → c1260).
-///
-/// Flushes any in-flight thinking/text **before** mounting tools so scrollback
-/// order matches provider order (ThinkingDelta* → ToolCall*), not
-/// tool-row-then-late-flush-thinking.
 pub(crate) fn sync_tool_intent_from_message(model: &mut UiModel, message: &AgentMessage) {
     use xylitol_plugin_sdk::message::{AgentPart, XyLlmMessage};
 
@@ -181,9 +160,6 @@ pub(crate) fn find_tool_mut<'a>(entries: &'a mut [UiEntry], id: &str) -> Option<
     })
 }
 
-/// c2440: terminal tool failures must be VISIBLE in the block body, not only
-/// tinted on the rail — streamed output would otherwise hide the error line
-/// (bash timeout keeps its partial stdout).
 fn ensure_visible_failure_line(output: &mut String, result: &str, is_error: bool, is_mcp: bool) {
     if !is_error || is_mcp || output.contains(result) {
         return;
@@ -194,9 +170,6 @@ fn ensure_visible_failure_line(output: &mut String, result: &str, is_error: bool
     output.push_str(result);
 }
 
-/// pi ToolExecutionComponent: updateResult refreshes result body/tint only —
-/// call header stays from streaming args. Never rebuild preview from an empty
-/// synthetic (that wiped bash `$ cmd` / write|edit paths after done).
 fn refresh_header_from_result_path(
     name: &str,
     result: &str,
@@ -228,9 +201,6 @@ fn refresh_header_from_result_path(
     }
 }
 
-/// Fill an existing Tool row with End semantics (live `ToolExecutionEnd` + rebuild merge).
-///
-/// Returns `false` when no Tool with `id` exists (caller may push an orphan stub then retry).
 pub(crate) fn apply_tool_result_to_entries(
     entries: &mut [UiEntry],
     id: &str,
@@ -255,14 +225,11 @@ pub(crate) fn apply_tool_result_to_entries(
     use crate::tool_display::{extract_mcp_args_value, is_mcp_tool_name, mcp_tool_body};
 
     if let Some(truncated_display) = extract_truncated_tool_display(result) {
-        // att16: drop streamed full buffer; keep truncated view + Full output footer.
         *output = truncated_display;
     } else if is_mcp_tool_name(name) {
-        // c1460: rebuild — drop any streamed raw append; no content extract.
         let args = extract_mcp_args_value(output);
         *output = mcp_tool_body(args.as_ref(), Some(result));
     } else if let Some(human) = humanize_tool_result_for_tui(name, result, is_error) {
-        // write/edit/read always replace; bash only when no live stream yet.
         match name {
             "write" | "edit" | "read" => *output = human,
             "bash" | "shell" if output.is_empty() => *output = human,
@@ -270,7 +237,6 @@ pub(crate) fn apply_tool_result_to_entries(
             _ => {}
         }
     } else if let Some(notice) = extract_full_output_notice(result) {
-        // Streaming bash kept live chunks; append pi Full output footer once.
         if !output.contains("[Full output:") {
             if !output.is_empty() && !output.ends_with('\n') {
                 output.push('\n');
@@ -281,7 +247,6 @@ pub(crate) fn apply_tool_result_to_entries(
         *output = result.to_string();
     }
 
-    // Safety net: never leave built-in success JSON remnants in the TUI body.
     if !is_error
         && output_looks_like_machine_json(output)
         && let Some(human) = humanize_tool_result_for_tui(name, result, false)
@@ -295,17 +260,10 @@ pub(crate) fn apply_tool_result_to_entries(
         *display_diff = Some(diff);
     }
 
-    // pi ToolExecutionComponent: updateResult refreshes result body/tint only —
-    // call header stays from streaming args. Never rebuild preview from an empty
-    // synthetic (that wiped bash `$ cmd` / write|edit paths after done).
     refresh_header_from_result_path(name, result, args_preview, tool_path, write_content);
 
-    // c2440: terminal tool failures must be VISIBLE in the block body, not
-    // only tinted on the rail — streamed output would otherwise hide the
-    // error line (bash timeout keeps its partial stdout).
     ensure_visible_failure_line(output, result, is_error, is_mcp_tool_name(name));
 
-    // Edit line-range after path backfill so `:N-M` is not wiped.
     if is_edit_tool(name)
         && let Some(diff) = display_diff.as_ref()
         && let Some(range) = extract_line_range_from_display_diff(diff)
@@ -318,11 +276,6 @@ pub(crate) fn apply_tool_result_to_entries(
     true
 }
 
-/// Append a user scrollback row; skip if it duplicates the trailing user entry
-/// (e.g. idle `begin_run` already seeded the same prompt).
-///
-/// Steer / follow-up inject MUST still add a bubble even when the text matches
-/// the previous user row (`ati45`).
 pub(crate) fn push_user_entry_dedup(model: &mut UiModel, text: String) {
     let same_trailing_user = matches!(
         model.entries.last(),

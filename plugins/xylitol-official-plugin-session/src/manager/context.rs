@@ -4,8 +4,6 @@ use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::{XySessionError, XySessionStoreError};
 
 impl SessionManager {
-    /// Build session context from the stored entries.
-    /// Walks from leaf to root, then applies compaction-aware cut (pi `buildContextEntries`).
     pub async fn build_session_context(
         &self,
         session_id: &str,
@@ -13,8 +11,6 @@ impl SessionManager {
         let leaf_id = self.get_leaf(session_id);
         let branch = self.get_branch(session_id, leaf_id.as_deref()).await?;
 
-        // No recorded choice starts disabled. A recorded string is restored
-        // verbatim below, even if a newer config no longer declares it.
         let mut thinking_level = String::from("off");
         let mut model: Option<(String, String)> = None;
         for entry in &branch {
@@ -30,9 +26,6 @@ impl SessionManager {
         }
 
         let context_entries = xylitol_plugin_sdk::session::build_context_entries(&branch);
-        // c2770 / as-bang1: same interrupted-bash fold as the seeding path
-        // (as48 single path). On a done-set read failure the fold is skipped
-        // (running rows keep no-projection — no false interrupts).
         let mut msgs: Vec<_> = context_entries
             .iter()
             .filter_map(|e| e.as_agent_message())
@@ -54,13 +47,7 @@ impl SessionManager {
         })
     }
 
-    // ── Change tracking helpers ─────────────────────────────────
-
-    /// Append a model change entry.
-    ///
-    /// BDD @executable contract (`切换模型为` steps); no product caller today —
-    /// product model switches go through `XyDriver` / session projection.
-    #[allow(dead_code)] // BDD @executable contract, not product-called
+    #[allow(dead_code)]
     pub async fn append_model_change(
         &self,
         session_id: &str,
@@ -70,7 +57,7 @@ impl SessionManager {
         let entry = SessionEntry::ModelChange(ModelChangeEntry {
             base: EntryBase {
                 entry_type: "model_change".into(),
-                id: String::new(), // will be filled by append
+                id: String::new(),
                 parent_id: None,
                 timestamp: 0,
             },
@@ -80,10 +67,7 @@ impl SessionManager {
         self.append(session_id, &entry).await
     }
 
-    /// Append a thinking level change entry.
-    ///
-    /// BDD @executable contract (`切换思考级别为` steps); no product caller today.
-    #[allow(dead_code)] // BDD @executable contract, not product-called
+    #[allow(dead_code)]
     pub async fn append_thinking_level_change(
         &self,
         session_id: &str,
@@ -101,14 +85,7 @@ impl SessionManager {
         self.append(session_id, &entry).await
     }
 
-    // ── Branch summary (text fallback) ──────────────────────────
-
-    /// Generate a branch summary for cut-point entries.
-    ///
-    /// Spec @executable contract (`场景: 分支摘要` in domain-compaction and
-    /// agent-session-store features); no product caller today — fork-time
-    /// summary generation is not yet wired.
-    #[allow(dead_code)] // spec @executable contract, not product-called
+    #[allow(dead_code)]
     pub fn generate_branch_summary(&self, skipped_entries: &[SessionEntry]) -> String {
         use xylitol_plugin_sdk::session::{
             count_tool_calls, is_user_message, message_text, tool_file_paths,
@@ -194,18 +171,13 @@ impl SessionManager {
         summary
     }
 
-    // ── Label bookkeeping (BDD @executable surface) ──────────────
-
-    /// Append a label change entry.
-    /// Labels are user-defined bookmarks/markers on entries.
-    #[allow(dead_code)] // BDD @executable contract, not product-called
+    #[allow(dead_code)]
     pub async fn append_label_change(
         &self,
         session_id: &str,
         target_id: &str,
         label: Option<&str>,
     ) -> Result<(), XySessionError> {
-        // Verify target exists
         let _ = self
             .get_entry(session_id, target_id)
             .await?
@@ -225,15 +197,13 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Get the label for an entry, if any.
-    #[allow(dead_code)] // BDD @executable contract, not product-called
+    #[allow(dead_code)]
     pub async fn get_label(
         &self,
         session_id: &str,
         target_id: &str,
     ) -> Result<Option<String>, XySessionStoreError> {
         let entries = self.load(session_id).await?;
-        // Walk in reverse to find the latest label for this target
         for entry in entries.iter().rev() {
             if let SessionEntry::Label(l) = entry
                 && l.target_id == target_id

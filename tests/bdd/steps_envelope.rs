@@ -1,12 +1,3 @@
-//! wire v3(fory 二进制信封)BDD 步骤(c2834 spec r1902/r1904–r1910/r1911)。
-//!
-//! fixture 复用 `steps_server::ServerTest`(其跨步骤生命周期已被现有
-//! server-core 场景验证);v3 网络动作集中在断言步骤内完成。
-//! pending(未绑,4.x 备注):unknown-method-id-stable-fail(闭集 enum 使
-//! 未登记判别在解码层即拒)、v3-event-carries-seq 与 dual-rail-event-
-//! equivalence(双路径事件流注入)、v3-unknown-variant-degrades(双 schema)、
-//! cutover 门(5.x)。
-
 use std::time::Duration;
 
 use crate::bdd::steps_server::{ServerTest, start_host};
@@ -18,7 +9,6 @@ use xylitol_protocol::v3::{
     ServerResponse, ToolStart,
 };
 
-/// 对拍场景使用的会话 id（`HostState::for_test` 的默认会话）。
 const SNAPSHOT_SESSION: &str = "test-session";
 
 fn describe_frame(rpc_id: u64) -> Vec<u8> {
@@ -53,14 +43,10 @@ fn expect_describe_response(body: &[u8]) -> ServerResponse {
 }
 
 #[given("客户端仅支持未声明的 wire 格式")]
-async fn g_unsupported_format(_server_test: &ServerTest) {
-    // 协商致命语义(ath44 平移):given 仅标记客户端意图,断言在 then。
-}
+async fn g_unsupported_format(_server_test: &ServerTest) {}
 
 #[when("客户端发起协商")]
-async fn w_negotiate(_server_test: &ServerTest) {
-    // 协商行为由 lib 测试与 3.1 客户端实现承担;BDD 层断言降级禁令。
-}
+async fn w_negotiate(_server_test: &ServerTest) {}
 
 #[when("客户端经 WS /rpc 发送二进制 host.describe 帧")]
 async fn w_ws_binary_describe(server_test: &ServerTest) {
@@ -88,7 +74,6 @@ async fn w_ws_binary_describe(server_test: &ServerTest) {
         .replace(format!("{:?}", resp.payload));
     server_test.last_rpc.borrow_mut().take();
     server_test.last_rpc.borrow_mut().take();
-    // 存原始 hex 供 then 断言 rpc_id/ok。
     server_test
         .unary_body
         .borrow_mut()
@@ -110,7 +95,6 @@ async fn t_ws_binary_roundtrip(server_test: &ServerTest) {
 
 #[then("得到致命错误且无降级与重试风暴")]
 async fn t_fatal_no_downgrade() {
-    // 协商降级禁令:wire 格式标识稳定(客户端不识别即致命,不降级)。
     assert_eq!(xylitol_protocol::WIRE_FORMAT_FORY_V3, "fory-v3");
 }
 
@@ -163,16 +147,10 @@ async fn t_toolstart_args_raw() {
 }
 
 #[when("从协议真源 fbs 重新生成代码")]
-async fn w_codegen(_server_test: &ServerTest) {
-    // 本地维护命令(`just codegen-envelope --check`,需 ../fory);CI 无 fory
-    // clone 时以 lib 层 conformance/方法表对齐测试代表。
-}
+async fn w_codegen(_server_test: &ServerTest) {}
 
 #[then("生成物 diff 为空且方法 ID 表与产品方法表一致")]
 async fn t_codegen_clean() {
-    // 必跑（零外部依赖）：真源 ↔ check-in 生成物的类型名集合 MUST 1:1，能接住
-    // 「改了 fbs 但没重新生成」这类结构漂移。方法 ID 表对齐与字节 conformance
-    // 由 lib 测试(`method_table_aligns_with_registry` / `codec_conformance_bytes_locked`) 覆盖。
     let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let schema_dir = root.join("crates/xylitol-protocol/src/v3");
     let fbs = std::fs::read_to_string(schema_dir.join("envelope.fbs")).expect("fbs 真源");
@@ -218,7 +196,6 @@ async fn t_codegen_clean() {
         "fbs 真源与 check-in 生成物漂移（补生成：just codegen-envelope）"
     );
 
-    // 字节级对拍需同一个 compiler：本地存在 ../fory clone 时才跑 --check。
     let fory = root.parent().unwrap().join("fory/compiler");
     if fory.is_dir() {
         let out = std::process::Command::new("python3")
@@ -276,8 +253,6 @@ async fn t_reserved_names_preserved() {
 
 #[when("客户端发送未登记方法或非法帧字节")]
 async fn w_unknown_method(server_test: &ServerTest) {
-    // 闭集方法枚举下未登记判别在解码层即拒;以非法帧字节(0x01 头 + 垃圾)
-    // 代表该语义,POST /rpc 稳定 400(非法信封),不半执行、不崩溃。
     if server_test.host.borrow().is_none() {
         start_host(server_test).await;
     }
@@ -305,8 +280,6 @@ async fn g_dual_rail_prompt(_server_test: &ServerTest) {}
 
 #[when("回合结束")]
 async fn w_turn_finished(server_test: &ServerTest) {
-    // 双路径事件流对拍(spec r1908):同一会话注入代表事件流,JSON 与 v3
-    // 路径各自订阅收集,解码回领域 Event;结果存 fixture 供断言。
     let pairs = crate::bdd::dual_rail::dual_rail_event_parity()
         .await
         .expect("parity run");
@@ -329,7 +302,6 @@ async fn t_dual_rail_equivalent(server_test: &ServerTest) {
     assert!(n.parse::<usize>().unwrap() >= 3, "事件流样本数 {n}");
 }
 
-/// task 2.5b 对拍 fixture：给 Host 默认会话灌 3 条真实条目（两条路径读同一 store）。
 #[given("同一会话有 3 条历史条目")]
 async fn g_seed_snapshot_entries(server_test: &ServerTest) {
     use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
@@ -359,8 +331,6 @@ async fn g_seed_snapshot_entries(server_test: &ServerTest) {
     }
 }
 
-/// c2846/r1922: 深链树（>serde_json 默认 128 解析上限）双轨对拍夹具——
-/// 在默认会话上播种一条 160 层父子链，防「深树解析静默降级 Null」回归。
 #[given("同一会话有一条深链树（>默认递归上限）")]
 async fn g_seed_deep_chain(server_test: &ServerTest) {
     use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
@@ -393,7 +363,6 @@ async fn g_seed_deep_chain(server_test: &ServerTest) {
     }
 }
 
-/// c2846/r1922: 测试夹具自身的深 JSON 也要禁递归上限（>128 层）。
 fn parse_deep_json(s: &str) -> Result<serde_json::Value, serde_json::Error> {
     use serde::Deserialize as _;
     let mut de = serde_json::Deserializer::from_str(s);
@@ -401,7 +370,6 @@ fn parse_deep_json(s: &str) -> Result<serde_json::Value, serde_json::Error> {
     serde_json::Value::deserialize(&mut de)
 }
 
-/// c2846/r1922: 深链树 fory-only 回归——完整还原且超过默认解析上限。
 #[then("result 完整还原深链（非空降级）")]
 async fn t_deep_tree_restored(server_test: &ServerTest) {
     let stored = server_test
@@ -428,7 +396,6 @@ async fn t_deep_tree_restored(server_test: &ServerTest) {
     );
 }
 
-/// c2845: `session_tree` fory-only 回归 —— MUST 走 RAW 载体（深度安全，r1921）。
 #[when("客户端取回该会话树")]
 async fn w_fetch_tree_v3(server_test: &ServerTest) {
     use xylitol_protocol::v3::{Method as V3Method, Raw as V3Raw};
@@ -531,7 +498,6 @@ async fn g_subscribed_running(_server_test: &ServerTest) {}
 
 #[when("agent 经订阅发出 TextDelta 事件")]
 async fn w_inject_textdelta(server_test: &ServerTest) {
-    // v3 路径单连接:订阅 → 注入 → 收 v3 事件帧,记录 seq 序列。
     if server_test.host.borrow().is_none() {
         start_host(server_test).await;
     }
@@ -589,8 +555,6 @@ async fn g_future_variant(_server_test: &ServerTest) {}
 
 #[when("旧词表接收端解码")]
 async fn w_decode_future_variant(server_test: &ServerTest) {
-    // UnknownCase 即「未来变体」的合法载体:编码 Event::Unknown 帧,旧端
-    // 解码落 Unknown 且 mapping 降级 None(spec r1907/r1719,不 panic)。
     let unknown_event = V3Event::Unknown(fory::UnknownCase::new(999u32, 0u8));
     let frame = Frame::ServerNotification(xylitol_protocol::v3::ServerNotification {
         seq: 9,

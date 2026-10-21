@@ -1,5 +1,3 @@
-//! app-tui-transcript BDD 绑定（P1：纯字形合约）。
-
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_app_tui_interaction::{TuiInteraction, tui_interaction};
 use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
@@ -152,8 +150,6 @@ fn test_att13_todo_empty_summary(transcript_bdd: TranscriptBdd) {}
     name = "待办块空列表正文提示"
 )]
 fn test_att36_todo_empty_body(transcript_bdd: TranscriptBdd) {}
-
-// ── c2835 后继：travel 通知尾插（产品与 demo 同源）─────────────────
 
 #[scenario(
     path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",

@@ -1,9 +1,3 @@
-//! Agent event stream types.
-//!
-//! [`XyEventStream`] wraps the underlying stream with terminal-event
-//! tracking so consumers poll until `AgentEnd`. Optional [`RunLease`]
-//! finishes single-flight coordination on `AgentEnd` / drop.
-
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -12,8 +6,6 @@ use futures::Stream;
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 
 use super::state::RunLease;
-
-// ── XyEventStream ─────────────────────────────────────────────────
 
 pub struct XyEventStream {
     pub(crate) inner: Pin<Box<dyn Stream<Item = XyEvent> + Send>>,

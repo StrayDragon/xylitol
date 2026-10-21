@@ -1,9 +1,3 @@
-//! Session-bound run coordination — single-flight root turns.
-//!
-//! One [`AgentRuntime`](super::AgentRuntime) owns one bound session and at most
-//! one live ReAct worker. [`RunPolicy`] only schedules the next root turn; it
-//! never creates a second concurrent loop.
-
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
@@ -12,7 +6,6 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::capabilities::ActiveTurnBinding;
 use xylitol_plugin_sdk::message::AgentPart;
 
-/// Opaque identity for one root-turn attempt (active or queued).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RunId(u64);
 
@@ -23,19 +16,14 @@ impl RunId {
     }
 }
 
-/// How to handle a root submit while another root turn is live or queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RunPolicy {
-    /// Refuse the new root turn; leave the active turn untouched.
     #[default]
     Reject,
-    /// Cancel the active turn, then start this turn after it finishes cleanup.
     AbortAndReplace,
-    /// Enqueue this turn FIFO; start after the active turn finishes naturally.
     QueueAfterRun,
 }
 
-/// Control-plane errors for bind / busy mutations (not stream `XyEvent::Error`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RuntimeControlError {
     #[error("agent run already active")]
@@ -55,7 +43,6 @@ impl RuntimeControlError {
     }
 }
 
-/// Coordinator phase for the single session actor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimePhase {
     Idle,
@@ -77,7 +64,6 @@ impl RuntimePhase {
     }
 }
 
-/// Frozen capability snapshot for a queued / starting root turn.
 #[derive(Clone)]
 pub struct FrozenRootConfig {
     pub user_parts: Vec<AgentPart>,
@@ -90,16 +76,13 @@ pub struct FrozenRootConfig {
     pub compaction: std::sync::Arc<dyn crate::agent::compaction::XyCompaction>,
     pub permission: std::sync::Arc<dyn xylitol_plugin_sdk::XyPermission>,
     pub hook_bus: Option<std::sync::Arc<dyn xylitol_plugin_sdk::XyHookBus>>,
-    /// Workspace cwd for session_env bootstrap (c1905).
     pub cwd: String,
-    /// Prepare increment Env; None when fingerprint unchanged / empty.
     pub pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
 }
 
 pub struct PendingRoot {
     run_id: RunId,
     frozen: FrozenRootConfig,
-    /// Wakes the waiting event stream when this turn may start.
     activate_tx: Option<tokio::sync::oneshot::Sender<FrozenRootConfig>>,
 }
 
@@ -108,7 +91,6 @@ struct ActiveTurnSlot {
     binding: ActiveTurnBinding,
 }
 
-/// Single-flight run coordinator shared with leases and queue bind/unbind.
 pub struct RunCoordinator {
     next_id: u64,
     phase: RuntimePhase,
@@ -152,7 +134,6 @@ impl RunCoordinator {
         id
     }
 
-    /// Begin a root turn immediately. Returns `None` when not idle (caller applies policy).
     pub fn try_begin_immediate(&mut self) -> Option<(RunId, CancellationToken)> {
         if !self.phase.is_idle() {
             return None;
@@ -170,14 +151,12 @@ impl RunCoordinator {
         }
     }
 
-    /// Enqueue a root turn; returns the waiting receiver used by the event stream.
     pub fn enqueue_pending(
         &mut self,
         frozen: FrozenRootConfig,
         replace_pending: bool,
     ) -> (RunId, tokio::sync::oneshot::Receiver<FrozenRootConfig>) {
         if replace_pending {
-            // Drop queued roots (their streams observe closed oneshot → no start).
             self.pending.clear();
         }
         let run_id = self.allocate_run_id();
@@ -190,8 +169,6 @@ impl RunCoordinator {
         (run_id, rx)
     }
 
-    /// Cancel the active run token (AbortAndReplace / abort()). Keeps pending roots
-    /// unless `clear_pending` is set.
     pub fn cancel_active(&mut self, clear_pending: bool) -> bool {
         if clear_pending {
             self.pending.clear();
@@ -236,11 +213,8 @@ impl RunCoordinator {
         self.active_turn.is_some()
     }
 
-    /// Finish a run lease. Activates the next pending root when the actor becomes free.
     pub fn finish_run(&mut self, run_id: RunId) -> Option<(RunId, FrozenRootConfig)> {
-        // Ignore stale leases from older runs.
         if self.phase.active_run_id() != Some(run_id) {
-            // Still allow cancelling a queued ticket that never started.
             self.pending.retain(|p| p.run_id != run_id);
             return None;
         }
@@ -254,7 +228,6 @@ impl RunCoordinator {
         self.activate_next_pending()
     }
 
-    /// Drop a queued (not yet started) root without affecting the active run.
     pub fn revoke_pending(&mut self, run_id: RunId) {
         self.pending.retain(|p| p.run_id != run_id);
     }
@@ -267,13 +240,11 @@ impl RunCoordinator {
         self.phase = RuntimePhase::Starting(run_id);
         self.cancel = Some((run_id, token));
         if let Some(tx) = pending.activate_tx {
-            // Receiver builds the live stream; include frozen config.
             let _ = tx.send(frozen.clone());
         }
         Some((run_id, frozen))
     }
 
-    /// Token + run id for a pending turn that just became Starting via finish_run.
     pub fn take_started_token(&self, run_id: RunId) -> Option<CancellationToken> {
         match &self.cancel {
             Some((id, token)) if *id == run_id => Some(token.clone()),
@@ -282,7 +253,6 @@ impl RunCoordinator {
     }
 }
 
-/// Shared handle used by AgentRuntime, leases, and ReAct helpers.
 #[derive(Clone, Default)]
 pub struct SharedRunCoordinator {
     inner: Arc<Mutex<RunCoordinator>>,
@@ -299,7 +269,6 @@ impl SharedRunCoordinator {
         crate::utils::lock_mutex(&self.inner)
     }
 
-    /// Snapshot the current phase (BDD observation surface, c2924).
     pub fn phase(&self) -> RuntimePhase {
         self.with(|c| c.phase())
     }
@@ -313,11 +282,9 @@ impl SharedRunCoordinator {
     }
 }
 
-/// Held by [`super::XyEventStream`]; finishes the run on Drop / AgentEnd.
 pub struct RunLease {
     coordinator: SharedRunCoordinator,
     run_id: RunId,
-    /// Queue runtime to unbind EventTx for this run only.
     queues: Option<std::sync::Arc<crate::agent::capabilities::AsyncQueueRuntime>>,
     finished: bool,
 }
@@ -336,7 +303,6 @@ impl RunLease {
         }
     }
 
-    /// Idempotent finish — safe from AgentEnd poll and Drop.
     pub fn finish(&mut self) {
         if self.finished {
             return;
@@ -346,15 +312,12 @@ impl RunLease {
             queues.unbind_event_tx(self.run_id);
         }
         let _activated = self.coordinator.with_mut(|c| c.finish_run(self.run_id));
-        // Pending activation is delivered via oneshot inside finish_run; the
-        // waiting stream owns starting ReAct after recv.
     }
 }
 
 impl Drop for RunLease {
     fn drop(&mut self) {
         if !self.finished {
-            // Queued-but-not-started streams only revoke the pending ticket.
             let phase_id = self.coordinator.with(|c| c.phase().active_run_id());
             if phase_id != Some(self.run_id) {
                 self.coordinator.with_mut(|c| c.revoke_pending(self.run_id));
@@ -385,7 +348,6 @@ mod tests {
     fn stale_finish_does_not_clear_newer_run() {
         let mut c = RunCoordinator::new();
         let (old, _) = c.try_begin_immediate().unwrap();
-        // Simulate replace: cancel + finish old, begin new.
         c.cancel_active(true);
         assert!(c.finish_run(old).is_none());
         let (new, _) = c.try_begin_immediate().unwrap();
@@ -398,7 +360,6 @@ mod tests {
                 omit_thinking: true,
             },
         );
-        // Stale finish must not wipe new active turn.
         assert!(c.finish_run(old).is_none());
         assert!(c.has_active_turn());
         assert_eq!(c.phase().active_run_id(), Some(new));

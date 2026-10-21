@@ -1,5 +1,3 @@
-//! Model vocabulary: config, streaming chunks, thinking, metadata.
-
 pub mod chunk;
 pub mod config;
 pub mod meta;
@@ -18,8 +16,6 @@ pub use thinking::{
 mod tests {
     use super::*;
     use crate::message::{XyStopReason, XyUsage};
-
-    // ── XyChunk ─────────────────────────────────────────────────────
 
     #[test]
     fn xy_chunk_text_delta() {
@@ -131,8 +127,6 @@ mod tests {
         assert!(resolve_configured_levels(false, Some(&["".into()])).is_err());
     }
 
-    // ── XyToolSchema ────────────────────────────────────────────────
-
     #[test]
     fn xy_tool_schema_construct() {
         let schema = XyToolSchema {
@@ -144,8 +138,6 @@ mod tests {
         assert_eq!(schema.description, "Read a file");
         assert_eq!(schema.parameters["type"], "object");
     }
-
-    // ── XyModelMeta ───────────────────────────────────────────────────
 
     #[test]
     fn model_meta_construct() {

@@ -1,5 +1,3 @@
-//! XyEvent ↔ wire Event mapping (envelope types live in xylitol-protocol).
-
 use xylitol_protocol::Event;
 
 use xylitol_runtime::XyEvent;
@@ -14,17 +12,10 @@ fn todo_list_from_wire(list: &xylitol_protocol::TodoList) -> xylitol_runtime::To
         .expect("sdk todo list")
 }
 
-/// Convert a domain lifecycle event to its wire-protocol representation.
-///
-/// Lives next to the wire [`Event`] enum (orphan-safe: local trait, foreign
-/// [`XyEvent`]). Returns `None` for internal-only events that should not cross
-/// the client boundary (auto-retry bookkeeping, etc.). [`XyEvent::QueueUpdate`]
-/// and [`XyEvent::TodoUpdated`] are wire-visible (c540 / pa-todo1).
 pub trait ToWireEvent {
     fn to_wire_event(&self) -> Option<Event>;
 }
 
-/// Project a wire [`Event`] into a domain [`XyEvent`] (orphan-safe local trait).
 pub trait FromWireEvent: Sized {
     fn from_wire_event(event: &Event) -> Result<Self, WireEventConvertError>;
 }
@@ -139,7 +130,6 @@ impl ToWireEvent for XyEvent {
             XyEvent::TodoUpdated { list } => Some(Event::TodoUpdated {
                 list: todo_list_to_wire(list),
             }),
-            // Degraded (not on the wire): process-local or REST-covered.
             XyEvent::AgentStart { .. }
             | XyEvent::AutoRetryStart { .. }
             | XyEvent::AutoRetryEnd { .. }
@@ -155,13 +145,8 @@ impl ToWireEvent for XyEvent {
     }
 }
 
-/// Failure to project a wire [`Event`] into an [`XyEvent`] (`TryFrom` error type).
-///
-/// Typed (not `String`) so callers can distinguish conversion failures from
-/// transport-level errors and keep the offending variant for diagnostics.
 #[derive(Debug, thiserror::Error)]
 pub enum WireEventConvertError {
-    /// The wire variant has no `XyEvent` projection (degraded / client-side only).
     #[error("event variant not convertible to XyEvent: {0}")]
     Unmapped(String),
 }

@@ -1,14 +1,8 @@
-//! Product `$skill` completion source (c1130 / A10).
-//!
-//! Catalog comes from Trust-filtered `loaded_skills`; probe/apply mirror `@` / demo.
-
 use xylitol_tui::autocomplete::{AutocompleteItem, AutocompleteSuggestions};
 use xylitol_tui::completion::{CompletionContext, CompletionMatch, CompletionSource};
 use xylitol_tui::extract_dollar_prefix;
 
-/// Inline `$name` completion for the product editor.
 pub struct DollarSkillSource {
-    /// `(name, description)` — description may be empty.
     catalog: Vec<(String, String)>,
 }
 

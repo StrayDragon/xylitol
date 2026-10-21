@@ -56,7 +56,6 @@ async fn poll_complete_armed_gate_freezes_tools_table() {
     let (mut driver, _obs) = build_test_driver(store).await;
     driver.enable_reload_state(dir.path().to_path_buf(), dir.path().join(".xylitol"), true);
     driver.begin_session_prepare().await;
-    // Attach TUI arms the gate after prepare may already be complete.
     driver.arm_tool_freeze_gate().await;
     if !driver.is_tools_frozen() {
         let _ = driver.poll_prepare_progress().await;
@@ -84,9 +83,6 @@ async fn mcp_settle_defers_system_prompt_off_tick() {
         "connecting must gate wait_session_prepare"
     );
 
-    // Durable sticky-cue contract: any poll that leaves mcp_blocks_agent
-    // (connecting→complete, including failed complete) MUST return true so the
-    // TUI host refreshes loaded-resources (mcp_bootstrap_complete flips).
     let mut saw_ungate_with_refresh = false;
     let mut saw_tools_while_gated = false;
     let deadline = std::time::Instant::now()
@@ -139,8 +135,6 @@ async fn mcp_settle_defers_system_prompt_off_tick() {
 #[tokio::test]
 
 async fn leaving_mcp_gate_must_signal_ui_refresh() {
-    // Narrow regression for sticky "mcp pending" after welcome shows connected:
-    // host only refreshes when poll_prepare_progress returns true.
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store).await;
@@ -237,7 +231,6 @@ fn mcp_tools_pending_while_connecting_label() {
 fn mcp_tools_pending_pre_freeze_while_incomplete_even_if_armed() {
     use crate::driver::{McpServerPhase, McpServerSnapshot};
 
-    // Resume: prior mcp tools still armed, prepare incomplete (label cleared).
     let snap = LoadedResourcesSnapshot {
         mcp_configured: 1,
         mcp_bootstrap_complete: false,
@@ -333,7 +326,6 @@ async fn arm_tool_freeze_gate_empty_mcp_freezes_immediately() {
     assert!(snap.mcp_bootstrap_complete);
 }
 
-/// Lab: next `generate_stream` after reload install sees updated tool schemas.
 #[tokio::test]
 async fn lab_provider_tools_field_follows_reload_freeze() {
     use std::sync::Mutex;
@@ -444,7 +436,6 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
     agent.bind_session(sid).expect("bind_session");
     let mut driver = assemble_driver(agent, store_trait);
 
-    // Epoch 1: freeze with alpha MCP tool, run once.
     let builtins = driver.builtins_for_reload();
     driver.freeze_tools(ToolSet::rebuild_agent_tools(
         builtins,
@@ -460,7 +451,6 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
         "first provider tools MUST include alpha: {first:?}"
     );
 
-    // Epoch 2: reload-shaped remove (empty MCP install) then run again.
     driver.reopen_tools_for_regate();
     let builtins = driver.builtins_for_reload();
     driver.freeze_tools(ToolSet::from_iter(builtins));
@@ -474,7 +464,6 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
         "after remove re-freeze, provider tools MUST NOT include alpha: {second:?}"
     );
 
-    // Epoch 3: add beta.
     driver.reopen_tools_for_regate();
     let builtins = driver.builtins_for_reload();
     driver.freeze_tools(ToolSet::rebuild_agent_tools(

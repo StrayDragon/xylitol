@@ -1,5 +1,3 @@
-//! Product layout theme — fixed dark `Palette` → component closures (c475).
-
 use xylitol_tui::components::editor::EditorTheme;
 use xylitol_tui::components::select_list::{
     SelectItem, SelectList, SelectListLayoutOptions, SelectListTheme,
@@ -7,7 +5,6 @@ use xylitol_tui::components::select_list::{
 use xylitol_tui::components::tree_selector::TreeSelectorTheme;
 use xylitol_tui::{Palette, fg_rgb};
 
-/// Product MVP layout theme: always `Palette::dark()` (no theme auto).
 #[derive(Clone, Copy)]
 pub struct LayoutTheme {
     palette: Palette,
@@ -26,8 +23,6 @@ impl LayoutTheme {
         self.palette
     }
 
-    /// Shared SelectList assembly path for all product slots (c2500): uniform
-    /// layout options (`truncate_primary: None`, explicit primary width bounds).
     pub fn select_list(
         self,
         items: Vec<SelectItem>,
@@ -46,14 +41,12 @@ impl LayoutTheme {
         )
     }
 
-    /// SelectList theme for models picker (DESIGN models-picker.md).
     pub fn select_list_theme(self) -> SelectListTheme {
         let muted = self.palette.muted;
         let accent = self.palette.accent;
         let selected_bg = self.palette.user_message_bg;
         SelectListTheme {
             selected_prefix: Box::new(move |s| fg_rgb(accent, s)),
-            // Truecolor wash (pi selectedBg) — reverse video flickers under differential paint.
             selected_text: Box::new(move |s| {
                 use xylitol_tui::bg_rgb;
                 bg_rgb(selected_bg, s)
@@ -72,7 +65,6 @@ impl LayoutTheme {
         }
     }
 
-    /// Session-tree theme: kind prefixes use DESIGN tokens (user / success / tool).
     pub fn tree_selector_theme(self) -> TreeSelectorTheme {
         let user = self.palette.user;
         let success = self.palette.success;
@@ -116,18 +108,15 @@ impl LayoutTheme {
         fg_rgb(self.palette.user, s)
     }
 
-    /// Tool name in header: bold + accent (DESIGN `tool-name` experiment → accent until settled).
     pub fn paint_tool_name(self, s: &str) -> String {
         use xylitol_tui::bold;
         bold(&fg_rgb(self.palette.accent, s))
     }
 
-    /// Tool path / location: on-surface highlight (playground may retarget `tool-path`).
     pub fn paint_tool_path(self, s: &str) -> String {
         fg_rgb(self.palette.on_surface, s)
     }
 
-    /// Line-range suffix (`:12-40`) — mauve `skill_ref`, fits the Mocha frame (not warning yellow).
     pub fn paint_tool_range(self, s: &str) -> String {
         fg_rgb(self.palette.skill_ref, s)
     }
@@ -136,7 +125,6 @@ impl LayoutTheme {
         fg_rgb(self.palette.error, s)
     }
 
-    /// Full-width list selection wash (pi `selectedBg`; avoids reverse-video flicker).
     pub fn paint_selected_row(self, s: &str, width: usize) -> String {
         use xylitol_tui::{apply_background_to_line, bg_rgb, visible_width};
         let w = width.max(1);
@@ -157,7 +145,6 @@ impl LayoutTheme {
         fg_rgb(self.palette.warning, s)
     }
 
-    /// Editor border painter for bash (`!` / `!!`) mode.
     pub fn bash_border_color(self) -> Box<dyn Fn(&str) -> String> {
         let success = self.palette.success;
         Box::new(move |s| fg_rgb(success, s))

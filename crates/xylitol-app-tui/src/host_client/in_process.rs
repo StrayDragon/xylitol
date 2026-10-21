@@ -1,5 +1,3 @@
-//! In-process envelope client (tests / c2304 conformance). Print still uses `XyInProcessDriver`.
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -12,7 +10,6 @@ use super::{HostClient, HostClientError, MuxStream};
 
 const DOWNLINK_CAP: usize = 256;
 
-/// Local host half of [`InProcessClient`].
 #[async_trait]
 pub trait InProcessHost: Send + Sync {
     async fn handle_unary(&self, method: &str, payload: Value) -> RpcResult;
@@ -20,7 +17,6 @@ pub trait InProcessHost: Send + Sync {
     fn subscribe_downlink(&self) -> broadcast::Receiver<RpcMessage>;
 }
 
-/// Echo unary payloads; unknown methods fail; downlink is a broadcast bus.
 pub struct EchoHost {
     downlink: broadcast::Sender<RpcMessage>,
 }
@@ -59,7 +55,6 @@ impl InProcessHost for EchoHost {
     }
 }
 
-/// In-process [`HostClient`] sharing the product envelope (not a silent TUI fallback).
 #[derive(Clone)]
 pub struct InProcessClient {
     host: Arc<dyn InProcessHost>,

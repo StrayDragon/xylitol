@@ -1,12 +1,5 @@
-//! File-backed settings storage with retry-locking.
-//!
-//! Supports global `~/.xylitol/settings.json` and project `<cwd>/.xylitol/settings.json`
-//! with proper-lockfile semantics.
-//! Rust doesn't have proper-lockfile, so we use atomic temp-file + rename.
-
 use std::path::{Path, PathBuf};
 
-/// Settings lock acquisition failures (crate-private; not `Xy*`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 struct SettingsLockError(String);
@@ -33,7 +26,6 @@ pub enum SettingsScope {
     Project,
 }
 
-/// File-based settings storage with retry locking.
 #[derive(Debug, Clone)]
 pub struct FileSettingsStorage {
     global_path: PathBuf,
@@ -50,10 +42,9 @@ impl FileSettingsStorage {
 
     fn acquire_with_retry(&self, path: &Path) -> Result<(), SettingsLockError> {
         let max_attempts = 10;
-        let delay_us = 20_000; // 20ms
+        let delay_us = 20_000;
 
         for attempt in 1..=max_attempts {
-            // Try to create a lock file atomically
             let lock_path = path.with_extension("json.lock");
             match std::fs::OpenOptions::new()
                 .create_new(true)
@@ -61,7 +52,6 @@ impl FileSettingsStorage {
                 .open(&lock_path)
             {
                 Ok(_lock) => {
-                    // We hold the lock
                     return Ok(());
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -71,7 +61,6 @@ impl FileSettingsStorage {
                         )
                         .into());
                     }
-                    // Wait and retry
                     std::thread::sleep(std::time::Duration::from_micros(delay_us));
                 }
                 Err(e) => {
@@ -95,8 +84,6 @@ impl SettingsStorage for FileSettingsStorage {
             SettingsScope::Project => &self.project_path,
         };
 
-        // Reads must not mkdir: cargo test CWD is the crate dir, so creating
-        // `<cwd>/.xylitol` on every SettingsManager load pollutes the tree.
         let current = std::fs::read_to_string(path).ok();
         let current_ref = current.as_deref();
         let next = f(current_ref);
@@ -119,12 +106,8 @@ impl SettingsStorage for FileSettingsStorage {
     }
 }
 
-/// In-memory storage for testing.
-///
-/// BDD @executable contract (`加载 settings` steps); no product caller —
-/// product uses [`FileSettingsStorage`].
 #[derive(Debug)]
-#[allow(dead_code)] // BDD @executable contract, not product-called
+#[allow(dead_code)]
 pub struct InMemorySettingsStorage {
     pub global: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     pub project: std::sync::Arc<std::sync::Mutex<Option<String>>>,

@@ -1,45 +1,20 @@
-//! OutputAccumulator — streaming output buffer with temp file spillover.
-//!
-//! Provides:
-//! - Incremental data append (raw bytes)
-//! - Rolling memory buffer (configurable max bytes)
-//! - Transparent temp file spillover when buffer exceeds threshold
-//! - Final snapshot with truncation info
-
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
 use super::truncate::DEFAULT_MAX_BYTES;
 
-/// Default rolling buffer size (2x max_bytes before spilling to temp).
 const DEFAULT_MAX_ROLLING_BYTES_FACTOR: usize = 2;
 
-/// Rolling buffer that accumulates output data.
-///
-/// - Data is first collected in memory (pre_chunks).
-/// - When total bytes exceeds `max_rolling_bytes`, a temp file is created
-///   and all accumulated data is written to it.
-/// - Further appends go directly to the temp file.
-/// - A rolling text buffer keeps the tail in memory for quick access.
 pub(crate) struct OutputAccumulator {
-    /// Max bytes to keep in the rolling text buffer (tail).
     max_bytes: usize,
-    /// Max bytes before spilling to temp file.
     max_rolling_bytes: usize,
-    /// Rolling text buffer (tail of the output).
     rolling_text: String,
-    /// Current bytes in rolling_text.
     rolling_bytes: usize,
-    /// Temp file path (created when overflow occurs).
     temp_file: Option<PathBuf>,
-    /// Temp file writer.
     temp_writer: Option<BufWriter<File>>,
-    /// Total bytes received.
     total_bytes: usize,
-    /// Pre-temp-file data chunks (kept until temp file is created, then written).
     pre_chunks: Vec<Vec<u8>>,
-    /// Whether a temp file has been opened.
     spilled_to_file: bool,
 }
 
@@ -50,7 +25,6 @@ impl Default for OutputAccumulator {
 }
 
 impl OutputAccumulator {
-    /// Create a new OutputAccumulator with default limits.
     pub fn new() -> Self {
         Self::with_limits(
             DEFAULT_MAX_BYTES,
@@ -58,7 +32,6 @@ impl OutputAccumulator {
         )
     }
 
-    /// Create with custom limits.
     pub fn with_limits(max_bytes: usize, max_rolling_bytes: usize) -> Self {
         Self {
             max_bytes,
@@ -73,24 +46,19 @@ impl OutputAccumulator {
         }
     }
 
-    /// Append raw data to the accumulator.
     pub fn append(&mut self, data: &[u8]) {
         self.total_bytes += data.len();
 
         if self.spilled_to_file {
-            // Write directly to temp file
             if let Some(ref mut writer) = self.temp_writer {
                 let _ = writer.write_all(data);
             }
-            // Also update rolling tail buffer
             self.append_rolling(data);
         } else {
-            // Keep in memory
             let current_total =
-                self.pre_chunks.iter().map(|c| c.len()).sum::<usize>() + self.pre_chunks.len(); // newlines
+                self.pre_chunks.iter().map(|c| c.len()).sum::<usize>() + self.pre_chunks.len();
 
             if current_total + data.len() > self.max_rolling_bytes {
-                // Exceeded rolling limit — create temp file and spill
                 self.spill_to_file();
                 if let Some(ref mut writer) = self.temp_writer {
                     let _ = writer.write_all(data);
@@ -103,16 +71,13 @@ impl OutputAccumulator {
         }
     }
 
-    /// Append data to the rolling text buffer (tail).
     fn append_rolling(&mut self, data: &[u8]) {
         let text = String::from_utf8_lossy(data);
         self.rolling_bytes += text.len();
         self.rolling_text.push_str(&text);
 
-        // Trim from head if rolling buffer exceeds max_bytes
         if self.rolling_bytes > self.max_bytes {
             let excess = self.rolling_bytes - self.max_bytes;
-            // Find the nearest UTF-8 character boundary at or after `excess` bytes
             let trim_at = self
                 .rolling_text
                 .char_indices()
@@ -124,44 +89,31 @@ impl OutputAccumulator {
         }
     }
 
-    /// Spill all in-memory data to a temp file.
     fn spill_to_file(&mut self) {
         if self.spilled_to_file {
             return;
         }
 
-        // Create temp file
         let temp_path =
             std::env::temp_dir().join(format!("xylitol-output-{}.txt", uuid::Uuid::new_v4()));
 
-        match File::create(&temp_path) {
-            Ok(file) => {
-                let mut writer = BufWriter::new(file);
+        if let Ok(file) = File::create(&temp_path) {
+            let mut writer = BufWriter::new(file);
 
-                // Write all pre-chunks
-                for chunk in &self.pre_chunks {
-                    let _ = writer.write_all(chunk);
-                }
-
-                // Flush
-                let _ = writer.flush();
-
-                self.temp_file = Some(temp_path);
-                self.temp_writer = Some(writer);
-                self.spilled_to_file = true;
-                self.pre_chunks.clear();
+            for chunk in &self.pre_chunks {
+                let _ = writer.write_all(chunk);
             }
-            Err(_) => {
-                // Can't create temp file — keep accumulating in memory
-            }
+
+            let _ = writer.flush();
+
+            self.temp_file = Some(temp_path);
+            self.temp_writer = Some(writer);
+            self.spilled_to_file = true;
+            self.pre_chunks.clear();
         }
     }
 
-    /// Finish accumulation and return a snapshot.
-    ///
-    /// Closes the temp file if one was created.
     pub fn finish(&mut self) -> OutputSnapshot {
-        // Flush and close temp file
         if let Some(mut writer) = self.temp_writer.take() {
             let _ = writer.flush();
         }
@@ -177,24 +129,15 @@ impl OutputAccumulator {
     }
 }
 
-/// Result of output accumulation.
-///
-/// Provides the tail of the output (for display), truncation information,
-/// and a path to the full output if spilled to file.
 #[derive(Debug, Clone)]
 pub(crate) struct OutputSnapshot {
-    /// Tail of the output (for display).
     pub(crate) content: String,
-    /// Whether the output was truncated.
     pub(crate) truncated: bool,
-    /// Max rolling tail bytes applied (for footer limit text).
     pub(crate) max_bytes: usize,
-    /// Path to full output if spilled to temp file.
     pub(crate) full_output_path: Option<PathBuf>,
 }
 
 impl OutputSnapshot {
-    /// Content for display / LLM context, with pi-shaped Full output footer when truncated.
     pub fn display_content(&self) -> String {
         if !self.truncated {
             return self.content.clone();
@@ -243,13 +186,11 @@ mod tests {
     #[test]
     fn test_rolling_buffer_tail() {
         let mut acc = OutputAccumulator::with_limits(50, 100);
-        // Write 90 bytes — should fit in pre_chunks, tail keeps last 50
         acc.append(b"123456789012345678901234567890");
         acc.append(b"123456789012345678901234567890");
         acc.append(b"123456789012345678901234567890");
         let snapshot = acc.finish();
 
-        // rolling_text should be at most 50 bytes
         assert!(snapshot.content.len() <= 50);
     }
 
@@ -272,7 +213,6 @@ mod tests {
         assert!(display.contains("[Full output:"), "{display}");
         assert!(display.contains("lines shown"), "{display}");
         assert!(display.contains("Truncated:"), "{display}");
-        // 截断行 MUST 带上全量文件路径（路径值随平台而异，只断载体本身）。
         let path = snapshot
             .full_output_path
             .as_ref()

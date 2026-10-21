@@ -15,8 +15,6 @@ pub(crate) fn result_ok_str(r: &RefCell<Option<Result<String, XyDriverError>>>) 
     guard.as_ref().unwrap().as_ref().unwrap().clone()
 }
 
-/// Strip surrounding double quotes from `{text}` placeholders.
-/// Also unescape \\n to real newlines and \\\" to real quotes (rstest-bdd captures escaped).
 pub(crate) fn strip_quotes(s: &str) -> String {
     let s = s.trim();
     let s = if s.len() >= 2 && s.starts_with('"') && s.ends_with('"') {
@@ -27,7 +25,6 @@ pub(crate) fn strip_quotes(s: &str) -> String {
     s.replace("\\n", "\n").replace("\\\"", "\"")
 }
 
-/// Split on ` 或 ` and check if any stripped clause is in haystack (case-insensitive).
 pub(crate) fn check_or_contains(haystack: &str, or_clause: &str) -> bool {
     let lower = haystack.to_lowercase();
     or_clause
@@ -35,7 +32,6 @@ pub(crate) fn check_or_contains(haystack: &str, or_clause: &str) -> bool {
         .any(|c| lower.contains(&strip_quotes(c).to_lowercase()))
 }
 
-/// Borrow result as &str — callers must keep the Ref alive
 pub(crate) fn make_agent(agent: &AgentState) -> AgentRuntime {
     make_agent_with_store(agent).0
 }
@@ -71,7 +67,6 @@ pub(crate) fn make_agent_with_store(
         hook_bus,
     );
     session.install_compaction(xylitol_kernel::composition::official_compaction_factory());
-    // Harness often registers models without select; pick the first so ReAct can build.
     if session.current_model().is_none()
         && let Some(id) = agent.registry.borrow().list().first().map(|m| m.id.clone())
     {
@@ -103,8 +98,6 @@ pub(crate) async fn agent_submit_root_with_id(
     agent.submit_root(prompt, RunPolicy::Reject).await
 }
 
-/// Library-seam operation dictionary (c990+). Unknown names return a readable Err.
-/// Must not call `HookDispatcher::dispatch` directly — only XyDriver/agent APIs.
 pub(crate) async fn run_wiring_operation(
     agent: &AgentState,
     op: &str,
@@ -133,10 +126,8 @@ pub(crate) async fn run_wiring_operation(
             let _ = agent.ensure_wiring_hook_log();
             ensure_wiring_fake_model(agent, true);
             let (runtime, store) = make_agent_with_store(agent);
-            // Select fake first so a model exists; then change thinking.
             let mut driver = assemble_driver(runtime, store);
             driver.select_model("fake").await?;
-            // Clear recorder so only thinking_level_select remains for key asserts.
             if let Some(log) = agent.wiring_hook_log.borrow().as_ref() {
                 log.calls.lock().unwrap_or_else(|e| e.into_inner()).clear();
             }
@@ -240,10 +231,6 @@ macro_rules! tool_call {
     };
 }
 
-/// 异步集成测试主体超时包裹（r57：async-test-timeout）。
-///
-/// 默认 10 秒；测试主体一旦死锁或被 mock 卡住，超时使用例以 `Elapsed`
-/// 失败而非整个 suite 挂起，CI 不会因单点死锁而中断。
 pub(crate) async fn with_test_timeout<F, Fut>(
     f: F,
 ) -> Result<Fut::Output, tokio::time::error::Elapsed>
@@ -254,7 +241,6 @@ where
     with_test_timeout_for(std::time::Duration::from_secs(10), f).await
 }
 
-/// [`with_test_timeout`] 的时长参数化变体（供测试覆盖超时路径）。
 pub(crate) async fn with_test_timeout_for<F, Fut>(
     budget: std::time::Duration,
     f: F,
@@ -266,7 +252,6 @@ where
     tokio::time::timeout(budget, f()).await
 }
 
-/// Non-blocking `flock` from a real second process (POSIX). Exit 2 = held.
 pub(crate) fn python_flock_probe(path: &std::path::Path) -> Option<i32> {
     let script = format!(
         "import fcntl, sys\nf=open({path:?}, 'r+')\ntry:\n fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\n sys.exit(0)\nexcept BlockingIOError:\n sys.exit(2)\n",
@@ -280,7 +265,6 @@ pub(crate) fn python_flock_probe(path: &std::path::Path) -> Option<i32> {
         .and_then(|s| s.code())
 }
 
-/// Hold `session.lock` in a child until killed. Blocks until stdout says `held`.
 pub(crate) fn python_hold_lock(path: &std::path::Path) -> std::process::Child {
     let script = format!(
         "import fcntl, sys, time\nf=open({path:?}, 'r+')\nfcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\nsys.stdout.write('held\\n')\nsys.stdout.flush()\ntime.sleep(60)\n",

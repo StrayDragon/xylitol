@@ -1,15 +1,3 @@
-//! Pre-bootstrap trust ChoicePrompt gate (c490).
-//!
-//! Runs in raw mode **before** [`xylitol_kernel::boot`] so
-//! project resources load after the store decision. Product TUI MUST NOT use
-//! `prompt_trust_options_stdio`.
-//!
-//! Esc / Ctrl+C: cancel without writing `trust.json`, restore the terminal,
-//! and return [`TrustGateError::Cancelled`] so the CLI exits (no product TUI).
-//!
-//! Enter on **Do not trust**: write deny to the store, then
-//! [`TrustGateError::Denied`] — CLI exits without starting the product TUI.
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -29,12 +17,9 @@ pub enum TrustGateResult {
     Cancelled,
 }
 
-/// Soft exit — caller MUST NOT start the product TUI.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TrustGateError {
-    /// Esc / Ctrl+C — store untouched.
     Cancelled,
-    /// Enter on Do not trust — deny persisted.
     Denied,
     Other(String),
 }
@@ -61,7 +46,6 @@ impl From<String> for TrustGateError {
     }
 }
 
-/// Returns trust options when an interactive Ask is required; `None` if already decided.
 pub fn pending_trust_options(
     manager: &TrustManager,
     cwd: &str,
@@ -79,11 +63,6 @@ pub fn pending_trust_options(
     Some(manager.get_trust_options(cwd, false))
 }
 
-/// If Ask is needed, open a ChoicePrompt TUI, persist an Enter decision, then restore.
-///
-/// - Cancel (Esc / Ctrl+C) does **not** write the trust store → [`TrustGateError::Cancelled`].
-/// - Enter on an untrusted option writes deny → [`TrustGateError::Denied`] (no product TUI).
-/// - Enter on a trusted option writes trust → `Ok(())` (caller may start TUI).
 pub fn run_trust_gate_if_needed(trust_override: Option<bool>) -> Result<(), TrustGateError> {
     let cwd = std::env::current_dir()
         .map(|p| p.display().to_string())
@@ -134,7 +113,6 @@ fn run_choice_ui(cwd: &str, options: &[TrustOption]) -> Result<TrustGateResult, 
     let question = ChoiceQuestion {
         id: "trust".into(),
         label: "Trust".into(),
-        // Multi-line body is rendered as separate rows by ChoicePrompt.
         prompt: format_trust_prompt(cwd),
         mode: ChoiceMode::Single,
         options: choice_options,
@@ -255,7 +233,6 @@ mod tests {
     fn pending_none_with_override() {
         let dir = tempdir().unwrap();
         let mgr = TrustManager::new(dir.path().to_path_buf());
-        // Even with a fake path, override short-circuits.
         assert!(pending_trust_options(&mgr, "/tmp", Some(true)).is_none());
     }
 

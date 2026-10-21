@@ -1,11 +1,3 @@
-//! Write tool — creates or overwrites files atomically.
-//!
-//! Key behaviors:
-//! - Uses FileMutationQueue for per-path serialization
-//! - Creates parent directories automatically
-//! - Atomic write via temp file + rename
-//! - Supports CancellationToken abort
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -84,13 +76,10 @@ impl TypedTool for WriteTool {
             return Err(XyToolError::Aborted);
         }
 
-        // Resolve relative paths against the session workspace before queueing
-        // (queue keys are resolved absolute paths).
         let fp = resolve_to_dir(&ctx.workspace, &file_path)
             .to_string_lossy()
             .into_owned();
 
-        // Run atomic write under mutation queue
         let mq = self.mutation_queue.clone();
         let cancel = ctx.cancel.clone();
 
@@ -105,7 +94,6 @@ impl TypedTool for WriteTool {
 
                 let path = std::path::Path::new(&fp);
 
-                // Create parent directories
                 if let Some(parent) = path.parent()
                     && !parent.as_os_str().is_empty()
                 {
@@ -114,7 +102,6 @@ impl TypedTool for WriteTool {
                     })?;
                 }
 
-                // Atomic write
                 let temp_path = path.with_extension("xylitol-tmp");
                 tokio::fs::write(&temp_path, &content).await.map_err(|e| {
                     XyToolError::ExecutionFailed(anyhow::anyhow!("write temp: {e}"))
@@ -165,8 +152,6 @@ mod tests {
         );
     }
 
-    /// ws1: relative paths resolve against the ctx workspace; write→read
-    /// roundtrip lands in the workspace, and absolute paths stay untouched.
     #[tokio::test]
     async fn test_write_read_roundtrip_in_workspace() {
         use crate::read::ReadTool;
@@ -183,7 +168,6 @@ mod tests {
             )
             .await
             .expect("write in workspace");
-        // Landed under the workspace, not the process cwd.
         assert!(dir.path().join("nested/round.txt").exists());
 
         let content = read
@@ -192,7 +176,6 @@ mod tests {
             .expect("read back from workspace");
         assert!(content.contains("落点正确"), "got {content}");
 
-        // Absolute paths bypass the workspace join.
         let abs = dir.path().join("abs.txt");
         write
             .execute(

@@ -67,8 +67,7 @@ pub(crate) fn g_comp_find_cut(agent: &AgentState) {
         .replace(Some(Ok(format!("cut:{}", result.first_kept_entry_index))));
 }
 #[when("调用 find_cut_point")]
-pub(crate) fn w_comp_cut(_agent: &AgentState) { /* set in given */
-}
+pub(crate) fn w_comp_cut(_agent: &AgentState) {}
 #[then("切点索引大致保留最后 20000 tokens 上下文")]
 pub(crate) fn t_comp_cut_ok(agent: &AgentState) {
     let r = result_ok_str(&agent.last_result);
@@ -78,8 +77,6 @@ pub(crate) fn t_comp_cut_ok(agent: &AgentState) {
         .unwrap_or(0);
     assert!(cut > 0, "cut should preserve some context");
 }
-
-// ── c1650 cut / split-turn / tokens_before ─────────────────────────
 
 fn comp_make_msg(id: &str, role: &str, content: &str) -> SessionEntry {
     use xylitol_official_plugin_session::SessionEntry;
@@ -198,8 +195,6 @@ pub(crate) fn g_comp_keep_budget(agent: &AgentState) {
     }
     let keep = 80u64;
     let result = find_cut_point(&entries, 0, entries.len(), keep);
-    // c2848: 保留侧测量与切点决策同平面（estimate_tokens_entry_for_cut）——
-    // 与 find_cut_point 的累积器一致，预算契约才可真实检验。
     let kept: u64 = entries[result.first_kept_entry_index..]
         .iter()
         .map(estimate_tokens_entry_for_cut)
@@ -356,8 +351,6 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
     .await
     .expect("compact");
     let loaded = mgr.load(sid).await.unwrap_or_default();
-    // Pre-compact estimate: everything before the CompactionEntry (exclude the
-    // entry itself and any post-compact ensure rows such as session_env).
     let compact_at = loaded
         .iter()
         .rposition(|e| matches!(e, SessionEntry::Compaction(_)))
@@ -391,8 +384,6 @@ pub(crate) fn t_comp_tokens_before_ok(agent: &AgentState) {
         "tokensBefore must match estimate_from_session_entries: {s}"
     );
 }
-
-// ── c1660 overflow compact-and-retry ───────────────────────────────
 
 fn overflow_asst(
     provider: &str,
@@ -469,7 +460,6 @@ pub(crate) fn w_overflow_check(agent: &AgentState) {
         "outcome:{outcome} reason:{reason} will_retry:{} same:{same}",
         outcome == "ran_will_retry"
     ))));
-    // Keep OverflowCompactOutcome name linked for compile/docs.
     let _ = OverflowCompactOutcome::Skipped;
 }
 
@@ -546,8 +536,7 @@ pub(crate) fn g_comp_heuristic(agent: &AgentState) {
     agent.last_result.replace(Some(Ok("est:Heuristic".into())));
 }
 #[when("检查估计结果")]
-pub(crate) fn w_comp_check(_agent: &AgentState) { /* set in given */
-}
+pub(crate) fn w_comp_check(_agent: &AgentState) {}
 #[then("带有 Heuristic 来源标注且无重复 XyUsage 定义")]
 pub(crate) fn t_comp_provenance(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("Heuristic"));
@@ -560,8 +549,7 @@ pub(crate) fn g_comp_footer(agent: &AgentState) {
         .replace(Some(Ok("tokens:90000 shared:true formula:reserve".into())));
 }
 #[when("执行 auto-compact reserve 触发判断")]
-pub(crate) fn w_comp_reserve_trigger(_agent: &AgentState) { /* set in given */
-}
+pub(crate) fn w_comp_reserve_trigger(_agent: &AgentState) {}
 #[then("所用 token 数字与同源估计一致且 不另算独立启发式总和")]
 pub(crate) fn t_comp_threshold_ok(agent: &AgentState) {
     assert!(result_ok_str(&agent.last_result).contains("shared:true"));
@@ -573,8 +561,6 @@ pub(crate) fn t_comp_reserve_formula(agent: &AgentState) {
         "reserve trigger must be documented in estimate path marker"
     );
 }
-
-// ── c1640 turn-end auto / force / stale ────────────────────────────
 
 #[given("同源估计已超过 window 减 reserveTokens")]
 pub(crate) fn g_comp_over_reserve(agent: &AgentState) {
@@ -640,8 +626,6 @@ pub(crate) fn w_comp_turn_end_check(agent: &AgentState) {
         ..Default::default()
     };
     let aborted = result_ok_str(&agent.last_result).contains("aborted:true");
-    // c2 floor-aware threshold: overhead defaults to 0 unless a given injected one
-    // (degenerates to the reserve formula, matching pre-c2 semantics in scenarios).
     let floor = {
         use xylitol_official_plugin_compaction::{
             projected_post_compact_tokens, summary_placeholder_tokens,
@@ -691,7 +675,6 @@ pub(crate) fn g_comp_force_ready(agent: &AgentState) {
     agent.compaction_enabled.set(true);
     agent.compaction_reserve_tokens.set(50_000);
     agent.context_window.set(100_000);
-    // under gate: 40k < 100k-50k
     agent
         .last_result
         .replace(Some(Ok("tokens:40000 force_history:true".into())));
@@ -717,7 +700,6 @@ pub(crate) fn w_comp_force_path(agent: &AgentState) {
         !should_compact(tokens, window, &settings, 0),
         "fixture must be under reserve gate"
     );
-    // Simulate a session with content (not last=compaction); pi-shaped messages.
     let entries: Vec<SessionEntry> = (0..20)
         .map(|i| {
             SessionEntry::Message(MessageEntry {
@@ -881,7 +863,6 @@ pub(crate) fn g_comp_stale_usage(agent: &AgentState) {
 
 #[when("立即再执行 threshold auto 检查")]
 pub(crate) fn w_comp_stale_check(agent: &AgentState) {
-    // Mirror orchestrator stale rule: asst_ms <= compaction_ms → skip.
     let s = result_ok_str(&agent.last_result);
     let asst: u64 = s
         .split_whitespace()
@@ -895,7 +876,7 @@ pub(crate) fn w_comp_stale_check(agent: &AgentState) {
         })
         .unwrap_or(0);
     let stale = asst > 0 && comp > 0 && asst <= comp;
-    agent.compaction_result.replace(Some(!stale && false)); // never trigger when stale
+    agent.compaction_result.replace(Some(!stale && false));
     agent
         .last_result
         .replace(Some(Ok(format!("stale:{stale} compacted:false"))));
@@ -908,8 +889,6 @@ pub(crate) fn t_comp_stale_ok(agent: &AgentState) {
     assert!(s.contains("compacted:false"), "{s}");
     assert_eq!(*agent.compaction_result.borrow(), Some(false));
 }
-
-// ── domain-compaction: summarize (c3) ────────────────────────────
 
 #[given("会话有 50 轮")]
 pub(crate) async fn g_comp_50_rounds(sess: &XySessionStore) {
@@ -976,8 +955,6 @@ pub(crate) async fn t_comp_summarized_entry(sess: &XySessionStore) {
         "tokensBefore must be positive"
     );
 }
-
-// ── domain-compaction: generate-summary (c7) ─────────────────────
 
 #[given("会话有 30 轮 user+assistant 含文件编辑")]
 pub(crate) async fn g_comp_30_file_edits(sess: &XySessionStore) {
@@ -1081,8 +1058,6 @@ pub(crate) fn t_comp_generate_summary_sections(agent: &AgentState) {
     );
 }
 
-// ── domain-compaction: agent (c12) ────────────────────────────────
-
 #[given("agent 会话消息超阈值")]
 pub(crate) fn g_comp_agent_over_threshold(agent: &AgentState) {
     agent
@@ -1165,10 +1140,6 @@ pub(crate) async fn t_comp_agent_entry_written(agent: &AgentState, sess: &XySess
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// Part 2: previously unbound scenarios (5 capabilities)
-// ═══════════════════════════════════════════════════════════════════
-
 pub(crate) fn make_test_capabilities(
     agent: &AgentState,
     store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
@@ -1192,8 +1163,6 @@ pub(crate) fn make_test_capabilities(
         None,
     )
 }
-
-// ── domain-compaction: unbound scenarios ──────────────────────────
 
 const COMP_PERSIST_SID: &str = "compaction-persist";
 
@@ -1395,7 +1364,6 @@ pub(crate) async fn g_comp_files_msgs(sess: &XySessionStore) {
         });
         let _ = mgr.append(sid, &assistant).await;
     }
-    // Pad with additional turns so cut lands on a message entry (not session header).
     for i in 0..40 {
         let e = SessionEntry::Message(MessageEntry {
             base: EntryBase {
@@ -1466,7 +1434,6 @@ pub(crate) fn g_comp_split_ready(agent: &AgentState) {
         keep_recent_tokens: 20_000,
         ..Default::default()
     };
-    // pi: tokens > window - reserve → 90_001 > 90_000
     agent
         .compaction_result
         .replace(Some(should_compact(90_001, 100_000, &settings, 0)));
@@ -1490,8 +1457,6 @@ pub(crate) fn t_comp_split_ok(agent: &AgentState, sess: &XySessionStore) {
             .any(|e| matches!(e, SessionEntry::Compaction(_)))
     );
 }
-
-// ── domain-compaction: summary model + thinking (c7 / c2811) ───────
 
 fn c2811_session_meta(id: &str, levels: &[&str]) -> XyModelMeta {
     XyModelMeta {

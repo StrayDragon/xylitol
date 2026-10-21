@@ -1,5 +1,3 @@
-//! Client-side XyDriver seam (envelope adapter + scripted tests).
-
 mod clipboard;
 pub use clipboard::{copy_text_to_clipboard, read_clipboard_text, stage_clipboard_image};
 mod proto;

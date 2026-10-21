@@ -1,5 +1,3 @@
-//! Bindings for c2827 specs-compact wave 2.
-
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_app_tui_transcript::{TranscriptBdd, transcript_bdd};
 use crate::bdd::steps_c2827::{C2827Bdd, c2827_bdd};
@@ -7,81 +5,66 @@ use crate::bdd::steps_package_tui_tree_selector::{TreeSelBdd, tree_sel_bdd};
 use rstest_bdd_macros::scenario;
 use serial_test::serial;
 
-// ── layer-architecture ───────────────────────────────────────────
-// r1511 reload 双端（复用既有 host 步骤）
-
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
     name = "重载双结束效果"
 )]
 fn test_la_reload_dual(host_pump_bdd: HostPumpBdd) {}
 
-// r1512 print/嵌入同进程无需监听器
 #[scenario(
     path = "llmanspec/specs/layer-architecture/layer-architecture.feature",
     name = "嵌入print无监听"
 )]
 fn test_la_embed_print(host_pump_bdd: HostPumpBdd) {}
 
-// ── app-tui-host ─────────────────────────────────────────────────
-
-// r1248 teardown
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "终端恢复时退出"
 )]
 fn test_ath_exit_restore(host_pump_bdd: HostPumpBdd) {}
 
-// r1270 min-size
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "最小尺寸友好提示"
 )]
 fn test_ath_min_size(host_pump_bdd: HostPumpBdd) {}
 
-// r1279 bang 单扇入环（Esc 中止）
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "bangEsc单一循环"
 )]
 fn test_ath_bang_esc(host_pump_bdd: HostPumpBdd) {}
 
-// r1279 bang 中 agent 流不被饿死
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "bang轮询agent流"
 )]
 fn test_ath_bang_polls(host_pump_bdd: HostPumpBdd) {}
 
-// r1244 GetMessages 失败显错
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "读取消息失败露出"
 )]
 fn test_ath_get_messages_error(host_pump_bdd: HostPumpBdd) {}
 
-// r1247 删除当前会话拒绝
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "续跑删除当前拒绝"
 )]
 fn test_ath_delete_refused(host_pump_bdd: HostPumpBdd) {}
 
-// r1247 删除须确认
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "续跑删除需要确认"
 )]
 fn test_ath_delete_confirm(host_pump_bdd: HostPumpBdd) {}
 
-// r1253 idle Tick 不重绘
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "空闲滴答无完整重绘"
 )]
 fn test_ath_idle_tick(c2827_bdd: C2827Bdd) {}
 
-// r1258 Mouse Moved 不重绘
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "鼠标移动无重绘"
@@ -94,92 +77,71 @@ fn test_ath_mouse_moved(c2827_bdd: C2827Bdd) {}
 )]
 fn test_ath_mouse_moved_armed_probe(c2827_bdd: C2827Bdd) {}
 
-// r1262 空输入 Enter
 #[scenario(
     path = "llmanspec/specs/app-tui-host/app-tui-host.feature",
     name = "空回车无提交"
 )]
 fn test_ath_empty_enter(host_pump_bdd: HostPumpBdd) {}
 
-// ── app-tui-session-tree ─────────────────────────────────────────
-
-// r1326 树内 fork
 #[scenario(
     path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
     name = "产品树分叉创建子项"
 )]
 fn test_st_tree_fork(host_pump_bdd: HostPumpBdd) {}
 
-// r1327 Search/TreeHelp 行
 #[scenario(
     path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
     name = "树槽搜索帮助行"
 )]
 fn test_st_search_help(host_pump_bdd: HostPumpBdd) {}
 
-// r1328 标签写入
 #[scenario(
     path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
     name = "树标签持久化经Driver"
 )]
 fn test_st_label(host_pump_bdd: HostPumpBdd) {}
 
-// r1329 debug 树 fixture
 #[scenario(
     path = "llmanspec/specs/app-tui-session-tree/app-tui-session-tree.feature",
     name = "调试树夹具非空"
 )]
 fn test_st_debug_fixture(host_pump_bdd: HostPumpBdd) {}
 
-// ── app-tui-input ────────────────────────────────────────────────
-
-// r1298 /model 补全应用
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
     name = "模型参数弹出层与应用"
 )]
 fn test_ati_model_apply(host_pump_bdd: HostPumpBdd) {}
 
-// r1298 Esc 不换模
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
     name = "模型参数Esc无SetModel"
 )]
 fn test_ati_model_esc(host_pump_bdd: HostPumpBdd) {}
 
-// r1309 @ 路径补全
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
     name = "在路径弹出层与应用"
 )]
 fn test_ati_at_popup(host_pump_bdd: HostPumpBdd) {}
 
-// r1310 粘贴展开提交
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
     name = "粘贴标记已展开时提交"
 )]
 fn test_ati_paste_expand(host_pump_bdd: HostPumpBdd) {}
 
-// r1315 $ skill 补全
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
     name = "美元符技能弹出层应用"
 )]
 fn test_ati_dollar_popup(host_pump_bdd: HostPumpBdd) {}
 
-// ── app-tui-transcript ───────────────────────────────────────────
-
-// r1347 超大 diff 截断
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
     name = "过大diff已截断带已省略"
 )]
 fn test_at_diff_cap(host_pump_bdd: HostPumpBdd) {}
-
-// ═══════════════════════════════════════════════════════════════════
-// c2827 T2：agent 域
-// ═══════════════════════════════════════════════════════════════════
 
 use crate::bdd::fixtures::XySessionStore;
 use crate::bdd::fixtures::{AgentState, Workspace, agent, sess, ws};
@@ -189,56 +151,48 @@ use crate::bdd::steps_c2827::{
     t2_skill_bdd,
 };
 
-// agent-prompt r1017
 #[scenario(
     path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
     name = "可用工具省略MCP名称"
 )]
 fn test_ap_mcp_omitted(prompt_bdd: PromptBdd) {}
 
-// agent-prompt r1023
 #[scenario(
     path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
     name = "应用提示词资源下一运行"
 )]
 fn test_ap_apply_resources(agent: AgentState, t2_caps_bdd: T2CapsBdd) {}
 
-// agent-prompt r1024
 #[scenario(
     path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
     name = "应用技能重建目录"
 )]
 fn test_ap_apply_skills(agent: AgentState, t2_caps_bdd: T2CapsBdd) {}
 
-// agent-prompt r1025
 #[scenario(
     path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
     name = "美元符技能展开正文"
 )]
 fn test_ap_dollar_expand(t2_skill_bdd: T2SkillBdd) {}
 
-// agent-tools r1149
 #[scenario(
     path = "llmanspec/specs/agent-tools/agent-tools.feature",
     name = "搜索工具暴露可选超时"
 )]
 fn test_at_search_timeout(ws: Workspace, t2_schema_bdd: T2SchemaBdd) {}
 
-// agent-tools r1153
 #[scenario(
     path = "llmanspec/specs/agent-tools/agent-tools.feature",
     name = "文件系统工具隐藏每调用超时"
 )]
 fn test_at_fs_no_timeout(ws: Workspace, t2_schema_bdd: T2SchemaBdd) {}
 
-// accounting r1561
 #[scenario(
     path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai-accounting/provider-openai-accounting.feature",
     name = "估算优先级API首次"
 )]
 fn test_acc_api_first(t2_est_bdd: T2EstBdd) {}
 
-// accounting r1564
 #[scenario(
     path = "plugins/xylitol-official-plugin-provider-openai/llmanspec/specs/provider-openai-accounting/provider-openai-accounting.feature",
     name = "已中止用量不锚点"
@@ -248,42 +202,36 @@ fn test_acc_aborted_anchor(t2_est_bdd: T2EstBdd) {}
 use crate::bdd::steps_c2827::{T2TodoBdd, t2_todo_bdd};
 use crate::bdd::steps_otel_obs::{OtelBdd, otel_bdd};
 
-// agent-todo r1125
 #[scenario(
     path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "待办工具写入与拒绝"
 )]
 async fn test_td_write_reject(t2_todo_bdd: T2TodoBdd) {}
 
-// agent-todo r1126
 #[scenario(
     path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "多个于进行中已接受"
 )]
 async fn test_td_multi_in_progress(t2_todo_bdd: T2TodoBdd) {}
 
-// agent-todo r1842
 #[scenario(
     path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "待办内容越过80拒绝"
 )]
 async fn test_td_overlong(t2_todo_bdd: T2TodoBdd) {}
 
-// agent-todo r1123
 #[scenario(
     path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "待办快照最新胜出"
 )]
 async fn test_td_latest_wins(t2_todo_bdd: T2TodoBdd) {}
 
-// agent-todo r1119
 #[scenario(
     path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "压缩再追加待办快照"
 )]
 async fn test_td_compact_ensure(t2_todo_bdd: T2TodoBdd) {}
 
-// agent-todo r1121
 #[scenario(
     path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "导出包含agent待办"
@@ -292,7 +240,6 @@ async fn test_td_export(t2_todo_bdd: T2TodoBdd) {}
 
 use crate::bdd::steps_c2827::{T2ResBdd, t2_res_bdd};
 
-// runtime-resource-discovery r1759/r1760/r1762/r1761/r1763/r1764/r1765
 #[scenario(
     path = "llmanspec/specs/runtime-resource-discovery/runtime-resource-discovery.feature",
     name = "资源列表技能主题无提示词"
@@ -317,7 +264,6 @@ async fn test_rd_skills_reload(agent: AgentState, ws: Workspace) {}
 )]
 fn test_rd_themes(t2_res_bdd: T2ResBdd) {}
 
-// infra-bash r1430/r1432/r1433/r1427/r1434
 #[scenario(
     path = "llmanspec/specs/infra-bash/infra-bash.feature",
     name = "bang中止取消执行器"
@@ -348,14 +294,12 @@ async fn test_ib_hook_reject(agent: AgentState, ws: Workspace) {}
 )]
 fn test_ib_exclude() {}
 
-// infra-provider r1504
 #[scenario(
     path = "llmanspec/specs/infra-provider/infra-provider.feature",
     name = "输入项携带类型"
 )]
 fn test_ip_items_typed(t2_schema_bdd: T2SchemaBdd) {}
 
-// infra-observability r1463
 #[scenario(
     path = "llmanspec/specs/infra-observability/infra-observability.feature",
     name = "追踪门禁关发出无输出"
@@ -363,14 +307,12 @@ fn test_ip_items_typed(t2_schema_bdd: T2SchemaBdd) {}
 #[serial]
 async fn test_io_gate_off(agent: AgentState, ws: Workspace, otel_bdd: OtelBdd) {}
 
-// infra-mcp r1445
 #[scenario(
     path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
     name = "无MCP配置无工具"
 )]
 fn test_mcp_none() {}
 
-// infra-otel r1470
 #[scenario(
     path = "llmanspec/specs/infra-otel/infra-otel.feature",
     name = "空闲结算独立根"
@@ -380,14 +322,12 @@ fn test_ot_idle_root(otel_bdd: OtelBdd) {}
 
 use crate::bdd::steps_c2827::{T4PolicyBdd, T4PrintBdd, t4_policy_bdd, t4_print_bdd};
 
-// domain-compaction r1411
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "强制指令追加焦点"
 )]
 fn test_dc_focus(ws: Workspace, agent: AgentState) {}
 
-// domain-compaction r1416
 #[scenario(
     path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
     name = "策略快照已记录"
@@ -400,14 +340,12 @@ async fn test_dc_policy(
 ) {
 }
 
-// protocol-app r1693
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
     name = "命令往返保真"
 )]
 fn test_pa_command_roundtrip() {}
 
-// cli-print r34/r43/r52/r55
 #[scenario(
     path = "llmanspec/specs/cli-print/cli-print.feature",
     name = "print流增量仅"
@@ -432,7 +370,6 @@ async fn test_cp_dedup(t4_print_bdd: T4PrintBdd) {}
 )]
 async fn test_cp_error(t4_print_bdd: T4PrintBdd) {}
 
-// user-experience r1838-r1841
 #[scenario(
     path = "llmanspec/specs/user-experience/user-experience.feature",
     name = "登录引导引用文档"
@@ -457,7 +394,6 @@ fn test_ux_unset() {}
 )]
 fn test_ux_no_key() {}
 
-// package-tui-interaction-modes r1628/r1631
 #[scenario(
     path = "crates/xylitol-tui/llmanspec/specs/package-tui-interaction-modes/package-tui-interaction-modes.feature",
     name = "拖选选择复制誊本"
@@ -470,41 +406,32 @@ fn test_pt_drag_copy() {}
 )]
 fn test_pt_dock_exclude() {}
 
-// ═══════════════════════════════════════════════════════════════════
-// c2829 批 2
-// ═══════════════════════════════════════════════════════════════════
-
 use crate::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
 
-// agent-todo r1122
 #[scenario(
     path = "llmanspec/specs/agent-todo/agent-todo.feature",
     name = "待办更新发出类型化事件"
 )]
 async fn test_td_typed_event(agent: AgentState) {}
 
-// infra-mcp r1447
 #[scenario(
     path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
     name = "夹具服务端装配XyTool"
 )]
 async fn test_mcp_fixture(t6_mcp_bdd: T6McpBdd) {}
 
-// infra-mcp r1448
 #[scenario(
     path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
     name = "工具集跟随配置"
 )]
 async fn test_mcp_config_driven(t6_mcp_bdd: T6McpBdd) {}
 
-// infra-mcp r1449
 #[scenario(
     path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
     name = "无效入口已诊断不致命"
 )]
 async fn test_mcp_invalid(t6_mcp_bdd: T6McpBdd) {}
 
-// ── c2835 后继：infra-provider 裸规则回填 ──────────────────────────
 use crate::bdd::steps_bridge::{ProviderBdd, provider_bdd};
 
 #[scenario(
@@ -904,7 +831,6 @@ fn test_att_diff_package() {}
 )]
 fn test_att_rail_package() {}
 
-// infra-mcp r1450-1453/1446（批 2）
 #[scenario(
     path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
     name = "已连接列表只读"

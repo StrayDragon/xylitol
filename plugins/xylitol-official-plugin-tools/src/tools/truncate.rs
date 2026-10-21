@@ -1,25 +1,12 @@
-//! Shared truncation utilities for tool outputs.
-//!
-//! Truncation is based on two independent limits — whichever is hit first wins:
-//! - Line limit (default: 2000 lines)
-//! - Byte limit (default: 50KB)
-//!
-//! Never returns partial lines (except bash tail truncation edge case).
-
 pub(crate) const DEFAULT_MAX_LINES: usize = 2000;
-pub(crate) const DEFAULT_MAX_BYTES: usize = 50 * 1024; // 50KB
-pub(crate) const GREP_MAX_LINE_LENGTH: usize = 500; // Max chars per grep match line
+pub(crate) const DEFAULT_MAX_BYTES: usize = 50 * 1024;
+pub(crate) const GREP_MAX_LINE_LENGTH: usize = 500;
 
-/// Result of a truncation operation.
 #[derive(Debug, Clone)]
 pub(crate) struct TruncationResult {
-    /// The truncated content.
     pub(crate) content: String,
-    /// Whether truncation occurred.
     pub(crate) truncated: bool,
-    /// Which limit was hit: "lines", "bytes", or None if not truncated.
     pub(crate) truncated_by: Option<TruncationLimit>,
-    /// Number of complete lines in the truncated output.
     pub(crate) output_lines: usize,
 }
 
@@ -44,7 +31,6 @@ pub(crate) struct TruncationOptions {
     pub(crate) max_bytes: Option<usize>,
 }
 
-/// Split content into lines for counting (excluding trailing empty line from final \n).
 fn split_lines_for_counting(content: &str) -> Vec<&str> {
     if content.is_empty() {
         return vec![];
@@ -56,11 +42,6 @@ fn split_lines_for_counting(content: &str) -> Vec<&str> {
     lines
 }
 
-/// Truncate content from the head (keep first N lines/bytes).
-/// Suitable for file reads where you want to see the beginning.
-///
-/// Never returns partial lines. If the first line alone exceeds the byte
-/// limit, returns empty content truncated by bytes (`truncated_by = Bytes`).
 pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> TruncationResult {
     let max_lines = options.max_lines.unwrap_or(DEFAULT_MAX_LINES);
     let max_bytes = options.max_bytes.unwrap_or(DEFAULT_MAX_BYTES);
@@ -69,7 +50,6 @@ pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> Trunca
     let lines = split_lines_for_counting(content);
     let total_lines = lines.len();
 
-    // Check if no truncation needed
     if total_lines <= max_lines && total_bytes <= max_bytes {
         return TruncationResult {
             content: content.to_string(),
@@ -79,7 +59,6 @@ pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> Trunca
         };
     }
 
-    // Check if first line alone exceeds byte limit
     if let Some(first) = lines.first()
         && first.len() > max_bytes
     {
@@ -91,7 +70,6 @@ pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> Trunca
         };
     }
 
-    // Collect complete lines that fit
     let mut output_lines_arr: Vec<&str> = Vec::new();
     let mut output_bytes_count = 0usize;
     let mut truncated_by = TruncationLimit::Lines;
@@ -100,7 +78,7 @@ pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> Trunca
         if i >= max_lines {
             break;
         }
-        let line_bytes = line.len() + if i > 0 { 1 } else { 0 }; // +1 for newline
+        let line_bytes = line.len() + if i > 0 { 1 } else { 0 };
 
         if output_bytes_count + line_bytes > max_bytes {
             truncated_by = TruncationLimit::Bytes;
@@ -111,7 +89,6 @@ pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> Trunca
         output_bytes_count += line_bytes;
     }
 
-    // If we exited due to line limit and still within bytes
     if output_lines_arr.len() >= max_lines && output_bytes_count <= max_bytes {
         truncated_by = TruncationLimit::Lines;
     }
@@ -125,8 +102,6 @@ pub(crate) fn truncate_head(content: &str, options: TruncationOptions) -> Trunca
         output_lines: output_lines_arr.len(),
     }
 }
-/// Truncate a single line to max characters, adding [truncated] suffix.
-/// Used for grep match lines.
 pub(crate) fn truncate_line(line: &str, max_chars: usize) -> TruncatedLine {
     if line.char_indices().count() <= max_chars {
         return TruncatedLine {
@@ -134,7 +109,6 @@ pub(crate) fn truncate_line(line: &str, max_chars: usize) -> TruncatedLine {
         };
     }
 
-    // Take first max_chars characters
     let truncated: String = line
         .chars()
         .take(max_chars)
@@ -148,10 +122,6 @@ pub(crate) struct TruncatedLine {
     pub(crate) text: String,
 }
 
-/// Append the shared limit-notice suffix (`\n\n[a. b]`) to tool output.
-///
-/// `extra` carries tool-specific notices (e.g. match limit reached); the
-/// byte-truncation notice is appended here when `truncated`.
 pub(crate) fn push_limit_notices(out: &mut String, extra: Vec<String>, truncated: bool) {
     let mut notices = extra;
     if truncated {

@@ -15,12 +15,9 @@ impl SessionManager {
         self.acquire_write_lock(session_id)?;
         self.replace_entries(session_id, entries).await?;
         self.acquire_write_lock(session_id)?;
-        // Zero-compat: never silently delete a legacy file in the background.
-        // Legacy cleanup is only done through the user's explicit `delete_session`.
         Ok(())
     }
 
-    /// Record the fork cut on the child header created by [`Self::create`] (s23).
     pub(super) fn stamp_header_fork_at_entry_id(&self, session_id: &str, at_entry_id: &str) {
         let stamp = |entries: &mut Vec<SessionEntry>| {
             if let Some(entry) = entries
@@ -58,8 +55,6 @@ impl SessionManager {
             })?
         };
 
-        // `append_with_id` may have already created the active segment while the
-        // header was still pending. Blind overwrite would clobber those rows.
         if self.manifest_path(session_id).exists() {
             let disk = self.load(session_id).await?;
             let merged = Self::merge_pending_ahead_of_disk(pending, disk);
@@ -67,9 +62,6 @@ impl SessionManager {
         } else if self.legacy_session_path(session_id).exists() {
             Err(super::segments::legacy_unsupported_error(session_id))
         } else if self.current_active_path(session_id).exists() {
-            // An explicit append can materialize body rows before the pending
-            // header is flushed. Treat that unreferenced active file like the
-            // old JSONL body and fold it into the first manifest commit.
             let path = self.current_active_path(session_id);
             let content = tokio::fs::read_to_string(&path)
                 .await
@@ -82,7 +74,6 @@ impl SessionManager {
         }
     }
 
-    /// Prefers on-disk rows when ids collide; keeps a missing session header from pending.
     fn merge_pending_ahead_of_disk(
         pending: Vec<SessionEntry>,
         disk: Vec<SessionEntry>,
@@ -123,12 +114,6 @@ impl SessionManager {
         }
     }
 
-    /// Create a new session and record the header entry.
-    ///
-    /// Idempotent: if the session already has a header (pending / in-memory /
-    /// on-disk), this is a no-op. If body rows were appended before `create`
-    /// (bind-then-`/model` race), a missing header is inserted ahead of them
-    /// instead of wiping those rows.
     pub async fn create(
         &self,
         id: &str,
@@ -152,15 +137,12 @@ impl SessionManager {
         match &self.backend {
             SessionBackend::Persisted => {
                 if self.manifest_path(id).exists() {
-                    // Corrupt / headerless segmented storage: prepend a header through
-                    // the same manifest commit path.
                     let disk = self.load(id).await?;
                     let mut merged = Vec::with_capacity(disk.len() + 1);
                     merged.push(header);
                     merged.extend(disk);
                     self.write_entries_to_disk(id, &merged).await?;
                 } else if self.legacy_session_path(id).exists() {
-                    // Zero-compat: never migrate a legacy-only session.
                     return Err(super::segments::legacy_unsupported_error(id));
                 } else {
                     let mut store = lock_rwlock_write(&self.pending_store);
@@ -175,7 +157,6 @@ impl SessionManager {
             }
         }
 
-        // Only reset leaf when this is a brand-new empty session.
         if self.get_leaf(id).is_none() {
             self.set_leaf(id, None);
         }
@@ -200,15 +181,12 @@ impl SessionManager {
                         if entries.iter().any(|e| matches!(e, SessionEntry::Header(_))) {
                             return true;
                         }
-                        // The header is sealed after the first compaction.
                         if let Ok(entries) = self.load_entries(session_id, &manifest).await {
                             return entries.iter().any(|e| matches!(e, SessionEntry::Header(_)));
                         }
                     }
                     return false;
                 }
-                // Legacy-only sessions are not supported (zero-compat) and
-                // never take the create path, so no header probe here.
                 lock_rwlock_read(&self.pending_store)
                     .get(session_id)
                     .is_some_and(|entries| {
@@ -223,10 +201,6 @@ impl SessionManager {
         }
     }
 
-    /// Append an entry to a session.
-    /// Automatically generates id and links parent_id from current leaf.
-    /// For persisted sessions, writes to the JSONL file.
-    /// For in-memory sessions, stores in a Vec.
     pub async fn append(
         &self,
         session_id: &str,
@@ -273,8 +247,6 @@ impl SessionManager {
                     {
                         let mut pending = lock_rwlock_write(&self.pending_store);
                         let entries = pending.entry(session_id.to_string()).or_default();
-                        // Defense: body rows must never sit in pending without a header
-                        // (bind-then-append before `create` / `ensure_session`).
                         if !entries.iter().any(|e| matches!(e, SessionEntry::Header(_))) {
                             entries.insert(
                                 0,
@@ -309,13 +281,11 @@ impl SessionManager {
         Ok(())
     }
 
-    /// Inject auto-generated id and parent_id into an entry.
     pub(super) fn inject_ids(&self, session_id: &str, entry: &SessionEntry) -> SessionEntry {
         let new_id = Uuid::new_v4().to_string();
         let parent_id = self.get_leaf(session_id);
         let now = now_ms();
 
-        // Create a new entry with injected ids
         Self::clone_entry_with_ids(entry, &new_id, parent_id.as_deref(), now)
     }
 
@@ -397,7 +367,6 @@ impl SessionManager {
         }
     }
 
-    /// Append an entry with explicit id (for fork operations).
     pub async fn append_with_id(
         &self,
         session_id: &str,
@@ -414,9 +383,6 @@ impl SessionManager {
             return Ok(());
         }
 
-        // Flush deferred header (and any pending rows) before writing the file
-        // directly — otherwise `load` ignores pending once the file exists, and a
-        // later `flush_pending_to_disk` can overwrite body rows with header-only.
         let has_pending = lock_rwlock_read(&self.pending_store).contains_key(session_id);
         if has_pending {
             self.flush_pending_to_disk(session_id).await?;

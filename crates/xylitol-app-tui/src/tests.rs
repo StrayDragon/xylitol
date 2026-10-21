@@ -1,5 +1,3 @@
-//! Host harness tests — no real TTY (ath5).
-
 use super::bridge::{UiModel, UiPhase, apply_xy_event};
 use super::harness::{alt_enter_event, enter_event, esc_event};
 use super::host::{HostEvent, HostSession, LayoutMode, TOO_SMALL_HINT, is_too_small};
@@ -8,10 +6,6 @@ use crate::driver::XyEvent;
 use xylitol_tui::utils::strip_ansi_codes as strip_ansi;
 use xylitol_tui::{Component, InputEvent, Terminal};
 
-/// Minimal in-memory terminal for host tests.
-// 与 harness.rs 的 TestTerminal 保持同步(字段差异: 本版多 mouse_capture_active /
-// alternate_screen_active,frames 为 pub,stop() 额外复位两标志并覆写 mouse-capture /
-// alt-screen 方法;harness 版走 Terminal 默认 no-op)。
 struct TestTerminal {
     cols: u16,
     rows: u16,
@@ -153,7 +147,6 @@ fn harness_resize_to_ready() {
 
 #[test]
 fn harness_too_small_hint_safe_at_cjk_underfull_width() {
-    // "请放大终端" is 10 cols; chars().count()==5 used to overflow and exit.
     for cols in [1u16, 5, 9, 10, 12] {
         let mut session = HostSession::new(TestTerminal::new(cols, 3), build_root);
         assert_eq!(session.mode(), LayoutMode::TooSmall);
@@ -199,8 +192,6 @@ fn harness_never_calls_terminal_start() {
 fn mouse_moved_does_not_request_render_by_default() {
     use crossterm::event::{KeyCode, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
-    // Product default is ApplicationOwned: Moved stays idle; Left Down starts
-    // app selection and may schedule a frame (expected AO delta vs Inline).
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     session.render_now().unwrap();
     assert!(!session.tui.is_render_requested());
@@ -427,7 +418,6 @@ fn product_tui_source_has_no_tui_start_call() {
 
 #[test]
 fn render_modules_do_not_match_xy_event() {
-    // atb1: render layer must not match XyEvent — only bridge does.
     let root = include_str!("layout/root/mod.rs");
     assert!(
         !root.contains("XyEvent"),
@@ -452,7 +442,6 @@ fn render_modules_do_not_match_xy_event() {
 
 #[test]
 fn shared_effect_pump_is_single_entry() {
-    // ath6: production + harness share drain_pending; no duplicate PendingSlash match.
     let effects = include_str!("effects/mod.rs");
     assert!(
         effects.contains("pub async fn drain_pending"),
@@ -480,7 +469,6 @@ fn shared_effect_pump_is_single_entry() {
 
 #[test]
 fn product_slash_catalog_matches_agent_ssot() {
-    // c1175 / sc3 / atm7: TUI catalog names == product SSOT (same crate build).
     use crate::layout::product_slash_commands_for_editor;
     use crate::product_commands::product_slash_commands;
 
@@ -513,7 +501,6 @@ fn designing_slash_is_pinned_and_absent_from_product_ssot() {
 
 #[test]
 fn legacy_short_slash_names_are_not_parsed() {
-    // A03 / c1175: /tree etc. stay unknown at the parse layer.
     use super::commands::parse_slash_command;
     for legacy in [
         "/tree", "/fork", "/export", "/import", "/compact", "/resume", "/new", "/clone", "/name",
@@ -585,9 +572,6 @@ fn harness_ctrl_c_consumed_before_editor_insert() {
     assert_eq!(root.borrow().editor_text(), "");
     assert!(!session.should_quit());
 }
-
-// esc_event / enter_event / alt_enter_event 复用 harness.rs 的 pub 版(签名与
-// KeyEvent 字段完全一致);ctrl_c_event 仅本文件使用,保留在此。
 
 #[test]
 fn harness_busy_enter_queues_steer() {
@@ -716,7 +700,6 @@ fn harness_busy_esc_requests_abort_not_tree() {
 fn harness_busy_ctrl_c_aborts_not_quit() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
-    // Empty editor: pre-c1570 Ctrl+C would quit; must abort instead.
     root.borrow_mut().set_editor_text(String::new());
     session.on_run_started("hello");
     session.step(HostEvent::Input(ctrl_c_event())).unwrap();
@@ -737,7 +720,6 @@ fn harness_busy_ctrl_c_with_draft_still_aborts() {
     session.step(HostEvent::Input(ctrl_c_event())).unwrap();
     assert!(session.take_abort());
     assert!(!session.should_quit());
-    // Same as Esc: do not clear draft as a side effect of abort latch.
     assert_eq!(root.borrow().editor_text(), "steer draft");
 }
 
@@ -949,7 +931,6 @@ fn harness_editor_slot_mutex_and_esc_closes() {
         "slots are mutually exclusive"
     );
 
-    // Opening Tree replaces Plate (mount directly in harness — open_slot queues XyDriver fetch).
     root.borrow_mut()
         .open_session_tree_for_test(super::layout::sample_tree_nodes_for_test(), Some("u2"));
     assert_eq!(root.borrow().slot(), EditorSlotKind::Tree);
@@ -1491,7 +1472,6 @@ async fn harness_paste_image_inserts_abs_path() {
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
     let mut driver = ScriptedDriver::new();
-    // Minimal PNG header bytes (ScriptedDriver only writes; no decode on stage).
     driver.set_clipboard_image(b"\x89PNG\r\n\x1a\nfake".to_vec(), "image/png");
     let mut stream = None;
 
@@ -1548,7 +1528,6 @@ async fn harness_paste_image_miss_error() {
 
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let mut driver = ScriptedDriver::new();
-    // No clipboard image set → Ok(None).
     let mut stream = None;
 
     session.step(HostEvent::Input(ctrl_v_event())).unwrap();
@@ -1668,7 +1647,6 @@ fn harness_idle_up_recalls_submit_history() {
     session.step(HostEvent::Input(enter_event())).unwrap();
     let _ = session.take_submit();
     assert!(root.borrow().editor_text().is_empty());
-    // Idle: dispatch Up into focused editor via host step → component tree.
     session.step(HostEvent::Input(arrow_up_event())).unwrap();
     assert_eq!(root.borrow().editor_text(), "run me");
 }
@@ -1937,8 +1915,6 @@ fn idle_editor_operation_zone_is_compact() {
     root.set_layout_meta("~/x", "m");
     root.apply_ui_model(&UiModel::new());
     let lines = root.render(80);
-    // c1135: loaded-resources card sits above scrollback; compact check is
-    // relative growth of the editor slot, not absolute line count.
     assert!(
         lines.iter().any(|l| l.contains("xylitol")),
         "idle must show startup resources card: {lines:?}"
@@ -1971,8 +1947,6 @@ fn layout_idle_status_is_one_blank_above_editor() {
         !lines.iter().any(|l| l.contains("Working")),
         "idle must not show busy status: {lines:?}"
     );
-    // Idle status slot is one blank row immediately above the editor zone
-    // (after resources card + scrollback + queue).
     let editor_border = lines
         .iter()
         .position(|l| l.contains('─') && !l.contains('╭') && !l.contains('╰'))
@@ -2069,7 +2043,6 @@ fn layout_busy_status_is_separate_from_footer() {
         lines.iter().any(|l| l.contains("Working")),
         "busy status row missing: {lines:?}"
     );
-    // Default Loader frames are braille spinners (⠋…).
     assert!(
         lines.iter().any(|l| {
             l.contains('⠋')
@@ -2099,7 +2072,6 @@ fn layout_busy_status_is_separate_from_footer() {
         "{footer}"
     );
 
-    // Tick advances spinner without growing status into footer.
     let _ = root.tick();
     let after = root.render(80);
     assert!(
@@ -2262,7 +2234,6 @@ fn layout_ascii_user_glyph() {
         joined.contains("> hi") || joined.contains(">\x1b") || joined.contains("> "),
         "ascii user glyph missing: {joined}"
     );
-    // Unicode ❯ must not appear when ascii is forced.
     assert!(!joined.contains('❯'), "{joined}");
 }
 
@@ -2309,8 +2280,6 @@ fn scrollback_thinking_fold_shows_ctrl_t_hint() {
         "collapsed must hide body: {idle}"
     );
 
-    // Toggle expand via Ctrl+T (synthetic key through handle_input).
-    // Use HostSession path would need key event; call fold via listener keys.
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     root.handle_input(InputEvent::Key(KeyEvent::new(
         KeyCode::Char('t'),
@@ -2369,7 +2338,6 @@ fn tools_per_block_override_and_alt_e_clears() {
         KeyModifiers::ALT,
     )));
     assert!(root.fold().tools_overrides.is_empty());
-    // Default flipped from true → false; both follow default.
     assert!(!root.fold().tools_effective("t1"));
     assert!(!root.fold().tools_effective("t2"));
 }
@@ -2476,7 +2444,6 @@ fn harness_mouse_triangle_toggles_tool_fold() {
         session.sync_ui_root_from_model();
     }
     session.step(HostEvent::Tick).unwrap();
-    // Force a paint so fold_hits populate.
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
 
@@ -2513,7 +2480,6 @@ fn harness_mouse_triangle_toggles_tool_fold() {
         "AO paint must collapse tool body after triangle toggle: {after}"
     );
 
-    // Header full width (not just the marker) expands again.
     let header_mid = region.col_end.saturating_sub(1).min(12) as u16;
     step_left_click(&mut session, header_mid, screen_row);
     assert!(
@@ -2644,8 +2610,6 @@ fn harness_mouse_moved_armed_probe_sets_hover_without_full_stale() {
 
 #[test]
 fn harness_mouse_drag_across_triangle_does_not_toggle_fold() {
-    // att22: while transcript drag-select is active, crossing a fold hit must
-    // not toggle (UpIfEmptySelection records a click only when !dragged).
     use super::widgets::FoldTarget;
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 
@@ -2687,7 +2651,6 @@ fn harness_mouse_drag_across_triangle_does_not_toggle_fold() {
     let tri_col = region.col_start as u16;
     assert!(root.borrow().fold().tools_effective("drag-me"));
 
-    // Start selection on header body (miss fold hit).
     session
         .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),
@@ -2701,7 +2664,6 @@ fn harness_mouse_drag_across_triangle_does_not_toggle_fold() {
         "body Down must not toggle"
     );
 
-    // Drag across the triangle column — must not flip fold.
     session
         .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
             kind: MouseEventKind::Drag(MouseButton::Left),
@@ -2899,8 +2861,6 @@ fn harness_mouse_triangle_toggles_ask_fold() {
 
 #[test]
 fn harness_mouse_triangle_toggles_compaction_fold() {
-    // att29: Compaction triangle flips compaction_expanded; body click does not;
-    // tools overrides stay intact.
     use super::bridge::CompactionBlockStatus;
     use super::widgets::FoldTarget;
 
@@ -2940,7 +2900,6 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
     assert!(!root.borrow().fold().tools_effective("keep-override"));
     let overrides_before = root.borrow().fold().tools_overrides.len();
     assert!(!root.borrow().fold().compaction_expanded);
-    // Re-paint so Compaction hit rows match post-override layout.
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
 
@@ -2983,8 +2942,6 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
         "AO paint must show Compaction summary after expand: {after}"
     );
 
-    // Re-hit after expand: triangle stays on the Compacted header (same line as
-    // [compaction]); click it to collapse again.
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
     let region_expanded = root
@@ -3020,7 +2977,6 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
         "AO paint must hide Compaction summary after triangle collapse: {collapsed_again}"
     );
 
-    // Re-expand so the non-triangle body click check below still has a visible header.
     step_left_click(
         &mut session,
         region_expanded.col_start as u16,
@@ -3045,9 +3001,6 @@ fn harness_mouse_triangle_toggles_compaction_fold() {
 
 #[test]
 fn harness_mouse_hint_toggles_output_viewport() {
-    // att30: hint-band click flips **that block only** (per-block override);
-    // Ctrl+O flips the global default and clears overrides. Two sibling Bash
-    // blocks guard the isolation regression.
     use super::widgets::FoldTarget;
     use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -3056,8 +3009,6 @@ fn harness_mouse_hint_toggles_output_viewport() {
     {
         let mut model = session.ui_model().clone();
         let mut output = String::new();
-        // 8 lines: past the 5-line collapsed viewport (hint band shows) yet
-        // short enough that the expanded fold band stays on the 24-row screen.
         for i in 0..8 {
             output.push_str(&format!("viewport-line-{i}\n"));
         }
@@ -3105,7 +3056,6 @@ fn harness_mouse_hint_toggles_output_viewport() {
     assert!(!root.borrow().fold().tools_output_expanded);
     assert!(!root.borrow().fold().output_effective("bash-a"));
 
-    // Click block A's hint band → only A expands; B and the global stay put.
     let (hint_row, hint_col) = locate_band("bash-a");
     let hint_screen_row = (hint_row.saturating_sub(root.borrow().fold_hits().scroll_top)) as u16;
     step_left_click(&mut session, hint_col as u16, hint_screen_row);
@@ -3129,7 +3079,6 @@ fn harness_mouse_hint_toggles_output_viewport() {
         "expanded viewport must show early lines: {expanded}"
     );
 
-    // The expanded block paints a fold-back band; clicking it folds only A.
     let (fold_row, fold_col) = locate_band("bash-a");
     let fold_screen_row = (fold_row.saturating_sub(root.borrow().fold_hits().scroll_top)) as u16;
     step_left_click(&mut session, fold_col as u16, fold_screen_row);
@@ -3139,7 +3088,6 @@ fn harness_mouse_hint_toggles_output_viewport() {
     );
     assert!(!root.borrow().fold().output_effective("bash-b"));
 
-    // Ctrl+O flips the global default (override map already empty) and back.
     root.borrow_mut()
         .handle_input(InputEvent::Key(KeyEvent::new(
             KeyCode::Char('o'),
@@ -3159,8 +3107,6 @@ fn harness_mouse_hint_toggles_output_viewport() {
 
 #[test]
 fn harness_mouse_segment_marker_toggles_one_step() {
-    // att31: L2 summary fold-marker click = that segment one-step expand;
-    // body click does not; coexisting L1 Tool triangle still works (att32).
     use super::activity_fold::SegmentLevel;
     use super::widgets::FoldTarget;
 
@@ -3180,7 +3126,6 @@ fn harness_mouse_segment_marker_toggles_one_step() {
     {
         let mut r = root.borrow_mut();
         r.activity_mut().force_level("seg-0", SegmentLevel::L3);
-        // Newest turn: open its cluster so a coexisting L1 tool hit is on screen.
         let _ = r.activity_mut().toggle_cluster("seg-3:c0");
         r.touch_activity();
     }
@@ -3235,7 +3180,6 @@ fn harness_mouse_segment_marker_toggles_one_step() {
         "Segment marker click MUST expand one step (L3→L2)"
     );
 
-    // Re-collapse and confirm the envelope header is clickable past the marker.
     {
         let mut r = root.borrow_mut();
         r.activity_mut().force_level("seg-0", SegmentLevel::L3);
@@ -3270,7 +3214,6 @@ fn harness_mouse_segment_marker_toggles_one_step() {
     session.tui.request_render(true);
     session.step_paint_only().unwrap();
 
-    // L1 tool triangle still toggles its own override (same paint).
     let tool_row = tool_hit
         .content_row
         .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
@@ -3290,8 +3233,6 @@ fn harness_mouse_segment_marker_toggles_one_step() {
 
 #[test]
 fn harness_l2_ignores_l1_override_after_segment_present() {
-    // att31 / att25 deep-dive A: while seg is L2, flipping tools override must
-    // not change L2 summary paint (middles not rendered).
     use super::activity_fold::SegmentLevel;
     use super::layout::UiRoot;
     use super::widgets::FoldTarget;
@@ -3320,8 +3261,6 @@ fn harness_l2_ignores_l1_override_after_segment_present() {
 
 #[test]
 fn segment_toggle_one_step_and_local_paint_misses() {
-    // att31 + ath25: Segment toggle is one ladder step; not nearest; local misses.
-    // Warm cache at L0 first (same pattern as activity_fold_att25_level_switch…).
     use super::activity_fold::SegmentLevel;
     use super::layout::UiRoot;
     use super::widgets::FoldTarget;
@@ -3352,7 +3291,6 @@ fn segment_toggle_one_step_and_local_paint_misses() {
         "Segment one-step toggle must stay local; misses={misses}"
     );
 
-    // Pointed toggle must not move a different collapsed segment.
     let mut model2 = UiModel::new();
     model2
         .entries
@@ -3376,8 +3314,6 @@ fn segment_toggle_one_step_and_local_paint_misses() {
 
 #[test]
 fn compaction_and_viewport_toggle_miss_bound() {
-    // ath25 / att29–att30: global Compaction / OutputViewport toggle must not
-    // re-Markdown unrelated Assistant history.
     use super::bridge::CompactionBlockStatus;
     use super::layout::UiRoot;
     use super::widgets::FoldTarget;
@@ -3459,9 +3395,6 @@ fn scrollback_diff_header_tint_and_body() {
 
 #[test]
 fn harness_ready_narrow_with_long_cwd_does_not_hang() {
-    // Regression: startup-card wrap_plain spun forever on long path tokens at
-    // Ready widths 40–44 (felt like "shrink then dead").
-    // Use this checkout's path so each clone exercises its own cwd length.
     let long_cwd = super::host::display_path(env!("CARGO_MANIFEST_DIR"));
     let mut session = HostSession::new_product_ui_with_meta(
         TestTerminal::new(80, 24),
@@ -3515,7 +3448,6 @@ fn bang_chunk_marks_dirty_and_paints_on_tick() {
         frames,
         "chunk must not force immediate paint"
     );
-    // Honor TUI 16ms throttle after render_now.
     std::thread::sleep(std::time::Duration::from_millis(20));
     session.step(HostEvent::Tick).expect("tick");
     assert!(
@@ -3523,7 +3455,6 @@ fn bang_chunk_marks_dirty_and_paints_on_tick() {
         "Tick must paint after paint_dirty bang chunk"
     );
     let text = session.tui.terminal.frames.join("\n");
-    // Frames hold raw ANSI writes; plain "hi from bang" may be split — also check model.
     assert!(
         session
             .ui_model()
@@ -3552,7 +3483,6 @@ fn upper_cache_reused_across_spinner_ticks() {
     let _ = root.render(80);
     let rebuilt = root.upper_rebuild_count_for_test();
     assert!(rebuilt >= 1);
-    // Status-only ticks should not rebuild upper.
     for _ in 0..5 {
         let _ = root.tick();
         let _ = root.render(80);
@@ -3562,7 +3492,6 @@ fn upper_cache_reused_across_spinner_ticks() {
         rebuilt,
         "spinner ticks must reuse upper cache"
     );
-    // Model change must rebuild.
     model.entries.push(super::bridge::UiEntry::Assistant {
         text: "extra".into(),
     });
@@ -3625,7 +3554,6 @@ fn scrollback_entry_cache_limits_misses_under_streaming() {
     let _ = root.render(80);
     root.clear_scrollback_entry_misses_for_test();
 
-    // Streaming deltas change only the tail — committed entries must be cache hits.
     for i in 0..20 {
         model.streaming_assistant.push_str(&format!("x{i}"));
         root.apply_ui_model(&model);
@@ -3649,7 +3577,6 @@ fn streaming_assistant_reuses_stable_prefix_under_deltas() {
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
     model.begin_run("hello");
-    // Seed enough complete paragraphs so stable prefix is non-empty.
     model.streaming_assistant = "alpha para\n\nbeta para\n\n".into();
     root.apply_ui_model(&model);
     let _ = root.render(80);
@@ -3674,7 +3601,6 @@ fn streaming_assistant_reuses_stable_prefix_under_deltas() {
         "fixture must keep a stable prefix"
     );
 
-    // Warm incremental cache across growth, then compare to a cold full paint.
     let theme = LayoutTheme::product_dark();
     let glyphs = GlyphSet::from_env();
     let fold = ScrollbackFold::default();
@@ -3996,7 +3922,6 @@ fn interaction_application_owned_at_construction_registers_dock() {
     assert!(session.tui.mouse_capture_enabled());
     assert!(session.tui.dock_rows() >= 4);
     session.render_now().unwrap();
-    // Measured dock after paint should stay above the input band floor.
     assert!(session.tui.dock_rows() >= 4);
 }
 
@@ -4024,7 +3949,6 @@ fn application_owned_copy_notice_fixed_zone_ath31() {
         term_rows.saturating_sub(dock)
     );
 
-    // Drag-select transcript → copy-on-release → host take_copy_notice → «Copied».
     let mouse = |kind, col, row| {
         InputEvent::Mouse(MouseEvent {
             kind,
@@ -4180,8 +4104,6 @@ fn client_notice_stack_pins_after_reproject_without_rerender() {
     );
 }
 
-// ── c1760 activity-fold (att23–att28) ─────────────────────────────────
-
 fn activity_turn(user: &str, tool_id: &str, path: &str, asst: &str) -> Vec<super::bridge::UiEntry> {
     vec![
         super::bridge::UiEntry::User { text: user.into() },
@@ -4220,7 +4142,6 @@ fn activity_fold_att23_l2_shows_summary_keeps_user_asst_scrollnotice() {
         text: "nav-note".into(),
     });
     root.apply_ui_model(&model);
-    // keep_recent=2 → oldest seg-0 auto-crush via force (simulate rebuild crush)
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
     let plain = strip_ansi(&root.render(100).join("\n"));
@@ -4234,8 +4155,6 @@ fn activity_fold_att23_l2_shows_summary_keeps_user_asst_scrollnotice() {
         !plain.contains("body-hidden-marker") && !plain.contains("f0.rs\nok"),
         "collapsed middle detail should not fully paint; got {plain}"
     );
-    // tool args_preview may still appear in summary counts path — ensure tool body "ok" after f0 not as rail block:
-    // stronger: ScrollNotice never absorbed
     assert!(
         plain.contains("nav-note"),
         "ScrollNotice must stay: {plain}"
@@ -4253,7 +4172,6 @@ fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
     model
         .entries
         .extend(activity_turn("u", "t1", "a.rs", "done"));
-    // second turn with reliable diff stats
     model
         .entries
         .push(super::bridge::UiEntry::User { text: "u2".into() });
@@ -4276,7 +4194,6 @@ fn activity_fold_att24_worked_for_and_no_fake_duration_or_pm() {
 
     root.activity_mut().force_level("seg-0", SegmentLevel::L3);
     root.touch_activity();
-    // no clock → must not invent a duration number
     let plain_no = strip_ansi(&root.render(100).join("\n"));
     assert!(
         plain_no.contains("Worked for"),
@@ -4324,7 +4241,6 @@ fn activity_fold_att25_l2_ignores_alt_e_then_l0_restores_l1() {
     model
         .entries
         .extend(activity_turn("u", "only", "x.rs", "asst"));
-    // force tools default open so body visible at L0
     root.apply_ui_model(&model);
     root.activity_mut().force_level("seg-0", SegmentLevel::L2);
     root.touch_activity();
@@ -4348,7 +4264,6 @@ fn activity_fold_att25_l2_ignores_alt_e_then_l0_restores_l1() {
 
     root.activity_mut().toggle_cluster("seg-0:c0");
     root.touch_activity();
-    // Alt+E may have flipped tools default closed — re-open for L1 visibility check.
     if !root.fold().tools_effective("only") {
         root.handle_input(InputEvent::Key(KeyEvent::new(
             KeyCode::Char('e'),
@@ -4375,7 +4290,6 @@ fn activity_fold_att26_auto_degrade_keeps_recent_and_streaming() {
 
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
-    // 4 activity turns; rebuild crushes all ended turns to envelope L3.
     for i in 0..4 {
         model.entries.extend(activity_turn(
             &format!("u{i}"),
@@ -4396,7 +4310,6 @@ fn activity_fold_att26_auto_degrade_keeps_recent_and_streaming() {
     assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L3);
     assert_eq!(root.activity().level_of("seg-9"), SegmentLevel::L3);
 
-    // Streaming protect: newest stays L0 even if rebuild would crush all ended turns.
     let mut root2 = UiRoot::new();
     root2.apply_ui_model(&model);
     root2
@@ -4470,7 +4383,6 @@ fn activity_fold_att28_expand_collapse_nearest_and_silent() {
         ));
     }
     root.apply_ui_model(&model);
-    // rebuild crushes every ended turn; expandNearest opens the newest envelope
     root.activity_mut().auto_degrade(
         &model.entries,
         super::activity_fold::AutoTrigger::Rebuild,
@@ -4483,12 +4395,9 @@ fn activity_fold_att28_expand_collapse_nearest_and_silent() {
     assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L2);
     assert_eq!(root.activity().level_of("seg-0"), SegmentLevel::L3);
 
-    // Collapse nearest eligible: entered L2 → floor L3
     assert!(root.collapse_nearest_activity());
     assert_eq!(root.activity().level_of("seg-6"), SegmentLevel::L3);
 
-    // Silent expand when no L3 envelope and every cluster already open — not the
-    // keep-window default (heads-only). expandNearest opens the nearest cluster.
     let mut quiet_model = UiModel::new();
     for i in 0..2 {
         quiet_model.entries.extend(activity_turn(
@@ -4589,7 +4498,6 @@ fn activity_fold_att31_expand_header_then_collapse() {
 
 #[test]
 fn activity_fold_envelope_header_stays_when_expanded() {
-    // att23 / att31: expand envelope → ▾ Worked for stays; click again folds back.
     use super::activity_fold::SegmentLevel;
     use super::layout::UiRoot;
     use super::widgets::{FoldTarget, GlyphSet};
@@ -5706,10 +5614,6 @@ fn activity_fold_live_ask_close_idles_and_drops_asking() {
     );
 }
 
-// ── c2200 scene slice: semantic dump over product paint (lessons 1–3) ──
-
-/// Lesson 1: thinking + todo_* → L2 cluster head is `Used 2 tools` (by call
-/// count), not `Thought`. Asserted on the product frame via the semantic dump.
 #[test]
 fn scene_dump_thinking_plus_todo_is_used_not_thought() {
     use super::activity_fold::scene::SceneBuilder;
@@ -5756,8 +5660,6 @@ fn scene_dump_thinking_plus_todo_is_used_not_thought() {
     );
 }
 
-/// Lesson 2: four same-name unknown tools → `Used 4 tools` counts
-/// invocations, not unique names.
 #[test]
 fn scene_dump_four_same_unknown_tools_count_invocations() {
     use super::activity_fold::scene::SceneBuilder;
@@ -5791,8 +5693,6 @@ fn scene_dump_four_same_unknown_tools_count_invocations() {
     assert_eq!(counts.used_names.as_slice(), ["todo_update"]);
 }
 
-/// Flushed thinking goes through product `ThinkingDelta` + `flush_streaming`,
-/// not `entries.push(Thinking)`.
 #[test]
 fn scene_thinking_flushed_uses_product_flush() {
     use super::activity_fold::scene::SceneBuilder;
@@ -5920,9 +5820,6 @@ fn fixed_zone_op_slot_choice_and_tree_mount() {
     );
 }
 
-/// Lesson 3: a sealed Thought cluster stays `Thought` when a new Thinking
-/// stream starts; the new stream paints its own live head. Asserted on the
-/// product frame via the semantic dump (both rows must be present).
 #[test]
 fn scene_dump_sealed_thought_stays_thought_under_new_stream() {
     use super::activity_fold::scene::SceneBuilder;
@@ -5962,8 +5859,6 @@ fn scene_dump_sealed_thought_stays_thought_under_new_stream() {
     );
 }
 
-/// The semantic dump must cover the same product paint path
-/// (`render_scrollback` under UiRoot), not a test-only paint.
 #[test]
 fn scene_dump_covers_product_render_scrollback() {
     use super::activity_fold::scene::SceneBuilder;
@@ -6005,8 +5900,6 @@ fn scene_dump_covers_product_render_scrollback() {
         dump.to_text()
     );
 }
-
-// ---- ask gateway ↔ Choice slot ↔ oneshot 端到端（ata3 / ata4 产品路径） ────
 
 fn ask_args_fixture() -> xylitol_plugin_sdk::ask::AskArgs {
     use xylitol_plugin_sdk::ask::{AskModeArg, AskOptionArg, AskQuestionArg};
@@ -6097,7 +5990,6 @@ async fn harness_ask_gateway_esc_resolves_skipped_success_payload() {
     assert!(result.contains("\"status\":\"skipped\""), "{result}");
 }
 
-// c2891 T4：host click 分派——gutter id 先于 fold；点顶归零、点底回底；拖选不进 gutter。
 #[test]
 fn gutter_host_click_jumps_and_selection_stays_clean() {
     use crossterm::event::MouseButton;
@@ -6107,7 +5999,6 @@ fn gutter_host_click_jumps_and_selection_stays_clean() {
         session.push_scroll_notice(format!("hist{i:02}xx"));
     }
     session.render_now().expect("seed long AO");
-    // 离底（seed follow 底）：上滚两 notch
     let notch = session.tui.application_owned_wheel_notch();
     session
         .apply_ao_wheel_delta(-(notch * 2))
@@ -6115,7 +6006,6 @@ fn gutter_host_click_jumps_and_selection_stays_clean() {
     let top0 = session.tui.application_owned_scroll_top();
     assert!(top0 > 0, "must be away from head, got {top0}");
 
-    // 点最右列顶行（col 39 = 物理末列 gutter）
     step_left_click(&mut session, 39, 0);
     assert_eq!(
         session.tui.application_owned_scroll_top(),
@@ -6124,7 +6014,6 @@ fn gutter_host_click_jumps_and_selection_stays_clean() {
     );
     assert!(!session.tui.application_owned_has_selection());
 
-    // 点最右列底行回底：先上滚再点底
     session
         .apply_ao_wheel_delta(-(notch * 2))
         .expect("up again");
@@ -6143,7 +6032,6 @@ fn gutter_host_click_jumps_and_selection_stays_clean() {
         "gutter bottom call lands at bottom"
     );
 
-    // 拖过 gutter 列：无选区
     let drag = |session: &mut HostSession<TestTerminal>, kind, col, row| {
         session
             .step(HostEvent::Input(InputEvent::Mouse(mouse_at(

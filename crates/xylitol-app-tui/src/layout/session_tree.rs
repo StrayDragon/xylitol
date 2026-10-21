@@ -1,21 +1,15 @@
-//! SessionTreeNode → package `TreeNode` mapping (c615 / ast6) + product FilterMode (c635).
-//! Tree slot Search/Help helpers (c685) — layout, not browser UI.
-
 use xylitol_tui::{TreeNode, truncate_to_width, visible_width, with_keybindings};
 
 use xylitol_plugin_sdk::session::{
     SessionEntry, SessionTreeNode, message_custom_type, message_role, message_text,
 };
 
-/// 树节点 kind 词表（本模块 `session_tree_node_kind` 产出、`FilterMode` 过滤共用;
-/// 勿内联字面量。注意与 LLM message role 词表是两套语义）。
 pub(crate) const NODE_KIND_USER: &str = "user";
 pub(crate) const NODE_KIND_TOOL: &str = "tool";
 pub(crate) const NODE_KIND_META: &str = "meta";
 
 const LABEL_PREVIEW_WIDTH: usize = 48;
 
-/// Product session-tree filter modes (wired via `include_node` + `status_suffix`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FilterMode {
     #[default]
@@ -61,13 +55,11 @@ impl FilterMode {
         Self::ALL[(i + 1) % Self::ALL.len()]
     }
 
-    /// Reverse of [`Self::cycle`] (pi `filter.cycleBackward` / Ctrl+Shift+O).
     pub fn cycle_backward(self) -> Self {
         let i = Self::ALL.iter().position(|m| *m == self).unwrap_or(0);
         Self::ALL[(i + Self::ALL.len() - 1) % Self::ALL.len()]
     }
 
-    /// Toggle `target` ↔ `default` (pi semantics for Ctrl+T/U/L/A).
     pub fn toggle(self, target: Self) -> Self {
         if self == target {
             Self::Default
@@ -77,7 +69,6 @@ impl FilterMode {
     }
 }
 
-/// Product filter chords (not yet registered as `app.tree.filter.*` in the package).
 const TREE_FILTER_KEY_IDS: &[&str] = &[
     "app.tree.filter.default",
     "app.tree.filter.noTools",
@@ -90,7 +81,6 @@ const TREE_CYCLE_KEY_IDS: &[&str] = &[
     "app.tree.filter.cycleBackward",
 ];
 
-/// Search line above the tree list (pi `SearchLine` / demo morphology).
 pub(crate) fn tree_search_line(query: &str) -> String {
     if query.is_empty() {
         " Type to search:".into()
@@ -99,7 +89,6 @@ pub(crate) fn tree_search_line(query: &str) -> String {
     }
 }
 
-/// Dynamic TreeHelp from KeybindingsManager + product filter/cycle chords (c685).
 pub(crate) fn tree_help_line() -> String {
     let move_keys = binding_first_keys(&["tui.select.up", "tui.select.down"]);
     let page_keys = binding_first_keys(&["tui.select.pageUp", "tui.select.pageDown"]);
@@ -108,9 +97,7 @@ pub(crate) fn tree_help_line() -> String {
     let label_time_keys = binding_first_keys(&["app.tree.toggleLabelTimestamp"]);
 
     let mut parts = Vec::new();
-    // Purpose-first labels; ⊞/⊟ match tree fold markers (pi connector indicators).
     push_help_item(&mut parts, &move_keys, "move", false);
-    // page chords unbound by default (←→ owned by `/model` picker).
     if !page_keys.is_empty() {
         push_help_item(&mut parts, &page_keys, "page", false);
     }
@@ -205,7 +192,6 @@ fn compact_raw_keys(keys: &[String]) -> String {
     }
 }
 
-/// Wrap a muted help line to `width` on ` · ` boundaries (pi TreeHelp).
 pub(crate) fn wrap_help_line(line: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
     if visible_width(line) <= width {
@@ -254,7 +240,6 @@ pub(crate) fn wrap_help_line(line: &str, width: usize) -> Vec<String> {
     }
 }
 
-/// Map XyDriver MessageHistory nodes to package tree rows (kind + plain-text label).
 pub fn map_session_tree_nodes(nodes: &[SessionTreeNode]) -> Vec<TreeNode> {
     nodes.iter().map(map_session_tree_node).collect()
 }
@@ -279,7 +264,6 @@ fn session_tree_node_kind(entry: &SessionEntry) -> Option<String> {
     match entry {
         SessionEntry::Message(m) => match message_role(&m.message) {
             Some("bashExecution") => Some(NODE_KIND_TOOL.into()),
-            // c1905: Env custom (session_env) is meta — Default filter hides it.
             Some("custom") => Some(NODE_KIND_META.into()),
             Some(role) => Some(role.to_string()),
             None => None,

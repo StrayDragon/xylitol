@@ -1,7 +1,3 @@
-//! Session identity, fork, and stats on [`AgentCapabilities`].
-//!
-//! Product builtins / bang / export are **not** here — see `app/core` + `XyDriver`.
-
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
@@ -40,21 +36,10 @@ pub async fn load_conversation_history_from_store(
 }
 
 impl AgentCapabilities {
-    // ── Session management ────────────────────────────────────────
-
-    /// Set the active session ID.
-    ///
-    /// c2843 (Phase B): no longer writes the process obs slot — materialized
-    /// paths derive obs identity from this runtime's own facts, so concurrent
-    /// sessions can no longer stomp each other's attribution.
     pub fn set_session(&mut self, session_id: String) {
         self.session_id = Some(session_id);
     }
 
-    /// This runtime's obs identity snapshot (otel24 / c2610 / c2843): the bound
-    /// session id plus THIS runtime's display-name fact. Compaction / idle
-    /// callers with a known session MUST build the snapshot here instead of
-    /// re-reading the process slot.
     pub(crate) fn obs_session_snapshot(&self) -> xylitol_plugin_sdk::ObsSessionContext {
         xylitol_plugin_sdk::ObsSessionContext {
             session_id: self.session_id.clone(),
@@ -63,18 +48,14 @@ impl AgentCapabilities {
         }
     }
 
-    /// Owner display-name fact for this runtime (c2843). Rename paths (driver /
-    /// host restore) set it; turns / idle obs read it. Never the process slot.
     pub(crate) fn set_session_name_fact(&mut self, name: Option<String>) {
         self.session_name = name.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
     }
 
-    /// Owner display-name fact (c2843).
     pub(crate) fn session_name(&self) -> Option<&str> {
         self.session_name.as_deref()
     }
 
-    /// Snapshot plus header tree edge (facts from disk). Idle callers may skip this.
     pub(crate) async fn obs_session_snapshot_from_store(
         &self,
     ) -> xylitol_plugin_sdk::ObsSessionContext {
@@ -90,15 +71,10 @@ impl AgentCapabilities {
         ctx
     }
 
-    /// Get the active session ID.
     pub fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
     }
 
-    /// Ensure a session exists with a header (create / repair if needed).
-    ///
-    /// `create` is idempotent: bind-then-`/model` may have already written body
-    /// rows into pending; a missing header is inserted without wiping them.
     pub async fn ensure_session(&self, id: &str, parent: Option<&str>) -> Result<(), XyError> {
         let had_header = match self.store.load_entries(id).await {
             Ok(entries) => entries
@@ -119,12 +95,6 @@ impl AgentCapabilities {
         Ok(())
     }
 
-    /// Load conversation messages from the session store (leaf + compaction-aware cut).
-    ///
-    /// c2770 / as-bang1: orphan running bash rows fold into the pinned
-    /// interrupted notice here, paired against a session-scoped done set. On a
-    /// done-set read failure the fold is skipped entirely (running rows keep
-    /// the no-projection behavior — no false interrupts).
     pub async fn load_conversation_history(
         &self,
         session_id: &str,
@@ -132,32 +102,22 @@ impl AgentCapabilities {
         load_conversation_history_from_store(self.store.as_ref(), session_id).await
     }
 
-    /// Shared session store handle (same instance as XyDriver uses).
     pub fn session_store(&self) -> Arc<dyn XySessionStore> {
         self.store.clone()
     }
 
-    /// Lifecycle event sink (compaction Start/End etc.).
     pub(crate) fn event_sink(&self) -> Arc<dyn xylitol_plugin_sdk::XyEventSink> {
         self.sink.clone()
     }
 
-    /// Compaction settings snapshot for ReAct turn-end auto.
     pub(crate) fn compaction_settings(&self) -> CompactionSettings {
         self.compaction_orchestrator.settings().clone()
     }
 
-    /// Live compaction port (plugin-injected).
     pub(crate) fn compaction(&self) -> Arc<dyn crate::agent::compaction::XyCompaction> {
         Arc::clone(&self.compaction_orchestrator)
     }
 
-    // ── Fork ────────────────────────────────────────────────────
-
-    /// Fork the current session at a given entry, creating a child session.
-    ///
-    /// Returns the child session ID on success. See
-    /// [`xylitol_plugin_sdk::session::ForkPosition`].
     pub async fn fork_session(
         &self,
         at_entry_id: &str,
@@ -185,9 +145,6 @@ impl AgentCapabilities {
         Ok(child_id)
     }
 
-    // ── Session stats ────────────────────────────────────────────
-
-    /// Get session statistics.
     pub async fn get_session_stats(&self) -> Result<SessionStats, XyError> {
         let sid = self
             .session_id()

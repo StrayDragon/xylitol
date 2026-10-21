@@ -306,8 +306,6 @@ fn t_pab16_signature(provider_bdd: &ProviderBdd) {
     assert_eq!(parsed["encrypted_content"], "blob");
 }
 
-// ── agent-prompt pt9 (c1290) ──────────────────────────────────────
-
 pub struct PromptBdd {
     pub(crate) prompt: RefCell<String>,
 }
@@ -343,7 +341,6 @@ fn g_pt9_bash_guidelines(prompt_bdd: &PromptBdd) {
             .collect(),
         ..Default::default()
     };
-    // Store guidelines for when step; also prebuild for convenience
     prompt_bdd.prompt.replace(build_system_prompt(&opts));
 }
 
@@ -389,8 +386,6 @@ fn t_pt9_no_backfill(prompt_bdd: &PromptBdd) {
     assert!(p.contains("CUSTOM_ONLY_BODY"), "{p}");
     assert!(!p.contains("Available tools:"), "{p}");
 }
-
-// ── agent-prompt pt3 (c1218) ──────────────────────────────────────
 
 #[given("项目或全局 prompts 目录存在 greet.md")]
 fn g_pt3_prompts_dir(ws: &crate::bdd::fixtures::Workspace) {
@@ -444,8 +439,6 @@ fn t_pt3_no_slash_templates(prompt_bdd: &PromptBdd) {
             .any(|n| *n == "template:greet" || *n == "greet")
     );
 }
-
-// ---- c2826 specs-compact：裸规则转场景补充（r1538/r1544）----
 
 #[when("以 medium 与 off 档解析请求 thinking 并注入各族请求体")]
 fn w_c2826_thinking_families(provider_bdd: &ProviderBdd) {
@@ -549,7 +542,6 @@ fn t_c2826_thinking_families(provider_bdd: &ProviderBdd) {
             || anthropic_deepseek.get("thinking").is_none(),
         "c2826: Anthropic deepseek MUST NOT 发送 budget_tokens：{anthropic_deepseek}"
     );
-    // off 档：注入后必须整体省略 thinking 字段。
     assert!(
         body["anthropic_off"].get("thinking").is_none(),
         "c2826: off 档必须省略 thinking 字段：{}",

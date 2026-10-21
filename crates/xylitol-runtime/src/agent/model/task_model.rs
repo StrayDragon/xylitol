@@ -1,5 +1,3 @@
-//! Task-scoped model resolution — single entry for compaction summary and future 旁路任务.
-
 use std::sync::Arc;
 
 use crate::agent::compaction::CompactionSettings;
@@ -11,7 +9,6 @@ use xylitol_plugin_sdk::{XyGenerateOptions, XyModel};
 
 pub use xylitol_plugin_sdk::{CompactionModelAttribution, CompactionSummaryBinding};
 
-/// Resolve the model and thinking options for a compaction summary request.
 pub fn resolve_compaction_summary(
     settings: &CompactionSettings,
     mm: &ModelManager,

@@ -1,8 +1,3 @@
-//! Shared process/TLS observation gates + unit-test span collector.
-//!
-//! Provider plugins and compaction emit through the same atomics so composition
-//! root / BDD scopes arm every crate at once.
-
 use std::cell::RefCell;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
@@ -11,13 +6,10 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 use fastrace::collector::{Config, Reporter, SpanRecord};
 
-/// Max Unicode scalars for `text` fields in provider-trace JSONL (c1000).
 pub const PROVIDER_TRACE_TEXT_MAX: usize = 4096;
 
-/// Hard cap for `observation_io = full` (protect OTLP batch size).
 pub const OBSERVATION_IO_FULL_MAX: usize = 65_536;
 
-/// Truncate for Langfuse observation I/O (shared by generation / tool / turn).
 pub fn truncate_observation_text(text: &str, max: usize) -> (String, bool) {
     let count = text.chars().count();
     if count <= max {
@@ -30,7 +22,6 @@ static PROVIDER_TRACE_ACTIVE: AtomicBool = AtomicBool::new(false);
 static OBSERVATION_IO_TIER: AtomicU8 = AtomicU8::new(0);
 static TOOL_OBSERVATION_IO_TIER: AtomicU8 = AtomicU8::new(0);
 
-/// How much generation / turn I/O to attach as Langfuse observation attributes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u8)]
 pub enum ObservationIoTier {
@@ -49,7 +40,6 @@ impl ObservationIoTier {
         }
     }
 
-    /// Unicode-scalar cap for observation I/O at this tier (`None` → no I/O).
     pub fn max_chars(self) -> Option<usize> {
         match self {
             Self::None => None,
@@ -59,7 +49,6 @@ impl ObservationIoTier {
     }
 }
 
-/// Snapshot of process-level obs gates for [`ObsGateScope`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ObsGateState {
     pub active: bool,
@@ -87,7 +76,6 @@ thread_local! {
     static SCOPED_GATES: RefCell<Option<ObsGateState>> = const { RefCell::new(None) };
 }
 
-/// RAII install of thread-local obs gates (unit tests / sync inject).
 pub struct ObsGateScope {
     prev: Option<ObsGateState>,
 }
@@ -114,7 +102,6 @@ fn with_gates_mut<R>(f: impl FnOnce(&mut ObsGateState) -> R) -> Option<R> {
     })
 }
 
-/// Called from composition-root logging init when the FileReporter is installed.
 pub fn set_provider_trace_active(active: bool) {
     if with_gates_mut(|s| s.active = active).is_some() {
         return;
@@ -130,7 +117,6 @@ pub fn provider_trace_active() -> bool {
     PROVIDER_TRACE_ACTIVE.load(Ordering::Relaxed)
 }
 
-/// Called from composition root when `[otel].observation_io` is resolved.
 pub fn set_observation_io_tier(tier: ObservationIoTier) {
     if with_gates_mut(|s| s.observation_io = tier).is_some() {
         return;
@@ -146,7 +132,6 @@ pub fn observation_io_tier() -> ObservationIoTier {
     ObservationIoTier::from_u8(OBSERVATION_IO_TIER.load(Ordering::Relaxed))
 }
 
-/// Called from composition root when `[otel].tool_observation_io` is resolved.
 pub fn set_tool_observation_io_tier(tier: ObservationIoTier) {
     if with_gates_mut(|s| s.tool_observation_io = tier).is_some() {
         return;
@@ -182,7 +167,6 @@ fn ensure_demux_reporter() {
     });
 }
 
-/// Unit-test span collector: installs a process demux reporter once.
 pub struct SpanCollectScope {
     buf: std::sync::Arc<Mutex<Vec<SpanRecord>>>,
     prev: Option<std::sync::Arc<Mutex<Vec<SpanRecord>>>>,

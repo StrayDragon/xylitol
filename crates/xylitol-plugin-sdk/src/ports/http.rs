@@ -1,5 +1,3 @@
-//! HTTP hook port consumed by dialect plugins (header bag + body seams).
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -7,10 +5,8 @@ use serde_json::Value;
 
 use crate::error::XyError;
 
-/// Portable header map for provider HTTP hooks.
 pub type HeaderBag = serde_json::Map<String, serde_json::Value>;
 
-/// Three-seam HTTP hooks (before headers, before JSON body, after response).
 #[async_trait]
 pub trait HttpHooks: Send + Sync {
     async fn before_headers(&self, headers: &mut HeaderBag) -> Result<(), XyError>;
@@ -18,7 +14,6 @@ pub trait HttpHooks: Send + Sync {
     async fn after_response(&self, status: u16, headers: &HeaderBag);
 }
 
-/// Run [`HttpHooks::before_headers`] when hooks are present.
 pub async fn run_before_headers(
     hooks: &Option<Arc<dyn HttpHooks>>,
     headers: &mut HeaderBag,
@@ -29,7 +24,6 @@ pub async fn run_before_headers(
     Ok(())
 }
 
-/// Run [`HttpHooks::before_request`] when hooks are present.
 pub async fn run_before_request(
     hooks: &Option<Arc<dyn HttpHooks>>,
     model: &str,
@@ -41,7 +35,6 @@ pub async fn run_before_request(
     Ok(())
 }
 
-/// Run [`HttpHooks::after_response`] when hooks are present.
 pub async fn run_after_response(
     hooks: &Option<Arc<dyn HttpHooks>>,
     status: u16,

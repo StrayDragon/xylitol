@@ -1,22 +1,9 @@
-//! ApplicationOwned pointer hit pipeline (c2858 / package-tui-pointer).
-//!
-//! Engine holds geometry + gesture classification; hosts map opaque [`HitId`]
-//! values to product meaning (fold target, tab, mermaid pan, …). Empty
-//! [`HitRegionList`] is equivalent to today's unhooked mouse path.
-//!
-//! Hosts SHOULD register via [`Hit`] (`on_line` follows the transcript,
-//! `at_cell` sticks to a visible pane cell) and [`crate::TUI::mark_hit`].
-//! [`HitRegion`] is engine storage.
-
 use crate::utils::ansi_escape_len;
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use unicode_width::UnicodeWidthChar;
 
-/// Opaque hit identity. Host-owned; the engine never interprets product kinds.
 pub type HitId = u64;
 
-/// Where a [`Hit`] lives. Hosts SHOULD use [`Hit::on_line`] / [`Hit::at_cell`]
-/// instead of constructing this directly.
 #[derive(
     Debug,
     Clone,
@@ -30,22 +17,17 @@ pub type HitId = u64;
 )]
 #[strum(serialize_all = "PascalCase")]
 pub enum HitSpace {
-    /// Transcript line; follows scroll (`content_row = scroll_top + screen_row`).
     #[default]
     Content,
-    /// Visible pane cell; stays on the same screen cell when the view scrolls.
     Viewport,
 }
 
-/// Host-facing mark. Engine storage is [`HitRegion`]; this is the direct API
-/// for `src/` / demos — "this fold is on line 12" vs "this button is at cell (c,r)".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Hit {
     region: HitRegion,
 }
 
 impl Hit {
-    /// Stick to a transcript line (fold triangle, mermaid block, …).
     #[must_use]
     pub fn on_line(id: HitId, line: usize) -> Self {
         Self {
@@ -53,7 +35,6 @@ impl Hit {
         }
     }
 
-    /// Stick to a visible pane cell (scrollbar `^`/`v`, overlay chrome).
     #[must_use]
     pub fn at_cell(id: HitId, col: u16, row: u16) -> Self {
         Self {
@@ -109,10 +90,6 @@ impl HitSpace {
     }
 }
 
-/// Engine hit rectangle. Prefer [`Hit`] at the host boundary.
-///
-/// `content_row` is a transcript line ([`HitSpace::Content`]) or a pane row
-/// ([`HitSpace::Viewport`]). Columns are display cells (ANSI-stripped).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HitRegion {
     pub id: HitId,
@@ -121,7 +98,6 @@ pub struct HitRegion {
     pub col_start: usize,
     pub col_end: usize,
     pub height: usize,
-    /// When true, Left Down latches until Up and MUST NOT start transcript drag.
     pub capturing: bool,
 }
 
@@ -152,7 +128,6 @@ impl HitRegion {
     }
 }
 
-/// Ordered hit table. Later entries win at the same cell (z-order for overlays).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HitRegionList {
     regions: Vec<HitRegion>,
@@ -179,7 +154,6 @@ impl HitRegionList {
         }
     }
 
-    /// Host path: push a [`Hit`] without assembling [`HitRegion`] fields.
     pub fn mark(&mut self, hit: Hit) {
         self.push(hit.into_region());
     }
@@ -193,7 +167,6 @@ impl HitRegionList {
         self.regions.iter().copied().find(|r| r.id == id)
     }
 
-    /// Screen cell → id using **live** `scroll_top` (not a registration snapshot).
     #[must_use]
     pub fn hit_at(
         &self,
@@ -249,10 +222,6 @@ impl HitRegionList {
     }
 }
 
-/// When a pointer click is reported relative to Left Down / Up.
-///
-/// String form is PascalCase (`DownSwallow`, `UpIfEmptySelection`) via strum
-/// so hosts / BDD can parse without a second match table.
 #[derive(
     Debug,
     Clone,
@@ -266,11 +235,8 @@ impl HitRegionList {
 )]
 #[strum(serialize_all = "PascalCase")]
 pub enum PointerClickPhase {
-    /// Today's ath33: Left Down on a hit swallows drag; Up does not report click.
     #[default]
     DownSwallow,
-    /// Opt-in: Up reports click only when the selection is empty and the pointer
-    /// did not drag. Empty click MUST NOT copy.
     UpIfEmptySelection,
 }
 
@@ -281,32 +247,23 @@ impl PointerClickPhase {
     }
 }
 
-/// Live viewport snapshot for one mouse event.
 #[derive(Debug, Clone, Copy)]
 pub struct PointerView {
     pub scroll_top: usize,
     pub transcript_rows: u16,
-    /// Pointer is inside a capturing overlay's last painted screen rect.
     pub overlay_capturing: bool,
 }
 
-/// Result of [`PointerPipeline::on_mouse`].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct PointerOutcome {
-    /// Do not start / extend transcript selection for this event.
     pub skip_selection: bool,
-    /// Stop dispatch after AO handling (do not fall through to editor).
     pub consume: bool,
-    /// Armed probe saw a different hover id (cheap reproject, not component stale).
     pub hover_changed: bool,
 }
 
-/// Gesture state that survives ApplicationOwned runtime recreate.
 #[derive(Debug, Clone, Default)]
 pub struct PointerPipeline {
     regions: HitRegionList,
-    /// Optional chrome-only paint table (same ids as [`regions`]). Empty →
-    /// paint uses [`regions`].
     hover_paint: HitRegionList,
     phase: PointerClickPhase,
     probe_armed: bool,
@@ -489,8 +446,6 @@ impl PointerPipeline {
     }
 }
 
-/// Dim-tint every hovered region with `hover_id` on the visible slice (not
-/// selection invert). Multiple rects may share an id (header + rail).
 pub fn apply_hover_tint(
     visible: &mut [String],
     scroll_top: usize,
@@ -517,7 +472,6 @@ pub fn apply_hover_tint(
     }
 }
 
-/// Wrap display columns `[from, to)` in SGR dim (`2`/`22`), preserving inner SGR.
 fn dim_columns(line: &str, from: usize, to: usize) -> String {
     if to <= from || line.is_empty() {
         return line.to_string();

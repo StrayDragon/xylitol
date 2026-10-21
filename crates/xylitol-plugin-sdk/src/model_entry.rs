@@ -1,9 +1,3 @@
-//! YAML wire shape for a single model alias entry (`models.models.<alias>`).
-//!
-//! SSOT for config-loaded model entries (`models.models.*` and `compaction.model`).
-//! `snake_case` keys (no `rename_all`) so YAML anchor/alias
-//! reuse works across `models` and `compaction.model`.
-
 use std::collections::HashMap;
 
 use schemars::JsonSchema;
@@ -15,7 +9,6 @@ fn default_thinking() -> bool {
     true
 }
 
-/// Config-file model entry (models map + compaction task model).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
 pub struct XyModelEntryConfig {
     #[schemars(with = "String")]
@@ -42,7 +35,6 @@ pub struct XyModelEntryConfig {
 }
 
 impl XyModelEntryConfig {
-    /// Per-model API key after config/secret render; empty when omitted (m17).
     pub fn normalized_api_key(&self) -> String {
         match &self.api_key {
             Some(k) if !k.is_empty() => k.clone(),
@@ -50,7 +42,6 @@ impl XyModelEntryConfig {
         }
     }
 
-    /// Convert to runtime [`XyModelConfig`](crate::model::XyModelConfig).
     pub fn to_model_config(&self) -> crate::model::XyModelConfig {
         crate::model::XyModelConfig {
             kind: self.provider,
@@ -62,7 +53,6 @@ impl XyModelEntryConfig {
         }
     }
 
-    /// Resolve thinking support set + level map.
     pub fn resolve_thinking_config(
         &self,
     ) -> Result<(Vec<String>, crate::model::ThinkingLevelMap), String> {
@@ -74,7 +64,6 @@ impl XyModelEntryConfig {
         Ok((levels, map))
     }
 
-    /// Build registry [`XyModelMeta`](crate::model::XyModelMeta) for alias `id`.
     pub fn to_model_meta(&self, id: &str) -> Result<crate::model::XyModelMeta, String> {
         use crate::model::{XyModelMeta, default_context_window_for};
 
@@ -103,7 +92,6 @@ impl XyModelEntryConfig {
         })
     }
 
-    /// Ephemeral meta for task-scoped models (not registered in ModelRegistry).
     pub fn to_ephemeral_meta(&self) -> Result<crate::model::XyModelMeta, String> {
         self.to_model_meta(&self.model)
     }

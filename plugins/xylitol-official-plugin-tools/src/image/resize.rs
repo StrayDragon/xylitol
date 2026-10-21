@@ -1,28 +1,15 @@
-//! Image resizing with dimension and byte-size constraints.
-//!
-//! Uses the `image` crate for core operations.
-
 use base64::Engine as _;
 use image::GenericImageView;
 use std::io::Cursor;
 
 use super::error::ImageError;
 
-/// Result of a resize operation.
-///
-/// Only the encoded payload + MIME type are consumed by product (read tool);
-/// dimension/flags metadata was dropped in c2750 (no reader).
 #[derive(Debug, Clone)]
 pub struct ResizedImage {
-    /// Base64-encoded image data.
     pub data: String,
-    /// MIME type (e.g. "image/jpeg").
     pub mime_type: String,
 }
 
-/// Read JPEG EXIF orientation (r1441): scans APP1 ‘Exif\0\0’ segments and the
-/// initial IFD0 entry (tag 0x0112, SHORT, 1..=8). Returns `None` for non-JPEG
-/// inputs, missing EXIF, or orientations that need no transform.
 fn read_exif_orientation(data: &[u8]) -> Option<u8> {
     if !data.starts_with(&[0xFF, 0xD8]) {
         return None;
@@ -58,7 +45,6 @@ fn read_exif_orientation(data: &[u8]) -> Option<u8> {
     None
 }
 
-/// Minimal TIFF/IFD0 parser for tag 0x0112 (SHORT).
 fn parse_tiff_orientation(tiff: &[u8]) -> Option<u8> {
     if tiff.len() < 8 {
         return None;
@@ -104,14 +90,11 @@ fn parse_tiff_orientation(tiff: &[u8]) -> Option<u8> {
     None
 }
 
-/// Options for image resizing.
 #[derive(Debug, Clone)]
 pub struct ImageResizeOptions {
     pub max_width: u32,
     pub max_height: u32,
-    /// Maximum encoded (base64) size in bytes. Default: 4.5MB (below Anthropic 5MB limit).
     pub max_bytes: usize,
-    /// JPEG quality (1-100). Default: 80.
     pub jpeg_quality: u8,
 }
 
@@ -120,17 +103,12 @@ impl Default for ImageResizeOptions {
         Self {
             max_width: 2000,
             max_height: 2000,
-            max_bytes: 4_500_000, // 4.5MB of base64 payload
+            max_bytes: 4_500_000,
             jpeg_quality: 80,
         }
     }
 }
 
-/// Resize an image to fit within constraints.
-///
-/// - Scales down if exceeding max dimensions (preserving aspect ratio)
-/// - Converts to JPEG if PNG exceeds byte limit
-/// - Applies EXIF orientation metadata before any thumbnail work (r1441)
 pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<ResizedImage, ImageError> {
     let mut img = image::load_from_memory(data)
         .map_err(|e| ImageError::decode("failed to decode image", e))?;
@@ -143,7 +121,6 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
     let (mut w, mut h) = img.dimensions();
     let mut was_resized = false;
 
-    // Scale down if needed
     if w > options.max_width || h > options.max_height {
         let ratio = (options.max_width as f64 / w as f64)
             .min(options.max_height as f64 / h as f64)
@@ -159,7 +136,6 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
         image::DynamicImage::ImageRgba8(img.to_rgba8())
     };
 
-    // Try PNG first, then JPEG if too large
     let mut png_bytes = Vec::new();
     {
         let mut cursor = Cursor::new(&mut png_bytes);
@@ -176,7 +152,6 @@ pub fn resize_image(data: &[u8], options: &ImageResizeOptions) -> Result<Resized
         });
     }
 
-    // Fallback to JPEG with quality control
     let rgb = resized.to_rgba8();
     let raw = rgb.as_raw();
     let mut jpeg_bytes = Vec::new();
@@ -218,7 +193,6 @@ mod tests {
 
     #[test]
     fn test_resize_small_image_stays_same() {
-        // Create a small 10x10 PNG
         let mut buf = Vec::new();
         {
             let mut cursor = Cursor::new(&mut buf);
@@ -227,12 +201,8 @@ mod tests {
         }
 
         let result = resize_image(&buf, &ImageResizeOptions::default()).unwrap();
-        // Small image passes through as PNG (may re-encode to JPEG when the
-        // byte limit forces it — metadata fields were removed in c2750).
         assert!(result.mime_type == "image/png" || result.mime_type == "image/jpeg");
     }
-
-    // ── EXIF orientation（r1441）─────────────────────────────────────
 
     fn jpeg_rgb(w: u32, h: u32) -> Vec<u8> {
         let raw: Vec<u8> = (0..w * h).flat_map(|_| [0x10u8, 0x20, 0x30]).collect();
@@ -249,14 +219,14 @@ mod tests {
         let mut out = Vec::new();
         out.extend_from_slice(b"II");
         out.extend_from_slice(&[0x2A, 0x00]);
-        out.extend_from_slice(&8u32.to_le_bytes()); // IFD0 offset
-        out.extend_from_slice(&1u16.to_le_bytes()); // one entry
-        out.extend_from_slice(&0x0112u16.to_le_bytes()); // tag Orientation
-        out.extend_from_slice(&3u16.to_le_bytes()); // type SHORT
-        out.extend_from_slice(&1u32.to_le_bytes()); // count
+        out.extend_from_slice(&8u32.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&0x0112u16.to_le_bytes());
+        out.extend_from_slice(&3u16.to_le_bytes());
+        out.extend_from_slice(&1u32.to_le_bytes());
         out.extend_from_slice(&(orientation as u16).to_le_bytes());
-        out.extend_from_slice(&[0u8, 0u8]); // pad
-        out.extend_from_slice(&0u32.to_le_bytes()); // next IFD
+        out.extend_from_slice(&[0u8, 0u8]);
+        out.extend_from_slice(&0u32.to_le_bytes());
         out
     }
 
@@ -291,7 +261,7 @@ mod tests {
     #[test]
     fn exif_orientation_6_swaps_dimensions() {
         let plain = jpeg_rgb(4, 8);
-        let rotated = jpeg_with_exif(&plain, 6); // Rotate270
+        let rotated = jpeg_with_exif(&plain, 6);
         let out = resize_image(&rotated, &ImageResizeOptions::default()).unwrap();
         let (w, h) = decoded_dims(&out);
         assert_eq!((w, h), (8, 4), "EXIF orientation 6 MUST 交换宽高");
@@ -300,7 +270,7 @@ mod tests {
     #[test]
     fn exif_orientation_1_keeps_dimensions() {
         let plain = jpeg_rgb(4, 8);
-        let kept = jpeg_with_exif(&plain, 1); // NoTransforms
+        let kept = jpeg_with_exif(&plain, 1);
         let out = resize_image(&kept, &ImageResizeOptions::default()).unwrap();
         let (w, h) = decoded_dims(&out);
         assert_eq!((w, h), (4, 8), "EXIF orientation 1 MUST 不旋转");

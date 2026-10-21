@@ -1,8 +1,3 @@
-//! Current xylitol session identity for Langfuse OTEL attributes (c1480).
-//!
-//! SSOT lives in `xylitol-plugin-sdk`. This module re-exports the shared slot
-//! so provider plugins and tests keep a stable import path.
-
 pub use xylitol_plugin_sdk::{
     ObsSessionContext, ObsSessionScope, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_LLM,
     clear_obs_session, langfuse_generation_properties, langfuse_generation_properties_from,

@@ -1,5 +1,3 @@
-//! Regression: MCP / registry tool names must be provider-safe on the wire.
-
 #[cfg(test)]
 mod tests {
     use xylitol_plugin_sdk::{is_mcp_tool_name, is_provider_safe_tool_name, mcp_tool_public_name};

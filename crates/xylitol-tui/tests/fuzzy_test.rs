@@ -31,8 +31,6 @@ fn test_case_insensitive() {
 
 #[test]
 fn test_consecutive_better_than_scattered() {
-    // consecutive: -2 per consecutive pair, start bonus -1, 3 bonus chars total = -(2*2) - 1 = -5, then +0.06 = ~-4.94
-    // scattered: just 3 bonuses at word boundaries (-1 each = -3), +0.09 = ~-2.91
     let consecutive = fuzzy_match("foo", "foobar").unwrap();
     let scattered = fuzzy_match("foo", "f_o_o_bar").unwrap();
     assert!(

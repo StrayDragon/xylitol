@@ -1,5 +1,3 @@
-//! Steps for `package-tui-scrollbar-gutter` (c2891).
-
 use crate::bdd::prelude::*;
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
 use rstest::fixture;
@@ -13,13 +11,11 @@ const DOCK: usize = 2;
 const GUTTER_COL: usize = 39;
 
 fn long_body() -> Vec<String> {
-    // 39 列正文：carve 后 col 38 仍为正文（供 stamp 不侵入断言）。
     (0..20)
         .map(|i| format!("L{i:0>3}{}", "x".repeat(35)))
         .collect()
 }
 
-/// 脚本化正文组件：`rows` 行内容 + 尾随 dock 行，两个 given 共用。
 struct ScriptLines {
     rows: Vec<String>,
 }
@@ -84,8 +80,6 @@ fn g_enabled(gutter_bdd: &GutterBdd) {
     *seeded(gutter_bdd) = Some(seed(long_component()));
 }
 
-/// 消费协议镜像（host 分派同款）：gutter id → scroll 动作。包层场景验证
-/// 引擎 pending → 动作闭环；产品 match 分支由 app-tui-transcript 场景锁。
 fn consume_gutter_click(tui: &mut TUI<NullTerminal>) {
     match tui.take_pointer_click() {
         Some(xylitol_tui::GUTTER_TOP_HIT_ID) => {
@@ -117,7 +111,6 @@ fn g_scrolled_away(gutter_bdd: &GutterBdd) {
 
 #[given("ApplicationOwned 会话开启滚动槽且已向上滚动离开底部")]
 fn g_scrolled_up(gutter_bdd: &GutterBdd) {
-    // 从底部（seed 即 follow 底）向上滚即离开。
     let mut tui = seed(long_component());
     assert!(tui.application_owned_scroll_by(-3));
     *seeded(gutter_bdd) = Some(tui);
@@ -152,7 +145,6 @@ fn dispatch_click(tui: &mut TUI<NullTerminal>, kind: MouseEventKind, col: u16, r
 fn w_click_top(gutter_bdd: &GutterBdd) {
     let mut tui = seeded(gutter_bdd);
     let tui = tui.as_mut().expect("seeded");
-    // host 每帧 paint 后 sync 的镜像：hit 注册先于点击。
     tui.replace_hits(tui.scroll_gutter_hit_set());
     let col = COLS - 1;
     dispatch_click(tui, MouseEventKind::Down(MouseButton::Left), col, 0);
@@ -176,7 +168,6 @@ fn w_click_bottom(gutter_bdd: &GutterBdd) {
 fn w_drag_gutter(gutter_bdd: &GutterBdd) {
     let mut tui = seeded(gutter_bdd);
     let tui = tui.as_mut().expect("seeded");
-    // host 每帧 paint 后 sync 的镜像：hit 注册先于点击。
     tui.replace_hits(tui.scroll_gutter_hit_set());
     let col = COLS - 1;
     dispatch_click(tui, MouseEventKind::Down(MouseButton::Left), col, 0);
@@ -241,8 +232,6 @@ fn t_no_selection(gutter_bdd: &GutterBdd) {
     assert!(!tui.application_owned_has_selection(), "no selection");
 }
 
-// ── thumb / 拖拽（c2891 verify 增补）───────────────────────────────────────
-
 use xylitol_tui::{gutter_scroll_for_pointer, gutter_thumb_len, gutter_thumb_offset};
 
 #[when("向下滚动到中段后渲染")]
@@ -261,9 +250,7 @@ fn t_thumb_ratio(gutter_bdd: &GutterBdd) {
     let painted = tui.last_painted_lines();
     let top = plain(painted.first().expect("row").as_str());
     let bottom = plain(painted[ROWS as usize - DOCK - 1].as_str());
-    // 按钮恒占首尾
     assert!(top.ends_with('^') && bottom.ends_with('v'));
-    // thumb ∶= 公式位置（中段滚动 → 非顶部）
     let content = tui
         .application_owned_content_lines()
         .map(<[String]>::len)
@@ -281,7 +268,6 @@ fn w_press_mid(gutter_bdd: &GutterBdd) {
     let mut tui = seeded(gutter_bdd);
     let tui = tui.as_mut().expect("seeded");
     tui.replace_hits(tui.scroll_gutter_hit_set());
-    // inner 末行（row=h-2）：thumb 区之外 → grab=half，期望确定
     let lower = ROWS - DOCK as u16 - 2;
     dispatch_click(
         tui,
@@ -300,7 +286,6 @@ fn t_pressed_jump(gutter_bdd: &GutterBdd) {
         .map(<[String]>::len)
         .unwrap_or(0);
     let vh = (ROWS - DOCK as u16) as usize;
-    // Down@row4(inner3，非 thumb) → grab=thumb_len/2，offset 钳到 max
     let lower_inner = (ROWS - DOCK as u16 - 3) as usize;
     let thumb_len = gutter_thumb_len(content, vh);
     let expect = gutter_scroll_for_pointer(lower_inner, thumb_len / 2, 18, 6);
@@ -315,7 +300,6 @@ fn t_pressed_jump(gutter_bdd: &GutterBdd) {
 fn g_dragging(gutter_bdd: &GutterBdd) {
     let mut tui = seed(long_component());
     tui.replace_hits(tui.scroll_gutter_hit_set());
-    // inner 末行 Down（非 thumb）→ grab=half；后续 Drag 坐标确定
     let lower = ROWS - DOCK as u16 - 2;
     dispatch_click(
         &mut tui,
@@ -337,12 +321,10 @@ fn w_drag_move(gutter_bdd: &GutterBdd) {
 fn t_drag_follow_and_release(gutter_bdd: &GutterBdd) {
     let mut tui = seeded(gutter_bdd);
     let tui = tui.as_mut().expect("seeded");
-    // Down@row4(inner3,grab=1) → Drag@row2(inner1)：offset=0
     let expect = gutter_scroll_for_pointer(1, 1, 18, 6);
     assert_eq!(tui.application_owned_scroll_top(), expect, "drag follow");
     let before = tui.application_owned_scroll_top();
     dispatch_click(tui, MouseEventKind::Up(MouseButton::Left), COLS - 1, 2);
-    // 抬起后再 Drag：不再跟随
     let top_before = tui.application_owned_scroll_top();
     dispatch_click(tui, MouseEventKind::Drag(MouseButton::Left), COLS - 1, 5);
     let _ = before;

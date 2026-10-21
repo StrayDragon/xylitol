@@ -1,14 +1,7 @@
-//! Quiet write/edit tool results for LLM history (c1310 / t22).
-//!
-//! Raw execute strings may still carry UI fields (`display_diff`, etc.). Session
-//! history content becomes a short success sentence; full payload goes to
-//! `details` (providers map content only).
-
 use serde_json::Value;
 
 use xylitol_plugin_sdk::message::AgentPart;
 
-/// Split a tool execute preview into LLM-facing content + optional UI details.
 pub fn quiet_write_edit_for_history(
     name: &str,
     raw: &str,

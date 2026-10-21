@@ -1,14 +1,3 @@
-//! Terminal abstraction + crossterm-backed implementation with keyboard
-//! protocol negotiation (c410).
-//!
-//! Aligns with pi-tui's `terminal.ts` (531 lines): Kitty keyboard protocol
-//! probe at start, modifyOtherKeys fallback, OSC title/progress, and
-//! pre-exit stdin drain. The key architectural difference (pi owns the raw
-//! stdin byte stream; xy delegates input to crossterm's `event::read`) is
-//! resolved by route A (design.md): xy pushes Kitty enhancement flags via
-//! crossterm at start and lets keys.rs's incremental matcher handle both
-//! Kitty and legacy sequences, rather than intercepting the Kitty response.
-
 use crossterm::event::{
     DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
@@ -22,29 +11,14 @@ use std::time::{Duration, Instant};
 
 use crate::keys::set_kitty_protocol_active;
 
-// ── Keyboard protocol constants (pi terminal.ts:11-17) ─────────────────────
-
-/// Kitty flags to request: disambiguate escape codes (1) + report event types
-/// (2) + report alternate keys (4) = 7. Matches pi DESIRED_KITTY_KEYBOARD_PROTOCOL_FLAGS.
 const KITTY_FLAGS_REQUEST: u8 = 7;
 
-/// Deep pop — Kitty/Ghostty stack depth is typically ≤8; empties the active
-/// screen's keyboard stack (safe when already empty).
 const KITTY_POP_ALL_SEQUENCE: &str = "\x1b[<8u";
-/// Query after a single Push: ask current flags + DA. **Must not** include
-/// another `\x1b[>7u` — that double-pushed the stack and left Ghostty in
-/// enhanced mode after a single pop on exit.
 const KITTY_KEYBOARD_PROTOCOL_QUERY: &str = "\x1b[?u\x1b[c";
 
-/// modifyOtherKeys mode 2 enable / reset (pi terminal.ts:322/328).
 const MODIFY_OTHER_KEYS_ENABLE: &str = "\x1b[>4;2m";
 const MODIFY_OTHER_KEYS_DISABLE: &str = "\x1b[>4;0m";
 
-/// Terminal trait - abstract output/lifecycle interface for the TUI.
-///
-/// `start`/`stop` own the raw-mode + protocol negotiation lifecycle; the
-/// output methods mirror pi's Terminal interface. Test doubles (VirtualTerminal)
-/// implement these as no-ops.
 pub trait Terminal {
     fn write(&mut self, data: &str);
     fn columns(&self) -> u16;
@@ -55,56 +29,30 @@ pub trait Terminal {
     fn clear_from_cursor(&mut self);
     fn clear_screen(&mut self);
     fn flush(&mut self);
-    /// Re-query the terminal size from the underlying backend. Called after a
-    /// resize event so the cached `columns`/`rows` stay in sync.
     fn refresh_size(&mut self) {}
 
-    /// Host hint: set cached size from a resize event without querying the OS.
-    /// Real terminals SHOULD apply this — `refresh_size` alone can lag.
     fn set_size_hint(&mut self, _cols: u16, _rows: u16) {}
 
-    // ── c410: lifecycle + protocol (defaults no-op for test doubles) ──
-
-    /// Enter raw mode, enable bracketed paste, and negotiate keyboard
-    /// enhancement protocols (Kitty push + modifyOtherKeys fallback). Called
-    /// once at TUI start, before the first render.
     fn start(&mut self) {}
-    /// Tear down: drain residual input, disable protocols, restore non-raw
-    /// mode. Called once at TUI exit. MUST be safe to call without a prior
-    /// `start` (no-op then).
     fn stop(&mut self) {}
 
-    /// Opt in to mouse reporting (`EnableMouseCapture`). Default off.
-    /// Implementations SHOULD remember desire across `stop`/`start` (suspend).
     fn enable_mouse_capture(&mut self) {}
-    /// Opt out of mouse reporting. `stop` MUST disable if currently active.
     fn disable_mouse_capture(&mut self) {}
-    /// Whether mouse capture is currently active on the TTY (not merely desired).
     fn mouse_capture_active(&self) -> bool {
         false
     }
 
-    /// Enter the terminal alternate buffer (`CSI ?1049h` / crossterm EnterAlternateScreen).
-    /// Used by [`crate::InteractionMode::ApplicationOwned`]. Default no-op.
     fn enter_alternate_screen(&mut self) {}
-    /// Leave the alternate buffer. `stop` MUST leave if currently active.
     fn leave_alternate_screen(&mut self) {}
-    /// Whether the alternate buffer is currently entered.
     fn alternate_screen_active(&self) -> bool {
         false
     }
 
-    // ── c410: OSC / cursor helpers (defaults no-op for test doubles) ──
-
-    /// Set the terminal window title via OSC 0;... BEL.
     fn set_title(&mut self, _title: &str) {}
-    /// Toggle the taskbar progress indicator via OSC 9;4 (xterm/conpty).
     fn set_progress(&mut self, _active: bool) {}
-    /// Move the cursor by `lines` rows (negative = up, positive = down).
     fn move_by(&mut self, _lines: i32) {}
 }
 
-/// No-op [`Terminal`] for dispatch / layout tests. Fixed size, no I/O.
 #[derive(Debug, Clone, Copy)]
 pub struct NullTerminal {
     cols: u16,
@@ -139,17 +87,6 @@ impl Terminal for NullTerminal {
     fn flush(&mut self) {}
 }
 
-/// True when `XYLITOL_TUI_MOUSE` is a truthy opt-in (`1` / `true` / `yes`).
-///
-/// **Default off.** This is a **lab / PTY e2e** hook for `agent_demo` and harnesses
-/// that call [`Terminal::enable_mouse_capture`] explicitly — **not** a product
-/// setting for the inline TUI app.
-///
-/// Enabling capture on Inline (emulator-owned) sessions trades away
-/// unmodified terminal selection/scroll. Official mouse UX (application
-/// selection, click-fold) belongs on [`crate::InteractionMode::ApplicationOwned`]
-/// — see change `c2070` / capability `package-tui-interaction-modes`.
-/// The product `TerminalGuard` deliberately does **not** read this env.
 pub fn env_requests_mouse_capture() -> bool {
     match std::env::var("XYLITOL_TUI_MOUSE") {
         Ok(v) => {
@@ -160,39 +97,20 @@ pub fn env_requests_mouse_capture() -> bool {
     }
 }
 
-/// Parse a Kitty keyboard-protocol response `CSI ?Nu` into the negotiated
-/// flags `N`. Returns `None` for non-matching sequences (e.g. a
-/// device-attributes response `CSI ?62;4;52c`). A zero-flags response
-/// (`CSI ?0u`) returns `Some(0)`, distinct from no match.
-///
-/// Mirrors pi `parseKeyboardProtocolNegotiationSequence`. Pure / unit-testable.
 pub fn parse_kitty_flags(seq: &str) -> Option<u32> {
-    // Match `\x1b[?<digits>u` exactly.
     let rest = seq.strip_prefix("\x1b[?")?;
     let digits = rest.strip_suffix('u')?;
     digits.parse::<u32>().ok()
 }
 
-// ── CrosstermTerminal ──────────────────────────────────────────────────────
-
-/// Crossterm-backed terminal. Owns raw-mode + keyboard-protocol negotiation
-/// state (c410): `start()` pushes Kitty flags (or falls back to
-/// modifyOtherKeys) and `stop()` reverses whichever was enabled.
 pub struct CrosstermTerminal {
     columns: u16,
     rows: u16,
-    /// Whether `start()` successfully pushed Kitty enhancement flags. Drives
-    /// the pop on `stop()`.
     kitty_pushed: bool,
-    /// Whether modifyOtherKeys mode 2 is currently enabled.
     modify_other_keys_active: bool,
-    /// Whether `start()` has run (so `stop()` knows to tear down).
     started: bool,
-    /// Host/API asked for mouse capture (survives suspend `stop`/`start`).
     mouse_capture_desired: bool,
-    /// Mouse capture is currently enabled on the TTY.
     mouse_capture_active: bool,
-    /// Alternate screen buffer currently entered (ApplicationOwned).
     alternate_screen_active: bool,
 }
 
@@ -224,41 +142,18 @@ impl CrosstermTerminal {
         }
     }
 
-    /// Probe for Kitty keyboard protocol support and enable it (or fall back
-    /// to modifyOtherKeys). Route A (design.md): xy pushes Kitty enhancement
-    /// flags via crossterm unconditionally and sets the keys.rs global active,
-    /// because keys.rs's matcher handles both Kitty and legacy sequences — a
-    /// terminal that ignores the push simply keeps emitting legacy sequences.
     fn negotiate_keyboard_protocol(&mut self) {
-        // Prefer crossterm's push (same CSI >Nu on unix). Optionally emit pi's
-        // combined query for terminals that answer DA before Kitty flags —
-        // modifyOtherKeys fallback remains available but is not auto-armed
-        // on route A (keys.rs still matches legacy when the push is ignored).
         let _ = execute!(
             io::stdout(),
             PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::from_bits_truncate(
                 KITTY_FLAGS_REQUEST,
             ))
         );
-        // Best-effort DA/Kitty probe for parity with pi; response is not
-        // consumed here (crossterm owns the input layer).
         self.write_raw(KITTY_KEYBOARD_PROTOCOL_QUERY);
-        // keys.rs matches legacy sequences even when the kitty flag is set, so
-        // setting this active is safe: terminals that ignore the push keep
-        // working via the legacy branches.
         set_kitty_protocol_active(true);
         self.kitty_pushed = true;
     }
 
-    /// After `EnterAlternateScreen`, re-push Kitty flags and arm modifyOtherKeys.
-    ///
-    /// Pi negotiates keyboard **after** alt-buffer is already active
-    /// (`tui-alt-screen` enter → `ProcessTerminal.start`). xylitol does
-    /// `start()` first then ApplicationOwned `enter_alternate_screen`, so this rearm is
-    /// the parity path (research: reapply after alt-screen / suspend restore).
-    /// Dual-arm is intentional under crossterm: we cannot consume Kitty DA
-    /// responses the way pi's stdin owner does; write both and let the
-    /// emulator honor what it supports.
     fn rearm_keyboard_after_alt_screen(&mut self) {
         let _ = execute!(
             io::stdout(),
@@ -272,15 +167,8 @@ impl CrosstermTerminal {
         self.modify_other_keys_active = true;
     }
 
-    /// Pop keyboard enhancement on the **current** screen stack.
-    ///
-    /// Kitty maintains **separate** stacks for main vs alternate screens; pop
-    /// **before** leaving the alt buffer (spec). Emits a deep pop so leftover
-    /// pushes from start + alt rearm cannot leak CSI-u key reporting into the
-    /// parent shell / subsequent tmux.
     fn pop_keyboard_enhancements(&mut self) {
         self.write_raw(KITTY_POP_ALL_SEQUENCE);
-        // Crossterm pop as a second belt for stacks that only honor its path.
         let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
         let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
         set_kitty_protocol_active(false);
@@ -295,17 +183,10 @@ impl CrosstermTerminal {
         self.modify_other_keys_active = false;
     }
 
-    /// Write raw bytes directly to stdout (bypasses crossterm's Command
-    /// machinery for sequences crossterm doesn't expose, e.g. OSC 9;4).
     fn write_raw(&mut self, data: &str) {
         let _ = io::stdout().write_all(data.as_bytes());
     }
 
-    /// Drain residual stdin events for up to `max_ms`, exiting early after
-    /// `idle_ms` of no input. Prevents Kitty key-release events from leaking
-    /// to the parent shell over slow SSH (pi terminal.ts:368). Called by
-    /// `stop()` AFTER the Kitty pop so late releases do not generate new
-    /// escape sequences.
     fn drain_input(&mut self, max_ms: u64, idle_ms: u64) {
         let deadline = Instant::now() + Duration::from_millis(max_ms);
         let mut last_seen = Instant::now();
@@ -314,7 +195,6 @@ impl CrosstermTerminal {
             if Instant::now() >= idle_deadline {
                 break;
             }
-            // poll for a short slice; consume any waiting event.
             if crossterm::event::poll(Duration::from_millis(idle_ms)).unwrap_or(false) {
                 let _ = crossterm::event::read();
                 last_seen = Instant::now();
@@ -322,7 +202,6 @@ impl CrosstermTerminal {
         }
     }
 
-    /// Apply desired mouse capture to the live TTY when `started`.
     fn sync_mouse_capture(&mut self) {
         if !self.started {
             return;
@@ -336,7 +215,6 @@ impl CrosstermTerminal {
         }
     }
 
-    /// Release capture on the TTY without clearing desire (for `stop`/suspend).
     fn release_mouse_capture_active(&mut self) {
         if self.mouse_capture_active {
             let _ = execute!(io::stdout(), DisableMouseCapture);
@@ -412,13 +290,8 @@ impl Terminal for CrosstermTerminal {
         }
         self.started = false;
 
-        // Drop mouse reporting before paste/Kitty teardown (keeps exit order
-        // aligned with crossterm event-read example: disable what we enabled).
         self.release_mouse_capture_active();
 
-        // Kitty: pop the **alt** keyboard stack before LeaveAlternateScreen
-        // (https://sw.kovidgoyal.net/kitty/keyboard-protocol/). Leaving first
-        // left Ghostty reporting CSI-u into the shell / next tmux session.
         if self.alternate_screen_active {
             self.pop_keyboard_enhancements();
             self.disable_modify_other_keys();
@@ -426,14 +299,11 @@ impl Terminal for CrosstermTerminal {
             self.alternate_screen_active = false;
         }
 
-        // Disable bracketed paste first.
         let _ = execute!(io::stdout(), DisableBracketedPaste);
 
-        // Pop any remaining **main**-screen Kitty pushes from `start()`.
         self.pop_keyboard_enhancements();
         self.disable_modify_other_keys();
 
-        // Drain residual input (slow-SSH key-release leak guard).
         self.drain_input(200, 30);
 
         let _ = terminal::disable_raw_mode();
@@ -461,11 +331,6 @@ impl Terminal for CrosstermTerminal {
         }
         let _ = execute!(io::stdout(), EnterAlternateScreen);
         self.alternate_screen_active = true;
-        // Some emulators reset bracketed paste / keyboard enhancement when
-        // entering the alt buffer. Without re-arm:
-        // - pastes arrive as per-char keys (typewriter feel)
-        // - Shift+Enter may degrade to plain Enter (pi: re-query Kitty +
-        //   modifyOtherKeys CSI 27;2;13~ / Ghostty `\n` when kitty active).
         if self.started {
             let _ = execute!(io::stdout(), EnableBracketedPaste);
             self.rearm_keyboard_after_alt_screen();
@@ -476,7 +341,6 @@ impl Terminal for CrosstermTerminal {
         if !self.alternate_screen_active {
             return;
         }
-        // Pop alt-screen Kitty stack while still on alt (see `stop`).
         self.pop_keyboard_enhancements();
         self.disable_modify_other_keys();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
@@ -492,8 +356,6 @@ impl Terminal for CrosstermTerminal {
     }
 
     fn set_progress(&mut self, active: bool) {
-        // OSC 9;4;3 = indeterminate active, OSC 9;4;0 = clear. Single emission
-        // per state change (no 1s keepalive like pi — the TUI clears on stop).
         if active {
             self.write_raw("\x1b]9;4;3\x07");
         } else {
@@ -514,8 +376,6 @@ impl Terminal for CrosstermTerminal {
 mod tests {
     use super::*;
 
-    // ── parse_kitty_flags (spec tp02) ──
-
     #[test]
     fn parse_nonzero_flags() {
         assert_eq!(parse_kitty_flags("\x1b[?7u"), Some(7));
@@ -524,14 +384,11 @@ mod tests {
 
     #[test]
     fn parse_zero_flags() {
-        // Zero is distinct from None: the terminal understood the query but
-        // supports no Kitty flags (drives the modifyOtherKeys fallback).
         assert_eq!(parse_kitty_flags("\x1b[?0u"), Some(0));
     }
 
     #[test]
     fn parse_nonmatch_device_attributes() {
-        // A DA response like CSI ?62;4;52c is NOT a Kitty flags response.
         assert_eq!(parse_kitty_flags("\x1b[?62;4;52c"), None);
     }
 
@@ -539,7 +396,7 @@ mod tests {
     fn parse_garbage() {
         assert_eq!(parse_kitty_flags("abc"), None);
         assert_eq!(parse_kitty_flags(""), None);
-        assert_eq!(parse_kitty_flags("\x1b[7u"), None); // missing '?'
-        assert_eq!(parse_kitty_flags("\x1b[?7"), None); // missing 'u'
+        assert_eq!(parse_kitty_flags("\x1b[7u"), None);
+        assert_eq!(parse_kitty_flags("\x1b[?7"), None);
     }
 }

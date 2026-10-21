@@ -1,15 +1,9 @@
-//! Steps for `app-tui-bridge` — 桥缝模型级族（atb1–atb15 可转子集）。
-//!
-//! 全部经产品单一桥缝 [`apply_xy_event`]（或其 UiModel API）驱动；
-//! 断言落在 UI-only 模型的可观察字段上，不触碰渲染层。
-
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};
 use xylitol_app_tui::{BashBlockStatus, UiEntry, UiModel, UiPhase, apply_xy_event};
 use xylitol_plugin_sdk::{AgentMessage, AgentPart, XyLlmMessage};
 
-/// One UiModel driven through the bridge seam.
 pub struct BridgeBdd {
     pub model: RefCell<UiModel>,
 }
@@ -40,8 +34,6 @@ fn assistant_message(parts: Vec<AgentPart>) -> AgentMessage {
     })
 }
 
-// atb1 ─────────────────────────────────────────────────────────
-
 #[when("以桥缝注入元数据事件（模型选择与 thinking 档位）")]
 fn w_atb1_metadata(bridge_bdd: &BridgeBdd) {
     apply(
@@ -69,8 +61,6 @@ fn t_atb1_unchanged(bridge_bdd: &BridgeBdd) {
     );
     assert_eq!(model.phase, UiPhase::Idle);
 }
-
-// atb2 ─────────────────────────────────────────────────────────
 
 #[when("以桥缝注入 AgentStart 与中间 TurnEnd")]
 fn w_atb2_busy(bridge_bdd: &BridgeBdd) {
@@ -178,8 +168,6 @@ fn t_r1952_idle_keeps_error(bridge_bdd: &BridgeBdd) {
     );
 }
 
-// atb3 ─────────────────────────────────────────────────────────
-
 #[when("以桥缝注入 QueueUpdate steer=2 follow_up=1")]
 fn w_atb3_queue(bridge_bdd: &BridgeBdd) {
     apply(
@@ -239,8 +227,6 @@ fn t_atb3_diff_filled(bridge_bdd: &BridgeBdd) {
         "atb3: display_diff extracted on End: {diff:?}"
     );
 }
-
-// atb5 ─────────────────────────────────────────────────────────
 
 #[when("以桥缝注入 CompactionStart")]
 fn w_atb5_start(bridge_bdd: &BridgeBdd) {
@@ -349,8 +335,6 @@ fn t_atb5_failed(bridge_bdd: &BridgeBdd) {
     assert_eq!(status, "Failed");
 }
 
-// atb6 ─────────────────────────────────────────────────────────
-
 #[when("以桥缝注入 AutoRetryStart attempt=2 max=5")]
 fn w_atb6_start(bridge_bdd: &BridgeBdd) {
     apply(
@@ -400,8 +384,6 @@ fn t_atb6_failed_note(bridge_bdd: &BridgeBdd) {
         model.entries
     );
 }
-
-// atb7 ─────────────────────────────────────────────────────────
 
 #[when("以桥缝注入流式正文与 aborted 错误")]
 fn w_atb7_abort(bridge_bdd: &BridgeBdd) {
@@ -457,8 +439,6 @@ fn t_atb7_no_dup(bridge_bdd: &BridgeBdd) {
     );
 }
 
-// atb8 / atb9 ──────────────────────────────────────────────────
-
 #[when("以桥缝创建 pending Bash 块并增量追加输出")]
 fn w_atb8_append(bridge_bdd: &BridgeBdd) {
     let mut model = bridge_bdd.model.borrow_mut();
@@ -511,8 +491,6 @@ fn t_atb8_finished(bridge_bdd: &BridgeBdd) {
         model.entries
     );
 }
-
-// atb10 ────────────────────────────────────────────────────────
 
 fn tool_call_part(id: &str, name: &str, args: serde_json::Value) -> AgentPart {
     AgentPart::ToolCall {
@@ -618,8 +596,6 @@ fn t_atb10_no_snapshot_dup(bridge_bdd: &BridgeBdd) {
         model.entries
     );
 }
-
-// atb11 / atb12 ────────────────────────────────────────────────
 
 #[when("以桥缝注入 write 意图（含 content）与成功 JSON 结果")]
 fn w_atb11_write(bridge_bdd: &BridgeBdd) {
@@ -746,8 +722,6 @@ fn t_atb11_error_kept(bridge_bdd: &BridgeBdd) {
     );
 }
 
-// atb12 ────────────────────────────────────────────────────────
-
 #[when("以桥缝在 End 前注入 write 快照（arguments.content）")]
 fn w_atb12_intent_body(bridge_bdd: &BridgeBdd) {
     apply(
@@ -781,8 +755,6 @@ fn t_atb12_body_before_end(bridge_bdd: &BridgeBdd) {
         model.entries
     );
 }
-
-// atb13 ────────────────────────────────────────────────────────
 
 #[when("以桥缝注入 file_path 别名的 write 意图")]
 fn w_atb13_alias(bridge_bdd: &BridgeBdd) {
@@ -893,8 +865,6 @@ fn t_atb13_line_range(bridge_bdd: &BridgeBdd) {
     );
 }
 
-// atb14 ────────────────────────────────────────────────────────
-
 #[when("以桥缝注入 Provider 错误")]
 fn w_atb14_provider_error(bridge_bdd: &BridgeBdd) {
     apply(
@@ -928,7 +898,6 @@ fn w_atb14_aborted(bridge_bdd: &BridgeBdd) {
 fn t_atb14_abort_path(bridge_bdd: &BridgeBdd) {
     let model = bridge_bdd.model.borrow();
     assert_eq!(aborted_notice_count(&model), 1);
-    // Provider 错误的既有粘性行保留；aborted 只新增提示，不再加 Error 行。
     assert_eq!(
         model
             .entries
@@ -939,8 +908,6 @@ fn t_atb14_abort_path(bridge_bdd: &BridgeBdd) {
         "abort must not add a second sticky Error row"
     );
 }
-
-// atb15 ────────────────────────────────────────────────────────
 
 #[when("经 wire 序列化往返 ToolExecutionStart 后注入桥缝")]
 fn w_atb15_roundtrip(bridge_bdd: &BridgeBdd) {

@@ -1,5 +1,3 @@
-//! Streaming text / thinking deltas.
-
 use crate::bridge::UiModel;
 use crate::driver::XyEvent;
 

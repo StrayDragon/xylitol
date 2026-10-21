@@ -1,5 +1,3 @@
-//! app-tui-commands BDD 绑定（c2826 specs-compact 斜杠族）。
-
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_cli_surface::{CliEntryBdd, cli_entry_bdd};
 use rstest_bdd_macros::scenario;

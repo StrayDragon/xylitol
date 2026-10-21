@@ -1,5 +1,3 @@
-//! ApplicationOwned / dual interaction modes (c2070 / package-tui-interaction-modes).
-
 mod support;
 
 use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
@@ -122,7 +120,6 @@ fn selection_scroll_and_dock_exclude_integration() {
     sel.handle_mouse(&up, &mut scroll, tr, dock, &mut sink);
     assert_eq!(sink.copies, vec!["one".to_string()]);
 
-    // Pointer in dock must not start selection.
     let dock_down = MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: 0,
@@ -133,7 +130,6 @@ fn selection_scroll_and_dock_exclude_integration() {
     sink.copies.clear();
     assert!(!sel.handle_mouse(&dock_down, &mut scroll, tr, dock, &mut sink));
 
-    // Wheel in dock must not scroll transcript (ptim10).
     let top = scroll.scroll_top();
     let dock_wheel = MouseEvent {
         kind: MouseEventKind::ScrollUp,
@@ -159,7 +155,6 @@ fn application_owned_paint_caps_at_terminal_height() {
     tui.begin_application_owned_session();
     tui.request_render(true);
     tui.render_now().expect("paint");
-    // ApplicationOwned must not grow scrollback via overflow lines.
     assert_eq!(tui.terminal.rows(), 8);
 }
 
@@ -248,9 +243,7 @@ fn application_owned_suspend_restores_alt_and_mouse() {
     tui.begin_application_owned_session();
     let enter = tui.terminal.alt_enter_calls();
     let mouse = tui.terminal.mouse_enable_calls();
-    tui.with_terminal_suspended(|| {
-        // external editor owns TTY
-    });
+    tui.with_terminal_suspended(|| {});
     assert!(tui.application_session_active());
     assert!(tui.terminal.alternate_screen_active());
     assert!(tui.mouse_capture_enabled());
@@ -292,7 +285,6 @@ fn application_owned_wheel_scrolls_app_viewport() {
     tui.request_render(true);
     tui.render_now().expect("seed");
 
-    // Follow-end then wheel up should move off the bottom and stay there.
     let wheel = MouseEvent {
         kind: MouseEventKind::ScrollUp,
         column: 1,
@@ -313,8 +305,6 @@ fn application_owned_wheel_scrolls_app_viewport() {
         tui.last_render_perf().ao_vertical_shifted,
         "pure wheel viewport motion should reuse terminal rows"
     );
-    // Content L00..L17 + dock L18,L19; viewport content h=4.
-    // Follow end shows L14..L17; one three-row notch → L11..L14.
     assert_eq!(tui.application_owned_wheel_notch(), 3);
     let raw = tui.terminal.all_writes();
     assert!(
@@ -420,7 +410,6 @@ fn application_owned_copy_notice_armed_on_release_and_clears() {
     assert!(!tui.copy_notice_active());
     assert!(!tui.take_copy_notice());
 
-    // Empty click → no notice.
     let down = MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: 1,
@@ -438,7 +427,6 @@ fn application_owned_copy_notice_armed_on_release_and_clears() {
     assert!(!tui.copy_notice_active());
     assert!(!tui.take_copy_notice());
 
-    // Drag select → copy → notice.
     let down = MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: 0,
@@ -547,7 +535,6 @@ fn application_owned_finish_flushes_queued_clipboard_without_another_paint() {
     );
 }
 
-/// Focused component that records mouse Downs (simulates Editor receiving dock presses).
 struct DockMouseProbe {
     downs: std::rc::Rc<std::cell::Cell<u32>>,
 }
@@ -594,8 +581,6 @@ fn application_owned_dock_down_falls_through_to_focused_component() {
     tui.request_render(true);
     tui.render_now().expect("seed");
 
-    // Establish a transcript selection, then Down in dock must clear it and still
-    // fall through so the focused component sees the press (ptim13).
     let tr_down = MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: 0,
@@ -621,7 +606,7 @@ fn application_owned_dock_down_falls_through_to_focused_component() {
     let dock_down = MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: 1,
-        row: 7, // bottom dock row in 8-row terminal with dock_rows=2
+        row: 7,
         modifiers: KeyModifiers::NONE,
     };
     assert_eq!(
@@ -635,8 +620,6 @@ fn application_owned_dock_down_falls_through_to_focused_component() {
     );
 }
 
-/// Host-style ApplicationOwned path: dock mouse → focused [`Editor`] with absolute
-/// screen coords + [`Editor::set_screen_origin`] (demo / product wiring).
 struct SharedEditorHost {
     editor: std::rc::Rc<std::cell::RefCell<xylitol_tui::Editor>>,
     term_rows: u16,
@@ -645,7 +628,6 @@ struct SharedEditorHost {
 
 impl Component for SharedEditorHost {
     fn render(&mut self, width: usize) -> Vec<String> {
-        // Pad transcript above the dock so dock fallthrough is exercised.
         let mut lines: Vec<String> = (0..self.term_rows as usize)
             .map(|i| format!("transcript-{i}"))
             .collect();
@@ -726,7 +708,6 @@ fn application_owned_editor_double_click_word_via_dock_fallthrough() {
     tui.render_now().expect("seed");
 
     let (origin_row, _) = editor_screen_origin(term_rows, dock_rows, 0);
-    // Editor local content row 1 → absolute screen row origin+1; col 7 = 'l' of apple.
     let screen_row = origin_row + 1;
     let col = 7u16;
     let click = |kind| MouseEvent {
@@ -736,7 +717,6 @@ fn application_owned_editor_double_click_word_via_dock_fallthrough() {
         modifiers: KeyModifiers::NONE,
     };
 
-    // First click (character) — no copy.
     assert_eq!(
         tui.dispatch_event(InputEvent::Mouse(click(MouseEventKind::Down(
             MouseButton::Left
@@ -747,7 +727,6 @@ fn application_owned_editor_double_click_word_via_dock_fallthrough() {
         MouseButton::Left,
     ))));
 
-    // Second click — whole word.
     let _ = tui.dispatch_event(InputEvent::Mouse(click(MouseEventKind::Down(
         MouseButton::Left,
     ))));
@@ -814,7 +793,6 @@ fn application_owned_editor_and_transcript_selection_are_mutex() {
         modifiers: KeyModifiers::NONE,
     };
 
-    // Select "apple" in the editor (cols 4..9 on content row).
     let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
         MouseEventKind::Down(MouseButton::Left),
         4,
@@ -833,7 +811,6 @@ fn application_owned_editor_and_transcript_selection_are_mutex() {
     assert_eq!(editor.borrow().selected_text().as_deref(), Some("apple"));
     assert!(!tui.application_owned_has_selection());
 
-    // Click + drag in transcript — editor highlight must drop; transcript owns it.
     let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
         MouseEventKind::Down(MouseButton::Left),
         0,
@@ -856,7 +833,6 @@ fn application_owned_editor_and_transcript_selection_are_mutex() {
     assert!(tui.application_owned_has_selection());
     assert!(!editor.borrow().has_selection());
 
-    // Click in editor — transcript selection clears; editor can own a new range.
     let _ = tui.dispatch_event(InputEvent::Mouse(mouse(
         MouseEventKind::Down(MouseButton::Left),
         4,
@@ -929,7 +905,6 @@ fn application_owned_transcript_hit_priority_swallows_press() {
         "swallowed press must not start transcript selection"
     );
 
-    // Hook must still be installed after the dispatch (park/restore).
     hit.store(false, Ordering::SeqCst);
     let _ = tui.dispatch_event(InputEvent::Mouse(MouseEvent {
         kind: MouseEventKind::Down(MouseButton::Left),
@@ -945,8 +920,6 @@ fn application_owned_transcript_hit_priority_swallows_press() {
 
 #[test]
 fn application_owned_finalize_only_paint_lines() {
-    // Long component output must not pay finalize/visible_width on every content
-    // line — only the projected ≤height paint surface.
     let lines: Vec<String> = (0..200).map(|i| format!("row-{i:03} payload")).collect();
     let mut tui = TUI::with_interaction_mode(
         LoggingVirtualTerminal::new(80, 24),
@@ -1141,8 +1114,6 @@ fn overlay_viewport_pins_after_reproject() {
     );
 }
 
-/// Soft resize must not reproject width-specific cached lines (editor borders /
-/// markdown wrap). Host uses `request_render(false)` on Resize.
 #[test]
 fn application_owned_soft_resize_rerenders_not_reprojects() {
     struct WidthFill;
@@ -1211,7 +1182,6 @@ fn hit_id_follows_live_scroll_not_registration_snapshot() {
     let content: Vec<String> = (0..20).map(|i| format!("row-{i:02}")).collect();
     let mut tui = ao_seeded(10, content, vec!["dock-a".into(), "dock-b".into()]);
     tui.mark_hit(Hit::on_line(7, 12).cols(0, 8));
-    // 20 content rows, viewport 8 → follow-end scroll_top = 12.
     assert_eq!(tui.application_owned_scroll_top(), 12);
     assert_eq!(
         tui.hit_id_at(1, 0),
@@ -1405,8 +1375,6 @@ fn capturing_region_blocks_transcript_drag() {
     assert!(!tui.application_owned_has_selection());
 }
 
-// c2891 T2：gutter carve —— 组件按物理宽−1排版、stamp 后整行恰物理宽、
-// wheel 快路径（previous_width==render_w）不被 carve 破坏。
 #[test]
 fn application_owned_gutter_carves_width_and_keeps_reproject_fast_path() {
     use xylitol_tui::{ScrollGutter, gutter_active};
@@ -1429,13 +1397,10 @@ fn application_owned_gutter_carves_width_and_keeps_reproject_fast_path() {
 
     tui.request_render(true);
     tui.render_now().expect("first paint");
-    // 顶行：39 列正文 + 末列 '^'；正文未被 stamp 侵入（col 38 仍是正文）
     assert_eq!(tui.terminal.inner().grid_row(0)[39].ch, '^');
     assert_eq!(tui.terminal.inner().grid_row(0)[38].ch, 'x');
-    // dock 行不 stamp（grid 未写入 = '\0'）
     assert_eq!(tui.terminal.inner().grid_row(6)[39].ch, '\0');
 
-    // wheel → reproject 快路径必须命中（carve 后 previous_width 一致性）
     tui.clear_ao_reproject_frames_for_test();
     assert!(tui.application_owned_scroll_by(-3));
     tui.request_render(false);
@@ -1485,6 +1450,5 @@ fn application_owned_gutter_copy_excludes_gutter_column() {
         1,
     )));
     assert!(tui.application_owned_has_selection());
-    // copy-on-release 管线在 carve 下照常 armed（文本洁净由 runtime 单测锁）
     assert!(tui.copy_notice_active());
 }

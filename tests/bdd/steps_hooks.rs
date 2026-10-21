@@ -52,7 +52,6 @@ fn _g_hook_none(agent: &AgentState) {
     agent.hook_entries.borrow_mut().clear();
 }
 
-/// solidify 复合 given：多步折叠（solidify 无 Background / 并且）。
 #[given("注册了匹配 pre.tool_call 的 hook 且返回 block 不允许")]
 fn _g_hook_block_combo(agent: &AgentState) {
     _g_hook_registered(agent, "pre.tool_call".into());
@@ -85,14 +84,12 @@ fn _g_hook_merge_combo(agent: &AgentState) {
         project: vec![],
         user: vec![user.clone()],
     };
-    // Production path: HookDispatcher::new runs three-tier merge_hooks.
     let dispatcher = xylitol_official_plugin_hooks::HookDispatcher::new(&config);
     assert_eq!(
         dispatcher.hook_count(),
         1,
         "same primary event pattern must collapse to one merged hook"
     );
-    // Materialize the user-winning entry for subsequent load/assert steps.
     agent.hook_entries.replace(vec![user]);
 }
 
@@ -108,8 +105,6 @@ fn _g_hook_before_provider_combo(agent: &AgentState) {
     _g_hook_registered(agent, "before_provider_request".into());
 }
 
-/// hooks-wiring solidify：观察型 then 折叠（调用 + 上下文键）。
-/// 参数化（c2921 观察矩阵）：`{key}` 无类型提示 → `.+?` 捕获（specificity 消歧归 runtime）。
 #[then("hook 被调用且上下文含键 {key}")]
 fn _t_wiring_called_key(agent: &AgentState, key: String) {
     let key = strip_quotes(&key);
@@ -148,8 +143,6 @@ fn _g_wiring_bash_block(agent: &AgentState) {
     _g_hook_returns(agent, r#"{"action":"block","reason":"bash被拒绝"}"#.into());
 }
 
-/// 参数化（c2921 取消矩阵）：event/reason 表值带引号（对齐 {pat:string} 生态），
-/// strip 后组装 block JSON 复用既有路径。
 #[given("注册了匹配 {event} 的 hook 且返回 block {block_reason}")]
 fn _g_wiring_block_combo(agent: &AgentState, event: String, block_reason: String) {
     _g_hook_registered(agent, strip_quotes(&event));
@@ -202,7 +195,6 @@ async fn _w_hook_bash_called(agent: &AgentState, cmd: String) {
 
 #[when("hook 被加载")]
 fn _w_hook_loaded(agent: &AgentState) {
-    // Materialize merge the same way production does (HookDispatcher::new).
     let config = xylitol_kernel::config::types::HooksConfig {
         global: agent.hook_entries.borrow().clone(),
         project: vec![],
@@ -276,7 +268,6 @@ fn _t_hook_called(agent: &AgentState) {
             "expected library-seam hook dispatch, got none"
         );
     }
-    // Legacy hooks.feature (no wiring log): observational.
 }
 
 fn _t_hook_context_has_key(agent: &AgentState, key: String) {
@@ -385,8 +376,6 @@ fn _t_hook_noop(agent: &AgentState) {
         DispatchResult::Allowed
     ));
 }
-
-// ── c2835 后继：before_provider_headers 裸规则回填 ──────────────────
 
 #[when("provider 头构建后")]
 async fn _w_hook_before_headers(agent: &AgentState) {

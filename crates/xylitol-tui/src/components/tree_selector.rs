@@ -1,13 +1,7 @@
-//! Generic tree selector (pi TreeList / TreeSelector inspired).
-//!
-//! Flatten keeps single-child chains flat and bumps indent only at branch points.
-//! Product FilterMode is not hard-coded — use [`TreeSelectorOptions::include_node`].
-
 use crate::keybindings::with_keybindings;
 use crate::tui::{Component, InputEvent};
 use crate::utils::{slice_by_column, truncate_to_width, visible_width};
 
-/// Fixed cursor gutter width (`› ` / `  `) — kept visible while body pans (pi).
 const TREE_GUTTER_WIDTH: usize = 2;
 const MIN_VISIBLE_ANCHOR_CONTENT_WIDTH: usize = 4;
 const MAX_VISIBLE_ANCHOR_CONTENT_WIDTH: usize = 20;
@@ -22,7 +16,6 @@ struct HorizontalViewportRow {
     is_selected: bool,
 }
 
-/// Clip row bodies horizontally so the selected row's entry text stays visible.
 fn render_horizontal_viewport(rows: &[HorizontalViewportRow], width: usize) -> Vec<String> {
     let viewport_width = width.saturating_sub(TREE_GUTTER_WIDTH);
     let max_body_width = rows.iter().map(|r| r.body_width).max().unwrap_or(0);
@@ -58,18 +51,13 @@ fn render_horizontal_viewport(rows: &[HorizontalViewportRow], width: usize) -> V
         .collect()
 }
 
-/// One node in an application-supplied tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TreeNode {
     pub id: String,
     pub label: String,
     pub children: Vec<TreeNode>,
-    /// Optional host annotation (pi `node.label`); shown as `[annotation]`.
     pub annotation: Option<String>,
-    /// Optional preformatted timestamp for the annotation (host owns formatting).
     pub annotation_at: Option<String>,
-    /// Optional host kind tag (e.g. `user` / `assistant` / `tool`); package does not
-    /// hard-code a product role enum — theme renders the prefix via [`TreeSelectorTheme::kind_prefix`].
     pub kind: Option<String>,
 }
 
@@ -113,13 +101,10 @@ impl TreeNode {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GutterInfo {
-    /// Display-indent level where the ancestor connector was shown.
     pub position: usize,
-    /// `true` → draw `│`, `false` → spaces.
     pub show: bool,
 }
 
-/// Flattened row used for navigation and paint.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlatNode {
     pub id: String,
@@ -129,16 +114,13 @@ pub struct FlatNode {
     pub is_last: bool,
     pub gutters: Vec<GutterInfo>,
     pub is_virtual_root_child: bool,
-    /// Parent id in the original tree (for filter re-parenting).
     pub parent_id: Option<String>,
 }
 
 pub type TreeNodePredicate = Box<dyn Fn(&TreeNode) -> bool>;
 
-/// Callback for Shift+L label edit: `(node_id, current_annotation)`.
 pub type TreeLabelEditCallback = Box<dyn FnMut(String, Option<String>)>;
 
-/// Theme closures for tree rows.
 pub struct TreeSelectorTheme {
     pub cursor: Box<dyn Fn(&str) -> String>,
     pub prefix: Box<dyn Fn(&str) -> String>,
@@ -149,8 +131,6 @@ pub struct TreeSelectorTheme {
     pub empty: Box<dyn Fn(&str) -> String>,
     pub annotation: Box<dyn Fn(&str) -> String>,
     pub annotation_time: Box<dyn Fn(&str) -> String>,
-    /// Renders a kind tag into a display prefix (typically `"user: "` with color).
-    /// Receives the raw [`TreeNode::kind`] string; return value is inserted before `label`.
     pub kind_prefix: Box<dyn Fn(&str) -> String>,
 }
 
@@ -178,13 +158,9 @@ impl Default for TreeSelectorTheme {
 
 pub struct TreeSelectorOptions {
     pub max_visible: usize,
-    /// When `false`, use ASCII `|--` / `` `-- `` connectors.
     pub unicode_connectors: bool,
-    /// Optional filter; default keeps all nodes.
     pub include_node: Option<TreeNodePredicate>,
-    /// Highlight path from root to this id with an active marker.
     pub active_id: Option<String>,
-    /// Optional host label appended after `(i/n)` (e.g. `[no-tools]`).
     pub status_suffix: Option<String>,
 }
 
@@ -212,12 +188,10 @@ pub struct TreeSelector {
     visible_parent: std::collections::HashMap<String, Option<String>>,
     theme: TreeSelectorTheme,
     options: TreeSelectorOptions,
-    /// Incremental label search (AND with [`TreeSelectorOptions::include_node`]).
     search_query: String,
     show_annotation_timestamps: bool,
     pub on_select: Option<Box<dyn FnMut(String)>>,
     pub on_cancel: Option<Box<dyn FnMut()>>,
-    /// `(id, current_annotation)` when host should open a label editor.
     #[allow(clippy::type_complexity)]
     pub on_label_edit: Option<TreeLabelEditCallback>,
 }
@@ -250,7 +224,6 @@ impl TreeSelector {
         sel
     }
 
-    /// Update annotation on a node without resetting selection/folds.
     pub fn set_annotation(&mut self, id: &str, annotation: Option<String>) {
         if let Some(node) = find_node_mut(&mut self.roots, id) {
             node.annotation = annotation;
@@ -267,7 +240,6 @@ impl TreeSelector {
         find_node(&self.roots, id).and_then(|n| n.annotation.as_deref())
     }
 
-    /// Move selection to `id` if it is in the current visible (filtered) list.
     pub fn select_id(&mut self, id: &str) -> bool {
         if let Some(idx) = self.filtered.iter().position(|n| n.id == id) {
             self.selected_index = idx;
@@ -305,7 +277,6 @@ impl TreeSelector {
         self.restore_selection(prev_id.as_deref());
     }
 
-    /// Clear search if non-empty. Returns `true` when a query was cleared.
     pub fn clear_search_if_any(&mut self) -> bool {
         if self.search_query.is_empty() {
             return false;
@@ -348,7 +319,6 @@ impl TreeSelector {
         &self.filtered
     }
 
-    /// After filter/search/fold changes: keep prior id if still visible, else first row.
     fn restore_selection(&mut self, prev_id: Option<&str>) {
         if self.filtered.is_empty() {
             self.selected_index = 0;
@@ -432,7 +402,6 @@ impl TreeSelector {
             .cloned()
             .collect();
 
-        // Hide descendants of folded nodes (pi).
         if !self.folded_nodes.is_empty() {
             let mut skip = std::collections::HashSet::new();
             for flat in &filtered {
@@ -525,7 +494,6 @@ impl TreeSelector {
                 current_id = children[0].clone();
             }
         }
-        // up
         loop {
             let parent_id = self.visible_parent.get(&current_id).cloned().flatten();
             let Some(parent_id) = parent_id else {
@@ -643,7 +611,6 @@ fn child_indent_for(indent: usize, multiple_children: bool, just_branched: bool)
     }
 }
 
-/// Public flatten helper for unit tests.
 pub fn flatten_tree(roots: &[TreeNode], active_id: Option<&str>) -> Vec<FlatNode> {
     let mut result = Vec::new();
     let contains_active = mark_contains_active(roots, active_id);
@@ -847,7 +814,6 @@ fn recalculate_visual_structure(filtered: &mut [FlatNode], flat: &[FlatNode]) {
         .map(|(i, n)| (n.id.clone(), i))
         .collect();
 
-    // Stack: id, indent, just_branched, show_connector, is_last, gutters, is_virtual
     let mut stack: Vec<RecalcStackItem> = Vec::new();
     for (i, id) in visible_root_ids.iter().rev().enumerate() {
         let is_last = i == 0;
@@ -1079,7 +1045,6 @@ impl Component for TreeSelector {
         }
 
         if let Some(ch) = crate::keys::printable_from_key_event(key) {
-            // Ignore bare space-only spam at start; still allow spaces inside query.
             if ch == " " && self.search_query.is_empty() {
                 return;
             }
@@ -1144,11 +1109,9 @@ mod tests {
         let by_id: std::collections::HashMap<_, _> =
             flat.iter().map(|n| (n.id.as_str(), n)).collect();
         assert_eq!(by_id["r"].indent, 0);
-        // r has multiple children → a and b at indent 1 with connectors
         assert_eq!(by_id["a"].indent, 1);
         assert!(by_id["a"].show_connector);
         assert_eq!(by_id["b"].indent, 1);
-        // a→a1: after branch, first generation +1 then single-child may stay
         assert!(by_id["a1"].indent >= by_id["a"].indent);
         assert_eq!(by_id["b1"].indent, by_id["b2"].indent);
         assert!(by_id["b1"].show_connector || by_id["b2"].show_connector);
@@ -1249,7 +1212,6 @@ mod tests {
             },
         );
         assert_eq!(sel.selected_index, 0);
-        // Defaults: tui.select.pageUp/pageDown unbound (←→ reserved for product).
         sel.handle_input(InputEvent::Key(KeyEvent::new(
             KeyCode::Right,
             KeyModifiers::NONE,
@@ -1314,7 +1276,6 @@ mod tests {
             TreeSelectorTheme::default(),
             TreeSelectorOptions::default(),
         );
-        // Select "b" (branch with two children) — navigate to it
         while sel.selected_id() != Some("b") {
             sel.handle_input(InputEvent::Key(KeyEvent::new(
                 KeyCode::Down,
@@ -1323,7 +1284,6 @@ mod tests {
             if sel.selected_id() == Some("b") {
                 break;
             }
-            // safety
             if sel.selected_index > 20 {
                 break;
             }
@@ -1526,7 +1486,6 @@ mod tests {
             TreeSelectorTheme::default(),
             TreeSelectorOptions::default(),
         );
-        // Navigate to b1 (index shifts if we only clamp by index after shrinking).
         while sel.selected_id() != Some("b1") {
             sel.handle_input(InputEvent::Key(crossterm::event::KeyEvent::new(
                 crossterm::event::KeyCode::Down,
@@ -1538,7 +1497,6 @@ mod tests {
         }
         assert_eq!(sel.selected_id(), Some("b1"));
         let before_index = sel.selected_index;
-        // Drop the A branch — list shrinks; b1 remains but at a lower index.
         sel.set_include_node(Some(Box::new(|n| n.id != "a" && n.id != "a1")));
         assert!(
             sel.filtered_ids().contains(&"b1"),

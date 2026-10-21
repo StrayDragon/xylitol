@@ -1,8 +1,3 @@
-//! OpenAI Responses API adapter via `async-openai` [`Client`] (c1070).
-//!
-//! Streaming and non-streaming `/v1/responses` calls; reasoning text →
-//! [`XyChunk::ThinkingDelta`], output text → [`XyChunk::TextDelta`].
-
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -19,7 +14,6 @@ use crate::wire_policy::WirePolicy;
 use xylitol_plugin_sdk::message::XyLlmMessage;
 use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSchema};
 
-/// Adapter for the OpenAI Responses API (`/v1/responses`).
 pub struct OpenAiResponsesAdapter {
     client: OpenAiClientFactory,
     model: String,
@@ -27,7 +21,6 @@ pub struct OpenAiResponsesAdapter {
 }
 
 impl OpenAiResponsesAdapter {
-    /// Create a new Responses API adapter with [`WirePolicy::default`].
     pub fn new(
         api_key: String,
         model: String,
@@ -37,7 +30,6 @@ impl OpenAiResponsesAdapter {
         Self::with_wire_policy(api_key, model, base_url, hooks, WirePolicy::default())
     }
 
-    /// Create a Responses adapter with an explicit wire policy (tests / inject).
     pub fn with_wire_policy(
         api_key: String,
         model: String,
@@ -53,7 +45,6 @@ impl OpenAiResponsesAdapter {
         }
     }
 
-    /// Wire policy used for req/resp field expectations (c1880).
     pub fn wire_policy(&self) -> WirePolicy {
         self.wire_policy
     }
@@ -65,7 +56,6 @@ impl OpenAiResponsesAdapter {
         stream: bool,
         options: &crate::thinking::XyGenerateOptions,
     ) -> Value {
-        // Sole business-layout path for Responses bodies (c1890).
         super::assembler::ResponsesAssembler::new(self.wire_policy).assemble(
             &self.model,
             messages,
@@ -80,8 +70,6 @@ impl OpenAiResponsesAdapter {
     }
 }
 
-/// Prefer upstream `error.message` when the SDK string embeds `content:{...}` JSON
-/// (e.g. integer `code` deserialize failure masking `exceed_context_size_error`).
 pub fn format_responses_error(err: &impl std::fmt::Display) -> String {
     let raw = err.to_string();
     match extract_embedded_provider_error_message(&raw) {
@@ -90,7 +78,6 @@ pub fn format_responses_error(err: &impl std::fmt::Display) -> String {
     }
 }
 
-/// Pull `error.message` (+ optional `type`) from an embedded JSON error body.
 pub fn extract_embedded_provider_error_message(raw: &str) -> Option<String> {
     let json_src = if let Some(rest) = raw.split_once("content:").map(|(_, r)| r) {
         extract_balanced_json_object(rest)?
@@ -133,12 +120,6 @@ fn extract_balanced_json_object(s: &str) -> Option<String> {
     None
 }
 
-/// Assemble a Responses `/v1/responses` JSON body (pi-aligned store/strict/summary/include).
-///
-/// Crate-private implementation for [`super::ResponsesAssembler`] (c1890 sole public seam).
-///
-/// [`WirePolicy`] gates unexposed knobs (`previous_response_id`, `prompt_cache_key`).
-/// Also returns full-replay omit diagnostics (illegal `thinkingSignature`).
 pub(crate) fn assemble_responses_body_with_diagnostics(
     model: &str,
     messages: Vec<XyLlmMessage>,
@@ -204,9 +185,6 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
     (body, replay_diagnostics)
 }
 
-/// Strip wire knobs denied by [`WirePolicy`] (c1880).
-///
-/// Prefer [`super::assembler::ResponsesAssembler::apply_wire_policy`] outside this module.
 pub(crate) fn apply_responses_wire_policy(body: &mut Value, wire_policy: &WirePolicy) {
     let Some(obj) = body.as_object_mut() else {
         return;
@@ -236,8 +214,6 @@ impl OpenAiResponsesAdapter {
         if let Some(t) = &trace {
             t.capture_request_input(&body.to_string());
         }
-        // BYOT + `Value`: compatible servers (e.g. llama.cpp) may omit fields that
-        // typed `ResponseStreamEvent` requires (`created_at` on `response.created`).
         let sdk_stream = self
             .client
             .bind(&options.obs_session)
@@ -354,27 +330,16 @@ fn responses_sdk_stream(
     })
 }
 
-/// Mutable state for Responses SSE → chunk mapping (streaming tool calls).
 #[derive(Default)]
 pub struct ResponsesStreamState {
-    /// item_id → (name, partial args json, started)
     function_calls: HashMap<String, (String, String, bool)>,
-    /// reasoning item id → last done item JSON (for encrypted_content backfill).
     reasoning_items_by_id: HashMap<String, Value>,
     usage_input: u64,
     usage_output: u64,
-    /// Last usage JSON blob (for policy-aware cache_read mapping).
     usage_value: Option<Value>,
-    /// Wire policy for usage honesty gates (c1880).
     wire_policy: WirePolicy,
 }
 
-/// Map one Responses SSE JSON payload (lenient `Value`) into zero or more chunks.
-///
-/// Compatible servers may emit partial objects (e.g. `response.created` without
-/// `created_at`); those events are ignored rather than failing deserialization.
-///
-/// Public for BDD / harness (c1250 pab13).
 pub fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -> Vec<XyChunk> {
     let event_type = data.get("type").and_then(|v| v.as_str()).unwrap_or("");
     match event_type {
@@ -518,13 +483,10 @@ pub fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -
         }
         "response.completed" => finish_responses_terminal(data, state, XyStopReason::Stop),
         "response.incomplete" => finish_responses_terminal(data, state, XyStopReason::MaxTokens),
-        // Partial lifecycle events (`response.created`, `response.in_progress`, …)
-        // must not fail the stream on compatible APIs.
         _ => Vec::new(),
     }
 }
 
-/// Terminal `completed` / `incomplete`: backfill encrypted signatures then Done.
 fn finish_responses_terminal(
     data: &Value,
     state: &mut ResponsesStreamState,
@@ -581,8 +543,6 @@ fn finish_responses_terminal(
     out
 }
 
-/// Merge non-empty `encrypted_content` from terminal `response.output` into stored
-/// reasoning items (pi Azure / store:false backfill). Emits ThinkingEnd updates.
 fn backfill_reasoning_encrypted_from_terminal(
     data: &Value,
     state: &mut ResponsesStreamState,
@@ -717,15 +677,10 @@ fn parse_responses_output(json: &Value, wire_policy: WirePolicy) -> Vec<XyChunk>
     chunks
 }
 
-// ── XyLlmMessage conversion ────────────────────────────────────
-
-/// Convert a slice of [`XyLlmMessage`] values to OpenAI Responses `input` items.
 pub fn messages_to_responses_input(messages: &[XyLlmMessage]) -> Vec<Value> {
     messages_to_responses_input_with_diagnostics(messages).0
 }
 
-/// Like [`messages_to_responses_input`], also returning omit/replay diagnostics
-/// (e.g. illegal `thinkingSignature` JSON omitted under full-replay).
 pub fn messages_to_responses_input_with_diagnostics(
     messages: &[XyLlmMessage],
 ) -> (Vec<Value>, Vec<Diagnostic>) {
@@ -734,7 +689,6 @@ pub fn messages_to_responses_input_with_diagnostics(
     (items, diagnostics)
 }
 
-/// Build Responses `input` with optional system/developer prepend (c1270 / pi align).
 pub fn messages_to_responses_input_with_options(
     messages: &[XyLlmMessage],
     options: &crate::thinking::XyGenerateOptions,
@@ -748,7 +702,6 @@ pub fn messages_to_responses_input_with_options(
     items
 }
 
-/// Prepend system prompt as `developer` (thinking on) or `system` (off), matching pi.
 fn prepend_system_prompt_item(
     items: &mut Vec<Value>,
     system_prompt: Option<&str>,
@@ -762,7 +715,6 @@ fn prepend_system_prompt_item(
     } else {
         "system"
     };
-    // pi uses bare `{role, content: string}` for system/developer; keep that shape.
     items.insert(
         0,
         serde_json::json!({
@@ -772,7 +724,6 @@ fn prepend_system_prompt_item(
     );
 }
 
-/// Convert a slice of [`XyLlmMessage`] values to OpenAI Responses `input` items.
 fn convert_messages_to_input_items(
     messages: &[XyLlmMessage],
     diagnostics: &mut Vec<Diagnostic>,
@@ -784,10 +735,6 @@ fn convert_messages_to_input_items(
             XyLlmMessage::UserMessage { content, .. } => {
                 let text = collect_user_text_parts(content);
                 if !text.is_empty() {
-                    // Responses API requires each input item to declare its
-                    // `type`; a bare {role, content} object yields
-                    // "Cannot determine type of 'item'" once non-message items
-                    // (function_call / function_call_output) are mixed in.
                     items.push(serde_json::json!({
                         "type": "message",
                         "role": "user",
@@ -796,7 +743,6 @@ fn convert_messages_to_input_items(
                 }
             }
             XyLlmMessage::AssistantMessage { content, .. } => {
-                // Full-replay only: opaque thinkingSignature → reasoning item (pi).
                 for part in content {
                     if let AgentPart::Thinking {
                         thinking_signature: Some(sig),
@@ -842,8 +788,6 @@ fn convert_messages_to_input_items(
                     .collect();
 
                 if !text.is_empty() || !tool_calls.is_empty() {
-                    // Only emit a message item when there is assistant text;
-                    // a tool-call round may have no text (pure function_call).
                     if !text.is_empty() {
                         items.push(serde_json::json!({
                             "type": "message",
@@ -872,7 +816,6 @@ fn convert_messages_to_input_items(
     items
 }
 
-/// User / tool-result text (Text + Thinking for tool output payloads).
 fn collect_user_text_parts(parts: &[AgentPart]) -> String {
     let mut buf = String::new();
     for part in parts {
@@ -883,7 +826,6 @@ fn collect_user_text_parts(parts: &[AgentPart]) -> String {
     buf
 }
 
-/// Assistant `output_text` MUST be Text-only (c1270): never merge Thinking.
 fn collect_assistant_output_text(parts: &[AgentPart]) -> String {
     let mut buf = String::new();
     for part in parts {
@@ -899,9 +841,6 @@ mod tests {
     use super::*;
     use crate::dto::{AgentPart, XyLlmMessage};
 
-    /// Every Responses API input item MUST declare a `type`, or OpenAI rejects
-    /// the request with "Cannot determine type of 'item'" once non-message
-    /// items (function_call / function_call_output) are mixed in.
     #[test]
     fn all_items_have_type_field() {
         let msgs = vec![
@@ -914,11 +853,6 @@ mod tests {
         }
     }
 
-    /// Regression: a tool-calling continuation round (user → assistant with a
-    /// tool_call → tool result) must produce well-typed items: message,
-    /// function_call, function_call_output. This is exactly the sequence that
-    /// failed before c375 (no continuation) and then hit the Responses API
-    /// "Cannot determine type of 'item'" error after c375 enabled it.
     #[test]
     fn tool_round_items_are_well_typed() {
         let msgs = vec![
@@ -945,7 +879,6 @@ mod tests {
             XyLlmMessage::tool_result("call-1", "ls", vec![AgentPart::text("file.txt")], false),
         ];
         let items = messages_to_responses_input(&msgs);
-        // user message, assistant message, function_call, function_call_output
         let types: Vec<&str> = items
             .iter()
             .map(|i| i.get("type").and_then(|v| v.as_str()).unwrap_or("(none)"))
@@ -960,7 +893,6 @@ mod tests {
             ],
             "item types in order: {types:?}"
         );
-        // function_call_output must carry the call_id matching the call.
         let output = items
             .iter()
             .find(|i| i.get("type").and_then(|v| v.as_str()) == Some("function_call_output"))
@@ -971,8 +903,6 @@ mod tests {
 
     #[test]
     fn assistant_tool_only_round_emits_function_call_not_empty_message() {
-        // Assistant round with a tool_call and NO text must not emit an empty
-        // message item (would confuse the API); only the function_call item.
         let msgs = vec![XyLlmMessage::AssistantMessage {
             content: vec![AgentPart::ToolCall {
                 id: "c1".into(),
@@ -1000,8 +930,6 @@ mod tests {
 
     #[test]
     fn partial_response_created_is_ignored_not_fatal() {
-        // llama.cpp (and other compatible servers) may omit `created_at` on
-        // `response.created`; typed ResponseStreamEvent would fail here.
         let data: Value = serde_json::from_str(
             r#"{"type":"response.created","response":{"id":"resp_1","object":"response","status":"in_progress"}}"#,
         )
@@ -1046,7 +974,6 @@ mod tests {
 
     #[test]
     fn function_call_args_stream_before_done() {
-        // t0718-shaped: item.added → many args deltas → item.done
         let mut state = ResponsesStreamState::default();
         let added = serde_json::json!({
             "type": "response.output_item.added",
@@ -1490,8 +1417,6 @@ mod tests {
         assert_eq!(diags[0].source.as_deref(), Some("openai-responses"));
     }
 
-    /// c27 seam (bridge): post-compact working history has no summarized-away
-    /// thinkingSignature — assemble MUST NOT invent old reasoning ids.
     #[test]
     fn compact_shaped_history_does_not_invent_old_reasoning_signature() {
         let msgs = vec![
@@ -1525,8 +1450,6 @@ mod tests {
         );
     }
 
-    /// Positive control: kept assistant with signature still full-replays after
-    /// a compaction summary user row (c27 must not strip retained signatures).
     #[test]
     fn kept_signature_after_compact_summary_still_replays() {
         let reasoning = serde_json::json!({

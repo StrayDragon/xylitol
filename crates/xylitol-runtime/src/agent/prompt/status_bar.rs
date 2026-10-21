@@ -1,19 +1,4 @@
-//! Agent status bar — code-maintained readings projected after history fold.
-//!
-//! Sibling of [`super::session_env`]: that module **persists** a sparse
-//! `<session_env>` Env row into the cache prefix. This module **does not
-//! persist**. It appends at most one user row whose root is
-//! [`STATUS_BAR_XML_ROOT`].
-//!
-//! Todo is a **child** of that root (`<todo>`), not a standalone fake user
-//! turn. SSOT stays `agent_todo` Custom. Parked c1895 persist / registry /
-//! independent session kind are not this module.
-//!
-//! New readings: new fields on [`AgentStatusBar`] + a new arm in [`Self::render`].
-//! Generate and token estimate share [`project_outbound`]; compact summarizer
-//! stays on [`crate::agent::llm_project::project_for_llm`].
-
-#[allow(unused_imports)] // re-export for docs / call sites that name the XML root
+#[allow(unused_imports)]
 pub use xylitol_plugin_sdk::status_bar::{AgentStatusBar, STATUS_BAR_XML_ROOT, project_outbound};
 
 #[cfg(test)]

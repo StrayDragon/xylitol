@@ -100,7 +100,6 @@ pub(crate) fn _t_agent_event_order(agent: &AgentState) {
     assert!(!agent.events.borrow().is_empty());
 }
 
-// Thinking
 #[given("当前思考级别为 {level:string}")]
 pub(crate) fn _g_agent_thinking_level(agent: &AgentState, level: String) {
     let mut r = ModelRegistry::new();

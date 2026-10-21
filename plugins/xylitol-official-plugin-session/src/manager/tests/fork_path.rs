@@ -1,11 +1,9 @@
-//! c645: path-based fork (pi createBranchedSession) — not file-order slice.
 use super::super::*;
 use xylitol_plugin_sdk::error::XySessionError;
 use xylitol_plugin_sdk::session::{
     EntryBase, ForkPosition, MessageEntry, fixture_message_json, is_user_message, message_text,
 };
 
-/// Deterministic unix-ms from a string id (test fixture; v6 ms baseline).
 fn fork_entry_ms(id: &str) -> u64 {
     1_781_827_200_000u64
         + id.as_bytes()
@@ -26,13 +24,6 @@ fn msg(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionEntry {
     })
 }
 
-/// Branched tree written so **file order** would include the sibling if
-/// sliced by index, while **get_branch** path would not:
-/// ```text
-/// u1
-/// ├─ a_left  (file earlier)
-/// └─ a_right (file later; fork target path)
-/// ```
 async fn seeded_sibling_tree(mgr: &SessionManager, sid: &str) {
     mgr.create(sid, Some("."), None).await.unwrap();
     if matches!(&mgr.backend, SessionBackend::Persisted) {
@@ -227,7 +218,6 @@ async fn unflushed_parent_rejects_fork() {
     let parent = format!("parent-{}", uuid::Uuid::new_v4());
     let child = format!("child-{}", uuid::Uuid::new_v4());
     mgr.create(&parent, Some("."), None).await.unwrap();
-    // User only in pending — no JSONL yet.
     mgr.append(&parent, &msg("u1", None, "user", "not flushed"))
         .await
         .unwrap();
@@ -258,7 +248,6 @@ async fn fork_user_only_path_defers_child_file() {
         .await
         .unwrap();
 
-    // Fork At first user → path has no assistant → child stays pending.
     mgr.fork(&parent_id, &child_id, "u1", ForkPosition::At)
         .await
         .unwrap();
@@ -276,7 +265,6 @@ async fn fork_user_only_path_defers_child_file() {
         "header parent_session + forkAtEntryId: {loaded:?}"
     );
 
-    // First assistant on child flushes (deferred persist).
     mgr.append(
         &child_id,
         &msg("a_new", Some("u1"), "assistant", "branched"),
@@ -333,7 +321,6 @@ async fn fork_strips_path_labels_and_rebuilds_at_end() {
             mgr.set_leaf(parent, Some(id.to_string()));
         }
     }
-    // Label targets u1; fork at a1 rebuilds label at end (pi createBranchedSession).
     {
         let mut store = mgr.in_memory_store.write().expect("lock");
         store
@@ -372,7 +359,6 @@ async fn fork_strips_path_labels_and_rebuilds_at_end() {
         })
         .collect();
     assert_eq!(labels, vec![("u1", Some("checkpoint"))], "{labels:?}");
-    // Rebuilt label is after path; a1's parent must be u1 (not the old label).
     let a1 = child_entries
         .iter()
         .find(|e| e.entry_id() == Some("a1"))

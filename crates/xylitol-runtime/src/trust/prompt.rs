@@ -1,14 +1,8 @@
-//! Stdio trust prompt — used when bootstrap `interactive` is true (TUI path).
-//!
-//! Keeps terminal I/O out of the pure resolver; CLI/TUI set `interactive`
-//! and bootstrap calls this when Ask policy needs a decision.
-
 use std::io::{self, BufRead, Write};
 
 use super::resolve::format_trust_prompt;
 use super::store::TrustOption;
 
-/// Prompt on stderr/stdin for a trust option index. Returns `None` on cancel/EOF.
 pub fn prompt_trust_options_stdio(cwd: &str, options: &[TrustOption]) -> Option<usize> {
     let mut err = io::stderr().lock();
     let _ = writeln!(err, "{}", format_trust_prompt(cwd));

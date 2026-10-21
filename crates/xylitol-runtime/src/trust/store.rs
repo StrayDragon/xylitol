@@ -1,11 +1,3 @@
-//! Project trust store — persistence, locking, and inheritance (spec c255 / t1, t2).
-//!
-//! Single source of truth for project trust decisions. Persists a pi-style
-//! JSON file mapping canonical absolute directory paths to a boolean decision
-//! (`true`=trusted, `false`=untrusted, `null`=cleared). Supports
-//! parent-directory inheritance and exclusive file locking for concurrent-safe
-//! access.
-
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{ErrorKind, Write};
@@ -16,13 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use xylitol_plugin_sdk::error::XyTrustError;
 
-/// In-memory trust file: canonical path → decision. Sorted for deterministic output.
 type TrustFile = BTreeMap<String, Option<bool>>;
 
-/// A trust decision: `Some(true)`=trusted, `Some(false)`=untrusted, `None`=cleared.
 pub type TrustDecision = Option<bool>;
 
-/// A trust option presented to the user (carries the persisted updates).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrustOption {
     pub label: String,
@@ -31,24 +20,20 @@ pub struct TrustOption {
     pub saved_path: Option<String>,
 }
 
-/// A single trust store update entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TrustUpdate {
     pub path: String,
     pub decision: TrustDecision,
 }
 
-/// Config directory name used across the project.
 const CONFIG_DIR_NAME: &str = ".xylitol";
 
-/// Manager for project trust decisions — the single source of truth (spec t1).
 #[derive(Debug, Clone)]
 pub struct TrustManager {
     trust_file_path: PathBuf,
 }
 
 impl TrustManager {
-    /// Create a TrustManager whose store lives at `trust_dir/trust.json`.
     pub fn new(trust_dir: impl Into<PathBuf>) -> Self {
         let mut path = trust_dir.into();
         fs::create_dir_all(&path).ok();
@@ -58,25 +43,17 @@ impl TrustManager {
         }
     }
 
-    /// Default trust store location: `~/.xylitol/trust.json`.
     pub fn default_dir() -> PathBuf {
         dirs::home_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join(CONFIG_DIR_NAME)
     }
 
-    /// Path to the underlying trust file.
-    ///
-    /// BDD @executable contract (persisted-trust assertions) + unit tests;
-    /// no product caller.
-    #[allow(dead_code)] // BDD @executable contract / unit-test seam, not product-called
+    #[allow(dead_code)]
     pub fn trust_file_path(&self) -> &Path {
         &self.trust_file_path
     }
 
-    // ── Path normalization ───────────────────────────────────────
-
-    /// Canonicalize a CWD, falling back to the literal path when it cannot be resolved.
     fn normalize_cwd(cwd: &str) -> String {
         match fs::canonicalize(cwd) {
             Ok(p) => p.to_string_lossy().to_string(),
@@ -95,10 +72,6 @@ impl TrustManager {
         }
     }
 
-    // ── File locking (migrated from the former agent/trust/store.rs) ──
-
-    /// Acquire an exclusive lock via a `.lock` sibling using `O_CREAT | O_EXCL`,
-    /// retrying briefly to tolerate concurrent writers.
     fn acquire_lock(&self) -> Result<fs::File, XyTrustError> {
         let lock_path = self.trust_file_path.with_extension("json.lock");
         if let Some(parent) = lock_path.parent() {
@@ -143,8 +116,6 @@ impl TrustManager {
         result
     }
 
-    // ── File I/O ─────────────────────────────────────────────────
-
     fn read_file(&self) -> Result<TrustFile, XyTrustError> {
         if !self.trust_file_path.exists() {
             return Ok(BTreeMap::new());
@@ -159,9 +130,7 @@ impl TrustManager {
         if let Some(parent) = self.trust_file_path.parent() {
             fs::create_dir_all(parent).map_err(|e| XyTrustError::io("create trust dir", e))?;
         }
-        // BTreeMap yields sorted keys → deterministic output.
         let json = serde_json::to_string_pretty(data)?;
-        // Atomic write: tmp file then rename.
         let tmp_path = self.trust_file_path.with_extension("json.tmp");
         fs::write(&tmp_path, format!("{json}\n"))
             .map_err(|e| XyTrustError::io("write trust tmp", e))?;
@@ -169,11 +138,6 @@ impl TrustManager {
             .map_err(|e| XyTrustError::io("rename trust store", e))
     }
 
-    // ── Public API ───────────────────────────────────────────────
-
-    /// Check whether a directory is trusted, walking up the tree to find the
-    /// nearest stored ancestor decision (parent inheritance, spec t2).
-    /// Returns `None` when no decision is found (undecided).
     pub fn is_project_trusted(&self, cwd: &str) -> TrustDecision {
         self.with_lock(|| {
             let data = self.read_file()?;
@@ -182,14 +146,11 @@ impl TrustManager {
         .unwrap_or(None)
     }
 
-    /// Shorthand for `is_project_trusted(cwd) == Some(true)`.
     pub fn is_trusted(&self, cwd: &str) -> bool {
         self.is_project_trusted(cwd) == Some(true)
     }
 
-    /// Persist a single trust decision for a path (BDD @executable security
-    /// scenarios; no product caller — product persists via `apply_updates`).
-    #[allow(dead_code)] // BDD @executable contract, not product-called
+    #[allow(dead_code)]
     pub fn set_trust(&self, path: &str, decision: TrustDecision) -> Result<(), XyTrustError> {
         self.apply_updates(&[TrustUpdate {
             path: path.to_string(),
@@ -197,7 +158,6 @@ impl TrustManager {
         }])
     }
 
-    /// Apply multiple trust updates atomically under the lock.
     pub fn apply_updates(&self, updates: &[TrustUpdate]) -> Result<(), XyTrustError> {
         self.with_lock(|| {
             let mut data = self.read_file()?;
@@ -216,10 +176,6 @@ impl TrustManager {
         })
     }
 
-    /// Build the list of trust options for a project directory.
-    ///
-    /// Without session-only: [Trust, Trust parent (if any), Do not trust].
-    /// With session-only: appends non-persisting "this session only" variants.
     pub fn get_trust_options(&self, cwd: &str, include_session_only: bool) -> Vec<TrustOption> {
         let trust_path = Self::normalize_cwd(cwd);
         let parent_path = parent_dir(&trust_path);
@@ -285,9 +241,6 @@ impl TrustManager {
         options
     }
 
-    /// Detect whether a directory has trust-requiring inputs: a local
-    /// `.xylitol/` config dir, or an ancestor `.agents/skills/` dir.
-    /// Used by the resolver to decide the no-inputs auto-trust step (spec t3).
     pub fn has_trust_inputs(&self, cwd: &str) -> bool {
         let mut current = match fs::canonicalize(cwd) {
             Ok(p) => p,
@@ -309,9 +262,6 @@ impl TrustManager {
     }
 }
 
-// ── Free helpers ───────────────────────────────────────────────────
-
-/// Walk up the directory tree to find the nearest ancestor with a stored decision.
 fn find_nearest_decision(data: &TrustFile, cwd: &str) -> TrustDecision {
     let mut current = TrustManager::normalize_cwd(cwd);
     loop {
@@ -326,7 +276,6 @@ fn find_nearest_decision(data: &TrustFile, cwd: &str) -> TrustDecision {
     }
 }
 
-/// Parent directory of a path string (canonical, non-root), or `None`.
 fn parent_dir(path_str: &str) -> Option<String> {
     let p = Path::new(path_str);
     let parent = p.parent()?;
@@ -335,8 +284,6 @@ fn parent_dir(path_str: &str) -> Option<String> {
     }
     Some(parent.to_string_lossy().to_string())
 }
-
-// ── Tests ──────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -390,7 +337,6 @@ mod tests {
 
     #[test]
     fn test_child_override_nearest_ancestor_wins() {
-        // t2 child-override: nearest stored decision wins over a more distant ancestor.
         let (mgr, dir) = setup();
         let parent = dir.path().join("parent");
         let child = parent.join("child");
@@ -404,7 +350,6 @@ mod tests {
             mgr.is_project_trusted(&child.to_string_lossy()),
             Some(false)
         );
-        // Sibling without its own decision still inherits the parent's.
         let sibling = parent.join("sibling");
         fs::create_dir_all(&sibling).unwrap();
         assert_eq!(
@@ -506,7 +451,6 @@ mod tests {
 
     #[test]
     fn test_persistence_format_pi_style() {
-        // t2: verify the on-disk JSON is the pi-style {path: bool|null} format.
         let (mgr, dir) = setup();
         let path = dir.path().join("proj");
         fs::create_dir_all(&path).unwrap();

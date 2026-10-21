@@ -1,37 +1,16 @@
-//! Cut-point detection — where to compact session entries.
-//!
-//! Walk session entries backwards from newest, accumulate token estimates,
-//! and find the nearest valid boundary (user / assistant / bash / custom / branch).
-
 use xylitol_plugin_sdk::accounting::heuristic_token_count;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::session::SessionEntry;
 
-/// Result from [`find_cut_point`].
 #[derive(Debug, Clone)]
 pub struct CutPointResult {
-    /// Index of first entry to keep (inclusive).
     pub first_kept_entry_index: usize,
-    /// If cutting mid-turn, the turn-start entry index (-1 = no split).
     pub turn_start_index: isize,
-    /// Whether the cut splits a turn (cut point is not a turn-start).
     pub is_split_turn: bool,
 }
 
-/// pi `ESTIMATED_IMAGE_CHARS` — counted as chars before `/3`.
 const ESTIMATED_IMAGE_CHARS: u64 = 4800;
 
-/// Estimate tokens for cut-point walking (pi `estimateTokens` on AgentMessage).
-///
-/// Returns 0 when the entry has no context-visible message (skipped in accumulation).
-/// Message rows that fail typed deserialize still use a lax content walk (string or
-/// parts) so cut math stays usable for legacy / fixture wire shapes.
-/// cut 逐条度量与 unified 估算链（`accounting::heuristic_tokens`）同源：
-/// 决策 SSOT = 对**投影后单条**消息按序列化字节 /3 计数（同一算法族、同一投影源）；
-/// 独立的内容字符启发式不参与决策。不可行的反序列化走 lax 兜底。
-///
-/// 注意：unified 的启发式是逐条 `serde_json::to_string /3` 之和，本函数即它的
-/// 逐条切片——切点位置因此与决策/展示落在同一度量空间（中文会话不再 5x 失真）。
 pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
     match entry {
         SessionEntry::Message(msg) => {
@@ -44,7 +23,6 @@ pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
                     }
                     unified_projected_entry_token_estimate(&agent_msg)
                 }
-                // lax 兜底：非 SSOT，仅在消息反序列化失败时使用。
                 Err(_) => heuristic_token_count(estimate_lax_message_json_chars(&msg.message)),
             }
         }
@@ -55,11 +33,6 @@ pub fn estimate_tokens_entry_for_cut(entry: &SessionEntry) -> u64 {
     }
 }
 
-/// c2848: 与 `accounting::heuristic_tokens` 同算法的单条投影计数（逐条切片）。
-/// 投影丢弃 error 助手与无投影的 Env —— 与 unified 估算完全同源。
-///
-/// pi 视觉成本单独叠加：图片（user/toolResult）按 `ESTIMATED_IMAGE_CHARS`（≈1600
-/// token）计——投影后的序列化只含图片元数据、不承载真实视觉载荷，必须显式建模。
 fn unified_projected_entry_token_estimate(agent_msg: &AgentMessage) -> u64 {
     let image_tokens = match agent_msg {
         AgentMessage::Llm(XyLlmMessage::UserMessage { content, .. })
@@ -86,7 +59,6 @@ fn unified_projected_entry_token_estimate(agent_msg: &AgentMessage) -> u64 {
     serialized.saturating_add(image_tokens)
 }
 
-/// Lax wire: string `content` or part array (text / image / thinking / toolCall).
 fn estimate_lax_message_json_chars(message: &serde_json::Value) -> u64 {
     if let Some(s) = message.get("content").and_then(|c| c.as_str()) {
         return s.len() as u64;
@@ -132,9 +104,6 @@ fn estimate_lax_message_json_chars(message: &serde_json::Value) -> u64 {
     chars
 }
 
-/// Estimate tokens for a single `SessionEntry` using the `/3` byte heuristic.
-///
-/// Prefer [`estimate_tokens_entry_for_cut`] for cut-point walking (pi-aligned).
 pub fn estimate_tokens_entry(entry: &SessionEntry) -> u64 {
     match entry {
         SessionEntry::Message(msg) => estimate_tokens_message_json(&msg.message),
@@ -206,8 +175,6 @@ fn message_role(entry: &SessionEntry) -> Option<&str> {
     }
 }
 
-/// Valid cut points align with pi `isCutPointMessage` + entry types.
-/// Never cut at `toolResult` (must follow its tool call).
 fn is_valid_cut_point(entry: &SessionEntry) -> bool {
     match entry {
         SessionEntry::Message(_) => match message_role(entry) {
@@ -227,8 +194,6 @@ fn is_valid_cut_point(entry: &SessionEntry) -> bool {
     }
 }
 
-/// Whether this entry opens a new user turn.
-/// Assistant is never a turn start. Compaction entry type is never a turn start.
 fn is_turn_start_entry(entry: &SessionEntry) -> bool {
     if matches!(entry, SessionEntry::Compaction(_)) {
         return false;
@@ -264,7 +229,6 @@ fn include_preceding_non_messages(
         if is_compaction_boundary(prev) {
             break;
         }
-        // pi: stop when previous entry contributes context messages.
         if estimate_tokens_entry_for_cut(prev) > 0 {
             break;
         }
@@ -291,11 +255,6 @@ fn find_turn_start_index(
     -1
 }
 
-/// Find the cut point in session entries that preserves approximately `keep_tokens`
-/// of recent context.
-///
-/// Walks backwards from newest, accumulating estimated message sizes.
-/// Stops when accumulated >= keep_tokens, then finds the closest valid cut point.
 pub fn find_cut_point(
     entries: &[SessionEntry],
     start_index: usize,
@@ -347,9 +306,6 @@ pub fn find_cut_point(
         }
     }
 
-    // Remember the original cut point before including preceding non-messages.
-    // If the original cut was at a turn-start, preserve non-split semantics even
-    // when `include_preceding_non_messages` moves the index backwards.
     let original_cut_index = cut_index;
     cut_index = include_preceding_non_messages(entries, cut_index, start_index);
 

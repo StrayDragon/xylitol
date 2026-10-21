@@ -1,12 +1,9 @@
-/// FuzzyMatch result.
 #[derive(Debug, Clone)]
 pub struct FuzzyMatch {
     pub score: f64,
     pub indices: Vec<usize>,
 }
 
-/// Fuzzy match: returns a FuzzyMatch or None.
-/// Lower (more negative) scores = better match.
 pub fn fuzzy_match(query: &str, text: &str) -> Option<FuzzyMatch> {
     if query.is_empty() {
         return Some(FuzzyMatch {
@@ -32,14 +29,12 @@ pub fn fuzzy_match(query: &str, text: &str) -> Option<FuzzyMatch> {
         if query_idx < query_chars.len() && *tc == query_chars[query_idx] {
             indices.push(i);
 
-            // Consecutive bonus: -2
             if let Some(prev) = prev_match
                 && i == prev + 1
             {
                 score -= 2.0;
             }
 
-            // Word boundary bonus: occurs after separator or case transition
             let is_word_start = i == 0
                 || (i > 0
                     && text
@@ -50,10 +45,8 @@ pub fn fuzzy_match(query: &str, text: &str) -> Option<FuzzyMatch> {
                     && text.chars().nth(i).is_some_and(|c| c.is_uppercase())
                     && text.chars().nth(i - 1).is_some_and(|c| c.is_lowercase()));
 
-            if i == 0 {
-                score -= 1.0; // Start of string bonus
-            } else if is_word_start {
-                score -= 1.0; // Word boundary bonus
+            if i == 0 || is_word_start {
+                score -= 1.0;
             }
 
             prev_match = Some(i);
@@ -65,14 +58,11 @@ pub fn fuzzy_match(query: &str, text: &str) -> Option<FuzzyMatch> {
         return None;
     }
 
-    // Length penalty: +0.01 per char (positive = worse)
     score += text_chars.len() as f64 * 0.01;
 
     Some(FuzzyMatch { score, indices })
 }
 
-/// Fuzzy filter: returns items that match, sorted by best (lowest) score first.
-/// `get_text` extracts the string to match against from each item.
 pub fn fuzzy_filter<T>(items: &[T], pattern: &str, get_text: impl Fn(&T) -> &str) -> Vec<T>
 where
     T: Clone,
@@ -89,7 +79,6 @@ where
         }
     }
 
-    // Sort by score ascending (lower = better)
     matches.sort_by(|a, b| {
         a.1.score
             .partial_cmp(&b.1.score)

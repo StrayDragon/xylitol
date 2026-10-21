@@ -1,12 +1,3 @@
-//! Hook script execution — spawn, stdin JSON, stdout parsing, timeout.
-//!
-//! Protocol:
-//! ```text
-//! stdin:  {"event":"pre.tool_call","tool":"bash",...}
-//! stdout: {"action":"block","reason":"..."}  (optional)
-//! ```
-//! Empty stdout = [`HookAction::Allow`].
-
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -16,14 +7,6 @@ use tokio::process::Command;
 
 use super::{HookAction, HookEvent, HookPhase};
 
-/// Run a single hook script and return its action.
-///
-/// Spawns `command` as a subprocess, pipes the event JSON context to stdin,
-/// and reads stdout for a control directive. If the process exits without
-/// producing output, returns [`HookAction::Allow`].
-///
-/// On timeout, the process is killed and `Allow` is returned (non-blocking
-/// default to avoid freezing the agent).
 pub async fn run_hook_script(
     command: &str,
     event: &HookEvent,
@@ -35,9 +18,6 @@ pub async fn run_hook_script(
     run_hook_script_with_context(command, &ctx, timeout, env).await
 }
 
-/// Run a hook script with an explicit JSON context on stdin.
-///
-/// `timeout: None` means no wall-clock limit.
 pub async fn run_hook_script_with_context(
     command: &str,
     context: &serde_json::Value,
@@ -66,13 +46,11 @@ pub async fn run_hook_script_with_context(
         }
     };
 
-    // Write context JSON to stdin, then close it so the child can read EOF.
     if let Some(mut stdin) = child.stdin.take() {
         let _ = stdin.write_all(&ctx_bytes).await;
         let _ = stdin.shutdown().await;
     }
 
-    // Wait for output; optional wall-clock timeout.
     let wait = child.wait_with_output();
     let result = match timeout {
         Some(d) => match tokio::time::timeout(d, wait).await {
@@ -126,10 +104,6 @@ pub async fn run_hook_script_with_context(
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {

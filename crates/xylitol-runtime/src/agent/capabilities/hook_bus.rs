@@ -1,10 +1,7 @@
-//! Script-hook bus helpers for capability lifecycle (cancel / observe).
-
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::XyHookBus;
 
-/// Hook dispatched `Blocked { reason }` (product copy; not `Xy*`).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct HookBlockedError(pub String);
@@ -39,9 +36,6 @@ pub(crate) async fn observe_hook(
     }
 }
 
-/// Process-wide runtime for sync observe hooks (model/thinking select).
-///
-/// Replaces per-call `thread::spawn` + ad-hoc runtime (c996 hot path).
 fn hook_observe_runtime() -> &'static tokio::runtime::Runtime {
     use std::sync::OnceLock;
     static RT: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
@@ -55,11 +49,6 @@ fn hook_observe_runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
-/// Sync observe for XyDriver/agent APIs that are not async (c996).
-///
-/// Always schedules on the dedicated shared runtime and waits via channel so
-/// callers on `current_thread` test runtimes never hit `block_in_place` /
-/// nested `block_on` panics.
 pub(crate) fn observe_hook_sync(
     bus: &Arc<dyn XyHookBus>,
     event_type: &str,

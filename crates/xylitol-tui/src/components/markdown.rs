@@ -1,18 +1,3 @@
-//! Markdown rendering component.
-//!
-//! Ported from pi's `components/markdown.ts`. Uses `pulldown-cmark` for
-//! parsing, then renders with user-provided theme hooks and optional syntax
-//! highlighting via a callback (`highlight_code`).
-//!
-//! Copy / token policy (c530+): hierarchy via SGR (no `#` prefixes); links as
-//! `text (url)`; no code fences or box-drawing tables; bold/italic = SGR only
-//! (no visible `**`/`*`); `` ` `` / `~~` retained; blockquotes use a muted
-//! `│ ` gutter (same token as quote body). UX SSOT: product `DESIGN.md` + this component.
-//!
-//! The `MarkdownTheme` is deliberately a struct of boxed closures so consumers
-//! (e.g. the main crate with syntect) can inject their own styling pipeline
-//! without the TUI crate depending on heavy highlighting libraries.
-
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 use super::mermaid_ascii::try_render_mermaid;
@@ -21,8 +6,6 @@ use crate::tui::Component;
 use crate::utils::{
     apply_background_to_line, strip_ansi_codes, visible_width, wrap_text_with_ansi,
 };
-
-// ── theme / options ─────────────────────────────────────────────────────────
 
 #[allow(clippy::type_complexity)]
 pub struct DefaultTextStyle {
@@ -36,7 +19,6 @@ pub struct DefaultTextStyle {
 
 #[allow(clippy::type_complexity)]
 pub struct MarkdownTheme {
-    /// Heading line by level (`1..=6`). Caller applies color + weight/underline.
     pub heading: Box<dyn Fn(usize, &str) -> String>,
     pub link: Box<dyn Fn(&str) -> String>,
     pub link_url: Box<dyn Fn(&str) -> String>,
@@ -53,29 +35,19 @@ pub struct MarkdownTheme {
     pub underline: Box<dyn Fn(&str) -> String>,
     pub highlight_code: Option<Box<dyn Fn(&str, Option<&str>) -> Vec<String>>>,
     pub code_block_indent: Option<String>,
-    /// Optional mermaid (or other fence) override. `Some(rows)` replaces the
-    /// builtin drawer; `None` falls through to `mermaid-text` then code.
     pub render_fence: Option<Box<dyn Fn(&str, Option<&str>, usize) -> Option<Vec<String>>>>,
-    /// Paints [`MERMAID_UNRENDERABLE`] when a closed mermaid fence could not be drawn.
     pub mermaid_error: Box<dyn Fn(&str) -> String>,
 }
 
-/// Visible hint above mermaid source when drawing failed.
 pub const MERMAID_UNRENDERABLE: &str = "无法渲染 mermaid";
 
-/// When to turn a mermaid fence into a box-drawing block (c2890).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MermaidFenceMode {
-    /// Never draw; always a markdown code block.
     Off,
-    /// Draw only after the fence closes. Default — avoids per-token art jumps.
     #[default]
     Final,
-    /// Try to draw even if the fence is still open.
     Streaming,
 }
-
-// ── Markdown component ──────────────────────────────────────────────────────
 
 pub struct Markdown {
     text: String,
@@ -83,12 +55,8 @@ pub struct Markdown {
     padding_y: usize,
     default_text_style: Option<DefaultTextStyle>,
     theme: MarkdownTheme,
-    /// When true, table header cells also apply [`MarkdownTheme::underline`] to the
-    /// full padded cell (historical look). Default **false**: bold only — padded
-    /// underlines otherwise join into a continuous bar under the header row.
     table_header_underline: bool,
     mermaid_mode: MermaidFenceMode,
-    /// Last `render` content width (padding already subtracted).
     content_width: usize,
 
     cached_text: Option<String>,
@@ -119,7 +87,6 @@ impl Markdown {
         }
     }
 
-    /// Toggle SGR underline on padded table header cells (default off).
     pub fn with_table_header_underline(mut self, enabled: bool) -> Self {
         self.table_header_underline = enabled;
         self.invalidate();
@@ -130,7 +97,6 @@ impl Markdown {
         self.table_header_underline
     }
 
-    /// Override mermaid fence mode (default [`MermaidFenceMode::Final`]).
     pub fn with_mermaid_mode(mut self, mode: MermaidFenceMode) -> Self {
         self.mermaid_mode = mode;
         self.invalidate();
@@ -147,13 +113,6 @@ impl Markdown {
     }
 }
 
-/// Drop a trailing incomplete fence closer before parse (c2865 / r1936).
-///
-/// pulldown-cmark cannot mutate tokens the way pi's `marked` trim does; if a
-/// fence is still open at EOF and the last line is the same character as the
-/// opener but strictly shorter, that line would paint as code and then vanish
-/// when the real closer arrives. Strip it (and the preceding newline) so height
-/// stays stable. Closed fences, prose, and real last-line code are unchanged.
 fn trim_partial_closing_fence(src: &str) -> String {
     if src.is_empty() {
         return String::new();
@@ -189,10 +148,6 @@ fn trim_partial_closing_fence(src: &str) -> String {
     }
 }
 
-/// CommonMark fenced line: 0–3 spaces, then ≥3 `` ` `` or `~`.
-///
-/// `closer` is true only when a matching open fence exists, the run is at least
-/// as long, and the rest of the line is trailing space.
 fn classify_fence_line(line: &str, open: Option<(char, usize)>) -> Option<(char, usize, bool)> {
     let indent = line.bytes().take_while(|&b| b == b' ').count();
     if indent > 3 {
@@ -223,8 +178,6 @@ fn classify_fence_line(line: &str, open: Option<(char, usize)>) -> Option<(char,
     Some((ch as char, n, false))
 }
 
-/// Incomplete closer: optional 0–3 spaces, then only the opener character,
-/// strictly shorter than the opener (CommonMark closer shape, too short to close).
 fn last_line_is_partial_closer(last: &str, och: char, olen: usize) -> bool {
     let indent = last.bytes().take_while(|&b| b == b' ').count();
     if indent > 3 {
@@ -259,15 +212,11 @@ impl Component for Markdown {
         let mut opts = Options::empty();
         opts.insert(Options::ENABLE_TABLES);
         opts.insert(Options::ENABLE_STRIKETHROUGH);
-        // GFM task lists — without this, `[` / `]` / `x` arrive as separate Text
-        // events and tight-list rendering used to put each on its own line.
         opts.insert(Options::ENABLE_TASKLISTS);
 
         let parser = Parser::new_ext(&normalized, opts);
         let events: Vec<Event> = parser.collect();
 
-        // ---------------------------------------------------------------
-        // Collect block-level events into styled strings.
         let mut rendered: Vec<MdLine> = Vec::new();
         let mut idx = 0;
         while idx < events.len() {
@@ -282,7 +231,6 @@ impl Component for Markdown {
                         &|s| apply_default_style(self, s),
                         "",
                     );
-                    // Token-efficient: no `#` prefix; hierarchy via theme.heading(level) (c530).
                     let line = heading_lines.concat();
                     let n = level_to_usize(*level);
                     rendered.push(MdLine::raw((self.theme.heading)(n, &line)));
@@ -357,7 +305,6 @@ impl Component for Markdown {
 
                 Event::Rule => {
                     idx += 1;
-                    // Short rule — not a full-width wall (c530).
                     let w = content_width.clamp(4, 8);
                     rendered.push(MdLine::raw((self.theme.hr)(&"─".repeat(w))));
                     if !next_is_space(&events, idx) {
@@ -380,9 +327,6 @@ impl Component for Markdown {
             }
         }
 
-        // ── wrap + margins + background + padding ────────────────────────
-        // Skip a second wrap for list/table/quote rows (hanging indent / cell
-        // packing already fits content_width).
         let mut wrapped: Vec<String> = Vec::new();
         for line in rendered {
             if line.prewrapped || is_image_line(&line.text) {
@@ -451,11 +395,6 @@ impl Component for Markdown {
     }
 }
 
-/// One Markdown output row before margin/pad.
-///
-/// `prewrapped` lines already respect `content_width` (list hanging indent,
-/// table rows, quote wraps, mermaid flowcharts) and must not go through a
-/// second wrap pass.
 struct MdLine {
     text: String,
     prewrapped: bool,
@@ -484,8 +423,6 @@ impl Markdown {
         self.cached_lines = Some(lines);
     }
 }
-
-// ── style helpers ───────────────────────────────────────────────────────────
 
 fn apply_default_style(md: &Markdown, text: &str) -> String {
     let Some(ref style) = md.default_text_style else {
@@ -517,8 +454,6 @@ fn get_style_prefix(f: &dyn Fn(&str) -> String) -> String {
     styled[..idx].to_string()
 }
 
-// ── event iterators ─────────────────────────────────────────────────────────
-
 fn collect_inline_until(
     md: &Markdown,
     events: &[Event],
@@ -540,7 +475,6 @@ fn collect_inline_until(
                 *idx += 1;
                 let inner =
                     collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
-                // SGR bold only — no visible `**` (DESIGN.md markdown).
                 parts.push((md.theme.bold)(&inner));
                 parts.push(style_prefix.to_string());
             }
@@ -548,7 +482,6 @@ fn collect_inline_until(
                 *idx += 1;
                 let inner =
                     collect_inline_until(md, events, idx, default_fn, style_prefix).concat();
-                // SGR italic only — no visible `*`.
                 parts.push((md.theme.italic)(&inner));
                 parts.push(style_prefix.to_string());
             }
@@ -597,7 +530,6 @@ fn collect_inline_until(
                 *idx += 1;
             }
             Event::TaskListMarker(checked) => {
-                // Visible round-trip markers (DESIGN.md markdown): `- [ ]` / `- [x]`.
                 let marker = if *checked { "[x] " } else { "[ ] " };
                 parts.push(default_fn(marker));
                 *idx += 1;
@@ -611,18 +543,12 @@ fn collect_inline_until(
                 *idx += 1;
             }
             Event::SoftBreak | Event::HardBreak => {
-                // Leave break for the caller when a nested block follows (list /
-                // paragraph / …); otherwise SoftBreak would become a stray `\n`
-                // glued onto the parent item before `render_list` sees Start(List).
                 if next_is_block_start(events, *idx + 1) {
                     break;
                 }
                 parts.push("\n".to_string());
                 *idx += 1;
             }
-            // Block starts belong to the caller (e.g. nested lists inside an
-            // Item). Never skip them — that used to flatten nesting into the
-            // parent bullet and scramble subsequent markers.
             Event::Start(
                 Tag::List(_)
                 | Tag::Item
@@ -640,7 +566,6 @@ fn collect_inline_until(
         }
     }
 
-    // Skip closing tag
     if *idx < events.len() {
         match &events[*idx] {
             Event::End(TagEnd::Paragraph)
@@ -699,7 +624,6 @@ fn fence_info_after_marks(line: &str) -> &str {
     rest.get(n..).unwrap_or("").trim()
 }
 
-/// Body of a mermaid fence still open at EOF, or `None` if every mermaid fence closed.
 fn open_mermaid_body(src: &str) -> Option<String> {
     let mut open: Option<(char, usize)> = None;
     let mut mermaid = false;
@@ -745,13 +669,10 @@ fn should_draw_mermaid(md: &Markdown, lang: Option<&str>, code: &str) -> bool {
     true
 }
 
-/// Rows of a fenced block after mermaid/highlight (no ``` chrome).
 struct FencePaint {
     lines: Vec<MdLine>,
 }
 
-/// Highlighted (or themed) code lines without fence chrome (c530).
-/// Drawable mermaid becomes a terminal flowchart; otherwise ordinary code (c2890).
 fn render_code_block_lines(md: &Markdown, code: &str, lang: Option<&str>) -> FencePaint {
     let indent = md.theme.code_block_indent.as_deref().unwrap_or("  ");
     let indent_cols = visible_width(indent);
@@ -817,9 +738,6 @@ fn mermaid_failed_paint(
         "{indent}{}",
         (md.theme.mermaid_error)(MERMAID_UNRENDERABLE)
     ));
-    // Nested one indent under the hint so it reads as a code block, not a
-    // second caption. `theme.code` (not mermaid syntect): mermaid-lang
-    // highlight collapses to body/muted. prewrapped keeps source newlines.
     let body_indent = format!("{indent}{indent}");
     let mut lines = vec![hint];
     let body = if code.is_empty() {
@@ -894,10 +812,6 @@ fn skip_end_tag(events: &[Event], idx: &mut usize) {
     }
 }
 
-// ── list rendering ──────────────────────────────────────────────────────────
-
-/// Wrap item body and attach bullet / continuation prefixes. Returns whether any
-/// non-empty content was pushed.
 fn push_list_item_lines(
     lines: &mut Vec<String>,
     joined: &str,
@@ -921,7 +835,6 @@ fn push_list_item_lines(
     true
 }
 
-/// Attach list bullet / hanging-indent prefixes to already-rendered block lines.
 fn push_list_block_lines(
     lines: &mut Vec<String>,
     block_lines: impl IntoIterator<Item = String>,
@@ -986,9 +899,6 @@ fn render_list(
                         Event::Start(Tag::List(nested_start)) => {
                             *idx += 1;
                             let ns = nested_start.unwrap_or(1) as usize;
-                            // Prefer pulldown's List(Some(n)) — item text is the
-                            // body only, so list_is_ordered (digit-prefix heuristic)
-                            // cannot see "1." for nested ordered lists.
                             let no = nested_start.is_some() || list_is_ordered(events, *idx);
                             lines.extend(render_list(md, events, idx, depth + 1, width, no, ns));
                             rendered_any = true;
@@ -1067,8 +977,6 @@ fn render_list(
                                 &mut rendered_any,
                             );
                         }
-                        // Tight items: join consecutive inlines (Text / TaskListMarker /
-                        // Strong / Link / …) into one line — never one Text event per row.
                         Event::Text(_)
                         | Event::Code(_)
                         | Event::TaskListMarker(_)
@@ -1124,8 +1032,6 @@ fn render_blockquote_block(
     idx: &mut usize,
     width: usize,
 ) -> Vec<String> {
-    // quote theme already applies muted + italic — do not nest theme.italic
-    // (warning fg) or the body turns prominent.
     let quote_text_fn = |s: &str| (md.theme.quote)(s);
     let quote_prefix = get_style_prefix(&quote_text_fn);
     let bar = (md.theme.quote_border)("│ ");
@@ -1137,7 +1043,6 @@ fn render_blockquote_block(
         match events.get(*idx) {
             Some(Event::Start(Tag::BlockQuote(_))) => {
                 *idx += 1;
-                // Nested quote already sized to body_width; prefix one more bar.
                 for line in render_blockquote_block(md, events, idx, body_width) {
                     out.push(format!("{bar}{line}"));
                 }
@@ -1179,7 +1084,6 @@ fn render_events_block(
             Event::End(TagEnd::BlockQuote(_))
             | Event::End(TagEnd::List(_))
             | Event::End(TagEnd::Table) => break,
-            // Nested quote is owned by render_blockquote_block.
             Event::Start(Tag::BlockQuote(_)) => break,
             Event::End(TagEnd::Paragraph) => {
                 *idx += 1;
@@ -1207,7 +1111,6 @@ fn render_events_block(
                 *idx += 1;
                 let lang = fenced_lang(kind);
                 let code = collect_text_until(events, idx);
-                // Keep highlight colors — do not wrap with quote_fn (muted/italic).
                 lines.extend(
                     render_code_block_lines(md, &code, lang)
                         .lines
@@ -1228,8 +1131,6 @@ fn render_events_block(
     }
     lines
 }
-
-// ── table rendering ─────────────────────────────────────────────────────────
 
 fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
@@ -1301,11 +1202,8 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
 
     let widths = compute_column_widths(&natural, &min_word, available);
 
-    // Space-aligned columns (scheme A) — no box drawing, no decorative `|` (c530).
     let join_row = |parts: &[String]| -> String { parts.join(" ") };
 
-    // Header: bold; optional underline on padded cells (opt-in — default off so
-    // space-padded underlines do not form a continuous bar under the header).
     let hw: Vec<Vec<String>> = headers
         .iter()
         .enumerate()
@@ -1331,7 +1229,6 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
         lines.push(join_row(&parts));
     }
 
-    // Body
     for row in &body_rows {
         let rw: Vec<Vec<String>> = row
             .iter()
@@ -1358,8 +1255,6 @@ fn render_table(md: &Markdown, events: &[Event], idx: &mut usize, width: usize) 
     lines
 }
 
-// ── utilities ───────────────────────────────────────────────────────────────
-
 fn level_to_usize(level: HeadingLevel) -> usize {
     match level {
         HeadingLevel::H1 => 1,
@@ -1380,7 +1275,6 @@ fn longest_word_width(text: &str, max: usize) -> usize {
 }
 
 fn table_overhead(num_cols: usize) -> usize {
-    // Scheme A: single space between columns.
     num_cols.saturating_sub(1)
 }
 
@@ -1431,7 +1325,6 @@ fn compute_column_widths(natural: &[usize], min_word: &[usize], available: usize
                 .unwrap_or(0);
         }
     }
-    // Rounding
     let allocated: usize = widths.iter().sum();
     let mut remaining = available.saturating_sub(allocated);
     let mut grew = true;
@@ -1698,7 +1591,6 @@ mod tests {
 
     #[test]
     fn mermaid_flowchart_is_not_word_wrapped() {
-        // A diagram row with spaces would split if Markdown wrapped it again.
         let mut theme = identity_theme();
         theme.render_fence = Some(Box::new(|_code, _lang, _w| {
             Some(vec!["NODE-A  ---->  NODE-B".into()])
@@ -2001,7 +1893,6 @@ mod tests {
             text.lines().any(|l| l.contains("- [x] 解析 prompt")),
             "checked task must stay on one line:\n{text}"
         );
-        // Regression: never split brackets onto their own rows.
         assert!(
             !text.lines().any(|l| {
                 let t = l.trim();
@@ -2152,7 +2043,6 @@ mod tests {
     fn nested_lists_keep_indent_and_ordered_markers() {
         let src = "1. 有序一项\n2. 有序二项\n   - 嵌套无序 A\n   - 嵌套无序 B\n     1. 再嵌套有序\n3. 有序三项含 [链接](https://example.com/list) 与 `code`\n";
         let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
-        // trim_end only — strip_ansi_codes().trim() would erase list indent.
         let lines: Vec<String> = md
             .render(48)
             .iter()
@@ -2194,8 +2084,6 @@ mod tests {
 
     #[test]
     fn list_hanging_indent_survives_narrow_prewrap() {
-        // Long URL forces wrap; continuation must keep spaces matching "3. "
-        // (prewrapped list lines must not be re-wrapped by the outer pass).
         let src = "3. 有序三项含 [链接](https://example.com/list) 与 `code`\n";
         let mut md = Markdown::new(src.into(), 0, 0, identity_theme(), None);
         let lines: Vec<String> = md

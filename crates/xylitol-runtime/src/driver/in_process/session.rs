@@ -40,25 +40,9 @@ impl super::XyInProcessDriver {
         let context = self.store.build_session_context(session_id).await?;
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
         self.bind_todo_session(Some(session_id)).await;
-        // Restore precisely what the session recorded. Do not validate, clamp, or
-        // append a replacement event: a stale vendor level is intentionally sticky
-        // until the user changes or cycles it.
         self.agent.restore_thinking_level(context.thinking_level);
-        // c1905: session_env lives in transcript (Env→user); resume appends a new
-        // row only when date/cwd change — no system-date pin restore needed.
-        // c1900: resume/switch re-opens the freeze gate — next generate re-gates.
-        // Fingerprint match/continue-freeze needs persisted fingerprint (same change wave MAY
-        // add Custom/header storage); until then correctness prefers re-freeze.
         self.agent.clear_tool_freeze();
         self.fire_session_prepare(xylitol_plugin_sdk::SessionPrepareReason::Resume);
-        // c2843 Phase B: switch/bind no longer writes the process obs slot —
-        // materialized obs identity is this runtime's own facts. The slot is
-        // only the "default identity" for optionless fallbacks and is updated by
-        // explicit writer events (rename / host restore), never by reads/switches.
-        // (otel25's obs_slot_writes gate is removed: readers structurally don't
-        // touch writer-event paths.)
-        // c25/c26: freshly active leaf → one LeafChanged settlement for footer /
-        // reserve gate parity (overhead-aware, no model call).
         self.agent.emit_leaf_changed_settlement().await;
         Ok(session_id.to_string())
     }
@@ -80,7 +64,6 @@ impl super::XyInProcessDriver {
     ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
         let entries = self.get_messages().await?;
         let model_id = self.current_model().map(|m| m.id);
-        // c25: same fixed context the agent would send — footer parity (c16).
         let fixed_context = self.agent.fixed_request_context();
         tokio::task::spawn_blocking(move || {
             estimate_from_session_entries(&entries, model_id, Some(fixed_context))
@@ -97,8 +80,6 @@ impl super::XyInProcessDriver {
         let kind_s = format!("{kind:?}");
         let (ty, phase, ctx) = crate::agent::runtime::script_hook_ctx::session_before_tree(&kind_s);
         self.agent.script_hook_cancel(ty, phase, ctx).await?;
-        // Bootstrap may assign a fresh id before any persist; wiped HOME may leave
-        // an orphan id. Ensure an empty session so double-Esc opens an empty tree.
         self.agent
             .ensure_session(sid, None)
             .await
@@ -226,8 +207,6 @@ impl super::XyInProcessDriver {
     pub async fn set_session_name(&mut self, name: &str) -> Result<String, XyDriverError> {
         let sid = require_active_session(&self.agent)?;
         let out = self.store.set_session_name(sid, name).await?;
-        // c2843 Phase B: writer rename updates BOTH the runtime owner fact and the
-        // default-identity slot (explicit writer event; no obs_slot_writes gate).
         self.agent.set_session_name_fact(Some(out.clone()));
         xylitol_plugin_sdk::set_obs_session_name(Some(out.as_str()));
         Ok(out)

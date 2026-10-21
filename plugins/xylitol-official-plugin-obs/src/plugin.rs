@@ -1,5 +1,3 @@
-//! Core plugin: process logging / OTLP. Kernel-mounted, not a loader row.
-
 use std::sync::Arc;
 
 use xylitol_official_plugin_config::plugin::ConfigService;

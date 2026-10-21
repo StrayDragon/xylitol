@@ -1,6 +1,3 @@
-//! Shared AppConfig parse fixture used by runtime-config BDD
-//! (`TokenizerBdd` name kept so existing bindings stay stable).
-
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
@@ -37,7 +34,6 @@ pub fn parse_app_config_yaml(
     Ok(cfg)
 }
 
-/// Given already attempted parse into `tokenizer_bdd`; this When is a no-op seam.
 #[when("加载配置")]
 fn w_rc_load(_tokenizer_bdd: &TokenizerBdd) {}
 

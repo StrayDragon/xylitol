@@ -1,9 +1,3 @@
-//! YAML config template rendering — `{{ env.KEY }}` / `{{ secret.KEY }}` /
-//! `{{ vars.home }}` (r4/r5 / rc23).
-//!
-//! Uses minijinja with **strict** undefined behavior so missing keys fail with
-//! a path-aware error (edit the YAML or secret.env).
-
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -12,14 +6,6 @@ use minijinja::{AutoEscape, Environment, UndefinedBehavior, context, value::Serd
 use super::error::LoadError;
 use super::secret_env::SecretMap;
 
-/// Render a config file body through minijinja.
-///
-/// Namespaces:
-/// - `env.*` — process environment (after secret.env injection)
-/// - `secret.*` — keys from collected `secret.env` files (plus same key from
-///   process env when present, so shell overrides still work in templates)
-/// - `vars.home` — user home directory (`dirs::home_dir`); **only** this key
-///   under `vars` (rc23). Other `vars.*` keys are undefined (strict fail).
 pub(crate) fn render_config_template(
     raw: &str,
     path: &Path,
@@ -29,8 +15,6 @@ pub(crate) fn render_config_template(
     render_config_template_with(raw, path, secrets, &env_vars, dirs::home_dir().as_deref())
 }
 
-/// Injectable render: `env_vars` drives `env.*` and overrides matching `secret.*`
-/// keys; `home` drives `vars.home` when `Some`.
 pub(crate) fn render_config_template_with(
     raw: &str,
     path: &Path,
@@ -38,12 +22,10 @@ pub(crate) fn render_config_template_with(
     env_vars: &HashMap<String, String>,
     home: Option<&Path>,
 ) -> Result<String, LoadError> {
-    // Fast path: no mustache — skip engine (common for plain YAML).
     if !raw.contains("{{") {
         return Ok(raw.to_string());
     }
 
-    // secret.* = secret.env map; env_vars wins for the same keys.
     let mut secret_ns = secrets.clone();
     for k in secrets.keys() {
         if let Some(v) = env_vars.get(k) {
@@ -51,8 +33,6 @@ pub(crate) fn render_config_template_with(
         }
     }
 
-    // vars.* — only `home` when resolvable; missing home → undefined (strict
-    // fails only if the template references vars.home).
     let mut vars_ns = HashMap::new();
     if let Some(home) = home {
         vars_ns.insert("home".to_string(), home.to_string_lossy().into_owned());
@@ -60,9 +40,6 @@ pub(crate) fn render_config_template_with(
 
     let mut jinja = Environment::new();
     jinja.set_undefined_behavior(UndefinedBehavior::Strict);
-    // Default minijinja auto-escape treats `*.yaml`/`*.yml` as JSON → string
-    // interpolations gain extra quotes (`"{{ secret.K }}"` → `""value""`), which
-    // breaks YAML parse and MCP headers. Config templates are plain text.
     jinja.set_auto_escape_callback(|_| AutoEscape::None);
 
     let name = path
@@ -147,7 +124,6 @@ mod tests {
     #[test]
     fn renders_inside_yaml_double_quotes() {
         let path = PathBuf::from("config.yaml");
-        // env_vars empty → secret.env value is used (no process override).
         let env_vars = HashMap::new();
         let mut secrets = SecretMap::new();
         secrets.insert("CONTEXT7_API_KEY".into(), "sk-test".into());

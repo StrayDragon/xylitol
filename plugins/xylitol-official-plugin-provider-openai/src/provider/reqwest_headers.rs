@@ -1,17 +1,8 @@
-//! reqwest ↔ portable [`crate::hooks::HeaderBag`] bridge.
-//!
-//! Hook helpers stay client-agnostic; this module is the **only** place that
-//! knows reqwest header types for provider adapters. Swap or add bridges when
-//! a vendor SDK replaces raw reqwest for a dialect.
-
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Map, Value};
 
 use crate::hooks::HeaderBag;
 
-/// Convert a portable header bag into a reqwest [`HeaderMap`].
-///
-/// Invalid names/values are skipped (same fail-soft as hook merge).
 pub fn to_reqwest_headers(bag: &HeaderBag) -> HeaderMap {
     let mut headers = HeaderMap::new();
     for (key, val) in bag {
@@ -28,7 +19,6 @@ pub fn to_reqwest_headers(bag: &HeaderBag) -> HeaderMap {
     headers
 }
 
-/// Convert reqwest response/request headers into a portable bag (lowercase keys).
 pub fn from_reqwest_headers(headers: &HeaderMap) -> HeaderBag {
     let mut map = Map::new();
     for (name, value) in headers.iter() {

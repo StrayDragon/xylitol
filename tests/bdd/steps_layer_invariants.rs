@@ -1,6 +1,3 @@
-//! Layer invariants: architecture checks live in `scripts/check_layer_invariants.py`.
-//! Product-observation steps below do not read `src/`.
-
 use std::process::Command;
 use std::sync::OnceLock;
 

@@ -1,10 +1,3 @@
-//! Agent runtime — the thin orchestration loop and its collaborators.
-//!
-//! Houses the ReAct loop (`react`), its event vocabulary (`event`), hook
-//! extension points (`hooks`), transient-error retry, and stdout takeover
-//! guard. The `agent` module is the public entry; modules here are the loop's
-//! internals.
-
 pub mod baseline;
 pub mod event;
 pub mod hooks;
@@ -18,7 +11,6 @@ pub(crate) mod tool_batch;
 pub(crate) mod tool_exec;
 pub(crate) mod tool_result_quiet;
 
-// Public surface of the loop (XyEvent/XyEventStream/AgentRuntime/AgentHooks are `pub`).
 pub use baseline::RuntimeBaseline;
 pub use event::XyEventStream;
 pub use hooks::AgentHooks;

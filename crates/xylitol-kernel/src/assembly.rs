@@ -1,8 +1,3 @@
-//! Composition root: inject official Host plugins into runtime.
-//!
-//! Empty MCP / hooks skip start. No rutis fiber: plugins are libraries;
-//! this module wires `Arc` into [`xylitol_runtime::agent::AgentBuilder`].
-
 use std::sync::Arc;
 
 use crate::composition::{BuildAgentOptions, official_compaction_factory};

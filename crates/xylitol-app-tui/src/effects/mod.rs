@@ -1,5 +1,3 @@
-//! Shared pending side-effect pump for production host loop and harness (ath6 / c494).
-
 mod bang;
 mod debug_activity_fold;
 mod debug_verify;
@@ -25,11 +23,6 @@ use super::widgets::footer_token_label;
 pub use bang::run_interactive_bang;
 pub use reload::run_interactive_reload;
 
-/// c2790 / ath45: bang-loop tick-arm pump — execute ONLY pending slashes whose
-/// execution class is `Inline` (atm18: cache/local effects, never a remote
-/// unary). Exclusive/Queued are put back verbatim for the main-loop
-/// `drain_pending` (semantics unchanged). Model-picker confirm deliberately
-/// stays out: SetModel is a real unary (writer lease) on remote.
 pub async fn drain_inline_pending<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -43,7 +36,6 @@ pub async fn drain_inline_pending<T: Terminal>(
     }
 }
 
-/// Load current-session entries via the shared Command path (c2710).
 pub async fn session_entries(
     driver: &mut dyn XyDriver,
 ) -> Result<Vec<xylitol_plugin_sdk::session::SessionEntry>, XyDriverError> {
@@ -53,7 +45,6 @@ pub async fn session_entries(
     }
 }
 
-/// Read queue depths via the shared Command path (c2710).
 pub async fn queue_stats(driver: &mut dyn XyDriver) -> QueueStats {
     match crate::dispatch::dispatch(driver, xylitol_protocol::Command::GetQueueStats {}).await {
         Ok(crate::dispatch::DispatchOutcome::QueueStats {
@@ -67,12 +58,6 @@ pub async fn queue_stats(driver: &mut dyn XyDriver) -> QueueStats {
     }
 }
 
-/// Refresh footer token usage from [`XyDriver::estimate_context_tokens`] (c1035).
-///
-/// Empty session → omit field (MUST NOT forge `used 0`). Estimate errors → omit.
-///
-/// **Harness / tests**: awaits estimate (override is instant). Production host
-/// MUST prefer `kick_footer_token_refresh` so HF encode does not block input.
 pub async fn refresh_footer_tokens<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -105,12 +90,7 @@ pub async fn refresh_footer_tokens<T: Terminal>(
     }
 }
 
-/// Start a background footer estimate; return the label via the footer job tx.
-///
-/// Rides the [`XyDriver::estimate_context_tokens`] seam so in-process and remote
-/// surfaces share the host-side overhead-aware estimate (c25 / c16) instead of a
-/// local entries-only count.
-#[cfg_attr(test, allow(dead_code))] // production `drain_pending` only (`not(test)`)
+#[cfg_attr(test, allow(dead_code))]
 pub async fn kick_footer_token_refresh<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -137,18 +117,6 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
     let _ = tx.send((job_id, label, heuristic));
 }
 
-/// Abort bookkeeping + steer / follow-up lane pump (ati3 / c665 / busy→idle).
-///
-/// Lanes dispatch into the driver queues only while a worker turn / bang /
-/// Assembling gate is live. Lanes queued while idle (bang return, busy→idle
-/// transition) would never be consumed — the ReAct worker drains queues only
-/// mid-turn and at end-of-turn — so the first lane converts to a root submit
-/// (returned to the caller). Abort keeps the 插话续跑与中止 contract: 插话
-/// 丢弃、续跑留守队列条、不自动跑（bang Esc cancel shares this via the
-/// `bash_cancelled` latch, additionally dropping a locally queued steer since
-/// the bang loop already cleared driver-side steers).
-///
-/// Returns the lane converted to a root submit, if any.
 async fn drain_abort_and_lanes<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -158,9 +126,6 @@ async fn drain_abort_and_lanes<T: Terminal>(
     if aborted_now {
         log::info!(target: "xylitol::tui", "XyDriver::abort (Esc)");
         driver.abort();
-        // c1900: Assembling uses a host-local gated_submit + follow-up strip that is
-        // NOT on the driver queue. Drop it before abort note so strip sync / idle
-        // check see real driver depths (otherwise Esc looks aborted then still runs).
         let cancelled_gate = session.take_gated_submit().is_some();
         if cancelled_gate {
             let stats = queue_stats(driver).await;
@@ -239,18 +204,6 @@ async fn drain_abort_and_lanes<T: Terminal>(
     None
 }
 
-/// Consume HostSession pending ops and call XyDriver / dispatch.
-///
-/// Ordering matches the historical `run_host_loop` body (abort → dequeue → steer →
-/// follow-up → slash → optional submit→`XyDriver::run`). Bang is **not** awaited here
-/// (c665 — host `select!` / `run_pending_bash`). Production and harness MUST share
-/// this entry so slash/steer branches cannot diverge.
-///
-/// When `agent_stream` is already `Some`, submit is not taken. A newly started
-/// run is stored in `agent_stream`; callers decide whether to drain it (harness)
-/// or poll it in a select loop (production).
-///
-/// Footer token refresh is **kicked** async (does not await HF encode).
 pub async fn drain_pending<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -269,8 +222,6 @@ pub async fn drain_pending<T: Terminal>(
             },
         )
         .await;
-        // Alt+Up already restored the gate strip into the editor; cancel Assembling
-        // so a later freeze MUST NOT start the withdrawn prompt.
         if session.take_gated_submit().is_some() {
             session.end_gated_assemble_idle();
         }
@@ -283,13 +234,7 @@ pub async fn drain_pending<T: Terminal>(
         slash::handle_slash(session, driver, slash).await;
     }
 
-    // Bang (`!`/`!!`) is NOT awaited here — host loop / pump runs it so Esc can
-    // abort concurrently (c665). Callers MUST `take_bash` after drain_pending.
-    // `/reload` likewise: callers MUST `take_reload` → `run_interactive_reload` (c1205).
-
     pending_ui::drain_pending_ui(session, driver).await;
-    // Session switch/resume/import apply mid-drain and arm footer refresh; pick it
-    // up in the same cycle (flag is only checked once at the top otherwise).
     drain_footer_token_if_pending(session, driver).await;
 
     if let Some(notice) = driver.take_mcp_gate_notice() {
@@ -300,8 +245,6 @@ pub async fn drain_pending<T: Terminal>(
         && driver.is_tools_frozen()
         && let Some(prompt) = session.take_gated_submit()
     {
-        // Freeze may have completed this tick; refresh snap so mcp pending cue clears
-        // (stale tools_table_frozen:false would sticky-restore the cue on idle sync).
         session.refresh_loaded_resources(driver).await;
         start_run_after_tool_gate(session, driver, agent_stream, prompt).await;
     }
@@ -315,17 +258,12 @@ pub async fn drain_pending<T: Terminal>(
                 "tool freeze gate armed prompt_len={}",
                 prompt.len()
             );
-            // Paint Assembling + queue strip BEFORE arming. Attach `arm_tool_freeze`
-            // waits MCP settle (r1923); blocking first hid the prompt until load
-            // finished (infra-mcp mcp8: TUI must not stall the tick without UI).
             session.set_gated_submit(prompt.clone());
             session
                 .ui_model_mut()
                 .enqueue_follow_up_strip(prompt.clone());
             session.ui_model_mut().set_busy_status("Assembling");
             session.sync_ui_root_from_model();
-            // Assembling (busy lead) MUST keep right-aligned MCP cue when still pending
-            // (resume connecting / re-gate — see mcp_tools_pending).
             if let Some(root) = session.ui_root() {
                 root.borrow_mut().refresh_mcp_short_cue();
             }
@@ -357,8 +295,6 @@ pub async fn drain_pending<T: Terminal>(
     Ok(())
 }
 
-/// Host depths calibrate the badge; never wipe local strip text with empty 0/0
-/// before `QueueUpdate` confirms the host consumed the enqueue (`ati44`).
 fn calibrate_queue_after_local_enqueue<T: Terminal>(
     session: &mut HostSession<T>,
     stats: QueueStats,
@@ -400,7 +336,6 @@ async fn drain_footer_token_if_pending<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
 ) {
-    // c1860: prefer settlement snapshot (no re-estimate / no OTel).
     if let Some(est) = session.take_pending_settlement_estimate() {
         let _ = session.take_pending_footer_token_refresh();
         let window = driver
@@ -418,8 +353,6 @@ async fn drain_footer_token_if_pending<T: Terminal>(
     if !session.take_pending_footer_token_refresh() {
         return;
     }
-    // Tests: await so ScriptedDriver estimate_override still applies.
-    // Production: kick background job — never block input on HF encode.
     #[cfg(test)]
     {
         refresh_footer_tokens(session, driver).await;

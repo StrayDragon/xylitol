@@ -1,18 +1,6 @@
-//! Provider model kinds and configuration.
-//!
-//! Provides [`XyModelKind`] (supported provider types) and [`XyModelConfig`]
-//! (connection parameters for building a provider instance).
-//!
-//! JSON Schema for config files lives in `infra` (see c510); this module stays
-//! serde-only.
-
 use serde::{Deserialize, Serialize};
 use strum::{EnumString, IntoStaticStr};
 
-/// Supported LLM provider kinds.
-///
-/// Lowercase provider id is a single SSOT: serde wire form, [`Self::provider_name`]
-/// and [`Self::from_provider_name`] all read the same strum attributes.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, IntoStaticStr, EnumString,
 )]
@@ -30,21 +18,14 @@ pub enum XyModelKind {
 }
 
 impl XyModelKind {
-    /// Parse from a provider name string (case-insensitive).
     pub fn from_provider_name(name: &str) -> Option<Self> {
         name.parse().ok()
     }
 
-    /// Provider identifier for display and serialization.
     pub fn provider_name(&self) -> &'static str {
         self.into()
     }
 
-    /// Default adapter API protocol family when YAML/`api` is omitted (c1598 / c1600).
-    ///
-    /// Keep in sync with infra `default_for(kind)` → bridge `AdapterKind` Display
-    /// (`openai-responses` / `anthropic-messages`). Lives in protocol so agent
-    /// manifest loading does not reach infra.
     pub fn default_adapter_api(self) -> &'static str {
         match self {
             Self::OpenAi | Self::Fake => "openai-responses",
@@ -53,46 +34,28 @@ impl XyModelKind {
     }
 }
 
-/// Connection parameters for building an LLM provider instance.
-///
-/// This is a pure data struct — the actual provider construction
-/// lives in the `agent` layer where provider implementations
-/// are available.
 #[derive(Debug, Clone)]
 pub struct XyModelConfig {
     pub kind: XyModelKind,
     pub api_key: String,
     pub model: String,
     pub base_url: Option<String>,
-    /// Adapter API type, e.g. `openai-responses` or `openai-completions`.
     pub api: Option<String>,
-    /// Named wire/thinking dialect profile (`generic` | `deepseek`); omit → generic.
     pub compat: Option<String>,
 }
 
 impl XyModelConfig {
-    /// Provider identifier for display purposes.
     pub fn provider_name(&self) -> &'static str {
         self.kind.provider_name()
     }
 }
 
-/// Fully resolved agent profile — runtime representation of an agent configuration.
-///
-/// Produced by the composition-root profile resolver from config-level
-/// profile entries.
 #[derive(Debug, Clone)]
 pub struct ResolvedProfile {
-    /// Registry alias (`models.models` key / CLI `--model`) this profile's
-    /// model resolved from. Differs from the raw vendor id in
-    /// `models.models.<id>.model`; consumers selecting by registry identity
-    /// (e.g. host writer default-model restore) MUST use this value.
     pub model_id: String,
-    /// System prompt override for this agent.
     pub system_prompt: Option<String>,
 }
 
-/// Default context window size for a given model kind.
 pub fn default_context_window_for(kind: XyModelKind) -> u64 {
     match kind {
         XyModelKind::OpenAi => 128_000,
@@ -104,8 +67,6 @@ pub fn default_context_window_for(kind: XyModelKind) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ── XyModelKind ───────────────────────────────────────────────────
 
     #[test]
     fn model_kind_from_provider_name_openai() {
@@ -168,8 +129,6 @@ mod tests {
         assert_ne!(XyModelKind::OpenAi, XyModelKind::Anthropic);
     }
 
-    // ── XyModelConfig ─────────────────────────────────────────────────
-
     #[test]
     fn model_config_provider_name() {
         let config = XyModelConfig {
@@ -200,8 +159,6 @@ mod tests {
         assert_eq!(config.provider_name(), "openai");
     }
 
-    // ── default_context_window_for ──────────────────────────────────
-
     #[test]
     fn default_context_window_openai() {
         assert_eq!(default_context_window_for(XyModelKind::OpenAi), 128_000);
@@ -211,8 +168,6 @@ mod tests {
     fn default_context_window_anthropic() {
         assert_eq!(default_context_window_for(XyModelKind::Anthropic), 200_000);
     }
-
-    // ── ResolvedProfile ─────────────────────────────────────────────
 
     #[test]
     fn resolved_profile_construct() {

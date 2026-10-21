@@ -1,5 +1,3 @@
-//! In-process [`XyDriver`]: ReAct + session store. No envelope, no official plugins.
-
 mod bang_exec;
 mod error;
 mod in_process;

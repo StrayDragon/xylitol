@@ -1,10 +1,3 @@
-//! OpenAI Chat Completions adapter.
-//!
-//! HTTP via current transport (reqwest) + portable hook three-seam (c998).
-//! Hooks use [`crate::hooks::HeaderBag`]; reqwest conversion stays
-//! in private `reqwest_headers`. Public `XyModel` surface is only
-//! [`super::OpenAiCompletionsAdapter`] (`impl XyModel`) (c505).
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -16,13 +9,11 @@ use crate::wire_policy::WirePolicy;
 use xylitol_plugin_sdk::message::XyLlmMessage;
 use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSchema};
 
-/// Adapter for the OpenAI Chat Completions API.
 pub struct OpenAiCompletionsAdapter {
     inner: OpenAIProvider,
 }
 
 impl OpenAiCompletionsAdapter {
-    /// Create a new Chat Completions adapter with [`WirePolicy::default`].
     pub fn new(
         api_key: String,
         model: String,
@@ -32,7 +23,6 @@ impl OpenAiCompletionsAdapter {
         Self::with_wire_policy(api_key, model, base_url, hooks, WirePolicy::default())
     }
 
-    /// Create with an explicit wire / thinking compat profile.
     pub fn with_wire_policy(
         api_key: String,
         model: String,
@@ -332,8 +322,6 @@ mod tests {
             .expect("generate map override");
     }
 
-    /// After switching level Off → high, the next Completions body MUST carry
-    /// `reasoning_effort: "high"` (c1165 regression lock for UI cycle → request).
     #[tokio::test]
     async fn completions_body_effort_follows_level_switch() {
         use std::sync::{Arc as StdArc, Mutex};

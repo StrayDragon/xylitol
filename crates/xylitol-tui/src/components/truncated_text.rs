@@ -1,7 +1,6 @@
 use crate::tui::Component;
 use crate::utils::{truncate_to_width, visible_width};
 
-/// Text component that truncates to fit viewport width (single line).
 pub struct TruncatedText {
     text: String,
     padding_x: usize,
@@ -23,14 +22,12 @@ impl Component for TruncatedText {
         let mut result = Vec::new();
         let empty_line = " ".repeat(width);
 
-        // Top padding
         for _ in 0..self.padding_y {
             result.push(empty_line.clone());
         }
 
         let available = std::cmp::max(1, width.saturating_sub(self.padding_x * 2));
 
-        // Take only first line
         let single_line = match self.text.find('\n') {
             Some(nl) => &self.text[..nl],
             None => &self.text,
@@ -45,7 +42,6 @@ impl Component for TruncatedText {
         let pad_needed = width.saturating_sub(vis);
         result.push(format!("{}{}", with_padding, " ".repeat(pad_needed)));
 
-        // Bottom padding
         for _ in 0..self.padding_y {
             result.push(empty_line.clone());
         }

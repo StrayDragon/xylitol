@@ -1,18 +1,3 @@
-//! AgentCapabilities — engine-side capability aggregate.
-//!
-//! **In scope:** model / thinking, tools (+ freeze) / hooks / permission,
-//! session id + store (+ fork/stats), context_policy + prompt assembly,
-//! compaction gate, steer/follow-up queues.
-//!
-//! **Out of scope (app / [`crate::XyDriver`]):**
-//! product slash catalog, bang (`!`/`!!`), session HTML/JSONL export-import.
-//! Skill/extension slash registration, when delivered, belongs on the Driver /
-//! app surface — not this aggregate.
-//! See `src/AGENTS.md` → `AgentCapabilities` 职责边界.
-//!
-//! This is the **runtime capability aggregate**, not the persisted session
-//! vocabulary in [`xylitol_plugin_sdk::session`].
-
 use std::sync::{Arc, Mutex};
 
 pub(crate) use xylitol_plugin_sdk::{XyEventSink, XySessionStore};
@@ -31,7 +16,6 @@ pub(crate) use self::hook_bus::{cancel_hook, observe_hook, observe_hook_sync};
 pub use self::queue::{AsyncQueueRuntime, PendingMessageQueue, QueueMode, QueueStats};
 pub(crate) use self::session_ops::load_conversation_history_from_store;
 pub use self::stats::SessionStats;
-// Test-support re-export (in-crate tests import via this facade).
 pub use self::stats::{ContextUsage, get_context_usage};
 
 use crate::agent::compaction::{
@@ -45,24 +29,17 @@ use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::model::thinking_levels_are_adjustable;
 use xylitol_plugin_sdk::{XyBatchMode, XyHookBus, XyPermission};
 
-// ── Model Registry ──────────────────────────────────────────────────
-
 pub use crate::agent::model::registry::ModelRegistry;
-
-// ── AgentCapabilities ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveTurnBinding {
     pub model_id: String,
     pub display_name: String,
-    /// Exact configured or restored thinking level name for this turn.
     pub thinking: String,
-    /// True when footer should omit the thinking segment.
     pub omit_thinking: bool,
 }
 
 impl ActiveTurnBinding {
-    /// Snapshot the currently selected model + thinking level for fixed zone / ReAct.
     pub(crate) fn from_manager(mm: &ModelManager) -> Option<Self> {
         let meta = mm.current_model()?;
         let levels = ModelManager::levels_for_meta(meta);
@@ -79,55 +56,28 @@ impl ActiveTurnBinding {
     }
 }
 
-/// Engine capability aggregate (model / tools / session / prompt / compaction / queues).
-///
-/// Product slash, bang, and session export live on [`crate::XyDriver`].
 pub struct AgentCapabilities {
-    /// Model management (registry, selection, thinking level). Shared so ReAct
-    /// can refresh at turn boundaries while surfaces call `select_model`.
     model_manager: Arc<Mutex<ModelManager>>,
-    /// True while a root turn is live (supplied by [`crate::agent::runtime::state::SharedRunCoordinator`]).
     midturn_active: Arc<dyn Fn() -> bool + Send + Sync>,
-    /// Tools available to the agent (construct-time final set).
     tools: ToolSet,
-    /// Track-A tool-table freeze (c1900): Unfrozen → Gating → Frozen.
     tool_freeze: ToolFreezePhase,
-    /// Fingerprint while [`ToolFreezePhase::Frozen`]; `None` otherwise.
     tool_fingerprint: Option<ToolTableFingerprint>,
-    /// Runtime-mutable hooks consulted at tool-call boundaries.
     hooks: AgentHooks,
-    /// Tool batch scheduling mode for the next run (c1545 / c1610).
     batch_mode: XyBatchMode,
-    /// Fragment ids currently applied into [`Self::prompt_opts`] (c1605).
-    /// `None` = never synced; id-set equality skips rebuild / duplicate policy text.
     runtime_fragment_ids: Option<Vec<&'static str>>,
-    /// System prompt to prepend to every turn.
     system_prompt: Option<String>,
-    /// Current session ID.
     session_id: Option<String>,
-    /// Compaction orchestration (threshold check, trigger).
     compaction_orchestrator: Arc<dyn XyCompaction>,
-    /// Factory used to materialize a fresh orchestrator per actor.
     compaction_factory: XyCompactionFactory,
-    /// CWD for session header.
     cwd: String,
-    /// System prompt options for dynamic building.
     prompt_opts: SystemPromptOpts,
 
-    /// Advisory permission port consulted by the ReAct loop for tool routing.
     permission: Arc<dyn XyPermission>,
-    /// Session store port — actively used by the ReAct loop.
     store: Arc<dyn XySessionStore>,
-    /// Event sink port — used for compaction / non-queue lifecycle.
     sink: Arc<dyn XyEventSink>,
-    /// Steer / follow-up queues + optional active-run EventTx (c525).
     queues: Arc<AsyncQueueRuntime>,
-    /// Optional script hook bus (composition-root supplied).
     hook_bus: Option<Arc<dyn XyHookBus>>,
-    /// Request-layout hooks (c1890); default ≡ current full-tools / no status bar.
     context_policy: crate::agent::context_policy::ContextPolicy,
-    /// This runtime's session display name fact (Phase B / c2843): turns observe
-    /// it directly; the process obs slot is never consulted by materialized paths.
     session_name: Option<String>,
 }
 
@@ -178,7 +128,6 @@ impl AgentCapabilities {
                 tool_snippets,
                 prompt_guidelines,
                 skills: Vec::new(),
-                // Filled once by sync_runtime_policy_from_batch_mode below.
                 runtime_policy_fragments: Vec::new(),
                 ..Default::default()
             },
@@ -190,21 +139,15 @@ impl AgentCapabilities {
             context_policy: crate::agent::context_policy::ContextPolicy::default(),
             session_name: None,
         };
-        // Assemble full system prompt (tools + context + SYSTEM/APPEND + runtime
-        // policy) once at construction so bootstrap-injected AGENTS.md is visible
-        // on the first run (c1100 / pt1). Fragment sync is id-deduped (c1605).
         session.sync_runtime_policy_from_batch_mode();
         session
     }
 
-    /// Replace the compaction port using a composition-root factory.
     pub fn install_compaction(&mut self, factory: XyCompactionFactory) {
         let settings = self.compaction_orchestrator.settings().clone();
         self.compaction_factory = factory.clone();
         self.compaction_orchestrator = factory(settings);
     }
-
-    // ── Accessors ─────────────────────────────────────────────────
 
     pub(crate) fn tools(&self) -> &ToolSet {
         &self.tools
@@ -231,10 +174,6 @@ impl AgentCapabilities {
         self.sync_runtime_policy_from_batch_mode();
     }
 
-    /// Apply built-in runtime policy fragments for [`Self::batch_mode`].
-    ///
-    /// No-op when the active fragment **id set** is unchanged — Session holds the
-    /// applied ids so the same policy is not re-appended / rebuilt (c1605).
     fn sync_runtime_policy_from_batch_mode(&mut self) {
         let ids = prompt::fragment_ids_for_batch_mode(self.batch_mode);
         if self.runtime_fragment_ids.as_deref() == Some(ids.as_slice()) {
@@ -255,12 +194,10 @@ impl AgentCapabilities {
         self.queues.clone()
     }
 
-    /// Enqueue a steering message (injected before the next model round).
     pub fn steer(&self, message: impl Into<String>) {
         self.steer_parts(vec![xylitol_plugin_sdk::message::AgentPart::text(message)]);
     }
 
-    /// Enqueue a multi-part steering message (c1155).
     pub fn steer_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) {
         let msg = AgentMessage::user_parts(parts);
         self.queues
@@ -271,12 +208,10 @@ impl AgentCapabilities {
         self.queues.notify_queue_update();
     }
 
-    /// Enqueue a follow-up message (injected when the run would otherwise stop).
     pub fn follow_up(&self, message: impl Into<String>) {
         self.follow_up_parts(vec![xylitol_plugin_sdk::message::AgentPart::text(message)]);
     }
 
-    /// Enqueue a multi-part follow-up message (c1155).
     pub fn follow_up_parts(&self, parts: Vec<xylitol_plugin_sdk::message::AgentPart>) {
         let msg = AgentMessage::user_parts(parts);
         self.queues
@@ -287,7 +222,6 @@ impl AgentCapabilities {
         self.queues.notify_queue_update();
     }
 
-    /// Clear the steering queue only.
     pub fn clear_steer_queue(&self) {
         self.queues
             .steer
@@ -297,7 +231,6 @@ impl AgentCapabilities {
         self.queues.notify_queue_update();
     }
 
-    /// Clear one or both queues.
     pub fn clear_queues(&self, clear_steer: bool, clear_follow_up: bool) {
         if clear_steer {
             self.queues
@@ -318,7 +251,6 @@ impl AgentCapabilities {
         }
     }
 
-    /// Queue depths.
     pub fn queue_stats(&self) -> QueueStats {
         self.queues.stats()
     }
@@ -327,7 +259,6 @@ impl AgentCapabilities {
         self.system_prompt.as_deref()
     }
 
-    /// Test / in-crate override (proposal Q1: no public session YAML override this wave).
     #[cfg(test)]
     pub(crate) fn set_context_policy_for_test(
         &mut self,
@@ -340,7 +271,6 @@ impl AgentCapabilities {
         self.with_models(|mm| mm.registry().clone())
     }
 
-    /// Current working directory.
     pub fn cwd(&self) -> &str {
         &self.cwd
     }
@@ -349,7 +279,6 @@ impl AgentCapabilities {
         self.cwd = cwd.into();
     }
 
-    /// Wire the run-coordinator mid-turn probe (called from [`crate::agent::AgentRuntime::new`]).
     pub(crate) fn set_midturn_active_probe(&mut self, probe: Arc<dyn Fn() -> bool + Send + Sync>) {
         self.midturn_active = probe;
     }
@@ -409,7 +338,6 @@ mod tests {
             )
         );
 
-        // Same mode again (builder also calls set_tool_mode after new) — no duplicate.
         session.set_tool_mode(XyBatchMode::BarrierParallel);
         let again = session.system_prompt().unwrap_or("").to_string();
         assert_eq!(again.matches("<runtime_policy>").count(), 1);
@@ -432,7 +360,6 @@ mod tests {
         let before = session.system_prompt().unwrap_or("").to_string();
         assert!(!before.is_empty());
 
-        // Rebuild with the same builtins — metadata refresh is enough to prove defer.
         let tools = fixture_tools();
         let opts = session.set_tools_defer_prompt(tools);
         assert!(
@@ -492,7 +419,6 @@ mod tests {
                 fp.names
             );
         }
-        // Mid-turn set_tools must not expand with duplicate todo names.
         session.set_tools(fixture_tools());
         assert_eq!(
             session.tools().iter().count(),
@@ -589,9 +515,6 @@ mod tests {
         let before = session.system_prompt().unwrap_or("").to_string();
         assert!(!before.contains("UNIQUE_CONTEXT_MARKER_V2"));
 
-        // Seed a fake history marker on the in-memory store via ensure+append path
-        // is heavy; instead verify apply only changes assembled prompt and does not
-        // clear session_id / queues (history ownership stays with the store).
         session
             .queues
             .steer
@@ -649,7 +572,6 @@ mod tests {
     #[tokio::test]
     async fn abort_clears_steer_keeps_follow_up() {
         let session = make_session();
-        // Enqueue without notify (no active EventTx in this unit test).
         session
             .queues
             .steer
@@ -746,8 +668,6 @@ mod tests {
         session.set_session(sid.into());
 
         session.select_model("m-a").await.unwrap();
-        // Re-selecting the same id (attach-time default restore) must not append
-        // a parent-less modelChange row that breaks resume projection.
         session.select_model("m-a").await.unwrap();
 
         let entries = session.session_store().load_entries(sid).await.unwrap();
@@ -769,8 +689,6 @@ mod tests {
         session.set_session(sid.into());
         session.ensure_session(sid, None).await.unwrap();
 
-        // Composition-root assembly (fresh writer, current = None): restoring the
-        // configured default must not write a parent-less modelChange tail.
         session
             .select_model_with_source("m-a", "restore")
             .await
@@ -793,8 +711,6 @@ mod tests {
         session.set_session(sid.into());
         session.select_model("m-a").await.unwrap();
 
-        // Default level is the last declared one ("high"); make one real change
-        // then repeat it — only the real change may persist.
         session.set_thinking_level("off".into()).await.unwrap();
         session.set_thinking_level("off".into()).await.unwrap();
 

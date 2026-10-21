@@ -1,16 +1,8 @@
-//! Designing scene `activity-fold-live` — inject the att33 live-window tape (no LLM).
-//!
-//! Reuses [`crate::activity_fold::replay_live_window`]. Last frame
-//! stays painted; a scroll notice lists PASS/FAIL per checkpoint. Then the
-//! real Ask Choice slot is mounted so answering can run
-//! [`crate::activity_fold::live_ask_close_events`].
-
 use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion, Component, Terminal};
 
 use crate::activity_fold::{replay_live_window, strip_ansi_live_window};
 use crate::host::HostSession;
 
-/// Fixture questions for the live-window Ask slot (not a real `ask` tool).
 pub(super) fn live_ask_questions() -> Vec<ChoiceQuestion> {
     vec![ChoiceQuestion {
         id: "next".into(),
@@ -25,7 +17,6 @@ pub(super) fn live_ask_questions() -> Vec<ChoiceQuestion> {
     }]
 }
 
-/// Run the live-window tape against the current product UI root.
 pub(super) fn run_activity_fold_live<T: Terminal>(session: &mut HostSession<T>) {
     let mut model = session.ui_model().clone();
     let root = session.ui_root().cloned();
@@ -60,8 +51,6 @@ pub(super) fn run_activity_fold_live<T: Terminal>(session: &mut HostSession<T>) 
     let _ = session.render_now();
 }
 
-/// Designing scene `activity-fold-live-xy` — LiveXy inject via `HostSession::step`,
-/// not `apply_ui_model` stuffing. Tape matches the SceneBuilder live-xy test.
 pub(super) fn run_preview_live_xy<T: Terminal>(session: &mut HostSession<T>) {
     use crate::driver::XyEvent;
     use crate::host::HostEvent;

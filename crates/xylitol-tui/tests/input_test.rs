@@ -5,7 +5,6 @@ use support::vt_feed::feed_vt;
 use xylitol_tui::components::input::Input;
 use xylitol_tui::tui::Component;
 
-/// Helper: type characters and return the Input.
 fn type_text(input: &mut Input, s: &str) {
     feed_vt(input, s);
 }
@@ -35,7 +34,6 @@ fn test_input_inserts_backslash_as_regular_char() {
 fn test_input_cursor_moves_left() {
     let mut input = Input::new();
     type_text(&mut input, "hello");
-    // Cursor at 5. Left twice = 3.
     feed_vt(&mut input, "\x1b[D");
     feed_vt(&mut input, "\x1b[D");
     feed_vt(&mut input, "X");
@@ -46,7 +44,6 @@ fn test_input_cursor_moves_left() {
 fn test_input_cursor_moves_right() {
     let mut input = Input::new();
     type_text(&mut input, "hello");
-    // Left 3 = position 2, then right = 3
     feed_vt(&mut input, "\x1b[D");
     feed_vt(&mut input, "\x1b[D");
     feed_vt(&mut input, "\x1b[D");
@@ -59,13 +56,13 @@ fn test_input_cursor_moves_right() {
 fn test_input_cursor_home_end() {
     let mut input = Input::new();
     type_text(&mut input, "hello");
-    feed_vt(&mut input, "\x1b[H"); // Home
+    feed_vt(&mut input, "\x1b[H");
     feed_vt(&mut input, "X");
     assert_eq!(input.value(), "Xhello");
 
     let mut input2 = Input::new();
     type_text(&mut input2, "hello");
-    feed_vt(&mut input2, "\x1b[F"); // End
+    feed_vt(&mut input2, "\x1b[F");
     feed_vt(&mut input2, "X");
     assert_eq!(input2.value(), "helloX");
 }
@@ -82,10 +79,9 @@ fn test_input_backspace() {
 fn test_input_delete_forward() {
     let mut input = Input::new();
     type_text(&mut input, "hello");
-    // Left 2 = position 3
     feed_vt(&mut input, "\x1b[D");
     feed_vt(&mut input, "\x1b[D");
-    feed_vt(&mut input, "\x1b[3~"); // Delete
+    feed_vt(&mut input, "\x1b[3~");
     assert_eq!(input.value(), "helo");
 }
 
@@ -93,7 +89,7 @@ fn test_input_delete_forward() {
 fn test_input_delete_word_backward() {
     let mut input = Input::new();
     type_text(&mut input, "foo bar baz");
-    feed_vt(&mut input, "\x17"); // Ctrl+W
+    feed_vt(&mut input, "\x17");
     assert_eq!(input.value(), "foo bar ");
 }
 
@@ -101,7 +97,6 @@ fn test_input_delete_word_backward() {
 fn test_input_delete_to_line_start() {
     let mut input = Input::new();
     type_text(&mut input, "hello");
-    // Ctrl+U from end: delete all to line start
     feed_vt(&mut input, "\x15");
     assert_eq!(input.value(), "");
 }
@@ -110,8 +105,8 @@ fn test_input_delete_to_line_start() {
 fn test_input_delete_to_line_end() {
     let mut input = Input::new();
     type_text(&mut input, "hello");
-    feed_vt(&mut input, "\x1b[H"); // Home
-    feed_vt(&mut input, "\x0b"); // Ctrl+K
+    feed_vt(&mut input, "\x1b[H");
+    feed_vt(&mut input, "\x0b");
     assert_eq!(input.value(), "");
 }
 
@@ -119,10 +114,10 @@ fn test_input_delete_to_line_end() {
 fn test_input_yank() {
     let mut input = Input::new();
     type_text(&mut input, "foo bar baz");
-    feed_vt(&mut input, "\x17"); // Ctrl+W: kill "baz"
+    feed_vt(&mut input, "\x17");
     assert_eq!(input.value(), "foo bar ");
-    feed_vt(&mut input, "\x1b[H"); // Home
-    feed_vt(&mut input, "\x19"); // Ctrl+Y: yank
+    feed_vt(&mut input, "\x1b[H");
+    feed_vt(&mut input, "\x19");
     assert_eq!(input.value(), "bazfoo bar ");
 }
 
@@ -132,9 +127,7 @@ fn test_input_undo() {
     type_text(&mut input, "hello");
     feed_vt(&mut input, "X");
     feed_vt(&mut input, "Y");
-    feed_vt(&mut input, "\x1f"); // Ctrl+_
-    // Undo pops most recent push (helloXY state)
-    // Should restore to either "hello" or "helloX"
+    feed_vt(&mut input, "\x1f");
     let val = input.value().to_string();
     assert!(!val.contains("Y"), "Undo should remove Y, got: {}", val);
 }

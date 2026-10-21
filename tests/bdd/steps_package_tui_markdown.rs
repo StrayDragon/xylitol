@@ -1,5 +1,3 @@
-//! Steps for `package-tui-markdown` (c2865 / r1936 partial fence trim).
-
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};

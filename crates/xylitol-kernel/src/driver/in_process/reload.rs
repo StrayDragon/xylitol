@@ -1,5 +1,3 @@
-//! Kernel-mounted `/reload`: skills + prompt context. MCP reconnect is `session/prepare`.
-
 use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 use xylitol_runtime::InProcessReloadHook;

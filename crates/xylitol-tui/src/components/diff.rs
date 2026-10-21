@@ -1,72 +1,41 @@
-//! Diff component — copy-friendly unified / optional side-by-side rendering.
-//!
-//! UX: product `DESIGN.md` + this component. Engine: `similar` (in-package).
-
 use similar::{ChangeTag, TextDiff};
 
 use crate::tui::{Component, InputEvent};
 use crate::utils::{truncate_to_width, visible_width, wrap_text_with_ansi};
 
-/// How to feed the Diff renderer.
 #[derive(Debug, Clone)]
 pub enum DiffInput {
-    /// Human gutter format from `generate_display_diff` (or compatible).
     DisplayText(String),
-    /// Standard unified diff text.
     UnifiedText(String),
-    /// Compute from old/new text (optional path for headers).
     LinePair {
         old: String,
         new: String,
         path: Option<String>,
     },
-    /// pi edit display format: `+ 42 content` / `- 11 old` / `  40 context`.
     EditText(String),
 }
 
 impl DiffInput {
-    /// Build pi-style [`EditText`] from old/new file contents (agent Edit tool path).
-    ///
-    /// Prefer this over raw [`LinePair`] when you want compact `±N content` gutters
-    /// that stay column-aligned (same as pi `generateDiffString`).
     pub fn from_edit_pair(old: &str, new: &str) -> Self {
         Self::EditText(generate_edit_text(old, new, 4))
     }
 }
 
-/// Theme closures — product maps semantic tokens → SGR.
-///
-/// **Layering (pi edit / tool-wash embedding):**
-/// - `added` / `removed` / `context`: **fg** for content polarity.
-/// - `added_line_bg` / `removed_line_bg`: optional full-row tint after pad (unified
-///   only). Prefer identity when the host already paints a `tool-*-bg` shell.
-/// - `word_change_added` / `word_change_removed`: changed spans. Prefer
-///   `word_wash_bg(block_bg, polarity)` (soft green/red mix ≈0.32 on the tool/row
-///   wash) + polarity fg; restore the **block/row bg** (not `49m`). Avoid
-///   reverse/white flash and darken-only shades.
-/// - Side-by-side skips row tint so polarity stays fg-only (c464).
 pub struct DiffTheme {
     pub added: Box<dyn Fn(&str) -> String>,
     pub removed: Box<dyn Fn(&str) -> String>,
     pub context: Box<dyn Fn(&str) -> String>,
     pub gutter: Box<dyn Fn(&str) -> String>,
     pub meta: Box<dyn Fn(&str) -> String>,
-    /// Intra-line changed span on insert lines (brighter added bg).
     pub word_change_added: Box<dyn Fn(&str) -> String>,
-    /// Intra-line changed span on delete lines (brighter removed bg).
     pub word_change_removed: Box<dyn Fn(&str) -> String>,
-    /// Full-row background for insert lines (applied after pad-to-width).
     pub added_line_bg: Box<dyn Fn(&str) -> String>,
-    /// Full-row background for delete lines (applied after pad-to-width).
     pub removed_line_bg: Box<dyn Fn(&str) -> String>,
-    /// Optional per-line content highlight (default identity). Syntect stays optional.
     pub highlight_line: Box<dyn Fn(&str) -> String>,
 }
 
 impl Default for DiffTheme {
     fn default() -> Self {
-        // 256-color fallbacks: dark green/red row tint + stronger word tint.
-        // Prefer product truecolor via demo/app theme (DESIGN.md diff-*-bg).
         Self {
             added: Box::new(|s| format!("\x1b[32m{s}\x1b[39m")),
             removed: Box::new(|s| format!("\x1b[31m{s}\x1b[39m")),
@@ -86,13 +55,10 @@ impl Default for DiffTheme {
     }
 }
 
-/// Rendering options.
 #[derive(Debug, Clone)]
 pub struct DiffOptions {
     pub word_level: bool,
-    /// When `Some(n)` and `width >= n`, use side-by-side; `None` = always unified.
     pub side_by_side_min_width: Option<usize>,
-    /// Compact pi-style `±{num} {content}` gutter (auto for [`DiffInput::EditText`]).
     pub compact_line_numbers: bool,
 }
 
@@ -101,7 +67,6 @@ impl Default for DiffOptions {
         Self {
             word_level: true,
             side_by_side_min_width: Some(100),
-            // pi-style `±N content` — dual old/new gutter looks "错位" in demos.
             compact_line_numbers: true,
         }
     }
@@ -118,14 +83,12 @@ enum LineKind {
 #[derive(Debug, Clone)]
 struct DiffLine {
     kind: LineKind,
-    /// Sign prefix for unified (`-`/`+`/` `) or empty for meta.
     sign: char,
     content: String,
     old_no: Option<u32>,
     new_no: Option<u32>,
 }
 
-/// Free-function renderer (also used by [`Diff`] Component).
 pub fn render_diff_lines(
     input: &DiffInput,
     width: usize,
@@ -159,7 +122,6 @@ fn normalize_input(input: &DiffInput) -> Vec<DiffLine> {
         DiffInput::DisplayText(text) => parse_display(text),
         DiffInput::EditText(text) => parse_edit_text(text),
     };
-    // Expandable / Edit headers already show the path — drop git `--- a/` / `+++ b/` noise.
     lines
         .into_iter()
         .filter(|l| !is_redundant_file_header(l))
@@ -190,7 +152,6 @@ fn line_number_width(lines: &[DiffLine]) -> usize {
         .max(1)
 }
 
-/// Parse pi edit display lines: `+ 42 content` / `- 11 old` / `  40 context`.
 fn parse_edit_text(text: &str) -> Vec<DiffLine> {
     let mut out = Vec::new();
     for raw in text.lines() {
@@ -247,7 +208,6 @@ fn parse_edit_line(line: &str) -> Option<(LineKind, char, Option<u32>, String)> 
         _ => return None,
     };
     let rest = &line[1..];
-    // Optional padded line number, then a space, then content (pi: `+  42 content`).
     let rest_trim_start = rest.trim_start_matches(' ');
     let digits_end = rest_trim_start
         .char_indices()
@@ -262,14 +222,12 @@ fn parse_edit_line(line: &str) -> Option<(LineKind, char, Option<u32>, String)> 
             .unwrap_or("");
         (num_str.parse().ok(), after.to_string())
     } else {
-        // `+ content` without a number
         let content = rest.strip_prefix(' ').unwrap_or(rest).to_string();
         (None, content)
     };
     Some((kind, sign, no, content))
 }
 
-/// Generate pi `generateDiffString`-compatible text from old/new contents.
 pub fn generate_edit_text(old: &str, new: &str, context_lines: usize) -> String {
     if old == new {
         return String::new();
@@ -339,7 +297,7 @@ pub fn generate_edit_text(old: &str, new: &str, context_lines: usize) -> String 
 }
 
 fn lines_from_pair(old: &str, new: &str, path: Option<&str>) -> Vec<DiffLine> {
-    let _ = path; // Callers put the path on the expandable header — omit --- a/ +++ b/ body noise.
+    let _ = path;
     if old == new {
         return Vec::new();
     }
@@ -399,26 +357,25 @@ fn parse_unified(text: &str) -> Vec<DiffLine> {
                 old_no: None,
                 new_no: None,
             });
-            if let Some(rest) = raw.strip_prefix("@@") {
-                // @@ -l,s +l,s @@
-                if let Some((old_part, new_part)) = rest.split_once('+') {
-                    if let Some(n) = old_part
-                        .trim()
-                        .trim_start_matches('-')
-                        .split(',')
-                        .next()
-                        .and_then(|s| s.parse().ok())
-                    {
-                        old_no = n;
-                    }
-                    if let Some(n) = new_part
-                        .split_whitespace()
-                        .next()
-                        .and_then(|s| s.split(',').next())
-                        .and_then(|s| s.parse().ok())
-                    {
-                        new_no = n;
-                    }
+            if let Some(rest) = raw.strip_prefix("@@")
+                && let Some((old_part, new_part)) = rest.split_once('+')
+            {
+                if let Some(n) = old_part
+                    .trim()
+                    .trim_start_matches('-')
+                    .split(',')
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                {
+                    old_no = n;
+                }
+                if let Some(n) = new_part
+                    .split_whitespace()
+                    .next()
+                    .and_then(|s| s.split(',').next())
+                    .and_then(|s| s.parse().ok())
+                {
+                    new_no = n;
                 }
             }
             continue;
@@ -464,14 +421,12 @@ fn parse_unified(text: &str) -> Vec<DiffLine> {
     out
 }
 
-/// Parse `generate_display_diff` gutter lines.
 fn parse_display(text: &str) -> Vec<DiffLine> {
     let mut out = Vec::new();
     for raw in text.lines() {
         if raw.trim() == "(no changes)" {
             continue;
         }
-        // Split on " | " once from the right-ish: format is `{gutter}| {content}`
         let Some((gutter, content)) = raw.split_once('|') else {
             out.push(DiffLine {
                 kind: LineKind::Meta,
@@ -494,15 +449,9 @@ fn parse_display(text: &str) -> Vec<DiffLine> {
             });
             continue;
         }
-        // Delete: "   1     " (old only) — left number, right blank
-        // Insert: "     2   " (new only)
-        // Equal:  "   1    2"
         let nums: Vec<&str> = g.split_whitespace().collect();
         match nums.as_slice() {
             [old] => {
-                // Ambiguous: could be delete (old) — display format uses left for delete
-                // Insert has leading spaces so first token is new line number only when
-                // the gutter starts with spaces: check leading whitespace count.
                 let leading = gutter.len() - gutter.trim_start().len();
                 if leading >= 4 {
                     let new_no = old.parse().ok();
@@ -566,7 +515,6 @@ fn render_unified(
             && (i == 0
                 || (lines[i - 1].kind != LineKind::Delete && lines[i - 1].kind != LineKind::Insert))
         {
-            // Exactly one adjacent -/+ pair (not part of a multi-line hunk).
             let del = &lines[i];
             let ins = &lines[i + 1];
             let (del_styled, ins_styled) = word_level_pair(&del.content, &ins.content, theme);
@@ -647,7 +595,6 @@ fn color_prefix(kind: LineKind, prefix: &str, theme: &DiffTheme) -> String {
     }
 }
 
-/// Compact pi gutter: `±{pad}N ` — fixed width so content columns align.
 fn compact_prefix(sign: char, no: Option<u32>, num_width: usize) -> String {
     let num = match no {
         Some(n) => format!("{n:>num_width$}"),
@@ -657,8 +604,6 @@ fn compact_prefix(sign: char, no: Option<u32>, num_width: usize) -> String {
 }
 
 fn word_level_pair(old: &str, new: &str, theme: &DiffTheme) -> (String, String) {
-    // pi `renderIntraLineDiff`: strip leading whitespace from the first
-    // removed/added part so indentation is not inverse-/word-highlighted.
     let diff = TextDiff::from_words(old, new);
     let mut del = String::new();
     let mut ins = String::new();
@@ -723,9 +668,8 @@ struct EmitOpts<'a> {
 
 fn emit_styled_line(theme: &DiffTheme, opts: EmitOpts<'_>) -> Vec<String> {
     let (prefix, cont_prefix) = if opts.compact {
-        // pi: color sign+number together; content starts at a fixed column.
         let plain = compact_prefix(opts.sign, opts.old_no.or(opts.new_no), opts.num_width);
-        let cont_plain = format!(" {}", " ".repeat(opts.num_width + 1)); // sign + num + space
+        let cont_plain = format!(" {}", " ".repeat(opts.num_width + 1));
         (
             color_prefix(opts.kind, &plain, theme),
             color_prefix(opts.kind, &cont_plain, theme),
@@ -748,7 +692,6 @@ fn emit_styled_line(theme: &DiffTheme, opts: EmitOpts<'_>) -> Vec<String> {
         } else {
             format!("{cont_prefix}{part}")
         };
-        // Pad first, then row tint — so bg spans the full terminal width.
         out.push(paint_kind_line_bg(
             theme,
             opts.kind,
@@ -808,8 +751,6 @@ fn render_side_by_side(
     _options: &DiffOptions,
     num_width: usize,
 ) -> Vec<String> {
-    // Plain-text column math first, then color — keeps `│` gutter vertically aligned
-    // even when cells carry ANSI (pad-after-color drifted by 1 col with `·` etc.).
     let max_half = width.saturating_sub(3) / 2;
     enum Row {
         Meta(String),
@@ -823,7 +764,6 @@ fn render_side_by_side(
 
     let style_cell = |sign: char, content: &str, no: Option<u32>, kind: LineKind| {
         let plain = format_sbs_cell_plain(sign, content, no, num_width);
-        // SBS: fg + gutter only — no `added_line_bg` / `removed_line_bg` (c464).
         if visible_width(&plain) > max_half {
             let t = truncate_to_width(&plain, max_half, "", false);
             let styled = color_prefix(kind, &(theme.highlight_line)(&t), theme);
@@ -860,7 +800,6 @@ fn render_side_by_side(
             i = next;
             let n = deletes.len().max(inserts.len());
             for k in 0..n {
-                // Empty content on one side = blank half (no fake ±N gutter) — ptd9 / c540.
                 let (lp, ls) = match deletes.get(k) {
                     Some(d) if !d.content.is_empty() => {
                         style_cell('-', &d.content, d.old_no, LineKind::Delete)
@@ -924,7 +863,6 @@ fn render_side_by_side(
     out
 }
 
-/// Collect a change hunk starting at `start`: all deletes, then all inserts (similar order).
 fn take_change_hunk(lines: &[DiffLine], start: usize) -> (&[DiffLine], &[DiffLine], usize) {
     let mut i = start;
     let del_start = i;
@@ -940,7 +878,6 @@ fn take_change_hunk(lines: &[DiffLine], start: usize) -> (&[DiffLine], &[DiffLin
     (&lines[del_start..del_end], &lines[ins_start..ins_end], i)
 }
 
-/// Plain (no ANSI) SBS cell text — used to compute stable column widths.
 fn format_sbs_cell_plain(sign: char, content: &str, no: Option<u32>, num_width: usize) -> String {
     format!("{}{}", compact_prefix(sign, no, num_width), content)
 }
@@ -979,7 +916,6 @@ fn zip_packed_columns(
     pad_to_width(&row, width)
 }
 
-/// Diff component with render cache.
 pub struct Diff {
     input: DiffInput,
     padding_x: usize,
@@ -1014,7 +950,6 @@ impl Diff {
         match &self.input {
             DiffInput::DisplayText(s) | DiffInput::UnifiedText(s) | DiffInput::EditText(s) => {
                 1u8.hash(&mut h);
-                // Distinguish EditText from Display/Unified via a tag byte.
                 match &self.input {
                     DiffInput::EditText(_) => 3u8.hash(&mut h),
                     DiffInput::UnifiedText(_) => 4u8.hash(&mut h),
@@ -1082,7 +1017,6 @@ mod tests {
     use super::*;
 
     fn plain_theme() -> DiffTheme {
-        // Identity kind colors — signs come only from compact/dual gutters (avoid `--1`).
         DiffTheme {
             added: Box::new(|s| s.to_string()),
             removed: Box::new(|s| s.to_string()),
@@ -1200,7 +1134,6 @@ mod tests {
                 ..DiffOptions::default()
             },
         );
-        // Unified has sign on the left of content; side-by-side has two columns.
         let joined = lines.join("\n");
         assert!(!joined.contains(" +b") || joined.matches('+').count() >= 1);
         assert!(joined.contains('-') || joined.contains('+'));
@@ -1323,7 +1256,6 @@ mod tests {
             joined.contains("10") && joined.contains("100"),
             "edit gutter should show padded line numbers; got:\n{joined}"
         );
-        // Content column aligned: prefix is `±` + 3-wide num + space.
         let content_cols: Vec<usize> = lines
             .iter()
             .filter(|l| l.contains("fn ") || l.contains("prompt"))
@@ -1348,7 +1280,6 @@ mod tests {
             joined.contains('-') && joined.contains('+'),
             "got:\n{joined}"
         );
-        // Default options use compact gutters.
         assert!(
             !joined.contains("    1     "),
             "should not use dual gutter by default; got:\n{joined}"
@@ -1380,7 +1311,6 @@ mod tests {
             joined.contains("Ready") && joined.contains("Working"),
             "SBS body should remain; got:\n{joined}"
         );
-        // Packed columns: each replace-hunk row is L|R (not all deletes then all inserts).
         let ready_line = lines
             .iter()
             .find(|l| l.contains("Ready") && l.contains("Working"))
@@ -1394,7 +1324,6 @@ mod tests {
 
     #[test]
     fn side_by_side_skips_row_background_tint() {
-        // Theme with unmistakable row-bg SGR — SBS must not apply it (c464).
         let theme = DiffTheme {
             added: Box::new(|s| format!("A{s}")),
             removed: Box::new(|s| format!("R{s}")),
@@ -1454,7 +1383,6 @@ mod tests {
 
     #[test]
     fn side_by_side_zips_multiline_replace_hunk() {
-        // similar emits DDII for a 2-line replace — must zip, not stack.
         let lines = render_diff_lines(
             &DiffInput::LinePair {
                 old: "status: Ready\nfooter: cwd · model\n".into(),
@@ -1505,7 +1433,6 @@ mod tests {
             joined.contains("only_old") || joined.contains('-'),
             "got:\n{joined}"
         );
-        // Empty right half must not invent a gutter like `+  1` after the separator.
         for line in &lines {
             if let Some(idx) = line.find('│') {
                 let right = line[idx + '│'.len_utf8()..].trim();
@@ -1569,7 +1496,6 @@ mod tests {
                 ..DiffOptions::default()
             },
         );
-        // Pad-to-width adds trailing spaces for row bg; trim for stable, hook-friendly snaps.
         let normalized: Vec<_> = lines.iter().map(|l| l.trim_end()).collect();
         insta::assert_snapshot!("diff_edit_format_compact", normalized.join("\n"));
     }
@@ -1580,7 +1506,6 @@ mod sbs_ansi_align_harness {
     use super::*;
     use unicode_width::UnicodeWidthChar;
 
-    /// Visible column of the first occurrence of `needle` (skips ANSI CSI).
     fn visible_col_of(s: &str, needle: char) -> Option<usize> {
         let mut col = 0usize;
         let mut chars = s.chars().peekable();
@@ -1606,7 +1531,6 @@ mod sbs_ansi_align_harness {
 
     #[test]
     fn side_by_side_ansi_theme_keeps_gutter_and_plus_aligned() {
-        // Regression: pad-after-color drifted `+` by 1 col across rows (esp. with `·`).
         let lines = render_diff_lines(
             &DiffInput::LinePair {
                 old: "status: Ready\nfooter: cwd · model\n".into(),

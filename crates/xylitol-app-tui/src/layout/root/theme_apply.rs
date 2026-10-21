@@ -1,5 +1,3 @@
-//! Theme apply helpers for [`UiRoot`] (c1095).
-
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::fg_rgb;
 
@@ -12,8 +10,6 @@ impl UiRoot {
         self.theme
     }
 
-    /// Replace the layout theme and rebuild theme-dependent fixed zone (c1095).
-    /// Does not clear transcript / `ui_model` entries.
     pub fn set_layout_theme(&mut self, theme: LayoutTheme) {
         self.theme = theme;
         self.scrollback_paint.invalidate();

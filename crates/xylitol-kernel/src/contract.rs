@@ -1,5 +1,3 @@
-//! Kernel contract tests: admit, unload, waterfall order, instance recycle.
-
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

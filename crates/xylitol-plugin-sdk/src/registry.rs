@@ -1,12 +1,9 @@
-//! Named registry whose entries are removed by the registering plugin's Effect.
-
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::ports::{XyModel, XyTool};
 use crate::resource::SkillInfo;
 
-/// Map of `name → Arc<T>` with insert/remove tied to plugin lifetime.
 pub struct Registry<T: ?Sized + Send + Sync + 'static> {
     inner: Mutex<HashMap<String, Arc<T>>>,
 }
@@ -53,14 +50,12 @@ impl<T: ?Sized + Send + Sync + 'static> Registry<T> {
     }
 }
 
-/// Global named contribution points (model dialects, tool sources, skills, hooks).
 pub struct HostRegistries {
     pub models: Registry<dyn XyModel>,
     pub tools: Registry<dyn XyTool>,
     pub skills: Registry<SkillEntry>,
 }
 
-/// Skill catalog row contributed by a skill-source plugin.
 pub struct SkillEntry {
     pub info: SkillInfo,
 }

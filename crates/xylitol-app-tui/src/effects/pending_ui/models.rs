@@ -1,5 +1,3 @@
-//! Models picker confirm → SetModel + thinking level.
-
 use xylitol_tui::Terminal;
 
 use crate::dispatch::{DispatchOutcome, dispatch};
@@ -47,7 +45,6 @@ pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, driver: &m
             session.sync_fixed_zone(driver);
             session.close_models_slot();
         }
-        // dispatch already logs error.kind
         Err(e) => session.push_scroll_notice(format!("/model failed: {e}")),
     }
     let _ = session.render_now();

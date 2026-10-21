@@ -1,8 +1,3 @@
-//! Product slash command catalog for editor completion (c1170 / c1175).
-//!
-//! Names and descriptions come from [`crate::product_commands`] SSOT.
-//! Designing prepends `/designing` (not in the product SSOT).
-
 use xylitol_tui::SlashCommand;
 
 use crate::product_commands::product_slash_commands;

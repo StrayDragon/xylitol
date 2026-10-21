@@ -1,12 +1,3 @@
-//! Ls tool — lists directory contents.
-//!
-//! Key behaviors:
-//! - Sorted alphabetically (case-insensitive)
-//! - Directories suffixed with `/`
-//! - Optional path (defaults to cwd)
-//! - Configurable limit (default 200)
-//! - Entry limit hint when truncated
-
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -103,14 +94,10 @@ impl TypedTool for LsTool {
             entries.push((name, file_type.is_dir()));
         }
 
-        // Sort alphabetically, case-insensitive
         entries.sort_by(|(a_name, a_dir), (b_name, b_dir)| {
             let a_lower = a_name.to_lowercase();
             let b_lower = b_name.to_lowercase();
-            a_lower.cmp(&b_lower).then_with(|| {
-                // Directories first, then files
-                b_dir.cmp(a_dir)
-            })
+            a_lower.cmp(&b_lower).then_with(|| b_dir.cmp(a_dir))
         });
 
         let mut limit_reached = false;

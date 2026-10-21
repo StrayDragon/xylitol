@@ -18,7 +18,6 @@ pub enum XyError {
 }
 
 impl XyError {
-    /// Stable kind for logs / fastrace (`Provider`, `Tool`, …).
     pub fn kind(&self) -> &'static str {
         self.into()
     }
@@ -39,16 +38,11 @@ pub enum XyToolError {
 }
 
 impl XyToolError {
-    /// Stable kind for logs / fastrace (`InvalidArgs`, `Aborted`, …).
     pub fn kind(&self) -> &'static str {
         self.into()
     }
 }
 
-/// Persistence failures from [`crate::XySessionStore`].
-///
-/// Control-plane misses (no bound session, busy mutation, in-memory tree
-/// travel) live on [`XySessionError`], not here.
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XySessionStoreError {
     #[error("session not found: {session_id}")]
@@ -69,8 +63,6 @@ pub enum XySessionStoreError {
     WriteHeld { session_id: String },
 }
 
-/// Session-domain failures: store IO plus control-plane (no active session,
-/// busy, in-memory tree travel).
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XySessionError {
     #[error(transparent)]
@@ -90,8 +82,6 @@ impl From<XySessionStoreError> for XyError {
 }
 
 impl XySessionError {
-    /// Persist variants keep the store kind (`NotFound`, `Io`, …); control-plane
-    /// arms use their own (`NoActiveSession`, `Busy`, `EntryNotFound`).
     pub fn kind(&self) -> &'static str {
         match self {
             Self::Store(store) => store.kind(),
@@ -144,7 +134,6 @@ impl XySessionStoreError {
     }
 }
 
-/// Filesystem (or equivalent) failures from [`crate::XyExportIo`].
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyExportError {
     #[error("{op} {path}: {source}")]
@@ -170,7 +159,6 @@ impl XyExportError {
     }
 }
 
-/// Persistence failures from project trust decision storage.
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyTrustError {
     #[error("{op}: {source}")]
@@ -198,8 +186,6 @@ impl XyTrustError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ── XyError Display ────────────────────────────────────────────
 
     #[test]
     fn xy_error_display_provider() {
@@ -231,8 +217,6 @@ mod tests {
         assert_eq!(err.to_string(), "aborted");
     }
 
-    // ── XyToolError Display ─────────────────────────────────────────
-
     #[test]
     fn xy_tool_error_display_invalid_args() {
         let err = XyToolError::InvalidArgs("missing 'path'".into());
@@ -263,8 +247,6 @@ mod tests {
         assert_eq!(err.to_string(), "aborted");
     }
 
-    // ── From conversion ─────────────────────────────────────────────
-
     #[test]
     fn xy_tool_error_into_xy_error() {
         let tool_err = XyToolError::Aborted;
@@ -284,8 +266,6 @@ mod tests {
             "tool error: invalid arguments: bad"
         );
     }
-
-    // ── kind() ──────────────────────────────────────────────────────
 
     #[test]
     fn xy_error_kind_variants() {
@@ -347,8 +327,6 @@ mod tests {
         assert_eq!(trust.to_string(), "failed to acquire trust store lock");
     }
 
-    // ── Debug ───────────────────────────────────────────────────────
-
     #[test]
     fn xy_error_debug_format() {
         let err = XyError::Config("oops".into());
@@ -364,10 +342,6 @@ mod tests {
         assert!(debug.contains("Timeout"));
     }
 
-    // ── Snapshot: user-visible error vocabulary ─────────────────────
-
-    /// One row per user-facing error arm. Wording here is product surface
-    /// (TUI/print render it verbatim): review snapshot diffs like copy edits.
     #[test]
     fn error_display_vocabulary_snapshot() {
         let cases: Vec<(&str, String)> = vec![

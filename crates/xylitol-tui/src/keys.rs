@@ -3,7 +3,6 @@ use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::sync::{Mutex, MutexGuard};
 
 static KITTY_PROTOCOL_ACTIVE: Mutex<bool> = Mutex::new(false);
-/// Serializes tests (and callers) that mutate the process-global Kitty flag.
 static KITTY_PROTOCOL_SERIAL: Mutex<()> = Mutex::new(());
 
 fn kitty_lock() -> MutexGuard<'static, bool> {
@@ -20,10 +19,6 @@ pub fn is_kitty_protocol_active() -> bool {
     *kitty_lock()
 }
 
-/// Run `f` with the Kitty keyboard-protocol flag set to `active`.
-///
-/// Holds a process-wide serial lock for the whole closure so concurrent tests
-/// cannot race the flag (unlike set-then-assert across unlocked windows).
 pub fn with_kitty_protocol_active<R>(active: bool, f: impl FnOnce() -> R) -> R {
     let _serial = KITTY_PROTOCOL_SERIAL
         .lock()
@@ -121,7 +116,6 @@ fn is_symbol_key(c: char) -> bool {
     symbol_chars().contains(&c)
 }
 
-// Kitty protocol parsing
 #[derive(Debug, Clone)]
 pub struct ParsedKittySequence {
     pub codepoint: u32,
@@ -139,10 +133,6 @@ fn parse_event_type(s: Option<&str>) -> u8 {
     }
 }
 
-/// Kitty protocol encodes the modifier bitmask as value+1 (`1` = no modifiers).
-///
-/// Malformed / hostile sequences may carry `0`; decode with saturating arithmetic
-/// so `mod_val - 1` can never underflow (debug panic) or wrap to a huge bitmask.
 fn decode_kitty_modifier(mod_val: u32) -> u32 {
     mod_val.saturating_sub(1)
 }
@@ -271,9 +261,6 @@ pub fn parse_kitty_sequence(data: &str) -> Option<ParsedKittySequence> {
 }
 
 fn parse_kitty_csi_u(inner: &str) -> Option<ParsedKittySequence> {
-    // Two forms:
-    // 1. <codepoint>u  (no modifier, plain key)
-    // 2. <codepoint>[:<shifted>[:<base>]];<mod>[:<event>]u
     if let Some((cp_part, rest)) = inner.split_once(';') {
         let (mod_part, event_str) = if let Some(colon_pos) = rest.find(':') {
             (&rest[..colon_pos], Some(&rest[colon_pos + 1..]))
@@ -304,7 +291,6 @@ fn parse_kitty_csi_u(inner: &str) -> Option<ParsedKittySequence> {
             event_type,
         })
     } else {
-        // No semicolon: plain <codepoint>u
         let cp: u32 = inner.parse().unwrap_or(0);
         Some(ParsedKittySequence {
             codepoint: cp,
@@ -447,9 +433,6 @@ fn legacy_sequence_matches(data: &str, sequences: &[&str]) -> bool {
     sequences.contains(&data)
 }
 
-/// 方向键族（up/down/left/right）的公共尾部：无修饰走 legacy/kitty 二选一，
-/// 其余修饰先试 legacy 修饰序列再试 kitty。ALT 的额外 legacy 字节与 CTRL 的
-/// 专属序列因键而异，由各臂在调用本函数前自行处理。
 fn matches_arrow_tail(
     data: &str,
     key: &str,
@@ -1133,7 +1116,6 @@ pub fn decode_kitty_printable(data: &str) -> Option<String> {
     }
     let inner = &data[2..data.len() - 1];
 
-    // Check for form without semicolon: plain <codepoint>u
     if !inner.contains(';') {
         let cp: u32 = inner.parse().ok()?;
         if cp == 0 || cp < 32 {
@@ -1187,10 +1169,6 @@ pub fn decode_kitty_printable(data: &str) -> Option<String> {
     char::from_u32(effective_cp).map(|c| c.to_string())
 }
 
-/// Match a crossterm `KeyEvent` against a key id (`"ctrl+c"`, `"up"`, …).
-///
-/// Only `Press` and `Repeat` match. Compares `KeyCode` + `KeyModifiers` via
-/// [`parse_key_id`] — the runtime path; VT `matches_key` remains for unit tests.
 pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bool {
     use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
@@ -1208,18 +1186,12 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
     let has_shift = event.modifiers.contains(KeyModifiers::SHIFT);
     let has_super = event.modifiers.contains(KeyModifiers::SUPER);
 
-    // Foot / legacy VT often report Alt+Shift+Letter as `Char('B')` + ALT
-    // **without** the SHIFT flag (uppercase encodes shift). Treat ASCII
-    // uppercase letter as implied shift so `alt+shift+b` still matches.
-    // Lowercase `alt+e` must NOT match that event (reserved Alt+Shift+E path).
     let implied_shift = matches!(
         event.code,
         KeyCode::Char(c) if c.is_ascii_uppercase() && (has_alt || has_ctrl || has_super)
     );
     let effective_shift = has_shift || implied_shift;
 
-    // Crossterm often encodes Shift+Tab as `KeyCode::BackTab` without SHIFT in
-    // modifiers — treat that as `shift+tab` before the strict modifier check.
     if parsed.key == "tab"
         && parsed.shift
         && !parsed.ctrl
@@ -1233,10 +1205,6 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
         return true;
     }
 
-    // Pi parity (keys.ts): when Kitty protocol is active, Ghostty maps
-    // Shift+Enter → `\n` and Kitty custom maps → `\x1b\r`. Crossterm surfaces
-    // the former as `KeyCode::Char('\n')` **without** SHIFT. Match before the
-    // strict modifier check so `tui.input.newLine` works in ApplicationOwned alt-screen.
     if parsed.key == "enter"
         && parsed.shift
         && !parsed.ctrl
@@ -1280,7 +1248,7 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
         "left" => matches!(event.code, KeyCode::Left),
         "right" => matches!(event.code, KeyCode::Right),
         "space" => matches!(event.code, KeyCode::Char(' ')),
-        "clear" => matches!(event.code, KeyCode::Null), // unused at runtime
+        "clear" => matches!(event.code, KeyCode::Null),
         k if k.len() > 1 && k.starts_with('f') => {
             if let Ok(n) = k[1..].parse::<u8>() {
                 matches!(event.code, KeyCode::F(m) if m == n)
@@ -1302,8 +1270,6 @@ pub fn matches_key_event(event: &crossterm::event::KeyEvent, key_id: &str) -> bo
     }
 }
 
-/// Printable text from a key event: `KeyCode::Char` with no ctrl/alt/super.
-/// Shift is allowed (uppercase / shifted symbols).
 pub fn printable_from_key_event(event: &crossterm::event::KeyEvent) -> Option<String> {
     use crossterm::event::{KeyCode, KeyEventKind, KeyModifiers};
 
@@ -1317,7 +1283,6 @@ pub fn printable_from_key_event(event: &crossterm::event::KeyEvent) -> Option<St
         return None;
     }
     match event.code {
-        // Never treat `\n` as printable — Ghostty Shift+Enter (see matches_key_event).
         KeyCode::Char('\n') | KeyCode::Char('\r') => None,
         KeyCode::Char(c) => Some(c.to_string()),
         _ => None,

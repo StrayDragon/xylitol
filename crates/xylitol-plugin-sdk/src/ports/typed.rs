@@ -1,8 +1,3 @@
-//! Typed built-in tools: deserialize once, then run typed execute.
-//!
-//! Trait boundary for MCP / dynamic tools stays [`serde_json::Value`] + [`XyTool`].
-//! Built-ins MAY implement [`TypedTool`] and get [`XyTool`] via the blanket impl.
-
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -14,17 +9,12 @@ use crate::error::XyToolError;
 use crate::message::AgentPart;
 use crate::tool_timeout::ToolTimeout;
 
-/// Default wall-clock bound for file-system tools (c2425). Local FS work is
-/// normally sub-second; the bound only fires on hung mounts (NFS/FUSE).
 pub const FS_TOOL_TIMEOUT_SECS: u64 = 30;
 
-/// Deserialize tool JSON args into `T`, mapping failures to [`XyToolError::InvalidArgs`].
 pub fn parse_tool_args<T: DeserializeOwned>(args: Value) -> Result<T, XyToolError> {
     serde_json::from_value(args).map_err(|e| XyToolError::InvalidArgs(e.to_string()))
 }
 
-/// Built-in tool with typed args. Prefer this over manual [`XyTool`] when args
-/// are a fixed `Deserialize` struct.
 #[async_trait]
 pub trait TypedTool: Send + Sync {
     type Args: DeserializeOwned + Send;
@@ -60,11 +50,6 @@ pub trait TypedTool: Send + Sync {
         args
     }
 
-    /// Optional wall-clock bound applied by the blanket [`XyTool`] impl.
-    ///
-    /// `None` (default) leaves the wait unbounded at this layer — command
-    /// tools arm their own `ToolTimeout` from args instead. File-system tools
-    /// override this to guarantee bounded waits on hung mounts.
     fn wait_bound(&self) -> Option<Duration> {
         None
     }

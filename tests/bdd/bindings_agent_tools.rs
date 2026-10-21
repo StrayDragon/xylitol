@@ -384,7 +384,6 @@ fn test_tools_write_in_session_workspace(ws: Workspace) {}
 )]
 fn test_tools_bash_runs_in_session_workspace(ws: Workspace) {}
 
-// ── c2835 后继：agent-tools 裸规则回填 ──────────────────────────────
 use crate::bdd::steps_c2827::{T6McpBdd, t6_mcp_bdd};
 
 #[scenario(

@@ -1,9 +1,3 @@
-//! Server runtime — Host composition root (assemble, then bind).
-//!
-//! Bind / HTTP / WS live in `xylitol-serve`. Occupancy is [`HostState`].
-//! Binds `ServerConfig.host`+`port` (default 127.0.0.1:18790). EADDRINUSE fails;
-//! no port+1, no lock file. Session occupancy is lazy per slot.
-
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,18 +10,12 @@ use crate::composition::build_baseline;
 use crate::occupancy::factory::ProductOccupancyFactory;
 use crate::occupancy::host::{HostState, ReloadBaseline};
 
-/// Handle to a running server. Dropping this triggers graceful shutdown.
 pub type RunningServer = RunningListener;
 
-/// Configuration for starting the server.
-///
-/// Agent assembly fields live in the shared `resolve_assembly` / `build_baseline`
-/// path (spec ce9). Transport knobs are forwarded to [`ListenConfig`].
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub sessions_dir: Option<std::path::PathBuf>,
-    /// Registration file override (tests / BDD). `None` = `~/.xylitol/serve.json`.
     pub registration_path: Option<PathBuf>,
 }
 
@@ -55,8 +43,6 @@ fn occupy(host: Arc<HostState>) -> Arc<dyn OccupiedHost> {
     host
 }
 
-/// Start the product Host listener (bind-first, then assemble: c2465 readiness
-/// window — connections during assembly get a semantic 503 instead of refusal).
 pub async fn start(
     config: ServerConfig,
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
@@ -80,8 +66,6 @@ pub async fn start(
         }
         Err(e) => {
             gateway.mark_failed();
-            // Bounded hold so a probing client can read the failed reason
-            // before the listener goes away (c2465 D2).
             tokio::time::sleep(Duration::from_secs(10)).await;
             drop(running);
             Err(e)
@@ -89,7 +73,6 @@ pub async fn start(
     }
 }
 
-/// Config → assembly → RuntimeBaseline → HostState (the pre-bind startup work).
 async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::error::Error>> {
     let boot_opts = BootOptions {
         profile: Profile::Host,
@@ -168,11 +151,7 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
     ))
 }
 
-/// Bind and serve an already-built [`HostState`] (tests / custom assembly).
-/// Ready as soon as the socket is up (no assembly window).
-///
-/// BDD @executable readiness scenarios + driver unit tests; no product caller.
-#[allow(dead_code)] // BDD @executable contract / unit-test seam, not product-called
+#[allow(dead_code)]
 pub async fn serve(
     config: ServerConfig,
     host: Arc<HostState>,
@@ -180,9 +159,7 @@ pub async fn serve(
     xylitol_serve::serve(config.listen(), occupy(host)).await
 }
 
-/// Pre-assembled variant that also arms the registration contract (BDD /
-/// tests): ready at bind, registration written, self-eviction armed.
-#[allow(dead_code)] // BDD @executable contract / unit-test seam, not product-called
+#[allow(dead_code)]
 pub async fn serve_registered(
     config: ServerConfig,
     host: Arc<HostState>,
@@ -191,8 +168,6 @@ pub async fn serve_registered(
     xylitol_serve::serve_registered(config.listen(), occupy(host), registration_path).await
 }
 
-/// Bind and serve with an explicit gateway — the assembly-window seam used by
-/// [`start`] and the readiness BDD scenarios (c2465).
 pub async fn bind_serve(
     config: &ServerConfig,
     gateway: Arc<Gateway>,

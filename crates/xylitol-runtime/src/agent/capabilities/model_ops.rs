@@ -1,5 +1,3 @@
-//! Model / thinking selection methods on [`AgentCapabilities`].
-
 use std::sync::{Arc, Mutex};
 
 use crate::agent::model::manager::ModelManager;
@@ -22,18 +20,14 @@ impl AgentCapabilities {
         f(&mut guard)
     }
 
-    /// Shared handle for ReAct NextTurn refresh (clone into the run stream).
     pub(crate) fn model_manager_handle(&self) -> Arc<Mutex<ModelManager>> {
         self.model_manager.clone()
     }
 
-    /// Get the currently selected model metadata (clone for lock safety).
     pub fn current_model(&self) -> Option<XyModelMeta> {
         self.with_models(|mm| mm.current_model().cloned())
     }
 
-    /// Fixed per-request context (system prompt + tool schemas) for
-    /// overhead-aware context estimates (c25 / c16).
     pub fn fixed_request_context(&self) -> crate::agent::compaction::FixedRequestContext {
         crate::agent::compaction::FixedRequestContext {
             system_prompt: self.system_prompt.clone(),
@@ -49,29 +43,21 @@ impl AgentCapabilities {
         }
     }
 
-    /// Selected thinking level, including a sticky out-of-set restored value.
     pub fn thinking_level(&self) -> String {
         self.with_models(|mm| mm.thinking_level())
     }
 
-    /// Selected binding when idle (no in-flight turn). Live fixed zone uses the
-    /// run coordinator via [`crate::agent::runtime::AgentRuntime`].
     pub fn selected_turn_binding(&self) -> Option<ActiveTurnBinding> {
         self.with_models(ActiveTurnBinding::from_manager)
     }
 
-    /// True while a root turn is live (coordinator probe).
     pub fn has_active_turn(&self) -> bool {
         (self.midturn_active)()
     }
 
-    /// Set thinking level.
     pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyError> {
         let previous = self.thinking_level();
         self.with_models_mut(|mm| mm.set_thinking_level(level.clone()))?;
-        // Persist only a real change: attach-time restore of the same level must
-        // not append a parent-less thinkingLevelChange row at the session tail.
-        // The select hook still observes every action (thw6).
         if previous != level {
             self.persist_thinking_level_change(previous, level).await;
         } else if let Some(bus) = self.hook_bus.clone() {
@@ -116,7 +102,6 @@ impl AgentCapabilities {
         }
     }
 
-    /// Apply Settings `default_thinking_level` for initial session assembly.
     pub fn apply_default_thinking_level(&mut self, raw: Option<&str>) {
         let preferred = raw.map(str::to_owned);
         self.with_models_mut(|mm| {
@@ -125,7 +110,6 @@ impl AgentCapabilities {
         });
     }
 
-    /// Apply Settings `thinkingBudgets` (Anthropic budget overrides) for generate.
     pub fn set_thinking_budgets(
         &mut self,
         budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets>,
@@ -133,20 +117,14 @@ impl AgentCapabilities {
         self.with_models_mut(|mm| mm.set_thinking_budgets(budgets));
     }
 
-    /// Restore a persisted session level verbatim, without emitting a new entry.
     pub(crate) fn restore_thinking_level(&mut self, level: String) {
         self.with_models_mut(|mm| mm.restore_thinking_level(level));
     }
 
-    /// Select a specific model by ID (`source` = `"set"`).
     pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
         self.select_model_with_source(model_id, "set").await
     }
 
-    /// Select a model and emit `model_select` with the given source (`set` | `cycle`).
-    ///
-    /// `source = "restore"` is composition-root assembly (attach-time default
-    /// binding): it persists nothing — the session already records its model.
     pub async fn select_model_with_source(
         &mut self,
         model_id: &str,
@@ -154,9 +132,6 @@ impl AgentCapabilities {
     ) -> Result<(), XyError> {
         let previous = self.current_model().map(|m| m.id.clone());
         self.with_models_mut(|mm| mm.select_model(model_id))?;
-        // Persist only a real user-driven change: attach-time default restore
-        // must not append a parent-less modelChange row that breaks resume
-        // projection. The select hook still observes every action (thw6).
         if source != "restore"
             && previous.as_deref() != Some(model_id)
             && let Some(ref sid) = self.session_id

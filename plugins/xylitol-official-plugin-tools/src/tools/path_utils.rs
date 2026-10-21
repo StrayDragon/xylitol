@@ -1,13 +1,5 @@
-//! Path resolution utilities for tools.
-//!
-//! Resolves possibly-relative tool paths against an explicit base directory
-//! (the session workspace from `XyToolCtx`), normalizes, and validates for
-//! security.
-
 use std::path::{Path, PathBuf};
 
-/// Resolve a possibly-relative file path against `base`.
-/// If the path is already absolute, return it as-is.
 pub(crate) fn resolve_to_dir(base: &Path, path: &str) -> PathBuf {
     let p = Path::new(path);
     if p.is_absolute() {

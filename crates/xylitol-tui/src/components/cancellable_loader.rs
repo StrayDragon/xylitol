@@ -1,7 +1,6 @@
 use crate::components::loader::{Loader, LoaderIndicatorOptions};
 use crate::tui::Component;
 
-/// Loader that can be cancelled with Escape.
 pub struct CancellableLoader {
     loader: Loader,
     pub on_abort: Option<Box<dyn FnOnce()>>,

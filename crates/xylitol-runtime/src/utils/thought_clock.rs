@@ -1,12 +1,6 @@
-//! Online stream clocks: O(1) stamp per event, duration is a subtraction when read.
 #![allow(dead_code)]
-//!
-//! [`ThoughtClock`]: TUI live thinking channel (start / first switch away).
-//! [`StreamNodeClock`]: ReAct persist nodes (`streamTiming` unix-ms).
-
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-/// Wall-clock stamps for one live thinking burst (TUI).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ThoughtClock {
     started_at: Option<Instant>,
@@ -27,7 +21,6 @@ impl ThoughtClock {
         self.started_at
     }
 
-    /// First thinking node. Subsequent calls are no-ops.
     pub fn stamp_start(&mut self) {
         self.stamp_start_at(Instant::now());
     }
@@ -38,9 +31,6 @@ impl ThoughtClock {
         }
     }
 
-    /// Thinking-channel end (first TextDelta / tool / ThinkingEnd). No-op if already ended
-    /// or never started. Responses `ThinkingEnd` often arrives with `Done` after text —
-    /// first TextDelta must win.
     pub fn stamp_end(&mut self) {
         self.stamp_end_at(Instant::now());
     }
@@ -51,7 +41,6 @@ impl ThoughtClock {
         }
     }
 
-    /// Test/scene: pin start and clear end so a later `stamp_end` measures from here.
     #[cfg(test)]
     pub fn pin_start_at(&mut self, at: Instant) {
         self.started_at = Some(at);
@@ -62,14 +51,12 @@ impl ThoughtClock {
         *self = Self::default();
     }
 
-    /// Whole seconds from stamped start to stamped end. `None` if open or under 1s.
     pub fn elapsed_secs(&self) -> Option<u64> {
         let start = self.started_at?;
         let end = self.ended_at?;
         secs_between(start, end)
     }
 
-    /// If still open, treat `until` as end without mutating.
     #[cfg(test)]
     pub fn elapsed_secs_until(&self, until: Instant) -> Option<u64> {
         let start = self.started_at?;
@@ -90,7 +77,6 @@ fn unix_now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Resume helper: prefer stored secs, else `ended_ms - started_ms`.
 pub fn elapsed_from_persist_ms(
     elapsed_secs: Option<u64>,
     started_at_ms: Option<u64>,
@@ -105,7 +91,6 @@ pub fn elapsed_from_persist_ms(
 
 const STREAM_NODE_COUNT: usize = 8;
 
-/// Named wall-clock nodes on one assistant generate (O(1) stamp, subtract when read).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum StreamNode {
@@ -149,7 +134,6 @@ impl StreamNode {
     ];
 }
 
-/// Online node clock: start-class nodes write once; [`StreamNode::TextEnd`] last-writes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct StreamNodeClock {
     instants: [Option<Instant>; STREAM_NODE_COUNT],
@@ -186,7 +170,6 @@ impl StreamNodeClock {
         }
     }
 
-    /// Keep AgentStart; clear per-turn / per-message nodes.
     pub fn begin_turn(&mut self) {
         let agent_at = self.instants[StreamNode::AgentStart.idx()];
         let agent_ms = self.unix_ms[StreamNode::AgentStart.idx()];
@@ -214,11 +197,7 @@ impl StreamNodeClock {
         self.stamp(StreamNode::ToolIntent);
     }
 
-    /// Thinking-only fallback then message end, just before persist.
     pub fn finish_message(&mut self) {
-        // Single clock capture: thinking closes *at* message end, so both stamps
-        // share one wall-clock read (keeps the ms-equality assertion stable under
-        // parallel load instead of straddling two SystemTime::now() reads).
         let at = Instant::now();
         let ms = unix_now_ms();
         if self.has(StreamNode::ThinkingStart) && !self.has(StreamNode::ThinkingEnd) {

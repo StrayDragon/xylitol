@@ -1,17 +1,3 @@
-//! Session → LLM projection: fold environment roles into [`xylitol_plugin_sdk::XyLlmMessage`] rows.
-//!
-//! [`xylitol_plugin_sdk::AgentMessage`] remains the session SSOT (`Llm` ∪ `Env`). Before any
-//! provider call, history MUST pass through [`project_for_llm`].
-//! Llm arm is passthrough (`XyLlmMessage`).
-//!
-//! Env fold **shapes** are part of the resume/import provider-prefix contract
-//! (c1930 / as48): changing the bash or context-summary templates breaks
-//! Responses `input` byte prefixes and prompt cache. Edit only via explicit change.
-//!
-//! Request-time (non-transcript) tails — AgentStatusBar readings — are
-//! **not** this module. They append after the fold via
-//! `crate::agent::prompt::status_bar`.
-
 pub use xylitol_plugin_sdk::llm_project::{
     fold_bash_for_llm, fold_context_summary_for_llm, project_for_llm, user_text,
 };
@@ -21,7 +7,6 @@ mod tests {
     use super::*;
     use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage, now_ms};
 
-    /// Zero every timestamp so the snapshot pins shape, not wall-clock.
     fn normalize_timestamps(value: &mut serde_json::Value) {
         match value {
             serde_json::Value::Object(map) => {
@@ -43,9 +28,6 @@ mod tests {
 
     #[test]
     fn full_projection_shape_snapshot() {
-        // One conversation touching every projection arm. The serialized shape
-        // is a prompt-cache prefix contract (c1930/as48): treat snapshot diffs
-        // like wire diffs and land them only via an explicit change.
         let history = vec![
             AgentMessage::user("plan the refactor"),
             AgentMessage::assistant("I will read the entry first"),
@@ -127,10 +109,7 @@ mod tests {
             data: list.to_data_value(),
         });
         assert!(entry.as_agent_message().is_none());
-        let history = vec![
-            AgentMessage::user("hi"),
-            // Only messages that survive as_agent_message reach project_for_llm.
-        ];
+        let history = vec![AgentMessage::user("hi")];
         let projected = project_for_llm(&history);
         let blob = serde_json::to_string(&projected).unwrap();
         assert!(!blob.contains("secret todo body"));
@@ -211,8 +190,6 @@ mod tests {
         assert_eq!(projected[0].text(), "ok");
     }
 
-    /// After /reload removes an MCP tool, past ToolCall + toolResult MUST still
-    /// project into the next LLM prefix (history is not filtered by live tools).
     #[test]
     fn history_keeps_removed_mcp_tool_call_in_llm_projection() {
         let history = vec![
@@ -323,13 +300,9 @@ mod tests {
         let user = AgentMessage::user("hi");
         let projected = project_for_llm(std::slice::from_ref(&user));
         assert_eq!(projected.len(), 1);
-        // Same type as bridge DTO (alias).
         let _: xylitol_plugin_sdk::XyLlmMessage = projected[0].clone();
     }
 
-    /// c27 (agent seam): post-compact working history is CompactionSummary + firstKept.
-    /// Summarized-away assistants are absent from the leaf — projection must not
-    /// resurrect their Thinking; kept assistants with signature still pass through.
     #[test]
     fn compact_working_history_projects_summary_and_keeps_retained_signature() {
         let kept_sig = r#"{"type":"reasoning","id":"rs_kept","summary":[]}"#;
@@ -369,7 +342,6 @@ mod tests {
             fold_context_summary_for_llm("prior turns summarized"),
             "compaction folds to context summary user row"
         );
-        // No synthesized assistant for summarized-away turns (would be a 4th+ row).
         assert!(
             projected
                 .iter()

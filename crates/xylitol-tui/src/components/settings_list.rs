@@ -7,8 +7,6 @@ use crate::keybindings::with_keybindings;
 use crate::tui::Component;
 use crate::utils::{truncate_to_width, visible_width, wrap_text_with_ansi};
 
-// ── types ───────────────────────────────────────────────────────────────────
-
 pub type SubmenuFactory = Box<dyn Fn(String, Box<dyn Fn(Option<String>)>) -> Box<dyn Component>>;
 
 pub struct SettingItem {
@@ -16,9 +14,7 @@ pub struct SettingItem {
     pub label: String,
     pub description: Option<String>,
     pub current_value: String,
-    /// If set, Enter/Space cycles through these values in order.
     pub values: Option<Vec<String>>,
-    /// If set, Enter opens a submenu component via this factory.
     pub submenu: Option<SubmenuFactory>,
 }
 
@@ -36,15 +32,9 @@ pub struct SettingsListOptions {
     pub enable_search: bool,
 }
 
-// ── SettingsList ─────────────────────────────────────────────────────────────
-
 #[allow(clippy::type_complexity)]
-/// A scrollable, keyboard-navigable settings list with optional fuzzy search.
-///
-/// Ported from pi's `components/settings-list.ts`.
 pub struct SettingsList {
     items: Vec<SettingItem>,
-    /// Indices into `self.items` of currently-filtered items.
     filtered_indices: Vec<usize>,
     theme: SettingsListTheme,
     selected_index: usize,
@@ -55,9 +45,7 @@ pub struct SettingsList {
     search_input: Option<Input>,
     search_enabled: bool,
 
-    // Submenu state
     submenu: Option<Box<dyn Component>>,
-    /// Shared signal — the submenu's `done` callback writes here.
     submenu_close: Option<Rc<RefCell<Option<String>>>>,
     submenu_item_index: Option<usize>,
 }
@@ -102,7 +90,6 @@ impl Component for SettingsList {
             return sub.render(width);
         }
 
-        // Pre-render the search bar so render_main_list doesn't need &mut.
         let mut search_lines: Vec<String> = Vec::new();
         if self.search_enabled
             && let Some(ref mut input) = self.search_input
@@ -166,7 +153,6 @@ impl Component for SettingsList {
         } else if cancel {
             (self.on_cancel)();
         } else if self.search_enabled {
-            // Space is confirm above; other printable + Backspace feed the search.
             let is_backspace = matches!(key.code, KeyCode::Backspace);
             let printable = printable_from_key_event(key);
             if !is_backspace && printable.as_deref().is_none_or(|ch| ch == " ") {
@@ -187,8 +173,6 @@ impl Component for SettingsList {
         }
     }
 }
-
-// ── private ─────────────────────────────────────────────────────────────────
 
 impl SettingsList {
     fn render_main_list(&self, width: usize, search_lines: &[String]) -> Vec<String> {
@@ -228,7 +212,6 @@ impl SettingsList {
             return lines;
         }
 
-        // Visible range with scrolling.
         let half = self.max_visible / 2;
         let start = self
             .selected_index
@@ -282,7 +265,6 @@ impl SettingsList {
             ));
         }
 
-        // Scroll indicator.
         if start > 0 || end < display_indices.len() {
             let txt = format!("  ({}/{})", self.selected_index + 1, display_indices.len());
             lines.push(truncate_to_width(
@@ -293,7 +275,6 @@ impl SettingsList {
             ));
         }
 
-        // Description.
         if let Some(item) = display_indices
             .get(self.selected_index)
             .and_then(|&i| self.items.get(i))
@@ -329,8 +310,6 @@ impl SettingsList {
             false,
         ));
     }
-
-    // ── submenu ──────────────────────────────────────────────────────────
 
     fn poll_submenu_close(&mut self) {
         let value = if let Some(ref signal) = self.submenu_close {
@@ -368,8 +347,6 @@ impl SettingsList {
         }
     }
 
-    // ── filter / activate ────────────────────────────────────────────────
-
     fn apply_filter(&mut self, query: &str) {
         self.filtered_indices.clear();
         for (i, item) in self.items.iter().enumerate() {
@@ -377,7 +354,6 @@ impl SettingsList {
                 self.filtered_indices.push(i);
             }
         }
-        // Re-sort by match quality (lower score = better).
         self.filtered_indices.sort_by(|&a, &b| {
             let sa = fuzzy_match(query, &self.items[a].label)
                 .map(|m| m.score)
@@ -402,7 +378,6 @@ impl SettingsList {
             None => return,
         };
 
-        // Check if submenu or value cycling is available.
         let (has_submenu, has_values) = {
             let item = &self.items[item_idx];
             (
@@ -437,8 +412,6 @@ impl SettingsList {
             *signal_clone.borrow_mut() = value;
         });
 
-        // Call the submenu factory. Box<dyn Fn> implements Fn, so we can
-        // call it via reference without moving out of the Option.
         let factory = self.items[item_idx].submenu.as_ref().unwrap();
         let component = factory(current_val, done);
         self.submenu = Some(component);
@@ -523,10 +496,8 @@ mod tests {
             || {},
             SettingsListOptions::default(),
         );
-        // Up from 0 wraps to last.
         feed(&mut list, KeyCode::Up);
         assert_eq!(list.selected_index, 1);
-        // Down from last wraps to 0.
         feed(&mut list, KeyCode::Down);
         assert_eq!(list.selected_index, 0);
     }
@@ -554,7 +525,7 @@ mod tests {
             || {},
             SettingsListOptions::default(),
         );
-        feed(&mut list, KeyCode::Enter); // Enter → cycles a→b
+        feed(&mut list, KeyCode::Enter);
         assert_eq!(*on_change.borrow(), "b=");
         assert_eq!(list.items[0].current_value, "b");
     }
@@ -588,7 +559,6 @@ mod tests {
                 enable_search: true,
             },
         );
-        // Type "alp"
         feed_char(&mut list, 'a');
         feed_char(&mut list, 'l');
         feed_char(&mut list, 'p');
@@ -627,18 +597,15 @@ mod tests {
             || {},
             SettingsListOptions::default(),
         );
-        feed(&mut list, KeyCode::Enter); // open submenu
+        feed(&mut list, KeyCode::Enter);
         assert!(list.submenu.is_some());
         let lines = list.render(40);
         assert!(lines.iter().any(|l| l.contains("submenu content")));
 
-        // Submenu done callback → close and update value.
-        // We trigger by rendering (which polls submenu_close).
-        // We need to write to the signal first, which the real submenu would do.
         if let Some(ref signal) = list.submenu_close {
             *signal.borrow_mut() = Some("new".to_string());
         }
-        list.render(40); // poll_submenu_close fires, applies value, closes
+        list.render(40);
         assert!(list.submenu.is_none());
         assert_eq!(list.items[0].current_value, "new");
     }

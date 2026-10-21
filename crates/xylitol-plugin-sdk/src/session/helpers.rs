@@ -1,12 +1,9 @@
-//! Session message JSON helpers and bash entry builders.
-
 use serde_json::Value;
 
 use crate::message::{AgentMessage, EnvMessage};
 
 use super::entries::{EntryBase, MessageEntry, SessionEntry};
 
-/// Build a nested bash `SessionEntry::Message` for new bang writes (c1210 / be4).
 #[allow(clippy::too_many_arguments)]
 pub fn bash_execution_message_entry(
     bash_id: impl Into<String>,
@@ -41,9 +38,6 @@ pub fn bash_execution_message_entry(
     })
 }
 
-// ── Message entry helpers ───────────────────────────────────────────
-
-/// AgentMessage-shaped JSON for session fixtures (c646 tagged content).
 pub fn fixture_message_json(role: &str, text: &str) -> Value {
     serde_json::json!({
         "role": role,
@@ -52,28 +46,20 @@ pub fn fixture_message_json(role: &str, text: &str) -> Value {
     })
 }
 
-/// Extract the `role` field from a serialized agent message JSON value.
 pub fn message_role(msg: &Value) -> Option<&str> {
     msg.get("role").and_then(Value::as_str)
 }
 
-/// `customType` / `custom_type` on Env CustomMessage JSON
-/// (c1905 `session_env` status-bar bootstrap).
 pub fn message_custom_type(msg: &Value) -> Option<&str> {
     msg.get("customType")
         .or_else(|| msg.get("custom_type"))
         .and_then(Value::as_str)
 }
 
-/// Env `role=custom` rows (incl. status-bar family `session_env`) — not user-typed chat.
 pub fn is_env_custom_message(msg: &Value) -> bool {
     message_role(msg) == Some("custom")
 }
 
-/// Extract **visible text** for editor prefill / tree summary (dm2).
-///
-/// Only aggregates `type=text` parts. Thinking / toolCall / image are skipped.
-/// Bare-string content and untyped objects are ignored (c646: no legacy read).
 pub fn message_text(msg: &Value) -> String {
     if let Some(parts) = msg.get("content").and_then(Value::as_array) {
         return extract_text_from_parts(parts);
@@ -97,17 +83,14 @@ fn extract_text_from_parts(parts: &[Value]) -> String {
     out
 }
 
-/// Iterate the canonical `content` array on a serialized message.
 pub fn message_parts(msg: &Value) -> Option<&Vec<Value>> {
     msg.get("content").and_then(Value::as_array)
 }
 
-/// Whether a content/part value is a tool-call (requires `type: toolCall`).
 pub fn is_tool_call_part(part: &Value) -> bool {
     part.get("type").and_then(Value::as_str) == Some("toolCall") && part.get("name").is_some()
 }
 
-/// Tool name from a tool-call part, if any.
 pub fn tool_call_name(part: &Value) -> Option<&str> {
     if !is_tool_call_part(part) {
         return None;
@@ -115,11 +98,7 @@ pub fn tool_call_name(part: &Value) -> Option<&str> {
     part.get("name").and_then(Value::as_str)
 }
 
-/// Tool arguments object (`arguments`).
-///
-/// Product callers: none today; kept for the spec @executable branch-summary
-/// path (`generate_branch_summary`).
-#[allow(dead_code)] // spec @executable branch-summary path, not product-called
+#[allow(dead_code)]
 pub fn tool_call_arguments(part: &Value) -> Option<&Value> {
     if !is_tool_call_part(part) {
         return None;
@@ -127,22 +106,14 @@ pub fn tool_call_arguments(part: &Value) -> Option<&Value> {
     part.get("arguments")
 }
 
-/// Count tool-call parts in a serialized message.
-///
-/// Product callers: none today; kept for the spec @executable branch-summary
-/// path (`generate_branch_summary`).
-#[allow(dead_code)] // spec @executable branch-summary path, not product-called
+#[allow(dead_code)]
 pub fn count_tool_calls(msg: &Value) -> usize {
     message_parts(msg)
         .map(|parts| parts.iter().filter(|p| is_tool_call_part(p)).count())
         .unwrap_or(0)
 }
 
-/// Collect unique `path` args from read/write/edit tool calls in a message.
-///
-/// Product callers: none today; kept for the spec @executable branch-summary
-/// path (`generate_branch_summary`).
-#[allow(dead_code)] // spec @executable branch-summary path, not product-called
+#[allow(dead_code)]
 pub fn tool_file_paths(msg: &Value) -> Vec<String> {
     let Some(parts) = message_parts(msg) else {
         return Vec::new();
@@ -168,7 +139,6 @@ pub fn tool_file_paths(msg: &Value) -> Vec<String> {
     files
 }
 
-/// Whether `entry` is a persisted user message.
 pub fn is_user_message(entry: &SessionEntry) -> bool {
     matches!(
         entry,
@@ -176,7 +146,6 @@ pub fn is_user_message(entry: &SessionEntry) -> bool {
     )
 }
 
-/// Whether `entry` is a persisted assistant message.
 pub fn is_assistant_message(entry: &SessionEntry) -> bool {
     matches!(
         entry,
@@ -184,12 +153,6 @@ pub fn is_assistant_message(entry: &SessionEntry) -> bool {
     )
 }
 
-/// Resolve the transcript leaf anchor from persisted entries.
-///
-/// Honors `hint` only when it points at an existing chain entry
-/// ([`SessionEntry::anchors_transcript`]); otherwise (missing, or the hint lands
-/// on bookkeeping such as a parent-less trailing `modelChange`) scans back to
-/// the last chain entry so resume projection / branch assembly keep full history.
 pub fn transcript_leaf_anchor(entries: &[SessionEntry], hint: Option<&str>) -> Option<String> {
     if let Some(id) = hint
         && entries
@@ -206,16 +169,6 @@ pub fn transcript_leaf_anchor(entries: &[SessionEntry], hint: Option<&str>) -> O
         .and_then(|e| e.entry_id().map(str::to_string))
 }
 
-/// Ancestry path (root → leaf) for transcript projection.
-///
-/// Walks `parent_id` links from `leaf`. When the walk reaches a bookkeeping row
-/// ([`SessionEntry::anchors_transcript`] == false) whose parent is missing, it
-/// continues from the nearest preceding chain entry in file order: cold
-/// materialize used to splice parent-less `modelChange` / `thinkingLevelChange`
-/// rows into otherwise intact chains, and those seams must not truncate
-/// history. A chain-participating root (message / compaction / branchSummary
-/// with no parent) still terminates the walk normally, so compaction cut
-/// semantics are untouched.
 pub fn transcript_ancestry_ids(entries: &[SessionEntry], leaf_id: Option<&str>) -> Vec<String> {
     let Some(start) = leaf_id.map(str::to_string) else {
         return Vec::new();
@@ -228,7 +181,6 @@ pub fn transcript_ancestry_ids(entries: &[SessionEntry], leaf_id: Option<&str>) 
         let next = match entry.parent_id() {
             Some(parent) => Some(parent.to_string()),
             None if entry.anchors_transcript() => None,
-            // Bookkeeping seam: splice across to the nearest preceding chain entry.
             None => {
                 let pos = entries
                     .iter()
@@ -244,7 +196,7 @@ pub fn transcript_ancestry_ids(entries: &[SessionEntry], leaf_id: Option<&str>) 
         };
         let Some(next) = next else { break };
         if !visited.insert(next.clone()) {
-            break; // cycle
+            break;
         }
         path.push(next.clone());
         cur = next;
@@ -253,9 +205,6 @@ pub fn transcript_ancestry_ids(entries: &[SessionEntry], leaf_id: Option<&str>) 
     path
 }
 
-/// Parent xylitol session and fork cut from the header row, if any.
-///
-/// Old files without `forkAtEntryId` yield `(_, None)`. Non-fork headers yield `(None, None)`.
 pub fn session_fork_edge(entries: &[SessionEntry]) -> (Option<String>, Option<String>) {
     for entry in entries {
         if let SessionEntry::Header(h) = entry {
@@ -327,12 +276,10 @@ mod leaf_anchor_tests {
 
     #[test]
     fn ancestry_splices_across_parentless_bookkeeping_seam() {
-        // Historical pollution: messages chained THROUGH a parent-less
-        // modelChange. The walk must splice the seam, not truncate history.
         let entries = vec![
             msg("u1", None),
             msg("a1", Some("u1")),
-            model_change("mc_seam"), // parentless, mid-chain
+            model_change("mc_seam"),
             msg("u2", Some("mc_seam")),
             msg("a2", Some("u2")),
         ];
@@ -344,12 +291,10 @@ mod leaf_anchor_tests {
 
     #[test]
     fn ancestry_stops_at_legitimate_chain_root_without_splice() {
-        // Compaction-style cut: a chain-participating root (message with no
-        // parent) terminates the walk — no linear resurrection of earlier rows.
         let entries = vec![
             msg("old1", None),
             msg("old2", Some("old1")),
-            msg("kept_root", None), // e.g. post-compaction kept root
+            msg("kept_root", None),
             msg("kept_child", Some("kept_root")),
         ];
         assert_eq!(

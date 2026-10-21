@@ -1,12 +1,3 @@
-//! Bash tool — executes shell commands with abort and timeout support.
-//!
-//! Key behaviors:
-//! - CancellationToken kills the process tree
-//! - Merges stdout/stderr streaming
-//! - Optional timeout (per-tool default; model requests clamp to 600s) with graduated escalation
-//! - Output truncated to DEFAULT_MAX_BYTES
-//! - Cross-platform shell discovery via `infra::process::shell`
-
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,7 +11,6 @@ use tokio::time::timeout;
 use xylitol_plugin_sdk::ToolTimeout;
 use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
-/// Per-tool wall-clock default when the model omits `timeout` (c2425).
 pub(crate) const BASH_TOOL_TIMEOUT_SECS: u64 = 120;
 
 use super::accumulator::OutputAccumulator;
@@ -32,21 +22,14 @@ const SIGTERM_GRACE_SECS: u64 = 5;
 pub struct BashArgs {
     command: String,
     #[serde(default)]
-    #[allow(dead_code)] // accepted in schema for LLM UX; not used by executor
+    #[allow(dead_code)]
     description: Option<String>,
-    /// Optional seconds; omitted means the default bound (120s). Zero/negative are invalid.
     #[serde(default)]
     timeout: Option<i64>,
 }
 
-// ── BashOperations trait ──────────────────────────────────────────────
-
-/// Abstract interface for bash execution.
-///
-/// Supports mock implementations for testing and hook injection.
 #[async_trait]
 pub trait BashOperations: Send + Sync {
-    /// Execute a shell command in `cwd` and return its output.
     async fn execute(
         &self,
         command: &str,
@@ -56,14 +39,11 @@ pub trait BashOperations: Send + Sync {
     ) -> Result<BashOutput, BashError>;
 }
 
-/// Result of a bash execution.
 #[derive(Debug, Clone)]
 pub struct BashOutput {
-    /// Display-safe stdout (spilled to file when truncated).
-    #[allow(dead_code)] // result-shape contract for post_spawn hooks / tests
+    #[allow(dead_code)]
     pub stdout: String,
-    /// Display-safe stderr (always empty today; shape kept for hooks / tests).
-    #[allow(dead_code)] // result-shape contract for post_spawn hooks / tests
+    #[allow(dead_code)]
     pub stderr: String,
     pub exit_code: i32,
     pub combined: String,
@@ -78,21 +58,13 @@ pub enum BashError {
     Aborted,
 }
 
-// ── Hooks ────────────────────────────────────────────────────────────
-
-/// Hooks that fire before and after bash execution.
 #[derive(Default, Clone)]
 #[allow(clippy::type_complexity)]
 pub struct BashHooks {
-    /// Called with the command string just before spawning.
     pub pre_spawn: Option<Arc<dyn Fn(&str) + Send + Sync>>,
-    /// Called with the result after execution completes.
     pub post_spawn: Option<Arc<dyn Fn(&BashOutput) + Send + Sync>>,
 }
 
-// ── RealBashOperations ────────────────────────────────────────────────
-
-/// Real implementation using system shell.
 #[derive(Default, Clone)]
 pub struct RealBashOperations {
     pub hooks: BashHooks,
@@ -107,7 +79,6 @@ impl BashOperations for RealBashOperations {
         cancel: tokio_util::sync::CancellationToken,
         cwd: &Path,
     ) -> Result<BashOutput, BashError> {
-        // Pre-spawn hook
         if let Some(ref hook) = self.hooks.pre_spawn {
             hook(command);
         }
@@ -116,7 +87,6 @@ impl BashOperations for RealBashOperations {
             return Err(BashError::Aborted);
         }
 
-        // Use c135's shell discovery
         let shell_cfg = crate::process::shell::find_bash(None);
 
         let child = Command::new(&shell_cfg.shell)
@@ -131,7 +101,6 @@ impl BashOperations for RealBashOperations {
         let pid = child.id().unwrap_or(0);
         let output_fut = child.wait_with_output();
 
-        // Graduated timeout when limited: SIGTERM → 5s grace → SIGKILL
         let output = tokio::select! {
             _ = cancel.cancelled() => {
                 sigterm_then_sigkill(pid).await;
@@ -150,7 +119,6 @@ impl BashOperations for RealBashOperations {
         let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
 
-        // Feed into OutputAccumulator for rolling buffer + temp file support
         let mut acc = OutputAccumulator::new();
         if !stderr_raw.is_empty() {
             acc.append(stderr_raw.as_bytes());
@@ -162,8 +130,6 @@ impl BashOperations for RealBashOperations {
         let display = snapshot.display_content();
 
         let bash_output = BashOutput {
-            // Keep fields for hooks/tests, but never exceed truncated display size
-            // when spilled (full bytes live only in full_output_path).
             stdout: display.clone(),
             stderr: String::new(),
             exit_code,
@@ -174,7 +140,6 @@ impl BashOperations for RealBashOperations {
                 .and_then(|p| p.to_str().map(|s| s.to_string())),
         };
 
-        // Post-spawn hook
         if let Some(ref hook) = self.hooks.post_spawn {
             hook(&bash_output);
         }
@@ -183,15 +148,11 @@ impl BashOperations for RealBashOperations {
     }
 }
 
-// ── Graduated timeout ────────────────────────────────────────────────
-
-/// Send SIGTERM first, then SIGKILL after grace period.
 async fn sigterm_then_sigkill(pid: u32) {
     if pid == 0 {
         return;
     }
 
-    // Send SIGTERM
     #[cfg(unix)]
     {
         let _ = std::process::Command::new("kill")
@@ -209,14 +170,11 @@ async fn sigterm_then_sigkill(pid: u32) {
             .status();
     }
 
-    // Wait grace period
     tokio::time::sleep(Duration::from_secs(SIGTERM_GRACE_SECS)).await;
 
-    // Send SIGKILL if still running
     crate::process::group::kill_process_tree(pid);
 }
 
-/// Wait; when `dur` is Some, graduated timeout: first timeout → SIGTERM → grace → SIGKILL.
 async fn graduated_timeout<F, T>(
     fut: F,
     dur: Option<Duration>,
@@ -237,8 +195,6 @@ where
     }
 }
 
-// ── BashTool (existing XyTool impl) ───────────────────────────────────
-
 pub struct BashTool {
     operations: Arc<dyn BashOperations>,
 }
@@ -252,7 +208,6 @@ impl Default for BashTool {
 }
 
 impl BashTool {
-    /// Test-only construction seam — swap in fake/mocked [`BashOperations`].
     #[cfg(test)]
     pub fn with_operations(ops: impl BashOperations + 'static) -> Self {
         Self {
@@ -260,7 +215,6 @@ impl BashTool {
         }
     }
 
-    /// Test-only construction seam — attach hooks without real operations.
     #[cfg(test)]
     pub fn with_hooks(hooks: BashHooks) -> Self {
         Self {
@@ -319,8 +273,6 @@ impl TypedTool for BashTool {
             return Err(XyToolError::Aborted);
         }
 
-        // Live uplink path: stream stdout/stderr chunks to ReAct while running
-        // (c1255 ToolExecutionUpdate). Falls back to wait_with_output otherwise.
         if let Some(out_tx) = ctx.output_tx.clone() {
             return self
                 .execute_streaming(
@@ -422,11 +374,6 @@ impl BashTool {
     }
 }
 
-/// Shared result JSON shape for streaming and non-streaming bash runs.
-///
-/// `exit_code` is generic because the two paths genuinely differ: the
-/// blocking executor reports a plain code, the streaming one `Option<i32>`
-/// (`null` when killed before exit).
 fn bash_result_json<E: Into<serde_json::Value> + serde::Serialize>(
     combined: &str,
     exit_code: E,
@@ -490,7 +437,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_operations_trait_mock() {
-        // Mock implementation for testing
         struct MockBash;
 
         #[async_trait]
@@ -551,8 +497,6 @@ mod tests {
     #[tokio::test]
     async fn test_bash_omit_timeout_uses_default_bound() {
         let tool = BashTool::default();
-        // Omitted timeout now arms the 120s default (c2425); a 2s sleep still
-        // completes normally, and the schema no longer advertises unlimited.
         let result = tool
             .execute(&test_ctx(), json!({"command": "sleep 2"}))
             .await
@@ -592,9 +536,6 @@ mod tests {
         assert!(matches!(err, XyToolError::Timeout(_)), "got {err}");
     }
 
-    /// ws1: ctx workspace binds the spawned shell — both streaming and
-    /// non-streaming paths MUST run `pwd` in the injected workspace, not the
-    /// process cwd.
     async fn assert_pwd_runs_in_workspace(with_output: bool) {
         let dir = tempfile::tempdir().expect("tmp workspace");
         let tool = BashTool::default();

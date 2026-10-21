@@ -1,10 +1,3 @@
-//! Steps for `app-tui-transcript` P3 — headless keyboard/mouse interaction
-//! over the product `UiRoot` via [`InteractionBdd`] (att20–att32).
-//!
-//! Paths exercised are the product's own: chord routing (`UiRoot::handle_key`),
-//! the shared fold-toggle pipeline (`UiRoot::click_fold_at` / host
-//! `take_pointer_click` on the same table), and product paint for frames.
-
 use crate::bdd::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use rstest::fixture;
@@ -12,12 +5,9 @@ use rstest_bdd_macros::{then, when};
 use xylitol_app_tui::{FoldTarget, InteractionBdd, SceneBuilder, UiModel};
 use xylitol_tui::TreeNode;
 
-/// Shared state for interaction scenes.
 pub struct TuiInteraction {
     pub fx: RefCell<Option<InteractionBdd>>,
-    /// Frame snapshot taken at mount time (layered-collapse comparison).
     pub mounted_frame: RefCell<String>,
-    /// Target id clicked most recently ("cluster" or the block id).
     pub last_clicked: RefCell<Option<String>>,
 }
 
@@ -48,8 +38,6 @@ fn alt(ch: char) -> KeyEvent {
     }
 }
 
-/// Read a sealed scene onto a fresh product root and take the first paint
-/// (the paint registers the fold hit table).
 fn mount(fx: &mut InteractionBdd) -> String {
     fx.push_xy(XyEvent::AgentEnd {
         messages: Vec::new(),
@@ -60,7 +48,6 @@ fn mount(fx: &mut InteractionBdd) -> String {
     plain
 }
 
-/// read old.rs → edit a.rs, with an assistant body between, one closed turn.
 fn replay_read_edit() -> InteractionBdd {
     let mut sb = SceneBuilder::begin();
     sb.assistant("开工");
@@ -121,7 +108,7 @@ fn then_storage_collapsed_no_inner_hits(tui_interaction: &TuiInteraction) {
 fn when_click_cluster_triangle(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    let _ = fx.render_plain(80); // refresh the registered regions
+    let _ = fx.render_plain(80);
     let hit = fx
         .fold_hits()
         .regions
@@ -137,7 +124,7 @@ fn when_click_cluster_triangle(tui_interaction: &TuiInteraction) {
 fn when_click_tool_triangle(tui_interaction: &TuiInteraction, id: String) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    let _ = fx.render_plain(80); // refresh the registered regions
+    let _ = fx.render_plain(80);
     let target_id = id.clone();
     let hit = fx
         .fold_hits()
@@ -201,7 +188,7 @@ fn when_click_expanded_tool_body(tui_interaction: &TuiInteraction, id: String) {
 fn when_click_first_thinking(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    let _ = fx.render_plain(80); // refresh the registered regions
+    let _ = fx.render_plain(80);
     let (col, row, id) = fx
         .fold_hits()
         .regions
@@ -323,7 +310,7 @@ fn when_mount_compaction(tui_interaction: &TuiInteraction) {
 fn when_click_compaction_triangle(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    let _ = fx.render_plain(80); // refresh the registered regions
+    let _ = fx.render_plain(80);
     let hit = fx
         .fold_hits()
         .regions
@@ -411,7 +398,7 @@ fn when_mount_long_output_tool(tui_interaction: &TuiInteraction) {
 fn when_click_viewport_hint_band(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    let _ = fx.render_plain(80); // refresh the registered regions
+    let _ = fx.render_plain(80);
     let hit = fx
         .fold_hits()
         .regions
@@ -426,7 +413,6 @@ fn when_click_viewport_hint_band(tui_interaction: &TuiInteraction) {
 fn then_hint_click_per_block_ctrl_o_global(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    // Per-block override on the clicked block; the global default stays put.
     assert!(
         fx.fold().output_effective("t-log"),
         "hint-band click expands the clicked block"
@@ -435,7 +421,6 @@ fn then_hint_click_per_block_ctrl_o_global(tui_interaction: &TuiInteraction) {
         !fx.fold().tools_output_expanded,
         "per-block click must not flip the global default"
     );
-    // Keyboard Ctrl+O flips the global default and clears per-block overrides.
     fx.handle_key(ctrl('o'));
     assert!(
         fx.fold().tools_output_expanded,
@@ -524,7 +509,6 @@ fn then_per_block_expand_and_fold_band(tui_interaction: &TuiInteraction) {
         !fx.fold().tools_output_expanded,
         "global default untouched by per-block click"
     );
-    // Expanded block paints a fold-back band; clicking it folds only that block.
     let _ = fx.render_plain(80);
     let fold_band = fx
         .fold_hits()
@@ -583,10 +567,6 @@ fn when_mount_compaction_and_long_output(tui_interaction: &TuiInteraction) {
 fn then_targets_share_one_hit_table(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    // After the `when` step opened the cluster, all three remaining target
-    // kinds must live in the *same* registered table and be precisely
-    // clickable. Each click repaints, so re-locate before every click — the
-    // real engine does the same against fresh frames.
     let locate = |fx: &mut InteractionBdd, pred: &dyn Fn(&FoldTarget) -> bool| -> (u16, u16) {
         let _ = fx.render_plain(80);
         fx.fold_hits()
@@ -681,9 +661,6 @@ fn then_collapsed_summary_and_chord_hints(tui_interaction: &TuiInteraction) {
     );
 }
 
-// ── session-tree slot key family (ati22–ati27 / ati36) ──
-
-/// Decode chord specs like `Ctrl+Shift+O` / `Alt+Right` / `Esc` / `Tab`.
 fn parse_chord(spec: &str) -> KeyEvent {
     let mut modifiers = KeyModifiers::NONE;
     let mut code = KeyCode::Null;

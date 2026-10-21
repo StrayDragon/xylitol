@@ -1,8 +1,3 @@
-//! Tests for the composition-root [`XyInProcessDriver`](super::XyInProcessDriver):
-//! MCP gate, `/reload` re-freeze, session tree via the wrapper.
-//! Runtime inner-loop tests live in `xylitol-runtime`.
-//!
-// bind_session writes obs via ObsSessionScope — no process-slot race with CollectingReporter tests.
 use std::sync::Arc;
 use xylitol_official_plugin_provider_openai::provider::{ObsSessionContext, ObsSessionScope};
 
@@ -29,7 +24,6 @@ fn msg_entry(id: &str, parent: Option<&str>, role: &str, text: &str) -> SessionE
     })
 }
 
-/// Deterministic unix-ms from a string id (test fixture).
 fn entry_ms(id: &str) -> u64 {
     1_781_827_200_000u64
         + id.as_bytes()

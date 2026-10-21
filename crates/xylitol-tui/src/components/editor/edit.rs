@@ -30,8 +30,6 @@ impl super::Editor {
         self.snapped_from_cursor_col = None;
     }
 
-    // ── history navigation (c425 ed05) ─────────────────────────────────────
-
     pub(super) fn navigate_history(&mut self, direction: isize) {
         self.last_action = None;
         if self.history.is_empty() {
@@ -100,8 +98,6 @@ impl super::Editor {
         self.on_changed();
     }
 
-    // ── basic edit ops (unchanged logic, add exit_history + paste_burst) ───
-
     pub(super) fn undo(&mut self) {
         self.exit_history_browsing();
         if let Some(s) = self.undo_stack.pop() {
@@ -143,9 +139,6 @@ impl super::Editor {
         let first = ch.chars().next().unwrap_or(' ');
         let now = self.clock.now();
         self.paste_burst.on_plain_char(now);
-        // Suppress per-char paints during a recognized non-bracketed burst so
-        // the UI does not look like a sped-up typewriter. Model still updates
-        // every char (harness / get_text stay correct); idle tick paints once.
         if self.paste_burst.consecutive_plain_chars() >= crate::paste_burst::PASTE_BURST_MIN_CHARS {
             self.paste_burst_needs_paint = true;
         }
@@ -160,9 +153,6 @@ impl super::Editor {
         self.state.lines[self.state.cursor_line] = format!("{b}{ch}{a}");
         self.set_cursor_col(self.state.cursor_col + ch.len());
         self.on_changed();
-        // Always refresh autocomplete from the live buffer. Paste-burst only
-        // suppresses *paints* (`paste_burst_needs_paint`); skipping this refresh
-        // left stale/`None` popups (c545 `$` → missed open or Tab `$$demo`).
         self.handle_autocomplete_on_edit();
     }
 
@@ -432,8 +422,6 @@ impl super::Editor {
         }
     }
 
-    // ── move_cursor (c425 ed02 — rewritten with VisualLine) ──────────────
-
     pub(super) fn move_cursor(&mut self, dl: isize, dc: isize) {
         self.last_action = None;
         if dl != 0 {
@@ -442,13 +430,9 @@ impl super::Editor {
             let target = cur + dl;
             if target >= 0 && (target as usize) < vls.len() {
                 self.move_to_visual_line(&vls, cur as usize, target as usize);
-                // After vertical move, clear preferred_visual_col if we also did a
-                // horizontal move (dc != 0 handled below), otherwise keep sticky col.
             } else if dl < 0 {
-                // Already at top visual line → jump to start of logical line
                 self.set_cursor_col(0);
             } else {
-                // Already at bottom → jump to end
                 let last = self.state.lines[self.state.cursor_line].len();
                 self.set_cursor_col(last);
             }

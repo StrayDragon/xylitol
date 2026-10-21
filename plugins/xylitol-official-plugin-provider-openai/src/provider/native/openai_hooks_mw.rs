@@ -1,5 +1,3 @@
-//! Tower middleware: portable [`HttpHooks`] ↔ async-openai request factory.
-
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -19,13 +17,10 @@ use crate::provider::reqwest_headers::{from_reqwest_headers, to_reqwest_headers}
 
 type BoxFut = Pin<Box<dyn Future<Output = Result<Response, OpenAIError>> + Send>>;
 
-/// Applies xylitol [`HttpHooks`] then executes via reqwest.
 #[derive(Clone)]
 pub struct HooksHttpService {
     client: reqwest::Client,
     hooks: Option<Arc<dyn HttpHooks>>,
-    /// `Some` = generate snapshot (never re-read the process slot).
-    /// `None` = idle path (remote count) falls back to process / TLS slot.
     obs_snapshot: Option<ObsSessionContext>,
 }
 
@@ -49,7 +44,6 @@ impl HooksHttpService {
         }
     }
 
-    /// Per-call wrapping: same reqwest client + hooks, this generate's snapshot.
     pub fn bind_obs(&self, obs: ObsSessionContext) -> Self {
         Self {
             client: self.client.clone(),
@@ -92,7 +86,6 @@ async fn apply_hooks_to_request(
     obs_snapshot: Option<&ObsSessionContext>,
 ) -> Result<(), OpenAIError> {
     let mut headers: HeaderBag = from_reqwest_headers(request.headers());
-    // OpenCode Zen attribution (session + client). Hooks run after and may override.
     match obs_snapshot {
         Some(ctx) => crate::provider::attribution::merge_opencode_attribution_from(
             &mut headers,

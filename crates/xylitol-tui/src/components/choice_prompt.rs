@@ -1,7 +1,3 @@
-//! ChoicePrompt — AskQuestion-style single/multi choice with optional Other + multi-question tabs.
-//!
-//! Inline Component (editor-slot friendly). Not an overlay dashboard.
-
 use std::collections::HashMap;
 
 use crate::components::input::Input;
@@ -13,15 +9,11 @@ use crate::tui::{Component, InputEvent};
 use crate::utils::{truncate_to_width, visible_width};
 use crossterm::event::KeyCode;
 
-/// Min total width before option list + right description column (Claude-like).
 const SIDE_DESC_MIN_WIDTH: usize = 88;
 
-/// Per-question selection semantics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChoiceMode {
-    /// Mutually exclusive; cursor row is the pending answer.
     Single,
-    /// Space toggles checkmarks; Enter submits checked set.
     Multi,
 }
 
@@ -29,10 +21,7 @@ pub enum ChoiceMode {
 pub struct ChoiceOption {
     pub value: String,
     pub label: String,
-    /// Optional easy explanation / example for humans (Claude-style).
-    /// Agent/tool payloads MAY omit this; UI still works with label-only options.
     pub description: Option<String>,
-    /// Optional recommended badge (accent chip).
     pub recommended: bool,
 }
 
@@ -60,7 +49,6 @@ impl ChoiceOption {
 #[derive(Clone, Debug)]
 pub struct ChoiceQuestion {
     pub id: String,
-    /// Short tab label (multi-question).
     pub label: String,
     pub prompt: String,
     pub mode: ChoiceMode,
@@ -76,18 +64,15 @@ pub struct ChoiceAnswer {
     pub was_custom: bool,
 }
 
-/// How the prompt closed (ask-tool: skip is a successful structured outcome).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChoiceStatus {
     Answered,
-    /// User skipped (Esc / Skip chrome). Maps to tool `{ "status": "skipped" }`.
     Skipped,
 }
 
 #[derive(Clone, Debug)]
 pub struct ChoiceResult {
     pub answers: Vec<ChoiceAnswer>,
-    /// Legacy alias for Trust gate: `true` iff [`Self::status`] is [`ChoiceStatus::Skipped`].
     pub cancelled: bool,
     pub status: ChoiceStatus,
 }
@@ -97,7 +82,6 @@ impl ChoiceResult {
         self.status == ChoiceStatus::Skipped
     }
 
-    /// Compact JSON-ish payload for the future builtin `ask` tool (demo / product).
     pub fn to_ask_payload_json(&self) -> String {
         match self.status {
             ChoiceStatus::Skipped => r#"{"status":"skipped","answers":[]}"#.to_string(),
@@ -133,10 +117,6 @@ impl ChoiceResult {
         }
     }
 
-    /// Human-facing one-line summary for TUI scrollback (no JSON).
-    ///
-    /// Compact header: `Ask · q → a · …` with ellipsized fragments; use
-    /// [`Self::human_detail_lines`] for full question → answer rows.
     pub fn human_summary_line(&self) -> String {
         match self.status {
             ChoiceStatus::Skipped => "Ask · 已跳过 · 按已有信息继续".into(),
@@ -163,7 +143,6 @@ impl ChoiceResult {
         }
     }
 
-    /// Expandable detail rows (labels only; no raw JSON).
     pub fn human_detail_lines(&self) -> Vec<String> {
         match self.status {
             ChoiceStatus::Skipped => vec!["（用户跳过本题）".into()],
@@ -187,15 +166,9 @@ fn escape_json_str(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Max question-fragment length in the Ask header summary, counted in **chars**
-/// (not display columns; CJK can render wider).
 pub const ASK_HEADER_Q_MAX: usize = 14;
-/// Max answer-fragment length in the Ask header summary, counted in **chars**
-/// (not display columns; CJK can render wider).
 pub const ASK_HEADER_A_MAX: usize = 22;
 
-/// Ellipsize `s` to at most `max` **chars** (not display columns), keeping one
-/// trailing `…` when the text is cut.
 pub fn ellipsize_ask_frag(s: &str, max: usize) -> String {
     let n = s.chars().count();
     if n <= max {
@@ -214,7 +187,6 @@ pub struct ChoicePromptTheme {
     pub tab_active: Box<dyn Fn(&str) -> String>,
     pub tab_idle: Box<dyn Fn(&str) -> String>,
     pub hint: Box<dyn Fn(&str) -> String>,
-    /// When set, every rendered line gets a fixed left status rail + gutter.
     pub rail: Option<RgbColor>,
 }
 
@@ -235,18 +207,14 @@ impl Default for ChoicePromptTheme {
 }
 
 struct QuestionState {
-    /// Multi: checked option indices (not including Other).
     checked: Vec<bool>,
-    /// Single: selected option index (or Other index).
     single_idx: usize,
     other_text: String,
 }
 
-/// Ask-style prompt: single/multi per question, optional Other, multi-question tabs.
 pub struct ChoicePrompt {
     questions: Vec<ChoiceQuestion>,
     theme: ChoicePromptTheme,
-    /// 0..questions.len()-1 = question tabs; questions.len() = Submit (multi-q only).
     tab: usize,
     cursor: usize,
     other_focused: bool,
@@ -255,7 +223,6 @@ pub struct ChoicePrompt {
     answers: HashMap<String, ChoiceAnswer>,
     on_done: Box<dyn Fn(ChoiceResult)>,
     finished: bool,
-    /// Review: first Enter with unanswered tabs arms skip; second Enter confirms skip.
     skip_confirm_pending: bool,
 }
 
@@ -293,7 +260,6 @@ impl ChoicePrompt {
         self.finished
     }
 
-    /// Demo / host may toggle left rail vs flush (product Ask stays rail-on).
     pub fn set_rail(&mut self, rail: Option<RgbColor>) {
         self.theme.rail = rail;
     }
@@ -382,13 +348,11 @@ impl ChoicePrompt {
             .unwrap_or_default();
         self.other_input = Input::new();
         if !existing.is_empty() {
-            // Input has no set_value in all versions — type via assigning if available
             self.other_input = Input::with_value(existing);
         }
         self.other_focused = true;
     }
 
-    /// Returns `true` when an answer was stored.
     fn save_current_answer(&mut self) -> bool {
         let Some(q) = self.questions.get(self.tab).cloned() else {
             return false;
@@ -463,7 +427,7 @@ impl ChoicePrompt {
             self.tab += 1;
             self.cursor = 0;
         } else {
-            self.tab = self.questions.len(); // Submit
+            self.tab = self.questions.len();
             self.cursor = 0;
         }
     }
@@ -693,7 +657,6 @@ impl Component for ChoicePrompt {
                 lines.push(Self::fit(&painted, cw));
             }
         }
-        // Breathing room between prompt and option list (product Ask density).
         lines.push(String::new());
 
         let any_desc = options
@@ -731,7 +694,6 @@ impl Component for ChoicePrompt {
                 && let Some(ref desc) = opt.description
                 && selected
             {
-                // Narrow: show description only under the focused option (Claude density).
                 left_lines.push(Self::fit(
                     &(self.theme.muted)(&format!("    {desc}")),
                     left_w,
@@ -856,7 +818,6 @@ impl Component for ChoicePrompt {
                 return;
             }
             if confirm {
-                // Save other text into single selection / multi other field.
                 if let Some(q) = self.questions.get(self.tab) {
                     let text = self.other_input.value().to_string();
                     if let Some(st) = self.states.get_mut(self.tab) {
@@ -885,7 +846,6 @@ impl Component for ChoicePrompt {
                 } else if self.skip_confirm_pending {
                     self.finish(true);
                 } else {
-                    // First Enter: arm skip confirm; second Enter skips.
                     self.skip_confirm_pending = true;
                 }
             } else if left || up {
@@ -896,10 +856,9 @@ impl Component for ChoicePrompt {
             return;
         }
 
-        // Tab bar navigation (multi-q): Left/Right switch tabs when not editing.
         if self.is_multi_questionnaire() && (left || right) {
             self.skip_confirm_pending = false;
-            let max = self.questions.len(); // include Submit
+            let max = self.questions.len();
             if right {
                 self.tab = (self.tab + 1).min(max);
             } else {
@@ -987,14 +946,12 @@ impl Component for ChoicePrompt {
             return;
         }
 
-        // Ignore stray printable when not in Other focus.
         let _ = printable_from_key_event(key);
     }
 
     fn invalidate(&mut self) {}
 }
 
-// Prefer Input::with_value if present; otherwise fall back.
 trait InputWithValue {
     fn with_value(value: String) -> Self;
 }
@@ -1002,7 +959,6 @@ trait InputWithValue {
 impl InputWithValue for Input {
     fn with_value(value: String) -> Self {
         let mut input = Input::new();
-        // Prefer dedicated setter when available.
         #[allow(clippy::needless_late_init)]
         {
             input.set_value(value);
@@ -1141,7 +1097,6 @@ mod tests {
             !joined.contains("Trust project folder?\n/home/user/proj  ·"),
             "must not glue path onto mode-hint line: {joined}"
         );
-        // Path should appear as its own rendered row (not only inside a wrap).
         assert!(
             lines.iter().any(|l| l.contains("/home/user/proj")),
             "path must be its own line: {lines:?}"
@@ -1186,7 +1141,7 @@ mod tests {
             },
         );
         p.handle_input(key(KeyCode::Down));
-        p.handle_input(key(KeyCode::Down)); // Other
+        p.handle_input(key(KeyCode::Down));
         p.handle_input(key(KeyCode::Tab));
         assert!(p.other_focused);
         p.handle_input(key(KeyCode::Char('h')));
@@ -1292,7 +1247,6 @@ mod tests {
                 *slot.borrow_mut() = Some(r);
             },
         );
-        // Jump to Review without answering (→ →).
         p.handle_input(key(KeyCode::Right));
         p.handle_input(key(KeyCode::Right));
         p.handle_input(key(KeyCode::Enter));

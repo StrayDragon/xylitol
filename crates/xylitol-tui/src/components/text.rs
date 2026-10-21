@@ -1,7 +1,6 @@
 use crate::tui::Component;
 use crate::utils::{BgFn, apply_background_to_line, visible_width, wrap_text_with_ansi};
 
-/// Text component - displays multi-line text with word wrapping.
 pub struct Text {
     text: String,
     padding_x: usize,

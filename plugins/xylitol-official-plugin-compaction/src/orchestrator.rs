@@ -1,11 +1,3 @@
-//! CompactionOrchestrator — reserve-formula checks and compaction triggering.
-//!
-//! Trigger formula matches pi `shouldCompact` (coding-agent compaction.ts):
-//! `enabled && contextTokens > contextWindow - reserveTokens`.
-//!
-//! Manual `compact` = force (pi `AgentSession.compact`); auto threshold = Case2;
-//! overflow compact-and-retry = Case1 (c1660).
-
 use crate::CompactionSummaryBinding;
 use crate::obs::{AgentCompactionSpan, export_skipped};
 use crate::overflow::{assistant_same_model, is_context_overflow_assistant};
@@ -21,7 +13,6 @@ pub use xylitol_plugin_sdk::OverflowCompactOutcome;
 
 const OVERFLOW_ONCE_MSG: &str = "Context overflow recovery failed after one compact-and-retry attempt. Try reducing context or switching to a larger-context model.";
 
-/// Orchestrates session compaction — threshold checks and execution.
 pub struct CompactionOrchestrator {
     settings: CompactionSettings,
 }
@@ -36,8 +27,6 @@ impl CompactionOrchestrator {
         &self.settings
     }
 
-    /// Manual force compact (pi `compact(customInstructions?)`). Does **not** apply the reserve gate.
-    /// OTel `agent.compaction` starts only after `prepare_compaction` succeeds (otel19).
     #[allow(clippy::too_many_arguments)]
     pub async fn compact(
         &self,
@@ -106,8 +95,6 @@ impl CompactionOrchestrator {
             );
         }
         if result.is_ok() {
-            // c26/c28: settle BEFORE the end event so CompactionEnd can carry
-            // tokens_after; manual never carries a c28 floor notice.
             let settled =
                 compute_after_compaction_settlement(store, sid, fixed_context, None, obs_session)
                     .await;
@@ -137,7 +124,6 @@ impl CompactionOrchestrator {
         Ok(())
     }
 
-    /// Overflow Case1 (pi `_checkCompaction` overflow branch).
     #[allow(clippy::too_many_arguments)]
     pub async fn maybe_overflow_compact(
         &self,
@@ -249,10 +235,6 @@ impl CompactionOrchestrator {
         })
     }
 
-    /// Threshold auto-compact (pi Case2).
-    ///
-    /// When `precomputed` is `Some`, that estimate is used for the reserve gate
-    /// (c1860 settlement share with footer). Otherwise estimates quietly from the leaf.
     #[allow(clippy::too_many_arguments)]
     pub async fn maybe_auto_compact(
         &self,
@@ -300,8 +282,6 @@ impl CompactionOrchestrator {
             return Ok(false);
         }
 
-        // c2: the floor is independent of the tokens estimate — it is decided by
-        // settings + window + the leaf's measured summary, not by the estimate.
         let overhead = fixed_context.map_or(0, FixedRequestContext::overhead_tokens);
         let floor = super::projected_post_compact_tokens(
             &self.settings,
@@ -354,7 +334,6 @@ impl CompactionOrchestrator {
         let obs_session = &summary_binding.generate_options.obs_session;
         let overhead = fixed_context.map_or(0, FixedRequestContext::overhead_tokens);
         if let Err(err) = prepare_compaction(entries, &self.settings, context_window, overhead) {
-            // otel27: auto path stays event-silent but leaves an obs trace.
             export_skipped(&err.to_string(), turn_obs_parent, obs_session);
             return Ok(false);
         }
@@ -409,9 +388,6 @@ impl CompactionOrchestrator {
             obs.finish(will_retry_end, false, err_msg.as_deref());
         }
 
-        // c26/c28: settle BEFORE the end event (quiet compute), so CompactionEnd
-        // carries tokens_after + the one-shot c28 notice, then the settlement
-        // event goes out (order preserved: end → settlement).
         let mut tokens_after = None;
         let mut floor_notice = None;
         let mut settled_event = None;
@@ -486,9 +462,6 @@ fn take_fallback_notice(
     }
 }
 
-/// Quietly compute the AfterCompaction settlement (c25/c26) without emitting:
-/// estimate of summary row + kept tail + fixed request overhead — the next main
-/// request's size. The stale pre-compact Api anchor is dropped inside the estimator.
 async fn compute_after_compaction_settlement(
     store: &dyn XySessionStore,
     sid: &str,
@@ -525,7 +498,6 @@ async fn emit_settlement_event(
         .await;
 }
 
-/// c28 one-shot actionable diagnostic copy (product scroll-notice register).
 fn floor_diagnostic_notice(tokens_after: u64, context_window: u64) -> String {
     format!(
         "Context still ~{tokens_after} tokens after compaction (window {context_window}) — lower keepRecentTokens, raise contextWindow, or trim tool surface"

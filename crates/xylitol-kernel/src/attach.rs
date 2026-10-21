@@ -1,11 +1,8 @@
-//! Product TUI attach: default Host URL and liveness probe.
-
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 use thiserror::Error;
 
-/// Product TUI default attach origin (scheme + host + port).
 pub const DEFAULT_ATTACH_URL: &str = "http://127.0.0.1:18790";
 
 #[derive(Debug, Error)]
@@ -19,11 +16,6 @@ pub enum AttachError {
     NotListening { url: String },
 }
 
-/// Probe that a TCP listener is accepting at the attach URL.
-///
-/// This is liveness, not `host.describe`. A listening process that does not
-/// speak JSON-RPC still counts as "in listening" here;
-/// handshake mismatch is a later error.
 pub fn probe_host(url: &str) -> Result<(), AttachError> {
     let parsed = url::Url::parse(url).map_err(|source| AttachError::InvalidUrl {
         url: url.to_string(),
@@ -93,9 +85,6 @@ mod tests {
     }
 }
 
-// ---- c2475 sr-reg1：attach 预检与注册文件分级诊断 ----
-
-/// Healthz identity snapshot.
 #[cfg(feature = "server")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealthzInfo {
@@ -103,9 +92,6 @@ pub struct HealthzInfo {
     pub version: String,
 }
 
-/// Pure classification of an attach whose TCP probe succeeded. `None` = proceed.
-/// Occupant without xylitol identity → blocked; version mismatch → blocked;
-/// stale registration (live pid differs from file) → informational message.
 #[cfg(feature = "server")]
 pub fn classify_running(
     hz: Option<HealthzInfo>,
@@ -138,7 +124,6 @@ pub fn classify_running(
     None
 }
 
-/// Pure classification of a failed TCP probe against the registration file.
 #[cfg(feature = "server")]
 pub fn classify_dead(
     reg: Option<xylitol_serve::Registration>,
@@ -177,13 +162,9 @@ fn pid_alive(pid: u32) -> bool {
     }
     #[cfg(not(target_os = "linux"))]
     {
-        // Signal 0 = presence probe (no /proc on macOS/BSD/Windows).
         let Ok(pid) = i32::try_from(pid) else {
             return false;
         };
-        // SAFETY: valid pid value + signal 0 (presence probe, nothing delivered).
-        // kill(2) returns 0 on success and -1 on error (e.g. ESRCH = no such
-        // process) — success, not a positive count, is the "alive" verdict.
         unsafe { libc::kill(pid, 0) == 0 }
     }
 }
@@ -209,14 +190,11 @@ async fn fetch_healthz(url: &str) -> Option<HealthzInfo> {
     })
 }
 
-/// Attach preflight (c2475): TCP probe, then registration/healthz
-/// classification. `Err(message)` stops the attach with an actionable error.
 #[cfg(feature = "server")]
 pub async fn attach_preflight(url: &str) -> Result<(), String> {
     attach_preflight_with(url, None).await
 }
 
-/// Same preflight with an explicit registration path (BDD / tests).
 #[cfg(feature = "server")]
 pub async fn attach_preflight_with(
     url: &str,

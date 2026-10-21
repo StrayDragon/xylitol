@@ -1,7 +1,3 @@
-//! Typed agent message types — session SSOT with LLM / Env composition (c1210).
-//!
-//! [`AgentMessage`] = `Llm(`[ `XyLlmMessage` ]`) | Env(`[ `EnvMessage` ]`)`.
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -9,12 +5,6 @@ pub use crate::dto::{
     AgentPart, Diagnostic, ImageContent, XyLlmMessage, XyStopReason, XyUsage, XyUsageCost, now_ms,
 };
 
-// ── EnvMessage / AgentMessage (domain composition) ─────────────────
-
-/// Lifecycle of an interactive bang run (c2760).
-///
-/// `Running` rows are start markers (command only); `Done` rows carry the
-/// finished result. Old JSONL rows without the field default to `Done`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BashExecutionStatus {
@@ -23,16 +13,12 @@ pub enum BashExecutionStatus {
     Done,
 }
 
-/// Environment / session meta roles (not sent to the model as-is).
-///
-/// Wire fields are camelCase (`excludeFromContext`, `tokensBefore`, …).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "role", rename_all = "camelCase")]
 pub enum EnvMessage {
     #[serde(rename = "bashExecution")]
     #[serde(rename_all = "camelCase")]
     BashExecutionMessage {
-        /// Correlation id linking the running start row to its done row (c2760).
         #[serde(default)]
         bash_id: String,
         command: String,
@@ -47,7 +33,6 @@ pub enum EnvMessage {
         full_output_path: Option<String>,
         #[serde(default)]
         exclude_from_context: bool,
-        /// Lifecycle status (c2760); missing = Done for old rows.
         #[serde(default)]
         status: BashExecutionStatus,
     },
@@ -77,12 +62,6 @@ pub enum EnvMessage {
     BranchSummaryMessage { summary: String, from_id: String },
 }
 
-/// Structured LLM-visible projection of an [`EnvMessage`] row (c2725).
-///
-/// `None` from [`EnvMessage::llm_projection`] means the row must not reach the
-/// model (excluded bash / empty custom). Adding an `EnvMessage` variant forces
-/// updating this enum's consumers — the fold shape is the prompt-cache prefix
-/// contract (c1930 / as48), so text templates stay in `agent::llm_project`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EnvLlmProjection {
     Bash { command: String, output: String },
@@ -100,9 +79,6 @@ impl EnvMessage {
         }
     }
 
-    /// Interrupted-bash notice row (c2770 / as-bang1): the pinned
-    /// `[interrupted] $ <command>` bytes live here — the single template source
-    /// for both history-seeding and session-context assembly.
     pub fn interrupted_bash(command: impl Into<String>) -> Self {
         Self::CustomMessage {
             custom_type: "interrupted-bash".into(),
@@ -112,10 +88,6 @@ impl EnvMessage {
         }
     }
 
-    /// LLM-visible projection of this row; `None` = do not send to model.
-    ///
-    /// Single source of truth for the *whether / what* of env→LLM folding
-    /// (c2725): bash exclusion, compaction/branch summary, custom text.
     pub fn llm_projection(&self) -> Option<EnvLlmProjection> {
         match self {
             Self::BashExecutionMessage {
@@ -125,8 +97,6 @@ impl EnvMessage {
                 status,
                 ..
             } => {
-                // c2760: a running start row never projects to the model —
-                // only the finished (done) row is part of the stable prefix.
                 if *exclude_from_context || *status == BashExecutionStatus::Running {
                     None
                 } else {
@@ -148,9 +118,6 @@ impl EnvMessage {
         }
     }
 
-    /// Whether this row must be excluded from context windows / token math.
-    ///
-    /// Only bash carries a per-row flag; other variants are never excluded.
     pub fn exclude_from_context(&self) -> bool {
         match self {
             Self::BashExecutionMessage {
@@ -173,7 +140,6 @@ impl EnvMessage {
     }
 }
 
-/// Custom content → model-visible text; `None` for null / empty (c2725).
 fn custom_projection_text(content: &Value) -> Option<String> {
     let text = match content {
         Value::String(s) => s.clone(),
@@ -183,9 +149,6 @@ fn custom_projection_text(content: &Value) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-/// Session/agent transcript entry: LLM turn **or** environment meta.
-///
-/// Wire format stays flat `{ "role": … }` via `untagged` + inner tagged enums.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum AgentMessage {
@@ -242,7 +205,6 @@ impl AgentMessage {
         Self::Llm(XyLlmMessage::user(text))
     }
 
-    /// User message with arbitrary parts (text + images, c1155 / dm7).
     pub fn user_parts(content: Vec<AgentPart>) -> Self {
         Self::Llm(XyLlmMessage::user_parts(content))
     }
@@ -295,7 +257,6 @@ impl AgentMessage {
         })
     }
 
-    /// Interactive bang start row (c2760): command only, `status = Running`.
     pub fn bash_running(
         bash_id: impl Into<String>,
         command: impl Into<String>,
@@ -315,15 +276,11 @@ impl AgentMessage {
     }
 }
 
-// ── Display ─────────────────────────────────────────────────────────
-
 impl std::fmt::Display for AgentMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{}] {}", self.role_name(), self.text())
     }
 }
-
-// ── Tests ───────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
@@ -552,9 +509,6 @@ mod tests {
             other => panic!("expected excluded bash, got {other:?}"),
         }
 
-        // v6: snake aliases are removed (s18 / c2260). Unknown snake keys are
-        // ignored by serde, so a snake `exclude_from_context` no longer flips the
-        // flag — the row deserializes with the default value.
         let snake = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"exclude_from_context":true}"#;
         let msg: AgentMessage = serde_json::from_str(snake).unwrap();
         match msg {
@@ -573,17 +527,13 @@ mod tests {
 
     #[test]
     fn llm_arm_is_bridge_dto_alias() {
-        // dm6: Llm leaf is the sdk XyLlmMessage, not a parallel enum.
         let llm: XyLlmMessage = XyLlmMessage::user("hi");
         let bridge: crate::dto::XyLlmMessage = llm;
         assert_eq!(bridge.role_name(), "user");
     }
 
-    // ── c2725: env projection / exclusion helpers ────────────────────
-
     #[test]
     fn env_llm_projection_covers_every_variant() {
-        // Exhaustive: adding an EnvMessage variant must update this match (c2725).
         let bash = AgentMessage::bash("ls", "a.txt", Some(0));
         let excluded = AgentMessage::Env(EnvMessage::BashExecutionMessage {
             bash_id: String::new(),
@@ -681,7 +631,6 @@ mod tests {
         };
         assert!(env.exclude_from_context());
 
-        // Every non-bash variant is never excluded.
         let summary = EnvMessage::CompactionSummaryMessage {
             summary: "s".into(),
             tokens_before: 1,
@@ -706,8 +655,6 @@ mod tests {
 
     #[test]
     fn bash_execution_status_defaults_to_done_for_old_rows() {
-        // c2760: JSONL rows written before the lifecycle fields exist must
-        // deserialize as finished (Done) and keep projecting to the model.
         let json = r#"{"role":"bashExecution","command":"ls","output":"a","cancelled":false,"truncated":false,"excludeFromContext":false}"#;
         let msg: AgentMessage = serde_json::from_str(json).unwrap();
         let AgentMessage::Env(EnvMessage::BashExecutionMessage {
@@ -718,7 +665,6 @@ mod tests {
         };
         assert!(bash_id.is_empty());
         assert_eq!(*status, BashExecutionStatus::Done);
-        // running rows never project to the model (stable prefix invariant).
         let running = AgentMessage::bash_running("b1", "ls", false);
         let AgentMessage::Env(env) = &running else {
             panic!("expected env");

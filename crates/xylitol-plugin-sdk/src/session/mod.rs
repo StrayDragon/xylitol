@@ -1,9 +1,3 @@
-//! Session entry vocabulary — shared persisted shapes (not runtime capabilities).
-//!
-//! Pure vocabulary (serde types only): both `agent` (compaction, export) and
-//! `infra` (session manager, persistence) reference these. Storage backends
-//! stay in `infra::session`.
-
 mod entries;
 mod helpers;
 mod manifest;
@@ -55,7 +49,6 @@ mod session_tree_tests {
         })
     }
 
-    /// Deterministic unix-ms from a string id (test fixture).
     fn entry_ms(id: &str) -> u64 {
         1_781_827_200_000u64
             + id.as_bytes()
@@ -287,8 +280,6 @@ mod session_tree_tests {
 
     #[test]
     fn parse_session_jsonl_rejects_v5_with_require_7_message() {
-        // v5 disk is refused (only v6 receives the one-time migration); the
-        // version message must report the current format.
         let content = r#"{"type":"session","version":5,"id":"s1","timestamp":0,"cwd":"/tmp"}
 "#;
         let err = parse_session_jsonl(content).unwrap_err();
@@ -305,7 +296,6 @@ mod session_tree_tests {
 
     #[test]
     fn current_entry_round_trip_keeps_unix_ms_timestamps() {
-        // s22: header + entry shell timestamps are u64 unix-ms on the wire.
         let header = SessionEntry::Header(SessionHeader {
             entry_type: "session".into(),
             version: SESSION_VERSION,
@@ -514,9 +504,6 @@ mod as_agent_message_tests {
 
     #[test]
     fn snake_alias_no_longer_sets_excluded_flag() {
-        // c2260: serde aliases removed. A snake `exclude_from_context` key is an
-        // unknown field → ignored; the flag stays default (false), so the message
-        // is NOT excluded (must not resurrect pre-fix semantics; s18).
         let e = entry(json!({
             "role": "bashExecution",
             "command": "secret",

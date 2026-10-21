@@ -1,8 +1,3 @@
-//! File mutation queue — serializes concurrent writes/edits to the same file path.
-//!
-//! Operations targeting different files run in parallel; operations targeting
-//! the same file are serialized via per-path locks.
-
 use std::collections::HashMap;
 use std::future::Future;
 use std::path::PathBuf;
@@ -10,12 +5,8 @@ use std::sync::Arc;
 
 use tokio::sync::Mutex;
 
-/// Serializes mutations on a per-path basis. Users hold a shared reference and call
-/// [`FileMutationQueue::run`] to wrap a mutation.
 #[derive(Clone)]
 pub struct FileMutationQueue {
-    /// A `Mutex<HashMap>` so we can lazily insert per-path locks without write contention
-    /// on the map (we only briefly lock the map to look up/insert, then lock the per-path lock).
     queues: Arc<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>>,
 }
 
@@ -26,21 +17,17 @@ impl FileMutationQueue {
         }
     }
 
-    /// Execute a mutation `f` on `file_path`. If another mutation is currently running on the
-    /// same path (canonically resolved), this call will wait for it to finish before executing.
     pub async fn run<F, Fut, T, E>(&self, file_path: &str, f: F) -> Result<T, E>
     where
         F: FnOnce() -> Fut + Send,
         Fut: Future<Output = Result<T, E>> + Send,
         T: Send,
     {
-        // Resolve the real path (best-effort)
         let key = match tokio::fs::canonicalize(file_path).await {
             Ok(real) => real,
             Err(_) => PathBuf::from(file_path),
         };
 
-        // Get or create a per-path mutex
         let path_lock = {
             let mut map = self.queues.lock().await;
             map.entry(key.clone())
@@ -48,11 +35,8 @@ impl FileMutationQueue {
                 .clone()
         };
 
-        // Serialize — only one mutation at a time per path
         let _guard = path_lock.lock().await;
 
-        // Periodically clean up entries that have no waiters (opportunistic)
-        // We'll skip this for now; small overhead from storing one Arc per unique path touched.
         f().await
     }
 }
@@ -69,8 +53,6 @@ mod tests {
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::time::Duration;
 
-    /// Artificial delay so both queued futures are in flight before the second
-    /// path-lock is taken (proves parallel / serial semantics). Not a poll interval.
     const OVERLAP_DELAY: Duration = Duration::from_millis(50);
 
     #[tokio::test]
@@ -126,7 +108,6 @@ mod tests {
         assert!(r2.is_ok());
         assert_eq!(counter.load(Ordering::SeqCst), 2);
 
-        // Should take ~100ms because they're serialized
         let elapsed = start.elapsed();
         assert!(
             elapsed >= Duration::from_millis(40),

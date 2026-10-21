@@ -1,119 +1,74 @@
-//! Slash / bang parsing for the product TUI host (c480 / c492 / c494).
-
 use xylitol_plugin_sdk::XyBashResult;
 
 use super::bridge::{BashBlockStatus, UiEntry};
 
-/// Idle slash resolved for the async host loop (or applied locally).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PendingSlash {
     Exit,
-    /// Bare `/model` — open fuzzy picker (c630).
     OpenModels,
     SetModel(String),
-    /// `/session-tree` — open MessageHistory tree (c700 / c1005).
     OpenTree,
-    /// `/session-fork` — fork at current leaf (c700 / c1005).
     ForkAtLeaf,
-    /// `/session-compact` with optional focus instructions (c1670).
     Compact {
         instructions: Option<String>,
     },
-    /// `/session-export` with optional path (c1010).
     Export {
         path: Option<String>,
     },
-    /// `/session-import` with required path — confirm before dispatch (c1010).
     Import {
         path: String,
     },
-    /// Bare `/session` — info/stats dump (c1015).
     SessionDump,
-    /// Bare `/session-resume` — open session SelectList (c1015).
     OpenSessionResume,
-    /// Bare `/session-new` — empty session (c1020).
     SessionNew,
-    /// Bare `/session-clone` — fork leaf at At (c1020).
     SessionClone,
-    /// `/session-name` with optional display name (c1020).
     SessionName {
         name: Option<String>,
     },
-    /// Bare `/reload` — hot-reload runtime resources (c1120).
     Reload,
-    /// `/trust` [parent|deny] — persist trust decision without auto-reload (c1105).
     Trust {
         mode: crate::driver::ProjectTrustMode,
     },
-    /// Bare `/history-copy-last` — copy last assistant text (c1110; busy allowed).
     HistoryCopyLast,
-    /// `/theme` [dark|light|toggle|cycle] — open picker or apply (c1115).
     Theme {
         arg: Option<String>,
     },
-    /// Bare `/mcp` / `/mcps` — MCP connection + armed panel (c1210).
     OpenMcp,
-    /// Bare `/designing` — remount the designing scene slot (designing composition only).
     OpenDesigningScenes,
-    /// Slash usage / arity error (no dispatch).
     Usage(&'static str),
 }
 
-/// Whether a parsed slash may run under a host gate (c1580 / c1210).
-///
-/// Exhaustive over [`PendingSlash`] via [`slash_allowances`] — new variants MUST
-/// fill every column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SlashPermit {
-    /// Clear editor and enqueue `pending.slash` (or quit for Exit).
     Allow,
-    /// Clear editor, scroll notice, MUST NOT dispatch.
     Reject,
 }
 
-/// Alias kept for call sites / specs that say «busy slash policy» (c1580).
 pub type BusySlashPolicy = SlashPermit;
 
-/// Toast-notice body when Resume Enter would switch/rename/delete while busy
-/// (c1780 / c1800 / atm10). Render prefixes `Error: ` with warning paint.
 pub const BUSY_SESSION_SWITCH_NOTICE: &str =
     "agent busy — finish turn or Esc abort before switching session";
 
-/// Soft-gate body while `/reload` is in flight (c1205 / ath28). Render prefixes `Error: `.
 pub const RELOADING_WAIT_NOTICE: &str = "reloading — wait";
 
-/// Toast body after user cancels an in-flight `/reload` (c1205).
 pub const RELOAD_CANCELLED_NOTICE: &str = "reload cancelled";
 
-/// Toast body when `/reload` fails (c1205); details stay in the ScrollNotice report.
 pub const RELOAD_FAILED_NOTICE: &str = "reload failed — see report";
 
-/// Default TTL for toast notice auto-clear (atc22 · ~3–5s).
 pub const TOAST_NOTICE_TTL: std::time::Duration = std::time::Duration::from_secs(4);
 
-/// Visible prefix for toast notice lines (atc22 / toast-notice.md).
 pub const TOAST_NOTICE_ERROR_PREFIX: &str = "Error: ";
 
-/// Per-slash allowances across host gates (c1210).
-///
-/// **Single exhaustive table**: add a [`PendingSlash`] arm → fill every field.
-/// Future gates (e.g. reload-in-flight) add a column here — do not fork parallel matches.
-/// MCP connecting no longer gates input (c1210); only `when_agent_busy` remains.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SlashAllowances {
     pub when_agent_busy: SlashPermit,
-    /// 执行类（c2780/atm18）：`Inline` = 任何交互循环（含 bang）内立即执行
-    /// 且 effect 非阻塞（缓存/本地直出，MUST NOT await 远程 unary）；其余
-    /// 排队至循环归还。bang drain 只消费本列（c2790）。
     pub exec: xylitol_protocol::registry::Exec,
 }
 
-/// Canonical slash gate table. Prefer this over ad-hoc matches.
 pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
     use SlashPermit::*;
     use xylitol_protocol::registry::Exec;
     match slash {
-        // Leave / readonly / export / MCP panel
         PendingSlash::Exit => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Exclusive,
@@ -134,7 +89,6 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
         },
-        // Instant lists (c1780): browse/open Allow; Resume switch gated in pending_ui.
         PendingSlash::OpenSessionResume => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
@@ -163,7 +117,6 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
         },
-        // Misc / trust
         PendingSlash::Theme { .. } => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Inline,
@@ -199,12 +152,10 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
     }
 }
 
-/// Agent-busy column (c1580).
 pub fn busy_slash_policy(slash: &PendingSlash) -> SlashPermit {
     slash_allowances(slash).when_agent_busy
 }
 
-/// Short label for refuse notes (`agent busy — /reload refused`).
 pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
     match slash {
         PendingSlash::Reload => "/reload",
@@ -218,7 +169,6 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::SessionClone => "/session-clone",
         PendingSlash::Import { .. } => "/session-import",
         PendingSlash::Usage(_) => "slash",
-        // Allow variants are not refuse-noted; keep arms for exhaustiveness.
         PendingSlash::Exit => "/exit",
         PendingSlash::SetModel(_) => "/model",
         PendingSlash::Compact { .. } => "/session-compact",
@@ -231,18 +181,15 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
     }
 }
 
-/// Idle `!` / `!!` bash request for the async host loop (c492).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingBash {
     pub command: String,
     pub exclude_from_context: bool,
 }
 
-/// Parse trimmed editor text for bang-bash (c492).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BangParse {
     NotBang,
-    /// `!` or `!!` with empty command body.
     Empty {
         exclude_from_context: bool,
     },
@@ -252,7 +199,6 @@ pub enum BangParse {
     },
 }
 
-/// Classify idle input for `!` / `!!` bash (after slash handling).
 pub fn parse_bang_command(text: &str) -> BangParse {
     let trimmed = text.trim();
     if let Some(rest) = trimmed.strip_prefix("!!") {
@@ -284,7 +230,6 @@ pub fn parse_bang_command(text: &str) -> BangParse {
     }
 }
 
-/// Parse idle slash MVP (`/exit`, `/model` `id`).
 pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
     let trimmed = text.trim();
     let rest = trimmed.strip_prefix('/')?;
@@ -354,10 +299,6 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
     }
 }
 
-/// Parse slash for the current TUI composition.
-///
-/// `/designing` is recognized only while the designing composition is on;
-/// product TUI keeps it as an unknown slash (not in the product SSOT).
 pub fn parse_slash_command_for_surface(text: &str, designing: bool) -> Option<PendingSlash> {
     if designing && let Some(slash) = parse_designing_slash(text) {
         return Some(slash);
@@ -385,7 +326,6 @@ fn parse_designing_slash(text: &str) -> Option<PendingSlash> {
     }
 }
 
-/// Map execute result → bang block tint.
 pub fn bash_block_status(result: &XyBashResult) -> BashBlockStatus {
     if result.cancelled {
         BashBlockStatus::Cancelled
@@ -396,12 +336,10 @@ pub fn bash_block_status(result: &XyBashResult) -> BashBlockStatus {
     }
 }
 
-/// Format bang outcome body (no `$ cmd` header — lives on the Bash block).
 pub fn bash_output_body(result: &XyBashResult) -> String {
     let code = result.exit_code;
     let mut body = result.output.trim_end().to_string();
     if body.len() > 4000 {
-        // Keep Full output footer if present near the end.
         if let Some(idx) = body.rfind("\n[Full output:") {
             let footer = body[idx + 1..].to_string();
             let head = &body[..idx.min(4000)];
@@ -443,7 +381,6 @@ pub fn bash_output_body(result: &XyBashResult) -> String {
     body
 }
 
-/// Build a finished bang [`UiEntry::Bash`] (c668).
 pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry> {
     vec![UiEntry::Bash {
         id: crate::bridge::UiModel::bash_block_id_from_command(&[], command),
@@ -461,10 +398,6 @@ mod parse_tests {
         parse_slash_command, parse_slash_command_for_surface, slash_allowances,
     };
 
-    /// The whole idle-input command surface in one reviewable file: every
-    /// slash verb, its usage-error paths, and bang forms. Adding/removing a
-    /// verb MUST touch this snapshot (deliberate friction — the verb list is
-    /// product vocabulary).
     #[test]
     fn slash_bang_parse_surface_snapshot() {
         let inputs = [

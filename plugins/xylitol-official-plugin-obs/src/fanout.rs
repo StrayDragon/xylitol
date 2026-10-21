@@ -1,8 +1,5 @@
-//! Fan-out fastrace [`Reporter`] — delivers the same batch to zero or more sinks.
-
 use fastrace::collector::{Reporter, SpanRecord};
 
-/// Forwards each report batch to every inner reporter (File, OTEL, …).
 pub struct FanoutReporter {
     inner: Vec<Box<dyn Reporter>>,
 }
@@ -61,7 +58,6 @@ mod tests {
             Box::new(CollectReporter(b.clone())),
         ]);
         fan.report(vec![]);
-        // empty batch still calls report
         assert_eq!(*a.lock().unwrap(), 0);
         assert_eq!(*b.lock().unwrap(), 0);
     }

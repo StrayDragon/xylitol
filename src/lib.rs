@@ -1,51 +1,7 @@
-//! # xylitol
-//!
-//! LLM-Augmented Development Toolkit.
-//!
-//! ## Public API = `embed` + curated `Xy*` re-exports
-//!
-//! The only externally reachable surface is the [`embed`] seam plus the
-//! curated re-exports below. Assembly lives in `xylitol-kernel` (`Kernel::boot`).
-//! Occupancy (session slots) lives in `xylitol-serve`; the kernel injects plugins.
-//!
-//! Ports: [`XyModel`], [`XyTool`], [`XySessionStore`], [`XyEventSink`],
-//! [`XyPermission`], [`XyBashExecutor`], [`XyExportIo`], [`XySecretResolver`],
-//! [`XyModelBuilder`], [`XyHookBus`].
-//! Shared application protocol: [`XyDriver`], [`XyInProcessDriver`], [`XyDriverError`].
-//! Envelope client: `xylitol-app-tui` (`HostClient` / `XyRemoteDriver`).
-//! Events / stream: [`XyEvent`], [`XyChunk`], [`XyStream`].
-//! Hook outcomes: [`XyHookOutcome`], [`NoopHookBus`].
-//! Errors: [`XyError`], [`XyToolError`], [`XySessionStoreError`], [`XySessionError`], [`XyExportError`], [`XyTrustError`], [`XyDriverError`].
-//! Config metadata: [`XyModelConfig`], [`XyModelKind`], [`XyModelMeta`],
-//! [`XyToolSchema`].
-//!
-//! ## Embed seam ([`embed`])
-//!
-//! Multi-client / external-crate assembly: [`embed::boot`], [`embed::bootstrap`],
-//! [`embed::BootstrappedRuntime`] / [`embed::BootstrappedAgent::into_runtime`],
-//! [`embed::XyInProcessDriver`], [`embed::XyDriver`], [`embed::BuildAgentOptions`],
-//! [`embed::McpSession`]. Script hooks are configured via
-//! [`embed::BuildAgentOptions::hooks_config`]; replaceable port is [`XyHookBus`].
-//!
-//! Visibility is enforced by the compiler, not convention:
-//!
-//! ```compile_fail
-//! // Internal helpers are not a public crate root module.
-//! use xylitol::utils::sync::lock_mutex;
-//! ```
-//!
-//! ```rust
-//! // The sanctioned seam compiles.
-//! use xylitol::embed::BootOptions;
-//! use xylitol::XyDriver as _;
-//! ```
-
 pub mod embed;
 
 #[cfg(feature = "cli")]
 pub mod cli;
-
-// ── Curated `pub use` ───────────────────────────────────────────────
 
 #[cfg(feature = "server")]
 pub use xylitol_kernel::attach::attach_preflight_with;
@@ -66,7 +22,6 @@ pub use xylitol_plugin_sdk::{
     XyModelBuilder, XyPermission, XySecretResolver, XySessionStore, XyStream, XyTool,
 };
 
-/// Application entry point.
 #[cfg(feature = "cli")]
 pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
     cli::run().await

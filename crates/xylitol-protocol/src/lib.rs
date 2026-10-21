@@ -1,5 +1,3 @@
-//! Four-quadrant RPC envelope (fory-v3). Does not know Host vocabulary or `XyEvent`.
-
 pub mod codec;
 pub mod command;
 pub mod envelope;

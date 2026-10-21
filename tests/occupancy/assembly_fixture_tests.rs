@@ -1,9 +1,4 @@
-//! Assembly-fixture tests: Host occupancy + attach Driver.
-//!
-//! These tests wire `xylitol-serve` occupancy with `xylitol-app-tui::XyRemoteDriver`.
 //! They are not root-package business logic. Kept as `#[cfg(test)]` in this crate
-//! so they do not add another integration-test binary (m×n link cost).
-
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -133,9 +128,6 @@ async fn poll_prepare_progress_is_cache_dirty_only() {
     assert_eq!(client.calls.load(Ordering::SeqCst), 0);
 }
 
-/// ath37 / sr-abort1 (c2340): cancelling `reload_runtime` mid-flight MUST
-/// ask the Host to cooperatively cancel the in-flight reload via the
-/// existing `abort` unary and finish locally as cancelled.
 #[derive(Clone)]
 struct ReloadCancelClient {
     abort_called: Arc<std::sync::atomic::AtomicBool>,
@@ -150,7 +142,6 @@ impl HostClient for ReloadCancelClient {
         _payload: Value,
     ) -> Result<xylitol_protocol::RpcResult, HostClientError> {
         if method == "reload" {
-            // Hold the reload open until the cooperative abort arrives.
             let release = self.release.clone();
             let _ = tokio::select! {
                 _ = release.notified() => {}
@@ -236,9 +227,6 @@ impl HostClient for CountingClient {
     }
 }
 
-/// Empty PATH so `plan_clipboard_copy` cannot spawn wl-copy/xclip/pbcopy.
-/// Restored on drop. `env_global` covers the cargo-test in-process fallback
-/// (nextest is already process-per-test).
 struct StarveNativeClipboard {
     saved_path: Option<std::ffi::OsString>,
 }
@@ -264,9 +252,6 @@ impl Drop for StarveNativeClipboard {
     }
 }
 
-// env_global: this test clears PATH so native clipboard tools are not
-// spawned (would clobber the developer clipboard). Elimination path:
-// inject get_env into Driver clipboard helpers.
 #[tokio::test]
 #[serial_test::serial(env_global)]
 async fn clipboard_ops_stay_client_local() {
@@ -355,7 +340,6 @@ async fn abort_without_running_bash_keeps_fallback_path() {
     let slot = host.slot("idle-abort").await;
     let cancel = tokio_util::sync::CancellationToken::new();
     *slot.bash_run_cancel.lock().unwrap() = Some(cancel.clone());
-    // A different session id must not reach this slot's registration.
     let result = handle_unary(
         &host,
         None,
@@ -367,9 +351,6 @@ async fn abort_without_running_bash_keeps_fallback_path() {
         !cancel.is_cancelled(),
         "foreign abort must not cancel our run"
     );
-    // No registration on the target slot: falls through to the plain
-    // `Command::Abort` dispatch (for_test materializes a writer), which
-    // must still report a cancelled run.
     assert_eq!(
         result.value.as_ref().and_then(|v| v["cancelled"].as_bool()),
         Some(true)
@@ -408,8 +389,6 @@ async fn push_resources_is_not_journaled() {
     );
 }
 
-/// c2850/r1926: attach 期 ModelSelect 同步不进 journal、不消耗 seq；
-/// 重复调用仍向订阅者推送（语义幂等）。
 #[tokio::test]
 async fn sync_model_downlink_is_not_journaled() {
     use materialize_writer;
@@ -813,9 +792,6 @@ async fn loaded_resources_snapshot_applies_writer_mcp_without_direct_poll() {
     materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
-    // Attach TUI only hits `loaded_resources` unary — never `XyDriver::poll_prepare_progress`
-    // on the writer. Snapshot MUST apply armed tools so the header can leave
-    // `2 configured · 0 connected`.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     let mut snap = host.loaded_resources_snapshot().await;
     while std::time::Instant::now() < deadline {
@@ -842,10 +818,6 @@ async fn loaded_resources_snapshot_applies_writer_mcp_without_direct_poll() {
 async fn resources_watch_pushes_one_frame_on_snapshot_change() {
     use materialize_writer;
 
-    // r1790：写者侧 poll session prepare，快照变化才向订阅连接广播
-    // `session/resources` notification（bootstrap 过程可有多次变化、
-    // 各推一帧）；payload 与 loaded_resources unary 同形；不消耗
-    // journal seq；快照稳定后不重复推帧。
     let host = host_state_for_test_with_mcp(vec![fixture_mcp("a")]).expect("host");
     let slot = host.slot("res-watch").await;
     materialize_writer(&host, &slot)
@@ -854,7 +826,6 @@ async fn resources_watch_pushes_one_frame_on_snapshot_change() {
     let mut rx = host.in_process_downlink.subscribe();
     slot.ensure_mcp_resources_watch();
 
-    // 等 bootstrap 落定（与近邻 MCP 测试同一判据）。
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
     let mut snap = host.loaded_resources_snapshot_for("res-watch").await;
     while std::time::Instant::now() < deadline {
@@ -870,20 +841,12 @@ async fn resources_watch_pushes_one_frame_on_snapshot_change() {
         snap.mcp_bootstrap_complete,
         "fixture MCP bootstrap must settle: {snap:?}"
     );
-    // 非阻塞排空 + 轮询：等到出现「与已落定快照同形」那一帧（相对判据，
-    // 不靠固定 sleep 猜 poll 间隔；收集到的帧仍逐帧可查）。
     let mut frames: Vec<Value> = Vec::new();
-    // 帧与「unary 同形」比较须剥离 settle 探测字段：mcp_bootstrap_complete
-    // 属 host 装配状态（测试 settle 判据），非 resources 帧语义——其翻转
-    // 不一定伴随推帧（产品契约：仅资源面变化才推）。其余字段必须逐字一致。
     let strip = |v: &Value| -> Value {
         let mut m = v.as_object().cloned().unwrap_or_default();
         m.remove("mcp_bootstrap_complete");
         Value::Object(m)
     };
-    // 计时只在「曾收到帧」后启用：冷启动首帧可能晚于 snap 落定，若在
-    // 首帧前就按 5 秒收口会误判。收到帧后无进展才按窗口收口；
-    // 另设 30 秒绝对保险，防产品 watch 异常导致测试挂死。
     let mut drain_deadline: Option<std::time::Instant> = None;
     let hard_cap = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
@@ -900,9 +863,6 @@ async fn resources_watch_pushes_one_frame_on_snapshot_change() {
         if std::time::Instant::now() >= hard_cap {
             break;
         }
-        // 静默收口：从「曾收到帧」起静默 5s 视为稳定（产品契约：资源面稳定后
-        // 不重复推帧）。mcp_bootstrap_complete 为 settle 探测字段、非资源面，
-        // 不要求其翻转伴随推帧——故后续「资源面一致帧」断言在其剔除后判断。
         if frames.len() != before {
             drain_deadline = Some(std::time::Instant::now() + std::time::Duration::from_secs(5));
         } else if let Some(dl) = drain_deadline
@@ -936,7 +896,6 @@ async fn resources_watch_pushes_one_frame_on_snapshot_change() {
         "resources frames MUST NOT consume journal seq"
     );
 
-    // 快照稳定后不再重复广播（仅变化时推帧；其他下行帧不算）。
     let quiet = tokio::time::timeout(std::time::Duration::from_millis(700), rx.recv()).await;
     if let Ok(Ok(RpcMessage::ServerRequest { method, .. })) = quiet {
         assert_ne!(
@@ -1046,7 +1005,6 @@ async fn loaded_resources_before_writer_is_not_fake_complete() {
     );
 }
 
-/// c2849 / c2893：`arm_tool_freeze` 不占写锁，已有写引擎时仍须返回冻结快照。
 #[tokio::test]
 async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
     use materialize_writer;
@@ -1054,7 +1012,6 @@ async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
     let host = host_state_for_test_with_mcp(vec![fixture_mcp("a")]).expect("host");
     let slot = host.slot("conflict-sess").await;
     materialize_writer(&host, &slot).await.expect("materialize");
-    // 由另一写者建立租约：先以一个 token 调用一次写 unary（set_model 走租约）。
     let first = handle_unary(
         &host,
         None,
@@ -1084,10 +1041,6 @@ async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
 
 #[tokio::test]
 async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
-    // c2847 回归：配置了但永远连不上的 MCP，`arm_tool_freeze` unary MUST NOT
-    // 无限等待——`ensure_tool_table_frozen` 在门时限内 detach 并冻结 armed 子集，
-    // 返回 frozen+complete 快照；否则 TUI 的 Assembling 门死锁（旧行为：立即
-    // 返回未冻结快照，客户端无限等待）。
     use materialize_writer;
     use xylitol_kernel::mcp_spec::{McpServerSpec, McpTransportSpec};
 
@@ -1291,9 +1244,6 @@ async fn cold_subscribe_drops_replay_tape_and_stays_live() {
 
 #[tokio::test]
 async fn switch_session_resubscribes_cold_and_drops_new_session_tape() {
-    // resume-render 修复: SwitchSession 用旧 session 的 last_seq 重订阅新 session 时，
-    // journal 从任意偏移重放，mid-message TextDelta 尾巴会涌进 transcript。
-    // 重订阅必须 cold（last_seq=0 → skip_cold_replay 武装）。
     use xylitol_app_tui::dispatch::{DispatchOutcome, dispatch};
     use xylitol_protocol::{Command, Event};
 
@@ -1316,7 +1266,6 @@ async fn switch_session_resubscribes_cold_and_drops_new_session_tape() {
     let client = in_process_client(host.clone());
     let mut driver = XyRemoteDriver::with_host(client, "s-other");
     driver.attach_session().await.expect("attach");
-    // 在旧 session 上积累非零 last_seq（模拟看过一轮直播）。
     {
         let slot = host.slot("s-other").await;
         slot.append_and_push(Event::QueueUpdate {
@@ -1565,10 +1514,6 @@ async fn bash_unary_runs_in_client_workspace() {
     );
 }
 
-/// ws1 (c2335): the model-side tool execution surface MUST run in the
-/// session workspace bound at writer materialization — a scripted fake
-/// model emits a `bash pwd` tool call and the result MUST be the
-/// workspace, not the serve process cwd.
 #[tokio::test]
 async fn model_tool_runs_in_client_workspace() {
     use crate::XyModelMeta;

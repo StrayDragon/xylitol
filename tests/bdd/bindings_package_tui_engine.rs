@@ -1,5 +1,3 @@
-//! BDD bindings for `package-tui-engine` r1946 (c2880).
-
 use crate::bdd::steps_package_tui_engine::{
     EngineOfferBdd, EngineViewportBdd, engine_offer_bdd, engine_viewport_bdd,
 };

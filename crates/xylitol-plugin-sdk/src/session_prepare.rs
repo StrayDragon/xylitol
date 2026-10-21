@@ -1,9 +1,3 @@
-//! Session prepare Env row + hub port (`session/prepare`).
-//!
-//! Same family as [`crate::session_env`]: append-only Env CustomMessage, projected
-//! as user. Body is the prepare increment (armed MCP names, …), never the full
-//! system prompt.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,14 +8,11 @@ use crate::message::{AgentMessage, EnvMessage};
 use crate::plugin_events::SessionPrepareResult;
 use crate::ports::XyTool;
 
-/// `CustomMessage.custom_type` for a prepare-increment Env row.
 pub const CUSTOM_TYPE_SESSION_PREPARE: &str = "session_prepare";
 
-/// User-visible notice after the first-turn prepare gate times out.
 pub const SESSION_PREPARE_TIMEOUT_NOTICE: &str =
     "MCP gate timed out — tools frozen with armed subset (see /mcp). /reload to retry.";
 
-/// Snapshot compared / persisted as a status-bar-family Env row.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionPrepareSnapshot {
     pub fingerprint: String,
@@ -51,7 +42,6 @@ impl SessionPrepareSnapshot {
     }
 }
 
-/// Best-effort parse of the latest prepare snapshot (scan reverse).
 pub fn last_session_prepare(messages: &[AgentMessage]) -> Option<SessionPrepareSnapshot> {
     for msg in messages.iter().rev() {
         if let Some(s) = session_prepare_from_message(msg) {
@@ -90,7 +80,6 @@ pub fn session_prepare_from_message(msg: &AgentMessage) -> Option<SessionPrepare
     })
 }
 
-/// Append when fingerprint changed (or missing). Empty fingerprint never appends.
 pub fn should_append_session_prepare(
     history: &[AgentMessage],
     next: &SessionPrepareSnapshot,
@@ -104,7 +93,6 @@ pub fn should_append_session_prepare(
     }
 }
 
-/// Returns `true` if a row was pushed.
 pub fn ensure_session_prepare_in_history(
     history: &mut Vec<AgentMessage>,
     next: &SessionPrepareSnapshot,
@@ -116,7 +104,6 @@ pub fn ensure_session_prepare_in_history(
     true
 }
 
-/// Live MCP / prepare view for loaded-resources (driver maps to its snapshot).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionPrepareView {
     pub configured: usize,
@@ -130,7 +117,6 @@ pub struct SessionPrepareView {
 }
 
 impl SessionPrepareView {
-    /// Armed-subset result (timeout / snapshot); empty env body.
     pub fn armed_result(&self) -> SessionPrepareResult {
         SessionPrepareResult {
             fingerprint: self
@@ -144,22 +130,16 @@ impl SessionPrepareView {
     }
 }
 
-/// Plugin-provided prepare work. Fire starts it; wait joins with timeout.
 #[async_trait]
 pub trait SessionPrepareHub: Send + Sync {
-    /// Synchronous connecting cue for Assembling (no spawn). Default: no-op.
     fn cue_connecting(&self) {}
 
-    /// Start work without waiting (switch / resume / idle reload).
     fn fire(&self);
 
-    /// Awaitable reset (listeners that must not race the next ensure).
     async fn reset_join(&self);
 
-    /// Join in-flight work or start it. Idempotent.
     async fn ensure(&self) -> SessionPrepareResult;
 
-    /// Wait until ensure finishes or `timeout` elapses.
     async fn wait(&self, timeout: Duration) -> SessionPrepareResult;
 
     fn view(&self) -> SessionPrepareView;

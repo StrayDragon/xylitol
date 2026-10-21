@@ -1,12 +1,8 @@
-//! Compaction orchestration methods on [`AgentCapabilities`].
-
 use super::{AgentCapabilities, observe_hook};
 use crate::agent::compaction::CompactionError;
 use xylitol_plugin_sdk::error::XySessionError;
 
 impl AgentCapabilities {
-    /// Check and perform auto-compaction if the context is full.
-    /// Returns true if compaction was performed.
     pub async fn maybe_auto_compact(&self) -> Result<bool, CompactionError> {
         self.maybe_auto_compact_with(
             &crate::agent::compaction::EstimateOpts {
@@ -19,9 +15,6 @@ impl AgentCapabilities {
         .await
     }
 
-    /// Auto-compact using the same estimate opts as the product footer (c1420).
-    ///
-    /// `last_assistant`: when set, abort / stale guards apply (pi `_checkCompaction`).
     pub async fn maybe_auto_compact_with(
         &self,
         estimate_opts: &crate::agent::compaction::EstimateOpts,
@@ -65,7 +58,6 @@ impl AgentCapabilities {
                 Some(&self.fixed_request_context()),
                 None,
                 &mut fallback_notice_emitted,
-                // Library path holds no session-scoped c28 flag → no diagnostic.
                 None,
             )
             .await?;
@@ -78,7 +70,6 @@ impl AgentCapabilities {
         Ok(compacted)
     }
 
-    /// Manual force compact (pi `compact(customInstructions?)`). Does not apply the reserve gate.
     pub async fn force_compact(&self, instructions: Option<String>) -> Result<(), CompactionError> {
         let sid = self
             .session_id()
@@ -120,9 +111,6 @@ impl AgentCapabilities {
         Ok(())
     }
 
-    /// Resume / session-activation settlement (c26 LeafChanged): one
-    /// overhead-aware estimate so a freshly attached / switched client's footer
-    /// and the next reserve gate see the real context size without a model call.
     pub async fn emit_leaf_changed_settlement(&self) {
         use crate::agent::compaction::{
             ContextTokenSettlementReason, EstimateOpts, settle_from_session_entries,

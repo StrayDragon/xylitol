@@ -1,5 +1,3 @@
-//! PendingSlash side-effect arms (c1170). Still drained only via drain_pending.
-
 mod compact;
 mod misc;
 mod model;

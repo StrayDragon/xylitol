@@ -1,5 +1,3 @@
-//! protocol-app BDD 绑定：纯协议层场景 + 复用 server 词表的方法表场景。
-
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_protocol::{ProtocolBdd, protocol_bdd};
 use crate::bdd::steps_server::{ServerTest, server_test};
@@ -100,8 +98,6 @@ async fn test_pa_map4_queue_stats(server_test: ServerTest) {}
     name = "反向RPC首次作答生效"
 )]
 async fn test_pa_cs6_first_answer(server_test: ServerTest) {}
-
-// ---- c2826 specs-compact：裸规则转场景绑定 ----
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",

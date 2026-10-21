@@ -1,5 +1,3 @@
-//! Slot render helpers for UiRoot (c1170).
-
 use std::time::Instant;
 
 use xylitol_tui::{Component, InputEvent, truncate_to_width};
@@ -9,7 +7,6 @@ use super::UiRoot;
 use crate::widgets::{render_queue_strip, render_scrollback};
 
 impl UiRoot {
-    /// Codex-style startup card (brand + skills/MCP) above scrollback (c1135).
     pub(super) fn render_loaded_resources_slot(&mut self, width: usize) -> Vec<String> {
         crate::widgets::render_loaded_resources(
             self.theme,
@@ -70,9 +67,6 @@ impl UiRoot {
         vec![truncate_to_width(&painted, width, "…", false)]
     }
 
-    /// c2875 会话详情覆盖弹出框：屏幕右侧瞬态 overlay（键位 alt+i 显隐；Esc 收起）。
-    /// 纯展示：不注册指针命中（AO 选区可覆盖其文本，后续票处理）；
-    /// 无阴影无卡片——muted 标尺行 + label/value，右边界截断。
     pub(super) fn overlay_session_popup(
         &self,
         lines: &mut [String],
@@ -172,22 +166,15 @@ impl UiRoot {
         };
 
         if !self.status_busy {
-            // Idle: optional MCP short cue (c1210), right-aligned; otherwise breathing room.
-            // ApplicationOwned copy cue (ath31): reuse the blank status row when no next-turn cue
-            // so dock height stays stable; never use Error: toast-notice.
             if let Some(cue) = self.status_next_turn_cue.as_deref() {
                 return vec![paint_cue_line(&self.theme, cue, width)];
             }
             return vec![String::new()];
         }
-        // Keep Loader leading blank + spinner row (do not strip empties).
         let mut lines = self.status_loader.render(width);
         if let Some(cue) = self.status_next_turn_cue.as_deref() {
             if let Some(content) = lines.last_mut() {
                 let cue_paint = self.theme.paint_muted(cue);
-                // Loader → Text pads each line to full `width` with trailing spaces.
-                // Measuring that padded line makes lead_w == width and silently drops the
-                // right-aligned cue (Assembling / Working + mcp pending / Next turn).
                 let lead = content.trim_end_matches(' ');
                 let lead_w = xylitol_tui::visible_width(lead);
                 let cue_w = xylitol_tui::visible_width(&cue_paint);
@@ -210,7 +197,6 @@ impl UiRoot {
         lines
     }
 
-    /// c2912 侧栏第 i 行内容：标题 + 实验占位（施工中；业务字段待正式业务后回归，见 c2911 草案）。
     pub(super) fn session_sidebar_cell(&self, row: usize, w: usize) -> String {
         if row == 0 {
             let title = "┌ 会话侧栏";
@@ -250,7 +236,6 @@ impl UiRoot {
         width: usize,
         content_row_offset: usize,
     ) -> Vec<String> {
-        // Idle empty: 0 rows (DESIGN editor.md — no loud placeholder wall).
         let lines = render_scrollback(
             &self.ui_model,
             self.glyphs,
@@ -272,7 +257,6 @@ impl UiRoot {
 
 impl Component for UiRoot {
     fn render(&mut self, width: usize) -> Vec<String> {
-        // c2905 侧栏：内容区让宽（wrap 按 content 重排），最右整高第二列。
         let (sidebar_on, _sidebar_w, content_w) = self.session_sidebar_layout(width);
         let width = if sidebar_on { content_w } else { width };
         let mut lines = Vec::new();
@@ -293,15 +277,10 @@ impl Component for UiRoot {
             }
             lines.extend(upper);
         }
-        // Queue strip is part of the dock (between transcript and status) — must not
-        // live in the ApplicationOwned ScrollView or short sessions pin it under
-        // the startup card with a pad of empty rows (Inline stuck-to-bottom feel).
         let queue = self.render_queue_slot(width);
         let todo = self.render_todo_bar_slot(width);
         let toast = self.render_toast_notice_slot(width);
         let status = self.render_status_slot(width);
-        // Editor owns the operation-zone ─ borders (DESIGN editor.md / agent_demo).
-        // Do NOT wrap with a second outer border pair.
         self.apply_fixed_zone_footprint(todo.len());
         let editor = self.render_editor_slot(width);
         let footer = if width == 0 {
@@ -309,7 +288,6 @@ impl Component for UiRoot {
         } else {
             truncate_to_width(self.footer.text(), width, "...", true)
         };
-        // ApplicationOwned dock = queue + 待办栏 + toast + status + editor + footer.
         self.last_queue_rows = queue.len();
         self.last_todo_rows = todo.len();
         self.last_toast_rows = toast.len();
@@ -333,13 +311,10 @@ impl Component for UiRoot {
     }
 
     fn overlay_viewport(&self, lines: &mut [String], width: usize, transcript_rows: usize) {
-        // c2905：overlay 右对齐按内容宽收口，不得压侧栏。
         let (sidebar_on, sidebar_w, content_w) = self.session_sidebar_layout(width);
         let eff = if sidebar_on { content_w } else { width };
-        // c2875 覆盖弹出框先画：通知栈随后叠绘（右上 z 序高于覆盖弹出框）。
         self.overlay_session_popup(lines, eff, transcript_rows);
         self.overlay_client_notices(lines, eff, transcript_rows);
-        // c2905 侧栏最后画：整高最右列，覆盖语义仅限侧栏带（>=内容宽）。
         if sidebar_on {
             let sep = self.theme.paint_muted("│");
             for (i, line) in lines.iter_mut().enumerate() {

@@ -1,8 +1,3 @@
-//! Designing scene catalog confirm → process-local designing preview inject.
-//!
-//! Confirm closes the catalog so the canvas and editor return. Reopen with
-//! `/designing` (designing composition only).
-
 use xylitol_tui::Terminal;
 
 use crate::driver::XyDriver;

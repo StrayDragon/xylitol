@@ -91,10 +91,6 @@ pub(crate) fn compaction_entry_from_sess(
         .expect("expected CompactionEntry in session")
 }
 
-/// Active context after compaction: one CompactionEntry plus message turns from `firstKeptEntryId`.
-///
-/// `session_env` bootstrap rows (c1906 post-compact ensure) count toward total active
-/// records but **not** toward the "轮" (turn) count in retain-recent assertions.
 pub(crate) fn comp_active_record_counts(entries: &[SessionEntry]) -> (usize, usize) {
     use xylitol_plugin_sdk::session::build_context_entries;
     let ctx = build_context_entries(entries);
@@ -147,7 +143,6 @@ pub(crate) fn _g_comp_enabled_false(agent: &AgentState) {
     agent.compaction_enabled.set(false);
 }
 
-/// 参数化形态（c2920 场景大纲专用）：`{flag}` 无类型提示 → `.+?` 捕获 → parse bool。
 #[given("compaction enabled 为 {flag}")]
 pub(crate) fn _g_comp_enabled_flag(agent: &AgentState, flag: bool) {
     agent.compaction_enabled.set(flag);
@@ -172,8 +167,6 @@ pub(crate) fn _w_comp_check(agent: &AgentState) {
         keep_recent_tokens: agent.compaction_keep_tokens.get(),
         ..Default::default()
     };
-    // c2: floor-aware threshold — overhead defaults to 0 (degenerate reserve formula)
-    // unless a 固定请求开销 given step injected one.
     let floor = projected_post_compact_tokens(
         &settings,
         window,
@@ -194,7 +187,6 @@ pub(crate) fn _g_comp_overhead(agent: &AgentState, n: u64) {
     agent.compaction_fixed_overhead.set(n);
 }
 
-/// 参数化形态（c2920 场景大纲专用）：逐行断言 `expect_compact` 列。
 #[then("返回 {expect_compact}")]
 pub(crate) fn _t_comp_result_expect(agent: &AgentState, expect_compact: bool) {
     assert_eq!(*agent.compaction_result.borrow(), Some(expect_compact));
@@ -208,7 +200,6 @@ pub(crate) async fn _g_comp_50_turns(sess: &XySessionStore) {
 
 #[when("触发压缩保留最近 10 轮")]
 pub(crate) async fn _w_comp_trigger(agent: &AgentState, sess: &XySessionStore) {
-    // 统一度量平面 /3 后重调保留预算（保持「保留最近 10 轮」语义）。
     comp_run_compact(agent, sess, COMP_RETAIN_SID, 1_540).await;
 }
 

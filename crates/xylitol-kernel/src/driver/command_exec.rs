@@ -1,12 +1,9 @@
-//! SessionCommandExecutor for the in-process driver (envelope side).
-
 use async_trait::async_trait;
 
 use super::XyDriver;
 use super::XyDriverError;
 use super::XyInProcessDriver;
 
-// ── Command executor (c2710): Command is the SSOT of session operations ────
 #[async_trait]
 impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
     async fn execute_session_command(
@@ -85,7 +82,6 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 Ok(DispatchOutcome::NewSession(new_id))
             }
             Command::SwitchSession { session_path, .. } => {
-                // Derive session id from path (file stem).
                 let new_id = std::path::Path::new(&session_path)
                     .file_stem()
                     .and_then(|st| st.to_str())
@@ -206,7 +202,6 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 })
             }
 
-            // These variants are the caller's responsibility (see dispatch module docs).
             Command::Prompt { .. }
             | Command::Quit { .. }
             | Command::Subscribe { .. }

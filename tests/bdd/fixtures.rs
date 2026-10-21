@@ -31,7 +31,6 @@ impl Workspace {
             .to_string()
     }
 
-    /// Workspace root as a string (session-workspace scenarios).
     pub(crate) fn root(&self) -> String {
         self.dir
             .borrow()
@@ -53,11 +52,8 @@ pub struct XySessionStore {
     pub entries: RefCell<Vec<SessionEntry>>,
     pub current_id: RefCell<Option<String>>,
     pub last_result: RefCell<Option<Result<String, XyDriverError>>>,
-    /// s12/s21/s22 原始文件断言用的会话目录。
     pub sessions_dir: RefCell<Option<std::path::PathBuf>>,
-    /// ex3：导入侧的全新存储与返回 id。
     pub second_mgr: RefCell<Option<SessionManager>>,
-    /// r1950：跨进程 flock 探针退出码。
     pub lock_probe: Cell<Option<i32>>,
 }
 impl XySessionStore {
@@ -72,22 +68,18 @@ impl XySessionStore {
             lock_probe: Cell::new(None),
         }
     }
-    /// Auto-initialize session manager if not yet set.
     pub(crate) fn ensure_mgr(&self) {
         if self.mgr.borrow().is_none() {
             let dir = tempfile::tempdir().unwrap();
             let d = dir.path().join("sessions");
             std::fs::create_dir_all(&d).ok();
             self.sessions_dir.replace(Some(d.clone()));
-            // Leak the TempDir to keep it alive for the test duration.
-            // This is only for tests.
             std::mem::forget(dir);
             self.mgr.replace(Some(SessionManager::new(d)));
         }
     }
 }
 
-/// Library-seam hook recorder implementing crate-root [`xylitol::XyHookBus`] (c990).
 pub(crate) struct WiringHookLog {
     pub(crate) calls: std::sync::Mutex<Vec<(String, String, serde_json::Value)>>,
     pub(crate) force: std::sync::Mutex<Option<xylitol::XyHookOutcome>>,
@@ -135,9 +127,7 @@ pub struct AgentState {
     pub compaction_enabled: Cell<bool>,
     pub hook_result: RefCell<Option<DispatchResult>>,
     pub hook_entries: RefCell<Vec<HookEntry>>,
-    /// Last JSON context that would be piped to a hook script stdin.
     pub(crate) last_hook_stdin: RefCell<Option<serde_json::Value>>,
-    /// When set, injected as `XyHookBus` for library-seam wiring BDD (c990).
     pub(crate) wiring_hook_log: RefCell<Option<Arc<WiringHookLog>>>,
     pub(crate) last_op_error: RefCell<Option<String>>,
     pub compaction_task_model: RefCell<Option<xylitol_plugin_sdk::model_entry::XyModelEntryConfig>>,

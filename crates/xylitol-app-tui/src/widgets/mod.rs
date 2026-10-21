@@ -1,8 +1,3 @@
-//! Product-only composites assembled from `xylitol_tui` atoms.
-//!
-//! Not a second component library — no differential engine, no generic Editor.
-//! Keep atoms in the package; put product scrollback / queue strip / glyphs here.
-
 mod fold_hit;
 mod glyphs;
 mod loaded_resources;
@@ -24,7 +19,6 @@ pub use todo_bar::{
 
 use xylitol_plugin_sdk::model::{THINKING_OFF, TokenProvenance};
 
-/// Compact token/window counts for footer (pi `formatTokens`).
 pub fn format_compact_tokens(count: u64) -> String {
     if count < 1_000 {
         count.to_string()
@@ -39,9 +33,6 @@ pub fn format_compact_tokens(count: u64) -> String {
     }
 }
 
-/// Provenance-honest footer fragment (`used C tokens` / `~C` / `?`), plus derived
-/// `p%/window` when `context_window > 0` (c1680). Count `C` reuses [`format_compact_tokens`]
-/// (c1820); Unknown stays `?` without compact.
 pub fn footer_token_label(provenance: TokenProvenance, tokens: u64, context_window: u64) -> String {
     let base = match provenance {
         TokenProvenance::Api => {
@@ -69,7 +60,6 @@ pub fn footer_token_label(provenance: TokenProvenance, tokens: u64, context_wind
     }
 }
 
-/// Footer thinking-level label (`thinking off` for `off`, else the declared name).
 pub fn footer_thinking_label(level: &str) -> String {
     if level == THINKING_OFF {
         "thinking off".into()
@@ -78,9 +68,6 @@ pub fn footer_thinking_label(level: &str) -> String {
     }
 }
 
-/// Footer identity line (`cwd · model · {thinking}`, optional tokens).
-/// Empty `thinking_label` omits the thinking segment (no-thinking models).
-/// The queue strip lives in the mid-layout — not a footer `q:sN|fM` badge.
 pub fn format_footer_text(
     cwd: &str,
     model: &str,

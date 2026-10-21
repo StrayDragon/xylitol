@@ -1,5 +1,3 @@
-//! Typed Dark / Light palettes + inherent component-theme builders.
-
 use crate::components::choice_prompt::ChoicePromptTheme;
 use crate::components::diff::DiffTheme;
 use crate::components::markdown::MarkdownTheme;
@@ -9,9 +7,6 @@ use crate::theme::paint::{
     bg_rgb, bold, fg_bg_rgb, fg_rgb, italic, strikethrough, underline, word_wash_bg,
 };
 
-/// Semantic colors aligned with `src/app/tui/DESIGN.md` (+ Latte light companion).
-///
-/// Only two built-in flavors. Construct custom values freely; builders are inherent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Palette {
     pub on_surface: RgbColor,
@@ -35,12 +30,10 @@ pub struct Palette {
     pub tool_success_bg: RgbColor,
     pub tool_error_bg: RgbColor,
     pub user_message_bg: RgbColor,
-    /// Inline `$skill` highlight in user messages (`DESIGN.md` `skill-ref`, A10).
     pub skill_ref: RgbColor,
 }
 
 impl Palette {
-    /// Catppuccin Mocha — `DESIGN.md` product dark MVP.
     pub const fn dark() -> Self {
         Self {
             on_surface: rgb(0xcd, 0xd6, 0xf4),
@@ -68,7 +61,6 @@ impl Palette {
         }
     }
 
-    /// Catppuccin Latte — light companion (`DESIGN.md` `colors_light`).
     pub const fn light() -> Self {
         Self {
             on_surface: rgb(0x4c, 0x4f, 0x69),
@@ -104,7 +96,6 @@ impl Palette {
         bg_rgb(color, s)
     }
 
-    /// Markdown theme (heading grades + emphasis).
     pub fn markdown_theme(&self) -> MarkdownTheme {
         let accent = self.accent;
         let on_surface = self.on_surface;
@@ -140,7 +131,6 @@ impl Palette {
         }
     }
 
-    /// Diff theme: row tint + stronger word tint (restore row bg, not `49m`).
     pub fn diff_theme(&self) -> DiffTheme {
         let added = self.diff_added;
         let removed = self.diff_removed;
@@ -164,10 +154,6 @@ impl Palette {
         }
     }
 
-    /// Diff inside a `tool-*-bg` wash (pi edit path / DESIGN.md Edit 一体块).
-    ///
-    /// Polarity stays on fg; word spans use [`word_wash_bg`] toward red/green and restore
-    /// to `block_bg`. **No** `diff-*-bg` row tints — the expandable shell owns the wash.
     pub fn diff_theme_on_block(&self, block_bg: RgbColor) -> DiffTheme {
         let added = self.diff_added;
         let removed = self.diff_removed;
@@ -190,8 +176,6 @@ impl Palette {
         }
     }
 
-    /// ChoicePrompt chrome — accent select (not reverse); product Ask uses fixed left rail.
-    /// Demo MAY clear `rail` for wash/pi contrast via `/entry-style`.
     pub fn choice_prompt_theme(&self) -> ChoicePromptTheme {
         let accent = self.accent;
         let on_surface = self.on_surface;

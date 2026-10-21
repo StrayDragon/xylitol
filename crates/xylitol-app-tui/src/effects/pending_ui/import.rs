@@ -1,5 +1,3 @@
-//! Session import confirm decision.
-
 use xylitol_tui::Terminal;
 
 use crate::dispatch::{DispatchOutcome, dispatch};
@@ -37,7 +35,6 @@ pub(super) async fn decide<T: Terminal>(session: &mut HostSession<T>, driver: &m
                     session.push_scroll_notice("import complete");
                     session.close_import_confirm();
                 }
-                // dispatch already logs error.kind
                 Err(e) => {
                     session.push_scroll_notice(format!("/session-import failed: {e}"));
                     session.close_import_confirm();

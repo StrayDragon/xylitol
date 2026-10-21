@@ -1,18 +1,3 @@
-//! Provider request timeline helpers (fastrace Events → provider-trace.jsonl).
-//!
-//! Runtime gate via [`provider_trace_active`]; when inactive, emit helpers are
-//! no-ops and must not allocate large SSE strings.
-//!
-//! Gate resolution (Keybindings / ObsSession-style):
-//! 1. thread-local [`ObsGateScope`] if entered (unit tests)
-//! 2. else process atomics (composition root / `init_logging`)
-//!
-//! Span collection for unit tests: [`SpanCollectScope`] + once-installed process
-//! demux reporter (do not call `fastrace::set_reporter` from unit tests).
-//!
-//! Note: `fastrace::flush` reports on a helper thread, so the demux sink MUST be
-//! process-global — not thread-local.
-
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -27,28 +12,20 @@ pub use xylitol_plugin_sdk::obs_gate::{
     tool_observation_io_tier, truncate_observation_text,
 };
 
-/// How a generation span closed (c1590).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GenerationFinishKind {
-    /// Normal stream end (`Done`, with or without usage).
     Completed,
-    /// Abort / drop without successful `Done` — ERROR + `aborted`.
     Aborted,
 }
 
-/// Span for one provider HTTP stream (`llm.request`); drop reports to FileReporter.
 pub struct ProviderRequestTrace {
     root: Span,
-    /// First request-shaped JSON (when I/O tier ≠ none).
     input_buf: Mutex<Option<String>>,
-    /// Accumulated assistant text deltas (when I/O tier ≠ none).
     output_buf: Mutex<String>,
     finalized: AtomicBool,
 }
 
 impl ProviderRequestTrace {
-    /// Start as an independent root (`None` parent → random context).
-    /// Prefer [`Self::start_with_parent`] when an iteration / compaction parent is known.
     pub fn start(api: &str, model: &str) -> Option<Self> {
         Self::start_with_parent(api, model, None)
     }
@@ -57,7 +34,6 @@ impl ProviderRequestTrace {
         Self::start_with_parent_obs(api, model, parent, &super::obs_session_context())
     }
 
-    /// Start `llm.request` using a generate-scoped session snapshot (c2590).
     pub fn start_with_parent_obs(
         api: &str,
         model: &str,
@@ -73,8 +49,6 @@ impl ProviderRequestTrace {
         let model = model.to_string();
         let api = api.to_string();
         let root = Span::root("llm.request", parent_ctx).with_properties(move || {
-            // `api` / `request_id` are xylitol-local; model goes only via
-            // `langfuse.observation.model.name` (see langfuse_generation_properties).
             let mut props = vec![
                 ("request_id".to_string(), request_id.clone()),
                 ("api".to_string(), api.clone()),
@@ -90,7 +64,6 @@ impl ProviderRequestTrace {
         })
     }
 
-    /// Capture assembled request JSON before HTTP (c1590). Idempotent first-wins.
     pub fn capture_request_input(&self, body_json: &str) {
         if observation_io_tier() == ObservationIoTier::None {
             return;
@@ -111,7 +84,6 @@ impl ProviderRequestTrace {
             return;
         }
         let (text, truncated) = truncate_text(text, PROVIDER_TRACE_TEXT_MAX);
-        // Legacy fallback: still accept request-shaped raw event names if capture missed.
         if observation_io_tier() != ObservationIoTier::None
             && is_request_body_event(event)
             && let Ok(mut slot) = self.input_buf.lock()
@@ -168,7 +140,6 @@ impl ProviderRequestTrace {
         }
     }
 
-    /// Idempotent close: attach I/O; on [`GenerationFinishKind::Aborted`] mark ERROR.
     pub fn finalize(&self, kind: GenerationFinishKind) {
         if self
             .finalized
@@ -187,16 +158,11 @@ impl ProviderRequestTrace {
     }
 
     fn attach_usage(&self, u: &XyUsage) {
-        // Single usage channel: Langfuse `usage_details` (verbatim / exclusive
-        // buckets, incl. optional cache). Do not also emit `gen_ai.usage.*` —
-        // same mapped field with inclusive/normalize semantics that fight cache.
         let mut details = serde_json::json!({
             "input": u.input,
             "output": u.output,
             "total": u.input.saturating_add(u.output),
         });
-        // Honesty (c1885): only write cache_read under Tokens(n); never fake 0
-        // for NotReported / NotApplicable.
         if let crate::dto::PromptCacheRead::Tokens(n) = u.prompt_cache_read {
             details["cache_read"] = serde_json::json!(n);
         }
@@ -236,7 +202,6 @@ impl ProviderRequestTrace {
 
 impl Drop for ProviderRequestTrace {
     fn drop(&mut self) {
-        // Mid-stream abort / early close: flush partial I/O + ERROR (c1590).
         self.finalize(GenerationFinishKind::Aborted);
     }
 }
@@ -515,7 +480,6 @@ mod tests {
 
 #[test]
 fn records_for_filters_by_owner_session_id() {
-    // c2843 Phase B: collector filtering by owner session attribution.
     let _g = ObsGateScope::enter(ObsGateState::active_none_io());
     let collect = SpanCollectScope::enter();
     {

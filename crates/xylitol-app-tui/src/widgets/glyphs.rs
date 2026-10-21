@@ -1,6 +1,3 @@
-//! Product glyph sets — unicode / ascii; no font probing (c475).
-
-/// Configurable short prefixes for scrollback lines.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum GlyphSet {
     #[default]
@@ -9,7 +6,6 @@ pub enum GlyphSet {
 }
 
 impl GlyphSet {
-    /// Read `XYLITOL_TUI_GLYPH_SET` (`ascii` → Ascii; otherwise Unicode).
     pub fn from_env() -> Self {
         match std::env::var("XYLITOL_TUI_GLYPH_SET").ok().as_deref() {
             Some("ascii") | Some("ASCII") => Self::Ascii,

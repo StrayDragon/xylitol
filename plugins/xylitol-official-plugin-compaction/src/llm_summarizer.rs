@@ -1,8 +1,3 @@
-//! LLM-based summarization — generate structured compaction summaries.
-//!
-//! Summarizer generate uses [`project_for_llm`] only (r1124: no AgentStatusBar
-//! on compact summary requests).
-
 use anyhow::Result;
 use futures::StreamExt;
 
@@ -10,8 +5,6 @@ use xylitol_plugin_sdk::XyModel;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::model::XyChunk;
 use xylitol_plugin_sdk::project_for_llm;
-
-// ── Prompt constants ───────────────────────────────────────────────
 
 pub const SUMMARIZATION_PROMPT: &str = r#"The messages above are a conversation to summarize. Create a structured context checkpoint summary that another LLM will use to continue the work.
 
@@ -100,8 +93,6 @@ Summarize the prefix to provide context for the retained suffix:
 
 Be concise. Focus on what's needed to understand the kept suffix."#;
 
-// ── LLM interaction ───────────────────────────────────────────────
-
 pub(super) async fn generate_complete(
     model: &dyn XyModel,
     messages: Vec<XyLlmMessage>,
@@ -122,10 +113,6 @@ pub(super) async fn generate_complete(
     while let Some(chunk) = stream.next().await {
         match chunk.map_err(|e| anyhow::anyhow!("summarization stream error: {e}"))? {
             XyChunk::TextDelta(delta) => text.push_str(&delta),
-            // c2844: a reasoning-only response (thinking streams, no visible
-            // text — e.g. tufa `reasoning.encrypted_content` mode) must NOT be
-            // judged empty: the chain-of-thought IS substantive checkpoint
-            // content and beats the `[Turn prefix: N entries]` fallback.
             XyChunk::ThinkingDelta(delta) => thinking.push_str(&delta),
             XyChunk::ThinkingEnd { .. } => {}
             XyChunk::Done { .. } => break,
@@ -146,9 +133,6 @@ pub(super) async fn generate_complete(
     Ok(text)
 }
 
-// ── Conversation serialization ─────────────────────────────────────
-
-/// Serialize `AgentMessage` messages to text for the summarization prompt.
 pub fn serialize_conversation(messages: &[AgentMessage]) -> String {
     let mut parts = Vec::new();
     for msg in messages {
@@ -209,9 +193,6 @@ pub fn serialize_conversation(messages: &[AgentMessage]) -> String {
     parts.join("\n\n")
 }
 
-// ── Summary generation ─────────────────────────────────────────────
-
-/// Append pi-style `Additional focus:` when non-empty instructions are present.
 pub fn with_additional_focus(base_prompt: &str, custom_instructions: Option<&str>) -> String {
     match custom_instructions.map(str::trim).filter(|s| !s.is_empty()) {
         Some(instr) => format!("{base_prompt}\n\nAdditional focus: {instr}"),
@@ -219,7 +200,6 @@ pub fn with_additional_focus(base_prompt: &str, custom_instructions: Option<&str
     }
 }
 
-/// Generate a structured summary of messages using the LLM.
 pub async fn generate_summary(
     messages: &[AgentMessage],
     model: &dyn XyModel,
@@ -259,7 +239,6 @@ pub async fn generate_summary(
     .await
 }
 
-/// Generate a turn-prefix summary when splitting a turn (pi `generateTurnPrefixSummary`).
 pub async fn generate_turn_prefix_summary(
     messages: &[AgentMessage],
     model: &dyn XyModel,
@@ -272,7 +251,6 @@ pub async fn generate_turn_prefix_summary(
         "<conversation>\n{conversation_text}\n</conversation>\n\n{TURN_PREFIX_SUMMARIZATION_PROMPT}"
     );
     let summarization_messages = project_for_llm(&[AgentMessage::user(prompt_text)]);
-    // Smaller budget than full history summary (pi: 0.5 * reserveTokens).
     let max_tokens = ((_reserve_tokens as f64) * 0.5) as u32;
     generate_complete(
         model,

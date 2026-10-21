@@ -97,8 +97,6 @@ fn test_rc_compaction_anchor(rc_snap: RcSnap, tokenizer_bdd: TokenizerBdd) {}
 )]
 fn test_rc_compaction_settings_ignored(rc_snap: RcSnap) {}
 
-// ── c2835 后继：runtime-config 裸规则回填 ──────────────────────────
-
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",
     name = "配置值解析器在基建边缘"

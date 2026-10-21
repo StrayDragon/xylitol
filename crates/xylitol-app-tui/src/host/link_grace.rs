@@ -1,36 +1,23 @@
-//! Attach 连接宽限分级（ath42/c2480）：断线是常态事件，宽限内零打扰，
-//! 超宽限才以**通知条**提示；瞬时抖动不打扰用户。
-//!
-//! 纯状态机，无 IO——`tick` 由 host 循环每次 idle 步进驱动。
-
 use std::time::{Duration, Instant};
 
 use crate::driver::LinkHealth;
 
-/// 初始连接宽限：attach 起步 Host 可能尚未监听，久等不弹。
 pub const LINK_GRACE_INITIAL: Duration = Duration::from_secs(5);
-/// 重连宽限：已连接过的会话断线，抖动在此窗口内自愈则完全静默。
 pub const LINK_GRACE_RECONNECT: Duration = Duration::from_secs(1);
 
-/// 通知条文案（toast notice，E 类运行态；词表 SSOT：`app-tui-fixed-zone` spec）。
 pub const LINK_DOWN_NOTICE: &str = "连接断开，重连中…";
 pub const LINK_RECOVERED_NOTICE: &str = "Host 连接已恢复";
 
-/// c2895 观景态提示（通知条，E 类运行态；词表 SSOT：`app-tui-fixed-zone` spec）。
 pub const OBSERVE_INFLIGHT_NOTICE: &str =
     "另一端正在对话：已显示会话快照；结束后 /session-resume 收看与接管";
 pub const OBSERVE_ENDED_NOTICE: &str = "另一端回合已结束：/session-resume 收看刚才的回合";
 
-/// 宽限期内的一次性通告请求。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinkNotice {
-    /// 断线超过宽限，应上通知条（仅一次）。
     Disconnected,
-    /// 从已通告的断线态恢复，应上通知条（仅一次）。
     Recovered,
 }
 
-/// 宽限分级状态机。
 #[derive(Debug, Default)]
 pub struct LinkGrace {
     ever_up: bool,
@@ -43,11 +30,6 @@ impl LinkGrace {
         Self::default()
     }
 
-    /// 每个宿主 tick 调用一次；按当前链路健康返回需要的通告（若有）。
-    ///
-    /// 分级：从未连接过（attach 起步）用 [`LINK_GRACE_INITIAL`]，连接过之后
-    /// 的断线用 [`LINK_GRACE_RECONNECT`]。宽限内不打扰；超宽限只通告一次；
-    /// 恢复通告只在确曾通告过断线时给出。
     pub fn tick(
         &mut self,
         health: LinkHealth,
@@ -82,7 +64,6 @@ impl LinkGrace {
     }
 }
 
-/// c2895 观景态一次性提示映射：状态变化沿返回应弹的通知条文案（同态不弹）。
 pub fn observe_notice(
     prev: crate::driver::AttachObserve,
     cur: crate::driver::AttachObserve,
@@ -109,7 +90,6 @@ mod tests {
     fn initial_grace_uses_long_window_then_notices_once() {
         let mut g = LinkGrace::new();
         let t0 = t(0);
-        // attach 起步即 Down：宽限内静默
         assert_eq!(
             g.tick(
                 LinkHealth::Down,
@@ -159,7 +139,6 @@ mod tests {
             g.tick(LinkHealth::Up, t0, LINK_GRACE_INITIAL, LINK_GRACE_RECONNECT),
             None
         );
-        // 已连接过的断线：宽限降为 1s
         assert_eq!(
             g.tick(
                 LinkHealth::Down,

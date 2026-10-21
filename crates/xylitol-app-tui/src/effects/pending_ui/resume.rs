@@ -1,5 +1,3 @@
-//! Session-resume picker select / rename / delete.
-
 use xylitol_tui::Terminal;
 
 use crate::commands::BUSY_SESSION_SWITCH_NOTICE;
@@ -13,7 +11,6 @@ pub(super) async fn select<T: Terminal>(session: &mut HostSession<T>, driver: &m
         return;
     };
     if session.is_busy() {
-        // c1780 / c1800 / atm10: browse Allow; switch Reject + toast notice A.
         session.push_toast_notice(BUSY_SESSION_SWITCH_NOTICE);
     } else {
         log::info!(target: "xylitol::tui", "SwitchSession from resume picker session_id={}", session_id);

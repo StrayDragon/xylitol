@@ -258,7 +258,6 @@ def cmd_lifecycle(rows: list[dict[str, Any]], rid: str | None, turn: str | None)
     if turn:
         subset = [r for r in subset if r.get("turn_id") == turn]
     if not rid and not turn:
-        # Prefer latest turn window when available; else latest request.
         turn = latest_turn_id(subset)
         if turn:
             subset = [r for r in subset if r.get("turn_id") == turn]
@@ -330,7 +329,6 @@ def main() -> None:
     turns = sub.add_parser("turns", help="latest turn_ids with lifecycle names")
     turns.add_argument("-n", type=int, default=8)
     lag = sub.add_parser("lag", help="args-delta → mapped tool lag for one request")
-    # lag keeps optional override; global --request-id also applies via filter
     lag.add_argument("--rid", dest="lag_rid", default="", help="alias: prefer this request")
     life = sub.add_parser("lifecycle", help="agent.turn/iteration/tool.execute events")
     life.add_argument("--rid", dest="life_rid", default="", help="prefer this request_id")

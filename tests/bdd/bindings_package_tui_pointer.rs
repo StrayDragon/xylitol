@@ -1,5 +1,3 @@
-//! BDD bindings for `package-tui-pointer` (c2858).
-
 use crate::bdd::fixtures::*;
 use rstest_bdd_macros::scenario;
 

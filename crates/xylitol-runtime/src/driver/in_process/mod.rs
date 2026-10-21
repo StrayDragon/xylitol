@@ -1,5 +1,3 @@
-//! In-process [`XyInProcessDriver`].
-
 use std::path::Path;
 use std::sync::Arc;
 
@@ -48,10 +46,6 @@ impl AgentTodoGateway for NoopTodo {
     }
 }
 
-/// In-process driver wrapping the local agent module.
-///
-/// Composition root injects bang / export / tools / todo. This crate does not
-/// construct official plugins.
 pub struct XyInProcessDriver {
     pub agent: AgentRuntime,
     pub store: Arc<dyn XySessionStore>,
@@ -72,10 +66,6 @@ pub struct XyInProcessDriver {
 }
 
 impl XyInProcessDriver {
-    /// Construct from a built agent plus the store used to build it.
-    ///
-    /// Installs default bang + export I/O for product surfaces.
-    /// Use [`Self::with_surface_ops`] to override.
     pub fn new(agent: AgentRuntime, store: Arc<dyn XySessionStore>) -> Self {
         Self::with_surface_ops(
             agent,
@@ -85,7 +75,6 @@ impl XyInProcessDriver {
         )
     }
 
-    /// Construct with explicit bang + export collaborators (tests / embed).
     pub fn with_surface_ops(
         agent: AgentRuntime,
         store: Arc<dyn XySessionStore>,
@@ -112,7 +101,6 @@ impl XyInProcessDriver {
         }
     }
 
-    /// Construct with an explicit bang handler (tests / embed without shell).
     pub fn with_bang(
         agent: AgentRuntime,
         store: Arc<dyn XySessionStore>,
@@ -129,7 +117,6 @@ impl XyInProcessDriver {
         self.slash_commands = commands;
     }
 
-    /// Remember TUI-only ask gateway (composition root rebuilds ToolSet).
     pub fn install_ask_tool(&mut self, gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>) {
         self.ask_gateway = Some(gateway);
     }
@@ -152,13 +139,10 @@ impl XyInProcessDriver {
         self.agent.cancel_token()
     }
 
-    /// Replace the tool set (next `run`). Used by composition MCP reload.
-    /// Ignored while FROZEN (c1900); prefer [`Self::freeze_tools`].
     pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) {
         self.agent.set_tools(tools);
     }
 
-    /// Freeze provider-visible tools (c1900 轨 A). Used by MCP gate / `/reload` re-freeze.
     pub fn freeze_tools(&mut self, tools: crate::agent::tools::ToolSet) {
         self.agent.freeze_tools(tools);
     }
@@ -224,8 +208,6 @@ impl XyInProcessDriver {
         })
     }
 
-    /// Replace context / SYSTEM / APPEND for the next `run` (c1100).
-    /// Does not mutate session history.
     pub fn apply_prompt_resources(
         &mut self,
         context_files: Vec<(String, String)>,
@@ -236,17 +218,14 @@ impl XyInProcessDriver {
             .apply_prompt_resources(context_files, system_prompt, append_system_prompt);
     }
 
-    /// Replace skills catalog for the next `run` (c1085). Does not mutate history.
     pub fn apply_skills(&mut self, skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>) {
         self.agent.apply_skills(skills);
     }
 
-    /// Names currently in the system `<available_skills>` catalog (c1085).
     pub fn loaded_skill_names(&self) -> Vec<String> {
         self.agent.loaded_skill_names()
     }
 
-    /// Full skill catalog for `$` completion / expand (c1130).
     pub fn loaded_skills(&self) -> Vec<xylitol_plugin_sdk::resource::SkillInfo> {
         self.agent.loaded_skills()
     }
@@ -263,12 +242,10 @@ impl XyInProcessDriver {
             .collect()
     }
 
-    /// Test/diagnostics: tool names currently registered.
     pub fn tool_names_for_test(&self) -> Vec<String> {
         self.agent.tool_names()
     }
 
-    /// Builtin (non-MCP) tools for a reload re-freeze.
     pub fn builtins_for_reload(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
         self.agent
             .clone_tools()
@@ -278,14 +255,10 @@ impl XyInProcessDriver {
             .collect()
     }
 
-    /// Test/diagnostics: assembled system prompt text (c1100).
-    // c2837: 测试辅助无条件化
     pub fn system_prompt_for_test(&self) -> Option<String> {
         self.agent.system_prompt().map(String::from)
     }
 
-    /// Composition-root assembly: bind the configured default model without
-    /// persisting a `modelChange` row (attach-time restore, not a user change).
     pub async fn restore_model(&mut self, model_id: &str) -> Result<(), XyDriverError> {
         self.agent
             .select_model_with_source(model_id, "restore")
@@ -318,7 +291,6 @@ impl XyDriver for XyInProcessDriver {
             }
             self.bind_todo_session(Some(&id)).await;
         } else if let Some(sid) = self.agent.session_id() {
-            // Keep Todo gateway aligned if agent was bound before driver wiring.
             self.bind_todo_session(Some(sid)).await;
         }
         let stream = self.agent.submit_root(prompt, RunPolicy::Reject).await;
@@ -464,8 +436,6 @@ impl XyDriver for XyInProcessDriver {
         }
     }
 
-    /// c2790: owned bash completion — pre-hooks run eagerly (`&mut` phase);
-    /// the returned future holds only cloned Arc handles (store / bang / sink).
     async fn bash_run(
         &mut self,
         command: &str,
@@ -525,10 +495,8 @@ impl XyDriver for XyInProcessDriver {
     }
 }
 
-// ── Session operations: inherent (Command executor SSOT, c2710) ─────
 impl XyInProcessDriver {
     pub async fn select_model(&mut self, model_id: &str) -> Result<ModelInfo, XyDriverError> {
-        // Prefer registry id; only use unique upstream `config.model` as alias.
         let registry = self.agent.model_registry();
         let found = registry
             .list()
@@ -551,7 +519,6 @@ impl XyInProcessDriver {
             .select_model(&found)
             .await
             .map_err(XyDriverError::from)?;
-        // Re-read the resolved model to return authoritative info.
         Ok(self
             .agent
             .current_model()
@@ -591,7 +558,6 @@ impl XyInProcessDriver {
             .map_err(XyDriverError::from)
     }
 
-    /// Provider of a registered model id (registry truth; `ModelInfo` drops it).
     pub fn model_provider(&self, model_id: &str) -> Option<String> {
         self.agent
             .model_registry()
@@ -602,7 +568,6 @@ impl XyInProcessDriver {
     }
 
     pub async fn compact(&mut self, instructions: Option<String>) -> Result<bool, XyDriverError> {
-        // Force path (c1640 / pi compact) — MUST NOT use maybe_auto_compact.
         self.agent
             .force_compact(instructions)
             .await
@@ -656,12 +621,6 @@ impl XyInProcessDriver {
     }
 }
 
-/// Relay executor output bytes to [`xylitol_plugin_sdk::BashChunk`] events.
-///
-/// Executor chunks are raw 8 KiB reads, so a multi-byte UTF-8 sequence can be
-/// split across a boundary; the incomplete tail is held back and prefixed to
-/// the next chunk. `String::from_utf8_lossy` only runs on complete sequences
-/// (invalid bytes → U+FFFD; a truncated sequence at stream end flushes as-is).
 pub async fn relay_bash_chunks(
     bash_id: String,
     mut rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
@@ -706,9 +665,6 @@ pub async fn relay_bash_chunks(
     }
 }
 
-/// Length of the prefix of `buf` that is safe to convert now: the whole buffer
-/// when it is valid UTF-8 or ends in invalid bytes (those emit as U+FFFD), or
-/// everything before a truncated multi-byte tail (kept for the next chunk).
 pub fn utf8_emit_len(buf: &[u8]) -> usize {
     match std::str::from_utf8(buf) {
         Ok(_) => buf.len(),

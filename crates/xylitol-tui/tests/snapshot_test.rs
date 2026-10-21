@@ -1,16 +1,3 @@
-//! insta snapshot golden tests (c405 layer 2, spec tt03).
-//!
-//! Whole-screen render regression: the viewport cell grid is rendered into a
-//! human-readable annotated string and fed to `assert_snapshot!`. Layout,
-//! color, and wrapping changes surface as diffs for `cargo insta review`.
-//!
-//! Structural (pinpoint) assertions still use `assert_eq` elsewhere; this
-//! layer covers regression BREADTH — "did the overall look change?"
-//!
-//! Each test passes a unique snapshot name so they don't collide when run in
-//! parallel (insta keys snapshots by function name by default; sharing one
-//! `snap` helper would alias them).
-
 mod support;
 
 use insta::assert_snapshot;
@@ -60,8 +47,6 @@ fn select_list_renders_highlighted_first_item() {
 
 #[test]
 fn text_wraps_at_terminal_width() {
-    // A long text in a narrow terminal should wrap across multiple rows;
-    // the snapshot captures the wrapping boundary.
     let mut h = TuiTestHarness::new(15, 6);
     h.mount(Box::new(Text::new(
         "the quick brown fox jumps".into(),

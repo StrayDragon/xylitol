@@ -1,18 +1,3 @@
-//! Regression baseline for the `Agent` public API surface (spec as31 / c320).
-//!
-//! This is NOT behavioral coverage. It snapshots the *normalized textual
-//! signature list* of every `pub` item exposed by `agent::capabilities`. After the
-//! c255 session refactor (extraction of collaborators + module reorg), this
-//! snapshot MUST remain byte-identical — directly verifying spec as31
-//! ("facade-retained": public API unchanged).
-//!
-//! Mechanism: at test time we read `crates/xylitol-runtime/src/agent/capabilities/`, extract every line
-//! beginning a `pub` item, normalize trailing args, sort, and compare against
-//! the accepted insta snapshot. A signature change fails the test until the
-//! snapshot is intentionally reviewed and accepted.
-//!
-//! Note: signatures are aggregated across the `capabilities/` subdirectory tree.
-
 #![cfg(test)]
 
 use std::fs;
@@ -20,7 +5,6 @@ use std::path::PathBuf;
 
 use insta::assert_snapshot;
 
-/// Locate the capabilities module sources regardless of test working directory.
 fn session_sources() -> Vec<PathBuf> {
     let mut dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     dir.push("crates/xylitol-runtime/src/agent/capabilities");
@@ -39,18 +23,12 @@ fn session_sources() -> Vec<PathBuf> {
     files
 }
 
-/// Extract a normalized, sorted list of public-item signature lines from the
-/// session source. A signature is the text from a line that (after trimming
-/// leading whitespace) starts with `pub ` or `pub(` up to the first body-open
-/// `{` at paren/bracket depth 0, or the next `;` for re-exports/aliases.
-/// Continuation lines are folded in. Whitespace is collapsed.
 fn extract_public_items(src: &str) -> Vec<String> {
     let mut items: Vec<String> = Vec::new();
     let lines: Vec<&str> = src.lines().collect();
     let mut i = 0;
     while i < lines.len() {
         let trimmed = lines[i].trim_start();
-        // Only TRUE public items (not pub(crate)/pub(super)/pub(in ...)).
         let is_public = trimmed.starts_with("pub ")
             || trimmed.starts_with("pub(async ")
             || trimmed.starts_with("pub async ")
@@ -58,11 +36,8 @@ fn extract_public_items(src: &str) -> Vec<String> {
             || trimmed.starts_with("pub struct ")
             || trimmed.starts_with("pub enum ")
             || trimmed.starts_with("pub type ");
-        // Explicitly exclude restricted visibility.
         let is_restricted = trimmed.starts_with("pub(");
         if is_public && !is_restricted {
-            // Fold this line and following lines until we hit the signature
-            // terminator at bracket/paren depth 0.
             let mut acc = String::new();
             let mut depth: i32 = 0;
             let mut terminated = false;
@@ -98,7 +73,6 @@ fn extract_public_items(src: &str) -> Vec<String> {
     items
 }
 
-/// Normalize internal whitespace; strip a trailing body-open `{` or terminator `;`.
 fn push_normalized(acc: &str, items: &mut Vec<String>) {
     let collapsed: String = acc.split_whitespace().collect::<Vec<_>>().join(" ");
     let cleaned = collapsed
@@ -113,9 +87,6 @@ fn push_normalized(acc: &str, items: &mut Vec<String>) {
 
 #[test]
 fn agent_session_public_api_surface_baseline() {
-    // Aggregate signatures across the whole session module (single file or
-    // the post-c255 `session/` directory). Spec as31: the public API surface
-    // MUST be stable across the refactor.
     let mut all_items: Vec<String> = Vec::new();
     for file in session_sources() {
         let src =

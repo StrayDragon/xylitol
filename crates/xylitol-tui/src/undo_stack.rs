@@ -1,4 +1,3 @@
-/// UndoStack - generic undo stack for snapshot-based undo.
 pub struct UndoStack<T> {
     stack: Vec<T>,
 }

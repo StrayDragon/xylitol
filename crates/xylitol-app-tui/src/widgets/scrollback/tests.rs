@@ -50,7 +50,6 @@ fn ask_header_paints_accent_ask_and_keeps_full_body() {
 
 #[test]
 fn todo_checklist_defaults_to_summary_line() {
-    // 待办栏 lives in the dock, not scrollback.
     let model = UiModel::default();
     let theme = LayoutTheme::product_dark();
     let lines = render_scrollback(
@@ -589,9 +588,6 @@ fn live_window_omits_planning_placeholder() {
     );
 }
 
-/// c1505 evidence: warm flatten (cache hit + extend) and upper-cache clone
-/// scale with entry count — B-scroll flames miss this because `upper_gen` is
-/// stable while scrolling (no `render_scrollback` re-entry).
 #[test]
 fn scrollback_warm_flatten_grows_with_entry_count() {
     use std::time::Instant;
@@ -615,7 +611,6 @@ fn scrollback_warm_flatten_grows_with_entry_count() {
         let fold = ScrollbackFold::default();
         let glyphs = GlyphSet::from_env();
         let mut cache = ScrollbackPaintCache::default();
-        // Cold fill cache.
         let _cold = render_scrollback(
             &model,
             glyphs,
@@ -640,7 +635,6 @@ fn scrollback_warm_flatten_grows_with_entry_count() {
                 &mut FoldHitTable::default(),
             );
             last_len = lines.len();
-            // Simulate UiRoot upper_cache hit: clone full upper each frame.
             let _ = lines.clone();
         }
         (last_len, t0.elapsed().as_nanos() / u128::from(iters))
@@ -665,7 +659,6 @@ fn scrollback_warm_flatten_grows_with_entry_count() {
         "line count should track entries: {report}"
     );
     assert!(len400 > len200, "line count should keep growing: {report}");
-    // Allow noise but require clear growth 50 → 400 (warm path).
     assert!(
         ns400 > ns50.saturating_mul(2),
         "warm flatten+clone should grow with history: {report}"
@@ -676,14 +669,12 @@ fn scrollback_warm_flatten_grows_with_entry_count() {
 fn tool_header_shows_timeout_only_when_requested() {
     let theme = LayoutTheme::product_dark();
 
-    // Explicit model request → muted budget note before the key hint.
     let with = paint::paint_tool_header_line(theme, "▎", "Bash", "$ sleep 600", Some(600));
     let plain = strip_ansi_codes(&with);
     let t = plain.find("(timeout 600s)").expect("timeout note present");
     let e = plain.find("(Alt+E)").expect("hint present");
     assert!(t < e, "timeout note must precede Alt+E hint: {plain:?}");
 
-    // Tool default (omitted) → no header note.
     let without = paint::paint_tool_header_line(theme, "▎", "Bash", "$ sleep 2", None);
     let plain2 = strip_ansi_codes(&without);
     assert!(

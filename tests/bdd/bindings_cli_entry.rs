@@ -90,8 +90,6 @@ fn test_ce20_hint_no(surface_flags_bdd: SurfaceFlagsBdd) {}
 )]
 fn test_ce21_attach_down(attach_bdd: AttachBdd) {}
 
-// ---- c2826 specs-compact：新增裸规则场景绑定 ----
-
 #[scenario(
     path = "llmanspec/specs/cli-entry/cli-entry.feature",
     name = "旧版短名称不已解析"

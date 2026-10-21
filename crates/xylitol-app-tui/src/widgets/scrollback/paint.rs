@@ -22,7 +22,6 @@ pub(super) fn key_hint(chord: &str) -> String {
     format!("({chord})")
 }
 
-/// Ask scrollback header: accent **Ask** + ellipsized ` · q → a · …` rest; fits `inner`.
 pub(super) fn paint_ask_header_line(
     theme: LayoutTheme,
     marker: &str,
@@ -41,7 +40,6 @@ pub(super) fn paint_ask_header_line(
                 format!(" · {summary}")
             }
         });
-    // `{marker} {Ask}{rest}  {hint}`
     let fixed =
         visible_width(marker) + 1 + visible_width("Ask") + 2 + visible_width(&key_hint("Alt+E"));
     let rest_budget = inner.saturating_sub(fixed).max(4);
@@ -53,7 +51,6 @@ pub(super) fn paint_ask_header_line(
     format!("{marker} {ask}{rest_fit}  {hint}")
 }
 
-/// Format token counts with thousands separators (pi / design fixture).
 pub(crate) fn format_token_count(n: u64) -> String {
     let s = n.to_string();
     let mut out = String::with_capacity(s.len() + s.len() / 3);
@@ -76,7 +73,6 @@ pub(super) fn paint_tool_header_line(
     use crate::bridge::display_tool_title;
     let title = display_tool_title(name);
     let hint = theme.paint_muted(&key_hint("Alt+E"));
-    // c2435: budget note only when the model explicitly requested a bound.
     let timeout_note = match timeout_secs {
         Some(n) => theme.paint_muted(&format!("(timeout {n}s) ")),
         None => String::new(),
@@ -104,7 +100,6 @@ pub(super) fn paint_tool_header_line(
     }
 }
 
-/// Split `path:12-40` / `path:42:8` — range suffix painted separately (warning).
 fn split_path_and_range(loc: &str) -> (&str, Option<&str>) {
     if loc.starts_with('$') {
         return (loc, None);
@@ -128,7 +123,6 @@ fn is_line_range_suffix(s: &str) -> bool {
     if body.is_empty() || !body.as_bytes()[0].is_ascii_digit() {
         return false;
     }
-    // :N | :N-M | :N:C | :N-M:C (C optional col — rare)
     let mut saw_digit = false;
     let mut seps = 0u8;
     for b in body.bytes() {
@@ -165,20 +159,14 @@ pub(super) fn push_wrapped(lines: &mut Vec<String>, raw: &str, width: usize) {
     }
 }
 
-/// Untinted full-width row between blocks (pi `Spacer(1)`).
-///
-/// Must be spaces + `\x1b[49m` — a bare `""` does not reliably occupy a visible
-/// terminal row after differential clear, so gaps looked missing.
 pub(super) fn inter_block_spacer(width: usize) -> String {
     format!("{}\x1b[49m", " ".repeat(width.max(1)))
 }
 
-/// Content width inside a railed block (rail 1 + gutter 1).
 pub(super) fn rail_inner_width(width: usize) -> usize {
     width.saturating_sub(2).max(1)
 }
 
-/// Status rail + gutter for tool/thinking/bash/diff blocks (c1830).
 pub(super) fn push_railed(
     lines: &mut Vec<String>,
     content: &[String],
@@ -222,9 +210,6 @@ pub(super) fn ask_rail_rgb(phase: AskPhase, theme: LayoutTheme) -> RgbColor {
     mix_rgb(p.surface, vivid, 0.72)
 }
 
-/// End index of a stable markdown prefix (after last `\n\n` not inside a fence).
-///
-/// Streaming paint reuses lines for `text[..end]` and only re-parses the suffix.
 pub fn find_stable_markdown_prefix_end(text: &str) -> usize {
     let bytes = text.as_bytes();
     let mut in_fence = false;
@@ -253,17 +238,13 @@ pub fn find_stable_markdown_prefix_end(text: &str) -> usize {
     last_stable
 }
 
-/// Incremental paint cache for `streaming_assistant` (ath26 / c1510).
 #[derive(Debug, Default)]
 pub struct StreamingAssistantPaint {
     width: usize,
     stable_prefix: String,
     prefix_lines: Vec<String>,
-    /// Full-buffer Markdown parses (no prefix reuse).
     pub(crate) full_parses: u64,
-    /// Suffix-only (or stable-extend) Markdown parses.
     pub(crate) suffix_parses: u64,
-    /// Last painted streaming-block line count (c2865 height probe).
     pub(crate) last_lines: usize,
 }
 
@@ -274,7 +255,6 @@ impl StreamingAssistantPaint {
         self.prefix_lines.clear();
     }
 
-    // c2837: 测试探针无条件化
     pub fn clear_counts(&mut self) {
         self.full_parses = 0;
         self.suffix_parses = 0;
@@ -301,7 +281,6 @@ fn markdown_fit_lines(text: String, width: usize, theme: LayoutTheme) -> Vec<Str
         .collect()
 }
 
-/// Join a Markdown-parsed stream `…` onto the last content row (r1255 尾标仍走引擎，不进围栏源).
 fn attach_stream_ellipsis(mut lines: Vec<String>, width: usize, theme: LayoutTheme) -> Vec<String> {
     let marker = markdown_unfitted("…".into(), width, theme)
         .into_iter()
@@ -315,9 +294,6 @@ fn attach_stream_ellipsis(mut lines: Vec<String>, width: usize, theme: LayoutThe
     lines.into_iter().map(|line| fit(&line, width)).collect()
 }
 
-/// Live suffix: Markdown-parse the raw buffer, then attach the stream marker.
-/// Gluing `…` onto the source would sit on a half-written closer
-/// (` ``… ` / ` ```… `) and both skip engine trim and keep the fence open.
 fn markdown_fit_streaming(text: &str, width: usize, theme: LayoutTheme) -> Vec<String> {
     let lines = if text.trim().is_empty() {
         Vec::new()
@@ -362,8 +338,6 @@ pub(super) fn paint_streaming_assistant(
         let mut out = stream.prefix_lines.clone();
         let suffix = &text[stable_end..];
         if suffix.is_empty() {
-            // Cold full-parse joins … onto the last content row; empty suffix
-            // must do the same instead of appending a lone marker line.
             out = attach_stream_ellipsis(out, width, theme);
         } else {
             out.extend(markdown_fit_streaming(suffix, width, theme));
@@ -375,7 +349,6 @@ pub(super) fn paint_streaming_assistant(
     stream.full_parses = stream.full_parses.saturating_add(1);
     let all = markdown_fit_streaming(text, width, theme);
     if stable_end > 0 {
-        // Seed prefix cache for subsequent deltas (extra parse; not counted as full).
         stream.prefix_lines = markdown_fit_lines(new_stable.to_string(), width, theme);
         stream.stable_prefix = new_stable.to_string();
     } else {
@@ -386,12 +359,6 @@ pub(super) fn paint_streaming_assistant(
     all
 }
 
-// ── Per-`UiEntry` block painters (extracted from `render_scrollback`) ────────
-//
-// Each paints one entry into block lines + fold hits; the caller owns the
-// paint cache (fingerprint hit / miss) and fold-hit emission.
-
-/// Shared paint-plane inputs (fold toggles, glyphs, theme, width).
 #[derive(Clone, Copy)]
 pub(super) struct PaintCtx<'a> {
     pub fold: &'a ScrollbackFold,
@@ -400,7 +367,6 @@ pub(super) struct PaintCtx<'a> {
     pub width: usize,
 }
 
-/// User row: `prefix text` — no user-message-bg wash, no status rail (atc8 / c1830).
 pub(super) fn paint_user_block(text: &str, ctx: PaintCtx) -> (Vec<String>, Vec<CachedFoldHit>) {
     let PaintCtx {
         glyphs,
@@ -415,7 +381,6 @@ pub(super) fn paint_user_block(text: &str, ctx: PaintCtx) -> (Vec<String>, Vec<C
     (lines, Vec::new())
 }
 
-/// Assistant row: Markdown render + fit (no rail).
 pub(super) fn paint_assistant_block(
     text: &str,
     ctx: PaintCtx,
@@ -436,8 +401,6 @@ pub(super) fn paint_assistant_block(
     (lines, Vec::new())
 }
 
-/// Thinking row: foldable header + optional body. `thought_only` entries fold
-/// into the cluster header (no second L1 row).
 pub(super) fn paint_thinking_block(
     id: &str,
     text: &str,
@@ -454,7 +417,6 @@ pub(super) fn paint_thinking_block(
     let mut lines = Vec::new();
     let mut block_hits = Vec::new();
     if thought_only {
-        // Cluster header is already Thought; don't paint a second L1 row.
         push_wrapped(&mut lines, &theme.paint_muted(text), width);
         return (lines, block_hits);
     }
@@ -485,8 +447,7 @@ pub(super) fn paint_thinking_block(
     (lines, block_hits)
 }
 
-/// Tool row: railed header + optional write body / output / diff (c1300).
-#[allow(clippy::too_many_arguments)] // tool row carries the richest payload (distinct paint plane)
+#[allow(clippy::too_many_arguments)]
 pub(super) fn paint_tool_block(
     id: &str,
     name: &str,
@@ -609,7 +570,6 @@ pub(super) fn paint_tool_block(
     (lines, block_hits)
 }
 
-/// Diff row: railed summary header + diff viewport (c1350).
 pub(super) fn paint_diff_block(
     summary: &str,
     display_diff: &str,
@@ -666,7 +626,6 @@ pub(super) fn paint_diff_block(
     (lines, block_hits)
 }
 
-/// Bash row: `$ command` + output viewport or pending hint (c668).
 pub(super) fn paint_bash_block(
     id: &str,
     command: &str,
@@ -726,7 +685,6 @@ pub(super) fn paint_bash_block(
     (lines, block_hits)
 }
 
-/// Ask row: accent header + optional detail lines (c1850).
 pub(super) fn paint_ask_block(
     id: &str,
     summary: &str,
@@ -769,7 +727,6 @@ pub(super) fn paint_ask_block(
     (lines, block_hits)
 }
 
-/// Compaction row: pending hint / foldable summary / failure detail (c1730).
 pub(super) fn paint_compaction_block(
     status: CompactionBlockStatus,
     summary: &str,
@@ -837,7 +794,6 @@ pub(super) fn paint_compaction_block(
     (lines, block_hits)
 }
 
-/// Scroll notice row (trailing / navigation instant hints).
 pub(super) fn paint_scroll_notice_block(
     text: &str,
     ctx: PaintCtx,
@@ -857,7 +813,6 @@ pub(super) fn paint_scroll_notice_block(
     (lines, Vec::new())
 }
 
-/// Error row.
 pub(super) fn paint_error_block(text: &str, ctx: PaintCtx) -> (Vec<String>, Vec<CachedFoldHit>) {
     let PaintCtx { theme, width, .. } = ctx;
     let mut lines = Vec::new();

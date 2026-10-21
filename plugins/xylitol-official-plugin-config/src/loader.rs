@@ -1,17 +1,3 @@
-//! Multi-layer config loader with deep merge.
-//!
-//! Loading order (lowest → highest priority):
-//! 1. Global:   `~/.config/xylitol/config.yaml`
-//! 2. Project:  `<project>/.xylitol/config.yaml`
-//! 3. CLI:      `--config <path>`
-//!
-//! `config.local.yaml` / `.yml` are **not** loaded (c1400). Use `secret.env` for
-//! secrets and `config.yaml` for shareable settings.
-//!
-//! Before YAML parse, each file is rendered with minijinja
-//! (`{{ env.KEY }}` / `{{ secret.KEY }}` / `{{ vars.home }}`). `secret.env`
-//! is loaded first.
-
 use std::path::Path;
 
 use serde_json::Value;
@@ -21,26 +7,16 @@ use super::paths::ConfigPaths;
 use super::secret_env::SecretMap;
 use super::types::AppConfig;
 
-/// Result of loading AppConfig YAML layers.
 #[derive(Debug, Clone)]
 pub struct LoadedAppConfig {
     pub config: AppConfig,
-    /// True if at least one `config.yaml` / `config.yml` / `--config` layer was merged.
     pub from_yaml_layers: bool,
 }
 
-/// Load configuration from all layers, returning the merged `AppConfig`.
-///
-/// `cli_config` — optional path to a CLI `--config` YAML file (highest priority).
-///
-/// Side effects: loads `secret.env` into the process environment (unset keys
-/// only) and renders `{{ env.* }}` / `{{ secret.* }}` / `{{ vars.home }}` in
-/// each YAML layer.
 pub fn load_app_config(cli_config: Option<&Path>) -> Result<AppConfig, LoadError> {
     Ok(load_app_config_detailed(cli_config)?.config)
 }
 
-/// Like [`load_app_config`], but reports whether any YAML layer contributed.
 pub fn load_app_config_detailed(cli_config: Option<&Path>) -> Result<LoadedAppConfig, LoadError> {
     load_app_config_detailed_with(
         cli_config,
@@ -57,11 +33,6 @@ pub fn load_app_config_detailed(cli_config: Option<&Path>) -> Result<LoadedAppCo
     )
 }
 
-/// Injectable load: path discovery via `get_env` / `cwd` (see `ConfigPaths::discover_with`).
-///
-/// Still injects missing `secret.env` keys into the process environment (product
-/// parity). Tests that exercise that side effect remain on `env_global`.
-// c2837: 测试辅助无条件化
 pub fn load_app_config_with(
     cli_config: Option<&Path>,
     get_env: impl Fn(&str) -> Option<String>,
@@ -70,7 +41,6 @@ pub fn load_app_config_with(
     Ok(load_app_config_detailed_with(cli_config, get_env, cwd)?.config)
 }
 
-/// Like [`load_app_config_detailed`], but path discovery is injectable.
 pub fn load_app_config_detailed_with(
     cli_config: Option<&Path>,
     get_env: impl Fn(&str) -> Option<String>,
@@ -144,13 +114,6 @@ fn load_from_paths(
     })
 }
 
-/// Expand ConfigValueResolver expressions (`$VAR` / `${VAR}` / `${VAR:-default}` /
-/// `!command`) in `models.models` entry values (spec r1912 provider-config-value-expression).
-///
-/// Runs after template rendering (`{{ secret.X }}` / `{{ env.Y }}`); the two syntaxes
-/// do not overlap. Only `$` / `!`-prefixed values are affected — plain literals pass
-/// through unchanged (zero-cost default). Unbound variables / shell failures reject
-/// the load with an `alias:field` context (minijinja-strict parity).
 fn expand_model_config_expressions(config: &mut AppConfig) -> Result<(), LoadError> {
     for (alias, entry) in config.model.models.iter_mut() {
         if let Some(v) = entry.api_key.as_mut() {
@@ -197,7 +160,6 @@ fn load_and_render(path: &Path, secrets: &SecretMap) -> Result<Value, LoadError>
     Ok(value)
 }
 
-/// Deep-merge `overlay` into `base` (mutates `base`).
 pub(crate) fn deep_merge(base: &mut Value, overlay: Value) {
     match (base, overlay) {
         (base @ &mut Value::Object(_), Value::Object(map)) => {
@@ -270,8 +232,6 @@ mod tests {
         assert_eq!(base["key"], json!("val"));
     }
 
-    // env_global: 渲染 mcp secret 头经 inject_missing_env 真写进程环境，须与 env_global
-    // 域串行防交叉污染。消除路径：断言自清理（tempdir scout）或改注入式方可并行。
     #[test]
     #[serial(env_global)]
     fn loads_yml_alias_and_renders_mcp_secret_headers() {
@@ -279,7 +239,6 @@ mod tests {
         let global = home.path().join(".config").join("xylitol");
         std::fs::create_dir_all(&global).unwrap();
         std::fs::write(global.join("secret.env"), "CTX_KEY=secret-value\n").unwrap();
-        // Quoted mustache matches configs/example.yaml + typical user config.
         std::fs::write(
             global.join("config.yml"),
             "mcp_servers:\n  - name: demo\n    transport: sse\n    url: https://example.com/mcp\n    headers:\n      CONTEXT7_API_KEY: \"{{ secret.CTX_KEY }}\"\n",
@@ -292,7 +251,6 @@ mod tests {
             ("XYLITOL_CONFIG_DIR", global_s),
             ("XYLITOL_PROJECT_DIR", home_s),
         ];
-        // secret.env still injects into process env → keep env_global.
         let cfg = load_app_config_with(None, env_map(&entries), None).expect("load");
         let servers = cfg.mcp_servers.expect("mcp_servers");
         assert_eq!(servers.len(), 1);
@@ -452,8 +410,6 @@ compaction:
         let cfg = load_app_config_with(None, env_map(&entries), None).expect("load with yaml");
         assert_eq!(cfg.model.default_model.as_deref(), Some("from-yaml"));
     }
-
-    // ── r1912 provider 配置值 resolver 表达式（走 secret.env → 进程 env → resolver）──
 
     fn write_model_config(global: &std::path::Path, body: &str) {
         std::fs::write(

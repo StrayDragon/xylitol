@@ -1,5 +1,3 @@
-//! Adapter factory — constructs an [`XyModel`] dialect from connection parameters.
-
 use std::sync::Arc;
 
 use crate::hooks::HttpHooks;
@@ -7,7 +5,6 @@ use crate::wire_policy::WirePolicy;
 
 use super::{AdapterKind, AdapterRef, OpenAiCompletionsAdapter, OpenAiResponsesAdapter};
 
-/// Build an adapter using [`WirePolicy::default`].
 pub fn build_adapter(
     api_key: String,
     model: String,
@@ -18,7 +15,6 @@ pub fn build_adapter(
     build_adapter_with_wire_policy(api_key, model, base_url, kind, hooks, WirePolicy::default())
 }
 
-/// Build an adapter; `wire_policy` applies to all three native L1 paths (dialect L2).
 pub fn build_adapter_with_wire_policy(
     api_key: String,
     model: String,

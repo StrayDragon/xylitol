@@ -1,12 +1,3 @@
-//! Session environment — **status-bar family** bootstrap (c1905).
-//!
-//! This is **not** a chat user turn. It is a sparse, append-only **special status
-//! bar type** that bootstraps `date` / `clock` / `cwd` before the real user
-//! message. Outbound `<agent_status_bar>` (Todo as `<todo>` child) is
-//! `crate::agent::prompt::status_bar` — not persisted.
-//!
-//! SSOT: [`xylitol_plugin_sdk::session_env`].
-
 pub use xylitol_plugin_sdk::session_env::*;
 
 #[cfg(test)]
@@ -69,7 +60,6 @@ mod tests {
         assert!(!ensure_session_env_in_history(&mut hist, &next));
         assert_eq!(hist.len(), 1);
 
-        // Simulate compact cut dropping early env.
         hist.clear();
         hist.push(AgentMessage::user("kept after compact"));
         assert!(ensure_session_env_in_history(&mut hist, &next));

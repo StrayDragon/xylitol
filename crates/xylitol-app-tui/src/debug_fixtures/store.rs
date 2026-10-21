@@ -1,6 +1,3 @@
-//! In-memory [`XySessionStore`] for designing tests and ignored labs.
-//! Product TUI does not persist; this is crate-local, not a second session plugin.
-
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -10,7 +7,6 @@ use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::{XySessionError, XySessionStoreError};
 use xylitol_plugin_sdk::session::{ForkPosition, SessionContext, SessionEntry};
 
-/// Process-local session map with cwd metadata for `list_sessions`.
 pub struct InMemorySessionStore {
     sessions: Mutex<HashMap<String, Vec<SessionEntry>>>,
     cwd: Mutex<HashMap<String, Option<String>>>,

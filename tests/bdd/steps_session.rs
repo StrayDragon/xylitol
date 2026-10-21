@@ -22,7 +22,6 @@ fn message_entry(id: &str, parent_id: Option<&str>, role: &str, content: &str) -
             parent_id: parent_id.map(str::to_string),
             timestamp: 1704067200000,
         },
-        // dm1：content 必须是带 type 判别的部件数组；裸字符串按 c646 不可读。
         message: serde_json::json!({"role": role, "content": [{"type": "text", "text": content}]}),
     })
 }
@@ -35,7 +34,6 @@ async fn seed_linked_messages(mgr: &SessionManager, sid: &str, count: u32) {
         } else {
             Some(format!("msg-{}", i - 1))
         };
-        // Mix in an assistant on the last slot so Persisted fork can flush to disk.
         let (role, content) = if i + 1 == count && count > 1 {
             ("assistant", format!("reply {i}"))
         } else {
@@ -227,7 +225,6 @@ async fn _g_session_tree(sess: &XySessionStore, tree: String) {
     seed_linked_messages(&mgr, root, 6).await;
     let mut parent = root.clone();
     for (i, child) in chain.iter().skip(1).enumerate() {
-        // Fork deeper each hop so each child keeps a distinct path + summary label.
         let at = format!("msg-{}", 4usize.saturating_sub(i));
         fork_with_branch_summary(&mgr, &parent, child, &at, child).await;
         parent = child.clone();
@@ -293,7 +290,6 @@ async fn _w_session_append_n(sess: &XySessionStore, n: u32) {
         .borrow()
         .clone()
         .expect("current session for append_n");
-    // Ensure at least message / modelChange / thinkingLevelChange when n>=3.
     let kinds = n.max(1);
     for i in 0..kinds {
         match i % 3 {
@@ -323,7 +319,6 @@ async fn _w_session_append_n(sess: &XySessionStore, n: u32) {
             }
         }
     }
-    // Flush assistant so JSONL exists on disk for format asserts.
     let leaf = mgr.get_leaf_id(&sid);
     mgr.append_with_id(
         &sid,
@@ -455,7 +450,6 @@ async fn _t_session_context_branches(sess: &XySessionStore) {
         .clone()
         .expect("current session for tree context");
     let mut summaries = Vec::new();
-    // Walk leaf → parents via header.parent_session and collect BranchSummary texts.
     loop {
         let entries = mgr.load(&sid).await.unwrap();
         for e in &entries {
@@ -481,8 +475,6 @@ async fn _t_session_context_branches(sess: &XySessionStore) {
         "expected branch-b summary along parent chain, got {summaries:?}"
     );
 }
-
-// ── Label and session_info steps ──
 
 #[when("为最后一条记录设置标签 {label:string}")]
 async fn _w_session_set_label(sess: &XySessionStore, label: String) {
@@ -580,8 +572,6 @@ fn _t_grep_exact_matches(ws: &Workspace, n: u32) {
     );
 }
 
-// ---- agent-session-store 转写批（s9 / s10 / s11 / s12 / s21 / s22）----
-
 fn legacy_session_file(dir: &std::path::Path, id: &str) -> std::path::PathBuf {
     dir.join(format!("{id}.jsonl"))
 }
@@ -614,7 +604,6 @@ async fn append_typed_message(sess: &XySessionStore, role: &str, msg: &str) {
             parent_id: None,
             timestamp: 1704067200000,
         },
-        // dm1 合法形态（同 message_entry）。
         message: serde_json::json!({
             "role": role,
             "content": [{"type": "text", "text": msg}]
@@ -715,7 +704,6 @@ fn when_plant_corrupt_file(sess: &XySessionStore) {
 
 #[when("目录中植入旧格式会话文件 {id:string}")]
 fn when_plant_legacy_session_file(sess: &XySessionStore, id: String) {
-    // A v6-style single-file session with no v7 manifest (zero-compat boundary).
     sess.ensure_mgr();
     let dir = sess_dir(sess);
     std::fs::create_dir_all(&dir).ok();
@@ -746,8 +734,6 @@ async fn then_timestamps_u64_ms(sess: &XySessionStore, id: String) {
         );
     }
 }
-
-// ---- ex1–ex4：导出/导入四连（SessionExporter 纯协作者直驱）----
 
 fn tmp_root(sess: &XySessionStore) -> std::path::PathBuf {
     sess_dir(sess)
@@ -858,9 +844,6 @@ async fn when_append_bash_record(sess: &XySessionStore, cmd: String, out: String
     append_bash_execution(sess, &cmd, &out).await;
 }
 
-// ---- sc1 / sc2 / s16：CWD 校验三面（load_validated 同一 seam）----
-// sc3/sc4 属呈现与 CLI/RPC 接线条款，生产暂无调用方，维持 @human。
-
 #[when("创建存储于目录 {cwd:string} 的新会话 {id:string}")]
 async fn when_create_with_cwd(sess: &XySessionStore, cwd: String, id: String) {
     sess.ensure_mgr();
@@ -900,8 +883,6 @@ async fn then_cwd_validate_err_both(
     assert!(msg.contains(&b), "sc2: fallback cwd in message: {msg}");
 }
 
-// ---- s19：toolResult 以 toolCallId 键持久化（对齐 pi）----
-
 #[when("向会话追加关联 {call_id:string} 的工具结果消息 {text:string}")]
 async fn when_append_tool_result(sess: &XySessionStore, call_id: String, text: String) {
     use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
@@ -934,8 +915,6 @@ async fn then_tool_call_id_key(sess: &XySessionStore, id: String) {
     assert!(!hit.contains("toolUseId"), "s19: legacy key leaked: {hit}");
 }
 
-// ---- s6：分支摘要生成器边界（空切点 ⇒ 空摘要）----
-
 #[when("调用分支摘要生成于空切点集合")]
 async fn when_summary_empty_set(sess: &XySessionStore) {
     sess.ensure_mgr();
@@ -962,9 +941,6 @@ async fn then_summary_empty(sess: &XySessionStore) {
     );
 }
 
-// ---- c2826 specs-compact：裸规则转场景补充步骤 ----
-
-/// 植入一个 v7 会话（2 条合法 user 消息）并向 active 段直接追加一行自定义内容。
 async fn plant_jsonl_with_extra_line(sess: &XySessionStore, id: &str, extra_line: &str) {
     sess.ensure_mgr();
     sess.current_id.replace(Some(id.to_string()));
@@ -1003,7 +979,6 @@ async fn given_plant_bad_json_line(sess: &XySessionStore, id: String) {
 #[given("目录中植入含旧 untagged content 行的 v7 会话 {id:string}")]
 async fn given_plant_legacy_untagged(sess: &XySessionStore, id: String) {
     let id = strip_quotes(&id);
-    // 旧 c646 前形态：content 为裸字符串而非 dm1 tagged 数组。
     let line = r#"{"type":"message","id":"legacy-1","timestamp":1,"message":{"role":"user","content":"plain old string"}}"#;
     plant_jsonl_with_extra_line(sess, &id, line).await;
 }

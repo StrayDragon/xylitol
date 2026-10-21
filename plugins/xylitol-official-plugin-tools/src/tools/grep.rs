@@ -1,12 +1,3 @@
-//! Grep tool — uses ripgrep (`rg`) for file content search.
-//!
-//! Key behaviors:
-//! - Uses external `rg` process via tokio::process::Command
-//! - Supports: regex, glob, ignoreCase, literal, context lines, result limit
-//! - Defaults to 100 results, truncates long lines to GREP_MAX_LINE_LENGTH
-//! - Output truncated to DEFAULT_MAX_BYTES
-//! - Respects .gitignore (built into ripgrep)
-
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -19,7 +10,6 @@ use super::typed::TypedTool;
 use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
 
-/// Per-tool wall-clock default when the model omits `timeout` (c2425).
 pub(crate) const GREP_TOOL_TIMEOUT_SECS: u64 = 60;
 
 const DEFAULT_LIMIT: usize = 100;
@@ -41,7 +31,6 @@ pub struct GrepArgs {
     context: u32,
     #[serde(default = "default_grep_limit")]
     limit: u64,
-    /// Optional timeout in seconds; omitted means the per-tool default (60s).
     #[serde(default)]
     timeout: Option<i64>,
 }
@@ -128,7 +117,6 @@ impl TypedTool for GrepTool {
             return Err(XyToolError::Aborted);
         }
 
-        // Build rg args
         let mut rg_args: Vec<String> = vec![
             "--json".to_string(),
             "--line-number".to_string(),
@@ -157,7 +145,6 @@ impl TypedTool for GrepTool {
             super::process::run_search_tool("rg", &rg_args, ctx.cancel.clone(), tool_timeout)
                 .await?;
 
-        // rg exit code 0 = matches, 1 = no matches, >1 = error
         if !output.status.success() && output.status.code() != Some(1) {
             return Err(super::process::external_tool_failure(&output, "ripgrep"));
         }
@@ -167,7 +154,6 @@ impl TypedTool for GrepTool {
             return Ok("No matches found".to_string());
         }
 
-        // Parse JSON lines
         let mut match_count = 0usize;
         let mut match_limit_reached = false;
         let mut formatted_lines: Vec<String> = Vec::new();
@@ -201,7 +187,6 @@ impl TypedTool for GrepTool {
 
         let output_text = formatted_lines.join("\n");
 
-        // Byte truncation
         let truncation = truncate_head(
             &output_text,
             TruncationOptions {

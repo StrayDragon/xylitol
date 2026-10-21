@@ -1,5 +1,3 @@
-//! Persist fixture entries into an already-created session.
-
 use serde_json::{Value, json};
 
 use crate::driver_error::XyDriverError;
@@ -75,7 +73,6 @@ fn tool_result_entry(id: &str, name: &str, text: &str) -> SessionEntry {
 
 const ASK_ANSWERED_JSON: &str = r#"{"status":"answered","answers":[{"id":"next","values":["continue"],"labels":["Continue"],"was_custom":false}]}"#;
 
-/// Newest-turn rows matching the live-window tape, already completed (Ask answered).
 fn activity_fold_resume_newest_turn() -> Vec<SessionEntry> {
     vec![
         user_msg("debug: activity-fold live window"),
@@ -128,14 +125,13 @@ fn activity_fold_resume_raw() -> Vec<SessionEntry> {
     rows
 }
 
-/// Stamp ids / parents / unix-ms clocks so harness rebuild paints `Worked for`.
 #[cfg(test)]
 pub fn activity_fold_resume_stamped_entries() -> Vec<SessionEntry> {
     let mut parent: Option<String> = None;
     let mut out = Vec::new();
     for (i, entry) in activity_fold_resume_raw().into_iter().enumerate() {
         let id = format!("af-resume-{i}");
-        let ts = 1_781_827_200_000u64 + i as u64 * 1000; // 2026-06-19T00:00:00Z + i s
+        let ts = 1_781_827_200_000u64 + i as u64 * 1000;
         out.push(rebase_message(entry, &id, parent.as_deref(), ts));
         parent = Some(id);
     }
@@ -168,7 +164,6 @@ async fn seed_activity_fold_resume(
     Ok(())
 }
 
-/// Seed `session_id` for a known scene id (canonical or alias).
 pub async fn seed_scene(
     store: &dyn XySessionStore,
     session_id: &str,
@@ -195,7 +190,6 @@ pub async fn seed_scene(
     Ok(id)
 }
 
-/// Long spine for ApplicationOwned wheel / select CPU hand-tests (~80 turns).
 async fn seed_ao_perf_scroll(
     store: &dyn XySessionStore,
     session_id: &str,
@@ -233,12 +227,6 @@ async fn seed_multiturn(store: &dyn XySessionStore, session_id: &str) -> Result<
     Ok(())
 }
 
-/// Same-session sibling branches: rewind leaf after the first spine, then grow an alt path.
-///
-/// ```text
-/// u_root → a_root ─┬─ u_main → a_main
-///                  └─ u_alt  → a_alt
-/// ```
 async fn seed_branched(store: &dyn XySessionStore, session_id: &str) -> Result<(), XyDriverError> {
     store
         .append_session_entry(session_id, &user_msg("debug: root"))

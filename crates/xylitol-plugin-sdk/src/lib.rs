@@ -1,5 +1,3 @@
-//! Plugin vocabulary: ports, errors, and shared types (no HTTP, no envelope).
-
 pub mod accounting;
 pub mod compaction_binding;
 pub mod compaction_config;

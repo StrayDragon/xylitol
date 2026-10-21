@@ -42,8 +42,6 @@ async fn test_hook_provider_response(agent: AgentState) {}
 )]
 async fn test_hook_empty_noop(agent: AgentState) {}
 
-// ── c2835 后继：agent-hooks 裸规则回填 ──────────────────────────────
-
 #[scenario(
     path = "llmanspec/specs/agent-hooks/agent-hooks.feature",
     name = "约定事件名称分发"

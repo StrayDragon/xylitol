@@ -1,26 +1,11 @@
-//! Tool-batch classify + window planning (c1545).
-//!
-//! Pure data helpers — no I/O. ReAct BarrierParallel flush path consumes
-//! [`classify`] and [`plan_windows`] when batch mode is BarrierParallel.
-
 use xylitol_plugin_sdk::{XyTool, XyToolExecutionMode};
 
-/// A planned execution window for [`xylitol_plugin_sdk::XyBatchMode::BarrierParallel`].
-///
-/// Indices refer to the source-order tool-call list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PlannedWindow {
-    /// Consecutive ParallelSafe tools — flush/fan-out together.
     Parallel(Vec<usize>),
-    /// Single Barrier tool — run alone after any open parallel window is flushed.
     Barrier(usize),
 }
 
-/// Classify a tool call for barrier-parallel scheduling.
-///
-/// Hard rule: MCP tools (`mcp_` / legacy `mcp:` prefix) are **always** Barrier
-/// ([`XyToolExecutionMode::Sequential`]), even if the trait claims ParallelSafe.
-/// Missing / unknown tools are Barrier.
 pub(crate) fn classify(name: &str, tool: Option<&dyn XyTool>) -> XyToolExecutionMode {
     if xylitol_plugin_sdk::is_mcp_tool_name(name) {
         return XyToolExecutionMode::Sequential;
@@ -31,9 +16,6 @@ pub(crate) fn classify(name: &str, tool: Option<&dyn XyTool>) -> XyToolExecution
     }
 }
 
-/// Cut source-ordered concurrency classes into parallel windows and barrier singles.
-///
-/// Does not consult batch mode — callers only invoke this for BarrierParallel.
 pub(crate) fn plan_windows(classes: &[XyToolExecutionMode]) -> Vec<PlannedWindow> {
     let mut windows = Vec::new();
     let mut parallel_buf: Vec<usize> = Vec::new();
@@ -57,7 +39,6 @@ pub(crate) fn plan_windows(classes: &[XyToolExecutionMode]) -> Vec<PlannedWindow
     windows
 }
 
-/// Classify each `(name, tool)` then [`plan_windows`].
 #[cfg(test)]
 pub(crate) fn plan_windows_for_calls<'a, I>(calls: I) -> Vec<PlannedWindow>
 where

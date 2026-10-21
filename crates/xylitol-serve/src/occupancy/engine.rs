@@ -1,5 +1,3 @@
-//! Occupancy engine seam: serve owns slots; composition root injects drivers.
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -11,8 +9,6 @@ use xylitol_protocol::Command;
 use xylitol_runtime::driver::ModelInfo;
 use xylitol_runtime::{XyDriver, XyDriverError};
 
-/// Product in-process driver after plugin injection. Serve occupancy never
-/// constructs official plugins.
 #[async_trait]
 pub trait OccupancyEngine: XyDriver {
     fn install_ask_tool(&mut self, gateway: Arc<dyn AskUserGateway>);
@@ -27,7 +23,6 @@ pub trait OccupancyEngine: XyDriver {
     fn agent_cwd_for_test(&self) -> String;
 }
 
-/// Composition-root factory. Captures MCP / reload inputs so serve stays plugin-free.
 pub trait OccupancyFactory: Send + Sync {
     fn new_driver(&self) -> Box<dyn OccupancyEngine> {
         self.new_driver_at(&self.cwd())

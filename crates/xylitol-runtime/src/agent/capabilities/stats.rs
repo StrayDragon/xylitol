@@ -1,9 +1,6 @@
-//! Session statistics and context-usage estimation (spec c255 / as32).
-
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::XyError;
 
-/// Statistics for a session.
 #[derive(Debug, Clone)]
 pub struct SessionStats {
     pub session_id: String,
@@ -14,10 +11,6 @@ pub struct SessionStats {
     pub model: Option<(String, String)>,
 }
 
-/// Aggregate message counts for a session by reading the session store.
-///
-/// Moved out of the `AgentCapabilities` body (spec as32 / c320 T24) so the capability
-/// aggregate holds no aggregation logic.
 pub async fn compute(
     store: &dyn XySessionStore,
     session_id: &str,
@@ -48,12 +41,8 @@ pub async fn compute(
     })
 }
 
-/// Context usage summary for compaction decisions.
-///
-/// Kept as spec @executable contract: BDD steps (`getContextUsage` / `get_context_usage`)
-/// exercise it; no product caller today.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // BDD @executable contract, not product-called
+#[allow(dead_code)]
 pub struct ContextUsage {
     pub tokens: u64,
     pub context_window: u64,
@@ -63,11 +52,7 @@ pub struct ContextUsage {
 
 pub use crate::agent::compaction::should_compact;
 
-/// Compute context usage info from a token estimate and window size.
-///
-/// `percent` is a derived display value only; trigger uses reserve formula via `settings`.
-/// Kept as spec @executable contract (BDD `get_context_usage` steps); no product caller.
-#[allow(dead_code)] // BDD @executable contract, not product-called
+#[allow(dead_code)]
 pub fn get_context_usage(
     token_estimate: u64,
     context_window: u64,
@@ -82,7 +67,6 @@ pub fn get_context_usage(
         tokens: token_estimate,
         context_window,
         percent,
-        // BDD contract path: no fixed-overhead injection → floor 0, reserve formula.
         should_compact: should_compact(token_estimate, context_window, settings, 0),
     }
 }

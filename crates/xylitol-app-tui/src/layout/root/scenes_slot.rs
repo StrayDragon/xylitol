@@ -1,5 +1,3 @@
-//! Designing scene catalog slot methods for [`UiRoot`].
-
 use super::super::slots::{EditorSlot, ScenesSlot};
 use super::UiRoot;
 

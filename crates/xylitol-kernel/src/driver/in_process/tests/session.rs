@@ -56,7 +56,6 @@ async fn in_process_session_tree_ensures_missing_session() {
     ))
     .build_baseline()
     .materialize_runtime();
-    // Orphan id: set on agent but never created on disk (wipe / pre-persist).
     let orphan = uuid::Uuid::new_v4().to_string();
     agent.bind_session(orphan.clone()).expect("bind_session");
     let driver = assemble_driver(agent, store);
@@ -298,7 +297,6 @@ async fn after_run_session_tree_reflects_persisted_turn() {
 #[tokio::test]
 
 async fn fork_rejects_unflushed_session_via_driver() {
-    // TUI cannot hit this while assistant is streaming (steer takes over); cover via XyDriver.
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let (mut driver, _obs) = build_test_driver(store.clone()).await;
@@ -345,7 +343,6 @@ async fn fork_rejects_unflushed_session_via_driver() {
     );
 }
 
-/// Default `XyDriver::run` path is Reject: concurrent root while live → Busy, one provider stream.
 #[tokio::test]
 
 async fn concurrent_run_rejects_second_with_busy() {
@@ -476,9 +473,6 @@ async fn concurrent_run_rejects_second_with_busy() {
 
 #[tokio::test]
 async fn reader_switch_session_never_touches_obs_slot() {
-    // c2843 Phase B: materialized obs identity is runtime-owned — bind/switch no
-    // longer write the process obs slot at all, so readers structurally cannot
-    // stomp the default identity (otel25's obs_slot_writes gate is gone).
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
     let target = "reader-target";

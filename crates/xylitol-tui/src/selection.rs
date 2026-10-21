@@ -1,31 +1,13 @@
-//! ApplicationOwned text selection (c2070).
-//!
-//! Drag-select over transcript content coordinates, edge auto-scroll via
-//! [`ScrollView`], optional copy-on-release, and dock/input exclusion.
-//!
-//! Coordinate model: [`CellPoint::col`] is a **display column** (terminal
-//! cells, ANSI-stripped; wide chars occupy 2), not a char index. All
-//! extraction / inversion convert between columns and char indices via the
-//! width-aware helpers below, so CJK / emoji-bearing lines select and copy
-//! exactly what is visually covered.
-
 use crate::scroll_view::ScrollView;
 use crate::utils::{ansi_escape_len, strip_ansi_codes};
 use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
 use unicode_width::UnicodeWidthChar;
 
-// UX tuning knobs: keep the first tier at one row for precise selection. These
-// hold thresholds and later multipliers may be adjusted together after manual
-// terminal feel testing; they are not protocol or persistence contracts.
 const EDGE_AUTOSCROLL_MEDIUM_AFTER: std::time::Duration = std::time::Duration::from_millis(400);
 const EDGE_AUTOSCROLL_FAST_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
 const EDGE_AUTOSCROLL_MEDIUM_MULTIPLIER: isize = 2;
 const EDGE_AUTOSCROLL_FAST_MULTIPLIER: isize = 4;
 
-/// Content-space cell (row = content line index, col = display column).
-///
-/// `col` counts terminal cells of the ANSI-stripped text — one per narrow
-/// char, two per wide char — matching what the screen and mouse report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CellPoint {
     pub row: usize,
@@ -38,7 +20,6 @@ impl CellPoint {
     }
 }
 
-/// Selection granularity after multi-click.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SelectionGranularity {
     #[default]
@@ -47,7 +28,6 @@ pub enum SelectionGranularity {
     Line,
 }
 
-/// Layout rectangles in **screen** coordinates (origin top-left of the TUI).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScreenRect {
     pub row: u16,
@@ -65,12 +45,10 @@ impl ScreenRect {
     }
 }
 
-/// Sink for copy-on-release (OSC52 and/or local tools — backend is host-owned).
 pub trait ClipboardSink {
     fn copy_text(&mut self, text: &str);
 }
 
-/// Records copied strings for tests / in-memory sinks.
 #[derive(Debug, Default)]
 pub struct RecordingClipboardSink {
     pub copies: Vec<String>,
@@ -82,11 +60,6 @@ impl ClipboardSink for RecordingClipboardSink {
     }
 }
 
-/// Build an OSC 52 clipboard write sequence (package-local; no infra dependency).
-///
-/// Twin of `src/infra/clipboard/osc52.rs::format_osc52` in the host crate;
-/// duplication is deliberate (this package has no host-crate dependency) —
-/// keep the sequence format and the `MAX` cap in sync on both sides.
 pub fn format_osc52(text: &str) -> Option<String> {
     const MAX: usize = 100_000;
     let encoded = base64_encode(text.as_bytes());
@@ -120,20 +93,13 @@ fn base64_encode(input: &[u8]) -> String {
     result
 }
 
-/// Optional click consumer (e.g. fold-triangle hit for c2040).
-/// Return true to swallow the press (clear selection; do not start drag).
-///
-/// Not `Send`: ApplicationOwned hosts are single-threaded and typically capture
-/// `Rc<RefCell<_>>` fold tables (c2040).
 pub type HitPriorityFn = Box<dyn FnMut(u16, u16) -> bool>;
 
-/// ApplicationOwned selection controller over a [`ScrollView`] transcript pane.
 pub struct SelectionController {
     anchor: Option<CellPoint>,
     focus: Option<CellPoint>,
     dragging: bool,
     granularity: SelectionGranularity,
-    /// Default **on** (ptim05).
     pub copy_on_release: bool,
     auto_scroll_dir: i8,
     auto_scroll_started_at: Option<std::time::Instant>,
@@ -142,7 +108,6 @@ pub struct SelectionController {
     last_click_at: Option<std::time::Instant>,
     last_click_cell: Option<(u16, u16)>,
     hit_priority: Option<HitPriorityFn>,
-    /// Set when the last [`Self::handle_mouse`] issued a non-empty copy (ptim15).
     last_event_copied: bool,
 }
 
@@ -175,7 +140,6 @@ impl SelectionController {
         self.hit_priority = hit;
     }
 
-    /// Take the hit-priority hook (e.g. TUI park/restore across a mouse dispatch).
     pub fn take_hit_priority(&mut self) -> Option<HitPriorityFn> {
         self.hit_priority.take()
     }
@@ -199,7 +163,6 @@ impl SelectionController {
         }
     }
 
-    /// True if the most recent [`Self::handle_mouse`] copied non-empty text.
     pub fn last_event_copied(&self) -> bool {
         self.last_event_copied
     }
@@ -210,12 +173,6 @@ impl SelectionController {
         Some(ordered(a, f))
     }
 
-    /// Handle a mouse event.
-    ///
-    /// - `transcript`: screen rect of the scrollable content pane
-    /// - `dock`: screen rect of the input dock (excluded from transcript selection)
-    ///
-    /// Returns whether presentation changed (caller should rerender).
     pub fn handle_mouse(
         &mut self,
         event: &MouseEvent,
@@ -227,9 +184,6 @@ impl SelectionController {
         self.last_event_copied = false;
         let (col, row) = (event.column, event.row);
 
-        // Dock / input: never *start* transcript selection on dock text (ptim06).
-        // While already dragging, clamp to transcript bottom and keep extending
-        // (Pi-style) — MUST NOT clear / copy-cancel mid-drag (ptim12).
         if dock.contains(col, row) {
             return self.handle_dock_mouse(event, scroll, transcript, sink);
         }
@@ -287,14 +241,11 @@ impl SelectionController {
                     .screen_to_content(col, row, scroll, transcript)
                     .or_else(|| self.clamp_to_transcript_edge(col, row, scroll, transcript))
                 {
-                    // Keep word/line expansion on release — raw click cell would
-                    // collapse a double-click `apple` selection to `appl`.
                     self.apply_focus_cell(cell, scroll.lines());
                 }
                 if self.copy_on_release {
                     self.last_event_copied = self.maybe_copy(scroll, sink);
                 }
-                // Empty selection (click without drag) clears.
                 if !self.has_selection() {
                     self.clear();
                 }
@@ -304,7 +255,6 @@ impl SelectionController {
                 if !transcript.contains(col, row) {
                     return false;
                 }
-                // Wheel notch (edge-drag still uses [`ScrollView::motion_step`]).
                 scroll.scroll_by(-ScrollView::wheel_notch());
                 true
             }
@@ -319,7 +269,6 @@ impl SelectionController {
         }
     }
 
-    /// Edge auto-scroll tick (call from idle / timer). Returns true if scrolled.
     pub fn tick_autoscroll(&mut self, scroll: &mut ScrollView, transcript: ScreenRect) -> bool {
         self.tick_autoscroll_at(scroll, transcript, std::time::Instant::now())
     }
@@ -333,7 +282,6 @@ impl SelectionController {
         if !self.dragging || self.auto_scroll_dir == 0 {
             return false;
         }
-        // Start precise, then accelerate a sustained edge hold symmetrically.
         let held = self
             .auto_scroll_started_at
             .map(|started| now.saturating_duration_since(started))
@@ -361,7 +309,6 @@ impl SelectionController {
         true
     }
 
-    /// Extract selected plain text from content lines.
     pub fn selected_text(&self, lines: &[String]) -> Option<String> {
         let (start, end) = self.bounds()?;
         if start == end {
@@ -370,7 +317,6 @@ impl SelectionController {
         Some(extract_range(lines, start, end))
     }
 
-    /// Apply reverse-video highlight to visible lines (content coords via scroll_top).
     pub fn apply_highlight(&self, visible: &mut [String], scroll_top: usize) {
         let Some((start, end)) = self.bounds() else {
             return;
@@ -396,7 +342,6 @@ impl SelectionController {
         }
     }
 
-    /// Copy non-empty selection to `sink`. Returns true when text was issued.
     fn maybe_copy(&self, scroll: &ScrollView, sink: &mut dyn ClipboardSink) -> bool {
         if let Some(text) = self.selected_text(scroll.lines())
             && !text.is_empty()
@@ -407,12 +352,6 @@ impl SelectionController {
         false
     }
 
-    /// Pointer in dock rectangle.
-    ///
-    /// - Idle / completed selection: ignore motion; Down clears transcript
-    ///   selection and returns false so Editor can take the press (ptim13).
-    /// - Active drag: clamp to transcript bottom edge, keep selection, edge
-    ///   auto-scroll downward; Up finishes copy like a release at the edge.
     fn handle_dock_mouse(
         &mut self,
         event: &MouseEvent,
@@ -423,9 +362,6 @@ impl SelectionController {
         let (col, row) = (event.column, event.row);
         match event.kind {
             MouseEventKind::Down(MouseButton::Left) => {
-                // Do not start transcript selection from dock text (ptim06).
-                // Clear any prior transcript selection, but return false so the
-                // event falls through to Editor independent selection (ptim13).
                 if self.dragging || self.has_selection() {
                     self.clear();
                 }
@@ -433,7 +369,6 @@ impl SelectionController {
             }
             MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Moved => {
                 if !self.dragging {
-                    // Completed selection: moving over dock MUST NOT clear it.
                     return false;
                 }
                 self.extend_drag_clamped(col, row, scroll, transcript)
@@ -453,13 +388,10 @@ impl SelectionController {
                 }
                 true
             }
-            // Wheel over dock: do not scroll transcript here (ApplicationOwned may route later).
             _ => false,
         }
     }
 
-    /// Continue an in-progress drag as if the pointer were on the transcript
-    /// edge nearest to `(col, row)` (typically the bottom when in the dock).
     fn extend_drag_clamped(
         &mut self,
         col: u16,
@@ -467,14 +399,12 @@ impl SelectionController {
         scroll: &ScrollView,
         transcript: ScreenRect,
     ) -> bool {
-        // Treat dock as past the bottom edge → downward autoscroll while held.
         let edge_row = transcript
             .row
             .saturating_add(transcript.height.saturating_sub(1));
         let clamp_row = if row > edge_row { edge_row } else { row };
         self.last_pointer = Some((col, clamp_row));
         self.update_edge_dir(if row > edge_row { edge_row } else { row }, transcript);
-        // If pointer is in dock (below transcript), force bottom-edge scroll.
         if row > edge_row {
             self.set_auto_scroll_dir(1);
         }
@@ -531,7 +461,6 @@ impl SelectionController {
         self.last_click_cell = Some((col, row));
     }
 
-    /// Update focus (and re-expand anchor/focus for word/line granularity).
     fn apply_focus_cell(&mut self, cell: CellPoint, lines: &[String]) {
         let (a, f) = if self.granularity == SelectionGranularity::Character {
             (self.anchor.unwrap_or(cell), cell)
@@ -605,21 +534,14 @@ fn ordered(a: CellPoint, b: CellPoint) -> (CellPoint, CellPoint) {
     }
 }
 
-/// Display width (terminal cells) of a line's visible content.
 fn visible_len(line: &str) -> usize {
     strip_ansi_codes(line).chars().map(char_cols).sum()
 }
 
-/// Terminal columns for one scalar, matching `utils::grapheme_width`
-/// semantics (tab = 3, control/zero-width = 0).
 fn char_cols(c: char) -> usize {
     if c == '\t' { 3 } else { c.width().unwrap_or(0) }
 }
 
-/// Map the **start** boundary display column to a char index.
-///
-/// A column falling anywhere inside a wide char snaps onto that char
-/// (dragging from either half of `你` anchors at `你`).
 fn col_to_idx_from(plain: &str, col: usize) -> usize {
     let mut start = 0usize;
     for (idx, c) in plain.chars().enumerate() {
@@ -635,10 +557,6 @@ fn col_to_idx_from(plain: &str, col: usize) -> usize {
     plain.chars().count()
 }
 
-/// Map the **end** boundary display column to an exclusive char index.
-///
-/// A column falling inside a wide char resolves past it, so a drag ending on
-/// either half of `你` includes `你`.
 fn col_to_idx_to(plain: &str, col: usize) -> usize {
     let mut w = 0usize;
     for (idx, c) in plain.chars().enumerate() {
@@ -650,19 +568,15 @@ fn col_to_idx_to(plain: &str, col: usize) -> usize {
     plain.chars().count()
 }
 
-/// Map a char index in the stripped projection back to a display column.
 fn idx_to_col(plain: &str, idx: usize) -> usize {
     plain.chars().take(idx).map(char_cols).sum()
 }
 
 fn extract_range(lines: &[String], start: CellPoint, end: CellPoint) -> String {
-    // Drop fit/pad trailing spaces so copy char-count matches visible text
-    // (demo `fit` pads every transcript line to terminal width).
     fn trim_copy_piece(s: String) -> String {
         s.trim_end_matches([' ', '\t']).to_string()
     }
 
-    /// Slice one row's plain projection by display-column bounds.
     fn slice_cols(plain: &str, from_col: usize, to_col: Option<usize>) -> String {
         let chars: Vec<char> = plain.chars().collect();
         let s = col_to_idx_from(plain, from_col).min(chars.len());
@@ -688,7 +602,6 @@ fn extract_range(lines: &[String], start: CellPoint, end: CellPoint) -> String {
             plain
         };
         let piece = trim_copy_piece(piece);
-        // Fully-padded trailing rows become empty after trim — drop them.
         if piece.is_empty() && row == end.row && !parts.is_empty() {
             continue;
         }
@@ -717,7 +630,6 @@ fn expand_range(
         SelectionGranularity::Word => {
             let plain = strip_ansi_codes(lines.get(start.row).map(|s| s.as_str()).unwrap_or(""));
             let chars: Vec<char> = plain.chars().collect();
-            // Bounds arrive as display columns; expand in char space, report back columns.
             let mut l = col_to_idx_from(&plain, start.col).min(chars.len());
             let mut r = col_to_idx_to(&plain, end.col).max(l).min(chars.len());
             while l > 0
@@ -741,14 +653,6 @@ fn expand_range(
     (start, end)
 }
 
-/// Apply reverse-video to the display-column range `[from, to)` **in place**,
-/// preserving the line's original SGR styling (syntax colors survive).
-///
-/// Strategy: splice `\x1b[7m` before the first visible char at/after `from`
-/// and `\x1b[27m` before the first visible char at/after `to`; rewrite every
-/// SGR sequence inside the span by appending `;7` (`\x1b[0m` → `\x1b[0;7m`,
-/// `\x1b[31m` → `\x1b[31;7m`) so inner resets cannot wipe the reversal
-/// mid-span. Wide chars straddling a boundary are included whole.
 fn invert_columns(line: &str, from: usize, to: usize) -> String {
     if to <= from || line.is_empty() {
         return line.to_string();
@@ -763,7 +667,6 @@ fn invert_columns(line: &str, from: usize, to: usize) -> String {
         if let Some(len) = ansi_escape_len(bytes, i) {
             let seq = &line[i..i + len];
             if started && !finished && is_sgr(seq) {
-                // Keep the sequence's own parameters, force reverse back on.
                 out.push_str(&seq[..seq.len() - 1]);
                 out.push_str(";7m");
             } else {
@@ -792,7 +695,6 @@ fn invert_columns(line: &str, from: usize, to: usize) -> String {
     out
 }
 
-/// True for CSI SGR sequences (`ESC[…m`).
 fn is_sgr(seq: &str) -> bool {
     seq.starts_with("\x1b[") && seq.ends_with('m')
 }
@@ -862,14 +764,11 @@ mod tests {
 
     #[test]
     fn double_click_selects_whole_word_on_release() {
-        // Regression: Up used to set focus to the raw click cell and collapse
-        // a word selection (`apple` → `appl` when clicking on `l`).
         let mut scroll = ScrollView::new(4);
         scroll.set_lines(vec!["say apple pie".into()]);
         let mut sel = SelectionController::new();
         let mut sink = RecordingClipboardSink::default();
         let (tr, dock) = layout();
-        // "say apple pie" — 'l' of apple is column 7.
         let col = 7u16;
         assert!(sel.handle_mouse(
             &mouse(MouseEventKind::Down(MouseButton::Left), col, 0),
@@ -959,7 +858,6 @@ mod tests {
         let mut sel = SelectionController::new();
         sel.set_hit_priority(Some(Box::new(move |_col, _row| {
             calls_hook.fetch_add(1, Ordering::SeqCst);
-            // Miss: allow selection to start so Drag path is exercised.
             false
         })));
         let mut sink = RecordingClipboardSink::default();
@@ -1024,7 +922,6 @@ mod tests {
             &mut sink,
         );
         assert!(sel.has_selection() || sel.is_dragging());
-        // Dock Down: clear, but return false so Editor can receive the press (ptim13).
         assert!(!sel.handle_mouse(
             &mouse(MouseEventKind::Down(MouseButton::Left), 0, 4),
             &mut scroll,
@@ -1067,7 +964,6 @@ mod tests {
             &mut sink,
         );
         assert!(sel.is_dragging());
-        // Drag into dock — must NOT clear; focus clamps to transcript edge.
         assert!(sel.handle_mouse(
             &mouse(MouseEventKind::Drag(MouseButton::Left), 2, 4),
             &mut scroll,
@@ -1077,7 +973,6 @@ mod tests {
         ));
         assert!(sel.is_dragging());
         assert!(sel.has_selection() || sel.is_dragging());
-        // Completed selection: moving over dock must not clear.
         sel.handle_mouse(
             &mouse(MouseEventKind::Up(MouseButton::Left), 2, 4),
             &mut scroll,
@@ -1124,7 +1019,6 @@ mod tests {
             dock,
             &mut sink,
         );
-        // Drag to bottom edge → auto_scroll_dir = +1
         sel.handle_mouse(
             &mouse(MouseEventKind::Drag(MouseButton::Left), 0, 1),
             &mut scroll,
@@ -1191,7 +1085,6 @@ mod tests {
     #[test]
     fn copy_trims_fit_padding_spaces() {
         let mut scroll = ScrollView::new(4);
-        // Simulate demo `fit`: content + trailing pad to transcript width (20).
         scroll.set_lines(vec![
             format!("hello{}", " ".repeat(15)),
             format!("world{}", " ".repeat(15)),
@@ -1252,9 +1145,6 @@ mod tests {
         );
     }
 
-    // ── display-column coordinate model regressions ────────────────────────
-
-    /// What `n` display columns of visible text actually cover.
     fn cols_prefix(plain: &str, n: usize) -> String {
         let mut w = 0usize;
         plain
@@ -1272,7 +1162,6 @@ mod tests {
 
     #[test]
     fn column_to_char_index_snaps_inside_wide_char() {
-        // cells: a@0 b@1 你@2-3 好@4-5 c@6 d@7
         let plain = "ab你好cd";
         assert_eq!(col_to_idx_from(plain, 0), 0);
         assert_eq!(col_to_idx_from(plain, 1), 1);
@@ -1288,13 +1177,10 @@ mod tests {
 
     #[test]
     fn highlighted_cjk_drag_copies_exactly_visible_columns() {
-        // Streamed rust-ish line with a CJK comment in fake syntect SGRs — the
-        // historical bug: char-index selection drifted by one cell per wide char.
         let line = "\x1b[38;2;166;227;161mlet\x1b[38;2;205;214;244m total = \
                     \x1b[38;2;137;220;235m42\x1b[38;2;205;214;244m; // 累计订单金额\
                     \x1b[38;2;137;180;255m（含税）\x1b[0m";
         let plain = strip_ansi_codes(line);
-        // Select up through `累计`: 19 ASCII cols + 累计 = 23 columns.
         let expected = cols_prefix(&plain, 23);
         assert_eq!(expected, "let total = 42; // 累计");
 
@@ -1302,8 +1188,6 @@ mod tests {
         scroll.set_lines(vec![line.to_string()]);
         let mut sel = SelectionController::new();
         let mut sink = RecordingClipboardSink::default();
-        // Wide transcript rect — the shared `layout()` is only 20 cols wide
-        // and would clamp the drag to its right edge.
         let tr = ScreenRect {
             row: 0,
             col: 0,
@@ -1354,8 +1238,6 @@ mod tests {
 
     #[test]
     fn reverse_video_snaps_wide_char_boundaries() {
-        // 你 spans columns 2-3; from=3 (right half) must include all of 你,
-        // and the span closes before `d` at column 4.
         let inverted = invert_columns("ab你de", 3, 4);
         assert_eq!(inverted, "ab\x1b[7m你\x1b[27mde");
     }

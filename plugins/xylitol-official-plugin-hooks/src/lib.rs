@@ -1,11 +1,3 @@
-//! Official Host plugin: script hooks (config-gated).
-//!
-//! Provides [`HookDispatcher`] which dispatches [`HookEvent`]s to registered
-//! hook scripts, using a JSON-over-stdin/stdout protocol. Supports block/allow/
-//! modify control directives with timeout handling.
-//!
-//! Built-in, config-gated (empty hooks list = no-op).
-
 use strum::{EnumString, IntoStaticStr};
 
 pub mod config;
@@ -17,144 +9,101 @@ pub mod script;
 pub use config::{HookEntry, HooksConfig};
 pub use dispatcher::HookDispatcher;
 
-// ---------------------------------------------------------------------------
-// HookPhase
-// ---------------------------------------------------------------------------
-
-/// Whether the hook fires before or after an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, IntoStaticStr, EnumString)]
 #[strum(serialize_all = "lowercase")]
 pub enum HookPhase {
-    /// Before the event (can block/modify).
     Pre,
-    /// After the event (observation only).
     Post,
 }
 
 impl HookPhase {
-    /// Parse a phase string. Accepts "pre", "post", or empty (matches both).
     pub fn matches(&self, pattern: &str) -> bool {
         match pattern {
             "pre" => matches!(self, HookPhase::Pre),
             "post" => matches!(self, HookPhase::Post),
-            "" => true, // empty = no phase filter = matches either
+            "" => true,
             _ => false,
         }
     }
 
-    /// Return the string representation.
     pub fn as_str(&self) -> &'static str {
         self.into()
     }
 }
 
-// ---------------------------------------------------------------------------
-// HookEvent
-// ---------------------------------------------------------------------------
-
-/// Events that can trigger hook scripts.
-///
-/// Each variant carries the context data relevant to that event.
-///
-/// The pi-aligned variant family (tool / model / step / plan / review / retry /
-/// snapshot …) is constructed only by BDD @executable hook scenarios and unit
-/// tests; product dispatch emits provider events (`Before*`/`AfterProvider*`).
-/// Kept because hook specs (llmanspec/specs/hook-*) bind those scenarios.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // variant family: BDD @executable / unit-test surface (c2750)
+#[allow(dead_code)]
 pub enum HookEvent {
-    /// A tool is about to be called (pre) or has completed (post).
     ToolCall {
         tool: String,
         args: serde_json::Value,
     },
-    /// An LSP query tool call (pre/post).
     ToolCallLspQuery {
         file: String,
         method: String,
     },
-    /// A debugger command tool call (pre/post). (DAP PAUSED — not emitted.)
     ToolCallDapCommand {
         command: String,
     },
-    /// A file write tool call (pre/post).
     ToolCallFileWrite {
         file: String,
         content_preview: String,
     },
-    /// About to query the model (pre only).
     ModelQuery {
         model: String,
         prompt_length: usize,
     },
-    /// A single agent step completed (post).
     StepComplete {
         step: u32,
         summary: String,
     },
-    /// Planner generated a plan (post).
     PlanGenerated {
         plan: String,
     },
-    /// Review phase started (pre) or ended (post).
     ReviewStart {
         diffs: Vec<String>,
     },
-    /// Review phase ended.
     ReviewEnd {
         approved: bool,
     },
-    /// Repeat detection triggered (post).
     RepeatDetected {
         loop_fragment: String,
         tokens: usize,
     },
-    /// A step is being retried (pre only).
     StepRetry {
         retry_count: u8,
         reason: String,
     },
-    /// A tool call was blocked by security policy (post).
     ToolCallBlocked {
         tool: String,
         reason: String,
         rule: String,
     },
-    /// Session snapshot created (post).
     SessionSnapshot {
         snapshot_id: String,
     },
-    /// About to spawn a new session from a snapshot (pre).
     SessionSpawn {
         parent_id: String,
     },
-    /// Session snapshot merged (post).
     SessionMerge {
         snapshot_id: String,
     },
-    // ── pi-aligned provider hooks ────────────────────────────────────
-    /// After default auth headers are built, before HTTP send.
     BeforeProviderHeaders {
         headers: serde_json::Value,
     },
-    /// After provider JSON body is built, before HTTP send.
     BeforeProviderRequest {
         model: String,
         body: serde_json::Value,
     },
-    /// After HTTP response status/headers, before stream/body consumption.
     AfterProviderResponse {
         status: u16,
         headers: serde_json::Value,
     },
-    // ── pi-aligned agent / turn / message ────────────────────────────
-    /// Tool execution result (post).
     ToolResult {
         tool: String,
         result: serde_json::Value,
         is_error: bool,
     },
-    /// Context before a model call (pre).
     Context {
         message_count: usize,
     },
@@ -173,16 +122,12 @@ pub enum HookEvent {
     MessageEnd {
         role: String,
     },
-    // ── pi-aligned session ───────────────────────────────────────────
     SessionStart {
         reason: String,
     },
     SessionShutdown {
-        /// Why the session is shutting down (e.g. `resume`).
         reason: Option<String>,
-        /// Target session id when switching.
         target: Option<String>,
-        /// Previous session id when switching.
         previous: Option<String>,
     },
     SessionBeforeCompact,
@@ -204,7 +149,6 @@ pub enum HookEvent {
         entry_id: Option<String>,
         leaf_id: Option<String>,
     },
-    // ── pi-aligned model / user ────────────────────────────────────
     ModelSelect {
         model: String,
     },
@@ -219,8 +163,6 @@ pub enum HookEvent {
 }
 
 impl HookEvent {
-    /// Return the event type string used in pattern matching (e.g., "tool_call",
-    /// "step_complete", "model_query").
     pub fn event_type(&self) -> &'static str {
         match self {
             HookEvent::ToolCall { .. } => "tool_call",
@@ -264,11 +206,7 @@ impl HookEvent {
         }
     }
 
-    /// Payload-only JSON for [`xylitol_plugin_sdk::XyHookBus`] (no `event`/`phase` keys).
-    ///
-    /// Script stdin via typed [`Self::to_json_context`] still includes `event` + `phase`.
-    /// Exercised by the module's own unit tests; no product caller.
-    #[allow(dead_code)] // unit-test contract (payload_context_omits_event_phase)
+    #[allow(dead_code)]
     pub fn payload_context(&self) -> serde_json::Value {
         let mut ctx = self.to_json_context(HookPhase::Pre);
         if let Some(map) = ctx.as_object_mut() {
@@ -278,7 +216,6 @@ impl HookEvent {
         ctx
     }
 
-    /// Serialize the event to a JSON map for the hook script stdin.
     pub fn to_json_context(&self, phase: HookPhase) -> serde_json::Value {
         let mut ctx = serde_json::json!({
             "event": self.event_type(),
@@ -464,24 +401,11 @@ impl HookEvent {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Event pattern matching
-// ---------------------------------------------------------------------------
-
-/// Check whether a hook entry's event patterns match the given event + phase.
-///
-/// Pattern format: `[{phase}.]{event_type}[.{qualifier}]`
-/// Examples:
-/// - `pre.tool_call` — matches ToolCall events in Pre phase
-/// - `post.step_complete` — matches StepComplete events in Post phase
-/// - `tool_call` — matches ToolCall events in either phase
-/// - `pre.tool_call.bash` — matches ToolCall with tool="bash" in Pre phase
 pub fn event_matches(
     entry: &crate::config::HookEntry,
     event: &HookEvent,
     phase: HookPhase,
 ) -> bool {
-    // Phase filter in HookEntry
     if !entry.phase.is_empty() && !phase.matches(&entry.phase) {
         return false;
     }
@@ -497,10 +421,6 @@ pub fn event_matches(
     false
 }
 
-/// Check whether a hook entry matches a raw event type + phase + JSON context.
-///
-/// Used by [`HookDispatcher::dispatch_raw`] for pi-aligned event names and
-/// ReAct script bridging.
 pub fn entry_matches_raw(
     entry: &crate::config::HookEntry,
     event_type: &str,
@@ -549,7 +469,6 @@ fn pattern_matches_raw(
     }
 }
 
-/// Check if a single pattern string matches the given event and phase.
 fn pattern_matches(pattern: &str, event_type: &str, phase: HookPhase, event: &HookEvent) -> bool {
     let parts: Vec<&str> = pattern.split('.').collect();
 
@@ -565,23 +484,14 @@ fn pattern_matches(pattern: &str, event_type: &str, phase: HookPhase, event: &Ho
     }
 }
 
-// ---------------------------------------------------------------------------
-// HookAction
-// ---------------------------------------------------------------------------
-
-/// The result of executing a single hook.
 #[derive(Debug, Clone)]
 pub enum HookAction {
-    /// Allow the operation to proceed.
     Allow,
-    /// Block the operation with a reason.
     Block { reason: String },
-    /// Modify the operation arguments and proceed.
     Modify { args: serde_json::Value },
 }
 
 impl HookAction {
-    /// Parse a `HookAction` from the JSON output of a hook script.
     pub fn from_json(value: &serde_json::Value) -> Self {
         let action = value
             .get("action")
@@ -609,30 +519,16 @@ impl HookAction {
     }
 }
 
-// ---------------------------------------------------------------------------
-// DispatchResult
-// ---------------------------------------------------------------------------
-
-/// The aggregate result of dispatching an event to all matching hooks.
 #[derive(Debug, Clone)]
 pub enum DispatchResult {
-    /// All hooks allowed the operation.
     Allowed,
-    /// A hook blocked the operation.
     Blocked { reason: String },
-    /// A hook modified the operation arguments.
     Modified { args: serde_json::Value },
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ── HookPhase ────────────────────────────────────────────────────
 
     #[test]
     fn test_phase_pre_matches_pre() {
@@ -649,8 +545,6 @@ mod tests {
         assert!(HookPhase::Pre.matches(""));
         assert!(HookPhase::Post.matches(""));
     }
-
-    // ── HookEvent::event_type ────────────────────────────────────────
 
     #[test]
     fn test_event_type_tool_call() {
@@ -678,8 +572,6 @@ mod tests {
         };
         assert_eq!(event.event_type(), "model_query");
     }
-
-    // ── event_matches ────────────────────────────────────────────────
 
     fn make_entry(events: Vec<&str>, phase: &str) -> crate::config::HookEntry {
         crate::config::HookEntry {
@@ -747,8 +639,6 @@ mod tests {
         assert!(!event_matches(&entry, &event, HookPhase::Pre));
     }
 
-    // ── HookAction::from_json ────────────────────────────────────────
-
     #[test]
     fn test_action_allow_on_empty() {
         let val = serde_json::json!({});
@@ -778,8 +668,6 @@ mod tests {
             other => panic!("expected Modify, got {other:?}"),
         }
     }
-
-    // ── HookEvent::to_json_context ───────────────────────────────────
 
     #[test]
     fn test_to_json_context_tool_call() {

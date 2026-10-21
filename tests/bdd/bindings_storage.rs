@@ -1,5 +1,3 @@
-//! app-tui-storage BDD 绑定（c2470）。
-
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use crate::bdd::steps_storage::StorageBdd;
 use crate::bdd::steps_storage::storage_bdd;
@@ -41,6 +39,5 @@ fn test_cs_editor_history(host_pump_bdd: HostPumpBdd) {}
 )]
 fn test_cs_editor_history_recall_order(host_pump_bdd: HostPumpBdd) {}
 
-// 保留 host_pump_bdd 导入使用（编辑器历史场景经其 fixture 装配）。
 #[allow(unused_imports)]
 use host_pump_bdd as _;

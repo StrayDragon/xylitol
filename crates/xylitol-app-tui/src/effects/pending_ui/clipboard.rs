@@ -1,5 +1,3 @@
-//! Ctrl+V clipboard paste (image then text fallback).
-
 use xylitol_tui::Terminal;
 
 use crate::driver::XyDriver;
@@ -24,7 +22,6 @@ pub(super) async fn take_paste_image<T: Terminal>(
             }
         }
         Ok(None) | Err(_) => {
-            // c1156 / pi: no image (or read failed) → try system clipboard text.
             if let Err(e) = &image_outcome {
                 e.log_failure("tui.stage_clipboard_image");
                 log::info!(

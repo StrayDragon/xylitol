@@ -1,11 +1,8 @@
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthChar;
 
-/// Background painter closure: maps a plain-text line to an ANSI-styled line.
-/// Shared by Panel/Text components that apply an optional per-line background.
 pub type BgFn = Box<dyn Fn(&str) -> String>;
 
-/// Calculate the terminal width of a single grapheme cluster.
 pub(crate) fn grapheme_width(g: &str) -> usize {
     if g == "\t" {
         return 3;
@@ -19,24 +16,19 @@ pub(crate) fn grapheme_width(g: &str) -> usize {
     }
 }
 
-/// Calculate the visible width of a string in terminal columns (ANSI codes stripped).
 pub fn visible_width(s: &str) -> usize {
     if s.is_empty() {
         return 0;
     }
 
-    // Fast path: pure ASCII printable
     if s.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
         return s.len();
     }
 
-    // Fast path: ANSI escapes + ASCII printable only — no alloc, no grapheme scan.
-    // Colored UI chrome / invariant checks hit this constantly (c1508 / c1520 suite).
     if let Some(w) = visible_width_ansi_ascii(s) {
         return w;
     }
 
-    // Slow path: strip + grapheme (tabs, CJK, emoji, …)
     let clean = strip_ansi_codes(s);
     let mut width = 0usize;
     for g in UnicodeSegmentation::graphemes(clean.as_str(), true) {
@@ -45,16 +37,12 @@ pub fn visible_width(s: &str) -> usize {
     width
 }
 
-/// Byte length of a recognized ANSI escape at `i`, or `None` if not a skippable sequence.
 pub(crate) fn ansi_escape_len(bytes: &[u8], i: usize) -> Option<usize> {
     if i >= bytes.len() || bytes[i] != 0x1b || i + 1 >= bytes.len() {
         return None;
     }
     match bytes[i + 1] {
         b'[' => {
-            // CSI: ESC [ params/intermediates… final byte (ECMA-48 0x40..=0x7E).
-            // Full final range (not just m/G/K/H/J) so private modes like
-            // `\x1b[?25l` cannot swallow the rest of the line into one "escape".
             let mut j = i + 2;
             while j < bytes.len() && !(0x40..=0x7e).contains(&bytes[j]) {
                 j += 1;
@@ -66,7 +54,6 @@ pub(crate) fn ansi_escape_len(bytes: &[u8], i: usize) -> Option<usize> {
             }
         }
         b']' => {
-            // OSC: ESC ] ... BEL or ST
             let mut j = i + 2;
             while j < bytes.len() {
                 if bytes[j] == 0x07 {
@@ -80,7 +67,6 @@ pub(crate) fn ansi_escape_len(bytes: &[u8], i: usize) -> Option<usize> {
             Some(bytes.len() - i)
         }
         b'_' => {
-            // APC: ESC _ ... BEL or ST
             let mut j = i + 2;
             while j < bytes.len() {
                 if bytes[j] == 0x07 {
@@ -97,7 +83,6 @@ pub(crate) fn ansi_escape_len(bytes: &[u8], i: usize) -> Option<usize> {
     }
 }
 
-/// Width when every non-escape byte is ASCII printable (`0x20..=0x7e`).
 fn visible_width_ansi_ascii(s: &str) -> Option<usize> {
     let bytes = s.as_bytes();
     let mut i = 0usize;
@@ -119,7 +104,6 @@ fn visible_width_ansi_ascii(s: &str) -> Option<usize> {
     Some(width)
 }
 
-/// Strip ANSI escape sequences from a string.
 pub fn strip_ansi_codes(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     let mut i = 0;
@@ -129,7 +113,6 @@ pub fn strip_ansi_codes(s: &str) -> String {
             i += len;
             continue;
         }
-        // Copy one UTF-8 scalar — never `bytes[i] as char` (splits `·` → Â·, +1 width).
         let ch = s[i..].chars().next().expect("i in bounds");
         result.push(ch);
         i += ch.len_utf8();
@@ -137,7 +120,6 @@ pub fn strip_ansi_codes(s: &str) -> String {
     result
 }
 
-/// Extract an ANSI escape code at the given byte position, returning the code and its length.
 pub fn extract_ansi_code(s: &str, pos: usize) -> Option<(&str, usize)> {
     let bytes = s.as_bytes();
     if pos >= bytes.len() || bytes[pos] != 0x1b {
@@ -188,8 +170,6 @@ pub fn extract_ansi_code(s: &str, pos: usize) -> Option<(&str, usize)> {
     }
 }
 
-/// pi `normalizeTerminalOutput`: Thai/Lao AM decompose + tab → 3 spaces (ANSI-safe).
-/// Applied in the engine before paint so width / diff stay consistent.
 pub fn normalize_terminal_output(s: &str) -> String {
     let mut normalized = s.to_string();
     if normalized.contains('\u{0e33}') || normalized.contains('\u{0eb3}') {
@@ -219,7 +199,6 @@ pub fn normalize_terminal_output(s: &str) -> String {
     result
 }
 
-/// Track active ANSI SGR codes to preserve styling across line breaks.
 #[derive(Default)]
 struct AnsiCodeTracker {
     bold: bool,
@@ -259,7 +238,6 @@ impl AnsiCodeTracker {
     }
 
     fn process(&mut self, code: &str) {
-        // OSC 8 hyperlink
         if code.starts_with("\x1b]8;") {
             let terminator = if code.ends_with('\x07') {
                 "\x07"
@@ -288,8 +266,7 @@ impl AnsiCodeTracker {
             return;
         }
 
-        // Parse SGR parameters
-        let params_str = &code[2..code.len() - 1]; // strip \x1b[ and m
+        let params_str = &code[2..code.len() - 1];
         if params_str.is_empty() || params_str == "0" {
             self.reset();
             return;
@@ -323,7 +300,6 @@ impl AnsiCodeTracker {
                 39 => self.fg_color = None,
                 49 => self.bg_color = None,
                 38 | 48 => {
-                    // 256-color or RGB
                     if i + 2 < parts.len() && parts[i + 1] == "5" {
                         let color = format!("{};5;{}", code_val, parts[i + 2]);
                         if code_val == 38 {
@@ -349,7 +325,6 @@ impl AnsiCodeTracker {
                     }
                 }
                 _ => {
-                    // Standard foreground 30-37, 90-97
                     if (30..=37).contains(&code_val) || (90..=97).contains(&code_val) {
                         self.fg_color = Some(code_val.to_string());
                     } else if (40..=47).contains(&code_val) || (100..=107).contains(&code_val) {
@@ -372,7 +347,6 @@ impl AnsiCodeTracker {
         self.strikethrough = false;
         self.fg_color = None;
         self.bg_color = None;
-        // SGR reset does not affect OSC 8 hyperlink state
     }
 
     pub(crate) fn get_active_codes(&self) -> String {
@@ -432,8 +406,6 @@ impl AnsiCodeTracker {
     }
 }
 
-/// Result of splitting a line into the region before an overlay and the region
-/// after it, used by the engine's overlay compositing.
 pub struct ExtractedSegments {
     pub before: String,
     pub before_width: usize,
@@ -441,15 +413,6 @@ pub struct ExtractedSegments {
     pub after_width: usize,
 }
 
-/// Split `line` into two column-bounded regions: `before` covers `[0, beforeEnd)`
-/// and `after` covers `[afterStart, afterStart + afterLen)`. The `after` region
-/// inherits the SGR styling accumulated across `before` (so an overlay laid over
-/// the middle of a line doesn't leave the trailing content unstyled), and the
-/// first grapheme of `after` is preceded by the active SGR codes at that point.
-///
-/// Direct port of pi-tui's `extractSegments` (utils.ts:1117). `strict_after`
-/// rejects graphemes that would cross `afterEnd` (wide-char safety); when
-/// `afterLen == 0`, only `before` is extracted and we stop at `beforeEnd`.
 pub fn extract_segments(
     line: &str,
     before_end: usize,
@@ -472,35 +435,26 @@ pub fn extract_segments(
         after_end
     };
 
-    // Fresh tracker so the inherited styling reflects only this line's SGR.
     let mut tracker = AnsiCodeTracker::default();
 
     let mut i = 0;
     while i < line.len() {
         if let Some((code, len)) = extract_ansi_code(&line[i..], 0) {
-            // Track all SGR codes so we know styling at afterStart.
             tracker.process(code);
-            // Route the raw code into whichever segment current_col falls in.
             if current_col < before_end {
                 pending_ansi_before.push_str(code);
             } else if current_col >= after_start && current_col < after_end && after_started {
-                // Only include ANSI in `after` once styling has been prepended;
-                // otherwise it would precede the inherited SGR blob.
                 after.push_str(code);
             }
             i += len;
             continue;
         }
 
-        // Consume the run of non-ANSI text up to the next escape, advancing by
-        // whole chars so multi-byte sequences (CJK/emoji) never split mid-char.
         let mut text_end = i;
         while text_end < line.len() {
-            // An ESC at text_end starts an ANSI sequence; stop here.
             if line.as_bytes()[text_end] == 0x1b {
                 break;
             }
-            // Advance one whole char (UTF-8 boundary safe).
             match line[text_end..].chars().next() {
                 Some(c) => text_end += c.len_utf8(),
                 None => break,
@@ -520,7 +474,6 @@ pub fn extract_segments(
                 let fits = !strict_after || current_col + w <= after_end;
                 if fits {
                     if !after_started {
-                        // Prepend inherited styling from before the overlay.
                         after.push_str(&tracker.get_active_codes());
                         after_started = true;
                     }
@@ -555,7 +508,6 @@ fn update_tracker_from_text(text: &str, tracker: &mut AnsiCodeTracker) {
             tracker.process(code);
             i += len;
         } else {
-            // Move forward one char
             if let Some(c) = text[i..].chars().next() {
                 i += c.len_utf8();
             } else {
@@ -565,18 +517,14 @@ fn update_tracker_from_text(text: &str, tracker: &mut AnsiCodeTracker) {
     }
 }
 
-/// Split text into tokens while keeping ANSI codes attached.
 fn split_into_tokens_with_ansi(text: &str) -> Vec<String> {
-    // c1509: ANSI + ASCII printable (incl. space) — no grapheme scan.
     if let Some(tokens) = split_into_tokens_ansi_ascii(text) {
         return tokens;
     }
     split_into_tokens_with_ansi_slow(text)
 }
 
-/// Byte/space tokenizer when every non-escape byte is ASCII printable (`0x20..=0x7e`).
 fn split_into_tokens_ansi_ascii(text: &str) -> Option<Vec<String>> {
-    // Eligibility: same gate as visible_width ANSI+ASCII fast path.
     visible_width_ansi_ascii(text)?;
 
     let bytes = text.as_bytes();
@@ -640,7 +588,6 @@ fn split_into_tokens_with_ansi_slow(text: &str) -> Vec<String> {
             continue;
         }
 
-        // Find end of non-ANSI segment
         let mut end = i;
         while end < text.len() {
             if extract_ansi_code(&text[end..], 0).is_some() {
@@ -658,7 +605,6 @@ fn split_into_tokens_with_ansi_slow(text: &str) -> Vec<String> {
             let is_space = g == " ";
             if !is_space
                 && g.chars().any(|c| {
-                    // CJK break regex equivalent
                     ('\u{2E80}'..='\u{2EFF}').contains(&c)
                         || ('\u{3000}'..='\u{303F}').contains(&c)
                         || ('\u{31C0}'..='\u{31EF}').contains(&c)
@@ -678,7 +624,6 @@ fn split_into_tokens_with_ansi_slow(text: &str) -> Vec<String> {
                         || ('\u{3100}'..='\u{312F}').contains(&c)
                 })
             {
-                // CJK character: flush current and emit as standalone token
                 if !current.is_empty() {
                     tokens.push(std::mem::take(&mut current));
                 }
@@ -733,7 +678,6 @@ enum TokenKind {
     Word,
 }
 
-/// Wrap text with ANSI codes preserved. Returns lines where each line is <= `width` visible chars.
 pub fn wrap_text_with_ansi(text: &str, max_width: usize) -> Vec<String> {
     if text.is_empty() {
         return vec![String::new()];
@@ -749,7 +693,6 @@ pub fn wrap_text_with_ansi(text: &str, max_width: usize) -> Vec<String> {
         } else {
             String::new()
         };
-        // Avoid allocate when no carried SGR prefix (common for first / unstyled lines).
         let wrapped = if prefix.is_empty() {
             wrap_single_line(input_line, max_width)
         } else {
@@ -789,7 +732,6 @@ fn wrap_single_line(line: &str, width: usize) -> Vec<String> {
         let token_visible = visible_width(&token);
         let is_whitespace = token.trim().is_empty();
 
-        // Token too long - break character by character
         if token_visible > width && !is_whitespace {
             if !current_line.is_empty() {
                 let line_end_reset = tracker.get_line_end_reset();
@@ -850,7 +792,6 @@ fn break_long_word(word: &str, width: usize, tracker: &mut AnsiCodeTracker) -> V
     let mut current_line = tracker.get_active_codes();
     let mut current_width = 0usize;
 
-    // Separate ANSI codes from graphemes
     let mut i = 0;
     let mut segments: Vec<Segment> = Vec::new();
 
@@ -859,7 +800,6 @@ fn break_long_word(word: &str, width: usize, tracker: &mut AnsiCodeTracker) -> V
             segments.push(Segment::Ansi(code.to_string()));
             i += len;
         } else {
-            // Find end of non-ANSI segment
             let mut end = i;
             while end < word.len() && extract_ansi_code(&word[end..], 0).is_none() {
                 end += word[end..]
@@ -919,10 +859,6 @@ enum Segment {
     Grapheme(String),
 }
 
-/// Overflow cue on a `─` rule: `─── ↑ N more ───` (editor and 待办栏 share this).
-///
-/// When `width` cannot fit the decorative dashes, the cue is kept and the line
-/// is truncated. `width == 0` yields an empty string.
 pub fn overflow_more_border(width: usize, up: bool, count: usize) -> String {
     let arrow = if up { '↑' } else { '↓' };
     let core = format!(" {arrow} {count} more ");
@@ -943,7 +879,6 @@ pub fn overflow_more_border(width: usize, up: bool, count: usize) -> String {
     }
 }
 
-/// Truncate text to fit within a maximum visible width.
 pub fn truncate_to_width(text: &str, max_width: usize, ellipsis: &str, pad: bool) -> String {
     if max_width == 0 {
         return String::new();
@@ -970,7 +905,6 @@ pub fn truncate_to_width(text: &str, max_width: usize, ellipsis: &str, pad: bool
         return finalize_truncated("", 0, &clipped.0, clipped.1, max_width, pad);
     }
 
-    // Fast path: pure ASCII
     if text.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
         if text.len() <= max_width {
             return if pad {
@@ -1115,14 +1049,10 @@ fn finalize_truncated(
     result
 }
 
-/// Extract a slice of text by visible column range.
 pub fn slice_by_column(line: &str, start_col: usize, length: usize) -> String {
     slice_with_width(line, start_col, length, false).0
 }
 
-/// Like `slice_by_column` but rejects graphemes that would cross the end column
-/// (strict mode). Use this when a width-bound region must not split a wide
-/// char (e.g. an input field's visible window) — mirrors pi's strict=true calls.
 pub fn slice_by_column_strict(line: &str, start_col: usize, length: usize) -> String {
     slice_with_width(line, start_col, length, true).0
 }
@@ -1189,17 +1119,14 @@ pub(crate) fn slice_with_width(
     (result, result_width)
 }
 
-/// Check if a character is whitespace.
 pub fn is_whitespace_char(c: char) -> bool {
     c.is_whitespace()
 }
 
-/// Check if a character is punctuation.
 pub fn is_punctuation_char(c: char) -> bool {
     c.is_ascii_punctuation()
 }
 
-/// Apply background color to a line, padding to full width.
 pub fn apply_background_to_line(
     line: &str,
     width: usize,
@@ -1211,7 +1138,6 @@ pub fn apply_background_to_line(
     bg_fn(&with_padding)
 }
 
-/// Whether to keep the head or tail when truncating to a visual-line budget.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TruncateFrom {
     #[default]
@@ -1219,17 +1145,12 @@ pub enum TruncateFrom {
     Head,
 }
 
-/// Result of [`truncate_to_visual_lines`] (pi `truncateToVisualLines`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VisualTruncateResult {
     pub visual_lines: Vec<String>,
     pub skipped_count: usize,
 }
 
-/// Wrap-aware truncate to at most `max_visual_lines` (ANSI-safe via [`wrap_text_with_ansi`]).
-///
-/// `Tail` keeps the last N lines (bash/tool live preview). `Head` keeps the first N.
-/// When `max_visual_lines` is `usize::MAX`, returns all wrapped lines with `skipped_count = 0`.
 pub fn truncate_to_visual_lines(
     text: &str,
     max_visual_lines: usize,
@@ -1266,7 +1187,6 @@ mod visible_width_tests {
 
     #[test]
     fn middle_dot_is_one_column_with_or_without_ansi() {
-        // Regression: strip_ansi used `bytes[i] as char`, splitting U+00B7 into Â· (+1 width).
         let plain = "cwd · model";
         assert_eq!(visible_width(plain), 11);
         let styled = format!("\x1b[31m{plain}\x1b[0m");
@@ -1283,7 +1203,6 @@ mod visible_width_tests {
 
     #[test]
     fn normalize_terminal_output_decomposes_thai_sara_am() {
-        // U+0E33 → U+0E4D U+0E32
         let s = "ก\u{0e33}";
         let out = normalize_terminal_output(s);
         assert!(out.contains("\u{0e4d}\u{0e32}"));

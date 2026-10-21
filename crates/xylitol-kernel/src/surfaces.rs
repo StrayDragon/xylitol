@@ -1,5 +1,3 @@
-//! Profile surface plugins (official, via loader rows).
-
 use xylitol_plugin_sdk::EmptyPluginConfig;
 use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin, PluginFactory};
 
@@ -30,7 +28,6 @@ impl Plugin for PrintPlugin {
     }
 }
 
-/// Marker: Print profile surface is mounted. The CLI still drives `run_print`.
 pub struct PrintSurface;
 
 pub struct ServeFactory;
@@ -60,5 +57,4 @@ impl Plugin for ServePlugin {
     }
 }
 
-/// Marker: Host profile carrier is mounted. Bind/listen stays in occupancy runtime.
 pub struct ServeSurface;

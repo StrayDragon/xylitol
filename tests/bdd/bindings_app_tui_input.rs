@@ -1,5 +1,3 @@
-//! app-tui-input c2826 specs-compact 场景绑定。
-
 use crate::bdd::steps_app_tui_fixed_zone::{FixedZoneBdd, fixed_zone_bdd};
 use crate::bdd::steps_app_tui_host::{HostPumpBdd, host_pump_bdd};
 use rstest_bdd_macros::scenario;

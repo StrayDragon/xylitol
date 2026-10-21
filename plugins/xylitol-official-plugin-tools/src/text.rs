@@ -1,6 +1,3 @@
-//! Pure text utilities (XML escape, etc.).
-
-/// Escape a string for safe inclusion in XML/HTML text content.
 pub fn xml_escape(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for c in s.chars() {
@@ -16,7 +13,6 @@ pub fn xml_escape(s: &str) -> String {
     result
 }
 
-/// Format a byte count as human-readable size (`B` / `KB` / `MB`).
 pub fn format_size(bytes: u64) -> String {
     if bytes < 1024 {
         format!("{bytes}B")

@@ -1,8 +1,5 @@
-//! Mermaid fence → Unicode box-drawing via `mermaid-text` (c2890).
-
 use mermaid_text::{RenderOptions, render_with_options};
 
-/// Draw mermaid source into rows, or `None` to fall back to a markdown code block.
 pub fn try_render_mermaid(src: &str, available_width: usize) -> Option<Vec<String>> {
     if src.trim().is_empty() {
         return None;

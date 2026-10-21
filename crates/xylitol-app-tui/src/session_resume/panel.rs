@@ -1,5 +1,3 @@
-//! Resume session panel (pi SessionSelectorComponent port; c1065).
-
 use std::collections::{HashMap, HashSet};
 
 use crossterm::event::KeyEvent;
@@ -15,14 +13,11 @@ use xylitol_plugin_sdk::format_session_age;
 
 use super::search::{NameFilter, SessionScope, SortMode, filter_and_sort};
 
-/// Soft default body rows before term-aware Fixed-Zone Footprint sync (atc23).
 const DEFAULT_MAX_VISIBLE_SESSIONS: usize = 10;
 
-/// Soft cap for the preview column as a fraction of terminal width (≈60%).
 const PREVIEW_SOFT_CAP_NUM: usize = 60;
 const PREVIEW_SOFT_CAP_DEN: usize = 100;
 
-/// Gap between preview | id | meta columns.
 const COL_GAP: usize = 2;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,7 +34,6 @@ pub struct SessionResumePanel {
     sort: SortMode,
     name_filter: NameFilter,
     show_path: bool,
-    /// When true, render a full (never truncated) session id column.
     show_id: bool,
     selected: usize,
     folded_parents: HashSet<String>,
@@ -51,7 +45,6 @@ pub struct SessionResumePanel {
     current_cwd: String,
     status_line: Option<String>,
     theme: LayoutTheme,
-    /// Body rows in the session list viewport (Fixed-Zone Footprint budget).
     max_visible: usize,
 }
 
@@ -137,7 +130,6 @@ impl SessionResumePanel {
         self.filter.invalidate();
     }
 
-    /// Esc in rename/delete sub-state; returns true when consumed.
     pub fn cancel_substate(&mut self) -> bool {
         if self.rename.take().is_some() {
             return true;
@@ -231,9 +223,6 @@ impl SessionResumePanel {
                 .paint_muted(&truncate_to_width(&header, w, "…", true)),
         );
 
-        // MUST truncate: help is wider than many slots and trips xylitol-tui's
-        // hard width invariant (render_now Err → last good frame stuck on Loading).
-        // Put high-signal bindings (incl. ctrl+u id) early so they survive truncation.
         lines.push(self.theme.paint_muted(&truncate_to_width(
             "tab scope · ctrl+u id · ctrl+s sort · ctrl+n named · ctrl+d delete · ctrl+p path · ctrl+r rename · re:<pattern> · \"phrase\"",
             w,
@@ -313,8 +302,6 @@ impl SessionResumePanel {
         };
 
         for (i, entry) in rows.iter().enumerate().take(end).skip(start) {
-            // Preview is name / first_message only — id lives in its own column when
-            // show_id (never duplicate the id as the preview fallback).
             let primary = entry
                 .name
                 .as_deref()
@@ -538,10 +525,6 @@ impl SessionResumePanel {
     }
 }
 
-/// Build the row body after the `› `/`  ` prefix: preview · optional full id · count/age.
-///
-/// When `id` is `Some`, it is **never** truncated. Preview is soft-capped at ~60% of
-/// `width` and further limited by leftover space after reserving id + meta.
 fn format_session_row_body(
     label: &str,
     id: Option<&str>,
@@ -730,7 +713,6 @@ mod tests {
     #[test]
     fn resume_row_never_truncates_id_when_narrow() {
         let uuid = "550e8400-e29b-41d4-a716-446655440000";
-        // Too narrow for preview + id + meta; id must still be intact.
         let body = format_session_row_body(
             "very-long-preview-title",
             Some(uuid),

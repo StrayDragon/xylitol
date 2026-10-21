@@ -1,26 +1,14 @@
-//! Exhaustive `UiEntry` → activity contribution.
-//!
-//! New transcript block = new `UiEntry` variant + an arm here + (tools only)
-//! [`tool_activity_role`]. No `_ => {}`. No runtime plugin registry.
-
 use crate::bridge::UiEntry;
 use xylitol_plugin_sdk::tool_name::is_mcp_tool_name;
 
 pub use crate::bridge::STREAMING_THINK_ID;
 
-/// How an explore atom counts pathless calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExploreKind {
-    /// `read` / `ls` — pathless still occupies an anonymous file slot.
     File,
-    /// grep / glob / find — pathless qualifies Explored without a fake N.
     Search,
 }
 
-/// One middle's contribution to a cluster header.
-///
-/// Counting is encoded in the variant: unique paths (Edit / Explore), call
-/// count (Run / Used), omit (Noise).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActivityAtom {
     Edit {
@@ -35,7 +23,6 @@ pub enum ActivityAtom {
     Used {
         display_name: String,
     },
-    /// Live identity is the Thinking entry id, or [`STREAMING_THINK_ID`].
     Think {
         id: String,
     },
@@ -43,7 +30,6 @@ pub enum ActivityAtom {
         id: String,
     },
     Compaction,
-    /// Envelope / scaffold rows (User, Assistant, notices, bang Bash). Omitted.
     Noise,
 }
 
@@ -59,9 +45,6 @@ impl ActivityAtom {
     }
 }
 
-/// Closed tool-name → role table. Unknown names (MCP, `todo_*`, new tools)
-/// are Used-by-call. MUST NOT use `contains("search")` — that silently
-/// promoted unknown tools to Explored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolActivityRole {
     Edit,
@@ -84,7 +67,6 @@ pub fn tool_activity_role(name: &str) -> ToolActivityRole {
     }
 }
 
-/// Exhaustive: adding a `UiEntry` variant without an arm is a compile error.
 pub fn activity_atom(entry: &UiEntry) -> ActivityAtom {
     match entry {
         UiEntry::Tool {
@@ -149,7 +131,6 @@ fn used_display_name(name: &str) -> String {
     name.to_string()
 }
 
-/// Streaming / empty-path placeholder (`preview.rs` `PATH_PLACEHOLDER`), not a real file.
 pub(crate) fn is_path_placeholder(p: &str) -> bool {
     let p = p.trim();
     p.is_empty() || p == "..." || p == "…" || p == "$ ..." || p.starts_with("...")
@@ -172,7 +153,6 @@ fn tool_path_of(tool_path: &Option<String>, args_preview: &str) -> Option<String
         .map(str::to_string)
 }
 
-/// Count +/- lines in a unified diff; `None` when nothing reliable.
 pub fn count_diff_pm(diff: &str) -> Option<(u32, u32)> {
     let mut plus = 0u32;
     let mut minus = 0u32;

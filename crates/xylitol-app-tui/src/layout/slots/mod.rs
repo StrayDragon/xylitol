@@ -1,8 +1,3 @@
-//! Editor-slot state machine (ati18 / c494).
-//!
-//! Mutually exclusive replacement of the bottom editor zone. Atomic widgets
-//! still come from `xylitol_tui`; this enum owns the live face payload.
-
 mod ask;
 mod import;
 mod mcp;
@@ -23,8 +18,6 @@ pub use tree::{TreeAction, TreeSlot};
 
 pub(crate) use import::ImportAction;
 
-/// Whether `key` is bound to one of the shared `tui.select.*` navigation ids
-/// (up / down / pageUp / pageDown). Single place to add a new shared nav key.
 pub(crate) fn is_select_nav_key(key: &crossterm::event::KeyEvent) -> bool {
     matches_binding(key, "tui.select.up")
         || matches_binding(key, "tui.select.down")
@@ -39,10 +32,6 @@ pub(crate) use themes::ThemesAction;
 use crate::session_resume::SessionResumePanel;
 use strum::EnumMessage as _;
 
-/// Which face occupies the fixed editor slot (scrollback → queue → status → **slot** → footer).
-///
-/// [`EditorSlotKind`] is generated (`EnumDiscriminants`): new faces add one
-/// variant + `strum(message)` here, not a second match table.
 #[derive(Default, strum::EnumDiscriminants)]
 #[strum_discriminants(name(EditorSlotKind), derive(strum::EnumMessage), vis(pub))]
 pub enum EditorSlot {
@@ -51,10 +40,8 @@ pub enum EditorSlot {
     Editor,
     #[strum_discriminants(strum(message = "Session tree"))]
     Tree(TreeSlot),
-    /// 命令面板 empty shell (MAY; Esc closes).
     #[strum_discriminants(strum(message = "Command Plate"))]
     Plate,
-    /// Settings empty shell (MAY; Esc closes).
     #[strum_discriminants(strum(message = "Settings"))]
     Settings,
     #[strum_discriminants(strum(message = "Choice"))]
@@ -105,7 +92,6 @@ impl EditorSlot {
         self.kind().is_tree()
     }
 
-    /// Any non-Editor face that Esc MUST close first.
     pub fn is_overlay(&self) -> bool {
         self.kind().is_overlay()
     }
@@ -114,7 +100,6 @@ impl EditorSlot {
         self.kind().title()
     }
 
-    /// Empty Choice shell (harness / `open_slot`); product Ask goes through `AskSlot::mount`.
     pub fn choice_shell() -> Self {
         Self::Choice(AskSlot::empty())
     }

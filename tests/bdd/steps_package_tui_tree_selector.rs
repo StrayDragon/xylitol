@@ -1,10 +1,3 @@
-//! Steps for `package-tui-tree-selector` — 包级组件直驱（pts1–pts14）。
-//!
-//! 驱动路径与包内单测同一：构造 `TreeSelector`，键经 `Component::handle_input`
-//! 进 `tui.select.*` / `tui.tree.*` 键表；渲染走 `Component::render`。
-//! 回调（on_select / on_cancel / on_label_edit）写入 thread-local 捕获，
-//! 供 then 步骤断言（选择器由夹具独占持有，无跨步借用）。
-
 use crate::bdd::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 use rstest::fixture;
@@ -17,11 +10,9 @@ use xylitol_tui::{
     Component, InputEvent, TreeNode, TreeSelector, TreeSelectorOptions, TreeSelectorTheme,
 };
 
-/// Shared state: the selector plus the last rendered plain frame.
 pub struct TreeSelBdd {
     pub sel: RefCell<Option<TreeSelector>>,
     pub last_frame: RefCell<String>,
-    /// pts5：场景级翻页键作用域（夹具销毁时自动还原默认键表）。
     pub paging_scope: RefCell<Option<KeybindingsScope>>,
 }
 
@@ -46,7 +37,6 @@ fn reset_captures() {
     LABEL_EDITS.with(|s| s.borrow_mut().clear());
 }
 
-/// 样例树：root → parent branch → (child leaf / second leaf)。
 fn sample_tree() -> Vec<TreeNode> {
     vec![
         TreeNode::new("r", "root").with_child(
@@ -90,8 +80,6 @@ fn selected_id(bdd: &TreeSelBdd) -> Option<String> {
     with_sel(bdd, |sel| sel.selected_id().map(str::to_string))
 }
 
-// ── mounts ────────────────────────────────────────────────────
-
 fn mount(bdd: &TreeSelBdd, roots: Vec<TreeNode>, options: TreeSelectorOptions) {
     reset_captures();
     let mut sel = TreeSelector::new(roots, TreeSelectorTheme::default(), options);
@@ -111,14 +99,12 @@ fn leaf_only_predicate() -> xylitol_tui::TreeNodePredicate {
     Box::new(|n: &TreeNode| n.children.is_empty())
 }
 
-// pts1 / pts2 / pts3 / pts4 …共用的「样例树挂载」入口
 #[when("以样例树挂载 TreeSelector")]
 fn when_mount_sample(tree_sel_bdd: &TreeSelBdd) {
     mount(tree_sel_bdd, sample_tree(), TreeSelectorOptions::default());
     render_into(tree_sel_bdd, 80);
 }
 
-// pts2
 #[when("以样例树挂载 TreeSelector 并设置只含叶子的过滤")]
 fn when_mount_leaf_filter(tree_sel_bdd: &TreeSelBdd) {
     mount(tree_sel_bdd, sample_tree(), TreeSelectorOptions::default());
@@ -162,7 +148,6 @@ fn then_full_tree_restored(tree_sel_bdd: &TreeSelBdd) {
     }
 }
 
-// pts1
 #[then("根与子节点行可见且选中态落在首项")]
 fn then_rows_and_first_selected(tree_sel_bdd: &TreeSelBdd) {
     let frame = frame_of(tree_sel_bdd);
@@ -176,7 +161,6 @@ fn then_rows_and_first_selected(tree_sel_bdd: &TreeSelBdd) {
     );
 }
 
-// pts3
 #[when("按下 select down 再按下 select up")]
 fn when_down_then_up(tree_sel_bdd: &TreeSelBdd) {
     with_sel(tree_sel_bdd, |sel| {
@@ -237,7 +221,6 @@ fn then_selected_row_styled(tree_sel_bdd: &TreeSelBdd) {
     );
 }
 
-// pts4
 #[when("以样例树挂载 TreeSelector 并输入搜索串 \"child\"")]
 fn when_mount_and_search_child(tree_sel_bdd: &TreeSelBdd) {
     mount(tree_sel_bdd, sample_tree(), TreeSelectorOptions::default());
@@ -329,7 +312,6 @@ fn then_search_and_filter_and(tree_sel_bdd: &TreeSelBdd) {
     assert_eq!(ids, vec!["c2".to_string()], "pts4: search AND include_node");
 }
 
-// pts5
 fn thirty_leaves() -> Vec<TreeNode> {
     let leaves: Vec<TreeNode> = (0..30)
         .map(|i| TreeNode::new(format!("l{i}"), format!("leaf {i:02}")))
@@ -346,7 +328,6 @@ fn when_mount_paging(tree_sel_bdd: &TreeSelBdd) {
         create_default_definitions(),
         user,
     )));
-    // 场景级作用域：随夹具销毁自动还原默认键表（RAII）。
     let scope = KeybindingsScope::enter(kb);
     *tree_sel_bdd.paging_scope.borrow_mut() = Some(scope);
     mount(
@@ -406,10 +387,9 @@ fn when_default_left_right(tree_sel_bdd: &TreeSelBdd) {
 
 #[then("选中保持不变")]
 fn then_selection_unchanged(tree_sel_bdd: &TreeSelBdd) {
-    let _ = tree_sel_bdd; // 断言在上一步骤内完成，占位保持步骤同组
+    let _ = tree_sel_bdd;
 }
 
-// pts6
 #[when("以样例树挂载并设置状态后缀 \"[no-tools]\"")]
 fn when_mount_with_suffix(tree_sel_bdd: &TreeSelBdd) {
     mount(
@@ -436,10 +416,8 @@ fn then_suffix_after_counter(tree_sel_bdd: &TreeSelBdd) {
     );
 }
 
-// pts7
 #[when("以样例树挂载并把选中移到可折叠父节点")]
 fn when_mount_select_parent(tree_sel_bdd: &TreeSelBdd) {
-    // is_foldable 要求父层有 >1 个可见子节点（分支段语义）。
     let tree = vec![
         TreeNode::new("r", "root")
             .with_child(
@@ -517,7 +495,6 @@ fn then_folds_cleared(tree_sel_bdd: &TreeSelBdd) {
     });
 }
 
-// pts8
 #[when("以带注解与时间戳的样例树挂载")]
 fn when_mount_annotated(tree_sel_bdd: &TreeSelBdd) {
     let mut roots = sample_tree();
@@ -554,7 +531,6 @@ fn then_timestamp_visible(tree_sel_bdd: &TreeSelBdd) {
     );
 }
 
-// pts9
 #[when("以带注解的样例树挂载并选中该节点")]
 fn when_mount_annotated_select(tree_sel_bdd: &TreeSelBdd) {
     let mut roots = sample_tree();
@@ -604,10 +580,8 @@ fn then_timestamp_toggled(tree_sel_bdd: &TreeSelBdd) {
     );
 }
 
-// pts10
 #[when("以超长标签树挂载并按窄宽渲染")]
 fn when_mount_long_label_narrow(tree_sel_bdd: &TreeSelBdd) {
-    // 深层缩进让 anchor 列溢出窄宽——这才是平移触发的真实几何。
     let deep = TreeNode::new("r", "root").with_child(TreeNode::new("a", "A").with_child(
         TreeNode::new("b", "B").with_child(TreeNode::new("c", "C").with_child(TreeNode::new(
             "leaf",
@@ -639,7 +613,6 @@ fn then_pan_keeps_gutter_and_tail(tree_sel_bdd: &TreeSelBdd) {
     );
 }
 
-// pts11
 #[when("以样例树挂载并过滤到空集")]
 fn when_mount_empty_filter(tree_sel_bdd: &TreeSelBdd) {
     mount(tree_sel_bdd, sample_tree(), TreeSelectorOptions::default());
@@ -658,7 +631,6 @@ fn then_empty_state_row(tree_sel_bdd: &TreeSelBdd) {
     );
 }
 
-// pts12
 #[when("以样例树挂载并选中仍可见的节点后变更过滤")]
 fn when_mount_select_then_refilter(tree_sel_bdd: &TreeSelBdd) {
     mount(tree_sel_bdd, sample_tree(), TreeSelectorOptions::default());
@@ -694,7 +666,6 @@ fn then_selection_falls_to_first(tree_sel_bdd: &TreeSelBdd) {
     );
 }
 
-// pts13
 fn kind_tree(kind: Option<&str>) -> Vec<TreeNode> {
     let mut node = TreeNode::new("n1", "alpha");
     node.kind = kind.map(str::to_string);
@@ -743,7 +714,6 @@ fn then_no_kind_prefix(tree_sel_bdd: &TreeSelBdd) {
     );
 }
 
-// pts14
 #[when("以带 kind 的样例树挂载并搜索 kind 词")]
 fn when_mount_kind_search(tree_sel_bdd: &TreeSelBdd) {
     mount(

@@ -1,10 +1,7 @@
-//! Print mode — non-interactive, streaming stdout output.
-
 use xylitol_kernel::driver::{XyDriver, XyDriverError};
 
 pub use xylitol_app_print::{format_tool_end_line, format_tool_start_lines, render_stream};
 
-/// Run the agent in print mode with the given prompt.
 pub(crate) async fn run_print(
     driver: &mut dyn XyDriver,
     prompt: &str,

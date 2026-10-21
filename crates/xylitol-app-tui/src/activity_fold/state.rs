@@ -1,5 +1,3 @@
-//! Segment level map + nearest expand/collapse (att23 / att28).
-
 use std::collections::{HashMap, HashSet};
 
 use time::OffsetDateTime;
@@ -11,10 +9,8 @@ use super::segment::{SegmentLevel, partition_segments};
 use super::settings::ActivityFoldSettings;
 use super::summary::format_duration;
 
-/// Reserved hit seam: segment summary → content-relative half-open row range.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SegmentRowSpans {
-    /// `segment_id → [line_start, line_end)` in scrollback content rows.
     pub spans: HashMap<String, (usize, usize)>,
 }
 
@@ -47,17 +43,13 @@ impl SegmentClock {
     }
 }
 
-/// UI-root activity fold plane (orthogonal to [`crate::widgets::ScrollbackFold`]).
 #[derive(Debug, Clone, Default)]
 pub struct ActivityFoldState {
     pub settings: ActivityFoldSettings,
     levels: HashMap<String, SegmentLevel>,
-    /// Segments that have been auto-folded or user-collapsed at least once.
     entered: HashSet<String>,
-    /// Clusters independently expanded while envelope is L2 / keep-window L0.
     cluster_open: HashSet<String>,
     clocks: HashMap<String, SegmentClock>,
-    /// Paint-time reservation (not FoldHitTable).
     pub row_spans: SegmentRowSpans,
 }
 
@@ -69,7 +61,6 @@ impl ActivityFoldState {
         self.levels.get(id).copied().unwrap_or(SegmentLevel::L0)
     }
 
-    /// Effective level for paint (respects master switch).
     pub fn effective_level(&self, id: &str) -> SegmentLevel {
         self.level_of(id)
     }
@@ -127,9 +118,6 @@ impl ActivityFoldState {
         apply_auto_degrade(self, entries, trigger, protect_newest)
     }
 
-    /// Envelope header click: L3 ↔ expanded (L2). Does **not** use nearest
-    /// heuristics and does **not** walk the old L2→L0 ladder (clusters have
-    /// their own [`Self::toggle_cluster`]).
     pub fn toggle_one_step(&mut self, id: &str) -> bool {
         if !self.settings.enabled {
             return false;
@@ -145,7 +133,6 @@ impl ActivityFoldState {
         self.set_level(id, next)
     }
 
-    /// Expand nearest collapsed envelope, else nearest collapsed cluster (att28).
     pub fn expand_nearest(&mut self, entries: &[UiEntry]) -> bool {
         if !self.settings.enabled {
             return false;
@@ -170,7 +157,6 @@ impl ActivityFoldState {
         false
     }
 
-    /// Collapse nearest expanded cluster, else nearest expanded envelope.
     pub fn collapse_nearest(&mut self, entries: &[UiEntry]) -> bool {
         if !self.settings.enabled {
             return false;
@@ -202,19 +188,14 @@ impl ActivityFoldState {
     pub fn cluster_is_expanded(&self, envelope_id: &str, cluster_id: &str) -> bool {
         match self.level_of(envelope_id) {
             SegmentLevel::L3 => false,
-            // Keep-window L0 and L2 both show cluster heads; kids only when opened.
             SegmentLevel::L0 | SegmentLevel::L2 => self.cluster_open.contains(cluster_id),
         }
     }
 
-    /// Kids stay collapsed until the user opens that cluster (live and ended).
     pub fn cluster_kids_visible(&self, envelope_id: &str, cluster_id: &str) -> bool {
         self.cluster_is_expanded(envelope_id, cluster_id)
     }
 
-    /// Toggle a cluster. Envelope L3 first expands to L2 (header stays).
-    /// Keep-window / just-ended live (L0) MUST stay L0 — opening a cluster
-    /// must not invent a `Worked for` envelope.
     pub fn toggle_cluster(&mut self, cluster_id: &str) -> bool {
         if !self.settings.enabled {
             return false;
@@ -238,7 +219,6 @@ impl ActivityFoldState {
         true
     }
 
-    /// Ask-waiting live tail: expand the last cluster of the newest envelope.
     pub fn expand_live_cluster(&mut self, entries: &[UiEntry]) -> bool {
         let segs = partition_segments(entries);
         let Some(seg) = segs.last() else {
@@ -260,7 +240,6 @@ impl ActivityFoldState {
         self.clock_of(id).and_then(|c| c.duration_label())
     }
 
-    /// Debug/test: force a level and mark entered.
     pub fn force_level(&mut self, id: &str, level: SegmentLevel) {
         self.mark_entered(id);
         self.set_level(id, level);

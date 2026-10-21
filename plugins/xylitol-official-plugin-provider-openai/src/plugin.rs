@@ -1,9 +1,6 @@
-//! `PluginFactory` entry: OpenAI-compatible dialect is present in the process.
-
 use xylitol_plugin_sdk::EmptyPluginConfig;
 use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin, PluginFactory};
 
-/// Marker that the OpenAI dialect plugin is mounted.
 pub struct OpenAiDialect;
 
 pub struct OpenAiFactory;

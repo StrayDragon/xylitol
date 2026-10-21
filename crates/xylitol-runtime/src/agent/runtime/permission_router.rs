@@ -1,14 +1,7 @@
-//! Permission routing — sandbox capability + target extraction for tools.
-//!
-//! Single place for tool-name → capability mapping (ReAct + tool_exec). Adding a
-//! sandbox-sensitive tool means editing [`sandbox_capability`] (and target
-//! extraction if it needs a new arg shape) — not a second match in `react`.
-
 use serde_json::Value;
 
 use xylitol_plugin_sdk::{XyPermission, XyPermissionVerdict};
 
-/// Sandbox permission class used by the permission port.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SandboxCapability {
     Read,
@@ -16,7 +9,6 @@ pub(crate) enum SandboxCapability {
     Network,
 }
 
-/// Map a built-in tool name to its sandbox capability, if any.
 pub(crate) fn sandbox_capability(tool_name: &str) -> Option<SandboxCapability> {
     match tool_name {
         "read" => Some(SandboxCapability::Read),
@@ -26,7 +18,6 @@ pub(crate) fn sandbox_capability(tool_name: &str) -> Option<SandboxCapability> {
     }
 }
 
-/// Extract the permission-relevant target (path or domain) from tool arguments.
 pub(crate) fn permission_target(name: &str, args: &Value) -> String {
     match sandbox_capability(name) {
         Some(SandboxCapability::Read | SandboxCapability::Write) => args
@@ -43,9 +34,6 @@ pub(crate) fn permission_target(name: &str, args: &Value) -> String {
     }
 }
 
-/// Run the permission port for a tool name + pre-extracted target.
-///
-/// Returns `Some(deny_reason)` when the call must be blocked.
 pub(crate) fn check_tool_permission(
     engine: &dyn XyPermission,
     tool_name: &str,
@@ -62,16 +50,13 @@ pub(crate) fn check_tool_permission(
     }
 }
 
-/// Extract the first domain from a shell command containing a URL.
 fn extract_first_domain(command: &str) -> String {
-    // Look for common URL patterns: https://, http://.
     for word in command.split_whitespace() {
         let word = word.trim_matches('\'').trim_matches('"');
         if let Some(rest) = word
             .strip_prefix("https://")
             .or_else(|| word.strip_prefix("http://"))
         {
-            // Extract domain (stop at first /, :, or ?).
             let domain = rest.split(['/', ':', '?']).next().unwrap_or(rest);
             return domain.to_string();
         }

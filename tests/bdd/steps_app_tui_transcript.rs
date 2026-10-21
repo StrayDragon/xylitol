@@ -1,9 +1,3 @@
-//! Steps for `app-tui-transcript` — 无头帧与 rebuild seam 族。
-//!
-//! P1：纯字形合约（att19）。P2：场景构建器帧（att10/24/33/34）。
-//! P4：live scrollback（att1）、Thought 结算（att8）、travel 重建 seam
-//! （att12/18，走产品 `rebuild_scrollback_from_travel` 正常路径）。
-
 use crate::bdd::prelude::*;
 use crate::bdd::steps_app_tui_interaction::TuiInteraction;
 use rstest::fixture;
@@ -18,18 +12,13 @@ use xylitol_app_tui::travel_history_note;
 use xylitol_plugin_sdk::session::SessionTreeKind;
 use xylitol_plugin_sdk::session::SessionTreeTravel;
 
-/// Shared state for transcript glyph scenarios.
 pub struct TranscriptBdd {
     pub glyph_pair: RefCell<Option<(&'static str, &'static str)>>,
     pub previews: RefCell<Vec<String>>,
     pub plain_frame: RefCell<Option<String>>,
-    /// P2 批量：场景内累计的纯文本帧（顺序即渲染序）。
     pub frames: RefCell<Vec<String>>,
-    /// P4：最近一次产品 paint 的 ANSI 帧（颜色/样式断言）。
     pub ansi_frame: RefCell<Option<String>>,
-    /// P4：rebuild 场景的模型快照（重建 / 直播 / 追加通告等顺序留痕）。
     pub models: RefCell<Vec<UiModel>>,
-    /// c2510/att35：跨步推进的场景构建器（流式计数更新断言）。
     pub scene: RefCell<Option<SceneBuilder>>,
 }
 
@@ -46,7 +35,6 @@ pub fn transcript_bdd() -> TranscriptBdd {
     }
 }
 
-/// P2 管线公共入口：脚本事件 → 真实 UiRoot 渲染 → 剥离 ANSI 纯文本帧。
 fn render_plain(script: impl FnOnce(&mut SceneBuilder)) -> String {
     let mut sb = SceneBuilder::begin();
     script(&mut sb);
@@ -61,7 +49,6 @@ fn read_glyph_pair() -> (&'static str, &'static str) {
 
 #[given("折叠字形环境未指定（默认 Unicode 集）")]
 fn given_glyph_env_unset() {
-    // SAFETY: 本变量仅本步骤文件读写；场景内串行翻转，无并发窗口。
     unsafe { std::env::remove_var("XYLITOL_TUI_GLYPH_SET") };
 }
 
@@ -74,7 +61,6 @@ fn when_read_glyphs(transcript_bdd: &TranscriptBdd) {
 fn then_unicode_glyphs(transcript_bdd: &TranscriptBdd) {
     let pair = transcript_bdd.glyph_pair.borrow().expect("glyphs");
     assert_eq!(pair, ("▸", "▾"), "unicode fold/unfold glyphs");
-    // att19：可视宽 1 列、无 ANSI 转义
     for g in [pair.0, pair.1] {
         assert_eq!(g.chars().count(), 1, "glyph must occupy 1 column: {g}");
         assert!(!g.contains('\x1b'), "glyph must not carry ANSI: {g}");
@@ -83,7 +69,6 @@ fn then_unicode_glyphs(transcript_bdd: &TranscriptBdd) {
 
 #[then("切换环境变量 XYLITOL_TUI_GLYPH_SET=ascii 并重新读取")]
 fn when_flip_ascii_reread(transcript_bdd: &TranscriptBdd) {
-    // SAFETY: 同上；读后立即恢复删除，避免污染同进程其它用例。
     unsafe {
         std::env::set_var("XYLITOL_TUI_GLYPH_SET", "ascii");
     }
@@ -99,8 +84,6 @@ fn then_ascii_fallback(transcript_bdd: &TranscriptBdd) {
     let pair = transcript_bdd.glyph_pair.borrow().expect("glyphs");
     assert_eq!(pair, (">", "v"), "ascii fold/unfold fallback glyphs");
 }
-
-// ---- att13：折叠态工具人话摘要（位置摘要，名字由 header 单独绘制）----
 
 #[when("折叠态读取 bash、read、write 三类参数人话摘要")]
 fn then_read_tool_previews(transcript_bdd: &TranscriptBdd) {
@@ -135,9 +118,8 @@ fn then_tool_preview_shapes(transcript_bdd: &TranscriptBdd) {
 
 #[then("缺 path 时用三点占位且不回退完整 args JSON")]
 fn then_missing_path_placeholder(transcript_bdd: &TranscriptBdd) {
-    let _ = transcript_bdd; // 断言本地自足，夹具仅用于步骤分组
+    let _ = transcript_bdd;
     use xylitol_app_tui::human_tool_args_preview;
-    // 前一步存的是三类正常摘要；这里直接补算 edit 无 path 场景
     let edit_no_path = human_tool_args_preview(
         "edit",
         &serde_json::json!({"edits": [{"oldText": "a", "newText": "b"}]}),
@@ -149,8 +131,6 @@ fn then_missing_path_placeholder(transcript_bdd: &TranscriptBdd) {
         "must not embed full args JSON: {edit_no_path}"
     );
 }
-
-// ---- att10：相邻块空行分隔（P2 无头帧挂载面首证）----
 
 #[when("以场景构建器渲染相邻的助手块与工具块（宽 80）")]
 fn then_render_adjacent_blocks(transcript_bdd: &TranscriptBdd) {
@@ -174,8 +154,6 @@ fn then_block_gap_present(transcript_bdd: &TranscriptBdd) {
             .unwrap_or_else(|| panic!("frame must contain {needle:?}:\n{plain}"))
     };
     let alpha = find_last("alpha body");
-    // c2540: the cluster head is count-only now — locate the block row by its
-    // head form (the kid stays collapsed behind it in this scene).
     let tool = find_last("Exploring 1 file");
     assert!(
         tool > alpha,
@@ -187,8 +165,6 @@ fn then_block_gap_present(transcript_bdd: &TranscriptBdd) {
         "att10: adjacent blocks need >=1 blank line between:\n{plain}"
     );
 }
-
-// ---- att24 / att34 / att33：簇语义帧断言（P2 管线批量，真值对齐 live_tape）----
 
 #[when("以场景构建器回放读后改写序列（read old.rs 然后 edit a.rs）")]
 fn when_replay_read_then_edit(transcript_bdd: &TranscriptBdd) {
@@ -226,7 +202,6 @@ fn then_explored_and_editing_heads(transcript_bdd: &TranscriptBdd) {
 fn then_no_wrong_tense_after_end(transcript_bdd: &TranscriptBdd) {
     let frames = transcript_bdd.frames.borrow();
     let plain = frames.last().expect("frame");
-    // 开启中的回合内改写簇头保持现在时 Editing；MUST NOT 翻成 Edited 或与 Explored 并列同头
     assert!(
         plain.contains("Editing 1 file") && !plain.contains("Edited 1 file"),
         "post-end cluster head must stay Editing within live turn:\n{plain}"
@@ -410,8 +385,6 @@ fn then_assistant_live_unenveloped(transcript_bdd: &TranscriptBdd) {
     );
 }
 
-// ---- att1：live scrollback 多段正文不截断、包 Markdown 样式呈现 ----
-
 #[when("以场景构建器渲染多段助手正文（宽 80）")]
 fn when_render_multi_assistant(transcript_bdd: &TranscriptBdd) {
     use xylitol_app_tui::InteractionBdd;
@@ -457,8 +430,6 @@ fn then_assistant_line_styled(transcript_bdd: &TranscriptBdd) {
     );
 }
 
-// ---- att8：思考结算后 Thought {Ns} 外显 + 完整和弦旁注 ----
-
 #[when("以场景构建器回放思考加工具并结算 7 秒封轮挂载交互面")]
 fn when_mount_settled_thinking(transcript_bdd: &TranscriptBdd, tui_interaction: &TuiInteraction) {
     use xylitol_app_tui::InteractionBdd;
@@ -474,7 +445,7 @@ fn when_mount_settled_thinking(transcript_bdd: &TranscriptBdd, tui_interaction: 
     });
     fx.open_hit_viewport(200);
     *tui_interaction.fx.borrow_mut() = Some(fx);
-    let _ = transcript_bdd; // 帧断言走交互夹具渲染，占位保持步骤同组
+    let _ = transcript_bdd;
 }
 
 #[then("结算行外显 Thought 7s 且不再出现流式 Thinking 头")]
@@ -505,9 +476,6 @@ fn then_thinking_block_chord_hint(tui_interaction: &TuiInteraction) {
     );
 }
 
-// ---- att12 / att18：travel 重建 seam（产品正常路径） ----
-
-/// 一轮 live 条目：user → assistant(thinking + text + toolCall) → toolResult。
 fn rebuild_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
     let entries = vec![
         SessionEntry::Message(MessageEntry {
@@ -573,7 +541,6 @@ fn when_rebuild_from_parts(transcript_bdd: &TranscriptBdd) {
     let mut rebuilt = UiModel::default();
     rebuild_scrollback_from_travel(&mut rebuilt, &entries, &travel);
 
-    // 同一轮的直播事件流（相同 thinking / 正文 / 工具调用与结果）。
     let mut live = UiModel::default();
     apply_xy_event(&mut live, &XyEvent::ThinkingDelta("step 1".into()));
     apply_xy_event(
@@ -692,23 +659,19 @@ fn then_notice_trailing_not_prepended(transcript_bdd: &TranscriptBdd) {
     );
 }
 
-// ---- att4：rail 皮肤状态轨（accent / success / error，轨+gutter 结构） ----
-
 use xylitol_app_tui::FoldTarget;
 use xylitol_app_tui::InteractionBdd;
 
-/// rail 前缀 = 1 列底色 + `49m` 复位 + 1 列无底色 gutter（paint_left_rail_line 同构）。
 pub(crate) fn rail_prefix(rgb: xylitol_tui::terminal_colors::RgbColor) -> String {
     format!("\x1b[48;2;{};{};{}m \x1b[49m ", rgb.r, rgb.g, rgb.b)
 }
 
-/// 封轮 + 打开命中视口 + 定点展开簇头（簇头默认折叠，内层块须展开才进帧）。
 fn seal_and_open_cluster(fx: &mut InteractionBdd) {
     fx.push_xy(XyEvent::AgentEnd {
         messages: Vec::new(),
     });
     fx.open_hit_viewport(200);
-    let _ = fx.render_plain(80); // 注册折叠命中区
+    let _ = fx.render_plain(80);
     let hit = fx
         .fold_hits()
         .regions
@@ -748,7 +711,6 @@ fn then_rail_status_colors(tui_interaction: &TuiInteraction) {
     };
     let theme = xylitol_app_tui::LayoutTheme::product_dark();
     let p = theme.palette();
-    // att4 MAY soft-mix surface：产品轨色为 surface 与 vivid 的 0.72 混合。
     let cases = [
         ("pending.rs", mix_rgb(p.surface, p.accent, 0.72), "pending"),
         ("done.rs", mix_rgb(p.surface, p.success, 0.72), "success"),
@@ -782,7 +744,6 @@ fn then_rail_shape_and_reset(tui_interaction: &TuiInteraction) {
             .to_string();
         (done, prefix)
     };
-    // rail_prefix 末位即 \x1b[49m 复位 + 无底色 gutter 空格（结构即断言）。
     assert!(
         done.starts_with(&prefix),
         "att4: rail is one bg cell + 49m reset + bare gutter:\n{done:?}"
@@ -812,8 +773,6 @@ fn then_no_full_row_wash(tui_interaction: &TuiInteraction) {
         "att4: content area must not be washed with tool bg:\n{done:?}"
     );
 }
-
-// ---- att14：write 正文视口 + edit diff 默认可见 ----
 
 fn long_body(lines: usize) -> String {
     (1..=lines)
@@ -921,8 +880,6 @@ fn then_edit_diff_default_visible(tui_interaction: &TuiInteraction) {
     }
 }
 
-// ---- att15：[Full output: 脚注 warning 前景；未截断不伪造 ----
-
 const FULL_OUTPUT_FOOTER: &str =
     "[Full output: /tmp/x.log. Truncated: 20 lines shown (50.0KB limit)]";
 
@@ -938,7 +895,6 @@ fn bash_output(lines: usize, footer: Option<&str>) -> String {
     out
 }
 
-/// att16 产品形状：硬截断 bash 结果为 JSON（truncated + combined 内含脚注）。
 fn truncated_bash_result(lines: usize) -> String {
     serde_json::json!({
         "exit_code": 0,
@@ -1004,8 +960,6 @@ fn then_no_fabricated_footer(tui_interaction: &TuiInteraction) {
         "att15: untruncated output must not fabricate the footer:\n{plain}"
     );
 }
-
-// ---- att16：硬截断禁视口展开；write 正文仍可 Ctrl+O ----
 
 fn ctrl_key(ch: char) -> crossterm::event::KeyEvent {
     crossterm::event::KeyEvent {
@@ -1080,10 +1034,6 @@ fn then_write_body_expands(tui_interaction: &TuiInteraction) {
     );
 }
 
-// ---- att23 / att26 / att27 / att28：信封嵌套与 ActivityFold 自动收纳 ----
-
-/// 一轮会话条目：user → read 工具 → 中段正文 → edit 工具 → 末段正文。
-/// 每轮投影 5 个 UiEntry（User/Tool/Assistant/Tool/Assistant），seg id = `seg-{5n}`。
 fn activity_turns_fixture(turns: usize) -> (Vec<SessionEntry>, SessionTreeTravel) {
     fn add(
         entries: &mut Vec<SessionEntry>,
@@ -1218,7 +1168,7 @@ fn when_mount_four_turns_turn_end(tui_interaction: &TuiInteraction) {
 fn when_click_envelope_triangle(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    let _ = fx.render_plain(120); // 重新注册命中区
+    let _ = fx.render_plain(120);
     let hit = fx
         .fold_hits()
         .regions
@@ -1253,8 +1203,6 @@ fn then_oldest_envelope_collapsed(tui_interaction: &TuiInteraction) {
 #[then("该信封定点展开且中间助手正文与簇头行重新可见")]
 fn then_envelope_precise_expand(tui_interaction: &TuiInteraction) {
     let plain = frame_of(tui_interaction, 120);
-    // att23 展开到簇头态（L2）：中间正文与簇头行可见；内层块仍由簇级折叠
-    // 管辖（att25/att31），不在此处要求。
     assert!(
         plain.contains("mid-turn-0")
             && plain.contains("Explored 1 file")
@@ -1275,7 +1223,6 @@ fn then_turn_end_window(tui_interaction: &TuiInteraction) {
         2,
         "att26: keep_recent_turns=2 folds only turns outside the window:\n{plain}"
     );
-    // 近窗轮 = 信封展开的簇头态：正文与簇头行可见（内层块归簇级折叠管辖）。
     assert!(
         plain.contains("mid-turn-2")
             && plain.contains("end-turn-2")
@@ -1323,7 +1270,6 @@ fn then_no_envelope_when_disabled(tui_interaction: &TuiInteraction) {
         !plain.contains("Worked for"),
         "att26: disabled ActivityFold keeps the full ledger:\n{plain}"
     );
-    // 关闭收纳 ≠ 强制展开：密封簇保持默认收起（att25），簇头行可见即可再展开。
     assert!(
         plain.contains("Explored 1 file"),
         "att26: cluster heads stay visible when disabled:\n{plain}"
@@ -1333,7 +1279,6 @@ fn then_no_envelope_when_disabled(tui_interaction: &TuiInteraction) {
 #[then("折叠信封与收起簇头旁注均为 Alt+Shift+E")]
 fn then_marker_chords(tui_interaction: &TuiInteraction) {
     let plain = frame_of(tui_interaction, 120);
-    // 折叠信封（L3）与收起簇头（L2/virgin heads）的旁注都是「展开最近」和弦。
     for line in plain.lines().filter(|l| l.contains("Worked for")) {
         assert!(
             line.contains("(Alt+Shift+E)"),
@@ -1381,8 +1326,6 @@ fn then_no_planning_placeholder(tui_interaction: &TuiInteraction) {
         "att27: no placeholder rows:\n{plain}"
     );
 }
-
-// ---- att28：跨面动作 expandNearest / collapseNearest（键位路径） ----
 
 #[when("以场景构建器回放四轮活动并按重建收纳")]
 fn when_mount_four_turns_rebuild(tui_interaction: &TuiInteraction) {
@@ -1449,7 +1392,6 @@ fn then_nearest_expanded_to_heads(tui_interaction: &TuiInteraction) {
 #[then("次近折叠信封降为簇头态且最近簇头保持")]
 fn then_next_envelope_to_heads(tui_interaction: &TuiInteraction) {
     let plain = frame_of(tui_interaction, 120);
-    // c2540: heads are count-only now — distinguish envelopes by occurrence.
     assert_eq!(
         plain.matches("Explored 1 file").count(),
         2,
@@ -1481,8 +1423,6 @@ fn then_all_envelopes_recollapsed(tui_interaction: &TuiInteraction) {
         "att28: every turn is back under a Worked for head:\n{plain}"
     );
 }
-
-// ── c2510/att35: explore cluster head category-count suffix ────────
 
 #[when("以场景构建器回放多读多检索序列（三读两检索且检索无路径）")]
 fn when_replay_multi_read_search(transcript_bdd: &TranscriptBdd) {
@@ -1575,10 +1515,6 @@ fn then_suffix_updates_live(transcript_bdd: &TranscriptBdd) {
     );
 }
 
-// ---- att36：todo_* 块 body 清单渲染（直播 vs travel 重建同构） ----
-
-/// 一轮 todo 会话条目：user → assistant(toolCall todo_rewrite) → toolResult 全表快照
-/// + 一条 agent_todo Custom 快照（SSOT，resume 侧 checklist 来源）。
 fn todo_block_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
     use xylitol_plugin_sdk::session::CustomEntry;
     let todo_json = serde_json::json!({
@@ -1662,7 +1598,6 @@ fn when_todo_block_live_and_rebuild(transcript_bdd: &TranscriptBdd) {
     let mut rebuilt = UiModel::default();
     rebuild_scrollback_from_travel(&mut rebuilt, &entries, &travel);
 
-    // 同一轮的直播事件流：Start → TodoUpdated（typed，atd13）→ End。
     let todo_args = serde_json::json!({ "items": [
         { "id": "a", "content": "检查环境", "status": "in_progress" },
         { "id": "b", "content": "写清单" }
@@ -1742,7 +1677,6 @@ fn then_todo_block_bodies_agree(transcript_bdd: &TranscriptBdd) {
         );
     }
 
-    // 待办栏：latest-wins、两路径一致（不进对话区）。
     let rebuilt_list = checklist(&models[0]);
     let live_list = checklist(&models[1]);
     assert_eq!(rebuilt_list, live_list);
@@ -1923,8 +1857,6 @@ fn then_todo_tool_body_still_checklist(transcript_bdd: &TranscriptBdd) {
     }
 }
 
-// ---- att13/att36：todo_* 空态（fix-todo-empty-state） ----
-
 #[when("折叠态读取无 items 的 todo_rewrite 与带补丁 items 的 todo_update 的人话摘要")]
 fn when_todo_empty_arg_previews(transcript_bdd: &TranscriptBdd) {
     use xylitol_app_tui::human_tool_args_preview;
@@ -1950,7 +1882,6 @@ fn then_todo_update_preview_count(transcript_bdd: &TranscriptBdd) {
     assert!(!previews[1].contains("..."), "{previews:?}");
 }
 
-/// 空列表轮：user → assistant(toolCall todo_rewrite items:[]) → toolResult `{"items":[]}`.
 fn todo_empty_fixture_entries() -> (Vec<SessionEntry>, SessionTreeTravel) {
     let entries = vec![
         SessionEntry::Message(MessageEntry {

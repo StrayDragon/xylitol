@@ -1,13 +1,3 @@
-//! Edit tool — multi-edit with original-file matching.
-//!
-//! Key behaviors:
-//! - All edits match against the ORIGINAL file content, not sequentially.
-//! - Rejects overlapping edits, non-unique oldText, no-change edits.
-//! - Normalizes CRLF/CR → LF.
-//! - Strips/restores UTF-8 BOM.
-//! - Fuzzy-matches via NFKC normalization of smart quotes and dashes.
-//! - Returns unified patch AND display diff with line numbers.
-
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -51,15 +41,12 @@ impl EditTool {
         old_text: &str,
         file_path: &str,
     ) -> Result<std::ops::Range<usize>, XyToolError> {
-        // Exact match
         if let Some(pos) = file_content.find(old_text) {
             return Ok(pos..pos + old_text.len());
         }
-        // Fuzzy
         if let Some(pos) = patch::fuzzy_find(file_content, old_text) {
             return Ok(pos);
         }
-        // Patch fallback
         if let Some(pos) = patch::patch_find_range(file_content, old_text) {
             return Ok(pos);
         }
@@ -84,7 +71,6 @@ impl EditTool {
         Ok(())
     }
 
-    /// Core edit logic — isolated for use with mutation queue.
     async fn do_edit(
         file_path: &str,
         edit_pairs: Vec<(String, String)>,
@@ -106,7 +92,6 @@ impl EditTool {
         };
         let normalized = content_no_bom.replace("\r\n", "\n").replace('\r', "\n");
 
-        // Match all against ORIGINAL content
         let mut match_ranges: Vec<(usize, (usize, usize))> = Vec::new();
         for (i, (old, _)) in edit_pairs.iter().enumerate() {
             let range = Self::find_match_range(&normalized, old, file_path)?;
@@ -114,13 +99,11 @@ impl EditTool {
         }
         Self::check_overlaps(&match_ranges)?;
 
-        // Capture matched text per edit
         let mut matched_old_texts: Vec<String> = edit_pairs.iter().map(|_| String::new()).collect();
         for &(i, (start, end)) in &match_ranges {
             matched_old_texts[i] = normalized[start..end].to_string();
         }
 
-        // Build result by applying edits in sorted order
         let mut sorted: Vec<(usize, (usize, usize))> = match_ranges;
         sorted.sort_by_key(|(_, (s, _))| *s);
         let mut result_content = String::new();
@@ -141,7 +124,6 @@ impl EditTool {
             result_content
         };
 
-        // Atomic write
         let path = std::path::Path::new(file_path);
         let temp_path = path.with_extension("xylitol-tmp");
         tokio::fs::write(&temp_path, &final_content)
@@ -234,7 +216,6 @@ impl TypedTool for EditTool {
             })
             .collect::<Result<_, _>>()?;
 
-        // Check uniqueness
         let mut seen = HashSet::new();
         for (i, (old, _)) in edit_pairs.iter().enumerate() {
             if !seen.insert(old.as_str()) {
@@ -245,13 +226,10 @@ impl TypedTool for EditTool {
         }
 
         let cancel = ctx.cancel.clone();
-        // Resolve relative paths against the session workspace before queueing
-        // (queue keys are resolved absolute paths).
         let fp = resolve_to_dir(&ctx.workspace, &file_path)
             .to_string_lossy()
             .into_owned();
 
-        // Use mutation queue to serialize same-path edits
         let result_text = self
             .mutation_queue
             .run(&fp, || {

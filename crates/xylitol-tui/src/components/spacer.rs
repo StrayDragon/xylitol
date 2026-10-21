@@ -1,6 +1,5 @@
 use crate::tui::Component;
 
-/// Spacer component that renders empty lines.
 pub struct Spacer {
     lines: usize,
 }

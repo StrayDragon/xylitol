@@ -15,7 +15,6 @@ pub struct KeybindingDefinition {
 
 pub type KeybindingDefinitions = HashMap<&'static str, KeybindingDefinition>;
 
-/// User overrides from disk / tests (`id` → chords). Owned strings for JSON reload.
 pub type KeybindingsConfig = HashMap<String, Vec<String>>;
 
 #[derive(Debug, Clone)]
@@ -112,8 +111,6 @@ static TUI_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
     ("tui.input.copy", &["ctrl+c"], Some("Copy selection")),
     ("tui.select.up", &["up"], Some("Move selection up")),
     ("tui.select.down", &["down"], Some("Move selection down")),
-    // Unbound by default: bare ←→ reserved for product `/model` level cycle (c1470).
-    // Page chords can be restored via keybindings.json when needed.
     ("tui.select.pageUp", &[], Some("Selection page up")),
     ("tui.select.pageDown", &[], Some("Selection page down")),
     ("tui.select.confirm", &["enter"], Some("Confirm selection")),
@@ -122,7 +119,6 @@ static TUI_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         &["escape", "ctrl+c"],
         Some("Cancel selection"),
     ),
-    // Unbound by default: product / tests write chords; bare ←→ stay free.
     ("tui.tabs.prev", &[], Some("Previous tab title")),
     ("tui.tabs.next", &[], Some("Next tab title")),
     (
@@ -174,7 +170,7 @@ impl KeybindingsManager {
         let mut user_claims: HashMap<String, Vec<&'static str>> = HashMap::new();
         for (kb, keys) in user_bindings.iter() {
             let Some((&id, _)) = self.definitions.iter().find(|(def_id, _)| *def_id == kb) else {
-                continue; // unknown id — ignore
+                continue;
             };
             for key in keys {
                 user_claims.entry(key.clone()).or_default().push(id);
@@ -232,14 +228,10 @@ static GLOBAL_KEYBINDINGS: LazyLock<Mutex<Option<KeybindingsManager>>> =
     LazyLock::new(|| Mutex::new(None));
 
 thread_local! {
-    /// HostSession / tests install a scoped manager so matching does not need the
-    /// process-global mutex (and concurrent HostSession tests do not clobber each other).
-    static SCOPED_KEYBINDINGS: RefCell<Option<Rc<RefCell<KeybindingsManager>>>> =
+            static SCOPED_KEYBINDINGS: RefCell<Option<Rc<RefCell<KeybindingsManager>>>> =
         const { RefCell::new(None) };
 }
 
-/// RAII install of a thread-local keybindings manager for [`with_keybindings`].
-/// Restores the previous scoped value on drop (nested scopes supported).
 pub struct KeybindingsScope {
     prev: Option<Rc<RefCell<KeybindingsManager>>>,
 }
@@ -278,8 +270,6 @@ where
     f(guard.as_ref().unwrap())
 }
 
-/// Mutate the scoped manager if present, else the process-global manager
-/// (e.g. `set_user_bindings` on reload / package component tests).
 pub fn with_keybindings_mut<F, R>(f: F) -> R
 where
     F: FnOnce(&mut KeybindingsManager) -> R,
@@ -295,7 +285,6 @@ where
     f(guard.as_mut().unwrap())
 }
 
-/// Create default keybinding definitions from TUI_KEYBINDINGS.
 pub fn create_default_definitions() -> HashMap<&'static str, KeybindingDefinition> {
     let mut map = HashMap::new();
     for &(kb, keys, desc) in TUI_KEYBINDINGS.iter() {

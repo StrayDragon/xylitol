@@ -1,9 +1,3 @@
-//! Product attach client: unary + notifications on one `WS /rpc`.
-//!
-//! Default carrier is the product binary frame. `with_envelope(false)` and
-//! `XYLITOL_ENVELOPE_V3` are test injection; Host rejects JSON text as an illegal
-//! envelope. Handshake fails closed if the host does not advertise `fory-v3`.
-
 use std::collections::HashMap;
 use std::sync::{
     Arc, Mutex,
@@ -27,25 +21,20 @@ use xylitol_protocol::codec;
 use super::envelope_client::ENVELOPE_FORMAT_ENV;
 use super::{HostClient, HostClientError, MuxStream, envelope_client};
 
-/// Product attach client. Unreachable Host is a hard error (no InProcess fallback).
 #[derive(Clone)]
 pub struct HttpWsClient {
     base_url: String,
     ping_interval: std::time::Duration,
     idle_timeout: std::time::Duration,
     peer: Arc<tokio::sync::Mutex<Option<Arc<SharedWs>>>>,
-    /// Test injection: `None` follows `XYLITOL_ENVELOPE_V3` (unset = product on).
     envelope: Option<bool>,
 }
 
-/// c2425 mux liveness knobs.
 const MUX_PING_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);
-/// Two silent ping windows mark the link half-open.
 const MUX_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(40);
 
 enum Outgoing {
     Json(String),
-    /// c2834: fory v3 binary 帧(开关开时唯一上行形态)。
     Binary(Vec<u8>),
     Ping,
 }
@@ -71,7 +60,6 @@ impl HttpWsClient {
         }
     }
 
-    /// Test/BDD: inject ping/idle so half-open detection finishes in milliseconds.
     pub fn with_mux_liveness(
         mut self,
         ping_interval: std::time::Duration,
@@ -82,13 +70,11 @@ impl HttpWsClient {
         self
     }
 
-    /// Test-only: force the product carrier on/off, bypassing `XYLITOL_ENVELOPE_V3`.
     pub fn with_envelope(mut self, on: bool) -> Self {
         self.envelope = Some(on);
         self
     }
 
-    /// Unset env → product carrier on. Connect-time freeze.
     pub fn envelope_on_for_test(&self) -> bool {
         self.envelope_on()
     }
@@ -196,11 +182,8 @@ impl HttpWsClient {
 
         let idle_timeout = self.idle_timeout;
         let reader_peer = peer.clone();
-        // c2834:连接的 v3 模式在 connect 时定格(首 binary 帧决定双方形态,
-        // 运行中翻转 env 不追认既有连接)。
         let v3 = self.envelope_on();
         tokio::spawn(async move {
-            // v3 Event payload 的会话归属跟踪(Subscribed 帧填充)。
             let mut v3_session_id = String::new();
             loop {
                 let msg = tokio::select! {
@@ -242,7 +225,6 @@ impl HttpWsClient {
                         }
                     },
                     Ok(Message::Binary(bytes)) if v3 => {
-                        // c2834 task 3.1:下行 binary 帧(fory v3)。
                         match envelope_client::decode_downlink(&bytes, &mut v3_session_id) {
                             Ok(Some(envelope_client::Downlink::Response { rpc_id, result })) => {
                                 if let Some(tx) = reader_peer
@@ -273,8 +255,6 @@ impl HttpWsClient {
             }
         });
 
-        // c2834 task 3.3:开关开时首帧 binary describe 做格式硬闸(旧 host
-        // 未宣告 fory-v3 = 致命,不静默降级、不重试风暴)。
         if v3 && let Err(err) = negotiate_envelope(&peer, &url).await {
             fail_peer(&peer, &err.to_string());
             return Err(err);
@@ -294,9 +274,6 @@ impl HttpWsClient {
         } else {
             std::time::Duration::from_secs(30)
         };
-        // c2834 task 3.1:开关开时上行 fory binary 帧;pending 挂在数值
-        // rpc_id(数字形态直通 / 非数字稳定哈希)之下,与 reader 的
-        // `rpc_id.to_string()` 回填对齐。JSON 路径仍挂信封 rpcId,不动。
         let (outgoing, pending_key) = if self.envelope_on() {
             let bytes = envelope_client::client_request_bytes(rpc_id, method, &payload)
                 .map_err(|e| HostClientError::transport(format!("unary {method}: {e}")))?;
@@ -336,15 +313,8 @@ impl HttpWsClient {
     }
 }
 
-/// c2834 task 3.3:v3 格式硬闸协商。
-///
-/// 开关开的连接以 binary `host.describe` 作为首帧(同时触发服务端把该
-/// 连接下行切到 v3),describe 应答未宣告 `fory-v3`(旧 host 无 `formats`
-/// 字段 = 仅 jsonrpc)即致命失败——协议版本硬闸语义:不静默降级、不重试
-/// 风暴,错误信息指明退出路径。调用方负责 fail_peer 收尾半建连接。
 async fn negotiate_envelope(peer: &Arc<SharedWs>, url: &str) -> Result<(), HostClientError> {
     const NEGOTIATE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
-    // 协商发生在连接私有期(peer 尚未入库共享),专属 rpc_id 0 无碰撞。
     let bytes = envelope_client::describe_request_bytes()
         .map_err(|e| HostClientError::transport(format!("v3 negotiate: {e}")))?;
     let (tx, rx) = oneshot::channel();

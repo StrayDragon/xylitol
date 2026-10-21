@@ -1,12 +1,3 @@
-//! Policy matching utilities for sandbox access control.
-//!
-//! Provides glob-based path matching and wildcard domain matching used by
-//! [`GlobPolicy`](super::GlobPolicy).
-
-/// Check whether `path` matches any of the given glob patterns.
-///
-/// Uses the glob crate's pattern syntax. Patterns are matched against the
-/// full absolute path (not basename). Returns `true` if any pattern matches.
 pub fn path_matches_any(path: &str, patterns: &[String]) -> bool {
     if patterns.is_empty() {
         return false;
@@ -14,27 +5,13 @@ pub fn path_matches_any(path: &str, patterns: &[String]) -> bool {
     patterns.iter().any(|p| path_matches(path, p))
 }
 
-/// Check whether a single path matches a glob pattern.
-///
-/// Uses the `glob` crate's `Pattern` which supports `**` for recursive
-/// directory matching (e.g., `**/.env` matches `foo/.env` and `bar/baz/.env`).
 fn path_matches(path: &str, pattern: &str) -> bool {
     match glob::Pattern::new(pattern) {
         Ok(p) => p.matches(path),
-        Err(_) => {
-            // Invalid pattern: fall back to substring match
-            path.contains(pattern)
-        }
+        Err(_) => path.contains(pattern),
     }
 }
 
-/// Check whether `domain` matches any of the given domain patterns.
-///
-/// Supports the following pattern formats:
-/// - `example.com` — exact match
-/// - `*.example.com` — matches any subdomain of example.com
-/// - `example.*` — matches example.com, example.org, etc.
-/// - `*` — matches everything
 pub fn domain_matches_any(domain: &str, patterns: &[String]) -> bool {
     if patterns.is_empty() {
         return false;
@@ -42,22 +19,18 @@ pub fn domain_matches_any(domain: &str, patterns: &[String]) -> bool {
     patterns.iter().any(|p| domain_matches(domain, p))
 }
 
-/// Check whether a single domain matches a domain pattern.
 fn domain_matches(domain: &str, pattern: &str) -> bool {
     let domain = domain.trim().to_lowercase();
     let pattern = pattern.trim().to_lowercase();
 
-    // Wildcard: matches everything
     if pattern == "*" {
         return true;
     }
 
-    // Exact match
     if domain == pattern {
         return true;
     }
 
-    // `*.example.com` — match any subdomain
     if let Some(rest) = pattern.strip_prefix("*.") {
         if domain.ends_with(rest) && domain.len() > rest.len() {
             let before = &domain[..domain.len() - rest.len()];
@@ -66,7 +39,6 @@ fn domain_matches(domain: &str, pattern: &str) -> bool {
         return false;
     }
 
-    // `example.*` — match any TLD
     if let Some(prefix) = pattern.strip_suffix(".*") {
         if domain.starts_with(prefix) && domain.len() > prefix.len() {
             let after = &domain[prefix.len()..];
@@ -81,8 +53,6 @@ fn domain_matches(domain: &str, pattern: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ── Path matching ───────────────────────────────────────────
 
     #[test]
     fn test_path_exact_match() {
@@ -127,7 +97,6 @@ mod tests {
 
     #[test]
     fn test_path_env_file_pattern() {
-        // `**/.env` should match `.env` at any depth
         assert!(path_matches("/project/.env", "**/.env"));
         assert!(path_matches("/project/sub/.env", "**/.env"));
     }
@@ -138,8 +107,6 @@ mod tests {
         assert!(path_matches("/project/keys/rsa.pem", "**/*.pem"));
     }
 
-    // ── Domain matching ─────────────────────────────────────────
-
     #[test]
     fn test_domain_exact_match() {
         assert!(domain_matches("example.com", "example.com"));
@@ -148,7 +115,6 @@ mod tests {
     #[test]
     fn test_domain_wildcard_subdomain() {
         assert!(domain_matches("api.github.com", "*.github.com"));
-        // `*.github.com` matches subdomains only, not the root domain itself
         assert!(!domain_matches("github.com", "*.github.com"));
     }
 
@@ -185,7 +151,6 @@ mod tests {
 
     #[test]
     fn test_domain_subdomain_no_match_wrong_level() {
-        // `*.example.com` matches `sub.example.com` but not the apex `example.com`.
         assert!(domain_matches("sub.example.com", "*.example.com"));
     }
 }

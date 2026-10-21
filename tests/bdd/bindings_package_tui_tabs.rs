@@ -1,5 +1,3 @@
-//! BDD bindings for `package-tui-tabs` (c2880).
-
 use crate::bdd::steps_package_tui_tabs::{TabsBdd, tabs_bdd};
 use rstest_bdd_macros::scenario;
 

@@ -1,34 +1,21 @@
-//! Fold hit table for ApplicationOwned mouse (c2040 / c2860).
-
 use xylitol_tui::{Hit, HitId};
 
-/// Per-block / global fold target addressed by mouse hit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FoldTarget {
     Tool(String),
     Diff(String),
     Ask(String),
     Thinking(String),
-    /// 待办栏 doing 列翼头（in_progress）。
     TodoDoing,
-    /// 待办栏 pending 列翼头。
     TodoPending,
-    /// 待办栏 completed 列翼头（completed / cancelled）。
     TodoPast,
-    /// Global `compaction_expanded` (Wave A / att29).
     Compaction,
-    /// Per-block output-viewport fold (Ctrl+O semantics; att30); id = block fold
-    /// key (Tool `toolCallId` / Diff `diff_fold_key` / Bash id).
     OutputViewport(String),
-    /// Activity envelope summary (`Worked for` / att31); id = `seg-{user_idx}`.
     Segment(String),
-    /// Activity cluster header; id = `seg-{user_idx}:c{ord}`.
     Cluster(String),
-    /// Asking questions (Ask waiting): whole-line hit expands the live cluster.
     LiveTail,
 }
 
-/// One hit region in content coordinates (scrollback line space).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoldHitRegion {
     pub content_row: usize,
@@ -38,7 +25,6 @@ pub struct FoldHitRegion {
     pub target: FoldTarget,
 }
 
-/// Live fold hit regions + viewport mapping for screen → content hit tests.
 #[derive(Debug, Clone, Default)]
 pub struct FoldHitTable {
     pub regions: Vec<FoldHitRegion>,
@@ -46,7 +32,6 @@ pub struct FoldHitTable {
     pub transcript_rows: u16,
 }
 
-/// Left rail + gutter before a railed marker (`paint_left_rail_line`).
 const RAILED_HOVER_COLS: usize = 2;
 
 impl FoldHitTable {
@@ -83,7 +68,6 @@ impl FoldHitTable {
         }
     }
 
-    /// Map screen cell to a fold target. Later regions win (hint over body).
     pub fn hit(&self, screen_col: u16, screen_row: u16) -> Option<FoldTarget> {
         if screen_row >= self.transcript_rows {
             return None;
@@ -109,7 +93,6 @@ impl FoldHitTable {
             .collect()
     }
 
-    /// Dim 块头 / 可见左边轨 / 提示带 — not the payload body.
     pub fn pointer_hover_hits(&self) -> Vec<Hit> {
         self.regions
             .iter()

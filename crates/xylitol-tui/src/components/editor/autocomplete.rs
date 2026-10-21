@@ -6,8 +6,6 @@ use crate::components::select_list::{
 };
 
 impl super::Editor {
-    // ── c430: autocomplete via CompletionSource registry ───────────────
-
     pub(super) fn completion_ctx(&self) -> CompletionContext<'_> {
         CompletionContext {
             lines: &self.state.lines,
@@ -16,10 +14,6 @@ impl super::Editor {
         }
     }
 
-    /// Primary API: register pluggable completion sources (`/`, `@`, future `$`/`^`).
-    ///
-    /// Replacing sources MUST NOT dismiss an open popup — hosts refresh catalogs
-    /// while the user is typing (MCP poll / skill list). Re-probe in place.
     pub fn set_completion_sources(&mut self, sources: Vec<Box<dyn CompletionSource>>) {
         let keep_popup = self.is_showing_autocomplete();
         self.completion.set_sources(sources);
@@ -28,12 +22,10 @@ impl super::Editor {
         }
     }
 
-    /// Whether the autocomplete popup is currently open (host Enter routing).
     pub fn is_showing_autocomplete(&self) -> bool {
         self.autocomplete_state.is_some() && self.autocomplete_list.is_some()
     }
 
-    /// After text/cursor edits: dismiss, refresh, or open a matching source.
     pub(super) fn handle_autocomplete_on_edit(&mut self) {
         if self.completion.is_empty() {
             return;
@@ -43,7 +35,6 @@ impl super::Editor {
             if self.completion.should_dismiss_active(&ctx) {
                 let prev = self.completion.active_index();
                 self.cancel_autocomplete();
-                // Lone `/` stays closed; `/model␠` must hand off to model-id.
                 if let Some((i, _)) = self.completion.probe_first(&self.completion_ctx())
                     && prev != Some(i)
                 {
@@ -65,7 +56,6 @@ impl super::Editor {
         if self.completion.is_empty() {
             return;
         }
-        // Force=true for non-slash probes (file path Tab); slash stays regular.
         let ctx = self.completion_ctx();
         let force = match self.completion.probe_first(&ctx) {
             Some((_, m)) => !m.prefix.starts_with('/'),
@@ -125,7 +115,6 @@ impl super::Editor {
                     self.set_cursor_col(nc);
                     self.cancel_autocomplete();
                     self.on_changed();
-                    // Chain: `/model` slash apply → `/model ` → open arg catalog.
                     self.handle_autocomplete_on_edit();
                 } else {
                     self.apply_autocomplete_suggestions(
@@ -161,11 +150,6 @@ impl super::Editor {
             })
             .collect();
 
-        // Tab re-probes before apply (paste-burst stale prefix). MCP/skill
-        // catalog ticks also rebuild the list. Always picking the first prefix
-        // match would discard Down/Up and apply the first id. Only keep the
-        // row when the typed prefix is unchanged — further keystrokes must
-        // re-rank (fuzzy `model-t` still matches `model-fast`).
         let prev_value = self
             .autocomplete_list
             .as_ref()
@@ -213,7 +197,6 @@ impl super::Editor {
         if prefix.is_empty() {
             return 0;
         }
-        // Strip leading trigger for value compare (slash items store bare names).
         let needle = prefix
             .strip_prefix('/')
             .or_else(|| prefix.strip_prefix('@'))
@@ -253,17 +236,10 @@ impl super::Editor {
         self.clear_autocomplete_ui();
     }
 
-    /// Apply the highlighted autocomplete item into the editor buffer only
-    /// (no submit). Used by product host Enter (idle and busy) before slash parse.
     pub fn confirm_autocomplete_selection(&mut self) -> bool {
-        self.apply_selected_autocomplete(/* chain_next */ false)
+        self.apply_selected_autocomplete(false)
     }
 
-    /// Apply the highlighted autocomplete item into the editor.
-    ///
-    /// Returns `true` when text was updated. When `chain_next` is true (Tab),
-    /// re-probe sources after apply (e.g. `/model ` → model ids). Enter on
-    /// slash uses `chain_next=false` then submits (pi `tui.select.confirm`).
     pub(super) fn apply_selected_autocomplete(&mut self, chain_next: bool) -> bool {
         let apply_data = if let Some(ref list) = self.autocomplete_list {
             list.get_selected_item().map(|i| {

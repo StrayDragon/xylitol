@@ -1,5 +1,3 @@
-//! app-tui-storage BDD 步骤（c2470）：纯存储层场景，tmpdir 直驱。
-
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{given, then, when};

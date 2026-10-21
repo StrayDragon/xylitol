@@ -1,10 +1,3 @@
-//! Serve registration file (c2475): discovery contract for the daemon.
-//!
-//! `~/.xylitol/serve.json` (0600, atomic tmp+rename write). The daemon re-reads
-//! it on a fixed interval and reports eviction when the contents no longer
-//! match (replaced by a newer daemon or deleted). Attach-side readers use it
-//! to produce actionable failure diagnostics.
-
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -20,7 +13,6 @@ pub struct Registration {
 }
 
 impl Registration {
-    /// Registration describing this process.
     pub fn own(url: String) -> Self {
         Self {
             url,
@@ -30,7 +22,6 @@ impl Registration {
     }
 }
 
-/// Default registration path: `~/.xylitol/serve.json` (data dir convention).
 pub fn default_registration_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -38,7 +29,6 @@ pub fn default_registration_path() -> PathBuf {
         .join(REGISTRATION_FILE_NAME)
 }
 
-/// Atomic write (tmp + rename) with 0600 permissions on the temp file.
 pub fn write_registration(path: &Path, reg: &Registration) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -81,9 +71,6 @@ pub fn remove_registration(path: &Path) {
     let _ = std::fs::remove_file(path);
 }
 
-/// Self-eviction loop (c2475 sr-reg1): poll the registration file; when it no
-/// longer matches `own` (replaced or deleted), invoke `on_evicted` once and
-/// stop. The caller owns the shutdown/exit decision.
 pub async fn run_self_check(
     path: PathBuf,
     own: Registration,

@@ -1,5 +1,3 @@
-//! Remote HTTP/WS [`XyRemoteDriver`] (feature = "server").
-
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -29,7 +27,6 @@ use super::types::{
     XyEvent,
 };
 
-/// Notify the product TUI of mux reverse-RPC (approval/question).
 pub type ReverseRpcNotify = Arc<dyn Fn(String, String, Value) + Send + Sync>;
 
 #[derive(Clone)]
@@ -37,7 +34,6 @@ struct SharedDownlink {
     events: Arc<std::sync::Mutex<VecDeque<XyEvent>>>,
     notify: Arc<Notify>,
     started: Arc<AtomicBool>,
-    /// ath43 coalescing window in millis (trailing-edge debounce).
     window_ms: Arc<AtomicU64>,
     notify_scheduled: Arc<AtomicBool>,
 }
@@ -53,8 +49,6 @@ impl SharedDownlink {
         }
     }
 
-    /// Inject the coalescing window (c2480 tunings; MUST precede the first
-    /// downlink burst to matter).
     fn set_window(&self, window: Duration) {
         self.window_ms
             .store(window.as_millis() as u64, Ordering::SeqCst);
@@ -67,8 +61,6 @@ impl SharedDownlink {
         self.request_notify();
     }
 
-    /// One notify per burst: pushes inside the window share a single wake, so
-    /// the consumer drains the whole batch as one projection pass.
     fn request_notify(&self) {
         if self.notify_scheduled.swap(true, Ordering::SeqCst) {
             return;
@@ -78,8 +70,6 @@ impl SharedDownlink {
         let window_ms = self.window_ms.load(Ordering::SeqCst);
         tokio::spawn(async move {
             tokio::time::sleep(Duration::from_millis(window_ms)).await;
-            // Re-arm before waking: a push landing between these two lines
-            // schedules a fresh debounce instead of racing a spent permit.
             scheduled.store(false, Ordering::SeqCst);
             notify.notify_one();
         });
@@ -104,19 +94,11 @@ impl SharedDownlink {
     }
 }
 
-/// c2480 connection-resilience knobs. Product constants by default; tests
-/// inject micro-second values through [`XyRemoteDriver::with_tunings`] —
-/// there is deliberately no user-facing config surface for these.
 #[derive(Debug, Clone)]
 pub struct LinkTunings {
-    /// First reconnect delay; every young connection doubles it.
     pub backoff_base: Duration,
-    /// Escalation ceiling.
     pub backoff_cap: Duration,
-    /// A connection that lived at least this long resets backoff to base —
-    /// flapping links (die young) escalate instead of hammering the port.
     pub survive_threshold: Duration,
-    /// Downlink event coalescing window (ath43): one notify per burst.
     pub coalesce_window: Duration,
 }
 
@@ -131,7 +113,6 @@ impl Default for LinkTunings {
     }
 }
 
-/// Remote driver — [`XyDriver`] over a [`HostClient`] carrier.
 pub struct XyRemoteDriver<C = HttpWsClient> {
     host: C,
     session_id: String,
@@ -140,25 +121,15 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     thinking: std::sync::Mutex<String>,
     leaf_entry_id: Arc<std::sync::Mutex<Option<String>>>,
     last_seq: Arc<AtomicU64>,
-    /// c2480 downlink generation: bumped on every (re)start so a stale loop's
-    /// late pushes cannot reach the shared projection.
     downlink_gen: Arc<AtomicU64>,
-    /// Set when the downlink loop dies irrecoverably (e.g. protocol mismatch,
-    /// ath44): `wait_subscribed` fails fast with this message instead of
-    /// riding out its full deadline.
     fatal: Arc<std::sync::Mutex<Option<String>>>,
     tunings: Arc<LinkTunings>,
     reverse_rpc: Option<ReverseRpcNotify>,
     downlink: SharedDownlink,
     resync_needed: Arc<AtomicBool>,
     subscribed_ok: Arc<AtomicBool>,
-    /// When true, mux drops Agent/Turn/tool tape from a `last_seq=0` subscribe
-    /// (cold attach). Cleared on `session/subscribed`. Mid-turn reconnect uses
-    /// `last_seq>0` and keeps replay.
     skip_cold_replay: Arc<AtomicBool>,
-    /// c2895 观景态：attach 落在回合成中时的降级订阅（tape 冻结待重挂）。
     attach_observe: Arc<std::sync::Mutex<AttachObserve>>,
-    /// TUI process cwd; injected on every unary so Host can bind the session workspace.
     client_cwd: String,
     cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
     cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
@@ -168,26 +139,16 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
     cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
     gate_notice_consumed: Arc<AtomicBool>,
-    /// Set when mux `session/resources` (or a snapshot unary) updates the cache.
     resources_dirty: Arc<AtomicBool>,
-    /// Attach freeze unary is in flight (r1923 bounded wait). Drain must not
-    /// await it or Assembling never paints while MCP is still connecting.
     freeze_arm_inflight: Arc<AtomicBool>,
-    /// Interactive bang output-event sink (c2760): runtime-injected by the TUI
-    /// bang loop; downlink `session/bash_output` frames are forwarded into it.
     bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>>,
 }
 
 impl XyRemoteDriver<HttpWsClient> {
-    /// TUI attach uses the product carrier (`HttpWsClient` defaults on; this
-    /// constructor also forces `with_envelope(true)` so env cannot opt out).
     pub fn new_v3(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
         Self::with_host(HttpWsClient::new(base_url).with_envelope(true), session_id)
     }
 
-    /// Create a new XyRemoteDriver connected to `base_url`.
-    ///
-    /// `base_url` should be the server root, e.g. `http://127.0.0.1:18790`.
     pub fn new(base_url: impl Into<String>, session_id: impl Into<String>) -> Self {
         let session_id = session_id.into();
         let session_id = if session_id.trim().is_empty() {
@@ -203,8 +164,6 @@ impl XyRemoteDriver<HttpWsClient> {
     }
 }
 
-/// Per-generation downlink state: the driver's shared handles cloned once for
-/// one spawned reconnect loop, plus the loop's generation snapshot (c2480).
 struct DownlinkCtx<C> {
     host: C,
     session_id: String,
@@ -222,8 +181,6 @@ struct DownlinkCtx<C> {
     cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
     gate_notice_consumed: Arc<AtomicBool>,
     resources_dirty: Arc<AtomicBool>,
-    /// c2841：Host 绑定/装配同步的生效模型事件 → 写入缓存，供 current_model()
-    /// 收敛徽标（ModelInfo 缺失时回查已缓存可用模型表）。
     cached_model: Arc<std::sync::Mutex<Option<ModelInfo>>>,
     cached_models: Arc<std::sync::Mutex<Option<Vec<ModelInfo>>>>,
     bash_run_sink: Arc<std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>>,
@@ -231,14 +188,9 @@ struct DownlinkCtx<C> {
     downlink_gen: Arc<AtomicU64>,
     fatal: Arc<std::sync::Mutex<Option<String>>>,
     tunings: Arc<LinkTunings>,
-    /// Generation this loop belongs to (ath41): frames from a superseded
-    /// generation are dropped before they reach the projection.
     my_gen: u64,
 }
 
-/// Cache a resources snapshot and flip the dirty flag — shared by the
-/// driver-side snapshot paths (`apply_resources_cache`) and the downlink
-/// `session/resources` arm.
 fn store_resources_snapshot(
     cached_skills: &std::sync::Mutex<Vec<(String, String)>>,
     gate_notice_consumed: &AtomicBool,
@@ -267,15 +219,10 @@ fn store_resources_snapshot(
     resources_dirty.store(true, Ordering::SeqCst);
 }
 
-/// Per-generation downlink state: the driver's shared handles cloned once for
-/// one spawned reconnect loop, plus the loop's generation snapshot (c2480).
 impl<C> DownlinkCtx<C>
 where
     C: HostClient + Clone + 'static,
 {
-    /// 按 id 从已缓存可用模型表解析完整 `ModelInfo`（c2841 生效模型同步）。
-    /// 首次 attach 时可用模型表可能尚未就绪，未命中则拉取一次 `get_available_models`
-    /// 后重试；仍无则返回 None（徽标停留 NOT-SET，不失败）。
     async fn resolve_model_info(&self, model_id: &str) -> Option<ModelInfo> {
         let find = |models: &[ModelInfo]| models.iter().find(|m| m.id == model_id).cloned();
         let from_cache = || {
@@ -334,10 +281,6 @@ where
     }
 }
 
-/// One downlink frame arm (connected phase): session event tape,
-/// subscribe/resync/resources lifecycle, reverse-RPC prompts. Unknown frames
-/// are ignored; a malformed event is a no-op — recovery is driven by
-/// reconnect, never by frame errors (ath42).
 async fn handle_frame<C>(ctx: &DownlinkCtx<C>, push_current: &impl Fn(XyEvent), frame: RpcMessage)
 where
     C: HostClient + Clone + 'static,
@@ -367,12 +310,6 @@ where
                     follow_up_count: *follow_up_count,
                 };
             }
-            // c2841:Host 在会话绑定/装配时同步的生效模型事件(含用户显式配置
-            // 的默认模型)→ 写入缓存,供 current_model() 收敛徽标而非停在
-            // NOT-SET。事件仅载 provider/model_id,完整 ModelInfo 从已缓存
-            // 可用模型表按 id 解析;首次 attach 时可用模型表可能尚未就绪,
-            // 未命中则拉取一次后重试——本分支在 push_current 前完成,保证
-            // TUI 侧收到事件时缓存已就绪可立即刷新徽标。
             if let XyEvent::ModelSelect { model_id, .. } = &agent_event {
                 let found = ctx.resolve_model_info(model_id).await;
                 log::debug!(
@@ -391,7 +328,6 @@ where
             {
                 return;
             }
-            // c2895：观景态下对端回合结束 → 可重挂。
             if matches!(agent_event, XyEvent::AgentEnd { .. })
                 && let Ok(mut g) = ctx.attach_observe.lock()
                 && *g == AttachObserve::Inflight
@@ -406,7 +342,6 @@ where
         RpcMessage::ServerRequest {
             method, payload, ..
         } if method == "session/bash_output" => {
-            // c2760: non-journal bang output → injected sink (TUI bang loop).
             let chunk = xylitol_plugin_sdk::BashChunk {
                 bash_id: payload
                     .get("bash_id")
@@ -474,9 +409,6 @@ where
     }
 }
 
-/// ath42: silent reconnect pause — apply the flapping-aware backoff rule
-/// (ath41), then sleep until the pause elapses or the lifecycle token
-/// cancels. `None` = cancelled: stop the loop instead of reconnecting.
 async fn reconnect_pause<C>(
     ctx: &DownlinkCtx<C>,
     backoff: Duration,
@@ -493,16 +425,10 @@ async fn reconnect_pause<C>(
     }
 }
 
-/// The downlink reconnect loop: connect → subscribe → dispatch until the
-/// lifecycle token cancels. Split from the former inline `ensure_downlink`
-/// body; ath41/ath42/ath44 and c2480 semantics are unchanged.
 async fn downlink_loop<C>(ctx: DownlinkCtx<C>)
 where
     C: HostClient + Clone + 'static,
 {
-    // ath41/c2480: pushes from a downlink generation are dropped the
-    // moment the driver moves past it — stale frames never reach the
-    // shared projection.
     let push_current = {
         let downlink = ctx.downlink.clone();
         let downlink_gen = ctx.downlink_gen.clone();
@@ -513,8 +439,6 @@ where
             }
         }
     };
-    // ath41: a connection that survived the threshold earned a
-    // backoff reset; one that died young escalates (flapping ≠ outage).
     let next_backoff = {
         let tunings = ctx.tunings.clone();
         move |backoff: Duration, lived: Duration| -> Duration {
@@ -533,8 +457,6 @@ where
         let connected_at = tokio::time::Instant::now();
         match ctx.host.mux().await {
             Ok(mut mux) => {
-                // ath44: host.describe result already validated protocol;
-                // mux frames are JSON-RPC notifications.
                 let seq = ctx.last_seq.load(Ordering::SeqCst);
                 ctx.skip_cold_replay.store(seq == 0, Ordering::SeqCst);
                 match ctx
@@ -550,8 +472,6 @@ where
                     .await
                 {
                     Err(_) => {
-                        // ath42: silent — reconnect churn must not paint
-                        // the transcript; fixed-zone grace UX handles notice.
                         ctx.subscribed_ok.store(false, Ordering::SeqCst);
                         match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff)
                             .await
@@ -562,8 +482,6 @@ where
                         continue;
                     }
                     Ok(result) => {
-                        // c2895：应答 `inflight` = 绑定时刻回合成况；冷订阅（seq==0）
-                        // 且 inflight ⇒ 观景态（tape 冻结，显式重挂后复直播）。
                         let inflight = result
                             .into_std()
                             .ok()
@@ -588,10 +506,6 @@ where
                                     handle_frame(&ctx, &push_current, frame).await;
                                 }
                                 Some(Err(_)) => {
-                                    // ath42: silent break — the frame
-                                    // error is a connection fact, not
-                                    // a transcript event; reconnect
-                                    // and re-subscribe handle recovery.
                                     break;
                                 }
                                 None => break,
@@ -599,8 +513,6 @@ where
                         }
                     }
                 }
-                // Connection ended: report Down for the grace UX
-                // (ath42), survive-or-escalate, then retry.
                 ctx.subscribed_ok.store(false, Ordering::SeqCst);
                 match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff).await {
                     Some(next) => backoff = next,
@@ -608,8 +520,6 @@ where
                 }
             }
             Err(e) if matches!(e, HostClientError::ProtocolMismatch { .. }) => {
-                // ath44: a version the client cannot speak is fatal,
-                // never a transient failure — surface once and stop.
                 let msg = e.to_string();
                 if let Ok(mut slot) = ctx.fatal.lock() {
                     *slot = Some(msg.clone());
@@ -618,8 +528,6 @@ where
                 return;
             }
             Err(_) => {
-                // ath42: silent — reconnect churn must not paint the
-                // transcript; fixed-zone grace UX handles the notice.
                 ctx.subscribed_ok.store(false, Ordering::SeqCst);
                 match reconnect_pause(&ctx, backoff, connected_at.elapsed(), &next_backoff).await {
                     Some(next) => backoff = next,
@@ -675,9 +583,6 @@ where
         }
     }
 
-    /// Builder-style resilience tuning injection (tests / labs only; product
-    /// code uses the [`LinkTunings::default`] constants). MUST be called
-    /// before the first attach so the downlink loop is spawned with it.
     pub fn with_tunings(mut self, tunings: LinkTunings) -> Self {
         self.downlink.set_window(tunings.coalesce_window);
         self.tunings = Arc::new(tunings);
@@ -688,7 +593,6 @@ where
         self.reverse_rpc = Some(notify);
     }
 
-    /// Test seam: skip waiting for `session/subscribed` before `run`.
     pub fn mark_subscribed_ok_for_test(&self) {
         self.subscribed_ok.store(true, Ordering::SeqCst);
     }
@@ -718,8 +622,6 @@ where
         }
     }
 
-    /// True for Agent/Turn/stream tape that a cold `last_seq=0` subscribe must not
-    /// paint as live (c2307). Queue / error / fixed-zone facts still pass.
     pub fn is_cold_replay_tape(ev: &XyEvent) -> bool {
         matches!(
             ev,
@@ -754,31 +656,17 @@ where
     }
 
     async fn restart_downlink(&mut self) {
-        // c2480: the new generation invalidates the old loop's late pushes.
         self.downlink_gen.fetch_add(1, Ordering::SeqCst);
         self.session_life.cancel();
         self.session_life = CancellationToken::new();
         self.subscribed_ok.store(false, Ordering::SeqCst);
         self.downlink.started.store(false, Ordering::SeqCst);
-        // HTTP/WS mux is one shared socket bound at connect into Host
-        // `unbound_mux`. Reusing it after SwitchSession leaves the sink on
-        // the parent slot, so child prompt events have no subscriber.
         let _ = self.host.reset_mux().await;
         self.ensure_downlink();
     }
 
-    /// Session identity changed: the journal seq space belongs to the OLD
-    /// session, so re-subscribe cold (last_seq=0). The downlink loop arms
-    /// `skip_cold_replay` iff seq==0, which filters the new session's journal
-    /// replay — the transcript is rebuilt from `get_messages` instead. Without
-    /// this reset the stale seq made the daemon replay the new session's tape
-    /// from an arbitrary offset, and the bridge rendered the mid-message tail
-    /// as a live stream appended after the switch notice (resume 渲染修复).
     async fn restart_downlink_for_switched_session(&mut self) {
         self.last_seq.store(0, Ordering::SeqCst);
-        // Always restart: DownlinkCtx.session_id is a spawn-time snapshot.
-        // Skipping when `started` is false leaves the next subscribe on the
-        // old session, and a subsequent prompt on the child has no mux.
         self.restart_downlink().await;
     }
 
@@ -987,8 +875,6 @@ where
             .map_err(|e| XyDriverError::remote(format!("{}: {}", e.code, e.details)))
     }
 
-    /// Typed unary send (c2530)：方法名与载荷都从 `Command` 自身派生——
-    /// wire tag 就是 serde tag，字符串与手搓载荷无从漂移。
     async fn unary_cmd(&self, cmd: Command) -> Result<serde_json::Value, XyDriverError> {
         let value = serde_json::to_value(&cmd).map_err(|e| XyDriverError::remote(e.to_string()))?;
         let Some(method) = value
@@ -1052,8 +938,6 @@ where
         self.refresh_fixed_zone_caches().await
     }
 
-    /// c2790: owned bash completion — payload serialized eagerly so the returned
-    /// future holds only the cloned host client, never `self`.
     async fn bash_run(
         &mut self,
         command: &str,
@@ -1112,8 +996,6 @@ where
         self.downlink.drain()
     }
 
-    /// ath42/c2480: attachment health tracks the mux subscription; fixed-zone
-    /// grace UX (never transcript error rows) consumes it.
     fn link_health(&self) -> super::LinkHealth {
         if self.subscribed_ok.load(Ordering::SeqCst) {
             super::LinkHealth::Up
@@ -1142,8 +1024,6 @@ where
             };
             return Box::pin(stream);
         }
-        // Live turn tape must paint even if `session/subscribed` has not yet
-        // cleared the cold-subscribe skip (last_seq=0 after SwitchSession).
         self.skip_cold_replay.store(false, Ordering::SeqCst);
         let turn = {
             let mut g = self.turn_cancel.lock().unwrap_or_else(|e| e.into_inner());
@@ -1262,8 +1142,6 @@ where
     }
 
     fn current_model(&self) -> Option<ModelInfo> {
-        // Product TUI ticks / footer sync call this synchronously. HTTP `block_on`
-        // here freezes input (and `/model`) while MCP or Host unary is in flight.
         self.cached_model
             .lock()
             .ok()
@@ -1289,8 +1167,6 @@ where
     async fn estimate_context_tokens(
         &self,
     ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
-        // Remote surface: the host owns the system prompt + tool schemas —
-        // estimate there, never locally.
         let data = self.unary_cmd(Command::EstimateContext {}).await?;
         serde_json::from_value(data.get("estimate").cloned().unwrap_or(Value::Null))
             .map_err(|e| XyDriverError::remote(format!("estimate_context payload: {e}")))
@@ -1417,7 +1293,6 @@ where
     }
 
     async fn poll_prepare_progress(&mut self) -> bool {
-        // Attach observes writer MCP via mux `session/resources`, not 16Hz unary.
         self.resources_dirty.swap(false, Ordering::SeqCst)
     }
 
@@ -1426,10 +1301,6 @@ where
         cancel: &CancellationToken,
     ) -> Result<RuntimeReloadReport, XyDriverError> {
         self.gate_notice_consumed.store(false, Ordering::SeqCst);
-        // ath37 / sr-abort1: honour the injected cancel token. On cancel, ask the
-        // Host to cooperatively cancel the in-flight process-level reload via the
-        // existing `abort` unary, then finish locally as cancelled instead of
-        // waiting for the original call.
         let data = {
             let fut = self.unary("reload", serde_json::json!({}));
             tokio::pin!(fut);
@@ -1475,8 +1346,6 @@ where
         Ok(RuntimeReloadReport { steps, cancelled })
     }
 
-    /// Client-local clipboard semantics live in `super::clipboard` (shared
-    /// with the in-process driver; MUST NOT route through the Host, D1).
     async fn copy_text_to_clipboard(
         &mut self,
         text: &str,
@@ -1492,9 +1361,6 @@ where
         super::clipboard::read_clipboard_text().await
     }
 
-    /// Trust is a Host fact (gate + persistence live with the writer), so this
-    /// routes through a Host unary scoped to the session workspace — the TUI
-    /// MUST NOT write the Host's agent dir itself (D2).
     async fn persist_project_trust(
         &mut self,
         mode: ProjectTrustMode,
@@ -1525,7 +1391,6 @@ where
     }
 }
 
-// ── Command executor (c2710): Command is the SSOT of session operations ────
 #[async_trait]
 impl<C> crate::dispatch::SessionCommandExecutor for XyRemoteDriver<C>
 where
@@ -1904,7 +1769,6 @@ where
                 })
             }
 
-            // These variants are the caller's responsibility (see dispatch module docs).
             Command::Prompt { .. }
             | Command::Quit { .. }
             | Command::Subscribe { .. }

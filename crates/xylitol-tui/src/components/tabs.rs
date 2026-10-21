@@ -3,8 +3,6 @@ use crate::tui::{Component, Focusable, InputEvent};
 use crate::utils::{strip_ansi_codes, truncate_to_width, visible_width};
 use crossterm::event::{MouseButton, MouseEventKind};
 
-/// Theme closures for the title strip. Wrappers MUST keep the visible width of
-/// the inner fragment (range math uses unstyled columns).
 #[allow(clippy::type_complexity)]
 pub struct TabsTheme {
     pub title: Box<dyn Fn(&str, bool) -> String>,
@@ -28,7 +26,6 @@ impl Default for TabsTheme {
     }
 }
 
-/// Title-strip chrome: titles + selected index, no page children.
 pub struct Tabs {
     titles: Vec<String>,
     selected: usize,
@@ -105,8 +102,6 @@ impl Tabs {
         self.overflow_ranges.clone()
     }
 
-    /// Same hit path as [`Component::offer_pointer`]. True when the pointer
-    /// was on the strip (consumes); selected may or may not change.
     pub fn offer_pointer(&mut self, event: &InputEvent) -> bool {
         self.pointer_changed = false;
         let InputEvent::Mouse(mouse) = event else {
@@ -215,8 +210,6 @@ fn window_used(widths: &[usize], start: usize, end: usize) -> usize {
     marker_width(hidden_l, true) + titles + marker_width(hidden_r, false)
 }
 
-/// Selected stays in the window; grow left/right in alternation while whole
-/// titles fit (markers included).
 fn fit_window(widths: &[usize], selected: usize, width: usize) -> (usize, usize) {
     let n = widths.len();
     if n == 0 || width == 0 {

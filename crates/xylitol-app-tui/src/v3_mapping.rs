@@ -1,11 +1,3 @@
-//! Mapping layer — domain lifecycle events and serde wire commands ↔ v3 fory
-//! shapes (c2834 task 3.2).
-//!
-//! Pure conversion, no transport. Semantics MUST stay aligned with
-//! [`xylitol_protocol::event`]'s `to_wire_event` / `TryFrom<&Event>` (same
-//! degraded variant set, dynamic JSON blocks as `_json` strings per spec
-//! r1906, counter widths widened for the binary track).
-
 use serde_json::Value;
 
 use xylitol_plugin_sdk::lifecycle::{XyEvent, XyEventError};
@@ -21,13 +13,6 @@ use xylitol_protocol::Command as WireCommand;
 use xylitol_protocol::SessionTreeKind as WireSessionTreeKind;
 use xylitol_protocol::v3::generated as v3;
 
-// ── XyEvent → v3 Event ─────────────────────────────────────
-
-/// Convert a domain lifecycle event to its v3 fory representation.
-///
-/// Returns `None` for the same internal-only events as
-/// [`xylitol_protocol::ToWireEvent::to_wire_event`] (auto-retry bookkeeping, session-info /
-/// thinking-level projections covered elsewhere).
 pub fn xy_event_to_v3(ev: &XyEvent) -> Option<v3::Event> {
     match ev {
         XyEvent::TextDelta(text) => {
@@ -127,13 +112,11 @@ pub fn xy_event_to_v3(ev: &XyEvent) -> Option<v3::Event> {
                 provenance: estimate.provenance.as_str().to_string(),
                 usage_tokens: estimate.usage_tokens,
                 trailing_tokens: estimate.trailing_tokens,
-                // usize → u64 is lossless on supported targets.
                 last_usage_index: estimate.last_usage_index.map(|i| i as u64),
                 reason: reason.clone(),
                 generation: *generation,
             },
         )),
-        // Messages are REST-covered (`get_messages`), not part of the event.
         XyEvent::AgentEnd { .. } => Some(v3::Event::AgentEnd(v3::AgentEnd {})),
         XyEvent::Error(err) => Some(v3::Event::ErrorEvent(v3::ErrorEvent {
             kind: err.kind.clone(),
@@ -149,7 +132,6 @@ pub fn xy_event_to_v3(ev: &XyEvent) -> Option<v3::Event> {
         XyEvent::TodoUpdated { list } => Some(v3::Event::TodoListSnapshot(v3::TodoListSnapshot {
             list: Some(todo_list_to_v3(list)),
         })),
-        // Degraded (not on the wire): process-local or REST-covered.
         XyEvent::AgentStart { .. }
         | XyEvent::AutoRetryStart { .. }
         | XyEvent::AutoRetryEnd { .. }
@@ -161,14 +143,6 @@ pub fn xy_event_to_v3(ev: &XyEvent) -> Option<v3::Event> {
     }
 }
 
-// ── v3 Event → XyEvent ─────────────────────────────────────
-
-/// Convert a v3 fory event back to the domain lifecycle event.
-///
-/// Returns `None` for `Event::Unknown` (schema-ahead payload). Dynamic JSON
-/// blocks parse leniently: invalid JSON degrades to `Value::Null` / `None`
-/// instead of failing the whole event (spec r1719 unknown-is-degradable
-/// spirit) — MUST NOT panic.
 pub fn v3_event_to_xy(ev: &v3::Event) -> Option<XyEvent> {
     match ev {
         v3::Event::TextDelta(e) => Some(XyEvent::TextDelta(e.text.clone())),
@@ -236,7 +210,6 @@ pub fn v3_event_to_xy(ev: &v3::Event) -> Option<XyEvent> {
             reason: e.reason.clone(),
             generation: e.generation,
         }),
-        // Mirrors the JSON track: AgentEnd carries no message payload.
         v3::Event::AgentEnd(_) => Some(XyEvent::AgentEnd {
             messages: Vec::new(),
         }),
@@ -248,29 +221,13 @@ pub fn v3_event_to_xy(ev: &v3::Event) -> Option<XyEvent> {
             steer_count: e.steer_count as usize,
             follow_up_count: e.follow_up_count as usize,
         }),
-        v3::Event::TodoListSnapshot(e) => {
-            // Absent list is not a "cleared" signal (cleared = Some(empty));
-            // degrade rather than invent a snapshot.
-            e.list.as_ref().map(|list| XyEvent::TodoUpdated {
-                list: v3_todo_list_to_xy(list),
-            })
-        }
-        // Degraded: schema-ahead union member from a newer peer.
+        v3::Event::TodoListSnapshot(e) => e.list.as_ref().map(|list| XyEvent::TodoUpdated {
+            list: v3_todo_list_to_xy(list),
+        }),
         v3::Event::Unknown(_) => None,
     }
 }
 
-// ── wire Command ↔ v3 Command ──────────────────────────────
-
-/// Convert a serde wire command to its v3 fory representation.
-///
-/// `ClearQueue`'s serde `default = true` semantics live at the JSON edge;
-/// this layer passes the bools through as-is. `SessionTree` maps to the v3
-/// `SessionTreeCmd` member (fbs keyword collision).
-///
-/// v3 上行是透明信封(除 describe 外全 RAW 原文),生产路径不经本编码器;
-/// 保留给本模块往返对拍测试——与 [`v3_to_command`] 一起守护服务端
-/// typed 解码兼容(旧端 / Flutter POC 仍可能发 typed 帧)。
 #[cfg(test)]
 pub fn command_to_v3(cmd: &WireCommand) -> v3::Command {
     match cmd {
@@ -400,10 +357,6 @@ pub fn command_to_v3(cmd: &WireCommand) -> v3::Command {
     }
 }
 
-/// Convert a v3 fory command back to the serde wire command.
-///
-/// Returns `None` for `Command::Unknown` (schema-ahead payload from a newer
-/// peer).
 pub fn v3_to_command(cmd: &v3::Command) -> Option<WireCommand> {
     match cmd {
         v3::Command::Prompt(e) => Some(WireCommand::Prompt {
@@ -500,33 +453,21 @@ pub fn v3_to_command(cmd: &v3::Command) -> Option<WireCommand> {
             answer: e.answer.clone(),
         }),
         v3::Command::Quit(_) => Some(WireCommand::Quit {}),
-        // Degraded: schema-ahead union member from a newer peer.
         v3::Command::Unknown(_) => None,
     }
 }
 
-// ── dynamic JSON blocks ────────────────────────────────────
-
-/// Dynamic JSON block: `Option<AgentMessage>` → v3 `message_json` string
-/// (`None` stays `None`; serialization failure degrades to `None`, mirroring
-/// `to_wire_event`).
 fn agent_message_to_json_string(message: Option<&AgentMessage>) -> Option<String> {
     message.and_then(|m| serde_json::to_string(m).ok())
 }
 
-/// Lenient dynamic JSON block: v3 `_json` string → `Value`. Parse failure
-/// falls back to `Value::Null` — MUST NOT panic (spec r1719).
 fn json_string_to_value(json: &str) -> Value {
     serde_json::from_str(json).unwrap_or(Value::Null)
 }
 
-/// Lenient `message_json` parse: unparsable / absent → `None` (the Option
-/// level equivalent of the Null fallback; mirrors `TryFrom<&Event>`).
 fn json_string_to_agent_message(json: Option<&str>) -> Option<AgentMessage> {
     json.and_then(|s| serde_json::from_str(s).ok())
 }
-
-// ── small enum converters ──────────────────────────────────
 
 fn token_provenance_from_str(provenance: &str) -> TokenProvenance {
     TokenProvenance::from_key(provenance)
@@ -560,9 +501,6 @@ fn v3_session_tree_kind_to_xy(kind: &v3::SessionTreeKind) -> SessionTreeKind {
     }
 }
 
-// ── Todo snapshot converters (field-by-field) ──────────────
-
-/// xy → v3 goes through the public `TodoList.items` field (`TodoItem` itself
 /// is not exported outside `cfg(test)`).
 fn todo_list_to_v3(list: &TodoList) -> v3::TodoList {
     v3::TodoList {
@@ -586,8 +524,6 @@ fn todo_status_to_v3(status: TodoStatus) -> v3::TodoStatus {
     }
 }
 
-/// v3 → xy goes through the public loader (`from_data_value`); the JSON shape
-/// is built from closed enums on both sides, so the load cannot fail.
 fn v3_todo_list_to_xy(list: &v3::TodoList) -> TodoList {
     let items: Vec<serde_json::Value> = list
         .items
@@ -612,9 +548,6 @@ fn v3_todo_status_to_xy(status: &v3::TodoStatus) -> TodoStatus {
     }
 }
 
-// ── session entry / result converters（c2834 task 2.5b）──────
-
-/// 领域 `EntryBase` → v3。非 header 条目恒 `Some`（v3 侧可空只为容纳 header）。
 fn entry_base_to_v3(base: &EntryBase) -> Option<v3::EntryBase> {
     Some(v3::EntryBase {
         id: base.id.clone(),
@@ -623,8 +556,6 @@ fn entry_base_to_v3(base: &EntryBase) -> Option<v3::EntryBase> {
     })
 }
 
-/// v3 可空 base → 领域 base。缺 base 平移 serde `#[serde(default)]` 语义（空 id /
-/// 0 timestamp），使 v3 → 领域与 `from_value` 同形（对拍可逐字段比较）。
 fn v3_to_entry_base(base: &Option<v3::EntryBase>, entry_type: &str) -> EntryBase {
     let (id, parent_id, timestamp) = match base.as_ref() {
         Some(b) => (b.id.clone(), b.parent_id.clone(), b.timestamp),
@@ -638,12 +569,10 @@ fn v3_to_entry_base(base: &Option<v3::EntryBase>, entry_type: &str) -> EntryBase
     }
 }
 
-/// 可选动态 JSON 块：v3 `_json` → `Option<Value>`；缺位 None，不可解析降级 Null。
 fn opt_json_from_v3(json: &Option<String>) -> Option<Value> {
     json.as_ref().map(|s| json_string_to_value(s))
 }
 
-/// 领域会话条目 → v3 union（10 变体全覆盖；任意 JSON 子块走 `_json` 原文，spec r1906）。
 pub fn session_entry_to_v3(entry: &SessionEntry) -> v3::SessionEntry {
     match entry {
         SessionEntry::Header(h) => v3::SessionEntry::SessionHeader(v3::SessionHeader {
@@ -719,8 +648,6 @@ pub fn session_entry_to_v3(entry: &SessionEntry) -> v3::SessionEntry {
     }
 }
 
-/// v3 union → 领域条目。`Unknown`（对侧新变体，r1907）返回 `None`，由调用方整份
-/// 应答降级为 `RawOk`（对拍不断链，r1908）。
 pub fn v3_to_session_entry(entry: &v3::SessionEntry) -> Option<SessionEntry> {
     let mapped = match entry {
         v3::SessionEntry::SessionHeader(h) => SessionEntry::Header(SessionHeader {
@@ -799,7 +726,6 @@ pub fn v3_to_session_entry(entry: &v3::SessionEntry) -> Option<SessionEntry> {
     Some(mapped)
 }
 
-/// 领域树节点（递归）→ v3；v3 侧省略 `Clone`/`PartialEq`，故逐层重建。
 pub fn session_tree_node_to_v3(node: &SessionTreeNode) -> v3::SessionTreeNode {
     v3::SessionTreeNode {
         entry: session_entry_to_v3(&node.entry),
@@ -808,7 +734,6 @@ pub fn session_tree_node_to_v3(node: &SessionTreeNode) -> v3::SessionTreeNode {
     }
 }
 
-/// v3 树节点 → 领域（任一子节点落入 unknown 即整体降级，与条目同策略）。
 pub fn v3_to_session_tree_node(node: &v3::SessionTreeNode) -> Option<SessionTreeNode> {
     let entry = v3_to_session_entry(&node.entry)?;
     let mut children = Vec::with_capacity(node.children.len());
@@ -822,14 +747,12 @@ pub fn v3_to_session_tree_node(node: &v3::SessionTreeNode) -> Option<SessionTree
     })
 }
 
-/// `get_messages` / `load_session_entries` 应答 → v3 强 schema union。
 pub fn messages_result_to_v3(entries: &[SessionEntry]) -> v3::MessagesResult {
     v3::MessagesResult {
         entries: entries.iter().map(session_entry_to_v3).collect(),
     }
 }
 
-/// v3 `MessagesResult` → 领域条目；含 unknown 变体时整体 `None`。
 pub fn v3_to_entries(result: &v3::MessagesResult) -> Option<Vec<SessionEntry>> {
     result
         .entries
@@ -838,14 +761,12 @@ pub fn v3_to_entries(result: &v3::MessagesResult) -> Option<Vec<SessionEntry>> {
         .collect::<Option<Vec<_>>>()
 }
 
-/// `session_tree` 应答 → v3 强 schema union。
 pub fn tree_result_to_v3(nodes: &[SessionTreeNode]) -> v3::TreeResult {
     v3::TreeResult {
         nodes: nodes.iter().map(session_tree_node_to_v3).collect(),
     }
 }
 
-/// v3 `TreeResult` → 领域节点；含 unknown 变体时整体 `None`。
 pub fn v3_to_tree_nodes(result: &v3::TreeResult) -> Option<Vec<SessionTreeNode>> {
     result
         .nodes
@@ -854,7 +775,6 @@ pub fn v3_to_tree_nodes(result: &v3::TreeResult) -> Option<Vec<SessionTreeNode>>
         .collect::<Option<Vec<_>>>()
 }
 
-/// `travel_session_tree` 应答 → v3 强 schema union。
 pub fn travel_result_to_v3(travel: &SessionTreeTravel) -> v3::TravelResult {
     v3::TravelResult {
         kind: session_tree_kind_to_v3(sdk_to_wire_session_tree_kind(travel.kind)),
@@ -864,7 +784,6 @@ pub fn travel_result_to_v3(travel: &SessionTreeTravel) -> v3::TravelResult {
     }
 }
 
-/// v3 `TravelResult` → 领域（闭集枚举，不失败）。
 pub fn v3_to_travel_result(result: &v3::TravelResult) -> SessionTreeTravel {
     SessionTreeTravel {
         kind: v3_session_tree_kind_to_xy(&result.kind),
@@ -877,7 +796,6 @@ pub fn v3_to_travel_result(result: &v3::TravelResult) -> SessionTreeTravel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Test-only re-export (production reaches items via `TodoList.items`).
     use xylitol_plugin_sdk::session::TodoItem;
 
     #[test]
@@ -894,7 +812,6 @@ mod tests {
 
     #[test]
     fn tool_start_roundtrips_args_json_through_v3() {
-        // spec r1906: dynamic tool args cross as a JSON string, byte-faithful.
         let domain = XyEvent::ToolExecutionStart {
             id: "read-1".into(),
             name: "read".into(),
@@ -965,8 +882,6 @@ mod tests {
 
     #[test]
     fn todo_updated_roundtrips_through_v3() {
-        // atd13 / pa-todo1: full TodoList snapshot crosses v3 field-by-field;
-        // empty list (cleared) stays Some(empty).
         let domain = XyEvent::TodoUpdated {
             list: TodoList::new(vec![TodoItem {
                 id: "todo-1".into(),
@@ -996,7 +911,6 @@ mod tests {
 
     #[test]
     fn message_start_message_json_roundtrips_through_v3() {
-        // ati12: user MessageStart carries the full message as message_json.
         let domain = XyEvent::MessageStart {
             role: "user".into(),
             message: Some(AgentMessage::user("steer text")),
@@ -1032,7 +946,6 @@ mod tests {
 
     #[test]
     fn degraded_xy_events_do_not_cross_v3() {
-        // Same degraded set as `to_wire_event`: process-local or REST-covered.
         let degraded = vec![
             XyEvent::AgentStart {
                 session_id: "s1".into(),
@@ -1067,8 +980,6 @@ mod tests {
 
     #[test]
     fn bad_dynamic_json_degrades_without_panic() {
-        // spec r1719 spirit: unparsable dynamic blocks degrade per-field
-        // (message → None, args → Null); the event itself still converts.
         let v3ev = v3::Event::MessageStart(v3::MessageStart {
             role: "user".into(),
             message_json: Some("{not json".into()),
@@ -1093,14 +1004,10 @@ mod tests {
 
     #[test]
     fn v3_todo_snapshot_without_list_degrades_to_none() {
-        // Absent list must not fabricate a "cleared" snapshot.
         let v3ev = v3::Event::TodoListSnapshot(v3::TodoListSnapshot { list: None });
         assert!(v3_event_to_xy(&v3ev).is_none());
     }
 
-    /// All 38 wire command variants (declaration order; second tuple item is
-    /// the expected v3 member name — `SessionTree` pairs with the fbs-renamed
-    /// `SessionTreeCmd`).
     fn all_wire_commands() -> Vec<(WireCommand, &'static str)> {
         vec![
             (
@@ -1265,8 +1172,6 @@ mod tests {
         ]
     }
 
-    /// Test-only v3 member name (catches symmetric member mix-ups such as
-    /// Steer ↔ FollowUp that a pure roundtrip cannot see).
     fn v3_kind(cmd: &v3::Command) -> &'static str {
         match cmd {
             v3::Command::Unknown(_) => "Unknown",
@@ -1333,8 +1238,6 @@ mod tests {
         }
     }
 
-    /// task 2.5b 对拍地基：三类强 schema 应答经 fory 字节往返后，领域 JSON 与
-    /// JSON 轨逐字节同构（同一组 Serialize，无第二套词表）。
     #[test]
     fn session_result_types_roundtrip_through_fory_bytes() {
         use xylitol_plugin_sdk::session::{
@@ -1409,7 +1312,6 @@ mod tests {
             "条目 JSON 应与 JSON 轨同构（含 camelCase 与 skip 规则）"
         );
 
-        // 树:递归节点带 label，只 derive Debug/Default，故比 JSON 形状。
         let nodes = vec![SessionTreeNode {
             entry: entries[1].clone(),
             children: vec![SessionTreeNode {
@@ -1428,7 +1330,6 @@ mod tests {
             "树节点 JSON 应与 JSON 轨同构"
         );
 
-        // travel:闭集枚举不失败，editor_text 缺位保持 None。
         let travel = SessionTreeTravel {
             kind: SessionTreeKind::MessageHistory,
             selected_id: "e1".into(),
@@ -1447,7 +1348,6 @@ mod tests {
         );
     }
 
-    /// unknown 变体使整份载荷降级，不拼半份形状（r1907 + r1908）。
     #[test]
     fn unknown_entry_variant_degrades_whole_result() {
         use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};

@@ -1,7 +1,3 @@
-//! Print mode — non-interactive, streaming stdout output.
-//!
-//! Subscribes to an XyEvent stream and renders text/tool output.
-
 use std::io::{self, Write};
 
 use crate::tool_display::{is_mcp_tool_name, pretty_json_text, pretty_json_value};
@@ -9,17 +5,14 @@ use futures::StreamExt;
 use std::pin::Pin;
 use xylitol_runtime::XyEvent;
 
-/// Stream of lifecycle events from the in-process driver.
 pub type EventStream = Pin<Box<dyn futures::Stream<Item = XyEvent> + Send>>;
 
-/// Print-mode failure (maps from the composition-root driver at the CLI).
 #[derive(Debug, thiserror::Error)]
 pub enum PrintError {
     #[error("{0}")]
     Message(String),
 }
 
-/// Run the agent in print mode with the given prompt.
 pub async fn run_print<S>(stream: &mut S, _session_id: &str) -> Result<(), PrintError>
 where
     S: futures::Stream<Item = XyEvent> + Unpin,
@@ -30,10 +23,6 @@ where
     render_stream(stream, &mut handle).await
 }
 
-/// Render a stream of [`XyEvent`]s to a writer.
-///
-/// Extracted so print-mode event handling can be unit-tested without
-/// capturing the real stdout.
 pub async fn render_stream<S, W: Write>(stream: &mut S, writer: &mut W) -> Result<(), PrintError>
 where
     S: futures::Stream<Item = XyEvent> + Unpin,
@@ -41,9 +30,6 @@ where
     let mut in_thinking_block = false;
     let mut thinking_has_tags = false;
 
-    // Close an open thinking block: emit the closing `</think>` when the model
-    // did not tag the block itself, then clear block state. Shared by the
-    // MessageEnd / TextDelta / Error / stream-end paths below.
     let close_thinking_block = |in_thinking_block: &mut bool, thinking_has_tags: &mut bool| {
         if *in_thinking_block {
             if !*thinking_has_tags {
@@ -64,7 +50,6 @@ where
                 eprintln!("\n[Turn {turn_index} end]");
             }
             XyEvent::MessageStart { .. } => {
-                // Reset thinking state for a new assistant message.
                 in_thinking_block = false;
                 thinking_has_tags = false;
             }
@@ -78,11 +63,6 @@ where
             }
             XyEvent::ThinkingDelta(text) => {
                 if !in_thinking_block {
-                    // Some models (e.g. Qwen with chat-template thinking) emit
-                    // their own <think>...</think> tags inside the reasoning
-                    // stream. If we see a <think> tag, do not wrap the block
-                    // again; otherwise add our own tags so stderr viewers can
-                    // distinguish reasoning from the final answer.
                     thinking_has_tags = text.contains("<think>");
                     if !thinking_has_tags {
                         let _ = write!(io::stderr(), "<think>");
@@ -92,13 +72,7 @@ where
                 let _ = write!(io::stderr(), "{text}");
                 let _ = io::stderr().flush();
             }
-            XyEvent::MessageUpdate { .. } => {
-                // MessageUpdate carries the *accumulated* full message state
-                // (not a delta). In print mode we stream only TextDelta
-                // increments to stdout; writing this variant would repeat
-                // every prefix and produce garbled output like
-                // "HelloHello!Hello! How...".
-            }
+            XyEvent::MessageUpdate { .. } => {}
             XyEvent::ToolExecutionStart { name, args, .. } => {
                 for line in format_tool_start_lines(&name, &args) {
                     eprintln!("{line}");
@@ -135,11 +109,7 @@ where
             | XyEvent::AutoRetryEnd { .. }
             | XyEvent::SessionInfoChanged { .. }
             | XyEvent::ContextTokenSettlement { .. }
-            // atd9: print surface has no checklist UI; todo state stays in
-            // tool results + SSOT.
-            | XyEvent::TodoUpdated { .. } => {
-                // Lifecycle metadata: silent in print mode.
-            }
+            | XyEvent::TodoUpdated { .. } => {}
             XyEvent::AgentEnd { .. } => break,
         }
     }
@@ -150,7 +120,6 @@ where
 
 pub fn format_tool_start_lines(name: &str, args: &serde_json::Value) -> Vec<String> {
     let mut lines = vec![format!("\n[Tool: {name}]")];
-    // c1460: MCP call args on stderr for debug (pretty JSON).
     if is_mcp_tool_name(name) && !args.is_null() {
         lines.push(format!("args:\n{}", pretty_json_value(args)));
     }
@@ -163,7 +132,6 @@ pub fn format_tool_end_line(name: &str, result: &str) -> String {
     } else {
         result.to_string()
     };
-    // Summarize: MCP pretty may be long — keep a short preview + ellipsis.
     let lines: Vec<&str> = display.lines().collect();
     let take = if is_mcp_tool_name(name) { 24 } else { 3 };
     let preview: String = lines
@@ -307,7 +275,6 @@ mod tests {
         let mut stream = mock_stream(events);
         let mut buf: Vec<u8> = Vec::new();
         render_stream(&mut stream, &mut buf).await.unwrap();
-        // MCP fixed-zone output goes to stderr; stdout only gets final newline from AgentEnd path.
         assert_eq!(String::from_utf8(buf).unwrap(), "\n");
     }
 

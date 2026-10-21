@@ -1,19 +1,10 @@
-//! Ask gateway port — TUI-only builtin `ask` tool ↔ application face callback.
-//!
-//! Cross-face callback contract: `infra` implements the `ask` tool that calls
-//! the gateway; application faces (TUI host, CLI) implement the gateway. The
-//! contract lives here so faces never reach `infra` internals to provide the
-//! callback.
-
 use crate::error::XyToolError;
 
-/// Application-face callback: structured clarify / decision questionnaire.
 #[async_trait::async_trait]
 pub trait AskUserGateway: Send + Sync {
     async fn prompt(&self, args: AskArgs) -> Result<String, XyToolError>;
 }
 
-/// One option inside an ask question.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AskOptionArg {
     pub value: String,
@@ -24,7 +15,6 @@ pub struct AskOptionArg {
     pub recommended: bool,
 }
 
-/// Selection mode for one question.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum AskModeArg {
@@ -32,7 +22,6 @@ pub enum AskModeArg {
     Multi,
 }
 
-/// One question in an `ask` call.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AskQuestionArg {
     pub id: String,
@@ -49,7 +38,6 @@ fn default_allow_other() -> bool {
     true
 }
 
-/// Typed args for the `ask` tool.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AskArgs {
     pub questions: Vec<AskQuestionArg>,

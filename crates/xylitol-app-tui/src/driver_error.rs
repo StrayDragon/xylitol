@@ -1,5 +1,3 @@
-//! [`XyDriverError`] — typed failures for the shared application driver protocol.
-
 use strum::IntoStaticStr;
 
 use crate::clipboard::ClipboardError;
@@ -8,60 +6,41 @@ use xylitol_plugin_sdk::error::{
     XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
 };
 
-/// Errors from [`super::driver::XyDriver`] (整机遥控器 / 多端共享应用协议).
-///
-/// Distinct from [`XyError`] (ReAct / provider / tool hot path). Agent-loop
-/// failures that surface through the driver are wrapped as [`Self::Agent`].
-/// Flattened persist/export/trust failures keep their driver class in
-/// [`Self::kind`] (`NotFound`, `Io`, …) and the originating domain in
-/// [`Self::detail_kind`] / `source.kind` on [`Self::log_failure`].
-/// Control-plane [`XySessionError::NoActiveSession`] is `Message` + `Session`,
-/// not `NotFound`, so it does not collide with a missing session file.
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyDriverError {
-    /// Resource missing (session, entry, path, …).
     #[error("not found: {message}")]
     NotFound {
         message: String,
         source_kind: Option<&'static str>,
     },
 
-    /// This driver backend does not support the capability.
     #[error("unsupported: {message}")]
     Unsupported {
         message: String,
         source_kind: Option<&'static str>,
     },
 
-    /// Caller input / argument invalid.
     #[error("invalid input: {message}")]
     InvalidInput {
         message: String,
         source_kind: Option<&'static str>,
     },
 
-    /// Local IO / filesystem / clipboard transport failure.
     #[error("io: {message}")]
     Io {
         message: String,
         source_kind: Option<&'static str>,
     },
 
-    /// Remote driver / HTTP envelope failure.
     #[error("remote: {message}")]
     Remote {
         message: String,
         source_kind: Option<&'static str>,
     },
 
-    /// Agent / provider / tool failure bubbled through the driver.
     #[error(transparent)]
     Agent(XyError),
 
-    /// Display-preserving message (migration / opaque upstream strings).
-    ///
-    /// Prefer a more specific variant at new call sites. Kept so existing
-    /// human-readable strings stay stable while signatures move off `String`.
     #[error("{message}")]
     Message {
         message: String,
@@ -70,7 +49,6 @@ pub enum XyDriverError {
 }
 
 impl XyDriverError {
-    /// Stable kind for logs / fastrace (`NotFound`, `Agent`, …).
     pub fn kind(&self) -> &'static str {
         self.into()
     }
@@ -100,8 +78,6 @@ impl XyDriverError {
         self
     }
 
-    /// Nested kind: [`Self::Agent`] inner, or flattened domain (`Session` /
-    /// `Export` / `Trust`) when present; otherwise same as [`Self::kind`].
     pub fn detail_kind(&self) -> &'static str {
         match self {
             Self::Agent(inner) => inner.kind(),
@@ -109,8 +85,6 @@ impl XyDriverError {
         }
     }
 
-    /// Log a driver/dispatch failure with stable `error.kind` (and `agent.kind`
-    /// / `source.kind` when nested or flattened from a domain error).
     pub fn log_failure(&self, where_: &str) {
         match self {
             Self::Agent(inner) => {
@@ -182,13 +156,6 @@ impl XyDriverError {
         }
     }
 
-    /// Best-effort classify an opaque upstream string into a typed variant.
-    ///
-    /// Unknown strings stay [`Self::Message`] so Display text is unchanged.
-    /// Matched strings keep the original body and add a kind prefix via Display.
-    ///
-    /// Prefer specific phrases over bare tokens (`unavailable`, `failed to`) to
-    /// avoid misclassifying status notes and business-logic messages.
     pub fn from_opaque(msg: impl Into<String>) -> Self {
         let msg = msg.into();
         let lower = msg.to_ascii_lowercase();

@@ -166,7 +166,6 @@ fn yaml_zero_models_hard_fail_no_env_gpt4o() {
         ("XYLITOL_CONFIG_DIR", global_s),
     ];
 
-    // Explicit empty models map (config present, zero registerable models).
     std::fs::write(
         proj_xy.join("config.yaml"),
         "models:\n  default_model: x\n  models: {}\n",
@@ -194,7 +193,6 @@ fn env_only_does_not_invent_models() {
     let home_s = home.path().to_str().unwrap();
     let project_s = project.to_str().unwrap();
     let global_s = global.to_str().unwrap();
-    // Empty global + project dirs only — registry must not invent from process env.
     let entries = [
         ("HOME", home_s),
         ("XYLITOL_PROJECT_DIR", project_s),
@@ -321,7 +319,6 @@ fn yaml_model_api_is_honored_in_registry_config() {
         Some("openai-completions")
     );
     assert_eq!(by_id("completions-model").api, "openai-completions");
-    // c1940: explicit Completions is first-class
     assert_eq!(
         crate::provider::adapter::factory::resolve_adapter_kind(&by_id("completions-model").config),
         crate::provider::adapter::AdapterKind::OpenAiCompletions
@@ -336,7 +333,6 @@ fn yaml_model_api_is_honored_in_registry_config() {
         crate::provider::adapter::AdapterKind::OpenAiResponses
     );
 
-    // Omitted api → default_for(OpenAi) = Responses
     assert_eq!(by_id("default-api-model").config.api, None);
     assert_eq!(
         crate::provider::adapter::factory::resolve_adapter_kind(&by_id("default-api-model").config),
@@ -406,8 +402,6 @@ fn trust_override_loads_or_skips_project_xylitol_skills() {
     write_skill(&project, "c1620-proj-skill");
     let global = home.path().join(".config").join("xylitol");
     std::fs::create_dir_all(&global).unwrap();
-    // c2010: explicit-only model auth — register a model via config so
-    // bootstrap succeeds in the empty temp HOME.
     std::fs::write(
         project.join(".xylitol").join("config.yaml"),
         r#"models:

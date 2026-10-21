@@ -1,5 +1,3 @@
-//! Print client — renders an in-process `XyEvent` stream to stdout.
-
 mod print;
 mod tool_display;
 

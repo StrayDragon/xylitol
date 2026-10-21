@@ -1,15 +1,9 @@
-//! Expand `$skill` references into SKILL.md bodies for the model (c1130 / A10).
-//!
-//! Session history and scrollback keep the raw `$name` text; only the LLM-bound
-//! projection is expanded.
-
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::resource::SkillInfo;
 
-/// Collect unique `$name` tokens left-to-right (`[A-Za-z0-9_-]+`).
 pub fn dollar_skill_names(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut seen = HashSet::new();
@@ -38,7 +32,6 @@ pub fn dollar_skill_names(text: &str) -> Vec<String> {
     out
 }
 
-/// Strip YAML frontmatter (`---` … `---`) from SKILL.md; body trimmed.
 pub fn strip_skill_frontmatter(content: &str) -> String {
     let trimmed = content.trim_start();
     if !trimmed.starts_with("---") {
@@ -52,7 +45,6 @@ pub fn strip_skill_frontmatter(content: &str) -> String {
     content.trim().to_string()
 }
 
-/// Expand known `$name` refs using `skills` catalog. Unknown names left as-is.
 pub fn expand_skill_refs(text: &str, skills: &[SkillInfo]) -> String {
     let by_name: HashMap<&str, &SkillInfo> = skills.iter().map(|s| (s.name.as_str(), s)).collect();
     let names = dollar_skill_names(text);
@@ -91,7 +83,6 @@ fn read_skill_body(path: &Path) -> std::io::Result<String> {
     Ok(strip_skill_frontmatter(&raw))
 }
 
-/// Expand `$skill` on a cloned history destined for the model (session stays raw).
 pub fn expand_skills_in_agent_messages(messages: &mut [AgentMessage], skills: &[SkillInfo]) {
     if skills.is_empty() {
         return;

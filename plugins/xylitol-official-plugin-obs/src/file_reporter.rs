@@ -1,8 +1,3 @@
-//! File-only fastrace [`Reporter`] — never writes stdout/stderr (TUI-safe).
-//!
-//! Flattens span events into `provider-trace.jsonl` lines matching
-//! `xylitol.provider_trace.v1` (see c1000 design.md).
-
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -11,7 +6,6 @@ use std::sync::Mutex;
 use fastrace::collector::{Reporter, SpanRecord};
 use serde_json::{Map, Value};
 
-/// Schema id written on every JSONL line (bump only on breaking changes).
 pub const PROVIDER_TRACE_SCHEMA: &str = "xylitol.provider_trace.v1";
 
 pub struct FileTraceReporter {
@@ -50,14 +44,12 @@ impl Reporter for FileTraceReporter {
         for span in spans {
             let request_id = prop(&span.properties, "request_id").unwrap_or("");
             let api = prop(&span.properties, "api").unwrap_or("");
-            // Model lives on Langfuse key after attribute slim; keep bare `model` fallback.
             let model = prop(&span.properties, "model")
                 .or_else(|| prop(&span.properties, "langfuse.observation.model.name"))
                 .unwrap_or("");
             let trace_id = span.trace_id.to_string();
             let span_id = format!("{:016x}", span.span_id.0);
 
-            // Span-level correlation for lifecycle (agent.turn / iteration / tool.execute).
             let span_turn_id = prop(&span.properties, "turn_id");
             let span_tool_name = prop(&span.properties, "tool_name");
             let span_tool_id = prop(&span.properties, "tool_id");
@@ -94,7 +86,6 @@ impl Reporter for FileTraceReporter {
                 if let Some(text) = prop(&ev.properties, "text") {
                     obj.insert("text".into(), Value::String(text.into()));
                 }
-                // Lifecycle / low-freq span fields (c1265) — must not be dropped.
                 for key in [
                     "name",
                     "phase",
@@ -103,13 +94,9 @@ impl Reporter for FileTraceReporter {
                     "tool_name",
                     "tool_id",
                     "span_role",
-                    // token.estimate (c1420 follow-up); `backend` kept for old lines
                     "backend",
                     "provenance",
                     "tokens",
-                    // react.error / tool.error diagnostics (record_xy_error /
-                    // record_tool_error) — without these the error rows carry no
-                    // explanation beyond correlation ids.
                     "error.kind",
                     "where",
                     "message",
@@ -189,9 +176,6 @@ mod tests {
     use fastrace::collector::{EventRecord, SpanId, SpanRecord, TraceId};
     use std::borrow::Cow;
 
-    /// `react.error` / `tool.error` events must keep their diagnostic fields
-    /// (`error.kind` / `where` / `message`) in the JSONL row — without them an
-    /// error line is unexplainable beyond correlation ids.
     #[test]
     fn error_events_keep_diagnostic_fields() {
         let dir = tempfile::tempdir().unwrap();
@@ -222,7 +206,6 @@ mod tests {
         assert_eq!(v["error.kind"], "Provider");
         assert_eq!(v["where"], "react.run");
         assert_eq!(v["message"], "boom");
-        // Span-level correlation fallback still applies.
         assert_eq!(v["turn_id"], "t-1");
     }
 }

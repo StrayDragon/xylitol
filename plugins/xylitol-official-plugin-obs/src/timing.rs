@@ -1,15 +1,11 @@
-//! Startup timing instrumentation — gated behind XYLITOL_TIMING=1 env var.
-
 use std::time::Instant;
 
-/// Whether timing instrumentation is enabled.
 fn is_enabled() -> bool {
     std::env::var("XYLITOL_TIMING")
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
 }
 
-/// Global timing state.
 struct TimingState {
     timings: Vec<TimingEntry>,
     last_time: Instant,
@@ -21,14 +17,10 @@ struct TimingEntry {
     ms: u64,
 }
 
-// Use std::sync::OnceLock for lazy initialization
 use std::sync::Mutex;
 
 static STATE: Mutex<Option<TimingState>> = Mutex::new(None);
 
-/// Reset all timings and start a new timing window.
-///
-/// Safe to call multiple times — reinitializes the state.
 pub fn reset_timings() {
     if !is_enabled() {
         return;
@@ -41,7 +33,6 @@ pub fn reset_timings() {
     }
 }
 
-/// Record a timing point.
 pub fn time(label: &'static str) {
     if !is_enabled() {
         return;
@@ -56,7 +47,6 @@ pub fn time(label: &'static str) {
     }
 }
 
-/// Print all recorded timings to stderr.
 pub fn print_timings() {
     if !is_enabled() {
         return;
@@ -76,8 +66,6 @@ pub fn print_timings() {
         block.push_str(&format!("  {}: {}ms\n", entry.label, entry.ms));
     }
     block.push_str(&format!("  TOTAL: {total}ms\n------------------------"));
-    // Log (not eprintln): startup diagnostics belong on the same `log` sink as the
-    // rest of the observability stack (file when logging is enabled).
     log::info!(target: "xylitol::timing", "{block}");
 }
 
@@ -87,7 +75,6 @@ mod tests {
 
     #[test]
     fn test_disabled_by_default() {
-        // Don't set the env var — timing must be a full no-op: no state init.
         reset_timings();
         time("test");
         let state = STATE.lock().unwrap();
@@ -100,7 +87,6 @@ mod tests {
         time("step1");
         reset_timings();
         time("step2");
-        // Still disabled: nothing may have been recorded.
         let state = STATE.lock().unwrap();
         assert!(state.is_none(), "disabled timing must not record entries");
     }

@@ -16,12 +16,9 @@ use xylitol_protocol::envelope::{PROTOCOL_VERSION, RpcMessage};
 use xylitol_serve::Gateway;
 use xylitol_serve::occupancy::{EventJournal, ReverseRpcResult};
 
-/// c2841 场景族会话 id（W7：与 v3 族常量分列，禁止跨规则隐式借用）。
 const SESSION_C2841: &str = "s-c2841";
-/// c2842 v3 场景族会话 id。
 const SESSION_V3: &str = "s-v3";
 
-/// Shared fixture for server-core scenarios.
 pub struct ServerTest {
     pub running: RefCell<Option<RunningServer>>,
     pub host: RefCell<Option<Arc<HostState>>>,
@@ -36,35 +33,24 @@ pub struct ServerTest {
     pub approval_rx: RefCell<Option<tokio::sync::oneshot::Receiver<ReverseRpcResult>>>,
     pub last_rpc: RefCell<Option<ReverseRpcResult>>,
     pub mux_acc: Arc<std::sync::Mutex<Vec<RpcMessage>>>,
-    /// sr-sub1：跨步骤持有已订阅会话的下行流。
     pub mux_rx: RefCell<Option<MuxStream>>,
-    /// c2460 sr-idem：幂等场景的两次应答与首次执行的侧写。
     pub idem_first: Arc<std::sync::Mutex<Option<String>>>,
     pub idem_second: RefCell<Option<String>>,
     pub idem_exec_file: RefCell<Option<std::path::PathBuf>>,
     pub idem_task: RefCell<Option<tokio::task::JoinHandle<()>>>,
-    /// c2465 sr-rdy1：就绪窗口场景的网关与最近一次 healthz 应答。
     pub gateway: RefCell<Option<Arc<Gateway>>>,
     pub rdy_status: Cell<u16>,
     pub rdy_body: RefCell<Option<String>>,
-    /// c2475 sr-reg1：注册文件路径与自检驱逐信号。
     pub reg_path: RefCell<Option<std::path::PathBuf>>,
     pub evict_rx: RefCell<Option<tokio::sync::watch::Receiver<bool>>>,
-    /// c2480 ath44：真线 attach 场景跨步骤持有产品 RemoteDriver。
     pub attach_driver: RefCell<Option<XyRemoteDriver<HttpWsClient>>>,
-    /// c2825：POST /rpc 写者租约响应 header。
     pub writer_header: RefCell<Option<String>>,
-    /// r1793：他进程持 `session.lock` 的夹具。
     pub lock_child: RefCell<Option<std::process::Child>>,
-    /// r1928：非产品二进制 body 的 POST 结果（status, body）。
     pub nonbinary_posts: RefCell<Vec<(u16, String)>>,
-    /// c2895：观景态场景的两侧订阅 rx 与绑定应答。
     pub observe_rx_a: RefCell<Option<tokio::sync::mpsc::Receiver<RpcMessage>>>,
     pub observe_rx_b: RefCell<Option<tokio::sync::mpsc::Receiver<RpcMessage>>>,
     pub observe_bind: RefCell<Option<serde_json::Value>>,
-    /// c2895：busy 拒绝场景的错误码。
     pub busy_code: RefCell<Option<String>>,
-    /// r1923/r1925：arm_tool_freeze 场景的会话、结果与耗时。
     pub freeze_session: RefCell<String>,
     pub freeze_value: RefCell<Option<serde_json::Value>>,
     pub freeze_error: RefCell<Option<String>>,
@@ -584,9 +570,7 @@ fn g_occupy_18790(server_test: &ServerTest) {
         Ok(l) => {
             server_test.occupied.replace(Some(l));
         }
-        Err(_) => {
-            // already occupied by another process — still valid for the scenario
-        }
+        Err(_) => {}
     }
 }
 
@@ -743,8 +727,6 @@ fn w_session_methods_registered(_server_test: &ServerTest) {
 fn w_host_resource_methods(_server_test: &ServerTest) {
     assert!(xylitol_protocol::is_unary_method("reload"));
 }
-
-// ── server-ws ─────────────────────────────────────────────────────
 
 #[given(
     "构造下行 session/event、session/subscribed、session/resync_required 与 session/resources notification"
@@ -1153,8 +1135,6 @@ fn t_w7(server_test: &ServerTest) {
     assert!(hit, "expected session/event, got {frames:?}");
 }
 
-// ── w8 冷恢复投影 ────────────────────────────────────────────────
-
 async fn seed_w8_history(server_test: &ServerTest) {
     start_host(server_test).await;
     let host = server_test.host.borrow().as_ref().expect("host").clone();
@@ -1183,7 +1163,6 @@ async fn seed_w8_history(server_test: &ServerTest) {
 
 async fn snapshot_s0(server_test: &ServerTest) {
     let client = HttpWsClient::new(server_test.base_url());
-    // 冷订进入恢复窗（last_seq=0），与真实 attach 一致。
     let subscribed = client
         .unary(
             "subscribe",
@@ -1285,8 +1264,6 @@ async fn t_w8_sr4_intact(server_test: &ServerTest) {
         "sr4 continuity MUST hold: replay starts at last_seq+1"
     );
 }
-
-// ── reverse RPC ───────────────────────────────────────────────────
 
 #[given("服务端和已连接的 mux 客户端")]
 async fn g_rr_mux(approval_test: &ServerTest) {
@@ -1728,8 +1705,6 @@ fn t_sr_w1_linger_held(server_test: &ServerTest) {
     assert_eq!(code, Some(2), "linger reconnect MUST keep occupancy");
 }
 
-// ---- sr-q1 / sr-abort1 / sr-sub1：queue_stats 只读、reload 合作取消、订阅跨回合存活 ----
-
 #[when("POST /rpc 查询只读方法 queue_stats")]
 async fn w_queue_stats(server_test: &ServerTest) {
     let (st, token, body) = post_rpc(
@@ -1843,7 +1818,6 @@ async fn w_agent_end_then_more(server_test: &ServerTest) {
     let slot = host.slot("s-sub").await;
     slot.append_and_push(Event::AgentEnd).await;
 
-    // 收 AgentEnd 帧（可能先到 subscribed 确认帧）
     let mut frames: Vec<RpcMessage> = Vec::new();
     for _ in 0..3 {
         let f = tokio::time::timeout(Duration::from_secs(2), mux.next())
@@ -1866,7 +1840,6 @@ async fn w_agent_end_then_more(server_test: &ServerTest) {
         "expected AgentEnd frame, got {frames:?}"
     );
 
-    // 回合结束后订阅必须仍存活：追加新事件且继续送达同一连接
     slot.append_and_push(Event::TextDelta {
         text: "after-agent-end".into(),
     })
@@ -1901,8 +1874,6 @@ fn t_subscription_alive(server_test: &ServerTest) {
 
 #[when("POST /rpc 调用未登记方法 no_such_method")]
 async fn w_unknown_unary(server_test: &ServerTest) {
-    // 闭集 Method 枚举下未登记名无法编成合法 v3 帧；JSON 文本与非法 method_id
-    // 均在解码层拒（HTTP 400），与 unknown-method-id-stable-fail 同语义。
     let body = r#"{"jsonrpc":"2.0","id":"R","method":"no_such_method","params":{}}"#;
     let (st, resp) = http_status(server_test.port.get(), "POST", "/rpc", body).await;
     server_test.unary_status.set(st);
@@ -1934,9 +1905,6 @@ fn t_unknown_unary_shape(server_test: &ServerTest) {
     );
 }
 
-// ---- c2460 sr-idem：unary 幂等准入 ----
-
-/// 以固定 JSON-RPC `id` 提交 POST /rpc，返回应答体原文。
 async fn post_unary_rpc_id(
     port: u16,
     rpc_id: &str,
@@ -2074,7 +2042,6 @@ async fn g_idem_inflight(server_test: &ServerTest) {
     });
     *server_test.idem_task.borrow_mut() = Some(task);
     *server_test.idem_exec_file.borrow_mut() = Some(exec_file);
-    // 让首次请求先进桩，落在处理中窗口内。
     tokio::time::sleep(Duration::from_millis(120)).await;
 }
 
@@ -2134,8 +2101,6 @@ async fn t_idem_inflight_wait(server_test: &ServerTest) {
     );
     let _ = std::fs::remove_file(&file);
 }
-
-// ---- c2465 sr-rdy1：启动就绪窗口三态语义 ----
 
 #[given("监听器已绑定端口但装配未完成")]
 async fn g_rdy_starting(server_test: &ServerTest) {
@@ -2252,8 +2217,6 @@ async fn t_rdy_failed(server_test: &ServerTest) {
     );
 }
 
-// ---- c2475 sr-reg1：serve 注册文件发现契约 ----
-
 use xylitol_kernel::occupancy::runtime::serve_registered;
 use xylitol_serve::{Registration, read_registration, run_self_check, write_registration};
 
@@ -2352,7 +2315,6 @@ async fn t_reg_stale_diagnosis(server_test: &ServerTest) {
     assert!(msg.contains("pid 2147483647"), "{msg}");
     assert!(msg.contains("xylitol serve"), "{msg}");
     if let Some(path) = server_test.reg_path.borrow().clone() {
-        // 确认死亡后残留注册应被清理。
         assert!(
             !path.exists(),
             "stale registration must be removed after diagnosis"
@@ -2452,8 +2414,6 @@ async fn t_staged_wire_import(server_test: &ServerTest) {
     assert!(!leftovers, "staged import temp file must be cleaned up");
 }
 
-// ── c2480 ath44 real-wire attach resilience ────────────────────────
-
 #[given("真进程 serve 已启动且 attach 客户端已订阅")]
 async fn g_real_attach(server_test: &ServerTest) {
     start_host(server_test).await;
@@ -2473,15 +2433,12 @@ async fn g_real_attach(server_test: &ServerTest) {
 async fn w_real_drop_mux(server_test: &ServerTest) {
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot("s-real-attach").await;
-    // one live event the driver sees (bumps last_seq past cold-attach)
     slot.append_and_push(Event::TextDelta {
         text: "online".into(),
     })
     .await;
     tokio::time::sleep(Duration::from_millis(120)).await;
-    // kill every mux sink: the WS closes and the client must self-heal
     slot.subscribers.lock().await.clear();
-    // events journaled while the client is offline
     slot.append_and_push(Event::TextDelta {
         text: "offline".into(),
     })
@@ -2491,9 +2448,6 @@ async fn w_real_drop_mux(server_test: &ServerTest) {
 
 #[then("客户端 在宽限内不上屏断线错误并自动重连")]
 async fn t_real_no_error_rows(server_test: &ServerTest) {
-    // ath42 驱动信号：断线后 link_health MUST 如实报 Down（Down 窗口 ≥ 一个
-    // 退避间隔，2ms 采样必然命中），随后无人工干预恢复 Up。
-    // RefCell 借用只在同步读取段持有，不得跨 await（panic 隐患）。
     fn link_health(server_test: &ServerTest) -> LinkHealth {
         server_test
             .attach_driver
@@ -2533,7 +2487,6 @@ async fn t_real_replay_offline(server_test: &ServerTest) {
     let mut replayed = false;
     let mut saw_error_row = false;
     while std::time::Instant::now() < deadline {
-        // RefCell 借用只在同步 drain 段持有，不跨 await。
         {
             let mut driver_slot = server_test.attach_driver.borrow_mut();
             let driver = driver_slot.as_mut().expect("attach driver");
@@ -2544,7 +2497,6 @@ async fn t_real_replay_offline(server_test: &ServerTest) {
                             replayed = true;
                         }
                     }
-                    // ath42: reconnect churn must not paint transcript rows.
                     XyEvent::Error(err) if !err.message.contains("protocol") => {
                         saw_error_row = true;
                     }
@@ -2563,8 +2515,6 @@ async fn t_real_replay_offline(server_test: &ServerTest) {
         "reconnect window MUST NOT produce transcript error rows"
     );
 }
-
-// ---- c2826 specs-compact：protocol-app 方法表与队列路由步骤 ----
 
 #[when("POST /rpc 查询会话 {sid:string} 的只读 queue_stats")]
 async fn w_queue_stats_for(server_test: &ServerTest, sid: String) {
@@ -2649,7 +2599,6 @@ fn t_get_messages_entries(server_test: &ServerTest) {
 
 #[when("POST /rpc 调用 steer 携带文本")]
 async fn w_rpc_steer(server_test: &ServerTest) {
-    // steer 为写操作：先经 prompt 铸写者令牌再回显，断言路由到 Driver 入队成功。
     let (_, token, prompt_body) = post_rpc(
         server_test.port.get(),
         "St-pre",
@@ -2659,7 +2608,6 @@ async fn w_rpc_steer(server_test: &ServerTest) {
     )
     .await;
     let token = token.or_else(|| {
-        // 兼容响应经 result 携带令牌的形态。
         serde_json::from_str::<serde_json::Value>(&prompt_body)
             .ok()
             .and_then(|v| v["result"]["writerToken"].as_str().map(str::to_string))
@@ -2760,8 +2708,6 @@ fn t_estimate_context_registered(server_test: &ServerTest) {
     assert_ne!(body, "missing", "c2826: estimate_context 必须已登记");
 }
 
-// ---- c2826 specs-compact：layer r1514 一 session 一写者 ----
-
 #[when("另一客户端对同会话发送 steer")]
 async fn w_c2826_second_writer_steer(server_test: &ServerTest) {
     let (st, token, body) = post_rpc(
@@ -2794,8 +2740,6 @@ fn t_c2826_same_process_not_token_conflict(server_test: &ServerTest) {
         "same process MUST share occupancy: {body}"
     );
 }
-
-// ---- c2841: prompt 会话身份保真 / 生效模型状态同步 ----
 
 async fn start_host_with_default_model(t: &ServerTest, model_id: &str) {
     let host = xylitol_kernel::occupancy::host_state_for_test_with_default_model(model_id)
@@ -3002,15 +2946,11 @@ async fn g_c2841_prompt_with_identity(server_test: &ServerTest) {
 }
 
 #[when("Host 处理该 prompt")]
-async fn w_c2841_prompt_processed(_server_test: &ServerTest) {
-    // Fake provider 本轮即时完成；事件可达由 then 的 3s 读循环兜底（c2853 W5）。
-}
+async fn w_c2841_prompt_processed(_server_test: &ServerTest) {}
 
 #[then("run 路由到 s-prompt 且事件在 s-prompt 的订阅者上可达")]
 async fn t_c2841_prompt_events_reachable(server_test: &ServerTest) {
     let mut mux = server_test.mux_rx.borrow_mut().take().expect("mux");
-    // 事件流消耗完毕（run 完成）后 mux 已无入站帧；见到 agent_end 即证明
-    // run 事件在订阅会话的可达流上（含 绑定/装配后的 model_select 同步帧）。
     for _ in 0..16 {
         let f = match tokio::time::timeout(Duration::from_secs(3), mux.next()).await {
             Ok(Some(Ok(f))) => f,
@@ -3034,8 +2974,6 @@ async fn t_c2841_prompt_events_reachable(server_test: &ServerTest) {
     }
     panic!("c2841: 订阅会话流上未收到 agent_end");
 }
-
-// ---- c2842: 会话命令身份透明（v3）/ get_state 反映写者模型 ----
 
 #[given("以产品客户端订阅会话 s-v3 且写者装配了默认模型 fake-model")]
 async fn g_c2842_v3_subscribe_default_model(server_test: &ServerTest) {
@@ -3123,8 +3061,6 @@ fn t_c2842_get_state_model(server_test: &ServerTest) {
     );
 }
 
-// ── r1928 非产品二进制 body ────────────────────────────────────
-
 #[when("POST /rpc 发送 JSON 对象、JSON 数组与纯文本等非产品二进制 body")]
 async fn w_rpc_nonbinary_bodies(server_test: &ServerTest) {
     let bodies = [
@@ -3149,8 +3085,6 @@ fn t_nonbinary_illegal(server_test: &ServerTest) {
         assert_eq!(*st, 400, "非产品二进制 body MUST 400: {st} {body}");
     }
 }
-
-// ── r1923 / r1925 arm_tool_freeze 有界决议 ─────────────────────
 
 fn arm_freeze_fixture_mcp(name: &str) -> xylitol_kernel::composition::McpServerSpec {
     use xylitol_kernel::composition::{McpServerSpec, McpTransportSpec};
@@ -3201,7 +3135,6 @@ async fn g_arm_freeze_lease_held(server_test: &ServerTest) {
     xylitol_kernel::occupancy::host::materialize_writer(&host, &slot)
         .await
         .expect("materialize writer");
-    // 以一次写 unary 建立租约（与单测同路径：set_model 走租约）。
     let first = xylitol_kernel::occupancy::host::handle_unary(
         &host,
         None,
@@ -3270,8 +3203,6 @@ fn t_arm_freeze_lease_free(server_test: &ServerTest) {
         "lease-free arm MUST resolve frozen: {v}"
     );
 }
-
-// ── c2895 观景态 / busy 拒绝 / 定向重放（host seam，无 HTTP）──────────
 
 const OBSERVE_SESSION: &str = "s-observe";
 
@@ -3469,9 +3400,6 @@ fn t_busy_rejected(server_test: &ServerTest) {
     assert_eq!(code, "session_busy", "根提交忙碌须稳定拒绝");
 }
 
-// ---- c2922 sr-rdy1：就绪状态机迁移表（xstate E1-E4 守卫的执行侧） ----
-// 表行驱动 Gateway 单元语义：given 造对应初态的独立 Gateway，when 施加转移，then 观测 phase。
-
 fn rdy_fresh_gateway(phase: &str) -> Arc<Gateway> {
     let g = Gateway::starting();
     match phase {
@@ -3496,7 +3424,6 @@ async fn w_rdy_transition(server_test: &ServerTest, event: String) {
         .clone()
         .expect("gateway held by given");
     match event.as_str() {
-        // set_host 幂等填 host 并翻 ready（首写者胜，与生产装配完成路径同函数）。
         "assembly_complete" => {
             gateway.set_host(xylitol_kernel::occupancy::host_state_for_test().expect("HostState"))
         }

@@ -1,5 +1,3 @@
-//! Core plugin: named contribution registries.
-
 use xylitol_plugin_sdk::HostRegistries;
 use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin};
 

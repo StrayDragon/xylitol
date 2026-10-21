@@ -8,18 +8,10 @@ use strum::{EnumString, IntoStaticStr};
 use super::message::{XyStopReason, XyUsage};
 use crate::error::XyError;
 
-/// A single chunk from a streaming LLM response.
-///
-/// Tool calls use a start/delta/end lifecycle (aligned with pi
-/// `toolcall_start|delta|end`). Adapters MUST emit [`Self::ToolCallStart`]
-/// when a tool call is first identifiable, incremental
-/// [`Self::ToolCallDelta`] while arguments stream, and [`Self::ToolCallEnd`]
-/// when the call is complete — not only a single terminal event at stream end.
 #[derive(Debug, Clone)]
 pub enum XyChunk {
     TextDelta(String),
     ThinkingDelta(String),
-    /// Reasoning item finalized (pi `thinking_end`); signature is opaque JSON for replay.
     ThinkingEnd {
         thinking: String,
         thinking_signature: Option<String>,
@@ -31,9 +23,7 @@ pub enum XyChunk {
     ToolCallDelta {
         id: String,
         name: String,
-        /// Raw JSON fragment appended this step (may be empty if only metadata updated).
         args_delta: String,
-        /// Best-effort parse of the accumulated arguments so far.
         args: Value,
     },
     ToolCallEnd {
@@ -56,10 +46,6 @@ pub struct XyToolSchema {
 
 pub type XyStream = Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
 
-/// Provenance of a context-token estimate.
-///
-/// Observation / wire keys are PascalCase (`as_str` / `from_key`) via strum.
-/// Serde JSON stays snake_case and is a separate form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, IntoStaticStr, EnumString)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "PascalCase")]
@@ -70,12 +56,10 @@ pub enum TokenProvenance {
 }
 
 impl TokenProvenance {
-    /// Stable PascalCase key used by observation and wire projection code.
     pub fn as_str(self) -> &'static str {
         self.into()
     }
 
-    /// Parse an observation / wire key. Retired or unknown names become [`Self::Unknown`].
     pub fn from_key(s: &str) -> Self {
         s.parse().unwrap_or(Self::Unknown)
     }

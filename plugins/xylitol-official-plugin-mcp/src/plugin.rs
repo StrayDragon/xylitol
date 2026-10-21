@@ -1,5 +1,3 @@
-//! `PluginFactory` entry: MCP client (config-gated, zero servers = no-op connect).
-
 use std::sync::Arc;
 
 use schemars::JsonSchema;

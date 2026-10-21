@@ -1,12 +1,3 @@
-//! Read tool — reads file contents with truncation and offset support.
-//!
-//! Key behaviors:
-//! - Truncation at 2000 lines OR 50KB (whichever first)
-//! - Offset (line-based) and limit support
-//! - Reports offset-out-of-bounds
-//! - Remaining lines hint when truncated
-//! - Image files: resize → `AgentPart::Image` (+ short text note); c1155 / t21
-
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -138,7 +129,6 @@ impl TypedTool for ReadTool {
 
         let total_lines = raw_content.lines().count();
 
-        // Apply offset/limit filtering
         let filtered = if offset <= 0 && limit.is_none() {
             raw_content
         } else {
@@ -164,7 +154,6 @@ impl TypedTool for ReadTool {
             lines[start..end].join("\n")
         };
 
-        // Truncate
         let truncation = truncate_head(&filtered, TruncationOptions::default());
 
         let mut result = json!({

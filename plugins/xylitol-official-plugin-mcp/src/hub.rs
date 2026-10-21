@@ -1,5 +1,3 @@
-//! Shared MCP prepare hub: idempotent connect, fire-without-wait, wait+timeout.
-
 use std::sync::Arc;
 use std::time::Duration;
 

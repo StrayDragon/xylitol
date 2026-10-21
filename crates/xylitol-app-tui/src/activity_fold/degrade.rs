@@ -1,5 +1,3 @@
-//! Auto-degrade helpers (att26).
-
 use crate::bridge::UiEntry;
 
 use super::segment::{ActivitySegment, SegmentLevel, partition_segments};
@@ -12,10 +10,6 @@ pub enum AutoTrigger {
     TurnEnd,
 }
 
-/// Apply keep_recent_turns / stream_collapse crush. Returns whether any level changed.
-///
-/// When `protect_newest` is true (streaming busy), the newest activity segment is
-/// forced to stay L0 for this pass (live window — no Worked-for envelope).
 pub fn apply_auto_degrade(
     state: &mut ActivityFoldState,
     entries: &[UiEntry],
@@ -38,8 +32,6 @@ pub fn apply_auto_degrade(
         return false;
     }
 
-    // Resume/rebuild: every ended turn is history — crush all.
-    // `keep_recent_turns` only windows TurnEnd (live session after a turn completes).
     let keep = match trigger {
         AutoTrigger::Rebuild => 0,
         AutoTrigger::TurnEnd => state.settings.keep_recent_turns as usize,
@@ -74,7 +66,6 @@ pub fn apply_auto_degrade(
     changed
 }
 
-/// Whether `seg` is inside the keep_recent_turns virgin window (never collapse target).
 pub fn in_virgin_recent_window(
     settings: &ActivityFoldSettings,
     segments: &[ActivitySegment],

@@ -1,18 +1,13 @@
-//! Image decode / resize / path load failures (crate-private; not `Xy*`).
-
 use strum::IntoStaticStr;
 
-/// Multimodal image processing failures. Display keeps the original body.
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum ImageError {
-    /// Reading the image file failed (source preserved).
     #[error("read image {path}: {source}")]
     Io {
         path: String,
         #[source]
         source: std::io::Error,
     },
-    /// Decode / encode by the `image` crate failed (source preserved).
     #[error("{context}: {source}")]
     Decode {
         context: &'static str,

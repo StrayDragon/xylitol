@@ -1,5 +1,3 @@
-//! Shared root mount helpers + too-small hint (split from `UiRoot` god file).
-
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -14,7 +12,6 @@ use xylitol_tui::{
 use super::UiRoot;
 use crate::host::{LayoutMode, TOO_SMALL_HINT};
 
-/// Shared root so InputListeners and the focused Component see the same state.
 pub struct SharedUiRoot(pub Rc<RefCell<UiRoot>>);
 
 impl Component for SharedUiRoot {
@@ -62,7 +59,6 @@ impl Component for SharedUiRoot {
     }
 }
 
-/// Full-screen hint when the terminal is too small.
 pub struct TooSmallHint;
 
 impl Component for TooSmallHint {
@@ -71,8 +67,6 @@ impl Component for TooSmallHint {
         if width == 0 {
             return vec![String::new()];
         }
-        // CJK: `chars().count()` under-counts columns and tripped the width
-        // invariant (RenderError → host exit) so recovery from tiny sizes stuck.
         let msg_w = visible_width(msg);
         if msg_w >= width {
             return vec![truncate_to_width(msg, width, "", true)];
@@ -87,7 +81,6 @@ impl Component for TooSmallHint {
     fn invalidate(&mut self) {}
 }
 
-/// Build root children for a layout mode (no shared state — simple tests).
 #[cfg(test)]
 pub fn build_root(mode: LayoutMode) -> Vec<Box<dyn Component>> {
     match mode {
@@ -96,7 +89,6 @@ pub fn build_root(mode: LayoutMode) -> Vec<Box<dyn Component>> {
     }
 }
 
-/// Shared root + rebuild closure that keeps the same `UiRoot` across min-size flips.
 pub fn shared_ui_root_rebuild(
     root: Rc<RefCell<UiRoot>>,
 ) -> impl FnMut(LayoutMode) -> Vec<Box<dyn Component>> + 'static {
@@ -106,7 +98,6 @@ pub fn shared_ui_root_rebuild(
     }
 }
 
-/// Register pre-focus Ctrl+C / Esc (editor-slot overlays). Busy Esc abort is host-side (c480).
 pub fn install_ui_root_key_listeners<T: Terminal>(
     root: &Rc<RefCell<UiRoot>>,
     quit_flag: &Arc<AtomicBool>,

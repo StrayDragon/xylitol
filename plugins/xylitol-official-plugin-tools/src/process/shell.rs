@@ -1,26 +1,12 @@
-//! Shell discovery and environment construction.
-//!
-//! Provides cross-platform bash finding and shell environment building.
-
 use std::path::PathBuf;
 use std::process::Command;
 
-/// Shell configuration result.
 #[derive(Debug, Clone)]
 pub struct ShellConfig {
-    /// Path to the shell binary.
     pub shell: PathBuf,
-    /// Arguments to pass (e.g. `["-c"]` for direct command execution).
     pub args: Vec<String>,
 }
 
-/// Find bash on the current system.
-///
-/// Resolution order:
-/// 1. User-specified custom shell path (optional parameter)
-/// 2. Platform-specific discovery
-///    - Windows: Git Bash in ProgramFiles → bash on PATH
-///    - Unix: /bin/bash → which bash → sh fallback
 pub fn find_bash(custom_shell: Option<&std::path::Path>) -> ShellConfig {
     if let Some(path) = custom_shell
         && path.exists()
@@ -35,10 +21,7 @@ pub fn find_bash(custom_shell: Option<&std::path::Path>) -> ShellConfig {
     }
 }
 
-// ── Platform-specific ──────────────────────────────────────────────────
-
 fn bash_config(path: &std::path::Path) -> ShellConfig {
-    // Detect legacy WSL bash path (Windows\System32\bash.exe) which needs stdin transport
     let is_legacy_wsl = cfg!(target_os = "windows")
         && path
             .to_string_lossy()
@@ -46,9 +29,9 @@ fn bash_config(path: &std::path::Path) -> ShellConfig {
             .contains("windows\\system32");
 
     let args = if is_legacy_wsl {
-        vec!["-s".to_string()] // read from stdin
+        vec!["-s".to_string()]
     } else {
-        vec!["-c".to_string()] // command as argv
+        vec!["-c".to_string()]
     };
 
     ShellConfig {
@@ -59,7 +42,6 @@ fn bash_config(path: &std::path::Path) -> ShellConfig {
 
 #[cfg(target_os = "windows")]
 fn find_windows_bash() -> ShellConfig {
-    // Try Git Bash in known locations
     let candidates = [
         r"C:\Program Files\Git\bin\bash.exe",
         r"C:\Program Files (x86)\Git\bin\bash.exe",
@@ -72,12 +54,10 @@ fn find_windows_bash() -> ShellConfig {
         }
     }
 
-    // Try bash on PATH
     if let Some(path) = which("bash.exe") {
         return bash_config(&path);
     }
 
-    // Last resort
     bash_config(std::path::Path::new("bash.exe"))
 }
 
@@ -88,18 +68,15 @@ fn find_windows_bash() -> ShellConfig {
 
 #[cfg(not(target_os = "windows"))]
 fn find_unix_bash() -> ShellConfig {
-    // Try /bin/bash
     let bash_path = std::path::Path::new("/bin/bash");
     if bash_path.exists() {
         return bash_config(bash_path);
     }
 
-    // Try bash on PATH
     if let Some(path) = which("bash") {
         return bash_config(&path);
     }
 
-    // Fallback to sh
     bash_config(std::path::Path::new("sh"))
 }
 
@@ -108,7 +85,6 @@ fn find_unix_bash() -> ShellConfig {
     unreachable!("not Unix")
 }
 
-/// Find a binary on PATH using `which`.
 fn which(name: &str) -> Option<PathBuf> {
     let output = Command::new("which")
         .arg(name)
@@ -126,7 +102,6 @@ fn which(name: &str) -> Option<PathBuf> {
     None
 }
 
-/// Directory of the current executable's binary (agent-bin injection target).
 pub fn current_exe_bin_dir() -> Option<std::path::PathBuf> {
     std::env::current_exe()
         .ok()?
@@ -134,9 +109,6 @@ pub fn current_exe_bin_dir() -> Option<std::path::PathBuf> {
         .map(ToOwned::to_owned)
 }
 
-/// Build a shell environment with the agent bin directory **prepended** to
-/// PATH (r1494 shell-env). Uses [`std::env::split_paths`] / [`std::env::join_paths`]
-/// so the platform-specific separator (`:` / `;`) is handled correctly.
 pub fn shell_env_with_agent_bin(
     mut base: std::collections::BTreeMap<String, String>,
 ) -> std::collections::BTreeMap<String, String> {
@@ -146,13 +118,8 @@ pub fn shell_env_with_agent_bin(
     let existing = base.get("PATH").cloned().unwrap_or_default();
     let mut list: Vec<std::path::PathBuf> = std::env::split_paths(&existing).collect();
     list.insert(0, bin.clone());
-    match std::env::join_paths(&list) {
-        Ok(joined) => {
-            base.insert("PATH".into(), joined.to_string_lossy().into_owned());
-        }
-        Err(_) => {
-            // 极端不可表示路径：保留原值，避免写出畸形 PATH。
-        }
+    if let Ok(joined) = std::env::join_paths(&list) {
+        base.insert("PATH".into(), joined.to_string_lossy().into_owned());
     }
     base
 }

@@ -1,5 +1,3 @@
-//! SettingsManager — three-tier deep merge, reload, lock-based persistence.
-
 use std::sync::{Arc, Mutex};
 
 use super::storage::{
@@ -7,17 +5,11 @@ use super::storage::{
 };
 use super::types::*;
 
-/// Manages global and project settings with deep merge.
-///
-/// Product path only consumes the merged [`Self::settings`] view (bootstrap);
-/// the backing fields feed the BDD @executable settings surface (in_memory /
-/// trust queries).
-#[allow(dead_code)] // backing store of BDD @executable settings surface (c2750)
+#[allow(dead_code)]
 pub struct SettingsManager {
     storage: Box<dyn SettingsStorage>,
     global_settings: Settings,
     project_settings: Settings,
-    /// Merged view: project overrides global.
     pub settings: Settings,
     project_trusted: bool,
     global_error: Option<String>,
@@ -26,9 +18,6 @@ pub struct SettingsManager {
 }
 
 impl SettingsManager {
-    // ── Construction ────────────────────────────────────────────
-
-    /// Create from file storage (global ~/.xylitol/settings.json + project `<cwd>`/.xylitol/settings.json).
     pub fn from_files(
         cwd: &std::path::Path,
         agent_dir: &std::path::Path,
@@ -38,7 +27,6 @@ impl SettingsManager {
         Self::from_storage(Box::new(storage), project_trusted)
     }
 
-    /// Create from an arbitrary storage backend (in-memory for tests).
     pub fn from_storage(storage: Box<dyn SettingsStorage>, project_trusted: bool) -> Self {
         let global = Self::load_from_storage(storage.as_ref(), SettingsScope::Global, true);
         let project =
@@ -65,9 +53,7 @@ impl SettingsManager {
         }
     }
 
-    /// Create an in-memory manager from partial settings.
-    /// BDD @executable contract (`设置` steps); no product caller today.
-    #[allow(dead_code)] // BDD @executable contract, not product-called
+    #[allow(dead_code)]
     pub fn in_memory(settings: Settings) -> Self {
         let storage = Box::new(InMemorySettingsStorage::default());
         let json = serde_json::to_string(&settings).unwrap();
@@ -99,16 +85,12 @@ impl SettingsManager {
                 }
                 _ => {}
             }
-            None // don't modify
+            None
         });
 
         (result.unwrap_or_default(), error)
     }
 
-    // ── Deep merge ────────────────────────────────────────────
-
-    /// Deep-merge two Settings structs: overrides win, None fields skip.
-    /// Nested objects (compaction, thinking_budgets) merge field-by-field.
     pub fn deep_merge(base: &Settings, overrides: &Settings) -> Settings {
         let mut result = base.clone();
 
@@ -136,8 +118,6 @@ impl SettingsManager {
         result
     }
 
-    // ── Accessors (with defaults) ────────────────────────────
-
     pub fn get_thinking_budgets(&self) -> Option<&ThinkingBudgets> {
         self.settings.thinking_budgets.as_ref()
     }
@@ -150,30 +130,20 @@ impl SettingsManager {
         self.settings.follow_up_mode.clone().unwrap_or_default()
     }
 
-    // ── Mutators (global scope, persist immediately) ──────────
-
-    // ── Project trust ─────────────────────────────────────────
-
-    /// BDD @executable contract (`settings 信任` steps); no product caller today.
-    #[allow(dead_code)] // BDD @executable contract, not product-called
+    #[allow(dead_code)]
     pub fn is_project_trusted(&self) -> bool {
         self.project_trusted
     }
-
-    // ── Raw access for callers that need structure ────────────
 
     pub fn get_settings(&self) -> &Settings {
         &self.settings
     }
 
-    /// BDD @executable contract (`settings 信任` steps); no product caller today.
-    #[allow(dead_code)] // BDD @executable contract, not product-called
+    #[allow(dead_code)]
     pub fn get_project_settings(&self) -> &Settings {
         &self.project_settings
     }
 }
-
-// ── Private: nested merge helpers ─────────────────────────────────
 
 fn merge_compaction(
     target: &mut Option<XyCompactionSettingsConfig>,
@@ -198,7 +168,6 @@ fn merge_compaction(
         enabled: o.enabled.or(b.enabled),
         reserve_tokens: o.reserve_tokens.or(b.reserve_tokens),
         keep_recent_tokens: o.keep_recent_tokens.or(b.keep_recent_tokens),
-        // rc15: task model + thinking override are config.yaml-only.
         model: None,
         thinking_level: None,
     });

@@ -1,5 +1,3 @@
-//! `/session-compact` slash arm.
-
 use xylitol_tui::Terminal;
 
 use crate::bridge::{CompactionBlockStatus, UiEntry};
@@ -31,7 +29,6 @@ pub(super) async fn run<T: Terminal>(
     let _ = session.render_now();
 }
 
-/// After slash/force compact, surface the latest CompactionEntry as a collapsed block.
 async fn append_compaction_from_session<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -47,7 +44,6 @@ async fn append_compaction_from_session<T: Terminal>(
         session.push_scroll_notice("session compacted");
         return;
     };
-    // Avoid duplicate if CompactionEnd already arrived via turn stream / tee.
     let already = session.ui_model().entries.iter().any(|e| {
         matches!(
             e,

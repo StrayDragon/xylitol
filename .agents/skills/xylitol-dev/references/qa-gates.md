@@ -38,7 +38,7 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa �
 - **策略 SSOT**：根目录 `.uncomment.toml`（AST 识别注释，不碰字符串里的 `//`）。
 - **入闸**：`scripts/check_uncomment.py`，由 `qa-check-scripts` glob 自动执行；**仅** `uncomment --check --changed-lines`（相对 `UNCOMMENT_BASE` / `origin/HEAD` / `main`），**禁止**在 `just qa` 里跑删除或 `lint --fix`，避免污染工作区。
 - **渐进**：只卡相对 base **有改动的行**；历史行内注释不挡整树。
-- **保留**：rustdoc / docstring（`remove_docs = false`）、工具指令（clippy/noqa/…）、`~keep`，以及含内部编号子串的追溯注释（`c0`…`c9` 覆盖任意 `c####`；`r0`…`r9` 覆盖 `r####`；`ath0`…`ath9` 覆盖 `ath##`，避免误匹配 `path`）。
+- **保留**：TODO/FIXME、工具指令（clippy/noqa/…）、`~keep` / `NOTE:` 等 `preserve_patterns`；`///` / docstring 默认可移除（`remove_docs = true`）。追溯以 specs / 提交信息为 SSOT。
 - **手工**：全树盘点 `uncomment scan`；批量删除仅本地显式 `uncomment .`（不进 `qa`）。可选 `uncomment lint` 见 `[lint]`（默认 `enabled = false`）。
 - **跳过 / CI**：`XYLITOL_SKIP_UNCOMMENT=1`；CI 安装 `uncomment` 且 `checkout` 需 `fetch-depth: 0`（PR merge-base）。
 
@@ -47,6 +47,6 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / prek 与 qa �
 - **策略 SSOT**：根目录 `.uncomment.toml`（AST 识别注释，不碰字符串里的 `//`）。
 - **入闸**：`scripts/check_uncomment.py`，由 `qa-check-scripts` glob 自动执行；**仅** `uncomment --check --changed-lines`（相对 `UNCOMMENT_BASE` / `origin/HEAD` / `main`），**禁止**在 `just qa` 里跑删除或 `lint --fix`，避免污染工作区。
 - **渐进**：只卡相对 base **有改动的行**；历史行内注释不挡整树。
-- **保留**：rustdoc / docstring（`remove_docs = false`）、工具指令（clippy/noqa/…）、`~keep`，以及含内部编号子串的追溯注释（`c0`…`c9` 覆盖任意 `c####`；`r0`…`r9` 覆盖 `r####`；`ath0`…`ath9` 覆盖 `ath##`，避免误匹配 `path`）。
+- **保留**：TODO/FIXME、工具指令（clippy/noqa/…）、`~keep` / `NOTE:` 等 `preserve_patterns`；`///` / docstring 默认可移除（`remove_docs = true`）。追溯以 specs / 提交信息为 SSOT。
 - **手工**：全树盘点 `uncomment scan`；批量删除仅本地显式 `uncomment .`（不进 `qa`）。可选 `uncomment lint` 见 `[lint]`（默认 `enabled = false`）。
 - **跳过 / CI**：`XYLITOL_SKIP_UNCOMMENT=1`；CI 安装 `uncomment` 且 `checkout` 需 `fetch-depth: 0`（PR merge-base）。

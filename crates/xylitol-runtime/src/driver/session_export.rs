@@ -1,8 +1,3 @@
-//! Session export/import — app-surface collaborator (HTML / JSONL).
-//!
-//! Held by [`XyInProcessDriver`](crate::driver::XyInProcessDriver).
-//! Pure transformations over loaded session entries; file I/O via [`XyExportIo`].
-
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -17,8 +12,6 @@ use xylitol_plugin_sdk::session::{
 };
 use xylitol_plugin_sdk::{XyExportIo, XySessionStore};
 
-/// Format a unix-ms session timestamp as RFC3339 for display (v6: RFC3339 is
-/// a display-side concern only; the on-disk format is unix-ms).
 fn format_unix_ms(ms: u64) -> String {
     time::OffsetDateTime::from_unix_timestamp((ms / 1000) as i64)
         .map(|dt| dt.format(&time::format_description::well_known::Rfc3339))
@@ -27,20 +20,15 @@ fn format_unix_ms(ms: u64) -> String {
         .unwrap_or_else(|| ms.to_string())
 }
 
-/// Stateful export/import collaborator — owns the [`XyExportIo`] port.
-///
-/// Session store is borrowed per call (`&dyn XySessionStore` + session id).
 pub struct SessionExporter {
     io: Option<Arc<dyn XyExportIo>>,
 }
 
 impl SessionExporter {
-    /// Construct with an optional export I/O port (`None` ⇒ export unavailable).
     pub fn new(io: Option<Arc<dyn XyExportIo>>) -> Self {
         Self { io }
     }
 
-    /// Export a session's entries to an HTML file. Returns the written path.
     pub async fn export_to_html(
         &self,
         store: &dyn XySessionStore,
@@ -57,7 +45,6 @@ impl SessionExporter {
         Ok(path.to_path_buf())
     }
 
-    /// Export a session's entries as JSONL. Returns the written path.
     pub async fn export_to_jsonl(
         &self,
         store: &dyn XySessionStore,
@@ -74,11 +61,6 @@ impl SessionExporter {
         Ok(path.to_path_buf())
     }
 
-    /// Import a JSONL file into a brand-new session. Returns the new session id.
-    ///
-    /// The new session id is derived from the source header (re-used) to keep
-    /// identities stable across export/import; the file lands without
-    /// overwriting an existing session.
     pub async fn import_from_jsonl(
         &self,
         store: &dyn XySessionStore,
@@ -108,11 +90,6 @@ impl SessionExporter {
     }
 }
 
-/// Render a session's entries to a standalone HTML document.
-///
-/// Each entry is rendered to a readable block; messages and bash executions are
-/// shown with their content, other entries get a one-line summary. ANSI escapes
-/// are passed through (no color conversion in this minimal implementation).
 pub fn render_html(session_id: &str, entries: &[SessionEntry]) -> String {
     let mut body = String::new();
     for entry in entries {
@@ -215,7 +192,6 @@ fn message_text(msg: &Value) -> String {
     xylitol_plugin_sdk::session::message_text(msg)
 }
 
-/// Render a session's entries as JSONL (one JSON object per line).
 pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyDriverError> {
     let mut out = String::new();
     for entry in entries {
@@ -226,10 +202,6 @@ pub fn render_jsonl(entries: &[SessionEntry]) -> Result<String, XyDriverError> {
     Ok(out)
 }
 
-/// Parse JSONL bytes into session entries.
-///
-/// Validates that the first non-empty line is a session header carrying a
-/// compatible `version`. Returns an error otherwise.
 pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, XyDriverError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|e| XyDriverError::invalid_input(format!("jsonl is not utf-8: {e}")))?;
@@ -250,7 +222,6 @@ pub fn parse_jsonl(bytes: &[u8]) -> Result<Vec<SessionEntry>, XyDriverError> {
     if entries.is_empty() {
         return Err(XyDriverError::invalid_input("jsonl contained no entries"));
     }
-    // The first entry must be a Header.
     if !matches!(entries.first(), Some(SessionEntry::Header(_))) {
         return Err(XyDriverError::invalid_input(format!(
             "import: first entry must be a session header, got {:?}",
@@ -284,7 +255,7 @@ mod tests {
             entry_type: "session".into(),
             version: SESSION_VERSION,
             id: id.into(),
-            timestamp: 1_781_827_200_000, // 2026-06-19T00:00:00Z (unix-ms)
+            timestamp: 1_781_827_200_000,
             cwd: "/tmp".into(),
             parent_session: None,
             fork_at_entry_id: None,
@@ -296,7 +267,7 @@ mod tests {
             entry_type: "message".into(),
             id: "e1".into(),
             parent_id: None,
-            timestamp: 1_781_827_200_000, // 2026-06-19T00:00:00Z (unix-ms)
+            timestamp: 1_781_827_200_000,
         }
     }
 
@@ -377,8 +348,6 @@ mod tests {
 
     #[test]
     fn jsonl_rejects_v5_disk_import() {
-        // c2260: old v5 disk must not be imported. A real v5 file carries string
-        // timestamps, so its header fails current deserialization → refused (no header).
         let v5 = r#"{"type":"session","version":5,"id":"old-s1","timestamp":"2024-01-01T00:00:00Z","cwd":"/tmp"}
 {"type":"message","id":"m1","parentId":null,"timestamp":"2024-01-01T00:00:01Z","message":{"role":"user","content":[{"type":"text","text":"hi"}],"timestamp":1704067200000}}
 "#;
@@ -389,8 +358,6 @@ mod tests {
             "real v5 disk must be refused: {msg}"
         );
 
-        // A version-tagged header that still parses (numeric ms) is refused with
-        // `require 7` — the actionable message.
         let v5_numeric = r#"{"type":"session","version":5,"id":"old-s2","timestamp":1704067200000,"cwd":"/tmp"}
 "#;
         let err = parse_jsonl(v5_numeric.as_bytes()).unwrap_err();
@@ -403,7 +370,6 @@ mod tests {
 
     #[test]
     fn jsonl_rejects_missing_header() {
-        // A message entry alone (no header) must be rejected.
         let only_message = serde_json::to_string(&message("user", "x")).unwrap();
         let res = parse_jsonl(only_message.as_bytes());
         assert!(res.is_err());

@@ -1,21 +1,8 @@
-//! Scripted live-window tape (c1761 / att33).
-//!
-//! Same frames drive:
-//! - `cargo test` / UiRoot harness (`replay_live_window`)
-//! - designing scene `activity-fold-live` (inject + Choice slot; not a real ReAct run)
-//!
-//! Ended-session hand-test is designing scene `activity-fold-resume` (seeded JSONL).
-//!
-//! Reproduce: last painted frame stays on the transcript so a FAIL names the
-//! step (busy → Thinking → inflight tool → sealed -3 → open -2 → Ask).
-//! Answering Choice then applies [`live_ask_close_events`] (not a live agent).
-
 use serde_json::json;
 
 use crate::bridge::{UiModel, apply_xy_event};
 use crate::driver::XyEvent;
 
-/// Scripted-tape assertion failure (crate-private; not `Xy*`).
 #[derive(Debug, thiserror::Error)]
 #[error("{0}")]
 pub struct LiveTapeMismatch(pub String);
@@ -26,7 +13,6 @@ impl From<String> for LiveTapeMismatch {
     }
 }
 
-/// One observable checkpoint after applying `events`.
 pub struct LiveWindowFrame {
     pub name: &'static str,
     pub events: Vec<XyEvent>,
@@ -56,13 +42,10 @@ fn tool_end(id: &str, name: &str) -> XyEvent {
     }
 }
 
-/// Tool id for the tape's Ask Waiting frame and the Choice close-out.
 pub const LIVE_ASK_TOOL_ID: &str = "ask1";
 
-/// Distinct closing assistant body after the debug Choice is answered / skipped.
 pub const LIVE_ASK_CLOSE_TEXT: &str = "Thanks — continuing from your answer.";
 
-/// Scripted UX after designing scene `activity-fold-live` Choice finishes (no ReAct).
 pub fn live_ask_close_events(result: &str) -> Vec<XyEvent> {
     vec![
         XyEvent::ToolExecutionEnd {
@@ -76,7 +59,6 @@ pub fn live_ask_close_events(result: &str) -> Vec<XyEvent> {
     ]
 }
 
-/// Ordered live-window checkpoints (after `UiModel::begin_run`).
 pub fn live_window_frames() -> Vec<LiveWindowFrame> {
     vec![
         LiveWindowFrame {
@@ -140,7 +122,6 @@ pub fn live_window_frames() -> Vec<LiveWindowFrame> {
     ]
 }
 
-/// Apply the tape to `model`, painting after each frame. Does not idle the run.
 pub fn replay_live_window(
     model: &mut UiModel,
     mut paint: impl FnMut(&UiModel) -> String,

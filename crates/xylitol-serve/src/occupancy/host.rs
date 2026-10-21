@@ -1,9 +1,3 @@
-//! Host occupancy: one process-wide [`RuntimeBaseline`] baseline, lazy session slots.
-//!
-//! Occupancy unit is a **session slot** (journal + seq + writer engine). A
-//! single Driver still must not run two root submits or two session bindings
-//! at once.
-
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -44,63 +38,46 @@ use xylitol_runtime::driver::{
     LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode, RuntimeReloadReport,
 };
 
-/// Shared Host process occupancy. Injected into `xylitol-serve` as [`OccupiedHost`].
 pub struct HostState {
     pub ports: RuntimeBaseline,
     pub reload: ReloadBaseline,
     pub factory: Arc<dyn OccupancyFactory>,
     pub sessions: RwLock<HashMap<String, Arc<SessionSlot>>>,
-    /// Mux connections not yet bound by unary `subscribe`.
     pub unbound_mux: Mutex<Vec<MuxSink>>,
-    /// Host-level resource owner for `/reload` and `loaded_resources`.
     pub resource_driver: Mutex<Option<Box<dyn OccupancyEngine>>>,
-    /// Downlink bus for the in-process Host carrier.
     pub in_process_downlink: broadcast::Sender<RpcMessage>,
-    /// Cancellation token for the process-level reload currently in flight.
     pub reload_cancel: Mutex<Option<CancellationToken>>,
     pub shutting_down: AtomicBool,
     pub fallback_session: String,
-    /// Abnormal last-subscriber disconnect grace before releasing occupancy.
     pub write_lock_linger: std::sync::Mutex<Duration>,
-    /// Persisted sessions directory (empty when the store is not disk-backed).
     pub sessions_dir: std::sync::Mutex<PathBuf>,
 }
 
-/// Process-wide reload / MCP inputs cloned onto each materialized Driver.
 #[derive(Clone)]
 pub struct ReloadBaseline {
     pub cwd: PathBuf,
     pub agent_dir: PathBuf,
     pub project_trusted: bool,
-    /// `models.default_model` (or CLI `--model`) applied when a writer is materialized.
-    /// `RuntimeBaseline::materialize_runtime` leaves ModelManager unset; Host MUST select.
     pub default_model_id: Option<String>,
 }
 
-/// Per-session occupancy: journal + optional writer Driver + mux subscribers.
 pub struct SessionSlot {
     pub session_id: String,
     pub journal: Mutex<EventJournal>,
     pub driver: Arc<Mutex<Option<Box<dyn OccupancyEngine>>>>,
     pub writer: AtomicBool,
     pub subscribers: Mutex<HashMap<u64, MuxSink>>,
-    /// c2895 观景态订阅：回合中绑定者仅收 AgentEnd 生命周期帧，显式重挂后才看直播。
     observing: Mutex<HashSet<u64>>,
     linger_task: Mutex<Option<tokio::task::JoinHandle<()>>>,
     pub gateway: Arc<ReverseRpcGateway>,
     pub in_process_downlink: broadcast::Sender<RpcMessage>,
     next_conn: AtomicU64,
     resync_offered: AtomicBool,
-    /// True from Host `prompt` spawn start until the run stream ends.
     run_inflight: AtomicBool,
-    /// `/model` during inflight: apply after AgentEnd (this run stays frozen).
     pending_model: std::sync::Mutex<Option<String>>,
     pending_thinking: std::sync::Mutex<Option<String>>,
     mcp_watch_started: AtomicBool,
-    /// Out-of-band cancel for the interactive bash currently holding the
-    /// writer lock (c2760 follow-up: `abort` must reach it without the lock).
     pub bash_run_cancel: std::sync::Mutex<Option<CancellationToken>>,
-    /// Unary idempotency admission keyed by envelope `rpcId` (c2460).
     pub idempotency: IdempotencyLedger,
 }
 
@@ -135,7 +112,6 @@ impl HostState {
         self
     }
 
-    /// Production assembly (shared bootstrap ingredients → RuntimeBaseline).
     pub fn from_bootstrap(
         ports: RuntimeBaseline,
         reload: ReloadBaseline,
@@ -165,7 +141,6 @@ impl HostState {
             .clone()
     }
 
-    /// Existing slot for `session_id` (read-only; never creates one).
     async fn existing_slot(&self, session_id: &str) -> Option<Arc<SessionSlot>> {
         self.sessions.read().await.get(session_id).cloned()
     }
@@ -193,9 +168,6 @@ impl HostState {
             bound.push(slot.add_subscriber(tx).await);
         }
         Self::cancel_write_linger(slot).await;
-        // c2895：回合成中且冷订阅（last_seq=0）→ 观景态（tape 冻结、AgentEnd 例外、
-        // 不重放），显式重挂后再收看直播；中段重连（last_seq>0）与空闲绑定照常直播。
-        // 重放定向到本次新绑定者。
         let inflight = slot.run_inflight.load(Ordering::SeqCst);
         let observe = inflight && last_seq == 0;
         if observe {
@@ -204,8 +176,6 @@ impl HostState {
         let result = slot
             .replay_or_resync(&bound, observe, inflight, last_seq)
             .await;
-        // c2841：绑定后同步会话写者的当前已解析模型（含用户显式配置的默认模型），
-        // 使附加端模型徽标收敛而不是停在 NOT-SET；无写者 / 无模型时 no-op。
         slot.sync_model_downlink().await;
         result
     }
@@ -223,7 +193,6 @@ impl HostState {
             .unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Disk path of `session.lock` for a persisted session (tests / BDD).
     pub fn occupancy_lock_path(&self, session_id: &str) -> PathBuf {
         self.sessions_dir
             .lock()
@@ -319,13 +288,6 @@ impl HostState {
         self.loaded_resources_snapshot_for("").await
     }
 
-    /// Poll the writer for `session_id` when present; otherwise first occupied slot
-    /// or the process-level resource driver.
-    ///
-    /// Drop `sessions` before polling: `poll_prepare_progress` applies newly
-    /// armed tools and acks connecting. Attach TUI never calls that on the
-    /// writer (Remote poll is cache-only); without this, progress hits
-    /// `connecting n/n` then the header sticks at `N configured · 0 connected`.
     pub async fn loaded_resources_snapshot_for(&self, session_id: &str) -> LoadedResourcesSnapshot {
         if !session_id.is_empty() {
             let slot = {
@@ -423,8 +385,6 @@ impl SessionSlot {
         }
     }
 
-    /// 场景缝（BDD / 单测）：直接置回合成况，供观景态与 busy 拒绝场景
-    /// 无需真实回合成流即可驱动。产品路径勿用。
     pub fn mark_run_inflight_for_test(&self, on: bool) {
         self.run_inflight.store(on, Ordering::SeqCst);
     }
@@ -433,7 +393,6 @@ impl SessionSlot {
         self.flush_pending_runtime().await;
     }
 
-    /// 订阅确立应答载荷（c2895：附带绑定时刻回合成况 `inflight`）。
     fn subscribed_value(&self, seq: u64, inflight: bool) -> Value {
         let mut v = serde_json::to_value(SessionSubscribedPayload {
             session_id: self.session_id.clone(),
@@ -446,11 +405,6 @@ impl SessionSlot {
         v
     }
 
-    /// 重放/重同步。c2895：journal 重放定向到本次绑定的新订阅者（在订者
-    /// 不再吃重放突发）；观景态绑定（`observe`）不重放 tape（冷快照兜底）。
-    /// resync 分支维持广播（整槽条件、罕见路径）；subscribed 确认帧广播
-    /// （端侧 skip_cold_replay 清除语义不变）。应答 `inflight` 回显绑定时刻
-    /// 回合成况（原始值，观景判定由端侧结合自身冷/暖订阅得出）。
     async fn replay_or_resync(
         &self,
         bound: &[u64],
@@ -520,8 +474,6 @@ impl SessionSlot {
         }
     }
 
-    /// c2895：观景态订阅在 session/event 帧上仅放行 AgentEnd 生命周期帧；
-    /// 其余 tape 冻结（冷快照 + 显式重挂兜底）。非 session/event 帧与解析失败放行。
     fn observe_passes(msg: &RpcMessage) -> bool {
         match msg {
             RpcMessage::ServerRequest {
@@ -572,7 +524,6 @@ impl SessionSlot {
         }
     }
 
-    /// 定向投递：只发指定订阅者（c2895 重放定向，在订者不重复吃重放突发）。
     async fn send_to(&self, id: u64, msg: &RpcMessage) -> bool {
         let subs = self.subscribers.lock().await;
         match subs.get(&id) {
@@ -598,14 +549,6 @@ impl SessionSlot {
         self.broadcast(msg).await;
     }
 
-    /// 同步会话写者的当前已解析模型（ModelSelect 下行）给订阅者，使附加端
-    /// 模型徽标收敛（c2841）。写者未装配或未持有模型时 no-op；幂等（重复
-    /// 绑定只会重播同一当前模型）。模型 id 来自写者 current_model，provider
-    /// 按 id 查写者注册表真源（ModelInfo 不携带 provider）。
-    ///
-    /// c2850/r1926: attach 期同步是订阅者收敛而非会话历史——MUST NOT 落
-    /// journal、MUST NOT 消耗 seq（与 `push_resources` 同族）。下行 `seq`
-    /// 回显当前 max_seq（不递增），避免客户端 `last_seq` 回退或与 journal 错位。
     pub async fn sync_model_downlink(&self) -> () {
         let Some((provider, model_id)) = self.writer_model().await else {
             return;
@@ -631,7 +574,6 @@ impl SessionSlot {
         Some((provider, id))
     }
 
-    /// Fixed-zone-only MCP/skills snapshot. Not journaled (must not consume seq).
     pub async fn push_resources(&self, snap: LoadedResourcesSnapshot) {
         let msg = downlink_server_request(
             "session/resources",
@@ -644,7 +586,6 @@ impl SessionSlot {
         self.broadcast(msg).await;
     }
 
-    /// Interactive bang output event (c2760). Not journaled (must not consume seq).
     pub async fn push_bash_output(&self, chunk: xylitol_plugin_sdk::BashChunk) {
         let msg = downlink_server_request(
             "session/bash_output",
@@ -658,9 +599,6 @@ impl SessionSlot {
         self.broadcast(msg).await;
     }
 
-    /// Poll the writer locally and push `session/resources` when the snapshot
-    /// changes. Unary `loaded_resources` also polls (applies tools / acks);
-    /// the watch must not rely on that one-shot dirty flag exclusively.
     pub fn ensure_mcp_resources_watch(self: &Arc<Self>) {
         if self.mcp_watch_started.swap(true, Ordering::SeqCst) {
             return;
@@ -703,7 +641,6 @@ impl SessionSlot {
             })
             .unwrap_or(Value::Null),
         );
-        // Envelope rpcId is the stable reverse-RPC id.
         let RpcMessage::ServerRequest {
             method, payload, ..
         } = msg
@@ -742,7 +679,6 @@ impl SessionSlot {
     }
 }
 
-/// Ask tool on a Host slot: mux `question/requested`, answer via `answer_question` unary.
 struct SlotAskGateway {
     slot: Arc<SessionSlot>,
 }
@@ -797,7 +733,6 @@ impl OccupiedHost for HostState {
 }
 
 pub fn is_writer_method(method: &str) -> bool {
-    // c2530 D3：租约准入由注册表能力位声明，取代手维护的 WRITER_METHODS。
     xylitol_protocol::registry::lookup(method)
         .is_some_and(|e| e.auth == xylitol_protocol::registry::Auth::Writer)
 }
@@ -836,8 +771,7 @@ fn project_trusted_for(host: &HostState, workspace: &Path) -> bool {
     .trusted
 }
 
-/// Unit-test seam (driver delegate tests / BDD); product uses `materialize_writer_at`.
-#[allow(dead_code)] // unit-test seam, not product-called
+#[allow(dead_code)]
 pub async fn materialize_writer(
     host: &HostState,
     slot: &Arc<SessionSlot>,
@@ -889,7 +823,6 @@ async fn materialize_reader(
     Ok(driver)
 }
 
-/// Busy `/model` / thinking: remember for the next run; do not retune this run's LLM calls.
 async fn defer_runtime_setting(slot: &SessionSlot, method: &str, payload: &Value) -> RpcResult {
     let mut g = slot.driver.lock().await;
     let Some(driver) = g.as_mut() else {
@@ -1025,11 +958,6 @@ async fn on_prompt_finished(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
     }
 }
 
-/// Dispatch a registered unary method.
-///
-/// `rpc_id` is the envelope `rpcId` on wire carriers and doubles as the
-/// idempotency admission key (c2460); carriers without a wire envelope pass
-/// `None` and skip admission.
 pub async fn handle_unary(
     host: &Arc<HostState>,
     rpc_id: Option<&str>,
@@ -1061,9 +989,6 @@ pub async fn handle_unary(
         return RpcResult::ok_value(serde_json::to_value(snapshot).unwrap_or(Value::Null));
     }
     if method == METHOD_ABORT {
-        // A running interactive bash holds the writer lock, so a `Command::Abort`
-        // dispatch would queue behind it; cancel the run out-of-band first
-        // (c2760 follow-up: Esc must kill the host-side process tree).
         let abort_session = host.session_id_from_payload(&payload);
         if let Some(slot) = host.existing_slot(&abort_session).await
             && let Some(cancel) = slot.bash_run_cancel.lock().ok().and_then(|c| c.clone())
@@ -1088,9 +1013,6 @@ pub async fn handle_unary(
     let workspace = workspace_from_payload(host, &payload);
     let slot = host.slot(&session_id).await;
 
-    // c2460: session-scoped admission keyed by the envelope rpcId — first
-    // admission wins, duplicates replay the first result, foreign reuse of a
-    // key is a stable conflict.
     let reservation = match slot.idempotency.admit(rpc_id, method, &payload).await {
         Admission::Proceed(reservation) => reservation,
         Admission::Replay(result) => return result,
@@ -1103,7 +1025,6 @@ pub async fn handle_unary(
     result
 }
 
-/// Session-scoped unary execution, after idempotency admission.
 async fn dispatch_session_unary(
     host: &Arc<HostState>,
     slot: &Arc<SessionSlot>,
@@ -1147,8 +1068,6 @@ async fn dispatch_session_unary(
         if let Err(e) = ensure_write_occupancy(host, slot, workspace).await {
             return *e;
         }
-        // c2895 一回合一演员：根提交准入 CAS——回合成中再发根提交稳定拒绝
-        // （对齐「忙碌时二次根提交有明确拒绝」），并关闭第二 `d.run()` 重叠流。
         if slot
             .run_inflight
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -1217,8 +1136,6 @@ async fn dispatch_session_unary(
     }
 
     if method == METHOD_ARM_TOOL_FREEZE {
-        // r1925: freeze the in-process tool table; MUST NOT take write occupancy
-        // so another process holding the kernel lock still gets a snapshot.
         if let Err(e) = materialize_writer_at(host, slot, workspace).await {
             log::warn!(
                 target: "xylitol::host",
@@ -1229,11 +1146,6 @@ async fn dispatch_session_unary(
         let Some(driver) = g.as_mut() else {
             return RpcResult::error("unavailable", "no writer engine");
         };
-        // c2847: arm 必须**有界决议**——`ensure_tool_table_frozen` 按首轮门时限
-        // （MCP_FIRST_TURN_GATE_TIMEOUT）等待 settle，超时 detach 未连上的 bootstrap
-        // 并冻结已 armed 子集后返回。此前仅 `arm_tool_freeze_gate` + 单次 poll 即回快照：
-        // 配置了但连不上的 MCP 会永驻 connecting，TUI 的 Assembling 门无限等待、
-        // turn 永不启动（runtime 的 ensure 只在 run() 后才触发，形成双向死锁）。
         driver.ensure_tool_table_frozen().await;
         let snapshot = driver.loaded_resources_snapshot().await;
         return RpcResult::ok_value(serde_json::to_value(&snapshot).unwrap_or(Value::Null));
@@ -1273,10 +1185,6 @@ async fn dispatch_session_unary(
     dispatch_readonly_unary(host, slot, session_id, method, payload, workspace).await
 }
 
-/// Writer-method unary: occupancy + inflight deferral + wire staging + shared dispatch.
-///
-/// Split out of [`dispatch_session_unary`] (c2710) so the entry point stays a
-/// thin router (special paths → writer → reader).
 async fn dispatch_writer_unary(
     host: &Arc<HostState>,
     slot: &Arc<SessionSlot>,
@@ -1292,15 +1200,8 @@ async fn dispatch_writer_unary(
     {
         return defer_runtime_setting(slot, method, &payload).await;
     }
-    // Export over the wire stages to a unique Host-side temp file; the
-    // content is read back into the response and the TUI writes its own
-    // local copy (D4: the file lands on the machine that asked for it).
     let staged_export =
         matches!(method, "export_html" | "export_jsonl") && payload.get("output_path").is_none();
-    // Import over the wire stages the pushed content symmetrically
-    // (sr-imp1): the client reads its local file and sends `content`;
-    // the Host lands it on a unique temp input path, dispatches, and
-    // cleans up afterwards.
     let staged_import = method == METHOD_IMPORT_JSONL
         && payload.get("input_path").is_none()
         && payload.get("content").is_some();
@@ -1336,9 +1237,6 @@ async fn dispatch_writer_unary(
     let Some(driver) = g.as_mut() else {
         return RpcResult::error("unavailable", "no writer engine");
     };
-    // c2760: forward interactive bang output as non-journal session events;
-    // register the run cancel so `abort` can reach it while the writer lock
-    // is held by this executing bash unary.
     let bash_forwarder = if method == "bash" {
         let (tx, mut rx) = tokio::sync::mpsc::channel(64);
         let cancel = CancellationToken::new();
@@ -1396,7 +1294,6 @@ async fn dispatch_writer_unary(
     result
 }
 
-/// Read-only unary: cache/快速 paths + reader-driver materialization + shared dispatch.
 async fn dispatch_readonly_unary(
     host: &Arc<HostState>,
     slot: &Arc<SessionSlot>,

@@ -6,7 +6,6 @@ rust-version = "1.99.0"
 license = "MIT"
 description = "Terminal UI with differential rendering (fork derived from pi-tui; diverges for xylitol)"
 repository = "https://github.com/straydragon/xylitol"
-# Shared `agent_demo_impl.rs` lives under examples/ but is not a binary entry.
 autoexamples = false
 
 
@@ -25,14 +24,12 @@ two-face = { workspace = true, features = ["syntect-default-fancy"], optional = 
 
 [features]
 default = ["highlight"]
-# Real syntect highlighter for MarkdownTheme.highlight_code (demo + product).
 highlight = ["dep:syntect", "dep:two-face"]
 
 
 [dev-dependencies]
 vte = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time", "test-util"] }
-# insta: whole-screen snapshot golden (c405 layer 2) — viewport output regression.
 insta = { workspace = true, features = ["filters"] }
 tempfile = { workspace = true }
 

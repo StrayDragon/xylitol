@@ -1,12 +1,5 @@
-//! Typed builders for [`XyHookBus`] `(event_type, phase, context)` triples.
-//!
-//! Payload field names MUST stay aligned with
-//! `infra::hooks::HookEvent::payload_context` (agent cannot import infra).
-//! Keeps ReAct / session call sites free of ad-hoc `json!` maps.
-
 use serde_json::{Value, json};
 
-/// `(event_type, phase, context)` for [`xylitol_plugin_sdk::XyHookBus::dispatch`].
 pub type ScriptHookCtx = (&'static str, &'static str, Value);
 
 pub fn agent_start() -> ScriptHookCtx {

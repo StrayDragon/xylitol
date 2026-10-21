@@ -1,5 +1,3 @@
-//! Runtime boundary for session persistence.
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -10,56 +8,28 @@ use crate::session::{
 
 pub use crate::session::ForkPosition;
 
-/// Row for session resume picker (XyDriver seam; mtime order is store-defined).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionListEntry {
     pub id: String,
     pub name: Option<String>,
-    /// First user-message preview (pi `firstMessage`); unnamed sessions use this as label.
     pub first_message: Option<String>,
     pub message_count: usize,
-    /// Last activity / file mtime (unix secs); used for relative age in the picker.
     pub modified_unix: Option<u64>,
-    /// Parent session id when this session was forked/cloned (`SessionHeader.parent_session`).
     pub parent_session_id: Option<String>,
-    /// Tree glyph prefix after forest flatten (`└─ ` / `├─ `…); empty for roots.
     pub tree_prefix: String,
-    /// Session cwd from header (scope=Current filter).
     pub cwd: Option<String>,
-    /// Persisted jsonl path when known (optional path display).
     pub path: Option<String>,
 }
 
-/// Persistence port — abstracts session storage so the agent can be
-/// unit-tested without a real filesystem and the server can host
-/// sessions without coupling to the file store.
-///
-/// Methods are the **minimum** the ReAct loop and compaction call.
-/// Full session management (fork/navigate/export) stays on the session
-/// plugin for the composition root.
 #[async_trait]
 pub trait XySessionStore: Send + Sync {
-    /// Check whether a session exists.
     async fn exists(&self, session_id: &str) -> bool;
 
-    /// Load the raw typed session entries (for compaction / export).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn load_entries(
         &self,
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError>;
 
-    /// Load entries on the current leaf→root branch (pi `getBranch`).
-    ///
-    /// Compaction prepare/cut MUST use this path so sibling branches are excluded.
-    /// Default falls back to [`Self::load_entries`] for linear/stub stores.
-    ///
-    /// # Errors
-    ///
-    /// Same as [`Self::load_entries`].
     async fn load_leaf_branch(
         &self,
         session_id: &str,
@@ -67,22 +37,12 @@ pub trait XySessionStore: Send + Sync {
         self.load_entries(session_id).await
     }
 
-    /// Append a typed session entry (compaction summary, bash exec, etc.).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn append_session_entry(
         &self,
         session_id: &str,
         entry: &SessionEntry,
     ) -> Result<(), XySessionStoreError>;
 
-    /// Commit a compaction entry and its storage-specific seal transaction.
-    ///
-    /// The default is append-only so lightweight stores and test doubles keep
-    /// their existing semantics. Persisted stores may override this to publish
-    /// new segments atomically.
     async fn commit_compaction(
         &self,
         session_id: &str,
@@ -91,17 +51,6 @@ pub trait XySessionStore: Send + Sync {
         self.append_session_entry(session_id, entry).await
     }
 
-    /// Load the session-wide set of done bash ids (c2770 pairing).
-    ///
-    /// ReAct history seeding and `build_session_context` call this instead of
-    /// a full `load_entries` just to compute the done set. The default is a
-    /// full-load fallback so lightweight stores and test doubles keep their
-    /// existing semantics; persisted stores may override to use sealed sidecars.
-    ///
-    /// # Errors
-    ///
-    /// Same as [`Self::load_entries`]. Callers MUST treat an `Err` as "fold
-    /// skipped" (no false interrupted notices), mirroring today's behavior.
     async fn load_done_bash_ids(
         &self,
         session_id: &str,
@@ -110,41 +59,17 @@ pub trait XySessionStore: Send + Sync {
         Ok(crate::session::done_bash_ids(&entries))
     }
 
-    /// Build the full session context (messages, thinking level, model).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn build_session_context(
         &self,
         session_id: &str,
     ) -> Result<SessionContext, XySessionStoreError>;
 
-    /// Create a new session (writes header, initializes leaf tracking).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the store cannot write the initial header / leaf state.
     async fn create(
         &self,
         id: &str,
         cwd: Option<&str>,
         parent: Option<&str>,
     ) -> Result<(), XySessionStoreError>;
-    /// Fork a session into a new child.
-    ///
-    /// Tree-positioned (not pure IO): missing `at_entry_id` is
-    /// [`XySessionError::EntryNotFound`]; persist failures stay
-    /// [`XySessionError::Store`].
-    ///
-    /// - [`ForkPosition::At`]: child path is `get_branch` through `at_entry_id` (re-chained).
-    /// - [`ForkPosition::Before`]: `at_entry_id` must be a user message; path ends at its
-    ///   parent (pi `/fork`); the user row is not copied.
-    ///
-    /// # Errors
-    ///
-    /// `Err(EntryNotFound)` when `at_entry_id` is not on the branch;
-    /// `Err(Store)` when the child session cannot be persisted.
     async fn fork(
         &self,
         parent_id: &str,
@@ -153,17 +78,10 @@ pub trait XySessionStore: Send + Sync {
         position: ForkPosition,
     ) -> Result<(), XySessionError>;
 
-    /// Set the active leaf entry for branching / travel.
     fn set_leaf(&self, session_id: &str, entry_id: Option<&str>);
 
-    /// Current leaf entry id, if any.
     fn leaf_id(&self, session_id: &str) -> Option<String>;
 
-    /// Build the message-history session tree (default: load entries + `build_session_tree`).
-    ///
-    /// # Errors
-    ///
-    /// Same as [`Self::load_entries`].
     async fn message_history_tree(
         &self,
         session_id: &str,
@@ -172,24 +90,11 @@ pub trait XySessionStore: Send + Sync {
         Ok(build_session_tree(&entries))
     }
 
-    /// List resumable sessions (mtime descending when persisted).
-    ///
-    /// Used by the XyDriver for `/session-resume` (not a `protocol::Command`).
-    /// Default returns an empty list so minimal store stubs stay usable.
-    ///
-    /// # Errors
-    ///
-    /// `Err` on store listing failure. Default returns `Ok(vec![])`.
     async fn list_sessions(&self) -> Result<Vec<SessionListEntry>, XySessionStoreError> {
         let _ = self;
         Ok(Vec::new())
     }
 
-    /// Latest display name from `session_info` entries (c1020 `/session-name`).
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn get_session_name(
         &self,
         session_id: &str,
@@ -208,13 +113,6 @@ pub trait XySessionStore: Send + Sync {
         Ok(None)
     }
 
-    /// Append a sanitized session display name (CR/LF → space, trim; c1020).
-    ///
-    /// Returns the name actually stored.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when the session does not exist (`NotFound`) or the store IO fails.
     async fn set_session_name(
         &self,
         session_id: &str,
@@ -234,43 +132,21 @@ pub trait XySessionStore: Send + Sync {
         Ok(sanitized)
     }
 
-    /// Delete a persisted session (XyDriver `/session-resume` panel; c1065).
-    ///
-    /// Default returns an error so minimal store stubs stay safe.
-    ///
-    /// # Errors
-    ///
-    /// `Err` when unsupported (default stub) or the store cannot delete.
     async fn delete_session(&self, session_id: &str) -> Result<(), XySessionStoreError> {
         let _ = session_id;
         let _ = self;
         Err(XySessionStoreError::unsupported("delete_session"))
     }
 
-    /// Take process-local kernel write occupancy for a materialized session.
-    ///
-    /// Default is a no-op so in-memory stubs stay usable. Persisted stores
-    /// take a kernel occupancy on `session.lock` (r1950).
     fn try_acquire_write_lock(&self, session_id: &str) -> Result<(), XySessionStoreError> {
         let _ = session_id;
         Ok(())
     }
 
-    /// Release occupancy. Default no-op. MUST NOT unlink `session.lock`.
     fn release_write_lock(&self, session_id: &str) {
         let _ = session_id;
     }
 
-    /// Read the most recent `limit` typed entries (server journal replay /
-    /// resume seeding / diagnostics).
-    ///
-    /// The default derives from a full [`Self::load_entries`] slice so
-    /// lightweight stores and test doubles inherit safe semantics; persisted
-    /// stores MAY override with a bounded read. Order is the append order.
-    ///
-    /// # Errors
-    ///
-    /// Same as [`Self::load_entries`].
     async fn read_recent(
         &self,
         session_id: &str,
@@ -282,7 +158,6 @@ pub trait XySessionStore: Send + Sync {
     }
 }
 
-/// pi-aligned session display name sanitize (CR/LF runs → one space, then trim).
 pub fn sanitize_session_display_name(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut saw_nl = false;

@@ -1,5 +1,3 @@
-//! Stable `TypeKey` names for Host services.
-
 use crate::ports::{XyCompaction, XyHookBus, XyModel, XyPermission, XySessionStore, XyTool};
 use crate::rt::TypeKey;
 

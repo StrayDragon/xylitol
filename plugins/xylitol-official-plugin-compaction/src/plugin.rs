@@ -1,5 +1,3 @@
-//! `PluginFactory` entry: compaction orchestrator.
-
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig;

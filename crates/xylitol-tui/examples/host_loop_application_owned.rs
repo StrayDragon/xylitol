@@ -1,11 +1,3 @@
-//! Minimal ApplicationOwned host loop — canonical ptim14 surface (c2070 §7.9).
-//!
-//! Run: `cargo run -p xylitol-tui --example host_loop_application_owned`
-//!   or: `just demo-tui-host-loop`（crates/xylitol-tui 内）
-//!
-//! Demonstrates the reusable path (no demo-private mouse glue):
-//! [`ApplicationOwnedTui`] → begin → dispatch / idle / render → finish.
-
 use std::io::{Write, stdout};
 use std::time::Duration;
 
@@ -35,7 +27,6 @@ impl HelloHost {
 impl Component for HelloHost {
     fn render(&mut self, width: usize) -> Vec<String> {
         let dock = 2usize;
-        // Keep origin helper exercised (hosts sync Editor the same way).
         let term_rows = self.lines.len().max(dock) as u16;
         let _origin = editor_screen_origin(term_rows.max(dock as u16), dock, 1);
         let _ = width;

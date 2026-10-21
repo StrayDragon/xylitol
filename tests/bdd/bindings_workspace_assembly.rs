@@ -1,5 +1,3 @@
-//! workspace-assembly 场景绑定。
-
 use crate::bdd::fixtures::*;
 use crate::bdd::steps_server::{ServerTest, server_test};
 use rstest_bdd_macros::scenario;

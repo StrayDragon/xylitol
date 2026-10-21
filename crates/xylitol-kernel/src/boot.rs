@@ -1,5 +1,3 @@
-//! `Kernel::boot`: one assembly path for Print / Host / embed.
-
 use rutis_loader::{Chain, Layer, Loader, LoaderOptions, LoaderPlugin, Patch};
 use xylitol_plugin_sdk::rt::{Ctx, FiberState, Typed};
 
@@ -71,7 +69,6 @@ pub async fn boot(opts: BootOptions) -> Result<Kernel, BootstrapError> {
     })
 }
 
-/// Mount core plugins and loader rows without assembling an agent.
 pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapError> {
     let ctx = Ctx::root().map_err(cordis_to_bootstrap)?;
     mount_core(&ctx, opts).await?;

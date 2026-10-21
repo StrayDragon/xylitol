@@ -1,12 +1,8 @@
-//! Model metadata and context-token estimates.
-
 use crate::model::config::XyModelConfig;
 use crate::model::thinking::ThinkingLevelMap;
 
-/// LLM accounting DTOs stay single-sourced in the bridge package.
 pub use crate::dto::{ContextTokenEstimate, TokenProvenance};
 
-/// Metadata describing a model variant available from a provider.
 #[derive(Debug, Clone)]
 pub struct XyModelMeta {
     pub id: String,
@@ -22,6 +18,5 @@ pub struct XyModelMeta {
     pub cost_cache_write: f64,
     pub max_tokens: u64,
     pub thinking_levels: Vec<String>,
-    /// Optional per-level provider effort/budget overrides (`null` = omit).
     pub thinking_level_map: ThinkingLevelMap,
 }

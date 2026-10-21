@@ -1,15 +1,3 @@
-//! Lab (qa-wired): Responses prompt-cache hit → prefix break → miss.
-//!
-//! Config (programmatic; dedicated file, never the global AppConfig):
-//! 1. `XYLITOL_LIVE_PROVIDER_CONFIG` path, else
-//! 2. `<global-dir>/dev/live-provider.yaml` (shared via ~/.config/xylitol), else skip
-//! 3. Field overrides: `XYLITOL_LIVE_*` / `OPENAI_API_KEY`
-//! 4. `XYLITOL_LIVE_PROVIDER=0|1` forces disable/enable
-//!
-//! Wired into `just qa` via `qa-test-live-provider` (**serial**, `--test-threads=1`).
-//! Excluded from nextest parallel matrix (see `.config/nextest.toml`).
-//! Naming: unified `lab_` prefix (was `live_responses_prompt_cache`).
-
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -34,7 +22,6 @@ struct LiveProviderFile {
     api_key: String,
     #[serde(default = "default_max_out")]
     max_output_tokens: u64,
-    /// Documented in YAML; recipe enforces serial execution.
     #[serde(default = "default_true")]
     #[allow(dead_code)]
     serial: bool,
@@ -64,8 +51,6 @@ fn default_true() -> bool {
     true
 }
 
-/// Same priority as the main crate's `infra::config::paths::resolve_global_dir`.
-/// Lives in this lab binary so `xylitol-official-plugin-provider-openai` does not export config paths.
 fn global_config_dir() -> Option<PathBuf> {
     resolve_global_config_dir(|k| std::env::var(k).ok())
 }
@@ -133,11 +118,6 @@ fn apply_env_overrides(file: &mut LiveProviderFile) {
     }
 }
 
-/// Resolve dedicated live-provider config. Never reads the global AppConfig
-/// (`~/.config/xylitol/config.yaml`); only the dedicated `dev/live-provider.yaml`.
-///
-/// `explicit` / `global_dir` are injected so unit tests can cover the full
-/// resolve matrix without touching the process environment.
 fn resolve_live_provider_from(
     explicit: Option<PathBuf>,
     global_dir: Option<PathBuf>,
@@ -210,8 +190,6 @@ impl HttpHooks for CapTokens {
     async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
 }
 
-/// 稳定前缀垫长到 ~2500 字符：共享 vllm 网关的 prefix cache 需要足够前缀块
-/// 才稳定命中（实测 278/1060-token 前缀会被并发请求挤成 cached=0）。
 fn pad_prefix(tag: &str) -> String {
     format!("{tag} {}", "stable_block ".repeat(190))
 }
@@ -221,10 +199,6 @@ async fn one_call(
     prefix: &str,
     user: &str,
 ) -> xylitol_official_plugin_provider_openai::dto::XyUsage {
-    // 前缀载体放 user 段而非 system 段：vllm 类网关默认关闭 System-Prompt Cache，
-    // 对 system 段前缀不产生 cached_tokens，warm 恒 0 致断言误报。前缀入 input
-    // 单段后 vllm 通用 prefix cache 与 OpenAI Response `store` 均能命中，三态语义
-    // （cold→warm hit→prefix break miss）保持不变。
     let opts = XyGenerateOptions {
         thinking_level: "off".into(),
         ..Default::default()
@@ -247,11 +221,6 @@ async fn one_call(
     usage.expect("Done usage missing — provider omitted usage?")
 }
 
-/// Counterexample: warm hit then prefix mutation drops cache_read.
-///
-/// When dedicated config is missing/disabled this test returns early (pass).
-/// `just qa` still invokes the binary serially so a local `enabled: true`
-/// config is actually verified.
 #[tokio::test]
 async fn lab_responses_prompt_cache_break_prefix_drops_cache_read() {
     let cfg = match resolve_live_provider() {
@@ -291,9 +260,6 @@ async fn lab_responses_prompt_cache_break_prefix_drops_cache_read() {
     let warm = one_call(&adapter, &stable, "reply with exactly: OK2").await;
     let miss = one_call(&adapter, &broken, "reply with exactly: OK3").await;
 
-    // 缓存能力探测（诚实分级）：网关未启用 prefix cache（如同前缀 warm 仍为 0，
-    // 共享 vllm 网关可能因并发 eviction 或未开缓存）→ 显式 SKIP 而非 FAIL。
-    // 支持缓存的网关（真实 OpenAI 等）仍强制三态断言。
     if cold.cache_read == 0 && warm.cache_read == 0 {
         eprintln!(
             "live-provider: SKIP — gateway lacks prefix cache (warm=0); three-state cache semantic not verifiable here"

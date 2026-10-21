@@ -1,10 +1,3 @@
-//! c485 synthetic vertical-slice harness — ScriptedDriver + host/driver pump.
-//!
-//! Normal compile path (SceneBuilder tt08 precedent): the BDD suite and unit
-//! tests share this one pump — never a second side-effect pump (ati30). Stays
-//! inside `app/tui` and talks to the core solely via
-//! [`crate::driver::XyDriver`] (layering seam).
-
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Mutex;
@@ -30,22 +23,16 @@ pub use super::effects::{
 };
 use super::host::{HostEvent, HostSession};
 
-/// Test double: canned `run` streams + call recording for steer/abort/queues/bash.
 pub struct ScriptedDriver {
     pub runs: Vec<String>,
     pub steer_calls: Vec<String>,
     pub follow_up_calls: Vec<String>,
     pub clear_calls: Vec<(bool, bool)>,
-    /// c2895 观景态场景缝：attach_observe() 返回值。
     pub observe_state: std::sync::Mutex<crate::driver::AttachObserve>,
     bash_calls: Mutex<Vec<(String, bool)>>,
     abort_count: AtomicUsize,
-    /// GetAvailableModels dispatch counter (c2790 inline-drain observable).
     models_calls: AtomicUsize,
-    /// When true, [`Self::execute_bash`] waits until [`Self::abort`] (c665).
     hang_bash_until_abort: AtomicBool,
-    /// Optional artificial delay before a non-hang bash future resolves —
-    /// lets tests inject keys mid-bang and still complete normally (no abort).
     bash_delay: Option<Duration>,
     aborted: std::sync::Arc<AtomicBool>,
     scripts: VecDeque<Vec<XyEvent>>,
@@ -58,7 +45,6 @@ pub struct ScriptedDriver {
     available_models: Vec<ModelInfo>,
     message_history_tree: Vec<SessionTreeNode>,
     session_messages: Vec<SessionEntry>,
-    /// When set, get_messages returns this error (c2827 r1244 surfacing guard).
     get_messages_error: Option<String>,
     travel_overrides: HashMap<String, SessionTreeTravel>,
     session_tree_calls: AtomicUsize,
@@ -67,7 +53,6 @@ pub struct ScriptedDriver {
     switch_calls: Mutex<Vec<String>>,
     label_calls: Mutex<Vec<(String, Option<String>)>>,
     active_session_id: Mutex<String>,
-    /// Scripted leaf for `/session-fork` (c700/c1005).
     leaf_entry_id: Mutex<Option<String>>,
     compact_calls: Mutex<Vec<Option<String>>>,
     export_html_calls: Mutex<Vec<String>>,
@@ -81,41 +66,26 @@ pub struct ScriptedDriver {
     set_session_name_calls: Mutex<Vec<String>>,
     set_session_name_for_calls: Mutex<Vec<(String, String)>>,
     delete_session_calls: Mutex<Vec<String>>,
-    /// Optional fixed estimate for footer harness (c1035).
     estimate_override: Option<xylitol_plugin_sdk::model::ContextTokenEstimate>,
-    /// Count of [`XyDriver::estimate_context_tokens`] (c1860 double-kick guard).
     estimate_calls: AtomicUsize,
     reload_runtime_calls: AtomicUsize,
     hang_reload_until_cancel: AtomicBool,
     fail_reload: AtomicBool,
     persist_project_trust_calls: Mutex<Vec<crate::driver::ProjectTrustMode>>,
     copy_text_calls: Mutex<Vec<String>>,
-    /// When set, next `copy_text_to_clipboard` returns this OSC 52 for host emit.
     copy_pending_osc52: Mutex<Option<String>>,
     dollar_skill_catalog: Mutex<Vec<(String, String)>>,
-    /// Injectable loaded-resources header snapshot (c1135).
     loaded_resources: Mutex<LoadedResourcesSnapshot>,
-    /// Count of [`XyDriver::loaded_resources_snapshot`] awaits (c1215 cache seam).
     loaded_resources_snapshot_calls: AtomicUsize,
-    /// Current thinking level (c1150); mutable via set/cycle.
     thinking_level: String,
-    /// Declared support list for cycle; tests may narrow it.
     thinking_levels: Vec<String>,
-    /// Injectable clipboard image bytes for paste staging (c1155); `None` = no image.
     clipboard_image: Mutex<Option<(Vec<u8>, String)>>,
-    /// Paths written by [`XyDriver::stage_clipboard_image`].
     staged_paste_paths: Mutex<Vec<String>>,
-    /// Force `stage_clipboard_image` to Err.
     clipboard_image_error: Mutex<Option<String>>,
-    /// Injectable clipboard text for Ctrl+V fallback (c1156).
     clipboard_text: Mutex<Option<String>>,
-    /// c1900 first-turn freeze gate; default true (no gate) like trait default.
     tools_frozen: AtomicBool,
-    /// When set, [`XyDriver::arm_tool_freeze_gate`] waits until the sender fires.
     arm_park: Option<tokio::sync::oneshot::Receiver<()>>,
-    /// Mimic attach Remote `queue_stats` returning 0 after local strip enqueue.
     pub force_zero_queue_stats: AtomicBool,
-    /// Interactive bang output-event sink injected by the bang loop (c2760).
     bash_run_sink: Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>,
 }
 
@@ -238,24 +208,20 @@ impl ScriptedDriver {
         }
     }
 
-    /// c1900: simulate pre-freeze / FROZEN for Assembling gate harness.
     pub fn set_tools_frozen(&self, frozen: bool) {
         self.tools_frozen.store(frozen, Ordering::SeqCst);
     }
 
-    /// Park the next `arm_tool_freeze_gate` until the returned sender fires.
     pub fn park_arm_tool_freeze(&mut self) -> tokio::sync::oneshot::Sender<()> {
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.arm_park = Some(rx);
         tx
     }
 
-    /// Queue a fake clipboard image for the next [`XyDriver::stage_clipboard_image`] (c1155).
     pub fn set_clipboard_image(&self, bytes: Vec<u8>, mime: impl Into<String>) {
         *self.clipboard_image.lock().expect("clipboard_image") = Some((bytes, mime.into()));
     }
 
-    /// Next stage call returns this error.
     pub fn set_clipboard_image_error(&self, err: impl Into<String>) {
         *self
             .clipboard_image_error
@@ -263,7 +229,6 @@ impl ScriptedDriver {
             .expect("clipboard_image_error") = Some(err.into());
     }
 
-    /// Queue clipboard text for [`XyDriver::read_clipboard_text`] (c1156).
     pub fn set_clipboard_text(&self, text: impl Into<String>) {
         *self.clipboard_text.lock().expect("clipboard_text") = Some(text.into());
     }
@@ -275,7 +240,6 @@ impl ScriptedDriver {
             .clone()
     }
 
-    /// Replace the thinking support list shown in the models picker.
     pub fn set_thinking_levels(&mut self, levels: Vec<String>) {
         self.thinking_levels = levels;
         if !self.thinking_levels.is_empty()
@@ -288,7 +252,6 @@ impl ScriptedDriver {
         }
     }
 
-    /// Queue a pending OSC 52 sequence for the next clipboard copy (TUI host path).
     pub fn set_next_copy_pending_osc52(&self, sequence: Option<String>) {
         *self.copy_pending_osc52.lock().expect("copy_pending_osc52") = sequence;
     }
@@ -297,12 +260,10 @@ impl ScriptedDriver {
         self.reload_runtime_calls.load(Ordering::SeqCst)
     }
 
-    /// c1205: hang `reload_runtime` until the cancel token fires (Esc path).
     pub fn set_hang_reload_until_cancel(&self, hang: bool) {
         self.hang_reload_until_cancel.store(hang, Ordering::SeqCst);
     }
 
-    /// c1205: next `reload_runtime` reports a failed mcp step.
     pub fn set_fail_reload(&self, fail: bool) {
         self.fail_reload.store(fail, Ordering::SeqCst);
     }
@@ -325,12 +286,10 @@ impl ScriptedDriver {
         *self.dollar_skill_catalog.lock().expect("catalog") = catalog;
     }
 
-    /// Inject loaded-resources snapshot for header harness (c1135).
     pub fn set_loaded_resources_for_driver(&self, snap: LoadedResourcesSnapshot) {
         *self.loaded_resources.lock().expect("loaded_resources") = snap;
     }
 
-    /// How many times [`XyDriver::loaded_resources_snapshot`] was awaited (c1215).
     pub fn loaded_resources_snapshot_calls(&self) -> usize {
         self.loaded_resources_snapshot_calls.load(Ordering::SeqCst)
     }
@@ -364,7 +323,6 @@ impl ScriptedDriver {
         self.message_history_tree = tree;
     }
 
-    /// Test knob (c2827): fail the next get_messages with this message.
     pub fn set_get_messages_error(&mut self, err: Option<String>) {
         self.get_messages_error = err;
     }
@@ -373,7 +331,6 @@ impl ScriptedDriver {
         self.session_messages = entries;
     }
 
-    /// Fixed [`XyDriver::estimate_context_tokens`] result for footer harness (c1035).
     pub fn set_estimate_override(
         &mut self,
         estimate: Option<xylitol_plugin_sdk::model::ContextTokenEstimate>,
@@ -458,12 +415,10 @@ impl ScriptedDriver {
         self.model = model;
     }
 
-    /// Test probe (c2827): current model id (SetModel applied or default).
     pub fn current_model_id(&self) -> String {
         self.model.id.clone()
     }
 
-    /// Test probe (c2827): active session id as the XyDriver port reports it.
     pub fn active_session_id(&self) -> String {
         self.active_session_id.lock().expect("sid").clone()
     }
@@ -492,8 +447,6 @@ impl ScriptedDriver {
         self.aborted.store(false, Ordering::SeqCst);
     }
 
-    /// Delay the next non-hang bash completion so tests can inject keys
-    /// mid-bang while the bang still returns normally.
     pub fn set_bash_delay(&mut self, delay: Option<Duration>) {
         self.bash_delay = delay;
     }
@@ -532,14 +485,11 @@ impl XyDriver for ScriptedDriver {
         Box::pin(futures::stream::iter(events))
     }
 
-    /// c2790: owned bash completion — the hang loop polls the cloned
-    /// `Arc<AtomicBool>` so the future never borrows `self`.
     async fn bash_run(
         &mut self,
         command: &str,
         exclude_from_context: bool,
     ) -> Result<crate::driver::BashRun, XyDriverError> {
-        // Fresh run: do not inherit a prior abort latch (pi: new AbortController each bang).
         self.aborted.store(false, Ordering::SeqCst);
         self.bash_calls
             .lock()
@@ -572,7 +522,6 @@ impl XyDriver for ScriptedDriver {
                     full_output_path: None,
                 });
             }
-            // c2760: relay output through the injected sink like the real driver.
             if let Some(sink) = sink {
                 let _ = sink.tx.try_send(xylitol_plugin_sdk::BashChunk {
                     bash_id: "scripted-bash".into(),
@@ -653,7 +602,6 @@ impl XyDriver for ScriptedDriver {
     }
 
     async fn arm_tool_freeze_gate(&mut self) {
-        // Scripted: freeze is toggled via [`Self::set_tools_frozen`] across ticks.
         if let Some(rx) = self.arm_park.take() {
             let _ = rx.await;
         }
@@ -665,7 +613,6 @@ impl XyDriver for ScriptedDriver {
     ) -> Result<RuntimeReloadReport, XyDriverError> {
         self.reload_runtime_calls.fetch_add(1, Ordering::SeqCst);
         if self.hang_reload_until_cancel.load(Ordering::SeqCst) {
-            // Wake immediately when host cancels (Esc); safety cap avoids eternal hang.
             tokio::select! {
                 () = cancel.cancelled() => {}
                 () = tokio::time::sleep(std::time::Duration::from_secs(5)) => {}
@@ -689,7 +636,6 @@ impl XyDriver for ScriptedDriver {
                 cancelled: false,
             });
         }
-        // Mirror catalog → skill_names so /reload harness sees header refresh (c1135).
         let names: Vec<String> = self
             .dollar_skill_catalog
             .lock()
@@ -793,7 +739,6 @@ impl XyDriver for ScriptedDriver {
 }
 
 impl ScriptedDriver {
-    /// Test-helper: scripted session entries (c2710: no longer a Driver trait method).
     pub async fn get_messages(&self) -> Result<Vec<SessionEntry>, XyDriverError> {
         if let Some(err) = &self.get_messages_error {
             return Err(XyDriverError::message(err.clone()));
@@ -801,8 +746,6 @@ impl ScriptedDriver {
         Ok(self.session_messages.clone())
     }
 
-    /// Test-helper: set thinking level with the same support-list validation as
-    /// the Command executor (c2710).
     pub async fn set_thinking_level(&mut self, level: String) -> Result<(), XyDriverError> {
         if !self.thinking_levels.is_empty()
             && !self
@@ -820,7 +763,6 @@ impl ScriptedDriver {
         Ok(())
     }
 
-    /// Queue depths (c2710): session read via the Command executor and TUI reads.
     pub fn queue_stats(&self) -> QueueStats {
         if self.force_zero_queue_stats.load(Ordering::SeqCst) {
             return QueueStats::default();
@@ -832,7 +774,6 @@ impl ScriptedDriver {
     }
 }
 
-// ── Command executor (c2710): ScriptedDriver records dispatched Commands ────
 #[async_trait]
 impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
     async fn execute_session_command(
@@ -1135,7 +1076,6 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
                 })
             }
 
-            // These variants are the caller's responsibility (see dispatch module docs).
             Command::Prompt { .. }
             | Command::Quit { .. }
             | Command::Subscribe { .. }
@@ -1145,8 +1085,6 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
     }
 }
 
-/// One pump of host pending ops + optional full drain of the active agent stream.
-/// Mirrors `run_host_loop` ordering via shared [`drain_pending`] (c485 / ath6).
 pub async fn pump_host_driver<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -1160,7 +1098,6 @@ pub async fn pump_host_driver<T: Terminal>(
     }
 
     if let Some(bash) = session.take_bash() {
-        // No keyboard: pending stream (not empty — empty would EOF-quit the bang loop).
         let input = futures::stream::pending::<Result<HostEvent, XyDriverError>>();
         run_interactive_bang(session, driver, bash, agent_stream, input).await?;
     }
@@ -1184,7 +1121,6 @@ pub async fn pump_host_driver<T: Terminal>(
 pub fn harness_sample_message_history_tree() -> Vec<SessionTreeNode> {
     use xylitol_plugin_sdk::session::{EntryBase, MessageEntry};
 
-    /// Deterministic unix-ms from a string id (test fixture; v6 ms baseline).
     fn harness_entry_ms(id: &str) -> u64 {
         1_781_827_200_000u64
             + id.as_bytes()
@@ -1235,11 +1171,6 @@ fn flatten_session_tree_entries(node: SessionTreeNode) -> Vec<SessionEntry> {
     out
 }
 
-// ── ati30/att9 无头宿主门：单测与 BDD 共用的终端替身与键事件 ──
-
-// 与 tests.rs 的 TestTerminal 保持同步(字段差异: tests 版多 mouse_capture_active /
-// alternate_screen_active,frames 为 pub,stop() 额外复位两标志并覆写 mouse-capture /
-// alt-screen 方法;本版走 Terminal 默认 no-op)。
 pub struct TestTerminal {
     cols: u16,
     rows: u16,
@@ -1259,10 +1190,6 @@ impl TestTerminal {
         }
     }
 
-    /// Raw terminal write log — one `String` per diff render. BDD seam asserts
-    /// rendered picker rows by the same marker the PTY raw-stream waits use
-    /// (c2790 atm18: `→ * fake` is rendered only while the Models slot is
-    /// mounted).
     pub fn frames(&self) -> &[String] {
         &self.frames
     }
@@ -1296,7 +1223,6 @@ impl Terminal for TestTerminal {
     }
 }
 
-/// c2875：任意键事件（BDD 直驱键位路径；enter/esc/组合键统一入口）。
 pub fn key_event(
     code: crossterm::event::KeyCode,
     modifiers: crossterm::event::KeyModifiers,
@@ -1347,7 +1273,6 @@ mod slice_tests {
     use futures::Stream;
     use xylitol_tui::{Component, InputEvent};
 
-    /// HostEvent stream for hanging-bang Esc: delay → Esc(+backlog) → park (no EOF).
     fn bang_esc_input_stream(
         backlog_after_abort: usize,
     ) -> impl Stream<Item = Result<HostEvent, XyDriverError>> {
@@ -1366,7 +1291,6 @@ mod slice_tests {
         )
     }
 
-    /// Input stream that errors mid-bang (terminal read failure), then parks.
     fn bang_error_input_stream() -> impl Stream<Item = Result<HostEvent, XyDriverError>> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         tokio::spawn(async move {
@@ -1380,8 +1304,6 @@ mod slice_tests {
         )
     }
 
-    /// HostEvent stream injecting keys mid-bang (20ms gaps), optional trailing
-    /// Esc, then parks forever (EOF would quit the bang loop).
     fn bang_keys_input_stream(
         keys: Vec<InputEvent>,
     ) -> impl Stream<Item = Result<HostEvent, XyDriverError>> {
@@ -1420,9 +1342,6 @@ mod slice_tests {
         })
     }
 
-    /// Idle bang return: a follow-up queued during the bang (no worker turn)
-    /// MUST root-run from the next drain — not orphan in the driver queue the
-    /// ReAct worker only drains mid-turn / end-of-turn.
     #[tokio::test]
     async fn bang_return_followup_root_runs() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -1474,9 +1393,6 @@ mod slice_tests {
         );
     }
 
-    /// Bang Esc cancel keeps the abort lane contract: local steer dropped
-    /// (中止清插话), queued follow-up stays in the driver queue (留守), and
-    /// no idle conversion may auto-run it.
     #[tokio::test]
     async fn bang_cancel_drops_steer_keeps_followup() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -2017,8 +1933,6 @@ mod slice_tests {
         assert_eq!(driver.model.id, "fake");
     }
 
-    /// 硬约束「Busy + overlay → 先关槽，不 abort」：busy 期间打开的 models
-    /// picker，Esc 只归位浮层；abort 锁存（latch）不得置位，回合保持运行。
     #[tokio::test]
     async fn c1780_busy_models_esc_closes_picker_without_abort() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -2052,7 +1966,6 @@ mod slice_tests {
             "closing the picker must not end the running turn"
         );
 
-        // 连开连关：关闭后可立即重新打开（浮层状态无残留）。
         root.borrow_mut().set_editor_text("/model");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -2262,13 +2175,10 @@ mod slice_tests {
         assert_eq!(text, "@hel", "Esc closes popup without rewriting prefix");
     }
 
-    // ── c492 bang-bash (B1–B7) ─────────────────────────────────────
-
     #[test]
     fn b1_b2_bang_border_toggles() {
         let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
-        // Seed a non-off thinking level so restore is distinguishable from muted.
         root.borrow_mut().set_thinking_level_ui("low".into());
         root.borrow_mut().set_editor_text("!ls");
         assert!(root.borrow().bash_mode(), "B1: !ls enables bash border");
@@ -2284,7 +2194,6 @@ mod slice_tests {
             "B2: clear restores thinking border"
         );
         let restored = root.borrow_mut().editor_render_for_test(40).join("\n");
-        // pi dark thinkingLow #5f87af
         assert!(
             restored.contains("38;2;95;135;175"),
             "clear must restore low thinking border, not only muted; got:\n{restored}"
@@ -2516,7 +2425,6 @@ mod slice_tests {
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
         session.on_run_started("first");
-        // Mid-stream draft then Esc — suppress must arm before drain.
         session
             .step(HostEvent::Xy(Box::new(XyEvent::TextDelta("draft".into()))))
             .unwrap();
@@ -2572,18 +2480,15 @@ mod slice_tests {
         let mut stream = None;
         root.borrow_mut().set_editor_text("go");
         session.step(HostEvent::Input(enter_event())).unwrap();
-        // Start run but do not drain stream yet.
         drain_pending(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
         assert!(stream.is_some(), "run must open EventStream");
-        // Mid-stream Esc abort.
         session.step(HostEvent::Input(esc_event())).unwrap();
         drain_pending(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
         assert_eq!(driver.abort_count(), 1);
-        // Pump remaining scripted events — must be dropped (c670).
         if let Some(s) = stream.as_mut() {
             while let Some(xy) = s.next().await {
                 session.step(HostEvent::Xy(Box::new(xy))).unwrap();
@@ -2614,7 +2519,6 @@ mod slice_tests {
             "streaming buffers must stay empty"
         );
         assert!(!session.is_busy());
-        // Next turn still works.
         root.borrow_mut().set_editor_text("again");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -2670,9 +2574,6 @@ mod slice_tests {
         assert!(!session.is_busy());
     }
 
-    /// Esc-cancelled bang reports solely via the in-block `(cancelled)`
-    /// (app-tui-bridge: bang Esc MUST NOT impersonate agent Aborted) — no
-    /// `bash failed: …` scroll notice on the cancel path.
     #[tokio::test]
     async fn bang_esc_no_bash_failed_notice() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -2705,9 +2606,6 @@ mod slice_tests {
         );
     }
 
-    /// Input-stream error mid-bang must tear the bang down — kill the running
-    /// bash out-of-band and balance `begin_bash_exec` — instead of leaking the
-    /// process and latching the bash-exec state.
     #[tokio::test]
     async fn bang_input_error_kills_bash_and_unlatches() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -2776,8 +2674,6 @@ mod slice_tests {
         );
     }
 
-    /// After abort + Esc backlog, a second hanging bang must still be Esc-abortable
-    /// (regression: `suppress_busy_esc` used to eat busy Esc forever).
     #[tokio::test]
     async fn c665_second_bang_esc_still_aborts() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -2786,7 +2682,6 @@ mod slice_tests {
         driver.set_hang_bash_until_abort(true);
         let mut stream = None;
 
-        // Bang 1: hang + Esc abort + Esc backlog while idle.
         root.borrow_mut().set_editor_text("!sleep 1");
         session.step(HostEvent::Input(enter_event())).unwrap();
         drain_pending(&mut session, &mut driver, &mut stream)
@@ -2799,7 +2694,6 @@ mod slice_tests {
             .unwrap();
         assert!(!session.is_busy());
 
-        // Bang 2: must still accept Esc abort (pi: fresh AbortController each run).
         root.borrow_mut().set_editor_text("!sleep 2");
         session.step(HostEvent::Input(enter_event())).unwrap();
         drain_pending(&mut session, &mut driver, &mut stream)
@@ -3318,7 +3212,6 @@ mod slice_tests {
     async fn h24_tree_shift_t_toggles_timestamps() {
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = open_sample_tree(&mut session);
-        // sample has annotation "keep" on u1
         root.borrow_mut()
             .apply_tree_label("u1", Some("keep".into()));
         session.step(HostEvent::Input(shift_t_event())).unwrap();
@@ -4134,7 +4027,6 @@ mod slice_tests {
             "session id must be hidden by default: {panel}"
         );
 
-        // Ctrl+U shows full session ids in the list rows.
         session.step(HostEvent::Input(ctrl_key_event('u'))).unwrap();
         let with_id = root.borrow().session_resume_panel_text_for_test(100);
         assert!(
@@ -4148,7 +4040,6 @@ mod slice_tests {
             "second ctrl+u must hide session id: {id_off}"
         );
 
-        // Tab to All scope — other-cwd session becomes visible.
         session.step(HostEvent::Input(tab_event())).unwrap();
         let all_scope = root.borrow().session_resume_panel_text_for_test(100);
         assert!(
@@ -4156,7 +4047,6 @@ mod slice_tests {
             "expected All scope to show other cwd session: {all_scope}"
         );
 
-        // Named filter hides unnamed child.
         session.step(HostEvent::Input(ctrl_key_event('n'))).unwrap();
         let named_only = root.borrow().session_resume_panel_text_for_test(100);
         assert!(
@@ -4165,7 +4055,6 @@ mod slice_tests {
         );
         session.step(HostEvent::Input(ctrl_key_event('n'))).unwrap();
 
-        // Sort cycle to Recent.
         session.step(HostEvent::Input(ctrl_key_event('s'))).unwrap();
         let recent = root.borrow().session_resume_panel_text_for_test(100);
         assert!(
@@ -4173,7 +4062,6 @@ mod slice_tests {
             "expected Recent sort label: {recent}"
         );
 
-        // Back to Threaded for fold test.
         session.step(HostEvent::Input(ctrl_key_event('s'))).unwrap();
         session.step(HostEvent::Input(ctrl_key_event('s'))).unwrap();
         let threaded = root.borrow().session_resume_panel_text_for_test(100);
@@ -4182,7 +4070,6 @@ mod slice_tests {
             "child visible: {threaded}"
         );
 
-        // Fold parent hides child (parent is first row when threaded).
         session.step(HostEvent::Input(ctrl_left_event())).unwrap();
         let folded = root.borrow().session_resume_panel_text_for_test(100);
         assert!(
@@ -4191,7 +4078,6 @@ mod slice_tests {
         );
         session.step(HostEvent::Input(ctrl_right_event())).unwrap();
 
-        // Rename non-active child session (unnamed — empty rename buffer).
         session.step(HostEvent::Input(down_event())).unwrap();
         session.step(HostEvent::Input(ctrl_key_event('r'))).unwrap();
         for ch in "child-named".chars() {
@@ -4206,7 +4092,6 @@ mod slice_tests {
             vec![("child".to_string(), "child-named".to_string())]
         );
 
-        // Back to parent (active) for delete reject test.
         session.step(HostEvent::Input(up_event())).unwrap();
         session.step(HostEvent::Input(ctrl_key_event('d'))).unwrap();
         let reject_panel = root.borrow().session_resume_panel_text_for_test(100);
@@ -4216,7 +4101,6 @@ mod slice_tests {
         );
         assert!(driver.delete_session_calls().is_empty());
 
-        // Delete non-active child.
         session.step(HostEvent::Input(down_event())).unwrap();
         session.step(HostEvent::Input(ctrl_key_event('d'))).unwrap();
         session.step(HostEvent::Input(enter_event())).unwrap();
@@ -4396,8 +4280,6 @@ mod slice_tests {
 
     #[tokio::test]
     async fn h36_slash_fuzzy_enter_applies_before_host_parse() {
-        // Regression: host stole Enter while popup showed `session-new` for typed `/new`
-        // → unknown command. Must apply selection then parse.
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let mut driver = ScriptedDriver::new();
@@ -4449,8 +4331,6 @@ mod slice_tests {
 
     #[test]
     fn busy_follow_up_slash_popup_survives_skill_catalog_refresh() {
-        // Assembling / follow-up ticks re-seed `$skill` from MCP poll. Identical
-        // (or even changed) catalogs MUST NOT flash-dismiss the command bar.
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         session.on_run_started("hello");
@@ -4482,8 +4362,6 @@ mod slice_tests {
 
     #[tokio::test]
     async fn busy_slash_fuzzy_enter_applies_before_steer() {
-        // Busy Enter used to skip autocomplete confirm → `/new` stayed literal
-        // (unknown / steered) instead of resolving to session-new.
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         session.on_run_started("hello");
@@ -4912,7 +4790,6 @@ mod slice_tests {
             trailing_tokens: 0,
             last_usage_index: Some(0),
         }));
-        // c1860: settlement (not TurnEnd alone) drives footer.
         session
             .step(HostEvent::Xy(Box::new(XyEvent::ContextTokenSettlement {
                 estimate: ContextTokenEstimate {
@@ -4970,7 +4847,6 @@ mod slice_tests {
             trailing_tokens: 7,
             last_usage_index: None,
         }));
-        // AgentEnd alone must not schedule estimate; stream close is the fallback.
         session
             .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
                 messages: Vec::new(),
@@ -5077,7 +4953,6 @@ mod slice_tests {
             last_usage_index: Some(0),
         }));
 
-        // CLI `--session` restore path: apply then drain (mirrors first host tick).
         session.apply_cli_restored_session("sid-restored", harness_sample_session_messages());
         let before = root.borrow_mut().render(80);
         let before_f = before.last().expect("footer").clone();
@@ -5096,7 +4971,6 @@ mod slice_tests {
             "CLI restore + drain must fill footer tokens: {f_restore}"
         );
 
-        // In-TUI `/session-resume` switch applies mid-drain; same-cycle refresh.
         driver.set_estimate_override(Some(ContextTokenEstimate {
             tokens: 99,
             provenance: TokenProvenance::Heuristic,
@@ -5118,10 +4992,6 @@ mod slice_tests {
 
     #[tokio::test]
     async fn resume_rebuild_anchors_past_trailing_parentless_model_change() {
-        // ath36: attach restore MUST show full history. A cold materialize may
-        // append a parent-less `modelChange` at the JSONL tail; the resume leaf
-        // anchor must skip it instead of collapsing the ancestry walk to that
-        // row alone (empty / truncated transcript).
         let mut entries = harness_sample_session_messages();
         entries.push(SessionEntry::ModelChange(
             xylitol_plugin_sdk::session::ModelChangeEntry {
@@ -5256,7 +5126,6 @@ mod slice_tests {
             .unwrap();
         assert!(session.take_reload());
 
-        // Esc only (after a tick event so the select arm rotates).
         let input = stream::iter(vec![
             Ok::<HostEvent, XyDriverError>(HostEvent::Tick),
             Ok(HostEvent::Input(esc_event())),
@@ -5754,9 +5623,6 @@ mod slice_tests {
             LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
         };
 
-        // Repro: freeze completed but UiRoot still had tools_table_frozen=false;
-        // idle sync_fixed_zone clears next-turn then refresh_mcp_short_cue
-        // would sticky-restore MCP_PENDING_CUE from the stale snap.
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let driver = ScriptedDriver::new();
@@ -5781,8 +5647,6 @@ mod slice_tests {
             ],
             ..LoadedResourcesSnapshot::default()
         };
-        // Armed+complete+!frozen: pending is false already under current rules…
-        // Force the sticky path with incomplete bootstrap (pre-freeze stale).
         let sticky = LoadedResourcesSnapshot {
             mcp_bootstrap_complete: false,
             ..stale.clone()
@@ -5801,7 +5665,6 @@ mod slice_tests {
         };
         driver.set_loaded_resources_for_driver(frozen);
         session.refresh_loaded_resources(&driver).await;
-        // Same as idle sync_fixed_zone: clear next-turn, then mcp refresh.
         root.borrow_mut().set_status_next_turn_cue(None);
         assert_eq!(
             root.borrow().status_next_turn_cue_for_test(),
@@ -5816,9 +5679,6 @@ mod slice_tests {
             LoadedResourcesSnapshot, MCP_PENDING_CUE, McpServerPhase, McpServerSnapshot,
         };
 
-        // Welcome card "2 connected · …" can appear while prepare is still
-        // incomplete (pending cue). After complete refresh, connected+armed+complete
-        // MUST clear the cue (not sticky).
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui").clone();
         let driver = ScriptedDriver::new();
@@ -5900,7 +5760,6 @@ mod slice_tests {
         session.ui_model_mut().set_busy_status("Assembling");
         session.sync_ui_root_from_model();
         root.borrow_mut().refresh_mcp_short_cue();
-        // Mimic sync_fixed_zone clearing Next-turn when no active agent turn.
         root.borrow_mut().set_status_next_turn_cue(None);
         assert_eq!(
             root.borrow().status_next_turn_cue_for_test().as_deref(),
@@ -6141,7 +6000,6 @@ mod slice_tests {
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
 
-        // Driver has MCP data, but UiRoot cache was never refreshed → must await.
         driver.set_loaded_resources_for_driver(LoadedResourcesSnapshot {
             mcp_configured: 1,
             mcp_servers: vec![McpServerSnapshot {
@@ -6406,7 +6264,6 @@ mod slice_tests {
             .unwrap();
         assert!(root.borrow().session_resume_open());
 
-        // Rename child while busy → refuse write + notice A.
         session.step(HostEvent::Input(down_event())).unwrap();
         session.step(HostEvent::Input(ctrl_key_event('r'))).unwrap();
         for ch in "child-named".chars() {
@@ -6434,7 +6291,6 @@ mod slice_tests {
             system_notes(&session)
         );
 
-        // Delete child while busy → refuse + toast A (replaces prior toast).
         session.step(HostEvent::Input(ctrl_key_event('d'))).unwrap();
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -6552,7 +6408,6 @@ mod slice_tests {
         );
     }
 
-    /// Short terminal + busy Resume: Working stays in content-end viewport (atc23 / c1810).
     #[tokio::test]
     async fn busy_resume_short_terminal_keeps_working_in_viewport() {
         let term_rows = 16usize;
@@ -6600,7 +6455,6 @@ mod slice_tests {
         );
     }
 
-    /// Short terminal + busy Models: Working stays in content-end viewport (atc23 / c1810).
     #[tokio::test]
     async fn busy_models_short_terminal_keeps_working_in_viewport() {
         let term_rows = 12usize;
@@ -6632,7 +6486,6 @@ mod slice_tests {
         assert_busy_lead_in_viewport(&frame, term_rows, "Working");
     }
 
-    /// Short terminal + busy Themes: Working stays in content-end viewport (atc23).
     #[tokio::test]
     async fn busy_themes_short_terminal_keeps_working_in_viewport() {
         let term_rows = 10usize;
@@ -6653,7 +6506,6 @@ mod slice_tests {
         assert_busy_lead_in_viewport(&frame, term_rows, "Working");
     }
 
-    /// Short terminal + busy MCP list: Working stays in content-end viewport (atc23).
     #[tokio::test]
     async fn busy_mcp_short_terminal_keeps_working_in_viewport() {
         use crate::driver::{LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot};
@@ -6690,7 +6542,6 @@ mod slice_tests {
         assert_busy_lead_in_viewport(&frame, term_rows, "Working");
     }
 
-    /// Short terminal + busy Import confirm: Working stays in content-end viewport (atc23).
     #[tokio::test]
     async fn busy_import_short_terminal_keeps_working_in_viewport() {
         let term_rows = 10usize;
@@ -6721,7 +6572,6 @@ mod slice_tests {
         );
     }
 
-    /// Toast occupies reserved: short terminal keeps Working **and** toast notice in viewport.
     #[tokio::test]
     async fn busy_resume_short_terminal_with_toast_keeps_working_and_toast_in_viewport() {
         use crate::commands::{BUSY_SESSION_SWITCH_NOTICE, TOAST_NOTICE_ERROR_PREFIX};
@@ -6774,7 +6624,6 @@ mod slice_tests {
         );
     }
 
-    /// Queue strip occupies reserved: short terminal keeps Working **and** Steering line in viewport.
     #[tokio::test]
     async fn busy_resume_short_terminal_with_queue_keeps_working_and_steer_in_viewport() {
         let term_rows = 16usize;
@@ -6870,7 +6719,6 @@ mod slice_tests {
             .unwrap();
         assert!(root.borrow().themes_open());
 
-        // dark is first (*); move down to light then Enter.
         session.step(HostEvent::Input(down_event())).unwrap();
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -6912,7 +6760,6 @@ mod slice_tests {
         let mut driver = ScriptedDriver::new();
         let mut stream = None;
 
-        // Seed preference dark so toggle has a known baseline.
         session.reload_themes("dark").unwrap();
         root.borrow_mut().set_editor_text("/theme toggle");
         session.step(HostEvent::Input(enter_event())).unwrap();
@@ -6942,7 +6789,6 @@ mod slice_tests {
     fn c1115_product_host_no_theme_auto() {
         use xylitol_tui::Palette;
 
-        // Product HostSession has no theme-auto probe; default is fixed dark.
         let session = HostSession::new_product_ui(TestTerminal::new(80, 24));
         let root = session.ui_root().expect("ui");
         assert_eq!(root.borrow().layout_theme().palette(), Palette::dark());
@@ -6973,8 +6819,6 @@ mod slice_tests {
             }
         );
     }
-
-    // ── c1470: no global thinking cycle (picker-only) ──────────────
 
     #[test]
     fn c1470_scripted_driver_rejects_out_of_set_level() {
@@ -7050,9 +6894,6 @@ mod slice_tests {
         session.push_scroll_notice("scrollback marker");
 
         let frame = root.borrow_mut().render(80);
-        // The footer echoes the real cwd and truncates it with `...` when the
-        // checkout path is long (worktrees) — that truncation is c1135-unrelated,
-        // so the no-ellipsis guard only inspects non-footer rows.
         let content = frame
             .iter()
             .filter(|l| !l.contains("NOT-SET") && !l.contains('/'))
@@ -7160,10 +7001,6 @@ mod slice_tests {
         );
     }
 
-    /// lab 复现（临时）：/session-resume 重选当前 session 后的渲染。
-    /// 用户截图症状：① notice 出现在 transcript 中部（assistant 正文之前）；
-    /// ② assistant 首行被吞前缀（"我是你的编码助手，主要帮你在这个 `xyl"）。
-    /// 完整端到端：真实按键流（含 picker）+ 内容溢出视口 + 帧回放 VT 还原屏幕。
     #[tokio::test]
     async fn resume_switch_rebuild_toast_and_idle_tape_fence() {
         use serde_json::json;
@@ -7261,7 +7098,6 @@ mod slice_tests {
         }]);
         let mut stream = None;
 
-        // 直播轮次 1："hi"（流式分片 + Tick 驱动中途 paint）。
         driver.push_script(stream_script(&["Hi! 👋"]));
         root.borrow_mut().set_editor_text("hi");
         session.step(HostEvent::Input(enter_event())).unwrap();
@@ -7269,7 +7105,6 @@ mod slice_tests {
             .await
             .unwrap();
 
-        // 直播轮次 2："你能做什么"（逐字符 delta + Tick 模拟 60Hz 中途 paint）。
         let reply_stream = CJK_REPLY;
         let mut char_chunks: Vec<String> = Vec::new();
         let mut buf = String::new();
@@ -7318,7 +7153,6 @@ mod slice_tests {
             .await
             .unwrap();
 
-        // 打开 /session-resume picker 并回车选中（当前会话）。
         root.borrow_mut().set_editor_text("/session-resume");
         session.step(HostEvent::Input(enter_event())).unwrap();
         pump_host_driver(&mut session, &mut driver, &mut stream)
@@ -7360,8 +7194,6 @@ mod slice_tests {
             "switch notice must appear above the editor: {frame}"
         );
 
-        // resume-render 修复: switch 之后空闲到达的 agent tape（daemon journal 重放/ Foreign run）
-        // 必须被栅栏丢弃 —— transcript 不再追加半截尾巴。
         let entries_before = session.ui_model().entries.len();
         for ev in [
             XyEvent::MessageStart {

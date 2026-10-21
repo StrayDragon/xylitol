@@ -1,13 +1,6 @@
-//! Read UTF-8 text from the system clipboard (c1156 / c8).
-
 use super::error::ClipboardError;
 use std::process::{Command, Stdio};
 
-/// Read plain text from the system clipboard, if available.
-///
-/// Returns `Ok(None)` when there is no text (or only empty).
-/// Returns `Err` when clipboard tools are missing or fail hard.
-/// Does **not** use OSC 52 (write-only fallback).
 pub fn read_clipboard_text() -> Result<Option<String>, ClipboardError> {
     if cfg!(target_os = "macos") {
         read_macos_clipboard_text()
@@ -123,7 +116,6 @@ fn read_text_via_xclip() -> Result<Option<String>, ClipboardError> {
     }
 }
 
-/// Prefer `text/plain` (with optional charset) from a MIME list.
 #[cfg(any(test, target_os = "linux"))]
 fn select_text_mime(mime_types: &str) -> Option<&str> {
     let entries: Vec<&str> = mime_types

@@ -1,5 +1,3 @@
-//! Coverage for `tests/support/vt_feed.rs` VT → InputEvent translation.
-
 mod support;
 
 use crossterm::event::{KeyCode, KeyModifiers};

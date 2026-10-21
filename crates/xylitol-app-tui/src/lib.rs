@@ -1,7 +1,3 @@
-//! Terminal UI application surface — host-driven on `xylitol_tui`.
-//!
-//! See `AGENTS.md` in this directory. Engine: `crates/xylitol-tui`.
-
 pub(crate) mod activity_fold;
 pub(crate) mod clipboard;
 pub(crate) mod debug_fixtures;
@@ -17,10 +13,7 @@ pub(crate) mod utils;
 pub(crate) mod v3_mapping;
 pub(crate) mod wire_event;
 
-/// Footer / picker label when no model is selected.
 pub const UNSET_MODEL_DISPLAY: &str = "NOT-SET";
-/// P2 无头产品帧挂载入口（package-tui-testing 契约）：
-/// SceneBuilder 流式脚本事件 → 真实 UiRoot 渲染 → 剥离 ANSI 的纯文本帧 + 语义 dump。
 pub use activity_fold::scene::{SceneBuilder, SemanticDump};
 mod ask_host;
 mod bridge;
@@ -32,7 +25,6 @@ mod effects;
 pub(crate) mod error;
 mod external_editor;
 mod host;
-/// P3 无头键鼠交互挂载入口：和弦路由 / 折叠命中 / per-id 覆盖表的产品路径夹具。
 mod interaction_scene;
 pub use interaction_scene::InteractionBdd;
 pub(crate) mod keybindings;
@@ -42,8 +34,6 @@ pub mod terminal_guard;
 mod themes;
 mod widgets;
 
-/// ati30：BDD/单测共用的 ScriptedDriver + TestTerminal + host 主循环（drain）。
-/// 正常编译路径（SceneBuilder tt08 先例）——验证与生产共用唯一副作用 drain 循环。
 pub mod harness;
 #[cfg(test)]
 mod lab_ao_perf;
@@ -67,14 +57,12 @@ use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hook
 
 pub use self::ask_host::{AskHostGateway, ask_questions_to_choice};
 pub use self::bridge::{BashBlockStatus, QueueBadge, UiEntry, UiModel, UiPhase, apply_xy_event};
-/// att12/att18：travel 重建 seam 窄导出（BDD 与外部消费者同一管道）。
 pub use self::bridge::{rebuild_scrollback_from_travel, travel_history_note};
 pub use self::commands::{
     BangParse, PendingBash, PendingSlash as TuiPendingSlash, bash_result_entries,
     parse_bang_command,
 };
 pub use self::effects::refresh_footer_tokens;
-/// c2895 观景态提示合约（BDD 直驱纯函数;主循环守望用同一映射）。
 pub use self::host::observe_notice;
 pub use self::host::{
     HostEvent as TuiHostEvent, HostSession as TuiHostSession, LayoutMode, MIN_COLS, MIN_ROWS,
@@ -83,38 +71,21 @@ pub use self::host::{
 pub use self::layout::UiRoot;
 pub use self::layout::{EditorSlot, EditorSlotKind, LayoutTheme};
 pub use self::widgets::{FoldHitTable, FoldTarget, GlyphSet, ScrollbackFold};
-/// att26：ActivityFold 自动收纳旋钮（信封/簇折叠配置入口）。
 pub use activity_fold::{ActivityFoldSettings, SegmentLevel};
-/// att36：todo 空列表 body 固定词（BDD 断言单一词源）。
 pub use bridge::TODO_EMPTY_BODY_HINT;
-/// att13：折叠态工具人话摘要的窄导出（BDD 直驱纯函数合约）。
 pub use bridge::human_tool_args_preview;
 pub use bridge::trailing_aborted_note;
 pub use driver::XyRemoteDriver;
 pub use storage::ClientStorage;
-// TuiRunOptions exported via struct above in this module
 
-/// Options for [`run`] (c1560 / c2070).
 #[derive(Clone)]
 pub struct TuiRunOptions {
-    /// `tui.editor_history_seed_sessions` (default 1).
     pub editor_history_seed_sessions: u32,
-    /// `tui.activity_fold` (c1761).
     pub activity_fold: crate::activity_fold::ActivityFoldSettings,
-    /// True when CLI restored an existing `--session` id.
     pub restored_session: bool,
-    /// Process-local ask gateway (TUI-only); host polls for Choice mounts (c1850).
     pub ask_gateway: Option<std::sync::Arc<AskHostGateway>>,
-    /// c2470 client-local 存储通道；None = 不落地（labs / 测试缺省）。
     pub client_storage: Option<std::sync::Arc<crate::storage::ClientStorage>>,
-    /// Interaction mode bound at host start (c2070 / ath30). Default ApplicationOwned.
-    /// Not driven by `XYLITOL_TUI_MOUSE`. Mid-session switching is not supported —
-    /// rebuild the host (or exit the process) to change modes.
-    ///
-    /// Lab peek: CLI may pass `lab_interaction_mode_from_env` (`XYLITOL_TUI_INLINE`).
-    /// That is **not** a product flag or setting.
     pub interaction_mode: xylitol_tui::InteractionMode,
-    /// Designing composition: scene slot + process-local designing preview (debug CLI leaf).
     pub designing: bool,
 }
 
@@ -132,9 +103,6 @@ impl Default for TuiRunOptions {
     }
 }
 
-/// Lab peek env for constructing the product host as Inline (`1` / `true` / `yes`).
-///
-/// **Not** a product flag. Default / unset remains ApplicationOwned (ath30).
 pub(crate) const LAB_TUI_INLINE_ENV: &str = "XYLITOL_TUI_INLINE";
 
 pub(crate) fn parse_lab_inline_opt_in(value: Option<&str>) -> bool {
@@ -156,10 +124,6 @@ pub fn lab_interaction_mode_from_env() -> xylitol_tui::InteractionMode {
     lab_interaction_mode(std::env::var(LAB_TUI_INLINE_ENV).ok().as_deref())
 }
 
-/// Enter the interactive TUI REPL (host-driven; never calls `TUI::start()`).
-///
-/// Callers MUST check TTY themselves before entering (CLI does). This still
-/// fails closed if `TerminalGuard::enter` cannot start the terminal.
 pub async fn run(driver: &mut dyn XyDriver, options: TuiRunOptions) -> Result<(), XyDriverError> {
     install_lifecycle_hooks();
     log::info!(target: "xylitol::tui", "starting product TUI host");
@@ -195,8 +159,6 @@ type CliRestoreHandle = tokio::task::JoinHandle<
     >,
 >;
 
-/// 冷恢复（`--session` 延续）：有 cloneable store 时后台 spawn JSONL 装载；
-/// 否则阻塞装载并直接投喂 UI。返回后台任务句柄供主循环收割。
 async fn apply_cli_restore(
     session: &mut HostSession<CrosstermTerminal>,
     driver: &mut dyn XyDriver,
@@ -230,8 +192,6 @@ async fn apply_cli_restore(
     }
 }
 
-/// 新会话的编辑器历史种子：可异步则后台 spawn（返回句柄），否则阻塞 seed
-/// （Scripted / remote 无 cloneable store）。
 async fn seed_editor_history(
     session: &mut HostSession<CrosstermTerminal>,
     driver: &mut dyn XyDriver,
@@ -267,7 +227,6 @@ async fn run_host_loop(
         options.interaction_mode,
     );
     session.set_editor_history_seed_sessions(options.editor_history_seed_sessions);
-    // c2470/c2915 client-local 存储通道：接入（外部变更走 ↑ 使用点懒并盘）。
     if let Some(storage) = options.client_storage.clone() {
         session.set_client_storage(Some(storage));
     }
@@ -283,8 +242,6 @@ async fn run_host_loop(
     session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
-    // First paint before CLI restore / loaded-resources / ↑/↓ history seed so
-    // welcome fixed-zone paint is not blocked by JSONL load or list_sessions work.
     session.render_now()?;
 
     let mut cli_restore = if options.restored_session {
@@ -298,19 +255,15 @@ async fn run_host_loop(
     } else {
         seed_editor_history(&mut session, driver).await
     };
-    // Refresh while editor-history seed / CLI restore run in the background.
     session.refresh_loaded_resources(driver).await;
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
 
     let mut term_events = CrosstermEventStream::new();
     let mut agent_stream: Option<AgentEventStream> = None;
-    // Busy / spinner: ~60Hz. Idle: slow wake so debug builds do not burn a core
-    // on empty Tick+try_render while the TTY is quiet.
     const TICK_BUSY_MS: u64 = 16;
     const TICK_IDLE_MS: u64 = 250;
     let mut tick_busy = session.is_busy();
-    // c2895 观景态守望：状态变化时一次性通知条（远端 driver 才会离常）。
     let mut observe_prev = AttachObserve::Live;
     let mut ticker = tokio::time::interval(Duration::from_millis(if tick_busy {
         TICK_BUSY_MS
@@ -318,18 +271,13 @@ async fn run_host_loop(
         TICK_IDLE_MS
     }));
     ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    // ath42/c2480: connection grace state machine — transient link churn
-    // stays invisible; a prolonged outage/recovery surfaces as toast notice.
     let mut link_grace = host::LinkGrace::new();
 
-    // Always restore the TTY (even on RenderError / other Err) so a failed
-    // host exit does not leave raw mode / keyboard protocol stuck.
     let host_result = async {
         while !session.should_quit() && !exit_requested() {
             let t_drain = std::time::Instant::now();
             drain_pending(&mut session, driver, &mut agent_stream).await?;
             crate::lag::note("host_drain_pending", t_drain);
-            // `/session-new` (and similar) may arm a background seed during drain.
             if editor_seed.is_none()
                 && let Some(job) = session.take_editor_history_seed_job()
             {
@@ -345,7 +293,6 @@ async fn run_host_loop(
                 };
                 ticker = tokio::time::interval(Duration::from_millis(ms));
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                // First tick() completes immediately — skip so we do not spin a frame.
                 ticker.tick().await;
             }
 
@@ -363,13 +310,11 @@ async fn run_host_loop(
             }
 
             if let Some(bash) = session.take_bash() {
-                // Guard: never start a second interactive bang while one is active.
                 if session.bash_active() {
                     session.push_scroll_notice(
                         "bash already running — wait or Esc to cancel (second ! rejected)",
                     );
                 } else {
-                    // Shared bang loop (c715/c725): same crossterm→HostEvent map as main arms.
                     let motion = session.tui.pointer_probe_armed();
                     let input = term_events.by_ref().filter_map(move |maybe| {
                         futures::future::ready(map_crossterm_item(maybe, motion))
@@ -386,7 +331,6 @@ async fn run_host_loop(
                     session.step_paint_only()?;
                 }
                 _ = ticker.tick() => {
-                    // Drain any footer estimates that completed without waiting on select.
                     while let Some((job_id, label, heuristic)) = session.try_recv_footer_token() {
                         session.step(HostEvent::FooterTokens {
                             job_id,
@@ -397,8 +341,6 @@ async fn run_host_loop(
                     if agent_stream.is_none() {
                         apply_idle_downlink(&mut session, driver)?;
                     }
-                    // ath42: link grace UX — announce only past the grace
-                    // window, once, via toast notice (never transcript rows).
                     if let Some(notice) = link_grace.tick(
                         driver.link_health(),
                         std::time::Instant::now(),
@@ -414,7 +356,6 @@ async fn run_host_loop(
                             }
                         }
                     }
-                    // c2895 观景态：进入 / 可重挂一次性通知条（E 类运行态）。
                     let observe = driver.attach_observe();
                     if let Some(notice) = host::observe_notice(observe_prev, observe) {
                         session.push_toast_notice(notice);
@@ -438,8 +379,6 @@ async fn run_host_loop(
                 maybe = term_events.next() => {
                     match maybe {
                         Some(item) => {
-                            // Wheel over the transcript pane: AO fast path, one
-                            // notch per event（批量并帧已砍，缘由见下方 apply 处注释）。
                             let notch = session.tui.application_owned_wheel_notch();
                             let ao_wheel = wheel_delta_from_item(&item, notch).filter(
                                 |_| {
@@ -455,10 +394,6 @@ async fn run_host_loop(
                                     }
                             });
                             if let Some(delta) = ao_wheel {
-                                // c2891-followup：**砍 now_or_never 主动并批**——实测
-                                // 连发被并成单帧 21+ 行巨跳（xylitol::wheel delta 序列），
-                                // 「串内巨跳+串间空转」即顿挫。事件即渲（paint 1ms 没
-                                // 必要省），帧距随事件节奏天然匀化（pi/zellij 同）。
                                 log::debug!(target: "xylitol::wheel", "wheel delta={delta}");
                                 session.apply_ao_wheel_delta(delta)?;
                             } else if let Some(ev) =
@@ -568,8 +503,6 @@ fn apply_idle_downlink<T: xylitol_tui::Terminal>(
         model_synced |= matches!(ev, crate::driver::XyEvent::ModelSelect { .. });
         session.step(HostEvent::Xy(Box::new(ev)))?;
     }
-    // c2841: Host 绑定/装配同步的生效模型事件（含用户显式配置的默认模型）→
-    // 刷新固定区徽标，避免执行默认模型而徽标停在 NOT-SET。
     if model_synced {
         session.sync_fixed_zone(driver);
     }
@@ -588,7 +521,6 @@ fn wheel_delta_from_item(item: &Result<Event, std::io::Error>, notch: isize) -> 
     }
 }
 
-/// Shared crossterm → HostEvent map for main select and bang input stream (c725 / 2A).
 fn map_crossterm_item(
     item: Result<Event, std::io::Error>,
     deliver_motion: bool,
@@ -623,8 +555,6 @@ fn on_agent_stream_item<T: xylitol_tui::Terminal>(
 ) -> Result<(), XyDriverError> {
     match maybe {
         Some(xy) if is_coalesceable_stream_delta(&xy) => {
-            // Typewriter bursts: merge already-buffered Text/Thinking deltas into
-            // one model sync + one throttled paint (cuts AO full-render spam).
             apply_xy_event(session.ui_model_mut(), &xy);
             let mut deferred: Option<xylitol_plugin_sdk::lifecycle::XyEvent> = None;
             let mut stream_ended = false;
@@ -647,7 +577,6 @@ fn on_agent_stream_item<T: xylitol_tui::Terminal>(
                 }
             }
             session.sync_ui_root_from_model();
-            // Busy ticker paints ≤60Hz — do not paint on every token wake.
             session.tui.request_render(false);
             if stream_ended {
                 log::debug!(target: "xylitol::tui", "agent EventStream ended");

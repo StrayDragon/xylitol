@@ -1,5 +1,3 @@
-//! ResponsesAssembler — sole business-layout entry for `/v1/responses` bodies (c1890).
-
 use serde_json::Value;
 
 use crate::dto::{XyLlmMessage, XyToolSchema};
@@ -10,10 +8,6 @@ use crate::provider::native::openai_responses::{
     apply_responses_wire_policy, assemble_responses_body_with_diagnostics,
 };
 
-/// Constructs OpenAI Responses JSON bodies under a fixed [`WirePolicy`].
-///
-/// Sole public business-layout entry for `/v1/responses` bodies (c1890).
-/// Internal `assemble_responses_body_with_diagnostics` / `apply_responses_wire_policy` stay crate-private.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ResponsesAssembler {
     wire_policy: WirePolicy,
@@ -34,7 +28,6 @@ impl ResponsesAssembler {
         self.wire_policy
     }
 
-    /// Assemble a `/v1/responses` body (pi-aligned store/strict/summary/include).
     pub fn assemble(
         self,
         model: &str,
@@ -47,8 +40,6 @@ impl ResponsesAssembler {
             .0
     }
 
-    /// Like [`Self::assemble`], also returning full-replay omit diagnostics
-    /// (illegal `thinkingSignature` JSON omitted from `input`).
     pub fn assemble_with_diagnostics(
         self,
         model: &str,
@@ -67,7 +58,6 @@ impl ResponsesAssembler {
         )
     }
 
-    /// Apply wire-policy stripping to an already-built body (test / inject harness).
     pub fn apply_wire_policy(self, body: &mut Value) {
         apply_responses_wire_policy(body, &self.wire_policy);
     }

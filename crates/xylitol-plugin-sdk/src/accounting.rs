@@ -1,16 +1,11 @@
-//! Context token estimation with provenance: Api, else Heuristic.
-
 use crate::dto::{ContextTokenEstimate, TokenProvenance, XyLlmMessage, XyStopReason, XyUsage};
 
-/// Shared heuristic divisor: UTF-8 bytes, rounded up (r1929).
 pub const HEURISTIC_BYTES_PER_TOKEN: u64 = 3;
 
-/// Fold a UTF-8 byte length into heuristic tokens.
 pub fn heuristic_token_count(byte_len: u64) -> u64 {
     byte_len.div_ceil(HEURISTIC_BYTES_PER_TOKEN)
 }
 
-/// Usage totals for context accounting: prefer `total_tokens` when present.
 pub fn total_context_tokens(usage: &XyUsage) -> u64 {
     if usage.total_tokens > 0 {
         return usage.total_tokens;
@@ -41,18 +36,12 @@ fn heuristic_tokens(messages: &[XyLlmMessage]) -> u64 {
         .sum()
 }
 
-/// Index of the last assistant message that carries usage (pi `lastUsageIndex`).
 fn last_assistant_usage_index(messages: &[XyLlmMessage]) -> Option<usize> {
     messages
         .iter()
         .rposition(|m| matches!(m, XyLlmMessage::AssistantMessage { usage: Some(_), .. }))
 }
 
-/// Estimate context tokens with priority: Api → Heuristic.
-///
-/// When an Api usage anchor is valid, trailing heuristic tokens cover only messages
-/// **after** the last usage-bearing assistant (pi `estimateContextTokens`). If that
-/// assistant is not present in `messages`, the whole slice is treated as trailing.
 pub fn estimate_context(
     messages: &[XyLlmMessage],
     opts: EstimateContextOpts<'_>,

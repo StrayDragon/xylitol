@@ -1,13 +1,6 @@
-//! Settings types for user-controlled preferences (global / project / overrides).
-//!
-//! Only fields wired through bootstrap / product paths live here. Unknown JSON
-//! keys are ignored (serde default) so older settings.json files still load.
-
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// User-controlled settings that can live in global (~/.xylitol/settings.json)
-/// or project (`<cwd>`/.xylitol/settings.json).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
@@ -20,18 +13,15 @@ pub struct Settings {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thinking_budgets: Option<ThinkingBudgets>,
 
-    /// Steering mode for follow-up messages.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub steering_mode: Option<SteeringMode>,
 
-    /// Follow-up mode for queue processing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub follow_up_mode: Option<SteeringMode>,
 }
 
 pub use xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig;
 
-/// Thinking budget tokens per level.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(default, rename_all = "camelCase")]
 #[derive(Default)]
@@ -57,7 +47,6 @@ impl From<&ThinkingBudgets> for xylitol_plugin_sdk::model::ThinkingBudgets {
     }
 }
 
-/// Steering / follow-up mode.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum SteeringMode {

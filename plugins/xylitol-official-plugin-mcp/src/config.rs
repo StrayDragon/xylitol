@@ -1,5 +1,3 @@
-//! MCP server configuration vocabulary (loaded by composition-root YAML).
-
 use std::collections::HashMap;
 
 use schemars::JsonSchema;
@@ -8,22 +6,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 pub struct McpServerConfig {
     pub name: String,
-    /// Transport kind: "stdio" or "sse".
     #[serde(default = "default_mcp_transport")]
     pub transport: McpTransportKind,
-    /// Command to spawn (stdio transport only).
     #[serde(default)]
     pub command: Option<String>,
-    /// Arguments for the command (stdio transport only).
     #[serde(default)]
     pub args: Option<Vec<String>>,
-    /// SSE / streamable-HTTP endpoint URL (sse transport only).
     #[serde(default)]
     pub url: Option<String>,
-    /// Extra environment variables for the child process (stdio transport only).
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
-    /// Extra HTTP headers for SSE / streamable-HTTP (e.g. API keys).
     #[serde(default)]
     pub headers: Option<HashMap<String, String>>,
 }
@@ -43,7 +35,6 @@ impl Default for McpServerConfig {
 }
 
 impl McpServerConfig {
-    /// Validate required fields for the selected transport (c1080 / mcp4).
     pub fn validate(&self) -> Result<(), String> {
         if self.name.trim().is_empty() {
             return Err("mcp server name must not be empty".into());

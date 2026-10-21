@@ -1,31 +1,11 @@
-//! Patch apply strategy for the edit tool.
-//!
-//! Implements the fuzzy + patch fallback matching strategy:
-//! 1. Exact match
-//! 2. NFKC fuzzy match (handles smart quotes, dashes, Unicode spaces)
-//! 3. Line-based patch fallback
-//! 4. Return error if both fail
-//!
-//! Also provides line ending detection/restoration and structured diff output.
-
-/// Fuzzy-match `target` in `content` using progressive normalization.
-///
-/// Tries in order:
-/// 1. Whitespace-normalized matching
-/// 2. Full Unicode normalization (smart quotes, dashes, spaces)
-/// 3. Line-based patch fallback
 pub(crate) fn fuzzy_find(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
-    // Level 1: whitespace-normalized matching
     if let Some(range) = whitespace_find(content, target) {
         return Some(range);
     }
 
-    // Level 2: full Unicode normalization
     let norm_content = normalize_for_fuzzy_match(content);
     let norm_target = normalize_for_fuzzy_match(target);
     if let Some(pos) = norm_content.find(&norm_target) {
-        // Map back to original byte position
-        // Walk through original content to find the matching range
         let mut orig_pos = 0usize;
         let mut norm_pos = 0usize;
         for ch in content.chars() {
@@ -41,7 +21,6 @@ pub(crate) fn fuzzy_find(content: &str, target: &str) -> Option<std::ops::Range<
         return Some(orig_pos..end_pos);
     }
 
-    // Level 3: line-based patch fallback (already exists separately)
     None
 }
 
@@ -50,7 +29,6 @@ fn whitespace_find(content: &str, target: &str) -> Option<std::ops::Range<usize>
     let normalized_target = normalize_ws(target);
 
     if let Some(pos) = normalized_content.find(&normalized_target) {
-        // Map back to bytes in original content using the same normalization mapping
         let mut orig_pos = 0usize;
         let mut norm_pos = 0usize;
         for ch in content.chars() {
@@ -59,17 +37,14 @@ fn whitespace_find(content: &str, target: &str) -> Option<std::ops::Range<usize>
             }
             let ch_str = ch.to_string();
             orig_pos += ch_str.len();
-            // Count normalized whitespace
             let norm_ch = normalize_ws(&ch_str);
             norm_pos += norm_ch.len();
         }
-        // Now scan forward to find the exact target boundaries
         let remainder = &content[orig_pos..];
         if let Some(match_idx) = find_best_match(remainder, target) {
             return Some(orig_pos + match_idx.start..orig_pos + match_idx.end);
         }
 
-        // Fallback: use trimmed match
         let target_trimmed = target.trim();
         if let Some(pos) = remainder.find(target_trimmed) {
             return Some(orig_pos + pos..orig_pos + pos + target_trimmed.len());
@@ -79,7 +54,6 @@ fn whitespace_find(content: &str, target: &str) -> Option<std::ops::Range<usize>
     None
 }
 
-/// Line-based fallback: find `target` as a block of lines in `content`.
 pub(crate) fn patch_find_range(content: &str, target: &str) -> Option<std::ops::Range<usize>> {
     let target_lines: Vec<&str> = target.lines().collect();
     let content_lines: Vec<&str> = content.lines().collect();
@@ -101,7 +75,6 @@ pub(crate) fn patch_find_range(content: &str, target: &str) -> Option<std::ops::
         }
 
         if match_found {
-            // Compute byte range
             let byte_start = content_lines[..start_idx]
                 .iter()
                 .map(|l| l.len() + 1)
@@ -136,32 +109,19 @@ fn normalize_ws(s: &str) -> String {
     result
 }
 
-/// Normalize text for fuzzy matching with progressive transformations.
-///
-/// - NFKC normalize
-/// - Smart single quotes → '
-/// - Smart double quotes → "
-/// - Various dashes/hyphens → -
-/// - Special Unicode spaces → regular space
-/// - Strip trailing whitespace from each line
 pub(crate) fn normalize_for_fuzzy_match(text: &str) -> String {
     let mut result = String::with_capacity(text.len());
     for ch in text.chars() {
         match ch {
-            // Smart single quotes
             '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}' => result.push('\''),
-            // Smart double quotes
             '\u{201C}' | '\u{201D}' | '\u{201E}' | '\u{201F}' => result.push('"'),
-            // Dashes and hyphens
             '\u{2010}' | '\u{2011}' | '\u{2012}' | '\u{2013}' | '\u{2014}' | '\u{2015}'
             | '\u{2212}' => result.push('-'),
-            // Special spaces
             '\u{00A0}' | '\u{2002}' | '\u{2003}' | '\u{2009}' | '\u{200A}' | '\u{202F}'
             | '\u{205F}' | '\u{3000}' => result.push(' '),
             _ => result.push(ch),
         }
     }
-    // Strip trailing whitespace per line
     result
         .lines()
         .map(|line| line.trim_end())
@@ -173,7 +133,6 @@ fn lines_match(a: &str, b: &str) -> bool {
     a.trim() == b.trim() || normalize_ws(a) == normalize_ws(b)
 }
 
-/// Find the best match for `target` within `text`, considering minor variations.
 fn find_best_match(text: &str, target: &str) -> Option<std::ops::Range<usize>> {
     let target_lines: Vec<&str> = target.lines().collect();
     let text_lines: Vec<&str> = text.lines().collect();
@@ -220,25 +179,15 @@ fn find_best_match(text: &str, target: &str) -> Option<std::ops::Range<usize>> {
     None
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// Diff generation
-// ═══════════════════════════════════════════════════════════════════
-
 use similar::TextDiff;
 
-/// Max lines written into `display_diff` (c1350) — keeps UI/history details bounded.
 pub(crate) const MAX_DISPLAY_DIFF_LINES: usize = 200;
 
-/// Generate a unified diff between old and new content.
 pub(crate) fn generate_unified_diff(old: &str, new: &str, _file_path: &str) -> String {
     let diff = TextDiff::from_lines(old, new);
     diff.unified_diff().context_radius(3).to_string()
 }
 
-/// Generate a human-readable display diff with line numbers.
-///
-/// Uses unified context hunks (radius 3) so unchanged file bodies are not expanded.
-/// Hard-caps at [`MAX_DISPLAY_DIFF_LINES`].
 pub(crate) fn generate_display_diff(old: &str, new: &str, file_path: &str) -> String {
     let diff = TextDiff::from_lines(old, new);
     let unified = diff.unified_diff().context_radius(3).to_string();
@@ -257,7 +206,6 @@ pub(crate) fn generate_display_diff(old: &str, new: &str, file_path: &str) -> St
 
     for line in unified.lines() {
         if line.starts_with("@@") {
-            // Reset line counters from hunk header when present: @@ -l,s +l,s @@
             if let Some((o, n)) = parse_hunk_starts(line) {
                 old_line = o;
                 new_line = n;
@@ -314,7 +262,6 @@ pub(crate) fn generate_display_diff(old: &str, new: &str, file_path: &str) -> St
 }
 
 fn parse_hunk_starts(hunk: &str) -> Option<(u32, u32)> {
-    // @@ -12,5 +14,7 @@  or  @@ -12 +14 @@
     let rest = hunk.strip_prefix("@@")?.trim();
     let mut parts = rest.split_whitespace();
     let old = parts.next()?.strip_prefix('-')?;

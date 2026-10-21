@@ -1,10 +1,7 @@
-//! Command vocabulary — client → core messages.
-
 use serde::{Deserialize, Serialize};
 
 use crate::SessionTreeKind;
 
-/// A command from the client（传输级关联只走信封 `rpcId`；无传输级 `id` 字段）。
 #[derive(Debug, Clone, Serialize, Deserialize, strum::VariantNames, strum::IntoStaticStr)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Command {
@@ -14,8 +11,6 @@ pub enum Command {
     Abort {},
     GetState {},
     SetModel {
-        /// Hand parse accepted a missing `provider` as empty string; keep that
-        /// wire shape accept-able under serde parsing (c2530).
         #[serde(default)]
         provider: String,
         model_id: String,
@@ -31,7 +26,6 @@ pub enum Command {
         exclude_from_context: bool,
     },
     Compact {
-        /// Optional focus text for summarization (c1670; pi `customInstructions`).
         #[serde(default)]
         instructions: Option<String>,
     },
@@ -52,19 +46,14 @@ pub enum Command {
     },
     Fork {
         entry_id: String,
-        /// `"before"` | `"at"` (default `"at"`).
         #[serde(default)]
         position: Option<String>,
     },
     GetMessages {},
-    /// Read-only context-token estimate computed host-side (pa-map5 / sr-est1).
-    /// The host folds its own system prompt + tool schemas and tokenizer
-    /// mapping, which the client cannot see — MUST NOT be estimated client-side.
     #[serde(rename = "estimate_context")]
     EstimateContext {},
     GetCommands {},
     SessionTree {
-        /// Hand parse defaulted a missing `kind` to message history (c2530).
         #[serde(default = "default_session_tree_kind")]
         kind: SessionTreeKind,
     },
@@ -95,8 +84,6 @@ pub enum Command {
     },
     Reload {},
     LoadedResources {},
-    /// Wire method is `queue_stats` (registry SSOT name); the serde tag
-    /// matches it directly (c2710, no alias).
     #[serde(rename = "queue_stats")]
     GetQueueStats {},
     Steer {
@@ -111,17 +98,14 @@ pub enum Command {
         #[serde(default = "default_true")]
         clear_follow_up: bool,
     },
-    /// Subscribe to a session's event stream (WebSocket).
     Subscribe {
         session_id: String,
         last_seq: u64,
     },
-    /// Approve a tool execution (reverse RPC response).
     ApproveTool {
         call_id: String,
         approved: bool,
     },
-    /// Answer a user question (reverse RPC response).
     AnswerQuestion {
         call_id: String,
         answer: String,

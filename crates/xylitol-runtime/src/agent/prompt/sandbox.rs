@@ -1,8 +1,3 @@
-//! Sandboxed minijinja for default system-prompt assembly (c1220 / pt5).
-//!
-//! Strict undefined, whitelist context only, pre-registered templates — no
-//! filesystem loader and no `env`/`secret` namespaces (unlike config YAML).
-
 use minijinja::{AutoEscape, Environment, UndefinedBehavior, context, value::Serde};
 use serde::Serialize;
 
@@ -16,12 +11,10 @@ struct ToolRow {
     snippet: String,
 }
 
-/// Build a sandboxed Environment with only embedded prompt templates registered.
 fn sandbox_env() -> Environment<'static> {
     let mut env = Environment::new();
     env.set_undefined_behavior(UndefinedBehavior::Strict);
     env.set_auto_escape_callback(|_| AutoEscape::None);
-    // No `set_loader` — includes resolve only against `add_template` names.
     env.add_template(
         DEFAULT_TEMPLATE,
         include_str!("templates/default_system.j2"),
@@ -30,11 +23,6 @@ fn sandbox_env() -> Environment<'static> {
     env
 }
 
-/// Render the default system base (intro + Available tools + MCP discover).
-///
-/// `tools` must already be filtered (no MCP names). Failures are programming
-/// errors (bad embed / ctx shape) and panic in production paths after expect —
-/// unit tests cover strict/unknown-include via [`try_render_default`].
 pub(crate) fn render_default_base(tools: &[(String, String)]) -> String {
     try_render_default(tools).expect("default system template render")
 }
@@ -56,7 +44,6 @@ fn try_render_default(tools: &[(String, String)]) -> Result<String, minijinja::E
     tmpl.render(ctx)
 }
 
-/// Test-only: render an ad-hoc body against the sandbox (strict + no loader).
 #[cfg(test)]
 pub(crate) fn try_render_str(
     name: &str,

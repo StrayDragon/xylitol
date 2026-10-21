@@ -1,5 +1,3 @@
-//! BDD steps for runtime-model-registry m18 (task-level model resolution).
-
 use crate::bdd::fixtures::*;
 use crate::bdd::helpers::result_ok_str;
 use crate::bdd::prelude::*;
@@ -110,9 +108,6 @@ pub(crate) fn t_m18_fallback(agent: &AgentState) {
     assert_eq!(obs.compaction_model_fallback, Some(true));
 }
 
-// ── c2835 后继：runtime-model-registry 裸规则回填（结构探针）────────
-
-// 结构探针：provider 缺省优先级 / manifest 缺省协议族。
 thread_local! {
     pub(crate) static MODEL_PROBE: RefCell<Option<(u32, u32, u32)>> = const { RefCell::new(None) };
     pub(crate) static MODEL_KIND_PROBE: RefCell<Option<(usize, usize)>> = const { RefCell::new(None) };

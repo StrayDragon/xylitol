@@ -2,9 +2,6 @@
 name = "xylitol"
 version = "0.0.0-pre"
 edition = "2024"
-# rust-toolchain.toml is the compiler pin (dated nightly).
-# rust-version must stay below that nightly's x.y.z — Cargo treats
-# `1.101.0-nightly` as a prerelease and rejects rust-version = "1.101.0".
 rust-version = "1.99.0"
 license = "MIT"
 repository = "https://github.com/straydragon/xylitol"
@@ -125,9 +122,7 @@ jsonschema = { workspace = true }
 minijinja = { workspace = true, features = ["json", "builtins", "serde"] }
 dirs = { workspace = true }
 thiserror = { workspace = true }
-# Timeline tracing (c1000): enable at the binary crate; FileReporter is file-only.
 fastrace = { workspace = true, features = ["enable"] }
-# Optional OTLP export (c1475): fastrace → OpenTelemetry → Langfuse/Collector.
 fastrace-opentelemetry = { workspace = true, optional = true }
 opentelemetry = { workspace = true, features = ["trace"], optional = true }
 opentelemetry_sdk = { workspace = true, features = ["trace"], optional = true }
@@ -144,7 +139,6 @@ regex = { workspace = true }
 sha2 = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "macros"] }
 uuid = { workspace = true, features = ["v4"] }
-# pid presence probe (`kill(pid, 0)`) on non-linux; already in the tree transitively.
 libc = { workspace = true }
 
 base64 = { workspace = true }
@@ -158,9 +152,6 @@ yaml_serde = { workspace = true }
 
 tokio-tungstenite = { workspace = true, features = ["connect", "handshake"], optional = true }
 
-# ── terminal UI ──
-# Product TUI is host-driven on the xylitol-tui engine; product host lives in
-# crates/xylitol-app-tui.
 xylitol-tui = { workspace = true, optional = true }
 xylitol-app-tui = { workspace = true, optional = true }
 xylitol-app-print = { workspace = true }
@@ -183,16 +174,10 @@ http = { workspace = true }
 
 [features]
 default = ["cli", "tui", "otel", "server", "mcp"]
-# CLI composition root.
 cli = []
-# HTTP/WebSocket Host carrier (product TUI attach default).
 server = ["xylitol-serve/listen", "dep:tokio-tungstenite", "xylitol-kernel/server"]
-# Terminal UI surface (host-driven on xylitol-tui).
 tui = ["dep:xylitol-tui", "dep:crossterm", "dep:xylitol-app-tui"]
-# MCP client (rmcp). Runtime still requires config; this only gates compile.
 mcp = ["xylitol-official-plugin-mcp/mcp", "xylitol-kernel/mcp"]
-# Optional OTLP/HTTP export (Langfuse / Collector). Default on for local agents;
-# config still defaults to exporter=none (zero remote traffic until configured).
 otel = [
     "dep:fastrace-opentelemetry",
     "dep:opentelemetry",
@@ -207,8 +192,6 @@ name = "xylitol"
 path = "src/main.rs"
 required-features = ["cli"]
 
-# Disk-first dev profile: line-tables-only, no incremental.
-# Linux linker + -Zshare-generics: .cargo/config.toml.
 [profile.dev]
 opt-level = 0
 codegen-units = 16
@@ -229,17 +212,10 @@ incremental = false
 [dev-dependencies]
 fory = { workspace = true }
 tempfile = { workspace = true }
-# Property-based invariants (roundtrip / idempotence / monotonicity); see
-# skill l8ng-test-methodology → rust.md for the pattern library.
 
 insta = { workspace = true, features = ["filters", "glob"] }
-# Statistical micro-benchmarks in tests/inner/token_estimator_bench.rs
-# (`#[ignore]`); `cargo test -r --lib token_estimator -- --ignored`, not qa.
 criterion = { workspace = true }
-# portable-pty: end-to-end TUI integration tests (c405 layer 5a) — spawn the
-# real binary under a PTY, inject keys, read bytes back into a vte cell grid.
 portable-pty = { workspace = true }
-# vte: ANSI parser for the E2E cell-grid oracle (shared by pty + tmux drivers).
 vte = { workspace = true }
 serial_test = { workspace = true }
 wiremock = { workspace = true }
@@ -247,11 +223,6 @@ rstest = { workspace = true }
 rstest-bdd = { workspace = true }
 rstest-bdd-macros = { workspace = true }
 
-# compile-time-validation intentionally OFF: in this crate the macro's
-# compile-time step registry stays empty (one "step registry has no
-# definitions" warning per #[scenario], 443 total) while all steps resolve at
-# runtime — the qa BDD gate catches missing steps itself. Revisit when an
-# upstream release fixes cross-module registry collection.
 
 [package.metadata.docs.rs]
 all-features = true

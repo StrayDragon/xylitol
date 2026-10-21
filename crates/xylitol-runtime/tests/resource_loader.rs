@@ -3,8 +3,6 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 use xylitol_runtime::resource::DefaultResourceLoader;
 
-// ── Context files ──────────────────────────────────────────────
-
 #[test]
 fn test_load_context_files_finds_agents_md() {
     let tmp = TempDir::new().unwrap();
@@ -70,19 +68,14 @@ fn test_ancestor_order() {
     let subdir = tmp.path().join("a").join("b").join("c");
     std::fs::create_dir_all(&subdir).unwrap();
 
-    // Write AGENTS.md at project root
     std::fs::write(tmp.path().join("AGENTS.md"), "project").unwrap();
-    // Write in intermediate dir
     std::fs::write(tmp.path().join("a").join("AGENTS.md"), "intermediate").unwrap();
 
-    // When cwd = /tmp/a/b/c, closest AGENTS.md is at /tmp/a/
     let loader = DefaultResourceLoader::new(subdir, PathBuf::from("/nonexistent"));
     let files = loader.get_agents_files();
     assert_eq!(files.len(), 1);
     assert!(files[0].content.contains("intermediate"));
 }
-
-// ── System prompt ──────────────────────────────────────────────
 
 #[test]
 fn test_system_prompt_from_project_dir() {
@@ -118,8 +111,6 @@ fn test_append_system_prompt() {
     assert_eq!(append.len(), 1);
     assert_eq!(append[0], "Appended text");
 }
-
-// ── Skills ─────────────────────────────────────────────────────
 
 #[test]
 fn test_get_skills_returns_loaded_skills() {
@@ -313,8 +304,6 @@ fn test_skills_missing_description_warns() {
     );
 }
 
-// ── Themes ─────────────────────────────────────────────────────
-
 #[test]
 fn test_get_themes_from_project_dir() {
     let tmp = TempDir::new().unwrap();
@@ -342,8 +331,6 @@ fn test_get_themes_empty_when_no_dir() {
 
 #[test]
 fn test_load_context_files_all_diagnostics() {
-    // Inaccessible cwd (and its missing AGENTS.md/CLAUDE.md) must yield no
-    // files and no diagnostics — the walk tolerates unreadable directories.
     let loader =
         DefaultResourceLoader::new(PathBuf::from("/nonexistent_dir"), PathBuf::from("/tmp"));
     let diags = loader.get_all_diagnostics();

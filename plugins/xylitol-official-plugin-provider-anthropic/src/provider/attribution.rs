@@ -1,11 +1,3 @@
-//! Gateway attribution headers (align with pi `provider-attribution`).
-//!
-//! OpenCode Zen (`opencode.ai`) expects:
-//! - `x-opencode-session` — current xylitol session id
-//! - `x-opencode-client` — product tag (`xylitol`)
-//!
-//! Existing header keys win (caller / hooks may override).
-
 use serde_json::Value;
 
 use crate::hooks::HeaderBag;
@@ -14,7 +6,6 @@ use crate::provider::obs_session::{ObsSessionContext, obs_session_context};
 const OPENCODE_HOST: &str = "opencode.ai";
 const OPENCODE_CLIENT: &str = "xylitol";
 
-/// True when `url` (absolute or base) targets OpenCode (`opencode.ai`).
 pub fn is_opencode_host(url: &str) -> bool {
     let candidate = url.trim();
     if candidate.is_empty() {
@@ -32,16 +23,10 @@ pub fn is_opencode_host(url: &str) -> bool {
         .is_some_and(|h| h.eq_ignore_ascii_case(OPENCODE_HOST))
 }
 
-/// Insert OpenCode session attribution when the request targets `opencode.ai`
-/// and a session id is bound. Does not overwrite keys already present.
-///
-/// Idle path: reads the process / TLS slot. Generate MUST call
-/// [`merge_opencode_attribution_from`] with the options snapshot.
 pub fn merge_opencode_attribution(headers: &mut HeaderBag, request_or_base_url: &str) {
     merge_opencode_attribution_from(headers, request_or_base_url, &obs_session_context());
 }
 
-/// Like [`merge_opencode_attribution`] but uses an explicit snapshot (c2590).
 pub fn merge_opencode_attribution_from(
     headers: &mut HeaderBag,
     request_or_base_url: &str,
@@ -64,10 +49,6 @@ pub fn merge_opencode_attribution_from(
     }
 }
 
-/// Session identity this request will present on the LLM channel, if any.
-///
-/// Today: OpenCode `x-opencode-session` = xylitol session id. Other hosts: none.
-/// Must not invent a value when nothing is sent.
 pub fn presented_llm_gateway_session_id(
     request_or_base_url: &str,
     ctx: &ObsSessionContext,
@@ -78,7 +59,6 @@ pub fn presented_llm_gateway_session_id(
     ctx.session_id.clone().filter(|s| !s.is_empty())
 }
 
-/// Copy of `ctx` with [`ObsSessionContext::llm_gateway_session_id`] set from the wire fact.
 pub fn obs_for_llm_request(
     ctx: &ObsSessionContext,
     request_or_base_url: &str,

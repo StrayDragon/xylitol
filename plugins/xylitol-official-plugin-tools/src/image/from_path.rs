@@ -1,5 +1,3 @@
-//! Path → multimodal [`ImageContent`] (c1155 / i5).
-
 use std::path::Path;
 
 use xylitol_plugin_sdk::message::{AgentPart, ImageContent};
@@ -7,12 +5,10 @@ use xylitol_plugin_sdk::message::{AgentPart, ImageContent};
 use super::error::ImageError;
 use super::resize::{ImageResizeOptions, resize_image};
 
-/// Read an image file, resize for multimodal limits, return [`ImageContent`].
 pub fn image_content_from_path(path: &Path) -> Result<ImageContent, ImageError> {
     image_content_from_path_with_options(path, &ImageResizeOptions::default())
 }
 
-/// Same as [`image_content_from_path`] with custom resize options.
 pub fn image_content_from_path_with_options(
     path: &Path,
     options: &ImageResizeOptions,
@@ -32,7 +28,6 @@ pub fn image_content_from_path_with_options(
     })
 }
 
-/// Convenience: path → [`AgentPart::Image`].
 pub fn agent_part_from_image_path(path: &Path) -> Result<AgentPart, ImageError> {
     Ok(AgentPart::Image(image_content_from_path(path)?))
 }

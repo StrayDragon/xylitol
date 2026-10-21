@@ -90,7 +90,6 @@ def main() -> None:
         method = msg.get("method")
         req_id = msg.get("id")
 
-        # Notifications (no id): ignore after initialized.
         if req_id is None:
             continue
 

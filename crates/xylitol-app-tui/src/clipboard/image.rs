@@ -1,24 +1,13 @@
-//! Image clipboard reading support.
-//!
-//! Reads image data from the system clipboard on supported platforms.
-//! Uses platform-specific tools (wl-paste, xclip, macOS clipboard, PowerShell).
-
 use super::error::ClipboardError;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
-/// An image read from the system clipboard.
 #[derive(Debug, Clone)]
 pub struct ClipboardImage {
-    /// Raw image bytes (PNG, JPEG, WebP, or GIF).
     pub bytes: Vec<u8>,
-    /// MIME type of the image (e.g. "image/png").
     pub mime_type: String,
 }
 
-/// Write clipboard (or other) image bytes to a unique tempfile (c1155 / c7).
-///
-/// Path is under [`std::env::temp_dir`] with a UUID stem; extension follows MIME.
 pub fn write_clipboard_image_temp(
     bytes: &[u8],
     mime_type: &str,
@@ -38,10 +27,6 @@ pub fn write_clipboard_image_temp(
     Ok(path)
 }
 
-/// Read an image from the system clipboard, if one is available.
-///
-/// Returns `Ok(None)` if no image is on the clipboard.
-/// Returns `Err` if the clipboard tools are unavailable or fail.
 pub fn read_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError> {
     if cfg!(target_os = "macos") {
         read_macos_clipboard_image()
@@ -56,11 +41,8 @@ pub fn read_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError> 
     }
 }
 
-// ── macOS ────────────────────────────────────────────────────────────
-
 #[cfg(target_os = "macos")]
 fn read_macos_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError> {
-    // Use `osascript` to get the clipboard as TIFF, then convert to PNG
     let script = r#"try
     set theData to the clipboard as «class PNGf»
     return theData
@@ -89,8 +71,6 @@ fn read_macos_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError
     Err(ClipboardError::unsupported("Not macOS"))
 }
 
-// ── Linux (Wayland: wl-paste, X11: xclip) ───────────────────────────
-
 #[cfg(target_os = "linux")]
 fn read_linux_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError> {
     let has_wayland = std::env::var("WAYLAND_DISPLAY").is_ok()
@@ -117,7 +97,6 @@ fn read_linux_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError
 
 #[cfg(target_os = "linux")]
 fn read_via_wl_paste() -> Result<Option<ClipboardImage>, ClipboardError> {
-    // First check if there's an image by listing MIME types
     let list_output = Command::new("wl-paste")
         .args(["--list-types"])
         .stdout(Stdio::piped())
@@ -134,8 +113,6 @@ fn read_via_wl_paste() -> Result<Option<ClipboardImage>, ClipboardError> {
         return Ok(None);
     };
 
-    // MUST pass -t: bare `wl-paste` often returns empty when the clipboard is
-    // image-only (Gradia / screenshot tools).
     let output = Command::new("wl-paste")
         .args(["--type", &mime_type, "--no-newline"])
         .stdout(Stdio::piped())
@@ -155,8 +132,6 @@ fn read_via_wl_paste() -> Result<Option<ClipboardImage>, ClipboardError> {
 
 #[cfg(target_os = "linux")]
 fn read_via_xclip() -> Result<Option<ClipboardImage>, ClipboardError> {
-    // xclip -selection clipboard -t image/png -o
-    // Try common image types
     let mime_types = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
     for mt in &mime_types {
@@ -177,8 +152,6 @@ fn read_via_xclip() -> Result<Option<ClipboardImage>, ClipboardError> {
 
     Ok(None)
 }
-
-// ── Windows: PowerShell ──────────────────────────────────────────────
 
 #[cfg(target_os = "windows")]
 fn read_windows_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardError> {
@@ -216,8 +189,6 @@ fn read_windows_clipboard_image() -> Result<Option<ClipboardImage>, ClipboardErr
     Err(ClipboardError::unsupported("Not Windows"))
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
-
 #[cfg(any(test, target_os = "linux"))]
 const PREFERRED_IMAGE_MIMES: &[&str] = &["image/png", "image/jpeg", "image/webp", "image/gif"];
 
@@ -226,7 +197,6 @@ fn base_image_mime(mime_type: &str) -> &str {
     mime_type.split(';').next().unwrap_or(mime_type).trim()
 }
 
-/// Prefer png/jpeg/webp/gif (pi order); otherwise first `image/*` offer.
 #[cfg(any(test, target_os = "linux"))]
 fn select_preferred_image_mime(mime_types: &str) -> Option<String> {
     let entries: Vec<&str> = mime_types
@@ -250,18 +220,12 @@ fn select_preferred_image_mime(mime_types: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Minimal base64 decoder — mirrors the encoder in osc52.rs.
-/// Production caller is the Windows clipboard reader only; tests roundtrip it
-/// against the osc52 encoder on every platform.
 #[cfg(any(target_os = "windows", test))]
 fn decode_base64(input: &str) -> Result<Vec<u8>, ClipboardError> {
-    // Remove whitespace (PowerShell emits CRLF line endings in base64 output).
     let clean: String = input.chars().filter(|c| !c.is_whitespace()).collect();
 
-    // Strip padding
     let padded = clean.trim_end_matches('=');
 
-    // Build decoding table
     let decode = |c: u8| -> Option<u32> {
         match c {
             b'A'..=b'Z' => Some((c - b'A') as u32),
@@ -323,7 +287,6 @@ mod tests {
 
     #[test]
     fn select_mime_prefers_png_over_earlier_bmp_jpeg() {
-        // Gradia / KDE-style offer list: bmp first, then jpeg/png.
         let list = "\
 image/bmp
 image/x-bmp

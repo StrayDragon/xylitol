@@ -1,5 +1,3 @@
-//! Wire snapshot of an agent Todo list (envelope payload, not Host vocabulary).
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

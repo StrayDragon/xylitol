@@ -1,10 +1,3 @@
-//! Provider HTTP hook helpers — headers/body modify and after-response observe.
-//!
-//! **Client-agnostic**: header bags are JSON objects (`serde_json::Map`), matching
-//! script-hook payloads. Adapters convert to/from their HTTP stack (reqwest today,
-//! vendor SDK / `http` types later) at the provider edge — do not import HTTP
-//! clients here.
-
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -12,17 +5,12 @@ use serde_json::{Map, Value};
 use super::{DispatchResult, HookDispatcher, HookEvent, HookPhase};
 use xylitol_plugin_sdk::error::XyError;
 
-/// Portable request/response header bag (lowercase keys preferred).
 pub type HeaderBag = Map<String, Value>;
 
-/// Serialize a header bag to a JSON object (identity for [`HeaderBag`]).
 pub fn headers_to_json(headers: &HeaderBag) -> Value {
     Value::Object(headers.clone())
 }
 
-/// Merge header fields from a JSON object into a [`HeaderBag`].
-///
-/// `Modify.args.headers` from `before_provider_headers` uses this helper.
 pub fn merge_headers_from_json(headers: &mut HeaderBag, value: &Value) {
     let Some(obj) = value.as_object() else {
         return;
@@ -35,7 +23,6 @@ pub fn merge_headers_from_json(headers: &mut HeaderBag, value: &Value) {
     }
 }
 
-/// Run `before_provider_headers` hooks; merge modified headers when returned.
 pub async fn run_before_headers(
     hooks: &Option<Arc<HookDispatcher>>,
     headers: &mut HeaderBag,
@@ -66,7 +53,6 @@ pub async fn run_before_headers(
     }
 }
 
-/// Run `before_provider_request` hooks; replace body when modified.
 pub async fn run_before_request(
     hooks: &Option<Arc<HookDispatcher>>,
     model: &str,
@@ -95,7 +81,6 @@ pub async fn run_before_request(
     }
 }
 
-/// Run `after_provider_response` hooks (observe-only; errors are ignored).
 pub async fn run_after_response(
     hooks: &Option<Arc<HookDispatcher>>,
     status: u16,
@@ -176,8 +161,6 @@ mod tests {
 
     #[tokio::test]
     async fn run_after_response_dispatches() {
-        // Marker file proves the hook command actually executed (a pure
-        // `echo allow` would not distinguish dispatch from silent drop).
         let tmp = tempfile::tempdir().unwrap();
         let marker = tmp.path().join("after-response-ran");
         let config = HooksConfig {

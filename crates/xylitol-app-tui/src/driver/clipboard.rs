@@ -1,9 +1,3 @@
-//! Client-local clipboard semantics shared by every [`XyDriver`] implementation.
-//!
-//! Both the in-process driver and the remote driver run in the TUI process
-//! (the remote driver is a client of the Host), so platform clipboard tools /
-//! OSC 52 act on the TUI machine. MUST NOT route through the Host (D1).
-
 use super::XyDriverError;
 use super::types::ClipboardCopyOutcome;
 

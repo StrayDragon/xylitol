@@ -1,12 +1,3 @@
-//! Per-session-slot unary idempotency admission (c2460).
-//!
-//! Key is the envelope `rpcId` (caller-generated, stable across retries).
-//! First admission wins: the first execution's result is recorded and every
-//! duplicate of the same key replays it; a duplicate arriving while the first
-//! is still executing waits for completion instead of running again. Same key
-//! with a different method or payload is a stable conflict. The ledger is
-//! bounded and in-process — never persisted across restarts.
-
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 
@@ -15,15 +6,12 @@ use tokio::sync::{Mutex, watch};
 
 use xylitol_protocol::envelope::RpcResult;
 
-/// Bounded FIFO per session slot: the oldest entry is evicted beyond this.
 pub const LEDGER_CAP: usize = 128;
 
 struct Entry {
     method: String,
     payload: Value,
     tx: watch::Sender<Option<RpcResult>>,
-    /// Keeps the channel open so `tx.send` always stores the value — with zero
-    /// receivers a watch channel is closed and `send` fails silently.
     _rx_keepalive: watch::Receiver<Option<RpcResult>>,
 }
 
@@ -42,7 +30,6 @@ impl Entry {
         self.method == method && &self.payload == payload
     }
 
-    /// Wait for the first execution to finish and clone its result.
     async fn result(&self) -> RpcResult {
         let mut rx = self.tx.subscribe();
         loop {
@@ -50,15 +37,12 @@ impl Entry {
                 return result.clone();
             }
             if rx.changed().await.is_err() {
-                // Sender dropped without a result (handler panicked): fail the
-                // waiter rather than hang forever.
                 return RpcResult::error("internal_error", "idempotent first execution vanished");
             }
         }
     }
 }
 
-/// Borrowed from [`Admission::Proceed`]; completes the first execution.
 pub struct Reservation {
     entry: Arc<Entry>,
     done: std::cell::Cell<bool>,
@@ -74,8 +58,6 @@ impl Reservation {
 impl Drop for Reservation {
     fn drop(&mut self) {
         if !self.done.get() {
-            // Never completed (handler panicked / caller abandoned): fail any
-            // waiter instead of leaving the entry pending forever.
             let _ = self.entry.tx.send(Some(RpcResult::error(
                 "internal_error",
                 "idempotent execution abandoned",
@@ -84,18 +66,12 @@ impl Drop for Reservation {
     }
 }
 
-/// Outcome of an idempotency admission check for one unary call.
 pub enum Admission {
-    /// First sighting of the key: run the handler, then
-    /// [`Reservation::complete`] with its result.
     Proceed(Reservation),
-    /// Duplicate of a known key: replay the first execution's result.
     Replay(RpcResult),
-    /// Same key, but a different method or payload.
     Conflict,
 }
 
-/// Stable conflict result for a same-key-different-request duplicate.
 pub fn conflict_result() -> RpcResult {
     RpcResult::error(
         "idempotency_conflict",
@@ -115,8 +91,6 @@ struct LedgerInner {
 }
 
 impl IdempotencyLedger {
-    /// Admission check for one session-scoped unary call. `rpc_id: None`
-    /// (carriers without a wire envelope) proceeds unkeyed.
     pub async fn admit(&self, rpc_id: Option<&str>, method: &str, payload: &Value) -> Admission {
         let Some(rpc_id) = rpc_id else {
             return Admission::Proceed(Reservation {

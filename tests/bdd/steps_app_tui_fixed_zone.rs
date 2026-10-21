@@ -1,5 +1,3 @@
-//! Steps for `app-tui-fixed-zone` — 下缘待办栏与队列条 / 通知条 / status / editor 堆叠。
-
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
@@ -103,8 +101,6 @@ fn then_empty_todo_bar_is_zero_rows(fixed_zone_bdd: &FixedZoneBdd) {
     );
 }
 
-// ── c2826 specs-compact：固定区裸规则转场景 ────────────────────────
-
 use xylitol_app_tui::UiEntry;
 use xylitol_tui::Component;
 
@@ -115,7 +111,6 @@ fn root_with(model: &UiModel) -> xylitol_app_tui::UiRoot {
     root
 }
 
-/// 剥离 ANSI 转义后的纯文本帧（断言用）。
 fn plain(frame: &str) -> String {
     static ANSI: once_cell_shim::Ansi = once_cell_shim::Ansi;
     let _ = &ANSI;
@@ -131,7 +126,6 @@ fn strip_ansi(s: &str) -> String {
     let mut chars = s.chars().peekable();
     while let Some(c) = chars.next() {
         if c == '\u{1b}' {
-            // 跳过 ESC [ ... 终止于字母
             for c2 in chars.by_ref() {
                 if c2.is_ascii_alphabetic() {
                     break;
@@ -514,8 +508,6 @@ fn t_c2826_footer_compact(fixed_zone_bdd: &FixedZoneBdd) {
         "c2826: 不得去掉 tokens 词"
     );
 }
-
-// ── c2826 specs-compact：app-tui-input 布局级场景步骤 ──────────────
 
 #[when("经事件流注入两条相同正文的用户消息")]
 fn w_c2826_same_text_twice(fixed_zone_bdd: &FixedZoneBdd) {

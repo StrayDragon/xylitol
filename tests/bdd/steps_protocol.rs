@@ -1,6 +1,3 @@
-//! protocol-app 纯协议层步骤：serde 往返、闭集拒绝、JSON-RPC 信封。
-//! 不起 Host —— 全部直接驱动 `xylitol::protocol` 公开类型。
-
 use crate::bdd::prelude::*;
 use rstest::fixture;
 use rstest_bdd_macros::{then, when};
@@ -9,15 +6,12 @@ use xylitol_protocol::codec;
 use xylitol_protocol::{Command, Event, RpcMessage};
 use xylitol_serve::FromWireEvent;
 
-/// Shared state for protocol-layer scenarios.
 pub struct ProtocolBdd {
     pub cmds: RefCell<Vec<Result<Command, String>>>,
     pub events: RefCell<Vec<Event>>,
     pub tool_end_pair: RefCell<Option<(String, bool)>>,
     pub msgs: RefCell<Vec<RpcMessage>>,
-    /// c2826：纯文本提取结果。
     pub text_out: RefCell<String>,
-    /// r1927：最近一次线上信封解码结果。
     pub last_decode: RefCell<Option<Result<(), String>>>,
 }
 
@@ -57,7 +51,6 @@ fn t_queue_command_variants(protocol_bdd: &ProtocolBdd) {
         matches!(cmds[2], Ok(Command::ClearQueue { .. })),
         "{cmds:?}"
     );
-    // 缺省布尔按 default_true 解析
     if let Ok(Command::ClearQueue {
         clear_steer,
         clear_follow_up,
@@ -131,7 +124,6 @@ fn w_stream_events_roundtrip(protocol_bdd: &ProtocolBdd) {
     for ev in &originals {
         let text = serde_json::to_string(ev).expect("serialize");
         let back: Event = serde_json::from_str(&text).expect("deserialize");
-        // 以再序列化字符串比较，避免依赖 PartialEq 派生
         assert_eq!(
             serde_json::to_string(&back).unwrap(),
             text,
@@ -201,7 +193,6 @@ fn w_tool_end_flag(protocol_bdd: &ProtocolBdd) {
         "full form must keep is_error=true"
     );
 
-    // 线上必填（c2440）：移除 is_error 后的载荷必须解析失败
     let mut legacy_value: serde_json::Value = serde_json::from_str(&full_text).unwrap();
     legacy_value
         .as_object_mut()
@@ -260,8 +251,6 @@ fn t_jsonrpc_shape(protocol_bdd: &ProtocolBdd) {
     );
 }
 
-// ---- c2826 specs-compact：裸规则转场景补充步骤 ----
-
 #[when("对 QueueUpdate 事件做线协议序列化与反序列化往返")]
 fn w_queue_update_roundtrip(protocol_bdd: &ProtocolBdd) {
     let event = Event::QueueUpdate {
@@ -272,9 +261,7 @@ fn w_queue_update_roundtrip(protocol_bdd: &ProtocolBdd) {
     let back: Event = serde_json::from_str(&text).expect("decode QueueUpdate");
     assert_eq!(serde_json::to_string(&back).unwrap(), text);
     protocol_bdd.events.replace(vec![back]);
-    // 未映射（未知 type 标签）帧：解析为 Err，消费端可降级忽略，MUST NOT panic。
     let unknown = serde_json::from_str::<Event>(r#"{"type":"totally_unknown_variant","x":1}"#);
-    // 以 text_out 暂存「未知 type 解析为 Err」的结论（无 panic 即通过）。
     let verdict = if unknown.is_err() { "err" } else { "ok" };
     protocol_bdd.text_out.replace(verdict.to_string());
 }
@@ -517,8 +504,6 @@ fn t_import_stable_kind(protocol_bdd: &ProtocolBdd) {
         "c2826: 域失败 MUST NOT 归为无结构 Message kind"
     );
 }
-
-// ── r1927 线上 JSON 深解析有界 ─────────────────────────────────
 
 fn deep_array_envelope(depth: usize) -> String {
     let deep = format!("{}0{}", "[".repeat(depth), "]".repeat(depth));

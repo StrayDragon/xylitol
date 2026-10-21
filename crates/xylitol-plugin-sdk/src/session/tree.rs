@@ -1,21 +1,16 @@
-//! Session tree shapes and MessageHistory travel planner.
-
 use serde::{Deserialize, Serialize};
 
 use super::entries::SessionEntry;
 use super::helpers::{is_user_message, message_text};
 use crate::error::XySessionError;
 
-/// Kind of session tree exposed via the product `XyDriver`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionTreeKind {
     MessageHistory,
-    /// Reserved; callers MUST receive an explicit error until implemented.
     FileBrowser,
 }
 
-/// Result of travelling a session tree — leaf position plus optional editor prefill.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionTreeTravel {
     pub kind: SessionTreeKind,
@@ -25,20 +20,13 @@ pub struct SessionTreeTravel {
     pub editor_text: Option<String>,
 }
 
-/// Tree node for getTree() - defensive copy of session structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionTreeNode {
-    /// The session entry at this node.
     pub entry: SessionEntry,
-    /// Child nodes in timestamp order.
     pub children: Vec<SessionTreeNode>,
-    /// Resolved label for this entry, if any.
     pub label: Option<String>,
 }
 
-// ── Session tree ────────────────────────────────────────────────────
-
-/// Build a parent/child tree from flat session entries (labels resolved).
 pub fn build_session_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
     use std::collections::HashMap;
 
@@ -73,7 +61,6 @@ pub fn build_session_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
 
     let mut roots: Vec<SessionTreeNode> = Vec::new();
 
-    // Link children to parents (reverse order so parents stay in node_map).
     for entry in entries.iter().rev() {
         if matches!(entry, SessionEntry::Label(_) | SessionEntry::Header(_)) {
             continue;
@@ -111,7 +98,6 @@ pub fn build_session_tree(entries: &[SessionEntry]) -> Vec<SessionTreeNode> {
     roots
 }
 
-/// Pure planner for MessageHistory travel (pi / c600 semantics).
 pub fn plan_message_history_travel(
     entries: &[SessionEntry],
     selected_id: &str,

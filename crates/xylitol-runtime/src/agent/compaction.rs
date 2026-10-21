@@ -1,5 +1,3 @@
-//! Compaction vocabulary + port. Implementation lives in the official plugin.
-
 pub use xylitol_plugin_sdk::{
     CompactionError, CompactionModelAttribution, CompactionSettings, CompactionSummaryBinding,
     ContextTokenSettlement, ContextTokenSettlementReason, EstimateOpts, FixedRequestContext,

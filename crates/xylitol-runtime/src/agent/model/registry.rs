@@ -1,33 +1,17 @@
-//! ModelRegistry — provider registration and model discovery.
-//!
-//! Provides:
-//! - ProviderConfig registration with priority ordering
-//! - Available model listing sorted by provider priority
-//! - Default model ID per provider
-
 use std::collections::HashMap;
 
 use xylitol_plugin_sdk::model::XyModelMeta;
 
-// ── Provider Config ─────────────────────────────────────────────────
-
-/// Configuration for a model provider.
-///
-/// Only `openai`-compatible and `anthropic` providers are supported
-/// until after 1.0.0.
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
     pub name: String,
     pub api_key: Option<String>,
     pub base_url: Option<String>,
     pub priority: u32,
-    /// Provider compatibility mode (openai-compatible / anthropic-messages).
     pub api: Option<ProviderApi>,
-    /// Additional HTTP headers for this provider.
     pub headers: Option<std::collections::HashMap<String, String>>,
 }
 
-/// Provider API compatibility type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProviderApi {
     OpenAiCompatible,
@@ -57,8 +41,6 @@ impl ProviderConfig {
         }
     }
 
-    /// Create a custom provider config (user-defined provider like LM Studio, Ollama).
-    /// Custom providers default to OpenAI-compatible API.
     pub fn custom(
         name: &str,
         api: ProviderApi,
@@ -80,10 +62,6 @@ impl ProviderConfig {
     }
 }
 
-// ── Model Registry ──────────────────────────────────────────────────
-
-/// Registry of model providers and their available models.
-/// This is the canonical `ModelRegistry` used throughout the agent.
 #[derive(Clone, Debug)]
 pub struct ModelRegistry {
     providers: HashMap<String, ProviderConfig>,
@@ -104,13 +82,9 @@ impl ModelRegistry {
         }
     }
 
-    // ── Provider management ───────────────────────────────────────
-
     pub fn register_provider(&mut self, name: &str, config: ProviderConfig) {
         self.providers.insert(name.to_string(), config);
     }
-
-    // ── Model management ──────────────────────────────────────────
 
     pub fn register(&mut self, meta: XyModelMeta) {
         self.models.push(meta);

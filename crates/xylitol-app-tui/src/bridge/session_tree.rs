@@ -1,5 +1,3 @@
-//! Rebuild live scrollback after MessageHistory travel (c615 / c646).
-
 use crate::tool_display::{is_ask_tool, is_write_tool};
 use crate::utils::elapsed_from_persist_ms;
 use serde_json::Value;
@@ -13,12 +11,6 @@ use super::{
     apply_tool_result_to_entries, find_tool_mut,
 };
 
-/// Replace transcript with entries on the ancestry path to `travel.leaf_id`.
-///
-/// Path projection only — callers that need a travel notice MUST append it
-/// via [`travel_history_note`] + `push_scroll_notice` (trailing, not prepend).
-///
-/// `toolResult` rows merge into the matching Tool by `toolCallId` (same as live End).
 pub fn rebuild_scrollback_from_travel(
     ui_model: &mut UiModel,
     entries: &[SessionEntry],
@@ -34,8 +26,6 @@ pub fn rebuild_scrollback_from_travel(
     ui_model.current_role = None;
 
     let path = ancestry_path_ids(entries, travel.leaf_id.as_deref());
-    // c2760: bash lifecycle fold — done ids win; a lone running row (crash /
-    // interrupted) renders as interrupted instead of a pending block.
     let bash_done_ids = bash_done_ids(entries);
     for id in path {
         let Some(entry) = entries.iter().find(|e| e.entry_id() == Some(id.as_str())) else {
@@ -56,7 +46,7 @@ pub fn rebuild_scrollback_from_travel(
                     .and_then(Value::as_str)
                     .unwrap_or("");
                 if bash_done_ids.contains(bash_id) {
-                    continue; // the done row renders the block
+                    continue;
                 }
                 let mut msg = m.message.clone();
                 msg["output"] =
@@ -81,17 +71,14 @@ pub fn rebuild_scrollback_from_travel(
     sync_todo_checklist_from_entries(ui_model, entries);
 }
 
-/// Upsert the single latest-wins Todo checklist row from a full leaf branch (atd8/atd9).
 pub fn sync_todo_checklist_from_entries(ui_model: &mut UiModel, entries: &[SessionEntry]) {
     sync_todo_checklist(ui_model, latest_agent_todo(entries).unwrap_or_default());
 }
 
-/// Latest-wins 待办栏 list (tool End or resume). Empty table occupies 0 dock rows.
 pub fn sync_todo_checklist(ui_model: &mut UiModel, list: TodoList) {
     ui_model.todo = list;
 }
 
-/// Merge a persisted toolResult into scrollback (att12): same End semantics as live.
 fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, message: &Value) {
     let tool_call_id = message
         .get("toolCallId")
@@ -144,7 +131,6 @@ fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, messa
     }
 
     if !apply_tool_result_to_entries(entries, tool_call_id, name, &result, is_error) {
-        // Orphan: no matching call on path — still one done Tool row (id prefers toolCallId).
         entries.push(UiEntry::Tool {
             timeout_secs: None,
             id: tool_call_id.to_string(),
@@ -170,7 +156,6 @@ fn merge_persisted_tool_result(entries: &mut Vec<UiEntry>, entry_id: &str, messa
     }
 }
 
-/// Format the trailing travel System notice (`history @ … · leaf=… · path: …`).
 pub fn travel_history_note(entries: &[SessionEntry], travel: &SessionTreeTravel) -> String {
     let leaf = travel.leaf_id.as_deref();
     let path = ancestry_path_ids(entries, leaf);
@@ -193,14 +178,11 @@ pub(crate) fn ancestry_path_ids(entries: &[SessionEntry], leaf_id: Option<&str>)
     xylitol_plugin_sdk::session::transcript_ancestry_ids(entries, leaf_id)
 }
 
-/// Truncate opaque ids for the travel banner (full UUID path overflows COLS and
-/// can wedge differential render / CapturedScreen in PTY E2E).
 fn short_entry_id(id: &str) -> &str {
     const KEEP: usize = 8;
     if id.len() > KEEP { &id[..KEEP] } else { id }
 }
 
-/// Collect `bash_id`s that have a finished (`done`) row (c2760).
 fn bash_done_ids(entries: &[SessionEntry]) -> std::collections::HashSet<String> {
     entries
         .iter()
@@ -227,10 +209,6 @@ fn bash_done_ids(entries: &[SessionEntry]) -> std::collections::HashSet<String> 
         .collect()
 }
 
-/// Project one session entry into zero or more UI rows (c646: thinking ≠ text).
-///
-/// `prior` carries the rows projected before this entry so Thinking ids count
-/// ordinals globally, matching the live flush (att21).
 #[cfg(test)]
 fn session_entry_to_ui_entries(entry: &SessionEntry) -> Vec<UiEntry> {
     session_entry_to_ui_entries_with_thought_elapsed(entry, None, &[])
@@ -245,7 +223,6 @@ fn session_entry_to_ui_entries_with_thought_elapsed(
         SessionEntry::Message(m) if message_role(&m.message) == Some("bashExecution") => {
             nested_bash_to_ui(&m.message, prior)
         }
-        // c1905: Env CustomMessage (session_env) must not appear as chat / ScrollNotice.
         SessionEntry::Message(m) if is_env_custom_message(&m.message) => Vec::new(),
         SessionEntry::Message(m) => {
             message_json_to_ui_entries(&m.base.id, &m.message, thought_elapsed, prior)
@@ -309,8 +286,6 @@ fn nested_bash_to_ui(message: &Value, prior: &[UiEntry]) -> Vec<UiEntry> {
         .or_else(|| message.get("exclude_from_context"))
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    // att30 fold key: prefer persisted bashId; fall back to command hash +
-    // prior Bash ordinal so identical commands keep distinct fold keys.
     let id = message
         .get("bashId")
         .or_else(|| message.get("bash_id"))
@@ -343,7 +318,6 @@ fn message_json_to_ui_entries(
     let Some(role) = message_role(message) else {
         return Vec::new();
     };
-    // Belt-and-suspenders: custom env rows never become User/ScrollNotice.
     if is_env_custom_message(message) {
         return Vec::new();
     }
@@ -353,8 +327,6 @@ fn message_json_to_ui_entries(
         }],
         "assistant" => assistant_parts_to_ui(entry_id, message, thought_elapsed, prior),
         "toolResult" | "tool" => {
-            // Standalone projection (orphan / direct call). Rebuild path merges via
-            // [`merge_persisted_tool_result`] instead of appending a second Tool.
             let tool_call_id = message
                 .get("toolCallId")
                 .or_else(|| message.get("tool_call_id"))
@@ -527,7 +499,6 @@ fn assistant_parts_to_ui(
     out
 }
 
-/// Map stopReason/errorMessage into scrollback rows (pi rebuild + live Error/abort).
 fn assistant_terminal_ui(
     stop: Option<&str>,
     error_message: Option<&str>,
@@ -655,8 +626,6 @@ mod tests {
         );
     }
 
-    /// att21: live 与 rebuild 对同一逻辑块 MUST 同 id。直播 flush 的序数按
-    /// 全量 entries 计；rebuild 对跨消息重复的同文 thinking 不得重置序数。
     #[test]
     fn rebuild_thinking_ids_match_live_ordinals_across_messages() {
         let mk_assistant = |id: &str, parent: &str| {
@@ -700,7 +669,6 @@ mod tests {
             leaf_id: Some("a2".into()),
             editor_text: None,
         };
-        // 直播口径：同文 thinking 第二次 flush 时序数为 1。
         let mut live = UiModel::default();
         apply_xy_event(&mut live, &XyEvent::ThinkingDelta("same plan".into()));
         apply_xy_event(&mut live, &XyEvent::TextDelta("reply".into()));
@@ -1028,9 +996,6 @@ mod tests {
         );
     }
 
-    /// att36 / att50: the todo_* block (header preview + glyph-checklist body)
-    /// and the checklist projection row must be identical after a live flush
-    /// and after a travel rebuild from the same session content.
     #[test]
     fn rebuild_todo_block_matches_live_flush() {
         let todo_args = json!({ "items": [
@@ -1086,7 +1051,6 @@ mod tests {
                     "timestamp": 0u64,
                 }),
             }),
-            // SSOT snapshot (atd2): the resume-side checklist source.
             SessionEntry::Custom(xylitol_plugin_sdk::session::CustomEntry {
                 base: EntryBase {
                     entry_type: "custom".into(),
@@ -1111,8 +1075,6 @@ mod tests {
         let mut rebuilt = UiModel::default();
         rebuild_scrollback_from_travel(&mut rebuilt, &entries, &travel);
 
-        // Same turn as a live event stream: user row → Start → TodoUpdated
-        // (atd13) → End.
         let mut live = UiModel::default();
         live.begin_run("plan it");
         apply_xy_event(
@@ -1322,9 +1284,6 @@ mod tests {
 
     #[test]
     fn rebuild_splices_parentless_bookkeeping_seam_in_chain() {
-        // Historical pollution: messages chained THROUGH a parent-less
-        // modelChange. Resume rebuild must show the full history, not just the
-        // rows after the seam.
         let entries = vec![
             SessionEntry::Message(MessageEntry {
                 base: EntryBase {

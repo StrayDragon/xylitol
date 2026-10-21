@@ -1,8 +1,5 @@
-//! infra-image / infra-process BDD bindings（c2853 按域从 bindings_c2827 拆出）。
-
 use rstest_bdd_macros::scenario;
 
-// infra-image r1440-1444（批 2）
 #[scenario(
     path = "llmanspec/specs/infra-image/infra-image.feature",
     name = "受约束图片缩放"
@@ -29,7 +26,6 @@ fn test_t2_image_multimodal() {}
 )]
 fn test_t2_image_part() {}
 
-// infra-process r1493-1496（批 2）
 #[scenario(
     path = "llmanspec/specs/infra-process/infra-process.feature",
     name = "bash路径发现"

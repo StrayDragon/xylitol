@@ -1,8 +1,3 @@
-//! TUI-only builtin `ask` tool — structured clarify / decision questionnaire.
-//!
-//! Observability: inherits the generic `tool_exec::run_one` ToolExecuteSpan
-//! (fastrace / langfuse). No per-tool ask span is required.
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -14,7 +9,6 @@ use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::{XyToolCtx, XyToolExecutionMode};
 
-/// Builtin `ask` — Barrier / Sequential; not in [`super::default_tools`].
 pub struct AskTool {
     gateway: Arc<dyn AskUserGateway>,
 }
@@ -98,7 +92,6 @@ impl TypedTool for AskTool {
     }
 
     fn execution_mode(&self) -> XyToolExecutionMode {
-        // Barrier — never enter a parallel tool window while waiting on the user.
         XyToolExecutionMode::Sequential
     }
 
@@ -119,12 +112,7 @@ impl TypedTool for AskTool {
     }
 }
 
-/// `default_tools()` plus an `ask` tool bound to `gateway`.
-///
-/// Used by TUI composition / MCP reload. Print MUST keep plain [`super::default_tools`].
-/// Prefer [`default_tools_with_ask_and_todo`] when a session-bound Todo gateway exists.
-/// BDD @executable contract (steps_app_tui_ask); no product caller.
-#[allow(dead_code)] // BDD @executable contract, not product-called
+#[allow(dead_code)]
 pub fn default_tools_with_ask(
     gateway: Arc<dyn AskUserGateway>,
 ) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
@@ -133,7 +121,6 @@ pub fn default_tools_with_ask(
     tools
 }
 
-/// Session-bound Todo builtins + TUI-only `ask`.
 pub fn default_tools_with_ask_and_todo(
     ask: Arc<dyn AskUserGateway>,
     todo: Arc<dyn xylitol_plugin_sdk::AgentTodoGateway>,
