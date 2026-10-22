@@ -4,7 +4,7 @@ title: 修复 c2940 JSON-RPC 迁移复核发现的契约、BDD、门禁与文档
 needs_specs_change: true
 branch: sdd/c2941-fix-c2940-review-followups
 base_branch: main
-base_sha: 354de5d8814b4bb31de593497a9484d65f10b32c
+base_sha: 46434c5dd88d8e4586e96028ee5a7d773ba16715
 ---
 
 # 修复 c2940 JSON-RPC 迁移复核发现的契约、BDD、门禁与文档问题（P0/P1）
@@ -49,6 +49,7 @@ c2940 把产品线协议从 fory-v3 迁移到 JSON-RPC 2.0，主体实现成立�
 - `protocol-app`：JSON-RPC 信封、错误码、AgentEnd 契约、batch 上限、413 场景。
 - `server-core`：旧名/版本标签清理、导览计数。
 - `app-tui-host` / `app-tui-bridge`：仅测试/步骤文本与客户端清理，语义不变。
+- 另触及（also touched，不改语义）：`agent-runtime` / `layer-architecture` 的 BDD 绑定面与共享步骤（`tests/bdd/steps_server.rs`）随本次清理间接受影响；两个 spec 本身无需修改。
 
 ## Impact
 

@@ -5,6 +5,7 @@ use rstest_bdd_macros::{then, when};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_protocol::codec::{self, Inbound, Rejected};
 use xylitol_protocol::{Command, Event, Message, Outcome, RequestId};
+use xylitol_serve::MAX_BODY_BYTES;
 use xylitol_wire::event_from_wire;
 
 pub struct ProtocolBdd {
@@ -701,6 +702,27 @@ fn t_invalid_params_stable_code(server_test: &ServerTest) {
 #[then("error.code 为 -32000 且 data.code 为 not_found")]
 fn t_business_error_stable_code(server_test: &ServerTest) {
     assert_error_response(server_test, 200, -32000, Some("not_found"));
+}
+
+#[when("POST /rpc 发送超过 4 MiB 的正文")]
+async fn w_jsonrpc_oversized_body(server_test: &ServerTest) {
+    let url = format!("http://127.0.0.1:{}/rpc", server_test.port.get());
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .header("content-type", "application/json")
+        .body(vec![b' '; MAX_BODY_BYTES + 1])
+        .send()
+        .await
+        .expect("POST /rpc oversized body");
+    let status = resp.status().as_u16();
+    let text = resp.text().await.expect("read /rpc body");
+    server_test.unary_status.set(status);
+    *server_test.unary_body.borrow_mut() = Some(text);
+}
+
+#[then("HTTP 413 且 error.data.code 为 payload_too_large")]
+fn t_http_413_payload_too_large(server_test: &ServerTest) {
+    assert_error_response(server_test, 413, -32600, Some("payload_too_large"));
 }
 
 #[when("POST /rpc 调用 plugin/call")]

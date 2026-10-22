@@ -5,7 +5,7 @@
 
   @req:r1693
   规则: Command 枚举
-    protocol 须定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；每个 client→core 消息 须反序列化为此枚举。方法 须按方法名寻址，不得引入数字 method_id。
+    protocol 须定义 Command 枚举，至少覆盖 Run、Cancel、SwitchModel、SetThinking、ListCommands、ApproveTool、AnswerQuestion、SwitchSession、GetMessages、ExportHtml、ExportJsonl、ImportJsonl；command-backed 方法 须反序列化为此枚举。方法 须按方法名寻址，不得引入数字 method_id。
 
     场景: 命令往返保真
       当 对产品命令样例做线协议序列化与反序列化往返
@@ -39,7 +39,7 @@
       那么 应答为产品成功且 result 含 session 与 seq
   @req:r1698
   规则: Event 变体完整
-    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。
+    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。`AgentEnd` 的 `messages` 为面本地保留字段，线上不携带；跨进程客户端 须以 `get_messages` 重建 transcript。
 
     场景: agent流式事件往返
       当 对 Agent 流族事件做线协议序列化与反序列化往返
@@ -274,7 +274,7 @@
 
   @req:r2917
   规则: JSON-RPC 信封形状
-    产品线协议 必须遵循 JSON-RPC 2.0：request 必须带 jsonrpc 为 "2.0"、id（string 或 integer）与 method；id 必须原样回显到对应 response；notification 无 id 且 不得产生应答；batch 必须逐条处理并按序返回 response，batch 中的 notification 不产生应答；空数组 batch 必须判非法。params 为 object 或 array；产品方法 必须只接受 object。
+    产品线协议 必须遵循 JSON-RPC 2.0：request 必须带 jsonrpc 为 "2.0"、id（string 或 integer）与 method；id 必须原样回显到对应 response；notification 无 id 且 不得产生应答；batch 必须逐条处理并按序返回 response，batch 中的 notification 不产生应答；空数组 batch 必须判非法。batch 条目数 不得超过 100；超限 必须判非法请求（-32600，data.code 为 batch_too_large）。params 为 object 或 array；产品方法 必须只接受 object。
 
     场景: JSON-RPC请求应答往返
       当 服务端在空闲端口上启动
@@ -307,7 +307,7 @@
       那么 HTTP 400 且 error.code 为 -32600
   @req:r2918
   规则: 错误码与业务码
-    JSON-RPC 错误码 必须为标准码之一：-32700 解析错误、-32600 非法请求、-32601 未登记方法、-32602 参数错误、-32603 内部错误。产品业务错误 必须使用 -32000 至 -32099 区间的 error.code，并在 error.data.code 中给出稳定字符串（如 session_busy、writer_conflict、not_found、invalid_input）。HTTP 状态 必须为：合法 JSON-RPC（含业务错误）为 200；解析或非法信封为 400；body 超过 4 MiB 为 413。
+    JSON-RPC 错误码 必须区分标准类别与业务错误：标准类别错误 必须映射到标准码——invalid_input 为 -32602、unregistered_method 为 -32601、internal_error 为 -32603（解析错误 -32700 与非法请求 -32600 同为标准码）；其余产品业务错误 必须使用 -32000 至 -32099 区间的 error.code，并在 error.data.code 中给出稳定字符串（如 session_busy、writer_conflict、not_found）。HTTP 状态 必须为：合法 JSON-RPC（含业务错误）为 200；解析或非法信封为 400；body 超过 4 MiB 为 413。
 
     场景: 参数错误码
       当 服务端在空闲端口上启动
@@ -318,6 +318,11 @@
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 switch_session 指向不存在会话
       那么 error.code 为 -32000 且 data.code 为 not_found
+
+    场景: 请求体超限判 413
+      当 服务端在空闲端口上启动
+      并且 POST /rpc 发送超过 4 MiB 的正文
+      那么 HTTP 413 且 error.data.code 为 payload_too_large
   @req:r2919
   规则: 方法名寻址与预留命名空间
     方法 必须按方法名寻址，未登记方法 必须返回 -32601 且 error.data.code 为 unregistered_method。命名空间 plugin/* 与 plugin/call 仅为预留前缀，当前 未登记，调用 必须返回 -32601；本次不为插件扩展 Event 闭集。

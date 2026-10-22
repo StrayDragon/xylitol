@@ -82,6 +82,8 @@ flowchart TB
   xylitol_kernel --> xylitol_plugin_sdk
   xylitol_kernel --> xylitol_runtime
   xylitol_kernel --> xylitol_protocol
+  xylitol_kernel --> xylitol_serve
+  xylitol_kernel --> xylitol_app_print
   xylitol_kernel --> plugins
   xylitol_serve --> xylitol_runtime
   xylitol_serve --> xylitol_protocol

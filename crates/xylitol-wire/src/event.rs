@@ -343,16 +343,16 @@ mod tests {
             XyEvent::TurnEnd { turn_index: 1 },
             XyEvent::MessageStart {
                 role: "assistant".into(),
-                message: None,
+                message: Some(AgentMessage::assistant("start")),
             },
             XyEvent::MessageUpdate {
                 text: "hi".into(),
                 thinking: Some("t".into()),
-                message: None,
+                message: Some(AgentMessage::assistant("partial")),
             },
             XyEvent::MessageEnd {
                 role: "assistant".into(),
-                message: None,
+                message: Some(AgentMessage::assistant("done")),
             },
             XyEvent::TextDelta("a".into()),
             XyEvent::ThinkingDelta("b".into()),
@@ -431,11 +431,17 @@ mod tests {
     }
 
     #[test]
-    fn agent_end_drops_messages_on_the_wire_by_design() {
-        let wire = event_to_wire(&XyEvent::AgentEnd { messages: vec![] }).expect("to wire");
+    fn agent_end_drops_nonempty_messages_on_the_wire_by_design() {
+        let event = XyEvent::AgentEnd {
+            messages: vec![AgentMessage::user("kept face-locally only")],
+        };
+        let wire = event_to_wire(&event).expect("to wire");
         assert_eq!(wire, Event::AgentEnd);
         let back = event_from_wire(&wire).expect("from wire");
-        assert!(matches!(back, XyEvent::AgentEnd { ref messages } if messages.is_empty()));
+        assert!(
+            matches!(back, XyEvent::AgentEnd { ref messages } if messages.is_empty()),
+            "wire AgentEnd must rebuild with empty messages, got {back:?}"
+        );
     }
 
     #[test]

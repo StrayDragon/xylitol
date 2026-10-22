@@ -119,6 +119,12 @@ async fn test_pa_jsonrpc_business_error(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "请求体超限判 413"
+)]
+async fn test_pa_jsonrpc_payload_too_large(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
     name = "plugin前缀预留未登记"
 )]
 async fn test_pa_plugin_prefix_reserved(server_test: ServerTest) {}

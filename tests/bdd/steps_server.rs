@@ -1379,7 +1379,7 @@ fn t_turn_no_tool(approval_test: &ServerTest) {
     t_tool_denied(approval_test);
 }
 
-#[given("agent 发出 ApprovalRequired，rpcId 为 xyz")]
+#[given("agent 发出 ApprovalRequired，call_id 为 xyz")]
 async fn g_rr1(approval_test: &ServerTest) {
     start_host(approval_test).await;
     let host = approval_test.host.borrow().as_ref().expect("host").clone();
@@ -1485,7 +1485,7 @@ async fn g_rr3(approval_test: &ServerTest) {
     approval_test.approval_rx.replace(Some(rx));
 }
 
-#[when("server 将 rpcId 标记为 expired")]
+#[when("server 将 call_id 标记为 expired")]
 async fn w_rr3_expire(approval_test: &ServerTest) {
     let host = approval_test.host.borrow().as_ref().expect("host").clone();
     let fallback = host.fallback_session.clone();
@@ -1859,25 +1859,14 @@ async fn w_unknown_unary(server_test: &ServerTest) {
 fn t_unknown_unary_shape(server_test: &ServerTest) {
     let st = server_test.unary_status.get();
     let body = server_test.unary_body.borrow().clone().unwrap_or_default();
-    if st >= 400 {
-        let v: serde_json::Value = serde_json::from_str(&body).unwrap_or(serde_json::json!({}));
-        assert!(
-            v.get("result").is_none() || v["result"].is_null(),
-            "unregistered MUST NOT succeed: {body}"
-        );
-        return;
-    }
-    assert_eq!(st, 200, "{body}");
+    assert_eq!(
+        st, 200,
+        "unregistered method MUST be a 200 business error: {body}"
+    );
     let v: serde_json::Value = serde_json::from_str(&body).expect("json-rpc response");
     assert!(v.get("result").is_none(), "{body}");
-    let code = v["error"]["data"]["code"]
-        .as_str()
-        .or_else(|| v["error"]["code"].as_str())
-        .unwrap_or("");
-    assert!(
-        code.contains("unregistered") || code.contains("method") || body.contains("illegal"),
-        "expected unregistered-method product error: {body}"
-    );
+    assert_eq!(v["error"]["code"], -32601, "{body}");
+    assert_eq!(v["error"]["data"]["code"], "unregistered_method", "{body}");
 }
 
 async fn post_unary_rpc_id(

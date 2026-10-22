@@ -1,7 +1,7 @@
 # language: zh-CN
 # purpose: Server 运行时 — 独立 Host 监听器经 JSON-RPC 2.0 文本信封暴露产品契约（POST /rpc + WS /rpc）；每 session 槽独立 journal 与写者。
 
-# ── 文件导览（48 规则）────────────────────────────────────────
+# ── 文件导览（59 规则）────────────────────────────────────────
 #   接入与生命周期    : host · HTTP/WS · healthz/就绪 · session 方法表
 #   信封与命令面      : unary · dispatch · 队列/订阅/写占用 · export
 #   线上协议          : JSON-RPC 信封 · 格式协商 · 方法名寻址 · seq · 演进
@@ -436,7 +436,7 @@
       并且 turn 继续但不包含工具结果
 
     场景: 审批广播
-      假如 agent 发出 ApprovalRequired，rpcId 为 xyz
+      假如 agent 发出 ApprovalRequired，call_id 为 xyz
       当 server 检查 session 的 mux 连接
       那么 3 个已连接客户端均收到 approval/requested
   @req:r1772
@@ -453,11 +453,11 @@
 
     场景: 超时错误
       假如 60s 内无客户端 POST /rpc 调用 approve_tool
-      当 server 将 rpcId 标记为 expired
+      当 server 将 call_id 标记为 expired
       那么 agent 收到 ApprovalTimeout 错误
   @req:r1774
   规则: no-conflict-arbitration
-    v1 不得实现多客户端冲突仲裁；给定 call id 的首个审批/问卷 unary 胜出；同一 call id 的后续 unary 须被静默忽略。
+    首版 不得实现多客户端冲突仲裁；给定 call id 的首个审批/问卷 unary 胜出；同一 call id 的后续 unary 须被静默忽略。
 
     场景: 第二次作答忽略
       假如 第二个客户端对已消费 call 再 POST /rpc 调用 approve_tool

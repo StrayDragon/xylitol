@@ -75,7 +75,7 @@ pub enum Admission {
 pub fn conflict_result() -> RpcResult {
     RpcResult::error(
         "idempotency_conflict",
-        "rpcId already admitted with a different method or payload",
+        "request id already admitted with a different method or payload",
     )
 }
 

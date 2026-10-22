@@ -15,7 +15,7 @@ use tokio_tungstenite::{
 };
 use tokio_util::sync::CancellationToken;
 use xylitol_protocol::method::{ANSWER_QUESTION, APPROVE_TOOL};
-use xylitol_protocol::registry::METHOD_HOST_DESCRIBE;
+use xylitol_protocol::registry::{METHOD_HOST_DESCRIBE, METHOD_RELOAD};
 use xylitol_protocol::{Notification, RpcResult};
 
 use super::json_rpc::{self, Inbound};
@@ -202,7 +202,7 @@ impl HttpWsClient {
 }
 
 fn unary_bound(method: &str) -> Duration {
-    if method == "reload_runtime" || method == "reload" {
+    if method == METHOD_RELOAD {
         RELOAD_TIMEOUT
     } else {
         UNARY_TIMEOUT

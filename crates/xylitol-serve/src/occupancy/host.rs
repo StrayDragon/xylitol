@@ -1424,6 +1424,13 @@ mod tests {
         })
         .await;
         assert_eq!(slot.journal.lock().await.current_seq(), 2);
+        slot.push_resources(LoadedResourcesSnapshot::default())
+            .await;
+        assert_eq!(slot.journal.lock().await.current_seq(), 2);
+        let _answer = slot
+            .request_question("q1".into(), json!([{"question": "?"}]))
+            .await;
+        assert_eq!(slot.journal.lock().await.current_seq(), 2);
     }
 
     #[tokio::test]

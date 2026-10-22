@@ -9,6 +9,8 @@ use super::message::{
 
 pub const JSON_DEPTH_LIMIT: u32 = 2048;
 
+pub const MAX_BATCH_ITEMS: usize = 100;
+
 pub fn json_nesting_exceeds_limit(text: &str) -> bool {
     let mut depth: u32 = 0;
     let mut in_string = false;
@@ -76,6 +78,10 @@ pub fn parse_text(text: &str) -> Result<Inbound, Rejected> {
         Value::Array(items) if items.is_empty() => Err(Rejected {
             id: None,
             error: ErrorObject::invalid_request("empty batch"),
+        }),
+        Value::Array(items) if items.len() > MAX_BATCH_ITEMS => Err(Rejected {
+            id: None,
+            error: ErrorObject::new(INVALID_REQUEST, "batch too large", "batch_too_large"),
         }),
         Value::Array(items) => Ok(Inbound::Batch(items.iter().map(decode_value).collect())),
         other => Ok(Inbound::Single(decode_value(&other))),
@@ -328,6 +334,21 @@ mod tests {
 
         let empty = parse_text("[]").expect_err("empty batch");
         assert_eq!(empty.error.code, INVALID_REQUEST);
+    }
+
+    #[test]
+    fn batch_limit_accepts_100_and_rejects_101() {
+        let batch_of = |n: usize| {
+            let items: Vec<String> = (0..n)
+                .map(|i| format!(r#"{{"jsonrpc":"2.0","id":{i},"method":"m"}}"#))
+                .collect();
+            format!("[{}]", items.join(","))
+        };
+        let ok = parse_text(&batch_of(MAX_BATCH_ITEMS)).expect("100 items accepted");
+        assert!(matches!(ok, Inbound::Batch(ref items) if items.len() == MAX_BATCH_ITEMS));
+        let err = parse_text(&batch_of(MAX_BATCH_ITEMS + 1)).expect_err("101 items rejected");
+        assert_eq!(err.error.code, INVALID_REQUEST);
+        assert_eq!(err.error.data_code.as_deref(), Some("batch_too_large"));
     }
 
     #[test]

@@ -737,6 +737,25 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn post_body_at_exact_limit_is_400_parse_error_not_413() {
+        let host = Arc::new(FakeHost::default());
+        let service = service(&host);
+        let mut resp = TestClient::post("http://127.0.0.1:0/rpc")
+            .bytes(vec![b' '; MAX_BODY_BYTES])
+            .send(&service)
+            .await;
+        assert_eq!(
+            resp.status_code.unwrap(),
+            StatusCode::BAD_REQUEST,
+            "exactly MAX_BODY_BYTES must not be rejected as 413"
+        );
+        let v: Value = serde_json::from_str(&resp.take_string().await.unwrap()).unwrap();
+        assert_eq!(v["id"], Value::Null);
+        assert_eq!(v["error"]["code"], -32700);
+        assert_eq!(host.dispatched.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
     async fn unregistered_method_is_a_200_business_error() {
         let host = Arc::new(FakeHost::default());
         let service = service(&host);

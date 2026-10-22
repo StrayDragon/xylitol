@@ -2,16 +2,23 @@
 """QA check: no legacy wire literals and no version-named identifiers (read-only gate).
 
 Rule A (literal, every scanned file): FORBIDDEN_LITERALS are matched on raw lines, so
-comments and strings count too. Only `fory` is case-insensitive; the others are exact.
+comments and strings count too. Only `fory` is case-insensitive; the others are exact
+(including the legacy envelope field name `rpcId`).
 
 Rule B (identifier, .rs / .py only): identifier tokens outside string literals and
 comments must not carry a version segment, i.e. a `_`-separated `v<digits>` part or a
 CamelCase `V<digits>` word. Exemptions are external contracts, not wire naming:
   - ALLOWED_IDENTIFIERS: uuid crate API (new_v4, new_v7).
-  - ALLOWED_SEGMENTS: URL path /v1, session on-disk format versions v5 / v6 / v7.
+  - ALLOWED_SEGMENTS: session on-disk format versions v5 / v6 / v7 (URL paths like
+    /v1 live in string literals, which rule B never inspects).
   - identifiers containing an EXTERNAL_NAME_MARKERS word (external model names).
 Model names, URL paths and trace schema names live in string literals, which rule B
 never inspects.
+
+Rule C (spec version labels, llmanspec/specs/**/*.feature only): spec lines must not
+carry bare version labels (`\\bv<digits>\\b`). Allowed: v5/v6/v7 (session on-disk
+formats) and any token appearing as a URL path segment on the same line (line contains
+`/<token>`, e.g. `/api/v1`, `/v1/responses`).
 
 Scope: crates/ plugins/ src/ tests/ scripts/ and .agents/skills/ (.claude/skills is a
 symlink to it), llmanspec/specs/ at any depth, every AGENTS.md, the root justfile and
@@ -57,12 +64,16 @@ FORBIDDEN_LITERALS: tuple[str, ...] = (
     "codegen-envelope",
     "gen_envelope",
     "foryc",
+    "rpcId",
 )
 CASE_INSENSITIVE_LITERALS = frozenset({"fory"})
 
 ALLOWED_IDENTIFIERS = frozenset({"new_v4", "new_v7"})
 ALLOWED_SEGMENTS = frozenset({"v1", "v5", "v6", "v7"})
 EXTERNAL_NAME_MARKERS: tuple[str, ...] = ("deepseek",)
+
+ALLOWED_SPEC_VERSION_TOKENS = frozenset({"v5", "v6", "v7"})
+SPEC_VERSION_TOKEN_RE = re.compile(r"\bv\d+\b")
 
 LITERAL_RE = re.compile(
     "|".join(
@@ -175,6 +186,14 @@ def literal_hits(line: str) -> list[str]:
     return list(found.values())
 
 
+def spec_version_label_hits(line: str) -> list[str]:
+    return [
+        token
+        for token in SPEC_VERSION_TOKEN_RE.findall(line)
+        if token not in ALLOWED_SPEC_VERSION_TOKENS and f"/{token}" not in line
+    ]
+
+
 def _version_segment(token: str) -> str | None:
     if token in ALLOWED_IDENTIFIERS:
         return None
@@ -212,6 +231,8 @@ def scan_file(path: Path) -> list[tuple[int, str]]:
     code = None
     if path.suffix in IDENTIFIER_SUFFIXES and VERSION_HINT_RE.search(text):
         code = code_only(lines, path.suffix)
+    rel = path.relative_to(REPO)
+    is_spec_feature = rel.parts[:2] == ("llmanspec", "specs") and path.suffix == ".feature"
     findings: list[tuple[int, str]] = []
     for lineno, line in enumerate(lines, 1):
         literals = literal_hits(line)
@@ -222,6 +243,9 @@ def scan_file(path: Path) -> list[tuple[int, str]]:
                 findings.append(
                     (lineno, f"version-named identifier {token!r} (segment {segment!r})")
                 )
+        if is_spec_feature:
+            for token in spec_version_label_hits(line):
+                findings.append((lineno, f"version label in spec {token!r}"))
     return findings
 
 
