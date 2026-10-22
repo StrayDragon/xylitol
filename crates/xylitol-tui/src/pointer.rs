@@ -466,13 +466,13 @@ pub fn apply_hover_tint(
                 HitSpace::Viewport => region.content_row.saturating_add(offset),
             };
             if let Some(line) = visible.get_mut(vis_i) {
-                *line = dim_columns(line, region.col_start, region.col_end);
+                *line = emphasize_hover_columns(line, region.col_start, region.col_end);
             }
         }
     }
 }
 
-fn dim_columns(line: &str, from: usize, to: usize) -> String {
+fn emphasize_hover_columns(line: &str, from: usize, to: usize) -> String {
     if to <= from || line.is_empty() {
         return line.to_string();
     }
@@ -486,8 +486,7 @@ fn dim_columns(line: &str, from: usize, to: usize) -> String {
         if let Some(len) = ansi_escape_len(bytes, i) {
             let seq = &line[i..i + len];
             if started && !finished && is_sgr(seq) {
-                out.push_str(&seq[..seq.len() - 1]);
-                out.push_str(";2m");
+                out.push_str(&emphasize_sgr_in_hover(seq));
             } else {
                 out.push_str(seq);
             }
@@ -501,7 +500,7 @@ fn dim_columns(line: &str, from: usize, to: usize) -> String {
             finished = true;
         }
         if !started && col < to && col + cw.max(1) > from {
-            out.push_str("\x1b[2m");
+            out.push_str("\x1b[22m\x1b[1m");
             started = true;
         }
         out.push(c);
@@ -518,6 +517,21 @@ fn is_sgr(seq: &str) -> bool {
     seq.as_bytes().first() == Some(&0x1b)
         && seq.as_bytes().get(1) == Some(&b'[')
         && seq.as_bytes().last() == Some(&b'm')
+}
+
+fn emphasize_sgr_in_hover(seq: &str) -> String {
+    if seq == "\x1b[2m" {
+        return "\x1b[1m".to_string();
+    }
+    if seq.ends_with(";2m") {
+        let mut s = seq.to_string();
+        s.truncate(s.len() - 3);
+        return format!("{s};22;1m");
+    }
+    let mut s = seq.to_string();
+    s.truncate(s.len() - 1);
+    s.push_str(";1m");
+    s
 }
 
 #[cfg(test)]
@@ -678,19 +692,32 @@ mod tests {
     }
 
     #[test]
-    fn hover_tint_uses_dim_not_invert() {
+    fn hover_tint_uses_bold_not_invert() {
         let mut list = HitRegionList::new();
         list.push(HitRegion::new(1, 0, 0, 5));
         let mut visible = vec!["hello".into()];
         apply_hover_tint(&mut visible, 0, &list, 1);
         assert!(
-            visible[0].contains("\x1b[2m"),
-            "hover must dim, got {:?}",
+            visible[0].contains("\x1b[1m"),
+            "hover must emphasize (bold), got {:?}",
             visible[0]
         );
         assert!(
             !visible[0].contains("\x1b[7m"),
             "hover must not reuse selection invert"
+        );
+    }
+
+    #[test]
+    fn hover_tint_replaces_dim_with_bold() {
+        let mut list = HitRegionList::new();
+        list.push(HitRegion::new(1, 0, 0, 8));
+        let mut visible = vec!["\x1b[2mdim title\x1b[22m".into()];
+        apply_hover_tint(&mut visible, 0, &list, 1);
+        assert!(
+            visible[0].contains("\x1b[22m\x1b[1m"),
+            "hover over dim text must reset dim then bold, got {:?}",
+            visible[0]
         );
     }
 

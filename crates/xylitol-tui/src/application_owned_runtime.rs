@@ -710,7 +710,7 @@ mod tests {
     }
 
     #[test]
-    fn hover_dim_skipped_while_dragging() {
+    fn hover_emphasis_skipped_while_dragging() {
         use crate::pointer::HitRegion;
 
         let mut runtime = ApplicationOwnedRuntime::new(1);
@@ -722,8 +722,8 @@ mod tests {
         runtime.set_hover(Some(1), regions);
         let hovered = runtime.reproject_frame(3, 40);
         assert!(
-            hovered[0].contains("\x1b[2m"),
-            "idle hover must dim the header, got {:?}",
+            hovered[0].contains("\x1b[1m"),
+            "idle hover must emphasize the header, got {:?}",
             hovered[0]
         );
 
@@ -732,8 +732,8 @@ mod tests {
         assert!(runtime.selection.is_dragging());
         let dragging = runtime.reproject_frame(3, 40);
         assert!(
-            !dragging[0].contains("\x1b[2m"),
-            "drag must suppress hover dim on the header, got {:?}",
+            !dragging[0].contains("\x1b[1m"),
+            "drag must suppress hover emphasis on the header, got {:?}",
             dragging[0]
         );
     }
