@@ -14,7 +14,7 @@ brief: "工具链与依赖 bump（rustup / dated nightly / MSRV rust-version / c
 | 各 `Cargo.toml` 的 `rust-version` | Cargo MSRV **声明**：已发布 stable，且 **小于** 该 nightly 的 `x.y.z` |
 | `Cargo.lock` | 解析出的 crate 图 |
 
-动手前 `eval "$(just cargo-wt-env)"`。不另写 bump 日志：新踩坑若六个月后仍真，收进本节硬规则；一次性现象写进 commit message。
+不另写 bump 日志：新踩坑若六个月后仍真，收进本节硬规则；一次性现象写进 commit message。
 
 ## 工作流
 

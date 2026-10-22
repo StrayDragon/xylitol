@@ -93,7 +93,6 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 ## Worktree 并行开发
 
 - **硬规则**：同 crate 的不同 worktree **不得**共用 `CARGO_TARGET_DIR`（Cargo fingerprint 不区分包绝对路径，会错误复用别的树编出的产物）。
-- 每个工作区先 `eval "$(just cargo-wt-env)"`（或 `source scripts/cargo_worktree_env.sh`）；路径布局见该脚本 `--help`。磁盘清盘 / 堆积考古无固化手册——具体行为随工具链版本变化（历史调优结论会过期），遇到时按当次 rust 版本即时调研。
 - Linux 开发链接走 mold；`-Zshare-generics` 与 mold 写在同一份 `.cargo/config.toml`（`[target]` rustflags 会覆盖 `[build]`，不得拆开）。
 
 ## 提交与测试

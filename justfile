@@ -569,15 +569,6 @@ qa-fmt-check verbosity=verbosity_default:
 profile-suite scenarios="A,B,C,D" duration="20":
     python3 scripts/profile_tui_suite.py --build --scenarios {{scenarios}} --duration {{duration}}
 
-# --- Cargo worktree target isolation (maintenance; not in qa) ---
-# Per-worktree CARGO_TARGET_DIR under ~/.cache/cargo-targets/…
-# Docs: root AGENTS.md "Worktree 并行开发" section / scripts/cargo_worktree_env.sh
-# Usage: eval "$(just cargo-wt-env)"   or   source scripts/cargo_worktree_env.sh
-cargo-wt-env:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    scripts/cargo_worktree_env.sh --print
-
 # --- Observability / provider-trace inspect (maintenance; not in qa) ---
 # Token-efficient summaries. Skill: xylitol-dev (references/observability.md).
 # Filters (--since / --request-id / --turn-id) and rarer subcommands
