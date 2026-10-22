@@ -9,9 +9,9 @@ use crate::occupancy::host::HostState;
 use crate::occupancy::rpc_module::dispatch_request;
 use crate::wire::Reply;
 
-pub async fn dispatch_text(host: &Arc<HostState>, body: &[u8]) -> Reply {
+pub async fn dispatch_text(host: &Arc<HostState>, body: &[u8], mux_id: Option<u64>) -> Reply {
     respond_to_body(body, move |req| async move {
-        dispatch_request(host, &req.id, &req.method, &req.params).await
+        dispatch_request(host, &req.id, &req.method, &req.params, mux_id).await
     })
     .await
 }

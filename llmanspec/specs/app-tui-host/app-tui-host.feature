@@ -244,7 +244,7 @@
 
   @req:r1265
   规则: attach-mux-session-lifetime
-    产品 TUI attach 须在进入 host 循环前完成握手并订阅该 session 的 mux（启动即订，不等第一次 prompt）。单次 AgentEnd 不得拆掉该订阅。WS 断开后 须用 last_seq 再次 subscribe 续传；收到 session/resync_required 后 须按 server-core 再订并重建可见 transcript，不得只留一行错误后放弃事件流。退出 TUI 才关闭 mux。
+    产品 TUI attach 须在进入 host 循环前完成握手并订阅该 session 的 mux（启动即订，不等第一次 prompt）。单次 AgentEnd 不得拆掉该订阅。WS 断开后 须用 last_seq 再次 subscribe 续传；收到 session/resync_required 后 须在同一连接再订并收到 last_seq 起的事件回放，按 server-core 重建可见 transcript，不得只留一行错误后放弃事件流。退出 TUI 才关闭 mux。
     场景: agent结束保留复用订阅
       假如 客户端已订阅会话 s-sub
       当 会话回合以 AgentEnd 结束后又追加新事件

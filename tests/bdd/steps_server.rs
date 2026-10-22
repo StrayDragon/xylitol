@@ -1681,7 +1681,7 @@ async fn w_sr_w1_reconnect_subscribe(server_test: &ServerTest) {
     let slot = host.slot(OCCUPANCY_SID).await;
     let (tx, _rx) = tokio::sync::mpsc::channel(8);
     host.register_unbound_mux(tx).await;
-    let result = host.bind_mux_to_session(&slot, 0).await;
+    let result = host.bind_mux_to_session(&slot, 0, None).await;
     server_test.unary_body.replace(Some(
         serde_json::json!({ "ok": result.ok, "error": result.error.map(|e| e.code) }).to_string(),
     ));
@@ -2750,19 +2750,16 @@ async fn t_c2841_model_sync_received(server_test: &ServerTest) {
             .expect("mux eof")
             .expect("ws frame");
         let Notification { method, params } = &f;
-        if method != "session/event" {
+        if method != "session/model" {
             continue;
         }
-        let ev = params.get("event").cloned().unwrap_or_default();
-        if ev.get("type").and_then(serde_json::Value::as_str) == Some("model_select") {
-            assert_eq!(
-                ev.get("model_id").and_then(serde_json::Value::as_str),
-                Some("fake-model")
-            );
-            return;
-        }
+        assert_eq!(
+            params.get("model_id").and_then(serde_json::Value::as_str),
+            Some("fake-model")
+        );
+        return;
     }
-    panic!("no model_select sync frame received on the subscribed session");
+    panic!("no session/model sync frame received on the subscribed session");
 }
 
 async fn drain_model_select(mux: &mut MuxStream) -> bool {
@@ -2772,17 +2769,8 @@ async fn drain_model_select(mux: &mut MuxStream) -> bool {
             _ => return false,
         };
         let Notification { method, params } = &f;
-        if method == "session/event"
-            && params
-                .get("event")
-                .and_then(|e| e.get("type"))
-                .and_then(serde_json::Value::as_str)
-                == Some("model_select")
-        {
-            return params
-                .get("event")
-                .and_then(|e| e.get("model_id"))
-                .and_then(serde_json::Value::as_str)
+        if method == "session/model" {
+            return params.get("model_id").and_then(serde_json::Value::as_str)
                 == Some("fake-model");
         }
     }
@@ -2834,7 +2822,7 @@ fn t_c2850_rebind_transient(server_test: &ServerTest) {
     assert_eq!(
         server_test.unary_status.get(),
         2,
-        "两次订阅 MUST 各收到一帧 model_select"
+        "两次订阅 MUST 各收到一帧 session/model"
     );
     assert_eq!(
         server_test.last_seq.get(),
@@ -3059,6 +3047,7 @@ async fn g_arm_freeze_lease_held(server_test: &ServerTest) {
         None,
         "set_model",
         serde_json::json!({ "provider": "", "model_id": "keep", "session_id": "freeze-gate-conflict" }),
+        None,
     )
     .await;
     let _ = first;
@@ -3076,6 +3065,7 @@ async fn w_arm_tool_freeze(server_test: &ServerTest) {
         None,
         "arm_tool_freeze",
         serde_json::json!({ "session_id": session }),
+        None,
     )
     .await;
     server_test
@@ -3131,7 +3121,7 @@ async fn observe_bind_a(
     let (tx, rx) = tokio::sync::mpsc::channel(64);
     host.register_unbound_mux(tx).await;
     let slot = host.slot(OBSERVE_SESSION).await;
-    let _ = host.bind_mux_to_session(&slot, 0).await;
+    let _ = host.bind_mux_to_session(&slot, 0, None).await;
     rx
 }
 
@@ -3147,7 +3137,7 @@ async fn observe_bind_b(server_test: &ServerTest) {
     let (tx, rx) = tokio::sync::mpsc::channel(64);
     host.register_unbound_mux(tx).await;
     let slot = host.slot(OBSERVE_SESSION).await;
-    let result = host.bind_mux_to_session(&slot, 0).await;
+    let result = host.bind_mux_to_session(&slot, 0, None).await;
     *server_test.observe_bind.borrow_mut() = result.value;
     *server_test.observe_rx_b.borrow_mut() = Some(rx);
 }
@@ -3245,6 +3235,7 @@ async fn w_busy_second_root(server_test: &ServerTest) {
         None,
         "prompt",
         serde_json::json!({ "session_id": OBSERVE_SESSION, "message": "second root" }),
+        None,
     )
     .await;
     *server_test.busy_code.borrow_mut() =

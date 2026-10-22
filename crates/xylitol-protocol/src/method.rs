@@ -4,6 +4,7 @@ pub const SESSION_EVENT: &str = "session/event";
 pub const SESSION_SUBSCRIBED: &str = "session/subscribed";
 pub const SESSION_RESYNC_REQUIRED: &str = "session/resync_required";
 pub const SESSION_RESOURCES: &str = "session/resources";
+pub const SESSION_MODEL: &str = "session/model";
 pub const APPROVAL_REQUESTED: &str = "approval/requested";
 pub const QUESTION_REQUESTED: &str = "question/requested";
 pub const BASH_OUTPUT: &str = "bash/output";
@@ -18,6 +19,7 @@ pub const DOWNLINK_METHODS: &[&str] = &[
     SESSION_SUBSCRIBED,
     SESSION_RESYNC_REQUIRED,
     SESSION_RESOURCES,
+    SESSION_MODEL,
     APPROVAL_REQUESTED,
     QUESTION_REQUESTED,
     BASH_OUTPUT,
@@ -45,9 +47,10 @@ mod tests {
     }
 
     #[test]
-    fn downlink_names_include_bash_output() {
+    fn downlink_names_include_bash_output_and_model() {
         assert!(is_downlink_method(SESSION_EVENT));
         assert!(is_downlink_method(SESSION_RESOURCES));
+        assert!(is_downlink_method(SESSION_MODEL));
         assert!(is_downlink_method(BASH_OUTPUT));
     }
 }

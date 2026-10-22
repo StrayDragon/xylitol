@@ -179,6 +179,13 @@ pub struct SessionResourcesPayload {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionModelPayload {
+    pub session_id: String,
+    pub provider: String,
+    pub model_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BashOutputPayload {
     pub session_id: String,
     pub bash_id: String,

@@ -12,8 +12,9 @@ pub use event::Event;
 pub use message::{
     ApprovalRequestedPayload, BashOutputPayload, ErrorObject, HostDescribeValue, JSONRPC_VERSION,
     Message, Notification, Outcome, PROTOCOL_VERSION, QuestionRequestedPayload, Request, RequestId,
-    Response, RpcError, RpcResult, SessionEventPayload, SessionResourcesPayload,
-    SessionResyncRequiredPayload, SessionSubscribedPayload, WIRE_FORMAT_JSONRPC,
+    Response, RpcError, RpcResult, SessionEventPayload, SessionModelPayload,
+    SessionResourcesPayload, SessionResyncRequiredPayload, SessionSubscribedPayload,
+    WIRE_FORMAT_JSONRPC,
 };
 pub use method::{DOWNLINK_METHODS, is_downlink_method, is_unary_method};
 pub use registry::{Auth, Idem, MethodEntry, REGISTRY, Resp, lookup, names, parse_command};

@@ -315,6 +315,7 @@ async fn abort_cancels_running_bash_out_of_band() {
         None,
         "abort",
         serde_json::json!({ "session_id": "abort-bash" }),
+        None,
     )
     .await;
     assert_eq!(
@@ -339,6 +340,7 @@ async fn abort_without_running_bash_keeps_fallback_path() {
         None,
         "abort",
         serde_json::json!({ "session_id": "other-session" }),
+        None,
     )
     .await;
     assert!(
@@ -401,23 +403,86 @@ async fn sync_model_downlink_is_not_journaled() {
             .expect("downlink")
             .expect("msg");
         let Notification { method, params } = msg;
-        if method != "session/event" {
+        if method != "session/model" {
             continue;
         }
-        let ev = params.get("event").cloned().unwrap_or_default();
-        if ev.get("type").and_then(|v| v.as_str()) == Some("model_select") {
-            assert_eq!(
-                ev.get("model_id").and_then(|v| v.as_str()),
-                Some("fake-model")
-            );
-            seen += 1;
-        }
+        assert_eq!(
+            params.get("model_id").and_then(|v| v.as_str()),
+            Some("fake-model")
+        );
+        seen += 1;
     }
-    assert_eq!(seen, 2, "两次 sync MUST 各推一帧 ModelSelect");
+    assert_eq!(seen, 2, "两次 sync MUST 各推一帧 session/model");
     assert_eq!(
         slot.journal.lock().await.max_seq(),
         seq_before,
-        "attach ModelSelect MUST NOT consume journal seq"
+        "attach session/model MUST NOT consume journal seq"
+    );
+}
+
+#[tokio::test]
+async fn bind_mux_targets_only_the_requesting_connection() {
+    let host = host_state_for_test().expect("host");
+    let (tx1, _rx1) = tokio::sync::mpsc::channel(8);
+    let (tx2, _rx2) = tokio::sync::mpsc::channel(8);
+    let id1 = host.register_unbound_mux(tx1.clone()).await;
+    let id2 = host.register_unbound_mux(tx2.clone()).await;
+
+    let slot = host.slot("s-target").await;
+    let result = host.bind_mux_to_session(&slot, 0, Some(id1)).await;
+    assert!(result.ok, "{result:?}");
+    {
+        let subs = slot.subscribers.lock().await;
+        assert!(subs.values().any(|t| t.same_channel(&tx1)));
+        assert!(!subs.values().any(|t| t.same_channel(&tx2)));
+    }
+    assert_eq!(
+        host.unbound_mux.lock().await.len(),
+        1,
+        "the other connection must stay unbound"
+    );
+
+    let other = host.slot("s-other").await;
+    let _ = host.bind_mux_to_session(&other, 0, Some(id2)).await;
+    assert!(
+        other
+            .subscribers
+            .lock()
+            .await
+            .values()
+            .any(|t| t.same_channel(&tx2))
+    );
+}
+
+#[tokio::test]
+async fn resubscribe_same_mux_replays_journal_events() {
+    let host = host_state_for_test().expect("host");
+    let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+    let id = host.register_unbound_mux(tx.clone()).await;
+    let slot = host.slot("s-resub").await;
+    slot.append_and_push(&XyEvent::TextDelta("replay".into()))
+        .await;
+
+    let _ = host.bind_mux_to_session(&slot, 0, Some(id)).await;
+    while rx.try_recv().is_ok() {}
+
+    let _ = host.bind_mux_to_session(&slot, 0, Some(id)).await;
+    let mut saw_replay = false;
+    while let Ok(note) = rx.try_recv() {
+        if note.method == "session/event"
+            && note
+                .params
+                .get("event")
+                .and_then(|v| v.get("type"))
+                .and_then(|v| v.as_str())
+                == Some("text_delta")
+        {
+            saw_replay = true;
+        }
+    }
+    assert!(
+        saw_replay,
+        "same-connection re-subscribe MUST receive journal replay"
     );
 }
 
@@ -915,6 +980,7 @@ async fn arm_tool_freeze_unary_freezes_after_mcp_settle() {
         None,
         "arm_tool_freeze",
         serde_json::json!({ "session_id": "mcp-freeze" }),
+        None,
     )
     .await;
     assert!(result.ok, "arm_tool_freeze unary failed: {result:?}");
@@ -940,6 +1006,7 @@ async fn idle_reload_clears_occupied_writer_tool_freeze() {
         None,
         "arm_tool_freeze",
         serde_json::json!({ "session_id": "mcp-reload" }),
+        None,
     )
     .await;
     assert!(arm.ok, "arm_tool_freeze unary failed: {arm:?}");
@@ -956,6 +1023,7 @@ async fn idle_reload_clears_occupied_writer_tool_freeze() {
         None,
         "reload",
         serde_json::json!({ "session_id": "mcp-reload" }),
+        None,
     )
     .await;
     let elapsed = t0.elapsed();
@@ -997,6 +1065,7 @@ async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
         None,
         "set_model",
         serde_json::json!({ "provider": "", "model_id": "keep", "session_id": "conflict-sess" }),
+        None,
     )
     .await;
     let _ = first;
@@ -1005,6 +1074,7 @@ async fn arm_tool_freeze_conflict_falls_back_lease_free_not_stuck() {
         None,
         "arm_tool_freeze",
         serde_json::json!({ "session_id": "conflict-sess" }),
+        None,
     )
     .await;
     assert!(
@@ -1043,6 +1113,7 @@ async fn arm_tool_freeze_hangs_mcp_returns_frozen_within_gate_window() {
         None,
         "arm_tool_freeze",
         serde_json::json!({ "session_id": "hang-freeze" }),
+        None,
     )
     .await;
     let elapsed = t0.elapsed();
@@ -1100,6 +1171,7 @@ async fn materialize_writer_does_not_wait_session_prepare() {
             "model_id": "missing",
             "session_id": "hang-sess",
         }),
+        None,
     )
     .await;
     assert!(
@@ -1477,6 +1549,7 @@ async fn bash_unary_runs_in_client_workspace() {
         None,
         "bash",
         serde_json::json!({ "session_id": "ws-bang", "command": "pwd" }),
+        None,
     )
     .await;
     assert!(result.ok, "bash unary MUST succeed: {result:?}");
@@ -1619,6 +1692,7 @@ async fn persist_trust_unary_routes_to_writer() {
         None,
         "persist_trust",
         serde_json::json!({ "session_id": "ws-trust", "mode": "trust_cwd" }),
+        None,
     )
     .await;
     assert!(
@@ -1647,6 +1721,7 @@ async fn export_unary_returns_content_and_cleans_stage() {
         None,
         "new_session",
         serde_json::json!({ "session_id": "ws-export" }),
+        None,
     )
     .await;
     assert!(minted.ok, "new_session MUST succeed: {minted:?}");
@@ -1655,6 +1730,7 @@ async fn export_unary_returns_content_and_cleans_stage() {
         None,
         "export_jsonl",
         serde_json::json!({ "session_id": "ws-export" }),
+        None,
     )
     .await;
     assert!(result.ok, "export unary MUST succeed: {result:?}");
@@ -1693,6 +1769,7 @@ async fn inflight_set_thinking_does_not_apply_until_flush() {
         None,
         "set_thinking_level",
         serde_json::json!({ "session_id": "th", "level": "high" }),
+        None,
     )
     .await;
     assert!(result.ok, "defer thinking MUST succeed: {result:?}");

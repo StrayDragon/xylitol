@@ -23,6 +23,7 @@ pub async fn dispatch_request(
     id: &RequestId,
     method: &str,
     params: &Value,
+    mux_id: Option<u64>,
 ) -> Response {
     match route(method, params) {
         Err(error) => respond_error(id, error),
@@ -33,7 +34,7 @@ pub async fn dispatch_request(
         }
         Ok(Route::Product) => {
             let key = id.key();
-            let result = handle_unary(host, Some(&key), method, params.clone()).await;
+            let result = handle_unary(host, Some(&key), method, params.clone(), mux_id).await;
             codec::response_for(id, &result)
         }
     }

@@ -21,7 +21,7 @@ impl HostStateHost {
 #[async_trait]
 impl InProcessHost for HostStateHost {
     async fn handle_unary(&self, method: &str, payload: Value) -> RpcResult {
-        handle_unary(&self.host, None, method, payload).await
+        handle_unary(&self.host, None, method, payload, None).await
     }
 
     async fn handle_respond(&self, rpc_id: &str, payload: Value) -> Result<(), HostClientError> {

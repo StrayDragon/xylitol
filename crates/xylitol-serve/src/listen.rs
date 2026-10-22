@@ -21,6 +21,7 @@ use crate::wire::{CONTENT_TYPE, MAX_BODY_BYTES, Reply};
 pub const MUX_CHAN_CAP: usize = 16_384;
 
 const WS_UNSUPPORTED_DATA: u16 = 1003;
+const WS_MESSAGE_TOO_BIG: u16 = 1009;
 
 pub type MuxSink = mpsc::Sender<Notification>;
 
@@ -28,8 +29,8 @@ pub type MuxSink = mpsc::Sender<Notification>;
 pub trait OccupiedHost: Send + Sync + 'static {
     fn is_shutting_down(&self) -> bool;
     fn mark_shutting_down(&self);
-    async fn register_unbound_mux(&self, tx: MuxSink);
-    async fn dispatch_text(self: Arc<Self>, body: &[u8]) -> Reply;
+    async fn register_unbound_mux(&self, tx: MuxSink) -> u64;
+    async fn dispatch_text(self: Arc<Self>, body: &[u8], mux_id: Option<u64>) -> Reply;
     async fn prune_mux(self: Arc<Self>, clean_close: bool);
 }
 
@@ -351,7 +352,7 @@ async fn rpc(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         return;
     };
     let reply = match req.payload_with_max_size(MAX_BODY_BYTES).await {
-        Ok(body) => host.dispatch_text(body).await,
+        Ok(body) => host.dispatch_text(body, None).await,
         Err(salvo::http::ParseError::PayloadTooLarge) => Reply::too_large(),
         Err(_) => Reply::unreadable(),
     };
@@ -429,9 +430,10 @@ where
 {
     let (tx, mut rx) = mpsc::channel::<Notification>(MUX_CHAN_CAP);
     let (reply_tx, mut reply_rx) = mpsc::channel::<String>(MUX_CHAN_CAP);
-    host.register_unbound_mux(tx).await;
+    let mux_id = host.register_unbound_mux(tx).await;
     let clean_close = AtomicBool::new(false);
     let unsupported = AtomicBool::new(false);
+    let inbound_error = AtomicBool::new(false);
 
     let send_loop = async {
         loop {
@@ -455,6 +457,7 @@ where
     let recv_loop = async {
         while let Some(item) = inbound.next().await {
             let Ok(frame) = item else {
+                inbound_error.store(true, Ordering::SeqCst);
                 break;
             };
             if frame.is_close() {
@@ -463,7 +466,10 @@ where
             }
             match frame_kind(&frame) {
                 FrameKind::Text => {
-                    let reply = host.clone().dispatch_text(frame.as_bytes()).await;
+                    let reply = host
+                        .clone()
+                        .dispatch_text(frame.as_bytes(), Some(mux_id))
+                        .await;
                     let Some(text) = reply.body() else {
                         continue;
                     };
@@ -493,6 +499,11 @@ where
         }
         let _ = outbound
             .send(Message::close_with(WS_UNSUPPORTED_DATA, "unsupported data"))
+            .await;
+        let _ = outbound.close().await;
+    } else if inbound_error.load(Ordering::SeqCst) {
+        let _ = outbound
+            .send(Message::close_with(WS_MESSAGE_TOO_BIG, "message too big"))
             .await;
         let _ = outbound.close().await;
     }
@@ -527,11 +538,14 @@ mod tests {
             self.shutting_down.store(true, Ordering::Relaxed);
         }
 
-        async fn register_unbound_mux(&self, tx: MuxSink) {
-            self.muxes.lock().expect("muxes").push(tx);
+        async fn register_unbound_mux(&self, tx: MuxSink) -> u64 {
+            let mut muxes = self.muxes.lock().expect("muxes");
+            let id = muxes.len() as u64 + 1;
+            muxes.push(tx);
+            id
         }
 
-        async fn dispatch_text(self: Arc<Self>, body: &[u8]) -> Reply {
+        async fn dispatch_text(self: Arc<Self>, body: &[u8], _mux_id: Option<u64>) -> Reply {
             let dispatched = &self.dispatched;
             crate::occupancy::respond_to_body(body, |req| {
                 dispatched.fetch_add(1, Ordering::SeqCst);

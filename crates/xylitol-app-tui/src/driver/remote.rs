@@ -340,6 +340,26 @@ where
         Downlink::SessionSubscribed(_) => {
             ctx.skip_cold_replay.store(false, Ordering::SeqCst);
         }
+        Downlink::SessionModel(payload) => {
+            let agent_event = XyEvent::ModelSelect {
+                provider: payload.provider,
+                model_id: payload.model_id,
+            };
+            if let XyEvent::ModelSelect { model_id, .. } = &agent_event {
+                let found = ctx.resolve_model_info(model_id).await;
+                log::debug!(
+                    target: "xylitol::tui",
+                    "host-synced model {model_id} resolved=> {}",
+                    found.as_ref().map(|m| m.id.clone()).unwrap_or_default()
+                );
+                if let Some(found) = found
+                    && let Ok(mut cached) = ctx.cached_model.lock()
+                {
+                    *cached = Some(found);
+                }
+            }
+            push_current(agent_event);
+        }
         Downlink::BashOutput(payload) => {
             let chunk = xylitol_plugin_sdk::BashChunk {
                 bash_id: payload.bash_id,

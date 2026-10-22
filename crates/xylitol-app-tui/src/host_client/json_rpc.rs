@@ -5,8 +5,8 @@ use xylitol_protocol::method;
 use xylitol_protocol::{
     ApprovalRequestedPayload, BashOutputPayload, ErrorObject, HostDescribeValue, Message,
     Notification, Outcome, PROTOCOL_VERSION, QuestionRequestedPayload, RequestId, RpcResult,
-    SessionEventPayload, SessionResourcesPayload, SessionResyncRequiredPayload,
-    SessionSubscribedPayload, WIRE_FORMAT_JSONRPC,
+    SessionEventPayload, SessionModelPayload, SessionResourcesPayload,
+    SessionResyncRequiredPayload, SessionSubscribedPayload, WIRE_FORMAT_JSONRPC,
 };
 
 use super::HostClientError;
@@ -27,6 +27,7 @@ pub(crate) enum Downlink {
     SessionSubscribed(SessionSubscribedPayload),
     SessionResyncRequired(SessionResyncRequiredPayload),
     SessionResources(SessionResourcesPayload),
+    SessionModel(SessionModelPayload),
     BashOutput(BashOutputPayload),
     Interaction {
         method: &'static str,
@@ -111,6 +112,7 @@ pub(crate) fn decode_downlink(note: Notification) -> Result<Option<Downlink>, Do
         method::SESSION_SUBSCRIBED => Downlink::SessionSubscribed(parse(&name, params)?),
         method::SESSION_RESYNC_REQUIRED => Downlink::SessionResyncRequired(parse(&name, params)?),
         method::SESSION_RESOURCES => Downlink::SessionResources(parse(&name, params)?),
+        method::SESSION_MODEL => Downlink::SessionModel(parse(&name, params)?),
         method::BASH_OUTPUT => Downlink::BashOutput(parse(&name, params)?),
         method::APPROVAL_REQUESTED => {
             let call_id = parse::<ApprovalRequestedPayload>(&name, params.clone())?.call_id;
@@ -296,6 +298,19 @@ mod tests {
             panic!("session/resources must decode to SessionResources");
         };
         assert_eq!(payload.snapshot, json!({"skill_names": ["alpha"]}));
+    }
+
+    #[test]
+    fn session_model_decodes_provider_and_model() {
+        let Downlink::SessionModel(payload) = decode(
+            method::SESSION_MODEL,
+            json!({"session_id": "s0", "provider": "openai", "model_id": "gpt-5"}),
+        ) else {
+            panic!("session/model must decode to SessionModel");
+        };
+        assert_eq!(payload.session_id, "s0");
+        assert_eq!(payload.provider, "openai");
+        assert_eq!(payload.model_id, "gpt-5");
     }
 
     #[test]

@@ -176,7 +176,7 @@
       那么 run 路由到 s-prompt 且事件在 s-prompt 的订阅者上可达
   @req:r1915
   规则: 生效模型状态同步
-    Host 在会话写者装配出已解析模型（含用户显式配置的默认模型）且订阅者绑定该会话时 须向订阅者下发生效模型同步事件（ModelSelect 形状），使附加端模型徽标收敛而非停留在未选占位；显式 set_model/cycle_model 后的模型状态 须反映切换结果。不识别该事件形状的旧客户端 须可忽略该帧且其余行为不受影响。
+    Host 在会话写者装配出已解析模型（含用户显式配置的默认模型）且订阅者绑定该会话时 须向订阅者下发生效模型同步事件（session/model 形状），使附加端模型徽标收敛而非停留在未选占位；显式 set_model/cycle_model 后的模型状态 须反映切换结果。不识别该事件形状的旧客户端 须可忽略该帧且其余行为不受影响。
 
     场景: 模型同步时绑定
       假如 会话写者已装配且持有已解析默认模型 fake-model
@@ -336,7 +336,7 @@
       那么 写占用仍在且订阅成功
   @req:r1803
   规则: 下行信封
-    下行 必须为 JSON-RPC 2.0 notification（method 与 params，无 id、无客户端作答义务；params 内携带既有 seq 与 payload 语义）。产品下行 method 必须含 session/event、session/subscribed、session/resync_required、session/resources 与 bash/output；审批与问卷告知为 approval/requested 与 question/requested。客户端 不得对事件 notification 作答。
+    下行 必须为 JSON-RPC 2.0 notification（method 与 params，无 id、无客户端作答义务；params 内携带既有 seq 与 payload 语义）。产品下行 method 必须含 session/event、session/subscribed、session/resync_required、session/resources、session/model 与 bash/output；审批与问卷告知为 approval/requested 与 question/requested。客户端 不得对事件 notification 作答。
 
     场景: 帧序列化
       假如 构造下行 session/event、session/subscribed、session/resync_required 与 session/resources notification
@@ -344,7 +344,7 @@
       那么 各帧均为无作答义务的下行通知且携带 method 语义
   @req:r1804
   规则: WS 只承载 JSON-RPC 文本
-    WS /rpc 必须只接受 text 帧承载的 JSON-RPC 上行（含客户端 request 与订阅）。binary 帧 必须被拒绝：服务端以关闭帧 1003 断开且不执行业务。载体 ping、pong 与 close 允许。
+    WS /rpc 必须只接受 text 帧承载的 JSON-RPC 上行（含客户端 request 与订阅）。binary 帧 必须被拒绝：服务端以关闭帧 1003 断开且不执行业务。超过 4 MiB 的 text 帧 必须以关闭帧 1009 收口。载体 ping、pong 与 close 允许。
 
     场景: 订阅帧
       假如 客户端欲以 last_seq 5 订阅会话 s0
@@ -517,7 +517,7 @@
       那么 服务端稳定拒绝且不崩溃（error.code 为 -32601，data.code 为 unregistered_method）
   @req:r1905
   规则: 下行通知与 seq 语义平移
-    下行 必须为 JSON-RPC notification（method 为 session/event，params 含 seq 与 event）；每会话单调 seq、journal 环形重放、resync、订阅跨回合存活、冷恢复快照投影的既有语义 必须原样保持（与载体格式无关）。固定区 session/resources 与审批/问卷告知在产品路径上 须保持：不消耗 journal seq、不写入 journal、不识别的端 须可忽略且其余行为不受影响。
+    下行 必须为 JSON-RPC notification（method 为 session/event，params 含 seq 与 event）；每会话单调 seq、journal 环形重放、resync、订阅跨回合存活、冷恢复快照投影的既有语义 必须原样保持（与载体格式无关）。transient 模型同步 必须以 session/model（无 seq、不写 journal）承载。固定区 session/resources 与审批/问卷告知在产品路径上 须保持：不消耗 journal seq、不写入 journal、不识别的端 须可忽略且其余行为不受影响。
 
     场景: 事件携带序号
       假如 产品客户端已订阅会话且 prompt 运行
@@ -574,7 +574,7 @@
       那么 不取写占用仍返回冻结快照
   @req:r1926
   规则: attach 生效模型同步不进 journal
-    会话绑定期同步写者当前生效模型的「ModelSelect」下行 须为 transient 推送（不落 journal、不消耗 seq）——它附属于订阅者收敛而非会话历史；重复绑定产生的重复「ModelSelect」下行 须语义幂等（消费端徽标收敛不闪变）。会话历史中的模型变更记录由领域层「ModelChange」条目承载，不得由 attach 期同步兼任。
+    会话绑定期同步写者当前生效模型的「session/model」下行 须为 transient 推送（不落 journal、不消耗 seq）——它附属于订阅者收敛而非会话历史；重复绑定产生的重复「session/model」下行 须语义幂等（消费端徽标收敛不闪变）。会话历史中的模型变更记录由领域层「ModelChange」条目承载，不得由 attach 期同步兼任。
 
     场景: 模型同步时重绑为瞬时
       假如 会话写者已装配且持有已解析默认模型 fake-model
@@ -614,7 +614,7 @@
 
   @req:r2896
   规则: journal 重放定向
-    订阅确立时的 journal 重放 须仅投递本次新绑定的订阅者，在订者不得因他端绑定而收到重放突发。订阅确认帧与 resync 语义维持既有广播。
+    订阅确立时的 journal 重放 须仅投递本次发起订阅的连接（新绑定或同连接重订），在订者不得因他端绑定而收到重放突发；同连接重订 须收到 last_seq 起的事件回放。订阅确认帧与 resync 语义维持既有广播。
 
     场景: 回放定向至新订阅者
       假如 一路订阅在订且 journal 含历史事件

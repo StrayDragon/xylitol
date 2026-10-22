@@ -23,8 +23,8 @@ use xylitol_plugin_sdk::ask::{AskArgs, AskUserGateway};
 use xylitol_plugin_sdk::error::{XySessionStoreError, XyToolError};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_protocol::method::{
-    APPROVAL_REQUESTED, BASH_OUTPUT, QUESTION_REQUESTED, SESSION_EVENT, SESSION_RESOURCES,
-    SESSION_RESYNC_REQUIRED, SESSION_SUBSCRIBED, is_unary_method,
+    APPROVAL_REQUESTED, BASH_OUTPUT, QUESTION_REQUESTED, SESSION_EVENT, SESSION_MODEL,
+    SESSION_RESOURCES, SESSION_RESYNC_REQUIRED, SESSION_SUBSCRIBED, is_unary_method,
 };
 use xylitol_protocol::registry::parse_command;
 use xylitol_protocol::registry::{
@@ -34,8 +34,8 @@ use xylitol_protocol::registry::{
 };
 use xylitol_protocol::{
     ApprovalRequestedPayload, BashOutputPayload, Notification, QuestionRequestedPayload, RpcResult,
-    SessionEventPayload, SessionResourcesPayload, SessionResyncRequiredPayload,
-    SessionSubscribedPayload,
+    SessionEventPayload, SessionModelPayload, SessionResourcesPayload,
+    SessionResyncRequiredPayload, SessionSubscribedPayload,
 };
 use xylitol_runtime::XyDriverError;
 use xylitol_runtime::agent::RuntimeBaseline;
@@ -48,7 +48,8 @@ pub struct HostState {
     pub reload: ReloadBaseline,
     pub factory: Arc<dyn OccupancyFactory>,
     pub sessions: RwLock<HashMap<String, Arc<SessionSlot>>>,
-    pub unbound_mux: Mutex<Vec<MuxSink>>,
+    pub unbound_mux: Mutex<Vec<(u64, MuxSink)>>,
+    next_mux_id: AtomicU64,
     pub resource_driver: Mutex<Option<Box<dyn OccupancyEngine>>>,
     pub in_process_downlink: broadcast::Sender<Notification>,
     pub reload_cancel: Mutex<Option<CancellationToken>>,
@@ -100,6 +101,7 @@ impl HostState {
             factory,
             sessions: RwLock::new(HashMap::new()),
             unbound_mux: Mutex::new(Vec::new()),
+            next_mux_id: AtomicU64::new(1),
             resource_driver: Mutex::new(None),
             in_process_downlink,
             reload_cancel: Mutex::new(None),
@@ -159,19 +161,22 @@ impl HostState {
             .unwrap_or_else(|| self.fallback_session.clone())
     }
 
-    pub async fn register_unbound_mux(&self, tx: MuxSink) {
-        self.unbound_mux.lock().await.push(tx);
+    pub async fn register_unbound_mux(&self, tx: MuxSink) -> u64 {
+        let id = self.next_mux_id.fetch_add(1, Ordering::Relaxed);
+        self.unbound_mux.lock().await.push((id, tx));
+        id
     }
 
-    pub async fn bind_mux_to_session(&self, slot: &SessionSlot, last_seq: u64) -> RpcResult {
-        let pending = {
-            let mut unbound = self.unbound_mux.lock().await;
-            std::mem::take(&mut *unbound)
+    pub async fn bind_mux_to_session(
+        &self,
+        slot: &SessionSlot,
+        last_seq: u64,
+        mux_id: Option<u64>,
+    ) -> RpcResult {
+        let bound = match mux_id {
+            Some(id) => self.bind_single_mux(slot, id).await,
+            None => self.bind_all_unbound_muxes(slot).await,
         };
-        let mut bound = Vec::new();
-        for tx in pending {
-            bound.push(slot.add_subscriber(tx).await);
-        }
         Self::cancel_write_linger(slot).await;
         let inflight = slot.run_inflight.load(Ordering::SeqCst);
         let observe = inflight && last_seq == 0;
@@ -183,6 +188,33 @@ impl HostState {
             .await;
         slot.sync_model_downlink().await;
         result
+    }
+
+    async fn bind_single_mux(&self, slot: &SessionSlot, id: u64) -> Vec<u64> {
+        let tx = {
+            let mut unbound = self.unbound_mux.lock().await;
+            unbound
+                .iter()
+                .position(|(other, _)| *other == id)
+                .map(|pos| unbound.swap_remove(pos).1)
+        };
+        if let Some(tx) = tx {
+            slot.subscribers.lock().await.entry(id).or_insert(tx);
+        }
+        vec![id]
+    }
+
+    async fn bind_all_unbound_muxes(&self, slot: &SessionSlot) -> Vec<u64> {
+        let pending = {
+            let mut unbound = self.unbound_mux.lock().await;
+            std::mem::take(&mut *unbound)
+        };
+        let mut bound = Vec::new();
+        for (id, tx) in pending {
+            slot.subscribers.lock().await.insert(id, tx);
+            bound.push(id);
+        }
+        bound
     }
 
     async fn cancel_write_linger(slot: &SessionSlot) {
@@ -542,17 +574,16 @@ impl SessionSlot {
         .await;
     }
 
-    pub async fn sync_model_downlink(&self) -> () {
+    pub async fn sync_model_downlink(&self) {
         let Some((provider, model_id)) = self.writer_model().await else {
             return;
         };
-        let seq = self.journal.lock().await.max_seq();
         self.broadcast(downlink_notification(
-            SESSION_EVENT,
-            SessionEventPayload {
+            SESSION_MODEL,
+            SessionModelPayload {
                 session_id: self.session_id.clone(),
-                seq,
-                event: xylitol_protocol::Event::ModelSelect { provider, model_id },
+                provider,
+                model_id,
             },
         ))
         .await;
@@ -684,12 +715,12 @@ impl OccupiedHost for HostState {
         self.shutting_down.store(true, Ordering::Relaxed);
     }
 
-    async fn register_unbound_mux(&self, tx: MuxSink) {
-        HostState::register_unbound_mux(self, tx).await;
+    async fn register_unbound_mux(&self, tx: MuxSink) -> u64 {
+        HostState::register_unbound_mux(self, tx).await
     }
 
-    async fn dispatch_text(self: Arc<Self>, body: &[u8]) -> Reply {
-        envelope::dispatch_text(&self, body).await
+    async fn dispatch_text(self: Arc<Self>, body: &[u8], mux_id: Option<u64>) -> Reply {
+        envelope::dispatch_text(&self, body, mux_id).await
     }
 
     async fn prune_mux(self: Arc<Self>, clean_close: bool) {
@@ -946,6 +977,7 @@ pub async fn handle_unary(
     rpc_id: Option<&str>,
     method: &str,
     payload: Value,
+    mux_id: Option<u64>,
 ) -> RpcResult {
     if method == METHOD_HOST_DESCRIBE {
         return RpcResult::ok_value(describe_value());
@@ -999,8 +1031,16 @@ pub async fn handle_unary(
         Admission::Conflict => return conflict_result(),
     };
 
-    let result =
-        dispatch_session_unary(host, &slot, &session_id, method, payload, &workspace).await;
+    let result = dispatch_session_unary(
+        host,
+        &slot,
+        &session_id,
+        method,
+        payload,
+        &workspace,
+        mux_id,
+    )
+    .await;
     reservation.complete(result.clone());
     result
 }
@@ -1012,6 +1052,7 @@ async fn dispatch_session_unary(
     method: &str,
     payload: Value,
     workspace: &Path,
+    mux_id: Option<u64>,
 ) -> RpcResult {
     if method == METHOD_SUBSCRIBE {
         if session_id.is_empty() {
@@ -1033,7 +1074,7 @@ async fn dispatch_session_unary(
                 "subscribe materialize_writer failed: {e}"
             );
         }
-        return host.bind_mux_to_session(slot, last_seq).await;
+        return host.bind_mux_to_session(slot, last_seq, mux_id).await;
     }
 
     if method == METHOD_PROMPT {

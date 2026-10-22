@@ -23,7 +23,7 @@
       那么 落入 Unknown 变体且不 panic
   @req:r1696
   规则: 信封与错误
-    产品 unary 应答 必须为 JSON-RPC 2.0 形态：成功则带 result，失败则带 error（error.message 为 details）。产品业务码 必须为稳定字符串，置于 error.data.code；载体数字码 仅作 JSON-RPC 错误码，不得成为产品错误模型。合法 JSON-RPC 的 HTTP 状态 表示载体成功（含业务错误）；非法信封 必须失败。旧 REST {code,msg,data}、四象限 `{ok,value,error}` 顶层形态 不得再作为产品路径。
+    产品 unary 应答 必须为 JSON-RPC 2.0 形态：成功则带 result，失败则带 error（error.message 为 details）。产品业务码 必须为稳定字符串，置于 error.data.code；载体数字码 仅作 JSON-RPC 错误码，不得成为产品错误模型。合法 JSON-RPC 的 HTTP 状态 表示载体成功（含业务错误）；非法信封 必须失败。上行 notification 不执行、不应答；产品方法 必须为 request。旧 REST {code,msg,data}、四象限 `{ok,value,error}` 顶层形态 不得再作为产品路径。
 
     场景: 一元稳定错误信封
       当 服务端在空闲端口上启动

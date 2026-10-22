@@ -4,7 +4,7 @@ title: 修复 resync 回放、transient ModelSelect seq 与多客户端订阅绑
 needs_specs_change: true
 branch: sdd/c2942-fix-resync-seq-multi-client
 base_branch: main
-base_sha: 46434c5dd88d8e4586e96028ee5a7d773ba16715
+base_sha: d6c8a5e884b8d142d2c00e7f4b32e5f4b33f14c1
 ---
 
 # 修复 resync 回放、transient ModelSelect seq 与多客户端订阅绑定（P2）
