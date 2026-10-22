@@ -21,11 +21,6 @@ impl BangExecHandler {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn cancel_slot(&self) -> Arc<Mutex<Option<CancellationToken>>> {
-        Arc::clone(&self.cancel)
-    }
-
     #[allow(clippy::too_many_arguments)]
     pub async fn execute(
         &self,

@@ -31,12 +31,15 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install rg + fd + clang + mold (test deps / Linux linker)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep fd-find clang mold
+          sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
+
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-nextest,cargo-llvm-cov
-
-      - name: Pin cargo-llvm-cov (object-file collection needs ≥0.9.1)
-        run: cargo install cargo-llvm-cov --version 0.9.1 --locked
 
       - uses: minikin/cargo-crap@v1
         with:
