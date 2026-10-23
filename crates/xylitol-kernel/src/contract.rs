@@ -5,7 +5,8 @@ mod tests {
 
     use rutis_loader::{Builtins, LoaderError, Resolver};
     use xylitol_plugin_sdk::rt::{
-        BoxFuture, Call, CordisError, Ctx, Effect, Event, EventKey, FiberState, Listener, Plugin,
+        BoxFuture, Call, CallExt, CordisError, Ctx, Effect, Event, EventKey, FiberState, Listener,
+        Plugin,
     };
 
     use crate::admit::{Admit, CORE_PLUGIN_NAMES, is_core_plugin_name};
@@ -263,7 +264,7 @@ mod tests {
             Box::pin(async move {
                 self.started.fetch_add(1, Ordering::SeqCst);
                 let _permit = self.hold.acquire().await.expect("hold");
-                call.next().await
+                call.chain().await
             })
         }
     }

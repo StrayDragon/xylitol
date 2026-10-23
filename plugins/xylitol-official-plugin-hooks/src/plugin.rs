@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::rt::{
-    BoxFuture, Call, CordisError, Ctx, Effect, EventKey, Listener, Plugin, PluginFactory,
+    BoxFuture, Call, CallExt, CordisError, Ctx, Effect, EventKey, Listener, Plugin, PluginFactory,
 };
 use xylitol_plugin_sdk::{
     AgentPreStep, HttpBeforeRequest, ToolPostExecute, ToolPreExecute, XyHookBus, XyHookOutcome,
@@ -94,7 +94,7 @@ impl Listener<ToolPreExecute> for PreTool {
             .await
             {
                 XyHookOutcome::Blocked { reason } => Ok(Some(Some(reason))),
-                _ => call.next().await,
+                _ => call.chain().await,
             }
         })
     }
@@ -118,7 +118,7 @@ impl Listener<ToolPostExecute> for PostTool {
                 "output": event.output,
             });
             let _ = XyHookBus::dispatch(self.dispatcher.as_ref(), "tool_call", "post", ctx).await;
-            call.next().await
+            call.chain().await
         })
     }
 }
@@ -138,7 +138,7 @@ impl Listener<AgentPreStep> for PreStep {
             let ctx = serde_json::json!({ "step": event.step });
             match XyHookBus::dispatch(self.dispatcher.as_ref(), "agent_start", "pre", ctx).await {
                 XyHookOutcome::Blocked { reason } => Ok(Some(Err(reason))),
-                _ => call.next().await,
+                _ => call.chain().await,
             }
         })
     }
@@ -172,7 +172,7 @@ impl Listener<HttpBeforeRequest> for BeforeHttp {
                 XyHookOutcome::Blocked { reason } => Err(CordisError::Validation {
                     issues: vec![reason],
                 }),
-                XyHookOutcome::Allowed => call.next().await,
+                XyHookOutcome::Allowed => call.chain().await,
             }
         })
     }

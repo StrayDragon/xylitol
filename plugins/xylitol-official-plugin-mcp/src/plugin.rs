@@ -7,7 +7,7 @@ use xylitol_plugin_sdk::plugin_events::{
     SessionPrepare, SessionPrepareReason, SessionPrepareResult,
 };
 use xylitol_plugin_sdk::rt::{
-    BoxFuture, Call, CordisError, Ctx, Effect, EventKey, Listener, Plugin, PluginFactory,
+    BoxFuture, Call, CallExt, CordisError, Ctx, Effect, EventKey, Listener, Plugin, PluginFactory,
 };
 use xylitol_plugin_sdk::session_prepare::SessionPrepareHub;
 use xylitol_plugin_sdk::session_prepare_hub_key;
@@ -82,7 +82,7 @@ impl Listener<SessionPrepare> for McpPrepareListener {
                     regs.tools.insert(name, tool);
                 }
             }
-            let mut acc = call.next().await?.unwrap_or_default();
+            let mut acc = call.chain().await?.unwrap_or_default();
             merge_prepare(&mut acc, mine);
             Ok(Some(acc))
         })

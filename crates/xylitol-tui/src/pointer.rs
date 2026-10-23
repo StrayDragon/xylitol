@@ -268,6 +268,7 @@ pub struct PointerPipeline {
     phase: PointerClickPhase,
     probe_armed: bool,
     hover_id: Option<HitId>,
+    last_cell: Option<(u16, u16)>,
     pending_click: Option<HitId>,
     capture_latch: bool,
     down_cell: Option<(u16, u16)>,
@@ -322,9 +323,25 @@ impl PointerPipeline {
         }
     }
 
+    pub fn clear_hover(&mut self) {
+        self.hover_id = None;
+    }
+
     #[must_use]
     pub fn hover_id(&self) -> Option<HitId> {
         self.hover_id
+    }
+
+    pub fn reprobe_hover(&mut self, view: PointerView) -> bool {
+        if !self.probe_armed {
+            return false;
+        }
+        let hit = self
+            .last_cell
+            .and_then(|(col, row)| self.hit_at(col, row, view));
+        let changed = hit != self.hover_id;
+        self.hover_id = hit;
+        changed
     }
 
     pub fn take_click(&mut self) -> Option<HitId> {
@@ -349,6 +366,7 @@ impl PointerPipeline {
 
     pub fn on_mouse(&mut self, event: &MouseEvent, view: PointerView) -> PointerOutcome {
         let (col, row) = (event.column, event.row);
+        self.last_cell = Some((col, row));
         let hit = self.hit_at(col, row, view);
         let capturing_region = self
             .regions
@@ -688,6 +706,32 @@ mod tests {
         assert!(first.hover_changed);
         let second = pipe.on_mouse(&mouse(MouseEventKind::Moved, 2, 0), view(0));
         assert!(!second.hover_changed);
+        assert_eq!(pipe.hover_id(), Some(1));
+    }
+
+    #[test]
+    fn reprobe_uses_last_cell_against_live_scroll() {
+        let mut pipe = PointerPipeline::default();
+        pipe.arm_probe(true);
+        pipe.regions_mut().push(HitRegion::new(1, 5, 0, 4));
+        let _ = pipe.on_mouse(&mouse(MouseEventKind::Moved, 1, 5), view(0));
+        assert_eq!(pipe.hover_id(), Some(1));
+        assert!(pipe.reprobe_hover(view(3)));
+        assert!(
+            pipe.hover_id().is_none(),
+            "sticky id must not follow scrolled content away from the pointer cell"
+        );
+    }
+
+    #[test]
+    fn clear_hover_drops_id_but_reprobe_can_restore() {
+        let mut pipe = PointerPipeline::default();
+        pipe.arm_probe(true);
+        pipe.regions_mut().push(HitRegion::new(1, 0, 0, 4));
+        let _ = pipe.on_mouse(&mouse(MouseEventKind::Moved, 1, 0), view(0));
+        pipe.clear_hover();
+        assert!(pipe.hover_id().is_none());
+        assert!(pipe.reprobe_hover(view(0)));
         assert_eq!(pipe.hover_id(), Some(1));
     }
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use xylitol_official_plugin_config::plugin::ConfigService;
 use xylitol_plugin_sdk::TrustPreLoad;
 use xylitol_plugin_sdk::rt::{
-    BoxFuture, Call, CordisError, Ctx, Effect, EventKey, Listener, TypedPlugin,
+    BoxFuture, Call, CallExt, CordisError, Ctx, Effect, EventKey, Listener, TypedPlugin,
 };
 use xylitol_runtime::trust::TrustManager;
 
@@ -44,7 +44,7 @@ impl Listener<TrustPreLoad> for TrustGate {
     ) -> BoxFuture<'a, Result<Option<Option<String>>, CordisError>> {
         Box::pin(async move {
             if self.mgr.is_trusted(&event.cwd) {
-                call.next().await
+                call.chain().await
             } else {
                 Ok(Some(Some("project is not trusted".into())))
             }

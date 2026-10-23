@@ -1323,6 +1323,42 @@ fn armed_probe_same_id_moved_does_not_rerender() {
 }
 
 #[test]
+fn full_rebuild_clears_sticky_hover() {
+    let mut tui = ao_seeded(
+        10,
+        vec!["hello".into(), "world".into()],
+        vec!["dock-a".into(), "dock-b".into()],
+    );
+    tui.mark_hit(Hit::on_line(1, 0).cols(0, 5));
+    tui.arm_pointer_probe(true);
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(MouseEventKind::Moved, 1, 0)));
+    assert_eq!(tui.pointer_hover_id(), Some(1));
+    tui.mark_ao_components_stale();
+    tui.render_frame().expect("rebuild");
+    assert!(
+        tui.pointer_hover_id().is_none(),
+        "layout rebuild must drop sticky hover so tint does not paint a stale row"
+    );
+}
+
+#[test]
+fn hover_follows_pointer_cell_after_scroll_reproject() {
+    let content: Vec<String> = (0..20).map(|i| format!("row-{i:02}")).collect();
+    let mut tui = ao_seeded(10, content, vec!["dock-a".into(), "dock-b".into()]);
+    let top = tui.application_owned_scroll_top();
+    tui.mark_hit(Hit::on_line(1, top).cols(0, 8));
+    tui.arm_pointer_probe(true);
+    let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(MouseEventKind::Moved, 1, 0)));
+    assert_eq!(tui.pointer_hover_id(), Some(1));
+    assert!(tui.application_owned_scroll_by(-3));
+    tui.render_frame().expect("reproject");
+    assert!(
+        tui.pointer_hover_id().is_none(),
+        "cheap scroll must re-probe the last pointer cell, not keep the scrolled-away id"
+    );
+}
+
+#[test]
 fn hover_id_change_rerenders_without_stale_components() {
     let mut tui = ao_seeded(
         10,

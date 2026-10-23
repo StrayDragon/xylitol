@@ -122,12 +122,12 @@ impl<T: Terminal> TUI<T> {
             return Ok(());
         }
 
-        self.sync_pointer_hover_into_runtime();
         let render_started = std::time::Instant::now();
         let checks_before = self.finalize_width_checks;
         let reuses_before = self.finalize_line_reuses;
 
         let can_reproject = self.can_reproject_application_owned(render_w);
+        self.refresh_pointer_hover_for_paint(can_reproject);
 
         let (component_lines, mut new_lines, ao_reprojected) = if can_reproject {
             let runtime = self

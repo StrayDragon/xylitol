@@ -2609,6 +2609,74 @@ fn harness_mouse_moved_armed_probe_sets_hover_without_full_stale() {
 }
 
 #[test]
+fn harness_fold_click_clears_stale_hover() {
+    use super::widgets::FoldTarget;
+    use crossterm::event::MouseEventKind;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
+            id: "hover-fold".into(),
+            name: "read".into(),
+            args_preview: "f.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "line-a\nline-b\nline-c\nline-d".into(),
+            is_error: false,
+            done: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    session.render_now().unwrap();
+
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Tool(id) if id == "hover-fold"))
+        .cloned()
+        .expect("tool hit");
+    assert!(
+        region.height > 1,
+        "expanded tool must register a tall click body"
+    );
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    let body_row = screen_row.saturating_add(1);
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Moved,
+            8,
+            body_row,
+        ))))
+        .unwrap();
+    assert!(
+        session.tui.pointer_hover_id().is_some(),
+        "armed probe must highlight the fold region under the pointer"
+    );
+
+    step_left_click(&mut session, 8, body_row);
+    assert!(
+        !root.borrow().fold().tools_effective("hover-fold"),
+        "body click must collapse"
+    );
+    assert!(
+        session.tui.pointer_hover_id().is_none(),
+        "fold layout change must clear hover so tint does not stick to a shifted row"
+    );
+}
+
+#[test]
 fn harness_mouse_drag_across_triangle_does_not_toggle_fold() {
     use super::widgets::FoldTarget;
     use crossterm::event::{KeyModifiers, MouseButton, MouseEvent, MouseEventKind};

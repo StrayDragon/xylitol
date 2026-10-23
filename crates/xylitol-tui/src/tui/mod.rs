@@ -434,17 +434,7 @@ impl<T: Terminal> TUI<T> {
     }
 
     pub fn hit_id_at(&self, col: u16, row: u16) -> Option<HitId> {
-        let rows = self.terminal.rows();
-        let transcript_rows = rows.saturating_sub(self.dock_rows.min(rows as usize) as u16);
-        self.pointer.hit_at(
-            col,
-            row,
-            PointerView {
-                scroll_top: self.application_owned_scroll_top(),
-                transcript_rows,
-                overlay_capturing: false,
-            },
-        )
+        self.pointer.hit_at(col, row, self.pointer_view(false))
     }
 
     pub fn set_append_session_to_main_scrollback_on_exit(&mut self, on: bool) {
@@ -527,6 +517,28 @@ impl<T: Terminal> TUI<T> {
                     .last_screen_rect
                     .is_some_and(|rect: ScreenRect| rect.contains(col, row))
         })
+    }
+
+    fn pointer_view(&self, overlay_capturing: bool) -> PointerView {
+        let rows = self.terminal.rows();
+        let transcript_rows = rows.saturating_sub(self.dock_rows.min(rows as usize) as u16);
+        PointerView {
+            scroll_top: self.application_owned_scroll_top(),
+            transcript_rows,
+            overlay_capturing,
+        }
+    }
+
+    fn refresh_pointer_hover_for_paint(&mut self, can_reproject: bool) {
+        if !self.application_session_active {
+            return;
+        }
+        if can_reproject {
+            self.pointer.reprobe_hover(self.pointer_view(false));
+        } else {
+            self.pointer.clear_hover();
+        }
+        self.sync_pointer_hover_into_runtime();
     }
 
     fn sync_pointer_hover_into_runtime(&mut self) {
@@ -851,15 +863,9 @@ impl<T: Terminal> TUI<T> {
             let transcript_rows = rows.saturating_sub(self.dock_rows.min(rows as usize) as u16);
             let wheel_in_transcript = is_wheel && mouse.row < transcript_rows;
             let overlay_capturing = self.capturing_overlay_contains(mouse.column, mouse.row);
-            let scroll_top = self.application_owned_scroll_top();
-            let outcome = self.pointer.on_mouse(
-                mouse,
-                PointerView {
-                    scroll_top,
-                    transcript_rows,
-                    overlay_capturing,
-                },
-            );
+            let outcome = self
+                .pointer
+                .on_mouse(mouse, self.pointer_view(overlay_capturing));
             let hit = self.transcript_hit_priority.take();
             let dirty = if let Some(runtime) = self.application_owned.as_mut() {
                 runtime.selection.set_hit_priority(hit);
