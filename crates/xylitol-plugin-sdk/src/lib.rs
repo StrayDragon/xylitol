@@ -87,24 +87,6 @@ pub use plugin_keys::{
     compaction_key, hook_bus_key, model_key, permission_key, session_prepare_hub_key,
     session_store_key, tool_vec_key,
 };
-pub use registry::{HostRegistries, Registry, SkillEntry};
-pub use rt::{RUTIS_LOCK, SDK_API_VERSION};
-pub use session_prepare::{
-    CUSTOM_TYPE_SESSION_PREPARE, SESSION_PREPARE_TIMEOUT_NOTICE, SessionPrepareHub,
-    SessionPrepareSnapshot, SessionPrepareView, ensure_session_prepare_in_history,
-    last_session_prepare, session_prepare_from_message, should_append_session_prepare,
-};
-
-#[cfg(test)]
-mod contract_tests {
-    use super::*;
-
-    #[test]
-    fn sdk_api_version_and_rutis_lock() {
-        assert_eq!(SDK_API_VERSION, "0.2.0");
-        assert_eq!(RUTIS_LOCK, "0.13.0");
-    }
-}
 pub use ports::{
     AgentTodoGateway, AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway, BashChunk,
     BashExecOpts, BashOutputSink, FS_TOOL_TIMEOUT_SECS, HeaderBag, HttpHooks, LifecycleHandler,
@@ -115,6 +97,13 @@ pub use ports::{
     XyToolExecutionMode, ask, bash, flatten_session_forest, format_session_age,
     noop_compaction_factory, parse_tool_args, run_after_response, run_before_headers,
     run_before_request, sanitize_session_display_name, should_compact, typed,
+};
+pub use registry::{HostRegistries, Registry, SkillEntry};
+pub use rt::{RUTIS_LOCK, SDK_API_VERSION};
+pub use session_prepare::{
+    CUSTOM_TYPE_SESSION_PREPARE, SESSION_PREPARE_TIMEOUT_NOTICE, SessionPrepareHub,
+    SessionPrepareSnapshot, SessionPrepareView, ensure_session_prepare_in_history,
+    last_session_prepare, session_prepare_from_message, should_append_session_prepare,
 };
 pub use settlement::{
     ContextTokenSettlement, ContextTokenSettlementReason, settle_from_session_entries,
@@ -129,3 +118,14 @@ pub use tool_timeout::{
     DEFAULT_TOOL_TIMEOUT_SECS, MAX_EXTERNAL_WAIT_SECS, MAX_TOOL_TIMEOUT_SECS, ToolTimeout,
     ToolTimeoutError,
 };
+
+#[cfg(test)]
+mod contract_tests {
+    use super::*;
+
+    #[test]
+    fn sdk_api_version_and_rutis_lock() {
+        assert_eq!(SDK_API_VERSION, "0.2.0");
+        assert_eq!(RUTIS_LOCK, "0.15.0");
+    }
+}

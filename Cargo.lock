@@ -1273,6 +1273,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
+name = "erased-serde"
+version = "0.4.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2add8a07dd6a8d93ff627029c51de145e12686fbc36ecb298ac22e74cf02dec"
+dependencies = [
+ "serde",
+ "serde_core",
+ "typeid",
+]
+
+[[package]]
 name = "errno"
 version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3981,10 +3992,12 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "rutis"
-version = "0.13.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec15fe1c763119c1b4582759fd11797609fd97e9722dff5c7d4206e9de02802e"
+checksum = "62523da775be9d84341da54141ccec71189d4eac1570386f007a6460c4a41dfe"
 dependencies = [
+ "erased-serde",
+ "rutis-macros",
  "serde",
  "serde_json",
  "shuttle",
@@ -3995,9 +4008,9 @@ dependencies = [
 
 [[package]]
 name = "rutis-loader"
-version = "0.13.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39422a5f2cd2a1c4d36c1aa6e71deba4f915f6bcd43c4c63707a3bd5ad441c61"
+checksum = "df99b9b83e8985d063c44b02e5d1cfcc12f8361e1c3f7384d6126289af8336c7"
 dependencies = [
  "rutis",
  "schemars",
@@ -4005,6 +4018,17 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "rutis-macros"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4bd7599944a18c9348c0ea3b021e3ceadc36eae214feb9654e7f62607688270d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -5104,6 +5128,12 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "typeid"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c"
 
 [[package]]
 name = "typenum"

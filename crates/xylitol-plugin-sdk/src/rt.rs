@@ -7,4 +7,4 @@ pub use rutis::{
 
 pub const SDK_API_VERSION: &str = "0.2.0";
 
-pub const RUTIS_LOCK: &str = "0.13.0";
+pub const RUTIS_LOCK: &str = "0.15.0";

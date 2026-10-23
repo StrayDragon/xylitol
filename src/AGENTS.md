@@ -101,7 +101,7 @@ flowchart TB
   xylitol --> xylitol_app_tui
 ```
 
-`rutis` 只出现在 `xylitol-plugin-sdk` 与 `xylitol-kernel` 的 `Cargo.toml`（精确锁 `=0.13.0`）。`rutis-loader` 只在 kernel。官方插件与 runtime 只依赖 sdk（经 `xylitol_plugin_sdk::rt`），**不得** `use rutis`。产品端不得依赖 rutis。
+`rutis` 只出现在 `xylitol-plugin-sdk` 与 `xylitol-kernel` 的 `Cargo.toml`（精确锁 `=0.15.0`）。`rutis-loader` 只在 kernel。官方插件与 runtime 只依赖 sdk（经 `xylitol_plugin_sdk::rt`），**不得** `use rutis`。产品端不得依赖 rutis。
 
 | crate | 必须 | 不得 |
 |---|---|---|
