@@ -6143,7 +6143,6 @@ dependencies = [
  "serde",
  "serde_json",
  "strum",
- "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-util",
@@ -6151,7 +6150,6 @@ dependencies = [
  "uuid",
  "wiremock",
  "xylitol-plugin-sdk",
- "yaml_serde",
 ]
 
 [[package]]

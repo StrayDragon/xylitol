@@ -74,7 +74,7 @@
 - [ ] 4.3 运行 bridge、infra observability/otel 相关单测与 BDD；必要时运行
       `just test`、`just lint`、`just fmt-check`，确认观测失败不会改变 provider
       返回值。
-- [ ] 4.4 若需真实网关证据，只使用既有 `lab_` / `test-live-provider` 闸门；
+- [ ] 4.4 若需真实网关证据，用一次性 `lab_` 探针（不进 `just qa`，不新增第二份配置）；
       不把 body、reasoning signature、cache key 或敏感 observation I/O 写入提交或
       公共报告。
 

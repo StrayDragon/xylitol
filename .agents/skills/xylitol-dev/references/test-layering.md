@@ -12,7 +12,7 @@ brief: "测试分层与 lab_ 试验命名（快照 insta / wire 契约 wiremock 
 | 单测 | `src` 内联 | 纯数据 / 组件边界；**不重复全链路** |
 | 快照 | `tests/snapshots`（insta） | 整屏布局 / 序列化形状回归 |
 | wire 契约 | wiremock / 脚本化 SSE mock | 假网关；含 must-not-send 断言 |
-| 真网关 lab | `lab_` 前缀，无配置自动 SKIP | 只有真环境才有的行为 |
+| 真网关 lab | `lab_` 前缀，人跑；不进 `just qa` | 只有真环境才有的行为 |
 | 真终端 E2E | `#[ignore]`，`just qa-e2e` 才跑 | 真 PTY / tmux 字节路径 |
 
 原则：**BDD 管端到端编排；单测管纯数据 / 组件边界，不重复全链路。** 新功能先问「哪一层最能以有限注意力钉住行为」，避免堆量。
@@ -24,11 +24,11 @@ brief: "测试分层与 lab_ 试验命名（快照 insta / wire 契约 wiremock 
 | 形态 | 约定 | 是否进 `just qa` |
 |---|---|---|
 | `crates/*/examples/lab_*.rs` | 人跑维护 lab（`cargo run -p … --example lab_…`） | **否** |
-| `crates/*/tests/lab_*.rs` | 可连接真实网关的 lab 二进制；是否纳入门禁看 just 接线 | **仅**已接线者（见 `qa-test-live-provider`） |
+| `crates/*/tests/lab_*.rs` | 可连接真实网关的 lab 二进制；人跑维护 | **否** |
 | `#[test] fn lab_*`（无 `#[ignore]`） | 门禁内契约实验（无网或假网） | **是**（随 crate 测） |
 | `#[ignore]` 的 `lab_*` 测试 / `src/**/lab_*.rs` lab 模块 | 人跑维护 lab（模块 doc 给命令） | **否** |
 
-配置文件名 `live-provider.yaml` / recipe `qa-test-live-provider` 保留「live 网关」语义，与代码符号前缀无关。新试验 **MUST** 用 `lab_`；**禁止**再引入 `evidence_` / `experiment_` 前缀。
+新试验 **MUST** 用 `lab_`；**禁止**再引入 `evidence_` / `experiment_` 前缀。产品配置只有配置目录里那一份最终 AppConfig；试验探针不得另开专用配置文件。
 
 ## 并行与进程级全局状态纪律
 

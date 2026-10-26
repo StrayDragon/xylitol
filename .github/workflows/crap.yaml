@@ -18,8 +18,6 @@ jobs:
   crap:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    env:
-      XYLITOL_SKIP_LIVE: "1"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -47,6 +45,6 @@ jobs:
           args: --workspace
           coverage-args: >-
             nextest --workspace --all-features --profile ci
-            -E 'not (package(xylitol-tui) or binary(lab_responses_prompt_cache))'
+            -E 'not package(xylitol-tui)'
           fail-regression: "true"
           fail-above: "false"

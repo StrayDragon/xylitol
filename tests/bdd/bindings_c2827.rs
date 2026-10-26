@@ -657,12 +657,6 @@ fn test_qa_r1831_pty() {}
 fn test_qa_r1832_ssot() {}
 
 #[scenario(
-    path = "llmanspec/specs/test-qa-gate/test-qa-gate.feature",
-    name = "在线门禁串行带超时"
-)]
-fn test_qa_r1833_serial() {}
-
-#[scenario(
     path = "llmanspec/specs/agent-prompt/agent-prompt.feature",
     name = "装配包含工具指南"
 )]

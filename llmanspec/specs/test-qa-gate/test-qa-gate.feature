@@ -5,10 +5,10 @@
 
   @req:r1827
   规则: 统一 just qa 满闸
-    仓库 须提供 just qa 作为日常与 PR 前的统一验证入口；该入口 须顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、live-provider 串行闸（见 qg07）、显式 crates/xylitol-tui 测试（四层中的 1–3）、cargo doc --no-deps --all-features、doc-test（cargo test --doc --all-features，根包 doctest）、DESIGN token/Palette 一致性检查（qa-check-tui-tokens）、scripts/check_* 入闸校验与执行（qa-check-scripts-wired 与 qa-check-scripts；约定 scripts/check_*.py 或 check-*.py 为非变更闸脚本；其中 check_uncomment 仅执行 uncomment --check --changed-lines，不得改写工作区）、以及 prek run --all-files（prek 仅承担文本/元数据卫生与 commit-msg 规约，cargo 级门禁 不得进 prek）。just check 与 just ci 须作为 just qa 的别名。
+    仓库 须提供 just qa 作为日常与 PR 前的统一验证入口；该入口 须顺序包含：cargo fmt --check、clippy（all-features、-D warnings）、cargo/nextest 全特性测试、显式 crates/xylitol-tui 测试（四层中的 1–3）、cargo doc --no-deps --all-features、doc-test（cargo test --doc --all-features，根包 doctest）、DESIGN token/Palette 一致性检查（qa-check-tui-tokens）、scripts/check_* 入闸校验与执行（qa-check-scripts-wired 与 qa-check-scripts；约定 scripts/check_*.py 或 check-*.py 为非变更闸脚本；其中 check_uncomment 仅执行 uncomment --check --changed-lines，不得改写工作区）、以及 prek run --all-files（prek 仅承担文本/元数据卫生与 commit-msg 规约，cargo 级门禁 不得进 prek）。just check 与 just ci 须作为 just qa 的别名。
     场景: 门禁六道有序门禁
       当 读取 just 的 qa recipe 序列
-      那么 qa 串含 fmt 与 lint 与 test 与 live
+      那么 qa 串含 fmt 与 lint 与 test
 
   @req:r1828
   规则: qa-e2e 可选第 5 层
@@ -19,7 +19,7 @@
 
   @req:r1829
   规则: 文档指针
-    根 AGENTS.md 命令段与 xylitol-dev skill 须写明 just qa 与 just qa-e2e 的分工，以及 live-provider 串行闸与专用配置路径；TUI 四层方法论仍以 package-tui-testing 与该 skill 的 TUI 验证 reference 为 SSOT，本闸仅统一入口。
+    根 AGENTS.md 命令段与 xylitol-dev skill 须写明 just qa 与 just qa-e2e 的分工；TUI 四层方法论仍以 package-tui-testing 与该 skill 的 TUI 验证 reference 为 SSOT，本闸仅统一入口。
     场景: 文档名称门禁拆分
       当 读取 qa 文档指针
       那么 文档写明 qa 与 e2e 分工
@@ -44,10 +44,3 @@
     场景: 复杂度门禁单一真源
       当 读取 just 的 qa recipe 序列
       那么 复杂度闸以 cccc-rs 为 SSoT
-
-  @req:r1833
-  规则: live-provider-serial-in-qa
-    just qa 须在 workspace 测试之后以严格串行（单 test binary、`--test-threads=1`）调用 `just qa-test-live-provider`；配置 须为全局共享目录专用文件 `<global-dir>/dev/live-provider.yaml`（`global-dir` 解析优先级：`XYLITOL_CONFIG_DIR` → `$XDG_CONFIG_HOME/xylitol` → `~/.config/xylitol`；字段契约以 `lab_responses_prompt_cache` 集成测试模块文档与 `LiveProviderFile` 为 SSOT），由测试程序化解析（`enabled` / base_url / model / api_key），不得从全局 AppConfig `config.yaml` 合并 live-provider 参数。缺失配置或 `enabled=false` 时 须 skip（通过）；`enabled=true` 时 须对配置的 Responses 端点做 prompt-cache 反例验证。该套件 不得进入 nextest 默认并行矩阵，以免压垮本地 llama.cpp。
-    场景: 在线门禁串行带超时
-      当 读取 just 的 qa recipe 序列
-      那么 live 闸走串行且带超时

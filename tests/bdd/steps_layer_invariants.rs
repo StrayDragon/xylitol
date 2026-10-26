@@ -227,18 +227,13 @@ pub(crate) fn w_qa_recipe_sequence() {
     assert_layer_invariants();
 }
 
-#[then("qa 串含 fmt 与 lint 与 test 与 live")]
+#[then("qa 串含 fmt 与 lint 与 test")]
 pub(crate) fn t_qa_sequence_shape() {
     assert_layer_invariants();
 }
 
 #[then("qa-e2e 在 qa 之后加 test-tui-e2e")]
 pub(crate) fn t_qa_e2e_layers() {
-    assert_layer_invariants();
-}
-
-#[then("live 闸走串行且带超时")]
-pub(crate) fn t_live_gate_serial() {
     assert_layer_invariants();
 }
 

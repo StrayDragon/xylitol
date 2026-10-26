@@ -38,6 +38,4 @@ partial-json-fixer = { workspace = true }
 
 [dev-dependencies]
 wiremock = { workspace = true }
-tempfile = { workspace = true }
-yaml_serde = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "test-util"] }

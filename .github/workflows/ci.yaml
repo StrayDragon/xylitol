@@ -17,8 +17,6 @@ jobs:
   qa:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      XYLITOL_SKIP_LIVE: "1"
     steps:
       - uses: actions/checkout@v7
         with:
@@ -51,5 +49,5 @@ jobs:
           path: .tools
           key: tools-cccc-rs-0.4.0
 
-      - name: just qa (skip live-provider)
+      - name: just qa
         run: just qa quiet

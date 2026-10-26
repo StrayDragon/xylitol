@@ -74,18 +74,16 @@ lint-all verbosity=verbosity_default:
         ;;
     esac
 
-# Workspace test matrix (nextest profile agent/ci, or cargo test fallback):
-# root package + xylitol-official-plugin-provider-openai lib. NOT in this matrix:
+# Workspace test matrix (nextest profile agent/ci, or cargo test fallback).
+# NOT in this matrix:
 #   - xylitol-tui → sole runner is `just test-tui` (in-process #[serial]
-#     coordination, TUI harness methodology SSOT);
-#   - lab_responses_prompt_cache → serial-only via `qa-test-live-provider`.
-# -E overrides the profile default-filter, so the live-binary clause is
-# restated here; ad-hoc `cargo nextest run` keeps the nextest.toml filter.
+#     coordination, TUI harness methodology SSOT).
+# -E restates the gate matrix even if nextest.toml default-filter changes.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 test verbosity=verbosity_default:
     #!/usr/bin/env bash
     set -euo pipefail
-    matrix=(-E 'not (package(xylitol-tui) or binary(lab_responses_prompt_cache))')
+    matrix=(-E 'not package(xylitol-tui)')
     if command -v cargo-nextest >/dev/null; then
       case "{{verbosity}}" in
         quiet)
@@ -104,64 +102,22 @@ test verbosity=verbosity_default:
           ;;
       esac
     else
-      # Same matrix without nextest: exclude xylitol-tui (test-tui covers it)
-      # and the live HTTP suite (parallel cargo test would hammer llama.cpp).
+      # Same matrix without nextest: exclude xylitol-tui (test-tui covers it).
       case "{{verbosity}}" in
         quiet)
-          if ! out=$(cargo test -q --workspace --all-features --exclude xylitol-official-plugin-provider-openai --exclude xylitol-tui 2>&1); then
-            printf '%s\n' "$out"
-            exit 1
-          fi
-          if ! out=$(cargo test -q -p xylitol-official-plugin-provider-openai --lib 2>&1); then
+          if ! out=$(cargo test -q --workspace --all-features --exclude xylitol-tui 2>&1); then
             printf '%s\n' "$out"
             exit 1
           fi
           ;;
         normal)
-          cargo test --workspace --all-features --exclude xylitol-official-plugin-provider-openai --exclude xylitol-tui
-          cargo test -p xylitol-official-plugin-provider-openai --lib
+          cargo test --workspace --all-features --exclude xylitol-tui
           ;;
         verbose)
-          cargo test -v --workspace --all-features --exclude xylitol-official-plugin-provider-openai --exclude xylitol-tui
-          cargo test -v -p xylitol-official-plugin-provider-openai --lib
+          cargo test -v --workspace --all-features --exclude xylitol-tui
           ;;
       esac
     fi
-
-# Live Responses prompt-cache counterexample (dedicated <global-dir>/dev config).
-# Strictly serial (--test-threads=1). Always part of default `just qa` (any verbosity).
-# Missing/disabled global dev config → skip (pass). enabled=true → must hit gateway.
-# CI / offline opt-out: XYLITOL_SKIP_LIVE=1 skips this gate unconditionally
-# (env, because `qa` composes this recipe as a dependency — conditional deps
-# cannot take just args). Example: `XYLITOL_SKIP_LIVE=1 just qa`.
-[arg('verbosity', pattern='quiet|normal|verbose')]
-qa-test-live-provider verbosity=verbosity_default:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [[ "${XYLITOL_SKIP_LIVE:-}" == "1" ]]; then
-      echo "live-provider: skipped (XYLITOL_SKIP_LIVE=1)"
-      exit 0
-    fi
-    # One binary, one thread: never fan out concurrent llama.cpp requests from this suite.
-    case "{{verbosity}}" in
-      quiet)
-        # Keep --nocapture so RUN/SKIP lines exist; surface a one-liner so quiet qa
-        # still shows the live gate ran (not only `just qa normal`).
-        if ! out=$(cargo test -q -p xylitol-official-plugin-provider-openai --test lab_responses_prompt_cache -- --test-threads=1 --nocapture 2>&1); then
-          printf '%s\n' "$out"
-          exit 1
-        fi
-        if printf '%s\n' "$out" | rg -q 'live-provider: RUN'; then
-          printf '%s\n' "$(printf '%s\n' "$out" | rg 'live-provider: (RUN|cache_read)' | tail -n 2)"
-        elif printf '%s\n' "$out" | rg -q 'live-provider: SKIP'; then
-          printf '%s\n' "$(printf '%s\n' "$out" | rg 'live-provider: SKIP' | tail -n 1)"
-        else
-          echo "live-provider: ok"
-        fi
-        ;;
-      normal)  cargo test -p xylitol-official-plugin-provider-openai --test lab_responses_prompt_cache -- --test-threads=1 --nocapture ;;
-      verbose) cargo test -v -p xylitol-official-plugin-provider-openai --test lab_responses_prompt_cache -- --test-threads=1 --nocapture ;;
-    esac
 
 # Generate configs/example.yaml (maintenance; not in qa).
 # Edit scripts/gen_config_example.py TEMPLATE, then re-run this recipe.
@@ -326,14 +282,14 @@ _cargo-llvm-cov-bin:
     fi
     cargo install cargo-llvm-cov --version "$need_min" --locked
 
-# Same nextest matrix as `just test` (no xylitol-tui; no live-provider binary).
+# Same nextest matrix as `just test` (no xylitol-tui).
 [arg('verbosity', pattern='quiet|normal|verbose')]
 coverage-lcov verbosity=verbosity_default lcov="lcov.info":
     #!/usr/bin/env bash
     set -euo pipefail
     just _cargo-llvm-cov-bin >/dev/null
     unset CARGO_LLVM_COV_SHOW_ENV
-    matrix=(-E 'not (package(xylitol-tui) or binary(lab_responses_prompt_cache))')
+    matrix=(-E 'not package(xylitol-tui)')
     lcov_path="{{lcov}}"
     if command -v cargo-nextest >/dev/null; then
       case "{{verbosity}}" in
@@ -350,8 +306,6 @@ coverage-lcov verbosity=verbosity_default lcov="lcov.info":
       cargo llvm-cov test --workspace --all-features \
         --exclude xylitol-tui \
         --lcov --output-path "$lcov_path"
-      cargo llvm-cov test -p xylitol-official-plugin-provider-openai --lib \
-        --lcov --output-path "$lcov_path" --append
     fi
 
 [arg('verbosity', pattern='quiet|normal|verbose')]
@@ -473,18 +427,16 @@ test-tui verbosity=verbosity_default:
     esac
 
 # Unified daily / PR gate (no TUI layer-5 E2E — needs PTY/tmux).
-# Order: fmt → clippy → workspace tests → live-provider (serial) → package TUI
-# harness → docs (qa-doc-check + qa-doc-test) → DESIGN tokens → scripts/check_*
+# Order: fmt → clippy → workspace tests → package TUI harness →
+# docs (qa-doc-check + qa-doc-test) → DESIGN tokens → scripts/check_*
 # (incl. check_uncomment: uncomment --check --changed-lines only) →
 # prek (text-hygiene-only hooks; cargo gates never in prek — see AGENTS.md).
 # Default verbosity=quiet (agent-friendly). Pass `normal` / `verbose` for humans.
-# Skip options (env): XYLITOL_SKIP_LIVE=1 skips the live-provider gate (CI).
 [arg('verbosity', pattern='quiet|normal|verbose')]
 qa verbosity=verbosity_default: \
     (qa-fmt-check verbosity) \
     (lint verbosity) \
     (test verbosity) \
-    (qa-test-live-provider verbosity) \
     (test-tui verbosity) \
     (qa-doc-check verbosity) \
     (qa-doc-test verbosity) \

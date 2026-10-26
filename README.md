@@ -95,8 +95,6 @@ just qa       # 全量门禁
 just qa-e2e   # 额外跑伪终端（PTY）/tmux 端到端测试
 ```
 
-`just qa` 里的真实网关探针在未配置全局配置目录下的 `dev/live-provider.yaml` 时自动跳过。持续集成（CI）用 `XYLITOL_SKIP_LIVE=1` 跳过这个探针。
-
 ## 文档
 
 - [AGENTS.md](AGENTS.md) — 仓库约定与操作边界

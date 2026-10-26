@@ -15,11 +15,7 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名�
 
 ## 环境
 
-新机器先 `just setup`（hooks、LFS、可选 cccc 进 `.tools/`）。缺 `cccc-rs` 时 `qa-check-complexity` 会 `cargo install cccc-rs-cli`（pin 见 justfile）。其它缺工具在第一次触发对应 recipe 时失败，按报错补。
-
-## 真网关 lab（live-provider）
-
-`just qa` 串行跑 `qa-test-live-provider`（连接真实网关的 lab）：配置路径、YAML 字段与 `enabled` 门禁见 `justfile` 与 `plugins/xylitol-official-plugin-provider-openai/tests/lab_responses_prompt_cache.rs` 模块文档。产品示例配置 `configs/example.yaml` 由 `just gen-config-example` 生成（改 `scripts/gen_config_example.py` 模板，**勿**直接手改产物）。
+新机器先 `just setup`（hooks、LFS、可选 cccc 进 `.tools/`）。缺 `cccc-rs` 时 `qa-check-complexity` 会 `cargo install cccc-rs-cli`（pin 见 justfile）。其它缺工具在第一次触发对应 recipe 时失败，按报错补。产品示例配置 `configs/example.yaml` 由 `just gen-config-example` 生成（改 `scripts/gen_config_example.py` 模板，**勿**直接手改产物）。
 
 ## 复杂度门禁
 
