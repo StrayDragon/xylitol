@@ -1,4 +1,4 @@
-use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin};
+use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 pub use xylitol_runtime::agent::MCP_FIRST_TURN_GATE_TIMEOUT as FIRST_TURN_GATE_TIMEOUT;
 
@@ -7,14 +7,14 @@ pub struct ToolTable;
 pub struct ToolTablePlugin;
 
 impl Plugin for ToolTablePlugin {
+    type Deps = ();
+
     fn name(&self) -> &str {
         "tool-table"
     }
 
-    fn apply<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Result<Effect, CordisError>> {
-        Box::pin(async move {
-            ctx.provide(ToolTable)?;
-            Ok(Effect::Done)
-        })
+    async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+        ctx.provide(ToolTable)?;
+        Ok(())
     }
 }

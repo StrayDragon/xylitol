@@ -23,6 +23,7 @@ xylitol-official-plugin-mcp = { workspace = true, default-features = false }
 xylitol-official-plugin-hooks = { workspace = true }
 xylitol-official-plugin-config = { workspace = true }
 xylitol-official-plugin-obs = { workspace = true }
+rutis = { workspace = true }
 rutis-loader = { workspace = true }
 anyhow = { workspace = true }
 async-trait = { workspace = true }

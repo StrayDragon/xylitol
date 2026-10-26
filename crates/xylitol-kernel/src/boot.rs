@@ -1,5 +1,6 @@
+use rutis::host::{CtxHost, FiberState};
 use rutis_loader::{Chain, Layer, Loader, LoaderOptions, LoaderPlugin, Patch};
-use xylitol_plugin_sdk::rt::{Ctx, FiberState, Typed};
+use xylitol_plugin_sdk::rt::Ctx;
 
 use crate::admit::Admit;
 use crate::bootstrap::{BootstrapError, BootstrapInput, BootstrappedRuntime, bootstrap};
@@ -49,9 +50,7 @@ pub async fn boot(opts: BootOptions) -> Result<Kernel, BootstrapError> {
     let (ctx, loader) = boot_ctx(&opts).await?;
     let mut runtime = bootstrap(BootstrapInput::from(&opts))?.into_runtime();
     runtime.driver.attach_ctx(ctx.clone());
-    if let Some(hub) = ctx.get_as::<dyn xylitol_plugin_sdk::SessionPrepareHub>(
-        xylitol_plugin_sdk::session_prepare_hub_key(),
-    ) {
+    if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
         runtime.driver.set_prepare_hub(hub);
     }
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -101,10 +100,10 @@ async fn mount_core(ctx: &Ctx, opts: &BootOptions) -> Result<(), BootstrapError>
     let registries = ctx.plugin(core::registries::RegistriesPlugin);
     (&registries).await.map_err(cordis_to_bootstrap)?;
 
-    let obs = ctx.plugin(Typed::new(xylitol_official_plugin_obs::plugin::ObsPlugin));
+    let obs = ctx.plugin(xylitol_official_plugin_obs::plugin::ObsPlugin);
     (&obs).await.map_err(cordis_to_bootstrap)?;
 
-    let trust = ctx.plugin(Typed::new(core::trust::TrustPlugin));
+    let trust = ctx.plugin(core::trust::TrustPlugin);
     (&trust).await.map_err(cordis_to_bootstrap)?;
 
     let session_host = ctx.plugin(core::session_host::SessionHostPlugin);

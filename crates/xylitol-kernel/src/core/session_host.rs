@@ -1,18 +1,18 @@
-use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin};
+use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 pub struct SessionHost;
 
 pub struct SessionHostPlugin;
 
 impl Plugin for SessionHostPlugin {
+    type Deps = ();
+
     fn name(&self) -> &str {
         "session-host"
     }
 
-    fn apply<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Result<Effect, CordisError>> {
-        Box::pin(async move {
-            ctx.provide(SessionHost)?;
-            Ok(Effect::Done)
-        })
+    async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+        ctx.provide(SessionHost)?;
+        Ok(())
     }
 }

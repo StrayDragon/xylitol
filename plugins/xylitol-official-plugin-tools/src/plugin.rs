@@ -1,46 +1,41 @@
-use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin, PluginFactory};
+use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 use xylitol_plugin_sdk::{EmptyPluginConfig, HostRegistries};
 
 use crate::default_tools;
 
 pub type ToolsPluginConfig = EmptyPluginConfig;
 
-pub struct ToolsFactory;
+pub struct ToolsPlugin;
 
-impl PluginFactory<ToolsPluginConfig> for ToolsFactory {
-    fn name(&self) -> &str {
-        "tools-builtin"
-    }
-
-    fn build(&self, _: &ToolsPluginConfig) -> Result<Box<dyn Plugin>, CordisError> {
-        Ok(Box::new(ToolsPlugin))
+impl ToolsPlugin {
+    pub fn new(_: &ToolsPluginConfig) -> Result<Self> {
+        Ok(Self)
     }
 }
 
-struct ToolsPlugin;
-
 impl Plugin for ToolsPlugin {
+    type Deps = ();
+
     fn name(&self) -> &str {
         "tools-builtin"
     }
 
-    fn apply<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Result<Effect, CordisError>> {
-        Box::pin(async move {
-            let Some(regs) = ctx.get::<HostRegistries>() else {
-                return Ok(Effect::Done);
-            };
-            let mut names = Vec::new();
-            for tool in default_tools() {
-                let name = tool.name().to_string();
-                regs.tools.insert(name.clone(), tool);
-                names.push(name);
+    async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+        let Some(regs) = ctx.get::<HostRegistries>() else {
+            return Ok(());
+        };
+        let mut names = Vec::new();
+        for tool in default_tools() {
+            let name = tool.name().to_string();
+            regs.tools.insert(name.clone(), tool);
+            names.push(name);
+        }
+        ctx.effect(|| async move {
+            for name in names {
+                regs.tools.remove(&name);
             }
-            Ok(Effect::Disposer(Box::new(move || {
-                for name in names {
-                    regs.tools.remove(&name);
-                }
-                Ok(())
-            })))
-        })
+            Ok(())
+        })?;
+        Ok(())
     }
 }

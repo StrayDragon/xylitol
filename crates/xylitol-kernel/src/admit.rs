@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use rutis_loader::{LoaderError, Resolved, Resolver};
-use xylitol_plugin_sdk::rt::BoxFuture;
+use rutis::host::BoxFuture;
+use rutis_loader::resolve::Resolved;
+use rutis_loader::{LoaderError, Resolver};
 
 pub const CORE_PLUGIN_NAMES: &[&str] = &[
     "config",

@@ -74,9 +74,7 @@ impl OccupancyFactory for ProductOccupancyFactory {
         );
         if let Some(ctx) = &self.ctx {
             driver.attach_ctx(ctx.clone());
-            if let Some(hub) = ctx.get_as::<dyn xylitol_plugin_sdk::SessionPrepareHub>(
-                xylitol_plugin_sdk::session_prepare_hub_key(),
-            ) {
+            if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
                 driver.set_prepare_hub(hub);
             }
         } else if !self.mcp_servers.is_empty() {

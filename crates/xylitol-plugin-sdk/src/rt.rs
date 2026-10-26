@@ -1,27 +1,25 @@
-pub use rutis::{
-    BoxFuture, Call, CordisError, Ctx, DisposeWaitError, Effect, ErrorSink, Event, EventBus,
-    EventKey, EventOptions, EventPattern, FiberState, FiberView, Listener, Mode, Plugin,
-    PluginFactory, PluginId, Snapshot, SyncCall, SyncListener, Terminal, TypeKey, Typed,
-    TypedFactory, TypedPlugin, TypedPluginFactory,
-};
+use std::future::Future;
 
-pub const SDK_API_VERSION: &str = "0.2.0";
+use rutis::events::Mode;
 
-pub const RUTIS_LOCK: &str = "0.15.0";
+pub use rutis::events::Call;
+pub use rutis::host::{CtxHost, ErrorKind, FiberState, TypeKey};
+pub use rutis::{Ctx, Deps, Disposer, Error, Event, Plugin, Result};
 
-pub trait CallExt<'a, V> {
-    fn chain(self) -> BoxFuture<'a, Result<Option<V>, CordisError>>;
+pub const SDK_API_VERSION: &str = "0.3.0";
+
+pub const RUTIS_LOCK: &str = "0.17.0";
+
+pub trait CallExt<E: Event> {
+    fn chain(self) -> impl Future<Output = Result<Option<E::Value>>> + Send;
 }
 
-impl<'a, V> CallExt<'a, V> for Call<'a, V>
-where
-    V: serde::Serialize + serde::de::DeserializeOwned + Send + 'static,
-{
-    fn chain(self) -> BoxFuture<'a, Result<Option<V>, CordisError>> {
+impl<E: Event> CallExt<E> for Call<E> {
+    async fn chain(self) -> Result<Option<E::Value>> {
         if self.mode() == Mode::Waterfall {
-            self.next()
+            self.next().await
         } else {
-            Box::pin(async { Ok(None) })
+            Ok(None)
         }
     }
 }
@@ -30,6 +28,8 @@ where
 mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use rutis::host::{CtxHost, ErrorSink};
 
     use super::*;
 
@@ -41,28 +41,6 @@ mod tests {
     impl Event for ChainEv {
         const NAME: &'static str = "sdk/call-chain";
         type Value = u32;
-    }
-
-    struct ChainOnce {
-        hits: Arc<AtomicUsize>,
-        done: Arc<AtomicUsize>,
-        value: u32,
-    }
-
-    impl Listener<ChainEv> for ChainOnce {
-        fn call<'a>(
-            &'a self,
-            _: &'a Ctx,
-            _: &'a ChainEv,
-            call: Call<'a, u32>,
-        ) -> BoxFuture<'a, Result<Option<u32>, CordisError>> {
-            Box::pin(async move {
-                self.hits.fetch_add(1, Ordering::SeqCst);
-                let rest = call.chain().await?;
-                self.done.fetch_add(1, Ordering::SeqCst);
-                Ok(Some(rest.unwrap_or(self.value)))
-            })
-        }
     }
 
     async fn wait_done(done: &AtomicUsize) {
@@ -85,20 +63,22 @@ mod tests {
         let ctx = Ctx::root_with_sink(tokio::runtime::Handle::current(), sink);
         let hits = Arc::new(AtomicUsize::new(0));
         let done = Arc::new(AtomicUsize::new(0));
-        ctx.events()
-            .on(
-                &ctx,
-                &EventKey::<ChainEv>::of(),
-                ChainOnce {
-                    hits: hits.clone(),
-                    done: done.clone(),
-                    value: 4,
-                },
-            )
-            .expect("on");
-        ctx.events()
-            .emit(&ctx, &EventKey::of(), Arc::new(ChainEv { n: 0 }))
-            .expect("emit");
+        ctx.on::<ChainEv>({
+            let hits = hits.clone();
+            let done = done.clone();
+            move |_, call| {
+                let hits = hits.clone();
+                let done = done.clone();
+                async move {
+                    hits.fetch_add(1, Ordering::SeqCst);
+                    let rest = call.chain().await?;
+                    done.fetch_add(1, Ordering::SeqCst);
+                    Ok(Some(rest.unwrap_or(4)))
+                }
+            }
+        })
+        .expect("on");
+        ctx.emit(ChainEv { n: 0 }).expect("emit");
         wait_done(&done).await;
         assert_eq!(hits.load(Ordering::SeqCst), 1);
         assert!(
@@ -112,23 +92,19 @@ mod tests {
     async fn chain_on_waterfall_equals_next() {
         let ctx = Ctx::root().expect("root");
         let hits = Arc::new(AtomicUsize::new(0));
-        let done = Arc::new(AtomicUsize::new(0));
-        ctx.events()
-            .on(
-                &ctx,
-                &EventKey::<ChainEv>::of(),
-                ChainOnce {
-                    hits: hits.clone(),
-                    done: done.clone(),
-                    value: 9,
-                },
-            )
-            .expect("on");
-        let got = ctx
-            .events()
-            .waterfall(&ctx, &EventKey::of(), &ChainEv { n: 1 }, ())
-            .await
-            .expect("waterfall");
+        ctx.on::<ChainEv>({
+            let hits = hits.clone();
+            move |_, call| {
+                let hits = hits.clone();
+                async move {
+                    hits.fetch_add(1, Ordering::SeqCst);
+                    let rest = call.chain().await?;
+                    Ok(Some(rest.unwrap_or(9)))
+                }
+            }
+        })
+        .expect("on");
+        let got = ctx.waterfall(ChainEv { n: 1 }).await.expect("waterfall");
         assert_eq!(got, Some(9));
         assert_eq!(hits.load(Ordering::SeqCst), 1);
         let _ = ctx.shutdown().await;

@@ -1,59 +1,47 @@
 use xylitol_plugin_sdk::EmptyPluginConfig;
-use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin, PluginFactory};
+use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
-pub struct PrintFactory;
+pub struct PrintPlugin;
 
-impl PluginFactory<EmptyPluginConfig> for PrintFactory {
-    fn name(&self) -> &str {
-        "app-print"
-    }
-
-    fn build(&self, _: &EmptyPluginConfig) -> Result<Box<dyn Plugin>, CordisError> {
-        Ok(Box::new(PrintPlugin))
+impl PrintPlugin {
+    pub fn new(_: &EmptyPluginConfig) -> Result<Self> {
+        Ok(Self)
     }
 }
 
-struct PrintPlugin;
-
 impl Plugin for PrintPlugin {
+    type Deps = ();
+
     fn name(&self) -> &str {
         "app-print"
     }
 
-    fn apply<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Result<Effect, CordisError>> {
-        Box::pin(async move {
-            ctx.provide(PrintSurface)?;
-            Ok(Effect::Done)
-        })
+    async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+        ctx.provide(PrintSurface)?;
+        Ok(())
     }
 }
 
 pub struct PrintSurface;
 
-pub struct ServeFactory;
+pub struct ServePlugin;
 
-impl PluginFactory<EmptyPluginConfig> for ServeFactory {
-    fn name(&self) -> &str {
-        "serve"
-    }
-
-    fn build(&self, _: &EmptyPluginConfig) -> Result<Box<dyn Plugin>, CordisError> {
-        Ok(Box::new(ServePlugin))
+impl ServePlugin {
+    pub fn new(_: &EmptyPluginConfig) -> Result<Self> {
+        Ok(Self)
     }
 }
 
-struct ServePlugin;
-
 impl Plugin for ServePlugin {
+    type Deps = ();
+
     fn name(&self) -> &str {
         "serve"
     }
 
-    fn apply<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Result<Effect, CordisError>> {
-        Box::pin(async move {
-            ctx.provide(ServeSurface)?;
-            Ok(Effect::Done)
-        })
+    async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+        ctx.provide(ServeSurface)?;
+        Ok(())
     }
 }
 

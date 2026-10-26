@@ -3,11 +3,9 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use rutis::host::CtxHost;
     use rutis_loader::{Builtins, LoaderError, Resolver};
-    use xylitol_plugin_sdk::rt::{
-        BoxFuture, Call, CallExt, CordisError, Ctx, Effect, Event, EventKey, FiberState, Listener,
-        Plugin,
-    };
+    use xylitol_plugin_sdk::rt::{CallExt, Ctx, Event, FiberState, Plugin, Result};
 
     use crate::admit::{Admit, CORE_PLUGIN_NAMES, is_core_plugin_name};
     use crate::boot::{BootOptions, Profile, boot_ctx};
@@ -97,56 +95,35 @@ mod tests {
         type Value = u32;
     }
 
-    struct Append {
-        log: Arc<MutexLog>,
-        tag: u32,
-    }
-
     struct MutexLog(std::sync::Mutex<Vec<u32>>);
-
-    impl Listener<OrderEv> for Append {
-        fn call<'a>(
-            &'a self,
-            _: &'a Ctx,
-            _: &'a OrderEv,
-            call: Call<'a, u32>,
-        ) -> BoxFuture<'a, Result<Option<u32>, CordisError>> {
-            Box::pin(async move {
-                self.log.0.lock().expect("log").push(self.tag);
-                call.next().await
-            })
-        }
-    }
 
     #[tokio::test]
     async fn waterfall_runs_in_registration_order() {
         let ctx = Ctx::root().expect("root");
         let log = Arc::new(MutexLog(std::sync::Mutex::new(Vec::new())));
-        ctx.events()
-            .on(
-                &ctx,
-                &EventKey::<OrderEv>::of(),
-                Append {
-                    log: log.clone(),
-                    tag: 1,
-                },
-            )
-            .expect("on 1");
-        ctx.events()
-            .on(
-                &ctx,
-                &EventKey::<OrderEv>::of(),
-                Append {
-                    log: log.clone(),
-                    tag: 2,
-                },
-            )
-            .expect("on 2");
-        let _ = ctx
-            .events()
-            .waterfall(&ctx, &EventKey::of(), &OrderEv { n: 0 }, ())
-            .await
-            .expect("waterfall");
+        ctx.on::<OrderEv>({
+            let log = log.clone();
+            move |_, call| {
+                let log = log.clone();
+                async move {
+                    log.0.lock().expect("log").push(1);
+                    call.next().await
+                }
+            }
+        })
+        .expect("on 1");
+        ctx.on::<OrderEv>({
+            let log = log.clone();
+            move |_, call| {
+                let log = log.clone();
+                async move {
+                    log.0.lock().expect("log").push(2);
+                    call.next().await
+                }
+            }
+        })
+        .expect("on 2");
+        let _ = ctx.waterfall(OrderEv { n: 0 }).await.expect("waterfall");
         assert_eq!(*log.0.lock().expect("log"), vec![1, 2]);
         let _ = ctx.shutdown().await;
     }
@@ -156,14 +133,15 @@ mod tests {
     struct ProvideOnce;
 
     impl Plugin for ProvideOnce {
+        type Deps = ();
+
         fn name(&self) -> &str {
             "provide-once"
         }
-        fn apply<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Result<Effect, CordisError>> {
-            Box::pin(async move {
-                ctx.provide(Marker)?;
-                Ok(Effect::Done)
-            })
+
+        async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+            ctx.provide(Marker)?;
+            Ok(())
         }
     }
 
@@ -187,37 +165,21 @@ mod tests {
     async fn in_flight_call_fails_once_after_unload() {
         let ctx = Ctx::root().expect("root");
         let hits = Arc::new(AtomicUsize::new(0));
-        struct Hang {
-            hits: Arc<AtomicUsize>,
-        }
-        impl Listener<OrderEv> for Hang {
-            fn call<'a>(
-                &'a self,
-                _: &'a Ctx,
-                _: &'a OrderEv,
-                call: Call<'a, u32>,
-            ) -> BoxFuture<'a, Result<Option<u32>, CordisError>> {
-                let hits = self.hits.clone();
-                Box::pin(async move {
-                    hits.fetch_add(1, Ordering::SeqCst);
-                    call.next().await
-                })
-            }
-        }
         let view = ctx.plugin(ProvideOnce);
         (&view).await.expect("apply");
-        ctx.events()
-            .on(
-                &ctx,
-                &EventKey::<OrderEv>::of(),
-                Hang { hits: hits.clone() },
-            )
-            .expect("on");
+        ctx.on::<OrderEv>({
+            let hits = hits.clone();
+            move |_, call| {
+                let hits = hits.clone();
+                async move {
+                    hits.fetch_add(1, Ordering::SeqCst);
+                    call.next().await
+                }
+            }
+        })
+        .expect("on");
         view.dispose().await.expect("dispose");
-        let result = ctx
-            .events()
-            .waterfall(&ctx, &EventKey::of(), &OrderEv { n: 1 }, ())
-            .await;
+        let result = ctx.waterfall(OrderEv { n: 1 }).await;
         assert!(result.is_ok() || result.is_err());
         let _ = ctx.shutdown().await;
     }
@@ -246,29 +208,6 @@ mod tests {
         }
     }
 
-    struct Slow {
-        started: Arc<AtomicUsize>,
-        hold: Arc<tokio::sync::Semaphore>,
-    }
-
-    impl Listener<xylitol_plugin_sdk::plugin_events::SessionPrepare> for Slow {
-        fn call<'a>(
-            &'a self,
-            _: &'a Ctx,
-            _: &'a xylitol_plugin_sdk::plugin_events::SessionPrepare,
-            call: Call<'a, xylitol_plugin_sdk::plugin_events::SessionPrepareResult>,
-        ) -> BoxFuture<
-            'a,
-            Result<Option<xylitol_plugin_sdk::plugin_events::SessionPrepareResult>, CordisError>,
-        > {
-            Box::pin(async move {
-                self.started.fetch_add(1, Ordering::SeqCst);
-                let _permit = self.hold.acquire().await.expect("hold");
-                call.chain().await
-            })
-        }
-    }
-
     fn prepare_ev(
         reason: xylitol_plugin_sdk::plugin_events::SessionPrepareReason,
     ) -> xylitol_plugin_sdk::plugin_events::SessionPrepare {
@@ -285,25 +224,24 @@ mod tests {
         let ctx = Ctx::root().expect("root");
         let started = Arc::new(AtomicUsize::new(0));
         let hold = Arc::new(tokio::sync::Semaphore::new(0));
-        ctx.events()
-            .on(
-                &ctx,
-                &EventKey::<SessionPrepare>::of(),
-                Slow {
-                    started: started.clone(),
-                    hold: hold.clone(),
-                },
-            )
-            .expect("on");
-        ctx.events()
-            .emit(
-                &ctx,
-                &EventKey::of(),
-                std::sync::Arc::new(prepare_ev(
-                    xylitol_plugin_sdk::plugin_events::SessionPrepareReason::Switch,
-                )),
-            )
-            .expect("emit");
+        ctx.on::<SessionPrepare>({
+            let started = started.clone();
+            let hold = hold.clone();
+            move |_, call| {
+                let started = started.clone();
+                let hold = hold.clone();
+                async move {
+                    started.fetch_add(1, Ordering::SeqCst);
+                    let _permit = hold.acquire().await.expect("hold");
+                    call.chain().await
+                }
+            }
+        })
+        .expect("on");
+        ctx.emit(prepare_ev(
+            xylitol_plugin_sdk::plugin_events::SessionPrepareReason::Switch,
+        ))
+        .expect("emit");
         for _ in 0..16 {
             if started.load(Ordering::SeqCst) >= 1 {
                 break;
@@ -325,22 +263,23 @@ mod tests {
         let ctx = Ctx::root().expect("root");
         let started = Arc::new(AtomicUsize::new(0));
         let hold = Arc::new(tokio::sync::Semaphore::new(0));
-        ctx.events()
-            .on(
-                &ctx,
-                &EventKey::<SessionPrepare>::of(),
-                Slow {
-                    started: started.clone(),
-                    hold: hold.clone(),
-                },
-            )
-            .expect("on");
+        ctx.on::<SessionPrepare>({
+            let started = started.clone();
+            let hold = hold.clone();
+            move |_, call| {
+                let started = started.clone();
+                let hold = hold.clone();
+                async move {
+                    started.fetch_add(1, Ordering::SeqCst);
+                    let _permit = hold.acquire().await.expect("hold");
+                    call.chain().await
+                }
+            }
+        })
+        .expect("on");
         let ev = prepare_ev(xylitol_plugin_sdk::plugin_events::SessionPrepareReason::Generate);
-        let timed = tokio::time::timeout(
-            std::time::Duration::from_millis(15),
-            ctx.events().waterfall(&ctx, &EventKey::of(), &ev, ()),
-        )
-        .await;
+        let timed =
+            tokio::time::timeout(std::time::Duration::from_millis(15), ctx.waterfall(ev)).await;
         assert!(timed.is_err(), "wait must time out and still proceed");
         assert!(started.load(Ordering::SeqCst) >= 1);
         hold.add_permits(1);

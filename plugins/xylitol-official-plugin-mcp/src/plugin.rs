@@ -6,11 +6,8 @@ use xylitol_plugin_sdk::HostRegistries;
 use xylitol_plugin_sdk::plugin_events::{
     SessionPrepare, SessionPrepareReason, SessionPrepareResult,
 };
-use xylitol_plugin_sdk::rt::{
-    BoxFuture, Call, CallExt, CordisError, Ctx, Effect, EventKey, Listener, Plugin, PluginFactory,
-};
+use xylitol_plugin_sdk::rt::{CallExt, Ctx, Plugin, Result};
 use xylitol_plugin_sdk::session_prepare::SessionPrepareHub;
-use xylitol_plugin_sdk::session_prepare_hub_key;
 
 use crate::config::McpServerConfig;
 use crate::hub::McpPrepareHub;
@@ -21,71 +18,52 @@ pub struct McpPluginConfig {
     pub servers: Vec<McpServerConfig>,
 }
 
-pub struct McpFactory;
-
-impl PluginFactory<McpPluginConfig> for McpFactory {
-    fn name(&self) -> &str {
-        "mcp"
-    }
-
-    fn build(&self, config: &McpPluginConfig) -> Result<Box<dyn Plugin>, CordisError> {
-        Ok(Box::new(McpPlugin {
-            servers: config.servers.clone(),
-        }))
-    }
-}
-
-struct McpPlugin {
+pub struct McpPlugin {
     servers: Vec<McpServerConfig>,
 }
 
+impl McpPlugin {
+    pub fn new(config: &McpPluginConfig) -> Result<Self> {
+        Ok(Self {
+            servers: config.servers.clone(),
+        })
+    }
+}
+
 impl Plugin for McpPlugin {
+    type Deps = ();
+
     fn name(&self) -> &str {
         "mcp"
     }
 
-    fn apply<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Result<Effect, CordisError>> {
-        Box::pin(async move {
-            let hub = McpPrepareHub::new(self.servers.clone());
-            let hub_arc: Arc<dyn SessionPrepareHub> = Arc::new(hub.clone());
-            ctx.provide_as(session_prepare_hub_key(), hub_arc)?;
-            ctx.events().on(
-                ctx,
-                &EventKey::<SessionPrepare>::of(),
-                McpPrepareListener { hub },
-            )?;
-            Ok(Effect::Done)
-        })
-    }
-}
-
-struct McpPrepareListener {
-    hub: McpPrepareHub,
-}
-
-impl Listener<SessionPrepare> for McpPrepareListener {
-    fn call<'a>(
-        &'a self,
-        ctx: &'a Ctx,
-        event: &'a SessionPrepare,
-        call: Call<'a, SessionPrepareResult>,
-    ) -> BoxFuture<'a, Result<Option<SessionPrepareResult>, CordisError>> {
-        Box::pin(async move {
-            if event.reason != SessionPrepareReason::Generate {
-                self.hub.cue_connecting();
-                self.hub.reset_join().await;
-            }
-            let mine = self.hub.ensure().await;
-            if let Some(regs) = ctx.get::<HostRegistries>() {
-                for tool in self.hub.tools() {
-                    let name = tool.name().to_string();
-                    regs.tools.insert(name, tool);
+    async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+        let hub = McpPrepareHub::new(self.servers.clone());
+        let hub_arc: Arc<dyn SessionPrepareHub> = Arc::new(hub.clone());
+        ctx.provide_as::<dyn SessionPrepareHub>(hub_arc)?;
+        ctx.on::<SessionPrepare>({
+            let hub = hub.clone();
+            move |event, call| {
+                let hub = hub.clone();
+                async move {
+                    if event.reason != SessionPrepareReason::Generate {
+                        hub.cue_connecting();
+                        hub.reset_join().await;
+                    }
+                    let mine = hub.ensure().await;
+                    if let Some(regs) = call.ctx().get::<HostRegistries>() {
+                        for tool in hub.tools() {
+                            let name = tool.name().to_string();
+                            regs.tools.insert(name, tool);
+                        }
+                    }
+                    let mut acc = call.chain().await?.unwrap_or_default();
+                    merge_prepare(&mut acc, mine);
+                    Ok(Some(acc))
                 }
             }
-            let mut acc = call.chain().await?.unwrap_or_default();
-            merge_prepare(&mut acc, mine);
-            Ok(Some(acc))
-        })
+        })?;
+        Ok(())
     }
 }
 

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin};
+use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 use crate::loader::load_app_config_detailed;
 use crate::types::AppConfig;
@@ -17,25 +17,24 @@ pub struct ConfigPlugin {
 }
 
 impl Plugin for ConfigPlugin {
+    type Deps = ();
+
     fn name(&self) -> &str {
         "config"
     }
 
-    fn apply<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Result<Effect, CordisError>> {
-        Box::pin(async move {
-            let loaded = load_app_config_detailed(self.config_path.as_deref())
-                .map_err(|e| CordisError::PluginFailed(Box::new(e)))?;
-            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-            let agent_dir = dirs::home_dir()
-                .unwrap_or_else(std::env::temp_dir)
-                .join(".xylitol");
-            ctx.provide(ConfigService {
-                app: loaded.config,
-                agent_dir,
-                cwd,
-                from_yaml_layers: loaded.from_yaml_layers,
-            })?;
-            Ok(Effect::Done)
-        })
+    async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+        let loaded = load_app_config_detailed(self.config_path.as_deref())?;
+        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        let agent_dir = dirs::home_dir()
+            .unwrap_or_else(std::env::temp_dir)
+            .join(".xylitol");
+        ctx.provide(ConfigService {
+            app: loaded.config,
+            agent_dir,
+            cwd,
+            from_yaml_layers: loaded.from_yaml_layers,
+        })?;
+        Ok(())
     }
 }

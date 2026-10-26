@@ -1,29 +1,26 @@
 use rutis_loader::Builtins;
-use xylitol_official_plugin_compaction::plugin::CompactionFactory;
-use xylitol_official_plugin_hooks::HooksConfig;
-use xylitol_official_plugin_hooks::plugin::HooksFactory;
-use xylitol_official_plugin_mcp::plugin::{McpFactory, McpPluginConfig};
-use xylitol_official_plugin_provider_anthropic::plugin::AnthropicFactory;
-use xylitol_official_plugin_provider_openai::fake_plugin::FakeFactory;
-use xylitol_official_plugin_provider_openai::plugin::OpenAiFactory;
-use xylitol_official_plugin_session::plugin::{SessionPluginConfig, SessionStoreFactory};
-use xylitol_official_plugin_tools::plugin::{ToolsFactory, ToolsPluginConfig};
-use xylitol_plugin_sdk::EmptyPluginConfig;
-use xylitol_plugin_sdk::compaction_config::XyCompactionSettingsConfig;
+use xylitol_official_plugin_compaction::plugin::CompactionPlugin;
+use xylitol_official_plugin_hooks::plugin::HooksPlugin;
+use xylitol_official_plugin_mcp::plugin::McpPlugin;
+use xylitol_official_plugin_provider_anthropic::plugin::AnthropicPlugin;
+use xylitol_official_plugin_provider_openai::fake_plugin::FakePlugin;
+use xylitol_official_plugin_provider_openai::plugin::OpenAiPlugin;
+use xylitol_official_plugin_session::plugin::SessionStorePlugin;
+use xylitol_official_plugin_tools::plugin::ToolsPlugin;
 
-use crate::surfaces::{PrintFactory, ServeFactory};
+use crate::surfaces::{PrintPlugin, ServePlugin};
 
 pub fn official_builtins() -> Builtins {
     let mut builtins = Builtins::new();
-    builtins.register::<SessionPluginConfig, _>("session-store", SessionStoreFactory);
-    builtins.register::<XyCompactionSettingsConfig, _>("compaction", CompactionFactory);
-    builtins.register::<ToolsPluginConfig, _>("tools-builtin", ToolsFactory);
-    builtins.register::<McpPluginConfig, _>("mcp", McpFactory);
-    builtins.register::<HooksConfig, _>("hooks", HooksFactory);
-    builtins.register::<EmptyPluginConfig, _>("provider-openai", OpenAiFactory);
-    builtins.register::<EmptyPluginConfig, _>("provider-anthropic", AnthropicFactory);
-    builtins.register::<EmptyPluginConfig, _>("provider-fake", FakeFactory);
-    builtins.register::<EmptyPluginConfig, _>("app-print", PrintFactory);
-    builtins.register::<EmptyPluginConfig, _>("serve", ServeFactory);
+    builtins.register("session-store", SessionStorePlugin::new);
+    builtins.register("compaction", CompactionPlugin::new);
+    builtins.register("tools-builtin", ToolsPlugin::new);
+    builtins.register("mcp", McpPlugin::new);
+    builtins.register("hooks", HooksPlugin::new);
+    builtins.register("provider-openai", OpenAiPlugin::new);
+    builtins.register("provider-anthropic", AnthropicPlugin::new);
+    builtins.register("provider-fake", FakePlugin::new);
+    builtins.register("app-print", PrintPlugin::new);
+    builtins.register("serve", ServePlugin::new);
     builtins
 }

@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 use xylitol_plugin_sdk::plugin_events::{
     SessionPrepare, SessionPrepareReason, SessionPrepareResult,
 };
-use xylitol_plugin_sdk::rt::{Ctx, EventKey};
+use xylitol_plugin_sdk::rt::Ctx;
 use xylitol_plugin_sdk::session_prepare::{SessionPrepareHub, SessionPrepareView};
 use xylitol_plugin_sdk::tool_name::is_mcp_tool_name;
 
@@ -87,8 +87,8 @@ impl XyInProcessDriver {
         }
         let session_id = self.agent.session_id().unwrap_or("").to_string();
         if let Some(ctx) = &self.ctx {
-            let ev = Arc::new(SessionPrepare { session_id, reason });
-            let _ = ctx.events().emit(ctx, &EventKey::of(), ev);
+            let ev = SessionPrepare { session_id, reason };
+            let _ = ctx.emit(ev);
             return;
         }
         if let Some(hub) = &self.prepare_hub
@@ -106,12 +106,7 @@ impl XyInProcessDriver {
         };
         let timeout = MCP_FIRST_TURN_GATE_TIMEOUT;
         let result = if let Some(ctx) = self.ctx.clone() {
-            match tokio::time::timeout(
-                timeout,
-                ctx.events().waterfall(&ctx, &EventKey::of(), &ev, ()),
-            )
-            .await
-            {
+            match tokio::time::timeout(timeout, ctx.waterfall(ev)).await {
                 Ok(Ok(Some(r))) => r,
                 Ok(Ok(None)) | Ok(Err(_)) => self.hub_wait(timeout).await,
                 Err(_) => {

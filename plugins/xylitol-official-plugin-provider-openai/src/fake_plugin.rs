@@ -1,31 +1,25 @@
 use xylitol_plugin_sdk::EmptyPluginConfig;
-use xylitol_plugin_sdk::rt::{BoxFuture, CordisError, Ctx, Effect, Plugin, PluginFactory};
+use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 pub struct FakeDialect;
 
-pub struct FakeFactory;
+pub struct FakePlugin;
 
-impl PluginFactory<EmptyPluginConfig> for FakeFactory {
-    fn name(&self) -> &str {
-        "provider-fake"
-    }
-
-    fn build(&self, _: &EmptyPluginConfig) -> Result<Box<dyn Plugin>, CordisError> {
-        Ok(Box::new(FakePlugin))
+impl FakePlugin {
+    pub fn new(_: &EmptyPluginConfig) -> Result<Self> {
+        Ok(Self)
     }
 }
 
-struct FakePlugin;
-
 impl Plugin for FakePlugin {
+    type Deps = ();
+
     fn name(&self) -> &str {
         "provider-fake"
     }
 
-    fn apply<'a>(&'a self, ctx: &'a Ctx) -> BoxFuture<'a, Result<Effect, CordisError>> {
-        Box::pin(async move {
-            ctx.provide(FakeDialect)?;
-            Ok(Effect::Done)
-        })
+    async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+        ctx.provide(FakeDialect)?;
+        Ok(())
     }
 }
