@@ -124,6 +124,11 @@ test verbosity=verbosity_default:
 gen-config-example:
     python3 scripts/gen_config_example.py
 
+# Regenerate configs/config.schema.json from schema_for!(AppConfig).
+# Drift gate lives in config-crate unit tests (via `just test`), not in qa-check-scripts.
+gen-config-schema:
+    cargo run -q -p xylitol-official-plugin-config --bin gen-config-schema
+
 # Provider-safe MCP tool naming gate (registry SSOT + wire encode on all three APIs).
 # Not live-network; safe in qa loops. Prefer this after changing MCP_PUBLIC_DELIMITER.
 [arg('verbosity', pattern='quiet|normal|verbose')]

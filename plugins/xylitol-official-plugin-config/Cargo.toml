@@ -27,3 +27,7 @@ yaml_serde = { workspace = true }
 [dev-dependencies]
 serial_test = { workspace = true }
 tempfile = { workspace = true }
+
+[[bin]]
+name = "gen-config-schema"
+path = "src/bin/gen_config_schema.rs"

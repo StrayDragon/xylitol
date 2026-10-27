@@ -6,6 +6,8 @@
 # reference keys in YAML as "{{ secret.OPENAI_API_KEY }}".
 # User home path: "{{ vars.home }}" (only vars.home; do not hardcode /home/…).
 # config.local.yaml is not supported.
+# Editor/JSON-Schema contract: configs/config.schema.json is generated from
+# schema_for!(AppConfig) — regenerate with `just gen-config-schema`.
 
 models:
   # Uncomment default_model + at least one entry under models before first use

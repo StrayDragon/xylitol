@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 配置 schema 产物与代码同源生成
+branch: sdd/c2949-fix-config-schema-artifact
+base_branch: main
+base_sha: 35daeb68035791a6f14bf6d09a415ea22022f171
 ---
 
 # 配置 schema 产物与代码同源生成
