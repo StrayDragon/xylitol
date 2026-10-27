@@ -1619,6 +1619,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                 .find(|m| m.role_name() == "assistant")
                                 .cloned(),
                             history_len: history.len(),
+                            compact: None,
                         };
                         match run_decide_continue(&loop_chain, &cancel, turn_obs_parent, ctx).await {
                             Ok(out) => match out.control {
@@ -1641,6 +1642,14 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                         yield middleware_limit_event("compact");
                                         break 'outer;
                                     }
+                                    let request = out.ctx.compact.unwrap_or_default();
+                                    let requested_by = out
+                                        .stopped_by
+                                        .clone()
+                                        .unwrap_or_else(|| "unknown".into());
+                                    let reason = request
+                                        .reason
+                                        .unwrap_or_else(|| format!("loop_middleware:{requested_by}"));
                                     match super::react::turn_end::force_compact_once(
                                         &store,
                                         &session_id,
@@ -1651,6 +1660,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                         &obs_session,
                                         &cwd,
                                         pending_prepare.as_ref(),
+                                        request.instructions,
+                                        &reason,
                                     )
                                     .await
                                     {
@@ -1660,7 +1671,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                         }
                                         Err(e) => {
                                             yield XyEvent::error_msg(format!(
-                                                "loop middleware compact failed: {e}"
+                                                "loop middleware {requested_by} compact failed: {e}"
                                             ));
                                             break 'outer;
                                         }
@@ -1720,20 +1731,27 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 };
                 let parent_ctx = iteration_parent;
 
+                let mut prepared: Vec<super::tool_exec::PreparedCall> =
+                    Vec::with_capacity(tool_calls.len());
+                for (id, name, args) in &tool_calls {
+                    prepared.push(
+                        super::tool_exec::prepare_call(&tool_env, id, name, args, parent_ctx).await,
+                    );
+                }
+
                 let planned: Vec<super::tool_batch::PlannedWindow> = match batch_mode {
-                    XyBatchMode::Sequential => tool_calls
-                        .iter()
-                        .enumerate()
-                        .map(|(i, _)| super::tool_batch::PlannedWindow::Barrier(i))
+                    XyBatchMode::Sequential => (0..prepared.len())
+                        .map(super::tool_batch::PlannedWindow::Barrier)
                         .collect(),
                     XyBatchMode::BarrierParallel => {
-                        let classes: Vec<_> = tool_calls
+                        let classes: Vec<_> = prepared
                             .iter()
-                            .map(|(_, name, _)| {
-                                let tool = tools.get(name);
+                            .map(|call| {
                                 super::tool_batch::classify(
-                                    name,
-                                    tool.as_ref().map(|t| t.as_ref() as &dyn xylitol_plugin_sdk::XyTool),
+                                    &call.name,
+                                    call.tool
+                                        .as_ref()
+                                        .map(|t| t.as_ref() as &dyn xylitol_plugin_sdk::XyTool),
                                 )
                             })
                             .collect();
@@ -1745,13 +1763,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     let barrier_index = barrier_index as u32;
                     match window {
                         super::tool_batch::PlannedWindow::Barrier(i) => {
-                            let (id, name, args) = &tool_calls[i];
+                            let call = &prepared[i];
                             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
                             let fut = super::tool_exec::run_one(
                                 &tool_env,
-                                id,
-                                name,
-                                args,
+                                call,
                                 tx,
                                 parent_ctx,
                                 barrier_index,
@@ -1810,14 +1826,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
                             let mut futs = Vec::with_capacity(idxs.len());
                             for &i in &idxs {
-                                let (id, name, args) = &tool_calls[i];
+                                let call = &prepared[i];
                                 let tx = tx.clone();
                                 futs.push(async {
                                     super::tool_exec::run_one(
                                         &tool_env,
-                                        id,
-                                        name,
-                                        args,
+                                        call,
                                         tx,
                                         parent_ctx,
                                         barrier_index,

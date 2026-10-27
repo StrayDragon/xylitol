@@ -2,6 +2,9 @@
 depends_on:
   - c2944-add-loop-middleware
 title: Loop 中间件契约载荷（结构化结果 / 工具路由 / 压缩决策）
+branch: sdd/c2945-update-loop-middleware-payloads
+base_branch: main
+base_sha: 5ba3a630c5962af4060b26e9df1e9d8146b0aced
 ---
 
 # Loop 中间件契约载荷（结构化结果 / 工具路由 / 压缩决策）

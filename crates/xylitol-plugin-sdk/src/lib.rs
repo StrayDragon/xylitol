@@ -60,8 +60,8 @@ pub use lifecycle::{XyEvent, XyEventError};
 pub use llm_project::project_for_llm;
 pub use loop_middleware::{
     AfterModelCtx, AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx,
-    DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware, LoopMiddlewareHandle,
-    LoopMiddlewareRegistry, LoopStage, LoopStep,
+    CompactRequest, DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware,
+    LoopMiddlewareHandle, LoopMiddlewareRegistry, LoopStage, LoopStep,
 };
 pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
 pub use model::{

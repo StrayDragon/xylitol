@@ -345,7 +345,7 @@
 
   @req:r2922
   规则: loop-middleware-tool-gate
-    before_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core permission 之前运行；可改工具参数，但 core 须用最终参数重新计算权限目标并再裁一次（改工具名不在本要求范围）。中间件拒绝 须使工具以 tool-error 回写且不执行；中间件放行 不得撤销上游拒绝，也不得绕过 core permission。审批只能更严；更松须显式 capability 与用户信任，不在本要求范围。
+    before_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core permission 之前运行，且在工具批执行规划之前完成预演：中间件可改工具参数与工具名；core 须按最终工具名与最终参数重算权限目标并再裁一次，并按最终工具的执行分类重排并发窗，不得沿用原工具名或原参数的任何判定。中间件拒绝 须使工具以 tool-error 回写且不执行；中间件放行 不得撤销上游拒绝，也不得绕过 core permission。路由目标 须限于本次运行已装配的工具集，不得新增工具调用，也不得借路由绕过 MCP 前缀的串行纪律；找不到目标即 tool-error。审批只能更严；更松须显式 capability 与用户信任，不在本要求范围。
 
     场景: 中间件拒绝更严
       假如 注册 before_tool 中间件拒绝 bash
@@ -356,6 +356,21 @@
       假如 注册 before_tool 中间件把 bash 参数改为访问被拒域名且权限引擎拒绝该域名
       当 运行 AgentRuntime 触发 bash
       那么 tool-error 回写且原因含 permission denied
+
+    场景: 改路由按新工具重裁
+      假如 注册 before_tool 中间件把 read 路由到 write 且权限引擎拒绝该写入路径
+      当 运行 AgentRuntime 触发 read
+      那么 tool-error 回写且原因含 permission denied
+
+    场景: 改路由按新分类重排
+      假如 注册 before_tool 中间件把并行安全的 read 路由到串行工具
+      当 运行 AgentRuntime 并收集工具批事件
+      那么 该调用单独成窗且不与后续并行安全调用重叠
+
+    场景: 改路由目标须已装配
+      假如 注册 before_tool 中间件把 read 路由到未装配的工具名
+      当 运行 AgentRuntime 触发 read
+      那么 tool-error 回写且原因含 Unknown tool
 
   @req:r2923
   规则: loop-middleware-bounded
@@ -388,6 +403,34 @@
       假如 以启用 loop 示例插件装配运行时
       当 卸载该插件
       那么 注册表不再含该插件的中间件
+
+  @req:r2929
+  规则: loop-middleware-structured-result
+    after_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core quiet 摘要之前接收结构化结果：载荷含原始内容分片、可解析的结构化详情与错误标志，不得只提供拍平文本。中间件改写后的内容与详情 须成为本调用的历史回写与 ToolExecutionEnd 结果；core 的 write/edit quiet 摘要 仅在结果仍为单段文本时生效，且不得丢弃中间件给出的结构化详情。工具产出的非文本分片 须在历史回写中保真，不得被拍平为占位文本。
+
+    场景: 结构化分片保真
+      假如 注册 after_tool 中间件且工具返回图片分片
+      当 运行 AgentRuntime 触发该工具
+      那么 历史回写仍含图片分片
+
+    场景: 改写详情生效
+      假如 注册 after_tool 中间件把结构化详情替换为带标记的对象
+      当 运行 AgentRuntime 触发该工具
+      那么 该调用的历史回写详情含该标记
+
+  @req:r2930
+  规则: loop-middleware-compact-request
+    decide_continue 返回 compact 时，中间件 须能随决策提供压缩指令与来源标签；core 须把来源标签带入压缩开始与结束事件的 reason，缺省时 须以中间件标识构造稳定标签，不得一律记为手动压缩。压缩成功后 须向本 run 事件流发出压缩后结算，供插件与端读取压缩后占用；压缩失败 须以带中间件标识的错误结束本 run。压缩仍只由 core 调度，中间件不得自行调用压缩或改写压缩策略。
+
+    场景: 压缩来源可辨识
+      假如 注册 decide_continue 中间件返回带来源标签的 compact 决策
+      当 运行 AgentRuntime 并收集压缩事件
+      那么 CompactionStart 与 CompactionEnd 的 reason 含该标签
+
+    场景: 压缩后结算可见
+      假如 注册 decide_continue 中间件返回 compact 决策且压缩成功
+      当 运行 AgentRuntime 并收集事件
+      那么 事件流含压缩后结算
 
   @req:r2926
   规则: loop-middleware-visible-consistency

@@ -7,6 +7,8 @@ pub(crate) fn compaction_reason_kind(reason: &str) -> &'static str {
         "overflow"
     } else if reason.starts_with("threshold") {
         "threshold"
+    } else if reason.starts_with("loop_middleware") {
+        "loop_middleware"
     } else {
         "manual"
     }
@@ -107,5 +109,21 @@ impl AgentCompactionSpan {
                 ]
             }));
         drop(self);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compaction_reason_kind;
+
+    #[test]
+    fn middleware_reason_is_not_folded_into_manual() {
+        assert_eq!(
+            compaction_reason_kind("loop_middleware:focus"),
+            "loop_middleware"
+        );
+        assert_eq!(compaction_reason_kind("manual"), "manual");
+        assert_eq!(compaction_reason_kind("threshold auto"), "threshold");
+        assert_eq!(compaction_reason_kind("overflow Case1"), "overflow");
     }
 }

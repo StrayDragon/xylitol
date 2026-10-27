@@ -97,6 +97,7 @@ impl AgentCapabilities {
                 &summary,
                 self.sink.as_ref(),
                 instructions,
+                "manual",
                 self.current_model().map(|m| m.context_window).unwrap_or(0),
                 Some(&self.fixed_request_context()),
                 &mut fallback_notice_emitted,

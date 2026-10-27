@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::error::XyError;
 use crate::generate::XyGenerateOptions;
-use crate::message::AgentMessage;
+use crate::message::{AgentMessage, AgentPart};
 use crate::model::XyToolSchema;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -118,8 +118,15 @@ pub struct AfterToolCtx {
     pub turn_index: u32,
     pub tool_call_id: String,
     pub tool_name: String,
-    pub result: String,
+    pub parts: Vec<AgentPart>,
+    pub details: Option<Value>,
     pub is_error: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CompactRequest {
+    pub instructions: Option<String>,
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +136,7 @@ pub struct DecideContinueCtx {
     pub has_new_user_messages: bool,
     pub assistant: Option<AgentMessage>,
     pub history_len: usize,
+    pub compact: Option<CompactRequest>,
 }
 
 #[derive(Debug, Clone)]
@@ -481,5 +489,44 @@ mod tests {
         assert_eq!(LoopControl::Handoff.as_str(), "handoff");
         assert_eq!(LoopStage::DecideContinue.as_str(), "decide_continue");
         assert_eq!(LoopStage::ALL.len(), 7);
+    }
+
+    #[test]
+    fn after_tool_carries_structured_payload() {
+        let ctx = AfterToolCtx {
+            turn_index: 2,
+            tool_call_id: "call-9".into(),
+            tool_name: "read".into(),
+            parts: vec![AgentPart::Image(crate::dto::ImageContent {
+                url: None,
+                data: Some("AAA".into()),
+                media_type: "image/png".into(),
+            })],
+            details: Some(serde_json::json!({ "success": true })),
+            is_error: false,
+        };
+        assert!(matches!(ctx.parts[0], AgentPart::Image(_)));
+        assert_eq!(
+            ctx.details.as_ref().and_then(|d| d.get("success")),
+            Some(&serde_json::Value::Bool(true))
+        );
+    }
+
+    #[test]
+    fn compact_request_defaults_to_none() {
+        let ctx = DecideContinueCtx {
+            turn_index: 0,
+            settle_count: 1,
+            has_new_user_messages: false,
+            assistant: None,
+            history_len: 3,
+            compact: None,
+        };
+        assert!(ctx.compact.is_none());
+        let filled = CompactRequest {
+            instructions: Some("keep recent tool results".into()),
+            reason: Some("loop_middleware:focus".into()),
+        };
+        assert_eq!(filled.reason.as_deref(), Some("loop_middleware:focus"));
     }
 }

@@ -80,3 +80,45 @@ async fn test_lm_assistant_before_message_end(agent: AgentState, ws: Workspace) 
     name = "系统碎片进入压缩上下文"
 )]
 async fn test_lm_fragment_reaches_fixed_context(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "改路由按新工具重裁"
+)]
+async fn test_lm_route_permission_recheck(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "改路由按新分类重排"
+)]
+async fn test_lm_route_reclassify(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "改路由目标须已装配"
+)]
+async fn test_lm_route_unknown_tool(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "结构化分片保真"
+)]
+async fn test_lm_structured_parts(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "改写详情生效"
+)]
+async fn test_lm_details_rewrite(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "压缩来源可辨识"
+)]
+async fn test_lm_compact_reason(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "压缩后结算可见"
+)]
+async fn test_lm_compact_settlement(agent: AgentState, ws: Workspace) {}

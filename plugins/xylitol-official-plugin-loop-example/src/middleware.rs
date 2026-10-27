@@ -109,6 +109,7 @@ mod tests {
             has_new_user_messages: false,
             assistant: None,
             history_len: 2,
+            compact: None,
         };
         assert_eq!(
             mw.decide_continue(base.clone()).await.control,

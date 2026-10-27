@@ -172,6 +172,8 @@ pub(crate) async fn force_compact_once(
     obs_session: &xylitol_plugin_sdk::ObsSessionContext,
     cwd: &str,
     pending_prepare: Option<&xylitol_plugin_sdk::SessionPrepareSnapshot>,
+    instructions: Option<String>,
+    reason: &str,
 ) -> Result<Vec<AgentMessage>, String> {
     let (summary, context_window) = {
         let mm = crate::utils::lock_mutex(model_manager);
@@ -191,7 +193,8 @@ pub(crate) async fn force_compact_once(
             session_id,
             &summary,
             event_sink.as_ref(),
-            None,
+            instructions,
+            reason,
             context_window,
             Some(fixed_context),
             &mut fallback_notice_emitted,

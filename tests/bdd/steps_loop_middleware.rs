@@ -740,3 +740,591 @@ pub(crate) fn t_fixed_context_has_fragment() {
         );
     });
 }
+
+struct RouteScript {
+    id: &'static str,
+    stages: &'static [LoopStage],
+    target_tool: &'static str,
+    target_args: serde_json::Value,
+    only_call_id: Option<&'static str>,
+}
+
+#[async_trait::async_trait]
+impl LoopMiddleware for RouteScript {
+    fn id(&self) -> &str {
+        self.id
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        self.stages
+    }
+
+    async fn before_tool(&self, mut ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+        if self.only_call_id.is_some_and(|id| ctx.tool_call_id != id) {
+            return LoopStep::continued(ctx);
+        }
+        ctx.tool_name = self.target_tool.to_string();
+        ctx.args = self.target_args.clone();
+        LoopStep::continued(ctx)
+    }
+}
+
+struct ImagePartsTool;
+
+#[async_trait::async_trait]
+impl xylitol_plugin_sdk::XyTool for ImagePartsTool {
+    fn name(&self) -> &str {
+        "img_tool"
+    }
+
+    fn description(&self) -> &str {
+        "returns an image part"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object", "properties": {} })
+    }
+
+    async fn execute(
+        &self,
+        _ctx: &xylitol_plugin_sdk::XyToolCtx,
+        _args: serde_json::Value,
+    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
+        Ok("image".into())
+    }
+
+    async fn execute_as_parts(
+        &self,
+        _ctx: &xylitol_plugin_sdk::XyToolCtx,
+        _args: serde_json::Value,
+    ) -> Result<Vec<xylitol_plugin_sdk::AgentPart>, xylitol_plugin_sdk::error::XyToolError> {
+        Ok(vec![xylitol_plugin_sdk::AgentPart::Image(
+            xylitol_plugin_sdk::ImageContent {
+                url: None,
+                data: Some("QUJD".into()),
+                media_type: "image/png".into(),
+            },
+        )])
+    }
+}
+
+struct AddDetails;
+
+#[async_trait::async_trait]
+impl LoopMiddleware for AddDetails {
+    fn id(&self) -> &str {
+        "add-details"
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        &[LoopStage::AfterTool]
+    }
+
+    async fn after_tool(
+        &self,
+        mut ctx: xylitol_plugin_sdk::AfterToolCtx,
+    ) -> LoopStep<xylitol_plugin_sdk::AfterToolCtx> {
+        ctx.details = Some(serde_json::json!({ "marker": "mw-details" }));
+        LoopStep::continued(ctx)
+    }
+}
+
+thread_local! {
+    static ROUTE_TIMING: RefCell<Vec<(String, u128, u128)>> = const { RefCell::new(Vec::new()) };
+    static ROUTE_EPOCH: Cell<Option<std::time::Instant>> = const { Cell::new(None) };
+}
+
+struct RoutedSlowTool {
+    name: &'static str,
+    mode: xylitol_plugin_sdk::XyToolExecutionMode,
+    sleep_ms: u64,
+}
+
+#[async_trait::async_trait]
+impl xylitol_plugin_sdk::XyTool for RoutedSlowTool {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn description(&self) -> &str {
+        "routed slow tool"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object", "properties": {} })
+    }
+
+    fn execution_mode(&self) -> xylitol_plugin_sdk::XyToolExecutionMode {
+        self.mode
+    }
+
+    async fn execute(
+        &self,
+        _ctx: &xylitol_plugin_sdk::XyToolCtx,
+        _args: serde_json::Value,
+    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
+        let epoch = ROUTE_EPOCH.with(|e| e.get().expect("route epoch"));
+        let start = epoch.elapsed().as_millis();
+        tokio::time::sleep(std::time::Duration::from_millis(self.sleep_ms)).await;
+        let end = epoch.elapsed().as_millis();
+        ROUTE_TIMING.with(|t| t.borrow_mut().push((self.name.to_string(), start, end)));
+        Ok(format!("{}-ok", self.name))
+    }
+}
+
+struct RecordingCompaction {
+    settings: xylitol_plugin_sdk::CompactionSettings,
+}
+
+#[async_trait::async_trait]
+impl xylitol_plugin_sdk::XyCompaction for RecordingCompaction {
+    fn settings(&self) -> &xylitol_plugin_sdk::CompactionSettings {
+        &self.settings
+    }
+
+    async fn compact(
+        &self,
+        _store: &dyn xylitol_plugin_sdk::XySessionStore,
+        _sid: &str,
+        _summary: &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding,
+        event_sink: &dyn xylitol_plugin_sdk::XyEventSink,
+        _instructions: Option<String>,
+        reason: &str,
+        _context_window: u64,
+        _fixed_context: Option<&xylitol_plugin_sdk::FixedRequestContext>,
+        _fallback_notice_emitted: &mut bool,
+    ) -> Result<(), xylitol_plugin_sdk::CompactionError> {
+        event_sink
+            .emit(&XyEvent::CompactionStart {
+                reason: reason.to_string(),
+            })
+            .await;
+        event_sink
+            .emit(&XyEvent::CompactionEnd {
+                result: Some("ok".into()),
+                aborted: false,
+                reason: reason.to_string(),
+                will_retry: false,
+                error_message: None,
+                summary: Some("mw summary".into()),
+                tokens_before: Some(100),
+                tokens_after: Some(40),
+                notice: None,
+            })
+            .await;
+        event_sink
+            .emit(&XyEvent::ContextTokenSettlement {
+                estimate: xylitol_plugin_sdk::ContextTokenEstimate {
+                    tokens: 40,
+                    provenance: xylitol_plugin_sdk::TokenProvenance::Heuristic,
+                    usage_tokens: 0,
+                    trailing_tokens: 0,
+                    last_usage_index: None,
+                },
+                reason: "after_compaction".into(),
+                generation: 7,
+            })
+            .await;
+        Ok(())
+    }
+
+    async fn maybe_overflow_compact(
+        &self,
+        _store: &dyn xylitol_plugin_sdk::XySessionStore,
+        _sid: &str,
+        _summary: &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding,
+        _event_sink: &dyn xylitol_plugin_sdk::XyEventSink,
+        _context_window: u64,
+        _last_assistant: &xylitol_plugin_sdk::AgentMessage,
+        _current_provider: &str,
+        _current_model_id: &str,
+        _overflow_recovery_attempted: bool,
+        _fixed_context: Option<&xylitol_plugin_sdk::FixedRequestContext>,
+        _turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+        _fallback_notice_emitted: &mut bool,
+        _floor_notice_emitted: Option<&mut bool>,
+    ) -> Result<xylitol_plugin_sdk::OverflowCompactOutcome, xylitol_plugin_sdk::CompactionError>
+    {
+        Ok(xylitol_plugin_sdk::OverflowCompactOutcome::Skipped)
+    }
+
+    async fn maybe_auto_compact(
+        &self,
+        _store: &dyn xylitol_plugin_sdk::XySessionStore,
+        _sid: &str,
+        _summary: &xylitol_runtime::agent::model::task_model::CompactionSummaryBinding,
+        _event_sink: &dyn xylitol_plugin_sdk::XyEventSink,
+        _context_window: u64,
+        _estimate_opts: &xylitol_plugin_sdk::EstimateOpts,
+        _last_assistant: Option<&xylitol_plugin_sdk::AgentMessage>,
+        _precomputed: Option<&xylitol_plugin_sdk::ContextTokenEstimate>,
+        _fixed_context: Option<&xylitol_plugin_sdk::FixedRequestContext>,
+        _turn_obs_parent: Option<fastrace::prelude::SpanContext>,
+        _fallback_notice_emitted: &mut bool,
+        _floor_notice_emitted: Option<&mut bool>,
+    ) -> Result<bool, xylitol_plugin_sdk::CompactionError> {
+        Ok(false)
+    }
+}
+
+struct CompactOnce {
+    reason: &'static str,
+}
+
+#[async_trait::async_trait]
+impl LoopMiddleware for CompactOnce {
+    fn id(&self) -> &str {
+        "compact-once"
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        &[LoopStage::DecideContinue]
+    }
+
+    async fn decide_continue(&self, mut ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
+        if ctx.settle_count == 0 {
+            ctx.compact = Some(xylitol_plugin_sdk::CompactRequest {
+                instructions: Some("keep recent tool results".into()),
+                reason: Some(self.reason.into()),
+            });
+            LoopStep {
+                ctx,
+                control: LoopControl::Compact,
+            }
+        } else {
+            LoopStep::stopped(ctx)
+        }
+    }
+}
+
+fn permission_denying_write(path_glob: &str) -> Arc<dyn xylitol_plugin_sdk::XyPermission> {
+    xylitol_official_plugin_config::types::PermissionConfig {
+        enabled: true,
+        backend: xylitol_official_plugin_config::types::PermissionBackend::Glob,
+        filesystem: xylitol_official_plugin_config::types::PermissionFilesystemConfig {
+            read_allowed: vec![],
+            write_allowed: vec![],
+            write_denied: vec![path_glob.into()],
+        },
+        network: xylitol_official_plugin_config::types::PermissionNetworkConfig {
+            allowed_domains: vec![],
+            denied_domains: vec![],
+        },
+        process: xylitol_official_plugin_config::types::PermissionProcessConfig {
+            allowed_paths: vec![],
+        },
+    }
+    .to_permission()
+}
+
+#[given("注册 before_tool 中间件把 read 路由到 write 且权限引擎拒绝该写入路径")]
+pub(crate) fn g_route_to_write_denied(agent: &AgentState, ws: &Workspace) {
+    let registry = fresh_registry();
+    registry
+        .register(Arc::new(RouteScript {
+            id: "route-to-write",
+            stages: &[LoopStage::BeforeTool],
+            target_tool: "write",
+            target_args: serde_json::json!({ "path": "/denied/out.rs", "content": "x" }),
+            only_call_id: None,
+        }))
+        .expect("register route-to-write");
+    let mut runner = ar_make_runner(agent, ws);
+    runner.set_permission(permission_denying_write("/denied/**"));
+    runner.set_loop_middleware(Some(registry));
+    set_fake_text("ack");
+    xylitol_kernel::provider::factory::set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
+    ar_store_runner(runner);
+}
+
+#[given("注册 before_tool 中间件把并行安全的 read 路由到串行工具")]
+pub(crate) fn g_route_to_barrier(agent: &AgentState, _ws: &Workspace) {
+    let registry = fresh_registry();
+    registry
+        .register(Arc::new(RouteScript {
+            id: "route-to-barrier",
+            stages: &[LoopStage::BeforeTool],
+            target_tool: "route_dst",
+            target_args: serde_json::json!({}),
+            only_call_id: Some("call-0"),
+        }))
+        .expect("register route-to-barrier");
+    ROUTE_TIMING.with(|t| t.borrow_mut().clear());
+    ROUTE_EPOCH.with(|e| e.set(Some(std::time::Instant::now())));
+    let tools = ToolSet::from_iter(vec![
+        Arc::new(RoutedSlowTool {
+            name: "route_src",
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Parallel,
+            sleep_ms: 60,
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
+        Arc::new(RoutedSlowTool {
+            name: "route_dst",
+            mode: xylitol_plugin_sdk::XyToolExecutionMode::Sequential,
+            sleep_ms: 60,
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
+    ]);
+    let mut runner = crate::bdd::steps_agent_runtime::bdd_batch_make_runner(
+        agent,
+        tools,
+        &[("route_src", r#"{}"#), ("route_src", r#"{}"#)],
+        xylitol_plugin_sdk::XyBatchMode::BarrierParallel,
+    );
+    runner.set_loop_middleware(Some(registry));
+    ar_store_runner(runner);
+}
+
+#[given("注册 before_tool 中间件把 read 路由到未装配的工具名")]
+pub(crate) fn g_route_to_missing(agent: &AgentState, ws: &Workspace) {
+    let registry = fresh_registry();
+    registry
+        .register(Arc::new(RouteScript {
+            id: "route-to-missing",
+            stages: &[LoopStage::BeforeTool],
+            target_tool: "ghost_tool",
+            target_args: serde_json::json!({}),
+            only_call_id: None,
+        }))
+        .expect("register route-to-missing");
+    let mut runner = ar_make_runner(agent, ws);
+    runner.set_loop_middleware(Some(registry));
+    set_fake_text("ack");
+    xylitol_kernel::provider::factory::set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
+    ar_store_runner(runner);
+}
+
+#[when("运行 AgentRuntime 触发 read")]
+pub(crate) async fn w_run_trigger_read() {
+    ar_take_run_store("触发 read").await;
+}
+
+#[then("tool-error 回写且原因含 Unknown tool")]
+pub(crate) fn t_tool_error_unknown_tool() {
+    let events = crate::bdd::steps_agent_runtime::ar_events();
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            XyEvent::ToolExecutionEnd { is_error: true, result, .. }
+                if result.contains("Unknown tool")
+        )),
+        "routed call must fail as unknown tool: {events:?}"
+    );
+}
+
+#[then("该调用单独成窗且不与后续并行安全调用重叠")]
+pub(crate) fn t_routed_barrier_no_overlap() {
+    let entries = ROUTE_TIMING.with(|t| t.borrow().clone());
+    assert_eq!(entries.len(), 2, "{entries:?}");
+    let dst = entries
+        .iter()
+        .find(|(n, _, _)| n == "route_dst")
+        .expect("routed barrier execution");
+    let src = entries
+        .iter()
+        .find(|(n, _, _)| n == "route_src")
+        .expect("parallel execution");
+    let overlaps = dst.1 < src.2 && src.1 < dst.2;
+    assert!(
+        !overlaps,
+        "routed Sequential call must not overlap ParallelSafe call: {entries:?}"
+    );
+}
+
+#[given("注册 after_tool 中间件且工具返回图片分片")]
+pub(crate) fn g_image_parts(agent: &AgentState, ws: &Workspace) {
+    let registry = fresh_registry();
+    registry
+        .register(Arc::new(AddDetails))
+        .expect("register add-details");
+    let mut runner = ar_make_runner(agent, ws);
+    runner.set_tools(ToolSet::from_iter(vec![
+        Arc::new(ImagePartsTool) as Arc<dyn xylitol_plugin_sdk::XyTool>
+    ]));
+    runner.set_loop_middleware(Some(registry));
+    set_fake_text("ack");
+    xylitol_kernel::provider::factory::set_fake_tool_call("img_tool", r#"{}"#);
+    ar_store_runner(runner);
+}
+
+#[when("运行 AgentRuntime 触发该工具")]
+pub(crate) async fn w_run_trigger_tool() {
+    ar_take_run_store("触发工具").await;
+}
+
+#[when("运行 AgentRuntime 并收集工具批事件")]
+pub(crate) async fn w_run_collect_batch_events() {
+    ar_take_run_store("路由批次").await;
+}
+
+#[then("历史回写仍含图片分片")]
+pub(crate) fn t_history_keeps_image() {
+    let events = crate::bdd::steps_agent_runtime::ar_events();
+    let history = events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            XyEvent::AgentEnd { messages } => Some(messages.clone()),
+            _ => None,
+        })
+        .expect("AgentEnd");
+    let has_image = history.iter().any(|m| {
+        matches!(
+            m,
+            xylitol_plugin_sdk::AgentMessage::Llm(
+                xylitol_plugin_sdk::XyLlmMessage::ToolResultMessage { content, .. }
+            ) if content
+                .iter()
+                .any(|p| matches!(p, xylitol_plugin_sdk::AgentPart::Image(_)))
+        )
+    });
+    assert!(has_image, "history must keep image parts: {history:?}");
+}
+
+#[given("注册 after_tool 中间件把结构化详情替换为带标记的对象")]
+pub(crate) fn g_rewrite_details(agent: &AgentState, ws: &Workspace) {
+    let registry = fresh_registry();
+    registry
+        .register(Arc::new(AddDetails))
+        .expect("register add-details");
+    let mut runner = ar_make_runner(agent, ws);
+    runner.set_loop_middleware(Some(registry));
+    set_fake_text("ack");
+    xylitol_kernel::provider::factory::set_fake_tool_call("ls", r#"{"path":"."}"#);
+    ar_store_runner(runner);
+}
+
+#[then("该调用的历史回写详情含该标记")]
+pub(crate) fn t_history_details_marker() {
+    let events = crate::bdd::steps_agent_runtime::ar_events();
+    let history = events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            XyEvent::AgentEnd { messages } => Some(messages.clone()),
+            _ => None,
+        })
+        .expect("AgentEnd");
+    let marker = history.iter().any(|m| {
+        matches!(
+            m,
+            xylitol_plugin_sdk::AgentMessage::Llm(
+                xylitol_plugin_sdk::XyLlmMessage::ToolResultMessage { details, .. }
+            ) if details
+                .as_ref()
+                .and_then(|d| d.get("marker"))
+                .and_then(|v| v.as_str())
+                == Some("mw-details")
+        )
+    });
+    assert!(
+        marker,
+        "middleware details must survive into history: {history:?}"
+    );
+}
+
+#[given("注册 decide_continue 中间件返回带来源标签的 compact 决策")]
+pub(crate) fn g_compact_with_reason(agent: &AgentState, ws: &Workspace) {
+    let registry = fresh_registry();
+    registry
+        .register(Arc::new(CompactOnce {
+            reason: "loop_middleware:focus-mw",
+        }))
+        .expect("register compact-once");
+    let mut runner = compact_runner(agent, ws);
+    runner.set_loop_middleware(Some(registry));
+    set_fake_text("compacted ack");
+    ar_store_runner(runner);
+}
+
+#[given("注册 decide_continue 中间件返回 compact 决策且压缩成功")]
+pub(crate) fn g_compact_success(agent: &AgentState, ws: &Workspace) {
+    g_compact_with_reason(agent, ws);
+}
+
+#[when("运行 AgentRuntime 并收集压缩事件")]
+pub(crate) async fn w_run_collect_compaction() {
+    ar_take_run_store("压缩运行").await;
+}
+
+#[then("CompactionStart 与 CompactionEnd 的 reason 含该标签")]
+pub(crate) fn t_compaction_reason_label() {
+    let events = crate::bdd::steps_agent_runtime::ar_events();
+    let start = events
+        .iter()
+        .find_map(|e| match e {
+            XyEvent::CompactionStart { reason } => Some(reason.clone()),
+            _ => None,
+        })
+        .expect("CompactionStart");
+    assert!(
+        start.contains("focus-mw"),
+        "CompactionStart reason must carry middleware label: {start}"
+    );
+    let end = events
+        .iter()
+        .find_map(|e| match e {
+            XyEvent::CompactionEnd { reason, .. } => Some(reason.clone()),
+            _ => None,
+        })
+        .expect("CompactionEnd");
+    assert!(
+        end.contains("focus-mw"),
+        "CompactionEnd reason must carry middleware label: {end}"
+    );
+}
+
+#[then("事件流含压缩后结算")]
+pub(crate) fn t_compaction_settlement() {
+    let events = crate::bdd::steps_agent_runtime::ar_events();
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            XyEvent::ContextTokenSettlement { reason, .. } if reason == "after_compaction"
+        )),
+        "compaction must emit a post-compaction settlement: {events:?}"
+    );
+}
+
+fn compact_runner(
+    agent: &AgentState,
+    ws: &Workspace,
+) -> xylitol_runtime::agent::runtime::AgentRuntime {
+    use xylitol_plugin_sdk::{XyEventSink, XyModelBuilder, XySessionStore};
+
+    ws.init();
+    reset_fake_state();
+    crate::bdd::steps_agent_runtime::ar_register_fake(agent, "ar-compact");
+    let dir = tempfile::tempdir().unwrap();
+    let mgr = SessionManager::new(dir.keep());
+    let store: Arc<dyn XySessionStore> = Arc::new(mgr);
+    let sink: Arc<dyn XyEventSink> = Arc::new(xylitol_kernel::event::EventBus::new());
+    let builder: XyModelBuilder = Arc::new(xylitol_kernel::provider::factory::build_provider);
+    let settings = xylitol_plugin_sdk::CompactionSettings {
+        enabled: true,
+        reserve_tokens: 1024,
+        keep_recent_tokens: 1000,
+        ..Default::default()
+    };
+    let mut caps = AgentCapabilities::new(
+        agent.registry.borrow().clone(),
+        ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
+        store,
+        sink,
+        None,
+        Vec::new(),
+        Vec::new(),
+        ".".into(),
+        Some(settings),
+        builder,
+        xylitol_runtime::permission::allow_all_permission(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
+        xylitol_runtime::agent::capabilities::QueueMode::default(),
+        None,
+    );
+    caps.install_compaction(Arc::new(|settings| {
+        Arc::new(RecordingCompaction { settings }) as Arc<dyn xylitol_plugin_sdk::XyCompaction>
+    }));
+    let mut runner = xylitol_runtime::agent::runtime::AgentRuntime::new(caps);
+    futures::executor::block_on(runner.select_model("ar-compact"))
+        .expect("select ar-compact fake model");
+    runner
+}

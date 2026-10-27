@@ -14,7 +14,7 @@ use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_plugin_sdk::{
     AfterToolCtx, BeforeToolCtx, LoopChain, LoopControl, XyBatchMode, XyHookBus, XyHookOutcome,
-    XyToolCtx,
+    XyTool, XyToolCtx,
 };
 
 type PermissionCheckFn = dyn Fn(&str, &str) -> Option<String> + Send + Sync;
@@ -31,6 +31,20 @@ pub(crate) struct ToolExecEnv<'a> {
     pub obs_session: &'a xylitol_plugin_sdk::ObsSessionContext,
     pub loop_chain: &'a LoopChain,
     pub turn_index: u32,
+}
+
+/// One tool call after hooks, middleware and the permission gate ran.
+///
+/// The batch planner consumes `name`/`tool` so a routed call is classified by
+/// the tool that will actually execute, not by the name the model asked for.
+pub(crate) struct PreparedCall {
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) args: Value,
+    pub(crate) tool: Option<Arc<dyn XyTool>>,
+    pub(crate) denied_reason: Option<String>,
+    pub(crate) stop_run: bool,
+    pub(crate) fault: Option<MiddlewareFault>,
 }
 
 fn middleware_fault_reason(fault: &MiddlewareFault) -> String {
@@ -61,8 +75,95 @@ pub(crate) fn parts_preview_text(parts: &[AgentPart]) -> String {
     out.join("\n")
 }
 
+fn details_from_parts(parts: &[AgentPart]) -> Option<Value> {
+    match parts {
+        [AgentPart::Text { text }] => serde_json::from_str::<Value>(text)
+            .ok()
+            .filter(Value::is_object),
+        _ => None,
+    }
+}
+
 fn emit(tx: &mpsc::UnboundedSender<XyEvent>, event: XyEvent) {
     let _ = tx.send(event);
+}
+
+pub(crate) async fn prepare_call(
+    env: &ToolExecEnv<'_>,
+    id: &str,
+    name: &str,
+    args: &Value,
+    parent_ctx: Option<SpanContext>,
+) -> PreparedCall {
+    let mut tool_name = name.to_string();
+    let mut tool_args = args.clone();
+    let mut denied_reason: Option<String> = None;
+    let mut stop_run = false;
+    let mut fault: Option<MiddlewareFault> = None;
+
+    if let Some(bus) = env.hook_bus {
+        let (ty, phase, hook_ctx) = super::script_hook_ctx::tool_call_pre(name, &tool_args);
+        match bus.dispatch(ty, phase, hook_ctx).await {
+            XyHookOutcome::Blocked { reason } => denied_reason = Some(reason),
+            XyHookOutcome::Modified { args: modified } => tool_args = modified,
+            XyHookOutcome::Allowed => {}
+        }
+    }
+    if denied_reason.is_none() && !env.hooks.before_tool_call.is_empty() {
+        for hook in &env.hooks.before_tool_call {
+            if let Some(reason) = hook(name, id, &tool_args) {
+                denied_reason = Some(reason);
+                break;
+            }
+        }
+    }
+
+    if denied_reason.is_none() && !env.loop_chain.before_tool.is_empty() {
+        let ctx = BeforeToolCtx {
+            turn_index: env.turn_index,
+            tool_call_id: id.to_string(),
+            tool_name: tool_name.clone(),
+            args: tool_args.clone(),
+        };
+        match run_before_tool(env.loop_chain, env.cancel, parent_ctx, ctx).await {
+            Ok(out) => {
+                tool_name = out.ctx.tool_name;
+                tool_args = out.ctx.args;
+                if out.control != LoopControl::Continue {
+                    stop_run = true;
+                    denied_reason = Some(format!(
+                        "loop middleware {} stopped at before_tool",
+                        out.stopped_by.unwrap_or_else(|| "unknown".into())
+                    ));
+                }
+            }
+            Err(mw_fault) => {
+                denied_reason = Some(mw_fault.message());
+                stop_run = true;
+                fault = Some(mw_fault);
+            }
+        }
+    }
+
+    let tool = env.tools.get(&tool_name);
+    if denied_reason.is_none()
+        && let Some(check) = env.permission_check
+    {
+        let target = permission_target(&tool_name, &tool_args);
+        if let Some(reason) = check(&tool_name, &target) {
+            denied_reason = Some(format!("permission denied: {reason}"));
+        }
+    }
+
+    PreparedCall {
+        id: id.to_string(),
+        name: tool_name,
+        args: tool_args,
+        tool,
+        denied_reason,
+        stop_run,
+        fault,
+    }
 }
 
 pub(crate) struct ToolRunOutcome {
@@ -73,13 +174,18 @@ pub(crate) struct ToolRunOutcome {
 
 pub(crate) async fn run_one(
     env: &ToolExecEnv<'_>,
-    id: &str,
-    name: &str,
-    args: &Value,
+    call: &PreparedCall,
     events: mpsc::UnboundedSender<XyEvent>,
     parent_ctx: Option<SpanContext>,
     barrier_index: u32,
 ) -> ToolRunOutcome {
+    let id = &call.id;
+    let name = &call.name;
+    let tool_args = &call.args;
+    let tool = &call.tool;
+    let denied_reason = &call.denied_reason;
+    let mut middleware_stop = call.stop_run;
+    let mut middleware_fault = call.fault.clone();
     let tool_span = ToolExecuteSpan::start_with_parent_ctx(
         name,
         id,
@@ -88,7 +194,6 @@ pub(crate) async fn run_one(
         barrier_index,
         env.obs_session,
     );
-    let tool = env.tools.get(name);
     let tool_missing = tool.is_none();
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<String>(64);
     let (state_tx, mut state_rx) = mpsc::unbounded_channel::<XyEvent>();
@@ -96,69 +201,8 @@ pub(crate) async fn run_one(
         .with_output_tx(out_tx)
         .with_state_event_tx(state_tx)
         .with_workspace(env.workspace);
-    let mut tool_args = args.clone();
 
-    let mut denied_reason: Option<String> = None;
-    if let Some(bus) = env.hook_bus {
-        let (ty, phase, hook_ctx) = super::script_hook_ctx::tool_call_pre(name, &tool_args);
-        match bus.dispatch(ty, phase, hook_ctx).await {
-            XyHookOutcome::Blocked { reason } => {
-                denied_reason = Some(reason);
-            }
-            XyHookOutcome::Modified { args: modified } => {
-                tool_args = modified;
-            }
-            XyHookOutcome::Allowed => {}
-        }
-    }
-    if !env.hooks.before_tool_call.is_empty() {
-        for hook in &env.hooks.before_tool_call {
-            if let Some(reason) = hook(name, id, &tool_args) {
-                denied_reason = Some(reason);
-                break;
-            }
-        }
-    }
-
-    let mut middleware_stop = false;
-    let mut middleware_fault: Option<MiddlewareFault> = None;
-    if denied_reason.is_none() && !env.loop_chain.before_tool.is_empty() {
-        let ctx = BeforeToolCtx {
-            turn_index: env.turn_index,
-            tool_call_id: id.to_string(),
-            tool_name: name.to_string(),
-            args: tool_args.clone(),
-        };
-        match run_before_tool(env.loop_chain, env.cancel, parent_ctx, ctx).await {
-            Ok(out) => {
-                tool_args = out.ctx.args;
-                if out.control != LoopControl::Continue {
-                    middleware_stop = true;
-                    denied_reason = Some(format!(
-                        "loop middleware {} stopped at before_tool",
-                        out.stopped_by.unwrap_or_else(|| "unknown".into())
-                    ));
-                }
-            }
-            Err(fault) => {
-                let reason = fault.message();
-                denied_reason = Some(reason);
-                middleware_stop = true;
-                middleware_fault = Some(fault);
-            }
-        }
-    }
-
-    if denied_reason.is_none()
-        && let Some(check) = env.permission_check
-    {
-        let target = permission_target(name, &tool_args);
-        if let Some(reason) = check(name, &target) {
-            denied_reason = Some(format!("permission denied: {reason}"));
-        }
-    }
-
-    let args_io = serde_json::to_string(&tool_args).unwrap_or_else(|_| "{}".into());
+    let args_io = serde_json::to_string(tool_args).unwrap_or_else(|_| "{}".into());
     emit(
         &events,
         XyEvent::ToolExecutionStart {
@@ -197,13 +241,12 @@ pub(crate) async fn run_one(
                 true,
             ),
             stop_run: middleware_stop,
-            fault: middleware_fault,
+            fault: middleware_fault.take(),
         };
     }
 
-    let tool_arc = tool;
     let exec_fut = async {
-        match tool_arc {
+        match tool {
             Some(t) => t.execute_as_parts(&ctx, tool_args.clone()).await,
             None => Err(xylitol_plugin_sdk::error::XyToolError::ExecutionFailed(
                 anyhow::anyhow!("Unknown tool: {name}"),
@@ -303,20 +346,24 @@ pub(crate) async fn run_one(
         }
     }
 
+    let mut details = details_from_parts(&result.0);
     if !env.loop_chain.after_tool.is_empty() {
         let ctx = AfterToolCtx {
             turn_index: env.turn_index,
             tool_call_id: id.to_string(),
             tool_name: name.to_string(),
-            result: parts_preview_text(&result.0),
+            parts: result.0.clone(),
+            details: details.clone(),
             is_error: result.1,
         };
         match run_after_tool(env.loop_chain, env.cancel, parent_ctx, ctx).await {
             Ok(out) => {
-                result = (vec![AgentPart::text(out.ctx.result)], out.ctx.is_error);
+                result = (out.ctx.parts, out.ctx.is_error);
+                details = out.ctx.details;
             }
             Err(fault) => {
                 result = (vec![AgentPart::text(middleware_fault_reason(&fault))], true);
+                details = None;
                 middleware_stop = true;
                 middleware_fault = Some(fault);
             }
@@ -347,21 +394,23 @@ pub(crate) async fn run_one(
         },
     );
 
-    let (history_parts, details) =
-        crate::agent::runtime::tool_result_quiet::quiet_write_edit_for_history(
-            name,
-            &result_text,
-            result.1,
-        );
+    let (history_parts, quiet_details) = match (&result.0[..], name.as_str()) {
+        ([AgentPart::Text { text }], "write" | "edit") if !result.1 => {
+            crate::agent::runtime::tool_result_quiet::quiet_write_edit_for_history(
+                name, text, result.1,
+            )
+        }
+        _ => (result.0.clone(), None),
+    };
     ToolRunOutcome {
         message: AgentMessage::tool_result_with_details(
             id.to_string(),
             name.to_string(),
             history_parts,
-            details,
+            quiet_details.or(details),
             result.1,
         ),
         stop_run: middleware_stop,
-        fault: middleware_fault,
+        fault: middleware_fault.take(),
     }
 }

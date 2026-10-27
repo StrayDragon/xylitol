@@ -196,7 +196,18 @@ fn before_tool_fingerprint(ctx: &BeforeToolCtx) -> String {
 }
 
 fn after_tool_fingerprint(ctx: &AfterToolCtx) -> String {
-    format!("{}:{}", ctx.result.chars().count(), ctx.is_error)
+    format!(
+        "{}:{}:{:?}",
+        ctx.parts
+            .iter()
+            .map(|p| match p {
+                xylitol_plugin_sdk::AgentPart::Text { text } => text.chars().count(),
+                _ => 1,
+            })
+            .sum::<usize>(),
+        ctx.is_error,
+        ctx.details.is_some()
+    )
 }
 
 async fn run_stage<C>(
