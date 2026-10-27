@@ -125,6 +125,7 @@ hooks:
 # loop_example:  # official example plugin: ReAct loop middleware participation
 #   enabled: false
 #   max_settles: 3            # optional: stop the run after N settles
+#   plan_state: false         # optional: register the plan-as-state middleware
 #   deny_bash_patterns:       # before_tool: tighten only, core permission still decides
 #     - "rm -rf /"
 

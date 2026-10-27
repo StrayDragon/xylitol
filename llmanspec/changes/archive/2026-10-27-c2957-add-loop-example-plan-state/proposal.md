@@ -2,6 +2,9 @@
 depends_on: []
 title: Loop 示例插件演示 plan-as-state 驱动
 needs_specs_change: true
+branch: sdd/c2957-add-loop-example-plan-state
+base_branch: main
+base_sha: 7ded2ef2b8bc64ef7e90d347a0aea20d9a25ba8c
 ---
 
 # Loop 示例插件演示 plan-as-state 驱动

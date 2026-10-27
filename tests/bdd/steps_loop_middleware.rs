@@ -563,6 +563,7 @@ pub(crate) async fn g_example_enabled() {
                 enabled: true,
                 max_settles: Some(2),
                 deny_bash_patterns: vec!["rm -rf /".into()],
+                plan_state: false,
             },
         )
         .expect("loop example plugin"),
@@ -577,6 +578,59 @@ pub(crate) async fn g_example_enabled() {
     LOOP_PLUGIN_REGISTRY.with(|slot| slot.borrow_mut().replace(registry));
     LOOP_PLUGIN_FIBER.with(|slot| slot.borrow_mut().replace(fiber));
     LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
+}
+
+#[given("以启用计划模式的 loop 示例插件装配运行时")]
+pub(crate) async fn g_example_plan_enabled() {
+    use xylitol_plugin_sdk::rt::CtxHost;
+
+    let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("ctx root");
+    let registry = fresh_registry();
+    ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
+        .expect("provide registry");
+    let fiber = ctx.plugin(
+        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
+            &xylitol_official_plugin_loop_example::LoopExampleConfig {
+                enabled: true,
+                max_settles: Some(2),
+                deny_bash_patterns: vec![],
+                plan_state: true,
+            },
+        )
+        .expect("loop example plugin"),
+    );
+    for _ in 0..64 {
+        if registry.ids().len() == 2 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    LOOP_PLUGIN_REGISTRY.with(|slot| slot.borrow_mut().replace(registry));
+    LOOP_PLUGIN_FIBER.with(|slot| slot.borrow_mut().replace(fiber));
+    LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
+}
+
+#[when("查询中间件注册表")]
+pub(crate) fn w_query_registry_ids() {
+    let registry = LOOP_PLUGIN_REGISTRY
+        .with(|slot| slot.borrow().clone())
+        .expect("registry");
+    LOOP_CHAIN_IDS.with(|slot| {
+        let mut out = slot.borrow_mut();
+        out.clear();
+        out.extend(registry.ids());
+    });
+}
+
+#[then("注册表含 loop-example 与 plan-state")]
+pub(crate) fn t_registry_has_plan_state() {
+    LOOP_CHAIN_IDS.with(|slot| {
+        assert_eq!(
+            &*slot.borrow(),
+            &["loop-example".to_string(), "plan-state".to_string()],
+            "plan mode must register the base middleware and the plan-state middleware"
+        );
+    });
 }
 
 #[when("装配运行时并查询中间件注册表")]

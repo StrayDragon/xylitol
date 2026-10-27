@@ -6070,6 +6070,7 @@ name = "xylitol-official-plugin-loop-example"
 version = "0.0.0-pre"
 dependencies = [
  "async-trait",
+ "log",
  "schemars",
  "serde",
  "serde_json",

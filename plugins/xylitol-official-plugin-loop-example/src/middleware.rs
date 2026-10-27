@@ -1,13 +1,27 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use xylitol_plugin_sdk::{BeforeToolCtx, DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep};
+use xylitol_plugin_sdk::message::AgentPart;
+use xylitol_plugin_sdk::{
+    AfterToolCtx, AfterTurnCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx, LoopMiddleware,
+    LoopStage, LoopStep,
+};
 
 use crate::config::LoopExampleConfig;
 
 const STAGES: &[LoopStage] = &[LoopStage::BeforeTool, LoopStage::DecideContinue];
+pub const DEFAULT_PLAN_SETTLES: u32 = 8;
+const PLAN_STAGES: &[LoopStage] = &[
+    LoopStage::BeforeTurn,
+    LoopStage::AfterTool,
+    LoopStage::DecideContinue,
+    LoopStage::AfterTurn,
+];
+const PLAN_CONTRACT: &str = "Plan mode: before acting, write the checklist with todo_rewrite. \
+Keep exactly one item in_progress and mark finished items with todo_update. \
+Do not claim completion while items remain pending.";
 
 pub struct ExampleLoopMiddleware {
     config: LoopExampleConfig,
@@ -62,6 +76,122 @@ impl LoopMiddleware for ExampleLoopMiddleware {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct PlanProgress {
+    total: usize,
+    pending: usize,
+    in_progress: usize,
+    completed: usize,
+}
+
+impl PlanProgress {
+    fn has_unfinished(&self) -> bool {
+        self.total > 0 && (self.pending + self.in_progress) > 0
+    }
+}
+
+pub struct PlanStateMiddleware {
+    progress: Mutex<PlanProgress>,
+    max_settles: u32,
+}
+
+impl PlanStateMiddleware {
+    pub fn new(max_settles: u32) -> Self {
+        Self {
+            progress: Mutex::new(PlanProgress::default()),
+            max_settles: max_settles.max(1),
+        }
+    }
+
+    fn progress(&self) -> PlanProgress {
+        self.progress
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    fn record_todo_result(&self, ctx: &AfterToolCtx) {
+        if ctx.is_error || !matches!(ctx.tool_name.as_str(), "todo_rewrite" | "todo_update") {
+            return;
+        }
+        let Some(text) = ctx.parts.iter().find_map(|part| match part {
+            AgentPart::Text { text } => Some(text.as_str()),
+            _ => None,
+        }) else {
+            return;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(text) else {
+            return;
+        };
+        let Some(items) = value.get("items").and_then(Value::as_array) else {
+            return;
+        };
+        let mut next = PlanProgress::default();
+        for item in items {
+            next.total += 1;
+            match item.get("status").and_then(Value::as_str) {
+                Some("completed") => next.completed += 1,
+                Some("in_progress") => next.in_progress += 1,
+                _ => next.pending += 1,
+            }
+        }
+        *self.progress.lock().unwrap_or_else(|e| e.into_inner()) = next;
+    }
+}
+
+#[async_trait]
+impl LoopMiddleware for PlanStateMiddleware {
+    fn id(&self) -> &str {
+        "plan-state"
+    }
+
+    fn order(&self) -> i64 {
+        200
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        PLAN_STAGES
+    }
+
+    async fn before_turn(&self, mut ctx: BeforeTurnCtx) -> LoopStep<BeforeTurnCtx> {
+        ctx.system_fragments.push(PLAN_CONTRACT.into());
+        LoopStep::continued(ctx)
+    }
+
+    async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
+        self.record_todo_result(&ctx);
+        LoopStep::continued(ctx)
+    }
+
+    async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
+        let progress = self.progress();
+        let should_continue = ctx.has_new_user_messages
+            || (progress.has_unfinished() && ctx.settle_count < self.max_settles);
+        if should_continue {
+            LoopStep::continued(ctx)
+        } else {
+            LoopStep::stopped(ctx)
+        }
+    }
+
+    async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
+        let progress = self.progress();
+        log::info!(
+            target: "xylitol::loop-example",
+            "plan checkpoint turn={} continued_tools={} completed={}/{}",
+            ctx.turn_index,
+            ctx.continued_tools,
+            progress.completed,
+            progress.total
+        );
+        LoopStep::continued(ctx)
+    }
+}
+
+pub fn plan_state_middleware(max_settles: u32) -> Arc<dyn LoopMiddleware> {
+    Arc::new(PlanStateMiddleware::new(max_settles))
+}
+
 pub fn example_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware> {
     Arc::new(ExampleLoopMiddleware::new(config.clone()))
 }
@@ -86,6 +216,7 @@ mod tests {
             enabled: true,
             max_settles: None,
             deny_bash_patterns: vec!["rm -rf /".into()],
+            plan_state: false,
         };
         let mw = ExampleLoopMiddleware::new(config);
         let safe = mw.before_tool(ctx("echo hi")).await;
@@ -101,6 +232,7 @@ mod tests {
             enabled: true,
             max_settles: Some(2),
             deny_bash_patterns: Vec::new(),
+            plan_state: false,
         };
         let mw = ExampleLoopMiddleware::new(config);
         let base = DecideContinueCtx {
@@ -129,5 +261,130 @@ mod tests {
         assert_eq!(mw.id(), "loop-example");
         assert_eq!(mw.order(), 100);
         assert_eq!(mw.stages(), STAGES);
+    }
+
+    fn todo_ctx(statuses: &[&str], is_error: bool) -> AfterToolCtx {
+        let items: Vec<Value> = statuses
+            .iter()
+            .enumerate()
+            .map(|(i, status)| {
+                serde_json::json!({
+                    "id": format!("t{i}"),
+                    "content": format!("step {i}"),
+                    "status": status,
+                })
+            })
+            .collect();
+        AfterToolCtx {
+            turn_index: 0,
+            tool_call_id: "call-1".into(),
+            tool_name: "todo_rewrite".into(),
+            parts: vec![AgentPart::text(
+                serde_json::json!({ "items": items }).to_string(),
+            )],
+            details: None,
+            is_error,
+        }
+    }
+
+    fn decide_ctx(settle_count: u32, has_new_user_messages: bool) -> DecideContinueCtx {
+        DecideContinueCtx {
+            turn_index: 0,
+            settle_count,
+            has_new_user_messages,
+            assistant: None,
+            history_len: 2,
+            compact: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn plan_contract_is_injected() {
+        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+        let out = mw.before_turn(BeforeTurnCtx::default()).await;
+        assert!(
+            out.ctx
+                .system_fragments
+                .iter()
+                .any(|fragment| fragment.contains("todo_rewrite")),
+            "plan mode must tell the model how to record the plan"
+        );
+    }
+
+    #[tokio::test]
+    async fn todo_result_updates_progress() {
+        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+        let out = mw
+            .after_tool(todo_ctx(&["completed", "pending"], false))
+            .await;
+        assert_eq!(out.control, LoopControl::Continue);
+        let progress = mw.progress();
+        assert_eq!(progress.total, 2);
+        assert_eq!(progress.completed, 1);
+        assert_eq!(progress.pending, 1);
+        assert!(progress.has_unfinished());
+    }
+
+    #[tokio::test]
+    async fn decide_continue_keeps_unfinished_plan_alive() {
+        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+        mw.after_tool(todo_ctx(&["pending"], false)).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Continue,
+            "an unfinished plan must keep the loop going"
+        );
+    }
+
+    #[tokio::test]
+    async fn decide_continue_stops_when_plan_complete() {
+        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+        mw.after_tool(todo_ctx(&["completed"], false)).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Stop,
+            "a complete plan must not force another model call"
+        );
+    }
+
+    #[tokio::test]
+    async fn decide_continue_stops_at_cap() {
+        let mw = PlanStateMiddleware::new(2);
+        mw.after_tool(todo_ctx(&["pending"], false)).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(2, false)).await.control,
+            LoopControl::Stop,
+            "the plan loop must be bounded"
+        );
+    }
+
+    #[tokio::test]
+    async fn decide_continue_continues_on_new_user() {
+        let mw = PlanStateMiddleware::new(1);
+        mw.after_tool(todo_ctx(&["completed"], false)).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(1, true)).await.control,
+            LoopControl::Continue,
+            "new user input must still be processed"
+        );
+    }
+
+    #[tokio::test]
+    async fn error_or_unknown_tool_does_not_touch_progress() {
+        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+        mw.after_tool(todo_ctx(&["pending"], true)).await;
+        assert_eq!(mw.progress(), PlanProgress::default());
+        let mut ctx = todo_ctx(&["pending"], false);
+        ctx.tool_name = "read".into();
+        mw.after_tool(ctx).await;
+        assert_eq!(mw.progress(), PlanProgress::default());
+    }
+
+    #[test]
+    fn plan_identity_is_stable() {
+        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+        assert_eq!(mw.id(), "plan-state");
+        assert_eq!(mw.order(), 200);
+        assert_eq!(mw.stages(), PLAN_STAGES);
     }
 }

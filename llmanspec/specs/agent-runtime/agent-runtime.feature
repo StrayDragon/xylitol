@@ -402,7 +402,7 @@
 
   @req:r2925
   规则: loop-middleware-example-plugin
-    仓库 须提供一个官方示例插件，证明第三方可在 rutis 生命周期内注册与卸载 loop 中间件：至少含一个只收紧的 before_tool 与一个自定义 decide_continue。该插件 须由配置显式启用，缺省不装配；未配置时 不得注册任何中间件、不得产生额外事件或观测 span。卸载后 注册表 须不再含该插件的中间件。
+    仓库 须提供一个官方示例插件，证明第三方可在 rutis 生命周期内注册与卸载 loop 中间件：至少含一个只收紧的 before_tool 与一个自定义 decide_continue。该插件 须由配置显式启用，缺省不装配；未配置时 不得注册任何中间件、不得产生额外事件或观测 span。卸载后 注册表 须不再含该插件的中间件。示例插件 可经配置额外启用 plan-as-state 中间件（读 todo 计划状态驱动 decide_continue）；启用时 注册表 须同时含基础中间件与该中间件，卸载后 一并消失。
 
     场景: 未配置零装配
       假如 loop 示例插件配置缺省
@@ -413,6 +413,11 @@
       假如 以启用 loop 示例插件装配运行时
       当 卸载该插件
       那么 注册表不再含该插件的中间件
+
+    场景: 计划模式启用后注册计划中间件
+      假如 以启用计划模式的 loop 示例插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 loop-example 与 plan-state
 
   @req:r2929
   规则: loop-middleware-structured-result

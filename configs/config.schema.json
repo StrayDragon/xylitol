@@ -152,6 +152,10 @@
             "integer",
             "null"
           ]
+        },
+        "plan_state": {
+          "default": false,
+          "type": "boolean"
         }
       },
       "type": "object"
@@ -680,7 +684,8 @@
       "default": {
         "deny_bash_patterns": [],
         "enabled": false,
-        "max_settles": null
+        "max_settles": null,
+        "plan_state": false
       }
     },
     "mcp_servers": {

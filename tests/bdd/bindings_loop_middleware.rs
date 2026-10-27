@@ -71,6 +71,12 @@ async fn test_lm_example_unload(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "计划模式启用后注册计划中间件"
+)]
+async fn test_lm_plan_state_registers(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "改写参数可见"
 )]
 async fn test_lm_rewritten_args_visible(agent: AgentState, ws: Workspace) {}

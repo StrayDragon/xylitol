@@ -7,6 +7,7 @@ pub struct LoopExampleConfig {
     pub enabled: bool,
     pub max_settles: Option<u32>,
     pub deny_bash_patterns: Vec<String>,
+    pub plan_state: bool,
 }
 
 impl LoopExampleConfig {
