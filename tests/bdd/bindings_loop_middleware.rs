@@ -122,3 +122,9 @@ async fn test_lm_compact_reason(agent: AgentState, ws: Workspace) {}
     name = "压缩后结算可见"
 )]
 async fn test_lm_compact_settlement(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "前序停止后批内中间件已运行"
+)]
+async fn test_lm_preflight_stop_keeps_middleware_run(agent: AgentState, ws: Workspace) {}

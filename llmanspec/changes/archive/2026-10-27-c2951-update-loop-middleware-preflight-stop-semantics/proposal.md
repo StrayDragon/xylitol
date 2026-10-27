@@ -2,6 +2,9 @@
 depends_on:
   - c2945-update-loop-middleware-payloads
 title: Loop 中间件批次预演的停止语义入合约
+branch: sdd/c2951-update-loop-middleware-preflight-stop-semantics
+base_branch: main
+base_sha: 9faa17b40c9ab4e82df33b9835214a919dffdae9
 ---
 
 # Loop 中间件批次预演的停止语义入合约

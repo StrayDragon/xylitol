@@ -28,6 +28,71 @@ thread_local! {
         const { RefCell::new(None) };
     static LOOP_PLUGIN_CTX: RefCell<Option<xylitol_plugin_sdk::rt::Ctx>> = const { RefCell::new(None) };
     static LOOP_SETTLEMENT: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
+    static LOOP_SECOND_CALLS: RefCell<usize> = const { RefCell::new(0) };
+}
+
+struct CountingStopper {
+    calls: Arc<std::sync::atomic::AtomicUsize>,
+    stop_on_first: bool,
+}
+
+struct PlainTool {
+    name: &'static str,
+}
+
+#[async_trait::async_trait]
+impl xylitol_plugin_sdk::XyTool for PlainTool {
+    fn name(&self) -> &str {
+        self.name
+    }
+
+    fn description(&self) -> &str {
+        "bdd plain tool"
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({"type": "object", "properties": {}})
+    }
+
+    async fn execute(
+        &self,
+        _ctx: &xylitol_plugin_sdk::XyToolCtx,
+        _args: serde_json::Value,
+    ) -> Result<String, xylitol_plugin_sdk::error::XyToolError> {
+        Ok(format!("{}-ok", self.name))
+    }
+}
+
+#[async_trait::async_trait]
+impl LoopMiddleware for CountingStopper {
+    fn id(&self) -> &str {
+        if self.stop_on_first {
+            "preflight-stopper"
+        } else {
+            "preflight-observer"
+        }
+    }
+
+    fn order(&self) -> i64 {
+        if self.stop_on_first { 0 } else { 1 }
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        &[LoopStage::BeforeTool]
+    }
+
+    async fn before_tool(&self, ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+        let seen = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.stop_on_first {
+            return if seen == 0 {
+                LoopStep::stopped(ctx)
+            } else {
+                LoopStep::continued(ctx)
+            };
+        }
+        LOOP_SECOND_CALLS.with(|c| *c.borrow_mut() += 1);
+        LoopStep::continued(ctx)
+    }
 }
 
 struct Scripted {
@@ -1090,6 +1155,65 @@ pub(crate) fn g_route_to_missing(agent: &AgentState, ws: &Workspace) {
     set_fake_text("ack");
     xylitol_kernel::provider::factory::set_fake_tool_call("read", r#"{"path":"src/main.rs"}"#);
     ar_store_runner(runner);
+}
+
+#[given("注册两个 before_tool 中间件且首个对首个调用返回 stop")]
+pub(crate) fn g_two_middleware_first_stops(agent: &AgentState, _ws: &Workspace) {
+    LOOP_SECOND_CALLS.with(|c| *c.borrow_mut() = 0);
+    let registry = fresh_registry();
+    registry
+        .register(Arc::new(CountingStopper {
+            calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stop_on_first: true,
+        }))
+        .expect("register preflight-stopper");
+    registry
+        .register(Arc::new(CountingStopper {
+            calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stop_on_first: false,
+        }))
+        .expect("register preflight-observer");
+
+    let tools = ToolSet::from_iter(vec![
+        Arc::new(PlainTool { name: "first_tool" }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
+        Arc::new(PlainTool {
+            name: "second_tool",
+        }) as Arc<dyn xylitol_plugin_sdk::XyTool>,
+    ]);
+    let mut runner = crate::bdd::steps_agent_runtime::bdd_batch_make_runner(
+        agent,
+        tools,
+        &[("first_tool", r#"{}"#), ("second_tool", r#"{}"#)],
+        xylitol_plugin_sdk::XyBatchMode::Sequential,
+    );
+    runner.set_loop_middleware(Some(registry));
+    ar_store_runner(runner);
+}
+
+#[when("运行 AgentRuntime 触发两个工具调用")]
+pub(crate) async fn w_run_two_tool_calls() {
+    ar_take_run_store("触发两个工具调用").await;
+}
+
+#[then("第二个中间件已被调用且其工具未执行")]
+pub(crate) fn t_second_middleware_ran_tool_did_not() {
+    let observed = LOOP_SECOND_CALLS.with(|c| *c.borrow());
+    assert!(
+        observed > 0,
+        "the second middleware must have run during preflight even though the batch was stopped"
+    );
+    let events = crate::bdd::steps_agent_runtime::ar_events();
+    let executed: Vec<&str> = events
+        .iter()
+        .filter_map(|e| match e {
+            XyEvent::ToolExecutionStart { name, .. } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        !executed.contains(&"second_tool"),
+        "the stopped batch must not execute the second tool: {executed:?}"
+    );
 }
 
 #[when("运行 AgentRuntime 触发 read")]

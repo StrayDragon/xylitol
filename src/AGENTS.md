@@ -199,7 +199,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 
 - core **永远**持 turn 边界、取消、权限最终裁决、消息落盘；插件只能经 `{ ctx, control }` 返回值参与，**不得**整段替换 ReAct。
 - 链在 run 启动时快照；链空零开销、无 span，行为与基线一致。
-- `before_tool` 在**工具批规划前**预演（hooks → AgentHooks → 中间件 → 权限），可改参数与工具名；core 用最终 `(name, args)` 重算权限目标并再裁，并按最终工具执行分类重排并发窗（MCP 前缀仍强制串行）；路由目标须已在本次装配的工具集内。
+- `before_tool` 在**工具批规划前**预演（hooks → AgentHooks → 中间件 → 权限），可改参数与工具名；core 用最终 `(name, args)` 重算权限目标并再裁，并按最终工具执行分类重排并发窗（MCP 前缀仍强制串行）；路由目标须已在本次装配的工具集内。预演先于本批任何执行：前序调用 `stop` 后，后续调用的中间件**已运行但工具不执行**，中间件不得假设「放行即执行」（`r2922`）。
 - `after_tool` 收结构化载荷（原始分片 + 可解析详情 + 错误标志）；core 的 write/edit quiet 摘要只在结果仍是单段文本时生效，中间件给的详情不被丢弃。
 - `decide_continue` 只在 Settle 调；`compact` 可带压缩指令与来源标签（进 `CompactionStart/End.reason`，缺省 `loop_middleware:<id>`）；`handoff` 未支持以稳定错误结束；无进展 `continue` / `compact` 各有硬上限。
 - `XyHookBus` / `AgentHooks` 是旁路（审计 / 兼容），不承载 loop 决策。

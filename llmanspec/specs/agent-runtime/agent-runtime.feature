@@ -345,7 +345,7 @@
 
   @req:r2922
   规则: loop-middleware-tool-gate
-    before_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core permission 之前运行，且在工具批执行规划之前完成预演：中间件可改工具参数与工具名；core 须按最终工具名与最终参数重算权限目标并再裁一次，并按最终工具的执行分类重排并发窗，不得沿用原工具名或原参数的任何判定。中间件拒绝 须使工具以 tool-error 回写且不执行；中间件放行 不得撤销上游拒绝，也不得绕过 core permission。路由目标 须限于本次运行已装配的工具集，不得新增工具调用，也不得借路由绕过 MCP 前缀的串行纪律；找不到目标即 tool-error。审批只能更严；更松须显式 capability 与用户信任，不在本要求范围。
+    before_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core permission 之前运行，且在工具批执行规划之前完成预演：中间件可改工具参数与工具名；core 须按最终工具名与最终参数重算权限目标并再裁一次，并按最终工具的执行分类重排并发窗，不得沿用原工具名或原参数的任何判定。中间件拒绝 须使工具以 tool-error 回写且不执行；中间件放行 不得撤销上游拒绝，也不得绕过 core permission。路由目标 须限于本次运行已装配的工具集，不得新增工具调用，也不得借路由绕过 MCP 前缀的串行纪律；找不到目标即 tool-error。审批只能更严；更松须显式 capability 与用户信任，不在本要求范围。预演 须先于本批任何工具执行完成；批内前序调用返回 stop 时，后续调用的中间件 已运行 但其工具 不得执行，中间件 不得假设「放行即执行」。
 
     场景: 中间件拒绝更严
       假如 注册 before_tool 中间件拒绝 bash
@@ -371,6 +371,11 @@
       假如 注册 before_tool 中间件把 read 路由到未装配的工具名
       当 运行 AgentRuntime 触发 read
       那么 tool-error 回写且原因含 Unknown tool
+
+    场景: 前序停止后批内中间件已运行
+      假如 注册两个 before_tool 中间件且首个对首个调用返回 stop
+      当 运行 AgentRuntime 触发两个工具调用
+      那么 第二个中间件已被调用且其工具未执行
 
   @req:r2923
   规则: loop-middleware-bounded
