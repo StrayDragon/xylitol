@@ -31,6 +31,24 @@ pub struct GeneratorCriticConfig {
 
 pub const DEFAULT_CRITIC_ROUNDS: u32 = 1;
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields)]
+pub struct PlanExecuteConfig {
+    pub enabled: bool,
+    pub max_replans: u32,
+}
+
+pub const DEFAULT_MAX_REPLANS: u32 = 3;
+
+impl Default for PlanExecuteConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_replans: DEFAULT_MAX_REPLANS,
+        }
+    }
+}
+
 impl Default for GeneratorCriticConfig {
     fn default() -> Self {
         Self {
@@ -63,6 +81,7 @@ pub struct LoopExampleConfig {
     pub plan_checkpoint: bool,
     pub self_heal: SelfHealConfig,
     pub generator_critic: GeneratorCriticConfig,
+    pub plan_execute: PlanExecuteConfig,
     pub tool_exposure: ToolExposureConfig,
 }
 
@@ -80,6 +99,7 @@ impl Default for LoopExampleConfig {
             plan_checkpoint: false,
             self_heal: SelfHealConfig::default(),
             generator_critic: GeneratorCriticConfig::default(),
+            plan_execute: PlanExecuteConfig::default(),
             tool_exposure: ToolExposureConfig::default(),
         }
     }

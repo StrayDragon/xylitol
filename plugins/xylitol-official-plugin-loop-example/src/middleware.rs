@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -7,15 +7,18 @@ use serde_json::Value;
 
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::session::{
-    PlanCheckpoint, PlanCheckpointStep, PlanResumeCursor, TodoList, TodoStatus,
-    latest_plan_checkpoint,
+    Plan, PlanCheckpoint, PlanCheckpointStep, PlanResumeCursor, PlanStep, PlanStepStatus, TodoList,
+    TodoStatus, blocked_step, downstream_ids, latest_plan, latest_plan_checkpoint, runnable_step,
+    validate_plan, validate_replan,
 };
 use xylitol_plugin_sdk::{
     AfterModelCtx, AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx,
     DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep, XySessionStore,
 };
 
-use crate::config::{GeneratorCriticConfig, LoopExampleConfig, SelfHealConfig, ToolExposureConfig};
+use crate::config::{
+    GeneratorCriticConfig, LoopExampleConfig, PlanExecuteConfig, SelfHealConfig, ToolExposureConfig,
+};
 
 const STAGES: &[LoopStage] = &[LoopStage::BeforeTool, LoopStage::DecideContinue];
 pub const DEFAULT_PLAN_SETTLES: u32 = 8;
@@ -38,6 +41,17 @@ const CRITIC_STAGES: &[LoopStage] = &[
     LoopStage::AfterModel,
     LoopStage::DecideContinue,
 ];
+const PLAN_EXECUTE_STAGES: &[LoopStage] = &[
+    LoopStage::BeforeModel,
+    LoopStage::AfterModel,
+    LoopStage::AfterTool,
+    LoopStage::DecideContinue,
+];
+const PLAN_EXECUTE_CONTRACT: &str = "Plan mode: create a plan before acting. Output exactly one \
+<plan>{json}</plan> block with the full plan: {\"goal\":\"...\",\"steps\":[{\"id\":\"s1\",\
+\"description\":\"...\",\"depends_on\":[],\"inputs\":[],\"outputs\":[],\"risk\":\"low\",\
+\"verification\":\"...\",\"rollback\":\"...\",\"requires_human\":false,\"status\":\"pending\"}]}. \
+Keep exactly one step in_progress; mark it completed only after verification passes.";
 const DEFAULT_CRITIC_RUBRIC: &[&str] = &[
     "correctness: the answer matches what the tool results and code actually show",
     "evidence: cite concrete tool results, file paths or commands",
@@ -220,6 +234,327 @@ impl LoopMiddleware for PlanStateMiddleware {
         );
         LoopStep::continued(ctx)
     }
+}
+
+#[derive(Debug, Default)]
+struct PlanExecuteState {
+    plan: Option<Plan>,
+    approved: HashSet<String>,
+    replan_count: u32,
+    contract_injected: bool,
+    injected_step: Option<String>,
+    summary_injected: bool,
+    summary_done: bool,
+    pending_plan_error: Option<String>,
+}
+
+pub struct PlanExecuteMiddleware {
+    store: Option<Arc<dyn XySessionStore>>,
+    max_replans: u32,
+    state: Mutex<PlanExecuteState>,
+    loaded: AtomicBool,
+}
+
+impl PlanExecuteMiddleware {
+    pub fn new(store: Option<Arc<dyn XySessionStore>>, config: &PlanExecuteConfig) -> Self {
+        Self {
+            store,
+            max_replans: config.max_replans.max(1),
+            state: Mutex::new(PlanExecuteState::default()),
+            loaded: AtomicBool::new(false),
+        }
+    }
+
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, PlanExecuteState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    async fn load_plan(&self, session_id: Option<&str>) {
+        let (Some(store), Some(session_id)) = (&self.store, session_id) else {
+            return;
+        };
+        let Ok(branch) = store.load_leaf_branch(session_id).await else {
+            return;
+        };
+        let Some(plan) = latest_plan(&branch) else {
+            return;
+        };
+        let mut state = self.lock_state();
+        if state.plan.is_none() {
+            state.plan = Some(plan);
+            state.contract_injected = true;
+        }
+    }
+
+    fn step_instruction(step: &PlanStep, plan: &Plan) -> String {
+        let mut lines = vec![
+            "<plan_step>".to_string(),
+            format!(
+                "Plan {}/{}: current step {} — {}.",
+                plan.completed_count(),
+                plan.steps.len(),
+                step.id,
+                step.description
+            ),
+        ];
+        if !step.inputs.is_empty() {
+            lines.push(format!("Inputs: {}.", step.inputs.join(", ")));
+        }
+        if let Some(verification) = &step.verification {
+            lines.push(format!("Verification: {verification}."));
+        }
+        lines.push("Do not start dependent steps before this one completes.".into());
+        lines.push("</plan_step>".into());
+        lines.join("\n")
+    }
+
+    fn replan_instruction(failed: &PlanStep, plan: &Plan) -> String {
+        let downstream = downstream_ids(plan, &failed.id);
+        let downstream_list = if downstream.is_empty() {
+            "none".to_string()
+        } else {
+            let mut ids: Vec<String> = downstream.into_iter().collect();
+            ids.sort();
+            ids.join(", ")
+        };
+        format!(
+            "<plan_replan>\nStep {} failed: {}.\nRewrite only {} and its downstream steps ({downstream_list}). \
+Keep completed steps unchanged. Output a full <plan>{{json}}</plan> block.\n</plan_replan>",
+            failed.id,
+            failed
+                .output_ref
+                .as_deref()
+                .unwrap_or("verification did not pass"),
+            failed.id
+        )
+    }
+
+    fn blocked_instruction(step: &PlanStep) -> String {
+        format!(
+            "<plan_blocked>\nStep {} — {} requires human approval. Stop and ask the user; \
+the next user message approves it once.\n</plan_blocked>",
+            step.id, step.description
+        )
+    }
+}
+
+fn extract_plan_json(text: &str) -> Option<&str> {
+    let start = text.rfind("<plan>")? + "<plan>".len();
+    let rest = &text[start..];
+    let end = rest.find("</plan>")?;
+    let json = rest[..end].trim();
+    if json.is_empty() { None } else { Some(json) }
+}
+
+#[async_trait]
+impl LoopMiddleware for PlanExecuteMiddleware {
+    fn id(&self) -> &str {
+        "plan-execute"
+    }
+
+    fn order(&self) -> i64 {
+        190
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        PLAN_EXECUTE_STAGES
+    }
+
+    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+        if !self.loaded.swap(true, Ordering::SeqCst) {
+            self.load_plan(ctx.session_id.as_deref()).await;
+        }
+        let mut state = self.lock_state();
+        if let Some(error) = state.pending_plan_error.take() {
+            ctx.messages
+                .push(AgentMessage::Llm(XyLlmMessage::user(format!(
+                    "<plan_error>\n{error}\n</plan_error>"
+                ))));
+        }
+        let Some(plan) = state.plan.clone() else {
+            if !state.contract_injected {
+                ctx.messages
+                    .push(AgentMessage::Llm(XyLlmMessage::user(PLAN_EXECUTE_CONTRACT)));
+                state.contract_injected = true;
+            }
+            return LoopStep::continued(ctx);
+        };
+        if let Some(blocked) = blocked_step(&plan, &state.approved) {
+            if state.injected_step.as_deref() != Some(&blocked.id) {
+                ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
+                    Self::blocked_instruction(blocked),
+                )));
+                state.injected_step = Some(blocked.id.clone());
+            }
+            return LoopStep::continued(ctx);
+        }
+        if let Some(failed) = plan
+            .steps
+            .iter()
+            .find(|step| step.status == PlanStepStatus::Failed)
+        {
+            if state.injected_step.as_deref() != Some(&failed.id) {
+                ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
+                    Self::replan_instruction(failed, &plan),
+                )));
+                state.injected_step = Some(failed.id.clone());
+            }
+            return LoopStep::continued(ctx);
+        }
+        if plan.all_completed() {
+            if !state.summary_injected {
+                ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
+                    "<plan_complete>\nAll plan steps are completed. Summarize what changed and how it was verified.\n</plan_complete>",
+                )));
+                state.summary_injected = true;
+            }
+            return LoopStep::continued(ctx);
+        }
+        if let Some(step) = runnable_step(&plan, &state.approved)
+            && state.injected_step.as_deref() != Some(&step.id)
+        {
+            ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
+                Self::step_instruction(step, &plan),
+            )));
+            state.injected_step = Some(step.id.clone());
+        }
+        LoopStep::continued(ctx)
+    }
+
+    async fn after_model(&self, ctx: AfterModelCtx) -> LoopStep<AfterModelCtx> {
+        let assistant_text = ctx.assistant.text();
+        let Some(json) = extract_plan_json(&assistant_text) else {
+            return LoopStep::continued(ctx);
+        };
+        let next: Plan = match serde_json::from_str(json) {
+            Ok(plan) => plan,
+            Err(err) => {
+                self.lock_state().pending_plan_error =
+                    Some(format!("plan block is not valid JSON: {err}"));
+                return LoopStep::continued(ctx);
+            }
+        };
+        if let Err(err) = validate_plan(&next) {
+            self.lock_state().pending_plan_error = Some(err.0);
+            return LoopStep::continued(ctx);
+        }
+        let previous = self.lock_state().plan.clone();
+        if let Err(err) = validate_replan(previous.as_ref(), &next) {
+            self.lock_state().pending_plan_error = Some(err.0);
+            return LoopStep::continued(ctx);
+        }
+        if let (Some(store), Some(session_id)) = (&self.store, ctx.session_id.as_deref())
+            && let Err(err) = store
+                .append_session_entry(session_id, &next.to_custom_entry_shell())
+                .await
+        {
+            log::warn!(
+                target: "xylitol::loop-example",
+                "plan persist failed: {err}"
+            );
+        }
+        let had_failed = previous.as_ref().is_some_and(|plan| {
+            plan.steps
+                .iter()
+                .any(|step| step.status == PlanStepStatus::Failed)
+        });
+        let mut state = self.lock_state();
+        state.plan = Some(next);
+        state.injected_step = None;
+        state.summary_injected = false;
+        state.summary_done = false;
+        state.contract_injected = true;
+        state.pending_plan_error = None;
+        if had_failed {
+            state.replan_count += 1;
+        }
+        let plan = state.plan.clone().unwrap_or_default();
+        state.approved.retain(|id| {
+            plan.step(id).is_some_and(|step| {
+                matches!(
+                    step.status,
+                    PlanStepStatus::Pending | PlanStepStatus::InProgress
+                )
+            })
+        });
+        LoopStep::continued(ctx)
+    }
+
+    async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
+        if ctx.is_error {
+            let mut state = self.lock_state();
+            if let Some(plan) = &mut state.plan
+                && let Some(step) = plan
+                    .steps
+                    .iter_mut()
+                    .find(|step| step.status == PlanStepStatus::InProgress)
+            {
+                step.status = PlanStepStatus::Failed;
+                step.output_ref = Some(format!("failure:{}", ctx.tool_call_id));
+                let id = step.id.clone();
+                state.approved.remove(&id);
+                state.injected_step = None;
+            }
+        }
+        LoopStep::continued(ctx)
+    }
+
+    async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
+        let mut state = self.lock_state();
+        let Some(plan) = state.plan.clone() else {
+            return LoopStep::continued(ctx);
+        };
+        if let Some(blocked) = blocked_step(&plan, &state.approved) {
+            if ctx.has_new_user_messages {
+                state.approved.insert(blocked.id.clone());
+                state.injected_step = None;
+                return LoopStep::continued(ctx);
+            }
+            return LoopStep::stopped(ctx);
+        }
+        if plan
+            .steps
+            .iter()
+            .any(|step| step.status == PlanStepStatus::Failed)
+        {
+            if state.replan_count >= self.max_replans {
+                log::warn!(
+                    target: "xylitol::loop-example",
+                    "plan-execute stopped after {} replan(s)",
+                    state.replan_count
+                );
+                return LoopStep::stopped(ctx);
+            }
+            return LoopStep::continued(ctx);
+        }
+        if plan.all_completed() {
+            if state.summary_done {
+                return LoopStep::stopped(ctx);
+            }
+            if state.summary_injected
+                && ctx
+                    .assistant
+                    .as_ref()
+                    .is_some_and(|assistant| !assistant_has_tool_calls(assistant))
+            {
+                state.summary_done = true;
+                return LoopStep::stopped(ctx);
+            }
+            return LoopStep::continued(ctx);
+        }
+        if runnable_step(&plan, &state.approved).is_some() {
+            LoopStep::continued(ctx)
+        } else {
+            LoopStep::stopped(ctx)
+        }
+    }
+}
+
+pub fn plan_execute_middleware(
+    store: Option<Arc<dyn XySessionStore>>,
+    config: &PlanExecuteConfig,
+) -> Arc<dyn LoopMiddleware> {
+    Arc::new(PlanExecuteMiddleware::new(store, config))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1018,8 +1353,8 @@ pub fn example_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware>
 mod tests {
     use super::*;
     use crate::config::{
-        DEFAULT_CRITIC_ROUNDS, DEFAULT_PROGRESS_STALE_AFTER, DEFAULT_SELF_HEAL_ATTEMPTS,
-        GeneratorCriticConfig, SelfHealConfig,
+        DEFAULT_CRITIC_ROUNDS, DEFAULT_MAX_REPLANS, DEFAULT_PROGRESS_STALE_AFTER,
+        DEFAULT_SELF_HEAL_ATTEMPTS, GeneratorCriticConfig, PlanExecuteConfig, SelfHealConfig,
     };
     use xylitol_plugin_sdk::LoopControl;
     use xylitol_plugin_sdk::XySessionError;
@@ -1051,6 +1386,7 @@ mod tests {
             plan_checkpoint: false,
             self_heal: Default::default(),
             generator_critic: Default::default(),
+            plan_execute: Default::default(),
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -1073,6 +1409,7 @@ mod tests {
             plan_checkpoint: false,
             self_heal: Default::default(),
             generator_critic: Default::default(),
+            plan_execute: Default::default(),
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -1810,6 +2147,7 @@ mod tests {
         AfterModelCtx {
             turn_index: 0,
             assistant: AgentMessage::Llm(XyLlmMessage::assistant(text)),
+            session_id: None,
         }
     }
 
@@ -1832,6 +2170,7 @@ mod tests {
                 timestamp: 0,
                 diagnostics: Vec::new(),
             }),
+            session_id: None,
         }
     }
 
@@ -1936,5 +2275,229 @@ mod tests {
     fn critic_default_rounds_are_bounded() {
         assert_eq!(DEFAULT_CRITIC_ROUNDS, 1);
         assert!(DEFAULT_CRITIC_ROUNDS < 32);
+    }
+
+    fn exec_config(max_replans: u32) -> PlanExecuteConfig {
+        PlanExecuteConfig {
+            enabled: true,
+            max_replans,
+        }
+    }
+
+    fn plan_step(id: &str, status: PlanStepStatus, depends_on: &[&str]) -> PlanStep {
+        PlanStep {
+            id: id.into(),
+            description: format!("do {id}"),
+            depends_on: depends_on.iter().map(|dep| dep.to_string()).collect(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            risk: Default::default(),
+            verification: Some(format!("verify {id}")),
+            rollback: None,
+            requires_human: false,
+            status,
+            output_ref: None,
+        }
+    }
+
+    fn plan_with(steps: Vec<PlanStep>) -> Plan {
+        Plan {
+            goal: "ship".into(),
+            steps,
+            resume_cursor: None,
+            updated_at: 1,
+        }
+    }
+
+    fn plan_block(plan: &Plan) -> String {
+        format!("<plan>{}</plan>", plan.to_data_value())
+    }
+
+    fn exec_model_ctx(session_id: Option<&str>) -> BeforeModelCtx {
+        BeforeModelCtx {
+            turn_index: 0,
+            messages: Vec::new(),
+            tool_schemas: Vec::new(),
+            options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+            todo: None,
+            session_id: session_id.map(str::to_string),
+        }
+    }
+
+    fn exec_after_model(text: &str) -> AfterModelCtx {
+        AfterModelCtx {
+            turn_index: 0,
+            assistant: AgentMessage::Llm(XyLlmMessage::assistant(text)),
+            session_id: Some("s1".into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn plan_execute_injects_contract_without_plan() {
+        let mw = PlanExecuteMiddleware::new(None, &exec_config(DEFAULT_MAX_REPLANS));
+        let out = mw.before_model(exec_model_ctx(Some("s1"))).await;
+        assert_eq!(out.ctx.messages.len(), 1);
+        assert!(out.ctx.messages[0].text().contains("<plan>{json}</plan>"));
+    }
+
+    #[tokio::test]
+    async fn plan_execute_adopts_and_persists_plan() {
+        let store = Arc::new(FakeStore::default());
+        let mw = PlanExecuteMiddleware::new(Some(store.clone()), &exec_config(DEFAULT_MAX_REPLANS));
+        mw.before_model(exec_model_ctx(Some("s1"))).await;
+        let plan = plan_with(vec![
+            plan_step("s1", PlanStepStatus::Pending, &[]),
+            plan_step("s2", PlanStepStatus::Pending, &["s1"]),
+        ]);
+        mw.after_model(exec_after_model(&plan_block(&plan))).await;
+
+        let entries = store.entries.lock().unwrap().clone();
+        assert_eq!(latest_plan(&entries), Some(plan.clone()));
+
+        let out = mw.before_model(exec_model_ctx(Some("s1"))).await;
+        assert_eq!(out.ctx.messages.len(), 1);
+        let text = out.ctx.messages[0].text();
+        assert!(text.contains("<plan_step>"));
+        assert!(text.contains("s1"));
+    }
+
+    #[tokio::test]
+    async fn plan_execute_marks_failure_and_replans_downstream() {
+        let store = Arc::new(FakeStore::default());
+        let mw = PlanExecuteMiddleware::new(Some(store), &exec_config(DEFAULT_MAX_REPLANS));
+        mw.before_model(exec_model_ctx(Some("s1"))).await;
+        let plan = plan_with(vec![
+            plan_step("s1", PlanStepStatus::InProgress, &[]),
+            plan_step("s2", PlanStepStatus::Pending, &["s1"]),
+        ]);
+        mw.after_model(exec_after_model(&plan_block(&plan))).await;
+
+        let mut failure = heal_ctx("bash", "tests failed", true);
+        failure.tool_name = "bash".into();
+        mw.after_tool(failure).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Continue
+        );
+        let replan = mw.before_model(exec_model_ctx(Some("s1"))).await;
+        let text = replan.ctx.messages[0].text();
+        assert!(text.contains("<plan_replan>"));
+        assert!(text.contains("s2"), "downstream step must be named");
+
+        let mut replanned = plan;
+        replanned.steps[0].status = PlanStepStatus::Pending;
+        replanned.steps[0].description = "retry s1".into();
+        replanned.steps[1].description = "redo s2".into();
+        mw.after_model(exec_after_model(&plan_block(&replanned)))
+            .await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Continue
+        );
+        let step = mw.before_model(exec_model_ctx(Some("s1"))).await;
+        assert!(step.ctx.messages[0].text().contains("<plan_step>"));
+    }
+
+    #[tokio::test]
+    async fn plan_execute_rejects_rewriting_completed_steps() {
+        let mw = PlanExecuteMiddleware::new(None, &exec_config(DEFAULT_MAX_REPLANS));
+        mw.before_model(exec_model_ctx(None)).await;
+        let plan = plan_with(vec![
+            plan_step("s1", PlanStepStatus::Completed, &[]),
+            plan_step("s2", PlanStepStatus::Pending, &["s1"]),
+        ]);
+        mw.after_model(exec_after_model(&plan_block(&plan))).await;
+
+        let mut rewritten = plan.clone();
+        rewritten.steps[0].status = PlanStepStatus::Pending;
+        rewritten.steps[0].description = "rewrite history".into();
+        mw.after_model(exec_after_model(&plan_block(&rewritten)))
+            .await;
+
+        let out = mw.before_model(exec_model_ctx(None)).await;
+        assert!(
+            out.ctx
+                .messages
+                .iter()
+                .any(|message| message.text().contains("<plan_error>"))
+        );
+        let step = mw.before_model(exec_model_ctx(None)).await;
+        assert!(
+            step.ctx.messages.is_empty() || !step.ctx.messages[0].text().contains("<plan_step>s1"),
+            "the rejected plan must not replace the old plan"
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_execute_blocks_for_human_and_approves_once() {
+        let mw = PlanExecuteMiddleware::new(None, &exec_config(DEFAULT_MAX_REPLANS));
+        mw.before_model(exec_model_ctx(None)).await;
+        let mut human = plan_step("s1", PlanStepStatus::Pending, &[]);
+        human.requires_human = true;
+        mw.after_model(exec_after_model(&plan_block(&plan_with(vec![human]))))
+            .await;
+
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Stop
+        );
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, true)).await.control,
+            LoopControl::Continue
+        );
+        let out = mw.before_model(exec_model_ctx(None)).await;
+        assert!(out.ctx.messages[0].text().contains("<plan_step>"));
+    }
+
+    #[tokio::test]
+    async fn plan_execute_stops_at_replan_cap() {
+        let mw = PlanExecuteMiddleware::new(None, &exec_config(1));
+        mw.before_model(exec_model_ctx(None)).await;
+        let failed_plan = plan_with(vec![plan_step("s1", PlanStepStatus::Failed, &[])]);
+        mw.after_model(exec_after_model(&plan_block(&failed_plan)))
+            .await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Continue
+        );
+        mw.after_model(exec_after_model(&plan_block(&failed_plan)))
+            .await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Stop,
+            "replanning must be bounded"
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_execute_summarizes_after_completion() {
+        let mw = PlanExecuteMiddleware::new(None, &exec_config(DEFAULT_MAX_REPLANS));
+        mw.before_model(exec_model_ctx(None)).await;
+        let plan = plan_with(vec![plan_step("s1", PlanStepStatus::Completed, &[])]);
+        mw.after_model(exec_after_model(&plan_block(&plan))).await;
+
+        let mut decide = decide_ctx(0, false);
+        assert_eq!(
+            mw.decide_continue(decide.clone()).await.control,
+            LoopControl::Continue
+        );
+        let out = mw.before_model(exec_model_ctx(None)).await;
+        assert!(out.ctx.messages[0].text().contains("<plan_complete>"));
+        decide.assistant = Some(AgentMessage::Llm(XyLlmMessage::assistant("done")));
+        assert_eq!(mw.decide_continue(decide).await.control, LoopControl::Stop);
+    }
+
+    #[test]
+    fn plan_execute_identity_is_stable() {
+        let mw = PlanExecuteMiddleware::new(None, &PlanExecuteConfig::default());
+        assert_eq!(mw.id(), "plan-execute");
+        assert_eq!(mw.order(), 190);
+        assert_eq!(mw.stages(), PLAN_EXECUTE_STAGES);
+    }
+
+    #[test]
+    fn plan_execute_default_replans_are_bounded() {
+        assert_eq!(DEFAULT_MAX_REPLANS, 3);
+        assert!(DEFAULT_MAX_REPLANS < 32);
     }
 }

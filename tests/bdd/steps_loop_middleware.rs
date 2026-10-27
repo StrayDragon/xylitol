@@ -569,6 +569,7 @@ pub(crate) async fn g_example_enabled() {
                 plan_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
+                plan_execute: Default::default(),
                 tool_exposure: Default::default(),
             },
         )
@@ -606,6 +607,7 @@ pub(crate) async fn g_example_plan_enabled() {
                 plan_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
+                plan_execute: Default::default(),
                 tool_exposure: Default::default(),
             },
         )
@@ -642,6 +644,7 @@ pub(crate) async fn g_example_reminder_enabled() {
                 plan_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
+                plan_execute: Default::default(),
                 tool_exposure: Default::default(),
             },
         )
@@ -678,6 +681,7 @@ pub(crate) async fn g_example_tool_exposure_enabled() {
                 plan_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
+                plan_execute: Default::default(),
                 tool_exposure: xylitol_official_plugin_loop_example::ToolExposureConfig {
                     enabled: true,
                     allow: vec!["read".into()],
@@ -718,6 +722,7 @@ pub(crate) async fn g_example_plan_checkpoint_enabled() {
                 plan_checkpoint: true,
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
+                plan_execute: Default::default(),
                 tool_exposure: Default::default(),
             },
         )
@@ -757,6 +762,7 @@ pub(crate) async fn g_example_self_heal_enabled() {
                     ..Default::default()
                 },
                 generator_critic: Default::default(),
+                plan_execute: Default::default(),
                 tool_exposure: Default::default(),
             },
         )
@@ -793,6 +799,47 @@ pub(crate) async fn g_example_generator_critic_enabled() {
                 plan_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: xylitol_official_plugin_loop_example::GeneratorCriticConfig {
+                    enabled: true,
+                    ..Default::default()
+                },
+                plan_execute: Default::default(),
+                tool_exposure: Default::default(),
+            },
+        )
+        .expect("loop example plugin"),
+    );
+    for _ in 0..64 {
+        if registry.ids().len() == 2 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    LOOP_PLUGIN_REGISTRY.with(|slot| slot.borrow_mut().replace(registry));
+    LOOP_PLUGIN_FIBER.with(|slot| slot.borrow_mut().replace(fiber));
+    LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
+}
+
+#[given("以启用规划执行的 loop 示例插件装配运行时")]
+pub(crate) async fn g_example_plan_execute_enabled() {
+    use xylitol_plugin_sdk::rt::CtxHost;
+
+    let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("ctx root");
+    let registry = fresh_registry();
+    ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
+        .expect("provide registry");
+    let fiber = ctx.plugin(
+        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
+            &xylitol_official_plugin_loop_example::LoopExampleConfig {
+                enabled: true,
+                max_settles: Some(2),
+                deny_bash_patterns: vec![],
+                plan_state: false,
+                progress_reminder: false,
+                progress_reminder_stale_after: 3,
+                plan_checkpoint: false,
+                self_heal: Default::default(),
+                generator_critic: Default::default(),
+                plan_execute: xylitol_official_plugin_loop_example::PlanExecuteConfig {
                     enabled: true,
                     ..Default::default()
                 },
@@ -886,6 +933,17 @@ pub(crate) fn t_registry_has_generator_critic() {
             &*slot.borrow(),
             &["loop-example".to_string(), "generator-critic".to_string()],
             "generator-critic must register the base middleware and the critic middleware"
+        );
+    });
+}
+
+#[then("注册表含 loop-example 与 plan-execute")]
+pub(crate) fn t_registry_has_plan_execute() {
+    LOOP_CHAIN_IDS.with(|slot| {
+        assert_eq!(
+            &*slot.borrow(),
+            &["loop-example".to_string(), "plan-execute".to_string()],
+            "plan-execute must register the base middleware and the plan middleware"
         );
     });
 }

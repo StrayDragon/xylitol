@@ -5,8 +5,8 @@ use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 use crate::config::LoopExampleConfig;
 use crate::middleware::{
     DEFAULT_PLAN_SETTLES, example_middleware, generator_critic_middleware,
-    plan_checkpoint_middleware, plan_state_middleware, progress_reminder_middleware,
-    self_heal_middleware, tool_exposure_middleware,
+    plan_checkpoint_middleware, plan_execute_middleware, plan_state_middleware,
+    progress_reminder_middleware, self_heal_middleware, tool_exposure_middleware,
 };
 
 pub struct LoopExamplePlugin {
@@ -63,6 +63,14 @@ impl Plugin for LoopExamplePlugin {
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
         }
+        if self.config.plan_execute.enabled {
+            let store = ctx.get::<dyn XySessionStore>();
+            handles.push(
+                registry
+                    .register(plan_execute_middleware(store, &self.config.plan_execute))
+                    .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
+            );
+        }
         if self.config.generator_critic.enabled {
             handles.push(
                 registry
@@ -114,6 +122,7 @@ mod tests {
             plan_checkpoint: false,
             self_heal: Default::default(),
             generator_critic: Default::default(),
+            plan_execute: Default::default(),
             tool_exposure: Default::default(),
         }
     }
@@ -126,6 +135,7 @@ mod tests {
             plan_checkpoint: false,
             self_heal: Default::default(),
             generator_critic: Default::default(),
+            plan_execute: Default::default(),
             tool_exposure: Default::default(),
             ..enabled()
         }
@@ -154,6 +164,7 @@ mod tests {
             plan_checkpoint: true,
             self_heal: Default::default(),
             generator_critic: Default::default(),
+            plan_execute: Default::default(),
             ..enabled()
         }
     }
@@ -171,6 +182,16 @@ mod tests {
     fn critic_enabled() -> LoopExampleConfig {
         LoopExampleConfig {
             generator_critic: crate::config::GeneratorCriticConfig {
+                enabled: true,
+                ..Default::default()
+            },
+            ..enabled()
+        }
+    }
+
+    fn plan_execute_enabled() -> LoopExampleConfig {
+        LoopExampleConfig {
+            plan_execute: crate::config::PlanExecuteConfig {
                 enabled: true,
                 ..Default::default()
             },
@@ -326,6 +347,26 @@ mod tests {
             registry.ids(),
             vec!["loop-example".to_string(), "generator-critic".to_string()],
             "generator-critic must register alongside the base middleware"
+        );
+        fiber.dispose().await.expect("dispose");
+        assert!(registry.is_empty(), "unload must remove both middlewares");
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn plan_execute_registers_and_unloads() {
+        let (ctx, registry) = ctx_with_registry();
+        let fiber = ctx.plugin(LoopExamplePlugin::new(&plan_execute_enabled()).expect("new"));
+        for _ in 0..64 {
+            if registry.ids().len() == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            registry.ids(),
+            vec!["loop-example".to_string(), "plan-execute".to_string()],
+            "plan-execute must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty(), "unload must remove both middlewares");

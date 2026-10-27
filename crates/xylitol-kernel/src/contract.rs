@@ -266,6 +266,7 @@ mod tests {
                     plan_checkpoint: false,
                     self_heal: Default::default(),
                     generator_critic: Default::default(),
+                    plan_execute: Default::default(),
                     tool_exposure: Default::default(),
                 },
             )
@@ -442,6 +443,7 @@ mod tests {
                 plan_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
+                plan_execute: Default::default(),
                 tool_exposure: Default::default(),
             },
         ))

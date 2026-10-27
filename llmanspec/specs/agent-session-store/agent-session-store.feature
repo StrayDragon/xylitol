@@ -357,3 +357,6 @@
   @req:r2941
   规则: plan-checkpoint-entry
     计划 checkpoint 须以 custom_type = "plan_checkpoint" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式，不改布局；data 至少含 steps（id/content/status 与可选 verification/output_ref）、可选 last_verified_artifact / last_failure / resume_cursor（step_id 与 attempt）以及 updated_at。读取 须取叶分支上最新一条；缺失或损坏时 须按无 checkpoint 处理，不得中断。checkpoint 与 agent_todo 并存：todo 仍是人可见台账，checkpoint 是恢复状态，两者 不得互相替代。写入 须只追加，不得覆盖或删除历史条目。往返与最新选取 由 SDK 单测覆盖。
+  @req:r2945
+  规则: plan-artifact
+    Plan 须以 custom_type = "plan" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式；data 含 goal、steps（id/description/depends_on/inputs/outputs/risk/verification/rollback/requires_human/status/output_ref）、可选 resume_cursor 与 updated_at。读取 须取叶分支最新一条。校验 须保证 id 唯一、依赖存在且无环。重规划约束：已完成步骤 不得删除、降级或改写 description / verification / depends_on；只有失败步骤及其下游闭包可结构性变更；无失败时 只允许 status / output_ref 变化。plan 与 agent_todo、plan_checkpoint 并存，不得互相替代。DAG 校验与重规划约束 由 SDK / 中间件单测覆盖。

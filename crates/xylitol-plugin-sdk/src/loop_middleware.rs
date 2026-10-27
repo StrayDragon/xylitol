@@ -106,6 +106,7 @@ pub struct BeforeModelCtx {
 pub struct AfterModelCtx {
     pub turn_index: u32,
     pub assistant: AgentMessage,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]

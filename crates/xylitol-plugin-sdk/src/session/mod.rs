@@ -3,6 +3,7 @@ mod entries;
 mod helpers;
 mod manifest;
 mod parse;
+mod plan;
 mod todo;
 mod tree;
 
@@ -27,6 +28,10 @@ pub use manifest::{SealedIndex, SessionManifest, SessionSegment};
 pub use parse::{
     enforce_legacy_session_version, enforce_session_version, parse_session_jsonl,
     parse_session_jsonl_lines,
+};
+pub use plan::{
+    CUSTOM_TYPE_PLAN, Plan, PlanRisk, PlanStep, PlanStepStatus, PlanValidationError, blocked_step,
+    downstream_ids, latest_plan, runnable_step, validate_plan, validate_replan,
 };
 pub use todo::TodoItem;
 pub use todo::{

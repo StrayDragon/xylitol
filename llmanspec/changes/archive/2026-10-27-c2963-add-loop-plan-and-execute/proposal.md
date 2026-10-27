@@ -3,6 +3,9 @@ depends_on:
   - c2957-add-loop-example-plan-state
   - c2960-add-loop-plan-checkpoint
 title: 规划执行：把平面 checklist 升级为带依赖与局部重规划的计划
+branch: sdd/c2963-add-loop-plan-and-execute
+base_branch: main
+base_sha: ec88da87971946aa7ad127d4577dcaef4c758a47
 ---
 
 # 规划执行：把平面 checklist 升级为带依赖与局部重规划的计划

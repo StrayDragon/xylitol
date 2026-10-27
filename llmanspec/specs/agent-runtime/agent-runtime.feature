@@ -444,6 +444,11 @@
       当 查询中间件注册表
       那么 注册表含 loop-example 与 generator-critic
 
+    场景: 规划执行启用后注册规划中间件
+      假如 以启用规划执行的 loop 示例插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 loop-example 与 plan-execute
+
   @req:r2929
   规则: loop-middleware-structured-result
     after_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core quiet 摘要之前接收结构化结果：载荷含原始内容分片、可解析的结构化详情与错误标志，不得只提供拍平文本。中间件改写后的内容与详情 须成为本调用的历史回写与 ToolExecutionEnd 结果；core 的 write/edit quiet 摘要 仅在结果仍为单段文本时生效，且不得丢弃中间件给出的结构化详情。工具产出的非文本分片 须在历史回写中保真，不得被拍平为占位文本。
@@ -551,3 +556,6 @@
   @req:r2944
   规则: generator-critic
     生成评审中间件 须在 after_model 只对**无 tool_calls 的 assistant 最终答案**启动评审，且评审调用仍由 core 调度（插件不得自行调用模型）。状态机须为 Idle → Critiquing →（Approved | Revising）→ … → Approved | Exhausted；Critiquing 时 before_model 注入 rubric 与 verdict 格式，Revising 时注入 critic 意见。critic 须以单独一行 `CRITIC_VERDICT: APPROVE` 或 `CRITIC_VERDICT: REVISE` 结尾；无结构化 verdict 时最多再要求一次，超过一次须停止。decide_continue 在 Critiquing / Revising 时 Continue，在 Approved / Exhausted 时 Stop，其它状态不得改变基线。评审轮数 须受 `max_rounds` 约束且远小于 core 的 32；达到上限须停止并记录原因。不得允许 critic 触发 compact，不得自动改代码或提交。
+  @req:r2946
+  规则: plan-and-execute
+    规划执行中间件 须在 before_model 读取最新 plan：无 plan 时注入一次建计划契约（要求模型输出 `<plan>{json}</plan>` 块）；有 runnable 步骤时注入当前步骤（含 inputs 与 verification）；有失败步骤时注入局部重规划指令；有 blocked 步骤时注入阻塞说明。after_model 须解析 assistant 中的 `<plan>` 块：校验 DAG 与重规划约束后 append `custom_type = "plan"` 的 CustomEntry 并采用；非法块 须保留旧 plan 并在下一次 before_model 注入错误说明。after_tool 须在工具失败时把当前 in_progress 步骤标记 failed；步骤 completed / failed 后清除其审批。decide_continue 须满足：blocked 且未批准 → Stop；blocked 且用户有新消息 → 批准一次并 Continue；有失败且 replan 次数小于 max_replans → Continue；有 runnable → Continue；全部完成且尚未总结 → Continue 一次，已总结 → Stop；无法推进 → Stop。中间件 不得自行调用模型或工具，不得用 plan 工具以外的入口写 plan。max_replans 须有界并记录停止原因。

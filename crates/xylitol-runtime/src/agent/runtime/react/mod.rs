@@ -1483,6 +1483,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     let ctx = AfterModelCtx {
                         turn_index: turn as u32,
                         assistant: msg,
+                        session_id: Some(session_id.clone()),
                     };
                     match run_after_model(&loop_chain, &cancel, iteration_parent, ctx).await {
                         Ok(out) => {

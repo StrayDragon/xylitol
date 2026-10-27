@@ -137,6 +137,9 @@ hooks:
 #     enabled: false
 #     rubric: []              # empty: built-in correctness/evidence/boundaries rubric
 #     max_rounds: 1           # critic calls stay core-scheduled and bounded
+#   plan_execute:             # plan DAG with dependencies and local replan
+#     enabled: false
+#     max_replans: 3          # bounded; completed steps stay locked
 #   tool_exposure:            # before_model: narrow the tools the model can see
 #     enabled: false
 #     allow: []               # non-empty: only these tools (todo tools stay visible)

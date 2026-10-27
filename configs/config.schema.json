@@ -188,6 +188,13 @@
           "default": false,
           "type": "boolean"
         },
+        "plan_execute": {
+          "$ref": "#/$defs/PlanExecuteConfig",
+          "default": {
+            "enabled": false,
+            "max_replans": 3
+          }
+        },
         "plan_state": {
           "default": false,
           "type": "boolean"
@@ -478,6 +485,22 @@
             "type": "string"
           },
           "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PlanExecuteConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_replans": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "type": "object"
@@ -812,6 +835,10 @@
         },
         "max_settles": null,
         "plan_checkpoint": false,
+        "plan_execute": {
+          "enabled": false,
+          "max_replans": 3
+        },
         "plan_state": false,
         "progress_reminder": false,
         "progress_reminder_stale_after": 3,

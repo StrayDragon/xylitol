@@ -107,6 +107,12 @@ async fn test_lm_generator_critic_registers(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "规划执行启用后注册规划中间件"
+)]
+async fn test_lm_plan_execute_registers(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "改写参数可见"
 )]
 async fn test_lm_rewritten_args_visible(agent: AgentState, ws: Workspace) {}
