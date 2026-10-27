@@ -57,6 +57,7 @@ pub struct HostState {
     pub fallback_session: String,
     pub write_lock_linger: std::sync::Mutex<Duration>,
     pub sessions_dir: std::sync::Mutex<PathBuf>,
+    seq_watermarks: std::sync::Mutex<HashMap<String, u64>>,
 }
 
 #[derive(Clone)]
@@ -110,6 +111,7 @@ impl HostState {
             fallback_session,
             write_lock_linger: std::sync::Mutex::new(Duration::from_secs(60)),
             sessions_dir: std::sync::Mutex::new(PathBuf::new()),
+            seq_watermarks: std::sync::Mutex::new(HashMap::new()),
         })
     }
 
@@ -143,13 +145,15 @@ impl HostState {
                 return s.clone();
             }
         }
+        let watermark = self.seq_watermark(session_id);
         let mut map = self.sessions.write().await;
         map.entry(session_id.to_string())
             .or_insert_with(|| {
-                SessionSlot::new(
+                SessionSlot::with_seq(
                     session_id,
                     self.in_process_downlink.clone(),
                     self.factory.loop_registry(),
+                    watermark,
                 )
             })
             .clone()
@@ -157,6 +161,27 @@ impl HostState {
 
     async fn existing_slot(&self, session_id: &str) -> Option<Arc<SessionSlot>> {
         self.sessions.read().await.get(session_id).cloned()
+    }
+
+    fn seq_watermark(&self, session_id: &str) -> u64 {
+        self.seq_watermarks
+            .lock()
+            .ok()
+            .and_then(|g| g.get(session_id).copied())
+            .unwrap_or(1)
+    }
+
+    fn remember_seq_watermark(&self, session_id: &str, next_seq: u64) {
+        if let Ok(mut g) = self.seq_watermarks.lock() {
+            g.insert(session_id.to_string(), next_seq.max(1));
+        }
+    }
+
+    pub(crate) async fn evict_slot(&self, slot: &Arc<SessionSlot>) {
+        let next_seq = slot.journal.lock().await.next_seq();
+        self.remember_seq_watermark(&slot.session_id, next_seq);
+        *slot.driver.lock().await = None;
+        self.sessions.write().await.remove(&slot.session_id);
     }
 
     pub fn session_id_from_payload(&self, payload: &Value) -> String {
@@ -371,9 +396,20 @@ impl SessionSlot {
         in_process_downlink: broadcast::Sender<Notification>,
         loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
     ) -> Arc<Self> {
+        Self::with_seq(session_id, in_process_downlink, loop_registry, 1)
+    }
+
+    pub fn with_seq(
+        session_id: impl Into<String>,
+        in_process_downlink: broadcast::Sender<Notification>,
+        loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        next_seq: u64,
+    ) -> Arc<Self> {
         let session_id = session_id.into();
         Arc::new(Self {
-            journal: Mutex::new(EventJournal::with_default_capacity(&session_id)),
+            journal: Mutex::new(EventJournal::with_default_capacity_and_seq(
+                &session_id, next_seq,
+            )),
             session_id,
             driver: Arc::new(Mutex::new(None)),
             writer: AtomicBool::new(false),
@@ -962,6 +998,7 @@ async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>,
     let linger = host.linger_duration();
     if clean || linger.is_zero() {
         host.ports.store.release_write_lock(&slot.session_id);
+        host.evict_slot(slot).await;
         return;
     }
     let host = host.clone();
@@ -973,6 +1010,7 @@ async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>,
         }
         if HostState::live_subscriber_count(&slot_wait).await == 0 {
             host.ports.store.release_write_lock(&slot_wait.session_id);
+            host.evict_slot(&slot_wait).await;
         }
     });
     *slot.linger_task.lock().await = Some(task);
@@ -1610,5 +1648,42 @@ mod tests {
             },
         );
         assert!(SessionSlot::observe_passes(&approval));
+    }
+
+    #[tokio::test]
+    async fn evict_records_watermark_and_clears_driver() {
+        let slot = SessionSlot::with_seq("s0", broadcast::channel(16).0, None, 1);
+        for _ in 0..5 {
+            slot.journal
+                .lock()
+                .await
+                .append(xylitol_protocol::Event::TextDelta { text: "x".into() });
+        }
+        assert_eq!(slot.journal.lock().await.next_seq(), 6);
+
+        let watermarks: std::sync::Mutex<HashMap<String, u64>> =
+            std::sync::Mutex::new(HashMap::new());
+        watermarks
+            .lock()
+            .unwrap()
+            .insert("s0".to_string(), slot.journal.lock().await.next_seq());
+
+        let rebuilt = SessionSlot::with_seq(
+            "s0",
+            broadcast::channel(16).0,
+            None,
+            *watermarks.lock().unwrap().get("s0").unwrap(),
+        );
+        assert_eq!(
+            rebuilt.journal.lock().await.next_seq(),
+            6,
+            "a rebuilt slot must resume the sequence, never restart at 1"
+        );
+        let seq = rebuilt
+            .journal
+            .lock()
+            .await
+            .append(xylitol_protocol::Event::TextDelta { text: "y".into() });
+        assert_eq!(seq, 6, "the next event continues above the watermark");
     }
 }

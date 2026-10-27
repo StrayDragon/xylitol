@@ -29,16 +29,28 @@ pub struct EventJournal {
 
 impl EventJournal {
     pub fn new(session_id: impl Into<String>, capacity: usize) -> Self {
+        Self::new_with_seq(session_id, capacity, 1)
+    }
+
+    pub fn new_with_seq(session_id: impl Into<String>, capacity: usize, next_seq: u64) -> Self {
         Self {
             session_id: session_id.into(),
             capacity,
-            next_seq: AtomicU64::new(1),
+            next_seq: AtomicU64::new(next_seq.max(1)),
             buffer: VecDeque::with_capacity(capacity),
         }
     }
 
     pub fn with_default_capacity(session_id: impl Into<String>) -> Self {
         Self::new(session_id, DEFAULT_JOURNAL_CAPACITY)
+    }
+
+    pub fn with_default_capacity_and_seq(session_id: impl Into<String>, next_seq: u64) -> Self {
+        Self::new_with_seq(session_id, DEFAULT_JOURNAL_CAPACITY, next_seq)
+    }
+
+    pub fn next_seq(&self) -> u64 {
+        self.next_seq.load(Ordering::SeqCst)
     }
 
     pub fn append(&mut self, event: Event) -> u64 {
@@ -309,5 +321,45 @@ mod tests {
         let mut rx = gw.register("call-timeout".into());
         gw.remove("call-timeout");
         assert!(rx.try_recv().is_err());
+    }
+}
+
+#[cfg(test)]
+mod watermark_tests {
+    use super::*;
+
+    fn dummy_event() -> Event {
+        Event::TextDelta {
+            text: "hello".into(),
+        }
+    }
+
+    #[test]
+    fn new_with_seq_continues_from_watermark() {
+        let mut j = EventJournal::new_with_seq("s0", 4, 501);
+        assert_eq!(j.next_seq(), 501);
+        assert_eq!(j.append(dummy_event()), 501);
+        assert_eq!(j.next_seq(), 502);
+    }
+
+    #[test]
+    fn new_with_seq_floors_at_one() {
+        let j = EventJournal::new_with_seq("s0", 4, 0);
+        assert_eq!(j.next_seq(), 1);
+    }
+
+    #[test]
+    fn empty_journal_with_watermark_does_not_claim_missing_events() {
+        let mut j = EventJournal::new_with_seq("s0", 4, 501);
+        let replayed = j.replay_from(500).expect("empty replay is Some");
+        assert!(
+            replayed.is_empty(),
+            "a rebuilt journal has no buffered events to replay"
+        );
+        assert_eq!(
+            j.append(dummy_event()),
+            501,
+            "the rebuilt journal must resume above the client's last_seq"
+        );
     }
 }
