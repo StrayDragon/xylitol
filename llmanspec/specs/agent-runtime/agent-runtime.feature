@@ -407,3 +407,17 @@
       假如 注册 before_turn 中间件注入长系统碎片
       当 运行 AgentRuntime 并比较有无碎片的回合结算估计
       那么 含碎片的估计不低于无碎片基线
+
+  @req:r2927
+  规则: run-event-boundary
+    一次用户触发的 run 的事件流 须以 AgentStart 开始、以 AgentEnd 结束：AgentStart 须在本 run 的会话与历史装配完成、回合观测建立之后、首个 TurnStart 之前发出，且为流内第一个事件；AgentEnd 须为最后一个事件。AgentStart 的 session_id 须为本 run 绑定的会话，model 须取本 run 启动时的当前模型标识，流内不得重读以免与回合观测属性不一致；未选模型时 model 为空串。装配失败（会话或历史加载失败）时 不得发 AgentStart。
+
+    场景: 首末事件边界
+      假如 mock 模型先 tool 后无 tool
+      当 运行 AgentRuntime 并收集事件
+      那么 首个事件为 AgentStart 且末个事件为 AgentEnd
+
+    场景: 启动字段口径
+      假如 mock 模型先 tool 后无 tool
+      当 运行 AgentRuntime 并收集事件
+      那么 AgentStart 的 session_id 为本会话且 model 为当前模型标识

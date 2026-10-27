@@ -957,9 +957,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let mut stream_clock = StreamNodeClock::new();
         stream_clock.stamp(StreamNode::AgentStart);
         let user_preview = super::tool_exec::parts_preview_text(&user_parts);
-        let model_api = {
+        let (model_api, run_model_id) = {
             let mm = crate::utils::lock_mutex(&model_manager);
-            mm.current_model().map(|m| m.api.clone())
+            match mm.current_model() {
+                Some(m) => (Some(m.api.clone()), m.id.clone()),
+                None => (None, String::new()),
+            }
         };
         let (parent_session_id, fork_at_entry_id) = store
             .load_entries(&session_id)
@@ -988,6 +991,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let decide_active = !loop_chain.decide_continue.is_empty();
         let mut stall_count: u32 = 0;
         let mut settle_count: u32 = 0;
+
+        yield XyEvent::AgentStart {
+            session_id: session_id.clone(),
+            model: run_model_id,
+        };
 
         'outer: loop {
             let mut continue_after_tools = true;

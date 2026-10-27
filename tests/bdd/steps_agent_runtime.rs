@@ -1396,3 +1396,42 @@ pub(crate) fn _t_coord_phase(to: String) {
     let actual = phase_name(c.phase());
     assert_eq!(actual, to, "runtime phase transition");
 }
+
+#[then("首个事件为 AgentStart 且末个事件为 AgentEnd")]
+pub(crate) fn _t_ar_run_event_boundary(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let first = events.first().expect("non-empty event stream");
+    assert!(
+        matches!(first, XyEvent::AgentStart { .. }),
+        "first event MUST be AgentStart, got {first:?}: {events:?}"
+    );
+    let last = events.last().expect("non-empty event stream");
+    assert!(
+        matches!(last, XyEvent::AgentEnd { .. }),
+        "last event MUST be AgentEnd, got {last:?}: {events:?}"
+    );
+}
+
+#[then("AgentStart 的 session_id 为本会话且 model 为当前模型标识")]
+pub(crate) fn _t_ar_agent_start_fields(agent: &AgentState) {
+    let events = agent.events.borrow();
+    let (session_id, model) = events
+        .iter()
+        .find_map(|ev| match ev {
+            XyEvent::AgentStart { session_id, model } => Some((session_id.clone(), model.clone())),
+            _ => None,
+        })
+        .expect("AgentStart present");
+    let expected_session =
+        ar_with_runner(|r| r.session_id().map(str::to_string)).expect("runner bound to session");
+    let expected_model =
+        ar_with_runner(|r| r.current_model().map(|m| m.id)).expect("runner has current model");
+    assert_eq!(
+        session_id, expected_session,
+        "AgentStart.session_id MUST equal the bound session"
+    );
+    assert_eq!(
+        model, expected_model,
+        "AgentStart.model MUST equal the run-start current model id"
+    );
+}

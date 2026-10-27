@@ -233,3 +233,15 @@ async fn test_ar13_stream_node_timings(
     name = "阶段转换矩阵"
 )]
 fn test_ar_phase_transition_matrix(from: String, event: String, guard: String, to: String) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "首末事件边界"
+)]
+async fn test_ar_run_event_boundary(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "启动字段口径"
+)]
+async fn test_ar_agent_start_fields(agent: AgentState, ws: Workspace) {}

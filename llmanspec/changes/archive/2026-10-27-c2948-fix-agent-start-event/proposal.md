@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: ReAct 运行期补发 AgentStart 事件
+branch: sdd/c2948-fix-agent-start-event
+base_branch: main
+base_sha: c9dcc8a47bca0d31c790b031c4023a64fbbfa3ed
 ---
 
 # ReAct 运行期补发 AgentStart 事件
