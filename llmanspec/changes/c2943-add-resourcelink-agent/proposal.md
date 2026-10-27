@@ -16,7 +16,7 @@ needs_specs_change: true
 
 - **协议 / spec**：`protocol-app` / `server-core` 补充多模态载荷策略（path 引用 vs inline base64、单帧上限与 `infra-image` 关系、视频禁止整文件进 JSON-RPC）。
 - **线协议**：可选抬高 `MAX_BODY_BYTES` 或引入 **ResourceLink** 式 `prompt` 参数；WS/journal **不**内联全量 base64（延续或强化 `[image]` 预览语义）。
-- **TUI / runtime**：读图后 UI 与 history 是否保留 `AgentPart::Image`（见下文「当前 TUI 读图逻辑」与 research §4）。
+- **TUI / runtime**：读图后 UI 与 history 是否保留 `AgentPart::Image`（history 侧已由 c2945 落地，见下文附录 §1.4）；**OpenAI 族图片投影** 当前静默丢弃，属本增强面应优先收敛的缺口。
 - **读视频**：Host 侧抽帧或元数据能力（独立 scope，不与本 change 默认同批交付）。
 
 ## 调研落点
@@ -28,7 +28,7 @@ needs_specs_change: true
 - 不修改现行 4 MiB / batch 100 行为。
 - 不实现读视频、不开 PR。
 
-## 附录：当前 TUI「读图」之后逻辑（as-is，2026-10-22）
+## 附录：当前 TUI「读图」之后逻辑（as-is，2026-10-27 复核）
 
 以下描述 **Agent 调用 Read 工具读图片文件** 后，产品 TUI 侧可见行为（含 in-process 与 remote attach，事件形状相同）。
 
@@ -37,7 +37,7 @@ needs_specs_change: true
 1. `Read` 识别图片路径 → `image_content_from_path`（resize，默认 max 2000×2000、base64 ≤ 4_500_000）→ `AgentPart::text(note)` + `AgentPart::Image`（`plugins/xylitol-official-plugin-tools/src/tools/read.rs`）。
 2. `tool_exec::run_one` 走 `execute_as_parts`，得到 parts 后生成 **预览字符串** `parts_preview_text`：文本 note + 行 `[image]`（`crates/xylitol-runtime/src/agent/runtime/tool_exec.rs`）。
 3. 发出 `ToolExecutionStart` / `ToolExecutionUpdate`（若未流式则 Update 一次）/ `ToolExecutionEnd`，**`result` 字段均为该预览字符串**（非 JSON、不含 base64）。
-4. 写入会话 history 时，`quiet_write_edit_for_history` 对 `read` **未**特殊处理：history content 为 **纯文本 preview**（`"Read image file [size]\n[image]"`），**不**保留 `AgentPart::Image` parts（与 `agent-tools` r1145 在工具端口层的 parts 语义存在张力，增强时应核对）。
+4. 写入会话 history 时 **保留全部 parts 含 `AgentPart::Image`**：c2945 起 quiet 摘要只在结果仍是单段文本且工具为 `write` / `edit` 时生效，`read` 走 `_ => (result.0.clone(), None)` 分支，图片分片不被拍平（`agent-tools` r1145 由此落地；早期「history 只剩 preview 文本」的描述已失效）。
 
 ### 2. TUI bridge（滚动区 / 工具块）
 
@@ -50,11 +50,12 @@ needs_specs_change: true
 
 - **粘贴图片**（非 Read 工具）：`effects/pending_ui/clipboard.rs` → `XyDriver::stage_clipboard_image` → 临时文件路径 **插入编辑器**（`driver/clipboard.rs` + `clipboard/image.rs`），用户提交 prompt 时仍是 **文本路径字符串**，**不经 RPC 内联图片**（remote `prompt` body 仅 `message` 等字段）。
 
-### 4. 小结
+### 4. 小结（已核实）
 
 | 环节 | 读图后 TUI 用户看到什么 | 模型是否收到真图 |
 |------|-------------------------|------------------|
-| Read 工具成功 | 工具行文案 + `[image]` 占位 | **待核实**：history 当前为 preview 文本，provider 路径需对照 `tool_exec` + `anthropic_messages` 是否另有恢复 |
+| Read 工具成功（**Anthropic 族**） | 工具行文案 + `[image]` 占位 | **收到**：`anthropic_messages.rs` 两处把 `AgentPart::Image` 转为 `{"type":"image","source":{"type":"base64",…}}` |
+| Read 工具成功（**OpenAI 族**） | 工具行文案 + `[image]` 占位 | **静默丢弃**：`openai.rs` / `openai_responses.rs` 的 tool result 走 `collect_text_parts` / `collect_user_text_parts`，只拼文本，全仓无 `image_url` / `input_image` 构造 |
 | 粘贴图 | 编辑器里的绝对路径 | 取决于 prompt 文本是否被模型当路径处理（无专用 multimodal prompt RPC） |
 
-增强面应明确：TUI **展示**（缩略图 / 路径）、**线协议**（ResourceLink）、**history parts**（r1145）三条线是否一并改。
+增强面应明确：TUI **展示**（缩略图 / 路径）、**线协议**（ResourceLink）、**history parts**（r1145，已落地）、**OpenAI 族图片投影**（当前静默丢弃，比 ResourceLink 更近的缺口）四条线是否一并改。
