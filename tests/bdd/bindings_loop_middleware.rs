@@ -146,3 +146,21 @@ fn test_lm_scope_derive_frozen() {}
     name = "未配置保持空链"
 )]
 fn test_lm_scope_empty_root() {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "中间件看到展开结果"
+)]
+async fn test_lm_builtin_skills_expand_visible(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "超限输出被截断"
+)]
+fn test_mcp_truncate_oversized() {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-mcp/infra-mcp.feature",
+    name = "多分片保真"
+)]
+fn test_mcp_truncate_multi_part() {}

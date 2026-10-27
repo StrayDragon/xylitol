@@ -198,6 +198,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 ```
 
 - core **永远**持 turn 边界、取消、权限最终裁决、消息落盘；插件只能经 `{ ctx, control }` 返回值参与，**不得**整段替换 ReAct。
+- **内置项 vs 可注册项**：skills 展开是 **loop 内置项**（`before_model` 之前、不占 order、不产生 span、不计入「空链」）；第三方只能在其后叠加，不得替换或跳过。MCP 结果截断由 mcp 插件在**有 servers 时**注册 `after_tool` 中间件（`mcp-result-truncate`，上限 50 KiB，单段文本才截断，多分片与错误结果不动）。
 - 链在 run 启动时快照；链空零开销、无 span，行为与基线一致。
 - **会话作用域**：Host 每个会话槽在创建时从 root `derive()` 一份链（冻结父快照，槽内注册不影响 root 或其他槽）；链是纯数据，槽丢弃即释放，无需显式卸载。嵌入方经 `xylitol::embed::with_loop_registry` 挂注册表，不接触 rutis 类型。服务级作用域（按会话换 compaction / permission）不在本机制内，走 rutis `isolate` 是独立方向。
 - `before_tool` 在**工具批规划前**预演（hooks → AgentHooks → 中间件 → 权限），可改参数与工具名；core 用最终 `(name, args)` 重算权限目标并再裁，并按最终工具执行分类重排并发窗（MCP 前缀仍强制串行）；路由目标须已在本次装配的工具集内。预演先于本批任何执行：前序调用 `stop` 后，后续调用的中间件**已运行但工具不执行**，中间件不得假设「放行即执行」（`r2922`）。

@@ -1571,3 +1571,148 @@ pub(crate) fn t_chain_empty() {
         "unconfigured root must derive an empty chain: {ids:?}"
     );
 }
+
+thread_local! {
+    static SKILL_SEEN: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+struct CaptureBeforeModel;
+
+#[async_trait::async_trait]
+impl LoopMiddleware for CaptureBeforeModel {
+    fn id(&self) -> &str {
+        "capture-before-model"
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        &[LoopStage::BeforeModel]
+    }
+
+    async fn before_model(&self, ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+        let joined = ctx
+            .messages
+            .iter()
+            .map(|m| m.text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        SKILL_SEEN.with(|c| c.borrow_mut().replace(joined));
+        LoopStep::continued(ctx)
+    }
+}
+
+#[given("注册 before_model 中间件观察 messages 且 skills 已装配")]
+pub(crate) fn g_capture_before_model(agent: &AgentState, ws: &Workspace) {
+    SKILL_SEEN.with(|c| *c.borrow_mut() = None);
+    let mut runner = ar_make_runner(agent, ws);
+    let skill_path = std::path::PathBuf::from(ws.root()).join("SKILL.md");
+    std::fs::write(&skill_path, "---\nname: demo\n---\n\nSKILL_BODY_MARKER\n").unwrap();
+    runner.apply_skills(vec![xylitol_plugin_sdk::resource::SkillInfo {
+        name: "demo".into(),
+        description: Some("d".into()),
+        source_info: xylitol_plugin_sdk::source_info::SourceInfo {
+            path: skill_path,
+            source: "test".into(),
+            scope: xylitol_plugin_sdk::source_info::SourceScope::User,
+            origin: xylitol_plugin_sdk::source_info::SourceOrigin::TopLevel,
+            base_dir: None,
+        },
+        disable_model_invocation: false,
+    }]);
+    let registry = fresh_registry();
+    registry
+        .register(Arc::new(CaptureBeforeModel))
+        .expect("register capture-before-model");
+    runner.set_loop_middleware(Some(registry));
+    set_fake_text("ack");
+    ar_store_runner(runner);
+}
+
+#[when("运行 AgentRuntime 提交引用技能的 prompt")]
+pub(crate) async fn w_run_with_skill_ref() {
+    ar_take_run_store("use $demo").await;
+}
+
+#[then("before_model 观察到已展开的技能正文")]
+pub(crate) fn t_before_model_sees_expanded() {
+    let seen = SKILL_SEEN
+        .with(|c| c.borrow().clone())
+        .expect("before_model must have run");
+    assert!(
+        seen.contains("SKILL_BODY_MARKER"),
+        "before_model must observe expanded skill body: {seen}"
+    );
+}
+
+thread_local! {
+    static TRUNCATE_OUT: RefCell<Option<(usize, usize)>> = const { RefCell::new(None) };
+}
+
+#[given("MCP 工具返回超过上限的单段文本")]
+pub(crate) fn g_mcp_oversized() {
+    use xylitol_official_plugin_mcp::{MCP_RESULT_MAX_BYTES, McpResultTruncate};
+    use xylitol_plugin_sdk::{AfterToolCtx, AgentPart, LoopMiddleware};
+    let big = "x".repeat(MCP_RESULT_MAX_BYTES + 100);
+    let ctx = AfterToolCtx {
+        turn_index: 0,
+        tool_call_id: "call-1".into(),
+        tool_name: "mcp__srv__tool".into(),
+        parts: vec![AgentPart::text(big.clone())],
+        details: None,
+        is_error: false,
+    };
+    let mw = McpResultTruncate::new();
+    let step = futures::executor::block_on(mw.after_tool(ctx));
+    let out_len = step.ctx.parts[0].as_text().map(str::len).unwrap_or(0);
+    TRUNCATE_OUT.with(|c| *c.borrow_mut() = Some((big.len(), out_len)));
+}
+
+#[when("该结果经过截断中间件")]
+pub(crate) fn w_result_through_truncate() {}
+
+#[then("结果变短且含截断提示")]
+pub(crate) fn t_result_truncated() {
+    let (before, after) = TRUNCATE_OUT
+        .with(|c| *c.borrow())
+        .expect("truncate must have run");
+    assert!(after < before, "must shrink: before={before} after={after}");
+}
+
+#[given("MCP 工具返回文本加图片分片")]
+pub(crate) fn g_mcp_multi_part() {
+    use xylitol_official_plugin_mcp::McpResultTruncate;
+    use xylitol_plugin_sdk::{AfterToolCtx, AgentPart, ImageContent, LoopMiddleware};
+    let ctx = AfterToolCtx {
+        turn_index: 0,
+        tool_call_id: "call-2".into(),
+        tool_name: "mcp__srv__tool".into(),
+        parts: vec![
+            AgentPart::text("note"),
+            AgentPart::Image(ImageContent {
+                url: None,
+                data: Some("AAA".into()),
+                media_type: "image/png".into(),
+            }),
+        ],
+        details: None,
+        is_error: false,
+    };
+    let mw = McpResultTruncate::new();
+    let step = futures::executor::block_on(mw.after_tool(ctx));
+    let parts = step.ctx.parts.len();
+    let images = step
+        .ctx
+        .parts
+        .iter()
+        .filter(|p| matches!(p, AgentPart::Image(_)))
+        .count();
+    TRUNCATE_OUT.with(|c| *c.borrow_mut() = Some((parts, images)));
+}
+
+#[then("分片数量与图片分片保持不变")]
+pub(crate) fn t_multi_part_preserved() {
+    let (parts, images) = TRUNCATE_OUT
+        .with(|c| *c.borrow())
+        .expect("truncate must have run");
+    assert_eq!(parts, 2, "part count must stay 2");
+    assert_eq!(images, 1, "the image part must survive");
+}

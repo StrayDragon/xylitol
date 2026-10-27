@@ -184,8 +184,36 @@ mod tests {
         let _ = ctx.shutdown().await;
     }
 
+    struct IsolatedConfig {
+        dir: tempfile::TempDir,
+        prev: Option<String>,
+    }
+
+    impl IsolatedConfig {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("temp config dir");
+            let prev = std::env::var("XDG_CONFIG_HOME").ok();
+            unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+            Self { dir, prev }
+        }
+    }
+
+    impl Drop for IsolatedConfig {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.prev {
+                    Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+                    None => std::env::remove_var("XDG_CONFIG_HOME"),
+                }
+            }
+            let _ = &self.dir;
+        }
+    }
+
     #[tokio::test]
+    #[serial_test::serial]
     async fn boot_ctx_provides_loop_middleware_registry() {
+        let _iso = IsolatedConfig::new();
         let opts = BootOptions {
             profile: Profile::Print,
             config_path: None,
@@ -205,7 +233,9 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial_test::serial]
     async fn loop_example_plugin_absent_by_default_and_clean_on_unload() {
+        let _iso = IsolatedConfig::new();
         let opts = BootOptions {
             profile: Profile::Print,
             config_path: None,

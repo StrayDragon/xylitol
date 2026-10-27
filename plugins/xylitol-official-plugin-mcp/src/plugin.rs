@@ -38,6 +38,17 @@ impl Plugin for McpPlugin {
     }
 
     async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
+        if !self.servers.is_empty()
+            && let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>()
+        {
+            let handle = registry
+                .register(Arc::new(crate::truncate::McpResultTruncate::new()))
+                .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?;
+            ctx.effect(|| async move {
+                handle.unregister();
+                Ok(())
+            })?;
+        }
         let hub = McpPrepareHub::new(self.servers.clone());
         let hub_arc: Arc<dyn SessionPrepareHub> = Arc::new(hub.clone());
         ctx.provide_as::<dyn SessionPrepareHub>(hub_arc)?;

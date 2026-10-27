@@ -3,6 +3,9 @@ depends_on:
   - c2944-add-loop-middleware
   - c2946-add-loop-middleware-scope
 title: Skills 展开内置化与 MCP 结果截断
+branch: sdd/c2950-refactor-skills-mcp-middleware
+base_branch: main
+base_sha: 3ec6a817902f55c28f601aec69e7d616b21d22ec
 ---
 
 # Skills 展开内置化与 MCP 结果截断

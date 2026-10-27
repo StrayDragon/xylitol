@@ -170,4 +170,33 @@ mod tests {
         assert!(text.contains("hi $demo"));
         assert!(text.contains("BODY_X"));
     }
+
+    #[test]
+    fn empty_skills_is_a_noop() {
+        let mut msgs = vec![AgentMessage::Llm(XyLlmMessage::user("hi $demo"))];
+        let before = msgs[0].text();
+        expand_skills_in_agent_messages(&mut msgs, &[]);
+        assert_eq!(
+            msgs[0].text(),
+            before,
+            "no skills means byte-identical messages"
+        );
+    }
+
+    #[test]
+    fn expansion_is_deterministic_for_baseline_equivalence() {
+        let dir = TempDir::new().unwrap();
+        let skill_path = dir.path().join("SKILL.md");
+        std::fs::write(&skill_path, "---\nname: demo\n---\n\nBODY_X\n").unwrap();
+        let skills = vec![skill("demo", skill_path)];
+        let mut first = vec![AgentMessage::Llm(XyLlmMessage::user("hi $demo"))];
+        let mut second = vec![AgentMessage::Llm(XyLlmMessage::user("hi $demo"))];
+        expand_skills_in_agent_messages(&mut first, &skills);
+        expand_skills_in_agent_messages(&mut second, &skills);
+        assert_eq!(
+            first[0].text(),
+            second[0].text(),
+            "expansion must be deterministic so the baseline stays byte-identical"
+        );
+    }
 }
