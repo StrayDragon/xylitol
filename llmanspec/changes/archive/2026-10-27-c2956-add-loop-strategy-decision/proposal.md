@@ -2,6 +2,9 @@
 depends_on: []
 title: Loop 拓扑策略槽的决策：不引入 ReActStrategy trait，先用中间件组合验证
 needs_specs_change: false
+branch: sdd/c2956-add-loop-strategy-decision
+base_branch: main
+base_sha: 34bf3a6133043c27543547d55f960d49c514b6cd
 ---
 
 # Loop 拓扑策略槽的决策：不引入 ReActStrategy trait，先用中间件组合验证
