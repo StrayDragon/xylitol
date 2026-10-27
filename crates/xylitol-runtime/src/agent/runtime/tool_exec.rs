@@ -6,12 +6,16 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::hooks::AgentHooks;
+use super::middleware::{MiddlewareFault, run_after_tool, run_before_tool};
 use super::obs::ToolExecuteSpan;
 use super::permission_router::permission_target;
 use crate::agent::tools::ToolSet;
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
-use xylitol_plugin_sdk::{XyBatchMode, XyHookBus, XyHookOutcome, XyToolCtx};
+use xylitol_plugin_sdk::{
+    AfterToolCtx, BeforeToolCtx, LoopChain, LoopControl, XyBatchMode, XyHookBus, XyHookOutcome,
+    XyToolCtx,
+};
 
 type PermissionCheckFn = dyn Fn(&str, &str) -> Option<String> + Send + Sync;
 
@@ -25,6 +29,12 @@ pub(crate) struct ToolExecEnv<'a> {
     pub batch_mode: XyBatchMode,
     pub workspace: &'a str,
     pub obs_session: &'a xylitol_plugin_sdk::ObsSessionContext,
+    pub loop_chain: &'a LoopChain,
+    pub turn_index: u32,
+}
+
+fn middleware_fault_reason(fault: &MiddlewareFault) -> String {
+    fault.message()
 }
 
 pub(crate) fn capture_iteration_parent(parent: Option<&Span>) -> Option<SpanContext> {
@@ -55,6 +65,12 @@ fn emit(tx: &mpsc::UnboundedSender<XyEvent>, event: XyEvent) {
     let _ = tx.send(event);
 }
 
+pub(crate) struct ToolRunOutcome {
+    pub(crate) message: AgentMessage,
+    pub(crate) stop_run: bool,
+    pub(crate) fault: Option<MiddlewareFault>,
+}
+
 pub(crate) async fn run_one(
     env: &ToolExecEnv<'_>,
     id: &str,
@@ -63,7 +79,7 @@ pub(crate) async fn run_one(
     events: mpsc::UnboundedSender<XyEvent>,
     parent_ctx: Option<SpanContext>,
     barrier_index: u32,
-) -> AgentMessage {
+) -> ToolRunOutcome {
     let tool_span = ToolExecuteSpan::start_with_parent_ctx(
         name,
         id,
@@ -72,17 +88,6 @@ pub(crate) async fn run_one(
         barrier_index,
         env.obs_session,
     );
-    let args_io = serde_json::to_string(args).unwrap_or_else(|_| "{}".into());
-
-    emit(
-        &events,
-        XyEvent::ToolExecutionStart {
-            id: id.to_string(),
-            name: name.to_string(),
-            args: args.clone(),
-        },
-    );
-
     let tool = env.tools.get(name);
     let tool_missing = tool.is_none();
     let (out_tx, mut out_rx) = tokio::sync::mpsc::channel::<String>(64);
@@ -115,6 +120,35 @@ pub(crate) async fn run_one(
         }
     }
 
+    let mut middleware_stop = false;
+    let mut middleware_fault: Option<MiddlewareFault> = None;
+    if denied_reason.is_none() && !env.loop_chain.before_tool.is_empty() {
+        let ctx = BeforeToolCtx {
+            turn_index: env.turn_index,
+            tool_call_id: id.to_string(),
+            tool_name: name.to_string(),
+            args: tool_args.clone(),
+        };
+        match run_before_tool(env.loop_chain, env.cancel, parent_ctx, ctx).await {
+            Ok(out) => {
+                tool_args = out.ctx.args;
+                if out.control != LoopControl::Continue {
+                    middleware_stop = true;
+                    denied_reason = Some(format!(
+                        "loop middleware {} stopped at before_tool",
+                        out.stopped_by.unwrap_or_else(|| "unknown".into())
+                    ));
+                }
+            }
+            Err(fault) => {
+                let reason = fault.message();
+                denied_reason = Some(reason);
+                middleware_stop = true;
+                middleware_fault = Some(fault);
+            }
+        }
+    }
+
     if denied_reason.is_none()
         && let Some(check) = env.permission_check
     {
@@ -123,6 +157,16 @@ pub(crate) async fn run_one(
             denied_reason = Some(format!("permission denied: {reason}"));
         }
     }
+
+    let args_io = serde_json::to_string(&tool_args).unwrap_or_else(|_| "{}".into());
+    emit(
+        &events,
+        XyEvent::ToolExecutionStart {
+            id: id.to_string(),
+            name: name.to_string(),
+            args: tool_args.clone(),
+        },
+    );
 
     if let Some(reason) = denied_reason {
         let err = format!("Tool '{name}' blocked: {reason}");
@@ -145,12 +189,16 @@ pub(crate) async fn run_one(
                 is_error: true,
             },
         );
-        return AgentMessage::tool_result(
-            id.to_string(),
-            name.to_string(),
-            vec![AgentPart::text(err)],
-            true,
-        );
+        return ToolRunOutcome {
+            message: AgentMessage::tool_result(
+                id.to_string(),
+                name.to_string(),
+                vec![AgentPart::text(err)],
+                true,
+            ),
+            stop_run: middleware_stop,
+            fault: middleware_fault,
+        };
     }
 
     let tool_arc = tool;
@@ -255,6 +303,26 @@ pub(crate) async fn run_one(
         }
     }
 
+    if !env.loop_chain.after_tool.is_empty() {
+        let ctx = AfterToolCtx {
+            turn_index: env.turn_index,
+            tool_call_id: id.to_string(),
+            tool_name: name.to_string(),
+            result: parts_preview_text(&result.0),
+            is_error: result.1,
+        };
+        match run_after_tool(env.loop_chain, env.cancel, parent_ctx, ctx).await {
+            Ok(out) => {
+                result = (vec![AgentPart::text(out.ctx.result)], out.ctx.is_error);
+            }
+            Err(fault) => {
+                result = (vec![AgentPart::text(middleware_fault_reason(&fault))], true);
+                middleware_stop = true;
+                middleware_fault = Some(fault);
+            }
+        }
+    }
+
     let result_text = parts_preview_text(&result.0);
     if let Some(span) = tool_span.as_ref() {
         span.attach_io(&args_io, &result_text);
@@ -285,11 +353,15 @@ pub(crate) async fn run_one(
             &result_text,
             result.1,
         );
-    AgentMessage::tool_result_with_details(
-        id.to_string(),
-        name.to_string(),
-        history_parts,
-        details,
-        result.1,
-    )
+    ToolRunOutcome {
+        message: AgentMessage::tool_result_with_details(
+            id.to_string(),
+            name.to_string(),
+            history_parts,
+            details,
+            result.1,
+        ),
+        stop_run: middleware_stop,
+        fault: middleware_fault,
+    }
 }

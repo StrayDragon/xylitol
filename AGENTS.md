@@ -24,6 +24,7 @@ Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成�
 个人**开箱即用**的 coding harness。插件生态（第三方可写可装）是方向、未交付；现行扩展入口 = 官方插件 + 配置 + MCP / shell hook。不得为未交付市场堆清单 / 注册中心 / dylib。`xylitol-tui` 为源自 pi-tui 的独立 fork，不追平上游。分层与开闭：`src/AGENTS.md`；可验证行为：`llmanspec/specs/`。
 
 - **Trust / MCP**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP 配置驱动、未配置零装配。产品规则：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`；实现边界：`src/AGENTS.md`。
+- **Loop 参与**：插件经 rutis 生命周期注册 loop 中间件（七阶段、控制枚举）**参与** ReAct 决策；core 持 turn 边界 / 取消 / 权限终裁，插件不得整段替换 loop。产品规则：`llmanspec/specs/agent-runtime/`；实现边界：`src/AGENTS.md`「Loop 中间件」。
 - **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认 attach 本机 Host，未在听失败；Print 与库嵌入可同进程。端规则：`crates/xylitol-app-tui/src/AGENTS.md`；拓扑与线协议：`llmanspec/specs/protocol-app/`、`server-core/`。
 - **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（JSON-RPC 2.0 文本：`POST /rpc` unary + `WS /rpc` 双向 text 帧；Command/Event 是载荷）。硬边界：`src/AGENTS.md`。
 - **跨端公共体验**（已开放端 Print / TUI / Host）：动作语义一套学习成本；细则 `llmanspec/specs/protocol-app/` 与 `user-experience/`。未开放端（gpui 等）见 GitHub feature request，不得写成现行必须。

@@ -12,6 +12,7 @@ publish = false
 xylitol-plugin-sdk = { workspace = true }
 xylitol-runtime = { workspace = true }
 xylitol-official-plugin-hooks = { workspace = true }
+xylitol-official-plugin-loop-example = { workspace = true }
 xylitol-official-plugin-mcp = { workspace = true, default-features = false }
 dirs = { workspace = true }
 jsonschema = { workspace = true }

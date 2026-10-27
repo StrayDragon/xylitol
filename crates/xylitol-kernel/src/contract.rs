@@ -185,6 +185,71 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn boot_ctx_provides_loop_middleware_registry() {
+        let opts = BootOptions {
+            profile: Profile::Print,
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "contract",
+            ephemeral_sessions: true,
+        };
+        let (ctx, _loader) = boot_ctx(&opts).await.expect("boot_ctx");
+        let registry = ctx
+            .get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>()
+            .expect("loop middleware registry service");
+        assert!(registry.is_empty());
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn loop_example_plugin_absent_by_default_and_clean_on_unload() {
+        let opts = BootOptions {
+            profile: Profile::Print,
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "contract",
+            ephemeral_sessions: true,
+        };
+        let (ctx, _loader) = boot_ctx(&opts).await.expect("boot_ctx");
+        let registry = ctx
+            .get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>()
+            .expect("loop middleware registry service");
+        assert!(
+            registry.is_empty(),
+            "unconfigured loop example must register nothing"
+        );
+        let fiber = ctx.plugin(
+            xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
+                &xylitol_official_plugin_loop_example::LoopExampleConfig {
+                    enabled: true,
+                    max_settles: Some(2),
+                    deny_bash_patterns: vec!["rm -rf /".into()],
+                },
+            )
+            .expect("loop example plugin"),
+        );
+        for _ in 0..64 {
+            if !registry.is_empty() {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(registry.ids(), vec!["loop-example".to_string()]);
+        fiber.dispose().await.expect("dispose");
+        assert!(
+            registry.is_empty(),
+            "unload must leave no middleware behind"
+        );
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn boot_ctx_does_not_mkdir_crate_xylitol() {
         let crate_xy = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".xylitol");
         let existed = crate_xy.exists();

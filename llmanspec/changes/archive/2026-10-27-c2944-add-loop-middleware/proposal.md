@@ -2,6 +2,9 @@
 depends_on: []
 title: ReAct 内环中间件 SPI——插件可参与 loop 决策
 needs_specs_change: true
+branch: sdd/c2944-add-loop-middleware
+base_branch: main
+base_sha: 005d85f63376914de50109205ad886cccd85dfe5
 ---
 
 # ReAct 内环中间件 SPI——插件可参与 loop 决策

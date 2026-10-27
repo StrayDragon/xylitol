@@ -32,7 +32,7 @@
 | `before_turn` | `TurnStart` 之前 | 系统碎片 | `continue` / `stop` | `stop` → 本 run 直接 `AgentEnd`，不发 `TurnStart` |
 | `before_model` | skills 展开之后、`project_outbound` 之前 | messages / tool schema / model 参数（thinking、max tokens、system） | `continue` / `stop` | `stop` → 本 run 结束；core 才发起 `generate_stream` |
 | `after_model` | 流结束、持久化之前 | assistant parts / tool_calls | `continue` / `stop` | 改写后由 core 持久化并按 tool_calls 规划工具批 |
-| `before_tool` | `ToolExecutionStart` 之后、执行之前 | args / 路由（工具名） | `continue` / `stop` | **core permission 用新 args 重裁**；`stop` → 本 run 结束 |
+| `before_tool` | `ToolExecutionStart` 之后、执行之前 | args | `continue` / `stop` | **core permission 用新 args 重裁**；`stop` → 本 run 结束（改工具名不在本 change 范围） |
 | `after_tool` | 工具结果生成后、写 history 之前 | 结果文本 / `is_error` | `continue` | 截断/摘要后的结果进 history 与事件 |
 | `decide_continue` | Settle 的 `TurnEnd` → settlement → compact 预检 → `should_stop_after_turn` **之后** | 无（只看 ctx） | `continue` / `stop` / `compact` / `handoff` | 见 §4 |
 | `after_turn` | 每次 iteration 的 `TurnEnd` 之后 | 只读 + 可选 ctx 附加 | 仅 `continue` | 其他取值记 trace 并忽略（不得静默改行为） |
@@ -70,6 +70,7 @@ Skills 展开今天由 core 直接做（`expand_skills_in_agent_messages`）。�
 
 - 取消 → 本 run 以 aborted 结束（与现有 abort 语义一致）。
 - 超时 → 记 `loop.middleware` error 事件属性 + 停止本 run（kind `LoopMiddlewareTimeout`），不得挂死 turn。
+- 超时/取消发生在 `before_tool` 时，本 run 在配对 `TurnEnd` 后以同一错误结束；工具不执行。
 
 ## 7. 可观测
 
@@ -81,7 +82,7 @@ Skills 展开今天由 core 直接做（`expand_skills_in_agent_messages`）。�
 | `loop.middleware.stage` | 阶段名 |
 | `loop.middleware.order` | 排序值 |
 | `loop.middleware.control` | 返回的 control |
-| `loop.middleware.changed` | 改动字段摘要（`messages` / `tool_schemas` / `model` / `assistant` / `args` / `result` / `system_fragments`） |
+| `loop.middleware.changed` | 改动摘要指纹（消息条数 / 字符数 / 工具数 / schema 名集 / model 参数 / 结果长度）；无改动记 `none` |
 | `loop.middleware.outcome` | `ok` / `error` / `timeout` |
 
 仅在 `provider_trace_active()` 时创建（与既有 obs 门一致）；链空时不建 span。

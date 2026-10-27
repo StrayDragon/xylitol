@@ -44,6 +44,7 @@ flowchart TB
       xylitol_official_plugin_tools["xylitol-official-plugin-tools"]
       xylitol_official_plugin_mcp["xylitol-official-plugin-mcp"]
       xylitol_official_plugin_hooks["xylitol-official-plugin-hooks"]
+      xylitol_official_plugin_loop_example["xylitol-official-plugin-loop-example"]
     end
     subgraph plugins_host["配置 / 观测"]
       direction LR
@@ -76,6 +77,7 @@ flowchart TB
   xylitol_official_plugin_tools --> xylitol_plugin_sdk
   xylitol_official_plugin_mcp --> xylitol_plugin_sdk
   xylitol_official_plugin_hooks --> xylitol_plugin_sdk
+  xylitol_official_plugin_loop_example --> xylitol_plugin_sdk
   xylitol_official_plugin_config --> xylitol_plugin_sdk
   xylitol_official_plugin_obs --> xylitol_plugin_sdk
   xylitol_runtime --> xylitol_plugin_sdk
@@ -116,7 +118,7 @@ flowchart TB
 | `xylitol-app-print` | 同进程直调 runtime | 依赖 serve / protocol / wire；编线协议 |
 | 根包 `xylitol` | argv + profile。列出官方插件的 `Cargo.toml` 经 kernel 转发 | 把装配逻辑塞回 `src/wiring`；`use rutis` |
 
-官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks、config、obs。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools。配置启用：mcp / hooks。没配置则不 start。第三方插件是方向、未交付；只留 Chain 解析器与 admit 准入位。
+官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks、config、obs、loop-example。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools。配置启用：mcp / hooks / loop-example。没配置则不 start。第三方插件是方向、未交付；只留 Chain 解析器与 admit 准入位。
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
@@ -186,6 +188,20 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 - 不改 MCP / hook 的 JSON 口换“全类型”。
 - schema 与 Args 手写并置；钩子总线与 `AgentHooks` **刻意保留 Value**。
 - 内置工具经 `TypedTool` 装配；MCP / hook 仍走 `Value` + `XyTool`。
+
+### Loop 中间件（有界参与，不是可换 loop）
+
+```text
+词表 / 注册表  = xylitol-plugin-sdk（LoopStage / LoopControl / LoopMiddlewareRegistry）
+执行权威       = xylitol-runtime（run_react_loop 七阶段调用点）
+注册表提供者   = kernel 核心插件 agent-react（Ctx 服务，boot 交 driver）
+```
+
+- core **永远**持 turn 边界、取消、权限最终裁决、消息落盘；插件只能经 `{ ctx, control }` 返回值参与，**不得**整段替换 ReAct。
+- 链在 run 启动时快照；链空零开销、无 span，行为与基线一致。
+- `before_tool` 之后 core 用最终参数**重算权限目标再裁一次**：中间件只能更严。
+- `decide_continue` 只在 Settle 调；`handoff` 未支持以稳定错误结束；无进展 `continue` 有硬上限。
+- `XyHookBus` / `AgentHooks` 是旁路（审计 / 兼容），不承载 loop 决策。
 
 ## 扩展开闭
 

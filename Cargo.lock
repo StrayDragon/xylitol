@@ -5907,6 +5907,7 @@ dependencies = [
  "xylitol-official-plugin-compaction",
  "xylitol-official-plugin-config",
  "xylitol-official-plugin-hooks",
+ "xylitol-official-plugin-loop-example",
  "xylitol-official-plugin-mcp",
  "xylitol-official-plugin-obs",
  "xylitol-official-plugin-provider-anthropic",
@@ -5993,6 +5994,7 @@ dependencies = [
  "xylitol-official-plugin-compaction",
  "xylitol-official-plugin-config",
  "xylitol-official-plugin-hooks",
+ "xylitol-official-plugin-loop-example",
  "xylitol-official-plugin-mcp",
  "xylitol-official-plugin-obs",
  "xylitol-official-plugin-provider-anthropic",
@@ -6040,6 +6042,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "xylitol-official-plugin-hooks",
+ "xylitol-official-plugin-loop-example",
  "xylitol-official-plugin-mcp",
  "xylitol-plugin-sdk",
  "xylitol-runtime",
@@ -6058,6 +6061,18 @@ dependencies = [
  "serde_json",
  "strum",
  "tempfile",
+ "tokio",
+ "xylitol-plugin-sdk",
+]
+
+[[package]]
+name = "xylitol-official-plugin-loop-example"
+version = "0.0.0-pre"
+dependencies = [
+ "async-trait",
+ "schemars",
+ "serde",
+ "serde_json",
  "tokio",
  "xylitol-plugin-sdk",
 ]

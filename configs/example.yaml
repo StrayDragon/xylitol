@@ -117,6 +117,12 @@ hooks:
 #   model: *cheap-summary
 #   thinkingLevel: high
 
+# loop_example:  # official example plugin: ReAct loop middleware participation
+#   enabled: false
+#   max_settles: 3            # optional: stop the run after N settles
+#   deny_bash_patterns:       # before_tool: tighten only, core permission still decides
+#     - "rm -rf /"
+
 # mcp_servers:  # YAML list (not Cursor-style mcpServers object)
 #   # stdio (prefer PATH command name; or "{{ vars.home }}/…" for home-relative)
 #   - name: "my-server"

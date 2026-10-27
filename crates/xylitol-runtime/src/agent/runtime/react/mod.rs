@@ -4,8 +4,8 @@ mod turn_end;
 
 use crate::utils::{StreamNode, StreamNodeClock};
 use assistant::{
-    build_assistant_message, current_provider_model, partial_assistant_message,
-    streaming_assistant_parts, streaming_message_update, upsert_streaming_tool,
+    build_assistant_message, current_provider_model, streaming_assistant_parts,
+    streaming_message_update, upsert_streaming_tool,
 };
 use support::{
     ClearActiveTurn, attempt_model_stream, observe_script_hook, persist_agent_message,
@@ -24,6 +24,10 @@ use futures::StreamExt;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
+use super::middleware::{
+    LOOP_MIDDLEWARE_CONTINUE_LIMIT, MiddlewareFault, fragments_into_prompt, run_after_model,
+    run_after_turn, run_before_model, run_before_turn, run_decide_continue,
+};
 use super::retry::{RetryState, is_retryable_error};
 use super::state::{
     FrozenRootConfig, RunId, RunLease, RunPolicy, RuntimeControlError, SharedRunCoordinator,
@@ -38,7 +42,8 @@ use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_plugin_sdk::model::{XyChunk, XyToolSchema};
 use xylitol_plugin_sdk::resource::SkillInfo;
 use xylitol_plugin_sdk::{
-    XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyStream,
+    AfterModelCtx, AfterTurnCtx, BeforeModelCtx, BeforeTurnCtx, DecideContinueCtx, LoopChain,
+    LoopControl, XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyStream,
 };
 
 pub struct AgentRuntime {
@@ -176,6 +181,20 @@ impl AgentRuntime {
 
     pub fn frozen_fingerprint_matches_set(&self, candidate: &ToolSet) -> bool {
         self.inner.frozen_fingerprint_matches_set(candidate)
+    }
+
+    pub fn set_loop_middleware(
+        &mut self,
+        registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+    ) {
+        self.inner.set_loop_registry(registry);
+    }
+
+    pub fn loop_middleware_ids(&self) -> Vec<String> {
+        self.inner
+            .loop_registry()
+            .map(|registry| registry.ids())
+            .unwrap_or_default()
     }
 
     pub fn replace_hooks(&mut self, hooks: AgentHooks) {
@@ -462,6 +481,7 @@ impl AgentRuntime {
             hook_bus: self.inner.hook_bus(),
             cwd: self.inner.cwd().to_string(),
             pending_prepare: self.pending_prepare.lock().ok().and_then(|g| g.clone()),
+            loop_chain: self.inner.loop_chain(),
         }
     }
 
@@ -645,6 +665,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         hook_bus,
         cwd,
         pending_prepare,
+        loop_chain,
     } = frozen;
 
     type PermissionCheck = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
@@ -713,6 +734,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         cwd,
         obs_session_name,
         pending_prepare,
+        loop_chain,
     }));
 
     combine_run_streams(react, side_rx, queue_rx)
@@ -813,6 +835,53 @@ struct ReActConfig {
     cwd: String,
     obs_session_name: Option<String>,
     pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
+    loop_chain: LoopChain,
+}
+
+async fn after_turn_or_fault(
+    chain: &LoopChain,
+    cancel: &CancellationToken,
+    parent: Option<fastrace::prelude::SpanContext>,
+    turn: usize,
+    continued_tools: bool,
+    history_len: usize,
+) -> Option<MiddlewareFault> {
+    if chain.after_turn.is_empty() {
+        return None;
+    }
+    run_after_turn(
+        chain,
+        cancel,
+        parent,
+        AfterTurnCtx {
+            turn_index: turn as u32,
+            continued_tools,
+            history_len,
+        },
+    )
+    .await
+    .err()
+}
+
+fn middleware_limit_event(decision: &str) -> XyEvent {
+    XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
+        "LoopMiddlewareLimit",
+        format!(
+            "loop middleware exceeded {LOOP_MIDDLEWARE_CONTINUE_LIMIT} \
+             non-progressing {decision} decisions"
+        ),
+    ))
+}
+
+fn middleware_fault_event(fault: &MiddlewareFault) -> XyEvent {
+    if fault.kind() == "Aborted" {
+        XyEvent::aborted()
+    } else {
+        XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
+            fault.kind(),
+            fault.message(),
+        ))
+    }
 }
 
 fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
@@ -841,8 +910,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         cwd,
         obs_session_name,
         pending_prepare,
+        loop_chain,
     } = cfg;
-    let fixed_context = crate::agent::compaction::FixedRequestContext {
+    let mut fixed_context = crate::agent::compaction::FixedRequestContext {
         system_prompt: system_prompt.clone(),
         tool_schemas: tool_schemas.clone(),
     };
@@ -914,6 +984,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             agent_turn_span.as_ref().map(|s| s.span()),
         );
         let mut turn_aborted = false;
+        let chain_active = !loop_chain.is_empty();
+        let decide_active = !loop_chain.decide_continue.is_empty();
+        let mut stall_count: u32 = 0;
+        let mut settle_count: u32 = 0;
 
         'outer: loop {
             let mut continue_after_tools = true;
@@ -923,6 +997,32 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     turn_aborted = true;
                     yield XyEvent::aborted();
                     break 'outer;
+                }
+
+                let mut turn_system_prompt = system_prompt.clone();
+                if chain_active {
+                    let ctx = BeforeTurnCtx {
+                        turn_index: turn as u32,
+                        system_prompt: system_prompt.clone(),
+                        system_fragments: Vec::new(),
+                    };
+                    match run_before_turn(&loop_chain, &cancel, turn_obs_parent, ctx).await {
+                        Ok(out) => {
+                            turn_system_prompt = fragments_into_prompt(
+                                system_prompt.clone(),
+                                &out.ctx.system_fragments,
+                            );
+                            fixed_context.system_prompt = turn_system_prompt.clone();
+                            if out.control != LoopControl::Continue {
+                                break 'outer;
+                            }
+                        }
+                        Err(fault) => {
+                            turn_aborted = true;
+                            yield middleware_fault_event(&fault);
+                            break 'outer;
+                        }
+                    }
                 }
 
                 stream_clock.begin_turn();
@@ -987,7 +1087,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     &model_manager,
                     &coordinator,
                     run_id,
-                    &system_prompt,
+                    &turn_system_prompt,
                     &mut run_model,
                 ) {
                     Ok(v) => v,
@@ -998,6 +1098,51 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 };
                 generate_options.obs_parent = iteration_parent;
                 generate_options.obs_session = obs_session.clone();
+
+                let mut turn_tool_schemas = tool_schemas.clone();
+                if chain_active {
+                    let ctx = BeforeModelCtx {
+                        turn_index: turn as u32,
+                        messages: messages.clone(),
+                        tool_schemas: turn_tool_schemas.clone(),
+                        options: generate_options.clone(),
+                    };
+                    match run_before_model(&loop_chain, &cancel, iteration_parent, ctx).await {
+                        Ok(out) => {
+                            messages = out.ctx.messages;
+                            turn_tool_schemas = out.ctx.tool_schemas;
+                            generate_options = out.ctx.options;
+                            generate_options.obs_parent = iteration_parent;
+                            generate_options.obs_session = obs_session.clone();
+                            fixed_context.system_prompt = generate_options.system_prompt.clone();
+                            fixed_context.tool_schemas = turn_tool_schemas.clone();
+                            if out.control != LoopControl::Continue {
+                                yield XyEvent::TurnEnd {
+                                    turn_index: turn as u32,
+                                };
+                                if let Some(fault) = after_turn_or_fault(
+                                    &loop_chain,
+                                    &cancel,
+                                    turn_obs_parent,
+                                    turn,
+                                    false,
+                                    history.len(),
+                                )
+                                .await
+                                {
+                                    turn_aborted = true;
+                                    yield middleware_fault_event(&fault);
+                                }
+                                break 'outer;
+                            }
+                        }
+                        Err(fault) => {
+                            turn_aborted = true;
+                            yield middleware_fault_event(&fault);
+                            break 'outer;
+                        }
+                    }
+                }
 
                 let bar = match store.load_leaf_branch(&session_id).await {
                     Ok(branch) => AgentStatusBar::from_session_entries(&branch),
@@ -1010,7 +1155,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         biased;
                         _ = cancel.cancelled() => break,
                         result = attempt_model_stream(
-                            &model, llm_messages.clone(), &tool_schemas, &generate_options,
+                            &model, llm_messages.clone(), &turn_tool_schemas, &generate_options,
                         ) => result,
                     };
                     match result {
@@ -1280,36 +1425,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                 }
 
-                let assistant_partial = if text_acc.is_empty()
-                    && thinking_acc.is_empty()
-                    && thinking_signature.is_none()
-                    && tool_calls.is_empty()
-                {
-                    None
-                } else {
-                    Some(partial_assistant_message(
-                        &text_acc,
-                        &thinking_acc,
-                        thinking_signature.as_deref(),
-                        &tool_calls,
-                    ))
-                };
-                yield XyEvent::MessageEnd {
-                    role: "assistant".to_string(),
-                    message: assistant_partial,
-                };
-                if let Some(bus) = &hook_bus {
-                    let (ty, phase, ctx) = super::script_hook_ctx::message_end("assistant");
-                    observe_script_hook(bus, ty, phase, ctx).await;
-                }
-
                 let mut assistant_parts = streaming_assistant_parts(
                     &text_acc,
                     &thinking_acc,
                     thinking_signature.as_deref(),
                     &tool_calls,
                 );
-                if !assistant_parts.is_empty()
+                let mut assistant_msg: Option<AgentMessage> = if !assistant_parts.is_empty()
                     || matches!(
                         done_stop_reason,
                         Some(xylitol_plugin_sdk::message::XyStopReason::Error)
@@ -1319,14 +1441,93 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     if assistant_parts.is_empty() {
                         assistant_parts.push(AgentPart::text(""));
                     }
-                    let assistant_msg = build_assistant_message(
+                    Some(build_assistant_message(
                         assistant_parts,
                         done_stop_reason,
                         done_usage,
                         provider,
                         model_id,
                         done_error_message,
-                    );
+                    ))
+                } else {
+                    None
+                };
+
+                if chain_active
+                    && let Some(msg) = assistant_msg.take()
+                {
+                    let ctx = AfterModelCtx {
+                        turn_index: turn as u32,
+                        assistant: msg,
+                    };
+                    match run_after_model(&loop_chain, &cancel, iteration_parent, ctx).await {
+                        Ok(out) => {
+                            let msg = out.ctx.assistant;
+                            tool_calls = msg
+                                .content()
+                                .iter()
+                                .filter_map(|part| match part {
+                                    AgentPart::ToolCall {
+                                        id,
+                                        name,
+                                        arguments,
+                                    } => Some((id.clone(), name.clone(), arguments.clone())),
+                                    _ => None,
+                                })
+                                .collect();
+                            assistant_msg = Some(msg);
+                            if out.control != LoopControl::Continue {
+                                let msg = assistant_msg.expect("assistant after middleware");
+                                stream_clock.finish_message();
+                                yield XyEvent::MessageEnd {
+                                    role: "assistant".to_string(),
+                                    message: Some(msg.clone()),
+                                };
+                                persist_agent_message_with_thought_elapsed(
+                                    &store,
+                                    &session_id,
+                                    &msg,
+                                    Some(&stream_clock),
+                                )
+                                .await;
+                                history.push(msg);
+                                yield XyEvent::TurnEnd {
+                                    turn_index: turn as u32,
+                                };
+                                if let Some(fault) = after_turn_or_fault(
+                                    &loop_chain,
+                                    &cancel,
+                                    turn_obs_parent,
+                                    turn,
+                                    false,
+                                    history.len(),
+                                )
+                                .await
+                                {
+                                    turn_aborted = true;
+                                    yield middleware_fault_event(&fault);
+                                }
+                                break 'outer;
+                            }
+                        }
+                        Err(fault) => {
+                            turn_aborted = true;
+                            yield middleware_fault_event(&fault);
+                            break 'outer;
+                        }
+                    }
+                }
+
+                yield XyEvent::MessageEnd {
+                    role: "assistant".to_string(),
+                    message: assistant_msg.clone(),
+                };
+                if let Some(bus) = &hook_bus {
+                    let (ty, phase, ctx) = super::script_hook_ctx::message_end("assistant");
+                    observe_script_hook(bus, ty, phase, ctx).await;
+                }
+
+                if let Some(assistant_msg) = assistant_msg {
                     stream_clock.finish_message();
                     persist_agent_message_with_thought_elapsed(
                         &store,
@@ -1375,24 +1576,122 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     for event in finished.events {
                         yield event;
                     }
-                    match finished.outcome {
-                        FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
-                        FinishTurnOutcome::StopRun => break 'outer,
-                        FinishTurnOutcome::Advanced {
-                            pending: next_pending,
-                            queue_update,
-                        } => {
-                            turn += 1;
-                            pending = next_pending;
-                            if let Some((steer_count, follow_up_count)) = queue_update {
-                                yield XyEvent::QueueUpdate {
-                                    steer_count,
-                                    follow_up_count,
-                                };
-                            }
-                            continue;
+                    let settle_outcome = finished.outcome;
+                    if let Some(fault) =
+                        after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, turn, false, history.len())
+                            .await
+                    {
+                        turn_aborted = true;
+                        yield middleware_fault_event(&fault);
+                        break 'outer;
+                    }
+                    if !matches!(settle_outcome, FinishTurnOutcome::Advanced { .. }) {
+                        match settle_outcome {
+                            FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
+                            FinishTurnOutcome::StopRun => break 'outer,
+                            FinishTurnOutcome::Advanced { .. } => unreachable!(),
                         }
                     }
+                    let FinishTurnOutcome::Advanced {
+                        pending: next_pending,
+                        queue_update,
+                    } = settle_outcome
+                    else {
+                        unreachable!()
+                    };
+                    let has_new_user = !next_pending.is_empty();
+                    if decide_active {
+                        let ctx = DecideContinueCtx {
+                            turn_index: turn as u32,
+                            settle_count,
+                            has_new_user_messages: has_new_user,
+                            assistant: history
+                                .iter()
+                                .rev()
+                                .find(|m| m.role_name() == "assistant")
+                                .cloned(),
+                            history_len: history.len(),
+                        };
+                        match run_decide_continue(&loop_chain, &cancel, turn_obs_parent, ctx).await {
+                            Ok(out) => match out.control {
+                                LoopControl::Continue => {
+                                    if has_new_user {
+                                        stall_count = 0;
+                                    } else {
+                                        stall_count += 1;
+                                    }
+                                    continue_after_tools = true;
+                                }
+                                LoopControl::Stop => break 'outer,
+                                LoopControl::Compact => {
+                                    if has_new_user {
+                                        stall_count = 0;
+                                    } else {
+                                        stall_count += 1;
+                                    }
+                                    if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
+                                        yield middleware_limit_event("compact");
+                                        break 'outer;
+                                    }
+                                    match super::react::turn_end::force_compact_once(
+                                        &store,
+                                        &session_id,
+                                        &model_manager,
+                                        &event_sink,
+                                        compaction.as_ref(),
+                                        &fixed_context,
+                                        &obs_session,
+                                        &cwd,
+                                        pending_prepare.as_ref(),
+                                    )
+                                    .await
+                                    {
+                                        Ok(reloaded) => {
+                                            history = reloaded;
+                                            continue 'outer;
+                                        }
+                                        Err(e) => {
+                                            yield XyEvent::error_msg(format!(
+                                                "loop middleware compact failed: {e}"
+                                            ));
+                                            break 'outer;
+                                        }
+                                    }
+                                }
+                                LoopControl::Handoff => {
+                                    yield XyEvent::Error(
+                                        xylitol_plugin_sdk::lifecycle::XyEventError::new(
+                                            "LoopMiddlewareHandoffUnsupported",
+                                            format!(
+                                                "loop middleware {} requested handoff; not supported",
+                                                out.stopped_by.unwrap_or_else(|| "unknown".into())
+                                            ),
+                                        ),
+                                    );
+                                    break 'outer;
+                                }
+                            },
+                            Err(fault) => {
+                                turn_aborted = true;
+                                yield middleware_fault_event(&fault);
+                                break 'outer;
+                            }
+                        }
+                        if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
+                            yield middleware_limit_event("continue");
+                            break 'outer;
+                        }
+                    }
+                    turn += 1;
+                    settle_count += 1;
+                    pending = next_pending;
+                    if let Some((steer_count, follow_up_count)) = queue_update {
+                        yield XyEvent::QueueUpdate {
+                            steer_count,
+                            follow_up_count,
+                        };
+                    }
+                    continue;
                 }
 
                 let mut turn_tool_results: Vec<AgentMessage> = Vec::new();
@@ -1408,6 +1707,8 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     batch_mode,
                     workspace: &cwd,
                     obs_session: &obs_session,
+                    loop_chain: &loop_chain,
+                    turn_index: turn as u32,
                 };
                 let parent_ctx = iteration_parent;
 
@@ -1465,14 +1766,37 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     }
                                 }
                             };
-                            history.push(msg.clone());
+                            let outcome = msg;
+                            history.push(outcome.message.clone());
                             persist_agent_message(
                                 &store,
                                 &session_id,
                                 history.last().expect("tool result"),
                             )
                             .await;
-                            turn_tool_results.push(msg);
+                            turn_tool_results.push(outcome.message);
+                            if outcome.stop_run {
+                                yield XyEvent::TurnEnd {
+                                    turn_index: turn as u32,
+                                };
+                                if let Some(fault) = after_turn_or_fault(
+                                    &loop_chain,
+                                    &cancel,
+                                    turn_obs_parent,
+                                    turn,
+                                    true,
+                                    history.len(),
+                                )
+                                .await
+                                {
+                                    turn_aborted = true;
+                                    yield middleware_fault_event(&fault);
+                                } else if let Some(fault) = &outcome.fault {
+                                    turn_aborted = true;
+                                    yield middleware_fault_event(fault);
+                                }
+                                break 'outer;
+                            }
                         }
                         super::tool_batch::PlannedWindow::Parallel(idxs) => {
                             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1513,15 +1837,37 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     }
                                 }
                             };
-                            for msg in msgs {
-                                history.push(msg.clone());
+                            for outcome in msgs {
+                                history.push(outcome.message.clone());
                                 persist_agent_message(
                                     &store,
                                     &session_id,
                                     history.last().expect("tool result"),
                                 )
                                 .await;
-                                turn_tool_results.push(msg);
+                                turn_tool_results.push(outcome.message);
+                                if outcome.stop_run {
+                                    yield XyEvent::TurnEnd {
+                                        turn_index: turn as u32,
+                                    };
+                                    if let Some(fault) = after_turn_or_fault(
+                                        &loop_chain,
+                                        &cancel,
+                                        turn_obs_parent,
+                                        turn,
+                                        true,
+                                        history.len(),
+                                    )
+                                    .await
+                                    {
+                                        turn_aborted = true;
+                                        yield middleware_fault_event(&fault);
+                                    } else if let Some(fault) = &outcome.fault {
+                                        turn_aborted = true;
+                                        yield middleware_fault_event(fault);
+                                    }
+                                    break 'outer;
+                                }
                             }
                         }
                     }
@@ -1556,6 +1902,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 for event in finished.events {
                     yield event;
                 }
+                if let Some(fault) =
+                    after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, turn, true, history.len())
+                        .await
+                {
+                    turn_aborted = true;
+                    yield middleware_fault_event(&fault);
+                    break 'outer;
+                }
+                stall_count = 0;
                 match finished.outcome {
                     FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
                     FinishTurnOutcome::StopRun => break 'outer,
@@ -1602,5 +1957,163 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             });
         }
         yield XyEvent::AgentEnd { messages: history };
+    }
+}
+
+#[cfg(test)]
+mod loop_middleware_tests {
+    use std::sync::Arc;
+
+    use futures::StreamExt;
+    use xylitol_plugin_sdk::{
+        BeforeToolCtx, DecideContinueCtx, LoopMiddleware, LoopMiddlewareRegistry, LoopStage,
+        LoopStep,
+    };
+
+    use crate::agent::capabilities::QueueMode;
+    use crate::agent::model::registry::ModelRegistry;
+    use crate::agent::runtime::RunPolicy;
+    use crate::agent::runtime::baseline::RuntimeBaseline;
+    use crate::agent::tools::ToolSet;
+    use crate::test_support::{MemoryStore, NoopSink, dummy_model_builder};
+    use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind, XyModelMeta};
+
+    struct DenyBash;
+
+    #[async_trait::async_trait]
+    impl LoopMiddleware for DenyBash {
+        fn id(&self) -> &str {
+            "deny-bash"
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::BeforeTool]
+        }
+
+        async fn before_tool(&self, ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+            if ctx.tool_name == "bash" {
+                LoopStep::stopped(ctx)
+            } else {
+                LoopStep::continued(ctx)
+            }
+        }
+    }
+
+    struct StopAtSettle;
+
+    #[async_trait::async_trait]
+    impl LoopMiddleware for StopAtSettle {
+        fn id(&self) -> &str {
+            "stop-at-settle"
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::DecideContinue]
+        }
+
+        async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
+            LoopStep::stopped(ctx)
+        }
+    }
+
+    fn registry() -> Arc<LoopMiddlewareRegistry> {
+        Arc::new(LoopMiddlewareRegistry::new())
+    }
+
+    fn baseline() -> RuntimeBaseline {
+        let mut reg = ModelRegistry::new();
+        reg.register(XyModelMeta {
+            id: "mock".into(),
+            config: XyModelConfig {
+                kind: XyModelKind::Fake,
+                api_key: String::new(),
+                model: "mock".into(),
+                base_url: None,
+                api: None,
+                compat: None,
+            },
+            display_name: "Mock".into(),
+            thinking: false,
+            context_window: 128000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
+        });
+        let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(MemoryStore::new());
+        let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> = Arc::new(NoopSink);
+        RuntimeBaseline {
+            store,
+            sink,
+            permission: crate::permission::allow_all_permission(),
+            hook_bus: None,
+            model_registry: reg,
+            model_builder: dummy_model_builder(),
+            cwd: ".".into(),
+            steering_mode: QueueMode::default(),
+            follow_up_mode: QueueMode::default(),
+            compaction_settings: None,
+            compaction_factory: crate::agent::compaction::noop_compaction_factory(),
+            tools: ToolSet::empty(),
+            system_prompt: None,
+            context_files: Vec::new(),
+            append_system_prompt: Vec::new(),
+            skills: Vec::new(),
+            batch_mode: xylitol_plugin_sdk::XyBatchMode::Sequential,
+        }
+    }
+
+    #[tokio::test]
+    async fn before_tool_stop_blocks_execution_and_ends_run() {
+        let reg = registry();
+        reg.register(Arc::new(DenyBash)).expect("register");
+        let mut runtime = baseline().materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-deny").expect("bind");
+        runtime.set_loop_middleware(Some(reg));
+        assert_eq!(runtime.loop_middleware_ids(), vec!["deny-bash".to_string()]);
+
+        let mut events = Vec::new();
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, crate::agent::runtime::XyEvent::AgentEnd { .. })),
+            "run must end: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn decide_continue_stop_ends_run_without_extra_turn() {
+        let reg = registry();
+        reg.register(Arc::new(StopAtSettle)).expect("register");
+        let mut runtime = baseline().materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-stop").expect("bind");
+        runtime.set_loop_middleware(Some(reg));
+        let mut events = Vec::new();
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+        let turns = events
+            .iter()
+            .filter(|e| matches!(e, crate::agent::runtime::XyEvent::TurnStart { .. }))
+            .count();
+        assert_eq!(turns, 1, "stop must not start another turn: {events:?}");
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, crate::agent::runtime::XyEvent::AgentEnd { .. })),
+            "run must end: {events:?}"
+        );
     }
 }

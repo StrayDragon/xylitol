@@ -28,6 +28,9 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub tool_batch: ToolBatchConfig,
+
+    #[serde(default)]
+    pub loop_example: LoopExampleConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -318,6 +321,7 @@ impl AppConfig {
 }
 
 pub use xylitol_official_plugin_hooks::{HookEntry, HooksConfig};
+pub use xylitol_official_plugin_loop_example::LoopExampleConfig;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct SecurityConfig {

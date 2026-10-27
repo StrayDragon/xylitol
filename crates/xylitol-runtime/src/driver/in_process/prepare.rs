@@ -35,6 +35,13 @@ impl XyInProcessDriver {
         self.prepare_hub = Some(hub);
     }
 
+    pub fn set_loop_middleware(
+        &mut self,
+        registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+    ) {
+        self.agent.set_loop_middleware(registry);
+    }
+
     pub fn set_reload_hook(&mut self, hook: Arc<dyn InProcessReloadHook>) {
         self.reload_hook = Some(hook);
     }

@@ -161,6 +161,71 @@ pub(crate) async fn close_iteration(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn force_compact_once(
+    store: &Arc<dyn XySessionStore>,
+    session_id: &str,
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    event_sink: &Arc<dyn xylitol_plugin_sdk::XyEventSink>,
+    compaction: &dyn crate::agent::compaction::XyCompaction,
+    fixed_context: &crate::agent::compaction::FixedRequestContext,
+    obs_session: &xylitol_plugin_sdk::ObsSessionContext,
+    cwd: &str,
+    pending_prepare: Option<&xylitol_plugin_sdk::SessionPrepareSnapshot>,
+) -> Result<Vec<AgentMessage>, String> {
+    let (summary, context_window) = {
+        let mm = crate::utils::lock_mutex(model_manager);
+        let summary = crate::agent::model::task_model::resolve_compaction_summary(
+            compaction.settings(),
+            &mm,
+            obs_session,
+        )
+        .map_err(|e| e.to_string())?;
+        let context_window = mm.current_model().map(|m| m.context_window).unwrap_or(0);
+        (summary, context_window)
+    };
+    let mut fallback_notice_emitted = false;
+    compaction
+        .compact(
+            store.as_ref(),
+            session_id,
+            &summary,
+            event_sink.as_ref(),
+            None,
+            context_window,
+            Some(fixed_context),
+            &mut fallback_notice_emitted,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    let entries = store
+        .load_leaf_branch(session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    let cut = xylitol_plugin_sdk::session::build_context_entries(&entries);
+    let mut history: Vec<AgentMessage> = cut.iter().filter_map(|e| e.as_agent_message()).collect();
+    let env_snap = crate::agent::prompt::snapshot_for_cwd(cwd);
+    if crate::agent::prompt::ensure_session_env_in_history(&mut history, &env_snap) {
+        super::support::persist_agent_message(
+            store,
+            session_id,
+            history.last().expect("session_env"),
+        )
+        .await;
+    }
+    if let Some(prep) = pending_prepare
+        && xylitol_plugin_sdk::ensure_session_prepare_in_history(&mut history, prep)
+    {
+        super::support::persist_agent_message(
+            store,
+            session_id,
+            history.last().expect("session_prepare"),
+        )
+        .await;
+    }
+    Ok(history)
+}
+
 pub(crate) async fn settle_turn_context(
     store: &Arc<dyn XySessionStore>,
     session_id: &str,

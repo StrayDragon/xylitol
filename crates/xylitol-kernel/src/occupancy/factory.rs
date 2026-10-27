@@ -77,6 +77,9 @@ impl OccupancyFactory for ProductOccupancyFactory {
             if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
                 driver.set_prepare_hub(hub);
             }
+            if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
+                driver.set_loop_middleware(Some(registry));
+            }
         } else if !self.mcp_servers.is_empty() {
             let servers = crate::mcp_spec::McpServerSpec::to_infra_list(&self.mcp_servers);
             driver.set_prepare_hub(std::sync::Arc::new(

@@ -9,6 +9,7 @@ pub mod error;
 pub mod generate;
 pub mod lifecycle;
 pub mod llm_project;
+pub mod loop_middleware;
 pub mod message;
 pub mod model;
 pub mod model_entry;
@@ -57,6 +58,11 @@ pub use generate::{
 };
 pub use lifecycle::{XyEvent, XyEventError};
 pub use llm_project::project_for_llm;
+pub use loop_middleware::{
+    AfterModelCtx, AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx,
+    DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware, LoopMiddlewareHandle,
+    LoopMiddlewareRegistry, LoopStage, LoopStep,
+};
 pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
 pub use model::{
     THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap, XyChunk, XyModelConfig,

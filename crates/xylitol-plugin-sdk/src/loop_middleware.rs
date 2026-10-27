@@ -1,0 +1,485 @@
+use std::sync::{Arc, Mutex, Weak};
+
+use async_trait::async_trait;
+use serde_json::Value;
+
+use crate::error::XyError;
+use crate::generate::XyGenerateOptions;
+use crate::message::AgentMessage;
+use crate::model::XyToolSchema;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LoopStage {
+    BeforeTurn,
+    BeforeModel,
+    AfterModel,
+    BeforeTool,
+    AfterTool,
+    DecideContinue,
+    AfterTurn,
+}
+
+impl LoopStage {
+    pub const ALL: [LoopStage; 7] = [
+        LoopStage::BeforeTurn,
+        LoopStage::BeforeModel,
+        LoopStage::AfterModel,
+        LoopStage::BeforeTool,
+        LoopStage::AfterTool,
+        LoopStage::DecideContinue,
+        LoopStage::AfterTurn,
+    ];
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LoopStage::BeforeTurn => "before_turn",
+            LoopStage::BeforeModel => "before_model",
+            LoopStage::AfterModel => "after_model",
+            LoopStage::BeforeTool => "before_tool",
+            LoopStage::AfterTool => "after_tool",
+            LoopStage::DecideContinue => "decide_continue",
+            LoopStage::AfterTurn => "after_turn",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoopControl {
+    Continue,
+    Stop,
+    Compact,
+    Handoff,
+}
+
+impl LoopControl {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LoopControl::Continue => "continue",
+            LoopControl::Stop => "stop",
+            LoopControl::Compact => "compact",
+            LoopControl::Handoff => "handoff",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LoopStep<C> {
+    pub ctx: C,
+    pub control: LoopControl,
+}
+
+impl<C> LoopStep<C> {
+    pub fn continued(ctx: C) -> Self {
+        Self {
+            ctx,
+            control: LoopControl::Continue,
+        }
+    }
+
+    pub fn stopped(ctx: C) -> Self {
+        Self {
+            ctx,
+            control: LoopControl::Stop,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BeforeTurnCtx {
+    pub turn_index: u32,
+    pub system_prompt: Option<String>,
+    pub system_fragments: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BeforeModelCtx {
+    pub turn_index: u32,
+    pub messages: Vec<AgentMessage>,
+    pub tool_schemas: Vec<XyToolSchema>,
+    pub options: XyGenerateOptions,
+}
+
+#[derive(Debug, Clone)]
+pub struct AfterModelCtx {
+    pub turn_index: u32,
+    pub assistant: AgentMessage,
+}
+
+#[derive(Debug, Clone)]
+pub struct BeforeToolCtx {
+    pub turn_index: u32,
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub args: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct AfterToolCtx {
+    pub turn_index: u32,
+    pub tool_call_id: String,
+    pub tool_name: String,
+    pub result: String,
+    pub is_error: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct DecideContinueCtx {
+    pub turn_index: u32,
+    pub settle_count: u32,
+    pub has_new_user_messages: bool,
+    pub assistant: Option<AgentMessage>,
+    pub history_len: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct AfterTurnCtx {
+    pub turn_index: u32,
+    pub continued_tools: bool,
+    pub history_len: usize,
+}
+
+#[async_trait]
+pub trait LoopMiddleware: Send + Sync {
+    fn id(&self) -> &str;
+
+    fn order(&self) -> i64 {
+        0
+    }
+
+    fn stages(&self) -> &'static [LoopStage];
+
+    async fn before_turn(&self, ctx: BeforeTurnCtx) -> LoopStep<BeforeTurnCtx> {
+        LoopStep::continued(ctx)
+    }
+
+    async fn before_model(&self, ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+        LoopStep::continued(ctx)
+    }
+
+    async fn after_model(&self, ctx: AfterModelCtx) -> LoopStep<AfterModelCtx> {
+        LoopStep::continued(ctx)
+    }
+
+    async fn before_tool(&self, ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+        LoopStep::continued(ctx)
+    }
+
+    async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
+        LoopStep::continued(ctx)
+    }
+
+    async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
+        LoopStep::continued(ctx)
+    }
+
+    async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
+        LoopStep::continued(ctx)
+    }
+}
+
+struct Entry {
+    id: String,
+    order: i64,
+    seq: u64,
+    stages: &'static [LoopStage],
+    middleware: Arc<dyn LoopMiddleware>,
+}
+
+#[derive(Default)]
+struct RegistryInner {
+    next_seq: u64,
+    entries: Vec<Entry>,
+}
+
+pub struct LoopMiddlewareRegistry {
+    inner: Arc<Mutex<RegistryInner>>,
+}
+
+impl Default for LoopMiddlewareRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LoopMiddlewareRegistry {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(RegistryInner::default())),
+        }
+    }
+
+    pub fn register(
+        &self,
+        middleware: Arc<dyn LoopMiddleware>,
+    ) -> Result<LoopMiddlewareHandle, XyError> {
+        let id = middleware.id().to_string();
+        let order = middleware.order();
+        let stages = middleware.stages();
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if inner.entries.iter().any(|entry| entry.id == id) {
+            return Err(XyError::Config(format!(
+                "loop middleware id already registered: {id}"
+            )));
+        }
+        let seq = inner.next_seq;
+        inner.next_seq += 1;
+        inner.entries.push(Entry {
+            id: id.clone(),
+            order,
+            seq,
+            stages,
+            middleware,
+        });
+        drop(inner);
+        Ok(LoopMiddlewareHandle {
+            inner: Arc::downgrade(&self.inner),
+            id,
+        })
+    }
+
+    pub fn unregister(&self, id: &str) -> bool {
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let before = inner.entries.len();
+        inner.entries.retain(|entry| entry.id != id);
+        inner.entries.len() != before
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entries
+            .is_empty()
+    }
+
+    pub fn ids(&self) -> Vec<String> {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut entries: Vec<&Entry> = inner.entries.iter().collect();
+        entries.sort_by(|a, b| a.order.cmp(&b.order).then(a.seq.cmp(&b.seq)));
+        entries.into_iter().map(|entry| entry.id.clone()).collect()
+    }
+
+    pub fn snapshot(&self) -> LoopChain {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut entries: Vec<&Entry> = inner.entries.iter().collect();
+        entries.sort_by(|a, b| a.order.cmp(&b.order).then(a.seq.cmp(&b.seq)));
+        let mut chain = LoopChain::default();
+        for entry in entries {
+            for stage in entry.stages {
+                chain.bucket_mut(*stage).push(Arc::clone(&entry.middleware));
+            }
+        }
+        chain
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct LoopChain {
+    pub before_turn: Vec<Arc<dyn LoopMiddleware>>,
+    pub before_model: Vec<Arc<dyn LoopMiddleware>>,
+    pub after_model: Vec<Arc<dyn LoopMiddleware>>,
+    pub before_tool: Vec<Arc<dyn LoopMiddleware>>,
+    pub after_tool: Vec<Arc<dyn LoopMiddleware>>,
+    pub decide_continue: Vec<Arc<dyn LoopMiddleware>>,
+    pub after_turn: Vec<Arc<dyn LoopMiddleware>>,
+}
+
+impl LoopChain {
+    fn bucket_mut(&mut self, stage: LoopStage) -> &mut Vec<Arc<dyn LoopMiddleware>> {
+        match stage {
+            LoopStage::BeforeTurn => &mut self.before_turn,
+            LoopStage::BeforeModel => &mut self.before_model,
+            LoopStage::AfterModel => &mut self.after_model,
+            LoopStage::BeforeTool => &mut self.before_tool,
+            LoopStage::AfterTool => &mut self.after_tool,
+            LoopStage::DecideContinue => &mut self.decide_continue,
+            LoopStage::AfterTurn => &mut self.after_turn,
+        }
+    }
+
+    pub fn stage(&self, stage: LoopStage) -> &[Arc<dyn LoopMiddleware>] {
+        match stage {
+            LoopStage::BeforeTurn => &self.before_turn,
+            LoopStage::BeforeModel => &self.before_model,
+            LoopStage::AfterModel => &self.after_model,
+            LoopStage::BeforeTool => &self.before_tool,
+            LoopStage::AfterTool => &self.after_tool,
+            LoopStage::DecideContinue => &self.decide_continue,
+            LoopStage::AfterTurn => &self.after_turn,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        LoopStage::ALL
+            .iter()
+            .all(|stage| self.stage(*stage).is_empty())
+    }
+}
+
+#[derive(Debug)]
+pub struct LoopMiddlewareHandle {
+    inner: Weak<Mutex<RegistryInner>>,
+    id: String,
+}
+
+impl LoopMiddlewareHandle {
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn unregister(self) -> bool {
+        let Some(inner) = self.inner.upgrade() else {
+            return false;
+        };
+        let mut guard = inner.lock().unwrap_or_else(|e| e.into_inner());
+        let before = guard.entries.len();
+        guard.entries.retain(|entry| entry.id != self.id);
+        guard.entries.len() != before
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Probe {
+        id: &'static str,
+        order: i64,
+        stages: &'static [LoopStage],
+    }
+
+    #[async_trait]
+    impl LoopMiddleware for Probe {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        fn order(&self) -> i64 {
+            self.order
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            self.stages
+        }
+    }
+
+    fn probe(
+        id: &'static str,
+        order: i64,
+        stages: &'static [LoopStage],
+    ) -> Arc<dyn LoopMiddleware> {
+        Arc::new(Probe { id, order, stages })
+    }
+
+    #[test]
+    fn snapshot_orders_by_order_then_registration() {
+        let reg = LoopMiddlewareRegistry::new();
+        let b = reg
+            .register(probe("b", 10, &[LoopStage::BeforeModel]))
+            .expect("b");
+        let a = reg
+            .register(probe("a", 5, &[LoopStage::BeforeModel]))
+            .expect("a");
+        let c = reg
+            .register(probe("c", 10, &[LoopStage::BeforeModel]))
+            .expect("c");
+        let chain = reg.snapshot();
+        let ids: Vec<String> = chain
+            .before_model
+            .iter()
+            .map(|mw| mw.id().to_string())
+            .collect();
+        assert_eq!(ids, vec!["a", "b", "c"]);
+        drop((a, b, c));
+    }
+
+    #[test]
+    fn duplicate_id_is_rejected() {
+        let reg = LoopMiddlewareRegistry::new();
+        let first = reg
+            .register(probe("dup", 0, &[LoopStage::AfterTurn]))
+            .expect("first");
+        let err = match reg.register(probe("dup", 1, &[LoopStage::AfterTurn])) {
+            Ok(_) => panic!("duplicate id must be rejected"),
+            Err(err) => err,
+        };
+        assert!(matches!(err, XyError::Config(_)));
+        drop(first);
+    }
+
+    #[test]
+    fn handle_unregister_removes_entry() {
+        let reg = LoopMiddlewareRegistry::new();
+        let handle = reg
+            .register(probe("temp", 0, &[LoopStage::BeforeTool]))
+            .expect("register");
+        assert_eq!(handle.id(), "temp");
+        assert!(!reg.is_empty());
+        assert!(handle.unregister());
+        assert!(reg.is_empty());
+        assert!(reg.snapshot().before_tool.is_empty());
+    }
+
+    #[test]
+    fn explicit_unregister_removes_entry() {
+        let reg = LoopMiddlewareRegistry::new();
+        let handle = reg
+            .register(probe("explicit", 0, &[LoopStage::AfterTool]))
+            .expect("register");
+        assert!(reg.unregister("explicit"));
+        assert!(!reg.unregister("explicit"));
+        assert!(reg.is_empty());
+        drop(handle);
+    }
+
+    #[test]
+    fn stages_bucket_per_declaration() {
+        let reg = LoopMiddlewareRegistry::new();
+        let a = reg
+            .register(probe(
+                "a",
+                0,
+                &[LoopStage::BeforeTurn, LoopStage::DecideContinue],
+            ))
+            .expect("a");
+        let chain = reg.snapshot();
+        drop(a);
+        assert_eq!(chain.before_turn.len(), 1);
+        assert_eq!(chain.decide_continue.len(), 1);
+        assert!(chain.before_model.is_empty());
+        assert!(!chain.is_empty());
+        assert!(LoopChain::default().is_empty());
+    }
+
+    #[tokio::test]
+    async fn stage_short_circuits_on_stop() {
+        struct StopAtTool;
+
+        #[async_trait]
+        impl LoopMiddleware for StopAtTool {
+            fn id(&self) -> &str {
+                "stop-at-tool"
+            }
+
+            fn stages(&self) -> &'static [LoopStage] {
+                &[LoopStage::BeforeTool]
+            }
+
+            async fn before_tool(&self, ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+                LoopStep::stopped(ctx)
+            }
+        }
+
+        let ctx = BeforeToolCtx {
+            turn_index: 0,
+            tool_call_id: "1".into(),
+            tool_name: "bash".into(),
+            args: Value::Null,
+        };
+        let step = StopAtTool.before_tool(ctx).await;
+        assert_eq!(step.control, LoopControl::Stop);
+        assert_eq!(LoopControl::Handoff.as_str(), "handoff");
+        assert_eq!(LoopStage::DecideContinue.as_str(), "decide_continue");
+        assert_eq!(LoopStage::ALL.len(), 7);
+    }
+}

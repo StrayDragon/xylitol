@@ -53,6 +53,9 @@ pub async fn boot(opts: BootOptions) -> Result<Kernel, BootstrapError> {
     if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
         runtime.driver.set_prepare_hub(hub);
     }
+    if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
+        runtime.driver.set_loop_middleware(Some(registry));
+    }
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let agent_dir = dirs::home_dir()
         .unwrap_or_else(std::env::temp_dir)
@@ -134,6 +137,10 @@ fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
         .get::<xylitol_official_plugin_config::plugin::ConfigService>()
         .and_then(|cfg| cfg.app.mcp_servers.clone())
         .unwrap_or_default();
+    let loop_example = ctx
+        .get::<xylitol_official_plugin_config::plugin::ConfigService>()
+        .map(|cfg| cfg.app.loop_example.clone())
+        .unwrap_or_default();
     let mut insert = vec![
         session_row,
         serde_json::json!({ "id": "compaction", "name": "compaction" }),
@@ -142,6 +149,13 @@ fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
         serde_json::json!({ "id": "provider-openai", "name": "provider-openai" }),
         serde_json::json!({ "id": "provider-anthropic", "name": "provider-anthropic" }),
     ];
+    if loop_example.is_active() {
+        insert.push(serde_json::json!({
+            "id": "loop-example",
+            "name": "loop-example",
+            "config": loop_example,
+        }));
+    }
     match opts.profile {
         Profile::Print | Profile::Embed => {
             insert.push(serde_json::json!({ "id": "app-print", "name": "app-print" }));

@@ -314,3 +314,96 @@
         | cancelling | finish | run_id_match | idle     |
         | streaming  | finish | run_id_stale | starting  |
         | starting   | finish | run_id_stale | starting  |
+
+  @req:r2920
+  规则: loop-middleware-spi
+    插件 须经 rutis 生命周期注册 loop 中间件参与 ReAct 决策：阶段闭集为 before_turn、before_model、after_model、before_tool、after_tool、decide_continue、after_turn；注册表 须按阶段分组并按 order 升序排列，同 order 保持注册序；注册 须返回卸载句柄，插件停止时 须卸干净。每次 run 须在启动时快照中间件链，进行中 run 不得受后挂中间件影响；链为空时 须零开销直走基线路径，不得创建观测 span 或额外事件。core 须永远持有 turn 边界、取消、权限最终裁决与消息落盘格式，不得允许插件整段替换 ReAct。
+
+    场景: 中间件有序且卸载后消失
+      假如 注册 before_model 阶段 order 10 与 order 5 的两个中间件
+      当 读取中间件链快照并注销 order 5 的中间件
+      那么 首次快照按 order 升序且注销后不再含该 id
+
+    场景: 空链走基线
+      假如 未注册任何 loop 中间件
+      当 运行 AgentRuntime 并收集事件
+      那么 出现 AgentEnd 且无中间件错误事件
+
+  @req:r2921
+  规则: loop-middleware-control
+    中间件返回值 须为 { ctx, control }；control 闭集为 continue、stop、compact、handoff。decide_continue 须仅在 Settle 的 TurnEnd 之后、settle 与压缩预检之后调用，ContinueTools 不得调用；stop 须以 AgentEnd 结束本 run 且不得再 drain steer 或 follow_up；compact 须由 core 执行一次强制压缩后继续；handoff 本 change 未支持，core 须以稳定 kind LoopMiddlewareHandoffUnsupported 的错误结束本 run，不得静默忽略。中间件不得自行再调模型，下一次 generate 只能由 core 调度。after_turn 的 control 须仅为 continue，其他取值须记入观测并忽略，不得静默改变行为。
+
+    场景: 自定义停止结束运行
+      假如 注册 decide_continue 中间件在首次结算返回 stop
+      当 运行 AgentRuntime 并收集事件
+      那么 出现 AgentEnd 且其后无新的 TurnStart
+
+    场景: 未支持交接报错
+      假如 注册 decide_continue 中间件返回 handoff
+      当 运行 AgentRuntime 并收集事件
+      那么 事件流含 kind 为 LoopMiddlewareHandoffUnsupported 的错误
+
+  @req:r2922
+  规则: loop-middleware-tool-gate
+    before_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core permission 之前运行；可改工具参数，但 core 须用最终参数重新计算权限目标并再裁一次（改工具名不在本要求范围）。中间件拒绝 须使工具以 tool-error 回写且不执行；中间件放行 不得撤销上游拒绝，也不得绕过 core permission。审批只能更严；更松须显式 capability 与用户信任，不在本要求范围。
+
+    场景: 中间件拒绝更严
+      假如 注册 before_tool 中间件拒绝 bash
+      当 运行 AgentRuntime 触发 bash
+      那么 tool-error 回写且原因含 loop middleware
+
+    场景: 改参不绕过权限
+      假如 注册 before_tool 中间件把 bash 参数改为访问被拒域名且权限引擎拒绝该域名
+      当 运行 AgentRuntime 触发 bash
+      那么 tool-error 回写且原因含 permission denied
+
+  @req:r2923
+  规则: loop-middleware-bounded
+    core 须对 decide_continue 的 continue 与 compact 设硬上限：连续裁决且本轮无新工具结果、无新用户消息的次数超过上限时 须停止本 run 并以稳定 kind LoopMiddlewareLimit 的错误可观测，不得挂死循环或静默停。单次中间件调用 须与取消令牌和超时竞速；取消须以 aborted 结束本 run，超时须以稳定 kind LoopMiddlewareTimeout 的错误结束本 run，不得让中间件无限期占用 turn。
+
+    场景: 无进展继续触发上限
+      假如 注册 decide_continue 中间件总是返回 continue 且无新工具与新用户消息
+      当 运行 AgentRuntime 并收集事件
+      那么 事件流含 kind 为 LoopMiddlewareLimit 的错误且随后出现 AgentEnd
+
+  @req:r2924
+  规则: loop-middleware-trace
+    观测激活时，每次中间件调用 须留 loop.middleware span，属性至少含中间件 id、阶段、order、返回 control、改动摘要与结果；链为空时 不得建 span。由单测或观测场景覆盖。
+
+    场景: 观测可指认改动来源
+      假如 注册 before_model 中间件且在观测闸开启下运行一回合
+      当 读取 loop.middleware span 属性
+      那么 属性含该中间件 id、阶段名与改动摘要
+
+  @req:r2925
+  规则: loop-middleware-example-plugin
+    仓库 须提供一个官方示例插件，证明第三方可在 rutis 生命周期内注册与卸载 loop 中间件：至少含一个只收紧的 before_tool 与一个自定义 decide_continue。该插件 须由配置显式启用，缺省不装配；未配置时 不得注册任何中间件、不得产生额外事件或观测 span。卸载后 注册表 须不再含该插件的中间件。
+
+    场景: 未配置零装配
+      假如 loop 示例插件配置缺省
+      当 装配运行时并查询中间件注册表
+      那么 注册表为空且运行无额外事件
+
+    场景: 启用后卸载零残留
+      假如 以启用 loop 示例插件装配运行时
+      当 卸载该插件
+      那么 注册表不再含该插件的中间件
+
+  @req:r2926
+  规则: loop-middleware-visible-consistency
+    中间件改动 须与对外可见形状一致：before_turn 注入的系统碎片与 before_model 改写的 system / tool schema 须回流到本 run 的压缩固定上下文（token 估计与压缩阈值按最终形状计算，不得沿用启动快照）；before_tool 改写的参数须在 ToolExecutionStart 中呈现，不得先发原始参数再执行改写后参数；after_model 改写的 assistant（含新增 tool_call）须在 MessageEnd 之前生效，不得让已发出的 MessageEnd 与随后落盘/执行的形状不一致。中间件超时或取消结束本 run 时，回合观测须标记为非正常结束，不得记为成功。
+
+    场景: 改写参数可见
+      假如 注册 before_tool 中间件把 bash 命令改为 echo safe
+      当 运行 AgentRuntime 触发 bash 并收集事件
+      那么 ToolExecutionStart 的参数为 echo safe
+
+    场景: 改写助手先于消息结束
+      假如 注册 after_model 中间件把 assistant 文本改写为 replaced
+      当 运行 AgentRuntime 并收集事件
+      那么 MessageEnd 携带的 assistant 文本为 replaced 且无改写前文本
+
+    场景: 系统碎片进入压缩上下文
+      假如 注册 before_turn 中间件注入长系统碎片
+      当 运行 AgentRuntime 并比较有无碎片的回合结算估计
+      那么 含碎片的估计不低于无碎片基线
