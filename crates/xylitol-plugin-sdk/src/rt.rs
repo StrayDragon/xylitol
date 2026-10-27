@@ -6,6 +6,10 @@ pub use rutis::events::Call;
 pub use rutis::host::{CtxHost, ErrorKind, FiberState, FiberView, TypeKey};
 pub use rutis::{Ctx, Deps, Disposer, Error, Event, Plugin, Result};
 
+// ~keep
+// TODO(#sdk-version-init): SDK_API_VERSION 与 RUTIS_LOCK 目前只是编译期常量，
+// 无运行期消费者（host.describe 不上报）。首个正式版（当前 version 为 0.0.0-pre）
+// 发布前须决定：是否让它成为真正的插件兼容协商信号，或整体移除。
 pub const SDK_API_VERSION: &str = "0.4.0";
 
 pub const RUTIS_LOCK: &str = "0.17.0";
