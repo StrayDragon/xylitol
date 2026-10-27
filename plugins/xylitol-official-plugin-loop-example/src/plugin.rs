@@ -4,6 +4,7 @@ use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 use crate::config::LoopExampleConfig;
 use crate::middleware::{
     DEFAULT_PLAN_SETTLES, example_middleware, plan_state_middleware, progress_reminder_middleware,
+    tool_exposure_middleware,
 };
 
 pub struct LoopExamplePlugin {
@@ -52,6 +53,13 @@ impl Plugin for LoopExamplePlugin {
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
         }
+        if self.config.tool_exposure.enabled {
+            handles.push(
+                registry
+                    .register(tool_exposure_middleware(&self.config.tool_exposure))
+                    .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
+            );
+        }
         ctx.effect(|| async move {
             for handle in handles {
                 handle.unregister();
@@ -69,6 +77,7 @@ mod tests {
     use xylitol_plugin_sdk::rt::CtxHost;
 
     use super::*;
+    use crate::config::ToolExposureConfig;
 
     fn enabled() -> LoopExampleConfig {
         LoopExampleConfig {
@@ -77,8 +86,8 @@ mod tests {
             deny_bash_patterns: vec!["rm -rf /".into()],
             plan_state: false,
             progress_reminder: false,
-
             progress_reminder_stale_after: 3,
+            tool_exposure: Default::default(),
         }
     }
 
@@ -86,8 +95,8 @@ mod tests {
         LoopExampleConfig {
             plan_state: true,
             progress_reminder: false,
-
             progress_reminder_stale_after: 3,
+            tool_exposure: Default::default(),
             ..enabled()
         }
     }
@@ -95,6 +104,17 @@ mod tests {
     fn reminder_enabled() -> LoopExampleConfig {
         LoopExampleConfig {
             progress_reminder: true,
+            ..enabled()
+        }
+    }
+
+    fn exposure_enabled() -> LoopExampleConfig {
+        LoopExampleConfig {
+            tool_exposure: ToolExposureConfig {
+                enabled: true,
+                allow: vec!["read".into()],
+                ..Default::default()
+            },
             ..enabled()
         }
     }
@@ -167,6 +187,26 @@ mod tests {
             registry.ids(),
             vec!["loop-example".to_string(), "progress-reminder".to_string()],
             "progress reminder must register alongside the base middleware"
+        );
+        fiber.dispose().await.expect("dispose");
+        assert!(registry.is_empty(), "unload must remove both middlewares");
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn tool_exposure_registers_and_unloads() {
+        let (ctx, registry) = ctx_with_registry();
+        let fiber = ctx.plugin(LoopExamplePlugin::new(&exposure_enabled()).expect("new"));
+        for _ in 0..64 {
+            if registry.ids().len() == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            registry.ids(),
+            vec!["tool-exposure".to_string(), "loop-example".to_string()],
+            "tool exposure must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty(), "unload must remove both middlewares");

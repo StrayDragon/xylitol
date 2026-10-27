@@ -128,6 +128,12 @@ hooks:
 #   plan_state: false         # optional: register the plan-as-state middleware
 #   progress_reminder: false  # optional: remind the model to re-read todo
 #   progress_reminder_stale_after: 3  # tool calls without todo update before reminding
+#   tool_exposure:            # before_model: narrow the tools the model can see
+#     enabled: false
+#     allow: []               # non-empty: only these tools (todo tools stay visible)
+#     deny: []                # always hidden
+#     read_only: false        # hide write tools when true
+#     write_tools: ["write", "edit"]
 #   deny_bash_patterns:       # before_tool: tighten only, core permission still decides
 #     - "rm -rf /"
 

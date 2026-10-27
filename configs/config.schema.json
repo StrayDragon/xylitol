@@ -166,6 +166,16 @@
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
+        },
+        "tool_exposure": {
+          "$ref": "#/$defs/ToolExposureConfig",
+          "default": {
+            "allow": [],
+            "deny": [],
+            "enabled": false,
+            "read_only": false,
+            "write_tools": []
+          }
         }
       },
       "type": "object"
@@ -478,6 +488,41 @@
       ],
       "type": "string"
     },
+    "ToolExposureConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deny": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "read_only": {
+          "default": false,
+          "type": "boolean"
+        },
+        "write_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "TuiActivityFoldConfig": {
       "additionalProperties": false,
       "properties": {
@@ -697,7 +742,14 @@
         "max_settles": null,
         "plan_state": false,
         "progress_reminder": false,
-        "progress_reminder_stale_after": 3
+        "progress_reminder_stale_after": 3,
+        "tool_exposure": {
+          "allow": [],
+          "deny": [],
+          "enabled": false,
+          "read_only": false,
+          "write_tools": []
+        }
       }
     },
     "mcp_servers": {

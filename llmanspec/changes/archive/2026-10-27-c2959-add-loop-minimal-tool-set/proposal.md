@@ -2,6 +2,9 @@
 depends_on:
   - c2957-add-loop-example-plan-state
 title: 最小工具集：按当前步骤、身份与风险收窄模型可见工具
+branch: sdd/c2959-add-loop-minimal-tool-set
+base_branch: main
+base_sha: 510895537332591f04ada9baa509012d820b66a7
 ---
 
 # 最小工具集：按当前步骤、身份与风险收窄模型可见工具

@@ -262,8 +262,8 @@ mod tests {
                     deny_bash_patterns: vec!["rm -rf /".into()],
                     plan_state: false,
                     progress_reminder: false,
-
                     progress_reminder_stale_after: 3,
+                    tool_exposure: Default::default(),
                 },
             )
             .expect("loop example plugin"),
@@ -435,8 +435,8 @@ mod tests {
                 deny_bash_patterns: vec![],
                 plan_state: false,
                 progress_reminder: false,
-
                 progress_reminder_stale_after: 3,
+                tool_exposure: Default::default(),
             },
         ))
         .expect("late root registration");

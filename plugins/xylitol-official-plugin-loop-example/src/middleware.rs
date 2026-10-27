@@ -11,7 +11,7 @@ use xylitol_plugin_sdk::{
     LoopMiddleware, LoopStage, LoopStep,
 };
 
-use crate::config::LoopExampleConfig;
+use crate::config::{LoopExampleConfig, ToolExposureConfig};
 
 const STAGES: &[LoopStage] = &[LoopStage::BeforeTool, LoopStage::DecideContinue];
 pub const DEFAULT_PLAN_SETTLES: u32 = 8;
@@ -22,6 +22,7 @@ const PLAN_STAGES: &[LoopStage] = &[
     LoopStage::AfterTurn,
 ];
 const PROGRESS_STAGES: &[LoopStage] = &[LoopStage::BeforeModel, LoopStage::AfterTool];
+const TOOL_EXPOSURE_STAGES: &[LoopStage] = &[LoopStage::BeforeModel];
 const PLAN_CONTRACT: &str = "Plan mode: before acting, write the checklist with todo_rewrite. \
 Keep exactly one item in_progress and mark finished items with todo_update. \
 Do not claim completion while items remain pending.";
@@ -191,6 +192,69 @@ impl LoopMiddleware for PlanStateMiddleware {
     }
 }
 
+pub struct ToolExposureMiddleware {
+    config: ToolExposureConfig,
+}
+
+impl ToolExposureMiddleware {
+    pub fn new(config: ToolExposureConfig) -> Self {
+        Self { config }
+    }
+
+    fn visible(&self, name: &str) -> bool {
+        if matches!(name, "todo_rewrite" | "todo_update") {
+            return true;
+        }
+        if self.config.deny.iter().any(|tool| tool == name) {
+            return false;
+        }
+        if self.config.read_only && self.config.write_tools.iter().any(|tool| tool == name) {
+            return false;
+        }
+        if !self.config.allow.is_empty() && !self.config.allow.iter().any(|tool| tool == name) {
+            return false;
+        }
+        true
+    }
+}
+
+#[async_trait]
+impl LoopMiddleware for ToolExposureMiddleware {
+    fn id(&self) -> &str {
+        "tool-exposure"
+    }
+
+    fn order(&self) -> i64 {
+        50
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        TOOL_EXPOSURE_STAGES
+    }
+
+    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+        if !self.config.enabled {
+            return LoopStep::continued(ctx);
+        }
+        let before = ctx.tool_schemas.len();
+        ctx.tool_schemas.retain(|schema| self.visible(&schema.name));
+        let after = ctx.tool_schemas.len();
+        if after != before {
+            log::info!(
+                target: "xylitol::loop-example",
+                "tool exposure filtered {} of {} tools",
+                before - after,
+                before
+            );
+        }
+        LoopStep::continued(ctx)
+    }
+}
+
+pub fn tool_exposure_middleware(config: &ToolExposureConfig) -> Arc<dyn LoopMiddleware> {
+    Arc::new(ToolExposureMiddleware::new(config.clone()))
+}
+
 pub struct ProgressReminderMiddleware {
     stale_after: usize,
     stale_tool_calls: AtomicUsize,
@@ -300,6 +364,7 @@ mod tests {
     use super::*;
     use crate::config::DEFAULT_PROGRESS_STALE_AFTER;
     use xylitol_plugin_sdk::LoopControl;
+    use xylitol_plugin_sdk::model::XyToolSchema;
     use xylitol_plugin_sdk::session::TodoItem;
 
     fn ctx(command: &str) -> BeforeToolCtx {
@@ -319,8 +384,8 @@ mod tests {
             deny_bash_patterns: vec!["rm -rf /".into()],
             plan_state: false,
             progress_reminder: false,
-
             progress_reminder_stale_after: 3,
+            tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
         let safe = mw.before_tool(ctx("echo hi")).await;
@@ -338,8 +403,8 @@ mod tests {
             deny_bash_patterns: Vec::new(),
             plan_state: false,
             progress_reminder: false,
-
             progress_reminder_stale_after: 3,
+            tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
         let base = DecideContinueCtx {
@@ -624,5 +689,124 @@ mod tests {
         assert_eq!(mw.id(), "progress-reminder");
         assert_eq!(mw.order(), 150);
         assert_eq!(mw.stages(), PROGRESS_STAGES);
+    }
+
+    fn schema(name: &str) -> XyToolSchema {
+        XyToolSchema {
+            name: name.into(),
+            description: format!("{name} tool"),
+            parameters: serde_json::json!({ "type": "object" }),
+        }
+    }
+
+    fn schemas(names: &[&str]) -> Vec<XyToolSchema> {
+        names.iter().map(|name| schema(name)).collect()
+    }
+
+    fn exposure_ctx(names: &[&str]) -> BeforeModelCtx {
+        BeforeModelCtx {
+            turn_index: 0,
+            messages: Vec::new(),
+            tool_schemas: schemas(names),
+            options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+            todo: None,
+        }
+    }
+
+    fn visible_names(ctx: &BeforeModelCtx) -> Vec<String> {
+        ctx.tool_schemas
+            .iter()
+            .map(|schema| schema.name.clone())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn tool_exposure_disabled_keeps_shape() {
+        let mw = ToolExposureMiddleware::new(ToolExposureConfig::default());
+        let out = mw
+            .before_model(exposure_ctx(&["read", "bash", "todo_rewrite"]))
+            .await;
+        assert_eq!(visible_names(&out.ctx), ["read", "bash", "todo_rewrite"]);
+    }
+
+    #[tokio::test]
+    async fn tool_exposure_empty_rules_keep_shape() {
+        let mw = ToolExposureMiddleware::new(ToolExposureConfig {
+            enabled: true,
+            ..Default::default()
+        });
+        let out = mw.before_model(exposure_ctx(&["read", "bash"])).await;
+        assert_eq!(visible_names(&out.ctx), ["read", "bash"]);
+    }
+
+    #[tokio::test]
+    async fn tool_exposure_allow_keeps_todo_tools_visible() {
+        let mw = ToolExposureMiddleware::new(ToolExposureConfig {
+            enabled: true,
+            allow: vec!["read".into()],
+            ..Default::default()
+        });
+        let out = mw
+            .before_model(exposure_ctx(&[
+                "read",
+                "bash",
+                "todo_rewrite",
+                "todo_update",
+            ]))
+            .await;
+        assert_eq!(
+            visible_names(&out.ctx),
+            ["read", "todo_rewrite", "todo_update"],
+            "todo tools must stay visible so the plan can be updated"
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_exposure_deny_hides_only_listed_tools() {
+        let mw = ToolExposureMiddleware::new(ToolExposureConfig {
+            enabled: true,
+            deny: vec!["bash".into()],
+            ..Default::default()
+        });
+        let out = mw
+            .before_model(exposure_ctx(&["read", "bash", "write"]))
+            .await;
+        assert_eq!(visible_names(&out.ctx), ["read", "write"]);
+    }
+
+    #[tokio::test]
+    async fn tool_exposure_read_only_hides_write_tools() {
+        let mw = ToolExposureMiddleware::new(ToolExposureConfig {
+            enabled: true,
+            read_only: true,
+            write_tools: vec!["write".into(), "edit".into()],
+            ..Default::default()
+        });
+        let out = mw
+            .before_model(exposure_ctx(&["read", "write", "edit"]))
+            .await;
+        assert_eq!(visible_names(&out.ctx), ["read"]);
+    }
+
+    #[tokio::test]
+    async fn tool_exposure_deny_wins_over_allow() {
+        let mw = ToolExposureMiddleware::new(ToolExposureConfig {
+            enabled: true,
+            allow: vec!["read".into(), "bash".into()],
+            deny: vec!["bash".into()],
+            ..Default::default()
+        });
+        let out = mw
+            .before_model(exposure_ctx(&["read", "bash", "todo_update"]))
+            .await;
+        assert_eq!(visible_names(&out.ctx), ["read", "todo_update"]);
+    }
+
+    #[test]
+    fn tool_exposure_identity_is_stable() {
+        let mw = ToolExposureMiddleware::new(ToolExposureConfig::default());
+        assert_eq!(mw.id(), "tool-exposure");
+        assert_eq!(mw.order(), 50);
+        assert_eq!(mw.stages(), TOOL_EXPOSURE_STAGES);
     }
 }

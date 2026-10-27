@@ -424,6 +424,11 @@
       当 查询中间件注册表
       那么 注册表含 loop-example 与 progress-reminder
 
+    场景: 工具收窄启用后注册工具中间件
+      假如 以启用工具收窄的 loop 示例插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 loop-example 与 tool-exposure
+
   @req:r2929
   规则: loop-middleware-structured-result
     after_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core quiet 摘要之前接收结构化结果：载荷含原始内容分片、可解析的结构化详情与错误标志，不得只提供拍平文本。中间件改写后的内容与详情 须成为本调用的历史回写与 ToolExecutionEnd 结果；core 的 write/edit quiet 摘要 仅在结果仍为单段文本时生效，且不得丢弃中间件给出的结构化详情。工具产出的非文本分片 须在历史回写中保真，不得被拍平为占位文本。
@@ -519,3 +524,6 @@
   @req:r2939
   规则: progress-reminder
     进度提醒中间件 须在 before_model 读取当前 todo（经 BeforeModelCtx.todo）；当 todo 非空且仍有未完成项，并满足以下任一条件时，向本回合模型上下文追加一条短提醒：连续 N 次工具调用未更新 todo、最后一条 assistant 宣称完成、上一次工具失败。同一 turn 至多提醒一次。提醒 须只读：不得自动改写 todo、不得产生新事件、不得调用模型或工具；未满足条件或 todo 为空时 不得追加任何内容。阈值与开关 须可配置。提醒行为 由中间件单测覆盖。
+  @req:r2940
+  规则: tool-exposure
+    工具收窄中间件 须在 before_model 改写 tool_schemas：按配置的 allow / deny 与只读开关收窄模型可见工具；`todo_rewrite` 与 `todo_update` 须始终可见，避免计划无法更新。收窄 只影响模型可见性：不得删除工具、不得改变 permission 终裁、不得影响 before_tool 的路由目标校验。未启用或规则为空时 不得改变 schema 形状。过滤前后数量与理由 须可观测。step/risk 的细粒度映射 不在本要求范围，后续 change 再评估。
