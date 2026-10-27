@@ -529,4 +529,88 @@ mod tests {
         };
         assert_eq!(filled.reason.as_deref(), Some("loop_middleware:focus"));
     }
+
+    #[tokio::test]
+    async fn isolate_scopes_same_type_registries_per_session() {
+        use crate::rt::{CtxHost, TypeKey};
+        let root = crate::rt::Ctx::root().expect("root ctx");
+        let key = TypeKey::of::<LoopMiddlewareRegistry>();
+        let session_a = root.isolate(key.clone(), "session:a");
+        let session_b = root.isolate(key.clone(), "session:b");
+
+        let reg_a = Arc::new(LoopMiddlewareRegistry::new());
+        let reg_b = Arc::new(LoopMiddlewareRegistry::new());
+        session_a
+            .provide_as::<LoopMiddlewareRegistry>(reg_a.clone())
+            .expect("provide a");
+        session_b
+            .provide_as::<LoopMiddlewareRegistry>(reg_b.clone())
+            .expect("provide b");
+
+        reg_a
+            .register(probe("only-a", 0, &[LoopStage::BeforeTool]))
+            .expect("register a");
+        reg_b
+            .register(probe("only-b", 0, &[LoopStage::BeforeTurn]))
+            .expect("register b");
+
+        let seen_a = session_a
+            .get::<LoopMiddlewareRegistry>()
+            .expect("a visible");
+        let seen_b = session_b
+            .get::<LoopMiddlewareRegistry>()
+            .expect("b visible");
+        assert_eq!(seen_a.ids(), vec!["only-a".to_string()]);
+        assert_eq!(seen_b.ids(), vec!["only-b".to_string()]);
+        assert!(
+            root.get::<LoopMiddlewareRegistry>().is_none(),
+            "default scope must stay empty so sessions cannot leak into root"
+        );
+    }
+
+    #[tokio::test]
+    async fn isolate_same_label_shares_one_registry() {
+        use crate::rt::{CtxHost, TypeKey};
+        let root = crate::rt::Ctx::root().expect("root ctx");
+        let key = TypeKey::of::<LoopMiddlewareRegistry>();
+        let first = root.isolate(key.clone(), "session:shared");
+        let registry = Arc::new(LoopMiddlewareRegistry::new());
+        first
+            .provide_as::<LoopMiddlewareRegistry>(registry.clone())
+            .expect("provide shared");
+
+        let second = root.isolate(key.clone(), "session:shared");
+        let seen = second
+            .get::<LoopMiddlewareRegistry>()
+            .expect("shared visible");
+        assert!(
+            Arc::ptr_eq(&seen, &registry),
+            "same isolate label resolves the same registry (reconnect must not fork the chain)"
+        );
+    }
+
+    #[tokio::test]
+    async fn isolate_unload_withdraws_binding_and_keeps_root_clean() {
+        use crate::rt::{CtxHost, TypeKey};
+        let root = crate::rt::Ctx::root().expect("root ctx");
+        let key = TypeKey::of::<LoopMiddlewareRegistry>();
+        let scope = root.isolate(key, "session:gone");
+        let registry = Arc::new(LoopMiddlewareRegistry::new());
+        registry
+            .register(probe("ephemeral", 0, &[LoopStage::BeforeTool]))
+            .expect("register");
+        let disposer = scope
+            .provide_as::<LoopMiddlewareRegistry>(registry.clone())
+            .expect("provide");
+        assert!(scope.get::<LoopMiddlewareRegistry>().is_some());
+        disposer.dispose().await.expect("dispose");
+        assert!(
+            scope.get::<LoopMiddlewareRegistry>().is_none(),
+            "withdrawing the binding must hide the scope registry"
+        );
+        assert!(
+            root.get::<LoopMiddlewareRegistry>().is_none(),
+            "the default scope must never inherit a session registry"
+        );
+    }
 }

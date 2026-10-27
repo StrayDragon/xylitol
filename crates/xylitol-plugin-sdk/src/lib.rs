@@ -18,7 +18,6 @@ pub mod obs_session;
 pub mod overflow;
 pub mod plugin_config;
 pub mod plugin_events;
-pub mod plugin_keys;
 mod ports;
 pub mod registry;
 pub mod resource;
@@ -88,10 +87,6 @@ pub use plugin_config::EmptyPluginConfig;
 pub use plugin_events::{
     AgentPreStep, HttpBeforeRequest, SessionPrepare, SessionPrepareReason, SessionPrepareResult,
     ToolPostExecute, ToolPreExecute, TrustPreLoad,
-};
-pub use plugin_keys::{
-    compaction_key, hook_bus_key, model_key, permission_key, session_prepare_hub_key,
-    session_store_key, tool_vec_key,
 };
 pub use ports::{
     AgentTodoGateway, AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway, BashChunk,
