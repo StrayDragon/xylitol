@@ -11,8 +11,8 @@ use crate::bdd::steps_agent_runtime::{
 };
 
 use xylitol_plugin_sdk::{
-    BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx, LoopControl, LoopMiddleware,
-    LoopMiddlewareRegistry, LoopStage, LoopStep,
+    AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx, LoopControl,
+    LoopMiddleware, LoopMiddlewareRegistry, LoopStage, LoopStep,
 };
 use xylitol_runtime::agent::runtime::XyEvent;
 
@@ -29,6 +29,7 @@ thread_local! {
     static LOOP_PLUGIN_CTX: RefCell<Option<xylitol_plugin_sdk::rt::Ctx>> = const { RefCell::new(None) };
     static LOOP_SETTLEMENT: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
     static LOOP_SECOND_CALLS: RefCell<usize> = const { RefCell::new(0) };
+    static LOOP_AFTER_TURN_CALLS: RefCell<usize> = const { RefCell::new(0) };
 }
 
 struct CountingStopper {
@@ -175,6 +176,24 @@ impl LoopMiddleware for RewriteAssistant {
             xylitol_plugin_sdk::XyLlmMessage::assistant("replaced"),
         );
         LoopStep::continued(ctx)
+    }
+}
+
+struct StopAfterTurn;
+
+#[async_trait::async_trait]
+impl LoopMiddleware for StopAfterTurn {
+    fn id(&self) -> &str {
+        "stop-after-turn"
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        &[LoopStage::AfterTurn]
+    }
+
+    async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
+        LOOP_AFTER_TURN_CALLS.with(|c| *c.borrow_mut() += 1);
+        LoopStep::stopped(ctx)
     }
 }
 
@@ -326,6 +345,41 @@ pub(crate) fn g_decide_handoff(agent: &AgentState, ws: &Workspace) {
     runner.set_loop_middleware(Some(registry));
     set_fake_text("handoff after settle");
     ar_store_runner(runner);
+}
+
+#[given("注册 after_turn 中间件返回 stop 且入队 follow_up")]
+pub(crate) fn g_after_turn_stop_with_followup(agent: &AgentState, ws: &Workspace) {
+    LOOP_AFTER_TURN_CALLS.with(|c| *c.borrow_mut() = 0);
+    let registry = fresh_registry();
+    registry
+        .register(Arc::new(StopAfterTurn))
+        .expect("register stop-after-turn");
+    let mut runner = ar_make_runner(agent, ws);
+    runner.set_loop_middleware(Some(registry));
+    runner.follow_up("after_turn 不得吞掉的追问");
+    set_fake_text("after turn ignored");
+    ar_store_runner(runner);
+}
+
+#[then("after_turn 中间件已被调用且 run 继续到下一轮")]
+pub(crate) fn t_after_turn_stop_ignored() {
+    let calls = LOOP_AFTER_TURN_CALLS.with(|c| *c.borrow());
+    assert!(calls >= 1, "after_turn must run after a turn");
+    let events = crate::bdd::steps_agent_runtime::ar_events();
+    let turns = events
+        .iter()
+        .filter(|e| matches!(e, XyEvent::TurnStart { .. }))
+        .count();
+    assert_eq!(
+        turns, 2,
+        "a stop from after_turn must be ignored, so the follow_up turn still runs: {events:?}"
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, XyEvent::Error(err) if err.kind.starts_with("LoopMiddleware"))),
+        "ignoring after_turn control must not surface as a middleware error: {events:?}"
+    );
 }
 
 #[given("注册 before_tool 中间件拒绝 bash")]

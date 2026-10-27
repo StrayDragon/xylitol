@@ -2,6 +2,9 @@
 depends_on: []
 title: after_turn 中间件控制语义的端到端覆盖
 needs_specs_change: true
+branch: sdd/c2955-add-loop-middleware-after-turn-control-coverage
+base_branch: main
+base_sha: ae27c01467f1bfb7f4a138532641d32c700ac6ac
 ---
 
 # after_turn 中间件控制语义的端到端覆盖

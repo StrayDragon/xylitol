@@ -343,6 +343,11 @@
       当 运行 AgentRuntime 并收集事件
       那么 事件流含 kind 为 LoopMiddlewareHandoffUnsupported 的错误
 
+    场景: after_turn 非法控制被忽略
+      假如 注册 after_turn 中间件返回 stop 且入队 follow_up
+      当 运行 AgentRuntime 并收集事件
+      那么 after_turn 中间件已被调用且 run 继续到下一轮
+
   @req:r2922
   规则: loop-middleware-tool-gate
     before_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core permission 之前运行，且在工具批执行规划之前完成预演：中间件可改工具参数与工具名；core 须按最终工具名与最终参数重算权限目标并再裁一次，并按最终工具的执行分类重排并发窗，不得沿用原工具名或原参数的任何判定。中间件拒绝 须使工具以 tool-error 回写且不执行；中间件放行 不得撤销上游拒绝，也不得绕过 core permission。路由目标 须限于本次运行已装配的工具集，不得新增工具调用，也不得借路由绕过 MCP 前缀的串行纪律；找不到目标即 tool-error。审批只能更严；更松须显式 capability 与用户信任，不在本要求范围。预演 须先于本批任何工具执行完成；批内前序调用返回 stop 时，后续调用的中间件 已运行 但其工具 不得执行，中间件 不得假设「放行即执行」。
