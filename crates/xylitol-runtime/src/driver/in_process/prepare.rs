@@ -42,6 +42,14 @@ impl XyInProcessDriver {
         self.agent.set_loop_middleware(registry);
     }
 
+    pub fn set_loop_middleware_scoped(
+        &mut self,
+        registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        scope: xylitol_plugin_sdk::LoopScope,
+    ) {
+        self.agent.set_loop_middleware_scoped(registry, scope);
+    }
+
     pub fn set_reload_hook(&mut self, hook: Arc<dyn InProcessReloadHook>) {
         self.reload_hook = Some(hook);
     }

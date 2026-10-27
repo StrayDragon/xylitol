@@ -128,3 +128,21 @@ async fn test_lm_compact_settlement(agent: AgentState, ws: Workspace) {}
     name = "前序停止后批内中间件已运行"
 )]
 async fn test_lm_preflight_stop_keeps_middleware_run(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "会话链互不影响"
+)]
+fn test_lm_scope_slots_isolated() {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "派生冻结父快照"
+)]
+fn test_lm_scope_derive_frozen() {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "未配置保持空链"
+)]
+fn test_lm_scope_empty_root() {}

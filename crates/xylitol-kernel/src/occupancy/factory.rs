@@ -78,7 +78,10 @@ impl OccupancyFactory for ProductOccupancyFactory {
                 driver.set_prepare_hub(hub);
             }
             if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
-                driver.set_loop_middleware(Some(registry));
+                driver.set_loop_middleware_scoped(
+                    Some(registry),
+                    xylitol_plugin_sdk::LoopScope::Root,
+                );
             }
         } else if !self.mcp_servers.is_empty() {
             let servers = crate::mcp_spec::McpServerSpec::to_infra_list(&self.mcp_servers);
@@ -107,6 +110,12 @@ impl OccupancyFactory for ProductOccupancyFactory {
 
     fn agent_dir(&self) -> PathBuf {
         self.agent_dir.clone()
+    }
+
+    fn loop_registry(&self) -> Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>> {
+        self.ctx
+            .as_ref()
+            .and_then(|ctx| ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>())
     }
 }
 
@@ -249,6 +258,14 @@ impl OccupancyEngine for OccupancyDriver {
 
     fn agent_cwd_for_test(&self) -> String {
         XyInProcessDriver::agent_cwd_for_test(&self.inner)
+    }
+
+    fn set_loop_middleware_scoped(
+        &mut self,
+        registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        scope: xylitol_plugin_sdk::LoopScope,
+    ) {
+        self.inner.set_loop_middleware_scoped(registry, scope);
     }
 }
 

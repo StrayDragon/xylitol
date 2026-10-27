@@ -279,6 +279,34 @@ impl LoopMiddlewareRegistry {
         }
         chain
     }
+
+    pub fn snapshot_scoped(&self, scope: LoopScope) -> LoopChain {
+        let mut chain = self.snapshot();
+        chain.scope = scope;
+        chain
+    }
+
+    pub fn derive(&self) -> LoopMiddlewareRegistry {
+        let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut entries: Vec<&Entry> = inner.entries.iter().collect();
+        entries.sort_by(|a, b| a.order.cmp(&b.order).then(a.seq.cmp(&b.seq)));
+        let derived = RegistryInner {
+            next_seq: inner.next_seq,
+            entries: entries
+                .into_iter()
+                .map(|entry| Entry {
+                    id: entry.id.clone(),
+                    order: entry.order,
+                    seq: entry.seq,
+                    stages: entry.stages,
+                    middleware: Arc::clone(&entry.middleware),
+                })
+                .collect(),
+        };
+        LoopMiddlewareRegistry {
+            inner: Arc::new(Mutex::new(derived)),
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -290,6 +318,23 @@ pub struct LoopChain {
     pub after_tool: Vec<Arc<dyn LoopMiddleware>>,
     pub decide_continue: Vec<Arc<dyn LoopMiddleware>>,
     pub after_turn: Vec<Arc<dyn LoopMiddleware>>,
+    pub scope: LoopScope,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum LoopScope {
+    #[default]
+    Root,
+    Session,
+}
+
+impl LoopScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LoopScope::Root => "root",
+            LoopScope::Session => "session",
+        }
+    }
 }
 
 impl LoopChain {
@@ -611,6 +656,64 @@ mod tests {
         assert!(
             root.get::<LoopMiddlewareRegistry>().is_none(),
             "the default scope must never inherit a session registry"
+        );
+    }
+
+    #[test]
+    fn derive_freezes_parent_snapshot() {
+        let parent = LoopMiddlewareRegistry::new();
+        parent
+            .register(probe("a", 10, &[LoopStage::BeforeTool]))
+            .expect("a");
+        let child = parent.derive();
+        parent
+            .register(probe("late", 5, &[LoopStage::BeforeTool]))
+            .expect("late");
+        assert_eq!(child.ids(), vec!["a".to_string()]);
+        assert_eq!(parent.ids(), vec!["late".to_string(), "a".to_string()]);
+    }
+
+    #[test]
+    fn derive_child_registrations_stay_local() {
+        let parent = LoopMiddlewareRegistry::new();
+        parent
+            .register(probe("base", 0, &[LoopStage::BeforeTool]))
+            .expect("base");
+        let child = parent.derive();
+        child
+            .register(probe("child-only", 5, &[LoopStage::BeforeTool]))
+            .expect("child-only");
+        assert_eq!(
+            child.ids(),
+            vec!["base".to_string(), "child-only".to_string()]
+        );
+        assert_eq!(parent.ids(), vec!["base".to_string()]);
+        assert!(child.unregister("child-only"));
+        assert_eq!(child.ids(), vec!["base".to_string()]);
+        assert_eq!(parent.ids(), vec!["base".to_string()]);
+    }
+
+    #[test]
+    fn derive_keeps_order_then_registration_sequence() {
+        let parent = LoopMiddlewareRegistry::new();
+        parent
+            .register(probe("z-first", 10, &[LoopStage::BeforeTool]))
+            .expect("z-first");
+        parent
+            .register(probe("a-second", 10, &[LoopStage::BeforeTool]))
+            .expect("a-second");
+        let child = parent.derive();
+        child
+            .register(probe("appended", 10, &[LoopStage::BeforeTool]))
+            .expect("appended");
+        assert_eq!(
+            child.ids(),
+            vec![
+                "z-first".to_string(),
+                "a-second".to_string(),
+                "appended".to_string()
+            ],
+            "same-order entries keep parent registration order, new ones append after"
         );
     }
 }

@@ -85,6 +85,7 @@ pub struct SessionSlot {
     mcp_watch_started: AtomicBool,
     pub bash_run_cancel: std::sync::Mutex<Option<CancellationToken>>,
     pub idempotency: IdempotencyLedger,
+    pub loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
 }
 
 impl HostState {
@@ -144,7 +145,13 @@ impl HostState {
         }
         let mut map = self.sessions.write().await;
         map.entry(session_id.to_string())
-            .or_insert_with(|| SessionSlot::new(session_id, self.in_process_downlink.clone()))
+            .or_insert_with(|| {
+                SessionSlot::new(
+                    session_id,
+                    self.in_process_downlink.clone(),
+                    self.factory.loop_registry(),
+                )
+            })
             .clone()
     }
 
@@ -362,6 +369,7 @@ impl SessionSlot {
     pub fn new(
         session_id: impl Into<String>,
         in_process_downlink: broadcast::Sender<Notification>,
+        loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
     ) -> Arc<Self> {
         let session_id = session_id.into();
         Arc::new(Self {
@@ -382,6 +390,7 @@ impl SessionSlot {
             mcp_watch_started: AtomicBool::new(false),
             bash_run_cancel: std::sync::Mutex::new(None),
             idempotency: IdempotencyLedger::default(),
+            loop_registry,
         })
     }
 
@@ -787,6 +796,9 @@ pub async fn materialize_writer_at(
         return Ok(());
     }
     let mut driver = host.factory.new_driver_at(workspace);
+    if let Some(registry) = slot.loop_registry.clone() {
+        driver.set_loop_middleware_scoped(Some(registry), xylitol_plugin_sdk::LoopScope::Session);
+    }
     let _ = project_trusted_for(host, workspace);
     driver.bind_session(&slot.session_id)?;
     driver.install_ask_tool(Arc::new(SlotAskGateway { slot: slot.clone() }));
@@ -1424,7 +1436,7 @@ mod tests {
     }
 
     fn slot() -> Arc<SessionSlot> {
-        SessionSlot::new("s0", broadcast::channel(16).0)
+        SessionSlot::new("s0", broadcast::channel(16).0, None)
     }
 
     fn text_delta(text: &str) -> XyEvent {

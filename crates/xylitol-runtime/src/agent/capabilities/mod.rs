@@ -80,6 +80,7 @@ pub struct AgentCapabilities {
     context_policy: crate::agent::context_policy::ContextPolicy,
     session_name: Option<String>,
     loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+    loop_scope: xylitol_plugin_sdk::LoopScope,
 }
 
 impl AgentCapabilities {
@@ -140,6 +141,7 @@ impl AgentCapabilities {
             context_policy: crate::agent::context_policy::ContextPolicy::default(),
             session_name: None,
             loop_registry: None,
+            loop_scope: xylitol_plugin_sdk::LoopScope::Root,
         };
         session.sync_runtime_policy_from_batch_mode();
         session
@@ -178,11 +180,18 @@ impl AgentCapabilities {
         self.loop_registry.clone()
     }
 
+    pub(crate) fn set_loop_scope(&mut self, scope: xylitol_plugin_sdk::LoopScope) {
+        self.loop_scope = scope;
+    }
+
     pub(crate) fn loop_chain(&self) -> xylitol_plugin_sdk::LoopChain {
-        self.loop_registry
+        let mut chain = self
+            .loop_registry
             .as_ref()
             .map(|registry| registry.snapshot())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        chain.scope = self.loop_scope;
+        chain
     }
 
     pub(crate) fn tool_mode(&self) -> XyBatchMode {

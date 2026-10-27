@@ -1452,3 +1452,122 @@ fn compact_runner(
         .expect("select ar-compact fake model");
     runner
 }
+
+thread_local! {
+    static SCOPE_ROOT: RefCell<Option<Arc<LoopMiddlewareRegistry>>> = const { RefCell::new(None) };
+    static SCOPE_A: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    static SCOPE_B: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+#[given("root 链含一个共享中间件且两个会话槽各自再注册一个独有中间件")]
+pub(crate) fn g_scope_two_slots() {
+    let root = fresh_registry();
+    root.register(scripted(
+        "shared",
+        0,
+        &[LoopStage::BeforeTool],
+        LoopControl::Continue,
+    ))
+    .expect("shared");
+    let slot_a = root.derive();
+    slot_a
+        .register(scripted(
+            "only-a",
+            1,
+            &[LoopStage::BeforeTool],
+            LoopControl::Continue,
+        ))
+        .expect("only-a");
+    let slot_b = root.derive();
+    slot_b
+        .register(scripted(
+            "only-b",
+            1,
+            &[LoopStage::BeforeTool],
+            LoopControl::Continue,
+        ))
+        .expect("only-b");
+    SCOPE_A.with(|c| *c.borrow_mut() = slot_a.ids());
+    SCOPE_B.with(|c| *c.borrow_mut() = slot_b.ids());
+    SCOPE_ROOT.with(|c| c.borrow_mut().replace(root));
+}
+
+#[when("比较两个会话槽与 root 的中间件标识")]
+pub(crate) fn w_compare_slot_ids() {}
+
+#[then("两会话互不可见对方独有项且 root 不含任何独有项")]
+pub(crate) fn t_slots_isolated() {
+    let a = SCOPE_A.with(|c| c.borrow().clone());
+    let b = SCOPE_B.with(|c| c.borrow().clone());
+    let root = SCOPE_ROOT.with(|c| c.borrow().as_ref().expect("root registry").ids());
+    assert_eq!(a, vec!["shared".to_string(), "only-a".to_string()]);
+    assert_eq!(b, vec!["shared".to_string(), "only-b".to_string()]);
+    assert!(
+        !a.contains(&"only-b".to_string()),
+        "slot a must not see slot b middleware"
+    );
+    assert!(
+        !b.contains(&"only-a".to_string()),
+        "slot b must not see slot a middleware"
+    );
+    assert_eq!(
+        root,
+        vec!["shared".to_string()],
+        "root must not pick up slot-local middleware"
+    );
+}
+
+#[given("会话槽已从 root 派生")]
+pub(crate) fn g_slot_derived() {
+    let root = fresh_registry();
+    let slot = root.derive();
+    SCOPE_A.with(|c| *c.borrow_mut() = slot.ids());
+    SCOPE_ROOT.with(|c| c.borrow_mut().replace(root));
+}
+
+#[when("root 随后注册新中间件")]
+pub(crate) fn w_root_registers_later() {
+    SCOPE_ROOT.with(|c| {
+        c.borrow()
+            .as_ref()
+            .expect("root registry")
+            .register(scripted(
+                "late",
+                0,
+                &[LoopStage::BeforeTool],
+                LoopControl::Continue,
+            ))
+            .expect("late");
+    });
+}
+
+#[then("该会话槽的链仍为派生时刻快照")]
+pub(crate) fn t_slot_snapshot_frozen() {
+    let slot_ids = SCOPE_A.with(|c| c.borrow().clone());
+    let root_ids = SCOPE_ROOT.with(|c| c.borrow().as_ref().expect("root registry").ids());
+    assert!(
+        slot_ids.is_empty(),
+        "slot frozen at derive must not inherit later root registrations: {slot_ids:?}"
+    );
+    assert_eq!(root_ids, vec!["late".to_string()]);
+}
+
+#[given("root 未注册任何中间件")]
+pub(crate) fn g_root_empty() {
+    SCOPE_ROOT.with(|c| c.borrow_mut().replace(fresh_registry()));
+}
+
+#[when("读取派生会话槽的链")]
+pub(crate) fn w_read_derived_chain() {
+    let slot_ids = SCOPE_ROOT.with(|c| c.borrow().as_ref().expect("root registry").derive().ids());
+    SCOPE_A.with(|c| *c.borrow_mut() = slot_ids);
+}
+
+#[then("链为空")]
+pub(crate) fn t_chain_empty() {
+    let ids = SCOPE_A.with(|c| c.borrow().clone());
+    assert!(
+        ids.is_empty(),
+        "unconfigured root must derive an empty chain: {ids:?}"
+    );
+}

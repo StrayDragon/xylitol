@@ -188,6 +188,17 @@ impl AgentRuntime {
         registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
     ) {
         self.inner.set_loop_registry(registry);
+        self.inner
+            .set_loop_scope(xylitol_plugin_sdk::LoopScope::Root);
+    }
+
+    pub fn set_loop_middleware_scoped(
+        &mut self,
+        registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        scope: xylitol_plugin_sdk::LoopScope,
+    ) {
+        self.inner.set_loop_registry(registry);
+        self.inner.set_loop_scope(scope);
     }
 
     pub fn loop_middleware_ids(&self) -> Vec<String> {

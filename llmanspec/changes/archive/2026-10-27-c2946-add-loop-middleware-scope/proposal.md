@@ -2,6 +2,9 @@
 depends_on:
   - c2944-add-loop-middleware
 title: Loop 中间件会话作用域与嵌入注册入口
+branch: sdd/c2946-add-loop-middleware-scope
+base_branch: main
+base_sha: f8e66061f052c68d30182c19644095ba363ce20b
 ---
 
 # Loop 中间件会话作用域与嵌入注册入口

@@ -75,6 +75,7 @@ struct StageCall<'a> {
     stage: LoopStage,
     cancel: &'a CancellationToken,
     parent: Option<SpanContext>,
+    scope: xylitol_plugin_sdk::LoopScope,
 }
 
 async fn call<C, F>(
@@ -92,6 +93,7 @@ where
     let span = provider_trace_active().then(|| {
         let parent = call.parent.unwrap_or_else(SpanContext::random);
         let id_attr = id.clone();
+        let scope_attr = call.scope;
         Span::root("loop.middleware", parent).with_properties(move || {
             vec![
                 ("loop.middleware.id".to_string(), id_attr),
@@ -100,6 +102,10 @@ where
                     stage.as_str().to_string(),
                 ),
                 ("loop.middleware.order".to_string(), order.to_string()),
+                (
+                    "loop.middleware.scope".to_string(),
+                    scope_attr.as_str().to_string(),
+                ),
             ]
         })
     });
@@ -231,6 +237,7 @@ async fn run_stage<C>(
                 stage,
                 cancel,
                 parent,
+                scope: chain.scope,
             },
             before,
             invoke(mw, ctx),
@@ -374,6 +381,7 @@ pub(crate) async fn run_after_turn(
                 stage: LoopStage::AfterTurn,
                 cancel,
                 parent,
+                scope: chain.scope,
             },
             String::new(),
             mw.after_turn(ctx),

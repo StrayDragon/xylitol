@@ -350,4 +350,62 @@ mod tests {
         hold.add_permits(1);
         let _ = ctx.shutdown().await;
     }
+
+    #[test]
+    fn session_slots_derive_independent_loop_registries() {
+        use xylitol_plugin_sdk::{LoopStage, LoopStep};
+
+        struct Marker(&'static str);
+
+        #[async_trait::async_trait]
+        impl xylitol_plugin_sdk::LoopMiddleware for Marker {
+            fn id(&self) -> &str {
+                self.0
+            }
+
+            fn stages(&self) -> &'static [LoopStage] {
+                &[LoopStage::BeforeTool]
+            }
+
+            async fn before_tool(
+                &self,
+                ctx: xylitol_plugin_sdk::BeforeToolCtx,
+            ) -> LoopStep<xylitol_plugin_sdk::BeforeToolCtx> {
+                LoopStep::continued(ctx)
+            }
+        }
+
+        let root = Arc::new(xylitol_plugin_sdk::LoopMiddlewareRegistry::new());
+        root.register(Arc::new(Marker("shared"))).expect("shared");
+
+        let slot_a = root.derive();
+        let slot_b = root.derive();
+        slot_a.register(Arc::new(Marker("only-a"))).expect("only-a");
+
+        assert_eq!(
+            slot_a.ids(),
+            vec!["shared".to_string(), "only-a".to_string()]
+        );
+        assert_eq!(slot_b.ids(), vec!["shared".to_string()]);
+        assert_eq!(root.ids(), vec!["shared".to_string()]);
+    }
+
+    #[test]
+    fn derived_slot_does_not_see_later_root_registrations() {
+        let root = Arc::new(xylitol_plugin_sdk::LoopMiddlewareRegistry::new());
+        let slot = root.derive();
+        root.register(xylitol_official_plugin_loop_example::example_middleware(
+            &xylitol_official_plugin_loop_example::LoopExampleConfig {
+                enabled: true,
+                max_settles: Some(1),
+                deny_bash_patterns: vec![],
+            },
+        ))
+        .expect("late root registration");
+        assert!(
+            slot.is_empty(),
+            "a slot frozen at creation must not inherit later root middleware"
+        );
+        assert!(!root.is_empty());
+    }
 }
