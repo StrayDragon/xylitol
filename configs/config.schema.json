@@ -171,6 +171,14 @@
           "minimum": 0,
           "type": "integer"
         },
+        "self_heal": {
+          "$ref": "#/$defs/SelfHealConfig",
+          "default": {
+            "enabled": false,
+            "max_attempts": 3,
+            "signatures": []
+          }
+        },
         "tool_exposure": {
           "$ref": "#/$defs/ToolExposureConfig",
           "default": {
@@ -462,6 +470,29 @@
       },
       "type": "object"
     },
+    "SelfHealConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_attempts": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "signatures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "SessionConfig": {
       "properties": {
         "max_turns": {
@@ -748,6 +779,11 @@
         "plan_state": false,
         "progress_reminder": false,
         "progress_reminder_stale_after": 3,
+        "self_heal": {
+          "enabled": false,
+          "max_attempts": 3,
+          "signatures": []
+        },
         "tool_exposure": {
           "allow": [],
           "deny": [],

@@ -15,7 +15,7 @@ use xylitol_plugin_sdk::{
     LoopMiddleware, LoopStage, LoopStep, XySessionStore,
 };
 
-use crate::config::{LoopExampleConfig, ToolExposureConfig};
+use crate::config::{LoopExampleConfig, SelfHealConfig, ToolExposureConfig};
 
 const STAGES: &[LoopStage] = &[LoopStage::BeforeTool, LoopStage::DecideContinue];
 pub const DEFAULT_PLAN_SETTLES: u32 = 8;
@@ -31,6 +31,16 @@ const CHECKPOINT_STAGES: &[LoopStage] = &[
     LoopStage::BeforeModel,
     LoopStage::AfterTool,
     LoopStage::AfterTurn,
+];
+const SELF_HEAL_STAGES: &[LoopStage] = &[LoopStage::AfterTool, LoopStage::DecideContinue];
+const DEFAULT_SELF_HEAL_SIGNATURES: &[&str] = &[
+    "test failed",
+    "tests failed",
+    "assertion failed",
+    "error[e",
+    "compilation failed",
+    "lint failed",
+    "panicked at",
 ];
 const PLAN_CONTRACT: &str = "Plan mode: before acting, write the checklist with todo_rewrite. \
 Keep exactly one item in_progress and mark finished items with todo_update. \
@@ -199,6 +209,119 @@ impl LoopMiddleware for PlanStateMiddleware {
         );
         LoopStep::continued(ctx)
     }
+}
+
+#[derive(Clone, Debug)]
+struct PendingFailure {
+    tool_name: String,
+    signature: String,
+    attempts: u32,
+}
+
+pub struct SelfHealMiddleware {
+    signatures: Vec<String>,
+    max_attempts: u32,
+    pending: Mutex<Option<PendingFailure>>,
+}
+
+impl SelfHealMiddleware {
+    pub fn new(config: &SelfHealConfig) -> Self {
+        let signatures = if config.signatures.is_empty() {
+            DEFAULT_SELF_HEAL_SIGNATURES
+                .iter()
+                .map(|signature| signature.to_string())
+                .collect()
+        } else {
+            config
+                .signatures
+                .iter()
+                .map(|signature| signature.to_lowercase())
+                .collect()
+        };
+        Self {
+            signatures,
+            max_attempts: config.max_attempts.max(1),
+            pending: Mutex::new(None),
+        }
+    }
+
+    fn lock_pending(&self) -> std::sync::MutexGuard<'_, Option<PendingFailure>> {
+        self.pending.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+#[async_trait]
+impl LoopMiddleware for SelfHealMiddleware {
+    fn id(&self) -> &str {
+        "self-heal"
+    }
+
+    fn order(&self) -> i64 {
+        210
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        SELF_HEAL_STAGES
+    }
+
+    async fn after_tool(&self, mut ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
+        let mut pending = self.lock_pending();
+        if ctx.is_error {
+            let text = preview_text(&ctx.parts, 4000).to_lowercase();
+            if let Some(signature) = self
+                .signatures
+                .iter()
+                .find(|signature| text.contains(signature.as_str()))
+                .cloned()
+            {
+                let attempts = match pending.as_ref() {
+                    Some(previous)
+                        if previous.tool_name == ctx.tool_name
+                            && previous.signature == signature =>
+                    {
+                        previous.attempts.saturating_add(1)
+                    }
+                    _ => 1,
+                };
+                *pending = Some(PendingFailure {
+                    tool_name: ctx.tool_name.clone(),
+                    signature: signature.clone(),
+                    attempts,
+                });
+                ctx.parts.push(AgentPart::text(format!(
+                    "<self_heal>\nDeterministic failure detected ({signature}). \\
+Do not repeat the same action; diagnose, patch, then re-run the same verification.\n</self_heal>"
+                )));
+            }
+        } else if pending
+            .as_ref()
+            .is_some_and(|previous| previous.tool_name == ctx.tool_name)
+        {
+            *pending = None;
+        }
+        LoopStep::continued(ctx)
+    }
+
+    async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
+        let pending = self.lock_pending();
+        match pending.as_ref() {
+            Some(failure) if failure.attempts >= self.max_attempts => {
+                log::warn!(
+                    target: "xylitol::loop-example",
+                    "self-heal stopped after {} attempts on {} ({})",
+                    failure.attempts,
+                    failure.tool_name,
+                    failure.signature
+                );
+                LoopStep::stopped(ctx)
+            }
+            _ => LoopStep::continued(ctx),
+        }
+    }
+}
+
+pub fn self_heal_middleware(config: &SelfHealConfig) -> Arc<dyn LoopMiddleware> {
+    Arc::new(SelfHealMiddleware::new(config))
 }
 
 #[derive(Default)]
@@ -653,7 +776,7 @@ pub fn example_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::DEFAULT_PROGRESS_STALE_AFTER;
+    use crate::config::{DEFAULT_PROGRESS_STALE_AFTER, DEFAULT_SELF_HEAL_ATTEMPTS, SelfHealConfig};
     use xylitol_plugin_sdk::LoopControl;
     use xylitol_plugin_sdk::XySessionError;
     use xylitol_plugin_sdk::XySessionStoreError;
@@ -681,6 +804,7 @@ mod tests {
             progress_reminder: false,
             progress_reminder_stale_after: 3,
             plan_checkpoint: false,
+            self_heal: Default::default(),
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -701,6 +825,7 @@ mod tests {
             progress_reminder: false,
             progress_reminder_stale_after: 3,
             plan_checkpoint: false,
+            self_heal: Default::default(),
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -1312,5 +1437,117 @@ mod tests {
         assert_eq!(mw.id(), "plan-checkpoint");
         assert_eq!(mw.order(), 180);
         assert_eq!(mw.stages(), CHECKPOINT_STAGES);
+    }
+
+    fn heal_ctx(name: &str, text: &str, is_error: bool) -> AfterToolCtx {
+        AfterToolCtx {
+            turn_index: 0,
+            tool_call_id: "call-1".into(),
+            tool_name: name.into(),
+            parts: vec![AgentPart::text(text)],
+            details: None,
+            is_error,
+        }
+    }
+
+    #[tokio::test]
+    async fn self_heal_detects_deterministic_failure() {
+        let mw = SelfHealMiddleware::new(&SelfHealConfig {
+            enabled: true,
+            ..Default::default()
+        });
+        let out = mw
+            .after_tool(heal_ctx("bash", "test failed: two assertions", true))
+            .await;
+        assert!(
+            out.ctx.parts.iter().any(
+                |part| matches!(part, AgentPart::Text { text } if text.contains("<self_heal>"))
+            ),
+            "a deterministic failure must add repair guidance"
+        );
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Continue,
+            "a pending failure must force another model call"
+        );
+    }
+
+    #[tokio::test]
+    async fn self_heal_ignores_non_deterministic_failure() {
+        let mw = SelfHealMiddleware::new(&SelfHealConfig {
+            enabled: true,
+            ..Default::default()
+        });
+        let out = mw
+            .after_tool(heal_ctx("bash", "network timeout", true))
+            .await;
+        assert!(
+            !out.ctx.parts.iter().any(
+                |part| matches!(part, AgentPart::Text { text } if text.contains("<self_heal>"))
+            )
+        );
+        assert!(mw.pending.lock().unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn self_heal_clears_after_successful_verification() {
+        let mw = SelfHealMiddleware::new(&SelfHealConfig {
+            enabled: true,
+            ..Default::default()
+        });
+        mw.after_tool(heal_ctx("bash", "tests failed", true)).await;
+        assert!(mw.pending.lock().unwrap().is_some());
+        mw.after_tool(heal_ctx("bash", "all tests passed", false))
+            .await;
+        assert!(
+            mw.pending.lock().unwrap().is_none(),
+            "re-running the failing tool successfully must clear the pending failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn self_heal_stops_at_attempt_cap() {
+        let mw = SelfHealMiddleware::new(&SelfHealConfig {
+            enabled: true,
+            max_attempts: 2,
+            ..Default::default()
+        });
+        mw.after_tool(heal_ctx("bash", "tests failed", true)).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Continue
+        );
+        mw.after_tool(heal_ctx("bash", "tests failed", true)).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Stop,
+            "self-heal must be bounded"
+        );
+    }
+
+    #[tokio::test]
+    async fn self_heal_custom_signature_is_case_insensitive() {
+        let mw = SelfHealMiddleware::new(&SelfHealConfig {
+            enabled: true,
+            signatures: vec!["BUILD BROKEN".into()],
+            ..Default::default()
+        });
+        mw.after_tool(heal_ctx("bash", "build broken: missing symbol", true))
+            .await;
+        assert!(mw.pending.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn self_heal_identity_is_stable() {
+        let mw = SelfHealMiddleware::new(&SelfHealConfig::default());
+        assert_eq!(mw.id(), "self-heal");
+        assert_eq!(mw.order(), 210);
+        assert_eq!(mw.stages(), SELF_HEAL_STAGES);
+    }
+
+    #[test]
+    fn self_heal_default_attempt_cap_is_below_core_limit() {
+        assert_eq!(DEFAULT_SELF_HEAL_ATTEMPTS, 3);
+        assert!(DEFAULT_SELF_HEAL_ATTEMPTS < 32);
     }
 }

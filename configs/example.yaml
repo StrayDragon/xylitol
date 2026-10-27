@@ -129,6 +129,10 @@ hooks:
 #   progress_reminder: false  # optional: remind the model to re-read todo
 #   progress_reminder_stale_after: 3  # tool calls without todo update before reminding
 #   plan_checkpoint: false    # optional: persist plan progress for resume
+#   self_heal:                # after_tool: continue on deterministic failures
+#     enabled: false
+#     signatures: []          # empty: built-in test/build/lint/panic signatures
+#     max_attempts: 3         # bounded well below the core 32-turn limit
 #   tool_exposure:            # before_model: narrow the tools the model can see
 #     enabled: false
 #     allow: []               # non-empty: only these tools (todo tools stay visible)

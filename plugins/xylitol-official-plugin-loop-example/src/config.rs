@@ -13,6 +13,26 @@ pub struct ToolExposureConfig {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
+pub struct SelfHealConfig {
+    pub enabled: bool,
+    pub signatures: Vec<String>,
+    pub max_attempts: u32,
+}
+
+pub const DEFAULT_SELF_HEAL_ATTEMPTS: u32 = 3;
+
+impl Default for SelfHealConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            signatures: Vec::new(),
+            max_attempts: DEFAULT_SELF_HEAL_ATTEMPTS,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(default, deny_unknown_fields)]
 pub struct LoopExampleConfig {
     pub enabled: bool,
     pub max_settles: Option<u32>,
@@ -21,6 +41,7 @@ pub struct LoopExampleConfig {
     pub progress_reminder: bool,
     pub progress_reminder_stale_after: u32,
     pub plan_checkpoint: bool,
+    pub self_heal: SelfHealConfig,
     pub tool_exposure: ToolExposureConfig,
 }
 
@@ -36,6 +57,7 @@ impl Default for LoopExampleConfig {
             progress_reminder: false,
             progress_reminder_stale_after: DEFAULT_PROGRESS_STALE_AFTER,
             plan_checkpoint: false,
+            self_heal: SelfHealConfig::default(),
             tool_exposure: ToolExposureConfig::default(),
         }
     }

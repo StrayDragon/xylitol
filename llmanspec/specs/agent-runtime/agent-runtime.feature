@@ -434,6 +434,11 @@
       当 查询中间件注册表
       那么 注册表含 loop-example 与 plan-checkpoint
 
+    场景: 自愈启用后注册自愈中间件
+      假如 以启用自愈的 loop 示例插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 loop-example 与 self-heal
+
   @req:r2929
   规则: loop-middleware-structured-result
     after_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core quiet 摘要之前接收结构化结果：载荷含原始内容分片、可解析的结构化详情与错误标志，不得只提供拍平文本。中间件改写后的内容与详情 须成为本调用的历史回写与 ToolExecutionEnd 结果；core 的 write/edit quiet 摘要 仅在结果仍为单段文本时生效，且不得丢弃中间件给出的结构化详情。工具产出的非文本分片 须在历史回写中保真，不得被拍平为占位文本。
@@ -535,3 +540,6 @@
   @req:r2942
   规则: plan-checkpoint-middleware
     计划 checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_model（或 after_turn）把变化落为 plan_checkpoint 条目；恢复后的首个 before_model 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或计划已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 run。写入 须只追加，不覆盖或删除历史 checkpoint。
+  @req:r2943
+  规则: self-heal
+    自愈中间件 须只在 after_tool 识别到确定性失败签名时介入：命中签名 须记录 pending（工具名、签名、尝试次数）并在结果后追加短指引，要求诊断、修复后重跑同一验证；同一工具成功 须清除 pending。非确定性失败（超时、网络、权限等）不得进入自愈。decide_continue 须在 pending 且尝试次数小于配置上限时 Continue，达到上限时 Stop；无 pending 时 不得改变基线。上限 须远小于 core 的 32 次硬上限。不得在插件内调用模型或工具，不得自动回滚。自愈与 plan-state 可并存，Stop 仍由最先返回 Stop 的中间件决定。

@@ -206,6 +206,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 - `after_tool` 收结构化载荷（原始分片 + 可解析详情 + 错误标志）；core 的 write/edit quiet 摘要只在结果仍是单段文本时生效，中间件给的详情不被丢弃。
 - `decide_continue` 只在 Settle 调；`compact` 可带压缩指令与来源标签（进 `CompactionStart/End.reason`，缺省 `loop_middleware:<id>`）；`handoff` 未支持以稳定错误结束；无进展 `continue` / `compact` 各有硬上限。
 - **进度与恢复**：`BeforeModelCtx.todo` 由 core 用状态栏同一份 leaf-branch 填充，插件据此做提醒与工具收窄；`plan_checkpoint` 是插件写的 `CustomEntry`（只追加不覆盖），todo 给人看、checkpoint 给恢复用。`BeforeModelCtx` / `AfterTurnCtx` 的 `session_id` 仅供插件把状态落回当前会话，不改变落盘格式。
+- **自愈**：`self-heal` 只在 `after_tool` 命中确定性失败签名时介入，`decide_continue` 在独立上限内续跑；超时、网络、权限等非确定性失败不进入自愈。上限须远小于 core 的 32 次硬上限；Stop 仍由最先返回 Stop 的中间件决定。
 - `XyHookBus` / `AgentHooks` 是旁路（审计 / 兼容），不承载 loop 决策。
 
 ## 扩展开闭

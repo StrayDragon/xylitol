@@ -2,6 +2,9 @@
 depends_on:
   - c2957-add-loop-example-plan-state
 title: 自愈循环：确定性失败后由中间件续跑修复，而不是原地重试
+branch: sdd/c2961-add-loop-self-heal
+base_branch: main
+base_sha: b0c366983fc5819fc3ca9887955eab35e7b00b38
 ---
 
 # 自愈循环：确定性失败后由中间件续跑修复，而不是原地重试
