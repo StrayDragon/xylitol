@@ -1,8 +1,3 @@
-//! Regenerate `configs/config.schema.json` from `schema_for!(AppConfig)`.
-//!
-//! Maintenance entry (`just gen-config-schema`); the drift gate lives in
-//! `validate` unit tests, not here.
-
 use std::path::PathBuf;
 
 use xylitol_official_plugin_config::validate::render_app_config_schema;

@@ -9,11 +9,6 @@ pub fn app_config_schema() -> serde_json::Value {
     serde_json::to_value(schema_for!(AppConfig)).expect("AppConfig schema must serialize")
 }
 
-/// Stable rendering of the config schema for the checked-in artifact.
-///
-/// Object keys are sorted explicitly rather than relying on `serde_json`'s map
-/// backend: the crate graph may enable `preserve_order` (insertion order) in
-/// some builds, which would make the artifact differ between binaries.
 pub fn render_app_config_schema() -> String {
     let mut value = app_config_schema();
     sort_object_keys(&mut value);

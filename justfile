@@ -13,6 +13,12 @@ verbosity_default := env("JUST_VERBOSITY", "quiet")
 # cargo reports a different version and makes `llman-sdd validate --specs` fail).
 export PATH := env_var_or_default("HOME", "/usr") + "/.cargo/bin:" + env_var("PATH")
 
+# Gate scripts need Python >= 3.11 (`tomllib`). macOS system python3 is 3.9, so
+# pick the newest interpreter that can import it; fall back to python3 and let
+# the gate report the missing module instead of silently skipping.
+python_gate := shell("for p in python3.13 python3.12 python3.11 python3; do command -v \"$p\" >/dev/null 2>&1 && \"$p\" -c 'import tomllib' >/dev/null 2>&1 && { printf '%s' \"$p\"; exit 0; }; done; printf '%s' python3")
+export XYLITOL_PY := python_gate
+
 _default:
     @just --list
 
@@ -122,7 +128,7 @@ test verbosity=verbosity_default:
 # Generate configs/example.yaml (maintenance; not in qa).
 # Edit scripts/gen_config_example.py TEMPLATE, then re-run this recipe.
 gen-config-example:
-    python3 scripts/gen_config_example.py
+    $XYLITOL_PY scripts/gen_config_example.py
 
 # Regenerate configs/config.schema.json from schema_for!(AppConfig).
 # Drift gate lives in config-crate unit tests (via `just test`), not in qa-check-scripts.
@@ -199,7 +205,7 @@ qa-check-tui-tokens verbosity=verbosity_default:
     if [[ "{{verbosity}}" == "verbose" ]]; then
       args+=(--verbose)
     fi
-    python3 scripts/check_tui_tokens.py "${args[@]}"
+    "$XYLITOL_PY" scripts/check_tui_tokens.py "${args[@]}"
 
 # Resolve cccc-rs: XYLITOL_CCCC_RS, PATH, .tools/, else cargo install (crates.io latest pin).
 [private]
@@ -401,17 +407,17 @@ qa-check-scripts verbosity=verbosity_default:
     fi
     for f in "${files[@]}"; do
         # ${arr[@]+…} 形态：bash 3.2（macOS 自带）在 `set -u` 下不将空数组当 unbound。
-        if python3 "$f" --help 2>/dev/null | grep -q -- '--check'; then
-            python3 "$f" --check ${extra[@]+"${extra[@]}"}
+        if "$XYLITOL_PY" "$f" --help 2>/dev/null | grep -q -- '--check'; then
+            "$XYLITOL_PY" "$f" --check ${extra[@]+"${extra[@]}"}
         else
-            python3 "$f" ${extra[@]+"${extra[@]}"}
+            "$XYLITOL_PY" "$f" ${extra[@]+"${extra[@]}"}
         fi
     done
 
 # Regenerate the skill description brief tail from references/*.md frontmatter
 # (drift gate: scripts/check_skill_description.py --check, wired via qa-check-scripts).
 gen-skill-description:
-    python3 scripts/gen_skill_description.py
+    $XYLITOL_PY scripts/gen_skill_description.py
 
 # Package TUI tests with default features (includes highlight) — layers 1–4.
 [arg('verbosity', pattern='quiet|normal|verbose')]

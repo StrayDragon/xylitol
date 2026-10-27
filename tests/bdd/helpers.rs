@@ -252,12 +252,29 @@ where
     tokio::time::timeout(budget, f()).await
 }
 
+pub(crate) fn python3() -> &'static str {
+    static PY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    PY.get_or_init(|| {
+        for candidate in ["python3.13", "python3.12", "python3.11", "python3"] {
+            let ok = std::process::Command::new(candidate)
+                .args(["-c", "import tomllib"])
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+            if ok {
+                return candidate.to_string();
+            }
+        }
+        "python3".to_string()
+    })
+}
+
 pub(crate) fn python_flock_probe(path: &std::path::Path) -> Option<i32> {
     let script = format!(
         "import fcntl, sys\nf=open({path:?}, 'r+')\ntry:\n fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\n sys.exit(0)\nexcept BlockingIOError:\n sys.exit(2)\n",
         path = path
     );
-    std::process::Command::new("python3")
+    std::process::Command::new(python3())
         .arg("-c")
         .arg(&script)
         .status()
@@ -270,7 +287,7 @@ pub(crate) fn python_hold_lock(path: &std::path::Path) -> std::process::Child {
         "import fcntl, sys, time\nf=open({path:?}, 'r+')\nfcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)\nsys.stdout.write('held\\n')\nsys.stdout.flush()\ntime.sleep(60)\n",
         path = path
     );
-    let mut child = std::process::Command::new("python3")
+    let mut child = std::process::Command::new(python3())
         .arg("-c")
         .arg(&script)
         .stdout(std::process::Stdio::piped())

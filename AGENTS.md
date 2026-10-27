@@ -85,7 +85,8 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 - 探查：`cargo run -- --help`；文档构建与检查：`just doc` / `just qa-doc-check`。
 - 一次性探针只落 `scripts/lab_*.py`（或包 examples `lab_*`）并直接 python 调用，**不**新增 just recipe；重复使用或需流程化才升 skill / 门禁。引擎 demo 入口在 `crates/xylitol-tui/justfile`。
 - 门禁组成（quiet/verbose、真实网关 lab、复杂度、元门禁、注释只读闸、版本命名闸）细则：`xylitol-dev` skill `references/qa-gates.md`。
-- **注释闸（uncomment，只读）**：策略见根 `.uncomment.toml`；`just qa` 经 `scripts/check_uncomment.py` 仅跑 `uncomment --check --changed-lines`（不删注释、不 `--fix`）。默认移除行内说明与 `///`/`//!`/docstring（`remove_docs = true`）；保留 TODO/FIXME、工具指令与 `~keep`。追溯以 specs/提交信息为 SSOT，**改动行**上不得新增可移除注释。跳过：`XYLITOL_SKIP_UNCOMMENT=1`。
+- **Python 解释器**：门禁脚本需 `>=3.11`（`tomllib`）。`justfile` 与 BDD step 均自动挑选第一个可 `import tomllib` 的解释器（`python3.13` → `python3.12` → `python3.11` → `python3`），无需手工切 PATH；系统 3.9 会让门禁直接报 `No module named 'tomllib'` 而非静默跳过。`PyYAML` 已从门禁脚本移除（frontmatter / 示例配置改自解析），仅可选自检时使用。
+- **注释闸（uncomment，只读）**：策略见根 `.uncomment.toml`；`just qa` 经 `scripts/check_uncomment.py` 仅跑 `uncomment --check --changed-lines`（不删注释、不 `--fix`）。默认移除行内说明与 `///`/`//!`/docstring（`remove_docs = true`）；保留 TODO/FIXME、工具指令与 `~keep`。追溯以 specs/提交信息为 SSOT，**改动行**上不得新增可移除注释。`uncomment` 须在 PATH（`uv tool install uncomment` 或 `pipx install uncomment`）；未安装时闸报错而非跳过。`XYLITOL_SKIP_UNCOMMENT=1` 仅为工具确实无法安装时的应急口，不得作为常规跑法。
 
 ### 试验 / 真实网关验证命名（`lab_`）
 

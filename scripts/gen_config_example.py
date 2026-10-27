@@ -182,20 +182,33 @@ hooks:
 """
 
 
-def main() -> int:
-    TARGET.write_text(TEMPLATE)
+def _self_check(text: str) -> str | None:
+    """Return an error string when the rendered example is malformed."""
     try:
         import yaml
     except ImportError:
-        print(f"generated {TARGET.relative_to(REPO_ROOT)} (skip self-check: pyyaml missing)")
-        return 0
-    data = yaml.safe_load(TARGET.read_text())
+        lines = text.splitlines()
+        has_top = any(ln.startswith("models:") for ln in lines)
+        has_nested = any(ln.startswith("  models:") for ln in lines)
+        if not has_top:
+            return "generated example missing top-level models"
+        if not has_nested:
+            return "generated example missing models.models map"
+        return None
+    data = yaml.safe_load(text)
     if not isinstance(data, dict) or "models" not in data:
-        print("ERROR: generated example missing top-level models", file=sys.stderr)
-        return 1
+        return "generated example missing top-level models"
     models = data["models"]
     if not isinstance(models, dict) or "models" not in models:
-        print("ERROR: generated example missing models.models map", file=sys.stderr)
+        return "generated example missing models.models map"
+    return None
+
+
+def main() -> int:
+    TARGET.write_text(TEMPLATE)
+    problem = _self_check(TEMPLATE)
+    if problem is not None:
+        print(f"ERROR: {problem}", file=sys.stderr)
         return 1
     print(f"generated {TARGET.relative_to(REPO_ROOT)} (self-check ok)")
     return 0

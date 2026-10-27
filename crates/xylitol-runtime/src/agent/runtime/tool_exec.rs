@@ -33,10 +33,6 @@ pub(crate) struct ToolExecEnv<'a> {
     pub turn_index: u32,
 }
 
-/// One tool call after hooks, middleware and the permission gate ran.
-///
-/// The batch planner consumes `name`/`tool` so a routed call is classified by
-/// the tool that will actually execute, not by the name the model asked for.
 pub(crate) struct PreparedCall {
     pub(crate) id: String,
     pub(crate) name: String,
