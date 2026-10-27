@@ -30,6 +30,20 @@ pub trait XySessionStore: Send + Sync {
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError>;
 
+    async fn load_entries_page(
+        &self,
+        session_id: &str,
+        limit: Option<usize>,
+        before_entry_id: Option<&str>,
+    ) -> Result<(Vec<SessionEntry>, bool), XySessionStoreError> {
+        let entries = self.load_entries(session_id).await?;
+        Ok(crate::session::paginate_entries(
+            entries,
+            limit,
+            before_entry_id,
+        ))
+    }
+
     async fn load_leaf_branch(
         &self,
         session_id: &str,

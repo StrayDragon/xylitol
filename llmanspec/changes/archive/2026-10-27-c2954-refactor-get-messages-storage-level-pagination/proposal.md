@@ -2,6 +2,9 @@
 depends_on:
   - c2953-refactor-journal-delta-tape-scope-and-persisted-message-recovery
 title: get_messages 分页下沉到存储层，避免整会话读入内存
+branch: sdd/c2954-refactor-get-messages-storage-level-pagination
+base_branch: main
+base_sha: 43c606f43da37fe9002e9fd48c37a924e84ec0c6
 ---
 
 # get_messages 分页下沉到存储层，避免整会话读入内存

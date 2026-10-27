@@ -104,12 +104,9 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 limit,
                 before_entry_id,
             } => {
-                let all = self.get_messages().await?;
-                let (entries, has_more) = xylitol_plugin_sdk::session::paginate_entries(
-                    all,
-                    limit,
-                    before_entry_id.as_deref(),
-                );
+                let (entries, has_more) = self
+                    .get_messages_page(limit, before_entry_id.as_deref())
+                    .await?;
                 let session_id = crate::driver::XyDriver::session_id(self).unwrap_or_default();
                 Ok(DispatchOutcome::Messages {
                     session_id,

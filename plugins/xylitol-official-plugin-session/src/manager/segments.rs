@@ -13,6 +13,18 @@ use xylitol_plugin_sdk::session::{
 
 const INITIAL_GENERATION: u64 = 0;
 
+struct AnchorLocation {
+    seg_idx: usize,
+    pos: usize,
+    entries: Vec<SessionEntry>,
+}
+
+fn has_earlier_segments(segments: &[&SessionSegment], seg_idx: usize) -> bool {
+    segments[..seg_idx]
+        .iter()
+        .any(|segment| segment.last_entry_id.is_some())
+}
+
 impl SessionManager {
     pub(super) fn session_dir_path(&self, session_id: &str) -> PathBuf {
         self.sessions_dir.join(session_id)
@@ -179,6 +191,9 @@ impl SessionManager {
         session_id: &str,
         segment: &SessionSegment,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        #[cfg(test)]
+        self.segment_reads
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let path = self.resolve_segment_path(session_id, &segment.path)?;
         let content = tokio::fs::read_to_string(&path)
             .await
@@ -202,6 +217,119 @@ impl SessionManager {
         );
         enforce_session_version(&entries)?;
         Ok(entries)
+    }
+
+    pub(super) async fn page_from_segments(
+        &self,
+        session_id: &str,
+        manifest: &SessionManifest,
+        limit: Option<usize>,
+        before_entry_id: Option<&str>,
+    ) -> Result<(Vec<SessionEntry>, bool), XySessionStoreError> {
+        let mut segments: Vec<&SessionSegment> = manifest.sealed_segments.iter().collect();
+        segments.push(&manifest.active_segment);
+
+        let Some(limit) = limit else {
+            let entries = self.load_entries(session_id, manifest).await?;
+            return Ok(xylitol_plugin_sdk::session::paginate_entries(
+                entries,
+                None,
+                before_entry_id,
+            ));
+        };
+
+        let anchor = match before_entry_id {
+            Some(anchor) => match self.locate_anchor(session_id, &segments, anchor).await? {
+                Some(location) => Some(location),
+                None => return Ok((Vec::new(), false)),
+            },
+            None => None,
+        };
+
+        if limit == 0 {
+            let has_more = match &anchor {
+                Some(location) => {
+                    location.pos > 0 || has_earlier_segments(&segments, location.seg_idx)
+                }
+                None => segments
+                    .iter()
+                    .any(|segment| segment.last_entry_id.is_some()),
+            };
+            return Ok((Vec::new(), has_more));
+        }
+
+        let mut collected_rev: Vec<SessionEntry> = Vec::new();
+        let mut remaining = limit;
+        let (mut seg_idx, mut pos, mut cached) = match anchor {
+            Some(location) => (location.seg_idx, location.pos, Some(location.entries)),
+            None => (segments.len() - 1, usize::MAX, None),
+        };
+        let mut has_more = false;
+
+        loop {
+            let entries = match cached.take() {
+                Some(entries) => entries,
+                None => self.read_segment(session_id, segments[seg_idx]).await?,
+            };
+            let take_end = if pos == usize::MAX {
+                entries.len()
+            } else {
+                pos.min(entries.len())
+            };
+            let take_start = take_end.saturating_sub(remaining);
+            let take = take_end - take_start;
+            collected_rev.extend(entries[take_start..take_end].iter().rev().cloned());
+            remaining -= take;
+            if remaining == 0 {
+                has_more = take_start > 0 || has_earlier_segments(&segments, seg_idx);
+                break;
+            }
+            if seg_idx == 0 {
+                break;
+            }
+            seg_idx -= 1;
+            pos = usize::MAX;
+        }
+
+        collected_rev.reverse();
+        Ok((collected_rev, has_more))
+    }
+
+    async fn locate_anchor(
+        &self,
+        session_id: &str,
+        segments: &[&SessionSegment],
+        anchor: &str,
+    ) -> Result<Option<AnchorLocation>, XySessionStoreError> {
+        for seg_idx in (0..segments.len()).rev() {
+            let segment = segments[seg_idx];
+            if segment.first_entry_id.as_deref() == Some(anchor) {
+                return Ok(Some(AnchorLocation {
+                    seg_idx,
+                    pos: 0,
+                    entries: Vec::new(),
+                }));
+            }
+            if segment.last_entry_id.as_deref() != Some(anchor)
+                && let Some(index_path) = &segment.index_path
+                && let Some(index) = self.read_sealed_index_opt(session_id, index_path).await
+                && !index.contains_entry(anchor)
+            {
+                continue;
+            }
+            let entries = self.read_segment(session_id, segment).await?;
+            if let Some(pos) = entries
+                .iter()
+                .position(|entry| entry.entry_id() == Some(anchor))
+            {
+                return Ok(Some(AnchorLocation {
+                    seg_idx,
+                    pos,
+                    entries,
+                }));
+            }
+        }
+        Ok(None)
     }
 
     pub(super) async fn write_segment_atomically(
