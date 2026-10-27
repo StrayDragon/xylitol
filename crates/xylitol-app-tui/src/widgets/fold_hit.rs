@@ -14,6 +14,7 @@ pub enum FoldTarget {
     Segment(String),
     Cluster(String),
     LiveTail,
+    LoadEarlier,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -144,6 +145,9 @@ fn hover_hits_for(id: HitId, r: &FoldHitRegion) -> Vec<Hit> {
                 .cols(r.col_start, r.col_end)
                 .tall(r.height),
         ],
+        FoldTarget::LoadEarlier => {
+            vec![Hit::on_line(id, r.content_row).cols(r.col_start, r.col_end)]
+        }
         FoldTarget::TodoDoing | FoldTarget::TodoPending | FoldTarget::TodoPast => Vec::new(),
     }
 }

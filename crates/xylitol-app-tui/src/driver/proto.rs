@@ -108,6 +108,10 @@ pub trait XyDriver: crate::dispatch::SessionCommandExecutor + Send {
         None
     }
 
+    fn exposes_session_store(&self) -> bool {
+        self.session_store().is_some()
+    }
+
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot;
 
     fn loaded_resources_cached(&self) -> Option<LoadedResourcesSnapshot> {

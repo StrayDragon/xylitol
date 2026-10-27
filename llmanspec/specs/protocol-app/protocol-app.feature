@@ -39,14 +39,14 @@
       那么 应答为产品成功且 result 含 session 与 seq
   @req:r1698
   规则: Event 变体完整
-    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。`AgentEnd` 的 `messages` 为面本地保留字段，线上不携带；跨进程客户端 须以 `get_messages` 重建 transcript。
+    protocol::Event 须覆盖全部 XyEvent 变体：AgentStart、AgentEnd、TurnStart、TurnEnd、MessageStart、MessageEnd、MessageUpdate、ToolExecutionStart、ToolExecutionUpdate、ToolExecutionEnd、CompactionStart、CompactionEnd、ContextTokenSettlement、ModelSelect、ThinkingLevelChanged、QueueUpdate、TodoUpdated、AutoRetryStart、AutoRetryEnd、Error、SessionInfoChanged、TextDelta、ThinkingDelta；ThinkingDelta 须往返 XyEvent::ThinkingDelta 且不得降级为空 MessageUpdate；XyEvent ↔ Event 的映射 必须唯一且位于 xylitol-wire。`AgentEnd` 的 `messages` 为面本地保留字段，线上不携带；跨进程客户端 须以 `get_messages` 重建 transcript。MessageUpdate 须只携带 message（完整 AgentMessage 快照），不得另带累积 text 或 thinking：二者是 message 的子集且无生产消费方，重复载荷会放大线协议帧体。
 
     场景: agent流式事件往返
       当 对 Agent 流族事件做线协议序列化与反序列化往返
       那么 流族事件保真且 thinking_delta 可投影为 XyEvent
   @req:r1699
   规则: 会话命令分发
-    RPC dispatch 须实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托会话导出/导入实现；不得交付 stub 或仅字符串实现。
+    RPC dispatch 须实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托会话导出/导入实现；不得交付 stub 或仅字符串实现。GetMessages 须接受可选 limit 与 before_entry_id：limit 缺省时返回全量以保持既有调用形状；给定 limit 时从最新一条向前取该条数；给定 before_entry_id 时取该条目之前的更早条目。分页参数须为可选字段，不得另立第二套读取方法。
 
     场景: 切换会话校验目标
       当 服务端在空闲端口上启动
@@ -58,6 +58,11 @@
       当 server 处理 prompt
       并且 POST /rpc 调用 get_messages
       那么 应答含已加载会话条目
+
+    场景: 消息快照分页
+      假如 会话已有超过 limit 的条目
+      当 POST /rpc 调用 get_messages 带 limit 与 before_entry_id
+      那么 应答只含该窗口内条目且不重复不遗漏
   @req:r1700
   规则: dispatch 归属
     会话操作的执行语义 必须进入同一产品分发。订阅 必须为产品订阅（session_id 与 last_seq）。审批与问卷 必须登记为产品 unary；host 须先以下行通知告知，客户端再以 unary 作答。不得另开 respond HTTP 路径，不得以 JSON-RPC 之外的帧作答。
@@ -234,7 +239,7 @@
       那么 命令进入单一 Bash 块且输出在同一块内且状态轨为成功
   @req:r1704
   规则: 握手与版本
-    每条线协议消息 必须归属某个 session。握手 必须经已登记方法 host.describe 的 result 携带 protocol 整数与 formats（含 jsonrpc）；客户端 对 protocol 或 formats 不匹配 必须断开且不得降级。客户端 须能以 session_id 与 last_seq 订阅并续传；journal 截断超过 last_seq 时 须发出 resync。不得以特例首帧或环境变量并行维护第二套版本协商。
+    每条线协议消息 必须归属某个 session。握手 必须经已登记方法 host.describe 的 result 携带 protocol 整数与 formats（含 jsonrpc）；客户端 对 protocol 或 formats 不匹配 必须断开且不得降级。客户端 须能以 session_id 与 last_seq 订阅并续传；journal 截断超过 last_seq 时 须发出 resync。不得以特例首帧或环境变量并行维护第二套版本协商。协议版本 须在移除既有字段或收紧既有形状时递增（当前为 5，因 MessageUpdate 删除 text/thinking）；新增可选字段不单独要求递增。
 
     场景: 握手协议经描述
       当 服务端在空闲端口上启动

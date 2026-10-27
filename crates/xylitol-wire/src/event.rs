@@ -32,13 +32,7 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             role: role.clone(),
             message: to_value_opt(message)?,
         },
-        XyEvent::MessageUpdate {
-            text,
-            thinking,
-            message,
-        } => Event::MessageUpdate {
-            text: text.clone(),
-            thinking: thinking.clone(),
+        XyEvent::MessageUpdate { message } => Event::MessageUpdate {
             message: to_value_opt(message)?,
         },
         XyEvent::MessageEnd { role, message } => Event::MessageEnd {
@@ -164,13 +158,7 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             role: role.clone(),
             message: from_value_opt(message)?,
         },
-        Event::MessageUpdate {
-            text,
-            thinking,
-            message,
-        } => XyEvent::MessageUpdate {
-            text: text.clone(),
-            thinking: thinking.clone(),
+        Event::MessageUpdate { message } => XyEvent::MessageUpdate {
             message: from_value_opt(message)?,
         },
         Event::MessageEnd { role, message } => XyEvent::MessageEnd {
@@ -346,8 +334,6 @@ mod tests {
                 message: Some(AgentMessage::assistant("start")),
             },
             XyEvent::MessageUpdate {
-                text: "hi".into(),
-                thinking: Some("t".into()),
                 message: Some(AgentMessage::assistant("partial")),
             },
             XyEvent::MessageEnd {

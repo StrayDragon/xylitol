@@ -36,6 +36,7 @@ pub enum DispatchOutcome {
     Messages {
         session_id: String,
         entries: Vec<SessionEntry>,
+        has_more: bool,
     },
     EstimateContext(xylitol_plugin_sdk::model::ContextTokenEstimate),
     SessionTree(Vec<SessionTreeNode>),
@@ -90,8 +91,11 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
         DispatchOutcome::NewSession(id) | DispatchOutcome::SwitchedSession(id) => {
             json!({ "session_id": id })
         }
-        DispatchOutcome::Messages { entries, .. } => json!({
-            "entries": serde_json::to_value(entries).unwrap_or(Value::Null)
+        DispatchOutcome::Messages {
+            entries, has_more, ..
+        } => json!({
+            "entries": serde_json::to_value(entries).unwrap_or(Value::Null),
+            "has_more": has_more,
         }),
         DispatchOutcome::EstimateContext(estimate) => json!({
             "estimate": serde_json::to_value(estimate).unwrap_or(Value::Null)

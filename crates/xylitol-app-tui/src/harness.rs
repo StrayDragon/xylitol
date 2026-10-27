@@ -913,6 +913,7 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
                 Ok(DispatchOutcome::Messages {
                     session_id,
                     entries: self.session_messages.clone(),
+                    has_more: false,
                 })
             }
             Command::EstimateContext { .. } => {
@@ -4953,7 +4954,11 @@ mod slice_tests {
             last_usage_index: Some(0),
         }));
 
-        session.apply_cli_restored_session("sid-restored", harness_sample_session_messages());
+        session.apply_cli_restored_session(
+            "sid-restored",
+            harness_sample_session_messages(),
+            false,
+        );
         let before = root.borrow_mut().render(80);
         let before_f = before.last().expect("footer").clone();
         assert!(
@@ -4978,7 +4983,7 @@ mod slice_tests {
             trailing_tokens: 99,
             last_usage_index: None,
         }));
-        session.apply_resume_session("sid-other", harness_sample_session_messages());
+        session.apply_resume_session("sid-other", harness_sample_session_messages(), false);
         pump_host_driver(&mut session, &mut driver, &mut stream)
             .await
             .unwrap();
@@ -5012,7 +5017,7 @@ mod slice_tests {
             "Fake".into(),
         );
         let root = session.ui_root().expect("ui").clone();
-        session.apply_resume_session("sid-restored", entries);
+        session.apply_resume_session("sid-restored", entries, false);
 
         let screen = root.borrow_mut().render(80);
         let text = screen.join("\n");

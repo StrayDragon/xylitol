@@ -18,7 +18,7 @@ pub fn downlink_notification(method: &str, payload: impl Serialize) -> Notificat
     }
 }
 
-pub const DEFAULT_JOURNAL_CAPACITY: usize = 10_000;
+pub const DEFAULT_JOURNAL_CAPACITY: usize = 1024;
 
 pub struct EventJournal {
     session_id: String,

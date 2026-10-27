@@ -303,3 +303,106 @@ mod leaf_anchor_tests {
         );
     }
 }
+
+pub fn paginate_entries(
+    entries: Vec<SessionEntry>,
+    limit: Option<usize>,
+    before_entry_id: Option<&str>,
+) -> (Vec<SessionEntry>, bool) {
+    let end = match before_entry_id {
+        Some(id) => match entries.iter().position(|e| e.entry_id() == Some(id)) {
+            Some(pos) => pos,
+            None => return (Vec::new(), false),
+        },
+        None => entries.len(),
+    };
+    let Some(limit) = limit else {
+        return (entries[..end].to_vec(), false);
+    };
+    let start = end.saturating_sub(limit);
+    let has_more = start > 0;
+    (entries[start..end].to_vec(), has_more)
+}
+
+#[cfg(test)]
+mod pagination_tests {
+    use super::*;
+    use crate::session::{EntryBase, MessageEntry};
+
+    fn entry(id: &str) -> SessionEntry {
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: serde_json::json!({"role": "user", "content": id}),
+        })
+    }
+
+    fn ids(entries: &[SessionEntry]) -> Vec<String> {
+        entries
+            .iter()
+            .filter_map(|e| e.entry_id().map(str::to_string))
+            .collect()
+    }
+
+    fn entries(n: usize) -> Vec<SessionEntry> {
+        (0..n).map(|i| entry(&format!("e{i}"))).collect()
+    }
+
+    #[test]
+    fn no_limit_returns_everything() {
+        let all = entries(5);
+        let (page, has_more) = paginate_entries(all.clone(), None, None);
+        assert_eq!(ids(&page), ids(&all));
+        assert!(!has_more);
+    }
+
+    #[test]
+    fn limit_takes_the_newest_slice() {
+        let (page, has_more) = paginate_entries(entries(500), Some(200), None);
+        assert_eq!(page.len(), 200);
+        assert_eq!(ids(&page)[0], "e300", "must start from the newest end");
+        assert_eq!(ids(&page)[199], "e499");
+        assert!(has_more);
+    }
+
+    #[test]
+    fn before_entry_id_walks_backwards_without_overlap() {
+        let all = entries(500);
+        let (first, _) = paginate_entries(all.clone(), Some(200), None);
+        let oldest = first[0].entry_id().unwrap().to_string();
+        let (second, has_more) = paginate_entries(all, Some(200), Some(&oldest));
+        assert_eq!(second.len(), 200);
+        assert_eq!(ids(&second)[199], "e299");
+        assert!(
+            !ids(&second).contains(&oldest),
+            "pages must not overlap at the boundary"
+        );
+        assert!(has_more);
+    }
+
+    #[test]
+    fn final_page_reports_no_more() {
+        let all = entries(500);
+        let (first, _) = paginate_entries(all.clone(), Some(200), None);
+        let oldest = first[0].entry_id().unwrap().to_string();
+        let (second, _) = paginate_entries(all.clone(), Some(200), Some(&oldest));
+        let oldest2 = second[0].entry_id().unwrap().to_string();
+        let (third, has_more) = paginate_entries(all, Some(200), Some(&oldest2));
+        assert_eq!(third.len(), 100);
+        assert!(!has_more, "no earlier entries remain");
+    }
+
+    #[test]
+    fn unknown_before_entry_id_yields_an_empty_page() {
+        let (page, has_more) = paginate_entries(entries(10), Some(3), Some("missing"));
+        assert!(
+            page.is_empty(),
+            "an unknown anchor must not guess a window, or the client would page forever"
+        );
+        assert!(!has_more);
+    }
+}

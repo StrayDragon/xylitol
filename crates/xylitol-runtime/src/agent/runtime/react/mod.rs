@@ -1071,6 +1071,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             let (ty, phase, ctx) = super::script_hook_ctx::message_start("user");
                             observe_script_hook(bus, ty, phase, ctx).await;
                         }
+                        persist_agent_message(&store, &session_id, &message).await;
                         yield XyEvent::MessageEnd {
                             role: "user".to_string(),
                             message: Some(message.clone()),
@@ -1080,7 +1081,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             observe_script_hook(bus, ty, phase, ctx).await;
                         }
                         history.push(message.clone());
-                        persist_agent_message(&store, &session_id, &message).await;
                     }
                     let (steer_count, follow_up_count) =
                         queue_counts(&steer_queue, &follow_up_queue);
@@ -1313,10 +1313,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     String::new(),
                                     None,
                                 );
-                                yield XyEvent::MessageEnd {
-                                    role: "assistant".to_string(),
-                                    message: Some(assistant_msg.clone()),
-                                };
                                 stream_clock.finish_message();
                                 persist_agent_message_with_thought_elapsed(
                                     &store,
@@ -1325,6 +1321,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     Some(&stream_clock),
                                 )
                                 .await;
+                                yield XyEvent::MessageEnd {
+                                    role: "assistant".to_string(),
+                                    message: Some(assistant_msg.clone()),
+                                };
                                 history.push(assistant_msg);
                             }
                             turn_aborted = true;
@@ -1498,10 +1498,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             if out.control != LoopControl::Continue {
                                 let msg = assistant_msg.expect("assistant after middleware");
                                 stream_clock.finish_message();
-                                yield XyEvent::MessageEnd {
-                                    role: "assistant".to_string(),
-                                    message: Some(msg.clone()),
-                                };
                                 persist_agent_message_with_thought_elapsed(
                                     &store,
                                     &session_id,
@@ -1509,6 +1505,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     Some(&stream_clock),
                                 )
                                 .await;
+                                yield XyEvent::MessageEnd {
+                                    role: "assistant".to_string(),
+                                    message: Some(msg.clone()),
+                                };
                                 history.push(msg);
                                 yield XyEvent::TurnEnd {
                                     turn_index: turn as u32,
@@ -1537,25 +1537,26 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                 }
 
-                yield XyEvent::MessageEnd {
-                    role: "assistant".to_string(),
-                    message: assistant_msg.clone(),
-                };
-                if let Some(bus) = &hook_bus {
-                    let (ty, phase, ctx) = super::script_hook_ctx::message_end("assistant");
-                    observe_script_hook(bus, ty, phase, ctx).await;
-                }
-
-                if let Some(assistant_msg) = assistant_msg {
+                if let Some(msg) = assistant_msg.as_ref() {
                     stream_clock.finish_message();
                     persist_agent_message_with_thought_elapsed(
                         &store,
                         &session_id,
-                        &assistant_msg,
+                        msg,
                         Some(&stream_clock),
                     )
                     .await;
-                    history.push(assistant_msg);
+                }
+                yield XyEvent::MessageEnd {
+                    role: "assistant".to_string(),
+                    message: assistant_msg.clone(),
+                };
+                if let Some(msg) = assistant_msg {
+                    history.push(msg);
+                }
+                if let Some(bus) = &hook_bus {
+                    let (ty, phase, ctx) = super::script_hook_ctx::message_end("assistant");
+                    observe_script_hook(bus, ty, phase, ctx).await;
                 }
 
                 continue_after_tools = !tool_calls.is_empty();
@@ -2147,6 +2148,52 @@ mod loop_middleware_tests {
                 .iter()
                 .any(|e| matches!(e, crate::agent::runtime::XyEvent::AgentEnd { .. })),
             "run must end: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn message_is_persisted_before_message_end_is_emitted() {
+        let base = baseline();
+        let store = base.store.clone();
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-persist").expect("bind");
+
+        let mut stream = runtime.submit_root("hi", RunPolicy::Reject).await;
+        let mut seen_end = false;
+        while let Some(ev) = stream.next().await {
+            if matches!(ev, crate::agent::runtime::XyEvent::MessageEnd { .. }) {
+                seen_end = true;
+                let entries = store
+                    .load_entries("sess-persist")
+                    .await
+                    .expect("session must exist by MessageEnd");
+                assert!(
+                    !entries.is_empty(),
+                    "the transcript must already be on disk when MessageEnd arrives"
+                );
+                break;
+            }
+        }
+        assert!(seen_end, "the run must emit MessageEnd");
+    }
+
+    #[tokio::test]
+    async fn message_update_carries_only_the_message_snapshot() {
+        let ev = crate::agent::runtime::react::assistant::streaming_message_update(
+            "hello",
+            "think",
+            None,
+            &[],
+        );
+        let value = serde_json::to_value(&ev).expect("serialize");
+        assert!(
+            value.get("text").is_none() && value.get("thinking").is_none(),
+            "MessageUpdate must not carry duplicated text/thinking: {value}"
+        );
+        assert!(
+            value.get("message").is_some(),
+            "the message snapshot is the single source of truth: {value}"
         );
     }
 }

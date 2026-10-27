@@ -497,3 +497,7 @@
       假如 注册 before_model 中间件观察 messages 且 skills 已装配
       当 运行 AgentRuntime 提交引用技能的 prompt
       那么 before_model 观察到已展开的技能正文
+
+  @req:r2937
+  规则: message-persist-before-end
+    ReAct 的每一条消息（用户 pending、助手正常完成、助手中断、助手中间件 stop）须先写入会话存储再下行 MessageEnd，使客户端收到完成事件时 存储已可读到该条；不得先发 MessageEnd 再落库。落库失败 不得阻断 MessageEnd 下行（沿用既有 warn 语义），但 不得因此把顺序颠倒回去。

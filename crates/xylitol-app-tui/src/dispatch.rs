@@ -36,6 +36,7 @@ pub enum DispatchOutcome {
     Messages {
         session_id: String,
         entries: Vec<SessionEntry>,
+        has_more: bool,
     },
     EstimateContext(xylitol_plugin_sdk::model::ContextTokenEstimate),
     SessionTree(Vec<SessionTreeNode>),

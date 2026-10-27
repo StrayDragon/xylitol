@@ -39,9 +39,27 @@ pub async fn drain_inline_pending<T: Terminal>(
 pub async fn session_entries(
     driver: &mut dyn XyDriver,
 ) -> Result<Vec<xylitol_plugin_sdk::session::SessionEntry>, XyDriverError> {
-    match crate::dispatch::dispatch(driver, xylitol_protocol::Command::GetMessages {}).await? {
-        crate::dispatch::DispatchOutcome::Messages { entries, .. } => Ok(entries),
-        _ => Ok(Vec::new()),
+    Ok(session_entries_page(driver, None, None).await?.0)
+}
+
+pub async fn session_entries_page(
+    driver: &mut dyn XyDriver,
+    limit: Option<usize>,
+    before_entry_id: Option<String>,
+) -> Result<(Vec<xylitol_plugin_sdk::session::SessionEntry>, bool), XyDriverError> {
+    match crate::dispatch::dispatch(
+        driver,
+        xylitol_protocol::Command::GetMessages {
+            limit,
+            before_entry_id,
+        },
+    )
+    .await?
+    {
+        crate::dispatch::DispatchOutcome::Messages {
+            entries, has_more, ..
+        } => Ok((entries, has_more)),
+        _ => Ok((Vec::new(), false)),
     }
 }
 

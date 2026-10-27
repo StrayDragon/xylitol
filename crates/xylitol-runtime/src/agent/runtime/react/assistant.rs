@@ -94,12 +94,6 @@ pub(crate) fn streaming_message_update(
     tool_calls: &[(String, String, Value)],
 ) -> XyEvent {
     XyEvent::MessageUpdate {
-        text: text.to_string(),
-        thinking: if thinking.is_empty() {
-            None
-        } else {
-            Some(thinking.to_string())
-        },
         message: Some(partial_assistant_message(
             text,
             thinking,

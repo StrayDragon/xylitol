@@ -1692,7 +1692,10 @@ pub(crate) fn w_t4_command_roundtrip() {
         Command::SwitchSession {
             session_path: "s1".into(),
         },
-        Command::GetMessages {},
+        Command::GetMessages {
+            limit: None,
+            before_entry_id: None,
+        },
         Command::ExportJsonl {
             output_path: Some("/tmp/a.jsonl".into()),
         },
@@ -1744,11 +1747,7 @@ pub(crate) async fn w_t4_render_text(t4_print_bdd: &T4PrintBdd) {
             message: None,
         },
         XyEvent::TextDelta("Hello".into()),
-        XyEvent::MessageUpdate {
-            text: "Hello".into(),
-            thinking: None,
-            message: None,
-        },
+        XyEvent::MessageUpdate { message: None },
         XyEvent::TextDelta("!".into()),
         XyEvent::MessageEnd {
             role: "assistant".into(),

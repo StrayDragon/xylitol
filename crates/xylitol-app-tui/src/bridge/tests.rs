@@ -205,8 +205,6 @@ fn message_update_tool_path_matches_after_wire_roundtrip() {
         diagnostics: Vec::new(),
     });
     let event = XyEvent::MessageUpdate {
-        text: String::new(),
-        thinking: None,
         message: Some(message),
     };
 
@@ -564,14 +562,7 @@ fn message_update_does_not_duplicate_deltas() {
     let mut model = UiModel::new();
     model.begin_run("hi");
     apply_xy_event(&mut model, &XyEvent::TextDelta("Hello".into()));
-    apply_xy_event(
-        &mut model,
-        &XyEvent::MessageUpdate {
-            text: "Hello".into(),
-            thinking: None,
-            message: None,
-        },
-    );
+    apply_xy_event(&mut model, &XyEvent::MessageUpdate { message: None });
     apply_xy_event(&mut model, &XyEvent::TextDelta("!".into()));
     apply_xy_event(
         &mut model,
@@ -690,8 +681,6 @@ fn message_update_tool_intent_flushes_thinking_first() {
     apply_xy_event(
         &mut model,
         &XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: Some("plan…".into()),
             message: Some(partial),
         },
     );
@@ -740,8 +729,6 @@ fn message_update_creates_tool_before_execution() {
     apply_xy_event(
         &mut model,
         &XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: None,
             message: Some(partial),
         },
     );
@@ -809,16 +796,12 @@ fn message_update_streams_args_preview() {
     apply_xy_event(
         &mut model,
         &XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: None,
             message: Some(mk(serde_json::json!({"path": "/tm"}))),
         },
     );
     apply_xy_event(
         &mut model,
         &XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: None,
             message: Some(mk(serde_json::json!({"path": "/tmp/x.rs"}))),
         },
     );

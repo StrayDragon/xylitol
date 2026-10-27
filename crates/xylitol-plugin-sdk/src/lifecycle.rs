@@ -65,8 +65,6 @@ pub enum XyEvent {
         message: Option<AgentMessage>,
     },
     MessageUpdate {
-        text: String,
-        thinking: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         message: Option<AgentMessage>,
     },

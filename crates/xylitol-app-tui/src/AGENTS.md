@@ -52,4 +52,6 @@
 
 应用端无头帧挂载（BDD 直驱真实渲染）：`SceneBuilder`（经 `xylitol::app::tui` 导出；契约 `package-tui-testing`）。
 
+折叠/展开是**端侧纯呈现**：状态留客户端（`activity_fold` / `ScrollbackFold` / `FoldHitTable`），**不得**往返 Host，也不要求 Host 持久化折叠状态。产品 TUI attach 模式 **不得**直读 Host 会话存储（`XyRemoteDriver::session_store()` 为 `None`），会话读取只经协议 unary。历史按窗口加载：首屏最新一页（`HISTORY_PAGE = 200`）、窗口上限 `HISTORY_WINDOW = 800`，超出后最旧部分回落为顶部可点击 `ScrollNotice`；短会话不出现任何分页提示（`history_window`）。
+
 live 只进 scrollback；历史/分叉以会话树为准。不做 Codex TranscriptView；不做运行时 Settings/Plate 改配置；**不**绑定 Ctrl+P 打开 Command Plate stub。

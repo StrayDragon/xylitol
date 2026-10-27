@@ -195,6 +195,7 @@ pub struct UiModel {
     pub(crate) current_role: Option<String>,
     bash_utf8_pending: Vec<u8>,
     pub todo: TodoList,
+    pub has_earlier: bool,
 }
 
 impl Default for UiModel {
@@ -219,6 +220,7 @@ impl UiModel {
             current_role: None,
             bash_utf8_pending: Vec::new(),
             todo: TodoList::default(),
+            has_earlier: false,
         }
     }
 

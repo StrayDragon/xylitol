@@ -681,7 +681,13 @@ mod tests {
                     position: None,
                 },
             ),
-            ("get_messages", Command::GetMessages {}),
+            (
+                "get_messages",
+                Command::GetMessages {
+                    limit: None,
+                    before_entry_id: None,
+                },
+            ),
             ("estimate_context", Command::EstimateContext {}),
             ("get_commands", Command::GetCommands {}),
             (

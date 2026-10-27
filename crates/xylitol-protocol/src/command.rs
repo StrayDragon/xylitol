@@ -49,7 +49,12 @@ pub enum Command {
         #[serde(default)]
         position: Option<String>,
     },
-    GetMessages {},
+    GetMessages {
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default)]
+        before_entry_id: Option<String>,
+    },
     #[serde(rename = "estimate_context")]
     EstimateContext {},
     GetCommands {},

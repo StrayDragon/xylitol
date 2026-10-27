@@ -141,7 +141,7 @@ async fn lab_ao_session_perf_report() {
     let (sid, entries, source) = synthetic_ao_seed("lab-ao-perf").await;
 
     let mut session = HostSession::new_product_ui(LabTerminal::new(120, 40));
-    session.apply_cli_restored_session(&sid, entries);
+    session.apply_cli_restored_session(&sid, entries, false);
     session.tui.clear_finalize_counters_for_test();
 
     let warm = Instant::now();
@@ -278,7 +278,7 @@ fn cpu_pct(j0: u64, j1: u64, wall_secs: f64) -> f64 {
 
 async fn seed_long_session(session: &mut HostSession<LabTerminal>) {
     let (sid, entries, _) = synthetic_ao_seed("lab-ao-stream").await;
-    session.apply_cli_restored_session(&sid, entries);
+    session.apply_cli_restored_session(&sid, entries, false);
 }
 
 #[tokio::test]
@@ -469,7 +469,7 @@ async fn lab_ao_memory_profile() {
         let entries = mgr.load_entries(&sid).await.expect("load entries");
         let entry_count = entries.len();
         let warm = Instant::now();
-        session.apply_cli_restored_session(&sid, entries);
+        session.apply_cli_restored_session(&sid, entries, false);
         session.tui.render_now().expect("warm render");
         let warm_ms = warm.elapsed().as_millis();
         session.tui.request_render(false);

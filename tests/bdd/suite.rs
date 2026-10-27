@@ -45,6 +45,7 @@ mod bindings_server;
 mod bindings_storage;
 mod bindings_workspace_assembly;
 mod fixtures;
+mod fold_probe;
 mod prelude;
 mod steps_agent;
 mod steps_agent_runtime;

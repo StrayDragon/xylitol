@@ -83,6 +83,7 @@ pub struct SessionSlot {
     run_inflight: AtomicBool,
     pending_model: std::sync::Mutex<Option<String>>,
     pending_thinking: std::sync::Mutex<Option<String>>,
+    pub latest_tape: std::sync::Mutex<Option<xylitol_plugin_sdk::message::AgentMessage>>,
     mcp_watch_started: AtomicBool,
     pub bash_run_cancel: std::sync::Mutex<Option<CancellationToken>>,
     pub idempotency: IdempotencyLedger,
@@ -424,6 +425,7 @@ impl SessionSlot {
             run_inflight: AtomicBool::new(false),
             pending_model: std::sync::Mutex::new(None),
             pending_thinking: std::sync::Mutex::new(None),
+            latest_tape: std::sync::Mutex::new(None),
             mcp_watch_started: AtomicBool::new(false),
             bash_run_cancel: std::sync::Mutex::new(None),
             idempotency: IdempotencyLedger::default(),
@@ -476,11 +478,26 @@ impl SessionSlot {
         self.flush_pending_runtime().await;
     }
 
-    fn subscribed_payload(&self, seq: u64, inflight: bool) -> SessionSubscribedPayload {
+    fn subscribed_payload(
+        &self,
+        seq: u64,
+        inflight: bool,
+        want_partial: bool,
+    ) -> SessionSubscribedPayload {
+        let partial = if want_partial && inflight {
+            self.latest_tape
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+                .and_then(|m| serde_json::to_value(m).ok())
+        } else {
+            None
+        };
         SessionSubscribedPayload {
             session_id: self.session_id.clone(),
             seq,
             inflight,
+            partial,
         }
     }
 
@@ -500,20 +517,21 @@ impl SessionSlot {
         inflight: bool,
         last_seq: u64,
     ) -> RpcResult {
+        let want_partial = inflight && last_seq > 0;
         let journal = self.journal.lock().await;
         let wrapped_gap =
             journal.is_full() && last_seq < journal.min_seq() && journal.min_seq() > 1;
         if wrapped_gap && !self.resync_offered.swap(true, Ordering::SeqCst) {
             drop(journal);
             self.broadcast(self.resync_notification()).await;
-            return RpcResult::ok_value(self.subscribed_result(0, inflight));
+            return RpcResult::ok_value(self.subscribed_result(0, inflight, want_partial));
         }
         match journal.replay_from(last_seq) {
             None => {
                 drop(journal);
                 self.resync_offered.store(true, Ordering::SeqCst);
                 self.broadcast(self.resync_notification()).await;
-                RpcResult::ok_value(self.subscribed_result(0, inflight))
+                RpcResult::ok_value(self.subscribed_result(0, inflight, want_partial))
             }
             Some(events) => {
                 let seq = journal.max_seq();
@@ -535,16 +553,17 @@ impl SessionSlot {
                 }
                 self.broadcast(downlink_notification(
                     SESSION_SUBSCRIBED,
-                    self.subscribed_payload(seq, inflight),
+                    self.subscribed_payload(seq, inflight, want_partial),
                 ))
                 .await;
-                RpcResult::ok_value(self.subscribed_result(seq, inflight))
+                RpcResult::ok_value(self.subscribed_result(seq, inflight, want_partial))
             }
         }
     }
 
-    fn subscribed_result(&self, seq: u64, inflight: bool) -> Value {
-        serde_json::to_value(self.subscribed_payload(seq, inflight)).unwrap_or(Value::Null)
+    fn subscribed_result(&self, seq: u64, inflight: bool, want_partial: bool) -> Value {
+        serde_json::to_value(self.subscribed_payload(seq, inflight, want_partial))
+            .unwrap_or(Value::Null)
     }
 
     fn observe_passes(note: &Notification) -> bool {
@@ -598,6 +617,15 @@ impl SessionSlot {
     }
 
     pub async fn append_and_push(&self, event: &XyEvent) {
+        if is_tape_event(event) {
+            self.push_tape(event).await;
+            return;
+        }
+        if matches!(event, XyEvent::AgentEnd { .. })
+            && let Ok(mut g) = self.latest_tape.lock()
+        {
+            *g = None;
+        }
         let event = match xylitol_wire::event_to_wire(event) {
             Ok(event) => event,
             Err(e) => {
@@ -614,6 +642,31 @@ impl SessionSlot {
             SessionEventPayload {
                 session_id: self.session_id.clone(),
                 seq,
+                event,
+            },
+        ))
+        .await;
+    }
+
+    async fn push_tape(&self, event: &XyEvent) {
+        if let XyEvent::MessageUpdate { message, .. } = event
+            && let Some(message) = message
+            && let Ok(mut g) = self.latest_tape.lock()
+        {
+            *g = Some(message.clone());
+        }
+        let event = match xylitol_wire::event_to_wire(event) {
+            Ok(event) => event,
+            Err(e) => {
+                log::error!(target: "xylitol::host", "session tape dropped: {e}");
+                return;
+            }
+        };
+        self.broadcast(downlink_notification(
+            SESSION_EVENT,
+            SessionEventPayload {
+                session_id: self.session_id.clone(),
+                seq: self.journal.lock().await.max_seq(),
                 event,
             },
         ))
@@ -980,6 +1033,16 @@ async fn ensure_write_occupancy(
         .await
         .map_err(|e| Box::new(rpc_err(e)))?;
     Ok(())
+}
+
+pub fn is_tape_event(event: &XyEvent) -> bool {
+    matches!(
+        event,
+        XyEvent::TextDelta(_)
+            | XyEvent::ThinkingDelta(_)
+            | XyEvent::MessageUpdate { .. }
+            | XyEvent::ToolExecutionUpdate { .. }
+    )
 }
 
 pub async fn prune_mux_and_maybe_release(host: &Arc<HostState>, clean: bool) {
@@ -1418,7 +1481,7 @@ async fn dispatch_readonly_unary(
                     "thinking_level": Value::Null,
                     "leaf_entry_id": host.ports.store.leaf_id(session_id),
                 })),
-                "get_messages" => RpcResult::ok_value(json!({ "entries": [] })),
+                "get_messages" => RpcResult::ok_value(json!({ "entries": [], "has_more": false })),
                 "get_session_stats" => RpcResult::ok_value(json!({
                     "session_id": session_id,
                     "user_messages": 0,
@@ -1482,6 +1545,10 @@ mod tests {
         XyEvent::TextDelta(text.into())
     }
 
+    fn turn_start(index: u32) -> XyEvent {
+        XyEvent::TurnStart { turn_index: index }
+    }
+
     async fn subscribe(slot: &SessionSlot) -> (u64, mpsc::Receiver<Notification>) {
         let (tx, rx) = mpsc::channel(32);
         let id = slot.add_subscriber(tx).await;
@@ -1492,21 +1559,59 @@ mod tests {
     async fn append_and_push_wraps_the_domain_event_as_session_event() {
         let slot = slot();
         let (_, mut rx) = subscribe(&slot).await;
-        slot.append_and_push(&text_delta("hi")).await;
+        slot.append_and_push(&turn_start(1)).await;
         let note = rx.recv().await.expect("notification");
         assert_eq!(note.method, SESSION_EVENT);
         assert_eq!(note.params["session_id"], "s0");
         assert_eq!(note.params["seq"], 1);
         assert_eq!(
             note.params["event"],
-            json!({"type": "text_delta", "text": "hi"})
+            json!({"type": "turn_start", "turn_index": 1})
         );
+    }
+
+    #[tokio::test]
+    async fn tape_events_never_touch_the_journal() {
+        let slot = slot();
+        let (_, mut rx) = subscribe(&slot).await;
+        slot.append_and_push(&text_delta("hi")).await;
+        slot.append_and_push(&XyEvent::ThinkingDelta("think".into()))
+            .await;
+        slot.append_and_push(&XyEvent::ToolExecutionUpdate {
+            id: "t1".into(),
+            output: "chunk".into(),
+        })
+        .await;
+        assert_eq!(
+            slot.journal.lock().await.current_seq(),
+            1,
+            "tape must not consume any seq"
+        );
+        assert!(slot.journal.lock().await.max_seq() == 0);
+        for _ in 0..3 {
+            let note = rx.recv().await.expect("tape notification");
+            assert_eq!(note.method, SESSION_EVENT);
+            assert_eq!(note.params["seq"], 0, "tape rides the current fact seq");
+        }
+    }
+
+    #[tokio::test]
+    async fn tape_does_not_accumulate_in_journal_between_facts() {
+        let slot = slot();
+        slot.append_and_push(&turn_start(1)).await;
+        for i in 0..50 {
+            slot.append_and_push(&text_delta(&format!("d{i}"))).await;
+        }
+        slot.append_and_push(&XyEvent::TurnEnd { turn_index: 1 })
+            .await;
+        let journal = slot.journal.lock().await;
+        assert_eq!(journal.max_seq(), 2, "only the two facts are journaled");
     }
 
     #[tokio::test]
     async fn non_event_downlinks_do_not_consume_journal_seq() {
         let slot = slot();
-        slot.append_and_push(&text_delta("a")).await;
+        slot.append_and_push(&turn_start(1)).await;
         let _rx = slot.request_approval("c1".into()).await;
         assert_eq!(slot.journal.lock().await.current_seq(), 2);
         slot.push_bash_output(BashChunk {
@@ -1577,8 +1682,8 @@ mod tests {
     #[tokio::test]
     async fn subscribe_continuation_replays_only_newer_events_then_subscribed() {
         let slot = slot();
-        for text in ["a", "b", "c"] {
-            slot.append_and_push(&text_delta(text)).await;
+        for i in 1..=3 {
+            slot.append_and_push(&turn_start(i)).await;
         }
         let (id, mut rx) = subscribe(&slot).await;
         let result = slot.replay_or_resync(&[id], false, false, 1).await;
@@ -1597,7 +1702,7 @@ mod tests {
     #[tokio::test]
     async fn subscribe_continuation_reports_inflight_in_result_and_notification() {
         let slot = slot();
-        slot.append_and_push(&text_delta("a")).await;
+        slot.append_and_push(&turn_start(1)).await;
         let (id, mut rx) = subscribe(&slot).await;
         let result = slot.replay_or_resync(&[id], true, true, 0).await;
         let subscribed = rx.recv().await.expect("subscribed");
@@ -1610,8 +1715,8 @@ mod tests {
     async fn wrapped_journal_offers_resync_and_reports_seq_zero() {
         let slot = slot();
         *slot.journal.lock().await = EventJournal::new("s0", 2);
-        for text in ["a", "b", "c"] {
-            slot.append_and_push(&text_delta(text)).await;
+        for i in 1..=3 {
+            slot.append_and_push(&turn_start(i)).await;
         }
         let (id, mut rx) = subscribe(&slot).await;
         let result = slot.replay_or_resync(&[id], false, false, 0).await;
@@ -1686,5 +1791,73 @@ mod tests {
             .await
             .append(xylitol_protocol::Event::TextDelta { text: "y".into() });
         assert_eq!(seq, 6, "the next event continues above the watermark");
+    }
+
+    fn partial_update(text: &str) -> XyEvent {
+        XyEvent::MessageUpdate {
+            message: Some(xylitol_plugin_sdk::message::AgentMessage::Llm(
+                xylitol_plugin_sdk::message::XyLlmMessage::user(text),
+            )),
+        }
+    }
+
+    #[tokio::test]
+    async fn latest_tape_keeps_only_the_newest_snapshot() {
+        let slot = slot();
+        slot.append_and_push(&partial_update("a")).await;
+        slot.append_and_push(&partial_update("ab")).await;
+        slot.append_and_push(&partial_update("abc")).await;
+        let held = slot.latest_tape.lock().unwrap().clone().expect("tape held");
+        assert_eq!(held.text(), "abc", "only the newest snapshot is kept");
+    }
+
+    #[tokio::test]
+    async fn agent_end_clears_latest_tape() {
+        let slot = slot();
+        slot.append_and_push(&partial_update("abc")).await;
+        assert!(slot.latest_tape.lock().unwrap().is_some());
+        slot.append_and_push(&XyEvent::AgentEnd { messages: vec![] })
+            .await;
+        assert!(
+            slot.latest_tape.lock().unwrap().is_none(),
+            "a finished turn leaves no partial behind"
+        );
+    }
+
+    #[tokio::test]
+    async fn midturn_reconnect_carries_partial_only_for_positive_last_seq() {
+        let slot = slot();
+        slot.append_and_push(&turn_start(1)).await;
+        slot.append_and_push(&partial_update("half done")).await;
+        let (id, _rx) = subscribe(&slot).await;
+
+        let with_partial = slot.replay_or_resync(&[id], false, true, 1).await;
+        let value = match with_partial {
+            RpcResult {
+                ok: true,
+                value: Some(v),
+                ..
+            } => v,
+            other => panic!("unexpected: {other:?}"),
+        };
+        assert_eq!(value["inflight"], true);
+        assert_eq!(
+            value["partial"]["content"][0]["text"], "half done",
+            "a mid-turn reconnect must see the current snapshot"
+        );
+
+        let cold = slot.replay_or_resync(&[id], false, true, 0).await;
+        let cold_value = match cold {
+            RpcResult {
+                ok: true,
+                value: Some(v),
+                ..
+            } => v,
+            other => panic!("unexpected: {other:?}"),
+        };
+        assert!(
+            cold_value.get("partial").is_none(),
+            "a cold subscribe gets the full transcript elsewhere, not a partial"
+        );
     }
 }

@@ -40,7 +40,7 @@
       那么 同一条工具行的 display_diff 被填入
   @req:r1174
   规则: tool-intent-fixed-zone
-    bridge 收到 MessageUpdate 且 message 含 AgentPart::ToolCall 时 须按 tool id upsert UiEntry::Tool（可缺完整 args）；后续同 id 的 MessageUpdate 须刷新 args_preview；ToolExecutionStart 须 upsert 同一行而非再 push。MessageUpdate 的 text/thinking 快照 不得写入 streaming 缓冲（防与 TextDelta 重复）。助手 Markdown 路径 不得把 toolCall 当正文。resume/travel 重建路径对同 toolCallId 的 call+result 须复用与本条 upsert 及 ToolExecutionEnd 等价的单行合入语义（细则 att12）。
+    bridge 收到 MessageUpdate 且 message 含 AgentPart::ToolCall 时 须按 tool id upsert UiEntry::Tool（可缺完整 args）；后续同 id 的 MessageUpdate 须刷新 args_preview；ToolExecutionStart 须 upsert 同一行而非再 push。MessageUpdate 只携带 message 快照，bridge 不得期待独立 text/thinking 字段，也不得把快照写入 streaming 缓冲（防与 TextDelta 重复）。助手 Markdown 路径 不得把 toolCall 当正文。resume/travel 重建路径对同 toolCallId 的 call+result 须复用与本条 upsert 及 ToolExecutionEnd 等价的单行合入语义（细则 att12）。中段重连时 当前回合的工具意图行 须由订阅应答的 partial 快照恢复，不得要求 tape 重放。
 
     场景: 工具意图upsert单一行无头
       当 以桥缝注入含 ToolCall 的助手快照
@@ -155,3 +155,22 @@
     场景: 线协议往返保留工具参数无头
       当 经 wire 序列化往返 ToolExecutionStart 后注入桥缝
       那么 args_preview 保留真实路径不退化为占位
+
+  @req:r2935
+  规则: 端侧视图与边界
+    折叠/展开 须为端侧纯呈现：状态留在客户端（活动折叠状态与滚动折叠表），点击命中与切换全在端侧完成，不得往返 Host，也不得要求 Host 持久化折叠状态。产品 TUI 以 attach 模式运行时 不得直接访问 Host 会话存储，一切会话读取 须经协议 unary（get_messages 及其分页参数）；仅同进程嵌入方 可持有直读端口。会话历史 须按窗口加载：首屏取最新一页，向上滚动逐页向前加载；窗口超出上限时 最旧部分 须回落为顶部可点击提示行，且该提示行 仅在盘上仍有未加载条目时出现。
+
+    场景: 折叠不往返Host
+      假如 产品 TUI 会话含可折叠工具行
+      当 点击折叠命中区
+      那么 折叠状态就地切换且不产生任何 Host unary 往返
+
+    场景: attach模式不直读存储
+      假如 产品 TUI 以 attach 模式连接 Host
+      当 查询驱动是否暴露会话存储
+      那么 不暴露且会话读取仅经协议
+
+    场景: 窗口上限回落为提示行
+      假如 会话条目数超过端侧窗口上限
+      当 按窗口上限裁剪滚动区
+      那么 最旧部分替换为顶部提示行且提示行可点击加载更早

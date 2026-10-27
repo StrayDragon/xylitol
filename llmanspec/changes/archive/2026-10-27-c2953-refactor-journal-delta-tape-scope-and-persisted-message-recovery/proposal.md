@@ -2,6 +2,9 @@
 depends_on: []
 title: 流式 tape 不进 journal，历史改由落库快照与分页承载
 needs_specs_change: true
+branch: sdd/c2953-refactor-journal-delta-tape-scope-and-persisted-message-recovery
+base_branch: main
+base_sha: f7af2e07905889a2829616def1b9d068c3753965
 ---
 
 # 流式 tape 不进 journal，历史改由落库快照与分页承载

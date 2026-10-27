@@ -296,3 +296,9 @@ fn test_pa_r1927_depth_limit(protocol_bdd: ProtocolBdd) {}
     name = "JSON深度上限放行树规模"
 )]
 fn test_pa_r1927_depth_tree_scale(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "消息快照分页"
+)]
+fn test_proto_get_messages_paging() {}

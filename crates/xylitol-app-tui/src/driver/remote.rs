@@ -12,6 +12,7 @@ use tokio_util::sync::CancellationToken;
 use crate::host_client::json_rpc::{self, Downlink};
 use crate::host_client::{HostClient, HttpWsClient};
 use xylitol_plugin_sdk::XyBashResult;
+use xylitol_plugin_sdk::message::AgentMessage;
 use xylitol_plugin_sdk::model::THINKING_OFF;
 use xylitol_protocol::registry::{METHOD_HOST_DESCRIBE, METHOD_SUBSCRIBE};
 use xylitol_protocol::{Command, Notification};
@@ -484,9 +485,9 @@ where
                         continue;
                     }
                     Ok(result) => {
-                        let inflight = result
-                            .into_std()
-                            .ok()
+                        let value = result.into_std().ok();
+                        let inflight = value
+                            .as_ref()
                             .and_then(|v| v.get("inflight").and_then(Value::as_bool))
                             .unwrap_or(false);
                         if let Ok(mut g) = ctx.attach_observe.lock() {
@@ -495,6 +496,15 @@ where
                             } else {
                                 AttachObserve::Live
                             };
+                        }
+                        if let Some(partial) = value
+                            .as_ref()
+                            .and_then(|v| v.get("partial"))
+                            .and_then(|p| serde_json::from_value::<AgentMessage>(p.clone()).ok())
+                        {
+                            push_current(XyEvent::MessageUpdate {
+                                message: Some(partial),
+                            });
                         }
                     }
                 }
@@ -1560,17 +1570,30 @@ where
                         .to_string(),
                 ))
             }
-            Command::GetMessages { .. } => {
-                let data = self.unary_cmd(Command::GetMessages {}).await?;
+            Command::GetMessages {
+                limit,
+                before_entry_id,
+            } => {
+                let data = self
+                    .unary_cmd(Command::GetMessages {
+                        limit,
+                        before_entry_id: before_entry_id.clone(),
+                    })
+                    .await?;
                 let entries = data
                     .get("entries")
                     .cloned()
                     .unwrap_or(serde_json::Value::Null);
                 let entries = serde_json::from_value(entries)
                     .map_err(|e| XyDriverError::remote(e.to_string()))?;
+                let has_more = data
+                    .get("has_more")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
                 Ok(DispatchOutcome::Messages {
                     session_id: self.session_id.clone(),
                     entries,
+                    has_more,
                 })
             }
             Command::EstimateContext { .. } => {

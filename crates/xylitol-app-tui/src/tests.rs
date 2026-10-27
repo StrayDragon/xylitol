@@ -1765,7 +1765,7 @@ fn harness_resume_snapshot_rebuild_renders_full_history_once_idle() {
         }),
     ];
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_resume_session("sid-resume", entries);
+    session.apply_resume_session("sid-resume", entries, false);
     let model = session.ui_model();
     assert!(
         model.entries.iter().any(|e| matches!(
@@ -1815,7 +1815,7 @@ fn harness_cli_restored_session_rebuilds_transcript() {
         }),
     ];
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_cli_restored_session("sid-restored", entries);
+    session.apply_cli_restored_session("sid-restored", entries, false);
     let model = session.ui_model();
     assert!(
         model.entries.iter().any(|e| matches!(

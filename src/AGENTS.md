@@ -122,7 +122,7 @@ flowchart TB
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
-每个 crate 内部仍守依赖方向（runtime ↛ 官方插件、↛ 信封；插件之间不得 `use`，只经服务 / 事件）。根包 `src/` 是 argv + profile。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由 kernel 挂载。占用（session slot / linger / 单写者）在 `xylitol-serve`：槽在最后订阅消失且宽限到期后**释放**（先清 driver 断开 `slot ↔ SlotAskGateway` 环，再从会话表移除），事件序号水位**保留**并在同会话重建时续接（空 journal 不发 resync，重置 seq 会让 `last_seq` 重连永久错位）。监听在 `xylitol-serve`；`XyEvent` ↔ wire 映射在 `xylitol-wire`。
+每个 crate 内部仍守依赖方向（runtime ↛ 官方插件、↛ 信封；插件之间不得 `use`，只经服务 / 事件）。根包 `src/` 是 argv + profile。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由 kernel 挂载。占用（session slot / linger / 单写者）在 `xylitol-serve`：槽在最后订阅消失且宽限到期后**释放**（先清 driver 断开 `slot ↔ SlotAskGateway` 环，再从会话表移除），事件序号水位**保留**并在同会话重建时续接（空 journal 不发 resync，重置 seq 会让 `last_seq` 重连永久错位）。journal **只存事实事件**（生命周期 / 消息 / 工具边界与状态变更）；流式 tape（`TextDelta` / `ThinkingDelta` / `MessageUpdate` / `ToolExecutionUpdate`）**不写 journal、不消耗 seq**，仅实时下发并在 `latest_tape` 保留一份最新快照供中段重连经 `subscribe.partial` 补齐。`seq` 不变量（同一 seq 永久指向同一内容）不可破坏——**不得**用覆盖式槽位换 O(1) 内存。监听在 `xylitol-serve`；`XyEvent` ↔ wire 映射在 `xylitol-wire`。
 
 ### `AgentCapabilities` 职责边界
 

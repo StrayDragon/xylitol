@@ -75,6 +75,7 @@ pub struct UiRoot {
     fold: ScrollbackFold,
     fold_hits: FoldHitTable,
     fold_dirty: bool,
+    load_earlier_requested: bool,
     activity: ActivityFoldState,
     status_loader: Loader,
     status_busy: bool,
@@ -156,6 +157,7 @@ impl UiRoot {
             fold: ScrollbackFold::default(),
             fold_hits: FoldHitTable::default(),
             fold_dirty: false,
+            load_earlier_requested: false,
             activity: ActivityFoldState::default(),
             status_loader,
             status_busy: false,
@@ -464,6 +466,11 @@ impl UiRoot {
                 self.fold_dirty = true;
                 return;
             }
+            FoldTarget::LoadEarlier => {
+                self.load_earlier_requested = true;
+                self.fold_dirty = true;
+                return;
+            }
         }
         self.fold_dirty = true;
         self.bump_upper_gen();
@@ -534,6 +541,10 @@ impl UiRoot {
 
     pub fn take_fold_dirty(&mut self) -> bool {
         std::mem::take(&mut self.fold_dirty)
+    }
+
+    pub fn take_load_earlier_request(&mut self) -> bool {
+        std::mem::take(&mut self.load_earlier_requested)
     }
 
     pub(crate) fn last_dock_rows(&self) -> usize {

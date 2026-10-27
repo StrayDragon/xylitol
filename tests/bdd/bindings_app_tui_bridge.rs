@@ -95,3 +95,21 @@ fn test_atb_bash_append(bridge_bdd: BridgeBdd) {}
     name = "bash块关闭经已有完成路径"
 )]
 fn test_atb_bash_finish(bridge_bdd: BridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-bridge/app-tui-bridge.feature",
+    name = "折叠不往返Host"
+)]
+fn test_atb_fold_local(bridge_bdd: BridgeBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-bridge/app-tui-bridge.feature",
+    name = "attach模式不直读存储"
+)]
+fn test_atb_attach_no_store() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-bridge/app-tui-bridge.feature",
+    name = "窗口上限回落为提示行"
+)]
+fn test_atb_window_notice(bridge_bdd: BridgeBdd) {}

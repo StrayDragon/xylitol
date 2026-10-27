@@ -1,6 +1,6 @@
 use crate::bdd::prelude::*;
 use rstest::fixture;
-use rstest_bdd_macros::{then, when};
+use rstest_bdd_macros::{given, then, when};
 use xylitol_app_tui::{InteractionBdd, UiModel};
 use xylitol_plugin_sdk::session::{TodoItem, TodoList, TodoStatus};
 
@@ -532,4 +532,113 @@ fn t_c2826_same_text_twice(fixed_zone_bdd: &FixedZoneBdd) {
     let frame = plain(&fixed_zone_bdd.frame.borrow().clone().expect("frame"));
     let hits = frame.lines().filter(|l| l.contains("同样的问题")).count();
     assert_eq!(hits, 2, "c2826: 相同正文应有两个独立气泡：{frame}");
+}
+
+thread_local! {
+    static HISTORY_STATE: RefCell<Option<(usize, bool, Option<String>)>> = const { RefCell::new(None) };
+}
+
+#[given("会话条目数超过单页上限且产品 TUI 打开该会话")]
+fn g_open_long_session(fixed_zone_bdd: &FixedZoneBdd) {
+    let mut model = fixed_zone_bdd.model.borrow_mut();
+    model.entries = (0..xylitol_app_tui::history_window::HISTORY_PAGE)
+        .map(|i| xylitol_app_tui::UiEntry::User {
+            text: format!("m{i}"),
+        })
+        .collect();
+    xylitol_app_tui::history_window::trim_to_window(&mut model, true);
+    HISTORY_STATE.with(|c| *c.borrow_mut() = None);
+}
+
+#[when("渲染滚动区")]
+fn w_render(fixed_zone_bdd: &FixedZoneBdd) {
+    let model = fixed_zone_bdd.model.borrow();
+    let notice = model.entries.first().and_then(|e| match e {
+        xylitol_app_tui::UiEntry::ScrollNotice { text } => Some(text.clone()),
+        _ => None,
+    });
+    HISTORY_STATE
+        .with(|c| *c.borrow_mut() = Some((model.entries.len(), model.has_earlier, notice)));
+}
+
+#[then("仅展示最新一页且顶部提示行标记尚有更早条目")]
+fn t_first_page_only(_fixed_zone_bdd: &FixedZoneBdd) {
+    let (len, has_earlier, notice) = HISTORY_STATE
+        .with(|c| c.borrow().clone())
+        .expect("render must have run");
+    assert!(has_earlier, "earlier entries must still be reachable");
+    assert_eq!(
+        len,
+        xylitol_app_tui::history_window::HISTORY_PAGE + 1,
+        "body plus the notice row"
+    );
+    assert!(
+        notice.is_some_and(|t| t.contains("加载更早")),
+        "the top row must advertise earlier history"
+    );
+}
+
+#[given("滚动区已停在顶部且尚有更早条目")]
+fn g_at_top_with_earlier(fixed_zone_bdd: &FixedZoneBdd) {
+    g_open_long_session(fixed_zone_bdd);
+}
+
+#[when("触发加载更早")]
+fn w_load_earlier(fixed_zone_bdd: &FixedZoneBdd) {
+    let mut model = fixed_zone_bdd.model.borrow_mut();
+    let before_first_body = model
+        .entries
+        .iter()
+        .find_map(|e| match e {
+            xylitol_app_tui::UiEntry::User { text } => Some(text.clone()),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let older: Vec<_> = (0..xylitol_app_tui::history_window::HISTORY_PAGE)
+        .map(|i| xylitol_app_tui::UiEntry::User {
+            text: format!("old{i}"),
+        })
+        .collect();
+    let mut merged = older;
+    merged.extend(std::mem::take(&mut model.entries));
+    model.entries = merged;
+    xylitol_app_tui::history_window::trim_to_window(&mut model, false);
+    HISTORY_STATE.with(|c| {
+        *c.borrow_mut() = Some((model.entries.len(), false, Some(before_first_body)));
+    });
+}
+
+#[then("前置加载更早一页且视口锚点保持在原条目")]
+fn t_prepend_kept(_fixed_zone_bdd: &FixedZoneBdd) {
+    let (_len, _has_earlier, anchor) = HISTORY_STATE
+        .with(|c| c.borrow().clone())
+        .expect("load must have run");
+    assert!(
+        anchor.is_some_and(|a| !a.starts_with("old")),
+        "the anchor entry must survive the prepend"
+    );
+}
+
+#[given("会话条目数不足单页上限")]
+fn g_short_session(fixed_zone_bdd: &FixedZoneBdd) {
+    let mut model = fixed_zone_bdd.model.borrow_mut();
+    model.entries = (0..20)
+        .map(|i| xylitol_app_tui::UiEntry::User {
+            text: format!("m{i}"),
+        })
+        .collect();
+    xylitol_app_tui::history_window::trim_to_window(&mut model, false);
+    HISTORY_STATE.with(|c| *c.borrow_mut() = None);
+}
+
+#[then("不出现任何加载更早提示")]
+fn t_no_notice(fixed_zone_bdd: &FixedZoneBdd) {
+    let model = fixed_zone_bdd.model.borrow();
+    assert!(
+        !model
+            .entries
+            .iter()
+            .any(|e| matches!(e, xylitol_app_tui::UiEntry::ScrollNotice { .. })),
+        "short sessions must never show a pagination hint"
+    );
 }

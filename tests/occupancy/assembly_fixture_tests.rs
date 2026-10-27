@@ -460,7 +460,7 @@ async fn resubscribe_same_mux_replays_journal_events() {
     let (tx, mut rx) = tokio::sync::mpsc::channel(16);
     let id = host.register_unbound_mux(tx.clone()).await;
     let slot = host.slot("s-resub").await;
-    slot.append_and_push(&XyEvent::TextDelta("replay".into()))
+    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
         .await;
 
     let _ = host.bind_mux_to_session(&slot, 0, Some(id)).await;
@@ -475,7 +475,7 @@ async fn resubscribe_same_mux_replays_journal_events() {
                 .get("event")
                 .and_then(|v| v.get("type"))
                 .and_then(|v| v.as_str())
-                == Some("text_delta")
+                == Some("turn_start")
         {
             saw_replay = true;
         }

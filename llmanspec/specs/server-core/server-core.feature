@@ -104,12 +104,23 @@
       那么 旧进程在自检周期内检测到字段不全等并自行退出
   @req:r1798
   规则: 重连 journal
-    Host 须维护每会话单调事件序号与事件 journal；客户端经产品订阅携带 last_seq 重连时 须从 last_seq+1 重放事件；journal 截断超过 last_seq 时 Host 须发出 session/resync_required。
+    Host 须维护每会话单调事件序号与事件 journal；客户端经产品订阅携带 last_seq 重连时 须从 last_seq+1 重放事件；journal 截断超过 last_seq 时 Host 须发出 session/resync_required。journal 须只承载事实事件（生命周期边界、消息边界、工具边界、状态变更），流式 tape（TextDelta、ThinkingDelta、MessageUpdate、ToolExecutionUpdate）不得写入 journal、不得消耗 seq。中段重连（last_seq>0 且回合成中）须在订阅应答的可选 partial 字段携带当前回合最新累积消息快照，使客户端无需 tape 重放即可恢复当前回合文本与工具意图行；冷订阅（last_seq=0）不得携带 partial。
 
     场景: 重连回放
       假如 客户端断开 N 秒后以 last_seq 经 POST /rpc 订阅
       当 断开期间 server 产生事件
       那么 客户端收到 last_seq+1 起全部遗漏事件再收实时事件
+
+    场景: tape 不占 journal 序号
+      假如 会话产生流式 tape 与事实事件
+      当 读取 journal 最大序号
+      那么 tape 未消耗任何序号且仅事实事件可被重放
+
+    场景: 中段重连带当前回合快照
+      假如 会话回合成中且客户端以 last_seq>0 订阅
+      当 订阅确立
+      那么 应答含 partial 且其内容为当前回合最新累积消息
+      并且 客户端 以 partial 快照恢复当前回合的工具意图行
   @req:r1799
   规则: 审批与问卷
     Host 须支持 ApprovalRequired 与 QuestionRequired：经 WS /rpc 下行通知告知，挂起回合，并在匹配 call 的第一笔审批/问卷 unary 时恢复。不得再以 POST /api/respond 为产品作答路径。
@@ -389,12 +400,12 @@
       那么 重建槽的下一事件序号大于客户端 last_seq
   @req:r1807
   规则: journal 环形缓冲
-    Host 须维护每会话最近 N 个事件的环形 journal（默认 10000）；journal 环绕超过客户端 last_seq 时，Host 须向该客户端发出 session/resync_required。
+    Host 须维护每会话最近 N 个事实事件的环形 journal（默认 1024）；journal 环绕超过客户端 last_seq 时，Host 须向该客户端发出 session/resync_required。容量按条数计，不按字节计。
 
     场景: 再同步时包裹
-      假如 向会话 append 10001 个事件（journal 容量=10000）
+      假如 向会话 append 1025 个事实事件（journal 容量=1024）
       当 last_seq=0 的客户端经 POST /rpc 订阅
-      那么 server 发送 session/resync_required 因事件 0..1 已丢失
+      那么 server 发送 session/resync_required 因最早事件已丢失
   @req:r1808
   规则: resync 流程
     收到 session/resync_required 后，客户端 须以更新的 last_seq（如 0 全量重放）再次订阅以恢复事件流。
@@ -413,12 +424,22 @@
       那么 客户端收到 session/event notification
   @req:r1810
   规则: 冷恢复投影
-    Host 须提供会话消息快照 unary（get_messages 或等价）一次返回该会话完整 transcript 条目，作为客户端恢复（冷订或切会话）的投影源；journal 实况重放（sr4）不得作为冷恢复的 transcript 投影来源；快照内容 不得被恢复窗内的实况磁带回放污染。断线续传语义仍按 sr4/w5/w6。
+    Host 须提供会话消息快照 unary（get_messages 或等价）返回该会话 transcript 条目，作为客户端恢复（冷订或切会话）的投影源；journal 实况重放（sr4）不得作为冷恢复的 transcript 投影来源；快照内容 不得被恢复窗内的实况磁带回放污染。断线续传语义仍按 sr4/w5/w6。快照 unary 须支持分页：调用方可给 limit 与 before_entry_id，语义为「从最新一条向前取 limit 条」与「取 before_entry_id 之前的更早 limit 条」；两者缺省时 须仍返回全量以保持既有调用形状。完整消息 须先落库再下行 MessageEnd，使快照在客户端收到完成事件时已可读到该条，不得出现「已收到 MessageEnd 但快照缺该条」的窗口。
 
     场景: 冷恢复快照投影
       假如 会话 s0 已有 3 条历史条目且客户端无有效 last_seq
       当 冷订客户端调用消息快照
       那么 快照一次返回全部 3 条条目
+
+    场景: 分页从最新向前
+      假如 会话已有 500 条条目
+      当 客户端以 limit=200 调用消息快照
+      那么 返回最新 200 条且首条早于次新页边界
+
+    场景: 完成事件前已落库
+      假如 会话产生一条助手消息
+      当 客户端收到该消息的 MessageEnd
+      那么 消息快照已包含该条
 
     场景: 回放窗口会不污染快照
       假如 冷订客户端处于恢复窗内且 journal 含实况磁带事件
@@ -530,8 +551,9 @@
 
     场景: 事件携带序号
       假如 产品客户端已订阅会话且 prompt 运行
-      当 agent 经订阅发出 TextDelta 事件
-      那么 客户端收到携带单调 seq 的事件帧
+      当 agent 经订阅发出事实事件
+      那么 客户端收到携带单调 seq 的事实事件帧
+      并且 流式 tape 帧 不消耗 seq
   @req:r1906
   规则: 动态载荷原文纪律
     形状由运行时决定的载荷（工具参数、工具结果、模型消息内容、自定义条目数据等任意 JSON）必须以 JSON 原文值过线（不做结构化 schema）；协议 不得为其定义结构化形状，也 不得拓宽闭集词表；接收端 必须能原样取回该 JSON 值。工具起始参数往返保真、ToolEnd 失败标记必填等既有载荷语义在产品路径上 必须等价保持。
@@ -609,7 +631,7 @@
 
   @req:r2895
   规则: 观景态订阅
-    会话回合成中时，主机向冷订阅（last_seq=0）的新到端提供观景态：不重放历史 tape，下行流式 tape 冻结，仅放行 AgentEnd 生命周期帧与队列、审批等非 tape 帧。订阅确立应答 须携带绑定时刻回合成况标记 inflight。中段重连（last_seq>0）与空闲绑定不进入观景态。观景端显式重挂（同会话再次订阅）后 须按彼时回合成况重新决定订阅形态，主机不得自动升格。
+    会话回合成中时，主机向冷订阅（last_seq=0）的新到端提供观景态：不重放历史 tape，下行流式 tape 冻结，仅放行 AgentEnd 生命周期帧与队列、审批等非 tape 帧。订阅确立应答 须携带绑定时刻回合成况标记 inflight。中段重连（last_seq>0）与空闲绑定不进入观景态；中段重连的当前回合内容 须经订阅应答的 partial 字段补齐，不得依赖 tape 重放。观景端显式重挂（同会话再次订阅）后 须按彼时回合成况重新决定订阅形态，主机不得自动升格。
 
     场景: 在途冷订阅观察
       假如 会话回合成中且已有一路直播订阅
@@ -623,7 +645,7 @@
 
   @req:r2896
   规则: journal 重放定向
-    订阅确立时的 journal 重放 须仅投递本次发起订阅的连接（新绑定或同连接重订），在订者不得因他端绑定而收到重放突发；同连接重订 须收到 last_seq 起的事件回放。订阅确认帧与 resync 语义维持既有广播。
+    订阅确立时的 journal 重放 须仅投递本次发起订阅的连接（新绑定或同连接重订），在订者不得因他端绑定而收到重放突发；同连接重订 须收到 last_seq 起的事实事件回放。重放 不得包含任何流式 tape。订阅确认帧与 resync 语义维持既有广播。
 
     场景: 回放定向至新订阅者
       假如 一路订阅在订且 journal 含历史事件

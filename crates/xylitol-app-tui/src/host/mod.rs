@@ -112,6 +112,7 @@ pub struct HostSession<T: Terminal> {
     keybindings: Option<Rc<RefCell<xylitol_tui::KeybindingsManager>>>,
     _keybindings_scope: Option<xylitol_tui::KeybindingsScope>,
     pointer_down_had_selection: bool,
+    loaded_history: Option<crate::history_window::LoadedHistory>,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -179,6 +180,7 @@ impl<T: Terminal> HostSession<T> {
             keybindings: None,
             _keybindings_scope: None,
             pointer_down_had_selection: false,
+            loaded_history: None,
         }
     }
 

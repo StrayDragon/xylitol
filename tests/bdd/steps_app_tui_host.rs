@@ -2729,6 +2729,7 @@ pub(crate) fn w_idle_session_switch(host_pump_bdd: &HostPumpBdd) {
     pump.session.apply_resume_session(
         "newer",
         xylitol_app_tui::harness::harness_sample_session_messages(),
+        false,
     );
     pump.session.render_now().expect("switch render");
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
