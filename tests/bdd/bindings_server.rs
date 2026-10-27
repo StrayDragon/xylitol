@@ -516,3 +516,9 @@ async fn test_sr_c2895_targeted_replay(server_test: ServerTest) {}
     name = "第二次根忙碌拒绝"
 )]
 async fn test_sr_c2895_busy_reject(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "释放后重建续接序号"
+)]
+async fn test_sr_slot_release_seq_watermark(server_test: ServerTest) {}

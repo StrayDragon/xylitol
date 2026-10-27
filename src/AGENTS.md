@@ -122,7 +122,7 @@ flowchart TB
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
-每个 crate 内部仍守依赖方向（runtime ↛ 官方插件、↛ 信封；插件之间不得 `use`，只经服务 / 事件）。根包 `src/` 是 argv + profile。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由 kernel 挂载。占用（session slot / linger / 单写者）在 `xylitol-serve`。监听在 `xylitol-serve`；`XyEvent` ↔ wire 映射在 `xylitol-wire`。
+每个 crate 内部仍守依赖方向（runtime ↛ 官方插件、↛ 信封；插件之间不得 `use`，只经服务 / 事件）。根包 `src/` 是 argv + profile。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由 kernel 挂载。占用（session slot / linger / 单写者）在 `xylitol-serve`：槽在最后订阅消失且宽限到期后**释放**（先清 driver 断开 `slot ↔ SlotAskGateway` 环，再从会话表移除），事件序号水位**保留**并在同会话重建时续接（空 journal 不发 resync，重置 seq 会让 `last_seq` 重连永久错位）。监听在 `xylitol-serve`；`XyEvent` ↔ wire 映射在 `xylitol-wire`。
 
 ### `AgentCapabilities` 职责边界
 

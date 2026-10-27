@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 会话槽释放与事件序号水位续接
+branch: sdd/c2952-fix-session-slot-release-seq-watermark
+base_branch: main
+base_sha: e082b3cb82a1df0e3f782e5dc079c50719769b6a
 ---
 
 # 会话槽释放与事件序号水位续接

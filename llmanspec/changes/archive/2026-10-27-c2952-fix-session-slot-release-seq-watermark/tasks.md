@@ -16,13 +16,13 @@
 
 ## 3. spec 与 BDD
 
-- [ ] 3.1 `server-core` 新增会话槽释放与序号水位续接规则 + 场景。
-- [ ] 3.2 实现 BDD 步骤并绑定。
-- [ ] 3.3 既有「重连回放」「journal 环形缓冲」「写占用」场景回归绿。
+- [x] 3.1 `server-core` 新增会话槽释放与序号水位续接规则 + 场景。
+- [x] 3.2 实现 BDD 步骤并绑定。
+- [x] 3.3 既有「重连回放」「journal 环形缓冲」「写占用」场景回归绿。
 
 ## 4. 文档与验证
 
-- [ ] 4.1 `crates/xylitol-serve/src/AGENTS.md` 补槽生命周期与水位约束。
-- [ ] 4.2 `cargo test --all-features --test bdd` 绿。
-- [ ] 4.3 `llman-sdd validate --all --strict` 绿。
-- [ ] 4.4 `just qa` 绿。
+- [x] 4.1 `crates/xylitol-serve/src/AGENTS.md` 补槽生命周期与水位约束。
+- [x] 4.2 `cargo test --all-features --test bdd` 绿。
+- [x] 4.3 `llman-sdd validate --all --strict` 绿。
+- [x] 4.4 `just qa` 绿。

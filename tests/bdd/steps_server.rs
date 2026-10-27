@@ -3784,3 +3784,48 @@ fn t_tree_deep_restored(server_test: &ServerTest) {
     );
     assert_eq!(last_content, format!("d{}", DEEP_CHAIN_LEN - 1));
 }
+
+#[given("会话槽已产生若干事件后被释放")]
+async fn g_slot_released_after_events(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-evict").await;
+    for _ in 0..5 {
+        slot.append_and_push(&XyEvent::TextDelta("x".into())).await;
+    }
+    let last_seq = slot.journal.lock().await.next_seq() - 1;
+    server_test.last_seq.set(last_seq);
+    host.evict_slot(&slot).await;
+}
+
+#[when("同会话以更大 last_seq 重新订阅")]
+async fn w_resubscribe_with_larger_last_seq(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let rebuilt = host.slot("s-evict").await;
+    let next = rebuilt
+        .journal
+        .lock()
+        .await
+        .append(xylitol_protocol::Event::TextDelta {
+            text: "after".into(),
+        });
+    server_test.mux_frames.replace(vec![Notification {
+        method: "session/event".into(),
+        params: serde_json::json!({ "seq": next }),
+    }]);
+}
+
+#[then("重建槽的下一事件序号大于客户端 last_seq")]
+fn t_rebuilt_seq_above_last_seq(server_test: &ServerTest) {
+    let frames = server_test.mux_frames.borrow();
+    let seq = frames
+        .first()
+        .and_then(|n| n.params.get("seq"))
+        .and_then(serde_json::Value::as_u64)
+        .expect("seq in frame");
+    assert!(
+        seq > server_test.last_seq.get(),
+        "rebuilt slot must resume above the client last_seq: seq={seq} last_seq={}",
+        server_test.last_seq.get()
+    );
+}

@@ -177,7 +177,7 @@ impl HostState {
         }
     }
 
-    pub(crate) async fn evict_slot(&self, slot: &Arc<SessionSlot>) {
+    pub async fn evict_slot(&self, slot: &Arc<SessionSlot>) {
         let next_seq = slot.journal.lock().await.next_seq();
         self.remember_seq_watermark(&slot.session_id, next_seq);
         *slot.driver.lock().await = None;
@@ -408,7 +408,8 @@ impl SessionSlot {
         let session_id = session_id.into();
         Arc::new(Self {
             journal: Mutex::new(EventJournal::with_default_capacity_and_seq(
-                &session_id, next_seq,
+                &session_id,
+                next_seq,
             )),
             session_id,
             driver: Arc::new(Mutex::new(None)),
