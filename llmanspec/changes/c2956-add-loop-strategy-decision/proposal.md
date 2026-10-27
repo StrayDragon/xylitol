@@ -1,6 +1,7 @@
 ---
 depends_on: []
 title: Loop 拓扑策略槽的决策：不引入 ReActStrategy trait，先用中间件组合验证
+needs_specs_change: false
 ---
 
 # Loop 拓扑策略槽的决策：不引入 ReActStrategy trait，先用中间件组合验证
