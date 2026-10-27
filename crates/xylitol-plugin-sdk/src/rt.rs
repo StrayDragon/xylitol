@@ -6,7 +6,7 @@ pub use rutis::events::Call;
 pub use rutis::host::{CtxHost, ErrorKind, FiberState, FiberView, TypeKey};
 pub use rutis::{Ctx, Deps, Disposer, Error, Event, Plugin, Result};
 
-pub const SDK_API_VERSION: &str = "0.3.0";
+pub const SDK_API_VERSION: &str = "0.4.0";
 
 pub const RUTIS_LOCK: &str = "0.17.0";
 
