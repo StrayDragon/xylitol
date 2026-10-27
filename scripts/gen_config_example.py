@@ -76,9 +76,9 @@ models:
     #   model: claude-sonnet-4-20250514
     #   api_key: "{{ secret.ANTHROPIC_API_KEY }}"
 
-execution:
-  # system_prompt: "Custom system prompt override"
-  # model: "deepseek-v4-flash"  # override default per-execution
+# system_prompt: "Custom system prompt override"
+# model: "deepseek-v4-flash"  # override default per-execution
+execution: {}
 
 security:
   enabled: true
@@ -98,8 +98,11 @@ security:
       allowed_paths: []
 
 hooks:
-  pre_tool_call: []
-  post_tool_call: []
+  # Each entry is { command, events: [...], phase, timeout_secs }.
+  # Event names are tool_call / tool_result / agent_start / …; phase is pre|post.
+  global: []
+  project: []
+  user: []
 
 # tui:
 #   editor_history_seed_sessions: 1

@@ -102,4 +102,19 @@ mod tests {
             "configs/config.schema.json drifted from AppConfig; run `just gen-config-schema`"
         );
     }
+
+    #[test]
+    fn checked_in_example_satisfies_schema() {
+        let configs = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("configs");
+        let example = std::fs::read_to_string(configs.join("example.yaml"))
+            .unwrap_or_else(|e| panic!("read example.yaml: {e}"));
+        let value: Value = yaml_serde::from_str(&example)
+            .unwrap_or_else(|e| panic!("example.yaml is not valid YAML: {e}"));
+        validate_merged_config(&value).unwrap_or_else(|e| {
+            panic!("configs/example.yaml violates AppConfig schema: {e}; regenerate via `just gen-config-example`")
+        });
+    }
 }
