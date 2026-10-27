@@ -265,6 +265,7 @@ mod tests {
                     progress_reminder_stale_after: 3,
                     plan_checkpoint: false,
                     self_heal: Default::default(),
+                    generator_critic: Default::default(),
                     tool_exposure: Default::default(),
                 },
             )
@@ -440,6 +441,7 @@ mod tests {
                 progress_reminder_stale_after: 3,
                 plan_checkpoint: false,
                 self_heal: Default::default(),
+                generator_critic: Default::default(),
                 tool_exposure: Default::default(),
             },
         ))

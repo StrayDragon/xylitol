@@ -62,6 +62,29 @@
       },
       "type": "object"
     },
+    "GeneratorCriticConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_rounds": {
+          "default": 1,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rubric": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "HookEntry": {
       "properties": {
         "command": {
@@ -143,6 +166,14 @@
         "enabled": {
           "default": false,
           "type": "boolean"
+        },
+        "generator_critic": {
+          "$ref": "#/$defs/GeneratorCriticConfig",
+          "default": {
+            "enabled": false,
+            "max_rounds": 1,
+            "rubric": []
+          }
         },
         "max_settles": {
           "default": null,
@@ -774,6 +805,11 @@
       "default": {
         "deny_bash_patterns": [],
         "enabled": false,
+        "generator_critic": {
+          "enabled": false,
+          "max_rounds": 1,
+          "rubric": []
+        },
         "max_settles": null,
         "plan_checkpoint": false,
         "plan_state": false,

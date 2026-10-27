@@ -11,11 +11,11 @@ use xylitol_plugin_sdk::session::{
     latest_plan_checkpoint,
 };
 use xylitol_plugin_sdk::{
-    AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx,
-    LoopMiddleware, LoopStage, LoopStep, XySessionStore,
+    AfterModelCtx, AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx,
+    DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep, XySessionStore,
 };
 
-use crate::config::{LoopExampleConfig, SelfHealConfig, ToolExposureConfig};
+use crate::config::{GeneratorCriticConfig, LoopExampleConfig, SelfHealConfig, ToolExposureConfig};
 
 const STAGES: &[LoopStage] = &[LoopStage::BeforeTool, LoopStage::DecideContinue];
 pub const DEFAULT_PLAN_SETTLES: u32 = 8;
@@ -33,6 +33,17 @@ const CHECKPOINT_STAGES: &[LoopStage] = &[
     LoopStage::AfterTurn,
 ];
 const SELF_HEAL_STAGES: &[LoopStage] = &[LoopStage::AfterTool, LoopStage::DecideContinue];
+const CRITIC_STAGES: &[LoopStage] = &[
+    LoopStage::BeforeModel,
+    LoopStage::AfterModel,
+    LoopStage::DecideContinue,
+];
+const DEFAULT_CRITIC_RUBRIC: &[&str] = &[
+    "correctness: the answer matches what the tool results and code actually show",
+    "evidence: cite concrete tool results, file paths or commands",
+    "boundaries: call out unverified assumptions and missing checks",
+    "verifiability: state how the result can be verified",
+];
 const DEFAULT_SELF_HEAL_SIGNATURES: &[&str] = &[
     "test failed",
     "tests failed",
@@ -209,6 +220,236 @@ impl LoopMiddleware for PlanStateMiddleware {
         );
         LoopStep::continued(ctx)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CriticPhase {
+    Idle,
+    Critiquing,
+    Revising,
+    Approved,
+    Exhausted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CriticVerdict {
+    Approve,
+    Revise,
+}
+
+#[derive(Debug)]
+struct CriticState {
+    phase: CriticPhase,
+    rounds: u32,
+    revision: Option<String>,
+    unparsed: u32,
+    instruction_injected: bool,
+}
+
+impl Default for CriticState {
+    fn default() -> Self {
+        Self {
+            phase: CriticPhase::Idle,
+            rounds: 0,
+            revision: None,
+            unparsed: 0,
+            instruction_injected: false,
+        }
+    }
+}
+
+pub struct GeneratorCriticMiddleware {
+    rubric: Vec<String>,
+    max_rounds: u32,
+    state: Mutex<CriticState>,
+}
+
+impl GeneratorCriticMiddleware {
+    pub fn new(config: &GeneratorCriticConfig) -> Self {
+        let rubric = if config.rubric.is_empty() {
+            DEFAULT_CRITIC_RUBRIC
+                .iter()
+                .map(|item| item.to_string())
+                .collect()
+        } else {
+            config.rubric.clone()
+        };
+        Self {
+            rubric,
+            max_rounds: config.max_rounds.max(1),
+            state: Mutex::new(CriticState::default()),
+        }
+    }
+
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, CriticState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn critic_instruction(&self) -> String {
+        let rubric = self
+            .rubric
+            .iter()
+            .map(|item| format!("- {item}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            "<critic>\nReview the previous assistant answer against this rubric:\n{rubric}\n\
+Cite concrete evidence (tool results, file paths or commands). Do not modify files or call tools.\n\
+End with exactly one line:\nCRITIC_VERDICT: APPROVE\nor\nCRITIC_VERDICT: REVISE\n</critic>"
+        )
+    }
+
+    fn revision_instruction(&self, revision: Option<&str>) -> String {
+        let revision = revision.unwrap_or("No structured verdict was returned.");
+        let mut excerpt: String = revision.chars().take(2000).collect();
+        if revision.chars().count() > 2000 {
+            excerpt.push('…');
+        }
+        format!(
+            "<critic_revision>\nThe critic requested a revision:\n{excerpt}\n\
+Revise the answer and address each issue. Do not claim completion without evidence.\n</critic_revision>"
+        )
+    }
+}
+
+fn assistant_has_tool_calls(message: &AgentMessage) -> bool {
+    message
+        .content()
+        .iter()
+        .any(|part| matches!(part, AgentPart::ToolCall { .. }))
+}
+
+fn parse_critic_verdict(text: &str) -> Option<CriticVerdict> {
+    for line in text.lines() {
+        let lower = line.to_ascii_lowercase();
+        if let Some(idx) = lower.find("critic_verdict:") {
+            let rest = &line[idx + "critic_verdict:".len()..];
+            if let Some(verdict) = verdict_from_token(rest.trim()) {
+                return Some(verdict);
+            }
+        }
+    }
+    None
+}
+
+fn verdict_from_token(token: &str) -> Option<CriticVerdict> {
+    let token = token
+        .trim()
+        .trim_matches(|c: char| !c.is_ascii_alphabetic());
+    let upper = token.to_ascii_uppercase();
+    if upper.starts_with("APPROVE") {
+        Some(CriticVerdict::Approve)
+    } else if upper.starts_with("REVIS") {
+        Some(CriticVerdict::Revise)
+    } else {
+        None
+    }
+}
+
+#[async_trait]
+impl LoopMiddleware for GeneratorCriticMiddleware {
+    fn id(&self) -> &str {
+        "generator-critic"
+    }
+
+    fn order(&self) -> i64 {
+        170
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        CRITIC_STAGES
+    }
+
+    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+        let mut state = self.lock_state();
+        if state.instruction_injected {
+            return LoopStep::continued(ctx);
+        }
+        match state.phase {
+            CriticPhase::Critiquing => {
+                ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
+                    self.critic_instruction(),
+                )));
+                state.instruction_injected = true;
+            }
+            CriticPhase::Revising => {
+                ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
+                    self.revision_instruction(state.revision.as_deref()),
+                )));
+                state.instruction_injected = true;
+            }
+            _ => {}
+        }
+        LoopStep::continued(ctx)
+    }
+
+    async fn after_model(&self, ctx: AfterModelCtx) -> LoopStep<AfterModelCtx> {
+        let mut state = self.lock_state();
+        match state.phase {
+            CriticPhase::Critiquing => {
+                let text = ctx.assistant.text();
+                match parse_critic_verdict(&text) {
+                    Some(CriticVerdict::Approve) => {
+                        state.phase = CriticPhase::Approved;
+                        state.revision = None;
+                        state.unparsed = 0;
+                    }
+                    Some(CriticVerdict::Revise) => {
+                        state.phase = CriticPhase::Revising;
+                        state.revision = Some(text);
+                        state.unparsed = 0;
+                        state.instruction_injected = false;
+                    }
+                    None => {
+                        state.unparsed += 1;
+                        if state.unparsed >= 2 {
+                            state.phase = CriticPhase::Exhausted;
+                        } else {
+                            state.phase = CriticPhase::Revising;
+                            state.revision = None;
+                            state.instruction_injected = false;
+                        }
+                    }
+                }
+            }
+            CriticPhase::Idle | CriticPhase::Revising => {
+                if assistant_has_tool_calls(&ctx.assistant) {
+                    return LoopStep::continued(ctx);
+                }
+                if state.rounds >= self.max_rounds {
+                    state.phase = CriticPhase::Exhausted;
+                } else {
+                    state.rounds += 1;
+                    state.phase = CriticPhase::Critiquing;
+                    state.revision = None;
+                    state.instruction_injected = false;
+                }
+            }
+            _ => {}
+        }
+        LoopStep::continued(ctx)
+    }
+
+    async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
+        let state = self.lock_state();
+        match state.phase {
+            CriticPhase::Critiquing | CriticPhase::Revising => LoopStep::continued(ctx),
+            CriticPhase::Approved => LoopStep::stopped(ctx),
+            CriticPhase::Exhausted => {
+                log::warn!(
+                    target: "xylitol::loop-example",
+                    "generator-critic exhausted after {} round(s)",
+                    state.rounds
+                );
+                LoopStep::stopped(ctx)
+            }
+            CriticPhase::Idle => LoopStep::continued(ctx),
+        }
+    }
+}
+
+pub fn generator_critic_middleware(config: &GeneratorCriticConfig) -> Arc<dyn LoopMiddleware> {
+    Arc::new(GeneratorCriticMiddleware::new(config))
 }
 
 #[derive(Clone, Debug)]
@@ -776,10 +1017,14 @@ pub fn example_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{DEFAULT_PROGRESS_STALE_AFTER, DEFAULT_SELF_HEAL_ATTEMPTS, SelfHealConfig};
+    use crate::config::{
+        DEFAULT_CRITIC_ROUNDS, DEFAULT_PROGRESS_STALE_AFTER, DEFAULT_SELF_HEAL_ATTEMPTS,
+        GeneratorCriticConfig, SelfHealConfig,
+    };
     use xylitol_plugin_sdk::LoopControl;
     use xylitol_plugin_sdk::XySessionError;
     use xylitol_plugin_sdk::XySessionStoreError;
+    use xylitol_plugin_sdk::message::XyStopReason;
     use xylitol_plugin_sdk::model::XyToolSchema;
     use xylitol_plugin_sdk::session::{
         ForkPosition, SessionContext, SessionEntry, TodoItem, latest_plan_checkpoint,
@@ -805,6 +1050,7 @@ mod tests {
             progress_reminder_stale_after: 3,
             plan_checkpoint: false,
             self_heal: Default::default(),
+            generator_critic: Default::default(),
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -826,6 +1072,7 @@ mod tests {
             progress_reminder_stale_after: 3,
             plan_checkpoint: false,
             self_heal: Default::default(),
+            generator_critic: Default::default(),
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -1549,5 +1796,145 @@ mod tests {
     fn self_heal_default_attempt_cap_is_below_core_limit() {
         assert_eq!(DEFAULT_SELF_HEAL_ATTEMPTS, 3);
         assert!(DEFAULT_SELF_HEAL_ATTEMPTS < 32);
+    }
+
+    fn critic_config(max_rounds: u32) -> GeneratorCriticConfig {
+        GeneratorCriticConfig {
+            enabled: true,
+            max_rounds,
+            ..Default::default()
+        }
+    }
+
+    fn model_after(text: &str) -> AfterModelCtx {
+        AfterModelCtx {
+            turn_index: 0,
+            assistant: AgentMessage::Llm(XyLlmMessage::assistant(text)),
+        }
+    }
+
+    fn model_after_tool_call() -> AfterModelCtx {
+        AfterModelCtx {
+            turn_index: 0,
+            assistant: AgentMessage::Llm(XyLlmMessage::AssistantMessage {
+                content: vec![AgentPart::ToolCall {
+                    id: "call-1".into(),
+                    name: "read".into(),
+                    arguments: serde_json::json!({ "path": "a.rs" }),
+                }],
+                stop_reason: Some(XyStopReason::ToolUse),
+                usage: None,
+                api: String::new(),
+                provider: String::new(),
+                model: String::new(),
+                response_id: None,
+                error_message: None,
+                timestamp: 0,
+                diagnostics: Vec::new(),
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn critic_approve_stops_the_run() {
+        let mw = GeneratorCriticMiddleware::new(&critic_config(1));
+        mw.after_model(model_after("final answer")).await;
+        let injected = mw.before_model(model_ctx(None, None)).await;
+        assert_eq!(injected.ctx.messages.len(), 1);
+        assert!(injected.ctx.messages[0].text().contains("<critic>"));
+        mw.after_model(model_after("CRITIC_VERDICT: APPROVE")).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Stop
+        );
+    }
+
+    #[tokio::test]
+    async fn critic_revise_continues_and_injects_revision() {
+        let mw = GeneratorCriticMiddleware::new(&critic_config(1));
+        mw.after_model(model_after("final answer")).await;
+        mw.before_model(model_ctx(None, None)).await;
+        mw.after_model(model_after(
+            "CRITIC_VERDICT: REVISE\nThe answer cites no evidence.",
+        ))
+        .await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Continue
+        );
+        let injected = mw.before_model(model_ctx(None, None)).await;
+        assert_eq!(injected.ctx.messages.len(), 1);
+        let text = injected.ctx.messages[0].text();
+        assert!(text.contains("<critic_revision>"));
+        assert!(text.contains("cites no evidence"));
+        mw.after_model(model_after("revised answer")).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Stop,
+            "max_rounds=1 must stop after one revision"
+        );
+    }
+
+    #[tokio::test]
+    async fn critic_without_verdict_retries_once_then_stops() {
+        let mw = GeneratorCriticMiddleware::new(&critic_config(2));
+        mw.after_model(model_after("final answer")).await;
+        mw.before_model(model_ctx(None, None)).await;
+        mw.after_model(model_after("no structured verdict")).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Continue
+        );
+        mw.before_model(model_ctx(None, None)).await;
+        mw.after_model(model_after("revised answer")).await;
+        mw.before_model(model_ctx(None, None)).await;
+        mw.after_model(model_after("still no verdict")).await;
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Stop,
+            "a second missing verdict must stop"
+        );
+    }
+
+    #[tokio::test]
+    async fn critic_ignores_tool_call_turns() {
+        let mw = GeneratorCriticMiddleware::new(&critic_config(1));
+        mw.after_model(model_after_tool_call()).await;
+        let out = mw.before_model(model_ctx(None, None)).await;
+        assert!(
+            out.ctx.messages.is_empty(),
+            "tool-call turns must not start a critique"
+        );
+        assert_eq!(
+            mw.decide_continue(decide_ctx(0, false)).await.control,
+            LoopControl::Continue
+        );
+    }
+
+    #[tokio::test]
+    async fn critic_injects_instruction_only_once_per_phase() {
+        let mw = GeneratorCriticMiddleware::new(&critic_config(1));
+        mw.after_model(model_after("final answer")).await;
+        let first = mw.before_model(model_ctx(None, None)).await;
+        assert_eq!(first.ctx.messages.len(), 1);
+        let second = mw.before_model(model_ctx(None, None)).await;
+        assert!(
+            second.ctx.messages.is_empty(),
+            "the critic instruction must not be repeated within one phase"
+        );
+    }
+
+    #[test]
+    fn critic_identity_is_stable() {
+        let mw = GeneratorCriticMiddleware::new(&GeneratorCriticConfig::default());
+        assert_eq!(mw.id(), "generator-critic");
+        assert_eq!(mw.order(), 170);
+        assert_eq!(mw.stages(), CRITIC_STAGES);
+    }
+
+    #[test]
+    fn critic_default_rounds_are_bounded() {
+        assert_eq!(DEFAULT_CRITIC_ROUNDS, 1);
+        assert!(DEFAULT_CRITIC_ROUNDS < 32);
     }
 }

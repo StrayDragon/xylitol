@@ -133,6 +133,10 @@ hooks:
 #     enabled: false
 #     signatures: []          # empty: built-in test/build/lint/panic signatures
 #     max_attempts: 3         # bounded well below the core 32-turn limit
+#   generator_critic:         # after_model: bounded critic pass on final answers
+#     enabled: false
+#     rubric: []              # empty: built-in correctness/evidence/boundaries rubric
+#     max_rounds: 1           # critic calls stay core-scheduled and bounded
 #   tool_exposure:            # before_model: narrow the tools the model can see
 #     enabled: false
 #     allow: []               # non-empty: only these tools (todo tools stay visible)

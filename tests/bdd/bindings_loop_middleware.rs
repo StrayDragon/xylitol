@@ -101,6 +101,12 @@ async fn test_lm_self_heal_registers(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "生成评审启用后注册评审中间件"
+)]
+async fn test_lm_generator_critic_registers(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "改写参数可见"
 )]
 async fn test_lm_rewritten_args_visible(agent: AgentState, ws: Workspace) {}

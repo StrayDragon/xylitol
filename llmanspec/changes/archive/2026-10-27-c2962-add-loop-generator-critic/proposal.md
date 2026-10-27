@@ -2,6 +2,9 @@
 depends_on:
   - c2957-add-loop-example-plan-state
 title: 生成评审：critic 指令注入与有界修订循环
+branch: sdd/c2962-add-loop-generator-critic
+base_branch: main
+base_sha: 23f3e0fb8f59c7361761b760de434359c5b9f22f
 ---
 
 # 生成评审：critic 指令注入与有界修订循环
