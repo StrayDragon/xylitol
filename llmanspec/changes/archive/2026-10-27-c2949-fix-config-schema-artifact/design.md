@@ -17,7 +17,7 @@
 **输出稳定化**（关键，否则每次生成都会产生无意义 diff）：
 
 1. `serde_json::to_string_pretty`（两空格缩进）后统一加末尾换行；
-2. `$defs` 与 `properties` 的键序由 `BTreeMap` 归一——schemars 已按结构声明序输出 `properties`，但 `$defs` 顺序随 derive 遍历可能抖动，故生成前对 `$defs` 递归按键名排序；
+2. 键序显式归一：`serde_json` 的 map 后端在不同特性组合下可能是插入序（`preserve_order`），故生成前对全部对象键递归按键名排序，不依赖后端行为；
 3. 不写时间戳、不写仓库绝对路径。
 
 ## 3. 门禁形态
