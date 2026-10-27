@@ -156,6 +156,16 @@
         "plan_state": {
           "default": false,
           "type": "boolean"
+        },
+        "progress_reminder": {
+          "default": false,
+          "type": "boolean"
+        },
+        "progress_reminder_stale_after": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "type": "object"
@@ -685,7 +695,9 @@
         "deny_bash_patterns": [],
         "enabled": false,
         "max_settles": null,
-        "plan_state": false
+        "plan_state": false,
+        "progress_reminder": false,
+        "progress_reminder_stale_after": 3
       }
     },
     "mcp_servers": {

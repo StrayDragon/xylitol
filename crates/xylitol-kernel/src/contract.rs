@@ -261,6 +261,9 @@ mod tests {
                     max_settles: Some(2),
                     deny_bash_patterns: vec!["rm -rf /".into()],
                     plan_state: false,
+                    progress_reminder: false,
+
+                    progress_reminder_stale_after: 3,
                 },
             )
             .expect("loop example plugin"),
@@ -431,6 +434,9 @@ mod tests {
                 max_settles: Some(1),
                 deny_bash_patterns: vec![],
                 plan_state: false,
+                progress_reminder: false,
+
+                progress_reminder_stale_after: 3,
             },
         ))
         .expect("late root registration");

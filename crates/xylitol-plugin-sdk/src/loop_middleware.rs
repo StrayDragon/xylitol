@@ -7,6 +7,7 @@ use crate::error::XyError;
 use crate::generate::XyGenerateOptions;
 use crate::message::{AgentMessage, AgentPart};
 use crate::model::XyToolSchema;
+use crate::session::TodoList;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LoopStage {
@@ -97,6 +98,7 @@ pub struct BeforeModelCtx {
     pub messages: Vec<AgentMessage>,
     pub tool_schemas: Vec<XyToolSchema>,
     pub options: XyGenerateOptions,
+    pub todo: Option<TodoList>,
 }
 
 #[derive(Debug, Clone)]

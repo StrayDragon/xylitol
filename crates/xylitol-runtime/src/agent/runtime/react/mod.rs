@@ -1118,6 +1118,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 generate_options.obs_parent = iteration_parent;
                 generate_options.obs_session = obs_session.clone();
 
+                let bar = match store.load_leaf_branch(&session_id).await {
+                    Ok(branch) => AgentStatusBar::from_session_entries(&branch),
+                    Err(_) => AgentStatusBar::default(),
+                };
                 let mut turn_tool_schemas = tool_schemas.clone();
                 if chain_active {
                     let ctx = BeforeModelCtx {
@@ -1125,6 +1129,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         messages: messages.clone(),
                         tool_schemas: turn_tool_schemas.clone(),
                         options: generate_options.clone(),
+                        todo: bar.todo.clone(),
                     };
                     match run_before_model(&loop_chain, &cancel, iteration_parent, ctx).await {
                         Ok(out) => {
@@ -1163,10 +1168,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                 }
 
-                let bar = match store.load_leaf_branch(&session_id).await {
-                    Ok(branch) => AgentStatusBar::from_session_entries(&branch),
-                    Err(_) => AgentStatusBar::default(),
-                };
                 let llm_messages = project_outbound(&messages, &bar);
                 let mut stream_result: Option<Result<XyStream, XyError>> = None;
                 loop {

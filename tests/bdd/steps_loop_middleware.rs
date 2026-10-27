@@ -564,6 +564,9 @@ pub(crate) async fn g_example_enabled() {
                 max_settles: Some(2),
                 deny_bash_patterns: vec!["rm -rf /".into()],
                 plan_state: false,
+                progress_reminder: false,
+
+                progress_reminder_stale_after: 3,
             },
         )
         .expect("loop example plugin"),
@@ -595,6 +598,41 @@ pub(crate) async fn g_example_plan_enabled() {
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 plan_state: true,
+                progress_reminder: false,
+
+                progress_reminder_stale_after: 3,
+            },
+        )
+        .expect("loop example plugin"),
+    );
+    for _ in 0..64 {
+        if registry.ids().len() == 2 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    LOOP_PLUGIN_REGISTRY.with(|slot| slot.borrow_mut().replace(registry));
+    LOOP_PLUGIN_FIBER.with(|slot| slot.borrow_mut().replace(fiber));
+    LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
+}
+
+#[given("以启用进度提醒的 loop 示例插件装配运行时")]
+pub(crate) async fn g_example_reminder_enabled() {
+    use xylitol_plugin_sdk::rt::CtxHost;
+
+    let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("ctx root");
+    let registry = fresh_registry();
+    ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
+        .expect("provide registry");
+    let fiber = ctx.plugin(
+        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
+            &xylitol_official_plugin_loop_example::LoopExampleConfig {
+                enabled: true,
+                max_settles: Some(2),
+                deny_bash_patterns: vec![],
+                plan_state: false,
+                progress_reminder: true,
+                progress_reminder_stale_after: 3,
             },
         )
         .expect("loop example plugin"),
@@ -629,6 +667,17 @@ pub(crate) fn t_registry_has_plan_state() {
             &*slot.borrow(),
             &["loop-example".to_string(), "plan-state".to_string()],
             "plan mode must register the base middleware and the plan-state middleware"
+        );
+    });
+}
+
+#[then("注册表含 loop-example 与 progress-reminder")]
+pub(crate) fn t_registry_has_progress_reminder() {
+    LOOP_CHAIN_IDS.with(|slot| {
+        assert_eq!(
+            &*slot.borrow(),
+            &["loop-example".to_string(), "progress-reminder".to_string()],
+            "progress reminder must register the base middleware and the reminder middleware"
         );
     });
 }

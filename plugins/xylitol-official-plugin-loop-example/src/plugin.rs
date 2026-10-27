@@ -2,7 +2,9 @@ use xylitol_plugin_sdk::LoopMiddlewareRegistry;
 use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 use crate::config::LoopExampleConfig;
-use crate::middleware::{DEFAULT_PLAN_SETTLES, example_middleware, plan_state_middleware};
+use crate::middleware::{
+    DEFAULT_PLAN_SETTLES, example_middleware, plan_state_middleware, progress_reminder_middleware,
+};
 
 pub struct LoopExamplePlugin {
     config: LoopExampleConfig,
@@ -43,6 +45,13 @@ impl Plugin for LoopExamplePlugin {
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
         }
+        if self.config.progress_reminder {
+            handles.push(
+                registry
+                    .register(progress_reminder_middleware(&self.config))
+                    .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
+            );
+        }
         ctx.effect(|| async move {
             for handle in handles {
                 handle.unregister();
@@ -67,12 +76,25 @@ mod tests {
             max_settles: Some(2),
             deny_bash_patterns: vec!["rm -rf /".into()],
             plan_state: false,
+            progress_reminder: false,
+
+            progress_reminder_stale_after: 3,
         }
     }
 
     fn plan_enabled() -> LoopExampleConfig {
         LoopExampleConfig {
             plan_state: true,
+            progress_reminder: false,
+
+            progress_reminder_stale_after: 3,
+            ..enabled()
+        }
+    }
+
+    fn reminder_enabled() -> LoopExampleConfig {
+        LoopExampleConfig {
+            progress_reminder: true,
             ..enabled()
         }
     }
@@ -125,6 +147,26 @@ mod tests {
             registry.ids(),
             vec!["loop-example".to_string(), "plan-state".to_string()],
             "plan mode must register both middlewares"
+        );
+        fiber.dispose().await.expect("dispose");
+        assert!(registry.is_empty(), "unload must remove both middlewares");
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn progress_reminder_registers_and_unloads() {
+        let (ctx, registry) = ctx_with_registry();
+        let fiber = ctx.plugin(LoopExamplePlugin::new(&reminder_enabled()).expect("new"));
+        for _ in 0..64 {
+            if registry.ids().len() == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            registry.ids(),
+            vec!["loop-example".to_string(), "progress-reminder".to_string()],
+            "progress reminder must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty(), "unload must remove both middlewares");

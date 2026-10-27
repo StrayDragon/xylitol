@@ -2,6 +2,9 @@
 depends_on:
   - c2957-add-loop-example-plan-state
 title: 进度追踪提醒：在合适时机把 todo 状态重新推给模型
+branch: sdd/c2958-add-loop-progress-reminder
+base_branch: main
+base_sha: 66291593e30978d408af3c9fd0bc4dfc248bc4e5
 ---
 
 # 进度追踪提醒：在合适时机把 todo 状态重新推给模型

@@ -1,12 +1,14 @@
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use serde_json::Value;
 
-use xylitol_plugin_sdk::message::AgentPart;
+use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
+use xylitol_plugin_sdk::session::{TodoList, TodoStatus};
 use xylitol_plugin_sdk::{
-    AfterToolCtx, AfterTurnCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx, LoopMiddleware,
-    LoopStage, LoopStep,
+    AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx,
+    LoopMiddleware, LoopStage, LoopStep,
 };
 
 use crate::config::LoopExampleConfig;
@@ -19,6 +21,7 @@ const PLAN_STAGES: &[LoopStage] = &[
     LoopStage::DecideContinue,
     LoopStage::AfterTurn,
 ];
+const PROGRESS_STAGES: &[LoopStage] = &[LoopStage::BeforeModel, LoopStage::AfterTool];
 const PLAN_CONTRACT: &str = "Plan mode: before acting, write the checklist with todo_rewrite. \
 Keep exactly one item in_progress and mark finished items with todo_update. \
 Do not claim completion while items remain pending.";
@@ -188,6 +191,102 @@ impl LoopMiddleware for PlanStateMiddleware {
     }
 }
 
+pub struct ProgressReminderMiddleware {
+    stale_after: usize,
+    stale_tool_calls: AtomicUsize,
+    last_error: AtomicBool,
+    last_reminder_turn: AtomicU32,
+}
+
+impl ProgressReminderMiddleware {
+    pub fn new(stale_after: u32) -> Self {
+        Self {
+            stale_after: stale_after.max(1) as usize,
+            stale_tool_calls: AtomicUsize::new(0),
+            last_error: AtomicBool::new(false),
+            last_reminder_turn: AtomicU32::new(u32::MAX),
+        }
+    }
+
+    fn claims_completion(message: Option<&AgentMessage>) -> bool {
+        let Some(message) = message else {
+            return false;
+        };
+        if message.role_name() != "assistant" {
+            return false;
+        }
+        let text = message.text().to_lowercase();
+        ["done", "completed", "finished", "完成", "已完成"]
+            .iter()
+            .any(|needle| text.contains(needle))
+    }
+
+    fn unfinished(todo: &TodoList) -> usize {
+        todo.items
+            .iter()
+            .filter(|item| !matches!(item.status, TodoStatus::Completed))
+            .count()
+    }
+}
+
+#[async_trait]
+impl LoopMiddleware for ProgressReminderMiddleware {
+    fn id(&self) -> &str {
+        "progress-reminder"
+    }
+
+    fn order(&self) -> i64 {
+        150
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        PROGRESS_STAGES
+    }
+
+    async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
+        if matches!(ctx.tool_name.as_str(), "todo_rewrite" | "todo_update") && !ctx.is_error {
+            self.stale_tool_calls.store(0, Ordering::SeqCst);
+        } else {
+            self.stale_tool_calls.fetch_add(1, Ordering::SeqCst);
+        }
+        self.last_error.store(ctx.is_error, Ordering::SeqCst);
+        LoopStep::continued(ctx)
+    }
+
+    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+        let Some(todo) = &ctx.todo else {
+            return LoopStep::continued(ctx);
+        };
+        let unfinished = Self::unfinished(todo);
+        if unfinished == 0 {
+            return LoopStep::continued(ctx);
+        }
+        let turn = ctx.turn_index;
+        if self.last_reminder_turn.load(Ordering::SeqCst) == turn {
+            return LoopStep::continued(ctx);
+        }
+        let stale = self.stale_tool_calls.load(Ordering::SeqCst) >= self.stale_after;
+        let completion_claim = Self::claims_completion(ctx.messages.last());
+        let error = self.last_error.load(Ordering::SeqCst);
+        if !(stale || completion_claim || error) {
+            return LoopStep::continued(ctx);
+        }
+        self.last_reminder_turn.store(turn, Ordering::SeqCst);
+        ctx.messages
+            .push(AgentMessage::Llm(XyLlmMessage::user(format!(
+                "<progress_reminder>\n{unfinished} plan item(s) are still unfinished. \
+Re-read <todo> and update it with todo_update before claiming completion.\n</progress_reminder>"
+            ))));
+        LoopStep::continued(ctx)
+    }
+}
+
+pub fn progress_reminder_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware> {
+    Arc::new(ProgressReminderMiddleware::new(
+        config.progress_reminder_stale_after,
+    ))
+}
+
 pub fn plan_state_middleware(max_settles: u32) -> Arc<dyn LoopMiddleware> {
     Arc::new(PlanStateMiddleware::new(max_settles))
 }
@@ -199,7 +298,9 @@ pub fn example_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::DEFAULT_PROGRESS_STALE_AFTER;
     use xylitol_plugin_sdk::LoopControl;
+    use xylitol_plugin_sdk::session::TodoItem;
 
     fn ctx(command: &str) -> BeforeToolCtx {
         BeforeToolCtx {
@@ -217,6 +318,9 @@ mod tests {
             max_settles: None,
             deny_bash_patterns: vec!["rm -rf /".into()],
             plan_state: false,
+            progress_reminder: false,
+
+            progress_reminder_stale_after: 3,
         };
         let mw = ExampleLoopMiddleware::new(config);
         let safe = mw.before_tool(ctx("echo hi")).await;
@@ -233,6 +337,9 @@ mod tests {
             max_settles: Some(2),
             deny_bash_patterns: Vec::new(),
             plan_state: false,
+            progress_reminder: false,
+
+            progress_reminder_stale_after: 3,
         };
         let mw = ExampleLoopMiddleware::new(config);
         let base = DecideContinueCtx {
@@ -386,5 +493,136 @@ mod tests {
         assert_eq!(mw.id(), "plan-state");
         assert_eq!(mw.order(), 200);
         assert_eq!(mw.stages(), PLAN_STAGES);
+    }
+
+    fn todo(statuses: &[TodoStatus]) -> TodoList {
+        TodoList::new(
+            statuses
+                .iter()
+                .enumerate()
+                .map(|(i, status)| TodoItem {
+                    id: format!("t{i}"),
+                    content: format!("step {i}"),
+                    status: *status,
+                })
+                .collect(),
+        )
+    }
+
+    fn model_ctx(todo: Option<TodoList>, last: Option<AgentMessage>) -> BeforeModelCtx {
+        BeforeModelCtx {
+            turn_index: 0,
+            messages: last.into_iter().collect(),
+            tool_schemas: Vec::new(),
+            options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+            todo,
+        }
+    }
+
+    fn tool_ctx(name: &str, is_error: bool) -> AfterToolCtx {
+        AfterToolCtx {
+            turn_index: 0,
+            tool_call_id: "call-1".into(),
+            tool_name: name.into(),
+            parts: Vec::new(),
+            details: None,
+            is_error,
+        }
+    }
+
+    #[tokio::test]
+    async fn progress_reminder_skips_without_todo() {
+        let mw = ProgressReminderMiddleware::new(2);
+        let out = mw.before_model(model_ctx(None, None)).await;
+        assert!(out.ctx.messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn progress_reminder_fires_when_stale() {
+        let mw = ProgressReminderMiddleware::new(2);
+        mw.after_tool(tool_ctx("read", false)).await;
+        mw.after_tool(tool_ctx("read", false)).await;
+        let out = mw
+            .before_model(model_ctx(
+                Some(todo(&[TodoStatus::Pending, TodoStatus::InProgress])),
+                None,
+            ))
+            .await;
+        assert_eq!(out.ctx.messages.len(), 1);
+        assert!(out.ctx.messages[0].text().contains("<progress_reminder>"));
+    }
+
+    #[tokio::test]
+    async fn progress_reminder_resets_on_todo_update() {
+        let mw = ProgressReminderMiddleware::new(1);
+        mw.after_tool(tool_ctx("read", false)).await;
+        mw.after_tool(tool_ctx("todo_update", false)).await;
+        let out = mw
+            .before_model(model_ctx(Some(todo(&[TodoStatus::Pending])), None))
+            .await;
+        assert!(out.ctx.messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn progress_reminder_fires_on_completion_claim() {
+        let mw = ProgressReminderMiddleware::new(99);
+        let claim = AgentMessage::Llm(XyLlmMessage::assistant("all done"));
+        let out = mw
+            .before_model(model_ctx(Some(todo(&[TodoStatus::Pending])), Some(claim)))
+            .await;
+        assert_eq!(out.ctx.messages.len(), 2);
+        assert!(
+            out.ctx
+                .messages
+                .last()
+                .expect("reminder")
+                .text()
+                .contains("still unfinished")
+        );
+    }
+
+    #[tokio::test]
+    async fn progress_reminder_fires_after_error() {
+        let mw = ProgressReminderMiddleware::new(99);
+        mw.after_tool(tool_ctx("bash", true)).await;
+        let out = mw
+            .before_model(model_ctx(Some(todo(&[TodoStatus::InProgress])), None))
+            .await;
+        assert_eq!(out.ctx.messages.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn progress_reminder_is_at_most_once_per_turn() {
+        let mw = ProgressReminderMiddleware::new(1);
+        mw.after_tool(tool_ctx("read", false)).await;
+        let first = mw
+            .before_model(model_ctx(Some(todo(&[TodoStatus::Pending])), None))
+            .await;
+        assert_eq!(first.ctx.messages.len(), 1);
+        let second = mw
+            .before_model(model_ctx(Some(todo(&[TodoStatus::Pending])), None))
+            .await;
+        assert!(
+            second.ctx.messages.is_empty(),
+            "the same turn must not receive two reminders"
+        );
+    }
+
+    #[tokio::test]
+    async fn progress_reminder_skips_when_all_completed() {
+        let mw = ProgressReminderMiddleware::new(1);
+        mw.after_tool(tool_ctx("read", false)).await;
+        let out = mw
+            .before_model(model_ctx(Some(todo(&[TodoStatus::Completed])), None))
+            .await;
+        assert!(out.ctx.messages.is_empty());
+    }
+
+    #[test]
+    fn progress_reminder_identity_is_stable() {
+        let mw = ProgressReminderMiddleware::new(DEFAULT_PROGRESS_STALE_AFTER);
+        assert_eq!(mw.id(), "progress-reminder");
+        assert_eq!(mw.order(), 150);
+        assert_eq!(mw.stages(), PROGRESS_STAGES);
     }
 }
