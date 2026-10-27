@@ -2,6 +2,9 @@
 depends_on:
   - c2957-add-loop-example-plan-state
 title: 计划 checkpoint：把 plan 进度落成可恢复的会话工件
+branch: sdd/c2960-add-loop-plan-checkpoint
+base_branch: main
+base_sha: 7668955f79565f7abe2f72e73bf52e4cdc486eb3
 ---
 
 # 计划 checkpoint：把 plan 进度落成可恢复的会话工件

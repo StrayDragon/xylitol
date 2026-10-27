@@ -445,6 +445,7 @@ mod tests {
             tool_schemas: Vec::new(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
+            session_id: None,
         };
         let base = before_model_fingerprint(&ctx);
         let mut changed = ctx.clone();
@@ -494,6 +495,7 @@ mod tests {
                 turn_index: 3,
                 continued_tools: true,
                 history_len: 9,
+                session_id: None,
             },
         )
         .await

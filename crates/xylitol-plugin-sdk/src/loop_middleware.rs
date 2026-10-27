@@ -99,6 +99,7 @@ pub struct BeforeModelCtx {
     pub tool_schemas: Vec<XyToolSchema>,
     pub options: XyGenerateOptions,
     pub todo: Option<TodoList>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -146,6 +147,7 @@ pub struct AfterTurnCtx {
     pub turn_index: u32,
     pub continued_tools: bool,
     pub history_len: usize,
+    pub session_id: Option<String>,
 }
 
 #[async_trait]

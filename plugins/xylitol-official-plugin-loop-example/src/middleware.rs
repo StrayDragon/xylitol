@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -5,10 +6,13 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
-use xylitol_plugin_sdk::session::{TodoList, TodoStatus};
+use xylitol_plugin_sdk::session::{
+    PlanCheckpoint, PlanCheckpointStep, PlanResumeCursor, TodoList, TodoStatus,
+    latest_plan_checkpoint,
+};
 use xylitol_plugin_sdk::{
     AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx,
-    LoopMiddleware, LoopStage, LoopStep,
+    LoopMiddleware, LoopStage, LoopStep, XySessionStore,
 };
 
 use crate::config::{LoopExampleConfig, ToolExposureConfig};
@@ -23,6 +27,11 @@ const PLAN_STAGES: &[LoopStage] = &[
 ];
 const PROGRESS_STAGES: &[LoopStage] = &[LoopStage::BeforeModel, LoopStage::AfterTool];
 const TOOL_EXPOSURE_STAGES: &[LoopStage] = &[LoopStage::BeforeModel];
+const CHECKPOINT_STAGES: &[LoopStage] = &[
+    LoopStage::BeforeModel,
+    LoopStage::AfterTool,
+    LoopStage::AfterTurn,
+];
 const PLAN_CONTRACT: &str = "Plan mode: before acting, write the checklist with todo_rewrite. \
 Keep exactly one item in_progress and mark finished items with todo_update. \
 Do not claim completion while items remain pending.";
@@ -190,6 +199,288 @@ impl LoopMiddleware for PlanStateMiddleware {
         );
         LoopStep::continued(ctx)
     }
+}
+
+#[derive(Default)]
+struct CheckpointState {
+    steps: Vec<PlanCheckpointStep>,
+    last_verified_artifact: Option<String>,
+    last_failure: Option<String>,
+    attempts: HashMap<String, u32>,
+    dirty: bool,
+}
+
+pub struct PlanCheckpointMiddleware {
+    store: Option<Arc<dyn XySessionStore>>,
+    state: Mutex<CheckpointState>,
+    restored: AtomicBool,
+    injected: AtomicBool,
+}
+
+impl PlanCheckpointMiddleware {
+    pub fn new(store: Option<Arc<dyn XySessionStore>>) -> Self {
+        Self {
+            store,
+            state: Mutex::new(CheckpointState::default()),
+            restored: AtomicBool::new(false),
+            injected: AtomicBool::new(false),
+        }
+    }
+
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, CheckpointState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn record_todo_result(&self, ctx: &AfterToolCtx) {
+        if ctx.is_error || !matches!(ctx.tool_name.as_str(), "todo_rewrite" | "todo_update") {
+            return;
+        }
+        let Some(items) = todo_items_from_parts(&ctx.parts) else {
+            return;
+        };
+        let mut state = self.lock_state();
+        let previous: HashMap<String, PlanCheckpointStep> = state
+            .steps
+            .drain(..)
+            .map(|step| (step.id.clone(), step))
+            .collect();
+        state.steps = items
+            .into_iter()
+            .map(|(id, content, status)| match previous.get(&id) {
+                Some(prev) => PlanCheckpointStep {
+                    id,
+                    content,
+                    status,
+                    verification: prev.verification.clone(),
+                    output_ref: prev.output_ref.clone(),
+                },
+                None => PlanCheckpointStep {
+                    id,
+                    content,
+                    status,
+                    verification: None,
+                    output_ref: None,
+                },
+            })
+            .collect();
+        state.dirty = true;
+    }
+
+    fn record_tool_outcome(&self, ctx: &AfterToolCtx) {
+        let mut state = self.lock_state();
+        if ctx.is_error {
+            state.last_failure = Some(format!(
+                "{}: {}",
+                ctx.tool_name,
+                preview_text(&ctx.parts, 160)
+            ));
+            if let Some(step_id) = state
+                .steps
+                .iter()
+                .find(|step| step.status == TodoStatus::InProgress)
+                .map(|step| step.id.clone())
+            {
+                *state.attempts.entry(step_id).or_insert(0) += 1;
+            }
+            state.dirty = true;
+        } else if !matches!(ctx.tool_name.as_str(), "todo_rewrite" | "todo_update") {
+            state.last_verified_artifact = Some(format!("{}:{}", ctx.tool_name, ctx.tool_call_id));
+        }
+    }
+
+    async fn restore(&self, session_id: &str) {
+        let Some(store) = &self.store else {
+            return;
+        };
+        let Ok(branch) = store.load_leaf_branch(session_id).await else {
+            return;
+        };
+        let Some(checkpoint) = latest_plan_checkpoint(&branch) else {
+            return;
+        };
+        let mut state = self.lock_state();
+        if !state.steps.is_empty() {
+            return;
+        }
+        state.steps = checkpoint.steps;
+        state.last_verified_artifact = checkpoint.last_verified_artifact;
+        state.last_failure = checkpoint.last_failure;
+        if let Some(cursor) = checkpoint.resume_cursor {
+            state
+                .attempts
+                .insert(cursor.step_id, cursor.attempt.saturating_sub(1));
+        }
+    }
+
+    fn inject_summary(&self, ctx: &mut BeforeModelCtx) {
+        let state = self.lock_state();
+        let total = state.steps.len();
+        if total == 0 {
+            return;
+        }
+        let unfinished = state
+            .steps
+            .iter()
+            .filter(|step| step.status != TodoStatus::Completed)
+            .count();
+        if unfinished == 0 {
+            return;
+        }
+        let done = total - unfinished;
+        let mut lines = vec![
+            "<plan_checkpoint>".to_string(),
+            format!("Resuming plan checkpoint: {done}/{total} steps completed."),
+        ];
+        if let Some(step) = state
+            .steps
+            .iter()
+            .find(|step| step.status != TodoStatus::Completed)
+        {
+            lines.push(format!("Current step: {} — {}.", step.id, step.content));
+        }
+        if let Some(failure) = &state.last_failure {
+            lines.push(format!("Last failure: {failure}"));
+        }
+        lines.push(
+            "Do not re-run steps already completed with verification; verify prerequisites before continuing."
+                .into(),
+        );
+        lines.push("</plan_checkpoint>".into());
+        ctx.messages
+            .push(AgentMessage::Llm(XyLlmMessage::user(lines.join("\n"))));
+    }
+
+    async fn persist(&self, session_id: Option<&str>) {
+        let Some(session_id) = session_id else {
+            return;
+        };
+        let Some(store) = &self.store else {
+            return;
+        };
+        let checkpoint = {
+            let mut state = self.lock_state();
+            if !state.dirty {
+                return;
+            }
+            state.dirty = false;
+            PlanCheckpoint {
+                goal: None,
+                steps: state.steps.clone(),
+                last_verified_artifact: state.last_verified_artifact.clone(),
+                last_failure: state.last_failure.clone(),
+                resume_cursor: state
+                    .steps
+                    .iter()
+                    .find(|step| step.status != TodoStatus::Completed)
+                    .map(|step| PlanResumeCursor {
+                        step_id: step.id.clone(),
+                        attempt: state.attempts.get(&step.id).copied().unwrap_or(0) + 1,
+                    }),
+                updated_at: now_ms(),
+            }
+        };
+        if checkpoint.steps.is_empty() {
+            return;
+        }
+        if let Err(err) = store
+            .append_session_entry(session_id, &checkpoint.to_custom_entry_shell())
+            .await
+        {
+            self.lock_state().dirty = true;
+            log::warn!(
+                target: "xylitol::loop-example",
+                "plan checkpoint persist failed: {err}"
+            );
+        }
+    }
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn preview_text(parts: &[AgentPart], limit: usize) -> String {
+    let text = parts
+        .iter()
+        .find_map(|part| match part {
+            AgentPart::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .unwrap_or("");
+    let mut out: String = text.chars().take(limit).collect();
+    if text.chars().count() > limit {
+        out.push('…');
+    }
+    out
+}
+
+fn todo_items_from_parts(parts: &[AgentPart]) -> Option<Vec<(String, String, TodoStatus)>> {
+    let text = parts.iter().find_map(|part| match part {
+        AgentPart::Text { text } => Some(text.as_str()),
+        _ => None,
+    })?;
+    let value = serde_json::from_str::<Value>(text).ok()?;
+    let items = value.get("items")?.as_array()?;
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let id = item.get("id")?.as_str()?.to_string();
+        let content = item.get("content")?.as_str()?.to_string();
+        let status = match item.get("status")?.as_str()? {
+            "completed" => TodoStatus::Completed,
+            "in_progress" => TodoStatus::InProgress,
+            _ => TodoStatus::Pending,
+        };
+        out.push((id, content, status));
+    }
+    Some(out)
+}
+
+#[async_trait]
+impl LoopMiddleware for PlanCheckpointMiddleware {
+    fn id(&self) -> &str {
+        "plan-checkpoint"
+    }
+
+    fn order(&self) -> i64 {
+        180
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        CHECKPOINT_STAGES
+    }
+
+    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+        if !self.restored.swap(true, Ordering::SeqCst)
+            && let Some(session_id) = ctx.session_id.as_deref()
+        {
+            self.restore(session_id).await;
+        }
+        if !self.injected.swap(true, Ordering::SeqCst) {
+            self.inject_summary(&mut ctx);
+        }
+        self.persist(ctx.session_id.as_deref()).await;
+        LoopStep::continued(ctx)
+    }
+
+    async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
+        self.record_todo_result(&ctx);
+        self.record_tool_outcome(&ctx);
+        LoopStep::continued(ctx)
+    }
+
+    async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
+        self.persist(ctx.session_id.as_deref()).await;
+        LoopStep::continued(ctx)
+    }
+}
+
+pub fn plan_checkpoint_middleware(
+    store: Option<Arc<dyn XySessionStore>>,
+) -> Arc<dyn LoopMiddleware> {
+    Arc::new(PlanCheckpointMiddleware::new(store))
 }
 
 pub struct ToolExposureMiddleware {
@@ -364,8 +655,12 @@ mod tests {
     use super::*;
     use crate::config::DEFAULT_PROGRESS_STALE_AFTER;
     use xylitol_plugin_sdk::LoopControl;
+    use xylitol_plugin_sdk::XySessionError;
+    use xylitol_plugin_sdk::XySessionStoreError;
     use xylitol_plugin_sdk::model::XyToolSchema;
-    use xylitol_plugin_sdk::session::TodoItem;
+    use xylitol_plugin_sdk::session::{
+        ForkPosition, SessionContext, SessionEntry, TodoItem, latest_plan_checkpoint,
+    };
 
     fn ctx(command: &str) -> BeforeToolCtx {
         BeforeToolCtx {
@@ -385,6 +680,7 @@ mod tests {
             plan_state: false,
             progress_reminder: false,
             progress_reminder_stale_after: 3,
+            plan_checkpoint: false,
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -404,6 +700,7 @@ mod tests {
             plan_state: false,
             progress_reminder: false,
             progress_reminder_stale_after: 3,
+            plan_checkpoint: false,
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -581,6 +878,7 @@ mod tests {
             tool_schemas: Vec::new(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo,
+            session_id: None,
         }
     }
 
@@ -710,6 +1008,7 @@ mod tests {
             tool_schemas: schemas(names),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
+            session_id: None,
         }
     }
 
@@ -808,5 +1107,210 @@ mod tests {
         assert_eq!(mw.id(), "tool-exposure");
         assert_eq!(mw.order(), 50);
         assert_eq!(mw.stages(), TOOL_EXPOSURE_STAGES);
+    }
+
+    #[derive(Default)]
+    struct FakeStore {
+        entries: Mutex<Vec<SessionEntry>>,
+    }
+
+    #[async_trait]
+    impl XySessionStore for FakeStore {
+        async fn exists(&self, _: &str) -> bool {
+            true
+        }
+
+        async fn load_entries(
+            &self,
+            _: &str,
+        ) -> std::result::Result<Vec<SessionEntry>, XySessionStoreError> {
+            Ok(self.entries.lock().unwrap().clone())
+        }
+
+        async fn append_session_entry(
+            &self,
+            _: &str,
+            entry: &SessionEntry,
+        ) -> std::result::Result<(), XySessionStoreError> {
+            self.entries.lock().unwrap().push(entry.clone());
+            Ok(())
+        }
+
+        async fn build_session_context(
+            &self,
+            _: &str,
+        ) -> std::result::Result<SessionContext, XySessionStoreError> {
+            unimplemented!("not used by checkpoint tests")
+        }
+
+        async fn create(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> std::result::Result<(), XySessionStoreError> {
+            Ok(())
+        }
+
+        async fn fork(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: ForkPosition,
+        ) -> std::result::Result<(), XySessionError> {
+            unimplemented!("not used by checkpoint tests")
+        }
+
+        fn set_leaf(&self, _: &str, _: Option<&str>) {}
+
+        fn leaf_id(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    fn checkpoint_ctx(session_id: &str) -> BeforeModelCtx {
+        BeforeModelCtx {
+            turn_index: 0,
+            messages: Vec::new(),
+            tool_schemas: Vec::new(),
+            options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+            todo: None,
+            session_id: Some(session_id.into()),
+        }
+    }
+
+    #[tokio::test]
+    async fn checkpoint_persists_todo_progress() {
+        let store = Arc::new(FakeStore::default());
+        let mw = PlanCheckpointMiddleware::new(Some(store.clone()));
+        let first = mw.before_model(checkpoint_ctx("s1")).await;
+        assert!(first.ctx.messages.is_empty(), "a fresh run must not inject");
+        mw.after_tool(todo_ctx(&["completed", "in_progress"], false))
+            .await;
+        mw.before_model(checkpoint_ctx("s1")).await;
+
+        let entries = store.entries.lock().unwrap().clone();
+        let checkpoint = latest_plan_checkpoint(&entries).expect("persisted checkpoint");
+        assert_eq!(checkpoint.steps.len(), 2);
+        assert_eq!(checkpoint.unfinished_count(), 1);
+        assert_eq!(
+            checkpoint
+                .resume_cursor
+                .as_ref()
+                .map(|c| c.step_id.as_str()),
+            Some("t1")
+        );
+    }
+
+    #[tokio::test]
+    async fn checkpoint_restore_injects_summary_once() {
+        let store = Arc::new(FakeStore::default());
+        let mut checkpoint = PlanCheckpoint {
+            steps: vec![
+                PlanCheckpointStep {
+                    id: "t0".into(),
+                    content: "step 0".into(),
+                    status: TodoStatus::Completed,
+                    verification: Some("cargo test -p t0".into()),
+                    output_ref: None,
+                },
+                PlanCheckpointStep {
+                    id: "t1".into(),
+                    content: "step 1".into(),
+                    status: TodoStatus::InProgress,
+                    verification: None,
+                    output_ref: None,
+                },
+            ],
+            last_failure: Some("bash: tests failed".into()),
+            resume_cursor: Some(PlanResumeCursor {
+                step_id: "t1".into(),
+                attempt: 2,
+            }),
+            ..PlanCheckpoint::default()
+        };
+        checkpoint.updated_at = 1;
+        store
+            .append_session_entry("s1", &checkpoint.to_custom_entry_shell())
+            .await
+            .unwrap();
+
+        let mw = PlanCheckpointMiddleware::new(Some(store.clone()));
+        let first = mw.before_model(checkpoint_ctx("s1")).await;
+        assert_eq!(first.ctx.messages.len(), 1);
+        let text = first.ctx.messages[0].text();
+        assert!(text.contains("<plan_checkpoint>"));
+        assert!(text.contains("1/2 steps completed"));
+        assert!(text.contains("t1"));
+        assert!(text.contains("tests failed"));
+
+        let second = mw.before_model(checkpoint_ctx("s1")).await;
+        assert_eq!(
+            second.ctx.messages.len(),
+            0,
+            "the summary must be injected at most once"
+        );
+    }
+
+    #[tokio::test]
+    async fn checkpoint_skips_injection_when_complete() {
+        let store = Arc::new(FakeStore::default());
+        let checkpoint = PlanCheckpoint {
+            steps: vec![PlanCheckpointStep {
+                id: "t0".into(),
+                content: "step 0".into(),
+                status: TodoStatus::Completed,
+                verification: Some("done".into()),
+                output_ref: None,
+            }],
+            ..PlanCheckpoint::default()
+        };
+        store
+            .append_session_entry("s1", &checkpoint.to_custom_entry_shell())
+            .await
+            .unwrap();
+        let mw = PlanCheckpointMiddleware::new(Some(store));
+        let out = mw.before_model(checkpoint_ctx("s1")).await;
+        assert!(out.ctx.messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn checkpoint_records_failure_and_attempt() {
+        let store = Arc::new(FakeStore::default());
+        let mw = PlanCheckpointMiddleware::new(Some(store.clone()));
+        mw.before_model(checkpoint_ctx("s1")).await;
+        mw.after_tool(todo_ctx(&["in_progress"], false)).await;
+        let mut failure = todo_ctx(&["in_progress"], false);
+        failure.tool_name = "bash".into();
+        failure.parts = vec![AgentPart::text("tests failed")];
+        failure.is_error = true;
+        mw.after_tool(failure).await;
+        mw.before_model(checkpoint_ctx("s1")).await;
+
+        let entries = store.entries.lock().unwrap().clone();
+        let checkpoint = latest_plan_checkpoint(&entries).expect("checkpoint");
+        assert_eq!(
+            checkpoint.last_failure.as_deref(),
+            Some("bash: tests failed")
+        );
+        assert_eq!(checkpoint.resume_cursor.expect("cursor").attempt, 2);
+    }
+
+    #[tokio::test]
+    async fn checkpoint_without_store_degrades_to_memory() {
+        let mw = PlanCheckpointMiddleware::new(None);
+        mw.before_model(checkpoint_ctx("s1")).await;
+        mw.after_tool(todo_ctx(&["pending"], false)).await;
+        let out = mw.before_model(checkpoint_ctx("s1")).await;
+        assert!(out.ctx.messages.is_empty());
+    }
+
+    #[test]
+    fn plan_checkpoint_identity_is_stable() {
+        let mw = PlanCheckpointMiddleware::new(None);
+        assert_eq!(mw.id(), "plan-checkpoint");
+        assert_eq!(mw.order(), 180);
+        assert_eq!(mw.stages(), CHECKPOINT_STAGES);
     }
 }

@@ -1,10 +1,11 @@
 use xylitol_plugin_sdk::LoopMiddlewareRegistry;
+use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 use crate::config::LoopExampleConfig;
 use crate::middleware::{
-    DEFAULT_PLAN_SETTLES, example_middleware, plan_state_middleware, progress_reminder_middleware,
-    tool_exposure_middleware,
+    DEFAULT_PLAN_SETTLES, example_middleware, plan_checkpoint_middleware, plan_state_middleware,
+    progress_reminder_middleware, tool_exposure_middleware,
 };
 
 pub struct LoopExamplePlugin {
@@ -43,6 +44,14 @@ impl Plugin for LoopExamplePlugin {
             handles.push(
                 registry
                     .register(plan_state_middleware(max_settles))
+                    .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
+            );
+        }
+        if self.config.plan_checkpoint {
+            let store = ctx.get::<dyn XySessionStore>();
+            handles.push(
+                registry
+                    .register(plan_checkpoint_middleware(store))
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
         }
@@ -87,6 +96,7 @@ mod tests {
             plan_state: false,
             progress_reminder: false,
             progress_reminder_stale_after: 3,
+            plan_checkpoint: false,
             tool_exposure: Default::default(),
         }
     }
@@ -96,6 +106,7 @@ mod tests {
             plan_state: true,
             progress_reminder: false,
             progress_reminder_stale_after: 3,
+            plan_checkpoint: false,
             tool_exposure: Default::default(),
             ..enabled()
         }
@@ -115,6 +126,13 @@ mod tests {
                 allow: vec!["read".into()],
                 ..Default::default()
             },
+            ..enabled()
+        }
+    }
+
+    fn checkpoint_enabled() -> LoopExampleConfig {
+        LoopExampleConfig {
+            plan_checkpoint: true,
             ..enabled()
         }
     }
@@ -207,6 +225,26 @@ mod tests {
             registry.ids(),
             vec!["tool-exposure".to_string(), "loop-example".to_string()],
             "tool exposure must register alongside the base middleware"
+        );
+        fiber.dispose().await.expect("dispose");
+        assert!(registry.is_empty(), "unload must remove both middlewares");
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn plan_checkpoint_registers_and_unloads() {
+        let (ctx, registry) = ctx_with_registry();
+        let fiber = ctx.plugin(LoopExamplePlugin::new(&checkpoint_enabled()).expect("new"));
+        for _ in 0..64 {
+            if registry.ids().len() == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            registry.ids(),
+            vec!["loop-example".to_string(), "plan-checkpoint".to_string()],
+            "plan checkpoint must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty(), "unload must remove both middlewares");

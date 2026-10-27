@@ -853,6 +853,7 @@ async fn after_turn_or_fault(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<fastrace::prelude::SpanContext>,
+    session_id: &str,
     turn: usize,
     continued_tools: bool,
     history_len: usize,
@@ -868,6 +869,7 @@ async fn after_turn_or_fault(
             turn_index: turn as u32,
             continued_tools,
             history_len,
+            session_id: Some(session_id.to_string()),
         },
     )
     .await
@@ -1130,6 +1132,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         tool_schemas: turn_tool_schemas.clone(),
                         options: generate_options.clone(),
                         todo: bar.todo.clone(),
+                        session_id: Some(session_id.clone()),
                     };
                     match run_before_model(&loop_chain, &cancel, iteration_parent, ctx).await {
                         Ok(out) => {
@@ -1148,6 +1151,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     &loop_chain,
                                     &cancel,
                                     turn_obs_parent,
+                                    &session_id,
                                     turn,
                                     false,
                                     history.len(),
@@ -1518,6 +1522,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     &loop_chain,
                                     &cancel,
                                     turn_obs_parent,
+                                    &session_id,
                                     turn,
                                     false,
                                     history.len(),
@@ -1599,7 +1604,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                     let settle_outcome = finished.outcome;
                     if let Some(fault) =
-                        after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, turn, false, history.len())
+                        after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &session_id, turn, false, history.len())
                             .await
                     {
                         turn_aborted = true;
@@ -1820,6 +1825,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     &loop_chain,
                                     &cancel,
                                     turn_obs_parent,
+                                    &session_id,
                                     turn,
                                     true,
                                     history.len(),
@@ -1889,6 +1895,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                         &loop_chain,
                                         &cancel,
                                         turn_obs_parent,
+                                        &session_id,
                                         turn,
                                         true,
                                         history.len(),
@@ -1938,7 +1945,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     yield event;
                 }
                 if let Some(fault) =
-                    after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, turn, true, history.len())
+                    after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &session_id, turn, true, history.len())
                         .await
                 {
                     turn_aborted = true;

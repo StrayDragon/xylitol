@@ -354,3 +354,6 @@
   @req:r2938
   规则: 会话条目分页读取
     XySessionStore 须提供分页读取入口：limit 缺省返回全量；给定 limit 时从最新一条向前取该条数；给定 before_entry_id 时取该条目之前的更早条目；未知 before_entry_id 须返回空页。分页结果 须与全量读取后切片逐条一致。持久化后端 须按 manifest 段首尾条目 id 与 sidecar 索引跳过窗口外的整段，不得为取一页而读取全部段；窗口跨越的段 须读取并按需切片。has_more 须表示窗口之外仍有更早条目。段级跳过与读取段计数 由存储层单测覆盖，不为内部读取计数单开 BDD。
+  @req:r2941
+  规则: plan-checkpoint-entry
+    计划 checkpoint 须以 custom_type = "plan_checkpoint" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式，不改布局；data 至少含 steps（id/content/status 与可选 verification/output_ref）、可选 last_verified_artifact / last_failure / resume_cursor（step_id 与 attempt）以及 updated_at。读取 须取叶分支上最新一条；缺失或损坏时 须按无 checkpoint 处理，不得中断。checkpoint 与 agent_todo 并存：todo 仍是人可见台账，checkpoint 是恢复状态，两者 不得互相替代。写入 须只追加，不得覆盖或删除历史条目。往返与最新选取 由 SDK 单测覆盖。

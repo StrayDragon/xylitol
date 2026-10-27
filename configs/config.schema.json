@@ -153,6 +153,10 @@
             "null"
           ]
         },
+        "plan_checkpoint": {
+          "default": false,
+          "type": "boolean"
+        },
         "plan_state": {
           "default": false,
           "type": "boolean"
@@ -740,6 +744,7 @@
         "deny_bash_patterns": [],
         "enabled": false,
         "max_settles": null,
+        "plan_checkpoint": false,
         "plan_state": false,
         "progress_reminder": false,
         "progress_reminder_stale_after": 3,

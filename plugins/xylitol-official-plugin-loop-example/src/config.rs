@@ -20,6 +20,7 @@ pub struct LoopExampleConfig {
     pub plan_state: bool,
     pub progress_reminder: bool,
     pub progress_reminder_stale_after: u32,
+    pub plan_checkpoint: bool,
     pub tool_exposure: ToolExposureConfig,
 }
 
@@ -34,6 +35,7 @@ impl Default for LoopExampleConfig {
             plan_state: false,
             progress_reminder: false,
             progress_reminder_stale_after: DEFAULT_PROGRESS_STALE_AFTER,
+            plan_checkpoint: false,
             tool_exposure: ToolExposureConfig::default(),
         }
     }

@@ -1,9 +1,15 @@
+mod checkpoint;
 mod entries;
 mod helpers;
 mod manifest;
 mod parse;
 mod todo;
 mod tree;
+
+pub use checkpoint::{
+    CUSTOM_TYPE_PLAN_CHECKPOINT, PlanCheckpoint, PlanCheckpointStep, PlanResumeCursor,
+    latest_plan_checkpoint,
+};
 
 pub use entries::{
     BranchSummaryEntry, CompactionEntry, CompactionPolicySnapshot, CustomEntry, CustomMessageEntry,

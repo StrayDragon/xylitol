@@ -89,6 +89,12 @@ async fn test_lm_tool_exposure_registers(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
+    name = "计划 checkpoint 启用后注册 checkpoint 中间件"
+)]
+async fn test_lm_plan_checkpoint_registers(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "改写参数可见"
 )]
 async fn test_lm_rewritten_args_visible(agent: AgentState, ws: Workspace) {}

@@ -263,6 +263,7 @@ mod tests {
                     plan_state: false,
                     progress_reminder: false,
                     progress_reminder_stale_after: 3,
+                    plan_checkpoint: false,
                     tool_exposure: Default::default(),
                 },
             )
@@ -436,6 +437,7 @@ mod tests {
                 plan_state: false,
                 progress_reminder: false,
                 progress_reminder_stale_after: 3,
+                plan_checkpoint: false,
                 tool_exposure: Default::default(),
             },
         ))
