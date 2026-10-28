@@ -443,7 +443,7 @@ mod tests {
     }
 
     fn chain_with_deny() -> LoopChain {
-        let mut registry = LoopMiddlewareRegistry::new();
+        let registry = LoopMiddlewareRegistry::new();
         registry.register(Arc::new(Deny)).expect("register");
         registry.snapshot()
     }
