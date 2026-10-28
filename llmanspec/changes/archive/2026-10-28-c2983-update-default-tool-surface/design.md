@@ -41,20 +41,28 @@
 - 优点：最省 token。
 - 缺点：改动最大；与 `mcp8` 冻表语义冲突；provider KV cache 失效。
 
+## Measurement (2026-10-29)
+
+用默认 `ToolFeatures`（todo=true、plan=true、workflow=false、ask=None）在 kernel 内构造工具表，按 `name + description + parameters` JSON 字符数统计（粗略 token ≈ chars/4）：
+
+| 分组 | 工具 | 字符数 | 粗略 token | 占比 |
+|---|---|---:|---:|---:|
+| 全表 | 14 | 6932 | 1733 | 100% |
+| plan 全组 | `plan_write/read/list/submit/mode` | 1910 | 478 | 27.6% |
+| `plan_write` + `plan_submit` | 2 | 1101 | 275 | 15.9% |
+| todo 组 | `todo_rewrite/todo_update` | 927 | 232 | 13.4% |
+
+结论：plan 组占比显著，但 `plan_read/plan_list/plan_mode` 在 execute 模式下仍有用（读取计划、请求进入 plan）。因此采用保守的 **Option C**：execute 模式只隐藏 `plan_write` / `plan_submit`，保留 `plan_read` / `plan_list` / `plan_mode`；plan 模式全部可见。
+
 ## Recommendation
 
-先做 **Option A 的测量**：
-
-1. 统计默认工具表 schema 的 token（plan 5 个 / todo 2 个 / core 7 个）；
-2. 若 plan 占比可忽略，保持 A；
-3. 若占比显著，优先 **Option C**（只影响可见性，不动冻表），并保留 `plan_mode` 工具可见以便模型主动进入 plan；
-4. 不建议 B/D，除非产品明确要求“默认最小工具面”。
+采用保守 **Option C**（只隐藏写/提交计划工具），不改默认 `plan.enabled` 与冻表语义；测量与取舍记录在本节。后续若 plan 组继续膨胀，再评估默认关闭或动态注册。
 
 ## Test seam
 
-- 单测：`compose_tools` 在 `plan=false` / `todo=false` 时的工具集合；
-- 若选 C：`before_llm_request` 过滤后的 `tool_schemas` 名称集合（execute 模式不含 `plan_write` 等，plan 模式包含）；
-- token 统计可作为一次性 `lab_` 脚本，不进 `just qa`。
+- 单测：`PlanToolSurfaceMiddleware` 在 execute / plan / 缺失模式下的 `tool_schemas` 名称集合与 `hidden_tools` 属性；
+- 工具表构造：`compose_tools` 在 `plan=false` / `todo=false` 时的集合（现有/新增）；
+- token 统计为一次性 kernel 内探针，结果记录在本节，不进 `just qa`。
 
 ## Risks
 

@@ -2,6 +2,9 @@
 depends_on: []
 title: 收敛默认工具面：plan/todo 工具常驻
 needs_specs_change: true
+branch: sdd/c2983-update-default-tool-surface
+base_branch: main
+base_sha: 0dc1bc5e11e64d050fe09652f91fa7535da7d3bf
 ---
 
 # 收敛默认工具面：plan/todo 工具常驻

@@ -40,6 +40,10 @@
       当 切回执行模式并尝试执行 write
       那么 工具在计划模式闸被允许
 
+  @req:r2974
+  规则: plan-tool-surface
+    execute 模式下 模型可见工具表 须隐藏 `plan_write` 与 `plan_submit`；plan 模式下 两者 须可见。`plan_read` / `plan_list` / `plan_mode` 须始终可见。隐藏 只影响模型可见 schema，不得删除工具、不得改变权限终裁、不得绕过 before_tool 只读闸；未启用 plan 时 不得改变工具表。由插件单测覆盖。
+
   @req:r2963
   规则: plan-document-scope
     PlanScope 须为 session / project / global；省略 scope 时 须先取活动 plan_ref 的 scope，否则 session。session 以 CustomEntry 为 SSOT；project / global 以文件（frontmatter + markdown）为 SSOT。project 须经 trust 门禁；未信任 须返回 PermissionDenied 且不得降级。文件写入 须原子（temp + rename）；失败不得留下残片。plan_list 合并 scope 并标注 scope。

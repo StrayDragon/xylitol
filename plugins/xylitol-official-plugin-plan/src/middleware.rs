@@ -102,6 +102,58 @@ pub fn plan_mode_middleware(config: &PlanConfig) -> Arc<dyn LoopMiddleware> {
     Arc::new(PlanModeMiddleware::new(config))
 }
 
+pub struct PlanToolSurfaceMiddleware;
+
+impl PlanToolSurfaceMiddleware {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
+impl Default for PlanToolSurfaceMiddleware {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl LoopMiddleware for PlanToolSurfaceMiddleware {
+    fn id(&self) -> &str {
+        "plan-tool-surface"
+    }
+
+    fn order(&self) -> i64 {
+        186
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        &[LoopStage::BeforeLlmRequest]
+    }
+
+    async fn before_llm_request(
+        &self,
+        mut ctx: BeforeLlmRequestCtx,
+    ) -> LoopStep<BeforeLlmRequestCtx> {
+        let mode = ctx.plan_mode.clone().unwrap_or_default();
+        if mode.mode != PlanModeKind::Execute {
+            return LoopStep::continued(ctx);
+        }
+        let before = ctx.tool_schemas.len();
+        ctx.tool_schemas
+            .retain(|schema| schema.name != "plan_write" && schema.name != "plan_submit");
+        let hidden = before - ctx.tool_schemas.len();
+        if hidden == 0 {
+            return LoopStep::continued(ctx);
+        }
+        LoopStep::continued(ctx)
+            .with_property("loop.middleware.plan.hidden_tools", hidden.to_string())
+    }
+}
+
+pub fn plan_tool_surface_middleware() -> Arc<dyn LoopMiddleware> {
+    Arc::new(PlanToolSurfaceMiddleware::new())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,6 +306,81 @@ mod tests {
         let mw = plan_middleware(config, PlanMode::plan(None)).await;
         let out = mw.before_tool(tool_ctx("write")).await;
         assert_eq!(out.control, LoopControl::Continue);
+    }
+
+    fn schema(name: &str) -> xylitol_plugin_sdk::model::XyToolSchema {
+        xylitol_plugin_sdk::model::XyToolSchema {
+            name: name.into(),
+            description: String::new(),
+            parameters: serde_json::json!({ "type": "object" }),
+        }
+    }
+
+    fn schema_names(ctx: &BeforeLlmRequestCtx) -> Vec<String> {
+        ctx.tool_schemas.iter().map(|s| s.name.clone()).collect()
+    }
+
+    fn plan_surface_ctx(plan_mode: Option<PlanMode>) -> BeforeLlmRequestCtx {
+        let mut ctx = model_ctx("s1", plan_mode);
+        ctx.tool_schemas = [
+            "read",
+            "plan_write",
+            "plan_submit",
+            "plan_read",
+            "plan_list",
+            "plan_mode",
+        ]
+        .iter()
+        .map(|name| schema(name))
+        .collect();
+        ctx
+    }
+
+    #[tokio::test]
+    async fn execute_mode_hides_plan_write_and_submit() {
+        let mw = plan_tool_surface_middleware();
+        let out = mw
+            .before_llm_request(plan_surface_ctx(Some(PlanMode::execute())))
+            .await;
+        assert_eq!(
+            schema_names(&out.ctx),
+            vec!["read", "plan_read", "plan_list", "plan_mode"]
+        );
+        assert!(
+            out.properties
+                .iter()
+                .any(|(key, value)| { key == "loop.middleware.plan.hidden_tools" && value == "2" })
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_mode_keeps_plan_write_and_submit() {
+        let mw = plan_tool_surface_middleware();
+        let out = mw
+            .before_llm_request(plan_surface_ctx(Some(PlanMode::plan(None))))
+            .await;
+        assert_eq!(
+            schema_names(&out.ctx),
+            vec![
+                "read",
+                "plan_write",
+                "plan_submit",
+                "plan_read",
+                "plan_list",
+                "plan_mode"
+            ]
+        );
+        assert!(out.properties.is_empty());
+    }
+
+    #[tokio::test]
+    async fn missing_plan_mode_uses_execute_surface() {
+        let mw = plan_tool_surface_middleware();
+        let out = mw.before_llm_request(plan_surface_ctx(None)).await;
+        assert_eq!(
+            schema_names(&out.ctx),
+            vec!["read", "plan_read", "plan_list", "plan_mode"]
+        );
     }
 
     #[test]

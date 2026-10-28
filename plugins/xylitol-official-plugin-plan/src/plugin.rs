@@ -2,7 +2,7 @@ use xylitol_plugin_sdk::LoopMiddlewareRegistry;
 use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 use crate::config::PlanConfig;
-use crate::middleware::plan_mode_middleware;
+use crate::middleware::{plan_mode_middleware, plan_tool_surface_middleware};
 
 pub struct PlanPlugin {
     config: PlanConfig,
@@ -30,11 +30,15 @@ impl Plugin for PlanPlugin {
         let Some(registry) = ctx.get::<LoopMiddlewareRegistry>() else {
             return Ok(());
         };
-        let handle = registry
+        let mode_handle = registry
             .register(plan_mode_middleware(&self.config))
             .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?;
+        let surface_handle = registry
+            .register(plan_tool_surface_middleware())
+            .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?;
         ctx.effect(|| async move {
-            handle.unregister();
+            surface_handle.unregister();
+            mode_handle.unregister();
             Ok(())
         })?;
         Ok(())
@@ -82,7 +86,10 @@ mod tests {
             }
             tokio::task::yield_now().await;
         }
-        assert_eq!(registry.ids(), vec!["plan-mode".to_string()]);
+        assert_eq!(
+            registry.ids(),
+            vec!["plan-mode".to_string(), "plan-tool-surface".to_string()]
+        );
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty());
         let _ = ctx.shutdown().await;
