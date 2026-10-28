@@ -98,7 +98,7 @@ impl Default for LoopExampleConfig {
             todo_reminder: false,
             todo_reminder_stale_after: DEFAULT_TODO_REMINDER_STALE_AFTER,
             todo_checkpoint: false,
-            plan_mode: false,
+            plan_mode: true,
             self_heal: SelfHealConfig::default(),
             generator_critic: GeneratorCriticConfig::default(),
             workflow: WorkflowConfig::default(),

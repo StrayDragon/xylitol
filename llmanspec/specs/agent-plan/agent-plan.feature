@@ -7,7 +7,7 @@
 
   @req:r2948
   规则: plan-mode-state
-    计划模式 须为每会话显式状态（plan / execute），以 custom_type = "plan_mode" 的 CustomEntry 只追加保存；缺省 须为 execute。用户经 `/plan` 或 `set_plan_mode` 切换 须立即生效；agent 经 `plan_mode` 工具请求进入 plan 须经 ask 批准，拒绝或跳过 须保持原状态。切换 须发布 `planModeChanged` 事件。模式状态 不得由用户措辞推断。
+    计划模式 须为每会话显式状态（plan / execute），以 custom_type = "plan_mode" 的 CustomEntry 只追加保存；缺省 须为 execute。用户经 `/plan` 或 `set_plan_mode` 切换 须立即写入状态，并在下一次模型调用生效；agent 经 `plan_mode` 工具请求进入 plan 须经 ask 批准，拒绝或跳过 须保持原状态。切换 须发布 `planModeChanged` 事件。模式状态 不得由用户措辞推断。
 
   @req:r2949
   规则: plan-document

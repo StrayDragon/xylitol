@@ -287,6 +287,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn default_config_registers_plan_mode() {
+        let (ctx, registry) = ctx_with_registry();
+        let config = LoopExampleConfig {
+            enabled: true,
+            ..Default::default()
+        };
+        let fiber = ctx.plugin(LoopExamplePlugin::new(&config).expect("new"));
+        for _ in 0..64 {
+            if registry.ids().len() == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            registry.ids(),
+            vec!["loop-example".to_string(), "plan-mode".to_string()],
+            "plan_mode defaults to true"
+        );
+        fiber.dispose().await.expect("dispose");
+        assert!(registry.is_empty());
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn todo_progress_registers_both_and_unloads_both() {
         let (ctx, registry) = ctx_with_registry();
         let fiber = ctx.plugin(LoopExamplePlugin::new(&plan_enabled()).expect("new"));

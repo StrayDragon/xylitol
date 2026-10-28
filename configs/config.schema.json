@@ -185,7 +185,7 @@
           ]
         },
         "plan_mode": {
-          "default": false,
+          "default": true,
           "type": "boolean"
         },
         "self_heal": {
@@ -838,7 +838,7 @@
           "rubric": []
         },
         "max_settles": null,
-        "plan_mode": false,
+        "plan_mode": true,
         "self_heal": {
           "enabled": false,
           "max_attempts": 3,

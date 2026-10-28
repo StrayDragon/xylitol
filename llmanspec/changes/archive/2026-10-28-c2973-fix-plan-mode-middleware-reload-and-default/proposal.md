@@ -3,6 +3,9 @@ depends_on:
   - c2965-add-plan-mode-with-plan-doc-and-approval
 title: Fix plan mode middleware reload and enable it by default
 needs_specs_change: true
+branch: sdd/c2973-fix-plan-mode-middleware-reload-and-default
+base_branch: main
+base_sha: 21bf46ca01b564de7bde9a443164d86fe3bdbf2b
 ---
 
 # Fix plan mode middleware reload and enable it by default

@@ -1405,7 +1405,6 @@ const PLAN_MODE_STAGES: &[LoopStage] = &[LoopStage::BeforeModel];
 pub struct PlanModeMiddleware {
     store: Option<Arc<dyn XySessionStore>>,
     ctx: Option<Ctx>,
-    loaded: AtomicBool,
     mode: Mutex<PlanMode>,
 }
 
@@ -1414,7 +1413,6 @@ impl PlanModeMiddleware {
         Self {
             store,
             ctx,
-            loaded: AtomicBool::new(false),
             mode: Mutex::new(PlanMode::execute()),
         }
     }
@@ -1459,9 +1457,7 @@ impl LoopMiddleware for PlanModeMiddleware {
     }
 
     async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
-        if !self.loaded.swap(true, Ordering::SeqCst) {
-            self.load_mode(ctx.session_id.as_deref()).await;
-        }
+        self.load_mode(ctx.session_id.as_deref()).await;
         let mode = self.mode.lock().unwrap_or_else(|e| e.into_inner()).clone();
         if mode.mode == PlanModeKind::Plan {
             ctx.messages
@@ -1623,6 +1619,44 @@ mod tests {
                 .iter()
                 .any(|fragment| fragment.contains("todo_rewrite")),
             "todo progress must tell the model how to record the checklist"
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_mode_reloads_mode_every_model_call() {
+        let store = Arc::new(FakeStore::default());
+        let mw = PlanModeMiddleware::new(Some(store.clone()), None);
+        let out = mw.before_model(exec_model_ctx(Some("s1"))).await;
+        assert!(
+            !out.ctx
+                .messages
+                .iter()
+                .any(|m| m.text().contains("Plan mode:")),
+            "execute must not inject the plan contract"
+        );
+        store
+            .append_session_entry("s1", &PlanMode::plan(None).to_custom_entry_shell())
+            .await
+            .expect("append plan mode");
+        let out = mw.before_model(exec_model_ctx(Some("s1"))).await;
+        assert!(
+            out.ctx
+                .messages
+                .iter()
+                .any(|m| m.text().contains("Plan mode:")),
+            "switching to plan must inject on the next model call"
+        );
+        store
+            .append_session_entry("s1", &PlanMode::execute().to_custom_entry_shell())
+            .await
+            .expect("append execute mode");
+        let out = mw.before_model(exec_model_ctx(Some("s1"))).await;
+        assert!(
+            !out.ctx
+                .messages
+                .iter()
+                .any(|m| m.text().contains("Plan mode:")),
+            "switching back to execute must stop injecting"
         );
     }
 
