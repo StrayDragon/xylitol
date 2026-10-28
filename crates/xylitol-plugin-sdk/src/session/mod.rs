@@ -32,8 +32,9 @@ pub use parse::{
     parse_session_jsonl_lines,
 };
 pub use plan_doc::{
-    CUSTOM_TYPE_PLAN_DOC, PlanDoc, PlanDocStatus, PlanDocStep, PlanDocValidationError,
-    latest_plan_doc, latest_plan_doc_by_id, plan_docs,
+    CUSTOM_TYPE_PLAN_DOC, CUSTOM_TYPE_PLAN_REF, PlanDoc, PlanDocStatus, PlanDocStep,
+    PlanDocValidationError, PlanRef, PlanScope, latest_plan_doc, latest_plan_doc_by_id,
+    latest_plan_ref, plan_docs,
 };
 pub use plan_mode::{CUSTOM_TYPE_PLAN_MODE, PlanMode, PlanModeKind, latest_plan_mode};
 pub use todo::TodoItem;

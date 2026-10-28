@@ -6133,12 +6133,16 @@ version = "0.0.0-pre"
 dependencies = [
  "anyhow",
  "async-trait",
+ "dirs",
  "log",
  "schemars",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
+ "xylitol-official-plugin-session",
  "xylitol-plugin-sdk",
+ "yaml_serde",
 ]
 
 [[package]]

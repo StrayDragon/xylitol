@@ -34,3 +34,17 @@
       假如 计划模式激活且只读策略开启
       当 切回执行模式并尝试执行 write
       那么 工具在计划模式闸被允许
+
+  @req:r2963
+  规则: plan-document-scope
+    PlanScope 须为 session / project / global；省略 scope 时 须先取活动 plan_ref 的 scope，否则 session。session 以 CustomEntry 为 SSOT；project / global 以文件（frontmatter + markdown）为 SSOT。project 须经 trust 门禁；未信任 须返回 PermissionDenied 且不得降级。文件写入 须原子（temp + rename）；失败不得留下残片。plan_list 合并 scope 并标注 scope。
+
+    场景: 项目计划跨会话可读
+      假如 已信任项目且写入 project 计划
+      当 新会话按活动 plan_ref 读取
+      那么 返回同一 project 计划
+
+    场景: 未信任项目计划被拒绝
+      假如 项目未信任
+      当 写入 project 计划
+      那么 返回 PermissionDenied 且不降级

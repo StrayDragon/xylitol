@@ -69,6 +69,7 @@ pub struct BootstrappedAgent {
     pub store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
     pub mcp_servers: Option<Vec<crate::mcp_spec::McpServerSpec>>,
     tool_features: crate::driver::ToolFeatures,
+    driver_context: crate::driver::DriverContext,
 }
 
 pub struct BootstrappedRuntime {
@@ -178,10 +179,11 @@ impl BootstrappedAgent {
                 name.as_str(),
             ));
         }
-        let driver = crate::driver::assemble_driver_with_features(
+        let driver = crate::driver::assemble_driver_with_features_and_context(
             self.agent,
             self.store,
             self.tool_features,
+            self.driver_context,
         );
         let todo_gw = driver.todo_gateway();
         let sid = self.session_id.clone();
@@ -224,6 +226,7 @@ pub struct ResolvedAssembly {
     pub batch_mode: xylitol_plugin_sdk::XyBatchMode,
     pub max_turns: Option<u32>,
     pub tool_features: crate::driver::ToolFeatures,
+    pub project_trusted: bool,
 }
 
 impl ResolvedAssembly {
@@ -532,6 +535,7 @@ pub fn resolve_assembly_with(
             .as_ref()
             .map(crate::driver::ToolFeatures::from_config)
             .unwrap_or_default(),
+        project_trusted,
     })
 }
 
@@ -558,6 +562,10 @@ pub fn bootstrap_with(
     let max_turns = assembly.max_turns;
     let session_file_exists = assembly.session_file_exists;
     let tool_features = assembly.tool_features;
+    let driver_context = crate::driver::DriverContext {
+        project_root: std::path::PathBuf::from(&assembly.cwd),
+        trusted: assembly.project_trusted,
+    };
     let target_model = model.or_else(|| assembly.default_profile_model.clone());
     let mut warnings = std::mem::take(&mut assembly.warnings);
 
@@ -607,6 +615,7 @@ pub fn bootstrap_with(
         store,
         mcp_servers,
         tool_features,
+        driver_context,
     })
 }
 

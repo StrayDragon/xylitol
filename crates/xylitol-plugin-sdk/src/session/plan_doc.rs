@@ -7,6 +7,57 @@ use super::entries::{CustomEntry, EntryBase, SessionEntry};
 use super::todo::TodoStatus;
 
 pub const CUSTOM_TYPE_PLAN_DOC: &str = "plan_doc";
+pub const CUSTOM_TYPE_PLAN_REF: &str = "plan_ref";
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanScope {
+    #[default]
+    Session,
+    Project,
+    Global,
+}
+
+impl PlanScope {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Session => "session",
+            Self::Project => "project",
+            Self::Global => "global",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanRef {
+    pub scope: PlanScope,
+    pub plan_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+impl PlanRef {
+    pub fn to_data_value(&self) -> Value {
+        serde_json::to_value(self).unwrap_or(Value::Null)
+    }
+
+    pub fn from_data_value(data: &Value) -> Option<Self> {
+        serde_json::from_value(data.clone()).ok()
+    }
+
+    pub fn to_custom_entry_shell(&self) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: CUSTOM_TYPE_PLAN_REF.into(),
+            data: self.to_data_value(),
+        })
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -36,6 +87,8 @@ pub struct PlanDoc {
     pub title: String,
     #[serde(default)]
     pub status: PlanDocStatus,
+    #[serde(default)]
+    pub scope: PlanScope,
     #[serde(default)]
     pub steps: Vec<PlanDocStep>,
     #[serde(default)]
@@ -118,6 +171,7 @@ impl PlanDoc {
     pub fn to_markdown(&self) -> String {
         let mut out = format!("# {}\n\n", self.title.trim());
         out.push_str(&format!("- plan_id: `{}`\n", self.plan_id));
+        out.push_str(&format!("- scope: `{}`\n", self.scope.label()));
         out.push_str(&format!("- status: `{}`\n", status_label(self.status)));
         out.push_str(&format!("- updated_at: `{}`\n\n", self.updated_at));
         for step in &self.steps {
@@ -135,6 +189,26 @@ impl PlanDoc {
             }
         }
         out
+    }
+
+    pub fn to_file_markdown(&self) -> Result<String, String> {
+        let frontmatter = yaml_serde::to_string(self).map_err(|e| e.to_string())?;
+        Ok(format!("---\n{}---\n\n{}", frontmatter, self.to_markdown()))
+    }
+
+    pub fn from_file_markdown(content: &str) -> Result<Self, String> {
+        let rest = content
+            .strip_prefix("---\n")
+            .ok_or_else(|| "plan file is missing frontmatter".to_string())?;
+        let (frontmatter, _body) = rest
+            .split_once("\n---\n")
+            .ok_or_else(|| "plan file frontmatter is not closed".to_string())?;
+        let doc: Self = yaml_serde::from_str(frontmatter).map_err(|e| e.to_string())?;
+        if doc.plan_id.trim().is_empty() {
+            return Err("plan_id must be non-empty".into());
+        }
+        doc.validate().map_err(|e| e.0)?;
+        Ok(doc)
     }
 
     pub fn to_custom_entry_shell(&self) -> SessionEntry {
@@ -212,6 +286,15 @@ pub fn latest_plan_doc_by_id(entries: &[SessionEntry], plan_id: &str) -> Option<
     })
 }
 
+pub fn latest_plan_ref(entries: &[SessionEntry]) -> Option<PlanRef> {
+    entries.iter().rev().find_map(|entry| match entry {
+        SessionEntry::Custom(custom) if custom.custom_type == CUSTOM_TYPE_PLAN_REF => {
+            PlanRef::from_data_value(&custom.data)
+        }
+        _ => None,
+    })
+}
+
 pub fn plan_docs(entries: &[SessionEntry]) -> Vec<PlanDoc> {
     let mut by_id: HashMap<String, PlanDoc> = HashMap::new();
     for entry in entries {
@@ -255,6 +338,7 @@ mod tests {
             plan_id: plan_id.into(),
             title: format!("Plan {plan_id}"),
             status: PlanDocStatus::Draft,
+            scope: PlanScope::Session,
             steps,
             created_at: 1,
             updated_at: 2,
@@ -355,5 +439,40 @@ mod tests {
         assert!(md.contains("- [x] `s1` do s1"));
         assert!(md.contains("- [~] `s2` do s2"));
         assert!(md.contains("depends on: s1"));
+    }
+
+    #[test]
+    fn plan_ref_round_trip_and_latest() {
+        let first = PlanRef {
+            scope: PlanScope::Project,
+            plan_id: "p1".into(),
+            path: Some("/repo/.xylitol/plans/p1.md".into()),
+        };
+        let second = PlanRef {
+            scope: PlanScope::Global,
+            plan_id: "p2".into(),
+            path: None,
+        };
+        let entries = vec![
+            first.to_custom_entry_shell(),
+            message("m1"),
+            second.to_custom_entry_shell(),
+        ];
+        assert_eq!(
+            latest_plan_ref(&entries).map(|r| (r.scope, r.plan_id)),
+            Some((PlanScope::Global, "p2".into()))
+        );
+    }
+
+    #[test]
+    fn file_markdown_round_trip_and_rejects_bad_frontmatter() {
+        let doc = doc("p1", vec![step("s1", TodoStatus::Pending, &[])]);
+        let content = doc.to_file_markdown().expect("render");
+        assert!(content.starts_with("---\n"));
+        assert!(content.contains("plan_id: p1"));
+        let parsed = PlanDoc::from_file_markdown(&content).expect("parse");
+        assert_eq!(parsed, doc);
+        assert!(PlanDoc::from_file_markdown("# no frontmatter").is_err());
+        assert!(PlanDoc::from_file_markdown("---\ntitle: x\n---\n").is_err());
     }
 }

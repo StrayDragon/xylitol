@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use xylitol_plugin_sdk::XySessionStore;
@@ -16,6 +17,21 @@ pub use xylitol_runtime::XyInProcessDriver;
 pub use xylitol_runtime::driver::{
     LoadedResourcesSnapshot, ProjectTrustMode, relay_bash_chunks, utf8_emit_len,
 };
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DriverContext {
+    pub project_root: PathBuf,
+    pub trusted: bool,
+}
+
+impl Default for DriverContext {
+    fn default() -> Self {
+        Self {
+            project_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            trusted: true,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ToolFeatures {
@@ -53,7 +69,16 @@ pub fn assemble_driver_with_features(
     store: Arc<dyn XySessionStore>,
     features: ToolFeatures,
 ) -> RuntimeDriver {
-    assemble_driver_with_ops_and_features(
+    assemble_driver_with_features_and_context(agent, store, features, DriverContext::default())
+}
+
+pub fn assemble_driver_with_features_and_context(
+    agent: AgentRuntime,
+    store: Arc<dyn XySessionStore>,
+    features: ToolFeatures,
+    context: DriverContext,
+) -> RuntimeDriver {
+    assemble_driver_with_ops_and_features_and_context(
         agent,
         store,
         BangExecHandler::new(Some(Arc::new(
@@ -61,6 +86,7 @@ pub fn assemble_driver_with_features(
         ))),
         SessionExporter::new(Some(Arc::new(crate::export::StdExportIo::new()))),
         features,
+        context,
     )
 }
 
@@ -80,8 +106,30 @@ pub fn assemble_driver_with_ops_and_features(
     exporter: SessionExporter,
     features: ToolFeatures,
 ) -> RuntimeDriver {
+    assemble_driver_with_ops_and_features_and_context(
+        agent,
+        store,
+        bang,
+        exporter,
+        features,
+        DriverContext::default(),
+    )
+}
+
+pub fn assemble_driver_with_ops_and_features_and_context(
+    agent: AgentRuntime,
+    store: Arc<dyn XySessionStore>,
+    bang: BangExecHandler,
+    exporter: SessionExporter,
+    features: ToolFeatures,
+    context: DriverContext,
+) -> RuntimeDriver {
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone());
-    let plan = xylitol_official_plugin_plan::SessionPlanGateway::new(store.clone());
+    let plan = xylitol_official_plugin_plan::SessionPlanGateway::new(
+        store.clone(),
+        context.project_root,
+        context.trusted,
+    );
     let mut inner = RuntimeDriver::with_surface_ops(agent, store, bang, exporter);
     inner.set_todo_gateway(todo.clone());
     inner.set_plan_gateway(plan.clone());
@@ -103,10 +151,15 @@ pub fn install_product_ask_tool(
     driver: &mut RuntimeDriver,
     gateway: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>,
     features: ToolFeatures,
+    context: DriverContext,
 ) {
     driver.install_ask_tool(gateway.clone());
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(driver.store.clone());
-    let plan = xylitol_official_plugin_plan::SessionPlanGateway::new(driver.store.clone());
+    let plan = xylitol_official_plugin_plan::SessionPlanGateway::new(
+        driver.store.clone(),
+        context.project_root,
+        context.trusted,
+    );
     driver.set_todo_gateway(todo.clone());
     driver.set_plan_gateway(plan.clone());
     driver.set_tools(compose_tools(features, todo, plan, Some(gateway)));

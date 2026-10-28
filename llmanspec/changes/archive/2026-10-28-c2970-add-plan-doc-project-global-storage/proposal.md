@@ -3,6 +3,9 @@ depends_on:
   - c2965-add-plan-mode-with-plan-doc-and-approval
 title: Add project and global scopes for durable plan documents
 needs_specs_change: true
+branch: sdd/c2970-add-plan-doc-project-global-storage
+base_branch: main
+base_sha: 4671546ca7a525d3d4d4068757adf4c620d38c7f
 ---
 
 # Add project and global scopes for durable plan documents

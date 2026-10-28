@@ -266,6 +266,7 @@ mod tests {
             &mut driver,
             Arc::new(SkipGateway),
             crate::driver::ToolFeatures::default(),
+            crate::driver::DriverContext::default(),
         );
         assert!(driver.tool_names_for_test().iter().any(|n| n == "ask"));
 

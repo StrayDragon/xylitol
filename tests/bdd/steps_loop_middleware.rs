@@ -12,7 +12,7 @@ use crate::bdd::steps_agent_runtime::{
 
 use xylitol_plugin_sdk::{
     AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx, LoopControl,
-    LoopMiddleware, LoopMiddlewareRegistry, LoopStage, LoopStep,
+    LoopMiddleware, LoopMiddlewareRegistry, LoopStage, LoopStep, PlanGateway,
 };
 use xylitol_runtime::agent::runtime::XyEvent;
 
@@ -2166,4 +2166,151 @@ pub(crate) fn t_plan_gate_allowed() {
         .expect("plan gate outcome");
     assert_eq!(control, LoopControl::Continue, "write must be allowed");
     assert_eq!(args["path"], "src/lib.rs");
+}
+
+thread_local! {
+    static PLAN_STORE_FIXTURE: RefCell<Option<PlanStoreFixture>> = const { RefCell::new(None) };
+    static PLAN_STORE_OUT: RefCell<Option<Result<String, String>>> = const { RefCell::new(None) };
+}
+
+struct PlanStoreFixture {
+    gateway: Arc<xylitol_official_plugin_plan::SessionPlanGateway>,
+    store: Arc<dyn xylitol_plugin_sdk::XySessionStore>,
+    _project: tempfile::TempDir,
+    _global: tempfile::TempDir,
+}
+
+fn plan_store_doc(
+    scope: xylitol_plugin_sdk::session::PlanScope,
+) -> xylitol_plugin_sdk::session::PlanDoc {
+    use xylitol_plugin_sdk::session::{PlanDoc, PlanDocStatus, PlanDocStep, TodoStatus};
+    PlanDoc {
+        plan_id: "p-store".into(),
+        title: "Store plan".into(),
+        status: PlanDocStatus::Draft,
+        scope,
+        steps: vec![PlanDocStep {
+            id: "s1".into(),
+            content: "do it".into(),
+            depends_on: Vec::new(),
+            verification: None,
+            status: TodoStatus::Pending,
+        }],
+        created_at: 1,
+        updated_at: 2,
+    }
+}
+
+async fn plan_store_fixture(trusted: bool) -> PlanStoreFixture {
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
+        Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+    store
+        .create("s-plan-store", Some("."), None)
+        .await
+        .expect("create");
+    let project = tempfile::tempdir().expect("project");
+    let global = tempfile::tempdir().expect("global");
+    let gateway = xylitol_official_plugin_plan::SessionPlanGateway::new_with_roots(
+        store.clone(),
+        project.path().to_path_buf(),
+        global.path().to_path_buf(),
+        trusted,
+    );
+    gateway.bind_session(Some("s-plan-store".into())).await;
+    PlanStoreFixture {
+        gateway,
+        store,
+        _project: project,
+        _global: global,
+    }
+}
+
+#[given("已信任项目且写入 project 计划")]
+pub(crate) fn g_trusted_project_plan() {
+    let fixture = futures::executor::block_on(plan_store_fixture(true));
+    let written = futures::executor::block_on(fixture.gateway.write(plan_store_doc(
+        xylitol_plugin_sdk::session::PlanScope::Project,
+    )));
+    assert!(written.is_ok(), "trusted project plan must be written");
+    PLAN_STORE_FIXTURE.with(|slot| slot.borrow_mut().replace(fixture));
+}
+
+#[when("新会话按活动 plan_ref 读取")]
+pub(crate) fn w_resume_project_plan() {
+    let fixture = PLAN_STORE_FIXTURE
+        .with(|slot| {
+            slot.borrow()
+                .as_ref()
+                .map(|f| (f.store.clone(), f.gateway.clone()))
+        })
+        .expect("plan store fixture");
+    let resumed = futures::executor::block_on(async {
+        let gateway = xylitol_official_plugin_plan::SessionPlanGateway::new_with_roots(
+            fixture.0.clone(),
+            std::env::temp_dir(),
+            std::env::temp_dir(),
+            true,
+        );
+        gateway.bind_session(Some("s-plan-store".into())).await;
+        gateway.read(None, None).await
+    });
+    PLAN_STORE_OUT.with(|slot| {
+        *slot.borrow_mut() = Some(match resumed {
+            Ok(Some(doc)) => Ok(format!("{}:{}", doc.plan_id, doc.scope.label())),
+            Ok(None) => Err("plan not found".into()),
+            Err(e) => Err(e.to_string()),
+        })
+    });
+}
+
+#[then("返回同一 project 计划")]
+pub(crate) fn t_resume_project_plan() {
+    let out = PLAN_STORE_OUT
+        .with(|slot| slot.borrow().clone())
+        .expect("plan store outcome");
+    assert_eq!(out.as_deref(), Ok("p-store:project"));
+}
+
+#[given("项目未信任")]
+pub(crate) fn g_untrusted_project_plan() {
+    let fixture = futures::executor::block_on(plan_store_fixture(false));
+    PLAN_STORE_FIXTURE.with(|slot| slot.borrow_mut().replace(fixture));
+}
+
+#[when("写入 project 计划")]
+pub(crate) fn w_write_project_plan() {
+    let fixture = PLAN_STORE_FIXTURE
+        .with(|slot| slot.borrow().as_ref().map(|f| f.gateway.clone()))
+        .expect("plan store fixture");
+    let result = futures::executor::block_on(fixture.write(plan_store_doc(
+        xylitol_plugin_sdk::session::PlanScope::Project,
+    )));
+    PLAN_STORE_OUT.with(|slot| {
+        *slot.borrow_mut() = Some(result.map(|_| "ok".into()).map_err(|e| e.to_string()))
+    });
+}
+
+#[then("返回 PermissionDenied 且不降级")]
+pub(crate) fn t_untrusted_project_plan() {
+    let out = PLAN_STORE_OUT
+        .with(|slot| slot.borrow().clone())
+        .expect("plan store outcome");
+    let err = out.expect_err("untrusted project must fail");
+    assert!(
+        err.contains("permission denied") || err.contains("PermissionDenied"),
+        "{err}"
+    );
+    let fixture = PLAN_STORE_FIXTURE
+        .with(|slot| slot.borrow().as_ref().map(|f| f.store.clone()))
+        .expect("fixture");
+    let entries =
+        futures::executor::block_on(fixture.load_leaf_branch("s-plan-store")).expect("entries");
+    assert!(
+        !entries.iter().any(|entry| matches!(
+            entry,
+            xylitol_plugin_sdk::session::SessionEntry::Custom(custom)
+                if custom.custom_type == xylitol_plugin_sdk::session::CUSTOM_TYPE_PLAN_DOC
+        )),
+        "untrusted project plan must not fall back to session storage"
+    );
 }
