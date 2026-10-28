@@ -2,6 +2,9 @@
 depends_on: []
 title: 收敛会话条目全量读取路径
 needs_specs_change: false
+branch: sdd/c2986-update-session-entry-read-paths
+base_branch: main
+base_sha: 9fce9b4fa49f17c32cfb892ad0f14b31784dc490
 ---
 
 # 收敛会话条目全量读取路径

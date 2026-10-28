@@ -42,19 +42,29 @@
 - 优点：零风险。
 - 缺点：长会话 IO 峰值持续。
 
+## Audit outcome (implemented)
+
+| 路径 | 读取需求 | 决定 |
+|---|---|---|
+| session tree 打开 | 已有 `SessionTree` unary，不调用 `session_entries` | 无需改动 |
+| footer token 可用性 | 只需判断“是否有条目” | 改为 `session_entries_page(Some(1))` |
+| CLI 恢复回退（无本地 store） | 只需首屏窗口 | 改为 `session_entries_page(Some(HISTORY_PAGE))`，并透传 `has_more` |
+| tree travel | 需按 `travel.leaf_id` 重建祖先路径；路径可能跨任意多页 | 保留全量（行为正确性优先） |
+| tree fork | 需按 `entry_id` 取目标条目的角色与文本以决定 fork 位置与编辑器预填 | 保留全量（收敛需协议扩展） |
+| fork 后切换会话 | 需按新会话叶分支重建滚动区 | 保留全量 |
+| compact | 摘要需要完整上下文 | 保留全量 |
+| estimate | token 估计基于完整上下文 | 保留全量 |
+
+> travel / fork 若要收敛，需要 host 在 travel/fork 响应里直接返回所需条目或新增“按 entry_id 取条目”的 store 查询；这属于协议/端口扩展，不在本 change。
+
 ## Recommendation
 
-采用 **Option A**，但按收益排序：
-
-1. session tree（收益最大、语义最清晰）；
-2. fork（需要分支查询，收益中等）；
-3. estimate（可用分页增量）；
-4. compact 保留全量并注明。
+采用逐路径收敛，按收益排序：先收敛 footer 可用性与 CLI 恢复回退；tree 打开已走 `SessionTree`；travel / fork / compact / estimate 保留全量并在本表记录理由。
 
 ## Test seam
 
-- 单测/基准：fake driver 记录 `GetMessages` 的 `limit` 参数，断言 tree/fork 不再传 `None`。
-- 行为回归：tree 结构、fork 结果、compact 摘要与改动前一致。
+- TUI harness：footer token 刷新仍能区分空/非空会话；CLI 恢复回退只取一页并保留 `has_more`。
+- 行为回归：tree travel、fork、compact 摘要与改动前一致。
 - 长会话基准可作为一次性 `lab_` 脚本。
 
 ## Risks
