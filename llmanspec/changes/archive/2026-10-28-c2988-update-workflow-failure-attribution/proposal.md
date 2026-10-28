@@ -2,6 +2,9 @@
 depends_on: []
 title: 收敛 workflow 工具失败的步骤归因
 needs_specs_change: true
+branch: sdd/c2988-update-workflow-failure-attribution
+base_branch: main
+base_sha: 64139091ed121fa5967eca7695836d4e8c2dd0f3
 ---
 
 # 收敛 workflow 工具失败的步骤归因

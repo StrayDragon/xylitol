@@ -2412,6 +2412,7 @@ fn nested_leaf(
         depends_on: Vec::new(),
         inputs: Vec::new(),
         outputs: Vec::new(),
+        tools: Vec::new(),
         risk: WorkflowRisk::Low,
         verification: None,
         rollback: None,

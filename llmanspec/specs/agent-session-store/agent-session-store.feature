@@ -362,7 +362,7 @@
     计划文档 须以 custom_type = "plan_doc" 的 CustomEntry 存入会话，data 含 plan_id、title、status、steps（id/content/可选 depends_on/verification/status）、created_at 与 updated_at；读取 须按 plan_id 取叶分支最新一条，缺省取最新文档。计划模式 须以 custom_type = "plan_mode" 的 CustomEntry 存入会话，data 含 mode（plan/execute）、可选 plan_id 与 updated_at；读取 须取最新一条，缺失时按 execute 处理。两类条目 须只追加，不得覆盖或删除历史。会话临时目录下的 `plans/<plan_id>.md` 仅为可读视图，不得成为持久化 SSOT。
   @req:r2945
   规则: workflow-artifact
-    workflow 须以 custom_type = "workflow" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式；data 含 goal、steps（id/description/depends_on/inputs/outputs/risk/verification/rollback/requires_human/status/output_ref）、可选 resume_cursor 与 updated_at。读取 须取叶分支最新一条；会话加载时 须把旧 custom_type = "plan" 条目一次性迁移为 "workflow"（只追加、幂等，重复加载不得重复追加），读取 优先新名，旧名 仅作迁移输入；新写入 不得再使用旧名。校验 须保证 id 唯一、依赖存在且无环。重规划约束：已完成步骤 不得删除、降级或改写 description / verification / depends_on；只有失败步骤及其下游闭包可结构性变更；无失败时 只允许 status / output_ref 变化。workflow 与 agent_todo、todo_checkpoint 并存，不得互相替代。DAG 校验、重规划约束与迁移幂等 由 SDK / 中间件单测覆盖。
+    workflow 须以 custom_type = "workflow" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式；data 含 goal、steps（id/description/depends_on/inputs/outputs/tools/risk/verification/rollback/requires_human/status/output_ref）、可选 resume_cursor 与 updated_at。读取 须取叶分支最新一条；会话加载时 须把旧 custom_type = "plan" 条目一次性迁移为 "workflow"（只追加、幂等，重复加载不得重复追加），读取 优先新名，旧名 仅作迁移输入；新写入 不得再使用旧名。校验 须保证 id 唯一、依赖存在且无环。重规划约束：已完成步骤 不得删除、降级或改写 description / verification / depends_on；只有失败步骤及其下游闭包可结构性变更；无失败时 只允许 status / output_ref 变化。workflow 与 agent_todo、todo_checkpoint 并存，不得互相替代。DAG 校验、重规划约束与迁移幂等 由 SDK / 中间件单测覆盖。
 
   @req:r2964
   规则: plan-ref-entry

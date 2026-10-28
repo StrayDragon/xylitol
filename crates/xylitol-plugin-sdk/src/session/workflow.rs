@@ -40,6 +40,8 @@ pub struct WorkflowStep {
     #[serde(default)]
     pub outputs: Vec<String>,
     #[serde(default)]
+    pub tools: Vec<String>,
+    #[serde(default)]
     pub risk: WorkflowRisk,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verification: Option<String>,
@@ -436,6 +438,7 @@ mod tests {
             depends_on: depends_on.iter().map(|dep| dep.to_string()).collect(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            tools: Vec::new(),
             risk: WorkflowRisk::Low,
             verification: Some(format!("verify {id}")),
             rollback: None,
@@ -453,6 +456,25 @@ mod tests {
             resume_cursor: None,
             updated_at: 1,
         }
+    }
+
+    #[test]
+    fn step_tools_round_trip_and_default_to_empty() {
+        let mut declared = step("s1", WorkflowStepStatus::Pending, &[]);
+        declared.tools = vec!["write".into(), "edit".into()];
+        let wf = plan(vec![declared]);
+        let back = Workflow::from_data_value(&wf.to_data_value()).expect("round trip");
+        assert_eq!(back.steps[0].tools, vec!["write", "edit"]);
+
+        let legacy = serde_json::json!({
+            "goal": "ship",
+            "steps": [{"id": "s1", "description": "do it"}]
+        });
+        let parsed = Workflow::from_data_value(&legacy).expect("legacy workflow");
+        assert!(
+            parsed.steps[0].tools.is_empty(),
+            "legacy workflows without tools must keep the coarse attribution path"
+        );
     }
 
     #[test]
@@ -620,6 +642,7 @@ mod nested_tests {
             depends_on: Vec::new(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            tools: Vec::new(),
             risk: WorkflowRisk::Low,
             verification: None,
             rollback: None,
