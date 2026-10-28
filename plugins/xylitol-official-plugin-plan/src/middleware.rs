@@ -98,17 +98,20 @@ impl LoopMiddleware for PlanModeMiddleware {
         PLAN_MODE_STAGES
     }
 
-    async fn before_llm_request(
-        &self,
-        mut ctx: BeforeLlmRequestCtx,
-    ) -> LoopStep<BeforeLlmRequestCtx> {
+    async fn before_llm_request(&self, ctx: BeforeLlmRequestCtx) -> LoopStep<BeforeLlmRequestCtx> {
         self.load_mode(ctx.session_id.as_deref()).await;
         let mode = self.mode.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let mut step = LoopStep::continued(ctx);
         if mode.mode == PlanModeKind::Plan {
-            ctx.messages
+            step.ctx
+                .messages
                 .push(AgentMessage::Llm(XyLlmMessage::user(PLAN_MODE_CONTRACT)));
+            step = step.with_property("loop.middleware.plan.mode", "plan");
+            if let Some(plan_id) = &mode.plan_id {
+                step = step.with_property("loop.middleware.plan.id", plan_id.clone());
+            }
         }
-        LoopStep::continued(ctx)
+        step
     }
 
     async fn before_tool(&self, mut ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
@@ -119,11 +122,14 @@ impl LoopMiddleware for PlanModeMiddleware {
         if mode.mode != PlanModeKind::Plan || self.allows(&ctx.tool_name) {
             return LoopStep::continued(ctx);
         }
+        let denied_tool = ctx.tool_name.clone();
         ctx.args = serde_json::json!({
             "blocked_by": "plan-mode",
             "reason": "plan mode is read-only",
         });
         LoopStep::stopped(ctx)
+            .with_property("loop.middleware.plan.read_only", "true")
+            .with_property("loop.middleware.plan.denied_tool", denied_tool)
     }
 }
 
@@ -268,7 +274,43 @@ mod tests {
             assert_eq!(out.control, LoopControl::Stop, "{name} must be denied");
             assert_eq!(out.ctx.args["blocked_by"], "plan-mode");
             assert_eq!(out.ctx.args["reason"], "plan mode is read-only");
+            assert!(
+                out.properties.iter().any(|(key, value)| {
+                    key == "loop.middleware.plan.denied_tool" && value == name
+                }),
+                "{name} must report the denied tool"
+            );
+            assert!(
+                out.properties
+                    .iter()
+                    .any(|(key, value)| key == "loop.middleware.plan.read_only" && value == "true"),
+                "denial must report read-only"
+            );
         }
+    }
+
+    #[tokio::test]
+    async fn plan_mode_reports_mode_and_plan_id() {
+        use xylitol_plugin_sdk::session::PlanMode;
+
+        let store = Arc::new(FakeStore::default());
+        store
+            .append_session_entry(
+                "s1",
+                &PlanMode::plan(Some("p1".into())).to_custom_entry_shell(),
+            )
+            .await
+            .expect("plan mode entry");
+        let mw = plan_mode_middleware(Some(store), None, &PlanConfig::default());
+        let out = mw.before_llm_request(model_ctx("s1")).await;
+        let get = |key: &str| {
+            out.properties
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.as_str())
+        };
+        assert_eq!(get("loop.middleware.plan.mode"), Some("plan"));
+        assert_eq!(get("loop.middleware.plan.id"), Some("p1"));
     }
 
     #[tokio::test]

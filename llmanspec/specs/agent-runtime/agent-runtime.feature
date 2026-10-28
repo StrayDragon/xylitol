@@ -393,7 +393,7 @@
 
   @req:r2924
   规则: loop-middleware-trace
-    观测激活时，每次中间件调用 须留 loop.middleware span，属性至少含中间件 id、阶段、order、返回 control、改动摘要与结果；链为空时 不得建 span。由单测或观测场景覆盖。
+    观测激活时，每次中间件调用 须留 loop.middleware span，属性至少含中间件 id、阶段、order、返回 control、改动摘要与结果；span 须携带 langfuse.session.id、langfuse.observation.type=span 与 xylitol.obs.lane=llm，使其与 agent.turn 同会话分组。中间件 可经 `LoopStep.properties` 追加语义属性，键约定 `loop.middleware.<feature>.<field>`，core 须原样写入 span；链为空时 不得建 span。由单测或观测场景覆盖。
 
     场景: 观测可指认改动来源
       假如 注册 before_llm_request 中间件且在观测闸开启下运行一回合

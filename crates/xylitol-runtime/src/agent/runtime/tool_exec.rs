@@ -121,7 +121,7 @@ pub(crate) async fn prepare_call(
             tool_name: tool_name.clone(),
             args: tool_args.clone(),
         };
-        match run_before_tool(env.loop_chain, env.cancel, parent_ctx, ctx).await {
+        match run_before_tool(env.loop_chain, env.cancel, parent_ctx, env.obs_session, ctx).await {
             Ok(out) => {
                 tool_name = out.ctx.tool_name;
                 tool_args = out.ctx.args;
@@ -352,7 +352,7 @@ pub(crate) async fn run_one(
             details: details.clone(),
             is_error: result.1,
         };
-        match run_after_tool(env.loop_chain, env.cancel, parent_ctx, ctx).await {
+        match run_after_tool(env.loop_chain, env.cancel, parent_ctx, env.obs_session, ctx).await {
             Ok(out) => {
                 result = (out.ctx.parts, out.ctx.is_error);
                 details = out.ctx.details;

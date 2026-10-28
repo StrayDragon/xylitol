@@ -88,20 +88,29 @@ impl LoopMiddleware for LoopPoliciesMiddleware {
             && let Some(command) = ctx.args.get("command").and_then(Value::as_str)
             && self.denies(command)
         {
+            let denied_tool = ctx.tool_name.clone();
             ctx.args = serde_json::json!({
                 "command": "true",
                 "blocked_by": "loop-policies",
             });
-            return LoopStep::stopped(ctx);
+            return LoopStep::stopped(ctx)
+                .with_property("loop.middleware.loop_policies.denied_tool", denied_tool);
         }
         LoopStep::continued(ctx)
     }
 
     async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
-        match self.config.max_settles {
+        let step = match self.config.max_settles {
             Some(limit) if ctx.settle_count >= limit => LoopStep::stopped(ctx),
             _ => LoopStep::continued(ctx),
-        }
+        };
+        step.with_property(
+            "loop.middleware.loop_policies.max_settles",
+            self.config
+                .max_settles
+                .map(|limit| limit.to_string())
+                .unwrap_or_else(|| "none".into()),
+        )
     }
 }
 
@@ -313,7 +322,23 @@ impl LoopMiddleware for GeneratorCriticMiddleware {
             }
             _ => {}
         }
-        LoopStep::continued(ctx)
+        let verdict = match state.phase {
+            CriticPhase::Approved => "approve",
+            CriticPhase::Revising => "revise",
+            CriticPhase::Exhausted => "exhausted",
+            CriticPhase::Critiquing => "critiquing",
+            CriticPhase::Idle => "idle",
+        };
+        LoopStep::continued(ctx).with_properties([
+            (
+                "loop.middleware.critic.verdict".to_string(),
+                verdict.to_string(),
+            ),
+            (
+                "loop.middleware.critic.round".to_string(),
+                state.rounds.to_string(),
+            ),
+        ])
     }
 
     async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
@@ -419,6 +444,13 @@ impl LoopMiddleware for SelfHealMiddleware {
                     "<self_heal>\nDeterministic failure detected ({signature}). \\
 Do not repeat the same action; diagnose, patch, then re-run the same verification.\n</self_heal>"
                 )));
+                return LoopStep::continued(ctx).with_properties([
+                    ("loop.middleware.self_heal.signature".to_string(), signature),
+                    (
+                        "loop.middleware.self_heal.attempt".to_string(),
+                        attempts.to_string(),
+                    ),
+                ]);
             }
         } else if pending
             .as_ref()
@@ -440,7 +472,16 @@ Do not repeat the same action; diagnose, patch, then re-run the same verificatio
                     failure.tool_name,
                     failure.signature
                 );
-                LoopStep::stopped(ctx)
+                LoopStep::stopped(ctx).with_properties([
+                    (
+                        "loop.middleware.self_heal.signature".to_string(),
+                        failure.signature.clone(),
+                    ),
+                    (
+                        "loop.middleware.self_heal.attempt".to_string(),
+                        failure.attempts.to_string(),
+                    ),
+                ])
             }
             _ => LoopStep::continued(ctx),
         }
@@ -509,7 +550,13 @@ impl LoopMiddleware for ToolExposureMiddleware {
                 before
             );
         }
-        LoopStep::continued(ctx)
+        LoopStep::continued(ctx).with_properties([
+            (
+                "loop.middleware.tools.before".to_string(),
+                before.to_string(),
+            ),
+            ("loop.middleware.tools.after".to_string(), after.to_string()),
+        ])
     }
 }
 
@@ -557,6 +604,12 @@ mod tests {
         let risky = mw.before_tool(ctx("rm -rf / --no-preserve-root")).await;
         assert_eq!(risky.control, LoopControl::Stop);
         assert_eq!(risky.ctx.args["blocked_by"], "loop-policies");
+        assert!(
+            risky.properties.iter().any(|(key, value)| {
+                key == "loop.middleware.loop_policies.denied_tool" && value == "bash"
+            }),
+            "denial must report the denied tool"
+        );
     }
 
     #[tokio::test]
@@ -667,6 +720,14 @@ mod tests {
             ["read", "todo_rewrite", "todo_update"],
             "todo tools must stay visible so the plan can be updated"
         );
+        let get = |key: &str| {
+            out.properties
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.as_str())
+        };
+        assert_eq!(get("loop.middleware.tools.before"), Some("4"));
+        assert_eq!(get("loop.middleware.tools.after"), Some("3"));
     }
 
     #[tokio::test]

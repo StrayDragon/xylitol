@@ -133,6 +133,7 @@ impl LoopMiddleware for Scripted {
         LoopStep {
             ctx,
             control: self.decide,
+            properties: Vec::new(),
         }
     }
 }
@@ -220,7 +221,7 @@ impl LoopMiddleware for TouchMessages {
         ctx.messages.push(xylitol_plugin_sdk::AgentMessage::Llm(
             xylitol_plugin_sdk::XyLlmMessage::user("middleware fragment"),
         ));
-        LoopStep::continued(ctx)
+        LoopStep::continued(ctx).with_property("loop.middleware.test.marker", "touch")
     }
 }
 
@@ -530,6 +531,20 @@ pub(crate) fn t_trace_props() {
         );
         let changed = get("loop.middleware.changed").expect("changed summary");
         assert_ne!(changed, "none", "middleware changed messages: {props:?}");
+        assert_eq!(
+            get("loop.middleware.test.marker"),
+            Some("touch"),
+            "middleware semantic properties must reach the span: {props:?}"
+        );
+        assert_eq!(
+            get("langfuse.observation.type"),
+            Some("span"),
+            "loop.middleware must be a Langfuse span: {props:?}"
+        );
+        assert!(
+            get("langfuse.session.id").is_some(),
+            "loop.middleware must carry the session id: {props:?}"
+        );
     });
 }
 
@@ -1419,6 +1434,7 @@ impl LoopMiddleware for CompactOnce {
             LoopStep {
                 ctx,
                 control: LoopControl::Compact,
+                properties: Vec::new(),
             }
         } else {
             LoopStep::stopped(ctx)

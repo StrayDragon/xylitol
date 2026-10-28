@@ -18,7 +18,7 @@ impl Default for McpResultTruncate {
     }
 }
 
-fn truncate_text(text: &str) -> Option<String> {
+fn truncate_text(text: &str) -> Option<(String, usize, usize)> {
     if text.len() <= MCP_RESULT_MAX_BYTES {
         return None;
     }
@@ -28,12 +28,16 @@ fn truncate_text(text: &str) -> Option<String> {
     }
     let kept = &text[..end];
     let dropped = text.len() - end;
-    Some(format!(
-        "{kept}\n\n[truncated: {} kept, {} dropped of {} bytes; limit {} bytes]",
+    Some((
+        format!(
+            "{kept}\n\n[truncated: {} kept, {} dropped of {} bytes; limit {} bytes]",
+            end,
+            dropped,
+            text.len(),
+            MCP_RESULT_MAX_BYTES
+        ),
         end,
         dropped,
-        text.len(),
-        MCP_RESULT_MAX_BYTES
     ))
 }
 
@@ -58,11 +62,17 @@ impl LoopMiddleware for McpResultTruncate {
         let [xylitol_plugin_sdk::AgentPart::Text { text }] = &ctx.parts[..] else {
             return LoopStep::continued(ctx);
         };
-        let Some(truncated) = truncate_text(text) else {
+        let Some((truncated, kept, dropped)) = truncate_text(text) else {
             return LoopStep::continued(ctx);
         };
         ctx.parts = vec![xylitol_plugin_sdk::AgentPart::text(truncated)];
-        LoopStep::continued(ctx)
+        LoopStep::continued(ctx).with_properties([
+            ("xylitol.mcp.kept_bytes".to_string(), kept.to_string()),
+            (
+                "xylitol.mcp.truncated_bytes".to_string(),
+                dropped.to_string(),
+            ),
+        ])
     }
 }
 
@@ -98,6 +108,17 @@ mod tests {
         assert!(text.len() < big.len(), "must shrink");
         assert!(text.contains("[truncated:"), "must announce the cut");
         assert!(text.starts_with(&"x".repeat(MCP_RESULT_MAX_BYTES)));
+        let get = |key: &str| {
+            step.properties
+                .iter()
+                .find(|(k, _)| k == key)
+                .map(|(_, v)| v.as_str())
+        };
+        assert_eq!(
+            get("xylitol.mcp.kept_bytes"),
+            Some(MCP_RESULT_MAX_BYTES.to_string().as_str())
+        );
+        assert_eq!(get("xylitol.mcp.truncated_bytes"), Some("100"));
     }
 
     #[tokio::test]

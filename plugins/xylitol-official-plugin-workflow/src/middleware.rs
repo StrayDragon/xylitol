@@ -54,6 +54,24 @@ fn assistant_has_tool_calls(message: &AgentMessage) -> bool {
     }
 }
 
+fn workflow_properties(state: &WorkflowState, step: &str, blocked: bool) -> Vec<(String, String)> {
+    vec![
+        ("loop.middleware.workflow.step".into(), step.to_string()),
+        (
+            "loop.middleware.workflow.depth".into(),
+            (state.stack.len() + 1).to_string(),
+        ),
+        (
+            "loop.middleware.workflow.replan".into(),
+            state.replan_count.to_string(),
+        ),
+        (
+            "loop.middleware.workflow.blocked".into(),
+            blocked.to_string(),
+        ),
+    ]
+}
+
 #[derive(Debug, Default)]
 struct WorkflowState {
     session_id: Option<String>,
@@ -255,7 +273,11 @@ impl LoopMiddleware for WorkflowMiddleware {
                     )));
                     state.injected_step = Some(blocked.id.clone());
                 }
-                return LoopStep::continued(ctx);
+                return LoopStep::continued(ctx).with_properties(workflow_properties(
+                    &state,
+                    &blocked.id,
+                    true,
+                ));
             }
             if let Some(failed) = plan
                 .steps
@@ -268,7 +290,8 @@ impl LoopMiddleware for WorkflowMiddleware {
                     )));
                     state.injected_step = Some(failed.id.clone());
                 }
-                return LoopStep::continued(ctx);
+                return LoopStep::continued(ctx)
+                    .with_properties(workflow_properties(&state, &failed.id, false));
             }
             if plan.all_completed() {
                 if let Some((parent, container_id)) = state.stack.pop() {
@@ -290,7 +313,8 @@ impl LoopMiddleware for WorkflowMiddleware {
                     )));
                     state.summary_injected = true;
                 }
-                return LoopStep::continued(ctx);
+                return LoopStep::continued(ctx)
+                    .with_property("loop.middleware.workflow.completed", "true");
             }
             let Some(step) = runnable_workflow_step(&plan, &state.approved) else {
                 return LoopStep::continued(ctx);
@@ -320,7 +344,8 @@ impl LoopMiddleware for WorkflowMiddleware {
                 )));
                 state.injected_step = Some(step.id.clone());
             }
-            return LoopStep::continued(ctx);
+            return LoopStep::continued(ctx)
+                .with_properties(workflow_properties(&state, &step.id, false));
         }
     }
 

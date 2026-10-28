@@ -124,13 +124,24 @@ impl LoopMiddleware for TodoProgressMiddleware {
 
     async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
         let progress = self.progress();
+        let unfinished = progress.pending + progress.in_progress;
         let should_continue = ctx.has_new_user_messages
             || (progress.has_unfinished() && ctx.settle_count < self.max_settles);
-        if should_continue {
+        let step = if should_continue {
             LoopStep::continued(ctx)
         } else {
             LoopStep::stopped(ctx)
-        }
+        };
+        step.with_properties([
+            (
+                "loop.middleware.todo.pending".to_string(),
+                unfinished.to_string(),
+            ),
+            (
+                "loop.middleware.todo.total".to_string(),
+                progress.total.to_string(),
+            ),
+        ])
     }
 
     async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
@@ -417,16 +428,24 @@ impl LoopMiddleware for TodoCheckpointMiddleware {
         &self,
         mut ctx: BeforeLlmRequestCtx,
     ) -> LoopStep<BeforeLlmRequestCtx> {
-        if !self.restored.swap(true, Ordering::SeqCst)
-            && let Some(session_id) = ctx.session_id.as_deref()
-        {
+        let restored =
+            !self.restored.swap(true, Ordering::SeqCst) && ctx.session_id.as_deref().is_some();
+        if restored && let Some(session_id) = ctx.session_id.as_deref() {
             self.restore(session_id).await;
         }
-        if !self.injected.swap(true, Ordering::SeqCst) {
+        let injected = !self.injected.swap(true, Ordering::SeqCst);
+        if injected {
             self.inject_summary(&mut ctx);
         }
         self.persist(ctx.session_id.as_deref()).await;
-        LoopStep::continued(ctx)
+        let state = if restored {
+            "restored"
+        } else if injected {
+            "injected"
+        } else {
+            "persisted"
+        };
+        LoopStep::continued(ctx).with_property("loop.middleware.todo.checkpoint", state)
     }
 
     async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
@@ -537,7 +556,25 @@ impl LoopMiddleware for TodoReminderMiddleware {
                 "<todo_reminder>\n{unfinished} todo item(s) are still unfinished. \
 Re-read <todo> and update it with todo_update before claiming completion.\n</todo_reminder>"
             ))));
-        LoopStep::continued(ctx)
+        let reason = if error {
+            "tool_error"
+        } else if completion_claim {
+            "completion_claim"
+        } else {
+            "stale"
+        };
+        let total = todo.items.len();
+        LoopStep::continued(ctx).with_properties([
+            (
+                "loop.middleware.todo.reminder_reason".to_string(),
+                reason.to_string(),
+            ),
+            (
+                "loop.middleware.todo.pending".to_string(),
+                unfinished.to_string(),
+            ),
+            ("loop.middleware.todo.total".to_string(), total.to_string()),
+        ])
     }
 }
 

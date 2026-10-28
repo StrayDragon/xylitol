@@ -850,10 +850,12 @@ struct ReActConfig {
     loop_chain: LoopChain,
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn after_turn_or_fault(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<fastrace::prelude::SpanContext>,
+    obs: &xylitol_plugin_sdk::ObsSessionContext,
     session_id: &str,
     turn: usize,
     continued_tools: bool,
@@ -866,6 +868,7 @@ async fn after_turn_or_fault(
         chain,
         cancel,
         parent,
+        obs,
         AfterTurnCtx {
             turn_index: turn as u32,
             continued_tools,
@@ -1028,7 +1031,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         system_prompt: system_prompt.clone(),
                         system_fragments: Vec::new(),
                     };
-                    match run_before_turn(&loop_chain, &cancel, turn_obs_parent, ctx).await {
+                    match run_before_turn(&loop_chain, &cancel, turn_obs_parent, &obs_session, ctx).await {
                         Ok(out) => {
                             turn_system_prompt = fragments_into_prompt(
                                 system_prompt.clone(),
@@ -1135,7 +1138,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         todo: bar.todo.clone(),
                         session_id: Some(session_id.clone()),
                     };
-                    match run_before_llm_request(&loop_chain, &cancel, iteration_parent, ctx).await {
+                    match run_before_llm_request(&loop_chain, &cancel, iteration_parent, &obs_session, ctx).await {
                         Ok(out) => {
                             messages = out.ctx.messages;
                             turn_tool_schemas = out.ctx.tool_schemas;
@@ -1152,6 +1155,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     &loop_chain,
                                     &cancel,
                                     turn_obs_parent,
+                                    &obs_session,
                                     &session_id,
                                     turn,
                                     false,
@@ -1486,7 +1490,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         assistant: msg,
                         session_id: Some(session_id.clone()),
                     };
-                    match run_after_llm_response(&loop_chain, &cancel, iteration_parent, ctx).await {
+                    match run_after_llm_response(&loop_chain, &cancel, iteration_parent, &obs_session, ctx).await {
                         Ok(out) => {
                             let msg = out.ctx.assistant;
                             tool_calls = msg
@@ -1524,6 +1528,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     &loop_chain,
                                     &cancel,
                                     turn_obs_parent,
+                                    &obs_session,
                                     &session_id,
                                     turn,
                                     false,
@@ -1606,7 +1611,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                     let settle_outcome = finished.outcome;
                     if let Some(fault) =
-                        after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &session_id, turn, false, history.len())
+                        after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &obs_session, &session_id, turn, false, history.len())
                             .await
                     {
                         turn_aborted = true;
@@ -1641,7 +1646,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             history_len: history.len(),
                             compact: None,
                         };
-                        match run_decide_continue(&loop_chain, &cancel, turn_obs_parent, ctx).await {
+                        match run_decide_continue(&loop_chain, &cancel, turn_obs_parent, &obs_session, ctx).await {
                             Ok(out) => match out.control {
                                 LoopControl::Continue => {
                                     if has_new_user {
@@ -1827,6 +1832,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     &loop_chain,
                                     &cancel,
                                     turn_obs_parent,
+                                    &obs_session,
                                     &session_id,
                                     turn,
                                     true,
@@ -1897,6 +1903,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                         &loop_chain,
                                         &cancel,
                                         turn_obs_parent,
+                                        &obs_session,
                                         &session_id,
                                         turn,
                                         true,
@@ -1947,7 +1954,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     yield event;
                 }
                 if let Some(fault) =
-                    after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &session_id, turn, true, history.len())
+                    after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &obs_session, &session_id, turn, true, history.len())
                         .await
                 {
                     turn_aborted = true;

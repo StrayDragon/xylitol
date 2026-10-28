@@ -33,6 +33,27 @@ persistence; a plugin only returns `{ ctx, control }`.
 
 `LoopStep::continued(ctx)` and `LoopStep::stopped(ctx)` are the usual constructors.
 
+### Semantic properties
+
+`LoopStep` carries `properties: Vec<(String, String)>`. Core writes them verbatim to the
+`loop.middleware` span, which also carries `langfuse.session.id`,
+`langfuse.observation.type=span` and `xylitol.obs.lane=llm`.
+
+Use the `loop.middleware.<feature>.<field>` convention so trace readers can filter by
+feature, for example:
+
+```rust
+LoopStep::continued(ctx)
+    .with_property("loop.middleware.plan.mode", "plan")
+    .with_properties([
+        ("loop.middleware.todo.pending".to_string(), "2".to_string()),
+        ("loop.middleware.todo.total".to_string(), "5".to_string()),
+    ])
+```
+
+Keep properties small and non-sensitive. Do not put prompts, tool output or file contents
+on the span; use the existing `observation_io` tiers for that.
+
 ### Registration
 
 ```rust

@@ -2,6 +2,9 @@
 depends_on: []
 title: Enrich loop middleware spans with session and semantic properties
 needs_specs_change: true
+branch: sdd/c2977-update-loop-observability
+base_branch: main
+base_sha: aa53a187bb321ea43859ddb04dff04194a0c9afc
 ---
 
 # Enrich loop middleware spans with session and semantic properties

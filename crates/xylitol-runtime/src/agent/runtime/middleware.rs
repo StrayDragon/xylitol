@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use xylitol_plugin_sdk::{
     AfterLlmResponseCtx, AfterToolCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeToolCtx,
     BeforeTurnCtx, DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware, LoopStage, LoopStep,
-    provider_trace_active,
+    ObsSessionContext, langfuse_observation_properties_from, provider_trace_active,
 };
 
 pub(crate) const LOOP_MIDDLEWARE_TIMEOUT: Duration = Duration::from_secs(2);
@@ -76,6 +76,7 @@ struct StageCall<'a> {
     cancel: &'a CancellationToken,
     parent: Option<SpanContext>,
     scope: xylitol_plugin_sdk::LoopScope,
+    obs: &'a ObsSessionContext,
 }
 
 async fn call<C, F>(
@@ -94,8 +95,9 @@ where
         let parent = call.parent.unwrap_or_else(SpanContext::random);
         let id_attr = id.clone();
         let scope_attr = call.scope;
+        let obs_attr = call.obs.clone();
         Span::root("loop.middleware", parent).with_properties(move || {
-            vec![
+            let mut props = vec![
                 ("loop.middleware.id".to_string(), id_attr),
                 (
                     "loop.middleware.stage".to_string(),
@@ -106,7 +108,9 @@ where
                     "loop.middleware.scope".to_string(),
                     scope_attr.as_str().to_string(),
                 ),
-            ]
+            ];
+            props.extend(langfuse_observation_properties_from("span", &obs_attr));
+            props
         })
     });
 
@@ -128,6 +132,9 @@ where
                 } else {
                     after.as_str()
                 };
+                for (key, value) in &step.properties {
+                    span.add_property(|| (key.clone(), value.clone()));
+                }
                 span.add_property(|| {
                     ("loop.middleware.control", step.control.as_str().to_string())
                 });
@@ -216,11 +223,13 @@ fn after_tool_fingerprint(ctx: &AfterToolCtx) -> String {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_stage<C>(
     chain: &LoopChain,
     stage: LoopStage,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
+    obs: &ObsSessionContext,
     ctx: C,
     fingerprint: impl Fn(&C) -> String,
     invoke: impl for<'a> Fn(
@@ -238,6 +247,7 @@ async fn run_stage<C>(
                 cancel,
                 parent,
                 scope: chain.scope,
+                obs,
             },
             before,
             invoke(mw, ctx),
@@ -264,6 +274,7 @@ pub(crate) async fn run_before_turn(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
+    obs: &ObsSessionContext,
     ctx: BeforeTurnCtx,
 ) -> Result<StageOutcome<BeforeTurnCtx>, MiddlewareFault> {
     run_stage(
@@ -271,6 +282,7 @@ pub(crate) async fn run_before_turn(
         LoopStage::BeforeTurn,
         cancel,
         parent,
+        obs,
         ctx,
         before_turn_fingerprint,
         |mw, ctx| Box::pin(mw.before_turn(ctx)),
@@ -282,6 +294,7 @@ pub(crate) async fn run_before_llm_request(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
+    obs: &ObsSessionContext,
     ctx: BeforeLlmRequestCtx,
 ) -> Result<StageOutcome<BeforeLlmRequestCtx>, MiddlewareFault> {
     run_stage(
@@ -289,6 +302,7 @@ pub(crate) async fn run_before_llm_request(
         LoopStage::BeforeLlmRequest,
         cancel,
         parent,
+        obs,
         ctx,
         before_llm_request_fingerprint,
         |mw, ctx| Box::pin(mw.before_llm_request(ctx)),
@@ -300,6 +314,7 @@ pub(crate) async fn run_after_llm_response(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
+    obs: &ObsSessionContext,
     ctx: AfterLlmResponseCtx,
 ) -> Result<StageOutcome<AfterLlmResponseCtx>, MiddlewareFault> {
     run_stage(
@@ -307,6 +322,7 @@ pub(crate) async fn run_after_llm_response(
         LoopStage::AfterLlmResponse,
         cancel,
         parent,
+        obs,
         ctx,
         after_llm_response_fingerprint,
         |mw, ctx| Box::pin(mw.after_llm_response(ctx)),
@@ -318,6 +334,7 @@ pub(crate) async fn run_before_tool(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
+    obs: &ObsSessionContext,
     ctx: BeforeToolCtx,
 ) -> Result<StageOutcome<BeforeToolCtx>, MiddlewareFault> {
     run_stage(
@@ -325,6 +342,7 @@ pub(crate) async fn run_before_tool(
         LoopStage::BeforeTool,
         cancel,
         parent,
+        obs,
         ctx,
         before_tool_fingerprint,
         |mw, ctx| Box::pin(mw.before_tool(ctx)),
@@ -336,6 +354,7 @@ pub(crate) async fn run_after_tool(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
+    obs: &ObsSessionContext,
     ctx: AfterToolCtx,
 ) -> Result<StageOutcome<AfterToolCtx>, MiddlewareFault> {
     run_stage(
@@ -343,6 +362,7 @@ pub(crate) async fn run_after_tool(
         LoopStage::AfterTool,
         cancel,
         parent,
+        obs,
         ctx,
         after_tool_fingerprint,
         |mw, ctx| Box::pin(mw.after_tool(ctx)),
@@ -354,6 +374,7 @@ pub(crate) async fn run_decide_continue(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
+    obs: &ObsSessionContext,
     ctx: DecideContinueCtx,
 ) -> Result<StageOutcome<DecideContinueCtx>, MiddlewareFault> {
     run_stage(
@@ -361,6 +382,7 @@ pub(crate) async fn run_decide_continue(
         LoopStage::DecideContinue,
         cancel,
         parent,
+        obs,
         ctx,
         |_ctx| String::new(),
         |mw, ctx| Box::pin(mw.decide_continue(ctx)),
@@ -372,6 +394,7 @@ pub(crate) async fn run_after_turn(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
+    obs: &ObsSessionContext,
     mut ctx: AfterTurnCtx,
 ) -> Result<AfterTurnCtx, MiddlewareFault> {
     for mw in chain.stage(LoopStage::AfterTurn) {
@@ -382,6 +405,7 @@ pub(crate) async fn run_after_turn(
                 cancel,
                 parent,
                 scope: chain.scope,
+                obs,
             },
             String::new(),
             mw.after_turn(ctx),
@@ -491,6 +515,7 @@ mod tests {
             &chain,
             &cancel,
             None,
+            &ObsSessionContext::default(),
             AfterTurnCtx {
                 turn_index: 3,
                 continued_tools: true,

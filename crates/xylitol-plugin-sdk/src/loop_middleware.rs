@@ -67,6 +67,7 @@ impl LoopControl {
 pub struct LoopStep<C> {
     pub ctx: C,
     pub control: LoopControl,
+    pub properties: Vec<(String, String)>,
 }
 
 impl<C> LoopStep<C> {
@@ -74,6 +75,7 @@ impl<C> LoopStep<C> {
         Self {
             ctx,
             control: LoopControl::Continue,
+            properties: Vec::new(),
         }
     }
 
@@ -81,7 +83,18 @@ impl<C> LoopStep<C> {
         Self {
             ctx,
             control: LoopControl::Stop,
+            properties: Vec::new(),
         }
+    }
+
+    pub fn with_property(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.properties.push((key.into(), value.into()));
+        self
+    }
+
+    pub fn with_properties(mut self, props: impl IntoIterator<Item = (String, String)>) -> Self {
+        self.properties.extend(props);
+        self
     }
 }
 
