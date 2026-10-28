@@ -6,7 +6,7 @@ use serde_json::Value;
 use super::entries::{CustomEntry, EntryBase, SessionEntry};
 
 pub const CUSTOM_TYPE_WORKFLOW: &str = "workflow";
-const LEGACY_CUSTOM_TYPE_PLAN: &str = "plan";
+pub(crate) const LEGACY_CUSTOM_TYPE_PLAN: &str = "plan";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

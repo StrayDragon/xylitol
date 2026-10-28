@@ -37,6 +37,12 @@ impl super::XyInProcessDriver {
             self.agent.session_id(),
         );
         self.agent.script_hook_observe(ty, phase, ctx).await;
+        if let Err(error) = self.store.migrate_legacy_custom_types(session_id).await {
+            log::warn!(
+                target: "xylitol::session",
+                "legacy custom-type migration skipped on switch: {error}"
+            );
+        }
         let context = self.store.build_session_context(session_id).await?;
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
         self.bind_todo_session(Some(session_id)).await;

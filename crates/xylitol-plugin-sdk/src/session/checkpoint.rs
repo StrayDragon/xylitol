@@ -5,7 +5,7 @@ use super::entries::{CustomEntry, EntryBase, SessionEntry};
 use super::todo::TodoStatus;
 
 pub const CUSTOM_TYPE_TODO_CHECKPOINT: &str = "todo_checkpoint";
-const LEGACY_CUSTOM_TYPE_PLAN_CHECKPOINT: &str = "plan_checkpoint";
+pub(crate) const LEGACY_CUSTOM_TYPE_PLAN_CHECKPOINT: &str = "plan_checkpoint";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TodoCheckpointStep {

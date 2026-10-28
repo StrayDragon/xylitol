@@ -2,6 +2,9 @@
 depends_on: []
 title: 收敛 legacy custom-type 读别名
 needs_specs_change: true
+branch: sdd/c2985-update-legacy-custom-type-alias
+base_branch: main
+base_sha: 776968325c212ea230ab80e51c0b02d639968850
 ---
 
 # 收敛 legacy custom-type 读别名

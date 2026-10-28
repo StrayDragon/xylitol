@@ -11,6 +11,12 @@ pub async fn load_conversation_history_from_store(
     store: &dyn XySessionStore,
     session_id: &str,
 ) -> Result<Vec<AgentMessage>, XyError> {
+    if let Err(error) = store.migrate_legacy_custom_types(session_id).await {
+        log::warn!(
+            target: "xylitol::session",
+            "legacy custom-type migration skipped: {error}"
+        );
+    }
     let entries = store
         .load_leaf_branch(session_id)
         .await

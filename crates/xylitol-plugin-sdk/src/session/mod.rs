@@ -20,6 +20,7 @@ pub use entries::{
     SessionContext, SessionEntry, SessionHeader, SessionInfoEntry, ThinkingLevelChangeEntry,
     build_context_entries, done_bash_ids, fold_interrupted_bash_rows,
 };
+pub(crate) use helpers::legacy_custom_type_target;
 pub use helpers::{
     bash_execution_message_entry, count_tool_calls, fixture_message_json, is_assistant_message,
     is_env_custom_message, is_tool_call_part, is_user_message, message_custom_type, message_parts,

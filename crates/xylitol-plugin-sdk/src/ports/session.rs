@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -177,6 +178,53 @@ pub trait XySessionStore: Send + Sync {
         let skip = all.len().saturating_sub(limit);
         Ok(all.into_iter().skip(skip).collect())
     }
+
+    async fn migrate_legacy_custom_types(
+        &self,
+        session_id: &str,
+    ) -> Result<usize, XySessionStoreError> {
+        let branch = self.load_leaf_branch(session_id).await?;
+        let mut present: HashSet<(String, String)> = HashSet::new();
+        for entry in &branch {
+            let SessionEntry::Custom(custom) = entry else {
+                continue;
+            };
+            if crate::session::legacy_custom_type_target(&custom.custom_type).is_some() {
+                continue;
+            }
+            present.insert((
+                custom.custom_type.clone(),
+                serde_json::to_string(&custom.data)?,
+            ));
+        }
+
+        let mut migrated = 0usize;
+        for entry in &branch {
+            let SessionEntry::Custom(custom) = entry else {
+                continue;
+            };
+            let Some(target) = crate::session::legacy_custom_type_target(&custom.custom_type)
+            else {
+                continue;
+            };
+            let key = (target.to_string(), serde_json::to_string(&custom.data)?);
+            if !present.insert(key) {
+                continue;
+            }
+            let mut shell = custom.clone();
+            shell.custom_type = target.to_string();
+            shell.base = EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            };
+            self.append_session_entry(session_id, &SessionEntry::Custom(shell))
+                .await?;
+            migrated += 1;
+        }
+        Ok(migrated)
+    }
 }
 
 pub fn sanitize_session_display_name(name: &str) -> String {
@@ -201,7 +249,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
-    use crate::session::MessageEntry;
+    use crate::session::{CustomEntry, MessageEntry};
 
     struct MemStore {
         entries: Mutex<Vec<SessionEntry>>,
@@ -267,6 +315,71 @@ mod tests {
             ))
             .unwrap(),
         })
+    }
+
+    fn custom_entry(id: &str, custom_type: &str, data: serde_json::Value) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 1,
+            },
+            custom_type: custom_type.into(),
+            data,
+        })
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn legacy_custom_types_migrate_once_and_append_only() {
+        let workflow = serde_json::json!({"goal": "ship", "steps": []});
+        let checkpoint = serde_json::json!({"goal": "ship", "steps": []});
+        let store = MemStore {
+            entries: Mutex::new(vec![
+                custom_entry("legacy-workflow", "plan", workflow.clone()),
+                custom_entry("legacy-checkpoint", "plan_checkpoint", checkpoint.clone()),
+                text_entry("m0", "hello"),
+            ]),
+        };
+
+        assert_eq!(store.migrate_legacy_custom_types("s").await.unwrap(), 2);
+        let entries = store.load_entries("s").await.unwrap();
+        assert_eq!(entries.len(), 5, "migration must append, never rewrite");
+        assert!(entries.iter().any(|entry| matches!(
+            entry,
+            SessionEntry::Custom(custom)
+                if custom.custom_type == "workflow" && custom.data == workflow
+        )));
+        assert!(entries.iter().any(|entry| matches!(
+            entry,
+            SessionEntry::Custom(custom)
+                if custom.custom_type == "todo_checkpoint" && custom.data == checkpoint
+        )));
+        assert!(entries.iter().any(|entry| matches!(
+            entry,
+            SessionEntry::Custom(custom) if custom.custom_type == "plan"
+        )));
+
+        assert_eq!(
+            store.migrate_legacy_custom_types("s").await.unwrap(),
+            0,
+            "a second load must not append again"
+        );
+        assert_eq!(store.load_entries("s").await.unwrap().len(), 5);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn migrated_new_type_prevents_duplicate_migration() {
+        let data = serde_json::json!({"goal": "ship", "steps": []});
+        let store = MemStore {
+            entries: Mutex::new(vec![
+                custom_entry("new", "workflow", data.clone()),
+                custom_entry("legacy", "plan", data),
+            ]),
+        };
+
+        assert_eq!(store.migrate_legacy_custom_types("s").await.unwrap(), 0);
+        assert_eq!(store.load_entries("s").await.unwrap().len(), 2);
     }
 
     #[tokio::test(flavor = "current_thread")]
