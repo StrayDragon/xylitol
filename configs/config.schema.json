@@ -184,6 +184,10 @@
             "null"
           ]
         },
+        "plan_mode": {
+          "default": false,
+          "type": "boolean"
+        },
         "self_heal": {
           "$ref": "#/$defs/SelfHealConfig",
           "default": {
@@ -834,6 +838,7 @@
           "rubric": []
         },
         "max_settles": null,
+        "plan_mode": false,
         "self_heal": {
           "enabled": false,
           "max_attempts": 3,

@@ -129,6 +129,7 @@ hooks:
 #   todo_reminder: false  # optional: remind the model to re-read todo
 #   todo_reminder_stale_after: 3  # tool calls without todo update before reminding
 #   todo_checkpoint: false    # optional: persist todo progress for resume
+#   plan_mode: false          # optional: inject the plan-mode contract when mode=plan
 #   self_heal:                # after_tool: continue on deterministic failures
 #     enabled: false
 #     signatures: []          # empty: built-in test/build/lint/panic signatures

@@ -264,6 +264,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::Theme { .. }
                 | PendingSlash::OpenMcp
                 | PendingSlash::OpenDesigningScenes
+                | PendingSlash::SetPlanMode(_)
                 | PendingSlash::Usage(_) => {
                     self.pending.slash = Some(slash);
                 }

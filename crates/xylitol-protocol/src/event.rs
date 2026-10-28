@@ -103,6 +103,14 @@ pub enum Event {
     TodoUpdated {
         list: TodoList,
     },
+    PlanDocUpdated {
+        doc: Value,
+    },
+    PlanModeChanged {
+        mode: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plan_id: Option<String>,
+    },
     AutoRetryStart {
         attempt: u32,
         max_retries: u32,

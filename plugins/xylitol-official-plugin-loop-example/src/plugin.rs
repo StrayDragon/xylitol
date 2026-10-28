@@ -5,8 +5,9 @@ use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 use crate::config::LoopExampleConfig;
 use crate::middleware::{
     DEFAULT_TODO_PROGRESS_SETTLES, example_middleware, generator_critic_middleware,
-    self_heal_middleware, todo_checkpoint_middleware, todo_progress_middleware,
-    todo_reminder_middleware, tool_exposure_middleware, workflow_middleware,
+    plan_mode_middleware, self_heal_middleware, todo_checkpoint_middleware,
+    todo_progress_middleware, todo_reminder_middleware, tool_exposure_middleware,
+    workflow_middleware,
 };
 
 pub struct LoopExamplePlugin {
@@ -40,6 +41,17 @@ impl Plugin for LoopExamplePlugin {
                 .register(example_middleware(&self.config))
                 .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
         ];
+        if self.config.plan_mode {
+            let store = ctx
+                .get::<xylitol_plugin_sdk::RuntimeSessionStore>()
+                .map(|store| store.0.clone())
+                .or_else(|| ctx.get::<dyn XySessionStore>());
+            handles.push(
+                registry
+                    .register(plan_mode_middleware(store, Some(ctx.clone())))
+                    .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
+            );
+        }
         if self.config.todo_progress {
             let max_settles = self
                 .config
@@ -127,6 +139,7 @@ mod tests {
     fn enabled() -> LoopExampleConfig {
         LoopExampleConfig {
             enabled: true,
+            plan_mode: false,
             max_settles: Some(2),
             deny_bash_patterns: vec!["rm -rf /".into()],
             todo_progress: false,
@@ -137,6 +150,13 @@ mod tests {
             generator_critic: Default::default(),
             workflow: Default::default(),
             tool_exposure: Default::default(),
+        }
+    }
+
+    fn plan_mode_enabled() -> LoopExampleConfig {
+        LoopExampleConfig {
+            plan_mode: true,
+            ..enabled()
         }
     }
 
@@ -243,6 +263,26 @@ mod tests {
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty());
         assert!(registry.snapshot().before_tool.is_empty());
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn plan_mode_registers_and_unloads() {
+        let (ctx, registry) = ctx_with_registry();
+        let fiber = ctx.plugin(LoopExamplePlugin::new(&plan_mode_enabled()).expect("new"));
+        for _ in 0..64 {
+            if registry.ids().len() == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            registry.ids(),
+            vec!["loop-example".to_string(), "plan-mode".to_string()],
+            "plan mode must register alongside the base middleware"
+        );
+        fiber.dispose().await.expect("dispose");
+        assert!(registry.is_empty(), "unload must remove both middlewares");
         let _ = ctx.shutdown().await;
     }
 

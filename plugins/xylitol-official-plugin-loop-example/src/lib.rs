@@ -8,10 +8,11 @@ pub use config::{
     ToolExposureConfig, WorkflowConfig,
 };
 pub use middleware::{
-    ExampleLoopMiddleware, GeneratorCriticMiddleware, SelfHealMiddleware, TodoCheckpointMiddleware,
-    TodoProgressMiddleware, TodoReminderMiddleware, ToolExposureMiddleware, WorkflowMiddleware,
-    example_middleware, generator_critic_middleware, self_heal_middleware,
-    todo_checkpoint_middleware, todo_progress_middleware, todo_reminder_middleware,
-    tool_exposure_middleware, workflow_middleware,
+    ExampleLoopMiddleware, GeneratorCriticMiddleware, PlanModeMiddleware, SelfHealMiddleware,
+    TodoCheckpointMiddleware, TodoProgressMiddleware, TodoReminderMiddleware,
+    ToolExposureMiddleware, WorkflowMiddleware, example_middleware, generator_critic_middleware,
+    plan_mode_middleware, self_heal_middleware, todo_checkpoint_middleware,
+    todo_progress_middleware, todo_reminder_middleware, tool_exposure_middleware,
+    workflow_middleware,
 };
 pub use plugin::LoopExamplePlugin;

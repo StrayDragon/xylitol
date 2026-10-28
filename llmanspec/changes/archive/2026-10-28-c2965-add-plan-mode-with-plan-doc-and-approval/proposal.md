@@ -3,6 +3,9 @@ depends_on:
   - c2964-refactor-split-workflow-todo-vocabulary
 title: Add a reviewable plan mode built on plan documents and explicit approval
 needs_specs_change: true
+branch: sdd/c2965-add-plan-mode-with-plan-doc-and-approval
+base_branch: main
+base_sha: d55ef6fbe510bf9a1a2f0c51115e1f0a4a43267b
 ---
 
 # Add a reviewable plan mode built on plan documents and explicit approval

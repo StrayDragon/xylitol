@@ -27,6 +27,10 @@ pub enum DispatchOutcome {
     Model(ModelInfo),
     Models(Vec<ModelInfo>),
     ThinkingLevel(String),
+    PlanMode {
+        mode: String,
+        plan_id: Option<String>,
+    },
     Bash(XyBashResult),
     Compacted(bool),
     SessionStats(serde_json::Value),
@@ -79,6 +83,9 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
             json!({ "models": models.iter().map(model_data).collect::<Vec<_>>() })
         }
         DispatchOutcome::ThinkingLevel(level) => json!({ "thinking_level": level }),
+        DispatchOutcome::PlanMode { mode, plan_id } => {
+            json!({ "mode": mode, "plan_id": plan_id })
+        }
         DispatchOutcome::Bash(r) => json!({
             "output": r.output,
             "exit_code": r.exit_code,

@@ -139,6 +139,15 @@ pub enum XyEvent {
         list: crate::session::TodoList,
     },
 
+    PlanDocUpdated {
+        doc: crate::session::PlanDoc,
+    },
+    PlanModeChanged {
+        mode: crate::session::PlanModeKind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plan_id: Option<String>,
+    },
+
     AutoRetryStart {
         attempt: u32,
         max_retries: u32,

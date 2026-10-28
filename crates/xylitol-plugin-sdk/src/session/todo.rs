@@ -8,10 +8,11 @@ pub const CUSTOM_TYPE_AGENT_TODO: &str = "agent_todo";
 
 pub const TODO_CONTENT_MAX_CHARS: usize = 80;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
 pub enum TodoStatus {
+    #[default]
     Pending,
     InProgress,
     Completed,

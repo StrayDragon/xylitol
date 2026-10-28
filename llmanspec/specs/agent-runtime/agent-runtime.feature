@@ -449,6 +449,10 @@
       当 查询中间件注册表
       那么 注册表含 loop-example 与 workflow
 
+  @req:r2955
+  规则: plan-mode-middleware
+    计划模式中间件 须在 before_model 读取最新 `plan_mode`；模式为 plan 时 须注入一次计划契约（先研究/阅读、用 `plan_write` 产出计划、用 `plan_submit` 请求批准）；模式为 execute 时 不得注入。会话 id 缺失或存储不可用时 须静默降级，不得中断 run。中间件 不得改写工具表、不得调用模型或工具；工具只读限制 不在本要求范围。
+
   @req:r2929
   规则: loop-middleware-structured-result
     after_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core quiet 摘要之前接收结构化结果：载荷含原始内容分片、可解析的结构化详情与错误标志，不得只提供拍平文本。中间件改写后的内容与详情 须成为本调用的历史回写与 ToolExecutionEnd 结果；core 的 write/edit quiet 摘要 仅在结果仍为单段文本时生效，且不得丢弃中间件给出的结构化详情。工具产出的非文本分片 须在历史回写中保真，不得被拍平为占位文本。

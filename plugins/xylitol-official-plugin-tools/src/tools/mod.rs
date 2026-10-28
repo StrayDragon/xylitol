@@ -9,6 +9,7 @@ pub mod ls;
 pub mod mutation;
 pub mod patch;
 pub mod path_utils;
+pub mod plan;
 pub mod process;
 pub mod read;
 pub mod todo;
@@ -18,6 +19,7 @@ pub mod write;
 
 pub use ask::default_tools_with_ask;
 pub use ask::default_tools_with_ask_and_todo;
+pub use plan::{SessionPlanGateway, plan_tools};
 pub use todo::{SessionAgentTodoGateway, todo_tools};
 
 use std::sync::Arc;
@@ -91,6 +93,25 @@ pub fn default_tools_with_todo(todo: Arc<dyn AgentTodoGateway>) -> Vec<Arc<dyn X
         Arc::new(ls::LsTool),
     ];
     tools.extend(todo_tools(todo));
+    tools
+}
+
+pub fn default_tools_with_todo_plan(
+    todo: Arc<dyn AgentTodoGateway>,
+    plan: Arc<dyn xylitol_plugin_sdk::PlanGateway>,
+) -> Vec<Arc<dyn XyTool>> {
+    let mut tools = default_tools_with_todo(todo.clone());
+    tools.extend(plan_tools(plan, todo, None));
+    tools
+}
+
+pub fn default_tools_with_ask_todo_plan(
+    ask: Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>,
+    todo: Arc<dyn AgentTodoGateway>,
+    plan: Arc<dyn xylitol_plugin_sdk::PlanGateway>,
+) -> Vec<Arc<dyn XyTool>> {
+    let mut tools = default_tools_with_ask_and_todo(ask.clone(), todo.clone());
+    tools.extend(plan_tools(plan, todo, Some(ask)));
     tools
 }
 

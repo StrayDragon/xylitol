@@ -36,6 +36,40 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 self.set_thinking_level(level.clone()).await?;
                 Ok(DispatchOutcome::ThinkingLevel(level))
             }
+            Command::SetPlanMode { mode, plan_id } => {
+                use xylitol_plugin_sdk::session::{PlanMode, PlanModeKind, latest_plan_mode};
+                let session_id = crate::driver::XyDriver::session_id(self)
+                    .ok_or_else(|| XyDriverError::invalid_input("no active session"))?;
+                let branch = self
+                    .store
+                    .load_leaf_branch(&session_id)
+                    .await
+                    .map_err(XyDriverError::from)?;
+                let next = match mode.as_str() {
+                    "toggle" => match latest_plan_mode(&branch).mode {
+                        PlanModeKind::Plan => PlanMode::execute(),
+                        PlanModeKind::Execute => PlanMode::plan(plan_id.clone()),
+                    },
+                    "plan" => PlanMode::plan(plan_id.clone()),
+                    "execute" => PlanMode::execute(),
+                    other => {
+                        return Err(XyDriverError::invalid_input(format!(
+                            "unknown plan mode: {other}"
+                        )));
+                    }
+                };
+                self.store
+                    .append_session_entry(&session_id, &next.to_custom_entry_shell())
+                    .await
+                    .map_err(XyDriverError::from)?;
+                Ok(DispatchOutcome::PlanMode {
+                    mode: match next.mode {
+                        PlanModeKind::Plan => "plan".into(),
+                        PlanModeKind::Execute => "execute".into(),
+                    },
+                    plan_id: next.plan_id,
+                })
+            }
             Command::Bash {
                 command,
                 exclude_from_context,

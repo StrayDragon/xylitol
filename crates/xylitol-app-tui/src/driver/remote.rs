@@ -1464,6 +1464,25 @@ where
                 *self.thinking.lock().unwrap() = level.clone();
                 Ok(DispatchOutcome::ThinkingLevel(level))
             }
+            Command::SetPlanMode { mode, plan_id } => {
+                let data = self
+                    .unary_cmd(Command::SetPlanMode {
+                        mode: mode.clone(),
+                        plan_id: plan_id.clone(),
+                    })
+                    .await?;
+                Ok(DispatchOutcome::PlanMode {
+                    mode: data
+                        .get("mode")
+                        .and_then(Value::as_str)
+                        .unwrap_or("execute")
+                        .to_string(),
+                    plan_id: data
+                        .get("plan_id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
+                })
+            }
             Command::Bash {
                 command,
                 exclude_from_context,

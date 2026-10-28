@@ -3,6 +3,8 @@ mod entries;
 mod helpers;
 mod manifest;
 mod parse;
+mod plan_doc;
+mod plan_mode;
 mod todo;
 mod tree;
 mod workflow;
@@ -29,6 +31,11 @@ pub use parse::{
     enforce_legacy_session_version, enforce_session_version, parse_session_jsonl,
     parse_session_jsonl_lines,
 };
+pub use plan_doc::{
+    CUSTOM_TYPE_PLAN_DOC, PlanDoc, PlanDocStatus, PlanDocStep, PlanDocValidationError,
+    latest_plan_doc, latest_plan_doc_by_id, plan_docs,
+};
+pub use plan_mode::{CUSTOM_TYPE_PLAN_MODE, PlanMode, PlanModeKind, latest_plan_mode};
 pub use todo::TodoItem;
 pub use todo::{
     CUSTOM_TYPE_AGENT_TODO, TodoItemDraft, TodoItemPatch, TodoList, TodoStatus, apply_todo_patches,

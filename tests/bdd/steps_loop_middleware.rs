@@ -561,6 +561,7 @@ pub(crate) async fn g_example_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
+                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec!["rm -rf /".into()],
                 todo_progress: false,
@@ -599,6 +600,7 @@ pub(crate) async fn g_example_todo_progress_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
+                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 todo_progress: true,
@@ -636,6 +638,7 @@ pub(crate) async fn g_example_todo_reminder_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
+                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 todo_progress: false,
@@ -673,6 +676,7 @@ pub(crate) async fn g_example_tool_exposure_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
+                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 todo_progress: false,
@@ -714,6 +718,7 @@ pub(crate) async fn g_example_todo_checkpoint_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
+                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 todo_progress: false,
@@ -751,6 +756,7 @@ pub(crate) async fn g_example_self_heal_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
+                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 todo_progress: false,
@@ -791,6 +797,7 @@ pub(crate) async fn g_example_generator_critic_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
+                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 todo_progress: false,
@@ -831,6 +838,7 @@ pub(crate) async fn g_example_workflow_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
+                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 todo_progress: false,

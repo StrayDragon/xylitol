@@ -144,6 +144,10 @@
     场景: MCP面板打开来自已缓存快照
       当 以主机泵注入含连接态的资源快照后提交 "/mcp"
       那么 MCP 面板槽打开且列出连接态且未因开面板 abort agent
+  @req:r2954
+  规则: slash-plan-mode
+    产品 TUI 须解析 `/plan`（toggle）、`/plan on`（plan）与 `/plan off`（execute），经共享 dispatch 提交 `SetPlanMode`；不得在端侧直接改写模式或伪造状态。成功 须以滚动提示报告当前模式（含 plan_id 时一并显示）；失败 须滚动提示错误。busy 时 须为 BusySlashPolicy Allow 且 Exec=Inline；带其他参数 须 usage 错误。模式指示渲染见 app-tui-fixed-zone 的 ModeStrip。
+
   @req:r1197
   规则: command-execution-class
     每条 protocol::Command 须经单一 SSOT 声明唯一执行类 Exec（Exclusive=独占会话循环直至完成，至少 bash/prompt/reload；Inline=任何交互循环内立即生效且 effect 不得 await 远程 unary/HTTP；Queued=保持排队至循环归还），声明 须与 wire REGISTRY 属性行同源并由守卫测试锁定逐变体穷举一致；客户端（泵循环/effects）须经 exec_class 推导消费，不得逐命令散落特判（延续 atm16 收口方向）；新增命令 须在 REGISTRY 行声明执行类且 不得为表达执行语义修改任何循环结构；Inline 的非阻塞承诺 须以缓存/本地直出实现（/model open 缓存先挂载为样板）。

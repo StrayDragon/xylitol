@@ -8,10 +8,10 @@ use serde_json::Value;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::rt::Ctx;
 use xylitol_plugin_sdk::session::{
-    TodoCheckpoint, TodoCheckpointStep, TodoList, TodoResumeCursor, TodoStatus, Workflow,
-    WorkflowStep, WorkflowStepStatus, blocked_workflow_step, latest_todo_checkpoint,
-    latest_workflow, runnable_workflow_step, validate_workflow, validate_workflow_replan,
-    workflow_downstream_ids,
+    PlanMode, PlanModeKind, TodoCheckpoint, TodoCheckpointStep, TodoList, TodoResumeCursor,
+    TodoStatus, Workflow, WorkflowStep, WorkflowStepStatus, blocked_workflow_step,
+    latest_plan_mode, latest_todo_checkpoint, latest_workflow, runnable_workflow_step,
+    validate_workflow, validate_workflow_replan, workflow_downstream_ids,
 };
 use xylitol_plugin_sdk::{
     AfterModelCtx, AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx,
@@ -69,7 +69,10 @@ const DEFAULT_SELF_HEAL_SIGNATURES: &[&str] = &[
     "lint failed",
     "panicked at",
 ];
-const TODO_PROGRESS_CONTRACT: &str = "Workflow mode: before acting, write the checklist with todo_rewrite. \
+const PLAN_MODE_CONTRACT: &str = "Plan mode: research and read first. Do not edit files yet. \
+Write the plan with plan_write, then call plan_submit for approval. \
+After approval the mode switches to execute and the todo list is seeded.";
+const TODO_PROGRESS_CONTRACT: &str = "Todo progress: before acting, write the checklist with todo_rewrite. \
 Keep exactly one item in_progress and mark finished items with todo_update. \
 Do not claim completion while items remain pending.";
 
@@ -1397,6 +1400,84 @@ pub fn todo_progress_middleware(max_settles: u32) -> Arc<dyn LoopMiddleware> {
     Arc::new(TodoProgressMiddleware::new(max_settles))
 }
 
+const PLAN_MODE_STAGES: &[LoopStage] = &[LoopStage::BeforeModel];
+
+pub struct PlanModeMiddleware {
+    store: Option<Arc<dyn XySessionStore>>,
+    ctx: Option<Ctx>,
+    loaded: AtomicBool,
+    mode: Mutex<PlanMode>,
+}
+
+impl PlanModeMiddleware {
+    pub fn new(store: Option<Arc<dyn XySessionStore>>, ctx: Option<Ctx>) -> Self {
+        Self {
+            store,
+            ctx,
+            loaded: AtomicBool::new(false),
+            mode: Mutex::new(PlanMode::execute()),
+        }
+    }
+
+    fn resolve_store(&self) -> Option<Arc<dyn XySessionStore>> {
+        self.ctx
+            .as_ref()
+            .and_then(|ctx| ctx.get::<RuntimeSessionStore>())
+            .map(|store| store.0.clone())
+            .or_else(|| {
+                self.ctx
+                    .as_ref()
+                    .and_then(|ctx| ctx.get::<dyn XySessionStore>())
+            })
+            .or_else(|| self.store.clone())
+    }
+
+    async fn load_mode(&self, session_id: Option<&str>) {
+        let (Some(store), Some(session_id)) = (self.resolve_store(), session_id) else {
+            return;
+        };
+        let Ok(branch) = store.load_leaf_branch(session_id).await else {
+            return;
+        };
+        let mode = latest_plan_mode(&branch);
+        *self.mode.lock().unwrap_or_else(|e| e.into_inner()) = mode;
+    }
+}
+
+#[async_trait]
+impl LoopMiddleware for PlanModeMiddleware {
+    fn id(&self) -> &str {
+        "plan-mode"
+    }
+
+    fn order(&self) -> i64 {
+        185
+    }
+
+    fn stages(&self) -> &'static [LoopStage] {
+        PLAN_MODE_STAGES
+    }
+
+    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+        if !self.loaded.swap(true, Ordering::SeqCst) {
+            self.load_mode(ctx.session_id.as_deref()).await;
+        }
+        let mode = self.mode.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        if mode.mode == PlanModeKind::Plan {
+            ctx.messages
+                .push(AgentMessage::Llm(XyLlmMessage::user(PLAN_MODE_CONTRACT)));
+        }
+        LoopStep::continued(ctx)
+    }
+}
+
+pub fn plan_mode_middleware(
+    store: Option<Arc<dyn XySessionStore>>,
+    ctx: Option<Ctx>,
+) -> Arc<dyn LoopMiddleware> {
+    Arc::new(PlanModeMiddleware::new(store, ctx))
+}
+
 pub fn example_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware> {
     Arc::new(ExampleLoopMiddleware::new(config.clone()))
 }
@@ -1432,6 +1513,7 @@ mod tests {
     async fn denies_configured_pattern_only() {
         let config = LoopExampleConfig {
             enabled: true,
+            plan_mode: false,
             max_settles: None,
             deny_bash_patterns: vec!["rm -rf /".into()],
             todo_progress: false,
@@ -1455,6 +1537,7 @@ mod tests {
     async fn stops_at_configured_settle_count() {
         let config = LoopExampleConfig {
             enabled: true,
+            plan_mode: false,
             max_settles: Some(2),
             deny_bash_patterns: Vec::new(),
             todo_progress: false,

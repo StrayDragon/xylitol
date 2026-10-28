@@ -258,6 +258,7 @@ mod tests {
             xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
                 &xylitol_official_plugin_loop_example::LoopExampleConfig {
                     enabled: true,
+                    plan_mode: false,
                     max_settles: Some(2),
                     deny_bash_patterns: vec!["rm -rf /".into()],
                     todo_progress: false,
@@ -435,6 +436,7 @@ mod tests {
         root.register(xylitol_official_plugin_loop_example::example_middleware(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
+                plan_mode: false,
                 max_settles: Some(1),
                 deny_bash_patterns: vec![],
                 todo_progress: false,

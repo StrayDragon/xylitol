@@ -35,10 +35,12 @@ pub fn assemble_driver_with_ops(
     exporter: SessionExporter,
 ) -> RuntimeDriver {
     let todo = xylitol_official_plugin_tools::SessionAgentTodoGateway::new(store.clone());
+    let plan = xylitol_official_plugin_tools::SessionPlanGateway::new(store.clone());
     let mut inner = RuntimeDriver::with_surface_ops(agent, store, bang, exporter);
     inner.set_todo_gateway(todo.clone());
+    inner.set_plan_gateway(plan.clone());
     inner.set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
-        xylitol_official_plugin_tools::default_tools_with_todo(todo),
+        xylitol_official_plugin_tools::default_tools_with_todo_plan(todo, plan),
     ));
     inner.set_slash_commands(
         crate::product_commands::product_slash_commands()
@@ -59,9 +61,11 @@ pub fn install_product_ask_tool(
 ) {
     driver.install_ask_tool(gateway.clone());
     let todo = xylitol_official_plugin_tools::SessionAgentTodoGateway::new(driver.store.clone());
+    let plan = xylitol_official_plugin_tools::SessionPlanGateway::new(driver.store.clone());
     driver.set_todo_gateway(todo.clone());
+    driver.set_plan_gateway(plan.clone());
     driver.set_tools(xylitol_runtime::agent::tools::ToolSet::from_iter(
-        xylitol_official_plugin_tools::default_tools_with_ask_and_todo(gateway, todo),
+        xylitol_official_plugin_tools::default_tools_with_ask_todo_plan(gateway, todo, plan),
     ));
 }
 

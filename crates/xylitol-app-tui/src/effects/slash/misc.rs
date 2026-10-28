@@ -67,6 +67,30 @@ pub(super) async fn history_copy_last<T: Terminal>(
     let _ = session.render_now();
 }
 
+pub(super) async fn plan<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    mode: String,
+) {
+    match crate::dispatch::dispatch(
+        driver,
+        xylitol_protocol::Command::SetPlanMode {
+            mode,
+            plan_id: None,
+        },
+    )
+    .await
+    {
+        Ok(crate::dispatch::DispatchOutcome::PlanMode { mode, plan_id }) => {
+            let detail = plan_id.map(|id| format!(" · {id}")).unwrap_or_default();
+            session.push_scroll_notice(format!("plan mode → {mode}{detail}"));
+        }
+        Ok(_) => session.push_scroll_notice("plan mode updated"),
+        Err(e) => session.push_scroll_notice(format!("/plan failed: {e}")),
+    }
+    let _ = session.render_now();
+}
+
 pub(super) async fn theme<T: Terminal>(session: &mut HostSession<T>, arg: Option<String>) {
     match arg.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         None => session.mount_themes_picker(),

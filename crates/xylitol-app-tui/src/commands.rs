@@ -35,6 +35,7 @@ pub enum PendingSlash {
     },
     OpenMcp,
     OpenDesigningScenes,
+    SetPlanMode(String),
     Usage(&'static str),
 }
 
@@ -125,6 +126,10 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Inline,
         },
+        PendingSlash::SetPlanMode(_) => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Inline,
+        },
         PendingSlash::OpenDesigningScenes => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Inline,
@@ -177,6 +182,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::SessionName { .. } => "/session-name",
         PendingSlash::HistoryCopyLast => "/history-copy-last",
         PendingSlash::OpenMcp => "/mcp",
+        PendingSlash::SetPlanMode(_) => "/plan",
         PendingSlash::OpenDesigningScenes => "/designing",
     }
 }
@@ -295,6 +301,12 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("theme", arg) => Some(PendingSlash::Theme { arg }),
         ("mcp" | "mcps", None) => Some(PendingSlash::OpenMcp),
         ("mcp" | "mcps", Some(_)) => Some(PendingSlash::Usage("usage: /mcp (no arguments)")),
+        ("plan", None) => Some(PendingSlash::SetPlanMode("toggle".into())),
+        ("plan", Some(arg)) => match arg.to_ascii_lowercase().as_str() {
+            "on" | "enter" => Some(PendingSlash::SetPlanMode("plan".into())),
+            "off" | "exit" | "execute" => Some(PendingSlash::SetPlanMode("execute".into())),
+            _ => Some(PendingSlash::Usage("usage: /plan [on|off]")),
+        },
         _ => None,
     }
 }

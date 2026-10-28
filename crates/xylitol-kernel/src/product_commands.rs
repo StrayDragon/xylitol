@@ -92,6 +92,11 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             description: "Show MCP servers and tools armed status",
             argument_hint: None,
         },
+        ProductSlashCommand {
+            name: "plan",
+            description: "Toggle plan mode: /plan [on|off]",
+            argument_hint: Some("[on|off]"),
+        },
     ]
 }
 

@@ -115,6 +115,16 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
         XyEvent::TodoUpdated { list } => Event::TodoUpdated {
             list: todo_to_wire(list)?,
         },
+        XyEvent::PlanDocUpdated { doc } => Event::PlanDocUpdated {
+            doc: serde_json::to_value(doc)?,
+        },
+        XyEvent::PlanModeChanged { mode, plan_id } => Event::PlanModeChanged {
+            mode: serde_json::to_value(mode)?
+                .as_str()
+                .unwrap_or("execute")
+                .to_string(),
+            plan_id: plan_id.clone(),
+        },
         XyEvent::AutoRetryStart {
             attempt,
             max_retries,
@@ -246,6 +256,13 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
         },
         Event::TodoUpdated { list } => XyEvent::TodoUpdated {
             list: todo_from_wire(list)?,
+        },
+        Event::PlanDocUpdated { doc } => XyEvent::PlanDocUpdated {
+            doc: serde_json::from_value(doc.clone())?,
+        },
+        Event::PlanModeChanged { mode, plan_id } => XyEvent::PlanModeChanged {
+            mode: serde_json::from_value(Value::String(mode.clone()))?,
+            plan_id: plan_id.clone(),
         },
         Event::AutoRetryStart {
             attempt,

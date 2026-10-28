@@ -1387,8 +1387,21 @@ async fn dispatch_writer_unary(
     } else {
         None
     };
+    let mut plan_mode_event: Option<(String, Option<String>)> = None;
     let result = match driver.execute_command(cmd).await {
         Ok(mut value) => {
+            if method == "set_plan_mode" {
+                let mode = value
+                    .get("mode")
+                    .and_then(Value::as_str)
+                    .unwrap_or("execute")
+                    .to_string();
+                let plan_id = value
+                    .get("plan_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                plan_mode_event = Some((mode, plan_id));
+            }
             if staged_export
                 && let Some(p) = value
                     .get("path")
@@ -1418,6 +1431,14 @@ async fn dispatch_writer_unary(
         }
     }
     drop(g);
+    if let Some((mode, plan_id)) = plan_mode_event {
+        let mode = serde_json::from_value::<xylitol_plugin_sdk::session::PlanModeKind>(
+            Value::String(mode),
+        )
+        .unwrap_or(xylitol_plugin_sdk::session::PlanModeKind::Execute);
+        slot.append_and_push(&XyEvent::PlanModeChanged { mode, plan_id })
+            .await;
+    }
     if let Some(fwd) = bash_forwarder {
         let _ = fwd.await;
     }

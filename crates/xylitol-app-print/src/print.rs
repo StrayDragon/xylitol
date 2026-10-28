@@ -109,7 +109,9 @@ where
             | XyEvent::AutoRetryEnd { .. }
             | XyEvent::SessionInfoChanged { .. }
             | XyEvent::ContextTokenSettlement { .. }
-            | XyEvent::TodoUpdated { .. } => {}
+            | XyEvent::TodoUpdated { .. }
+            | XyEvent::PlanDocUpdated { .. }
+            | XyEvent::PlanModeChanged { .. } => {}
             XyEvent::AgentEnd { .. } => break,
         }
     }
