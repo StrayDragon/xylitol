@@ -3,12 +3,8 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 
 use xylitol_plugin_sdk::message::{AgentMessage, XyLlmMessage};
-use xylitol_plugin_sdk::rt::Ctx;
-use xylitol_plugin_sdk::session::{PlanMode, PlanModeKind, latest_plan_mode};
-use xylitol_plugin_sdk::{
-    BeforeLlmRequestCtx, BeforeToolCtx, LoopMiddleware, LoopStage, LoopStep, RuntimeSessionStore,
-    XySessionStore,
-};
+use xylitol_plugin_sdk::session::{PlanMode, PlanModeKind};
+use xylitol_plugin_sdk::{BeforeLlmRequestCtx, BeforeToolCtx, LoopMiddleware, LoopStage, LoopStep};
 
 use crate::config::PlanConfig;
 
@@ -32,55 +28,23 @@ Write the plan with plan_write, then call plan_submit for approval. \
 After approval the mode switches to execute and the todo list is seeded.";
 
 pub struct PlanModeMiddleware {
-    store: Option<Arc<dyn XySessionStore>>,
-    ctx: Option<Ctx>,
     mode: Mutex<PlanMode>,
     read_only: bool,
     allowed_tools: Vec<String>,
 }
 
 impl PlanModeMiddleware {
-    pub fn new(
-        store: Option<Arc<dyn XySessionStore>>,
-        ctx: Option<Ctx>,
-        config: &PlanConfig,
-    ) -> Self {
+    pub fn new(config: &PlanConfig) -> Self {
         Self {
-            store,
-            ctx,
             mode: Mutex::new(PlanMode::execute()),
             read_only: config.read_only,
             allowed_tools: config.allowed_tools.clone(),
         }
     }
 
-    fn resolve_store(&self) -> Option<Arc<dyn XySessionStore>> {
-        self.ctx
-            .as_ref()
-            .and_then(|ctx| ctx.get::<RuntimeSessionStore>())
-            .map(|store| store.0.clone())
-            .or_else(|| {
-                self.ctx
-                    .as_ref()
-                    .and_then(|ctx| ctx.get::<dyn XySessionStore>())
-            })
-            .or_else(|| self.store.clone())
-    }
-
     fn allows(&self, tool_name: &str) -> bool {
         READ_ONLY_ALLOWLIST.contains(&tool_name)
             || self.allowed_tools.iter().any(|tool| tool == tool_name)
-    }
-
-    async fn load_mode(&self, session_id: Option<&str>) {
-        let (Some(store), Some(session_id)) = (self.resolve_store(), session_id) else {
-            return;
-        };
-        let Ok(branch) = store.load_leaf_branch(session_id).await else {
-            return;
-        };
-        let mode = latest_plan_mode(&branch);
-        *self.mode.lock().unwrap_or_else(|e| e.into_inner()) = mode;
     }
 }
 
@@ -99,8 +63,8 @@ impl LoopMiddleware for PlanModeMiddleware {
     }
 
     async fn before_llm_request(&self, ctx: BeforeLlmRequestCtx) -> LoopStep<BeforeLlmRequestCtx> {
-        self.load_mode(ctx.session_id.as_deref()).await;
-        let mode = self.mode.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let mode = ctx.plan_mode.clone().unwrap_or_default();
+        *self.mode.lock().unwrap_or_else(|e| e.into_inner()) = mode.clone();
         let mut step = LoopStep::continued(ctx);
         if mode.mode == PlanModeKind::Plan {
             step.ctx
@@ -133,116 +97,23 @@ impl LoopMiddleware for PlanModeMiddleware {
     }
 }
 
-pub fn plan_mode_middleware(
-    store: Option<Arc<dyn XySessionStore>>,
-    ctx: Option<Ctx>,
-    config: &PlanConfig,
-) -> Arc<dyn LoopMiddleware> {
-    Arc::new(PlanModeMiddleware::new(store, ctx, config))
+pub fn plan_mode_middleware(config: &PlanConfig) -> Arc<dyn LoopMiddleware> {
+    Arc::new(PlanModeMiddleware::new(config))
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
-    use async_trait::async_trait;
-
     use super::*;
-    use xylitol_plugin_sdk::session::{ForkPosition, SessionContext, SessionEntry};
-    use xylitol_plugin_sdk::{LoopControl, XySessionError, XySessionStoreError};
+    use xylitol_plugin_sdk::LoopControl;
 
-    #[derive(Default)]
-    struct FakeStore {
-        entries: Mutex<HashMap<String, Vec<SessionEntry>>>,
-    }
-
-    #[async_trait]
-    impl XySessionStore for FakeStore {
-        async fn exists(&self, session_id: &str) -> bool {
-            self.entries
-                .lock()
-                .map(|m| m.contains_key(session_id))
-                .unwrap_or(false)
-        }
-
-        async fn load_entries(
-            &self,
-            session_id: &str,
-        ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
-            self.entries
-                .lock()
-                .ok()
-                .and_then(|m| m.get(session_id).cloned())
-                .ok_or_else(|| XySessionStoreError::not_found(session_id))
-        }
-
-        async fn append_session_entry(
-            &self,
-            session_id: &str,
-            entry: &SessionEntry,
-        ) -> Result<(), XySessionStoreError> {
-            self.entries
-                .lock()
-                .map_err(|_| XySessionStoreError::io("lock", std::io::Error::other("poison")))?
-                .entry(session_id.to_string())
-                .or_default()
-                .push(entry.clone());
-            Ok(())
-        }
-
-        async fn build_session_context(
-            &self,
-            session_id: &str,
-        ) -> Result<SessionContext, XySessionStoreError> {
-            let _ = self.load_entries(session_id).await?;
-            Ok(SessionContext {
-                messages: Vec::new(),
-                thinking_level: String::new(),
-                model: None,
-            })
-        }
-
-        async fn create(
-            &self,
-            id: &str,
-            _cwd: Option<&str>,
-            _parent: Option<&str>,
-        ) -> Result<(), XySessionStoreError> {
-            self.entries
-                .lock()
-                .map_err(|_| XySessionStoreError::io("lock", std::io::Error::other("poison")))?
-                .entry(id.to_string())
-                .or_default();
-            Ok(())
-        }
-
-        async fn fork(
-            &self,
-            _parent_id: &str,
-            _child_id: &str,
-            at_entry_id: &str,
-            _position: ForkPosition,
-        ) -> Result<(), XySessionError> {
-            Err(XySessionError::EntryNotFound {
-                entry_id: at_entry_id.into(),
-            })
-        }
-
-        fn set_leaf(&self, _session_id: &str, _entry_id: Option<&str>) {}
-
-        fn leaf_id(&self, _session_id: &str) -> Option<String> {
-            None
-        }
-    }
-
-    fn model_ctx(session_id: &str) -> BeforeLlmRequestCtx {
+    fn model_ctx(session_id: &str, plan_mode: Option<PlanMode>) -> BeforeLlmRequestCtx {
         BeforeLlmRequestCtx {
             turn_index: 0,
             messages: Vec::new(),
             tool_schemas: Vec::new(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
+            plan_mode,
             session_id: Some(session_id.into()),
         }
     }
@@ -256,19 +127,16 @@ mod tests {
         }
     }
 
-    async fn plan_middleware(store: Arc<FakeStore>, config: PlanConfig) -> Arc<dyn LoopMiddleware> {
-        store
-            .append_session_entry("s1", &PlanMode::plan(None).to_custom_entry_shell())
-            .await
-            .expect("plan mode entry");
-        let mw = plan_mode_middleware(Some(store), None, &config);
-        mw.before_llm_request(model_ctx("s1")).await;
+    async fn plan_middleware(config: PlanConfig, plan_mode: PlanMode) -> Arc<dyn LoopMiddleware> {
+        let mw = plan_mode_middleware(&config);
+        mw.before_llm_request(model_ctx("s1", Some(plan_mode)))
+            .await;
         mw
     }
 
     #[tokio::test]
     async fn plan_gate_denies_mutating_and_unknown_tools() {
-        let mw = plan_middleware(Arc::new(FakeStore::default()), PlanConfig::default()).await;
+        let mw = plan_middleware(PlanConfig::default(), PlanMode::plan(None)).await;
         for name in ["write", "edit", "bash", "mcp__write", "unknown_tool"] {
             let out = mw.before_tool(tool_ctx(name)).await;
             assert_eq!(out.control, LoopControl::Stop, "{name} must be denied");
@@ -291,18 +159,10 @@ mod tests {
 
     #[tokio::test]
     async fn plan_mode_reports_mode_and_plan_id() {
-        use xylitol_plugin_sdk::session::PlanMode;
-
-        let store = Arc::new(FakeStore::default());
-        store
-            .append_session_entry(
-                "s1",
-                &PlanMode::plan(Some("p1".into())).to_custom_entry_shell(),
-            )
-            .await
-            .expect("plan mode entry");
-        let mw = plan_mode_middleware(Some(store), None, &PlanConfig::default());
-        let out = mw.before_llm_request(model_ctx("s1")).await;
+        let mw = plan_mode_middleware(&PlanConfig::default());
+        let out = mw
+            .before_llm_request(model_ctx("s1", Some(PlanMode::plan(Some("p1".into())))))
+            .await;
         let get = |key: &str| {
             out.properties
                 .iter()
@@ -314,8 +174,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_plan_mode_degrades_to_execute() {
+        let mw = plan_mode_middleware(&PlanConfig::default());
+        let out = mw.before_llm_request(model_ctx("s1", None)).await;
+        assert_eq!(out.control, LoopControl::Continue);
+        assert!(
+            !out.properties
+                .iter()
+                .any(|(key, _)| key == "loop.middleware.plan.mode"),
+            "no plan mode must not claim plan"
+        );
+        let denied = mw.before_tool(tool_ctx("write")).await;
+        assert_eq!(denied.control, LoopControl::Continue);
+    }
+
+    #[tokio::test]
     async fn plan_gate_allows_research_and_plan_tools() {
-        let mw = plan_middleware(Arc::new(FakeStore::default()), PlanConfig::default()).await;
+        let mw = plan_middleware(PlanConfig::default(), PlanMode::plan(None)).await;
         for name in [
             "read",
             "grep",
@@ -338,13 +213,7 @@ mod tests {
 
     #[tokio::test]
     async fn execute_mode_restores_mutating_tools() {
-        let store = Arc::new(FakeStore::default());
-        let mw = plan_middleware(store.clone(), PlanConfig::default()).await;
-        store
-            .append_session_entry("s1", &PlanMode::execute().to_custom_entry_shell())
-            .await
-            .expect("execute mode entry");
-        mw.before_llm_request(model_ctx("s1")).await;
+        let mw = plan_middleware(PlanConfig::default(), PlanMode::execute()).await;
         let out = mw.before_tool(tool_ctx("write")).await;
         assert_eq!(out.control, LoopControl::Continue);
     }
@@ -355,7 +224,7 @@ mod tests {
             allowed_tools: vec!["mcp__context7__query-docs".into()],
             ..Default::default()
         };
-        let mw = plan_middleware(Arc::new(FakeStore::default()), config).await;
+        let mw = plan_middleware(config, PlanMode::plan(None)).await;
         let out = mw.before_tool(tool_ctx("mcp__context7__query-docs")).await;
         assert_eq!(out.control, LoopControl::Continue);
         let out = mw.before_tool(tool_ctx("mcp__context7__write")).await;
@@ -368,14 +237,14 @@ mod tests {
             read_only: false,
             ..Default::default()
         };
-        let mw = plan_middleware(Arc::new(FakeStore::default()), config).await;
+        let mw = plan_middleware(config, PlanMode::plan(None)).await;
         let out = mw.before_tool(tool_ctx("write")).await;
         assert_eq!(out.control, LoopControl::Continue);
     }
 
     #[test]
     fn identity_and_stages_are_stable() {
-        let mw = PlanModeMiddleware::new(None, None, &PlanConfig::default());
+        let mw = PlanModeMiddleware::new(&PlanConfig::default());
         assert_eq!(mw.id(), "plan-mode");
         assert_eq!(mw.order(), 185);
         assert_eq!(mw.stages(), PLAN_MODE_STAGES);

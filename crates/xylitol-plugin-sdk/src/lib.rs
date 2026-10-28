@@ -126,7 +126,7 @@ mod contract_tests {
 
     #[test]
     fn sdk_api_version_and_rutis_lock() {
-        assert_eq!(SDK_API_VERSION, "0.4.0");
+        assert_eq!(SDK_API_VERSION, "0.5.0");
         assert_eq!(RUTIS_LOCK, "0.17.0");
     }
 }

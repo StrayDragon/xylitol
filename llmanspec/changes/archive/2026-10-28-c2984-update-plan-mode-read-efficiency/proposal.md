@@ -2,6 +2,9 @@
 depends_on: []
 title: 降低 plan 中间件每轮读取整条 leaf branch 的开销
 needs_specs_change: false
+branch: sdd/c2984-update-plan-mode-read-efficiency
+base_branch: main
+base_sha: fd07bcc9184e4d75d77bc315435ca734310f3073
 ---
 
 # 降低 plan 中间件每轮读取整条 leaf branch 的开销

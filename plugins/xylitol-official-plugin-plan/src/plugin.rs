@@ -1,5 +1,4 @@
 use xylitol_plugin_sdk::LoopMiddlewareRegistry;
-use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 use crate::config::PlanConfig;
@@ -31,12 +30,8 @@ impl Plugin for PlanPlugin {
         let Some(registry) = ctx.get::<LoopMiddlewareRegistry>() else {
             return Ok(());
         };
-        let store = ctx
-            .get::<xylitol_plugin_sdk::RuntimeSessionStore>()
-            .map(|store| store.0.clone())
-            .or_else(|| ctx.get::<dyn XySessionStore>());
         let handle = registry
-            .register(plan_mode_middleware(store, Some(ctx.clone()), &self.config))
+            .register(plan_mode_middleware(&self.config))
             .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?;
         ctx.effect(|| async move {
             handle.unregister();
