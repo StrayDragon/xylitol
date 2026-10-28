@@ -641,6 +641,7 @@ impl UiRoot {
             queue_rows,
             todo_rows,
             self.toast_notice.is_some(),
+            usize::from(self.ui_model.mode_strip.is_some()),
         )
         .saturating_add(4)
         .max(4)

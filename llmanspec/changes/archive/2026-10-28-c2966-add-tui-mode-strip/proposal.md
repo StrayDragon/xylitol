@@ -3,6 +3,9 @@ depends_on:
   - c2965-add-plan-mode-with-plan-doc-and-approval
 title: Add a one-line ModeStrip indicator for experimental planning modes
 needs_specs_change: true
+branch: sdd/c2966-add-tui-mode-strip
+base_branch: main
+base_sha: 5fd0228024e64154ef9acf58a82b7fb15ad6e62c
 ---
 
 # Add a one-line ModeStrip indicator for experimental planning modes

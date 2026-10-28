@@ -19,7 +19,7 @@
 
 运行时真值：本目录产品代码。视觉色板 SSOT：[`DESIGN.md`](./DESIGN.md) frontmatter；改色板后跑 `just qa-check-tui-tokens`（Palette 对照）。现行词「固定区」= layout/widgets；勿用 `shell`/`scene` 命名。
 
-**信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`llmanspec/specs/app-tui-fixed-zone/`](../../../../llmanspec/specs/app-tui-fixed-zone/) 与产品代码中的固定词——尤其 **滚动提示**、**通知条**、**通知栈**、**待办栏**、**尾插 / 顶插**；弃用旧称（挂账 / Status trail / chrome / 壳层 / system 消息等）勿再引入。
+**信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`llmanspec/specs/app-tui-fixed-zone/`](../../../../llmanspec/specs/app-tui-fixed-zone/) 与产品代码中的固定词——尤其 **滚动提示**、**通知条**、**通知栈**、**待办栏**、**ModeStrip**、**尾插 / 顶插**；弃用旧称（挂账 / Status trail / chrome / 壳层 / system 消息等）勿再引入。ModeStrip 仅单行、无交互，用于实验性模式标识；不得做成横幅或详情面板。
 
 **与 `agent_demo` 分界**：包引擎演示，不是本端 SSOT。硬边界见 `crates/xylitol-tui/AGENTS.md`。
 

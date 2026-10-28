@@ -1207,3 +1207,38 @@ fn tool_entry_captures_model_requested_timeout() {
     };
     assert_eq!(*timeout_secs, None);
 }
+
+#[test]
+fn plan_mode_changed_updates_mode_strip() {
+    let mut model = UiModel::new();
+    apply_xy_event(
+        &mut model,
+        &XyEvent::PlanModeChanged {
+            mode: xylitol_plugin_sdk::session::PlanModeKind::Plan,
+            plan_id: Some("p1".into()),
+        },
+    );
+    assert_eq!(
+        model.mode_strip.as_ref().map(|s| s.label.as_str()),
+        Some("plan")
+    );
+    apply_xy_event(
+        &mut model,
+        &XyEvent::PlanModeChanged {
+            mode: xylitol_plugin_sdk::session::PlanModeKind::Execute,
+            plan_id: Some("p1".into()),
+        },
+    );
+    assert_eq!(
+        model.mode_strip.as_ref().map(|s| s.label.as_str()),
+        Some("execute · p1")
+    );
+    apply_xy_event(
+        &mut model,
+        &XyEvent::PlanModeChanged {
+            mode: xylitol_plugin_sdk::session::PlanModeKind::Execute,
+            plan_id: None,
+        },
+    );
+    assert!(model.mode_strip.is_none());
+}

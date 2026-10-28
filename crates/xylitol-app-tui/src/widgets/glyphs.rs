@@ -40,6 +40,13 @@ impl GlyphSet {
             Self::Ascii => "v",
         }
     }
+
+    pub fn mode(self) -> &'static str {
+        match self {
+            Self::Unicode => "◆",
+            Self::Ascii => "*",
+        }
+    }
 }
 
 #[cfg(test)]
@@ -57,5 +64,13 @@ mod tests {
         assert_eq!(GlyphSet::Ascii.unfold(), "v");
         assert_eq!(visible_width(GlyphSet::Ascii.fold()), 1);
         assert_eq!(visible_width(GlyphSet::Ascii.unfold()), 1);
+    }
+
+    #[test]
+    fn mode_glyph_visible_width_one() {
+        assert_eq!(GlyphSet::Unicode.mode(), "◆");
+        assert_eq!(GlyphSet::Ascii.mode(), "*");
+        assert_eq!(visible_width(GlyphSet::Unicode.mode()), 1);
+        assert_eq!(visible_width(GlyphSet::Ascii.mode()), 1);
     }
 }

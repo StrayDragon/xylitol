@@ -181,6 +181,11 @@ impl StreamingTailKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModeStripState {
+    pub label: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UiModel {
     pub entries: Vec<UiEntry>,
     pub phase: UiPhase,
@@ -195,6 +200,7 @@ pub struct UiModel {
     pub(crate) current_role: Option<String>,
     bash_utf8_pending: Vec<u8>,
     pub todo: TodoList,
+    pub mode_strip: Option<ModeStripState>,
     pub has_earlier: bool,
 }
 
@@ -220,6 +226,7 @@ impl UiModel {
             current_role: None,
             bash_utf8_pending: Vec::new(),
             todo: TodoList::default(),
+            mode_strip: None,
             has_earlier: false,
         }
     }

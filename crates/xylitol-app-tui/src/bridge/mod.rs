@@ -5,8 +5,8 @@ pub(crate) mod session_tree;
 
 pub use model::trailing_aborted_note;
 pub use model::{
-    AskPhase, BashBlockStatus, CompactionBlockStatus, QueueBadge, STREAMING_THINK_ID,
-    StreamingTailKind, UiEntry, UiModel, UiPhase, allocate_thinking_id,
+    AskPhase, BashBlockStatus, CompactionBlockStatus, ModeStripState, QueueBadge,
+    STREAMING_THINK_ID, StreamingTailKind, UiEntry, UiModel, UiPhase, allocate_thinking_id,
 };
 pub use preview::TODO_EMPTY_BODY_HINT;
 pub use preview::extract_display_diff;

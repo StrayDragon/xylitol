@@ -166,7 +166,7 @@
       那么 可见视口顶部含 Copied 且不以 Error 前缀冒充
   @req:r1228
   规则: fixed-zone-footprint-term-budget
-    产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
+    产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / ModeStrip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
 
     场景: 短终端忙碌前导可见
       当 以小高度终端渲染忙碌帧
@@ -205,12 +205,16 @@
       那么 带 30s 的显示 (timeout 30s) 且省略的不显示 timeout 注记
   @req:r21
   规则: todo-bar-dock-member
-    产品 TUI 待办栏 须为下缘固定区成员：有 Todo 条目时驻留于队列条与通知条之间，通知条仍紧贴 status、status 仍紧贴 editor；空表 须占 0 行。待办栏 不得写入对话条目，不得冒充 status、footer、通知条或队列条。折叠/展开/换行续行与上下轮廓（含 `↑ N more` / `↓ N more` 边框）须计入 Fixed-Zone Footprint 实际行（可见行，含高度上限后的内容视口高加轮廓，不含未滚入内容）。
+    产品 TUI 待办栏 须为下缘固定区成员：有 Todo 条目时驻留于队列条与 ModeStrip 之间，ModeStrip 位于待办栏与通知条之间，通知条仍紧贴 status、status 仍紧贴 editor；空表 须占 0 行。待办栏 不得写入对话条目，不得冒充 status、footer、通知条或队列条。折叠/展开/换行续行与上下轮廓（含 `↑ N more` / `↓ N more` 边框）须计入 Fixed-Zone Footprint 实际行（可见行，含高度上限后的内容视口高加轮廓，不含未滚入内容）。
 
     场景: 待办栏位于介于队列与提示条
       当 产品 TUI 同时存在非空待办栏、队列条与通知条
       那么 从上到下 为队列条、待办栏、通知条、status、editor
       并且 空表时待办栏 占 0 行
+
+  @req:r2956
+  规则: mode-strip-single-line
+    产品 TUI 须提供 ModeStrip 固定区成员：仅一行、前导 glyph（unicode `◆` / ascii `*`）加短状态；无模式时 须占 0 行；不得换行、展开或交互。长文本 须右截断而非增高；不得写入 UiModel.entries / ScrollNotice / 通知条；须计入 Fixed-Zone Footprint 实际行。首消费者为 plan 模式（`plan` / `execute · <plan_id>`），状态 须仅由 `planModeChanged` 驱动，不得在端侧另造模式来源；`execute` 无 plan 时 须隐藏。
 
   @req:r2903
   规则: 会话详情覆盖弹出框
