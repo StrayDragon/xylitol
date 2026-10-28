@@ -14,6 +14,7 @@ pub mod session_list;
 pub mod todo;
 pub mod tool;
 pub mod typed;
+mod workflow;
 
 pub use ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
 pub use bash::{BashChunk, BashExecOpts, BashOutputSink, XyBashExecutor, XyBashResult};
@@ -36,3 +37,4 @@ pub use session_list::{flatten_session_forest, format_session_age};
 pub use todo::AgentTodoGateway;
 pub use tool::{XyBatchMode, XyTool, XyToolCtx, XyToolExecutionMode};
 pub use typed::{FS_TOOL_TIMEOUT_SECS, TypedTool, parse_tool_args};
+pub use workflow::WorkflowGateway;

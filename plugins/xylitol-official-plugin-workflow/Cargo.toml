@@ -10,11 +10,14 @@ publish = false
 
 [dependencies]
 xylitol-plugin-sdk = { workspace = true }
+anyhow = { workspace = true }
 async-trait = { workspace = true }
 log = { workspace = true }
 schemars = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+xylitol-official-plugin-session = { workspace = true }

@@ -7,6 +7,7 @@ mod bindings_agent_session;
 mod bindings_agent_session_store;
 mod bindings_agent_todo;
 mod bindings_agent_tools;
+mod bindings_agent_workflow;
 mod bindings_app_tui;
 mod bindings_app_tui_ask;
 mod bindings_app_tui_bridge;

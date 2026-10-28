@@ -26,7 +26,7 @@ pub fn apply_tools_family(model: &mut UiModel, event: &XyEvent) -> bool {
             };
             true
         }
-        XyEvent::PlanDocUpdated { .. } => true,
+        XyEvent::PlanDocUpdated { .. } | XyEvent::WorkflowUpdated { .. } => true,
         XyEvent::ToolExecutionStart { id, name, args } => {
             model.flush_streaming();
             if is_ask_tool(name) {

@@ -2314,3 +2314,66 @@ pub(crate) fn t_untrusted_project_plan() {
         "untrusted project plan must not fall back to session storage"
     );
 }
+
+thread_local! {
+    static WORKFLOW_TOOL_OUT: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+#[given("workflow 插件启用且写入含一个 pending 步骤的 workflow")]
+pub(crate) fn g_workflow_tool_write() {
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
+        Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+    futures::executor::block_on(store.create("s-workflow-tool", Some("."), None)).expect("create");
+    let gateway = xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store.clone());
+    futures::executor::block_on(gateway.bind_session(Some("s-workflow-tool".into())));
+    let tools = xylitol_official_plugin_workflow::workflow_tools(gateway);
+    let tool = tools
+        .iter()
+        .find(|tool| tool.name() == "workflow_write")
+        .expect("workflow_write")
+        .clone();
+    let result = futures::executor::block_on(tool.execute(
+        &xylitol_plugin_sdk::XyToolCtx::new("bdd-workflow"),
+        serde_json::json!({
+            "goal": "ship",
+            "steps": [{"id": "s1", "description": "do it", "verification": "tests pass"}]
+        }),
+    ))
+    .expect("workflow_write");
+    assert!(result.contains("\"runnable\":\"s1\""), "{result}");
+    let mw = xylitol_official_plugin_workflow::workflow_middleware(
+        Some(store),
+        None,
+        &xylitol_official_plugin_workflow::WorkflowConfig::default(),
+    );
+    let out = futures::executor::block_on(mw.before_model(BeforeModelCtx {
+        turn_index: 0,
+        messages: Vec::new(),
+        tool_schemas: Vec::new(),
+        options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+        todo: None,
+        session_id: Some("s-workflow-tool".into()),
+    }));
+    WORKFLOW_TOOL_OUT.with(|slot| {
+        *slot.borrow_mut() = Some(
+            out.ctx
+                .messages
+                .iter()
+                .map(|message| message.text())
+                .collect(),
+        )
+    });
+}
+
+#[then("注入当前步骤指令")]
+pub(crate) fn t_workflow_tool_step() {
+    let messages = WORKFLOW_TOOL_OUT
+        .with(|slot| slot.borrow().clone())
+        .expect("workflow messages");
+    let text = messages.join("\n");
+    assert!(text.contains("<plan_step>"), "{text}");
+    assert!(text.contains("s1"), "{text}");
+}
+
+#[when("模型下一轮 before_model")]
+pub(crate) fn w_workflow_next_model() {}

@@ -18,3 +18,7 @@
     场景: 投影经模型项目
       当 读取主仓投影入口
       那么 AgentMessage 经投影为协议消息
+
+  @req:r2968
+  规则: no-raw-workflow-block
+    发往 provider 的 assistant 文本 不得包含原始 `<plan>{json}</plan>` workflow 控制块；workflow 状态 只经工具调用与 `WorkflowUpdated` 事件传递。由 workflow 插件单测覆盖。

@@ -130,10 +130,12 @@ pub fn assemble_driver_with_ops_and_features_and_context(
         context.project_root,
         context.trusted,
     );
+    let workflow = xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store.clone());
     let mut inner = RuntimeDriver::with_surface_ops(agent, store, bang, exporter);
     inner.set_todo_gateway(todo.clone());
     inner.set_plan_gateway(plan.clone());
-    inner.set_tools(compose_tools(features, todo, plan, None));
+    inner.set_workflow_gateway(workflow.clone());
+    inner.set_tools(compose_tools(features, todo, plan, workflow, None));
     inner.set_slash_commands(
         crate::product_commands::product_slash_commands()
             .into_iter()
@@ -160,15 +162,19 @@ pub fn install_product_ask_tool(
         context.project_root,
         context.trusted,
     );
+    let workflow =
+        xylitol_official_plugin_workflow::SessionWorkflowGateway::new(driver.store.clone());
     driver.set_todo_gateway(todo.clone());
     driver.set_plan_gateway(plan.clone());
-    driver.set_tools(compose_tools(features, todo, plan, Some(gateway)));
+    driver.set_workflow_gateway(workflow.clone());
+    driver.set_tools(compose_tools(features, todo, plan, workflow, Some(gateway)));
 }
 
 fn compose_tools(
     features: ToolFeatures,
     todo: Arc<xylitol_official_plugin_todo::SessionAgentTodoGateway>,
     plan: Arc<xylitol_official_plugin_plan::SessionPlanGateway>,
+    workflow: Arc<xylitol_official_plugin_workflow::SessionWorkflowGateway>,
     ask: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
 ) -> xylitol_runtime::agent::tools::ToolSet {
     let mut tools = xylitol_official_plugin_tools::core_tools();
@@ -184,6 +190,9 @@ fn compose_tools(
             todo_handoff,
             ask.clone(),
         ));
+    }
+    if features.workflow {
+        tools.extend(xylitol_official_plugin_workflow::workflow_tools(workflow));
     }
     if let Some(ask) = ask {
         tools.push(xylitol_official_plugin_tools::ask_tool(ask));

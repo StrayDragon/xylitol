@@ -106,6 +106,9 @@ pub enum Event {
     PlanDocUpdated {
         doc: Value,
     },
+    WorkflowUpdated {
+        workflow: Value,
+    },
     PlanModeChanged {
         mode: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]

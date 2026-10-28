@@ -118,6 +118,9 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
         XyEvent::PlanDocUpdated { doc } => Event::PlanDocUpdated {
             doc: serde_json::to_value(doc)?,
         },
+        XyEvent::WorkflowUpdated { workflow } => Event::WorkflowUpdated {
+            workflow: serde_json::to_value(workflow)?,
+        },
         XyEvent::PlanModeChanged { mode, plan_id } => Event::PlanModeChanged {
             mode: serde_json::to_value(mode)?
                 .as_str()
@@ -259,6 +262,9 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
         },
         Event::PlanDocUpdated { doc } => XyEvent::PlanDocUpdated {
             doc: serde_json::from_value(doc.clone())?,
+        },
+        Event::WorkflowUpdated { workflow } => XyEvent::WorkflowUpdated {
+            workflow: serde_json::from_value(workflow.clone())?,
         },
         Event::PlanModeChanged { mode, plan_id } => XyEvent::PlanModeChanged {
             mode: serde_json::from_value(Value::String(mode.clone()))?,

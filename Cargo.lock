@@ -6255,12 +6255,14 @@ dependencies = [
 name = "xylitol-official-plugin-workflow"
 version = "0.0.0-pre"
 dependencies = [
+ "anyhow",
  "async-trait",
  "log",
  "schemars",
  "serde",
  "serde_json",
  "tokio",
+ "xylitol-official-plugin-session",
  "xylitol-plugin-sdk",
 ]
 

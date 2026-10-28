@@ -8,26 +8,25 @@ use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::rt::Ctx;
 use xylitol_plugin_sdk::session::{
     Workflow, WorkflowStep, WorkflowStepStatus, blocked_workflow_step, latest_workflow,
-    runnable_workflow_step, validate_workflow, validate_workflow_replan, workflow_downstream_ids,
+    runnable_workflow_step, workflow_downstream_ids,
 };
 use xylitol_plugin_sdk::{
-    AfterModelCtx, AfterToolCtx, BeforeModelCtx, DecideContinueCtx, LoopMiddleware, LoopStage,
-    LoopStep, RuntimeSessionStore, XySessionStore,
+    AfterToolCtx, BeforeModelCtx, DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep,
+    RuntimeSessionStore, XySessionStore,
 };
 
 use crate::config::WorkflowConfig;
 
 const WORKFLOW_STAGES: &[LoopStage] = &[
     LoopStage::BeforeModel,
-    LoopStage::AfterModel,
     LoopStage::AfterTool,
     LoopStage::DecideContinue,
 ];
-const WORKFLOW_CONTRACT: &str = "Workflow: create a workflow before acting. Output exactly one \
-<plan>{json}</plan> block with the full workflow: {\"goal\":\"...\",\"steps\":[{\"id\":\"s1\",\
-\"description\":\"...\",\"depends_on\":[],\"inputs\":[],\"outputs\":[],\"risk\":\"low\",\
-\"verification\":\"...\",\"rollback\":\"...\",\"requires_human\":false,\"status\":\"pending\"}]}. \
-Keep exactly one step in_progress; mark it completed only after verification passes.";
+const WORKFLOW_CONTRACT: &str = "Workflow: create a workflow before acting. Call workflow_write \
+with the full workflow: {\"goal\":\"...\",\"steps\":[{\"id\":\"s1\",\"description\":\"...\",\
+\"depends_on\":[],\"inputs\":[],\"outputs\":[],\"risk\":\"low\",\"verification\":\"...\",\
+\"rollback\":\"...\",\"requires_human\":false,\"status\":\"pending\"}]}. Do not emit a <plan> \
+block in assistant text. Keep exactly one step in_progress; mark it completed only after verification passes.";
 
 fn assistant_has_tool_calls(message: &AgentMessage) -> bool {
     match message {
@@ -40,6 +39,7 @@ fn assistant_has_tool_calls(message: &AgentMessage) -> bool {
 
 #[derive(Debug, Default)]
 struct WorkflowState {
+    session_id: Option<String>,
     plan: Option<Workflow>,
     approved: HashSet<String>,
     replan_count: u32,
@@ -107,6 +107,35 @@ impl WorkflowMiddleware {
         }
     }
 
+    async fn reload_workflow(&self) {
+        let session_id = self.lock_state().session_id.clone();
+        let (Some(store), Some(session_id)) = (self.resolve_store(), session_id.as_deref()) else {
+            return;
+        };
+        let Ok(branch) = store.load_leaf_branch(session_id).await else {
+            return;
+        };
+        let Some(plan) = latest_workflow(&branch) else {
+            return;
+        };
+        let had_failed = self.lock_state().plan.as_ref().is_some_and(|previous| {
+            previous
+                .steps
+                .iter()
+                .any(|step| step.status == WorkflowStepStatus::Failed)
+        });
+        let mut state = self.lock_state();
+        state.plan = Some(plan);
+        state.injected_step = None;
+        state.summary_injected = false;
+        state.summary_done = false;
+        state.contract_injected = true;
+        state.pending_workflow_error = None;
+        if had_failed {
+            state.replan_count += 1;
+        }
+    }
+
     fn step_instruction(step: &WorkflowStep, plan: &Workflow) -> String {
         let mut lines = vec![
             "<plan_step>".to_string(),
@@ -139,8 +168,8 @@ impl WorkflowMiddleware {
             ids.join(", ")
         };
         format!(
-            "<plan_replan>\nStep {} failed: {}.\nRewrite only {} and its downstream steps ({downstream_list}). \
-Keep completed steps unchanged. Output a full <plan>{{json}}</plan> block.\n</plan_replan>",
+            "<workflow_replan>\nStep {} failed: {}.\nRewrite only {} and its downstream steps ({downstream_list}). \
+Keep completed steps unchanged. Call workflow_write with the full workflow.\n</workflow_replan>",
             failed.id,
             failed
                 .output_ref
@@ -157,14 +186,6 @@ the next user message approves it once.\n</plan_blocked>",
             step.id, step.description
         )
     }
-}
-
-fn extract_workflow_json(text: &str) -> Option<&str> {
-    let start = text.rfind("<plan>")? + "<plan>".len();
-    let rest = &text[start..];
-    let end = rest.find("</plan>")?;
-    let json = rest[..end].trim();
-    if json.is_empty() { None } else { Some(json) }
 }
 
 #[async_trait]
@@ -186,10 +207,11 @@ impl LoopMiddleware for WorkflowMiddleware {
             self.load_workflow(ctx.session_id.as_deref()).await;
         }
         let mut state = self.lock_state();
+        state.session_id = ctx.session_id.clone();
         if let Some(error) = state.pending_workflow_error.take() {
             ctx.messages
                 .push(AgentMessage::Llm(XyLlmMessage::user(format!(
-                    "<plan_error>\n{error}\n</plan_error>"
+                    "<workflow_error>\n{error}\n</workflow_error>"
                 ))));
         }
         let Some(plan) = state.plan.clone() else {
@@ -242,80 +264,23 @@ impl LoopMiddleware for WorkflowMiddleware {
         LoopStep::continued(ctx)
     }
 
-    async fn after_model(&self, ctx: AfterModelCtx) -> LoopStep<AfterModelCtx> {
-        let assistant_text = ctx.assistant.text();
-        let Some(json) = extract_workflow_json(&assistant_text) else {
-            return LoopStep::continued(ctx);
-        };
-        let next: Workflow = match serde_json::from_str(json) {
-            Ok(plan) => plan,
-            Err(err) => {
-                log::warn!(
-                    target: "xylitol::loop-example",
-                    "workflow block JSON error: {err}"
-                );
-                self.lock_state().pending_workflow_error =
-                    Some(format!("workflow block is not valid JSON: {err}"));
-                return LoopStep::continued(ctx);
-            }
-        };
-        if let Err(err) = validate_workflow(&next) {
-            log::warn!(
-                target: "xylitol::loop-example",
-                "workflow DAG invalid: {}",
-                err.0
-            );
-            self.lock_state().pending_workflow_error = Some(err.0);
-            return LoopStep::continued(ctx);
-        }
-        let previous = self.lock_state().plan.clone();
-        if let Err(err) = validate_workflow_replan(previous.as_ref(), &next) {
-            log::warn!(
-                target: "xylitol::loop-example",
-                "workflow replan invalid: {}",
-                err.0
-            );
-            self.lock_state().pending_workflow_error = Some(err.0);
-            return LoopStep::continued(ctx);
-        }
-        if let (Some(store), Some(session_id)) = (self.resolve_store(), ctx.session_id.as_deref())
-            && let Err(err) = store
-                .append_session_entry(session_id, &next.to_custom_entry_shell())
-                .await
-        {
-            log::warn!(
-                target: "xylitol::loop-example",
-                "workflow persist failed: {err}"
-            );
-        }
-        let had_failed = previous.as_ref().is_some_and(|plan| {
-            plan.steps
-                .iter()
-                .any(|step| step.status == WorkflowStepStatus::Failed)
-        });
-        let mut state = self.lock_state();
-        state.plan = Some(next);
-        state.injected_step = None;
-        state.summary_injected = false;
-        state.summary_done = false;
-        state.contract_injected = true;
-        state.pending_workflow_error = None;
-        if had_failed {
-            state.replan_count += 1;
-        }
-        let plan = state.plan.clone().unwrap_or_default();
-        state.approved.retain(|id| {
-            plan.step(id).is_some_and(|step| {
-                matches!(
-                    step.status,
-                    WorkflowStepStatus::Pending | WorkflowStepStatus::InProgress
-                )
-            })
-        });
-        LoopStep::continued(ctx)
-    }
-
     async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
+        if ctx.tool_name == "workflow_write" {
+            if ctx.is_error {
+                let text = ctx
+                    .parts
+                    .iter()
+                    .find_map(|part| match part {
+                        AgentPart::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    })
+                    .unwrap_or("workflow_write failed");
+                self.lock_state().pending_workflow_error = Some(text.to_string());
+            } else {
+                self.reload_workflow().await;
+            }
+            return LoopStep::continued(ctx);
+        }
         if ctx.is_error {
             let mut state = self.lock_state();
             if let Some(plan) = &mut state.plan
@@ -391,4 +356,132 @@ pub fn workflow_middleware(
     config: &WorkflowConfig,
 ) -> Arc<dyn LoopMiddleware> {
     Arc::new(WorkflowMiddleware::new(store, ctx, config))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+    use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowStep, WorkflowStepStatus};
+
+    fn model_ctx(session_id: Option<&str>) -> BeforeModelCtx {
+        BeforeModelCtx {
+            turn_index: 0,
+            messages: Vec::new(),
+            tool_schemas: Vec::new(),
+            options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+            todo: None,
+            session_id: session_id.map(str::to_string),
+        }
+    }
+
+    fn tool_ctx(name: &str, text: &str, is_error: bool) -> AfterToolCtx {
+        AfterToolCtx {
+            turn_index: 0,
+            tool_call_id: "call-1".into(),
+            tool_name: name.into(),
+            parts: vec![AgentPart::text(text)],
+            details: None,
+            is_error,
+        }
+    }
+
+    fn workflow() -> Workflow {
+        Workflow {
+            goal: "ship".into(),
+            steps: vec![WorkflowStep {
+                id: "s1".into(),
+                description: "do it".into(),
+                depends_on: Vec::new(),
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+                risk: WorkflowRisk::Low,
+                verification: Some("tests pass".into()),
+                rollback: None,
+                requires_human: false,
+                status: WorkflowStepStatus::Pending,
+                output_ref: None,
+            }],
+            resume_cursor: None,
+            updated_at: 1,
+        }
+    }
+
+    #[tokio::test]
+    async fn contract_points_at_workflow_write_without_raw_block() {
+        let mw = workflow_middleware(None, None, &WorkflowConfig::default());
+        let out = mw.before_model(model_ctx(None)).await;
+        let text = out
+            .ctx
+            .messages
+            .iter()
+            .map(|message| message.text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("workflow_write"), "{text}");
+        assert!(!text.contains("<plan>{json}</plan>"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn workflow_write_success_reloads_and_injects_step() {
+        let store: Arc<dyn XySessionStore> =
+            Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+        store.create("s1", Some("."), None).await.expect("create");
+        store
+            .append_session_entry("s1", &workflow().to_custom_entry_shell())
+            .await
+            .expect("seed");
+        let mw = workflow_middleware(Some(store), None, &WorkflowConfig::default());
+        mw.before_model(model_ctx(Some("s1"))).await;
+        mw.after_tool(tool_ctx("workflow_write", "{}", false)).await;
+        let out = mw.before_model(model_ctx(Some("s1"))).await;
+        let text = out
+            .ctx
+            .messages
+            .iter()
+            .map(|message| message.text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("<plan_step>"), "{text}");
+        assert!(text.contains("s1"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn workflow_write_error_is_injected_once() {
+        let mw = workflow_middleware(None, None, &WorkflowConfig::default());
+        mw.before_model(model_ctx(None)).await;
+        mw.after_tool(tool_ctx(
+            "workflow_write",
+            "duplicate workflow step id: s1",
+            true,
+        ))
+        .await;
+        let out = mw.before_model(model_ctx(None)).await;
+        let text = out
+            .ctx
+            .messages
+            .iter()
+            .map(|message| message.text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("<workflow_error>"), "{text}");
+        assert!(text.contains("duplicate workflow step id"), "{text}");
+        let out = mw.before_model(model_ctx(None)).await;
+        assert!(
+            !out.ctx
+                .messages
+                .iter()
+                .any(|message| message.text().contains("<workflow_error>")),
+            "workflow error must be injected once"
+        );
+    }
+
+    #[test]
+    fn identity_and_stages_are_stable() {
+        let mw = WorkflowMiddleware::new(None, None, &WorkflowConfig::default());
+        assert_eq!(mw.id(), "workflow");
+        assert_eq!(mw.order(), 190);
+        assert_eq!(mw.stages(), WORKFLOW_STAGES);
+    }
 }

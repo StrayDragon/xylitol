@@ -142,6 +142,9 @@ pub enum XyEvent {
     PlanDocUpdated {
         doc: crate::session::PlanDoc,
     },
+    WorkflowUpdated {
+        workflow: crate::session::Workflow,
+    },
     PlanModeChanged {
         mode: crate::session::PlanModeKind,
         #[serde(default, skip_serializing_if = "Option::is_none")]

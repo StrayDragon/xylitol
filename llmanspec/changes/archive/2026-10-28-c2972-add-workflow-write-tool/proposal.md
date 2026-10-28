@@ -4,6 +4,9 @@ depends_on:
   - c2968-refactor-extract-plan-workflow-todo-plugins
 title: Replace the plan control block with a workflow_write tool
 needs_specs_change: true
+branch: sdd/c2972-add-workflow-write-tool
+base_branch: main
+base_sha: 59487865f5acc3902c1f280ec2b249efb9142ba7
 ---
 
 # Replace the plan control block with a workflow_write tool

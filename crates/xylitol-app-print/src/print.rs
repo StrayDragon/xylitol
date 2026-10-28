@@ -111,6 +111,7 @@ where
             | XyEvent::ContextTokenSettlement { .. }
             | XyEvent::TodoUpdated { .. }
             | XyEvent::PlanDocUpdated { .. }
+            | XyEvent::WorkflowUpdated { .. }
             | XyEvent::PlanModeChanged { .. } => {}
             XyEvent::AgentEnd { .. } => break,
         }
