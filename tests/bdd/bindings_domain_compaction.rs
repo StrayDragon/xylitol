@@ -258,3 +258,9 @@ async fn test_c2844_reasoning_only_summary(
     name = "压缩裁切指标同一来源"
 )]
 fn test_c2848_cut_metric_same_source(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-compaction/domain-compaction.feature",
+    name = "压缩后保留 plan 模式"
+)]
+fn test_comp_preserves_plan_mode(agent: AgentState, sess: XySessionStore, ws: Workspace) {}

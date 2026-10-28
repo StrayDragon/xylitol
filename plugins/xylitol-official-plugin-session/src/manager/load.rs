@@ -175,6 +175,48 @@ impl SessionManager {
         Ok(entries)
     }
 
+    pub(super) async fn read_entries_page(
+        &self,
+        session_id: &str,
+        limit: Option<usize>,
+        before_entry_id: Option<&str>,
+    ) -> Result<(Vec<SessionEntry>, bool), XySessionStoreError> {
+        match &self.backend {
+            SessionBackend::InMemory => {
+                let entries = lock_rwlock_read(&self.in_memory_store)
+                    .get(session_id)
+                    .cloned()
+                    .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
+                xylitol_plugin_sdk::session::enforce_session_version(&entries)?;
+                Ok(xylitol_plugin_sdk::session::paginate_entries(
+                    entries,
+                    limit,
+                    before_entry_id,
+                ))
+            }
+            SessionBackend::Persisted => {
+                if self.manifest_path(session_id).exists() {
+                    let manifest = self.read_manifest(session_id).await?;
+                    self.page_from_segments(session_id, &manifest, limit, before_entry_id)
+                        .await
+                } else if self.legacy_session_path(session_id).exists() {
+                    Err(super::segments::legacy_unsupported_error(session_id))
+                } else {
+                    let entries = lock_rwlock_read(&self.pending_store)
+                        .get(session_id)
+                        .cloned()
+                        .ok_or_else(|| XySessionStoreError::not_found(session_id))?;
+                    xylitol_plugin_sdk::session::enforce_session_version(&entries)?;
+                    Ok(xylitol_plugin_sdk::session::paginate_entries(
+                        entries,
+                        limit,
+                        before_entry_id,
+                    ))
+                }
+            }
+        }
+    }
+
     pub async fn load(&self, session_id: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
         let entries = self.read_entries(session_id).await?;
         if let Some(last) = entries.last() {

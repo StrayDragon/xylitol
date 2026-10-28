@@ -184,6 +184,113 @@ mod tests {
         let _ = ctx.shutdown().await;
     }
 
+    struct IsolatedConfig {
+        dir: tempfile::TempDir,
+        prev: Option<String>,
+    }
+
+    impl IsolatedConfig {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().expect("temp config dir");
+            let prev = std::env::var("XDG_CONFIG_HOME").ok();
+            unsafe { std::env::set_var("XDG_CONFIG_HOME", dir.path()) };
+            Self { dir, prev }
+        }
+    }
+
+    impl Drop for IsolatedConfig {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.prev {
+                    Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+                    None => std::env::remove_var("XDG_CONFIG_HOME"),
+                }
+            }
+            let _ = &self.dir;
+        }
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn boot_ctx_provides_loop_middleware_registry() {
+        let _iso = IsolatedConfig::new();
+        let opts = BootOptions {
+            profile: Profile::Print,
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "contract",
+            ephemeral_sessions: true,
+        };
+        let (ctx, _loader) = boot_ctx(&opts).await.expect("boot_ctx");
+        let registry = ctx
+            .get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>()
+            .expect("loop middleware registry service");
+        assert_eq!(
+            registry.ids(),
+            vec!["plan-mode".to_string()],
+            "default boot enables the plan plugin but not workflow/todo middleware"
+        );
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn loop_policies_plugin_absent_by_default_and_clean_on_unload() {
+        let _iso = IsolatedConfig::new();
+        let opts = BootOptions {
+            profile: Profile::Print,
+            config_path: None,
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "contract",
+            ephemeral_sessions: true,
+        };
+        let (ctx, _loader) = boot_ctx(&opts).await.expect("boot_ctx");
+        let registry = ctx
+            .get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>()
+            .expect("loop middleware registry service");
+        assert_eq!(
+            registry.ids(),
+            vec!["plan-mode".to_string()],
+            "unconfigured loop example must not add middleware"
+        );
+        let fiber = ctx.plugin(
+            xylitol_official_plugin_loop_policies::LoopPoliciesPlugin::new(
+                &xylitol_official_plugin_loop_policies::LoopPoliciesConfig {
+                    enabled: true,
+                    max_settles: Some(2),
+                    deny_bash_patterns: vec!["rm -rf /".into()],
+                    self_heal: Default::default(),
+                    generator_critic: Default::default(),
+                    tool_exposure: Default::default(),
+                },
+            )
+            .expect("loop policies plugin"),
+        );
+        for _ in 0..64 {
+            if registry.ids().len() == 2 {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(
+            registry.ids(),
+            vec!["loop-policies".to_string(), "plan-mode".to_string()]
+        );
+        fiber.dispose().await.expect("dispose");
+        assert_eq!(
+            registry.ids(),
+            vec!["plan-mode".to_string()],
+            "unload must leave no loop-policies middleware behind"
+        );
+        let _ = ctx.shutdown().await;
+    }
+
     #[tokio::test]
     async fn boot_ctx_does_not_mkdir_crate_xylitol() {
         let crate_xy = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".xylitol");
@@ -284,5 +391,68 @@ mod tests {
         assert!(started.load(Ordering::SeqCst) >= 1);
         hold.add_permits(1);
         let _ = ctx.shutdown().await;
+    }
+
+    #[test]
+    fn session_slots_derive_independent_loop_registries() {
+        use xylitol_plugin_sdk::{LoopStage, LoopStep};
+
+        struct Marker(&'static str);
+
+        #[async_trait::async_trait]
+        impl xylitol_plugin_sdk::LoopMiddleware for Marker {
+            fn id(&self) -> &str {
+                self.0
+            }
+
+            fn stages(&self) -> &'static [LoopStage] {
+                &[LoopStage::BeforeTool]
+            }
+
+            async fn before_tool(
+                &self,
+                ctx: xylitol_plugin_sdk::BeforeToolCtx,
+            ) -> LoopStep<xylitol_plugin_sdk::BeforeToolCtx> {
+                LoopStep::continued(ctx)
+            }
+        }
+
+        let root = Arc::new(xylitol_plugin_sdk::LoopMiddlewareRegistry::new());
+        root.register(Arc::new(Marker("shared"))).expect("shared");
+
+        let slot_a = root.derive();
+        let slot_b = root.derive();
+        slot_a.register(Arc::new(Marker("only-a"))).expect("only-a");
+
+        assert_eq!(
+            slot_a.ids(),
+            vec!["shared".to_string(), "only-a".to_string()]
+        );
+        assert_eq!(slot_b.ids(), vec!["shared".to_string()]);
+        assert_eq!(root.ids(), vec!["shared".to_string()]);
+    }
+
+    #[test]
+    fn derived_slot_does_not_see_later_root_registrations() {
+        let root = Arc::new(xylitol_plugin_sdk::LoopMiddlewareRegistry::new());
+        let slot = root.derive();
+        root.register(
+            xylitol_official_plugin_loop_policies::loop_policies_middleware(
+                &xylitol_official_plugin_loop_policies::LoopPoliciesConfig {
+                    enabled: true,
+                    max_settles: Some(1),
+                    deny_bash_patterns: vec![],
+                    self_heal: Default::default(),
+                    generator_critic: Default::default(),
+                    tool_exposure: Default::default(),
+                },
+            ),
+        )
+        .expect("late root registration");
+        assert!(
+            slot.is_empty(),
+            "a slot frozen at creation must not inherit later root middleware"
+        );
+        assert!(!root.is_empty());
     }
 }

@@ -144,3 +144,15 @@ fn test_rc_session_max_turns(agent: AgentState, ws: Workspace) {}
     name = "活动折叠词法契约"
 )]
 fn test_rc_activity_fold_lexical() {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "产物与代码一致"
+)]
+fn test_rc_config_schema_same_source(rc_snap: RcSnap) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "产物覆盖当前顶层节"
+)]
+fn test_rc_config_schema_covers_sections(rc_snap: RcSnap) {}

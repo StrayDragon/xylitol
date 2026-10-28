@@ -52,6 +52,18 @@ impl super::XyInProcessDriver {
         self.store.load_entries(sid).await.map_err(Into::into)
     }
 
+    pub async fn get_messages_page(
+        &self,
+        limit: Option<usize>,
+        before_entry_id: Option<&str>,
+    ) -> Result<(Vec<SessionEntry>, bool), XyDriverError> {
+        let sid = require_active_session(&self.agent)?;
+        self.store
+            .load_entries_page(sid, limit, before_entry_id)
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn get_session_stats(&self) -> Result<SessionStats, XyDriverError> {
         self.agent
             .get_session_stats()

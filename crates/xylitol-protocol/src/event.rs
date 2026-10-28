@@ -32,9 +32,6 @@ pub enum Event {
         message: Option<Value>,
     },
     MessageUpdate {
-        text: String,
-        #[serde(default)]
-        thinking: Option<String>,
         #[serde(default)]
         message: Option<Value>,
     },
@@ -105,6 +102,17 @@ pub enum Event {
     },
     TodoUpdated {
         list: TodoList,
+    },
+    PlanDocUpdated {
+        doc: Value,
+    },
+    WorkflowUpdated {
+        workflow: Value,
+    },
+    PlanModeChanged {
+        mode: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plan_id: Option<String>,
     },
     AutoRetryStart {
         attempt: u32,
@@ -187,11 +195,7 @@ mod tests {
                 role: "assistant".into(),
                 message: Some(serde_json::json!({"k": 1})),
             },
-            Event::MessageUpdate {
-                text: "t".into(),
-                thinking: Some("h".into()),
-                message: None,
-            },
+            Event::MessageUpdate { message: None },
             Event::TextDelta { text: "d".into() },
             Event::ThinkingDelta { text: "d".into() },
             Event::ToolExecutionStart {

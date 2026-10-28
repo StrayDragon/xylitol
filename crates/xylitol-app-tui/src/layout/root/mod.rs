@@ -67,7 +67,6 @@ struct ClientNotice {
 }
 
 const CLIENT_NOTICE_MAX: usize = 3;
-pub const HEURISTIC_ESTIMATE_NOTICE: &str = "Context tokens are approximate";
 
 pub struct UiRoot {
     loaded_resources: LoadedResourcesSnapshot,
@@ -75,6 +74,7 @@ pub struct UiRoot {
     fold: ScrollbackFold,
     fold_hits: FoldHitTable,
     fold_dirty: bool,
+    load_earlier_requested: bool,
     activity: ActivityFoldState,
     status_loader: Loader,
     status_busy: bool,
@@ -125,7 +125,6 @@ pub struct UiRoot {
     todo_clipboard: Vec<String>,
     todo_pointer_dirty: bool,
     client_notices: VecDeque<ClientNotice>,
-    heuristic_notice_emitted: bool,
     #[cfg(test)]
     upper_rebuild_count: u64,
 }
@@ -156,6 +155,7 @@ impl UiRoot {
             fold: ScrollbackFold::default(),
             fold_hits: FoldHitTable::default(),
             fold_dirty: false,
+            load_earlier_requested: false,
             activity: ActivityFoldState::default(),
             status_loader,
             status_busy: false,
@@ -206,7 +206,6 @@ impl UiRoot {
             todo_clipboard: Vec::new(),
             todo_pointer_dirty: false,
             client_notices: VecDeque::new(),
-            heuristic_notice_emitted: false,
             #[cfg(test)]
             upper_rebuild_count: 0,
         };
@@ -440,6 +439,26 @@ impl UiRoot {
             FoldTarget::OutputViewport(id) => {
                 self.fold.toggle_output(&id);
             }
+            FoldTarget::Segment(_) | FoldTarget::Cluster(_) | FoldTarget::LiveTail => {
+                self.toggle_activity_fold(target);
+            }
+            FoldTarget::TodoDoing | FoldTarget::TodoPast | FoldTarget::TodoPending => {
+                self.toggle_todo_fold(target);
+                self.fold_dirty = true;
+                return;
+            }
+            FoldTarget::LoadEarlier => {
+                self.load_earlier_requested = true;
+                self.fold_dirty = true;
+                return;
+            }
+        }
+        self.fold_dirty = true;
+        self.bump_upper_gen();
+    }
+
+    fn toggle_activity_fold(&mut self, target: FoldTarget) {
+        match target {
             FoldTarget::Segment(id) => {
                 let _ = self.activity.toggle_one_step(&id);
             }
@@ -449,24 +468,17 @@ impl UiRoot {
             FoldTarget::LiveTail => {
                 let _ = self.activity.expand_live_cluster(&self.ui_model.entries);
             }
-            FoldTarget::TodoDoing => {
-                self.todo_doing_open = !self.todo_doing_open;
-                self.fold_dirty = true;
-                return;
-            }
-            FoldTarget::TodoPast => {
-                self.todo_past_open = !self.todo_past_open;
-                self.fold_dirty = true;
-                return;
-            }
-            FoldTarget::TodoPending => {
-                self.todo_pending_open = !self.todo_pending_open;
-                self.fold_dirty = true;
-                return;
-            }
+            _ => unreachable!("activity fold target"),
         }
-        self.fold_dirty = true;
-        self.bump_upper_gen();
+    }
+
+    fn toggle_todo_fold(&mut self, target: FoldTarget) {
+        match target {
+            FoldTarget::TodoDoing => self.todo_doing_open = !self.todo_doing_open,
+            FoldTarget::TodoPast => self.todo_past_open = !self.todo_past_open,
+            FoldTarget::TodoPending => self.todo_pending_open = !self.todo_pending_open,
+            _ => unreachable!("todo fold target"),
+        }
     }
 
     pub fn click_todo_bar_at(&mut self, col: u16, screen_row: u16) -> bool {
@@ -536,6 +548,10 @@ impl UiRoot {
         std::mem::take(&mut self.fold_dirty)
     }
 
+    pub fn take_load_earlier_request(&mut self) -> bool {
+        std::mem::take(&mut self.load_earlier_requested)
+    }
+
     pub(crate) fn last_dock_rows(&self) -> usize {
         self.last_dock_rows.max(1)
     }
@@ -588,14 +604,6 @@ impl UiRoot {
         }
     }
 
-    pub fn maybe_heuristic_estimate_notice(&mut self, heuristic: bool) {
-        if !heuristic || self.heuristic_notice_emitted {
-            return;
-        }
-        self.heuristic_notice_emitted = true;
-        self.push_client_notice(ClientNoticeKind::Info, HEURISTIC_ESTIMATE_NOTICE);
-    }
-
     #[cfg(test)]
     pub fn editor_screen_origin_for_test(&self) -> (u16, u16) {
         self.editor.screen_origin()
@@ -630,6 +638,7 @@ impl UiRoot {
             queue_rows,
             todo_rows,
             self.toast_notice.is_some(),
+            usize::from(self.ui_model.mode_strip.is_some()),
         )
         .saturating_add(4)
         .max(4)
@@ -1483,23 +1492,6 @@ mod tests {
             dock_before,
             "notice stack must not grow dock footprint"
         );
-    }
-
-    #[test]
-    fn heuristic_estimate_notice_emits_once() {
-        use xylitol_tui::utils::strip_ansi_codes;
-        let mut root = UiRoot::new();
-        root.maybe_heuristic_estimate_notice(true);
-        root.maybe_heuristic_estimate_notice(true);
-        root.maybe_heuristic_estimate_notice(false);
-        let frame = strip_ansi_codes(&root.render_with_viewport_overlay(80).join("\n"));
-        assert_eq!(
-            frame.matches(HEURISTIC_ESTIMATE_NOTICE).count(),
-            1,
-            "first Heuristic notice only: {frame}"
-        );
-        assert!(frame.contains("◆"));
-        assert!(!frame.contains("Error:"));
     }
 
     #[test]

@@ -62,26 +62,34 @@ pub(super) async fn switch_and_rebuild_transcript<T: Terminal>(
     .await
     {
         Ok(crate::dispatch::DispatchOutcome::SwitchedSession(_))
-        | Ok(crate::dispatch::DispatchOutcome::NewSession(_)) => {
-            match super::session_entries(driver).await {
-                Ok(entries) => match kind {
-                    SwitchRebuildKind::Import => session.apply_import_session(session_id, entries),
-                    SwitchRebuildKind::Resume => session.apply_resume_session(session_id, entries),
-                },
-                Err(e) => {
-                    note_driver_err(
-                        session,
-                        &format!("tui.{label}.get_messages"),
-                        &e,
-                        format!("{label}: get_messages failed: {e}"),
-                    );
-                    match kind {
-                        SwitchRebuildKind::Import => session.close_import_confirm(),
-                        SwitchRebuildKind::Resume => session.close_session_resume_slot(),
-                    }
+        | Ok(crate::dispatch::DispatchOutcome::NewSession(_)) => match super::session_entries_page(
+            driver,
+            Some(crate::history_window::HISTORY_PAGE),
+            None,
+        )
+        .await
+        {
+            Ok((entries, has_more)) => match kind {
+                SwitchRebuildKind::Import => {
+                    session.apply_import_session(session_id, entries, has_more)
+                }
+                SwitchRebuildKind::Resume => {
+                    session.apply_resume_session(session_id, entries, has_more)
+                }
+            },
+            Err(e) => {
+                note_driver_err(
+                    session,
+                    &format!("tui.{label}.get_messages"),
+                    &e,
+                    format!("{label}: get_messages failed: {e}"),
+                );
+                match kind {
+                    SwitchRebuildKind::Import => session.close_import_confirm(),
+                    SwitchRebuildKind::Resume => session.close_session_resume_slot(),
                 }
             }
-        }
+        },
         Ok(other) => {
             let e = outcome_error(&format!("tui.{label}.switch_session"), &other);
             note_driver_err(

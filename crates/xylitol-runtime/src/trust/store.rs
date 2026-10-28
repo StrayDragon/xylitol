@@ -74,33 +74,7 @@ impl TrustManager {
 
     fn acquire_lock(&self) -> Result<fs::File, XyTrustError> {
         let lock_path = self.trust_file_path.with_extension("json.lock");
-        if let Some(parent) = lock_path.parent() {
-            fs::create_dir_all(parent).map_err(|e| XyTrustError::io("create trust lock dir", e))?;
-        }
-        let max_attempts = 10;
-        let delay = Duration::from_millis(20);
-        for attempt in 1..=max_attempts {
-            match fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&lock_path)
-            {
-                Ok(file) => {
-                    let _ = (&file).write_all(format!("{}\n", std::process::id()).as_bytes());
-                    return Ok(file);
-                }
-                Err(e) if e.kind() == ErrorKind::AlreadyExists => {
-                    if attempt == max_attempts {
-                        return Err(XyTrustError::Lock);
-                    }
-                    std::thread::sleep(delay);
-                }
-                Err(e) => {
-                    return Err(XyTrustError::io("create trust lock", e));
-                }
-            }
-        }
-        Err(XyTrustError::Lock)
+        acquire_lock_at(&lock_path)
     }
 
     fn release_lock(&self, lock_file: fs::File) {
@@ -462,4 +436,48 @@ mod tests {
             "expected boolean decision in JSON, got: {on_disk}"
         );
     }
+}
+
+fn ensure_lock_dir(lock_path: &Path) -> Result<(), XyTrustError> {
+    if let Some(parent) = lock_path.parent() {
+        fs::create_dir_all(parent).map_err(|e| XyTrustError::io("create trust lock dir", e))?;
+    }
+    Ok(())
+}
+
+fn acquire_lock_at(lock_path: &Path) -> Result<fs::File, XyTrustError> {
+    ensure_lock_dir(lock_path)?;
+    let max_attempts = 10;
+    let delay = Duration::from_millis(20);
+    for attempt in 1..=max_attempts {
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(lock_path)
+        {
+            Ok(file) => {
+                let _ = (&file).write_all(format!("{}\n", std::process::id()).as_bytes());
+                return Ok(file);
+            }
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {
+                handle_lock_exists(attempt, max_attempts, delay)?;
+            }
+            Err(e) => {
+                return Err(XyTrustError::io("create trust lock", e));
+            }
+        }
+    }
+    Err(XyTrustError::Lock)
+}
+
+fn handle_lock_exists(
+    attempt: u32,
+    max_attempts: u32,
+    delay: Duration,
+) -> Result<(), XyTrustError> {
+    if attempt == max_attempts {
+        return Err(XyTrustError::Lock);
+    }
+    std::thread::sleep(delay);
+    Ok(())
 }

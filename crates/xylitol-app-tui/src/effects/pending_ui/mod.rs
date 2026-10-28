@@ -1,4 +1,5 @@
 mod clipboard;
+mod history;
 mod import;
 mod models;
 mod resume;
@@ -42,6 +43,7 @@ pub(super) async fn drain_pending_ui<T: Terminal>(
     scenes::select(session, driver).await;
     theme::select(session).await;
     import::decide(session, driver).await;
+    history::load_earlier(session, driver).await;
     resume::select(session, driver).await;
     resume::rename(session, driver).await;
     resume::delete(session, driver).await;

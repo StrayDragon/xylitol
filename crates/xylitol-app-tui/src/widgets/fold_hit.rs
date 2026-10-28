@@ -14,6 +14,7 @@ pub enum FoldTarget {
     Segment(String),
     Cluster(String),
     LiveTail,
+    LoadEarlier,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -121,31 +122,39 @@ fn region_contains(r: &FoldHitRegion, content_row: usize, col: usize) -> bool {
 
 fn hover_hits_for(id: HitId, r: &FoldHitRegion) -> Vec<Hit> {
     match &r.target {
-        FoldTarget::Tool(_) | FoldTarget::Diff(_) | FoldTarget::Ask(_) => {
-            let mut out = vec![Hit::on_line(id, r.content_row).cols(r.col_start, r.col_end)];
-            if r.height > 1 {
-                out.push(
-                    Hit::on_line(id, r.content_row)
-                        .cols(0, RAILED_HOVER_COLS)
-                        .tall(r.height),
-                );
-            }
-            out
-        }
-        FoldTarget::Thinking(_) => {
-            vec![Hit::on_line(id, r.content_row).cols(r.col_start, r.col_end)]
-        }
+        FoldTarget::Tool(_) | FoldTarget::Diff(_) | FoldTarget::Ask(_) => tool_hover_hits(id, r),
+        FoldTarget::Thinking(_) | FoldTarget::LoadEarlier => single_line_hit(id, r),
         FoldTarget::OutputViewport(_)
         | FoldTarget::Compaction
         | FoldTarget::Segment(_)
         | FoldTarget::Cluster(_)
-        | FoldTarget::LiveTail => vec![
-            Hit::on_line(id, r.content_row)
-                .cols(r.col_start, r.col_end)
-                .tall(r.height),
-        ],
+        | FoldTarget::LiveTail => tall_hit(id, r),
         FoldTarget::TodoDoing | FoldTarget::TodoPending | FoldTarget::TodoPast => Vec::new(),
     }
+}
+
+fn tool_hover_hits(id: HitId, r: &FoldHitRegion) -> Vec<Hit> {
+    let mut out = vec![Hit::on_line(id, r.content_row).cols(r.col_start, r.col_end)];
+    if r.height > 1 {
+        out.push(
+            Hit::on_line(id, r.content_row)
+                .cols(0, RAILED_HOVER_COLS)
+                .tall(r.height),
+        );
+    }
+    out
+}
+
+fn single_line_hit(id: HitId, r: &FoldHitRegion) -> Vec<Hit> {
+    vec![Hit::on_line(id, r.content_row).cols(r.col_start, r.col_end)]
+}
+
+fn tall_hit(id: HitId, r: &FoldHitRegion) -> Vec<Hit> {
+    vec![
+        Hit::on_line(id, r.content_row)
+            .cols(r.col_start, r.col_end)
+            .tall(r.height),
+    ]
 }
 
 #[cfg(test)]

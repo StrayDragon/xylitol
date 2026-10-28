@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +9,11 @@ use crate::session::{
 };
 
 pub use crate::session::ForkPosition;
+
+// ~keep: plugins must write through the runtime's live store, not the
+// session-plugin service instance.
+#[derive(Clone)]
+pub struct RuntimeSessionStore(pub Arc<dyn XySessionStore>);
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionListEntry {
@@ -29,6 +36,20 @@ pub trait XySessionStore: Send + Sync {
         &self,
         session_id: &str,
     ) -> Result<Vec<SessionEntry>, XySessionStoreError>;
+
+    async fn load_entries_page(
+        &self,
+        session_id: &str,
+        limit: Option<usize>,
+        before_entry_id: Option<&str>,
+    ) -> Result<(Vec<SessionEntry>, bool), XySessionStoreError> {
+        let entries = self.load_entries(session_id).await?;
+        Ok(crate::session::paginate_entries(
+            entries,
+            limit,
+            before_entry_id,
+        ))
+    }
 
     async fn load_leaf_branch(
         &self,

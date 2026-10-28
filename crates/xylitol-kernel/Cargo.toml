@@ -21,6 +21,10 @@ xylitol-official-plugin-provider-anthropic = { workspace = true }
 xylitol-official-plugin-tools = { workspace = true }
 xylitol-official-plugin-mcp = { workspace = true, default-features = false }
 xylitol-official-plugin-hooks = { workspace = true }
+xylitol-official-plugin-loop-policies = { workspace = true }
+xylitol-official-plugin-todo = { workspace = true }
+xylitol-official-plugin-workflow = { workspace = true }
+xylitol-official-plugin-plan = { workspace = true }
 xylitol-official-plugin-config = { workspace = true }
 xylitol-official-plugin-obs = { workspace = true }
 rutis = { workspace = true }

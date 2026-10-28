@@ -3,13 +3,16 @@ use xylitol_plugin_sdk::langfuse_observation_properties_from;
 use xylitol_plugin_sdk::provider_trace_active;
 
 pub(crate) fn compaction_reason_kind(reason: &str) -> &'static str {
-    if reason.starts_with("overflow") {
-        "overflow"
-    } else if reason.starts_with("threshold") {
-        "threshold"
-    } else {
-        "manual"
-    }
+    const KINDS: &[(&str, &str)] = &[
+        ("overflow", "overflow"),
+        ("threshold", "threshold"),
+        ("loop_middleware", "loop_middleware"),
+    ];
+    KINDS
+        .iter()
+        .find(|(prefix, _)| reason.starts_with(prefix))
+        .map(|(_, kind)| *kind)
+        .unwrap_or("manual")
 }
 
 pub(crate) fn export_skipped(
@@ -107,5 +110,21 @@ impl AgentCompactionSpan {
                 ]
             }));
         drop(self);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compaction_reason_kind;
+
+    #[test]
+    fn middleware_reason_is_not_folded_into_manual() {
+        assert_eq!(
+            compaction_reason_kind("loop_middleware:focus"),
+            "loop_middleware"
+        );
+        assert_eq!(compaction_reason_kind("manual"), "manual");
+        assert_eq!(compaction_reason_kind("threshold auto"), "threshold");
+        assert_eq!(compaction_reason_kind("overflow Case1"), "overflow");
     }
 }

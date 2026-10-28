@@ -29,3 +29,21 @@ fn test_atz_footer_no_badge(fixed_zone_bdd: FixedZoneBdd) {}
     name = "字形设置按配置不字体探针"
 )]
 fn test_atz_glyph_config(transcript_bdd: TranscriptBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "首屏只加载最新一页"
+)]
+fn test_fz_first_page(fixed_zone_bdd: FixedZoneBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "滚顶加载更早"
+)]
+fn test_fz_load_earlier(fixed_zone_bdd: FixedZoneBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "短会话无分页提示"
+)]
+fn test_fz_short_no_notice(fixed_zone_bdd: FixedZoneBdd) {}

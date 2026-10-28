@@ -4,6 +4,7 @@ mod client;
 mod defaults;
 mod hub;
 pub mod plugin;
+pub mod truncate;
 pub(crate) mod types;
 
 pub use adapter::McpToolAdapter;
@@ -14,5 +15,6 @@ pub use client::{
 pub use config::{McpServerConfig, McpTransportKind};
 pub use defaults::MCP_SERVER_CONNECT_TIMEOUT;
 pub use hub::McpPrepareHub;
+pub use truncate::{MCP_RESULT_MAX_BYTES, McpResultTruncate};
 
 pub mod config;

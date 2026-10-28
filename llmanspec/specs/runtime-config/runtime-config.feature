@@ -182,3 +182,19 @@
     场景: 活动折叠词法契约
       当 读取配置节字段缺省
       那么 活动折叠启用且保留两回合与信封折叠
+
+  @req:r2928
+  规则: schema-artifact-same-source
+    配置的 JSON Schema 契约产物 须与运行时校验同一来源生成，不得手维护：产物内容 须等于由 AppConfig 结构导出的 schema 的稳定渲染（键序确定、可重复生成字节相同），且 须覆盖当前全部顶层配置节。产物与代码不一致时 门禁 须失败并指向再生成入口；产物 不得作为加载期校验来源（加载仍按结构导出即时校验）。
+
+    场景: 产物与代码一致
+      当 生成配置 schema 并与仓库产物比较
+      那么 二者逐字节相同且再生成幂等
+
+    场景: 产物覆盖当前顶层节
+      当 读取仓库配置 schema 的顶层属性
+      那么 含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan
+
+  @req:r2959
+  规则: feature-plugin-config-sections
+    todo / workflow / plan 须为顶层配置节。todo 缺省启用（progress / reminder / checkpoint 缺省停用）；workflow 缺省停用；plan 缺省启用且 read_only 缺省 true。旧 `loop_example` 配置节 须被拒绝，并提示迁移到 `loop_policies`；`loop_policies.todo_progress / todo_reminder / todo_reminder_stale_after / todo_checkpoint / plan_mode / workflow` 键 须被拒绝，并提示迁移到新节。默认值与旧键拒绝 由配置 crate 单测覆盖。

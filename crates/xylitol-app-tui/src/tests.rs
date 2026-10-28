@@ -1729,6 +1729,32 @@ fn harness_resume_seeds_only_entry_users() {
 }
 
 #[test]
+fn resume_initializes_mode_strip_from_latest_plan_mode() {
+    use xylitol_plugin_sdk::session::PlanMode;
+
+    let entries = vec![PlanMode::plan(None).to_custom_entry_shell()];
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session("sid-plan", entries, false);
+    assert_eq!(
+        session
+            .ui_model()
+            .mode_strip
+            .as_ref()
+            .map(|state| state.label.as_str()),
+        Some("plan"),
+        "resuming a plan-mode session must show the mode strip immediately"
+    );
+
+    let entries = vec![PlanMode::execute().to_custom_entry_shell()];
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session("sid-exec", entries, false);
+    assert!(
+        session.ui_model().mode_strip.is_none(),
+        "resuming an execute-mode session must clear the mode strip"
+    );
+}
+
+#[test]
 fn harness_resume_snapshot_rebuild_renders_full_history_once_idle() {
     use super::bridge::UiEntry;
     use xylitol_plugin_sdk::session::{
@@ -1765,7 +1791,7 @@ fn harness_resume_snapshot_rebuild_renders_full_history_once_idle() {
         }),
     ];
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_resume_session("sid-resume", entries);
+    session.apply_resume_session("sid-resume", entries, false);
     let model = session.ui_model();
     assert!(
         model.entries.iter().any(|e| matches!(
@@ -1815,7 +1841,7 @@ fn harness_cli_restored_session_rebuilds_transcript() {
         }),
     ];
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
-    session.apply_cli_restored_session("sid-restored", entries);
+    session.apply_cli_restored_session("sid-restored", entries, false);
     let model = session.ui_model();
     assert!(
         model.entries.iter().any(|e| matches!(

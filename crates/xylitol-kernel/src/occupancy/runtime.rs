@@ -73,6 +73,38 @@ pub async fn start(
     }
 }
 
+fn build_ports(
+    config: &ServerConfig,
+    assembly: crate::bootstrap::ResolvedAssembly,
+) -> Result<xylitol_runtime::agent::RuntimeBaseline, Box<dyn std::error::Error>> {
+    if let Some(dir) = &config.sessions_dir {
+        let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = std::sync::Arc::new(
+            xylitol_official_plugin_session::SessionManager::new(dir.clone()),
+        );
+        Ok(crate::composition::build_baseline_with_store(
+            assembly.into_build_options(),
+            store,
+        )?)
+    } else {
+        Ok(build_baseline(assembly.into_build_options())?)
+    }
+}
+
+fn map_bootstrap_error(err: BootstrapError) -> Box<dyn std::error::Error> {
+    match err {
+        BootstrapError::NoModelsAvailable => {
+            "no models available: add explicit models.models entries in config.yaml".to_string()
+        }
+        BootstrapError::ConfigLoadFailed(msg) => format!("config load failed: {msg}"),
+        BootstrapError::ConfigLoadedZeroModels => {
+            BootstrapError::ConfigLoadedZeroModels.to_string()
+        }
+        BootstrapError::BuildFailed(msg) => msg,
+        BootstrapError::KernelFailed(msg) => format!("kernel boot failed: {msg}"),
+    }
+    .into()
+}
+
 async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::error::Error>> {
     let boot_opts = BootOptions {
         profile: Profile::Host,
@@ -95,17 +127,7 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
         caller: "server",
         ephemeral_sessions: false,
     })
-    .map_err(|e| match e {
-        BootstrapError::NoModelsAvailable => {
-            "no models available: add explicit models.models entries in config.yaml".to_string()
-        }
-        BootstrapError::ConfigLoadFailed(msg) => format!("config load failed: {msg}"),
-        BootstrapError::ConfigLoadedZeroModels => {
-            BootstrapError::ConfigLoadedZeroModels.to_string()
-        }
-        BootstrapError::BuildFailed(msg) => msg,
-        BootstrapError::KernelFailed(msg) => format!("kernel boot failed: {msg}"),
-    })?;
+    .map_err(map_bootstrap_error)?;
 
     let fallback_session = assembly.session_id.clone();
     let mcp_servers = assembly.mcp_servers.clone().unwrap_or_default();
@@ -118,14 +140,9 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
     });
     let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
     let agent_dir = xylitol_runtime::resource::DefaultResourceLoader::default_agent_dir();
-    let ports = if let Some(dir) = &config.sessions_dir {
-        let store: std::sync::Arc<dyn xylitol_plugin_sdk::XySessionStore> = std::sync::Arc::new(
-            xylitol_official_plugin_session::SessionManager::new(dir.clone()),
-        );
-        crate::composition::build_baseline_with_store(assembly.into_build_options(), store)?
-    } else {
-        build_baseline(assembly.into_build_options())?
-    };
+    let ports = build_ports(config, assembly)?;
+    ctx.provide(xylitol_plugin_sdk::RuntimeSessionStore(ports.store.clone()))
+        .map_err(|e| format!("provide runtime session store: {e}"))?;
 
     let factory = Arc::new(
         ProductOccupancyFactory::new(

@@ -1,9 +1,18 @@
+mod checkpoint;
 mod entries;
 mod helpers;
 mod manifest;
 mod parse;
+mod plan_doc;
+mod plan_mode;
 mod todo;
 mod tree;
+mod workflow;
+
+pub use checkpoint::{
+    CUSTOM_TYPE_TODO_CHECKPOINT, TodoCheckpoint, TodoCheckpointStep, TodoResumeCursor,
+    latest_todo_checkpoint,
+};
 
 pub use entries::{
     BranchSummaryEntry, CompactionEntry, CompactionPolicySnapshot, CustomEntry, CustomMessageEntry,
@@ -14,14 +23,20 @@ pub use entries::{
 pub use helpers::{
     bash_execution_message_entry, count_tool_calls, fixture_message_json, is_assistant_message,
     is_env_custom_message, is_tool_call_part, is_user_message, message_custom_type, message_parts,
-    message_role, message_text, session_fork_edge, tool_call_name, tool_file_paths,
-    transcript_ancestry_ids, transcript_leaf_anchor,
+    message_role, message_text, paginate_entries, session_fork_edge, tool_call_name,
+    tool_file_paths, transcript_ancestry_ids, transcript_leaf_anchor,
 };
 pub use manifest::{SealedIndex, SessionManifest, SessionSegment};
 pub use parse::{
     enforce_legacy_session_version, enforce_session_version, parse_session_jsonl,
     parse_session_jsonl_lines,
 };
+pub use plan_doc::{
+    CUSTOM_TYPE_PLAN_DOC, CUSTOM_TYPE_PLAN_REF, PlanDoc, PlanDocStatus, PlanDocStep,
+    PlanDocValidationError, PlanRef, PlanScope, latest_plan_doc, latest_plan_doc_by_id,
+    latest_plan_ref, plan_docs,
+};
+pub use plan_mode::{CUSTOM_TYPE_PLAN_MODE, PlanMode, PlanModeKind, latest_plan_mode};
 pub use todo::TodoItem;
 pub use todo::{
     CUSTOM_TYPE_AGENT_TODO, TodoItemDraft, TodoItemPatch, TodoList, TodoStatus, apply_todo_patches,
@@ -30,6 +45,12 @@ pub use todo::{
 pub use tree::{
     SessionTreeKind, SessionTreeNode, SessionTreeTravel, build_session_tree,
     plan_message_history_travel,
+};
+pub use workflow::{
+    CUSTOM_TYPE_WORKFLOW, DEFAULT_MAX_DEPTH, DEFAULT_MAX_TOTAL_STEPS, Workflow, WorkflowRisk,
+    WorkflowStep, WorkflowStepStatus, WorkflowValidationError, blocked_workflow_step,
+    latest_workflow, runnable_workflow_step, validate_workflow, validate_workflow_replan,
+    validate_workflow_with_limits, workflow_downstream_ids,
 };
 
 #[cfg(test)]

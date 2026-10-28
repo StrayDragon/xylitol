@@ -134,9 +134,15 @@ pub(super) async fn new_session<T: Terminal>(
             crate::dispatch::dispatch(driver, xylitol_protocol::Command::NewSession {}).await;
         match created {
             Ok(crate::dispatch::DispatchOutcome::NewSession(sid)) => {
-                match super::super::session_entries(driver).await {
-                    Ok(entries) => {
-                        session.apply_new_session(&sid, entries);
+                match super::super::session_entries_page(
+                    driver,
+                    Some(crate::history_window::HISTORY_PAGE),
+                    None,
+                )
+                .await
+                {
+                    Ok((entries, has_more)) => {
+                        session.apply_new_session(&sid, entries, has_more);
                         if !session.kick_editor_history_seed_async(driver) {
                             session.seed_editor_history_for_new_session(driver).await;
                         }
@@ -199,8 +205,16 @@ pub(super) async fn clone_session<T: Terminal>(
                         )
                         .await;
                         match switched {
-                            Ok(_) => match super::super::session_entries(driver).await {
-                                Ok(entries) => session.apply_clone_session(&child_id, entries),
+                            Ok(_) => match super::super::session_entries_page(
+                                driver,
+                                Some(crate::history_window::HISTORY_PAGE),
+                                None,
+                            )
+                            .await
+                            {
+                                Ok((entries, has_more)) => {
+                                    session.apply_clone_session(&child_id, entries, has_more)
+                                }
                                 Err(e) => note_driver_err(
                                     session,
                                     "tui.session_clone.get_messages",

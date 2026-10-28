@@ -353,6 +353,7 @@ pub async fn compact_session(
     ensure_session_env_after_compact(store, session_id, &entries).await;
     ensure_session_prepare_after_compact(store, session_id, &entries).await;
     ensure_agent_todo_after_compact(store, session_id, &entries).await;
+    ensure_state_entries_after_compact(store, session_id, &entries).await;
 
     Ok(entry)
 }
@@ -390,6 +391,87 @@ pub async fn ensure_agent_todo_after_compact(
         .await
     {
         log::warn!("post-compact agent_todo persist failed: {e}");
+    }
+}
+
+async fn ensure_state_entries_after_compact(
+    store: &dyn XySessionStore,
+    session_id: &str,
+    entries_before: &[SessionEntry],
+) {
+    use std::collections::HashSet;
+
+    use xylitol_plugin_sdk::session::{
+        CUSTOM_TYPE_PLAN_DOC, CUSTOM_TYPE_PLAN_MODE, CUSTOM_TYPE_PLAN_REF,
+        CUSTOM_TYPE_TODO_CHECKPOINT, CUSTOM_TYPE_WORKFLOW, PlanMode, build_context_entries,
+        latest_plan_ref, latest_todo_checkpoint, latest_workflow, plan_docs,
+    };
+
+    let entries = match store.load_leaf_branch(session_id).await {
+        Ok(e) => e,
+        Err(e) => {
+            log::warn!("post-compact state ensure: reload failed ({e})");
+            return;
+        }
+    };
+    let cut = build_context_entries(&entries);
+    let has_custom = |custom_type: &str| {
+        cut.iter().any(|entry| {
+            matches!(entry, SessionEntry::Custom(custom) if custom.custom_type == custom_type)
+        })
+    };
+
+    let mut snapshots: Vec<SessionEntry> = Vec::new();
+    if !has_custom(CUSTOM_TYPE_PLAN_MODE) {
+        let mode = entries_before.iter().rev().find_map(|entry| match entry {
+            SessionEntry::Custom(custom) if custom.custom_type == CUSTOM_TYPE_PLAN_MODE => {
+                PlanMode::from_data_value(&custom.data)
+            }
+            _ => None,
+        });
+        if let Some(mode) = mode {
+            snapshots.push(mode.to_custom_entry_shell());
+        }
+    }
+    if !has_custom(CUSTOM_TYPE_PLAN_REF)
+        && let Some(plan_ref) = latest_plan_ref(entries_before)
+    {
+        snapshots.push(plan_ref.to_custom_entry_shell());
+    }
+    if !has_custom(CUSTOM_TYPE_WORKFLOW)
+        && let Some(workflow) = latest_workflow(entries_before)
+    {
+        snapshots.push(workflow.to_custom_entry_shell());
+    }
+    if !has_custom(CUSTOM_TYPE_TODO_CHECKPOINT)
+        && let Some(checkpoint) = latest_todo_checkpoint(entries_before)
+    {
+        snapshots.push(checkpoint.to_custom_entry_shell());
+    }
+
+    let mut seen = HashSet::new();
+    for doc in plan_docs(entries_before).into_iter().rev() {
+        if !seen.insert(doc.plan_id.clone()) {
+            continue;
+        }
+        let present = cut.iter().any(|entry| {
+            matches!(
+                entry,
+                SessionEntry::Custom(custom)
+                    if custom.custom_type == CUSTOM_TYPE_PLAN_DOC
+                        && custom.data.get("plan_id").and_then(|id| id.as_str())
+                            == Some(doc.plan_id.as_str())
+            )
+        });
+        if !present {
+            snapshots.push(doc.to_custom_entry_shell());
+        }
+    }
+
+    for snapshot in snapshots {
+        if let Err(e) = store.append_session_entry(session_id, &snapshot).await {
+            log::warn!("post-compact state persist failed: {e}");
+        }
     }
 }
 

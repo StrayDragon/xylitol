@@ -57,6 +57,7 @@ pub struct HostState {
     pub fallback_session: String,
     pub write_lock_linger: std::sync::Mutex<Duration>,
     pub sessions_dir: std::sync::Mutex<PathBuf>,
+    seq_watermarks: std::sync::Mutex<HashMap<String, u64>>,
 }
 
 #[derive(Clone)]
@@ -82,9 +83,11 @@ pub struct SessionSlot {
     run_inflight: AtomicBool,
     pending_model: std::sync::Mutex<Option<String>>,
     pending_thinking: std::sync::Mutex<Option<String>>,
+    pub latest_tape: std::sync::Mutex<Option<xylitol_plugin_sdk::message::AgentMessage>>,
     mcp_watch_started: AtomicBool,
     pub bash_run_cancel: std::sync::Mutex<Option<CancellationToken>>,
     pub idempotency: IdempotencyLedger,
+    pub loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
 }
 
 impl HostState {
@@ -109,6 +112,7 @@ impl HostState {
             fallback_session,
             write_lock_linger: std::sync::Mutex::new(Duration::from_secs(60)),
             sessions_dir: std::sync::Mutex::new(PathBuf::new()),
+            seq_watermarks: std::sync::Mutex::new(HashMap::new()),
         })
     }
 
@@ -142,14 +146,43 @@ impl HostState {
                 return s.clone();
             }
         }
+        let watermark = self.seq_watermark(session_id);
         let mut map = self.sessions.write().await;
         map.entry(session_id.to_string())
-            .or_insert_with(|| SessionSlot::new(session_id, self.in_process_downlink.clone()))
+            .or_insert_with(|| {
+                SessionSlot::with_seq(
+                    session_id,
+                    self.in_process_downlink.clone(),
+                    self.factory.loop_registry(),
+                    watermark,
+                )
+            })
             .clone()
     }
 
     async fn existing_slot(&self, session_id: &str) -> Option<Arc<SessionSlot>> {
         self.sessions.read().await.get(session_id).cloned()
+    }
+
+    fn seq_watermark(&self, session_id: &str) -> u64 {
+        self.seq_watermarks
+            .lock()
+            .ok()
+            .and_then(|g| g.get(session_id).copied())
+            .unwrap_or(1)
+    }
+
+    fn remember_seq_watermark(&self, session_id: &str, next_seq: u64) {
+        if let Ok(mut g) = self.seq_watermarks.lock() {
+            g.insert(session_id.to_string(), next_seq.max(1));
+        }
+    }
+
+    pub async fn evict_slot(&self, slot: &Arc<SessionSlot>) {
+        let next_seq = slot.journal.lock().await.next_seq();
+        self.remember_seq_watermark(&slot.session_id, next_seq);
+        *slot.driver.lock().await = None;
+        self.sessions.write().await.remove(&slot.session_id);
     }
 
     pub fn session_id_from_payload(&self, payload: &Value) -> String {
@@ -362,10 +395,23 @@ impl SessionSlot {
     pub fn new(
         session_id: impl Into<String>,
         in_process_downlink: broadcast::Sender<Notification>,
+        loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+    ) -> Arc<Self> {
+        Self::with_seq(session_id, in_process_downlink, loop_registry, 1)
+    }
+
+    pub fn with_seq(
+        session_id: impl Into<String>,
+        in_process_downlink: broadcast::Sender<Notification>,
+        loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        next_seq: u64,
     ) -> Arc<Self> {
         let session_id = session_id.into();
         Arc::new(Self {
-            journal: Mutex::new(EventJournal::with_default_capacity(&session_id)),
+            journal: Mutex::new(EventJournal::with_default_capacity_and_seq(
+                &session_id,
+                next_seq,
+            )),
             session_id,
             driver: Arc::new(Mutex::new(None)),
             writer: AtomicBool::new(false),
@@ -379,9 +425,11 @@ impl SessionSlot {
             run_inflight: AtomicBool::new(false),
             pending_model: std::sync::Mutex::new(None),
             pending_thinking: std::sync::Mutex::new(None),
+            latest_tape: std::sync::Mutex::new(None),
             mcp_watch_started: AtomicBool::new(false),
             bash_run_cancel: std::sync::Mutex::new(None),
             idempotency: IdempotencyLedger::default(),
+            loop_registry,
         })
     }
 
@@ -430,12 +478,30 @@ impl SessionSlot {
         self.flush_pending_runtime().await;
     }
 
-    fn subscribed_payload(&self, seq: u64, inflight: bool) -> SessionSubscribedPayload {
+    fn subscribed_payload(
+        &self,
+        seq: u64,
+        inflight: bool,
+        want_partial: bool,
+    ) -> SessionSubscribedPayload {
+        let partial = self.partial_tape(inflight, want_partial);
         SessionSubscribedPayload {
             session_id: self.session_id.clone(),
             seq,
             inflight,
+            partial,
         }
+    }
+
+    fn partial_tape(&self, inflight: bool, want_partial: bool) -> Option<Value> {
+        if !(want_partial && inflight) {
+            return None;
+        }
+        self.latest_tape
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .and_then(|m| serde_json::to_value(m).ok())
     }
 
     fn resync_notification(&self) -> Notification {
@@ -454,20 +520,20 @@ impl SessionSlot {
         inflight: bool,
         last_seq: u64,
     ) -> RpcResult {
+        let want_partial = inflight && last_seq > 0;
         let journal = self.journal.lock().await;
-        let wrapped_gap =
-            journal.is_full() && last_seq < journal.min_seq() && journal.min_seq() > 1;
+        let wrapped_gap = journal_wrapped_gap(&journal, last_seq);
         if wrapped_gap && !self.resync_offered.swap(true, Ordering::SeqCst) {
             drop(journal);
             self.broadcast(self.resync_notification()).await;
-            return RpcResult::ok_value(self.subscribed_result(0, inflight));
+            return RpcResult::ok_value(self.subscribed_result(0, inflight, want_partial));
         }
         match journal.replay_from(last_seq) {
             None => {
                 drop(journal);
                 self.resync_offered.store(true, Ordering::SeqCst);
                 self.broadcast(self.resync_notification()).await;
-                RpcResult::ok_value(self.subscribed_result(0, inflight))
+                RpcResult::ok_value(self.subscribed_result(0, inflight, want_partial))
             }
             Some(events) => {
                 let seq = journal.max_seq();
@@ -489,16 +555,17 @@ impl SessionSlot {
                 }
                 self.broadcast(downlink_notification(
                     SESSION_SUBSCRIBED,
-                    self.subscribed_payload(seq, inflight),
+                    self.subscribed_payload(seq, inflight, want_partial),
                 ))
                 .await;
-                RpcResult::ok_value(self.subscribed_result(seq, inflight))
+                RpcResult::ok_value(self.subscribed_result(seq, inflight, want_partial))
             }
         }
     }
 
-    fn subscribed_result(&self, seq: u64, inflight: bool) -> Value {
-        serde_json::to_value(self.subscribed_payload(seq, inflight)).unwrap_or(Value::Null)
+    fn subscribed_result(&self, seq: u64, inflight: bool, want_partial: bool) -> Value {
+        serde_json::to_value(self.subscribed_payload(seq, inflight, want_partial))
+            .unwrap_or(Value::Null)
     }
 
     fn observe_passes(note: &Notification) -> bool {
@@ -552,12 +619,8 @@ impl SessionSlot {
     }
 
     pub async fn append_and_push(&self, event: &XyEvent) {
-        let event = match xylitol_wire::event_to_wire(event) {
-            Ok(event) => event,
-            Err(e) => {
-                log::error!(target: "xylitol::host", "session event dropped: {e}");
-                return;
-            }
+        let Some(event) = self.prepare_event(event).await else {
+            return;
         };
         let seq = {
             let mut j = self.journal.lock().await;
@@ -568,6 +631,61 @@ impl SessionSlot {
             SessionEventPayload {
                 session_id: self.session_id.clone(),
                 seq,
+                event,
+            },
+        ))
+        .await;
+    }
+
+    async fn prepare_event(&self, event: &XyEvent) -> Option<xylitol_protocol::Event> {
+        if self.try_push_tape(event).await {
+            return None;
+        }
+        self.clear_tape_on_agent_end(event);
+        match xylitol_wire::event_to_wire(event) {
+            Ok(event) => Some(event),
+            Err(e) => {
+                log::error!(target: "xylitol::host", "session event dropped: {e}");
+                None
+            }
+        }
+    }
+
+    async fn try_push_tape(&self, event: &XyEvent) -> bool {
+        if !is_tape_event(event) {
+            return false;
+        }
+        self.push_tape(event).await;
+        true
+    }
+
+    fn clear_tape_on_agent_end(&self, event: &XyEvent) {
+        if matches!(event, XyEvent::AgentEnd { .. })
+            && let Ok(mut g) = self.latest_tape.lock()
+        {
+            *g = None;
+        }
+    }
+
+    async fn push_tape(&self, event: &XyEvent) {
+        if let XyEvent::MessageUpdate { message, .. } = event
+            && let Some(message) = message
+            && let Ok(mut g) = self.latest_tape.lock()
+        {
+            *g = Some(message.clone());
+        }
+        let event = match xylitol_wire::event_to_wire(event) {
+            Ok(event) => event,
+            Err(e) => {
+                log::error!(target: "xylitol::host", "session tape dropped: {e}");
+                return;
+            }
+        };
+        self.broadcast(downlink_notification(
+            SESSION_EVENT,
+            SessionEventPayload {
+                session_id: self.session_id.clone(),
+                seq: self.journal.lock().await.max_seq(),
                 event,
             },
         ))
@@ -787,18 +905,14 @@ pub async fn materialize_writer_at(
         return Ok(());
     }
     let mut driver = host.factory.new_driver_at(workspace);
+    if let Some(registry) = slot.loop_registry.clone() {
+        driver.set_loop_middleware_scoped(Some(registry), xylitol_plugin_sdk::LoopScope::Session);
+    }
     let _ = project_trusted_for(host, workspace);
     driver.bind_session(&slot.session_id)?;
     driver.install_ask_tool(Arc::new(SlotAskGateway { slot: slot.clone() }));
     driver.begin_session_prepare().await;
-    if let Some(id) = host.factory.default_model_id().as_deref()
-        && let Err(e) = driver.restore_model(id).await
-    {
-        log::warn!(
-            target: "xylitol::host",
-            "writer default model restore failed id={id}: {e}"
-        );
-    }
+    restore_default_model(host, driver.as_mut()).await;
     *guard = Some(driver);
     slot.writer.store(true, Ordering::SeqCst);
     drop(guard);
@@ -933,6 +1047,16 @@ async fn ensure_write_occupancy(
     Ok(())
 }
 
+pub fn is_tape_event(event: &XyEvent) -> bool {
+    matches!(
+        event,
+        XyEvent::TextDelta(_)
+            | XyEvent::ThinkingDelta(_)
+            | XyEvent::MessageUpdate { .. }
+            | XyEvent::ToolExecutionUpdate { .. }
+    )
+}
+
 pub async fn prune_mux_and_maybe_release(host: &Arc<HostState>, clean: bool) {
     let slots: Vec<Arc<SessionSlot>> = host.sessions.read().await.values().cloned().collect();
     for slot in slots {
@@ -949,9 +1073,22 @@ async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>,
     HostState::cancel_write_linger(slot).await;
     let linger = host.linger_duration();
     if clean || linger.is_zero() {
-        host.ports.store.release_write_lock(&slot.session_id);
+        release_and_evict(host, slot).await;
         return;
     }
+    schedule_linger_eviction(host, slot, linger).await;
+}
+
+async fn release_and_evict(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
+    host.ports.store.release_write_lock(&slot.session_id);
+    host.evict_slot(slot).await;
+}
+
+async fn schedule_linger_eviction(
+    host: &Arc<HostState>,
+    slot: &Arc<SessionSlot>,
+    linger: Duration,
+) {
     let host = host.clone();
     let slot_wait = slot.clone();
     let task = tokio::spawn(async move {
@@ -961,6 +1098,7 @@ async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>,
         }
         if HostState::live_subscriber_count(&slot_wait).await == 0 {
             host.ports.store.release_write_lock(&slot_wait.session_id);
+            host.evict_slot(&slot_wait).await;
         }
     });
     *slot.linger_task.lock().await = Some(task);
@@ -1204,6 +1342,17 @@ async fn dispatch_session_unary(
     dispatch_readonly_unary(host, slot, session_id, method, payload, workspace).await
 }
 
+fn plan_mode_event_from_branch(
+    branch: &[xylitol_plugin_sdk::session::SessionEntry],
+) -> (String, Option<String>) {
+    let mode = xylitol_plugin_sdk::session::latest_plan_mode(branch);
+    let label = match mode.mode {
+        xylitol_plugin_sdk::session::PlanModeKind::Plan => "plan",
+        xylitol_plugin_sdk::session::PlanModeKind::Execute => "execute",
+    };
+    (label.to_string(), mode.plan_id)
+}
+
 async fn dispatch_writer_unary(
     host: &Arc<HostState>,
     slot: &Arc<SessionSlot>,
@@ -1219,6 +1368,65 @@ async fn dispatch_writer_unary(
     {
         return defer_runtime_setting(slot, method, &payload).await;
     }
+    let (payload, staged_export, import_temp) = match stage_payload(method, payload) {
+        Ok(staged) => staged,
+        Err(err) => return *err,
+    };
+    let cmd = match parse_command(method, &payload) {
+        Ok(cmd) => cmd,
+        Err(e) => return RpcResult::error("invalid_input", e),
+    };
+    let mut g = slot.driver.lock().await;
+    let Some(driver) = g.as_mut() else {
+        return RpcResult::error("unavailable", "no writer engine");
+    };
+    let bash_forwarder = start_bash_forwarder(slot, driver.as_mut(), method).await;
+    let mut plan_mode_event: Option<(String, Option<String>)> = None;
+    let result = match driver.execute_command(cmd).await {
+        Ok(mut value) => {
+            plan_mode_event = plan_mode_event_from_value(method, &value);
+            if plan_mode_event.is_none()
+                && matches!(method, "switch_session" | "new_session")
+                && let Some(new_id) = driver.session_id()
+            {
+                let branch = host
+                    .ports
+                    .store
+                    .load_leaf_branch(&new_id)
+                    .await
+                    .unwrap_or_default();
+                plan_mode_event = Some(plan_mode_event_from_branch(&branch));
+            }
+            inline_staged_export(staged_export, &mut value);
+            RpcResult::ok_value(value)
+        }
+        Err(e) => rpc_err(e),
+    };
+    if bash_forwarder.is_some() {
+        finish_bash_forwarder(driver.as_mut(), slot);
+    }
+    drop(g);
+    if let Some((mode, plan_id)) = plan_mode_event {
+        let mode = serde_json::from_value::<xylitol_plugin_sdk::session::PlanModeKind>(
+            Value::String(mode),
+        )
+        .unwrap_or(xylitol_plugin_sdk::session::PlanModeKind::Execute);
+        slot.append_and_push(&XyEvent::PlanModeChanged { mode, plan_id })
+            .await;
+    }
+    if let Some(fwd) = bash_forwarder {
+        let _ = fwd.await;
+    }
+    if let Some(temp) = import_temp {
+        let _ = std::fs::remove_file(temp);
+    }
+    result
+}
+
+fn stage_payload(
+    method: &str,
+    mut payload: Value,
+) -> Result<(Value, bool, Option<std::path::PathBuf>), Box<RpcResult>> {
     let staged_export =
         matches!(method, "export_html" | "export_jsonl") && payload.get("output_path").is_none();
     let staged_import = method == METHOD_IMPORT_JSONL
@@ -1228,13 +1436,15 @@ async fn dispatch_writer_unary(
         let temp =
             std::env::temp_dir().join(format!("xylitol-import-{}.jsonl", uuid::Uuid::new_v4()));
         if let Err(e) = std::fs::write(&temp, payload["content"].as_str().unwrap_or_default()) {
-            return RpcResult::error("internal_error", format!("stage import write: {e}"));
+            return Err(Box::new(RpcResult::error(
+                "internal_error",
+                format!("stage import write: {e}"),
+            )));
         }
         Some(temp)
     } else {
         None
     };
-    let mut payload = payload;
     if staged_export {
         let ext = if method == METHOD_EXPORT_JSONL {
             "jsonl"
@@ -1248,69 +1458,78 @@ async fn dispatch_writer_unary(
     if let Some(temp) = &import_temp {
         payload["input_path"] = json!(temp);
     }
-    let cmd = match parse_command(method, &payload) {
-        Ok(c) => c,
-        Err(e) => return RpcResult::error("invalid_input", e),
-    };
-    let mut g = slot.driver.lock().await;
-    let Some(driver) = g.as_mut() else {
-        return RpcResult::error("unavailable", "no writer engine");
-    };
-    let bash_forwarder = if method == "bash" {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-        let cancel = CancellationToken::new();
-        if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
-            *slot_cancel = Some(cancel.clone());
-        }
-        let slot_push = slot.clone();
-        let fwd = tokio::spawn(async move {
-            while let Some(chunk) = rx.recv().await {
-                slot_push.push_bash_output(chunk).await;
-            }
-        });
-        driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink { tx, cancel }));
-        Some(fwd)
-    } else {
-        None
-    };
-    let result = match driver.execute_command(cmd).await {
-        Ok(mut value) => {
-            if staged_export
-                && let Some(p) = value
-                    .get("path")
-                    .and_then(Value::as_str)
-                    .map(std::path::PathBuf::from)
-            {
-                match std::fs::read_to_string(&p) {
-                    Ok(content) => {
-                        value["content"] = Value::String(content);
-                    }
-                    Err(e) => log::warn!(
-                        target: "xylitol::host",
-                        "export stage read {}: {e}",
-                        p.display()
-                    ),
-                }
-                let _ = std::fs::remove_file(&p);
-            }
-            RpcResult::ok_value(value)
-        }
-        Err(e) => rpc_err(e),
-    };
-    if bash_forwarder.is_some() {
-        driver.set_bash_run_sink(None);
-        if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
-            *slot_cancel = None;
-        }
+    Ok((payload, staged_export, import_temp))
+}
+
+async fn start_bash_forwarder(
+    slot: &Arc<SessionSlot>,
+    driver: &mut dyn OccupancyEngine,
+    method: &str,
+) -> Option<tokio::task::JoinHandle<()>> {
+    if method != "bash" {
+        return None;
     }
-    drop(g);
-    if let Some(fwd) = bash_forwarder {
-        let _ = fwd.await;
+    let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+    let cancel = CancellationToken::new();
+    if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
+        *slot_cancel = Some(cancel.clone());
     }
-    if let Some(temp) = import_temp {
-        let _ = std::fs::remove_file(temp);
+    let slot_push = slot.clone();
+    let fwd = tokio::spawn(async move {
+        while let Some(chunk) = rx.recv().await {
+            slot_push.push_bash_output(chunk).await;
+        }
+    });
+    driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink { tx, cancel }));
+    Some(fwd)
+}
+
+fn finish_bash_forwarder(driver: &mut dyn OccupancyEngine, slot: &SessionSlot) {
+    driver.set_bash_run_sink(None);
+    if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
+        *slot_cancel = None;
     }
-    result
+}
+
+fn plan_mode_event_from_value(method: &str, value: &Value) -> Option<(String, Option<String>)> {
+    if method != "set_plan_mode" {
+        return None;
+    }
+    Some((
+        value
+            .get("mode")
+            .and_then(Value::as_str)
+            .unwrap_or("execute")
+            .to_string(),
+        value
+            .get("plan_id")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    ))
+}
+
+fn inline_staged_export(staged_export: bool, value: &mut Value) {
+    if !staged_export {
+        return;
+    }
+    let Some(path) = value
+        .get("path")
+        .and_then(Value::as_str)
+        .map(std::path::PathBuf::from)
+    else {
+        return;
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(content) => {
+            value["content"] = Value::String(content);
+        }
+        Err(e) => log::warn!(
+            target: "xylitol::host",
+            "export stage read {}: {e}",
+            path.display()
+        ),
+    }
+    let _ = std::fs::remove_file(&path);
 }
 
 async fn dispatch_readonly_unary(
@@ -1367,7 +1586,7 @@ async fn dispatch_readonly_unary(
                     "thinking_level": Value::Null,
                     "leaf_entry_id": host.ports.store.leaf_id(session_id),
                 })),
-                "get_messages" => RpcResult::ok_value(json!({ "entries": [] })),
+                "get_messages" => RpcResult::ok_value(json!({ "entries": [], "has_more": false })),
                 "get_session_stats" => RpcResult::ok_value(json!({
                     "session_id": session_id,
                     "user_messages": 0,
@@ -1417,6 +1636,29 @@ mod tests {
     use xylitol_plugin_sdk::BashChunk;
 
     #[test]
+    fn session_switch_plan_mode_event_uses_latest_entry() {
+        use xylitol_plugin_sdk::session::PlanMode;
+
+        let plan = vec![PlanMode::plan(Some("p1".into())).to_custom_entry_shell()];
+        assert_eq!(
+            plan_mode_event_from_branch(&plan),
+            ("plan".to_string(), Some("p1".into()))
+        );
+        let execute = vec![
+            PlanMode::plan(None).to_custom_entry_shell(),
+            PlanMode::execute().to_custom_entry_shell(),
+        ];
+        assert_eq!(
+            plan_mode_event_from_branch(&execute),
+            ("execute".to_string(), None)
+        );
+        assert_eq!(
+            plan_mode_event_from_branch(&[]),
+            ("execute".to_string(), None)
+        );
+    }
+
+    #[test]
     fn stable_business_code_is_snake_case_of_domain_kind() {
         assert_eq!(stable_business_code("NotFound"), "not_found");
         assert_eq!(stable_business_code("NoSession"), "no_session");
@@ -1424,11 +1666,15 @@ mod tests {
     }
 
     fn slot() -> Arc<SessionSlot> {
-        SessionSlot::new("s0", broadcast::channel(16).0)
+        SessionSlot::new("s0", broadcast::channel(16).0, None)
     }
 
     fn text_delta(text: &str) -> XyEvent {
         XyEvent::TextDelta(text.into())
+    }
+
+    fn turn_start(index: u32) -> XyEvent {
+        XyEvent::TurnStart { turn_index: index }
     }
 
     async fn subscribe(slot: &SessionSlot) -> (u64, mpsc::Receiver<Notification>) {
@@ -1441,21 +1687,59 @@ mod tests {
     async fn append_and_push_wraps_the_domain_event_as_session_event() {
         let slot = slot();
         let (_, mut rx) = subscribe(&slot).await;
-        slot.append_and_push(&text_delta("hi")).await;
+        slot.append_and_push(&turn_start(1)).await;
         let note = rx.recv().await.expect("notification");
         assert_eq!(note.method, SESSION_EVENT);
         assert_eq!(note.params["session_id"], "s0");
         assert_eq!(note.params["seq"], 1);
         assert_eq!(
             note.params["event"],
-            json!({"type": "text_delta", "text": "hi"})
+            json!({"type": "turn_start", "turn_index": 1})
         );
+    }
+
+    #[tokio::test]
+    async fn tape_events_never_touch_the_journal() {
+        let slot = slot();
+        let (_, mut rx) = subscribe(&slot).await;
+        slot.append_and_push(&text_delta("hi")).await;
+        slot.append_and_push(&XyEvent::ThinkingDelta("think".into()))
+            .await;
+        slot.append_and_push(&XyEvent::ToolExecutionUpdate {
+            id: "t1".into(),
+            output: "chunk".into(),
+        })
+        .await;
+        assert_eq!(
+            slot.journal.lock().await.current_seq(),
+            1,
+            "tape must not consume any seq"
+        );
+        assert!(slot.journal.lock().await.max_seq() == 0);
+        for _ in 0..3 {
+            let note = rx.recv().await.expect("tape notification");
+            assert_eq!(note.method, SESSION_EVENT);
+            assert_eq!(note.params["seq"], 0, "tape rides the current fact seq");
+        }
+    }
+
+    #[tokio::test]
+    async fn tape_does_not_accumulate_in_journal_between_facts() {
+        let slot = slot();
+        slot.append_and_push(&turn_start(1)).await;
+        for i in 0..50 {
+            slot.append_and_push(&text_delta(&format!("d{i}"))).await;
+        }
+        slot.append_and_push(&XyEvent::TurnEnd { turn_index: 1 })
+            .await;
+        let journal = slot.journal.lock().await;
+        assert_eq!(journal.max_seq(), 2, "only the two facts are journaled");
     }
 
     #[tokio::test]
     async fn non_event_downlinks_do_not_consume_journal_seq() {
         let slot = slot();
-        slot.append_and_push(&text_delta("a")).await;
+        slot.append_and_push(&turn_start(1)).await;
         let _rx = slot.request_approval("c1".into()).await;
         assert_eq!(slot.journal.lock().await.current_seq(), 2);
         slot.push_bash_output(BashChunk {
@@ -1526,8 +1810,8 @@ mod tests {
     #[tokio::test]
     async fn subscribe_continuation_replays_only_newer_events_then_subscribed() {
         let slot = slot();
-        for text in ["a", "b", "c"] {
-            slot.append_and_push(&text_delta(text)).await;
+        for i in 1..=3 {
+            slot.append_and_push(&turn_start(i)).await;
         }
         let (id, mut rx) = subscribe(&slot).await;
         let result = slot.replay_or_resync(&[id], false, false, 1).await;
@@ -1546,7 +1830,7 @@ mod tests {
     #[tokio::test]
     async fn subscribe_continuation_reports_inflight_in_result_and_notification() {
         let slot = slot();
-        slot.append_and_push(&text_delta("a")).await;
+        slot.append_and_push(&turn_start(1)).await;
         let (id, mut rx) = subscribe(&slot).await;
         let result = slot.replay_or_resync(&[id], true, true, 0).await;
         let subscribed = rx.recv().await.expect("subscribed");
@@ -1559,8 +1843,8 @@ mod tests {
     async fn wrapped_journal_offers_resync_and_reports_seq_zero() {
         let slot = slot();
         *slot.journal.lock().await = EventJournal::new("s0", 2);
-        for text in ["a", "b", "c"] {
-            slot.append_and_push(&text_delta(text)).await;
+        for i in 1..=3 {
+            slot.append_and_push(&turn_start(i)).await;
         }
         let (id, mut rx) = subscribe(&slot).await;
         let result = slot.replay_or_resync(&[id], false, false, 0).await;
@@ -1598,5 +1882,126 @@ mod tests {
             },
         );
         assert!(SessionSlot::observe_passes(&approval));
+    }
+
+    #[tokio::test]
+    async fn evict_records_watermark_and_clears_driver() {
+        let slot = SessionSlot::with_seq("s0", broadcast::channel(16).0, None, 1);
+        for _ in 0..5 {
+            slot.journal
+                .lock()
+                .await
+                .append(xylitol_protocol::Event::TextDelta { text: "x".into() });
+        }
+        assert_eq!(slot.journal.lock().await.next_seq(), 6);
+
+        let watermarks: std::sync::Mutex<HashMap<String, u64>> =
+            std::sync::Mutex::new(HashMap::new());
+        watermarks
+            .lock()
+            .unwrap()
+            .insert("s0".to_string(), slot.journal.lock().await.next_seq());
+
+        let rebuilt = SessionSlot::with_seq(
+            "s0",
+            broadcast::channel(16).0,
+            None,
+            *watermarks.lock().unwrap().get("s0").unwrap(),
+        );
+        assert_eq!(
+            rebuilt.journal.lock().await.next_seq(),
+            6,
+            "a rebuilt slot must resume the sequence, never restart at 1"
+        );
+        let seq = rebuilt
+            .journal
+            .lock()
+            .await
+            .append(xylitol_protocol::Event::TextDelta { text: "y".into() });
+        assert_eq!(seq, 6, "the next event continues above the watermark");
+    }
+
+    fn partial_update(text: &str) -> XyEvent {
+        XyEvent::MessageUpdate {
+            message: Some(xylitol_plugin_sdk::message::AgentMessage::Llm(
+                xylitol_plugin_sdk::message::XyLlmMessage::user(text),
+            )),
+        }
+    }
+
+    #[tokio::test]
+    async fn latest_tape_keeps_only_the_newest_snapshot() {
+        let slot = slot();
+        slot.append_and_push(&partial_update("a")).await;
+        slot.append_and_push(&partial_update("ab")).await;
+        slot.append_and_push(&partial_update("abc")).await;
+        let held = slot.latest_tape.lock().unwrap().clone().expect("tape held");
+        assert_eq!(held.text(), "abc", "only the newest snapshot is kept");
+    }
+
+    #[tokio::test]
+    async fn agent_end_clears_latest_tape() {
+        let slot = slot();
+        slot.append_and_push(&partial_update("abc")).await;
+        assert!(slot.latest_tape.lock().unwrap().is_some());
+        slot.append_and_push(&XyEvent::AgentEnd { messages: vec![] })
+            .await;
+        assert!(
+            slot.latest_tape.lock().unwrap().is_none(),
+            "a finished turn leaves no partial behind"
+        );
+    }
+
+    #[tokio::test]
+    async fn midturn_reconnect_carries_partial_only_for_positive_last_seq() {
+        let slot = slot();
+        slot.append_and_push(&turn_start(1)).await;
+        slot.append_and_push(&partial_update("half done")).await;
+        let (id, _rx) = subscribe(&slot).await;
+
+        let with_partial = slot.replay_or_resync(&[id], false, true, 1).await;
+        let value = match with_partial {
+            RpcResult {
+                ok: true,
+                value: Some(v),
+                ..
+            } => v,
+            other => panic!("unexpected: {other:?}"),
+        };
+        assert_eq!(value["inflight"], true);
+        assert_eq!(
+            value["partial"]["content"][0]["text"], "half done",
+            "a mid-turn reconnect must see the current snapshot"
+        );
+
+        let cold = slot.replay_or_resync(&[id], false, true, 0).await;
+        let cold_value = match cold {
+            RpcResult {
+                ok: true,
+                value: Some(v),
+                ..
+            } => v,
+            other => panic!("unexpected: {other:?}"),
+        };
+        assert!(
+            cold_value.get("partial").is_none(),
+            "a cold subscribe gets the full transcript elsewhere, not a partial"
+        );
+    }
+}
+
+fn journal_wrapped_gap(journal: &EventJournal, last_seq: u64) -> bool {
+    journal.is_full() && last_seq < journal.min_seq() && journal.min_seq() > 1
+}
+
+async fn restore_default_model(host: &HostState, driver: &mut dyn OccupancyEngine) {
+    let Some(id) = host.factory.default_model_id() else {
+        return;
+    };
+    if let Err(e) = driver.restore_model(&id).await {
+        log::warn!(
+            target: "xylitol::host",
+            "writer default model restore failed id={id}: {e}"
+        );
     }
 }

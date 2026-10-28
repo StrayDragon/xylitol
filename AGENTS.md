@@ -24,6 +24,7 @@ Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成�
 个人**开箱即用**的 coding harness。插件生态（第三方可写可装）是方向、未交付；现行扩展入口 = 官方插件 + 配置 + MCP / shell hook。不得为未交付市场堆清单 / 注册中心 / dylib。`xylitol-tui` 为源自 pi-tui 的独立 fork，不追平上游。分层与开闭：`src/AGENTS.md`；可验证行为：`llmanspec/specs/`。
 
 - **Trust / MCP**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP 配置驱动、未配置零装配。产品规则：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`；实现边界：`src/AGENTS.md`。
+- **Loop 参与**：插件经 rutis 生命周期注册 loop 中间件（七阶段、控制枚举）**参与** ReAct 决策；core 持 turn 边界 / 取消 / 权限终裁，插件不得整段替换 loop。产品规则：`llmanspec/specs/agent-runtime/`；实现边界：`src/AGENTS.md`「Loop 中间件」。
 - **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认 attach 本机 Host，未在听失败；Print 与库嵌入可同进程。端规则：`crates/xylitol-app-tui/src/AGENTS.md`；拓扑与线协议：`llmanspec/specs/protocol-app/`、`server-core/`。
 - **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（JSON-RPC 2.0 文本：`POST /rpc` unary + `WS /rpc` 双向 text 帧；Command/Event 是载荷）。硬边界：`src/AGENTS.md`。
 - **跨端公共体验**（已开放端 Print / TUI / Host）：动作语义一套学习成本；细则 `llmanspec/specs/protocol-app/` 与 `user-experience/`。未开放端（gpui 等）见 GitHub feature request，不得写成现行必须。
@@ -52,7 +53,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 | `xylitol-kernel` | 进程内核：`Kernel::boot`、核心插件、Builtins、admit。`rutis-loader` 只在这里 |
 | `xylitol-serve` | 载体：监听 + JSON-RPC 分派；Host profile 插件 |
 | `xylitol-wire` | `XyEvent` ↔ wire `Event` 的唯一映射（依赖 protocol + sdk） |
-| `xylitol-official-plugin-*` | 官方可替换插件（session / compaction / provider-* / tools / mcp / hooks / config / obs）。不是市场，不是 dylib |
+| `xylitol-official-plugin-*` | 官方可替换插件（session / compaction / provider-* / tools / todo / workflow / plan / mcp / hooks / config / obs）。不是市场，不是 dylib |
 | `xylitol-app-tui` / `xylitol-app-print` | 产品端。TUI 只认线协议（经 `xylitol-wire` 映射）；Print 同进程直调，不编线协议 |
 | `xylitol-tui` | 通用 TUI 引擎（零引用产品） |
 | 根包 `xylitol` | argv + profile 选择。默认接线经 kernel |
@@ -84,7 +85,8 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 - 探查：`cargo run -- --help`；文档构建与检查：`just doc` / `just qa-doc-check`。
 - 一次性探针只落 `scripts/lab_*.py`（或包 examples `lab_*`）并直接 python 调用，**不**新增 just recipe；重复使用或需流程化才升 skill / 门禁。引擎 demo 入口在 `crates/xylitol-tui/justfile`。
 - 门禁组成（quiet/verbose、真实网关 lab、复杂度、元门禁、注释只读闸、版本命名闸）细则：`xylitol-dev` skill `references/qa-gates.md`。
-- **注释闸（uncomment，只读）**：策略见根 `.uncomment.toml`；`just qa` 经 `scripts/check_uncomment.py` 仅跑 `uncomment --check --changed-lines`（不删注释、不 `--fix`）。默认移除行内说明与 `///`/`//!`/docstring（`remove_docs = true`）；保留 TODO/FIXME、工具指令与 `~keep`。追溯以 specs/提交信息为 SSOT，**改动行**上不得新增可移除注释。跳过：`XYLITOL_SKIP_UNCOMMENT=1`。
+- **Python 解释器**：门禁脚本需 `>=3.11`（`tomllib`）。`justfile` 与 BDD step 均自动挑选第一个可 `import tomllib` 的解释器（`python3.13` → `python3.12` → `python3.11` → `python3`），无需手工切 PATH；系统 3.9 会让门禁直接报 `No module named 'tomllib'` 而非静默跳过。`PyYAML` 已从门禁脚本移除（frontmatter / 示例配置改自解析），仅可选自检时使用。
+- **注释闸（uncomment，只读）**：策略见根 `.uncomment.toml`；`just qa` 经 `scripts/check_uncomment.py` 仅跑 `uncomment --check --changed-lines`（不删注释、不 `--fix`）。默认移除行内说明与 `///`/`//!`/docstring（`remove_docs = true`）；保留 TODO/FIXME、工具指令与 `~keep`。追溯以 specs/提交信息为 SSOT，**改动行**上不得新增可移除注释。`uncomment` 须在 PATH（`uv tool install uncomment` 或 `pipx install uncomment`）；未安装时闸报错而非跳过。`XYLITOL_SKIP_UNCOMMENT=1` 仅为工具确实无法安装时的应急口，不得作为常规跑法。
 
 ### 试验 / 真实网关验证命名（`lab_`）
 

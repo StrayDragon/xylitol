@@ -55,6 +55,18 @@ impl UiRoot {
         frame.lines
     }
 
+    pub(super) fn render_mode_strip_slot(&mut self, width: usize) -> Vec<String> {
+        let Some(state) = self.ui_model.mode_strip.as_ref() else {
+            return Vec::new();
+        };
+        vec![crate::widgets::render_mode_strip(
+            state,
+            self.glyphs,
+            width,
+            &self.theme,
+        )]
+    }
+
     pub(super) fn render_toast_notice_slot(&mut self, width: usize) -> Vec<String> {
         let Some((body, _, _)) = self.toast_notice.as_ref() else {
             return Vec::new();
@@ -279,6 +291,7 @@ impl Component for UiRoot {
         }
         let queue = self.render_queue_slot(width);
         let todo = self.render_todo_bar_slot(width);
+        let mode = self.render_mode_strip_slot(width);
         let toast = self.render_toast_notice_slot(width);
         let status = self.render_status_slot(width);
         self.apply_fixed_zone_footprint(todo.len());
@@ -296,6 +309,7 @@ impl Component for UiRoot {
         self.last_dock_rows = queue
             .len()
             .saturating_add(todo.len())
+            .saturating_add(mode.len())
             .saturating_add(toast.len())
             .saturating_add(status.len())
             .saturating_add(editor.len())
@@ -303,6 +317,7 @@ impl Component for UiRoot {
         self.sync_editor_screen_origin();
         lines.extend(queue);
         lines.extend(todo);
+        lines.extend(mode);
         lines.extend(toast);
         lines.extend(status);
         lines.extend(editor);

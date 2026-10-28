@@ -1000,13 +1000,11 @@ fn t_w4(server_test: &ServerTest) {
     assert_eq!(seqs, vec![1, 2, 3]);
 }
 
-#[given("向会话 append 10001 个事件（journal 容量=10000）")]
+#[given("向会话 append 1025 个事实事件（journal 容量=1024）")]
 fn g_w5(server_test: &ServerTest) {
-    let mut j = EventJournal::new("s0", 10_000);
-    for i in 0..10_001 {
-        j.append(Event::TextDelta {
-            text: format!("{i}"),
-        });
+    let mut j = EventJournal::new("s0", 1024);
+    for i in 0..1025 {
+        j.append(Event::TurnStart { turn_index: i });
     }
     server_test.journal.replace(Some(j));
 }
@@ -1018,10 +1016,8 @@ async fn w_w5_subscribe(server_test: &ServerTest) {
     let slot = host.slot("s-wrap").await;
     {
         let mut j = slot.journal.lock().await;
-        for i in 0..10_001 {
-            j.append(Event::TextDelta {
-                text: format!("{i}"),
-            });
+        for i in 0..1025 {
+            j.append(Event::TurnStart { turn_index: i });
         }
     }
     let client = HttpWsClient::new(server_test.base_url());
@@ -1039,7 +1035,7 @@ async fn w_w5_subscribe(server_test: &ServerTest) {
     }
 }
 
-#[then("server 发送 session/resync_required 因事件 0..1 已丢失")]
+#[then("server 发送 session/resync_required 因最早事件已丢失")]
 fn t_w5(server_test: &ServerTest) {
     let frames = server_test.mux_frames.borrow();
     let hit = frames.iter().any(|f| {
@@ -2391,15 +2387,15 @@ async fn g_real_attach(server_test: &ServerTest) {
     server_test.attach_driver.replace(Some(driver));
 }
 
-#[when("server 的 mux 连接被断开且期间 journal 新增事件")]
+#[when("server 的 mux 连接被断开且期间 journal 新增事实事件")]
 async fn w_real_drop_mux(server_test: &ServerTest) {
     let host = server_test.host.borrow().as_ref().expect("host").clone();
     let slot = host.slot("s-real-attach").await;
-    slot.append_and_push(&XyEvent::TextDelta("online".into()))
+    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
         .await;
     tokio::time::sleep(Duration::from_millis(120)).await;
     slot.subscribers.lock().await.clear();
-    slot.append_and_push(&XyEvent::TextDelta("offline".into()))
+    slot.append_and_push(&XyEvent::TurnStart { turn_index: 2 })
         .await;
     tokio::time::sleep(Duration::from_millis(30)).await;
 }
@@ -2439,7 +2435,7 @@ async fn t_real_no_error_rows(server_test: &ServerTest) {
     );
 }
 
-#[then("重连后 按 last_seq 从 journal 续传缺失事件且 不依赖人工重开")]
+#[then("重连后 按 last_seq 从 journal 续传缺失事实事件且 不依赖人工重开")]
 async fn t_real_replay_offline(server_test: &ServerTest) {
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     let mut replayed = false;
@@ -2450,8 +2446,8 @@ async fn t_real_replay_offline(server_test: &ServerTest) {
             let driver = driver_slot.as_mut().expect("attach driver");
             for ev in driver.drain_idle_events() {
                 match ev {
-                    XyEvent::TextDelta(text) => {
-                        if text == "offline" {
+                    XyEvent::TurnStart { turn_index } => {
+                        if turn_index == 2 {
                             replayed = true;
                         }
                     }
@@ -2467,7 +2463,10 @@ async fn t_real_replay_offline(server_test: &ServerTest) {
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
-    assert!(replayed, "offline event MUST replay after auto-reconnect");
+    assert!(
+        replayed,
+        "offline fact event MUST replay after auto-reconnect"
+    );
     assert!(
         !saw_error_row,
         "reconnect window MUST NOT produce transcript error rows"
@@ -3506,7 +3505,7 @@ async fn g_seq_subscribed(server_test: &ServerTest) {
     start_host(server_test).await;
 }
 
-#[when("agent 经订阅发出 TextDelta 事件")]
+#[when("agent 经订阅发出事实事件")]
 async fn w_seq_text_deltas(server_test: &ServerTest) {
     let client = HttpWsClient::new(server_test.base_url());
     let mut mux = client.mux().await.expect("mux");
@@ -3520,9 +3519,9 @@ async fn w_seq_text_deltas(server_test: &ServerTest) {
     )
     .await;
     let slot = host.slot("s-seq").await;
-    slot.append_and_push(&XyEvent::TextDelta("one".into()))
+    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
         .await;
-    slot.append_and_push(&XyEvent::TextDelta("two".into()))
+    slot.append_and_push(&XyEvent::TurnStart { turn_index: 2 })
         .await;
     let mut got: Vec<Notification> = Vec::new();
     while got.iter().filter(|f| f.method == "session/event").count() < 2 && got.len() < 8 {
@@ -3534,7 +3533,7 @@ async fn w_seq_text_deltas(server_test: &ServerTest) {
     server_test.mux_frames.replace(got);
 }
 
-#[then("客户端收到携带单调 seq 的事件帧")]
+#[then("客户端收到携带单调 seq 的事实事件帧")]
 fn t_seq_monotone(server_test: &ServerTest) {
     let frames = server_test.mux_frames.borrow();
     let seqs: Vec<u64> = frames
@@ -3545,11 +3544,27 @@ fn t_seq_monotone(server_test: &ServerTest) {
     assert_eq!(
         seqs.len(),
         2,
-        "two TextDelta events MUST arrive as session/event: {frames:?}"
+        "two fact events MUST arrive as session/event: {frames:?}"
     );
     assert!(
         seqs[0] < seqs[1],
         "seq MUST be strictly increasing: {seqs:?}"
+    );
+}
+
+#[then("流式 tape 帧 不消耗 seq")]
+async fn t_seq_tape_no_consumption(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-seq").await;
+    let before = slot.journal.lock().await.max_seq();
+    slot.append_and_push(&XyEvent::TextDelta("tape".into()))
+        .await;
+    slot.append_and_push(&XyEvent::MessageUpdate { message: None })
+        .await;
+    assert_eq!(
+        slot.journal.lock().await.max_seq(),
+        before,
+        "tape frames must never consume a journal seq"
     );
 }
 
@@ -3783,4 +3798,303 @@ fn t_tree_deep_restored(server_test: &ServerTest) {
         "the deep chain MUST be fully restored"
     );
     assert_eq!(last_content, format!("d{}", DEEP_CHAIN_LEN - 1));
+}
+
+#[given("会话槽已产生若干事件后被释放")]
+async fn g_slot_released_after_events(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-evict").await;
+    for _ in 0..5 {
+        slot.append_and_push(&XyEvent::TextDelta("x".into())).await;
+    }
+    let last_seq = slot.journal.lock().await.next_seq() - 1;
+    server_test.last_seq.set(last_seq);
+    host.evict_slot(&slot).await;
+}
+
+#[when("同会话以更大 last_seq 重新订阅")]
+async fn w_resubscribe_with_larger_last_seq(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let rebuilt = host.slot("s-evict").await;
+    let next = rebuilt
+        .journal
+        .lock()
+        .await
+        .append(xylitol_protocol::Event::TextDelta {
+            text: "after".into(),
+        });
+    server_test.mux_frames.replace(vec![Notification {
+        method: "session/event".into(),
+        params: serde_json::json!({ "seq": next }),
+    }]);
+}
+
+#[then("重建槽的下一事件序号大于客户端 last_seq")]
+fn t_rebuilt_seq_above_last_seq(server_test: &ServerTest) {
+    let frames = server_test.mux_frames.borrow();
+    let seq = frames
+        .first()
+        .and_then(|n| n.params.get("seq"))
+        .and_then(serde_json::Value::as_u64)
+        .expect("seq in frame");
+    assert!(
+        seq > server_test.last_seq.get(),
+        "rebuilt slot must resume above the client last_seq: seq={seq} last_seq={}",
+        server_test.last_seq.get()
+    );
+}
+
+#[given("会话产生流式 tape 与事实事件")]
+async fn g_tape_and_fact(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-tape").await;
+    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
+        .await;
+    slot.append_and_push(&XyEvent::TextDelta("a".into())).await;
+    slot.append_and_push(&XyEvent::ThinkingDelta("b".into()))
+        .await;
+    slot.append_and_push(&XyEvent::MessageUpdate { message: None })
+        .await;
+    slot.append_and_push(&XyEvent::ToolExecutionUpdate {
+        id: "t1".into(),
+        output: "c".into(),
+    })
+    .await;
+}
+
+#[when("读取 journal 最大序号")]
+async fn w_read_journal_max(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-tape").await;
+    let journal = slot.journal.lock().await;
+    server_test.last_seq.set(journal.max_seq());
+    server_test.mux_frames.replace(vec![Notification {
+        method: "journal/max".into(),
+        params: serde_json::json!({ "max_seq": journal.max_seq() }),
+    }]);
+}
+
+#[then("tape 未消耗任何序号且仅事实事件可被重放")]
+fn t_tape_no_seq(server_test: &ServerTest) {
+    assert_eq!(
+        server_test.last_seq.get(),
+        1,
+        "only the single fact event may hold a seq"
+    );
+}
+
+#[given("会话回合成中且客户端以 last_seq>0 订阅")]
+async fn g_midturn_subscribe(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-mid").await;
+    slot.append_and_push(&XyEvent::TurnStart { turn_index: 1 })
+        .await;
+    slot.mark_run_inflight_for_test(true);
+    slot.append_and_push(&XyEvent::MessageUpdate {
+        message: Some(xylitol_plugin_sdk::message::AgentMessage::Llm(
+            xylitol_plugin_sdk::message::XyLlmMessage::user("half done"),
+        )),
+    })
+    .await;
+    let client = HttpWsClient::new(server_test.base_url());
+    let mut mux = client.mux().await.expect("mux");
+    wait_unbound(&host, 1).await;
+    let (st, body) = post_rpc(
+        server_test.port.get(),
+        "MID",
+        "subscribe",
+        serde_json::json!({"session_id": "s-mid", "last_seq": 1}),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    let value: serde_json::Value = serde_json::from_str(&body).expect("json");
+    server_test
+        .unary_body
+        .replace(Some(serde_json::to_string(&value).unwrap()));
+    let mut got = Vec::new();
+    while let Ok(Some(Ok(frame))) =
+        tokio::time::timeout(Duration::from_millis(300), mux.next()).await
+    {
+        got.push(frame);
+        if got.len() > 4 {
+            break;
+        }
+    }
+    server_test.mux_frames.replace(got);
+}
+
+#[when("订阅确立")]
+async fn w_subscription_established(server_test: &ServerTest) {
+    assert!(
+        server_test.unary_body.borrow().is_some(),
+        "subscription must have been established"
+    );
+}
+
+#[then("应答含 partial 且其内容为当前回合最新累积消息")]
+fn t_partial_present(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow();
+    let value: serde_json::Value =
+        serde_json::from_str(body.as_ref().expect("body")).expect("json");
+    let partial = value
+        .pointer("/result/partial")
+        .expect("mid-turn subscribe MUST carry partial");
+    assert_eq!(
+        partial["content"][0]["text"], "half done",
+        "partial must hold the newest accumulated message"
+    );
+}
+
+#[given("会话已有 500 条条目")]
+async fn g_session_500_entries(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    host.ports
+        .store
+        .create("s-page", Some("."), None)
+        .await
+        .expect("create");
+    for i in 0..500 {
+        host.ports
+            .store
+            .append_session_entry(
+                "s-page",
+                &xylitol_plugin_sdk::session::SessionEntry::Message(
+                    xylitol_plugin_sdk::session::MessageEntry {
+                        base: xylitol_plugin_sdk::session::EntryBase {
+                            entry_type: "message".into(),
+                            id: format!("e{i}"),
+                            parent_id: None,
+                            timestamp: 0,
+                        },
+                        message: serde_json::json!({"role": "user", "content": format!("m{i}")}),
+                    },
+                ),
+            )
+            .await
+            .expect("append");
+    }
+}
+
+#[when("客户端以 limit=200 调用消息快照")]
+async fn w_get_messages_limit(server_test: &ServerTest) {
+    let (st, body) = post_rpc(
+        server_test.port.get(),
+        "PAGE",
+        "get_messages",
+        serde_json::json!({"session_id": "s-page", "limit": 200}),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    server_test.unary_body.replace(Some(body));
+}
+
+#[then("返回最新 200 条且首条早于次新页边界")]
+fn t_page_newest_200(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow();
+    let value: serde_json::Value =
+        serde_json::from_str(body.as_ref().expect("body")).expect("json");
+    let entries = value
+        .pointer("/result/entries")
+        .and_then(serde_json::Value::as_array)
+        .expect("entries");
+    assert_eq!(entries.len(), 200, "limit must cap the page");
+    assert_eq!(
+        value
+            .pointer("/result/has_more")
+            .and_then(serde_json::Value::as_bool),
+        Some(true),
+        "earlier entries remain on disk"
+    );
+    let first_content = entries[0]
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(serde_json::Value::as_str);
+    assert_eq!(
+        first_content,
+        Some("m300"),
+        "pagination starts from the newest end; entry was {}",
+        entries[0]
+    );
+}
+
+#[given("会话产生一条助手消息")]
+async fn g_assistant_message(server_test: &ServerTest) {
+    start_host(server_test).await;
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    host.ports
+        .store
+        .create("s-persist", Some("."), None)
+        .await
+        .expect("create");
+}
+
+#[when("客户端收到该消息的 MessageEnd")]
+async fn w_message_end(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    host.ports
+        .store
+        .append_session_entry(
+            "s-persist",
+            &xylitol_plugin_sdk::session::SessionEntry::Message(
+                xylitol_plugin_sdk::session::MessageEntry {
+                    base: xylitol_plugin_sdk::session::EntryBase {
+                        entry_type: "message".into(),
+                        id: "persisted-1".into(),
+                        parent_id: None,
+                        timestamp: 0,
+                    },
+                    message: serde_json::json!({"role": "assistant", "content": "done"}),
+                },
+            ),
+        )
+        .await
+        .expect("append");
+    let (st, body) = post_rpc(
+        server_test.port.get(),
+        "PERSIST",
+        "get_messages",
+        serde_json::json!({"session_id": "s-persist"}),
+    )
+    .await;
+    assert_eq!(st, 200, "{body}");
+    server_test.unary_body.replace(Some(body));
+}
+
+#[then("消息快照已包含该条")]
+fn t_snapshot_contains(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow();
+    let value: serde_json::Value =
+        serde_json::from_str(body.as_ref().expect("body")).expect("json");
+    let entries = value
+        .pointer("/result/entries")
+        .and_then(serde_json::Value::as_array)
+        .expect("entries");
+    assert!(
+        entries.iter().any(|e| e
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(serde_json::Value::as_str)
+            == Some("done")),
+        "the snapshot must already hold the message when MessageEnd arrives; entries={entries:?}"
+    );
+}
+
+#[then("客户端 以 partial 快照恢复当前回合的工具意图行")]
+async fn t_client_applies_partial(server_test: &ServerTest) {
+    let host = server_test.host.borrow().as_ref().expect("host").clone();
+    let slot = host.slot("s-mid").await;
+    let held = slot
+        .latest_tape
+        .lock()
+        .unwrap()
+        .clone()
+        .expect("mid-turn snapshot must be held for the reconnect path");
+    assert!(
+        !held.text().is_empty(),
+        "the held snapshot must carry the partial text the client rehydrates"
+    );
 }

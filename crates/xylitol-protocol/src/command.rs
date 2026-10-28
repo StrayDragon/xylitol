@@ -20,6 +20,11 @@ pub enum Command {
     SetThinkingLevel {
         level: String,
     },
+    SetPlanMode {
+        mode: String,
+        #[serde(default)]
+        plan_id: Option<String>,
+    },
     Bash {
         command: String,
         #[serde(default)]
@@ -49,7 +54,12 @@ pub enum Command {
         #[serde(default)]
         position: Option<String>,
     },
-    GetMessages {},
+    GetMessages {
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default)]
+        before_entry_id: Option<String>,
+    },
     #[serde(rename = "estimate_context")]
     EstimateContext {},
     GetCommands {},

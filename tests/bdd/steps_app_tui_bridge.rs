@@ -505,8 +505,6 @@ fn w_atb10_intent(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: None,
             message: Some(assistant_message(vec![tool_call_part(
                 "t1",
                 "read",
@@ -540,8 +538,6 @@ fn w_atb10_upsert(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: None,
             message: Some(assistant_message(vec![tool_call_part(
                 "t1",
                 "read",
@@ -572,14 +568,7 @@ fn t_atb10_still_one_row(bridge_bdd: &BridgeBdd) {
 
 #[then("正文快照不写入 streaming 缓冲")]
 fn t_atb10_no_snapshot_dup(bridge_bdd: &BridgeBdd) {
-    apply(
-        bridge_bdd,
-        XyEvent::MessageUpdate {
-            text: "snapshot body".into(),
-            thinking: None,
-            message: None,
-        },
-    );
+    apply(bridge_bdd, XyEvent::MessageUpdate { message: None });
     apply(
         bridge_bdd,
         XyEvent::AgentEnd {
@@ -727,8 +716,6 @@ fn w_atb12_intent_body(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: None,
             message: Some(assistant_message(vec![tool_call_part(
                 "w2",
                 "write",
@@ -761,8 +748,6 @@ fn w_atb13_alias(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: None,
             message: Some(assistant_message(vec![tool_call_part(
                 "w3",
                 "write",
@@ -794,8 +779,6 @@ fn w_atb13_sticky(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: None,
             message: Some(assistant_message(vec![tool_call_part(
                 "w3",
                 "write",
@@ -837,8 +820,6 @@ fn w_atb13_read_range(bridge_bdd: &BridgeBdd) {
     apply(
         bridge_bdd,
         XyEvent::MessageUpdate {
-            text: String::new(),
-            thinking: None,
             message: Some(assistant_message(vec![tool_call_part(
                 "r9",
                 "read",
@@ -938,4 +919,79 @@ fn t_atb15_real_path(bridge_bdd: &BridgeBdd) {
         "atb15: wire parity keeps the real path: {:?}",
         model.entries
     );
+}
+
+#[given("产品 TUI 会话含可折叠工具行")]
+fn g_foldable_tool_row(bridge_bdd: &BridgeBdd) {
+    apply(
+        bridge_bdd,
+        XyEvent::ToolExecutionStart {
+            id: "t-fold".into(),
+            name: "read".into(),
+            args: serde_json::json!({"path": "a.txt"}),
+        },
+    );
+}
+
+#[when("点击折叠命中区")]
+fn w_click_fold_region(bridge_bdd: &BridgeBdd) {
+    let model = bridge_bdd.model.borrow();
+    let rows = model.entries.len();
+    assert!(rows > 0, "a foldable row must exist before clicking");
+    drop(model);
+    crate::bdd::fold_probe::assert_no_host_roundtrip();
+}
+
+#[then("折叠状态就地切换且不产生任何 Host unary 往返")]
+fn t_fold_is_local(_bridge_bdd: &BridgeBdd) {
+    assert!(
+        crate::bdd::fold_probe::host_calls() == 0,
+        "folding is pure presentation and must never call the host"
+    );
+}
+
+#[given("产品 TUI 以 attach 模式连接 Host")]
+fn g_attach_mode() {}
+
+#[when("查询驱动是否暴露会话存储")]
+fn w_probe_session_store() {
+    let driver = xylitol_app_tui::XyRemoteDriver::new("http://127.0.0.1:1", "s-probe");
+    crate::bdd::fold_probe::record_session_store_exposed(
+        xylitol_app_tui::driver::XyDriver::exposes_session_store(&driver),
+    );
+}
+
+#[then("不暴露且会话读取仅经协议")]
+fn t_no_direct_store() {
+    assert!(
+        !crate::bdd::fold_probe::session_store_exposed(),
+        "attach mode must never hand out the host session store"
+    );
+}
+
+#[given("会话条目数超过端侧窗口上限")]
+fn g_over_window(bridge_bdd: &BridgeBdd) {
+    let mut model = bridge_bdd.model.borrow_mut();
+    model.entries = (0..xylitol_app_tui::history_window::HISTORY_WINDOW
+        + xylitol_app_tui::history_window::HISTORY_PAGE)
+        .map(|i| UiEntry::User {
+            text: format!("m{i}"),
+        })
+        .collect();
+}
+
+#[when("按窗口上限裁剪滚动区")]
+fn w_render_scrollback(bridge_bdd: &BridgeBdd) {
+    let mut model = bridge_bdd.model.borrow_mut();
+    xylitol_app_tui::history_window::trim_to_window(&mut model, true);
+}
+
+#[then("最旧部分替换为顶部提示行且提示行可点击加载更早")]
+fn t_window_notice(bridge_bdd: &BridgeBdd) {
+    let model = bridge_bdd.model.borrow();
+    assert!(
+        matches!(model.entries.first(), Some(UiEntry::ScrollNotice { .. })),
+        "overflowing history must collapse into a top notice"
+    );
+    assert!(model.has_earlier);
 }

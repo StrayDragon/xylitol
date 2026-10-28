@@ -314,3 +314,253 @@
         | cancelling | finish | run_id_match | idle     |
         | streaming  | finish | run_id_stale | starting  |
         | starting   | finish | run_id_stale | starting  |
+
+  @req:r2920
+  规则: loop-middleware-spi
+    插件 须经 rutis 生命周期注册 loop 中间件参与 ReAct 决策：阶段闭集为 before_turn、before_llm_request、after_llm_response、before_tool、after_tool、decide_continue、after_turn；注册表 须按阶段分组并按 order 升序排列，同 order 保持注册序；注册 须返回卸载句柄，插件停止时 须卸干净。每次 run 须在启动时快照中间件链，进行中 run 不得受后挂中间件影响；链为空时 须零开销直走基线路径，不得创建观测 span 或额外事件。core 须永远持有 turn 边界、取消、权限最终裁决与消息落盘格式，不得允许插件整段替换 ReAct。
+
+    场景: 中间件有序且卸载后消失
+      假如 注册 before_llm_request 阶段 order 10 与 order 5 的两个中间件
+      当 读取中间件链快照并注销 order 5 的中间件
+      那么 首次快照按 order 升序且注销后不再含该 id
+
+    场景: 空链走基线
+      假如 未注册任何 loop 中间件
+      当 运行 AgentRuntime 并收集事件
+      那么 出现 AgentEnd 且无中间件错误事件
+
+  @req:r2921
+  规则: loop-middleware-control
+    中间件返回值 须为 { ctx, control }；control 闭集为 continue、stop、compact、handoff。decide_continue 须仅在 Settle 的 TurnEnd 之后、settle 与压缩预检之后调用，ContinueTools 不得调用；stop 须以 AgentEnd 结束本 run 且不得再 drain steer 或 follow_up；compact 须由 core 执行一次强制压缩后继续；handoff 本 change 未支持，core 须以稳定 kind LoopMiddlewareHandoffUnsupported 的错误结束本 run，不得静默忽略。中间件不得自行再调模型，下一次 generate 只能由 core 调度。after_turn 的 control 须仅为 continue，其他取值须记入观测并忽略，不得静默改变行为。
+
+    场景: 自定义停止结束运行
+      假如 注册 decide_continue 中间件在首次结算返回 stop
+      当 运行 AgentRuntime 并收集事件
+      那么 出现 AgentEnd 且其后无新的 TurnStart
+
+    场景: 未支持交接报错
+      假如 注册 decide_continue 中间件返回 handoff
+      当 运行 AgentRuntime 并收集事件
+      那么 事件流含 kind 为 LoopMiddlewareHandoffUnsupported 的错误
+
+    场景: after_turn 非法控制被忽略
+      假如 注册 after_turn 中间件返回 stop 且入队 follow_up
+      当 运行 AgentRuntime 并收集事件
+      那么 after_turn 中间件已被调用且 run 继续到下一轮
+
+  @req:r2922
+  规则: loop-middleware-tool-gate
+    before_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core permission 之前运行，且在工具批执行规划之前完成预演：中间件可改工具参数与工具名；core 须按最终工具名与最终参数重算权限目标并再裁一次，并按最终工具的执行分类重排并发窗，不得沿用原工具名或原参数的任何判定。中间件拒绝 须使工具以 tool-error 回写且不执行；中间件放行 不得撤销上游拒绝，也不得绕过 core permission。路由目标 须限于本次运行已装配的工具集，不得新增工具调用，也不得借路由绕过 MCP 前缀的串行纪律；找不到目标即 tool-error。审批只能更严；更松须显式 capability 与用户信任，不在本要求范围。预演 须先于本批任何工具执行完成；批内前序调用返回 stop 时，后续调用的中间件 已运行 但其工具 不得执行，中间件 不得假设「放行即执行」。
+
+    场景: 中间件拒绝更严
+      假如 注册 before_tool 中间件拒绝 bash
+      当 运行 AgentRuntime 触发 bash
+      那么 tool-error 回写且原因含 loop middleware
+
+    场景: 改参不绕过权限
+      假如 注册 before_tool 中间件把 bash 参数改为访问被拒域名且权限引擎拒绝该域名
+      当 运行 AgentRuntime 触发 bash
+      那么 tool-error 回写且原因含 permission denied
+
+    场景: 改路由按新工具重裁
+      假如 注册 before_tool 中间件把 read 路由到 write 且权限引擎拒绝该写入路径
+      当 运行 AgentRuntime 触发 read
+      那么 tool-error 回写且原因含 permission denied
+
+    场景: 改路由按新分类重排
+      假如 注册 before_tool 中间件把并行安全的 read 路由到串行工具
+      当 运行 AgentRuntime 并收集工具批事件
+      那么 该调用单独成窗且不与后续并行安全调用重叠
+
+    场景: 改路由目标须已装配
+      假如 注册 before_tool 中间件把 read 路由到未装配的工具名
+      当 运行 AgentRuntime 触发 read
+      那么 tool-error 回写且原因含 Unknown tool
+
+    场景: 前序停止后批内中间件已运行
+      假如 注册两个 before_tool 中间件且首个对首个调用返回 stop
+      当 运行 AgentRuntime 触发两个工具调用
+      那么 第二个中间件已被调用且其工具未执行
+
+  @req:r2923
+  规则: loop-middleware-bounded
+    core 须对 decide_continue 的 continue 与 compact 设硬上限：连续裁决且本轮无新工具结果、无新用户消息的次数超过上限时 须停止本 run 并以稳定 kind LoopMiddlewareLimit 的错误可观测，不得挂死循环或静默停。单次中间件调用 须与取消令牌和超时竞速；取消须以 aborted 结束本 run，超时须以稳定 kind LoopMiddlewareTimeout 的错误结束本 run，不得让中间件无限期占用 turn。
+
+    场景: 无进展继续触发上限
+      假如 注册 decide_continue 中间件总是返回 continue 且无新工具与新用户消息
+      当 运行 AgentRuntime 并收集事件
+      那么 事件流含 kind 为 LoopMiddlewareLimit 的错误且随后出现 AgentEnd
+
+  @req:r2924
+  规则: loop-middleware-trace
+    观测激活时，每次中间件调用 须留 loop.middleware span，属性至少含中间件 id、阶段、order、返回 control、改动摘要与结果；span 须携带 langfuse.session.id、langfuse.observation.type=span 与 xylitol.obs.lane=llm，使其与 agent.turn 同会话分组。中间件 可经 `LoopStep.properties` 追加语义属性，键约定 `loop.middleware.<feature>.<field>`，core 须原样写入 span；链为空时 不得建 span。由单测或观测场景覆盖。
+
+    场景: 观测可指认改动来源
+      假如 注册 before_llm_request 中间件且在观测闸开启下运行一回合
+      当 读取 loop.middleware span 属性
+      那么 属性含该中间件 id、阶段名与改动摘要
+
+  @req:r2925
+  规则: loop-middleware-policies-plugin
+    仓库 须提供一个官方 loop 策略插件（插件作者参考实现），证明第三方可在 rutis 生命周期内注册与卸载 loop 中间件：至少含一个只收紧的 before_tool 与一个自定义 decide_continue。该插件 须由配置显式启用，缺省不装配；未配置时 不得注册任何中间件、不得产生额外事件或观测 span。卸载后 注册表 须不再含该插件的中间件。
+
+    场景: 未配置零装配
+      假如 loop 策略插件配置缺省
+      当 装配运行时并查询中间件注册表
+      那么 注册表为空且运行无额外事件
+
+    场景: 启用后卸载零残留
+      假如 以启用 loop 策略插件装配运行时
+      当 卸载该插件
+      那么 注册表不再含该插件的中间件
+
+    场景: todo 进度启用后注册 todo 进度中间件
+      假如 以启用 todo 进度的 todo 插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 todo-progress
+
+    场景: todo 提醒启用后注册 todo 提醒中间件
+      假如 以启用 todo 提醒的 todo 插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 todo-reminder
+
+    场景: 工具收窄启用后注册工具中间件
+      假如 以启用工具收窄的 loop 策略插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 loop-policies 与 tool-exposure
+
+    场景: todo checkpoint 启用后注册 todo checkpoint 中间件
+      假如 以启用 todo checkpoint 的 todo 插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 todo-checkpoint
+
+    场景: 自愈启用后注册自愈中间件
+      假如 以启用自愈的 loop 策略插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 loop-policies 与 self-heal
+
+    场景: 生成评审启用后注册评审中间件
+      假如 以启用生成评审的 loop 策略插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 loop-policies 与 generator-critic
+
+    场景: workflow 启用后注册 workflow 中间件
+      假如 以启用 workflow 的 workflow 插件装配运行时
+      当 查询中间件注册表
+      那么 注册表含 workflow
+
+  @req:r2955
+  规则: plan-mode-middleware
+    计划模式中间件 须在 before_llm_request 读取最新 `plan_mode`；模式为 plan 时 须注入一次计划契约（先研究/阅读、用 `plan_write` 产出计划、用 `plan_submit` 请求批准）；模式为 execute 时 不得注入。会话 id 缺失或存储不可用时 须静默降级，不得中断 run。中间件 不得改写工具表、不得调用模型或工具；工具只读限制 不在本要求范围。
+
+  @req:r2929
+  规则: loop-middleware-structured-result
+    after_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core quiet 摘要之前接收结构化结果：载荷含原始内容分片、可解析的结构化详情与错误标志，不得只提供拍平文本。中间件改写后的内容与详情 须成为本调用的历史回写与 ToolExecutionEnd 结果；core 的 write/edit quiet 摘要 仅在结果仍为单段文本时生效，且不得丢弃中间件给出的结构化详情。工具产出的非文本分片 须在历史回写中保真，不得被拍平为占位文本。
+
+    场景: 结构化分片保真
+      假如 注册 after_tool 中间件且工具返回图片分片
+      当 运行 AgentRuntime 触发该工具
+      那么 历史回写仍含图片分片
+
+    场景: 改写详情生效
+      假如 注册 after_tool 中间件把结构化详情替换为带标记的对象
+      当 运行 AgentRuntime 触发该工具
+      那么 该调用的历史回写详情含该标记
+
+  @req:r2930
+  规则: loop-middleware-compact-request
+    decide_continue 返回 compact 时，中间件 须能随决策提供压缩指令与来源标签；core 须把来源标签带入压缩开始与结束事件的 reason，缺省时 须以中间件标识构造稳定标签，不得一律记为手动压缩。压缩成功后 须向本 run 事件流发出压缩后结算，供插件与端读取压缩后占用；压缩失败 须以带中间件标识的错误结束本 run。压缩仍只由 core 调度，中间件不得自行调用压缩或改写压缩策略。
+
+    场景: 压缩来源可辨识
+      假如 注册 decide_continue 中间件返回带来源标签的 compact 决策
+      当 运行 AgentRuntime 并收集压缩事件
+      那么 CompactionStart 与 CompactionEnd 的 reason 含该标签
+
+    场景: 压缩后结算可见
+      假如 注册 decide_continue 中间件返回 compact 决策且压缩成功
+      当 运行 AgentRuntime 并收集事件
+      那么 事件流含压缩后结算
+
+  @req:r2926
+  规则: loop-middleware-visible-consistency
+    中间件改动 须与对外可见形状一致：before_turn 注入的系统碎片与 before_llm_request 改写的 system / tool schema 须回流到本 run 的压缩固定上下文（token 估计与压缩阈值按最终形状计算，不得沿用启动快照）；before_tool 改写的参数须在 ToolExecutionStart 中呈现，不得先发原始参数再执行改写后参数；after_llm_response 改写的 assistant（含新增 tool_call）须在 MessageEnd 之前生效，不得让已发出的 MessageEnd 与随后落盘/执行的形状不一致。中间件超时或取消结束本 run 时，回合观测须标记为非正常结束，不得记为成功。
+
+    场景: 改写参数可见
+      假如 注册 before_tool 中间件把 bash 命令改为 echo safe
+      当 运行 AgentRuntime 触发 bash 并收集事件
+      那么 ToolExecutionStart 的参数为 echo safe
+
+    场景: 改写助手先于消息结束
+      假如 注册 after_llm_response 中间件把 assistant 文本改写为 replaced
+      当 运行 AgentRuntime 并收集事件
+      那么 MessageEnd 携带的 assistant 文本为 replaced 且无改写前文本
+
+    场景: 系统碎片进入压缩上下文
+      假如 注册 before_turn 中间件注入长系统碎片
+      当 运行 AgentRuntime 并比较有无碎片的回合结算估计
+      那么 含碎片的估计不低于无碎片基线
+
+  @req:r2927
+  规则: run-event-boundary
+    一次用户触发的 run 的事件流 须以 AgentStart 开始、以 AgentEnd 结束：AgentStart 须在本 run 的会话与历史装配完成、回合观测建立之后、首个 TurnStart 之前发出，且为流内第一个事件；AgentEnd 须为最后一个事件。AgentStart 的 session_id 须为本 run 绑定的会话，model 须取本 run 启动时的当前模型标识，流内不得重读以免与回合观测属性不一致；未选模型时 model 为空串。装配失败（会话或历史加载失败）时 不得发 AgentStart。
+
+    场景: 首末事件边界
+      假如 mock 模型先 tool 后无 tool
+      当 运行 AgentRuntime 并收集事件
+      那么 首个事件为 AgentStart 且末个事件为 AgentEnd
+
+    场景: 启动字段口径
+      假如 mock 模型先 tool 后无 tool
+      当 运行 AgentRuntime 并收集事件
+      那么 AgentStart 的 session_id 为本会话且 model 为当前模型标识
+
+  @req:r2931
+  规则: loop-middleware-session-scope
+    中间件链 须支持会话级作用域：Host 每个会话槽 须持有自 root 派生的独立链，槽内注册与注销 不得影响 root 或其他会话；派生 须冻结 root 当时的链快照，root 后续注册的中间件 不得流入已存在的会话槽。未配置第三方可注册中间件的 root 链 须保持为空（loop 内置项不计入链，也不产生 span），且空链 不得产生额外事件或观测 span。会话作用域 须为纯数据，槽丢弃即释放，不得需要显式卸载调用，也不得泄漏回 root。嵌入方 须能在不接触 rutis 类型的前提下为自建驱动挂注册表。
+
+    场景: 会话链互不影响
+      假如 root 链含一个共享中间件且两个会话槽各自再注册一个独有中间件
+      当 比较两个会话槽与 root 的中间件标识
+      那么 两会话互不可见对方独有项且 root 不含任何独有项
+
+    场景: 派生冻结父快照
+      假如 会话槽已从 root 派生
+      当 root 随后注册新中间件
+      那么 该会话槽的链仍为派生时刻快照
+
+    场景: 未配置保持空链
+      假如 root 未注册任何中间件
+      当 读取派生会话槽的链
+      那么 链为空
+
+  @req:r2933
+  规则: loop-builtin-skills-expand
+    Skills 展开 须作为 loop 内置项执行，不得进入可注册中间件链：内置展开 须在 before_llm_request 阶段之前完成，使任何第三方 before_llm_request 中间件 都能观察到展开后的 messages；内置项 不得占用 order 位、不得产生 loop.middleware span、不得计入「空链」判定。第三方中间件 不得替换或跳过内置展开，只允许在其后叠加。未装配任何 skills 时 展开 须为无操作，messages 须逐字节不变。未注册第三方中间件时 装配结果 须与内置化之前逐字节一致。
+
+    场景: 中间件看到展开结果
+      假如 注册 before_llm_request 中间件观察 messages 且 skills 已装配
+      当 运行 AgentRuntime 提交引用技能的 prompt
+      那么 before_llm_request 观察到已展开的技能正文
+
+  @req:r2937
+  规则: message-persist-before-end
+    ReAct 的每一条消息（用户 pending、助手正常完成、助手中断、助手中间件 stop）须先写入会话存储再下行 MessageEnd，使客户端收到完成事件时 存储已可读到该条；不得先发 MessageEnd 再落库。落库失败 不得阻断 MessageEnd 下行（沿用既有 warn 语义），但 不得因此把顺序颠倒回去。
+  @req:r2939
+  规则: todo-reminder
+    todo 提醒中间件 须在 before_llm_request 读取当前 todo（经 BeforeLlmRequestCtx.todo）；当 todo 非空且仍有未完成项，并满足以下任一条件时，向本回合模型上下文追加一条短提醒：连续 N 次工具调用未更新 todo、最后一条 assistant 宣称完成、上一次工具失败。同一 turn 至多提醒一次。提醒 须只读：不得自动改写 todo、不得产生新事件、不得调用模型或工具；未满足条件或 todo 为空时 不得追加任何内容。阈值与开关 须可配置。提醒行为 由中间件单测覆盖。
+  @req:r2940
+  规则: tool-exposure
+    工具收窄中间件 须在 before_llm_request 改写 tool_schemas：按配置的 allow / deny 与只读开关收窄模型可见工具；`todo_rewrite` 与 `todo_update` 须始终可见，避免计划无法更新。收窄 只影响模型可见性：不得删除工具、不得改变 permission 终裁、不得影响 before_tool 的路由目标校验。未启用或规则为空时 不得改变 schema 形状。过滤前后数量与理由 须可观测。step/risk 的细粒度映射 不在本要求范围，后续 change 再评估。
+  @req:r2942
+  规则: todo-checkpoint-middleware
+    todo checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_llm_request（或 after_turn）把变化落为 todo_checkpoint 条目；恢复后的首个 before_llm_request 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或 todo 已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 run。写入 须只追加，不覆盖或删除历史 checkpoint。
+  @req:r2943
+  规则: self-heal
+    自愈中间件 须只在 after_tool 识别到确定性失败签名时介入：命中签名 须记录 pending（工具名、签名、尝试次数）并在结果后追加短指引，要求诊断、修复后重跑同一验证；同一工具成功 须清除 pending。非确定性失败（超时、网络、权限等）不得进入自愈。decide_continue 须在 pending 且尝试次数小于配置上限时 Continue，达到上限时 Stop；无 pending 时 不得改变基线。上限 须远小于 core 的 32 次硬上限。不得在插件内调用模型或工具，不得自动回滚。自愈与 todo-progress 可并存，Stop 仍由最先返回 Stop 的中间件决定。
+  @req:r2944
+  规则: generator-critic
+    生成评审中间件 须在 after_llm_response 只对**无 tool_calls 的 assistant 最终答案**启动评审，且评审调用仍由 core 调度（插件不得自行调用模型）。状态机须为 Idle → Critiquing →（Approved | Revising）→ … → Approved | Exhausted；Critiquing 时 before_llm_request 注入 rubric 与 verdict 格式，Revising 时注入 critic 意见。critic 须以单独一行 `CRITIC_VERDICT: APPROVE` 或 `CRITIC_VERDICT: REVISE` 结尾；无结构化 verdict 时最多再要求一次，超过一次须停止。decide_continue 在 Critiquing / Revising 时 Continue，在 Approved / Exhausted 时 Stop，其它状态不得改变基线。评审轮数 须受 `max_rounds` 约束且远小于 core 的 32；达到上限须停止并记录原因。不得允许 critic 触发 compact，不得自动改代码或提交。
+
+  @req:r2962
+  规则: multiple-before-tool-gates
+    多个 before_tool 中间件 须按 order 依次执行；任一返回 stopped 须终止后续闸与工具执行；首个 stopped 的原因 须成为最终结果。由单测覆盖。

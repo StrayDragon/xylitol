@@ -12,6 +12,10 @@ publish = false
 xylitol-plugin-sdk = { workspace = true }
 xylitol-runtime = { workspace = true }
 xylitol-official-plugin-hooks = { workspace = true }
+xylitol-official-plugin-loop-policies = { workspace = true }
+xylitol-official-plugin-todo = { workspace = true }
+xylitol-official-plugin-workflow = { workspace = true }
+xylitol-official-plugin-plan = { workspace = true }
 xylitol-official-plugin-mcp = { workspace = true, default-features = false }
 dirs = { workspace = true }
 jsonschema = { workspace = true }
@@ -26,3 +30,7 @@ yaml_serde = { workspace = true }
 [dev-dependencies]
 serial_test = { workspace = true }
 tempfile = { workspace = true }
+
+[[bin]]
+name = "gen-config-schema"
+path = "src/bin/gen_config_schema.rs"

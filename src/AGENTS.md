@@ -41,9 +41,13 @@ flowchart TB
     end
     subgraph plugins_ext["工具 / 配置启用"]
       direction LR
-      xylitol_official_plugin_tools["xylitol-official-plugin-tools"]
+      xylitol_official_plugin_tools["xylitol-official-plugin-tools<br/>core tools"]
+      xylitol_official_plugin_todo["xylitol-official-plugin-todo"]
+      xylitol_official_plugin_workflow["xylitol-official-plugin-workflow"]
+      xylitol_official_plugin_plan["xylitol-official-plugin-plan"]
       xylitol_official_plugin_mcp["xylitol-official-plugin-mcp"]
       xylitol_official_plugin_hooks["xylitol-official-plugin-hooks"]
+      xylitol_official_plugin_loop_policies["xylitol-official-plugin-loop-policies"]
     end
     subgraph plugins_host["配置 / 观测"]
       direction LR
@@ -74,8 +78,12 @@ flowchart TB
   xylitol_official_plugin_provider_openai --> xylitol_plugin_sdk
   xylitol_official_plugin_provider_anthropic --> xylitol_plugin_sdk
   xylitol_official_plugin_tools --> xylitol_plugin_sdk
+  xylitol_official_plugin_todo --> xylitol_plugin_sdk
+  xylitol_official_plugin_workflow --> xylitol_plugin_sdk
+  xylitol_official_plugin_plan --> xylitol_plugin_sdk
   xylitol_official_plugin_mcp --> xylitol_plugin_sdk
   xylitol_official_plugin_hooks --> xylitol_plugin_sdk
+  xylitol_official_plugin_loop_policies --> xylitol_plugin_sdk
   xylitol_official_plugin_config --> xylitol_plugin_sdk
   xylitol_official_plugin_obs --> xylitol_plugin_sdk
   xylitol_runtime --> xylitol_plugin_sdk
@@ -116,11 +124,11 @@ flowchart TB
 | `xylitol-app-print` | 同进程直调 runtime | 依赖 serve / protocol / wire；编线协议 |
 | 根包 `xylitol` | argv + profile。列出官方插件的 `Cargo.toml` 经 kernel 转发 | 把装配逻辑塞回 `src/wiring`；`use rutis` |
 
-官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、mcp、hooks、config、obs。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools。配置启用：mcp / hooks。没配置则不 start。第三方插件是方向、未交付；只留 Chain 解析器与 admit 准入位。
+官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、todo、workflow、plan、mcp、hooks、config、obs、loop-policies。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools / todo / plan。配置启用：workflow / mcp / hooks / loop-policies。没配置则不 start。todo 插件 只提供 todo 工具与中间件；plan 插件 只提供 plan 工具与模式中间件；workflow 插件 只提供 workflow 中间件；loop-policies 插件 是插件作者的 loop 中间件参考实现（见 `crates/xylitol-plugin-sdk/README.md`）。核心 tools 插件 只提供 read / write / edit / bash / grep / find / ls 与 ask。第三方插件是方向、未交付；只留 Chain 解析器与 admit 准入位。
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
-每个 crate 内部仍守依赖方向（runtime ↛ 官方插件、↛ 信封；插件之间不得 `use`，只经服务 / 事件）。根包 `src/` 是 argv + profile。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由 kernel 挂载。占用（session slot / linger / 单写者）在 `xylitol-serve`。监听在 `xylitol-serve`；`XyEvent` ↔ wire 映射在 `xylitol-wire`。
+每个 crate 内部仍守依赖方向（runtime ↛ 官方插件、↛ 信封；插件之间不得 `use`，只经服务 / 事件）。根包 `src/` 是 argv + profile。协议无关 `XyDriver` 在 `xylitol-runtime`；官方插件由 kernel 挂载。占用（session slot / linger / 单写者）在 `xylitol-serve`：槽在最后订阅消失且宽限到期后**释放**（先清 driver 断开 `slot ↔ SlotAskGateway` 环，再从会话表移除），事件序号水位**保留**并在同会话重建时续接（空 journal 不发 resync，重置 seq 会让 `last_seq` 重连永久错位）。journal **只存事实事件**（生命周期 / 消息 / 工具边界与状态变更）；流式 tape（`TextDelta` / `ThinkingDelta` / `MessageUpdate` / `ToolExecutionUpdate`）**不写 journal、不消耗 seq**，仅实时下发并在 `latest_tape` 保留一份最新快照供中段重连经 `subscribe.partial` 补齐。`seq` 不变量（同一 seq 永久指向同一内容）不可破坏——**不得**用覆盖式槽位换 O(1) 内存。监听在 `xylitol-serve`；`XyEvent` ↔ wire 映射在 `xylitol-wire`。
 
 ### `AgentCapabilities` 职责边界
 
@@ -186,6 +194,28 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 - 不改 MCP / hook 的 JSON 口换“全类型”。
 - schema 与 Args 手写并置；钩子总线与 `AgentHooks` **刻意保留 Value**。
 - 内置工具经 `TypedTool` 装配；MCP / hook 仍走 `Value` + `XyTool`。
+
+### Loop 中间件（有界参与，不是可换 loop）
+
+```text
+词表 / 注册表  = xylitol-plugin-sdk（LoopStage / LoopControl / LoopMiddlewareRegistry）
+执行权威       = xylitol-runtime（run_react_loop 七阶段调用点）
+注册表提供者   = kernel 核心插件 agent-react（Ctx 服务，boot 交 driver）
+```
+
+- core **永远**持 turn 边界、取消、权限最终裁决、消息落盘；插件只能经 `{ ctx, control }` 返回值参与，**不得**整段替换 ReAct。
+- **内置项 vs 可注册项**：skills 展开是 **loop 内置项**（`before_llm_request` 之前、不占 order、不产生 span、不计入「空链」）；第三方只能在其后叠加，不得替换或跳过。MCP 结果截断由 mcp 插件在**有 servers 时**注册 `after_tool` 中间件（`mcp-result-truncate`，上限 50 KiB，单段文本才截断，多分片与错误结果不动）。
+- 链在 run 启动时快照；链空零开销、无 span，行为与基线一致。
+- **会话作用域**：Host 每个会话槽在创建时从 root `derive()` 一份链（冻结父快照，槽内注册不影响 root 或其他槽）；链是纯数据，槽丢弃即释放，无需显式卸载。嵌入方经 `xylitol::embed::with_loop_registry` 挂注册表，不接触 rutis 类型。服务级作用域（按会话换 compaction / permission）不在本机制内，走 rutis `isolate` 是独立方向。
+- **Strategy 槽**：不引入 `ReActStrategy` trait；loop 拓扑差异先由**中间件组合 + 配置**表达（todo-progress 示例见 `c2957`）。只有中间件表达不了的拓扑（如并行 model call、跨 resume 的 workflow DAG 执行器）且至少两个独立消费者、todo-progress 实测失败时，才评估 core 级 seam；即使评估，也优先数据/配置驱动，而不是 Rust trait。`decide_continue` 的 `handoff` 是未来交接拓扑的预留门，未支持时稳定报错。
+- `before_tool` 在**工具批规划前**预演（hooks → AgentHooks → 中间件 → 权限），可改参数与工具名；core 用最终 `(name, args)` 重算权限目标并再裁，并按最终工具执行分类重排并发窗（MCP 前缀仍强制串行）；路由目标须已在本次装配的工具集内。预演先于本批任何执行：前序调用 `stop` 后，后续调用的中间件**已运行但工具不执行**，中间件不得假设「放行即执行」（`r2922`）。
+- `after_tool` 收结构化载荷（原始分片 + 可解析详情 + 错误标志）；core 的 write/edit quiet 摘要只在结果仍是单段文本时生效，中间件给的详情不被丢弃。
+- `decide_continue` 只在 Settle 调；`compact` 可带压缩指令与来源标签（进 `CompactionStart/End.reason`，缺省 `loop_middleware:<id>`）；`handoff` 未支持以稳定错误结束；无进展 `continue` / `compact` 各有硬上限。
+- **进度与恢复**：`BeforeLlmRequestCtx.todo` 由 core 用状态栏同一份 leaf-branch 填充，插件据此做提醒与工具收窄；`todo_checkpoint` 是插件写的 `CustomEntry`（只追加不覆盖），todo 给人看、checkpoint 给恢复用。`BeforeLlmRequestCtx` / `AfterTurnCtx` 的 `session_id` 仅供插件把状态落回当前会话，不改变落盘格式。插件写会话工件 须经 `RuntimeSessionStore`（runtime 的 live store）；不得使用 session-store 插件的服务实例，两者可能不是同一实例。
+- **自愈**：`self-heal` 只在 `after_tool` 命中确定性失败签名时介入，`decide_continue` 在独立上限内续跑；超时、网络、权限等非确定性失败不进入自愈。上限须远小于 core 的 32 次硬上限；Stop 仍由最先返回 Stop 的中间件决定。
+- **生成评审**：`generator-critic` 只评审无 tool_calls 的最终答案；critic 调用由 core 调度，插件只注入 rubric / 修订指令并解析 `CRITIC_VERDICT`。轮数受 `max_rounds` 约束，无结构化 verdict 最多重试一次；不得允许 critic 触发 compact 或自动改代码。
+- **workflow 执行**：workflow 是持久 `CustomEntry`（`custom_type = "workflow"`），模型经 assistant 中的 `<plan>{json}</plan>` 块写入；中间件校验 DAG 与重规划约束后落盘并驱动 `decide_continue`。已完成步骤锁定，只有失败步骤及其下游可改写；`requires_human` 步骤阻塞，用户下一条消息视为一次批准。runtime 只是 plumbing，workflow 的契约在工件与中间件。
+- `XyHookBus` / `AgentHooks` 是旁路（审计 / 兼容），不承载 loop 决策。
 
 ## 扩展开闭
 

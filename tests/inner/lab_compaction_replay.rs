@@ -91,6 +91,7 @@ async fn lab_compaction_replay_floor_invariants() {
         ),
         sink.as_ref(),
         None,
+        "manual",
         WINDOW,
         Some(&fixed),
         &mut fallback_notice,

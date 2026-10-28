@@ -543,14 +543,7 @@ fn when_rebuild_from_parts(transcript_bdd: &TranscriptBdd) {
 
     let mut live = UiModel::default();
     apply_xy_event(&mut live, &XyEvent::ThinkingDelta("step 1".into()));
-    apply_xy_event(
-        &mut live,
-        &XyEvent::MessageUpdate {
-            text: "hello".into(),
-            thinking: None,
-            message: None,
-        },
-    );
+    apply_xy_event(&mut live, &XyEvent::MessageUpdate { message: None });
     apply_xy_event(
         &mut live,
         &XyEvent::ToolExecutionStart {

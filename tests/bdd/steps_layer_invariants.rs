@@ -8,7 +8,7 @@ use rstest_bdd_macros::{then, when};
 fn assert_layer_invariants() {
     static STATUS: OnceLock<Result<(), String>> = OnceLock::new();
     let result = STATUS.get_or_init(|| {
-        let out = Command::new("python3")
+        let out = Command::new(crate::bdd::helpers::python3())
             .args(["scripts/check_layer_invariants.py", "--check"])
             .output()
             .map_err(|e| format!("spawn layer invariants: {e}"))?;

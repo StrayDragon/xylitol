@@ -69,6 +69,58 @@ def _description_block(lines: list[str], fm_start: int, fm_end: int) -> tuple[in
     raise HarnessError("missing `description:` key in frontmatter")
 
 
+def _scalar_value(lines: list[str], fm_start: int, fm_end: int, key: str) -> str | None:
+    """Read one frontmatter scalar without PyYAML.
+
+    Supports the shapes this harness actually writes: plain single-line,
+    quoted single-line, and `>`/`|` block scalars with chomping indicators.
+    Anything else is treated as plain text joined by single spaces.
+    """
+    prefix = f"{key}:"
+    for i in range(fm_start, fm_end):
+        if not lines[i].startswith(prefix):
+            continue
+        head = lines[i][len(prefix):].strip()
+        if head in (">", ">-", ">+", "|", "|-", "|+"):
+            body: list[str] = []
+            j = i + 1
+            while j < fm_end and (not lines[j].strip() or lines[j][:1] in (" ", "\t")):
+                body.append(lines[j])
+                j += 1
+            indent = next(
+                (len(ln) - len(ln.lstrip()) for ln in body if ln.strip()), 0
+            )
+            stripped = [ln[indent:] if ln.strip() else "" for ln in body]
+            if head.startswith("|"):
+                text = "\n".join(stripped)
+            else:
+                paragraphs: list[str] = []
+                current: list[str] = []
+                for ln in stripped:
+                    if ln.strip():
+                        current.append(ln.strip())
+                    elif current:
+                        paragraphs.append(" ".join(current))
+                        current = []
+                if current:
+                    paragraphs.append(" ".join(current))
+                text = "\n".join(paragraphs)
+            if head.endswith("+"):
+                return text + "\n"
+            return text.rstrip("\n")
+        if head:
+            if len(head) >= 2 and head[0] == head[-1] and head[0] in ('"', "'"):
+                return head[1:-1]
+            return head
+        continuation: list[str] = []
+        j = i + 1
+        while j < fm_end and lines[j][:1] in (" ", "\t"):
+            continuation.append(lines[j].strip())
+            j += 1
+        return " ".join(continuation)
+    return None
+
+
 def read_brief(ref_md: Path) -> str:
     """Parse the single-line `brief:` from a reference file's frontmatter."""
     lines = ref_md.read_text(encoding="utf-8").splitlines()
@@ -76,12 +128,7 @@ def read_brief(ref_md: Path) -> str:
         fm_start, fm_end = _frontmatter_span(lines)
     except HarnessError as exc:
         raise HarnessError(f"{ref_md.name}: {exc}") from exc
-    try:
-        import yaml
-    except ImportError as exc:  # pragma: no cover
-        raise HarnessError("PyYAML missing (hard dep of this harness)") from exc
-    data = yaml.safe_load("\n".join(lines[fm_start:fm_end])) or {}
-    brief = data.get("brief")
+    brief = _scalar_value(lines, fm_start, fm_end, "brief")
     if not isinstance(brief, str) or not brief.strip():
         raise HarnessError(f"{ref_md.name}: `brief:` must be a non-empty single line")
     if "\n" in brief.strip():
@@ -128,10 +175,7 @@ def render(skill_md: Path) -> tuple[str, dict[str, object]]:
     if text.endswith("\n"):
         new_text += "\n"
 
-    import yaml
-
-    fm = yaml.safe_load("\n".join(new_lines[fm_start:fm_end])) or {}
-    desc = fm.get("description", "")
+    desc = _scalar_value(new_lines, fm_start, fm_end, "description") or ""
     return new_text, {
         "skill": skill_md.parent.name,
         "skipped": False,

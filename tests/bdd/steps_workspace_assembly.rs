@@ -14,7 +14,7 @@ thread_local! {
 #[when("扫描工作区各包对 rutis 的 Cargo 依赖")]
 pub(crate) fn w_scan_workspace_rutis_deps() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let status = Command::new("python3")
+    let status = Command::new(crate::bdd::helpers::python3())
         .arg("scripts/check_crate_graph.py")
         .current_dir(root)
         .status()

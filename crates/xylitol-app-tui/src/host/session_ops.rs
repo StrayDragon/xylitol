@@ -1,7 +1,10 @@
+use crate::bridge::ModeStripState;
 use crate::debug_fixtures::FixedZoneOp;
 use crate::driver::{ModelInfo, XyDriver};
 use crate::layout::{WidthTier, width_tier};
-use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeTravel};
+use xylitol_plugin_sdk::session::{
+    PlanModeKind, SessionEntry, SessionTreeTravel, latest_plan_mode,
+};
 use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion, Terminal, TreeNode};
 
 use super::super::bridge::session_tree::{rebuild_scrollback_from_travel, travel_history_note};
@@ -414,10 +417,16 @@ impl<T: Terminal> HostSession<T> {
         self.seed_editor_history_from_entries(&entries);
     }
 
-    pub fn apply_import_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+    pub fn apply_import_session(
+        &mut self,
+        session_id: &str,
+        entries: Vec<SessionEntry>,
+        has_more: bool,
+    ) {
         self.apply_switched_session(
             session_id,
             entries,
+            has_more,
             format!("imported → session {session_id}"),
             |root| {
                 root.close_import_confirm();
@@ -426,20 +435,32 @@ impl<T: Terminal> HostSession<T> {
         );
     }
 
-    pub fn apply_cli_restored_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+    pub fn apply_cli_restored_session(
+        &mut self,
+        session_id: &str,
+        entries: Vec<SessionEntry>,
+        has_more: bool,
+    ) {
         self.apply_switched_session(
             session_id,
             entries,
+            has_more,
             format!("restored → session {session_id}"),
             |_root| {},
             false,
         );
     }
 
-    pub fn apply_resume_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+    pub fn apply_resume_session(
+        &mut self,
+        session_id: &str,
+        entries: Vec<SessionEntry>,
+        has_more: bool,
+    ) {
         self.apply_switched_session(
             session_id,
             entries,
+            has_more,
             format!("switched → session {session_id}"),
             |root| {
                 root.close_session_tree();
@@ -449,10 +470,16 @@ impl<T: Terminal> HostSession<T> {
         );
     }
 
-    pub fn apply_new_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+    pub fn apply_new_session(
+        &mut self,
+        session_id: &str,
+        entries: Vec<SessionEntry>,
+        has_more: bool,
+    ) {
         self.apply_switched_session(
             session_id,
             entries,
+            has_more,
             format!("new session → {session_id}"),
             |root| {
                 root.close_session_tree();
@@ -462,10 +489,16 @@ impl<T: Terminal> HostSession<T> {
         );
     }
 
-    pub fn apply_clone_session(&mut self, session_id: &str, entries: Vec<SessionEntry>) {
+    pub fn apply_clone_session(
+        &mut self,
+        session_id: &str,
+        entries: Vec<SessionEntry>,
+        has_more: bool,
+    ) {
         self.apply_switched_session(
             session_id,
             entries,
+            has_more,
             format!("cloned → session {session_id}"),
             |root| {
                 root.close_session_tree();
@@ -478,6 +511,7 @@ impl<T: Terminal> HostSession<T> {
         &mut self,
         session_id: &str,
         entries: Vec<SessionEntry>,
+        has_more: bool,
         note: String,
         close_overlays: impl FnOnce(&mut super::super::layout::UiRoot),
         seed_as_new: bool,
@@ -490,6 +524,8 @@ impl<T: Terminal> HostSession<T> {
             editor_text: None,
         };
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
+        self.ui_model.mode_strip = mode_strip_for_entries(&entries);
+        crate::history_window::trim_to_window(&mut self.ui_model, has_more);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
             close_overlays(&mut root);
@@ -575,5 +611,55 @@ impl<T: Terminal> HostSession<T> {
             root.borrow_mut()
                 .apply_activity_after_rebuild(entries, travel);
         }
+    }
+
+    pub fn take_load_earlier_request(&mut self) -> bool {
+        self.ui_root
+            .as_ref()
+            .is_some_and(|root| root.borrow_mut().take_load_earlier_request())
+    }
+
+    pub fn oldest_loaded_entry_id(&self) -> Option<String> {
+        self.loaded_history
+            .as_ref()
+            .and_then(|h| h.first_entry_id.clone())
+    }
+
+    pub fn prepend_history(&mut self, older: Vec<SessionEntry>, has_more: bool) {
+        let Some(history) = self.loaded_history.as_mut() else {
+            return;
+        };
+        let mut merged = older;
+        merged.extend(std::mem::take(&mut history.entries));
+        history.first_entry_id = merged.iter().find_map(|e| e.entry_id().map(str::to_string));
+        history.entries = merged;
+        let entries = history.entries.clone();
+        let travel = SessionTreeTravel {
+            kind: xylitol_plugin_sdk::session::SessionTreeKind::MessageHistory,
+            selected_id: history.session_id.clone(),
+            leaf_id: xylitol_plugin_sdk::session::transcript_leaf_anchor(&entries, None),
+            editor_text: None,
+        };
+        rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
+        self.ui_model.mode_strip = mode_strip_for_entries(&entries);
+        crate::history_window::trim_to_window(&mut self.ui_model, has_more);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn clear_earlier_hint(&mut self) {
+        crate::history_window::trim_to_window(&mut self.ui_model, false);
+        self.sync_ui_root_from_model();
+    }
+}
+
+fn mode_strip_for_entries(entries: &[SessionEntry]) -> Option<ModeStripState> {
+    let mode = latest_plan_mode(entries);
+    match mode.mode {
+        PlanModeKind::Plan => Some(ModeStripState {
+            label: "plan".into(),
+        }),
+        PlanModeKind::Execute => mode.plan_id.as_ref().map(|id| ModeStripState {
+            label: format!("execute · {id}"),
+        }),
     }
 }

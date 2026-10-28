@@ -184,6 +184,7 @@ Markdown **fg 内联、bg 延后到行宽 padding**（与 pi-tui Markdown 一致
 ```
 loaded_resources  Codex 风启动卡片
 content           全宽；当前轮 live 输出 → 引擎 scrollback（非 Codex 式浏览界面）
+mode_strip        0 或 1 行（实验性模式；`◆ plan` / `◆ execute · <plan_id>`，无模式隐藏）
 status            0 或 1 行（仅 busy / retry / error）
 editor            贴底；上下 muted `─` 边框标出操作区
                   双 Esc 会话树 / 命令面板：替换此槽（showSelector）

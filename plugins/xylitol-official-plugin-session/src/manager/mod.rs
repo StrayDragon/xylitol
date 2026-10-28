@@ -28,6 +28,8 @@ pub struct SessionManager {
     in_memory_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
     pending_store: Arc<RwLock<HashMap<String, Vec<SessionEntry>>>>,
     write_locks: Arc<Mutex<HashMap<String, write_lock::SessionWriteLock>>>,
+    #[cfg(test)]
+    segment_reads: Arc<std::sync::atomic::AtomicUsize>,
 }
 
 impl Default for SessionManager {
@@ -40,6 +42,8 @@ impl Default for SessionManager {
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
             pending_store: Arc::new(RwLock::new(HashMap::new())),
             write_locks: Arc::new(Mutex::new(HashMap::new())),
+            #[cfg(test)]
+            segment_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 }
@@ -54,6 +58,8 @@ impl SessionManager {
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
             pending_store: Arc::new(RwLock::new(HashMap::new())),
             write_locks: Arc::new(Mutex::new(HashMap::new())),
+            #[cfg(test)]
+            segment_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 
@@ -66,6 +72,8 @@ impl SessionManager {
             in_memory_store: Arc::new(RwLock::new(HashMap::new())),
             pending_store: Arc::new(RwLock::new(HashMap::new())),
             write_locks: Arc::new(Mutex::new(HashMap::new())),
+            #[cfg(test)]
+            segment_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
 
@@ -85,6 +93,17 @@ impl SessionManager {
             .get(session_id)
             .cloned()
             .unwrap_or(None)
+    }
+
+    #[cfg(test)]
+    pub(super) fn reset_segment_reads(&self) {
+        self.segment_reads
+            .store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[cfg(test)]
+    pub(super) fn segment_reads(&self) -> usize {
+        self.segment_reads.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     fn session_file_exists(&self, session_id: &str) -> bool {

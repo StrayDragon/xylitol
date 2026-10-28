@@ -800,16 +800,12 @@ mod tests {
         apply_xy_event(
             &mut model,
             &XyEvent::MessageUpdate {
-                text: String::new(),
-                thinking: None,
                 message: Some(mk(serde_json::json!({"path": "a.py"}))),
             },
         );
         apply_xy_event(
             &mut model,
             &XyEvent::MessageUpdate {
-                text: String::new(),
-                thinking: None,
                 message: Some(mk(serde_json::json!({"content": "x\ny\n"}))),
             },
         );
@@ -844,14 +840,7 @@ mod tests {
             timestamp: 0,
             diagnostics: Vec::new(),
         });
-        apply_xy_event(
-            &mut model,
-            &XyEvent::MessageUpdate {
-                text: String::new(),
-                thinking: None,
-                message: Some(msg),
-            },
-        );
+        apply_xy_event(&mut model, &XyEvent::MessageUpdate { message: Some(msg) });
         let preview = model.entries.iter().find_map(|e| match e {
             UiEntry::Tool {
                 id, args_preview, ..
@@ -928,14 +917,7 @@ mod tests {
             timestamp: 0,
             diagnostics: Vec::new(),
         });
-        apply_xy_event(
-            &mut model,
-            &XyEvent::MessageUpdate {
-                text: String::new(),
-                thinking: None,
-                message: Some(msg),
-            },
-        );
+        apply_xy_event(&mut model, &XyEvent::MessageUpdate { message: Some(msg) });
         apply_xy_event(
             &mut model,
             &XyEvent::ToolExecutionEnd {
@@ -1061,8 +1043,6 @@ mod tests {
         apply_xy_event(
             &mut model,
             &XyEvent::MessageUpdate {
-                text: String::new(),
-                thinking: None,
                 message: Some(partial),
             },
         );

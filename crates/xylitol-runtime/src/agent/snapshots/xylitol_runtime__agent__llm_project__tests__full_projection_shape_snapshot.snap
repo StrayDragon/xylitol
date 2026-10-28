@@ -1,104 +1,103 @@
 ---
 source: crates/xylitol-runtime/src/agent/llm_project.rs
-assertion_line: 105
 expression: pretty
 ---
 [
   {
+    "content": [
+      {
+        "text": "plan the refactor",
+        "type": "text"
+      }
+    ],
     "role": "user",
-    "content": [
-      {
-        "type": "text",
-        "text": "plan the refactor"
-      }
-    ],
     "timestamp": 0
   },
   {
-    "role": "assistant",
-    "content": [
-      {
-        "type": "text",
-        "text": "I will read the entry first"
-      }
-    ],
-    "stopReason": "stop",
     "api": "",
-    "provider": "",
+    "content": [
+      {
+        "text": "I will read the entry first",
+        "type": "text"
+      }
+    ],
     "model": "",
+    "provider": "",
+    "role": "assistant",
+    "stopReason": "stop",
     "timestamp": 0
   },
   {
-    "role": "assistant",
+    "api": "",
     "content": [
       {
-        "type": "toolCall",
-        "id": "call_1",
-        "name": "read",
         "arguments": {
           "path": "src/main.rs"
-        }
+        },
+        "id": "call_1",
+        "name": "read",
+        "type": "toolCall"
       }
     ],
-    "api": "",
-    "provider": "",
     "model": "",
+    "provider": "",
+    "role": "assistant",
     "timestamp": 0
   },
   {
-    "role": "toolResult",
-    "toolCallId": "call_1",
-    "toolName": "read",
     "content": [
       {
-        "type": "text",
-        "text": "fn main() {}"
+        "text": "fn main() {}",
+        "type": "text"
       }
     ],
     "isError": false,
-    "timestamp": 0
+    "role": "toolResult",
+    "timestamp": 0,
+    "toolCallId": "call_1",
+    "toolName": "read"
   },
   {
-    "role": "toolResult",
-    "toolCallId": "call_2",
-    "toolName": "read",
     "content": [
       {
-        "type": "text",
-        "text": "boom"
+        "text": "boom",
+        "type": "text"
       }
     ],
     "isError": true,
+    "role": "toolResult",
+    "timestamp": 0,
+    "toolCallId": "call_2",
+    "toolName": "read"
+  },
+  {
+    "content": [
+      {
+        "text": "$ ls\na.txt",
+        "type": "text"
+      }
+    ],
+    "role": "user",
     "timestamp": 0
   },
   {
-    "role": "user",
     "content": [
       {
-        "type": "text",
-        "text": "$ ls\na.txt"
+        "text": "[Context summary: earlier work summarized]",
+        "type": "text"
       }
     ],
+    "role": "user",
     "timestamp": 0
   },
   {
-    "role": "user",
     "content": [
       {
-        "type": "text",
-        "text": "[Context summary: earlier work summarized]"
+        "text": "user pinned note",
+        "type": "text"
       }
     ],
-    "timestamp": 0
-  },
-  {
     "role": "user",
-    "content": [
-      {
-        "type": "text",
-        "text": "user pinned note"
-      }
-    ],
     "timestamp": 0
   }
 ]

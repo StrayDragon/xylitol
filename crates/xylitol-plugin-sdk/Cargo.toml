@@ -18,6 +18,7 @@ regex = { workspace = true }
 schemars = { workspace = true, features = ["derive"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["unbounded_depth"] }
+yaml_serde = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "macros"] }
@@ -28,4 +29,3 @@ rutis = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
-yaml_serde = { workspace = true }

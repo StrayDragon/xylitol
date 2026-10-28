@@ -516,3 +516,33 @@ async fn test_sr_c2895_targeted_replay(server_test: ServerTest) {}
     name = "第二次根忙碌拒绝"
 )]
 async fn test_sr_c2895_busy_reject(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "释放后重建续接序号"
+)]
+async fn test_sr_slot_release_seq_watermark(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "tape 不占 journal 序号"
+)]
+async fn test_sr_tape_no_seq(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "中段重连带当前回合快照"
+)]
+async fn test_sr_midturn_partial(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "分页从最新向前"
+)]
+async fn test_sr_get_messages_paging(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "完成事件前已落库"
+)]
+async fn test_sr_persist_before_end(server_test: ServerTest) {}

@@ -1,7 +1,7 @@
 use crate::bdd::prelude::*;
 use crate::bdd::steps_server::ServerTest;
 use rstest::fixture;
-use rstest_bdd_macros::{then, when};
+use rstest_bdd_macros::{given, then, when};
 use xylitol_plugin_sdk::lifecycle::XyEvent;
 use xylitol_protocol::codec::{self, Inbound, Rejected};
 use xylitol_protocol::{Command, Event, Message, Outcome, RequestId};
@@ -97,11 +97,7 @@ fn w_stream_events_roundtrip(protocol_bdd: &ProtocolBdd) {
             role: "assistant".into(),
             message: Some(serde_json::json!({"text": "done"})),
         },
-        Event::MessageUpdate {
-            text: "partial".into(),
-            thinking: Some("hmm".into()),
-            message: None,
-        },
+        Event::MessageUpdate { message: None },
         Event::ToolExecutionUpdate {
             id: "t1".into(),
             output: "chunk".into(),
@@ -737,4 +733,50 @@ async fn w_jsonrpc_plugin_call(server_test: &ServerTest) {
 #[then("error.code 为 -32601 且 data.code 为 unregistered_method")]
 fn t_plugin_prefix_unregistered(server_test: &ServerTest) {
     assert_error_response(server_test, 200, -32601, Some("unregistered_method"));
+}
+
+thread_local! {
+    static PAGE_RESULT: RefCell<Option<(usize, bool, Option<String>)>> = const { RefCell::new(None) };
+}
+
+#[given("会话已有超过 limit 的条目")]
+fn g_more_than_limit() {
+    PAGE_RESULT.with(|c| *c.borrow_mut() = None);
+}
+
+#[when("POST /rpc 调用 get_messages 带 limit 与 before_entry_id")]
+fn w_get_messages_paged() {
+    use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry, paginate_entries};
+    let all: Vec<SessionEntry> = (0..50)
+        .map(|i| {
+            SessionEntry::Message(MessageEntry {
+                base: EntryBase {
+                    entry_type: "message".into(),
+                    id: format!("e{i}"),
+                    parent_id: None,
+                    timestamp: 0,
+                },
+                message: serde_json::json!({"role": "user", "content": format!("m{i}")}),
+            })
+        })
+        .collect();
+    let (first, _) = paginate_entries(all.clone(), Some(20), None);
+    let anchor = first[0].entry_id().unwrap().to_string();
+    let (second, has_more) = paginate_entries(all, Some(20), Some(&anchor));
+    let ids: Vec<String> = second
+        .iter()
+        .filter_map(|e| e.entry_id().map(str::to_string))
+        .collect();
+    PAGE_RESULT.with(|c| *c.borrow_mut() = Some((ids.len(), has_more, ids.last().cloned())));
+}
+
+#[then("应答只含该窗口内条目且不重复不遗漏")]
+fn t_page_window() {
+    let (len, _has_more, last) = PAGE_RESULT.with(|c| c.borrow().clone()).expect("paged");
+    assert_eq!(len, 20, "limit must cap the window");
+    assert_eq!(
+        last.as_deref(),
+        Some("e29"),
+        "the page must end right before the anchor"
+    );
 }

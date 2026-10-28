@@ -21,6 +21,7 @@ mod editor_history_seed;
 mod effects;
 pub(crate) mod error;
 mod external_editor;
+pub mod history_window;
 mod host;
 mod interaction_scene;
 pub use interaction_scene::InteractionBdd;
@@ -166,12 +167,18 @@ async fn apply_cli_restore(
             sid.clone(),
             editor_history_seed::spawn_cli_session_load(store, sid),
         )),
-        _ => match crate::dispatch::dispatch(driver, xylitol_protocol::Command::GetMessages {})
-            .await
+        _ => match crate::dispatch::dispatch(
+            driver,
+            xylitol_protocol::Command::GetMessages {
+                limit: None,
+                before_entry_id: None,
+            },
+        )
+        .await
         {
             Ok(crate::dispatch::DispatchOutcome::Messages { entries, .. }) => {
                 if let Some(sid) = driver.session_id() {
-                    session.apply_cli_restored_session(&sid, entries);
+                    session.apply_cli_restored_session(&sid, entries, false);
                 } else {
                     session.seed_editor_history_from_entries(&entries);
                 }
@@ -448,7 +455,7 @@ async fn run_host_loop(
                     if let Some((started, sid, _)) = cli_restore.take() {
                         match maybe_restore {
                             Ok(Ok(entries)) => {
-                                session.apply_cli_restored_session(&sid, entries);
+                                session.apply_cli_restored_session(&sid, entries, false);
                                 let _ = session.render_now();
                             }
                             Ok(Err(e)) => {

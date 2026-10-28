@@ -172,3 +172,7 @@
     场景: 权限建议仅
       当 读取权限边界文档
       那么 明示建议性且不阻塞主机级访问
+
+  @req:r2965
+  规则: project-plan-trust
+    项目本地计划（项目根下 `.xylitol/plans`）的读取与写入 须遵循项目 trust 门禁；未信任 须返回 PermissionDenied；global 计划 不受项目 trust 限制。由 plan 插件单测覆盖。

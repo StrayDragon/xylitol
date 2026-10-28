@@ -491,3 +491,21 @@ async fn reader_switch_session_never_touches_obs_slot() {
         "switch must not write the process obs slot (runtime-owned identity)"
     );
 }
+
+#[tokio::test]
+async fn in_process_get_messages_returns_active_session_entries() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let (driver, _obs) = build_test_driver(store.clone()).await;
+    let sid = driver.session_id().expect("session");
+    store
+        .append_with_id(&sid, &msg_entry("u1", None, "user", "hello"))
+        .await
+        .expect("append u1");
+
+    let entries = driver.get_messages().await.expect("get_messages");
+    assert!(
+        entries.iter().any(|entry| entry.entry_id() == Some("u1")),
+        "get_messages must include the appended entry: {entries:?}"
+    );
+}

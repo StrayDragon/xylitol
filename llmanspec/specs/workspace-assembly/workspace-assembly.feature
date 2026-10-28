@@ -6,7 +6,7 @@
 
   @req:r2910
   规则: 仅装配适配层依赖 rutis
-    执行权威、官方插件、产品端不得直接依赖 rutis。直接依赖 rutis 的 crate 必须是 plugin-sdk 或 kernel；直接依赖 rutis-loader 的 crate 必须是 kernel。
+    执行权威、官方插件、产品端不得直接依赖 rutis。直接依赖 rutis 的 crate 必须是 plugin-sdk 或 kernel；直接依赖 rutis-loader 的 crate 必须是 kernel。todo / workflow / plan 能力 须各自为独立官方插件，核心 tools 插件 只提供 read / write / edit / bash / grep / find / ls；插件之间 不得以 crate 依赖通信。
     场景: 扫描工作区仅装配适配层声明 rutis
       当 扫描工作区各包对 rutis 的 Cargo 依赖
       那么 仅装配适配层声明了 rutis

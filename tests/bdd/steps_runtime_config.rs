@@ -490,3 +490,71 @@ fn t_rc_docs(rc_snap: &RcSnap) {
         "config.local.yaml must not be merged"
     );
 }
+
+#[when("生成配置 schema 并与仓库产物比较")]
+pub(crate) fn w_config_schema_render(rc_snap: &RcSnap) {
+    let rendered = xylitol_kernel::config::validate::render_app_config_schema();
+    let again = xylitol_kernel::config::validate::render_app_config_schema();
+    assert_eq!(rendered, again, "schema rendering MUST be idempotent");
+    let target = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("configs")
+        .join("config.schema.json");
+    let checked_in = std::fs::read_to_string(&target)
+        .unwrap_or_else(|e| panic!("read {}: {e}", target.display()));
+    assert_eq!(
+        checked_in, rendered,
+        "configs/config.schema.json drifted from AppConfig; run `just gen-config-schema`"
+    );
+    rc_snap
+        .app_config
+        .replace(Some(xylitol_kernel::config::types::AppConfig::default()));
+}
+
+#[then("二者逐字节相同且再生成幂等")]
+pub(crate) fn t_config_schema_same_source(rc_snap: &RcSnap) {
+    assert!(
+        rc_snap.app_config.borrow().is_some(),
+        "schema comparison must have run"
+    );
+}
+
+#[when("读取仓库配置 schema 的顶层属性")]
+pub(crate) fn w_config_schema_top_level(rc_snap: &RcSnap) {
+    let rendered = xylitol_kernel::config::validate::render_app_config_schema();
+    let value: serde_json::Value =
+        serde_json::from_str(&rendered).expect("config schema must be valid JSON");
+    let props = value
+        .get("properties")
+        .and_then(|p| p.as_object())
+        .expect("config schema must declare properties");
+    let keys: Vec<String> = props.keys().cloned().collect();
+    rc_snap.local_yaml.replace(Some(keys.join(",")));
+}
+
+#[then(
+    "含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan"
+)]
+pub(crate) fn t_config_schema_covers_sections(rc_snap: &RcSnap) {
+    let joined = rc_snap
+        .local_yaml
+        .borrow()
+        .clone()
+        .expect("top-level keys captured");
+    for key in [
+        "models",
+        "agents",
+        "session",
+        "tool_batch",
+        "tui",
+        "otel",
+        "loop_policies",
+        "todo",
+        "workflow",
+        "plan",
+    ] {
+        assert!(
+            joined.split(',').any(|k| k == key),
+            "config schema MUST declare `{key}`; got {joined}"
+        );
+    }
+}

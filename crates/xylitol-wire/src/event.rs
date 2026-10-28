@@ -16,60 +16,46 @@ pub enum WireEventError {
 }
 
 pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
-    Ok(match event {
-        XyEvent::AgentStart { session_id, model } => Event::AgentStart {
+    match event {
+        XyEvent::AgentStart { session_id, model } => Ok(Event::AgentStart {
             session_id: session_id.clone(),
             model: model.clone(),
-        },
-        XyEvent::AgentEnd { .. } => Event::AgentEnd,
-        XyEvent::TurnStart { turn_index } => Event::TurnStart {
+        }),
+        XyEvent::AgentEnd { .. } => Ok(Event::AgentEnd),
+        XyEvent::TurnStart { turn_index } => Ok(Event::TurnStart {
             turn_index: *turn_index,
-        },
-        XyEvent::TurnEnd { turn_index } => Event::TurnEnd {
+        }),
+        XyEvent::TurnEnd { turn_index } => Ok(Event::TurnEnd {
             turn_index: *turn_index,
-        },
-        XyEvent::MessageStart { role, message } => Event::MessageStart {
-            role: role.clone(),
-            message: to_value_opt(message)?,
-        },
-        XyEvent::MessageUpdate {
-            text,
-            thinking,
-            message,
-        } => Event::MessageUpdate {
-            text: text.clone(),
-            thinking: thinking.clone(),
-            message: to_value_opt(message)?,
-        },
-        XyEvent::MessageEnd { role, message } => Event::MessageEnd {
-            role: role.clone(),
-            message: to_value_opt(message)?,
-        },
-        XyEvent::TextDelta(text) => Event::TextDelta { text: text.clone() },
-        XyEvent::ThinkingDelta(text) => Event::ThinkingDelta { text: text.clone() },
-        XyEvent::ToolExecutionStart { id, name, args } => Event::ToolExecutionStart {
+        }),
+        XyEvent::MessageStart { role, message } => message_start_to_wire(role, message),
+        XyEvent::MessageUpdate { message } => message_update_to_wire(message),
+        XyEvent::MessageEnd { role, message } => message_end_to_wire(role, message),
+        XyEvent::TextDelta(text) => Ok(Event::TextDelta { text: text.clone() }),
+        XyEvent::ThinkingDelta(text) => Ok(Event::ThinkingDelta { text: text.clone() }),
+        XyEvent::ToolExecutionStart { id, name, args } => Ok(Event::ToolExecutionStart {
             id: id.clone(),
             name: name.clone(),
             args: args.clone(),
-        },
-        XyEvent::ToolExecutionUpdate { id, output } => Event::ToolExecutionUpdate {
+        }),
+        XyEvent::ToolExecutionUpdate { id, output } => Ok(Event::ToolExecutionUpdate {
             id: id.clone(),
             output: output.clone(),
-        },
+        }),
         XyEvent::ToolExecutionEnd {
             id,
             name,
             result,
             is_error,
-        } => Event::ToolExecutionEnd {
+        } => Ok(Event::ToolExecutionEnd {
             id: id.clone(),
             name: name.clone(),
             result: result.clone(),
             is_error: *is_error,
-        },
-        XyEvent::CompactionStart { reason } => Event::CompactionStart {
+        }),
+        XyEvent::CompactionStart { reason } => Ok(Event::CompactionStart {
             reason: reason.clone(),
-        },
+        }),
         XyEvent::CompactionEnd {
             result,
             aborted,
@@ -80,7 +66,7 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             tokens_before,
             tokens_after,
             notice,
-        } => Event::CompactionEnd {
+        } => Ok(Event::CompactionEnd {
             result: result.clone(),
             aborted: *aborted,
             reason: reason.clone(),
@@ -90,12 +76,12 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             tokens_before: *tokens_before,
             tokens_after: *tokens_after,
             notice: notice.clone(),
-        },
+        }),
         XyEvent::ContextTokenSettlement {
             estimate,
             reason,
             generation,
-        } => Event::ContextTokenSettlement {
+        } => Ok(Event::ContextTokenSettlement {
             tokens: estimate.tokens,
             provenance: estimate.provenance.as_str().to_string(),
             usage_tokens: estimate.usage_tokens,
@@ -103,105 +89,92 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             last_usage_index: estimate.last_usage_index,
             reason: reason.clone(),
             generation: *generation,
-        },
-        XyEvent::ModelSelect { provider, model_id } => Event::ModelSelect {
+        }),
+        XyEvent::ModelSelect { provider, model_id } => Ok(Event::ModelSelect {
             provider: provider.clone(),
             model_id: model_id.clone(),
-        },
-        XyEvent::ThinkingLevelChanged { level } => Event::ThinkingLevelChanged {
+        }),
+        XyEvent::ThinkingLevelChanged { level } => Ok(Event::ThinkingLevelChanged {
             level: level.clone(),
-        },
+        }),
         XyEvent::QueueUpdate {
             steer_count,
             follow_up_count,
-        } => Event::QueueUpdate {
+        } => Ok(Event::QueueUpdate {
             steer_count: *steer_count,
             follow_up_count: *follow_up_count,
-        },
-        XyEvent::TodoUpdated { list } => Event::TodoUpdated {
-            list: todo_to_wire(list)?,
-        },
+        }),
+        XyEvent::TodoUpdated { list } => todo_updated_to_wire(list),
+        XyEvent::PlanDocUpdated { doc } => plan_doc_updated_to_wire(doc),
+        XyEvent::WorkflowUpdated { workflow } => workflow_updated_to_wire(workflow),
+        XyEvent::PlanModeChanged { mode, plan_id } => plan_mode_changed_to_wire(mode, plan_id),
         XyEvent::AutoRetryStart {
             attempt,
             max_retries,
             delay_ms,
-        } => Event::AutoRetryStart {
+        } => Ok(Event::AutoRetryStart {
             attempt: *attempt,
             max_retries: *max_retries,
             delay_ms: *delay_ms,
-        },
-        XyEvent::AutoRetryEnd { success, attempt } => Event::AutoRetryEnd {
+        }),
+        XyEvent::AutoRetryEnd { success, attempt } => Ok(Event::AutoRetryEnd {
             success: *success,
             attempt: *attempt,
-        },
-        XyEvent::Error(err) => Event::Error {
+        }),
+        XyEvent::Error(err) => Ok(Event::Error {
             kind: err.kind.clone(),
             message: err.message.clone(),
-        },
-        XyEvent::SessionInfoChanged { key, value } => Event::SessionInfoChanged {
+        }),
+        XyEvent::SessionInfoChanged { key, value } => Ok(Event::SessionInfoChanged {
             key: key.clone(),
             value: value.clone(),
-        },
-    })
+        }),
+    }
 }
 
 pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
-    Ok(match event {
-        Event::AgentStart { session_id, model } => XyEvent::AgentStart {
+    match event {
+        Event::AgentStart { session_id, model } => Ok(XyEvent::AgentStart {
             session_id: session_id.clone(),
             model: model.clone(),
-        },
-        Event::AgentEnd => XyEvent::AgentEnd {
+        }),
+        Event::AgentEnd => Ok(XyEvent::AgentEnd {
             messages: Vec::new(),
-        },
-        Event::TurnStart { turn_index } => XyEvent::TurnStart {
+        }),
+        Event::TurnStart { turn_index } => Ok(XyEvent::TurnStart {
             turn_index: *turn_index,
-        },
-        Event::TurnEnd { turn_index } => XyEvent::TurnEnd {
+        }),
+        Event::TurnEnd { turn_index } => Ok(XyEvent::TurnEnd {
             turn_index: *turn_index,
-        },
-        Event::MessageStart { role, message } => XyEvent::MessageStart {
-            role: role.clone(),
-            message: from_value_opt(message)?,
-        },
-        Event::MessageUpdate {
-            text,
-            thinking,
-            message,
-        } => XyEvent::MessageUpdate {
-            text: text.clone(),
-            thinking: thinking.clone(),
-            message: from_value_opt(message)?,
-        },
-        Event::MessageEnd { role, message } => XyEvent::MessageEnd {
-            role: role.clone(),
-            message: from_value_opt(message)?,
-        },
-        Event::TextDelta { text } => XyEvent::TextDelta(text.clone()),
-        Event::ThinkingDelta { text } => XyEvent::ThinkingDelta(text.clone()),
-        Event::ToolExecutionStart { id, name, args } => XyEvent::ToolExecutionStart {
+        }),
+        Event::MessageStart { role, message } => message_start_from_wire(role, message),
+        Event::MessageUpdate { message } => message_update_from_wire(message),
+        Event::MessageEnd { role, message } => message_end_from_wire(role, message),
+        Event::TextDelta { text } => Ok(XyEvent::TextDelta(text.clone())),
+        Event::ThinkingDelta { text } => Ok(XyEvent::ThinkingDelta(text.clone())),
+        Event::ToolExecutionStart { id, name, args } => Ok(XyEvent::ToolExecutionStart {
             id: id.clone(),
             name: name.clone(),
             args: args.clone(),
-        },
-        Event::ToolExecutionUpdate { id, output } => XyEvent::ToolExecutionUpdate {
+        }),
+        Event::ToolExecutionUpdate { id, output } => Ok(XyEvent::ToolExecutionUpdate {
             id: id.clone(),
             output: output.clone(),
-        },
+        }),
         Event::ToolExecutionEnd {
             id,
             name,
             result,
             is_error,
-        } => XyEvent::ToolExecutionEnd {
+        } => Ok(XyEvent::ToolExecutionEnd {
             id: id.clone(),
             name: name.clone(),
             result: result.clone(),
             is_error: *is_error,
-        },
-        Event::CompactionStart { reason } => XyEvent::CompactionStart {
+        }),
+        Event::CompactionStart { reason } => Ok(XyEvent::CompactionStart {
             reason: reason.clone(),
-        },
+        }),
         Event::CompactionEnd {
             result,
             aborted,
@@ -212,7 +185,7 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             tokens_before,
             tokens_after,
             notice,
-        } => XyEvent::CompactionEnd {
+        } => Ok(XyEvent::CompactionEnd {
             result: result.clone(),
             aborted: *aborted,
             reason: reason.clone(),
@@ -222,7 +195,7 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             tokens_before: *tokens_before,
             tokens_after: *tokens_after,
             notice: notice.clone(),
-        },
+        }),
         Event::ContextTokenSettlement {
             tokens,
             provenance,
@@ -231,7 +204,7 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             last_usage_index,
             reason,
             generation,
-        } => XyEvent::ContextTokenSettlement {
+        } => Ok(XyEvent::ContextTokenSettlement {
             estimate: ContextTokenEstimate {
                 tokens: *tokens,
                 provenance: TokenProvenance::from_key(provenance),
@@ -241,44 +214,45 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             },
             reason: reason.clone(),
             generation: *generation,
-        },
-        Event::ModelSelect { provider, model_id } => XyEvent::ModelSelect {
+        }),
+        Event::ModelSelect { provider, model_id } => Ok(XyEvent::ModelSelect {
             provider: provider.clone(),
             model_id: model_id.clone(),
-        },
-        Event::ThinkingLevelChanged { level } => XyEvent::ThinkingLevelChanged {
+        }),
+        Event::ThinkingLevelChanged { level } => Ok(XyEvent::ThinkingLevelChanged {
             level: level.clone(),
-        },
+        }),
         Event::QueueUpdate {
             steer_count,
             follow_up_count,
-        } => XyEvent::QueueUpdate {
+        } => Ok(XyEvent::QueueUpdate {
             steer_count: *steer_count,
             follow_up_count: *follow_up_count,
-        },
-        Event::TodoUpdated { list } => XyEvent::TodoUpdated {
-            list: todo_from_wire(list)?,
-        },
+        }),
+        Event::TodoUpdated { list } => todo_updated_from_wire(list),
+        Event::PlanDocUpdated { doc } => plan_doc_updated_from_wire(doc),
+        Event::WorkflowUpdated { workflow } => workflow_updated_from_wire(workflow),
+        Event::PlanModeChanged { mode, plan_id } => plan_mode_changed_from_wire(mode, plan_id),
         Event::AutoRetryStart {
             attempt,
             max_retries,
             delay_ms,
-        } => XyEvent::AutoRetryStart {
+        } => Ok(XyEvent::AutoRetryStart {
             attempt: *attempt,
             max_retries: *max_retries,
             delay_ms: *delay_ms,
-        },
-        Event::AutoRetryEnd { success, attempt } => XyEvent::AutoRetryEnd {
+        }),
+        Event::AutoRetryEnd { success, attempt } => Ok(XyEvent::AutoRetryEnd {
             success: *success,
             attempt: *attempt,
-        },
-        Event::Error { kind, message } => XyEvent::Error(XyEventError::new(kind, message)),
-        Event::SessionInfoChanged { key, value } => XyEvent::SessionInfoChanged {
+        }),
+        Event::Error { kind, message } => Ok(XyEvent::Error(XyEventError::new(kind, message))),
+        Event::SessionInfoChanged { key, value } => Ok(XyEvent::SessionInfoChanged {
             key: key.clone(),
             value: value.clone(),
-        },
-        Event::Unknown => return Err(WireEventError::Unknown),
-    })
+        }),
+        Event::Unknown => Err(WireEventError::Unknown),
+    }
 }
 
 fn to_value_opt(message: &Option<AgentMessage>) -> Result<Option<Value>, WireEventError> {
@@ -346,8 +320,6 @@ mod tests {
                 message: Some(AgentMessage::assistant("start")),
             },
             XyEvent::MessageUpdate {
-                text: "hi".into(),
-                thinking: Some("t".into()),
                 message: Some(AgentMessage::assistant("partial")),
             },
             XyEvent::MessageEnd {
@@ -467,4 +439,115 @@ mod tests {
         let back = event_from_wire(&wire).expect("back");
         assert!(matches!(back, XyEvent::TodoUpdated { list: ref l } if *l == list));
     }
+}
+
+fn message_start_to_wire(
+    role: &str,
+    message: &Option<AgentMessage>,
+) -> Result<Event, WireEventError> {
+    Ok(Event::MessageStart {
+        role: role.to_string(),
+        message: to_value_opt(message)?,
+    })
+}
+
+fn message_update_to_wire(message: &Option<AgentMessage>) -> Result<Event, WireEventError> {
+    Ok(Event::MessageUpdate {
+        message: to_value_opt(message)?,
+    })
+}
+
+fn message_end_to_wire(
+    role: &str,
+    message: &Option<AgentMessage>,
+) -> Result<Event, WireEventError> {
+    Ok(Event::MessageEnd {
+        role: role.to_string(),
+        message: to_value_opt(message)?,
+    })
+}
+
+fn todo_updated_to_wire(list: &DomainTodoList) -> Result<Event, WireEventError> {
+    Ok(Event::TodoUpdated {
+        list: todo_to_wire(list)?,
+    })
+}
+
+fn plan_doc_updated_to_wire(
+    doc: &xylitol_plugin_sdk::session::PlanDoc,
+) -> Result<Event, WireEventError> {
+    Ok(Event::PlanDocUpdated {
+        doc: serde_json::to_value(doc)?,
+    })
+}
+
+fn workflow_updated_to_wire(
+    workflow: &xylitol_plugin_sdk::session::Workflow,
+) -> Result<Event, WireEventError> {
+    Ok(Event::WorkflowUpdated {
+        workflow: serde_json::to_value(workflow)?,
+    })
+}
+
+fn plan_mode_changed_to_wire(
+    mode: &xylitol_plugin_sdk::session::PlanModeKind,
+    plan_id: &Option<String>,
+) -> Result<Event, WireEventError> {
+    Ok(Event::PlanModeChanged {
+        mode: serde_json::to_value(mode)?
+            .as_str()
+            .unwrap_or("execute")
+            .to_string(),
+        plan_id: plan_id.clone(),
+    })
+}
+
+fn message_start_from_wire(role: &str, message: &Option<Value>) -> Result<XyEvent, WireEventError> {
+    Ok(XyEvent::MessageStart {
+        role: role.to_string(),
+        message: from_value_opt(message)?,
+    })
+}
+
+fn message_update_from_wire(message: &Option<Value>) -> Result<XyEvent, WireEventError> {
+    Ok(XyEvent::MessageUpdate {
+        message: from_value_opt(message)?,
+    })
+}
+
+fn message_end_from_wire(role: &str, message: &Option<Value>) -> Result<XyEvent, WireEventError> {
+    Ok(XyEvent::MessageEnd {
+        role: role.to_string(),
+        message: from_value_opt(message)?,
+    })
+}
+
+fn todo_updated_from_wire(list: &WireTodoList) -> Result<XyEvent, WireEventError> {
+    Ok(XyEvent::TodoUpdated {
+        list: todo_from_wire(list)?,
+    })
+}
+
+fn plan_doc_updated_from_wire(doc: &Value) -> Result<XyEvent, WireEventError> {
+    Ok(XyEvent::PlanDocUpdated {
+        doc: serde_json::from_value::<xylitol_plugin_sdk::session::PlanDoc>(doc.clone())?,
+    })
+}
+
+fn workflow_updated_from_wire(workflow: &Value) -> Result<XyEvent, WireEventError> {
+    Ok(XyEvent::WorkflowUpdated {
+        workflow: serde_json::from_value::<xylitol_plugin_sdk::session::Workflow>(
+            workflow.clone(),
+        )?,
+    })
+}
+
+fn plan_mode_changed_from_wire(
+    mode: &str,
+    plan_id: &Option<String>,
+) -> Result<XyEvent, WireEventError> {
+    Ok(XyEvent::PlanModeChanged {
+        mode: serde_json::from_value(Value::String(mode.to_string()))?,
+        plan_id: plan_id.clone(),
+    })
 }

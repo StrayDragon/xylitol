@@ -290,3 +290,33 @@ impl SessionPrepareHub for McpPrepareHub {
             .unwrap_or_default()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn view_reports_complete_when_no_servers_are_configured() {
+        let hub = McpPrepareHub::new(Vec::new());
+        let view = hub.view();
+        assert!(!view.connecting);
+        assert!(view.complete);
+    }
+
+    #[tokio::test]
+    async fn view_reports_connecting_when_a_lock_is_held() {
+        let hub = McpPrepareHub::new(Vec::new());
+        {
+            let _guard = hub.state.inner.lock().await;
+            assert!(hub.view().connecting);
+        }
+        {
+            let _guard = hub.state.progress.lock().await;
+            assert!(hub.view().connecting);
+        }
+        {
+            let _guard = hub.state.servers.lock().await;
+            assert!(hub.view().connecting);
+        }
+    }
+}

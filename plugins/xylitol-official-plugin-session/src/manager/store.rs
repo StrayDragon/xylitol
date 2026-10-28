@@ -17,6 +17,15 @@ impl XySessionStore for SessionManager {
         SessionManager::read_entries(self, session_id).await
     }
 
+    async fn load_entries_page(
+        &self,
+        session_id: &str,
+        limit: Option<usize>,
+        before_entry_id: Option<&str>,
+    ) -> Result<(Vec<SessionEntry>, bool), XySessionStoreError> {
+        SessionManager::read_entries_page(self, session_id, limit, before_entry_id).await
+    }
+
     async fn load_leaf_branch(
         &self,
         session_id: &str,

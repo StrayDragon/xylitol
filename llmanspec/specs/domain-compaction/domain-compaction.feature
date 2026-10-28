@@ -390,3 +390,12 @@
       假如 会话含一批可投影的 user 与 assistant 消息（含长文本与图片）
       当 对该上下文计算切点度量与统一估算的逐条组成
       那么 切点累计等于统一估算逐条分解且非常规字符计数
+
+  @req:r2971
+  规则: 状态条目跨压缩保留
+    Compaction 须保留最新状态类 CustomEntry：plan_mode、plan_doc（每个 plan_id 最新）、plan_ref、workflow、todo_checkpoint 与 agent_todo。切点 firstKeptEntryId 之前的状态条目 须在 compaction 后重新追加，使 load_leaf_branch 与 build_context_entries 可见；不得因压缩把计划模式重置为 execute，或丢失活动 workflow / 计划文档。
+
+    场景: 压缩后保留 plan 模式
+      假如 会话处于 plan 模式且有 50 个轮次
+      当 触发压缩保留最近 10 轮
+      那么 压缩后会话仍为 plan 模式

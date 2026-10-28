@@ -11,6 +11,7 @@ use crate::driver::session_export::SessionExporter;
 use xylitol_plugin_sdk::AgentTodoGateway;
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::XySessionError;
+use xylitol_plugin_sdk::{PlanGateway, WorkflowGateway};
 
 use super::types::{
     CommandInfo, EventStream, LoadedResourcesSnapshot, ModelInfo, ProjectTrustMode,
@@ -53,6 +54,8 @@ pub struct XyInProcessDriver {
     exporter: SessionExporter,
     ask_gateway: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
     todo_gateway: Arc<dyn AgentTodoGateway>,
+    plan_gateway: Option<Arc<dyn PlanGateway>>,
+    workflow_gateway: Option<Arc<dyn WorkflowGateway>>,
     bash_run_sink: std::sync::Mutex<Option<xylitol_plugin_sdk::BashOutputSink>>,
     slash_commands: Vec<CommandInfo>,
     ctx: Option<xylitol_plugin_sdk::rt::Ctx>,
@@ -88,6 +91,8 @@ impl XyInProcessDriver {
             exporter,
             ask_gateway: None,
             todo_gateway: Arc::new(NoopTodo),
+            plan_gateway: None,
+            workflow_gateway: None,
             bash_run_sink: std::sync::Mutex::new(None),
             slash_commands: Vec::new(),
             ctx: None,
@@ -113,6 +118,22 @@ impl XyInProcessDriver {
         self.todo_gateway = todo;
     }
 
+    pub fn set_plan_gateway(&mut self, plan: Arc<dyn PlanGateway>) {
+        self.plan_gateway = Some(plan);
+    }
+
+    pub fn plan_gateway(&self) -> Option<Arc<dyn PlanGateway>> {
+        self.plan_gateway.clone()
+    }
+
+    pub fn set_workflow_gateway(&mut self, workflow: Arc<dyn WorkflowGateway>) {
+        self.workflow_gateway = Some(workflow);
+    }
+
+    pub fn workflow_gateway(&self) -> Option<Arc<dyn WorkflowGateway>> {
+        self.workflow_gateway.clone()
+    }
+
     pub fn set_slash_commands(&mut self, commands: Vec<CommandInfo>) {
         self.slash_commands = commands;
     }
@@ -126,9 +147,18 @@ impl XyInProcessDriver {
     }
 
     async fn bind_todo_session(&self, session_id: Option<&str>) {
-        self.todo_gateway
-            .bind_session(session_id.map(str::to_string))
-            .await;
+        let session_id = session_id.map(str::to_string);
+        self.todo_gateway.bind_session(session_id.clone()).await;
+        self.bind_optional_gateways(session_id).await;
+    }
+
+    async fn bind_optional_gateways(&self, session_id: Option<String>) {
+        if let Some(plan) = self.plan_gateway.as_ref() {
+            plan.bind_session(session_id.clone()).await;
+        }
+        if let Some(workflow) = self.workflow_gateway.as_ref() {
+            workflow.bind_session(session_id).await;
+        }
     }
 
     pub fn todo_gateway(&self) -> Arc<dyn AgentTodoGateway> {

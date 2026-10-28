@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use xylitol_plugin_sdk::LoopMiddlewareRegistry;
 use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 pub struct AgentReact;
@@ -12,7 +15,12 @@ impl Plugin for AgentReactPlugin {
     }
 
     async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
-        ctx.provide(AgentReact)?;
-        Ok(())
+        provide_react_context(ctx)
     }
+}
+
+fn provide_react_context(ctx: &Ctx) -> Result {
+    ctx.provide(AgentReact)?;
+    ctx.provide_as::<LoopMiddlewareRegistry>(Arc::new(LoopMiddlewareRegistry::new()))?;
+    Ok(())
 }

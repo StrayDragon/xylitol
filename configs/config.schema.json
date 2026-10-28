@@ -1,8 +1,839 @@
 {
+  "$defs": {
+    "ActivityFoldStreamCollapse": {
+      "enum": [
+        "envelope",
+        "clusters"
+      ],
+      "type": "string"
+    },
+    "AgentProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "system_prompt": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentsConfig": {
+      "properties": {
+        "default_profile": {
+          "default": "default",
+          "type": "string"
+        },
+        "profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/AgentProfile"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ExecutionConfig": {
+      "properties": {
+        "model": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "system_prompt": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "GeneratorCriticConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_rounds": {
+          "default": 1,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rubric": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "HookEntry": {
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "events": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "phase": {
+          "default": "",
+          "type": "string"
+        },
+        "requires_approval": {
+          "default": false,
+          "type": "boolean"
+        },
+        "timeout_secs": {
+          "default": null,
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "HooksConfig": {
+      "properties": {
+        "global": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          },
+          "type": "array"
+        },
+        "project": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          },
+          "type": "array"
+        },
+        "user": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/HookEntry"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "LoopPoliciesConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "deny_bash_patterns": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "generator_critic": {
+          "$ref": "#/$defs/GeneratorCriticConfig",
+          "default": {
+            "enabled": false,
+            "max_rounds": 1,
+            "rubric": []
+          }
+        },
+        "max_settles": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "self_heal": {
+          "$ref": "#/$defs/SelfHealConfig",
+          "default": {
+            "enabled": false,
+            "max_attempts": 3,
+            "signatures": []
+          }
+        },
+        "tool_exposure": {
+          "$ref": "#/$defs/ToolExposureConfig",
+          "default": {
+            "allow": [],
+            "deny": [],
+            "enabled": false,
+            "read_only": false,
+            "write_tools": []
+          }
+        }
+      },
+      "type": "object"
+    },
+    "McpServerConfig": {
+      "properties": {
+        "args": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "command": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "transport": {
+          "$ref": "#/$defs/McpTransportKind",
+          "default": "stdio"
+        },
+        "url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "McpTransportKind": {
+      "enum": [
+        "stdio",
+        "sse"
+      ],
+      "type": "string"
+    },
+    "ModelsConfig": {
+      "properties": {
+        "default_model": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "models": {
+          "additionalProperties": {
+            "$ref": "#/$defs/XyModelEntryConfig"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "OtelConfig": {
+      "properties": {
+        "endpoint": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "environment": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "export_timeout_secs": {
+          "default": 60,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exporter": {
+          "$ref": "#/$defs/OtelExporterKind",
+          "default": "none"
+        },
+        "headers": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "observation_io": {
+          "$ref": "#/$defs/OtelObservationIo",
+          "default": "none"
+        },
+        "protocol": {
+          "$ref": "#/$defs/OtelHttpProtocol",
+          "default": "http-json"
+        },
+        "service_name": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool_observation_io": {
+          "$ref": "#/$defs/OtelObservationIo",
+          "default": "none"
+        }
+      },
+      "type": "object"
+    },
+    "OtelExporterKind": {
+      "enum": [
+        "none",
+        "otlp-http"
+      ],
+      "type": "string"
+    },
+    "OtelHttpProtocol": {
+      "enum": [
+        "http-binary",
+        "http-json"
+      ],
+      "type": "string"
+    },
+    "OtelObservationIo": {
+      "enum": [
+        "none",
+        "truncated",
+        "full"
+      ],
+      "type": "string"
+    },
+    "PermissionBackend": {
+      "enum": [
+        "glob"
+      ],
+      "type": "string"
+    },
+    "PermissionConfig": {
+      "properties": {
+        "backend": {
+          "$ref": "#/$defs/PermissionBackend",
+          "default": "glob"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "filesystem": {
+          "$ref": "#/$defs/PermissionFilesystemConfig",
+          "default": {
+            "read_allowed": [],
+            "write_allowed": [],
+            "write_denied": []
+          }
+        },
+        "network": {
+          "$ref": "#/$defs/PermissionNetworkConfig",
+          "default": {
+            "allowed_domains": [],
+            "denied_domains": []
+          }
+        },
+        "process": {
+          "$ref": "#/$defs/PermissionProcessConfig",
+          "default": {
+            "allowed_paths": []
+          }
+        }
+      },
+      "type": "object"
+    },
+    "PermissionFilesystemConfig": {
+      "properties": {
+        "read_allowed": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "write_allowed": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "write_denied": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PermissionNetworkConfig": {
+      "properties": {
+        "allowed_domains": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "denied_domains": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PermissionProcessConfig": {
+      "properties": {
+        "allowed_paths": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "PlanConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "read_only": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "SecurityConfig": {
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "permission": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PermissionConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SelfHealConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_attempts": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "signatures": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "SessionConfig": {
+      "properties": {
+        "max_turns": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "TodoConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint": {
+          "default": false,
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "max_settles": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "progress": {
+          "default": false,
+          "type": "boolean"
+        },
+        "reminder": {
+          "default": false,
+          "type": "boolean"
+        },
+        "reminder_stale_after": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "ToolBatchConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "$ref": "#/$defs/ToolBatchMode",
+          "default": "barrier_parallel"
+        }
+      },
+      "type": "object"
+    },
+    "ToolBatchMode": {
+      "enum": [
+        "sequential",
+        "barrier_parallel"
+      ],
+      "type": "string"
+    },
+    "ToolExposureConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "allow": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "deny": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "read_only": {
+          "default": false,
+          "type": "boolean"
+        },
+        "write_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "TuiActivityFoldConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "auto_on_rebuild": {
+          "default": true,
+          "type": "boolean"
+        },
+        "auto_on_turn_end": {
+          "default": true,
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "keep_recent_turns": {
+          "default": 2,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stream_collapse": {
+          "$ref": "#/$defs/ActivityFoldStreamCollapse",
+          "default": "envelope"
+        }
+      },
+      "type": "object"
+    },
+    "TuiConfig": {
+      "properties": {
+        "activity_fold": {
+          "$ref": "#/$defs/TuiActivityFoldConfig",
+          "default": {
+            "auto_on_rebuild": true,
+            "auto_on_turn_end": true,
+            "enabled": true,
+            "keep_recent_turns": 2,
+            "stream_collapse": "envelope"
+          }
+        },
+        "editor_history_seed_sessions": {
+          "default": 1,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_depth": {
+          "default": 2,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_replans": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_total_steps": {
+          "default": 100,
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "XyCompactionSettingsConfig": {
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "keepRecentTokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/XyModelEntryConfig"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reserveTokens": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "thinkingLevel": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "XyModelEntryConfig": {
+      "properties": {
+        "api": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "api_key": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "base_url": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "compat": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "context_window": {
+          "default": 0,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fallback": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "thinking": {
+          "default": true,
+          "type": "boolean"
+        },
+        "thinking_level_map": {
+          "additionalProperties": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "default": null,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "thinking_levels": {
+          "default": null,
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "provider",
+        "model"
+      ],
+      "type": "object"
+    }
+  },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "AppConfig",
-  "description": "The root configuration object for xylitol.",
-  "type": "object",
   "properties": {
     "agents": {
       "$ref": "#/$defs/AgentsConfig",
@@ -12,7 +843,6 @@
       }
     },
     "compaction": {
-      "description": "YAML loading-phase compaction config. Mapped to runtime\n`CompactionSettings` (in `agent::compaction::settings`)\nvia `From<XyCompactionSettingsConfig>`.",
       "anyOf": [
         {
           "$ref": "#/$defs/XyCompactionSettingsConfig"
@@ -26,7 +856,6 @@
     "execution": {
       "$ref": "#/$defs/ExecutionConfig",
       "default": {
-        "max_retries": 3,
         "model": null,
         "system_prompt": null
       }
@@ -39,21 +868,68 @@
         "user": []
       }
     },
+    "loop_policies": {
+      "$ref": "#/$defs/LoopPoliciesConfig",
+      "default": {
+        "deny_bash_patterns": [],
+        "enabled": false,
+        "generator_critic": {
+          "enabled": false,
+          "max_rounds": 1,
+          "rubric": []
+        },
+        "max_settles": null,
+        "self_heal": {
+          "enabled": false,
+          "max_attempts": 3,
+          "signatures": []
+        },
+        "tool_exposure": {
+          "allow": [],
+          "deny": [],
+          "enabled": false,
+          "read_only": false,
+          "write_tools": []
+        }
+      }
+    },
     "mcp_servers": {
-      "type": [
-        "array",
-        "null"
-      ],
       "default": null,
       "items": {
         "$ref": "#/$defs/McpServerConfig"
-      }
+      },
+      "type": [
+        "array",
+        "null"
+      ]
     },
     "models": {
       "$ref": "#/$defs/ModelsConfig",
       "default": {
         "default_model": null,
         "models": {}
+      }
+    },
+    "otel": {
+      "$ref": "#/$defs/OtelConfig",
+      "default": {
+        "endpoint": null,
+        "environment": null,
+        "export_timeout_secs": 60,
+        "exporter": "none",
+        "headers": {},
+        "observation_io": "none",
+        "protocol": "http-json",
+        "service_name": null,
+        "tool_observation_io": "none"
+      }
+    },
+    "plan": {
+      "$ref": "#/$defs/PlanConfig",
+      "default": {
+        "allowed_tools": [],
+        "enabled": true,
+        "read_only": true
       }
     },
     "security": {
@@ -74,553 +950,46 @@
       ],
       "default": null
     },
-    "tools": {
-      "$ref": "#/$defs/ToolsConfig",
+    "todo": {
+      "$ref": "#/$defs/TodoConfig",
       "default": {
-        "allowlist": [],
-        "blocklist": [],
-        "max_dir_entries": 0,
-        "max_file_size": 0,
-        "max_results": 0
+        "checkpoint": false,
+        "enabled": true,
+        "max_settles": null,
+        "progress": false,
+        "reminder": false,
+        "reminder_stale_after": 3
+      }
+    },
+    "tool_batch": {
+      "$ref": "#/$defs/ToolBatchConfig",
+      "default": {
+        "mode": "barrier_parallel"
+      }
+    },
+    "tui": {
+      "$ref": "#/$defs/TuiConfig",
+      "default": {
+        "activity_fold": {
+          "auto_on_rebuild": true,
+          "auto_on_turn_end": true,
+          "enabled": true,
+          "keep_recent_turns": 2,
+          "stream_collapse": "envelope"
+        },
+        "editor_history_seed_sessions": 1
+      }
+    },
+    "workflow": {
+      "$ref": "#/$defs/WorkflowConfig",
+      "default": {
+        "enabled": false,
+        "max_depth": 2,
+        "max_replans": 3,
+        "max_total_steps": 100
       }
     }
   },
-  "$defs": {
-    "AgentProfile": {
-      "description": "Agent profile — binds model, prompt.\n\nFlat struct to support YAML anchor/alias merge keys:\n```yaml\nagents:\n  profiles:\n    default: &default-agent\n      model: gpt-4o\n    planning:\n      <<: *default-agent\n      model: claude-opus\n      system_prompt: \"You are a planning agent.\"\n```\n\nUnknown fields (including removed `max_iterations`) are rejected.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "model": {
-          "description": "Model alias referencing a key in `model.models`, or a raw model ID.\nWhen `None`, falls back to config-level defaults.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "system_prompt": {
-          "description": "System prompt / instruction for this agent.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        }
-      }
-    },
-    "AgentsConfig": {
-      "description": "Agent profiles container.\n\nWhen entirely absent from config, falls back to single-model behavior\nusing config-level model resolution.",
-      "type": "object",
-      "properties": {
-        "default_profile": {
-          "description": "The profile name used when no profile is explicitly specified.",
-          "type": "string",
-          "default": "default"
-        },
-        "profiles": {
-          "description": "Named agent profiles.",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/AgentProfile"
-          },
-          "default": {}
-        }
-      }
-    },
-    "ExecutionConfig": {
-      "type": "object",
-      "properties": {
-        "max_retries": {
-          "description": "Maximum retries on failure.",
-          "type": "integer",
-          "format": "uint8",
-          "default": 3,
-          "maximum": 255,
-          "minimum": 0
-        },
-        "model": {
-          "description": "Override model for execution steps.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "system_prompt": {
-          "description": "System prompt for the execution agent.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        }
-      }
-    },
-    "HookEntry": {
-      "type": "object",
-      "properties": {
-        "command": {
-          "description": "Shell command to execute (e.g., \"python3 /path/to/hook.py\").",
-          "type": "string"
-        },
-        "env": {
-          "description": "Extra environment variables for the hook process.",
-          "type": "object",
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {}
-        },
-        "events": {
-          "description": "Event patterns to match (e.g., \"pre.tool_call\", \"post.step_complete\").\nSupports exact and prefix matching.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "phase": {
-          "description": "Optional phase filter: \"pre\", \"post\", or \"\" for both. When set, only\nmatches events of that phase.",
-          "type": "string",
-          "default": ""
-        },
-        "requires_approval": {
-          "description": "Whether this hook requires explicit user approval before execution.",
-          "type": "boolean",
-          "default": false
-        },
-        "timeout_secs": {
-          "description": "Timeout in seconds per hook execution. Default: 5.",
-          "type": "integer",
-          "format": "uint64",
-          "default": 5,
-          "minimum": 0
-        }
-      },
-      "required": [
-        "command"
-      ]
-    },
-    "HooksConfig": {
-      "type": "object",
-      "properties": {
-        "global": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/HookEntry"
-          }
-        },
-        "project": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/HookEntry"
-          }
-        },
-        "user": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/HookEntry"
-          }
-        }
-      }
-    },
-    "McpServerConfig": {
-      "type": "object",
-      "properties": {
-        "args": {
-          "description": "Arguments for the command (stdio transport only).",
-          "type": [
-            "array",
-            "null"
-          ],
-          "default": null,
-          "items": {
-            "type": "string"
-          }
-        },
-        "command": {
-          "description": "Command to spawn (stdio transport only).",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "env": {
-          "description": "Extra environment variables for the child process (stdio transport only).",
-          "type": [
-            "object",
-            "null"
-          ],
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": null
-        },
-        "name": {
-          "type": "string"
-        },
-        "transport": {
-          "description": "Transport kind: \"stdio\" or \"sse\".",
-          "$ref": "#/$defs/McpTransportKind",
-          "default": "stdio"
-        },
-        "url": {
-          "description": "SSE endpoint URL (sse transport only).",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        }
-      },
-      "required": [
-        "name"
-      ]
-    },
-    "McpTransportKind": {
-      "type": "string",
-      "enum": [
-        "stdio",
-        "sse"
-      ]
-    },
-    "ModelEntry": {
-      "description": "A single model alias entry.\n\nReferences [`XyModelKind`](crate::domain::model::XyModelKind) for the provider;\nthe kind's serde representation is the YAML wire format.",
-      "type": "object",
-      "properties": {
-        "api": {
-          "description": "Optional adapter API type: `openai-responses` | `openai-completions` | `anthropic-messages`.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "api_key": {
-          "description": "Optional per-model API key (supports secret interpolation). When set non-empty, wins over kind-level env.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "base_url": {
-          "description": "Optional custom base URL for OpenAI-compatible or Anthropic-compatible APIs.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "compat": {
-          "description": "Named wire/thinking dialect (`generic` | `deepseek`). Omit → generic.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "context_window": {
-          "description": "Context window size in tokens. Default: 0 (auto-detect from provider).",
-          "type": "integer",
-          "format": "uint64",
-          "default": 0,
-          "minimum": 0
-        },
-        "fallback": {
-          "description": "Optional fallback model ID (must be another key in `models`).",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "model": {
-          "type": "string"
-        },
-        "provider": {
-          "$ref": "#/$defs/XyModelKind"
-        },
-        "thinking": {
-          "description": "Whether this model supports thinking/reasoning. Default: true for all.",
-          "type": "boolean",
-          "default": true
-        }
-      },
-      "required": [
-        "provider",
-        "model"
-      ]
-    },
-    "ModelsConfig": {
-      "description": "Top-level model configuration section.\nSplit from agent-level [`XyModelConfig`](crate::domain::model::XyModelConfig) —\nthis is YAML-facing; [`ModelEntry`] aliases resolve into runtime config.",
-      "type": "object",
-      "properties": {
-        "default_model": {
-          "description": "Default model ID (or alias key) to use when no model is specified.",
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        },
-        "models": {
-          "description": "Named model entries keyed by alias.",
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/ModelEntry"
-          },
-          "default": {}
-        }
-      }
-    },
-    "PermissionBackend": {
-      "oneOf": [
-        {
-          "description": "Pure application-level glob pattern matching (default).",
-          "type": "string",
-          "const": "glob"
-        }
-      ]
-    },
-    "PermissionConfig": {
-      "type": "object",
-      "properties": {
-        "backend": {
-          "description": "Backend selection. Only \"glob\" (app-level pattern matching) is delivered.\nDefault: \"glob\".",
-          "$ref": "#/$defs/PermissionBackend",
-          "default": "glob"
-        },
-        "enabled": {
-          "description": "Master toggle.",
-          "type": "boolean",
-          "default": false
-        },
-        "filesystem": {
-          "description": "Filesystem permission rules.",
-          "$ref": "#/$defs/PermissionFilesystemConfig",
-          "default": {
-            "read_allowed": [],
-            "write_allowed": [],
-            "write_denied": []
-          }
-        },
-        "network": {
-          "description": "Network permission rules (applied to bash URLs).",
-          "$ref": "#/$defs/PermissionNetworkConfig",
-          "default": {
-            "allowed_domains": [],
-            "denied_domains": []
-          }
-        },
-        "process": {
-          "description": "Process execution rules.",
-          "$ref": "#/$defs/PermissionProcessConfig",
-          "default": {
-            "allowed_paths": []
-          }
-        }
-      }
-    },
-    "PermissionFilesystemConfig": {
-      "type": "object",
-      "properties": {
-        "read_allowed": {
-          "description": "Paths allowed for read. Empty = allow all.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "write_allowed": {
-          "description": "Paths denied for write. Write always denied when read_allowed is set\nand path is not in read_allowed (default-deny).",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "write_denied": {
-          "description": "Paths explicitly denied for write (takes precedence over allowed).",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "PermissionNetworkConfig": {
-      "type": "object",
-      "properties": {
-        "allowed_domains": {
-          "description": "Domains allowed for network requests. Empty = allow all.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "denied_domains": {
-          "description": "Domains explicitly denied.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "PermissionProcessConfig": {
-      "type": "object",
-      "properties": {
-        "allowed_paths": {
-          "description": "Paths where subprocess execution is allowed. Empty = allow all.",
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    "SecurityConfig": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "description": "Master toggle — enabled by default for safety.",
-          "type": "boolean",
-          "default": true
-        },
-        "permission": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/PermissionConfig"
-            },
-            {
-              "type": "null"
-            }
-          ]
-        }
-      }
-    },
-    "SessionConfig": {
-      "type": "object",
-      "properties": {
-        "auto_snapshot": {
-          "type": "boolean",
-          "default": false
-        },
-        "max_snapshots": {
-          "type": "integer",
-          "format": "uint16",
-          "default": 50,
-          "maximum": 65535,
-          "minimum": 0
-        },
-        "storage": {
-          "$ref": "#/$defs/SessionStorageConfig"
-        }
-      },
-      "required": [
-        "storage"
-      ]
-    },
-    "SessionStorageConfig": {
-      "type": "object",
-      "properties": {
-        "backend": {
-          "type": "string",
-          "default": "file"
-        },
-        "path": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "default": null
-        }
-      }
-    },
-    "ToolsConfig": {
-      "type": "object",
-      "properties": {
-        "allowlist": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "blocklist": {
-          "type": "array",
-          "default": [],
-          "items": {
-            "type": "string"
-          }
-        },
-        "max_dir_entries": {
-          "type": "integer",
-          "format": "uint32",
-          "default": 1000,
-          "minimum": 0
-        },
-        "max_file_size": {
-          "type": "integer",
-          "format": "uint64",
-          "default": 10485760,
-          "minimum": 0
-        },
-        "max_results": {
-          "type": "integer",
-          "format": "uint32",
-          "default": 1000,
-          "minimum": 0
-        }
-      }
-    },
-    "XyCompactionSettingsConfig": {
-      "description": "Compaction settings as loaded from YAML/JSON files (all-optional form).\n\nMapped to the runtime `CompactionSettings` (in `agent::compaction::settings`)\nvia `From<XyCompactionSettingsConfig>`.",
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": [
-            "boolean",
-            "null"
-          ]
-        },
-        "keepRecentTokens": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0
-        },
-        "reserveTokens": {
-          "type": [
-            "integer",
-            "null"
-          ],
-          "format": "uint64",
-          "minimum": 0
-        }
-      }
-    },
-    "XyModelKind": {
-      "description": "Supported LLM provider kinds.",
-      "type": "string",
-      "enum": [
-        "openai",
-        "anthropic",
-        "fake"
-      ]
-    }
-  }
+  "title": "AppConfig",
+  "type": "object"
 }

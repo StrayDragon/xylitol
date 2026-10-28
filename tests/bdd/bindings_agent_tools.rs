@@ -326,7 +326,7 @@ fn test_tools_bash_omit_timeout(ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-tools/agent-tools.feature",
-    name = "全部十工具冒烟"
+    name = "全部核心工具冒烟"
 )]
 fn test_tools_all_ten_smoke(ws: Workspace) {}
 

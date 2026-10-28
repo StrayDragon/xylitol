@@ -50,18 +50,11 @@ pub fn load_app_config_detailed_with(
     load_from_paths(&paths, cli_config)
 }
 
-fn load_from_paths(
+fn merge_config_layers(
     paths: &ConfigPaths,
     cli_config: Option<&Path>,
-) -> Result<LoadedAppConfig, LoadError> {
-    let (secrets, injected) = super::secret_env::load_secret_env_files(paths);
-    if injected > 0 {
-        log::debug!(
-            target: "xylitol::config",
-            "loaded secret.env into process environment injected={injected}"
-        );
-    }
-
+    secrets: &super::secret_env::SecretMap,
+) -> Result<(Value, bool), LoadError> {
     let mut merged = Value::Null;
     let mut from_yaml_layers = false;
 
@@ -74,27 +67,50 @@ fn load_from_paths(
             "loading global config {}",
             global_base.display()
         );
-        let val = load_and_render(&global_base, &secrets)?;
-        deep_merge(&mut merged, val);
-        from_yaml_layers = true;
+        merge_layer(&mut merged, &mut from_yaml_layers, &global_base, secrets)?;
     }
 
-    if let Some(ref proj_dir) = paths.project_dir
+    if let Some(proj_dir) = &paths.project_dir
         && let Some(proj_base) =
             first_existing(&[proj_dir.join("config.yaml"), proj_dir.join("config.yml")])
     {
-        let val = load_and_render(&proj_base, &secrets)?;
-        deep_merge(&mut merged, val);
-        from_yaml_layers = true;
+        merge_layer(&mut merged, &mut from_yaml_layers, &proj_base, secrets)?;
     }
 
     if let Some(cli_path) = cli_config
         && cli_path.exists()
     {
-        let val = load_and_render(cli_path, &secrets)?;
-        deep_merge(&mut merged, val);
-        from_yaml_layers = true;
+        merge_layer(&mut merged, &mut from_yaml_layers, cli_path, secrets)?;
     }
+
+    Ok((merged, from_yaml_layers))
+}
+
+fn merge_layer(
+    merged: &mut Value,
+    from_yaml_layers: &mut bool,
+    path: &Path,
+    secrets: &super::secret_env::SecretMap,
+) -> Result<(), LoadError> {
+    let value = load_and_render(path, secrets)?;
+    deep_merge(merged, value);
+    *from_yaml_layers = true;
+    Ok(())
+}
+
+fn load_from_paths(
+    paths: &ConfigPaths,
+    cli_config: Option<&Path>,
+) -> Result<LoadedAppConfig, LoadError> {
+    let (secrets, injected) = super::secret_env::load_secret_env_files(paths);
+    if injected > 0 {
+        log::debug!(
+            target: "xylitol::config",
+            "loaded secret.env into process environment injected={injected}"
+        );
+    }
+
+    let (merged, from_yaml_layers) = merge_config_layers(paths, cli_config, &secrets)?;
 
     if merged.is_null() {
         return Ok(LoadedAppConfig {
@@ -103,6 +119,8 @@ fn load_from_paths(
         });
     }
 
+    reject_legacy_loop_example_section(&merged)?;
+    reject_legacy_loop_policies_keys(&merged)?;
     let mut config: AppConfig = serde_json::from_value(merged.clone())?;
     super::validate::validate_merged_config(&merged)?;
     config.validate_thinking_levels()?;
@@ -112,6 +130,39 @@ fn load_from_paths(
         config,
         from_yaml_layers,
     })
+}
+
+fn reject_legacy_loop_example_section(merged: &Value) -> Result<(), LoadError> {
+    if merged.get("loop_example").is_some() {
+        return Err(LoadError::validation(
+            "loop_example is no longer supported; use `loop_policies`; \
+             todo/workflow/plan keys moved to top-level `todo`/`workflow`/`plan` \
+             (see configs/example.yaml)",
+        ));
+    }
+    Ok(())
+}
+
+fn reject_legacy_loop_policies_keys(merged: &Value) -> Result<(), LoadError> {
+    let Some(loop_policies) = merged.get("loop_policies").and_then(Value::as_object) else {
+        return Ok(());
+    };
+    let legacy = [
+        ("todo_progress", "todo.progress"),
+        ("todo_reminder", "todo.reminder"),
+        ("todo_reminder_stale_after", "todo.reminder_stale_after"),
+        ("todo_checkpoint", "todo.checkpoint"),
+        ("plan_mode", "plan.enabled"),
+        ("workflow", "workflow"),
+    ];
+    for (old, new) in legacy {
+        if loop_policies.contains_key(old) {
+            return Err(LoadError::validation(format!(
+                "loop_policies.{old} is no longer supported; use `{new}` (see configs/example.yaml)"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn expand_model_config_expressions(config: &mut AppConfig) -> Result<(), LoadError> {
@@ -521,5 +572,65 @@ compaction:
             "错误 MUST 带 alias:field 上下文，got: {msg}"
         );
         assert!(msg.contains("unbound"), "错误 MUST 可读，got: {msg}");
+    }
+
+    #[test]
+    fn feature_plugin_defaults_are_stable() {
+        let config = AppConfig::default();
+        assert!(config.todo.is_active(), "todo plugin is default-on");
+        assert!(!config.workflow.is_active(), "workflow plugin is opt-in");
+        assert!(
+            config.plan.is_active(),
+            "plan plugin keeps the c2973 default"
+        );
+        assert!(config.plan.read_only, "plan mode is read-only by default");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn legacy_loop_policies_keys_rejected_with_migration_hint() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "loop_policies:\n  enabled: true\n  todo_progress: true\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let msg = err.to_string();
+        assert!(msg.contains("todo_progress"), "got: {msg}");
+        assert!(msg.contains("todo.progress"), "got: {msg}");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn legacy_loop_example_section_rejected_with_migration_hint() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "loop_example:\n  enabled: true\n  max_settles: 2\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let msg = err.to_string();
+        assert!(msg.contains("loop_example"), "got: {msg}");
+        assert!(msg.contains("loop_policies"), "got: {msg}");
     }
 }

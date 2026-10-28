@@ -39,9 +39,27 @@ pub async fn drain_inline_pending<T: Terminal>(
 pub async fn session_entries(
     driver: &mut dyn XyDriver,
 ) -> Result<Vec<xylitol_plugin_sdk::session::SessionEntry>, XyDriverError> {
-    match crate::dispatch::dispatch(driver, xylitol_protocol::Command::GetMessages {}).await? {
-        crate::dispatch::DispatchOutcome::Messages { entries, .. } => Ok(entries),
-        _ => Ok(Vec::new()),
+    Ok(session_entries_page(driver, None, None).await?.0)
+}
+
+pub async fn session_entries_page(
+    driver: &mut dyn XyDriver,
+    limit: Option<usize>,
+    before_entry_id: Option<String>,
+) -> Result<(Vec<xylitol_plugin_sdk::session::SessionEntry>, bool), XyDriverError> {
+    match crate::dispatch::dispatch(
+        driver,
+        xylitol_protocol::Command::GetMessages {
+            limit,
+            before_entry_id,
+        },
+    )
+    .await?
+    {
+        crate::dispatch::DispatchOutcome::Messages {
+            entries, has_more, ..
+        } => Ok((entries, has_more)),
+        _ => Ok((Vec::new(), false)),
     }
 }
 
@@ -63,15 +81,7 @@ pub async fn refresh_footer_tokens<T: Terminal>(
     driver: &mut dyn XyDriver,
 ) {
     let _ = session.take_pending_footer_token_refresh();
-    let entries = match session_entries(driver).await {
-        Ok(e) => e,
-        Err(_) => {
-            session.set_footer_token_label(None);
-            return;
-        }
-    };
-    if entries.is_empty() {
-        session.set_footer_token_label(None);
+    if !footer_entries_available(session, driver).await {
         return;
     }
     match driver.estimate_context_tokens().await {
@@ -81,9 +91,6 @@ pub async fn refresh_footer_tokens<T: Terminal>(
                 .map(|m| m.context_window)
                 .unwrap_or(0);
             let label = footer_token_label(est.provenance, est.tokens, window);
-            session.maybe_heuristic_estimate_notice(
-                est.provenance == xylitol_plugin_sdk::model::TokenProvenance::Heuristic,
-            );
             session.set_footer_token_label(Some(label));
         }
         Err(_) => session.set_footer_token_label(None),
@@ -343,9 +350,6 @@ async fn drain_footer_token_if_pending<T: Terminal>(
             .map(|m| m.context_window)
             .unwrap_or(0);
         let label = footer_token_label(est.provenance, est.tokens, window);
-        session.maybe_heuristic_estimate_notice(
-            est.provenance == xylitol_plugin_sdk::model::TokenProvenance::Heuristic,
-        );
         session.set_footer_token_label(Some(label));
         let _ = session.render_now();
         return;
@@ -361,5 +365,18 @@ async fn drain_footer_token_if_pending<T: Terminal>(
     #[cfg(not(test))]
     {
         kick_footer_token_refresh(session, driver).await;
+    }
+}
+
+async fn footer_entries_available<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+) -> bool {
+    match session_entries(driver).await {
+        Ok(entries) if !entries.is_empty() => true,
+        _ => {
+            session.set_footer_token_label(None);
+            false
+        }
     }
 }

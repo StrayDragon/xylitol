@@ -130,12 +130,6 @@ async fn test_c2855_notice_stack_copied(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
-    name = "提示栈启发式一次"
-)]
-async fn test_c2855_notice_stack_heuristic(host_pump_bdd: HostPumpBdd) {}
-
-#[scenario(
-    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
     name = "提示栈已复制钉住已滚动视口"
 )]
 fn test_notice_stack_copied_pins_scrolled_viewport(host_pump_bdd: HostPumpBdd) {}

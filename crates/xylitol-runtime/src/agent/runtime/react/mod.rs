@@ -4,8 +4,8 @@ mod turn_end;
 
 use crate::utils::{StreamNode, StreamNodeClock};
 use assistant::{
-    build_assistant_message, current_provider_model, partial_assistant_message,
-    streaming_assistant_parts, streaming_message_update, upsert_streaming_tool,
+    build_assistant_message, current_provider_model, streaming_assistant_parts,
+    streaming_message_update, upsert_streaming_tool,
 };
 use support::{
     ClearActiveTurn, attempt_model_stream, observe_script_hook, persist_agent_message,
@@ -24,6 +24,10 @@ use futures::StreamExt;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
+use super::middleware::{
+    LOOP_MIDDLEWARE_CONTINUE_LIMIT, MiddlewareFault, fragments_into_prompt, run_after_llm_response,
+    run_after_turn, run_before_llm_request, run_before_turn, run_decide_continue,
+};
 use super::retry::{RetryState, is_retryable_error};
 use super::state::{
     FrozenRootConfig, RunId, RunLease, RunPolicy, RuntimeControlError, SharedRunCoordinator,
@@ -38,7 +42,9 @@ use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_plugin_sdk::model::{XyChunk, XyToolSchema};
 use xylitol_plugin_sdk::resource::SkillInfo;
 use xylitol_plugin_sdk::{
-    XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyStream,
+    AfterLlmResponseCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeTurnCtx, DecideContinueCtx,
+    LoopChain, LoopControl, XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore,
+    XyStream,
 };
 
 pub struct AgentRuntime {
@@ -176,6 +182,31 @@ impl AgentRuntime {
 
     pub fn frozen_fingerprint_matches_set(&self, candidate: &ToolSet) -> bool {
         self.inner.frozen_fingerprint_matches_set(candidate)
+    }
+
+    pub fn set_loop_middleware(
+        &mut self,
+        registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+    ) {
+        self.inner.set_loop_registry(registry);
+        self.inner
+            .set_loop_scope(xylitol_plugin_sdk::LoopScope::Root);
+    }
+
+    pub fn set_loop_middleware_scoped(
+        &mut self,
+        registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        scope: xylitol_plugin_sdk::LoopScope,
+    ) {
+        self.inner.set_loop_registry(registry);
+        self.inner.set_loop_scope(scope);
+    }
+
+    pub fn loop_middleware_ids(&self) -> Vec<String> {
+        self.inner
+            .loop_registry()
+            .map(|registry| registry.ids())
+            .unwrap_or_default()
     }
 
     pub fn replace_hooks(&mut self, hooks: AgentHooks) {
@@ -462,6 +493,7 @@ impl AgentRuntime {
             hook_bus: self.inner.hook_bus(),
             cwd: self.inner.cwd().to_string(),
             pending_prepare: self.pending_prepare.lock().ok().and_then(|g| g.clone()),
+            loop_chain: self.inner.loop_chain(),
         }
     }
 
@@ -645,6 +677,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         hook_bus,
         cwd,
         pending_prepare,
+        loop_chain,
     } = frozen;
 
     type PermissionCheck = Arc<dyn Fn(&str, &str) -> Option<String> + Send + Sync>;
@@ -713,6 +746,7 @@ fn build_live_react_stream(args: LiveReactArgs) -> impl Stream<Item = XyEvent> +
         cwd,
         obs_session_name,
         pending_prepare,
+        loop_chain,
     }));
 
     combine_run_streams(react, side_rx, queue_rx)
@@ -813,6 +847,58 @@ struct ReActConfig {
     cwd: String,
     obs_session_name: Option<String>,
     pending_prepare: Option<xylitol_plugin_sdk::SessionPrepareSnapshot>,
+    loop_chain: LoopChain,
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn after_turn_or_fault(
+    chain: &LoopChain,
+    cancel: &CancellationToken,
+    parent: Option<fastrace::prelude::SpanContext>,
+    obs: &xylitol_plugin_sdk::ObsSessionContext,
+    session_id: &str,
+    turn: usize,
+    continued_tools: bool,
+    history_len: usize,
+) -> Option<MiddlewareFault> {
+    if chain.after_turn.is_empty() {
+        return None;
+    }
+    run_after_turn(
+        chain,
+        cancel,
+        parent,
+        obs,
+        AfterTurnCtx {
+            turn_index: turn as u32,
+            continued_tools,
+            history_len,
+            session_id: Some(session_id.to_string()),
+        },
+    )
+    .await
+    .err()
+}
+
+fn middleware_limit_event(decision: &str) -> XyEvent {
+    XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
+        "LoopMiddlewareLimit",
+        format!(
+            "loop middleware exceeded {LOOP_MIDDLEWARE_CONTINUE_LIMIT} \
+             non-progressing {decision} decisions"
+        ),
+    ))
+}
+
+fn middleware_fault_event(fault: &MiddlewareFault) -> XyEvent {
+    if fault.kind() == "Aborted" {
+        XyEvent::aborted()
+    } else {
+        XyEvent::Error(xylitol_plugin_sdk::lifecycle::XyEventError::new(
+            fault.kind(),
+            fault.message(),
+        ))
+    }
 }
 
 fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
@@ -841,8 +927,9 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         cwd,
         obs_session_name,
         pending_prepare,
+        loop_chain,
     } = cfg;
-    let fixed_context = crate::agent::compaction::FixedRequestContext {
+    let mut fixed_context = crate::agent::compaction::FixedRequestContext {
         system_prompt: system_prompt.clone(),
         tool_schemas: tool_schemas.clone(),
     };
@@ -887,9 +974,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
         let mut stream_clock = StreamNodeClock::new();
         stream_clock.stamp(StreamNode::AgentStart);
         let user_preview = super::tool_exec::parts_preview_text(&user_parts);
-        let model_api = {
+        let (model_api, run_model_id) = {
             let mm = crate::utils::lock_mutex(&model_manager);
-            mm.current_model().map(|m| m.api.clone())
+            match mm.current_model() {
+                Some(m) => (Some(m.api.clone()), m.id.clone()),
+                None => (None, String::new()),
+            }
         };
         let (parent_session_id, fork_at_entry_id) = store
             .load_entries(&session_id)
@@ -914,6 +1004,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             agent_turn_span.as_ref().map(|s| s.span()),
         );
         let mut turn_aborted = false;
+        let chain_active = !loop_chain.is_empty();
+        let decide_active = !loop_chain.decide_continue.is_empty();
+        let mut stall_count: u32 = 0;
+        let mut settle_count: u32 = 0;
+
+        yield XyEvent::AgentStart {
+            session_id: session_id.clone(),
+            model: run_model_id,
+        };
 
         'outer: loop {
             let mut continue_after_tools = true;
@@ -923,6 +1022,32 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     turn_aborted = true;
                     yield XyEvent::aborted();
                     break 'outer;
+                }
+
+                let mut turn_system_prompt = system_prompt.clone();
+                if chain_active {
+                    let ctx = BeforeTurnCtx {
+                        turn_index: turn as u32,
+                        system_prompt: system_prompt.clone(),
+                        system_fragments: Vec::new(),
+                    };
+                    match run_before_turn(&loop_chain, &cancel, turn_obs_parent, &obs_session, ctx).await {
+                        Ok(out) => {
+                            turn_system_prompt = fragments_into_prompt(
+                                system_prompt.clone(),
+                                &out.ctx.system_fragments,
+                            );
+                            fixed_context.system_prompt = turn_system_prompt.clone();
+                            if out.control != LoopControl::Continue {
+                                break 'outer;
+                            }
+                        }
+                        Err(fault) => {
+                            turn_aborted = true;
+                            yield middleware_fault_event(&fault);
+                            break 'outer;
+                        }
+                    }
                 }
 
                 stream_clock.begin_turn();
@@ -952,6 +1077,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             let (ty, phase, ctx) = super::script_hook_ctx::message_start("user");
                             observe_script_hook(bus, ty, phase, ctx).await;
                         }
+                        persist_agent_message(&store, &session_id, &message).await;
                         yield XyEvent::MessageEnd {
                             role: "user".to_string(),
                             message: Some(message.clone()),
@@ -961,7 +1087,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             observe_script_hook(bus, ty, phase, ctx).await;
                         }
                         history.push(message.clone());
-                        persist_agent_message(&store, &session_id, &message).await;
                     }
                     let (steer_count, follow_up_count) =
                         queue_counts(&steer_queue, &follow_up_queue);
@@ -987,7 +1112,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     &model_manager,
                     &coordinator,
                     run_id,
-                    &system_prompt,
+                    &turn_system_prompt,
                     &mut run_model,
                 ) {
                     Ok(v) => v,
@@ -1003,6 +1128,55 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     Ok(branch) => AgentStatusBar::from_session_entries(&branch),
                     Err(_) => AgentStatusBar::default(),
                 };
+                let mut turn_tool_schemas = tool_schemas.clone();
+                if chain_active {
+                    let ctx = BeforeLlmRequestCtx {
+                        turn_index: turn as u32,
+                        messages: messages.clone(),
+                        tool_schemas: turn_tool_schemas.clone(),
+                        options: generate_options.clone(),
+                        todo: bar.todo.clone(),
+                        session_id: Some(session_id.clone()),
+                    };
+                    match run_before_llm_request(&loop_chain, &cancel, iteration_parent, &obs_session, ctx).await {
+                        Ok(out) => {
+                            messages = out.ctx.messages;
+                            turn_tool_schemas = out.ctx.tool_schemas;
+                            generate_options = out.ctx.options;
+                            generate_options.obs_parent = iteration_parent;
+                            generate_options.obs_session = obs_session.clone();
+                            fixed_context.system_prompt = generate_options.system_prompt.clone();
+                            fixed_context.tool_schemas = turn_tool_schemas.clone();
+                            if out.control != LoopControl::Continue {
+                                yield XyEvent::TurnEnd {
+                                    turn_index: turn as u32,
+                                };
+                                if let Some(fault) = after_turn_or_fault(
+                                    &loop_chain,
+                                    &cancel,
+                                    turn_obs_parent,
+                                    &obs_session,
+                                    &session_id,
+                                    turn,
+                                    false,
+                                    history.len(),
+                                )
+                                .await
+                                {
+                                    turn_aborted = true;
+                                    yield middleware_fault_event(&fault);
+                                }
+                                break 'outer;
+                            }
+                        }
+                        Err(fault) => {
+                            turn_aborted = true;
+                            yield middleware_fault_event(&fault);
+                            break 'outer;
+                        }
+                    }
+                }
+
                 let llm_messages = project_outbound(&messages, &bar);
                 let mut stream_result: Option<Result<XyStream, XyError>> = None;
                 loop {
@@ -1010,7 +1184,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         biased;
                         _ = cancel.cancelled() => break,
                         result = attempt_model_stream(
-                            &model, llm_messages.clone(), &tool_schemas, &generate_options,
+                            &model, llm_messages.clone(), &turn_tool_schemas, &generate_options,
                         ) => result,
                     };
                     match result {
@@ -1149,10 +1323,6 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     String::new(),
                                     None,
                                 );
-                                yield XyEvent::MessageEnd {
-                                    role: "assistant".to_string(),
-                                    message: Some(assistant_msg.clone()),
-                                };
                                 stream_clock.finish_message();
                                 persist_agent_message_with_thought_elapsed(
                                     &store,
@@ -1161,6 +1331,10 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     Some(&stream_clock),
                                 )
                                 .await;
+                                yield XyEvent::MessageEnd {
+                                    role: "assistant".to_string(),
+                                    message: Some(assistant_msg.clone()),
+                                };
                                 history.push(assistant_msg);
                             }
                             turn_aborted = true;
@@ -1280,36 +1454,13 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     }
                 }
 
-                let assistant_partial = if text_acc.is_empty()
-                    && thinking_acc.is_empty()
-                    && thinking_signature.is_none()
-                    && tool_calls.is_empty()
-                {
-                    None
-                } else {
-                    Some(partial_assistant_message(
-                        &text_acc,
-                        &thinking_acc,
-                        thinking_signature.as_deref(),
-                        &tool_calls,
-                    ))
-                };
-                yield XyEvent::MessageEnd {
-                    role: "assistant".to_string(),
-                    message: assistant_partial,
-                };
-                if let Some(bus) = &hook_bus {
-                    let (ty, phase, ctx) = super::script_hook_ctx::message_end("assistant");
-                    observe_script_hook(bus, ty, phase, ctx).await;
-                }
-
                 let mut assistant_parts = streaming_assistant_parts(
                     &text_acc,
                     &thinking_acc,
                     thinking_signature.as_deref(),
                     &tool_calls,
                 );
-                if !assistant_parts.is_empty()
+                let mut assistant_msg: Option<AgentMessage> = if !assistant_parts.is_empty()
                     || matches!(
                         done_stop_reason,
                         Some(xylitol_plugin_sdk::message::XyStopReason::Error)
@@ -1319,23 +1470,106 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     if assistant_parts.is_empty() {
                         assistant_parts.push(AgentPart::text(""));
                     }
-                    let assistant_msg = build_assistant_message(
+                    Some(build_assistant_message(
                         assistant_parts,
                         done_stop_reason,
                         done_usage,
                         provider,
                         model_id,
                         done_error_message,
-                    );
+                    ))
+                } else {
+                    None
+                };
+
+                if chain_active
+                    && let Some(msg) = assistant_msg.take()
+                {
+                    let ctx = AfterLlmResponseCtx {
+                        turn_index: turn as u32,
+                        assistant: msg,
+                        session_id: Some(session_id.clone()),
+                    };
+                    match run_after_llm_response(&loop_chain, &cancel, iteration_parent, &obs_session, ctx).await {
+                        Ok(out) => {
+                            let msg = out.ctx.assistant;
+                            tool_calls = msg
+                                .content()
+                                .iter()
+                                .filter_map(|part| match part {
+                                    AgentPart::ToolCall {
+                                        id,
+                                        name,
+                                        arguments,
+                                    } => Some((id.clone(), name.clone(), arguments.clone())),
+                                    _ => None,
+                                })
+                                .collect();
+                            assistant_msg = Some(msg);
+                            if out.control != LoopControl::Continue {
+                                let msg = assistant_msg.expect("assistant after middleware");
+                                stream_clock.finish_message();
+                                persist_agent_message_with_thought_elapsed(
+                                    &store,
+                                    &session_id,
+                                    &msg,
+                                    Some(&stream_clock),
+                                )
+                                .await;
+                                yield XyEvent::MessageEnd {
+                                    role: "assistant".to_string(),
+                                    message: Some(msg.clone()),
+                                };
+                                history.push(msg);
+                                yield XyEvent::TurnEnd {
+                                    turn_index: turn as u32,
+                                };
+                                if let Some(fault) = after_turn_or_fault(
+                                    &loop_chain,
+                                    &cancel,
+                                    turn_obs_parent,
+                                    &obs_session,
+                                    &session_id,
+                                    turn,
+                                    false,
+                                    history.len(),
+                                )
+                                .await
+                                {
+                                    turn_aborted = true;
+                                    yield middleware_fault_event(&fault);
+                                }
+                                break 'outer;
+                            }
+                        }
+                        Err(fault) => {
+                            turn_aborted = true;
+                            yield middleware_fault_event(&fault);
+                            break 'outer;
+                        }
+                    }
+                }
+
+                if let Some(msg) = assistant_msg.as_ref() {
                     stream_clock.finish_message();
                     persist_agent_message_with_thought_elapsed(
                         &store,
                         &session_id,
-                        &assistant_msg,
+                        msg,
                         Some(&stream_clock),
                     )
                     .await;
-                    history.push(assistant_msg);
+                }
+                yield XyEvent::MessageEnd {
+                    role: "assistant".to_string(),
+                    message: assistant_msg.clone(),
+                };
+                if let Some(msg) = assistant_msg {
+                    history.push(msg);
+                }
+                if let Some(bus) = &hook_bus {
+                    let (ty, phase, ctx) = super::script_hook_ctx::message_end("assistant");
+                    observe_script_hook(bus, ty, phase, ctx).await;
                 }
 
                 continue_after_tools = !tool_calls.is_empty();
@@ -1375,24 +1609,133 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     for event in finished.events {
                         yield event;
                     }
-                    match finished.outcome {
-                        FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
-                        FinishTurnOutcome::StopRun => break 'outer,
-                        FinishTurnOutcome::Advanced {
-                            pending: next_pending,
-                            queue_update,
-                        } => {
-                            turn += 1;
-                            pending = next_pending;
-                            if let Some((steer_count, follow_up_count)) = queue_update {
-                                yield XyEvent::QueueUpdate {
-                                    steer_count,
-                                    follow_up_count,
-                                };
-                            }
-                            continue;
+                    let settle_outcome = finished.outcome;
+                    if let Some(fault) =
+                        after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &obs_session, &session_id, turn, false, history.len())
+                            .await
+                    {
+                        turn_aborted = true;
+                        yield middleware_fault_event(&fault);
+                        break 'outer;
+                    }
+                    if !matches!(settle_outcome, FinishTurnOutcome::Advanced { .. }) {
+                        match settle_outcome {
+                            FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
+                            FinishTurnOutcome::StopRun => break 'outer,
+                            FinishTurnOutcome::Advanced { .. } => unreachable!(),
                         }
                     }
+                    let FinishTurnOutcome::Advanced {
+                        pending: next_pending,
+                        queue_update,
+                    } = settle_outcome
+                    else {
+                        unreachable!()
+                    };
+                    let has_new_user = !next_pending.is_empty();
+                    if decide_active {
+                        let ctx = DecideContinueCtx {
+                            turn_index: turn as u32,
+                            settle_count,
+                            has_new_user_messages: has_new_user,
+                            assistant: history
+                                .iter()
+                                .rev()
+                                .find(|m| m.role_name() == "assistant")
+                                .cloned(),
+                            history_len: history.len(),
+                            compact: None,
+                        };
+                        match run_decide_continue(&loop_chain, &cancel, turn_obs_parent, &obs_session, ctx).await {
+                            Ok(out) => match out.control {
+                                LoopControl::Continue => {
+                                    if has_new_user {
+                                        stall_count = 0;
+                                    } else {
+                                        stall_count += 1;
+                                    }
+                                    continue_after_tools = true;
+                                }
+                                LoopControl::Stop => break 'outer,
+                                LoopControl::Compact => {
+                                    if has_new_user {
+                                        stall_count = 0;
+                                    } else {
+                                        stall_count += 1;
+                                    }
+                                    if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
+                                        yield middleware_limit_event("compact");
+                                        break 'outer;
+                                    }
+                                    let request = out.ctx.compact.unwrap_or_default();
+                                    let requested_by = out
+                                        .stopped_by
+                                        .clone()
+                                        .unwrap_or_else(|| "unknown".into());
+                                    let reason = request
+                                        .reason
+                                        .unwrap_or_else(|| format!("loop_middleware:{requested_by}"));
+                                    match super::react::turn_end::force_compact_once(
+                                        &store,
+                                        &session_id,
+                                        &model_manager,
+                                        &event_sink,
+                                        compaction.as_ref(),
+                                        &fixed_context,
+                                        &obs_session,
+                                        &cwd,
+                                        pending_prepare.as_ref(),
+                                        request.instructions,
+                                        &reason,
+                                    )
+                                    .await
+                                    {
+                                        Ok(reloaded) => {
+                                            history = reloaded;
+                                            continue 'outer;
+                                        }
+                                        Err(e) => {
+                                            yield XyEvent::error_msg(format!(
+                                                "loop middleware {requested_by} compact failed: {e}"
+                                            ));
+                                            break 'outer;
+                                        }
+                                    }
+                                }
+                                LoopControl::Handoff => {
+                                    yield XyEvent::Error(
+                                        xylitol_plugin_sdk::lifecycle::XyEventError::new(
+                                            "LoopMiddlewareHandoffUnsupported",
+                                            format!(
+                                                "loop middleware {} requested handoff; not supported",
+                                                out.stopped_by.unwrap_or_else(|| "unknown".into())
+                                            ),
+                                        ),
+                                    );
+                                    break 'outer;
+                                }
+                            },
+                            Err(fault) => {
+                                turn_aborted = true;
+                                yield middleware_fault_event(&fault);
+                                break 'outer;
+                            }
+                        }
+                        if stall_count > LOOP_MIDDLEWARE_CONTINUE_LIMIT {
+                            yield middleware_limit_event("continue");
+                            break 'outer;
+                        }
+                    }
+                    turn += 1;
+                    settle_count += 1;
+                    pending = next_pending;
+                    if let Some((steer_count, follow_up_count)) = queue_update {
+                        yield XyEvent::QueueUpdate {
+                            steer_count,
+                            follow_up_count,
+                        };
+                    }
+                    continue;
                 }
 
                 let mut turn_tool_results: Vec<AgentMessage> = Vec::new();
@@ -1408,23 +1751,32 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     batch_mode,
                     workspace: &cwd,
                     obs_session: &obs_session,
+                    loop_chain: &loop_chain,
+                    turn_index: turn as u32,
                 };
                 let parent_ctx = iteration_parent;
 
+                let mut prepared: Vec<super::tool_exec::PreparedCall> =
+                    Vec::with_capacity(tool_calls.len());
+                for (id, name, args) in &tool_calls {
+                    prepared.push(
+                        super::tool_exec::prepare_call(&tool_env, id, name, args, parent_ctx).await,
+                    );
+                }
+
                 let planned: Vec<super::tool_batch::PlannedWindow> = match batch_mode {
-                    XyBatchMode::Sequential => tool_calls
-                        .iter()
-                        .enumerate()
-                        .map(|(i, _)| super::tool_batch::PlannedWindow::Barrier(i))
+                    XyBatchMode::Sequential => (0..prepared.len())
+                        .map(super::tool_batch::PlannedWindow::Barrier)
                         .collect(),
                     XyBatchMode::BarrierParallel => {
-                        let classes: Vec<_> = tool_calls
+                        let classes: Vec<_> = prepared
                             .iter()
-                            .map(|(_, name, _)| {
-                                let tool = tools.get(name);
+                            .map(|call| {
                                 super::tool_batch::classify(
-                                    name,
-                                    tool.as_ref().map(|t| t.as_ref() as &dyn xylitol_plugin_sdk::XyTool),
+                                    &call.name,
+                                    call.tool
+                                        .as_ref()
+                                        .map(|t| t.as_ref() as &dyn xylitol_plugin_sdk::XyTool),
                                 )
                             })
                             .collect();
@@ -1436,13 +1788,11 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                     let barrier_index = barrier_index as u32;
                     match window {
                         super::tool_batch::PlannedWindow::Barrier(i) => {
-                            let (id, name, args) = &tool_calls[i];
+                            let call = &prepared[i];
                             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
                             let fut = super::tool_exec::run_one(
                                 &tool_env,
-                                id,
-                                name,
-                                args,
+                                call,
                                 tx,
                                 parent_ctx,
                                 barrier_index,
@@ -1465,27 +1815,50 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     }
                                 }
                             };
-                            history.push(msg.clone());
+                            let outcome = msg;
+                            history.push(outcome.message.clone());
                             persist_agent_message(
                                 &store,
                                 &session_id,
                                 history.last().expect("tool result"),
                             )
                             .await;
-                            turn_tool_results.push(msg);
+                            turn_tool_results.push(outcome.message);
+                            if outcome.stop_run {
+                                yield XyEvent::TurnEnd {
+                                    turn_index: turn as u32,
+                                };
+                                if let Some(fault) = after_turn_or_fault(
+                                    &loop_chain,
+                                    &cancel,
+                                    turn_obs_parent,
+                                    &obs_session,
+                                    &session_id,
+                                    turn,
+                                    true,
+                                    history.len(),
+                                )
+                                .await
+                                {
+                                    turn_aborted = true;
+                                    yield middleware_fault_event(&fault);
+                                } else if let Some(fault) = &outcome.fault {
+                                    turn_aborted = true;
+                                    yield middleware_fault_event(fault);
+                                }
+                                break 'outer;
+                            }
                         }
                         super::tool_batch::PlannedWindow::Parallel(idxs) => {
                             let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
                             let mut futs = Vec::with_capacity(idxs.len());
                             for &i in &idxs {
-                                let (id, name, args) = &tool_calls[i];
+                                let call = &prepared[i];
                                 let tx = tx.clone();
                                 futs.push(async {
                                     super::tool_exec::run_one(
                                         &tool_env,
-                                        id,
-                                        name,
-                                        args,
+                                        call,
                                         tx,
                                         parent_ctx,
                                         barrier_index,
@@ -1513,15 +1886,39 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                                     }
                                 }
                             };
-                            for msg in msgs {
-                                history.push(msg.clone());
+                            for outcome in msgs {
+                                history.push(outcome.message.clone());
                                 persist_agent_message(
                                     &store,
                                     &session_id,
                                     history.last().expect("tool result"),
                                 )
                                 .await;
-                                turn_tool_results.push(msg);
+                                turn_tool_results.push(outcome.message);
+                                if outcome.stop_run {
+                                    yield XyEvent::TurnEnd {
+                                        turn_index: turn as u32,
+                                    };
+                                    if let Some(fault) = after_turn_or_fault(
+                                        &loop_chain,
+                                        &cancel,
+                                        turn_obs_parent,
+                                        &obs_session,
+                                        &session_id,
+                                        turn,
+                                        true,
+                                        history.len(),
+                                    )
+                                    .await
+                                    {
+                                        turn_aborted = true;
+                                        yield middleware_fault_event(&fault);
+                                    } else if let Some(fault) = &outcome.fault {
+                                        turn_aborted = true;
+                                        yield middleware_fault_event(fault);
+                                    }
+                                    break 'outer;
+                                }
                             }
                         }
                     }
@@ -1556,6 +1953,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 for event in finished.events {
                     yield event;
                 }
+                if let Some(fault) =
+                    after_turn_or_fault(&loop_chain, &cancel, turn_obs_parent, &obs_session, &session_id, turn, true, history.len())
+                        .await
+                {
+                    turn_aborted = true;
+                    yield middleware_fault_event(&fault);
+                    break 'outer;
+                }
+                stall_count = 0;
                 match finished.outcome {
                     FinishTurnOutcome::ContinueOuterForCompaction => continue 'outer,
                     FinishTurnOutcome::StopRun => break 'outer,
@@ -1602,5 +2008,209 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
             });
         }
         yield XyEvent::AgentEnd { messages: history };
+    }
+}
+
+#[cfg(test)]
+mod loop_middleware_tests {
+    use std::sync::Arc;
+
+    use futures::StreamExt;
+    use xylitol_plugin_sdk::{
+        BeforeToolCtx, DecideContinueCtx, LoopMiddleware, LoopMiddlewareRegistry, LoopStage,
+        LoopStep,
+    };
+
+    use crate::agent::capabilities::QueueMode;
+    use crate::agent::model::registry::ModelRegistry;
+    use crate::agent::runtime::RunPolicy;
+    use crate::agent::runtime::baseline::RuntimeBaseline;
+    use crate::agent::tools::ToolSet;
+    use crate::test_support::{MemoryStore, NoopSink, dummy_model_builder};
+    use xylitol_plugin_sdk::model::{XyModelConfig, XyModelKind, XyModelMeta};
+
+    struct DenyBash;
+
+    #[async_trait::async_trait]
+    impl LoopMiddleware for DenyBash {
+        fn id(&self) -> &str {
+            "deny-bash"
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::BeforeTool]
+        }
+
+        async fn before_tool(&self, ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+            if ctx.tool_name == "bash" {
+                LoopStep::stopped(ctx)
+            } else {
+                LoopStep::continued(ctx)
+            }
+        }
+    }
+
+    struct StopAtSettle;
+
+    #[async_trait::async_trait]
+    impl LoopMiddleware for StopAtSettle {
+        fn id(&self) -> &str {
+            "stop-at-settle"
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::DecideContinue]
+        }
+
+        async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
+            LoopStep::stopped(ctx)
+        }
+    }
+
+    fn registry() -> Arc<LoopMiddlewareRegistry> {
+        Arc::new(LoopMiddlewareRegistry::new())
+    }
+
+    fn baseline() -> RuntimeBaseline {
+        let mut reg = ModelRegistry::new();
+        reg.register(XyModelMeta {
+            id: "mock".into(),
+            config: XyModelConfig {
+                kind: XyModelKind::Fake,
+                api_key: String::new(),
+                model: "mock".into(),
+                base_url: None,
+                api: None,
+                compat: None,
+            },
+            display_name: "Mock".into(),
+            thinking: false,
+            context_window: 128000,
+            api: String::new(),
+            provider: String::new(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
+        });
+        let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> = Arc::new(MemoryStore::new());
+        let sink: Arc<dyn xylitol_plugin_sdk::XyEventSink> = Arc::new(NoopSink);
+        RuntimeBaseline {
+            store,
+            sink,
+            permission: crate::permission::allow_all_permission(),
+            hook_bus: None,
+            model_registry: reg,
+            model_builder: dummy_model_builder(),
+            cwd: ".".into(),
+            steering_mode: QueueMode::default(),
+            follow_up_mode: QueueMode::default(),
+            compaction_settings: None,
+            compaction_factory: crate::agent::compaction::noop_compaction_factory(),
+            tools: ToolSet::empty(),
+            system_prompt: None,
+            context_files: Vec::new(),
+            append_system_prompt: Vec::new(),
+            skills: Vec::new(),
+            batch_mode: xylitol_plugin_sdk::XyBatchMode::Sequential,
+        }
+    }
+
+    #[tokio::test]
+    async fn before_tool_stop_blocks_execution_and_ends_run() {
+        let reg = registry();
+        reg.register(Arc::new(DenyBash)).expect("register");
+        let mut runtime = baseline().materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-deny").expect("bind");
+        runtime.set_loop_middleware(Some(reg));
+        assert_eq!(runtime.loop_middleware_ids(), vec!["deny-bash".to_string()]);
+
+        let mut events = Vec::new();
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, crate::agent::runtime::XyEvent::AgentEnd { .. })),
+            "run must end: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn decide_continue_stop_ends_run_without_extra_turn() {
+        let reg = registry();
+        reg.register(Arc::new(StopAtSettle)).expect("register");
+        let mut runtime = baseline().materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-stop").expect("bind");
+        runtime.set_loop_middleware(Some(reg));
+        let mut events = Vec::new();
+        let mut stream = runtime.submit_root("go", RunPolicy::Reject).await;
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+        let turns = events
+            .iter()
+            .filter(|e| matches!(e, crate::agent::runtime::XyEvent::TurnStart { .. }))
+            .count();
+        assert_eq!(turns, 1, "stop must not start another turn: {events:?}");
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, crate::agent::runtime::XyEvent::AgentEnd { .. })),
+            "run must end: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn message_is_persisted_before_message_end_is_emitted() {
+        let base = baseline();
+        let store = base.store.clone();
+        let mut runtime = base.materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-persist").expect("bind");
+
+        let mut stream = runtime.submit_root("hi", RunPolicy::Reject).await;
+        let mut seen_end = false;
+        while let Some(ev) = stream.next().await {
+            if matches!(ev, crate::agent::runtime::XyEvent::MessageEnd { .. }) {
+                seen_end = true;
+                let entries = store
+                    .load_entries("sess-persist")
+                    .await
+                    .expect("session must exist by MessageEnd");
+                assert!(
+                    !entries.is_empty(),
+                    "the transcript must already be on disk when MessageEnd arrives"
+                );
+                break;
+            }
+        }
+        assert!(seen_end, "the run must emit MessageEnd");
+    }
+
+    #[tokio::test]
+    async fn message_update_carries_only_the_message_snapshot() {
+        let ev = crate::agent::runtime::react::assistant::streaming_message_update(
+            "hello",
+            "think",
+            None,
+            &[],
+        );
+        let value = serde_json::to_value(&ev).expect("serialize");
+        assert!(
+            value.get("text").is_none() && value.get("thinking").is_none(),
+            "MessageUpdate must not carry duplicated text/thinking: {value}"
+        );
+        assert!(
+            value.get("message").is_some(),
+            "the message snapshot is the single source of truth: {value}"
+        );
     }
 }

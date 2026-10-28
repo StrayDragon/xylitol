@@ -21,6 +21,11 @@ pub trait OccupancyEngine: XyDriver {
     async fn ensure_tool_table_frozen(&mut self);
     async fn execute_command(&mut self, cmd: Command) -> Result<Value, XyDriverError>;
     fn agent_cwd_for_test(&self) -> String;
+    fn set_loop_middleware_scoped(
+        &mut self,
+        registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        scope: xylitol_plugin_sdk::LoopScope,
+    );
 }
 
 pub trait OccupancyFactory: Send + Sync {
@@ -32,4 +37,8 @@ pub trait OccupancyFactory: Send + Sync {
     fn default_model_id(&self) -> Option<String>;
     fn cwd(&self) -> PathBuf;
     fn agent_dir(&self) -> PathBuf;
+
+    fn loop_registry(&self) -> Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>> {
+        None
+    }
 }

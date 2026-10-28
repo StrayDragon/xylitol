@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use crate::Event;
 
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 
 pub const WIRE_FORMAT_JSONRPC: &str = "jsonrpc";
 
@@ -165,6 +165,8 @@ pub struct SessionSubscribedPayload {
     pub seq: u64,
     #[serde(default)]
     pub inflight: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partial: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -236,7 +238,7 @@ mod tests {
 
     #[test]
     fn protocol_version_is_four() {
-        assert_eq!(PROTOCOL_VERSION, 4);
+        assert_eq!(PROTOCOL_VERSION, 5);
         assert_eq!(WIRE_FORMAT_JSONRPC, "jsonrpc");
     }
 }

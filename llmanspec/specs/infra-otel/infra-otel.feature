@@ -61,7 +61,7 @@
       那么 根 span 不写 session_name 属性
   @req:r1491
   规则: otel-langfuse-observation-types
-    当低频观测 span 激活时：llm.request 须标记 langfuse.observation.type=generation 并携带模型名 langfuse.observation.model.name（不得再额外写入等价的 gen_ai.request.model 或裸 model）；agent.turn 与 agent.iteration 须标记 type=agent；tool.execute 须标记 type=tool；agent.compaction 须标记 type=span；默认 不得在 observation 上附带完整 prompt/completion 载荷（敏感 I/O 仅可经显式后续档开启）。
+    当低频观测 span 激活时：llm.request 须标记 langfuse.observation.type=generation 并携带模型名 langfuse.observation.model.name（不得再额外写入等价的 gen_ai.request.model 或裸 model）；agent.turn 与 agent.iteration 须标记 type=agent；tool.execute 须标记 type=tool；agent.compaction 与 loop.middleware 须标记 type=span；默认 不得在 observation 上附带完整 prompt/completion 载荷（敏感 I/O 仅可经显式后续档开启）。
 
     场景: OTLP观测类型无头
       假如 mock 模型先 tool 后无 tool
@@ -186,7 +186,7 @@
 
   @req:r1482
   规则: otel-session-id-whole-tree-per-processing
-    当低频观测 span 激活且一次处理（绑定某会话 UUID 的 generate / compaction）导出任意低频观测 span（agent.turn、agent.iteration、llm.request、tool.execute、过 prepare 的 agent.compaction、token.estimate、react.error、tool.error，含 compaction summarizer 发起的 llm.request）时，这些 span 的 langfuse.session.id 须全部等于该次处理所绑定会话的书签 UUID；重叠处理下 不得在 span 创建时读进程级会话槽，不得因他路 bind 或 reader 物化改写槽而串入其它会话 id。无 run 上下文的闲置路径（如 slash compaction）MAY 以槽为回退。本 req 不改变「值为书签 UUID」的语义。由单测覆盖，不得单独扩 BDD step。
+    当低频观测 span 激活且一次处理（绑定某会话 UUID 的 generate / compaction）导出任意低频观测 span（agent.turn、agent.iteration、llm.request、tool.execute、loop.middleware、过 prepare 的 agent.compaction、token.estimate、react.error、tool.error，含 compaction summarizer 发起的 llm.request）时，这些 span 的 langfuse.session.id 须全部等于该次处理所绑定会话的书签 UUID；重叠处理下 不得在 span 创建时读进程级会话槽，不得因他路 bind 或 reader 物化改写槽而串入其它会话 id。无 run 上下文的闲置路径（如 slash compaction）MAY 以槽为回退。本 req 不改变「值为书签 UUID」的语义。由单测覆盖，不得单独扩 BDD step。
     场景: 整棵树一会话标识
       假如 mock 模型先 tool 后无 tool
       当 以观测闸开启、会话 UUID 与收集槽运行一次带工具调用的 agent 回合

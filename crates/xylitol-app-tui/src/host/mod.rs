@@ -30,14 +30,14 @@ pub const MIN_ROWS: u16 = 6;
 
 pub fn display_path(path: impl AsRef<std::path::Path>) -> String {
     let abs = path.as_ref().display().to_string();
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
-    if let Some(home) = home {
-        let home = home.to_string_lossy();
-        if let Some(rest) = abs.strip_prefix(home.as_ref()) {
-            return format!("~{rest}");
-        }
-    }
-    abs
+    strip_home(&abs).unwrap_or(abs)
+}
+
+fn strip_home(abs: &str) -> Option<String> {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+    let home = home.to_string_lossy();
+    abs.strip_prefix(home.as_ref())
+        .map(|rest| format!("~{rest}"))
 }
 
 pub fn display_cwd() -> String {
@@ -112,6 +112,7 @@ pub struct HostSession<T: Terminal> {
     keybindings: Option<Rc<RefCell<xylitol_tui::KeybindingsManager>>>,
     _keybindings_scope: Option<xylitol_tui::KeybindingsScope>,
     pointer_down_had_selection: bool,
+    loaded_history: Option<crate::history_window::LoadedHistory>,
 }
 
 impl<T: Terminal> HostSession<T> {
@@ -179,6 +180,7 @@ impl<T: Terminal> HostSession<T> {
             keybindings: None,
             _keybindings_scope: None,
             pointer_down_had_selection: false,
+            loaded_history: None,
         }
     }
 
@@ -652,13 +654,6 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_footer_token_label(label);
     }
 
-    pub fn maybe_heuristic_estimate_notice(&mut self, heuristic: bool) {
-        let Some(root) = self.ui_root.as_ref() else {
-            return;
-        };
-        root.borrow_mut().maybe_heuristic_estimate_notice(heuristic);
-    }
-
     pub fn request_footer_token_refresh(&mut self) {
         self.pending.footer_token_refresh = true;
     }
@@ -832,13 +827,8 @@ impl<T: Terminal> HostSession<T> {
             HostEvent::Xy(xy) => {
                 self.handle_xy(xy);
             }
-            HostEvent::FooterTokens {
-                job_id,
-                label,
-                heuristic,
-            } => {
+            HostEvent::FooterTokens { job_id, label, .. } => {
                 if job_id == self.footer_token_gen {
-                    self.maybe_heuristic_estimate_notice(heuristic);
                     self.set_footer_token_label(label);
                     self.tui.request_render(false);
                 }

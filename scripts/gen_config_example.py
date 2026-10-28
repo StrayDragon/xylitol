@@ -26,6 +26,8 @@ TEMPLATE = """\
 # reference keys in YAML as "{{ secret.OPENAI_API_KEY }}".
 # User home path: "{{ vars.home }}" (only vars.home; do not hardcode /home/…).
 # config.local.yaml is not supported.
+# Editor/JSON-Schema contract: configs/config.schema.json is generated from
+# schema_for!(AppConfig) — regenerate with `just gen-config-schema`.
 
 models:
   # Uncomment default_model + at least one entry under models before first use
@@ -74,9 +76,9 @@ models:
     #   model: claude-sonnet-4-20250514
     #   api_key: "{{ secret.ANTHROPIC_API_KEY }}"
 
-execution:
-  # system_prompt: "Custom system prompt override"
-  # model: "deepseek-v4-flash"  # override default per-execution
+# system_prompt: "Custom system prompt override"
+# model: "deepseek-v4-flash"  # override default per-execution
+execution: {}
 
 security:
   enabled: true
@@ -96,8 +98,11 @@ security:
       allowed_paths: []
 
 hooks:
-  pre_tool_call: []
-  post_tool_call: []
+  # Each entry is { command, events: [...], phase, timeout_secs }.
+  # Event names are tool_call / tool_result / agent_start / …; phase is pre|post.
+  global: []
+  project: []
+  user: []
 
 # tui:
 #   editor_history_seed_sessions: 1
@@ -137,6 +142,45 @@ hooks:
 #   model: *cheap-summary
 #   thinkingLevel: high
 
+# todo:  # official todo plugin (default on; tools always available)
+#   enabled: true
+#   progress: false         # register the todo-progress middleware
+#   reminder: false         # remind the model to re-read todo
+#   reminder_stale_after: 3 # tool calls without todo update before reminding
+#   checkpoint: false       # persist todo progress for resume
+#   max_settles: 8          # stop after N settles while todo is unfinished
+
+# workflow:  # workflow DAG with dependencies and local replan
+#   enabled: false
+#   max_replans: 3          # bounded; completed steps stay locked
+#   max_depth: 2            # nesting levels from the root (root = 1)
+#   max_total_steps: 100    # total steps across all levels
+
+# plan:  # plan mode with plan documents and approval
+#   enabled: true
+#   read_only: true         # deny write/edit/bash while planning
+#   allowed_tools: []       # extra read-only tools (e.g. read-only MCP tools)
+
+# loop_policies:  # official loop policy pack (plugin-author reference implementation)
+#   enabled: false
+#   max_settles: 3            # optional: stop the run after N settles
+#   self_heal:                # after_tool: continue on deterministic failures
+#     enabled: false
+#     signatures: []          # empty: built-in test/build/lint/panic signatures
+#     max_attempts: 3         # bounded well below the core 32-turn limit
+#   generator_critic:         # after_llm_response: bounded critic pass on final answers
+#     enabled: false
+#     rubric: []              # empty: built-in correctness/evidence/boundaries rubric
+#     max_rounds: 1           # critic calls stay core-scheduled and bounded
+#   tool_exposure:            # before_llm_request: narrow the tools the model can see
+#     enabled: false
+#     allow: []               # non-empty: only these tools (todo tools stay visible)
+#     deny: []                # always hidden
+#     read_only: false        # hide write tools when true
+#     write_tools: ["write", "edit"]
+#   deny_bash_patterns:       # before_tool: tighten only, core permission still decides
+#     - "rm -rf /"
+
 # mcp_servers:  # YAML list (not Cursor-style mcpServers object)
 #   # stdio (prefer PATH command name; or "{{ vars.home }}/…" for home-relative)
 #   - name: "my-server"
@@ -174,20 +218,33 @@ hooks:
 """
 
 
-def main() -> int:
-    TARGET.write_text(TEMPLATE)
+def _self_check(text: str) -> str | None:
+    """Return an error string when the rendered example is malformed."""
     try:
         import yaml
     except ImportError:
-        print(f"generated {TARGET.relative_to(REPO_ROOT)} (skip self-check: pyyaml missing)")
-        return 0
-    data = yaml.safe_load(TARGET.read_text())
+        lines = text.splitlines()
+        has_top = any(ln.startswith("models:") for ln in lines)
+        has_nested = any(ln.startswith("  models:") for ln in lines)
+        if not has_top:
+            return "generated example missing top-level models"
+        if not has_nested:
+            return "generated example missing models.models map"
+        return None
+    data = yaml.safe_load(text)
     if not isinstance(data, dict) or "models" not in data:
-        print("ERROR: generated example missing top-level models", file=sys.stderr)
-        return 1
+        return "generated example missing top-level models"
     models = data["models"]
     if not isinstance(models, dict) or "models" not in models:
-        print("ERROR: generated example missing models.models map", file=sys.stderr)
+        return "generated example missing models.models map"
+    return None
+
+
+def main() -> int:
+    TARGET.write_text(TEMPLATE)
+    problem = _self_check(TEMPLATE)
+    if problem is not None:
+        print(f"ERROR: {problem}", file=sys.stderr)
         return 1
     print(f"generated {TARGET.relative_to(REPO_ROOT)} (self-check ok)")
     return 0

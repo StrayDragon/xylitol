@@ -255,6 +255,7 @@ async fn w_c2844_reasoning_compact(compaction_probe: &CompactionProbe) {
         &binding,
         sink.as_ref(),
         None,
+        "manual",
         8192,
         None,
         &mut notice,

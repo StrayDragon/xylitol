@@ -16,7 +16,9 @@ use xylitol_serve::occupancy::{OccupancyEngine, OccupancyFactory};
 
 use crate::composition::build_baseline_with_store;
 use crate::dispatch::{SessionCommandExecutor, outcome_to_value};
-use crate::driver::{XyInProcessDriver, assemble_driver};
+use crate::driver::{
+    DriverContext, ToolFeatures, XyInProcessDriver, assemble_driver_with_features_and_context,
+};
 use crate::mcp_spec::McpServerSpec;
 use crate::occupancy::host::{HostState, ReloadBaseline};
 
@@ -61,32 +63,67 @@ impl ProductOccupancyFactory {
         self._loader = Some(loader);
         self
     }
+
+    fn driver_context(&self, workspace: &Path) -> DriverContext {
+        DriverContext {
+            project_root: workspace.to_path_buf(),
+            trusted: self.project_trusted(workspace),
+        }
+    }
+
+    fn tool_features(&self) -> ToolFeatures {
+        self.ctx
+            .as_ref()
+            .and_then(|ctx| ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>())
+            .map(|config| ToolFeatures::from_config(&config.app))
+            .unwrap_or_default()
+    }
+}
+
+fn attach_optional_context(
+    driver: &mut crate::driver::XyInProcessDriver,
+    ctx: Option<&xylitol_plugin_sdk::rt::Ctx>,
+    mcp_servers: &[crate::mcp_spec::McpServerSpec],
+) {
+    if let Some(ctx) = ctx {
+        driver.attach_ctx(ctx.clone());
+        if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
+            driver.set_prepare_hub(hub);
+        }
+        if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
+            driver.set_loop_middleware_scoped(Some(registry), xylitol_plugin_sdk::LoopScope::Root);
+        }
+    } else if !mcp_servers.is_empty() {
+        let servers = crate::mcp_spec::McpServerSpec::to_infra_list(mcp_servers);
+        driver.set_prepare_hub(std::sync::Arc::new(
+            xylitol_official_plugin_mcp::McpPrepareHub::new(servers),
+        ));
+    }
 }
 
 impl OccupancyFactory for ProductOccupancyFactory {
     fn new_driver_at(&self, workspace: &Path) -> Box<dyn OccupancyEngine> {
         let agent = self.ports.materialize_runtime();
-        let mut driver = assemble_driver(agent, self.ports.store.clone());
+        let mut driver = assemble_driver_with_features_and_context(
+            agent,
+            self.ports.store.clone(),
+            self.tool_features(),
+            self.driver_context(workspace),
+        );
         driver.enable_reload_state(
             workspace.to_path_buf(),
             self.agent_dir.clone(),
             self.project_trusted(workspace),
         );
-        if let Some(ctx) = &self.ctx {
-            driver.attach_ctx(ctx.clone());
-            if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
-                driver.set_prepare_hub(hub);
-            }
-        } else if !self.mcp_servers.is_empty() {
-            let servers = crate::mcp_spec::McpServerSpec::to_infra_list(&self.mcp_servers);
-            driver.set_prepare_hub(std::sync::Arc::new(
-                xylitol_official_plugin_mcp::McpPrepareHub::new(servers),
-            ));
-        }
+        attach_optional_context(&mut driver, self.ctx.as_ref(), &self.mcp_servers);
         driver
             .agent
             .set_cwd(workspace.to_string_lossy().into_owned());
-        Box::new(OccupancyDriver { inner: driver })
+        Box::new(OccupancyDriver {
+            inner: driver,
+            tool_features: self.tool_features(),
+            driver_context: self.driver_context(workspace),
+        })
     }
 
     fn project_trusted(&self, workspace: &Path) -> bool {
@@ -105,10 +142,18 @@ impl OccupancyFactory for ProductOccupancyFactory {
     fn agent_dir(&self) -> PathBuf {
         self.agent_dir.clone()
     }
+
+    fn loop_registry(&self) -> Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>> {
+        self.ctx
+            .as_ref()
+            .and_then(|ctx| ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>())
+    }
 }
 
 struct OccupancyDriver {
     inner: XyInProcessDriver,
+    tool_features: ToolFeatures,
+    driver_context: DriverContext,
 }
 
 #[async_trait]
@@ -205,7 +250,12 @@ impl XyDriver for OccupancyDriver {
 #[async_trait]
 impl OccupancyEngine for OccupancyDriver {
     fn install_ask_tool(&mut self, gateway: Arc<dyn AskUserGateway>) {
-        crate::driver::install_product_ask_tool(&mut self.inner, gateway);
+        crate::driver::install_product_ask_tool(
+            &mut self.inner,
+            gateway,
+            self.tool_features,
+            self.driver_context.clone(),
+        );
     }
 
     fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {
@@ -246,6 +296,14 @@ impl OccupancyEngine for OccupancyDriver {
 
     fn agent_cwd_for_test(&self) -> String {
         XyInProcessDriver::agent_cwd_for_test(&self.inner)
+    }
+
+    fn set_loop_middleware_scoped(
+        &mut self,
+        registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        scope: xylitol_plugin_sdk::LoopScope,
+    ) {
+        self.inner.set_loop_middleware_scoped(registry, scope);
     }
 }
 

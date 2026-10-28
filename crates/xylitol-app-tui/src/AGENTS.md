@@ -19,7 +19,7 @@
 
 运行时真值：本目录产品代码。视觉色板 SSOT：[`DESIGN.md`](./DESIGN.md) frontmatter；改色板后跑 `just qa-check-tui-tokens`（Palette 对照）。现行词「固定区」= layout/widgets；勿用 `shell`/`scene` 命名。
 
-**信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`llmanspec/specs/app-tui-fixed-zone/`](../../../../llmanspec/specs/app-tui-fixed-zone/) 与产品代码中的固定词——尤其 **滚动提示**、**通知条**、**通知栈**、**待办栏**、**尾插 / 顶插**；弃用旧称（挂账 / Status trail / chrome / 壳层 / system 消息等）勿再引入。
+**信息呈现词汇（固定）**：讨论与**本端**文档 / host MUST 使用 [`llmanspec/specs/app-tui-fixed-zone/`](../../../../llmanspec/specs/app-tui-fixed-zone/) 与产品代码中的固定词——尤其 **滚动提示**、**通知条**、**通知栈**、**待办栏**、**ModeStrip**、**尾插 / 顶插**；弃用旧称（挂账 / Status trail / chrome / 壳层 / system 消息等）勿再引入。ModeStrip 仅单行、无交互，用于实验性模式标识；不得做成横幅或详情面板。**通知分类**：通知条 = 立刻要处理的阻塞拒绝/软闸/即时失败；右上角通知栈 = 即时确认（复制成功）；滚动提示 = 耐久导航/操作结果/错误；系统消息 = 必须进入模型上下文的耐久信息。耐久结果不得只走通知条；估算来源只由 footer `~`/`?%` 表达，不另立通知。
 
 **与 `agent_demo` 分界**：包引擎演示，不是本端 SSOT。硬边界见 `crates/xylitol-tui/AGENTS.md`。
 
@@ -51,5 +51,7 @@
 包侧验证分层（按键→状态 / snapshot / 时序 / 真终端 E2E）：`crates/xylitol-tui/AGENTS.md`「验证」+ skill `xylitol-dev`（`references/tui-harness.md`）。排障：`xylitol-dev`（`references/observability.md`）（勿整文件灌 log）。新增应用端：`l8ng-write-surface`。
 
 应用端无头帧挂载（BDD 直驱真实渲染）：`SceneBuilder`（经 `xylitol::app::tui` 导出；契约 `package-tui-testing`）。
+
+折叠/展开是**端侧纯呈现**：状态留客户端（`activity_fold` / `ScrollbackFold` / `FoldHitTable`），**不得**往返 Host，也不要求 Host 持久化折叠状态。产品 TUI attach 模式 **不得**直读 Host 会话存储（`XyRemoteDriver::session_store()` 为 `None`），会话读取只经协议 unary。历史按窗口加载：首屏最新一页（`HISTORY_PAGE = 200`）、窗口上限 `HISTORY_WINDOW = 800`，超出后最旧部分回落为顶部可点击 `ScrollNotice`；短会话不出现任何分页提示（`history_window`）。
 
 live 只进 scrollback；历史/分叉以会话树为准。不做 Codex TranscriptView；不做运行时 Settings/Plate 改配置；**不**绑定 Ctrl+P 打开 Command Plate stub。

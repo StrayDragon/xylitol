@@ -61,3 +61,29 @@ mod bash;
 mod mcp;
 mod session;
 mod trust;
+
+#[tokio::test]
+async fn assemble_driver_with_bang_wrapper_builds_driver() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let store_trait: Arc<dyn XySessionStore> = store.clone();
+    let mut agent = AgentBuilder::new(
+        xylitol_runtime::agent::model::registry::ModelRegistry::new(),
+        Arc::new(crate::provider::factory::build_provider),
+        store_trait.clone(),
+        Arc::new(EventBus::new()) as Arc<dyn XyEventSink>,
+        xylitol_runtime::permission::allow_all_permission(),
+    )
+    .cwd(".")
+    .tools(ToolSet::from_iter(
+        xylitol_official_plugin_tools::default_tools(),
+    ))
+    .build_baseline()
+    .materialize_runtime();
+    let sid = uuid::Uuid::new_v4().to_string();
+    store_trait.create(&sid, Some("."), None).await.unwrap();
+    agent.bind_session(sid).unwrap();
+
+    let driver = assemble_driver_with_bang(agent, store, BangExecHandler::new(None));
+    assert!(driver.session_id().is_some());
+}

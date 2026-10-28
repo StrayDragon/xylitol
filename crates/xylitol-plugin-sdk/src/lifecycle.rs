@@ -65,8 +65,6 @@ pub enum XyEvent {
         message: Option<AgentMessage>,
     },
     MessageUpdate {
-        text: String,
-        thinking: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         message: Option<AgentMessage>,
     },
@@ -139,6 +137,18 @@ pub enum XyEvent {
 
     TodoUpdated {
         list: crate::session::TodoList,
+    },
+
+    PlanDocUpdated {
+        doc: crate::session::PlanDoc,
+    },
+    WorkflowUpdated {
+        workflow: crate::session::Workflow,
+    },
+    PlanModeChanged {
+        mode: crate::session::PlanModeKind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        plan_id: Option<String>,
     },
 
     AutoRetryStart {

@@ -537,6 +537,7 @@ async fn w_c2826_compaction_span(sess: &crate::bdd::fixtures::XySessionStore, ot
         &binding,
         sink.as_ref(),
         None,
+        "manual",
         100_000,
         None,
         &mut notice,

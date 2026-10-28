@@ -36,6 +36,9 @@ REQUIRED_MEMBERS: dict[str, str] = {
     "plugins/xylitol-official-plugin-hooks": "xylitol-official-plugin-hooks",
     "plugins/xylitol-official-plugin-config": "xylitol-official-plugin-config",
     "plugins/xylitol-official-plugin-obs": "xylitol-official-plugin-obs",
+    "plugins/xylitol-official-plugin-todo": "xylitol-official-plugin-todo",
+    "plugins/xylitol-official-plugin-workflow": "xylitol-official-plugin-workflow",
+    "plugins/xylitol-official-plugin-plan": "xylitol-official-plugin-plan",
 }
 
 ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
@@ -58,12 +61,20 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-official-plugin-tools": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-mcp": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-hooks": frozenset({"xylitol-plugin-sdk"}),
+    "xylitol-official-plugin-loop-policies": frozenset({"xylitol-plugin-sdk"}),
+    "xylitol-official-plugin-todo": frozenset({"xylitol-plugin-sdk"}),
+    "xylitol-official-plugin-workflow": frozenset({"xylitol-plugin-sdk"}),
+    "xylitol-official-plugin-plan": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-config": frozenset(
         {
             "xylitol-plugin-sdk",
             "xylitol-runtime",
             "xylitol-official-plugin-hooks",
             "xylitol-official-plugin-mcp",
+            "xylitol-official-plugin-loop-policies",
+            "xylitol-official-plugin-todo",
+            "xylitol-official-plugin-workflow",
+            "xylitol-official-plugin-plan",
         }
     ),
     "xylitol-official-plugin-obs": frozenset(
@@ -83,8 +94,12 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
             "xylitol-official-plugin-tools",
             "xylitol-official-plugin-mcp",
             "xylitol-official-plugin-hooks",
+            "xylitol-official-plugin-loop-policies",
             "xylitol-official-plugin-config",
             "xylitol-official-plugin-obs",
+            "xylitol-official-plugin-todo",
+            "xylitol-official-plugin-workflow",
+            "xylitol-official-plugin-plan",
         }
     ),
 }
@@ -103,6 +118,10 @@ PLUGIN_PEER_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("xylitol-official-plugin-config", "xylitol-official-plugin-hooks"),
         ("xylitol-official-plugin-config", "xylitol-official-plugin-mcp"),
         ("xylitol-official-plugin-obs", "xylitol-official-plugin-config"),
+        ("xylitol-official-plugin-config", "xylitol-official-plugin-loop-policies"),
+        ("xylitol-official-plugin-config", "xylitol-official-plugin-todo"),
+        ("xylitol-official-plugin-config", "xylitol-official-plugin-workflow"),
+        ("xylitol-official-plugin-config", "xylitol-official-plugin-plan"),
     }
 )
 

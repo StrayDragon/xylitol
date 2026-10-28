@@ -28,6 +28,18 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub tool_batch: ToolBatchConfig,
+
+    #[serde(default)]
+    pub loop_policies: LoopPoliciesConfig,
+
+    #[serde(default)]
+    pub todo: TodoConfig,
+
+    #[serde(default)]
+    pub workflow: WorkflowConfig,
+
+    #[serde(default)]
+    pub plan: PlanConfig,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -318,6 +330,10 @@ impl AppConfig {
 }
 
 pub use xylitol_official_plugin_hooks::{HookEntry, HooksConfig};
+pub use xylitol_official_plugin_loop_policies::LoopPoliciesConfig;
+pub use xylitol_official_plugin_plan::PlanConfig;
+pub use xylitol_official_plugin_todo::TodoConfig;
+pub use xylitol_official_plugin_workflow::WorkflowConfig;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct SecurityConfig {

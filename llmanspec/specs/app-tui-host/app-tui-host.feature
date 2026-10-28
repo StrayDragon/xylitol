@@ -315,7 +315,7 @@
     产品 TUI attach 下初始连接与重连 须各有宽限期：宽限内 不得因断线/重试打扰信息面（transcript 与状态条零输出）；超宽限 须以通知条（toast notice）提示断线重连中，恢复成功 须以通知条收尾并清除断线态；重连窗内 不得向 transcript 推错误行。
     场景: 重连宽限然后提示条
       假如 真进程 serve 已启动且 attach 客户端已订阅
-      当 server 的 mux 连接被断开且期间 journal 新增事件
+      当 server 的 mux 连接被断开且期间 journal 新增事实事件
       那么 客户端 在宽限内不上屏断线错误并自动重连
 
   @req:r1274
@@ -337,9 +337,9 @@
 
     场景: 真实杀死重连日志续跑
       假如 真进程 serve 已启动且 attach 客户端已订阅
-      当 server 的 mux 连接被断开且期间 journal 新增事件
+      当 server 的 mux 连接被断开且期间 journal 新增事实事件
       那么 客户端 在宽限内不上屏断线错误并自动重连
-      并且 重连后 按 last_seq 从 journal 续传缺失事件且 不依赖人工重开
+      并且 重连后 按 last_seq 从 journal 续传缺失事实事件且 不依赖人工重开
   @req:r1276
   规则: interactive-loop-pumps-inline
     交互 bang 循环 须在既有 tick 节奏内经窄入口（drain_inline_pending）调度执行类为 Inline 的 pending effects（消费 atm18 exec_class），不得阻塞 bang 输出 chunk 的既有转发节奏；执行类为 Exclusive 与 Queued 的 pending 须保持排队至循环归还后由主循环 drain_pending 处理且语义不变；主循环 drain_pending 的全量调度行为 不得改变。

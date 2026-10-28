@@ -145,28 +145,28 @@
       那么 footer 含 used 42k tokens 与 32.8%/128k 派生占用比
   @req:r1227
   规则: toast-notice-ephemeral
-    产品 TUI 须提供通知条（toast notice）：固定于固定区、位于 status/spinner 槽上方恰好一行；前景 须用 warning token（非 muted、非 accent）；可见文案 须以字面前缀 `Error: ` 开头后接 body；不得写入 UiModel.entries / UiEntry；新通知 须替换旧通知（单槽）；显示后 须在约定 TTL（默认约 3–5s）内经 idle_tick/step 自动清除。agent/bang busy 下 Resume 面板 switch/rename/delete 拒闸（见 atm10）须走通知条，不得再追加 UiEntry::ScrollNotice。不得用通知条冒充对话正文或下轮预告。
+    产品 TUI 须提供通知条（toast notice）：固定于固定区、位于 status/spinner 槽上方恰好一行；前景 须用 warning token（非 muted、非 accent）；可见文案 须以字面前缀 `Error: ` 开头后接 body；不得写入 UiModel.entries / UiEntry；新通知 须替换旧通知（单槽）；显示后 须在约定 TTL（默认约 3–5s）内经 idle_tick/step 自动清除。通知条 仅用于**需要用户立刻处理的阻塞拒绝、软闸或即时失败**（如 reload 等待、busy 会话切换拒绝、链路 down/recovered）；不得承载耐久结果、导航完成、估算来源说明或对话正文/下轮预告。agent/bang busy 下 Resume 面板 switch/rename/delete 拒闸（见 atm10）须走通知条，不得再追加 UiEntry::ScrollNotice。
 
     场景: 提示条单一槽替换带错误前缀
       当 连续推送两条通知条后渲染
       那么 仅见后一条且以 Error: 前缀且未写入对话条目
   @req:r1930
   规则: client-notice-stack
-    产品 TUI 须在视口右上角提供客户端通知栈：纵向堆叠、最新在上、同时最多约 3 条，TTL 到期自动消失；成功确认（至少复制成功 Copied、Copied Last Msg）以 ✓ 起头，说明类（至少整段 Heuristic 估计的首次提示）以 ◆ 起头。该右上角 须为当前已裁切的可见 transcript 视口，滚动对话后 须仍钉在该角；不得写在滚动内容缓冲第 0 行并随内容滚出视口。不得写入对话条目 / ScrollNotice；不得计入下缘 Fixed-Zone Footprint；不得使用通知条的 Error: 前缀。不得把导航瞬时（switched →、forked →、cloned →、imported →、restored →、new session →、history @）放入本栈（那些走滚动提示尾插，见 r1953 / r1330）。整段估计 provenance 为 Heuristic 时 须在每个 TUI 进程内至多提示一次；Api 锚点有效仅 trailing 为启发式时 不得再弹。Print 面 不得展示该栈。本波 不得要求栈内键盘动作或展开侧板。
+    产品 TUI 须在视口右上角提供客户端通知栈：纵向堆叠、最新在上、同时最多约 3 条，TTL 到期自动消失；成功确认（至少复制成功 Copied、Copied Last Msg）以 ✓ 起头。该右上角 须为当前已裁切的可见 transcript 视口，滚动对话后 须仍钉在该角；不得写在滚动内容缓冲第 0 行并随内容滚出视口。不得写入对话条目 / ScrollNotice；不得计入下缘 Fixed-Zone Footprint；不得使用通知条的 Error: 前缀。不得把导航瞬时（switched →、forked →、cloned →、imported →、restored →、new session →、history @）放入本栈（那些走滚动提示尾插，见 r1953 / r1330）。不得把估算来源说明、模式说明或耐久结果放入本栈；Heuristic 仅由 footer 的 `~` 表达。Print 面 不得展示该栈。本波 不得要求栈内键盘动作或展开侧板。
     场景: 提示栈已复制不错误栏
       当 臂装复制成功提示后渲染主机帧
       那么 右上角通知栈含 Copied 且不以 Error 前缀冒充
-    场景: 提示栈启发式一次
-      假如 footer 同源估计为 Heuristic
-      当 连续两次以 Heuristic 刷新估计
-      那么 估算说明在通知栈至多出现一次
     场景: 提示栈已复制钉住已滚动视口
       假如 对话内容高于可见 transcript 窗且视口未停在内容顶
       当 臂装复制成功提示后渲染已裁切视口
       那么 可见视口顶部含 Copied 且不以 Error 前缀冒充
+  @req:r2958
+  规则: notice-taxonomy
+    产品 TUI 的通知面 须按单一分类选择：**通知条**只承载需要立刻处理的阻塞拒绝、软闸或即时失败；**右上角通知栈**只承载即时确认（复制成功）与短时客户端提示；**滚动提示**承载耐久导航结果、操作结果与错误（rename/delete/import/export/fork、model/thinking 失败、compaction/retry 细节）；**系统消息**承载必须进入模型上下文的耐久信息。耐久结果 不得只以通知条呈现；瞬时闸门 不得制造滚动噪声；估算来源 不得另立通知面（footer `~`/`?%` 已表达）。分类 须以调用点审计与单测锁定。
+
   @req:r1228
   规则: fixed-zone-footprint-term-budget
-    产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
+    产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / ModeStrip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
 
     场景: 短终端忙碌前导可见
       当 以小高度终端渲染忙碌帧
@@ -205,12 +205,16 @@
       那么 带 30s 的显示 (timeout 30s) 且省略的不显示 timeout 注记
   @req:r21
   规则: todo-bar-dock-member
-    产品 TUI 待办栏 须为下缘固定区成员：有 Todo 条目时驻留于队列条与通知条之间，通知条仍紧贴 status、status 仍紧贴 editor；空表 须占 0 行。待办栏 不得写入对话条目，不得冒充 status、footer、通知条或队列条。折叠/展开/换行续行与上下轮廓（含 `↑ N more` / `↓ N more` 边框）须计入 Fixed-Zone Footprint 实际行（可见行，含高度上限后的内容视口高加轮廓，不含未滚入内容）。
+    产品 TUI 待办栏 须为下缘固定区成员：有 Todo 条目时驻留于队列条与 ModeStrip 之间，ModeStrip 位于待办栏与通知条之间，通知条仍紧贴 status、status 仍紧贴 editor；空表 须占 0 行。待办栏 不得写入对话条目，不得冒充 status、footer、通知条或队列条。折叠/展开/换行续行与上下轮廓（含 `↑ N more` / `↓ N more` 边框）须计入 Fixed-Zone Footprint 实际行（可见行，含高度上限后的内容视口高加轮廓，不含未滚入内容）。
 
     场景: 待办栏位于介于队列与提示条
       当 产品 TUI 同时存在非空待办栏、队列条与通知条
       那么 从上到下 为队列条、待办栏、通知条、status、editor
       并且 空表时待办栏 占 0 行
+
+  @req:r2956
+  规则: mode-strip-single-line
+    产品 TUI 须提供 ModeStrip 固定区成员：仅一行、前导 glyph（unicode `◆` / ascii `*`）加短状态；无模式时 须占 0 行；不得换行、展开或交互。长文本 须右截断而非增高；不得写入 UiModel.entries / ScrollNotice / 通知条；须计入 Fixed-Zone Footprint 实际行。首消费者为 plan 模式（`plan` / `execute · <plan_id>`），状态 须仅由 `planModeChanged` 驱动，不得在端侧另造模式来源；`execute` 无 plan 时 须隐藏。
 
   @req:r2903
   规则: 会话详情覆盖弹出框
@@ -256,3 +260,22 @@
       假如 产品 TUI 主循环就绪
       当 先开覆盖弹出框再开侧栏
       那么 两面同时可辨且覆盖弹出框贴内容右边界
+
+  @req:r2936
+  规则: 历史窗口与加载更早
+    产品 TUI 会话滚动区 须按窗口加载历史：首屏取最新一页，向上滚动到顶时逐页向前加载更早条目；单页 200 条、端侧窗口上限 800 条。窗口超限时 最旧一页 须回落为顶部居中可点击提示行（形如 `↑ 加载更早的 200 条（还有 N 条）`），点击后 须前置加载更早一页并保持滚动锚点不跳；盘上无更早条目时 不得渲染该提示行，短会话 不得出现任何分页提示。该提示行 须计入滚动区内容行，不得占用固定区槽位，也不得冒充通知条或待办栏。
+
+    场景: 首屏只加载最新一页
+      假如 会话条目数超过单页上限且产品 TUI 打开该会话
+      当 渲染滚动区
+      那么 仅展示最新一页且顶部提示行标记尚有更早条目
+
+    场景: 滚顶加载更早
+      假如 滚动区已停在顶部且尚有更早条目
+      当 触发加载更早
+      那么 前置加载更早一页且视口锚点保持在原条目
+
+    场景: 短会话无分页提示
+      假如 会话条目数不足单页上限
+      当 渲染滚动区
+      那么 不出现任何加载更早提示

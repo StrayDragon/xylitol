@@ -30,6 +30,10 @@ members = [
     "plugins/xylitol-official-plugin-tools",
     "plugins/xylitol-official-plugin-mcp",
     "plugins/xylitol-official-plugin-hooks",
+    "plugins/xylitol-official-plugin-loop-policies",
+    "plugins/xylitol-official-plugin-todo",
+    "plugins/xylitol-official-plugin-workflow",
+    "plugins/xylitol-official-plugin-plan",
 ]
 
 [workspace.dependencies]
@@ -53,6 +57,10 @@ xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-
 xylitol-official-plugin-tools = { path = "plugins/xylitol-official-plugin-tools" }
 xylitol-official-plugin-mcp = { path = "plugins/xylitol-official-plugin-mcp" }
 xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks" }
+xylitol-official-plugin-loop-policies = { path = "plugins/xylitol-official-plugin-loop-policies" }
+xylitol-official-plugin-todo = { path = "plugins/xylitol-official-plugin-todo" }
+xylitol-official-plugin-workflow = { path = "plugins/xylitol-official-plugin-workflow" }
+xylitol-official-plugin-plan = { path = "plugins/xylitol-official-plugin-plan" }
 
 anyhow = "1.0.104"
 async-openai = { version = "0.42", default-features = false }
@@ -170,6 +178,10 @@ xylitol-official-plugin-compaction = { workspace = true }
 xylitol-official-plugin-tools = { workspace = true }
 xylitol-official-plugin-mcp = { workspace = true, default-features = false }
 xylitol-official-plugin-hooks = { workspace = true }
+xylitol-official-plugin-loop-policies = { workspace = true }
+xylitol-official-plugin-todo = { workspace = true }
+xylitol-official-plugin-workflow = { workspace = true }
+xylitol-official-plugin-plan = { workspace = true }
 crossterm = { workspace = true, optional = true, features = ["event-stream"] }
 http = { workspace = true }
 

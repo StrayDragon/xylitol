@@ -357,3 +357,33 @@ pub(crate) async fn comp_seed_turns(sess: &XySessionStore, sid: &str, turns: usi
         let _ = mgr.append(sid, &e).await;
     }
 }
+
+#[given("会话处于 plan 模式且有 50 个轮次")]
+pub(crate) async fn _g_comp_plan_mode_50_turns(sess: &XySessionStore) {
+    use xylitol_plugin_sdk::session::PlanMode;
+
+    comp_seed_turns(sess, COMP_RETAIN_SID, 50).await;
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let entry = PlanMode::plan(None).to_custom_entry_shell();
+    let _ = mgr.append(COMP_RETAIN_SID, &entry).await;
+    sess.current_id.replace(Some(COMP_RETAIN_SID.to_string()));
+}
+
+#[then("压缩后会话仍为 plan 模式")]
+pub(crate) async fn _t_comp_plan_mode_retained(sess: &XySessionStore) {
+    use xylitol_plugin_sdk::XySessionStore;
+    use xylitol_plugin_sdk::session::{PlanModeKind, latest_plan_mode};
+
+    sess.ensure_mgr();
+    let mgr = sess.mgr.borrow().as_ref().unwrap().clone();
+    let branch = mgr
+        .load_leaf_branch(COMP_RETAIN_SID)
+        .await
+        .expect("leaf branch after compaction");
+    assert_eq!(
+        latest_plan_mode(&branch).mode,
+        PlanModeKind::Plan,
+        "compaction must re-append plan_mode when the cut drops it"
+    );
+}

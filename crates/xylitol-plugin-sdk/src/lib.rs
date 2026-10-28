@@ -9,6 +9,7 @@ pub mod error;
 pub mod generate;
 pub mod lifecycle;
 pub mod llm_project;
+pub mod loop_middleware;
 pub mod message;
 pub mod model;
 pub mod model_entry;
@@ -17,7 +18,6 @@ pub mod obs_session;
 pub mod overflow;
 pub mod plugin_config;
 pub mod plugin_events;
-pub mod plugin_keys;
 mod ports;
 pub mod registry;
 pub mod resource;
@@ -57,6 +57,11 @@ pub use generate::{
 };
 pub use lifecycle::{XyEvent, XyEventError};
 pub use llm_project::project_for_llm;
+pub use loop_middleware::{
+    AfterLlmResponseCtx, AfterToolCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeToolCtx,
+    BeforeTurnCtx, CompactRequest, DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware,
+    LoopMiddlewareHandle, LoopMiddlewareRegistry, LoopScope, LoopStage, LoopStep,
+};
 pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
 pub use model::{
     THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap, XyChunk, XyModelConfig,
@@ -83,18 +88,14 @@ pub use plugin_events::{
     AgentPreStep, HttpBeforeRequest, SessionPrepare, SessionPrepareReason, SessionPrepareResult,
     ToolPostExecute, ToolPreExecute, TrustPreLoad,
 };
-pub use plugin_keys::{
-    compaction_key, hook_bus_key, model_key, permission_key, session_prepare_hub_key,
-    session_store_key, tool_vec_key,
-};
 pub use ports::{
     AgentTodoGateway, AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway, BashChunk,
     BashExecOpts, BashOutputSink, FS_TOOL_TIMEOUT_SECS, HeaderBag, HttpHooks, LifecycleHandler,
-    NoopCompaction, NoopHookBus, OverflowCompactOutcome, SessionListEntry, TypedTool,
-    XyBashExecutor, XyBashResult, XyBatchMode, XyCompaction, XyCompactionFactory, XyEventSink,
-    XyExportIo, XyHookBus, XyHookOutcome, XyModel, XyModelBuilder, XyPermission,
-    XyPermissionVerdict, XySecretResolver, XySessionStore, XyStream, XyTool, XyToolCtx,
-    XyToolExecutionMode, ask, bash, flatten_session_forest, format_session_age,
+    NoopCompaction, NoopHookBus, OverflowCompactOutcome, PlanGateway, RuntimeSessionStore,
+    SessionListEntry, TypedTool, WorkflowGateway, XyBashExecutor, XyBashResult, XyBatchMode,
+    XyCompaction, XyCompactionFactory, XyEventSink, XyExportIo, XyHookBus, XyHookOutcome, XyModel,
+    XyModelBuilder, XyPermission, XyPermissionVerdict, XySecretResolver, XySessionStore, XyStream,
+    XyTool, XyToolCtx, XyToolExecutionMode, ask, bash, flatten_session_forest, format_session_age,
     noop_compaction_factory, parse_tool_args, run_after_response, run_before_headers,
     run_before_request, sanitize_session_display_name, should_compact, typed,
 };
@@ -125,7 +126,7 @@ mod contract_tests {
 
     #[test]
     fn sdk_api_version_and_rutis_lock() {
-        assert_eq!(SDK_API_VERSION, "0.3.0");
+        assert_eq!(SDK_API_VERSION, "0.4.0");
         assert_eq!(RUTIS_LOCK, "0.17.0");
     }
 }

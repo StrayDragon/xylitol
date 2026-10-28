@@ -351,3 +351,27 @@
       假如 进程 A 持有已物化会话写占用后退出
       当 进程 B 打开同一会话写入
       那么 进程 B 可以追加
+  @req:r2938
+  规则: 会话条目分页读取
+    XySessionStore 须提供分页读取入口：limit 缺省返回全量；给定 limit 时从最新一条向前取该条数；给定 before_entry_id 时取该条目之前的更早条目；未知 before_entry_id 须返回空页。分页结果 须与全量读取后切片逐条一致。持久化后端 须按 manifest 段首尾条目 id 与 sidecar 索引跳过窗口外的整段，不得为取一页而读取全部段；窗口跨越的段 须读取并按需切片。has_more 须表示窗口之外仍有更早条目。段级跳过与读取段计数 由存储层单测覆盖，不为内部读取计数单开 BDD。
+  @req:r2941
+  规则: todo-checkpoint-entry
+    todo checkpoint 须以 custom_type = "todo_checkpoint" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式，不改布局；data 至少含 steps（id/content/status 与可选 verification/output_ref）、可选 last_verified_artifact / last_failure / resume_cursor（step_id 与 attempt）以及 updated_at。读取 须取叶分支上最新一条；缺失或损坏时 须按无 checkpoint 处理，不得中断。读取 须兼容旧 custom_type = "plan_checkpoint" 的一次性迁移路径，但新写入 不得再使用旧名。todo checkpoint 与 agent_todo 并存：todo 仍是人可见台账，checkpoint 是恢复状态，两者 不得互相替代。写入 须只追加，不得覆盖或删除历史条目。往返与最新选取 由 SDK 单测覆盖。
+  @req:r2952
+  规则: plan-doc-and-mode-entries
+    计划文档 须以 custom_type = "plan_doc" 的 CustomEntry 存入会话，data 含 plan_id、title、status、steps（id/content/可选 depends_on/verification/status）、created_at 与 updated_at；读取 须按 plan_id 取叶分支最新一条，缺省取最新文档。计划模式 须以 custom_type = "plan_mode" 的 CustomEntry 存入会话，data 含 mode（plan/execute）、可选 plan_id 与 updated_at；读取 须取最新一条，缺失时按 execute 处理。两类条目 须只追加，不得覆盖或删除历史。会话临时目录下的 `plans/<plan_id>.md` 仅为可读视图，不得成为持久化 SSOT。
+  @req:r2945
+  规则: workflow-artifact
+    workflow 须以 custom_type = "workflow" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式；data 含 goal、steps（id/description/depends_on/inputs/outputs/risk/verification/rollback/requires_human/status/output_ref）、可选 resume_cursor 与 updated_at。读取 须取叶分支最新一条，并兼容旧 custom_type = "plan" 的一次性迁移路径；新写入 不得再使用旧名。校验 须保证 id 唯一、依赖存在且无环。重规划约束：已完成步骤 不得删除、降级或改写 description / verification / depends_on；只有失败步骤及其下游闭包可结构性变更；无失败时 只允许 status / output_ref 变化。workflow 与 agent_todo、todo_checkpoint 并存，不得互相替代。DAG 校验与重规划约束 由 SDK / 中间件单测覆盖。
+
+  @req:r2964
+  规则: plan-ref-entry
+    写入 project / global 计划 须追加 custom_type = "plan_ref" 的 CustomEntry，含 scope、plan_id 与可选 path；读取 须取叶分支最新一条。引用的文件缺失 须报告缺失，不得静默重建或降级到 session。由 plan 插件单测覆盖。
+
+  @req:r2967
+  规则: workflow-tool-write
+    workflow 须由 `workflow_write` 工具写入 `custom_type = "workflow"` 的 CustomEntry，格式与既有条目一致；中间件 不得再解析 assistant 文本写 workflow。旧会话中的 workflow CustomEntry 仍按原格式读取，不做文本迁移。由插件单测覆盖。
+
+  @req:r2970
+  规则: nested-workflow-entry
+    workflow CustomEntry 的 steps 可含 `sub_workflow`（递归同构）；`resume_cursor` 为 `/` 分隔的步骤路径。读取 须取叶分支最新一条并按路径解析；不得为子 workflow 新建独立条目。由 SDK 单测覆盖。

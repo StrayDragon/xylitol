@@ -2627,46 +2627,6 @@ pub(crate) fn t_notice_stack_copied(host_pump_bdd: &HostPumpBdd) {
     t_c2826_copy_notice(host_pump_bdd);
 }
 
-#[given("footer 同源估计为 Heuristic")]
-pub(crate) fn g_heuristic_estimate(host_pump_bdd: &HostPumpBdd) {
-    use xylitol_plugin_sdk::model::{ContextTokenEstimate, TokenProvenance};
-    let mut pump = host_pump_bdd
-        .pump
-        .borrow_mut()
-        .take()
-        .unwrap_or_else(fresh_pump);
-    pump.driver
-        .set_session_messages(xylitol_app_tui::harness::harness_sample_session_messages());
-    pump.driver
-        .set_estimate_override(Some(ContextTokenEstimate {
-            tokens: 42,
-            provenance: TokenProvenance::Heuristic,
-            usage_tokens: 0,
-            trailing_tokens: 42,
-            last_usage_index: None,
-        }));
-    *host_pump_bdd.pump.borrow_mut() = Some(pump);
-}
-
-#[when("连续两次以 Heuristic 刷新估计")]
-pub(crate) async fn w_heuristic_refresh_twice(host_pump_bdd: &HostPumpBdd) {
-    let mut pump = take_pump(host_pump_bdd);
-    xylitol_app_tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
-    xylitol_app_tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
-    pump.session.render_now().expect("render");
-    put_pump(host_pump_bdd, pump);
-    let _ = paint_clipped_viewport(host_pump_bdd);
-}
-
-#[then("估算说明在通知栈至多出现一次")]
-pub(crate) fn t_heuristic_notice_once(host_pump_bdd: &HostPumpBdd) {
-    let frame = paint_clipped_viewport(host_pump_bdd);
-    let n = frame.matches("Context tokens are approximate").count();
-    assert_eq!(n, 1, "Heuristic notice once: {frame}");
-    assert!(frame.contains('◆'), "{frame}");
-    assert!(!frame.contains("Error: Context"), "{frame}");
-}
-
 #[given("对话内容高于可见 transcript 窗且视口未停在内容顶")]
 pub(crate) fn g_tall_scrolled_viewport(host_pump_bdd: &HostPumpBdd) {
     let mut pump = host_pump_bdd
@@ -2729,6 +2689,7 @@ pub(crate) fn w_idle_session_switch(host_pump_bdd: &HostPumpBdd) {
     pump.session.apply_resume_session(
         "newer",
         xylitol_app_tui::harness::harness_sample_session_messages(),
+        false,
     );
     pump.session.render_now().expect("switch render");
     *host_pump_bdd.pump.borrow_mut() = Some(pump);

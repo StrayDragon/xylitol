@@ -83,6 +83,7 @@ pub const METHOD_SET_MODEL: &str = "set_model";
 pub const METHOD_CYCLE_MODEL: &str = "cycle_model";
 pub const METHOD_GET_AVAILABLE_MODELS: &str = "get_available_models";
 pub const METHOD_SET_THINKING_LEVEL: &str = "set_thinking_level";
+pub const METHOD_SET_PLAN_MODE: &str = "set_plan_mode";
 pub const METHOD_BASH: &str = "bash";
 pub const METHOD_COMPACT: &str = "compact";
 pub const METHOD_GET_SESSION_STATS: &str = "get_session_stats";
@@ -163,6 +164,14 @@ pub const REGISTRY: &[MethodEntry] = &[
         Idem::PerRpc,
         Resp::Result,
         true,
+        Exec::Inline,
+    ),
+    mx(
+        METHOD_SET_PLAN_MODE,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        CMD,
         Exec::Inline,
     ),
     mx(
@@ -396,6 +405,7 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::CycleModel { .. }
         | Command::GetAvailableModels { .. }
         | Command::SetThinkingLevel { .. }
+        | Command::SetPlanMode { .. }
         | Command::GetQueueStats { .. }
         | Command::GetCommands { .. }
         | Command::LoadedResources { .. }
@@ -477,6 +487,7 @@ mod tests {
                 "set_model",
                 "cycle_model",
                 "set_thinking_level",
+                "set_plan_mode",
                 "bash",
                 "compact",
                 "export_html",
@@ -615,6 +626,7 @@ mod tests {
                 "loaded_resources",
                 "queue_stats",
                 "set_model",
+                "set_plan_mode",
                 "set_session_name",
                 "set_session_name_for",
                 "set_thinking_level",
@@ -681,7 +693,13 @@ mod tests {
                     position: None,
                 },
             ),
-            ("get_messages", Command::GetMessages {}),
+            (
+                "get_messages",
+                Command::GetMessages {
+                    limit: None,
+                    before_entry_id: None,
+                },
+            ),
             ("estimate_context", Command::EstimateContext {}),
             ("get_commands", Command::GetCommands {}),
             (
@@ -761,8 +779,15 @@ mod tests {
                     last_seq: 0,
                 },
             ),
+            (
+                "set_plan_mode",
+                Command::SetPlanMode {
+                    mode: "toggle".into(),
+                    plan_id: None,
+                },
+            ),
         ];
-        assert_eq!(cases.len(), 35, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 36, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");

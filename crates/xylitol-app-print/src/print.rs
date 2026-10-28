@@ -109,7 +109,10 @@ where
             | XyEvent::AutoRetryEnd { .. }
             | XyEvent::SessionInfoChanged { .. }
             | XyEvent::ContextTokenSettlement { .. }
-            | XyEvent::TodoUpdated { .. } => {}
+            | XyEvent::TodoUpdated { .. }
+            | XyEvent::PlanDocUpdated { .. }
+            | XyEvent::WorkflowUpdated { .. }
+            | XyEvent::PlanModeChanged { .. } => {}
             XyEvent::AgentEnd { .. } => break,
         }
     }
@@ -157,23 +160,11 @@ mod tests {
     async fn text_delta_only_is_written_once() {
         let events = vec![
             XyEvent::TextDelta("Hello".into()),
-            XyEvent::MessageUpdate {
-                text: "Hello".into(),
-                thinking: None,
-                message: None,
-            },
+            XyEvent::MessageUpdate { message: None },
             XyEvent::TextDelta("!".into()),
-            XyEvent::MessageUpdate {
-                text: "Hello!".into(),
-                thinking: None,
-                message: None,
-            },
+            XyEvent::MessageUpdate { message: None },
             XyEvent::TextDelta(" How".into()),
-            XyEvent::MessageUpdate {
-                text: "Hello! How".into(),
-                thinking: None,
-                message: None,
-            },
+            XyEvent::MessageUpdate { message: None },
             XyEvent::AgentEnd { messages: vec![] },
         ];
         let mut stream = mock_stream(events);

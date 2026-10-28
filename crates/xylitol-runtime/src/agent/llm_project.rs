@@ -26,6 +26,27 @@ mod tests {
         }
     }
 
+    // ~keep Sorting is required because serde_json only keeps insertion order when
+    // ~keep its preserve_order feature is unified in by some other crate in the
+    // ~keep build graph; the same projection then serialises with different key
+    // ~keep order depending on how cargo was invoked, flipping a raw snapshot.
+    fn sort_object_keys(value: &serde_json::Value) -> serde_json::Value {
+        use serde_json::{Map, Value};
+        match value {
+            Value::Object(map) => {
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                let mut sorted = Map::new();
+                for key in keys {
+                    sorted.insert(key.clone(), sort_object_keys(&map[key]));
+                }
+                Value::Object(sorted)
+            }
+            Value::Array(items) => Value::Array(items.iter().map(sort_object_keys).collect()),
+            other => other.clone(),
+        }
+    }
+
     #[test]
     fn full_projection_shape_snapshot() {
         let history = vec![
@@ -83,6 +104,7 @@ mod tests {
         let projected = project_for_llm(&history);
         let mut value = serde_json::to_value(&projected).unwrap();
         normalize_timestamps(&mut value);
+        let value = sort_object_keys(&value);
         let pretty = serde_json::to_string_pretty(&value).unwrap();
         insta::assert_snapshot!(pretty);
     }

@@ -262,7 +262,12 @@ mod tests {
                 tempfile::tempdir().unwrap().path().join("sessions"),
             ));
         let mut driver = crate::driver::assemble_driver(agent, store);
-        crate::driver::install_product_ask_tool(&mut driver, Arc::new(SkipGateway));
+        crate::driver::install_product_ask_tool(
+            &mut driver,
+            Arc::new(SkipGateway),
+            crate::driver::ToolFeatures::default(),
+            crate::driver::DriverContext::default(),
+        );
         assert!(driver.tool_names_for_test().iter().any(|n| n == "ask"));
 
         let mut mcp = McpSession::new();

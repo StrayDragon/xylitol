@@ -35,6 +35,7 @@ impl CompactionOrchestrator {
         summary: &CompactionSummaryBinding,
         event_sink: &dyn XyEventSink,
         instructions: Option<String>,
+        reason: &str,
         context_window: u64,
         fixed_context: Option<&FixedRequestContext>,
         fallback_notice_emitted: &mut bool,
@@ -42,7 +43,7 @@ impl CompactionOrchestrator {
         let obs_session = &summary.generate_options.obs_session;
         event_sink
             .emit(&XyEvent::CompactionStart {
-                reason: "manual".to_string(),
+                reason: reason.to_string(),
             })
             .await;
 
@@ -69,7 +70,7 @@ impl CompactionOrchestrator {
             return Err(err);
         }
 
-        let obs = AgentCompactionSpan::start("manual", None, obs_session);
+        let obs = AgentCompactionSpan::start(reason, None, obs_session);
 
         let mut force_settings = self.settings.clone();
         force_settings.enabled = true;
@@ -103,7 +104,7 @@ impl CompactionOrchestrator {
                 .emit(&XyEvent::CompactionEnd {
                     result: result.as_ref().ok().map(|_| "ok".to_string()),
                     aborted: false,
-                    reason: "manual".into(),
+                    reason: reason.to_string(),
                     will_retry: false,
                     error_message: result
                         .as_ref()
@@ -584,6 +585,7 @@ impl XyCompaction for CompactionOrchestrator {
         summary: &CompactionSummaryBinding,
         event_sink: &dyn XyEventSink,
         instructions: Option<String>,
+        reason: &str,
         context_window: u64,
         fixed_context: Option<&FixedRequestContext>,
         fallback_notice_emitted: &mut bool,
@@ -595,6 +597,7 @@ impl XyCompaction for CompactionOrchestrator {
             summary,
             event_sink,
             instructions,
+            reason,
             context_window,
             fixed_context,
             fallback_notice_emitted,

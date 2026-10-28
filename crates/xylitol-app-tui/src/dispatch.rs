@@ -27,6 +27,10 @@ pub enum DispatchOutcome {
     Model(ModelInfo),
     Models(Vec<ModelInfo>),
     ThinkingLevel(String),
+    PlanMode {
+        mode: String,
+        plan_id: Option<String>,
+    },
     Bash(XyBashResult),
     Compacted(bool),
     SessionStats(serde_json::Value),
@@ -36,6 +40,7 @@ pub enum DispatchOutcome {
     Messages {
         session_id: String,
         entries: Vec<SessionEntry>,
+        has_more: bool,
     },
     EstimateContext(xylitol_plugin_sdk::model::ContextTokenEstimate),
     SessionTree(Vec<SessionTreeNode>),
