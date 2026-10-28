@@ -40,11 +40,13 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
                 use xylitol_plugin_sdk::session::{PlanMode, PlanModeKind, latest_plan_mode};
                 let session_id = crate::driver::XyDriver::session_id(self)
                     .ok_or_else(|| XyDriverError::invalid_input("no active session"))?;
-                let branch = self
-                    .store
-                    .load_leaf_branch(&session_id)
-                    .await
-                    .map_err(XyDriverError::from)?;
+                let branch = match self.store.load_leaf_branch(&session_id).await {
+                    Ok(branch) => branch,
+                    Err(xylitol_plugin_sdk::error::XySessionStoreError::NotFound { .. }) => {
+                        Vec::new()
+                    }
+                    Err(e) => return Err(XyDriverError::from(e)),
+                };
                 let next = match mode.as_str() {
                     "toggle" => match latest_plan_mode(&branch).mode {
                         PlanModeKind::Plan => PlanMode::execute(),

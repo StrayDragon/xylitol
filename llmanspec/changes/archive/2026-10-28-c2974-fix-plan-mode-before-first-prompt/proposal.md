@@ -2,6 +2,9 @@
 depends_on: []
 title: Fix plan mode toggle before the first prompt
 needs_specs_change: false
+branch: sdd/c2974-fix-plan-mode-before-first-prompt
+base_branch: main
+base_sha: 54e68368101a1fea9f979052f5e19b6c3e00dd7a
 ---
 
 # Fix plan mode toggle before the first prompt
