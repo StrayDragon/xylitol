@@ -484,21 +484,24 @@ impl SessionSlot {
         inflight: bool,
         want_partial: bool,
     ) -> SessionSubscribedPayload {
-        let partial = if want_partial && inflight {
-            self.latest_tape
-                .lock()
-                .ok()
-                .and_then(|g| g.clone())
-                .and_then(|m| serde_json::to_value(m).ok())
-        } else {
-            None
-        };
+        let partial = self.partial_tape(inflight, want_partial);
         SessionSubscribedPayload {
             session_id: self.session_id.clone(),
             seq,
             inflight,
             partial,
         }
+    }
+
+    fn partial_tape(&self, inflight: bool, want_partial: bool) -> Option<Value> {
+        if !(want_partial && inflight) {
+            return None;
+        }
+        self.latest_tape
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .and_then(|m| serde_json::to_value(m).ok())
     }
 
     fn resync_notification(&self) -> Notification {
@@ -519,8 +522,7 @@ impl SessionSlot {
     ) -> RpcResult {
         let want_partial = inflight && last_seq > 0;
         let journal = self.journal.lock().await;
-        let wrapped_gap =
-            journal.is_full() && last_seq < journal.min_seq() && journal.min_seq() > 1;
+        let wrapped_gap = journal_wrapped_gap(&journal, last_seq);
         if wrapped_gap && !self.resync_offered.swap(true, Ordering::SeqCst) {
             drop(journal);
             self.broadcast(self.resync_notification()).await;
@@ -617,21 +619,8 @@ impl SessionSlot {
     }
 
     pub async fn append_and_push(&self, event: &XyEvent) {
-        if is_tape_event(event) {
-            self.push_tape(event).await;
+        let Some(event) = self.prepare_event(event).await else {
             return;
-        }
-        if matches!(event, XyEvent::AgentEnd { .. })
-            && let Ok(mut g) = self.latest_tape.lock()
-        {
-            *g = None;
-        }
-        let event = match xylitol_wire::event_to_wire(event) {
-            Ok(event) => event,
-            Err(e) => {
-                log::error!(target: "xylitol::host", "session event dropped: {e}");
-                return;
-            }
         };
         let seq = {
             let mut j = self.journal.lock().await;
@@ -646,6 +635,36 @@ impl SessionSlot {
             },
         ))
         .await;
+    }
+
+    async fn prepare_event(&self, event: &XyEvent) -> Option<xylitol_protocol::Event> {
+        if self.try_push_tape(event).await {
+            return None;
+        }
+        self.clear_tape_on_agent_end(event);
+        match xylitol_wire::event_to_wire(event) {
+            Ok(event) => Some(event),
+            Err(e) => {
+                log::error!(target: "xylitol::host", "session event dropped: {e}");
+                None
+            }
+        }
+    }
+
+    async fn try_push_tape(&self, event: &XyEvent) -> bool {
+        if !is_tape_event(event) {
+            return false;
+        }
+        self.push_tape(event).await;
+        true
+    }
+
+    fn clear_tape_on_agent_end(&self, event: &XyEvent) {
+        if matches!(event, XyEvent::AgentEnd { .. })
+            && let Ok(mut g) = self.latest_tape.lock()
+        {
+            *g = None;
+        }
     }
 
     async fn push_tape(&self, event: &XyEvent) {
@@ -893,14 +912,7 @@ pub async fn materialize_writer_at(
     driver.bind_session(&slot.session_id)?;
     driver.install_ask_tool(Arc::new(SlotAskGateway { slot: slot.clone() }));
     driver.begin_session_prepare().await;
-    if let Some(id) = host.factory.default_model_id().as_deref()
-        && let Err(e) = driver.restore_model(id).await
-    {
-        log::warn!(
-            target: "xylitol::host",
-            "writer default model restore failed id={id}: {e}"
-        );
-    }
+    restore_default_model(host, driver.as_mut()).await;
     *guard = Some(driver);
     slot.writer.store(true, Ordering::SeqCst);
     drop(guard);
@@ -1061,10 +1073,22 @@ async fn on_last_subscriber_gone(host: &Arc<HostState>, slot: &Arc<SessionSlot>,
     HostState::cancel_write_linger(slot).await;
     let linger = host.linger_duration();
     if clean || linger.is_zero() {
-        host.ports.store.release_write_lock(&slot.session_id);
-        host.evict_slot(slot).await;
+        release_and_evict(host, slot).await;
         return;
     }
+    schedule_linger_eviction(host, slot, linger).await;
+}
+
+async fn release_and_evict(host: &Arc<HostState>, slot: &Arc<SessionSlot>) {
+    host.ports.store.release_write_lock(&slot.session_id);
+    host.evict_slot(slot).await;
+}
+
+async fn schedule_linger_eviction(
+    host: &Arc<HostState>,
+    slot: &Arc<SessionSlot>,
+    linger: Duration,
+) {
     let host = host.clone();
     let slot_wait = slot.clone();
     let task = tokio::spawn(async move {
@@ -1344,76 +1368,25 @@ async fn dispatch_writer_unary(
     {
         return defer_runtime_setting(slot, method, &payload).await;
     }
-    let staged_export =
-        matches!(method, "export_html" | "export_jsonl") && payload.get("output_path").is_none();
-    let staged_import = method == METHOD_IMPORT_JSONL
-        && payload.get("input_path").is_none()
-        && payload.get("content").is_some();
-    let import_temp = if staged_import {
-        let temp =
-            std::env::temp_dir().join(format!("xylitol-import-{}.jsonl", uuid::Uuid::new_v4()));
-        if let Err(e) = std::fs::write(&temp, payload["content"].as_str().unwrap_or_default()) {
-            return RpcResult::error("internal_error", format!("stage import write: {e}"));
-        }
-        Some(temp)
-    } else {
-        None
+    let (payload, staged_export, import_temp) = match stage_payload(method, payload) {
+        Ok(staged) => staged,
+        Err(err) => return *err,
     };
-    let mut payload = payload;
-    if staged_export {
-        let ext = if method == METHOD_EXPORT_JSONL {
-            "jsonl"
-        } else {
-            "html"
-        };
-        payload["output_path"] = json!(
-            std::env::temp_dir().join(format!("xylitol-export-{}.{ext}", uuid::Uuid::new_v4()))
-        );
-    }
-    if let Some(temp) = &import_temp {
-        payload["input_path"] = json!(temp);
-    }
     let cmd = match parse_command(method, &payload) {
-        Ok(c) => c,
+        Ok(cmd) => cmd,
         Err(e) => return RpcResult::error("invalid_input", e),
     };
     let mut g = slot.driver.lock().await;
     let Some(driver) = g.as_mut() else {
         return RpcResult::error("unavailable", "no writer engine");
     };
-    let bash_forwarder = if method == "bash" {
-        let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-        let cancel = CancellationToken::new();
-        if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
-            *slot_cancel = Some(cancel.clone());
-        }
-        let slot_push = slot.clone();
-        let fwd = tokio::spawn(async move {
-            while let Some(chunk) = rx.recv().await {
-                slot_push.push_bash_output(chunk).await;
-            }
-        });
-        driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink { tx, cancel }));
-        Some(fwd)
-    } else {
-        None
-    };
+    let bash_forwarder = start_bash_forwarder(slot, driver.as_mut(), method).await;
     let mut plan_mode_event: Option<(String, Option<String>)> = None;
     let result = match driver.execute_command(cmd).await {
         Ok(mut value) => {
-            if method == "set_plan_mode" {
-                let mode = value
-                    .get("mode")
-                    .and_then(Value::as_str)
-                    .unwrap_or("execute")
-                    .to_string();
-                let plan_id = value
-                    .get("plan_id")
-                    .and_then(Value::as_str)
-                    .map(str::to_string);
-                plan_mode_event = Some((mode, plan_id));
-            }
-            if matches!(method, "switch_session" | "new_session")
+            plan_mode_event = plan_mode_event_from_value(method, &value);
+            if plan_mode_event.is_none()
+                && matches!(method, "switch_session" | "new_session")
                 && let Some(new_id) = driver.session_id()
             {
                 let branch = host
@@ -1424,33 +1397,13 @@ async fn dispatch_writer_unary(
                     .unwrap_or_default();
                 plan_mode_event = Some(plan_mode_event_from_branch(&branch));
             }
-            if staged_export
-                && let Some(p) = value
-                    .get("path")
-                    .and_then(Value::as_str)
-                    .map(std::path::PathBuf::from)
-            {
-                match std::fs::read_to_string(&p) {
-                    Ok(content) => {
-                        value["content"] = Value::String(content);
-                    }
-                    Err(e) => log::warn!(
-                        target: "xylitol::host",
-                        "export stage read {}: {e}",
-                        p.display()
-                    ),
-                }
-                let _ = std::fs::remove_file(&p);
-            }
+            inline_staged_export(staged_export, &mut value);
             RpcResult::ok_value(value)
         }
         Err(e) => rpc_err(e),
     };
     if bash_forwarder.is_some() {
-        driver.set_bash_run_sink(None);
-        if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
-            *slot_cancel = None;
-        }
+        finish_bash_forwarder(driver.as_mut(), slot);
     }
     drop(g);
     if let Some((mode, plan_id)) = plan_mode_event {
@@ -1468,6 +1421,115 @@ async fn dispatch_writer_unary(
         let _ = std::fs::remove_file(temp);
     }
     result
+}
+
+fn stage_payload(
+    method: &str,
+    mut payload: Value,
+) -> Result<(Value, bool, Option<std::path::PathBuf>), Box<RpcResult>> {
+    let staged_export =
+        matches!(method, "export_html" | "export_jsonl") && payload.get("output_path").is_none();
+    let staged_import = method == METHOD_IMPORT_JSONL
+        && payload.get("input_path").is_none()
+        && payload.get("content").is_some();
+    let import_temp = if staged_import {
+        let temp =
+            std::env::temp_dir().join(format!("xylitol-import-{}.jsonl", uuid::Uuid::new_v4()));
+        if let Err(e) = std::fs::write(&temp, payload["content"].as_str().unwrap_or_default()) {
+            return Err(Box::new(RpcResult::error(
+                "internal_error",
+                format!("stage import write: {e}"),
+            )));
+        }
+        Some(temp)
+    } else {
+        None
+    };
+    if staged_export {
+        let ext = if method == METHOD_EXPORT_JSONL {
+            "jsonl"
+        } else {
+            "html"
+        };
+        payload["output_path"] = json!(
+            std::env::temp_dir().join(format!("xylitol-export-{}.{ext}", uuid::Uuid::new_v4()))
+        );
+    }
+    if let Some(temp) = &import_temp {
+        payload["input_path"] = json!(temp);
+    }
+    Ok((payload, staged_export, import_temp))
+}
+
+async fn start_bash_forwarder(
+    slot: &Arc<SessionSlot>,
+    driver: &mut dyn OccupancyEngine,
+    method: &str,
+) -> Option<tokio::task::JoinHandle<()>> {
+    if method != "bash" {
+        return None;
+    }
+    let (tx, mut rx) = tokio::sync::mpsc::channel(64);
+    let cancel = CancellationToken::new();
+    if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
+        *slot_cancel = Some(cancel.clone());
+    }
+    let slot_push = slot.clone();
+    let fwd = tokio::spawn(async move {
+        while let Some(chunk) = rx.recv().await {
+            slot_push.push_bash_output(chunk).await;
+        }
+    });
+    driver.set_bash_run_sink(Some(xylitol_plugin_sdk::BashOutputSink { tx, cancel }));
+    Some(fwd)
+}
+
+fn finish_bash_forwarder(driver: &mut dyn OccupancyEngine, slot: &SessionSlot) {
+    driver.set_bash_run_sink(None);
+    if let Ok(mut slot_cancel) = slot.bash_run_cancel.lock() {
+        *slot_cancel = None;
+    }
+}
+
+fn plan_mode_event_from_value(method: &str, value: &Value) -> Option<(String, Option<String>)> {
+    if method != "set_plan_mode" {
+        return None;
+    }
+    Some((
+        value
+            .get("mode")
+            .and_then(Value::as_str)
+            .unwrap_or("execute")
+            .to_string(),
+        value
+            .get("plan_id")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    ))
+}
+
+fn inline_staged_export(staged_export: bool, value: &mut Value) {
+    if !staged_export {
+        return;
+    }
+    let Some(path) = value
+        .get("path")
+        .and_then(Value::as_str)
+        .map(std::path::PathBuf::from)
+    else {
+        return;
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(content) => {
+            value["content"] = Value::String(content);
+        }
+        Err(e) => log::warn!(
+            target: "xylitol::host",
+            "export stage read {}: {e}",
+            path.display()
+        ),
+    }
+    let _ = std::fs::remove_file(&path);
 }
 
 async fn dispatch_readonly_unary(
@@ -1924,6 +1986,22 @@ mod tests {
         assert!(
             cold_value.get("partial").is_none(),
             "a cold subscribe gets the full transcript elsewhere, not a partial"
+        );
+    }
+}
+
+fn journal_wrapped_gap(journal: &EventJournal, last_seq: u64) -> bool {
+    journal.is_full() && last_seq < journal.min_seq() && journal.min_seq() > 1
+}
+
+async fn restore_default_model(host: &HostState, driver: &mut dyn OccupancyEngine) {
+    let Some(id) = host.factory.default_model_id() else {
+        return;
+    };
+    if let Err(e) = driver.restore_model(&id).await {
+        log::warn!(
+            target: "xylitol::host",
+            "writer default model restore failed id={id}: {e}"
         );
     }
 }

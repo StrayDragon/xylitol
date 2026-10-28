@@ -147,14 +147,17 @@ impl XyInProcessDriver {
     }
 
     async fn bind_todo_session(&self, session_id: Option<&str>) {
-        self.todo_gateway
-            .bind_session(session_id.map(str::to_string))
-            .await;
+        let session_id = session_id.map(str::to_string);
+        self.todo_gateway.bind_session(session_id.clone()).await;
+        self.bind_optional_gateways(session_id).await;
+    }
+
+    async fn bind_optional_gateways(&self, session_id: Option<String>) {
         if let Some(plan) = self.plan_gateway.as_ref() {
-            plan.bind_session(session_id.map(str::to_string)).await;
+            plan.bind_session(session_id.clone()).await;
         }
         if let Some(workflow) = self.workflow_gateway.as_ref() {
-            workflow.bind_session(session_id.map(str::to_string)).await;
+            workflow.bind_session(session_id).await;
         }
     }
 

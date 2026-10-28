@@ -395,6 +395,10 @@ mod tests {
         );
 
         let update = TodoUpdateTool::new(gw.clone());
+        assert_eq!(
+            xylitol_plugin_sdk::TypedTool::execution_mode(&update),
+            XyToolExecutionMode::Sequential
+        );
         update
             .execute(&ctx, json!({"items": [{"id": "a", "status": "completed"}]}))
             .await

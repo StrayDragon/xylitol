@@ -3,15 +3,16 @@ use xylitol_plugin_sdk::langfuse_observation_properties_from;
 use xylitol_plugin_sdk::provider_trace_active;
 
 pub(crate) fn compaction_reason_kind(reason: &str) -> &'static str {
-    if reason.starts_with("overflow") {
-        "overflow"
-    } else if reason.starts_with("threshold") {
-        "threshold"
-    } else if reason.starts_with("loop_middleware") {
-        "loop_middleware"
-    } else {
-        "manual"
-    }
+    const KINDS: &[(&str, &str)] = &[
+        ("overflow", "overflow"),
+        ("threshold", "threshold"),
+        ("loop_middleware", "loop_middleware"),
+    ];
+    KINDS
+        .iter()
+        .find(|(prefix, _)| reason.starts_with(prefix))
+        .map(|(_, kind)| *kind)
+        .unwrap_or("manual")
 }
 
 pub(crate) fn export_skipped(

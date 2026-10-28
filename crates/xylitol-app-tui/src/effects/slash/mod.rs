@@ -25,10 +25,10 @@ pub(super) async fn handle_slash<T: Terminal>(
         }
         PendingSlash::Export { path } => session::export(session, driver, path).await,
         PendingSlash::Import { path } => session::import(session, path).await,
-        PendingSlash::SessionDump => session::dump(session, driver).await,
-        PendingSlash::OpenSessionResume => session::open_resume(session, driver).await,
-        PendingSlash::SessionNew => session::new_session(session, driver).await,
-        PendingSlash::SessionClone => session::clone_session(session, driver).await,
+        PendingSlash::SessionDump
+        | PendingSlash::OpenSessionResume
+        | PendingSlash::SessionNew
+        | PendingSlash::SessionClone => handle_plain_session_slash(session, driver, slash).await,
         PendingSlash::SessionName { name } => session::name(session, driver, name).await,
         PendingSlash::Reload => misc::reload(session).await,
         PendingSlash::Trust { mode } => misc::trust(session, driver, mode).await,
@@ -38,5 +38,19 @@ pub(super) async fn handle_slash<T: Terminal>(
         PendingSlash::OpenDesigningScenes => misc::open_designing_scenes(session).await,
         PendingSlash::SetPlanMode(mode) => misc::plan(session, driver, mode).await,
         PendingSlash::Usage(msg) => misc::usage(session, msg).await,
+    }
+}
+
+async fn handle_plain_session_slash<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    slash: PendingSlash,
+) {
+    match slash {
+        PendingSlash::SessionDump => session::dump(session, driver).await,
+        PendingSlash::OpenSessionResume => session::open_resume(session, driver).await,
+        PendingSlash::SessionNew => session::new_session(session, driver).await,
+        PendingSlash::SessionClone => session::clone_session(session, driver).await,
+        _ => unreachable!("plain session slash"),
     }
 }

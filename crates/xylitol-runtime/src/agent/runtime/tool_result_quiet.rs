@@ -82,6 +82,13 @@ mod tests {
     }
 
     #[test]
+    fn unknown_tool_passthrough() {
+        let (parts, details) = quiet_write_edit_for_history("bash", "raw", false);
+        assert_eq!(parts[0].as_text().unwrap(), "raw");
+        assert!(details.is_none());
+    }
+
+    #[test]
     fn error_passthrough() {
         let (parts, details) = quiet_write_edit_for_history("edit", "exact match failed", true);
         assert_eq!(parts[0].as_text().unwrap(), "exact match failed");

@@ -524,15 +524,7 @@ impl<T: Terminal> HostSession<T> {
             editor_text: None,
         };
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
-        let mode = latest_plan_mode(&entries);
-        self.ui_model.mode_strip = match mode.mode {
-            PlanModeKind::Plan => Some(ModeStripState {
-                label: "plan".into(),
-            }),
-            PlanModeKind::Execute => mode.plan_id.as_ref().map(|id| ModeStripState {
-                label: format!("execute · {id}"),
-            }),
-        };
+        self.ui_model.mode_strip = mode_strip_for_entries(&entries);
         crate::history_window::trim_to_window(&mut self.ui_model, has_more);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
@@ -649,15 +641,7 @@ impl<T: Terminal> HostSession<T> {
             editor_text: None,
         };
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
-        let mode = latest_plan_mode(&entries);
-        self.ui_model.mode_strip = match mode.mode {
-            PlanModeKind::Plan => Some(ModeStripState {
-                label: "plan".into(),
-            }),
-            PlanModeKind::Execute => mode.plan_id.as_ref().map(|id| ModeStripState {
-                label: format!("execute · {id}"),
-            }),
-        };
+        self.ui_model.mode_strip = mode_strip_for_entries(&entries);
         crate::history_window::trim_to_window(&mut self.ui_model, has_more);
         self.sync_ui_root_from_model();
     }
@@ -665,5 +649,17 @@ impl<T: Terminal> HostSession<T> {
     pub fn clear_earlier_hint(&mut self) {
         crate::history_window::trim_to_window(&mut self.ui_model, false);
         self.sync_ui_root_from_model();
+    }
+}
+
+fn mode_strip_for_entries(entries: &[SessionEntry]) -> Option<ModeStripState> {
+    let mode = latest_plan_mode(entries);
+    match mode.mode {
+        PlanModeKind::Plan => Some(ModeStripState {
+            label: "plan".into(),
+        }),
+        PlanModeKind::Execute => mode.plan_id.as_ref().map(|id| ModeStripState {
+            label: format!("execute · {id}"),
+        }),
     }
 }

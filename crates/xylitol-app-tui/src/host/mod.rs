@@ -30,14 +30,14 @@ pub const MIN_ROWS: u16 = 6;
 
 pub fn display_path(path: impl AsRef<std::path::Path>) -> String {
     let abs = path.as_ref().display().to_string();
-    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"));
-    if let Some(home) = home {
-        let home = home.to_string_lossy();
-        if let Some(rest) = abs.strip_prefix(home.as_ref()) {
-            return format!("~{rest}");
-        }
-    }
-    abs
+    strip_home(&abs).unwrap_or(abs)
+}
+
+fn strip_home(abs: &str) -> Option<String> {
+    let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))?;
+    let home = home.to_string_lossy();
+    abs.strip_prefix(home.as_ref())
+        .map(|rest| format!("~{rest}"))
 }
 
 pub fn display_cwd() -> String {

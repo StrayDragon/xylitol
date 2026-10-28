@@ -81,15 +81,7 @@ pub async fn refresh_footer_tokens<T: Terminal>(
     driver: &mut dyn XyDriver,
 ) {
     let _ = session.take_pending_footer_token_refresh();
-    let entries = match session_entries(driver).await {
-        Ok(e) => e,
-        Err(_) => {
-            session.set_footer_token_label(None);
-            return;
-        }
-    };
-    if entries.is_empty() {
-        session.set_footer_token_label(None);
+    if !footer_entries_available(session, driver).await {
         return;
     }
     match driver.estimate_context_tokens().await {
@@ -373,5 +365,18 @@ async fn drain_footer_token_if_pending<T: Terminal>(
     #[cfg(not(test))]
     {
         kick_footer_token_refresh(session, driver).await;
+    }
+}
+
+async fn footer_entries_available<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+) -> bool {
+    match session_entries(driver).await {
+        Ok(entries) if !entries.is_empty() => true,
+        _ => {
+            session.set_footer_token_label(None);
+            false
+        }
     }
 }

@@ -439,27 +439,11 @@ impl UiRoot {
             FoldTarget::OutputViewport(id) => {
                 self.fold.toggle_output(&id);
             }
-            FoldTarget::Segment(id) => {
-                let _ = self.activity.toggle_one_step(&id);
+            FoldTarget::Segment(_) | FoldTarget::Cluster(_) | FoldTarget::LiveTail => {
+                self.toggle_activity_fold(target);
             }
-            FoldTarget::Cluster(id) => {
-                let _ = self.activity.toggle_cluster(&id);
-            }
-            FoldTarget::LiveTail => {
-                let _ = self.activity.expand_live_cluster(&self.ui_model.entries);
-            }
-            FoldTarget::TodoDoing => {
-                self.todo_doing_open = !self.todo_doing_open;
-                self.fold_dirty = true;
-                return;
-            }
-            FoldTarget::TodoPast => {
-                self.todo_past_open = !self.todo_past_open;
-                self.fold_dirty = true;
-                return;
-            }
-            FoldTarget::TodoPending => {
-                self.todo_pending_open = !self.todo_pending_open;
+            FoldTarget::TodoDoing | FoldTarget::TodoPast | FoldTarget::TodoPending => {
+                self.toggle_todo_fold(target);
                 self.fold_dirty = true;
                 return;
             }
@@ -471,6 +455,30 @@ impl UiRoot {
         }
         self.fold_dirty = true;
         self.bump_upper_gen();
+    }
+
+    fn toggle_activity_fold(&mut self, target: FoldTarget) {
+        match target {
+            FoldTarget::Segment(id) => {
+                let _ = self.activity.toggle_one_step(&id);
+            }
+            FoldTarget::Cluster(id) => {
+                let _ = self.activity.toggle_cluster(&id);
+            }
+            FoldTarget::LiveTail => {
+                let _ = self.activity.expand_live_cluster(&self.ui_model.entries);
+            }
+            _ => unreachable!("activity fold target"),
+        }
+    }
+
+    fn toggle_todo_fold(&mut self, target: FoldTarget) {
+        match target {
+            FoldTarget::TodoDoing => self.todo_doing_open = !self.todo_doing_open,
+            FoldTarget::TodoPast => self.todo_past_open = !self.todo_past_open,
+            FoldTarget::TodoPending => self.todo_pending_open = !self.todo_pending_open,
+            _ => unreachable!("todo fold target"),
+        }
     }
 
     pub fn click_todo_bar_at(&mut self, col: u16, screen_row: u16) -> bool {

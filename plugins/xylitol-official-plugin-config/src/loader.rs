@@ -50,18 +50,11 @@ pub fn load_app_config_detailed_with(
     load_from_paths(&paths, cli_config)
 }
 
-fn load_from_paths(
+fn merge_config_layers(
     paths: &ConfigPaths,
     cli_config: Option<&Path>,
-) -> Result<LoadedAppConfig, LoadError> {
-    let (secrets, injected) = super::secret_env::load_secret_env_files(paths);
-    if injected > 0 {
-        log::debug!(
-            target: "xylitol::config",
-            "loaded secret.env into process environment injected={injected}"
-        );
-    }
-
+    secrets: &super::secret_env::SecretMap,
+) -> Result<(Value, bool), LoadError> {
     let mut merged = Value::Null;
     let mut from_yaml_layers = false;
 
@@ -74,27 +67,50 @@ fn load_from_paths(
             "loading global config {}",
             global_base.display()
         );
-        let val = load_and_render(&global_base, &secrets)?;
-        deep_merge(&mut merged, val);
-        from_yaml_layers = true;
+        merge_layer(&mut merged, &mut from_yaml_layers, &global_base, secrets)?;
     }
 
-    if let Some(ref proj_dir) = paths.project_dir
+    if let Some(proj_dir) = &paths.project_dir
         && let Some(proj_base) =
             first_existing(&[proj_dir.join("config.yaml"), proj_dir.join("config.yml")])
     {
-        let val = load_and_render(&proj_base, &secrets)?;
-        deep_merge(&mut merged, val);
-        from_yaml_layers = true;
+        merge_layer(&mut merged, &mut from_yaml_layers, &proj_base, secrets)?;
     }
 
     if let Some(cli_path) = cli_config
         && cli_path.exists()
     {
-        let val = load_and_render(cli_path, &secrets)?;
-        deep_merge(&mut merged, val);
-        from_yaml_layers = true;
+        merge_layer(&mut merged, &mut from_yaml_layers, cli_path, secrets)?;
     }
+
+    Ok((merged, from_yaml_layers))
+}
+
+fn merge_layer(
+    merged: &mut Value,
+    from_yaml_layers: &mut bool,
+    path: &Path,
+    secrets: &super::secret_env::SecretMap,
+) -> Result<(), LoadError> {
+    let value = load_and_render(path, secrets)?;
+    deep_merge(merged, value);
+    *from_yaml_layers = true;
+    Ok(())
+}
+
+fn load_from_paths(
+    paths: &ConfigPaths,
+    cli_config: Option<&Path>,
+) -> Result<LoadedAppConfig, LoadError> {
+    let (secrets, injected) = super::secret_env::load_secret_env_files(paths);
+    if injected > 0 {
+        log::debug!(
+            target: "xylitol::config",
+            "loaded secret.env into process environment injected={injected}"
+        );
+    }
+
+    let (merged, from_yaml_layers) = merge_config_layers(paths, cli_config, &secrets)?;
 
     if merged.is_null() {
         return Ok(LoadedAppConfig {

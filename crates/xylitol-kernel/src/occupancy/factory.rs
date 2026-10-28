@@ -80,6 +80,27 @@ impl ProductOccupancyFactory {
     }
 }
 
+fn attach_optional_context(
+    driver: &mut crate::driver::XyInProcessDriver,
+    ctx: Option<&xylitol_plugin_sdk::rt::Ctx>,
+    mcp_servers: &[crate::mcp_spec::McpServerSpec],
+) {
+    if let Some(ctx) = ctx {
+        driver.attach_ctx(ctx.clone());
+        if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
+            driver.set_prepare_hub(hub);
+        }
+        if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
+            driver.set_loop_middleware_scoped(Some(registry), xylitol_plugin_sdk::LoopScope::Root);
+        }
+    } else if !mcp_servers.is_empty() {
+        let servers = crate::mcp_spec::McpServerSpec::to_infra_list(mcp_servers);
+        driver.set_prepare_hub(std::sync::Arc::new(
+            xylitol_official_plugin_mcp::McpPrepareHub::new(servers),
+        ));
+    }
+}
+
 impl OccupancyFactory for ProductOccupancyFactory {
     fn new_driver_at(&self, workspace: &Path) -> Box<dyn OccupancyEngine> {
         let agent = self.ports.materialize_runtime();
@@ -94,23 +115,7 @@ impl OccupancyFactory for ProductOccupancyFactory {
             self.agent_dir.clone(),
             self.project_trusted(workspace),
         );
-        if let Some(ctx) = &self.ctx {
-            driver.attach_ctx(ctx.clone());
-            if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
-                driver.set_prepare_hub(hub);
-            }
-            if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
-                driver.set_loop_middleware_scoped(
-                    Some(registry),
-                    xylitol_plugin_sdk::LoopScope::Root,
-                );
-            }
-        } else if !self.mcp_servers.is_empty() {
-            let servers = crate::mcp_spec::McpServerSpec::to_infra_list(&self.mcp_servers);
-            driver.set_prepare_hub(std::sync::Arc::new(
-                xylitol_official_plugin_mcp::McpPrepareHub::new(servers),
-            ));
-        }
+        attach_optional_context(&mut driver, self.ctx.as_ref(), &self.mcp_servers);
         driver
             .agent
             .set_cwd(workspace.to_string_lossy().into_owned());

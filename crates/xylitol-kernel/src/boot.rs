@@ -47,6 +47,18 @@ pub struct Kernel {
 }
 
 pub async fn boot(opts: BootOptions) -> Result<Kernel, BootstrapError> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let agent_dir = dirs::home_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join(".xylitol");
+    boot_with(opts, cwd, agent_dir).await
+}
+
+async fn boot_with(
+    opts: BootOptions,
+    cwd: std::path::PathBuf,
+    agent_dir: std::path::PathBuf,
+) -> Result<Kernel, BootstrapError> {
     let (ctx, loader) = boot_ctx(&opts).await?;
     let mut runtime = bootstrap(BootstrapInput::from(&opts))?.into_runtime();
     runtime.driver.attach_ctx(ctx.clone());
@@ -60,10 +72,6 @@ pub async fn boot(opts: BootOptions) -> Result<Kernel, BootstrapError> {
     if let Some(registry) = ctx.get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>() {
         runtime.driver.set_loop_middleware(Some(registry));
     }
-    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let agent_dir = dirs::home_dir()
-        .unwrap_or_else(std::env::temp_dir)
-        .join(".xylitol");
     runtime
         .driver
         .enable_reload_state(cwd, agent_dir, opts.trust_override.unwrap_or(true));
@@ -128,7 +136,33 @@ async fn mount_core(ctx: &Ctx, opts: &BootOptions) -> Result<(), BootstrapError>
 }
 
 fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
-    let session_row = if opts.ephemeral_sessions {
+    let config = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>();
+    let mcp_servers = config
+        .as_ref()
+        .and_then(|cfg| cfg.app.mcp_servers.clone())
+        .unwrap_or_default();
+    let mut insert = base_rows(opts, mcp_servers);
+    insert.extend(optional_plugin_rows(config.as_deref()));
+    insert.push(profile_row(opts.profile));
+    serde_json::from_value(serde_json::json!([{ "insert": insert }])).unwrap_or_default()
+}
+
+fn base_rows(
+    opts: &BootOptions,
+    mcp_servers: Vec<xylitol_official_plugin_config::types::McpServerConfig>,
+) -> Vec<serde_json::Value> {
+    vec![
+        session_row(opts),
+        serde_json::json!({ "id": "compaction", "name": "compaction" }),
+        serde_json::json!({ "id": "tools-builtin", "name": "tools-builtin" }),
+        serde_json::json!({ "id": "mcp", "name": "mcp", "config": { "servers": mcp_servers } }),
+        serde_json::json!({ "id": "provider-openai", "name": "provider-openai" }),
+        serde_json::json!({ "id": "provider-anthropic", "name": "provider-anthropic" }),
+    ]
+}
+
+fn session_row(opts: &BootOptions) -> serde_json::Value {
+    if opts.ephemeral_sessions {
         serde_json::json!({
             "id": "session-store",
             "name": "session-store",
@@ -136,73 +170,54 @@ fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
         })
     } else {
         serde_json::json!({ "id": "session-store", "name": "session-store" })
+    }
+}
+
+fn optional_plugin_rows(
+    config: Option<&xylitol_official_plugin_config::plugin::ConfigService>,
+) -> Vec<serde_json::Value> {
+    let Some(config) = config else {
+        return Vec::new();
     };
-    let mcp_servers = ctx
-        .get::<xylitol_official_plugin_config::plugin::ConfigService>()
-        .and_then(|cfg| cfg.app.mcp_servers.clone())
-        .unwrap_or_default();
-    let config = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>();
-    let loop_policies = config
-        .as_ref()
-        .map(|cfg| cfg.app.loop_policies.clone())
-        .unwrap_or_default();
-    let todo = config
-        .as_ref()
-        .map(|cfg| cfg.app.todo.clone())
-        .unwrap_or_default();
-    let workflow = config
-        .as_ref()
-        .map(|cfg| cfg.app.workflow.clone())
-        .unwrap_or_default();
-    let plan = config
-        .as_ref()
-        .map(|cfg| cfg.app.plan.clone())
-        .unwrap_or_default();
-    let mut insert = vec![
-        session_row,
-        serde_json::json!({ "id": "compaction", "name": "compaction" }),
-        serde_json::json!({ "id": "tools-builtin", "name": "tools-builtin" }),
-        serde_json::json!({ "id": "mcp", "name": "mcp", "config": { "servers": mcp_servers } }),
-        serde_json::json!({ "id": "provider-openai", "name": "provider-openai" }),
-        serde_json::json!({ "id": "provider-anthropic", "name": "provider-anthropic" }),
-    ];
-    if loop_policies.is_active() {
-        insert.push(serde_json::json!({
+    let mut rows = Vec::new();
+    if config.app.loop_policies.is_active() {
+        rows.push(serde_json::json!({
             "id": "loop-policies",
             "name": "loop-policies",
-            "config": loop_policies,
+            "config": config.app.loop_policies,
         }));
     }
-    if todo.is_active() {
-        insert.push(serde_json::json!({
+    if config.app.todo.is_active() {
+        rows.push(serde_json::json!({
             "id": "todo",
             "name": "todo",
-            "config": todo,
+            "config": config.app.todo,
         }));
     }
-    if workflow.is_active() {
-        insert.push(serde_json::json!({
+    if config.app.workflow.is_active() {
+        rows.push(serde_json::json!({
             "id": "workflow",
             "name": "workflow",
-            "config": workflow,
+            "config": config.app.workflow,
         }));
     }
-    if plan.is_active() {
-        insert.push(serde_json::json!({
+    if config.app.plan.is_active() {
+        rows.push(serde_json::json!({
             "id": "plan",
             "name": "plan",
-            "config": plan,
+            "config": config.app.plan,
         }));
     }
-    match opts.profile {
+    rows
+}
+
+fn profile_row(profile: Profile) -> serde_json::Value {
+    match profile {
         Profile::Print | Profile::Embed => {
-            insert.push(serde_json::json!({ "id": "app-print", "name": "app-print" }));
+            serde_json::json!({ "id": "app-print", "name": "app-print" })
         }
-        Profile::Host => {
-            insert.push(serde_json::json!({ "id": "serve", "name": "serve" }));
-        }
+        Profile::Host => serde_json::json!({ "id": "serve", "name": "serve" }),
     }
-    serde_json::from_value(serde_json::json!([{ "insert": insert }])).unwrap_or_default()
 }
 
 async fn wait_active(ctx: &Ctx) -> Result<(), BootstrapError> {
@@ -257,4 +272,35 @@ fn cordis_to_bootstrap(err: impl std::fmt::Display) -> BootstrapError {
 
 fn kernel_failed(msg: impl Into<String>) -> BootstrapError {
     BootstrapError::KernelFailed(msg.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn boot_with_self_check_print_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_path = dir.path().join("config.yaml");
+        std::fs::write(
+            &config_path,
+            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+        )
+        .unwrap();
+        let opts = BootOptions {
+            profile: Profile::Print,
+            config_path: Some(config_path),
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "contract",
+            ephemeral_sessions: true,
+        };
+        let kernel = boot_with(opts, dir.path().to_path_buf(), dir.path().join(".xylitol"))
+            .await
+            .expect("boot_with");
+        assert_eq!(kernel.profile, Profile::Print);
+        let _ = kernel.ctx.shutdown().await;
+    }
 }

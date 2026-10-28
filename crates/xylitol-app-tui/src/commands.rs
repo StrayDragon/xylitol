@@ -94,11 +94,7 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
         },
-        PendingSlash::SessionNew => SlashAllowances {
-            when_agent_busy: Reject,
-            exec: Exec::Queued,
-        },
-        PendingSlash::SessionClone => SlashAllowances {
+        PendingSlash::SessionNew | PendingSlash::SessionClone => SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
         },
@@ -110,11 +106,7 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
         },
-        PendingSlash::OpenTree => SlashAllowances {
-            when_agent_busy: Reject,
-            exec: Exec::Queued,
-        },
-        PendingSlash::ForkAtLeaf => SlashAllowances {
+        PendingSlash::OpenTree | PendingSlash::ForkAtLeaf => SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
         },
@@ -280,20 +272,7 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("trust", None) => Some(PendingSlash::Trust {
             mode: crate::driver::ProjectTrustMode::TrustCwd,
         }),
-        ("trust", Some(arg)) => match arg.to_ascii_lowercase().as_str() {
-            "self" | "this_dir" | "this-dir" => Some(PendingSlash::Trust {
-                mode: crate::driver::ProjectTrustMode::TrustCwd,
-            }),
-            "parent" => Some(PendingSlash::Trust {
-                mode: crate::driver::ProjectTrustMode::TrustParent,
-            }),
-            "deny" | "no" => Some(PendingSlash::Trust {
-                mode: crate::driver::ProjectTrustMode::Deny,
-            }),
-            _ => Some(PendingSlash::Usage(
-                "usage: /trust [self|this_dir|parent|deny]",
-            )),
-        },
+        ("trust", Some(arg)) => Some(parse_trust_arg(&arg)),
         ("history-copy-last", None) => Some(PendingSlash::HistoryCopyLast),
         ("history-copy-last", Some(_)) => Some(PendingSlash::Usage(
             "usage: /history-copy-last (no arguments)",
@@ -302,12 +281,33 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("mcp" | "mcps", None) => Some(PendingSlash::OpenMcp),
         ("mcp" | "mcps", Some(_)) => Some(PendingSlash::Usage("usage: /mcp (no arguments)")),
         ("plan", None) => Some(PendingSlash::SetPlanMode("toggle".into())),
-        ("plan", Some(arg)) => match arg.to_ascii_lowercase().as_str() {
-            "on" | "enter" => Some(PendingSlash::SetPlanMode("plan".into())),
-            "off" | "exit" | "execute" => Some(PendingSlash::SetPlanMode("execute".into())),
-            _ => Some(PendingSlash::Usage("usage: /plan [on|off]")),
-        },
+        ("plan", Some(arg)) => Some(parse_plan_arg(&arg)),
         _ => None,
+    }
+}
+
+fn parse_trust_arg(arg: &str) -> PendingSlash {
+    use crate::driver::ProjectTrustMode;
+
+    match arg.to_ascii_lowercase().as_str() {
+        "self" | "this_dir" | "this-dir" => PendingSlash::Trust {
+            mode: ProjectTrustMode::TrustCwd,
+        },
+        "parent" => PendingSlash::Trust {
+            mode: ProjectTrustMode::TrustParent,
+        },
+        "deny" | "no" => PendingSlash::Trust {
+            mode: ProjectTrustMode::Deny,
+        },
+        _ => PendingSlash::Usage("usage: /trust [self|this_dir|parent|deny]"),
+    }
+}
+
+fn parse_plan_arg(arg: &str) -> PendingSlash {
+    match arg.to_ascii_lowercase().as_str() {
+        "on" | "enter" => PendingSlash::SetPlanMode("plan".into()),
+        "off" | "exit" | "execute" => PendingSlash::SetPlanMode("execute".into()),
+        _ => PendingSlash::Usage("usage: /plan [on|off]"),
     }
 }
 
@@ -406,8 +406,8 @@ pub fn bash_result_entries(command: &str, result: &XyBashResult) -> Vec<UiEntry>
 #[cfg(test)]
 mod parse_tests {
     use super::{
-        BusySlashPolicy, PendingSlash, SlashPermit, busy_slash_policy, parse_bang_command,
-        parse_slash_command, parse_slash_command_for_surface, slash_allowances,
+        BusySlashPolicy, PendingSlash, SlashPermit, busy_slash_policy, busy_slash_refuse_label,
+        parse_bang_command, parse_slash_command, parse_slash_command_for_surface, slash_allowances,
     };
 
     #[test]
@@ -686,5 +686,82 @@ mod parse_tests {
             parse_slash_command_for_surface("/designing extra", true),
             Some(PendingSlash::Usage("usage: /designing (no arguments)"))
         );
+    }
+
+    #[test]
+    fn parse_plan_modes() {
+        assert_eq!(
+            parse_slash_command("/plan"),
+            Some(PendingSlash::SetPlanMode("toggle".into()))
+        );
+        assert_eq!(
+            parse_slash_command("/plan on"),
+            Some(PendingSlash::SetPlanMode("plan".into()))
+        );
+        assert_eq!(
+            parse_slash_command("/plan enter"),
+            Some(PendingSlash::SetPlanMode("plan".into()))
+        );
+        assert_eq!(
+            parse_slash_command("/plan off"),
+            Some(PendingSlash::SetPlanMode("execute".into()))
+        );
+        assert_eq!(
+            parse_slash_command("/plan exit"),
+            Some(PendingSlash::SetPlanMode("execute".into()))
+        );
+        assert_eq!(
+            parse_slash_command("/plan execute"),
+            Some(PendingSlash::SetPlanMode("execute".into()))
+        );
+        assert_eq!(
+            parse_slash_command("/plan sideways"),
+            Some(PendingSlash::Usage("usage: /plan [on|off]"))
+        );
+    }
+
+    #[test]
+    fn busy_slash_refuse_label_covers_every_slash() {
+        use crate::driver::ProjectTrustMode;
+
+        let cases = [
+            (PendingSlash::Reload, "/reload"),
+            (
+                PendingSlash::Trust {
+                    mode: ProjectTrustMode::TrustCwd,
+                },
+                "/trust",
+            ),
+            (PendingSlash::Theme { arg: None }, "/theme"),
+            (PendingSlash::OpenModels, "/model"),
+            (PendingSlash::OpenTree, "/session-tree"),
+            (PendingSlash::ForkAtLeaf, "/session-fork"),
+            (PendingSlash::OpenSessionResume, "/session-resume"),
+            (PendingSlash::SessionNew, "/session-new"),
+            (PendingSlash::SessionClone, "/session-clone"),
+            (PendingSlash::Import { path: "x".into() }, "/session-import"),
+            (PendingSlash::Usage("u"), "slash"),
+            (PendingSlash::Exit, "/exit"),
+            (PendingSlash::SetModel("m".into()), "/model"),
+            (
+                PendingSlash::Compact { instructions: None },
+                "/session-compact",
+            ),
+            (PendingSlash::Export { path: None }, "/session-export"),
+            (PendingSlash::SessionDump, "/session"),
+            (
+                PendingSlash::SessionName {
+                    name: Some("n".into()),
+                },
+                "/session-name",
+            ),
+            (PendingSlash::HistoryCopyLast, "/history-copy-last"),
+            (PendingSlash::OpenMcp, "/mcp"),
+            (PendingSlash::SetPlanMode("plan".into()), "/plan"),
+            (PendingSlash::OpenDesigningScenes, "/designing"),
+        ];
+        for (slash, expected) in cases {
+            assert_eq!(busy_slash_refuse_label(&slash), expected, "{slash:?}");
+        }
     }
 }
