@@ -8,6 +8,12 @@ fn test_plan_gate_denies_write() {}
 
 #[scenario(
     path = "llmanspec/specs/agent-plan/agent-plan.feature",
+    name = "拒绝写入后本回合继续"
+)]
+fn test_plan_gate_denial_keeps_run() {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-plan/agent-plan.feature",
     name = "切回执行模式后写入恢复"
 )]
 fn test_plan_gate_restores_write() {}

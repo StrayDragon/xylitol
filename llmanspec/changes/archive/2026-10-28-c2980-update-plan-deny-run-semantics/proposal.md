@@ -2,6 +2,9 @@
 depends_on: []
 title: 明确计划模式工具拒绝是否结束当前 run
 needs_specs_change: true
+branch: sdd/c2980-update-plan-deny-run-semantics
+base_branch: main
+base_sha: c9d44e334dbc5ad772727274a6357a573ad3d66c
 ---
 
 # 明确计划模式工具拒绝是否结束当前 run

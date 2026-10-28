@@ -129,6 +129,7 @@ pub struct BeforeToolCtx {
     pub tool_call_id: String,
     pub tool_name: String,
     pub args: Value,
+    pub deny_reason: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -547,6 +548,7 @@ mod tests {
             tool_call_id: "1".into(),
             tool_name: "bash".into(),
             args: Value::Null,
+            deny_reason: None,
         };
         let step = StopAtTool.before_tool(ctx).await;
         assert_eq!(step.control, LoopControl::Stop);

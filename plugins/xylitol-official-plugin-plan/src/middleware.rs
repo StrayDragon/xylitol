@@ -91,7 +91,8 @@ impl LoopMiddleware for PlanModeMiddleware {
             "blocked_by": "plan-mode",
             "reason": "plan mode is read-only",
         });
-        LoopStep::stopped(ctx)
+        ctx.deny_reason = Some("plan mode is read-only".into());
+        LoopStep::continued(ctx)
             .with_property("loop.middleware.plan.read_only", "true")
             .with_property("loop.middleware.plan.denied_tool", denied_tool)
     }
@@ -124,6 +125,7 @@ mod tests {
             tool_call_id: "call-1".into(),
             tool_name: name.into(),
             args: serde_json::json!({ "path": "src/lib.rs" }),
+            deny_reason: None,
         }
     }
 
@@ -139,7 +141,15 @@ mod tests {
         let mw = plan_middleware(PlanConfig::default(), PlanMode::plan(None)).await;
         for name in ["write", "edit", "bash", "mcp__write", "unknown_tool"] {
             let out = mw.before_tool(tool_ctx(name)).await;
-            assert_eq!(out.control, LoopControl::Stop, "{name} must be denied");
+            assert_eq!(
+                out.control,
+                LoopControl::Continue,
+                "{name} must be denied without ending the run"
+            );
+            assert_eq!(
+                out.ctx.deny_reason.as_deref(),
+                Some("plan mode is read-only")
+            );
             assert_eq!(out.ctx.args["blocked_by"], "plan-mode");
             assert_eq!(out.ctx.args["reason"], "plan mode is read-only");
             assert!(
@@ -228,7 +238,11 @@ mod tests {
         let out = mw.before_tool(tool_ctx("mcp__context7__query-docs")).await;
         assert_eq!(out.control, LoopControl::Continue);
         let out = mw.before_tool(tool_ctx("mcp__context7__write")).await;
-        assert_eq!(out.control, LoopControl::Stop);
+        assert_eq!(out.control, LoopControl::Continue);
+        assert_eq!(
+            out.ctx.deny_reason.as_deref(),
+            Some("plan mode is read-only")
+        );
     }
 
     #[tokio::test]

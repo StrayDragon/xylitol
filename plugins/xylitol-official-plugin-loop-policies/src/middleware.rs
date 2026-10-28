@@ -585,6 +585,7 @@ mod tests {
             tool_call_id: "call-1".into(),
             tool_name: "bash".into(),
             args: serde_json::json!({ "command": command }),
+            deny_reason: None,
         }
     }
 

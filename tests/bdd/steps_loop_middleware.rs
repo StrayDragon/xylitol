@@ -2100,7 +2100,7 @@ pub(crate) fn t_multi_part_preserved() {
 thread_local! {
     static PLAN_GATE: RefCell<Option<Arc<dyn LoopMiddleware>>> =
         const { RefCell::new(None) };
-    static PLAN_GATE_OUT: RefCell<Option<(LoopControl, serde_json::Value)>> = const { RefCell::new(None) };
+    static PLAN_GATE_OUT: RefCell<Option<(LoopControl, serde_json::Value, Option<String>)>> = const { RefCell::new(None) };
 }
 
 fn plan_gate_request_ctx(
@@ -2124,6 +2124,7 @@ fn plan_gate_tool_ctx(name: &str) -> BeforeToolCtx {
         tool_call_id: "plan-gate-call".into(),
         tool_name: name.into(),
         args: serde_json::json!({ "path": "src/lib.rs" }),
+        deny_reason: None,
     }
 }
 
@@ -2146,7 +2147,9 @@ pub(crate) fn w_plan_gate_write() {
         .with(|slot| slot.borrow().clone())
         .expect("plan gate fixture");
     let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("write")));
-    PLAN_GATE_OUT.with(|slot| *slot.borrow_mut() = Some((out.control, out.ctx.args)));
+    PLAN_GATE_OUT.with(|slot| {
+        *slot.borrow_mut() = Some((out.control, out.ctx.args, out.ctx.deny_reason));
+    });
 }
 
 #[when("切回执行模式并尝试执行 write")]
@@ -2160,25 +2163,56 @@ pub(crate) fn w_plan_gate_execute_write() {
         mw.before_llm_request(plan_gate_request_ctx("s-plan-gate", PlanMode::execute())),
     );
     let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("write")));
-    PLAN_GATE_OUT.with(|slot| *slot.borrow_mut() = Some((out.control, out.ctx.args)));
+    PLAN_GATE_OUT.with(|slot| {
+        *slot.borrow_mut() = Some((out.control, out.ctx.args, out.ctx.deny_reason));
+    });
 }
 
 #[then("工具在计划模式闸被拒绝")]
 pub(crate) fn t_plan_gate_denied() {
-    let (control, args) = PLAN_GATE_OUT
+    let (control, args, deny_reason) = PLAN_GATE_OUT
         .with(|slot| slot.borrow().clone())
         .expect("plan gate outcome");
-    assert_eq!(control, LoopControl::Stop, "write must be denied");
+    assert_eq!(
+        control,
+        LoopControl::Continue,
+        "a plan-mode denial must not end the run"
+    );
+    assert_eq!(deny_reason.as_deref(), Some("plan mode is read-only"));
     assert_eq!(args["blocked_by"], "plan-mode");
     assert_eq!(args["reason"], "plan mode is read-only");
 }
 
+#[then("拒绝不结束本回合且可改调计划工具")]
+pub(crate) fn t_plan_gate_denial_keeps_run() {
+    let (control, _args, deny_reason) = PLAN_GATE_OUT
+        .with(|slot| slot.borrow().clone())
+        .expect("plan gate outcome");
+    assert_eq!(
+        control,
+        LoopControl::Continue,
+        "denial must not end the run"
+    );
+    assert_eq!(deny_reason.as_deref(), Some("plan mode is read-only"));
+    let mw = PLAN_GATE
+        .with(|slot| slot.borrow().clone())
+        .expect("plan gate fixture");
+    let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("plan_write")));
+    assert_eq!(
+        out.control,
+        LoopControl::Continue,
+        "the model must be able to switch to plan_write in the same run"
+    );
+    assert_eq!(out.ctx.deny_reason, None);
+}
+
 #[then("工具在计划模式闸被允许")]
 pub(crate) fn t_plan_gate_allowed() {
-    let (control, args) = PLAN_GATE_OUT
+    let (control, args, deny_reason) = PLAN_GATE_OUT
         .with(|slot| slot.borrow().clone())
         .expect("plan gate outcome");
     assert_eq!(control, LoopControl::Continue, "write must be allowed");
+    assert_eq!(deny_reason, None);
     assert_eq!(args["path"], "src/lib.rs");
 }
 
