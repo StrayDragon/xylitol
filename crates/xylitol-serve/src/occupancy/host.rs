@@ -403,7 +403,7 @@ impl SessionSlot {
     pub fn with_seq(
         session_id: impl Into<String>,
         in_process_downlink: broadcast::Sender<Notification>,
-        loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        root_loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
         next_seq: u64,
     ) -> Arc<Self> {
         let session_id = session_id.into();
@@ -429,7 +429,7 @@ impl SessionSlot {
             mcp_watch_started: AtomicBool::new(false),
             bash_run_cancel: std::sync::Mutex::new(None),
             idempotency: IdempotencyLedger::default(),
-            loop_registry,
+            loop_registry: root_loop_registry.map(|registry| Arc::new(registry.derive())),
         })
     }
 
@@ -1667,6 +1667,56 @@ mod tests {
 
     fn slot() -> Arc<SessionSlot> {
         SessionSlot::new("s0", broadcast::channel(16).0, None)
+    }
+
+    struct Marker(&'static str);
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::LoopMiddleware for Marker {
+        fn id(&self) -> &str {
+            self.0
+        }
+
+        fn stages(&self) -> &'static [xylitol_plugin_sdk::LoopStage] {
+            &[xylitol_plugin_sdk::LoopStage::BeforeTool]
+        }
+
+        async fn before_tool(
+            &self,
+            ctx: xylitol_plugin_sdk::BeforeToolCtx,
+        ) -> xylitol_plugin_sdk::LoopStep<xylitol_plugin_sdk::BeforeToolCtx> {
+            xylitol_plugin_sdk::LoopStep::continued(ctx)
+        }
+    }
+
+    #[test]
+    fn session_slots_derive_independent_loop_registries() {
+        let root = Arc::new(xylitol_plugin_sdk::LoopMiddlewareRegistry::new());
+        root.register(Arc::new(Marker("shared"))).expect("shared");
+
+        let slot_a = SessionSlot::with_seq("a", broadcast::channel(16).0, Some(root.clone()), 1);
+        let slot_b = SessionSlot::with_seq("b", broadcast::channel(16).0, Some(root.clone()), 1);
+
+        root.register(Arc::new(Marker("late"))).expect("late");
+
+        let ids = |slot: &SessionSlot| slot.loop_registry.as_ref().expect("session registry").ids();
+        assert_eq!(ids(&slot_a), vec!["shared".to_string()]);
+        assert_eq!(ids(&slot_b), vec!["shared".to_string()]);
+        assert_eq!(root.ids(), vec!["shared".to_string(), "late".to_string()]);
+
+        slot_a
+            .loop_registry
+            .as_ref()
+            .expect("session registry")
+            .register(Arc::new(Marker("only-a")))
+            .expect("only-a");
+
+        assert_eq!(
+            ids(&slot_a),
+            vec!["shared".to_string(), "only-a".to_string()]
+        );
+        assert_eq!(ids(&slot_b), vec!["shared".to_string()]);
+        assert_eq!(root.ids(), vec!["shared".to_string(), "late".to_string()]);
     }
 
     fn text_delta(text: &str) -> XyEvent {

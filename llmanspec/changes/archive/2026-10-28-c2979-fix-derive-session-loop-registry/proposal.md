@@ -2,6 +2,9 @@
 depends_on: []
 title: 会话槽从 root 注册表派生独立中间件链
 needs_specs_change: false
+branch: sdd/c2979-fix-derive-session-loop-registry
+base_branch: main
+base_sha: 0b33a59cdfe21bd28b4e820b63c4f5e44abc199f
 ---
 
 # 会话槽从 root 注册表派生独立中间件链
