@@ -467,6 +467,13 @@
     "PlanConfig": {
       "additionalProperties": false,
       "properties": {
+        "allowed_tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "enabled": {
           "default": true,
           "type": "boolean"
@@ -908,6 +915,7 @@
     "plan": {
       "$ref": "#/$defs/PlanConfig",
       "default": {
+        "allowed_tools": [],
         "enabled": true,
         "read_only": true
       }

@@ -36,7 +36,7 @@ impl Plugin for PlanPlugin {
             .map(|store| store.0.clone())
             .or_else(|| ctx.get::<dyn XySessionStore>());
         let handle = registry
-            .register(plan_mode_middleware(store, Some(ctx.clone())))
+            .register(plan_mode_middleware(store, Some(ctx.clone()), &self.config))
             .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?;
         ctx.effect(|| async move {
             handle.unregister();

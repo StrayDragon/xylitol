@@ -560,3 +560,7 @@
   @req:r2944
   规则: generator-critic
     生成评审中间件 须在 after_model 只对**无 tool_calls 的 assistant 最终答案**启动评审，且评审调用仍由 core 调度（插件不得自行调用模型）。状态机须为 Idle → Critiquing →（Approved | Revising）→ … → Approved | Exhausted；Critiquing 时 before_model 注入 rubric 与 verdict 格式，Revising 时注入 critic 意见。critic 须以单独一行 `CRITIC_VERDICT: APPROVE` 或 `CRITIC_VERDICT: REVISE` 结尾；无结构化 verdict 时最多再要求一次，超过一次须停止。decide_continue 在 Critiquing / Revising 时 Continue，在 Approved / Exhausted 时 Stop，其它状态不得改变基线。评审轮数 须受 `max_rounds` 约束且远小于 core 的 32；达到上限须停止并记录原因。不得允许 critic 触发 compact，不得自动改代码或提交。
+
+  @req:r2962
+  规则: multiple-before-tool-gates
+    多个 before_tool 中间件 须按 order 依次执行；任一返回 stopped 须终止后续闸与工具执行；首个 stopped 的原因 须成为最终结果。由单测覆盖。

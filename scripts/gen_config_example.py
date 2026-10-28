@@ -157,6 +157,7 @@ hooks:
 # plan:  # plan mode with plan documents and approval
 #   enabled: true
 #   read_only: true         # deny write/edit/bash while planning
+#   allowed_tools: []       # extra read-only tools (e.g. read-only MCP tools)
 
 # loop_example:  # official example plugin: ReAct loop middleware participation
 #   enabled: false

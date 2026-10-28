@@ -2077,3 +2077,93 @@ pub(crate) fn t_multi_part_preserved() {
     assert_eq!(parts, 2, "part count must stay 2");
     assert_eq!(images, 1, "the image part must survive");
 }
+
+thread_local! {
+    static PLAN_GATE: RefCell<Option<(Arc<dyn LoopMiddleware>, Arc<dyn xylitol_plugin_sdk::XySessionStore>)>> =
+        const { RefCell::new(None) };
+    static PLAN_GATE_OUT: RefCell<Option<(LoopControl, serde_json::Value)>> = const { RefCell::new(None) };
+}
+
+fn plan_gate_model_ctx(session_id: &str) -> BeforeModelCtx {
+    BeforeModelCtx {
+        turn_index: 0,
+        messages: Vec::new(),
+        tool_schemas: Vec::new(),
+        options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+        todo: None,
+        session_id: Some(session_id.into()),
+    }
+}
+
+fn plan_gate_tool_ctx(name: &str) -> BeforeToolCtx {
+    BeforeToolCtx {
+        turn_index: 0,
+        tool_call_id: "plan-gate-call".into(),
+        tool_name: name.into(),
+        args: serde_json::json!({ "path": "src/lib.rs" }),
+    }
+}
+
+#[given("计划模式激活且只读策略开启")]
+pub(crate) fn g_plan_gate_active() {
+    use xylitol_plugin_sdk::session::PlanMode;
+
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
+        Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+    futures::executor::block_on(store.create("s-plan-gate", Some("."), None)).expect("create");
+    futures::executor::block_on(
+        store.append_session_entry("s-plan-gate", &PlanMode::plan(None).to_custom_entry_shell()),
+    )
+    .expect("append plan mode");
+    let mw = xylitol_official_plugin_plan::plan_mode_middleware(
+        Some(store.clone()),
+        None,
+        &xylitol_official_plugin_plan::PlanConfig::default(),
+    );
+    futures::executor::block_on(mw.before_model(plan_gate_model_ctx("s-plan-gate")));
+    PLAN_GATE.with(|slot| slot.borrow_mut().replace((mw, store)));
+}
+
+#[when("尝试执行 write")]
+pub(crate) fn w_plan_gate_write() {
+    let (mw, _) = PLAN_GATE
+        .with(|slot| slot.borrow().clone())
+        .expect("plan gate fixture");
+    let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("write")));
+    PLAN_GATE_OUT.with(|slot| *slot.borrow_mut() = Some((out.control, out.ctx.args)));
+}
+
+#[when("切回执行模式并尝试执行 write")]
+pub(crate) fn w_plan_gate_execute_write() {
+    use xylitol_plugin_sdk::session::PlanMode;
+
+    let (mw, store) = PLAN_GATE
+        .with(|slot| slot.borrow().clone())
+        .expect("plan gate fixture");
+    futures::executor::block_on(
+        store.append_session_entry("s-plan-gate", &PlanMode::execute().to_custom_entry_shell()),
+    )
+    .expect("append execute mode");
+    futures::executor::block_on(mw.before_model(plan_gate_model_ctx("s-plan-gate")));
+    let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("write")));
+    PLAN_GATE_OUT.with(|slot| *slot.borrow_mut() = Some((out.control, out.ctx.args)));
+}
+
+#[then("工具在计划模式闸被拒绝")]
+pub(crate) fn t_plan_gate_denied() {
+    let (control, args) = PLAN_GATE_OUT
+        .with(|slot| slot.borrow().clone())
+        .expect("plan gate outcome");
+    assert_eq!(control, LoopControl::Stop, "write must be denied");
+    assert_eq!(args["blocked_by"], "plan-mode");
+    assert_eq!(args["reason"], "plan mode is read-only");
+}
+
+#[then("工具在计划模式闸被允许")]
+pub(crate) fn t_plan_gate_allowed() {
+    let (control, args) = PLAN_GATE_OUT
+        .with(|slot| slot.borrow().clone())
+        .expect("plan gate outcome");
+    assert_eq!(control, LoopControl::Continue, "write must be allowed");
+    assert_eq!(args["path"], "src/lib.rs");
+}

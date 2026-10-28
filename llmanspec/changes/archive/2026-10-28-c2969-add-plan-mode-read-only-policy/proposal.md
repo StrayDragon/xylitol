@@ -3,6 +3,9 @@ depends_on:
   - c2965-add-plan-mode-with-plan-doc-and-approval
 title: Enforce a read-only tool policy while plan mode is active
 needs_specs_change: true
+branch: sdd/c2969-add-plan-mode-read-only-policy
+base_branch: main
+base_sha: 48a7964b0b07f7be5e39bda788dfae4e2983f6e7
 ---
 
 # Enforce a read-only tool policy while plan mode is active

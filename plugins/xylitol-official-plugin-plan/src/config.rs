@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 pub struct PlanConfig {
     pub enabled: bool,
     pub read_only: bool,
+    pub allowed_tools: Vec<String>,
 }
 
 impl Default for PlanConfig {
@@ -13,6 +14,7 @@ impl Default for PlanConfig {
         Self {
             enabled: true,
             read_only: true,
+            allowed_tools: Vec::new(),
         }
     }
 }

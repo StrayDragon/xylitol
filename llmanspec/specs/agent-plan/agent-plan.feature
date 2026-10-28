@@ -20,3 +20,17 @@
   @req:r2951
   规则: plan-mode-prompt
     plan 模式激活时，runtime 须在模型上下文注入计划契约：先研究与阅读，使用 `plan_write` 产出计划文档，再经 `plan_submit` 请求批准；批准前 不得声称开始编辑。本 change 只做提示注入，不限制内置工具；工具只读策略见后续 change。
+
+  @req:r2960
+  规则: plan-mode-read-only
+    plan 模式激活且 read_only 开启时，before_tool 闸 须拒绝 write / edit / bash 与任何不在 allowlist 的工具；拒绝 须在工具执行前发生，返回稳定原因 `plan mode is read-only`，且 不得执行该工具。默认 allowlist 须含 read / grep / find / ls / ask / plan_* / todo_*；`plan.allowed_tools` 只 可追加。execute 模式或 read_only=false 时 闸 须失效。闸 只 可拒绝，不得绕过 core 权限。
+
+    场景: 计划模式拒绝写入工具
+      假如 计划模式激活且只读策略开启
+      当 尝试执行 write
+      那么 工具在计划模式闸被拒绝
+
+    场景: 切回执行模式后写入恢复
+      假如 计划模式激活且只读策略开启
+      当 切回执行模式并尝试执行 write
+      那么 工具在计划模式闸被允许
