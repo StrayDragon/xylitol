@@ -205,7 +205,7 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 - `before_tool` 在**工具批规划前**预演（hooks → AgentHooks → 中间件 → 权限），可改参数与工具名；core 用最终 `(name, args)` 重算权限目标并再裁，并按最终工具执行分类重排并发窗（MCP 前缀仍强制串行）；路由目标须已在本次装配的工具集内。预演先于本批任何执行：前序调用 `stop` 后，后续调用的中间件**已运行但工具不执行**，中间件不得假设「放行即执行」（`r2922`）。
 - `after_tool` 收结构化载荷（原始分片 + 可解析详情 + 错误标志）；core 的 write/edit quiet 摘要只在结果仍是单段文本时生效，中间件给的详情不被丢弃。
 - `decide_continue` 只在 Settle 调；`compact` 可带压缩指令与来源标签（进 `CompactionStart/End.reason`，缺省 `loop_middleware:<id>`）；`handoff` 未支持以稳定错误结束；无进展 `continue` / `compact` 各有硬上限。
-- **进度与恢复**：`BeforeModelCtx.todo` 由 core 用状态栏同一份 leaf-branch 填充，插件据此做提醒与工具收窄；`plan_checkpoint` 是插件写的 `CustomEntry`（只追加不覆盖），todo 给人看、checkpoint 给恢复用。`BeforeModelCtx` / `AfterTurnCtx` 的 `session_id` 仅供插件把状态落回当前会话，不改变落盘格式。
+- **进度与恢复**：`BeforeModelCtx.todo` 由 core 用状态栏同一份 leaf-branch 填充，插件据此做提醒与工具收窄；`plan_checkpoint` 是插件写的 `CustomEntry`（只追加不覆盖），todo 给人看、checkpoint 给恢复用。`BeforeModelCtx` / `AfterTurnCtx` 的 `session_id` 仅供插件把状态落回当前会话，不改变落盘格式。插件写会话工件 须经 `RuntimeSessionStore`（runtime 的 live store）；不得使用 session-store 插件的服务实例，两者可能不是同一实例。
 - **自愈**：`self-heal` 只在 `after_tool` 命中确定性失败签名时介入，`decide_continue` 在独立上限内续跑；超时、网络、权限等非确定性失败不进入自愈。上限须远小于 core 的 32 次硬上限；Stop 仍由最先返回 Stop 的中间件决定。
 - **生成评审**：`generator-critic` 只评审无 tool_calls 的最终答案；critic 调用由 core 调度，插件只注入 rubric / 修订指令并解析 `CRITIC_VERDICT`。轮数受 `max_rounds` 约束，无结构化 verdict 最多重试一次；不得允许 critic 触发 compact 或自动改代码。
 - **规划执行**：plan 是持久 `CustomEntry`（`custom_type = "plan"`），模型经 assistant 中的 `<plan>{json}</plan>` 块写入；中间件校验 DAG 与重规划约束后落盘并驱动 `decide_continue`。已完成步骤锁定，只有失败步骤及其下游可改写；`requires_human` 步骤阻塞，用户下一条消息视为一次批准。runtime 只是 plumbing，plan 的契约在工件与中间件。

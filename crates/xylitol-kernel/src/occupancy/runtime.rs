@@ -126,6 +126,8 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
     } else {
         build_baseline(assembly.into_build_options())?
     };
+    ctx.provide(xylitol_plugin_sdk::RuntimeSessionStore(ports.store.clone()))
+        .map_err(|e| format!("provide runtime session store: {e}"))?;
 
     let factory = Arc::new(
         ProductOccupancyFactory::new(

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
+use xylitol_plugin_sdk::rt::Ctx;
 use xylitol_plugin_sdk::session::{
     Plan, PlanCheckpoint, PlanCheckpointStep, PlanResumeCursor, PlanStep, PlanStepStatus, TodoList,
     TodoStatus, blocked_step, downstream_ids, latest_plan, latest_plan_checkpoint, runnable_step,
@@ -13,7 +14,7 @@ use xylitol_plugin_sdk::session::{
 };
 use xylitol_plugin_sdk::{
     AfterModelCtx, AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx,
-    DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep, XySessionStore,
+    DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep, RuntimeSessionStore, XySessionStore,
 };
 
 use crate::config::{
@@ -250,19 +251,38 @@ struct PlanExecuteState {
 
 pub struct PlanExecuteMiddleware {
     store: Option<Arc<dyn XySessionStore>>,
+    ctx: Option<Ctx>,
     max_replans: u32,
     state: Mutex<PlanExecuteState>,
     loaded: AtomicBool,
 }
 
 impl PlanExecuteMiddleware {
-    pub fn new(store: Option<Arc<dyn XySessionStore>>, config: &PlanExecuteConfig) -> Self {
+    pub fn new(
+        store: Option<Arc<dyn XySessionStore>>,
+        ctx: Option<Ctx>,
+        config: &PlanExecuteConfig,
+    ) -> Self {
         Self {
             store,
+            ctx,
             max_replans: config.max_replans.max(1),
             state: Mutex::new(PlanExecuteState::default()),
             loaded: AtomicBool::new(false),
         }
+    }
+
+    fn resolve_store(&self) -> Option<Arc<dyn XySessionStore>> {
+        self.ctx
+            .as_ref()
+            .and_then(|ctx| ctx.get::<RuntimeSessionStore>())
+            .map(|store| store.0.clone())
+            .or_else(|| {
+                self.ctx
+                    .as_ref()
+                    .and_then(|ctx| ctx.get::<dyn XySessionStore>())
+            })
+            .or_else(|| self.store.clone())
     }
 
     fn lock_state(&self) -> std::sync::MutexGuard<'_, PlanExecuteState> {
@@ -270,7 +290,7 @@ impl PlanExecuteMiddleware {
     }
 
     async fn load_plan(&self, session_id: Option<&str>) {
-        let (Some(store), Some(session_id)) = (&self.store, session_id) else {
+        let (Some(store), Some(session_id)) = (self.resolve_store(), session_id) else {
             return;
         };
         let Ok(branch) = store.load_leaf_branch(session_id).await else {
@@ -429,21 +449,35 @@ impl LoopMiddleware for PlanExecuteMiddleware {
         let next: Plan = match serde_json::from_str(json) {
             Ok(plan) => plan,
             Err(err) => {
+                log::warn!(
+                    target: "xylitol::loop-example",
+                    "plan block JSON error: {err}"
+                );
                 self.lock_state().pending_plan_error =
                     Some(format!("plan block is not valid JSON: {err}"));
                 return LoopStep::continued(ctx);
             }
         };
         if let Err(err) = validate_plan(&next) {
+            log::warn!(
+                target: "xylitol::loop-example",
+                "plan DAG invalid: {}",
+                err.0
+            );
             self.lock_state().pending_plan_error = Some(err.0);
             return LoopStep::continued(ctx);
         }
         let previous = self.lock_state().plan.clone();
         if let Err(err) = validate_replan(previous.as_ref(), &next) {
+            log::warn!(
+                target: "xylitol::loop-example",
+                "plan replan invalid: {}",
+                err.0
+            );
             self.lock_state().pending_plan_error = Some(err.0);
             return LoopStep::continued(ctx);
         }
-        if let (Some(store), Some(session_id)) = (&self.store, ctx.session_id.as_deref())
+        if let (Some(store), Some(session_id)) = (self.resolve_store(), ctx.session_id.as_deref())
             && let Err(err) = store
                 .append_session_entry(session_id, &next.to_custom_entry_shell())
                 .await
@@ -552,9 +586,10 @@ impl LoopMiddleware for PlanExecuteMiddleware {
 
 pub fn plan_execute_middleware(
     store: Option<Arc<dyn XySessionStore>>,
+    ctx: Option<Ctx>,
     config: &PlanExecuteConfig,
 ) -> Arc<dyn LoopMiddleware> {
-    Arc::new(PlanExecuteMiddleware::new(store, config))
+    Arc::new(PlanExecuteMiddleware::new(store, ctx, config))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -911,19 +946,34 @@ struct CheckpointState {
 
 pub struct PlanCheckpointMiddleware {
     store: Option<Arc<dyn XySessionStore>>,
+    ctx: Option<Ctx>,
     state: Mutex<CheckpointState>,
     restored: AtomicBool,
     injected: AtomicBool,
 }
 
 impl PlanCheckpointMiddleware {
-    pub fn new(store: Option<Arc<dyn XySessionStore>>) -> Self {
+    pub fn new(store: Option<Arc<dyn XySessionStore>>, ctx: Option<Ctx>) -> Self {
         Self {
             store,
+            ctx,
             state: Mutex::new(CheckpointState::default()),
             restored: AtomicBool::new(false),
             injected: AtomicBool::new(false),
         }
+    }
+
+    fn resolve_store(&self) -> Option<Arc<dyn XySessionStore>> {
+        self.ctx
+            .as_ref()
+            .and_then(|ctx| ctx.get::<RuntimeSessionStore>())
+            .map(|store| store.0.clone())
+            .or_else(|| {
+                self.ctx
+                    .as_ref()
+                    .and_then(|ctx| ctx.get::<dyn XySessionStore>())
+            })
+            .or_else(|| self.store.clone())
     }
 
     fn lock_state(&self) -> std::sync::MutexGuard<'_, CheckpointState> {
@@ -988,7 +1038,7 @@ impl PlanCheckpointMiddleware {
     }
 
     async fn restore(&self, session_id: &str) {
-        let Some(store) = &self.store else {
+        let Some(store) = self.resolve_store() else {
             return;
         };
         let Ok(branch) = store.load_leaf_branch(session_id).await else {
@@ -1053,7 +1103,7 @@ impl PlanCheckpointMiddleware {
         let Some(session_id) = session_id else {
             return;
         };
-        let Some(store) = &self.store else {
+        let Some(store) = self.resolve_store() else {
             return;
         };
         let checkpoint = {
@@ -1178,8 +1228,9 @@ impl LoopMiddleware for PlanCheckpointMiddleware {
 
 pub fn plan_checkpoint_middleware(
     store: Option<Arc<dyn XySessionStore>>,
+    ctx: Option<Ctx>,
 ) -> Arc<dyn LoopMiddleware> {
-    Arc::new(PlanCheckpointMiddleware::new(store))
+    Arc::new(PlanCheckpointMiddleware::new(store, ctx))
 }
 
 pub struct ToolExposureMiddleware {
@@ -1357,10 +1408,12 @@ mod tests {
         DEFAULT_SELF_HEAL_ATTEMPTS, GeneratorCriticConfig, PlanExecuteConfig, SelfHealConfig,
     };
     use xylitol_plugin_sdk::LoopControl;
+    use xylitol_plugin_sdk::RuntimeSessionStore;
     use xylitol_plugin_sdk::XySessionError;
     use xylitol_plugin_sdk::XySessionStoreError;
     use xylitol_plugin_sdk::message::XyStopReason;
     use xylitol_plugin_sdk::model::XyToolSchema;
+    use xylitol_plugin_sdk::rt::{Ctx, CtxHost};
     use xylitol_plugin_sdk::session::{
         ForkPosition, SessionContext, SessionEntry, TodoItem, latest_plan_checkpoint,
     };
@@ -1892,7 +1945,7 @@ mod tests {
     #[tokio::test]
     async fn checkpoint_persists_todo_progress() {
         let store = Arc::new(FakeStore::default());
-        let mw = PlanCheckpointMiddleware::new(Some(store.clone()));
+        let mw = PlanCheckpointMiddleware::new(Some(store.clone()), None);
         let first = mw.before_model(checkpoint_ctx("s1")).await;
         assert!(first.ctx.messages.is_empty(), "a fresh run must not inject");
         mw.after_tool(todo_ctx(&["completed", "in_progress"], false))
@@ -1945,7 +1998,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mw = PlanCheckpointMiddleware::new(Some(store.clone()));
+        let mw = PlanCheckpointMiddleware::new(Some(store.clone()), None);
         let first = mw.before_model(checkpoint_ctx("s1")).await;
         assert_eq!(first.ctx.messages.len(), 1);
         let text = first.ctx.messages[0].text();
@@ -1979,7 +2032,7 @@ mod tests {
             .append_session_entry("s1", &checkpoint.to_custom_entry_shell())
             .await
             .unwrap();
-        let mw = PlanCheckpointMiddleware::new(Some(store));
+        let mw = PlanCheckpointMiddleware::new(Some(store), None);
         let out = mw.before_model(checkpoint_ctx("s1")).await;
         assert!(out.ctx.messages.is_empty());
     }
@@ -1987,7 +2040,7 @@ mod tests {
     #[tokio::test]
     async fn checkpoint_records_failure_and_attempt() {
         let store = Arc::new(FakeStore::default());
-        let mw = PlanCheckpointMiddleware::new(Some(store.clone()));
+        let mw = PlanCheckpointMiddleware::new(Some(store.clone()), None);
         mw.before_model(checkpoint_ctx("s1")).await;
         mw.after_tool(todo_ctx(&["in_progress"], false)).await;
         let mut failure = todo_ctx(&["in_progress"], false);
@@ -2008,7 +2061,7 @@ mod tests {
 
     #[tokio::test]
     async fn checkpoint_without_store_degrades_to_memory() {
-        let mw = PlanCheckpointMiddleware::new(None);
+        let mw = PlanCheckpointMiddleware::new(None, None);
         mw.before_model(checkpoint_ctx("s1")).await;
         mw.after_tool(todo_ctx(&["pending"], false)).await;
         let out = mw.before_model(checkpoint_ctx("s1")).await;
@@ -2017,7 +2070,7 @@ mod tests {
 
     #[test]
     fn plan_checkpoint_identity_is_stable() {
-        let mw = PlanCheckpointMiddleware::new(None);
+        let mw = PlanCheckpointMiddleware::new(None, None);
         assert_eq!(mw.id(), "plan-checkpoint");
         assert_eq!(mw.order(), 180);
         assert_eq!(mw.stages(), CHECKPOINT_STAGES);
@@ -2334,7 +2387,7 @@ mod tests {
 
     #[tokio::test]
     async fn plan_execute_injects_contract_without_plan() {
-        let mw = PlanExecuteMiddleware::new(None, &exec_config(DEFAULT_MAX_REPLANS));
+        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REPLANS));
         let out = mw.before_model(exec_model_ctx(Some("s1"))).await;
         assert_eq!(out.ctx.messages.len(), 1);
         assert!(out.ctx.messages[0].text().contains("<plan>{json}</plan>"));
@@ -2343,7 +2396,11 @@ mod tests {
     #[tokio::test]
     async fn plan_execute_adopts_and_persists_plan() {
         let store = Arc::new(FakeStore::default());
-        let mw = PlanExecuteMiddleware::new(Some(store.clone()), &exec_config(DEFAULT_MAX_REPLANS));
+        let mw = PlanExecuteMiddleware::new(
+            Some(store.clone()),
+            None,
+            &exec_config(DEFAULT_MAX_REPLANS),
+        );
         mw.before_model(exec_model_ctx(Some("s1"))).await;
         let plan = plan_with(vec![
             plan_step("s1", PlanStepStatus::Pending, &[]),
@@ -2364,7 +2421,7 @@ mod tests {
     #[tokio::test]
     async fn plan_execute_marks_failure_and_replans_downstream() {
         let store = Arc::new(FakeStore::default());
-        let mw = PlanExecuteMiddleware::new(Some(store), &exec_config(DEFAULT_MAX_REPLANS));
+        let mw = PlanExecuteMiddleware::new(Some(store), None, &exec_config(DEFAULT_MAX_REPLANS));
         mw.before_model(exec_model_ctx(Some("s1"))).await;
         let plan = plan_with(vec![
             plan_step("s1", PlanStepStatus::InProgress, &[]),
@@ -2400,7 +2457,7 @@ mod tests {
 
     #[tokio::test]
     async fn plan_execute_rejects_rewriting_completed_steps() {
-        let mw = PlanExecuteMiddleware::new(None, &exec_config(DEFAULT_MAX_REPLANS));
+        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REPLANS));
         mw.before_model(exec_model_ctx(None)).await;
         let plan = plan_with(vec![
             plan_step("s1", PlanStepStatus::Completed, &[]),
@@ -2430,7 +2487,7 @@ mod tests {
 
     #[tokio::test]
     async fn plan_execute_blocks_for_human_and_approves_once() {
-        let mw = PlanExecuteMiddleware::new(None, &exec_config(DEFAULT_MAX_REPLANS));
+        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REPLANS));
         mw.before_model(exec_model_ctx(None)).await;
         let mut human = plan_step("s1", PlanStepStatus::Pending, &[]);
         human.requires_human = true;
@@ -2451,7 +2508,7 @@ mod tests {
 
     #[tokio::test]
     async fn plan_execute_stops_at_replan_cap() {
-        let mw = PlanExecuteMiddleware::new(None, &exec_config(1));
+        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(1));
         mw.before_model(exec_model_ctx(None)).await;
         let failed_plan = plan_with(vec![plan_step("s1", PlanStepStatus::Failed, &[])]);
         mw.after_model(exec_after_model(&plan_block(&failed_plan)))
@@ -2471,7 +2528,7 @@ mod tests {
 
     #[tokio::test]
     async fn plan_execute_summarizes_after_completion() {
-        let mw = PlanExecuteMiddleware::new(None, &exec_config(DEFAULT_MAX_REPLANS));
+        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REPLANS));
         mw.before_model(exec_model_ctx(None)).await;
         let plan = plan_with(vec![plan_step("s1", PlanStepStatus::Completed, &[])]);
         mw.after_model(exec_after_model(&plan_block(&plan))).await;
@@ -2487,9 +2544,27 @@ mod tests {
         assert_eq!(mw.decide_continue(decide).await.control, LoopControl::Stop);
     }
 
+    #[tokio::test]
+    async fn plan_execute_resolves_runtime_session_store_from_ctx() {
+        let fake = Arc::new(FakeStore::default());
+        let ctx = Ctx::root().expect("root");
+        ctx.provide(RuntimeSessionStore(fake.clone() as Arc<dyn XySessionStore>))
+            .expect("provide runtime store");
+        let mw = PlanExecuteMiddleware::new(None, Some(ctx), &exec_config(DEFAULT_MAX_REPLANS));
+        mw.before_model(exec_model_ctx(Some("s1"))).await;
+        let plan = plan_with(vec![plan_step("s1", PlanStepStatus::Pending, &[])]);
+        mw.after_model(exec_after_model(&plan_block(&plan))).await;
+        let entries = fake.entries.lock().unwrap().clone();
+        assert_eq!(
+            latest_plan(&entries),
+            Some(plan),
+            "the middleware must write through the runtime store provided on the context"
+        );
+    }
+
     #[test]
     fn plan_execute_identity_is_stable() {
-        let mw = PlanExecuteMiddleware::new(None, &PlanExecuteConfig::default());
+        let mw = PlanExecuteMiddleware::new(None, None, &PlanExecuteConfig::default());
         assert_eq!(mw.id(), "plan-execute");
         assert_eq!(mw.order(), 190);
         assert_eq!(mw.stages(), PLAN_EXECUTE_STAGES);

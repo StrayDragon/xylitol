@@ -91,9 +91,9 @@ pub use plugin_events::{
 pub use ports::{
     AgentTodoGateway, AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway, BashChunk,
     BashExecOpts, BashOutputSink, FS_TOOL_TIMEOUT_SECS, HeaderBag, HttpHooks, LifecycleHandler,
-    NoopCompaction, NoopHookBus, OverflowCompactOutcome, SessionListEntry, TypedTool,
-    XyBashExecutor, XyBashResult, XyBatchMode, XyCompaction, XyCompactionFactory, XyEventSink,
-    XyExportIo, XyHookBus, XyHookOutcome, XyModel, XyModelBuilder, XyPermission,
+    NoopCompaction, NoopHookBus, OverflowCompactOutcome, RuntimeSessionStore, SessionListEntry,
+    TypedTool, XyBashExecutor, XyBashResult, XyBatchMode, XyCompaction, XyCompactionFactory,
+    XyEventSink, XyExportIo, XyHookBus, XyHookOutcome, XyModel, XyModelBuilder, XyPermission,
     XyPermissionVerdict, XySecretResolver, XySessionStore, XyStream, XyTool, XyToolCtx,
     XyToolExecutionMode, ask, bash, flatten_session_forest, format_session_age,
     noop_compaction_factory, parse_tool_args, run_after_response, run_before_headers,

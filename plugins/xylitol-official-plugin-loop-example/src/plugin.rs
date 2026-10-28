@@ -49,10 +49,13 @@ impl Plugin for LoopExamplePlugin {
             );
         }
         if self.config.plan_checkpoint {
-            let store = ctx.get::<dyn XySessionStore>();
+            let store = ctx
+                .get::<xylitol_plugin_sdk::RuntimeSessionStore>()
+                .map(|store| store.0.clone())
+                .or_else(|| ctx.get::<dyn XySessionStore>());
             handles.push(
                 registry
-                    .register(plan_checkpoint_middleware(store))
+                    .register(plan_checkpoint_middleware(store, Some(ctx.clone())))
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
         }
@@ -64,10 +67,17 @@ impl Plugin for LoopExamplePlugin {
             );
         }
         if self.config.plan_execute.enabled {
-            let store = ctx.get::<dyn XySessionStore>();
+            let store = ctx
+                .get::<xylitol_plugin_sdk::RuntimeSessionStore>()
+                .map(|store| store.0.clone())
+                .or_else(|| ctx.get::<dyn XySessionStore>());
             handles.push(
                 registry
-                    .register(plan_execute_middleware(store, &self.config.plan_execute))
+                    .register(plan_execute_middleware(
+                        store,
+                        Some(ctx.clone()),
+                        &self.config.plan_execute,
+                    ))
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
         }

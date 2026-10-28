@@ -27,7 +27,9 @@ pub use http::{HeaderBag, HttpHooks, run_after_response, run_before_headers, run
 pub use model::{XyModel, XyModelBuilder, XyStream};
 pub use permission::{XyPermission, XyPermissionVerdict};
 pub use secret::XySecretResolver;
-pub use session::{SessionListEntry, XySessionStore, sanitize_session_display_name};
+pub use session::{
+    RuntimeSessionStore, SessionListEntry, XySessionStore, sanitize_session_display_name,
+};
 pub use session_list::{flatten_session_forest, format_session_age};
 pub use todo::AgentTodoGateway;
 pub use tool::{XyBatchMode, XyTool, XyToolCtx, XyToolExecutionMode};

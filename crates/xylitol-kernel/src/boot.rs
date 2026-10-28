@@ -50,6 +50,10 @@ pub async fn boot(opts: BootOptions) -> Result<Kernel, BootstrapError> {
     let (ctx, loader) = boot_ctx(&opts).await?;
     let mut runtime = bootstrap(BootstrapInput::from(&opts))?.into_runtime();
     runtime.driver.attach_ctx(ctx.clone());
+    ctx.provide(xylitol_plugin_sdk::RuntimeSessionStore(
+        runtime.driver.store.clone(),
+    ))
+    .map_err(cordis_to_bootstrap)?;
     if let Some(hub) = ctx.get::<dyn xylitol_plugin_sdk::SessionPrepareHub>() {
         runtime.driver.set_prepare_hub(hub);
     }
