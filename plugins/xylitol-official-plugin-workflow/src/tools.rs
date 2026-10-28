@@ -10,8 +10,8 @@ use tokio::sync::RwLock;
 use xylitol_plugin_sdk::TypedTool;
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::session::{
-    Workflow, WorkflowStep, latest_workflow, runnable_workflow_step, validate_workflow,
-    validate_workflow_replan,
+    Workflow, WorkflowStep, latest_workflow, runnable_workflow_step, validate_workflow_replan,
+    validate_workflow_with_limits,
 };
 use xylitol_plugin_sdk::{WorkflowGateway, XySessionStore, XyToolCtx, XyToolExecutionMode};
 
@@ -75,11 +75,17 @@ impl WorkflowGateway for SessionWorkflowGateway {
 
 pub struct WorkflowWriteTool {
     gateway: Arc<dyn WorkflowGateway>,
+    max_depth: u32,
+    max_total_steps: usize,
 }
 
 impl WorkflowWriteTool {
-    pub fn new(gateway: Arc<dyn WorkflowGateway>) -> Self {
-        Self { gateway }
+    pub fn new(gateway: Arc<dyn WorkflowGateway>, max_depth: u32, max_total_steps: usize) -> Self {
+        Self {
+            gateway,
+            max_depth,
+            max_total_steps,
+        }
     }
 }
 
@@ -105,34 +111,44 @@ impl TypedTool for WorkflowWriteTool {
 
     fn parameters_schema(&self) -> Value {
         json!({
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["goal", "steps"],
-            "properties": {
-                "goal": { "type": "string" },
-                "steps": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": false,
-                        "required": ["id", "description"],
-                        "properties": {
-                            "id": { "type": "string" },
-                            "description": { "type": "string" },
-                            "depends_on": { "type": "array", "items": { "type": "string" } },
-                            "inputs": { "type": "array", "items": { "type": "string" } },
-                            "outputs": { "type": "array", "items": { "type": "string" } },
-                            "risk": { "type": "string", "enum": ["low", "medium", "high"] },
-                            "verification": { "type": "string" },
-                            "rollback": { "type": "string" },
-                            "requires_human": { "type": "boolean" },
-                            "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "failed", "blocked"] },
-                            "output_ref": { "type": "string" }
+            "$ref": "#/$defs/workflow",
+            "$defs": {
+                "workflow": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["goal", "steps"],
+                    "properties": {
+                        "goal": { "type": "string" },
+                        "steps": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": { "$ref": "#/$defs/workflow_step" }
+                        },
+                        "resume_cursor": {
+                            "type": "string",
+                            "description": "Slash-separated step path, e.g. s2/s2.1"
                         }
                     }
                 },
-                "resume_cursor": { "type": "string" }
+                "workflow_step": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["id", "description"],
+                    "properties": {
+                        "id": { "type": "string" },
+                        "description": { "type": "string" },
+                        "depends_on": { "type": "array", "items": { "type": "string" } },
+                        "inputs": { "type": "array", "items": { "type": "string" } },
+                        "outputs": { "type": "array", "items": { "type": "string" } },
+                        "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+                        "verification": { "type": "string" },
+                        "rollback": { "type": "string" },
+                        "requires_human": { "type": "boolean" },
+                        "status": { "type": "string", "enum": ["pending", "in_progress", "completed", "failed", "blocked"] },
+                        "output_ref": { "type": "string" },
+                        "sub_workflow": { "$ref": "#/$defs/workflow" }
+                    }
+                }
             }
         })
     }
@@ -155,7 +171,8 @@ impl TypedTool for WorkflowWriteTool {
             resume_cursor: args.resume_cursor,
             updated_at: now_ms(),
         };
-        validate_workflow(&workflow).map_err(|e| XyToolError::InvalidArgs(e.0))?;
+        validate_workflow_with_limits(&workflow, self.max_depth, self.max_total_steps)
+            .map_err(|e| XyToolError::InvalidArgs(e.0))?;
         let previous = self.gateway.latest().await?;
         validate_workflow_replan(previous.as_ref(), &workflow)
             .map_err(|e| XyToolError::InvalidArgs(e.0))?;
@@ -219,9 +236,15 @@ impl TypedTool for WorkflowReadTool {
 
 pub fn workflow_tools(
     gateway: Arc<dyn WorkflowGateway>,
+    max_depth: u32,
+    max_total_steps: usize,
 ) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
     vec![
-        Arc::new(WorkflowWriteTool::new(gateway.clone())),
+        Arc::new(WorkflowWriteTool::new(
+            gateway.clone(),
+            max_depth,
+            max_total_steps,
+        )),
         Arc::new(WorkflowReadTool::new(gateway)),
     ]
 }
@@ -261,13 +284,18 @@ mod tests {
             requires_human: false,
             status,
             output_ref: None,
+            sub_workflow: None,
         }
     }
 
     #[tokio::test]
     async fn write_persists_and_publishes() {
         let (gateway, store) = gateway().await;
-        let tool = WorkflowWriteTool::new(gateway.clone());
+        let tool = WorkflowWriteTool::new(
+            gateway.clone(),
+            xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
+            xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
+        );
         let (tx, mut rx) = mpsc::unbounded_channel();
         let ctx = XyToolCtx::new("c1").with_state_event_tx(tx);
         let result = tool
@@ -300,7 +328,11 @@ mod tests {
     #[tokio::test]
     async fn invalid_dag_is_rejected_without_write() {
         let (gateway, store) = gateway().await;
-        let tool = WorkflowWriteTool::new(gateway);
+        let tool = WorkflowWriteTool::new(
+            gateway,
+            xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
+            xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
+        );
         let ctx = XyToolCtx::new("c1");
         let err = tool
             .execute(
@@ -339,7 +371,11 @@ mod tests {
             .append_session_entry("s1", &first.to_custom_entry_shell())
             .await
             .expect("seed");
-        let tool = WorkflowWriteTool::new(gateway);
+        let tool = WorkflowWriteTool::new(
+            gateway,
+            xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
+            xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
+        );
         let err = tool
             .execute(
                 &XyToolCtx::new("c1"),

@@ -2326,7 +2326,11 @@ pub(crate) fn g_workflow_tool_write() {
     futures::executor::block_on(store.create("s-workflow-tool", Some("."), None)).expect("create");
     let gateway = xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store.clone());
     futures::executor::block_on(gateway.bind_session(Some("s-workflow-tool".into())));
-    let tools = xylitol_official_plugin_workflow::workflow_tools(gateway);
+    let tools = xylitol_official_plugin_workflow::workflow_tools(
+        gateway,
+        xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
+        xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
+    );
     let tool = tools
         .iter()
         .find(|tool| tool.name() == "workflow_write")
@@ -2377,3 +2381,87 @@ pub(crate) fn t_workflow_tool_step() {
 
 #[when("模型下一轮 before_model")]
 pub(crate) fn w_workflow_next_model() {}
+
+thread_local! {
+    static NESTED_WORKFLOW_OUT: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+fn nested_leaf(
+    id: &str,
+    status: xylitol_plugin_sdk::session::WorkflowStepStatus,
+) -> xylitol_plugin_sdk::session::WorkflowStep {
+    use xylitol_plugin_sdk::session::{WorkflowRisk, WorkflowStep};
+    WorkflowStep {
+        id: id.into(),
+        description: format!("do {id}"),
+        depends_on: Vec::new(),
+        inputs: Vec::new(),
+        outputs: Vec::new(),
+        risk: WorkflowRisk::Low,
+        verification: None,
+        rollback: None,
+        requires_human: false,
+        status,
+        output_ref: None,
+        sub_workflow: None,
+    }
+}
+
+#[given("嵌套 workflow 的子步骤已完成")]
+pub(crate) fn g_nested_workflow_child_completed() {
+    use xylitol_plugin_sdk::session::{Workflow, WorkflowStepStatus};
+
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
+        Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+    futures::executor::block_on(store.create("s-nested", Some("."), None)).expect("create");
+    let child = Workflow {
+        goal: "child".into(),
+        steps: vec![nested_leaf("c1", WorkflowStepStatus::Completed)],
+        resume_cursor: None,
+        updated_at: 1,
+    };
+    let root = Workflow {
+        goal: "root".into(),
+        steps: vec![xylitol_plugin_sdk::session::WorkflowStep {
+            sub_workflow: Some(Box::new(child)),
+            ..nested_leaf("s1", WorkflowStepStatus::Pending)
+        }],
+        resume_cursor: None,
+        updated_at: 1,
+    };
+    futures::executor::block_on(
+        store.append_session_entry("s-nested", &root.to_custom_entry_shell()),
+    )
+    .expect("seed nested workflow");
+    let mw = xylitol_official_plugin_workflow::workflow_middleware(
+        Some(store),
+        None,
+        &xylitol_official_plugin_workflow::WorkflowConfig::default(),
+    );
+    let out = futures::executor::block_on(mw.before_model(BeforeModelCtx {
+        turn_index: 0,
+        messages: Vec::new(),
+        tool_schemas: Vec::new(),
+        options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+        todo: None,
+        session_id: Some("s-nested".into()),
+    }));
+    NESTED_WORKFLOW_OUT.with(|slot| {
+        *slot.borrow_mut() = Some(
+            out.ctx
+                .messages
+                .iter()
+                .map(|message| message.text())
+                .collect(),
+        )
+    });
+}
+
+#[then("注入全部完成总结")]
+pub(crate) fn t_nested_workflow_completed() {
+    let messages = NESTED_WORKFLOW_OUT
+        .with(|slot| slot.borrow().clone())
+        .expect("nested workflow messages");
+    let text = messages.join("\n");
+    assert!(text.contains("<plan_complete>"), "{text}");
+}

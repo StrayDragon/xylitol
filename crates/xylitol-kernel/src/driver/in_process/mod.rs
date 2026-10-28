@@ -38,6 +38,8 @@ pub struct ToolFeatures {
     pub todo: bool,
     pub plan: bool,
     pub workflow: bool,
+    pub workflow_max_depth: u32,
+    pub workflow_max_total_steps: usize,
 }
 
 impl Default for ToolFeatures {
@@ -46,6 +48,8 @@ impl Default for ToolFeatures {
             todo: true,
             plan: true,
             workflow: false,
+            workflow_max_depth: xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
+            workflow_max_total_steps: xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
         }
     }
 }
@@ -56,6 +60,8 @@ impl ToolFeatures {
             todo: config.todo.is_active(),
             plan: config.plan.is_active(),
             workflow: config.workflow.is_active(),
+            workflow_max_depth: config.workflow.max_depth,
+            workflow_max_total_steps: config.workflow.max_total_steps,
         }
     }
 }
@@ -192,7 +198,11 @@ fn compose_tools(
         ));
     }
     if features.workflow {
-        tools.extend(xylitol_official_plugin_workflow::workflow_tools(workflow));
+        tools.extend(xylitol_official_plugin_workflow::workflow_tools(
+            workflow,
+            features.workflow_max_depth,
+            features.workflow_max_total_steps,
+        ));
     }
     if let Some(ask) = ask {
         tools.push(xylitol_official_plugin_tools::ask_tool(ask));

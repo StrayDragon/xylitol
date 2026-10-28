@@ -371,3 +371,7 @@
   @req:r2967
   规则: workflow-tool-write
     workflow 须由 `workflow_write` 工具写入 `custom_type = "workflow"` 的 CustomEntry，格式与既有条目一致；中间件 不得再解析 assistant 文本写 workflow。旧会话中的 workflow CustomEntry 仍按原格式读取，不做文本迁移。由插件单测覆盖。
+
+  @req:r2970
+  规则: nested-workflow-entry
+    workflow CustomEntry 的 steps 可含 `sub_workflow`（递归同构）；`resume_cursor` 为 `/` 分隔的步骤路径。读取 须取叶分支最新一条并按路径解析；不得为子 workflow 新建独立条目。由 SDK 单测覆盖。

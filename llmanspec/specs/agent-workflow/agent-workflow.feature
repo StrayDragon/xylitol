@@ -17,3 +17,12 @@
       假如 workflow 插件启用且写入含一个 pending 步骤的 workflow
       当 模型下一轮 before_model
       那么 注入当前步骤指令
+
+  @req:r2969
+  规则: nested-workflow
+    WorkflowStep 可含 `sub_workflow`（嵌入子 workflow）。校验 须递归：每层 id 唯一、依赖存在、无环；深度与总步数 须受 `max_depth` / `max_total_steps` 约束。执行时 容器步骤 须进入子 workflow（父标记 in_progress）；子全部完成时 父须标记 completed；子失败 须先在子层重规划，`max_replans` 用尽后 父须标记 failed 并向上重规划；子 blocked 须使整轮停止直至用户批准。`resume_cursor` 须为 `/` 分隔的步骤路径；缺失或无效时 须回退到根的第一个未完成步骤。嵌套 workflow 仍存于同一 CustomEntry，不得新增独立条目。由 SDK / 中间件单测覆盖。
+
+    场景: 嵌套子 workflow 完成后父步骤标记完成
+      假如 嵌套 workflow 的子步骤已完成
+      当 模型下一轮 before_model
+      那么 注入全部完成总结

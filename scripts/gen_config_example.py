@@ -153,6 +153,8 @@ hooks:
 # workflow:  # workflow DAG with dependencies and local replan
 #   enabled: false
 #   max_replans: 3          # bounded; completed steps stay locked
+#   max_depth: 2            # nesting levels from the root (root = 1)
+#   max_total_steps: 100    # total steps across all levels
 
 # plan:  # plan mode with plan documents and approval
 #   enabled: true

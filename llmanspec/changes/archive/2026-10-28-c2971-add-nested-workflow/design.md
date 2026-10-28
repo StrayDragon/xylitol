@@ -29,12 +29,12 @@ State machine:
 2. Run the child with the same `decide_continue` rules.
 3. Child `all_completed` → mark container `completed`, pop to parent, continue.
 4. Child has a failed step → replan the child first; if the child cannot recover within `max_replans`, mark the container `failed` and replan the parent.
-5. Blocked child → bubble the block to the parent; approval applies to the child step.
+5. Blocked child → the run stops until the user approves it; approval applies to the child step, and the parent container stays `in_progress`.
 6. All levels complete → inject the completion summary once.
 
 ## Resume
 
-- `resume_cursor` stores a path: `["s2", "s2.1"]`.
+- `resume_cursor` stores a slash-separated path: `s2/s2.1`.
 - Loading resolves the path; a missing/invalid path falls back to the first unfinished step at the root and records a warning.
 - Completed containers stay completed; their child state is not re-executed.
 

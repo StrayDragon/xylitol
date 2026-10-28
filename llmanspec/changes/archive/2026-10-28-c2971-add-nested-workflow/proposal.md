@@ -4,6 +4,9 @@ depends_on:
   - c2968-refactor-extract-plan-workflow-todo-plugins
 title: Support nested workflows inside workflow steps
 needs_specs_change: true
+branch: sdd/c2971-add-nested-workflow
+base_branch: main
+base_sha: 85977afc70c3cff76bf3f39a14bd1f2f05a8771a
 ---
 
 # Support nested workflows inside workflow steps
@@ -21,8 +24,8 @@ The current workflow is a single flat DAG. Real tasks often contain a sub-task t
   - Child failure marks the parent `failed` and triggers replan from the child upward.
 - Validation is recursive: unique ids per level, dependencies exist, no cycles at any level, depth and total-step bounds.
 - Bounds: `max_depth` default 2, `max_total_steps` default 100.
-- Resume cursor becomes a step path (`["s2", "s2.1"]`) so a nested run can resume at the right level.
-- Approval/blocked steps propagate upward: a blocked child blocks the parent chain.
+- Resume cursor becomes a slash-separated step path (`s2/s2.1`) so a nested run can resume at the right level.
+- A blocked child stops the run until the user approves it; approval applies to the child step and the parent container stays `in_progress`.
 - Persistence stays in one `CustomEntry(workflow)`; no separate entries for child workflows.
 - Replan constraints apply recursively: completed steps at any level stay locked.
 

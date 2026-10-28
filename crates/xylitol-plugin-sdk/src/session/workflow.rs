@@ -51,6 +51,8 @@ pub struct WorkflowStep {
     pub status: WorkflowStepStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub_workflow: Option<Box<Workflow>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -135,11 +137,44 @@ pub fn latest_workflow(entries: &[SessionEntry]) -> Option<Workflow> {
     })
 }
 
+pub const DEFAULT_MAX_DEPTH: u32 = 2;
+pub const DEFAULT_MAX_TOTAL_STEPS: usize = 100;
+
 pub fn validate_workflow(plan: &Workflow) -> Result<(), WorkflowValidationError> {
+    validate_workflow_with_limits(plan, DEFAULT_MAX_DEPTH, DEFAULT_MAX_TOTAL_STEPS)
+}
+
+pub fn validate_workflow_with_limits(
+    plan: &Workflow,
+    max_depth: u32,
+    max_total_steps: usize,
+) -> Result<(), WorkflowValidationError> {
+    let mut total = 0;
+    validate_workflow_level(plan, 1, max_depth, max_total_steps, &mut total)
+}
+
+fn validate_workflow_level(
+    plan: &Workflow,
+    depth: u32,
+    max_depth: u32,
+    max_total_steps: usize,
+    total: &mut usize,
+) -> Result<(), WorkflowValidationError> {
+    if depth > max_depth {
+        return Err(WorkflowValidationError(format!(
+            "workflow nesting depth {depth} exceeds max_depth {max_depth}"
+        )));
+    }
     if plan.steps.is_empty() {
         return Err(WorkflowValidationError(
             "workflow must have at least one step".into(),
         ));
+    }
+    *total += plan.steps.len();
+    if *total > max_total_steps {
+        return Err(WorkflowValidationError(format!(
+            "workflow has {total} total steps, exceeds max_total_steps {max_total_steps}"
+        )));
     }
     let mut ids = HashSet::new();
     for step in &plan.steps {
@@ -172,6 +207,11 @@ pub fn validate_workflow(plan: &Workflow) -> Result<(), WorkflowValidationError>
         }
     }
     detect_cycle(plan)?;
+    for step in &plan.steps {
+        if let Some(sub) = step.sub_workflow.as_deref() {
+            validate_workflow_level(sub, depth + 1, max_depth, max_total_steps, total)?;
+        }
+    }
     Ok(())
 }
 
@@ -365,6 +405,23 @@ fn same_structure(left: &WorkflowStep, right: &WorkflowStep) -> bool {
         && left.verification == right.verification
         && left.rollback == right.rollback
         && left.requires_human == right.requires_human
+        && same_workflow_structure(left.sub_workflow.as_deref(), right.sub_workflow.as_deref())
+}
+
+fn same_workflow_structure(left: Option<&Workflow>, right: Option<&Workflow>) -> bool {
+    match (left, right) {
+        (None, None) => true,
+        (Some(left), Some(right)) => {
+            left.goal == right.goal
+                && left.steps.len() == right.steps.len()
+                && left
+                    .steps
+                    .iter()
+                    .zip(right.steps.iter())
+                    .all(|(left, right)| same_structure(left, right))
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -385,6 +442,7 @@ mod tests {
             requires_human: false,
             status,
             output_ref: None,
+            sub_workflow: None,
         }
     }
 
@@ -548,5 +606,74 @@ mod tests {
         next.steps[1].status = WorkflowStepStatus::InProgress;
         next.steps[1].output_ref = Some("artifact:1".into());
         assert!(validate_workflow_replan(Some(&previous), &next).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod nested_tests {
+    use super::*;
+
+    fn leaf(id: &str) -> WorkflowStep {
+        WorkflowStep {
+            id: id.into(),
+            description: format!("do {id}"),
+            depends_on: Vec::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            risk: WorkflowRisk::Low,
+            verification: None,
+            rollback: None,
+            requires_human: false,
+            status: WorkflowStepStatus::Pending,
+            output_ref: None,
+            sub_workflow: None,
+        }
+    }
+
+    fn container(id: &str, child: Workflow) -> WorkflowStep {
+        WorkflowStep {
+            sub_workflow: Some(Box::new(child)),
+            ..leaf(id)
+        }
+    }
+
+    fn root(steps: Vec<WorkflowStep>) -> Workflow {
+        Workflow {
+            goal: "ship".into(),
+            steps,
+            resume_cursor: None,
+            updated_at: 1,
+        }
+    }
+
+    #[test]
+    fn nested_workflow_round_trips() {
+        let workflow = root(vec![container("s1", root(vec![leaf("s1.1")]))]);
+        let entries = vec![workflow.to_custom_entry_shell()];
+        assert_eq!(latest_workflow(&entries), Some(workflow));
+    }
+
+    #[test]
+    fn depth_and_total_step_bounds_are_enforced() {
+        let deep = root(vec![container(
+            "s1",
+            root(vec![container("s1.1", root(vec![leaf("s1.1.1")]))]),
+        )]);
+        assert!(validate_workflow_with_limits(&deep, 2, 100).is_err());
+        assert!(validate_workflow_with_limits(&deep, 3, 100).is_ok());
+        let wide = root(vec![leaf("a"), leaf("b")]);
+        assert!(validate_workflow_with_limits(&wide, 2, 1).is_err());
+    }
+
+    #[test]
+    fn nested_duplicate_and_cycle_are_rejected() {
+        let duplicate = root(vec![container("s1", root(vec![leaf("x"), leaf("x")]))]);
+        assert!(validate_workflow(&duplicate).is_err());
+        let mut a = leaf("a");
+        let mut b = leaf("b");
+        a.depends_on = vec!["b".into()];
+        b.depends_on = vec!["a".into()];
+        let cycle = root(vec![container("s1", root(vec![a, b]))]);
+        assert!(validate_workflow(&cycle).is_err());
     }
 }

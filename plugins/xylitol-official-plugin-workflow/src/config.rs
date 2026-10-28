@@ -8,6 +8,8 @@ pub const DEFAULT_MAX_REWORKFLOWS: u32 = 3;
 pub struct WorkflowConfig {
     pub enabled: bool,
     pub max_replans: u32,
+    pub max_depth: u32,
+    pub max_total_steps: usize,
 }
 
 impl Default for WorkflowConfig {
@@ -15,6 +17,8 @@ impl Default for WorkflowConfig {
         Self {
             enabled: false,
             max_replans: DEFAULT_MAX_REWORKFLOWS,
+            max_depth: xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
+            max_total_steps: xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
         }
     }
 }
