@@ -2048,6 +2048,8 @@ mod tests {
     #[tokio::test]
     async fn tape_does_not_accumulate_in_journal_between_facts() {
         let slot = slot();
+        let (tx, mut rx) = mpsc::channel(128);
+        slot.add_subscriber(tx).await;
         slot.append_and_push(&turn_start(1)).await;
         for i in 0..50 {
             slot.append_and_push(&text_delta(&format!("d{i}"))).await;
@@ -2056,6 +2058,25 @@ mod tests {
             .await;
         let journal = slot.journal.lock().await;
         assert_eq!(journal.max_seq(), 2, "only the two facts are journaled");
+        drop(journal);
+
+        let mut tape_seqs = Vec::new();
+        while let Ok(note) = rx.try_recv() {
+            let Some(event) = note.params.get("event") else {
+                continue;
+            };
+            if matches!(
+                serde_json::from_value::<xylitol_protocol::Event>(event.clone()),
+                Ok(xylitol_protocol::Event::TextDelta { .. })
+            ) {
+                tape_seqs.push(note.params["seq"].as_u64().unwrap_or(u64::MAX));
+            }
+        }
+        assert_eq!(tape_seqs.len(), 50);
+        assert!(
+            tape_seqs.iter().all(|seq| *seq == 1),
+            "tape frames ride the current fact position and share its seq"
+        );
     }
 
     #[tokio::test]

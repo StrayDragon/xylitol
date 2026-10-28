@@ -104,7 +104,7 @@
       那么 旧进程在自检周期内检测到字段不全等并自行退出
   @req:r1798
   规则: 重连 journal
-    Host 须维护每会话单调事件序号与事件 journal；客户端经产品订阅携带 last_seq 重连时 须从 last_seq+1 重放事件；journal 截断超过 last_seq 时 Host 须发出 session/resync_required。journal 须只承载事实事件（生命周期边界、消息边界、工具边界、状态变更），流式 tape（TextDelta、ThinkingDelta、MessageUpdate、ToolExecutionUpdate）不得写入 journal、不得消耗 seq。中段重连（last_seq>0 且回合成中）须在订阅应答的可选 partial 字段携带当前回合最新累积消息快照，使客户端无需 tape 重放即可恢复当前回合文本与工具意图行；冷订阅（last_seq=0）不得携带 partial。
+    Host 须维护每会话单调事件序号与事件 journal；客户端经产品订阅携带 last_seq 重连时 须从 last_seq+1 重放事件；journal 截断超过 last_seq 时 Host 须发出 session/resync_required。journal 须只承载事实事件（生命周期边界、消息边界、工具边界、状态变更），流式 tape（TextDelta、ThinkingDelta、MessageUpdate、ToolExecutionUpdate）不得写入 journal、不得消耗 seq。tape 帧携带的 `seq` 只表示其所属事实位置快照，不唯一标识帧；客户端 不得按 `seq` 去重或过滤 tape，须按到达顺序处理。中段重连（last_seq>0 且回合成中）须在订阅应答的可选 partial 字段携带当前回合最新累积消息快照，使客户端无需 tape 重放即可恢复当前回合文本与工具意图行；冷订阅（last_seq=0）不得携带 partial。
 
     场景: 重连回放
       假如 客户端断开 N 秒后以 last_seq 经 POST /rpc 订阅

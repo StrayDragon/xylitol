@@ -2,6 +2,9 @@
 depends_on: []
 title: 明确 tape 帧的 seq 语义
 needs_specs_change: true
+branch: sdd/c2987-update-tape-frame-seq
+base_branch: main
+base_sha: 35c1f45f944d62b647637c43d55df04252474e7a
 ---
 
 # 明确 tape 帧的 seq 语义
