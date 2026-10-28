@@ -71,3 +71,9 @@
 1. 低风险薄函数是否全部纳入？建议纳入 `map_bootstrap_error` / `build_ports` / `exec_export_*` / `slash plan` / `same_workflow_structure`，其余按性价比取舍。
 2. 是否要为 plan 审批流补 BDD？若要，需改 `agent-plan` 的裸规则为嵌套场景（属 spec 变更，超出本 change）。
 3. `todo` 中间件的 `properties` 键是否需要与 `c2977` 的观测约定对齐后再断言？
+
+## Decision (implemented)
+
+- 已补 todo 中间件 12 个测试、plan 审批/模式 7 个测试、压缩状态保留 3 个测试。
+- 已补 `map_bootstrap_error` 全变体、远端 `export_html/jsonl`、`same_workflow_structure` 测试。
+- 未新增 BDD；测试暴露的偏差未出现，未改动生产行为。

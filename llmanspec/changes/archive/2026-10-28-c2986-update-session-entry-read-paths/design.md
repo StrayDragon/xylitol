@@ -78,3 +78,7 @@
 1. fork 是否需要新增 store 分支查询 API？
 2. estimate 是否允许用分页近似（可能影响 token 估计精度）？
 3. tree 是否直接复用 `SessionTree` unary，还是保留端侧构建？
+
+## Decision (implemented)
+
+- 按 Audit outcome 表落地：footer 取 1 条、CLI 恢复取一页；tree 打开走 `SessionTree`；travel/fork/compact/estimate 保留全量并记录理由。

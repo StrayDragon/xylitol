@@ -74,3 +74,9 @@
 1. 选 A（声明工具）、B（output_ref）、D（显式失败工具）还是 C（保持现状）？
 2. `tools` 字段放在步骤顶层还是 `verification` 下？
 3. 旧 workflow 无声明时的回退：粗归因还是“不归因”？
+
+## Decision (implemented)
+
+- 采用 Option A：`WorkflowStep.tools`（serde default）；步骤声明后只有集合内工具失败才标 failed。
+- 未声明 `tools` 的旧 workflow 回退粗归因；无关工具错误只回写，不改步骤状态。
+- `workflow_write` schema 与建计划契约声明 `tools`；显式 `workflow_fail` 工具留作后续补充。

@@ -62,3 +62,9 @@
 1. 迁移触发点：会话加载 / resume / 首次读取？
 2. 是否保留旧条目（append-only）还是删除（需要 rewrite 整个文件）？
 3. pre-release 是否可以直接选 B（丢旧状态）？
+
+## Decision (implemented)
+
+- 采用 Option A：会话加载时（`switch_session` 与历史加载）把旧 `plan` / `plan_checkpoint` 迁移为新名。
+- 迁移只追加、按 `(新名, data)` 去重、幂等；读取优先新名，旧名仅作迁移输入。
+- 迁移失败只 warn，不中断加载；SDK 单测覆盖只追加与幂等。

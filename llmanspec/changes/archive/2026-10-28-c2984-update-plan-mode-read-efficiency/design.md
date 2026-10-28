@@ -65,3 +65,9 @@
 1. 选 A（ctx 传值）还是 B（store 尾部查询）？
 2. 是否借本次一并 bump `SDK_API_VERSION`？
 3. 读取失败时的降级值：`None` 还是 `PlanMode::execute()`？
+
+## Decision (implemented)
+
+- 采用 Option A：core 每迭代只读一次 leaf branch，`BeforeLlmRequestCtx.plan_mode` 传给中间件。
+- plan 中间件删除 `load_mode` / store / ctx 字段，缺失时降级 execute。
+- `SDK_API_VERSION` → `0.5.0`（后续 c2980 再 bump 到 `0.6.0`）。

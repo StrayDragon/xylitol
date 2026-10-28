@@ -76,3 +76,8 @@ SessionSlot::with_seq(
 
 1. 是否在本 change 一并暴露 per-session 注册 API？建议不做，保持最小修复。
 2. reader driver 是否需要 Session 作用域？当前只读命令不需要链，保持 Root。
+
+## Decision (implemented)
+
+- 采用 Option A：`SessionSlot::with_seq` 在槽创建时 `Arc::new(root.derive())`。
+- Host 层两槽隔离测试覆盖：root 后续注册不流入、槽内注册不回写。

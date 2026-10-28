@@ -69,3 +69,10 @@
 1. 产品语义选 A 还是 B？（决定是否改 runtime/SDK）
 2. 若选 B，拒绝通道用 `BeforeToolCtx.deny_reason` 还是 `LoopControl::Deny`？
 3. 是否需要“同一 run 拒绝 N 次后升级为 Stop”？N 取多少？
+
+## Decision (implemented)
+
+- 采用 Option B1：`BeforeToolCtx.deny_reason`，拒绝不置 `stop_run`。
+- `prepare_call` 读取链终态 `deny_reason` 后走既有 denied 分支：工具不执行、回写错误结果，但 run 继续。
+- plan 只读闸设置 `deny_reason = "plan mode is read-only"` 并返回 `Continue`；保留观测属性与 args 标注。
+- `agent-plan` 的 `r2960` 与「拒绝写入后本回合继续」场景已落地；`SDK_API_VERSION` → `0.6.0`。

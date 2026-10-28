@@ -67,3 +67,10 @@
 
 1. ModeStrip 初始来源：Host 订阅时补发事件，还是允许端侧一次快照？（影响 spec 是否改）
 2. 是否需要同时修 `todoUpdated` / `workflowUpdated` 的 switch/new 路由？当前它们由工具在会话内发布，不经过 switch/new，暂不在本 change。
+
+## Decision (implemented)
+
+- 采用 Option A：`switch_session` / `new_session` 成功后按新会话 id 重新取槽并发布 `planModeChanged`。
+- 订阅绑定时补发一次由最新 `plan_mode` 推导的 `planModeChanged`（不写 journal、不耗 seq），使端侧模式条收敛。
+- 端侧保留一次 entries 初始快照作为兜底；`app-tui-fixed-zone` 的 `r2956` 已写明事件到达后以事件为准。
+- serve 单测覆盖事件只落新槽与订阅快照不耗 seq。

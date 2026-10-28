@@ -59,3 +59,9 @@
 1. 是否已有客户端/未来计划需要按 seq 去重 tape？
 2. 若选 A，字段名用 `frame_seq` 还是 `tape_seq`？是否需要 bump `PROTOCOL_VERSION`？
 3. 是否需要在 `host.describe` 里宣告 tape seq 语义？
+
+## Decision (implemented)
+
+- 采用 Option B：不新增 `frame_seq`，在 `server-core` 的 `r1798` 明确 tape 帧 `seq` 是事实位置快照、不唯一，客户端不得按 seq 去重/过滤。
+- serve 测试断言同批 tape 共享当前事实 seq 且不推进 journal。
+- `PROTOCOL_VERSION` 不变。

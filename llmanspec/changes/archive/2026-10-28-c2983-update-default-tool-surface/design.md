@@ -75,3 +75,8 @@
 1. 默认工具面的 token 成本是否值得优化？（先测量）
 2. 若优化，选 C（可见性）还是 B（默认关闭）？
 3. `plan_mode` 工具是否必须常驻，以便模型主动请求进入 plan？
+
+## Decision (implemented)
+
+- 采用保守 Option C：execute 模式隐藏 `plan_write` / `plan_submit`，保留 `plan_read` / `plan_list` / `plan_mode`。
+- `agent-plan` 新增 `r2974`；插件单测覆盖 execute/plan/缺失模式；未改默认 `plan.enabled` 与冻表。
