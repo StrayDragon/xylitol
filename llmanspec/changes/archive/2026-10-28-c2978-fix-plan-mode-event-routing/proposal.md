@@ -2,6 +2,9 @@
 depends_on: []
 title: 将计划模式事件发布到切换后的会话槽
 needs_specs_change: true
+branch: sdd/c2978-fix-plan-mode-event-routing
+base_branch: main
+base_sha: 0ecd10d911d1052f5bd851768d77a0bd89461a7f
 ---
 
 # 将计划模式事件发布到切换后的会话槽

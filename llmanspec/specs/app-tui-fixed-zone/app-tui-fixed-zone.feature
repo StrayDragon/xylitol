@@ -214,7 +214,7 @@
 
   @req:r2956
   规则: mode-strip-single-line
-    产品 TUI 须提供 ModeStrip 固定区成员：仅一行、前导 glyph（unicode `◆` / ascii `*`）加短状态；无模式时 须占 0 行；不得换行、展开或交互。长文本 须右截断而非增高；不得写入 UiModel.entries / ScrollNotice / 通知条；须计入 Fixed-Zone Footprint 实际行。首消费者为 plan 模式（`plan` / `execute · <plan_id>`），状态 须仅由 `planModeChanged` 驱动，不得在端侧另造模式来源；`execute` 无 plan 时 须隐藏。
+    产品 TUI 须提供 ModeStrip 固定区成员：仅一行、前导 glyph（unicode `◆` / ascii `*`）加短状态；无模式时 须占 0 行；不得换行、展开或交互。长文本 须右截断而非增高；不得写入 UiModel.entries / ScrollNotice / 通知条；须计入 Fixed-Zone Footprint 实际行。首消费者为 plan 模式（`plan` / `execute · <plan_id>`），状态 须仅由 `planModeChanged` 驱动；会话切换/恢复时 端侧 可基于会话条目做一次初始快照作为订阅事件的兜底，事件到达后 须以事件为准，不得在快照之外另造模式来源；`execute` 无 plan 时 须隐藏。
 
   @req:r2903
   规则: 会话详情覆盖弹出框
