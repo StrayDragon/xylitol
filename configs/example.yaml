@@ -56,9 +56,9 @@ models:
     #   model: claude-sonnet-4-20250514
     #   api_key: "{{ secret.ANTHROPIC_API_KEY }}"
 
-# system_prompt: "Custom system prompt override"
-# model: "deepseek-v4-flash"  # override default per-execution
-execution: {}
+# execution:  # per-execution overrides (defaults to empty)
+#   system_prompt: "Custom system prompt override"
+#   model: "deepseek-v4-flash"  # override default per-execution
 
 security:
   enabled: true
