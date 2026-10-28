@@ -145,25 +145,25 @@
       那么 footer 含 used 42k tokens 与 32.8%/128k 派生占用比
   @req:r1227
   规则: toast-notice-ephemeral
-    产品 TUI 须提供通知条（toast notice）：固定于固定区、位于 status/spinner 槽上方恰好一行；前景 须用 warning token（非 muted、非 accent）；可见文案 须以字面前缀 `Error: ` 开头后接 body；不得写入 UiModel.entries / UiEntry；新通知 须替换旧通知（单槽）；显示后 须在约定 TTL（默认约 3–5s）内经 idle_tick/step 自动清除。agent/bang busy 下 Resume 面板 switch/rename/delete 拒闸（见 atm10）须走通知条，不得再追加 UiEntry::ScrollNotice。不得用通知条冒充对话正文或下轮预告。
+    产品 TUI 须提供通知条（toast notice）：固定于固定区、位于 status/spinner 槽上方恰好一行；前景 须用 warning token（非 muted、非 accent）；可见文案 须以字面前缀 `Error: ` 开头后接 body；不得写入 UiModel.entries / UiEntry；新通知 须替换旧通知（单槽）；显示后 须在约定 TTL（默认约 3–5s）内经 idle_tick/step 自动清除。通知条 仅用于**需要用户立刻处理的阻塞拒绝、软闸或即时失败**（如 reload 等待、busy 会话切换拒绝、链路 down/recovered）；不得承载耐久结果、导航完成、估算来源说明或对话正文/下轮预告。agent/bang busy 下 Resume 面板 switch/rename/delete 拒闸（见 atm10）须走通知条，不得再追加 UiEntry::ScrollNotice。
 
     场景: 提示条单一槽替换带错误前缀
       当 连续推送两条通知条后渲染
       那么 仅见后一条且以 Error: 前缀且未写入对话条目
   @req:r1930
   规则: client-notice-stack
-    产品 TUI 须在视口右上角提供客户端通知栈：纵向堆叠、最新在上、同时最多约 3 条，TTL 到期自动消失；成功确认（至少复制成功 Copied、Copied Last Msg）以 ✓ 起头，说明类（至少整段 Heuristic 估计的首次提示）以 ◆ 起头。该右上角 须为当前已裁切的可见 transcript 视口，滚动对话后 须仍钉在该角；不得写在滚动内容缓冲第 0 行并随内容滚出视口。不得写入对话条目 / ScrollNotice；不得计入下缘 Fixed-Zone Footprint；不得使用通知条的 Error: 前缀。不得把导航瞬时（switched →、forked →、cloned →、imported →、restored →、new session →、history @）放入本栈（那些走滚动提示尾插，见 r1953 / r1330）。整段估计 provenance 为 Heuristic 时 须在每个 TUI 进程内至多提示一次；Api 锚点有效仅 trailing 为启发式时 不得再弹。Print 面 不得展示该栈。本波 不得要求栈内键盘动作或展开侧板。
+    产品 TUI 须在视口右上角提供客户端通知栈：纵向堆叠、最新在上、同时最多约 3 条，TTL 到期自动消失；成功确认（至少复制成功 Copied、Copied Last Msg）以 ✓ 起头。该右上角 须为当前已裁切的可见 transcript 视口，滚动对话后 须仍钉在该角；不得写在滚动内容缓冲第 0 行并随内容滚出视口。不得写入对话条目 / ScrollNotice；不得计入下缘 Fixed-Zone Footprint；不得使用通知条的 Error: 前缀。不得把导航瞬时（switched →、forked →、cloned →、imported →、restored →、new session →、history @）放入本栈（那些走滚动提示尾插，见 r1953 / r1330）。不得把估算来源说明、模式说明或耐久结果放入本栈；Heuristic 仅由 footer 的 `~` 表达。Print 面 不得展示该栈。本波 不得要求栈内键盘动作或展开侧板。
     场景: 提示栈已复制不错误栏
       当 臂装复制成功提示后渲染主机帧
       那么 右上角通知栈含 Copied 且不以 Error 前缀冒充
-    场景: 提示栈启发式一次
-      假如 footer 同源估计为 Heuristic
-      当 连续两次以 Heuristic 刷新估计
-      那么 估算说明在通知栈至多出现一次
     场景: 提示栈已复制钉住已滚动视口
       假如 对话内容高于可见 transcript 窗且视口未停在内容顶
       当 臂装复制成功提示后渲染已裁切视口
       那么 可见视口顶部含 Copied 且不以 Error 前缀冒充
+  @req:r2958
+  规则: notice-taxonomy
+    产品 TUI 的通知面 须按单一分类选择：**通知条**只承载需要立刻处理的阻塞拒绝、软闸或即时失败；**右上角通知栈**只承载即时确认（复制成功）与短时客户端提示；**滚动提示**承载耐久导航结果、操作结果与错误（rename/delete/import/export/fork、model/thinking 失败、compaction/retry 细节）；**系统消息**承载必须进入模型上下文的耐久信息。耐久结果 不得只以通知条呈现；瞬时闸门 不得制造滚动噪声；估算来源 不得另立通知面（footer `~`/`?%` 已表达）。分类 须以调用点审计与单测锁定。
+
   @req:r1228
   规则: fixed-zone-footprint-term-budget
     产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / ModeStrip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。

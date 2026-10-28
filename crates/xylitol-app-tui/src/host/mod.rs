@@ -654,13 +654,6 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_footer_token_label(label);
     }
 
-    pub fn maybe_heuristic_estimate_notice(&mut self, heuristic: bool) {
-        let Some(root) = self.ui_root.as_ref() else {
-            return;
-        };
-        root.borrow_mut().maybe_heuristic_estimate_notice(heuristic);
-    }
-
     pub fn request_footer_token_refresh(&mut self) {
         self.pending.footer_token_refresh = true;
     }
@@ -834,13 +827,8 @@ impl<T: Terminal> HostSession<T> {
             HostEvent::Xy(xy) => {
                 self.handle_xy(xy);
             }
-            HostEvent::FooterTokens {
-                job_id,
-                label,
-                heuristic,
-            } => {
+            HostEvent::FooterTokens { job_id, label, .. } => {
                 if job_id == self.footer_token_gen {
-                    self.maybe_heuristic_estimate_notice(heuristic);
                     self.set_footer_token_label(label);
                     self.tui.request_render(false);
                 }

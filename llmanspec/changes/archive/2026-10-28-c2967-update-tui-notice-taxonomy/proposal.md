@@ -1,7 +1,11 @@
 ---
 depends_on: []
-title: Classify TUI notices into transient toast, client confirmation and durable scroll
+title: Classify TUI notices into transient toast, client confirmation and
+  durable scroll
 needs_specs_change: true
+branch: sdd/c2967-update-tui-notice-taxonomy
+base_branch: main
+base_sha: 988933ae9e1979d678f6fbdd686ed6e1bd98f38b
 ---
 
 # Classify TUI notices into transient toast, client confirmation and durable scroll

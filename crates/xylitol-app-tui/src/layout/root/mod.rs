@@ -67,7 +67,6 @@ struct ClientNotice {
 }
 
 const CLIENT_NOTICE_MAX: usize = 3;
-pub const HEURISTIC_ESTIMATE_NOTICE: &str = "Context tokens are approximate";
 
 pub struct UiRoot {
     loaded_resources: LoadedResourcesSnapshot,
@@ -126,7 +125,6 @@ pub struct UiRoot {
     todo_clipboard: Vec<String>,
     todo_pointer_dirty: bool,
     client_notices: VecDeque<ClientNotice>,
-    heuristic_notice_emitted: bool,
     #[cfg(test)]
     upper_rebuild_count: u64,
 }
@@ -208,7 +206,6 @@ impl UiRoot {
             todo_clipboard: Vec::new(),
             todo_pointer_dirty: false,
             client_notices: VecDeque::new(),
-            heuristic_notice_emitted: false,
             #[cfg(test)]
             upper_rebuild_count: 0,
         };
@@ -597,14 +594,6 @@ impl UiRoot {
         while self.client_notices.len() > CLIENT_NOTICE_MAX {
             self.client_notices.pop_back();
         }
-    }
-
-    pub fn maybe_heuristic_estimate_notice(&mut self, heuristic: bool) {
-        if !heuristic || self.heuristic_notice_emitted {
-            return;
-        }
-        self.heuristic_notice_emitted = true;
-        self.push_client_notice(ClientNoticeKind::Info, HEURISTIC_ESTIMATE_NOTICE);
     }
 
     #[cfg(test)]
@@ -1495,23 +1484,6 @@ mod tests {
             dock_before,
             "notice stack must not grow dock footprint"
         );
-    }
-
-    #[test]
-    fn heuristic_estimate_notice_emits_once() {
-        use xylitol_tui::utils::strip_ansi_codes;
-        let mut root = UiRoot::new();
-        root.maybe_heuristic_estimate_notice(true);
-        root.maybe_heuristic_estimate_notice(true);
-        root.maybe_heuristic_estimate_notice(false);
-        let frame = strip_ansi_codes(&root.render_with_viewport_overlay(80).join("\n"));
-        assert_eq!(
-            frame.matches(HEURISTIC_ESTIMATE_NOTICE).count(),
-            1,
-            "first Heuristic notice only: {frame}"
-        );
-        assert!(frame.contains("◆"));
-        assert!(!frame.contains("Error:"));
     }
 
     #[test]
