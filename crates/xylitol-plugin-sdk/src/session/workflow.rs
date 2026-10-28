@@ -5,11 +5,12 @@ use serde_json::Value;
 
 use super::entries::{CustomEntry, EntryBase, SessionEntry};
 
-pub const CUSTOM_TYPE_PLAN: &str = "plan";
+pub const CUSTOM_TYPE_WORKFLOW: &str = "workflow";
+const LEGACY_CUSTOM_TYPE_PLAN: &str = "plan";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PlanRisk {
+pub enum WorkflowRisk {
     #[default]
     Low,
     Medium,
@@ -18,7 +19,7 @@ pub enum PlanRisk {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PlanStepStatus {
+pub enum WorkflowStepStatus {
     #[default]
     Pending,
     InProgress,
@@ -29,7 +30,7 @@ pub enum PlanStepStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct PlanStep {
+pub struct WorkflowStep {
     pub id: String,
     pub description: String,
     #[serde(default)]
@@ -39,7 +40,7 @@ pub struct PlanStep {
     #[serde(default)]
     pub outputs: Vec<String>,
     #[serde(default)]
-    pub risk: PlanRisk,
+    pub risk: WorkflowRisk,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verification: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -47,18 +48,18 @@ pub struct PlanStep {
     #[serde(default)]
     pub requires_human: bool,
     #[serde(default)]
-    pub status: PlanStepStatus,
+    pub status: WorkflowStepStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_ref: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub struct Plan {
+pub struct Workflow {
     #[serde(default)]
     pub goal: String,
     #[serde(default)]
-    pub steps: Vec<PlanStep>,
+    pub steps: Vec<WorkflowStep>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_cursor: Option<String>,
     #[serde(default)]
@@ -66,17 +67,17 @@ pub struct Plan {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PlanValidationError(pub String);
+pub struct WorkflowValidationError(pub String);
 
-impl std::fmt::Display for PlanValidationError {
+impl std::fmt::Display for WorkflowValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl std::error::Error for PlanValidationError {}
+impl std::error::Error for WorkflowValidationError {}
 
-impl Plan {
+impl Workflow {
     pub fn is_empty(&self) -> bool {
         self.steps.is_empty()
     }
@@ -86,17 +87,17 @@ impl Plan {
             && self
                 .steps
                 .iter()
-                .all(|step| step.status == PlanStepStatus::Completed)
+                .all(|step| step.status == WorkflowStepStatus::Completed)
     }
 
     pub fn completed_count(&self) -> usize {
         self.steps
             .iter()
-            .filter(|step| step.status == PlanStepStatus::Completed)
+            .filter(|step| step.status == WorkflowStepStatus::Completed)
             .count()
     }
 
-    pub fn step(&self, id: &str) -> Option<&PlanStep> {
+    pub fn step(&self, id: &str) -> Option<&WorkflowStep> {
         self.steps.iter().find(|step| step.id == id)
     }
 
@@ -116,35 +117,40 @@ impl Plan {
                 parent_id: None,
                 timestamp: 0,
             },
-            custom_type: CUSTOM_TYPE_PLAN.into(),
+            custom_type: CUSTOM_TYPE_WORKFLOW.into(),
             data: self.to_data_value(),
         })
     }
 }
 
-pub fn latest_plan(entries: &[SessionEntry]) -> Option<Plan> {
+pub fn latest_workflow(entries: &[SessionEntry]) -> Option<Workflow> {
     entries.iter().rev().find_map(|entry| match entry {
-        SessionEntry::Custom(custom) if custom.custom_type == CUSTOM_TYPE_PLAN => {
-            Plan::from_data_value(&custom.data)
+        SessionEntry::Custom(custom)
+            if custom.custom_type == CUSTOM_TYPE_WORKFLOW
+                || custom.custom_type == LEGACY_CUSTOM_TYPE_PLAN =>
+        {
+            Workflow::from_data_value(&custom.data)
         }
         _ => None,
     })
 }
 
-pub fn validate_plan(plan: &Plan) -> Result<(), PlanValidationError> {
+pub fn validate_workflow(plan: &Workflow) -> Result<(), WorkflowValidationError> {
     if plan.steps.is_empty() {
-        return Err(PlanValidationError(
-            "plan must have at least one step".into(),
+        return Err(WorkflowValidationError(
+            "workflow must have at least one step".into(),
         ));
     }
     let mut ids = HashSet::new();
     for step in &plan.steps {
         if step.id.trim().is_empty() {
-            return Err(PlanValidationError("plan step id must be non-empty".into()));
+            return Err(WorkflowValidationError(
+                "workflow step id must be non-empty".into(),
+            ));
         }
         if !ids.insert(step.id.clone()) {
-            return Err(PlanValidationError(format!(
-                "duplicate plan step id: {}",
+            return Err(WorkflowValidationError(format!(
+                "duplicate workflow step id: {}",
                 step.id
             )));
         }
@@ -152,14 +158,14 @@ pub fn validate_plan(plan: &Plan) -> Result<(), PlanValidationError> {
     for step in &plan.steps {
         for dependency in &step.depends_on {
             if dependency == &step.id {
-                return Err(PlanValidationError(format!(
-                    "plan step {} depends on itself",
+                return Err(WorkflowValidationError(format!(
+                    "workflow step {} depends on itself",
                     step.id
                 )));
             }
             if !ids.contains(dependency) {
-                return Err(PlanValidationError(format!(
-                    "plan step {} depends on unknown step {}",
+                return Err(WorkflowValidationError(format!(
+                    "workflow step {} depends on unknown step {}",
                     step.id, dependency
                 )));
             }
@@ -169,19 +175,19 @@ pub fn validate_plan(plan: &Plan) -> Result<(), PlanValidationError> {
     Ok(())
 }
 
-fn detect_cycle(plan: &Plan) -> Result<(), PlanValidationError> {
+fn detect_cycle(plan: &Workflow) -> Result<(), WorkflowValidationError> {
     fn visit(
         id: &str,
-        plan: &Plan,
+        plan: &Workflow,
         visiting: &mut HashSet<String>,
         visited: &mut HashSet<String>,
-    ) -> Result<(), PlanValidationError> {
+    ) -> Result<(), WorkflowValidationError> {
         if visited.contains(id) {
             return Ok(());
         }
         if !visiting.insert(id.to_string()) {
-            return Err(PlanValidationError(format!(
-                "plan has a dependency cycle at {id}"
+            return Err(WorkflowValidationError(format!(
+                "workflow has a dependency cycle at {id}"
             )));
         }
         if let Some(step) = plan.step(id) {
@@ -202,15 +208,18 @@ fn detect_cycle(plan: &Plan) -> Result<(), PlanValidationError> {
     Ok(())
 }
 
-pub fn runnable_step<'a>(plan: &'a Plan, approved: &HashSet<String>) -> Option<&'a PlanStep> {
+pub fn runnable_workflow_step<'a>(
+    plan: &'a Workflow,
+    approved: &HashSet<String>,
+) -> Option<&'a WorkflowStep> {
     let completed: HashSet<&str> = plan
         .steps
         .iter()
-        .filter(|step| step.status == PlanStepStatus::Completed)
+        .filter(|step| step.status == WorkflowStepStatus::Completed)
         .map(|step| step.id.as_str())
         .collect();
     plan.steps.iter().find(|step| {
-        step.status == PlanStepStatus::Pending
+        step.status == WorkflowStepStatus::Pending
             && step
                 .depends_on
                 .iter()
@@ -219,15 +228,18 @@ pub fn runnable_step<'a>(plan: &'a Plan, approved: &HashSet<String>) -> Option<&
     })
 }
 
-pub fn blocked_step<'a>(plan: &'a Plan, approved: &HashSet<String>) -> Option<&'a PlanStep> {
+pub fn blocked_workflow_step<'a>(
+    plan: &'a Workflow,
+    approved: &HashSet<String>,
+) -> Option<&'a WorkflowStep> {
     let completed: HashSet<&str> = plan
         .steps
         .iter()
-        .filter(|step| step.status == PlanStepStatus::Completed)
+        .filter(|step| step.status == WorkflowStepStatus::Completed)
         .map(|step| step.id.as_str())
         .collect();
     plan.steps.iter().find(|step| {
-        step.status == PlanStepStatus::Pending
+        step.status == WorkflowStepStatus::Pending
             && step
                 .depends_on
                 .iter()
@@ -237,7 +249,7 @@ pub fn blocked_step<'a>(plan: &'a Plan, approved: &HashSet<String>) -> Option<&'
     })
 }
 
-pub fn downstream_ids(plan: &Plan, step_id: &str) -> HashSet<String> {
+pub fn workflow_downstream_ids(plan: &Workflow, step_id: &str) -> HashSet<String> {
     let mut out = HashSet::new();
     let mut queue = vec![step_id.to_string()];
     while let Some(id) = queue.pop() {
@@ -252,40 +264,43 @@ pub fn downstream_ids(plan: &Plan, step_id: &str) -> HashSet<String> {
     out
 }
 
-pub fn validate_replan(previous: Option<&Plan>, next: &Plan) -> Result<(), PlanValidationError> {
-    validate_plan(next)?;
+pub fn validate_workflow_replan(
+    previous: Option<&Workflow>,
+    next: &Workflow,
+) -> Result<(), WorkflowValidationError> {
+    validate_workflow(next)?;
     let Some(previous) = previous else {
         return Ok(());
     };
-    let previous_by_id: HashMap<&str, &PlanStep> = previous
+    let previous_by_id: HashMap<&str, &WorkflowStep> = previous
         .steps
         .iter()
         .map(|step| (step.id.as_str(), step))
         .collect();
-    let next_by_id: HashMap<&str, &PlanStep> = next
+    let next_by_id: HashMap<&str, &WorkflowStep> = next
         .steps
         .iter()
         .map(|step| (step.id.as_str(), step))
         .collect();
 
     for step in &previous.steps {
-        if step.status != PlanStepStatus::Completed {
+        if step.status != WorkflowStepStatus::Completed {
             continue;
         }
         let Some(next_step) = next_by_id.get(step.id.as_str()) else {
-            return Err(PlanValidationError(format!(
+            return Err(WorkflowValidationError(format!(
                 "completed step {} must not be removed",
                 step.id
             )));
         };
-        if next_step.status != PlanStepStatus::Completed {
-            return Err(PlanValidationError(format!(
+        if next_step.status != WorkflowStepStatus::Completed {
+            return Err(WorkflowValidationError(format!(
                 "completed step {} must stay completed",
                 step.id
             )));
         }
         if !same_structure(step, next_step) {
-            return Err(PlanValidationError(format!(
+            return Err(WorkflowValidationError(format!(
                 "completed step {} must not be rewritten",
                 step.id
             )));
@@ -296,24 +311,24 @@ pub fn validate_replan(previous: Option<&Plan>, next: &Plan) -> Result<(), PlanV
     for failed in previous
         .steps
         .iter()
-        .filter(|step| step.status == PlanStepStatus::Failed)
+        .filter(|step| step.status == WorkflowStepStatus::Failed)
     {
         allowed.insert(failed.id.clone());
-        allowed.extend(downstream_ids(previous, &failed.id));
+        allowed.extend(workflow_downstream_ids(previous, &failed.id));
     }
 
     for step in &previous.steps {
-        if step.status == PlanStepStatus::Completed || allowed.contains(&step.id) {
+        if step.status == WorkflowStepStatus::Completed || allowed.contains(&step.id) {
             continue;
         }
         let Some(next_step) = next_by_id.get(step.id.as_str()) else {
-            return Err(PlanValidationError(format!(
+            return Err(WorkflowValidationError(format!(
                 "step {} may only be removed after it fails",
                 step.id
             )));
         };
         if !same_structure(step, next_step) {
-            return Err(PlanValidationError(format!(
+            return Err(WorkflowValidationError(format!(
                 "step {} is not downstream of a failure and must not be rewritten",
                 step.id
             )));
@@ -328,10 +343,10 @@ pub fn validate_replan(previous: Option<&Plan>, next: &Plan) -> Result<(), PlanV
             allowed.contains(dependency)
                 || previous_by_id
                     .get(dependency.as_str())
-                    .is_some_and(|step| step.status == PlanStepStatus::Completed)
+                    .is_some_and(|step| step.status == WorkflowStepStatus::Completed)
         });
         if !dependencies_ok {
-            return Err(PlanValidationError(format!(
+            return Err(WorkflowValidationError(format!(
                 "new step {} must depend on completed or replanned steps",
                 next_step.id
             )));
@@ -341,7 +356,7 @@ pub fn validate_replan(previous: Option<&Plan>, next: &Plan) -> Result<(), PlanV
     Ok(())
 }
 
-fn same_structure(left: &PlanStep, right: &PlanStep) -> bool {
+fn same_structure(left: &WorkflowStep, right: &WorkflowStep) -> bool {
     left.description == right.description
         && left.depends_on == right.depends_on
         && left.inputs == right.inputs
@@ -357,14 +372,14 @@ mod tests {
     use super::*;
     use crate::session::{EntryBase, MessageEntry, fixture_message_json};
 
-    fn step(id: &str, status: PlanStepStatus, depends_on: &[&str]) -> PlanStep {
-        PlanStep {
+    fn step(id: &str, status: WorkflowStepStatus, depends_on: &[&str]) -> WorkflowStep {
+        WorkflowStep {
             id: id.into(),
             description: format!("do {id}"),
             depends_on: depends_on.iter().map(|dep| dep.to_string()).collect(),
             inputs: Vec::new(),
             outputs: Vec::new(),
-            risk: PlanRisk::Low,
+            risk: WorkflowRisk::Low,
             verification: Some(format!("verify {id}")),
             rollback: None,
             requires_human: false,
@@ -373,8 +388,8 @@ mod tests {
         }
     }
 
-    fn plan(steps: Vec<PlanStep>) -> Plan {
-        Plan {
+    fn plan(steps: Vec<WorkflowStep>) -> Workflow {
+        Workflow {
             goal: "ship".into(),
             steps,
             resume_cursor: None,
@@ -384,8 +399,8 @@ mod tests {
 
     #[test]
     fn plan_round_trips_and_latest_wins() {
-        let first = plan(vec![step("s1", PlanStepStatus::Pending, &[])]);
-        let second = plan(vec![step("s1", PlanStepStatus::Completed, &[])]);
+        let first = plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]);
+        let second = plan(vec![step("s1", WorkflowStepStatus::Completed, &[])]);
         let entries = vec![
             first.to_custom_entry_shell(),
             SessionEntry::Message(MessageEntry {
@@ -399,26 +414,52 @@ mod tests {
             }),
             second.to_custom_entry_shell(),
         ];
-        let restored = latest_plan(&entries).expect("plan");
+        let restored = latest_workflow(&entries).expect("workflow");
         assert_eq!(restored, second);
+    }
+
+    #[test]
+    fn legacy_plan_entry_is_read_as_workflow() {
+        let mut entry =
+            plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]).to_custom_entry_shell();
+        if let SessionEntry::Custom(custom) = &mut entry {
+            custom.custom_type = "plan".into();
+        }
+        let restored = latest_workflow(&[entry]).expect("legacy workflow");
+        assert_eq!(restored.goal, "ship");
+    }
+
+    #[test]
+    fn new_workflow_writes_new_custom_type() {
+        let entry =
+            plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]).to_custom_entry_shell();
+        let SessionEntry::Custom(custom) = entry else {
+            panic!("workflow must persist as a custom entry");
+        };
+        assert_eq!(custom.custom_type, "workflow");
     }
 
     #[test]
     fn validate_rejects_duplicate_missing_and_cycles() {
         assert!(
-            validate_plan(&plan(vec![
-                step("s1", PlanStepStatus::Pending, &[]),
-                step("s1", PlanStepStatus::Pending, &[]),
+            validate_workflow(&plan(vec![
+                step("s1", WorkflowStepStatus::Pending, &[]),
+                step("s1", WorkflowStepStatus::Pending, &[]),
             ]))
             .is_err()
         );
         assert!(
-            validate_plan(&plan(vec![step("s1", PlanStepStatus::Pending, &["nope"])])).is_err()
+            validate_workflow(&plan(vec![step(
+                "s1",
+                WorkflowStepStatus::Pending,
+                &["nope"]
+            )]))
+            .is_err()
         );
         assert!(
-            validate_plan(&plan(vec![
-                step("s1", PlanStepStatus::Pending, &["s2"]),
-                step("s2", PlanStepStatus::Pending, &["s1"]),
+            validate_workflow(&plan(vec![
+                step("s1", WorkflowStepStatus::Pending, &["s2"]),
+                step("s2", WorkflowStepStatus::Pending, &["s1"]),
             ]))
             .is_err()
         );
@@ -426,35 +467,35 @@ mod tests {
 
     #[test]
     fn runnable_respects_dependencies_and_approval() {
-        let mut human = step("s3", PlanStepStatus::Pending, &["s1"]);
+        let mut human = step("s3", WorkflowStepStatus::Pending, &["s1"]);
         human.requires_human = true;
         let sample = plan(vec![
-            step("s1", PlanStepStatus::Completed, &[]),
-            step("s2", PlanStepStatus::Pending, &["s1"]),
+            step("s1", WorkflowStepStatus::Completed, &[]),
+            step("s2", WorkflowStepStatus::Pending, &["s1"]),
             human,
         ]);
         let approved = HashSet::new();
         assert_eq!(
-            runnable_step(&sample, &approved).map(|step| step.id.as_str()),
+            runnable_workflow_step(&sample, &approved).map(|step| step.id.as_str()),
             Some("s2")
         );
         assert_eq!(
-            blocked_step(&sample, &approved).map(|step| step.id.as_str()),
+            blocked_workflow_step(&sample, &approved).map(|step| step.id.as_str()),
             Some("s3")
         );
         let mut approved = HashSet::new();
         approved.insert("s3".into());
         assert_eq!(
-            runnable_step(&sample, &approved).map(|step| step.id.as_str()),
+            runnable_workflow_step(&sample, &approved).map(|step| step.id.as_str()),
             Some("s2")
         );
         let sample = plan(vec![
-            step("s1", PlanStepStatus::Completed, &[]),
-            step("s2", PlanStepStatus::Completed, &["s1"]),
-            step("s3", PlanStepStatus::Pending, &["s2"]),
+            step("s1", WorkflowStepStatus::Completed, &[]),
+            step("s2", WorkflowStepStatus::Completed, &["s1"]),
+            step("s3", WorkflowStepStatus::Pending, &["s2"]),
         ]);
         assert_eq!(
-            runnable_step(&sample, &HashSet::new()).map(|step| step.id.as_str()),
+            runnable_workflow_step(&sample, &HashSet::new()).map(|step| step.id.as_str()),
             Some("s3")
         );
     }
@@ -462,12 +503,12 @@ mod tests {
     #[test]
     fn downstream_closure_is_transitive() {
         let plan = plan(vec![
-            step("s1", PlanStepStatus::Failed, &[]),
-            step("s2", PlanStepStatus::Pending, &["s1"]),
-            step("s3", PlanStepStatus::Pending, &["s2"]),
-            step("s4", PlanStepStatus::Pending, &[]),
+            step("s1", WorkflowStepStatus::Failed, &[]),
+            step("s2", WorkflowStepStatus::Pending, &["s1"]),
+            step("s3", WorkflowStepStatus::Pending, &["s2"]),
+            step("s4", WorkflowStepStatus::Pending, &[]),
         ]);
-        let downstream = downstream_ids(&plan, "s1");
+        let downstream = workflow_downstream_ids(&plan, "s1");
         assert!(downstream.contains("s2"));
         assert!(downstream.contains("s3"));
         assert!(!downstream.contains("s4"));
@@ -476,36 +517,36 @@ mod tests {
     #[test]
     fn replan_locks_completed_and_unrelated_steps() {
         let previous = plan(vec![
-            step("s1", PlanStepStatus::Completed, &[]),
-            step("s2", PlanStepStatus::Failed, &["s1"]),
-            step("s3", PlanStepStatus::Pending, &["s2"]),
-            step("s4", PlanStepStatus::Pending, &[]),
+            step("s1", WorkflowStepStatus::Completed, &[]),
+            step("s2", WorkflowStepStatus::Failed, &["s1"]),
+            step("s3", WorkflowStepStatus::Pending, &["s2"]),
+            step("s4", WorkflowStepStatus::Pending, &[]),
         ]);
 
         let mut rewritten_completed = previous.clone();
         rewritten_completed.steps[0].description = "changed".into();
-        assert!(validate_replan(Some(&previous), &rewritten_completed).is_err());
+        assert!(validate_workflow_replan(Some(&previous), &rewritten_completed).is_err());
 
         let mut rewritten_unrelated = previous.clone();
         rewritten_unrelated.steps[3].description = "changed".into();
-        assert!(validate_replan(Some(&previous), &rewritten_unrelated).is_err());
+        assert!(validate_workflow_replan(Some(&previous), &rewritten_unrelated).is_err());
 
         let mut replanned = previous.clone();
         replanned.steps[1].description = "do s2 differently".into();
-        replanned.steps[1].status = PlanStepStatus::Pending;
+        replanned.steps[1].status = WorkflowStepStatus::Pending;
         replanned.steps[2].description = "do s3 after the fix".into();
-        assert!(validate_replan(Some(&previous), &replanned).is_ok());
+        assert!(validate_workflow_replan(Some(&previous), &replanned).is_ok());
     }
 
     #[test]
     fn status_changes_are_allowed_without_failure() {
         let previous = plan(vec![
-            step("s1", PlanStepStatus::Completed, &[]),
-            step("s2", PlanStepStatus::Pending, &["s1"]),
+            step("s1", WorkflowStepStatus::Completed, &[]),
+            step("s2", WorkflowStepStatus::Pending, &["s1"]),
         ]);
         let mut next = previous.clone();
-        next.steps[1].status = PlanStepStatus::InProgress;
+        next.steps[1].status = WorkflowStepStatus::InProgress;
         next.steps[1].output_ref = Some("artifact:1".into());
-        assert!(validate_replan(Some(&previous), &next).is_ok());
+        assert!(validate_workflow_replan(Some(&previous), &next).is_ok());
     }
 }

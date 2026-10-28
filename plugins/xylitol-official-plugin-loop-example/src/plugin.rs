@@ -4,9 +4,9 @@ use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 use crate::config::LoopExampleConfig;
 use crate::middleware::{
-    DEFAULT_PLAN_SETTLES, example_middleware, generator_critic_middleware,
-    plan_checkpoint_middleware, plan_execute_middleware, plan_state_middleware,
-    progress_reminder_middleware, self_heal_middleware, tool_exposure_middleware,
+    DEFAULT_TODO_PROGRESS_SETTLES, example_middleware, generator_critic_middleware,
+    self_heal_middleware, todo_checkpoint_middleware, todo_progress_middleware,
+    todo_reminder_middleware, tool_exposure_middleware, workflow_middleware,
 };
 
 pub struct LoopExamplePlugin {
@@ -40,43 +40,46 @@ impl Plugin for LoopExamplePlugin {
                 .register(example_middleware(&self.config))
                 .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
         ];
-        if self.config.plan_state {
-            let max_settles = self.config.max_settles.unwrap_or(DEFAULT_PLAN_SETTLES);
+        if self.config.todo_progress {
+            let max_settles = self
+                .config
+                .max_settles
+                .unwrap_or(DEFAULT_TODO_PROGRESS_SETTLES);
             handles.push(
                 registry
-                    .register(plan_state_middleware(max_settles))
+                    .register(todo_progress_middleware(max_settles))
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
         }
-        if self.config.plan_checkpoint {
+        if self.config.todo_checkpoint {
             let store = ctx
                 .get::<xylitol_plugin_sdk::RuntimeSessionStore>()
                 .map(|store| store.0.clone())
                 .or_else(|| ctx.get::<dyn XySessionStore>());
             handles.push(
                 registry
-                    .register(plan_checkpoint_middleware(store, Some(ctx.clone())))
+                    .register(todo_checkpoint_middleware(store, Some(ctx.clone())))
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
         }
-        if self.config.progress_reminder {
+        if self.config.todo_reminder {
             handles.push(
                 registry
-                    .register(progress_reminder_middleware(&self.config))
+                    .register(todo_reminder_middleware(&self.config))
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
         }
-        if self.config.plan_execute.enabled {
+        if self.config.workflow.enabled {
             let store = ctx
                 .get::<xylitol_plugin_sdk::RuntimeSessionStore>()
                 .map(|store| store.0.clone())
                 .or_else(|| ctx.get::<dyn XySessionStore>());
             handles.push(
                 registry
-                    .register(plan_execute_middleware(
+                    .register(workflow_middleware(
                         store,
                         Some(ctx.clone()),
-                        &self.config.plan_execute,
+                        &self.config.workflow,
                     ))
                     .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
             );
@@ -126,26 +129,26 @@ mod tests {
             enabled: true,
             max_settles: Some(2),
             deny_bash_patterns: vec!["rm -rf /".into()],
-            plan_state: false,
-            progress_reminder: false,
-            progress_reminder_stale_after: 3,
-            plan_checkpoint: false,
+            todo_progress: false,
+            todo_reminder: false,
+            todo_reminder_stale_after: 3,
+            todo_checkpoint: false,
             self_heal: Default::default(),
             generator_critic: Default::default(),
-            plan_execute: Default::default(),
+            workflow: Default::default(),
             tool_exposure: Default::default(),
         }
     }
 
     fn plan_enabled() -> LoopExampleConfig {
         LoopExampleConfig {
-            plan_state: true,
-            progress_reminder: false,
-            progress_reminder_stale_after: 3,
-            plan_checkpoint: false,
+            todo_progress: true,
+            todo_reminder: false,
+            todo_reminder_stale_after: 3,
+            todo_checkpoint: false,
             self_heal: Default::default(),
             generator_critic: Default::default(),
-            plan_execute: Default::default(),
+            workflow: Default::default(),
             tool_exposure: Default::default(),
             ..enabled()
         }
@@ -153,7 +156,7 @@ mod tests {
 
     fn reminder_enabled() -> LoopExampleConfig {
         LoopExampleConfig {
-            progress_reminder: true,
+            todo_reminder: true,
             ..enabled()
         }
     }
@@ -171,10 +174,10 @@ mod tests {
 
     fn checkpoint_enabled() -> LoopExampleConfig {
         LoopExampleConfig {
-            plan_checkpoint: true,
+            todo_checkpoint: true,
             self_heal: Default::default(),
             generator_critic: Default::default(),
-            plan_execute: Default::default(),
+            workflow: Default::default(),
             ..enabled()
         }
     }
@@ -199,9 +202,9 @@ mod tests {
         }
     }
 
-    fn plan_execute_enabled() -> LoopExampleConfig {
+    fn workflow_enabled() -> LoopExampleConfig {
         LoopExampleConfig {
-            plan_execute: crate::config::PlanExecuteConfig {
+            workflow: crate::config::WorkflowConfig {
                 enabled: true,
                 ..Default::default()
             },
@@ -244,7 +247,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_state_registers_both_and_unloads_both() {
+    async fn todo_progress_registers_both_and_unloads_both() {
         let (ctx, registry) = ctx_with_registry();
         let fiber = ctx.plugin(LoopExamplePlugin::new(&plan_enabled()).expect("new"));
         for _ in 0..64 {
@@ -255,7 +258,7 @@ mod tests {
         }
         assert_eq!(
             registry.ids(),
-            vec!["loop-example".to_string(), "plan-state".to_string()],
+            vec!["loop-example".to_string(), "todo-progress".to_string()],
             "plan mode must register both middlewares"
         );
         fiber.dispose().await.expect("dispose");
@@ -264,7 +267,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn progress_reminder_registers_and_unloads() {
+    async fn todo_reminder_registers_and_unloads() {
         let (ctx, registry) = ctx_with_registry();
         let fiber = ctx.plugin(LoopExamplePlugin::new(&reminder_enabled()).expect("new"));
         for _ in 0..64 {
@@ -275,7 +278,7 @@ mod tests {
         }
         assert_eq!(
             registry.ids(),
-            vec!["loop-example".to_string(), "progress-reminder".to_string()],
+            vec!["loop-example".to_string(), "todo-reminder".to_string()],
             "progress reminder must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
@@ -304,7 +307,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_checkpoint_registers_and_unloads() {
+    async fn todo_checkpoint_registers_and_unloads() {
         let (ctx, registry) = ctx_with_registry();
         let fiber = ctx.plugin(LoopExamplePlugin::new(&checkpoint_enabled()).expect("new"));
         for _ in 0..64 {
@@ -315,7 +318,7 @@ mod tests {
         }
         assert_eq!(
             registry.ids(),
-            vec!["loop-example".to_string(), "plan-checkpoint".to_string()],
+            vec!["loop-example".to_string(), "todo-checkpoint".to_string()],
             "plan checkpoint must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
@@ -364,9 +367,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_execute_registers_and_unloads() {
+    async fn workflow_registers_and_unloads() {
         let (ctx, registry) = ctx_with_registry();
-        let fiber = ctx.plugin(LoopExamplePlugin::new(&plan_execute_enabled()).expect("new"));
+        let fiber = ctx.plugin(LoopExamplePlugin::new(&workflow_enabled()).expect("new"));
         for _ in 0..64 {
             if registry.ids().len() == 2 {
                 break;
@@ -375,8 +378,8 @@ mod tests {
         }
         assert_eq!(
             registry.ids(),
-            vec!["loop-example".to_string(), "plan-execute".to_string()],
-            "plan-execute must register alongside the base middleware"
+            vec!["loop-example".to_string(), "workflow".to_string()],
+            "workflow must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty(), "unload must remove both middlewares");

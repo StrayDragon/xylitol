@@ -3,13 +3,13 @@ mod entries;
 mod helpers;
 mod manifest;
 mod parse;
-mod plan;
 mod todo;
 mod tree;
+mod workflow;
 
 pub use checkpoint::{
-    CUSTOM_TYPE_PLAN_CHECKPOINT, PlanCheckpoint, PlanCheckpointStep, PlanResumeCursor,
-    latest_plan_checkpoint,
+    CUSTOM_TYPE_TODO_CHECKPOINT, TodoCheckpoint, TodoCheckpointStep, TodoResumeCursor,
+    latest_todo_checkpoint,
 };
 
 pub use entries::{
@@ -29,10 +29,6 @@ pub use parse::{
     enforce_legacy_session_version, enforce_session_version, parse_session_jsonl,
     parse_session_jsonl_lines,
 };
-pub use plan::{
-    CUSTOM_TYPE_PLAN, Plan, PlanRisk, PlanStep, PlanStepStatus, PlanValidationError, blocked_step,
-    downstream_ids, latest_plan, runnable_step, validate_plan, validate_replan,
-};
 pub use todo::TodoItem;
 pub use todo::{
     CUSTOM_TYPE_AGENT_TODO, TodoItemDraft, TodoItemPatch, TodoList, TodoStatus, apply_todo_patches,
@@ -41,6 +37,11 @@ pub use todo::{
 pub use tree::{
     SessionTreeKind, SessionTreeNode, SessionTreeTravel, build_session_tree,
     plan_message_history_travel,
+};
+pub use workflow::{
+    CUSTOM_TYPE_WORKFLOW, Workflow, WorkflowRisk, WorkflowStep, WorkflowStepStatus,
+    WorkflowValidationError, blocked_workflow_step, latest_workflow, runnable_workflow_step,
+    validate_workflow, validate_workflow_replan, workflow_downstream_ids,
 };
 
 #[cfg(test)]

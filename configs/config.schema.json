@@ -184,31 +184,6 @@
             "null"
           ]
         },
-        "plan_checkpoint": {
-          "default": false,
-          "type": "boolean"
-        },
-        "plan_execute": {
-          "$ref": "#/$defs/PlanExecuteConfig",
-          "default": {
-            "enabled": false,
-            "max_replans": 3
-          }
-        },
-        "plan_state": {
-          "default": false,
-          "type": "boolean"
-        },
-        "progress_reminder": {
-          "default": false,
-          "type": "boolean"
-        },
-        "progress_reminder_stale_after": {
-          "default": 3,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
         "self_heal": {
           "$ref": "#/$defs/SelfHealConfig",
           "default": {
@@ -216,6 +191,24 @@
             "max_attempts": 3,
             "signatures": []
           }
+        },
+        "todo_checkpoint": {
+          "default": false,
+          "type": "boolean"
+        },
+        "todo_progress": {
+          "default": false,
+          "type": "boolean"
+        },
+        "todo_reminder": {
+          "default": false,
+          "type": "boolean"
+        },
+        "todo_reminder_stale_after": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         },
         "tool_exposure": {
           "$ref": "#/$defs/ToolExposureConfig",
@@ -225,6 +218,13 @@
             "enabled": false,
             "read_only": false,
             "write_tools": []
+          }
+        },
+        "workflow": {
+          "$ref": "#/$defs/WorkflowConfig",
+          "default": {
+            "enabled": false,
+            "max_replans": 3
           }
         }
       },
@@ -489,22 +489,6 @@
       },
       "type": "object"
     },
-    "PlanExecuteConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "enabled": {
-          "default": false,
-          "type": "boolean"
-        },
-        "max_replans": {
-          "default": 3,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
     "SecurityConfig": {
       "properties": {
         "enabled": {
@@ -654,6 +638,22 @@
         },
         "editor_history_seed_sessions": {
           "default": 1,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "WorkflowConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": false,
+          "type": "boolean"
+        },
+        "max_replans": {
+          "default": 3,
           "format": "uint32",
           "minimum": 0,
           "type": "integer"
@@ -834,25 +834,25 @@
           "rubric": []
         },
         "max_settles": null,
-        "plan_checkpoint": false,
-        "plan_execute": {
-          "enabled": false,
-          "max_replans": 3
-        },
-        "plan_state": false,
-        "progress_reminder": false,
-        "progress_reminder_stale_after": 3,
         "self_heal": {
           "enabled": false,
           "max_attempts": 3,
           "signatures": []
         },
+        "todo_checkpoint": false,
+        "todo_progress": false,
+        "todo_reminder": false,
+        "todo_reminder_stale_after": 3,
         "tool_exposure": {
           "allow": [],
           "deny": [],
           "enabled": false,
           "read_only": false,
           "write_tools": []
+        },
+        "workflow": {
+          "enabled": false,
+          "max_replans": 3
         }
       }
     },

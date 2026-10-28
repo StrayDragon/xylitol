@@ -402,7 +402,7 @@
 
   @req:r2925
   规则: loop-middleware-example-plugin
-    仓库 须提供一个官方示例插件，证明第三方可在 rutis 生命周期内注册与卸载 loop 中间件：至少含一个只收紧的 before_tool 与一个自定义 decide_continue。该插件 须由配置显式启用，缺省不装配；未配置时 不得注册任何中间件、不得产生额外事件或观测 span。卸载后 注册表 须不再含该插件的中间件。示例插件 可经配置额外启用 plan-as-state 中间件（读 todo 计划状态驱动 decide_continue）；启用时 注册表 须同时含基础中间件与该中间件，卸载后 一并消失。
+    仓库 须提供一个官方示例插件，证明第三方可在 rutis 生命周期内注册与卸载 loop 中间件：至少含一个只收紧的 before_tool 与一个自定义 decide_continue。该插件 须由配置显式启用，缺省不装配；未配置时 不得注册任何中间件、不得产生额外事件或观测 span。卸载后 注册表 须不再含该插件的中间件。示例插件 可经配置额外启用 todo-progress 中间件（读 todo 清单驱动 decide_continue）；启用时 注册表 须同时含基础中间件与该中间件，卸载后 一并消失。
 
     场景: 未配置零装配
       假如 loop 示例插件配置缺省
@@ -414,25 +414,25 @@
       当 卸载该插件
       那么 注册表不再含该插件的中间件
 
-    场景: 计划模式启用后注册计划中间件
-      假如 以启用计划模式的 loop 示例插件装配运行时
+    场景: todo 进度启用后注册 todo 进度中间件
+      假如 以启用 todo 进度的 loop 示例插件装配运行时
       当 查询中间件注册表
-      那么 注册表含 loop-example 与 plan-state
+      那么 注册表含 loop-example 与 todo-progress
 
-    场景: 进度提醒启用后注册提醒中间件
-      假如 以启用进度提醒的 loop 示例插件装配运行时
+    场景: todo 提醒启用后注册 todo 提醒中间件
+      假如 以启用 todo 提醒的 loop 示例插件装配运行时
       当 查询中间件注册表
-      那么 注册表含 loop-example 与 progress-reminder
+      那么 注册表含 loop-example 与 todo-reminder
 
     场景: 工具收窄启用后注册工具中间件
       假如 以启用工具收窄的 loop 示例插件装配运行时
       当 查询中间件注册表
       那么 注册表含 loop-example 与 tool-exposure
 
-    场景: 计划 checkpoint 启用后注册 checkpoint 中间件
-      假如 以启用计划 checkpoint 的 loop 示例插件装配运行时
+    场景: todo checkpoint 启用后注册 todo checkpoint 中间件
+      假如 以启用 todo checkpoint 的 loop 示例插件装配运行时
       当 查询中间件注册表
-      那么 注册表含 loop-example 与 plan-checkpoint
+      那么 注册表含 loop-example 与 todo-checkpoint
 
     场景: 自愈启用后注册自愈中间件
       假如 以启用自愈的 loop 示例插件装配运行时
@@ -444,10 +444,10 @@
       当 查询中间件注册表
       那么 注册表含 loop-example 与 generator-critic
 
-    场景: 规划执行启用后注册规划中间件
-      假如 以启用规划执行的 loop 示例插件装配运行时
+    场景: workflow 启用后注册 workflow 中间件
+      假如 以启用 workflow 的 loop 示例插件装配运行时
       当 查询中间件注册表
-      那么 注册表含 loop-example 与 plan-execute
+      那么 注册表含 loop-example 与 workflow
 
   @req:r2929
   规则: loop-middleware-structured-result
@@ -542,20 +542,17 @@
   规则: message-persist-before-end
     ReAct 的每一条消息（用户 pending、助手正常完成、助手中断、助手中间件 stop）须先写入会话存储再下行 MessageEnd，使客户端收到完成事件时 存储已可读到该条；不得先发 MessageEnd 再落库。落库失败 不得阻断 MessageEnd 下行（沿用既有 warn 语义），但 不得因此把顺序颠倒回去。
   @req:r2939
-  规则: progress-reminder
-    进度提醒中间件 须在 before_model 读取当前 todo（经 BeforeModelCtx.todo）；当 todo 非空且仍有未完成项，并满足以下任一条件时，向本回合模型上下文追加一条短提醒：连续 N 次工具调用未更新 todo、最后一条 assistant 宣称完成、上一次工具失败。同一 turn 至多提醒一次。提醒 须只读：不得自动改写 todo、不得产生新事件、不得调用模型或工具；未满足条件或 todo 为空时 不得追加任何内容。阈值与开关 须可配置。提醒行为 由中间件单测覆盖。
+  规则: todo-reminder
+    todo 提醒中间件 须在 before_model 读取当前 todo（经 BeforeModelCtx.todo）；当 todo 非空且仍有未完成项，并满足以下任一条件时，向本回合模型上下文追加一条短提醒：连续 N 次工具调用未更新 todo、最后一条 assistant 宣称完成、上一次工具失败。同一 turn 至多提醒一次。提醒 须只读：不得自动改写 todo、不得产生新事件、不得调用模型或工具；未满足条件或 todo 为空时 不得追加任何内容。阈值与开关 须可配置。提醒行为 由中间件单测覆盖。
   @req:r2940
   规则: tool-exposure
     工具收窄中间件 须在 before_model 改写 tool_schemas：按配置的 allow / deny 与只读开关收窄模型可见工具；`todo_rewrite` 与 `todo_update` 须始终可见，避免计划无法更新。收窄 只影响模型可见性：不得删除工具、不得改变 permission 终裁、不得影响 before_tool 的路由目标校验。未启用或规则为空时 不得改变 schema 形状。过滤前后数量与理由 须可观测。step/risk 的细粒度映射 不在本要求范围，后续 change 再评估。
   @req:r2942
-  规则: plan-checkpoint-middleware
-    计划 checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_model（或 after_turn）把变化落为 plan_checkpoint 条目；恢复后的首个 before_model 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或计划已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 run。写入 须只追加，不覆盖或删除历史 checkpoint。
+  规则: todo-checkpoint-middleware
+    todo checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_model（或 after_turn）把变化落为 todo_checkpoint 条目；恢复后的首个 before_model 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或 todo 已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 run。写入 须只追加，不覆盖或删除历史 checkpoint。
   @req:r2943
   规则: self-heal
-    自愈中间件 须只在 after_tool 识别到确定性失败签名时介入：命中签名 须记录 pending（工具名、签名、尝试次数）并在结果后追加短指引，要求诊断、修复后重跑同一验证；同一工具成功 须清除 pending。非确定性失败（超时、网络、权限等）不得进入自愈。decide_continue 须在 pending 且尝试次数小于配置上限时 Continue，达到上限时 Stop；无 pending 时 不得改变基线。上限 须远小于 core 的 32 次硬上限。不得在插件内调用模型或工具，不得自动回滚。自愈与 plan-state 可并存，Stop 仍由最先返回 Stop 的中间件决定。
+    自愈中间件 须只在 after_tool 识别到确定性失败签名时介入：命中签名 须记录 pending（工具名、签名、尝试次数）并在结果后追加短指引，要求诊断、修复后重跑同一验证；同一工具成功 须清除 pending。非确定性失败（超时、网络、权限等）不得进入自愈。decide_continue 须在 pending 且尝试次数小于配置上限时 Continue，达到上限时 Stop；无 pending 时 不得改变基线。上限 须远小于 core 的 32 次硬上限。不得在插件内调用模型或工具，不得自动回滚。自愈与 todo-progress 可并存，Stop 仍由最先返回 Stop 的中间件决定。
   @req:r2944
   规则: generator-critic
     生成评审中间件 须在 after_model 只对**无 tool_calls 的 assistant 最终答案**启动评审，且评审调用仍由 core 调度（插件不得自行调用模型）。状态机须为 Idle → Critiquing →（Approved | Revising）→ … → Approved | Exhausted；Critiquing 时 before_model 注入 rubric 与 verdict 格式，Revising 时注入 critic 意见。critic 须以单独一行 `CRITIC_VERDICT: APPROVE` 或 `CRITIC_VERDICT: REVISE` 结尾；无结构化 verdict 时最多再要求一次，超过一次须停止。decide_continue 在 Critiquing / Revising 时 Continue，在 Approved / Exhausted 时 Stop，其它状态不得改变基线。评审轮数 须受 `max_rounds` 约束且远小于 core 的 32；达到上限须停止并记录原因。不得允许 critic 触发 compact，不得自动改代码或提交。
-  @req:r2946
-  规则: plan-and-execute
-    规划执行中间件 须在 before_model 读取最新 plan：无 plan 时注入一次建计划契约（要求模型输出 `<plan>{json}</plan>` 块）；有 runnable 步骤时注入当前步骤（含 inputs 与 verification）；有失败步骤时注入局部重规划指令；有 blocked 步骤时注入阻塞说明。after_model 须解析 assistant 中的 `<plan>` 块：校验 DAG 与重规划约束后 append `custom_type = "plan"` 的 CustomEntry 并采用；非法块 须保留旧 plan 并在下一次 before_model 注入错误说明。after_tool 须在工具失败时把当前 in_progress 步骤标记 failed；步骤 completed / failed 后清除其审批。decide_continue 须满足：blocked 且未批准 → Stop；blocked 且用户有新消息 → 批准一次并 Continue；有失败且 replan 次数小于 max_replans → Continue；有 runnable → Continue；全部完成且尚未总结 → Continue 一次，已总结 → Stop；无法推进 → Stop。中间件 不得自行调用模型或工具，不得用 plan 工具以外的入口写 plan。max_replans 须有界并记录停止原因。

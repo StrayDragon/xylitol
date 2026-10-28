@@ -8,9 +8,10 @@ use serde_json::Value;
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::rt::Ctx;
 use xylitol_plugin_sdk::session::{
-    Plan, PlanCheckpoint, PlanCheckpointStep, PlanResumeCursor, PlanStep, PlanStepStatus, TodoList,
-    TodoStatus, blocked_step, downstream_ids, latest_plan, latest_plan_checkpoint, runnable_step,
-    validate_plan, validate_replan,
+    TodoCheckpoint, TodoCheckpointStep, TodoList, TodoResumeCursor, TodoStatus, Workflow,
+    WorkflowStep, WorkflowStepStatus, blocked_workflow_step, latest_todo_checkpoint,
+    latest_workflow, runnable_workflow_step, validate_workflow, validate_workflow_replan,
+    workflow_downstream_ids,
 };
 use xylitol_plugin_sdk::{
     AfterModelCtx, AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx,
@@ -18,12 +19,12 @@ use xylitol_plugin_sdk::{
 };
 
 use crate::config::{
-    GeneratorCriticConfig, LoopExampleConfig, PlanExecuteConfig, SelfHealConfig, ToolExposureConfig,
+    GeneratorCriticConfig, LoopExampleConfig, SelfHealConfig, ToolExposureConfig, WorkflowConfig,
 };
 
 const STAGES: &[LoopStage] = &[LoopStage::BeforeTool, LoopStage::DecideContinue];
-pub const DEFAULT_PLAN_SETTLES: u32 = 8;
-const PLAN_STAGES: &[LoopStage] = &[
+pub const DEFAULT_TODO_PROGRESS_SETTLES: u32 = 8;
+const TODO_PROGRESS_STAGES: &[LoopStage] = &[
     LoopStage::BeforeTurn,
     LoopStage::AfterTool,
     LoopStage::DecideContinue,
@@ -42,14 +43,14 @@ const CRITIC_STAGES: &[LoopStage] = &[
     LoopStage::AfterModel,
     LoopStage::DecideContinue,
 ];
-const PLAN_EXECUTE_STAGES: &[LoopStage] = &[
+const WORKFLOW_STAGES: &[LoopStage] = &[
     LoopStage::BeforeModel,
     LoopStage::AfterModel,
     LoopStage::AfterTool,
     LoopStage::DecideContinue,
 ];
-const PLAN_EXECUTE_CONTRACT: &str = "Plan mode: create a plan before acting. Output exactly one \
-<plan>{json}</plan> block with the full plan: {\"goal\":\"...\",\"steps\":[{\"id\":\"s1\",\
+const WORKFLOW_CONTRACT: &str = "Workflow: create a workflow before acting. Output exactly one \
+<plan>{json}</plan> block with the full workflow: {\"goal\":\"...\",\"steps\":[{\"id\":\"s1\",\
 \"description\":\"...\",\"depends_on\":[],\"inputs\":[],\"outputs\":[],\"risk\":\"low\",\
 \"verification\":\"...\",\"rollback\":\"...\",\"requires_human\":false,\"status\":\"pending\"}]}. \
 Keep exactly one step in_progress; mark it completed only after verification passes.";
@@ -68,7 +69,7 @@ const DEFAULT_SELF_HEAL_SIGNATURES: &[&str] = &[
     "lint failed",
     "panicked at",
 ];
-const PLAN_CONTRACT: &str = "Plan mode: before acting, write the checklist with todo_rewrite. \
+const TODO_PROGRESS_CONTRACT: &str = "Workflow mode: before acting, write the checklist with todo_rewrite. \
 Keep exactly one item in_progress and mark finished items with todo_update. \
 Do not claim completion while items remain pending.";
 
@@ -126,33 +127,33 @@ impl LoopMiddleware for ExampleLoopMiddleware {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct PlanProgress {
+struct WorkflowProgress {
     total: usize,
     pending: usize,
     in_progress: usize,
     completed: usize,
 }
 
-impl PlanProgress {
+impl WorkflowProgress {
     fn has_unfinished(&self) -> bool {
         self.total > 0 && (self.pending + self.in_progress) > 0
     }
 }
 
-pub struct PlanStateMiddleware {
-    progress: Mutex<PlanProgress>,
+pub struct TodoProgressMiddleware {
+    progress: Mutex<WorkflowProgress>,
     max_settles: u32,
 }
 
-impl PlanStateMiddleware {
+impl TodoProgressMiddleware {
     pub fn new(max_settles: u32) -> Self {
         Self {
-            progress: Mutex::new(PlanProgress::default()),
+            progress: Mutex::new(WorkflowProgress::default()),
             max_settles: max_settles.max(1),
         }
     }
 
-    fn progress(&self) -> PlanProgress {
+    fn progress(&self) -> WorkflowProgress {
         self.progress
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -175,7 +176,7 @@ impl PlanStateMiddleware {
         let Some(items) = value.get("items").and_then(Value::as_array) else {
             return;
         };
-        let mut next = PlanProgress::default();
+        let mut next = WorkflowProgress::default();
         for item in items {
             next.total += 1;
             match item.get("status").and_then(Value::as_str) {
@@ -189,9 +190,9 @@ impl PlanStateMiddleware {
 }
 
 #[async_trait]
-impl LoopMiddleware for PlanStateMiddleware {
+impl LoopMiddleware for TodoProgressMiddleware {
     fn id(&self) -> &str {
-        "plan-state"
+        "todo-progress"
     }
 
     fn order(&self) -> i64 {
@@ -199,11 +200,11 @@ impl LoopMiddleware for PlanStateMiddleware {
     }
 
     fn stages(&self) -> &'static [LoopStage] {
-        PLAN_STAGES
+        TODO_PROGRESS_STAGES
     }
 
     async fn before_turn(&self, mut ctx: BeforeTurnCtx) -> LoopStep<BeforeTurnCtx> {
-        ctx.system_fragments.push(PLAN_CONTRACT.into());
+        ctx.system_fragments.push(TODO_PROGRESS_CONTRACT.into());
         LoopStep::continued(ctx)
     }
 
@@ -227,7 +228,7 @@ impl LoopMiddleware for PlanStateMiddleware {
         let progress = self.progress();
         log::info!(
             target: "xylitol::loop-example",
-            "plan checkpoint turn={} continued_tools={} completed={}/{}",
+            "todo checkpoint turn={} continued_tools={} completed={}/{}",
             ctx.turn_index,
             ctx.continued_tools,
             progress.completed,
@@ -238,36 +239,36 @@ impl LoopMiddleware for PlanStateMiddleware {
 }
 
 #[derive(Debug, Default)]
-struct PlanExecuteState {
-    plan: Option<Plan>,
+struct WorkflowState {
+    plan: Option<Workflow>,
     approved: HashSet<String>,
     replan_count: u32,
     contract_injected: bool,
     injected_step: Option<String>,
     summary_injected: bool,
     summary_done: bool,
-    pending_plan_error: Option<String>,
+    pending_workflow_error: Option<String>,
 }
 
-pub struct PlanExecuteMiddleware {
+pub struct WorkflowMiddleware {
     store: Option<Arc<dyn XySessionStore>>,
     ctx: Option<Ctx>,
     max_replans: u32,
-    state: Mutex<PlanExecuteState>,
+    state: Mutex<WorkflowState>,
     loaded: AtomicBool,
 }
 
-impl PlanExecuteMiddleware {
+impl WorkflowMiddleware {
     pub fn new(
         store: Option<Arc<dyn XySessionStore>>,
         ctx: Option<Ctx>,
-        config: &PlanExecuteConfig,
+        config: &WorkflowConfig,
     ) -> Self {
         Self {
             store,
             ctx,
             max_replans: config.max_replans.max(1),
-            state: Mutex::new(PlanExecuteState::default()),
+            state: Mutex::new(WorkflowState::default()),
             loaded: AtomicBool::new(false),
         }
     }
@@ -285,18 +286,18 @@ impl PlanExecuteMiddleware {
             .or_else(|| self.store.clone())
     }
 
-    fn lock_state(&self) -> std::sync::MutexGuard<'_, PlanExecuteState> {
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, WorkflowState> {
         self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    async fn load_plan(&self, session_id: Option<&str>) {
+    async fn load_workflow(&self, session_id: Option<&str>) {
         let (Some(store), Some(session_id)) = (self.resolve_store(), session_id) else {
             return;
         };
         let Ok(branch) = store.load_leaf_branch(session_id).await else {
             return;
         };
-        let Some(plan) = latest_plan(&branch) else {
+        let Some(plan) = latest_workflow(&branch) else {
             return;
         };
         let mut state = self.lock_state();
@@ -306,11 +307,11 @@ impl PlanExecuteMiddleware {
         }
     }
 
-    fn step_instruction(step: &PlanStep, plan: &Plan) -> String {
+    fn step_instruction(step: &WorkflowStep, plan: &Workflow) -> String {
         let mut lines = vec![
             "<plan_step>".to_string(),
             format!(
-                "Plan {}/{}: current step {} — {}.",
+                "Workflow {}/{}: current step {} — {}.",
                 plan.completed_count(),
                 plan.steps.len(),
                 step.id,
@@ -328,8 +329,8 @@ impl PlanExecuteMiddleware {
         lines.join("\n")
     }
 
-    fn replan_instruction(failed: &PlanStep, plan: &Plan) -> String {
-        let downstream = downstream_ids(plan, &failed.id);
+    fn replan_instruction(failed: &WorkflowStep, plan: &Workflow) -> String {
+        let downstream = workflow_downstream_ids(plan, &failed.id);
         let downstream_list = if downstream.is_empty() {
             "none".to_string()
         } else {
@@ -349,7 +350,7 @@ Keep completed steps unchanged. Output a full <plan>{{json}}</plan> block.\n</pl
         )
     }
 
-    fn blocked_instruction(step: &PlanStep) -> String {
+    fn blocked_instruction(step: &WorkflowStep) -> String {
         format!(
             "<plan_blocked>\nStep {} — {} requires human approval. Stop and ask the user; \
 the next user message approves it once.\n</plan_blocked>",
@@ -358,7 +359,7 @@ the next user message approves it once.\n</plan_blocked>",
     }
 }
 
-fn extract_plan_json(text: &str) -> Option<&str> {
+fn extract_workflow_json(text: &str) -> Option<&str> {
     let start = text.rfind("<plan>")? + "<plan>".len();
     let rest = &text[start..];
     let end = rest.find("</plan>")?;
@@ -367,9 +368,9 @@ fn extract_plan_json(text: &str) -> Option<&str> {
 }
 
 #[async_trait]
-impl LoopMiddleware for PlanExecuteMiddleware {
+impl LoopMiddleware for WorkflowMiddleware {
     fn id(&self) -> &str {
-        "plan-execute"
+        "workflow"
     }
 
     fn order(&self) -> i64 {
@@ -377,15 +378,15 @@ impl LoopMiddleware for PlanExecuteMiddleware {
     }
 
     fn stages(&self) -> &'static [LoopStage] {
-        PLAN_EXECUTE_STAGES
+        WORKFLOW_STAGES
     }
 
     async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
         if !self.loaded.swap(true, Ordering::SeqCst) {
-            self.load_plan(ctx.session_id.as_deref()).await;
+            self.load_workflow(ctx.session_id.as_deref()).await;
         }
         let mut state = self.lock_state();
-        if let Some(error) = state.pending_plan_error.take() {
+        if let Some(error) = state.pending_workflow_error.take() {
             ctx.messages
                 .push(AgentMessage::Llm(XyLlmMessage::user(format!(
                     "<plan_error>\n{error}\n</plan_error>"
@@ -394,12 +395,12 @@ impl LoopMiddleware for PlanExecuteMiddleware {
         let Some(plan) = state.plan.clone() else {
             if !state.contract_injected {
                 ctx.messages
-                    .push(AgentMessage::Llm(XyLlmMessage::user(PLAN_EXECUTE_CONTRACT)));
+                    .push(AgentMessage::Llm(XyLlmMessage::user(WORKFLOW_CONTRACT)));
                 state.contract_injected = true;
             }
             return LoopStep::continued(ctx);
         };
-        if let Some(blocked) = blocked_step(&plan, &state.approved) {
+        if let Some(blocked) = blocked_workflow_step(&plan, &state.approved) {
             if state.injected_step.as_deref() != Some(&blocked.id) {
                 ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
                     Self::blocked_instruction(blocked),
@@ -411,7 +412,7 @@ impl LoopMiddleware for PlanExecuteMiddleware {
         if let Some(failed) = plan
             .steps
             .iter()
-            .find(|step| step.status == PlanStepStatus::Failed)
+            .find(|step| step.status == WorkflowStepStatus::Failed)
         {
             if state.injected_step.as_deref() != Some(&failed.id) {
                 ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
@@ -424,13 +425,13 @@ impl LoopMiddleware for PlanExecuteMiddleware {
         if plan.all_completed() {
             if !state.summary_injected {
                 ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
-                    "<plan_complete>\nAll plan steps are completed. Summarize what changed and how it was verified.\n</plan_complete>",
+                    "<plan_complete>\nAll workflow steps are completed. Summarize what changed and how it was verified.\n</plan_complete>",
                 )));
                 state.summary_injected = true;
             }
             return LoopStep::continued(ctx);
         }
-        if let Some(step) = runnable_step(&plan, &state.approved)
+        if let Some(step) = runnable_workflow_step(&plan, &state.approved)
             && state.injected_step.as_deref() != Some(&step.id)
         {
             ctx.messages.push(AgentMessage::Llm(XyLlmMessage::user(
@@ -443,38 +444,38 @@ impl LoopMiddleware for PlanExecuteMiddleware {
 
     async fn after_model(&self, ctx: AfterModelCtx) -> LoopStep<AfterModelCtx> {
         let assistant_text = ctx.assistant.text();
-        let Some(json) = extract_plan_json(&assistant_text) else {
+        let Some(json) = extract_workflow_json(&assistant_text) else {
             return LoopStep::continued(ctx);
         };
-        let next: Plan = match serde_json::from_str(json) {
+        let next: Workflow = match serde_json::from_str(json) {
             Ok(plan) => plan,
             Err(err) => {
                 log::warn!(
                     target: "xylitol::loop-example",
-                    "plan block JSON error: {err}"
+                    "workflow block JSON error: {err}"
                 );
-                self.lock_state().pending_plan_error =
-                    Some(format!("plan block is not valid JSON: {err}"));
+                self.lock_state().pending_workflow_error =
+                    Some(format!("workflow block is not valid JSON: {err}"));
                 return LoopStep::continued(ctx);
             }
         };
-        if let Err(err) = validate_plan(&next) {
+        if let Err(err) = validate_workflow(&next) {
             log::warn!(
                 target: "xylitol::loop-example",
-                "plan DAG invalid: {}",
+                "workflow DAG invalid: {}",
                 err.0
             );
-            self.lock_state().pending_plan_error = Some(err.0);
+            self.lock_state().pending_workflow_error = Some(err.0);
             return LoopStep::continued(ctx);
         }
         let previous = self.lock_state().plan.clone();
-        if let Err(err) = validate_replan(previous.as_ref(), &next) {
+        if let Err(err) = validate_workflow_replan(previous.as_ref(), &next) {
             log::warn!(
                 target: "xylitol::loop-example",
-                "plan replan invalid: {}",
+                "workflow replan invalid: {}",
                 err.0
             );
-            self.lock_state().pending_plan_error = Some(err.0);
+            self.lock_state().pending_workflow_error = Some(err.0);
             return LoopStep::continued(ctx);
         }
         if let (Some(store), Some(session_id)) = (self.resolve_store(), ctx.session_id.as_deref())
@@ -484,13 +485,13 @@ impl LoopMiddleware for PlanExecuteMiddleware {
         {
             log::warn!(
                 target: "xylitol::loop-example",
-                "plan persist failed: {err}"
+                "workflow persist failed: {err}"
             );
         }
         let had_failed = previous.as_ref().is_some_and(|plan| {
             plan.steps
                 .iter()
-                .any(|step| step.status == PlanStepStatus::Failed)
+                .any(|step| step.status == WorkflowStepStatus::Failed)
         });
         let mut state = self.lock_state();
         state.plan = Some(next);
@@ -498,7 +499,7 @@ impl LoopMiddleware for PlanExecuteMiddleware {
         state.summary_injected = false;
         state.summary_done = false;
         state.contract_injected = true;
-        state.pending_plan_error = None;
+        state.pending_workflow_error = None;
         if had_failed {
             state.replan_count += 1;
         }
@@ -507,7 +508,7 @@ impl LoopMiddleware for PlanExecuteMiddleware {
             plan.step(id).is_some_and(|step| {
                 matches!(
                     step.status,
-                    PlanStepStatus::Pending | PlanStepStatus::InProgress
+                    WorkflowStepStatus::Pending | WorkflowStepStatus::InProgress
                 )
             })
         });
@@ -521,9 +522,9 @@ impl LoopMiddleware for PlanExecuteMiddleware {
                 && let Some(step) = plan
                     .steps
                     .iter_mut()
-                    .find(|step| step.status == PlanStepStatus::InProgress)
+                    .find(|step| step.status == WorkflowStepStatus::InProgress)
             {
-                step.status = PlanStepStatus::Failed;
+                step.status = WorkflowStepStatus::Failed;
                 step.output_ref = Some(format!("failure:{}", ctx.tool_call_id));
                 let id = step.id.clone();
                 state.approved.remove(&id);
@@ -538,7 +539,7 @@ impl LoopMiddleware for PlanExecuteMiddleware {
         let Some(plan) = state.plan.clone() else {
             return LoopStep::continued(ctx);
         };
-        if let Some(blocked) = blocked_step(&plan, &state.approved) {
+        if let Some(blocked) = blocked_workflow_step(&plan, &state.approved) {
             if ctx.has_new_user_messages {
                 state.approved.insert(blocked.id.clone());
                 state.injected_step = None;
@@ -549,12 +550,12 @@ impl LoopMiddleware for PlanExecuteMiddleware {
         if plan
             .steps
             .iter()
-            .any(|step| step.status == PlanStepStatus::Failed)
+            .any(|step| step.status == WorkflowStepStatus::Failed)
         {
             if state.replan_count >= self.max_replans {
                 log::warn!(
                     target: "xylitol::loop-example",
-                    "plan-execute stopped after {} replan(s)",
+                    "workflow stopped after {} replan(s)",
                     state.replan_count
                 );
                 return LoopStep::stopped(ctx);
@@ -576,7 +577,7 @@ impl LoopMiddleware for PlanExecuteMiddleware {
             }
             return LoopStep::continued(ctx);
         }
-        if runnable_step(&plan, &state.approved).is_some() {
+        if runnable_workflow_step(&plan, &state.approved).is_some() {
             LoopStep::continued(ctx)
         } else {
             LoopStep::stopped(ctx)
@@ -584,12 +585,12 @@ impl LoopMiddleware for PlanExecuteMiddleware {
     }
 }
 
-pub fn plan_execute_middleware(
+pub fn workflow_middleware(
     store: Option<Arc<dyn XySessionStore>>,
     ctx: Option<Ctx>,
-    config: &PlanExecuteConfig,
+    config: &WorkflowConfig,
 ) -> Arc<dyn LoopMiddleware> {
-    Arc::new(PlanExecuteMiddleware::new(store, ctx, config))
+    Arc::new(WorkflowMiddleware::new(store, ctx, config))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -937,14 +938,14 @@ pub fn self_heal_middleware(config: &SelfHealConfig) -> Arc<dyn LoopMiddleware> 
 
 #[derive(Default)]
 struct CheckpointState {
-    steps: Vec<PlanCheckpointStep>,
+    steps: Vec<TodoCheckpointStep>,
     last_verified_artifact: Option<String>,
     last_failure: Option<String>,
     attempts: HashMap<String, u32>,
     dirty: bool,
 }
 
-pub struct PlanCheckpointMiddleware {
+pub struct TodoCheckpointMiddleware {
     store: Option<Arc<dyn XySessionStore>>,
     ctx: Option<Ctx>,
     state: Mutex<CheckpointState>,
@@ -952,7 +953,7 @@ pub struct PlanCheckpointMiddleware {
     injected: AtomicBool,
 }
 
-impl PlanCheckpointMiddleware {
+impl TodoCheckpointMiddleware {
     pub fn new(store: Option<Arc<dyn XySessionStore>>, ctx: Option<Ctx>) -> Self {
         Self {
             store,
@@ -988,7 +989,7 @@ impl PlanCheckpointMiddleware {
             return;
         };
         let mut state = self.lock_state();
-        let previous: HashMap<String, PlanCheckpointStep> = state
+        let previous: HashMap<String, TodoCheckpointStep> = state
             .steps
             .drain(..)
             .map(|step| (step.id.clone(), step))
@@ -996,14 +997,14 @@ impl PlanCheckpointMiddleware {
         state.steps = items
             .into_iter()
             .map(|(id, content, status)| match previous.get(&id) {
-                Some(prev) => PlanCheckpointStep {
+                Some(prev) => TodoCheckpointStep {
                     id,
                     content,
                     status,
                     verification: prev.verification.clone(),
                     output_ref: prev.output_ref.clone(),
                 },
-                None => PlanCheckpointStep {
+                None => TodoCheckpointStep {
                     id,
                     content,
                     status,
@@ -1044,7 +1045,7 @@ impl PlanCheckpointMiddleware {
         let Ok(branch) = store.load_leaf_branch(session_id).await else {
             return;
         };
-        let Some(checkpoint) = latest_plan_checkpoint(&branch) else {
+        let Some(checkpoint) = latest_todo_checkpoint(&branch) else {
             return;
         };
         let mut state = self.lock_state();
@@ -1077,8 +1078,8 @@ impl PlanCheckpointMiddleware {
         }
         let done = total - unfinished;
         let mut lines = vec![
-            "<plan_checkpoint>".to_string(),
-            format!("Resuming plan checkpoint: {done}/{total} steps completed."),
+            "<todo_checkpoint>".to_string(),
+            format!("Resuming todo checkpoint: {done}/{total} steps completed."),
         ];
         if let Some(step) = state
             .steps
@@ -1094,7 +1095,7 @@ impl PlanCheckpointMiddleware {
             "Do not re-run steps already completed with verification; verify prerequisites before continuing."
                 .into(),
         );
-        lines.push("</plan_checkpoint>".into());
+        lines.push("</todo_checkpoint>".into());
         ctx.messages
             .push(AgentMessage::Llm(XyLlmMessage::user(lines.join("\n"))));
     }
@@ -1112,7 +1113,7 @@ impl PlanCheckpointMiddleware {
                 return;
             }
             state.dirty = false;
-            PlanCheckpoint {
+            TodoCheckpoint {
                 goal: None,
                 steps: state.steps.clone(),
                 last_verified_artifact: state.last_verified_artifact.clone(),
@@ -1121,7 +1122,7 @@ impl PlanCheckpointMiddleware {
                     .steps
                     .iter()
                     .find(|step| step.status != TodoStatus::Completed)
-                    .map(|step| PlanResumeCursor {
+                    .map(|step| TodoResumeCursor {
                         step_id: step.id.clone(),
                         attempt: state.attempts.get(&step.id).copied().unwrap_or(0) + 1,
                     }),
@@ -1138,7 +1139,7 @@ impl PlanCheckpointMiddleware {
             self.lock_state().dirty = true;
             log::warn!(
                 target: "xylitol::loop-example",
-                "plan checkpoint persist failed: {err}"
+                "todo checkpoint persist failed: {err}"
             );
         }
     }
@@ -1188,9 +1189,9 @@ fn todo_items_from_parts(parts: &[AgentPart]) -> Option<Vec<(String, String, Tod
 }
 
 #[async_trait]
-impl LoopMiddleware for PlanCheckpointMiddleware {
+impl LoopMiddleware for TodoCheckpointMiddleware {
     fn id(&self) -> &str {
-        "plan-checkpoint"
+        "todo-checkpoint"
     }
 
     fn order(&self) -> i64 {
@@ -1226,11 +1227,11 @@ impl LoopMiddleware for PlanCheckpointMiddleware {
     }
 }
 
-pub fn plan_checkpoint_middleware(
+pub fn todo_checkpoint_middleware(
     store: Option<Arc<dyn XySessionStore>>,
     ctx: Option<Ctx>,
 ) -> Arc<dyn LoopMiddleware> {
-    Arc::new(PlanCheckpointMiddleware::new(store, ctx))
+    Arc::new(TodoCheckpointMiddleware::new(store, ctx))
 }
 
 pub struct ToolExposureMiddleware {
@@ -1296,14 +1297,14 @@ pub fn tool_exposure_middleware(config: &ToolExposureConfig) -> Arc<dyn LoopMidd
     Arc::new(ToolExposureMiddleware::new(config.clone()))
 }
 
-pub struct ProgressReminderMiddleware {
+pub struct TodoReminderMiddleware {
     stale_after: usize,
     stale_tool_calls: AtomicUsize,
     last_error: AtomicBool,
     last_reminder_turn: AtomicU32,
 }
 
-impl ProgressReminderMiddleware {
+impl TodoReminderMiddleware {
     pub fn new(stale_after: u32) -> Self {
         Self {
             stale_after: stale_after.max(1) as usize,
@@ -1335,9 +1336,9 @@ impl ProgressReminderMiddleware {
 }
 
 #[async_trait]
-impl LoopMiddleware for ProgressReminderMiddleware {
+impl LoopMiddleware for TodoReminderMiddleware {
     fn id(&self) -> &str {
-        "progress-reminder"
+        "todo-reminder"
     }
 
     fn order(&self) -> i64 {
@@ -1379,21 +1380,21 @@ impl LoopMiddleware for ProgressReminderMiddleware {
         self.last_reminder_turn.store(turn, Ordering::SeqCst);
         ctx.messages
             .push(AgentMessage::Llm(XyLlmMessage::user(format!(
-                "<progress_reminder>\n{unfinished} plan item(s) are still unfinished. \
-Re-read <todo> and update it with todo_update before claiming completion.\n</progress_reminder>"
+                "<todo_reminder>\n{unfinished} todo item(s) are still unfinished. \
+Re-read <todo> and update it with todo_update before claiming completion.\n</todo_reminder>"
             ))));
         LoopStep::continued(ctx)
     }
 }
 
-pub fn progress_reminder_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware> {
-    Arc::new(ProgressReminderMiddleware::new(
-        config.progress_reminder_stale_after,
+pub fn todo_reminder_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware> {
+    Arc::new(TodoReminderMiddleware::new(
+        config.todo_reminder_stale_after,
     ))
 }
 
-pub fn plan_state_middleware(max_settles: u32) -> Arc<dyn LoopMiddleware> {
-    Arc::new(PlanStateMiddleware::new(max_settles))
+pub fn todo_progress_middleware(max_settles: u32) -> Arc<dyn LoopMiddleware> {
+    Arc::new(TodoProgressMiddleware::new(max_settles))
 }
 
 pub fn example_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware> {
@@ -1404,8 +1405,8 @@ pub fn example_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware>
 mod tests {
     use super::*;
     use crate::config::{
-        DEFAULT_CRITIC_ROUNDS, DEFAULT_MAX_REPLANS, DEFAULT_PROGRESS_STALE_AFTER,
-        DEFAULT_SELF_HEAL_ATTEMPTS, GeneratorCriticConfig, PlanExecuteConfig, SelfHealConfig,
+        DEFAULT_CRITIC_ROUNDS, DEFAULT_MAX_REWORKFLOWS, DEFAULT_SELF_HEAL_ATTEMPTS,
+        DEFAULT_TODO_REMINDER_STALE_AFTER, GeneratorCriticConfig, SelfHealConfig, WorkflowConfig,
     };
     use xylitol_plugin_sdk::LoopControl;
     use xylitol_plugin_sdk::RuntimeSessionStore;
@@ -1415,7 +1416,7 @@ mod tests {
     use xylitol_plugin_sdk::model::XyToolSchema;
     use xylitol_plugin_sdk::rt::{Ctx, CtxHost};
     use xylitol_plugin_sdk::session::{
-        ForkPosition, SessionContext, SessionEntry, TodoItem, latest_plan_checkpoint,
+        ForkPosition, SessionContext, SessionEntry, TodoItem, latest_todo_checkpoint,
     };
 
     fn ctx(command: &str) -> BeforeToolCtx {
@@ -1433,13 +1434,13 @@ mod tests {
             enabled: true,
             max_settles: None,
             deny_bash_patterns: vec!["rm -rf /".into()],
-            plan_state: false,
-            progress_reminder: false,
-            progress_reminder_stale_after: 3,
-            plan_checkpoint: false,
+            todo_progress: false,
+            todo_reminder: false,
+            todo_reminder_stale_after: 3,
+            todo_checkpoint: false,
             self_heal: Default::default(),
             generator_critic: Default::default(),
-            plan_execute: Default::default(),
+            workflow: Default::default(),
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -1456,13 +1457,13 @@ mod tests {
             enabled: true,
             max_settles: Some(2),
             deny_bash_patterns: Vec::new(),
-            plan_state: false,
-            progress_reminder: false,
-            progress_reminder_stale_after: 3,
-            plan_checkpoint: false,
+            todo_progress: false,
+            todo_reminder: false,
+            todo_reminder_stale_after: 3,
+            todo_checkpoint: false,
             self_heal: Default::default(),
             generator_critic: Default::default(),
-            plan_execute: Default::default(),
+            workflow: Default::default(),
             tool_exposure: Default::default(),
         };
         let mw = ExampleLoopMiddleware::new(config);
@@ -1530,21 +1531,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_contract_is_injected() {
-        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+    async fn todo_progress_contract_is_injected() {
+        let mw = TodoProgressMiddleware::new(DEFAULT_TODO_PROGRESS_SETTLES);
         let out = mw.before_turn(BeforeTurnCtx::default()).await;
         assert!(
             out.ctx
                 .system_fragments
                 .iter()
                 .any(|fragment| fragment.contains("todo_rewrite")),
-            "plan mode must tell the model how to record the plan"
+            "todo progress must tell the model how to record the checklist"
         );
     }
 
     #[tokio::test]
     async fn todo_result_updates_progress() {
-        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+        let mw = TodoProgressMiddleware::new(DEFAULT_TODO_PROGRESS_SETTLES);
         let out = mw
             .after_tool(todo_ctx(&["completed", "pending"], false))
             .await;
@@ -1557,41 +1558,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn decide_continue_keeps_unfinished_plan_alive() {
-        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+    async fn decide_continue_keeps_unfinished_todo_alive() {
+        let mw = TodoProgressMiddleware::new(DEFAULT_TODO_PROGRESS_SETTLES);
         mw.after_tool(todo_ctx(&["pending"], false)).await;
         assert_eq!(
             mw.decide_continue(decide_ctx(0, false)).await.control,
             LoopControl::Continue,
-            "an unfinished plan must keep the loop going"
+            "an unfinished todo must keep the loop going"
         );
     }
 
     #[tokio::test]
-    async fn decide_continue_stops_when_plan_complete() {
-        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+    async fn decide_continue_stops_when_todo_complete() {
+        let mw = TodoProgressMiddleware::new(DEFAULT_TODO_PROGRESS_SETTLES);
         mw.after_tool(todo_ctx(&["completed"], false)).await;
         assert_eq!(
             mw.decide_continue(decide_ctx(0, false)).await.control,
             LoopControl::Stop,
-            "a complete plan must not force another model call"
+            "a complete todo must not force another model call"
         );
     }
 
     #[tokio::test]
     async fn decide_continue_stops_at_cap() {
-        let mw = PlanStateMiddleware::new(2);
+        let mw = TodoProgressMiddleware::new(2);
         mw.after_tool(todo_ctx(&["pending"], false)).await;
         assert_eq!(
             mw.decide_continue(decide_ctx(2, false)).await.control,
             LoopControl::Stop,
-            "the plan loop must be bounded"
+            "the todo loop must be bounded"
         );
     }
 
     #[tokio::test]
     async fn decide_continue_continues_on_new_user() {
-        let mw = PlanStateMiddleware::new(1);
+        let mw = TodoProgressMiddleware::new(1);
         mw.after_tool(todo_ctx(&["completed"], false)).await;
         assert_eq!(
             mw.decide_continue(decide_ctx(1, true)).await.control,
@@ -1602,21 +1603,21 @@ mod tests {
 
     #[tokio::test]
     async fn error_or_unknown_tool_does_not_touch_progress() {
-        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
+        let mw = TodoProgressMiddleware::new(DEFAULT_TODO_PROGRESS_SETTLES);
         mw.after_tool(todo_ctx(&["pending"], true)).await;
-        assert_eq!(mw.progress(), PlanProgress::default());
+        assert_eq!(mw.progress(), WorkflowProgress::default());
         let mut ctx = todo_ctx(&["pending"], false);
         ctx.tool_name = "read".into();
         mw.after_tool(ctx).await;
-        assert_eq!(mw.progress(), PlanProgress::default());
+        assert_eq!(mw.progress(), WorkflowProgress::default());
     }
 
     #[test]
     fn plan_identity_is_stable() {
-        let mw = PlanStateMiddleware::new(DEFAULT_PLAN_SETTLES);
-        assert_eq!(mw.id(), "plan-state");
+        let mw = TodoProgressMiddleware::new(DEFAULT_TODO_PROGRESS_SETTLES);
+        assert_eq!(mw.id(), "todo-progress");
         assert_eq!(mw.order(), 200);
-        assert_eq!(mw.stages(), PLAN_STAGES);
+        assert_eq!(mw.stages(), TODO_PROGRESS_STAGES);
     }
 
     fn todo(statuses: &[TodoStatus]) -> TodoList {
@@ -1656,15 +1657,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn progress_reminder_skips_without_todo() {
-        let mw = ProgressReminderMiddleware::new(2);
+    async fn todo_reminder_skips_without_todo() {
+        let mw = TodoReminderMiddleware::new(2);
         let out = mw.before_model(model_ctx(None, None)).await;
         assert!(out.ctx.messages.is_empty());
     }
 
     #[tokio::test]
-    async fn progress_reminder_fires_when_stale() {
-        let mw = ProgressReminderMiddleware::new(2);
+    async fn todo_reminder_fires_when_stale() {
+        let mw = TodoReminderMiddleware::new(2);
         mw.after_tool(tool_ctx("read", false)).await;
         mw.after_tool(tool_ctx("read", false)).await;
         let out = mw
@@ -1674,12 +1675,12 @@ mod tests {
             ))
             .await;
         assert_eq!(out.ctx.messages.len(), 1);
-        assert!(out.ctx.messages[0].text().contains("<progress_reminder>"));
+        assert!(out.ctx.messages[0].text().contains("<todo_reminder>"));
     }
 
     #[tokio::test]
-    async fn progress_reminder_resets_on_todo_update() {
-        let mw = ProgressReminderMiddleware::new(1);
+    async fn todo_reminder_resets_on_todo_update() {
+        let mw = TodoReminderMiddleware::new(1);
         mw.after_tool(tool_ctx("read", false)).await;
         mw.after_tool(tool_ctx("todo_update", false)).await;
         let out = mw
@@ -1689,8 +1690,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn progress_reminder_fires_on_completion_claim() {
-        let mw = ProgressReminderMiddleware::new(99);
+    async fn todo_reminder_fires_on_completion_claim() {
+        let mw = TodoReminderMiddleware::new(99);
         let claim = AgentMessage::Llm(XyLlmMessage::assistant("all done"));
         let out = mw
             .before_model(model_ctx(Some(todo(&[TodoStatus::Pending])), Some(claim)))
@@ -1707,8 +1708,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn progress_reminder_fires_after_error() {
-        let mw = ProgressReminderMiddleware::new(99);
+    async fn todo_reminder_fires_after_error() {
+        let mw = TodoReminderMiddleware::new(99);
         mw.after_tool(tool_ctx("bash", true)).await;
         let out = mw
             .before_model(model_ctx(Some(todo(&[TodoStatus::InProgress])), None))
@@ -1717,8 +1718,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn progress_reminder_is_at_most_once_per_turn() {
-        let mw = ProgressReminderMiddleware::new(1);
+    async fn todo_reminder_is_at_most_once_per_turn() {
+        let mw = TodoReminderMiddleware::new(1);
         mw.after_tool(tool_ctx("read", false)).await;
         let first = mw
             .before_model(model_ctx(Some(todo(&[TodoStatus::Pending])), None))
@@ -1734,8 +1735,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn progress_reminder_skips_when_all_completed() {
-        let mw = ProgressReminderMiddleware::new(1);
+    async fn todo_reminder_skips_when_all_completed() {
+        let mw = TodoReminderMiddleware::new(1);
         mw.after_tool(tool_ctx("read", false)).await;
         let out = mw
             .before_model(model_ctx(Some(todo(&[TodoStatus::Completed])), None))
@@ -1744,9 +1745,9 @@ mod tests {
     }
 
     #[test]
-    fn progress_reminder_identity_is_stable() {
-        let mw = ProgressReminderMiddleware::new(DEFAULT_PROGRESS_STALE_AFTER);
-        assert_eq!(mw.id(), "progress-reminder");
+    fn todo_reminder_identity_is_stable() {
+        let mw = TodoReminderMiddleware::new(DEFAULT_TODO_REMINDER_STALE_AFTER);
+        assert_eq!(mw.id(), "todo-reminder");
         assert_eq!(mw.order(), 150);
         assert_eq!(mw.stages(), PROGRESS_STAGES);
     }
@@ -1945,7 +1946,7 @@ mod tests {
     #[tokio::test]
     async fn checkpoint_persists_todo_progress() {
         let store = Arc::new(FakeStore::default());
-        let mw = PlanCheckpointMiddleware::new(Some(store.clone()), None);
+        let mw = TodoCheckpointMiddleware::new(Some(store.clone()), None);
         let first = mw.before_model(checkpoint_ctx("s1")).await;
         assert!(first.ctx.messages.is_empty(), "a fresh run must not inject");
         mw.after_tool(todo_ctx(&["completed", "in_progress"], false))
@@ -1953,7 +1954,7 @@ mod tests {
         mw.before_model(checkpoint_ctx("s1")).await;
 
         let entries = store.entries.lock().unwrap().clone();
-        let checkpoint = latest_plan_checkpoint(&entries).expect("persisted checkpoint");
+        let checkpoint = latest_todo_checkpoint(&entries).expect("persisted checkpoint");
         assert_eq!(checkpoint.steps.len(), 2);
         assert_eq!(checkpoint.unfinished_count(), 1);
         assert_eq!(
@@ -1968,16 +1969,16 @@ mod tests {
     #[tokio::test]
     async fn checkpoint_restore_injects_summary_once() {
         let store = Arc::new(FakeStore::default());
-        let mut checkpoint = PlanCheckpoint {
+        let mut checkpoint = TodoCheckpoint {
             steps: vec![
-                PlanCheckpointStep {
+                TodoCheckpointStep {
                     id: "t0".into(),
                     content: "step 0".into(),
                     status: TodoStatus::Completed,
                     verification: Some("cargo test -p t0".into()),
                     output_ref: None,
                 },
-                PlanCheckpointStep {
+                TodoCheckpointStep {
                     id: "t1".into(),
                     content: "step 1".into(),
                     status: TodoStatus::InProgress,
@@ -1986,11 +1987,11 @@ mod tests {
                 },
             ],
             last_failure: Some("bash: tests failed".into()),
-            resume_cursor: Some(PlanResumeCursor {
+            resume_cursor: Some(TodoResumeCursor {
                 step_id: "t1".into(),
                 attempt: 2,
             }),
-            ..PlanCheckpoint::default()
+            ..TodoCheckpoint::default()
         };
         checkpoint.updated_at = 1;
         store
@@ -1998,11 +1999,11 @@ mod tests {
             .await
             .unwrap();
 
-        let mw = PlanCheckpointMiddleware::new(Some(store.clone()), None);
+        let mw = TodoCheckpointMiddleware::new(Some(store.clone()), None);
         let first = mw.before_model(checkpoint_ctx("s1")).await;
         assert_eq!(first.ctx.messages.len(), 1);
         let text = first.ctx.messages[0].text();
-        assert!(text.contains("<plan_checkpoint>"));
+        assert!(text.contains("<todo_checkpoint>"));
         assert!(text.contains("1/2 steps completed"));
         assert!(text.contains("t1"));
         assert!(text.contains("tests failed"));
@@ -2018,21 +2019,21 @@ mod tests {
     #[tokio::test]
     async fn checkpoint_skips_injection_when_complete() {
         let store = Arc::new(FakeStore::default());
-        let checkpoint = PlanCheckpoint {
-            steps: vec![PlanCheckpointStep {
+        let checkpoint = TodoCheckpoint {
+            steps: vec![TodoCheckpointStep {
                 id: "t0".into(),
                 content: "step 0".into(),
                 status: TodoStatus::Completed,
                 verification: Some("done".into()),
                 output_ref: None,
             }],
-            ..PlanCheckpoint::default()
+            ..TodoCheckpoint::default()
         };
         store
             .append_session_entry("s1", &checkpoint.to_custom_entry_shell())
             .await
             .unwrap();
-        let mw = PlanCheckpointMiddleware::new(Some(store), None);
+        let mw = TodoCheckpointMiddleware::new(Some(store), None);
         let out = mw.before_model(checkpoint_ctx("s1")).await;
         assert!(out.ctx.messages.is_empty());
     }
@@ -2040,7 +2041,7 @@ mod tests {
     #[tokio::test]
     async fn checkpoint_records_failure_and_attempt() {
         let store = Arc::new(FakeStore::default());
-        let mw = PlanCheckpointMiddleware::new(Some(store.clone()), None);
+        let mw = TodoCheckpointMiddleware::new(Some(store.clone()), None);
         mw.before_model(checkpoint_ctx("s1")).await;
         mw.after_tool(todo_ctx(&["in_progress"], false)).await;
         let mut failure = todo_ctx(&["in_progress"], false);
@@ -2051,7 +2052,7 @@ mod tests {
         mw.before_model(checkpoint_ctx("s1")).await;
 
         let entries = store.entries.lock().unwrap().clone();
-        let checkpoint = latest_plan_checkpoint(&entries).expect("checkpoint");
+        let checkpoint = latest_todo_checkpoint(&entries).expect("checkpoint");
         assert_eq!(
             checkpoint.last_failure.as_deref(),
             Some("bash: tests failed")
@@ -2061,7 +2062,7 @@ mod tests {
 
     #[tokio::test]
     async fn checkpoint_without_store_degrades_to_memory() {
-        let mw = PlanCheckpointMiddleware::new(None, None);
+        let mw = TodoCheckpointMiddleware::new(None, None);
         mw.before_model(checkpoint_ctx("s1")).await;
         mw.after_tool(todo_ctx(&["pending"], false)).await;
         let out = mw.before_model(checkpoint_ctx("s1")).await;
@@ -2069,9 +2070,9 @@ mod tests {
     }
 
     #[test]
-    fn plan_checkpoint_identity_is_stable() {
-        let mw = PlanCheckpointMiddleware::new(None, None);
-        assert_eq!(mw.id(), "plan-checkpoint");
+    fn todo_checkpoint_identity_is_stable() {
+        let mw = TodoCheckpointMiddleware::new(None, None);
+        assert_eq!(mw.id(), "todo-checkpoint");
         assert_eq!(mw.order(), 180);
         assert_eq!(mw.stages(), CHECKPOINT_STAGES);
     }
@@ -2330,15 +2331,15 @@ mod tests {
         assert!(DEFAULT_CRITIC_ROUNDS < 32);
     }
 
-    fn exec_config(max_replans: u32) -> PlanExecuteConfig {
-        PlanExecuteConfig {
+    fn exec_config(max_replans: u32) -> WorkflowConfig {
+        WorkflowConfig {
             enabled: true,
             max_replans,
         }
     }
 
-    fn plan_step(id: &str, status: PlanStepStatus, depends_on: &[&str]) -> PlanStep {
-        PlanStep {
+    fn plan_step(id: &str, status: WorkflowStepStatus, depends_on: &[&str]) -> WorkflowStep {
+        WorkflowStep {
             id: id.into(),
             description: format!("do {id}"),
             depends_on: depends_on.iter().map(|dep| dep.to_string()).collect(),
@@ -2353,8 +2354,8 @@ mod tests {
         }
     }
 
-    fn plan_with(steps: Vec<PlanStep>) -> Plan {
-        Plan {
+    fn plan_with(steps: Vec<WorkflowStep>) -> Workflow {
+        Workflow {
             goal: "ship".into(),
             steps,
             resume_cursor: None,
@@ -2362,7 +2363,7 @@ mod tests {
         }
     }
 
-    fn plan_block(plan: &Plan) -> String {
+    fn plan_block(plan: &Workflow) -> String {
         format!("<plan>{}</plan>", plan.to_data_value())
     }
 
@@ -2386,30 +2387,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_execute_injects_contract_without_plan() {
-        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REPLANS));
+    async fn workflow_injects_contract_without_plan() {
+        let mw = WorkflowMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REWORKFLOWS));
         let out = mw.before_model(exec_model_ctx(Some("s1"))).await;
         assert_eq!(out.ctx.messages.len(), 1);
         assert!(out.ctx.messages[0].text().contains("<plan>{json}</plan>"));
     }
 
     #[tokio::test]
-    async fn plan_execute_adopts_and_persists_plan() {
+    async fn workflow_adopts_and_persists_plan() {
         let store = Arc::new(FakeStore::default());
-        let mw = PlanExecuteMiddleware::new(
+        let mw = WorkflowMiddleware::new(
             Some(store.clone()),
             None,
-            &exec_config(DEFAULT_MAX_REPLANS),
+            &exec_config(DEFAULT_MAX_REWORKFLOWS),
         );
         mw.before_model(exec_model_ctx(Some("s1"))).await;
         let plan = plan_with(vec![
-            plan_step("s1", PlanStepStatus::Pending, &[]),
-            plan_step("s2", PlanStepStatus::Pending, &["s1"]),
+            plan_step("s1", WorkflowStepStatus::Pending, &[]),
+            plan_step("s2", WorkflowStepStatus::Pending, &["s1"]),
         ]);
         mw.after_model(exec_after_model(&plan_block(&plan))).await;
 
         let entries = store.entries.lock().unwrap().clone();
-        assert_eq!(latest_plan(&entries), Some(plan.clone()));
+        assert_eq!(latest_workflow(&entries), Some(plan.clone()));
 
         let out = mw.before_model(exec_model_ctx(Some("s1"))).await;
         assert_eq!(out.ctx.messages.len(), 1);
@@ -2419,13 +2420,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_execute_marks_failure_and_replans_downstream() {
+    async fn workflow_marks_failure_and_replans_downstream() {
         let store = Arc::new(FakeStore::default());
-        let mw = PlanExecuteMiddleware::new(Some(store), None, &exec_config(DEFAULT_MAX_REPLANS));
+        let mw = WorkflowMiddleware::new(Some(store), None, &exec_config(DEFAULT_MAX_REWORKFLOWS));
         mw.before_model(exec_model_ctx(Some("s1"))).await;
         let plan = plan_with(vec![
-            plan_step("s1", PlanStepStatus::InProgress, &[]),
-            plan_step("s2", PlanStepStatus::Pending, &["s1"]),
+            plan_step("s1", WorkflowStepStatus::InProgress, &[]),
+            plan_step("s2", WorkflowStepStatus::Pending, &["s1"]),
         ]);
         mw.after_model(exec_after_model(&plan_block(&plan))).await;
 
@@ -2442,7 +2443,7 @@ mod tests {
         assert!(text.contains("s2"), "downstream step must be named");
 
         let mut replanned = plan;
-        replanned.steps[0].status = PlanStepStatus::Pending;
+        replanned.steps[0].status = WorkflowStepStatus::Pending;
         replanned.steps[0].description = "retry s1".into();
         replanned.steps[1].description = "redo s2".into();
         mw.after_model(exec_after_model(&plan_block(&replanned)))
@@ -2456,17 +2457,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_execute_rejects_rewriting_completed_steps() {
-        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REPLANS));
+    async fn workflow_rejects_rewriting_completed_steps() {
+        let mw = WorkflowMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REWORKFLOWS));
         mw.before_model(exec_model_ctx(None)).await;
         let plan = plan_with(vec![
-            plan_step("s1", PlanStepStatus::Completed, &[]),
-            plan_step("s2", PlanStepStatus::Pending, &["s1"]),
+            plan_step("s1", WorkflowStepStatus::Completed, &[]),
+            plan_step("s2", WorkflowStepStatus::Pending, &["s1"]),
         ]);
         mw.after_model(exec_after_model(&plan_block(&plan))).await;
 
         let mut rewritten = plan.clone();
-        rewritten.steps[0].status = PlanStepStatus::Pending;
+        rewritten.steps[0].status = WorkflowStepStatus::Pending;
         rewritten.steps[0].description = "rewrite history".into();
         mw.after_model(exec_after_model(&plan_block(&rewritten)))
             .await;
@@ -2486,10 +2487,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_execute_blocks_for_human_and_approves_once() {
-        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REPLANS));
+    async fn workflow_blocks_for_human_and_approves_once() {
+        let mw = WorkflowMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REWORKFLOWS));
         mw.before_model(exec_model_ctx(None)).await;
-        let mut human = plan_step("s1", PlanStepStatus::Pending, &[]);
+        let mut human = plan_step("s1", WorkflowStepStatus::Pending, &[]);
         human.requires_human = true;
         mw.after_model(exec_after_model(&plan_block(&plan_with(vec![human]))))
             .await;
@@ -2507,10 +2508,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_execute_stops_at_replan_cap() {
-        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(1));
+    async fn workflow_stops_at_replan_cap() {
+        let mw = WorkflowMiddleware::new(None, None, &exec_config(1));
         mw.before_model(exec_model_ctx(None)).await;
-        let failed_plan = plan_with(vec![plan_step("s1", PlanStepStatus::Failed, &[])]);
+        let failed_plan = plan_with(vec![plan_step("s1", WorkflowStepStatus::Failed, &[])]);
         mw.after_model(exec_after_model(&plan_block(&failed_plan)))
             .await;
         assert_eq!(
@@ -2527,10 +2528,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_execute_summarizes_after_completion() {
-        let mw = PlanExecuteMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REPLANS));
+    async fn workflow_summarizes_after_completion() {
+        let mw = WorkflowMiddleware::new(None, None, &exec_config(DEFAULT_MAX_REWORKFLOWS));
         mw.before_model(exec_model_ctx(None)).await;
-        let plan = plan_with(vec![plan_step("s1", PlanStepStatus::Completed, &[])]);
+        let plan = plan_with(vec![plan_step("s1", WorkflowStepStatus::Completed, &[])]);
         mw.after_model(exec_after_model(&plan_block(&plan))).await;
 
         let mut decide = decide_ctx(0, false);
@@ -2545,34 +2546,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn plan_execute_resolves_runtime_session_store_from_ctx() {
+    async fn workflow_resolves_runtime_session_store_from_ctx() {
         let fake = Arc::new(FakeStore::default());
         let ctx = Ctx::root().expect("root");
         ctx.provide(RuntimeSessionStore(fake.clone() as Arc<dyn XySessionStore>))
             .expect("provide runtime store");
-        let mw = PlanExecuteMiddleware::new(None, Some(ctx), &exec_config(DEFAULT_MAX_REPLANS));
+        let mw = WorkflowMiddleware::new(None, Some(ctx), &exec_config(DEFAULT_MAX_REWORKFLOWS));
         mw.before_model(exec_model_ctx(Some("s1"))).await;
-        let plan = plan_with(vec![plan_step("s1", PlanStepStatus::Pending, &[])]);
+        let plan = plan_with(vec![plan_step("s1", WorkflowStepStatus::Pending, &[])]);
         mw.after_model(exec_after_model(&plan_block(&plan))).await;
         let entries = fake.entries.lock().unwrap().clone();
         assert_eq!(
-            latest_plan(&entries),
+            latest_workflow(&entries),
             Some(plan),
             "the middleware must write through the runtime store provided on the context"
         );
     }
 
     #[test]
-    fn plan_execute_identity_is_stable() {
-        let mw = PlanExecuteMiddleware::new(None, None, &PlanExecuteConfig::default());
-        assert_eq!(mw.id(), "plan-execute");
+    fn workflow_identity_is_stable() {
+        let mw = WorkflowMiddleware::new(None, None, &WorkflowConfig::default());
+        assert_eq!(mw.id(), "workflow");
         assert_eq!(mw.order(), 190);
-        assert_eq!(mw.stages(), PLAN_EXECUTE_STAGES);
+        assert_eq!(mw.stages(), WORKFLOW_STAGES);
     }
 
     #[test]
-    fn plan_execute_default_replans_are_bounded() {
-        assert_eq!(DEFAULT_MAX_REPLANS, 3);
-        assert!(DEFAULT_MAX_REPLANS < 32);
+    fn workflow_default_replans_are_bounded() {
+        assert_eq!(DEFAULT_MAX_REWORKFLOWS, 3);
+        assert!(DEFAULT_MAX_REWORKFLOWS < 32);
     }
 }

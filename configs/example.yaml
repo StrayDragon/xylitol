@@ -125,10 +125,10 @@ hooks:
 # loop_example:  # official example plugin: ReAct loop middleware participation
 #   enabled: false
 #   max_settles: 3            # optional: stop the run after N settles
-#   plan_state: false         # optional: register the plan-as-state middleware
-#   progress_reminder: false  # optional: remind the model to re-read todo
-#   progress_reminder_stale_after: 3  # tool calls without todo update before reminding
-#   plan_checkpoint: false    # optional: persist plan progress for resume
+#   todo_progress: false         # optional: register the todo-progress middleware
+#   todo_reminder: false  # optional: remind the model to re-read todo
+#   todo_reminder_stale_after: 3  # tool calls without todo update before reminding
+#   todo_checkpoint: false    # optional: persist todo progress for resume
 #   self_heal:                # after_tool: continue on deterministic failures
 #     enabled: false
 #     signatures: []          # empty: built-in test/build/lint/panic signatures
@@ -137,7 +137,7 @@ hooks:
 #     enabled: false
 #     rubric: []              # empty: built-in correctness/evidence/boundaries rubric
 #     max_rounds: 1           # critic calls stay core-scheduled and bounded
-#   plan_execute:             # plan DAG with dependencies and local replan
+#   workflow:             # workflow DAG with dependencies and local replan
 #     enabled: false
 #     max_replans: 3          # bounded; completed steps stay locked
 #   tool_exposure:            # before_model: narrow the tools the model can see

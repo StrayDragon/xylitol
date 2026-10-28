@@ -2,6 +2,9 @@
 depends_on: []
 title: Split workflow/todo vocabulary and retire the overloaded plan name
 needs_specs_change: true
+branch: sdd/c2964-refactor-split-workflow-todo-vocabulary
+base_branch: main
+base_sha: a00dc184a0525bdb7e79e1d2ab1883779f860b9d
 ---
 
 # Split workflow/todo vocabulary and retire the overloaded plan name

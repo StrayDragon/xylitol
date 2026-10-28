@@ -33,18 +33,18 @@ pub const DEFAULT_CRITIC_ROUNDS: u32 = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct PlanExecuteConfig {
+pub struct WorkflowConfig {
     pub enabled: bool,
     pub max_replans: u32,
 }
 
-pub const DEFAULT_MAX_REPLANS: u32 = 3;
+pub const DEFAULT_MAX_REWORKFLOWS: u32 = 3;
 
-impl Default for PlanExecuteConfig {
+impl Default for WorkflowConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            max_replans: DEFAULT_MAX_REPLANS,
+            max_replans: DEFAULT_MAX_REWORKFLOWS,
         }
     }
 }
@@ -75,17 +75,17 @@ pub struct LoopExampleConfig {
     pub enabled: bool,
     pub max_settles: Option<u32>,
     pub deny_bash_patterns: Vec<String>,
-    pub plan_state: bool,
-    pub progress_reminder: bool,
-    pub progress_reminder_stale_after: u32,
-    pub plan_checkpoint: bool,
+    pub todo_progress: bool,
+    pub todo_reminder: bool,
+    pub todo_reminder_stale_after: u32,
+    pub todo_checkpoint: bool,
     pub self_heal: SelfHealConfig,
     pub generator_critic: GeneratorCriticConfig,
-    pub plan_execute: PlanExecuteConfig,
+    pub workflow: WorkflowConfig,
     pub tool_exposure: ToolExposureConfig,
 }
 
-pub const DEFAULT_PROGRESS_STALE_AFTER: u32 = 3;
+pub const DEFAULT_TODO_REMINDER_STALE_AFTER: u32 = 3;
 
 impl Default for LoopExampleConfig {
     fn default() -> Self {
@@ -93,13 +93,13 @@ impl Default for LoopExampleConfig {
             enabled: false,
             max_settles: None,
             deny_bash_patterns: Vec::new(),
-            plan_state: false,
-            progress_reminder: false,
-            progress_reminder_stale_after: DEFAULT_PROGRESS_STALE_AFTER,
-            plan_checkpoint: false,
+            todo_progress: false,
+            todo_reminder: false,
+            todo_reminder_stale_after: DEFAULT_TODO_REMINDER_STALE_AFTER,
+            todo_checkpoint: false,
             self_heal: SelfHealConfig::default(),
             generator_critic: GeneratorCriticConfig::default(),
-            plan_execute: PlanExecuteConfig::default(),
+            workflow: WorkflowConfig::default(),
             tool_exposure: ToolExposureConfig::default(),
         }
     }

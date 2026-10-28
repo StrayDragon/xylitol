@@ -4,10 +4,11 @@ use serde_json::Value;
 use super::entries::{CustomEntry, EntryBase, SessionEntry};
 use super::todo::TodoStatus;
 
-pub const CUSTOM_TYPE_PLAN_CHECKPOINT: &str = "plan_checkpoint";
+pub const CUSTOM_TYPE_TODO_CHECKPOINT: &str = "todo_checkpoint";
+const LEGACY_CUSTOM_TYPE_PLAN_CHECKPOINT: &str = "plan_checkpoint";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlanCheckpointStep {
+pub struct TodoCheckpointStep {
     pub id: String,
     pub content: String,
     pub status: TodoStatus,
@@ -18,29 +19,29 @@ pub struct PlanCheckpointStep {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlanResumeCursor {
+pub struct TodoResumeCursor {
     pub step_id: String,
     #[serde(default)]
     pub attempt: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlanCheckpoint {
+pub struct TodoCheckpoint {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub goal: Option<String>,
     #[serde(default)]
-    pub steps: Vec<PlanCheckpointStep>,
+    pub steps: Vec<TodoCheckpointStep>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_verified_artifact: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_failure: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub resume_cursor: Option<PlanResumeCursor>,
+    pub resume_cursor: Option<TodoResumeCursor>,
     #[serde(default)]
     pub updated_at: u64,
 }
 
-impl PlanCheckpoint {
+impl TodoCheckpoint {
     pub fn unfinished_count(&self) -> usize {
         self.steps
             .iter()
@@ -48,7 +49,7 @@ impl PlanCheckpoint {
             .count()
     }
 
-    pub fn next_step(&self) -> Option<&PlanCheckpointStep> {
+    pub fn next_step(&self) -> Option<&TodoCheckpointStep> {
         self.steps
             .iter()
             .find(|step| step.status != TodoStatus::Completed)
@@ -74,16 +75,19 @@ impl PlanCheckpoint {
                 parent_id: None,
                 timestamp: 0,
             },
-            custom_type: CUSTOM_TYPE_PLAN_CHECKPOINT.into(),
+            custom_type: CUSTOM_TYPE_TODO_CHECKPOINT.into(),
             data: self.to_data_value(),
         })
     }
 }
 
-pub fn latest_plan_checkpoint(entries: &[SessionEntry]) -> Option<PlanCheckpoint> {
+pub fn latest_todo_checkpoint(entries: &[SessionEntry]) -> Option<TodoCheckpoint> {
     entries.iter().rev().find_map(|entry| match entry {
-        SessionEntry::Custom(custom) if custom.custom_type == CUSTOM_TYPE_PLAN_CHECKPOINT => {
-            PlanCheckpoint::from_data_value(&custom.data)
+        SessionEntry::Custom(custom)
+            if custom.custom_type == CUSTOM_TYPE_TODO_CHECKPOINT
+                || custom.custom_type == LEGACY_CUSTOM_TYPE_PLAN_CHECKPOINT =>
+        {
+            TodoCheckpoint::from_data_value(&custom.data)
         }
         _ => None,
     })
@@ -95,13 +99,13 @@ mod tests {
     use crate::session::fixture_message_json;
     use crate::session::{EntryBase, MessageEntry};
 
-    fn checkpoint(steps: Vec<PlanCheckpointStep>) -> PlanCheckpoint {
-        PlanCheckpoint {
+    fn checkpoint(steps: Vec<TodoCheckpointStep>) -> TodoCheckpoint {
+        TodoCheckpoint {
             goal: Some("ship it".into()),
             steps,
             last_verified_artifact: Some("bash:call-1".into()),
             last_failure: Some("bash: tests failed".into()),
-            resume_cursor: Some(PlanResumeCursor {
+            resume_cursor: Some(TodoResumeCursor {
                 step_id: "s2".into(),
                 attempt: 2,
             }),
@@ -109,8 +113,8 @@ mod tests {
         }
     }
 
-    fn step(id: &str, status: TodoStatus) -> PlanCheckpointStep {
-        PlanCheckpointStep {
+    fn step(id: &str, status: TodoStatus) -> TodoCheckpointStep {
+        TodoCheckpointStep {
             id: id.into(),
             content: format!("step {id}"),
             status,
@@ -139,8 +143,27 @@ mod tests {
         ]);
         let entry = original.to_custom_entry_shell();
         let entries = vec![entry];
-        let restored = latest_plan_checkpoint(&entries).expect("checkpoint");
+        let restored = latest_todo_checkpoint(&entries).expect("checkpoint");
         assert_eq!(restored, original);
+    }
+
+    #[test]
+    fn legacy_plan_checkpoint_entry_is_read_as_todo_checkpoint() {
+        let mut entry = checkpoint(vec![step("s1", TodoStatus::Pending)]).to_custom_entry_shell();
+        if let SessionEntry::Custom(custom) = &mut entry {
+            custom.custom_type = "plan_checkpoint".into();
+        }
+        let restored = latest_todo_checkpoint(&[entry]).expect("legacy checkpoint");
+        assert_eq!(restored.goal.as_deref(), Some("ship it"));
+    }
+
+    #[test]
+    fn new_checkpoint_writes_new_custom_type() {
+        let entry = checkpoint(vec![step("s1", TodoStatus::Pending)]).to_custom_entry_shell();
+        let SessionEntry::Custom(custom) = entry else {
+            panic!("checkpoint must persist as a custom entry");
+        };
+        assert_eq!(custom.custom_type, "todo_checkpoint");
     }
 
     #[test]
@@ -153,7 +176,7 @@ mod tests {
             message("m1"),
             newer.to_custom_entry_shell(),
         ];
-        let restored = latest_plan_checkpoint(&entries).expect("checkpoint");
+        let restored = latest_todo_checkpoint(&entries).expect("checkpoint");
         assert_eq!(restored.updated_at, newer.updated_at);
         assert_eq!(restored.unfinished_count(), 0);
     }
@@ -167,10 +190,10 @@ mod tests {
                 parent_id: None,
                 timestamp: 0,
             },
-            custom_type: CUSTOM_TYPE_PLAN_CHECKPOINT.into(),
+            custom_type: CUSTOM_TYPE_TODO_CHECKPOINT.into(),
             data: serde_json::json!({ "steps": "not-an-array" }),
         });
-        assert!(latest_plan_checkpoint(&[entry]).is_none());
+        assert!(latest_todo_checkpoint(&[entry]).is_none());
     }
 
     #[test]

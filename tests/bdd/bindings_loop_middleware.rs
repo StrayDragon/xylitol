@@ -71,15 +71,15 @@ async fn test_lm_example_unload(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "计划模式启用后注册计划中间件"
+    name = "todo 进度启用后注册 todo 进度中间件"
 )]
-async fn test_lm_plan_state_registers(agent: AgentState, ws: Workspace) {}
+async fn test_lm_todo_progress_registers(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "进度提醒启用后注册提醒中间件"
+    name = "todo 提醒启用后注册 todo 提醒中间件"
 )]
-async fn test_lm_progress_reminder_registers(agent: AgentState, ws: Workspace) {}
+async fn test_lm_todo_reminder_registers(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
@@ -89,9 +89,9 @@ async fn test_lm_tool_exposure_registers(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "计划 checkpoint 启用后注册 checkpoint 中间件"
+    name = "todo checkpoint 启用后注册 todo checkpoint 中间件"
 )]
-async fn test_lm_plan_checkpoint_registers(agent: AgentState, ws: Workspace) {}
+async fn test_lm_todo_checkpoint_registers(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
@@ -107,9 +107,9 @@ async fn test_lm_generator_critic_registers(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
-    name = "规划执行启用后注册规划中间件"
+    name = "workflow 启用后注册 workflow 中间件"
 )]
-async fn test_lm_plan_execute_registers(agent: AgentState, ws: Workspace) {}
+async fn test_lm_workflow_registers(agent: AgentState, ws: Workspace) {}
 
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
