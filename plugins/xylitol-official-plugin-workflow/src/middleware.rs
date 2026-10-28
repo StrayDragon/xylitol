@@ -359,6 +359,13 @@ impl LoopMiddleware for WorkflowMiddleware {
     async fn decide_continue(&self, ctx: DecideContinueCtx) -> LoopStep<DecideContinueCtx> {
         let mut state = self.lock_state();
         let Some(plan) = state.plan.clone() else {
+            if ctx
+                .assistant
+                .as_ref()
+                .is_some_and(|assistant| !assistant_has_tool_calls(assistant))
+            {
+                return LoopStep::stopped(ctx);
+            }
             return LoopStep::continued(ctx);
         };
         if let Some(blocked) = blocked_workflow_step(&plan, &state.approved) {
@@ -434,6 +441,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use xylitol_plugin_sdk::LoopControl;
     use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowStep, WorkflowStepStatus};
 
     fn model_ctx(session_id: Option<&str>) -> BeforeModelCtx {
@@ -547,6 +555,64 @@ mod tests {
                 .any(|message| message.text().contains("<workflow_error>")),
             "workflow error must be injected once"
         );
+    }
+
+    fn assistant_with(parts: Vec<AgentPart>) -> AgentMessage {
+        AgentMessage::Llm(XyLlmMessage::AssistantMessage {
+            content: parts,
+            stop_reason: None,
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        })
+    }
+
+    fn decide_ctx_with(assistant: Option<AgentMessage>) -> DecideContinueCtx {
+        DecideContinueCtx {
+            turn_index: 0,
+            settle_count: 0,
+            has_new_user_messages: false,
+            assistant,
+            history_len: 2,
+            compact: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn no_workflow_stops_after_final_answer() {
+        let mw = workflow_middleware(None, None, &WorkflowConfig::default());
+        let control = mw
+            .decide_continue(decide_ctx_with(Some(assistant_with(vec![AgentPart::text(
+                "done",
+            )]))))
+            .await
+            .control;
+        assert_eq!(
+            control,
+            LoopControl::Stop,
+            "a final answer without a workflow must stop instead of forcing more turns"
+        );
+    }
+
+    #[tokio::test]
+    async fn no_workflow_continues_while_tools_run() {
+        let mw = workflow_middleware(None, None, &WorkflowConfig::default());
+        let control = mw
+            .decide_continue(decide_ctx_with(Some(assistant_with(vec![
+                AgentPart::ToolCall {
+                    id: "call-1".into(),
+                    name: "read".into(),
+                    arguments: serde_json::json!({ "path": "src/lib.rs" }),
+                },
+            ]))))
+            .await
+            .control;
+        assert_eq!(control, LoopControl::Continue);
     }
 
     #[test]
