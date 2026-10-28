@@ -247,3 +247,88 @@ async fn resync_required_frame_resubscribes_from_zero() {
     assert_eq!(driver.last_seq.load(Ordering::SeqCst), 0);
     assert!(driver.resync_needed.load(Ordering::SeqCst));
 }
+
+#[derive(Clone)]
+struct ExportHost {
+    result: Value,
+}
+
+#[async_trait]
+impl HostClient for ExportHost {
+    async fn unary(&self, _method: &str, _payload: Value) -> Result<RpcResult, HostClientError> {
+        Ok(RpcResult::ok_value(self.result.clone()))
+    }
+    async fn respond(&self, _call_id: &str, _payload: Value) -> Result<(), HostClientError> {
+        Ok(())
+    }
+    async fn mux(&self) -> Result<MuxStream, HostClientError> {
+        Err(HostClientError::WireFormatMismatch {
+            formats: vec!["legacy-binary".into()],
+            expected: WIRE_FORMAT_JSONRPC,
+        })
+    }
+}
+
+#[tokio::test]
+async fn export_html_writes_inline_content() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("export.html");
+    let host = ExportHost {
+        result: json!({ "content": "<html>hi</html>" }),
+    };
+    let mut driver = XyRemoteDriver::with_host(host, "s-test");
+    let outcome = driver
+        .exec_export_html(Some(path.to_string_lossy().into_owned()))
+        .await
+        .expect("export");
+    match outcome {
+        DispatchOutcome::ExportedPath(written) => {
+            assert_eq!(written, path.to_string_lossy().into_owned())
+        }
+        other => panic!("unexpected export outcome: {other:?}"),
+    }
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("written"),
+        "<html>hi</html>"
+    );
+}
+
+#[tokio::test]
+async fn export_jsonl_falls_back_to_host_path() {
+    let host = ExportHost {
+        result: json!({ "path": "/tmp/server-export.jsonl" }),
+    };
+    let mut driver = XyRemoteDriver::with_host(host, "s-test");
+    let outcome = driver
+        .exec_export_jsonl(Some("client.jsonl".into()))
+        .await
+        .expect("export");
+    match outcome {
+        DispatchOutcome::ExportedPath(written) => assert_eq!(written, "/tmp/server-export.jsonl"),
+        other => panic!("unexpected export outcome: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn export_jsonl_writes_inline_content() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("export.jsonl");
+    let host = ExportHost {
+        result: json!({ "content": "{\"type\":\"message\"}\n" }),
+    };
+    let mut driver = XyRemoteDriver::with_host(host, "s-test");
+    let outcome = driver
+        .exec_export_jsonl(Some(path.to_string_lossy().into_owned()))
+        .await
+        .expect("export");
+    match outcome {
+        DispatchOutcome::ExportedPath(written) => {
+            assert_eq!(written, path.to_string_lossy().into_owned())
+        }
+        other => panic!("unexpected export outcome: {other:?}"),
+    }
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("written"),
+        "{\"type\":\"message\"}\n"
+    );
+}

@@ -196,6 +196,30 @@ pub async fn bind_serve(
 mod tests {
     use super::*;
 
+    #[test]
+    fn bootstrap_errors_map_to_actionable_messages() {
+        let cases = [
+            (BootstrapError::NoModelsAvailable, "no models available"),
+            (
+                BootstrapError::ConfigLoadFailed("bad yaml".into()),
+                "config load failed: bad yaml",
+            ),
+            (BootstrapError::ConfigLoadedZeroModels, "loaded 0 models"),
+            (
+                BootstrapError::BuildFailed("build broke".into()),
+                "build broke",
+            ),
+            (
+                BootstrapError::KernelFailed("kernel broke".into()),
+                "kernel boot failed: kernel broke",
+            ),
+        ];
+        for (err, needle) in cases {
+            let mapped = map_bootstrap_error(err).to_string();
+            assert!(mapped.contains(needle), "{mapped}");
+        }
+    }
+
     #[tokio::test]
     async fn eaddrinuse_fails_without_port_plus_one() {
         let host = crate::occupancy::host_state_for_test().expect("host");

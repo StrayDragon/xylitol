@@ -2,6 +2,9 @@
 depends_on: []
 title: 补齐 plan/todo 中间件与压缩状态保留的测试覆盖
 needs_specs_change: false
+branch: sdd/c2982-add-loop-plugin-test-coverage
+base_branch: main
+base_sha: 4e5d2d2f2fbe3554793329cdb022d1aa42fa807f
 ---
 
 # 补齐 plan/todo 中间件与压缩状态保留的测试覆盖

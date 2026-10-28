@@ -478,6 +478,20 @@ mod tests {
     }
 
     #[test]
+    fn same_workflow_structure_ignores_status_and_outputs() {
+        let mut left = plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]);
+        let mut right = left.clone();
+        right.steps[0].status = WorkflowStepStatus::Completed;
+        right.steps[0].output_ref = Some("artifact".into());
+        assert!(same_workflow_structure(Some(&left), Some(&right)));
+
+        left.steps[0].description = "changed".into();
+        assert!(!same_workflow_structure(Some(&left), Some(&right)));
+        assert!(!same_workflow_structure(None, Some(&right)));
+        assert!(same_workflow_structure(None, None));
+    }
+
+    #[test]
     fn plan_round_trips_and_latest_wins() {
         let first = plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]);
         let second = plan(vec![step("s1", WorkflowStepStatus::Completed, &[])]);

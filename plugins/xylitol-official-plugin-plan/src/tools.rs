@@ -1138,6 +1138,367 @@ mod tests {
         assert!(scopes.contains(&PlanScope::Global));
     }
 
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::sync::mpsc;
+    use xylitol_plugin_sdk::lifecycle::XyEvent;
+    use xylitol_plugin_sdk::session::{TodoItem, TodoItemPatch, TodoList};
+
+    struct FakeAsk {
+        answer: String,
+        calls: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl AskUserGateway for FakeAsk {
+        async fn prompt(&self, _: AskArgs) -> Result<String, XyToolError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(self.answer.clone())
+        }
+    }
+
+    #[derive(Default)]
+    struct FakeTodo {
+        rewrites: Mutex<Vec<Vec<TodoItemDraft>>>,
+    }
+
+    #[async_trait]
+    impl AgentTodoGateway for FakeTodo {
+        async fn list(&self) -> Result<TodoList, XyToolError> {
+            Ok(TodoList::default())
+        }
+        async fn rewrite(&self, items: Vec<TodoItemDraft>) -> Result<TodoList, XyToolError> {
+            self.rewrites.lock().unwrap().push(items.clone());
+            Ok(TodoList::new(
+                items
+                    .into_iter()
+                    .map(|draft| TodoItem {
+                        id: draft.id.unwrap_or_default(),
+                        content: draft.content,
+                        status: draft.status,
+                    })
+                    .collect(),
+            ))
+        }
+        async fn update(&self, _: Vec<TodoItemPatch>) -> Result<TodoList, XyToolError> {
+            Ok(TodoList::default())
+        }
+    }
+
+    fn tool_ctx() -> (XyToolCtx, mpsc::UnboundedReceiver<XyEvent>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (XyToolCtx::new("call-1").with_state_event_tx(tx), rx)
+    }
+
+    fn drain_events(rx: &mut mpsc::UnboundedReceiver<XyEvent>) -> Vec<XyEvent> {
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+        }
+        events
+    }
+
+    #[tokio::test]
+    async fn plan_submit_approves_and_hands_off_to_todo() {
+        let f = fixture(true).await;
+        f.gateway
+            .write(doc("p1", PlanScope::Session, 10))
+            .await
+            .expect("seed plan");
+        let ask = Arc::new(FakeAsk {
+            answer: r#"{"plan_mode":"approve"}"#.into(),
+            calls: AtomicUsize::new(0),
+        });
+        let todo = Arc::new(FakeTodo::default());
+        let tool = PlanSubmitTool::new(f.gateway.clone(), Some(todo.clone()), Some(ask.clone()));
+        let (ctx, mut rx) = tool_ctx();
+        let out = tool
+            .execute_typed(
+                &ctx,
+                PlanSubmitArgs {
+                    plan_id: "p1".into(),
+                    scope: Some(PlanScope::Session),
+                },
+            )
+            .await
+            .expect("submit");
+        let value: Value = serde_json::from_str(&out).expect("json");
+        assert_eq!(value["approved"], true);
+        assert_eq!(value["todo_seeded"], true);
+        assert_eq!(ask.calls.load(Ordering::SeqCst), 1);
+        let stored = f
+            .gateway
+            .read(Some(PlanScope::Session), Some("p1"))
+            .await
+            .expect("read")
+            .expect("plan");
+        assert_eq!(stored.status, PlanDocStatus::Approved);
+        assert_eq!(
+            f.gateway.mode().await.expect("mode").mode,
+            PlanModeKind::Execute
+        );
+        let rewrites = todo.rewrites.lock().unwrap();
+        assert_eq!(rewrites.len(), 1);
+        assert_eq!(rewrites[0][0].id.as_deref(), Some("s1"));
+        let events = drain_events(&mut rx);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, XyEvent::PlanDocUpdated { .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, XyEvent::PlanModeChanged { .. }))
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_submit_rejection_returns_to_draft() {
+        let f = fixture(true).await;
+        f.gateway
+            .write(doc("p1", PlanScope::Session, 10))
+            .await
+            .expect("seed plan");
+        let ask = Arc::new(FakeAsk {
+            answer: r#"{"plan_mode":"revise"}"#.into(),
+            calls: AtomicUsize::new(0),
+        });
+        let todo = Arc::new(FakeTodo::default());
+        let tool = PlanSubmitTool::new(f.gateway.clone(), Some(todo.clone()), Some(ask));
+        let (ctx, mut rx) = tool_ctx();
+        let out = tool
+            .execute_typed(
+                &ctx,
+                PlanSubmitArgs {
+                    plan_id: "p1".into(),
+                    scope: Some(PlanScope::Session),
+                },
+            )
+            .await
+            .expect("submit");
+        let value: Value = serde_json::from_str(&out).expect("json");
+        assert_eq!(value["approved"], false);
+        let stored = f
+            .gateway
+            .read(Some(PlanScope::Session), Some("p1"))
+            .await
+            .expect("read")
+            .expect("plan");
+        assert_eq!(stored.status, PlanDocStatus::Draft);
+        assert_eq!(
+            f.gateway.mode().await.expect("mode").mode,
+            PlanModeKind::Plan
+        );
+        assert!(todo.rewrites.lock().unwrap().is_empty());
+        let events = drain_events(&mut rx);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, XyEvent::PlanDocUpdated { .. }))
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, XyEvent::PlanModeChanged { .. })),
+            "rejection must not publish a mode change"
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_submit_errors_without_plan_or_ask() {
+        let f = fixture(true).await;
+        let tool = PlanSubmitTool::new(f.gateway.clone(), None, None);
+        let (ctx, _rx) = tool_ctx();
+        let err = tool
+            .execute_typed(
+                &ctx,
+                PlanSubmitArgs {
+                    plan_id: "missing".into(),
+                    scope: Some(PlanScope::Session),
+                },
+            )
+            .await
+            .expect_err("unknown plan");
+        assert!(matches!(err, XyToolError::ExecutionFailed(_)), "{err:?}");
+
+        f.gateway
+            .write(doc("p1", PlanScope::Session, 10))
+            .await
+            .expect("seed plan");
+        let ask = Arc::new(FakeAsk {
+            answer: r#"{"plan_mode":"approve"}"#.into(),
+            calls: AtomicUsize::new(0),
+        });
+        let tool = PlanSubmitTool::new(f.gateway.clone(), None, None);
+        let err = tool
+            .execute_typed(
+                &ctx,
+                PlanSubmitArgs {
+                    plan_id: "p1".into(),
+                    scope: Some(PlanScope::Session),
+                },
+            )
+            .await
+            .expect_err("no ask gateway");
+        assert!(matches!(err, XyToolError::ExecutionFailed(_)), "{err:?}");
+        drop(ask);
+    }
+
+    #[tokio::test]
+    async fn plan_submit_rejects_unknown_plan_id() {
+        let f = fixture(true).await;
+        let ask = Arc::new(FakeAsk {
+            answer: r#"{"plan_mode":"approve"}"#.into(),
+            calls: AtomicUsize::new(0),
+        });
+        let tool = PlanSubmitTool::new(f.gateway.clone(), None, Some(ask));
+        let (ctx, _rx) = tool_ctx();
+        let err = tool
+            .execute_typed(
+                &ctx,
+                PlanSubmitArgs {
+                    plan_id: "missing".into(),
+                    scope: Some(PlanScope::Session),
+                },
+            )
+            .await
+            .expect_err("unknown plan");
+        assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn plan_mode_switches_to_plan_with_ask() {
+        let f = fixture(true).await;
+        let ask = Arc::new(FakeAsk {
+            answer: r#"{"plan_mode":"approve"}"#.into(),
+            calls: AtomicUsize::new(0),
+        });
+        let tool = PlanModeTool::new(f.gateway.clone(), Some(ask.clone()));
+        let (ctx, mut rx) = tool_ctx();
+        let out = tool
+            .execute_typed(
+                &ctx,
+                PlanModeArgs {
+                    mode: "plan".into(),
+                    plan_id: None,
+                    reason: Some("research".into()),
+                },
+            )
+            .await
+            .expect("switch");
+        let value: Value = serde_json::from_str(&out).expect("json");
+        assert_eq!(value["switched"], true);
+        assert_eq!(value["mode"], "plan");
+        assert_eq!(ask.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            f.gateway.mode().await.expect("mode").mode,
+            PlanModeKind::Plan
+        );
+        let events = drain_events(&mut rx);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            XyEvent::PlanModeChanged { mode, .. } if *mode == PlanModeKind::Plan
+        )));
+    }
+
+    #[tokio::test]
+    async fn plan_mode_declines_switch() {
+        let f = fixture(true).await;
+        let ask = Arc::new(FakeAsk {
+            answer: r#"{"plan_mode":"revise"}"#.into(),
+            calls: AtomicUsize::new(0),
+        });
+        let tool = PlanModeTool::new(f.gateway.clone(), Some(ask));
+        let (ctx, _rx) = tool_ctx();
+        let out = tool
+            .execute_typed(
+                &ctx,
+                PlanModeArgs {
+                    mode: "plan".into(),
+                    plan_id: None,
+                    reason: None,
+                },
+            )
+            .await
+            .expect("switch");
+        let value: Value = serde_json::from_str(&out).expect("json");
+        assert_eq!(value["switched"], false);
+        assert_eq!(
+            f.gateway.mode().await.expect("mode").mode,
+            PlanModeKind::Execute
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_mode_skips_ask_for_approved_plan() {
+        let f = fixture(true).await;
+        let mut approved = doc("p1", PlanScope::Session, 10);
+        approved.status = PlanDocStatus::Approved;
+        f.gateway.write(approved).await.expect("seed approved");
+        let tool = PlanModeTool::new(f.gateway.clone(), None);
+        let (ctx, _rx) = tool_ctx();
+        let out = tool
+            .execute_typed(
+                &ctx,
+                PlanModeArgs {
+                    mode: "execute".into(),
+                    plan_id: Some("p1".into()),
+                    reason: None,
+                },
+            )
+            .await
+            .expect("switch");
+        let value: Value = serde_json::from_str(&out).expect("json");
+        assert_eq!(value["switched"], true);
+        assert_eq!(
+            f.gateway.mode().await.expect("mode").mode,
+            PlanModeKind::Execute
+        );
+    }
+
+    #[tokio::test]
+    async fn plan_mode_asks_for_unapproved_execute_and_rejects_unknown_mode() {
+        let f = fixture(true).await;
+        f.gateway
+            .write(doc("p1", PlanScope::Session, 10))
+            .await
+            .expect("seed draft");
+        let ask = Arc::new(FakeAsk {
+            answer: r#"{"plan_mode":"approve"}"#.into(),
+            calls: AtomicUsize::new(0),
+        });
+        let tool = PlanModeTool::new(f.gateway.clone(), Some(ask.clone()));
+        let (ctx, _rx) = tool_ctx();
+        let out = tool
+            .execute_typed(
+                &ctx,
+                PlanModeArgs {
+                    mode: "execute".into(),
+                    plan_id: Some("p1".into()),
+                    reason: None,
+                },
+            )
+            .await
+            .expect("switch");
+        let value: Value = serde_json::from_str(&out).expect("json");
+        assert_eq!(value["switched"], true);
+        assert_eq!(ask.calls.load(Ordering::SeqCst), 1);
+
+        let err = tool
+            .execute_typed(
+                &ctx,
+                PlanModeArgs {
+                    mode: "bogus".into(),
+                    plan_id: None,
+                    reason: None,
+                },
+            )
+            .await
+            .expect_err("unknown mode");
+        assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+    }
+
     #[tokio::test]
     async fn atomic_write_leaves_no_partial_file() {
         let f = fixture(true).await;

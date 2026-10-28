@@ -559,3 +559,214 @@ async fn ensure_session_prepare_after_compact(
         log::warn!("post-compact session_prepare persist failed: {e}");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+
+    use super::*;
+    use xylitol_plugin_sdk::session::{
+        ForkPosition, PlanDoc, PlanDocStatus, PlanDocStep, PlanMode, PlanRef, PlanScope,
+        SessionContext, SessionEntry, TodoCheckpoint, TodoCheckpointStep, TodoStatus, Workflow,
+        WorkflowStep,
+    };
+    use xylitol_plugin_sdk::{XySessionError, XySessionStoreError};
+
+    #[derive(Default)]
+    struct MemStore {
+        branch: Mutex<Vec<SessionEntry>>,
+        appended: Mutex<Vec<SessionEntry>>,
+    }
+
+    #[async_trait]
+    impl XySessionStore for MemStore {
+        async fn exists(&self, _: &str) -> bool {
+            true
+        }
+        async fn load_entries(&self, _: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            Ok(self.branch.lock().unwrap().clone())
+        }
+        async fn append_session_entry(
+            &self,
+            _: &str,
+            entry: &SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            self.appended.lock().unwrap().push(entry.clone());
+            Ok(())
+        }
+        async fn build_session_context(
+            &self,
+            _: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
+            Err(XySessionStoreError::unsupported("build_session_context"))
+        }
+        async fn create(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            Ok(())
+        }
+        async fn fork(
+            &self,
+            _: &str,
+            _: &str,
+            at_entry_id: &str,
+            _: ForkPosition,
+        ) -> Result<(), XySessionError> {
+            Err(XySessionError::EntryNotFound {
+                entry_id: at_entry_id.into(),
+            })
+        }
+        fn set_leaf(&self, _: &str, _: Option<&str>) {}
+        fn leaf_id(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    fn doc(plan_id: &str, updated_at: u64) -> PlanDoc {
+        PlanDoc {
+            plan_id: plan_id.into(),
+            title: format!("Plan {plan_id}"),
+            status: PlanDocStatus::Draft,
+            scope: PlanScope::Session,
+            steps: vec![PlanDocStep {
+                id: "s1".into(),
+                content: "do it".into(),
+                depends_on: Vec::new(),
+                verification: None,
+                status: TodoStatus::Pending,
+            }],
+            created_at: 1,
+            updated_at,
+        }
+    }
+
+    fn workflow() -> Workflow {
+        Workflow {
+            goal: "ship".into(),
+            steps: vec![WorkflowStep {
+                id: "s1".into(),
+                description: "do it".into(),
+                depends_on: Vec::new(),
+                inputs: Vec::new(),
+                outputs: Vec::new(),
+                tools: Vec::new(),
+                risk: Default::default(),
+                verification: None,
+                rollback: None,
+                requires_human: false,
+                status: Default::default(),
+                output_ref: None,
+                sub_workflow: None,
+            }],
+            resume_cursor: None,
+            updated_at: 1,
+        }
+    }
+
+    fn checkpoint() -> TodoCheckpoint {
+        TodoCheckpoint {
+            goal: Some("ship".into()),
+            steps: vec![TodoCheckpointStep {
+                id: "s1".into(),
+                content: "do it".into(),
+                status: TodoStatus::InProgress,
+                verification: None,
+                output_ref: None,
+            }],
+            last_verified_artifact: None,
+            last_failure: Some("read: missing".into()),
+            resume_cursor: None,
+            updated_at: 1,
+        }
+    }
+
+    fn custom_types(entries: &[SessionEntry]) -> Vec<String> {
+        entries
+            .iter()
+            .filter_map(|entry| match entry {
+                SessionEntry::Custom(custom) => Some(custom.custom_type.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn compact_restores_every_state_custom_type() {
+        let before = vec![
+            PlanMode::plan(Some("p1".into())).to_custom_entry_shell(),
+            PlanRef {
+                scope: PlanScope::Session,
+                plan_id: "p1".into(),
+                path: None,
+            }
+            .to_custom_entry_shell(),
+            workflow().to_custom_entry_shell(),
+            checkpoint().to_custom_entry_shell(),
+            doc("p1", 1).to_custom_entry_shell(),
+        ];
+        let store = Arc::new(MemStore::default());
+        ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
+
+        let appended = store.appended.lock().unwrap().clone();
+        let types = custom_types(&appended);
+        for expected in [
+            xylitol_plugin_sdk::session::CUSTOM_TYPE_PLAN_MODE,
+            xylitol_plugin_sdk::session::CUSTOM_TYPE_PLAN_REF,
+            xylitol_plugin_sdk::session::CUSTOM_TYPE_WORKFLOW,
+            xylitol_plugin_sdk::session::CUSTOM_TYPE_TODO_CHECKPOINT,
+            xylitol_plugin_sdk::session::CUSTOM_TYPE_PLAN_DOC,
+        ] {
+            assert!(types.contains(&expected.to_string()), "missing {expected}");
+        }
+        assert_eq!(appended.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn compact_skips_state_already_in_the_context() {
+        let plan_mode = PlanMode::plan(Some("p1".into())).to_custom_entry_shell();
+        let workflow = workflow().to_custom_entry_shell();
+        let before = vec![plan_mode.clone(), workflow.clone()];
+        let store = Arc::new(MemStore::default());
+        store.branch.lock().unwrap().extend([plan_mode, workflow]);
+        ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
+        assert!(
+            store.appended.lock().unwrap().is_empty(),
+            "state already present in the cut must not be duplicated"
+        );
+    }
+
+    #[tokio::test]
+    async fn compact_keeps_only_the_latest_plan_doc_per_id() {
+        let before = vec![
+            doc("p1", 1).to_custom_entry_shell(),
+            doc("p1", 2).to_custom_entry_shell(),
+            doc("p2", 3).to_custom_entry_shell(),
+        ];
+        let store = Arc::new(MemStore::default());
+        ensure_state_entries_after_compact(store.as_ref(), "s1", &before).await;
+
+        let appended = store.appended.lock().unwrap().clone();
+        let docs: Vec<_> = appended
+            .iter()
+            .filter_map(|entry| match entry {
+                SessionEntry::Custom(custom)
+                    if custom.custom_type == xylitol_plugin_sdk::session::CUSTOM_TYPE_PLAN_DOC =>
+                {
+                    Some(custom.data.clone())
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(docs.len(), 2, "one snapshot per plan_id");
+        let p1 = docs
+            .iter()
+            .find(|data| data["plan_id"] == "p1")
+            .expect("p1");
+        assert_eq!(p1["updated_at"], 2, "the latest p1 must win");
+    }
+}
