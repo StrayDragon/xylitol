@@ -587,9 +587,9 @@ mod tests {
     async fn no_workflow_stops_after_final_answer() {
         let mw = workflow_middleware(None, None, &WorkflowConfig::default());
         let control = mw
-            .decide_continue(decide_ctx_with(Some(assistant_with(vec![AgentPart::text(
-                "done",
-            )]))))
+            .decide_continue(decide_ctx_with(Some(assistant_with(vec![
+                AgentPart::text("done"),
+            ]))))
             .await
             .control;
         assert_eq!(

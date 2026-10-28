@@ -2,6 +2,9 @@
 depends_on: []
 title: Preserve plan and workflow state across compaction and session resume
 needs_specs_change: true
+branch: sdd/c2975-fix-preserve-state-across-compaction
+base_branch: main
+base_sha: 811a0d599bec7ed6dd4796e712aca0a0feb298df
 ---
 
 # Preserve plan and workflow state across compaction and session resume

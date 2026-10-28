@@ -42,3 +42,7 @@
       那么 编辑器插入落盘路径文本且路径经 Driver 暂存
       当 以主机泵注入含连接态的资源快照后提交 "/mcp"
       那么 MCP 面板槽打开且列出连接态且未因开面板 abort agent
+
+  @req:r2972
+  规则: 恢复会话初始化模式条
+    切换或恢复会话后，TUI 须按该会话最新 plan_mode 初始化 ModeStrip：plan 显示、execute 清除；不得等到下一次 `/plan` 才显示。host 须在 switch_session / new_session 成功后发布 PlanModeChanged。由 host 单测覆盖。

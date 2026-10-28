@@ -1,7 +1,10 @@
+use crate::bridge::ModeStripState;
 use crate::debug_fixtures::FixedZoneOp;
 use crate::driver::{ModelInfo, XyDriver};
 use crate::layout::{WidthTier, width_tier};
-use xylitol_plugin_sdk::session::{SessionEntry, SessionTreeTravel};
+use xylitol_plugin_sdk::session::{
+    PlanModeKind, SessionEntry, SessionTreeTravel, latest_plan_mode,
+};
 use xylitol_tui::{ChoiceMode, ChoiceOption, ChoiceQuestion, Terminal, TreeNode};
 
 use super::super::bridge::session_tree::{rebuild_scrollback_from_travel, travel_history_note};
@@ -521,6 +524,15 @@ impl<T: Terminal> HostSession<T> {
             editor_text: None,
         };
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
+        let mode = latest_plan_mode(&entries);
+        self.ui_model.mode_strip = match mode.mode {
+            PlanModeKind::Plan => Some(ModeStripState {
+                label: "plan".into(),
+            }),
+            PlanModeKind::Execute => mode.plan_id.as_ref().map(|id| ModeStripState {
+                label: format!("execute · {id}"),
+            }),
+        };
         crate::history_window::trim_to_window(&mut self.ui_model, has_more);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
@@ -637,6 +649,15 @@ impl<T: Terminal> HostSession<T> {
             editor_text: None,
         };
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
+        let mode = latest_plan_mode(&entries);
+        self.ui_model.mode_strip = match mode.mode {
+            PlanModeKind::Plan => Some(ModeStripState {
+                label: "plan".into(),
+            }),
+            PlanModeKind::Execute => mode.plan_id.as_ref().map(|id| ModeStripState {
+                label: format!("execute · {id}"),
+            }),
+        };
         crate::history_window::trim_to_window(&mut self.ui_model, has_more);
         self.sync_ui_root_from_model();
     }

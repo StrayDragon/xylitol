@@ -1318,6 +1318,17 @@ async fn dispatch_session_unary(
     dispatch_readonly_unary(host, slot, session_id, method, payload, workspace).await
 }
 
+fn plan_mode_event_from_branch(
+    branch: &[xylitol_plugin_sdk::session::SessionEntry],
+) -> (String, Option<String>) {
+    let mode = xylitol_plugin_sdk::session::latest_plan_mode(branch);
+    let label = match mode.mode {
+        xylitol_plugin_sdk::session::PlanModeKind::Plan => "plan",
+        xylitol_plugin_sdk::session::PlanModeKind::Execute => "execute",
+    };
+    (label.to_string(), mode.plan_id)
+}
+
 async fn dispatch_writer_unary(
     host: &Arc<HostState>,
     slot: &Arc<SessionSlot>,
@@ -1401,6 +1412,17 @@ async fn dispatch_writer_unary(
                     .and_then(Value::as_str)
                     .map(str::to_string);
                 plan_mode_event = Some((mode, plan_id));
+            }
+            if matches!(method, "switch_session" | "new_session")
+                && let Some(new_id) = driver.session_id()
+            {
+                let branch = host
+                    .ports
+                    .store
+                    .load_leaf_branch(&new_id)
+                    .await
+                    .unwrap_or_default();
+                plan_mode_event = Some(plan_mode_event_from_branch(&branch));
             }
             if staged_export
                 && let Some(p) = value
@@ -1550,6 +1572,29 @@ mod tests {
     use super::*;
     use serde_json::json;
     use xylitol_plugin_sdk::BashChunk;
+
+    #[test]
+    fn session_switch_plan_mode_event_uses_latest_entry() {
+        use xylitol_plugin_sdk::session::PlanMode;
+
+        let plan = vec![PlanMode::plan(Some("p1".into())).to_custom_entry_shell()];
+        assert_eq!(
+            plan_mode_event_from_branch(&plan),
+            ("plan".to_string(), Some("p1".into()))
+        );
+        let execute = vec![
+            PlanMode::plan(None).to_custom_entry_shell(),
+            PlanMode::execute().to_custom_entry_shell(),
+        ];
+        assert_eq!(
+            plan_mode_event_from_branch(&execute),
+            ("execute".to_string(), None)
+        );
+        assert_eq!(
+            plan_mode_event_from_branch(&[]),
+            ("execute".to_string(), None)
+        );
+    }
 
     #[test]
     fn stable_business_code_is_snake_case_of_domain_kind() {
