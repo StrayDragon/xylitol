@@ -1956,10 +1956,10 @@ thread_local! {
     static SKILL_SEEN: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
-struct CaptureBeforeModel;
+struct CaptureBeforeLlmRequest;
 
 #[async_trait::async_trait]
-impl LoopMiddleware for CaptureBeforeModel {
+impl LoopMiddleware for CaptureBeforeLlmRequest {
     fn id(&self) -> &str {
         "capture-before-model"
     }
@@ -2000,7 +2000,7 @@ pub(crate) fn g_capture_before_llm_request(agent: &AgentState, ws: &Workspace) {
     }]);
     let registry = fresh_registry();
     registry
-        .register(Arc::new(CaptureBeforeModel))
+        .register(Arc::new(CaptureBeforeLlmRequest))
         .expect("register capture-before-model");
     runner.set_loop_middleware(Some(registry));
     set_fake_text("ack");
@@ -2103,7 +2103,7 @@ thread_local! {
     static PLAN_GATE_OUT: RefCell<Option<(LoopControl, serde_json::Value)>> = const { RefCell::new(None) };
 }
 
-fn plan_gate_model_ctx(session_id: &str) -> BeforeLlmRequestCtx {
+fn plan_gate_request_ctx(session_id: &str) -> BeforeLlmRequestCtx {
     BeforeLlmRequestCtx {
         turn_index: 0,
         messages: Vec::new(),
@@ -2139,7 +2139,7 @@ pub(crate) fn g_plan_gate_active() {
         None,
         &xylitol_official_plugin_plan::PlanConfig::default(),
     );
-    futures::executor::block_on(mw.before_llm_request(plan_gate_model_ctx("s-plan-gate")));
+    futures::executor::block_on(mw.before_llm_request(plan_gate_request_ctx("s-plan-gate")));
     PLAN_GATE.with(|slot| slot.borrow_mut().replace((mw, store)));
 }
 
@@ -2163,7 +2163,7 @@ pub(crate) fn w_plan_gate_execute_write() {
         store.append_session_entry("s-plan-gate", &PlanMode::execute().to_custom_entry_shell()),
     )
     .expect("append execute mode");
-    futures::executor::block_on(mw.before_llm_request(plan_gate_model_ctx("s-plan-gate")));
+    futures::executor::block_on(mw.before_llm_request(plan_gate_request_ctx("s-plan-gate")));
     let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("write")));
     PLAN_GATE_OUT.with(|slot| *slot.borrow_mut() = Some((out.control, out.ctx.args)));
 }
