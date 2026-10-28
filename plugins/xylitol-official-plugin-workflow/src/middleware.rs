@@ -11,14 +11,14 @@ use xylitol_plugin_sdk::session::{
     runnable_workflow_step, workflow_downstream_ids,
 };
 use xylitol_plugin_sdk::{
-    AfterToolCtx, BeforeModelCtx, DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep,
+    AfterToolCtx, BeforeLlmRequestCtx, DecideContinueCtx, LoopMiddleware, LoopStage, LoopStep,
     RuntimeSessionStore, XySessionStore,
 };
 
 use crate::config::WorkflowConfig;
 
 const WORKFLOW_STAGES: &[LoopStage] = &[
-    LoopStage::BeforeModel,
+    LoopStage::BeforeLlmRequest,
     LoopStage::AfterTool,
     LoopStage::DecideContinue,
 ];
@@ -223,7 +223,10 @@ impl LoopMiddleware for WorkflowMiddleware {
         WORKFLOW_STAGES
     }
 
-    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+    async fn before_llm_request(
+        &self,
+        mut ctx: BeforeLlmRequestCtx,
+    ) -> LoopStep<BeforeLlmRequestCtx> {
         if !self.loaded.swap(true, Ordering::SeqCst) {
             self.load_workflow(ctx.session_id.as_deref()).await;
         }
@@ -383,7 +386,7 @@ impl LoopMiddleware for WorkflowMiddleware {
         {
             if state.replan_count >= self.max_replans {
                 log::warn!(
-                    target: "xylitol::loop-example",
+                    target: "xylitol::loop-policies",
                     "workflow stopped after {} replan(s)",
                     state.replan_count
                 );
@@ -444,8 +447,8 @@ mod tests {
     use xylitol_plugin_sdk::LoopControl;
     use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowStep, WorkflowStepStatus};
 
-    fn model_ctx(session_id: Option<&str>) -> BeforeModelCtx {
-        BeforeModelCtx {
+    fn model_ctx(session_id: Option<&str>) -> BeforeLlmRequestCtx {
+        BeforeLlmRequestCtx {
             turn_index: 0,
             messages: Vec::new(),
             tool_schemas: Vec::new(),
@@ -491,7 +494,7 @@ mod tests {
     #[tokio::test]
     async fn contract_points_at_workflow_write_without_raw_block() {
         let mw = workflow_middleware(None, None, &WorkflowConfig::default());
-        let out = mw.before_model(model_ctx(None)).await;
+        let out = mw.before_llm_request(model_ctx(None)).await;
         let text = out
             .ctx
             .messages
@@ -513,9 +516,9 @@ mod tests {
             .await
             .expect("seed");
         let mw = workflow_middleware(Some(store), None, &WorkflowConfig::default());
-        mw.before_model(model_ctx(Some("s1"))).await;
+        mw.before_llm_request(model_ctx(Some("s1"))).await;
         mw.after_tool(tool_ctx("workflow_write", "{}", false)).await;
-        let out = mw.before_model(model_ctx(Some("s1"))).await;
+        let out = mw.before_llm_request(model_ctx(Some("s1"))).await;
         let text = out
             .ctx
             .messages
@@ -530,14 +533,14 @@ mod tests {
     #[tokio::test]
     async fn workflow_write_error_is_injected_once() {
         let mw = workflow_middleware(None, None, &WorkflowConfig::default());
-        mw.before_model(model_ctx(None)).await;
+        mw.before_llm_request(model_ctx(None)).await;
         mw.after_tool(tool_ctx(
             "workflow_write",
             "duplicate workflow step id: s1",
             true,
         ))
         .await;
-        let out = mw.before_model(model_ctx(None)).await;
+        let out = mw.before_llm_request(model_ctx(None)).await;
         let text = out
             .ctx
             .messages
@@ -547,7 +550,7 @@ mod tests {
             .join("\n");
         assert!(text.contains("<workflow_error>"), "{text}");
         assert!(text.contains("duplicate workflow step id"), "{text}");
-        let out = mw.before_model(model_ctx(None)).await;
+        let out = mw.before_llm_request(model_ctx(None)).await;
         assert!(
             !out.ctx
                 .messages
@@ -665,8 +668,8 @@ mod nested_tests {
         }
     }
 
-    fn model_ctx(session_id: &str) -> BeforeModelCtx {
-        BeforeModelCtx {
+    fn model_ctx(session_id: &str) -> BeforeLlmRequestCtx {
+        BeforeLlmRequestCtx {
             turn_index: 0,
             messages: Vec::new(),
             tool_schemas: Vec::new(),
@@ -706,7 +709,7 @@ mod nested_tests {
         (store, mw)
     }
 
-    fn text(out: &LoopStep<BeforeModelCtx>) -> String {
+    fn text(out: &LoopStep<BeforeLlmRequestCtx>) -> String {
         out.ctx
             .messages
             .iter()
@@ -723,7 +726,7 @@ mod nested_tests {
             None,
         );
         let (_store, mw) = seeded(root).await;
-        let out = mw.before_model(model_ctx("s1")).await;
+        let out = mw.before_llm_request(model_ctx("s1")).await;
         let text = text(&out);
         assert!(text.contains("<plan_step>"), "{text}");
         assert!(text.contains("c1"), "{text}");
@@ -737,7 +740,7 @@ mod nested_tests {
             None,
         );
         let (store, mw) = seeded(root.clone()).await;
-        mw.before_model(model_ctx("s1")).await;
+        mw.before_llm_request(model_ctx("s1")).await;
         let mut completed_root = root;
         completed_root.steps[0].status = WorkflowStepStatus::Completed;
         store
@@ -753,7 +756,7 @@ mod nested_tests {
             is_error: false,
         })
         .await;
-        let out = mw.before_model(model_ctx("s1")).await;
+        let out = mw.before_llm_request(model_ctx("s1")).await;
         let text = text(&out);
         assert!(text.contains("<plan_complete>"), "{text}");
     }
@@ -766,7 +769,7 @@ mod nested_tests {
             Some("s1".into()),
         );
         let (_store, mw) = seeded(root).await;
-        let out = mw.before_model(model_ctx("s1")).await;
+        let out = mw.before_llm_request(model_ctx("s1")).await;
         let text = text(&out);
         assert!(text.contains("c1"), "{text}");
         assert!(!text.contains("s1"), "root container must not be injected");
@@ -784,7 +787,7 @@ mod nested_tests {
             ..Default::default()
         };
         let (_store, mw) = seeded_with(root, config).await;
-        mw.before_model(model_ctx("s1")).await;
+        mw.before_llm_request(model_ctx("s1")).await;
         mw.after_tool(AfterToolCtx {
             turn_index: 0,
             tool_call_id: "c1".into(),
@@ -794,10 +797,10 @@ mod nested_tests {
             is_error: false,
         })
         .await;
-        mw.before_model(model_ctx("s1")).await;
+        mw.before_llm_request(model_ctx("s1")).await;
         let control = mw.decide_continue(decide_ctx()).await.control;
         assert_eq!(control, LoopControl::Continue);
-        let out = mw.before_model(model_ctx("s1")).await;
+        let out = mw.before_llm_request(model_ctx("s1")).await;
         let text = text(&out);
         assert!(text.contains("<workflow_replan>"), "{text}");
         assert!(text.contains("s1"), "{text}");

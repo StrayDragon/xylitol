@@ -7,7 +7,7 @@
 
   @req:r2946
   规则: workflow-middleware
-    workflow 中间件 须在 before_model 读取最新 workflow：无 workflow 时注入一次建计划契约（要求模型调用 `workflow_write` 工具，不得输出 `<plan>` 原始块）；有 runnable 步骤时注入当前步骤（含 inputs 与 verification）；有失败步骤时注入局部重规划指令；有 blocked 步骤时注入阻塞说明。after_tool 须在 `workflow_write` 成功时从会话重新加载并采用；失败时保留旧 workflow 并在下一次 before_model 注入 `<workflow_error>`；其他工具失败时把当前 in_progress 步骤标记 failed；步骤 completed / failed 后清除其审批。decide_continue 须满足：blocked 且未批准 → Stop；blocked 且用户有新消息 → 批准一次并 Continue；有失败且 replan 次数小于 max_replans → Continue；有 runnable → Continue；全部完成且尚未总结 → Continue 一次，已总结 → Stop；无法推进 → Stop。中间件 不得自行调用模型或工具，不得用 workflow 工具以外的入口写 workflow。max_replans 须有界并记录停止原因。
+    workflow 中间件 须在 before_llm_request 读取最新 workflow：无 workflow 时注入一次建计划契约（要求模型调用 `workflow_write` 工具，不得输出 `<plan>` 原始块）；有 runnable 步骤时注入当前步骤（含 inputs 与 verification）；有失败步骤时注入局部重规划指令；有 blocked 步骤时注入阻塞说明。after_tool 须在 `workflow_write` 成功时从会话重新加载并采用；失败时保留旧 workflow 并在下一次 before_llm_request 注入 `<workflow_error>`；其他工具失败时把当前 in_progress 步骤标记 failed；步骤 completed / failed 后清除其审批。decide_continue 须满足：blocked 且未批准 → Stop；blocked 且用户有新消息 → 批准一次并 Continue；有失败且 replan 次数小于 max_replans → Continue；有 runnable → Continue；全部完成且尚未总结 → Continue 一次，已总结 → Stop；无法推进 → Stop。中间件 不得自行调用模型或工具，不得用 workflow 工具以外的入口写 workflow。max_replans 须有界并记录停止原因。
 
   @req:r2966
   规则: workflow-tools
@@ -15,7 +15,7 @@
 
     场景: workflow_write 后进入步骤指令
       假如 workflow 插件启用且写入含一个 pending 步骤的 workflow
-      当 模型下一轮 before_model
+      当 模型下一轮 before_llm_request
       那么 注入当前步骤指令
 
   @req:r2969
@@ -24,5 +24,5 @@
 
     场景: 嵌套子 workflow 完成后父步骤标记完成
       假如 嵌套 workflow 的子步骤已完成
-      当 模型下一轮 before_model
+      当 模型下一轮 before_llm_request
       那么 注入全部完成总结

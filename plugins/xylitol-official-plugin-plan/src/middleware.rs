@@ -6,13 +6,13 @@ use xylitol_plugin_sdk::message::{AgentMessage, XyLlmMessage};
 use xylitol_plugin_sdk::rt::Ctx;
 use xylitol_plugin_sdk::session::{PlanMode, PlanModeKind, latest_plan_mode};
 use xylitol_plugin_sdk::{
-    BeforeModelCtx, BeforeToolCtx, LoopMiddleware, LoopStage, LoopStep, RuntimeSessionStore,
+    BeforeLlmRequestCtx, BeforeToolCtx, LoopMiddleware, LoopStage, LoopStep, RuntimeSessionStore,
     XySessionStore,
 };
 
 use crate::config::PlanConfig;
 
-const PLAN_MODE_STAGES: &[LoopStage] = &[LoopStage::BeforeModel, LoopStage::BeforeTool];
+const PLAN_MODE_STAGES: &[LoopStage] = &[LoopStage::BeforeLlmRequest, LoopStage::BeforeTool];
 const READ_ONLY_ALLOWLIST: &[&str] = &[
     "read",
     "grep",
@@ -98,7 +98,10 @@ impl LoopMiddleware for PlanModeMiddleware {
         PLAN_MODE_STAGES
     }
 
-    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+    async fn before_llm_request(
+        &self,
+        mut ctx: BeforeLlmRequestCtx,
+    ) -> LoopStep<BeforeLlmRequestCtx> {
         self.load_mode(ctx.session_id.as_deref()).await;
         let mode = self.mode.lock().unwrap_or_else(|e| e.into_inner()).clone();
         if mode.mode == PlanModeKind::Plan {
@@ -227,8 +230,8 @@ mod tests {
         }
     }
 
-    fn model_ctx(session_id: &str) -> BeforeModelCtx {
-        BeforeModelCtx {
+    fn model_ctx(session_id: &str) -> BeforeLlmRequestCtx {
+        BeforeLlmRequestCtx {
             turn_index: 0,
             messages: Vec::new(),
             tool_schemas: Vec::new(),
@@ -253,7 +256,7 @@ mod tests {
             .await
             .expect("plan mode entry");
         let mw = plan_mode_middleware(Some(store), None, &config);
-        mw.before_model(model_ctx("s1")).await;
+        mw.before_llm_request(model_ctx("s1")).await;
         mw
     }
 
@@ -299,7 +302,7 @@ mod tests {
             .append_session_entry("s1", &PlanMode::execute().to_custom_entry_shell())
             .await
             .expect("execute mode entry");
-        mw.before_model(model_ctx("s1")).await;
+        mw.before_llm_request(model_ctx("s1")).await;
         let out = mw.before_tool(tool_ctx("write")).await;
         assert_eq!(out.control, LoopControl::Continue);
     }

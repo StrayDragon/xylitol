@@ -1,10 +1,10 @@
 [package]
-name = "xylitol-official-plugin-loop-example"
+name = "xylitol-official-plugin-loop-policies"
 version = "0.0.0-pre"
 edition = "2024"
 rust-version = "1.99.0"
 license = "MIT"
-description = "Official example plugin: ReAct loop middleware participation (config-gated)"
+description = "Official loop policy pack: reference implementation of ReAct loop middleware"
 repository = "https://github.com/straydragon/xylitol"
 publish = false
 

@@ -12,8 +12,8 @@ use crate::session::TodoList;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LoopStage {
     BeforeTurn,
-    BeforeModel,
-    AfterModel,
+    BeforeLlmRequest,
+    AfterLlmResponse,
     BeforeTool,
     AfterTool,
     DecideContinue,
@@ -23,8 +23,8 @@ pub enum LoopStage {
 impl LoopStage {
     pub const ALL: [LoopStage; 7] = [
         LoopStage::BeforeTurn,
-        LoopStage::BeforeModel,
-        LoopStage::AfterModel,
+        LoopStage::BeforeLlmRequest,
+        LoopStage::AfterLlmResponse,
         LoopStage::BeforeTool,
         LoopStage::AfterTool,
         LoopStage::DecideContinue,
@@ -34,8 +34,8 @@ impl LoopStage {
     pub fn as_str(self) -> &'static str {
         match self {
             LoopStage::BeforeTurn => "before_turn",
-            LoopStage::BeforeModel => "before_model",
-            LoopStage::AfterModel => "after_model",
+            LoopStage::BeforeLlmRequest => "before_llm_request",
+            LoopStage::AfterLlmResponse => "after_llm_response",
             LoopStage::BeforeTool => "before_tool",
             LoopStage::AfterTool => "after_tool",
             LoopStage::DecideContinue => "decide_continue",
@@ -93,7 +93,7 @@ pub struct BeforeTurnCtx {
 }
 
 #[derive(Debug, Clone)]
-pub struct BeforeModelCtx {
+pub struct BeforeLlmRequestCtx {
     pub turn_index: u32,
     pub messages: Vec<AgentMessage>,
     pub tool_schemas: Vec<XyToolSchema>,
@@ -103,7 +103,7 @@ pub struct BeforeModelCtx {
 }
 
 #[derive(Debug, Clone)]
-pub struct AfterModelCtx {
+pub struct AfterLlmResponseCtx {
     pub turn_index: u32,
     pub assistant: AgentMessage,
     pub session_id: Option<String>,
@@ -165,11 +165,11 @@ pub trait LoopMiddleware: Send + Sync {
         LoopStep::continued(ctx)
     }
 
-    async fn before_model(&self, ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+    async fn before_llm_request(&self, ctx: BeforeLlmRequestCtx) -> LoopStep<BeforeLlmRequestCtx> {
         LoopStep::continued(ctx)
     }
 
-    async fn after_model(&self, ctx: AfterModelCtx) -> LoopStep<AfterModelCtx> {
+    async fn after_llm_response(&self, ctx: AfterLlmResponseCtx) -> LoopStep<AfterLlmResponseCtx> {
         LoopStep::continued(ctx)
     }
 
@@ -317,8 +317,8 @@ impl LoopMiddlewareRegistry {
 #[derive(Clone, Default)]
 pub struct LoopChain {
     pub before_turn: Vec<Arc<dyn LoopMiddleware>>,
-    pub before_model: Vec<Arc<dyn LoopMiddleware>>,
-    pub after_model: Vec<Arc<dyn LoopMiddleware>>,
+    pub before_llm_request: Vec<Arc<dyn LoopMiddleware>>,
+    pub after_llm_response: Vec<Arc<dyn LoopMiddleware>>,
     pub before_tool: Vec<Arc<dyn LoopMiddleware>>,
     pub after_tool: Vec<Arc<dyn LoopMiddleware>>,
     pub decide_continue: Vec<Arc<dyn LoopMiddleware>>,
@@ -346,8 +346,8 @@ impl LoopChain {
     fn bucket_mut(&mut self, stage: LoopStage) -> &mut Vec<Arc<dyn LoopMiddleware>> {
         match stage {
             LoopStage::BeforeTurn => &mut self.before_turn,
-            LoopStage::BeforeModel => &mut self.before_model,
-            LoopStage::AfterModel => &mut self.after_model,
+            LoopStage::BeforeLlmRequest => &mut self.before_llm_request,
+            LoopStage::AfterLlmResponse => &mut self.after_llm_response,
             LoopStage::BeforeTool => &mut self.before_tool,
             LoopStage::AfterTool => &mut self.after_tool,
             LoopStage::DecideContinue => &mut self.decide_continue,
@@ -358,8 +358,8 @@ impl LoopChain {
     pub fn stage(&self, stage: LoopStage) -> &[Arc<dyn LoopMiddleware>] {
         match stage {
             LoopStage::BeforeTurn => &self.before_turn,
-            LoopStage::BeforeModel => &self.before_model,
-            LoopStage::AfterModel => &self.after_model,
+            LoopStage::BeforeLlmRequest => &self.before_llm_request,
+            LoopStage::AfterLlmResponse => &self.after_llm_response,
             LoopStage::BeforeTool => &self.before_tool,
             LoopStage::AfterTool => &self.after_tool,
             LoopStage::DecideContinue => &self.decide_continue,
@@ -433,17 +433,17 @@ mod tests {
     fn snapshot_orders_by_order_then_registration() {
         let reg = LoopMiddlewareRegistry::new();
         let b = reg
-            .register(probe("b", 10, &[LoopStage::BeforeModel]))
+            .register(probe("b", 10, &[LoopStage::BeforeLlmRequest]))
             .expect("b");
         let a = reg
-            .register(probe("a", 5, &[LoopStage::BeforeModel]))
+            .register(probe("a", 5, &[LoopStage::BeforeLlmRequest]))
             .expect("a");
         let c = reg
-            .register(probe("c", 10, &[LoopStage::BeforeModel]))
+            .register(probe("c", 10, &[LoopStage::BeforeLlmRequest]))
             .expect("c");
         let chain = reg.snapshot();
         let ids: Vec<String> = chain
-            .before_model
+            .before_llm_request
             .iter()
             .map(|mw| mw.id().to_string())
             .collect();
@@ -504,7 +504,7 @@ mod tests {
         drop(a);
         assert_eq!(chain.before_turn.len(), 1);
         assert_eq!(chain.decide_continue.len(), 1);
-        assert!(chain.before_model.is_empty());
+        assert!(chain.before_llm_request.is_empty());
         assert!(!chain.is_empty());
         assert!(LoopChain::default().is_empty());
     }

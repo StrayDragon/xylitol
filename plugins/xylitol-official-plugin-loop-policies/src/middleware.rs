@@ -5,18 +5,20 @@ use serde_json::Value;
 
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
 use xylitol_plugin_sdk::{
-    AfterModelCtx, AfterToolCtx, BeforeModelCtx, BeforeToolCtx, DecideContinueCtx, LoopMiddleware,
-    LoopStage, LoopStep,
+    AfterLlmResponseCtx, AfterToolCtx, BeforeLlmRequestCtx, BeforeToolCtx, DecideContinueCtx,
+    LoopMiddleware, LoopStage, LoopStep,
 };
 
-use crate::config::{GeneratorCriticConfig, LoopExampleConfig, SelfHealConfig, ToolExposureConfig};
+use crate::config::{
+    GeneratorCriticConfig, LoopPoliciesConfig, SelfHealConfig, ToolExposureConfig,
+};
 
 const STAGES: &[LoopStage] = &[LoopStage::BeforeTool, LoopStage::DecideContinue];
-const TOOL_EXPOSURE_STAGES: &[LoopStage] = &[LoopStage::BeforeModel];
+const TOOL_EXPOSURE_STAGES: &[LoopStage] = &[LoopStage::BeforeLlmRequest];
 const SELF_HEAL_STAGES: &[LoopStage] = &[LoopStage::AfterTool, LoopStage::DecideContinue];
 const CRITIC_STAGES: &[LoopStage] = &[
-    LoopStage::BeforeModel,
-    LoopStage::AfterModel,
+    LoopStage::BeforeLlmRequest,
+    LoopStage::AfterLlmResponse,
     LoopStage::DecideContinue,
 ];
 const DEFAULT_CRITIC_RUBRIC: &[&str] = &[
@@ -50,12 +52,12 @@ const DEFAULT_SELF_HEAL_SIGNATURES: &[&str] = &[
     "panicked at",
 ];
 
-pub struct ExampleLoopMiddleware {
-    config: LoopExampleConfig,
+pub struct LoopPoliciesMiddleware {
+    config: LoopPoliciesConfig,
 }
 
-impl ExampleLoopMiddleware {
-    pub fn new(config: LoopExampleConfig) -> Self {
+impl LoopPoliciesMiddleware {
+    pub fn new(config: LoopPoliciesConfig) -> Self {
         Self { config }
     }
 
@@ -68,9 +70,9 @@ impl ExampleLoopMiddleware {
 }
 
 #[async_trait]
-impl LoopMiddleware for ExampleLoopMiddleware {
+impl LoopMiddleware for LoopPoliciesMiddleware {
     fn id(&self) -> &str {
-        "loop-example"
+        "loop-policies"
     }
 
     fn order(&self) -> i64 {
@@ -88,7 +90,7 @@ impl LoopMiddleware for ExampleLoopMiddleware {
         {
             ctx.args = serde_json::json!({
                 "command": "true",
-                "blocked_by": "loop-example",
+                "blocked_by": "loop-policies",
             });
             return LoopStep::stopped(ctx);
         }
@@ -241,7 +243,10 @@ impl LoopMiddleware for GeneratorCriticMiddleware {
         CRITIC_STAGES
     }
 
-    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+    async fn before_llm_request(
+        &self,
+        mut ctx: BeforeLlmRequestCtx,
+    ) -> LoopStep<BeforeLlmRequestCtx> {
         let mut state = self.lock_state();
         if state.instruction_injected {
             return LoopStep::continued(ctx);
@@ -264,7 +269,7 @@ impl LoopMiddleware for GeneratorCriticMiddleware {
         LoopStep::continued(ctx)
     }
 
-    async fn after_model(&self, ctx: AfterModelCtx) -> LoopStep<AfterModelCtx> {
+    async fn after_llm_response(&self, ctx: AfterLlmResponseCtx) -> LoopStep<AfterLlmResponseCtx> {
         let mut state = self.lock_state();
         match state.phase {
             CriticPhase::Critiquing => {
@@ -318,7 +323,7 @@ impl LoopMiddleware for GeneratorCriticMiddleware {
             CriticPhase::Approved => LoopStep::stopped(ctx),
             CriticPhase::Exhausted => {
                 log::warn!(
-                    target: "xylitol::loop-example",
+                    target: "xylitol::loop-policies",
                     "generator-critic exhausted after {} round(s)",
                     state.rounds
                 );
@@ -429,7 +434,7 @@ Do not repeat the same action; diagnose, patch, then re-run the same verificatio
         match pending.as_ref() {
             Some(failure) if failure.attempts >= self.max_attempts => {
                 log::warn!(
-                    target: "xylitol::loop-example",
+                    target: "xylitol::loop-policies",
                     "self-heal stopped after {} attempts on {} ({})",
                     failure.attempts,
                     failure.tool_name,
@@ -486,7 +491,10 @@ impl LoopMiddleware for ToolExposureMiddleware {
         TOOL_EXPOSURE_STAGES
     }
 
-    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+    async fn before_llm_request(
+        &self,
+        mut ctx: BeforeLlmRequestCtx,
+    ) -> LoopStep<BeforeLlmRequestCtx> {
         if !self.config.enabled {
             return LoopStep::continued(ctx);
         }
@@ -495,7 +503,7 @@ impl LoopMiddleware for ToolExposureMiddleware {
         let after = ctx.tool_schemas.len();
         if after != before {
             log::info!(
-                target: "xylitol::loop-example",
+                target: "xylitol::loop-policies",
                 "tool exposure filtered {} of {} tools",
                 before - after,
                 before
@@ -509,8 +517,8 @@ pub fn tool_exposure_middleware(config: &ToolExposureConfig) -> Arc<dyn LoopMidd
     Arc::new(ToolExposureMiddleware::new(config.clone()))
 }
 
-pub fn example_middleware(config: &LoopExampleConfig) -> Arc<dyn LoopMiddleware> {
-    Arc::new(ExampleLoopMiddleware::new(config.clone()))
+pub fn loop_policies_middleware(config: &LoopPoliciesConfig) -> Arc<dyn LoopMiddleware> {
+    Arc::new(LoopPoliciesMiddleware::new(config.clone()))
 }
 
 #[cfg(test)]
@@ -535,7 +543,7 @@ mod tests {
 
     #[tokio::test]
     async fn denies_configured_pattern_only() {
-        let config = LoopExampleConfig {
+        let config = LoopPoliciesConfig {
             enabled: true,
             max_settles: None,
             deny_bash_patterns: vec!["rm -rf /".into()],
@@ -543,17 +551,17 @@ mod tests {
             generator_critic: Default::default(),
             tool_exposure: Default::default(),
         };
-        let mw = ExampleLoopMiddleware::new(config);
+        let mw = LoopPoliciesMiddleware::new(config);
         let safe = mw.before_tool(ctx("echo hi")).await;
         assert_eq!(safe.control, LoopControl::Continue);
         let risky = mw.before_tool(ctx("rm -rf / --no-preserve-root")).await;
         assert_eq!(risky.control, LoopControl::Stop);
-        assert_eq!(risky.ctx.args["blocked_by"], "loop-example");
+        assert_eq!(risky.ctx.args["blocked_by"], "loop-policies");
     }
 
     #[tokio::test]
     async fn stops_at_configured_settle_count() {
-        let config = LoopExampleConfig {
+        let config = LoopPoliciesConfig {
             enabled: true,
             max_settles: Some(2),
             deny_bash_patterns: Vec::new(),
@@ -561,7 +569,7 @@ mod tests {
             generator_critic: Default::default(),
             tool_exposure: Default::default(),
         };
-        let mw = ExampleLoopMiddleware::new(config);
+        let mw = LoopPoliciesMiddleware::new(config);
         let base = DecideContinueCtx {
             turn_index: 1,
             settle_count: 1,
@@ -584,8 +592,8 @@ mod tests {
 
     #[test]
     fn stages_and_identity_are_stable() {
-        let mw = ExampleLoopMiddleware::new(LoopExampleConfig::default());
-        assert_eq!(mw.id(), "loop-example");
+        let mw = LoopPoliciesMiddleware::new(LoopPoliciesConfig::default());
+        assert_eq!(mw.id(), "loop-policies");
         assert_eq!(mw.order(), 100);
         assert_eq!(mw.stages(), STAGES);
     }
@@ -602,8 +610,8 @@ mod tests {
         names.iter().map(|name| schema(name)).collect()
     }
 
-    fn exposure_ctx(names: &[&str]) -> BeforeModelCtx {
-        BeforeModelCtx {
+    fn exposure_ctx(names: &[&str]) -> BeforeLlmRequestCtx {
+        BeforeLlmRequestCtx {
             turn_index: 0,
             messages: Vec::new(),
             tool_schemas: schemas(names),
@@ -613,7 +621,7 @@ mod tests {
         }
     }
 
-    fn visible_names(ctx: &BeforeModelCtx) -> Vec<String> {
+    fn visible_names(ctx: &BeforeLlmRequestCtx) -> Vec<String> {
         ctx.tool_schemas
             .iter()
             .map(|schema| schema.name.clone())
@@ -624,7 +632,7 @@ mod tests {
     async fn tool_exposure_disabled_keeps_shape() {
         let mw = ToolExposureMiddleware::new(ToolExposureConfig::default());
         let out = mw
-            .before_model(exposure_ctx(&["read", "bash", "todo_rewrite"]))
+            .before_llm_request(exposure_ctx(&["read", "bash", "todo_rewrite"]))
             .await;
         assert_eq!(visible_names(&out.ctx), ["read", "bash", "todo_rewrite"]);
     }
@@ -635,7 +643,7 @@ mod tests {
             enabled: true,
             ..Default::default()
         });
-        let out = mw.before_model(exposure_ctx(&["read", "bash"])).await;
+        let out = mw.before_llm_request(exposure_ctx(&["read", "bash"])).await;
         assert_eq!(visible_names(&out.ctx), ["read", "bash"]);
     }
 
@@ -647,7 +655,7 @@ mod tests {
             ..Default::default()
         });
         let out = mw
-            .before_model(exposure_ctx(&[
+            .before_llm_request(exposure_ctx(&[
                 "read",
                 "bash",
                 "todo_rewrite",
@@ -669,7 +677,7 @@ mod tests {
             ..Default::default()
         });
         let out = mw
-            .before_model(exposure_ctx(&["read", "bash", "write"]))
+            .before_llm_request(exposure_ctx(&["read", "bash", "write"]))
             .await;
         assert_eq!(visible_names(&out.ctx), ["read", "write"]);
     }
@@ -683,7 +691,7 @@ mod tests {
             ..Default::default()
         });
         let out = mw
-            .before_model(exposure_ctx(&["read", "write", "edit"]))
+            .before_llm_request(exposure_ctx(&["read", "write", "edit"]))
             .await;
         assert_eq!(visible_names(&out.ctx), ["read"]);
     }
@@ -697,7 +705,7 @@ mod tests {
             ..Default::default()
         });
         let out = mw
-            .before_model(exposure_ctx(&["read", "bash", "todo_update"]))
+            .before_llm_request(exposure_ctx(&["read", "bash", "todo_update"]))
             .await;
         assert_eq!(visible_names(&out.ctx), ["read", "todo_update"]);
     }
@@ -822,8 +830,8 @@ mod tests {
         assert!(DEFAULT_SELF_HEAL_ATTEMPTS < 32);
     }
 
-    fn model_ctx(todo: Option<TodoList>, last: Option<AgentMessage>) -> BeforeModelCtx {
-        BeforeModelCtx {
+    fn model_ctx(todo: Option<TodoList>, last: Option<AgentMessage>) -> BeforeLlmRequestCtx {
+        BeforeLlmRequestCtx {
             turn_index: 0,
             messages: last.into_iter().collect(),
             tool_schemas: Vec::new(),
@@ -852,16 +860,16 @@ mod tests {
         }
     }
 
-    fn model_after(text: &str) -> AfterModelCtx {
-        AfterModelCtx {
+    fn model_after(text: &str) -> AfterLlmResponseCtx {
+        AfterLlmResponseCtx {
             turn_index: 0,
             assistant: AgentMessage::Llm(XyLlmMessage::assistant(text)),
             session_id: None,
         }
     }
 
-    fn model_after_tool_call() -> AfterModelCtx {
-        AfterModelCtx {
+    fn model_after_tool_call() -> AfterLlmResponseCtx {
+        AfterLlmResponseCtx {
             turn_index: 0,
             assistant: AgentMessage::Llm(XyLlmMessage::AssistantMessage {
                 content: vec![AgentPart::ToolCall {
@@ -886,11 +894,12 @@ mod tests {
     #[tokio::test]
     async fn critic_approve_stops_the_run() {
         let mw = GeneratorCriticMiddleware::new(&critic_config(1));
-        mw.after_model(model_after("final answer")).await;
-        let injected = mw.before_model(model_ctx(None, None)).await;
+        mw.after_llm_response(model_after("final answer")).await;
+        let injected = mw.before_llm_request(model_ctx(None, None)).await;
         assert_eq!(injected.ctx.messages.len(), 1);
         assert!(injected.ctx.messages[0].text().contains("<critic>"));
-        mw.after_model(model_after("CRITIC_VERDICT: APPROVE")).await;
+        mw.after_llm_response(model_after("CRITIC_VERDICT: APPROVE"))
+            .await;
         assert_eq!(
             mw.decide_continue(decide_ctx(0, false)).await.control,
             LoopControl::Stop
@@ -900,9 +909,9 @@ mod tests {
     #[tokio::test]
     async fn critic_revise_continues_and_injects_revision() {
         let mw = GeneratorCriticMiddleware::new(&critic_config(1));
-        mw.after_model(model_after("final answer")).await;
-        mw.before_model(model_ctx(None, None)).await;
-        mw.after_model(model_after(
+        mw.after_llm_response(model_after("final answer")).await;
+        mw.before_llm_request(model_ctx(None, None)).await;
+        mw.after_llm_response(model_after(
             "CRITIC_VERDICT: REVISE\nThe answer cites no evidence.",
         ))
         .await;
@@ -910,12 +919,12 @@ mod tests {
             mw.decide_continue(decide_ctx(0, false)).await.control,
             LoopControl::Continue
         );
-        let injected = mw.before_model(model_ctx(None, None)).await;
+        let injected = mw.before_llm_request(model_ctx(None, None)).await;
         assert_eq!(injected.ctx.messages.len(), 1);
         let text = injected.ctx.messages[0].text();
         assert!(text.contains("<critic_revision>"));
         assert!(text.contains("cites no evidence"));
-        mw.after_model(model_after("revised answer")).await;
+        mw.after_llm_response(model_after("revised answer")).await;
         assert_eq!(
             mw.decide_continue(decide_ctx(0, false)).await.control,
             LoopControl::Stop,
@@ -926,17 +935,18 @@ mod tests {
     #[tokio::test]
     async fn critic_without_verdict_retries_once_then_stops() {
         let mw = GeneratorCriticMiddleware::new(&critic_config(2));
-        mw.after_model(model_after("final answer")).await;
-        mw.before_model(model_ctx(None, None)).await;
-        mw.after_model(model_after("no structured verdict")).await;
+        mw.after_llm_response(model_after("final answer")).await;
+        mw.before_llm_request(model_ctx(None, None)).await;
+        mw.after_llm_response(model_after("no structured verdict"))
+            .await;
         assert_eq!(
             mw.decide_continue(decide_ctx(0, false)).await.control,
             LoopControl::Continue
         );
-        mw.before_model(model_ctx(None, None)).await;
-        mw.after_model(model_after("revised answer")).await;
-        mw.before_model(model_ctx(None, None)).await;
-        mw.after_model(model_after("still no verdict")).await;
+        mw.before_llm_request(model_ctx(None, None)).await;
+        mw.after_llm_response(model_after("revised answer")).await;
+        mw.before_llm_request(model_ctx(None, None)).await;
+        mw.after_llm_response(model_after("still no verdict")).await;
         assert_eq!(
             mw.decide_continue(decide_ctx(0, false)).await.control,
             LoopControl::Stop,
@@ -947,8 +957,8 @@ mod tests {
     #[tokio::test]
     async fn critic_ignores_tool_call_turns() {
         let mw = GeneratorCriticMiddleware::new(&critic_config(1));
-        mw.after_model(model_after_tool_call()).await;
-        let out = mw.before_model(model_ctx(None, None)).await;
+        mw.after_llm_response(model_after_tool_call()).await;
+        let out = mw.before_llm_request(model_ctx(None, None)).await;
         assert!(
             out.ctx.messages.is_empty(),
             "tool-call turns must not start a critique"
@@ -962,10 +972,10 @@ mod tests {
     #[tokio::test]
     async fn critic_injects_instruction_only_once_per_phase() {
         let mw = GeneratorCriticMiddleware::new(&critic_config(1));
-        mw.after_model(model_after("final answer")).await;
-        let first = mw.before_model(model_ctx(None, None)).await;
+        mw.after_llm_response(model_after("final answer")).await;
+        let first = mw.before_llm_request(model_ctx(None, None)).await;
         assert_eq!(first.ctx.messages.len(), 1);
-        let second = mw.before_model(model_ctx(None, None)).await;
+        let second = mw.before_llm_request(model_ctx(None, None)).await;
         assert!(
             second.ctx.messages.is_empty(),
             "the critic instruction must not be repeated within one phase"

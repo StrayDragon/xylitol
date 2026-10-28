@@ -142,9 +142,9 @@ fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
         .and_then(|cfg| cfg.app.mcp_servers.clone())
         .unwrap_or_default();
     let config = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>();
-    let loop_example = config
+    let loop_policies = config
         .as_ref()
-        .map(|cfg| cfg.app.loop_example.clone())
+        .map(|cfg| cfg.app.loop_policies.clone())
         .unwrap_or_default();
     let todo = config
         .as_ref()
@@ -166,11 +166,11 @@ fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
         serde_json::json!({ "id": "provider-openai", "name": "provider-openai" }),
         serde_json::json!({ "id": "provider-anthropic", "name": "provider-anthropic" }),
     ];
-    if loop_example.is_active() {
+    if loop_policies.is_active() {
         insert.push(serde_json::json!({
-            "id": "loop-example",
-            "name": "loop-example",
-            "config": loop_example,
+            "id": "loop-policies",
+            "name": "loop-policies",
+            "config": loop_policies,
         }));
     }
     if todo.is_active() {

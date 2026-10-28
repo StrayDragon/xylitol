@@ -25,8 +25,8 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use super::middleware::{
-    LOOP_MIDDLEWARE_CONTINUE_LIMIT, MiddlewareFault, fragments_into_prompt, run_after_model,
-    run_after_turn, run_before_model, run_before_turn, run_decide_continue,
+    LOOP_MIDDLEWARE_CONTINUE_LIMIT, MiddlewareFault, fragments_into_prompt, run_after_llm_response,
+    run_after_turn, run_before_llm_request, run_before_turn, run_decide_continue,
 };
 use super::retry::{RetryState, is_retryable_error};
 use super::state::{
@@ -42,8 +42,9 @@ use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
 use xylitol_plugin_sdk::model::{XyChunk, XyToolSchema};
 use xylitol_plugin_sdk::resource::SkillInfo;
 use xylitol_plugin_sdk::{
-    AfterModelCtx, AfterTurnCtx, BeforeModelCtx, BeforeTurnCtx, DecideContinueCtx, LoopChain,
-    LoopControl, XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore, XyStream,
+    AfterLlmResponseCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeTurnCtx, DecideContinueCtx,
+    LoopChain, LoopControl, XyBatchMode, XyHookBus, XyHookOutcome, XyModel, XySessionStore,
+    XyStream,
 };
 
 pub struct AgentRuntime {
@@ -1126,7 +1127,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 };
                 let mut turn_tool_schemas = tool_schemas.clone();
                 if chain_active {
-                    let ctx = BeforeModelCtx {
+                    let ctx = BeforeLlmRequestCtx {
                         turn_index: turn as u32,
                         messages: messages.clone(),
                         tool_schemas: turn_tool_schemas.clone(),
@@ -1134,7 +1135,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         todo: bar.todo.clone(),
                         session_id: Some(session_id.clone()),
                     };
-                    match run_before_model(&loop_chain, &cancel, iteration_parent, ctx).await {
+                    match run_before_llm_request(&loop_chain, &cancel, iteration_parent, ctx).await {
                         Ok(out) => {
                             messages = out.ctx.messages;
                             turn_tool_schemas = out.ctx.tool_schemas;
@@ -1480,12 +1481,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 if chain_active
                     && let Some(msg) = assistant_msg.take()
                 {
-                    let ctx = AfterModelCtx {
+                    let ctx = AfterLlmResponseCtx {
                         turn_index: turn as u32,
                         assistant: msg,
                         session_id: Some(session_id.clone()),
                     };
-                    match run_after_model(&loop_chain, &cancel, iteration_parent, ctx).await {
+                    match run_after_llm_response(&loop_chain, &cancel, iteration_parent, ctx).await {
                         Ok(out) => {
                             let msg = out.ctx.assistant;
                             tool_calls = msg

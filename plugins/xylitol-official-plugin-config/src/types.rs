@@ -30,7 +30,7 @@ pub struct AppConfig {
     pub tool_batch: ToolBatchConfig,
 
     #[serde(default)]
-    pub loop_example: LoopExampleConfig,
+    pub loop_policies: LoopPoliciesConfig,
 
     #[serde(default)]
     pub todo: TodoConfig,
@@ -330,7 +330,7 @@ impl AppConfig {
 }
 
 pub use xylitol_official_plugin_hooks::{HookEntry, HooksConfig};
-pub use xylitol_official_plugin_loop_example::LoopExampleConfig;
+pub use xylitol_official_plugin_loop_policies::LoopPoliciesConfig;
 pub use xylitol_official_plugin_plan::PlanConfig;
 pub use xylitol_official_plugin_todo::TodoConfig;
 pub use xylitol_official_plugin_workflow::WorkflowConfig;

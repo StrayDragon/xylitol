@@ -12,8 +12,8 @@ use xylitol_plugin_sdk::session::{
     latest_todo_checkpoint,
 };
 use xylitol_plugin_sdk::{
-    AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeTurnCtx, DecideContinueCtx, LoopMiddleware,
-    LoopStage, LoopStep, RuntimeSessionStore, XySessionStore,
+    AfterToolCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeTurnCtx, DecideContinueCtx,
+    LoopMiddleware, LoopStage, LoopStep, RuntimeSessionStore, XySessionStore,
 };
 
 use crate::config::TodoConfig;
@@ -25,9 +25,9 @@ const TODO_PROGRESS_STAGES: &[LoopStage] = &[
     LoopStage::DecideContinue,
     LoopStage::AfterTurn,
 ];
-const PROGRESS_STAGES: &[LoopStage] = &[LoopStage::BeforeModel, LoopStage::AfterTool];
+const PROGRESS_STAGES: &[LoopStage] = &[LoopStage::BeforeLlmRequest, LoopStage::AfterTool];
 const CHECKPOINT_STAGES: &[LoopStage] = &[
-    LoopStage::BeforeModel,
+    LoopStage::BeforeLlmRequest,
     LoopStage::AfterTool,
     LoopStage::AfterTurn,
 ];
@@ -136,7 +136,7 @@ impl LoopMiddleware for TodoProgressMiddleware {
     async fn after_turn(&self, ctx: AfterTurnCtx) -> LoopStep<AfterTurnCtx> {
         let progress = self.progress();
         log::info!(
-            target: "xylitol::loop-example",
+            target: "xylitol::loop-policies",
             "todo checkpoint turn={} continued_tools={} completed={}/{}",
             ctx.turn_index,
             ctx.continued_tools,
@@ -273,7 +273,7 @@ impl TodoCheckpointMiddleware {
         }
     }
 
-    fn inject_summary(&self, ctx: &mut BeforeModelCtx) {
+    fn inject_summary(&self, ctx: &mut BeforeLlmRequestCtx) {
         let state = self.lock_state();
         let total = state.steps.len();
         if total == 0 {
@@ -349,7 +349,7 @@ impl TodoCheckpointMiddleware {
         {
             self.lock_state().dirty = true;
             log::warn!(
-                target: "xylitol::loop-example",
+                target: "xylitol::loop-policies",
                 "todo checkpoint persist failed: {err}"
             );
         }
@@ -413,7 +413,10 @@ impl LoopMiddleware for TodoCheckpointMiddleware {
         CHECKPOINT_STAGES
     }
 
-    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+    async fn before_llm_request(
+        &self,
+        mut ctx: BeforeLlmRequestCtx,
+    ) -> LoopStep<BeforeLlmRequestCtx> {
         if !self.restored.swap(true, Ordering::SeqCst)
             && let Some(session_id) = ctx.session_id.as_deref()
         {
@@ -507,7 +510,10 @@ impl LoopMiddleware for TodoReminderMiddleware {
         LoopStep::continued(ctx)
     }
 
-    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+    async fn before_llm_request(
+        &self,
+        mut ctx: BeforeLlmRequestCtx,
+    ) -> LoopStep<BeforeLlmRequestCtx> {
         let Some(todo) = &ctx.todo else {
             return LoopStep::continued(ctx);
         };

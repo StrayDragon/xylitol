@@ -317,10 +317,10 @@
 
   @req:r2920
   规则: loop-middleware-spi
-    插件 须经 rutis 生命周期注册 loop 中间件参与 ReAct 决策：阶段闭集为 before_turn、before_model、after_model、before_tool、after_tool、decide_continue、after_turn；注册表 须按阶段分组并按 order 升序排列，同 order 保持注册序；注册 须返回卸载句柄，插件停止时 须卸干净。每次 run 须在启动时快照中间件链，进行中 run 不得受后挂中间件影响；链为空时 须零开销直走基线路径，不得创建观测 span 或额外事件。core 须永远持有 turn 边界、取消、权限最终裁决与消息落盘格式，不得允许插件整段替换 ReAct。
+    插件 须经 rutis 生命周期注册 loop 中间件参与 ReAct 决策：阶段闭集为 before_turn、before_llm_request、after_llm_response、before_tool、after_tool、decide_continue、after_turn；注册表 须按阶段分组并按 order 升序排列，同 order 保持注册序；注册 须返回卸载句柄，插件停止时 须卸干净。每次 run 须在启动时快照中间件链，进行中 run 不得受后挂中间件影响；链为空时 须零开销直走基线路径，不得创建观测 span 或额外事件。core 须永远持有 turn 边界、取消、权限最终裁决与消息落盘格式，不得允许插件整段替换 ReAct。
 
     场景: 中间件有序且卸载后消失
-      假如 注册 before_model 阶段 order 10 与 order 5 的两个中间件
+      假如 注册 before_llm_request 阶段 order 10 与 order 5 的两个中间件
       当 读取中间件链快照并注销 order 5 的中间件
       那么 首次快照按 order 升序且注销后不再含该 id
 
@@ -396,21 +396,21 @@
     观测激活时，每次中间件调用 须留 loop.middleware span，属性至少含中间件 id、阶段、order、返回 control、改动摘要与结果；链为空时 不得建 span。由单测或观测场景覆盖。
 
     场景: 观测可指认改动来源
-      假如 注册 before_model 中间件且在观测闸开启下运行一回合
+      假如 注册 before_llm_request 中间件且在观测闸开启下运行一回合
       当 读取 loop.middleware span 属性
       那么 属性含该中间件 id、阶段名与改动摘要
 
   @req:r2925
-  规则: loop-middleware-example-plugin
-    仓库 须提供一个官方示例插件，证明第三方可在 rutis 生命周期内注册与卸载 loop 中间件：至少含一个只收紧的 before_tool 与一个自定义 decide_continue。该插件 须由配置显式启用，缺省不装配；未配置时 不得注册任何中间件、不得产生额外事件或观测 span。卸载后 注册表 须不再含该插件的中间件。
+  规则: loop-middleware-policies-plugin
+    仓库 须提供一个官方 loop 策略插件（插件作者参考实现），证明第三方可在 rutis 生命周期内注册与卸载 loop 中间件：至少含一个只收紧的 before_tool 与一个自定义 decide_continue。该插件 须由配置显式启用，缺省不装配；未配置时 不得注册任何中间件、不得产生额外事件或观测 span。卸载后 注册表 须不再含该插件的中间件。
 
     场景: 未配置零装配
-      假如 loop 示例插件配置缺省
+      假如 loop 策略插件配置缺省
       当 装配运行时并查询中间件注册表
       那么 注册表为空且运行无额外事件
 
     场景: 启用后卸载零残留
-      假如 以启用 loop 示例插件装配运行时
+      假如 以启用 loop 策略插件装配运行时
       当 卸载该插件
       那么 注册表不再含该插件的中间件
 
@@ -425,9 +425,9 @@
       那么 注册表含 todo-reminder
 
     场景: 工具收窄启用后注册工具中间件
-      假如 以启用工具收窄的 loop 示例插件装配运行时
+      假如 以启用工具收窄的 loop 策略插件装配运行时
       当 查询中间件注册表
-      那么 注册表含 loop-example 与 tool-exposure
+      那么 注册表含 loop-policies 与 tool-exposure
 
     场景: todo checkpoint 启用后注册 todo checkpoint 中间件
       假如 以启用 todo checkpoint 的 todo 插件装配运行时
@@ -435,14 +435,14 @@
       那么 注册表含 todo-checkpoint
 
     场景: 自愈启用后注册自愈中间件
-      假如 以启用自愈的 loop 示例插件装配运行时
+      假如 以启用自愈的 loop 策略插件装配运行时
       当 查询中间件注册表
-      那么 注册表含 loop-example 与 self-heal
+      那么 注册表含 loop-policies 与 self-heal
 
     场景: 生成评审启用后注册评审中间件
-      假如 以启用生成评审的 loop 示例插件装配运行时
+      假如 以启用生成评审的 loop 策略插件装配运行时
       当 查询中间件注册表
-      那么 注册表含 loop-example 与 generator-critic
+      那么 注册表含 loop-policies 与 generator-critic
 
     场景: workflow 启用后注册 workflow 中间件
       假如 以启用 workflow 的 workflow 插件装配运行时
@@ -451,7 +451,7 @@
 
   @req:r2955
   规则: plan-mode-middleware
-    计划模式中间件 须在 before_model 读取最新 `plan_mode`；模式为 plan 时 须注入一次计划契约（先研究/阅读、用 `plan_write` 产出计划、用 `plan_submit` 请求批准）；模式为 execute 时 不得注入。会话 id 缺失或存储不可用时 须静默降级，不得中断 run。中间件 不得改写工具表、不得调用模型或工具；工具只读限制 不在本要求范围。
+    计划模式中间件 须在 before_llm_request 读取最新 `plan_mode`；模式为 plan 时 须注入一次计划契约（先研究/阅读、用 `plan_write` 产出计划、用 `plan_submit` 请求批准）；模式为 execute 时 不得注入。会话 id 缺失或存储不可用时 须静默降级，不得中断 run。中间件 不得改写工具表、不得调用模型或工具；工具只读限制 不在本要求范围。
 
   @req:r2929
   规则: loop-middleware-structured-result
@@ -483,7 +483,7 @@
 
   @req:r2926
   规则: loop-middleware-visible-consistency
-    中间件改动 须与对外可见形状一致：before_turn 注入的系统碎片与 before_model 改写的 system / tool schema 须回流到本 run 的压缩固定上下文（token 估计与压缩阈值按最终形状计算，不得沿用启动快照）；before_tool 改写的参数须在 ToolExecutionStart 中呈现，不得先发原始参数再执行改写后参数；after_model 改写的 assistant（含新增 tool_call）须在 MessageEnd 之前生效，不得让已发出的 MessageEnd 与随后落盘/执行的形状不一致。中间件超时或取消结束本 run 时，回合观测须标记为非正常结束，不得记为成功。
+    中间件改动 须与对外可见形状一致：before_turn 注入的系统碎片与 before_llm_request 改写的 system / tool schema 须回流到本 run 的压缩固定上下文（token 估计与压缩阈值按最终形状计算，不得沿用启动快照）；before_tool 改写的参数须在 ToolExecutionStart 中呈现，不得先发原始参数再执行改写后参数；after_llm_response 改写的 assistant（含新增 tool_call）须在 MessageEnd 之前生效，不得让已发出的 MessageEnd 与随后落盘/执行的形状不一致。中间件超时或取消结束本 run 时，回合观测须标记为非正常结束，不得记为成功。
 
     场景: 改写参数可见
       假如 注册 before_tool 中间件把 bash 命令改为 echo safe
@@ -491,7 +491,7 @@
       那么 ToolExecutionStart 的参数为 echo safe
 
     场景: 改写助手先于消息结束
-      假如 注册 after_model 中间件把 assistant 文本改写为 replaced
+      假如 注册 after_llm_response 中间件把 assistant 文本改写为 replaced
       当 运行 AgentRuntime 并收集事件
       那么 MessageEnd 携带的 assistant 文本为 replaced 且无改写前文本
 
@@ -535,31 +535,31 @@
 
   @req:r2933
   规则: loop-builtin-skills-expand
-    Skills 展开 须作为 loop 内置项执行，不得进入可注册中间件链：内置展开 须在 before_model 阶段之前完成，使任何第三方 before_model 中间件 都能观察到展开后的 messages；内置项 不得占用 order 位、不得产生 loop.middleware span、不得计入「空链」判定。第三方中间件 不得替换或跳过内置展开，只允许在其后叠加。未装配任何 skills 时 展开 须为无操作，messages 须逐字节不变。未注册第三方中间件时 装配结果 须与内置化之前逐字节一致。
+    Skills 展开 须作为 loop 内置项执行，不得进入可注册中间件链：内置展开 须在 before_llm_request 阶段之前完成，使任何第三方 before_llm_request 中间件 都能观察到展开后的 messages；内置项 不得占用 order 位、不得产生 loop.middleware span、不得计入「空链」判定。第三方中间件 不得替换或跳过内置展开，只允许在其后叠加。未装配任何 skills 时 展开 须为无操作，messages 须逐字节不变。未注册第三方中间件时 装配结果 须与内置化之前逐字节一致。
 
     场景: 中间件看到展开结果
-      假如 注册 before_model 中间件观察 messages 且 skills 已装配
+      假如 注册 before_llm_request 中间件观察 messages 且 skills 已装配
       当 运行 AgentRuntime 提交引用技能的 prompt
-      那么 before_model 观察到已展开的技能正文
+      那么 before_llm_request 观察到已展开的技能正文
 
   @req:r2937
   规则: message-persist-before-end
     ReAct 的每一条消息（用户 pending、助手正常完成、助手中断、助手中间件 stop）须先写入会话存储再下行 MessageEnd，使客户端收到完成事件时 存储已可读到该条；不得先发 MessageEnd 再落库。落库失败 不得阻断 MessageEnd 下行（沿用既有 warn 语义），但 不得因此把顺序颠倒回去。
   @req:r2939
   规则: todo-reminder
-    todo 提醒中间件 须在 before_model 读取当前 todo（经 BeforeModelCtx.todo）；当 todo 非空且仍有未完成项，并满足以下任一条件时，向本回合模型上下文追加一条短提醒：连续 N 次工具调用未更新 todo、最后一条 assistant 宣称完成、上一次工具失败。同一 turn 至多提醒一次。提醒 须只读：不得自动改写 todo、不得产生新事件、不得调用模型或工具；未满足条件或 todo 为空时 不得追加任何内容。阈值与开关 须可配置。提醒行为 由中间件单测覆盖。
+    todo 提醒中间件 须在 before_llm_request 读取当前 todo（经 BeforeLlmRequestCtx.todo）；当 todo 非空且仍有未完成项，并满足以下任一条件时，向本回合模型上下文追加一条短提醒：连续 N 次工具调用未更新 todo、最后一条 assistant 宣称完成、上一次工具失败。同一 turn 至多提醒一次。提醒 须只读：不得自动改写 todo、不得产生新事件、不得调用模型或工具；未满足条件或 todo 为空时 不得追加任何内容。阈值与开关 须可配置。提醒行为 由中间件单测覆盖。
   @req:r2940
   规则: tool-exposure
-    工具收窄中间件 须在 before_model 改写 tool_schemas：按配置的 allow / deny 与只读开关收窄模型可见工具；`todo_rewrite` 与 `todo_update` 须始终可见，避免计划无法更新。收窄 只影响模型可见性：不得删除工具、不得改变 permission 终裁、不得影响 before_tool 的路由目标校验。未启用或规则为空时 不得改变 schema 形状。过滤前后数量与理由 须可观测。step/risk 的细粒度映射 不在本要求范围，后续 change 再评估。
+    工具收窄中间件 须在 before_llm_request 改写 tool_schemas：按配置的 allow / deny 与只读开关收窄模型可见工具；`todo_rewrite` 与 `todo_update` 须始终可见，避免计划无法更新。收窄 只影响模型可见性：不得删除工具、不得改变 permission 终裁、不得影响 before_tool 的路由目标校验。未启用或规则为空时 不得改变 schema 形状。过滤前后数量与理由 须可观测。step/risk 的细粒度映射 不在本要求范围，后续 change 再评估。
   @req:r2942
   规则: todo-checkpoint-middleware
-    todo checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_model（或 after_turn）把变化落为 todo_checkpoint 条目；恢复后的首个 before_model 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或 todo 已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 run。写入 须只追加，不覆盖或删除历史 checkpoint。
+    todo checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_llm_request（或 after_turn）把变化落为 todo_checkpoint 条目；恢复后的首个 before_llm_request 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或 todo 已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 run。写入 须只追加，不覆盖或删除历史 checkpoint。
   @req:r2943
   规则: self-heal
     自愈中间件 须只在 after_tool 识别到确定性失败签名时介入：命中签名 须记录 pending（工具名、签名、尝试次数）并在结果后追加短指引，要求诊断、修复后重跑同一验证；同一工具成功 须清除 pending。非确定性失败（超时、网络、权限等）不得进入自愈。decide_continue 须在 pending 且尝试次数小于配置上限时 Continue，达到上限时 Stop；无 pending 时 不得改变基线。上限 须远小于 core 的 32 次硬上限。不得在插件内调用模型或工具，不得自动回滚。自愈与 todo-progress 可并存，Stop 仍由最先返回 Stop 的中间件决定。
   @req:r2944
   规则: generator-critic
-    生成评审中间件 须在 after_model 只对**无 tool_calls 的 assistant 最终答案**启动评审，且评审调用仍由 core 调度（插件不得自行调用模型）。状态机须为 Idle → Critiquing →（Approved | Revising）→ … → Approved | Exhausted；Critiquing 时 before_model 注入 rubric 与 verdict 格式，Revising 时注入 critic 意见。critic 须以单独一行 `CRITIC_VERDICT: APPROVE` 或 `CRITIC_VERDICT: REVISE` 结尾；无结构化 verdict 时最多再要求一次，超过一次须停止。decide_continue 在 Critiquing / Revising 时 Continue，在 Approved / Exhausted 时 Stop，其它状态不得改变基线。评审轮数 须受 `max_rounds` 约束且远小于 core 的 32；达到上限须停止并记录原因。不得允许 critic 触发 compact，不得自动改代码或提交。
+    生成评审中间件 须在 after_llm_response 只对**无 tool_calls 的 assistant 最终答案**启动评审，且评审调用仍由 core 调度（插件不得自行调用模型）。状态机须为 Idle → Critiquing →（Approved | Revising）→ … → Approved | Exhausted；Critiquing 时 before_llm_request 注入 rubric 与 verdict 格式，Revising 时注入 critic 意见。critic 须以单独一行 `CRITIC_VERDICT: APPROVE` 或 `CRITIC_VERDICT: REVISE` 结尾；无结构化 verdict 时最多再要求一次，超过一次须停止。decide_continue 在 Critiquing / Revising 时 Continue，在 Approved / Exhausted 时 Stop，其它状态不得改变基线。评审轮数 须受 `max_rounds` 约束且远小于 core 的 32；达到上限须停止并记录原因。不得允许 critic 触发 compact，不得自动改代码或提交。
 
   @req:r2962
   规则: multiple-before-tool-gates

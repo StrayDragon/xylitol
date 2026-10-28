@@ -1,28 +1,29 @@
 use xylitol_plugin_sdk::LoopMiddlewareRegistry;
 use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
-use crate::config::LoopExampleConfig;
+use crate::config::LoopPoliciesConfig;
 use crate::middleware::{
-    example_middleware, generator_critic_middleware, self_heal_middleware, tool_exposure_middleware,
+    generator_critic_middleware, loop_policies_middleware, self_heal_middleware,
+    tool_exposure_middleware,
 };
 
-pub struct LoopExamplePlugin {
-    config: LoopExampleConfig,
+pub struct LoopPoliciesPlugin {
+    config: LoopPoliciesConfig,
 }
 
-impl LoopExamplePlugin {
-    pub fn new(config: &LoopExampleConfig) -> Result<Self> {
+impl LoopPoliciesPlugin {
+    pub fn new(config: &LoopPoliciesConfig) -> Result<Self> {
         Ok(Self {
             config: config.clone(),
         })
     }
 }
 
-impl Plugin for LoopExamplePlugin {
+impl Plugin for LoopPoliciesPlugin {
     type Deps = ();
 
     fn name(&self) -> &str {
-        "loop-example"
+        "loop-policies"
     }
 
     async fn apply(&self, ctx: &Ctx, _: ()) -> Result {
@@ -34,7 +35,7 @@ impl Plugin for LoopExamplePlugin {
         };
         let mut handles = vec![
             registry
-                .register(example_middleware(&self.config))
+                .register(loop_policies_middleware(&self.config))
                 .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?,
         ];
         if self.config.generator_critic.enabled {
@@ -77,8 +78,8 @@ mod tests {
     use super::*;
     use crate::config::ToolExposureConfig;
 
-    fn enabled() -> LoopExampleConfig {
-        LoopExampleConfig {
+    fn enabled() -> LoopPoliciesConfig {
+        LoopPoliciesConfig {
             enabled: true,
             max_settles: Some(2),
             deny_bash_patterns: vec!["rm -rf /".into()],
@@ -88,8 +89,8 @@ mod tests {
         }
     }
 
-    fn exposure_enabled() -> LoopExampleConfig {
-        LoopExampleConfig {
+    fn exposure_enabled() -> LoopPoliciesConfig {
+        LoopPoliciesConfig {
             tool_exposure: ToolExposureConfig {
                 enabled: true,
                 allow: vec!["read".into()],
@@ -99,8 +100,8 @@ mod tests {
         }
     }
 
-    fn self_heal_enabled() -> LoopExampleConfig {
-        LoopExampleConfig {
+    fn self_heal_enabled() -> LoopPoliciesConfig {
+        LoopPoliciesConfig {
             self_heal: crate::config::SelfHealConfig {
                 enabled: true,
                 ..Default::default()
@@ -109,8 +110,8 @@ mod tests {
         }
     }
 
-    fn critic_enabled() -> LoopExampleConfig {
-        LoopExampleConfig {
+    fn critic_enabled() -> LoopPoliciesConfig {
+        LoopPoliciesConfig {
             generator_critic: crate::config::GeneratorCriticConfig {
                 enabled: true,
                 ..Default::default()
@@ -130,7 +131,8 @@ mod tests {
     #[tokio::test]
     async fn disabled_config_registers_nothing() {
         let (ctx, registry) = ctx_with_registry();
-        let fiber = ctx.plugin(LoopExamplePlugin::new(&LoopExampleConfig::default()).expect("new"));
+        let fiber =
+            ctx.plugin(LoopPoliciesPlugin::new(&LoopPoliciesConfig::default()).expect("new"));
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty());
         let _ = ctx.shutdown().await;
@@ -139,14 +141,14 @@ mod tests {
     #[tokio::test]
     async fn enabled_config_registers_and_unload_leaves_no_residue() {
         let (ctx, registry) = ctx_with_registry();
-        let fiber = ctx.plugin(LoopExamplePlugin::new(&enabled()).expect("new"));
+        let fiber = ctx.plugin(LoopPoliciesPlugin::new(&enabled()).expect("new"));
         for _ in 0..32 {
             if !registry.is_empty() {
                 break;
             }
             tokio::task::yield_now().await;
         }
-        assert_eq!(registry.ids(), vec!["loop-example".to_string()]);
+        assert_eq!(registry.ids(), vec!["loop-policies".to_string()]);
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty());
         assert!(registry.snapshot().before_tool.is_empty());
@@ -156,7 +158,7 @@ mod tests {
     #[tokio::test]
     async fn tool_exposure_registers_and_unloads() {
         let (ctx, registry) = ctx_with_registry();
-        let fiber = ctx.plugin(LoopExamplePlugin::new(&exposure_enabled()).expect("new"));
+        let fiber = ctx.plugin(LoopPoliciesPlugin::new(&exposure_enabled()).expect("new"));
         for _ in 0..64 {
             if registry.ids().len() == 2 {
                 break;
@@ -165,7 +167,7 @@ mod tests {
         }
         assert_eq!(
             registry.ids(),
-            vec!["tool-exposure".to_string(), "loop-example".to_string()],
+            vec!["tool-exposure".to_string(), "loop-policies".to_string()],
             "tool exposure must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
@@ -176,7 +178,7 @@ mod tests {
     #[tokio::test]
     async fn self_heal_registers_and_unloads() {
         let (ctx, registry) = ctx_with_registry();
-        let fiber = ctx.plugin(LoopExamplePlugin::new(&self_heal_enabled()).expect("new"));
+        let fiber = ctx.plugin(LoopPoliciesPlugin::new(&self_heal_enabled()).expect("new"));
         for _ in 0..64 {
             if registry.ids().len() == 2 {
                 break;
@@ -185,7 +187,7 @@ mod tests {
         }
         assert_eq!(
             registry.ids(),
-            vec!["loop-example".to_string(), "self-heal".to_string()],
+            vec!["loop-policies".to_string(), "self-heal".to_string()],
             "self-heal must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
@@ -196,7 +198,7 @@ mod tests {
     #[tokio::test]
     async fn generator_critic_registers_and_unloads() {
         let (ctx, registry) = ctx_with_registry();
-        let fiber = ctx.plugin(LoopExamplePlugin::new(&critic_enabled()).expect("new"));
+        let fiber = ctx.plugin(LoopPoliciesPlugin::new(&critic_enabled()).expect("new"));
         for _ in 0..64 {
             if registry.ids().len() == 2 {
                 break;
@@ -205,7 +207,7 @@ mod tests {
         }
         assert_eq!(
             registry.ids(),
-            vec!["loop-example".to_string(), "generator-critic".to_string()],
+            vec!["loop-policies".to_string(), "generator-critic".to_string()],
             "generator-critic must register alongside the base middleware"
         );
         fiber.dispose().await.expect("dispose");
@@ -216,7 +218,7 @@ mod tests {
     #[tokio::test]
     async fn missing_registry_is_a_noop() {
         let ctx = Ctx::root().expect("root");
-        let fiber = ctx.plugin(LoopExamplePlugin::new(&enabled()).expect("new"));
+        let fiber = ctx.plugin(LoopPoliciesPlugin::new(&enabled()).expect("new"));
         fiber.dispose().await.expect("dispose");
         let _ = ctx.shutdown().await;
     }

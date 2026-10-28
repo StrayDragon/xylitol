@@ -238,7 +238,7 @@ mod tests {
 
     #[tokio::test]
     #[serial_test::serial]
-    async fn loop_example_plugin_absent_by_default_and_clean_on_unload() {
+    async fn loop_policies_plugin_absent_by_default_and_clean_on_unload() {
         let _iso = IsolatedConfig::new();
         let opts = BootOptions {
             profile: Profile::Print,
@@ -260,8 +260,8 @@ mod tests {
             "unconfigured loop example must not add middleware"
         );
         let fiber = ctx.plugin(
-            xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-                &xylitol_official_plugin_loop_example::LoopExampleConfig {
+            xylitol_official_plugin_loop_policies::LoopPoliciesPlugin::new(
+                &xylitol_official_plugin_loop_policies::LoopPoliciesConfig {
                     enabled: true,
                     max_settles: Some(2),
                     deny_bash_patterns: vec!["rm -rf /".into()],
@@ -270,7 +270,7 @@ mod tests {
                     tool_exposure: Default::default(),
                 },
             )
-            .expect("loop example plugin"),
+            .expect("loop policies plugin"),
         );
         for _ in 0..64 {
             if registry.ids().len() == 2 {
@@ -280,13 +280,13 @@ mod tests {
         }
         assert_eq!(
             registry.ids(),
-            vec!["loop-example".to_string(), "plan-mode".to_string()]
+            vec!["loop-policies".to_string(), "plan-mode".to_string()]
         );
         fiber.dispose().await.expect("dispose");
         assert_eq!(
             registry.ids(),
             vec!["plan-mode".to_string()],
-            "unload must leave no loop-example middleware behind"
+            "unload must leave no loop-policies middleware behind"
         );
         let _ = ctx.shutdown().await;
     }
@@ -436,16 +436,18 @@ mod tests {
     fn derived_slot_does_not_see_later_root_registrations() {
         let root = Arc::new(xylitol_plugin_sdk::LoopMiddlewareRegistry::new());
         let slot = root.derive();
-        root.register(xylitol_official_plugin_loop_example::example_middleware(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig {
-                enabled: true,
-                max_settles: Some(1),
-                deny_bash_patterns: vec![],
-                self_heal: Default::default(),
-                generator_critic: Default::default(),
-                tool_exposure: Default::default(),
-            },
-        ))
+        root.register(
+            xylitol_official_plugin_loop_policies::loop_policies_middleware(
+                &xylitol_official_plugin_loop_policies::LoopPoliciesConfig {
+                    enabled: true,
+                    max_settles: Some(1),
+                    deny_bash_patterns: vec![],
+                    self_heal: Default::default(),
+                    generator_critic: Default::default(),
+                    tool_exposure: Default::default(),
+                },
+            ),
+        )
         .expect("late root registration");
         assert!(
             slot.is_empty(),

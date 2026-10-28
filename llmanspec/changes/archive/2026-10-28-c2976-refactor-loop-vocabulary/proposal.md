@@ -2,6 +2,9 @@
 depends_on: []
 title: Rename loop vocabulary to LLM request/response and loop policies
 needs_specs_change: true
+branch: sdd/c2976-refactor-loop-vocabulary
+base_branch: main
+base_sha: 23f39a9beab20a4b3a073b84e19ce36d22f40e54
 ---
 
 # Rename loop vocabulary to LLM request/response and loop policies

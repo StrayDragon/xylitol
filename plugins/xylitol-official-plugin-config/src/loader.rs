@@ -103,7 +103,8 @@ fn load_from_paths(
         });
     }
 
-    reject_legacy_loop_example_keys(&merged)?;
+    reject_legacy_loop_example_section(&merged)?;
+    reject_legacy_loop_policies_keys(&merged)?;
     let mut config: AppConfig = serde_json::from_value(merged.clone())?;
     super::validate::validate_merged_config(&merged)?;
     config.validate_thinking_levels()?;
@@ -115,8 +116,19 @@ fn load_from_paths(
     })
 }
 
-fn reject_legacy_loop_example_keys(merged: &Value) -> Result<(), LoadError> {
-    let Some(loop_example) = merged.get("loop_example").and_then(Value::as_object) else {
+fn reject_legacy_loop_example_section(merged: &Value) -> Result<(), LoadError> {
+    if merged.get("loop_example").is_some() {
+        return Err(LoadError::validation(
+            "loop_example is no longer supported; use `loop_policies`; \
+             todo/workflow/plan keys moved to top-level `todo`/`workflow`/`plan` \
+             (see configs/example.yaml)",
+        ));
+    }
+    Ok(())
+}
+
+fn reject_legacy_loop_policies_keys(merged: &Value) -> Result<(), LoadError> {
+    let Some(loop_policies) = merged.get("loop_policies").and_then(Value::as_object) else {
         return Ok(());
     };
     let legacy = [
@@ -128,9 +140,9 @@ fn reject_legacy_loop_example_keys(merged: &Value) -> Result<(), LoadError> {
         ("workflow", "workflow"),
     ];
     for (old, new) in legacy {
-        if loop_example.contains_key(old) {
+        if loop_policies.contains_key(old) {
             return Err(LoadError::validation(format!(
-                "loop_example.{old} is no longer supported; use `{new}` (see configs/example.yaml)"
+                "loop_policies.{old} is no longer supported; use `{new}` (see configs/example.yaml)"
             )));
         }
     }
@@ -560,13 +572,13 @@ compaction:
 
     #[test]
     #[serial(env_global)]
-    fn legacy_loop_example_keys_rejected_with_migration_hint() {
+    fn legacy_loop_policies_keys_rejected_with_migration_hint() {
         let home = tempfile::tempdir().unwrap();
         let global = home.path().join(".config").join("xylitol");
         std::fs::create_dir_all(&global).unwrap();
         std::fs::write(
             global.join("config.yaml"),
-            "loop_example:\n  enabled: true\n  todo_progress: true\n",
+            "loop_policies:\n  enabled: true\n  todo_progress: true\n",
         )
         .unwrap();
         let home_s = home.path().to_str().unwrap();
@@ -580,5 +592,29 @@ compaction:
         let msg = err.to_string();
         assert!(msg.contains("todo_progress"), "got: {msg}");
         assert!(msg.contains("todo.progress"), "got: {msg}");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn legacy_loop_example_section_rejected_with_migration_hint() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "loop_example:\n  enabled: true\n  max_settles: 2\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let msg = err.to_string();
+        assert!(msg.contains("loop_example"), "got: {msg}");
+        assert!(msg.contains("loop_policies"), "got: {msg}");
     }
 }

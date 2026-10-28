@@ -11,8 +11,8 @@ use crate::bdd::steps_agent_runtime::{
 };
 
 use xylitol_plugin_sdk::{
-    AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx, LoopControl,
-    LoopMiddleware, LoopMiddlewareRegistry, LoopStage, LoopStep, PlanGateway,
+    AfterTurnCtx, BeforeLlmRequestCtx, BeforeToolCtx, BeforeTurnCtx, DecideContinueCtx,
+    LoopControl, LoopMiddleware, LoopMiddlewareRegistry, LoopStage, LoopStep, PlanGateway,
 };
 use xylitol_runtime::agent::runtime::XyEvent;
 
@@ -165,13 +165,13 @@ impl LoopMiddleware for RewriteAssistant {
     }
 
     fn stages(&self) -> &'static [LoopStage] {
-        &[LoopStage::AfterModel]
+        &[LoopStage::AfterLlmResponse]
     }
 
-    async fn after_model(
+    async fn after_llm_response(
         &self,
-        mut ctx: xylitol_plugin_sdk::AfterModelCtx,
-    ) -> LoopStep<xylitol_plugin_sdk::AfterModelCtx> {
+        mut ctx: xylitol_plugin_sdk::AfterLlmResponseCtx,
+    ) -> LoopStep<xylitol_plugin_sdk::AfterLlmResponseCtx> {
         ctx.assistant = xylitol_plugin_sdk::AgentMessage::Llm(
             xylitol_plugin_sdk::XyLlmMessage::assistant("replaced"),
         );
@@ -210,10 +210,13 @@ impl LoopMiddleware for TouchMessages {
     }
 
     fn stages(&self) -> &'static [LoopStage] {
-        &[LoopStage::BeforeModel]
+        &[LoopStage::BeforeLlmRequest]
     }
 
-    async fn before_model(&self, mut ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+    async fn before_llm_request(
+        &self,
+        mut ctx: BeforeLlmRequestCtx,
+    ) -> LoopStep<BeforeLlmRequestCtx> {
         ctx.messages.push(xylitol_plugin_sdk::AgentMessage::Llm(
             xylitol_plugin_sdk::XyLlmMessage::user("middleware fragment"),
         ));
@@ -241,14 +244,14 @@ fn fresh_registry() -> Arc<LoopMiddlewareRegistry> {
     Arc::new(LoopMiddlewareRegistry::new())
 }
 
-#[given("注册 before_model 阶段 order 10 与 order 5 的两个中间件")]
+#[given("注册 before_llm_request 阶段 order 10 与 order 5 的两个中间件")]
 pub(crate) fn g_register_two_ordered() {
     let registry = fresh_registry();
     registry
         .register(scripted(
             "order-ten",
             10,
-            &[LoopStage::BeforeModel],
+            &[LoopStage::BeforeLlmRequest],
             LoopControl::Continue,
         ))
         .expect("register order-ten");
@@ -256,7 +259,7 @@ pub(crate) fn g_register_two_ordered() {
         .register(scripted(
             "order-five",
             5,
-            &[LoopStage::BeforeModel],
+            &[LoopStage::BeforeLlmRequest],
             LoopControl::Continue,
         ))
         .expect("register order-five");
@@ -270,14 +273,14 @@ pub(crate) fn w_snapshot_then_unregister() {
         .expect("registry");
     let ids: Vec<String> = registry
         .snapshot()
-        .before_model
+        .before_llm_request
         .iter()
         .map(|mw| mw.id().to_string())
         .collect();
     assert!(registry.unregister("order-five"));
     let after: Vec<String> = registry
         .snapshot()
-        .before_model
+        .before_llm_request
         .iter()
         .map(|mw| mw.id().to_string())
         .collect();
@@ -457,8 +460,8 @@ pub(crate) fn g_decide_always_continue(agent: &AgentState, ws: &Workspace) {
     ar_store_runner(runner);
 }
 
-#[given("注册 before_model 中间件且在观测闸开启下运行一回合")]
-pub(crate) async fn g_trace_before_model(agent: &AgentState, ws: &Workspace) {
+#[given("注册 before_llm_request 中间件且在观测闸开启下运行一回合")]
+pub(crate) async fn g_trace_before_llm_request(agent: &AgentState, ws: &Workspace) {
     use xylitol_plugin_sdk::{SpanCollectScope, set_provider_trace_active};
 
     let registry = fresh_registry();
@@ -522,7 +525,7 @@ pub(crate) fn t_trace_props() {
         let get = |key: &str| span.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str());
         assert_eq!(
             get("loop.middleware.stage"),
-            Some("before_model"),
+            Some("before_llm_request"),
             "{props:?}"
         );
         let changed = get("loop.middleware.changed").expect("changed summary");
@@ -530,7 +533,7 @@ pub(crate) fn t_trace_props() {
     });
 }
 
-#[given("loop 示例插件配置缺省")]
+#[given("loop 策略插件配置缺省")]
 pub(crate) fn g_example_default() {
     use xylitol_plugin_sdk::rt::CtxHost;
 
@@ -539,17 +542,17 @@ pub(crate) fn g_example_default() {
     ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
         .expect("provide registry");
     let fiber = ctx.plugin(
-        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig::default(),
+        xylitol_official_plugin_loop_policies::LoopPoliciesPlugin::new(
+            &xylitol_official_plugin_loop_policies::LoopPoliciesConfig::default(),
         )
-        .expect("loop example plugin"),
+        .expect("loop policies plugin"),
     );
     LOOP_PLUGIN_REGISTRY.with(|slot| slot.borrow_mut().replace(registry));
     LOOP_PLUGIN_FIBER.with(|slot| slot.borrow_mut().replace(fiber));
     LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
 }
 
-#[given("以启用 loop 示例插件装配运行时")]
+#[given("以启用 loop 策略插件装配运行时")]
 pub(crate) async fn g_example_enabled() {
     use xylitol_plugin_sdk::rt::CtxHost;
 
@@ -558,8 +561,8 @@ pub(crate) async fn g_example_enabled() {
     ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
         .expect("provide registry");
     let fiber = ctx.plugin(
-        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig {
+        xylitol_official_plugin_loop_policies::LoopPoliciesPlugin::new(
+            &xylitol_official_plugin_loop_policies::LoopPoliciesConfig {
                 enabled: true,
                 max_settles: Some(2),
                 deny_bash_patterns: vec!["rm -rf /".into()],
@@ -568,7 +571,7 @@ pub(crate) async fn g_example_enabled() {
                 tool_exposure: Default::default(),
             },
         )
-        .expect("loop example plugin"),
+        .expect("loop policies plugin"),
     );
     for _ in 0..64 {
         if !registry.is_empty() {
@@ -576,7 +579,7 @@ pub(crate) async fn g_example_enabled() {
         }
         tokio::task::yield_now().await;
     }
-    assert_eq!(registry.ids(), vec!["loop-example".to_string()]);
+    assert_eq!(registry.ids(), vec!["loop-policies".to_string()]);
     LOOP_PLUGIN_REGISTRY.with(|slot| slot.borrow_mut().replace(registry));
     LOOP_PLUGIN_FIBER.with(|slot| slot.borrow_mut().replace(fiber));
     LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
@@ -663,7 +666,7 @@ pub(crate) async fn g_todo_checkpoint_enabled() {
     LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
 }
 
-#[given("以启用工具收窄的 loop 示例插件装配运行时")]
+#[given("以启用工具收窄的 loop 策略插件装配运行时")]
 pub(crate) async fn g_example_tool_exposure_enabled() {
     use xylitol_plugin_sdk::rt::CtxHost;
 
@@ -672,21 +675,21 @@ pub(crate) async fn g_example_tool_exposure_enabled() {
     ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
         .expect("provide registry");
     let fiber = ctx.plugin(
-        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig {
+        xylitol_official_plugin_loop_policies::LoopPoliciesPlugin::new(
+            &xylitol_official_plugin_loop_policies::LoopPoliciesConfig {
                 enabled: true,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
-                tool_exposure: xylitol_official_plugin_loop_example::ToolExposureConfig {
+                tool_exposure: xylitol_official_plugin_loop_policies::ToolExposureConfig {
                     enabled: true,
                     allow: vec!["read".into()],
                     ..Default::default()
                 },
             },
         )
-        .expect("loop example plugin"),
+        .expect("loop policies plugin"),
     );
     for _ in 0..64 {
         if registry.ids().len() == 2 {
@@ -699,7 +702,7 @@ pub(crate) async fn g_example_tool_exposure_enabled() {
     LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
 }
 
-#[given("以启用自愈的 loop 示例插件装配运行时")]
+#[given("以启用自愈的 loop 策略插件装配运行时")]
 pub(crate) async fn g_example_self_heal_enabled() {
     use xylitol_plugin_sdk::rt::CtxHost;
 
@@ -708,12 +711,12 @@ pub(crate) async fn g_example_self_heal_enabled() {
     ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
         .expect("provide registry");
     let fiber = ctx.plugin(
-        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig {
+        xylitol_official_plugin_loop_policies::LoopPoliciesPlugin::new(
+            &xylitol_official_plugin_loop_policies::LoopPoliciesConfig {
                 enabled: true,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
-                self_heal: xylitol_official_plugin_loop_example::SelfHealConfig {
+                self_heal: xylitol_official_plugin_loop_policies::SelfHealConfig {
                     enabled: true,
                     ..Default::default()
                 },
@@ -721,7 +724,7 @@ pub(crate) async fn g_example_self_heal_enabled() {
                 tool_exposure: Default::default(),
             },
         )
-        .expect("loop example plugin"),
+        .expect("loop policies plugin"),
     );
     for _ in 0..64 {
         if registry.ids().len() == 2 {
@@ -734,7 +737,7 @@ pub(crate) async fn g_example_self_heal_enabled() {
     LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
 }
 
-#[given("以启用生成评审的 loop 示例插件装配运行时")]
+#[given("以启用生成评审的 loop 策略插件装配运行时")]
 pub(crate) async fn g_example_generator_critic_enabled() {
     use xylitol_plugin_sdk::rt::CtxHost;
 
@@ -743,20 +746,20 @@ pub(crate) async fn g_example_generator_critic_enabled() {
     ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
         .expect("provide registry");
     let fiber = ctx.plugin(
-        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig {
+        xylitol_official_plugin_loop_policies::LoopPoliciesPlugin::new(
+            &xylitol_official_plugin_loop_policies::LoopPoliciesConfig {
                 enabled: true,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
                 self_heal: Default::default(),
-                generator_critic: xylitol_official_plugin_loop_example::GeneratorCriticConfig {
+                generator_critic: xylitol_official_plugin_loop_policies::GeneratorCriticConfig {
                     enabled: true,
                     ..Default::default()
                 },
                 tool_exposure: Default::default(),
             },
         )
-        .expect("loop example plugin"),
+        .expect("loop policies plugin"),
     );
     for _ in 0..64 {
         if registry.ids().len() == 2 {
@@ -831,12 +834,12 @@ pub(crate) fn t_registry_has_todo_reminder() {
     });
 }
 
-#[then("注册表含 loop-example 与 tool-exposure")]
+#[then("注册表含 loop-policies 与 tool-exposure")]
 pub(crate) fn t_registry_has_tool_exposure() {
     LOOP_CHAIN_IDS.with(|slot| {
         assert_eq!(
             &*slot.borrow(),
-            &["tool-exposure".to_string(), "loop-example".to_string()],
+            &["tool-exposure".to_string(), "loop-policies".to_string()],
             "tool exposure must register the base middleware and the exposure middleware"
         );
     });
@@ -853,23 +856,23 @@ pub(crate) fn t_registry_has_todo_checkpoint() {
     });
 }
 
-#[then("注册表含 loop-example 与 self-heal")]
+#[then("注册表含 loop-policies 与 self-heal")]
 pub(crate) fn t_registry_has_self_heal() {
     LOOP_CHAIN_IDS.with(|slot| {
         assert_eq!(
             &*slot.borrow(),
-            &["loop-example".to_string(), "self-heal".to_string()],
+            &["loop-policies".to_string(), "self-heal".to_string()],
             "self-heal must register the base middleware and the self-heal middleware"
         );
     });
 }
 
-#[then("注册表含 loop-example 与 generator-critic")]
+#[then("注册表含 loop-policies 与 generator-critic")]
 pub(crate) fn t_registry_has_generator_critic() {
     LOOP_CHAIN_IDS.with(|slot| {
         assert_eq!(
             &*slot.borrow(),
-            &["loop-example".to_string(), "generator-critic".to_string()],
+            &["loop-policies".to_string(), "generator-critic".to_string()],
             "generator-critic must register the base middleware and the critic middleware"
         );
     });
@@ -1058,7 +1061,7 @@ pub(crate) fn t_start_shows_rewritten_args() {
     );
 }
 
-#[given("注册 after_model 中间件把 assistant 文本改写为 replaced")]
+#[given("注册 after_llm_response 中间件把 assistant 文本改写为 replaced")]
 pub(crate) fn g_rewrite_assistant(agent: &AgentState, ws: &Workspace) {
     let registry = fresh_registry();
     registry
@@ -1946,10 +1949,10 @@ impl LoopMiddleware for CaptureBeforeModel {
     }
 
     fn stages(&self) -> &'static [LoopStage] {
-        &[LoopStage::BeforeModel]
+        &[LoopStage::BeforeLlmRequest]
     }
 
-    async fn before_model(&self, ctx: BeforeModelCtx) -> LoopStep<BeforeModelCtx> {
+    async fn before_llm_request(&self, ctx: BeforeLlmRequestCtx) -> LoopStep<BeforeLlmRequestCtx> {
         let joined = ctx
             .messages
             .iter()
@@ -1961,8 +1964,8 @@ impl LoopMiddleware for CaptureBeforeModel {
     }
 }
 
-#[given("注册 before_model 中间件观察 messages 且 skills 已装配")]
-pub(crate) fn g_capture_before_model(agent: &AgentState, ws: &Workspace) {
+#[given("注册 before_llm_request 中间件观察 messages 且 skills 已装配")]
+pub(crate) fn g_capture_before_llm_request(agent: &AgentState, ws: &Workspace) {
     SKILL_SEEN.with(|c| *c.borrow_mut() = None);
     let mut runner = ar_make_runner(agent, ws);
     let skill_path = std::path::PathBuf::from(ws.root()).join("SKILL.md");
@@ -1993,14 +1996,14 @@ pub(crate) async fn w_run_with_skill_ref() {
     ar_take_run_store("use $demo").await;
 }
 
-#[then("before_model 观察到已展开的技能正文")]
-pub(crate) fn t_before_model_sees_expanded() {
+#[then("before_llm_request 观察到已展开的技能正文")]
+pub(crate) fn t_before_llm_request_sees_expanded() {
     let seen = SKILL_SEEN
         .with(|c| c.borrow().clone())
-        .expect("before_model must have run");
+        .expect("before_llm_request must have run");
     assert!(
         seen.contains("SKILL_BODY_MARKER"),
-        "before_model must observe expanded skill body: {seen}"
+        "before_llm_request must observe expanded skill body: {seen}"
     );
 }
 
@@ -2084,8 +2087,8 @@ thread_local! {
     static PLAN_GATE_OUT: RefCell<Option<(LoopControl, serde_json::Value)>> = const { RefCell::new(None) };
 }
 
-fn plan_gate_model_ctx(session_id: &str) -> BeforeModelCtx {
-    BeforeModelCtx {
+fn plan_gate_model_ctx(session_id: &str) -> BeforeLlmRequestCtx {
+    BeforeLlmRequestCtx {
         turn_index: 0,
         messages: Vec::new(),
         tool_schemas: Vec::new(),
@@ -2120,7 +2123,7 @@ pub(crate) fn g_plan_gate_active() {
         None,
         &xylitol_official_plugin_plan::PlanConfig::default(),
     );
-    futures::executor::block_on(mw.before_model(plan_gate_model_ctx("s-plan-gate")));
+    futures::executor::block_on(mw.before_llm_request(plan_gate_model_ctx("s-plan-gate")));
     PLAN_GATE.with(|slot| slot.borrow_mut().replace((mw, store)));
 }
 
@@ -2144,7 +2147,7 @@ pub(crate) fn w_plan_gate_execute_write() {
         store.append_session_entry("s-plan-gate", &PlanMode::execute().to_custom_entry_shell()),
     )
     .expect("append execute mode");
-    futures::executor::block_on(mw.before_model(plan_gate_model_ctx("s-plan-gate")));
+    futures::executor::block_on(mw.before_llm_request(plan_gate_model_ctx("s-plan-gate")));
     let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("write")));
     PLAN_GATE_OUT.with(|slot| *slot.borrow_mut() = Some((out.control, out.ctx.args)));
 }
@@ -2350,7 +2353,7 @@ pub(crate) fn g_workflow_tool_write() {
         None,
         &xylitol_official_plugin_workflow::WorkflowConfig::default(),
     );
-    let out = futures::executor::block_on(mw.before_model(BeforeModelCtx {
+    let out = futures::executor::block_on(mw.before_llm_request(BeforeLlmRequestCtx {
         turn_index: 0,
         messages: Vec::new(),
         tool_schemas: Vec::new(),
@@ -2379,7 +2382,7 @@ pub(crate) fn t_workflow_tool_step() {
     assert!(text.contains("s1"), "{text}");
 }
 
-#[when("模型下一轮 before_model")]
+#[when("模型下一轮 before_llm_request")]
 pub(crate) fn w_workflow_next_model() {}
 
 thread_local! {
@@ -2438,7 +2441,7 @@ pub(crate) fn g_nested_workflow_child_completed() {
         None,
         &xylitol_official_plugin_workflow::WorkflowConfig::default(),
     );
-    let out = futures::executor::block_on(mw.before_model(BeforeModelCtx {
+    let out = futures::executor::block_on(mw.before_llm_request(BeforeLlmRequestCtx {
         turn_index: 0,
         messages: Vec::new(),
         tool_schemas: Vec::new(),

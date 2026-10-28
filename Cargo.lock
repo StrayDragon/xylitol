@@ -5907,7 +5907,7 @@ dependencies = [
  "xylitol-official-plugin-compaction",
  "xylitol-official-plugin-config",
  "xylitol-official-plugin-hooks",
- "xylitol-official-plugin-loop-example",
+ "xylitol-official-plugin-loop-policies",
  "xylitol-official-plugin-mcp",
  "xylitol-official-plugin-obs",
  "xylitol-official-plugin-plan",
@@ -5997,7 +5997,7 @@ dependencies = [
  "xylitol-official-plugin-compaction",
  "xylitol-official-plugin-config",
  "xylitol-official-plugin-hooks",
- "xylitol-official-plugin-loop-example",
+ "xylitol-official-plugin-loop-policies",
  "xylitol-official-plugin-mcp",
  "xylitol-official-plugin-obs",
  "xylitol-official-plugin-plan",
@@ -6048,7 +6048,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "xylitol-official-plugin-hooks",
- "xylitol-official-plugin-loop-example",
+ "xylitol-official-plugin-loop-policies",
  "xylitol-official-plugin-mcp",
  "xylitol-official-plugin-plan",
  "xylitol-official-plugin-todo",
@@ -6075,7 +6075,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "xylitol-official-plugin-loop-example"
+name = "xylitol-official-plugin-loop-policies"
 version = "0.0.0-pre"
 dependencies = [
  "async-trait",

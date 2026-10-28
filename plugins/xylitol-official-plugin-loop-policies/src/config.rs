@@ -53,7 +53,7 @@ impl Default for SelfHealConfig {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(default, deny_unknown_fields)]
-pub struct LoopExampleConfig {
+pub struct LoopPoliciesConfig {
     pub enabled: bool,
     pub max_settles: Option<u32>,
     pub deny_bash_patterns: Vec<String>,
@@ -62,7 +62,7 @@ pub struct LoopExampleConfig {
     pub tool_exposure: ToolExposureConfig,
 }
 
-impl LoopExampleConfig {
+impl LoopPoliciesConfig {
     pub fn is_active(&self) -> bool {
         self.enabled
     }

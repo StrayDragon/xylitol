@@ -287,7 +287,7 @@ pub(crate) async fn ar_take_run_store(prompt: &str) {
 }
 
 #[given("装配并运行入队 steer 的 agent")]
-pub(crate) async fn _g_ar8_steer_before_model(agent: &AgentState, ws: &Workspace) {
+pub(crate) async fn _g_ar8_steer_before_llm_request(agent: &AgentState, ws: &Workspace) {
     set_fake_text("steer ack");
     let mut runner = ar_make_runner(agent, ws);
     runner.steer("插队指令");

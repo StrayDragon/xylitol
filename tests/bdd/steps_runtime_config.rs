@@ -532,7 +532,7 @@ pub(crate) fn w_config_schema_top_level(rc_snap: &RcSnap) {
 }
 
 #[then(
-    "含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_example 与 todo 与 workflow 与 plan"
+    "含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan"
 )]
 pub(crate) fn t_config_schema_covers_sections(rc_snap: &RcSnap) {
     let joined = rc_snap
@@ -547,7 +547,7 @@ pub(crate) fn t_config_schema_covers_sections(rc_snap: &RcSnap) {
         "tool_batch",
         "tui",
         "otel",
-        "loop_example",
+        "loop_policies",
         "todo",
         "workflow",
         "plan",

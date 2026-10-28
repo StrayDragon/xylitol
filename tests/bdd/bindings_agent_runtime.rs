@@ -30,7 +30,7 @@ async fn test_ar_abort_drops_sse(agent: AgentState, ws: Workspace) {}
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "改向之前模型"
 )]
-async fn test_ar_steer_before_model(agent: AgentState, ws: Workspace) {}
+async fn test_ar_steer_before_llm_request(agent: AgentState, ws: Workspace) {}
 #[scenario(
     path = "llmanspec/specs/agent-runtime/agent-runtime.feature",
     name = "追问延长"

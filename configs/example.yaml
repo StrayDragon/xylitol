@@ -141,18 +141,18 @@ hooks:
 #   read_only: true         # deny write/edit/bash while planning
 #   allowed_tools: []       # extra read-only tools (e.g. read-only MCP tools)
 
-# loop_example:  # official example plugin: ReAct loop middleware participation
+# loop_policies:  # official loop policy pack (plugin-author reference implementation)
 #   enabled: false
 #   max_settles: 3            # optional: stop the run after N settles
 #   self_heal:                # after_tool: continue on deterministic failures
 #     enabled: false
 #     signatures: []          # empty: built-in test/build/lint/panic signatures
 #     max_attempts: 3         # bounded well below the core 32-turn limit
-#   generator_critic:         # after_model: bounded critic pass on final answers
+#   generator_critic:         # after_llm_response: bounded critic pass on final answers
 #     enabled: false
 #     rubric: []              # empty: built-in correctness/evidence/boundaries rubric
 #     max_rounds: 1           # critic calls stay core-scheduled and bounded
-#   tool_exposure:            # before_model: narrow the tools the model can see
+#   tool_exposure:            # before_llm_request: narrow the tools the model can see
 #     enabled: false
 #     allow: []               # non-empty: only these tools (todo tools stay visible)
 #     deny: []                # always hidden

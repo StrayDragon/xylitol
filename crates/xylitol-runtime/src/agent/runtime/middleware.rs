@@ -6,8 +6,8 @@ use fastrace::prelude::{Event, Span, SpanContext};
 use tokio_util::sync::CancellationToken;
 
 use xylitol_plugin_sdk::{
-    AfterModelCtx, AfterToolCtx, AfterTurnCtx, BeforeModelCtx, BeforeToolCtx, BeforeTurnCtx,
-    DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware, LoopStage, LoopStep,
+    AfterLlmResponseCtx, AfterToolCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeToolCtx,
+    BeforeTurnCtx, DecideContinueCtx, LoopChain, LoopControl, LoopMiddleware, LoopStage, LoopStep,
     provider_trace_active,
 };
 
@@ -168,7 +168,7 @@ fn before_turn_fingerprint(ctx: &BeforeTurnCtx) -> String {
     format!("{prompt}:{}", ctx.system_fragments.len())
 }
 
-fn before_model_fingerprint(ctx: &BeforeModelCtx) -> String {
+fn before_llm_request_fingerprint(ctx: &BeforeLlmRequestCtx) -> String {
     let mut schemas: Vec<&str> = ctx.tool_schemas.iter().map(|s| s.name.as_str()).collect();
     schemas.sort_unstable();
     format!(
@@ -181,7 +181,7 @@ fn before_model_fingerprint(ctx: &BeforeModelCtx) -> String {
     )
 }
 
-fn after_model_fingerprint(ctx: &AfterModelCtx) -> String {
+fn after_llm_response_fingerprint(ctx: &AfterLlmResponseCtx) -> String {
     format!(
         "{}|{}",
         ctx.assistant.text().chars().count(),
@@ -278,38 +278,38 @@ pub(crate) async fn run_before_turn(
     .await
 }
 
-pub(crate) async fn run_before_model(
+pub(crate) async fn run_before_llm_request(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
-    ctx: BeforeModelCtx,
-) -> Result<StageOutcome<BeforeModelCtx>, MiddlewareFault> {
+    ctx: BeforeLlmRequestCtx,
+) -> Result<StageOutcome<BeforeLlmRequestCtx>, MiddlewareFault> {
     run_stage(
         chain,
-        LoopStage::BeforeModel,
+        LoopStage::BeforeLlmRequest,
         cancel,
         parent,
         ctx,
-        before_model_fingerprint,
-        |mw, ctx| Box::pin(mw.before_model(ctx)),
+        before_llm_request_fingerprint,
+        |mw, ctx| Box::pin(mw.before_llm_request(ctx)),
     )
     .await
 }
 
-pub(crate) async fn run_after_model(
+pub(crate) async fn run_after_llm_response(
     chain: &LoopChain,
     cancel: &CancellationToken,
     parent: Option<SpanContext>,
-    ctx: AfterModelCtx,
-) -> Result<StageOutcome<AfterModelCtx>, MiddlewareFault> {
+    ctx: AfterLlmResponseCtx,
+) -> Result<StageOutcome<AfterLlmResponseCtx>, MiddlewareFault> {
     run_stage(
         chain,
-        LoopStage::AfterModel,
+        LoopStage::AfterLlmResponse,
         cancel,
         parent,
         ctx,
-        after_model_fingerprint,
-        |mw, ctx| Box::pin(mw.after_model(ctx)),
+        after_llm_response_fingerprint,
+        |mw, ctx| Box::pin(mw.after_llm_response(ctx)),
     )
     .await
 }
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn fingerprints_track_message_and_schema_changes() {
-        let ctx = BeforeModelCtx {
+        let ctx = BeforeLlmRequestCtx {
             turn_index: 0,
             messages: vec![xylitol_plugin_sdk::AgentMessage::Llm(
                 xylitol_plugin_sdk::XyLlmMessage::user("hi"),
@@ -447,12 +447,12 @@ mod tests {
             todo: None,
             session_id: None,
         };
-        let base = before_model_fingerprint(&ctx);
+        let base = before_llm_request_fingerprint(&ctx);
         let mut changed = ctx.clone();
         changed.messages.push(xylitol_plugin_sdk::AgentMessage::Llm(
             xylitol_plugin_sdk::XyLlmMessage::user("more"),
         ));
-        assert_ne!(base, before_model_fingerprint(&changed));
+        assert_ne!(base, before_llm_request_fingerprint(&changed));
 
         let mut schema_changed = ctx.clone();
         schema_changed
@@ -462,7 +462,7 @@ mod tests {
                 description: "d".into(),
                 parameters: serde_json::json!({}),
             });
-        assert_ne!(base, before_model_fingerprint(&schema_changed));
+        assert_ne!(base, before_llm_request_fingerprint(&schema_changed));
     }
 
     struct StopAfterTurn;
