@@ -11,6 +11,10 @@ pub(super) async fn load_earlier<T: Terminal>(
     if !session.take_load_earlier_request() {
         return;
     }
+    if !session.loaded_history_has_more() {
+        session.expand_history_window();
+        return;
+    }
     let Some(oldest) = session.oldest_loaded_entry_id() else {
         return;
     };

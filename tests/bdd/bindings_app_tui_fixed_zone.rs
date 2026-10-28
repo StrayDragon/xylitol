@@ -44,6 +44,12 @@ fn test_fz_load_earlier(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "窗口溢出后提示为收起而非加载更早"
+)]
+fn test_fz_collapsed_notice(fixed_zone_bdd: FixedZoneBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
     name = "短会话无分页提示"
 )]
 fn test_fz_short_no_notice(fixed_zone_bdd: FixedZoneBdd) {}

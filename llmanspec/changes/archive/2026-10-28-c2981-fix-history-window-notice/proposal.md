@@ -2,6 +2,9 @@
 depends_on: []
 title: 修正历史窗口提示文案与被裁条目的可达性
 needs_specs_change: true
+branch: sdd/c2981-fix-history-window-notice
+base_branch: main
+base_sha: 19d9dd85680b12cf1be6c5b797e30879b2353325
 ---
 
 # 修正历史窗口提示文案与被裁条目的可达性

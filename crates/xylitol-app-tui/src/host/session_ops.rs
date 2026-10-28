@@ -377,6 +377,11 @@ impl<T: Terminal> HostSession<T> {
         entries: Vec<SessionEntry>,
     ) {
         let note = travel_history_note(&entries, &travel);
+        self.loaded_history = Some(crate::history_window::LoadedHistory::new(
+            &travel.selected_id,
+            entries.clone(),
+            false,
+        ));
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
@@ -405,6 +410,11 @@ impl<T: Terminal> HostSession<T> {
             leaf_id,
             editor_text: editor_prefill.clone(),
         };
+        self.loaded_history = Some(crate::history_window::LoadedHistory::new(
+            child_id,
+            entries.clone(),
+            false,
+        ));
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
@@ -523,6 +533,11 @@ impl<T: Terminal> HostSession<T> {
             leaf_id,
             editor_text: None,
         };
+        self.loaded_history = Some(crate::history_window::LoadedHistory::new(
+            session_id,
+            entries.clone(),
+            has_more,
+        ));
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
         self.ui_model.mode_strip = mode_strip_for_entries(&entries);
         crate::history_window::trim_to_window(&mut self.ui_model, has_more);
@@ -548,6 +563,11 @@ impl<T: Terminal> HostSession<T> {
             leaf_id,
             editor_text: None,
         };
+        self.loaded_history = Some(crate::history_window::LoadedHistory::new(
+            &load.session_id,
+            load.entries.clone(),
+            false,
+        ));
         rebuild_scrollback_from_travel(&mut self.ui_model, &load.entries, &travel);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
@@ -625,15 +645,35 @@ impl<T: Terminal> HostSession<T> {
             .and_then(|h| h.first_entry_id.clone())
     }
 
+    pub fn loaded_history_has_more(&self) -> bool {
+        self.loaded_history.as_ref().is_some_and(|h| h.has_more)
+    }
+
     pub fn prepend_history(&mut self, older: Vec<SessionEntry>, has_more: bool) {
         let Some(history) = self.loaded_history.as_mut() else {
             return;
         };
-        let mut merged = older;
-        merged.extend(std::mem::take(&mut history.entries));
-        history.first_entry_id = merged.iter().find_map(|e| e.entry_id().map(str::to_string));
-        history.entries = merged;
+        history.merge_older(older, has_more);
         let entries = history.entries.clone();
+        let session_id = history.session_id.clone();
+        let travel = SessionTreeTravel {
+            kind: xylitol_plugin_sdk::session::SessionTreeKind::MessageHistory,
+            selected_id: session_id,
+            leaf_id: xylitol_plugin_sdk::session::transcript_leaf_anchor(&entries, None),
+            editor_text: None,
+        };
+        rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
+        self.ui_model.mode_strip = mode_strip_for_entries(&entries);
+        crate::history_window::show_notice(&mut self.ui_model, has_more);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn expand_history_window(&mut self) {
+        let Some(history) = self.loaded_history.as_ref() else {
+            return;
+        };
+        let entries = history.entries.clone();
+        let has_more = history.has_more;
         let travel = SessionTreeTravel {
             kind: xylitol_plugin_sdk::session::SessionTreeKind::MessageHistory,
             selected_id: history.session_id.clone(),
@@ -642,12 +682,12 @@ impl<T: Terminal> HostSession<T> {
         };
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
         self.ui_model.mode_strip = mode_strip_for_entries(&entries);
-        crate::history_window::trim_to_window(&mut self.ui_model, has_more);
+        crate::history_window::show_notice(&mut self.ui_model, has_more);
         self.sync_ui_root_from_model();
     }
 
     pub fn clear_earlier_hint(&mut self) {
-        crate::history_window::trim_to_window(&mut self.ui_model, false);
+        crate::history_window::show_notice(&mut self.ui_model, false);
         self.sync_ui_root_from_model();
     }
 }
