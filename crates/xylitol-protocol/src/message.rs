@@ -237,7 +237,7 @@ mod tests {
     }
 
     #[test]
-    fn protocol_version_is_four() {
+    fn protocol_version_is_five() {
         assert_eq!(PROTOCOL_VERSION, 5);
         assert_eq!(WIRE_FORMAT_JSONRPC, "jsonrpc");
     }
