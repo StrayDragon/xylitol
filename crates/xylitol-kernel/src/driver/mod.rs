@@ -1,7 +1,8 @@
 mod in_process;
 
 pub use in_process::{
-    XyInProcessDriver, assemble_driver, assemble_driver_with_bang, assemble_driver_with_ops,
+    ToolFeatures, XyInProcessDriver, assemble_driver, assemble_driver_with_bang,
+    assemble_driver_with_features, assemble_driver_with_ops, assemble_driver_with_ops_and_features,
     install_product_ask_tool,
 };
 pub use xylitol_runtime::driver::{

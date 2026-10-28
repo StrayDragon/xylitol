@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
-use super::typed::TypedTool;
+use xylitol_plugin_sdk::TypedTool;
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::session::{
     TodoItemDraft, TodoItemPatch, TodoList, apply_todo_patches, latest_agent_todo,

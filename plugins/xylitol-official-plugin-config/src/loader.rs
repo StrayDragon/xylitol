@@ -103,6 +103,7 @@ fn load_from_paths(
         });
     }
 
+    reject_legacy_loop_example_keys(&merged)?;
     let mut config: AppConfig = serde_json::from_value(merged.clone())?;
     super::validate::validate_merged_config(&merged)?;
     config.validate_thinking_levels()?;
@@ -112,6 +113,28 @@ fn load_from_paths(
         config,
         from_yaml_layers,
     })
+}
+
+fn reject_legacy_loop_example_keys(merged: &Value) -> Result<(), LoadError> {
+    let Some(loop_example) = merged.get("loop_example").and_then(Value::as_object) else {
+        return Ok(());
+    };
+    let legacy = [
+        ("todo_progress", "todo.progress"),
+        ("todo_reminder", "todo.reminder"),
+        ("todo_reminder_stale_after", "todo.reminder_stale_after"),
+        ("todo_checkpoint", "todo.checkpoint"),
+        ("plan_mode", "plan.enabled"),
+        ("workflow", "workflow"),
+    ];
+    for (old, new) in legacy {
+        if loop_example.contains_key(old) {
+            return Err(LoadError::validation(format!(
+                "loop_example.{old} is no longer supported; use `{new}` (see configs/example.yaml)"
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn expand_model_config_expressions(config: &mut AppConfig) -> Result<(), LoadError> {
@@ -521,5 +544,41 @@ compaction:
             "错误 MUST 带 alias:field 上下文，got: {msg}"
         );
         assert!(msg.contains("unbound"), "错误 MUST 可读，got: {msg}");
+    }
+
+    #[test]
+    fn feature_plugin_defaults_are_stable() {
+        let config = AppConfig::default();
+        assert!(config.todo.is_active(), "todo plugin is default-on");
+        assert!(!config.workflow.is_active(), "workflow plugin is opt-in");
+        assert!(
+            config.plan.is_active(),
+            "plan plugin keeps the c2973 default"
+        );
+        assert!(config.plan.read_only, "plan mode is read-only by default");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn legacy_loop_example_keys_rejected_with_migration_hint() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "loop_example:\n  enabled: true\n  todo_progress: true\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let msg = err.to_string();
+        assert!(msg.contains("todo_progress"), "got: {msg}");
+        assert!(msg.contains("todo.progress"), "got: {msg}");
     }
 }

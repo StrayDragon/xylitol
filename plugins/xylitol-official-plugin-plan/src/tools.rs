@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
-use super::typed::TypedTool;
+use xylitol_plugin_sdk::TypedTool;
 use xylitol_plugin_sdk::ask::{AskArgs, AskModeArg, AskOptionArg, AskQuestionArg, AskUserGateway};
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::session::{
@@ -404,14 +404,14 @@ impl TypedTool for PlanListTool {
 
 pub struct PlanSubmitTool {
     gateway: Arc<dyn PlanGateway>,
-    todo: Arc<dyn AgentTodoGateway>,
+    todo: Option<Arc<dyn AgentTodoGateway>>,
     ask: Option<Arc<dyn AskUserGateway>>,
 }
 
 impl PlanSubmitTool {
     pub fn new(
         gateway: Arc<dyn PlanGateway>,
-        todo: Arc<dyn AgentTodoGateway>,
+        todo: Option<Arc<dyn AgentTodoGateway>>,
         ask: Option<Arc<dyn AskUserGateway>>,
     ) -> Self {
         Self { gateway, todo, ask }
@@ -499,12 +499,21 @@ impl TypedTool for PlanSubmitTool {
                     status: step.status,
                 })
                 .collect();
-            let todo_seeded = match self.todo.rewrite(items).await {
-                Ok(_) => true,
-                Err(err) => {
+            let todo_seeded = match self.todo.as_ref() {
+                Some(todo) => match todo.rewrite(items).await {
+                    Ok(_) => true,
+                    Err(err) => {
+                        log::warn!(
+                            target: "xylitol::tools",
+                            "plan todo handoff failed: {err}"
+                        );
+                        false
+                    }
+                },
+                None => {
                     log::warn!(
                         target: "xylitol::tools",
-                        "plan todo handoff failed: {err}"
+                        "plan todo handoff unavailable: todo plugin is disabled"
                     );
                     false
                 }
@@ -694,7 +703,7 @@ fn mode_label(mode: PlanModeKind) -> &'static str {
 
 pub fn plan_tools(
     gateway: Arc<dyn PlanGateway>,
-    todo: Arc<dyn AgentTodoGateway>,
+    todo: Option<Arc<dyn AgentTodoGateway>>,
     ask: Option<Arc<dyn AskUserGateway>>,
 ) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
     vec![

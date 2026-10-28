@@ -228,7 +228,11 @@ mod tests {
         let registry = ctx
             .get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>()
             .expect("loop middleware registry service");
-        assert!(registry.is_empty());
+        assert_eq!(
+            registry.ids(),
+            vec!["plan-mode".to_string()],
+            "default boot enables the plan plugin but not workflow/todo middleware"
+        );
         let _ = ctx.shutdown().await;
     }
 
@@ -250,40 +254,39 @@ mod tests {
         let registry = ctx
             .get::<xylitol_plugin_sdk::LoopMiddlewareRegistry>()
             .expect("loop middleware registry service");
-        assert!(
-            registry.is_empty(),
-            "unconfigured loop example must register nothing"
+        assert_eq!(
+            registry.ids(),
+            vec!["plan-mode".to_string()],
+            "unconfigured loop example must not add middleware"
         );
         let fiber = ctx.plugin(
             xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
                 &xylitol_official_plugin_loop_example::LoopExampleConfig {
                     enabled: true,
-                    plan_mode: false,
                     max_settles: Some(2),
                     deny_bash_patterns: vec!["rm -rf /".into()],
-                    todo_progress: false,
-                    todo_reminder: false,
-                    todo_reminder_stale_after: 3,
-                    todo_checkpoint: false,
                     self_heal: Default::default(),
                     generator_critic: Default::default(),
-                    workflow: Default::default(),
                     tool_exposure: Default::default(),
                 },
             )
             .expect("loop example plugin"),
         );
         for _ in 0..64 {
-            if !registry.is_empty() {
+            if registry.ids().len() == 2 {
                 break;
             }
             tokio::task::yield_now().await;
         }
-        assert_eq!(registry.ids(), vec!["loop-example".to_string()]);
+        assert_eq!(
+            registry.ids(),
+            vec!["loop-example".to_string(), "plan-mode".to_string()]
+        );
         fiber.dispose().await.expect("dispose");
-        assert!(
-            registry.is_empty(),
-            "unload must leave no middleware behind"
+        assert_eq!(
+            registry.ids(),
+            vec!["plan-mode".to_string()],
+            "unload must leave no loop-example middleware behind"
         );
         let _ = ctx.shutdown().await;
     }
@@ -436,16 +439,10 @@ mod tests {
         root.register(xylitol_official_plugin_loop_example::example_middleware(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
-                plan_mode: false,
                 max_settles: Some(1),
                 deny_bash_patterns: vec![],
-                todo_progress: false,
-                todo_reminder: false,
-                todo_reminder_stale_after: 3,
-                todo_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
-                workflow: Default::default(),
                 tool_exposure: Default::default(),
             },
         ))

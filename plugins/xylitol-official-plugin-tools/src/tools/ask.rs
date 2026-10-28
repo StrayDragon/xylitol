@@ -112,21 +112,16 @@ impl TypedTool for AskTool {
     }
 }
 
+pub fn ask_tool(gateway: Arc<dyn AskUserGateway>) -> Arc<dyn xylitol_plugin_sdk::XyTool> {
+    Arc::new(AskTool::new(gateway))
+}
+
 #[allow(dead_code)]
 pub fn default_tools_with_ask(
     gateway: Arc<dyn AskUserGateway>,
 ) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
-    let mut tools = super::default_tools();
+    let mut tools = super::core_tools();
     tools.push(Arc::new(AskTool::new(gateway)));
-    tools
-}
-
-pub fn default_tools_with_ask_and_todo(
-    ask: Arc<dyn AskUserGateway>,
-    todo: Arc<dyn xylitol_plugin_sdk::AgentTodoGateway>,
-) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
-    let mut tools = super::default_tools_with_todo(todo);
-    tools.push(Arc::new(AskTool::new(ask)));
     tools
 }
 

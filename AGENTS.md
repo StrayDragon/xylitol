@@ -53,7 +53,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 | `xylitol-kernel` | 进程内核：`Kernel::boot`、核心插件、Builtins、admit。`rutis-loader` 只在这里 |
 | `xylitol-serve` | 载体：监听 + JSON-RPC 分派；Host profile 插件 |
 | `xylitol-wire` | `XyEvent` ↔ wire `Event` 的唯一映射（依赖 protocol + sdk） |
-| `xylitol-official-plugin-*` | 官方可替换插件（session / compaction / provider-* / tools / mcp / hooks / config / obs）。不是市场，不是 dylib |
+| `xylitol-official-plugin-*` | 官方可替换插件（session / compaction / provider-* / tools / todo / workflow / plan / mcp / hooks / config / obs）。不是市场，不是 dylib |
 | `xylitol-app-tui` / `xylitol-app-print` | 产品端。TUI 只认线协议（经 `xylitol-wire` 映射）；Print 同进程直调，不编线协议 |
 | `xylitol-tui` | 通用 TUI 引擎（零引用产品） |
 | 根包 `xylitol` | argv + profile 选择。默认接线经 kernel |

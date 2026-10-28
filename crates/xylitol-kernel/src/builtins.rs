@@ -3,11 +3,14 @@ use xylitol_official_plugin_compaction::plugin::CompactionPlugin;
 use xylitol_official_plugin_hooks::plugin::HooksPlugin;
 use xylitol_official_plugin_loop_example::plugin::LoopExamplePlugin;
 use xylitol_official_plugin_mcp::plugin::McpPlugin;
+use xylitol_official_plugin_plan::plugin::PlanPlugin;
 use xylitol_official_plugin_provider_anthropic::plugin::AnthropicPlugin;
 use xylitol_official_plugin_provider_openai::fake_plugin::FakePlugin;
 use xylitol_official_plugin_provider_openai::plugin::OpenAiPlugin;
 use xylitol_official_plugin_session::plugin::SessionStorePlugin;
+use xylitol_official_plugin_todo::plugin::TodoPlugin;
 use xylitol_official_plugin_tools::plugin::ToolsPlugin;
+use xylitol_official_plugin_workflow::plugin::WorkflowPlugin;
 
 use crate::surfaces::{PrintPlugin, ServePlugin};
 
@@ -19,6 +22,9 @@ pub fn official_builtins() -> Builtins {
     builtins.register("mcp", McpPlugin::new);
     builtins.register("hooks", HooksPlugin::new);
     builtins.register("loop-example", LoopExamplePlugin::new);
+    builtins.register("todo", TodoPlugin::new);
+    builtins.register("workflow", WorkflowPlugin::new);
+    builtins.register("plan", PlanPlugin::new);
     builtins.register("provider-openai", OpenAiPlugin::new);
     builtins.register("provider-anthropic", AnthropicPlugin::new);
     builtins.register("provider-fake", FakePlugin::new);

@@ -50,9 +50,12 @@ pub(crate) fn make_agent_with_store(
         .borrow()
         .clone()
         .map(|log| log as Arc<dyn xylitol::XyHookBus>);
+    let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone());
+    let mut tools = xylitol_official_plugin_tools::core_tools();
+    tools.extend(xylitol_official_plugin_todo::todo_tools(todo));
     let mut session = AgentCapabilities::new(
         agent.registry.borrow().clone(),
-        ToolSet::from_iter(xylitol_official_plugin_tools::default_tools()),
+        ToolSet::from_iter(tools),
         store.clone(),
         sink,
         Some("you are helpful".into()),

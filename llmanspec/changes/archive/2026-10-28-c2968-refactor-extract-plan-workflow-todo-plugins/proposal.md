@@ -4,6 +4,9 @@ depends_on:
   - c2965-add-plan-mode-with-plan-doc-and-approval
 title: Extract plan, workflow and todo capabilities into official plugins
 needs_specs_change: true
+branch: sdd/c2968-refactor-extract-plan-workflow-todo-plugins
+base_branch: main
+base_sha: 02b2aaec55b027a88ca372d3493a7167a68d6d99
 ---
 
 # Extract plan, workflow and todo capabilities into official plugins
@@ -20,7 +23,7 @@ Plan, workflow and todo are optional capabilities, but today they live inside th
   - `xylitol-official-plugin-plan`: plan-mode middleware, plan tools, plan document gateway.
 - `xylitol-official-plugin-loop-example` keeps only the example middleware plus self-heal, generator-critic and tool-exposure.
 - `xylitol-official-plugin-tools` keeps core tools (`read` / `write` / `edit` / `bash` / `grep` / `find` / `ls`) and `ask`.
-- Config moves from `loop_example.*` to top-level `todo:` / `workflow:` / `plan:` sections. Defaults: `todo` enabled, `workflow` and `plan` disabled.
+- Config moves from `loop_example.*` to top-level `todo:` / `workflow:` / `plan:` sections. Defaults: `todo` enabled, `plan` enabled (preserving `c2973`), `workflow` disabled.
 - Kernel boot registers plugins from config. Cross-plugin collaboration uses SDK services/events (`AgentTodoGateway`, `PlanDocGateway`, `AskUserGateway`), never crate-to-crate `use`.
 - No plugin marketplace, registry or dylib loading.
 

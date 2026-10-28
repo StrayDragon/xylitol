@@ -142,9 +142,39 @@ hooks:
 #   model: *cheap-summary
 #   thinkingLevel: high
 
+# todo:  # official todo plugin (default on; tools always available)
+#   enabled: true
+#   progress: false         # register the todo-progress middleware
+#   reminder: false         # remind the model to re-read todo
+#   reminder_stale_after: 3 # tool calls without todo update before reminding
+#   checkpoint: false       # persist todo progress for resume
+#   max_settles: 8          # stop after N settles while todo is unfinished
+
+# workflow:  # workflow DAG with dependencies and local replan
+#   enabled: false
+#   max_replans: 3          # bounded; completed steps stay locked
+
+# plan:  # plan mode with plan documents and approval
+#   enabled: true
+#   read_only: true         # deny write/edit/bash while planning
+
 # loop_example:  # official example plugin: ReAct loop middleware participation
 #   enabled: false
 #   max_settles: 3            # optional: stop the run after N settles
+#   self_heal:                # after_tool: continue on deterministic failures
+#     enabled: false
+#     signatures: []          # empty: built-in test/build/lint/panic signatures
+#     max_attempts: 3         # bounded well below the core 32-turn limit
+#   generator_critic:         # after_model: bounded critic pass on final answers
+#     enabled: false
+#     rubric: []              # empty: built-in correctness/evidence/boundaries rubric
+#     max_rounds: 1           # critic calls stay core-scheduled and bounded
+#   tool_exposure:            # before_model: narrow the tools the model can see
+#     enabled: false
+#     allow: []               # non-empty: only these tools (todo tools stay visible)
+#     deny: []                # always hidden
+#     read_only: false        # hide write tools when true
+#     write_tools: ["write", "edit"]
 #   deny_bash_patterns:       # before_tool: tighten only, core permission still decides
 #     - "rm -rf /"
 

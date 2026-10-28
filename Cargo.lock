@@ -5910,10 +5910,13 @@ dependencies = [
  "xylitol-official-plugin-loop-example",
  "xylitol-official-plugin-mcp",
  "xylitol-official-plugin-obs",
+ "xylitol-official-plugin-plan",
  "xylitol-official-plugin-provider-anthropic",
  "xylitol-official-plugin-provider-openai",
  "xylitol-official-plugin-session",
+ "xylitol-official-plugin-todo",
  "xylitol-official-plugin-tools",
+ "xylitol-official-plugin-workflow",
  "xylitol-plugin-sdk",
  "xylitol-protocol",
  "xylitol-runtime",
@@ -5997,10 +6000,13 @@ dependencies = [
  "xylitol-official-plugin-loop-example",
  "xylitol-official-plugin-mcp",
  "xylitol-official-plugin-obs",
+ "xylitol-official-plugin-plan",
  "xylitol-official-plugin-provider-anthropic",
  "xylitol-official-plugin-provider-openai",
  "xylitol-official-plugin-session",
+ "xylitol-official-plugin-todo",
  "xylitol-official-plugin-tools",
+ "xylitol-official-plugin-workflow",
  "xylitol-plugin-sdk",
  "xylitol-protocol",
  "xylitol-runtime",
@@ -6044,6 +6050,9 @@ dependencies = [
  "xylitol-official-plugin-hooks",
  "xylitol-official-plugin-loop-example",
  "xylitol-official-plugin-mcp",
+ "xylitol-official-plugin-plan",
+ "xylitol-official-plugin-todo",
+ "xylitol-official-plugin-workflow",
  "xylitol-plugin-sdk",
  "xylitol-runtime",
  "yaml_serde",
@@ -6119,6 +6128,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "xylitol-official-plugin-plan"
+version = "0.0.0-pre"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "log",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "xylitol-plugin-sdk",
+]
+
+[[package]]
 name = "xylitol-official-plugin-provider-anthropic"
 version = "0.0.0-pre"
 dependencies = [
@@ -6187,6 +6210,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "xylitol-official-plugin-todo"
+version = "0.0.0-pre"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "log",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
+ "xylitol-plugin-sdk",
+]
+
+[[package]]
 name = "xylitol-official-plugin-tools"
 version = "0.0.0-pre"
 dependencies = [
@@ -6207,6 +6244,19 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uuid",
+ "xylitol-plugin-sdk",
+]
+
+[[package]]
+name = "xylitol-official-plugin-workflow"
+version = "0.0.0-pre"
+dependencies = [
+ "async-trait",
+ "log",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
  "xylitol-plugin-sdk",
 ]
 

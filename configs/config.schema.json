@@ -184,10 +184,6 @@
             "null"
           ]
         },
-        "plan_mode": {
-          "default": true,
-          "type": "boolean"
-        },
         "self_heal": {
           "$ref": "#/$defs/SelfHealConfig",
           "default": {
@@ -195,24 +191,6 @@
             "max_attempts": 3,
             "signatures": []
           }
-        },
-        "todo_checkpoint": {
-          "default": false,
-          "type": "boolean"
-        },
-        "todo_progress": {
-          "default": false,
-          "type": "boolean"
-        },
-        "todo_reminder": {
-          "default": false,
-          "type": "boolean"
-        },
-        "todo_reminder_stale_after": {
-          "default": 3,
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
         },
         "tool_exposure": {
           "$ref": "#/$defs/ToolExposureConfig",
@@ -222,13 +200,6 @@
             "enabled": false,
             "read_only": false,
             "write_tools": []
-          }
-        },
-        "workflow": {
-          "$ref": "#/$defs/WorkflowConfig",
-          "default": {
-            "enabled": false,
-            "max_replans": 3
           }
         }
       },
@@ -493,6 +464,20 @@
       },
       "type": "object"
     },
+    "PlanConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "read_only": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "SecurityConfig": {
       "properties": {
         "enabled": {
@@ -544,6 +529,43 @@
             "integer",
             "null"
           ]
+        }
+      },
+      "type": "object"
+    },
+    "TodoConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint": {
+          "default": false,
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        },
+        "max_settles": {
+          "default": null,
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "progress": {
+          "default": false,
+          "type": "boolean"
+        },
+        "reminder": {
+          "default": false,
+          "type": "boolean"
+        },
+        "reminder_stale_after": {
+          "default": 3,
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
         }
       },
       "type": "object"
@@ -838,26 +860,17 @@
           "rubric": []
         },
         "max_settles": null,
-        "plan_mode": true,
         "self_heal": {
           "enabled": false,
           "max_attempts": 3,
           "signatures": []
         },
-        "todo_checkpoint": false,
-        "todo_progress": false,
-        "todo_reminder": false,
-        "todo_reminder_stale_after": 3,
         "tool_exposure": {
           "allow": [],
           "deny": [],
           "enabled": false,
           "read_only": false,
           "write_tools": []
-        },
-        "workflow": {
-          "enabled": false,
-          "max_replans": 3
         }
       }
     },
@@ -892,6 +905,13 @@
         "tool_observation_io": "none"
       }
     },
+    "plan": {
+      "$ref": "#/$defs/PlanConfig",
+      "default": {
+        "enabled": true,
+        "read_only": true
+      }
+    },
     "security": {
       "$ref": "#/$defs/SecurityConfig",
       "default": {
@@ -910,6 +930,17 @@
       ],
       "default": null
     },
+    "todo": {
+      "$ref": "#/$defs/TodoConfig",
+      "default": {
+        "checkpoint": false,
+        "enabled": true,
+        "max_settles": null,
+        "progress": false,
+        "reminder": false,
+        "reminder_stale_after": 3
+      }
+    },
     "tool_batch": {
       "$ref": "#/$defs/ToolBatchConfig",
       "default": {
@@ -927,6 +958,13 @@
           "stream_collapse": "envelope"
         },
         "editor_history_seed_sessions": 1
+      }
+    },
+    "workflow": {
+      "$ref": "#/$defs/WorkflowConfig",
+      "default": {
+        "enabled": false,
+        "max_replans": 3
       }
     }
   },

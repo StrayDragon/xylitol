@@ -1212,7 +1212,7 @@ pub(crate) fn t_t2_fs_no_timeout(t2_schema_bdd: &T2SchemaBdd) {
 }
 
 pub struct T2TodoBdd {
-    pub gw: RefCell<Option<Arc<xylitol_official_plugin_tools::todo::SessionAgentTodoGateway>>>,
+    pub gw: RefCell<Option<Arc<xylitol_official_plugin_todo::SessionAgentTodoGateway>>>,
     pub store: RefCell<Option<Arc<dyn xylitol_plugin_sdk::XySessionStore>>>,
     pub sid: RefCell<String>,
     pub last_err: RefCell<Option<String>>,
@@ -1240,7 +1240,7 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
     futures::executor::block_on(async {
         store.create(&sid2, Some("/tmp"), None).await.unwrap();
     });
-    let gw = xylitol_official_plugin_tools::todo::SessionAgentTodoGateway::new(store.clone());
+    let gw = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone());
     futures::executor::block_on(gw.bind_session(Some(sid.clone())));
     *t2_todo_bdd.sid.borrow_mut() = sid;
     *t2_todo_bdd.store.borrow_mut() = Some(store);
@@ -1251,7 +1251,7 @@ fn t2_todo_mount(t2_todo_bdd: &T2TodoBdd) {
 fn t2_rewrite(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
     t2_todo_mount(t2_todo_bdd);
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    let tools = xylitol_official_plugin_tools::todo::todo_tools(gw);
+    let tools = xylitol_official_plugin_todo::todo_tools(gw);
     let tool = tools
         .iter()
         .find(|t| t.name() == "todo_rewrite")
@@ -1264,7 +1264,7 @@ fn t2_rewrite(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<Strin
 
 fn t2_update(t2_todo_bdd: &T2TodoBdd, items: serde_json::Value) -> Result<String, String> {
     let gw = t2_todo_bdd.gw.borrow().as_ref().expect("gw").clone();
-    let tools = xylitol_official_plugin_tools::todo::todo_tools(gw);
+    let tools = xylitol_official_plugin_todo::todo_tools(gw);
     let tool = tools
         .iter()
         .find(|t| t.name() == "todo_update")

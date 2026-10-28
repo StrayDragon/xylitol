@@ -141,9 +141,22 @@ fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
         .get::<xylitol_official_plugin_config::plugin::ConfigService>()
         .and_then(|cfg| cfg.app.mcp_servers.clone())
         .unwrap_or_default();
-    let loop_example = ctx
-        .get::<xylitol_official_plugin_config::plugin::ConfigService>()
+    let config = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>();
+    let loop_example = config
+        .as_ref()
         .map(|cfg| cfg.app.loop_example.clone())
+        .unwrap_or_default();
+    let todo = config
+        .as_ref()
+        .map(|cfg| cfg.app.todo.clone())
+        .unwrap_or_default();
+    let workflow = config
+        .as_ref()
+        .map(|cfg| cfg.app.workflow.clone())
+        .unwrap_or_default();
+    let plan = config
+        .as_ref()
+        .map(|cfg| cfg.app.plan.clone())
         .unwrap_or_default();
     let mut insert = vec![
         session_row,
@@ -158,6 +171,27 @@ fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
             "id": "loop-example",
             "name": "loop-example",
             "config": loop_example,
+        }));
+    }
+    if todo.is_active() {
+        insert.push(serde_json::json!({
+            "id": "todo",
+            "name": "todo",
+            "config": todo,
+        }));
+    }
+    if workflow.is_active() {
+        insert.push(serde_json::json!({
+            "id": "workflow",
+            "name": "workflow",
+            "config": workflow,
+        }));
+    }
+    if plan.is_active() {
+        insert.push(serde_json::json!({
+            "id": "plan",
+            "name": "plan",
+            "config": plan,
         }));
     }
     match opts.profile {

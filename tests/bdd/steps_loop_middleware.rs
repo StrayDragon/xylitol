@@ -561,16 +561,10 @@ pub(crate) async fn g_example_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
-                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec!["rm -rf /".into()],
-                todo_progress: false,
-                todo_reminder: false,
-                todo_reminder_stale_after: 3,
-                todo_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
-                workflow: Default::default(),
                 tool_exposure: Default::default(),
             },
         )
@@ -588,8 +582,8 @@ pub(crate) async fn g_example_enabled() {
     LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
 }
 
-#[given("以启用 todo 进度的 loop 示例插件装配运行时")]
-pub(crate) async fn g_example_todo_progress_enabled() {
+#[given("以启用 todo 进度的 todo 插件装配运行时")]
+pub(crate) async fn g_todo_progress_enabled() {
     use xylitol_plugin_sdk::rt::CtxHost;
 
     let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("ctx root");
@@ -597,26 +591,15 @@ pub(crate) async fn g_example_todo_progress_enabled() {
     ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
         .expect("provide registry");
     let fiber = ctx.plugin(
-        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig {
-                enabled: true,
-                plan_mode: false,
-                max_settles: Some(2),
-                deny_bash_patterns: vec![],
-                todo_progress: true,
-                todo_reminder: false,
-                todo_reminder_stale_after: 3,
-                todo_checkpoint: false,
-                self_heal: Default::default(),
-                generator_critic: Default::default(),
-                workflow: Default::default(),
-                tool_exposure: Default::default(),
-            },
-        )
-        .expect("loop example plugin"),
+        xylitol_official_plugin_todo::TodoPlugin::new(&xylitol_official_plugin_todo::TodoConfig {
+            enabled: true,
+            progress: true,
+            ..Default::default()
+        })
+        .expect("todo plugin"),
     );
     for _ in 0..64 {
-        if registry.ids().len() == 2 {
+        if !registry.is_empty() {
             break;
         }
         tokio::task::yield_now().await;
@@ -626,8 +609,8 @@ pub(crate) async fn g_example_todo_progress_enabled() {
     LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
 }
 
-#[given("以启用 todo 提醒的 loop 示例插件装配运行时")]
-pub(crate) async fn g_example_todo_reminder_enabled() {
+#[given("以启用 todo 提醒的 todo 插件装配运行时")]
+pub(crate) async fn g_todo_reminder_enabled() {
     use xylitol_plugin_sdk::rt::CtxHost;
 
     let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("ctx root");
@@ -635,26 +618,42 @@ pub(crate) async fn g_example_todo_reminder_enabled() {
     ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
         .expect("provide registry");
     let fiber = ctx.plugin(
-        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig {
-                enabled: true,
-                plan_mode: false,
-                max_settles: Some(2),
-                deny_bash_patterns: vec![],
-                todo_progress: false,
-                todo_reminder: true,
-                todo_reminder_stale_after: 3,
-                todo_checkpoint: false,
-                self_heal: Default::default(),
-                generator_critic: Default::default(),
-                workflow: Default::default(),
-                tool_exposure: Default::default(),
-            },
-        )
-        .expect("loop example plugin"),
+        xylitol_official_plugin_todo::TodoPlugin::new(&xylitol_official_plugin_todo::TodoConfig {
+            enabled: true,
+            reminder: true,
+            ..Default::default()
+        })
+        .expect("todo plugin"),
     );
     for _ in 0..64 {
-        if registry.ids().len() == 2 {
+        if !registry.is_empty() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    LOOP_PLUGIN_REGISTRY.with(|slot| slot.borrow_mut().replace(registry));
+    LOOP_PLUGIN_FIBER.with(|slot| slot.borrow_mut().replace(fiber));
+    LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
+}
+
+#[given("以启用 todo checkpoint 的 todo 插件装配运行时")]
+pub(crate) async fn g_todo_checkpoint_enabled() {
+    use xylitol_plugin_sdk::rt::CtxHost;
+
+    let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("ctx root");
+    let registry = fresh_registry();
+    ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
+        .expect("provide registry");
+    let fiber = ctx.plugin(
+        xylitol_official_plugin_todo::TodoPlugin::new(&xylitol_official_plugin_todo::TodoConfig {
+            enabled: true,
+            checkpoint: true,
+            ..Default::default()
+        })
+        .expect("todo plugin"),
+    );
+    for _ in 0..64 {
+        if !registry.is_empty() {
             break;
         }
         tokio::task::yield_now().await;
@@ -676,59 +675,15 @@ pub(crate) async fn g_example_tool_exposure_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
-                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
-                todo_progress: false,
-                todo_reminder: false,
-                todo_reminder_stale_after: 3,
-                todo_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: Default::default(),
-                workflow: Default::default(),
                 tool_exposure: xylitol_official_plugin_loop_example::ToolExposureConfig {
                     enabled: true,
                     allow: vec!["read".into()],
                     ..Default::default()
                 },
-            },
-        )
-        .expect("loop example plugin"),
-    );
-    for _ in 0..64 {
-        if registry.ids().len() == 2 {
-            break;
-        }
-        tokio::task::yield_now().await;
-    }
-    LOOP_PLUGIN_REGISTRY.with(|slot| slot.borrow_mut().replace(registry));
-    LOOP_PLUGIN_FIBER.with(|slot| slot.borrow_mut().replace(fiber));
-    LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
-}
-
-#[given("以启用 todo checkpoint 的 loop 示例插件装配运行时")]
-pub(crate) async fn g_example_todo_checkpoint_enabled() {
-    use xylitol_plugin_sdk::rt::CtxHost;
-
-    let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("ctx root");
-    let registry = fresh_registry();
-    ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
-        .expect("provide registry");
-    let fiber = ctx.plugin(
-        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig {
-                enabled: true,
-                plan_mode: false,
-                max_settles: Some(2),
-                deny_bash_patterns: vec![],
-                todo_progress: false,
-                todo_reminder: false,
-                todo_reminder_stale_after: 3,
-                todo_checkpoint: true,
-                self_heal: Default::default(),
-                generator_critic: Default::default(),
-                workflow: Default::default(),
-                tool_exposure: Default::default(),
             },
         )
         .expect("loop example plugin"),
@@ -756,19 +711,13 @@ pub(crate) async fn g_example_self_heal_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
-                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
-                todo_progress: false,
-                todo_reminder: false,
-                todo_reminder_stale_after: 3,
-                todo_checkpoint: false,
                 self_heal: xylitol_official_plugin_loop_example::SelfHealConfig {
                     enabled: true,
                     ..Default::default()
                 },
                 generator_critic: Default::default(),
-                workflow: Default::default(),
                 tool_exposure: Default::default(),
             },
         )
@@ -797,19 +746,13 @@ pub(crate) async fn g_example_generator_critic_enabled() {
         xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
             &xylitol_official_plugin_loop_example::LoopExampleConfig {
                 enabled: true,
-                plan_mode: false,
                 max_settles: Some(2),
                 deny_bash_patterns: vec![],
-                todo_progress: false,
-                todo_reminder: false,
-                todo_reminder_stale_after: 3,
-                todo_checkpoint: false,
                 self_heal: Default::default(),
                 generator_critic: xylitol_official_plugin_loop_example::GeneratorCriticConfig {
                     enabled: true,
                     ..Default::default()
                 },
-                workflow: Default::default(),
                 tool_exposure: Default::default(),
             },
         )
@@ -826,8 +769,8 @@ pub(crate) async fn g_example_generator_critic_enabled() {
     LOOP_PLUGIN_CTX.with(|slot| slot.borrow_mut().replace(ctx));
 }
 
-#[given("以启用 workflow 的 loop 示例插件装配运行时")]
-pub(crate) async fn g_example_workflow_enabled() {
+#[given("以启用 workflow 的 workflow 插件装配运行时")]
+pub(crate) async fn g_workflow_enabled() {
     use xylitol_plugin_sdk::rt::CtxHost;
 
     let ctx = xylitol_plugin_sdk::rt::Ctx::root().expect("ctx root");
@@ -835,29 +778,16 @@ pub(crate) async fn g_example_workflow_enabled() {
     ctx.provide_as::<xylitol_plugin_sdk::LoopMiddlewareRegistry>(registry.clone())
         .expect("provide registry");
     let fiber = ctx.plugin(
-        xylitol_official_plugin_loop_example::LoopExamplePlugin::new(
-            &xylitol_official_plugin_loop_example::LoopExampleConfig {
+        xylitol_official_plugin_workflow::WorkflowPlugin::new(
+            &xylitol_official_plugin_workflow::WorkflowConfig {
                 enabled: true,
-                plan_mode: false,
-                max_settles: Some(2),
-                deny_bash_patterns: vec![],
-                todo_progress: false,
-                todo_reminder: false,
-                todo_reminder_stale_after: 3,
-                todo_checkpoint: false,
-                self_heal: Default::default(),
-                generator_critic: Default::default(),
-                workflow: xylitol_official_plugin_loop_example::WorkflowConfig {
-                    enabled: true,
-                    ..Default::default()
-                },
-                tool_exposure: Default::default(),
+                ..Default::default()
             },
         )
-        .expect("loop example plugin"),
+        .expect("workflow plugin"),
     );
     for _ in 0..64 {
-        if registry.ids().len() == 2 {
+        if !registry.is_empty() {
             break;
         }
         tokio::task::yield_now().await;
@@ -879,24 +809,24 @@ pub(crate) fn w_query_registry_ids() {
     });
 }
 
-#[then("注册表含 loop-example 与 todo-progress")]
+#[then("注册表含 todo-progress")]
 pub(crate) fn t_registry_has_todo_progress() {
     LOOP_CHAIN_IDS.with(|slot| {
         assert_eq!(
             &*slot.borrow(),
-            &["loop-example".to_string(), "todo-progress".to_string()],
-            "todo progress must register the base middleware and the todo-progress middleware"
+            &["todo-progress".to_string()],
+            "todo progress must register the todo-progress middleware"
         );
     });
 }
 
-#[then("注册表含 loop-example 与 todo-reminder")]
+#[then("注册表含 todo-reminder")]
 pub(crate) fn t_registry_has_todo_reminder() {
     LOOP_CHAIN_IDS.with(|slot| {
         assert_eq!(
             &*slot.borrow(),
-            &["loop-example".to_string(), "todo-reminder".to_string()],
-            "todo reminder must register the base middleware and the todo-reminder middleware"
+            &["todo-reminder".to_string()],
+            "todo reminder must register the todo-reminder middleware"
         );
     });
 }
@@ -912,13 +842,13 @@ pub(crate) fn t_registry_has_tool_exposure() {
     });
 }
 
-#[then("注册表含 loop-example 与 todo-checkpoint")]
+#[then("注册表含 todo-checkpoint")]
 pub(crate) fn t_registry_has_todo_checkpoint() {
     LOOP_CHAIN_IDS.with(|slot| {
         assert_eq!(
             &*slot.borrow(),
-            &["loop-example".to_string(), "todo-checkpoint".to_string()],
-            "todo checkpoint must register the base middleware and the todo-checkpoint middleware"
+            &["todo-checkpoint".to_string()],
+            "todo checkpoint must register the todo-checkpoint middleware"
         );
     });
 }
@@ -945,13 +875,13 @@ pub(crate) fn t_registry_has_generator_critic() {
     });
 }
 
-#[then("注册表含 loop-example 与 workflow")]
+#[then("注册表含 workflow")]
 pub(crate) fn t_registry_has_workflow() {
     LOOP_CHAIN_IDS.with(|slot| {
         assert_eq!(
             &*slot.borrow(),
-            &["loop-example".to_string(), "workflow".to_string()],
-            "workflow must register the base middleware and the workflow middleware"
+            &["workflow".to_string()],
+            "workflow must register the workflow middleware"
         );
     });
 }

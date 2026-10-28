@@ -22,14 +22,14 @@
     场景: 内置名称列出经XyTool
       假如 工具集含全部内置工具
       当 列举工具名
-      那么 返回 9 个工具名
+      那么 返回 7 个工具名
 
   @req:r42
   规则: 默认内置工具闭集
-    产品 default_tools（Print 与 TUI builtins 基座）须包含且以闭集提供：read、bash、edit、write、grep、find、ls、todo_rewrite、todo_update（共 9 个）。ask 等面专属工具 不得计入该闭集（见 t28）。Todo 工具语义见 agent-todo。不得向模型暴露 todo_list。
+    产品 default_tools（Print 与 TUI builtins 基座）须包含且以闭集提供：read、bash、edit、write、grep、find、ls（共 7 个）。todo 工具 由 todo 插件提供，plan 工具 由 plan 插件提供，不得计入核心闭集。ask 等面专属工具 不得计入该闭集（见 t28）。不得向模型暴露 todo_list。
 
-    场景: 全部十工具冒烟
-      假如 工具注册表含全部 9 个工具
+    场景: 全部核心工具冒烟
+      假如 工具注册表含全部 7 个核心工具
       当 各工具以合法参数调用
       那么 各返回成功 ToolResult
   @req:r48
@@ -191,7 +191,7 @@
       那么 execute 返回 Cancelled 错误
   @req:r1144
   规则: 默认内置工具闭集·t2
-    System 须实现与 r42 相同的 9 个 default_tools 闭集成员：read、bash、edit、write、grep、find、ls、todo_rewrite、todo_update。文件类七工具行为对齐既有 pi 等价语义；Todo 两工具行为见 agent-todo。
+    System 须实现与 r42 相同的 7 个 default_tools 闭集成员：read、bash、edit、write、grep、find、ls。文件类七工具行为对齐既有 pi 等价语义；Todo 两工具 由 todo 插件提供，行为见 agent-todo。
 
     场景: 读取整段
       假如 存在文件 "src/hello.rs" 内容为 "fn main() {\n    println!(\"Hello, world!\");\n}"
@@ -251,7 +251,7 @@
     场景: 注册表
       假如 工具集含全部内置工具
       当 列举工具名
-      那么 返回 9 个工具名
+      那么 返回 7 个工具名
   @req:r1154
   规则: edit 多段编辑
     Edit 工具 须接受 path 与 edits 数组（oldText、newText），对照原始内容匹配。

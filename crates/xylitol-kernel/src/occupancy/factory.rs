@@ -16,7 +16,7 @@ use xylitol_serve::occupancy::{OccupancyEngine, OccupancyFactory};
 
 use crate::composition::build_baseline_with_store;
 use crate::dispatch::{SessionCommandExecutor, outcome_to_value};
-use crate::driver::{XyInProcessDriver, assemble_driver};
+use crate::driver::{ToolFeatures, XyInProcessDriver, assemble_driver_with_features};
 use crate::mcp_spec::McpServerSpec;
 use crate::occupancy::host::{HostState, ReloadBaseline};
 
@@ -61,12 +61,21 @@ impl ProductOccupancyFactory {
         self._loader = Some(loader);
         self
     }
+
+    fn tool_features(&self) -> ToolFeatures {
+        self.ctx
+            .as_ref()
+            .and_then(|ctx| ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>())
+            .map(|config| ToolFeatures::from_config(&config.app))
+            .unwrap_or_default()
+    }
 }
 
 impl OccupancyFactory for ProductOccupancyFactory {
     fn new_driver_at(&self, workspace: &Path) -> Box<dyn OccupancyEngine> {
         let agent = self.ports.materialize_runtime();
-        let mut driver = assemble_driver(agent, self.ports.store.clone());
+        let mut driver =
+            assemble_driver_with_features(agent, self.ports.store.clone(), self.tool_features());
         driver.enable_reload_state(
             workspace.to_path_buf(),
             self.agent_dir.clone(),
@@ -92,7 +101,10 @@ impl OccupancyFactory for ProductOccupancyFactory {
         driver
             .agent
             .set_cwd(workspace.to_string_lossy().into_owned());
-        Box::new(OccupancyDriver { inner: driver })
+        Box::new(OccupancyDriver {
+            inner: driver,
+            tool_features: self.tool_features(),
+        })
     }
 
     fn project_trusted(&self, workspace: &Path) -> bool {
@@ -121,6 +133,7 @@ impl OccupancyFactory for ProductOccupancyFactory {
 
 struct OccupancyDriver {
     inner: XyInProcessDriver,
+    tool_features: ToolFeatures,
 }
 
 #[async_trait]
@@ -217,7 +230,7 @@ impl XyDriver for OccupancyDriver {
 #[async_trait]
 impl OccupancyEngine for OccupancyDriver {
     fn install_ask_tool(&mut self, gateway: Arc<dyn AskUserGateway>) {
-        crate::driver::install_product_ask_tool(&mut self.inner, gateway);
+        crate::driver::install_product_ask_tool(&mut self.inner, gateway, self.tool_features);
     }
 
     fn bind_session(&mut self, session_id: &str) -> Result<(), XyDriverError> {

@@ -26,15 +26,18 @@ todo:
   reminder: false
   reminder_stale_after: 3
   checkpoint: false
+  max_settles: 8
 workflow:
   enabled: false
   max_replans: 3
 plan:
-  enabled: false
+  enabled: true
   read_only: true
 ```
 
-- Old `loop_example.plan_state` / `plan_execute` / `plan_checkpoint` / `progress_reminder` keys are rejected with a migration hint.
+`plan.enabled` stays true to preserve the `c2973` default-on decision; `workflow` remains opt-in.
+
+- Old `loop_example.todo_progress` / `todo_reminder` / `todo_reminder_stale_after` / `todo_checkpoint` / `plan_mode` / `workflow` keys are rejected with a migration hint.
 - `loop_example` keeps `enabled`, `max_settles`, `deny_bash_patterns`, `self_heal`, `generator_critic`, `tool_exposure`.
 
 ## Boot
@@ -60,7 +63,7 @@ Tool names stay stable (`todo_rewrite`, `todo_update`, `workflow_*`, `plan_*`); 
 - Config schema/example drift test; old keys rejected.
 - Tool ownership test: core tools only in `tools-builtin`; todo/workflow/plan tools only in their plugin.
 - Service absence: plan plugin without ask/todo degrades with a structured error.
-- BDD: default todo enabled, plan/workflow disabled.
+- BDD: default todo enabled, plan enabled, workflow disabled; registration scenarios moved to the owning plugins.
 - `just qa` and `llman-sdd validate --all --strict`.
 
 ## Task breakdown
