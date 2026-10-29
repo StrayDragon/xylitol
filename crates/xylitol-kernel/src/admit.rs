@@ -15,8 +15,38 @@ pub const CORE_PLUGIN_NAMES: &[&str] = &[
     "driver",
 ];
 
+pub const RESERVED_PLUGIN_NAMES: &[&str] = &[
+    "config",
+    "obs",
+    "trust",
+    "registries",
+    "session-host",
+    "agent-react",
+    "tool-table",
+    "driver",
+    "session-store",
+    "compaction",
+    "tools-builtin",
+    "tools-fff",
+    "mcp",
+    "hooks",
+    "loop-policies",
+    "todo",
+    "workflow",
+    "plan",
+    "provider-openai",
+    "provider-anthropic",
+    "provider-fake",
+    "app-print",
+    "serve",
+];
+
 pub fn is_core_plugin_name(name: &str) -> bool {
     CORE_PLUGIN_NAMES.contains(&name)
+}
+
+pub fn is_reserved_plugin_name(name: &str) -> bool {
+    RESERVED_PLUGIN_NAMES.contains(&name)
 }
 
 pub struct Admit<R> {

@@ -12,6 +12,7 @@ pub mod dispatch;
 pub mod driver;
 pub mod event;
 pub mod export;
+pub mod external_plugin;
 pub mod product_commands;
 pub mod provider;
 pub mod surfaces;

@@ -97,6 +97,13 @@ models:
 #       system_prompt: "Focus on correctness and regressions."
 #       tools: [read, -bash, +ffgrep]
 
+# external_plugins:  # config-driven out-of-process plugins (JSON-RPC over stdio)
+#   - name: "bun-demo"
+#     command: "bun"
+#     args: ["examples/plugins/bun-demo/plugin.ts"]
+#     trusted: true  # explicit opt-in; untrusted entries are not assembled
+#     timeout_ms: 30000
+
 security:
   enabled: true
   permission:

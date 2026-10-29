@@ -43,6 +43,30 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub plan: PlanConfig,
+
+    #[serde(default)]
+    pub external_plugins: Vec<ExternalPluginConfig>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct ExternalPluginConfig {
+    pub name: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub trusted: bool,
+    #[serde(default = "default_external_plugin_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+fn default_external_plugin_timeout_ms() -> u64 {
+    30_000
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -944,6 +968,47 @@ agents:
             Some("You are a reviewer.\n\nFocus on correctness.")
         );
         assert_eq!(profile.tools, vec!["read".to_string(), "-bash".to_string()]);
+    }
+}
+
+#[cfg(test)]
+mod external_plugins_tests {
+    use super::*;
+
+    #[test]
+    fn external_plugins_deserialize() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+external_plugins:
+  - name: "bun-demo"
+    command: "bun"
+    args: ["plugin.ts"]
+    trusted: true
+    timeout_ms: 5000
+"#,
+        )
+        .expect("external plugin config");
+        assert_eq!(cfg.external_plugins.len(), 1);
+        let plugin = &cfg.external_plugins[0];
+        assert_eq!(plugin.name, "bun-demo");
+        assert_eq!(plugin.command, "bun");
+        assert_eq!(plugin.args, vec!["plugin.ts".to_string()]);
+        assert!(plugin.trusted);
+        assert_eq!(plugin.timeout_ms, 5_000);
+    }
+
+    #[test]
+    fn external_plugin_timeout_defaults() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+external_plugins:
+  - name: "demo"
+    command: "demo"
+"#,
+        )
+        .expect("external plugin config");
+        assert_eq!(cfg.external_plugins[0].timeout_ms, 30_000);
+        assert!(!cfg.external_plugins[0].trusted);
     }
 }
 

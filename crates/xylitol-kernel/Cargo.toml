@@ -42,7 +42,7 @@ serde_json = { workspace = true, features = ["unbounded_depth"] }
 thiserror = { workspace = true }
 url = { workspace = true }
 reqwest = { workspace = true, default-features = false, features = ["stream", "json", "rustls", "charset", "http2", "system-proxy"] }
-tokio = { workspace = true, features = ["fs", "macros", "rt", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "process", "rt", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
