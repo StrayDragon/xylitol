@@ -355,3 +355,11 @@
     场景: attach零深度保留本地条带
       当 以主机泵置零队列深度并注入 steer 后排空 pending
       那么 本地队列条文案不被空深度清除
+
+  @req:r2988
+  规则: queue-strip-hover-click
+    产品 TUI 队列条非空时 须登记鼠标命中区：hover 须给弱可点强调（不洗底 / 不反色），左键点击 须将全部 steer / follow-up 文本还原进 editor（与 Alt+Up 同语义，含当前草稿拼接）、清空队列并聚焦 editor；空队列 不得登记命中区。activity-fold 多行折叠块 不得因此新增逐块 hover。
+
+    场景: 队列条点击还原
+      当 以主机泵忙碌插队后点击队列条
+      那么 编辑器含排队文本且队列清空
