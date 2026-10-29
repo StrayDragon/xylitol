@@ -89,6 +89,13 @@ fn merge_config_layers(
     Ok((merged, from_yaml_layers))
 }
 
+fn validate_app_config(config: &AppConfig) -> Result<(), LoadError> {
+    config.validate_thinking_levels()?;
+    config.validate_session_max_turns()?;
+    config.validate_tools_selection()?;
+    Ok(())
+}
+
 fn merge_first_layer(
     merged: &mut Value,
     from_yaml_layers: &mut bool,
@@ -143,9 +150,7 @@ fn load_from_paths(
     reject_legacy_loop_policies_keys(&merged)?;
     let mut config: AppConfig = serde_json::from_value(merged.clone())?;
     super::validate::validate_merged_config(&merged)?;
-    config.validate_thinking_levels()?;
-    config.validate_session_max_turns()?;
-    config.validate_tools_selection()?;
+    validate_app_config(&config)?;
     expand_model_config_expressions(&mut config)?;
     Ok(LoadedAppConfig {
         config,

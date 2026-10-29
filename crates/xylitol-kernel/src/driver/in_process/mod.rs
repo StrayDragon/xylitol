@@ -230,8 +230,14 @@ fn compose_tools(
     if let Some(ask) = ask {
         tools.push(xylitol_official_plugin_tools::ask_tool(ask));
     }
-    let (set, warnings) =
-        xylitol_runtime::agent::tools::resolve_tool_selection(tools, &features.tool_selection);
+    resolve_tool_set(tools, &features.tool_selection)
+}
+
+fn resolve_tool_set(
+    tools: Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>,
+    selection: &[String],
+) -> xylitol_runtime::agent::tools::ToolSet {
+    let (set, warnings) = xylitol_runtime::agent::tools::resolve_tool_selection(tools, selection);
     for warning in warnings {
         log::warn!(target: "xylitol::tools", "{warning}");
     }
