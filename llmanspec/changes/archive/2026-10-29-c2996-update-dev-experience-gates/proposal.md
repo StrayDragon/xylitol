@@ -2,6 +2,9 @@
 depends_on: []
 title: 收敛开发体验门禁与本地反馈
 needs_specs_change: false
+branch: sdd/c2996-update-dev-experience-gates
+base_branch: main
+base_sha: 7e1294aecd83022ad5a02764d8c23180cd6a13a8
 ---
 
 # 收敛开发体验门禁与本地反馈
