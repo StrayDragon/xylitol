@@ -288,6 +288,14 @@ fn optional_plugin_rows(
             "config": config.app.plan,
         }));
     }
+    rows.extend(lsp_dap_rows(config));
+    rows
+}
+
+fn lsp_dap_rows(
+    config: &xylitol_official_plugin_config::plugin::ConfigService,
+) -> Vec<serde_json::Value> {
+    let mut rows = Vec::new();
     if let Some(lsp) = config.app.lsp.as_ref() {
         rows.push(serde_json::json!({
             "id": "lsp",
