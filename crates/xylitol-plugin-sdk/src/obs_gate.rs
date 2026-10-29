@@ -152,11 +152,15 @@ static SPAN_COLLECT_EXCL: Mutex<()> = Mutex::new(());
 
 struct DemuxReporter;
 
+fn append_spans(spans: Vec<SpanRecord>) {
+    if let Some(buf) = SPAN_SINK.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+        buf.lock().unwrap_or_else(|e| e.into_inner()).extend(spans);
+    }
+}
+
 impl Reporter for DemuxReporter {
     fn report(&mut self, spans: Vec<SpanRecord>) {
-        if let Some(buf) = SPAN_SINK.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
-            buf.lock().unwrap_or_else(|e| e.into_inner()).extend(spans);
-        }
+        append_spans(spans);
     }
 }
 
