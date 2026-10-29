@@ -22,6 +22,12 @@ async fn test_c2826_ati_queue_strip(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "多条排队压成每类一行"
+)]
+async fn test_c2999_queue_compact(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
     name = "同一文本两次两用户冒泡"
 )]
 fn test_c2826_ati_same_text(fixed_zone_bdd: FixedZoneBdd) {}
