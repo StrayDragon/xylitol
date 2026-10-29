@@ -217,3 +217,12 @@
       假如 YAML 含 tools [read, +no-such-tool]
       当 加载配置
       那么 成功且 tools 列表含 no-such-tool
+
+  @req:r2987
+  规则: legacy-provider-preset-migration
+    预设回滚后，`models.models.<alias>.preset` 与顶层 `provider_presets` 旧写法 须被加载器拒绝，并给出迁移指引（显式 `provider` / `model` / `base_url` / `api` / `compat`，或经网关）；不得静默忽略旧键使配置看似生效。正常配置 不得因该迁移检查失败。
+
+    场景: 旧预设键拒绝并提示迁移
+      假如 YAML 模型条目含 preset opencode-zen
+      当 以加载器加载该配置
+      那么 加载失败且错误含 preset 迁移指引
