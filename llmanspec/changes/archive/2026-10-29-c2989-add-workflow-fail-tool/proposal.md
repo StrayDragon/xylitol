@@ -2,6 +2,9 @@
 depends_on: []
 title: 为 workflow 增加显式失败工具
 needs_specs_change: true
+branch: sdd/c2989-add-workflow-fail-tool
+base_branch: main
+base_sha: 75f1ba6c2560f5c56f57109a474458f78e9ca1ba
 ---
 
 # 为 workflow 增加显式失败工具

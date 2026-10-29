@@ -11,12 +11,17 @@
 
   @req:r2966
   规则: workflow-tools
-    workflow 插件 须提供 `workflow_write` 与 `workflow_read` 工具。`workflow_write` 须在工具边界校验 DAG 与重规划约束；成功 须 append `custom_type = "workflow"` 的 CustomEntry 并发布 `WorkflowUpdated`；失败 须返回 `InvalidArgs` 且不写入。`workflow_read` 须返回最新 workflow JSON。workflow 插件停用时 不得注册这两个工具或中间件。由插件单测覆盖。
+    workflow 插件 须提供 `workflow_write`、`workflow_read` 与 `workflow_fail` 工具。`workflow_write` 须在工具边界校验 DAG 与重规划约束；成功 须 append `custom_type = "workflow"` 的 CustomEntry 并发布 `WorkflowUpdated`；失败 须返回 `InvalidArgs` 且不写入。`workflow_read` 须返回最新 workflow JSON。`workflow_fail` 须接受可选 `step_id`（缺省当前 `in_progress`）与必填 `reason`：目标步骤非 completed 时置 failed、写 `output_ref = failure:<reason>`、append 新 workflow 条目并发布 `WorkflowUpdated`；completed、步骤不存在或无 `in_progress` 时 须返回 `InvalidArgs` 且不写入。workflow 插件停用时 不得注册这三个工具或中间件。由插件单测覆盖。
 
     场景: workflow_write 后进入步骤指令
       假如 workflow 插件启用且写入含一个 pending 步骤的 workflow
       当 模型下一轮 before_llm_request
       那么 注入当前步骤指令
+
+    场景: workflow_fail 标记步骤失败
+      假如 workflow 插件启用且 workflow 含一个 in_progress 步骤
+      当 模型调用 workflow_fail 并给出原因
+      那么 该步骤状态为 failed 且下一轮 before_llm_request 注入局部重规划指令
 
   @req:r2969
   规则: nested-workflow
