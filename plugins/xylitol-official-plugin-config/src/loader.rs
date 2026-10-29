@@ -58,33 +58,53 @@ fn merge_config_layers(
     let mut merged = Value::Null;
     let mut from_yaml_layers = false;
 
-    if let Some(global_base) = first_existing(&[
-        paths.global_dir.join("config.yaml"),
-        paths.global_dir.join("config.yml"),
-    ]) {
-        log::info!(
-            target: "xylitol::config",
-            "loading global config {}",
-            global_base.display()
-        );
-        merge_layer(&mut merged, &mut from_yaml_layers, &global_base, secrets)?;
+    merge_first_layer(
+        &mut merged,
+        &mut from_yaml_layers,
+        &[
+            paths.global_dir.join("config.yaml"),
+            paths.global_dir.join("config.yml"),
+        ],
+        secrets,
+    )?;
+
+    if let Some(proj_dir) = &paths.project_dir {
+        merge_first_layer(
+            &mut merged,
+            &mut from_yaml_layers,
+            &[proj_dir.join("config.yaml"), proj_dir.join("config.yml")],
+            secrets,
+        )?;
     }
 
-    if let Some(proj_dir) = &paths.project_dir
-        && let Some(proj_base) =
-            first_existing(&[proj_dir.join("config.yaml"), proj_dir.join("config.yml")])
-    {
-        merge_layer(&mut merged, &mut from_yaml_layers, &proj_base, secrets)?;
-    }
-
-    if let Some(cli_path) = cli_config
-        && cli_path.exists()
-    {
-        merge_layer(&mut merged, &mut from_yaml_layers, cli_path, secrets)?;
+    if let Some(cli_path) = cli_config {
+        merge_first_layer(
+            &mut merged,
+            &mut from_yaml_layers,
+            &[cli_path.to_path_buf()],
+            secrets,
+        )?;
     }
 
     super::presets::apply_presets(&mut merged)?;
     Ok((merged, from_yaml_layers))
+}
+
+fn merge_first_layer(
+    merged: &mut Value,
+    from_yaml_layers: &mut bool,
+    candidates: &[std::path::PathBuf],
+    secrets: &super::secret_env::SecretMap,
+) -> Result<(), LoadError> {
+    let Some(path) = first_existing(candidates) else {
+        return Ok(());
+    };
+    log::info!(
+        target: "xylitol::config",
+        "loading config {}",
+        path.display()
+    );
+    merge_layer(merged, from_yaml_layers, &path, secrets)
 }
 
 fn merge_layer(
