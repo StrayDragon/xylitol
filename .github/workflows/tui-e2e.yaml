@@ -35,4 +35,4 @@ jobs:
           sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
 
       - name: TUI PTY/tmux E2E
-        run: cargo test --test tui_e2e -- --ignored
+        run: cargo test --test tui_e2e -- --ignored --test-threads=1
