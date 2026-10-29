@@ -780,3 +780,53 @@ fn t_page_window() {
         "the page must end right before the anchor"
     );
 }
+
+#[when("对上下文结算缓存三态事件做线协议往返")]
+fn w_c2994_settlement_cache_roundtrip(protocol_bdd: &ProtocolBdd) {
+    let samples = [
+        ("hit", Some(7u64)),
+        ("unknown", None),
+        ("not_applicable", None),
+    ];
+    let mut events = Vec::new();
+    for (status, tokens) in samples {
+        let event = Event::ContextTokenSettlement {
+            tokens: 10,
+            provenance: "Api".into(),
+            usage_tokens: 8,
+            trailing_tokens: 2,
+            last_usage_index: Some(0),
+            prompt_cache: status.into(),
+            prompt_cache_tokens: tokens,
+            reason: "turn_settled".into(),
+            generation: 1,
+        };
+        let json = serde_json::to_string(&event).expect("serialize settlement");
+        events.push(serde_json::from_str::<Event>(&json).expect("deserialize settlement"));
+    }
+    *protocol_bdd.events.borrow_mut() = events;
+}
+
+#[then("缓存三态保真且未上报不伪造 token 数")]
+fn t_c2994_settlement_cache_roundtrip(protocol_bdd: &ProtocolBdd) {
+    use xylitol_plugin_sdk::dto::PromptCacheRead;
+    let events = protocol_bdd.events.borrow();
+    let reads: Vec<PromptCacheRead> = events
+        .iter()
+        .map(
+            |event| match event_from_wire(event).expect("wire → XyEvent") {
+                XyEvent::ContextTokenSettlement { estimate, .. } => estimate.prompt_cache_read,
+                other => panic!("expected settlement, got {}", other.description()),
+            },
+        )
+        .collect();
+    assert_eq!(
+        reads,
+        vec![
+            PromptCacheRead::Tokens(7),
+            PromptCacheRead::NotReported,
+            PromptCacheRead::NotApplicable,
+        ],
+        "c2994: cache tri-state must survive the wire"
+    );
+}

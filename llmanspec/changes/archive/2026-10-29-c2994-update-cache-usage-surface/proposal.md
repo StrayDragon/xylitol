@@ -2,6 +2,9 @@
 depends_on: []
 title: 在 footer 与观测中透出 prompt cache 命中状态
 needs_specs_change: true
+branch: sdd/c2994-update-cache-usage-surface
+base_branch: main
+base_sha: ec2af0456afeb566ae9d6482764ac1140427bc5f
 ---
 
 # 在 footer 与观测中透出 prompt cache 命中状态

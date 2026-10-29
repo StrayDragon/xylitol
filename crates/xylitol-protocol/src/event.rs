@@ -86,6 +86,10 @@ pub enum Event {
         trailing_tokens: u64,
         #[serde(default)]
         last_usage_index: Option<usize>,
+        #[serde(default)]
+        prompt_cache: String,
+        #[serde(default)]
+        prompt_cache_tokens: Option<u64>,
         reason: String,
         generation: u64,
     },
@@ -233,6 +237,8 @@ mod tests {
                 usage_tokens: 2,
                 trailing_tokens: 3,
                 last_usage_index: Some(4),
+                prompt_cache: "hit".into(),
+                prompt_cache_tokens: Some(2),
                 reason: "r".into(),
                 generation: 5,
             },

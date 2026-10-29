@@ -29,6 +29,12 @@ fn test_ip7_stream_roundtrip(protocol_bdd: ProtocolBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "上下文结算缓存三态往返"
+)]
+fn test_c2994_settlement_cache(protocol_bdd: ProtocolBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
     name = "事件枚举覆盖agent流"
 )]
 fn test_pa_event_enum_stream(protocol_bdd: ProtocolBdd) {}

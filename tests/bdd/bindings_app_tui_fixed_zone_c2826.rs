@@ -16,6 +16,12 @@ async fn test_c2826_atc_footer_heuristic(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "页脚缓存三态"
+)]
+async fn test_c2994_atc_footer_cache(fixed_zone_bdd: FixedZoneBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
     name = "空闲编辑器区保留压缩边框"
 )]
 fn test_c2826_atc_editor_compact(fixed_zone_bdd: FixedZoneBdd) {}

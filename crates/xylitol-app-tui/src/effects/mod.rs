@@ -90,7 +90,8 @@ pub async fn refresh_footer_tokens<T: Terminal>(
                 .current_model()
                 .map(|m| m.context_window)
                 .unwrap_or(0);
-            let label = footer_token_label(est.provenance, est.tokens, window);
+            let label =
+                footer_token_label(est.provenance, est.tokens, window, est.prompt_cache_read);
             session.set_footer_token_label(Some(label));
         }
         Err(_) => session.set_footer_token_label(None),
@@ -116,6 +117,7 @@ pub async fn kick_footer_token_refresh<T: Terminal>(
                 est.provenance,
                 est.tokens,
                 context_window,
+                est.prompt_cache_read,
             )),
             est.provenance == xylitol_plugin_sdk::model::TokenProvenance::Heuristic,
         ),
@@ -350,7 +352,7 @@ async fn drain_footer_token_if_pending<T: Terminal>(
             .current_model()
             .map(|m| m.context_window)
             .unwrap_or(0);
-        let label = footer_token_label(est.provenance, est.tokens, window);
+        let label = footer_token_label(est.provenance, est.tokens, window, est.prompt_cache_read);
         session.set_footer_token_label(Some(label));
         let _ = session.render_now();
         return;

@@ -4556,6 +4556,7 @@ mod slice_tests {
             usage_tokens: 0,
             trailing_tokens: 42,
             last_usage_index: None,
+            ..Default::default()
         }));
         refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
@@ -4595,6 +4596,7 @@ mod slice_tests {
             usage_tokens: 42,
             trailing_tokens: 0,
             last_usage_index: None,
+            ..Default::default()
         }));
         refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
@@ -4634,6 +4636,7 @@ mod slice_tests {
             usage_tokens: 42_000,
             trailing_tokens: 0,
             last_usage_index: None,
+            ..Default::default()
         }));
         refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
@@ -4662,6 +4665,7 @@ mod slice_tests {
             usage_tokens: 100,
             trailing_tokens: 0,
             last_usage_index: Some(0),
+            ..Default::default()
         }));
         refresh_footer_tokens(&mut session, &mut driver).await;
         let frame = session.ui_root().expect("ui").borrow_mut().render(80);
@@ -4695,6 +4699,7 @@ mod slice_tests {
             usage_tokens: 0,
             trailing_tokens: 11,
             last_usage_index: None,
+            ..Default::default()
         }));
         let mut stream = None;
         root.borrow_mut()
@@ -4716,6 +4721,7 @@ mod slice_tests {
             usage_tokens: 0,
             trailing_tokens: 99,
             last_usage_index: None,
+            ..Default::default()
         }));
         root.borrow_mut()
             .open_session_tree_at_for_test(crate::layout::sample_tree_nodes_for_test(), "u2");
@@ -4748,6 +4754,7 @@ mod slice_tests {
             usage_tokens: 42,
             trailing_tokens: 0,
             last_usage_index: Some(0),
+            ..Default::default()
         }));
         session
             .step(HostEvent::Xy(Box::new(XyEvent::CompactionEnd {
@@ -4797,6 +4804,7 @@ mod slice_tests {
             usage_tokens: 11,
             trailing_tokens: 0,
             last_usage_index: Some(0),
+            ..Default::default()
         }));
         session
             .step(HostEvent::Xy(Box::new(XyEvent::ContextTokenSettlement {
@@ -4806,6 +4814,7 @@ mod slice_tests {
                     usage_tokens: 11,
                     trailing_tokens: 0,
                     last_usage_index: Some(0),
+                    ..Default::default()
                 },
                 reason: "turn_settled".into(),
                 generation: 1,
@@ -4854,6 +4863,7 @@ mod slice_tests {
             usage_tokens: 0,
             trailing_tokens: 7,
             last_usage_index: None,
+            ..Default::default()
         }));
         session
             .step(HostEvent::Xy(Box::new(XyEvent::AgentEnd {
@@ -4900,6 +4910,7 @@ mod slice_tests {
             usage_tokens: 99,
             trailing_tokens: 0,
             last_usage_index: Some(0),
+            ..Default::default()
         }));
         session.on_run_started("hi");
         session
@@ -4910,6 +4921,7 @@ mod slice_tests {
                     usage_tokens: 42,
                     trailing_tokens: 0,
                     last_usage_index: Some(0),
+                    ..Default::default()
                 },
                 reason: "turn_settled".into(),
                 generation: 7,
@@ -4959,6 +4971,7 @@ mod slice_tests {
             usage_tokens: 42_252,
             trailing_tokens: 0,
             last_usage_index: Some(0),
+            ..Default::default()
         }));
 
         session.apply_cli_restored_session(
@@ -4989,6 +5002,7 @@ mod slice_tests {
             usage_tokens: 0,
             trailing_tokens: 99,
             last_usage_index: None,
+            ..Default::default()
         }));
         session.apply_resume_session("sid-other", harness_sample_session_messages(), false);
         pump_host_driver(&mut session, &mut driver, &mut stream)

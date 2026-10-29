@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use strum::{EnumString, IntoStaticStr};
 
-use super::message::{XyStopReason, XyUsage};
+use super::message::{PromptCacheRead, XyStopReason, XyUsage};
 use crate::error::XyError;
 
 #[derive(Debug, Clone)]
@@ -46,12 +46,15 @@ pub struct XyToolSchema {
 
 pub type XyStream = Pin<Box<dyn Stream<Item = Result<XyChunk, XyError>> + Send>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, IntoStaticStr, EnumString)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default, IntoStaticStr, EnumString,
+)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "PascalCase")]
 pub enum TokenProvenance {
     Api,
     Heuristic,
+    #[default]
     Unknown,
 }
 
@@ -65,13 +68,15 @@ impl TokenProvenance {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContextTokenEstimate {
     pub tokens: u64,
     pub provenance: TokenProvenance,
     pub usage_tokens: u64,
     pub trailing_tokens: u64,
     pub last_usage_index: Option<usize>,
+    #[serde(default)]
+    pub prompt_cache_read: PromptCacheRead,
 }
 
 #[cfg(test)]

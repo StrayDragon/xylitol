@@ -462,6 +462,7 @@ mod tests {
                 usage_tokens: 8,
                 trailing_tokens: 2,
                 last_usage_index: Some(0),
+                ..Default::default()
             })),
             json!({ "estimate": {
                 "tokens": 10,
@@ -469,6 +470,7 @@ mod tests {
                 "usage_tokens": 8,
                 "trailing_tokens": 2,
                 "last_usage_index": 0,
+                "prompt_cache_read": "not_applicable",
             } })
         );
         assert_eq!(

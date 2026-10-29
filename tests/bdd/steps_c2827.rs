@@ -927,6 +927,45 @@ pub(crate) fn g_t2_anchor_stop(t2_est_bdd: &T2EstBdd) {
     ];
 }
 
+#[given("会话条目含缓存命中的 stop 回合 usage 锚点")]
+pub(crate) fn g_c2994_anchor_cache_hit(t2_est_bdd: &T2EstBdd) {
+    use xylitol_plugin_sdk::dto::PromptCacheRead;
+    use xylitol_plugin_sdk::message::{AgentMessage, XyStopReason, XyUsage};
+    *t2_est_bdd.entries.borrow_mut() = vec![
+        SessionEntry::Message(MessageEntry {
+            base: EntryBase {
+                entry_type: "message".into(),
+                id: "u1".into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            message: serde_json::to_value(AgentMessage::user("hi")).unwrap(),
+        }),
+        t2_assistant_entry(
+            "a1",
+            XyUsage {
+                input: 100,
+                output: 20,
+                total_tokens: 120,
+                ..Default::default()
+            }
+            .with_prompt_cache_read(PromptCacheRead::Tokens(50)),
+            XyStopReason::Stop,
+        ),
+    ];
+}
+
+#[then("估计缓存状态为命中且 token 数一致")]
+pub(crate) fn t_c2994_estimate_cache_hit(t2_est_bdd: &T2EstBdd) {
+    use xylitol_plugin_sdk::dto::PromptCacheRead;
+    let est = t2_est_bdd.est.borrow().as_ref().expect("estimate").clone();
+    assert_eq!(
+        est.prompt_cache_read,
+        PromptCacheRead::Tokens(50),
+        "c2994: estimate must carry the usage anchor cache read"
+    );
+}
+
 #[given("会话条目仅含 abort 回合的 usage 锚点")]
 pub(crate) fn g_t2_anchor_aborted(t2_est_bdd: &T2EstBdd) {
     use xylitol_plugin_sdk::message::{AgentMessage, XyStopReason, XyUsage};
