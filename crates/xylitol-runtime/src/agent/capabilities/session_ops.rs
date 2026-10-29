@@ -4,6 +4,7 @@ use crate::agent::compaction::CompactionSettings;
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::{XyError, XySessionError};
 use xylitol_plugin_sdk::message::AgentMessage;
+use xylitol_plugin_sdk::session::SessionEntry;
 
 use super::{AgentCapabilities, SessionStats, observe_hook};
 
@@ -15,19 +16,28 @@ pub async fn load_conversation_history_from_store(
         .load_leaf_branch(session_id)
         .await
         .map_err(XyError::from)?;
-    if xylitol_plugin_sdk::session::has_unmigrated_legacy_custom_types(&entries) {
-        migrate_legacy_on_load(store, session_id).await;
-        entries = store
-            .load_leaf_branch(session_id)
-            .await
-            .map_err(XyError::from)?;
-    }
+    migrate_legacy_if_needed(store, session_id, &mut entries).await?;
     let entries = xylitol_plugin_sdk::session::build_context_entries(&entries);
     let messages: Vec<AgentMessage> = entries
         .iter()
         .filter_map(|entry| entry.as_agent_message())
         .collect();
     Ok(fold_interrupted_bash(store, session_id, messages).await)
+}
+
+async fn migrate_legacy_if_needed(
+    store: &dyn XySessionStore,
+    session_id: &str,
+    entries: &mut Vec<SessionEntry>,
+) -> Result<(), XyError> {
+    if xylitol_plugin_sdk::session::has_unmigrated_legacy_custom_types(entries) {
+        migrate_legacy_on_load(store, session_id).await;
+        *entries = store
+            .load_leaf_branch(session_id)
+            .await
+            .map_err(XyError::from)?;
+    }
+    Ok(())
 }
 
 async fn migrate_legacy_on_load(store: &dyn XySessionStore, session_id: &str) {
