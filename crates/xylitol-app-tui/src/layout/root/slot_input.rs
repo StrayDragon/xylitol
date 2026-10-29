@@ -2,7 +2,8 @@ use crossterm::event::KeyEvent;
 use xylitol_tui::{Component, InputEvent};
 
 use super::super::slots::{
-    EditorSlot, ImportAction, McpAction, ModelsAction, ScenesAction, ThemesAction, TreeAction,
+    CapabilitiesAction, EditorSlot, ImportAction, McpAction, ModelsAction, ScenesAction,
+    ThemesAction, TreeAction,
 };
 use super::UiRoot;
 use crate::keybindings::matches_binding;
@@ -38,28 +39,10 @@ impl UiRoot {
     }
 
     pub(super) fn handle_slot_input(&mut self, event: InputEvent) {
-        if let InputEvent::Mouse(mouse) = &event {
-            match mouse.kind {
-                crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
-                    if self.click_todo_bar_at(mouse.column, mouse.row) =>
-                {
-                    self.todo_selection.clear();
-                    self.todo_pointer_dirty = true;
-                    return;
-                }
-                crossterm::event::MouseEventKind::ScrollUp
-                    if self.scroll_todo_bar_at(mouse.row, -1) =>
-                {
-                    return;
-                }
-                crossterm::event::MouseEventKind::ScrollDown
-                    if self.scroll_todo_bar_at(mouse.row, 1) =>
-                {
-                    return;
-                }
-                _ if self.handle_todo_bar_selection(mouse) => return,
-                _ => {}
-            }
+        if let InputEvent::Mouse(mouse) = &event
+            && self.handle_pointer_input(mouse)
+        {
+            return;
         }
         if let InputEvent::Key(ref key) = event
             && self.handle_session_details_key(key)
@@ -70,7 +53,13 @@ impl UiRoot {
             self.handle_editor_keys(event);
             return;
         }
-        let close_mcp = match &mut self.slot {
+        if self.capabilities_open() {
+            if self.handle_capabilities_input(event) {
+                self.close_slot();
+            }
+            return;
+        }
+        let close_slot = match &mut self.slot {
             EditorSlot::Editor => false,
             EditorSlot::Tree(tree) => {
                 match tree.handle_input(event) {
@@ -128,9 +117,47 @@ impl UiRoot {
                 false
             }
             EditorSlot::Mcp(mcp) => matches!(mcp.handle_input(event), McpAction::Close),
+            EditorSlot::Capabilities(_) => false,
         };
-        if close_mcp {
+        if close_slot {
             self.close_slot();
+        }
+    }
+
+    fn handle_pointer_input(&mut self, mouse: &crossterm::event::MouseEvent) -> bool {
+        match mouse.kind {
+            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
+                if self.click_todo_bar_at(mouse.column, mouse.row) =>
+            {
+                self.todo_selection.clear();
+                self.todo_pointer_dirty = true;
+                true
+            }
+            crossterm::event::MouseEventKind::ScrollUp
+                if self.scroll_todo_bar_at(mouse.row, -1) =>
+            {
+                true
+            }
+            crossterm::event::MouseEventKind::ScrollDown
+                if self.scroll_todo_bar_at(mouse.row, 1) =>
+            {
+                true
+            }
+            _ => self.handle_todo_bar_selection(mouse),
+        }
+    }
+
+    fn handle_capabilities_input(&mut self, event: InputEvent) -> bool {
+        let EditorSlot::Capabilities(caps) = &mut self.slot else {
+            return false;
+        };
+        match caps.handle_input(event) {
+            CapabilitiesAction::Toggle { id, enabled } => {
+                self.pending.capability_toggle = Some((id, enabled));
+                false
+            }
+            CapabilitiesAction::Close => true,
+            CapabilitiesAction::None => false,
         }
     }
 

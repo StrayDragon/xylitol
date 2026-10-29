@@ -50,6 +50,7 @@ pub enum DispatchOutcome {
     SessionName(Option<String>),
     Reload(RuntimeReloadReport),
     LoadedResources(LoadedResourcesSnapshot),
+    Capabilities(xylitol_plugin_sdk::session::CapabilitySnapshot),
     Empty,
     Commands(Vec<CommandInfo>),
     QueueStats {

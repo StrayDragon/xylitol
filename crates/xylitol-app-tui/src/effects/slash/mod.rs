@@ -30,14 +30,34 @@ pub(super) async fn handle_slash<T: Terminal>(
         | PendingSlash::SessionNew
         | PendingSlash::SessionClone => handle_plain_session_slash(session, driver, slash).await,
         PendingSlash::SessionName { name } => session::name(session, driver, name).await,
+        slash @ (PendingSlash::Reload
+        | PendingSlash::Trust { .. }
+        | PendingSlash::HistoryCopyLast
+        | PendingSlash::Theme { .. }
+        | PendingSlash::OpenMcp
+        | PendingSlash::OpenCapabilities
+        | PendingSlash::OpenDesigningScenes
+        | PendingSlash::SetPlanMode(_)
+        | PendingSlash::Usage(_)) => handle_misc_slash(session, driver, slash).await,
+    }
+}
+
+async fn handle_misc_slash<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    slash: PendingSlash,
+) {
+    match slash {
         PendingSlash::Reload => misc::reload(session).await,
         PendingSlash::Trust { mode } => misc::trust(session, driver, mode).await,
         PendingSlash::HistoryCopyLast => misc::history_copy_last(session, driver).await,
         PendingSlash::Theme { arg } => misc::theme(session, arg).await,
         PendingSlash::OpenMcp => misc::open_mcp(session, driver).await,
+        PendingSlash::OpenCapabilities => misc::open_capabilities(session, driver).await,
         PendingSlash::OpenDesigningScenes => misc::open_designing_scenes(session).await,
         PendingSlash::SetPlanMode(mode) => misc::plan(session, driver, mode).await,
         PendingSlash::Usage(msg) => misc::usage(session, msg).await,
+        _ => unreachable!("misc slash"),
     }
 }
 

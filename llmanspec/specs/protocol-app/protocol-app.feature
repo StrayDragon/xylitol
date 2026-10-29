@@ -344,3 +344,11 @@
       当 服务端在空闲端口上启动
       并且 POST /rpc 调用 plugin/call
       那么 error.code 为 -32601 且 data.code 为 unregistered_method
+
+  @req:r2983
+  规则: capability-methods
+    产品方法表 须登记会话能力命令 `get_capabilities`（只读）、`set_capability` 与 `clear_capabilities`（写入），三者 须为 Inline 产品 unary 且返回完整能力快照；不得退回未登记的 REST 产品动词或 Queued 执行类。
+
+    场景: 能力方法已登记
+      当 查询方法表的能力方法
+      那么 三个能力方法均已登记且为 Inline

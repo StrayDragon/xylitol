@@ -95,6 +95,9 @@ pub const METHOD_FORK: &str = "fork";
 pub const METHOD_GET_MESSAGES: &str = "get_messages";
 pub const METHOD_ESTIMATE_CONTEXT: &str = "estimate_context";
 pub const METHOD_GET_COMMANDS: &str = "get_commands";
+pub const METHOD_GET_CAPABILITIES: &str = "get_capabilities";
+pub const METHOD_SET_CAPABILITY: &str = "set_capability";
+pub const METHOD_CLEAR_CAPABILITIES: &str = "clear_capabilities";
 pub const METHOD_SESSION_TREE: &str = "session_tree";
 pub const METHOD_TRAVEL_SESSION_TREE: &str = "travel_session_tree";
 pub const METHOD_APPEND_ENTRY_LABEL: &str = "append_entry_label";
@@ -242,6 +245,30 @@ pub const REGISTRY: &[MethodEntry] = &[
     mx(
         METHOD_GET_COMMANDS,
         Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+        Exec::Inline,
+    ),
+    mx(
+        METHOD_GET_CAPABILITIES,
+        Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+        Exec::Inline,
+    ),
+    mx(
+        METHOD_SET_CAPABILITY,
+        Auth::Writer,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+        Exec::Inline,
+    ),
+    mx(
+        METHOD_CLEAR_CAPABILITIES,
+        Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
@@ -408,6 +435,9 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::SetPlanMode { .. }
         | Command::GetQueueStats { .. }
         | Command::GetCommands { .. }
+        | Command::GetCapabilities { .. }
+        | Command::SetCapability { .. }
+        | Command::ClearCapabilities { .. }
         | Command::LoadedResources { .. }
         | Command::AppendEntryLabel { .. }
         | Command::SetSessionName { .. }
@@ -495,6 +525,8 @@ mod tests {
                 "import_jsonl",
                 "switch_session",
                 "fork",
+                "set_capability",
+                "clear_capabilities",
                 "travel_session_tree",
                 "append_entry_label",
                 "new_session",
@@ -619,12 +651,15 @@ mod tests {
             exec_rows(Exec::Inline),
             [
                 "append_entry_label",
+                "clear_capabilities",
                 "cycle_model",
                 "get_available_models",
+                "get_capabilities",
                 "get_commands",
                 "get_state",
                 "loaded_resources",
                 "queue_stats",
+                "set_capability",
                 "set_model",
                 "set_plan_mode",
                 "set_session_name",
@@ -702,6 +737,15 @@ mod tests {
             ),
             ("estimate_context", Command::EstimateContext {}),
             ("get_commands", Command::GetCommands {}),
+            ("get_capabilities", Command::GetCapabilities {}),
+            (
+                "set_capability",
+                Command::SetCapability {
+                    id: String::new(),
+                    enabled: false,
+                },
+            ),
+            ("clear_capabilities", Command::ClearCapabilities {}),
             (
                 "session_tree",
                 Command::SessionTree {
@@ -787,7 +831,7 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(cases.len(), 36, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 39, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");

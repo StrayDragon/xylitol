@@ -63,6 +63,12 @@ pub enum Command {
     #[serde(rename = "estimate_context")]
     EstimateContext {},
     GetCommands {},
+    GetCapabilities {},
+    SetCapability {
+        id: String,
+        enabled: bool,
+    },
+    ClearCapabilities {},
     SessionTree {
         #[serde(default = "default_session_tree_kind")]
         kind: SessionTreeKind,

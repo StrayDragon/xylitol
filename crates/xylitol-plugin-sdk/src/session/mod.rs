@@ -1,3 +1,4 @@
+mod capability;
 mod checkpoint;
 mod entries;
 mod helpers;
@@ -9,6 +10,7 @@ mod todo;
 mod tree;
 mod workflow;
 
+pub use capability::{CapabilityEntry, CapabilityKind, CapabilitySnapshot};
 pub use checkpoint::{
     CUSTOM_TYPE_TODO_CHECKPOINT, TodoCheckpoint, TodoCheckpointStep, TodoResumeCursor,
     latest_todo_checkpoint,

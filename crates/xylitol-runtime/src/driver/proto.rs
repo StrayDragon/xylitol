@@ -96,6 +96,28 @@ pub trait XyDriver: Send {
         &self,
     ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError>;
 
+    fn capability_snapshot(&self) -> xylitol_plugin_sdk::session::CapabilitySnapshot {
+        xylitol_plugin_sdk::session::CapabilitySnapshot::default()
+    }
+
+    fn capability_pending(&self) -> bool {
+        false
+    }
+
+    fn set_capability(
+        &mut self,
+        _id: &str,
+        _enabled: bool,
+    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
+        Err(XyDriverError::unsupported("set_capability"))
+    }
+
+    fn clear_capabilities(
+        &mut self,
+    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
+        Err(XyDriverError::unsupported("clear_capabilities"))
+    }
+
     fn get_commands(&self) -> Vec<CommandInfo>;
 
     fn leaf_entry_id(&self) -> Option<String>;

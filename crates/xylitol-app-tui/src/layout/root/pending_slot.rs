@@ -10,6 +10,7 @@ pub(super) struct PendingSlotOps {
     pub model_select: Option<PendingModelChoice>,
     pub scene_select: Option<String>,
     pub theme_select: Option<String>,
+    pub capability_toggle: Option<(String, bool)>,
     pub import_decision: Option<ImportConfirmDecision>,
     pub session_resume_select: Option<String>,
     pub session_resume_rename: Option<(String, String)>,
@@ -23,6 +24,7 @@ impl PendingSlotOps {
         self.model_select = None;
         self.scene_select = None;
         self.theme_select = None;
+        self.capability_toggle = None;
         self.session_resume_rename = None;
         self.session_resume_delete = None;
     }

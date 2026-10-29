@@ -106,6 +106,18 @@ async fn test_c2826_mcp(host_pump_bdd: HostPumpBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
+    name = "能力覆盖盘打开并列出条目"
+)]
+async fn test_c2998_capabilities_open(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
+    name = "Esc关闭能力覆盖盘"
+)]
+async fn test_c2998_capabilities_esc(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-commands/app-tui-commands.feature",
     name = "MVP需要模型与退出"
 )]
 fn test_atc_mvp_two_commands(cli_entry_bdd: CliEntryBdd) {}

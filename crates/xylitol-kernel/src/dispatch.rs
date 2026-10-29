@@ -50,6 +50,7 @@ pub enum DispatchOutcome {
     SessionName(Option<String>),
     Reload(RuntimeReloadReport),
     LoadedResources(LoadedResourcesSnapshot),
+    Capabilities(xylitol_plugin_sdk::session::CapabilitySnapshot),
     Empty,
     Commands(Vec<CommandInfo>),
     QueueStats {
@@ -93,6 +94,25 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
             "truncated": r.truncated,
         }),
         DispatchOutcome::Compacted(did) => json!({ "compacted": did }),
+        DispatchOutcome::Empty => json!({}),
+        DispatchOutcome::Commands(cmds) => {
+            let cmds: Vec<Value> = cmds
+                .into_iter()
+                .map(|c| json!({ "name": c.name, "description": c.description }))
+                .collect();
+            json!({ "commands": cmds })
+        }
+        DispatchOutcome::QueueStats {
+            steer_count,
+            follow_up_count,
+        } => json!({ "steer_count": steer_count, "follow_up_count": follow_up_count }),
+        other => session_outcome_to_value(other),
+    }
+}
+
+fn session_outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
+    use serde_json::{Value, json};
+    match outcome {
         DispatchOutcome::SessionStats(v) => v,
         DispatchOutcome::ExportedPath(p) => json!({ "path": p }),
         DispatchOutcome::NewSession(id) | DispatchOutcome::SwitchedSession(id) => {
@@ -124,18 +144,16 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
         DispatchOutcome::LoadedResources(snapshot) => {
             serde_json::to_value(snapshot).unwrap_or(Value::Null)
         }
-        DispatchOutcome::Empty => json!({}),
-        DispatchOutcome::Commands(cmds) => {
-            let cmds: Vec<Value> = cmds
-                .into_iter()
-                .map(|c| json!({ "name": c.name, "description": c.description }))
-                .collect();
-            json!({ "commands": cmds })
+        DispatchOutcome::Capabilities(snapshot) => {
+            serde_json::to_value(snapshot).unwrap_or(Value::Null)
         }
-        DispatchOutcome::QueueStats {
-            steer_count,
-            follow_up_count,
-        } => json!({ "steer_count": steer_count, "follow_up_count": follow_up_count }),
+        other => {
+            log::warn!(
+                target: "xylitol::kernel",
+                "outcome_to_value: unexpected core outcome in session table: {other:?}"
+            );
+            serde_json::Value::Null
+        }
     }
 }
 

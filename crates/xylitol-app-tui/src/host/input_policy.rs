@@ -263,6 +263,7 @@ impl<T: Terminal> HostSession<T> {
                 | PendingSlash::HistoryCopyLast
                 | PendingSlash::Theme { .. }
                 | PendingSlash::OpenMcp
+                | PendingSlash::OpenCapabilities
                 | PendingSlash::OpenDesigningScenes
                 | PendingSlash::SetPlanMode(_)
                 | PendingSlash::Usage(_) => {

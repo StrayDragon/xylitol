@@ -1,4 +1,5 @@
 mod ask;
+mod capabilities;
 mod import;
 mod mcp;
 mod models;
@@ -6,9 +7,11 @@ mod scenes;
 mod themes;
 mod tree;
 
+use super::theme::LayoutTheme;
 use crate::keybindings::matches_binding;
 
 pub use ask::AskSlot;
+pub use capabilities::CapabilitiesSlot;
 pub use import::{ImportConfirmDecision, ImportSlot};
 pub use mcp::McpSlot;
 pub use models::ModelsSlot;
@@ -16,6 +19,7 @@ pub use scenes::ScenesSlot;
 pub use themes::ThemesSlot;
 pub use tree::{TreeAction, TreeSlot};
 
+pub(crate) use capabilities::CapabilitiesAction;
 pub(crate) use import::ImportAction;
 
 pub(crate) fn is_select_nav_key(key: &crossterm::event::KeyEvent) -> bool {
@@ -58,6 +62,8 @@ pub enum EditorSlot {
     SessionResume(SessionResumePanel),
     #[strum_discriminants(strum(message = "MCP"))]
     Mcp(McpSlot),
+    #[strum_discriminants(strum(message = "Capabilities"))]
+    Capabilities(CapabilitiesSlot),
 }
 
 impl EditorSlotKind {
@@ -104,6 +110,27 @@ impl EditorSlot {
         Self::Choice(AskSlot::empty())
     }
 
+    pub(crate) fn retheme(&mut self, theme: LayoutTheme) {
+        if matches!(self, EditorSlot::SessionResume(_)) {
+            *self = EditorSlot::SessionResume(SessionResumePanel::new(theme));
+            return;
+        }
+        match self {
+            Self::Tree(tree) => tree.wipe_themed(theme),
+            Self::Models(models) => models.retheme(theme),
+            Self::Scenes(scenes) => scenes.retheme(theme),
+            Self::Themes(themes) => themes.retheme(theme),
+            Self::Mcp(mcp) => mcp.retheme(theme),
+            Self::Capabilities(caps) => caps.retheme(theme),
+            Self::ImportConfirm(imp) => imp.retheme(theme),
+            Self::Editor
+            | Self::Plate
+            | Self::Settings
+            | Self::Choice(_)
+            | Self::SessionResume(_) => {}
+        }
+    }
+
     pub(crate) fn invalidate(&mut self) {
         match self {
             Self::Tree(s) => s.invalidate(),
@@ -113,8 +140,30 @@ impl EditorSlot {
             Self::ImportConfirm(s) => s.invalidate(),
             Self::SessionResume(s) => s.invalidate(),
             Self::Mcp(s) => s.invalidate(),
+            Self::Capabilities(s) => s.invalidate(),
             Self::Choice(s) => s.invalidate(),
             Self::Editor | Self::Plate | Self::Settings => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use xylitol_plugin_sdk::session::CapabilitySnapshot;
+
+    #[test]
+    fn invalidate_handles_non_tree_slots() {
+        let mut editor = EditorSlot::Editor;
+        editor.invalidate();
+        let mut plate = EditorSlot::Plate;
+        plate.invalidate();
+        let mut choice = EditorSlot::Choice(AskSlot::empty());
+        choice.invalidate();
+        let mut caps = EditorSlot::Capabilities(CapabilitiesSlot::mount(
+            LayoutTheme::default(),
+            &CapabilitySnapshot::default(),
+        ));
+        caps.invalidate();
     }
 }

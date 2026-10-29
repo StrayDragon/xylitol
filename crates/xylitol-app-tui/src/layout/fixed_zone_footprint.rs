@@ -36,6 +36,10 @@ pub const MCP_SLOT_BASE: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 1,
     trailer: 1,
 };
+pub const CAPABILITIES_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
+    header: 1,
+    trailer: 1,
+};
 pub const RESUME_SLOT: SlotFixedZoneRows = SlotFixedZoneRows {
     header: 4,
     trailer: 1,

@@ -180,12 +180,18 @@ impl BootstrappedAgent {
                 name.as_str(),
             ));
         }
-        let driver = crate::driver::assemble_driver_with_features_and_context(
+        let mcp_ids = self
+            .mcp_servers
+            .as_ref()
+            .map(|servers| servers.iter().map(|server| server.name.clone()).collect())
+            .unwrap_or_default();
+        let mut driver = crate::driver::assemble_driver_with_features_and_context(
             self.agent,
             self.store,
             self.tool_features,
             self.driver_context,
         );
+        driver.set_mcp_server_ids(mcp_ids);
         let todo_gw = driver.todo_gateway();
         let sid = self.session_id.clone();
         let _ = block_on_bootstrap_task("bind todo session", async move {

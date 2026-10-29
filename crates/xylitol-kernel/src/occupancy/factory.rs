@@ -131,6 +131,12 @@ impl OccupancyFactory for ProductOccupancyFactory {
             self.agent_dir.clone(),
             self.project_trusted(workspace),
         );
+        driver.set_mcp_server_ids(
+            self.mcp_servers
+                .iter()
+                .map(|server| server.name.clone())
+                .collect(),
+        );
         attach_optional_context(&mut driver, self.ctx.as_ref(), &self.mcp_servers);
         driver
             .agent
