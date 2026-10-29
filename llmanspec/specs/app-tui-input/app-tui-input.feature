@@ -82,11 +82,15 @@
       并且 会话树未打开
   @req:r1285
   规则: product-queue-fixed-zone
-    产品 TUI 在 steer/follow-up 队列非空时 须在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及 Alt+Up dequeue 提示（对齐 pi pendingMessagesContainer；实现为 queue strip）；不得将排队内容写成 scrollback System [steer]/[follow-up] 墙；不得在 footer/status 另加队列计数徽章（如 `q:sN|fM`）；Alt+Up 须将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。经 attach/Remote 时，入队后的 drain_pending 不得用空队列深度把已画条文案清掉；校准 须只按 Host 真实深度 FIFO 消退。
+    产品 TUI 在 steer/follow-up 队列非空时 须在 scrollback 与 status 之间以 muted 色渲染 Steering:/Follow-up: 行及 Alt+Up dequeue 提示（对齐 pi pendingMessagesContainer；实现为 queue strip）；steer 与 follow-up 每类 须至多一行，取该队列最新一条正文；该类深度 > 1 时 须在标签后附计数 `(N)`，单条 不得显示计数；不得逐条铺开全部排队消息。不得将排队内容写成 scrollback System [steer]/[follow-up] 墙；不得在 footer/status 另加队列计数徽章（如 `q:sN|fM`）；Alt+Up 须将队列文本还原进 editor 并 clear_queue(steer=true, follow_up=true)。经 attach/Remote 时，入队后的 drain_pending 不得用空队列深度把已画条文案清掉；校准 须只按 Host 真实深度 FIFO 消退。
 
     场景: 队列条带渲染与Alt向上恢复
       当 以主机泵忙碌插队后渲染队列条并按 Alt+Up
       那么 队列条含插队文本且 Alt+Up 还原队列文本
+
+    场景: 多条排队压成每类一行
+      当 以主机泵忙碌连续插队两条 steer 后渲染队列条
+      那么 队列条仅一条 Steering 行且含最新文本与计数
   @req:r1286
   规则: product-queue-uplink
     当 steer/follow-up 从队列注入 agent history 时，runtime 须发射 MessageStart/MessageEnd（role=user，带 message）；产品 bridge 须将其提交为 scrollback UiEntry::User（与 idle 提交同形）；queue strip 随 QueueUpdate 消退后用户文本 须仍留在 transcript；不得仅在 strip 闪现后丢失。即使用户连续两次提交相同正文（idle 后再 busy 插话，或两轮根提交），transcript 须出现两条用户气泡，不得因正文相同而吞掉第二次提问。

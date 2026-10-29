@@ -326,3 +326,12 @@
       假如 会话条目数不足单页上限
       当 渲染滚动区
       那么 不出现任何加载更早提示
+
+
+  @req:r2986
+  规则: secondary-text-contrast
+    产品默认暗色主题的次要文本 `muted` 在 `surface` 上的对比度 须 ≥ 4.3:1；`tool` 与 `diff-context` 须保持不高于 `muted` 的层级，不得为提对比度而把工具摘要提到与 status/footer 同级。对比度按 WCAG 相对亮度公式计算。
+
+    场景: 默认暗色次要文本对比度达标
+      当 读取产品默认暗色次要文本与表面色
+      那么 muted 对比度不低于 4.3 且 tool 不高于 muted
