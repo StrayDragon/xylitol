@@ -616,3 +616,31 @@ async fn plan_mode_toggles_before_the_first_prompt() {
         DispatchOutcome::PlanMode { ref mode, plan_id: None } if mode == "execute"
     ));
 }
+
+#[test]
+fn bootstrap_error_display_covers_all_variants() {
+    let cases = [
+        (
+            BootstrapError::ConfigLoadFailed("bad yaml".into()),
+            "config load failed: bad yaml",
+        ),
+        (BootstrapError::ConfigLoadedZeroModels, "loaded 0 models"),
+        (BootstrapError::NoModelsAvailable, "no models available"),
+        (
+            BootstrapError::BuildFailed("build broke".into()),
+            "agent build failed: build broke",
+        ),
+        (
+            BootstrapError::KernelFailed("kernel broke".into()),
+            "kernel boot failed: kernel broke",
+        ),
+        (
+            BootstrapError::AgentProfileNotFound("missing".into()),
+            "agent profile `missing` not found",
+        ),
+    ];
+    for (err, needle) in cases {
+        let message = err.to_string();
+        assert!(message.contains(needle), "{message}");
+    }
+}

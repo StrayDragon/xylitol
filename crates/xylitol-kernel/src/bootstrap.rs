@@ -267,23 +267,28 @@ pub enum BootstrapError {
     AgentProfileNotFound(String),
 }
 
-impl std::fmt::Display for BootstrapError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl BootstrapError {
+    fn message(&self) -> String {
         match self {
-            BootstrapError::ConfigLoadFailed(e) => write!(f, "config load failed: {e}"),
-            BootstrapError::ConfigLoadedZeroModels => write!(
-                f,
+            BootstrapError::ConfigLoadFailed(e) => format!("config load failed: {e}"),
+            BootstrapError::ConfigLoadedZeroModels => {
                 "config file present but loaded 0 models (check `models:` vs `model:` typo; \
                  see configs/example.yaml)"
-            ),
-            BootstrapError::NoModelsAvailable => write!(f, "no models available"),
-            BootstrapError::BuildFailed(e) => write!(f, "agent build failed: {e}"),
-            BootstrapError::KernelFailed(e) => write!(f, "kernel boot failed: {e}"),
-            BootstrapError::AgentProfileNotFound(name) => write!(
-                f,
-                "agent profile `{name}` not found (check `agents.profiles` in config)"
-            ),
+                    .to_string()
+            }
+            BootstrapError::NoModelsAvailable => "no models available".to_string(),
+            BootstrapError::BuildFailed(e) => format!("agent build failed: {e}"),
+            BootstrapError::KernelFailed(e) => format!("kernel boot failed: {e}"),
+            BootstrapError::AgentProfileNotFound(name) => {
+                format!("agent profile `{name}` not found (check `agents.profiles` in config)")
+            }
         }
+    }
+}
+
+impl std::fmt::Display for BootstrapError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message())
     }
 }
 
