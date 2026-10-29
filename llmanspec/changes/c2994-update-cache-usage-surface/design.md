@@ -40,7 +40,7 @@ ContextTokenSettlement {
 
 ### 4. 观测
 
-provider trace 已有 `xylitol.prompt_cache_read`；`obs-summary` 增加同名字段读取（不重复解析 usage）。footer 与观测共用 settlement 状态，不各自从 usage 推断。
+provider trace 已发 `xylitol.prompt_cache_read`（`tokens` / `not_reported` / `not_applicable`）与 `usage_details.cache_read`（仅 Tokens）；OpenAI / Anthropic 两族实现一致。本 change 只补两族一致性单测，不新增本地观测 CLI，也不让 footer 与 trace 各自解析 usage：二者都从 settlement / usage 的同一状态派生。
 
 ## Alternatives
 
