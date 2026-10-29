@@ -125,6 +125,11 @@ test verbosity=verbosity_default:
       esac
     fi
 
+# Inner-loop tests for packages touched by the current diff (+ direct dependents).
+# Not a gate: push/PR still run the full `just qa` matrix.
+test-changed:
+    $XYLITOL_PY scripts/dev_test_changed.py
+
 # Generate configs/example.yaml (maintenance; not in qa).
 # Edit scripts/gen_config_example.py TEMPLATE, then re-run this recipe.
 gen-config-example:
@@ -339,6 +344,27 @@ crap verbosity=verbosity_default lcov="lcov.info":
     esac
     echo "(CRAP soft — not a qa hard gate; CI regression gate: .github/workflows/crap.yaml)"
 
+# Single-package CRAP radar: package coverage + report, no baseline comparison.
+# Local feedback only; CI still runs the full-workspace regression gate.
+[arg('verbosity', pattern='quiet|normal|verbose')]
+crap-package pkg verbosity=verbosity_default:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v cargo-crap >/dev/null; then
+      echo "error: cargo-crap not in PATH (cargo binstall cargo-crap | cargo install cargo-crap --locked)" >&2
+      exit 1
+    fi
+    just _cargo-llvm-cov-bin >/dev/null
+    lcov_path="target/crap-{{pkg}}.info"
+    mkdir -p target
+    cargo llvm-cov nextest -p {{pkg}} --all-features --profile ci \
+      --lcov --output-path "$lcov_path" --show-progress none
+    case "{{verbosity}}" in
+      quiet)   cargo crap -p {{pkg}} --lcov "$lcov_path" --summary ;;
+      normal)  cargo crap -p {{pkg}} --lcov "$lcov_path" --top 25 ;;
+      verbose) cargo crap -p {{pkg}} --lcov "$lcov_path" --min 10 ;;
+    esac
+
 # --- scripts/ QA checks -------------------------------------------------
 # Convention (normative for this repo):
 #   - scripts/check_*.py or scripts/check-*.py = non-mutating gate scripts.
@@ -479,7 +505,9 @@ sdd:
     @llman-sdd validate --all --strict
     @llman-sdd review
 
-# Strict specs/change validate (wired into `just qa`; deterministic, no network).
+# Specs/change validate (wired into `just qa`; deterministic, no network).
+# qa is non-strict: hard errors fail; warnings (unchecked tasks, specs-not-landed)
+# stay visible without red-ing an in-flight change. `just sdd` / finalize keep strict.
 [arg('verbosity', pattern='quiet|normal|verbose')]
 qa-spec-validate verbosity=verbosity_default:
     #!/usr/bin/env bash
@@ -491,9 +519,9 @@ qa-spec-validate verbosity=verbosity_default:
       exit 0
     fi
     if [[ "{{verbosity}}" == "quiet" ]]; then
-      llman-sdd validate --all --strict | tail -n 8
+      llman-sdd validate --all | tail -n 8
     else
-      llman-sdd validate --all --strict
+      llman-sdd validate --all
     fi
 
 # Full gate including TUI layer-5 E2E (portable-pty + tmux; #[ignore]).

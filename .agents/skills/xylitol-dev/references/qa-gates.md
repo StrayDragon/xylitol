@@ -20,11 +20,26 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名�
 ## 复杂度门禁
 
 - **TUI 端（HARD，cccc）**：产品 TUI 入口协调者经 `just qa-check-complexity`：**cognitive≤32、cyclomatic≤27**。cargo-crap **不**替代（无 cognitive）。硬门禁见 `justfile`。
-- **质量雷达（软，本地）**：`just complexity`（cccc 认知 top）+ `just crap-duplicates` +（有 `lcov.info` 时）`just coverage-lcov` → `just crap`。
-- **CRAP（CI 回归）**：`just coverage-lcov`（`cargo llvm-cov` **≥0.9.1**，矩阵同 `just test`）→ `just crap`。配置 `.cargo-crap.toml`（排除 generated/harness/tests）。**不进 `just qa`**。`crap.yaml`：PR **CRAP 分数回归** + 评论；`crap-duplicates.yaml`：结构重复写入 job summary（信息性）。`fail-above=false`（存量超阈不挡合并）。
+- **质量雷达（软，本地）**：`just complexity`（cccc 认知 top）+ `just crap-duplicates` +（有 `lcov.info` 时）`just coverage-lcov` → `just crap`；单包用 `just crap-package <pkg>`（包 coverage + 包报告，无 baseline）。
+- **CRAP（CI 回归）**：`just coverage-lcov`（`cargo llvm-cov` **≥0.9.1**，矩阵同 `just test`）→ `just crap`。配置 `.cargo-crap.toml`（排除 generated/harness/tests；`epsilon=0.25` 容忍覆盖率抖动，真实回归通常 ≥1.0）。**不进 `just qa`**。`crap.yaml`：PR **CRAP 分数回归** + 评论；`crap-duplicates.yaml`：结构重复写入 job summary（信息性）。`fail-above=false`（存量超阈不挡合并）。
 - **signals（cargo-crap ≥0.10）**：`.cargo-crap.toml` 预留 `[signals]`；发布后用 `just crap-signals` / CI 接线。
 - **cccc 是否退役**：临时对比见 `references/complexity-cccc-crap.md`（不进 `scripts/`）；当前结论保留 cccc HARD，CRAP 管覆盖×复杂度与重复。详见 `src/AGENTS.md`「复杂度与体量」。
 - 阈值与豁免细则：`src/AGENTS.md`「复杂度与体量」。
+
+## 内环（非门禁）
+
+- **`just test-changed`**：按当前 diff 映射到包 + **直接**反向依赖，跑 nextest；根级文件（`Cargo.toml`、`rust-toolchain.toml`、`tests/`、`llmanspec/`、`scripts/` 等）变更回退 `just test`。只是内环，push/PR 仍跑全量 `just qa`。
+- **`just crap-package <pkg>`**：单包 coverage + CRAP 报告；无 baseline，只做本地雷达。CI 仍跑全 workspace 回归。
+
+## E2E CI（非阻塞）
+
+- `.github/workflows/tui-e2e.yaml`：`workflow_dispatch` + nightly + PR 带 `tui-e2e` label；装 tmux 后先 `cargo build --bin xylitol`，再跑 `cargo test --test tui_e2e -- --ignored --test-threads=1`（每个用例经 `cargo run` 起 Host；并行争 cargo 锁，首次 `cargo run` 的编译也会吃掉 120s 启动窗）。
+- **不加入 required checks**；先观察 flaky，再决定是否升级为阻塞。本地仍用 `just qa-e2e`（含 `just qa`）。
+
+## SDD validate 分层
+
+- `just qa` 的 `qa-spec-validate` 用 `llman-sdd validate --all`（非 strict）：硬错误失败；未勾 task / specs-not-landed 等 warning 只显示，不红 in-flight change。
+- `just sdd` 与 `llman-sdd change finalize` 仍 `--strict`：tasks-done / specs-landed 是收口完成信号。
 
 ## 元门禁（为什么「检查必被接线」）
 

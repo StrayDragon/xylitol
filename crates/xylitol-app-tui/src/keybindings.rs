@@ -134,6 +134,16 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         &["alt+u"],
         Some("Toggle session sidebar (docked column)"),
     ),
+    (
+        "app.session.detailsCycle",
+        &["alt+o"],
+        Some("Cycle session details: popup → sidebar → off"),
+    ),
+    (
+        "app.session.sidebarWidth",
+        &["alt+shift+u"],
+        Some("Cycle session sidebar width"),
+    ),
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]

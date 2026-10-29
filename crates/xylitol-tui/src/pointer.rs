@@ -20,6 +20,7 @@ pub enum HitSpace {
     #[default]
     Content,
     Viewport,
+    Chrome,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +70,12 @@ impl Hit {
         Self {
             region: self.region.capturing(),
         }
+    }
+
+    #[must_use]
+    pub fn space(mut self, space: HitSpace) -> Self {
+        self.region.space = space;
+        self
     }
 
     #[must_use]
@@ -212,7 +219,7 @@ impl HitRegionList {
                     content_row >= r.content_row
                         && content_row < r.content_row.saturating_add(height)
                 }
-                HitSpace::Viewport => {
+                HitSpace::Viewport | HitSpace::Chrome => {
                     screen_row_n >= r.content_row
                         && screen_row_n < r.content_row.saturating_add(height)
                 }
@@ -364,6 +371,37 @@ impl PointerPipeline {
             .hit_at(col, row, view.scroll_top, view.transcript_rows)
     }
 
+    fn latch_chrome_click(
+        &mut self,
+        hit: Option<HitId>,
+        down: Option<(u16, u16)>,
+        col: u16,
+        row: u16,
+        overlay_capturing: bool,
+    ) {
+        if let Some(id) = self.chrome_click_id(hit, down, col, row, overlay_capturing) {
+            self.pending_click = Some(id);
+        }
+    }
+
+    fn chrome_click_id(
+        &self,
+        hit: Option<HitId>,
+        down: Option<(u16, u16)>,
+        col: u16,
+        row: u16,
+        overlay_capturing: bool,
+    ) -> Option<HitId> {
+        if overlay_capturing || down != Some((col, row)) || self.dragged {
+            return None;
+        }
+        let id = hit?;
+        self.regions
+            .region_by_id(id)
+            .filter(|region| region.space == HitSpace::Chrome)
+            .map(|region| region.id)
+    }
+
     pub fn on_mouse(&mut self, event: &MouseEvent, view: PointerView) -> PointerOutcome {
         let (col, row) = (event.column, event.row);
         self.last_cell = Some((col, row));
@@ -440,6 +478,7 @@ impl PointerPipeline {
                     self.dragged = true;
                 }
                 if was_capture {
+                    self.latch_chrome_click(hit, down, col, row, view.overlay_capturing);
                     return PointerOutcome {
                         skip_selection: true,
                         consume: !view.overlay_capturing,
@@ -481,7 +520,7 @@ pub fn apply_hover_tint(
                     }
                     content_row - scroll_top
                 }
-                HitSpace::Viewport => region.content_row.saturating_add(offset),
+                HitSpace::Viewport | HitSpace::Chrome => region.content_row.saturating_add(offset),
             };
             if let Some(line) = visible.get_mut(vis_i) {
                 *line = emphasize_hover_columns(line, region.col_start, region.col_end);
@@ -686,6 +725,65 @@ mod tests {
         let up = pipe.on_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 5, 1), view(0));
         assert!(up.skip_selection);
         assert!(!pipe.capture_latched());
+    }
+
+    #[test]
+    fn chrome_capture_reports_click_on_up() {
+        let mut pipe = PointerPipeline::default();
+        pipe.regions_mut().push(
+            Hit::at_cell(7, 1, 0)
+                .cols(0, 6)
+                .capturing()
+                .space(HitSpace::Chrome)
+                .into_region(),
+        );
+        let down = pipe.on_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 1, 0),
+            view(0),
+        );
+        assert!(down.skip_selection);
+        assert!(pipe.take_click().is_none(), "chrome click lands on up");
+        let up = pipe.on_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 1, 0), view(0));
+        assert!(up.skip_selection);
+        assert_eq!(pipe.take_click(), Some(7));
+    }
+
+    #[test]
+    fn chrome_capture_drag_does_not_report_click() {
+        let mut pipe = PointerPipeline::default();
+        pipe.regions_mut().push(
+            Hit::at_cell(7, 1, 0)
+                .cols(0, 6)
+                .capturing()
+                .space(HitSpace::Chrome)
+                .into_region(),
+        );
+        let _ = pipe.on_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 1, 0),
+            view(0),
+        );
+        let _ = pipe.on_mouse(
+            &mouse(MouseEventKind::Drag(MouseButton::Left), 3, 0),
+            view(0),
+        );
+        let _ = pipe.on_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 3, 0), view(0));
+        assert!(pipe.take_click().is_none());
+    }
+
+    #[test]
+    fn component_overlay_capture_does_not_report_click() {
+        let mut pipe = PointerPipeline::default();
+        pipe.regions_mut()
+            .push(HitRegion::new(4, 0, 0, 6).capturing());
+        let _ = pipe.on_mouse(
+            &mouse(MouseEventKind::Down(MouseButton::Left), 1, 0),
+            view(0),
+        );
+        let _ = pipe.on_mouse(&mouse(MouseEventKind::Up(MouseButton::Left), 1, 0), view(0));
+        assert!(
+            pipe.take_click().is_none(),
+            "component overlays keep handling their own clicks"
+        );
     }
 
     #[test]

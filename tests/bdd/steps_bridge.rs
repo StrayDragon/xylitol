@@ -572,3 +572,112 @@ fn t_c2826_responses_error(provider_bdd: &ProviderBdd) {
         "c2826: 不得以反序列化噪音掩盖原文：{msg}"
     );
 }
+
+fn openai_messages_with_image(
+    tool_result: bool,
+) -> Vec<xylitol_official_plugin_provider_openai::dto::XyLlmMessage> {
+    use xylitol_official_plugin_provider_openai::dto::{AgentPart, XyLlmMessage};
+
+    let content = vec![
+        AgentPart::text("look"),
+        AgentPart::image("image/png", "AAA"),
+    ];
+    if tool_result {
+        vec![XyLlmMessage::tool_result("call-1", "read", content, false)]
+    } else {
+        vec![XyLlmMessage::UserMessage {
+            content,
+            timestamp: 0,
+        }]
+    }
+}
+
+fn convert_openai(provider_bdd: &ProviderBdd, tool_result: bool) {
+    use xylitol_official_plugin_provider_openai::provider::messages_to_responses_input;
+    use xylitol_official_plugin_provider_openai::provider::native::openai::convert_agent_messages;
+
+    let msgs = openai_messages_with_image(tool_result);
+    provider_bdd
+        .input_items
+        .replace(messages_to_responses_input(&msgs));
+    provider_bdd.request_body.replace(Some(serde_json::json!({
+        "messages": convert_agent_messages(&msgs, None),
+    })));
+}
+
+#[given("OpenAI 消息含用户图片")]
+fn g_openai_user_image(provider_bdd: &ProviderBdd) {
+    convert_openai(provider_bdd, false);
+}
+
+#[given("OpenAI 消息含工具结果图片")]
+fn g_openai_tool_image(provider_bdd: &ProviderBdd) {
+    convert_openai(provider_bdd, true);
+}
+
+#[when("转换为 OpenAI 请求")]
+fn w_openai_converted(provider_bdd: &ProviderBdd) {
+    assert!(
+        !provider_bdd.input_items.borrow().is_empty(),
+        "expected Responses input items"
+    );
+    assert!(
+        provider_bdd.request_body.borrow().is_some(),
+        "expected Completions request body"
+    );
+}
+
+#[then("Responses 用户内容含 input_image 且 Completions 用户内容含 image_url")]
+fn t_openai_user_image(provider_bdd: &ProviderBdd) {
+    let items = provider_bdd.input_items.borrow();
+    let content = items[0]["content"].as_array().expect("Responses content");
+    assert!(
+        content.iter().any(|part| part["type"] == "input_image"),
+        "Responses user image missing: {content:?}"
+    );
+
+    let body = provider_bdd.request_body.borrow().clone().expect("body");
+    let messages = body["messages"].as_array().expect("messages");
+    let user = messages
+        .iter()
+        .find(|message| message["role"] == "user")
+        .expect("Completions user message");
+    let parts = user["content"].as_array().expect("user content array");
+    assert!(
+        parts.iter().any(|part| part["type"] == "image_url"),
+        "Completions user image missing: {parts:?}"
+    );
+}
+
+#[then("Responses function_call_output 含 input_image 且 Completions 以紧邻 user 消息补发图片")]
+fn t_openai_tool_image(provider_bdd: &ProviderBdd) {
+    let items = provider_bdd.input_items.borrow();
+    let output = items
+        .iter()
+        .find(|item| item["type"] == "function_call_output")
+        .and_then(|item| item["output"].as_array())
+        .expect("Responses function_call_output output array");
+    assert!(
+        output.iter().any(|part| part["type"] == "input_image"),
+        "Responses tool image missing: {output:?}"
+    );
+
+    let body = provider_bdd.request_body.borrow().clone().expect("body");
+    let messages = body["messages"].as_array().expect("messages");
+    let tool_index = messages
+        .iter()
+        .position(|message| message["role"] == "tool")
+        .expect("Completions tool message");
+    let trailing = messages
+        .get(tool_index + 1)
+        .expect("trailing user message after tool result");
+    assert_eq!(
+        trailing["role"], "user",
+        "image must ride in a user message"
+    );
+    let parts = trailing["content"].as_array().expect("trailing content");
+    assert!(
+        parts.iter().any(|part| part["type"] == "image_url"),
+        "Completions tool image missing: {parts:?}"
+    );
+}

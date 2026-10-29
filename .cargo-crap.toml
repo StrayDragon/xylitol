@@ -4,6 +4,10 @@
 threshold = 30
 uncovered-hints = true
 fail-regression = false
+# Coverage jitter can move CRAP by a few hundredths without a code change;
+# real regressions from a new branch are typically >= 1.0. CI keeps
+# fail-regression=true, so this tolerance only removes false reds.
+epsilon = 0.25
 
 exclude = [
   "**/v3/generated.rs",

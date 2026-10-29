@@ -298,6 +298,7 @@ pub async fn drain_pending<T: Terminal>(
 
     session.sync_fixed_zone(driver);
     let _ = session.render_now();
+    session.sync_fold_hit_viewport();
 
     Ok(())
 }

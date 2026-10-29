@@ -378,6 +378,10 @@ async fn run_host_loop(
                     match maybe {
                         Some(item) => {
                             let notch = session.tui.application_owned_wheel_notch();
+                            let in_sidebar = match &item {
+                                Ok(Event::Mouse(m)) => session.sidebar_contains_column(m.column),
+                                _ => false,
+                            };
                             let ao_wheel = wheel_delta_from_item(&item, notch).filter(
                                 |_| {
                                 session.tui.application_session_active()
@@ -393,7 +397,11 @@ async fn run_host_loop(
                             });
                             if let Some(delta) = ao_wheel {
                                 log::debug!(target: "xylitol::wheel", "wheel delta={delta}");
-                                session.apply_ao_wheel_delta(delta)?;
+                                if in_sidebar {
+                                    session.apply_sidebar_wheel_delta(delta)?;
+                                } else {
+                                    session.apply_ao_wheel_delta(delta)?;
+                                }
                             } else if let Some(ev) =
                                 map_crossterm_item(item, session.tui.pointer_probe_armed())
                             {

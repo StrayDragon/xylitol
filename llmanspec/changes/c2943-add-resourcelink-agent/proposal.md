@@ -16,8 +16,13 @@ needs_specs_change: true
 
 - **协议 / spec**：`protocol-app` / `server-core` 补充多模态载荷策略（path 引用 vs inline base64、单帧上限与 `infra-image` 关系、视频禁止整文件进 JSON-RPC）。
 - **线协议**：可选抬高 `MAX_BODY_BYTES` 或引入 **ResourceLink** 式 `prompt` 参数；WS/journal **不**内联全量 base64（延续或强化 `[image]` 预览语义）。
-- **TUI / runtime**：读图后 UI 与 history 是否保留 `AgentPart::Image`（history 侧已由 c2945 落地，见下文附录 §1.4）；**OpenAI 族图片投影** 当前静默丢弃，属本增强面应优先收敛的缺口。
+- **TUI / runtime**：读图后 UI 与 history 是否保留 `AgentPart::Image`（history 侧已由 c2945 落地，见下文附录 §1.4）；**OpenAI 族图片投影** 已由 c2993-add-openai-image-projection 拆出落地，不再留在本草案。
 - **读视频**：Host 侧抽帧或元数据能力（独立 scope，不与本 change 默认同批交付）。
+
+## 已拆出（2026-10-29）
+
+- 切片 A（OpenAI 族图片投影）已由 `c2993-add-openai-image-projection` 落地。
+- 本草案保留：B（ResourceLink / 单帧上限 / 远程大载荷）与 C（读视频）。
 
 ## 调研落点
 

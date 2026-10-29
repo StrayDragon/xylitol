@@ -288,6 +288,9 @@ impl<T: Terminal> HostSession<T> {
         let ui_root = Rc::new(RefCell::new(UiRoot::new()));
         ui_root.borrow_mut().set_layout_meta(cwd.clone(), model);
         ui_root.borrow_mut().set_term_rows(terminal.rows() as usize);
+        ui_root
+            .borrow_mut()
+            .set_term_cols(terminal.columns() as usize);
         let quit_flag = Arc::new(AtomicBool::new(false));
         let mut session = Self::new_with_interaction_mode(
             terminal,
@@ -318,7 +321,7 @@ impl<T: Terminal> HostSession<T> {
         session
     }
 
-    fn sync_fold_hit_viewport(&mut self) {
+    pub(crate) fn sync_fold_hit_viewport(&mut self) {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
@@ -335,9 +338,14 @@ impl<T: Terminal> HostSession<T> {
         let Some(root) = self.ui_root.as_ref() else {
             return;
         };
+        let cols = self.tui.terminal.columns() as usize;
+        let term_rows = self.tui.terminal.rows() as usize;
+        let dock = self.tui.dock_rows();
+        let transcript_rows = term_rows.saturating_sub(dock) as u16;
         let root = root.borrow();
         let mut clicks = root.fold_hits().pointer_click_hits();
         let hovers = root.fold_hits().pointer_hover_hits();
+        clicks.extend(root.overlay_hits(cols, transcript_rows as usize));
         drop(root);
         clicks.extend(self.tui.scroll_gutter_hit_set());
         self.tui.replace_hits(clicks);
@@ -869,6 +877,32 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    pub fn sidebar_contains_column(&self, col: u16) -> bool {
+        self.ui_root
+            .as_ref()
+            .is_some_and(|root| root.borrow().session_sidebar_contains(col as usize))
+    }
+
+    pub fn apply_sidebar_wheel_delta(&mut self, delta: isize) -> Result<(), XyDriverError> {
+        if delta == 0 || !self.tui.application_session_active() {
+            return Ok(());
+        }
+        let Some(root) = self.ui_root.as_ref() else {
+            return Ok(());
+        };
+        let term_rows = self.tui.terminal.rows() as usize;
+        let dock = self.tui.dock_rows();
+        let transcript_rows = term_rows.saturating_sub(dock);
+        let changed = root
+            .borrow_mut()
+            .scroll_session_sidebar(delta, transcript_rows);
+        if changed {
+            self.render_now()?;
+            self.sync_fold_hit_viewport();
+        }
+        Ok(())
+    }
+
     pub fn apply_ao_wheel_delta(&mut self, delta: isize) -> Result<(), XyDriverError> {
         if delta == 0 || !self.tui.application_session_active() {
             return Ok(());
@@ -907,6 +941,11 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn dispatch_pointer_click(&mut self, id: xylitol_tui::HitId) {
+        self.dispatch_chrome_click(id);
+        self.dispatch_scroll_or_fold_click(id);
+    }
+
+    fn dispatch_scroll_or_fold_click(&mut self, id: xylitol_tui::HitId) {
         match id {
             xylitol_tui::GUTTER_TOP_HIT_ID => {
                 self.tui.application_owned_scroll_home();
@@ -922,6 +961,32 @@ impl<T: Terminal> HostSession<T> {
                     }
                 }
             }
+        }
+    }
+
+    fn dispatch_chrome_click(&mut self, id: xylitol_tui::HitId) {
+        match id {
+            crate::layout::UiRoot::SESSION_POPUP_HIT_ID => {
+                if let Some(root) = self.ui_root.as_ref() {
+                    root.borrow_mut().close_session_popup();
+                }
+                self.tui.request_render(false);
+            }
+            crate::layout::UiRoot::SESSION_SIDEBAR_HIT_ID => {
+                if let Some(root) = self.ui_root.as_ref() {
+                    root.borrow_mut().close_session_sidebar();
+                }
+                self.sync_session_sidebar_reserve();
+                self.tui.request_render(false);
+            }
+            crate::layout::UiRoot::SESSION_SIDEBAR_SEPARATOR_HIT_ID => {
+                if let Some(root) = self.ui_root.as_ref() {
+                    root.borrow_mut().session_sidebar_width_cycle();
+                }
+                self.sync_session_sidebar_reserve();
+                self.tui.request_render(false);
+            }
+            _ => {}
         }
     }
 
@@ -1132,6 +1197,7 @@ impl<T: Terminal> HostSession<T> {
         let rows = self.tui.terminal.rows();
         if let Some(root) = self.ui_root.as_ref() {
             root.borrow_mut().set_term_rows(rows as usize);
+            root.borrow_mut().set_term_cols(cols as usize);
         }
         let next = if is_too_small(cols, rows) {
             LayoutMode::TooSmall

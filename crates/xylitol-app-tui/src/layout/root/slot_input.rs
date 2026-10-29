@@ -1,3 +1,4 @@
+use crossterm::event::KeyEvent;
 use xylitol_tui::{Component, InputEvent};
 
 use super::super::slots::{
@@ -8,6 +9,34 @@ use crate::keybindings::matches_binding;
 use crate::session_resume::SessionResumeAction;
 
 impl UiRoot {
+    fn handle_session_details_key(&mut self, key: &KeyEvent) -> bool {
+        if matches_binding(key, "app.session.detailsCycle") {
+            self.cycle_session_details();
+            return true;
+        }
+        if matches_binding(key, "app.session.sidebarWidth") {
+            self.session_sidebar_width_cycle();
+            return true;
+        }
+        if matches_binding(key, "app.session.popup") {
+            if self.session_popup_open {
+                self.close_session_popup();
+            } else {
+                self.request_session_popup();
+            }
+            return true;
+        }
+        if matches_binding(key, "app.session.sidebar") {
+            if self.session_sidebar_on {
+                self.close_session_sidebar();
+            } else {
+                self.request_session_sidebar();
+            }
+            return true;
+        }
+        false
+    }
+
     pub(super) fn handle_slot_input(&mut self, event: InputEvent) {
         if let InputEvent::Mouse(mouse) = &event {
             match mouse.kind {
@@ -32,23 +61,10 @@ impl UiRoot {
                 _ => {}
             }
         }
-        if let InputEvent::Key(ref key) = event {
-            if matches_binding(key, "app.session.popup") {
-                if self.session_popup_open {
-                    self.close_session_popup();
-                } else {
-                    self.request_session_popup();
-                }
-                return;
-            }
-            if matches_binding(key, "app.session.sidebar") {
-                if self.session_sidebar_on {
-                    self.close_session_sidebar();
-                } else {
-                    self.request_session_sidebar();
-                }
-                return;
-            }
+        if let InputEvent::Key(ref key) = event
+            && self.handle_session_details_key(key)
+        {
+            return;
         }
         if matches!(&self.slot, EditorSlot::Editor) {
             self.handle_editor_keys(event);

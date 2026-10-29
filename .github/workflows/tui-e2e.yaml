@@ -1,0 +1,41 @@
+name: TUI E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tui-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tui-e2e:
+    if: >-
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'tui-e2e')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install tmux + test deps + Linux linker
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tmux ripgrep fd-find clang mold
+          sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
+
+      - name: Build product binary
+        run: cargo build --bin xylitol
+
+      - name: TUI PTY/tmux E2E
+        run: cargo test --test tui_e2e -- --ignored --test-threads=1

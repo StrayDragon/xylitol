@@ -88,7 +88,7 @@ impl UiRoot {
         if !self.session_popup_open || width == 0 {
             return;
         }
-        let box_w = 30.min(width.saturating_sub(2));
+        let box_w = Self::SESSION_POPUP_W.min(width.saturating_sub(2));
         if box_w == 0 {
             return;
         }
@@ -210,6 +210,7 @@ impl UiRoot {
     }
 
     pub(super) fn session_sidebar_cell(&self, row: usize, w: usize) -> String {
+        let row = row.saturating_add(self.session_sidebar_scroll);
         if row == 0 {
             let title = "┌ 会话侧栏";
             let tw = xylitol_tui::visible_width(title);
