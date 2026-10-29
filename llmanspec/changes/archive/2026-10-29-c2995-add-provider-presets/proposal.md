@@ -2,6 +2,9 @@
 depends_on: []
 title: 为常用兼容端提供配置预设
 needs_specs_change: true
+branch: sdd/c2995-add-provider-presets
+base_branch: main
+base_sha: ef25ec6c0ab1ff49aacfb5471538892057522aab
 ---
 
 # 为常用兼容端提供配置预设

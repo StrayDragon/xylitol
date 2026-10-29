@@ -2,6 +2,7 @@ pub mod error;
 pub mod loader;
 pub mod paths;
 pub mod plugin;
+pub mod presets;
 pub mod secret_env;
 pub mod template;
 pub mod types;

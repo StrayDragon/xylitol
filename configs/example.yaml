@@ -39,6 +39,20 @@ models:
     #   thinking: true
     #   thinking_levels: [off, low, high, max]
     #   context_window: 1000000
+    # 预设：只写 preset + api_key，接入字段由预设展开；显式字段覆盖预设。
+    # 预设名：zmodel / opencode-zen / clinepass / commandcode（见 README）。
+    # glm-preset:
+    #   preset: zmodel
+    #   api_key: "{{ secret.ZAI_API_KEY }}"
+    # zen-preset:
+    #   preset: opencode-zen
+    #   api_key: "{{ secret.OPENCODE_ZEN_API_KEY }}"
+    # cline-preset:
+    #   preset: clinepass
+    #   api_key: "{{ secret.CLINE_API_KEY }}"
+    # command-preset:
+    #   preset: commandcode
+    #   api_key: "{{ secret.COMMANDCODE_API_KEY }}"
     # OpenCode Zen free（Completions）；别名用 *-zen 后缀：
     # deepseek-v4-flash-free-zen:
     #   provider: openai

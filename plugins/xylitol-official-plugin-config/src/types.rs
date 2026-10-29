@@ -491,6 +491,7 @@ mod thinking_levels_tests {
         ModelEntry {
             provider: XyModelKind::Fake,
             model: "fake-1".into(),
+            preset: None,
             base_url: None,
             api: None,
             compat: None,
