@@ -83,6 +83,7 @@ fn merge_config_layers(
         merge_layer(&mut merged, &mut from_yaml_layers, cli_path, secrets)?;
     }
 
+    super::presets::apply_presets(&mut merged)?;
     Ok((merged, from_yaml_layers))
 }
 
@@ -110,7 +111,7 @@ fn load_from_paths(
         );
     }
 
-    let (mut merged, from_yaml_layers) = merge_config_layers(paths, cli_config, &secrets)?;
+    let (merged, from_yaml_layers) = merge_config_layers(paths, cli_config, &secrets)?;
 
     if merged.is_null() {
         return Ok(LoadedAppConfig {
@@ -121,7 +122,6 @@ fn load_from_paths(
 
     reject_legacy_loop_example_section(&merged)?;
     reject_legacy_loop_policies_keys(&merged)?;
-    super::presets::apply_presets(&mut merged)?;
     let mut config: AppConfig = serde_json::from_value(merged.clone())?;
     super::validate::validate_merged_config(&merged)?;
     config.validate_thinking_levels()?;

@@ -51,13 +51,7 @@ pub fn footer_token_label(
         }
         TokenProvenance::Unknown => "used ? tokens".into(),
     };
-    let base = match cache {
-        PromptCacheRead::Tokens(n) => {
-            format!("{base} · cache {}", format_compact_tokens(n))
-        }
-        PromptCacheRead::NotReported => format!("{base} · cache ?"),
-        PromptCacheRead::NotApplicable => base,
-    };
+    let base = cache_segment(base, cache);
     if context_window == 0 {
         return base;
     }
@@ -72,6 +66,16 @@ pub fn footer_token_label(
             let pct = tokens as f64 / context_window as f64 * 100.0;
             format!("{base} · {pct:.1}%/{win}")
         }
+    }
+}
+
+fn cache_segment(base: String, cache: PromptCacheRead) -> String {
+    match cache {
+        PromptCacheRead::Tokens(n) => {
+            format!("{base} · cache {}", format_compact_tokens(n))
+        }
+        PromptCacheRead::NotReported => format!("{base} · cache ?"),
+        PromptCacheRead::NotApplicable => base,
     }
 }
 
