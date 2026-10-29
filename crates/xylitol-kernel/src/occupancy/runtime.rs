@@ -126,6 +126,7 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
         interactive: false,
         caller: "server",
         ephemeral_sessions: false,
+        static_tools: Vec::new(),
     })
     .map_err(map_bootstrap_error)?;
 

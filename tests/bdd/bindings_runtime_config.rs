@@ -156,3 +156,21 @@ fn test_rc_config_schema_same_source(rc_snap: RcSnap) {}
     name = "产物覆盖当前顶层节"
 )]
 fn test_rc_config_schema_covers_sections(rc_snap: RcSnap) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "解析工具列表"
+)]
+fn test_c2997_tools_list(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "工具列表空词元失败"
+)]
+fn test_c2997_tools_empty(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "未知工具名加载成功"
+)]
+fn test_c2997_tools_unknown(tokenizer_bdd: TokenizerBdd) {}

@@ -35,6 +35,7 @@ impl From<&BootOptions> for BootstrapInput {
             interactive: opts.interactive,
             caller: opts.caller,
             ephemeral_sessions: opts.ephemeral_sessions,
+            static_tools: Vec::new(),
         }
     }
 }
@@ -60,7 +61,9 @@ async fn boot_with(
     agent_dir: std::path::PathBuf,
 ) -> Result<Kernel, BootstrapError> {
     let (ctx, loader) = boot_ctx(&opts).await?;
-    let mut runtime = bootstrap(BootstrapInput::from(&opts))?.into_runtime();
+    let mut bootstrap_input = BootstrapInput::from(&opts);
+    bootstrap_input.static_tools = static_tools_from_ctx(&ctx);
+    let mut runtime = bootstrap(bootstrap_input)?.into_runtime();
     runtime.driver.attach_ctx(ctx.clone());
     ctx.provide(xylitol_plugin_sdk::RuntimeSessionStore(
         runtime.driver.store.clone(),
@@ -81,6 +84,18 @@ async fn boot_with(
         runtime,
         profile: opts.profile,
     })
+}
+
+fn static_tools_from_ctx(ctx: &Ctx) -> Vec<std::sync::Arc<dyn xylitol_plugin_sdk::XyTool>> {
+    let Some(regs) = ctx.get::<xylitol_plugin_sdk::HostRegistries>() else {
+        return Vec::new();
+    };
+    regs.tools
+        .snapshot()
+        .into_iter()
+        .filter(|(name, _)| !xylitol_plugin_sdk::is_mcp_tool_name(name))
+        .map(|(_, tool)| tool)
+        .collect()
 }
 
 pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapError> {
@@ -142,6 +157,8 @@ fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
         .and_then(|cfg| cfg.app.mcp_servers.clone())
         .unwrap_or_default();
     let mut insert = base_rows(opts, mcp_servers);
+    #[cfg(feature = "fff")]
+    insert.push(serde_json::json!({ "id": "tools-fff", "name": "tools-fff" }));
     insert.extend(optional_plugin_rows(config.as_deref()));
     insert.push(profile_row(opts.profile));
     serde_json::from_value(serde_json::json!([{ "insert": insert }])).unwrap_or_default()

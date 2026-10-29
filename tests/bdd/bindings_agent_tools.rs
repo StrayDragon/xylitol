@@ -1,4 +1,5 @@
 use crate::bdd::fixtures::*;
+use crate::bdd::steps_tool_selection::{ToolSelectionBdd, tool_selection_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -445,3 +446,39 @@ async fn test_tl9_mcp_hard_barrier(agent: AgentState, ws: Workspace) {}
     name = "问卷内置于TUI工具集"
 )]
 fn test_tl10_ask_builtin(ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "配置替换检索工具"
+)]
+fn test_c2997_switch_to_fff(tool_selection_bdd: ToolSelectionBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "同类冲突告警保留替换工具"
+)]
+fn test_c2997_conflict_warns(tool_selection_bdd: ToolSelectionBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "禁用替换回落内置"
+)]
+fn test_c2997_disable_fff(tool_selection_bdd: ToolSelectionBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "未知工具名告警"
+)]
+fn test_c2997_unknown_tool(tool_selection_bdd: ToolSelectionBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "插件工具进入可见集"
+)]
+fn test_c2997_plugin_tools(tool_selection_bdd: ToolSelectionBdd, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/agent-tools/agent-tools.feature",
+    name = "插件缺失回落闭集"
+)]
+fn test_c2997_plugin_missing(tool_selection_bdd: ToolSelectionBdd, ws: Workspace) {}

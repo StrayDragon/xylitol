@@ -1,0 +1,24 @@
+[package]
+name = "xylitol-official-plugin-tools-fff"
+version = "0.0.0-pre"
+edition = "2024"
+rust-version = "1.99.0"
+license = "MIT"
+description = "Official fff-backed search tools (ffgrep / fffind)"
+repository = "https://github.com/straydragon/xylitol"
+publish = false
+
+[dependencies]
+xylitol-plugin-sdk = { workspace = true }
+fff-search = { version = "0.11.0", features = ["definitions"] }
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+glob = { workspace = true }
+log = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

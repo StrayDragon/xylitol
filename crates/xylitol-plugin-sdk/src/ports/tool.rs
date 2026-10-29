@@ -83,6 +83,11 @@ pub enum XyToolExecutionMode {
 #[async_trait]
 pub trait XyTool: Send + Sync {
     fn name(&self) -> &str;
+
+    fn replaces(&self) -> &'static [&'static str] {
+        &[]
+    }
+
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> Value;
     async fn execute(&self, ctx: &XyToolCtx, args: Value) -> Result<String, XyToolError>;

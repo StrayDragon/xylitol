@@ -2,6 +2,9 @@
 depends_on: []
 title: 检索工具插件化：fff 工具源与工具选择列表
 needs_specs_change: true
+branch: sdd/c2997-add-fff-tool-source
+base_branch: main
+base_sha: 67105fb0a2d79412917f155f7f367335cdb73d69
 ---
 
 # 检索工具插件化：fff 工具源与工具选择列表

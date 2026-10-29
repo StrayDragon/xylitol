@@ -19,6 +19,7 @@ xylitol-official-plugin-compaction = { workspace = true }
 xylitol-official-plugin-provider-openai = { workspace = true }
 xylitol-official-plugin-provider-anthropic = { workspace = true }
 xylitol-official-plugin-tools = { workspace = true }
+xylitol-official-plugin-tools-fff = { workspace = true, optional = true }
 xylitol-official-plugin-mcp = { workspace = true, default-features = false }
 xylitol-official-plugin-hooks = { workspace = true }
 xylitol-official-plugin-loop-policies = { workspace = true }
@@ -51,7 +52,8 @@ tempfile = { workspace = true }
 serial_test = { workspace = true }
 
 [features]
-default = ["server", "mcp"]
+default = ["server", "mcp", "fff"]
 server = ["xylitol-serve/listen"]
 mcp = ["xylitol-official-plugin-mcp/mcp"]
+fff = ["dep:xylitol-official-plugin-tools-fff"]
 otel = ["xylitol-official-plugin-obs/otel"]

@@ -114,6 +114,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         interactive: false,
         caller: "cli",
         ephemeral_sessions: false,
+        static_tools: Vec::new(),
     };
 
     if surface.list_models {

@@ -87,3 +87,82 @@ async fn assemble_driver_with_bang_wrapper_builds_driver() {
     let driver = assemble_driver_with_bang(agent, store, BangExecHandler::new(None));
     assert!(driver.session_id().is_some());
 }
+
+fn test_gateways(
+    store: Arc<dyn XySessionStore>,
+    project_root: std::path::PathBuf,
+) -> (
+    Arc<xylitol_official_plugin_todo::SessionAgentTodoGateway>,
+    Arc<xylitol_official_plugin_plan::SessionPlanGateway>,
+    Arc<xylitol_official_plugin_workflow::SessionWorkflowGateway>,
+) {
+    (
+        xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone()),
+        xylitol_official_plugin_plan::SessionPlanGateway::new(store.clone(), project_root, true),
+        xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store),
+    )
+}
+
+#[cfg(feature = "fff")]
+#[test]
+fn compose_tools_prefers_fff_and_restores_builtin_when_disabled() {
+    let dir = tempfile::tempdir().unwrap();
+    let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let (todo, plan, workflow) = test_gateways(store, dir.path().to_path_buf());
+
+    let mut static_tools = xylitol_official_plugin_tools::core_tools();
+    static_tools.extend(xylitol_official_plugin_tools_fff::fff_tools());
+    let context = DriverContext {
+        project_root: dir.path().to_path_buf(),
+        trusted: true,
+        static_tools,
+    };
+    let features = ToolFeatures {
+        todo: false,
+        plan: false,
+        workflow: false,
+        tool_selection: Vec::new(),
+        ..Default::default()
+    };
+
+    let set = compose_tools(
+        features.clone(),
+        &context,
+        todo.clone(),
+        plan.clone(),
+        workflow.clone(),
+        None,
+    );
+    assert!(set.get("ffgrep").is_some(), "fff grep must be visible");
+    assert!(set.get("grep").is_none(), "builtin grep must be replaced");
+
+    let disabled = ToolFeatures {
+        tool_selection: vec!["-ffgrep".into(), "-fffind".into()],
+        ..features
+    };
+    let set = compose_tools(disabled, &context, todo, plan, workflow, None);
+    assert!(set.get("grep").is_some(), "builtin grep must return");
+    assert!(set.get("ffgrep").is_none());
+}
+
+#[test]
+fn compose_tools_falls_back_to_core_when_registry_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let store: Arc<dyn XySessionStore> = Arc::new(SessionManager::new(dir.path().join("sessions")));
+    let (todo, plan, workflow) = test_gateways(store, dir.path().to_path_buf());
+    let context = DriverContext {
+        project_root: dir.path().to_path_buf(),
+        trusted: true,
+        static_tools: Vec::new(),
+    };
+    let features = ToolFeatures {
+        todo: false,
+        plan: false,
+        workflow: false,
+        ..Default::default()
+    };
+    let set = compose_tools(features, &context, todo, plan, workflow, None);
+    assert!(set.get("grep").is_some());
+    assert!(set.get("find").is_some());
+    assert!(set.get("ffgrep").is_none());
+}

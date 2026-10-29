@@ -145,6 +145,7 @@ fn load_from_paths(
     super::validate::validate_merged_config(&merged)?;
     config.validate_thinking_levels()?;
     config.validate_session_max_turns()?;
+    config.validate_tools_selection()?;
     expand_model_config_expressions(&mut config)?;
     Ok(LoadedAppConfig {
         config,

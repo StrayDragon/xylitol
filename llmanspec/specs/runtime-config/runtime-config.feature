@@ -193,8 +193,27 @@
 
     场景: 产物覆盖当前顶层节
       当 读取仓库配置 schema 的顶层属性
-      那么 含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan
+      那么 含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan 与 tools
 
   @req:r2959
   规则: feature-plugin-config-sections
     todo / workflow / plan 须为顶层配置节。todo 缺省启用（progress / reminder / checkpoint 缺省停用）；workflow 缺省停用；plan 缺省启用且 read_only 缺省 true。旧 `loop_example` 配置节 须被拒绝，并提示迁移到 `loop_policies`；`loop_policies.todo_progress / todo_reminder / todo_reminder_stale_after / todo_checkpoint / plan_mode / workflow` 键 须被拒绝，并提示迁移到新节。默认值与旧键拒绝 由配置 crate 单测覆盖。
+
+  @req:r2978
+  规则: tools-selection-list
+    配置根键 `tools` 须为字符串列表；每项 须为非空词元，可带 `+` / `-` 前缀。空串、仅前缀、空白词元 须使配置加载失败；未知工具名 不得在加载期失败（装配期告警，见 agent-tools tool-selection-list）。列表顺序 须保留，供装配期按序覆盖。
+
+    场景: 解析工具列表
+      假如 YAML 含 tools [read, -grep, +ffgrep]
+      当 加载配置
+      那么 tools 列表保序且词元一致
+
+    场景: 工具列表空词元失败
+      假如 YAML 含 tools 列表且含空字符串
+      当 加载配置
+      那么 失败
+
+    场景: 未知工具名加载成功
+      假如 YAML 含 tools [read, +no-such-tool]
+      当 加载配置
+      那么 成功且 tools 列表含 no-such-tool

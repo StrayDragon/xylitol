@@ -10,6 +10,8 @@ use xylitol_official_plugin_provider_openai::plugin::OpenAiPlugin;
 use xylitol_official_plugin_session::plugin::SessionStorePlugin;
 use xylitol_official_plugin_todo::plugin::TodoPlugin;
 use xylitol_official_plugin_tools::plugin::ToolsPlugin;
+#[cfg(feature = "fff")]
+use xylitol_official_plugin_tools_fff::plugin::FffToolsPlugin;
 use xylitol_official_plugin_workflow::plugin::WorkflowPlugin;
 
 use crate::surfaces::{PrintPlugin, ServePlugin};
@@ -19,6 +21,8 @@ pub fn official_builtins() -> Builtins {
     builtins.register("session-store", SessionStorePlugin::new);
     builtins.register("compaction", CompactionPlugin::new);
     builtins.register("tools-builtin", ToolsPlugin::new);
+    #[cfg(feature = "fff")]
+    builtins.register("tools-fff", FffToolsPlugin::new);
     builtins.register("mcp", McpPlugin::new);
     builtins.register("hooks", HooksPlugin::new);
     builtins.register("loop-policies", LoopPoliciesPlugin::new);

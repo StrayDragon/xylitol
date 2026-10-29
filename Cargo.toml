@@ -28,6 +28,7 @@ members = [
     "plugins/xylitol-official-plugin-provider-openai",
     "plugins/xylitol-official-plugin-provider-anthropic",
     "plugins/xylitol-official-plugin-tools",
+    "plugins/xylitol-official-plugin-tools-fff",
     "plugins/xylitol-official-plugin-mcp",
     "plugins/xylitol-official-plugin-hooks",
     "plugins/xylitol-official-plugin-loop-policies",
@@ -55,6 +56,7 @@ xylitol-official-plugin-compaction = { path = "plugins/xylitol-official-plugin-c
 xylitol-official-plugin-provider-openai = { path = "plugins/xylitol-official-plugin-provider-openai" }
 xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-plugin-provider-anthropic" }
 xylitol-official-plugin-tools = { path = "plugins/xylitol-official-plugin-tools" }
+xylitol-official-plugin-tools-fff = { path = "plugins/xylitol-official-plugin-tools-fff" }
 xylitol-official-plugin-mcp = { path = "plugins/xylitol-official-plugin-mcp" }
 xylitol-official-plugin-hooks = { path = "plugins/xylitol-official-plugin-hooks" }
 xylitol-official-plugin-loop-policies = { path = "plugins/xylitol-official-plugin-loop-policies" }
@@ -186,11 +188,12 @@ crossterm = { workspace = true, optional = true, features = ["event-stream"] }
 http = { workspace = true }
 
 [features]
-default = ["cli", "tui", "otel", "server", "mcp"]
+default = ["cli", "tui", "otel", "server", "mcp", "fff"]
 cli = []
 server = ["xylitol-serve/listen", "dep:tokio-tungstenite", "xylitol-kernel/server"]
 tui = ["dep:xylitol-tui", "dep:crossterm", "dep:xylitol-app-tui"]
 mcp = ["xylitol-official-plugin-mcp/mcp", "xylitol-kernel/mcp"]
+fff = ["xylitol-kernel/fff"]
 otel = [
     "dep:fastrace-opentelemetry",
     "dep:opentelemetry",
@@ -224,6 +227,7 @@ incremental = false
 
 [dev-dependencies]
 tempfile = { workspace = true }
+xylitol-official-plugin-tools-fff = { workspace = true }
 xylitol-wire = { workspace = true }
 
 insta = { workspace = true, features = ["filters", "glob"] }
