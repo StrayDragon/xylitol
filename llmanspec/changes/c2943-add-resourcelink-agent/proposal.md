@@ -60,7 +60,7 @@ needs_specs_change: true
 | 环节 | 读图后 TUI 用户看到什么 | 模型是否收到真图 |
 |------|-------------------------|------------------|
 | Read 工具成功（**Anthropic 族**） | 工具行文案 + `[image]` 占位 | **收到**：`anthropic_messages.rs` 两处把 `AgentPart::Image` 转为 `{"type":"image","source":{"type":"base64",…}}` |
-| Read 工具成功（**OpenAI 族**） | 工具行文案 + `[image]` 占位 | **静默丢弃**：`openai.rs` / `openai_responses.rs` 的 tool result 走 `collect_text_parts` / `collect_user_text_parts`，只拼文本，全仓无 `image_url` / `input_image` 构造 |
+| Read 工具成功（**OpenAI 族**） | 工具行文案 + `[image]` 占位 | **已收到**：c2993 起 Responses 投影 `input_image`，Completions 用 `image_url` 并在 tool 图片时补发紧邻 user 消息 |
 | 粘贴图 | 编辑器里的绝对路径 | 取决于 prompt 文本是否被模型当路径处理（无专用 multimodal prompt RPC） |
 
-增强面应明确：TUI **展示**（缩略图 / 路径）、**线协议**（ResourceLink）、**history parts**（r1145，已落地）、**OpenAI 族图片投影**（当前静默丢弃，比 ResourceLink 更近的缺口）四条线是否一并改。
+增强面应明确：TUI **展示**（缩略图 / 路径）、**线协议**（ResourceLink）、**history parts**（r1145，已落地）三条线是否一并改；**OpenAI 族图片投影** 已由 c2993 落地，不再作为本草案前置缺口。
