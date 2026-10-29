@@ -226,3 +226,17 @@
       假如 YAML 模型条目含 preset opencode-zen
       当 以加载器加载该配置
       那么 加载失败且错误含 preset 迁移指引
+
+  @req:r2989
+  规则: agent-profile-preset-fields
+    `agents.profiles.<name>` 须支持 `persona` 与 `tools`：`persona` 与 `system_prompt` 均非空时，系统提示 须按 persona → 空行 → system_prompt 顺序拼接；`tools` 非空时 须覆盖全局 `tools` 选择列表，为空时 须沿用全局。`--agent-profile <name>` 须按名选择预设；未知预设 须硬失败并指向 `agents.profiles`，不得静默回退默认预设。
+
+    场景: 预设 persona 与工具目录
+      假如 YAML 含 agents.profiles.review 的 persona 与 tools
+      当 以 --agent-profile review 解析装配
+      那么 系统提示按 persona 在前拼接且工具选择为 profile tools
+
+    场景: 未知预设硬失败
+      假如 YAML 不含 agents.profiles.missing
+      当 以 --agent-profile missing 解析装配
+      那么 装配失败且错误指向 agents.profiles
