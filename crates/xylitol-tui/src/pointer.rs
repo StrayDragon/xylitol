@@ -371,6 +371,19 @@ impl PointerPipeline {
             .hit_at(col, row, view.scroll_top, view.transcript_rows)
     }
 
+    fn latch_chrome_click(
+        &mut self,
+        hit: Option<HitId>,
+        down: Option<(u16, u16)>,
+        col: u16,
+        row: u16,
+        overlay_capturing: bool,
+    ) {
+        if let Some(id) = self.chrome_click_id(hit, down, col, row, overlay_capturing) {
+            self.pending_click = Some(id);
+        }
+    }
+
     fn chrome_click_id(
         &self,
         hit: Option<HitId>,
@@ -465,11 +478,7 @@ impl PointerPipeline {
                     self.dragged = true;
                 }
                 if was_capture {
-                    if let Some(id) =
-                        self.chrome_click_id(hit, down, col, row, view.overlay_capturing)
-                    {
-                        self.pending_click = Some(id);
-                    }
+                    self.latch_chrome_click(hit, down, col, row, view.overlay_capturing);
                     return PointerOutcome {
                         skip_selection: true,
                         consume: !view.overlay_capturing,
