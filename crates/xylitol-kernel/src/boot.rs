@@ -36,6 +36,7 @@ impl From<&BootOptions> for BootstrapInput {
             caller: opts.caller,
             ephemeral_sessions: opts.ephemeral_sessions,
             static_tools: Vec::new(),
+            agent_profile: None,
         }
     }
 }

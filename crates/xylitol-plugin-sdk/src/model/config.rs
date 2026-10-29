@@ -54,6 +54,7 @@ impl XyModelConfig {
 pub struct ResolvedProfile {
     pub model_id: String,
     pub system_prompt: Option<String>,
+    pub tools: Vec<String>,
 }
 
 pub fn default_context_window_for(kind: XyModelKind) -> u64 {
@@ -174,8 +175,10 @@ mod tests {
         let profile = ResolvedProfile {
             model_id: "gpt-4o".into(),
             system_prompt: Some("You are an AI".into()),
+            tools: vec!["read".into()],
         };
         assert_eq!(profile.model_id, "gpt-4o");
         assert_eq!(profile.system_prompt.as_deref(), Some("You are an AI"));
+        assert_eq!(profile.tools, vec!["read".to_string()]);
     }
 }

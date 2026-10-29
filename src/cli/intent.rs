@@ -29,6 +29,10 @@ fn merge_tui_surface(parent: &TuiSurfaceArgs, action: Option<&TuiAction>) -> Tui
     TuiSurfaceArgs {
         session: run.session.clone().or_else(|| parent.session.clone()),
         model: run.model.clone().or_else(|| parent.model.clone()),
+        agent_profile: run
+            .agent_profile
+            .clone()
+            .or_else(|| parent.agent_profile.clone()),
         config: run.config.clone().or_else(|| parent.config.clone()),
         list_models: run.list_models || parent.list_models,
         no_color: run.no_color || parent.no_color,
@@ -46,6 +50,7 @@ pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
             SurfaceBootstrap {
                 session: s.session,
                 model: s.model,
+                agent_profile: s.agent_profile,
                 config: s.config,
                 list_models: s.list_models,
                 no_color: s.no_color,
@@ -58,6 +63,7 @@ pub fn surface_from_command(command: Option<&CliCommand>) -> SurfaceBootstrap {
         Some(CliCommand::Print { surface, .. }) => SurfaceBootstrap {
             session: surface.session.clone(),
             model: surface.model.clone(),
+            agent_profile: surface.agent_profile.clone(),
             config: surface.config.clone(),
             list_models: false,
             no_color: surface.no_color,

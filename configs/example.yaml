@@ -68,6 +68,15 @@ models:
 #   system_prompt: "Custom system prompt override"
 #   model: "deepseek-v4-flash"  # override default per-execution
 
+# agents:  # per-session agent preset; select with --agent-profile <name>
+#   default_profile: "default"
+#   profiles:
+#     review:
+#       model: "deepseek-v4-flash"
+#       persona: "You are a strict code reviewer."
+#       system_prompt: "Focus on correctness and regressions."
+#       tools: [read, -bash, +ffgrep]
+
 security:
   enabled: true
   permission:

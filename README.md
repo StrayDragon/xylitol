@@ -64,6 +64,23 @@ API 密钥（API key）用 `{{ secret.DEEPSEEK_API_KEY }}` 这样的模板从 `s
 - 展开为显式字段：`provider` / `model` / `base_url` / `api`（可选 `compat`）。
 - 把多端差异交给网关，模型条目指向网关地址。
 
+#### Agent 预设
+
+`agents.profiles` 可声明 persona、system prompt 与工具目录；`agents.default_profile` 指定默认预设，也可用 `--agent-profile <name>` 按会话选择：
+
+```yaml
+agents:
+  default_profile: "default"
+  profiles:
+    review:
+      model: "deepseek-v4-flash"
+      persona: "You are a strict code reviewer."
+      system_prompt: "Focus on correctness and regressions."
+      tools: [read, -bash, +ffgrep]
+```
+
+persona 会排在 profile `system_prompt` 之前（空行分隔）；profile `tools` 非空时覆盖全局 `tools` 列表。
+
 #### 检索工具选择
 
 默认装配 fff 工具源：模型看到 `ffgrep` / `fffind`，内置 `grep` / `find` 被同类替换隐藏。用顶层 `tools` 列表控制可见工具：

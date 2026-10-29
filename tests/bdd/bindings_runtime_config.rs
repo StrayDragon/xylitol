@@ -1,4 +1,5 @@
 use crate::bdd::fixtures::*;
+use crate::bdd::steps_agent_profile::{AgentProfileBdd, agent_profile_bdd};
 use crate::bdd::steps_runtime_config::{RcSnap, rc_snap};
 use crate::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
@@ -180,3 +181,15 @@ fn test_c2997_tools_unknown(tokenizer_bdd: TokenizerBdd) {}
     name = "旧预设键拒绝并提示迁移"
 )]
 fn test_c3000_legacy_preset(ws: Workspace, tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "预设 persona 与工具目录"
+)]
+fn test_c3002_profile_persona(ws: Workspace, agent_profile_bdd: AgentProfileBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "未知预设硬失败"
+)]
+fn test_c3002_profile_missing(ws: Workspace, agent_profile_bdd: AgentProfileBdd) {}

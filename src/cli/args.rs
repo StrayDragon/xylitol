@@ -29,6 +29,8 @@ pub struct TuiSurfaceArgs {
     #[arg(long)]
     pub model: Option<String>,
     #[arg(long)]
+    pub agent_profile: Option<String>,
+    #[arg(long)]
     pub config: Option<String>,
     #[arg(long)]
     pub list_models: bool,
@@ -60,6 +62,8 @@ pub struct PrintSurfaceArgs {
     pub session: Option<String>,
     #[arg(long)]
     pub model: Option<String>,
+    #[arg(long)]
+    pub agent_profile: Option<String>,
     #[arg(long)]
     pub config: Option<String>,
     #[arg(long)]
@@ -112,6 +116,7 @@ pub struct CliArgs {
 pub struct SurfaceBootstrap {
     pub session: Option<String>,
     pub model: Option<String>,
+    pub agent_profile: Option<String>,
     pub config: Option<String>,
     pub list_models: bool,
     pub no_color: bool,

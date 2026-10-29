@@ -49,6 +49,7 @@ pub struct BootstrapInput {
     pub caller: &'static str,
     pub ephemeral_sessions: bool,
     pub static_tools: Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>,
+    pub agent_profile: Option<String>,
 }
 
 #[derive(Debug)]
@@ -263,6 +264,7 @@ pub enum BootstrapError {
     NoModelsAvailable,
     BuildFailed(String),
     KernelFailed(String),
+    AgentProfileNotFound(String),
 }
 
 impl std::fmt::Display for BootstrapError {
@@ -277,11 +279,223 @@ impl std::fmt::Display for BootstrapError {
             BootstrapError::NoModelsAvailable => write!(f, "no models available"),
             BootstrapError::BuildFailed(e) => write!(f, "agent build failed: {e}"),
             BootstrapError::KernelFailed(e) => write!(f, "kernel boot failed: {e}"),
+            BootstrapError::AgentProfileNotFound(name) => write!(
+                f,
+                "agent profile `{name}` not found (check `agents.profiles` in config)"
+            ),
         }
     }
 }
 
 impl std::error::Error for BootstrapError {}
+
+fn resolve_profile_assembly(
+    app_config: Option<&xylitol_official_plugin_config::types::AppConfig>,
+    agent_profile: Option<&str>,
+) -> Result<(Option<String>, Option<String>, Vec<String>), BootstrapError> {
+    let resolved = match agent_profile {
+        Some(name) => {
+            let Some(cfg) = app_config else {
+                return Err(BootstrapError::AgentProfileNotFound(name.to_string()));
+            };
+            if !cfg.agents.profiles.contains_key(name) {
+                return Err(BootstrapError::AgentProfileNotFound(name.to_string()));
+            }
+            Some(
+                cfg.resolve_profile(name)
+                    .map_err(|e| BootstrapError::ConfigLoadFailed(e.to_string()))?,
+            )
+        }
+        None => app_config.and_then(|cfg| cfg.resolve_default_profile().ok()),
+    };
+    Ok((
+        resolved
+            .as_ref()
+            .and_then(|profile| profile.system_prompt.clone()),
+        resolved.as_ref().map(|profile| profile.model_id.clone()),
+        resolved
+            .as_ref()
+            .map(|profile| profile.tools.clone())
+            .unwrap_or_default(),
+    ))
+}
+
+fn build_model_registry(
+    app_config: Option<&xylitol_official_plugin_config::types::AppConfig>,
+    warnings: &mut Vec<BootstrapWarning>,
+) -> ModelRegistry {
+    let mut model_registry = ModelRegistry::new();
+    let Some(cfg) = app_config else {
+        return model_registry;
+    };
+    let mut missing_key_providers = std::collections::BTreeSet::new();
+    for (alias, entry) in &cfg.model.models {
+        let api_key = entry.normalized_api_key();
+        if api_key.is_empty() {
+            missing_key_providers.insert(entry.provider.provider_name().to_string());
+        }
+        match entry.to_model_meta(alias).map_err(|e| e.to_string()) {
+            Ok(meta) => model_registry.register(meta),
+            Err(e) => warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
+                "models.{alias}: {e}"
+            ))),
+        }
+    }
+    for provider in missing_key_providers {
+        warnings.push(BootstrapWarning::NoApiKey { provider });
+    }
+    model_registry
+}
+
+fn restore_session(
+    input: &BootstrapInput,
+    agent_home: &Path,
+    warnings: &mut Vec<BootstrapWarning>,
+) -> bool {
+    let sessions_dir = agent_home.join("sessions");
+    let session_mgr = if input.ephemeral_sessions {
+        SessionManager::in_memory()
+    } else {
+        std::fs::create_dir_all(&sessions_dir).ok();
+        SessionManager::new(sessions_dir.clone())
+    };
+    let session_file_exists = input
+        .session
+        .as_deref()
+        .is_some_and(|session_id| session_mgr.exists(session_id));
+    if let Some(ref session_arg) = input.session
+        && session_file_exists
+    {
+        warnings.push(BootstrapWarning::RestoringSession {
+            session: session_arg.clone(),
+            path: sessions_dir.display().to_string(),
+        });
+    }
+    session_file_exists
+}
+
+fn resolve_project_trust(
+    agent_home: &Path,
+    cwd: &str,
+    input: &BootstrapInput,
+    warnings: &mut Vec<BootstrapWarning>,
+) -> bool {
+    let trust_manager = xylitol_runtime::trust::TrustManager::new(agent_home);
+    let trust_cwd = cwd.to_string();
+    let trust_resolution = xylitol_runtime::trust::resolve_project_trusted(
+        &trust_manager,
+        cwd,
+        input.trust_override,
+        xylitol_runtime::trust::DefaultProjectTrust::default(),
+        input.interactive,
+        |options| {
+            if input.interactive {
+                xylitol_runtime::trust::prompt_trust_options_stdio(&trust_cwd, options)
+            } else {
+                None
+            }
+        },
+    );
+    let project_trusted = trust_resolution.trusted;
+    if !project_trusted {
+        warnings.push(BootstrapWarning::ProjectNotTrusted {
+            reason: match trust_resolution.reason {
+                xylitol_runtime::trust::TrustReason::Override => "overridden via --no-trust".into(),
+                xylitol_runtime::trust::TrustReason::Store => "denied in trust store".into(),
+                xylitol_runtime::trust::TrustReason::FallbackNoUi => {
+                    "no interactive prompt available".into()
+                }
+                _ => "policy".into(),
+            },
+        });
+    }
+    project_trusted
+}
+
+struct ResourceBundle {
+    context_files: Vec<(String, String)>,
+    loader_system_prompt: Option<String>,
+    append_system_prompt: Vec<String>,
+    skills: Vec<xylitol_plugin_sdk::resource::SkillInfo>,
+}
+
+fn load_resources(agent_home: &Path, cwd_path: &Path, project_trusted: bool) -> ResourceBundle {
+    let loader_cwd = if project_trusted {
+        cwd_path.to_path_buf()
+    } else {
+        std::env::temp_dir()
+    };
+    let loader =
+        xylitol_runtime::resource::DefaultResourceLoader::new(loader_cwd, agent_home.to_path_buf());
+    let context_files = loader
+        .get_agents_files()
+        .iter()
+        .map(|f| (f.path.to_string_lossy().into_owned(), f.content.clone()))
+        .collect();
+    let loader_system_prompt = loader.get_system_prompt().map(String::from);
+    let append_system_prompt = loader.get_append_system_prompt().to_vec();
+    let skills = loader.get_skills().0.to_vec();
+    ResourceBundle {
+        context_files,
+        loader_system_prompt,
+        append_system_prompt,
+        skills,
+    }
+}
+
+struct RuntimeSettingsBundle {
+    compaction_settings: Option<xylitol_runtime::agent::compaction::CompactionSettings>,
+    steering_mode: xylitol_runtime::agent::QueueMode,
+    follow_up_mode: xylitol_runtime::agent::QueueMode,
+    default_thinking_level: Option<String>,
+    thinking_budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets>,
+}
+
+fn load_runtime_settings(
+    app_config: Option<&xylitol_official_plugin_config::types::AppConfig>,
+    agent_home: &Path,
+    cwd_path: &Path,
+    project_trusted: bool,
+) -> RuntimeSettingsBundle {
+    let settings_cwd = if project_trusted {
+        cwd_path.to_path_buf()
+    } else {
+        std::env::temp_dir()
+    };
+    let settings_mgr = xylitol_official_plugin_config::settings::SettingsManager::from_files(
+        &settings_cwd,
+        agent_home,
+        project_trusted,
+    );
+    let compaction = {
+        let from_settings = settings_mgr.get_settings().compaction.as_ref();
+        let from_config = app_config.and_then(|c| c.compaction.as_ref());
+        Some(xylitol_plugin_sdk::merge_compaction_runtime(
+            from_config,
+            from_settings,
+        ))
+    };
+    RuntimeSettingsBundle {
+        compaction_settings: compaction,
+        steering_mode: queue_mode_from_settings(settings_mgr.get_steering_mode()),
+        follow_up_mode: queue_mode_from_settings(settings_mgr.get_follow_up_mode()),
+        default_thinking_level: settings_mgr.get_settings().default_thinking_level.clone(),
+        thinking_budgets: settings_mgr.get_thinking_budgets().map(Into::into),
+    }
+}
+
+fn resolve_tool_features(
+    app_config: Option<&xylitol_official_plugin_config::types::AppConfig>,
+    profile_tools: Vec<String>,
+) -> crate::driver::ToolFeatures {
+    let mut features = app_config
+        .map(crate::driver::ToolFeatures::from_config)
+        .unwrap_or_default();
+    if !profile_tools.is_empty() {
+        features.tool_selection = profile_tools;
+    }
+    features
+}
 
 pub fn resolve_assembly(input: &BootstrapInput) -> Result<ResolvedAssembly, BootstrapError> {
     resolve_assembly_with(
@@ -307,29 +521,9 @@ pub fn resolve_assembly_with(
     let app_config = Some(loaded.config);
     timing::time("config.load");
 
-    let mut model_registry = ModelRegistry::new();
-
-    if let Some(ref cfg) = app_config {
-        let mut missing_key_providers = std::collections::BTreeSet::new();
-        for (alias, entry) in &cfg.model.models {
-            let api_key = entry.normalized_api_key();
-            if api_key.is_empty() {
-                missing_key_providers.insert(entry.provider.provider_name().to_string());
-            }
-
-            match entry.to_model_meta(alias).map_err(|e| e.to_string()) {
-                Ok(meta) => model_registry.register(meta),
-                Err(e) => {
-                    warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
-                        "models.{alias}: {e}"
-                    )));
-                }
-            }
-        }
-        for provider in missing_key_providers {
-            warnings.push(BootstrapWarning::NoApiKey { provider });
-        }
-    }
+    let mut warnings_for_registry = Vec::new();
+    let model_registry = build_model_registry(app_config.as_ref(), &mut warnings_for_registry);
+    warnings.extend(warnings_for_registry);
 
     if from_yaml_layers && model_registry.is_empty() {
         return Err(BootstrapError::ConfigLoadedZeroModels);
@@ -342,34 +536,11 @@ pub fn resolve_assembly_with(
     }
 
     let agent_home = xylitol_home_dir(&get_env);
-    let sessions_dir = agent_home.join("sessions");
-    let session_mgr = if input.ephemeral_sessions {
-        SessionManager::in_memory()
-    } else {
-        std::fs::create_dir_all(&sessions_dir).ok();
-        SessionManager::new(sessions_dir.clone())
-    };
-    let session_file_exists = input
-        .session
-        .as_deref()
-        .is_some_and(|session_id| session_mgr.exists(session_id));
-    if let Some(ref session_arg) = input.session
-        && session_file_exists
-    {
-        warnings.push(BootstrapWarning::RestoringSession {
-            session: session_arg.clone(),
-            path: sessions_dir.display().to_string(),
-        });
-    }
+    let session_file_exists = restore_session(input, &agent_home, &mut warnings);
     timing::time("session.restore");
 
-    let resolved_profile = app_config
-        .as_ref()
-        .and_then(|cfg| cfg.resolve_default_profile().ok());
-    let config_system_prompt = resolved_profile
-        .as_ref()
-        .and_then(|p| p.system_prompt.clone());
-    let default_profile_model = resolved_profile.as_ref().map(|p| p.model_id.clone());
+    let (config_system_prompt, default_profile_model, profile_tools) =
+        resolve_profile_assembly(app_config.as_ref(), input.agent_profile.as_deref())?;
 
     let cwd_path = cwd
         .map(Path::to_path_buf)
@@ -377,54 +548,14 @@ pub fn resolve_assembly_with(
         .unwrap_or_default();
     let cwd = cwd_path.to_string_lossy().to_string();
 
-    let trust_manager = xylitol_runtime::trust::TrustManager::new(&agent_home);
-    let trust_cwd = cwd.clone();
-    let trust_resolution = xylitol_runtime::trust::resolve_project_trusted(
-        &trust_manager,
-        &cwd,
-        input.trust_override,
-        xylitol_runtime::trust::DefaultProjectTrust::default(),
-        input.interactive,
-        |options| {
-            if input.interactive {
-                xylitol_runtime::trust::prompt_trust_options_stdio(&trust_cwd, options)
-            } else {
-                None
-            }
-        },
-    );
-    let project_trusted = trust_resolution.trusted;
-    if !project_trusted {
-        warnings.push(BootstrapWarning::ProjectNotTrusted {
-            reason: match trust_resolution.reason {
-                xylitol_runtime::trust::TrustReason::Override => "overridden via --no-trust".into(),
-                xylitol_runtime::trust::TrustReason::Store => "denied in trust store".into(),
-                xylitol_runtime::trust::TrustReason::FallbackNoUi => {
-                    "no interactive prompt available".into()
-                }
-                _ => "policy".into(),
-            },
-        });
-    }
+    let project_trusted = resolve_project_trust(&agent_home, &cwd, input, &mut warnings);
 
-    let (context_files, loader_system_prompt, append_system_prompt, skills) = {
-        let agent_dir = agent_home.clone();
-        let loader_cwd = if project_trusted {
-            cwd_path.clone()
-        } else {
-            std::env::temp_dir()
-        };
-        let loader = xylitol_runtime::resource::DefaultResourceLoader::new(loader_cwd, agent_dir);
-        let ctx: Vec<(String, String)> = loader
-            .get_agents_files()
-            .iter()
-            .map(|f| (f.path.to_string_lossy().into_owned(), f.content.clone()))
-            .collect();
-        let sys = loader.get_system_prompt().map(String::from);
-        let append = loader.get_append_system_prompt().to_vec();
-        let skills = loader.get_skills().0.to_vec();
-        (ctx, sys, append, skills)
-    };
+    let resources = load_resources(&agent_home, &cwd_path, project_trusted);
+    let context_files = resources.context_files;
+    let loader_system_prompt = resources.loader_system_prompt;
+    let append_system_prompt = resources.append_system_prompt;
+    let skills = resources.skills;
+
     log::debug!(
         "resource discovery resolved caller={} trusted={} cwd={} context_files={} append_system_prompt={} loader_system_prompt={} skills={}",
         input.caller,
@@ -443,45 +574,13 @@ pub fn resolve_assembly_with(
         );
     }
 
-    let (
-        compaction_settings,
-        steering_mode,
-        follow_up_mode,
-        default_thinking_level,
-        thinking_budgets,
-    ) = {
-        let agent_dir = agent_home;
-        let settings_cwd = if project_trusted {
-            cwd_path
-        } else {
-            std::env::temp_dir()
-        };
-        let settings_mgr = xylitol_official_plugin_config::settings::SettingsManager::from_files(
-            &settings_cwd,
-            &agent_dir,
-            project_trusted,
-        );
-        let compaction = {
-            let from_settings = settings_mgr.get_settings().compaction.as_ref();
-            let from_config = app_config.as_ref().and_then(|c| c.compaction.as_ref());
-            Some(xylitol_plugin_sdk::merge_compaction_runtime(
-                from_config,
-                from_settings,
-            ))
-        };
-        let steering_mode = queue_mode_from_settings(settings_mgr.get_steering_mode());
-        let follow_up_mode = queue_mode_from_settings(settings_mgr.get_follow_up_mode());
-        let default_thinking_level = settings_mgr.get_settings().default_thinking_level.clone();
-        let thinking_budgets: Option<xylitol_plugin_sdk::model::ThinkingBudgets> =
-            settings_mgr.get_thinking_budgets().map(Into::into);
-        (
-            compaction,
-            steering_mode,
-            follow_up_mode,
-            default_thinking_level,
-            thinking_budgets,
-        )
-    };
+    let settings =
+        load_runtime_settings(app_config.as_ref(), &agent_home, &cwd_path, project_trusted);
+    let compaction_settings = settings.compaction_settings;
+    let steering_mode = settings.steering_mode;
+    let follow_up_mode = settings.follow_up_mode;
+    let default_thinking_level = settings.default_thinking_level;
+    let thinking_budgets = settings.thinking_budgets;
 
     let permission_engine = app_config.as_ref().and_then(|cfg| {
         cfg.security
@@ -538,10 +637,7 @@ pub fn resolve_assembly_with(
         thinking_budgets,
         batch_mode,
         max_turns,
-        tool_features: app_config
-            .as_ref()
-            .map(crate::driver::ToolFeatures::from_config)
-            .unwrap_or_default(),
+        tool_features: resolve_tool_features(app_config.as_ref(), profile_tools),
         project_trusted,
     })
 }
