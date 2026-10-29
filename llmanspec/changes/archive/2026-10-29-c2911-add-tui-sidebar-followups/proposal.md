@@ -2,6 +2,9 @@
 depends_on: []
 title: 会话侧栏与覆盖弹出框的命中、宽度与三态交互
 needs_specs_change: true
+branch: sdd/c2911-add-tui-sidebar-followups
+base_branch: main
+base_sha: d0af9fe0f4b2d5373988ffdd666a95e59d5a1930
 ---
 
 # 会话侧栏与覆盖弹出框的命中、宽度与三态交互

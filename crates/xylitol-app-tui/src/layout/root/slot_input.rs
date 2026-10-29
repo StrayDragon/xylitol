@@ -33,6 +33,14 @@ impl UiRoot {
             }
         }
         if let InputEvent::Key(ref key) = event {
+            if matches_binding(key, "app.session.detailsCycle") {
+                self.cycle_session_details();
+                return;
+            }
+            if matches_binding(key, "app.session.sidebarWidth") {
+                self.session_sidebar_width_cycle();
+                return;
+            }
             if matches_binding(key, "app.session.popup") {
                 if self.session_popup_open {
                     self.close_session_popup();

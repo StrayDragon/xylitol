@@ -3228,3 +3228,196 @@ pub(crate) fn t_product_gutter_jump_home(host_pump_bdd: &HostPumpBdd) {
         "gutter click must not start selection"
     );
 }
+
+thread_local! {
+    static SIDEBAR_WHEEL_SCROLL: std::cell::RefCell<Option<usize>> = const { std::cell::RefCell::new(None) };
+}
+
+#[given("产品 TUI 主循环就绪且侧栏已开启")]
+async fn g_c2911_sidebar_ready(host_pump_bdd: &HostPumpBdd) {
+    g2875_mount(host_pump_bdd);
+    w_c2905_sidebar_toggle(host_pump_bdd).await;
+}
+
+#[given("侧栏已开启")]
+async fn g_c2911_sidebar_on(host_pump_bdd: &HostPumpBdd) {
+    g_c2911_sidebar_ready(host_pump_bdd).await;
+}
+
+#[given("覆盖弹出框已开启")]
+async fn g_c2911_popup_on(host_pump_bdd: &HostPumpBdd) {
+    g2875_mount(host_pump_bdd);
+    w_c2875_toggle(host_pump_bdd).await;
+}
+
+#[when("循环侧栏宽度")]
+async fn w_c2911_sidebar_width_cycle(host_pump_bdd: &HostPumpBdd) {
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Char('u'),
+        crossterm::event::KeyModifiers::ALT | crossterm::event::KeyModifiers::SHIFT,
+    )
+    .await;
+}
+
+#[then("侧栏宽度按 24/32/40 档变化且内容区不少于 40 列")]
+fn t_c2911_sidebar_width_cycle(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    let width = root.borrow().session_sidebar_width();
+    assert!(
+        matches!(width, 24 | 32 | 40),
+        "sidebar width must stay on a preset tier: {width}"
+    );
+    let (on, sidebar_w, content_w) = root.borrow().session_sidebar_layout(120);
+    assert!(on, "sidebar must stay on");
+    assert_eq!(sidebar_w, width, "layout must use the selected tier");
+    assert!(
+        content_w >= 40,
+        "content must keep at least 40 columns: {content_w}"
+    );
+    put_pump(host_pump_bdd, pump);
+}
+
+#[when("按会话详情循环键")]
+async fn w_c2911_details_cycle(host_pump_bdd: &HostPumpBdd) {
+    c2875_press(
+        host_pump_bdd,
+        crossterm::event::KeyCode::Char('o'),
+        crossterm::event::KeyModifiers::ALT,
+    )
+    .await;
+}
+
+#[when("再按会话详情循环键")]
+async fn w_c2911_details_cycle_again(host_pump_bdd: &HostPumpBdd) {
+    w_c2911_details_cycle(host_pump_bdd).await;
+}
+
+#[then("先出现覆盖弹出框")]
+fn t_c2911_details_popup(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    assert!(root.borrow().session_popup_open(), "popup must open first");
+    assert!(
+        !root.borrow().session_sidebar_on(),
+        "sidebar must not open before the popup"
+    );
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("覆盖弹出框收起且侧栏上屏")]
+fn t_c2911_details_sidebar(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    assert!(
+        !root.borrow().session_popup_open(),
+        "popup must close when cycling to sidebar"
+    );
+    assert!(root.borrow().session_sidebar_on(), "sidebar must open");
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("侧栏收起")]
+fn t_c2911_details_off(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    assert!(
+        !root.borrow().session_sidebar_on(),
+        "third cycle press must close the sidebar"
+    );
+    assert!(
+        !root.borrow().session_popup_open(),
+        "third cycle press must leave no popup"
+    );
+    put_pump(host_pump_bdd, pump);
+}
+
+async fn c2911_click(host_pump_bdd: &HostPumpBdd, col: u16, row: u16) {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let mut pump = take_pump(host_pump_bdd);
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        pump.session
+            .step(HostEvent::Input(xylitol_tui::InputEvent::Mouse(
+                MouseEvent {
+                    kind,
+                    column: col,
+                    row,
+                    modifiers: crossterm::event::KeyModifiers::NONE,
+                },
+            )))
+            .expect("chrome click step");
+    }
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("chrome click pump");
+    put_pump(host_pump_bdd, pump);
+}
+
+#[when("点击侧栏带")]
+async fn w_c2911_click_sidebar(host_pump_bdd: &HostPumpBdd) {
+    c2911_click(host_pump_bdd, 110, 5).await;
+}
+
+#[then("侧栏关闭且内容区无选区")]
+fn t_c2911_click_sidebar(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    assert!(!root.borrow().session_sidebar_on(), "sidebar must close");
+    assert!(
+        !pump.session.tui.application_owned_has_selection(),
+        "chrome click must not start a content selection"
+    );
+    put_pump(host_pump_bdd, pump);
+}
+
+#[when("点击覆盖弹出框")]
+async fn w_c2911_click_popup(host_pump_bdd: &HostPumpBdd) {
+    c2911_click(host_pump_bdd, 95, 2).await;
+}
+
+#[then("覆盖弹出框关闭")]
+fn t_c2911_click_popup(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    assert!(
+        !root.borrow().session_popup_open(),
+        "popup must close on chrome click"
+    );
+    put_pump(host_pump_bdd, pump);
+}
+
+#[given("侧栏已开启且内容区已滚动")]
+async fn g_c2911_sidebar_scrolled(host_pump_bdd: &HostPumpBdd) {
+    g_tall_scrolled_viewport(host_pump_bdd);
+    w_c2905_sidebar_toggle(host_pump_bdd).await;
+}
+
+#[when("在侧栏带内滚轮")]
+fn w_c2911_sidebar_wheel(host_pump_bdd: &HostPumpBdd) {
+    let mut pump = take_pump(host_pump_bdd);
+    let before = pump.session.tui.application_owned_scroll_top();
+    SIDEBAR_WHEEL_SCROLL.with(|slot| *slot.borrow_mut() = Some(before));
+    pump.session
+        .apply_sidebar_wheel_delta(-1)
+        .expect("sidebar wheel");
+    put_pump(host_pump_bdd, pump);
+}
+
+#[then("内容区滚动位置不变")]
+fn t_c2911_sidebar_wheel(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let before = SIDEBAR_WHEEL_SCROLL
+        .with(|slot| *slot.borrow())
+        .expect("wheel baseline");
+    assert_eq!(
+        pump.session.tui.application_owned_scroll_top(),
+        before,
+        "wheel over the sidebar band must not scroll the content"
+    );
+    put_pump(host_pump_bdd, pump);
+}

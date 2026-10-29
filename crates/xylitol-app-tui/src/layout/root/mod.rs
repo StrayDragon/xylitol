@@ -22,7 +22,7 @@ use xylitol_tui::components::editor::{Editor, EditorOptions};
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::components::text::Text;
 use xylitol_tui::{
-    AtPathSource, ChoiceQuestion, CompletionSource, Focusable, InputEvent,
+    AtPathSource, ChoiceQuestion, CompletionSource, Focusable, Hit, HitId, HitSpace, InputEvent,
     SlashArgCompletionSource, SlashCommandSource, SystemClock, TreeNode, fg_rgb,
 };
 
@@ -97,6 +97,8 @@ pub struct UiRoot {
     session_popup_open: bool,
     session_popup_id: String,
     session_sidebar_on: bool,
+    session_sidebar_width: usize,
+    session_sidebar_scroll: usize,
     last_esc_at: Option<Instant>,
     bash_mode: bool,
     external_editor_invocations: u32,
@@ -109,6 +111,7 @@ pub struct UiRoot {
     upper_cache_lines: Vec<String>,
     scrollback_paint: ScrollbackPaintCache,
     term_rows: usize,
+    term_cols: usize,
     last_dock_rows: usize,
     last_toast_rows: usize,
     last_status_rows: usize,
@@ -178,6 +181,8 @@ impl UiRoot {
             session_popup_open: false,
             session_popup_id: String::new(),
             session_sidebar_on: false,
+            session_sidebar_width: Self::SESSION_SIDEBAR_WIDTHS[0],
+            session_sidebar_scroll: 0,
             last_esc_at: None,
             bash_mode: false,
             external_editor_invocations: 0,
@@ -190,6 +195,7 @@ impl UiRoot {
             upper_cache_lines: Vec::new(),
             scrollback_paint: ScrollbackPaintCache::default(),
             term_rows: 24,
+            term_cols: 80,
             last_dock_rows: 8,
             last_toast_rows: 0,
             last_status_rows: 1,
@@ -745,6 +751,7 @@ impl UiRoot {
 
     pub fn close_session_sidebar(&mut self) {
         self.session_sidebar_on = false;
+        self.session_sidebar_scroll = 0;
     }
 
     pub fn request_session_sidebar(&mut self) {
@@ -758,27 +765,143 @@ impl UiRoot {
     pub fn show_session_sidebar(&mut self, session_id: &str) {
         self.session_popup_id = session_id.to_string();
         self.session_sidebar_on = true;
+        self.session_sidebar_scroll = 0;
     }
 
-    pub const SESSION_SIDEBAR_W: usize = 24;
+    pub fn set_term_cols(&mut self, cols: usize) {
+        self.term_cols = cols;
+    }
+
+    pub fn session_sidebar_available(&self) -> bool {
+        width_tier(self.term_cols) >= WidthTier::Standard
+    }
+
+    pub fn session_sidebar_width(&self) -> usize {
+        self.session_sidebar_width
+    }
+
+    pub fn session_sidebar_width_cycle(&mut self) -> bool {
+        let current = self.session_sidebar_width;
+        let idx = Self::SESSION_SIDEBAR_WIDTHS
+            .iter()
+            .position(|width| *width == current)
+            .unwrap_or(0);
+        let next = Self::SESSION_SIDEBAR_WIDTHS[(idx + 1) % Self::SESSION_SIDEBAR_WIDTHS.len()];
+        if next == current {
+            false
+        } else {
+            self.session_sidebar_width = next;
+            true
+        }
+    }
+
+    pub fn session_sidebar_scroll(&self) -> usize {
+        self.session_sidebar_scroll
+    }
+
+    pub fn session_sidebar_content_rows(&self) -> usize {
+        Self::SESSION_SIDEBAR_CONTENT_ROWS
+    }
+
+    pub fn scroll_session_sidebar(&mut self, delta: isize, visible_rows: usize) -> bool {
+        let max_scroll = self
+            .session_sidebar_content_rows()
+            .saturating_sub(visible_rows);
+        let next =
+            (self.session_sidebar_scroll as isize + delta).clamp(0, max_scroll as isize) as usize;
+        if next == self.session_sidebar_scroll {
+            false
+        } else {
+            self.session_sidebar_scroll = next;
+            true
+        }
+    }
+
+    pub fn cycle_session_details(&mut self) {
+        if self.session_sidebar_on && self.session_popup_open {
+            self.close_session_sidebar();
+            self.close_session_popup();
+            return;
+        }
+        if self.session_sidebar_on {
+            self.close_session_sidebar();
+            return;
+        }
+        if self.session_popup_open {
+            self.close_session_popup();
+            if self.session_sidebar_available() {
+                self.request_session_sidebar();
+            }
+            return;
+        }
+        self.request_session_popup();
+    }
+
+    pub const SESSION_SIDEBAR_W: usize = Self::SESSION_SIDEBAR_WIDTHS[0];
+    pub const SESSION_SIDEBAR_WIDTHS: [usize; 3] = [24, 32, 40];
+    pub const SESSION_SIDEBAR_MIN_CONTENT: usize = 40;
+    pub const SESSION_SIDEBAR_CONTENT_ROWS: usize = 3;
+    pub const SESSION_POPUP_W: usize = 30;
+    pub const SESSION_POPUP_ROWS: usize = 5;
+    pub const SESSION_POPUP_HIT_ID: HitId = 1 << 61;
+    pub const SESSION_SIDEBAR_HIT_ID: HitId = 1 << 61 | 1;
+    pub const SESSION_SIDEBAR_SEPARATOR_HIT_ID: HitId = 1 << 61 | 2;
 
     pub fn session_sidebar_reserved_cols(&self, width: usize) -> usize {
-        if self.session_sidebar_layout(width).0 {
-            Self::SESSION_SIDEBAR_W
-        } else {
-            0
-        }
+        let (on, sidebar_w, _) = self.session_sidebar_layout(width);
+        if on { sidebar_w } else { 0 }
     }
 
     pub fn session_sidebar_layout(&self, width: usize) -> (bool, usize, usize) {
         if !self.session_sidebar_on || width_tier(width) < WidthTier::Standard {
             return (false, 0, width);
         }
-        (
-            true,
-            Self::SESSION_SIDEBAR_W,
-            width - Self::SESSION_SIDEBAR_W,
-        )
+        let max_sidebar = width.saturating_sub(Self::SESSION_SIDEBAR_MIN_CONTENT);
+        let sidebar_w = self.session_sidebar_width.min(max_sidebar);
+        if sidebar_w < Self::SESSION_SIDEBAR_WIDTHS[0] {
+            return (false, 0, width);
+        }
+        (true, sidebar_w, width - sidebar_w)
+    }
+
+    pub fn session_sidebar_contains(&self, col: usize) -> bool {
+        let (on, _, content_w) = self.session_sidebar_layout(self.term_cols);
+        on && col >= content_w
+    }
+
+    pub fn overlay_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
+        let mut hits = Vec::new();
+        let (sidebar_on, _sidebar_w, content_w) = self.session_sidebar_layout(width);
+        if self.session_popup_open && content_w > 0 {
+            let box_w = Self::SESSION_POPUP_W.min(content_w.saturating_sub(2));
+            if box_w > 0 {
+                let start = content_w.saturating_sub(box_w);
+                hits.push(
+                    Hit::at_cell(Self::SESSION_POPUP_HIT_ID, start as u16, 0)
+                        .cols(start, content_w)
+                        .tall(transcript_rows.min(Self::SESSION_POPUP_ROWS))
+                        .capturing()
+                        .space(HitSpace::Chrome),
+                );
+            }
+        }
+        if sidebar_on {
+            hits.push(
+                Hit::at_cell(Self::SESSION_SIDEBAR_HIT_ID, content_w as u16, 0)
+                    .cols(content_w, width)
+                    .tall(transcript_rows)
+                    .capturing()
+                    .space(HitSpace::Chrome),
+            );
+            hits.push(
+                Hit::at_cell(Self::SESSION_SIDEBAR_SEPARATOR_HIT_ID, content_w as u16, 0)
+                    .cols(content_w, content_w + 1)
+                    .tall(transcript_rows)
+                    .capturing()
+                    .space(HitSpace::Chrome),
+            );
+        }
+        hits
     }
 
     pub fn take_pending_tree_open(&mut self) -> bool {
@@ -1288,6 +1411,99 @@ mod tests {
         root.close_session_sidebar();
         assert_eq!(root.session_sidebar_layout(120), (false, 0, 120));
         assert_eq!(root.session_sidebar_reserved_cols(120), 0);
+    }
+
+    #[test]
+    fn sidebar_width_cycles_and_keeps_min_content() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(80);
+        root.show_session_sidebar("s1");
+        assert_eq!(root.session_sidebar_layout(80), (true, 24, 56));
+        assert!(root.session_sidebar_width_cycle());
+        assert_eq!(root.session_sidebar_layout(80), (true, 32, 48));
+        assert!(root.session_sidebar_width_cycle());
+        assert_eq!(root.session_sidebar_layout(80), (true, 40, 40));
+        assert!(root.session_sidebar_width_cycle());
+        assert_eq!(root.session_sidebar_layout(80), (true, 24, 56));
+        assert_eq!(root.session_sidebar_layout(79), (false, 0, 79));
+    }
+
+    #[test]
+    fn sidebar_contains_respects_content_edge() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.show_session_sidebar("s1");
+        assert!(!root.session_sidebar_contains(95));
+        assert!(root.session_sidebar_contains(96));
+        assert!(root.session_sidebar_contains(119));
+    }
+
+    #[test]
+    fn sidebar_scroll_clamps_to_placeholder_content() {
+        let mut root = UiRoot::new();
+        assert_eq!(root.session_sidebar_content_rows(), 3);
+        assert!(
+            !root.scroll_session_sidebar(1, 24),
+            "content that fits must not scroll"
+        );
+        assert!(root.scroll_session_sidebar(1, 1));
+        assert_eq!(root.session_sidebar_scroll(), 1);
+        assert!(root.scroll_session_sidebar(10, 1));
+        assert_eq!(root.session_sidebar_scroll(), 2);
+        assert!(!root.scroll_session_sidebar(1, 1));
+        assert!(root.scroll_session_sidebar(-10, 1));
+        assert_eq!(root.session_sidebar_scroll(), 0);
+    }
+
+    #[test]
+    fn details_cycle_walks_popup_sidebar_off() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.cycle_session_details();
+        assert!(root.take_pending_session_popup());
+        root.show_session_popup("s1");
+
+        root.cycle_session_details();
+        assert!(!root.session_popup_open());
+        assert!(root.take_pending_session_sidebar());
+        root.show_session_sidebar("s1");
+
+        root.cycle_session_details();
+        assert!(!root.session_sidebar_on());
+    }
+
+    #[test]
+    fn details_cycle_degrades_on_narrow_terminal() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(78);
+        root.cycle_session_details();
+        assert!(root.take_pending_session_popup());
+        root.show_session_popup("s1");
+
+        root.cycle_session_details();
+        assert!(!root.session_popup_open());
+        assert!(
+            !root.take_pending_session_sidebar(),
+            "narrow terminal must not request an unavailable sidebar"
+        );
+    }
+
+    #[test]
+    fn overlay_hits_cover_popup_sidebar_and_separator() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.show_session_popup("s1");
+        root.show_session_sidebar("s1");
+        let hits = root.overlay_hits(120, 40);
+        let ids: Vec<_> = hits.iter().map(|hit| (*hit).into_region().id).collect();
+        assert!(ids.contains(&UiRoot::SESSION_POPUP_HIT_ID));
+        assert!(ids.contains(&UiRoot::SESSION_SIDEBAR_HIT_ID));
+        assert!(ids.contains(&UiRoot::SESSION_SIDEBAR_SEPARATOR_HIT_ID));
+        for hit in &hits {
+            let region = (*hit).into_region();
+            assert_eq!(region.space, HitSpace::Chrome);
+            assert!(region.capturing, "chrome hits must capture the pointer");
+        }
     }
 
     fn fake_row() -> ModelPickerRow {
