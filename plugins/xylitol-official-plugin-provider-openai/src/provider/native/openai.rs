@@ -468,28 +468,9 @@ pub fn convert_agent_messages(
                 content,
                 ..
             } => {
-                let text = collect_text_parts(content);
-                let images: Vec<ImageContent> = content
-                    .iter()
-                    .filter_map(|part| match part {
-                        AgentPart::Image(image) => Some(image.clone()),
-                        _ => None,
-                    })
-                    .collect();
-                let tool_text = if text.is_empty() && !images.is_empty() {
-                    "[image]".to_string()
-                } else {
-                    text
-                };
-                out.push(ChatCompletionRequestMessage::Tool(
-                    ChatCompletionRequestToolMessage {
-                        content: ChatCompletionRequestToolMessageContent::Text(tool_text),
-                        tool_call_id: tool_use_id.clone(),
-                    },
-                ));
-                if !images.is_empty() {
-                    pending_tool_images.push((tool_use_id.clone(), images));
-                }
+                let (message, images) = tool_result_message(tool_use_id, content);
+                out.push(message);
+                pending_tool_images.extend(images);
             }
         }
     }
@@ -497,6 +478,34 @@ pub fn convert_agent_messages(
     flush_tool_images(&mut out, &mut pending_tool_images);
 
     out
+}
+
+fn tool_result_message(
+    tool_use_id: &str,
+    content: &[AgentPart],
+) -> (
+    ChatCompletionRequestMessage,
+    Option<(String, Vec<ImageContent>)>,
+) {
+    let text = collect_text_parts(content);
+    let images: Vec<ImageContent> = content
+        .iter()
+        .filter_map(|part| match part {
+            AgentPart::Image(image) => Some(image.clone()),
+            _ => None,
+        })
+        .collect();
+    let tool_text = if text.is_empty() && !images.is_empty() {
+        "[image]".to_string()
+    } else {
+        text
+    };
+    let message = ChatCompletionRequestMessage::Tool(ChatCompletionRequestToolMessage {
+        content: ChatCompletionRequestToolMessageContent::Text(tool_text),
+        tool_call_id: tool_use_id.to_string(),
+    });
+    let pending = (!images.is_empty()).then(|| (tool_use_id.to_string(), images));
+    (message, pending)
 }
 
 fn user_message_content(content: &[AgentPart]) -> Option<ChatCompletionRequestUserMessageContent> {

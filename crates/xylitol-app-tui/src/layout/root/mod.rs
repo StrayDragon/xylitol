@@ -856,12 +856,13 @@ impl UiRoot {
         if !self.session_sidebar_on || width_tier(width) < WidthTier::Standard {
             return (false, 0, width);
         }
-        let max_sidebar = width.saturating_sub(Self::SESSION_SIDEBAR_MIN_CONTENT);
-        let sidebar_w = self.session_sidebar_width.min(max_sidebar);
-        if sidebar_w < Self::SESSION_SIDEBAR_WIDTHS[0] {
-            return (false, 0, width);
-        }
+        let sidebar_w = self.sidebar_width_for(width);
         (true, sidebar_w, width - sidebar_w)
+    }
+
+    fn sidebar_width_for(&self, width: usize) -> usize {
+        self.session_sidebar_width
+            .min(width.saturating_sub(Self::SESSION_SIDEBAR_MIN_CONTENT))
     }
 
     pub fn session_sidebar_contains(&self, col: usize) -> bool {

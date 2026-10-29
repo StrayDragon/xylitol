@@ -733,24 +733,7 @@ fn convert_messages_to_input_items(
     for msg in messages {
         match msg {
             XyLlmMessage::UserMessage { content, .. } => {
-                let mut parts: Vec<Value> = Vec::new();
-                for part in content {
-                    match part {
-                        AgentPart::Text { text } if !text.is_empty() => {
-                            parts.push(serde_json::json!({
-                                "type": "input_text",
-                                "text": text,
-                            }));
-                        }
-                        AgentPart::Image(image) => {
-                            parts.push(serde_json::json!({
-                                "type": "input_image",
-                                "image_url": super::image_data_url(image),
-                            }));
-                        }
-                        _ => {}
-                    }
-                }
+                let parts = user_content_parts(content);
                 if !parts.is_empty() {
                     items.push(serde_json::json!({
                         "type": "message",
@@ -820,39 +803,63 @@ fn convert_messages_to_input_items(
                 content,
                 ..
             } => {
-                let text = collect_user_text_parts(content);
-                let images: Vec<&crate::dto::ImageContent> = content
-                    .iter()
-                    .filter_map(|part| match part {
-                        AgentPart::Image(image) => Some(image),
-                        _ => None,
-                    })
-                    .collect();
-                let output = if images.is_empty() {
-                    serde_json::json!(text)
-                } else {
-                    let mut parts = vec![serde_json::json!({
-                        "type": "input_text",
-                        "text": if text.is_empty() { "[image]" } else { text.as_str() },
-                    })];
-                    for image in images {
-                        parts.push(serde_json::json!({
-                            "type": "input_image",
-                            "image_url": super::image_data_url(image),
-                        }));
-                    }
-                    serde_json::json!(parts)
-                };
                 items.push(serde_json::json!({
                     "type": "function_call_output",
                     "call_id": tool_use_id,
-                    "output": output,
+                    "output": tool_output_value(content),
                 }));
             }
         }
     }
 
     items
+}
+
+fn user_content_parts(content: &[AgentPart]) -> Vec<Value> {
+    let mut parts = Vec::new();
+    for part in content {
+        match part {
+            AgentPart::Text { text } if !text.is_empty() => {
+                parts.push(serde_json::json!({
+                    "type": "input_text",
+                    "text": text,
+                }));
+            }
+            AgentPart::Image(image) => {
+                parts.push(serde_json::json!({
+                    "type": "input_image",
+                    "image_url": super::image_data_url(image),
+                }));
+            }
+            _ => {}
+        }
+    }
+    parts
+}
+
+fn tool_output_value(content: &[AgentPart]) -> Value {
+    let text = collect_user_text_parts(content);
+    let images: Vec<&crate::dto::ImageContent> = content
+        .iter()
+        .filter_map(|part| match part {
+            AgentPart::Image(image) => Some(image),
+            _ => None,
+        })
+        .collect();
+    if images.is_empty() {
+        return serde_json::json!(text);
+    }
+    let mut parts = vec![serde_json::json!({
+        "type": "input_text",
+        "text": if text.is_empty() { "[image]" } else { text.as_str() },
+    })];
+    for image in images {
+        parts.push(serde_json::json!({
+            "type": "input_image",
+            "image_url": super::image_data_url(image),
+        }));
+    }
+    serde_json::json!(parts)
 }
 
 fn collect_user_text_parts(parts: &[AgentPart]) -> String {

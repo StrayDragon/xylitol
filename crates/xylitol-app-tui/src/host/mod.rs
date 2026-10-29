@@ -941,6 +941,9 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn dispatch_pointer_click(&mut self, id: xylitol_tui::HitId) {
+        if self.dispatch_chrome_click(id) {
+            return;
+        }
         match id {
             xylitol_tui::GUTTER_TOP_HIT_ID => {
                 self.tui.application_owned_scroll_home();
@@ -948,6 +951,19 @@ impl<T: Terminal> HostSession<T> {
             xylitol_tui::GUTTER_BOTTOM_HIT_ID => {
                 self.tui.application_owned_scroll_to_end();
             }
+            _ => {
+                if let Some(root) = self.ui_root.as_ref() {
+                    let mut root = root.borrow_mut();
+                    if let Some(target) = root.fold_hits().target_for_hit(id) {
+                        root.toggle_fold_target(target);
+                    }
+                }
+            }
+        }
+    }
+
+    fn dispatch_chrome_click(&mut self, id: xylitol_tui::HitId) -> bool {
+        match id {
             crate::layout::UiRoot::SESSION_POPUP_HIT_ID => {
                 if let Some(root) = self.ui_root.as_ref() {
                     root.borrow_mut().close_session_popup();
@@ -968,15 +984,9 @@ impl<T: Terminal> HostSession<T> {
                 self.sync_session_sidebar_reserve();
                 self.tui.request_render(false);
             }
-            _ => {
-                if let Some(root) = self.ui_root.as_ref() {
-                    let mut root = root.borrow_mut();
-                    if let Some(target) = root.fold_hits().target_for_hit(id) {
-                        root.toggle_fold_target(target);
-                    }
-                }
-            }
+            _ => return false,
         }
+        true
     }
 
     fn handle_input(&mut self, input: InputEvent) {

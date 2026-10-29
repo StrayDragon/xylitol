@@ -371,6 +371,24 @@ impl PointerPipeline {
             .hit_at(col, row, view.scroll_top, view.transcript_rows)
     }
 
+    fn chrome_click_id(
+        &self,
+        hit: Option<HitId>,
+        down: Option<(u16, u16)>,
+        col: u16,
+        row: u16,
+        overlay_capturing: bool,
+    ) -> Option<HitId> {
+        if overlay_capturing || down != Some((col, row)) || self.dragged {
+            return None;
+        }
+        let id = hit?;
+        self.regions
+            .region_by_id(id)
+            .filter(|region| region.space == HitSpace::Chrome)
+            .map(|region| region.id)
+    }
+
     pub fn on_mouse(&mut self, event: &MouseEvent, view: PointerView) -> PointerOutcome {
         let (col, row) = (event.column, event.row);
         self.last_cell = Some((col, row));
@@ -447,16 +465,10 @@ impl PointerPipeline {
                     self.dragged = true;
                 }
                 if was_capture {
-                    let chrome_click = !view.overlay_capturing
-                        && down == Some((col, row))
-                        && !self.dragged
-                        && hit.is_some_and(|id| {
-                            self.regions
-                                .region_by_id(id)
-                                .is_some_and(|region| region.space == HitSpace::Chrome)
-                        });
-                    if chrome_click {
-                        self.pending_click = hit;
+                    if let Some(id) =
+                        self.chrome_click_id(hit, down, col, row, view.overlay_capturing)
+                    {
+                        self.pending_click = Some(id);
                     }
                     return PointerOutcome {
                         skip_selection: true,
