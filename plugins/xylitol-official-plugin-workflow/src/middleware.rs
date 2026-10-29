@@ -88,6 +88,21 @@ struct WorkflowState {
     pending_workflow_error: Option<String>,
 }
 
+impl WorkflowState {
+    fn step_to_fail(&mut self, tool_name: &str) -> Option<&mut WorkflowStep> {
+        let step = self
+            .plan
+            .as_mut()?
+            .steps
+            .iter_mut()
+            .find(|step| step.status == WorkflowStepStatus::InProgress)?;
+        if !step.tools.is_empty() && !step.tools.iter().any(|tool| tool == tool_name) {
+            return None;
+        }
+        Some(step)
+    }
+}
+
 pub struct WorkflowMiddleware {
     store: Option<Arc<dyn XySessionStore>>,
     ctx: Option<Ctx>,
@@ -370,33 +385,16 @@ impl LoopMiddleware for WorkflowMiddleware {
         }
         if ctx.is_error {
             let mut state = self.lock_state();
-            let unrelated = state
-                .plan
-                .as_ref()
-                .and_then(|plan| {
-                    plan.steps
-                        .iter()
-                        .find(|step| step.status == WorkflowStepStatus::InProgress)
-                })
-                .is_some_and(|step| {
-                    !step.tools.is_empty() && !step.tools.iter().any(|tool| tool == &ctx.tool_name)
-                });
-            if unrelated {
-                drop(state);
-                return LoopStep::continued(ctx);
-            }
-            if let Some(plan) = &mut state.plan
-                && let Some(step) = plan
-                    .steps
-                    .iter_mut()
-                    .find(|step| step.status == WorkflowStepStatus::InProgress)
-            {
+            let failed_id = {
+                let Some(step) = state.step_to_fail(&ctx.tool_name) else {
+                    return LoopStep::continued(ctx);
+                };
                 step.status = WorkflowStepStatus::Failed;
                 step.output_ref = Some(format!("failure:{}", ctx.tool_call_id));
-                let id = step.id.clone();
-                state.approved.remove(&id);
-                state.injected_step = None;
-            }
+                step.id.clone()
+            };
+            state.approved.remove(&failed_id);
+            state.injected_step = None;
         }
         LoopStep::continued(ctx)
     }

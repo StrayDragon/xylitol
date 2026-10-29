@@ -30,11 +30,7 @@ impl Plugin for PlanPlugin {
         let Some(registry) = ctx.get::<LoopMiddlewareRegistry>() else {
             return Ok(());
         };
-        let mode_handle = registry
-            .register(plan_mode_middleware(&self.config))
-            .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?;
-        let surface_handle = registry
-            .register(plan_tool_surface_middleware())
+        let (mode_handle, surface_handle) = register_plan_middlewares(&registry, &self.config)
             .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?;
         ctx.effect(|| async move {
             surface_handle.unregister();
@@ -43,6 +39,21 @@ impl Plugin for PlanPlugin {
         })?;
         Ok(())
     }
+}
+
+fn register_plan_middlewares(
+    registry: &LoopMiddlewareRegistry,
+    config: &PlanConfig,
+) -> std::result::Result<
+    (
+        xylitol_plugin_sdk::LoopMiddlewareHandle,
+        xylitol_plugin_sdk::LoopMiddlewareHandle,
+    ),
+    xylitol_plugin_sdk::error::XyError,
+> {
+    let mode_handle = registry.register(plan_mode_middleware(config))?;
+    let surface_handle = registry.register(plan_tool_surface_middleware())?;
+    Ok((mode_handle, surface_handle))
 }
 
 #[cfg(test)]

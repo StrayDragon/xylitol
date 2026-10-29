@@ -11,12 +11,7 @@ pub async fn load_conversation_history_from_store(
     store: &dyn XySessionStore,
     session_id: &str,
 ) -> Result<Vec<AgentMessage>, XyError> {
-    if let Err(error) = store.migrate_legacy_custom_types(session_id).await {
-        log::warn!(
-            target: "xylitol::session",
-            "legacy custom-type migration skipped: {error}"
-        );
-    }
+    migrate_legacy_on_load(store, session_id).await;
     let entries = store
         .load_leaf_branch(session_id)
         .await
@@ -26,17 +21,31 @@ pub async fn load_conversation_history_from_store(
         .iter()
         .filter_map(|entry| entry.as_agent_message())
         .collect();
+    Ok(fold_interrupted_bash(store, session_id, messages).await)
+}
 
+async fn migrate_legacy_on_load(store: &dyn XySessionStore, session_id: &str) {
+    if let Err(error) = store.migrate_legacy_custom_types(session_id).await {
+        log::warn!(
+            target: "xylitol::session",
+            "legacy custom-type migration skipped: {error}"
+        );
+    }
+}
+
+async fn fold_interrupted_bash(
+    store: &dyn XySessionStore,
+    session_id: &str,
+    messages: Vec<AgentMessage>,
+) -> Vec<AgentMessage> {
     match store.load_done_bash_ids(session_id).await {
-        Ok(done) => Ok(xylitol_plugin_sdk::session::fold_interrupted_bash_rows(
-            messages, &done,
-        )),
+        Ok(done) => xylitol_plugin_sdk::session::fold_interrupted_bash_rows(messages, &done),
         Err(error) => {
             log::warn!(
                 target: "xylitol::session",
                 "interrupted-bash fold skipped: load_done_bash_ids failed error={error}"
             );
-            Ok(messages)
+            messages
         }
     }
 }

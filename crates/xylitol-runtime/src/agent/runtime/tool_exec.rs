@@ -126,9 +126,7 @@ pub(crate) async fn prepare_call(
             Ok(out) => {
                 tool_name = out.ctx.tool_name;
                 tool_args = out.ctx.args;
-                if let Some(reason) = out.ctx.deny_reason {
-                    denied_reason = Some(reason);
-                }
+                denied_reason = denied_reason.or(out.ctx.deny_reason);
                 if out.control != LoopControl::Continue {
                     stop_run = true;
                     denied_reason = Some(format!(

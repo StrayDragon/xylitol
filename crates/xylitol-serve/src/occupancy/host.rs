@@ -1536,14 +1536,12 @@ fn plan_mode_event_from_value(
     if method != "set_plan_mode" {
         return None;
     }
-    let mode = match value
-        .get("mode")
-        .and_then(Value::as_str)
-        .unwrap_or("execute")
-    {
-        "plan" => xylitol_plugin_sdk::session::PlanModeKind::Plan,
-        _ => xylitol_plugin_sdk::session::PlanModeKind::Execute,
-    };
+    let mode = plan_mode_kind(
+        value
+            .get("mode")
+            .and_then(Value::as_str)
+            .unwrap_or("execute"),
+    );
     Some((
         mode,
         value
@@ -1551,6 +1549,13 @@ fn plan_mode_event_from_value(
             .and_then(Value::as_str)
             .map(str::to_string),
     ))
+}
+
+fn plan_mode_kind(mode: &str) -> xylitol_plugin_sdk::session::PlanModeKind {
+    match mode {
+        "plan" => xylitol_plugin_sdk::session::PlanModeKind::Plan,
+        _ => xylitol_plugin_sdk::session::PlanModeKind::Execute,
+    }
 }
 
 fn inline_staged_export(staged_export: bool, value: &mut Value) {
@@ -1700,6 +1705,28 @@ mod tests {
         assert_eq!(
             plan_mode_event_from_branch(&[]),
             (PlanModeKind::Execute, None)
+        );
+    }
+
+    #[test]
+    fn plan_mode_event_from_value_covers_all_modes() {
+        use xylitol_plugin_sdk::session::PlanModeKind;
+
+        assert_eq!(
+            plan_mode_event_from_value("set_plan_mode", &json!({"mode": "plan", "plan_id": "p1"}),),
+            Some((PlanModeKind::Plan, Some("p1".into())))
+        );
+        assert_eq!(
+            plan_mode_event_from_value("set_plan_mode", &json!({"mode": "execute"})),
+            Some((PlanModeKind::Execute, None))
+        );
+        assert_eq!(
+            plan_mode_event_from_value("set_plan_mode", &json!({})),
+            Some((PlanModeKind::Execute, None))
+        );
+        assert_eq!(
+            plan_mode_event_from_value("new_session", &json!({"mode": "plan"})),
+            None
         );
     }
 
