@@ -57,28 +57,6 @@ cp configs/secret.env.example .xylitol/secret.env
 
 API 密钥（API key）用 `{{ secret.DEEPSEEK_API_KEY }}` 这样的模板从 `secret.env` 引用。不要把密钥写进 YAML。`configs/example.yaml` 是带注释的样例，覆盖多模型、MCP 和 OTEL。
 
-#### Provider 预设
-
-常用兼容端可以用 `preset` 少写接入字段，只保留密钥（或显式覆盖）：
-
-```yaml
-models:
-  default_model: zen
-  models:
-    zen:
-      preset: opencode-zen
-      api_key: "{{ secret.OPENCODE_ZEN_API_KEY }}"
-```
-
-| preset | 兼容族 | api | base_url | 默认模型 |
-|---|---|---|---|---|
-| `zmodel` | OpenAI | `openai-completions` | `https://api.z.ai/api/paas/v4` | `glm-5.3` |
-| `opencode-zen` | OpenAI | `openai-completions` | `https://opencode.ai/zen/v1` | `deepseek-v4-flash-free` |
-| `clinepass` | OpenAI | `openai-completions` | `https://api.cline.bot/api/v1` | `cline-pass/deepseek-v4.1-flash` |
-| `commandcode` | OpenAI | `openai-completions` | `https://api.commandcode.ai/provider/v1` | `deepseek/deepseek-v4-pro` |
-
-预设只提供接入默认值（`provider / model / base_url / api / compat / thinking / thinking_levels / context_window`），不携带密钥、不改工具或 ReAct 语义。条目里的显式字段覆盖预设；未知预设会报 `unknown preset: <id>`。`zmodel` 用通用 API 端点；GLM Coding Plan 用户把 `base_url` 覆盖为 `https://api.z.ai/api/coding/paas/v4`。
-
 ### 3. 启动 host 与 TUI
 
 在终端 A 启动 host：

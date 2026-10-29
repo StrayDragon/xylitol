@@ -58,53 +58,32 @@ fn merge_config_layers(
     let mut merged = Value::Null;
     let mut from_yaml_layers = false;
 
-    merge_first_layer(
-        &mut merged,
-        &mut from_yaml_layers,
-        &[
-            paths.global_dir.join("config.yaml"),
-            paths.global_dir.join("config.yml"),
-        ],
-        secrets,
-    )?;
-
-    if let Some(proj_dir) = &paths.project_dir {
-        merge_first_layer(
-            &mut merged,
-            &mut from_yaml_layers,
-            &[proj_dir.join("config.yaml"), proj_dir.join("config.yml")],
-            secrets,
-        )?;
+    if let Some(global_base) = first_existing(&[
+        paths.global_dir.join("config.yaml"),
+        paths.global_dir.join("config.yml"),
+    ]) {
+        log::info!(
+            target: "xylitol::config",
+            "loading global config {}",
+            global_base.display()
+        );
+        merge_layer(&mut merged, &mut from_yaml_layers, &global_base, secrets)?;
     }
 
-    if let Some(cli_path) = cli_config {
-        merge_first_layer(
-            &mut merged,
-            &mut from_yaml_layers,
-            &[cli_path.to_path_buf()],
-            secrets,
-        )?;
+    if let Some(proj_dir) = &paths.project_dir
+        && let Some(proj_base) =
+            first_existing(&[proj_dir.join("config.yaml"), proj_dir.join("config.yml")])
+    {
+        merge_layer(&mut merged, &mut from_yaml_layers, &proj_base, secrets)?;
     }
 
-    super::presets::apply_presets(&mut merged)?;
+    if let Some(cli_path) = cli_config
+        && cli_path.exists()
+    {
+        merge_layer(&mut merged, &mut from_yaml_layers, cli_path, secrets)?;
+    }
+
     Ok((merged, from_yaml_layers))
-}
-
-fn merge_first_layer(
-    merged: &mut Value,
-    from_yaml_layers: &mut bool,
-    candidates: &[std::path::PathBuf],
-    secrets: &super::secret_env::SecretMap,
-) -> Result<(), LoadError> {
-    let Some(path) = first_existing(candidates) else {
-        return Ok(());
-    };
-    log::info!(
-        target: "xylitol::config",
-        "loading config {}",
-        path.display()
-    );
-    merge_layer(merged, from_yaml_layers, &path, secrets)
 }
 
 fn merge_layer(
@@ -516,60 +495,6 @@ compaction:
         let e = cfg.model.models.get("x").unwrap();
         assert_eq!(e.api_key.as_deref(), Some("sk-anchor"), "字面量 MUST 原样");
         assert_eq!(e.model, "m1");
-    }
-
-    #[test]
-    #[serial(env_global)]
-    fn model_entry_preset_expands_end_to_end() {
-        let home = tempfile::tempdir().unwrap();
-        let global = home.path().join(".config").join("xylitol");
-        std::fs::create_dir_all(&global).unwrap();
-        write_model_config(
-            &global,
-            "    zen:\n      preset: opencode-zen\n      api_key: sk-zen\n",
-        );
-        let cfg = load_with(&global).expect("load preset");
-        let e = cfg.model.models.get("zen").unwrap();
-        assert_eq!(e.preset.as_deref(), Some("opencode-zen"));
-        assert_eq!(e.model, "deepseek-v4-flash-free");
-        assert_eq!(e.base_url.as_deref(), Some("https://opencode.ai/zen/v1"));
-        assert_eq!(e.api.as_deref(), Some("openai-completions"));
-        assert_eq!(e.compat.as_deref(), Some("deepseek"));
-        assert_eq!(e.context_window, 200_000);
-        assert_eq!(e.api_key.as_deref(), Some("sk-zen"));
-        let resolved = cfg.resolve_model("zen").expect("resolve");
-        assert_eq!(resolved.provider_name(), "openai");
-        assert_eq!(resolved.model, "deepseek-v4-flash-free");
-    }
-
-    #[test]
-    #[serial(env_global)]
-    fn model_entry_preset_explicit_fields_override() {
-        let home = tempfile::tempdir().unwrap();
-        let global = home.path().join(".config").join("xylitol");
-        std::fs::create_dir_all(&global).unwrap();
-        write_model_config(
-            &global,
-            "    zen:\n      preset: opencode-zen\n      model: my-model\n      context_window: 64000\n",
-        );
-        let cfg = load_with(&global).expect("load preset");
-        let e = cfg.model.models.get("zen").unwrap();
-        assert_eq!(e.model, "my-model");
-        assert_eq!(e.context_window, 64_000);
-        assert_eq!(e.base_url.as_deref(), Some("https://opencode.ai/zen/v1"));
-    }
-
-    #[test]
-    #[serial(env_global)]
-    fn model_entry_unknown_preset_rejects_with_context() {
-        let home = tempfile::tempdir().unwrap();
-        let global = home.path().join(".config").join("xylitol");
-        std::fs::create_dir_all(&global).unwrap();
-        write_model_config(&global, "    mystery:\n      preset: no-such\n");
-        let err = load_with(&global).expect_err("unknown preset");
-        let text = err.to_string();
-        assert!(text.contains("unknown preset: no-such"), "{text}");
-        assert!(text.contains("models.mystery"), "{text}");
     }
 
     #[test]

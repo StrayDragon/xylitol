@@ -793,18 +793,9 @@
           ]
         },
         "model": {
-          "default": "",
           "type": "string"
         },
-        "preset": {
-          "default": null,
-          "type": [
-            "string",
-            "null"
-          ]
-        },
         "provider": {
-          "default": "openai",
           "type": "string"
         },
         "thinking": {
@@ -835,6 +826,10 @@
           ]
         }
       },
+      "required": [
+        "provider",
+        "model"
+      ],
       "type": "object"
     }
   },
