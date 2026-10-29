@@ -229,11 +229,10 @@ impl UiRoot {
         match &mut self.slot {
             EditorSlot::Editor => self.editor.render(width.max(1)),
             EditorSlot::Tree(tree) => tree.render(width, self.theme),
-            EditorSlot::Plate => vec![
-                " Command Plate".to_string(),
+            slot @ (EditorSlot::Plate | EditorSlot::Settings) => vec![
+                format!(" {}", slot.title()),
                 " (stub) Esc close".to_string(),
             ],
-            EditorSlot::Settings => vec![" Settings".to_string(), " (stub) Esc close".to_string()],
             EditorSlot::Choice(ask) => ask.render(width),
             EditorSlot::Models(models) => models.render(width, self.theme),
             EditorSlot::Scenes(scenes) => scenes.render(width, self.theme),

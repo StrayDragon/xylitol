@@ -673,22 +673,7 @@ impl<T: Terminal> HostSession<T> {
                 )
             };
 
-        let cue = if driver.capability_pending() {
-            Some(crate::driver::CAPABILITY_PENDING_CUE.to_string())
-        } else if agent_run {
-            if let Some((active_label, active_thinking, _)) = driver.active_turn() {
-                crate::layout::status_next_turn_cue_text(
-                    &active_label,
-                    &active_thinking,
-                    &selected_label,
-                    &selected_thinking,
-                )
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let cue = next_turn_cue(driver, agent_run, &selected_label, &selected_thinking);
 
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
@@ -1256,4 +1241,28 @@ impl<T: Terminal> HostSession<T> {
             self.tui.set_focus(Some(0));
         }
     }
+}
+
+fn next_turn_cue(
+    driver: &dyn crate::driver::XyDriver,
+    agent_run: bool,
+    selected_label: &str,
+    selected_thinking: &str,
+) -> Option<String> {
+    if driver.capability_pending() {
+        return Some(crate::driver::CAPABILITY_PENDING_CUE.to_string());
+    }
+    if !agent_run {
+        return None;
+    }
+    driver
+        .active_turn()
+        .and_then(|(active_label, active_thinking, _)| {
+            crate::layout::status_next_turn_cue_text(
+                &active_label,
+                &active_thinking,
+                selected_label,
+                selected_thinking,
+            )
+        })
 }

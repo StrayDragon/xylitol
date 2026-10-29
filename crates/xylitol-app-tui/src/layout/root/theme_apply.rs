@@ -1,7 +1,6 @@
 use xylitol_tui::components::loader::{Loader, LoaderIndicatorOptions};
 use xylitol_tui::fg_rgb;
 
-use super::super::slots::EditorSlot;
 use super::UiRoot;
 use crate::layout::LayoutTheme;
 
@@ -23,25 +22,7 @@ impl UiRoot {
             Some(LoaderIndicatorOptions::default()),
         );
         self.sync_editor_border();
-        if matches!(&self.slot, EditorSlot::SessionResume(_)) {
-            self.slot =
-                EditorSlot::SessionResume(crate::session_resume::SessionResumePanel::new(theme));
-        } else {
-            match &mut self.slot {
-                EditorSlot::Tree(tree) => tree.wipe_themed(theme),
-                EditorSlot::Models(models) => models.retheme(theme),
-                EditorSlot::Scenes(scenes) => scenes.retheme(theme),
-                EditorSlot::Themes(themes) => themes.retheme(theme),
-                EditorSlot::Mcp(mcp) => mcp.retheme(theme),
-                EditorSlot::Capabilities(caps) => caps.retheme(theme),
-                EditorSlot::ImportConfirm(imp) => imp.retheme(theme),
-                EditorSlot::Editor
-                | EditorSlot::Plate
-                | EditorSlot::Settings
-                | EditorSlot::Choice(_)
-                | EditorSlot::SessionResume(_) => {}
-            }
-        }
+        self.slot.retheme(theme);
         self.refresh_footer();
     }
 }

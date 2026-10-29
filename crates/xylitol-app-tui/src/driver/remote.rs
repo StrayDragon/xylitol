@@ -1472,26 +1472,22 @@ where
             Command::AppendEntryLabel {
                 target_id, label, ..
             } => self.exec_append_entry_label(target_id, label).await,
-            Command::ListSessions { .. } => self.exec_list_sessions().await,
-            Command::LoadSessionEntries { session_id, .. } => {
-                self.exec_load_session_entries(session_id).await
-            }
-            Command::NewSession { .. } => self.exec_new_session().await,
-            Command::GetSessionName { .. } => self.exec_get_session_name().await,
-            Command::SetSessionName { name, .. } => self.exec_set_session_name(name).await,
-            Command::SetSessionNameFor {
-                session_id, name, ..
-            } => self.exec_set_session_name_for(session_id, name).await,
-            Command::DeleteSession { session_id, .. } => self.exec_delete_session(session_id).await,
+            cmd @ (Command::ListSessions { .. }
+            | Command::LoadSessionEntries { .. }
+            | Command::NewSession { .. }
+            | Command::GetSessionName { .. }
+            | Command::SetSessionName { .. }
+            | Command::SetSessionNameFor { .. }
+            | Command::DeleteSession { .. }) => self.exec_session_meta(cmd).await,
             Command::Reload { .. } => self.exec_reload().await,
             Command::LoadedResources { .. } => self.exec_loaded_resources().await,
             Command::GetQueueStats { .. } => self.exec_get_queue_stats().await,
             Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
                 crate::driver::XyDriver::get_commands(self),
             )),
-            Command::GetCapabilities { .. } => self.exec_get_capabilities().await,
-            Command::SetCapability { id, enabled } => self.exec_set_capability(id, enabled).await,
-            Command::ClearCapabilities { .. } => self.exec_clear_capabilities().await,
+            cmd @ (Command::GetCapabilities { .. }
+            | Command::SetCapability { .. }
+            | Command::ClearCapabilities { .. }) => self.exec_capability(cmd).await,
             Command::Steer { message, .. } => self.exec_steer(message).await,
             Command::FollowUp { message, .. } => self.exec_follow_up(message).await,
             Command::ClearQueue {
@@ -1836,6 +1832,32 @@ where
             *cached = snap.clone();
         }
         snap
+    }
+
+    async fn exec_capability(&self, cmd: Command) -> Result<DispatchOutcome, XyDriverError> {
+        match cmd {
+            Command::GetCapabilities { .. } => self.exec_get_capabilities().await,
+            Command::SetCapability { id, enabled } => self.exec_set_capability(id, enabled).await,
+            Command::ClearCapabilities { .. } => self.exec_clear_capabilities().await,
+            other => Err(crate::dispatch::transport_variant_error(&other)),
+        }
+    }
+
+    async fn exec_session_meta(&mut self, cmd: Command) -> Result<DispatchOutcome, XyDriverError> {
+        match cmd {
+            Command::ListSessions { .. } => self.exec_list_sessions().await,
+            Command::LoadSessionEntries { session_id, .. } => {
+                self.exec_load_session_entries(session_id).await
+            }
+            Command::NewSession { .. } => self.exec_new_session().await,
+            Command::GetSessionName { .. } => self.exec_get_session_name().await,
+            Command::SetSessionName { name, .. } => self.exec_set_session_name(name).await,
+            Command::SetSessionNameFor {
+                session_id, name, ..
+            } => self.exec_set_session_name_for(session_id, name).await,
+            Command::DeleteSession { session_id, .. } => self.exec_delete_session(session_id).await,
+            other => Err(crate::dispatch::transport_variant_error(&other)),
+        }
     }
 
     async fn exec_get_capabilities(&self) -> Result<DispatchOutcome, XyDriverError> {
