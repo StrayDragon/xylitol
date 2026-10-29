@@ -33,15 +33,6 @@
       当 以 provider 种类读取适配器缺省
       那么 manifest 缺省按 provider 选协议族
 
-  @req:r2977
-  规则: preset-adapter-mapping
-    Provider 预设 须只展开为 XyModelEntryConfig 的接入字段；adapter 选择 仍只经 XyModelConfig 的 kind 与 api（见 adapter-selection），不得为预设增加第二套选择分支或硬编码 adapter。预设的 api 须落在可识别集合内；预设名 不得进入 XyModelConfig，也不得参与 adapter 选择。
-
-    场景: 预设走既有适配器选择
-      假如 预设展开后的模型条目 api 为 openai-completions
-      当 解析模型配置
-      那么 adapter 为 OpenAI Completions 且预设名不参与选择
-
   @req:r1504
   规则: responses-input-items-have-type
     OpenAI Responses adapter 须序列化每个 input item 并带显式 type 字段，匹配 Responses API schema：message items 为 {type: message, role, content: [{type: input_text|output_text, text}]}，function calls 为 {type: function_call, ...}，function outputs 为 {type: function_call_output, ...}。不得发出无 type 的裸 {role, content} 对象：Responses API 在 input array 混入非 message items 时会拒绝 Cannot determine type of 'item'（恰发生在 tool-calling continuation round）。assistant round 仅含 tool call 无 text 时 不得发出空 message item（仅 function_call item）。证据：convert_messages_to_input_items 将 message items 建为无 type 的 {role, content}，c375 ReAct-loop fix 后首个真实 tool continuation round 被 OpenAI 以 Cannot determine type of 'item' 拒绝；该函数无测试覆盖。
