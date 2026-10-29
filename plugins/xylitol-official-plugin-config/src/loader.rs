@@ -148,6 +148,7 @@ fn load_from_paths(
 
     reject_legacy_loop_example_section(&merged)?;
     reject_legacy_loop_policies_keys(&merged)?;
+    reject_legacy_provider_preset(&merged)?;
     let mut config: AppConfig = serde_json::from_value(merged.clone())?;
     super::validate::validate_merged_config(&merged)?;
     validate_app_config(&config)?;
@@ -185,6 +186,33 @@ fn reject_legacy_loop_policies_keys(merged: &Value) -> Result<(), LoadError> {
         if loop_policies.contains_key(old) {
             return Err(LoadError::validation(format!(
                 "loop_policies.{old} is no longer supported; use `{new}` (see configs/example.yaml)"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn reject_legacy_provider_preset(merged: &Value) -> Result<(), LoadError> {
+    if merged.get("provider_presets").is_some() {
+        return Err(LoadError::validation(
+            "provider_presets is no longer supported; configure each model entry explicitly \
+             with `provider` / `model` / `base_url` / `api` (and optional `compat`), \
+             or point the model at a gateway (see configs/example.yaml)",
+        ));
+    }
+    let Some(models) = merged
+        .get("models")
+        .and_then(|models| models.get("models"))
+        .and_then(Value::as_object)
+    else {
+        return Ok(());
+    };
+    for (alias, entry) in models {
+        if entry.get("preset").is_some() {
+            return Err(LoadError::validation(format!(
+                "models.{alias}.preset is no longer supported after the provider preset rollback; \
+                 set `provider` / `model` / `base_url` / `api` (and optional `compat`) explicitly, \
+                 or point the model at a gateway (see configs/example.yaml)"
             )));
         }
     }
@@ -634,6 +662,75 @@ compaction:
         let msg = err.to_string();
         assert!(msg.contains("todo_progress"), "got: {msg}");
         assert!(msg.contains("todo.progress"), "got: {msg}");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn legacy_model_preset_rejected_with_migration_hint() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "models:\n  models:\n    zen:\n      preset: opencode-zen\n      model: deepseek-v4-flash-free\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let msg = err.to_string();
+        assert!(msg.contains("models.zen.preset"), "got: {msg}");
+        assert!(msg.contains("configs/example.yaml"), "got: {msg}");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn legacy_provider_presets_section_rejected() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "provider_presets:\n  - opencode-zen\nmodels:\n  models: {}\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        let err = load_app_config_with(None, env_map(&entries), None).expect_err("reject");
+        let msg = err.to_string();
+        assert!(msg.contains("provider_presets"), "got: {msg}");
+        assert!(msg.contains("configs/example.yaml"), "got: {msg}");
+    }
+
+    #[test]
+    #[serial(env_global)]
+    fn explicit_model_fields_load_without_legacy_check() {
+        let home = tempfile::tempdir().unwrap();
+        let global = home.path().join(".config").join("xylitol");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::write(
+            global.join("config.yaml"),
+            "models:\n  models:\n    zen:\n      provider: openai\n      model: deepseek-v4-flash-free\n      base_url: https://opencode.ai/zen/v1\n      api: openai-completions\n",
+        )
+        .unwrap();
+        let home_s = home.path().to_str().unwrap();
+        let global_s = global.to_str().unwrap();
+        let entries = [
+            ("HOME", home_s),
+            ("XYLITOL_CONFIG_DIR", global_s),
+            ("XYLITOL_PROJECT_DIR", home_s),
+        ];
+        load_app_config_with(None, env_map(&entries), None).expect("explicit fields load");
     }
 
     #[test]

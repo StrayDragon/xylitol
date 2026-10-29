@@ -6,6 +6,7 @@ pub struct TokenizerBdd {
     pub(crate) config: RefCell<xylitol_kernel::config::types::AppConfig>,
     pub(crate) cfg_ok: Cell<bool>,
     pub(crate) cfg_err: RefCell<String>,
+    pub(crate) legacy_path: RefCell<Option<String>>,
 }
 
 impl TokenizerBdd {
@@ -14,6 +15,7 @@ impl TokenizerBdd {
             config: RefCell::new(xylitol_kernel::config::types::AppConfig::default()),
             cfg_ok: Cell::new(false),
             cfg_err: RefCell::new(String::new()),
+            legacy_path: RefCell::new(None),
         }
     }
 }

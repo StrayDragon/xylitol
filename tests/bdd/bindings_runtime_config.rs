@@ -174,3 +174,9 @@ fn test_c2997_tools_empty(tokenizer_bdd: TokenizerBdd) {}
     name = "未知工具名加载成功"
 )]
 fn test_c2997_tools_unknown(tokenizer_bdd: TokenizerBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "旧预设键拒绝并提示迁移"
+)]
+fn test_c3000_legacy_preset(ws: Workspace, tokenizer_bdd: TokenizerBdd) {}

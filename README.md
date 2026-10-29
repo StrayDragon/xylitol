@@ -57,6 +57,13 @@ cp configs/secret.env.example .xylitol/secret.env
 
 API 密钥（API key）用 `{{ secret.DEEPSEEK_API_KEY }}` 这样的模板从 `secret.env` 引用。不要把密钥写进 YAML。`configs/example.yaml` 是带注释的样例，覆盖多模型、MCP 和 OTEL。
 
+#### Provider preset 迁移
+
+内置 provider preset 已回滚。旧配置里的 `models.<alias>.preset` 与顶层 `provider_presets` 会在加载期硬失败，不再静默忽略。迁移方式二选一：
+
+- 展开为显式字段：`provider` / `model` / `base_url` / `api`（可选 `compat`）。
+- 把多端差异交给网关，模型条目指向网关地址。
+
 #### 检索工具选择
 
 默认装配 fff 工具源：模型看到 `ffgrep` / `fffind`，内置 `grep` / `find` 被同类替换隐藏。用顶层 `tools` 列表控制可见工具：

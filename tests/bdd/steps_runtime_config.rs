@@ -610,3 +610,60 @@ fn t_rc_tools_unknown(tokenizer_bdd: &TokenizerBdd) {
     let cfg = tokenizer_bdd.config.borrow();
     assert!(cfg.tools.iter().any(|entry| entry == "+no-such-tool"));
 }
+
+#[given("YAML 模型条目含 preset opencode-zen")]
+fn g_rc_legacy_preset(ws: &crate::bdd::fixtures::Workspace, tokenizer_bdd: &TokenizerBdd) {
+    ws.init();
+    let path = ws.ws("legacy-preset.yaml");
+    std::fs::write(
+        &path,
+        "models:\n  models:\n    zen:\n      preset: opencode-zen\n      model: deepseek-v4-flash-free\n",
+    )
+    .unwrap();
+    tokenizer_bdd.legacy_path.replace(Some(path));
+}
+
+#[when("以加载器加载该配置")]
+fn w_rc_load_legacy(ws: &crate::bdd::fixtures::Workspace, tokenizer_bdd: &TokenizerBdd) {
+    let path = tokenizer_bdd
+        .legacy_path
+        .borrow()
+        .clone()
+        .expect("legacy config path prepared");
+    let isolated = ws.ws("isolated-global-config");
+    std::fs::create_dir_all(&isolated).unwrap();
+    let env_dir = isolated.clone();
+    let env_probe = move |key: &str| match key {
+        "XYLITOL_CONFIG_DIR" | "HOME" => Some(env_dir.clone()),
+        _ => None,
+    };
+    match xylitol_kernel::config::loader::load_app_config_with(
+        Some(std::path::Path::new(&path)),
+        env_probe,
+        None,
+    ) {
+        Ok(_) => {
+            tokenizer_bdd.cfg_ok.set(true);
+            tokenizer_bdd.cfg_err.replace(String::new());
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
+        }
+    }
+}
+
+#[then("加载失败且错误含 preset 迁移指引")]
+fn t_rc_legacy_preset(tokenizer_bdd: &TokenizerBdd) {
+    assert!(
+        !tokenizer_bdd.cfg_ok.get(),
+        "legacy preset must fail closed: {}",
+        tokenizer_bdd.cfg_err.borrow()
+    );
+    let err = tokenizer_bdd.cfg_err.borrow();
+    assert!(err.contains("preset"), "error must name preset: {err}");
+    assert!(
+        err.contains("configs/example.yaml"),
+        "error must point at migration example: {err}"
+    );
+}
