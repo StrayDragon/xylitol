@@ -2,6 +2,9 @@
 depends_on: []
 title: 给 TUI 历史缓冲设置上限
 needs_specs_change: true
+branch: sdd/c2991-update-loaded-history-buffer
+base_branch: main
+base_sha: 435ea81507ce6e0ca5708e515ea326f38c0052cd
 ---
 
 # 给 TUI 历史缓冲设置上限

@@ -2,6 +2,7 @@ use crate::bridge::{UiEntry, UiModel};
 
 pub const HISTORY_PAGE: usize = 200;
 pub const HISTORY_WINDOW: usize = 800;
+pub const HISTORY_BUFFER: usize = HISTORY_WINDOW + HISTORY_PAGE;
 
 #[derive(Debug, Clone, Default)]
 pub struct LoadedHistory {
@@ -20,12 +21,14 @@ impl LoadedHistory {
         let first_entry_id = entries
             .iter()
             .find_map(|e| e.entry_id().map(str::to_string));
-        Self {
+        let mut history = Self {
             session_id: session_id.to_string(),
             entries,
             first_entry_id,
             has_more,
-        }
+        };
+        history.enforce_buffer_cap();
+        history
     }
 
     pub fn merge_older(
@@ -44,9 +47,26 @@ impl LoadedHistory {
                 merged.push(entry);
             }
         }
-        self.first_entry_id = merged.iter().find_map(|e| e.entry_id().map(str::to_string));
         self.entries = merged;
         self.has_more = has_more;
+        self.enforce_buffer_cap();
+    }
+
+    fn enforce_buffer_cap(&mut self) {
+        if self.entries.len() <= HISTORY_BUFFER {
+            self.first_entry_id = self
+                .entries
+                .iter()
+                .find_map(|entry| entry.entry_id().map(str::to_string));
+            return;
+        }
+        let drop = self.entries.len() - HISTORY_BUFFER;
+        self.entries.drain(..drop);
+        self.has_more = true;
+        self.first_entry_id = self
+            .entries
+            .iter()
+            .find_map(|entry| entry.entry_id().map(str::to_string));
     }
 }
 
@@ -245,5 +265,54 @@ mod tests {
         assert_eq!(history.entries.len(), 3, "duplicates must not be re-added");
         assert_eq!(history.first_entry_id.as_deref(), Some("a"));
         assert!(!history.has_more);
+    }
+
+    fn session_entry(id: &str) -> xylitol_plugin_sdk::session::SessionEntry {
+        use xylitol_plugin_sdk::session::{CustomEntry, EntryBase, SessionEntry};
+
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: id.into(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: "test".into(),
+            data: serde_json::Value::Null,
+        })
+    }
+
+    #[test]
+    fn loaded_history_is_capped_on_init() {
+        let entries: Vec<_> = (0..HISTORY_BUFFER + HISTORY_PAGE)
+            .map(|i| session_entry(&format!("e{i}")))
+            .collect();
+        let history = LoadedHistory::new("s", entries, false);
+        assert_eq!(history.entries.len(), HISTORY_BUFFER);
+        assert!(history.has_more, "evicted entries are still on disk");
+        assert_eq!(history.first_entry_id.as_deref(), Some("e200"));
+        assert_eq!(
+            notice_text(history.has_more, false),
+            Some(load_earlier_notice_text()),
+            "a capped buffer must fall back to load-earlier"
+        );
+    }
+
+    #[test]
+    fn merge_older_evicts_and_marks_has_more() {
+        let entries: Vec<_> = (0..HISTORY_BUFFER)
+            .map(|i| session_entry(&format!("e{i}")))
+            .collect();
+        let mut history = LoadedHistory::new("s", entries, false);
+        let older: Vec<_> = (0..HISTORY_PAGE)
+            .map(|i| session_entry(&format!("o{i}")))
+            .collect();
+        history.merge_older(older, false);
+        assert_eq!(history.entries.len(), HISTORY_BUFFER);
+        assert!(
+            history.has_more,
+            "evicted older page must be reachable again"
+        );
+        assert_eq!(history.first_entry_id.as_deref(), Some("e0"));
     }
 }

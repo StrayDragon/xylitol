@@ -678,3 +678,63 @@ fn t_no_notice(fixed_zone_bdd: &FixedZoneBdd) {
         "short sessions must never show a pagination hint"
     );
 }
+
+thread_local! {
+    static HISTORY_BUFFER_STATE: RefCell<Option<xylitol_app_tui::history_window::LoadedHistory>> =
+        const { RefCell::new(None) };
+}
+
+fn history_buffer_entry(id: &str) -> xylitol_plugin_sdk::session::SessionEntry {
+    use xylitol_plugin_sdk::session::{CustomEntry, EntryBase, SessionEntry};
+
+    SessionEntry::Custom(CustomEntry {
+        base: EntryBase {
+            entry_type: "custom".into(),
+            id: id.into(),
+            parent_id: None,
+            timestamp: 0,
+        },
+        custom_type: "test".into(),
+        data: serde_json::Value::Null,
+    })
+}
+
+#[given("已加载缓冲超过端侧缓冲上限")]
+fn g_history_buffer_over_cap() {
+    use xylitol_app_tui::history_window::{HISTORY_BUFFER, HISTORY_PAGE};
+
+    let entries: Vec<_> = (0..HISTORY_BUFFER + HISTORY_PAGE)
+        .map(|i| history_buffer_entry(&format!("e{i}")))
+        .collect();
+    let history = xylitol_app_tui::history_window::LoadedHistory::new("s", entries, false);
+    HISTORY_BUFFER_STATE.with(|slot| slot.borrow_mut().replace(history));
+}
+
+#[when("合并更早一页")]
+fn w_merge_older_page() {
+    use xylitol_app_tui::history_window::HISTORY_PAGE;
+
+    let older: Vec<_> = (0..HISTORY_PAGE)
+        .map(|i| history_buffer_entry(&format!("o{i}")))
+        .collect();
+    HISTORY_BUFFER_STATE.with(|slot| {
+        if let Some(history) = slot.borrow_mut().as_mut() {
+            history.merge_older(older, false);
+        }
+    });
+}
+
+#[then("缓冲不超过上限且提示回退为加载更早")]
+fn t_history_buffer_capped() {
+    use xylitol_app_tui::history_window::HISTORY_BUFFER;
+
+    let history = HISTORY_BUFFER_STATE
+        .with(|slot| slot.borrow().clone())
+        .expect("loaded history");
+    assert!(
+        history.entries.len() <= HISTORY_BUFFER,
+        "buffer must stay capped: {}",
+        history.entries.len()
+    );
+    assert!(history.has_more, "evicted page must be reachable from disk");
+}
