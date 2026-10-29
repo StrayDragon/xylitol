@@ -245,3 +245,17 @@
   @req:r1084
   规则: resume-import-provider-prefix-path
     resume_session / import_from_jsonl（或等价加载）后用于打模型的 history 须经与同进程续跑相同的唯一路径：SessionEntry → as_agent_message（或等价）→ project_for_llm → ResponsesAssembler；有损 Env 折叠文案 须形状稳定。不得另建平行 Env 折叠；不得无显式 change 改稳定折叠串。system date 日界见相邻 c1905；tools 冻表见 c1900。由单测覆盖，不得强制新 BDD step。
+
+  @req:r2982
+  规则: session-capability-overlay
+    会话内工具与 MCP 服务器开关 须为会话级临时覆盖：toggle 须只影响本会话，会话结束即丢，不得写全局配置或会话 JSONL。覆盖 须在下一回合边界生效（回合内 toggle 不得拆除当前回合已开工的工具），待生效状态 须可经能力快照观测。工具以 `tool:<name>` 标识、MCP 服务器以 `mcp:<server>` 标识；禁用 MCP 服务器 须隐藏其 `mcp__<server>__*` 工具，但不得改变服务器连接本身。未知标识 须拒绝且不得静默成功。
+
+    场景: 覆盖于下一回合生效
+      假如 会话已装配工具 "read" 且工具表已冻结
+      当 禁用能力 "tool:read" 并开始下一回合
+      那么 下一回合工具表不含 "read" 且待生效标记清除
+
+    场景: 覆盖不跨会话
+      假如 会话 A 禁用能力 "tool:read"
+      当 新会话 B 读取能力快照
+      那么 会话 B 的 "tool:read" 仍为启用且无待生效标记

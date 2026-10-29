@@ -156,3 +156,19 @@
       假如 交互 bang 正在运行且驱动为 ScriptedDriver
       当 提交声明为 Inline 的无参 /model
       那么 模型列表 effect 在 bang 结束前挂载生效
+
+  @req:r2984
+  规则: slash-capabilities
+    产品 TUI 须解析无参 `/capabilities`（别名 `/caps`）：打开替换 editor 槽的能力覆盖盘 SelectList（对齐 /mcp），汇总 须含 enabled/total 与待生效状态；行 须含能力 id、类型（tool/mcp）与开关态。Enter 须 toggle 当前项并经共享 dispatch 提交 `SetCapability`，槽 须保持打开并刷新；Esc 关槽 不得 abort agent。存在待生效覆盖时 status 区 须显示 `Next turn: capability overlay`。带参 须 usage 错误；busy 时 须为 BusySlashPolicy Allow 且 Exec=Inline。SlashCommandSource 须列出 capabilities。
+
+    场景: 能力覆盖盘打开并列出条目
+      当 以主机泵注入能力快照后提交 "/capabilities"
+      那么 能力覆盖盘打开且列出能力 id 与汇总
+      当 以主机泵在能力覆盖盘上切换首项
+      那么 能力开关经共享分发提交且待生效提示出现
+
+    场景: Esc关闭能力覆盖盘
+      当 以主机泵注入能力快照后提交 "/capabilities"
+      那么 能力覆盖盘打开且列出能力 id 与汇总
+      当 以主机泵在能力覆盖盘上按 Esc
+      那么 能力覆盖盘关闭且未 abort agent
