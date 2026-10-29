@@ -146,9 +146,7 @@ fn load_from_paths(
         });
     }
 
-    reject_legacy_loop_example_section(&merged)?;
-    reject_legacy_loop_policies_keys(&merged)?;
-    reject_legacy_provider_preset(&merged)?;
+    reject_legacy_config_keys(&merged)?;
     let mut config: AppConfig = serde_json::from_value(merged.clone())?;
     super::validate::validate_merged_config(&merged)?;
     validate_app_config(&config)?;
@@ -157,6 +155,13 @@ fn load_from_paths(
         config,
         from_yaml_layers,
     })
+}
+
+fn reject_legacy_config_keys(merged: &Value) -> Result<(), LoadError> {
+    reject_legacy_loop_example_section(merged)?;
+    reject_legacy_loop_policies_keys(merged)?;
+    reject_legacy_provider_preset(merged)?;
+    Ok(())
 }
 
 fn reject_legacy_loop_example_section(merged: &Value) -> Result<(), LoadError> {
