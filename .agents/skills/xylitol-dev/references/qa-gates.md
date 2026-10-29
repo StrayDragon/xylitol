@@ -33,7 +33,7 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名�
 
 ## E2E CI（非阻塞）
 
-- `.github/workflows/tui-e2e.yaml`：`workflow_dispatch` + nightly + PR 带 `tui-e2e` label；装 tmux 后跑 `cargo test --test tui_e2e -- --ignored --test-threads=1`（每个用例经 `cargo run` 起 Host，并行会争 cargo 锁）。
+- `.github/workflows/tui-e2e.yaml`：`workflow_dispatch` + nightly + PR 带 `tui-e2e` label；装 tmux 后先 `cargo build --bin xylitol`，再跑 `cargo test --test tui_e2e -- --ignored --test-threads=1`（每个用例经 `cargo run` 起 Host；并行争 cargo 锁，首次 `cargo run` 的编译也会吃掉 120s 启动窗）。
 - **不加入 required checks**；先观察 flaky，再决定是否升级为阻塞。本地仍用 `just qa-e2e`（含 `just qa`）。
 
 ## SDD validate 分层
