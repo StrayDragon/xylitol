@@ -2,6 +2,9 @@
 depends_on: []
 title: 明确 before_tool 拒绝原因在中间件链上的语义
 needs_specs_change: true
+branch: sdd/c2990-fix-deny-reason-chain-semantics
+base_branch: main
+base_sha: 5faac9c16079b8af80472a14a54635eae1f0fb9d
 ---
 
 # 明确 before_tool 拒绝原因在中间件链上的语义
