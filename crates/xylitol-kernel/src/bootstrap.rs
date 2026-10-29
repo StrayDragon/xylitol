@@ -289,10 +289,16 @@ impl std::fmt::Display for BootstrapError {
 
 impl std::error::Error for BootstrapError {}
 
+struct ProfileAssembly {
+    system_prompt: Option<String>,
+    model: Option<String>,
+    tools: Vec<String>,
+}
+
 fn resolve_profile_assembly(
     app_config: Option<&xylitol_official_plugin_config::types::AppConfig>,
     agent_profile: Option<&str>,
-) -> Result<(Option<String>, Option<String>, Vec<String>), BootstrapError> {
+) -> Result<ProfileAssembly, BootstrapError> {
     let resolved = match agent_profile {
         Some(name) => {
             let Some(cfg) = app_config else {
@@ -308,16 +314,16 @@ fn resolve_profile_assembly(
         }
         None => app_config.and_then(|cfg| cfg.resolve_default_profile().ok()),
     };
-    Ok((
-        resolved
+    Ok(ProfileAssembly {
+        system_prompt: resolved
             .as_ref()
             .and_then(|profile| profile.system_prompt.clone()),
-        resolved.as_ref().map(|profile| profile.model_id.clone()),
-        resolved
+        model: resolved.as_ref().map(|profile| profile.model_id.clone()),
+        tools: resolved
             .as_ref()
             .map(|profile| profile.tools.clone())
             .unwrap_or_default(),
-    ))
+    })
 }
 
 fn build_model_registry(
@@ -539,8 +545,10 @@ pub fn resolve_assembly_with(
     let session_file_exists = restore_session(input, &agent_home, &mut warnings);
     timing::time("session.restore");
 
-    let (config_system_prompt, default_profile_model, profile_tools) =
-        resolve_profile_assembly(app_config.as_ref(), input.agent_profile.as_deref())?;
+    let profile = resolve_profile_assembly(app_config.as_ref(), input.agent_profile.as_deref())?;
+    let config_system_prompt = profile.system_prompt;
+    let default_profile_model = profile.model;
+    let profile_tools = profile.tools;
 
     let cwd_path = cwd
         .map(Path::to_path_buf)
