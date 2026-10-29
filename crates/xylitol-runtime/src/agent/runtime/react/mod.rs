@@ -1124,9 +1124,12 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 generate_options.obs_parent = iteration_parent;
                 generate_options.obs_session = obs_session.clone();
 
-                let bar = match store.load_leaf_branch(&session_id).await {
-                    Ok(branch) => AgentStatusBar::from_session_entries(&branch),
-                    Err(_) => AgentStatusBar::default(),
+                let (bar, plan_mode) = match store.load_leaf_branch(&session_id).await {
+                    Ok(branch) => (
+                        AgentStatusBar::from_session_entries(&branch),
+                        Some(xylitol_plugin_sdk::session::latest_plan_mode(&branch)),
+                    ),
+                    Err(_) => (AgentStatusBar::default(), None),
                 };
                 let mut turn_tool_schemas = tool_schemas.clone();
                 if chain_active {
@@ -1136,6 +1139,7 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                         tool_schemas: turn_tool_schemas.clone(),
                         options: generate_options.clone(),
                         todo: bar.todo.clone(),
+                        plan_mode,
                         session_id: Some(session_id.clone()),
                     };
                     match run_before_llm_request(&loop_chain, &cancel, iteration_parent, &obs_session, ctx).await {

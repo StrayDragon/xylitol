@@ -585,3 +585,456 @@ pub fn todo_reminder_middleware(config: &TodoConfig) -> Arc<dyn LoopMiddleware> 
 pub fn todo_progress_middleware(max_settles: u32) -> Arc<dyn LoopMiddleware> {
     Arc::new(TodoProgressMiddleware::new(max_settles))
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use async_trait::async_trait;
+
+    use super::*;
+    use xylitol_plugin_sdk::session::{
+        ForkPosition, SessionContext, SessionEntry, TodoCheckpoint, TodoCheckpointStep, TodoItem,
+    };
+    use xylitol_plugin_sdk::{LoopControl, XySessionError, XySessionStoreError};
+
+    #[derive(Default)]
+    struct MemStore {
+        entries: Mutex<Vec<SessionEntry>>,
+    }
+
+    #[async_trait]
+    impl XySessionStore for MemStore {
+        async fn exists(&self, _: &str) -> bool {
+            true
+        }
+        async fn load_entries(&self, _: &str) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+            Ok(self.entries.lock().unwrap().clone())
+        }
+        async fn append_session_entry(
+            &self,
+            _: &str,
+            entry: &SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            self.entries.lock().unwrap().push(entry.clone());
+            Ok(())
+        }
+        async fn build_session_context(
+            &self,
+            _: &str,
+        ) -> Result<SessionContext, XySessionStoreError> {
+            Err(XySessionStoreError::unsupported("build_session_context"))
+        }
+        async fn create(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            Ok(())
+        }
+        async fn fork(
+            &self,
+            _: &str,
+            _: &str,
+            at_entry_id: &str,
+            _: ForkPosition,
+        ) -> Result<(), XySessionError> {
+            Err(XySessionError::EntryNotFound {
+                entry_id: at_entry_id.into(),
+            })
+        }
+        fn set_leaf(&self, _: &str, _: Option<&str>) {}
+        fn leaf_id(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    fn todo(items: &[(&str, TodoStatus)]) -> TodoList {
+        TodoList::new(
+            items
+                .iter()
+                .map(|(id, status)| TodoItem {
+                    id: (*id).into(),
+                    content: format!("do {id}"),
+                    status: *status,
+                })
+                .collect(),
+        )
+    }
+
+    fn todo_json(items: &[(&str, TodoStatus)]) -> String {
+        serde_json::json!({
+            "items": items.iter().map(|(id, status)| serde_json::json!({
+                "id": id,
+                "content": format!("do {id}"),
+                "status": match status {
+                    TodoStatus::Completed => "completed",
+                    TodoStatus::InProgress => "in_progress",
+                    TodoStatus::Pending => "pending",
+                },
+            })).collect::<Vec<_>>()
+        })
+        .to_string()
+    }
+
+    fn after_tool(name: &str, text: &str, is_error: bool) -> AfterToolCtx {
+        AfterToolCtx {
+            turn_index: 0,
+            tool_call_id: "call-1".into(),
+            tool_name: name.into(),
+            parts: vec![AgentPart::text(text)],
+            details: None,
+            is_error,
+        }
+    }
+
+    fn model_ctx(
+        todo: Option<TodoList>,
+        last: Option<AgentMessage>,
+        session_id: Option<&str>,
+    ) -> BeforeLlmRequestCtx {
+        BeforeLlmRequestCtx {
+            turn_index: 1,
+            messages: last.into_iter().collect(),
+            tool_schemas: Vec::new(),
+            options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+            todo,
+            plan_mode: None,
+            session_id: session_id.map(str::to_string),
+        }
+    }
+
+    fn decide_ctx(settle_count: u32, has_new_user_messages: bool) -> DecideContinueCtx {
+        DecideContinueCtx {
+            turn_index: 0,
+            settle_count,
+            has_new_user_messages,
+            assistant: None,
+            history_len: 2,
+            compact: None,
+        }
+    }
+
+    #[test]
+    fn todo_items_from_parts_parses_statuses() {
+        let parts = vec![AgentPart::text(todo_json(&[
+            ("a", TodoStatus::Completed),
+            ("b", TodoStatus::InProgress),
+            ("c", TodoStatus::Pending),
+        ]))];
+        let items = todo_items_from_parts(&parts).expect("items");
+        assert_eq!(items[0].2, TodoStatus::Completed);
+        assert_eq!(items[1].2, TodoStatus::InProgress);
+        assert_eq!(items[2].2, TodoStatus::Pending);
+    }
+
+    #[test]
+    fn todo_items_from_parts_rejects_bad_payloads() {
+        assert!(todo_items_from_parts(&[AgentPart::text("not json")]).is_none());
+        assert!(todo_items_from_parts(&[AgentPart::text("{}")]).is_none());
+        assert!(
+            todo_items_from_parts(&[AgentPart::text(r#"{"items":[{"id":"a"}]}"#)]).is_none(),
+            "missing content must not be guessed"
+        );
+    }
+
+    #[tokio::test]
+    async fn progress_tracks_todo_results_and_decides_continue() {
+        let mw = TodoProgressMiddleware::new(8);
+        let out = mw.before_turn(BeforeTurnCtx::default()).await;
+        assert!(
+            out.ctx
+                .system_fragments
+                .iter()
+                .any(|f| f.contains("todo_rewrite"))
+        );
+
+        mw.after_tool(after_tool(
+            "todo_rewrite",
+            &todo_json(&[
+                ("a", TodoStatus::Completed),
+                ("b", TodoStatus::Pending),
+                ("c", TodoStatus::InProgress),
+            ]),
+            false,
+        ))
+        .await;
+        let out = mw.decide_continue(decide_ctx(0, false)).await;
+        assert_eq!(out.control, LoopControl::Continue);
+        assert_eq!(out.properties[0].1, "2", "pending + in_progress");
+
+        let out = mw.decide_continue(decide_ctx(8, false)).await;
+        assert_eq!(out.control, LoopControl::Stop);
+
+        let out = mw.decide_continue(decide_ctx(8, true)).await;
+        assert_eq!(
+            out.control,
+            LoopControl::Continue,
+            "new user messages always continue"
+        );
+    }
+
+    #[tokio::test]
+    async fn progress_ignores_errors_and_unrelated_tools() {
+        let mw = TodoProgressMiddleware::new(8);
+        mw.after_tool(after_tool(
+            "todo_rewrite",
+            &todo_json(&[("a", TodoStatus::Pending)]),
+            true,
+        ))
+        .await;
+        mw.after_tool(after_tool("read", "ok", false)).await;
+        let out = mw.decide_continue(decide_ctx(0, false)).await;
+        assert_eq!(
+            out.control,
+            LoopControl::Stop,
+            "no recorded unfinished todo means stop"
+        );
+    }
+
+    #[tokio::test]
+    async fn checkpoint_records_and_persists_once() {
+        let store: Arc<dyn XySessionStore> = Arc::new(MemStore::default());
+        let mw = todo_checkpoint_middleware(Some(store.clone()), None);
+        mw.after_tool(after_tool(
+            "todo_rewrite",
+            &todo_json(&[("a", TodoStatus::Completed), ("b", TodoStatus::InProgress)]),
+            false,
+        ))
+        .await;
+        let out = mw
+            .before_llm_request(model_ctx(None, None, Some("s1")))
+            .await;
+        assert_eq!(
+            out.properties
+                .iter()
+                .find(|(k, _)| k == "loop.middleware.todo.checkpoint")
+                .map(|(_, v)| v.as_str()),
+            Some("restored")
+        );
+        let text = out
+            .ctx
+            .messages
+            .iter()
+            .map(|m| m.text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("<todo_checkpoint>"), "{text}");
+        assert!(text.contains("1/2 steps completed"), "{text}");
+
+        let entries = store.load_entries("s1").await.unwrap();
+        let checkpoint = entries
+            .iter()
+            .find_map(|entry| match entry {
+                SessionEntry::Custom(custom) if custom.custom_type == "todo_checkpoint" => {
+                    Some(custom.clone())
+                }
+                _ => None,
+            })
+            .expect("checkpoint appended");
+        assert_eq!(checkpoint.data["steps"][1]["status"], "in_progress");
+    }
+
+    #[tokio::test]
+    async fn checkpoint_restores_and_injects_summary_once() {
+        let store = Arc::new(MemStore::default());
+        let checkpoint = TodoCheckpoint {
+            goal: Some("ship".into()),
+            steps: vec![TodoCheckpointStep {
+                id: "s1".into(),
+                content: "do it".into(),
+                status: TodoStatus::InProgress,
+                verification: Some("tests".into()),
+                output_ref: None,
+            }],
+            last_verified_artifact: None,
+            last_failure: Some("read: missing".into()),
+            resume_cursor: Some(TodoResumeCursor {
+                step_id: "s1".into(),
+                attempt: 2,
+            }),
+            updated_at: 1,
+        };
+        store
+            .append_session_entry("s1", &checkpoint.to_custom_entry_shell())
+            .await
+            .unwrap();
+        let mw = todo_checkpoint_middleware(Some(store), None);
+        let out = mw
+            .before_llm_request(model_ctx(None, None, Some("s1")))
+            .await;
+        let text = out
+            .ctx
+            .messages
+            .iter()
+            .map(|m| m.text())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(text.contains("Current step: s1"), "{text}");
+        assert!(text.contains("Last failure: read: missing"), "{text}");
+
+        let out = mw
+            .before_llm_request(model_ctx(None, None, Some("s1")))
+            .await;
+        assert!(
+            !out.ctx
+                .messages
+                .iter()
+                .any(|m| m.text().contains("<todo_checkpoint>")),
+            "the summary must be injected once"
+        );
+    }
+
+    #[tokio::test]
+    async fn checkpoint_records_failures_and_verified_artifacts() {
+        let store: Arc<dyn XySessionStore> = Arc::new(MemStore::default());
+        let mw = todo_checkpoint_middleware(Some(store.clone()), None);
+        mw.after_tool(after_tool(
+            "todo_rewrite",
+            &todo_json(&[("a", TodoStatus::InProgress)]),
+            false,
+        ))
+        .await;
+        mw.after_tool(after_tool("write", "permission denied", true))
+            .await;
+        mw.after_tool(after_tool("read", "ok", false)).await;
+        mw.after_turn(AfterTurnCtx {
+            turn_index: 1,
+            continued_tools: false,
+            history_len: 4,
+            session_id: Some("s1".into()),
+        })
+        .await;
+
+        let entries = store.load_entries("s1").await.unwrap();
+        let checkpoint = entries
+            .iter()
+            .find_map(|entry| match entry {
+                SessionEntry::Custom(custom) if custom.custom_type == "todo_checkpoint" => {
+                    Some(custom.clone())
+                }
+                _ => None,
+            })
+            .expect("checkpoint appended");
+        assert_eq!(checkpoint.data["steps"][0]["status"], "in_progress");
+        assert_eq!(checkpoint.data["resume_cursor"]["attempt"], 2);
+    }
+
+    #[tokio::test]
+    async fn reminder_triggers_on_stale_completion_and_error() {
+        let mw = TodoReminderMiddleware::new(2);
+        let pending = todo(&[("a", TodoStatus::Pending)]);
+        let out = mw
+            .before_llm_request(model_ctx(Some(pending.clone()), None, None))
+            .await;
+        assert!(
+            !out.ctx
+                .messages
+                .iter()
+                .any(|m| m.text().contains("<todo_reminder>"))
+        );
+
+        mw.after_tool(after_tool("read", "ok", false)).await;
+        mw.after_tool(after_tool("grep", "ok", false)).await;
+        let out = mw
+            .before_llm_request(model_ctx(Some(pending.clone()), None, None))
+            .await;
+        assert!(
+            out.ctx
+                .messages
+                .iter()
+                .any(|m| m.text().contains("<todo_reminder>"))
+        );
+        assert_eq!(
+            out.properties
+                .iter()
+                .find(|(k, _)| k == "loop.middleware.todo.reminder_reason")
+                .map(|(_, v)| v.as_str()),
+            Some("stale")
+        );
+
+        let out = mw
+            .before_llm_request(model_ctx(Some(pending.clone()), None, None))
+            .await;
+        assert!(
+            !out.ctx
+                .messages
+                .iter()
+                .any(|m| m.text().contains("<todo_reminder>")),
+            "the same turn must not repeat the reminder"
+        );
+    }
+
+    #[tokio::test]
+    async fn reminder_triggers_on_completion_claim_and_error() {
+        let mw = TodoReminderMiddleware::new(8);
+        let pending = todo(&[("a", TodoStatus::Pending)]);
+        let out = mw
+            .before_llm_request(model_ctx(
+                Some(pending.clone()),
+                Some(AgentMessage::assistant("all done")),
+                None,
+            ))
+            .await;
+        assert_eq!(
+            out.properties
+                .iter()
+                .find(|(k, _)| k == "loop.middleware.todo.reminder_reason")
+                .map(|(_, v)| v.as_str()),
+            Some("completion_claim")
+        );
+
+        let mw = TodoReminderMiddleware::new(8);
+        mw.after_tool(after_tool("write", "failed", true)).await;
+        let out = mw
+            .before_llm_request(model_ctx(Some(pending), None, None))
+            .await;
+        assert_eq!(
+            out.properties
+                .iter()
+                .find(|(k, _)| k == "loop.middleware.todo.reminder_reason")
+                .map(|(_, v)| v.as_str()),
+            Some("tool_error")
+        );
+    }
+
+    #[tokio::test]
+    async fn reminder_skips_empty_and_completed_todos() {
+        let mw = TodoReminderMiddleware::new(1);
+        let out = mw.before_llm_request(model_ctx(None, None, None)).await;
+        assert!(out.ctx.messages.is_empty());
+
+        let done = todo(&[("a", TodoStatus::Completed)]);
+        let out = mw
+            .before_llm_request(model_ctx(Some(done), None, None))
+            .await;
+        assert!(out.ctx.messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reminder_resets_stale_counter_on_todo_update() {
+        let mw = TodoReminderMiddleware::new(2);
+        mw.after_tool(after_tool("read", "ok", false)).await;
+        mw.after_tool(after_tool(
+            "todo_update",
+            &todo_json(&[("a", TodoStatus::Pending)]),
+            false,
+        ))
+        .await;
+        let out = mw
+            .before_llm_request(model_ctx(
+                Some(todo(&[("a", TodoStatus::Pending)])),
+                None,
+                None,
+            ))
+            .await;
+        assert!(
+            !out.ctx
+                .messages
+                .iter()
+                .any(|m| m.text().contains("<todo_reminder>")),
+            "a todo update resets the stale counter"
+        );
+    }
+}

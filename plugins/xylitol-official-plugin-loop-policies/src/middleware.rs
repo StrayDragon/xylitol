@@ -585,6 +585,7 @@ mod tests {
             tool_call_id: "call-1".into(),
             tool_name: "bash".into(),
             args: serde_json::json!({ "command": command }),
+            deny_reason: None,
         }
     }
 
@@ -670,6 +671,7 @@ mod tests {
             tool_schemas: schemas(names),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
+            plan_mode: None,
             session_id: None,
         }
     }
@@ -898,6 +900,7 @@ mod tests {
             tool_schemas: Vec::new(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo,
+            plan_mode: None,
             session_id: None,
         }
     }

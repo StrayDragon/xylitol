@@ -214,6 +214,16 @@ pub fn session_fork_edge(entries: &[SessionEntry]) -> (Option<String>, Option<St
     (None, None)
 }
 
+pub(crate) fn legacy_custom_type_target(custom_type: &str) -> Option<&'static str> {
+    match custom_type {
+        super::workflow::LEGACY_CUSTOM_TYPE_PLAN => Some(super::workflow::CUSTOM_TYPE_WORKFLOW),
+        super::checkpoint::LEGACY_CUSTOM_TYPE_PLAN_CHECKPOINT => {
+            Some(super::checkpoint::CUSTOM_TYPE_TODO_CHECKPOINT)
+        }
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod leaf_anchor_tests {
     use super::*;

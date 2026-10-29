@@ -37,6 +37,7 @@ impl super::XyInProcessDriver {
             self.agent.session_id(),
         );
         self.agent.script_hook_observe(ty, phase, ctx).await;
+        migrate_legacy_before_switch(self.store.as_ref(), session_id).await;
         let context = self.store.build_session_context(session_id).await?;
         bind_session_or_err(&mut self.agent, session_id.to_string())?;
         self.bind_todo_session(Some(session_id)).await;
@@ -242,5 +243,17 @@ impl super::XyInProcessDriver {
             .delete_session(session_id)
             .await
             .map_err(Into::into)
+    }
+}
+
+async fn migrate_legacy_before_switch(
+    store: &dyn xylitol_plugin_sdk::XySessionStore,
+    session_id: &str,
+) {
+    if let Err(error) = store.migrate_legacy_custom_types(session_id).await {
+        log::warn!(
+            target: "xylitol::session",
+            "legacy custom-type migration skipped on switch: {error}"
+        );
     }
 }

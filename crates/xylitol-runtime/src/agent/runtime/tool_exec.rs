@@ -120,11 +120,13 @@ pub(crate) async fn prepare_call(
             tool_call_id: id.to_string(),
             tool_name: tool_name.clone(),
             args: tool_args.clone(),
+            deny_reason: None,
         };
         match run_before_tool(env.loop_chain, env.cancel, parent_ctx, env.obs_session, ctx).await {
             Ok(out) => {
                 tool_name = out.ctx.tool_name;
                 tool_args = out.ctx.args;
+                denied_reason = denied_reason.or(out.ctx.deny_reason);
                 if out.control != LoopControl::Continue {
                     stop_run = true;
                     denied_reason = Some(format!(
@@ -408,5 +410,68 @@ pub(crate) async fn run_one(
         ),
         stop_run: middleware_stop,
         fault: middleware_fault.take(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use xylitol_plugin_sdk::{
+        BeforeToolCtx, LoopChain, LoopMiddleware, LoopMiddlewareRegistry, LoopStage, LoopStep,
+    };
+
+    struct Deny;
+
+    #[async_trait]
+    impl LoopMiddleware for Deny {
+        fn id(&self) -> &str {
+            "deny"
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::BeforeTool]
+        }
+
+        async fn before_tool(&self, mut ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+            ctx.deny_reason = Some("blocked by test".into());
+            LoopStep::continued(ctx)
+        }
+    }
+
+    fn chain_with_deny() -> LoopChain {
+        let registry = LoopMiddlewareRegistry::new();
+        registry.register(Arc::new(Deny)).expect("register");
+        registry.snapshot()
+    }
+
+    #[tokio::test]
+    async fn before_tool_deny_reason_blocks_without_stopping_the_run() {
+        let tools = ToolSet::empty();
+        let hooks = AgentHooks::empty();
+        let hook_bus: Option<Arc<dyn XyHookBus>> = None;
+        let permission_check: Option<Arc<PermissionCheckFn>> = None;
+        let cancel = CancellationToken::new();
+        let obs = xylitol_plugin_sdk::ObsSessionContext::default();
+        let chain = chain_with_deny();
+        let env = ToolExecEnv {
+            tools: &tools,
+            hooks: &hooks,
+            hook_bus: &hook_bus,
+            permission_check: &permission_check,
+            cancel: &cancel,
+            turn_id: None,
+            batch_mode: XyBatchMode::Sequential,
+            workspace: ".",
+            obs_session: &obs,
+            loop_chain: &chain,
+            turn_index: 0,
+        };
+
+        let call = prepare_call(&env, "c1", "write", &serde_json::json!({}), None).await;
+        assert_eq!(call.denied_reason.as_deref(), Some("blocked by test"));
+        assert!(!call.stop_run, "a deny reason must not end the run");
+        assert!(call.tool.is_none(), "the denied tool must not execute");
     }
 }

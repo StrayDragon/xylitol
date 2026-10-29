@@ -11,6 +11,14 @@ pub(super) async fn load_earlier<T: Terminal>(
     if !session.take_load_earlier_request() {
         return;
     }
+    if !session.loaded_history_has_more() {
+        session.expand_history_window();
+        return;
+    }
+    load_earlier_page(session, driver).await;
+}
+
+async fn load_earlier_page<T: Terminal>(session: &mut HostSession<T>, driver: &mut dyn XyDriver) {
     let Some(oldest) = session.oldest_loaded_entry_id() else {
         return;
     };

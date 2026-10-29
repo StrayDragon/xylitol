@@ -6142,3 +6142,135 @@ fn gutter_host_click_jumps_and_selection_stays_clean() {
         "drag ending on gutter must not select"
     );
 }
+
+fn history_message(
+    id: &str,
+    parent: Option<&str>,
+    text: &str,
+) -> xylitol_plugin_sdk::session::SessionEntry {
+    use xylitol_plugin_sdk::session::{
+        EntryBase, MessageEntry, SessionEntry, fixture_message_json,
+    };
+
+    SessionEntry::Message(MessageEntry {
+        base: EntryBase {
+            entry_type: "message".into(),
+            id: id.into(),
+            parent_id: parent.map(str::to_string),
+            timestamp: 0,
+        },
+        message: fixture_message_json("user", text),
+    })
+}
+
+fn request_load_earlier(session: &HostSession<TestTerminal>) {
+    session
+        .ui_root()
+        .expect("product ui")
+        .borrow_mut()
+        .toggle_fold_target(crate::FoldTarget::LoadEarlier);
+}
+
+#[tokio::test]
+async fn load_earlier_prepends_page_from_store() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session(
+        "s1",
+        vec![history_message("u2", Some("u1"), "current")],
+        true,
+    );
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    driver.set_session_messages(vec![history_message("u1", None, "older")]);
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert!(!session.loaded_history_has_more());
+    assert!(
+        session.ui_model().entries.iter().any(
+            |entry| matches!(entry, super::bridge::UiEntry::User { text } if text.contains("older"))
+        ),
+        "loaded page must be prepended: {:?}",
+        session.ui_model().entries
+    );
+}
+
+#[tokio::test]
+async fn load_earlier_expands_buffer_when_store_exhausted() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crate::history_window::{HISTORY_PAGE, HISTORY_WINDOW};
+
+    let entries: Vec<_> = (0..HISTORY_WINDOW + HISTORY_PAGE)
+        .map(|i| {
+            let parent = (i > 0).then(|| format!("u{}", i - 1));
+            history_message(&format!("u{i}"), parent.as_deref(), "body")
+        })
+        .collect();
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session("s1", entries, false);
+    let before = session.ui_model().entries.len();
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+
+    assert!(
+        session.ui_model().entries.len() > before,
+        "collapsed buffer must expand: before={before} after={}",
+        session.ui_model().entries.len()
+    );
+}
+
+#[tokio::test]
+async fn load_earlier_reports_driver_error_and_clears_hint_on_empty_page() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session(
+        "s1",
+        vec![history_message("u2", Some("u1"), "current")],
+        true,
+    );
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    driver.set_get_messages_error(Some("boom".into()));
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert!(
+        session
+            .ui_model()
+            .entries
+            .iter()
+            .any(|entry| matches!(entry, super::bridge::UiEntry::ScrollNotice { text } if text.contains("boom"))),
+        "driver error must surface as a scroll notice: {:?}",
+        session.ui_model().entries
+    );
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    session.apply_resume_session(
+        "s1",
+        vec![history_message("u2", Some("u1"), "current")],
+        true,
+    );
+    request_load_earlier(&session);
+    let mut driver = ScriptedDriver::new();
+    let mut stream = None;
+    pump_host_driver(&mut session, &mut driver, &mut stream)
+        .await
+        .unwrap();
+    assert!(
+        !session.ui_model().entries.iter().any(
+            |entry| matches!(entry, super::bridge::UiEntry::ScrollNotice { text } if text.contains("加载更早"))
+        ),
+        "empty page must clear the load-earlier hint: {:?}",
+        session.ui_model().entries
+    );
+}

@@ -2098,18 +2098,22 @@ pub(crate) fn t_multi_part_preserved() {
 }
 
 thread_local! {
-    static PLAN_GATE: RefCell<Option<(Arc<dyn LoopMiddleware>, Arc<dyn xylitol_plugin_sdk::XySessionStore>)>> =
+    static PLAN_GATE: RefCell<Option<Arc<dyn LoopMiddleware>>> =
         const { RefCell::new(None) };
-    static PLAN_GATE_OUT: RefCell<Option<(LoopControl, serde_json::Value)>> = const { RefCell::new(None) };
+    static PLAN_GATE_OUT: RefCell<Option<(LoopControl, serde_json::Value, Option<String>)>> = const { RefCell::new(None) };
 }
 
-fn plan_gate_request_ctx(session_id: &str) -> BeforeLlmRequestCtx {
+fn plan_gate_request_ctx(
+    session_id: &str,
+    plan_mode: xylitol_plugin_sdk::session::PlanMode,
+) -> BeforeLlmRequestCtx {
     BeforeLlmRequestCtx {
         turn_index: 0,
         messages: Vec::new(),
         tool_schemas: Vec::new(),
         options: xylitol_plugin_sdk::XyGenerateOptions::default(),
         todo: None,
+        plan_mode: Some(plan_mode),
         session_id: Some(session_id.into()),
     }
 }
@@ -2120,6 +2124,7 @@ fn plan_gate_tool_ctx(name: &str) -> BeforeToolCtx {
         tool_call_id: "plan-gate-call".into(),
         tool_name: name.into(),
         args: serde_json::json!({ "path": "src/lib.rs" }),
+        deny_reason: None,
     }
 }
 
@@ -2127,63 +2132,87 @@ fn plan_gate_tool_ctx(name: &str) -> BeforeToolCtx {
 pub(crate) fn g_plan_gate_active() {
     use xylitol_plugin_sdk::session::PlanMode;
 
-    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
-        Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
-    futures::executor::block_on(store.create("s-plan-gate", Some("."), None)).expect("create");
-    futures::executor::block_on(
-        store.append_session_entry("s-plan-gate", &PlanMode::plan(None).to_custom_entry_shell()),
-    )
-    .expect("append plan mode");
     let mw = xylitol_official_plugin_plan::plan_mode_middleware(
-        Some(store.clone()),
-        None,
         &xylitol_official_plugin_plan::PlanConfig::default(),
     );
-    futures::executor::block_on(mw.before_llm_request(plan_gate_request_ctx("s-plan-gate")));
-    PLAN_GATE.with(|slot| slot.borrow_mut().replace((mw, store)));
+    futures::executor::block_on(
+        mw.before_llm_request(plan_gate_request_ctx("s-plan-gate", PlanMode::plan(None))),
+    );
+    PLAN_GATE.with(|slot| slot.borrow_mut().replace(mw));
 }
 
 #[when("尝试执行 write")]
 pub(crate) fn w_plan_gate_write() {
-    let (mw, _) = PLAN_GATE
+    let mw = PLAN_GATE
         .with(|slot| slot.borrow().clone())
         .expect("plan gate fixture");
     let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("write")));
-    PLAN_GATE_OUT.with(|slot| *slot.borrow_mut() = Some((out.control, out.ctx.args)));
+    PLAN_GATE_OUT.with(|slot| {
+        *slot.borrow_mut() = Some((out.control, out.ctx.args, out.ctx.deny_reason));
+    });
 }
 
 #[when("切回执行模式并尝试执行 write")]
 pub(crate) fn w_plan_gate_execute_write() {
     use xylitol_plugin_sdk::session::PlanMode;
 
-    let (mw, store) = PLAN_GATE
+    let mw = PLAN_GATE
         .with(|slot| slot.borrow().clone())
         .expect("plan gate fixture");
     futures::executor::block_on(
-        store.append_session_entry("s-plan-gate", &PlanMode::execute().to_custom_entry_shell()),
-    )
-    .expect("append execute mode");
-    futures::executor::block_on(mw.before_llm_request(plan_gate_request_ctx("s-plan-gate")));
+        mw.before_llm_request(plan_gate_request_ctx("s-plan-gate", PlanMode::execute())),
+    );
     let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("write")));
-    PLAN_GATE_OUT.with(|slot| *slot.borrow_mut() = Some((out.control, out.ctx.args)));
+    PLAN_GATE_OUT.with(|slot| {
+        *slot.borrow_mut() = Some((out.control, out.ctx.args, out.ctx.deny_reason));
+    });
 }
 
 #[then("工具在计划模式闸被拒绝")]
 pub(crate) fn t_plan_gate_denied() {
-    let (control, args) = PLAN_GATE_OUT
+    let (control, args, deny_reason) = PLAN_GATE_OUT
         .with(|slot| slot.borrow().clone())
         .expect("plan gate outcome");
-    assert_eq!(control, LoopControl::Stop, "write must be denied");
+    assert_eq!(
+        control,
+        LoopControl::Continue,
+        "a plan-mode denial must not end the run"
+    );
+    assert_eq!(deny_reason.as_deref(), Some("plan mode is read-only"));
     assert_eq!(args["blocked_by"], "plan-mode");
     assert_eq!(args["reason"], "plan mode is read-only");
 }
 
+#[then("拒绝不结束本回合且可改调计划工具")]
+pub(crate) fn t_plan_gate_denial_keeps_run() {
+    let (control, _args, deny_reason) = PLAN_GATE_OUT
+        .with(|slot| slot.borrow().clone())
+        .expect("plan gate outcome");
+    assert_eq!(
+        control,
+        LoopControl::Continue,
+        "denial must not end the run"
+    );
+    assert_eq!(deny_reason.as_deref(), Some("plan mode is read-only"));
+    let mw = PLAN_GATE
+        .with(|slot| slot.borrow().clone())
+        .expect("plan gate fixture");
+    let out = futures::executor::block_on(mw.before_tool(plan_gate_tool_ctx("plan_write")));
+    assert_eq!(
+        out.control,
+        LoopControl::Continue,
+        "the model must be able to switch to plan_write in the same run"
+    );
+    assert_eq!(out.ctx.deny_reason, None);
+}
+
 #[then("工具在计划模式闸被允许")]
 pub(crate) fn t_plan_gate_allowed() {
-    let (control, args) = PLAN_GATE_OUT
+    let (control, args, deny_reason) = PLAN_GATE_OUT
         .with(|slot| slot.borrow().clone())
         .expect("plan gate outcome");
     assert_eq!(control, LoopControl::Continue, "write must be allowed");
+    assert_eq!(deny_reason, None);
     assert_eq!(args["path"], "src/lib.rs");
 }
 
@@ -2375,6 +2404,7 @@ pub(crate) fn g_workflow_tool_write() {
         tool_schemas: Vec::new(),
         options: xylitol_plugin_sdk::XyGenerateOptions::default(),
         todo: None,
+        plan_mode: None,
         session_id: Some("s-workflow-tool".into()),
     }));
     WORKFLOW_TOOL_OUT.with(|slot| {
@@ -2416,6 +2446,7 @@ fn nested_leaf(
         depends_on: Vec::new(),
         inputs: Vec::new(),
         outputs: Vec::new(),
+        tools: Vec::new(),
         risk: WorkflowRisk::Low,
         verification: None,
         rollback: None,
@@ -2463,6 +2494,7 @@ pub(crate) fn g_nested_workflow_child_completed() {
         tool_schemas: Vec::new(),
         options: xylitol_plugin_sdk::XyGenerateOptions::default(),
         todo: None,
+        plan_mode: None,
         session_id: Some("s-nested".into()),
     }));
     NESTED_WORKFLOW_OUT.with(|slot| {

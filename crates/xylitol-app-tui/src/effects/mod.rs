@@ -372,8 +372,8 @@ async fn footer_entries_available<T: Terminal>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
 ) -> bool {
-    match session_entries(driver).await {
-        Ok(entries) if !entries.is_empty() => true,
+    match session_entries_page(driver, Some(1), None).await {
+        Ok((entries, _)) if !entries.is_empty() => true,
         _ => {
             session.set_footer_token_label(None);
             false

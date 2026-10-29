@@ -619,6 +619,42 @@ fn t_prepend_kept(_fixed_zone_bdd: &FixedZoneBdd) {
     );
 }
 
+#[given("会话条目数超过端侧窗口上限且盘上已无更早条目")]
+fn g_overflow_without_earlier(fixed_zone_bdd: &FixedZoneBdd) {
+    let mut model = fixed_zone_bdd.model.borrow_mut();
+    model.entries = (0..xylitol_app_tui::history_window::HISTORY_WINDOW
+        + xylitol_app_tui::history_window::HISTORY_PAGE)
+        .map(|i| xylitol_app_tui::UiEntry::User {
+            text: format!("m{i}"),
+        })
+        .collect();
+    xylitol_app_tui::history_window::trim_to_window(&mut model, false);
+    HISTORY_STATE.with(|c| *c.borrow_mut() = None);
+}
+
+#[then("最旧一页收起为提示行且文案表达更早内容已收起")]
+fn t_collapsed_notice(fixed_zone_bdd: &FixedZoneBdd) {
+    let model = fixed_zone_bdd.model.borrow();
+    let notice = model.entries.first().and_then(|e| match e {
+        xylitol_app_tui::UiEntry::ScrollNotice { text } => Some(text.clone()),
+        _ => None,
+    });
+    let notice = notice.expect("overflow must collapse the oldest page into a notice");
+    assert!(
+        notice.contains("已收起"),
+        "overflow without earlier history must say collapsed: {notice}"
+    );
+    assert!(
+        !notice.contains("加载更早"),
+        "collapsed history must not pretend to load more: {notice}"
+    );
+    assert_eq!(
+        model.entries.len(),
+        xylitol_app_tui::history_window::HISTORY_WINDOW + 1,
+        "body stays at the window cap plus the notice"
+    );
+}
+
 #[given("会话条目数不足单页上限")]
 fn g_short_session(fixed_zone_bdd: &FixedZoneBdd) {
     let mut model = fixed_zone_bdd.model.borrow_mut();

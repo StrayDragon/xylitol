@@ -23,17 +23,26 @@
 
   @req:r2960
   规则: plan-mode-read-only
-    plan 模式激活且 read_only 开启时，before_tool 闸 须拒绝 write / edit / bash 与任何不在 allowlist 的工具；拒绝 须在工具执行前发生，返回稳定原因 `plan mode is read-only`，且 不得执行该工具。默认 allowlist 须含 read / grep / find / ls / ask / plan_* / todo_*；`plan.allowed_tools` 只 可追加。execute 模式或 read_only=false 时 闸 须失效。闸 只 可拒绝，不得绕过 core 权限。
+    plan 模式激活且 read_only 开启时，before_tool 闸 须拒绝 write / edit / bash 与任何不在 allowlist 的工具；拒绝 须在工具执行前发生，返回稳定原因 `plan mode is read-only`，且 不得执行该工具。默认 allowlist 须含 read / grep / find / ls / ask / plan_* / todo_*；`plan.allowed_tools` 只 可追加。execute 模式或 read_only=false 时 闸 须失效。拒绝 不得结束本 run；模型 须在同一回合收到工具错误结果，并可改调 allowlist 内工具（如 `plan_write`）。闸 只 可拒绝，不得绕过 core 权限终裁。
 
     场景: 计划模式拒绝写入工具
       假如 计划模式激活且只读策略开启
       当 尝试执行 write
       那么 工具在计划模式闸被拒绝
 
+    场景: 拒绝写入后本回合继续
+      假如 计划模式激活且只读策略开启
+      当 尝试执行 write
+      那么 拒绝不结束本回合且可改调计划工具
+
     场景: 切回执行模式后写入恢复
       假如 计划模式激活且只读策略开启
       当 切回执行模式并尝试执行 write
       那么 工具在计划模式闸被允许
+
+  @req:r2974
+  规则: plan-tool-surface
+    execute 模式下 模型可见工具表 须隐藏 `plan_write` 与 `plan_submit`；plan 模式下 两者 须可见。`plan_read` / `plan_list` / `plan_mode` 须始终可见。隐藏 只影响模型可见 schema，不得删除工具、不得改变权限终裁、不得绕过 before_tool 只读闸；未启用 plan 时 不得改变工具表。由插件单测覆盖。
 
   @req:r2963
   规则: plan-document-scope

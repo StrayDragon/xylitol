@@ -24,9 +24,11 @@ const WORKFLOW_STAGES: &[LoopStage] = &[
 ];
 const WORKFLOW_CONTRACT: &str = "Workflow: create a workflow before acting. Call workflow_write \
 with the full workflow: {\"goal\":\"...\",\"steps\":[{\"id\":\"s1\",\"description\":\"...\",\
-\"depends_on\":[],\"inputs\":[],\"outputs\":[],\"risk\":\"low\",\"verification\":\"...\",\
-\"rollback\":\"...\",\"requires_human\":false,\"status\":\"pending\"}]}. Do not emit a <plan> \
-block in assistant text. Keep exactly one step in_progress; mark it completed only after verification passes.";
+\"depends_on\":[],\"inputs\":[],\"outputs\":[],\"tools\":[\"read\",\"write\"],\"risk\":\"low\",\
+\"verification\":\"...\",\"rollback\":\"...\",\"requires_human\":false,\"status\":\"pending\"}]}. \
+Declare the tools each step needs so unrelated tool failures do not fail the step. Do not emit a \
+<plan> block in assistant text. Keep exactly one step in_progress; mark it completed only after \
+verification passes.";
 
 fn resolve_resume_cursor(plan: &Workflow) -> Workflow {
     let Some(cursor) = plan.resume_cursor.as_deref() else {
@@ -84,6 +86,21 @@ struct WorkflowState {
     summary_injected: bool,
     summary_done: bool,
     pending_workflow_error: Option<String>,
+}
+
+impl WorkflowState {
+    fn step_to_fail(&mut self, tool_name: &str) -> Option<&mut WorkflowStep> {
+        let step = self
+            .plan
+            .as_mut()?
+            .steps
+            .iter_mut()
+            .find(|step| step.status == WorkflowStepStatus::InProgress)?;
+        if !step.tools.is_empty() && !step.tools.iter().any(|tool| tool == tool_name) {
+            return None;
+        }
+        Some(step)
+    }
 }
 
 pub struct WorkflowMiddleware {
@@ -368,18 +385,16 @@ impl LoopMiddleware for WorkflowMiddleware {
         }
         if ctx.is_error {
             let mut state = self.lock_state();
-            if let Some(plan) = &mut state.plan
-                && let Some(step) = plan
-                    .steps
-                    .iter_mut()
-                    .find(|step| step.status == WorkflowStepStatus::InProgress)
-            {
+            let failed_id = {
+                let Some(step) = state.step_to_fail(&ctx.tool_name) else {
+                    return LoopStep::continued(ctx);
+                };
                 step.status = WorkflowStepStatus::Failed;
                 step.output_ref = Some(format!("failure:{}", ctx.tool_call_id));
-                let id = step.id.clone();
-                state.approved.remove(&id);
-                state.injected_step = None;
-            }
+                step.id.clone()
+            };
+            state.approved.remove(&failed_id);
+            state.injected_step = None;
         }
         LoopStep::continued(ctx)
     }
@@ -479,6 +494,7 @@ mod tests {
             tool_schemas: Vec::new(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
+            plan_mode: None,
             session_id: session_id.map(str::to_string),
         }
     }
@@ -503,6 +519,7 @@ mod tests {
                 depends_on: Vec::new(),
                 inputs: Vec::new(),
                 outputs: Vec::new(),
+                tools: Vec::new(),
                 risk: WorkflowRisk::Low,
                 verification: Some("tests pass".into()),
                 rollback: None,
@@ -667,6 +684,7 @@ mod nested_tests {
             depends_on: Vec::new(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            tools: Vec::new(),
             risk: WorkflowRisk::Low,
             verification: None,
             rollback: None,
@@ -700,6 +718,7 @@ mod nested_tests {
             tool_schemas: Vec::new(),
             options: xylitol_plugin_sdk::XyGenerateOptions::default(),
             todo: None,
+            plan_mode: None,
             session_id: Some(session_id.into()),
         }
     }
@@ -798,6 +817,73 @@ mod nested_tests {
         let text = text(&out);
         assert!(text.contains("c1"), "{text}");
         assert!(!text.contains("s1"), "root container must not be injected");
+    }
+
+    fn tool_ctx(name: &str, text: &str, is_error: bool) -> AfterToolCtx {
+        AfterToolCtx {
+            turn_index: 0,
+            tool_call_id: "call-1".into(),
+            tool_name: name.into(),
+            parts: vec![AgentPart::text(text)],
+            details: None,
+            is_error,
+        }
+    }
+
+    async fn seeded_concrete(workflow: Workflow) -> (Arc<dyn XySessionStore>, WorkflowMiddleware) {
+        let store: Arc<dyn XySessionStore> =
+            Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+        store.create("s1", Some("."), None).await.expect("create");
+        store
+            .append_session_entry("s1", &workflow.to_custom_entry_shell())
+            .await
+            .expect("seed");
+        let mw = WorkflowMiddleware::new(Some(store.clone()), None, &WorkflowConfig::default());
+        (store, mw)
+    }
+
+    #[tokio::test]
+    async fn declared_tools_ignore_unrelated_failures() {
+        let mut wf = workflow(vec![leaf("s1", WorkflowStepStatus::InProgress)], None);
+        wf.steps[0].tools = vec!["write".into()];
+        let (_store, mw) = seeded_concrete(wf).await;
+        mw.before_llm_request(model_ctx("s1")).await;
+        mw.after_tool(tool_ctx("read", "missing file", true)).await;
+        let state = mw.lock_state();
+        assert_eq!(
+            state.plan.as_ref().expect("plan").steps[0].status,
+            WorkflowStepStatus::InProgress,
+            "a failure outside the declared tools must not fail the step"
+        );
+    }
+
+    #[tokio::test]
+    async fn declared_tools_mark_matching_failure() {
+        let mut wf = workflow(vec![leaf("s1", WorkflowStepStatus::InProgress)], None);
+        wf.steps[0].tools = vec!["write".into()];
+        let (_store, mw) = seeded_concrete(wf).await;
+        mw.before_llm_request(model_ctx("s1")).await;
+        mw.after_tool(tool_ctx("write", "permission denied", true))
+            .await;
+        let state = mw.lock_state();
+        assert_eq!(
+            state.plan.as_ref().expect("plan").steps[0].status,
+            WorkflowStepStatus::Failed
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_workflow_without_tools_keeps_coarse_attribution() {
+        let wf = workflow(vec![leaf("s1", WorkflowStepStatus::InProgress)], None);
+        let (_store, mw) = seeded_concrete(wf).await;
+        mw.before_llm_request(model_ctx("s1")).await;
+        mw.after_tool(tool_ctx("read", "missing file", true)).await;
+        let state = mw.lock_state();
+        assert_eq!(
+            state.plan.as_ref().expect("plan").steps[0].status,
+            WorkflowStepStatus::Failed,
+            "legacy workflows without declared tools keep the coarse attribution"
+        );
     }
 
     #[tokio::test]

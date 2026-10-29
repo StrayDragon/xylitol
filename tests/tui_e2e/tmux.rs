@@ -26,8 +26,10 @@ impl TmuxSession {
         let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let name = format!("xyl_e2e_{}_{}", std::process::id(), n);
         let workspace = env!("CARGO_MANIFEST_DIR");
-        let window_cmd =
-            format!("cd {workspace} && cargo run --example agent_demo --quiet -p xylitol-tui");
+        let path = std::env::var("PATH").unwrap_or_default();
+        let window_cmd = format!(
+            "cd {workspace} && PATH='{path}' cargo run --example agent_demo --quiet -p xylitol-tui"
+        );
         let status = Command::new("tmux")
             .args([
                 "new-session",

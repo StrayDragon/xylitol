@@ -6,7 +6,7 @@ use serde_json::Value;
 use super::entries::{CustomEntry, EntryBase, SessionEntry};
 
 pub const CUSTOM_TYPE_WORKFLOW: &str = "workflow";
-const LEGACY_CUSTOM_TYPE_PLAN: &str = "plan";
+pub(crate) const LEGACY_CUSTOM_TYPE_PLAN: &str = "plan";
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -39,6 +39,8 @@ pub struct WorkflowStep {
     pub inputs: Vec<String>,
     #[serde(default)]
     pub outputs: Vec<String>,
+    #[serde(default)]
+    pub tools: Vec<String>,
     #[serde(default)]
     pub risk: WorkflowRisk,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -436,6 +438,7 @@ mod tests {
             depends_on: depends_on.iter().map(|dep| dep.to_string()).collect(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            tools: Vec::new(),
             risk: WorkflowRisk::Low,
             verification: Some(format!("verify {id}")),
             rollback: None,
@@ -453,6 +456,39 @@ mod tests {
             resume_cursor: None,
             updated_at: 1,
         }
+    }
+
+    #[test]
+    fn step_tools_round_trip_and_default_to_empty() {
+        let mut declared = step("s1", WorkflowStepStatus::Pending, &[]);
+        declared.tools = vec!["write".into(), "edit".into()];
+        let wf = plan(vec![declared]);
+        let back = Workflow::from_data_value(&wf.to_data_value()).expect("round trip");
+        assert_eq!(back.steps[0].tools, vec!["write", "edit"]);
+
+        let legacy = serde_json::json!({
+            "goal": "ship",
+            "steps": [{"id": "s1", "description": "do it"}]
+        });
+        let parsed = Workflow::from_data_value(&legacy).expect("legacy workflow");
+        assert!(
+            parsed.steps[0].tools.is_empty(),
+            "legacy workflows without tools must keep the coarse attribution path"
+        );
+    }
+
+    #[test]
+    fn same_workflow_structure_ignores_status_and_outputs() {
+        let mut left = plan(vec![step("s1", WorkflowStepStatus::Pending, &[])]);
+        let mut right = left.clone();
+        right.steps[0].status = WorkflowStepStatus::Completed;
+        right.steps[0].output_ref = Some("artifact".into());
+        assert!(same_workflow_structure(Some(&left), Some(&right)));
+
+        left.steps[0].description = "changed".into();
+        assert!(!same_workflow_structure(Some(&left), Some(&right)));
+        assert!(!same_workflow_structure(None, Some(&right)));
+        assert!(same_workflow_structure(None, None));
     }
 
     #[test]
@@ -620,6 +656,7 @@ mod nested_tests {
             depends_on: Vec::new(),
             inputs: Vec::new(),
             outputs: Vec::new(),
+            tools: Vec::new(),
             risk: WorkflowRisk::Low,
             verification: None,
             rollback: None,

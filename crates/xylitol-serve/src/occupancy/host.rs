@@ -220,7 +220,34 @@ impl HostState {
             .replay_or_resync(&bound, observe, inflight, last_seq)
             .await;
         slot.sync_model_downlink().await;
+        self.push_plan_mode_snapshot(slot, &bound).await;
         result
+    }
+
+    async fn push_plan_mode_snapshot(&self, slot: &SessionSlot, bound: &[u64]) {
+        if bound.is_empty() {
+            return;
+        }
+        let Ok(branch) = self.ports.store.load_leaf_branch(&slot.session_id).await else {
+            return;
+        };
+        let (mode, plan_id) = plan_mode_event_from_branch(&branch);
+        let Ok(event) = xylitol_wire::event_to_wire(&XyEvent::PlanModeChanged { mode, plan_id })
+        else {
+            return;
+        };
+        let seq = slot.journal.lock().await.max_seq();
+        let msg = downlink_notification(
+            SESSION_EVENT,
+            SessionEventPayload {
+                session_id: slot.session_id.clone(),
+                seq,
+                event,
+            },
+        );
+        for id in bound {
+            slot.send_to(*id, &msg).await;
+        }
     }
 
     async fn bind_single_mux(&self, slot: &SessionSlot, id: u64) -> Vec<u64> {
@@ -403,7 +430,7 @@ impl SessionSlot {
     pub fn with_seq(
         session_id: impl Into<String>,
         in_process_downlink: broadcast::Sender<Notification>,
-        loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
+        root_loop_registry: Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>>,
         next_seq: u64,
     ) -> Arc<Self> {
         let session_id = session_id.into();
@@ -429,7 +456,7 @@ impl SessionSlot {
             mcp_watch_started: AtomicBool::new(false),
             bash_run_cancel: std::sync::Mutex::new(None),
             idempotency: IdempotencyLedger::default(),
-            loop_registry,
+            loop_registry: root_loop_registry.map(|registry| Arc::new(registry.derive())),
         })
     }
 
@@ -1344,13 +1371,9 @@ async fn dispatch_session_unary(
 
 fn plan_mode_event_from_branch(
     branch: &[xylitol_plugin_sdk::session::SessionEntry],
-) -> (String, Option<String>) {
+) -> (xylitol_plugin_sdk::session::PlanModeKind, Option<String>) {
     let mode = xylitol_plugin_sdk::session::latest_plan_mode(branch);
-    let label = match mode.mode {
-        xylitol_plugin_sdk::session::PlanModeKind::Plan => "plan",
-        xylitol_plugin_sdk::session::PlanModeKind::Execute => "execute",
-    };
-    (label.to_string(), mode.plan_id)
+    (mode.mode, mode.plan_id)
 }
 
 async fn dispatch_writer_unary(
@@ -1381,18 +1404,22 @@ async fn dispatch_writer_unary(
         return RpcResult::error("unavailable", "no writer engine");
     };
     let bash_forwarder = start_bash_forwarder(slot, driver.as_mut(), method).await;
-    let mut plan_mode_event: Option<(String, Option<String>)> = None;
+    let mut plan_mode_event: Option<(xylitol_plugin_sdk::session::PlanModeKind, Option<String>)> =
+        None;
+    let mut switched_session_id: Option<String> = None;
     let result = match driver.execute_command(cmd).await {
         Ok(mut value) => {
             plan_mode_event = plan_mode_event_from_value(method, &value);
+            if matches!(method, "switch_session" | "new_session") {
+                switched_session_id = driver.session_id();
+            }
             if plan_mode_event.is_none()
-                && matches!(method, "switch_session" | "new_session")
-                && let Some(new_id) = driver.session_id()
+                && let Some(new_id) = switched_session_id.as_deref()
             {
                 let branch = host
                     .ports
                     .store
-                    .load_leaf_branch(&new_id)
+                    .load_leaf_branch(new_id)
                     .await
                     .unwrap_or_default();
                 plan_mode_event = Some(plan_mode_event_from_branch(&branch));
@@ -1406,14 +1433,7 @@ async fn dispatch_writer_unary(
         finish_bash_forwarder(driver.as_mut(), slot);
     }
     drop(g);
-    if let Some((mode, plan_id)) = plan_mode_event {
-        let mode = serde_json::from_value::<xylitol_plugin_sdk::session::PlanModeKind>(
-            Value::String(mode),
-        )
-        .unwrap_or(xylitol_plugin_sdk::session::PlanModeKind::Execute);
-        slot.append_and_push(&XyEvent::PlanModeChanged { mode, plan_id })
-            .await;
-    }
+    publish_plan_mode_event(host, slot, switched_session_id.as_deref(), plan_mode_event).await;
     if let Some(fwd) = bash_forwarder {
         let _ = fwd.await;
     }
@@ -1421,6 +1441,24 @@ async fn dispatch_writer_unary(
         let _ = std::fs::remove_file(temp);
     }
     result
+}
+
+async fn publish_plan_mode_event(
+    host: &Arc<HostState>,
+    slot: &Arc<SessionSlot>,
+    switched_session_id: Option<&str>,
+    event: Option<(xylitol_plugin_sdk::session::PlanModeKind, Option<String>)>,
+) {
+    let Some((mode, plan_id)) = event else {
+        return;
+    };
+    let target = match switched_session_id {
+        Some(id) => host.slot(id).await,
+        None => Arc::clone(slot),
+    };
+    target
+        .append_and_push(&XyEvent::PlanModeChanged { mode, plan_id })
+        .await;
 }
 
 fn stage_payload(
@@ -1491,21 +1529,33 @@ fn finish_bash_forwarder(driver: &mut dyn OccupancyEngine, slot: &SessionSlot) {
     }
 }
 
-fn plan_mode_event_from_value(method: &str, value: &Value) -> Option<(String, Option<String>)> {
+fn plan_mode_event_from_value(
+    method: &str,
+    value: &Value,
+) -> Option<(xylitol_plugin_sdk::session::PlanModeKind, Option<String>)> {
     if method != "set_plan_mode" {
         return None;
     }
-    Some((
+    let mode = plan_mode_kind(
         value
             .get("mode")
             .and_then(Value::as_str)
-            .unwrap_or("execute")
-            .to_string(),
+            .unwrap_or("execute"),
+    );
+    Some((
+        mode,
         value
             .get("plan_id")
             .and_then(Value::as_str)
             .map(str::to_string),
     ))
+}
+
+fn plan_mode_kind(mode: &str) -> xylitol_plugin_sdk::session::PlanModeKind {
+    match mode {
+        "plan" => xylitol_plugin_sdk::session::PlanModeKind::Plan,
+        _ => xylitol_plugin_sdk::session::PlanModeKind::Execute,
+    }
 }
 
 fn inline_staged_export(staged_export: bool, value: &mut Value) {
@@ -1637,12 +1687,12 @@ mod tests {
 
     #[test]
     fn session_switch_plan_mode_event_uses_latest_entry() {
-        use xylitol_plugin_sdk::session::PlanMode;
+        use xylitol_plugin_sdk::session::{PlanMode, PlanModeKind};
 
         let plan = vec![PlanMode::plan(Some("p1".into())).to_custom_entry_shell()];
         assert_eq!(
             plan_mode_event_from_branch(&plan),
-            ("plan".to_string(), Some("p1".into()))
+            (PlanModeKind::Plan, Some("p1".into()))
         );
         let execute = vec![
             PlanMode::plan(None).to_custom_entry_shell(),
@@ -1650,11 +1700,33 @@ mod tests {
         ];
         assert_eq!(
             plan_mode_event_from_branch(&execute),
-            ("execute".to_string(), None)
+            (PlanModeKind::Execute, None)
         );
         assert_eq!(
             plan_mode_event_from_branch(&[]),
-            ("execute".to_string(), None)
+            (PlanModeKind::Execute, None)
+        );
+    }
+
+    #[test]
+    fn plan_mode_event_from_value_covers_all_modes() {
+        use xylitol_plugin_sdk::session::PlanModeKind;
+
+        assert_eq!(
+            plan_mode_event_from_value("set_plan_mode", &json!({"mode": "plan", "plan_id": "p1"}),),
+            Some((PlanModeKind::Plan, Some("p1".into())))
+        );
+        assert_eq!(
+            plan_mode_event_from_value("set_plan_mode", &json!({"mode": "execute"})),
+            Some((PlanModeKind::Execute, None))
+        );
+        assert_eq!(
+            plan_mode_event_from_value("set_plan_mode", &json!({})),
+            Some((PlanModeKind::Execute, None))
+        );
+        assert_eq!(
+            plan_mode_event_from_value("new_session", &json!({"mode": "plan"})),
+            None
         );
     }
 
@@ -1667,6 +1739,283 @@ mod tests {
 
     fn slot() -> Arc<SessionSlot> {
         SessionSlot::new("s0", broadcast::channel(16).0, None)
+    }
+
+    struct Marker(&'static str);
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::LoopMiddleware for Marker {
+        fn id(&self) -> &str {
+            self.0
+        }
+
+        fn stages(&self) -> &'static [xylitol_plugin_sdk::LoopStage] {
+            &[xylitol_plugin_sdk::LoopStage::BeforeTool]
+        }
+
+        async fn before_tool(
+            &self,
+            ctx: xylitol_plugin_sdk::BeforeToolCtx,
+        ) -> xylitol_plugin_sdk::LoopStep<xylitol_plugin_sdk::BeforeToolCtx> {
+            xylitol_plugin_sdk::LoopStep::continued(ctx)
+        }
+    }
+
+    struct AllowAll;
+
+    impl xylitol_plugin_sdk::XyPermission for AllowAll {
+        fn check_read(&self, _: &str) -> xylitol_plugin_sdk::XyPermissionVerdict {
+            xylitol_plugin_sdk::XyPermissionVerdict::Allow
+        }
+        fn check_write(&self, _: &str) -> xylitol_plugin_sdk::XyPermissionVerdict {
+            xylitol_plugin_sdk::XyPermissionVerdict::Allow
+        }
+        fn check_network(&self, _: &str) -> xylitol_plugin_sdk::XyPermissionVerdict {
+            xylitol_plugin_sdk::XyPermissionVerdict::Allow
+        }
+        fn check_process(&self, _: &str) -> xylitol_plugin_sdk::XyPermissionVerdict {
+            xylitol_plugin_sdk::XyPermissionVerdict::Allow
+        }
+    }
+
+    struct NoopSink;
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XyEventSink for NoopSink {
+        async fn emit(&self, _: &XyEvent) {}
+    }
+
+    #[derive(Default)]
+    struct PlanStore {
+        branches: std::sync::Mutex<HashMap<String, Vec<xylitol_plugin_sdk::session::SessionEntry>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl xylitol_plugin_sdk::XySessionStore for PlanStore {
+        async fn exists(&self, session_id: &str) -> bool {
+            self.branches.lock().unwrap().contains_key(session_id)
+        }
+        async fn load_entries(
+            &self,
+            session_id: &str,
+        ) -> Result<Vec<xylitol_plugin_sdk::session::SessionEntry>, XySessionStoreError> {
+            Ok(self
+                .branches
+                .lock()
+                .unwrap()
+                .get(session_id)
+                .cloned()
+                .unwrap_or_default())
+        }
+        async fn append_session_entry(
+            &self,
+            session_id: &str,
+            entry: &xylitol_plugin_sdk::session::SessionEntry,
+        ) -> Result<(), XySessionStoreError> {
+            self.branches
+                .lock()
+                .unwrap()
+                .entry(session_id.to_string())
+                .or_default()
+                .push(entry.clone());
+            Ok(())
+        }
+        async fn build_session_context(
+            &self,
+            _: &str,
+        ) -> Result<xylitol_plugin_sdk::session::SessionContext, XySessionStoreError> {
+            Err(XySessionStoreError::unsupported("build_session_context"))
+        }
+        async fn create(
+            &self,
+            id: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<(), XySessionStoreError> {
+            self.branches
+                .lock()
+                .unwrap()
+                .entry(id.to_string())
+                .or_default();
+            Ok(())
+        }
+        async fn fork(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: xylitol_plugin_sdk::session::ForkPosition,
+        ) -> Result<(), xylitol_plugin_sdk::error::XySessionError> {
+            Ok(())
+        }
+        fn set_leaf(&self, _: &str, _: Option<&str>) {}
+        fn leaf_id(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    struct RegistryFactory(Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>);
+
+    impl OccupancyFactory for RegistryFactory {
+        fn new_driver_at(&self, _: &Path) -> Box<dyn OccupancyEngine> {
+            panic!("routing tests do not materialize drivers")
+        }
+        fn project_trusted(&self, _: &Path) -> bool {
+            false
+        }
+        fn default_model_id(&self) -> Option<String> {
+            None
+        }
+        fn cwd(&self) -> PathBuf {
+            PathBuf::from(".")
+        }
+        fn agent_dir(&self) -> PathBuf {
+            PathBuf::from(".")
+        }
+        fn loop_registry(&self) -> Option<Arc<xylitol_plugin_sdk::LoopMiddlewareRegistry>> {
+            Some(self.0.clone())
+        }
+    }
+
+    fn host_with(store: Arc<dyn xylitol_plugin_sdk::XySessionStore>) -> Arc<HostState> {
+        let baseline = xylitol_runtime::agent::RuntimeBaseline {
+            store,
+            sink: Arc::new(NoopSink),
+            permission: Arc::new(AllowAll),
+            hook_bus: None,
+            model_registry: xylitol_runtime::agent::ModelRegistry::default(),
+            model_builder: Arc::new(|_| unreachable!("routing tests build no model")),
+            cwd: ".".into(),
+            steering_mode: xylitol_runtime::agent::QueueMode::default(),
+            follow_up_mode: xylitol_runtime::agent::QueueMode::default(),
+            compaction_settings: None,
+            compaction_factory: xylitol_plugin_sdk::noop_compaction_factory(),
+            tools: xylitol_runtime::agent::tools::ToolSet::empty(),
+            system_prompt: None,
+            context_files: Vec::new(),
+            append_system_prompt: Vec::new(),
+            skills: Vec::new(),
+            batch_mode: xylitol_plugin_sdk::XyBatchMode::default(),
+        };
+        HostState::new(
+            baseline,
+            ReloadBaseline {
+                cwd: PathBuf::from("."),
+                agent_dir: PathBuf::from("."),
+                project_trusted: false,
+                default_model_id: None,
+            },
+            Arc::new(RegistryFactory(Arc::new(
+                xylitol_plugin_sdk::LoopMiddlewareRegistry::new(),
+            ))),
+            "fallback".into(),
+        )
+    }
+
+    #[tokio::test]
+    async fn switched_session_plan_mode_event_lands_in_the_new_slot() {
+        use xylitol_plugin_sdk::session::PlanModeKind;
+
+        let host = host_with(Arc::new(PlanStore::default()));
+        let old = host.slot("old").await;
+
+        publish_plan_mode_event(
+            &host,
+            &old,
+            Some("new"),
+            Some((PlanModeKind::Plan, Some("p1".into()))),
+        )
+        .await;
+
+        assert_eq!(
+            old.journal.lock().await.max_seq(),
+            0,
+            "the pre-switch slot must not receive the event"
+        );
+        let new = host.slot("new").await;
+        let events = new.journal.lock().await.replay_from(0).expect("journal");
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            events[0].1,
+            xylitol_protocol::Event::PlanModeChanged {
+                mode: "plan".into(),
+                plan_id: Some("p1".into()),
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn subscribe_publishes_plan_mode_snapshot_without_consuming_seq() {
+        use xylitol_plugin_sdk::XySessionStore as _;
+        use xylitol_plugin_sdk::session::PlanMode;
+
+        let store = Arc::new(PlanStore::default());
+        store.create("s-plan", None, None).await.expect("create");
+        store
+            .append_session_entry(
+                "s-plan",
+                &PlanMode::plan(Some("p1".into())).to_custom_entry_shell(),
+            )
+            .await
+            .expect("append plan mode");
+
+        let host = host_with(store);
+        let slot = host.slot("s-plan").await;
+        let (tx, mut rx) = mpsc::channel(16);
+        let mux = host.register_unbound_mux(tx).await;
+        let result = host.bind_mux_to_session(&slot, 0, Some(mux)).await;
+        assert!(result.ok, "{result:?}");
+
+        let mut plan_mode = None;
+        while let Ok(note) = rx.try_recv() {
+            if note.method != SESSION_EVENT {
+                continue;
+            }
+            let Some(event) = note.params.get("event") else {
+                continue;
+            };
+            if let Ok(xylitol_protocol::Event::PlanModeChanged { mode, plan_id }) =
+                serde_json::from_value(event.clone())
+            {
+                plan_mode = Some((mode, plan_id));
+            }
+        }
+        assert_eq!(plan_mode, Some(("plan".to_string(), Some("p1".into()))));
+        assert_eq!(
+            slot.journal.lock().await.max_seq(),
+            0,
+            "the subscribe snapshot must not be journaled or consume seq"
+        );
+    }
+
+    #[test]
+    fn session_slots_derive_independent_loop_registries() {
+        let root = Arc::new(xylitol_plugin_sdk::LoopMiddlewareRegistry::new());
+        root.register(Arc::new(Marker("shared"))).expect("shared");
+
+        let slot_a = SessionSlot::with_seq("a", broadcast::channel(16).0, Some(root.clone()), 1);
+        let slot_b = SessionSlot::with_seq("b", broadcast::channel(16).0, Some(root.clone()), 1);
+
+        root.register(Arc::new(Marker("late"))).expect("late");
+
+        let ids = |slot: &SessionSlot| slot.loop_registry.as_ref().expect("session registry").ids();
+        assert_eq!(ids(&slot_a), vec!["shared".to_string()]);
+        assert_eq!(ids(&slot_b), vec!["shared".to_string()]);
+        assert_eq!(root.ids(), vec!["shared".to_string(), "late".to_string()]);
+
+        slot_a
+            .loop_registry
+            .as_ref()
+            .expect("session registry")
+            .register(Arc::new(Marker("only-a")))
+            .expect("only-a");
+
+        assert_eq!(
+            ids(&slot_a),
+            vec!["shared".to_string(), "only-a".to_string()]
+        );
+        assert_eq!(ids(&slot_b), vec!["shared".to_string()]);
+        assert_eq!(root.ids(), vec!["shared".to_string(), "late".to_string()]);
     }
 
     fn text_delta(text: &str) -> XyEvent {
@@ -1726,6 +2075,8 @@ mod tests {
     #[tokio::test]
     async fn tape_does_not_accumulate_in_journal_between_facts() {
         let slot = slot();
+        let (tx, mut rx) = mpsc::channel(128);
+        slot.add_subscriber(tx).await;
         slot.append_and_push(&turn_start(1)).await;
         for i in 0..50 {
             slot.append_and_push(&text_delta(&format!("d{i}"))).await;
@@ -1734,6 +2085,25 @@ mod tests {
             .await;
         let journal = slot.journal.lock().await;
         assert_eq!(journal.max_seq(), 2, "only the two facts are journaled");
+        drop(journal);
+
+        let mut tape_seqs = Vec::new();
+        while let Ok(note) = rx.try_recv() {
+            let Some(event) = note.params.get("event") else {
+                continue;
+            };
+            if matches!(
+                serde_json::from_value::<xylitol_protocol::Event>(event.clone()),
+                Ok(xylitol_protocol::Event::TextDelta { .. })
+            ) {
+                tape_seqs.push(note.params["seq"].as_u64().unwrap_or(u64::MAX));
+            }
+        }
+        assert_eq!(tape_seqs.len(), 50);
+        assert!(
+            tape_seqs.iter().all(|seq| *seq == 1),
+            "tape frames ride the current fact position and share its seq"
+        );
     }
 
     #[tokio::test]

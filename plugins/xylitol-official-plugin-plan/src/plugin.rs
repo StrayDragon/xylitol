@@ -1,9 +1,8 @@
 use xylitol_plugin_sdk::LoopMiddlewareRegistry;
-use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::rt::{Ctx, Plugin, Result};
 
 use crate::config::PlanConfig;
-use crate::middleware::plan_mode_middleware;
+use crate::middleware::{plan_mode_middleware, plan_tool_surface_middleware};
 
 pub struct PlanPlugin {
     config: PlanConfig,
@@ -31,19 +30,30 @@ impl Plugin for PlanPlugin {
         let Some(registry) = ctx.get::<LoopMiddlewareRegistry>() else {
             return Ok(());
         };
-        let store = ctx
-            .get::<xylitol_plugin_sdk::RuntimeSessionStore>()
-            .map(|store| store.0.clone())
-            .or_else(|| ctx.get::<dyn XySessionStore>());
-        let handle = registry
-            .register(plan_mode_middleware(store, Some(ctx.clone()), &self.config))
+        let (mode_handle, surface_handle) = register_plan_middlewares(&registry, &self.config)
             .map_err(|e| xylitol_plugin_sdk::rt::ErrorKind::PluginFailed(Box::new(e)))?;
         ctx.effect(|| async move {
-            handle.unregister();
+            surface_handle.unregister();
+            mode_handle.unregister();
             Ok(())
         })?;
         Ok(())
     }
+}
+
+fn register_plan_middlewares(
+    registry: &LoopMiddlewareRegistry,
+    config: &PlanConfig,
+) -> std::result::Result<
+    (
+        xylitol_plugin_sdk::LoopMiddlewareHandle,
+        xylitol_plugin_sdk::LoopMiddlewareHandle,
+    ),
+    xylitol_plugin_sdk::error::XyError,
+> {
+    let mode_handle = registry.register(plan_mode_middleware(config))?;
+    let surface_handle = registry.register(plan_tool_surface_middleware())?;
+    Ok((mode_handle, surface_handle))
 }
 
 #[cfg(test)]
@@ -87,7 +97,10 @@ mod tests {
             }
             tokio::task::yield_now().await;
         }
-        assert_eq!(registry.ids(), vec!["plan-mode".to_string()]);
+        assert_eq!(
+            registry.ids(),
+            vec!["plan-mode".to_string(), "plan-tool-surface".to_string()]
+        );
         fiber.dispose().await.expect("dispose");
         assert!(registry.is_empty());
         let _ = ctx.shutdown().await;
