@@ -76,6 +76,51 @@
       },
       "type": "object"
     },
+    "ExternalPluginConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "default": "",
+          "type": "string"
+        },
+        "cwd": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "name": {
+          "default": "",
+          "type": "string"
+        },
+        "timeout_ms": {
+          "default": 30000,
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trusted": {
+          "default": false,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "GeneratorCriticConfig": {
       "additionalProperties": false,
       "properties": {
@@ -873,6 +918,13 @@
         "model": null,
         "system_prompt": null
       }
+    },
+    "external_plugins": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ExternalPluginConfig"
+      },
+      "type": "array"
     },
     "hooks": {
       "$ref": "#/$defs/HooksConfig",

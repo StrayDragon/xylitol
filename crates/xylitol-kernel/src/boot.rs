@@ -2,10 +2,12 @@ use rutis::host::{CtxHost, FiberState};
 use rutis_loader::{Chain, Layer, Loader, LoaderOptions, LoaderPlugin, Patch};
 use xylitol_plugin_sdk::rt::Ctx;
 
-use crate::admit::Admit;
+use crate::admit::{Admit, is_reserved_plugin_name};
 use crate::bootstrap::{BootstrapError, BootstrapInput, BootstrappedRuntime, bootstrap};
 use crate::builtins::official_builtins;
 use crate::core;
+use crate::external_plugin::ExternalPlugin;
+use xylitol_official_plugin_config::types::ExternalPluginConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Profile {
@@ -103,7 +105,11 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
     let ctx = Ctx::root().map_err(cordis_to_bootstrap)?;
     mount_core(&ctx, opts).await?;
 
-    let builtins = official_builtins();
+    let mut builtins = official_builtins();
+    let external_specs = external_plugin_specs(&ctx);
+    for spec in &external_specs {
+        builtins.register(spec.name.clone(), ExternalPlugin::new);
+    }
     let plugin = LoaderPlugin::new(
         Chain::new().with(Admit { inner: builtins }),
         LoaderOptions::default(),
@@ -112,7 +118,7 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
     let loader_view = ctx.plugin(plugin);
     (&loader_view).await.map_err(cordis_to_bootstrap)?;
 
-    let rows = default_rows(opts, &ctx);
+    let rows = default_rows(opts, &ctx, &external_specs);
     loader
         .reconcile(vec![Layer::new("base", rows)], None)
         .await
@@ -151,7 +157,11 @@ async fn mount_core(ctx: &Ctx, opts: &BootOptions) -> Result<(), BootstrapError>
     Ok(())
 }
 
-fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
+fn default_rows(
+    opts: &BootOptions,
+    ctx: &Ctx,
+    external_specs: &[ExternalPluginConfig],
+) -> Vec<Patch> {
     let config = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>();
     let mcp_servers = config
         .as_ref()
@@ -161,8 +171,49 @@ fn default_rows(opts: &BootOptions, ctx: &Ctx) -> Vec<Patch> {
     #[cfg(feature = "fff")]
     insert.push(serde_json::json!({ "id": "tools-fff", "name": "tools-fff" }));
     insert.extend(optional_plugin_rows(config.as_deref()));
+    for spec in external_specs {
+        insert.push(serde_json::json!({
+            "id": format!("external:{}", spec.name),
+            "name": spec.name,
+            "config": spec,
+        }));
+    }
     insert.push(profile_row(opts.profile));
     serde_json::from_value(serde_json::json!([{ "insert": insert }])).unwrap_or_default()
+}
+
+fn external_plugin_specs(ctx: &Ctx) -> Vec<ExternalPluginConfig> {
+    let Some(config) = ctx.get::<xylitol_official_plugin_config::plugin::ConfigService>() else {
+        return Vec::new();
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut specs = Vec::new();
+    for spec in &config.app.external_plugins {
+        if !spec.trusted {
+            log::warn!(
+                "external plugin `{}`: not trusted (`trusted: true` required); skipped",
+                spec.name
+            );
+            continue;
+        }
+        if spec.name.trim().is_empty() || spec.command.trim().is_empty() {
+            log::warn!("external plugin: name and command are required; skipped");
+            continue;
+        }
+        if is_reserved_plugin_name(&spec.name) {
+            log::warn!(
+                "external plugin `{}`: name collides with a built-in plugin; skipped",
+                spec.name
+            );
+            continue;
+        }
+        if !seen.insert(spec.name.clone()) {
+            log::warn!("external plugin `{}`: duplicate name; skipped", spec.name);
+            continue;
+        }
+        specs.push(spec.clone());
+    }
+    specs
 }
 
 fn base_rows(
@@ -295,6 +346,105 @@ fn kernel_failed(msg: impl Into<String>) -> BootstrapError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn external_fixture() -> &'static str {
+        r#"
+import json, sys
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    request = json.loads(line)
+    if request.get("method") == "initialize":
+        result = {
+            "protocol_version": 1,
+            "name": "fixture",
+            "version": "0.1.0",
+            "capabilities": ["tools"],
+            "tools": [{"name": "echo", "description": "Echo", "input_schema": {"type": "object"}}],
+        }
+    elif request.get("method") == "tools/call":
+        result = {"content": str(request.get("params", {}).get("arguments", {}).get("text", ""))}
+    else:
+        print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "error": {"code": -32601, "message": "unknown"}}), flush=True)
+        continue
+    print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "result": result}), flush=True)
+"#
+    }
+
+    fn boot_opts(config_path: std::path::PathBuf) -> BootOptions {
+        BootOptions {
+            profile: Profile::Print,
+            config_path: Some(config_path),
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "contract",
+            ephemeral_sessions: true,
+        }
+    }
+
+    fn write_external_config(
+        dir: &tempfile::TempDir,
+        trusted: bool,
+        name: &str,
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
+        let script = dir.path().join("external_fixture.py");
+        std::fs::write(&script, external_fixture()).expect("fixture");
+        let config_path = dir.path().join("config.yaml");
+        let config = format!(
+            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\nexternal_plugins:\n  - name: \"{name}\"\n    command: \"python3\"\n    args: [\"-u\", \"{}\"]\n    trusted: {trusted}\n    timeout_ms: 5000\n",
+            script.to_string_lossy()
+        );
+        std::fs::write(&config_path, config).expect("config");
+        (config_path, script)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn boot_ctx_registers_trusted_external_tools() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (config_path, _script) = write_external_config(&dir, true, "fixture");
+        let (ctx, _loader) = boot_ctx(&boot_opts(config_path)).await.expect("boot_ctx");
+        let registries = ctx
+            .get::<xylitol_plugin_sdk::HostRegistries>()
+            .expect("registries");
+        assert!(
+            registries.tools.get("fixture__echo").is_some(),
+            "trusted external plugin tool must be registered"
+        );
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn boot_ctx_skips_untrusted_external_plugins() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (config_path, _script) = write_external_config(&dir, false, "fixture");
+        let (ctx, _loader) = boot_ctx(&boot_opts(config_path)).await.expect("boot_ctx");
+        let registries = ctx
+            .get::<xylitol_plugin_sdk::HostRegistries>()
+            .expect("registries");
+        assert!(
+            registries.tools.get("fixture__echo").is_none(),
+            "untrusted external plugin must not be assembled"
+        );
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn boot_ctx_skips_external_plugin_with_reserved_name() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (config_path, _script) = write_external_config(&dir, true, "tools-builtin");
+        let (ctx, _loader) = boot_ctx(&boot_opts(config_path)).await.expect("boot_ctx");
+        let registries = ctx
+            .get::<xylitol_plugin_sdk::HostRegistries>()
+            .expect("registries");
+        assert!(
+            registries.tools.get("tools-builtin__echo").is_none(),
+            "reserved external plugin name must not be registered"
+        );
+        let _ = ctx.shutdown().await;
+    }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn boot_with_self_check_print_profile() {

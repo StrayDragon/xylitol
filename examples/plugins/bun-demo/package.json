@@ -1,0 +1,10 @@
+{
+  "name": "xylitol-bun-demo-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal out-of-process xylitol plugin (JSON-RPC over stdio).",
+  "scripts": {
+    "start": "bun plugin.ts"
+  }
+}
