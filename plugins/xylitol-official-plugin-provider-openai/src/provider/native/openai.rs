@@ -5,17 +5,19 @@ use std::sync::Arc;
 use async_openai::types::chat::{
     ChatCompletionMessageToolCalls, ChatCompletionRequestAssistantMessage,
     ChatCompletionRequestAssistantMessageContent, ChatCompletionRequestMessage,
+    ChatCompletionRequestMessageContentPartImage, ChatCompletionRequestMessageContentPartText,
     ChatCompletionRequestSystemMessage, ChatCompletionRequestToolMessage,
     ChatCompletionRequestToolMessageContent, ChatCompletionRequestUserMessage,
-    ChatCompletionRequestUserMessageContent, ChatCompletionStreamOptions, ChatCompletionTool,
-    ChatCompletionTools, CreateChatCompletionRequestArgs, CreateChatCompletionStreamResponse,
-    FinishReason, FunctionCall, FunctionObject,
+    ChatCompletionRequestUserMessageContent, ChatCompletionRequestUserMessageContentPart,
+    ChatCompletionStreamOptions, ChatCompletionTool, ChatCompletionTools,
+    CreateChatCompletionRequestArgs, CreateChatCompletionStreamResponse, FinishReason,
+    FunctionCall, FunctionObject, ImageUrl,
 };
 use futures::{Stream, StreamExt};
 use serde_json::Value;
 
 use crate::dto::XyStream;
-use crate::dto::{AgentPart, XyLlmMessage, XyStopReason, collect_text_parts};
+use crate::dto::{AgentPart, ImageContent, XyLlmMessage, XyStopReason, collect_text_parts};
 use crate::dto::{XyChunk, XyToolSchema};
 use crate::error::XyError;
 use crate::hooks::HttpHooks;
@@ -388,6 +390,7 @@ pub fn convert_agent_messages(
     system_prompt: Option<&str>,
 ) -> Vec<ChatCompletionRequestMessage> {
     let mut out = Vec::new();
+    let mut pending_tool_images: Vec<(String, Vec<ImageContent>)> = Vec::new();
 
     if let Some(sp) = system_prompt
         && !sp.is_empty()
@@ -405,18 +408,19 @@ pub fn convert_agent_messages(
     for msg in messages {
         match msg {
             XyLlmMessage::UserMessage { content, .. } => {
-                let text = collect_text_parts(content);
-                if text.is_empty() {
+                flush_tool_images(&mut out, &mut pending_tool_images);
+                let Some(content) = user_message_content(content) else {
                     continue;
-                }
+                };
                 out.push(ChatCompletionRequestMessage::User(
                     ChatCompletionRequestUserMessage {
-                        content: ChatCompletionRequestUserMessageContent::Text(text),
+                        content,
                         name: None,
                     },
                 ));
             }
             XyLlmMessage::AssistantMessage { content, .. } => {
+                flush_tool_images(&mut out, &mut pending_tool_images);
                 let text = collect_text_parts(content);
                 let tool_calls: Vec<ChatCompletionMessageToolCalls> = content
                     .iter()
@@ -465,17 +469,106 @@ pub fn convert_agent_messages(
                 ..
             } => {
                 let text = collect_text_parts(content);
+                let images: Vec<ImageContent> = content
+                    .iter()
+                    .filter_map(|part| match part {
+                        AgentPart::Image(image) => Some(image.clone()),
+                        _ => None,
+                    })
+                    .collect();
+                let tool_text = if text.is_empty() && !images.is_empty() {
+                    "[image]".to_string()
+                } else {
+                    text
+                };
                 out.push(ChatCompletionRequestMessage::Tool(
                     ChatCompletionRequestToolMessage {
-                        content: ChatCompletionRequestToolMessageContent::Text(text),
+                        content: ChatCompletionRequestToolMessageContent::Text(tool_text),
                         tool_call_id: tool_use_id.clone(),
                     },
                 ));
+                if !images.is_empty() {
+                    pending_tool_images.push((tool_use_id.clone(), images));
+                }
             }
         }
     }
 
+    flush_tool_images(&mut out, &mut pending_tool_images);
+
     out
+}
+
+fn user_message_content(content: &[AgentPart]) -> Option<ChatCompletionRequestUserMessageContent> {
+    let has_image = content
+        .iter()
+        .any(|part| matches!(part, AgentPart::Image(_)));
+    if !has_image {
+        let text = collect_text_parts(content);
+        return (!text.is_empty()).then_some(ChatCompletionRequestUserMessageContent::Text(text));
+    }
+
+    let mut parts = Vec::new();
+    for part in content {
+        match part {
+            AgentPart::Text { text } if !text.is_empty() => {
+                parts.push(ChatCompletionRequestUserMessageContentPart::Text(
+                    ChatCompletionRequestMessageContentPartText {
+                        text: text.clone(),
+                        prompt_cache_breakpoint: None,
+                    },
+                ));
+            }
+            AgentPart::Image(image) => {
+                parts.push(ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                    ChatCompletionRequestMessageContentPartImage {
+                        image_url: ImageUrl {
+                            url: super::image_data_url(image),
+                            detail: None,
+                        },
+                        prompt_cache_breakpoint: None,
+                    },
+                ));
+            }
+            _ => {}
+        }
+    }
+    (!parts.is_empty()).then_some(ChatCompletionRequestUserMessageContent::Array(parts))
+}
+
+fn flush_tool_images(
+    out: &mut Vec<ChatCompletionRequestMessage>,
+    pending: &mut Vec<(String, Vec<ImageContent>)>,
+) {
+    if pending.is_empty() {
+        return;
+    }
+    let ids: Vec<&str> = pending.iter().map(|(id, _)| id.as_str()).collect();
+    let mut parts = vec![ChatCompletionRequestUserMessageContentPart::Text(
+        ChatCompletionRequestMessageContentPartText {
+            text: format!("[tool result images: {}]", ids.join(", ")),
+            prompt_cache_breakpoint: None,
+        },
+    )];
+    for (_, images) in pending.drain(..) {
+        for image in images {
+            parts.push(ChatCompletionRequestUserMessageContentPart::ImageUrl(
+                ChatCompletionRequestMessageContentPartImage {
+                    image_url: ImageUrl {
+                        url: super::image_data_url(&image),
+                        detail: None,
+                    },
+                    prompt_cache_breakpoint: None,
+                },
+            ));
+        }
+    }
+    out.push(ChatCompletionRequestMessage::User(
+        ChatCompletionRequestUserMessage {
+            content: ChatCompletionRequestUserMessageContent::Array(parts),
+            name: None,
+        },
+    ));
 }
 
 #[cfg(test)]
@@ -563,6 +656,66 @@ mod tests {
                 assert_eq!(m.tool_call_id, "call-1");
             }
             _ => panic!("expected Tool message"),
+        }
+    }
+
+    #[test]
+    fn convert_user_image_uses_content_array() {
+        let msgs = vec![XyLlmMessage::UserMessage {
+            content: vec![
+                AgentPart::text("look"),
+                AgentPart::image("image/png", "AAA"),
+            ],
+            timestamp: 0,
+        }];
+        let result = convert_agent_messages(&msgs, None);
+        match &result[0] {
+            ChatCompletionRequestMessage::User(message) => match &message.content {
+                ChatCompletionRequestUserMessageContent::Array(parts) => {
+                    assert!(
+                        parts.iter().any(|part| matches!(
+                            part,
+                            ChatCompletionRequestUserMessageContentPart::ImageUrl(_)
+                        )),
+                        "user image must be projected, got {parts:?}"
+                    );
+                }
+                _ => panic!("expected array content for an image message"),
+            },
+            _ => panic!("expected User message"),
+        }
+    }
+
+    #[test]
+    fn convert_tool_image_moves_to_trailing_user_message() {
+        let msgs = vec![XyLlmMessage::tool_result(
+            "call-1",
+            "read",
+            vec![AgentPart::text("see"), AgentPart::image("image/png", "AAA")],
+            false,
+        )];
+        let result = convert_agent_messages(&msgs, None);
+        assert_eq!(result.len(), 2, "tool text + trailing image user message");
+        match &result[0] {
+            ChatCompletionRequestMessage::Tool(message) => {
+                assert_eq!(message.tool_call_id, "call-1");
+            }
+            _ => panic!("expected Tool message first"),
+        }
+        match &result[1] {
+            ChatCompletionRequestMessage::User(message) => match &message.content {
+                ChatCompletionRequestUserMessageContent::Array(parts) => {
+                    assert!(
+                        parts.iter().any(|part| matches!(
+                            part,
+                            ChatCompletionRequestUserMessageContentPart::ImageUrl(_)
+                        )),
+                        "tool image must ride in a trailing user message: {parts:?}"
+                    );
+                }
+                _ => panic!("expected array content for the trailing image message"),
+            },
+            _ => panic!("expected trailing User message"),
         }
     }
 

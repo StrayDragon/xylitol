@@ -489,6 +489,18 @@ fn test_ip_r1500_named_compat(provider_bdd: ProviderBdd) {}
 fn test_ip_r1501_full_names() {}
 
 #[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "OpenAI用户图片投影"
+)]
+fn test_ip_r2975_user_image(provider_bdd: ProviderBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "OpenAI工具结果图片投影"
+)]
+fn test_ip_r2975_tool_image(provider_bdd: ProviderBdd) {}
+
+#[scenario(
     path = "llmanspec/specs/app-tui-design-playground/app-tui-design-playground.feature",
     name = "词元同步单一脚本"
 )]

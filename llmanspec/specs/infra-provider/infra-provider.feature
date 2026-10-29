@@ -68,6 +68,20 @@
       当 以 medium 与 off 档解析请求 thinking 并注入各族请求体
       那么 Responses 用 reasoning.effort 且 Completions 随 compat 分流且 Anthropic 随 compat 分流且 off 档省略字段
 
+  @req:r2975
+  规则: openai-image-projection
+    OpenAI Responses/Completions 方言 须把 `AgentPart::Image` 投影进请求体，不得静默丢弃：user message 中 Responses 用 `input_image`、Completions 用 `image_url`；tool result 中 Responses 的 `function_call_output.output` 须为含 `input_text` 与 `input_image` 的数组，Completions 的 tool message 只放文本，图片须在紧邻的后续 user message 批量补发并标注来源工具调用 id，不得把图片塞进 `role=tool`。data URL 须形如 `data:<media_type>;base64,<data>`；无文本且仅图片时 须保留短占位文本。Anthropic 既有 image block 映射不变。由插件单测覆盖。
+
+    场景: OpenAI用户图片投影
+      假如 OpenAI 消息含用户图片
+      当 转换为 OpenAI 请求
+      那么 Responses 用户内容含 input_image 且 Completions 用户内容含 image_url
+
+    场景: OpenAI工具结果图片投影
+      假如 OpenAI 消息含工具结果图片
+      当 转换为 OpenAI 请求
+      那么 Responses function_call_output 含 input_image 且 Completions 以紧邻 user 消息补发图片
+
   @req:r1501
   规则: api-fullname-full-names
     配置与装配中可识别的 api 字面量 须使用全称 openai-responses、openai-completions 与 anthropic-messages；产品文档 不得把配置真值简写成 responses、completions 或 messages。省略 api→默认 openai-responses（OpenAI 兼容）行为保持（见 pa4 / m13）。由单测与文档覆盖，不得单独扩 BDD step。

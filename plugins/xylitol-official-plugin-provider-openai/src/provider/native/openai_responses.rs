@@ -733,12 +733,29 @@ fn convert_messages_to_input_items(
     for msg in messages {
         match msg {
             XyLlmMessage::UserMessage { content, .. } => {
-                let text = collect_user_text_parts(content);
-                if !text.is_empty() {
+                let mut parts: Vec<Value> = Vec::new();
+                for part in content {
+                    match part {
+                        AgentPart::Text { text } if !text.is_empty() => {
+                            parts.push(serde_json::json!({
+                                "type": "input_text",
+                                "text": text,
+                            }));
+                        }
+                        AgentPart::Image(image) => {
+                            parts.push(serde_json::json!({
+                                "type": "input_image",
+                                "image_url": super::image_data_url(image),
+                            }));
+                        }
+                        _ => {}
+                    }
+                }
+                if !parts.is_empty() {
                     items.push(serde_json::json!({
                         "type": "message",
                         "role": "user",
-                        "content": [{"type": "input_text", "text": text}],
+                        "content": parts,
                     }));
                 }
             }
@@ -804,10 +821,32 @@ fn convert_messages_to_input_items(
                 ..
             } => {
                 let text = collect_user_text_parts(content);
+                let images: Vec<&crate::dto::ImageContent> = content
+                    .iter()
+                    .filter_map(|part| match part {
+                        AgentPart::Image(image) => Some(image),
+                        _ => None,
+                    })
+                    .collect();
+                let output = if images.is_empty() {
+                    serde_json::json!(text)
+                } else {
+                    let mut parts = vec![serde_json::json!({
+                        "type": "input_text",
+                        "text": if text.is_empty() { "[image]" } else { text.as_str() },
+                    })];
+                    for image in images {
+                        parts.push(serde_json::json!({
+                            "type": "input_image",
+                            "image_url": super::image_data_url(image),
+                        }));
+                    }
+                    serde_json::json!(parts)
+                };
                 items.push(serde_json::json!({
                     "type": "function_call_output",
                     "call_id": tool_use_id,
-                    "output": text,
+                    "output": output,
                 }));
             }
         }
@@ -899,6 +938,39 @@ mod tests {
             .unwrap();
         assert_eq!(output["call_id"], "call-1");
         assert_eq!(output["output"], "file.txt");
+    }
+
+    #[test]
+    fn user_image_uses_input_image() {
+        let msgs = vec![XyLlmMessage::UserMessage {
+            content: vec![
+                AgentPart::text("look"),
+                AgentPart::image("image/png", "AAA"),
+            ],
+            timestamp: 0,
+        }];
+        let items = messages_to_responses_input(&msgs);
+        let content = items[0]["content"].as_array().expect("content array");
+        assert!(
+            content.iter().any(|part| part["type"] == "input_image"),
+            "user image must be projected: {content:?}"
+        );
+    }
+
+    #[test]
+    fn tool_image_uses_structured_output_array() {
+        let msgs = vec![XyLlmMessage::tool_result(
+            "call-1",
+            "read",
+            vec![AgentPart::text("see"), AgentPart::image("image/png", "AAA")],
+            false,
+        )];
+        let items = messages_to_responses_input(&msgs);
+        let output = items[0]["output"].as_array().expect("output array");
+        assert!(
+            output.iter().any(|part| part["type"] == "input_image"),
+            "tool image must be projected into function_call_output: {output:?}"
+        );
     }
 
     #[test]

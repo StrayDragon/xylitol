@@ -2,6 +2,9 @@
 depends_on: []
 title: 让 OpenAI 族请求投影 AgentPart::Image
 needs_specs_change: true
+branch: sdd/c2993-add-openai-image-projection
+base_branch: main
+base_sha: c53365b3d542fe078c9b5dafcc3cea705a4c7062
 ---
 
 # 让 OpenAI 族请求投影 AgentPart::Image
