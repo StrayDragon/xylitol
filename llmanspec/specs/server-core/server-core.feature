@@ -243,7 +243,7 @@
       那么 经产品 unary 到达 Host 且不经 REST 冒充
   @req:r1779
   规则: 上下文估计方法接线
-    Host 须为 estimate_context 提供已登记 unary：经与 in-process driver 同源的估算入口计算 ContextTokenEstimate，须计入 host 侧固定请求开销（system prompt + tool schemas）；不得返回 stub 或客户端自估降级。
+    Host 须为 estimate_context 提供已登记 unary：经与 in-process driver 同源的估算入口计算 ContextTokenEstimate，须计入 host 侧固定请求开销（system prompt + tool schemas）；不得返回 stub 或客户端自估降级。返回的 ContextTokenEstimate 须含 prompt cache 三态（与 in-process 同源），不得丢弃为不适用。
 
     场景: 估算上下文一元已登记只读
       当 查询方法表的 estimate_context
@@ -256,6 +256,11 @@
       假如 会话条目仅含 abort 回合的 usage 锚点
       当 以同源估计器估计上下文
       那么 估计来源降级而非 Api
+
+    场景: 估算上下文携带缓存三态
+      假如 会话条目含缓存命中的 stop 回合 usage 锚点
+      当 以同源估计器估计上下文
+      那么 估计缓存状态为命中且 token 数一致
   @req:r1782
   规则: wire 会话导入内容暂存
     Host 须为 import_jsonl 提供内容暂存导入：载荷携带 content 而无 input_path 时，须将内容暂存为临时输入路径、经同一 dispatch 导入并返回新 session_id，处理结束 须清理暂存文件；携带 input_path 的直传行为 须保持不变。

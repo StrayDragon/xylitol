@@ -98,6 +98,25 @@
       当 select_model 到该模型
       那么 thinking level 为 max
     # （c2827 合并：runtime-model-registry r1758 thinking-levels-on-meta 的 meta 解析语义由本条 parse-list/freeform-ok 场景承载。）
+  @req:r2976
+  规则: model-entry-presets
+    ModelsConfig 的 ModelEntry 须支持可选 `preset` 字符串；预设目录 须为编译期常量，至少含 zmodel / opencode-zen / clinepass / commandcode。加载期 须先展开预设默认值（provider / model / base_url / api / compat / thinking / thinking_levels / context_window），再用条目显式字段覆盖；预设 不得提供 api_key / fallback / system prompt，也不得改变工具或 ReAct 语义。未知 preset 须使配置加载失败并给出 `unknown preset: <id>` 与模型别名，不得静默回落裸档案；`context_window` 为 0 的预设 须留给 provider 默认，不得伪造。预设名 须为唯一短名，不得为旧名保留别名。
+
+    场景: 预设展开
+      假如 YAML 模型条目仅含 preset: opencode-zen 与 api_key
+      当 加载预设配置
+      那么 provider 为 openai 且 model 与 base_url 与 api 来自预设
+
+    场景: 显式覆盖
+      假如 YAML 模型条目含 preset: zmodel 且显式 model 与 context_window
+      当 加载预设配置
+      那么 显式字段覆盖预设默认值
+
+    场景: 未知预设失败
+      假如 YAML 模型条目含 preset: no-such
+      当 加载预设配置
+      那么 失败且诊断含 unknown preset
+
   @req:r1728
   规则: model-entry-thinking-level-map
     ModelsConfig 的 ModelEntry 须支持可选 thinking_level_map（键为档名字符串，值为字符串或 null）；键不在该模型 thinking_levels 声明列表中（缺省列表视为仅 off）时 须使配置加载失败；键与声明列表的归属判定 须精确字符串相等（不得因仅大小写或空白差异而匹配）；解析结果 须进入模型 meta 供请求组装；键缺省 须表示使用 adapter 内置默认，null 须表示该档不向 provider 发送 thinking/effort 字段。

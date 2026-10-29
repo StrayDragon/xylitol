@@ -3,7 +3,7 @@ use serde_json::Value;
 
 use xylitol_plugin_sdk::session::TodoList as DomainTodoList;
 use xylitol_plugin_sdk::{
-    AgentMessage, ContextTokenEstimate, TokenProvenance, XyEvent, XyEventError,
+    AgentMessage, ContextTokenEstimate, PromptCacheRead, TokenProvenance, XyEvent, XyEventError,
 };
 use xylitol_protocol::{Event, TodoList as WireTodoList};
 
@@ -87,6 +87,8 @@ pub fn event_to_wire(event: &XyEvent) -> Result<Event, WireEventError> {
             usage_tokens: estimate.usage_tokens,
             trailing_tokens: estimate.trailing_tokens,
             last_usage_index: estimate.last_usage_index,
+            prompt_cache: prompt_cache_status(estimate.prompt_cache_read).to_string(),
+            prompt_cache_tokens: prompt_cache_tokens(estimate.prompt_cache_read),
             reason: reason.clone(),
             generation: *generation,
         }),
@@ -202,6 +204,8 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
             usage_tokens,
             trailing_tokens,
             last_usage_index,
+            prompt_cache,
+            prompt_cache_tokens,
             reason,
             generation,
         } => Ok(XyEvent::ContextTokenSettlement {
@@ -211,6 +215,7 @@ pub fn event_from_wire(event: &Event) -> Result<XyEvent, WireEventError> {
                 usage_tokens: *usage_tokens,
                 trailing_tokens: *trailing_tokens,
                 last_usage_index: *last_usage_index,
+                prompt_cache_read: prompt_cache_from_wire(prompt_cache, *prompt_cache_tokens),
             },
             reason: reason.clone(),
             generation: *generation,
@@ -283,6 +288,30 @@ fn reshape<T: Serialize, U: serde::de::DeserializeOwned>(value: &T) -> Result<U,
     Ok(serde_json::from_value(serde_json::to_value(value)?)?)
 }
 
+fn prompt_cache_status(read: PromptCacheRead) -> &'static str {
+    match read {
+        PromptCacheRead::Tokens(_) => "hit",
+        PromptCacheRead::NotReported => "unknown",
+        PromptCacheRead::NotApplicable => "not_applicable",
+    }
+}
+
+fn prompt_cache_tokens(read: PromptCacheRead) -> Option<u64> {
+    match read {
+        PromptCacheRead::Tokens(n) => Some(n),
+        PromptCacheRead::NotReported | PromptCacheRead::NotApplicable => None,
+    }
+}
+
+fn prompt_cache_from_wire(status: &str, tokens: Option<u64>) -> PromptCacheRead {
+    match status {
+        "hit" => tokens.map_or(PromptCacheRead::NotReported, PromptCacheRead::Tokens),
+        "unknown" => PromptCacheRead::NotReported,
+        "" | "not_applicable" => PromptCacheRead::NotApplicable,
+        _ => PromptCacheRead::NotReported,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +324,7 @@ mod tests {
             usage_tokens: 40,
             trailing_tokens: 2,
             last_usage_index: Some(3),
+            ..Default::default()
         }
     }
 
@@ -399,6 +429,70 @@ mod tests {
                 "round trip {}",
                 case.description()
             );
+        }
+    }
+
+    #[test]
+    fn settlement_prompt_cache_tri_state_round_trips() {
+        for read in [
+            PromptCacheRead::Tokens(7),
+            PromptCacheRead::NotReported,
+            PromptCacheRead::NotApplicable,
+        ] {
+            let mut estimate = sample_estimate();
+            estimate.prompt_cache_read = read;
+            let event = XyEvent::ContextTokenSettlement {
+                estimate,
+                reason: "turn_settled".into(),
+                generation: 1,
+            };
+            let wire = event_to_wire(&event).expect("to wire");
+            match &wire {
+                Event::ContextTokenSettlement {
+                    prompt_cache,
+                    prompt_cache_tokens,
+                    ..
+                } => match read {
+                    PromptCacheRead::Tokens(n) => {
+                        assert_eq!(prompt_cache, "hit");
+                        assert_eq!(*prompt_cache_tokens, Some(n));
+                    }
+                    PromptCacheRead::NotReported => {
+                        assert_eq!(prompt_cache, "unknown");
+                        assert_eq!(*prompt_cache_tokens, None);
+                    }
+                    PromptCacheRead::NotApplicable => {
+                        assert_eq!(prompt_cache, "not_applicable");
+                        assert_eq!(*prompt_cache_tokens, None);
+                    }
+                },
+                other => panic!("expected settlement, got {other:?}"),
+            }
+            let back = event_from_wire(&wire).expect("from wire");
+            match back {
+                XyEvent::ContextTokenSettlement { estimate, .. } => {
+                    assert_eq!(estimate.prompt_cache_read, read);
+                }
+                other => panic!("expected settlement, got {}", other.description()),
+            }
+        }
+
+        let wire = Event::ContextTokenSettlement {
+            tokens: 1,
+            provenance: "Api".into(),
+            usage_tokens: 1,
+            trailing_tokens: 0,
+            last_usage_index: None,
+            prompt_cache: "mystery".into(),
+            prompt_cache_tokens: Some(9),
+            reason: "turn_settled".into(),
+            generation: 1,
+        };
+        match event_from_wire(&wire).expect("unknown cache status") {
+            XyEvent::ContextTokenSettlement { estimate, .. } => {
+                assert_eq!(estimate.prompt_cache_read, PromptCacheRead::NotReported);
+            }
+            other => panic!("expected settlement, got {}", other.description()),
         }
     }
 

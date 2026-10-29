@@ -2349,6 +2349,7 @@ pub(crate) async fn w_c2826_footer_refresh_once(host_pump_bdd: &HostPumpBdd) {
             usage_tokens: 1_234,
             trailing_tokens: 0,
             last_usage_index: None,
+            ..Default::default()
         }));
     xylitol_app_tui::refresh_footer_tokens(&mut pump.session, &mut pump.driver).await;
     *host_pump_bdd.pump.borrow_mut() = Some(pump);

@@ -412,6 +412,7 @@ async fn footer_with_estimate(
     tokens: u64,
     provenance: xylitol_plugin_sdk::model::TokenProvenance,
     window: u64,
+    cache: xylitol_plugin_sdk::dto::PromptCacheRead,
 ) -> String {
     use xylitol_app_tui::TuiHostSession as HostSession;
     use xylitol_app_tui::harness::{ScriptedDriver, TestTerminal};
@@ -432,6 +433,7 @@ async fn footer_with_estimate(
         usage_tokens: tokens,
         trailing_tokens: 0,
         last_usage_index: None,
+        prompt_cache_read: cache,
     }));
     xylitol_app_tui::refresh_footer_tokens(&mut session, &mut driver).await;
     session
@@ -447,8 +449,75 @@ async fn footer_with_estimate(
 #[when("以 Heuristic 上下文估计驱动 footer token 字段")]
 async fn w_c2826_footer_heuristic(fixed_zone_bdd: &FixedZoneBdd) {
     use xylitol_plugin_sdk::model::TokenProvenance;
-    let footer = footer_with_estimate(42, TokenProvenance::Heuristic, 128_000).await;
+    let footer = footer_with_estimate(
+        42,
+        TokenProvenance::Heuristic,
+        128_000,
+        xylitol_plugin_sdk::dto::PromptCacheRead::NotApplicable,
+    )
+    .await;
     stash(fixed_zone_bdd, vec![footer]);
+}
+
+#[when("以缓存命中上下文估计驱动 footer token 字段")]
+async fn w_c2994_footer_cache_hit(fixed_zone_bdd: &FixedZoneBdd) {
+    use xylitol_plugin_sdk::dto::PromptCacheRead;
+    use xylitol_plugin_sdk::model::TokenProvenance;
+    let footer = footer_with_estimate(
+        42,
+        TokenProvenance::Api,
+        128_000,
+        PromptCacheRead::Tokens(30),
+    )
+    .await;
+    stash(fixed_zone_bdd, vec![footer]);
+}
+
+#[then("footer 含 used C tokens 与 cache N 且 cache 段在占用比之前")]
+fn t_c2994_footer_cache_hit(fixed_zone_bdd: &FixedZoneBdd) {
+    let footer = fixed_zone_bdd.frame.borrow().clone().expect("footer");
+    assert!(footer.contains("used 42 tokens"), "c2994: {footer}");
+    assert!(footer.contains("cache 30"), "c2994: {footer}");
+    let cache_at = footer.find("cache 30").expect("cache segment");
+    let ratio_at = footer.find("%/128k").expect("ratio segment");
+    assert!(
+        cache_at < ratio_at,
+        "c2994: cache must precede the ratio: {footer}"
+    );
+}
+
+#[when("以上游未上报缓存上下文估计驱动 footer token 字段")]
+async fn w_c2994_footer_cache_unknown(fixed_zone_bdd: &FixedZoneBdd) {
+    use xylitol_plugin_sdk::dto::PromptCacheRead;
+    use xylitol_plugin_sdk::model::TokenProvenance;
+    let footer =
+        footer_with_estimate(42, TokenProvenance::Api, 0, PromptCacheRead::NotReported).await;
+    stash(fixed_zone_bdd, vec![footer]);
+}
+
+#[then("footer 含 cache ? 且不得伪造 cache 0")]
+fn t_c2994_footer_cache_unknown(fixed_zone_bdd: &FixedZoneBdd) {
+    let footer = fixed_zone_bdd.frame.borrow().clone().expect("footer");
+    assert!(footer.contains("cache ?"), "c2994: {footer}");
+    assert!(
+        !footer.contains("cache 0"),
+        "c2994: must not forge cache 0: {footer}"
+    );
+}
+
+#[when("以不适用缓存上下文估计驱动 footer token 字段")]
+async fn w_c2994_footer_cache_na(fixed_zone_bdd: &FixedZoneBdd) {
+    use xylitol_plugin_sdk::dto::PromptCacheRead;
+    use xylitol_plugin_sdk::model::TokenProvenance;
+    let footer =
+        footer_with_estimate(42, TokenProvenance::Api, 0, PromptCacheRead::NotApplicable).await;
+    stash(fixed_zone_bdd, vec![footer]);
+}
+
+#[then("footer 不含 cache 段")]
+fn t_c2994_footer_cache_na(fixed_zone_bdd: &FixedZoneBdd) {
+    let footer = fixed_zone_bdd.frame.borrow().clone().expect("footer");
+    assert!(!footer.contains("cache"), "c2994: {footer}");
 }
 
 #[then("footer 为单行且含 used ~C tokens 波浪号且无队列徽章")]
@@ -469,7 +538,13 @@ fn t_c2826_footer_heuristic(fixed_zone_bdd: &FixedZoneBdd) {
 #[when("以 Api 来源 42k tokens 与 128k 窗口驱动 footer")]
 async fn w_c2826_footer_percent(fixed_zone_bdd: &FixedZoneBdd) {
     use xylitol_plugin_sdk::model::TokenProvenance;
-    let footer = footer_with_estimate(42_000, TokenProvenance::Api, 128_000).await;
+    let footer = footer_with_estimate(
+        42_000,
+        TokenProvenance::Api,
+        128_000,
+        xylitol_plugin_sdk::dto::PromptCacheRead::NotApplicable,
+    )
+    .await;
     stash(fixed_zone_bdd, vec![footer]);
 }
 
@@ -489,8 +564,20 @@ fn t_c2826_footer_percent(fixed_zone_bdd: &FixedZoneBdd) {
 #[when("以 42000 与 8123456 两种 token 数驱动 footer")]
 async fn w_c2826_footer_compact(fixed_zone_bdd: &FixedZoneBdd) {
     use xylitol_plugin_sdk::model::TokenProvenance;
-    let a = footer_with_estimate(42_000, TokenProvenance::Api, 128_000).await;
-    let b = footer_with_estimate(8_123_456, TokenProvenance::Api, 32_000_000).await;
+    let a = footer_with_estimate(
+        42_000,
+        TokenProvenance::Api,
+        128_000,
+        xylitol_plugin_sdk::dto::PromptCacheRead::NotApplicable,
+    )
+    .await;
+    let b = footer_with_estimate(
+        8_123_456,
+        TokenProvenance::Api,
+        32_000_000,
+        xylitol_plugin_sdk::dto::PromptCacheRead::NotApplicable,
+    )
+    .await;
     stash(fixed_zone_bdd, vec![a, b]);
 }
 

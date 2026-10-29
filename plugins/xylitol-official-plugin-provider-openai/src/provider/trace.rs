@@ -349,6 +349,39 @@ mod tests {
     }
 
     #[test]
+    fn attach_usage_marks_not_applicable_without_cache_read() {
+        let _g = ObsGateScope::enter(ObsGateState::active_none_io());
+        let collect = SpanCollectScope::enter();
+        {
+            let t = ProviderRequestTrace::start("parity-api", "m").expect("active");
+            let usage = XyUsage {
+                input: 10,
+                output: 2,
+                total_tokens: 12,
+                ..Default::default()
+            }
+            .with_prompt_cache_read(crate::dto::PromptCacheRead::NotApplicable);
+            t.emit_mapped_chunk(&XyChunk::Done {
+                finish_reason: crate::dto::XyStopReason::Stop,
+                usage: Some(usage),
+            });
+            drop(t);
+        }
+        fastrace::flush();
+        let spans = collect.records();
+        let llm = latest_llm(&spans);
+        assert_eq!(
+            prop(llm, "xylitol.prompt_cache_read"),
+            Some("not_applicable")
+        );
+        let details = prop(llm, "langfuse.observation.usage_details").expect("details");
+        assert!(
+            !details.contains("cache_read"),
+            "must not forge cache_read for NotApplicable: {details}"
+        );
+    }
+
+    #[test]
     fn attach_usage_writes_cache_read_for_tokens() {
         let _g = ObsGateScope::enter(ObsGateState::active_none_io());
         let collect = SpanCollectScope::enter();

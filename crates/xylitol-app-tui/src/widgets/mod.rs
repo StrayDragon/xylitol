@@ -19,6 +19,7 @@ pub use todo_bar::{
     TodoBarHit, TodoBarParams, TodoWing, render_todo_bar, todo_bar_line_count, todo_bar_max_rows,
 };
 
+use xylitol_plugin_sdk::dto::PromptCacheRead;
 use xylitol_plugin_sdk::model::{THINKING_OFF, TokenProvenance};
 
 pub fn format_compact_tokens(count: u64) -> String {
@@ -35,7 +36,12 @@ pub fn format_compact_tokens(count: u64) -> String {
     }
 }
 
-pub fn footer_token_label(provenance: TokenProvenance, tokens: u64, context_window: u64) -> String {
+pub fn footer_token_label(
+    provenance: TokenProvenance,
+    tokens: u64,
+    context_window: u64,
+    cache: PromptCacheRead,
+) -> String {
     let base = match provenance {
         TokenProvenance::Api => {
             format!("used {} tokens", format_compact_tokens(tokens))
@@ -45,6 +51,7 @@ pub fn footer_token_label(provenance: TokenProvenance, tokens: u64, context_wind
         }
         TokenProvenance::Unknown => "used ? tokens".into(),
     };
+    let base = cache_segment(base, cache);
     if context_window == 0 {
         return base;
     }
@@ -59,6 +66,16 @@ pub fn footer_token_label(provenance: TokenProvenance, tokens: u64, context_wind
             let pct = tokens as f64 / context_window as f64 * 100.0;
             format!("{base} · {pct:.1}%/{win}")
         }
+    }
+}
+
+fn cache_segment(base: String, cache: PromptCacheRead) -> String {
+    match cache {
+        PromptCacheRead::Tokens(n) => {
+            format!("{base} · cache {}", format_compact_tokens(n))
+        }
+        PromptCacheRead::NotReported => format!("{base} · cache ?"),
+        PromptCacheRead::NotApplicable => base,
     }
 }
 
@@ -104,15 +121,25 @@ mod tests {
     #[test]
     fn footer_token_label_provenance() {
         assert_eq!(
-            footer_token_label(TokenProvenance::Api, 42, 0),
+            footer_token_label(TokenProvenance::Api, 42, 0, PromptCacheRead::NotApplicable),
             "used 42 tokens"
         );
         assert_eq!(
-            footer_token_label(TokenProvenance::Heuristic, 100, 0),
+            footer_token_label(
+                TokenProvenance::Heuristic,
+                100,
+                0,
+                PromptCacheRead::NotApplicable
+            ),
             "used ~100 tokens"
         );
         assert_eq!(
-            footer_token_label(TokenProvenance::Unknown, 0, 0),
+            footer_token_label(
+                TokenProvenance::Unknown,
+                0,
+                0,
+                PromptCacheRead::NotApplicable
+            ),
             "used ? tokens"
         );
     }
@@ -120,24 +147,82 @@ mod tests {
     #[test]
     fn footer_token_label_derived_percent() {
         assert_eq!(
-            footer_token_label(TokenProvenance::Api, 42_000, 128_000),
+            footer_token_label(
+                TokenProvenance::Api,
+                42_000,
+                128_000,
+                PromptCacheRead::NotApplicable,
+            ),
             "used 42k tokens · 32.8%/128k"
         );
         assert_eq!(
-            footer_token_label(TokenProvenance::Heuristic, 100, 128_000),
+            footer_token_label(
+                TokenProvenance::Heuristic,
+                100,
+                128_000,
+                PromptCacheRead::NotApplicable,
+            ),
             "used ~100 tokens · ~0.1%/128k"
         );
         assert_eq!(
-            footer_token_label(TokenProvenance::Heuristic, 42_000, 128_000),
+            footer_token_label(
+                TokenProvenance::Heuristic,
+                42_000,
+                128_000,
+                PromptCacheRead::NotApplicable,
+            ),
             "used ~42k tokens · ~32.8%/128k"
         );
         assert_eq!(
-            footer_token_label(TokenProvenance::Unknown, 0, 128_000),
+            footer_token_label(
+                TokenProvenance::Unknown,
+                0,
+                128_000,
+                PromptCacheRead::NotApplicable,
+            ),
             "used ? tokens · ?%/128k"
         );
         assert_eq!(
-            footer_token_label(TokenProvenance::Api, 100, 0),
+            footer_token_label(TokenProvenance::Api, 100, 0, PromptCacheRead::NotApplicable),
             "used 100 tokens"
+        );
+    }
+
+    #[test]
+    fn footer_token_label_cache_tri_state() {
+        assert_eq!(
+            footer_token_label(TokenProvenance::Api, 42, 0, PromptCacheRead::Tokens(30)),
+            "used 42 tokens · cache 30"
+        );
+        assert_eq!(
+            footer_token_label(TokenProvenance::Api, 42, 0, PromptCacheRead::NotReported),
+            "used 42 tokens · cache ?"
+        );
+        assert_eq!(
+            footer_token_label(TokenProvenance::Api, 42, 0, PromptCacheRead::NotApplicable),
+            "used 42 tokens"
+        );
+    }
+
+    #[test]
+    fn footer_token_label_cache_precedes_ratio() {
+        assert_eq!(
+            footer_token_label(
+                TokenProvenance::Api,
+                42_000,
+                128_000,
+                PromptCacheRead::Tokens(30_000),
+            ),
+            "used 42k tokens · cache 30k · 32.8%/128k"
+        );
+        assert_eq!(
+            footer_token_label(
+                TokenProvenance::Heuristic,
+                42_000,
+                128_000,
+                PromptCacheRead::NotReported,
+            ),
+            "used ~42k tokens · cache ? · ~32.8%/128k"
         );
     }
 

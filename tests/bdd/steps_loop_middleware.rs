@@ -1364,6 +1364,7 @@ impl xylitol_plugin_sdk::XyCompaction for RecordingCompaction {
                     usage_tokens: 0,
                     trailing_tokens: 0,
                     last_usage_index: None,
+                    ..Default::default()
                 },
                 reason: "after_compaction".into(),
                 generation: 7,

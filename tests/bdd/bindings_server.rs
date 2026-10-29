@@ -391,6 +391,12 @@ fn test_sc_fixed_zone_method(server_test: ServerTest) {}
 fn test_sc_estimate_host_source(t2_est_bdd: T2EstBdd) {}
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
+    name = "估算上下文携带缓存三态"
+)]
+fn test_c2994_estimate_cache(t2_est_bdd: T2EstBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
     name = "提示词运行时已订阅会话"
 )]
 async fn test_sr_c2841_prompt_session_identity(server_test: ServerTest) {}

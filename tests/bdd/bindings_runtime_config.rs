@@ -1,5 +1,5 @@
 use crate::bdd::fixtures::*;
-use crate::bdd::steps_runtime_config::{RcSnap, rc_snap};
+use crate::bdd::steps_runtime_config::{PresetBdd, RcSnap, preset_bdd, rc_snap};
 use crate::bdd::steps_tokenizer::{TokenizerBdd, tokenizer_bdd};
 use rstest_bdd_macros::scenario;
 
@@ -48,6 +48,30 @@ fn test_rc_select_ignores(rc_snap: RcSnap) {}
     name = "配置YAML密钥环境变量布局"
 )]
 fn test_rc_config_docs(rc_snap: RcSnap) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "预设展开"
+)]
+fn test_c2995_preset_expand(preset_bdd: PresetBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "显式覆盖"
+)]
+fn test_c2995_preset_override(preset_bdd: PresetBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/runtime-config/runtime-config.feature",
+    name = "未知预设失败"
+)]
+fn test_c2995_preset_unknown(preset_bdd: PresetBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/infra-provider/infra-provider.feature",
+    name = "预设走既有适配器选择"
+)]
+fn test_c2995_preset_adapter(preset_bdd: PresetBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/runtime-config/runtime-config.feature",

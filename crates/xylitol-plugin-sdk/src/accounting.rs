@@ -1,4 +1,6 @@
-use crate::dto::{ContextTokenEstimate, TokenProvenance, XyLlmMessage, XyStopReason, XyUsage};
+use crate::dto::{
+    ContextTokenEstimate, PromptCacheRead, TokenProvenance, XyLlmMessage, XyStopReason, XyUsage,
+};
 
 pub const HEURISTIC_BYTES_PER_TOKEN: u64 = 3;
 
@@ -61,6 +63,7 @@ pub fn estimate_context(
             usage_tokens,
             trailing_tokens,
             last_usage_index,
+            prompt_cache_read: usage.prompt_cache_read,
         };
     }
 
@@ -71,6 +74,7 @@ pub fn estimate_context(
         usage_tokens: 0,
         trailing_tokens: tokens,
         last_usage_index: None,
+        prompt_cache_read: PromptCacheRead::NotApplicable,
     }
 }
 

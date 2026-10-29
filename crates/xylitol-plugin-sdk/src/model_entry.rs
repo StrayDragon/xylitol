@@ -11,9 +11,12 @@ fn default_thinking() -> bool {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default, JsonSchema)]
 pub struct XyModelEntryConfig {
-    #[schemars(with = "String")]
+    #[schemars(with = "String", default)]
     pub provider: XyModelKind,
+    #[schemars(default)]
     pub model: String,
+    #[serde(default)]
+    pub preset: Option<String>,
     #[serde(default)]
     pub base_url: Option<String>,
     #[serde(default)]
