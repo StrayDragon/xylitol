@@ -4,7 +4,7 @@ name: "Xylitol Terminal"
 description: "Minimal terminal design system for the xylitol product TUI — clean, copy-friendly, scrollback-native."
 colors:
   on-surface: "#cdd6f4"
-  muted: "#6c7086"
+  muted: "#7f849c"
   accent: "#89b4fa"
   user: "#cba6f7"
   assistant: "#cdd6f4"

@@ -3522,3 +3522,40 @@ pub(crate) fn t_c2998_capabilities_closed(host_pump_bdd: &HostPumpBdd) {
     );
     assert_eq!(stats(host_pump_bdd).aborts, 0);
 }
+
+#[when("以主机泵忙碌连续插队两条 steer 后渲染队列条")]
+pub(crate) async fn w_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
+    open_busy(host_pump_bdd);
+    for text in ["steer-one", "steer-two"] {
+        set_editor(host_pump_bdd, text);
+        let mut pump = take_pump(host_pump_bdd);
+        pump.session
+            .step(HostEvent::Input(enter_event()))
+            .expect("enter (steer)");
+        put_pump(host_pump_bdd, pump);
+        pump_once(host_pump_bdd).await;
+    }
+    let frame = c2826_frame(host_pump_bdd);
+    host_pump_bdd.ansi_frames.borrow_mut().push(frame);
+}
+
+#[then("队列条仅一条 Steering 行且含最新文本与计数")]
+pub(crate) fn t_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
+    let frames = host_pump_bdd.ansi_frames.borrow();
+    let frame = frames.last().expect("queue frame");
+    let steering: Vec<&str> = frame
+        .lines()
+        .filter(|line| line.contains("Steering"))
+        .collect();
+    assert_eq!(steering.len(), 1, "c2999: 队列条每类至多一行：\n{frame}");
+    assert!(
+        steering[0].contains("steer-two"),
+        "c2999: 应显示最新排队正文：{}",
+        steering[0]
+    );
+    assert!(
+        steering[0].contains("(2)"),
+        "c2999: 多条排队应显示计数：{}",
+        steering[0]
+    );
+}

@@ -59,3 +59,9 @@ fn test_fz_buffer_capped() {}
     name = "短会话无分页提示"
 )]
 fn test_fz_short_no_notice(fixed_zone_bdd: FixedZoneBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "默认暗色次要文本对比度达标"
+)]
+fn test_c2999_contrast(fixed_zone_bdd: FixedZoneBdd) {}

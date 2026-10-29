@@ -825,3 +825,40 @@ fn t_history_buffer_capped() {
     );
     assert!(history.has_more, "evicted page must be reachable from disk");
 }
+
+fn channel_luminance(c: u8) -> f64 {
+    let s = f64::from(c) / 255.0;
+    if s <= 0.03928 {
+        s / 12.92
+    } else {
+        ((s + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn relative_luminance(c: xylitol_tui::RgbColor) -> f64 {
+    0.2126 * channel_luminance(c.r)
+        + 0.7152 * channel_luminance(c.g)
+        + 0.0722 * channel_luminance(c.b)
+}
+
+fn contrast_ratio(a: xylitol_tui::RgbColor, b: xylitol_tui::RgbColor) -> f64 {
+    let la = relative_luminance(a);
+    let lb = relative_luminance(b);
+    let (hi, lo) = if la >= lb { (la, lb) } else { (lb, la) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+#[when("读取产品默认暗色次要文本与表面色")]
+fn w_c2999_read_contrast(_fixed_zone_bdd: &FixedZoneBdd) {}
+
+#[then("muted 对比度不低于 4.3 且 tool 不高于 muted")]
+fn t_c2999_contrast(_fixed_zone_bdd: &FixedZoneBdd) {
+    let palette = xylitol_tui::Palette::dark();
+    let muted = contrast_ratio(palette.muted, palette.surface);
+    let tool = contrast_ratio(palette.tool, palette.surface);
+    assert!(muted >= 4.3, "c2999: muted 对比度 {muted:.2} 低于 4.3");
+    assert!(
+        tool <= muted,
+        "c2999: tool 对比度 {tool:.2} 不应高于 muted {muted:.2}"
+    );
+}
