@@ -115,6 +115,7 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
         caller: "cli",
         ephemeral_sessions: false,
         static_tools: Vec::new(),
+        agent_profile: surface.agent_profile.clone(),
     };
 
     if surface.list_models {

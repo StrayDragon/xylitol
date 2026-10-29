@@ -17,12 +17,26 @@
             "null"
           ]
         },
+        "persona": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "system_prompt": {
           "default": null,
           "type": [
             "string",
             "null"
           ]
+        },
+        "tools": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "type": "object"

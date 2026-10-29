@@ -101,6 +101,9 @@ fn map_bootstrap_error(err: BootstrapError) -> Box<dyn std::error::Error> {
         }
         BootstrapError::BuildFailed(msg) => msg,
         BootstrapError::KernelFailed(msg) => format!("kernel boot failed: {msg}"),
+        BootstrapError::AgentProfileNotFound(name) => {
+            BootstrapError::AgentProfileNotFound(name).to_string()
+        }
     }
     .into()
 }
@@ -127,6 +130,7 @@ async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::
         caller: "server",
         ephemeral_sessions: false,
         static_tools: Vec::new(),
+        agent_profile: None,
     })
     .map_err(map_bootstrap_error)?;
 

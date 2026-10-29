@@ -611,6 +611,7 @@ fn w_c2826_load_config(ws: &Workspace, cli_entry_bdd: &CliEntryBdd) {
         caller: "bdd",
         ephemeral_sessions: false,
         static_tools: Vec::new(),
+        agent_profile: None,
     };
     let isolated_global = ws.ws("isolated-global-config");
     std::fs::create_dir_all(&isolated_global).unwrap();

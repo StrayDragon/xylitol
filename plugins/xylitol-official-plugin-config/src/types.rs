@@ -232,6 +232,10 @@ pub struct AgentProfile {
     pub model: Option<String>,
     #[serde(default)]
     pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub persona: Option<String>,
+    #[serde(default)]
+    pub tools: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
@@ -245,6 +249,29 @@ pub struct AgentsConfig {
 
 fn default_profile_name() -> String {
     "default".into()
+}
+
+fn compose_profile_prompt(profile: &AgentProfile, fallback: Option<&String>) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(persona) = profile
+        .persona
+        .as_deref()
+        .filter(|text| !text.trim().is_empty())
+    {
+        parts.push(persona);
+    }
+    if let Some(prompt) = profile
+        .system_prompt
+        .as_deref()
+        .filter(|text| !text.trim().is_empty())
+    {
+        parts.push(prompt);
+    }
+    if parts.is_empty() {
+        fallback.cloned()
+    } else {
+        Some(parts.join("\n\n"))
+    }
 }
 
 impl AppConfig {
@@ -325,9 +352,13 @@ impl AppConfig {
     ) -> Result<xylitol_plugin_sdk::model::ResolvedProfile, LoadError> {
         let profile = self.agents.profiles.get(name);
 
-        let (model_ref, system_prompt) = match profile {
-            Some(p) => (p.model.as_deref(), p.system_prompt.as_ref().cloned()),
-            None => (None, self.execution.system_prompt.clone()),
+        let (model_ref, system_prompt, tools) = match profile {
+            Some(p) => (
+                p.model.as_deref(),
+                compose_profile_prompt(p, self.execution.system_prompt.as_ref()),
+                p.tools.clone(),
+            ),
+            None => (None, self.execution.system_prompt.clone(), Vec::new()),
         };
 
         let model_id = model_ref
@@ -345,6 +376,7 @@ impl AppConfig {
         Ok(xylitol_plugin_sdk::model::ResolvedProfile {
             model_id: model_id.to_string(),
             system_prompt,
+            tools,
         })
     }
 
@@ -470,6 +502,21 @@ system_prompt: "hi"
         .expect("valid profile");
         assert_eq!(p.model.as_deref(), Some("gpt-4o"));
         assert_eq!(p.system_prompt.as_deref(), Some("hi"));
+    }
+
+    #[test]
+    fn profile_persona_and_tools_deserialize() {
+        let p: AgentProfile = yaml_serde::from_str(
+            r#"
+model: gpt-4o
+persona: "You are a reviewer."
+system_prompt: "Focus on correctness."
+tools: [read, -bash]
+"#,
+        )
+        .expect("profile with persona/tools");
+        assert_eq!(p.persona.as_deref(), Some("You are a reviewer."));
+        assert_eq!(p.tools, vec!["read".to_string(), "-bash".to_string()]);
     }
 }
 
@@ -868,6 +915,35 @@ models:
             profile.model_id,
             cfg.resolve_model("ds").expect("alias resolves").model
         );
+    }
+
+    #[test]
+    fn resolve_profile_combines_persona_before_prompt_and_carries_tools() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+models:
+  default_model: ds
+  models:
+    ds:
+      provider: openai
+      model: deepseek-v4-flash
+agents:
+  default_profile: review
+  profiles:
+    review:
+      model: ds
+      persona: "You are a reviewer."
+      system_prompt: "Focus on correctness."
+      tools: [read, -bash]
+"#,
+        )
+        .expect("valid profile config");
+        let profile = cfg.resolve_default_profile().expect("review profile");
+        assert_eq!(
+            profile.system_prompt.as_deref(),
+            Some("You are a reviewer.\n\nFocus on correctness.")
+        );
+        assert_eq!(profile.tools, vec!["read".to_string(), "-bash".to_string()]);
     }
 }
 

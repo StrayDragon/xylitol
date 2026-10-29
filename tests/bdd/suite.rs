@@ -52,6 +52,7 @@ mod fixtures;
 mod fold_probe;
 mod prelude;
 mod steps_agent;
+mod steps_agent_profile;
 mod steps_agent_runtime;
 mod steps_agent_session_extra;
 mod steps_app_tui_ask;
