@@ -10,5 +10,5 @@ extra_skills:
 - llman-sdd-research
 specs:
   framework: rstest-bdd
-  check_command: "cargo test --all-features --test bdd"
+  check_command: "cargo nextest run --all-features --test bdd --profile agent --show-progress none"
   verify_prompt: Each scenario in the feature file MUST be mapped to an implemented step definition. Run `cargo test --all-features --test bdd` to confirm all scenarios pass.
