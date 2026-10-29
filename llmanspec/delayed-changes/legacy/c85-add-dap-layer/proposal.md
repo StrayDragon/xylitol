@@ -9,6 +9,8 @@ summary: "DAP 调试器架构预留（trait + 配置入口），不实际集成�
 # c85-add-dap-layer
 
 > **⏸️ PAUSED** — DAP 集成已暂停（2026-05-17）。此 change 所有内容均不实施，`infra-dap` feature flag 保留但无功能逻辑。如需恢复，请更新 `status` 为 `active` 并更新设计文档。
+>
+> **方向入口**：DAP 产品方向现由 [#16](https://github.com/StrayDragon/xylitol/issues/16) 跟踪；恢复时以该 issue 的切片为准，不在本草案另起产品叙事。
 
 ## Why
 
