@@ -3559,3 +3559,42 @@ pub(crate) fn t_c2999_two_steer(host_pump_bdd: &HostPumpBdd) {
         steering[0]
     );
 }
+
+#[when("以主机泵忙碌插队后点击队列条")]
+pub(crate) async fn w_c3001_click_queue(host_pump_bdd: &HostPumpBdd) {
+    open_busy(host_pump_bdd);
+    set_editor(host_pump_bdd, "queued-click");
+    let mut pump = take_pump(host_pump_bdd);
+    pump.session
+        .step(HostEvent::Input(enter_event()))
+        .expect("enter (steer)");
+    put_pump(host_pump_bdd, pump);
+    pump_once(host_pump_bdd).await;
+    let frame = c2826_frame(host_pump_bdd);
+    let row = frame
+        .lines()
+        .position(|line| line.contains("Steering"))
+        .expect("queue strip rendered") as u16;
+    c2911_click(host_pump_bdd, 5, row).await;
+    pump_once(host_pump_bdd).await;
+}
+
+#[then("编辑器含排队文本且队列清空")]
+pub(crate) fn t_c3001_queue_click(host_pump_bdd: &HostPumpBdd) {
+    let text = editor_text(host_pump_bdd);
+    assert!(
+        text.contains("queued-click"),
+        "c3001: 点击队列条应还原文本进编辑器：{text:?}"
+    );
+    let pump = take_pump(host_pump_bdd);
+    let steer = pump.session.ui_model().pending_steer.clone();
+    let follow = pump.session.ui_model().pending_follow_up.clone();
+    let clears = pump.driver.clear_calls.clone();
+    put_pump(host_pump_bdd, pump);
+    assert!(steer.is_empty(), "c3001: steer 队列应清空");
+    assert!(follow.is_empty(), "c3001: follow-up 队列应清空");
+    assert!(
+        clears.iter().any(|(steer, follow)| *steer && *follow),
+        "c3001: 点击应经 ClearQueue 清空双向队列：{clears:?}"
+    );
+}

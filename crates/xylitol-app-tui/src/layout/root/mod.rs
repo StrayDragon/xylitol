@@ -118,6 +118,7 @@ pub struct UiRoot {
     last_status_rows: usize,
     last_editor_rows: usize,
     last_queue_rows: usize,
+    queue_strip_row: usize,
     last_todo_rows: usize,
     todo_doing_open: bool,
     todo_past_open: bool,
@@ -202,6 +203,7 @@ impl UiRoot {
             last_status_rows: 1,
             last_editor_rows: 3,
             last_queue_rows: 0,
+            queue_strip_row: 0,
             last_todo_rows: 0,
             todo_doing_open: true,
             todo_past_open: true,
@@ -847,6 +849,7 @@ impl UiRoot {
     pub const SESSION_POPUP_HIT_ID: HitId = 1 << 61;
     pub const SESSION_SIDEBAR_HIT_ID: HitId = 1 << 61 | 1;
     pub const SESSION_SIDEBAR_SEPARATOR_HIT_ID: HitId = 1 << 61 | 2;
+    pub const QUEUE_STRIP_HIT_ID: HitId = 1 << 61 | 3;
 
     pub fn session_sidebar_reserved_cols(&self, width: usize) -> usize {
         let (on, sidebar_w, _) = self.session_sidebar_layout(width);
@@ -873,37 +876,65 @@ impl UiRoot {
 
     pub fn overlay_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
         let mut hits = Vec::new();
-        let (sidebar_on, _sidebar_w, content_w) = self.session_sidebar_layout(width);
-        if self.session_popup_open && content_w > 0 {
-            let box_w = Self::SESSION_POPUP_W.min(content_w.saturating_sub(2));
-            if box_w > 0 {
-                let start = content_w.saturating_sub(box_w);
-                hits.push(
-                    Hit::at_cell(Self::SESSION_POPUP_HIT_ID, start as u16, 0)
-                        .cols(start, content_w)
-                        .tall(transcript_rows.min(Self::SESSION_POPUP_ROWS))
-                        .capturing()
-                        .space(HitSpace::Chrome),
-                );
-            }
-        }
-        if sidebar_on {
-            hits.push(
-                Hit::at_cell(Self::SESSION_SIDEBAR_HIT_ID, content_w as u16, 0)
-                    .cols(content_w, width)
-                    .tall(transcript_rows)
-                    .capturing()
-                    .space(HitSpace::Chrome),
-            );
-            hits.push(
-                Hit::at_cell(Self::SESSION_SIDEBAR_SEPARATOR_HIT_ID, content_w as u16, 0)
-                    .cols(content_w, content_w + 1)
-                    .tall(transcript_rows)
-                    .capturing()
-                    .space(HitSpace::Chrome),
-            );
-        }
+        hits.extend(self.popup_hit(width, transcript_rows));
+        hits.extend(self.queue_strip_hit(width));
+        hits.extend(self.sidebar_hits(width, transcript_rows));
         hits
+    }
+
+    fn popup_hit(&self, width: usize, transcript_rows: usize) -> Option<Hit> {
+        let (_, _, content_w) = self.session_sidebar_layout(width);
+        if !self.session_popup_open || content_w == 0 {
+            return None;
+        }
+        let box_w = Self::SESSION_POPUP_W.min(content_w.saturating_sub(2));
+        if box_w == 0 {
+            return None;
+        }
+        let start = content_w.saturating_sub(box_w);
+        Some(
+            Hit::at_cell(Self::SESSION_POPUP_HIT_ID, start as u16, 0)
+                .cols(start, content_w)
+                .tall(transcript_rows.min(Self::SESSION_POPUP_ROWS))
+                .capturing()
+                .space(HitSpace::Chrome),
+        )
+    }
+
+    fn queue_strip_hit(&self, width: usize) -> Option<Hit> {
+        if self.last_queue_rows == 0 {
+            return None;
+        }
+        Some(
+            Hit::at_cell(
+                Self::QUEUE_STRIP_HIT_ID,
+                0,
+                u16::try_from(self.queue_strip_row).unwrap_or(u16::MAX),
+            )
+            .cols(0, width)
+            .tall(self.last_queue_rows)
+            .capturing()
+            .space(HitSpace::Chrome),
+        )
+    }
+
+    fn sidebar_hits(&self, width: usize, transcript_rows: usize) -> Vec<Hit> {
+        let (sidebar_on, _, content_w) = self.session_sidebar_layout(width);
+        if !sidebar_on {
+            return Vec::new();
+        }
+        vec![
+            Hit::at_cell(Self::SESSION_SIDEBAR_HIT_ID, content_w as u16, 0)
+                .cols(content_w, width)
+                .tall(transcript_rows)
+                .capturing()
+                .space(HitSpace::Chrome),
+            Hit::at_cell(Self::SESSION_SIDEBAR_SEPARATOR_HIT_ID, content_w as u16, 0)
+                .cols(content_w, content_w + 1)
+                .tall(transcript_rows)
+                .capturing()
+                .space(HitSpace::Chrome),
+        ]
     }
 
     pub fn take_pending_tree_open(&mut self) -> bool {
@@ -1487,6 +1518,37 @@ mod tests {
         assert!(
             !root.take_pending_session_sidebar(),
             "narrow terminal must not request an unavailable sidebar"
+        );
+    }
+
+    #[test]
+    fn overlay_hits_cover_queue_strip() {
+        let mut root = UiRoot::new();
+        root.set_term_cols(120);
+        root.ui_model.enqueue_steer_strip("queued".into());
+        root.last_queue_rows = 3;
+        root.queue_strip_row = 7;
+        let hits = root.overlay_hits(120, 40);
+        let hit = hits
+            .iter()
+            .find(|hit| (*hit).into_region().id == UiRoot::QUEUE_STRIP_HIT_ID)
+            .expect("queue strip hit");
+        let region = (*hit).into_region();
+        assert_eq!(region.space, HitSpace::Chrome);
+        assert_eq!(region.content_row, 7);
+        assert_eq!(region.col_start, 0);
+        assert_eq!(region.col_end, 120);
+        assert_eq!(region.height, 3);
+        assert!(region.capturing);
+    }
+
+    #[test]
+    fn empty_queue_strip_has_no_hit() {
+        let root = UiRoot::new();
+        let hits = root.overlay_hits(120, 40);
+        assert!(
+            hits.iter()
+                .all(|hit| (*hit).into_region().id != UiRoot::QUEUE_STRIP_HIT_ID)
         );
     }
 

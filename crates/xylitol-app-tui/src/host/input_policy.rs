@@ -100,22 +100,7 @@ impl<T: Terminal> HostSession<T> {
         }
 
         if matches_binding(key, "app.message.dequeue") {
-            let queued = self.ui_model.take_queued_for_editor();
-            if queued.is_empty() {
-                return true;
-            }
-            let mut root = root.borrow_mut();
-            let current = root.editor_text();
-            let mut parts = queued;
-            if !current.trim().is_empty() {
-                parts.push(current);
-            }
-            root.set_editor_text(parts.join("\n\n"));
-            drop(root);
-            self.pending.steer = None;
-            self.pending.follow_up = None;
-            self.pending.dequeue = true;
-            self.sync_ui_root_from_model();
+            self.dequeue_to_editor();
             return true;
         }
 
