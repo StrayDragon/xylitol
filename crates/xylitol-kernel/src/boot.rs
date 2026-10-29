@@ -288,6 +288,20 @@ fn optional_plugin_rows(
             "config": config.app.plan,
         }));
     }
+    if let Some(lsp) = config.app.lsp.as_ref() {
+        rows.push(serde_json::json!({
+            "id": "lsp",
+            "name": "lsp",
+            "config": lsp,
+        }));
+    }
+    if let Some(dap) = config.app.dap.as_ref() {
+        rows.push(serde_json::json!({
+            "id": "dap",
+            "name": "dap",
+            "config": dap,
+        }));
+    }
     rows
 }
 

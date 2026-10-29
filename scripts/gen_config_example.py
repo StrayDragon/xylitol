@@ -104,6 +104,15 @@ models:
 #     trusted: true  # explicit opt-in; untrusted entries are not assembled
 #     timeout_ms: 30000
 
+# lsp:  # LSP tools (lsp_diagnostics / lsp_symbols / lsp_hover); absent = zero assembly
+#   backend: "basedpyright-langserver --stdio"
+#   language: "python"
+#   compression: true
+
+# dap:  # DAP tools (dap_launch / dap_stack / dap_variables / dap_evaluate); absent = zero assembly
+#   backend: "python3 -m debugpy.adapter"
+#   compression: true
+
 security:
   enabled: true
   permission:

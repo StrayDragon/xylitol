@@ -81,6 +81,25 @@ agents:
 
 persona 会排在 profile `system_prompt` 之前（空行分隔）；profile `tools` 非空时覆盖全局 `tools` 列表。
 
+#### LSP / DAP
+
+配置 `lsp` / `dap` 后，模型可使用压缩后的语言服务与调试工具；缺省不装配、不启动子进程：
+
+```yaml
+lsp:
+  backend: "basedpyright-langserver --stdio"
+  language: "python"
+  compression: true
+
+dap:
+  backend: "python3 -m debugpy.adapter"
+  compression: true
+```
+
+- LSP 工具：`lsp_diagnostics` / `lsp_symbols` / `lsp_hover`。
+- DAP 工具：`dap_launch` / `dap_stack` / `dap_scopes` / `dap_variables` / `dap_evaluate` / `dap_continue` / `dap_disconnect`。
+- 后端按需启动；`dap_disconnect` 释放调试会话。
+
 #### 检索工具选择
 
 默认装配 fff 工具源：模型看到 `ffgrep` / `fffind`，内置 `grep` / `find` 被同类替换隐藏。用顶层 `tools` 列表控制可见工具：

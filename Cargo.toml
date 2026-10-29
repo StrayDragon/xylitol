@@ -35,6 +35,8 @@ members = [
     "plugins/xylitol-official-plugin-todo",
     "plugins/xylitol-official-plugin-workflow",
     "plugins/xylitol-official-plugin-plan",
+    "plugins/xylitol-official-plugin-lsp",
+    "plugins/xylitol-official-plugin-dap",
 ]
 
 [workspace.dependencies]
@@ -63,8 +65,12 @@ xylitol-official-plugin-loop-policies = { path = "plugins/xylitol-official-plugi
 xylitol-official-plugin-todo = { path = "plugins/xylitol-official-plugin-todo" }
 xylitol-official-plugin-workflow = { path = "plugins/xylitol-official-plugin-workflow" }
 xylitol-official-plugin-plan = { path = "plugins/xylitol-official-plugin-plan" }
+xylitol-official-plugin-lsp = { path = "plugins/xylitol-official-plugin-lsp" }
+xylitol-official-plugin-dap = { path = "plugins/xylitol-official-plugin-dap" }
 
 anyhow = "1.0.104"
+dapz = { version = "0.4.0", default-features = false, features = ["agent-sdk"] }
+lspz = { version = "0.11.7", default-features = false, features = ["agent-sdk"] }
 async-openai = { version = "0.42", default-features = false }
 async-stream = "0.3.6"
 async-trait = "0.1.92"
