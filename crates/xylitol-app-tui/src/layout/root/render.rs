@@ -241,6 +241,7 @@ impl UiRoot {
             EditorSlot::ImportConfirm(imp) => imp.render(width, self.theme),
             EditorSlot::SessionResume(panel) => panel.render(width.max(1)),
             EditorSlot::Mcp(mcp) => mcp.render(width, self.theme),
+            EditorSlot::Capabilities(caps) => caps.render(width, self.theme),
         }
     }
 

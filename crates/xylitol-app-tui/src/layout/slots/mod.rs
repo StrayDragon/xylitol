@@ -1,4 +1,5 @@
 mod ask;
+mod capabilities;
 mod import;
 mod mcp;
 mod models;
@@ -9,6 +10,7 @@ mod tree;
 use crate::keybindings::matches_binding;
 
 pub use ask::AskSlot;
+pub use capabilities::CapabilitiesSlot;
 pub use import::{ImportConfirmDecision, ImportSlot};
 pub use mcp::McpSlot;
 pub use models::ModelsSlot;
@@ -16,6 +18,7 @@ pub use scenes::ScenesSlot;
 pub use themes::ThemesSlot;
 pub use tree::{TreeAction, TreeSlot};
 
+pub(crate) use capabilities::CapabilitiesAction;
 pub(crate) use import::ImportAction;
 
 pub(crate) fn is_select_nav_key(key: &crossterm::event::KeyEvent) -> bool {
@@ -58,6 +61,8 @@ pub enum EditorSlot {
     SessionResume(SessionResumePanel),
     #[strum_discriminants(strum(message = "MCP"))]
     Mcp(McpSlot),
+    #[strum_discriminants(strum(message = "Capabilities"))]
+    Capabilities(CapabilitiesSlot),
 }
 
 impl EditorSlotKind {
@@ -113,6 +118,7 @@ impl EditorSlot {
             Self::ImportConfirm(s) => s.invalidate(),
             Self::SessionResume(s) => s.invalidate(),
             Self::Mcp(s) => s.invalidate(),
+            Self::Capabilities(s) => s.invalidate(),
             Self::Choice(s) => s.invalidate(),
             Self::Editor | Self::Plate | Self::Settings => {}
         }

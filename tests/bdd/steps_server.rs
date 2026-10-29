@@ -4098,3 +4098,41 @@ async fn t_client_applies_partial(server_test: &ServerTest) {
         "the held snapshot must carry the partial text the client rehydrates"
     );
 }
+
+#[when("查询方法表的能力方法")]
+fn w_lookup_capability_methods(server_test: &ServerTest) {
+    use xylitol_protocol::registry::{Auth, Exec, lookup};
+    let rows = [
+        ("get_capabilities", Auth::Readonly, Exec::Inline),
+        ("set_capability", Auth::Writer, Exec::Inline),
+        ("clear_capabilities", Auth::Writer, Exec::Inline),
+    ];
+    let mut problems = Vec::new();
+    for (name, auth, exec) in rows {
+        match lookup(name) {
+            Some(row) => {
+                if row.auth != auth {
+                    problems.push(format!("{name}: auth {:?}", row.auth));
+                }
+                if row.exec != exec {
+                    problems.push(format!("{name}: exec {:?}", row.exec));
+                }
+                if !row.command_backed {
+                    problems.push(format!("{name}: not command_backed"));
+                }
+            }
+            None => problems.push(format!("{name}: unregistered")),
+        }
+    }
+    server_test.unary_body.replace(Some(
+        serde_json::json!({ "problems": problems }).to_string(),
+    ));
+}
+
+#[then("三个能力方法均已登记且为 Inline")]
+fn t_capability_methods_registered(server_test: &ServerTest) {
+    let body = server_test.unary_body.borrow().clone().expect("body");
+    let v: serde_json::Value = serde_json::from_str(&body).unwrap();
+    let problems = v["problems"].as_array().expect("problems list");
+    assert!(problems.is_empty(), "c2998: 能力方法登记不符：{problems:?}");
+}

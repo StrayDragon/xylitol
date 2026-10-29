@@ -2,7 +2,8 @@ use crossterm::event::KeyEvent;
 use xylitol_tui::{Component, InputEvent};
 
 use super::super::slots::{
-    EditorSlot, ImportAction, McpAction, ModelsAction, ScenesAction, ThemesAction, TreeAction,
+    CapabilitiesAction, EditorSlot, ImportAction, McpAction, ModelsAction, ScenesAction,
+    ThemesAction, TreeAction,
 };
 use super::UiRoot;
 use crate::keybindings::matches_binding;
@@ -70,7 +71,7 @@ impl UiRoot {
             self.handle_editor_keys(event);
             return;
         }
-        let close_mcp = match &mut self.slot {
+        let close_slot = match &mut self.slot {
             EditorSlot::Editor => false,
             EditorSlot::Tree(tree) => {
                 match tree.handle_input(event) {
@@ -128,8 +129,16 @@ impl UiRoot {
                 false
             }
             EditorSlot::Mcp(mcp) => matches!(mcp.handle_input(event), McpAction::Close),
+            EditorSlot::Capabilities(caps) => match caps.handle_input(event) {
+                CapabilitiesAction::Toggle { id, enabled } => {
+                    self.pending.capability_toggle = Some((id, enabled));
+                    false
+                }
+                CapabilitiesAction::Close => true,
+                CapabilitiesAction::None => false,
+            },
         };
-        if close_mcp {
+        if close_slot {
             self.close_slot();
         }
     }

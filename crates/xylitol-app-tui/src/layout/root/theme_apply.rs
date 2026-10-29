@@ -33,6 +33,7 @@ impl UiRoot {
                 EditorSlot::Scenes(scenes) => scenes.retheme(theme),
                 EditorSlot::Themes(themes) => themes.retheme(theme),
                 EditorSlot::Mcp(mcp) => mcp.retheme(theme),
+                EditorSlot::Capabilities(caps) => caps.retheme(theme),
                 EditorSlot::ImportConfirm(imp) => imp.retheme(theme),
                 EditorSlot::Editor
                 | EditorSlot::Plate

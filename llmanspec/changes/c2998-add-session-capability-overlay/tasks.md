@@ -24,24 +24,24 @@
 
 ## 4. TUI 覆盖盘
 
-- [ ] 4.1 `layout/slots/capabilities.rs` 接入 `slots/mod.rs`（模块 + `EditorSlot::Capabilities` + 输入/渲染/主题/足迹）。
-- [ ] 4.2 `UiRoot` 增加 `mount_capabilities` / `take_pending_capability_toggle` / `close_capabilities` 等辅助。
-- [ ] 4.3 `PendingSlash::OpenCapabilities` + `parse_slash_command` + BusySlashPolicy + SlashCommandSource。
-- [ ] 4.4 `effects/slash/misc::open_capabilities` 与 `effects/pending_ui/capabilities.rs`：拉取快照挂槽、toggle 后提交 `SetCapability` 并刷新。
-- [ ] 4.5 `sync_fixed_zone` 在 `driver.capability_pending()` 时显示 `Next turn: capability overlay`。
-- [ ] 4.6 Esc 关槽使用既有 `app.interrupt` 绑定，不引入不存在的 keybinding。
-- [ ] 4.7 `ScriptedDriver` 实现能力方法并记录调用，供 TUI BDD 使用。
+- [x] 4.1 `layout/slots/capabilities.rs` 接入 `slots/mod.rs`（模块 + `EditorSlot::Capabilities` + 输入/渲染/主题/足迹）。
+- [x] 4.2 `UiRoot` 增加 `mount_capabilities` / `take_pending_capability_toggle` / `close_capabilities` 等辅助。
+- [x] 4.3 `PendingSlash::OpenCapabilities` + `parse_slash_command` + BusySlashPolicy + SlashCommandSource。
+- [x] 4.4 `effects/slash/misc::open_capabilities` 与 `effects/pending_ui/capabilities.rs`：拉取快照挂槽、toggle 后提交 `SetCapability` 并刷新。
+- [x] 4.5 `sync_fixed_zone` 在 `driver.capability_pending()` 时显示 `Next turn: capability overlay`。
+- [x] 4.6 Esc 关槽使用既有 `app.interrupt` 绑定，不引入不存在的 keybinding。
+- [x] 4.7 `ScriptedDriver` 实现能力方法并记录调用，供 TUI BDD 使用。
 
 ## 5. 规格与 BDD
 
-- [ ] 5.1 `agent-session`：新增会话能力覆盖层规则（会话内临时 / 下一回合生效 / 结束即丢）。
-- [ ] 5.2 `protocol-app`：新增能力方法表登记规则。
-- [ ] 5.3 `app-tui-commands`：新增 `/capabilities` 覆盖盘与 pending 提示规则。
-- [ ] 5.4 补 step 定义与 `#[scenario]` 绑定，`cargo test --all-features --test bdd` 全绿。
+- [x] 5.1 `agent-session`：新增会话能力覆盖层规则（会话内临时 / 下一回合生效 / 结束即丢）。
+- [x] 5.2 `protocol-app`：新增能力方法表登记规则。
+- [x] 5.3 `app-tui-commands`：新增 `/capabilities` 覆盖盘与 pending 提示规则。
+- [x] 5.4 补 step 定义与 `#[scenario]` 绑定，`cargo test --all-features --test bdd` 全绿。
 
 ## 6. 门禁与收尾
 
-- [ ] 6.1 `just qa` 全绿（含 clippy / 注释闸 / 版本命名闸）。
-- [ ] 6.2 `just qa-e2e` 全绿。
-- [ ] 6.3 `llman-sdd validate c2998-add-session-capability-overlay --check --strict` 通过。
-- [ ] 6.4 verify 报告无 CRITICAL，finalize 归档。
+- [x] 6.1 `just qa` 全绿（含 clippy / 注释闸 / 版本命名闸）。
+- [x] 6.2 `just qa-e2e` 全绿。
+- [x] 6.3 `llman-sdd validate c2998-add-session-capability-overlay --check --strict` 通过。
+- [x] 6.4 verify 报告无 CRITICAL，finalize 归档。

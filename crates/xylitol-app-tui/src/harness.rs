@@ -77,6 +77,9 @@ pub struct ScriptedDriver {
     dollar_skill_catalog: Mutex<Vec<(String, String)>>,
     loaded_resources: Mutex<LoadedResourcesSnapshot>,
     loaded_resources_snapshot_calls: AtomicUsize,
+    capability_snapshot: Mutex<xylitol_plugin_sdk::session::CapabilitySnapshot>,
+    capability_calls: Mutex<Vec<(String, bool)>>,
+    clear_capabilities_calls: AtomicUsize,
     thinking_level: String,
     thinking_levels: Vec<String>,
     clipboard_image: Mutex<Option<(Vec<u8>, String)>>,
@@ -189,6 +192,11 @@ impl ScriptedDriver {
             dollar_skill_catalog: Mutex::new(Vec::new()),
             loaded_resources: Mutex::new(LoadedResourcesSnapshot::default()),
             loaded_resources_snapshot_calls: AtomicUsize::new(0),
+            capability_snapshot: Mutex::new(
+                xylitol_plugin_sdk::session::CapabilitySnapshot::default(),
+            ),
+            capability_calls: Mutex::new(Vec::new()),
+            clear_capabilities_calls: AtomicUsize::new(0),
             thinking_level: THINKING_OFF.into(),
             thinking_levels: vec![
                 "off".into(),
@@ -292,6 +300,27 @@ impl ScriptedDriver {
 
     pub fn loaded_resources_snapshot_calls(&self) -> usize {
         self.loaded_resources_snapshot_calls.load(Ordering::SeqCst)
+    }
+
+    pub fn seed_capabilities(&self, entries: Vec<xylitol_plugin_sdk::session::CapabilityEntry>) {
+        *self
+            .capability_snapshot
+            .lock()
+            .expect("capability_snapshot") = xylitol_plugin_sdk::session::CapabilitySnapshot {
+            entries,
+            pending: false,
+        };
+    }
+
+    pub fn capability_calls(&self) -> Vec<(String, bool)> {
+        self.capability_calls
+            .lock()
+            .expect("capability_calls")
+            .clone()
+    }
+
+    pub fn clear_capabilities_calls(&self) -> usize {
+        self.clear_capabilities_calls.load(Ordering::SeqCst)
     }
 
     pub fn new_session_calls(&self) -> usize {
@@ -595,6 +624,64 @@ impl XyDriver for ScriptedDriver {
             .lock()
             .expect("loaded_resources")
             .clone()
+    }
+
+    fn capability_snapshot(&self) -> xylitol_plugin_sdk::session::CapabilitySnapshot {
+        self.capability_snapshot
+            .lock()
+            .expect("capability_snapshot")
+            .clone()
+    }
+
+    fn capability_pending(&self) -> bool {
+        self.capability_snapshot()
+            .entries
+            .iter()
+            .any(|entry| entry.pending)
+    }
+
+    fn set_capability(
+        &mut self,
+        id: &str,
+        enabled: bool,
+    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
+        self.capability_calls
+            .lock()
+            .expect("capability_calls")
+            .push((id.to_string(), enabled));
+        let mut snap = self.capability_snapshot();
+        let Some(entry) = snap.entries.iter_mut().find(|entry| entry.id == id) else {
+            return Err(XyDriverError::invalid_input(format!(
+                "unknown capability `{id}`"
+            )));
+        };
+        entry.session_disabled = !enabled;
+        entry.effective_enabled = enabled;
+        entry.pending = true;
+        snap.pending = true;
+        *self
+            .capability_snapshot
+            .lock()
+            .expect("capability_snapshot") = snap.clone();
+        Ok(snap)
+    }
+
+    fn clear_capabilities(
+        &mut self,
+    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
+        self.clear_capabilities_calls.fetch_add(1, Ordering::SeqCst);
+        let mut snap = self.capability_snapshot();
+        for entry in &mut snap.entries {
+            entry.session_disabled = false;
+            entry.effective_enabled = true;
+            entry.pending = false;
+        }
+        snap.pending = false;
+        *self
+            .capability_snapshot
+            .lock()
+            .expect("capability_snapshot") = snap.clone();
+        Ok(snap)
     }
 
     fn is_tools_frozen(&self) -> bool {
@@ -1047,6 +1134,16 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
             Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
                 crate::driver::XyDriver::get_commands(self),
             )),
+            Command::GetCapabilities { .. } => Ok(DispatchOutcome::Capabilities(
+                crate::driver::XyDriver::capability_snapshot(self),
+            )),
+            Command::SetCapability { id, enabled } => {
+                crate::driver::XyDriver::set_capability(self, &id, enabled)
+                    .map(DispatchOutcome::Capabilities)
+            }
+            Command::ClearCapabilities { .. } => {
+                crate::driver::XyDriver::clear_capabilities(self).map(DispatchOutcome::Capabilities)
+            }
             Command::Steer { message, .. } => {
                 self.steer_calls.push(message);
                 self.steer_queued += 1;

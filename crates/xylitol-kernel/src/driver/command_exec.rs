@@ -72,6 +72,15 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
             Command::GetCommands { .. } => {
                 Ok(DispatchOutcome::Commands(XyDriver::get_commands(self)))
             }
+            Command::GetCapabilities { .. } => Ok(DispatchOutcome::Capabilities(
+                XyDriver::capability_snapshot(self),
+            )),
+            Command::SetCapability { id, enabled } => {
+                XyDriver::set_capability(self, &id, enabled).map(DispatchOutcome::Capabilities)
+            }
+            Command::ClearCapabilities { .. } => {
+                XyDriver::clear_capabilities(self).map(DispatchOutcome::Capabilities)
+            }
             Command::Steer { message, .. } => exec_steer(self, &message).await,
             Command::FollowUp { message, .. } => exec_follow_up(self, &message).await,
             Command::ClearQueue {

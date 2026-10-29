@@ -146,9 +146,9 @@ pub fn assemble_driver_with_ops_and_features_and_context(
     inner.set_todo_gateway(todo.clone());
     inner.set_plan_gateway(plan.clone());
     inner.set_workflow_gateway(workflow.clone());
-    inner.set_tools(compose_tools(
-        features, &context, todo, plan, workflow, None,
-    ));
+    let tools = compose_tools(features, &context, todo, plan, workflow, None);
+    inner.set_base_tools(tools.clone());
+    inner.set_tools(tools);
     inner.set_slash_commands(
         crate::product_commands::product_slash_commands()
             .into_iter()
@@ -180,14 +180,9 @@ pub fn install_product_ask_tool(
     driver.set_todo_gateway(todo.clone());
     driver.set_plan_gateway(plan.clone());
     driver.set_workflow_gateway(workflow.clone());
-    driver.set_tools(compose_tools(
-        features,
-        &context,
-        todo,
-        plan,
-        workflow,
-        Some(gateway),
-    ));
+    let tools = compose_tools(features, &context, todo, plan, workflow, Some(gateway));
+    driver.set_base_tools(tools.clone());
+    driver.set_tools(tools);
 }
 
 fn static_tool_base(context: &DriverContext) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {

@@ -1,3 +1,4 @@
+mod capabilities_slot;
 mod editor_border;
 mod fixed_zone_footprint_apply;
 mod mcp_slot;

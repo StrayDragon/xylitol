@@ -174,7 +174,11 @@ impl XyInProcessDriver {
             .cloned()
             .collect();
         let set = ToolSet::rebuild_agent_tools(builtins, mcp_tools);
-        self.agent.set_tools(set);
+        self.base_tools = Some(set.clone());
+        let filtered =
+            crate::agent::tools::filter_tools_by_capability_overlay(set, &self.capability_disabled);
+        self.agent.set_tools(filtered);
+        self.capability_applied = self.capability_disabled.clone();
     }
 
     pub(super) async fn prepare_loaded_resources(&self) -> LoadedResourcesSnapshot {

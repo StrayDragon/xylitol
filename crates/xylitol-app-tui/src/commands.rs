@@ -34,6 +34,7 @@ pub enum PendingSlash {
         arg: Option<String>,
     },
     OpenMcp,
+    OpenCapabilities,
     OpenDesigningScenes,
     SetPlanMode(String),
     Usage(&'static str),
@@ -89,6 +90,10 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
         PendingSlash::OpenMcp => SlashAllowances {
             when_agent_busy: Allow,
             exec: Exec::Queued,
+        },
+        PendingSlash::OpenCapabilities => SlashAllowances {
+            when_agent_busy: Allow,
+            exec: Exec::Inline,
         },
         PendingSlash::OpenSessionResume => SlashAllowances {
             when_agent_busy: Allow,
@@ -174,6 +179,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::SessionName { .. } => "/session-name",
         PendingSlash::HistoryCopyLast => "/history-copy-last",
         PendingSlash::OpenMcp => "/mcp",
+        PendingSlash::OpenCapabilities => "/capabilities",
         PendingSlash::SetPlanMode(_) => "/plan",
         PendingSlash::OpenDesigningScenes => "/designing",
     }
@@ -280,6 +286,10 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         ("theme", arg) => Some(PendingSlash::Theme { arg }),
         ("mcp" | "mcps", None) => Some(PendingSlash::OpenMcp),
         ("mcp" | "mcps", Some(_)) => Some(PendingSlash::Usage("usage: /mcp (no arguments)")),
+        ("capabilities" | "caps", None) => Some(PendingSlash::OpenCapabilities),
+        ("capabilities" | "caps", Some(_)) => {
+            Some(PendingSlash::Usage("usage: /capabilities (no arguments)"))
+        }
         ("plan", None) => Some(PendingSlash::SetPlanMode("toggle".into())),
         ("plan", Some(arg)) => Some(parse_plan_arg(&arg)),
         _ => None,
@@ -583,6 +593,22 @@ mod parse_tests {
     }
 
     #[test]
+    fn parse_capabilities_bare() {
+        assert_eq!(
+            parse_slash_command("/capabilities"),
+            Some(PendingSlash::OpenCapabilities)
+        );
+        assert_eq!(
+            parse_slash_command("/caps"),
+            Some(PendingSlash::OpenCapabilities)
+        );
+        assert_eq!(
+            parse_slash_command("/capabilities extra"),
+            Some(PendingSlash::Usage("usage: /capabilities (no arguments)"))
+        );
+    }
+
+    #[test]
     fn parse_reload_bare() {
         assert_eq!(parse_slash_command("/reload"), Some(PendingSlash::Reload));
         assert_eq!(
@@ -757,6 +783,7 @@ mod parse_tests {
             ),
             (PendingSlash::HistoryCopyLast, "/history-copy-last"),
             (PendingSlash::OpenMcp, "/mcp"),
+            (PendingSlash::OpenCapabilities, "/capabilities"),
             (PendingSlash::SetPlanMode("plan".into()), "/plan"),
             (PendingSlash::OpenDesigningScenes, "/designing"),
         ];

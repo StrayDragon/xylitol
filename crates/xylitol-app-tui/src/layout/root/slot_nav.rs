@@ -98,7 +98,8 @@ impl UiRoot {
             | EditorSlot::Themes(_)
             | EditorSlot::ImportConfirm(_)
             | EditorSlot::SessionResume(_)
-            | EditorSlot::Mcp(_) => {}
+            | EditorSlot::Mcp(_)
+            | EditorSlot::Capabilities(_) => {}
         }
     }
 }

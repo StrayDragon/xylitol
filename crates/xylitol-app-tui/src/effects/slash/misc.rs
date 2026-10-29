@@ -124,6 +124,16 @@ pub(super) async fn open_mcp<T: Terminal>(session: &mut HostSession<T>, driver: 
     let _ = session.render_now();
 }
 
+pub(super) async fn open_capabilities<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+) {
+    let snap = driver.capability_snapshot();
+    session.mount_capabilities_panel(&snap);
+    session.sync_fixed_zone(driver);
+    let _ = session.render_now();
+}
+
 pub(super) async fn usage<T: Terminal>(session: &mut HostSession<T>, msg: &'static str) {
     session.push_scroll_notice(msg.to_string());
     let _ = session.render_now();

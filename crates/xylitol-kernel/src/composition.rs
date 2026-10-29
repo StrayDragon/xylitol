@@ -167,7 +167,7 @@ impl McpSession {
             tools = ToolSet::rebuild_agent_tools(builtins, mcp_tools);
             self.manager = Some(manager);
         }
-        driver.freeze_tools(tools);
+        driver.install_base_tools(tools);
         if let Some(old) = prev {
             old.shutdown().await;
         }

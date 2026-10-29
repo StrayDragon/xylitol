@@ -141,6 +141,7 @@ pub struct XyRemoteDriver<C = HttpWsClient> {
     cached_commands: Arc<std::sync::Mutex<Option<Vec<CommandInfo>>>>,
     cached_queue: Arc<std::sync::Mutex<QueueStats>>,
     cached_resources: Arc<std::sync::Mutex<LoadedResourcesSnapshot>>,
+    cached_capabilities: Arc<std::sync::Mutex<xylitol_plugin_sdk::session::CapabilitySnapshot>>,
     cached_skills: Arc<std::sync::Mutex<Vec<(String, String)>>>,
     cached_gate_notice: Arc<std::sync::Mutex<Option<String>>>,
     gate_notice_consumed: Arc<AtomicBool>,
@@ -602,6 +603,9 @@ where
             cached_commands: Arc::new(std::sync::Mutex::new(None)),
             cached_queue: Arc::new(std::sync::Mutex::new(QueueStats::default())),
             cached_resources: Arc::new(std::sync::Mutex::new(LoadedResourcesSnapshot::default())),
+            cached_capabilities: Arc::new(std::sync::Mutex::new(
+                xylitol_plugin_sdk::session::CapabilitySnapshot::default(),
+            )),
             cached_skills: Arc::new(std::sync::Mutex::new(Vec::new())),
             cached_gate_notice: Arc::new(std::sync::Mutex::new(None)),
             gate_notice_consumed: Arc::new(AtomicBool::new(false)),
@@ -1202,6 +1206,17 @@ where
         self.leaf_entry_id.lock().ok().and_then(|leaf| leaf.clone())
     }
 
+    fn capability_snapshot(&self) -> xylitol_plugin_sdk::session::CapabilitySnapshot {
+        self.cached_capabilities
+            .lock()
+            .map(|snap| snap.clone())
+            .unwrap_or_default()
+    }
+
+    fn capability_pending(&self) -> bool {
+        self.capability_snapshot().pending
+    }
+
     async fn loaded_resources_snapshot(&self) -> LoadedResourcesSnapshot {
         let snap = match self.unary_cmd(Command::LoadedResources {}).await {
             Ok(data) => serde_json::from_value(data).unwrap_or_else(|e| LoadedResourcesSnapshot {
@@ -1474,6 +1489,9 @@ where
             Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
                 crate::driver::XyDriver::get_commands(self),
             )),
+            Command::GetCapabilities { .. } => self.exec_get_capabilities().await,
+            Command::SetCapability { id, enabled } => self.exec_set_capability(id, enabled).await,
+            Command::ClearCapabilities { .. } => self.exec_clear_capabilities().await,
             Command::Steer { message, .. } => self.exec_steer(message).await,
             Command::FollowUp { message, .. } => self.exec_follow_up(message).await,
             Command::ClearQueue {
@@ -1808,6 +1826,43 @@ where
         )
         .await?;
         Ok(DispatchOutcome::Reload(report))
+    }
+
+    fn store_capabilities(
+        &self,
+        snap: xylitol_plugin_sdk::session::CapabilitySnapshot,
+    ) -> xylitol_plugin_sdk::session::CapabilitySnapshot {
+        if let Ok(mut cached) = self.cached_capabilities.lock() {
+            *cached = snap.clone();
+        }
+        snap
+    }
+
+    async fn exec_get_capabilities(&self) -> Result<DispatchOutcome, XyDriverError> {
+        let data = self.unary_cmd(Command::GetCapabilities {}).await?;
+        let snap: xylitol_plugin_sdk::session::CapabilitySnapshot =
+            serde_json::from_value(data).map_err(|e| XyDriverError::remote(e.to_string()))?;
+        Ok(DispatchOutcome::Capabilities(self.store_capabilities(snap)))
+    }
+
+    async fn exec_set_capability(
+        &self,
+        id: String,
+        enabled: bool,
+    ) -> Result<DispatchOutcome, XyDriverError> {
+        let data = self
+            .unary_cmd(Command::SetCapability { id, enabled })
+            .await?;
+        let snap: xylitol_plugin_sdk::session::CapabilitySnapshot =
+            serde_json::from_value(data).map_err(|e| XyDriverError::remote(e.to_string()))?;
+        Ok(DispatchOutcome::Capabilities(self.store_capabilities(snap)))
+    }
+
+    async fn exec_clear_capabilities(&self) -> Result<DispatchOutcome, XyDriverError> {
+        let data = self.unary_cmd(Command::ClearCapabilities {}).await?;
+        let snap: xylitol_plugin_sdk::session::CapabilitySnapshot =
+            serde_json::from_value(data).map_err(|e| XyDriverError::remote(e.to_string()))?;
+        Ok(DispatchOutcome::Capabilities(self.store_capabilities(snap)))
     }
 
     async fn exec_loaded_resources(&self) -> Result<DispatchOutcome, XyDriverError> {

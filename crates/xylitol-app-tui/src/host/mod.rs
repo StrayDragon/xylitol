@@ -240,6 +240,47 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    pub fn mount_capabilities_panel(
+        &mut self,
+        snap: &xylitol_plugin_sdk::session::CapabilitySnapshot,
+    ) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().mount_capabilities_panel(snap);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn apply_capabilities_snapshot(
+        &mut self,
+        snap: &xylitol_plugin_sdk::session::CapabilitySnapshot,
+    ) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().apply_capabilities_snapshot(snap);
+        self.sync_ui_root_from_model();
+    }
+
+    pub fn capabilities_open(&self) -> bool {
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        root.borrow().capabilities_open()
+    }
+
+    pub fn close_capabilities_slot(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            root.borrow_mut().close_capabilities_slot();
+            self.sync_ui_root_from_model();
+        }
+    }
+
+    pub fn take_pending_capability_toggle(&mut self) -> Option<(String, bool)> {
+        let root = self.ui_root.as_ref()?;
+        root.borrow_mut().take_pending_capability_toggle()
+    }
+
     pub fn take_pending_scene_select(&mut self) -> Option<String> {
         let root = self.ui_root.as_ref()?;
         root.borrow_mut().take_pending_scene_select()
@@ -632,7 +673,9 @@ impl<T: Terminal> HostSession<T> {
                 )
             };
 
-        let cue = if agent_run {
+        let cue = if driver.capability_pending() {
+            Some(crate::driver::CAPABILITY_PENDING_CUE.to_string())
+        } else if agent_run {
             if let Some((active_label, active_thinking, _)) = driver.active_turn() {
                 crate::layout::status_next_turn_cue_text(
                     &active_label,

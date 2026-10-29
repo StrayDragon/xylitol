@@ -93,6 +93,11 @@ pub fn product_slash_commands() -> Vec<ProductSlashCommand> {
             argument_hint: None,
         },
         ProductSlashCommand {
+            name: "capabilities",
+            description: "Toggle session tools and MCP servers",
+            argument_hint: None,
+        },
+        ProductSlashCommand {
             name: "plan",
             description: "Toggle plan mode: /plan [on|off]",
             argument_hint: Some("[on|off]"),

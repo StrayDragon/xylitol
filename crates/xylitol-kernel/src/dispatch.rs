@@ -50,6 +50,7 @@ pub enum DispatchOutcome {
     SessionName(Option<String>),
     Reload(RuntimeReloadReport),
     LoadedResources(LoadedResourcesSnapshot),
+    Capabilities(xylitol_plugin_sdk::session::CapabilitySnapshot),
     Empty,
     Commands(Vec<CommandInfo>),
     QueueStats {
@@ -122,6 +123,9 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
         DispatchOutcome::SessionName(name) => json!({ "name": name }),
         DispatchOutcome::Reload(report) => serde_json::to_value(report).unwrap_or(Value::Null),
         DispatchOutcome::LoadedResources(snapshot) => {
+            serde_json::to_value(snapshot).unwrap_or(Value::Null)
+        }
+        DispatchOutcome::Capabilities(snapshot) => {
             serde_json::to_value(snapshot).unwrap_or(Value::Null)
         }
         DispatchOutcome::Empty => json!({}),

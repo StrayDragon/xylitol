@@ -3422,3 +3422,103 @@ fn t_c2911_sidebar_wheel(host_pump_bdd: &HostPumpBdd) {
     );
     put_pump(host_pump_bdd, pump);
 }
+
+#[when("以主机泵注入能力快照后提交 {cmd:string}")]
+pub(crate) async fn w_c2998_capabilities_open(host_pump_bdd: &HostPumpBdd, cmd: String) {
+    use xylitol_plugin_sdk::session::{CapabilityEntry, CapabilityKind};
+    let cmd = cmd.trim_matches('"');
+    {
+        let pump = host_pump_bdd
+            .pump
+            .borrow_mut()
+            .take()
+            .unwrap_or_else(fresh_pump);
+        pump.driver.seed_capabilities(vec![
+            CapabilityEntry {
+                id: "tool:read".into(),
+                kind: CapabilityKind::Tool,
+                label: "read".into(),
+                profile_enabled: true,
+                session_disabled: false,
+                effective_enabled: true,
+                pending: false,
+            },
+            CapabilityEntry {
+                id: "mcp:github".into(),
+                kind: CapabilityKind::McpServer,
+                label: "github".into(),
+                profile_enabled: true,
+                session_disabled: false,
+                effective_enabled: true,
+                pending: false,
+            },
+        ]);
+        *host_pump_bdd.pump.borrow_mut() = Some(pump);
+    }
+    c2826_submit_slash(host_pump_bdd, cmd).await;
+}
+
+#[then("能力覆盖盘打开且列出能力 id 与汇总")]
+pub(crate) fn t_c2998_capabilities_open(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(
+        format!("{:?}", c2826_slot(host_pump_bdd)),
+        "Capabilities",
+        "c2998: /capabilities 应打开能力覆盖盘"
+    );
+    let frame = render_frame(host_pump_bdd, 100);
+    assert!(
+        frame.contains("tool:read"),
+        "c2998: 覆盖盘应列出能力 id：\n{frame}"
+    );
+    assert!(
+        frame.contains("2/2 enabled"),
+        "c2998: 覆盖盘应含 enabled/total 汇总：\n{frame}"
+    );
+    assert_eq!(stats(host_pump_bdd).aborts, 0);
+}
+
+#[when("以主机泵在能力覆盖盘上切换首项")]
+pub(crate) async fn w_c2998_capabilities_toggle(host_pump_bdd: &HostPumpBdd) {
+    step_key(host_pump_bdd, enter_event());
+    pump_once(host_pump_bdd).await;
+}
+
+#[then("能力开关经共享分发提交且待生效提示出现")]
+pub(crate) fn t_c2998_capabilities_toggled(host_pump_bdd: &HostPumpBdd) {
+    let pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    let slot = root.borrow().slot();
+    let calls = pump.driver.capability_calls();
+    let frame = root.borrow_mut().render(100).join("\n");
+    put_pump(host_pump_bdd, pump);
+    assert_eq!(
+        format!("{slot:?}"),
+        "Capabilities",
+        "c2998: toggle 后覆盖盘应保持打开"
+    );
+    assert_eq!(
+        calls,
+        vec![("tool:read".to_string(), false)],
+        "c2998: toggle 应经共享分发提交 SetCapability"
+    );
+    assert!(
+        frame.contains("Next turn: capability overlay"),
+        "c2998: status 区应显示待生效提示：\n{frame}"
+    );
+}
+
+#[when("以主机泵在能力覆盖盘上按 Esc")]
+pub(crate) async fn w_c2998_capabilities_esc(host_pump_bdd: &HostPumpBdd) {
+    step_key(host_pump_bdd, esc_event());
+    pump_once(host_pump_bdd).await;
+}
+
+#[then("能力覆盖盘关闭且未 abort agent")]
+pub(crate) fn t_c2998_capabilities_closed(host_pump_bdd: &HostPumpBdd) {
+    assert_eq!(
+        format!("{:?}", c2826_slot(host_pump_bdd)),
+        "Editor",
+        "c2998: Esc 应关闭能力覆盖盘"
+    );
+    assert_eq!(stats(host_pump_bdd).aborts, 0);
+}

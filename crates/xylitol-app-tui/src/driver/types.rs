@@ -103,6 +103,7 @@ pub struct McpServerSnapshot {
 }
 
 pub const MCP_PENDING_CUE: &str = "mcp pending (see /mcp)";
+pub const CAPABILITY_PENDING_CUE: &str = "Next turn: capability overlay";
 
 impl LoadedResourcesSnapshot {
     pub fn mcp_tools_pending(&self) -> bool {

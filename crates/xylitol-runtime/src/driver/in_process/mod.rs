@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -66,6 +67,10 @@ pub struct XyInProcessDriver {
     last_ui_mcp_label: Option<Option<String>>,
     mcp_gate_notice: Option<String>,
     prepare_acked: bool,
+    base_tools: Option<crate::agent::tools::ToolSet>,
+    capability_disabled: BTreeSet<String>,
+    capability_applied: BTreeSet<String>,
+    mcp_server_ids: Vec<String>,
 }
 
 impl XyInProcessDriver {
@@ -103,6 +108,10 @@ impl XyInProcessDriver {
             last_ui_mcp_label: None,
             mcp_gate_notice: None,
             prepare_acked: true,
+            base_tools: None,
+            capability_disabled: BTreeSet::new(),
+            capability_applied: BTreeSet::new(),
+            mcp_server_ids: Vec::new(),
         }
     }
 
@@ -171,6 +180,85 @@ impl XyInProcessDriver {
 
     pub fn set_tools(&mut self, tools: crate::agent::tools::ToolSet) {
         self.agent.set_tools(tools);
+    }
+
+    pub fn set_base_tools(&mut self, tools: crate::agent::tools::ToolSet) {
+        self.base_tools = Some(tools);
+    }
+
+    pub fn set_mcp_server_ids(&mut self, ids: Vec<String>) {
+        self.mcp_server_ids = ids;
+    }
+
+    pub fn capability_snapshot(&self) -> xylitol_plugin_sdk::session::CapabilitySnapshot {
+        let base = self
+            .base_tools
+            .clone()
+            .unwrap_or_else(|| self.agent.clone_tools());
+        crate::agent::tools::capability_snapshot(
+            &base,
+            &self.mcp_server_ids,
+            &self.capability_disabled,
+            &self.capability_applied,
+        )
+    }
+
+    pub fn capability_pending(&self) -> bool {
+        self.capability_disabled != self.capability_applied
+    }
+
+    pub fn set_capability(
+        &mut self,
+        id: &str,
+        enabled: bool,
+    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
+        let snapshot = self.capability_snapshot();
+        if !snapshot.entries.iter().any(|entry| entry.id == id) {
+            return Err(XyDriverError::invalid_input(format!(
+                "unknown capability `{id}`"
+            )));
+        }
+        if enabled {
+            self.capability_disabled.remove(id);
+        } else {
+            self.capability_disabled.insert(id.to_string());
+        }
+        Ok(self.capability_snapshot())
+    }
+
+    pub fn clear_capabilities(
+        &mut self,
+    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
+        self.capability_disabled.clear();
+        Ok(self.capability_snapshot())
+    }
+
+    pub fn install_base_tools(&mut self, tools: crate::agent::tools::ToolSet) {
+        self.base_tools = Some(tools.clone());
+        let filtered = crate::agent::tools::filter_tools_by_capability_overlay(
+            tools,
+            &self.capability_disabled,
+        );
+        self.agent.reopen_tools_for_regate();
+        self.agent.freeze_tools(filtered);
+        self.capability_applied = self.capability_disabled.clone();
+    }
+
+    fn apply_pending_capability_overlay(&mut self) {
+        if !self.capability_pending() {
+            return;
+        }
+        let base = self
+            .base_tools
+            .clone()
+            .unwrap_or_else(|| self.agent.clone_tools());
+        let filtered = crate::agent::tools::filter_tools_by_capability_overlay(
+            base,
+            &self.capability_disabled,
+        );
+        self.agent.reopen_tools_for_regate();
+        self.agent.set_tools(filtered);
+        self.capability_applied = self.capability_disabled.clone();
     }
 
     pub fn freeze_tools(&mut self, tools: crate::agent::tools::ToolSet) {
@@ -313,6 +401,7 @@ fn require_active_session(agent: &AgentRuntime) -> Result<&str, XyDriverError> {
 #[async_trait]
 impl XyDriver for XyInProcessDriver {
     async fn run(&mut self, prompt: &str) -> EventStream {
+        self.apply_pending_capability_overlay();
         self.ensure_tool_table_frozen().await;
         if self.agent.session_id().is_none() {
             let id = uuid::Uuid::new_v4().to_string();
@@ -374,6 +463,28 @@ impl XyDriver for XyInProcessDriver {
         &self,
     ) -> Result<xylitol_plugin_sdk::model::ContextTokenEstimate, XyDriverError> {
         XyInProcessDriver::estimate_context_tokens(self).await
+    }
+
+    fn capability_snapshot(&self) -> xylitol_plugin_sdk::session::CapabilitySnapshot {
+        XyInProcessDriver::capability_snapshot(self)
+    }
+
+    fn capability_pending(&self) -> bool {
+        XyInProcessDriver::capability_pending(self)
+    }
+
+    fn set_capability(
+        &mut self,
+        id: &str,
+        enabled: bool,
+    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
+        XyInProcessDriver::set_capability(self, id, enabled)
+    }
+
+    fn clear_capabilities(
+        &mut self,
+    ) -> Result<xylitol_plugin_sdk::session::CapabilitySnapshot, XyDriverError> {
+        XyInProcessDriver::clear_capabilities(self)
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {

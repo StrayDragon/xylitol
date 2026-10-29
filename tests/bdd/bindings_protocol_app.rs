@@ -245,6 +245,12 @@ fn test_c2826_session_methods(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/protocol-app/protocol-app.feature",
+    name = "能力方法已登记"
+)]
+fn test_c2998_capability_methods(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
     name = "Host资源方法已登记"
 )]
 fn test_c2826_resource_methods(server_test: ServerTest) {}
