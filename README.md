@@ -57,6 +57,26 @@ cp configs/secret.env.example .xylitol/secret.env
 
 API 密钥（API key）用 `{{ secret.DEEPSEEK_API_KEY }}` 这样的模板从 `secret.env` 引用。不要把密钥写进 YAML。`configs/example.yaml` 是带注释的样例，覆盖多模型、MCP 和 OTEL。
 
+#### 检索工具选择
+
+默认装配 fff 工具源：模型看到 `ffgrep` / `fffind`，内置 `grep` / `find` 被同类替换隐藏。用顶层 `tools` 列表控制可见工具：
+
+```yaml
+tools:
+  - read
+  - bash
+  - -grep
+  - +ffgrep
+  - -find
+  - +fffind
+```
+
+- `+name` 启用、`-name` 禁用、裸名等同启用；按顺序应用，后者覆盖前者。
+- 替换工具与被替换工具同时启用时只保留替换工具，并打 warning；被替换工具不会永久消失，禁用替换工具后自动回到可见集。
+- 未知工具名只告警，不影响配置加载或启动。
+- 想回到内置检索：写 `-ffgrep -fffind`，或编译时关闭 `fff` feature。
+- 也可以走 MCP 旁路：配置 `fff-mcp` 后工具名为 `mcp__fff__grep` / `mcp__fff__find_files`；与本插件二选一即可。fff 索引按会话工作区惰性建立，不写入仓库。
+
 ### 3. 启动 host 与 TUI
 
 在终端 A 启动 host：

@@ -532,7 +532,7 @@ pub(crate) fn w_config_schema_top_level(rc_snap: &RcSnap) {
 }
 
 #[then(
-    "含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan"
+    "含 models 与 agents 与 session 与 tool_batch 与 tui 与 otel 与 loop_policies 与 todo 与 workflow 与 plan 与 tools"
 )]
 pub(crate) fn t_config_schema_covers_sections(rc_snap: &RcSnap) {
     let joined = rc_snap
@@ -551,10 +551,62 @@ pub(crate) fn t_config_schema_covers_sections(rc_snap: &RcSnap) {
         "todo",
         "workflow",
         "plan",
+        "tools",
     ] {
         assert!(
             joined.split(',').any(|k| k == key),
             "config schema MUST declare `{key}`; got {joined}"
         );
     }
+}
+
+fn load_tools_yaml(tokenizer_bdd: &TokenizerBdd, yaml: &str) {
+    match parse_app_config_yaml(yaml) {
+        Ok(cfg) => {
+            tokenizer_bdd.config.replace(cfg);
+            tokenizer_bdd.cfg_ok.set(true);
+            tokenizer_bdd.cfg_err.replace(String::new());
+        }
+        Err(e) => {
+            tokenizer_bdd.cfg_ok.set(false);
+            tokenizer_bdd.cfg_err.replace(e.to_string());
+        }
+    }
+}
+
+#[given("YAML 含 tools [read, -grep, +ffgrep]")]
+fn g_rc_tools_list(tokenizer_bdd: &TokenizerBdd) {
+    load_tools_yaml(tokenizer_bdd, "tools: [read, -grep, +ffgrep]\nmodels: {}\n");
+}
+
+#[given("YAML 含 tools 列表且含空字符串")]
+fn g_rc_tools_empty_token(tokenizer_bdd: &TokenizerBdd) {
+    load_tools_yaml(tokenizer_bdd, "tools: [read, \"\"]\nmodels: {}\n");
+}
+
+#[given("YAML 含 tools [read, +no-such-tool]")]
+fn g_rc_tools_unknown(tokenizer_bdd: &TokenizerBdd) {
+    load_tools_yaml(tokenizer_bdd, "tools: [read, +no-such-tool]\nmodels: {}\n");
+}
+
+#[then("tools 列表保序且词元一致")]
+fn t_rc_tools_list(tokenizer_bdd: &TokenizerBdd) {
+    assert!(
+        tokenizer_bdd.cfg_ok.get(),
+        "load failed: {}",
+        tokenizer_bdd.cfg_err.borrow()
+    );
+    let cfg = tokenizer_bdd.config.borrow();
+    assert_eq!(cfg.tools, vec!["read", "-grep", "+ffgrep"]);
+}
+
+#[then("成功且 tools 列表含 no-such-tool")]
+fn t_rc_tools_unknown(tokenizer_bdd: &TokenizerBdd) {
+    assert!(
+        tokenizer_bdd.cfg_ok.get(),
+        "unknown tool names must not fail load: {}",
+        tokenizer_bdd.cfg_err.borrow()
+    );
+    let cfg = tokenizer_bdd.config.borrow();
+    assert!(cfg.tools.iter().any(|entry| entry == "+no-such-tool"));
 }

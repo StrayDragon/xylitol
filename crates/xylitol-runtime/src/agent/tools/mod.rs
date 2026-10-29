@@ -1,8 +1,10 @@
 pub mod freeze;
 pub mod provider_safe_names;
+pub mod selection;
 pub mod toolset;
 
 pub use freeze::{MCP_FIRST_TURN_GATE_TIMEOUT, ToolFreezePhase, ToolTableFingerprint};
+pub use selection::resolve_tool_selection;
 pub use toolset::ToolSet;
 
 #[cfg(test)]

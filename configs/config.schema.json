@@ -967,6 +967,13 @@
         "mode": "barrier_parallel"
       }
     },
+    "tools": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "tui": {
       "$ref": "#/$defs/TuiConfig",
       "default": {

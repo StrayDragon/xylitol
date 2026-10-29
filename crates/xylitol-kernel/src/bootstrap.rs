@@ -48,6 +48,7 @@ pub struct BootstrapInput {
     pub interactive: bool,
     pub caller: &'static str,
     pub ephemeral_sessions: bool,
+    pub static_tools: Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>,
 }
 
 #[derive(Debug)]
@@ -553,6 +554,7 @@ pub fn bootstrap_with(
     cwd: Option<&Path>,
 ) -> Result<BootstrappedAgent, BootstrapError> {
     let model = input.model.clone();
+    let static_tools = input.static_tools.clone();
 
     let mut assembly = resolve_assembly_with(&input, get_env, cwd)?;
     let session_id = assembly.session_id.clone();
@@ -561,10 +563,11 @@ pub fn bootstrap_with(
     let thinking_budgets = assembly.thinking_budgets.clone();
     let max_turns = assembly.max_turns;
     let session_file_exists = assembly.session_file_exists;
-    let tool_features = assembly.tool_features;
+    let tool_features = assembly.tool_features.clone();
     let driver_context = crate::driver::DriverContext {
         project_root: std::path::PathBuf::from(&assembly.cwd),
         trusted: assembly.project_trusted,
+        static_tools,
     };
     let target_model = model.or_else(|| assembly.default_profile_model.clone());
     let mut warnings = std::mem::take(&mut assembly.warnings);

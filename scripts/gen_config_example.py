@@ -76,6 +76,14 @@ models:
     #   model: claude-sonnet-4-20250514
     #   api_key: "{{ secret.ANTHROPIC_API_KEY }}"
 
+# tools:  # model-visible tool selection; applied in order (+name / -name / bare name)
+#   - read
+#   - -grep
+#   - +ffgrep
+#   # fff tools are assembled by default; disable both to fall back to builtin grep/find:
+#   # - -ffgrep
+#   # - -fffind
+
 # execution:  # per-execution overrides (defaults to empty)
 #   system_prompt: "Custom system prompt override"
 #   model: "deepseek-v4-flash"  # override default per-execution

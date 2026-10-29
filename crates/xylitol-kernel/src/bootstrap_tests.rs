@@ -31,6 +31,7 @@ fn assembly_input(trust_override: Option<bool>) -> BootstrapInput {
         interactive: false,
         caller: "test",
         ephemeral_sessions: false,
+        static_tools: Vec::new(),
     }
 }
 
@@ -556,6 +557,7 @@ fn missing_session_still_applies_settings_thinking_default() {
         interactive: false,
         caller: "test",
         ephemeral_sessions: false,
+        static_tools: Vec::new(),
     };
     let assembly =
         resolve_assembly_with(&input(), &get_env, Some(project.as_path())).expect("assembly");

@@ -42,6 +42,7 @@ flowchart TB
     subgraph plugins_ext["工具 / 配置启用"]
       direction LR
       xylitol_official_plugin_tools["xylitol-official-plugin-tools<br/>core tools"]
+      xylitol_official_plugin_tools_fff["xylitol-official-plugin-tools-fff<br/>fff search"]
       xylitol_official_plugin_todo["xylitol-official-plugin-todo"]
       xylitol_official_plugin_workflow["xylitol-official-plugin-workflow"]
       xylitol_official_plugin_plan["xylitol-official-plugin-plan"]
@@ -78,6 +79,7 @@ flowchart TB
   xylitol_official_plugin_provider_openai --> xylitol_plugin_sdk
   xylitol_official_plugin_provider_anthropic --> xylitol_plugin_sdk
   xylitol_official_plugin_tools --> xylitol_plugin_sdk
+  xylitol_official_plugin_tools_fff --> xylitol_plugin_sdk
   xylitol_official_plugin_todo --> xylitol_plugin_sdk
   xylitol_official_plugin_workflow --> xylitol_plugin_sdk
   xylitol_official_plugin_plan --> xylitol_plugin_sdk
@@ -124,7 +126,9 @@ flowchart TB
 | `xylitol-app-print` | 同进程直调 runtime | 依赖 serve / protocol / wire；编线协议 |
 | 根包 `xylitol` | argv + profile。列出官方插件的 `Cargo.toml` 经 kernel 转发 | 把装配逻辑塞回 `src/wiring`；`use rutis` |
 
-官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、todo、workflow、plan、mcp、hooks、config、obs、loop-policies。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools / todo / plan。配置启用：workflow / mcp / hooks / loop-policies。没配置则不 start。todo 插件 只提供 todo 工具与中间件；plan 插件 只提供 plan 工具与模式中间件；workflow 插件 只提供 workflow 中间件；loop-policies 插件 是插件作者的 loop 中间件参考实现（见 `crates/xylitol-plugin-sdk/README.md`）。核心 tools 插件 只提供 read / write / edit / bash / grep / find / ls 与 ask。第三方插件是方向、未交付；只留 Chain 解析器与 admit 准入位。
+官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、tools-fff、todo、workflow、plan、mcp、hooks、config、obs、loop-policies。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools / todo / plan。配置启用：workflow / mcp / hooks / loop-policies。没配置则不 start。todo 插件 只提供 todo 工具与中间件；plan 插件 只提供 plan 工具与模式中间件；workflow 插件 只提供 workflow 中间件；loop-policies 插件 是插件作者的 loop 中间件参考实现（见 `crates/xylitol-plugin-sdk/README.md`）。核心 tools 插件 只提供 read / write / edit / bash / grep / find / ls 与 ask；tools-fff 只提供 ffgrep / fffind。第三方插件是方向、未交付；只留 Chain 解析器与 admit 准入位。
+
+静态工具源 须经 `HostRegistries.tools` 注册；`compose_tools` 以注册表快照为基座（空则回落 `core_tools()`）。模型可见集 须由配置 `tools` 列表（`+name` / `-name`）与 `XyTool::replaces()` 解析：替换工具胜出、同类只留一个、未知名告警。内核 不得为单个工具插件写特判；session 专属工具（todo / plan / workflow / ask）仍由装配层注入。
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 

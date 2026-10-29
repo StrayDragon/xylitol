@@ -68,7 +68,23 @@ impl ProductOccupancyFactory {
         DriverContext {
             project_root: workspace.to_path_buf(),
             trusted: self.project_trusted(workspace),
+            static_tools: self.static_tools(),
         }
+    }
+
+    fn static_tools(&self) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
+        let Some(ctx) = self.ctx.as_ref() else {
+            return Vec::new();
+        };
+        let Some(regs) = ctx.get::<xylitol_plugin_sdk::HostRegistries>() else {
+            return Vec::new();
+        };
+        regs.tools
+            .snapshot()
+            .into_iter()
+            .filter(|(name, _)| !xylitol_plugin_sdk::is_mcp_tool_name(name))
+            .map(|(_, tool)| tool)
+            .collect()
     }
 
     fn tool_features(&self) -> ToolFeatures {
@@ -253,7 +269,7 @@ impl OccupancyEngine for OccupancyDriver {
         crate::driver::install_product_ask_tool(
             &mut self.inner,
             gateway,
-            self.tool_features,
+            self.tool_features.clone(),
             self.driver_context.clone(),
         );
     }

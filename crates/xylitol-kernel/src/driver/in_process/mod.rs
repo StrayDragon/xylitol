@@ -18,10 +18,11 @@ pub use xylitol_runtime::driver::{
     LoadedResourcesSnapshot, ProjectTrustMode, relay_bash_chunks, utf8_emit_len,
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct DriverContext {
     pub project_root: PathBuf,
     pub trusted: bool,
+    pub static_tools: Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>,
 }
 
 impl Default for DriverContext {
@@ -29,17 +30,19 @@ impl Default for DriverContext {
         Self {
             project_root: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             trusted: true,
+            static_tools: Vec::new(),
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolFeatures {
     pub todo: bool,
     pub plan: bool,
     pub workflow: bool,
     pub workflow_max_depth: u32,
     pub workflow_max_total_steps: usize,
+    pub tool_selection: Vec<String>,
 }
 
 impl Default for ToolFeatures {
@@ -50,6 +53,7 @@ impl Default for ToolFeatures {
             workflow: false,
             workflow_max_depth: xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
             workflow_max_total_steps: xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
+            tool_selection: Vec::new(),
         }
     }
 }
@@ -62,6 +66,7 @@ impl ToolFeatures {
             workflow: config.workflow.is_active(),
             workflow_max_depth: config.workflow.max_depth,
             workflow_max_total_steps: config.workflow.max_total_steps,
+            tool_selection: config.tools.clone(),
         }
     }
 }
@@ -133,7 +138,7 @@ pub fn assemble_driver_with_ops_and_features_and_context(
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(store.clone());
     let plan = xylitol_official_plugin_plan::SessionPlanGateway::new(
         store.clone(),
-        context.project_root,
+        context.project_root.clone(),
         context.trusted,
     );
     let workflow = xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store.clone());
@@ -141,7 +146,9 @@ pub fn assemble_driver_with_ops_and_features_and_context(
     inner.set_todo_gateway(todo.clone());
     inner.set_plan_gateway(plan.clone());
     inner.set_workflow_gateway(workflow.clone());
-    inner.set_tools(compose_tools(features, todo, plan, workflow, None));
+    inner.set_tools(compose_tools(
+        features, &context, todo, plan, workflow, None,
+    ));
     inner.set_slash_commands(
         crate::product_commands::product_slash_commands()
             .into_iter()
@@ -165,7 +172,7 @@ pub fn install_product_ask_tool(
     let todo = xylitol_official_plugin_todo::SessionAgentTodoGateway::new(driver.store.clone());
     let plan = xylitol_official_plugin_plan::SessionPlanGateway::new(
         driver.store.clone(),
-        context.project_root,
+        context.project_root.clone(),
         context.trusted,
     );
     let workflow =
@@ -173,17 +180,33 @@ pub fn install_product_ask_tool(
     driver.set_todo_gateway(todo.clone());
     driver.set_plan_gateway(plan.clone());
     driver.set_workflow_gateway(workflow.clone());
-    driver.set_tools(compose_tools(features, todo, plan, workflow, Some(gateway)));
+    driver.set_tools(compose_tools(
+        features,
+        &context,
+        todo,
+        plan,
+        workflow,
+        Some(gateway),
+    ));
+}
+
+fn static_tool_base(context: &DriverContext) -> Vec<Arc<dyn xylitol_plugin_sdk::XyTool>> {
+    if context.static_tools.is_empty() {
+        xylitol_official_plugin_tools::core_tools()
+    } else {
+        context.static_tools.clone()
+    }
 }
 
 fn compose_tools(
     features: ToolFeatures,
+    context: &DriverContext,
     todo: Arc<xylitol_official_plugin_todo::SessionAgentTodoGateway>,
     plan: Arc<xylitol_official_plugin_plan::SessionPlanGateway>,
     workflow: Arc<xylitol_official_plugin_workflow::SessionWorkflowGateway>,
     ask: Option<Arc<dyn xylitol_plugin_sdk::ask::AskUserGateway>>,
 ) -> xylitol_runtime::agent::tools::ToolSet {
-    let mut tools = xylitol_official_plugin_tools::core_tools();
+    let mut tools = static_tool_base(context);
     if features.todo {
         tools.extend(xylitol_official_plugin_todo::todo_tools(todo.clone()));
     }
@@ -207,7 +230,18 @@ fn compose_tools(
     if let Some(ask) = ask {
         tools.push(xylitol_official_plugin_tools::ask_tool(ask));
     }
-    xylitol_runtime::agent::tools::ToolSet::from_iter(tools)
+    resolve_tool_set(tools, &features.tool_selection)
+}
+
+fn resolve_tool_set(
+    tools: Vec<Arc<dyn xylitol_plugin_sdk::XyTool>>,
+    selection: &[String],
+) -> xylitol_runtime::agent::tools::ToolSet {
+    let (set, warnings) = xylitol_runtime::agent::tools::resolve_tool_selection(tools, selection);
+    for warning in warnings {
+        log::warn!(target: "xylitol::tools", "{warning}");
+    }
+    set
 }
 
 pub fn assemble_driver_with_bang(

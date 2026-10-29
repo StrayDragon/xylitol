@@ -31,6 +31,7 @@ pub fn parse_app_config_yaml(
     cfg.validate_thinking_levels().map_err(|e| e.to_string())?;
     cfg.validate_session_max_turns()
         .map_err(|e| e.to_string())?;
+    cfg.validate_tools_selection().map_err(|e| e.to_string())?;
     Ok(cfg)
 }
 

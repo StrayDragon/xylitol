@@ -30,6 +30,9 @@ pub struct AppConfig {
     pub tool_batch: ToolBatchConfig,
 
     #[serde(default)]
+    pub tools: Vec<String>,
+
+    #[serde(default)]
     pub loop_policies: LoopPoliciesConfig,
 
     #[serde(default)]
@@ -262,6 +265,34 @@ impl AppConfig {
             )),
             Some(_) => Ok(()),
         }
+    }
+
+    pub fn validate_tools_selection(&self) -> Result<(), LoadError> {
+        for (index, raw) in self.tools.iter().enumerate() {
+            let entry = raw.trim();
+            if entry.is_empty() {
+                return Err(LoadError::validation(format!(
+                    "tools[{index}] must not be empty"
+                )));
+            }
+            let name = entry
+                .strip_prefix('+')
+                .or_else(|| entry.strip_prefix('-'))
+                .unwrap_or(entry)
+                .trim();
+            if name.is_empty() {
+                return Err(LoadError::validation(format!(
+                    "tools[{index}] must name a tool after `+`/`-`"
+                )));
+            }
+            if name.starts_with('+') || name.starts_with('-') || name.contains(char::is_whitespace)
+            {
+                return Err(LoadError::validation(format!(
+                    "tools[{index}] must be a single tool name (got `{entry}`)"
+                )));
+            }
+        }
+        Ok(())
     }
 
     pub fn resolve_model(
@@ -837,5 +868,55 @@ models:
             profile.model_id,
             cfg.resolve_model("ds").expect("alias resolves").model
         );
+    }
+}
+
+#[cfg(test)]
+mod tools_selection_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_ordered_modifiers_and_bare_names() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+tools: [read, -grep, +ffgrep]
+"#,
+        )
+        .expect("valid tools list");
+        cfg.validate_tools_selection().expect("valid");
+        assert_eq!(cfg.tools, vec!["read", "-grep", "+ffgrep"]);
+    }
+
+    #[test]
+    fn rejects_empty_and_prefix_only_entries() {
+        for entry in ["", "   ", "+", "-"] {
+            let cfg = AppConfig {
+                tools: vec![entry.into()],
+                ..Default::default()
+            };
+            assert!(
+                cfg.validate_tools_selection().is_err(),
+                "must reject {entry:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_whitespace_inside_tool_name() {
+        let cfg = AppConfig {
+            tools: vec!["read write".into()],
+            ..Default::default()
+        };
+        assert!(cfg.validate_tools_selection().is_err());
+    }
+
+    #[test]
+    fn unknown_tool_names_are_not_load_errors() {
+        let cfg = AppConfig {
+            tools: vec!["+no-such-tool".into()],
+            ..Default::default()
+        };
+        cfg.validate_tools_selection()
+            .expect("unknown names warn later");
     }
 }
