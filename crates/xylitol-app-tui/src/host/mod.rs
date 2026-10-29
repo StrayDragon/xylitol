@@ -626,6 +626,29 @@ impl<T: Terminal> HostSession<T> {
         self.pending.take_dequeue()
     }
 
+    pub fn dequeue_to_editor(&mut self) -> bool {
+        let queued = self.ui_model.take_queued_for_editor();
+        if queued.is_empty() {
+            return false;
+        }
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        let mut root = root.borrow_mut();
+        let current = root.editor_text();
+        let mut parts = queued;
+        if !current.trim().is_empty() {
+            parts.push(current);
+        }
+        root.set_editor_text(parts.join("\n\n"));
+        drop(root);
+        self.pending.steer = None;
+        self.pending.follow_up = None;
+        self.pending.dequeue = true;
+        self.sync_ui_root_from_model();
+        true
+    }
+
     pub fn take_paste_image(&mut self) -> bool {
         self.pending.take_paste_image()
     }
@@ -993,6 +1016,16 @@ impl<T: Terminal> HostSession<T> {
     }
 
     fn dispatch_chrome_click(&mut self, id: xylitol_tui::HitId) {
+        if id == crate::layout::UiRoot::QUEUE_STRIP_HIT_ID {
+            if self.dequeue_to_editor() {
+                self.tui.request_render(false);
+            }
+            return;
+        }
+        self.dispatch_overlay_chrome_click(id);
+    }
+
+    fn dispatch_overlay_chrome_click(&mut self, id: xylitol_tui::HitId) {
         match id {
             crate::layout::UiRoot::SESSION_POPUP_HIT_ID => {
                 if let Some(root) = self.ui_root.as_ref() {

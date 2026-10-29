@@ -85,3 +85,9 @@ async fn test_c2826_ati_picker_esc(host_pump_bdd: HostPumpBdd) {}
     name = "键绑定重载失败保留旧"
 )]
 fn test_c2826_ati_keybindings(host_pump_bdd: HostPumpBdd) {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-input/app-tui-input.feature",
+    name = "队列条点击还原"
+)]
+async fn test_c3001_queue_hover_click(host_pump_bdd: HostPumpBdd) {}

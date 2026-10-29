@@ -316,6 +316,7 @@ impl Component for UiRoot {
             .saturating_add(editor.len())
             .saturating_add(1);
         self.sync_editor_screen_origin();
+        self.queue_strip_row = lines.len();
         lines.extend(queue);
         lines.extend(todo);
         lines.extend(mode);
