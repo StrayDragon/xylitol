@@ -40,6 +40,8 @@ REQUIRED_MEMBERS: dict[str, str] = {
     "plugins/xylitol-official-plugin-todo": "xylitol-official-plugin-todo",
     "plugins/xylitol-official-plugin-workflow": "xylitol-official-plugin-workflow",
     "plugins/xylitol-official-plugin-plan": "xylitol-official-plugin-plan",
+    "plugins/xylitol-official-plugin-lsp": "xylitol-official-plugin-lsp",
+    "plugins/xylitol-official-plugin-dap": "xylitol-official-plugin-dap",
 }
 
 ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
@@ -67,6 +69,8 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
     "xylitol-official-plugin-todo": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-workflow": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-plan": frozenset({"xylitol-plugin-sdk"}),
+    "xylitol-official-plugin-lsp": frozenset({"xylitol-plugin-sdk"}),
+    "xylitol-official-plugin-dap": frozenset({"xylitol-plugin-sdk"}),
     "xylitol-official-plugin-config": frozenset(
         {
             "xylitol-plugin-sdk",
@@ -77,6 +81,8 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
             "xylitol-official-plugin-todo",
             "xylitol-official-plugin-workflow",
             "xylitol-official-plugin-plan",
+            "xylitol-official-plugin-lsp",
+            "xylitol-official-plugin-dap",
         }
     ),
     "xylitol-official-plugin-obs": frozenset(
@@ -103,6 +109,8 @@ ALLOWED_XYLITOL_DEPS: dict[str, frozenset[str]] = {
             "xylitol-official-plugin-todo",
             "xylitol-official-plugin-workflow",
             "xylitol-official-plugin-plan",
+            "xylitol-official-plugin-lsp",
+            "xylitol-official-plugin-dap",
         }
     ),
 }
@@ -113,6 +121,8 @@ FORBIDDEN_DEPS: dict[str, frozenset[str]] = {
     "async-openai": ALL_PACKAGES - {"xylitol-official-plugin-provider-openai"},
     "rmcp": ALL_PACKAGES - {"xylitol-official-plugin-mcp"},
     "salvo": ALL_PACKAGES - {"xylitol-serve"},
+    "lspz": ALL_PACKAGES - {"xylitol-official-plugin-lsp"},
+    "dapz": ALL_PACKAGES - {"xylitol-official-plugin-dap"},
 }
 
 PLUGIN_PREFIX = "xylitol-official-plugin-"
@@ -125,6 +135,8 @@ PLUGIN_PEER_EXCEPTIONS: frozenset[tuple[str, str]] = frozenset(
         ("xylitol-official-plugin-config", "xylitol-official-plugin-todo"),
         ("xylitol-official-plugin-config", "xylitol-official-plugin-workflow"),
         ("xylitol-official-plugin-config", "xylitol-official-plugin-plan"),
+        ("xylitol-official-plugin-config", "xylitol-official-plugin-lsp"),
+        ("xylitol-official-plugin-config", "xylitol-official-plugin-dap"),
     }
 )
 
