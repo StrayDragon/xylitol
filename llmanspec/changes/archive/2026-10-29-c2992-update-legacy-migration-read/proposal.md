@@ -2,6 +2,9 @@
 depends_on: []
 title: 消除会话历史加载时的重复分支读取
 needs_specs_change: false
+branch: sdd/c2992-update-legacy-migration-read
+base_branch: main
+base_sha: cce2c9951ba765d5fe677d8b906105500bf59ee4
 ---
 
 # 消除会话历史加载时的重复分支读取
@@ -14,7 +17,7 @@ needs_specs_change: false
 
 ## What Changes
 
-- SDK 增加 `has_legacy_custom_types(&[SessionEntry]) -> bool`，集中判断 `plan` / `plan_checkpoint` 旧名。
+- SDK 增加 `has_unmigrated_legacy_custom_types(&[SessionEntry]) -> bool`，集中判断 `plan` / `plan_checkpoint` 旧名。
 - `load_conversation_history_from_store` 先读一次 leaf branch；只有检测到 legacy 条目时才调用迁移并重读一次。
 - 保持迁移语义不变：append-only、按 `(新名, data)` 去重、失败只 warn。
 - 补计数 store 测试，断言非 legacy 会话每 run 只读一次。
