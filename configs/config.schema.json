@@ -57,6 +57,27 @@
       },
       "type": "object"
     },
+    "DapPluginConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "default": "python3 -m debugpy.adapter",
+          "type": "string"
+        },
+        "compression": {
+          "default": true,
+          "type": "boolean"
+        },
+        "cwd": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "ExecutionConfig": {
       "properties": {
         "model": {
@@ -260,6 +281,31 @@
             "read_only": false,
             "write_tools": []
           }
+        }
+      },
+      "type": "object"
+    },
+    "LspPluginConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "default": "basedpyright-langserver --stdio",
+          "type": "string"
+        },
+        "compression": {
+          "default": true,
+          "type": "boolean"
+        },
+        "language": {
+          "default": "python",
+          "type": "string"
+        },
+        "workspace_root": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "type": "object"
@@ -912,6 +958,17 @@
       ],
       "default": null
     },
+    "dap": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DapPluginConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "execution": {
       "$ref": "#/$defs/ExecutionConfig",
       "default": {
@@ -958,6 +1015,17 @@
           "write_tools": []
         }
       }
+    },
+    "lsp": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LspPluginConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "mcp_servers": {
       "default": null,

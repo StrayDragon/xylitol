@@ -1,7 +1,9 @@
 use rutis_loader::Builtins;
 use xylitol_official_plugin_compaction::plugin::CompactionPlugin;
+use xylitol_official_plugin_dap::DapPlugin;
 use xylitol_official_plugin_hooks::plugin::HooksPlugin;
 use xylitol_official_plugin_loop_policies::plugin::LoopPoliciesPlugin;
+use xylitol_official_plugin_lsp::LspPlugin;
 use xylitol_official_plugin_mcp::plugin::McpPlugin;
 use xylitol_official_plugin_plan::plugin::PlanPlugin;
 use xylitol_official_plugin_provider_anthropic::plugin::AnthropicPlugin;
@@ -29,6 +31,8 @@ pub fn official_builtins() -> Builtins {
     builtins.register("todo", TodoPlugin::new);
     builtins.register("workflow", WorkflowPlugin::new);
     builtins.register("plan", PlanPlugin::new);
+    builtins.register("lsp", LspPlugin::new);
+    builtins.register("dap", DapPlugin::new);
     builtins.register("provider-openai", OpenAiPlugin::new);
     builtins.register("provider-anthropic", AnthropicPlugin::new);
     builtins.register("provider-fake", FakePlugin::new);

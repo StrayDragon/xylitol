@@ -46,6 +46,12 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub external_plugins: Vec<ExternalPluginConfig>,
+
+    #[serde(default)]
+    pub lsp: Option<LspPluginConfig>,
+
+    #[serde(default)]
+    pub dap: Option<DapPluginConfig>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -493,6 +499,8 @@ pub struct SessionConfig {
     pub max_turns: Option<u32>,
 }
 
+pub use xylitol_official_plugin_dap::DapPluginConfig;
+pub use xylitol_official_plugin_lsp::LspPluginConfig;
 pub use xylitol_official_plugin_mcp::{McpServerConfig, McpTransportKind};
 
 #[cfg(test)]
@@ -995,6 +1003,40 @@ external_plugins:
         assert_eq!(plugin.args, vec!["plugin.ts".to_string()]);
         assert!(plugin.trusted);
         assert_eq!(plugin.timeout_ms, 5_000);
+    }
+
+    #[test]
+    fn lsp_and_dap_configs_deserialize() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+lsp:
+  backend: "basedpyright-langserver --stdio"
+  language: "python"
+dap:
+  backend: "python3 -m debugpy.adapter"
+  cwd: "/tmp/project"
+"#,
+        )
+        .expect("lsp/dap config");
+        let lsp = cfg.lsp.expect("lsp");
+        assert_eq!(lsp.backend, "basedpyright-langserver --stdio");
+        assert_eq!(lsp.language, "python");
+        assert!(lsp.compression);
+        let dap = cfg.dap.expect("dap");
+        assert_eq!(dap.backend, "python3 -m debugpy.adapter");
+        assert_eq!(dap.cwd.as_deref(), Some("/tmp/project"));
+        assert!(dap.compression);
+    }
+
+    #[test]
+    fn lsp_and_dap_absent_are_none() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            "models: {}
+",
+        )
+        .expect("minimal config");
+        assert!(cfg.lsp.is_none());
+        assert!(cfg.dap.is_none());
     }
 
     #[test]

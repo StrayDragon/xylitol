@@ -26,6 +26,8 @@ xylitol-official-plugin-loop-policies = { workspace = true }
 xylitol-official-plugin-todo = { workspace = true }
 xylitol-official-plugin-workflow = { workspace = true }
 xylitol-official-plugin-plan = { workspace = true }
+xylitol-official-plugin-lsp = { workspace = true }
+xylitol-official-plugin-dap = { workspace = true }
 xylitol-official-plugin-config = { workspace = true }
 xylitol-official-plugin-obs = { workspace = true }
 rutis = { workspace = true }
