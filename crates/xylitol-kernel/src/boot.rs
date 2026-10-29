@@ -1,5 +1,5 @@
 use rutis::host::{CtxHost, FiberState};
-use rutis_loader::{Chain, Layer, Loader, LoaderOptions, LoaderPlugin, Patch};
+use rutis_loader::{Builtins, Chain, Layer, Loader, LoaderOptions, LoaderPlugin, Patch};
 use xylitol_plugin_sdk::rt::Ctx;
 
 use crate::admit::{Admit, is_reserved_plugin_name};
@@ -107,9 +107,7 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
 
     let mut builtins = official_builtins();
     let external_specs = external_plugin_specs(&ctx);
-    for spec in &external_specs {
-        builtins.register(spec.name.clone(), ExternalPlugin::new);
-    }
+    register_external_builtins(&mut builtins, &external_specs);
     let plugin = LoaderPlugin::new(
         Chain::new().with(Admit { inner: builtins }),
         LoaderOptions::default(),
@@ -171,15 +169,28 @@ fn default_rows(
     #[cfg(feature = "fff")]
     insert.push(serde_json::json!({ "id": "tools-fff", "name": "tools-fff" }));
     insert.extend(optional_plugin_rows(config.as_deref()));
-    for spec in external_specs {
-        insert.push(serde_json::json!({
-            "id": format!("external:{}", spec.name),
-            "name": spec.name,
-            "config": spec,
-        }));
-    }
+    insert.extend(external_rows(external_specs));
     insert.push(profile_row(opts.profile));
     serde_json::from_value(serde_json::json!([{ "insert": insert }])).unwrap_or_default()
+}
+
+fn register_external_builtins(builtins: &mut Builtins, specs: &[ExternalPluginConfig]) {
+    for spec in specs {
+        builtins.register(spec.name.clone(), ExternalPlugin::new);
+    }
+}
+
+fn external_rows(specs: &[ExternalPluginConfig]) -> Vec<serde_json::Value> {
+    specs
+        .iter()
+        .map(|spec| {
+            serde_json::json!({
+                "id": format!("external:{}", spec.name),
+                "name": spec.name,
+                "config": spec,
+            })
+        })
+        .collect()
 }
 
 fn external_plugin_specs(ctx: &Ctx) -> Vec<ExternalPluginConfig> {
