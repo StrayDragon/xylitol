@@ -12,11 +12,7 @@ pub async fn load_conversation_history_from_store(
     store: &dyn XySessionStore,
     session_id: &str,
 ) -> Result<Vec<AgentMessage>, XyError> {
-    let mut entries = store
-        .load_leaf_branch(session_id)
-        .await
-        .map_err(XyError::from)?;
-    migrate_legacy_if_needed(store, session_id, &mut entries).await?;
+    let entries = load_branch_with_migration(store, session_id).await?;
     let entries = xylitol_plugin_sdk::session::build_context_entries(&entries);
     let messages: Vec<AgentMessage> = entries
         .iter()
@@ -25,19 +21,22 @@ pub async fn load_conversation_history_from_store(
     Ok(fold_interrupted_bash(store, session_id, messages).await)
 }
 
-async fn migrate_legacy_if_needed(
+async fn load_branch_with_migration(
     store: &dyn XySessionStore,
     session_id: &str,
-    entries: &mut Vec<SessionEntry>,
-) -> Result<(), XyError> {
-    if xylitol_plugin_sdk::session::has_unmigrated_legacy_custom_types(entries) {
+) -> Result<Vec<SessionEntry>, XyError> {
+    let mut entries = store
+        .load_leaf_branch(session_id)
+        .await
+        .map_err(XyError::from)?;
+    if xylitol_plugin_sdk::session::has_unmigrated_legacy_custom_types(&entries) {
         migrate_legacy_on_load(store, session_id).await;
-        *entries = store
+        entries = store
             .load_leaf_branch(session_id)
             .await
             .map_err(XyError::from)?;
     }
-    Ok(())
+    Ok(entries)
 }
 
 async fn migrate_legacy_on_load(store: &dyn XySessionStore, session_id: &str) {
