@@ -563,4 +563,4 @@
 
   @req:r2962
   规则: multiple-before-tool-gates
-    多个 before_tool 中间件 须按 order 依次执行；任一返回 stopped 须终止后续闸与工具执行；首个 stopped 的原因 须成为最终结果。由单测覆盖。
+    多个 before_tool 中间件 须按 order 依次执行；任一返回 stopped 须终止后续闸与工具执行；首个 stopped 的原因 须成为最终结果。`deny_reason` 须为“首次设置即锁定”：任一中间件设置后，后置中间件 不得清空或改写，且仍可读取该原因；链结束时 runtime 须以首个非空原因拒绝工具并回写错误结果，不得因后置清空而放行。由单测覆盖。

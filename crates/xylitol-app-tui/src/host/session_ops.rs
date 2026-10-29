@@ -538,9 +538,13 @@ impl<T: Terminal> HostSession<T> {
             entries.clone(),
             has_more,
         ));
+        let buffer_has_more = self
+            .loaded_history
+            .as_ref()
+            .map_or(has_more, |history| history.has_more);
         rebuild_scrollback_from_travel(&mut self.ui_model, &entries, &travel);
         self.ui_model.mode_strip = mode_strip_for_entries(&entries);
-        crate::history_window::trim_to_window(&mut self.ui_model, has_more);
+        crate::history_window::trim_to_window(&mut self.ui_model, buffer_has_more);
         if let Some(root) = self.ui_root.as_ref() {
             let mut root = root.borrow_mut();
             close_overlays(&mut root);
@@ -656,6 +660,7 @@ impl<T: Terminal> HostSession<T> {
         history.merge_older(older, has_more);
         let entries = history.entries.clone();
         let session_id = history.session_id.clone();
+        let has_more = history.has_more;
         let travel = SessionTreeTravel {
             kind: xylitol_plugin_sdk::session::SessionTreeKind::MessageHistory,
             selected_id: session_id,

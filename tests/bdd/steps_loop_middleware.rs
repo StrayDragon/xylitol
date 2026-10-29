@@ -2516,3 +2516,106 @@ pub(crate) fn t_nested_workflow_completed() {
     let text = messages.join("\n");
     assert!(text.contains("<plan_complete>"), "{text}");
 }
+
+thread_local! {
+    static WORKFLOW_FAIL_STORE: RefCell<Option<Arc<dyn xylitol_plugin_sdk::XySessionStore>>> =
+        const { RefCell::new(None) };
+}
+
+#[given("workflow 插件启用且 workflow 含一个 in_progress 步骤")]
+pub(crate) fn g_workflow_fail_ready() {
+    use xylitol_plugin_sdk::session::{Workflow, WorkflowRisk, WorkflowStep, WorkflowStepStatus};
+
+    let store: Arc<dyn xylitol_plugin_sdk::XySessionStore> =
+        Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+    futures::executor::block_on(store.create("s-workflow-fail", Some("."), None)).expect("create");
+    let workflow = Workflow {
+        goal: "ship".into(),
+        steps: vec![WorkflowStep {
+            id: "s1".into(),
+            description: "do it".into(),
+            depends_on: Vec::new(),
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            tools: Vec::new(),
+            risk: WorkflowRisk::Low,
+            verification: Some("tests pass".into()),
+            rollback: None,
+            requires_human: false,
+            status: WorkflowStepStatus::InProgress,
+            output_ref: None,
+            sub_workflow: None,
+        }],
+        resume_cursor: None,
+        updated_at: 1,
+    };
+    futures::executor::block_on(
+        store.append_session_entry("s-workflow-fail", &workflow.to_custom_entry_shell()),
+    )
+    .expect("seed workflow");
+    WORKFLOW_FAIL_STORE.with(|slot| slot.borrow_mut().replace(store));
+}
+
+#[when("模型调用 workflow_fail 并给出原因")]
+pub(crate) fn w_workflow_fail() {
+    let store = WORKFLOW_FAIL_STORE
+        .with(|slot| slot.borrow().clone())
+        .expect("workflow fail store");
+    let gateway = xylitol_official_plugin_workflow::SessionWorkflowGateway::new(store);
+    futures::executor::block_on(gateway.bind_session(Some("s-workflow-fail".into())));
+    let tools = xylitol_official_plugin_workflow::workflow_tools(
+        gateway,
+        xylitol_plugin_sdk::session::DEFAULT_MAX_DEPTH,
+        xylitol_plugin_sdk::session::DEFAULT_MAX_TOTAL_STEPS,
+    );
+    let tool = tools
+        .iter()
+        .find(|tool| tool.name() == "workflow_fail")
+        .expect("workflow_fail")
+        .clone();
+    futures::executor::block_on(tool.execute(
+        &xylitol_plugin_sdk::XyToolCtx::new("bdd-workflow-fail"),
+        serde_json::json!({"reason": "verification failed"}),
+    ))
+    .expect("workflow_fail");
+}
+
+#[then("该步骤状态为 failed 且下一轮 before_llm_request 注入局部重规划指令")]
+pub(crate) fn t_workflow_fail_replans() {
+    let store = WORKFLOW_FAIL_STORE
+        .with(|slot| slot.borrow().clone())
+        .expect("workflow fail store");
+    let branch =
+        futures::executor::block_on(store.load_leaf_branch("s-workflow-fail")).expect("branch");
+    let latest = xylitol_plugin_sdk::session::latest_workflow(&branch).expect("latest workflow");
+    assert_eq!(
+        latest.steps[0].status,
+        xylitol_plugin_sdk::session::WorkflowStepStatus::Failed
+    );
+    assert_eq!(
+        latest.steps[0].output_ref.as_deref(),
+        Some("failure:verification failed")
+    );
+    let mw = xylitol_official_plugin_workflow::workflow_middleware(
+        Some(store),
+        None,
+        &xylitol_official_plugin_workflow::WorkflowConfig::default(),
+    );
+    let out = futures::executor::block_on(mw.before_llm_request(BeforeLlmRequestCtx {
+        turn_index: 0,
+        messages: Vec::new(),
+        tool_schemas: Vec::new(),
+        options: xylitol_plugin_sdk::XyGenerateOptions::default(),
+        todo: None,
+        plan_mode: None,
+        session_id: Some("s-workflow-fail".into()),
+    }));
+    let text = out
+        .ctx
+        .messages
+        .iter()
+        .map(|message| message.text())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(text.contains("<workflow_replan>"), "{text}");
+}

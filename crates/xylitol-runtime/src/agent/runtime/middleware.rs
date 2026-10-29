@@ -232,6 +232,7 @@ async fn run_stage<C>(
     obs: &ObsSessionContext,
     ctx: C,
     fingerprint: impl Fn(&C) -> String,
+    mut settle: impl FnMut(&mut C),
     invoke: impl for<'a> Fn(
         &'a Arc<dyn LoopMiddleware>,
         C,
@@ -255,6 +256,7 @@ async fn run_stage<C>(
         )
         .await?;
         ctx = step.ctx;
+        settle(&mut ctx);
         if step.control != LoopControl::Continue {
             return Ok(StageOutcome {
                 ctx,
@@ -285,6 +287,7 @@ pub(crate) async fn run_before_turn(
         obs,
         ctx,
         before_turn_fingerprint,
+        |_| {},
         |mw, ctx| Box::pin(mw.before_turn(ctx)),
     )
     .await
@@ -305,6 +308,7 @@ pub(crate) async fn run_before_llm_request(
         obs,
         ctx,
         before_llm_request_fingerprint,
+        |_| {},
         |mw, ctx| Box::pin(mw.before_llm_request(ctx)),
     )
     .await
@@ -325,6 +329,7 @@ pub(crate) async fn run_after_llm_response(
         obs,
         ctx,
         after_llm_response_fingerprint,
+        |_| {},
         |mw, ctx| Box::pin(mw.after_llm_response(ctx)),
     )
     .await
@@ -337,6 +342,7 @@ pub(crate) async fn run_before_tool(
     obs: &ObsSessionContext,
     ctx: BeforeToolCtx,
 ) -> Result<StageOutcome<BeforeToolCtx>, MiddlewareFault> {
+    let mut denied = ctx.deny_reason.clone();
     run_stage(
         chain,
         LoopStage::BeforeTool,
@@ -345,6 +351,14 @@ pub(crate) async fn run_before_tool(
         obs,
         ctx,
         before_tool_fingerprint,
+        |ctx| {
+            if denied.is_none() {
+                denied = ctx.deny_reason.clone();
+            }
+            if let Some(reason) = &denied {
+                ctx.deny_reason = Some(reason.clone());
+            }
+        },
         |mw, ctx| Box::pin(mw.before_tool(ctx)),
     )
     .await
@@ -365,6 +379,7 @@ pub(crate) async fn run_after_tool(
         obs,
         ctx,
         after_tool_fingerprint,
+        |_| {},
         |mw, ctx| Box::pin(mw.after_tool(ctx)),
     )
     .await
@@ -385,6 +400,7 @@ pub(crate) async fn run_decide_continue(
         obs,
         ctx,
         |_ctx| String::new(),
+        |_| {},
         |mw, ctx| Box::pin(mw.decide_continue(ctx)),
     )
     .await
@@ -538,5 +554,157 @@ mod tests {
         let cancelled = MiddlewareFault::cancelled("y".into(), LoopStage::AfterTurn);
         assert_eq!(cancelled.kind(), "Aborted");
         assert!(cancelled.message().contains("after_turn"));
+    }
+
+    struct SetDeny {
+        id: &'static str,
+        reason: &'static str,
+    }
+
+    #[async_trait::async_trait]
+    impl LoopMiddleware for SetDeny {
+        fn id(&self) -> &str {
+            self.id
+        }
+
+        fn order(&self) -> i64 {
+            10
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::BeforeTool]
+        }
+
+        async fn before_tool(&self, mut ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+            ctx.deny_reason = Some(self.reason.into());
+            LoopStep::continued(ctx)
+        }
+    }
+
+    struct ClearDeny;
+
+    #[async_trait::async_trait]
+    impl LoopMiddleware for ClearDeny {
+        fn id(&self) -> &str {
+            "clear-deny"
+        }
+
+        fn order(&self) -> i64 {
+            30
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::BeforeTool]
+        }
+
+        async fn before_tool(&self, mut ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+            ctx.deny_reason = None;
+            LoopStep::continued(ctx)
+        }
+    }
+
+    struct ObserveDeny(Arc<std::sync::Mutex<Option<String>>>);
+
+    #[async_trait::async_trait]
+    impl LoopMiddleware for ObserveDeny {
+        fn id(&self) -> &str {
+            "observe-deny"
+        }
+
+        fn order(&self) -> i64 {
+            20
+        }
+
+        fn stages(&self) -> &'static [LoopStage] {
+            &[LoopStage::BeforeTool]
+        }
+
+        async fn before_tool(&self, ctx: BeforeToolCtx) -> LoopStep<BeforeToolCtx> {
+            *self.0.lock().unwrap_or_else(|e| e.into_inner()) = ctx.deny_reason.clone();
+            LoopStep::continued(ctx)
+        }
+    }
+
+    fn tool_ctx() -> BeforeToolCtx {
+        BeforeToolCtx {
+            turn_index: 0,
+            tool_call_id: "call-1".into(),
+            tool_name: "write".into(),
+            args: serde_json::json!({}),
+            deny_reason: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn deny_reason_is_locked_after_first_set() {
+        let registry = xylitol_plugin_sdk::LoopMiddlewareRegistry::new();
+        registry
+            .register(Arc::new(SetDeny {
+                id: "set-deny",
+                reason: "first",
+            }))
+            .expect("set");
+        let seen = Arc::new(std::sync::Mutex::new(None));
+        registry
+            .register(Arc::new(ObserveDeny(seen.clone())))
+            .expect("observe");
+        registry.register(Arc::new(ClearDeny)).expect("clear");
+        let out = run_before_tool(
+            &registry.snapshot(),
+            &CancellationToken::new(),
+            None,
+            &ObsSessionContext::default(),
+            tool_ctx(),
+        )
+        .await
+        .expect("before_tool");
+        assert_eq!(out.ctx.deny_reason.as_deref(), Some("first"));
+        assert_eq!(
+            seen.lock().unwrap_or_else(|e| e.into_inner()).as_deref(),
+            Some("first"),
+            "later middleware must still observe the locked reason"
+        );
+    }
+
+    #[tokio::test]
+    async fn deny_reason_cannot_be_overridden() {
+        let registry = xylitol_plugin_sdk::LoopMiddlewareRegistry::new();
+        registry
+            .register(Arc::new(SetDeny {
+                id: "set-first",
+                reason: "first",
+            }))
+            .expect("first");
+        registry
+            .register(Arc::new(SetDeny {
+                id: "set-second",
+                reason: "second",
+            }))
+            .expect("second");
+        let out = run_before_tool(
+            &registry.snapshot(),
+            &CancellationToken::new(),
+            None,
+            &ObsSessionContext::default(),
+            tool_ctx(),
+        )
+        .await
+        .expect("before_tool");
+        assert_eq!(out.ctx.deny_reason.as_deref(), Some("first"));
+    }
+
+    #[tokio::test]
+    async fn empty_before_tool_chain_keeps_no_denial() {
+        let registry = xylitol_plugin_sdk::LoopMiddlewareRegistry::new();
+        let out = run_before_tool(
+            &registry.snapshot(),
+            &CancellationToken::new(),
+            None,
+            &ObsSessionContext::default(),
+            tool_ctx(),
+        )
+        .await
+        .expect("before_tool");
+        assert_eq!(out.ctx.deny_reason, None);
     }
 }

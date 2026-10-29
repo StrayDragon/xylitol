@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde_json::Value;
 
 use crate::message::{AgentMessage, EnvMessage};
@@ -214,6 +216,33 @@ pub fn session_fork_edge(entries: &[SessionEntry]) -> (Option<String>, Option<St
     (None, None)
 }
 
+pub fn has_unmigrated_legacy_custom_types(entries: &[SessionEntry]) -> bool {
+    let mut present: HashSet<(String, String)> = HashSet::new();
+    for entry in entries {
+        let SessionEntry::Custom(custom) = entry else {
+            continue;
+        };
+        if legacy_custom_type_target(&custom.custom_type).is_some() {
+            continue;
+        }
+        if let Ok(data) = serde_json::to_string(&custom.data) {
+            present.insert((custom.custom_type.clone(), data));
+        }
+    }
+    entries.iter().any(|entry| {
+        let SessionEntry::Custom(custom) = entry else {
+            return false;
+        };
+        let Some(target) = legacy_custom_type_target(&custom.custom_type) else {
+            return false;
+        };
+        let Ok(data) = serde_json::to_string(&custom.data) else {
+            return true;
+        };
+        !present.contains(&(target.to_string(), data))
+    })
+}
+
 pub(crate) fn legacy_custom_type_target(custom_type: &str) -> Option<&'static str> {
     match custom_type {
         super::workflow::LEGACY_CUSTOM_TYPE_PLAN => Some(super::workflow::CUSTOM_TYPE_WORKFLOW),
@@ -311,6 +340,45 @@ mod leaf_anchor_tests {
             transcript_ancestry_ids(&entries, Some("kept_child")),
             vec!["kept_root", "kept_child"],
         );
+    }
+
+    fn custom(custom_type: &str, data: Value) -> SessionEntry {
+        use crate::session::CustomEntry;
+
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: format!("{custom_type}-id"),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: custom_type.into(),
+            data,
+        })
+    }
+
+    #[test]
+    fn detects_unmigrated_legacy_custom_types() {
+        assert!(has_unmigrated_legacy_custom_types(&[custom(
+            "plan",
+            serde_json::json!({"goal": "x"})
+        )]));
+        assert!(has_unmigrated_legacy_custom_types(&[custom(
+            "plan_checkpoint",
+            serde_json::json!({})
+        )]));
+
+        let legacy = custom("plan", serde_json::json!({"goal": "x"}));
+        let migrated = custom("workflow", serde_json::json!({"goal": "x"}));
+        assert!(
+            !has_unmigrated_legacy_custom_types(&[legacy, migrated]),
+            "an appended new-name entry with the same data must suppress migration"
+        );
+        assert!(!has_unmigrated_legacy_custom_types(&[custom(
+            "workflow",
+            serde_json::json!({})
+        )]));
+        assert!(!has_unmigrated_legacy_custom_types(&[]));
     }
 }
 

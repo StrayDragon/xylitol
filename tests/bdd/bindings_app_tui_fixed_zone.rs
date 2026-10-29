@@ -50,6 +50,12 @@ fn test_fz_collapsed_notice(fixed_zone_bdd: FixedZoneBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
+    name = "缓冲超限后回退为加载更早"
+)]
+fn test_fz_buffer_capped() {}
+
+#[scenario(
+    path = "llmanspec/specs/app-tui-fixed-zone/app-tui-fixed-zone.feature",
     name = "短会话无分页提示"
 )]
 fn test_fz_short_no_notice(fixed_zone_bdd: FixedZoneBdd) {}

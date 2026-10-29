@@ -367,8 +367,9 @@ impl LoopMiddleware for WorkflowMiddleware {
     }
 
     async fn after_tool(&self, ctx: AfterToolCtx) -> LoopStep<AfterToolCtx> {
-        if ctx.tool_name == "workflow_write" {
+        if matches!(ctx.tool_name.as_str(), "workflow_write" | "workflow_fail") {
             if ctx.is_error {
+                let fallback = format!("{} failed", ctx.tool_name);
                 let text = ctx
                     .parts
                     .iter()
@@ -376,7 +377,7 @@ impl LoopMiddleware for WorkflowMiddleware {
                         AgentPart::Text { text } => Some(text.as_str()),
                         _ => None,
                     })
-                    .unwrap_or("workflow_write failed");
+                    .unwrap_or(fallback.as_str());
                 self.lock_state().pending_workflow_error = Some(text.to_string());
             } else {
                 self.reload_workflow().await;

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -17,6 +18,7 @@ use crate::agent::tools::ToolSet;
 pub(crate) struct MemoryStore {
     sessions: Mutex<HashMap<String, Vec<SessionEntry>>>,
     leaves: Mutex<HashMap<String, Option<String>>>,
+    load_leaf_branch_calls: AtomicUsize,
 }
 
 impl MemoryStore {
@@ -24,7 +26,12 @@ impl MemoryStore {
         Self {
             sessions: Mutex::new(HashMap::new()),
             leaves: Mutex::new(HashMap::new()),
+            load_leaf_branch_calls: AtomicUsize::new(0),
         }
+    }
+
+    pub(crate) fn load_leaf_branch_calls(&self) -> usize {
+        self.load_leaf_branch_calls.load(Ordering::SeqCst)
     }
 }
 
@@ -35,6 +42,14 @@ impl XySessionStore for MemoryStore {
             .lock()
             .map(|m| m.contains_key(session_id))
             .unwrap_or(false)
+    }
+
+    async fn load_leaf_branch(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionEntry>, XySessionStoreError> {
+        self.load_leaf_branch_calls.fetch_add(1, Ordering::SeqCst);
+        self.load_entries(session_id).await
     }
 
     async fn load_entries(

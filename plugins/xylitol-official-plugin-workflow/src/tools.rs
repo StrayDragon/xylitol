@@ -10,8 +10,8 @@ use tokio::sync::RwLock;
 use xylitol_plugin_sdk::TypedTool;
 use xylitol_plugin_sdk::error::XyToolError;
 use xylitol_plugin_sdk::session::{
-    Workflow, WorkflowStep, latest_workflow, runnable_workflow_step, validate_workflow_replan,
-    validate_workflow_with_limits,
+    Workflow, WorkflowStep, WorkflowStepStatus, latest_workflow, runnable_workflow_step,
+    validate_workflow_replan, validate_workflow_with_limits,
 };
 use xylitol_plugin_sdk::{WorkflowGateway, XySessionStore, XyToolCtx, XyToolExecutionMode};
 
@@ -235,6 +235,111 @@ impl TypedTool for WorkflowReadTool {
     }
 }
 
+pub struct WorkflowFailTool {
+    gateway: Arc<dyn WorkflowGateway>,
+}
+
+impl WorkflowFailTool {
+    pub fn new(gateway: Arc<dyn WorkflowGateway>) -> Self {
+        Self { gateway }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WorkflowFailArgs {
+    #[serde(default)]
+    pub step_id: Option<String>,
+    pub reason: String,
+}
+
+#[async_trait]
+impl TypedTool for WorkflowFailTool {
+    type Args = WorkflowFailArgs;
+
+    fn name(&self) -> &str {
+        "workflow_fail"
+    }
+
+    fn description(&self) -> &str {
+        "Mark a workflow step failed with a reason. Defaults to the current in_progress step."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["reason"],
+            "properties": {
+                "step_id": {
+                    "type": "string",
+                    "description": "Defaults to the current in_progress step"
+                },
+                "reason": {
+                    "type": "string",
+                    "minLength": 1
+                }
+            }
+        })
+    }
+
+    fn execution_mode(&self) -> XyToolExecutionMode {
+        XyToolExecutionMode::Sequential
+    }
+
+    async fn execute_typed(
+        &self,
+        ctx: &XyToolCtx,
+        args: WorkflowFailArgs,
+    ) -> Result<String, XyToolError> {
+        if ctx.cancel.is_cancelled() {
+            return Err(XyToolError::Aborted);
+        }
+        let reason = args.reason.trim();
+        if reason.is_empty() {
+            return Err(XyToolError::InvalidArgs("reason must not be empty".into()));
+        }
+        let previous = self.gateway.latest().await?;
+        let Some(mut workflow) = previous.clone() else {
+            return Err(XyToolError::InvalidArgs("workflow not found".into()));
+        };
+        let target = match args.step_id.as_deref() {
+            Some(id) => workflow.steps.iter_mut().find(|step| step.id == id),
+            None => workflow
+                .steps
+                .iter_mut()
+                .find(|step| step.status == WorkflowStepStatus::InProgress),
+        };
+        let Some(step) = target else {
+            return Err(XyToolError::InvalidArgs(match args.step_id.as_deref() {
+                Some(id) => format!("step not found: {id}"),
+                None => "no in_progress step".into(),
+            }));
+        };
+        if step.status == WorkflowStepStatus::Completed {
+            return Err(XyToolError::InvalidArgs(format!(
+                "step {} is completed",
+                step.id
+            )));
+        }
+        let step_id = step.id.clone();
+        step.status = WorkflowStepStatus::Failed;
+        step.output_ref = Some(format!("failure:{reason}"));
+        workflow.updated_at = now_ms();
+        validate_workflow_replan(previous.as_ref(), &workflow)
+            .map_err(|e| XyToolError::InvalidArgs(e.0))?;
+        self.gateway.persist(&workflow).await?;
+        ctx.publish_state(xylitol_plugin_sdk::lifecycle::XyEvent::WorkflowUpdated {
+            workflow: workflow.clone(),
+        });
+        Ok(json!({
+            "step_id": step_id,
+            "status": "failed",
+            "reason": reason,
+        })
+        .to_string())
+    }
+}
+
 pub fn workflow_tools(
     gateway: Arc<dyn WorkflowGateway>,
     max_depth: u32,
@@ -246,7 +351,8 @@ pub fn workflow_tools(
             max_depth,
             max_total_steps,
         )),
-        Arc::new(WorkflowReadTool::new(gateway)),
+        Arc::new(WorkflowReadTool::new(gateway.clone())),
+        Arc::new(WorkflowFailTool::new(gateway)),
     ]
 }
 
@@ -418,5 +524,126 @@ mod tests {
             .await
             .expect("read");
         assert!(result.contains("\"goal\":\"ship\""));
+    }
+
+    async fn seed(store: &Arc<dyn XySessionStore>, workflow: &Workflow) {
+        store
+            .append_session_entry("s1", &workflow.to_custom_entry_shell())
+            .await
+            .expect("seed workflow");
+    }
+
+    fn workflow_with(status: xylitol_plugin_sdk::session::WorkflowStepStatus) -> Workflow {
+        Workflow {
+            goal: "ship".into(),
+            steps: vec![step("s1", status)],
+            resume_cursor: None,
+            updated_at: 3,
+        }
+    }
+
+    #[tokio::test]
+    async fn fail_marks_in_progress_step_and_publishes() {
+        use xylitol_plugin_sdk::session::WorkflowStepStatus;
+
+        let (gateway, store) = gateway().await;
+        seed(&store, &workflow_with(WorkflowStepStatus::InProgress)).await;
+        let tool = WorkflowFailTool::new(gateway);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let ctx = XyToolCtx::new("c1").with_state_event_tx(tx);
+        let out = tool
+            .execute(&ctx, serde_json::json!({"reason": "tests failed"}))
+            .await
+            .expect("fail");
+        assert!(out.contains("\"step_id\":\"s1\""), "{out}");
+        assert!(matches!(
+            rx.recv().await.expect("event"),
+            xylitol_plugin_sdk::lifecycle::XyEvent::WorkflowUpdated { .. }
+        ));
+        let latest = latest_workflow(&store.load_leaf_branch("s1").await.expect("branch"))
+            .expect("latest workflow");
+        assert_eq!(latest.steps[0].status, WorkflowStepStatus::Failed);
+        assert_eq!(
+            latest.steps[0].output_ref.as_deref(),
+            Some("failure:tests failed")
+        );
+    }
+
+    #[tokio::test]
+    async fn fail_accepts_explicit_step_id() {
+        use xylitol_plugin_sdk::session::WorkflowStepStatus;
+
+        let (gateway, store) = gateway().await;
+        seed(&store, &workflow_with(WorkflowStepStatus::Pending)).await;
+        let tool = WorkflowFailTool::new(gateway);
+        let out = tool
+            .execute(
+                &XyToolCtx::new("c1"),
+                serde_json::json!({"step_id": "s1", "reason": "blocked"}),
+            )
+            .await
+            .expect("explicit step");
+        assert!(out.contains("\"status\":\"failed\""), "{out}");
+    }
+
+    #[tokio::test]
+    async fn fail_rejects_completed_and_missing_targets() {
+        use xylitol_plugin_sdk::session::WorkflowStepStatus;
+
+        let (gateway, store) = gateway().await;
+        let tool = WorkflowFailTool::new(gateway.clone());
+        let err = tool
+            .execute(&XyToolCtx::new("c1"), serde_json::json!({"reason": "x"}))
+            .await
+            .expect_err("missing workflow");
+        assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+
+        seed(&store, &workflow_with(WorkflowStepStatus::Completed)).await;
+        let err = tool
+            .execute(&XyToolCtx::new("c1"), serde_json::json!({"reason": "x"}))
+            .await
+            .expect_err("completed step");
+        assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+
+        let err = tool
+            .execute(
+                &XyToolCtx::new("c1"),
+                serde_json::json!({"step_id": "missing", "reason": "x"}),
+            )
+            .await
+            .expect_err("missing step");
+        assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn fail_rejects_empty_reason_and_missing_in_progress() {
+        use xylitol_plugin_sdk::session::WorkflowStepStatus;
+
+        let (gateway, store) = gateway().await;
+        seed(&store, &workflow_with(WorkflowStepStatus::Pending)).await;
+        let tool = WorkflowFailTool::new(gateway);
+        let err = tool
+            .execute(&XyToolCtx::new("c1"), serde_json::json!({"reason": "   "}))
+            .await
+            .expect_err("empty reason");
+        assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+        let err = tool
+            .execute(&XyToolCtx::new("c1"), serde_json::json!({"reason": "x"}))
+            .await
+            .expect_err("no in_progress");
+        assert!(matches!(err, XyToolError::InvalidArgs(_)), "{err:?}");
+    }
+
+    #[test]
+    fn workflow_tools_expose_fail_tool() {
+        let store: Arc<dyn XySessionStore> =
+            Arc::new(xylitol_official_plugin_session::SessionManager::in_memory());
+        let gateway = SessionWorkflowGateway::new(store);
+        let tools = workflow_tools(gateway, 4, 100);
+        let names: Vec<_> = tools.iter().map(|tool| tool.name()).collect();
+        assert_eq!(
+            names,
+            vec!["workflow_write", "workflow_read", "workflow_fail"]
+        );
     }
 }

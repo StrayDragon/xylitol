@@ -4,6 +4,7 @@ use crate::agent::compaction::CompactionSettings;
 use xylitol_plugin_sdk::XySessionStore;
 use xylitol_plugin_sdk::error::{XyError, XySessionError};
 use xylitol_plugin_sdk::message::AgentMessage;
+use xylitol_plugin_sdk::session::SessionEntry;
 
 use super::{AgentCapabilities, SessionStats, observe_hook};
 
@@ -11,17 +12,31 @@ pub async fn load_conversation_history_from_store(
     store: &dyn XySessionStore,
     session_id: &str,
 ) -> Result<Vec<AgentMessage>, XyError> {
-    migrate_legacy_on_load(store, session_id).await;
-    let entries = store
-        .load_leaf_branch(session_id)
-        .await
-        .map_err(XyError::from)?;
+    let entries = load_branch_with_migration(store, session_id).await?;
     let entries = xylitol_plugin_sdk::session::build_context_entries(&entries);
     let messages: Vec<AgentMessage> = entries
         .iter()
         .filter_map(|entry| entry.as_agent_message())
         .collect();
     Ok(fold_interrupted_bash(store, session_id, messages).await)
+}
+
+async fn load_branch_with_migration(
+    store: &dyn XySessionStore,
+    session_id: &str,
+) -> Result<Vec<SessionEntry>, XyError> {
+    let mut entries = store
+        .load_leaf_branch(session_id)
+        .await
+        .map_err(XyError::from)?;
+    if xylitol_plugin_sdk::session::has_unmigrated_legacy_custom_types(&entries) {
+        migrate_legacy_on_load(store, session_id).await;
+        entries = store
+            .load_leaf_branch(session_id)
+            .await
+            .map_err(XyError::from)?;
+    }
+    Ok(entries)
 }
 
 async fn migrate_legacy_on_load(store: &dyn XySessionStore, session_id: &str) {
@@ -165,5 +180,78 @@ impl AgentCapabilities {
             .session_id()
             .ok_or(XyError::from(XySessionError::NoActiveSession))?;
         crate::agent::capabilities::stats::compute(self.store.as_ref(), sid).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::MemoryStore;
+    use serde_json::json;
+    use xylitol_plugin_sdk::session::{CustomEntry, EntryBase, SessionEntry};
+
+    fn custom(custom_type: &str, data: serde_json::Value) -> SessionEntry {
+        SessionEntry::Custom(CustomEntry {
+            base: EntryBase {
+                entry_type: "custom".into(),
+                id: String::new(),
+                parent_id: None,
+                timestamp: 0,
+            },
+            custom_type: custom_type.into(),
+            data,
+        })
+    }
+
+    #[tokio::test]
+    async fn non_legacy_history_reads_branch_once() {
+        let store = MemoryStore::new();
+        store.create("s", None, None).await.expect("create");
+        store
+            .append_session_entry("s", &custom("workflow", json!({"goal": "x"})))
+            .await
+            .expect("append");
+        load_conversation_history_from_store(&store, "s")
+            .await
+            .expect("load");
+        assert_eq!(
+            store.load_leaf_branch_calls(),
+            1,
+            "non-legacy history must not scan the branch twice"
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_history_migrates_once_then_reads_once() {
+        let store = MemoryStore::new();
+        store.create("s", None, None).await.expect("create");
+        store
+            .append_session_entry("s", &custom("plan", json!({"goal": "x"})))
+            .await
+            .expect("append");
+        load_conversation_history_from_store(&store, "s")
+            .await
+            .expect("load");
+        assert_eq!(
+            store.load_leaf_branch_calls(),
+            3,
+            "legacy path must detect, migrate, and refresh"
+        );
+        let entries = store.load_entries("s").await.expect("entries");
+        assert!(entries.iter().any(|entry| matches!(
+            entry,
+            SessionEntry::Custom(custom)
+                if custom.custom_type == "workflow" && custom.data == json!({"goal": "x"})
+        )));
+
+        let before = store.load_leaf_branch_calls();
+        load_conversation_history_from_store(&store, "s")
+            .await
+            .expect("load again");
+        assert_eq!(
+            store.load_leaf_branch_calls() - before,
+            1,
+            "after migration the hot path must read once"
+        );
     }
 }
