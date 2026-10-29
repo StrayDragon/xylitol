@@ -91,21 +91,16 @@ fn build_ports(
 }
 
 fn map_bootstrap_error(err: BootstrapError) -> Box<dyn std::error::Error> {
-    match err {
+    let message = match &err {
         BootstrapError::NoModelsAvailable => {
             "no models available: add explicit models.models entries in config.yaml".to_string()
         }
         BootstrapError::ConfigLoadFailed(msg) => format!("config load failed: {msg}"),
-        BootstrapError::ConfigLoadedZeroModels => {
-            BootstrapError::ConfigLoadedZeroModels.to_string()
-        }
-        BootstrapError::BuildFailed(msg) => msg,
+        BootstrapError::BuildFailed(msg) => msg.clone(),
         BootstrapError::KernelFailed(msg) => format!("kernel boot failed: {msg}"),
-        BootstrapError::AgentProfileNotFound(name) => {
-            BootstrapError::AgentProfileNotFound(name).to_string()
-        }
-    }
-    .into()
+        _ => err.to_string(),
+    };
+    message.into()
 }
 
 async fn assemble(config: &ServerConfig) -> Result<Arc<HostState>, Box<dyn std::error::Error>> {
@@ -217,6 +212,10 @@ mod tests {
             (
                 BootstrapError::KernelFailed("kernel broke".into()),
                 "kernel boot failed: kernel broke",
+            ),
+            (
+                BootstrapError::AgentProfileNotFound("missing".into()),
+                "agent profile `missing` not found",
             ),
         ];
         for (err, needle) in cases {
