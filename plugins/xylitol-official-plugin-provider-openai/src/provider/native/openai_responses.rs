@@ -1211,6 +1211,21 @@ mod tests {
     }
 
     #[test]
+    fn build_body_includes_max_output_tokens_when_configured() {
+        let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
+        let opts = crate::thinking::XyGenerateOptions {
+            max_output_tokens: Some(1234),
+            ..Default::default()
+        };
+        let body = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &opts);
+        assert_eq!(body["max_output_tokens"], 1234);
+
+        let none = crate::thinking::XyGenerateOptions::default();
+        let body_none = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &none);
+        assert!(body_none.get("max_output_tokens").is_none());
+    }
+
+    #[test]
     fn deepseek_compat_omits_encrypted_include() {
         let adapter = OpenAiResponsesAdapter::with_wire_policy(
             "sk".into(),

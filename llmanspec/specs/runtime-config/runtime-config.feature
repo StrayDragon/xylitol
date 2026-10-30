@@ -245,3 +245,6 @@
       假如 YAML 不含 agents.profiles.missing
       当 以 --agent-profile missing 解析装配
       那么 装配失败且错误指向 agents.profiles
+  @req:r3016
+  规则: model-entry-max-output-tokens
+    配置 必须 接受 models.*.max_output_tokens 可选正整数并进入配置 schema 产物；声明 0 必须 被配置解析拒绝。该字段 不得 与 thinking 预算字段混用。

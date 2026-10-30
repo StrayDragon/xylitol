@@ -634,6 +634,7 @@ mod thinking_levels_tests {
             thinking_levels: levels.map(|v| v.into_iter().map(str::to_string).collect()),
             thinking_level_map: None,
             context_window: 0,
+            max_output_tokens: None,
             input_modalities: None,
         }
     }
