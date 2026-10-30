@@ -52,8 +52,8 @@ xylitol-kernel = { path = "crates/xylitol-kernel" }
 xylitol-official-plugin-session = { path = "plugins/xylitol-official-plugin-session" }
 xylitol-official-plugin-config = { path = "plugins/xylitol-official-plugin-config" }
 xylitol-official-plugin-obs = { path = "plugins/xylitol-official-plugin-obs" }
-rutis = { version = "=0.19.0", default-features = false }
-rutis-loader = { version = "=0.19.0", default-features = false }
+rutis = { version = "=0.19.1", default-features = false }
+rutis-loader = { version = "=0.19.1", default-features = false }
 xylitol-official-plugin-compaction = { path = "plugins/xylitol-official-plugin-compaction" }
 xylitol-official-plugin-provider-openai = { path = "plugins/xylitol-official-plugin-provider-openai" }
 xylitol-official-plugin-provider-anthropic = { path = "plugins/xylitol-official-plugin-provider-anthropic" }
