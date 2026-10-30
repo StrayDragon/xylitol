@@ -88,3 +88,9 @@
     场景: API字面量完整名称
       当 读取 api 字面量全称集
       那么 三全称在册且无简写别名
+  @req:r3010
+  规则: anthropic-thinking-signature-capture
+    Anthropic Messages 方言 必须 在 thinking content block 结束时发出 `XyChunk::ThinkingEnd`，携带该 block 的完整 thinking 文本与 signature；signature 必须 取自 content_block_start 的 signature 字段或 content_block_delta 的 signature_delta 累积，不得 丢弃 signature_delta。非流式响应中的 thinking block 必须 同样发出携带签名的 ThinkingEnd。由插件单测（mock SSE 与非流式 JSON）覆盖。
+  @req:r3011
+  规则: anthropic-thinking-replay
+    Anthropic Messages 方言回放 必须 按 AgentPart::Thinking 的签名状态分派：带签名且 redacted=false 必须 映射为 {"type":"thinking","thinking","signature"}，redacted=true 必须 映射为 {"type":"redacted_thinking","data":signature}；不得 把带签名的 thinking 降级为 text block。无签名的旧 thinking 不得 伪造签名，必须 降级为 text block 并记录诊断。回放 block 顺序 必须 保持原 assistant 轮次顺序（thinking 先于 text 与 tool_use）。由插件单测覆盖。

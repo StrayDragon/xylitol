@@ -116,8 +116,8 @@ impl AnthropicMessagesAdapter {
         stream: bool,
         options: crate::thinking::XyGenerateOptions,
     ) -> Result<XyStream, XyError> {
-        let (extracted_system, anthropic_msgs) = convert_agent_messages_for_anthropic(&messages);
-        let system_prompt = options.system_prompt.clone().or(extracted_system);
+        let anthropic_msgs = convert_agent_messages_for_anthropic(&messages);
+        let system_prompt = options.system_prompt.clone();
 
         let mut body = serde_json::json!({
             "model": self.model,
@@ -234,6 +234,7 @@ fn anthropic_stream(
         let mut event_stream = byte_stream.eventsource();
 
         let mut tool_accumulators: HashMap<usize, (String, String, String)> = HashMap::new();
+        let mut thinking_accumulators: HashMap<usize, (String, Option<String>)> = HashMap::new();
         let mut current_block_index: Option<usize> = None;
         let mut usage_input: u64 = 0;
         let mut usage_output: u64 = 0;
@@ -288,6 +289,18 @@ fn anthropic_stream(
                                 t.emit_mapped_chunk(&chunk);
                             }
                             yield chunk;
+                        } else if block_type == "thinking" {
+                            let thinking = content_block
+                                .get("thinking")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let signature = content_block
+                                .get("signature")
+                                .and_then(|v| v.as_str())
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_string);
+                            thinking_accumulators.insert(index, (thinking, signature));
                         }
                     }
                 }
@@ -310,13 +323,31 @@ fn anthropic_stream(
                                     yield chunk;
                                 }
                             }
-                            "thinking" => {
+                            "thinking_delta" | "thinking" => {
                                 if let Some(thinking) = delta.get("thinking").and_then(|v| v.as_str()) {
+                                    match thinking_accumulators.get_mut(&index) {
+                                        Some(acc) => acc.0.push_str(thinking),
+                                        None => {
+                                            thinking_accumulators
+                                                .insert(index, (thinking.to_string(), None));
+                                        }
+                                    }
                                     let chunk = XyChunk::ThinkingDelta(thinking.to_string());
                                     if let Some(t) = &trace {
                                         t.emit_mapped_chunk(&chunk);
                                     }
                                     yield chunk;
+                                }
+                            }
+                            "signature_delta" => {
+                                if let Some(signature) = delta.get("signature").and_then(|v| v.as_str()) {
+                                    let acc = thinking_accumulators
+                                        .entry(index)
+                                        .or_insert_with(|| (String::new(), None));
+                                    match &mut acc.1 {
+                                        Some(existing) => existing.push_str(signature),
+                                        None => acc.1 = Some(signature.to_string()),
+                                    }
                                 }
                             }
                             "input_json_delta" => {
@@ -343,16 +374,33 @@ fn anthropic_stream(
                 }
 
                 "content_block_stop" => {
-                    if let Some(index) = current_block_index
-                        && let Some((id, name, args_str)) = tool_accumulators.remove(&index)
-                    {
-                        let args: Value = serde_json::from_str(&args_str)
-                            .unwrap_or_else(|_| crate::dto::parse_streaming_json(&args_str));
-                        let chunk = XyChunk::ToolCallEnd { name, args, id };
-                        if let Some(t) = &trace {
-                            t.emit_mapped_chunk(&chunk);
+                    let index = data
+                        .get("index")
+                        .and_then(|v| v.as_u64())
+                        .map(|v| v as usize)
+                        .or(current_block_index);
+                    if let Some(index) = index {
+                        if let Some((thinking, signature)) = thinking_accumulators.remove(&index)
+                            && (!thinking.is_empty() || signature.is_some())
+                        {
+                            let chunk = XyChunk::ThinkingEnd {
+                                thinking,
+                                thinking_signature: signature,
+                            };
+                            if let Some(t) = &trace {
+                                t.emit_mapped_chunk(&chunk);
+                            }
+                            yield chunk;
                         }
-                        yield chunk;
+                        if let Some((id, name, args_str)) = tool_accumulators.remove(&index) {
+                            let args: Value = serde_json::from_str(&args_str)
+                                .unwrap_or_else(|_| crate::dto::parse_streaming_json(&args_str));
+                            let chunk = XyChunk::ToolCallEnd { name, args, id };
+                            if let Some(t) = &trace {
+                                t.emit_mapped_chunk(&chunk);
+                            }
+                            yield chunk;
+                        }
                     }
                     current_block_index = None;
                 }
@@ -368,6 +416,22 @@ fn anthropic_stream(
                     }
 
                     if stop_reason.is_some() {
+                        let mut thinking_sorted: Vec<_> = thinking_accumulators.drain().collect();
+                        thinking_sorted.sort_by_key(|(idx, _)| *idx);
+                        for (_, (thinking, signature)) in thinking_sorted {
+                            if thinking.is_empty() && signature.is_none() {
+                                continue;
+                            }
+                            let chunk = XyChunk::ThinkingEnd {
+                                thinking,
+                                thinking_signature: signature,
+                            };
+                            if let Some(t) = &trace {
+                                t.emit_mapped_chunk(&chunk);
+                            }
+                            yield chunk;
+                        }
+
                         let mut sorted: Vec<_> = tool_accumulators.drain().collect();
                         sorted.sort_by_key(|(idx, _)| *idx);
                         for (_, (id, name, args_str)) in sorted {
@@ -438,6 +502,14 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
                 "thinking" => {
                     if let Some(thinking) = block.get("thinking").and_then(|v| v.as_str()) {
                         chunks.push(XyChunk::ThinkingDelta(thinking.to_string()));
+                        chunks.push(XyChunk::ThinkingEnd {
+                            thinking: thinking.to_string(),
+                            thinking_signature: block
+                                .get("signature")
+                                .and_then(|v| v.as_str())
+                                .filter(|s| !s.is_empty())
+                                .map(str::to_string),
+                        });
                     }
                 }
                 "tool_use" => {
@@ -495,10 +567,7 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
     chunks
 }
 
-pub fn convert_agent_messages_for_anthropic(
-    messages: &[XyLlmMessage],
-) -> (Option<String>, Vec<Value>) {
-    let system_parts: Vec<String> = Vec::new();
+pub fn convert_agent_messages_for_anthropic(messages: &[XyLlmMessage]) -> Vec<Value> {
     let mut msgs: Vec<Value> = Vec::new();
 
     for msg in messages {
@@ -559,14 +628,7 @@ pub fn convert_agent_messages_for_anthropic(
     }
 
     merge_consecutive_messages(&mut msgs);
-
-    let system = if system_parts.is_empty() {
-        None
-    } else {
-        Some(system_parts.join("\n"))
-    };
-
-    (system, msgs)
+    msgs
 }
 
 fn agent_parts_to_anthropic_blocks(parts: &[AgentPart]) -> Vec<Value> {
@@ -577,10 +639,31 @@ fn agent_parts_to_anthropic_blocks(parts: &[AgentPart]) -> Vec<Value> {
                 "type": "text",
                 "text": text,
             }),
-            AgentPart::Thinking { thinking, .. } => serde_json::json!({
-                "type": "text",
-                "text": thinking,
-            }),
+            AgentPart::Thinking {
+                thinking,
+                redacted,
+                thinking_signature,
+            } => match thinking_signature.as_deref().filter(|s| !s.is_empty()) {
+                Some(signature) if *redacted => serde_json::json!({
+                    "type": "redacted_thinking",
+                    "data": signature,
+                }),
+                Some(signature) => serde_json::json!({
+                    "type": "thinking",
+                    "thinking": thinking,
+                    "signature": signature,
+                }),
+                None => {
+                    log::debug!(
+                        target: "xylitol_official_plugin_provider_anthropic::messages",
+                        "replay: thinking without signature degraded to text block"
+                    );
+                    serde_json::json!({
+                        "type": "text",
+                        "text": thinking,
+                    })
+                }
+            },
             AgentPart::Image(img) => serde_json::json!({
                 "type": "image",
                 "source": {
@@ -647,8 +730,7 @@ mod tests {
     #[test]
     fn convert_user_message() {
         let msgs = vec![XyLlmMessage::user("hello")];
-        let (system, msgs) = convert_agent_messages_for_anthropic(&msgs);
-        assert!(system.is_none());
+        let msgs = convert_agent_messages_for_anthropic(&msgs);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0]["role"], "user");
     }
@@ -674,7 +756,7 @@ mod tests {
             timestamp: 0,
             diagnostics: Vec::new(),
         }];
-        let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
+        let msgs = convert_agent_messages_for_anthropic(&msgs);
         assert_eq!(msgs.len(), 1);
         let content = msgs[0]["content"].as_array().unwrap();
         assert_eq!(content.len(), 2);
@@ -690,7 +772,7 @@ mod tests {
             vec![AgentPart::text("result here")],
             false,
         )];
-        let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
+        let msgs = convert_agent_messages_for_anthropic(&msgs);
         assert_eq!(msgs.len(), 1);
         let content = msgs[0]["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "tool_result");
@@ -700,7 +782,7 @@ mod tests {
     #[test]
     fn convert_projected_env_as_user() {
         let msgs = vec![XyLlmMessage::user("$ ls\noutput")];
-        let (_, msgs) = convert_agent_messages_for_anthropic(&msgs);
+        let msgs = convert_agent_messages_for_anthropic(&msgs);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0]["role"], "user");
     }
@@ -1141,5 +1223,168 @@ mod tests {
             e.to_string().contains("provider SSE idle"),
             "idle timeout must be classifiable by message: {e}"
         );
+    }
+
+    #[tokio::test]
+    async fn stream_thinking_signature_delta_emits_thinking_end() {
+        use futures::StreamExt;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let sse = concat!(
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n",
+            "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n",
+            "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"plan \"}}\n\n",
+            "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"ahead\"}}\n\n",
+            "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig-abc\"}}\n\n",
+            "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+            "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+            "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"ok\"}}\n\n",
+            "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":1}\n\n",
+            "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":7}}\n\n",
+            "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+        );
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(sse.to_string(), "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+
+        let adapter = AnthropicMessagesAdapter::new(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some(server.uri()),
+            None,
+        );
+        let mut stream = adapter
+            .generate_stream(
+                vec![XyLlmMessage::user("hi")],
+                &[],
+                true,
+                Default::default(),
+            )
+            .await
+            .expect("stream established");
+
+        let mut chunks = Vec::new();
+        while let Some(item) = stream.next().await {
+            chunks.push(item.expect("chunk"));
+        }
+        let thinking_end = chunks
+            .iter()
+            .find_map(|c| match c {
+                XyChunk::ThinkingEnd {
+                    thinking,
+                    thinking_signature,
+                } => Some((thinking.clone(), thinking_signature.clone())),
+                _ => None,
+            })
+            .expect("stream must emit ThinkingEnd for a thinking block");
+        assert_eq!(thinking_end.0, "plan ahead");
+        assert_eq!(thinking_end.1.as_deref(), Some("sig-abc"));
+        let thinking_deltas: Vec<_> = chunks
+            .iter()
+            .filter_map(|c| match c {
+                XyChunk::ThinkingDelta(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(thinking_deltas, vec!["plan ", "ahead"]);
+    }
+
+    #[test]
+    fn non_stream_thinking_block_carries_signature() {
+        let json = serde_json::json!({
+            "content": [
+                {"type": "thinking", "thinking": "weigh options", "signature": "sig-xyz"},
+                {"type": "text", "text": "done"}
+            ],
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": 3, "output_tokens": 4}
+        });
+        let chunks = parse_anthropic_response(&json);
+        let thinking_end = chunks
+            .iter()
+            .find_map(|c| match c {
+                XyChunk::ThinkingEnd {
+                    thinking,
+                    thinking_signature,
+                } => Some((thinking.clone(), thinking_signature.clone())),
+                _ => None,
+            })
+            .expect("non-stream thinking block must emit ThinkingEnd");
+        assert_eq!(thinking_end.0, "weigh options");
+        assert_eq!(thinking_end.1.as_deref(), Some("sig-xyz"));
+    }
+
+    fn assistant_with_thinking(thinking: AgentPart) -> XyLlmMessage {
+        XyLlmMessage::AssistantMessage {
+            content: vec![
+                thinking,
+                AgentPart::text("answer"),
+                AgentPart::ToolCall {
+                    id: "call-1".into(),
+                    name: "read".into(),
+                    arguments: serde_json::json!({"path": "/tmp"}),
+                },
+            ],
+            stop_reason: Some(crate::dto::XyStopReason::ToolUse),
+            usage: None,
+            api: String::new(),
+            provider: String::new(),
+            model: String::new(),
+            response_id: None,
+            error_message: None,
+            timestamp: 0,
+            diagnostics: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn replay_thinking_with_signature_uses_thinking_block_and_keeps_order() {
+        let msgs = vec![assistant_with_thinking(AgentPart::Thinking {
+            thinking: "plan".into(),
+            redacted: false,
+            thinking_signature: Some("sig-1".into()),
+        })];
+        let msgs = convert_agent_messages_for_anthropic(&msgs);
+        let content = msgs[0]["content"].as_array().expect("content");
+        assert_eq!(content[0]["type"], "thinking");
+        assert_eq!(content[0]["thinking"], "plan");
+        assert_eq!(content[0]["signature"], "sig-1");
+        assert_eq!(content[1]["type"], "text");
+        assert_eq!(content[2]["type"], "tool_use");
+    }
+
+    #[test]
+    fn replay_redacted_thinking_uses_redacted_block() {
+        let msgs = vec![assistant_with_thinking(AgentPart::Thinking {
+            thinking: String::new(),
+            redacted: true,
+            thinking_signature: Some("opaque-data".into()),
+        })];
+        let msgs = convert_agent_messages_for_anthropic(&msgs);
+        let content = msgs[0]["content"].as_array().expect("content");
+        assert_eq!(content[0]["type"], "redacted_thinking");
+        assert_eq!(content[0]["data"], "opaque-data");
+        assert!(content[0].get("thinking").is_none());
+    }
+
+    #[test]
+    fn replay_thinking_without_signature_degrades_to_text() {
+        let msgs = vec![assistant_with_thinking(AgentPart::Thinking {
+            thinking: "old plan".into(),
+            redacted: false,
+            thinking_signature: None,
+        })];
+        let msgs = convert_agent_messages_for_anthropic(&msgs);
+        let content = msgs[0]["content"].as_array().expect("content");
+        assert_eq!(content[0]["type"], "text");
+        assert_eq!(content[0]["text"], "old plan");
+        assert!(content[0].get("signature").is_none());
     }
 }
