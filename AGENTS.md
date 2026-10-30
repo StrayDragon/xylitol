@@ -21,14 +21,14 @@ Rust workspace；目标 crate 图与依赖方向见 `src/AGENTS.md`。现行成�
 
 ## 产品定调
 
-个人**开箱即用**的 coding harness。插件生态（第三方可写可装）是方向、未交付；现行扩展入口 = 官方插件 + 配置 + MCP / shell hook。不得为未交付市场堆清单 / 注册中心 / dylib。`xylitol-tui` 为源自 pi-tui 的独立 fork，不追平上游。分层与开闭：`src/AGENTS.md`；可验证行为：`llmanspec/specs/`。
+个人**开箱即用**的 coding harness。第三方外进程插件最小切片已交付（配置驱动、trust 门禁、JSON-RPC stdio 工具桥）；市场 / 签名 / dylib / 同进程静态链入仍是方向、未交付。现行扩展入口 = 官方插件 + 配置 + MCP / shell hook + `external_plugins`。不得为未交付市场堆清单 / 注册中心 / dylib。`xylitol-tui` 为源自 pi-tui 的独立 fork，不追平上游。分层与开闭：`src/AGENTS.md`；可验证行为：`llmanspec/specs/`。
 
-- **Trust / MCP**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP 配置驱动、未配置零装配。产品规则：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`；实现边界：`src/AGENTS.md`。
-- **Loop 参与**：插件经 rutis 生命周期注册 loop 中间件（七阶段、控制枚举）**参与** ReAct 决策；core 持 turn 边界 / 取消 / 权限终裁，插件不得整段替换 loop。产品规则：`llmanspec/specs/agent-runtime/`；实现边界：`src/AGENTS.md`「Loop 中间件」。
+- **Trust / 配置后置**：Trust 门禁**项目本地资源是否加载**（工具开箱 allow-all）；MCP / LSP / DAP / subagent / 外进程插件均配置驱动、未配置零装配；外进程插件须显式 `trusted: true`。产品规则：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`、`infra-plugin/`、`infra-lsp/`、`infra-dap/`、`agent-subagent/`；实现边界：`src/AGENTS.md`。
+- **Loop 参与**：官方插件经 rutis 生命周期注册 loop 中间件（七阶段、控制枚举）**参与** ReAct 决策；core 持 turn 边界 / 取消 / 权限终裁，插件不得整段替换 loop。外进程插件只贡献工具，不参与 loop。产品规则：`llmanspec/specs/agent-runtime/`；实现边界：`src/AGENTS.md`「Loop 中间件」。
 - **产品端**：Print + TUI（TTY 默认）已开放；产品 TUI 默认 attach 本机 Host，未在听失败；Print 与库嵌入可同进程。端规则：`crates/xylitol-app-tui/src/AGENTS.md`；拓扑与线协议：`llmanspec/specs/protocol-app/`、`server-core/`。
 - **CS 角色 / 产品信封**：端是 client（键、画、TTY 等端侧能力），模型 / 会话 / MCP / trust 是 host 操作器角色；跨进程交互走四象限 RPC 信封（JSON-RPC 2.0 文本：`POST /rpc` unary + `WS /rpc` 双向 text 帧；Command/Event 是载荷）。硬边界：`src/AGENTS.md`。
 - **跨端公共体验**（已开放端 Print / TUI / Host）：动作语义一套学习成本；细则 `llmanspec/specs/protocol-app/` 与 `user-experience/`。未开放端（gpui 等）见 GitHub feature request，不得写成现行必须。
-- 未兑现方向：GitHub Issues（roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)，FR 各一个；第三方插件 [#29](https://github.com/StrayDragon/xylitol/issues/29)）。文档落点：`xylitol-dev` skill `references/docs-loop.md`。
+- 未兑现方向：GitHub Issues（roadmap [#28](https://github.com/StrayDragon/xylitol/issues/28)，FR 各一个）；第三方插件市场 / 签名 / dylib / 同进程静态链入（[#29](https://github.com/StrayDragon/xylitol/issues/29) 的最小切片已交付）。文档落点：`xylitol-dev` skill `references/docs-loop.md`。
 - TUI 信息呈现固定词（滚动提示、通知条、待办栏、尾插…）：`llmanspec/specs/app-tui-fixed-zone/`（端约束见 `crates/xylitol-app-tui/src/AGENTS.md`）。
 - 产品 TUI 视觉色板：`crates/xylitol-app-tui/src/DESIGN.md`（frontmatter SSOT；`just qa-check-tui-tokens` 对照 Palette）。
 
@@ -53,14 +53,14 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 | `xylitol-kernel` | 进程内核：`Kernel::boot`、核心插件、Builtins、admit。`rutis-loader` 只在这里 |
 | `xylitol-serve` | 载体：监听 + JSON-RPC 分派；Host profile 插件 |
 | `xylitol-wire` | `XyEvent` ↔ wire `Event` 的唯一映射（依赖 protocol + sdk） |
-| `xylitol-official-plugin-*` | 官方可替换插件（session / compaction / provider-* / tools / todo / workflow / plan / mcp / hooks / config / obs）。不是市场，不是 dylib |
+| `xylitol-official-plugin-*` | 官方可替换插件（session / compaction / provider-* / tools / tools-fff / todo / workflow / plan / mcp / hooks / loop-policies / lsp / dap / config / obs）。不是市场，不是 dylib |
 | `xylitol-app-tui` / `xylitol-app-print` | 产品端。TUI 只认线协议（经 `xylitol-wire` 映射）；Print 同进程直调，不编线协议 |
 | `xylitol-tui` | 通用 TUI 引擎（零引用产品） |
 | 根包 `xylitol` | argv + profile 选择。默认接线经 kernel |
 
 `plugin-sdk` ∥ `protocol` ∥ `xylitol-tui`。`wire` → protocol + sdk。runtime → sdk。插件 → sdk。kernel → runtime + 插件 + sdk + loader + protocol + serve + app-print。serve → runtime + protocol + wire。app-tui → protocol + wire + tui。根包 → kernel + 端。插件之间不得 `use`（只经服务 / 事件）。
 
-开箱 vs 配置后置：产品 TUI 默认 attach 本机监听（`server` feature 可关，default 仍开）。MCP 有配置才装配（`mcp` feature 可关，default 仍开）。`otel` feature default 开，配置默认 none。fff 检索工具源 default 开（`fff` feature 可关）；模型可见工具集由配置 `tools` 列表选择，替换工具默认优先、内置 `grep` / `find` 回落。
+开箱 vs 配置后置：产品 TUI 默认 attach 本机监听（`server` feature 可关，default 仍开）；产品 `serve` 默认回环 Basic 凭据门禁（凭据文件 0600，经 `serve.json` 发现；保留凭据环境变量不进工具子进程；规则见 `server-core/`、`domain-security/`）。MCP 有配置才装配（`mcp` feature 可关，default 仍开）。LSP / DAP / subagent / 外进程插件有配置才装配（未配置零装配、不 spawn 子进程）。`otel` feature default 开，配置默认 none。fff 检索工具源 default 开（`fff` feature 可关）；模型可见工具集由配置 `tools` 列表选择，替换工具默认优先、内置 `grep` / `find` 回落。
 
 ## 编码规则
 
@@ -99,7 +99,7 @@ Host 侧 crate 边界按替换、开关、生命周期划，**不得**按 `app /
 
 ## 提交与测试
 
-- Conventional Commits；开 PR 前 `just qa`。提交与协作细则：`xylitol-dev` skill `references/commit-and-collab.md`。
+- Conventional Commits；开 PR 前 `just qa`。PR 合并用 **rebase**（保持线性历史，不 squash）；合并后本地 `main` 同步 `origin/main`，删除已合并分支。提交与协作细则：`xylitol-dev` skill `references/commit-and-collab.md`。
 - 单轨 feature-as-spec、capability 命名、spec 约束层级（产品级 WHAT，不得钉代码组织）：`llmanspec/AGENTS.md`。**不得**使用 `solidify` / `change delta` / 新建 `*.feature.delta.toon`。
 - 测试分层：BDD 管端到端编排；单测管纯数据 / 组件边界，不重复 BDD 场景。细则：`xylitol-dev` skill `references/test-layering.md`。
 - 实现计划变更后写入 `llmanspec/`；读代码优先 `rg`。

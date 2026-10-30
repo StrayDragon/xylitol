@@ -2,7 +2,7 @@
 
 本文件是代码架构的单一真值源。覆盖目标 crate 图、依赖方向、seam、`Xy*`、消息/工具边界、扩展开闭、复杂度与体量策略。全局工作方式见根 `AGENTS.md`；可验证产品行为见 `llmanspec/specs/`。子目录 `AGENTS.md` 只写本端例外，不重复本文件。
 
-**真值顺序**：代码与测试 → 本文件 → archive design。本文件写**稳定规则**，不写文件清单、change id 进度、超标表。现行 workspace 成员以根 `Cargo.toml` 为准。词表以 `xylitol-plugin-sdk` 为准。线协议（JSON-RPC 2.0 文本形状）以 `xylitol-protocol` 为准（不认识 `XyEvent`）；`XyEvent` ↔ wire 映射以 `xylitol-wire` 为准。其余目标 crate 未填叶前，对应代码仍在主 crate `src/`。新代码必须按目标依赖方向落点。
+**真值顺序**：代码与测试 → 本文件 → archive design。本文件写**稳定规则**，不写文件清单、change id 进度、超标表。现行 workspace 成员以根 `Cargo.toml` 为准。词表以 `xylitol-plugin-sdk` 为准。线协议（JSON-RPC 2.0 文本形状）以 `xylitol-protocol` 为准（不认识 `XyEvent`）；`XyEvent` ↔ wire 映射以 `xylitol-wire` 为准。新代码必须按目标依赖方向落点。
 
 ## 目标 crate 图（normative）
 
@@ -49,12 +49,15 @@ flowchart TB
       xylitol_official_plugin_mcp["xylitol-official-plugin-mcp"]
       xylitol_official_plugin_hooks["xylitol-official-plugin-hooks"]
       xylitol_official_plugin_loop_policies["xylitol-official-plugin-loop-policies"]
+      xylitol_official_plugin_lsp["xylitol-official-plugin-lsp<br/>LSP tools"]
+      xylitol_official_plugin_dap["xylitol-official-plugin-dap<br/>DAP tools"]
     end
     subgraph plugins_host["配置 / 观测"]
       direction LR
       xylitol_official_plugin_config["xylitol-official-plugin-config"]
       xylitol_official_plugin_obs["xylitol-official-plugin-obs"]
     end
+    xylitol_external_plugins["external_plugins<br/>trust + stdio JSON-RPC"]
   end
 
   subgraph exec["③ 执行权威与内核"]
@@ -86,8 +89,11 @@ flowchart TB
   xylitol_official_plugin_mcp --> xylitol_plugin_sdk
   xylitol_official_plugin_hooks --> xylitol_plugin_sdk
   xylitol_official_plugin_loop_policies --> xylitol_plugin_sdk
+  xylitol_official_plugin_lsp --> xylitol_plugin_sdk
+  xylitol_official_plugin_dap --> xylitol_plugin_sdk
   xylitol_official_plugin_config --> xylitol_plugin_sdk
   xylitol_official_plugin_obs --> xylitol_plugin_sdk
+  xylitol_external_plugins -.-> xylitol_kernel
   xylitol_runtime --> xylitol_plugin_sdk
   xylitol_kernel --> xylitol_plugin_sdk
   xylitol_kernel --> xylitol_runtime
@@ -111,6 +117,8 @@ flowchart TB
   xylitol --> xylitol_app_tui
 ```
 
+图中虚线 = 配置驱动、trust 门禁的外进程插件；只贡献工具，不替换内核 / 官方插件名。
+
 `rutis` 只出现在 `xylitol-plugin-sdk` 与 `xylitol-kernel` 的 `Cargo.toml`（精确锁 `=0.17.0`）。`rutis-loader` 只在 kernel。官方插件与 runtime 只依赖 sdk（经 `xylitol_plugin_sdk::rt`），**不得** `use rutis`。产品端不得依赖 rutis。一张监听器表、发射方选 mode（rutis plugin API 3）。`Call::next` 仅 waterfall；双模式事件（开火 emit / 等待 waterfall）必须 `CallExt::chain`，不得无条件 `next`。kernel 作 host 时用 `rutis::host`（`CtxHost` / `FiberState` / `BoxFuture`）。
 
 | crate | 必须 | 不得 |
@@ -126,9 +134,9 @@ flowchart TB
 | `xylitol-app-print` | 同进程直调 runtime | 依赖 serve / protocol / wire；编线协议 |
 | 根包 `xylitol` | argv + profile。列出官方插件的 `Cargo.toml` 经 kernel 转发 | 把装配逻辑塞回 `src/wiring`；`use rutis` |
 
-官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、tools-fff、todo、workflow、plan、mcp、hooks、config、obs、loop-policies。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools / todo / plan。配置启用：workflow / mcp / hooks / loop-policies。没配置则不 start。todo 插件 只提供 todo 工具与中间件；plan 插件 只提供 plan 工具与模式中间件；workflow 插件 只提供 workflow 中间件；loop-policies 插件 是插件作者的 loop 中间件参考实现（见 `crates/xylitol-plugin-sdk/README.md`）。核心 tools 插件 只提供 read / write / edit / bash / grep / find / ls 与 ask；tools-fff 只提供 ffgrep / fffind。第三方插件是方向、未交付；只留 Chain 解析器与 admit 准入位。
+官方可替换插件：session、compaction、provider-openai、provider-anthropic、tools、tools-fff、todo、workflow、plan、mcp、hooks、config、obs、loop-policies、lsp、dap。核心插件（kernel 直接挂、不可经 rows 替换）：config、obs、trust、registries、session-host、agent-react、tool-table、driver。内置（默认挂）：session / compaction / provider-* / tools / todo / plan。配置启用：workflow / mcp / hooks / loop-policies / lsp / dap / subagent / external_plugins。没配置则不 start。todo 插件 只提供 todo 工具与中间件；plan 插件 只提供 plan 工具与模式中间件；workflow 插件 只提供 workflow 中间件；loop-policies 插件 是插件作者的 loop 中间件参考实现（见 `crates/xylitol-plugin-sdk/README.md`）。核心 tools 插件 只提供 read / write / edit / bash / grep / find / ls 与 ask；tools-fff 只提供 ffgrep / fffind；lsp / dap 只提供各自语言服务 / 调试工具。外进程插件（`external_plugins`）配置驱动、须 `trusted: true`；只贡献工具（公开名 `{plugin}__{tool}`），不替换核心 / 官方插件名；市场 / 签名 / dylib / 同进程静态链入未交付。
 
-静态工具源 须经 `HostRegistries.tools` 注册；`compose_tools` 以注册表快照为基座（空则回落 `core_tools()`）。模型可见集 须由配置 `tools` 列表（`+name` / `-name`）与 `XyTool::replaces()` 解析：替换工具胜出、同类只留一个、未知名告警。内核 不得为单个工具插件写特判；session 专属工具（todo / plan / workflow / ask）仍由装配层注入。
+静态工具源（含外进程插件工具）须经 `HostRegistries.tools` 注册；`compose_tools` 以注册表快照为基座（空则回落 `core_tools()`）。模型可见集 须由配置 `tools` 列表（`+name` / `-name`）与 `XyTool::replaces()` 解析：替换工具胜出、同类只留一个、未知名告警。内核 不得为单个工具插件写特判；session 专属工具（todo / plan / workflow / ask）仍由装配层注入。
 
 测循环用假端口。测端用 `ScriptedDriver`。唤醒源走同一道准入，不换内环。`RunId` 仅运行时内部，**不得**进 `XyEvent` / 信封。
 
@@ -154,7 +162,8 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 - **产品角色（client / host）**：TUI 等端是 client（键、画、TTY、编辑器、剪贴板）。模型 / 会话 / MCP / 工作区 / trust 是 host 操作器角色。print / 库嵌入仍可同进程走同一方法表。**不得**把 host 等同于 HTTP 监听器；**产品 TUI** 默认 attach 本机监听器（未在听失败）。
 - **产品信封**：四象限（`POST /rpc` unary + `WS /rpc` 双向 text 帧，同一方法表），载体为 JSON-RPC 2.0 文本（方法按名字寻址）。Command/Event 是载荷。跨进程不跳过信封直调 Driver。
 - **steer / follow-up / abort**：只经 `XyDriver` 队列 API；端不得改 ReAct 内部队列。产品语义：`llmanspec/specs/agent-runtime/`。
-- **会话 actor（硬约束）**：一个 runtime **显式绑定一个 session** 后才可根提交；任意时刻至多一个 ReAct worker 可写该 session。根提交默认拒绝忙碌并发；busy 时 `steer` / `follow_up` 是轮内改向，不是第二次根提交。子 agent = **另建隔离 runtime**。Host 进程可 lazy 物化 N 个 session 槽 Driver。
+- **会话能力覆盖**：工具 / MCP 的会话级开关只经 `XyDriver` capability API；下一回合边界生效，不写全局配置、不写会话日志。产品语义：`llmanspec/specs/agent-session/`。
+- **会话 actor（硬约束）**：一个 runtime **显式绑定一个 session** 后才可根提交；任意时刻至多一个 ReAct worker 可写该 session。根提交默认拒绝忙碌并发；busy 时 `steer` / `follow_up` 是轮内改向，不是第二次根提交。子 agent = **另建隔离 runtime**；只读子代理 `subagent_readonly` 配置驱动，只暴露只读工具、不共享父 session。Host 进程可 lazy 物化 N 个 session 槽 Driver。
 
 | 必须 | 不得 |
 |---|---|
@@ -229,9 +238,9 @@ Skill/extension slash 尚未交付：需要时在 **端 / `XyDriver`** 侧注册
 2. **既有 port / 服务 / 瀑布事件**。不得旁路第二套语义。
 3. **新 port**（仅真实第二套替换，或嵌入/测试必须替换时）
 
-插件生态是方向、未交付。不得为未交付市场预埋清单 / 注册中心 / dylib / 空壳 `Xy*`、“已是统一口再包一层”。改名不留兼容别名 / 双解析路径（一次性改调用点）。死码分诊走 skill `l8ng-audit-dead-code`。不得为 LSP / DAP / gpui / 语音端预埋空壳 crate。
+外进程插件最小切片已交付（配置驱动 + trust 门禁 + JSON-RPC stdio 工具桥）；市场 / 签名 / dylib / 同进程静态链入是方向、未交付。不得为未交付市场预埋清单 / 注册中心 / dylib / 空壳 `Xy*`、“已是统一口再包一层”。改名不留兼容别名 / 双解析路径（一次性改调用点）。死码分诊走 skill `l8ng-audit-dead-code`。不得为 gpui / 语音端预埋空壳 crate。
 
-Trust / Permission / MCP 产品语义：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`。边界：Trust 门禁**项目本地资源**；工具开箱 allow-all；MCP **有配置才装配**并支持重载。
+Trust / Permission / MCP / LSP / DAP / subagent / 外进程插件产品语义：`llmanspec/specs/domain-security/`、`app-tui-trust/`、`infra-mcp/`、`infra-lsp/`、`infra-dap/`、`agent-subagent/`、`infra-plugin/`。边界：Trust 门禁**项目本地资源**；工具开箱 allow-all；MCP **有配置才装配**并支持重载；外进程插件须显式 `trusted: true`。
 
 ## Provider 与消息
 

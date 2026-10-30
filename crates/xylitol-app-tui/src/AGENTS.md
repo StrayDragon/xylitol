@@ -37,6 +37,8 @@
 | 颜色走本端 theme token；已确认需求须先有 harness / BDD 护栏 | 另立 hex；没有护栏就先写实现 |
 | UiEntry：tool/bash/diff = status 左边轨 + gutter；user / assistant / thinking = flush；`Palette` = [`DESIGN.md`](./DESIGN.md) frontmatter 运行时快照 | 给 user / assistant 加轨或洗底 |
 | steer / follow-up 走 `src/AGENTS.md` 的 `XyDriver` 队列边界 | 本端持有 ReAct 内部队列 |
+| 会话能力覆盖 `/capabilities` 走 `CapabilitiesSlot`；toggle 经共享 dispatch 提交 `SetCapability`，下一回合边界生效（`app-tui-commands`） | 端侧改全局配置 / 立即拆当前回合工具 |
+| 队列条每类至多一行、显示最新正文；>1 才显示计数（`app-tui-input`） | 逐条铺开导致固定区随队列线性增高 |
 
 **Esc 行为**：分场景收敛（idle 空 editor 双 Esc 开树 / busy 锁存 abort 且 drain 仍须调 `XyDriver::abort` / overlay 先关槽）；完整矩阵以代码、harness 测与 stage-QA design 为 SSOT，此处不复制。Agent abort 与 Bang abort 文案 / 抑制策略不同。
 
