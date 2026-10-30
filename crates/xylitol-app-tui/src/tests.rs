@@ -5440,8 +5440,8 @@ fn activity_fold_live_thinking_stream_merges_into_thought() {
         "MUST NOT freeze Thought duration while still streaming: {plain}"
     );
     assert!(
-        !plain.contains("consider next edit"),
-        "Thinking body stays folded by default: {plain}"
+        plain.contains("consider next edit"),
+        "live thinking body must be visible while streaming: {plain}"
     );
     assert!(
         !plain
@@ -5524,8 +5524,8 @@ fn activity_fold_live_thinking_stream_keeps_own_bar_in_tool_cluster() {
         "open tool cluster keeps the progressive header: {plain}"
     );
     assert!(
-        !plain.contains("weigh results"),
-        "collapsed cluster hides the stream with the other kids: {plain}"
+        plain.contains("weigh results"),
+        "live thinking body must stay visible even in a collapsed tool cluster: {plain}"
     );
 
     root.toggle_fold_target(FoldTarget::Cluster("seg-0:c0".into()));
@@ -5537,8 +5537,8 @@ fn activity_fold_live_thinking_stream_keeps_own_bar_in_tool_cluster() {
         "mixed-cluster stream paints its own L1 Thinking bar below the tool block: {opened}"
     );
     assert!(
-        !opened.contains("weigh results"),
-        "Thinking bar body stays folded by default: {opened}"
+        opened.contains("weigh results"),
+        "live thinking body stays visible after opening the cluster: {opened}"
     );
     assert!(
         root.fold_hits().regions.iter().any(|r| matches!(
@@ -6272,5 +6272,156 @@ async fn load_earlier_reports_driver_error_and_clears_hint_on_empty_page() {
         ),
         "empty page must clear the load-earlier hint: {:?}",
         session.ui_model().entries
+    );
+}
+
+#[test]
+fn harness_hover_survives_streaming_full_render() {
+    use super::widgets::FoldTarget;
+    use crossterm::event::MouseEventKind;
+
+    let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+    let root = session.ui_root().expect("product ui").clone();
+    {
+        let mut model = session.ui_model().clone();
+        model.entries.push(super::bridge::UiEntry::Tool {
+            timeout_secs: None,
+            id: "hover-stream".into(),
+            name: "read".into(),
+            args_preview: "s.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: "body".into(),
+            is_error: false,
+            done: true,
+        });
+        *session.ui_model_mut() = model;
+        session.sync_ui_root_from_model();
+    }
+    session.step(HostEvent::Tick).unwrap();
+    session.tui.request_render(true);
+    session.step_paint_only().unwrap();
+    session.render_now().unwrap();
+
+    let region = root
+        .borrow()
+        .fold_hits()
+        .regions
+        .iter()
+        .find(|reg| matches!(&reg.target, FoldTarget::Tool(id) if id == "hover-stream"))
+        .cloned()
+        .expect("tool hit");
+    let screen_row = region
+        .content_row
+        .saturating_sub(root.borrow().fold_hits().scroll_top) as u16;
+    session
+        .step(HostEvent::Input(InputEvent::Mouse(mouse_at(
+            MouseEventKind::Moved,
+            region.col_start as u16,
+            screen_row,
+        ))))
+        .unwrap();
+    assert!(
+        session.tui.pointer_hover_id().is_some(),
+        "hover must arm before streaming"
+    );
+
+    session.on_run_started("stream");
+    session
+        .step(HostEvent::Xy(Box::new(XyEvent::ThinkingDelta(
+            "stream".into(),
+        ))))
+        .unwrap();
+    assert!(
+        session.tui.ao_components_stale(),
+        "stream must mark components stale"
+    );
+    session.render_now().unwrap();
+    assert!(
+        session.tui.pointer_hover_id().is_some(),
+        "stream-driven full render must not drop hover"
+    );
+}
+
+#[test]
+fn activity_fold_live_thinking_visible_in_open_tool_cluster() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    model.entries.push(super::bridge::UiEntry::Tool {
+        timeout_secs: None,
+        id: "t1".into(),
+        name: "bash".into(),
+        args_preview: "ls".into(),
+        tool_path: None,
+        write_content: None,
+        display_diff: None,
+        output: "file.rs\n".into(),
+        is_error: false,
+        done: true,
+    });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ThinkingDelta("live thought body".into()),
+    );
+    root.apply_ui_model(&model);
+    let plain = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        plain.contains("Thinking"),
+        "live thinking header must appear inside an open tool cluster: {plain}"
+    );
+    assert!(
+        plain.contains("live thought body"),
+        "live thinking body must be visible while streaming: {plain}"
+    );
+
+    assert!(
+        root.expand_nearest_activity(),
+        "Alt+Shift+E must still expand the live thinking cluster"
+    );
+    let opened = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        opened.contains("live thought body"),
+        "live thinking body stays visible after opening the cluster: {opened}"
+    );
+}
+
+#[test]
+fn activity_fold_live_thinking_folds_after_channel_end() {
+    use super::layout::UiRoot;
+
+    let mut root = UiRoot::new();
+    let mut model = UiModel::new();
+    model.phase = UiPhase::Busy;
+    model
+        .entries
+        .push(super::bridge::UiEntry::User { text: "u".into() });
+    apply_xy_event(
+        &mut model,
+        &XyEvent::ThinkingDelta("live thought body".into()),
+    );
+    root.apply_ui_model(&model);
+    let streaming = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        streaming.contains("live thought body"),
+        "live body visible before channel end: {streaming}"
+    );
+
+    apply_xy_event(&mut model, &XyEvent::TextDelta("answer".into()));
+    root.apply_ui_model(&model);
+    let settled = strip_ansi(&root.render(100).join("\n"));
+    assert!(
+        settled.contains("Thought"),
+        "settled thinking must switch to Thought: {settled}"
+    );
+    assert!(
+        !settled.contains("live thought body"),
+        "settled thinking body folds by default: {settled}"
     );
 }

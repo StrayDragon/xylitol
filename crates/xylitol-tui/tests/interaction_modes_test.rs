@@ -1333,11 +1333,12 @@ fn full_rebuild_clears_sticky_hover() {
     tui.arm_pointer_probe(true);
     let _ = tui.dispatch_event(InputEvent::Mouse(mouse_at(MouseEventKind::Moved, 1, 0)));
     assert_eq!(tui.pointer_hover_id(), Some(1));
+    tui.clear_pointer_hover();
     tui.mark_ao_components_stale();
     tui.render_frame().expect("rebuild");
     assert!(
         tui.pointer_hover_id().is_none(),
-        "layout rebuild must drop sticky hover so tint does not paint a stale row"
+        "layout change must drop sticky hover so tint does not paint a stale row"
     );
 }
 

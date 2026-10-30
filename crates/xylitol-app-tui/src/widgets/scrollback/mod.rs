@@ -417,12 +417,10 @@ pub fn render_scrollback(
                     paint_folded_streaming_thought(
                         &mut lines,
                         fold_hits,
-                        fold,
                         activity,
                         model,
                         &segments,
                         plan.live_open_cluster,
-                        plan.live_open_cluster_expanded,
                         plan.live_open_cluster_thought_only,
                         text,
                         glyphs,

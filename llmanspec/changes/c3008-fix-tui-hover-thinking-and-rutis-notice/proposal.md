@@ -2,6 +2,9 @@
 depends_on: []
 title: TUI 悬停稳定、流式 thinking 可见与 rutis loader 提示降级
 needs_specs_change: true
+branch: sdd/c3008-fix-tui-hover-thinking-and-rutis-notice
+base_branch: main
+base_sha: e87f4ab0e49c184bc9ab03d46fb3ffa5f074c699
 ---
 
 # TUI 悬停稳定、流式 thinking 可见与 rutis loader 提示降级

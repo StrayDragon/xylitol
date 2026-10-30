@@ -334,6 +334,11 @@ impl PointerPipeline {
         self.hover_id = None;
     }
 
+    pub fn forget_hover(&mut self) {
+        self.hover_id = None;
+        self.last_cell = None;
+    }
+
     #[must_use]
     pub fn hover_id(&self) -> Option<HitId> {
         self.hover_id

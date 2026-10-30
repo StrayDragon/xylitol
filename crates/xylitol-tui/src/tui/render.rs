@@ -38,6 +38,7 @@ impl<T: Terminal> TUI<T> {
             self.max_lines_rendered = 0;
             self.ao_components_stale = true;
             self.ao_wheel_render_requested = false;
+            self.clear_pointer_hover();
         }
         self.render_requested = true;
     }
