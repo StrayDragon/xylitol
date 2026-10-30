@@ -2,6 +2,9 @@
 depends_on: []
 title: Anthropic Messages thinking 签名保真
 needs_specs_change: true
+branch: sdd/c3012-fix-anthropic-thinking-signature
+base_branch: main
+base_sha: 77e17c0fb069035d9cb29d8df1d651a30b748609
 ---
 
 # Anthropic Messages thinking 签名保真
@@ -40,4 +43,4 @@ Anthropic Messages 方言当前把 `AgentPart::Thinking` 回放成 `{"type":"tex
 
 ## Further Notes
 
-- 权威依据与 live 探测记录见 `research/anthropic-thinking-signature.md`。
+- 权威依据与 live 探测记录见 `research/anthropic-protocol.md`（thinking 回放、caching、stop_reason、错误形状；S2/S3 复用）。
