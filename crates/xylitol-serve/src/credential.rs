@@ -40,7 +40,11 @@ pub(crate) fn write_private_file(path: &Path, body: &str) -> std::io::Result<()>
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let tmp = path.with_extension("tmp");
+    let ext = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("tmp");
+    let tmp = path.with_extension(format!("{ext}.tmp"));
     let _ = std::fs::remove_file(&tmp);
     {
         let mut file = {
@@ -95,7 +99,7 @@ mod tests {
         let path = temp_path();
         let first = load_or_create_credential(&path).expect("create");
         assert!(first.len() >= 32, "generated token must be strong");
-        assert!(!path.with_extension("tmp").exists(), "tmp renamed");
+        assert!(!path.with_extension("token.tmp").exists(), "tmp renamed");
 
         #[cfg(unix)]
         {
