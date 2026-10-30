@@ -6660,7 +6660,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "clap",
  "criterion",
  "crossterm",
@@ -6746,7 +6746,7 @@ dependencies = [
  "anyhow",
  "async-stream",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "crossterm",
  "dirs 7.0.0",
  "futures",
@@ -6948,7 +6948,7 @@ dependencies = [
 name = "xylitol-official-plugin-obs"
 version = "0.0.0-pre"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "env_logger",
  "fastrace",
  "fastrace-opentelemetry",
@@ -7072,7 +7072,7 @@ version = "0.0.0-pre"
 dependencies = [
  "anyhow",
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "futures",
  "image",
  "libc",
@@ -7150,7 +7150,7 @@ dependencies = [
 name = "xylitol-protocol"
 version = "0.0.0-pre"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "serde",
  "serde_json",
  "strum",
@@ -7189,7 +7189,7 @@ name = "xylitol-serve"
 version = "0.0.0-pre"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
+ "base64 0.23.1",
  "dirs 7.0.0",
  "futures",
  "log",
