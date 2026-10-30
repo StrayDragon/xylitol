@@ -15,6 +15,7 @@ pub mod export;
 pub mod external_plugin;
 pub mod product_commands;
 pub mod provider;
+pub mod subagent;
 pub mod surfaces;
 
 #[cfg(feature = "server")]

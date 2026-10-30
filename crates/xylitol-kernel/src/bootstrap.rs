@@ -10,7 +10,7 @@ use xylitol_plugin_sdk::model::XyModelMeta;
 use xylitol_runtime::agent::ModelRegistry;
 use xylitol_runtime::agent::model::resolver;
 
-fn process_get_env(k: &str) -> Option<String> {
+pub(crate) fn process_get_env(k: &str) -> Option<String> {
     if let Ok(v) = std::env::var(k) {
         return Some(v);
     }

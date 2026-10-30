@@ -100,6 +100,17 @@ dap:
 - DAP 工具：`dap_launch` / `dap_stack` / `dap_scopes` / `dap_variables` / `dap_evaluate` / `dap_continue` / `dap_disconnect`。
 - 后端按需启动；`dap_disconnect` 释放调试会话。
 
+#### 只读子代理
+
+配置 `subagent` 后，模型可调用 `subagent_readonly` 把探查任务委托给隔离的只读子代理；缺省不注册工具：
+
+```yaml
+subagent:
+  tools: [read, grep, find, ls]
+```
+
+子代理使用独立 runtime 与临时会话，只能读取 / 检索工作区，不能写文件或执行 shell；父级中止会传递到子任务。
+
 #### 检索工具选择
 
 默认装配 fff 工具源：模型看到 `ffgrep` / `fffind`，内置 `grep` / `find` 被同类替换隐藏。用顶层 `tools` 列表控制可见工具：
