@@ -1,28 +1,28 @@
 ---
 depends_on: []
-title: 远程多模态与线协议大载荷（ResourceLink / 帧上限）增强面
+title: ResourceLink 远程媒体引用（线协议大载荷）
 needs_specs_change: true
 ---
 
-# 远程多模态与线协议大载荷（ResourceLink / 帧上限）增强面
+# ResourceLink 远程媒体引用（线协议大载荷）
 
 ## Why
 
-- 现行线协议 **4 MiB / batch 100** 适合本机 Host 控制面；`infra-image` 多模态上限 **~4.5MB** 与线协议存在数字张力。
-- 产品方向若包含 **远程 attach 贴图、读视频、历史 replay 带媒体**，需要对齐主流 agent（ACP / Codex / MCP）的 **ResourceLink、单帧 MiB 级上限、resume 脱敏** 等做法，而非仅放大 `MAX_BODY_BYTES`。
-- 本 change 为 **purpose-draft**：记录调研与候选项，落实时走 `llman-sdd-propose`。
+- 远程 attach 贴图与历史 replay 带媒体若继续内联 base64，会把 **4 MiB / batch 100** 的线协议信封撑爆；主流 agent（ACP / Codex / MCP）用 **ResourceLink**（路径 / URI 引用）而不是放大单帧。
+- provider 侧媒体投影已完善：OpenAI 族图片投影 c2993、三族协议保真 c3012–c3019 已落地，剩余缺口只在「远程媒体如何引用」这一条线。
+- 本 change 为 **purpose-draft**：只保留 ResourceLink 候选，落实时走 `llman-sdd-propose`。
 
 ## What Changes（候选项，promote 时逐条重估）
 
-- **协议 / spec**：`protocol-app` / `server-core` 补充多模态载荷策略（path 引用 vs inline base64、单帧上限与 `infra-image` 关系、视频禁止整文件进 JSON-RPC）。
-- **线协议**：可选抬高 `MAX_BODY_BYTES` 或引入 **ResourceLink** 式 `prompt` 参数；WS/journal **不**内联全量 base64（延续或强化 `[image]` 预览语义）。
-- **TUI / runtime**：读图后 UI 与 history 是否保留 `AgentPart::Image`（history 侧已由 c2945 落地，见下文附录 §1.4）；**OpenAI 族图片投影** 已由 c2993-add-openai-image-projection 拆出落地，不再留在本草案。
-- **读视频**：Host 侧抽帧或元数据能力（独立 scope，不与本 change 默认同批交付）。
+- **线协议**：`prompt` 参数引入 **ResourceLink** 形态的媒体引用（path / URI + 媒体类型），WS/journal **不**内联全量 base64，延续 `[image]` 预览语义。
+- **协议 / spec**：`protocol-app` / `server-core` 补充 ResourceLink 载荷策略：引用解析归属 Host、客户端不得直接读远端文件、缺失引用 须可观测失败。
+- **TUI / runtime**：remote attach 贴图走 ResourceLink 时，端侧只传引用，Host 侧解析为 `AgentPart::Image` 后再投影给模型（history parts 形状已由 c2945 / r1145 落地）。
 
-## 已拆出（2026-10-29）
+## 已拆出
 
-- 切片 A（OpenAI 族图片投影）已由 `c2993-add-openai-image-projection` 落地。
-- 本草案保留：B（ResourceLink / 单帧上限 / 远程大载荷）与 C（读视频）。
+- 2026-10-29：切片 A（OpenAI 族图片投影）由 `c2993-add-openai-image-projection` 落地。
+- 2026-10-30：provider 协议保真（thinking 签名 / 终止语义 / prompt caching / 缓存亲和 / 输出预算 / 错误分类 / 结构化输出）由 c3012–c3019 落地；本草案不再承担 provider 侧工作。
+- 本草案只保留 ResourceLink；单帧上限放大与读视频不再随本 change 交付。
 
 ## 调研落点
 
@@ -30,8 +30,10 @@ needs_specs_change: true
 
 ## 非目标（草案阶段）
 
-- 不修改现行 4 MiB / batch 100 行为。
-- 不实现读视频、不开 PR。
+- 不修改现行 4 MiB / batch 100 行为；不抬高 `MAX_BODY_BYTES`。
+- 不实现读视频（独立 feature request）。
+- 不改 provider 侧媒体投影（已由 c2993 / c3012–c3019 交付）。
+- 不开 PR。
 
 ## 附录：当前 TUI「读图」之后逻辑（as-is，2026-10-27 复核）
 
