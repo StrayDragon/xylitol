@@ -260,9 +260,7 @@ impl McpClientManager {
                     cmd.env(k, v);
                 }
             }
-            for var in host_env::CREDENTIAL_VARS {
-                cmd.env_remove(*var);
-            }
+            host_env::scrub_tokio_command(&mut cmd);
 
             let transport = TokioChildProcess::new(cmd).map_err(McpError::Spawn)?;
 

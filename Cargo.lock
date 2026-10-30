@@ -6781,6 +6781,7 @@ dependencies = [
  "tokio-util",
  "url",
  "uuid",
+ "wiremock",
  "xylitol-app-print",
  "xylitol-official-plugin-compaction",
  "xylitol-official-plugin-config",

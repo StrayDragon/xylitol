@@ -424,6 +424,38 @@ mod tests {
     }
 
     #[test]
+    fn test_acquire_lock_succeeds_and_releases() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let lock_path = dir.path().join("trust.json.lock");
+        let file = acquire_lock_at(&lock_path).expect("first acquire");
+        assert!(lock_path.exists());
+        drop(file);
+        fs::remove_file(&lock_path).expect("remove lock");
+        acquire_lock_at(&lock_path).expect("re-acquire after release");
+    }
+
+    #[test]
+    fn test_acquire_lock_gives_up_on_stale_lock() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let lock_path = dir.path().join("trust.json.lock");
+        fs::write(&lock_path, "stale").expect("write stale lock");
+        let err = acquire_lock_at(&lock_path).expect_err("stale lock must exhaust attempts");
+        assert!(
+            matches!(err, XyTrustError::Lock),
+            "unexpected error: {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_handle_lock_exists_sleeps_until_final_attempt() {
+        handle_lock_exists(1, 2, Duration::ZERO).expect("retry allowed");
+        assert!(matches!(
+            handle_lock_exists(2, 2, Duration::ZERO),
+            Err(XyTrustError::Lock)
+        ));
+    }
+
+    #[test]
     fn test_persistence_format_pi_style() {
         let (mgr, dir) = setup();
         let path = dir.path().join("proj");

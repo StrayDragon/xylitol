@@ -48,14 +48,21 @@ pub async fn start(
     config: ServerConfig,
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     let gateway = Gateway::starting();
-    let credential =
-        xylitol_serve::load_or_create_credential(&xylitol_serve::default_credential_path())?;
-    let listen = ListenConfig {
-        host: config.host.clone(),
-        port: config.port,
-        credential: Some(credential),
-    };
-    let (mut running, port) = xylitol_serve::bind_listen(&listen, gateway.clone()).await?;
+    let listen = credential_listen(
+        &config.host,
+        config.port,
+        &xylitol_serve::default_credential_path(),
+    )?;
+    let (running, port) = xylitol_serve::bind_listen(&listen, gateway.clone()).await?;
+    finish_start(config, gateway, running, port).await
+}
+
+async fn finish_start(
+    config: ServerConfig,
+    gateway: Arc<Gateway>,
+    mut running: RunningServer,
+    port: u16,
+) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     match assemble(&config).await {
         Ok(host) => {
             gateway.set_host(occupy(host));
@@ -63,22 +70,43 @@ pub async fn start(
                 .registration_path
                 .clone()
                 .unwrap_or_else(xylitol_serve::default_registration_path);
-            if let Err(e) = running.arm_registration(
-                format!("http://{}:{port}", config.host),
-                registration_path,
-                Duration::from_secs(5),
-            ) {
-                return Err(Box::new(e));
-            }
+            arm_registration(&mut running, &config.host, port, registration_path)?;
             Ok((running, port))
         }
         Err(e) => {
             gateway.mark_failed();
             tokio::time::sleep(Duration::from_secs(10)).await;
-            drop(running);
             Err(e)
         }
     }
+}
+
+fn arm_registration(
+    running: &mut RunningServer,
+    host: &str,
+    port: u16,
+    registration_path: std::path::PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    running
+        .arm_registration(
+            format!("http://{host}:{port}"),
+            registration_path,
+            Duration::from_secs(5),
+        )
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+}
+
+fn credential_listen(
+    host: &str,
+    port: u16,
+    credential_path: &std::path::Path,
+) -> Result<ListenConfig, std::io::Error> {
+    let credential = xylitol_serve::load_or_create_credential(credential_path)?;
+    Ok(ListenConfig {
+        host: host.to_string(),
+        port,
+        credential: Some(credential),
+    })
 }
 
 fn build_ports(
@@ -203,6 +231,16 @@ pub async fn bind_serve(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_listen_reuses_persisted_token() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("serve.token");
+        let first = credential_listen("127.0.0.1", 0, &path).expect("first");
+        let second = credential_listen("127.0.0.1", 0, &path).expect("second");
+        assert_eq!(first.credential, second.credential);
+        assert!(first.credential.is_some());
+    }
 
     #[test]
     fn bootstrap_errors_map_to_actionable_messages() {

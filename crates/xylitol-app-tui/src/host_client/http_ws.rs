@@ -92,6 +92,17 @@ impl HttpWsClient {
         self
     }
 
+    fn mux_request(
+        &self,
+        url: &str,
+    ) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, HostClientError> {
+        let mut request = url
+            .into_client_request()
+            .map_err(|e| HostClientError::transport(format!("WS request {url}: {e}")))?;
+        apply_auth_header(&mut request, self.token.as_deref())?;
+        Ok(request)
+    }
+
     fn ws_mux_url(&self) -> String {
         let ws_base = self
             .base_url
@@ -118,15 +129,7 @@ impl HttpWsClient {
 
     async fn connect_peer(&self) -> Result<Arc<SharedWs>, HostClientError> {
         let url = self.ws_mux_url();
-        let mut request = url
-            .as_str()
-            .into_client_request()
-            .map_err(|e| HostClientError::transport(format!("WS request {url}: {e}")))?;
-        if let Some(token) = &self.token {
-            request
-                .headers_mut()
-                .insert(auth::AUTHORIZATION_HEADER, auth_header(token)?);
-        }
+        let request = self.mux_request(&url)?;
         let (ws_stream, _) = connect_async(request)
             .await
             .map_err(|e| HostClientError::transport(format!("WS connect {url}: {e}")))?;
@@ -212,6 +215,19 @@ impl HttpWsClient {
         }
         Ok(peer)
     }
+}
+
+fn apply_auth_header(
+    request: &mut tokio_tungstenite::tungstenite::http::Request<()>,
+    token: Option<&str>,
+) -> Result<(), HostClientError> {
+    let Some(token) = token else {
+        return Ok(());
+    };
+    request
+        .headers_mut()
+        .insert(auth::AUTHORIZATION_HEADER, auth_header(token)?);
+    Ok(())
 }
 
 fn auth_header(token: &str) -> Result<HeaderValue, HostClientError> {
@@ -524,6 +540,49 @@ mod tests {
         let value = auth_header("test-token").expect("header");
         assert_eq!(
             auth::token_from_authorization(value.to_str().expect("utf8")).as_deref(),
+            Some("test-token")
+        );
+    }
+
+    #[test]
+    fn mux_request_carries_configured_token() {
+        let client =
+            HttpWsClient::new("http://127.0.0.1:18790").with_token(Some("test-token".into()));
+        let request = client
+            .mux_request("ws://127.0.0.1:18790/rpc")
+            .expect("request");
+        let value = request
+            .headers()
+            .get(auth::AUTHORIZATION_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .expect("auth header");
+        assert_eq!(
+            auth::token_from_authorization(value).as_deref(),
+            Some("test-token")
+        );
+
+        let bare = HttpWsClient::new("http://127.0.0.1:18790");
+        let request = bare
+            .mux_request("ws://127.0.0.1:18790/rpc")
+            .expect("request");
+        assert!(request.headers().get(auth::AUTHORIZATION_HEADER).is_none());
+    }
+
+    #[test]
+    fn apply_auth_header_inserts_only_when_token_present() {
+        let mut request = tokio_tungstenite::tungstenite::http::Request::builder()
+            .body(())
+            .expect("request");
+        apply_auth_header(&mut request, None).expect("no token");
+        assert!(request.headers().get(auth::AUTHORIZATION_HEADER).is_none());
+        apply_auth_header(&mut request, Some("test-token")).expect("token");
+        let value = request
+            .headers()
+            .get(auth::AUTHORIZATION_HEADER)
+            .and_then(|value| value.to_str().ok())
+            .expect("header");
+        assert_eq!(
+            auth::token_from_authorization(value).as_deref(),
             Some("test-token")
         );
     }
