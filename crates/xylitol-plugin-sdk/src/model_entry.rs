@@ -33,6 +33,8 @@ pub struct XyModelEntryConfig {
     #[serde(default)]
     pub context_window: u64,
     #[serde(default)]
+    pub max_output_tokens: Option<u32>,
+    #[serde(default)]
     pub input_modalities: Option<Vec<XyModality>>,
 }
 
@@ -97,6 +99,11 @@ impl XyModelEntryConfig {
         } else {
             default_context_window_for(config.kind)
         };
+        let max_tokens = match self.max_output_tokens {
+            Some(0) => return Err("max_output_tokens must be greater than 0".into()),
+            Some(value) => u64::from(value),
+            None => 0,
+        };
         Ok(XyModelMeta {
             id: id.to_string(),
             config,
@@ -109,7 +116,7 @@ impl XyModelEntryConfig {
             cost_output: 0.0,
             cost_cache_read: 0.0,
             cost_cache_write: 0.0,
-            max_tokens: 0,
+            max_tokens,
             thinking_levels,
             thinking_level_map,
         })
@@ -154,6 +161,34 @@ context_window: 64000
             Some(vec!["off".into(), "high".into()])
         );
         assert_eq!(entry.context_window, 64_000);
+    }
+
+    #[test]
+    fn max_output_tokens_flows_into_meta() {
+        let entry = XyModelEntryConfig {
+            provider: XyModelKind::OpenAi,
+            model: "m".into(),
+            max_output_tokens: Some(4096),
+            ..Default::default()
+        };
+        assert_eq!(entry.to_model_meta("m").expect("meta").max_tokens, 4096);
+        let absent = XyModelEntryConfig {
+            provider: XyModelKind::OpenAi,
+            model: "m".into(),
+            ..Default::default()
+        };
+        assert_eq!(absent.to_model_meta("m").expect("meta").max_tokens, 0);
+    }
+
+    #[test]
+    fn max_output_tokens_zero_is_rejected() {
+        let entry = XyModelEntryConfig {
+            provider: XyModelKind::OpenAi,
+            model: "m".into(),
+            max_output_tokens: Some(0),
+            ..Default::default()
+        };
+        assert!(entry.to_model_meta("m").is_err());
     }
 
     #[test]

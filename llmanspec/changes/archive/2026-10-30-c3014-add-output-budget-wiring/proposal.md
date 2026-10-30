@@ -2,6 +2,9 @@
 depends_on: []
 title: 输出预算接线（配置 → ModelMeta → 生成选项）
 needs_specs_change: true
+branch: sdd/c3014-add-output-budget-wiring
+base_branch: main
+base_sha: 150ada85cd2230c943ef85489713efaa446062d1
 ---
 
 # 输出预算接线（配置 → ModelMeta → 生成选项）

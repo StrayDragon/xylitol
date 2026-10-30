@@ -215,6 +215,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn completions_body_includes_max_completion_tokens() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "max_completion_tokens": 777
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(NoopHooks)),
+        );
+        let opts = crate::thinking::XyGenerateOptions {
+            max_output_tokens: Some(777),
+            ..Default::default()
+        };
+        let _ = adapter
+            .generate_stream(vec![XyLlmMessage::user("hi")], &[], false, opts)
+            .await
+            .expect("generate with budget");
+    }
+
+    #[tokio::test]
     async fn completions_body_omits_effort_when_off() {
         use std::sync::{Arc as StdArc, Mutex};
 

@@ -11,6 +11,10 @@ use xylitol_plugin_sdk::model::{XyChunk, XyModality, XyToolSchema};
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 use xylitol_plugin_sdk::{XyHookBus, XyHookOutcome, XyModel, XySessionStore};
 
+fn output_budget_from_meta(meta: &xylitol_plugin_sdk::XyModelMeta) -> Option<u32> {
+    (meta.max_tokens > 0).then(|| meta.max_tokens.min(u64::from(u32::MAX)) as u32)
+}
+
 pub(crate) fn prepare_turn_binding(
     model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
     coordinator: &SharedRunCoordinator,
@@ -31,7 +35,7 @@ pub(crate) fn prepare_turn_binding(
         level_map: meta.thinking_level_map.clone(),
         thinking_budgets: mm.thinking_budgets().cloned(),
         system_prompt: system_prompt.clone(),
-        max_output_tokens: None,
+        max_output_tokens: output_budget_from_meta(meta),
         obs_parent: None,
         obs_session: xylitol_plugin_sdk::ObsSessionContext::default(),
     };
@@ -155,6 +159,36 @@ pub(crate) async fn attempt_model_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn output_budget_maps_zero_to_none() {
+        let mut meta = xylitol_plugin_sdk::XyModelMeta {
+            id: "m".into(),
+            config: xylitol_plugin_sdk::XyModelConfig {
+                kind: xylitol_plugin_sdk::XyModelKind::OpenAi,
+                api_key: String::new(),
+                model: "m".into(),
+                base_url: None,
+                api: None,
+                compat: None,
+            },
+            display_name: "m".into(),
+            thinking: false,
+            context_window: 1,
+            api: String::new(),
+            provider: "openai".into(),
+            cost_input: 0.0,
+            cost_output: 0.0,
+            cost_cache_read: 0.0,
+            cost_cache_write: 0.0,
+            max_tokens: 0,
+            thinking_levels: Vec::new(),
+            thinking_level_map: Default::default(),
+        };
+        assert_eq!(output_budget_from_meta(&meta), None);
+        meta.max_tokens = 4096;
+        assert_eq!(output_budget_from_meta(&meta), Some(4096));
+    }
 
     #[test]
     fn outbound_has_image_detects_image_parts() {
