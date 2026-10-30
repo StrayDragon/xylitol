@@ -44,7 +44,7 @@ change/spec 的命名、ID、依赖、原子性、语言。架构事实（分层
 ### tasks
 
 - 单 task 拆分上限约 2 小时。
-- purpose-draft change 可只交付 `proposal.md`（`status: purpose-draft`）；apply 前须 promote 为完整工件（specs + tasks）。
+- purpose-draft change 可只交付 `proposal.md`（frontmatter 不写 `status`，该字段会被 validate 拒绝；stage 由工件自动判定）；apply 前须 promote 为完整工件（specs + tasks）。
 
 ### research（change 附属调研）
 
