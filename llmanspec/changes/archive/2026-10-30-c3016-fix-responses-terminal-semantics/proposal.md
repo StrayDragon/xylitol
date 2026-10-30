@@ -2,6 +2,9 @@
 depends_on: []
 title: OpenAI Responses 终止事件语义
 needs_specs_change: true
+branch: sdd/c3016-fix-responses-terminal-semantics
+base_branch: main
+base_sha: 8396d108bf7e01fd0a697d24117eb748f71097e2
 ---
 
 # OpenAI Responses 终止事件语义

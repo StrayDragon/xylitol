@@ -106,3 +106,6 @@
   @req:r3017
   规则: anthropic-prompt-cache-breakpoints
     Anthropic Messages 方言在缓存启用时 必须 于 `system` 末块、最后一个 tool 定义与最后一条消息的文本块各打 `cache_control: {"type":"ephemeral"}` 断点，每请求 不得 超过 4 个断点。`compat: generic` 必须 默认启用，`compat: deepseek` 必须 默认关闭；模型配置 必须 可覆盖开关与 TTL（`5m` / `1h`）。`ttl: 1h` 时 必须 同时发送 `anthropic-beta: extended-cache-ttl-2025-04-11` 请求头。由插件单测覆盖。
+  @req:r3019
+  规则: responses-terminal-events
+    OpenAI Responses 流式方言 必须 处理 `response.completed`、`response.incomplete`、`response.failed` 与流内 `error`：`response.failed` 与 `error` 必须 转为错误并保留 code/message；`response.incomplete` 必须 按 `incomplete_details.reason` 分流，`max_output_tokens` 映射为长度截断，`content_filter` 映射为错误；异常 EOF（未见终止事件）必须 返回错误，不得 静默当作完成；终止 `Done` 不得 重复发出。由插件单测覆盖。
