@@ -2097,6 +2097,7 @@ mod loop_middleware_tests {
                 base_url: None,
                 api: None,
                 compat: None,
+                prompt_cache: None,
             },
             display_name: "Mock".into(),
             thinking: false,

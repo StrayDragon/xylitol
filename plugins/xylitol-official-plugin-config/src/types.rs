@@ -636,6 +636,7 @@ mod thinking_levels_tests {
             context_window: 0,
             max_output_tokens: None,
             input_modalities: None,
+            prompt_cache: None,
         }
     }
 

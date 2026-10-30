@@ -13,9 +13,11 @@ use crate::hooks::{
 use crate::provider::reqwest_headers::{from_reqwest_headers, to_reqwest_headers};
 
 use xylitol_plugin_sdk::message::XyLlmMessage;
+use xylitol_plugin_sdk::model::{XyPromptCacheConfig, XyPromptCacheTtl};
 use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSchema};
 
 const ANTHROPIC_VERSION: &str = "2023-06-01";
+const EXTENDED_CACHE_TTL_BETA: &str = "extended-cache-ttl-2025-04-11";
 
 pub struct AnthropicMessagesAdapter {
     client: reqwest::Client,
@@ -25,6 +27,7 @@ pub struct AnthropicMessagesAdapter {
     max_tokens: u32,
     hooks: Option<Arc<dyn HttpHooks>>,
     wire_policy: crate::wire_policy::WirePolicy,
+    prompt_cache: Option<XyPromptCacheConfig>,
 }
 
 impl AnthropicMessagesAdapter {
@@ -68,7 +71,28 @@ impl AnthropicMessagesAdapter {
             max_tokens: 8192,
             hooks,
             wire_policy,
+            prompt_cache: None,
         }
+    }
+
+    pub fn with_prompt_cache(mut self, prompt_cache: Option<XyPromptCacheConfig>) -> Self {
+        self.prompt_cache = prompt_cache;
+        self
+    }
+
+    fn prompt_cache_ttl(&self) -> Option<XyPromptCacheTtl> {
+        let config = self.prompt_cache;
+        let enabled = config
+            .and_then(|c| c.enabled)
+            .unwrap_or(self.wire_policy.compat != crate::wire_policy::Compat::Deepseek);
+        if !enabled {
+            return None;
+        }
+        Some(
+            config
+                .and_then(|c| c.ttl)
+                .unwrap_or(XyPromptCacheTtl::FiveMinutes),
+        )
     }
 
     fn headers_bag(&self, obs: &crate::provider::obs_session::ObsSessionContext) -> HeaderBag {
@@ -88,6 +112,60 @@ impl AnthropicMessagesAdapter {
             obs,
         );
         headers
+    }
+}
+
+fn apply_anthropic_prompt_cache(body: &mut Value, ttl: XyPromptCacheTtl) {
+    let control = match ttl {
+        XyPromptCacheTtl::FiveMinutes => serde_json::json!({"type": "ephemeral"}),
+        XyPromptCacheTtl::OneHour => serde_json::json!({"type": "ephemeral", "ttl": "1h"}),
+    };
+
+    if let Some(system) = body.get_mut("system") {
+        let text = system.as_str().map(str::to_string);
+        match text {
+            Some(text) => {
+                *system = serde_json::json!([{
+                    "type": "text",
+                    "text": text,
+                    "cache_control": control,
+                }]);
+            }
+            None => {
+                if let Some(last) = system.as_array_mut().and_then(|b| b.last_mut())
+                    && let Some(obj) = last.as_object_mut()
+                {
+                    obj.insert("cache_control".into(), control.clone());
+                }
+            }
+        }
+    }
+
+    if let Some(last) = body
+        .get_mut("tools")
+        .and_then(|t| t.as_array_mut())
+        .and_then(|t| t.last_mut())
+        && let Some(obj) = last.as_object_mut()
+    {
+        obj.insert("cache_control".into(), control.clone());
+    }
+
+    if let Some(messages) = body.get_mut("messages").and_then(|m| m.as_array_mut()) {
+        'outer: for message in messages.iter_mut().rev() {
+            let Some(content) = message.get_mut("content").and_then(|c| c.as_array_mut()) else {
+                continue;
+            };
+            for block in content.iter_mut().rev() {
+                let Some(obj) = block.as_object_mut() else {
+                    continue;
+                };
+                let block_type = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                if block_type == "text" || block_type == "tool_result" {
+                    obj.insert("cache_control".into(), control.clone());
+                    break 'outer;
+                }
+            }
+        }
     }
 }
 
@@ -157,9 +235,20 @@ impl AnthropicMessagesAdapter {
             self.wire_policy.compat,
         );
 
+        let cache_ttl = self.prompt_cache_ttl();
+        if let Some(ttl) = cache_ttl {
+            apply_anthropic_prompt_cache(&mut body, ttl);
+        }
+
         let url = format!("{}/v1/messages", self.base_url);
 
         let mut headers = self.headers_bag(&options.obs_session);
+        if matches!(cache_ttl, Some(XyPromptCacheTtl::OneHour)) {
+            headers.insert(
+                "anthropic-beta".into(),
+                Value::String(EXTENDED_CACHE_TTL_BETA.into()),
+            );
+        }
         run_before_headers(&self.hooks, &mut headers).await?;
         run_before_request(&self.hooks, &self.model, &mut body).await?;
 
@@ -1606,5 +1695,161 @@ mod tests {
         assert_eq!(content[0]["type"], "text");
         assert_eq!(content[0]["text"], "old plan");
         assert!(content[0].get("signature").is_none());
+    }
+
+    struct CacheCaptureHooks {
+        body: std::sync::Arc<std::sync::Mutex<Option<Value>>>,
+        headers: std::sync::Arc<std::sync::Mutex<Option<HeaderBag>>>,
+    }
+
+    #[async_trait]
+    impl HttpHooks for CacheCaptureHooks {
+        async fn before_headers(&self, headers: &mut HeaderBag) -> Result<(), XyError> {
+            *self.headers.lock().unwrap() = Some(headers.clone());
+            Ok(())
+        }
+
+        async fn before_request(&self, _model: &str, body: &mut Value) -> Result<(), XyError> {
+            *self.body.lock().unwrap() = Some(body.clone());
+            Ok(())
+        }
+
+        async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+    }
+
+    async fn capture_anthropic_body(
+        wire_policy: crate::wire_policy::WirePolicy,
+        prompt_cache: Option<XyPromptCacheConfig>,
+    ) -> (Value, HeaderBag) {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let body = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let headers = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hi"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })))
+            .mount(&server)
+            .await;
+        let adapter = AnthropicMessagesAdapter::with_wire_policy(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CacheCaptureHooks {
+                body: body.clone(),
+                headers: headers.clone(),
+            })),
+            wire_policy,
+        )
+        .with_prompt_cache(prompt_cache);
+        let tools = [
+            crate::dto::XyToolSchema {
+                name: "read".into(),
+                description: "r".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+            crate::dto::XyToolSchema {
+                name: "bash".into(),
+                description: "b".into(),
+                parameters: serde_json::json!({"type": "object"}),
+            },
+        ];
+        let opts = crate::thinking::XyGenerateOptions {
+            system_prompt: Some("system prompt".into()),
+            ..Default::default()
+        };
+        let _ = adapter
+            .generate_stream(vec![XyLlmMessage::user("hi")], &tools, false, opts)
+            .await
+            .expect("generate");
+        let body = body.lock().unwrap().clone().expect("body");
+        let headers = headers.lock().unwrap().clone().expect("headers");
+        (body, headers)
+    }
+
+    fn cache_control_count(body: &Value) -> usize {
+        body.to_string().matches("\"cache_control\"").count()
+    }
+
+    #[tokio::test]
+    async fn prompt_cache_attaches_three_breakpoints_for_generic() {
+        let (body, _) =
+            capture_anthropic_body(crate::wire_policy::WirePolicy::default(), None).await;
+        let system = body["system"].as_array().expect("system blocks");
+        assert_eq!(system.len(), 1);
+        assert_eq!(system[0]["type"], "text");
+        assert_eq!(system[0]["cache_control"]["type"], "ephemeral");
+        let tools = body["tools"].as_array().expect("tools");
+        assert!(
+            tools[0].get("cache_control").is_none(),
+            "only the last tool carries a breakpoint"
+        );
+        assert_eq!(tools.last().unwrap()["cache_control"]["type"], "ephemeral");
+        let messages = body["messages"].as_array().expect("messages");
+        let last_block = messages.last().unwrap()["content"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap();
+        assert_eq!(last_block["cache_control"]["type"], "ephemeral");
+        assert_eq!(cache_control_count(&body), 3);
+    }
+
+    #[tokio::test]
+    async fn prompt_cache_disabled_for_deepseek_compat() {
+        let policy =
+            crate::wire_policy::WirePolicy::for_compat(crate::wire_policy::Compat::Deepseek);
+        let (body, _) = capture_anthropic_body(policy, None).await;
+        assert_eq!(cache_control_count(&body), 0);
+        assert!(
+            body["system"].is_string(),
+            "uncached system must stay a plain string"
+        );
+    }
+
+    #[tokio::test]
+    async fn prompt_cache_explicit_enable_wins_over_deepseek_default() {
+        let policy =
+            crate::wire_policy::WirePolicy::for_compat(crate::wire_policy::Compat::Deepseek);
+        let config = XyPromptCacheConfig {
+            enabled: Some(true),
+            ttl: None,
+        };
+        let (body, _) = capture_anthropic_body(policy, Some(config)).await;
+        assert_eq!(cache_control_count(&body), 3);
+    }
+
+    #[tokio::test]
+    async fn prompt_cache_explicit_disable_wins_over_generic_default() {
+        let config = XyPromptCacheConfig {
+            enabled: Some(false),
+            ttl: None,
+        };
+        let (body, _) =
+            capture_anthropic_body(crate::wire_policy::WirePolicy::default(), Some(config)).await;
+        assert_eq!(cache_control_count(&body), 0);
+    }
+
+    #[tokio::test]
+    async fn prompt_cache_one_hour_ttl_sets_beta_header() {
+        let config = XyPromptCacheConfig {
+            enabled: Some(true),
+            ttl: Some(XyPromptCacheTtl::OneHour),
+        };
+        let (body, headers) =
+            capture_anthropic_body(crate::wire_policy::WirePolicy::default(), Some(config)).await;
+        assert_eq!(body["system"][0]["cache_control"]["ttl"], "1h");
+        assert_eq!(
+            headers.get("anthropic-beta").and_then(|v| v.as_str()),
+            Some("extended-cache-ttl-2025-04-11")
+        );
     }
 }

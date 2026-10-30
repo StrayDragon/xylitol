@@ -721,6 +721,7 @@ async fn g_c2841_configured_default(agent: &AgentState, cli_entry_bdd: &CliEntry
                     base_url: None,
                     api: None,
                     compat: None,
+                    prompt_cache: None,
                 },
                 display_name: "fake-model".into(),
                 thinking: false,

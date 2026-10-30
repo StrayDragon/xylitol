@@ -103,3 +103,6 @@
   @req:r3014
   规则: anthropic-usage-cache-reporting
     Anthropic Messages 方言 必须 从响应 usage 如实上报缓存用量：`cache_read_input_tokens` 计入缓存读取，`cache_creation_input_tokens` 计入缓存写入，`cache_creation.ephemeral_1h_input_tokens` 计入 1 小时分量；不得 恒报零缓存。上下文总量口径 必须 含缓存部分（输入 + 缓存读取 + 缓存写入 + 输出）。流式 必须 合并 `message_start` 与 `message_delta` 的 usage 字段。由插件单测覆盖。
+  @req:r3017
+  规则: anthropic-prompt-cache-breakpoints
+    Anthropic Messages 方言在缓存启用时 必须 于 `system` 末块、最后一个 tool 定义与最后一条消息的文本块各打 `cache_control: {"type":"ephemeral"}` 断点，每请求 不得 超过 4 个断点。`compat: generic` 必须 默认启用，`compat: deepseek` 必须 默认关闭；模型配置 必须 可覆盖开关与 TTL（`5m` / `1h`）。`ttl: 1h` 时 必须 同时发送 `anthropic-beta: extended-cache-ttl-2025-04-11` 请求头。由插件单测覆盖。

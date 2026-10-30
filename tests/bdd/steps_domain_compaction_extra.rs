@@ -328,6 +328,7 @@ pub(crate) async fn g_comp_tokens_before_done(agent: &AgentState, sess: &XySessi
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
     );
     let settings = CompactionSettings {
@@ -910,6 +911,7 @@ pub(crate) async fn w_compact_summarize(agent: &AgentState, sess: &XySessionStor
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
     );
     let settings = CompactionSettings {
@@ -1023,6 +1025,7 @@ Edit src/file5.rs and update Cargo.toml
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
     );
     let result = generate_summary(
@@ -1093,6 +1096,7 @@ pub(crate) async fn w_comp_agent_compact(agent: &AgentState, sess: &XySessionSto
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
     );
     let settings = CompactionSettings {
@@ -1248,6 +1252,7 @@ pub(crate) async fn w_comp_iterative_summary(agent: &AgentState, sess: &XySessio
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
     );
     let result = generate_summary(
@@ -1468,6 +1473,7 @@ fn c2811_session_meta(id: &str, levels: &[&str]) -> XyModelMeta {
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
         display_name: id.into(),
         thinking: true,

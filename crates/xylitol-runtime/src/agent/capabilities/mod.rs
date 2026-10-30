@@ -646,6 +646,7 @@ mod tests {
                 base_url: None,
                 api: None,
                 compat: None,
+                prompt_cache: None,
             },
             display_name: id.into(),
             thinking,

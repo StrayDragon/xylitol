@@ -401,6 +401,7 @@ async fn lab_provider_tools_field_follows_reload_freeze() {
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
         display_name: "Mock".into(),
         thinking: false,

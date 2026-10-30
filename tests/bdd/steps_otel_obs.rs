@@ -511,6 +511,7 @@ async fn w_c2826_compaction_span(sess: &crate::bdd::fixtures::XySessionStore, ot
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
     );
     let mut binding = xylitol_runtime::agent::model::task_model::CompactionSummaryBinding::for_test(
