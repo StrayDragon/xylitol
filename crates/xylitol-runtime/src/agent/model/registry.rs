@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use xylitol_plugin_sdk::model::XyModelMeta;
+use xylitol_plugin_sdk::model::{XyModality, XyModelMeta, default_input_modalities};
 
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
@@ -66,6 +66,7 @@ impl ProviderConfig {
 pub struct ModelRegistry {
     providers: HashMap<String, ProviderConfig>,
     models: Vec<XyModelMeta>,
+    modalities: HashMap<String, Vec<XyModality>>,
 }
 
 impl Default for ModelRegistry {
@@ -79,6 +80,7 @@ impl ModelRegistry {
         Self {
             providers: HashMap::new(),
             models: Vec::new(),
+            modalities: HashMap::new(),
         }
     }
 
@@ -87,7 +89,30 @@ impl ModelRegistry {
     }
 
     pub fn register(&mut self, meta: XyModelMeta) {
+        let modalities = default_input_modalities(meta.config.kind);
+        self.register_with_modalities(meta, modalities);
+    }
+
+    pub fn register_with_modalities(&mut self, meta: XyModelMeta, modalities: Vec<XyModality>) {
+        self.modalities.insert(meta.id.clone(), modalities);
         self.models.push(meta);
+    }
+
+    #[must_use]
+    pub fn supports_modality(&self, id: &str, modality: XyModality) -> bool {
+        self.modalities
+            .get(id)
+            .map(|modalities| modalities.contains(&modality))
+            .or_else(|| {
+                self.find(id)
+                    .map(|meta| default_input_modalities(meta.config.kind).contains(&modality))
+            })
+            .unwrap_or(false)
+    }
+
+    #[must_use]
+    pub fn modalities_for(&self, id: &str) -> Option<&[XyModality]> {
+        self.modalities.get(id).map(Vec::as_slice)
     }
 
     pub fn get_available(&self) -> Vec<&XyModelMeta> {
@@ -242,5 +267,25 @@ mod tests {
     fn test_find_no_match() {
         let reg = make_test_registry();
         assert!(reg.find("nonexistent").is_none());
+    }
+
+    #[test]
+    fn supports_modality_uses_provider_default() {
+        let reg = make_test_registry();
+        assert!(reg.supports_modality("openai/gpt-4o", XyModality::Image));
+        assert!(!reg.supports_modality("openai/gpt-4o", XyModality::Audio));
+        assert!(!reg.supports_modality("missing", XyModality::Text));
+    }
+
+    #[test]
+    fn register_with_modalities_overrides_provider_default() {
+        let mut reg = empty_registry();
+        let meta = make_test_registry()
+            .find("openai/gpt-4o")
+            .expect("fixture model")
+            .clone();
+        reg.register_with_modalities(meta, vec![XyModality::Text]);
+        assert!(reg.supports_modality("openai/gpt-4o", XyModality::Text));
+        assert!(!reg.supports_modality("openai/gpt-4o", XyModality::Image));
     }
 }

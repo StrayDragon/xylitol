@@ -6,7 +6,7 @@ use crate::composition::{BuildAgentOptions, build_agent};
 use xylitol_official_plugin_config::loader::load_app_config_detailed_with;
 use xylitol_official_plugin_obs as timing;
 use xylitol_official_plugin_session::SessionManager;
-use xylitol_plugin_sdk::model::XyModelMeta;
+use xylitol_plugin_sdk::model::{XyModelMeta, default_input_modalities};
 use xylitol_runtime::agent::ModelRegistry;
 use xylitol_runtime::agent::model::resolver;
 
@@ -346,7 +346,12 @@ fn build_model_registry(
             missing_key_providers.insert(entry.provider.provider_name().to_string());
         }
         match entry.to_model_meta(alias).map_err(|e| e.to_string()) {
-            Ok(meta) => model_registry.register(meta),
+            Ok(meta) => {
+                let modalities = entry
+                    .resolved_input_modalities()
+                    .unwrap_or_else(|_| default_input_modalities(entry.provider));
+                model_registry.register_with_modalities(meta, modalities);
+            }
             Err(e) => warnings.push(BootstrapWarning::ModelEntrySkipped(format!(
                 "models.{alias}: {e}"
             ))),

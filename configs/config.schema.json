@@ -874,6 +874,15 @@
       },
       "type": "object"
     },
+    "XyModality": {
+      "enum": [
+        "text",
+        "image",
+        "audio",
+        "video"
+      ],
+      "type": "string"
+    },
     "XyModelEntryConfig": {
       "properties": {
         "api": {
@@ -914,6 +923,16 @@
           "default": null,
           "type": [
             "string",
+            "null"
+          ]
+        },
+        "input_modalities": {
+          "default": null,
+          "items": {
+            "$ref": "#/$defs/XyModality"
+          },
+          "type": [
+            "array",
             "null"
           ]
         },

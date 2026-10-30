@@ -4,7 +4,10 @@ pub mod meta;
 pub mod thinking;
 
 pub use chunk::{XyChunk, XyToolSchema};
-pub use config::{ResolvedProfile, XyModelConfig, XyModelKind, default_context_window_for};
+pub use config::{
+    ResolvedProfile, XyModality, XyModelConfig, XyModelKind, default_context_window_for,
+    default_input_modalities,
+};
 pub use meta::{ContextTokenEstimate, TokenProvenance, XyModelMeta};
 pub use thinking::{
     THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap,

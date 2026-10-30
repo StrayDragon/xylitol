@@ -117,3 +117,17 @@
       假如 任务模型条目构建失败
       当 经任务级解析入口取模型
       那么 回退当前会话模型且回退态可观测
+
+  @req:r3007
+  规则: model-input-modalities
+    模型条目 MAY 声明 input_modalities（text / image / audio / video）；缺省 须按 provider 推断：OpenAI 与 Anthropic 为 text+image，Fake 为 text。声明列表 须非空且包含 text；重复项 须去重保序；未知模态 须由配置解析拒绝。ModelRegistry 须记录并暴露 supports_modality(model, modality)，未知模型 须返回 false。音频/视频 仅作档案声明，不代表已有附件管线。
+
+    场景: 模态声明与缺省
+      假如 模型条目声明 input_modalities [text, image]
+      当 加载配置并注册模型
+      那么 注册表对该模型 supports image 为 true 且 audio 为 false
+
+    场景: 非法模态声明被拒绝
+      假如 模型条目声明 input_modalities 为空或不含 text
+      当 加载配置
+      那么 该条目被跳过并记录配置警告

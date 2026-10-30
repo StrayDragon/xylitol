@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::model::XyModelKind;
+use crate::model::{XyModality, XyModelKind, default_input_modalities};
 
 fn default_thinking() -> bool {
     true
@@ -32,6 +32,8 @@ pub struct XyModelEntryConfig {
     pub thinking_level_map: Option<HashMap<String, Option<String>>>,
     #[serde(default)]
     pub context_window: u64,
+    #[serde(default)]
+    pub input_modalities: Option<Vec<XyModality>>,
 }
 
 impl XyModelEntryConfig {
@@ -64,9 +66,30 @@ impl XyModelEntryConfig {
         Ok((levels, map))
     }
 
+    pub fn resolved_input_modalities(&self) -> Result<Vec<XyModality>, String> {
+        let raw = self
+            .input_modalities
+            .clone()
+            .unwrap_or_else(|| default_input_modalities(self.provider));
+        if raw.is_empty() {
+            return Err("input_modalities must not be empty".into());
+        }
+        let mut out = Vec::with_capacity(raw.len());
+        for modality in raw {
+            if !out.contains(&modality) {
+                out.push(modality);
+            }
+        }
+        if !out.contains(&XyModality::Text) {
+            return Err("input_modalities must include text".into());
+        }
+        Ok(out)
+    }
+
     pub fn to_model_meta(&self, id: &str) -> Result<crate::model::XyModelMeta, String> {
         use crate::model::{XyModelMeta, default_context_window_for};
 
+        self.resolved_input_modalities()?;
         let config = self.to_model_config();
         let (thinking_levels, thinking_level_map) = self.resolve_thinking_config()?;
         let context_window = if self.context_window > 0 {
@@ -143,5 +166,55 @@ context_window: 64000
             ..Default::default()
         };
         assert!(entry.resolve_thinking_config().is_err());
+    }
+
+    #[test]
+    fn resolves_configured_input_modalities() {
+        let yaml = r"
+provider: openai
+model: vision
+input_modalities: [text, image, image]
+";
+        let entry: XyModelEntryConfig = yaml_serde::from_str(yaml).expect("yaml");
+        assert_eq!(
+            entry.resolved_input_modalities().expect("modalities"),
+            vec![XyModality::Text, XyModality::Image]
+        );
+    }
+
+    #[test]
+    fn defaults_input_modalities_by_provider() {
+        let openai = XyModelEntryConfig {
+            provider: XyModelKind::OpenAi,
+            ..Default::default()
+        };
+        assert_eq!(
+            openai.resolved_input_modalities().expect("openai"),
+            vec![XyModality::Text, XyModality::Image]
+        );
+        let fake = XyModelEntryConfig {
+            provider: XyModelKind::Fake,
+            ..Default::default()
+        };
+        assert_eq!(
+            fake.resolved_input_modalities().expect("fake"),
+            vec![XyModality::Text]
+        );
+    }
+
+    #[test]
+    fn rejects_empty_or_textless_modalities() {
+        let empty = XyModelEntryConfig {
+            provider: XyModelKind::OpenAi,
+            input_modalities: Some(Vec::new()),
+            ..Default::default()
+        };
+        assert!(empty.resolved_input_modalities().is_err());
+        let textless = XyModelEntryConfig {
+            provider: XyModelKind::OpenAi,
+            input_modalities: Some(vec![XyModality::Image]),
+            ..Default::default()
+        };
+        assert!(textless.resolved_input_modalities().is_err());
     }
 }

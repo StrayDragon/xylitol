@@ -2,6 +2,9 @@
 depends_on: []
 title: 模型档案输入模态声明与诚实拒绝
 needs_specs_change: true
+branch: sdd/c3011-add-model-modalities
+base_branch: main
+base_sha: 101e25530214dbf408a0cec200981fee59f98e96
 ---
 
 # 模型档案输入模态声明与诚实拒绝（#17 M1）

@@ -28,7 +28,8 @@ models:
     #   thinking: true
     #   thinking_levels: [off, low, high, max]
     #   context_window: 1000000
-    #   # placeholders: tool_call/attachment/structured_output/modalities/cost/max_output
+    #   input_modalities: [text]  # optional; provider default is [text, image]
+    #   # placeholders: tool_call/attachment/structured_output/cost/max_output
     # deepseek-v4-flash-anthropic:
     #   provider: anthropic
     #   model: deepseek-v4-flash
@@ -39,6 +40,7 @@ models:
     #   thinking: true
     #   thinking_levels: [off, low, high, max]
     #   context_window: 1000000
+    #   input_modalities: [text]  # optional; provider default is [text, image]
     # OpenCode Zen free（Completions）；别名用 *-zen 后缀：
     # deepseek-v4-flash-free-zen:
     #   provider: openai
@@ -50,6 +52,7 @@ models:
     #   thinking: true
     #   thinking_levels: [off, low, high, max]
     #   context_window: 200000
+    #   input_modalities: [text]  # optional; provider default is [text, image]
     # Optional Anthropic (uncomment only if you intend to use it):
     # claude:
     #   provider: anthropic

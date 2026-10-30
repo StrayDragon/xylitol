@@ -620,3 +620,12 @@
   @req:r2962
   规则: multiple-before-tool-gates
     多个 before_tool 中间件 须按 order 依次执行；任一返回 stopped 须终止后续闸与工具执行；首个 stopped 的原因 须成为最终结果。`deny_reason` 须为“首次设置即锁定”：任一中间件设置后，后置中间件 不得清空或改写，且仍可读取该原因；链结束时 runtime 须以首个非空原因拒绝工具并回写错误结果，不得因后置清空而放行。由单测覆盖。
+
+  @req:r3008
+  规则: image-modality-gate
+    ReAct 在调用 provider 前 须检查出站消息是否含图像部件；当前模型未声明 image 时 须发出明确错误（提示配置 input_modalities）并结束本 run，不得调用 provider、不得静默丢图或假装已理解。模型已声明 image 时 须照常调用。
+
+    场景: 未声明图像模态诚实拒绝
+      假如 当前模型 input_modalities 仅含 text
+      当 提交含图像部件的提示
+      那么 事件流出现提示 input_modalities 的错误且不调用 provider

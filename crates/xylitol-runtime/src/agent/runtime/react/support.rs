@@ -6,8 +6,8 @@ use futures::Stream;
 use super::super::state::{RunId, SharedRunCoordinator};
 use crate::utils::StreamNodeClock;
 use xylitol_plugin_sdk::error::XyError;
-use xylitol_plugin_sdk::message::AgentMessage;
-use xylitol_plugin_sdk::model::{XyChunk, XyToolSchema};
+use xylitol_plugin_sdk::message::{AgentMessage, AgentPart, XyLlmMessage};
+use xylitol_plugin_sdk::model::{XyChunk, XyModality, XyToolSchema};
 use xylitol_plugin_sdk::session::{EntryBase, MessageEntry, SessionEntry};
 use xylitol_plugin_sdk::{XyHookBus, XyHookOutcome, XyModel, XySessionStore};
 
@@ -46,6 +46,27 @@ pub(crate) fn prepare_turn_binding(
     drop(mm);
     coordinator.with_mut(|c| c.set_active_turn(run_id, binding));
     Ok((model, generate_options))
+}
+
+#[must_use]
+pub(crate) fn outbound_has_image(messages: &[XyLlmMessage]) -> bool {
+    messages.iter().any(|message| {
+        message
+            .content()
+            .iter()
+            .any(|part| matches!(part, AgentPart::Image(_)))
+    })
+}
+
+#[must_use]
+pub(crate) fn current_model_modality_support(
+    model_manager: &Arc<Mutex<crate::agent::model::manager::ModelManager>>,
+    modality: XyModality,
+) -> Option<(String, bool)> {
+    let mm = crate::utils::lock_mutex(model_manager);
+    let meta = mm.current_model()?;
+    let supported = mm.registry().supports_modality(&meta.id, modality);
+    Some((meta.id.clone(), supported))
 }
 
 pub(crate) struct ClearActiveTurn {
@@ -129,4 +150,17 @@ pub(crate) async fn attempt_model_stream(
     model
         .generate_stream(llm_messages, tool_schemas, true, options.clone())
         .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn outbound_has_image_detects_image_parts() {
+        let text = XyLlmMessage::user("hello");
+        assert!(!outbound_has_image(&[text]));
+        let image = XyLlmMessage::user_parts(vec![AgentPart::image("image/png", "abc")]);
+        assert!(outbound_has_image(&[image]));
+    }
 }

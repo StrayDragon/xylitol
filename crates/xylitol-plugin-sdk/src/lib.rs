@@ -65,9 +65,10 @@ pub use loop_middleware::{
 };
 pub use message::{AgentMessage, AgentPart, EnvMessage, XyLlmMessage};
 pub use model::{
-    THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap, XyChunk, XyModelConfig,
-    XyModelKind, XyModelMeta, XyToolSchema, last_declared_thinking_level,
-    resolve_configured_levels, thinking_levels_are_adjustable, validate_thinking_level_map,
+    THINKING_OFF, ThinkingBudgets, ThinkingConfigError, ThinkingLevelMap, XyChunk, XyModality,
+    XyModelConfig, XyModelKind, XyModelMeta, XyToolSchema, default_input_modalities,
+    last_declared_thinking_level, resolve_configured_levels, thinking_levels_are_adjustable,
+    validate_thinking_level_map,
 };
 pub use obs_gate::truncate_observation_text;
 pub use obs_gate::{

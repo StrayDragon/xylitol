@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use strum::{EnumString, IntoStaticStr};
 
@@ -31,6 +32,24 @@ impl XyModelKind {
             Self::OpenAi | Self::Fake => "openai-responses",
             Self::Anthropic => "anthropic-messages",
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum XyModality {
+    Text,
+    Image,
+    Audio,
+    Video,
+}
+
+pub fn default_input_modalities(kind: XyModelKind) -> Vec<XyModality> {
+    match kind {
+        XyModelKind::OpenAi | XyModelKind::Anthropic => {
+            vec![XyModality::Text, XyModality::Image]
+        }
+        XyModelKind::Fake => vec![XyModality::Text],
     }
 }
 

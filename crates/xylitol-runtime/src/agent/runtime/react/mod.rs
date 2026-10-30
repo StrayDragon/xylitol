@@ -8,8 +8,9 @@ use assistant::{
     streaming_message_update, upsert_streaming_tool,
 };
 use support::{
-    ClearActiveTurn, attempt_model_stream, observe_script_hook, persist_agent_message,
-    persist_agent_message_with_thought_elapsed, prepare_turn_binding,
+    ClearActiveTurn, attempt_model_stream, current_model_modality_support, observe_script_hook,
+    outbound_has_image, persist_agent_message, persist_agent_message_with_thought_elapsed,
+    prepare_turn_binding,
 };
 use turn_end::{
     FinishTurnOutcome, IterationClose, close_iteration, drain_queue, queue_counts,
@@ -39,7 +40,7 @@ use crate::agent::prompt::{AgentStatusBar, expand_skills_in_agent_messages, proj
 use crate::agent::tools::ToolSet;
 use xylitol_plugin_sdk::error::{XyError, XySessionError};
 use xylitol_plugin_sdk::message::{AgentMessage, AgentPart};
-use xylitol_plugin_sdk::model::{XyChunk, XyToolSchema};
+use xylitol_plugin_sdk::model::{XyChunk, XyModality, XyToolSchema};
 use xylitol_plugin_sdk::resource::SkillInfo;
 use xylitol_plugin_sdk::{
     AfterLlmResponseCtx, AfterTurnCtx, BeforeLlmRequestCtx, BeforeTurnCtx, DecideContinueCtx,
@@ -1182,6 +1183,16 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                 }
 
                 let llm_messages = project_outbound(&messages, &bar);
+                if outbound_has_image(&llm_messages)
+                    && let Some((model_id, supported)) =
+                        current_model_modality_support(&model_manager, XyModality::Image)
+                    && !supported
+                {
+                    yield XyEvent::error_msg(format!(
+                        "model {model_id} does not declare image input; set models.{model_id}.input_modalities to include image"
+                    ));
+                    break 'outer;
+                }
                 let mut stream_result: Option<Result<XyStream, XyError>> = None;
                 loop {
                     let result = tokio::select! {
@@ -2215,6 +2226,40 @@ mod loop_middleware_tests {
         assert!(
             value.get("message").is_some(),
             "the message snapshot is the single source of truth: {value}"
+        );
+    }
+
+    #[tokio::test]
+    async fn image_parts_without_declared_modality_are_rejected() {
+        let mut runtime = baseline().materialize_runtime();
+        runtime.select_model("mock").await.expect("select");
+        runtime.bind_session("sess-image").expect("bind");
+
+        let mut events = Vec::new();
+        let mut stream = runtime
+            .submit_parts(
+                vec![xylitol_plugin_sdk::message::AgentPart::image(
+                    "image/png",
+                    "abc",
+                )],
+                RunPolicy::Reject,
+            )
+            .await;
+        while let Some(ev) = stream.next().await {
+            events.push(ev);
+        }
+
+        let rejection = events.iter().find_map(|event| match event {
+            crate::agent::runtime::XyEvent::Error(error)
+                if error.message.contains("does not declare image input") =>
+            {
+                Some(error.message.as_str())
+            }
+            _ => None,
+        });
+        assert!(
+            rejection.is_some(),
+            "image input must be rejected when the model declares text only: {events:?}"
         );
     }
 }
