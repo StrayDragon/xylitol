@@ -102,7 +102,7 @@ pulldown-cmark = "0.13"
 regex = "1.13.1"
 reqwest = "0.13.5"
 rmcp = "3.5.1"
-rstest = "0.27"
+rstest = "0.28"
 rstest-bdd = "0.6.0"
 rstest-bdd-macros = "0.6.0"
 salvo = { version = "1.0.1", default-features = false }
