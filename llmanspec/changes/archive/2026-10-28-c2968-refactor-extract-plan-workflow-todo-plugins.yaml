@@ -1,0 +1,2 @@
+title: "Extract plan, workflow and todo capabilities into official plugins"
+depends_on: [c2964-refactor-split-workflow-todo-vocabulary, c2965-add-plan-mode-with-plan-doc-and-approval]

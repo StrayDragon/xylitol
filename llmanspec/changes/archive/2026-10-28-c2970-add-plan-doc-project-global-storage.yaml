@@ -1,0 +1,2 @@
+title: "Add project and global scopes for durable plan documents"
+depends_on: [c2965-add-plan-mode-with-plan-doc-and-approval]

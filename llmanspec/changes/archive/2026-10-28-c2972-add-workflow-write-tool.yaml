@@ -1,0 +1,2 @@
+title: "Replace the plan control block with a workflow_write tool"
+depends_on: [c2964-refactor-split-workflow-todo-vocabulary, c2968-refactor-extract-plan-workflow-todo-plugins]

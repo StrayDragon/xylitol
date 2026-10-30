@@ -1,0 +1,2 @@
+title: "自愈循环：确定性失败后由中间件续跑修复，而不是原地重试"
+depends_on: [c2957-add-loop-example-plan-state]

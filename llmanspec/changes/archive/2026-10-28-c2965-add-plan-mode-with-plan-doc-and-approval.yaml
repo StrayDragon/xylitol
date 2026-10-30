@@ -1,0 +1,2 @@
+title: "Add a reviewable plan mode built on plan documents and explicit approval"
+depends_on: [c2964-refactor-split-workflow-todo-vocabulary]

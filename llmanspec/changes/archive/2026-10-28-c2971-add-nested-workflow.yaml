@@ -1,0 +1,2 @@
+title: "Support nested workflows inside workflow steps"
+depends_on: [c2965-add-plan-mode-with-plan-doc-and-approval, c2968-refactor-extract-plan-workflow-todo-plugins]

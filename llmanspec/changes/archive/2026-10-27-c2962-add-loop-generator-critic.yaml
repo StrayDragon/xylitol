@@ -1,0 +1,2 @@
+title: "生成评审：critic 指令注入与有界修订循环"
+depends_on: [c2957-add-loop-example-plan-state]

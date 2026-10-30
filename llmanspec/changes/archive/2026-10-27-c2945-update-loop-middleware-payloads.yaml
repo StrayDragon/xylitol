@@ -1,0 +1,2 @@
+title: "Loop 中间件契约载荷（结构化结果 / 工具路由 / 压缩决策）"
+depends_on: [c2944-add-loop-middleware]

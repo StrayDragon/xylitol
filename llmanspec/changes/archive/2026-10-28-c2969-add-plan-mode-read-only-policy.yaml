@@ -1,0 +1,2 @@
+title: "Enforce a read-only tool policy while plan mode is active"
+depends_on: [c2965-add-plan-mode-with-plan-doc-and-approval]

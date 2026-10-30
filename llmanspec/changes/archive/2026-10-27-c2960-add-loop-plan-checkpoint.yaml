@@ -1,0 +1,2 @@
+title: "计划 checkpoint：把 plan 进度落成可恢复的会话工件"
+depends_on: [c2957-add-loop-example-plan-state]

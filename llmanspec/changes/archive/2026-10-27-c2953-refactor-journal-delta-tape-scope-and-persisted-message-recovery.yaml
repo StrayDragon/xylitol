@@ -1,0 +1,2 @@
+title: "流式 tape 不进 journal，历史改由落库快照与分页承载"
+depends_on: []

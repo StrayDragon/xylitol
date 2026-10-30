@@ -1,0 +1,2 @@
+title: "Skills 展开内置化与 MCP 结果截断"
+depends_on: [c2944-add-loop-middleware, c2946-add-loop-middleware-scope]

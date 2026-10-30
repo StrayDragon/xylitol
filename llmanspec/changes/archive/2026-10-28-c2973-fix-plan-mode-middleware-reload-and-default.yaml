@@ -1,0 +1,2 @@
+title: "Fix plan mode middleware reload and enable it by default"
+depends_on: [c2965-add-plan-mode-with-plan-doc-and-approval]
