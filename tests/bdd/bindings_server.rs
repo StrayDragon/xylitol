@@ -458,19 +458,19 @@ async fn test_jsonrpc_text_roundtrip(server_test: ServerTest) {}
 async fn test_jsonrpc_text_accepted(server_test: ServerTest) {}
 
 #[scenario(
-    path = "llmanspec/specs/server-core/server-core.feature",
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
     name = "描述宣告格式"
 )]
 async fn test_describe_declares_formats(server_test: ServerTest) {}
 
 #[scenario(
-    path = "llmanspec/specs/server-core/server-core.feature",
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
     name = "未知格式致命"
 )]
 async fn test_unknown_format_fatal(server_test: ServerTest) {}
 
 #[scenario(
-    path = "llmanspec/specs/server-core/server-core.feature",
+    path = "llmanspec/specs/protocol-app/protocol-app.feature",
     name = "未知方法名稳定失败"
 )]
 async fn test_unknown_method_name_stable_fail(server_test: ServerTest) {}

@@ -2,6 +2,9 @@
 depends_on: []
 title: 压缩 specs 重复与重叠规则
 needs_specs_change: true
+branch: sdd/c3009-refactor-compact-specs
+base_branch: main
+base_sha: 26f271f1948676fd01dc15d2b1a72127000c9fb7
 ---
 
 # 压缩 specs 重复与重叠规则

@@ -11,6 +11,7 @@
       假如 mock 模型先 tool 后无 tool
       当 运行 AgentRuntime
       那么 先执行工具再结束且无 adk 类型
+
   @req:r1036
   规则: xy-event-stream
     运行时 须以 XyEvent 异步流对外输出（TextDelta / ThinkingDelta / Tool* / Turn* / QueueUpdate / Error 等）；不得再引入 AgentEvent 或 adk 事件类型。
@@ -19,6 +20,7 @@
       假如 消费事件流
       当 轮询
       那么 每项为 XyEvent
+
   @req:r1047
   规则: 工具批后继续
     同一模型响应中的全部工具调用 须在下一轮模型调用前执行完毕（可并行或串行）；不得因流结束 Done 而提前结束含 tool_calls 的回合。该续跑 须关闭本 iteration（与 TurnStart 成对的 TurnEnd），不得因此做 ContextTokenSettlement、auto-compact 预检或 should_stop_after_turn。该行为 须有可执行 BDD 场景（live `.feature`，`@req`）。
@@ -27,6 +29,7 @@
       假如 mock 模型先 tool 后无 tool
       当 运行 AgentRuntime
       那么 turn_end 事件包含 toolResult
+
   @req:r1038
   规则: tool-intent-before-execution
     ReAct 消费 XyChunk::ToolCallStart/Delta/End 时：流式阶段 须经 MessageUpdate（message 含渐进 ToolCall 部分）暴露工具意图；不得在流未结束（MessageEnd 前）发射 ToolExecutionStart 或执行工具副作用。ToolExecutionStart/Update/End 须仅在 MessageEnd 之后的执行路径发出。该行为 须有可执行 BDD 或等价单测场景。
@@ -35,6 +38,7 @@
       假如 mock 模型先 tool 后无 tool
       当 运行 AgentRuntime 并收集事件
       那么 MessageUpdate 含工具意图且早于任意 ToolExecutionStart；ToolExecutionStart 不早于 MessageEnd
+
   @req:r1039
   规则: system-via-generate-options
     配置的 system prompt 须经 XyGenerateOptions.system_prompt 传给模型适配层；不得将 system 正文作为 AgentMessage::user 写入会话 history（空会话首条 须为真实用户输入）。由 ReAct 单测覆盖，不得为静态存在性单独扩 BDD step。
@@ -43,6 +47,7 @@
       假如 配置了 mock 模型 "test-model"
       当 运行一轮对话后检查持久化条目
       那么 首条消息条目为真实 user 输入且无 system 角色行
+
   @req:r1055
   规则: builder-ports
     Agent 装配 须经 AgentBuilder，依赖 protocol 端口与 agent 会话词汇；app 组合根注入具体 infra 实现。装配入口由单元测试 / 组合根覆盖，不得为静态存在性单独扩 BDD step。
@@ -75,6 +80,7 @@
       假如 注册匹配 bash 的 before 拒绝 hook
       当 运行 AgentRuntime 触发 bash
       那么 tool-error 回写且未执行
+
   @req:r1059
   规则: pending-queues
     须提供独立的 steer 与 follow_up 队列（enqueue/drain/clear）；缺省 QueueMode / SteeringMode 须为 OneAtATime（一次 drain 一条；配置可显式 all）；ReAct 须在模型调用前 drain steer；在将因无 tool_calls 而结束前 drain follow_up（非空则继续）；若 should_stop_after_turn 已请求停，不得 drain steer 或 follow_up。
@@ -93,6 +99,7 @@
       假如 入队 follow_up 且 should_stop_after_turn 在首次 TurnEnd 后返回 true
       当 运行 AgentRuntime
       那么 本 run 以 AgentEnd 结束且 follow_up 未被注入历史
+
   @req:r1060
   规则: queue-update-events
     入队/drain/clear 后 须发射 XyEvent::QueueUpdate（steer_count / follow_up_count）。
@@ -101,6 +108,7 @@
       假如 装配 agent 并入队 steer
       当 观察事件流
       那么 出现 QueueUpdate 且计数正确
+
   @req:r1028
   规则: abort-queue-semantics
     abort 须清空 steer、保留 follow_up；须取消当前 run CancellationToken 与进行中工具/交互 bash；不得仅靠无人订阅的 EventBus 旁路传队列状态。
@@ -114,6 +122,7 @@
       假如 启动交互 bang 长命令后 abort
       当 检查 bash 结果
       那么 cancelled 为 true
+
   @req:r1029
   规则: abort-resets-token
     每次 run 开始 须安装新 CancellationToken；abort 后下一次 run 不得因沿用已取消 token 立刻 aborted。
@@ -122,6 +131,7 @@
       假如 装配慢速 agent 并在首轮 abort 后
       当 再次运行
       那么 正常完成而非立即 aborted
+
   @req:r1030
   规则: abort-cancels-provider-stream
     模型流进行中 abort 须停止 poll 并 drop provider stream，以 aborted 结束；应用面 须经 Driver::abort。该行为 须有可执行 BDD 场景（live `.feature`，`@req`），并复用既有 abort step 词表。
@@ -130,6 +140,7 @@
       假如 配置了 mock 模型 test-model 且慢速流式 40 段间隔 20 毫秒
       当 经 Driver 启动会话并在首个 TextDelta 后 abort
       那么 事件流包含 aborted 错误
+
   @req:r1031
   规则: unknown-event-degrade
     应用面/bridge 对未识别 XyEvent 变体 须降级（日志），不得 panic。由 protocol 单元测试覆盖。
@@ -152,6 +163,7 @@
     场景: 上下文重载信任门控
       当 在项目目录写 AGENTS.md 并分别以信任与未信任重载 context
       那么 信任时项目 context 注入而未信任时被跳过且会话条目不变
+
   @req:r1037
   规则: Driver skills 重载缝
     InProcessDriver（经 xylitol-runtime Trust 门禁）须能在 Trust 语义下重载磁盘 skills 并应用到 agent；须能查询当前已加载 skill 名（供后续 $ 展开）；未信任 不得注入项目 skills；重载 不得清空 transcript；本要求 不得依赖 /session 或 /status skills UI。
@@ -159,6 +171,7 @@
     场景: 技能重载信任门控与可查询
       当 在项目目录写 skill 并分别以信任与未信任重载 skills
       那么 信任时项目 skill 注入且可查询已加载名而未信任时被跳过
+
   @req:r1040
   规则: persist-done-usage
     ReAct 在模型流正常结束时 须将 XyChunk::Done 携带的 usage 与 stop_reason（若有）写入随后持久化的 AssistantMessage；不得在 Done 已提供非空 usage 时仍硬编码 usage: None。该行为 须有可执行 BDD 或等价单测场景。
@@ -180,6 +193,7 @@
       假如 未注册 should_stop_after_turn 的无工具 agent
       当 运行 AgentRuntime
       那么 正常出现 AgentEnd 且恰好一轮 TurnStart
+
   @req:r1042
   规则: next-turn-refresh-model-thinking
     ReAct 须在每次模型调用前（turn 边界，对齐 pi prepareNextTurn）从 session 重读当前选中模型与 thinking level，并据此重建本 turn 的 XyModel 与 XyGenerateOptions（或等价绑定）；不得在整个 run 内握死首帧 model/thinking snapshot。已开始的 in-flight generate_stream 须继续使用该次调用开始时的绑定，不得中途拆流。run 结束（AgentEnd）或 abort 后无 in-flight 时，active 与 selected 须收敛。该行为 须有可执行 BDD 或等价单测场景。
@@ -195,17 +209,10 @@
       假如 配置了 mock 模型 test-model 且慢速流式 40 段间隔 20 毫秒
       当 经 Driver 启动会话并在首个 TextDelta 后 abort 并检查持久化条目
       那么 partial assistant 以 aborted 落盘且非空
-  @req:r1044
-  规则: tool-batch-default-barrier-parallel
-    未显式配置工具批模式时，ReAct 须对同一 MessageEnd 后的 tool call 批采用 barrier_parallel（连续 ParallelSafe 扇出；Barrier 先汇聚再串行）调度；不得默认退回整批串行（除非显式 mode=sequential）。该行为 须有可执行 BDD 场景（live `.feature`，`@req`）。
 
-    场景: 批缺省屏障并行
-      假如 未配置工具批模式且 mock 模型同 turn 发出两个可并行假工具
-      当 运行 AgentRuntime
-      那么 两工具执行时间重叠
   @req:r1045
   规则: tool-batch-barrier-parallel
-    当工具批模式为 barrier_parallel（含产品缺省）时，ReAct 须按 assistant 源序将连续 ParallelSafe 工具收入并行窗扇出执行，遇 Barrier 工具（写/副作用/未知/一切 mcp_ 前缀工具等）须先汇聚（await 齐）当前窗再串行执行该屏障工具，然后继续；不得把屏障之后的 ParallelSafe 提前并入屏障之前的并行窗；不得在 MessageEnd 前执行工具（ar21）；不得经配置/glob/annotation 将 mcp_ 工具升为 ParallelSafe。该行为 须有可执行 BDD 或等价可控假工具单测/BDD 场景。
+    未显式配置工具批模式时，ReAct 须缺省采用 barrier_parallel（连续 ParallelSafe 扇出；Barrier 先汇聚再串行），不得默认退回整批串行（除非显式 mode=sequential）。当工具批模式为 barrier_parallel（含产品缺省）时，ReAct 须按 assistant 源序将连续 ParallelSafe 工具收入并行窗扇出执行，遇 Barrier 工具（写/副作用/未知/一切 mcp_ 前缀工具等）须先汇聚（await 齐）当前窗再串行执行该屏障工具，然后继续；不得把屏障之后的 ParallelSafe 提前并入屏障之前的并行窗；不得在 MessageEnd 前执行工具（ar21）；不得经配置/glob/annotation 将 mcp_ 工具升为 ParallelSafe。
 
     场景: 批屏障并行重叠
       假如 工具批模式为 barrier_parallel 且 mock 同 turn 发出两个 ParallelSafe 慢假工具后接一个 Barrier 假工具
@@ -221,6 +228,12 @@
       假如 工具批模式为 barrier_parallel 且 mock 同 turn 工具序为 ParallelSafe、mcp 假工具、ParallelSafe
       当 运行 AgentRuntime
       那么 mcp 假工具与两侧 ParallelSafe 均无执行时间重叠
+
+    场景: 批缺省屏障并行
+      假如 未配置工具批模式且 mock 模型同 turn 发出两个可并行假工具
+      当 运行 AgentRuntime
+      那么 两工具执行时间重叠
+
   @req:r1046
   规则: tool-batch-history-source-order
     无论 sequential 或 barrier_parallel，写入 session history 与发往模型的 toolResult 须严格按 assistant 源序；ToolExecutionEnd（及 Update）MAY 按完成序交错。该行为 须有可执行 BDD 或等价单测场景。
@@ -229,6 +242,7 @@
       假如 工具批模式为 barrier_parallel 且并行窗内后发先完成
       当 检查 session history 中 toolResult
       那么 toolResult 顺序与 assistant 源序一致
+
   @req:r1048
   规则: config-max-turns-via-should-stop
     当运行时配置 session.max_turns（正整数 N）存在时，组合根 须在装配后安装 should_stop_after_turn：于 Settle 的 TurnEnd 后若 settle 次数 >= N 则返回 true 结束 run；缺省或未配置时 不得安装该步数钩子（开放结束，见 ar24）。不得把工具续跑的 iteration TurnEnd 计入额度，不得使用 max_iterations 字段名。该行为 须有可执行 BDD 或等价单测场景。
@@ -237,6 +251,7 @@
       假如 按 session.max_turns=2 安装 should_stop_after_turn 且入队 follow_up 以迫使第二轮
       当 运行 AgentRuntime
       那么 至多出现 2 次 TurnStart 后出现 AgentEnd
+
   @req:r1843
   规则: iteration-close-vs-settle
     一次用户触发的 run（观测根 agent.turn，AgentStart…AgentEnd）内，每一轮模型 generate 及其工具批是一次 iteration（观测 agent.iteration，XyEvent TurnStart/TurnEnd 成对）。本轮仍有 tool_calls、将再 generate 时 须以 ContinueTools 关闭 iteration：发 TurnEnd 配成对，不得 ContextTokenSettlement、不得 auto-compact 预检、不得 should_stop_after_turn。本轮不再要工具时 须 Settle：TurnEnd + settlement + threshold/overflow 预检 + should_stop。generate 失败走 overflow Case1 的收尾仍为 Settle。不得用「跳过 TurnEnd」或「导出侧去重 skipped」代替这组穷举。由单测覆盖，不得为静态存在性单独扩 BDD step。
@@ -245,6 +260,7 @@
       假如 mock 模型先 tool 后无 tool
       当 运行 AgentRuntime 并收集事件
       那么 TurnStart 与 TurnEnd 成对出现两次且 ContextTokenSettlement 恰一次
+
   @req:r1049
   规则: turn-end-threshold-compaction
     ReAct 或 session 编排在 Settle（本轮不再续跑工具、非 abort）后 须调用 threshold auto-compact 检查（domain-compaction c2 地板感知有效触发阈值 + c17/c18）；ContinueTools、CompactionSettings.enabled 为 false、未超有效阈值、abort、或 stale 守卫命中时 不得 compact；不得仅依赖 TUI host 轮询触发。该行为 须有可执行 BDD 或等价单测场景。
@@ -545,18 +561,23 @@
   @req:r2937
   规则: message-persist-before-end
     ReAct 的每一条消息（用户 pending、助手正常完成、助手中断、助手中间件 stop）须先写入会话存储再下行 MessageEnd，使客户端收到完成事件时 存储已可读到该条；不得先发 MessageEnd 再落库。落库失败 不得阻断 MessageEnd 下行（沿用既有 warn 语义），但 不得因此把顺序颠倒回去。
+
   @req:r2939
   规则: todo-reminder
     todo 提醒中间件 须在 before_llm_request 读取当前 todo（经 BeforeLlmRequestCtx.todo）；当 todo 非空且仍有未完成项，并满足以下任一条件时，向本回合模型上下文追加一条短提醒：连续 N 次工具调用未更新 todo、最后一条 assistant 宣称完成、上一次工具失败。同一 turn 至多提醒一次。提醒 须只读：不得自动改写 todo、不得产生新事件、不得调用模型或工具；未满足条件或 todo 为空时 不得追加任何内容。阈值与开关 须可配置。提醒行为 由中间件单测覆盖。
+
   @req:r2940
   规则: tool-exposure
     工具收窄中间件 须在 before_llm_request 改写 tool_schemas：按配置的 allow / deny 与只读开关收窄模型可见工具；`todo_rewrite` 与 `todo_update` 须始终可见，避免计划无法更新。收窄 只影响模型可见性：不得删除工具、不得改变 permission 终裁、不得影响 before_tool 的路由目标校验。未启用或规则为空时 不得改变 schema 形状。过滤前后数量与理由 须可观测。step/risk 的细粒度映射 不在本要求范围，后续 change 再评估。
+
   @req:r2942
   规则: todo-checkpoint-middleware
     todo checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_llm_request（或 after_turn）把变化落为 todo_checkpoint 条目；恢复后的首个 before_llm_request 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或 todo 已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 run。写入 须只追加，不覆盖或删除历史 checkpoint。
+
   @req:r2943
   规则: self-heal
     自愈中间件 须只在 after_tool 识别到确定性失败签名时介入：命中签名 须记录 pending（工具名、签名、尝试次数）并在结果后追加短指引，要求诊断、修复后重跑同一验证；同一工具成功 须清除 pending。非确定性失败（超时、网络、权限等）不得进入自愈。decide_continue 须在 pending 且尝试次数小于配置上限时 Continue，达到上限时 Stop；无 pending 时 不得改变基线。上限 须远小于 core 的 32 次硬上限。不得在插件内调用模型或工具，不得自动回滚。自愈与 todo-progress 可并存，Stop 仍由最先返回 Stop 的中间件决定。
+
   @req:r2944
   规则: generator-critic
     生成评审中间件 须在 after_llm_response 只对**无 tool_calls 的 assistant 最终答案**启动评审，且评审调用仍由 core 调度（插件不得自行调用模型）。状态机须为 Idle → Critiquing →（Approved | Revising）→ … → Approved | Exhausted；Critiquing 时 before_llm_request 注入 rubric 与 verdict 格式，Revising 时注入 critic 意见。critic 须以单独一行 `CRITIC_VERDICT: APPROVE` 或 `CRITIC_VERDICT: REVISE` 结尾；无结构化 verdict 时最多再要求一次，超过一次须停止。decide_continue 在 Critiquing / Revising 时 Continue，在 Approved / Exhausted 时 Stop，其它状态不得改变基线。评审轮数 须受 `max_rounds` 约束且远小于 core 的 32；达到上限须停止并记录原因。不得允许 critic 触发 compact，不得自动改代码或提交。
