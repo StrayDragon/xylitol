@@ -33,7 +33,7 @@
       那么 命令带超时执行且缓存
   @req:r1825
   规则: provider 走模型端口
-    LLM provider 必须实现 XyModel 端口并由装配注入；对话循环不得托管具体厂商实现子树。
+    LLM provider 必须实现 XyModel 端口并由装配注入；对话循环不得托管具体厂商实现子树。 由 crate 图与 provider 装配单测覆盖，不单独扩 BDD step。
 
   @req:r1826
   规则: provider-port-injection

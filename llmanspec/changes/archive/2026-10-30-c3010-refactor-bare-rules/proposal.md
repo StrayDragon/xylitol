@@ -2,6 +2,9 @@
 depends_on: []
 title: 裸规则转场景与覆盖源固定
 needs_specs_change: true
+branch: sdd/c3010-refactor-bare-rules
+base_branch: main
+base_sha: 5a8df022287955876b2f9d80cd60b5c0a1caa348
 ---
 
 # 裸规则转场景与覆盖源固定

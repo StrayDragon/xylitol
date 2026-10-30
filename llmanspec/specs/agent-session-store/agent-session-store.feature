@@ -310,7 +310,7 @@
 
   @req:r1115
   规则: SessionStore 端口实现
-    SessionStore 端口必须覆盖 append、load、load_context、exists；完整会话面（fork、navigate、export）可留在具体结构体。
+    SessionStore 端口必须覆盖 append、load、load_context、exists；完整会话面（fork、navigate、export）可留在具体结构体。 由 SessionStore 端口契约单测覆盖，不单独扩 BDD step。
 
   @req:r1117
   规则: 日志访问
@@ -366,17 +366,37 @@
   规则: 会话条目分页读取
     XySessionStore 须提供分页读取入口：limit 缺省返回全量；给定 limit 时从最新一条向前取该条数；给定 before_entry_id 时取该条目之前的更早条目；未知 before_entry_id 须返回空页。分页结果 须与全量读取后切片逐条一致。持久化后端 须按 manifest 段首尾条目 id 与 sidecar 索引跳过窗口外的整段，不得为取一页而读取全部段；窗口跨越的段 须读取并按需切片。has_more 须表示窗口之外仍有更早条目。段级跳过与读取段计数 由存储层单测覆盖，不为内部读取计数单开 BDD。
 
+    场景: 分页与全量切片一致
+      假如 会话有 N 条条目
+      当 以 limit 与 before_entry_id 读取
+      那么 结果与全量读取后切片逐条一致且未知 before 返回空页
+
   @req:r2941
   规则: todo-checkpoint-entry
     todo checkpoint 须以 custom_type = "todo_checkpoint" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式，不改布局；data 至少含 steps（id/content/status 与可选 verification/output_ref）、可选 last_verified_artifact / last_failure / resume_cursor（step_id 与 attempt）以及 updated_at。读取 须取叶分支上最新一条；缺失或损坏时 须按无 checkpoint 处理，不得中断。会话加载时 须把旧 custom_type = "plan_checkpoint" 条目一次性迁移为 "todo_checkpoint"（只追加、幂等，重复加载不得重复追加）；读取 优先新名，旧名 仅作迁移输入，新写入 不得再使用旧名。todo checkpoint 与 agent_todo 并存：todo 仍是人可见台账，checkpoint 是恢复状态，两者 不得互相替代。写入 须只追加，不得覆盖或删除历史条目。往返、最新选取与迁移幂等 由 SDK 单测覆盖。
+
+    场景: todo checkpoint 落为 CustomEntry
+      假如 todo 状态发生变化
+      当 写入 checkpoint
+      那么 以 custom_type 为 todo_checkpoint 的 CustomEntry 保存且沿用 v7 布局
 
   @req:r2952
   规则: plan-doc-and-mode-entries
     计划文档 须以 custom_type = "plan_doc" 的 CustomEntry 存入会话，data 含 plan_id、title、status、steps（id/content/可选 depends_on/verification/status）、created_at 与 updated_at；读取 须按 plan_id 取叶分支最新一条，缺省取最新文档。计划模式 须以 custom_type = "plan_mode" 的 CustomEntry 存入会话，data 含 mode（plan/execute）、可选 plan_id 与 updated_at；读取 须取最新一条，缺失时按 execute 处理。两类条目 须只追加，不得覆盖或删除历史。会话临时目录下的 `plans/<plan_id>.md` 仅为可读视图，不得成为持久化 SSOT。
 
+    场景: 计划文档与模式条目按叶分支读取
+      假如 会话存在多个 plan_doc 与 plan_mode 条目
+      当 按 plan_id 读取叶分支最新条目
+      那么 返回最新文档且缺省取活动计划
+
   @req:r2945
   规则: workflow-artifact
     workflow 须以 custom_type = "workflow" 的 CustomEntry 存入会话，沿用既有 v7 磁盘格式；data 含 goal、steps（id/description/depends_on/inputs/outputs/tools/risk/verification/rollback/requires_human/status/output_ref）、可选 resume_cursor 与 updated_at。读取 须取叶分支最新一条；会话加载时 须把旧 custom_type = "plan" 条目一次性迁移为 "workflow"（只追加、幂等，重复加载不得重复追加），读取 优先新名，旧名 仅作迁移输入；新写入 不得再使用旧名。校验 须保证 id 唯一、依赖存在且无环。重规划约束：已完成步骤 不得删除、降级或改写 description / verification / depends_on；只有失败步骤及其下游闭包可结构性变更；无失败时 只允许 status / output_ref 变化。workflow 与 agent_todo、todo_checkpoint 并存，不得互相替代。DAG 校验、重规划约束与迁移幂等 由 SDK / 中间件单测覆盖。
+
+    场景: workflow 条目保存步骤图
+      假如 模型调用 workflow_write 写入 workflow
+      当 读取会话叶分支
+      那么 workflow CustomEntry 含 goal 与 steps 且沿用 v7 布局
 
   @req:r2964
   规则: plan-ref-entry

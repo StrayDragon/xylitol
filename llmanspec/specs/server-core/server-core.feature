@@ -232,6 +232,11 @@
   规则: 会话切换与订阅的模式事件路由
     Host 在 `switch_session` / `new_session` 成功后 须把 `planModeChanged` 发布到切换后的新会话槽，不得落到切换前的槽或 fallback 会话；订阅者绑定会话时 须收到一次由该会话最新 `plan_mode` 推导的 `planModeChanged`（不写入 journal、不消耗 seq），使附加端模式条收敛。其他会话的订阅者 不得收到本事件。
 
+    场景: 切换会话后的模式事件路由
+      假如 Host 成功 switch_session 或 new_session
+      当 发布 planModeChanged
+      那么 事件进入切换后的新会话槽且订阅者收到一次由最新 plan_mode 推导的事件
+
   @req:r1776
   规则: Server 经 dispatch 执行命令
     Server 对可映射的会话命令 须经 protocol::Command + dispatch（或文档化的同一执行路径）执行，不得为同一语义维护第二套与 dispatch 漂移的手写分支。

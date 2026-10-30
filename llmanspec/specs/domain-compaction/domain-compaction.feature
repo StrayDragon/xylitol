@@ -234,7 +234,7 @@
 
   @req:r1400
   规则: 单一配置来源
-    Compaction 配置 须有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens / keep_recent_tokens / model / thinking_level；model 为可选任务模型条目对象，thinking_level 为可选档名覆盖）；不得再保留 compaction_threshold 或重复 CompactionConfig 定义。
+    Compaction 配置 须有且仅有一个 serde 面向类型 XyCompactionSettingsConfig 与一个运行时类型 CompactionSettings（字段 enabled / reserve_tokens / keep_recent_tokens / model / thinking_level；model 为可选任务模型条目对象，thinking_level 为可选档名覆盖）；不得再保留 compaction_threshold 或重复 CompactionConfig 定义。 由配置类型与 serde 单测覆盖，不单独扩 BDD step。
 
   @req:r1402
   规则: 触发估计同源展示

@@ -176,7 +176,7 @@
       那么 各 API 可独立调用且不 panic
   @req:r1077
   规则: SessionStore 端口
-    会话持久化必须经可替换的 SessionStore 端口，不得把文件系统细节写进对话循环。
+    会话持久化必须经可替换的 SessionStore 端口，不得把文件系统细节写进对话循环。 由 crate 图与端口测试覆盖，不单独扩 BDD step。
   @req:r1078
   规则: 导出 IO 端口
     会话导出/导入 须经注入的导出 I/O 端口做文件 I/O（不得直接调用 std::fs），使导出实现无文件系统副作用，未来后端（gist、S3）可替换而不改导出逻辑。
@@ -195,7 +195,7 @@
       那么 返回提及 bash executor 未配置的错误且不 panic
   @req:r1080
   规则: trust 不在对话循环里
-    项目 trust 决策必须经信任存储与 `/trust` 应用面，不得在对话循环里自建 trust store。
+    项目 trust 决策必须经信任存储与 `/trust` 应用面，不得在对话循环里自建 trust store。 由 trust store 与端侧应用面单测覆盖，不单独扩 BDD step。
   @req:r1081
   规则: 从 store 播种 history
     AgentRuntime::run_with_id（或等价入口）在已有 session 上开新一轮时 须经 leaf 分支路径、经与 pi buildContextEntries 同构的 compaction-aware 裁切（取路径上最新 CompactionEntry：保留该摘要，并仅保留 firstKeptEntryId 起至该 compaction 前的条目及 compaction 之后的条目；无 compaction 则保留整条 leaf），再经统一 SessionEntry→AgentMessage 投影灌入 history（含 type=message 内的 LLM/Env 角色，以及 compaction/branchSummary 投影；bang-bash 仅接受 message+role=bashExecution），再追加本轮 user prompt；须尊重 exclude_from_context。不得把 firstKept 之前已被摘要的消息再送入工作 history；不得每轮从空 history 起步；不得仅过滤 Message 行而永久丢弃合法 bang-bash 或摘要上下文；不得将旧顶层 type=bashExecution/bash_execution 提升为合法 history（此类行由 agent-session-store s20 跳过）。
@@ -242,9 +242,19 @@
   规则: compaction-aware session context
     build_session_context / build_session_context_v2（及等价 LLM history 播种）须对 leaf 分支路径应用与 pi buildContextEntries 同构的裁切：存在 CompactionEntry 时仅保留路径上最新一条 compaction 摘要 + firstKeptEntryId 起至该条之前的条目 + 该条之后的条目；不得把 firstKept 之前已被摘要的消息再送入 LLM 上下文。
 
+    场景: 压缩后按叶分支裁切上下文
+      假如 叶分支路径存在 CompactionEntry
+      当 构建 session context
+      那么 仅保留最新摘要与 firstKeptEntryId 起的尾部
+
   @req:r1084
   规则: resume-import-provider-prefix-path
     resume_session / import_from_jsonl（或等价加载）后用于打模型的 history 须经与同进程续跑相同的唯一路径：SessionEntry → as_agent_message（或等价）→ project_for_llm → ResponsesAssembler；有损 Env 折叠文案 须形状稳定。不得另建平行 Env 折叠；不得无显式 change 改稳定折叠串。system date 日界见相邻 c1905；tools 冻表见 c1900。由单测覆盖，不得强制新 BDD step。
+
+    场景: resume 与同进程续跑共用投影路径
+      假如 从 JSONL 恢复会话
+      当 构建送往模型的 history
+      那么 经 SessionEntry → as_agent_message → project_for_llm 同一路径且 Env 折叠形状稳定
 
   @req:r2982
   规则: session-capability-overlay

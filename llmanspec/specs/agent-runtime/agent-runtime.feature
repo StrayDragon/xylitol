@@ -469,6 +469,11 @@
   规则: plan-mode-middleware
     计划模式中间件 须在 before_llm_request 读取最新 `plan_mode`；模式为 plan 时 须注入一次计划契约（先研究/阅读、用 `plan_write` 产出计划、用 `plan_submit` 请求批准）；模式为 execute 时 不得注入。会话 id 缺失或存储不可用时 须静默降级，不得中断 run。中间件 不得改写工具表、不得调用模型或工具；工具只读限制 不在本要求范围。
 
+    场景: 中间件按最新模式注入
+      假如 注册 plan-mode 中间件且会话 plan_mode 为 plan
+      当 运行 before_llm_request
+      那么 注入一次计划契约；模式为 execute 时不注入
+
   @req:r2929
   规则: loop-middleware-structured-result
     after_tool 中间件 须在脚本 hooks 与 AgentHooks 之后、core quiet 摘要之前接收结构化结果：载荷含原始内容分片、可解析的结构化详情与错误标志，不得只提供拍平文本。中间件改写后的内容与详情 须成为本调用的历史回写与 ToolExecutionEnd 结果；core 的 write/edit quiet 摘要 仅在结果仍为单段文本时生效，且不得丢弃中间件给出的结构化详情。工具产出的非文本分片 须在历史回写中保真，不得被拍平为占位文本。
@@ -562,25 +567,55 @@
   规则: message-persist-before-end
     ReAct 的每一条消息（用户 pending、助手正常完成、助手中断、助手中间件 stop）须先写入会话存储再下行 MessageEnd，使客户端收到完成事件时 存储已可读到该条；不得先发 MessageEnd 再落库。落库失败 不得阻断 MessageEnd 下行（沿用既有 warn 语义），但 不得因此把顺序颠倒回去。
 
+    场景: 消息先落库再下行
+      假如 助手消息正常完成
+      当 ReAct 下行 MessageEnd
+      那么 该消息已可在会话存储读到
+
   @req:r2939
   规则: todo-reminder
     todo 提醒中间件 须在 before_llm_request 读取当前 todo（经 BeforeLlmRequestCtx.todo）；当 todo 非空且仍有未完成项，并满足以下任一条件时，向本回合模型上下文追加一条短提醒：连续 N 次工具调用未更新 todo、最后一条 assistant 宣称完成、上一次工具失败。同一 turn 至多提醒一次。提醒 须只读：不得自动改写 todo、不得产生新事件、不得调用模型或工具；未满足条件或 todo 为空时 不得追加任何内容。阈值与开关 须可配置。提醒行为 由中间件单测覆盖。
+
+    场景: 未完成 todo 触发一次提醒
+      假如 todo 非空且仍有未完成项
+      当 连续工具调用未更新 todo
+      那么 本回合模型上下文追加一条短提醒且同一 turn 至多一次
 
   @req:r2940
   规则: tool-exposure
     工具收窄中间件 须在 before_llm_request 改写 tool_schemas：按配置的 allow / deny 与只读开关收窄模型可见工具；`todo_rewrite` 与 `todo_update` 须始终可见，避免计划无法更新。收窄 只影响模型可见性：不得删除工具、不得改变 permission 终裁、不得影响 before_tool 的路由目标校验。未启用或规则为空时 不得改变 schema 形状。过滤前后数量与理由 须可观测。step/risk 的细粒度映射 不在本要求范围，后续 change 再评估。
 
+    场景: 工具收窄只改模型可见性
+      假如 配置 allow 与只读开关
+      当 运行 before_llm_request
+      那么 tool_schemas 按规则收窄且 todo_rewrite / todo_update 始终可见
+
   @req:r2942
   规则: todo-checkpoint-middleware
     todo checkpoint 中间件 须在 after_tool 记录 todo 状态变化与工具失败，并在 before_llm_request（或 after_turn）把变化落为 todo_checkpoint 条目；恢复后的首个 before_llm_request 须注入一次短摘要（已完成/总数、当前步骤、上次失败）。注入 须只读：不得自动重跑已完成步骤、不得改写 todo、不得调用模型或工具；无 checkpoint 或 todo 已完成时 不得注入。同一会话至多注入一次。会话 id 缺失或存储不可用时 须降级为仅内存，不得中断 run。写入 须只追加，不覆盖或删除历史 checkpoint。
+
+    场景: todo 变化落为 checkpoint 并恢复注入
+      假如 工具调用改变了 todo 状态
+      当 执行 after_tool 与 before_llm_request
+      那么 追加 todo_checkpoint 条目且恢复后首个请求注入一次摘要
 
   @req:r2943
   规则: self-heal
     自愈中间件 须只在 after_tool 识别到确定性失败签名时介入：命中签名 须记录 pending（工具名、签名、尝试次数）并在结果后追加短指引，要求诊断、修复后重跑同一验证；同一工具成功 须清除 pending。非确定性失败（超时、网络、权限等）不得进入自愈。decide_continue 须在 pending 且尝试次数小于配置上限时 Continue，达到上限时 Stop；无 pending 时 不得改变基线。上限 须远小于 core 的 32 次硬上限。不得在插件内调用模型或工具，不得自动回滚。自愈与 todo-progress 可并存，Stop 仍由最先返回 Stop 的中间件决定。
 
+    场景: 确定性失败触发自愈
+      假如 after_tool 命中确定性失败签名
+      当 decide_continue 在尝试次数小于上限时裁决
+      那么 追加修复指引并 Continue；同工具成功清除 pending
+
   @req:r2944
   规则: generator-critic
     生成评审中间件 须在 after_llm_response 只对**无 tool_calls 的 assistant 最终答案**启动评审，且评审调用仍由 core 调度（插件不得自行调用模型）。状态机须为 Idle → Critiquing →（Approved | Revising）→ … → Approved | Exhausted；Critiquing 时 before_llm_request 注入 rubric 与 verdict 格式，Revising 时注入 critic 意见。critic 须以单独一行 `CRITIC_VERDICT: APPROVE` 或 `CRITIC_VERDICT: REVISE` 结尾；无结构化 verdict 时最多再要求一次，超过一次须停止。decide_continue 在 Critiquing / Revising 时 Continue，在 Approved / Exhausted 时 Stop，其它状态不得改变基线。评审轮数 须受 `max_rounds` 约束且远小于 core 的 32；达到上限须停止并记录原因。不得允许 critic 触发 compact，不得自动改代码或提交。
+
+    场景: 最终答案进入评审状态机
+      假如 assistant 最终答案无 tool_calls
+      当 执行 after_llm_response
+      那么 进入 Critiquing 且 critic 以 CRITIC_VERDICT 结尾；批准后 Stop
 
   @req:r2962
   规则: multiple-before-tool-gates

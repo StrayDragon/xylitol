@@ -172,6 +172,11 @@
   规则: notice-taxonomy
     产品 TUI 的通知面 须按单一分类选择：**通知条**只承载需要立刻处理的阻塞拒绝、软闸或即时失败；**右上角通知栈**只承载即时确认（复制成功）与短时客户端提示；**滚动提示**承载耐久导航结果、操作结果与错误（rename/delete/import/export/fork、model/thinking 失败、compaction/retry 细节）；**系统消息**承载必须进入模型上下文的耐久信息。耐久结果 不得只以通知条呈现；瞬时闸门 不得制造滚动噪声；估算来源 不得另立通知面（footer `~`/`?%` 已表达）。分类 须以调用点审计与单测锁定。
 
+    场景: 通知面按分类选择
+      假如 发生阻塞拒绝、复制成功或导航结果
+      当 选择通知面
+      那么 分别进入通知条、通知栈或滚动提示
+
   @req:r1228
   规则: fixed-zone-footprint-term-budget
     产品 TUI 须维护 Fixed-Zone Footprint（单表或单函数 SSOT）：按终端行高 term_rows 为下缘固定区预留最小行（busy status 按前导空行+短词计 2 行、footer 1 行；非空 queue strip / ModeStrip / 通知条 / 待办栏各按其实际行计入；右上角通知栈 不得计入该下缘预留）。EditorSlot 内带 max_visible 的列表/树（至少 Resume、Tree、Models、MCP、Themes、Import）body 可见行顶 须 = term_rows 减去上述 reserved 与槽头行后的预算且 须 ≥ 1；不得以与 term_rows 脱节的硬编码 10 作为运行时顶。content-end 视口下，短终端 agent-busy 且上述高槽打开时，视口内 须仍能看到 status lead（Working 或等价 spinner 短词）。不得为本需求改 xylitol-tui content-end 视口语义或引入引擎级 bottom-fixed-zone pin（除非另开变更）。
@@ -223,6 +228,11 @@
   @req:r2956
   规则: mode-strip-single-line
     产品 TUI 须提供 ModeStrip 固定区成员：仅一行、前导 glyph（unicode `◆` / ascii `*`）加短状态；无模式时 须占 0 行；不得换行、展开或交互。长文本 须右截断而非增高；不得写入 UiModel.entries / ScrollNotice / 通知条；须计入 Fixed-Zone Footprint 实际行。首消费者为 plan 模式（`plan` / `execute · <plan_id>`），状态 须仅由 `planModeChanged` 驱动；会话切换/恢复时 端侧 可基于会话条目做一次初始快照作为订阅事件的兜底，事件到达后 须以事件为准，不得在快照之外另造模式来源；`execute` 无 plan 时 须隐藏。
+
+    场景: ModeStrip 单行且无模式占零行
+      假如 当前无模式或模式文本过长
+      当 渲染固定区
+      那么 ModeStrip 占 0 行或单行右截断且不增高
 
   @req:r2903
   规则: 会话详情覆盖弹出框

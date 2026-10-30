@@ -14,6 +14,11 @@
   规则: plan-mode-bridge
     `planModeChanged` 须经 `apply_xy_event` 单一桥缝映射为 `UiModel.mode_strip`：mode=plan → `plan`；mode=execute 且有 plan_id → `execute · <plan_id>`；mode=execute 无 plan_id → 隐藏。`planDocUpdated` 须被桥缝消费且不得 panic。渲染层 不得直接 match 该事件或自行维护模式状态。
 
+    场景: planModeChanged 经单一桥缝映射
+      假如 收到 planModeChanged 事件
+      当 apply_xy_event 处理
+      那么 UiModel.mode_strip 按 mode 与 plan_id 显示或隐藏
+
   @req:r1180
   规则: agent-loop-lifecycle
     用户可见忙碌态 须覆盖从提交或 steer 起至 AgentEnd 且 follow-up 队列为空；中间 TurnEnd 不得被当作整轮结束去清空 streaming 尾或复位 idle。

@@ -60,7 +60,7 @@
 
   @req:r1740
   规则: 配置边界承载 JsonSchema
-    需要对外暴露 JSON Schema 的配置结构必须在配置边界定义或包装，不得为 schema 去改会话词汇。
+    需要对外暴露 JSON Schema 的配置结构必须在配置边界定义或包装，不得为 schema 去改会话词汇。 由配置边界 JsonSchema 快照/单测覆盖，不单独扩 BDD step。
 
   @req:r1741
   规则: mcp_servers 配置字段
@@ -198,6 +198,11 @@
   @req:r2959
   规则: feature-plugin-config-sections
     todo / workflow / plan 须为顶层配置节。todo 缺省启用（progress / reminder / checkpoint 缺省停用）；workflow 缺省停用；plan 缺省启用且 read_only 缺省 true。旧 `loop_example` 配置节 须被拒绝，并提示迁移到 `loop_policies`；`loop_policies.todo_progress / todo_reminder / todo_reminder_stale_after / todo_checkpoint / plan_mode / workflow` 键 须被拒绝，并提示迁移到新节。默认值与旧键拒绝 由配置 crate 单测覆盖。
+
+    场景: 顶层功能配置节
+      假如 配置含 todo / workflow / plan 节
+      当 加载配置
+      那么 各节按缺省启用状态生效且旧 loop_example 被拒绝并提示迁移
 
   @req:r2978
   规则: tools-selection-list

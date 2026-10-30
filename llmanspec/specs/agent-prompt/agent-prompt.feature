@@ -98,6 +98,11 @@
   规则: session-prepare-env-append
     会话准备结果相对上次有变时，产品路径 必须将增量以状态栏族 Env CustomMessage（project_for_llm 投影为 user）持久化在下一真实用户输入之前；无变 不得追加；不得改写既有 turn。正确性优先于供应商 KV cache：有变必须让模型在下一问前看见增量。不得把整份系统提示正文写成 user 行（系统提示仍走 generate options，对齐 r1039）。不得用该行冒充 MCP ready 聊天宣告。压缩裁剪后若当前准备快照缺失或过期，继续生成前 须 ensure 追加并持久化。由单测覆盖；不得为静态存在性单独扩 BDD step。
 
+    场景: 会话准备增量先于用户输入
+      假如 会话准备结果相对上次有变化
+      当 提交下一条真实用户输入
+      那么 增量以 Env CustomMessage 持久化在该输入之前
+
   @req:r1019
   规则: no-instructions-dual-copy
     openai-responses 主路径 不得将系统提示再写入顶栏 instructions 与 input 前缀各一份；SSOT 为 system_prompt → input 前缀 item（thinking on 可为 developer）。由 Assembler/单测回归覆盖。

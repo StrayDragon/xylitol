@@ -48,6 +48,11 @@
   规则: plan-mode-rpc
     产品 须提供 `set_plan_mode` unary（Auth=Writer、Exec=Inline）：参数 mode ∈ {toggle, plan, execute} 与可选 plan_id；toggle 须在 plan/execute 间翻转。成功 须返回当前 mode 与 plan_id，并发布 `planModeChanged` 下行动；plan 文档更新 须发布 `planDocUpdated`，载荷含文档 JSON。事件 须经 xylitol-wire 唯一映射，不得在客户端另造模式状态来源。
 
+    场景: set_plan_mode unary 往返
+      假如 客户端调用 set_plan_mode 且 mode 为 toggle
+      当 Host 处理该 unary
+      那么 返回当前 mode 与 plan_id 并发布 planModeChanged
+
   @req:r1699
   规则: 会话命令分发
     RPC dispatch 须实现 SwitchSession：经 SessionStore 校验目标会话存在并切换上下文；GetMessages 返回已加载 SessionEntry 记录；ExportJsonl 与 ImportJsonl 委托会话导出/导入实现；不得交付 stub 或仅字符串实现。GetMessages 须接受可选 limit 与 before_entry_id：limit 缺省时返回全量以保持既有调用形状；给定 limit 时从最新一条向前取该条数；给定 before_entry_id 时取该条目之前的更早条目。分页参数须为可选字段，不得另立第二套读取方法。
