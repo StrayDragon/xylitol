@@ -191,32 +191,47 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
         body["include"] = serde_json::json!(["reasoning.encrypted_content"]);
     }
 
-    if wire_policy.allows_prompt_cache_key()
-        && let Some(session_id) = options
-            .obs_session
-            .session_id
-            .as_deref()
-            .filter(|s| !s.is_empty())
-    {
-        body["prompt_cache_key"] = serde_json::json!(session_id);
-        if let Some(retention) = wire_policy.prompt_cache_retention() {
-            body["prompt_cache_retention"] = serde_json::json!(retention.as_wire_str());
-        }
-    }
-
-    if let Some(output) = options.structured_output.as_ref() {
-        body["text"] = serde_json::json!({
-            "format": {
-                "type": "json_schema",
-                "name": &output.name,
-                "schema": &output.schema,
-                "strict": output.strict.unwrap_or(false),
-            }
-        });
-    }
+    apply_prompt_cache_key(&mut body, options, wire_policy);
+    apply_text_format(&mut body, options);
 
     apply_responses_wire_policy(&mut body, wire_policy);
     (body, replay_diagnostics)
+}
+
+fn apply_prompt_cache_key(
+    body: &mut Value,
+    options: &crate::thinking::XyGenerateOptions,
+    wire_policy: &WirePolicy,
+) {
+    if !wire_policy.allows_prompt_cache_key() {
+        return;
+    }
+    let Some(session_id) = options
+        .obs_session
+        .session_id
+        .as_deref()
+        .filter(|s| !s.is_empty())
+    else {
+        return;
+    };
+    body["prompt_cache_key"] = serde_json::json!(session_id);
+    if let Some(retention) = wire_policy.prompt_cache_retention() {
+        body["prompt_cache_retention"] = serde_json::json!(retention.as_wire_str());
+    }
+}
+
+fn apply_text_format(body: &mut Value, options: &crate::thinking::XyGenerateOptions) {
+    let Some(output) = options.structured_output.as_ref() else {
+        return;
+    };
+    body["text"] = serde_json::json!({
+        "format": {
+            "type": "json_schema",
+            "name": &output.name,
+            "schema": &output.schema,
+            "strict": output.strict.unwrap_or(false),
+        }
+    });
 }
 
 pub(crate) fn apply_responses_wire_policy(body: &mut Value, wire_policy: &WirePolicy) {
