@@ -94,3 +94,12 @@
   @req:r3011
   规则: anthropic-thinking-replay
     Anthropic Messages 方言回放 必须 按 AgentPart::Thinking 的签名状态分派：带签名且 redacted=false 必须 映射为 {"type":"thinking","thinking","signature"}，redacted=true 必须 映射为 {"type":"redacted_thinking","data":signature}；不得 把带签名的 thinking 降级为 text block。无签名的旧 thinking 不得 伪造签名，必须 降级为 text block 并记录诊断。回放 block 顺序 必须 保持原 assistant 轮次顺序（thinking 先于 text 与 tool_use）。由插件单测覆盖。
+  @req:r3012
+  规则: anthropic-stream-terminal-events
+    Anthropic Messages 流式方言 必须 把 SSE `error` 事件转为错误：携带 `error.type` 与 `error.message` 返回 `XyError::Provider`，不得 静默结束流。`message_stop` 必须 兜底发出 `Done`，且 不得 重复发出；异常 EOF（未见终止事件）必须 返回错误，不得 静默当作完成。由插件单测（wiremock 回放）覆盖。
+  @req:r3013
+  规则: anthropic-stop-reason-mapping
+    Anthropic Messages 方言 必须 完整映射 `stop_reason`：`max_tokens` 与 `model_context_window_exceeded` 映射为长度截断并进入上下文溢出路径，`tool_use` 映射为工具调用，`refusal` 与 `sensitive` 映射为错误，`pause_turn` 映射为正常结束并注明自动重发为未实现语义。流式与非流式 必须 使用同一映射。由插件单测覆盖。
+  @req:r3014
+  规则: anthropic-usage-cache-reporting
+    Anthropic Messages 方言 必须 从响应 usage 如实上报缓存用量：`cache_read_input_tokens` 计入缓存读取，`cache_creation_input_tokens` 计入缓存写入，`cache_creation.ephemeral_1h_input_tokens` 计入 1 小时分量；不得 恒报零缓存。上下文总量口径 必须 含缓存部分（输入 + 缓存读取 + 缓存写入 + 输出）。流式 必须 合并 `message_start` 与 `message_delta` 的 usage 字段。由插件单测覆盖。

@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use futures::Stream;
 use serde_json::Value;
 
-use crate::dto::{AgentPart, XyChunk, XyStopReason};
+use crate::dto::{AgentPart, XyChunk, XyStopReason, XyUsage};
 use crate::hooks::{
     HeaderBag, HttpHooks, run_after_response, run_before_headers, run_before_request,
 };
@@ -236,8 +236,8 @@ fn anthropic_stream(
         let mut tool_accumulators: HashMap<usize, (String, String, String)> = HashMap::new();
         let mut thinking_accumulators: HashMap<usize, (String, Option<String>)> = HashMap::new();
         let mut current_block_index: Option<usize> = None;
-        let mut usage_input: u64 = 0;
-        let mut usage_output: u64 = 0;
+        let mut usage_fields: serde_json::Map<String, Value> = serde_json::Map::new();
+        let mut done_emitted = false;
 
         'sse: loop {
             let event_result = tokio::time::timeout(
@@ -411,8 +411,8 @@ fn anthropic_stream(
                         .and_then(|d| d.get("stop_reason"))
                         .and_then(|v| v.as_str());
 
-                    if let Some(u) = data.get("usage").and_then(|u| u.get("output_tokens")).and_then(|v| v.as_u64()) {
-                        usage_output = u;
+                    if let Some(u) = data.get("usage") {
+                        merge_usage_fields(&mut usage_fields, u);
                     }
 
                     if stop_reason.is_some() {
@@ -444,25 +444,8 @@ fn anthropic_stream(
                             yield chunk;
                         }
 
-                        let finish = match stop_reason {
-                            Some("max_tokens") => XyStopReason::MaxTokens,
-                            _ => XyStopReason::Stop,
-                        };
-
-                        let usage_total = usage_input + usage_output;
-                        let usage = if usage_total > 0 {
-                            Some(
-                                crate::dto::XyUsage {
-                                    input: usage_input,
-                                    output: usage_output,
-                                    total_tokens: usage_total,
-                                    ..Default::default()
-                                }
-                                .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(0)),
-                            )
-                        } else {
-                            None
-                        };
+                        let finish = map_anthropic_stop_reason(stop_reason);
+                        let usage = anthropic_usage_from_fields(&usage_fields);
                         let chunk = XyChunk::Done {
                             finish_reason: finish,
                             usage,
@@ -471,20 +454,81 @@ fn anthropic_stream(
                             t.emit_mapped_chunk(&chunk);
                         }
                         yield chunk;
+                        done_emitted = true;
                     }
                 }
 
                 "message_start" => {
                     if let Some(msg) = data.get("message")
-                        && let Some(u) = msg.get("usage").and_then(|u| u.get("input_tokens")).and_then(|v| v.as_u64()) {
-                            usage_input = u;
+                        && let Some(u) = msg.get("usage") {
+                            merge_usage_fields(&mut usage_fields, u);
                         }
                 }
-                "message_stop" | "ping" => {}
+                "message_stop" => {
+                    if !done_emitted {
+                        let chunk = XyChunk::Done {
+                            finish_reason: XyStopReason::Stop,
+                            usage: anthropic_usage_from_fields(&usage_fields),
+                        };
+                        if let Some(t) = &trace {
+                            t.emit_mapped_chunk(&chunk);
+                        }
+                        yield chunk;
+                        done_emitted = true;
+                    }
+                }
+                "ping" => {}
+                "error" => {
+                    let error = data.get("error");
+                    let kind = error
+                        .and_then(|e| e.get("type"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("api_error");
+                    let message = error
+                        .and_then(|e| e.get("message"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("Anthropic stream error");
+                    Err(XyError::Provider(anyhow::anyhow!(
+                        "Anthropic stream error ({kind}): {message}"
+                    )))?;
+                }
                 _ => {}
             }
         }
+
+        if !done_emitted {
+            Err(XyError::Provider(anyhow::anyhow!(
+                "Anthropic stream ended without terminal event"
+            )))?;
+        }
     })
+}
+
+fn merge_usage_fields(into: &mut serde_json::Map<String, Value>, usage: &Value) {
+    let Some(obj) = usage.as_object() else {
+        return;
+    };
+    for (key, value) in obj {
+        into.insert(key.clone(), value.clone());
+    }
+}
+
+fn anthropic_usage_from_fields(fields: &serde_json::Map<String, Value>) -> Option<XyUsage> {
+    if fields.is_empty() {
+        return None;
+    }
+    let usage = crate::usage::from_anthropic_usage(&Value::Object(fields.clone()));
+    (usage.total_tokens > 0).then_some(usage)
+}
+
+fn map_anthropic_stop_reason(stop_reason: Option<&str>) -> XyStopReason {
+    match stop_reason {
+        Some("max_tokens" | "model_context_window_exceeded") => XyStopReason::MaxTokens,
+        Some("tool_use") => XyStopReason::ToolUse,
+        Some("refusal" | "sensitive") => XyStopReason::Error,
+        Some("pause_turn") => XyStopReason::Stop,
+        _ => XyStopReason::Stop,
+    }
 }
 
 fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
@@ -535,28 +579,11 @@ fn parse_anthropic_response(json: &Value) -> Vec<XyChunk> {
         }
     }
 
-    let finish = match json.get("stop_reason").and_then(|v| v.as_str()) {
-        Some("max_tokens") => XyStopReason::MaxTokens,
-        _ => XyStopReason::Stop,
-    };
+    let finish = map_anthropic_stop_reason(json.get("stop_reason").and_then(|v| v.as_str()));
 
     let usage = json.get("usage").and_then(|u| {
-        let input = u.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        let output = u.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-        let total = input + output;
-        if total > 0 {
-            Some(
-                crate::dto::XyUsage {
-                    input,
-                    output,
-                    total_tokens: total,
-                    ..Default::default()
-                }
-                .with_prompt_cache_read(crate::dto::PromptCacheRead::Tokens(0)),
-            )
-        } else {
-            None
-        }
+        let mapped = crate::usage::from_anthropic_usage(u);
+        (mapped.total_tokens > 0).then_some(mapped)
     });
 
     chunks.push(XyChunk::Done {
@@ -1372,6 +1399,199 @@ mod tests {
         assert_eq!(content[0]["type"], "redacted_thinking");
         assert_eq!(content[0]["data"], "opaque-data");
         assert!(content[0].get("thinking").is_none());
+    }
+
+    async fn run_sse(sse: &str) -> Vec<Result<XyChunk, XyError>> {
+        use futures::StreamExt;
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(sse.to_string(), "text/event-stream"),
+            )
+            .mount(&server)
+            .await;
+        let adapter = AnthropicMessagesAdapter::new(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some(server.uri()),
+            None,
+        );
+        let mut stream = adapter
+            .generate_stream(
+                vec![XyLlmMessage::user("hi")],
+                &[],
+                true,
+                Default::default(),
+            )
+            .await
+            .expect("stream established");
+        let mut items = Vec::new();
+        while let Some(item) = stream.next().await {
+            items.push(item);
+        }
+        items
+    }
+
+    fn sse_terminal(stop_reason: &str) -> String {
+        concat!(
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":2,\"output_tokens\":0}}}\n\n",
+            "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"REASON\"},\"usage\":{\"output_tokens\":3}}\n\n",
+            "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+        )
+        .replace("REASON", stop_reason)
+    }
+
+    fn done_of(items: &[Result<XyChunk, XyError>]) -> &XyChunk {
+        items
+            .iter()
+            .filter_map(|item| item.as_ref().ok())
+            .find(|chunk| matches!(chunk, XyChunk::Done { .. }))
+            .expect("Done chunk")
+    }
+
+    #[tokio::test]
+    async fn stream_error_event_terminates_with_provider_error() {
+        let sse = concat!(
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n",
+            "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
+        );
+        let items = run_sse(sse).await;
+        let err = items
+            .last()
+            .expect("stream items")
+            .as_ref()
+            .expect_err("error event must surface Err");
+        assert!(err.to_string().contains("overloaded_error"), "{err}");
+        assert!(
+            !items
+                .iter()
+                .any(|item| matches!(item, Ok(XyChunk::Done { .. }))),
+            "error event must not be followed by Done"
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_message_stop_without_delta_emits_done() {
+        let sse = concat!(
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}\n\n",
+            "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+        );
+        let items = run_sse(sse).await;
+        match done_of(&items) {
+            XyChunk::Done {
+                finish_reason,
+                usage,
+            } => {
+                assert_eq!(*finish_reason, XyStopReason::Stop);
+                assert_eq!(usage.expect("usage from message_start").input, 5);
+            }
+            other => panic!("expected Done, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_eof_without_terminal_event_errors() {
+        let sse = concat!(
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\n",
+            "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+            "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}\n\n",
+        );
+        let items = run_sse(sse).await;
+        let err = items
+            .last()
+            .expect("stream items")
+            .as_ref()
+            .expect_err("truncated stream must surface Err");
+        assert!(err.to_string().contains("without terminal event"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn stream_stop_reason_mapping() {
+        let cases = [
+            ("model_context_window_exceeded", XyStopReason::MaxTokens),
+            ("max_tokens", XyStopReason::MaxTokens),
+            ("tool_use", XyStopReason::ToolUse),
+            ("refusal", XyStopReason::Error),
+            ("pause_turn", XyStopReason::Stop),
+            ("end_turn", XyStopReason::Stop),
+        ];
+        for (reason, expected) in cases {
+            let items = run_sse(&sse_terminal(reason)).await;
+            match done_of(&items) {
+                XyChunk::Done {
+                    finish_reason,
+                    usage: _,
+                } => assert_eq!(*finish_reason, expected, "stop_reason={reason}"),
+                other => panic!("expected Done for {reason}, got {other:?}"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn stream_usage_reports_cache_fields() {
+        let sse = concat!(
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":100,\"output_tokens\":0,\"cache_read_input_tokens\":40,\"cache_creation_input_tokens\":10,\"cache_creation\":{\"ephemeral_5m_input_tokens\":6,\"ephemeral_1h_input_tokens\":4}}}}\n\n",
+            "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":20}}\n\n",
+            "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+        );
+        let items = run_sse(sse).await;
+        match done_of(&items) {
+            XyChunk::Done { usage, .. } => {
+                let usage = usage.as_ref().expect("usage");
+                assert_eq!(usage.input, 100);
+                assert_eq!(usage.output, 20);
+                assert_eq!(usage.cache_read, 40);
+                assert_eq!(usage.cache_write, 10);
+                assert_eq!(usage.cache_write_1h, 4);
+                assert_eq!(usage.total_tokens, 170);
+            }
+            other => panic!("expected Done, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn non_stream_usage_reports_cache_fields() {
+        let json = serde_json::json!({
+            "content": [{"type": "text", "text": "ok"}],
+            "stop_reason": "end_turn",
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 20,
+                "cache_read_input_tokens": 40,
+                "cache_creation_input_tokens": 10
+            }
+        });
+        let chunks = parse_anthropic_response(&json);
+        let usage = chunks
+            .iter()
+            .find_map(|c| match c {
+                XyChunk::Done { usage, .. } => usage.as_ref(),
+                _ => None,
+            })
+            .expect("usage");
+        assert_eq!(usage.cache_read, 40);
+        assert_eq!(usage.cache_write, 10);
+        assert_eq!(usage.total_tokens, 170);
+    }
+
+    #[test]
+    fn non_stream_context_window_stop_maps_to_max_tokens() {
+        let json = serde_json::json!({
+            "content": [{"type": "text", "text": "ok"}],
+            "stop_reason": "model_context_window_exceeded",
+            "usage": {"input_tokens": 1, "output_tokens": 1}
+        });
+        let chunks = parse_anthropic_response(&json);
+        match chunks.last().expect("done") {
+            XyChunk::Done { finish_reason, .. } => {
+                assert_eq!(*finish_reason, XyStopReason::MaxTokens);
+            }
+            other => panic!("expected Done, got {other:?}"),
+        }
     }
 
     #[test]

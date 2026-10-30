@@ -52,40 +52,6 @@ fn completions_prompt_cache_read(value: &Value, policy: WirePolicy) -> PromptCac
     PromptCacheRead::NotReported
 }
 
-pub fn from_anthropic_usage(value: &Value) -> XyUsage {
-    let input = value
-        .get("input_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let output = value
-        .get("output_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let cache_read = value
-        .get("cache_read_input_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let cache_write = value
-        .get("cache_creation_input_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    let cache_write_1h = value
-        .get("cache_creation")
-        .and_then(|c| c.get("ephemeral_1h_input_tokens"))
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0);
-    XyUsage {
-        input,
-        output,
-        cache_write,
-        cache_write_1h,
-        total_tokens: input + output,
-        cost: None,
-        ..XyUsage::default()
-    }
-    .with_prompt_cache_read(PromptCacheRead::Tokens(cache_read))
-}
-
 pub fn from_responses_usage(value: &Value) -> XyUsage {
     from_responses_usage_with_policy(value, WirePolicy::default())
 }
@@ -234,22 +200,6 @@ mod tests {
         let u = from_responses_usage_with_policy(&json, WirePolicy::for_compat(Compat::Deepseek));
         assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(640));
         assert_eq!(u.cache_read, 640);
-    }
-
-    #[test]
-    fn anthropic_usage_maps_cache_fields() {
-        let json = serde_json::json!({
-            "input_tokens": 200,
-            "output_tokens": 80,
-            "cache_read_input_tokens": 40,
-            "cache_creation_input_tokens": 10
-        });
-        let u = from_anthropic_usage(&json);
-        assert_eq!(u.input, 200);
-        assert_eq!(u.output, 80);
-        assert_eq!(u.cache_read, 40);
-        assert_eq!(u.cache_write, 10);
-        assert_eq!(u.prompt_cache_read, PromptCacheRead::Tokens(40));
     }
 
     #[test]

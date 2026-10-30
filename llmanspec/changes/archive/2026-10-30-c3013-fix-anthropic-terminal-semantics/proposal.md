@@ -2,6 +2,9 @@
 depends_on: []
 title: Anthropic Messages 终止语义与 usage 保真
 needs_specs_change: true
+branch: sdd/c3013-fix-anthropic-terminal-semantics
+base_branch: main
+base_sha: 11a392f3842c71dec815e1c5a673bfcc5baba6f4
 ---
 
 # Anthropic Messages 终止语义与 usage 保真
