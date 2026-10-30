@@ -96,7 +96,7 @@ mod tests {
             assert_eq!(mode & 0o777, 0o600, "registration must be 0600");
         }
         assert_eq!(read_registration(&path).expect("read"), reg);
-        assert!(!dir.join("serve.tmp").exists(), "tmp must be renamed");
+        assert!(!dir.join("serve.json.tmp").exists(), "tmp must be renamed");
         remove_registration(&path);
         assert!(!path.exists());
         assert!(read_registration(&path).is_err());
