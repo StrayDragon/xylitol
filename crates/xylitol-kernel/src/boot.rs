@@ -16,6 +16,7 @@ pub enum Profile {
     Embed,
 }
 
+#[derive(Clone)]
 pub struct BootOptions {
     pub profile: Profile,
     pub config_path: Option<std::path::PathBuf>,
@@ -104,6 +105,7 @@ fn static_tools_from_ctx(ctx: &Ctx) -> Vec<std::sync::Arc<dyn xylitol_plugin_sdk
 pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapError> {
     let ctx = Ctx::root().map_err(cordis_to_bootstrap)?;
     mount_core(&ctx, opts).await?;
+    crate::subagent::register_subagent_tool(&ctx, opts);
 
     let mut builtins = official_builtins();
     let external_specs = external_plugin_specs(&ctx);

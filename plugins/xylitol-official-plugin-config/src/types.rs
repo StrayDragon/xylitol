@@ -52,6 +52,30 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub dap: Option<DapPluginConfig>,
+
+    #[serde(default)]
+    pub subagent: Option<SubagentConfig>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(default, deny_unknown_fields)]
+pub struct SubagentConfig {
+    pub tools: Vec<String>,
+}
+
+impl Default for SubagentConfig {
+    fn default() -> Self {
+        Self {
+            tools: vec![
+                "read".into(),
+                "grep".into(),
+                "find".into(),
+                "ls".into(),
+                "ffgrep".into(),
+                "fffind".into(),
+            ],
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -1026,6 +1050,28 @@ dap:
         assert_eq!(dap.backend, "python3 -m debugpy.adapter");
         assert_eq!(dap.cwd.as_deref(), Some("/tmp/project"));
         assert!(dap.compression);
+    }
+
+    #[test]
+    fn subagent_config_deserializes_and_defaults_tools() {
+        let cfg: AppConfig = yaml_serde::from_str(
+            r#"
+subagent:
+  tools: [read, ls]
+"#,
+        )
+        .expect("subagent config");
+        let subagent = cfg.subagent.expect("subagent");
+        assert_eq!(subagent.tools, vec!["read".to_string(), "ls".to_string()]);
+
+        let cfg: AppConfig = yaml_serde::from_str(
+            "subagent: {}
+",
+        )
+        .expect("empty subagent");
+        let subagent = cfg.subagent.expect("subagent");
+        assert!(subagent.tools.contains(&"read".to_string()));
+        assert!(subagent.tools.contains(&"ffgrep".to_string()));
     }
 
     #[test]

@@ -113,6 +113,9 @@ models:
 #   backend: "python3 -m debugpy.adapter"
 #   compression: true
 
+# subagent:  # read-only sub-agent delegation (absent = no tool)
+#   tools: [read, grep, find, ls]
+
 security:
   enabled: true
   permission:
