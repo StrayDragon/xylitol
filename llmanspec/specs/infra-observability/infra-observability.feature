@@ -34,6 +34,11 @@
     场景: fastrace单一栈
       当 读取观测栈依赖清单
       那么 仅用 fastrace 与 log 且无 tracing
+
+  @req:r3006
+  规则: rutis-loader-notice-level
+    Host 不链接 rutis-bridge 时，rutis-loader 的 `LoaderService` 会产生 `ErrorKind::NotServedByName`。该提示 须降级为 debug 级，不得以 error 级污染 `xylitol::rutis` 日志；其余 rutis 异步错误 仍须保持 error 级。需要排查按名服务时 须经 `RUST_LOG=xylitol::rutis=debug` 显式打开。
+
   @req:r1465
   规则: agent-low-freq-spans
     当 provider tracing 激活时，一次用户触发的 agent 处理 须提供可关联的低频 fastrace span：根 agent.turn；每步 agent.iteration；模型流 llm.request（可与 request_id 对照）；可选 tool.execute；若发生会话 compaction 则 须另有 agent.compaction（挂于该 turn 下，或无 turn 时为独立根）。主路径子 span 须挂在 turn/iteration/compaction 父节点之下（共享 trace_id），不得在活跃 turn 下各自无关 random 根。agent.turn 结束时 须能区分正常完成与用户 abort（见 infra-otel otel20）。不得为每条 SSE / 每帧 TUI tick 安装无采样 span。默认 不得启用 OpenTelemetry/Jaeger 等外部导出 Reporter；远程 OTLP 仅可经独立 [otel] 配置 + feature otel 显式 opt-in（见 infra-otel），且不得写 stdout/stderr。
