@@ -576,3 +576,38 @@ fn t_ds_allow_all_read() {
         other => panic!("AllowAllPermission must allow /tmp/test read, got {other:?}"),
     });
 }
+
+mod credential_env_bdd {
+    use std::cell::RefCell;
+    use std::collections::BTreeMap;
+
+    use rstest_bdd_macros::{given, then, when};
+
+    thread_local! {
+        static SCRUBBED: RefCell<Option<BTreeMap<String, String>>> = const { RefCell::new(None) };
+    }
+
+    #[given("进程环境含 XYLITOL_SERVE_TOKEN")]
+    pub fn g_env_has_token() {}
+
+    #[when("构建 bash 工具子进程环境")]
+    pub fn w_build_bash_env() {
+        let mut base = BTreeMap::new();
+        base.insert("XYLITOL_SERVE_TOKEN".into(), "secret".into());
+        base.insert("XYLITOL_AUTH_TOKEN".into(), "secret".into());
+        base.insert("PATH".into(), "/usr/bin:/bin".into());
+        let env = xylitol_official_plugin_tools::process::shell::shell_env_with_agent_bin(base);
+        SCRUBBED.with(|slot| slot.replace(Some(env)));
+    }
+
+    #[then("该变量被移除")]
+    pub fn t_env_removed() {
+        SCRUBBED.with(|slot| {
+            let env = slot.borrow();
+            let env = env.as_ref().expect("env built");
+            assert!(!env.contains_key("XYLITOL_SERVE_TOKEN"));
+            assert!(!env.contains_key("XYLITOL_AUTH_TOKEN"));
+            assert!(env.contains_key("PATH"));
+        });
+    }
+}

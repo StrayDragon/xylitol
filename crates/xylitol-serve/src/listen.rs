@@ -13,6 +13,7 @@ use salvo::server::ServerHandle;
 use salvo::websocket::{Message, WebSocket, WebSocketUpgrade};
 use tokio::sync::mpsc;
 use xylitol_protocol::Notification;
+use xylitol_protocol::auth;
 
 use crate::occupancy::downlink_text;
 use crate::registration::{self, Registration};
@@ -38,6 +39,7 @@ pub trait OccupiedHost: Send + Sync + 'static {
 pub struct ListenConfig {
     pub host: String,
     pub port: u16,
+    pub credential: Option<String>,
 }
 
 impl Default for ListenConfig {
@@ -45,6 +47,7 @@ impl Default for ListenConfig {
         Self {
             host: "127.0.0.1".into(),
             port: 18790,
+            credential: None,
         }
     }
 }
@@ -54,6 +57,7 @@ pub struct RunningListener {
     gateway: Arc<Gateway>,
     evicted: tokio::sync::watch::Receiver<bool>,
     registration_path: Option<PathBuf>,
+    credential: Option<String>,
 }
 
 impl RunningListener {
@@ -74,7 +78,7 @@ impl RunningListener {
         registration_path: PathBuf,
         interval: Duration,
     ) -> std::io::Result<()> {
-        let own = Registration::own(url);
+        let own = Registration::own_with_token(url, self.credential.clone());
         registration::write_registration(&registration_path, &own)?;
         self.registration_path = Some(registration_path.clone());
         let (tx, rx) = tokio::sync::watch::channel(false);
@@ -118,6 +122,11 @@ pub async fn bind_listen(
 
     let tokio_listener = tokio::net::TcpListener::from_std(std_listener)?;
     let acceptor = TcpAcceptor::try_from(tokio_listener)?;
+    let credential = config
+        .credential
+        .clone()
+        .filter(|token| !token.trim().is_empty());
+    gateway.set_auth(credential.clone());
     let router = router(gateway.clone());
     let server = Server::new(acceptor);
     let handle = server.handle();
@@ -137,6 +146,7 @@ pub async fn bind_listen(
             gateway,
             evicted: evict_rx,
             registration_path: None,
+            credential,
         },
         actual_port,
     ))
@@ -207,6 +217,7 @@ pub enum Phase {
 pub struct Gateway {
     phase: AtomicU8,
     host: OnceLock<Arc<dyn OccupiedHost>>,
+    auth: OnceLock<String>,
 }
 
 impl Gateway {
@@ -218,7 +229,18 @@ impl Gateway {
         Arc::new(Self {
             phase: AtomicU8::new(Self::STARTING),
             host: OnceLock::new(),
+            auth: OnceLock::new(),
         })
+    }
+
+    pub fn set_auth(&self, credential: Option<String>) {
+        if let Some(token) = credential {
+            let _ = self.auth.set(token);
+        }
+    }
+
+    pub fn auth(&self) -> Option<&str> {
+        self.auth.get().map(String::as_str)
     }
 
     pub fn set_host(&self, host: Arc<dyn OccupiedHost>) {
@@ -290,9 +312,73 @@ impl Handler for GatewayHoop {
 
 pub fn router(gateway: Arc<Gateway>) -> Router {
     Router::new()
+        .hoop(AuthHoop(gateway.clone()))
         .hoop(GatewayHoop(gateway))
         .push(Router::with_path("healthz").get(healthz))
         .push(Router::with_path("rpc").post(rpc).get(mux_upgrade))
+}
+
+struct AuthHoop(Arc<Gateway>);
+
+#[async_trait]
+impl Handler for AuthHoop {
+    async fn handle(
+        &self,
+        req: &mut Request,
+        depot: &mut Depot,
+        res: &mut Response,
+        ctrl: &mut FlowCtrl,
+    ) {
+        let Some(expected) = self.0.auth() else {
+            ctrl.call_next(req, depot, res).await;
+            return;
+        };
+        if presented_token(req)
+            .is_some_and(|token| constant_time_eq(token.as_bytes(), expected.as_bytes()))
+        {
+            ctrl.call_next(req, depot, res).await;
+        } else {
+            res.status_code(StatusCode::UNAUTHORIZED);
+            let _ = res.add_header(
+                "WWW-Authenticate",
+                format!("Basic realm=\"{}\"", auth::AUTH_REALM),
+                true,
+            );
+            res.render(Json(serde_json::json!({ "error": "unauthorized" })));
+            ctrl.skip_rest();
+        }
+    }
+}
+
+fn presented_token(req: &Request) -> Option<String> {
+    if let Some(value) = req
+        .headers()
+        .get(auth::AUTHORIZATION_HEADER)
+        .and_then(|value| value.to_str().ok())
+        && let Some(token) = auth::token_from_authorization(value)
+    {
+        return Some(token);
+    }
+    let is_ws_upgrade =
+        req.method().as_str() == "GET" && req.uri().path().trim_end_matches('/') == "/rpc";
+    if !is_ws_upgrade {
+        return None;
+    }
+    let query = req.uri().query()?;
+    url::form_urlencoded::parse(query.as_bytes())
+        .find(|(key, _)| key == auth::AUTH_TOKEN_QUERY)
+        .map(|(_, value)| value.into_owned())
+        .filter(|token| !token.is_empty())
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    left.iter()
+        .zip(right)
+        .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+        == 0
 }
 
 fn healthz_body(status: &str, extra: serde_json::Value) -> serde_json::Value {
@@ -618,6 +704,43 @@ mod tests {
             from_server,
             task,
         }
+    }
+
+    #[tokio::test]
+    async fn auth_gate_rejects_missing_and_accepts_discovered_credential() {
+        let gateway = Gateway::starting();
+        gateway.set_auth(Some("test-token".into()));
+        gateway.set_host(Arc::new(FakeHost::default()));
+        let service = Service::new(router(gateway));
+
+        let resp = TestClient::get("http://127.0.0.1:0/healthz")
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::UNAUTHORIZED);
+        assert!(
+            resp.headers()
+                .get("www-authenticate")
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.contains("Basic")),
+            "missing WWW-Authenticate challenge"
+        );
+
+        let resp = TestClient::get("http://127.0.0.1:0/healthz")
+            .add_header(
+                auth::AUTHORIZATION_HEADER,
+                auth::basic_authorization("test-token"),
+                true,
+            )
+            .send(&service)
+            .await;
+        assert_eq!(resp.status_code.unwrap(), StatusCode::OK);
+    }
+
+    #[test]
+    fn constant_time_eq_compares_bytes() {
+        assert!(constant_time_eq(b"token", b"token"));
+        assert!(!constant_time_eq(b"token", b"other"));
+        assert!(!constant_time_eq(b"token", b"token-longer"));
     }
 
     #[tokio::test]

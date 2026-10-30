@@ -60,6 +60,8 @@ pub struct ServerTest {
     pub ws_close: Cell<u16>,
     pub ws_texts: RefCell<Vec<String>>,
     pub mock_base: RefCell<String>,
+    pub auth_token: RefCell<Option<String>>,
+    pub www_authenticate: RefCell<Option<String>>,
 }
 
 impl Drop for ServerTest {
@@ -112,6 +114,8 @@ impl ServerTest {
             ws_close: Cell::new(0),
             ws_texts: RefCell::new(Vec::new()),
             mock_base: RefCell::new(String::new()),
+            auth_token: RefCell::new(None),
+            www_authenticate: RefCell::new(None),
         }
     }
 
@@ -183,6 +187,72 @@ async fn http_status(port: u16, method: &str, path: &str, body: &str) -> (u16, S
     (status, text)
 }
 
+async fn http_status_with_auth(
+    port: u16,
+    token: Option<&str>,
+    method: &str,
+    path: &str,
+    body: &str,
+) -> (u16, String, Option<String>) {
+    let url = format!("http://127.0.0.1:{port}{path}");
+    let client = reqwest::Client::new();
+    let mut builder = match method {
+        "GET" => client.get(&url),
+        "POST" => client
+            .post(&url)
+            .header("content-type", "application/json")
+            .body(body.to_string()),
+        other => client.request(other.parse().unwrap_or(reqwest::Method::GET), &url),
+    };
+    if let Some(token) = token {
+        builder = builder.header(
+            xylitol_protocol::auth::AUTHORIZATION_HEADER,
+            xylitol_protocol::auth::basic_authorization(token),
+        );
+    }
+    let resp = builder.send().await.expect("http");
+    let status = resp.status().as_u16();
+    let www = resp
+        .headers()
+        .get("www-authenticate")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_string);
+    let text = resp.text().await.unwrap_or_default();
+    (status, text, www)
+}
+
+async fn start_host_with_auth(t: &ServerTest, token: &str) {
+    let host = xylitol_kernel::occupancy::host_state_for_test().expect("HostState");
+    let reg_path = temp_reg_path();
+    let (running, port) = with_test_timeout(|| {
+        let host = host.clone();
+        let reg_path = reg_path.clone();
+        let token = token.to_string();
+        async move {
+            let (running, port) = xylitol_serve::serve_registered(
+                xylitol_serve::ListenConfig {
+                    host: "127.0.0.1".into(),
+                    port: 0,
+                    credential: Some(token),
+                },
+                host,
+                reg_path,
+            )
+            .await
+            .expect("serve_registered with auth");
+            tokio::time::sleep(Duration::from_millis(30)).await;
+            (running, port)
+        }
+    })
+    .await
+    .expect("auth serve startup MUST complete within with_test_timeout");
+    t.host.replace(Some(host));
+    t.running.replace(Some(running));
+    t.port.set(port);
+    t.auth_token.replace(Some(token.to_string()));
+    *t.reg_path.borrow_mut() = Some(reg_path);
+}
+
 async fn post_rpc(port: u16, id: &str, method: &str, params: serde_json::Value) -> (u16, String) {
     let body = codec::request_value(&RequestId::Str(id.to_string()), method, &params);
     http_status(port, "POST", "/rpc", &body.to_string()).await
@@ -207,6 +277,73 @@ async fn post_rpc_raw(port: u16, body: &[u8]) -> (u16, String) {
 #[when("服务端在空闲端口上启动")]
 async fn w_start_idle(server_test: &ServerTest) {
     start_host(server_test).await;
+}
+
+#[given("Host 已启用回环凭据门禁")]
+async fn g_host_auth_enabled(server_test: &ServerTest) {
+    start_host_with_auth(server_test, "test-token").await;
+}
+
+#[given("Host 已启用回环凭据门禁且注册文件含凭据")]
+async fn g_host_auth_with_registration(server_test: &ServerTest) {
+    start_host_with_auth(server_test, "test-token").await;
+}
+
+#[when("不带凭据访问 /healthz")]
+async fn w_healthz_without_credential(server_test: &ServerTest) {
+    let (status, body, www) =
+        http_status_with_auth(server_test.port.get(), None, "GET", "/healthz", "").await;
+    server_test.unary_status.set(status);
+    *server_test.unary_body.borrow_mut() = Some(body);
+    server_test.www_authenticate.replace(www);
+}
+
+#[then("返回 401 且携带 WWW-Authenticate")]
+fn t_auth_401(server_test: &ServerTest) {
+    assert_eq!(server_test.unary_status.get(), 401);
+    let www = server_test.www_authenticate.borrow();
+    assert!(
+        www.as_deref().is_some_and(|value| value.contains("Basic")),
+        "missing Basic challenge: {www:?}"
+    );
+}
+
+#[when("以注册文件中的凭据访问 /healthz")]
+async fn w_healthz_with_registration_credential(server_test: &ServerTest) {
+    let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
+    let reg = read_registration(&reg_path).expect("registration readable");
+    let token = reg.token.expect("registration token");
+    let (status, body, _) =
+        http_status_with_auth(server_test.port.get(), Some(&token), "GET", "/healthz", "").await;
+    server_test.unary_status.set(status);
+    *server_test.unary_body.borrow_mut() = Some(body);
+}
+
+#[then("返回 200")]
+fn t_auth_200(server_test: &ServerTest) {
+    assert_eq!(server_test.unary_status.get(), 200);
+    let body = server_test.unary_body.borrow().clone().unwrap_or_default();
+    assert!(body.contains("ok"), "{body}");
+}
+
+#[when("读取鉴权注册文件")]
+async fn w_read_auth_registration(server_test: &ServerTest) {
+    let reg_path = server_test.reg_path.borrow().clone().expect("reg path");
+    let reg = read_registration(&reg_path).expect("registration readable");
+    *server_test.rdy_body.borrow_mut() =
+        Some(serde_json::to_string(&reg).expect("serialize registration"));
+}
+
+#[then("文件含 token 且与启动凭据一致")]
+fn t_registration_token_matches(server_test: &ServerTest) {
+    let body = server_test.rdy_body.borrow().clone().unwrap_or_default();
+    let reg: serde_json::Value = serde_json::from_str(&body).expect("registration json");
+    let expected = server_test
+        .auth_token
+        .borrow()
+        .clone()
+        .expect("startup token");
+    assert_eq!(reg["token"], serde_json::json!(expected), "{reg}");
 }
 
 #[then("healthz 端点返回 200 OK")]
@@ -2253,6 +2390,7 @@ async fn g_reg_stale(server_test: &ServerTest) {
         url: "http://127.0.0.1:1".into(),
         pid: 2_147_483_647,
         version: "0.0.0-dev".into(),
+        token: None,
     };
     write_registration(&reg_path, &reg).expect("write stale registration");
     *server_test.reg_path.borrow_mut() = Some(reg_path);
@@ -2308,6 +2446,7 @@ async fn w_reg_takeover_new(server_test: &ServerTest) {
         url: "http://127.0.0.1:9".into(),
         pid: 2_147_483_646,
         version: "0.0.0-dev".into(),
+        token: None,
     };
     write_registration(&reg_path, &newcomer).expect("takeover write");
 }

@@ -246,6 +246,7 @@ impl McpClientManager {
             use rmcp::serve_client;
             use rmcp::transport::child_process::TokioChildProcess;
             use tokio::process::Command;
+            use xylitol_plugin_sdk::host_env;
 
             let command = config.command.as_ref().ok_or_else(|| {
                 McpError::Config("command is required for stdio transport".into())
@@ -258,6 +259,9 @@ impl McpClientManager {
                 for (k, v) in env {
                     cmd.env(k, v);
                 }
+            }
+            for var in host_env::CREDENTIAL_VARS {
+                cmd.env_remove(*var);
             }
 
             let transport = TokioChildProcess::new(cmd).map_err(McpError::Spawn)?;

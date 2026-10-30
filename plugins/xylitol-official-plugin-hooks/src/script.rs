@@ -4,6 +4,7 @@ use std::time::Duration;
 use log::{debug, warn};
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use xylitol_plugin_sdk::host_env;
 
 use super::{HookAction, HookEvent, HookPhase};
 
@@ -26,16 +27,19 @@ pub async fn run_hook_script_with_context(
 ) -> HookAction {
     let ctx_bytes = serde_json::to_vec(context).unwrap_or_default();
 
-    let mut child = match Command::new("sh")
+    let mut spawn = Command::new("sh");
+    spawn
         .arg("-c")
         .arg(command)
         .env_clear()
         .envs(env)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-    {
+        .stderr(std::process::Stdio::inherit());
+    for var in host_env::CREDENTIAL_VARS {
+        spawn.env_remove(*var);
+    }
+    let mut child = match spawn.spawn() {
         Ok(c) => c,
         Err(e) => {
             warn!(

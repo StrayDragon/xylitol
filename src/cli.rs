@@ -242,8 +242,10 @@ async fn run_product_tui_attached(
     }
     let attach_url =
         xylitol_kernel::attach::resolve_attach_url(surface.attach.as_deref(), surface.port);
-    let mut driver = xylitol_app_tui::XyRemoteDriver::new(
-        attach_url,
+    let token = xylitol_kernel::attach::registration_token(&attach_url);
+    let host = xylitol_app_tui::host_client::HttpWsClient::new(attach_url).with_token(token);
+    let mut driver = xylitol_app_tui::XyRemoteDriver::with_host(
+        host,
         surface.session.clone().unwrap_or_default(),
     );
     if let Some(model_id) = surface.model.as_deref() {

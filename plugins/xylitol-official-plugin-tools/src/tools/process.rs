@@ -2,6 +2,7 @@ use tokio::process::Command;
 use tokio_util::sync::CancellationToken;
 
 use xylitol_plugin_sdk::error::XyToolError;
+use xylitol_plugin_sdk::host_env;
 use xylitol_plugin_sdk::{ToolTimeout, ToolTimeoutError};
 
 pub(crate) async fn kill_tree(pid: u32) {
@@ -24,10 +25,15 @@ pub(crate) async fn run_search_tool(
     cancel: CancellationToken,
     tool_timeout: ToolTimeout,
 ) -> Result<std::process::Output, XyToolError> {
-    let child = Command::new(program)
+    let mut spawn = Command::new(program);
+    spawn
         .args(args)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    for var in host_env::CREDENTIAL_VARS {
+        spawn.env_remove(*var);
+    }
+    let child = spawn
         .spawn()
         .map_err(|e| XyToolError::ExecutionFailed(anyhow::anyhow!("spawn {program}: {e}")))?;
 

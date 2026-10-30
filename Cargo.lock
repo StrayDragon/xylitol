@@ -7136,6 +7136,7 @@ dependencies = [
 name = "xylitol-protocol"
 version = "0.0.0-pre"
 dependencies = [
+ "base64 0.22.1",
  "serde",
  "serde_json",
  "strum",
@@ -7174,6 +7175,7 @@ name = "xylitol-serve"
 version = "0.0.0-pre"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "dirs 7.0.0",
  "futures",
  "log",

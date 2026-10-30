@@ -17,6 +17,7 @@ log = { workspace = true, optional = true }
 serde = { workspace = true, features = ["derive"], optional = true }
 serde_json = { workspace = true, features = ["unbounded_depth"], optional = true }
 async-trait = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
 dirs = { workspace = true, optional = true }
 futures = { workspace = true, optional = true }
 salvo = { workspace = true, optional = true, features = ["server", "server-handle", "http1", "websocket", "test"] }
@@ -29,6 +30,7 @@ uuid = { workspace = true, optional = true, features = ["v4"] }
 default = ["listen"]
 listen = [
     "dep:async-trait",
+    "dep:base64",
     "dep:dirs",
     "dep:futures",
     "dep:log",

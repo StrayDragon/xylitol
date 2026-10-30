@@ -11,6 +11,7 @@ use tokio::time::timeout;
 use xylitol_plugin_sdk::ToolTimeout;
 use xylitol_plugin_sdk::XyToolCtx;
 use xylitol_plugin_sdk::error::XyToolError;
+use xylitol_plugin_sdk::host_env;
 pub(crate) const BASH_TOOL_TIMEOUT_SECS: u64 = 120;
 
 use super::accumulator::OutputAccumulator;
@@ -89,12 +90,17 @@ impl BashOperations for RealBashOperations {
 
         let shell_cfg = crate::process::shell::find_bash(None);
 
-        let child = Command::new(&shell_cfg.shell)
+        let mut spawn = Command::new(&shell_cfg.shell);
+        spawn
             .args(&shell_cfg.args)
             .arg(command)
             .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        for var in host_env::CREDENTIAL_VARS {
+            spawn.env_remove(*var);
+        }
+        let child = spawn
             .spawn()
             .map_err(|e| BashError::SpawnFailed(e.to_string()))?;
 

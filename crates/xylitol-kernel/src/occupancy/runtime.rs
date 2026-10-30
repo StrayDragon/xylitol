@@ -35,6 +35,7 @@ impl ServerConfig {
         ListenConfig {
             host: self.host.clone(),
             port: self.port,
+            credential: None,
         }
     }
 }
@@ -47,7 +48,14 @@ pub async fn start(
     config: ServerConfig,
 ) -> Result<(RunningServer, u16), Box<dyn std::error::Error>> {
     let gateway = Gateway::starting();
-    let (mut running, port) = xylitol_serve::bind_listen(&config.listen(), gateway.clone()).await?;
+    let credential =
+        xylitol_serve::load_or_create_credential(&xylitol_serve::default_credential_path())?;
+    let listen = ListenConfig {
+        host: config.host.clone(),
+        port: config.port,
+        credential: Some(credential),
+    };
+    let (mut running, port) = xylitol_serve::bind_listen(&listen, gateway.clone()).await?;
     match assemble(&config).await {
         Ok(host) => {
             gateway.set_host(occupy(host));

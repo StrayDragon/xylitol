@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use xylitol_plugin_sdk::host_env;
+
 #[derive(Debug, Clone)]
 pub struct ShellConfig {
     pub shell: PathBuf,
@@ -112,6 +114,7 @@ pub fn current_exe_bin_dir() -> Option<std::path::PathBuf> {
 pub fn shell_env_with_agent_bin(
     mut base: std::collections::BTreeMap<String, String>,
 ) -> std::collections::BTreeMap<String, String> {
+    scrub_credential_env(&mut base);
     let Some(bin) = current_exe_bin_dir() else {
         return base;
     };
@@ -122,6 +125,12 @@ pub fn shell_env_with_agent_bin(
         base.insert("PATH".into(), joined.to_string_lossy().into_owned());
     }
     base
+}
+
+pub fn scrub_credential_env(base: &mut std::collections::BTreeMap<String, String>) {
+    for var in host_env::CREDENTIAL_VARS {
+        base.remove(*var);
+    }
 }
 
 #[cfg(test)]
@@ -153,6 +162,18 @@ mod tests {
         let first = list.next().expect("PATH 非空");
         let bin = current_exe_bin_dir().expect("current exe dir");
         assert_eq!(first, bin, "agent bin MUST 前置");
+    }
+
+    #[test]
+    fn test_shell_env_strips_credential_vars() {
+        let mut base = BTreeMap::new();
+        base.insert("XYLITOL_SERVE_TOKEN".into(), "secret".into());
+        base.insert("XYLITOL_AUTH_TOKEN".into(), "secret".into());
+        base.insert("PATH".into(), "/usr/bin:/bin".into());
+        let env = shell_env_with_agent_bin(base);
+        assert!(!env.contains_key("XYLITOL_SERVE_TOKEN"));
+        assert!(!env.contains_key("XYLITOL_AUTH_TOKEN"));
+        assert!(env.contains_key("PATH"));
     }
 
     #[test]

@@ -2,6 +2,9 @@
 depends_on: []
 title: Host 回环凭据门禁
 needs_specs_change: true
+branch: sdd/c2485-add-host-credential-gate
+base_branch: main
+base_sha: 3568f6c249f5727bbb00bebe58a1b2949155d165
 ---
 
 # Host 回环凭据门禁

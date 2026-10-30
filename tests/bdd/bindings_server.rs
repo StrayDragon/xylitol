@@ -10,6 +10,24 @@ async fn test_server_start_healthz(server_test: ServerTest) {}
 
 #[scenario(
     path = "llmanspec/specs/server-core/server-core.feature",
+    name = "未带凭据被拒"
+)]
+async fn test_sr_auth_missing(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "携带发现凭据可访问"
+)]
+async fn test_sr_auth_found(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
+    name = "注册文件携带凭据"
+)]
+async fn test_sr_auth_registration_token(server_test: ServerTest) {}
+
+#[scenario(
+    path = "llmanspec/specs/server-core/server-core.feature",
     name = "第二次实例拒绝"
 )]
 async fn test_server_second_instance_rejected(server_test: ServerTest) {}
