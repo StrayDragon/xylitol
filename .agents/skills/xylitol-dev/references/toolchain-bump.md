@@ -20,6 +20,7 @@ brief: "工具链与依赖 bump（rustup / dated nightly / MSRV rust-version / c
 
 1. **读本机与 pin**
    `rustup check`；项目目录 `rustc --version --verbose`。
+   确认 `which cargo` 指向 rustup proxy（`~/.cargo/bin` 在 Homebrew 之前）；否则 `rust-toolchain.toml` 不生效，本地门禁与 CI 编译器不一致。
    滚动 `nightly` 的 commit **不必**等于 dated `nightly-YYYY-MM-DD`（日期 channel = 那天发布的包；commit-date 常早一天）。
 2. **钉日期**
    `channel = "nightly-YYYY-MM-DD"`。不要裸 `nightly`。
