@@ -74,7 +74,7 @@ lspz = { version = "0.11.7", default-features = false, features = ["agent-sdk"] 
 async-openai = { version = "0.42", default-features = false }
 async-stream = "0.3.6"
 async-trait = "0.1.92"
-base64 = "0.22.1"
+base64 = "0.23.1"
 clap = "4.6.7"
 criterion = "0.8"
 crossterm = "0.29"
