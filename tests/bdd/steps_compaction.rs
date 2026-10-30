@@ -38,6 +38,7 @@ pub(crate) async fn comp_run_compact(
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
     );
     let settings = CompactionSettings {

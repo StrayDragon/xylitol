@@ -39,6 +39,7 @@ pub fn build_adapter(config: &XyModelConfig, hooks: Option<Arc<HookDispatcher>>)
                 config.base_url.clone(),
                 http_hooks,
                 anthropic_policy,
+                config.prompt_cache,
             )
         }
         AdapterKind::OpenAiResponses | AdapterKind::OpenAiCompletions => {
@@ -68,6 +69,7 @@ mod tests {
             base_url: None,
             api: Some("openai-completions".into()),
             compat: None,
+            prompt_cache: None,
         };
         assert_eq!(resolve_adapter_kind(&cfg), AdapterKind::OpenAiCompletions);
         let cfg2 = XyModelConfig { api: None, ..cfg };
@@ -83,6 +85,7 @@ mod tests {
             base_url: None,
             api: Some("openai-responses".into()),
             compat: Some("deepseek".into()),
+            prompt_cache: None,
         };
         let p = resolve_wire_policy(&cfg);
         assert_eq!(

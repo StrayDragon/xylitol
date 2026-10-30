@@ -53,6 +53,22 @@ pub fn default_input_modalities(kind: XyModelKind) -> Vec<XyModality> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+pub struct XyPromptCacheConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<XyPromptCacheTtl>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum XyPromptCacheTtl {
+    #[serde(rename = "5m")]
+    FiveMinutes,
+    #[serde(rename = "1h")]
+    OneHour,
+}
+
 #[derive(Debug, Clone)]
 pub struct XyModelConfig {
     pub kind: XyModelKind,
@@ -61,6 +77,7 @@ pub struct XyModelConfig {
     pub base_url: Option<String>,
     pub api: Option<String>,
     pub compat: Option<String>,
+    pub prompt_cache: Option<XyPromptCacheConfig>,
 }
 
 impl XyModelConfig {
@@ -158,6 +175,7 @@ mod tests {
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         };
         assert_eq!(config.provider_name(), "anthropic");
     }
@@ -171,6 +189,7 @@ mod tests {
             base_url: Some("https://proxy.example.com/v1".into()),
             api: None,
             compat: None,
+            prompt_cache: None,
         };
         assert_eq!(
             config.base_url.as_deref(),

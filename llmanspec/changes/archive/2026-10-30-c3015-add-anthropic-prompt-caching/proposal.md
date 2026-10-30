@@ -2,6 +2,9 @@
 depends_on: []
 title: Anthropic Messages prompt caching 打点
 needs_specs_change: true
+branch: sdd/c3015-add-anthropic-prompt-caching
+base_branch: main
+base_sha: 1e0cffc88468dded2d5ad50dcd1f7d0b3cd1c08e
 ---
 
 # Anthropic Messages prompt caching 打点

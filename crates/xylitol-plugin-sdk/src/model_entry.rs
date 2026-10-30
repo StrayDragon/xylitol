@@ -35,6 +35,8 @@ pub struct XyModelEntryConfig {
     #[serde(default)]
     pub max_output_tokens: Option<u32>,
     #[serde(default)]
+    pub prompt_cache: Option<crate::model::XyPromptCacheConfig>,
+    #[serde(default)]
     pub input_modalities: Option<Vec<XyModality>>,
 }
 
@@ -54,6 +56,7 @@ impl XyModelEntryConfig {
             base_url: self.base_url.clone(),
             api: self.api.clone(),
             compat: self.compat.clone(),
+            prompt_cache: self.prompt_cache,
         }
     }
 

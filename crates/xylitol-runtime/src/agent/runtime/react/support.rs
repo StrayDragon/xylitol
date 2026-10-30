@@ -171,6 +171,7 @@ mod tests {
                 base_url: None,
                 api: None,
                 compat: None,
+                prompt_cache: None,
             },
             display_name: "m".into(),
             thinking: false,

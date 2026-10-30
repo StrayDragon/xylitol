@@ -55,6 +55,7 @@ fn small_window_meta(id: &str) -> xylitol_plugin_sdk::model::XyModelMeta {
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
         display_name: "OverflowFake".into(),
         thinking: false,

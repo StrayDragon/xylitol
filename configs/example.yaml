@@ -43,6 +43,9 @@ models:
     #   context_window: 1000000
     #   input_modalities: [text]  # optional; provider default is [text, image]
     #   max_output_tokens: 8192  # optional; provider default when omitted
+    #   prompt_cache:  # optional; Anthropic cache_control breakpoints
+    #     enabled: true  # default on for generic, off for deepseek
+    #     ttl: 5m  # 5m | 1h (1h needs extended-cache-ttl beta)
     # OpenCode Zen free（Completions）；别名用 *-zen 后缀：
     # deepseek-v4-flash-free-zen:
     #   provider: openai

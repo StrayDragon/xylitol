@@ -948,6 +948,17 @@
         "model": {
           "type": "string"
         },
+        "prompt_cache": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/XyPromptCacheConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "provider": {
           "type": "string"
         },
@@ -984,6 +995,34 @@
         "model"
       ],
       "type": "object"
+    },
+    "XyPromptCacheConfig": {
+      "properties": {
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "ttl": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/XyPromptCacheTtl"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "XyPromptCacheTtl": {
+      "enum": [
+        "5m",
+        "1h"
+      ],
+      "type": "string"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

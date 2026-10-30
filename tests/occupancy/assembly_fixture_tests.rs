@@ -1601,6 +1601,7 @@ async fn model_tool_runs_in_client_workspace() {
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         },
         display_name: "Fake WS".into(),
         thinking: false,

@@ -5,8 +5,8 @@ pub mod thinking;
 
 pub use chunk::{XyChunk, XyToolSchema};
 pub use config::{
-    ResolvedProfile, XyModality, XyModelConfig, XyModelKind, default_context_window_for,
-    default_input_modalities,
+    ResolvedProfile, XyModality, XyModelConfig, XyModelKind, XyPromptCacheConfig, XyPromptCacheTtl,
+    default_context_window_for, default_input_modalities,
 };
 pub use meta::{ContextTokenEstimate, TokenProvenance, XyModelMeta};
 pub use thinking::{
@@ -151,6 +151,7 @@ mod tests {
             base_url: None,
             api: None,
             compat: None,
+            prompt_cache: None,
         };
         let meta = XyModelMeta {
             id: "claude-3".into(),

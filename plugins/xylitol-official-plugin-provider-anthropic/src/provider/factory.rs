@@ -11,7 +11,7 @@ pub fn build_adapter(
     base_url: Option<String>,
     hooks: Option<Arc<dyn HttpHooks>>,
 ) -> AdapterRef {
-    build_adapter_with_wire_policy(api_key, model, base_url, hooks, WirePolicy::default())
+    build_adapter_with_wire_policy(api_key, model, base_url, hooks, WirePolicy::default(), None)
 }
 
 pub fn build_adapter_with_wire_policy(
@@ -20,12 +20,10 @@ pub fn build_adapter_with_wire_policy(
     base_url: Option<String>,
     hooks: Option<Arc<dyn HttpHooks>>,
     wire_policy: WirePolicy,
+    prompt_cache: Option<xylitol_plugin_sdk::model::XyPromptCacheConfig>,
 ) -> AdapterRef {
-    Arc::new(AnthropicMessagesAdapter::with_wire_policy(
-        api_key,
-        model,
-        base_url,
-        hooks,
-        wire_policy,
-    ))
+    Arc::new(
+        AnthropicMessagesAdapter::with_wire_policy(api_key, model, base_url, hooks, wire_policy)
+            .with_prompt_cache(prompt_cache),
+    )
 }
