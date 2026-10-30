@@ -25,32 +25,46 @@ pub(crate) fn is_retryable_error(error_msg: &str) -> bool {
     RETRYABLE_RE.is_match(error_msg)
 }
 
+fn status_retryable(status: u16) -> Option<bool> {
+    if status == 429 || (500..600).contains(&status) {
+        Some(true)
+    } else if (400..500).contains(&status) {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn code_retryable(value: &str) -> Option<bool> {
+    let lower = value.to_ascii_lowercase();
+    if lower.contains("insufficient_quota") || lower.contains("billing") {
+        Some(false)
+    } else if lower.contains("rate_limit")
+        || lower.contains("server_error")
+        || lower.contains("overloaded")
+        || lower.contains("api_error")
+        || lower.contains("timeout")
+        || lower.contains("internal_error")
+    {
+        Some(true)
+    } else {
+        None
+    }
+}
+
 pub(crate) fn is_retryable_xy_error(err: &XyError) -> bool {
     if let Some(detail) = err.provider_detail() {
-        if let Some(status) = detail.status {
-            if status == 429 || (500..600).contains(&status) {
-                return true;
-            }
-            if (400..500).contains(&status) {
-                return false;
-            }
+        if let Some(status) = detail.status
+            && let Some(retryable) = status_retryable(status)
+        {
+            return retryable;
         }
         for value in [detail.code.as_deref(), detail.error_type.as_deref()]
             .into_iter()
             .flatten()
         {
-            let lower = value.to_ascii_lowercase();
-            if lower.contains("insufficient_quota") || lower.contains("billing") {
-                return false;
-            }
-            if lower.contains("rate_limit")
-                || lower.contains("server_error")
-                || lower.contains("overloaded")
-                || lower.contains("api_error")
-                || lower.contains("timeout")
-                || lower.contains("internal_error")
-            {
-                return true;
+            if let Some(retryable) = code_retryable(value) {
+                return retryable;
             }
         }
     }
@@ -161,6 +175,11 @@ mod tests {
             None,
             Some("insufficient_quota")
         )));
+        assert!(!is_retryable_xy_error(&retryable(
+            None,
+            Some("billing_error")
+        )));
+        assert!(!is_retryable_xy_error(&retryable(Some(413), None)));
         assert!(is_retryable_xy_error(&retryable(
             None,
             Some("overloaded_error")
@@ -172,6 +191,12 @@ mod tests {
         assert!(is_retryable_xy_error(&XyError::Provider(anyhow::anyhow!(
             "connection refused"
         ))));
+        let unknown_code = XyError::provider(XyProviderError {
+            message: "connection reset before headers".into(),
+            code: Some("unknown_code".into()),
+            ..Default::default()
+        });
+        assert!(is_retryable_xy_error(&unknown_code));
     }
 
     #[test]

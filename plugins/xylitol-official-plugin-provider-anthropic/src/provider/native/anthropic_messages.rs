@@ -96,6 +96,19 @@ impl AnthropicMessagesAdapter {
         )
     }
 
+    fn apply_prompt_cache(&self, body: &mut Value, headers: &mut HeaderBag) {
+        let Some(ttl) = self.prompt_cache_ttl() else {
+            return;
+        };
+        apply_anthropic_prompt_cache(body, ttl);
+        if matches!(ttl, XyPromptCacheTtl::OneHour) {
+            headers.insert(
+                "anthropic-beta".into(),
+                Value::String(EXTENDED_CACHE_TTL_BETA.into()),
+            );
+        }
+    }
+
     fn headers_bag(&self, obs: &crate::provider::obs_session::ObsSessionContext) -> HeaderBag {
         let mut headers = HeaderBag::new();
         headers.insert(
@@ -116,58 +129,84 @@ impl AnthropicMessagesAdapter {
     }
 }
 
-fn apply_anthropic_prompt_cache(body: &mut Value, ttl: XyPromptCacheTtl) {
-    let control = match ttl {
+fn cache_control_value(ttl: XyPromptCacheTtl) -> Value {
+    match ttl {
         XyPromptCacheTtl::FiveMinutes => serde_json::json!({"type": "ephemeral"}),
         XyPromptCacheTtl::OneHour => serde_json::json!({"type": "ephemeral", "ttl": "1h"}),
-    };
+    }
+}
 
-    if let Some(system) = body.get_mut("system") {
-        let text = system.as_str().map(str::to_string);
-        match text {
-            Some(text) => {
-                *system = serde_json::json!([{
-                    "type": "text",
-                    "text": text,
-                    "cache_control": control,
-                }]);
-            }
-            None => {
-                if let Some(last) = system.as_array_mut().and_then(|b| b.last_mut())
-                    && let Some(obj) = last.as_object_mut()
-                {
-                    obj.insert("cache_control".into(), control.clone());
-                }
+fn apply_cache_control_to_system(system: &mut Value, control: &Value) {
+    match system.as_str().map(str::to_string) {
+        Some(text) => {
+            *system = serde_json::json!([{
+                "type": "text",
+                "text": text,
+                "cache_control": control,
+            }]);
+        }
+        None => {
+            if let Some(last) = system.as_array_mut().and_then(|b| b.last_mut())
+                && let Some(obj) = last.as_object_mut()
+            {
+                obj.insert("cache_control".into(), control.clone());
             }
         }
     }
+}
 
-    if let Some(last) = body
-        .get_mut("tools")
-        .and_then(|t| t.as_array_mut())
-        .and_then(|t| t.last_mut())
+fn apply_cache_control_to_tools(tools: &mut Value, control: &Value) {
+    if let Some(last) = tools.as_array_mut().and_then(|t| t.last_mut())
         && let Some(obj) = last.as_object_mut()
     {
         obj.insert("cache_control".into(), control.clone());
     }
+}
 
-    if let Some(messages) = body.get_mut("messages").and_then(|m| m.as_array_mut()) {
-        'outer: for message in messages.iter_mut().rev() {
-            let Some(content) = message.get_mut("content").and_then(|c| c.as_array_mut()) else {
+fn apply_cache_control_to_last_message(messages: &mut Value, control: &Value) {
+    let Some(messages) = messages.as_array_mut() else {
+        return;
+    };
+    'outer: for message in messages.iter_mut().rev() {
+        let Some(content) = message.get_mut("content").and_then(|c| c.as_array_mut()) else {
+            continue;
+        };
+        for block in content.iter_mut().rev() {
+            let Some(obj) = block.as_object_mut() else {
                 continue;
             };
-            for block in content.iter_mut().rev() {
-                let Some(obj) = block.as_object_mut() else {
-                    continue;
-                };
-                let block_type = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                if block_type == "text" || block_type == "tool_result" {
-                    obj.insert("cache_control".into(), control.clone());
-                    break 'outer;
-                }
+            let block_type = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            if block_type == "text" || block_type == "tool_result" {
+                obj.insert("cache_control".into(), control.clone());
+                break 'outer;
             }
         }
     }
+}
+
+fn apply_anthropic_prompt_cache(body: &mut Value, ttl: XyPromptCacheTtl) {
+    let control = cache_control_value(ttl);
+    if let Some(system) = body.get_mut("system") {
+        apply_cache_control_to_system(system, &control);
+    }
+    if let Some(tools) = body.get_mut("tools") {
+        apply_cache_control_to_tools(tools, &control);
+    }
+    if let Some(messages) = body.get_mut("messages") {
+        apply_cache_control_to_last_message(messages, &control);
+    }
+}
+
+fn apply_structured_output(body: &mut Value, options: &crate::thinking::XyGenerateOptions) {
+    let Some(output) = options.structured_output.as_ref() else {
+        return;
+    };
+    body["output_config"] = serde_json::json!({
+        "format": {
+            "type": "json_schema",
+            "schema": &output.schema,
+        }
+    });
 }
 
 #[async_trait]
@@ -236,29 +275,12 @@ impl AnthropicMessagesAdapter {
             self.wire_policy.compat,
         );
 
-        if let Some(output) = options.structured_output.as_ref() {
-            body["output_config"] = serde_json::json!({
-                "format": {
-                    "type": "json_schema",
-                    "schema": &output.schema,
-                }
-            });
-        }
-
-        let cache_ttl = self.prompt_cache_ttl();
-        if let Some(ttl) = cache_ttl {
-            apply_anthropic_prompt_cache(&mut body, ttl);
-        }
+        apply_structured_output(&mut body, &options);
 
         let url = format!("{}/v1/messages", self.base_url);
 
         let mut headers = self.headers_bag(&options.obs_session);
-        if matches!(cache_ttl, Some(XyPromptCacheTtl::OneHour)) {
-            headers.insert(
-                "anthropic-beta".into(),
-                Value::String(EXTENDED_CACHE_TTL_BETA.into()),
-            );
-        }
+        self.apply_prompt_cache(&mut body, &mut headers);
         run_before_headers(&self.hooks, &mut headers).await?;
         run_before_request(&self.hooks, &self.model, &mut body).await?;
 
@@ -1984,6 +2006,33 @@ mod tests {
         assert!(
             body["output_config"]["format"].get("name").is_none(),
             "Anthropic shape has no name field"
+        );
+    }
+
+    #[test]
+    fn cache_control_marks_existing_system_blocks() {
+        let mut body = serde_json::json!({
+            "system": [
+                {"type": "text", "text": "a"},
+                {"type": "text", "text": "b"}
+            ]
+        });
+        apply_anthropic_prompt_cache(&mut body, XyPromptCacheTtl::FiveMinutes);
+        assert!(body["system"][0].get("cache_control").is_none());
+        assert_eq!(body["system"][1]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn cache_control_marks_tool_result_block() {
+        let mut body = serde_json::json!({
+            "messages": [
+                {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": []}]}
+            ]
+        });
+        apply_anthropic_prompt_cache(&mut body, XyPromptCacheTtl::OneHour);
+        assert_eq!(
+            body["messages"][0]["content"][0]["cache_control"]["ttl"],
+            "1h"
         );
     }
 
