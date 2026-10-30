@@ -102,11 +102,7 @@ impl XyModelEntryConfig {
         } else {
             default_context_window_for(config.kind)
         };
-        let max_tokens = match self.max_output_tokens {
-            Some(0) => return Err("max_output_tokens must be greater than 0".into()),
-            Some(value) => u64::from(value),
-            None => 0,
-        };
+        let max_tokens = resolve_max_tokens(self.max_output_tokens)?;
         Ok(XyModelMeta {
             id: id.to_string(),
             config,
@@ -127,6 +123,14 @@ impl XyModelEntryConfig {
 
     pub fn to_ephemeral_meta(&self) -> Result<crate::model::XyModelMeta, String> {
         self.to_model_meta(&self.model)
+    }
+}
+
+fn resolve_max_tokens(max_output_tokens: Option<u32>) -> Result<u64, String> {
+    match max_output_tokens {
+        Some(0) => Err("max_output_tokens must be greater than 0".into()),
+        Some(value) => Ok(u64::from(value)),
+        None => Ok(0),
     }
 }
 
@@ -181,6 +185,20 @@ context_window: 64000
             ..Default::default()
         };
         assert_eq!(absent.to_model_meta("m").expect("meta").max_tokens, 0);
+    }
+
+    #[test]
+    fn explicit_context_window_overrides_default() {
+        let entry = XyModelEntryConfig {
+            provider: XyModelKind::OpenAi,
+            model: "m".into(),
+            context_window: 64_000,
+            ..Default::default()
+        };
+        assert_eq!(
+            entry.to_model_meta("m").expect("meta").context_window,
+            64_000
+        );
     }
 
     #[test]
