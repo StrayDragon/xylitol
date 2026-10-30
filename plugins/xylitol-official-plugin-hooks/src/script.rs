@@ -36,9 +36,7 @@ pub async fn run_hook_script_with_context(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::inherit());
-    for var in host_env::CREDENTIAL_VARS {
-        spawn.env_remove(*var);
-    }
+    host_env::scrub_tokio_command(&mut spawn);
     let mut child = match spawn.spawn() {
         Ok(c) => c,
         Err(e) => {

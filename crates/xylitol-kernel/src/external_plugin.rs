@@ -76,9 +76,7 @@ impl ExternalClient {
         if let Some(cwd) = config.cwd.as_deref() {
             command.current_dir(cwd);
         }
-        for var in xylitol_plugin_sdk::host_env::CREDENTIAL_VARS {
-            command.env_remove(*var);
-        }
+        xylitol_plugin_sdk::host_env::scrub_tokio_command(&mut command);
         let mut child = command
             .spawn()
             .map_err(|e| format!("spawn `{}`: {e}", config.command))?;

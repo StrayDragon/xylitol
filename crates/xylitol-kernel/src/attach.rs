@@ -253,6 +253,41 @@ pub fn registration_token_with(
 }
 
 #[cfg(feature = "server")]
+fn registration_token_for(reg: &Option<xylitol_serve::Registration>, url: &str) -> Option<String> {
+    reg.as_ref()
+        .filter(|reg| same_url(&reg.url, url))
+        .and_then(|reg| reg.token.clone())
+}
+
+#[cfg(feature = "server")]
+fn dead_registration_message(
+    reg: Option<&xylitol_serve::Registration>,
+    url: &str,
+    registration_path: &std::path::Path,
+) -> String {
+    let msg = classify_dead(reg.cloned(), url, reg.is_some_and(|reg| pid_alive(reg.pid)));
+    if let Some(reg) = reg
+        && !pid_alive(reg.pid)
+    {
+        xylitol_serve::remove_registration(registration_path);
+    }
+    msg
+}
+
+#[cfg(feature = "server")]
+async fn healthz_for(
+    url: &str,
+    token: Option<&str>,
+    registration_path: &std::path::Path,
+) -> Result<Option<HealthzInfo>, String> {
+    match fetch_healthz(url, token).await {
+        HealthzProbe::Unauthorized => Err(auth_required_message(url, registration_path)),
+        HealthzProbe::Info(hz) => Ok(Some(hz)),
+        HealthzProbe::Unreachable => Ok(None),
+    }
+}
+
+#[cfg(feature = "server")]
 fn auth_required_message(url: &str, registration_path: &std::path::Path) -> String {
     format!(
         "Host at {url} requires authentication, but no matching credential was found in {}. \
@@ -273,28 +308,11 @@ pub async fn attach_preflight_with(
 ) -> Result<(), String> {
     let reg_path = registration_path.unwrap_or_else(xylitol_serve::default_registration_path);
     let reg = xylitol_serve::read_registration(&reg_path).ok();
-    let token = reg
-        .as_ref()
-        .filter(|reg| same_url(&reg.url, url))
-        .and_then(|reg| reg.token.clone());
+    let token = registration_token_for(&reg, url);
     if probe_host(url).is_err() {
-        let msg = classify_dead(
-            reg.clone(),
-            url,
-            reg.as_ref().is_some_and(|r| pid_alive(r.pid)),
-        );
-        if let Some(r) = &reg
-            && !pid_alive(r.pid)
-        {
-            xylitol_serve::remove_registration(&reg_path);
-        }
-        return Err(msg);
+        return Err(dead_registration_message(reg.as_ref(), url, &reg_path));
     }
-    let hz = match fetch_healthz(url, token.as_deref()).await {
-        HealthzProbe::Unauthorized => return Err(auth_required_message(url, &reg_path)),
-        HealthzProbe::Info(hz) => Some(hz),
-        HealthzProbe::Unreachable => None,
-    };
+    let hz = healthz_for(url, token.as_deref(), &reg_path).await?;
     if let Some(msg) = classify_running(hz, reg, url, env!("CARGO_PKG_VERSION")) {
         return Err(msg);
     }
@@ -368,6 +386,51 @@ mod c2475_tests {
 
         let mismatch = classify_dead(reg("http://other", 42), "http://u", false);
         assert!(mismatch.contains("http://other"), "{mismatch}");
+    }
+
+    #[tokio::test]
+    async fn attach_preflight_reports_auth_required() {
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("GET"))
+            .and(wiremock::matchers::path("/healthz"))
+            .respond_with(wiremock::ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        let url = server.uri();
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("serve.json");
+        xylitol_serve::write_registration(
+            &path,
+            &xylitol_serve::Registration {
+                url: url.clone(),
+                pid: 1,
+                version: "0.0.0-dev".into(),
+                token: Some("secret-token".into()),
+            },
+        )
+        .expect("write registration");
+
+        let msg = attach_preflight_with(&url, Some(path))
+            .await
+            .expect_err("401 must fail preflight");
+        assert!(msg.contains("requires authentication"), "{msg}");
+        assert!(msg.contains("xylitol serve"), "{msg}");
+    }
+
+    #[test]
+    fn dead_registration_message_removes_stale_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("serve.json");
+        let reg = xylitol_serve::Registration {
+            url: "http://127.0.0.1:1".into(),
+            pid: 2_147_483_647,
+            version: "0.0.0-dev".into(),
+            token: None,
+        };
+        xylitol_serve::write_registration(&path, &reg).expect("write");
+        let msg = dead_registration_message(Some(&reg), "http://127.0.0.1:1", &path);
+        assert!(msg.contains("has exited"), "{msg}");
+        assert!(!path.exists(), "stale registration must be removed");
     }
 
     #[test]

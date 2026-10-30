@@ -52,6 +52,7 @@ uuid = { workspace = true, features = ["v4"] }
 async-stream = { workspace = true }
 tempfile = { workspace = true }
 serial_test = { workspace = true }
+wiremock = { workspace = true }
 
 [features]
 default = ["server", "mcp", "fff"]

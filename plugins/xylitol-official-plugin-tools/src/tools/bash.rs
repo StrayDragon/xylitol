@@ -97,9 +97,7 @@ impl BashOperations for RealBashOperations {
             .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
-        for var in host_env::CREDENTIAL_VARS {
-            spawn.env_remove(*var);
-        }
+        host_env::scrub_tokio_command(&mut spawn);
         let child = spawn
             .spawn()
             .map_err(|e| BashError::SpawnFailed(e.to_string()))?;

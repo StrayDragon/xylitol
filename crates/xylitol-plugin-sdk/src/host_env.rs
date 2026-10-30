@@ -4,6 +4,12 @@ pub fn is_credential_var(name: &str) -> bool {
     CREDENTIAL_VARS.contains(&name)
 }
 
+pub fn scrub_tokio_command(command: &mut tokio::process::Command) {
+    for var in CREDENTIAL_VARS {
+        command.env_remove(*var);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

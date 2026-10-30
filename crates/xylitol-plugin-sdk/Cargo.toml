@@ -22,7 +22,7 @@ yaml_serde = { workspace = true }
 strum = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing", "macros"] }
-tokio = { workspace = true, features = ["sync", "macros", "rt", "time"] }
+tokio = { workspace = true, features = ["sync", "macros", "rt", "time", "process"] }
 tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 rutis = { workspace = true }
