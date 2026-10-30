@@ -11,4 +11,4 @@
 - [x] 4.1 specs：`app-tui-host` r3005 悬停稳定；`app-tui-transcript` r1351/r1355/r1364/r1372 流式 thinking 可见；`infra-observability` r3006 loader 提示降级
 - [x] 5.1 门禁：`just qa`
 - [x] 5.2 门禁：`just test-tui-e2e`
-- [ ] 5.3 收口校验：`llman-sdd validate --all --strict`
+- [x] 5.3 收口校验：`llman-sdd validate --all --strict`
