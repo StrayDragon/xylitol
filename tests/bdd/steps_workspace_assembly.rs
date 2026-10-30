@@ -53,3 +53,35 @@ pub(crate) fn t_empty_hooks_allowed() {
         "空 hooks 分发必须允许，得到 {result:?}"
     );
 }
+
+thread_local! {
+    static TIMEOUT_DESCRIPTION: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+#[when("构造等待缺失服务的启动自检超时")]
+pub(crate) fn w_self_check_timeout_with_missing_service() {
+    use xylitol_kernel::boot::{Wait, WaitReason};
+
+    let described = xylitol_kernel::boot::describe_wait(&Wait::new(
+        "SessionStore",
+        WaitReason::ProviderFailed {
+            row: "session-store".into(),
+            error: "plugin failed to start".into(),
+        },
+    ));
+    TIMEOUT_DESCRIPTION.with(|slot| *slot.borrow_mut() = Some(described));
+}
+
+#[then("错误文案含服务名与缺失原因")]
+pub(crate) fn t_timeout_description_names_service_and_reason() {
+    let described =
+        TIMEOUT_DESCRIPTION.with(|slot| slot.borrow().clone().expect("已构造启动自检超时诊断"));
+    assert!(
+        described.contains("SessionStore"),
+        "诊断必须含缺失服务名：{described}"
+    );
+    assert!(
+        described.contains("session-store") && described.contains("plugin failed to start"),
+        "诊断必须含缺失原因：{described}"
+    );
+}

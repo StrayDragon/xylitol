@@ -2,6 +2,9 @@
 depends_on: []
 title: rutis host 硬化：错误出口、启动诊断与后续顺序
 needs_specs_change: true
+branch: sdd/c3007-update-rutis-host-hardening
+base_branch: main
+base_sha: 029b3d9aa36ed7791fa9916880f7a2f7a966c90d
 ---
 
 # rutis host 硬化：错误出口、启动诊断与后续顺序
