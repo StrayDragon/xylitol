@@ -52,6 +52,74 @@ fn describe_ok() -> RpcResult {
     RpcResult::ok_value(json!({"protocol": PROTOCOL_VERSION, "formats": [WIRE_FORMAT_JSONRPC]}))
 }
 
+#[derive(Clone)]
+struct MuxOkHost {
+    describe: RpcResult,
+    subscribe_fails: bool,
+    mux_calls: Arc<AtomicUsize>,
+}
+
+impl MuxOkHost {
+    fn new(subscribe_fails: bool) -> Self {
+        Self {
+            describe: describe_ok(),
+            subscribe_fails,
+            mux_calls: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+}
+
+#[async_trait]
+impl HostClient for MuxOkHost {
+    async fn unary(&self, method: &str, _payload: Value) -> Result<RpcResult, HostClientError> {
+        if method == METHOD_HOST_DESCRIBE {
+            return Ok(self.describe.clone());
+        }
+        if method == METHOD_SUBSCRIBE {
+            return if self.subscribe_fails {
+                Err(HostClientError::transport("subscribe failed"))
+            } else {
+                Ok(RpcResult::ok_value(
+                    json!({"session_id": "s-test", "seq": 0, "inflight": false}),
+                ))
+            };
+        }
+        Ok(RpcResult::ok_value(json!({})))
+    }
+
+    async fn respond(&self, _call_id: &str, _payload: Value) -> Result<(), HostClientError> {
+        Ok(())
+    }
+
+    async fn mux(&self) -> Result<MuxStream, HostClientError> {
+        self.mux_calls.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::pin(futures::stream::empty()))
+    }
+}
+
+async fn run_downlink_briefly(host: MuxOkHost) -> (usize, bool) {
+    let mux_calls = host.mux_calls.clone();
+    let driver = XyRemoteDriver::with_host(host, "s-test").with_tunings(LinkTunings {
+        backoff_base: Duration::from_millis(1),
+        backoff_cap: Duration::from_millis(2),
+        survive_threshold: Duration::from_secs(1),
+        coalesce_window: Duration::ZERO,
+    });
+    let life = driver.session_life.clone();
+    let subscribed_ok = driver.subscribed_ok.clone();
+    let handle = tokio::spawn(downlink_loop(driver.downlink_ctx()));
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    life.cancel();
+    tokio::time::timeout(Duration::from_secs(1), handle)
+        .await
+        .expect("downlink stops after cancel")
+        .expect("downlink task joins");
+    (
+        mux_calls.load(Ordering::SeqCst),
+        subscribed_ok.load(Ordering::SeqCst),
+    )
+}
+
 fn new_driver(host: ScriptedHost) -> XyRemoteDriver<ScriptedHost> {
     XyRemoteDriver::with_host(host, "s-test")
 }
@@ -115,6 +183,29 @@ async fn downlink_loop_stops_on_handshake_mismatch_without_retry() {
         .expect("fatal mismatch ends the downlink loop instead of retrying");
     assert_eq!(mux_calls.load(Ordering::SeqCst), 1);
     assert!(driver.fatal.lock().expect("fatal slot").is_some());
+}
+
+#[tokio::test]
+async fn downlink_loop_retries_after_subscribe_failure() {
+    let (mux_calls, subscribed_ok) = run_downlink_briefly(MuxOkHost::new(true)).await;
+    assert!(
+        mux_calls >= 2,
+        "a failed subscribe must reconnect instead of stopping"
+    );
+    assert!(
+        !subscribed_ok,
+        "a failed subscribe must not mark the link ready"
+    );
+}
+
+#[tokio::test]
+async fn downlink_loop_reconnects_after_mux_closes() {
+    let (mux_calls, subscribed_ok) = run_downlink_briefly(MuxOkHost::new(false)).await;
+    assert!(
+        mux_calls >= 2,
+        "a closed mux stream must be reopened after the pause"
+    );
+    assert!(!subscribed_ok, "the link is not ready once the mux closes");
 }
 
 #[tokio::test]
