@@ -284,6 +284,7 @@ impl<T: Terminal> TUI<T> {
         let rows = rows.max(1);
         if rows != self.dock_rows {
             self.ao_components_stale = true;
+            self.clear_pointer_hover();
         }
         self.dock_rows = rows;
         if let Some(runtime) = self.application_owned.as_mut() {
@@ -533,11 +534,24 @@ impl<T: Terminal> TUI<T> {
         if !self.application_session_active {
             return;
         }
-        if can_reproject {
+        if can_reproject
+            || (self.overlays.is_empty()
+                && self.previous_width == self.ao_render_width(self.terminal.columns() as usize))
+        {
             self.pointer.reprobe_hover(self.pointer_view(false));
         } else {
             self.pointer.clear_hover();
         }
+        self.sync_pointer_hover_into_runtime();
+    }
+
+    pub fn clear_pointer_hover(&mut self) {
+        self.pointer.forget_hover();
+        self.sync_pointer_hover_into_runtime();
+    }
+
+    pub fn reprobe_pointer_hover(&mut self) {
+        self.pointer.reprobe_hover(self.pointer_view(false));
         self.sync_pointer_hover_into_runtime();
     }
 

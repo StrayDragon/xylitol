@@ -134,8 +134,15 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
 }
 
 fn rutis_error_sink() -> ErrorSink {
-    Arc::new(|error: Arc<ErrorKind>| {
-        log::error!(target: "xylitol::rutis", "{error}");
+    Arc::new(|error: Arc<ErrorKind>| match &*error {
+        ErrorKind::NotServedByName { service } => {
+            log::debug!(
+                target: "xylitol::rutis",
+                "service {service} is provided by type but not registered by name \
+                 (rutis-bridge is not linked; name serving is unused)"
+            );
+        }
+        _ => log::error!(target: "xylitol::rutis", "{error}"),
     })
 }
 
@@ -757,6 +764,28 @@ for line in sys.stdin:
         RECORDS.lock().expect("records").clear();
 
         let sink = rutis_error_sink();
+        sink(Arc::new(ErrorKind::NotServedByName {
+            service: "loader".into(),
+        }));
+        {
+            let records = RECORDS.lock().expect("records");
+            assert!(
+                !records
+                    .iter()
+                    .any(|(level, _, _)| *level == log::Level::Error),
+                "name-serving notice must not be an error: {records:?}"
+            );
+            assert!(
+                records.iter().any(|(level, target, message)| {
+                    *level == log::Level::Debug
+                        && target == "xylitol::rutis"
+                        && message.contains("loader")
+                }),
+                "name-serving notice must be logged at debug: {records:?}"
+            );
+        }
+
+        RECORDS.lock().expect("records").clear();
         sink(Arc::new(ErrorKind::PluginFailed("boom".into())));
 
         let records = RECORDS.lock().expect("records");

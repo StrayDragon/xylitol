@@ -920,6 +920,7 @@ impl<T: Terminal> HostSession<T> {
                     }
                     if self.tui.application_session_active() {
                         self.sync_fold_hit_viewport();
+                        self.tui.reprobe_pointer_hover();
                     }
                 }
                 Ok(())
@@ -1105,6 +1106,7 @@ impl<T: Terminal> HostSession<T> {
                 root.sync_editor_screen_origin();
                 if root.take_fold_dirty() {
                     drop(root);
+                    self.tui.clear_pointer_hover();
                     self.tui.mark_ao_components_stale();
                 }
             }

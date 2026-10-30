@@ -11,7 +11,6 @@ use crate::layout::LayoutTheme;
 
 use super::super::fold_hit::{FoldHitTable, FoldTarget};
 use super::super::glyphs::GlyphSet;
-use super::ScrollbackFold;
 use super::paint::{inter_block_spacer, key_hint, push_wrapped};
 
 #[allow(clippy::too_many_arguments)]
@@ -101,12 +100,10 @@ pub(super) fn paint_cluster_header_row(
 pub(super) fn paint_folded_streaming_thought(
     lines: &mut Vec<String>,
     fold_hits: &mut FoldHitTable,
-    fold: &ScrollbackFold,
     activity: &ActivityFoldState,
     model: &UiModel,
     segments: &[crate::activity_fold::ActivitySegment],
     live_open_cluster: bool,
-    live_open_cluster_expanded: bool,
     live_open_cluster_thought_only: bool,
     text: &str,
     glyphs: GlyphSet,
@@ -114,25 +111,15 @@ pub(super) fn paint_folded_streaming_thought(
     width: usize,
 ) {
     if live_open_cluster {
-        if !live_open_cluster_expanded {
-            return;
-        }
         if live_open_cluster_thought_only {
             push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
             return;
         }
-        let expanded = fold.thinking_effective(STREAMING_THINK_ID);
-        let marker = if expanded {
-            glyphs.unfold()
-        } else {
-            glyphs.fold()
-        };
+        let marker = glyphs.unfold();
         let header = theme.paint_muted(&format!("{marker} Thinking  {}", key_hint("Ctrl+T")));
         let row_start = lines.len();
         push_wrapped(lines, &header, width);
-        if expanded {
-            push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
-        }
+        push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
         fold_hits.push_rect(
             row_start,
             0,
@@ -151,9 +138,7 @@ pub(super) fn paint_folded_streaming_thought(
     let row_start = lines.len();
     push_wrapped(lines, &painted, width);
     fold_hits.push(row_start, 0, width.max(1), FoldTarget::Cluster(cluster_id));
-    if expanded {
-        push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
-    }
+    push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);
 }
 
 fn thought_duration_label(
