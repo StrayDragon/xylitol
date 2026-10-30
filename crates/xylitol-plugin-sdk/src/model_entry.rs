@@ -91,10 +91,15 @@ impl XyModelEntryConfig {
         Ok(out)
     }
 
+    pub fn validate(&self) -> Result<(), String> {
+        self.resolved_input_modalities()?;
+        resolve_max_tokens(self.max_output_tokens).map(|_| ())
+    }
+
     pub fn to_model_meta(&self, id: &str) -> Result<crate::model::XyModelMeta, String> {
         use crate::model::{XyModelMeta, default_context_window_for};
 
-        self.resolved_input_modalities()?;
+        self.validate()?;
         let config = self.to_model_config();
         let (thinking_levels, thinking_level_map) = self.resolve_thinking_config()?;
         let context_window = if self.context_window > 0 {
@@ -102,7 +107,7 @@ impl XyModelEntryConfig {
         } else {
             default_context_window_for(config.kind)
         };
-        let max_tokens = resolve_max_tokens(self.max_output_tokens)?;
+        let max_tokens = u64::from(self.max_output_tokens.unwrap_or(0));
         Ok(XyModelMeta {
             id: id.to_string(),
             config,
