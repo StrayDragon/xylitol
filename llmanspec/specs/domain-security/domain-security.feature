@@ -176,3 +176,12 @@
   @req:r2965
   规则: project-plan-trust
     项目本地计划（项目根下 `.xylitol/plans`）的读取与写入 须遵循项目 trust 门禁；未信任 须返回 PermissionDenied；global 计划 不受项目 trust 限制。由 plan 插件单测覆盖。
+
+  @req:r3002
+  规则: 工具子进程凭据剥离
+    Host 租约凭据不得出现在模型执行的工具子进程继承环境中；bash、检索/进程工具、交互 bash、外部插件、hooks 与 MCP stdio 子进程须在 spawn 前移除保留凭据环境变量（`XYLITOL_SERVE_TOKEN` / `XYLITOL_AUTH_TOKEN`）。凭据只经 0600 文件与注册契约传递。
+
+    场景: 工具子进程无凭据环境
+      假如 进程环境含 XYLITOL_SERVE_TOKEN
+      当 构建 bash 工具子进程环境
+      那么 该变量被移除

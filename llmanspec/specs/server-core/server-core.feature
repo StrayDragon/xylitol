@@ -660,3 +660,22 @@
       假如 一路订阅在订且 journal 含历史事件
       当 第二路冷订阅
       那么 重放仅达第二路而在订者不收到重放帧
+
+  @req:r3001
+  规则: 回环凭据门禁
+    产品 Host（`xylitol serve`）须默认启用回环凭据门禁：首次启动在 `~/.xylitol/serve.token`（0600）生成随机凭据并跨重启复用；`~/.xylitol/serve.json`（0600）须携带该凭据。`POST /rpc`、`WS /rpc` 升级与 `GET /healthz` 均须校验 `Authorization: Basic` 凭据；未携带或不匹配须返回 401 且附 `WWW-Authenticate`，不得执行任何业务。WS 升级可接受 `auth_token` 查询参数作为浏览器兜底。客户端 attach 须仅从与目标 URL 匹配的注册文件读取凭据；凭据不得写入日志、会话或工具子进程环境。
+
+    场景: 未带凭据被拒
+      假如 Host 已启用回环凭据门禁
+      当 不带凭据访问 /healthz
+      那么 返回 401 且携带 WWW-Authenticate
+
+    场景: 携带发现凭据可访问
+      假如 Host 已启用回环凭据门禁且注册文件含凭据
+      当 以注册文件中的凭据访问 /healthz
+      那么 返回 200
+
+    场景: 注册文件携带凭据
+      假如 Host 已启用回环凭据门禁
+      当 读取鉴权注册文件
+      那么 文件含 token 且与启动凭据一致

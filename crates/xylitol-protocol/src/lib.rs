@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod codec;
 pub mod command;
 pub mod event;

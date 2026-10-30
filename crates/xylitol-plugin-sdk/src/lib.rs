@@ -7,6 +7,7 @@ pub mod compat;
 pub mod dto;
 pub mod error;
 pub mod generate;
+pub mod host_env;
 pub mod lifecycle;
 pub mod llm_project;
 pub mod loop_middleware;

@@ -1,4 +1,6 @@
 #[cfg(feature = "listen")]
+pub mod credential;
+#[cfg(feature = "listen")]
 pub mod listen;
 #[cfg(feature = "listen")]
 pub mod occupancy;
@@ -7,6 +9,8 @@ pub mod registration;
 #[cfg(feature = "listen")]
 pub mod wire;
 
+#[cfg(feature = "listen")]
+pub use credential::{CREDENTIAL_FILE_NAME, default_credential_path, load_or_create_credential};
 #[cfg(feature = "listen")]
 pub use listen::{
     Gateway, ListenConfig, MUX_CHAN_CAP, MuxSink, OccupiedHost, Phase, RunningListener,

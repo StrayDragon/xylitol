@@ -141,6 +141,10 @@ xylitol serve
 
 默认监听 `127.0.0.1:18790`。按 Ctrl-C 停止；在后台运行时，向该进程发送 SIGTERM。
 
+Host 首次启动会在 `~/.xylitol/serve.token`（0600）生成随机凭据，并写入
+`~/.xylitol/serve.json`（0600）供本机客户端发现；`/rpc` 与 `/healthz` 默认要求
+Basic 鉴权。TUI 会自动读取凭据，无需手工配置。不要把凭据复制到环境变量、日志或会话。
+
 在终端 B 启动 TUI：
 
 ```bash

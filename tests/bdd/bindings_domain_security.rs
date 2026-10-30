@@ -6,6 +6,12 @@ use rstest_bdd_macros::scenario;
     name = "网络领域块"
 )]
 fn test_domain_security_network_block() {}
+
+#[scenario(
+    path = "llmanspec/specs/domain-security/domain-security.feature",
+    name = "工具子进程无凭据环境"
+)]
+fn test_domain_security_credential_env() {}
 #[scenario(
     path = "llmanspec/specs/domain-security/domain-security.feature",
     name = "拒绝写入"

@@ -11,9 +11,10 @@ use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, oneshot, watch};
 use tokio_tungstenite::{
     connect_async,
-    tungstenite::{Message, client::IntoClientRequest},
+    tungstenite::{Message, client::IntoClientRequest, http::HeaderValue},
 };
 use tokio_util::sync::CancellationToken;
+use xylitol_protocol::auth;
 use xylitol_protocol::method::{ANSWER_QUESTION, APPROVE_TOOL};
 use xylitol_protocol::registry::{METHOD_HOST_DESCRIBE, METHOD_RELOAD};
 use xylitol_protocol::{Notification, RpcResult};
@@ -32,6 +33,7 @@ const OUTGOING_CAP: usize = 64;
 #[derive(Clone)]
 pub struct HttpWsClient {
     base_url: String,
+    token: Option<String>,
     ping_interval: Duration,
     idle_timeout: Duration,
     peer: Arc<tokio::sync::Mutex<Option<Arc<SharedWs>>>>,
@@ -72,10 +74,16 @@ impl HttpWsClient {
     pub fn new(base_url: impl Into<String>) -> Self {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
+            token: None,
             ping_interval: MUX_PING_INTERVAL,
             idle_timeout: MUX_IDLE_TIMEOUT,
             peer: Arc::new(tokio::sync::Mutex::new(None)),
         }
+    }
+
+    pub fn with_token(mut self, token: Option<String>) -> Self {
+        self.token = token.filter(|token| !token.trim().is_empty());
+        self
     }
 
     pub fn with_mux_liveness(mut self, ping_interval: Duration, idle_timeout: Duration) -> Self {
@@ -110,10 +118,15 @@ impl HttpWsClient {
 
     async fn connect_peer(&self) -> Result<Arc<SharedWs>, HostClientError> {
         let url = self.ws_mux_url();
-        let request = url
+        let mut request = url
             .as_str()
             .into_client_request()
             .map_err(|e| HostClientError::transport(format!("WS request {url}: {e}")))?;
+        if let Some(token) = &self.token {
+            request
+                .headers_mut()
+                .insert(auth::AUTHORIZATION_HEADER, auth_header(token)?);
+        }
         let (ws_stream, _) = connect_async(request)
             .await
             .map_err(|e| HostClientError::transport(format!("WS connect {url}: {e}")))?;
@@ -199,6 +212,11 @@ impl HttpWsClient {
         }
         Ok(peer)
     }
+}
+
+fn auth_header(token: &str) -> Result<HeaderValue, HostClientError> {
+    HeaderValue::from_str(&auth::basic_authorization(token))
+        .map_err(|e| HostClientError::transport(format!("WS auth header: {e}")))
 }
 
 fn unary_bound(method: &str) -> Duration {
@@ -499,6 +517,15 @@ mod tests {
         let (peer, _out) = new_peer();
         assert!(route_frame(&peer, Message::text("{not json")).is_err());
         assert!(route_frame(&peer, Message::text("[]")).is_err());
+    }
+
+    #[test]
+    fn auth_header_encodes_basic_credential() {
+        let value = auth_header("test-token").expect("header");
+        assert_eq!(
+            auth::token_from_authorization(value.to_str().expect("utf8")).as_deref(),
+            Some("test-token")
+        );
     }
 
     #[test]

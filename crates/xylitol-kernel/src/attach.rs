@@ -133,7 +133,7 @@ pub fn classify_dead(
     let Some(reg) = reg else {
         return attach_fail_message(url);
     };
-    if reg.url != url {
+    if !same_url(&reg.url, url) {
         return format!(
             "Host is not listening at {url}. The registration file points at {} — \
              no daemon at either address. Start it with: xylitol serve",
@@ -170,24 +170,95 @@ fn pid_alive(pid: u32) -> bool {
 }
 
 #[cfg(feature = "server")]
-async fn fetch_healthz(url: &str) -> Option<HealthzInfo> {
-    let client = reqwest::Client::builder()
+enum HealthzProbe {
+    Info(HealthzInfo),
+    Unauthorized,
+    Unreachable,
+}
+
+#[cfg(feature = "server")]
+async fn fetch_healthz(url: &str, token: Option<&str>) -> HealthzProbe {
+    let Ok(client) = reqwest::Client::builder()
         .timeout(Duration::from_millis(400))
         .build()
-        .ok()?;
-    let body = client
-        .get(format!("{url}/healthz"))
-        .send()
-        .await
-        .ok()?
-        .text()
-        .await
-        .ok()?;
-    let v: serde_json::Value = serde_json::from_str(&body).ok()?;
-    Some(HealthzInfo {
-        pid: u32::try_from(v.get("pid")?.as_u64()?).ok()?,
-        version: v.get("version")?.as_str()?.to_string(),
+    else {
+        return HealthzProbe::Unreachable;
+    };
+    let mut request = client.get(format!("{url}/healthz"));
+    if let Some(token) = token {
+        request = request.header(
+            xylitol_protocol::auth::AUTHORIZATION_HEADER,
+            xylitol_protocol::auth::basic_authorization(token),
+        );
+    }
+    let Ok(resp) = request.send().await else {
+        return HealthzProbe::Unreachable;
+    };
+    if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+        return HealthzProbe::Unauthorized;
+    }
+    let Ok(body) = resp.text().await else {
+        return HealthzProbe::Unreachable;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return HealthzProbe::Unreachable;
+    };
+    let (Some(pid), Some(version)) = (
+        v.get("pid").and_then(|pid| pid.as_u64()),
+        v.get("version").and_then(|version| version.as_str()),
+    ) else {
+        return HealthzProbe::Unreachable;
+    };
+    let Ok(pid) = u32::try_from(pid) else {
+        return HealthzProbe::Unreachable;
+    };
+    HealthzProbe::Info(HealthzInfo {
+        pid,
+        version: version.to_string(),
     })
+}
+
+#[cfg(feature = "server")]
+fn same_url(left: &str, right: &str) -> bool {
+    let (Ok(left), Ok(right)) = (url::Url::parse(left), url::Url::parse(right)) else {
+        return left.trim_end_matches('/') == right.trim_end_matches('/');
+    };
+    left.scheme() == right.scheme()
+        && left.port_or_known_default() == right.port_or_known_default()
+        && normalize_host(left.host_str()) == normalize_host(right.host_str())
+}
+
+#[cfg(feature = "server")]
+fn normalize_host(host: Option<&str>) -> &str {
+    match host {
+        Some("0.0.0.0" | "::" | "[::]" | "localhost") => "127.0.0.1",
+        Some(host) => host,
+        None => "",
+    }
+}
+
+#[cfg(feature = "server")]
+pub fn registration_token(url: &str) -> Option<String> {
+    registration_token_with(url, None)
+}
+
+#[cfg(feature = "server")]
+pub fn registration_token_with(
+    url: &str,
+    registration_path: Option<std::path::PathBuf>,
+) -> Option<String> {
+    let reg_path = registration_path.unwrap_or_else(xylitol_serve::default_registration_path);
+    let reg = xylitol_serve::read_registration(&reg_path).ok()?;
+    same_url(&reg.url, url).then_some(reg.token).flatten()
+}
+
+#[cfg(feature = "server")]
+fn auth_required_message(url: &str, registration_path: &std::path::Path) -> String {
+    format!(
+        "Host at {url} requires authentication, but no matching credential was found in {}. \
+         Restart the Host with `xylitol serve` (same account) so the registration file is rewritten.",
+        registration_path.display()
+    )
 }
 
 #[cfg(feature = "server")]
@@ -202,6 +273,10 @@ pub async fn attach_preflight_with(
 ) -> Result<(), String> {
     let reg_path = registration_path.unwrap_or_else(xylitol_serve::default_registration_path);
     let reg = xylitol_serve::read_registration(&reg_path).ok();
+    let token = reg
+        .as_ref()
+        .filter(|reg| same_url(&reg.url, url))
+        .and_then(|reg| reg.token.clone());
     if probe_host(url).is_err() {
         let msg = classify_dead(
             reg.clone(),
@@ -215,7 +290,11 @@ pub async fn attach_preflight_with(
         }
         return Err(msg);
     }
-    let hz = fetch_healthz(url).await;
+    let hz = match fetch_healthz(url, token.as_deref()).await {
+        HealthzProbe::Unauthorized => return Err(auth_required_message(url, &reg_path)),
+        HealthzProbe::Info(hz) => Some(hz),
+        HealthzProbe::Unreachable => None,
+    };
     if let Some(msg) = classify_running(hz, reg, url, env!("CARGO_PKG_VERSION")) {
         return Err(msg);
     }
@@ -231,6 +310,7 @@ mod c2475_tests {
             url: url.into(),
             pid,
             version: "0.0.0-dev".into(),
+            token: None,
         })
     }
 
@@ -288,5 +368,44 @@ mod c2475_tests {
 
         let mismatch = classify_dead(reg("http://other", 42), "http://u", false);
         assert!(mismatch.contains("http://other"), "{mismatch}");
+    }
+
+    #[test]
+    fn auth_required_message_is_actionable() {
+        let msg = auth_required_message(
+            "http://127.0.0.1:18790",
+            std::path::Path::new("/tmp/serve.json"),
+        );
+        assert!(msg.contains("requires authentication"), "{msg}");
+        assert!(msg.contains("xylitol serve"), "{msg}");
+        assert!(msg.contains("serve.json"), "{msg}");
+    }
+
+    #[test]
+    fn registration_token_only_matches_target_url() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("serve.json");
+        let mut reg = reg("http://127.0.0.1:18790", 7).expect("reg");
+        reg.token = Some("secret-token".into());
+        xylitol_serve::write_registration(&path, &reg).expect("write");
+
+        assert_eq!(
+            registration_token_with("http://127.0.0.1:18790", Some(path.clone())).as_deref(),
+            Some("secret-token")
+        );
+        assert!(
+            registration_token_with("http://127.0.0.1:18791", Some(path.clone())).is_none(),
+            "token must not be sent to a different URL"
+        );
+        assert_eq!(
+            registration_token_with("http://localhost:18790", Some(path.clone())).as_deref(),
+            Some("secret-token"),
+            "localhost and loopback must be equivalent"
+        );
+        assert_eq!(
+            registration_token_with("http://0.0.0.0:18790", Some(path)).as_deref(),
+            Some("secret-token"),
+            "wildcard bind and loopback must be equivalent"
+        );
     }
 }
