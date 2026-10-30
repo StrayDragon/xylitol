@@ -4,6 +4,7 @@ pub mod hooks;
 pub mod plugin;
 pub mod provider;
 pub mod thinking;
+pub mod usage;
 pub mod wire_policy;
 
 pub use error::XyError;
