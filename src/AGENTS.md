@@ -119,7 +119,7 @@ flowchart TB
 
 图中虚线 = 配置驱动、trust 门禁的外进程插件；只贡献工具，不替换内核 / 官方插件名。
 
-`rutis` 只出现在 `xylitol-plugin-sdk` 与 `xylitol-kernel` 的 `Cargo.toml`（精确锁 `=0.19.0`）。`rutis-loader` 只在 kernel。官方插件与 runtime 只依赖 sdk（经 `xylitol_plugin_sdk::rt`），**不得** `use rutis`。产品端不得依赖 rutis。一张监听器表、发射方选 mode（rutis plugin API 3）。`Call::next` 仅 waterfall；双模式事件（开火 emit / 等待 waterfall）必须 `CallExt::chain`，不得无条件 `next`。kernel 作 host 时用 `rutis::host`（`CtxHost` / `FiberState` / `BoxFuture`）。
+`rutis` 只出现在 `xylitol-plugin-sdk` 与 `xylitol-kernel` 的 `Cargo.toml`（精确锁 `=0.19.1`）。`rutis-loader` 只在 kernel。官方插件与 runtime 只依赖 sdk（经 `xylitol_plugin_sdk::rt`），**不得** `use rutis`。产品端不得依赖 rutis。一张监听器表、发射方选 mode（rutis plugin API 3）。`Call::next` 仅 waterfall；双模式事件（开火 emit / 等待 waterfall）必须 `CallExt::chain`，不得无条件 `next`。kernel 作 host 时用 `rutis::host`（`CtxHost` / `FiberState` / `BoxFuture`）。
 
 | crate | 必须 | 不得 |
 |---|---|---|
