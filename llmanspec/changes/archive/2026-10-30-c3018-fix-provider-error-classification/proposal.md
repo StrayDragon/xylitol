@@ -2,6 +2,9 @@
 depends_on: []
 title: Provider 错误结构化与重试分类
 needs_specs_change: true
+branch: sdd/c3018-fix-provider-error-classification
+base_branch: main
+base_sha: 369684d41fa054c27824f06779d0a3d5987f95c6
 ---
 
 # Provider 错误结构化与重试分类

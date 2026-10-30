@@ -23,6 +23,7 @@ use crate::error::XyError;
 use crate::hooks::HttpHooks;
 use crate::provider::native::openai_client::OpenAiClientFactory;
 use crate::wire_policy::WirePolicy;
+use xylitol_plugin_sdk::error::XyProviderError;
 
 pub struct OpenAIProvider {
     client: OpenAiClientFactory,
@@ -55,6 +56,15 @@ impl OpenAIProvider {
     }
 
     fn map_err(err: async_openai::error::OpenAIError) -> XyError {
+        if let async_openai::error::OpenAIError::ApiError(resp) = &err {
+            return XyError::provider(XyProviderError {
+                message: resp.api_error.message.clone(),
+                status: Some(resp.status_code.as_u16()),
+                code: resp.api_error.code.clone(),
+                error_type: resp.api_error.r#type.clone(),
+                retry_after: None,
+            });
+        }
         XyError::Provider(anyhow::anyhow!("OpenAI Completions: {err}"))
     }
 
@@ -839,5 +849,24 @@ mod tests {
         let u = done_usage(&chunks);
         assert_eq!(u.prompt_cache_read, PromptCacheRead::NotReported);
         assert_eq!(u.cache_read, 0);
+    }
+
+    #[test]
+    fn api_error_maps_to_structured_detail() {
+        let err =
+            async_openai::error::OpenAIError::ApiError(async_openai::error::ApiErrorResponse {
+                status_code: reqwest::StatusCode::INTERNAL_SERVER_ERROR,
+                api_error: async_openai::error::ApiError {
+                    message: "boom".into(),
+                    r#type: Some("server_error".into()),
+                    param: None,
+                    code: Some("server_error".into()),
+                    misalignment: None,
+                },
+            });
+        let xy = OpenAIProvider::map_err(err);
+        let detail = xy.provider_detail().expect("structured provider detail");
+        assert_eq!(detail.status, Some(500));
+        assert_eq!(detail.error_type.as_deref(), Some("server_error"));
     }
 }

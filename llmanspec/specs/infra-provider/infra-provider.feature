@@ -112,3 +112,6 @@
   @req:r3020
   规则: openai-prompt-cache-affinity
     OpenAI Responses 与 Completions 方言 必须 在会话 id 可用时发送 `prompt_cache_key`（取会话上下文 session id）；`compat: generic` 必须 默认允许，`compat: deepseek` 必须 默认禁止，配置 `prompt_cache.enabled` 必须 可覆盖。配置 `prompt_cache.retention` 为 `24h` 时 必须 发送 `prompt_cache_retention: "24h"`，未配置 必须 省略。`prompt_cache_retention` 不得 在缺少 key 时单独发送。由插件单测覆盖。
+  @req:r3022
+  规则: provider-error-structure
+    方言适配器 必须 把可得的 HTTP 状态、错误 `code` / `type` 与 `retry-after` 填入结构化 provider 错误，不得 只保留字符串消息；结构 必须 经既有 `XyError::Provider` 包装可读取，不得 改变错误枚举变体形状。由插件单测覆盖。

@@ -49,7 +49,8 @@ pub use dto::{
     collect_text_parts, now_ms,
 };
 pub use error::{
-    XyError, XyExportError, XySessionError, XySessionStoreError, XyToolError, XyTrustError,
+    XyError, XyExportError, XyProviderError, XySessionError, XySessionStoreError, XyToolError,
+    XyTrustError,
 };
 pub use generate::{
     ObsSessionContext, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_LLM, XyGenerateOptions,

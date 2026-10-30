@@ -12,6 +12,7 @@ use crate::hooks::{
 };
 use crate::provider::reqwest_headers::{from_reqwest_headers, to_reqwest_headers};
 
+use xylitol_plugin_sdk::error::XyProviderError;
 use xylitol_plugin_sdk::message::XyLlmMessage;
 use xylitol_plugin_sdk::model::{XyPromptCacheConfig, XyPromptCacheTtl};
 use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSchema};
@@ -274,10 +275,23 @@ impl AnthropicMessagesAdapter {
         .await;
 
         if !response.status().is_success() {
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.trim().parse::<u64>().ok())
+                .map(std::time::Duration::from_secs);
             let body_text = response.text().await.unwrap_or_default();
-            let msg = extract_error_message(&body_text)
+            let error_type = extract_error_type(&body_text);
+            let message = extract_error_message(&body_text)
                 .unwrap_or_else(|| format!("HTTP {status}: {body_text}"));
-            return Err(XyError::Provider(anyhow::anyhow!(msg)));
+            return Err(XyError::provider(XyProviderError {
+                message,
+                status: Some(status),
+                code: None,
+                error_type,
+                retry_after,
+            }));
         }
 
         let trace = crate::provider::trace::ProviderRequestTrace::start_with_parent_obs(
@@ -577,9 +591,13 @@ fn anthropic_stream(
                         .and_then(|e| e.get("message"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("Anthropic stream error");
-                    Err(XyError::Provider(anyhow::anyhow!(
-                        "Anthropic stream error ({kind}): {message}"
-                    )))?;
+                    Err(XyError::provider(XyProviderError {
+                        message: format!("Anthropic stream error: {message}"),
+                        status: None,
+                        code: None,
+                        error_type: Some(kind.to_string()),
+                        retry_after: None,
+                    }))?;
                 }
                 _ => {}
             }
@@ -836,6 +854,11 @@ fn extract_error_message(body: &str) -> Option<String> {
         .get("message")?
         .as_str()
         .map(String::from)
+}
+
+fn extract_error_type(body: &str) -> Option<String> {
+    let json: Value = serde_json::from_str(body).ok()?;
+    json.get("error")?.get("type")?.as_str().map(String::from)
 }
 
 #[cfg(test)]
@@ -1555,12 +1578,59 @@ mod tests {
             .as_ref()
             .expect_err("error event must surface Err");
         assert!(err.to_string().contains("overloaded_error"), "{err}");
+        let detail = err
+            .provider_detail()
+            .expect("stream error must carry structured detail");
+        assert_eq!(detail.status, None);
+        assert_eq!(detail.error_type.as_deref(), Some("overloaded_error"));
         assert!(
             !items
                 .iter()
                 .any(|item| matches!(item, Ok(XyChunk::Done { .. }))),
             "error event must not be followed by Done"
         );
+    }
+
+    #[tokio::test]
+    async fn http_error_carries_status_type_and_retry_after() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(
+                ResponseTemplate::new(529)
+                    .insert_header("retry-after", "7")
+                    .set_body_json(serde_json::json!({
+                        "type": "error",
+                        "error": {"type": "overloaded_error", "message": "Overloaded"}
+                    })),
+            )
+            .mount(&server)
+            .await;
+        let adapter = AnthropicMessagesAdapter::new(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some(server.uri()),
+            None,
+        );
+        let Err(err) = adapter
+            .generate_stream(
+                vec![XyLlmMessage::user("hi")],
+                &[],
+                false,
+                crate::thinking::XyGenerateOptions::default(),
+            )
+            .await
+        else {
+            panic!("529 must surface Err");
+        };
+        let detail = err.provider_detail().expect("structured detail");
+        assert_eq!(detail.status, Some(529));
+        assert_eq!(detail.error_type.as_deref(), Some("overloaded_error"));
+        assert_eq!(detail.message, "Overloaded");
+        assert_eq!(detail.retry_after, Some(std::time::Duration::from_secs(7)));
     }
 
     #[tokio::test]
