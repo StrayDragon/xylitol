@@ -55,8 +55,8 @@ wait_active(ctx, loader)
 
 ### 测试
 
-- 纯函数测试：构造 `Wait` / `WaitReason` 样例，断言格式化包含服务名与原因。
-- kernel 自检测试：保留现有 boot 成功路径；超时路径由纯函数测试覆盖，避免依赖真实 loader 的时序。
+- 纯函数测试：构造 `Wait` / `WaitReason` 样例，断言格式化包含服务名与原因（覆盖全部已知变体）。
+- kernel 自检测试：`wait_active_within` 以可注入超时驱动一个永不就绪的插件，断言超时错误含 `never-ready` 与 `kernel self-check timed out`；正常 boot 路径仍由现有 `boot_with` 测试覆盖。
 
 ## 3. 风格收口
 

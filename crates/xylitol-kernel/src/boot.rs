@@ -1,4 +1,7 @@
-use rutis::host::{CtxHost, FiberState};
+use std::sync::Arc;
+
+use rutis::host::{CtxHost, ErrorKind, ErrorSink, FiberState};
+pub use rutis_loader::report::{Wait, WaitReason};
 use rutis_loader::{Builtins, Chain, Layer, Loader, LoaderOptions, LoaderPlugin, Patch};
 use xylitol_plugin_sdk::rt::Ctx;
 
@@ -103,7 +106,9 @@ fn static_tools_from_ctx(ctx: &Ctx) -> Vec<std::sync::Arc<dyn xylitol_plugin_sdk
 }
 
 pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapError> {
-    let ctx = Ctx::root().map_err(cordis_to_bootstrap)?;
+    let handle = tokio::runtime::Handle::try_current()
+        .map_err(|_| kernel_failed("rutis root requires a tokio runtime"))?;
+    let ctx = Ctx::root_with_sink(handle, rutis_error_sink());
     mount_core(&ctx, opts).await?;
     crate::subagent::register_subagent_tool(&ctx, opts);
 
@@ -116,7 +121,7 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
     );
     let loader = plugin.handle();
     let loader_view = ctx.plugin(plugin);
-    (&loader_view).await.map_err(cordis_to_bootstrap)?;
+    loader_view.await.map_err(cordis_to_bootstrap)?;
 
     let rows = default_rows(opts, &ctx, &external_specs);
     loader
@@ -124,36 +129,42 @@ pub async fn boot_ctx(opts: &BootOptions) -> Result<(Ctx, Loader), BootstrapErro
         .await
         .map_err(|e| kernel_failed(format!("loader reconcile: {e}")))?;
 
-    wait_active(&ctx).await?;
+    wait_active(&ctx, &loader).await?;
     Ok((ctx, loader))
+}
+
+fn rutis_error_sink() -> ErrorSink {
+    Arc::new(|error: Arc<ErrorKind>| {
+        log::error!(target: "xylitol::rutis", "{error}");
+    })
 }
 
 async fn mount_core(ctx: &Ctx, opts: &BootOptions) -> Result<(), BootstrapError> {
     let config = ctx.plugin(xylitol_official_plugin_config::plugin::ConfigPlugin {
         config_path: opts.config_path.clone(),
     });
-    (&config).await.map_err(cordis_to_bootstrap)?;
+    config.await.map_err(cordis_to_bootstrap)?;
 
     let registries = ctx.plugin(core::registries::RegistriesPlugin);
-    (&registries).await.map_err(cordis_to_bootstrap)?;
+    registries.await.map_err(cordis_to_bootstrap)?;
 
     let obs = ctx.plugin(xylitol_official_plugin_obs::plugin::ObsPlugin);
-    (&obs).await.map_err(cordis_to_bootstrap)?;
+    obs.await.map_err(cordis_to_bootstrap)?;
 
     let trust = ctx.plugin(core::trust::TrustPlugin);
-    (&trust).await.map_err(cordis_to_bootstrap)?;
+    trust.await.map_err(cordis_to_bootstrap)?;
 
     let session_host = ctx.plugin(core::session_host::SessionHostPlugin);
-    (&session_host).await.map_err(cordis_to_bootstrap)?;
+    session_host.await.map_err(cordis_to_bootstrap)?;
 
     let agent = ctx.plugin(core::agent_react::AgentReactPlugin);
-    (&agent).await.map_err(cordis_to_bootstrap)?;
+    agent.await.map_err(cordis_to_bootstrap)?;
 
     let tools = ctx.plugin(core::tool_table::ToolTablePlugin);
-    (&tools).await.map_err(cordis_to_bootstrap)?;
+    tools.await.map_err(cordis_to_bootstrap)?;
 
     let driver = ctx.plugin(core::driver::DriverPlugin);
-    (&driver).await.map_err(cordis_to_bootstrap)?;
+    driver.await.map_err(cordis_to_bootstrap)?;
     Ok(())
 }
 
@@ -324,8 +335,16 @@ fn profile_row(profile: Profile) -> serde_json::Value {
     }
 }
 
-async fn wait_active(ctx: &Ctx) -> Result<(), BootstrapError> {
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+async fn wait_active(ctx: &Ctx, loader: &Loader) -> Result<(), BootstrapError> {
+    wait_active_within(ctx, loader, std::time::Duration::from_secs(2)).await
+}
+
+async fn wait_active_within(
+    ctx: &Ctx,
+    loader: &Loader,
+    timeout: std::time::Duration,
+) -> Result<(), BootstrapError> {
+    let deadline = tokio::time::Instant::now() + timeout;
     loop {
         let diag = ctx.diagnostics();
         let failed: Vec<String> = diag
@@ -355,12 +374,7 @@ async fn wait_active(ctx: &Ctx) -> Result<(), BootstrapError> {
             return Ok(());
         }
         if tokio::time::Instant::now() >= deadline {
-            let names: Vec<String> = diag
-                .plugins
-                .iter()
-                .filter(|p| !matches!(p.state, FiberState::Active))
-                .map(|p| format!("{}:{:?}", p.name, p.state))
-                .collect();
+            let names = describe_unready(ctx, loader);
             return Err(kernel_failed(format!(
                 "kernel self-check timed out: {}",
                 names.join(", ")
@@ -368,6 +382,82 @@ async fn wait_active(ctx: &Ctx) -> Result<(), BootstrapError> {
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
+}
+
+fn describe_unready(ctx: &Ctx, loader: &Loader) -> Vec<String> {
+    let waiting = describe_waits(loader);
+    if !waiting.is_empty() {
+        return waiting;
+    }
+    ctx.diagnostics()
+        .plugins
+        .iter()
+        .filter(|p| !matches!(p.state, FiberState::Active))
+        .map(|p| format!("{}:{:?}", p.name, p.state))
+        .collect()
+}
+
+fn describe_waits(loader: &Loader) -> Vec<String> {
+    loader
+        .entries()
+        .iter()
+        .filter(|entry| entry.plugin.is_some())
+        .filter_map(|entry| {
+            let waits = loader.waits(entry);
+            if waits.is_empty() {
+                return None;
+            }
+            let described: Vec<String> = waits.iter().map(describe_wait).collect();
+            Some(format!("{}: {}", entry.id, described.join(", ")))
+        })
+        .collect()
+}
+
+pub fn describe_wait(wait: &Wait) -> String {
+    let reason = match &wait.reason {
+        WaitReason::OwnRuntime => "its own runtime has not released its rows".to_string(),
+        WaitReason::NoProvider { like: Some(like) } => {
+            format!("no row provides it; did you mean `{like}`?")
+        }
+        WaitReason::NoProvider { like: None } => "no row provides it".to_string(),
+        WaitReason::NoEnabledProvider { like: Some(like) } => {
+            format!("no enabled row provides it; disabled rows may (did you mean `{like}`?)")
+        }
+        WaitReason::NoEnabledProvider { like: None } => {
+            "no enabled row provides it; disabled rows may".to_string()
+        }
+        WaitReason::Explained(text) => text.clone(),
+        WaitReason::ProviderDisabled { row } => {
+            format!("the row `{row}` providing it is disabled")
+        }
+        WaitReason::ProviderFailed { row, error } => {
+            format!("the row `{row}` providing it failed: {error}")
+        }
+        WaitReason::ProviderInactive { row } => {
+            format!("the row `{row}` providing it is not running")
+        }
+        WaitReason::ProviderRuntime { row, runtime } => {
+            format!("the row `{row}` providing it waits for runtime `{runtime}`")
+        }
+        WaitReason::Cycle { row, service } => {
+            format!("the row `{row}` providing it waits for `{service}`, which this row provides")
+        }
+        WaitReason::ProviderWaiting { row, services } => {
+            format!(
+                "the row `{row}` providing it also waits for {}",
+                services.join(", ")
+            )
+        }
+        WaitReason::ProviderStarting { row } => {
+            format!("the row `{row}` providing it is starting")
+        }
+        WaitReason::ProviderRunning { row } => {
+            format!("the row `{row}` providing it runs but has not provided it")
+        }
+        WaitReason::Other(text) => text.clone(),
+        _ => "no reason given".to_string(),
+    };
+    format!("{} ({reason})", wait.service)
 }
 
 fn cordis_to_bootstrap(err: impl std::fmt::Display) -> BootstrapError {
@@ -505,5 +595,178 @@ for line in sys.stdin:
             .expect("boot_with");
         assert_eq!(kernel.profile, Profile::Print);
         let _ = kernel.ctx.shutdown().await;
+    }
+
+    #[test]
+    fn describe_wait_names_the_service_and_reason() {
+        let cases = [
+            (
+                WaitReason::OwnRuntime,
+                "SessionStore (its own runtime has not released its rows)",
+            ),
+            (
+                WaitReason::NoProvider { like: None },
+                "SessionStore (no row provides it)",
+            ),
+            (
+                WaitReason::NoProvider {
+                    like: Some("Tools".into()),
+                },
+                "SessionStore (no row provides it; did you mean `Tools`?)",
+            ),
+            (
+                WaitReason::NoEnabledProvider { like: None },
+                "SessionStore (no enabled row provides it; disabled rows may)",
+            ),
+            (
+                WaitReason::NoEnabledProvider {
+                    like: Some("Tools".into()),
+                },
+                "SessionStore (no enabled row provides it; disabled rows may (did you mean `Tools`?))",
+            ),
+            (
+                WaitReason::Explained("not a service type".into()),
+                "SessionStore (not a service type)",
+            ),
+            (
+                WaitReason::ProviderDisabled {
+                    row: "session-store".into(),
+                },
+                "SessionStore (the row `session-store` providing it is disabled)",
+            ),
+            (
+                WaitReason::ProviderFailed {
+                    row: "session-store".into(),
+                    error: "no API key".into(),
+                },
+                "SessionStore (the row `session-store` providing it failed: no API key)",
+            ),
+            (
+                WaitReason::ProviderInactive {
+                    row: "session-store".into(),
+                },
+                "SessionStore (the row `session-store` providing it is not running)",
+            ),
+            (
+                WaitReason::ProviderRuntime {
+                    row: "session-store".into(),
+                    runtime: "py".into(),
+                },
+                "SessionStore (the row `session-store` providing it waits for runtime `py`)",
+            ),
+            (
+                WaitReason::Cycle {
+                    row: "session-store".into(),
+                    service: "Tools".into(),
+                },
+                "SessionStore (the row `session-store` providing it waits for `Tools`, which this row provides)",
+            ),
+            (
+                WaitReason::ProviderWaiting {
+                    row: "session-store".into(),
+                    services: vec!["A".into(), "B".into()],
+                },
+                "SessionStore (the row `session-store` providing it also waits for A, B)",
+            ),
+            (
+                WaitReason::ProviderStarting {
+                    row: "session-store".into(),
+                },
+                "SessionStore (the row `session-store` providing it is starting)",
+            ),
+            (
+                WaitReason::ProviderRunning {
+                    row: "session-store".into(),
+                },
+                "SessionStore (the row `session-store` providing it runs but has not provided it)",
+            ),
+            (
+                WaitReason::Other("removing".into()),
+                "SessionStore (removing)",
+            ),
+        ];
+        for (reason, expected) in cases {
+            assert_eq!(describe_wait(&Wait::new("SessionStore", reason)), expected);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn wait_active_times_out_and_falls_back_to_states() {
+        use xylitol_plugin_sdk::rt::Plugin;
+
+        struct NeverReady;
+
+        impl Plugin for NeverReady {
+            type Deps = ();
+
+            fn name(&self) -> &str {
+                "never-ready"
+            }
+
+            async fn apply(&self, _ctx: &Ctx, _: ()) -> xylitol_plugin_sdk::rt::Result {
+                std::future::pending::<()>().await;
+                Ok(())
+            }
+        }
+
+        let ctx = Ctx::root().expect("root");
+        let _view = ctx.plugin(NeverReady);
+        let loader = LoaderPlugin::new(
+            Chain::new().with(Admit {
+                inner: Builtins::new(),
+            }),
+            LoaderOptions::default(),
+        )
+        .handle();
+
+        let err = wait_active_within(&ctx, &loader, std::time::Duration::from_millis(20))
+            .await
+            .expect_err("a loading plugin must time out");
+        let message = err.to_string();
+        assert!(message.contains("kernel self-check timed out"), "{message}");
+        assert!(message.contains("never-ready"), "{message}");
+    }
+
+    #[test]
+    #[serial_test::serial(log_global)]
+    fn rutis_error_sink_routes_to_the_log_facade() {
+        use std::sync::Mutex;
+
+        static RECORDS: Mutex<Vec<(log::Level, String, String)>> = Mutex::new(Vec::new());
+
+        struct Capture;
+
+        impl log::Log for Capture {
+            fn enabled(&self, _: &log::Metadata<'_>) -> bool {
+                true
+            }
+
+            fn log(&self, record: &log::Record<'_>) {
+                RECORDS.lock().expect("records").push((
+                    record.level(),
+                    record.target().to_string(),
+                    record.args().to_string(),
+                ));
+            }
+
+            fn flush(&self) {}
+        }
+
+        let _ = log::set_boxed_logger(Box::new(Capture));
+        log::set_max_level(log::LevelFilter::Trace);
+        RECORDS.lock().expect("records").clear();
+
+        let sink = rutis_error_sink();
+        sink(Arc::new(ErrorKind::PluginFailed("boom".into())));
+
+        let records = RECORDS.lock().expect("records");
+        assert!(
+            records.iter().any(|(level, target, message)| {
+                *level == log::Level::Error
+                    && target == "xylitol::rutis"
+                    && message.contains("boom")
+            }),
+            "the rutis sink must write errors through log: {records:?}"
+        );
     }
 }

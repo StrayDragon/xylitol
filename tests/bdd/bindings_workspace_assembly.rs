@@ -31,3 +31,9 @@ async fn test_wa_envelope_describe_declares_jsonrpc(server_test: ServerTest) {}
     name = "无会话无工具仍跑完一轮"
 )]
 async fn test_wa_runtime_loop_runs_without_session(agent: AgentState, ws: Workspace) {}
+
+#[scenario(
+    path = "llmanspec/specs/workspace-assembly/workspace-assembly.feature",
+    name = "启动自检超时报告缺失服务"
+)]
+fn test_wa_self_check_timeout_reports_missing_service() {}
