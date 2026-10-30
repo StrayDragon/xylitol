@@ -115,3 +115,6 @@
   @req:r3022
   规则: provider-error-structure
     方言适配器 必须 把可得的 HTTP 状态、错误 `code` / `type` 与 `retry-after` 填入结构化 provider 错误，不得 只保留字符串消息；结构 必须 经既有 `XyError::Provider` 包装可读取，不得 改变错误枚举变体形状。由插件单测覆盖。
+  @req:r3023
+  规则: structured-output-wire
+    OpenAI Responses 方言 必须 在生成选项要求结构化输出时写 `text.format`（`type: json_schema`、`name`、`schema`、`strict`）；OpenAI Completions 必须 写 `response_format.json_schema`；Anthropic Messages 必须 写 `output_config.format`（`type: json_schema`、`schema`，不含 `name` / `strict`）。未设置选项时 不得 改变请求体。由插件单测覆盖。

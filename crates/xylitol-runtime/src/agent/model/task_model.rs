@@ -63,6 +63,7 @@ pub fn resolve_compaction_summary(
         max_output_tokens: None,
         obs_parent: None,
         obs_session: obs,
+        structured_output: None,
     };
 
     Ok(CompactionSummaryBinding {
