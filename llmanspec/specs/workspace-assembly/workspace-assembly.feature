@@ -43,3 +43,10 @@
   @req:r2916
   规则: 根包只选 profile
     产品根包必须只负责 argv 与 profile 选择。occupancy 的 Host 装配必须在 kernel；需要同时碰到产品 TUI 客户端与 Host 的测试胶水 必须留在测试树，不得作为根包产品组合根。kernel 不得依赖产品 TUI。由 crate 图与层门禁覆盖，不得单独扩 BDD step。
+
+  @req:r3004
+  规则: 启动自检超时说明缺失依赖
+    Kernel 启动自检等待 Pending / Loading 插件超时时，须用 loader 的等待信息说明每个未就绪 row 缺哪个服务及原因（无 provider、未启用、provider 未运行等）；无等待信息时 回落为插件名与状态列表。诊断 须只读，不得改变启动成功路径。
+    场景: 启动自检超时报告缺失服务
+      当 构造等待缺失服务的启动自检超时
+      那么 错误文案含服务名与缺失原因
