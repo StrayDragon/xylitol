@@ -98,6 +98,7 @@ impl OpenAIProvider {
             if let Some(max_tokens) = options.max_output_tokens {
                 body["max_completion_tokens"] = serde_json::json!(max_tokens);
             }
+            self.apply_prompt_cache_affinity(&mut body, options);
             crate::provider::dialect::apply_completions_thinking(
                 &mut body,
                 &resolved,
@@ -131,6 +132,7 @@ impl OpenAIProvider {
             if let Some(max_tokens) = options.max_output_tokens {
                 body["max_completion_tokens"] = serde_json::json!(max_tokens);
             }
+            self.apply_prompt_cache_affinity(&mut body, options);
             crate::provider::dialect::apply_completions_thinking(
                 &mut body,
                 &resolved,
@@ -158,6 +160,28 @@ impl OpenAIProvider {
                 }
             }
             Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
+        }
+    }
+
+    fn apply_prompt_cache_affinity(
+        &self,
+        body: &mut Value,
+        options: &crate::thinking::XyGenerateOptions,
+    ) {
+        if !self.wire_policy.allows_prompt_cache_key() {
+            return;
+        }
+        let Some(session_id) = options
+            .obs_session
+            .session_id
+            .as_deref()
+            .filter(|s| !s.is_empty())
+        else {
+            return;
+        };
+        body["prompt_cache_key"] = serde_json::json!(session_id);
+        if let Some(retention) = self.wire_policy.prompt_cache_retention() {
+            body["prompt_cache_retention"] = serde_json::json!(retention.as_wire_str());
         }
     }
 }

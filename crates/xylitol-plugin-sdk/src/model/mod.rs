@@ -5,8 +5,8 @@ pub mod thinking;
 
 pub use chunk::{XyChunk, XyToolSchema};
 pub use config::{
-    ResolvedProfile, XyModality, XyModelConfig, XyModelKind, XyPromptCacheConfig, XyPromptCacheTtl,
-    default_context_window_for, default_input_modalities,
+    ResolvedProfile, XyModality, XyModelConfig, XyModelKind, XyPromptCacheConfig,
+    XyPromptCacheRetention, XyPromptCacheTtl, default_context_window_for, default_input_modalities,
 };
 pub use meta::{ContextTokenEstimate, TokenProvenance, XyModelMeta};
 pub use thinking::{

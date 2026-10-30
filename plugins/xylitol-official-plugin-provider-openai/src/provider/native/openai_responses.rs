@@ -181,6 +181,19 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
         body["include"] = serde_json::json!(["reasoning.encrypted_content"]);
     }
 
+    if wire_policy.allows_prompt_cache_key()
+        && let Some(session_id) = options
+            .obs_session
+            .session_id
+            .as_deref()
+            .filter(|s| !s.is_empty())
+    {
+        body["prompt_cache_key"] = serde_json::json!(session_id);
+        if let Some(retention) = wire_policy.prompt_cache_retention() {
+            body["prompt_cache_retention"] = serde_json::json!(retention.as_wire_str());
+        }
+    }
+
     apply_responses_wire_policy(&mut body, wire_policy);
     (body, replay_diagnostics)
 }
@@ -1170,6 +1183,7 @@ mod tests {
             extra_policy: crate::wire_policy::ExtraPolicy {
                 prompt_cache_usage: true,
                 prompt_cache_key: false,
+                prompt_cache_retention: None,
                 previous_response_id: false,
             },
         };
@@ -1199,7 +1213,16 @@ mod tests {
             "previous_response_id": "resp_1",
             "prompt_cache_key": "ck",
         });
-        apply_responses_wire_policy(&mut body, &WirePolicy::default());
+        let deny = WirePolicy {
+            compat: crate::wire_policy::Compat::Generic,
+            extra_policy: crate::wire_policy::ExtraPolicy {
+                prompt_cache_usage: true,
+                prompt_cache_key: false,
+                prompt_cache_retention: None,
+                previous_response_id: false,
+            },
+        };
+        apply_responses_wire_policy(&mut body, &deny);
         assert!(body.get("previous_response_id").is_none());
         assert!(body.get("prompt_cache_key").is_none());
     }
@@ -1211,6 +1234,7 @@ mod tests {
             extra_policy: crate::wire_policy::ExtraPolicy {
                 prompt_cache_usage: false,
                 prompt_cache_key: true,
+                prompt_cache_retention: None,
                 previous_response_id: true,
             },
         };
@@ -1274,6 +1298,85 @@ mod tests {
         let none = crate::thinking::XyGenerateOptions::default();
         let body_none = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &none);
         assert!(body_none.get("max_output_tokens").is_none());
+    }
+
+    fn session_options() -> crate::thinking::XyGenerateOptions {
+        crate::thinking::XyGenerateOptions {
+            obs_session: xylitol_plugin_sdk::ObsSessionContext {
+                session_id: Some("sess-1".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn build_body_includes_prompt_cache_key_from_session() {
+        let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
+        let body = adapter.build_body(
+            vec![XyLlmMessage::user("hi")],
+            &[],
+            false,
+            &session_options(),
+        );
+        assert_eq!(body["prompt_cache_key"], "sess-1");
+        assert!(body.get("prompt_cache_retention").is_none());
+    }
+
+    #[test]
+    fn build_body_omits_prompt_cache_key_without_session() {
+        let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
+        let body = adapter.build_body(
+            vec![XyLlmMessage::user("hi")],
+            &[],
+            false,
+            &crate::thinking::XyGenerateOptions::default(),
+        );
+        assert!(body.get("prompt_cache_key").is_none());
+    }
+
+    #[test]
+    fn build_body_includes_prompt_cache_retention_when_configured() {
+        let policy = crate::wire_policy::WirePolicy {
+            compat: crate::wire_policy::Compat::Generic,
+            extra_policy: crate::wire_policy::ExtraPolicy {
+                prompt_cache_usage: true,
+                prompt_cache_key: true,
+                prompt_cache_retention: Some(
+                    crate::wire_policy::XyPromptCacheRetention::TwentyFourHours,
+                ),
+                previous_response_id: false,
+            },
+        };
+        let adapter =
+            OpenAiResponsesAdapter::with_wire_policy("sk".into(), "gpt".into(), None, None, policy);
+        let body = adapter.build_body(
+            vec![XyLlmMessage::user("hi")],
+            &[],
+            false,
+            &session_options(),
+        );
+        assert_eq!(body["prompt_cache_key"], "sess-1");
+        assert_eq!(body["prompt_cache_retention"], "24h");
+    }
+
+    #[test]
+    fn build_body_omits_prompt_cache_key_for_deepseek() {
+        let adapter = OpenAiResponsesAdapter::with_wire_policy(
+            "sk".into(),
+            "deepseek".into(),
+            None,
+            None,
+            crate::wire_policy::WirePolicy::for_compat(crate::wire_policy::Compat::Deepseek),
+        );
+        let body = adapter.build_body(
+            vec![XyLlmMessage::user("hi")],
+            &[],
+            false,
+            &session_options(),
+        );
+        assert!(body.get("prompt_cache_key").is_none());
+        assert!(body.get("prompt_cache_retention").is_none());
     }
 
     #[test]

@@ -251,6 +251,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn completions_body_includes_prompt_cache_key() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "prompt_cache_key": "sess-1"
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(NoopHooks)),
+        );
+        let opts = crate::thinking::XyGenerateOptions {
+            obs_session: xylitol_plugin_sdk::ObsSessionContext {
+                session_id: Some("sess-1".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let _ = adapter
+            .generate_stream(vec![XyLlmMessage::user("hi")], &[], false, opts)
+            .await
+            .expect("generate with session affinity");
+    }
+
+    #[tokio::test]
     async fn completions_body_omits_effort_when_off() {
         use std::sync::{Arc as StdArc, Mutex};
 

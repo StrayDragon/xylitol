@@ -1822,6 +1822,7 @@ mod tests {
         let config = XyPromptCacheConfig {
             enabled: Some(true),
             ttl: None,
+            retention: None,
         };
         let (body, _) = capture_anthropic_body(policy, Some(config)).await;
         assert_eq!(cache_control_count(&body), 3);
@@ -1832,6 +1833,7 @@ mod tests {
         let config = XyPromptCacheConfig {
             enabled: Some(false),
             ttl: None,
+            retention: None,
         };
         let (body, _) =
             capture_anthropic_body(crate::wire_policy::WirePolicy::default(), Some(config)).await;
@@ -1843,6 +1845,7 @@ mod tests {
         let config = XyPromptCacheConfig {
             enabled: Some(true),
             ttl: Some(XyPromptCacheTtl::OneHour),
+            retention: None,
         };
         let (body, headers) =
             capture_anthropic_body(crate::wire_policy::WirePolicy::default(), Some(config)).await;
