@@ -2033,6 +2033,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn broadcast_evicts_subscriber_when_resync_also_cannot_fit() {
+        let slot = slot();
+        let (tx, mut rx) = mpsc::channel(1);
+        let id = slot.add_subscriber(tx).await;
+
+        slot.broadcast(Notification {
+            method: "fill".into(),
+            params: json!({}),
+        })
+        .await;
+        slot.broadcast(Notification {
+            method: "overflow".into(),
+            params: json!({}),
+        })
+        .await;
+
+        assert!(
+            !slot.subscribers.lock().await.contains_key(&id),
+            "a subscriber that cannot take the resync must be evicted"
+        );
+        assert_eq!(rx.recv().await.expect("first notification").method, "fill");
+        assert!(
+            rx.try_recv().is_err(),
+            "the full channel never received the resync"
+        );
+    }
+
+    #[tokio::test]
+    async fn broadcast_evicts_closed_subscriber() {
+        let slot = slot();
+        let (tx, rx) = mpsc::channel(1);
+        drop(rx);
+        let id = slot.add_subscriber(tx).await;
+
+        slot.broadcast(Notification {
+            method: "closed".into(),
+            params: json!({}),
+        })
+        .await;
+
+        assert!(
+            !slot.subscribers.lock().await.contains_key(&id),
+            "a closed subscriber must be removed"
+        );
+    }
+
+    #[tokio::test]
     async fn append_and_push_wraps_the_domain_event_as_session_event() {
         let slot = slot();
         let (_, mut rx) = subscribe(&slot).await;
