@@ -11,6 +11,7 @@ use crate::hooks::HttpHooks;
 use crate::provider::native::openai_client::{OpenAiClientFactory, normalize_openai_v1_base};
 use crate::wire_policy::WirePolicy;
 
+use xylitol_plugin_sdk::error::XyProviderError;
 use xylitol_plugin_sdk::message::XyLlmMessage;
 use xylitol_plugin_sdk::{XyError, XyGenerateOptions, XyModel, XyStream, XyToolSchema};
 
@@ -66,6 +67,15 @@ impl OpenAiResponsesAdapter {
     }
 
     fn map_err(err: async_openai::error::OpenAIError) -> XyError {
+        if let async_openai::error::OpenAIError::ApiError(resp) = &err {
+            return XyError::provider(XyProviderError {
+                message: resp.api_error.message.clone(),
+                status: Some(resp.status_code.as_u16()),
+                code: resp.api_error.code.clone(),
+                error_type: resp.api_error.r#type.clone(),
+                retry_after: None,
+            });
+        }
         XyError::Provider(anyhow::anyhow!("{}", format_responses_error(&err)))
     }
 }
@@ -527,9 +537,13 @@ pub fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -
                 .and_then(|e| e.get("message"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("response failed");
-            state.terminal_error = Some(XyError::Provider(anyhow::anyhow!(
-                "OpenAI Responses failed ({code}): {message}"
-            )));
+            state.terminal_error = Some(XyError::provider(XyProviderError {
+                message: format!("OpenAI Responses failed: {message}"),
+                status: None,
+                code: Some(code.to_string()),
+                error_type: None,
+                retry_after: None,
+            }));
             Vec::new()
         }
         "error" => {
@@ -541,9 +555,13 @@ pub fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -
                 .get("message")
                 .and_then(|v| v.as_str())
                 .unwrap_or("stream error");
-            state.terminal_error = Some(XyError::Provider(anyhow::anyhow!(
-                "OpenAI Responses stream error ({code}): {message}"
-            )));
+            state.terminal_error = Some(XyError::provider(XyProviderError {
+                message: format!("OpenAI Responses stream error: {message}"),
+                status: None,
+                code: Some(code.to_string()),
+                error_type: None,
+                retry_after: None,
+            }));
             Vec::new()
         }
         _ => Vec::new(),
@@ -1964,5 +1982,25 @@ mod tests {
             .as_ref()
             .expect_err("EOF must surface error");
         assert!(err.to_string().contains("without terminal event"), "{err}");
+    }
+
+    #[test]
+    fn api_error_maps_to_structured_detail() {
+        let err =
+            async_openai::error::OpenAIError::ApiError(async_openai::error::ApiErrorResponse {
+                status_code: reqwest::StatusCode::TOO_MANY_REQUESTS,
+                api_error: async_openai::error::ApiError {
+                    message: "Rate limit".into(),
+                    r#type: Some("rate_limit_error".into()),
+                    param: None,
+                    code: Some("rate_limit_exceeded".into()),
+                    misalignment: None,
+                },
+            });
+        let xy = OpenAiResponsesAdapter::map_err(err);
+        let detail = xy.provider_detail().expect("structured provider detail");
+        assert_eq!(detail.status, Some(429));
+        assert_eq!(detail.code.as_deref(), Some("rate_limit_exceeded"));
+        assert_eq!(detail.error_type.as_deref(), Some("rate_limit_error"));
     }
 }

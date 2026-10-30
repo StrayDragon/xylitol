@@ -29,7 +29,7 @@ use super::middleware::{
     LOOP_MIDDLEWARE_CONTINUE_LIMIT, MiddlewareFault, fragments_into_prompt, run_after_llm_response,
     run_after_turn, run_before_llm_request, run_before_turn, run_decide_continue,
 };
-use super::retry::{RetryState, is_retryable_error};
+use super::retry::{RetryState, is_retryable_xy_error};
 use super::state::{
     FrozenRootConfig, RunId, RunLease, RunPolicy, RuntimeControlError, SharedRunCoordinator,
 };
@@ -1214,14 +1214,15 @@ fn run_react_loop(cfg: ReActConfig) -> impl Stream<Item = XyEvent> + Send {
                             break;
                         }
                         Err(e) => {
-                            if is_retryable_error(&e.to_string()) && retry_state.can_retry() {
+                            if is_retryable_xy_error(&e) && retry_state.can_retry() {
                                 log::warn!(
                                     target: "xylitol::react",
                                     "model.generate_stream retrying error.kind={} turn_id={} error={e}",
                                     e.kind(),
                                     turn_id.as_deref().unwrap_or("")
                                 );
-                                let delay = retry_state.next_delay();
+                                let delay = retry_state
+                                    .next_delay_with_hint(e.provider_detail().and_then(|d| d.retry_after));
                                 yield XyEvent::AutoRetryStart {
                                     attempt: retry_state.attempt(),
                                     max_retries: retry_state.max_retries(),

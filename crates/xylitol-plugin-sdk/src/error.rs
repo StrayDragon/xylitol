@@ -21,7 +21,45 @@ impl XyError {
     pub fn kind(&self) -> &'static str {
         self.into()
     }
+
+    pub fn provider(err: XyProviderError) -> Self {
+        Self::Provider(anyhow::Error::new(err))
+    }
+
+    pub fn provider_detail(&self) -> Option<&XyProviderError> {
+        match self {
+            Self::Provider(err) => err.downcast_ref::<XyProviderError>(),
+            _ => None,
+        }
+    }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct XyProviderError {
+    pub message: String,
+    pub status: Option<u16>,
+    pub code: Option<String>,
+    pub error_type: Option<String>,
+    pub retry_after: Option<Duration>,
+}
+
+impl std::fmt::Display for XyProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(status) = self.status {
+            write!(f, "HTTP {status}: ")?;
+        }
+        write!(f, "{}", self.message)?;
+        if let Some(code) = self.code.as_deref().filter(|c| !c.is_empty()) {
+            write!(f, " (code {code})")?;
+        }
+        if let Some(error_type) = self.error_type.as_deref().filter(|t| !t.is_empty()) {
+            write!(f, " (type {error_type})")?;
+        }
+        Ok(())
+    }
+}
+
+impl std::error::Error for XyProviderError {}
 
 #[derive(Debug, thiserror::Error, IntoStaticStr)]
 pub enum XyToolError {
@@ -186,6 +224,32 @@ impl XyTrustError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn provider_error_detail_round_trips() {
+        let err = XyError::provider(XyProviderError {
+            message: "Overloaded".into(),
+            status: Some(529),
+            code: Some("overloaded".into()),
+            error_type: Some("overloaded_error".into()),
+            retry_after: Some(Duration::from_secs(7)),
+        });
+        let detail = err.provider_detail().expect("structured provider detail");
+        assert_eq!(detail.status, Some(529));
+        assert_eq!(detail.code.as_deref(), Some("overloaded"));
+        assert_eq!(detail.error_type.as_deref(), Some("overloaded_error"));
+        assert_eq!(detail.retry_after, Some(Duration::from_secs(7)));
+        assert_eq!(err.kind(), "Provider");
+        let text = err.to_string();
+        assert!(text.contains("HTTP 529"), "{text}");
+        assert!(text.contains("overloaded_error"), "{text}");
+    }
+
+    #[test]
+    fn plain_provider_error_has_no_detail() {
+        let err = XyError::Provider(anyhow::anyhow!("x"));
+        assert!(err.provider_detail().is_none());
+    }
 
     #[test]
     fn xy_error_display_provider() {
