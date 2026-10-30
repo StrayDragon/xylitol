@@ -87,12 +87,21 @@ mod tests {
 
     #[test]
     fn wire_policy_diff_changes_allowed_knobs() {
-        let deny = ResponsesAssembler::default();
+        let deny = ResponsesAssembler::new(WirePolicy {
+            compat: Compat::Generic,
+            extra_policy: ExtraPolicy {
+                prompt_cache_usage: true,
+                prompt_cache_key: false,
+                prompt_cache_retention: None,
+                previous_response_id: false,
+            },
+        });
         let allow = ResponsesAssembler::new(WirePolicy {
             compat: Compat::Generic,
             extra_policy: ExtraPolicy {
                 prompt_cache_usage: false,
                 prompt_cache_key: true,
+                prompt_cache_retention: None,
                 previous_response_id: true,
             },
         });

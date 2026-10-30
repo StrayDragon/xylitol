@@ -22,7 +22,14 @@ pub fn resolve_wire_policy(
         .as_deref()
         .and_then(xylitol_official_plugin_provider_openai::Compat::parse)
         .unwrap_or_default();
-    xylitol_official_plugin_provider_openai::WirePolicy::for_compat(compat)
+    let mut policy = xylitol_official_plugin_provider_openai::WirePolicy::for_compat(compat);
+    if let Some(cache) = config.prompt_cache {
+        if let Some(enabled) = cache.enabled {
+            policy.extra_policy.prompt_cache_key = enabled;
+        }
+        policy.extra_policy.prompt_cache_retention = cache.retention;
+    }
+    policy
 }
 
 pub fn build_adapter(config: &XyModelConfig, hooks: Option<Arc<HookDispatcher>>) -> AdapterRef {
@@ -93,6 +100,32 @@ mod tests {
             xylitol_official_plugin_provider_openai::Compat::Deepseek
         );
         assert!(!p.allows_reasoning_encrypted_include());
+    }
+
+    #[test]
+    fn resolve_wire_policy_applies_prompt_cache_config() {
+        let cfg = XyModelConfig {
+            kind: XyModelKind::OpenAi,
+            api_key: "sk".into(),
+            model: "m".into(),
+            base_url: None,
+            api: None,
+            compat: Some("deepseek".into()),
+            prompt_cache: Some(xylitol_plugin_sdk::model::XyPromptCacheConfig {
+                enabled: Some(true),
+                ttl: None,
+                retention: Some(xylitol_plugin_sdk::model::XyPromptCacheRetention::TwentyFourHours),
+            }),
+        };
+        let p = resolve_wire_policy(&cfg);
+        assert!(
+            p.allows_prompt_cache_key(),
+            "explicit config must override the deepseek default"
+        );
+        assert_eq!(
+            p.prompt_cache_retention(),
+            Some(xylitol_plugin_sdk::model::XyPromptCacheRetention::TwentyFourHours)
+        );
     }
 
     #[test]

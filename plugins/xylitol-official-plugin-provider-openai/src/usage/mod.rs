@@ -165,6 +165,7 @@ mod tests {
             extra_policy: ExtraPolicy {
                 prompt_cache_usage: false,
                 prompt_cache_key: false,
+                prompt_cache_retention: None,
                 previous_response_id: false,
             },
         };
@@ -223,6 +224,7 @@ mod tests {
             extra_policy: ExtraPolicy {
                 prompt_cache_usage: false,
                 prompt_cache_key: false,
+                prompt_cache_retention: None,
                 previous_response_id: false,
             },
         };
@@ -243,6 +245,7 @@ mod tests {
             extra_policy: ExtraPolicy {
                 prompt_cache_usage: true,
                 prompt_cache_key: false,
+                prompt_cache_retention: None,
                 previous_response_id: false,
             },
         };

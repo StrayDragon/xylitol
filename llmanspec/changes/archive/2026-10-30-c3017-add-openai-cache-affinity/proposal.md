@@ -2,6 +2,9 @@
 depends_on: []
 title: OpenAI 族缓存亲和（prompt_cache_key / retention）
 needs_specs_change: true
+branch: sdd/c3017-add-openai-cache-affinity
+base_branch: main
+base_sha: 94158bdd6d2a351151b8f570d7293a54fc80427a
 ---
 
 # OpenAI 族缓存亲和（prompt_cache_key / retention）

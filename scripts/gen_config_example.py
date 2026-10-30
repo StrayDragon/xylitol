@@ -50,6 +50,9 @@ models:
     #   context_window: 1000000
     #   input_modalities: [text]  # optional; provider default is [text, image]
     #   max_output_tokens: 8192  # optional; provider default when omitted
+    #   prompt_cache:  # optional; OpenAI prompt_cache_key affinity
+    #     enabled: true  # default on for generic, off for deepseek
+    #     retention: 24h  # in_memory | 24h (omit for provider default)
     #   # placeholders: tool_call/attachment/structured_output/cost
     # deepseek-v4-flash-anthropic:
     #   provider: anthropic

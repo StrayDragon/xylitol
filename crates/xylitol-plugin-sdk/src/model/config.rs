@@ -59,6 +59,8 @@ pub struct XyPromptCacheConfig {
     pub enabled: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ttl: Option<XyPromptCacheTtl>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention: Option<XyPromptCacheRetention>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -67,6 +69,23 @@ pub enum XyPromptCacheTtl {
     FiveMinutes,
     #[serde(rename = "1h")]
     OneHour,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub enum XyPromptCacheRetention {
+    #[serde(rename = "in_memory")]
+    InMemory,
+    #[serde(rename = "24h")]
+    TwentyFourHours,
+}
+
+impl XyPromptCacheRetention {
+    pub fn as_wire_str(self) -> &'static str {
+        match self {
+            Self::InMemory => "in_memory",
+            Self::TwentyFourHours => "24h",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

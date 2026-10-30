@@ -250,4 +250,4 @@
     配置 必须 接受 models.*.max_output_tokens 可选正整数并进入配置 schema 产物；声明 0 必须 被配置解析拒绝。该字段 不得 与 thinking 预算字段混用。
   @req:r3018
   规则: model-entry-prompt-cache-config
-    配置 必须 接受 models.*.prompt_cache（`enabled` 可选布尔、`ttl` 可选 `5m` / `1h`）并进入配置 schema 产物；显式字段 必须 覆盖 compat 命名档提供的默认，不得 改变 compat 档自身的语义。
+    配置 必须 接受 models.*.prompt_cache（`enabled` 可选布尔、`ttl` 可选 `5m` / `1h`、`retention` 可选 `in_memory` / `24h`）并进入配置 schema 产物；显式字段 必须 覆盖 compat 命名档提供的默认，不得 改变 compat 档自身的语义。

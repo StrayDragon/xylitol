@@ -1004,6 +1004,16 @@
             "null"
           ]
         },
+        "retention": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/XyPromptCacheRetention"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "ttl": {
           "anyOf": [
             {
@@ -1016,6 +1026,13 @@
         }
       },
       "type": "object"
+    },
+    "XyPromptCacheRetention": {
+      "enum": [
+        "in_memory",
+        "24h"
+      ],
+      "type": "string"
     },
     "XyPromptCacheTtl": {
       "enum": [

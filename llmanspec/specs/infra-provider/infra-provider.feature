@@ -109,3 +109,6 @@
   @req:r3019
   规则: responses-terminal-events
     OpenAI Responses 流式方言 必须 处理 `response.completed`、`response.incomplete`、`response.failed` 与流内 `error`：`response.failed` 与 `error` 必须 转为错误并保留 code/message；`response.incomplete` 必须 按 `incomplete_details.reason` 分流，`max_output_tokens` 映射为长度截断，`content_filter` 映射为错误；异常 EOF（未见终止事件）必须 返回错误，不得 静默当作完成；终止 `Done` 不得 重复发出。由插件单测覆盖。
+  @req:r3020
+  规则: openai-prompt-cache-affinity
+    OpenAI Responses 与 Completions 方言 必须 在会话 id 可用时发送 `prompt_cache_key`（取会话上下文 session id）；`compat: generic` 必须 默认允许，`compat: deepseek` 必须 默认禁止，配置 `prompt_cache.enabled` 必须 可覆盖。配置 `prompt_cache.retention` 为 `24h` 时 必须 发送 `prompt_cache_retention: "24h"`，未配置 必须 省略。`prompt_cache_retention` 不得 在缺少 key 时单独发送。由插件单测覆盖。
