@@ -204,6 +204,17 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
         }
     }
 
+    if let Some(output) = options.structured_output.as_ref() {
+        body["text"] = serde_json::json!({
+            "format": {
+                "type": "json_schema",
+                "name": &output.name,
+                "schema": &output.schema,
+                "strict": output.strict.unwrap_or(false),
+            }
+        });
+    }
+
     apply_responses_wire_policy(&mut body, wire_policy);
     (body, replay_diagnostics)
 }
@@ -1297,6 +1308,7 @@ mod tests {
             obs_parent: None,
             obs_session: Default::default(),
             max_output_tokens: None,
+            structured_output: None,
         };
         let body_map = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &mapped);
         assert_eq!(body_map["reasoning"]["effort"], "max");
@@ -1395,6 +1407,29 @@ mod tests {
         );
         assert!(body.get("prompt_cache_key").is_none());
         assert!(body.get("prompt_cache_retention").is_none());
+    }
+
+    #[test]
+    fn build_body_includes_text_format_json_schema() {
+        let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
+        let opts = crate::thinking::XyGenerateOptions {
+            structured_output: Some(xylitol_plugin_sdk::XyStructuredOutput {
+                name: "answer".into(),
+                schema: serde_json::json!({"type": "object", "properties": {"n": {"type": "number"}}}),
+                strict: Some(true),
+                description: None,
+            }),
+            ..Default::default()
+        };
+        let body = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &opts);
+        assert_eq!(body["text"]["format"]["type"], "json_schema");
+        assert_eq!(body["text"]["format"]["name"], "answer");
+        assert_eq!(body["text"]["format"]["strict"], true);
+        assert_eq!(body["text"]["format"]["schema"]["type"], "object");
+
+        let none = crate::thinking::XyGenerateOptions::default();
+        let body_none = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &none);
+        assert!(body_none.get("text").is_none());
     }
 
     #[test]

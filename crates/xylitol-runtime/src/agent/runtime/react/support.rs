@@ -38,6 +38,7 @@ pub(crate) fn prepare_turn_binding(
         max_output_tokens: output_budget_from_meta(meta),
         obs_parent: None,
         obs_session: xylitol_plugin_sdk::ObsSessionContext::default(),
+        structured_output: None,
     };
     let model = match run_model.as_ref() {
         Some((id, model)) if id == &model_id => Arc::clone(model),

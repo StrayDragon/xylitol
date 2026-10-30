@@ -109,6 +109,7 @@ impl OpenAIProvider {
                 body["max_completion_tokens"] = serde_json::json!(max_tokens);
             }
             self.apply_prompt_cache_affinity(&mut body, options);
+            self.apply_structured_output(&mut body, options);
             crate::provider::dialect::apply_completions_thinking(
                 &mut body,
                 &resolved,
@@ -143,6 +144,7 @@ impl OpenAIProvider {
                 body["max_completion_tokens"] = serde_json::json!(max_tokens);
             }
             self.apply_prompt_cache_affinity(&mut body, options);
+            self.apply_structured_output(&mut body, options);
             crate::provider::dialect::apply_completions_thinking(
                 &mut body,
                 &resolved,
@@ -171,6 +173,24 @@ impl OpenAIProvider {
             }
             Ok(Box::pin(futures::stream::iter(chunks.into_iter().map(Ok))))
         }
+    }
+
+    fn apply_structured_output(
+        &self,
+        body: &mut Value,
+        options: &crate::thinking::XyGenerateOptions,
+    ) {
+        let Some(output) = options.structured_output.as_ref() else {
+            return;
+        };
+        body["response_format"] = serde_json::json!({
+            "type": "json_schema",
+            "json_schema": {
+                "name": &output.name,
+                "schema": &output.schema,
+                "strict": output.strict.unwrap_or(false),
+            }
+        });
     }
 
     fn apply_prompt_cache_affinity(

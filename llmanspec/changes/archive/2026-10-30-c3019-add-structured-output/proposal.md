@@ -2,6 +2,9 @@
 depends_on: []
 title: 结构化输出（三族请求形状）
 needs_specs_change: true
+branch: sdd/c3019-add-structured-output
+base_branch: main
+base_sha: 5d32648edb3c58003fab329e74d67b873e94dc47
 ---
 
 # 结构化输出（三族请求形状）

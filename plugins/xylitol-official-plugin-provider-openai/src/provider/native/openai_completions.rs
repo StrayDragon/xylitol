@@ -290,6 +290,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn completions_body_includes_response_format_json_schema() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .and(wiremock::matchers::body_partial_json(serde_json::json!({
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "answer"}
+                }
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "{\"n\":1}"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(NoopHooks)),
+        );
+        let opts = crate::thinking::XyGenerateOptions {
+            structured_output: Some(xylitol_plugin_sdk::XyStructuredOutput {
+                name: "answer".into(),
+                schema: serde_json::json!({"type": "object"}),
+                strict: None,
+                description: None,
+            }),
+            ..Default::default()
+        };
+        let _ = adapter
+            .generate_stream(vec![XyLlmMessage::user("hi")], &[], false, opts)
+            .await
+            .expect("generate with structured output");
+    }
+
+    #[tokio::test]
     async fn completions_body_omits_effort_when_off() {
         use std::sync::{Arc as StdArc, Mutex};
 
@@ -390,6 +434,7 @@ mod tests {
             max_output_tokens: None,
             obs_parent: None,
             obs_session: Default::default(),
+            structured_output: None,
         };
         let _ = adapter
             .generate_stream(vec![XyLlmMessage::user("hi")], &[], false, opts)

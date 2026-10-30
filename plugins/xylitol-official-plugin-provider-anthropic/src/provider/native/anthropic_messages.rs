@@ -236,6 +236,15 @@ impl AnthropicMessagesAdapter {
             self.wire_policy.compat,
         );
 
+        if let Some(output) = options.structured_output.as_ref() {
+            body["output_config"] = serde_json::json!({
+                "format": {
+                    "type": "json_schema",
+                    "schema": &output.schema,
+                }
+            });
+        }
+
         let cache_ttl = self.prompt_cache_ttl();
         if let Some(ttl) = cache_ttl {
             apply_anthropic_prompt_cache(&mut body, ttl);
@@ -1924,5 +1933,64 @@ mod tests {
             headers.get("anthropic-beta").and_then(|v| v.as_str()),
             Some("extended-cache-ttl-2025-04-11")
         );
+    }
+
+    #[tokio::test]
+    async fn structured_output_maps_to_output_config_format() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let body_slot = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let headers_slot = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "msg",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "{\"n\":1}"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1}
+            })))
+            .mount(&server)
+            .await;
+        let adapter = AnthropicMessagesAdapter::with_wire_policy(
+            "sk-test".into(),
+            "claude-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CacheCaptureHooks {
+                body: body_slot.clone(),
+                headers: headers_slot.clone(),
+            })),
+            crate::wire_policy::WirePolicy::default(),
+        );
+        let opts = crate::thinking::XyGenerateOptions {
+            structured_output: Some(xylitol_plugin_sdk::XyStructuredOutput {
+                name: "answer".into(),
+                schema: serde_json::json!({"type": "object", "properties": {"n": {"type": "number"}}}),
+                strict: Some(true),
+                description: None,
+            }),
+            ..Default::default()
+        };
+        let _ = adapter
+            .generate_stream(vec![XyLlmMessage::user("hi")], &[], false, opts)
+            .await
+            .expect("generate");
+        let body = body_slot.lock().unwrap().clone().expect("body");
+        assert_eq!(body["output_config"]["format"]["type"], "json_schema");
+        assert_eq!(body["output_config"]["format"]["schema"]["type"], "object");
+        assert!(
+            body["output_config"]["format"].get("name").is_none(),
+            "Anthropic shape has no name field"
+        );
+    }
+
+    #[tokio::test]
+    async fn structured_output_absent_leaves_body_unchanged() {
+        let (body, _) =
+            capture_anthropic_body(crate::wire_policy::WirePolicy::default(), None).await;
+        assert!(body.get("output_config").is_none());
     }
 }

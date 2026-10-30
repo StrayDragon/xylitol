@@ -54,7 +54,7 @@ pub use error::{
 };
 pub use generate::{
     ObsSessionContext, XYLITOL_OBS_LANE_ATTR, XYLITOL_OBS_LANE_LLM, XyGenerateOptions,
-    langfuse_observation_properties_from, langfuse_session_properties_from,
+    XyStructuredOutput, langfuse_observation_properties_from, langfuse_session_properties_from,
     xylitol_obs_lane_properties,
 };
 pub use lifecycle::{XyEvent, XyEventError};

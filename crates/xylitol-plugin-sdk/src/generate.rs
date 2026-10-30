@@ -17,6 +17,14 @@ pub struct ObsSessionContext {
     pub compaction_thinking_rejected: Option<bool>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct XyStructuredOutput {
+    pub name: String,
+    pub schema: serde_json::Value,
+    pub strict: Option<bool>,
+    pub description: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct XyGenerateOptions {
     pub thinking_level: String,
@@ -24,6 +32,7 @@ pub struct XyGenerateOptions {
     pub thinking_budgets: Option<ThinkingBudgets>,
     pub system_prompt: Option<String>,
     pub max_output_tokens: Option<u32>,
+    pub structured_output: Option<XyStructuredOutput>,
     pub obs_parent: Option<SpanContext>,
     pub obs_session: ObsSessionContext,
 }
@@ -36,6 +45,7 @@ impl Default for XyGenerateOptions {
             thinking_budgets: None,
             system_prompt: None,
             max_output_tokens: None,
+            structured_output: None,
             obs_parent: None,
             obs_session: ObsSessionContext::default(),
         }
