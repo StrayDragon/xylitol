@@ -320,12 +320,22 @@ fn responses_sdk_stream(
                 t.emit_raw(event_type, snippet);
             }
 
-            for chunk in map_responses_sse_event(&data, &mut state) {
+            let chunks = map_responses_sse_event(&data, &mut state);
+            if let Some(err) = state.terminal_error.take() {
+                Err(err)?;
+            }
+            for chunk in chunks {
                 if let Some(t) = &trace {
                     t.emit_mapped_chunk(&chunk);
                 }
                 yield chunk;
             }
+        }
+
+        if !state.done_emitted {
+            Err(XyError::Provider(anyhow::anyhow!(
+                "OpenAI Responses stream ended without terminal event"
+            )))?;
         }
     })
 }
@@ -338,6 +348,8 @@ pub struct ResponsesStreamState {
     usage_output: u64,
     usage_value: Option<Value>,
     wire_policy: WirePolicy,
+    done_emitted: bool,
+    terminal_error: Option<XyError>,
 }
 
 pub fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -> Vec<XyChunk> {
@@ -482,7 +494,45 @@ pub fn map_responses_sse_event(data: &Value, state: &mut ResponsesStreamState) -
             Vec::new()
         }
         "response.completed" => finish_responses_terminal(data, state, XyStopReason::Stop),
-        "response.incomplete" => finish_responses_terminal(data, state, XyStopReason::MaxTokens),
+        "response.incomplete" => {
+            let reason = data
+                .pointer("/response/incomplete_details/reason")
+                .and_then(|v| v.as_str());
+            let finish = match reason {
+                Some("content_filter") => XyStopReason::Error,
+                _ => XyStopReason::MaxTokens,
+            };
+            finish_responses_terminal(data, state, finish)
+        }
+        "response.failed" => {
+            let error = data.pointer("/response/error");
+            let code = error
+                .and_then(|e| e.get("code"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("server_error");
+            let message = error
+                .and_then(|e| e.get("message"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("response failed");
+            state.terminal_error = Some(XyError::Provider(anyhow::anyhow!(
+                "OpenAI Responses failed ({code}): {message}"
+            )));
+            Vec::new()
+        }
+        "error" => {
+            let code = data
+                .get("code")
+                .and_then(|v| v.as_str())
+                .unwrap_or("server_error");
+            let message = data
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("stream error");
+            state.terminal_error = Some(XyError::Provider(anyhow::anyhow!(
+                "OpenAI Responses stream error ({code}): {message}"
+            )));
+            Vec::new()
+        }
         _ => Vec::new(),
     }
 }
@@ -540,6 +590,7 @@ fn finish_responses_terminal(
         finish_reason,
         usage,
     });
+    state.done_emitted = true;
     out
 }
 
@@ -1701,5 +1752,114 @@ mod tests {
             !formatted.contains("did not match any variant"),
             "{formatted}"
         );
+    }
+
+    #[test]
+    fn response_failed_event_surfaces_error_with_code() {
+        let mut state = ResponsesStreamState::default();
+        let chunks = map_responses_sse_event(
+            &serde_json::json!({
+                "type": "response.failed",
+                "response": {
+                    "status": "failed",
+                    "error": {"code": "server_error", "message": "boom"}
+                }
+            }),
+            &mut state,
+        );
+        assert!(chunks.is_empty());
+        let err = state
+            .terminal_error
+            .take()
+            .expect("failed event must surface error");
+        let text = err.to_string();
+        assert!(text.contains("server_error"), "{text}");
+        assert!(text.contains("boom"), "{text}");
+        assert!(!state.done_emitted);
+    }
+
+    #[test]
+    fn stream_error_event_surfaces_error() {
+        let mut state = ResponsesStreamState::default();
+        let chunks = map_responses_sse_event(
+            &serde_json::json!({
+                "type": "error",
+                "code": "rate_limit_exceeded",
+                "message": "slow down",
+                "param": null
+            }),
+            &mut state,
+        );
+        assert!(chunks.is_empty());
+        let err = state
+            .terminal_error
+            .take()
+            .expect("error event must surface error");
+        let text = err.to_string();
+        assert!(text.contains("rate_limit_exceeded"), "{text}");
+        assert!(text.contains("slow down"), "{text}");
+    }
+
+    #[test]
+    fn incomplete_content_filter_maps_to_error_stop_reason() {
+        let mut state = ResponsesStreamState::default();
+        let chunks = map_responses_sse_event(
+            &serde_json::json!({
+                "type": "response.incomplete",
+                "response": {
+                    "incomplete_details": {"reason": "content_filter"},
+                    "usage": {"input_tokens": 3, "output_tokens": 2}
+                }
+            }),
+            &mut state,
+        );
+        match chunks.last().expect("done") {
+            XyChunk::Done { finish_reason, .. } => assert_eq!(*finish_reason, XyStopReason::Error),
+            other => panic!("expected Done, got {other:?}"),
+        }
+        assert!(state.done_emitted);
+    }
+
+    #[test]
+    fn incomplete_max_output_tokens_maps_to_max_tokens() {
+        let mut state = ResponsesStreamState::default();
+        let chunks = map_responses_sse_event(
+            &serde_json::json!({
+                "type": "response.incomplete",
+                "response": {
+                    "incomplete_details": {"reason": "max_output_tokens"},
+                    "usage": {"input_tokens": 3, "output_tokens": 2}
+                }
+            }),
+            &mut state,
+        );
+        match chunks.last().expect("done") {
+            XyChunk::Done { finish_reason, .. } => {
+                assert_eq!(*finish_reason, XyStopReason::MaxTokens);
+            }
+            other => panic!("expected Done, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn eof_without_terminal_event_errors() {
+        use futures::StreamExt;
+        let events: Vec<Result<Value, async_openai::error::OpenAIError>> =
+            vec![Ok(serde_json::json!({
+                "type": "response.output_text.delta",
+                "delta": "partial"
+            }))];
+        let mut stream =
+            responses_sdk_stream(futures::stream::iter(events), None, WirePolicy::default());
+        let mut items = Vec::new();
+        while let Some(item) = stream.next().await {
+            items.push(item);
+        }
+        let err = items
+            .last()
+            .expect("items")
+            .as_ref()
+            .expect_err("EOF must surface error");
+        assert!(err.to_string().contains("without terminal event"), "{err}");
     }
 }
