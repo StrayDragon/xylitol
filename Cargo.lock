@@ -4582,9 +4582,9 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "rutis"
-version = "0.17.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0bf23fa920f2cd6586e3f045b8fdb49cf361cd9c4552fa322c699ddbfdfa696"
+checksum = "222fb2f64f88290afd7aa7ba55df92cf336e28224ce3aef0414c949df9b0dfbf"
 dependencies = [
  "erased-serde",
  "rutis-macros",
@@ -4598,9 +4598,9 @@ dependencies = [
 
 [[package]]
 name = "rutis-loader"
-version = "0.17.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "327e057c335d3f723c0749e4d31003a34256747965034f44ab1df4cf7c4fab10"
+checksum = "a544de372d5a30d839be56a01eb3d59842362338bb29f7b3e79361907c21497f"
 dependencies = [
  "libc",
  "rutis",
@@ -4613,9 +4613,9 @@ dependencies = [
 
 [[package]]
 name = "rutis-macros"
-version = "0.17.2"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20191a5eaa5538d440957e880a69e8eefcf524c851257ba8100bdcc117acbad0"
+checksum = "cf1af2aa2178a7f6b1d6e3f08b211cf4ffc6749b97c9f7b8838337b7d9c68901"
 dependencies = [
  "proc-macro2",
  "quote",

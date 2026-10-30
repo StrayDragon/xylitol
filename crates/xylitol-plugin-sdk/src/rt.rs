@@ -12,7 +12,7 @@ pub use rutis::{Ctx, Deps, Disposer, Error, Event, Plugin, Result};
 // 发布前须决定：是否让它成为真正的插件兼容协商信号，或整体移除。
 pub const SDK_API_VERSION: &str = "0.6.0";
 
-pub const RUTIS_LOCK: &str = "0.17.0";
+pub const RUTIS_LOCK: &str = "0.19.0";
 
 pub trait CallExt<E: Event> {
     fn chain(self) -> impl Future<Output = Result<Option<E::Value>>> + Send;
