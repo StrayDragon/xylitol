@@ -205,6 +205,10 @@
       假如 以主机泵在空闲态渲染基线帧
       当 指针探针已武装并注入落在折叠块头的鼠标移动
       那么 未触发整帧重绘且悬停目标已送达
+  @req:r3005
+  规则: hover-stable-across-content-repaint
+    产品 TUI 的折叠块 hover 高亮 须跨内容驱动的整帧重绘保持；仅折叠布局变化、resize、overlay 等场景 须清除。整帧渲染后 须用最新命中区重探针，不得让旧坐标贴到移位后的行。由 harness 单测覆盖，不单独扩 BDD step。
+
   @req:r1260
   规则: interaction-mode-application-owned-default
     产品 TUI 须在 host **启动构造时**绑定 xylitol-tui 交互模式为 ApplicationOwned（应用自管视口 / alt-screen）。缺省/未配置 须为 ApplicationOwned。一次会话 须只有一个主模式；不得在会话运行中热切模式（改模式 = 结束进程或新建 HostSession，不是 mid-loop 换栈 API）。不得把 XYLITOL_TUI_MOUSE 环境变量当作产品模式开关；不得提供面向用户的 Inline/ApplicationOwned 切换设置。产品 须将下缘固定区（至少 status/editor/footer 所占行）登记为 dock，使包级选区排除输入面；teardown 须不残留 mouse capture / alt-buffer。退出 ApplicationOwned 时产品 须依赖库 finish dump（或等价）使主屏 scrollback 仍可读会话内容；本要求不要求向用户暴露 dump opt-out。折叠点击语义不在本要求范围（见后续 fold 族 change）。库仍可暴露 Inline 构造入口供 lab/demo；产品默认路径 不得使用 Inline。
