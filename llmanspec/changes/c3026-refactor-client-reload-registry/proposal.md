@@ -2,6 +2,9 @@
 depends_on: []
 title: 端侧重载参与者注册表
 needs_specs_change: false
+branch: sdd/c3026-refactor-client-reload-registry
+base_branch: main
+base_sha: 93d79cf90a90d4b790c7dd746d3257460f67ee8f
 ---
 
 # 端侧重载参与者注册表

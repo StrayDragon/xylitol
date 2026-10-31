@@ -49,7 +49,9 @@ use xylitol_tui::{CrosstermTerminal, InputEvent, Terminal};
 use crate::driver::{AttachObserve, EventStream as AgentEventStream};
 pub use crate::driver::{XyDriver, XyDriverError};
 
-pub use self::effects::{drain_pending, run_interactive_bang, run_interactive_reload};
+pub use self::effects::{
+    default_client_reload_steps, drain_pending, run_interactive_bang, run_interactive_reload,
+};
 use self::host::{HostEvent, HostSession};
 use self::terminal_guard::{TerminalGuard, exit_requested, install_lifecycle_hooks};
 
@@ -316,7 +318,8 @@ async fn run_host_loop(
                     let input = term_events.by_ref().filter_map(move |maybe| {
                         futures::future::ready(map_crossterm_item(maybe, motion))
                     });
-                    run_interactive_reload(&mut session, driver, input).await?;
+                    let steps = default_client_reload_steps();
+                    run_interactive_reload(&mut session, driver, input, &steps).await?;
                     continue;
                 }
             }

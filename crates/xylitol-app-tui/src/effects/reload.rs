@@ -10,6 +10,48 @@ use super::super::commands::{RELOAD_CANCELLED_NOTICE, RELOAD_FAILED_NOTICE};
 use super::super::host::{HostEvent, HostSession};
 use super::super::keybindings::{ReloadOutcome, default_agent_dir};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ClientReloadPhase {
+    BeforeHost,
+    AfterHost,
+}
+
+pub struct ClientReloadStep<T: Terminal> {
+    pub name: &'static str,
+    pub phase: ClientReloadPhase,
+    pub run: Box<dyn Fn(&mut HostSession<T>) -> Result<String, String>>,
+}
+
+pub fn default_client_reload_steps<T: Terminal>() -> Vec<ClientReloadStep<T>> {
+    vec![
+        ClientReloadStep {
+            name: "keybindings",
+            phase: ClientReloadPhase::BeforeHost,
+            run: Box::new(|session| {
+                Ok(format_keybindings_reload(
+                    session.reload_keybindings(&default_agent_dir()),
+                ))
+            }),
+        },
+        ClientReloadStep {
+            name: "themes",
+            phase: ClientReloadPhase::AfterHost,
+            run: Box::new(|session| {
+                let Some(pref) = session.theme_preference().map(str::to_string) else {
+                    return Ok("themes: unchanged (no preference; kept current)".into());
+                };
+                match session.reload_themes(&pref) {
+                    Ok(()) => Ok(format!("themes: ok — kept `{pref}`")),
+                    Err(e) => {
+                        e.log_failure("tui.reload_themes");
+                        Err(e.to_string())
+                    }
+                }
+            }),
+        },
+    ]
+}
+
 fn format_keybindings_reload(outcome: ReloadOutcome) -> String {
     match outcome {
         ReloadOutcome::Applied { path } => format!("keybindings: ok — {}", path.display()),
@@ -30,10 +72,21 @@ fn reload_notice_title(cancelled: bool) -> &'static str {
     }
 }
 
+fn run_client_reload_step<T: Terminal>(
+    session: &mut HostSession<T>,
+    step: &ClientReloadStep<T>,
+) -> String {
+    match (step.run)(session) {
+        Ok(message) => message,
+        Err(e) => format!("{}: failed — {e}", step.name),
+    }
+}
+
 pub async fn run_interactive_reload<T, S>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
     input: S,
+    steps: &[ClientReloadStep<T>],
 ) -> Result<(), XyDriverError>
 where
     T: Terminal,
@@ -49,11 +102,13 @@ where
         return Ok(());
     };
 
-    let agent_dir = default_agent_dir();
     let mut lines = vec![String::new()];
-    lines.push(format_keybindings_reload(
-        session.reload_keybindings(&agent_dir),
-    ));
+    for step in steps
+        .iter()
+        .filter(|step| step.phase == ClientReloadPhase::BeforeHost)
+    {
+        lines.push(run_client_reload_step(session, step));
+    }
 
     let runtime_result = {
         let reload_fut = driver.reload_runtime(&cancel);
@@ -121,16 +176,11 @@ where
         }
     }
 
-    if let Some(pref) = session.theme_preference().map(str::to_string) {
-        match session.reload_themes(&pref) {
-            Ok(()) => lines.push(format!("themes: ok — kept `{pref}`")),
-            Err(e) => {
-                e.log_failure("tui.reload_themes");
-                lines.push(format!("themes: failed — {e}"));
-            }
-        }
-    } else {
-        lines.push("themes: unchanged (no preference; kept current)".into());
+    for step in steps
+        .iter()
+        .filter(|step| step.phase == ClientReloadPhase::AfterHost)
+    {
+        lines.push(run_client_reload_step(session, step));
     }
 
     session.set_model_arg_catalog_from_models(&driver.available_models());
