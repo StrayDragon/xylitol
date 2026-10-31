@@ -23,7 +23,7 @@ brief: "门禁 just qa / just qa-e2e（scripts/check_*.py 接线 / 版本命名�
 - **质量雷达（软，本地）**：`just complexity`（cccc 认知 top）+ `just crap-duplicates` +（有 `lcov.info` 时）`just coverage-lcov` → `just crap`；单包用 `just crap-package <pkg>`（包 coverage + 包报告，无 baseline）。
 - **CRAP（CI 回归）**：`just coverage-lcov`（`cargo llvm-cov` **≥0.9.1**，矩阵同 `just test`）→ `just crap`。配置 `.cargo-crap.toml`（排除 generated/harness/tests；`epsilon=0.25` 容忍覆盖率抖动，真实回归通常 ≥1.0）。**不进 `just qa`**。`crap.yaml`：PR **CRAP 分数回归** + 评论；`crap-duplicates.yaml`：结构重复写入 job summary（信息性）。`fail-above=false`（存量超阈不挡合并）。
 - **signals（cargo-crap ≥0.10）**：`.cargo-crap.toml` 预留 `[signals]`；发布后用 `just crap-signals` / CI 接线。
-- **cccc 是否退役**：临时对比见 `references/complexity-cccc-crap.md`（不进 `scripts/`）；当前结论保留 cccc HARD，CRAP 管覆盖×复杂度与重复。详见 `src/AGENTS.md`「复杂度与体量」。
+- **cccc 与 cargo-crap 分工**：cccc 保留 HARD（认知维度不可替代），CRAP 管覆盖×复杂度与重复。详见 `src/AGENTS.md`「复杂度与体量」。
 - 阈值与豁免细则：`src/AGENTS.md`「复杂度与体量」。
 
 ## 内环（非门禁）
