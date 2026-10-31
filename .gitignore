@@ -21,6 +21,8 @@ _HANDOFF/
 *~
 
 *.bak
+# macOS metadata
+.DS_Store
 # Environment files (containing secrets, API keys, credentials)
 .env
 *.env
