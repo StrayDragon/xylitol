@@ -106,6 +106,7 @@ pub struct UiRoot {
     model_arg_catalog: Vec<(String, String)>,
     at_path_base: PathBuf,
     dollar_skill_catalog: Vec<(String, String)>,
+    plugin_commands: Vec<(String, String)>,
     upper_gen: u64,
     upper_cache_gen: u64,
     upper_cache_width: usize,
@@ -191,6 +192,7 @@ impl UiRoot {
             model_arg_catalog: Vec::new(),
             at_path_base: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             dollar_skill_catalog: Vec::new(),
+            plugin_commands: Vec::new(),
             upper_gen: 0,
             upper_cache_gen: u64::MAX,
             upper_cache_width: usize::MAX,
@@ -256,7 +258,10 @@ impl UiRoot {
                 .with_id("trust-mode"),
             ),
             Box::new({
-                let src = SlashCommandSource::new(slash_commands_for_editor(self.designing));
+                let src = SlashCommandSource::new(slash_commands_for_editor(
+                    self.designing,
+                    &self.plugin_commands,
+                ));
                 if self.designing {
                     src.show_on_bare_slash()
                 } else {
@@ -291,6 +296,14 @@ impl UiRoot {
             return;
         }
         self.dollar_skill_catalog = catalog;
+        self.install_completion_sources();
+    }
+
+    pub fn set_plugin_commands(&mut self, commands: Vec<(String, String)>) {
+        if self.plugin_commands == commands {
+            return;
+        }
+        self.plugin_commands = commands;
         self.install_completion_sources();
     }
 

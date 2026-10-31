@@ -72,6 +72,11 @@ async fn boot_with(
     bootstrap_input.static_tools = static_tools_from_ctx(&ctx);
     let mut runtime = bootstrap(bootstrap_input)?.into_runtime();
     runtime.driver.attach_ctx(ctx.clone());
+    if let Some(regs) = ctx.get::<xylitol_plugin_sdk::HostRegistries>() {
+        runtime
+            .driver
+            .set_plugin_commands(regs.plugin_commands.snapshot());
+    }
     ctx.provide(xylitol_plugin_sdk::RuntimeSessionStore(
         runtime.driver.store.clone(),
     ))
@@ -492,11 +497,14 @@ for line in sys.stdin:
             "protocol_version": 1,
             "name": "fixture",
             "version": "0.1.0",
-            "capabilities": ["tools"],
+            "capabilities": ["tools", "commands"],
             "tools": [{"name": "echo", "description": "Echo", "input_schema": {"type": "object"}}],
+            "commands": [{"name": "status", "description": "Fixture status", "argument_hint": "refresh"}],
         }
     elif request.get("method") == "tools/call":
         result = {"content": str(request.get("params", {}).get("arguments", {}).get("text", ""))}
+    elif request.get("method") == "commands/call":
+        result = {"text": "fixture:" + str(request.get("params", {}).get("args", ""))}
     else:
         print(json.dumps({"jsonrpc": "2.0", "id": request["id"], "error": {"code": -32601, "message": "unknown"}}), flush=True)
         continue
@@ -545,6 +553,24 @@ for line in sys.stdin:
             registries.tools.get("fixture__echo").is_some(),
             "trusted external plugin tool must be registered"
         );
+        let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn boot_ctx_registers_external_plugin_commands() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let (config_path, _script) = write_external_config(&dir, true, "fixture");
+        let (ctx, _loader) = boot_ctx(&boot_opts(config_path)).await.expect("boot_ctx");
+        let registries = ctx
+            .get::<xylitol_plugin_sdk::HostRegistries>()
+            .expect("registries");
+        let command = registries
+            .plugin_commands
+            .get("plugin:fixture")
+            .expect("plugin command must be registered");
+        assert_eq!(command.description(), "Fixture status");
+        let text = command.invoke("refresh").await.expect("invoke");
+        assert_eq!(text, "fixture:refresh");
         let _ = ctx.shutdown().await;
     }
 

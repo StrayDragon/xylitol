@@ -493,9 +493,9 @@ fn designing_slash_is_pinned_and_absent_from_product_ssot() {
         !ssot.contains(&"designing"),
         "/designing must not join the product slash SSOT"
     );
-    let product = slash_commands_for_editor(false);
+    let product = slash_commands_for_editor(false, &[]);
     assert!(product.iter().all(|c| c.name != "designing"));
-    let designing = slash_commands_for_editor(true);
+    let designing = slash_commands_for_editor(true, &[]);
     assert_eq!(designing[0].name, "designing");
 }
 

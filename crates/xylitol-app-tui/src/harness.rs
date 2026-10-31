@@ -894,6 +894,10 @@ impl crate::dispatch::SessionCommandExecutor for ScriptedDriver {
                 Ok(DispatchOutcome::Model(self.model.clone()))
             }
             Command::CycleModel { .. } => Ok(DispatchOutcome::Model(self.model.clone())),
+            Command::PluginCommand { plugin, args } => Ok(DispatchOutcome::PluginCommandOutput {
+                plugin,
+                text: format!("plugin command ran: {args}"),
+            }),
             Command::SetPlanMode { mode, plan_id } => Ok(DispatchOutcome::PlanMode {
                 mode: match mode.as_str() {
                     "toggle" => "plan".into(),
@@ -2103,6 +2107,27 @@ mod slice_tests {
         assert_eq!(
             session.take_slash(),
             Some(crate::commands::PendingSlash::OpenModels)
+        );
+    }
+
+    #[tokio::test]
+    async fn plugin_slash_command_dispatches_and_renders_scroll_notice() {
+        let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
+        let root = session.ui_root().expect("ui").clone();
+        let mut driver = ScriptedDriver::new();
+        let mut stream = None;
+        root.borrow_mut()
+            .set_editor_text("/plugin:x-magpie refresh");
+        session.step(HostEvent::Input(enter_event())).unwrap();
+        pump_host_driver(&mut session, &mut driver, &mut stream)
+            .await
+            .unwrap();
+        assert!(
+            session.ui_model().entries.iter().any(|e| matches!(
+                e,
+                UiEntry::ScrollNotice { text } if text.contains("plugin command ran: refresh")
+            )),
+            "plugin command output must render as scroll notice"
         );
     }
 

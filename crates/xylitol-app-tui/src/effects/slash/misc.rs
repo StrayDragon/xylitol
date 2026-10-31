@@ -6,6 +6,34 @@ use crate::host::HostSession;
 
 use super::super::helpers::note_driver_err;
 
+pub(super) async fn plugin_command<T: Terminal>(
+    session: &mut HostSession<T>,
+    driver: &mut dyn XyDriver,
+    plugin: String,
+    args: String,
+) {
+    let name = format!("plugin:{plugin}");
+    match crate::dispatch::dispatch(
+        driver,
+        xylitol_protocol::Command::PluginCommand {
+            plugin: plugin.clone(),
+            args,
+        },
+    )
+    .await
+    {
+        Ok(crate::dispatch::DispatchOutcome::PluginCommandOutput { text, .. }) => {
+            session.push_scroll_notice(text);
+        }
+        Ok(_) => session.push_scroll_notice(format!("{name} returned no output")),
+        Err(e) => {
+            e.log_failure("tui.plugin_command");
+            session.push_scroll_notice(format!("{name} failed: {e}"));
+        }
+    }
+    let _ = session.render_now();
+}
+
 pub(super) async fn exit<T: Terminal>(session: &mut HostSession<T>) {
     session.request_quit();
 }

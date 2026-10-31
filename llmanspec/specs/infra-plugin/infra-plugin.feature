@@ -44,3 +44,6 @@
       假如 配置含命令不存在的受信外部插件
       当 内核装配
       那么 装配成功且无该插件工具
+  @req:r3027
+  规则: external-plugin-commands
+    外部插件 必须 可声明 `commands` 能力与命令列表；内核 必须 把每个声明该能力的插件注册为 `plugin:<plugin-name>`；`plugin_command` 调用 必须 经 `commands/call` 透传参数并以文本回传结果；未注册命令、进程退出与超时 必须 返回可观察错误，不得 崩溃或静默成功。由内核单测覆盖。

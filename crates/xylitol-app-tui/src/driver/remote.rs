@@ -1485,6 +1485,7 @@ where
             Command::GetCommands { .. } => Ok(DispatchOutcome::Commands(
                 crate::driver::XyDriver::get_commands(self),
             )),
+            Command::PluginCommand { plugin, args } => self.exec_plugin_command(plugin, args).await,
             cmd @ (Command::GetCapabilities { .. }
             | Command::SetCapability { .. }
             | Command::ClearCapabilities { .. }) => self.exec_capability(cmd).await,
@@ -1508,6 +1509,28 @@ impl<C> XyRemoteDriver<C>
 where
     C: HostClient + Clone + 'static,
 {
+    async fn exec_plugin_command(
+        &mut self,
+        plugin: String,
+        args: String,
+    ) -> Result<DispatchOutcome, XyDriverError> {
+        let data = self
+            .unary_cmd(Command::PluginCommand { plugin, args })
+            .await?;
+        Ok(DispatchOutcome::PluginCommandOutput {
+            plugin: data
+                .get("plugin")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            text: data
+                .get("text")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+        })
+    }
+
     async fn exec_set_model(&mut self, model_id: String) -> Result<DispatchOutcome, XyDriverError> {
         let data = self
             .unary_cmd(Command::SetModel {

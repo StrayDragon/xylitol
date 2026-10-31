@@ -66,6 +66,9 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
             Command::GetCommands { .. } => {
                 Ok(DispatchOutcome::Commands(XyDriver::get_commands(self)))
             }
+            Command::PluginCommand { plugin, args } => {
+                exec_plugin_command(self, &plugin, &args).await
+            }
             cmd @ (Command::GetCapabilities { .. }
             | Command::SetCapability { .. }
             | Command::ClearCapabilities { .. }) => exec_capability(self, cmd),
@@ -88,6 +91,27 @@ impl crate::dispatch::SessionCommandExecutor for XyInProcessDriver {
 fn exec_abort(driver: &mut XyInProcessDriver) -> DispatchOutcome {
     XyDriver::abort(driver);
     DispatchOutcome::Aborted { cancelled: true }
+}
+
+async fn exec_plugin_command(
+    driver: &mut XyInProcessDriver,
+    plugin: &str,
+    args: &str,
+) -> Result<DispatchOutcome, XyDriverError> {
+    let name = format!("plugin:{plugin}");
+    let Some(command) = driver.plugin_command(&name) else {
+        return Err(XyDriverError::invalid_input(format!(
+            "unknown plugin command: {name}"
+        )));
+    };
+    let text = command
+        .invoke(args)
+        .await
+        .map_err(XyDriverError::invalid_input)?;
+    Ok(DispatchOutcome::PluginCommandOutput {
+        plugin: plugin.to_string(),
+        text,
+    })
 }
 
 fn exec_capability(

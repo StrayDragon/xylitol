@@ -50,10 +50,18 @@ impl<T: ?Sized + Send + Sync + 'static> Registry<T> {
     }
 }
 
+#[async_trait::async_trait]
+pub trait XyPluginCommand: Send + Sync {
+    fn name(&self) -> &str;
+    fn description(&self) -> &str;
+    async fn invoke(&self, args: &str) -> Result<String, String>;
+}
+
 pub struct HostRegistries {
     pub models: Registry<dyn XyModel>,
     pub tools: Registry<dyn XyTool>,
     pub skills: Registry<SkillEntry>,
+    pub plugin_commands: Registry<dyn XyPluginCommand>,
 }
 
 pub struct SkillEntry {
@@ -72,6 +80,7 @@ impl HostRegistries {
             models: Registry::new(),
             tools: Registry::new(),
             skills: Registry::new(),
+            plugin_commands: Registry::new(),
         }
     }
 }

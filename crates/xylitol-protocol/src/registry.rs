@@ -95,6 +95,7 @@ pub const METHOD_FORK: &str = "fork";
 pub const METHOD_GET_MESSAGES: &str = "get_messages";
 pub const METHOD_ESTIMATE_CONTEXT: &str = "estimate_context";
 pub const METHOD_GET_COMMANDS: &str = "get_commands";
+pub const METHOD_PLUGIN_COMMAND: &str = "plugin_command";
 pub const METHOD_GET_CAPABILITIES: &str = "get_capabilities";
 pub const METHOD_SET_CAPABILITY: &str = "set_capability";
 pub const METHOD_CLEAR_CAPABILITIES: &str = "clear_capabilities";
@@ -245,6 +246,14 @@ pub const REGISTRY: &[MethodEntry] = &[
     mx(
         METHOD_GET_COMMANDS,
         Auth::Readonly,
+        Idem::PerRpc,
+        Resp::Result,
+        true,
+        Exec::Inline,
+    ),
+    mx(
+        METHOD_PLUGIN_COMMAND,
+        Auth::Writer,
         Idem::PerRpc,
         Resp::Result,
         true,
@@ -435,6 +444,7 @@ pub fn exec_class(cmd: &Command) -> Exec {
         | Command::SetPlanMode { .. }
         | Command::GetQueueStats { .. }
         | Command::GetCommands { .. }
+        | Command::PluginCommand { .. }
         | Command::GetCapabilities { .. }
         | Command::SetCapability { .. }
         | Command::ClearCapabilities { .. }
@@ -503,6 +513,21 @@ mod tests {
     }
 
     #[test]
+    fn plugin_command_is_inline_and_round_trips() {
+        let entry = lookup("plugin_command").expect("plugin_command method");
+        assert!(entry.command_backed);
+        assert_eq!(entry.exec, Exec::Inline);
+        let value = json!({"type": "plugin_command", "plugin": "x-magpie", "args": "refresh"});
+        let cmd: Command = serde_json::from_value(value.clone()).expect("deserialize");
+        assert!(matches!(
+            cmd,
+            Command::PluginCommand { ref plugin, ref args }
+                if plugin == "x-magpie" && args == "refresh"
+        ));
+        assert_eq!(serde_json::to_value(&cmd).expect("serialize"), value);
+    }
+
+    #[test]
     fn writer_set_and_bypass_set_match_declaration() {
         let writers: Vec<_> = REGISTRY
             .iter()
@@ -525,6 +550,7 @@ mod tests {
                 "import_jsonl",
                 "switch_session",
                 "fork",
+                "plugin_command",
                 "set_capability",
                 "clear_capabilities",
                 "travel_session_tree",
@@ -658,6 +684,7 @@ mod tests {
                 "get_commands",
                 "get_state",
                 "loaded_resources",
+                "plugin_command",
                 "queue_stats",
                 "set_capability",
                 "set_model",
@@ -737,6 +764,13 @@ mod tests {
             ),
             ("estimate_context", Command::EstimateContext {}),
             ("get_commands", Command::GetCommands {}),
+            (
+                "plugin_command",
+                Command::PluginCommand {
+                    plugin: String::new(),
+                    args: String::new(),
+                },
+            ),
             ("get_capabilities", Command::GetCapabilities {}),
             (
                 "set_capability",
@@ -831,7 +865,7 @@ mod tests {
                 },
             ),
         ];
-        assert_eq!(cases.len(), 39, "all command_backed rows must be covered");
+        assert_eq!(cases.len(), 40, "all command_backed rows must be covered");
         for (method, cmd) in &cases {
             let row = lookup(method).expect("row exists for command_backed method");
             assert!(row.command_backed, "row {method} must be command_backed");

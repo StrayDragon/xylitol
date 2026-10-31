@@ -30,6 +30,9 @@ pub(super) async fn handle_slash<T: Terminal>(
         | PendingSlash::SessionNew
         | PendingSlash::SessionClone => handle_plain_session_slash(session, driver, slash).await,
         PendingSlash::SessionName { name } => session::name(session, driver, name).await,
+        PendingSlash::PluginCommand { plugin, args } => {
+            misc::plugin_command(session, driver, plugin, args).await
+        }
         slash @ (PendingSlash::Reload
         | PendingSlash::Trust { .. }
         | PendingSlash::HistoryCopyLast

@@ -53,6 +53,10 @@ pub enum DispatchOutcome {
     Capabilities(xylitol_plugin_sdk::session::CapabilitySnapshot),
     Empty,
     Commands(Vec<CommandInfo>),
+    PluginCommandOutput {
+        plugin: String,
+        text: String,
+    },
     QueueStats {
         steer_count: usize,
         follow_up_count: usize,
@@ -95,6 +99,10 @@ pub fn outcome_to_value(outcome: DispatchOutcome) -> serde_json::Value {
         }),
         DispatchOutcome::Compacted(did) => json!({ "compacted": did }),
         DispatchOutcome::Empty => json!({}),
+        DispatchOutcome::PluginCommandOutput { plugin, text } => json!({
+            "plugin": plugin,
+            "text": text,
+        }),
         DispatchOutcome::Commands(cmds) => {
             let cmds: Vec<Value> = cmds
                 .into_iter()

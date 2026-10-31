@@ -2,6 +2,9 @@
 depends_on: []
 title: 外部插件命令面（/plugin:<name>）
 needs_specs_change: true
+branch: sdd/c3022-add-external-plugin-commands
+base_branch: main
+base_sha: 4fa79099832cacf2b7e11c5ee808b50bf9c5db01
 ---
 
 # 外部插件命令面（/plugin:<name>）

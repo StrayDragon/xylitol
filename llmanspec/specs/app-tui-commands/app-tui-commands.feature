@@ -177,3 +177,6 @@
       那么 能力覆盖盘打开且列出能力 id 与汇总
       当 以主机泵在能力覆盖盘上按 Esc
       那么 能力覆盖盘关闭且未 abort agent
+  @req:r3029
+  规则: plugin-slash-commands
+    产品 TUI idle 时 必须 解析 `/plugin:<name> [args]` 并派发插件命令；busy 时 必须 拒绝；结果（含失败）必须 以滚动提示呈现，不得 写入模型上下文；`SlashCommandSource` 必须 合并宿主返回的 `plugin:` 前缀命令。由 harness 覆盖。

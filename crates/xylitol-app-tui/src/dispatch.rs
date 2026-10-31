@@ -53,6 +53,10 @@ pub enum DispatchOutcome {
     Capabilities(xylitol_plugin_sdk::session::CapabilitySnapshot),
     Empty,
     Commands(Vec<CommandInfo>),
+    PluginCommandOutput {
+        plugin: String,
+        text: String,
+    },
     QueueStats {
         steer_count: usize,
         follow_up_count: usize,

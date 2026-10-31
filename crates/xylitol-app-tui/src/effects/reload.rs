@@ -134,6 +134,13 @@ where
     }
 
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
+    session.set_plugin_commands(
+        driver
+            .get_commands()
+            .into_iter()
+            .map(|c| (c.name, c.description))
+            .collect(),
+    );
     session.refresh_loaded_resources(driver).await;
     session.push_scroll_notice(lines.join("\n"));
     session.end_reload();

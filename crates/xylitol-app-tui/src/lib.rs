@@ -239,6 +239,13 @@ async fn run_host_loop(
     session.apply_thinking_level_ui(driver.thinking_level());
     session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
+    session.set_plugin_commands(
+        driver
+            .get_commands()
+            .into_iter()
+            .map(|c| (c.name, c.description))
+            .collect(),
+    );
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
     session.render_now()?;
 
@@ -255,6 +262,13 @@ async fn run_host_loop(
     };
     session.refresh_loaded_resources(driver).await;
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
+    session.set_plugin_commands(
+        driver
+            .get_commands()
+            .into_iter()
+            .map(|c| (c.name, c.description))
+            .collect(),
+    );
     session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
 
     let mut term_events = CrosstermEventStream::new();
@@ -367,6 +381,13 @@ async fn run_host_loop(
                             session.refresh_loaded_resources(driver).await;
                         }
                         session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
+                        session.set_plugin_commands(
+                            driver
+                                .get_commands()
+                                .into_iter()
+                                .map(|c| (c.name, c.description))
+                                .collect(),
+                        );
                         session.set_mcp_blocks_agent(driver.mcp_blocks_agent());
                         crate::lag::note("host_mcp_poll_refresh", t0);
                     }

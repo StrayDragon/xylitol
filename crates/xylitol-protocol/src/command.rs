@@ -63,6 +63,10 @@ pub enum Command {
     #[serde(rename = "estimate_context")]
     EstimateContext {},
     GetCommands {},
+    PluginCommand {
+        plugin: String,
+        args: String,
+    },
     GetCapabilities {},
     SetCapability {
         id: String,

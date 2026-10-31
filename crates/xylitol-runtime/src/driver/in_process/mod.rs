@@ -71,6 +71,7 @@ pub struct XyInProcessDriver {
     capability_disabled: BTreeSet<String>,
     capability_applied: BTreeSet<String>,
     mcp_server_ids: Vec<String>,
+    plugin_commands: Vec<(String, Arc<dyn xylitol_plugin_sdk::XyPluginCommand>)>,
 }
 
 impl XyInProcessDriver {
@@ -112,6 +113,7 @@ impl XyInProcessDriver {
             capability_disabled: BTreeSet::new(),
             capability_applied: BTreeSet::new(),
             mcp_server_ids: Vec::new(),
+            plugin_commands: Vec::new(),
         }
     }
 
@@ -141,6 +143,23 @@ impl XyInProcessDriver {
 
     pub fn workflow_gateway(&self) -> Option<Arc<dyn WorkflowGateway>> {
         self.workflow_gateway.clone()
+    }
+
+    pub fn set_plugin_commands(
+        &mut self,
+        commands: Vec<(String, Arc<dyn xylitol_plugin_sdk::XyPluginCommand>)>,
+    ) {
+        self.plugin_commands = commands;
+    }
+
+    pub fn plugin_command(
+        &self,
+        name: &str,
+    ) -> Option<Arc<dyn xylitol_plugin_sdk::XyPluginCommand>> {
+        self.plugin_commands
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, cmd)| Arc::clone(cmd))
     }
 
     pub fn set_slash_commands(&mut self, commands: Vec<CommandInfo>) {
@@ -488,7 +507,12 @@ impl XyDriver for XyInProcessDriver {
     }
 
     fn get_commands(&self) -> Vec<CommandInfo> {
-        self.slash_commands.clone()
+        let mut commands = self.slash_commands.clone();
+        commands.extend(self.plugin_commands.iter().map(|(name, cmd)| CommandInfo {
+            name: name.clone(),
+            description: cmd.description().to_string(),
+        }));
+        commands
     }
 
     fn leaf_entry_id(&self) -> Option<String> {

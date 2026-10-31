@@ -400,3 +400,6 @@
     场景: 能力方法已登记
       当 查询方法表的能力方法
       那么 三个能力方法均已登记且为 Inline
+  @req:r3028
+  规则: plugin-command-method
+    protocol 的 Command 枚举 必须 包含 `PluginCommand { plugin, args }`，经方法名 `plugin_command` 寻址；不得 为插件命令另开 REST 动词或第二套词表。由协议注册表测试覆盖。

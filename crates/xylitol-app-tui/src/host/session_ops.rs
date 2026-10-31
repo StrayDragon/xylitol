@@ -310,6 +310,13 @@ impl<T: Terminal> HostSession<T> {
         root.borrow_mut().set_dollar_skill_catalog(catalog);
     }
 
+    pub fn set_plugin_commands(&mut self, commands: Vec<(String, String)>) {
+        let Some(root) = self.ui_root.as_ref() else {
+            return;
+        };
+        root.borrow_mut().set_plugin_commands(commands);
+    }
+
     pub async fn refresh_loaded_resources(&mut self, driver: &dyn XyDriver) {
         let snap = driver.loaded_resources_snapshot().await;
         self.refresh_loaded_resources_from_snap(snap);

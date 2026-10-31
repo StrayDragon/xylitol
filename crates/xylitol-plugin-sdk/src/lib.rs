@@ -102,7 +102,7 @@ pub use ports::{
     noop_compaction_factory, parse_tool_args, run_after_response, run_before_headers,
     run_before_request, sanitize_session_display_name, should_compact, typed,
 };
-pub use registry::{HostRegistries, Registry, SkillEntry};
+pub use registry::{HostRegistries, Registry, SkillEntry, XyPluginCommand};
 pub use rt::{RUTIS_LOCK, SDK_API_VERSION};
 pub use session_prepare::{
     CUSTOM_TYPE_SESSION_PREPARE, SESSION_PREPARE_TIMEOUT_NOTICE, SessionPrepareHub,

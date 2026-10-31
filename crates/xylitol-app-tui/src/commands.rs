@@ -37,6 +37,10 @@ pub enum PendingSlash {
     OpenCapabilities,
     OpenDesigningScenes,
     SetPlanMode(String),
+    PluginCommand {
+        plugin: String,
+        args: String,
+    },
     Usage(&'static str),
 }
 
@@ -143,6 +147,10 @@ pub fn slash_allowances(slash: &PendingSlash) -> SlashAllowances {
             when_agent_busy: Reject,
             exec: Exec::Queued,
         },
+        PendingSlash::PluginCommand { .. } => SlashAllowances {
+            when_agent_busy: Reject,
+            exec: Exec::Inline,
+        },
     }
 }
 
@@ -173,6 +181,7 @@ pub fn busy_slash_refuse_label(slash: &PendingSlash) -> &'static str {
         PendingSlash::OpenCapabilities => "/capabilities",
         PendingSlash::SetPlanMode(_) => "/plan",
         PendingSlash::OpenDesigningScenes => "/designing",
+        PendingSlash::PluginCommand { .. } => "plugin",
     }
 }
 
@@ -238,6 +247,12 @@ pub fn parse_slash_command(text: &str) -> Option<PendingSlash> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string);
+    if let Some(plugin) = cmd.strip_prefix("plugin:").filter(|p| !p.is_empty()) {
+        return Some(PendingSlash::PluginCommand {
+            plugin: plugin.to_string(),
+            args: arg.unwrap_or_default(),
+        });
+    }
     match (cmd.as_str(), arg) {
         ("exit" | "quit", _) => Some(PendingSlash::Exit),
         ("model", None) => Some(PendingSlash::OpenModels),
@@ -581,6 +596,25 @@ mod parse_tests {
         assert_eq!(e.when_agent_busy, SlashPermit::Allow);
         let f = slash_allowances(&PendingSlash::OpenModels);
         assert_eq!(f.when_agent_busy, SlashPermit::Allow);
+    }
+
+    #[test]
+    fn parse_plugin_command() {
+        assert_eq!(
+            parse_slash_command("/plugin:x-magpie refresh"),
+            Some(PendingSlash::PluginCommand {
+                plugin: "x-magpie".into(),
+                args: "refresh".into(),
+            })
+        );
+        assert_eq!(
+            parse_slash_command("/plugin:x-magpie"),
+            Some(PendingSlash::PluginCommand {
+                plugin: "x-magpie".into(),
+                args: String::new(),
+            })
+        );
+        assert_eq!(parse_slash_command("/plugin:"), None);
     }
 
     #[test]

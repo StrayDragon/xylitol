@@ -33,6 +33,16 @@ pub struct ExternalToolSpec {
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+pub struct ExternalCommandSpec {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub argument_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct ExternalManifest {
     #[serde(default)]
     pub protocol_version: u64,
@@ -44,11 +54,17 @@ pub struct ExternalManifest {
     pub capabilities: Vec<String>,
     #[serde(default)]
     pub tools: Vec<ExternalToolSpec>,
+    #[serde(default)]
+    pub commands: Vec<ExternalCommandSpec>,
 }
 
 impl ExternalManifest {
     pub fn has_tools(&self) -> bool {
         self.capabilities.iter().any(|cap| cap == "tools")
+    }
+
+    pub fn has_commands(&self) -> bool {
+        self.capabilities.iter().any(|cap| cap == "commands")
     }
 }
 
@@ -246,14 +262,20 @@ impl Plugin for ExternalPlugin {
                 return Ok(());
             }
         };
-        if !manifest.has_tools() {
+        if !manifest.has_tools() && !manifest.has_commands() {
             log::warn!(
-                "external plugin `{}`: manifest does not declare the `tools` capability",
+                "external plugin `{}`: manifest declares neither `tools` nor `commands` capability",
                 self.config.name
             );
             client.shutdown().await;
             return Ok(());
         }
+        let has_commands = manifest.has_commands();
+        let command_description = manifest
+            .commands
+            .first()
+            .map(|c| c.description.clone())
+            .unwrap_or_default();
         let mut registered = Vec::new();
         for spec in manifest.tools {
             let public_name = external_tool_name(&self.config.name, &spec.name);
@@ -284,15 +306,70 @@ impl Plugin for ExternalPlugin {
             );
             registered.push(public_name);
         }
+        let mut registered_commands = Vec::new();
+        if has_commands {
+            let public_name = format!("plugin:{}", self.config.name);
+            registries.plugin_commands.insert(
+                public_name.clone(),
+                Arc::new(ExternalPluginCommand {
+                    public_name: public_name.clone(),
+                    description: command_description,
+                    client: Arc::clone(&client),
+                    timeout: self.timeout(),
+                }),
+            );
+            registered_commands.push(public_name);
+        }
         let cleanup_registries = Arc::clone(&registries);
         ctx.effect(move || async move {
             for name in registered {
                 cleanup_registries.tools.remove(&name);
             }
+            for name in registered_commands {
+                cleanup_registries.plugin_commands.remove(&name);
+            }
             client.shutdown().await;
             Ok(())
         })?;
         Ok(())
+    }
+}
+
+struct ExternalPluginCommand {
+    public_name: String,
+    description: String,
+    client: Arc<ExternalClient>,
+    timeout: Duration,
+}
+
+#[async_trait::async_trait]
+impl xylitol_plugin_sdk::XyPluginCommand for ExternalPluginCommand {
+    fn name(&self) -> &str {
+        &self.public_name
+    }
+
+    fn description(&self) -> &str {
+        &self.description
+    }
+
+    async fn invoke(&self, args: &str) -> Result<String, String> {
+        let result = tokio::time::timeout(
+            self.timeout,
+            self.client
+                .request("commands/call", json!({ "args": args })),
+        )
+        .await
+        .map_err(|_| {
+            format!(
+                "external plugin command `{}` timed out after {:?}",
+                self.public_name, self.timeout
+            )
+        })??;
+        Ok(result
+            .get("text")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string())
     }
 }
 
