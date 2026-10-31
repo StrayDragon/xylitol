@@ -30,29 +30,21 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
         &["ctrl+g"],
         Some("Open external editor"),
     ),
-    (
-        "app.thinking.toggle",
-        &["ctrl+t"],
-        Some("Toggle thinking blocks"),
-    ),
-    (
-        "app.tools.expand",
-        &["ctrl+o"],
-        Some("Toggle tool output viewport"),
-    ),
+    ("app.thinking.toggle", &[], Some("Toggle thinking blocks")),
+    ("app.tools.expand", &[], Some("Toggle tool output viewport")),
     (
         "app.tools.blocks",
-        &["alt+e"],
-        Some("Toggle tool/diff block expand"),
+        &[],
+        Some("Reset tool/diff block expand"),
     ),
     (
         "app.activity.expandNearest",
-        &["alt+shift+e"],
+        &[],
         Some("Expand nearest activity segment"),
     ),
     (
         "app.activity.collapseNearest",
-        &["ctrl+alt+shift+e"],
+        &[],
         Some("Collapse nearest activity segment"),
     ),
     (
@@ -126,22 +118,22 @@ static APP_KEYBINDINGS: &[(&str, &[&str], Option<&str>)] = &[
     ),
     (
         "app.session.popup",
-        &["alt+i"],
+        &[],
         Some("Toggle session details popup"),
     ),
     (
         "app.session.sidebar",
-        &["alt+u"],
+        &[],
         Some("Toggle session sidebar (docked column)"),
     ),
     (
         "app.session.detailsCycle",
-        &["alt+o"],
+        &[],
         Some("Cycle session details: popup → sidebar → off"),
     ),
     (
         "app.session.sidebarWidth",
-        &["alt+shift+u"],
+        &[],
         Some("Cycle session sidebar width"),
     ),
 ];

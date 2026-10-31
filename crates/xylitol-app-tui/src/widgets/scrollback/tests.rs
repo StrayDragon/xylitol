@@ -98,7 +98,8 @@ fn compaction_block_defaults_collapsed() {
         .unwrap_or("");
     assert!(
         header.contains("[compaction]")
-            && header.contains("Compacted from 186,842 tokens (Alt+E to expand)")
+            && header.contains("Compacted from 186,842 tokens")
+            && !header.contains("Alt+E")
             && (header.contains('▸') || header.contains('>')),
         "fold triangle MUST sit on the Compacted header line: {plain}"
     );
@@ -671,9 +672,11 @@ fn tool_header_shows_timeout_only_when_requested() {
 
     let with = paint::paint_tool_header_line(theme, "▎", "Bash", "$ sleep 600", Some(600));
     let plain = strip_ansi_codes(&with);
-    let t = plain.find("(timeout 600s)").expect("timeout note present");
-    let e = plain.find("(Alt+E)").expect("hint present");
-    assert!(t < e, "timeout note must precede Alt+E hint: {plain:?}");
+    assert!(
+        plain.contains("(timeout 600s)"),
+        "timeout note present: {plain:?}"
+    );
+    assert!(!plain.contains("(Alt+E)"), "no key-name hint: {plain:?}");
 
     let without = paint::paint_tool_header_line(theme, "▎", "Bash", "$ sleep 2", None);
     let plain2 = strip_ansi_codes(&without);

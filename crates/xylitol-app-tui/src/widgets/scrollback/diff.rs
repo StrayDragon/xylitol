@@ -110,8 +110,8 @@ pub(super) fn output_is_hard_truncated(output: &str) -> bool {
 
 pub(super) const HARD_TRUNCATED_EXPAND_HINT: &str = "expand disabled — see Full output";
 
-pub(super) const CTRL_O_EXPAND_HINT: &str = "ctrl+o to expand";
-pub(super) const CTRL_O_FOLD_HINT: &str = "ctrl+o to fold";
+pub(super) const CTRL_O_EXPAND_HINT: &str = "click to expand";
+pub(super) const CTRL_O_FOLD_HINT: &str = "click to fold";
 
 pub(super) fn paint_output_with_full_footer(
     output: &str,

@@ -38,6 +38,7 @@ pub use completion::{
     AtPathSource, CompletionContext, CompletionMatch, CompletionRegistry, CompletionSource,
     SlashArgCompletionSource, SlashCommandSource, extract_slash_arg_prefix,
 };
+pub use components::action_row::{ActionChip, ActionRow, ActionRowTheme};
 pub use components::cancellable_loader::CancellableLoader;
 pub use components::choice_prompt::{
     ASK_HEADER_A_MAX, ASK_HEADER_Q_MAX, ChoiceAnswer, ChoiceMode, ChoiceOption, ChoicePrompt,

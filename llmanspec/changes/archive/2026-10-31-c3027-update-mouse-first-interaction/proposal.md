@@ -1,6 +1,9 @@
 ---
 depends_on: []
 title: 鼠标优先交互：键位收缩与屏上可直接操作
+branch: sdd/c3027-update-mouse-first-interaction
+base_branch: main
+base_sha: 034f3f803ae7cfb7fab6dbec6d29eeb153b51a59
 ---
 
 # 鼠标优先交互：键位收缩与屏上可直接操作

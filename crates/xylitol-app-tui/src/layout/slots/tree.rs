@@ -193,6 +193,24 @@ impl TreeSlot {
         TreeAction::None
     }
 
+    pub fn header_rows(&self, width: usize) -> usize {
+        if self.label_edit.is_some() {
+            return 2;
+        }
+        1 + wrap_help_line(&tree_help_line(), width.max(1)).len() + 1
+    }
+
+    pub fn select_row_at(&mut self, list_row: u16) -> Option<String> {
+        let index = self.tree.item_index_at_screen_row(list_row)?;
+        let id = self.tree.filtered_nodes().get(index)?.id.clone();
+        self.tree.select_id(&id);
+        Some(id)
+    }
+
+    pub fn selected_id(&self) -> Option<String> {
+        self.tree.selected_id().map(str::to_string)
+    }
+
     pub fn render(&mut self, width: usize, theme: LayoutTheme) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push(" Session tree".to_string());

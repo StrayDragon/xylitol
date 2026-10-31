@@ -784,12 +784,9 @@ pub(crate) fn w_c2827_huge_diff(host_pump_bdd: &HostPumpBdd, n: u32) {
         })))
         .expect("tool end");
     pump.session.on_run_stream_closed();
-    pump.session
-        .step(HostEvent::Input(key_event(
-            crossterm::event::KeyCode::Char('e'),
-            crossterm::event::KeyModifiers::ALT | crossterm::event::KeyModifiers::SHIFT,
-        )))
-        .expect("alt+shift+e");
+    let root = pump.session.ui_root().expect("ui").clone();
+    root.borrow_mut().expand_nearest_activity();
+    drop(root);
     pump.session.render_now().expect("render");
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
 }

@@ -43,22 +43,22 @@
       那么 树槽渲染 Search 行与 TreeHelp 行
   @req:r1371
   规则: expandable-block-fold
-    产品 live scrollback 的 thinking/tool/edit-diff 可展开块 须支持折叠与展开；折叠态 须保留可读摘要行；状态机 须在应用面；展开快捷键旁注 须为括号完整和弦（Ctrl+T / Alt+E）。
+    产品 live scrollback 的 thinking/tool/edit-diff 可展开块 须支持折叠与展开；折叠态 须保留可读摘要行；状态机 须在应用面。块头 须带折叠三角且可左键点击整块切换折叠态；块头 不得写组合键旁注（见 app-tui-mouse-actions echo-without-key-names）。
 
-    场景: 可展开块折叠摘要与和弦键无头
+    场景: 可展开块点击折叠保留摘要无头
       当 以场景构建器回放读后改写序列并封轮挂载交互面
       当 左键单击折叠命中表中的簇头三角列
       当 再左键单击 "t-read" 的工具块三角列
-      那么 收起块保留摘要行且展开旁注为括号完整和弦
+      那么 收起块保留摘要行且折叠三角可见
   @req:r1372
   规则: expandable-key-hints
-    可展开块旁 须提示对应快捷键，格式为括号包裹的完整和弦（如 (Ctrl+T) 用于 thinking 块、(Alt+E) 用于 tool/diff）。thinking 块外显标签 须为 Title Case：思考通道流式期间为 Thinking；思考通道结束后为 Thought，有可靠思考通道起止墙钟时 须写 Thought {Ns}（如 Thought 17s）；起止 须为思考开始到思考通道切走（先到的正文、工具意图或 ThinkingEnd），不得计入随后正文或工具流；不得在思考流式过程中每帧刷新时长。流式 thinking 正文 须在流式期间保持展开（ActivityFold 开关同），结束后可折叠。agent_demo 须用 Ctrl+T 切换 thinking 展开态、Alt+E 同时切换 tool 与 diff 展开态。
+    可展开块旁 不得提示组合键名。thinking 块外显标签 须为 Title Case：思考通道流式期间为 Thinking；思考通道结束后为 Thought，有可靠思考通道起止墙钟时 须写 Thought {Ns}（如 Thought 17s）；起止 须为思考开始到思考通道切走（先到的正文、工具意图或 ThinkingEnd），不得计入随后正文或工具流；不得在思考流式过程中每帧刷新时长。流式 thinking 正文 须在流式期间保持展开（ActivityFold 开关同），结束后可折叠。agent_demo 允许保留组合键演示（非产品文案）。
 
-    场景: 思考标签时长与提示无头
+    场景: 思考标签时长与无键名旁注无头
       当 以场景构建器回放思考加工具并结算 7 秒封轮挂载交互面
       当 左键单击折叠命中表中的簇头三角列
       那么 结算行外显 Thought 7s 且不再出现流式 Thinking 头
-      并且 思考块旁注为括号完整和弦 Ctrl+T
+      并且 思考块头不含括号组合键
   @req:r1373
   规则: product-bash-result-scrollback
     产品 TUI 在 idle bang 提交时 须立即将命令写入 live scrollback 可着色块；执行中 须为 pending 轨色，且输出事件（bash/output）到达时 须在同一块内增量刷新（保持 pending 轨）；完成后 须按成功或失败或 cancelled 切换轨色；resume 重建时，同一 bash_id 有 done 结果 须只显示 done（不得重复），仅 running 无 done 的 须组合渲染为 interrupted（命令 + 中断提示，全文路径若在）；bang Esc 取消 须在该块内呈现 (cancelled) 而非 agent 的 Aborted；exit_code 非 0 须以 error 前景或 error 轨强调；不得默认整行铺 tool-*-bg；不得为此引入 Codex 式 TranscriptView。
@@ -159,25 +159,25 @@
       并且 折叠回退为 > 展开回退为 v 且各占单列
   @req:r1350
   规则: per-block-tools-fold-overrides
-    产品对 Tool、独立 Diff、Ask 可展开块 须以 tools 族默认展开态加 per-block 覆盖表决定有效展开态（覆盖优先于默认）。左键单击折叠三角列 须仅翻转该块覆盖（或等价单块有效态），不得改变其它块的覆盖。Alt+E 须翻转 tools 族默认展开态并清空该族全部覆盖。本要求不拆 Alt+E 与 compaction 的既有连带（若有）。单块态变 须遵守 ath25：禁止因此对全部历史 Assistant 重做 Markdown 解析。
+    产品对 Tool、独立 Diff、Ask 可展开块 须以 tools 族默认展开态加 per-block 覆盖表决定有效展开态（覆盖优先于默认）。左键单击折叠三角列 须仅翻转该块覆盖（或等价单块有效态），不得改变其它块的覆盖。翻转 tools 族默认展开态并清空该族全部覆盖 须由重置折叠动作提供（默认无和弦，见 app-tui-mouse-actions default-binding-contraction 与 dock-action-chips）。本要求不拆该动作与 compaction 的既有连带（若有）。单块态变 须遵守 ath25：禁止因此对全部历史 Assistant 重做 Markdown 解析。
 
-    场景: 工具每块折叠点击与Alt无头
+    场景: 工具每块折叠点击与重置动作无头
       当 以场景构建器回放读后改写序列并封轮挂载交互面
       当 左键单击折叠命中表中的簇头三角列
       当 再左键单击 "t-read" 的工具块三角列
       那么 该块经覆盖表收起且覆盖表只有这一个条目
-      当 按下和弦 Alt+E
+      当 触发动作 app.tools.blocks
       那么 工具族默认展开态翻转且块级覆盖清空
   @req:r1351
   规则: thinking-per-id-fold
-    产品 Thinking 块 须支持 per-id 展开态（默认 thinking 展开态加 per-id 覆盖，覆盖优先）；每条 Thinking 须有稳定 id，且 live 与 travel/fork/resume 重建路径 须对同一逻辑块使用同一 id。左键单击该块折叠三角列 须仅翻转该 Thinking 的覆盖。Ctrl+T 须翻转 thinking 默认展开态并清空全部 thinking 覆盖。思考通道流式期间外显 须为 Thinking；思考通道结束后 须为 Thought（有可靠思考通道起止墙钟则 Thought {Ns}）。resume / rebuild 须优先用落地的 thinkingElapsedSecs；否则用落盘思考通道起止节点 unix-ms 相减；缺任一端 须省略时长，不得用相邻条目墙钟冒充思考时长，禁止伪造。流式 thinking 正文 须在流式期间保持展开（ActivityFold 开关同，与 att8 一致），结束后可按有效态折叠。
+    产品 Thinking 块 须支持 per-id 展开态（默认 thinking 展开态加 per-id 覆盖，覆盖优先）；每条 Thinking 须有稳定 id，且 live 与 travel/fork/resume 重建路径 须对同一逻辑块使用同一 id。左键单击该块折叠三角列 须仅翻转该 Thinking 的覆盖。翻转 thinking 默认展开态并清空全部 thinking 覆盖 须由 app.thinking.toggle 动作提供（默认无和弦，见 app-tui-mouse-actions default-binding-contraction）。思考通道流式期间外显 须为 Thinking；思考通道结束后 须为 Thought（有可靠思考通道起止墙钟则 Thought {Ns}）。resume / rebuild 须优先用落地的 thinkingElapsedSecs；否则用落盘思考通道起止节点 unix-ms 相减；缺任一端 须省略时长，不得用相邻条目墙钟冒充思考时长，禁止伪造。流式 thinking 正文 须在流式期间保持展开（ActivityFold 开关同，与 att8 一致），结束后可按有效态折叠。
 
-    场景: 思考每标识折叠点击与CtrlT无头
+    场景: 思考每标识折叠点击与全量重置无头
       当 以场景构建器回放思考加工具并封轮挂载交互面
       当 左键单击折叠命中表中的簇头三角列
       当 再左键单击第一条思考的折叠三角列
       那么 该条思考经覆盖展开且另一条不受影响
-      当 按下和弦 Ctrl+T
+      当 触发动作 app.thinking.toggle
       那么 思考默认展开态翻转且全部 per-id 覆盖清空
   @req:r1352
   规则: mouse-fold-leaf-header-and-empty-body
@@ -225,8 +225,8 @@
     场景: 活动折叠分层折叠隐藏块无头
       当 以场景构建器回放读后改写序列并封轮挂载交互面
       那么 簇即为折叠收纳态且无内层块登记
-      当 依序按下和弦 Alt+E、Ctrl+T、Ctrl+O
-      那么 渲染帧与按键前逐字一致
+      当 依序触发动作 app.tools.blocks、app.thinking.toggle、app.tools.expand
+      那么 渲染帧与动作前逐字一致
       当 左键单击折叠命中表中的簇头三角列
       那么 仅该簇被定点展开且内层块行可见
   @req:r1356
@@ -242,31 +242,31 @@
       那么 全帧无 Worked for
   @req:r1357
   规则: activity-fold-markers-and-hints
-    信封与簇头行折叠标记 须遵守 att19（Unicode ▸/▾；Ascii >/v）。旁注 须为当前绑定的完整和弦括号；默认展开旁注 须对应 Alt+Shift+E，默认收纳旁注 须对应 Ctrl+Alt+Shift+E；改绑后旁注 须跟随当前绑定。信封/簇头 不得写 (Alt+E)，以免与块级展开混淆。Ask 等待的 Asking questions 不得画折叠三角。不得画 Planning next moves。
+    信封与簇头行折叠标记 须遵守 att19（Unicode ▸/▾；Ascii >/v）。信封头与簇头 不得写组合键旁注（见 app-tui-mouse-actions echo-without-key-names）；可点性 由折叠三角与整行命中表达。Ask 等待的 Asking questions 不得画折叠三角。不得画 Planning next moves。
 
-    场景: 信封簇标记与和弦键无头
+    场景: 信封簇标记无键名旁注无头
       当 以场景构建器回放四轮活动并按回合结束收纳
-      那么 折叠信封与收起簇头旁注均为 Alt+Shift+E
+      那么 折叠信封与收起簇头行均只有折叠三角且不含括号组合键
       当 左键单击折叠命中表中的簇头三角列
-      那么 展开簇头旁注为 Ctrl+Alt+Shift+E 且信封簇头行不带 (Alt+E)
+      那么 展开簇头且信封簇头行不含括号组合键
       并且 全帧无 Planning next moves
   @req:r1358
   规则: activity-expand-collapse-nearest
-    产品 须提供跨面动作语义 activity.expandNearest 与 activity.collapseNearest（TUI 键位 id 为 app.activity.expandNearest / app.activity.collapseNearest；默认和弦 Alt+Shift+E / Ctrl+Alt+Shift+E，可改绑）。expandNearest 须将距输入最近的折叠信封先展开；若该信封已展开则展开最近折叠簇。collapseNearest 须将距输入最近的展开簇先折；若无则折最近展开信封。无合格目标时两动作 须静默（无报错、无 toast、无态变）。启发式 须按 entries 序靠近输入；不得抢 Editor 常驻焦点。一对动作 须覆盖嵌套一级步进；不得另开信封/簇专用默认键；弱终端 不得另发官方第二默认和弦。
+    产品 须提供跨面动作语义 activity.expandNearest 与 activity.collapseNearest（TUI 动作 id 为 app.activity.expandNearest / app.activity.collapseNearest；默认和弦为空，见 app-tui-mouse-actions default-binding-contraction）。expandNearest 须将距输入最近的折叠信封先展开；若该信封已展开则展开最近折叠簇。collapseNearest 须将距输入最近的展开簇先折；若无则折最近展开信封。无合格目标时两动作 须静默（无报错、无 toast、无态变）。启发式 须按 entries 序靠近输入；不得抢 Editor 常驻焦点。一对动作 须覆盖嵌套一级步进；不得另开信封/簇专用默认键；弱终端 不得另发官方第二默认和弦。
 
-    场景: 活动展开折叠最近键无头
+    场景: 活动展开折叠最近按动作无头
       当 以场景构建器回放四轮活动并按重建收纳
-      当 按下和弦 Alt+Shift+E
+      当 触发动作 app.activity.expandNearest
       那么 最近信封降为簇头态且 Worked for 保持
-      当 再按下和弦 Alt+Shift+E
+      当 再触发动作 app.activity.expandNearest
       那么 次近折叠信封降为簇头态且最近簇头保持
-      当 按下和弦 Ctrl+Alt+Shift+E
+      当 触发动作 app.activity.collapseNearest
       那么 最近展开信封收回为 Worked for 折叠态
-      当 再按下和弦 Ctrl+Alt+Shift+E
+      当 再触发动作 app.activity.collapseNearest
       那么 全部信封收回为 Worked for 折叠态
   @req:r1359
   规则: compaction-fold-triangle-mouse
-    产品在 ApplicationOwned 下，Compaction 可折块 须提供折叠三角列（字形遵守 att19）。左键单击该三角列 须仅翻转全局 compaction 展开态（compaction_expanded 或等价）；不得清空 tools 族覆盖，不得翻转 tools 族默认展开态。单击摘要正文、旁注和弦或其它非三角列 不得因此 toggle。键盘 Alt+E 与 compaction 的既有连带（若有）不在本条拆改范围。态变 须遵守 ath25：禁止因此对全部历史 Assistant 重做 Markdown 解析。
+    产品在 ApplicationOwned 下，Compaction 可折块 须提供折叠三角列（字形遵守 att19）。左键单击该三角列 须仅翻转全局 compaction 展开态（compaction_expanded 或等价）；不得清空 tools 族覆盖，不得翻转 tools 族默认展开态。单击摘要正文、块头提示文案或其它非三角列 不得因此 toggle。重置折叠动作与 compaction 的既有连带（若有）不在本条拆改范围。态变 须遵守 ath25：禁止因此对全部历史 Assistant 重做 Markdown 解析。
 
     场景: 压缩折叠三角鼠标无头
       当 以场景构建器回放压缩事件并封轮挂载交互面
@@ -287,7 +287,7 @@
       当 以场景构建器回放多行输出的工具并封轮挂载交互面
       当 左键单击折叠命中表中的簇头三角列
       当 点击输出的 Ctrl+O 提示带
-      那么 提示带点击仅翻转该块输出视口且 Ctrl+O 翻全局并清按块覆盖
+      那么 提示带点击仅翻转该块输出视口且视口默认动作翻全局并清按块覆盖
 
     场景: 输出视口折叠每块无头
       当 以场景构建器回放两个多行输出工具并封轮挂载交互面

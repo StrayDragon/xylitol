@@ -296,13 +296,61 @@ impl Component for UiRoot {
         let toast = self.render_toast_notice_slot(width);
         let status = self.render_status_slot(width);
         self.apply_fixed_zone_footprint(todo.len());
-        let editor = self.render_editor_slot(width);
+        let mut editor = self.render_editor_slot(width);
+        let (border, chip_hits) = if self.slot.is_editor() {
+            self.append_border_chips("", width)
+        } else {
+            (String::new(), Vec::new())
+        };
+        let chip_line_width = xylitol_tui::visible_width(&border);
+        if !chip_hits.is_empty() && !editor.is_empty() {
+            editor[0] = border;
+        }
+        self.last_slot_close_hit = None;
+        if !self.slot.is_editor()
+            && let Some(first) = editor.first_mut()
+            && width > 12
+        {
+            let chip = self.theme.paint_chip("[关闭]", false);
+            let chip_w = xylitol_tui::visible_width("[关闭]");
+            let base = truncate_to_width(
+                &xylitol_tui::utils::strip_ansi_codes(first),
+                width.saturating_sub(chip_w + 1),
+                "…",
+                false,
+            );
+            let pad = width
+                .saturating_sub(chip_w)
+                .saturating_sub(xylitol_tui::visible_width(&base));
+            *first = format!("{base}{}{chip}", " ".repeat(pad));
+            self.last_slot_close_hit = Some((width - chip_w, width));
+        }
+        let dock_prefix = queue
+            .len()
+            .saturating_add(todo.len())
+            .saturating_add(mode.len())
+            .saturating_add(toast.len())
+            .saturating_add(status.len());
+        let dock_total = dock_prefix.saturating_add(editor.len()).saturating_add(1);
+        let editor_top = self
+            .term_rows
+            .saturating_sub(dock_total)
+            .saturating_add(dock_prefix);
+        self.last_slot_top_row = Some(editor_top);
+        self.last_chip_row = if chip_hits.is_empty() {
+            None
+        } else {
+            Some(editor_top)
+        };
+        self.last_chip_width = chip_line_width;
+        self.last_footer_hits = chip_hits;
         let footer = if width == 0 {
             self.footer.text().to_string()
         } else {
             truncate_to_width(self.footer.text(), width, "...", true)
         };
         self.last_queue_rows = queue.len();
+        self.last_mode_rows = mode.len();
         self.last_todo_rows = todo.len();
         self.last_toast_rows = toast.len();
         self.last_status_rows = status.len();

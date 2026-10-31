@@ -111,6 +111,17 @@ impl CapabilitiesSlot {
         CapabilitiesAction::None
     }
 
+    pub fn toggle_row_at(&mut self, row: u16) -> Option<CapabilitiesAction> {
+        let index = self.list.item_index_at_screen_row(row)?;
+        self.list.set_selected_index(index);
+        let id = self.selected_id()?;
+        let entry = self.entries.iter().find(|entry| entry.id == id)?;
+        Some(CapabilitiesAction::Toggle {
+            id,
+            enabled: !entry.effective_enabled,
+        })
+    }
+
     pub fn render(&mut self, width: usize, theme: LayoutTheme) -> Vec<String> {
         let mut lines = Vec::new();
         lines.push(theme.paint_muted(&format!(" Capabilities · {}", self.summary)));

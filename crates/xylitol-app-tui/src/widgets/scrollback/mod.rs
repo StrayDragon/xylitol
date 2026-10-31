@@ -29,10 +29,10 @@ use live::{
     paint_folded_streaming_thought, streaming_assistant_displayable,
 };
 use paint::{
-    PaintCtx, inter_block_spacer, key_hint, paint_ask_block, paint_assistant_block,
-    paint_bash_block, paint_compaction_block, paint_diff_block, paint_error_block,
-    paint_scroll_notice_block, paint_streaming_assistant, paint_thinking_block, paint_tool_block,
-    paint_user_block, push_wrapped,
+    PaintCtx, inter_block_spacer, paint_ask_block, paint_assistant_block, paint_bash_block,
+    paint_compaction_block, paint_diff_block, paint_error_block, paint_scroll_notice_block,
+    paint_streaming_assistant, paint_thinking_block, paint_tool_block, paint_user_block,
+    push_wrapped,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -429,8 +429,7 @@ pub fn render_scrollback(
                     );
                 } else {
                     let marker = glyphs.unfold();
-                    let header =
-                        theme.paint_muted(&format!("{marker} Thinking  {}", key_hint("Ctrl+T")));
+                    let header = theme.paint_muted(&format!("{marker} Thinking"));
                     push_wrapped(&mut lines, &header, width);
                     push_wrapped(&mut lines, &theme.paint_muted(&format!("{text}…")), width);
                 }

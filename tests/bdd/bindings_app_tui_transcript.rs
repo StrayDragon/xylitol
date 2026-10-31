@@ -53,7 +53,7 @@ fn test_att1_scrollback_no_truncation(transcript_bdd: TranscriptBdd) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "思考标签时长与提示无头"
+    name = "思考标签时长与无键名旁注无头"
 )]
 fn test_att8_thought_label_duration(
     transcript_bdd: TranscriptBdd,
@@ -111,13 +111,13 @@ fn test_att26_auto_collapse(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "信封簇标记与和弦键无头"
+    name = "信封簇标记无键名旁注无头"
 )]
 fn test_att27_markers_chords(tui_interaction: TuiInteraction) {}
 
 #[scenario(
     path = "llmanspec/specs/app-tui-transcript/app-tui-transcript.feature",
-    name = "活动展开折叠最近键无头"
+    name = "活动展开折叠最近按动作无头"
 )]
 fn test_att28_nearest_keys(tui_interaction: TuiInteraction) {}
 

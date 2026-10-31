@@ -21,6 +21,7 @@ pub enum HitSpace {
     Content,
     Viewport,
     Chrome,
+    Dock,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,6 +43,21 @@ impl Hit {
             region: HitRegion {
                 id,
                 space: HitSpace::Viewport,
+                content_row: row as usize,
+                col_start: col as usize,
+                col_end: (col as usize).saturating_add(1),
+                height: 1,
+                capturing: false,
+            },
+        }
+    }
+
+    #[must_use]
+    pub fn at_screen(id: HitId, col: u16, row: u16) -> Self {
+        Self {
+            region: HitRegion {
+                id,
+                space: HitSpace::Dock,
                 content_row: row as usize,
                 col_start: col as usize,
                 col_end: (col as usize).saturating_add(1),
@@ -206,20 +222,24 @@ impl HitRegionList {
         scroll_top: usize,
         transcript_rows: u16,
     ) -> Option<&HitRegion> {
-        if transcript_rows == 0 || screen_row >= transcript_rows {
-            return None;
-        }
         let col = screen_col as usize;
         let screen_row_n = screen_row as usize;
+        let in_transcript = transcript_rows != 0 && screen_row < transcript_rows;
         let content_row = scroll_top.saturating_add(screen_row_n);
         self.regions.iter().rev().find(|r| {
             let height = r.height.max(1);
             let row_hit = match r.space {
                 HitSpace::Content => {
-                    content_row >= r.content_row
+                    in_transcript
+                        && content_row >= r.content_row
                         && content_row < r.content_row.saturating_add(height)
                 }
                 HitSpace::Viewport | HitSpace::Chrome => {
+                    in_transcript
+                        && screen_row_n >= r.content_row
+                        && screen_row_n < r.content_row.saturating_add(height)
+                }
+                HitSpace::Dock => {
                     screen_row_n >= r.content_row
                         && screen_row_n < r.content_row.saturating_add(height)
                 }
@@ -514,7 +534,10 @@ pub fn apply_hover_tint(
     regions: &HitRegionList,
     hover_id: HitId,
 ) {
-    for region in regions.iter().filter(|r| r.id == hover_id) {
+    for region in regions
+        .iter()
+        .filter(|r| r.id == hover_id && r.space != HitSpace::Dock)
+    {
         let height = region.height.max(1);
         for offset in 0..height {
             let vis_i = match region.space {
@@ -526,6 +549,7 @@ pub fn apply_hover_tint(
                     content_row - scroll_top
                 }
                 HitSpace::Viewport | HitSpace::Chrome => region.content_row.saturating_add(offset),
+                HitSpace::Dock => continue,
             };
             if let Some(line) = visible.get_mut(vis_i) {
                 *line = emphasize_hover_columns(line, region.col_start, region.col_end);
@@ -869,9 +893,61 @@ mod tests {
     }
 
     #[test]
+    fn dock_hit_ignores_transcript_rows_and_scroll() {
+        let mut list = HitRegionList::new();
+        list.mark(Hit::at_screen(91, 4, 12).cols(4, 9));
+        assert_eq!(
+            list.hit_at(5, 12, 0, 8),
+            Some(91),
+            "dock row 12 must hit even though transcript_rows is 8"
+        );
+        assert_eq!(
+            list.hit_at(5, 12, 30, 8),
+            Some(91),
+            "scrolling must not move a dock hit"
+        );
+        assert_eq!(list.hit_at(3, 12, 0, 8), None, "outside the column span");
+        assert_eq!(list.hit_at(5, 11, 0, 8), None, "a different row must miss");
+    }
+
+    #[test]
+    fn dock_hit_with_zero_transcript_rows_still_hits() {
+        let mut list = HitRegionList::new();
+        list.mark(Hit::at_screen(5, 0, 3));
+        assert_eq!(list.hit_at(0, 3, 0, 0), Some(5));
+    }
+
+    #[test]
+    fn dock_hit_does_not_turn_content_hits_into_screen_hits() {
+        let mut list = HitRegionList::new();
+        list.mark(Hit::on_line(1, 3).cols(0, 8));
+        assert_eq!(list.hit_at(1, 3, 0, 8), Some(1));
+        assert_eq!(
+            list.hit_at(1, 10, 0, 8),
+            None,
+            "content rows stay gated by transcript_rows"
+        );
+    }
+
+    #[test]
+    fn hover_tint_skips_dock_rows() {
+        let mut list = HitRegionList::new();
+        list.mark(Hit::at_screen(7, 0, 1).cols(0, 5));
+        let mut visible = vec!["top".to_string(), "dock".to_string()];
+        apply_hover_tint(&mut visible, 0, &list, 7);
+        assert_eq!(
+            visible[1], "dock",
+            "dock rows must not receive hover paint; got {:?}",
+            visible[1]
+        );
+    }
+
+    #[test]
     fn hit_space_strum_roundtrip() {
         assert_eq!(HitSpace::Content.as_str(), "Content");
         assert_eq!("Viewport".parse::<HitSpace>().unwrap(), HitSpace::Viewport);
+        assert_eq!(HitSpace::Dock.as_str(), "Dock");
+        assert_eq!("Dock".parse::<HitSpace>().unwrap(), HitSpace::Dock);
     }
 
     #[test]

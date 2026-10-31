@@ -188,19 +188,19 @@ mode_strip        0 或 1 行（实验性模式；`◆ plan` / `◆ execute · <
 status            0 或 1 行（仅 busy / retry / error）
 editor            贴底；上下 muted `─` 边框标出操作区
                   双 Esc 会话树 / 命令面板：替换此槽（showSelector）
-footer            1 行 dim（cwd · model · 可选 context%）
+footer            1 行 dim（cwd · model · 可选 context%）；右端不画图标
 ```
 
 硬规则：
 
 1. Viewport 贴尾：`previous_viewport_top = max(0, max(height, n) - height)`。
-2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。例外：**瞬态会话详情覆盖弹出框**（屏幕右侧 overlay，`alt+i` 显隐 / Esc 收起，app-tui-fixed-zone）与**实验性会话侧栏**（常驻右列 24 列，标准档 80+ 起可用，`alt+u` 显隐、窄档降级为弹出框，app-tui-fixed-zone r2904）——不引入 Workspace / Plan / Files 类通用侧栏。
+2. **无双栏**；无常驻 Workspace / Plan / Files 侧栏。例外：**瞬态会话详情覆盖弹出框**（屏幕右侧 overlay，点 editor 上边框右端 `[详情]` 开关 / Esc 收起，app-tui-fixed-zone）与**实验性会话侧栏**（常驻右列 24 列，标准档 80+ 起可用，点 `[侧栏]` 开关、窄档降级为弹出框，app-tui-fixed-zone r2904）——不引入 Workspace / Plan / Files 类通用侧栏。这两个视图 chip 与 `[重置折叠]` 都画在 editor 上边框右端，不另增固定区行。
 3. **不截断历史**冒充滚动；**分支 travel / 回看**走会话树，不走 Codex 式 transcript 浏览器。
 4. **无常驻 debug strip**；designing 组合才有场景槽（`xylitol tui designing`，debug 构建）；产品 TUI 走日志或临时一行，不占 3 行底栏。
 5. **无常驻键墙 / debug header**；允许 **Codex 风边框启动卡片**（简约 meta）——名称 **MUST 全量展示**（换行），**MUST NOT** `...` 截断。会话名/路径仍并进 footer。
 6. 会话树 / 命令面板 / 设置：**替换 editor 槽**，不要 blit 到内容顶部。
 7. 居中 `show_overlay` **默认不用**；交互优先 editor 槽（树 / Ask / 板）。仅极短确认可选用 overlay。
-8. **保留 editor 上下边框**作为操作区边界（图 2）；不要为了「更扁」去掉这层分区提示。
+8. **保留 editor 上下边框**作为操作区边界（图 2）；不要为了「更扁」去掉这层分区提示。上边框右端 允许放视图动作 chip（`[详情]` / `[侧栏]` / `[重置折叠]`），chip 与边框同高、不换行、不增高。
 
 `spacing.*` 单位是 cell / 行。宽屏 Diff 阈值见 `spacing.diff-side-by-side-min-cols`。
 
@@ -243,7 +243,7 @@ footer            1 行 dim（cwd · model · 可选 context%）
 - Do 忙碌才出 status；idle 让出垂直空间给对话。
 - Do 用 editor 边框标出操作区（对齐 agent_demo）。
 - Do glyph 走应用配置，不探测字体。
-- Do thinking/tool 可展开（thinking flush，tool 用左边轨）。
+- Do thinking/tool 可展开（thinking flush，tool 用左边轨），折叠三角与整块可点，块头不写组合键名。
 - Do 工具块用 **status 左边轨**（accent/success/error，经 `paint_left_rail_line`）表达 pending/success/error；**MUST NOT** 默认整行 `tool-*-bg` 洗底。
 - Do YAML frontmatter 中所有 token 值使用双引号（`common-design-md-zh`）。
 - Do 语义色只改本文件 frontmatter，并对齐 `Palette`（`just qa-check-tui-tokens`）。

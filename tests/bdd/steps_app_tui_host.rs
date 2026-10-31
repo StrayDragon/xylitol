@@ -44,18 +44,18 @@ pub fn host_pump_bdd() -> HostPumpBdd {
     }
 }
 
-fn fresh_pump() -> HostPump {
+pub(crate) fn fresh_pump() -> HostPump {
     HostPump {
         session: HostSession::new_product_ui(TestTerminal::new(120, 40)),
         driver: ScriptedDriver::new(),
     }
 }
 
-fn take_pump(bdd: &HostPumpBdd) -> HostPump {
+pub(crate) fn take_pump(bdd: &HostPumpBdd) -> HostPump {
     bdd.pump.borrow_mut().take().expect("host pump mounted")
 }
 
-fn put_pump(bdd: &HostPumpBdd, pump: HostPump) {
+pub(crate) fn put_pump(bdd: &HostPumpBdd, pump: HostPump) {
     *bdd.pump.borrow_mut() = Some(pump);
 }
 
@@ -73,7 +73,7 @@ async fn submit_bang(bdd: &HostPumpBdd, command: &str) {
     put_pump(bdd, pump);
 }
 
-fn render_frame(bdd: &HostPumpBdd, width: usize) -> String {
+pub(crate) fn render_frame(bdd: &HostPumpBdd, width: usize) -> String {
     let pump = take_pump(bdd);
     let root = pump.session.ui_root().expect("ui").clone();
     let frame = root.borrow_mut().render(width).join("\n");
@@ -278,13 +278,13 @@ fn esc_stream(
     )
 }
 
-fn open_busy(bdd: &HostPumpBdd) {
+pub(crate) fn open_busy(bdd: &HostPumpBdd) {
     let mut pump = fresh_pump();
     pump.session.on_run_started("hello");
     put_pump(bdd, pump);
 }
 
-fn open_tree_ready(bdd: &HostPumpBdd) {
+pub(crate) fn open_tree_ready(bdd: &HostPumpBdd) {
     use xylitol_app_tui::harness::harness_sample_message_history_tree;
     let mut pump = fresh_pump();
     pump.driver
@@ -292,14 +292,14 @@ fn open_tree_ready(bdd: &HostPumpBdd) {
     put_pump(bdd, pump);
 }
 
-fn set_editor(bdd: &HostPumpBdd, text: &str) {
+pub(crate) fn set_editor(bdd: &HostPumpBdd, text: &str) {
     let pump = take_pump(bdd);
     let root = pump.session.ui_root().expect("ui").clone();
     root.borrow_mut().set_editor_text(text);
     put_pump(bdd, pump);
 }
 
-fn editor_text(bdd: &HostPumpBdd) -> String {
+pub(crate) fn editor_text(bdd: &HostPumpBdd) -> String {
     let pump = take_pump(bdd);
     let root = pump.session.ui_root().expect("ui").clone();
     let text = root.borrow().editor_text();
@@ -307,7 +307,7 @@ fn editor_text(bdd: &HostPumpBdd) -> String {
     text
 }
 
-fn step_key(bdd: &HostPumpBdd, ev: xylitol_tui::InputEvent) {
+pub(crate) fn step_key(bdd: &HostPumpBdd, ev: xylitol_tui::InputEvent) {
     let mut pump = take_pump(bdd);
     pump.session.step(HostEvent::Input(ev)).expect("key step");
     put_pump(bdd, pump);
@@ -323,7 +323,7 @@ async fn drain(bdd: &HostPumpBdd) {
     put_pump(bdd, pump);
 }
 
-async fn pump_once(bdd: &HostPumpBdd) {
+pub(crate) async fn pump_once(bdd: &HostPumpBdd) {
     let mut pump = take_pump(bdd);
     let mut stream = None;
     pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
@@ -333,23 +333,23 @@ async fn pump_once(bdd: &HostPumpBdd) {
 }
 
 #[derive(Clone, Debug)]
-struct PumpStats {
-    is_busy: bool,
-    bash_active: bool,
-    run_active: bool,
-    should_quit: bool,
-    tree_open: bool,
-    aborts: usize,
-    runs: Vec<String>,
-    steers: Vec<String>,
-    follow_ups: Vec<String>,
-    bash_calls: Vec<(String, bool)>,
-    tree_calls: usize,
-    reload_active: bool,
-    notices: Vec<String>,
+pub(crate) struct PumpStats {
+    pub(crate) is_busy: bool,
+    pub(crate) bash_active: bool,
+    pub(crate) run_active: bool,
+    pub(crate) should_quit: bool,
+    pub(crate) tree_open: bool,
+    pub(crate) aborts: usize,
+    pub(crate) runs: Vec<String>,
+    pub(crate) steers: Vec<String>,
+    pub(crate) follow_ups: Vec<String>,
+    pub(crate) bash_calls: Vec<(String, bool)>,
+    pub(crate) tree_calls: usize,
+    pub(crate) reload_active: bool,
+    pub(crate) notices: Vec<String>,
 }
 
-fn stats(bdd: &HostPumpBdd) -> PumpStats {
+pub(crate) fn stats(bdd: &HostPumpBdd) -> PumpStats {
     let pump = take_pump(bdd);
     let root = pump.session.ui_root().expect("ui").clone();
     let s = PumpStats {
@@ -1195,7 +1195,7 @@ async fn c2826_submit_slash(host_pump_bdd: &HostPumpBdd, text: &str) {
     *host_pump_bdd.pump.borrow_mut() = Some(pump);
 }
 
-fn c2826_slot(host_pump_bdd: &HostPumpBdd) -> xylitol_app_tui::EditorSlotKind {
+pub(crate) fn c2826_slot(host_pump_bdd: &HostPumpBdd) -> xylitol_app_tui::EditorSlotKind {
     let pump = take_pump(host_pump_bdd);
     let root = pump.session.ui_root().expect("ui").clone();
     let slot = root.borrow().slot();
@@ -1658,20 +1658,6 @@ pub(crate) fn t_c2826_reload_status(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-pub(crate) fn c2826_alt_up_event_pub() -> xylitol_tui::InputEvent {
-    c2826_alt_up_event()
-}
-
-fn c2826_alt_up_event() -> xylitol_tui::InputEvent {
-    use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
-    xylitol_tui::InputEvent::Key(KeyEvent {
-        code: KeyCode::Up,
-        modifiers: KeyModifiers::ALT,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    })
-}
-
 fn c2826_ctrl_v_event() -> xylitol_tui::InputEvent {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     xylitol_tui::InputEvent::Key(KeyEvent {
@@ -1897,8 +1883,8 @@ pub(crate) fn t_c2826_zero_depth_strip(host_pump_bdd: &HostPumpBdd) {
     );
 }
 
-#[when("以主机泵忙碌插队后渲染队列条并按 Alt+Up")]
-pub(crate) async fn w_c2826_queue_strip_alt_up(host_pump_bdd: &HostPumpBdd) {
+#[when("以主机泵忙碌插队后渲染队列条并点击队列条")]
+pub(crate) async fn w_c2826_queue_strip_click(host_pump_bdd: &HostPumpBdd) {
     open_busy(host_pump_bdd);
     set_editor(host_pump_bdd, "steer-one");
     let mut pump = take_pump(host_pump_bdd);
@@ -1908,10 +1894,11 @@ pub(crate) async fn w_c2826_queue_strip_alt_up(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
     pump_once(host_pump_bdd).await;
     let before = c2826_frame(host_pump_bdd);
-    step_key(
-        host_pump_bdd,
-        crate::bdd::steps_app_tui_host::c2826_alt_up_event_pub(),
-    );
+    let row = before
+        .lines()
+        .position(|line| line.contains("Steering"))
+        .expect("queue strip rendered") as u16;
+    c2911_click(host_pump_bdd, 5, row).await;
     pump_once(host_pump_bdd).await;
     let after_text = editor_text(host_pump_bdd);
     let after_marker = format!("---AFTER---\n{after_text}");
@@ -1919,8 +1906,8 @@ pub(crate) async fn w_c2826_queue_strip_alt_up(host_pump_bdd: &HostPumpBdd) {
     host_pump_bdd.ansi_frames.borrow_mut().push(after_marker);
 }
 
-#[then("队列条含插队文本且 Alt+Up 还原队列文本")]
-pub(crate) fn t_c2826_queue_strip_alt_up(host_pump_bdd: &HostPumpBdd) {
+#[then("队列条含插队文本且队列文本还原进编辑器")]
+pub(crate) fn t_c2826_queue_strip_click(host_pump_bdd: &HostPumpBdd) {
     let frames = host_pump_bdd.ansi_frames.borrow();
     let before = frames[frames.len() - 2].clone();
     let after_text = frames[frames.len() - 1].replace("---AFTER---\n", "");
@@ -1936,7 +1923,7 @@ pub(crate) fn t_c2826_queue_strip_alt_up(host_pump_bdd: &HostPumpBdd) {
     );
     assert!(
         after_text.contains("steer-one"),
-        "c2826: Alt+Up 应还原队列文本进编辑器：{after_text}"
+        "c2826: 点击队列条应还原队列文本进编辑器：{after_text}"
     );
 }
 
@@ -2954,14 +2941,108 @@ async fn c2875_press(
     put_pump(host_pump_bdd, pump);
 }
 
+thread_local! {
+    static LAST_CHIP_LABEL: std::cell::RefCell<Option<&'static str>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[when("左键单击 编辑区上边框右端 [详情] chip")]
+async fn w_c3027_click_details_chip(host_pump_bdd: &HostPumpBdd) {
+    let clicked = click_footer_chip_label(host_pump_bdd, "详情").await;
+    assert!(clicked, "mat33: [详情] chip 须绘制且可点");
+    LAST_CHIP_LABEL.with(|s| *s.borrow_mut() = Some("详情"));
+}
+
+#[when("左键单击 编辑区上边框右端 [侧栏] chip")]
+async fn w_c3027_click_sidebar_chip(host_pump_bdd: &HostPumpBdd) {
+    let clicked = click_footer_chip_label(host_pump_bdd, "侧栏").await;
+    if !clicked {
+        request_session_sidebar_via_action(host_pump_bdd).await;
+    }
+    LAST_CHIP_LABEL.with(|s| *s.borrow_mut() = Some("侧栏"));
+}
+
+#[when("再次左键单击该 chip")]
+async fn w_c3027_click_same_chip_again(host_pump_bdd: &HostPumpBdd) {
+    let label = LAST_CHIP_LABEL
+        .with(|s| *s.borrow())
+        .expect("先前已单击过一个 chip");
+    assert!(
+        click_footer_chip_label(host_pump_bdd, label).await,
+        "mat33: [{label}] chip 须仍绘制且可点"
+    );
+}
+
+pub(crate) async fn click_footer_chip_label(host_pump_bdd: &HostPumpBdd, label: &str) -> bool {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let chip = format!("[{label}]");
+    let coord = {
+        let mut pump = take_pump(host_pump_bdd);
+        pump.session.render_now().expect("chip render");
+        let lines: Vec<String> = pump.session.tui.last_painted_lines().to_vec();
+        put_pump(host_pump_bdd, pump);
+        lines.iter().enumerate().find_map(|(idx, line)| {
+            let plain = xylitol_tui::utils::strip_ansi_codes(line);
+            plain
+                .find(&chip)
+                .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
+        })
+    };
+    let Some((col, row)) = coord else {
+        return false;
+    };
+    let mut pump = take_pump(host_pump_bdd);
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        pump.session
+            .step(HostEvent::Input(xylitol_tui::InputEvent::Mouse(
+                MouseEvent {
+                    kind,
+                    column: col,
+                    row,
+                    modifiers: crossterm::event::KeyModifiers::NONE,
+                },
+            )))
+            .expect("chip click step");
+    }
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("chip click pump");
+    put_pump(host_pump_bdd, pump);
+    true
+}
+
+async fn run_session_details_action(
+    host_pump_bdd: &HostPumpBdd,
+    action: impl FnOnce(&mut xylitol_app_tui::UiRoot),
+) {
+    let mut pump = take_pump(host_pump_bdd);
+    let root = pump.session.ui_root().expect("ui").clone();
+    action(&mut root.borrow_mut());
+    drop(root);
+    let mut stream = None;
+    pump_host_driver(&mut pump.session, &mut pump.driver, &mut stream)
+        .await
+        .expect("session action pump");
+    put_pump(host_pump_bdd, pump);
+}
+
+pub(crate) async fn request_session_sidebar_via_action(host_pump_bdd: &HostPumpBdd) {
+    run_session_details_action(host_pump_bdd, |root| {
+        root.request_session_sidebar();
+    })
+    .await;
+}
+
 #[when("切换覆盖弹出框显隐")]
 async fn w_c2875_toggle(host_pump_bdd: &HostPumpBdd) {
-    c2875_press(
-        host_pump_bdd,
-        crossterm::event::KeyCode::Char('i'),
-        crossterm::event::KeyModifiers::ALT,
-    )
-    .await;
+    assert!(
+        click_footer_chip_label(host_pump_bdd, "详情").await,
+        "[详情] chip 须绘制且可点"
+    );
 }
 
 fn c2875_frame(host_pump_bdd: &HostPumpBdd) -> String {
@@ -2992,16 +3073,6 @@ fn t_c2875_visible(host_pump_bdd: &HostPumpBdd) {
                 .unwrap_or_else(|| f.clone())
         }
     );
-}
-
-#[when("复按切换收起")]
-async fn w_c2875_toggle_again(host_pump_bdd: &HostPumpBdd) {
-    c2875_press(
-        host_pump_bdd,
-        crossterm::event::KeyCode::Char('i'),
-        crossterm::event::KeyModifiers::ALT,
-    )
-    .await;
 }
 
 #[then("覆盖弹出框不再渲染")]
@@ -3063,12 +3134,10 @@ fn t_c2875_busy_esc_abort(host_pump_bdd: &HostPumpBdd) {
 
 #[when("切换侧栏")]
 async fn w_c2905_sidebar_toggle(host_pump_bdd: &HostPumpBdd) {
-    c2875_press(
-        host_pump_bdd,
-        crossterm::event::KeyCode::Char('u'),
-        crossterm::event::KeyModifiers::ALT,
-    )
-    .await;
+    assert!(
+        click_footer_chip_label(host_pump_bdd, "侧栏").await,
+        "[侧栏] chip 须绘制且可点"
+    );
 }
 
 fn c2905_assert_on(host_pump_bdd: &HostPumpBdd) {
@@ -3096,16 +3165,6 @@ fn c2905_assert_on(host_pump_bdd: &HostPumpBdd) {
 #[then("右侧栏上屏且内容区让宽")]
 fn t_c2905_on(host_pump_bdd: &HostPumpBdd) {
     c2905_assert_on(host_pump_bdd);
-}
-
-#[when("复按收起")]
-async fn w_c2905_toggle_off(host_pump_bdd: &HostPumpBdd) {
-    c2875_press(
-        host_pump_bdd,
-        crossterm::event::KeyCode::Char('u'),
-        crossterm::event::KeyModifiers::ALT,
-    )
-    .await;
 }
 
 #[then("侧栏消失且内容区恢复")]
@@ -3157,18 +3216,14 @@ fn t_c2918_popup_fallback(host_pump_bdd: &HostPumpBdd) {
 
 #[when("先开覆盖弹出框再开侧栏")]
 async fn w_c2905_both(host_pump_bdd: &HostPumpBdd) {
-    c2875_press(
-        host_pump_bdd,
-        crossterm::event::KeyCode::Char('i'),
-        crossterm::event::KeyModifiers::ALT,
-    )
-    .await;
-    c2875_press(
-        host_pump_bdd,
-        crossterm::event::KeyCode::Char('u'),
-        crossterm::event::KeyModifiers::ALT,
-    )
-    .await;
+    assert!(
+        click_footer_chip_label(host_pump_bdd, "详情").await,
+        "[详情] chip 须绘制且可点"
+    );
+    assert!(
+        click_footer_chip_label(host_pump_bdd, "侧栏").await,
+        "[侧栏] chip 须绘制且可点"
+    );
 }
 
 #[then("两面同时可辨且覆盖弹出框贴内容右边界")]
@@ -3255,11 +3310,9 @@ async fn g_c2911_popup_on(host_pump_bdd: &HostPumpBdd) {
 
 #[when("循环侧栏宽度")]
 async fn w_c2911_sidebar_width_cycle(host_pump_bdd: &HostPumpBdd) {
-    c2875_press(
-        host_pump_bdd,
-        crossterm::event::KeyCode::Char('u'),
-        crossterm::event::KeyModifiers::ALT | crossterm::event::KeyModifiers::SHIFT,
-    )
+    run_session_details_action(host_pump_bdd, |root| {
+        root.session_sidebar_width_cycle();
+    })
     .await;
 }
 
@@ -3284,11 +3337,9 @@ fn t_c2911_sidebar_width_cycle(host_pump_bdd: &HostPumpBdd) {
 
 #[when("按会话详情循环键")]
 async fn w_c2911_details_cycle(host_pump_bdd: &HostPumpBdd) {
-    c2875_press(
-        host_pump_bdd,
-        crossterm::event::KeyCode::Char('o'),
-        crossterm::event::KeyModifiers::ALT,
-    )
+    run_session_details_action(host_pump_bdd, |root| {
+        root.cycle_session_details();
+    })
     .await;
 }
 
@@ -3336,7 +3387,7 @@ fn t_c2911_details_off(host_pump_bdd: &HostPumpBdd) {
     put_pump(host_pump_bdd, pump);
 }
 
-async fn c2911_click(host_pump_bdd: &HostPumpBdd, col: u16, row: u16) {
+pub(crate) async fn c2911_click(host_pump_bdd: &HostPumpBdd, col: u16, row: u16) {
     use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
     let mut pump = take_pump(host_pump_bdd);
     for kind in [

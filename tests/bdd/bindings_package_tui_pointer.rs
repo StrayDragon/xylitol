@@ -1,4 +1,5 @@
 use crate::bdd::fixtures::*;
+use crate::bdd::steps_package_tui_pointer::{PointerDockBdd, pointer_dock_bdd};
 use rstest_bdd_macros::scenario;
 
 #[scenario(
@@ -63,4 +64,19 @@ fn test_capture_blocks_transcript_drag(ws: Workspace) {
 )]
 fn test_hover_paint_does_not_stale_components(ws: Workspace) {
     let _ = ws;
+}
+#[scenario(
+    path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
+    name = "固定区命中不受滚动与行数上限限制"
+)]
+fn test_dock_hit_ignores_scroll_and_row_gate(pointer_dock_bdd: PointerDockBdd) {
+    let _ = pointer_dock_bdd;
+}
+
+#[scenario(
+    path = "crates/xylitol-tui/llmanspec/specs/package-tui-pointer/package-tui-pointer.feature",
+    name = "悬停不着画固定区行"
+)]
+fn test_hover_skips_dock_rows(pointer_dock_bdd: PointerDockBdd) {
+    let _ = pointer_dock_bdd;
 }

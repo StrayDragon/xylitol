@@ -11,7 +11,7 @@ use crate::layout::LayoutTheme;
 
 use super::super::fold_hit::{FoldHitTable, FoldTarget};
 use super::super::glyphs::GlyphSet;
-use super::paint::{inter_block_spacer, key_hint, push_wrapped};
+use super::paint::{inter_block_spacer, push_wrapped};
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn paint_envelope_header_row(
@@ -116,7 +116,7 @@ pub(super) fn paint_folded_streaming_thought(
             return;
         }
         let marker = glyphs.unfold();
-        let header = theme.paint_muted(&format!("{marker} Thinking  {}", key_hint("Ctrl+T")));
+        let header = theme.paint_muted(&format!("{marker} Thinking"));
         let row_start = lines.len();
         push_wrapped(lines, &header, width);
         push_wrapped(lines, &theme.paint_muted(&format!("{text}…")), width);

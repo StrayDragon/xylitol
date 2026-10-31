@@ -17,7 +17,7 @@ pub fn render_queue_strip(
     }
     push_queue_line(&mut lines, theme, "Steering", pending_steer, width);
     push_queue_line(&mut lines, theme, "Follow-up", pending_follow_up, width);
-    let hint = theme.paint_muted("↳ Alt+Up to edit all queued messages");
+    let hint = theme.paint_muted("↳ click to edit all queued messages");
     lines.push(if width == 0 {
         hint
     } else {

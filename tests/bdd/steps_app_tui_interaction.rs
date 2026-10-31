@@ -20,24 +20,6 @@ pub fn tui_interaction() -> TuiInteraction {
     }
 }
 
-fn ctrl(ch: char) -> KeyEvent {
-    KeyEvent {
-        code: KeyCode::Char(ch),
-        modifiers: KeyModifiers::CONTROL,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    }
-}
-
-fn alt(ch: char) -> KeyEvent {
-    KeyEvent {
-        code: KeyCode::Char(ch),
-        modifiers: KeyModifiers::ALT,
-        kind: KeyEventKind::Press,
-        state: KeyEventState::NONE,
-    }
-}
-
 fn mount(fx: &mut InteractionBdd) -> String {
     fx.push_xy(XyEvent::AgentEnd {
         messages: Vec::new(),
@@ -260,25 +242,27 @@ fn then_one_thinking_override(tui_interaction: &TuiInteraction) {
     assert_eq!(fx.thinking_effective(&id), true);
 }
 
-#[when("按下和弦 Alt+E")]
-fn when_press_alt_e(tui_interaction: &TuiInteraction) {
+#[when("触发动作 app.tools.blocks")]
+fn when_action_tools_blocks(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
-    fx.as_mut().expect("fixture mounted").handle_key(alt('e'));
+    fx.as_mut().expect("fixture mounted").reset_tools_blocks();
 }
 
-#[when("按下和弦 Ctrl+T")]
-fn when_press_ctrl_t(tui_interaction: &TuiInteraction) {
+#[when("触发动作 app.thinking.toggle")]
+fn when_action_thinking_toggle(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
-    fx.as_mut().expect("fixture mounted").handle_key(ctrl('t'));
+    fx.as_mut()
+        .expect("fixture mounted")
+        .toggle_thinking_default();
 }
 
-#[when("依序按下和弦 Alt+E、Ctrl+T、Ctrl+O")]
-fn when_press_alt_e_ctrl_t_ctrl_o(tui_interaction: &TuiInteraction) {
+#[when("依序触发动作 app.tools.blocks、app.thinking.toggle、app.tools.expand")]
+fn when_actions_sequence(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
-    fx.handle_key(alt('e'))
-        .handle_key(ctrl('t'))
-        .handle_key(ctrl('o'));
+    fx.reset_tools_blocks();
+    fx.toggle_thinking_default();
+    fx.toggle_tools_output_default();
 }
 
 #[when("以场景构建器回放压缩事件并封轮挂载交互面")]
@@ -409,7 +393,7 @@ fn when_click_viewport_hint_band(tui_interaction: &TuiInteraction) {
     assert!(fx.left_click(hit.0, hit.1), "hint band click must consume");
 }
 
-#[then("提示带点击仅翻转该块输出视口且 Ctrl+O 翻全局并清按块覆盖")]
+#[then("提示带点击仅翻转该块输出视口且视口默认动作翻全局并清按块覆盖")]
 fn then_hint_click_per_block_ctrl_o_global(tui_interaction: &TuiInteraction) {
     let mut fx = tui_interaction.fx.borrow_mut();
     let fx = fx.as_mut().expect("fixture mounted");
@@ -421,10 +405,10 @@ fn then_hint_click_per_block_ctrl_o_global(tui_interaction: &TuiInteraction) {
         !fx.fold().tools_output_expanded,
         "per-block click must not flip the global default"
     );
-    fx.handle_key(ctrl('o'));
+    fx.toggle_tools_output_default();
     assert!(
         fx.fold().tools_output_expanded,
-        "Ctrl+O flips the global default"
+        "viewport default action flips the global default"
     );
     assert!(
         fx.fold().output_overrides.is_empty(),
@@ -432,7 +416,7 @@ fn then_hint_click_per_block_ctrl_o_global(tui_interaction: &TuiInteraction) {
         fx.fold().output_overrides
     );
     assert!(fx.fold().output_effective("t-log"));
-    fx.handle_key(ctrl('o'));
+    fx.toggle_tools_output_default();
     assert!(!fx.fold().tools_output_expanded);
     assert!(
         !fx.fold().output_effective("t-log"),
@@ -632,7 +616,7 @@ fn then_thinking_default_flipped_overrides_cleared(tui_interaction: &TuiInteract
     assert_eq!(fold.thinking_expanded, true);
 }
 
-#[then("渲染帧与按键前逐字一致")]
+#[then("渲染帧与动作前逐字一致")]
 fn then_frame_unchanged_after_chords(tui_interaction: &TuiInteraction) {
     let now = {
         let mut fx = tui_interaction.fx.borrow_mut();
@@ -645,7 +629,7 @@ fn then_frame_unchanged_after_chords(tui_interaction: &TuiInteraction) {
     );
 }
 
-#[then("收起块保留摘要行且展开旁注为括号完整和弦")]
+#[then("收起块保留摘要行且折叠三角可见")]
 fn then_collapsed_summary_and_chord_hints(tui_interaction: &TuiInteraction) {
     let frame = {
         let mut fx = tui_interaction.fx.borrow_mut();
@@ -655,10 +639,7 @@ fn then_collapsed_summary_and_chord_hints(tui_interaction: &TuiInteraction) {
         frame.contains("Read old.rs"),
         "collapsed block keeps a readable summary line: {frame}"
     );
-    assert!(
-        frame.contains("(Alt+E)"),
-        "tool chord hint is a full parenthesised chord"
-    );
+    assert!(!frame.contains("(Alt+E)"), "tool head must not echo chords");
 }
 
 fn parse_chord(spec: &str) -> KeyEvent {
@@ -817,13 +798,15 @@ fn then_editor_slot_untouched(tui_interaction: &TuiInteraction) {
 
 #[then("思考折叠默认态翻转且全帧不出现模型列表")]
 fn then_thinking_flipped_no_models_panel(tui_interaction: &TuiInteraction) {
-    let (frame, expanded) = {
+    let (frame, expanded, before) = {
         let mut fx = tui_interaction.fx.borrow_mut();
         let fx = fx.as_mut().expect("fixture mounted");
+        let before = fx.fold().thinking_expanded;
+        fx.toggle_thinking_default();
         let frame = fx.render_plain(80);
-        (frame, fx.fold().thinking_expanded)
+        (frame, fx.fold().thinking_expanded, before)
     };
-    assert!(expanded, "Ctrl+T flips the thinking fold default");
+    assert_ne!(expanded, before, "thinking toggle action flips the default");
     assert!(
         !frame.to_lowercase().contains("model"),
         "no model picker panel may appear: {frame}"

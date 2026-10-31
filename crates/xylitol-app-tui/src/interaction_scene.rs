@@ -72,6 +72,31 @@ impl InteractionBdd {
         self
     }
 
+    pub fn reset_tools_blocks(&mut self) -> &mut Self {
+        self.root.reset_tools_blocks();
+        self
+    }
+
+    pub fn toggle_thinking_default(&mut self) -> &mut Self {
+        self.root.toggle_thinking_default();
+        self
+    }
+
+    pub fn toggle_tools_output_default(&mut self) -> &mut Self {
+        self.root.toggle_tools_output_default();
+        self
+    }
+
+    pub fn expand_nearest_activity(&mut self) -> &mut Self {
+        self.root.expand_nearest_activity();
+        self
+    }
+
+    pub fn collapse_nearest_activity(&mut self) -> &mut Self {
+        self.root.collapse_nearest_activity();
+        self
+    }
+
     pub fn left_click(&mut self, col: u16, row: u16) -> bool {
         self.root.click_fold_at(col, row)
     }

@@ -598,7 +598,7 @@ fn harness_busy_enter_queues_steer() {
     assert!(
         frame
             .iter()
-            .any(|l| l.contains("Alt+Up to edit all queued messages")),
+            .any(|l| l.contains("click to edit all queued messages")),
         "missing dequeue hint: {frame:?}"
     );
     assert!(!root.borrow().tree_open());
@@ -912,6 +912,110 @@ async fn harness_enter_assistant_does_not_prefill() {
     assert_eq!(driver.travel_calls(), vec!["a1".to_string()]);
 }
 
+#[tokio::test]
+async fn dock_chip_click_toggles_popup_in_host() {
+    use super::harness::{ScriptedDriver, pump_host_driver};
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    async fn click_chip(
+        session: &mut HostSession<TestTerminal>,
+        driver: &mut ScriptedDriver,
+        chip: &str,
+    ) -> bool {
+        session.render_now().expect("chip render");
+        let lines: Vec<String> = session.tui.last_painted_lines().to_vec();
+        let coord = lines.iter().enumerate().find_map(|(idx, line)| {
+            let plain = xylitol_tui::utils::strip_ansi_codes(line);
+            plain
+                .find(chip)
+                .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
+        });
+        let Some((col, row)) = coord else {
+            return false;
+        };
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            session
+                .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+                    kind,
+                    column: col,
+                    row,
+                    modifiers: crossterm::event::KeyModifiers::NONE,
+                })))
+                .expect("mouse step");
+        }
+        let mut stream = None;
+        pump_host_driver(session, driver, &mut stream)
+            .await
+            .expect("chip pump");
+        true
+    }
+    let mut session = HostSession::new_product_ui(TestTerminal::new(120, 40));
+    let mut driver = ScriptedDriver::new();
+    let root = session.ui_root().expect("product ui").clone();
+    assert!(
+        click_chip(&mut session, &mut driver, "[详情]").await,
+        "[详情] chip must be painted"
+    );
+    assert!(
+        root.borrow().session_popup_open(),
+        "first chip click opens the session popup"
+    );
+    assert!(
+        click_chip(&mut session, &mut driver, "[详情]").await,
+        "[详情] chip must still be painted while open"
+    );
+    assert!(
+        !root.borrow().session_popup_open(),
+        "second chip click closes the session popup"
+    );
+}
+
+#[test]
+fn dock_chip_click_opens_sidebar_in_host() {
+    use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+    let mut session = HostSession::new_product_ui(TestTerminal::new(120, 40));
+    let root = session.ui_root().expect("product ui").clone();
+    session.render_now().expect("render");
+    let lines: Vec<String> = session.tui.last_painted_lines().to_vec();
+    let (col, row) = lines
+        .iter()
+        .enumerate()
+        .find_map(|(idx, line)| {
+            let plain = xylitol_tui::utils::strip_ansi_codes(line);
+            plain
+                .find("[侧栏]")
+                .map(|pos| (xylitol_tui::visible_width(&plain[..pos]) as u16, idx as u16))
+        })
+        .expect("sidebar chip painted");
+    for kind in [
+        MouseEventKind::Down(MouseButton::Left),
+        MouseEventKind::Up(MouseButton::Left),
+    ] {
+        session
+            .step(HostEvent::Input(InputEvent::Mouse(MouseEvent {
+                kind,
+                column: col,
+                row,
+                modifiers: crossterm::event::KeyModifiers::NONE,
+            })))
+            .expect("mouse step");
+    }
+    let column = col as usize;
+    assert!(
+        root.borrow()
+            .footer_chip_columns_for_test()
+            .into_iter()
+            .any(|(start, end, _)| column >= start && column < end),
+        "clicked column {column} must fall inside a painted chip range"
+    );
+    assert!(
+        root.borrow().has_pending_session_sidebar(),
+        "dock chip click must queue the sidebar open request"
+    );
+}
+
 #[test]
 fn harness_editor_slot_mutex_and_esc_closes() {
     use super::layout::{EditorSlot, EditorSlotKind};
@@ -1062,7 +1166,7 @@ fn harness_empty_enter_follows_bottom_without_submit() {
 }
 
 #[test]
-fn harness_app_thinking_toggle_via_binding_id() {
+fn harness_app_thinking_toggle_action_unbound_by_default() {
     use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
     let root = session.ui_root().expect("product ui").clone();
@@ -1075,7 +1179,10 @@ fn harness_app_thinking_toggle_via_binding_id() {
             state: KeyEventState::NONE,
         })))
         .unwrap();
-    assert!(root.borrow().fold().thinking_expanded);
+    assert!(
+        !root.borrow().fold().thinking_expanded,
+        "ctrl+t default chord is contracted (mat32)"
+    );
 }
 
 #[tokio::test]
@@ -2210,7 +2317,7 @@ fn scrollback_bash_ctrl_o_viewport_keeps_rail() {
     let collapsed = root.render(160);
     let joined = collapsed.join("\n");
     assert!(
-        strip_ansi(&joined).contains("ctrl+o to expand"),
+        strip_ansi(&joined).contains("click to expand"),
         "collapsed viewport hint missing"
     );
     let bash_line = collapsed
@@ -2227,16 +2334,11 @@ fn scrollback_bash_ctrl_o_viewport_keeps_rail() {
         xylitol_tui::visible_width(bash_line)
     );
 
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use xylitol_tui::InputEvent;
-    root.handle_input(InputEvent::Key(KeyEvent::new(
-        KeyCode::Char('o'),
-        KeyModifiers::CONTROL,
-    )));
+    root.toggle_tools_output_default();
     assert!(root.fold().tools_output_expanded);
     let expanded = root.render(160).join("\n");
     assert!(
-        !strip_ansi(&expanded).contains("ctrl+o to expand"),
+        !strip_ansi(&expanded).contains("click to expand"),
         "expanded viewport should not show collapse hint"
     );
     assert!(strip_ansi(&expanded).contains("line-0"));
@@ -2283,8 +2385,9 @@ fn scrollback_assistant_uses_markdown_not_plain_prefix() {
 }
 
 #[test]
-fn scrollback_thinking_fold_shows_ctrl_t_hint() {
+fn scrollback_thinking_fold_shows_no_key_hint() {
     use super::layout::UiRoot;
+    use super::widgets::FoldTarget;
     use xylitol_tui::InputEvent;
 
     let mut root = UiRoot::new();
@@ -2296,7 +2399,7 @@ fn scrollback_thinking_fold_shows_ctrl_t_hint() {
     });
     root.apply_ui_model(&model);
     let idle = root.render(80).join("\n");
-    assert!(idle.contains("(Ctrl+T)"), "{idle}");
+    assert!(!idle.contains("(Ctrl+T)"), "{idle}");
     assert!(
         idle.contains("Thought"),
         "flushed thinking L1 is Thought: {idle}"
@@ -2311,18 +2414,23 @@ fn scrollback_thinking_fold_shows_ctrl_t_hint() {
         KeyCode::Char('t'),
         KeyModifiers::CONTROL,
     )));
+    let after_unbound = root.render(80).join("\n");
+    assert!(
+        !after_unbound.contains("secret plan"),
+        "ctrl+t default chord contracted: {after_unbound}"
+    );
+    root.toggle_fold_target(FoldTarget::Thinking(super::bridge::allocate_thinking_id(
+        &[],
+        "secret plan",
+    )));
     let open = root.render(80).join("\n");
     assert!(open.contains("secret plan"), "{open}");
-    assert!(root.fold().thinking_expanded);
 }
 
 #[test]
-fn tools_per_block_override_and_alt_e_clears() {
+fn tools_per_block_override_and_reset_action_clears() {
     use super::layout::UiRoot;
     use super::widgets::FoldTarget;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use xylitol_tui::InputEvent;
-
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
     model.entries.push(super::bridge::UiEntry::Tool {
@@ -2359,22 +2467,20 @@ fn tools_per_block_override_and_alt_e_clears() {
     assert!(root.fold().tools_effective("t2"));
     assert_eq!(root.fold().tools_overrides.len(), 1);
 
-    root.handle_input(InputEvent::Key(KeyEvent::new(
-        KeyCode::Char('e'),
-        KeyModifiers::ALT,
-    )));
+    assert!(
+        !root.fold().tools_overrides.is_empty(),
+        "alt+e default chord is contracted (mat32)"
+    );
+    root.reset_tools_blocks();
     assert!(root.fold().tools_overrides.is_empty());
     assert!(!root.fold().tools_effective("t1"));
     assert!(!root.fold().tools_effective("t2"));
 }
 
 #[test]
-fn thinking_per_id_override_and_ctrl_t_clears() {
+fn thinking_per_id_override_and_default_action_clears() {
     use super::layout::UiRoot;
     use super::widgets::FoldTarget;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use xylitol_tui::InputEvent;
-
     let mut root = UiRoot::new();
     let mut model = UiModel::new();
     let t1 = "alpha thought".to_string();
@@ -2400,10 +2506,11 @@ fn thinking_per_id_override_and_ctrl_t_clears() {
     assert!(root.fold().thinking_effective(&id1));
     assert!(!root.fold().thinking_effective(&id2));
 
-    root.handle_input(InputEvent::Key(KeyEvent::new(
-        KeyCode::Char('t'),
-        KeyModifiers::CONTROL,
-    )));
+    assert!(
+        !root.fold().thinking_overrides.is_empty(),
+        "ctrl+t default chord is contracted (mat32)"
+    );
+    root.toggle_thinking_default();
     assert!(root.fold().thinking_overrides.is_empty());
     assert!(root.fold().thinking_effective(&id1));
     assert!(root.fold().thinking_effective(&id2));
@@ -3182,6 +3289,11 @@ fn harness_mouse_hint_toggles_output_viewport() {
     );
     assert!(!root.borrow().fold().output_effective("bash-b"));
 
+    root.borrow_mut().toggle_tools_output_default();
+    assert!(
+        root.borrow().fold().tools_output_expanded,
+        "viewport default action flips the global default"
+    );
     root.borrow_mut()
         .handle_input(InputEvent::Key(KeyEvent::new(
             KeyCode::Char('o'),
@@ -3189,13 +3301,9 @@ fn harness_mouse_hint_toggles_output_viewport() {
         )));
     assert!(
         root.borrow().fold().tools_output_expanded,
-        "Ctrl+O flips the global viewport default"
+        "ctrl+o default chord is contracted (mat32)"
     );
-    root.borrow_mut()
-        .handle_input(InputEvent::Key(KeyEvent::new(
-            KeyCode::Char('o'),
-            KeyModifiers::CONTROL,
-        )));
+    root.borrow_mut().toggle_tools_output_default();
     assert!(!root.borrow().fold().tools_output_expanded);
 }
 
@@ -3473,13 +3581,18 @@ fn scrollback_diff_header_tint_and_body() {
     });
     root.apply_ui_model(&model);
     let collapsed = root.render(80).join("\n");
-    assert!(collapsed.contains("(Alt+E)"), "{collapsed}");
+    assert!(!collapsed.contains("(Alt+E)"), "{collapsed}");
     assert!(collapsed.contains("edit foo.rs"), "{collapsed}");
 
     root.handle_input(InputEvent::Key(KeyEvent::new(
         KeyCode::Char('e'),
         KeyModifiers::ALT,
     )));
+    let still_collapsed = root.render(80).join("\n");
+    assert!(
+        still_collapsed.contains("edit foo.rs"),
+        "alt+e contracted; diff header stays: {still_collapsed}"
+    );
     let open = root.render(80).join("\n");
     assert!(
         open.contains("hello") || open.contains('+'),
@@ -3871,9 +3984,6 @@ fn streaming_ellipsis_is_markdown_themed() {
 fn streaming_paint_does_not_break_bash_ctrl_o_viewport() {
     use super::bridge::BashBlockStatus;
     use super::layout::UiRoot;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-    use xylitol_tui::InputEvent;
-
     let mut root = UiRoot::new();
     root.set_layout_meta(".", "m");
     let mut model = UiModel::new();
@@ -3893,17 +4003,14 @@ fn streaming_paint_does_not_break_bash_ctrl_o_viewport() {
         !root.fold().tools_output_expanded,
         "default viewport collapsed"
     );
-    root.handle_input(InputEvent::Key(KeyEvent::new(
-        KeyCode::Char('o'),
-        KeyModifiers::CONTROL,
-    )));
+    root.toggle_tools_output_default();
     assert!(
         root.fold().tools_output_expanded,
-        "Ctrl+O must still expand tool/bash viewport while assistant streams"
+        "output viewport default action must expand while assistant streams"
     );
     let expanded = root.render(100);
     assert!(
-        !strip_ansi(&expanded.join("\n")).contains("ctrl+o to expand"),
+        !strip_ansi(&expanded.join("\n")).contains("click to expand"),
         "expanded viewport must drop collapse hint"
     );
 }
@@ -4444,18 +4551,17 @@ fn activity_fold_att27_markers_and_full_chord_hints() {
         "L2 cluster heads must use fold marker: {plain}"
     );
     assert!(
-        plain.contains("(Alt+Shift+E)"),
-        "expand hint must be full chord: {plain}"
-    );
-    assert!(
-        !plain.contains("(Alt+E)"),
-        "must not confuse with L1 Alt+E: {plain}"
+        !plain.contains("(Alt+Shift+E)") && !plain.contains("(Alt+E)"),
+        "activity heads must not echo chords: {plain}"
     );
 
     root.activity_mut().force_level("seg-0", SegmentLevel::L3);
     root.touch_activity();
     let plain3 = strip_ansi(&root.render(100).join("\n"));
-    assert!(plain3.contains("(Alt+Shift+E)"), "L3 expand hint: {plain3}");
+    assert!(
+        !plain3.contains("(Alt+Shift+E)"),
+        "no chord on L3: {plain3}"
+    );
     assert!(!plain3.contains("(Alt+E)"), "no Alt+E on L3: {plain3}");
 }
 
@@ -5259,7 +5365,7 @@ fn activity_fold_todo_tools_are_used_not_thought_cluster() {
     root.toggle_fold_target(super::widgets::FoldTarget::Cluster("seg-0:c0".into()));
     let opened = strip_ansi(&root.render(100).join("\n"));
     assert!(
-        opened.contains("Thought 4s") && opened.contains("(Ctrl+T)"),
+        opened.contains("Thought 4s") && !opened.contains("(Ctrl+T)"),
         "L1 thinking kid MUST keep frozen duration: {opened}"
     );
 }
@@ -5533,7 +5639,7 @@ fn activity_fold_live_thinking_stream_keeps_own_bar_in_tool_cluster() {
     assert!(
         opened
             .lines()
-            .any(|l| l.contains("Thinking") && l.contains("Ctrl+T")),
+            .any(|l| l.contains("Thinking") && !l.contains('(')),
         "mixed-cluster stream paints its own L1 Thinking bar below the tool block: {opened}"
     );
     assert!(
