@@ -19,7 +19,8 @@ use xylitol_plugin_sdk::session::{
 };
 
 pub use super::effects::{
-    drain_pending, refresh_footer_tokens, run_interactive_bang, run_interactive_reload,
+    default_client_reload_steps, drain_pending, refresh_footer_tokens, run_interactive_bang,
+    run_interactive_reload,
 };
 use super::host::{HostEvent, HostSession};
 
@@ -1203,7 +1204,8 @@ pub async fn pump_host_driver<T: Terminal>(
 
     if session.take_reload() {
         let input = futures::stream::pending::<Result<HostEvent, XyDriverError>>();
-        run_interactive_reload(session, driver, input).await?;
+        let steps = default_client_reload_steps();
+        run_interactive_reload(session, driver, input, &steps).await?;
     }
 
     if let Some(bash) = session.take_bash() {
@@ -5258,7 +5260,7 @@ mod slice_tests {
     #[tokio::test]
     async fn c1205_reload_esc_cancels_hang() {
         use crate::commands::RELOAD_CANCELLED_NOTICE;
-        use crate::effects::{drain_pending, run_interactive_reload};
+        use crate::effects::{default_client_reload_steps, drain_pending, run_interactive_reload};
         use futures::stream;
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -5278,7 +5280,8 @@ mod slice_tests {
             Ok::<HostEvent, XyDriverError>(HostEvent::Tick),
             Ok(HostEvent::Input(esc_event())),
         ]);
-        run_interactive_reload(&mut session, &mut driver, input)
+        let steps = default_client_reload_steps();
+        run_interactive_reload(&mut session, &mut driver, input, &steps)
             .await
             .unwrap();
 
@@ -5378,7 +5381,7 @@ mod slice_tests {
     #[tokio::test]
     async fn c1205_reload_ctrl_c_cancels_hang() {
         use crate::commands::RELOAD_CANCELLED_NOTICE;
-        use crate::effects::{drain_pending, run_interactive_reload};
+        use crate::effects::{default_client_reload_steps, drain_pending, run_interactive_reload};
         use futures::stream;
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -5398,7 +5401,8 @@ mod slice_tests {
             Ok::<HostEvent, XyDriverError>(HostEvent::Tick),
             Ok(HostEvent::Input(ctrl_key_event('c'))),
         ]);
-        run_interactive_reload(&mut session, &mut driver, input)
+        let steps = default_client_reload_steps();
+        run_interactive_reload(&mut session, &mut driver, input, &steps)
             .await
             .unwrap();
 
@@ -5486,7 +5490,7 @@ mod slice_tests {
 
     #[tokio::test]
     async fn c1205_reload_again_after_cancel() {
-        use crate::effects::{drain_pending, run_interactive_reload};
+        use crate::effects::{default_client_reload_steps, drain_pending, run_interactive_reload};
         use futures::stream;
 
         let mut session = HostSession::new_product_ui(TestTerminal::new(80, 24));
@@ -5506,7 +5510,8 @@ mod slice_tests {
             Ok::<HostEvent, XyDriverError>(HostEvent::Tick),
             Ok(HostEvent::Input(esc_event())),
         ]);
-        run_interactive_reload(&mut session, &mut driver, input)
+        let steps = default_client_reload_steps();
+        run_interactive_reload(&mut session, &mut driver, input, &steps)
             .await
             .unwrap();
         assert!(!session.reload_active());
