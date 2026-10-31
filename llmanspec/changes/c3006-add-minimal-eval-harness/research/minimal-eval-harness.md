@@ -3,6 +3,7 @@
 > 调研日期：2026-10-30
 > 性质：research / 选型底稿，不是 live spec；结论可回写 proposal / design。
 > 范围：xylitol 的 headless coding-agent eval 底座，不含 TUI 交互评测。
+> 2026-10-31 复核：官方评分与候选模型见 [benchmark-scores-2026-10.md](./benchmark-scores-2026-10.md)；harness 版本与数据集组合以 `design.md` 为准。
 
 ## 0. 一页结论
 
