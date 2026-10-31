@@ -90,6 +90,9 @@ async fn boot_with(
     runtime
         .driver
         .enable_reload_state(cwd, agent_dir, opts.trust_override.unwrap_or(true));
+    runtime
+        .driver
+        .set_reload_config_path(opts.config_path.clone());
     Ok(Kernel {
         ctx,
         loader,
@@ -572,6 +575,62 @@ for line in sys.stdin:
         let text = command.invoke("refresh").await.expect("invoke");
         assert_eq!(text, "fixture:refresh");
         let _ = ctx.shutdown().await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    #[serial_test::serial(env_global)]
+    async fn reload_rebuilds_model_registry_from_config() {
+        use xylitol_runtime::driver::XyDriver;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let config_path = dir.path().join("config.yaml");
+        std::fs::write(
+            &config_path,
+            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n",
+        )
+        .expect("config");
+        unsafe {
+            std::env::set_var("XYLITOL_CONFIG_DIR", dir.path());
+            std::env::set_var("HOME", dir.path());
+        }
+        let opts = BootOptions {
+            profile: Profile::Print,
+            config_path: Some(config_path.clone()),
+            session: None,
+            model: None,
+            trust_override: Some(false),
+            interactive: false,
+            caller: "contract",
+            ephemeral_sessions: true,
+        };
+        let mut kernel = boot_with(opts, dir.path().to_path_buf(), dir.path().join(".xylitol"))
+            .await
+            .expect("boot_with");
+        assert_eq!(kernel.runtime.driver.available_models().len(), 1);
+        std::fs::write(
+            &config_path,
+            "models:\n  default_model: q\n  models:\n    q:\n      provider: openai\n      model: m\n    extra:\n      provider: openai\n      model: extra\n",
+        )
+        .expect("config");
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let report = kernel
+            .runtime
+            .driver
+            .reload_runtime(&cancel)
+            .await
+            .expect("reload");
+        let models = report
+            .steps
+            .iter()
+            .find(|step| step.step == "models")
+            .expect("models step");
+        assert!(models.ok, "models step failed: {}", models.message);
+        assert_eq!(kernel.runtime.driver.available_models().len(), 2);
+        let _ = kernel.ctx.shutdown().await;
+        unsafe {
+            std::env::remove_var("XYLITOL_CONFIG_DIR");
+            std::env::remove_var("HOME");
+        }
     }
 
     #[tokio::test(flavor = "multi_thread")]

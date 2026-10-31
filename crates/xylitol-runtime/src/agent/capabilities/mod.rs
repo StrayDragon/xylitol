@@ -300,6 +300,10 @@ impl AgentCapabilities {
         self.with_models(|mm| mm.registry().clone())
     }
 
+    pub fn replace_model_registry(&self, registry: ModelRegistry) {
+        self.with_models_mut(|mm| mm.replace_registry(registry));
+    }
+
     pub fn cwd(&self) -> &str {
         &self.cwd
     }

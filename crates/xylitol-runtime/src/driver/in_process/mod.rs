@@ -64,6 +64,7 @@ pub struct XyInProcessDriver {
     reload_hook: Option<Arc<dyn InProcessReloadHook>>,
     reload_cwd: Option<std::path::PathBuf>,
     reload_agent_dir: Option<std::path::PathBuf>,
+    reload_config_path: Option<std::path::PathBuf>,
     last_ui_mcp_label: Option<Option<String>>,
     mcp_gate_notice: Option<String>,
     prepare_acked: bool,
@@ -106,6 +107,7 @@ impl XyInProcessDriver {
             reload_hook: None,
             reload_cwd: None,
             reload_agent_dir: None,
+            reload_config_path: None,
             last_ui_mcp_label: None,
             mcp_gate_notice: None,
             prepare_acked: true,
@@ -156,10 +158,14 @@ impl XyInProcessDriver {
         &self,
         name: &str,
     ) -> Option<Arc<dyn xylitol_plugin_sdk::XyPluginCommand>> {
-        self.plugin_commands
-            .iter()
-            .find(|(n, _)| n == name)
-            .map(|(_, cmd)| Arc::clone(cmd))
+        if let Some((_, command)) = self.plugin_commands.iter().find(|(n, _)| n == name) {
+            return Some(Arc::clone(command));
+        }
+        let registries = self
+            .ctx
+            .as_ref()?
+            .get::<xylitol_plugin_sdk::HostRegistries>()?;
+        registries.plugin_commands.get(name)
     }
 
     pub fn set_slash_commands(&mut self, commands: Vec<CommandInfo>) {
@@ -508,10 +514,27 @@ impl XyDriver for XyInProcessDriver {
 
     fn get_commands(&self) -> Vec<CommandInfo> {
         let mut commands = self.slash_commands.clone();
-        commands.extend(self.plugin_commands.iter().map(|(name, cmd)| CommandInfo {
-            name: name.clone(),
-            description: cmd.description().to_string(),
-        }));
+        for (name, command) in &self.plugin_commands {
+            commands.push(CommandInfo {
+                name: name.clone(),
+                description: command.description().to_string(),
+            });
+        }
+        if let Some(registries) = self
+            .ctx
+            .as_ref()
+            .and_then(|ctx| ctx.get::<xylitol_plugin_sdk::HostRegistries>())
+        {
+            for (name, command) in registries.plugin_commands.snapshot() {
+                if commands.iter().any(|existing| existing.name == name) {
+                    continue;
+                }
+                commands.push(CommandInfo {
+                    name,
+                    description: command.description().to_string(),
+                });
+            }
+        }
         commands
     }
 

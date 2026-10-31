@@ -1358,6 +1358,7 @@ where
                             Some("skills") => "skills",
                             Some("mcp") => "mcp",
                             Some("context") => "context",
+                            Some("models") => "models",
                             _ => "runtime",
                         },
                         ok: value.get("ok").and_then(|v| v.as_bool()).unwrap_or(false),
@@ -1844,7 +1845,35 @@ where
             &tokio_util::sync::CancellationToken::new(),
         )
         .await?;
+        self.refresh_models_after_reload().await;
         Ok(DispatchOutcome::Reload(report))
+    }
+
+    async fn refresh_models_after_reload(&mut self) {
+        if let Ok(data) = self
+            .unary_cmd(xylitol_protocol::Command::GetAvailableModels {})
+            .await
+        {
+            let rows = data
+                .get("models")
+                .and_then(|models| models.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if let Ok(models) = rows
+                .iter()
+                .map(Self::model_from_value)
+                .collect::<Result<Vec<_>, _>>()
+                && let Ok(mut cached) = self.cached_models.lock()
+            {
+                *cached = Some(models);
+            }
+        }
+        if let Ok(state) = self.unary_cmd(xylitol_protocol::Command::GetState {}).await
+            && let Some(model) = state.get("model")
+            && let Ok(selected) = Self::model_from_value(model)
+        {
+            self.apply_model_selection(selected);
+        }
     }
 
     fn store_capabilities(

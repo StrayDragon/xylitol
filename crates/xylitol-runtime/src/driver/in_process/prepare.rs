@@ -68,6 +68,14 @@ impl XyInProcessDriver {
         self.reload_cwd.as_ref()
     }
 
+    pub fn set_reload_config_path(&mut self, path: Option<std::path::PathBuf>) {
+        self.reload_config_path = path;
+    }
+
+    pub fn reload_config_path(&self) -> Option<&std::path::PathBuf> {
+        self.reload_config_path.as_ref()
+    }
+
     pub fn reload_agent_dir(&self) -> Option<&std::path::PathBuf> {
         self.reload_agent_dir.as_ref()
     }

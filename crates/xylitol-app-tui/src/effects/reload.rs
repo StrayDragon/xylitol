@@ -133,6 +133,7 @@ where
         lines.push("themes: unchanged (no preference; kept current)".into());
     }
 
+    session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
     session.set_plugin_commands(
         driver
