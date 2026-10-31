@@ -21,9 +21,11 @@ use super::types::{
 pub(super) use super::{XyDriver, XyDriverError, types};
 
 mod prepare;
+mod reload;
 mod session;
 
 pub use prepare::InProcessReloadHook;
+pub use reload::{ReloadContext, ReloadParticipant, ReloadRegistry};
 
 struct NoopTodo;
 
@@ -65,6 +67,7 @@ pub struct XyInProcessDriver {
     reload_cwd: Option<std::path::PathBuf>,
     reload_agent_dir: Option<std::path::PathBuf>,
     reload_config_path: Option<std::path::PathBuf>,
+    reload_registry: Arc<ReloadRegistry>,
     last_ui_mcp_label: Option<Option<String>>,
     mcp_gate_notice: Option<String>,
     prepare_acked: bool,
@@ -116,6 +119,7 @@ impl XyInProcessDriver {
             capability_applied: BTreeSet::new(),
             mcp_server_ids: Vec::new(),
             plugin_commands: Vec::new(),
+            reload_registry: Arc::new(ReloadRegistry::new()),
         }
     }
 

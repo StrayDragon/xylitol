@@ -10,6 +10,7 @@ use xylitol_plugin_sdk::rt::Ctx;
 use xylitol_plugin_sdk::session_prepare::{SessionPrepareHub, SessionPrepareView};
 use xylitol_plugin_sdk::tool_name::is_mcp_tool_name;
 
+use super::reload::ReloadRegistry;
 use super::types::{
     LoadedResourcesSnapshot, McpServerPhase, McpServerSnapshot, RuntimeReloadReport,
 };
@@ -74,6 +75,14 @@ impl XyInProcessDriver {
 
     pub fn reload_config_path(&self) -> Option<&std::path::PathBuf> {
         self.reload_config_path.as_ref()
+    }
+
+    pub fn set_reload_registry(&mut self, registry: Arc<ReloadRegistry>) {
+        self.reload_registry = registry;
+    }
+
+    pub fn reload_registry(&self) -> &Arc<ReloadRegistry> {
+        &self.reload_registry
     }
 
     pub fn reload_agent_dir(&self) -> Option<&std::path::PathBuf> {

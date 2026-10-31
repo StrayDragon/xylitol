@@ -159,6 +159,7 @@ pub fn assemble_driver_with_ops_and_features_and_context(
             .collect(),
     );
     inner.set_reload_hook(Arc::new(ProductReload));
+    inner.set_reload_registry(reload::default_reload_registry());
     inner
 }
 
