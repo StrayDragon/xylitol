@@ -16,10 +16,12 @@ pub enum ClientReloadPhase {
     AfterHost,
 }
 
+pub type ClientReloadFn<T> = Box<dyn Fn(&mut HostSession<T>) -> Result<String, String>>;
+
 pub struct ClientReloadStep<T: Terminal> {
     pub name: &'static str,
     pub phase: ClientReloadPhase,
-    pub run: Box<dyn Fn(&mut HostSession<T>) -> Result<String, String>>,
+    pub run: ClientReloadFn<T>,
 }
 
 pub fn default_client_reload_steps<T: Terminal>() -> Vec<ClientReloadStep<T>> {
@@ -82,6 +84,18 @@ fn run_client_reload_step<T: Terminal>(
     }
 }
 
+fn run_client_reload_steps<T: Terminal>(
+    session: &mut HostSession<T>,
+    steps: &[ClientReloadStep<T>],
+    phase: ClientReloadPhase,
+) -> Vec<String> {
+    steps
+        .iter()
+        .filter(|step| step.phase == phase)
+        .map(|step| run_client_reload_step(session, step))
+        .collect()
+}
+
 pub async fn run_interactive_reload<T, S>(
     session: &mut HostSession<T>,
     driver: &mut dyn XyDriver,
@@ -103,12 +117,11 @@ where
     };
 
     let mut lines = vec![String::new()];
-    for step in steps
-        .iter()
-        .filter(|step| step.phase == ClientReloadPhase::BeforeHost)
-    {
-        lines.push(run_client_reload_step(session, step));
-    }
+    lines.extend(run_client_reload_steps(
+        session,
+        steps,
+        ClientReloadPhase::BeforeHost,
+    ));
 
     let runtime_result = {
         let reload_fut = driver.reload_runtime(&cancel);
@@ -176,12 +189,11 @@ where
         }
     }
 
-    for step in steps
-        .iter()
-        .filter(|step| step.phase == ClientReloadPhase::AfterHost)
-    {
-        lines.push(run_client_reload_step(session, step));
-    }
+    lines.extend(run_client_reload_steps(
+        session,
+        steps,
+        ClientReloadPhase::AfterHost,
+    ));
 
     session.set_model_arg_catalog_from_models(&driver.available_models());
     session.set_dollar_skill_catalog(driver.dollar_skill_catalog());
