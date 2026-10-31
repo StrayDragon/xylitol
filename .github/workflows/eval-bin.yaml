@@ -1,0 +1,43 @@
+name: Eval Binary
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v2
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: eval-bin
+
+      - name: Install build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang mold cmake libssl-dev pkg-config perl nasm
+
+      - name: Build Linux binary
+        run: |
+          rustup target add x86_64-unknown-linux-gnu
+          cargo build --release --locked --target x86_64-unknown-linux-gnu
+
+      - name: Strip and checksum
+        run: |
+          strip target/x86_64-unknown-linux-gnu/release/xylitol
+          sha256sum target/x86_64-unknown-linux-gnu/release/xylitol > target/xylitol-linux-x86_64-glibc.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xylitol-linux-x86_64-glibc
+          path: |
+            target/x86_64-unknown-linux-gnu/release/xylitol
+            target/xylitol-linux-x86_64-glibc.sha256
+          retention-days: 30

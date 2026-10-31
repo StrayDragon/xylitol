@@ -1,0 +1,41 @@
+version: 1
+phase: m3
+
+dataset:
+  name: terminal-bench/terminal-bench@4.0.0
+  revision: 4.0.0
+  split: test
+  instance_ids: []
+  limit: 10
+
+model:
+  alias: "zhipu/glm-5.3"
+  thinking_level: "high"
+  api: openai-responses
+  context_window: 1000000
+  max_output_tokens: 131072
+  base_url_env: MAGPIE_GATEWAY_URL
+  api_key_env: MAGPIE_GATEWAY_KEY
+
+agent:
+  binary: target/eval-bin/xylitol-linux-x86_64-glibc
+  max_turns: 80
+  wall_seconds: 1800
+  trust: false
+
+sandbox:
+  backend: docker
+  image: dataset
+  network: model_only
+  cpus: 2
+  memory: 4g
+
+grader:
+  backend: harbor
+  version: "4.0.0"
+  run_id: m3-terminal-bench-10
+  max_workers: 2
+
+report:
+  formats: [json, markdown]
+  run_dir: target/eval-runs

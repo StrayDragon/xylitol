@@ -9,6 +9,9 @@
 # Local tooling installs (e.g. cccc-rs via scripts/check_complexity.py)
 .tools/
 
+# Eval harness local artifacts (swebench writes logs/ under its cwd)
+tools/eval/logs/
+
 # Logs
 *.log
 # Temporary files

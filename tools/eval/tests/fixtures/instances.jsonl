@@ -1,0 +1,2 @@
+{"instance_id":"astropy__astropy-12907","image":"swebench/sweb.eval.x86_64.astropy_1776_astropy-12907:latest","problem_statement":"fix astropy","repo":"astropy/astropy"}
+{"instance_id":"django__django-13128","image":"swebench/sweb.eval.x86_64.django_1776_django-13128:latest","problem_statement":"fix django","repo":"django/django"}

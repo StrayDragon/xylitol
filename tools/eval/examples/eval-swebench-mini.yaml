@@ -1,0 +1,46 @@
+version: 1
+phase: m0
+
+dataset:
+  name: SWE-bench/SWE-bench_Verified
+  revision: 78f471bf655a3137b2e8a75af1501690ec009ec3
+  split: test
+  instance_ids:
+    - astropy__astropy-12907
+    - django__django-13128
+    - pydata__xarray-3151
+    - sphinx-doc__sphinx-8120
+    - sympy__sympy-15599
+  limit: 5
+
+model:
+  alias: "zhipu/glm-5.3"
+  thinking_level: "high"
+  api: openai-responses
+  context_window: 1000000
+  max_output_tokens: 131072
+  base_url_env: MAGPIE_GATEWAY_URL
+  api_key_env: MAGPIE_GATEWAY_KEY
+
+agent:
+  binary: target/eval-bin/xylitol-linux-x86_64-glibc
+  max_turns: 80
+  wall_seconds: 1800
+  trust: false
+
+sandbox:
+  backend: docker
+  image: dataset
+  network: model_only
+  cpus: 2
+  memory: 4g
+
+grader:
+  backend: swebench
+  version: "5.0.2"
+  run_id: m0-mini-001
+  max_workers: 2
+
+report:
+  formats: [json, markdown]
+  run_dir: target/eval-runs

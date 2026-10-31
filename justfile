@@ -633,3 +633,24 @@ qa-doc-test verbosity=verbosity_default:
       normal)  cargo test --doc --all-features ;;
       verbose) cargo test -v --doc --all-features ;;
     esac
+
+# Eval harness unit tests (no Docker/network).
+eval-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tools/eval
+    uv run --extra dev pytest -m "not integration"
+
+# Print the planned eval run (no Docker/model calls).
+eval-dryrun config="examples/eval-swebench-mini.yaml":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tools/eval
+    uv run xylitol-eval dry-run --config "{{config}}"
+
+# Manual eval smoke (requires Docker + model key).
+eval-smoke config="examples/eval-swebench-mini.yaml":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tools/eval
+    uv run --extra harness xylitol-eval run --config "{{config}}"
