@@ -152,17 +152,26 @@ test-provider-safe-tool-names verbosity=verbosity_default:
       quiet) qflag=(-q) ;;
       verbose) vflag=(-v) ;;
     esac
-    main_filters="tool_name:: provider_safe_names:: test_mcp_tool_adapter_name_format adapters_from_discovered_names"
-    openai_filters="tool_wire:: build_body_mcp_tool_names_are_provider_safe completions_mcp_tool_names_are_provider_safe"
+    runtime_filters="provider_safe_names::"
+    sdk_filters="tool_name:: tool_wire::"
+    mcp_filters="test_mcp_tool_adapter_name_format adapters_from_discovered_names"
+    openai_filters="build_body_mcp_tool_names_are_provider_safe completions_mcp_tool_names_are_provider_safe"
     anthropic_filters="anthropic_mcp_tool_names_are_provider_safe"
-    for f in $main_filters; do
-      cargo test "${qflag[@]}" "${vflag[@]}" --lib --all-features -- "$f"
+    # ${arr[@]+"${arr[@]}"} keeps empty flag arrays safe under bash 3.2 + set -u.
+    for f in $runtime_filters; do
+      cargo test ${qflag[@]+"${qflag[@]}"} ${vflag[@]+"${vflag[@]}"} -p xylitol-runtime --lib --all-features -- "$f"
+    done
+    for f in $sdk_filters; do
+      cargo test ${qflag[@]+"${qflag[@]}"} ${vflag[@]+"${vflag[@]}"} -p xylitol-plugin-sdk --lib --all-features -- "$f"
+    done
+    for f in $mcp_filters; do
+      cargo test ${qflag[@]+"${qflag[@]}"} ${vflag[@]+"${vflag[@]}"} -p xylitol-official-plugin-mcp --lib --all-features -- "$f"
     done
     for f in $openai_filters; do
-      cargo test "${qflag[@]}" "${vflag[@]}" -p xylitol-official-plugin-provider-openai --lib -- "$f"
+      cargo test ${qflag[@]+"${qflag[@]}"} ${vflag[@]+"${vflag[@]}"} -p xylitol-official-plugin-provider-openai --lib -- "$f"
     done
     for f in $anthropic_filters; do
-      cargo test "${qflag[@]}" "${vflag[@]}" -p xylitol-official-plugin-provider-anthropic --lib -- "$f"
+      cargo test ${qflag[@]+"${qflag[@]}"} ${vflag[@]+"${vflag[@]}"} -p xylitol-official-plugin-provider-anthropic --lib -- "$f"
     done
 
 # TUI end-to-end integration tests (layer 5: PTY/tmux). Slow + needs a real
