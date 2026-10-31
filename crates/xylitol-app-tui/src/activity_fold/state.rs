@@ -245,3 +245,117 @@ impl ActivityFoldState {
         self.set_level(id, level);
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::activity_fold::settings::ActivityFoldSettings;
+
+    fn tool(id: &str) -> UiEntry {
+        UiEntry::Tool {
+            id: id.into(),
+            name: "read".into(),
+            args_preview: "a.rs".into(),
+            tool_path: None,
+            write_content: None,
+            display_diff: None,
+            output: String::new(),
+            is_error: false,
+            done: true,
+            timeout_secs: None,
+        }
+    }
+
+    fn turn(n: u8) -> Vec<UiEntry> {
+        vec![
+            UiEntry::User {
+                text: format!("u{n}"),
+            },
+            tool(&format!("t{n}")),
+            UiEntry::Assistant {
+                text: format!("a{n}"),
+            },
+        ]
+    }
+
+    fn entries(turns: u8) -> Vec<UiEntry> {
+        (1..=turns).flat_map(turn).collect()
+    }
+
+    fn state(keep_recent_turns: u32) -> ActivityFoldState {
+        ActivityFoldState {
+            settings: ActivityFoldSettings {
+                keep_recent_turns,
+                ..ActivityFoldSettings::default()
+            },
+            ..ActivityFoldState::default()
+        }
+    }
+
+    #[test]
+    fn collapse_nearest_is_noop_when_disabled() {
+        let mut state = state(2);
+        state.settings.enabled = false;
+        assert!(!state.collapse_nearest(&entries(3)));
+    }
+
+    #[test]
+    fn collapse_nearest_is_noop_without_segments() {
+        let mut state = state(2);
+        assert!(!state.collapse_nearest(&[UiEntry::Assistant { text: "a".into() }]));
+    }
+
+    #[test]
+    fn collapse_nearest_steps_an_l2_segment_to_l3_then_stops() {
+        let list = entries(3);
+        let mut state = state(0);
+        state.force_level("seg-0", SegmentLevel::L2);
+        assert!(state.collapse_nearest(&list), "L2 collapses one step");
+        assert_eq!(state.level_of("seg-0"), SegmentLevel::L3);
+        assert!(
+            !state.collapse_nearest(&list),
+            "an L3 segment is already fully collapsed"
+        );
+    }
+
+    #[test]
+    fn collapse_nearest_leaves_unentered_l0_segments_alone() {
+        let list = entries(2);
+        let mut state = state(0);
+        assert!(
+            !state.collapse_nearest(&list),
+            "an L0 segment with no expanded cluster has nothing to fold"
+        );
+        assert_eq!(state.level_of("seg-0"), SegmentLevel::L0);
+        assert_eq!(state.level_of("seg-1"), SegmentLevel::L0);
+    }
+
+    #[test]
+    fn collapse_nearest_collapses_an_open_cluster_first() {
+        let list = entries(3);
+        let mut state = state(0);
+        state.force_level("seg-0", SegmentLevel::L2);
+        assert!(state.toggle_cluster("seg-0:c0"), "cluster starts expanded");
+        assert!(state.cluster_is_expanded("seg-0", "seg-0:c0"));
+        assert!(
+            state.collapse_nearest(&list),
+            "open cluster collapses first"
+        );
+        assert!(!state.cluster_is_expanded("seg-0", "seg-0:c0"));
+        assert_eq!(
+            state.level_of("seg-0"),
+            SegmentLevel::L2,
+            "segment level is untouched while a cluster folds"
+        );
+    }
+
+    #[test]
+    fn collapse_nearest_skips_virgin_recent_turns() {
+        let list = entries(3);
+        let mut state = state(2);
+        assert!(
+            !state.collapse_nearest(&list),
+            "the newest turns inside keep_recent_turns stay untouched"
+        );
+        assert_eq!(state.level_of("seg-0"), SegmentLevel::L0);
+    }
+}

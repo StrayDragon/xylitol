@@ -1,5 +1,27 @@
 use super::UiRoot;
 
+fn fold_has_overrides(fold: &crate::widgets::ScrollbackFold) -> bool {
+    [
+        &fold.tools_overrides,
+        &fold.thinking_overrides,
+        &fold.output_overrides,
+    ]
+    .iter()
+    .any(|m| !m.is_empty())
+}
+
+fn fold_differs_from_defaults(fold: &crate::widgets::ScrollbackFold) -> bool {
+    let defaults = crate::widgets::ScrollbackFold::default();
+    [
+        fold.thinking_expanded != defaults.thinking_expanded,
+        fold.tools_expanded != defaults.tools_expanded,
+        fold.tools_output_expanded != defaults.tools_output_expanded,
+        fold.compaction_expanded != defaults.compaction_expanded,
+    ]
+    .iter()
+    .any(|d| *d)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FooterAction {
     Details,
@@ -26,14 +48,7 @@ impl UiRoot {
 
     fn reset_chip_enabled(&self) -> bool {
         let fold = self.fold();
-        let defaults = crate::widgets::ScrollbackFold::default();
-        !fold.tools_overrides.is_empty()
-            || !fold.thinking_overrides.is_empty()
-            || !fold.output_overrides.is_empty()
-            || fold.thinking_expanded != defaults.thinking_expanded
-            || fold.tools_expanded != defaults.tools_expanded
-            || fold.tools_output_expanded != defaults.tools_output_expanded
-            || fold.compaction_expanded != defaults.compaction_expanded
+        fold_has_overrides(&fold) || fold_differs_from_defaults(&fold)
     }
 
     pub(super) fn append_border_chips(
@@ -153,5 +168,58 @@ impl UiRoot {
             .iter()
             .map(|h| (h.start, h.end, h.action))
             .collect()
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::widgets::ScrollbackFold;
+
+    #[test]
+    fn default_fold_has_no_overrides_and_matches_defaults() {
+        let fold = ScrollbackFold::default();
+        assert!(!fold_has_overrides(&fold));
+        assert!(!fold_differs_from_defaults(&fold));
+    }
+
+    #[test]
+    fn each_override_map_flags_overrides() {
+        for apply in [
+            |f: &mut ScrollbackFold| {
+                f.tools_overrides.insert("t".into(), true);
+            },
+            |f: &mut ScrollbackFold| {
+                f.thinking_overrides.insert("t".into(), true);
+            },
+            |f: &mut ScrollbackFold| {
+                f.output_overrides.insert("t".into(), true);
+            },
+        ] {
+            let mut fold = ScrollbackFold::default();
+            apply(&mut fold);
+            assert!(fold_has_overrides(&fold));
+            assert!(
+                !fold_differs_from_defaults(&fold),
+                "override maps must not be confused with default flags"
+            );
+        }
+    }
+
+    #[test]
+    fn each_default_flag_flip_marks_a_difference() {
+        for apply in [
+            |f: &mut ScrollbackFold| f.thinking_expanded = !f.thinking_expanded,
+            |f: &mut ScrollbackFold| f.tools_expanded = !f.tools_expanded,
+            |f: &mut ScrollbackFold| f.tools_output_expanded = !f.tools_output_expanded,
+            |f: &mut ScrollbackFold| f.compaction_expanded = !f.compaction_expanded,
+        ] {
+            let mut fold = ScrollbackFold::default();
+            apply(&mut fold);
+            assert!(fold_differs_from_defaults(&fold));
+            assert!(
+                !fold_has_overrides(&fold),
+                "default flags must not be confused with override maps"
+            );
+        }
     }
 }

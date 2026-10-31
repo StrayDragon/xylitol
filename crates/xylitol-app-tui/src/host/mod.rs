@@ -1052,6 +1052,25 @@ impl<T: Terminal> HostSession<T> {
         }
     }
 
+    fn try_click_painted_chip(&mut self, input: &InputEvent) -> bool {
+        let InputEvent::Mouse(mouse) = input else {
+            return false;
+        };
+        let Some(line) = self
+            .tui
+            .last_painted_lines()
+            .get(mouse.row as usize)
+            .cloned()
+        else {
+            return false;
+        };
+        let Some(root) = self.ui_root.as_ref() else {
+            return false;
+        };
+        root.borrow_mut()
+            .try_click_painted_chip(mouse.column as usize, &line)
+    }
+
     fn handle_input(&mut self, input: InputEvent) {
         if let InputEvent::Key(ref key) = input
             && key.code == crossterm::event::KeyCode::Up
@@ -1075,21 +1094,7 @@ impl<T: Terminal> HostSession<T> {
         );
         if left_down {
             self.pointer_down_had_selection = self.tui.application_owned_has_selection();
-            if !self.pointer_down_had_selection
-                && let InputEvent::Mouse(mouse) = &input
-                && let Some(line) = self
-                    .tui
-                    .last_painted_lines()
-                    .get(mouse.row as usize)
-                    .cloned()
-                && let Some(root) = self.ui_root.as_ref()
-                && root
-                    .borrow_mut()
-                    .try_click_painted_chip(mouse.column as usize, &line)
-            {
-                self.sync_session_sidebar_reserve();
-                self.tui.request_render(false);
-                self.pointer_down_had_selection = true;
+            if self.handle_chip_left_down(&input) {
                 return;
             }
         }
@@ -1110,31 +1115,49 @@ impl<T: Terminal> HostSession<T> {
             InputReaction::rerender_if(!matches!(input, InputEvent::Mouse(_)))
         };
         if left_up {
-            let clicked = self.tui.take_pointer_click();
-            if !self.pointer_down_had_selection
-                && let Some(id) = clicked
-            {
-                self.dispatch_pointer_click(id);
-            }
+            self.handle_pointer_left_up();
         }
         if self.tui.application_session_active() {
-            if let Some(root) = self.ui_root.as_ref() {
-                let mut root = root.borrow_mut();
-                root.sync_editor_screen_origin();
-                if root.take_fold_dirty() {
-                    drop(root);
-                    self.tui.clear_pointer_hover();
-                    self.tui.mark_ao_components_stale();
-                }
-            }
-            if self.tui.take_copy_notice()
-                && let Some(root) = self.ui_root.as_ref()
-            {
-                root.borrow_mut().arm_copy_notice();
-                self.tui.request_render(false);
-            }
+            self.sync_after_session_input();
         }
         if reaction == InputReaction::Rerender {
+            self.tui.request_render(false);
+        }
+    }
+
+    fn handle_chip_left_down(&mut self, input: &InputEvent) -> bool {
+        if self.pointer_down_had_selection || !self.try_click_painted_chip(input) {
+            return false;
+        }
+        self.sync_session_sidebar_reserve();
+        self.tui.request_render(false);
+        self.pointer_down_had_selection = true;
+        true
+    }
+
+    fn handle_pointer_left_up(&mut self) {
+        let Some(id) = self.tui.take_pointer_click() else {
+            return;
+        };
+        if !self.pointer_down_had_selection {
+            self.dispatch_pointer_click(id);
+        }
+    }
+
+    fn sync_after_session_input(&mut self) {
+        if let Some(root) = self.ui_root.as_ref() {
+            let mut root = root.borrow_mut();
+            root.sync_editor_screen_origin();
+            if root.take_fold_dirty() {
+                drop(root);
+                self.tui.clear_pointer_hover();
+                self.tui.mark_ao_components_stale();
+            }
+        }
+        if self.tui.take_copy_notice()
+            && let Some(root) = self.ui_root.as_ref()
+        {
+            root.borrow_mut().arm_copy_notice();
             self.tui.request_render(false);
         }
     }

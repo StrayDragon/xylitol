@@ -540,27 +540,17 @@ impl UiRoot {
     }
 
     pub(crate) fn click_todo_bar_local(&mut self, col: usize, row_in_bar: usize) -> bool {
-        let Some(hit) = self
-            .last_todo_hits
-            .iter()
-            .find(|h| h.row == row_in_bar && col >= h.col_start && col < h.col_end)
-            .copied()
-        else {
+        if !self.todo_hit_at(col, row_in_bar) {
             return false;
-        };
-        let _ = hit;
+        }
         self.toggle_todo_expanded();
         true
     }
 
-    #[cfg(test)]
-    pub fn click_todo_bar_local_for_test(&mut self, col: usize, row_in_bar: usize) -> bool {
-        self.click_todo_bar_local(col, row_in_bar)
-    }
-
-    #[cfg(test)]
-    pub fn todo_bar_hits_for_test(&self) -> &[TodoBarHit] {
-        &self.last_todo_hits
+    fn todo_hit_at(&self, col: usize, row_in_bar: usize) -> bool {
+        self.last_todo_hits
+            .iter()
+            .any(|h| h.row == row_in_bar && col >= h.col_start && col < h.col_end)
     }
 
     pub fn take_fold_dirty(&mut self) -> bool {

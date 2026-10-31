@@ -814,4 +814,134 @@ mod tests {
             "second ctrl+u must hide id again: {plain_again}"
         );
     }
+
+    #[test]
+    fn resume_panel_header_rows_cover_loading_rename_confirm_and_status() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_loading(2, 5);
+        assert_eq!(
+            panel.header_rows(80),
+            1,
+            "loading keeps the status line row"
+        );
+        panel.status_line = None;
+        assert_eq!(
+            panel.header_rows(80),
+            0,
+            "loading without status line is empty"
+        );
+        panel.loading = false;
+        assert_eq!(panel.header_rows(80), 4, "plain header is four rows");
+
+        panel.set_current_cwd(".");
+        let entries: Vec<_> = (0..3).map(|i| entry(&format!("s{i}"), i)).collect();
+        panel.load_entries(entries, None);
+        panel.scope = SessionScope::All;
+        assert_eq!(panel.header_rows(80), 4, "entries do not change the header");
+
+        panel.rename = Some(("s0".into(), Input::new()));
+        assert_eq!(
+            panel.header_rows(80),
+            2,
+            "rename collapses the header to two rows"
+        );
+        panel.rename = None;
+
+        panel.confirming_delete = Some("s1".into());
+        assert_eq!(panel.header_rows(80), 5, "confirming delete adds one row");
+        panel.set_status("boom");
+        assert_eq!(
+            panel.header_rows(80),
+            6,
+            "confirm and status stack to six rows"
+        );
+        panel.confirming_delete = None;
+        assert_eq!(panel.header_rows(80), 5, "status line alone adds one row");
+    }
+
+    #[test]
+    fn resume_panel_row_index_at_is_none_without_visible_rows() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_current_cwd(".");
+        assert_eq!(panel.row_index_at(0), None, "no entries loaded");
+        panel.set_loading(0, 3);
+        assert_eq!(panel.row_index_at(0), None, "loading hides all rows");
+    }
+
+    #[test]
+    fn resume_panel_row_index_at_steps_one_row_per_entry_without_path() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_current_cwd(".");
+        let entries: Vec<_> = (0..3).map(|i| entry(&format!("s{i}"), i)).collect();
+        panel.load_entries(entries, None);
+        panel.scope = SessionScope::All;
+        assert_eq!(panel.row_index_at(0), Some(0));
+        assert_eq!(panel.row_index_at(1), Some(1));
+        assert_eq!(panel.row_index_at(2), Some(2));
+        assert_eq!(panel.row_index_at(3), None, "row past the last entry");
+    }
+
+    #[test]
+    fn resume_panel_row_index_at_spans_two_rows_per_entry_with_path() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_current_cwd(".");
+        let entries: Vec<_> = (0..3).map(|i| entry(&format!("s{i}"), i)).collect();
+        panel.load_entries(entries, None);
+        panel.scope = SessionScope::All;
+        panel.show_path = true;
+        assert_eq!(panel.row_index_at(0), Some(0));
+        assert_eq!(panel.row_index_at(1), None, "path line of the first entry");
+        assert_eq!(panel.row_index_at(2), Some(1));
+        assert_eq!(panel.row_index_at(3), None, "path line of the second entry");
+        assert_eq!(panel.row_index_at(4), Some(2));
+        assert_eq!(
+            panel.row_index_at(5),
+            None,
+            "path line of the last entry is not selectable"
+        );
+    }
+
+    #[test]
+    fn resume_panel_row_index_at_clamps_window_to_tail() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_current_cwd(".");
+        let entries: Vec<_> = (0..25).map(|i| entry(&format!("s{i}"), i)).collect();
+        panel.load_entries(entries, None);
+        panel.scope = SessionScope::All;
+        panel.set_max_visible(10);
+        panel.selected = 24;
+        assert_eq!(
+            panel.row_index_at(0),
+            Some(15),
+            "window start clamps to the tail"
+        );
+        assert_eq!(
+            panel.row_index_at(9),
+            Some(24),
+            "last entry ends the window"
+        );
+        assert_eq!(panel.row_index_at(10), None, "row past the window");
+    }
+
+    #[test]
+    fn resume_panel_select_row_at_updates_selection_on_hit() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_current_cwd(".");
+        let entries: Vec<_> = (0..3).map(|i| entry(&format!("s{i}"), i)).collect();
+        panel.load_entries(entries, None);
+        panel.scope = SessionScope::All;
+        assert_eq!(panel.select_row_at(2), Some("s2".to_string()));
+        assert_eq!(panel.selected_session_id(), Some("s2".to_string()));
+    }
+
+    #[test]
+    fn resume_panel_select_row_at_keeps_selection_on_miss() {
+        let mut panel = SessionResumePanel::new(LayoutTheme::product_dark());
+        panel.set_current_cwd(".");
+        let entries: Vec<_> = (0..3).map(|i| entry(&format!("s{i}"), i)).collect();
+        panel.load_entries(entries, None);
+        panel.scope = SessionScope::All;
+        assert_eq!(panel.select_row_at(7), None, "row past the entries");
+        assert_eq!(panel.selected_session_id(), Some("s0".to_string()));
+    }
 }
