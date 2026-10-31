@@ -1379,4 +1379,55 @@ mod tests {
             "← should clear confirm; got:\n{cleared}"
         );
     }
+
+    #[test]
+    fn chrome_rows_above_first_option_do_not_hit() {
+        let mut p = noop_prompt(vec![sample_single()]);
+        p.set_screen_origin(0, 3);
+        let _ = p.render(60);
+        let first = (3..30)
+            .find(|row| p.option_index_at_screen_row(*row).is_some())
+            .expect("option rows exist after render");
+        for row in 3..first {
+            assert_eq!(
+                p.option_index_at_screen_row(row),
+                None,
+                "prompt chrome row {row} sits above the option body"
+            );
+        }
+        assert_eq!(
+            p.option_index_at_screen_row(2),
+            None,
+            "row above the origin never hits"
+        );
+    }
+
+    #[test]
+    fn description_row_maps_to_no_option() {
+        let mut p = noop_prompt(vec![ChoiceQuestion {
+            id: "q".into(),
+            label: "Q".into(),
+            prompt: "Pick?".into(),
+            mode: ChoiceMode::Single,
+            options: vec![
+                ChoiceOption::new("a", "Alpha").with_description("plain note"),
+                ChoiceOption::new("b", "Beta"),
+            ],
+            allow_other: false,
+        }]);
+        let _ = p.render(60);
+        let alpha_row = (0..30)
+            .find(|row| p.option_index_at_screen_row(*row) == Some(0))
+            .expect("Alpha option row");
+        assert_eq!(
+            p.option_index_at_screen_row(alpha_row + 1),
+            None,
+            "inline description row maps to no option"
+        );
+        assert_eq!(
+            p.option_index_at_screen_row(alpha_row + 2),
+            Some(1),
+            "Beta row follows the description row"
+        );
+    }
 }

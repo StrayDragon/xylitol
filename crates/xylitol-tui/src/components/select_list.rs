@@ -638,4 +638,47 @@ mod tests {
         );
         assert!(filter_by_prefix(&items, "zzz").is_empty());
     }
+
+    #[test]
+    fn filtered_window_maps_screen_rows_to_filtered_indices() {
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
+        list.set_filter("b");
+        list.set_screen_origin(0, 2);
+        let lines = list.render(80);
+        assert!(
+            lines[0].contains("Banana"),
+            "the single filtered row is Banana: {}",
+            lines[0]
+        );
+        assert_eq!(
+            list.item_index_at_screen_row(2),
+            Some(0),
+            "hit returns the filtered index, not the full-list index 1"
+        );
+        assert_eq!(
+            list.item_index_at_screen_row(3),
+            None,
+            "past the single filtered row"
+        );
+    }
+
+    #[test]
+    fn empty_filter_and_stale_window_have_no_hittable_rows() {
+        let mut list = SelectList::new(items(), 10, theme(), default_layout());
+        list.set_screen_origin(0, 1);
+        let _ = list.render(80);
+        assert_eq!(list.item_index_at_screen_row(1), Some(0));
+        list.set_filter("zzz-no-match");
+        assert_eq!(
+            list.item_index_at_screen_row(1),
+            None,
+            "guard drops rows whose stale window index passed the filtered length"
+        );
+        let _ = list.render(80);
+        assert_eq!(
+            list.item_index_at_screen_row(1),
+            None,
+            "empty filter renders no item rows"
+        );
+    }
 }

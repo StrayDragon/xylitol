@@ -7,6 +7,55 @@ use super::UiRoot;
 use crate::widgets::{render_queue_strip, render_scrollback};
 
 impl UiRoot {
+    fn paint_editor_chips(&mut self, editor: &mut [String], width: usize) -> bool {
+        let (border, chip_hits) = if self.slot.is_editor() {
+            self.append_border_chips("", width)
+        } else {
+            (String::new(), Vec::new())
+        };
+        let chip_line_width = xylitol_tui::visible_width(&border);
+        let has_chips = !chip_hits.is_empty();
+        if has_chips && let Some(first) = editor.first_mut() {
+            *first = border;
+        }
+        self.last_slot_close_hit = None;
+        if !self.slot.is_editor() {
+            self.paint_slot_close_chip(editor, width);
+        }
+        self.last_chip_width = chip_line_width;
+        self.last_footer_hits = chip_hits;
+        has_chips
+    }
+
+    fn paint_slot_close_chip(&mut self, editor: &mut [String], width: usize) {
+        if width <= 12 {
+            return;
+        }
+        let Some(first) = editor.first_mut() else {
+            return;
+        };
+        let chip = self.theme.paint_chip("[关闭]", false);
+        let chip_w = xylitol_tui::visible_width("[关闭]");
+        let base = truncate_to_width(
+            &xylitol_tui::utils::strip_ansi_codes(first),
+            width.saturating_sub(chip_w + 1),
+            "…",
+            false,
+        );
+        let pad = width
+            .saturating_sub(chip_w)
+            .saturating_sub(xylitol_tui::visible_width(&base));
+        *first = format!("{base}{}{chip}", " ".repeat(pad));
+        self.last_slot_close_hit = Some((width - chip_w, width));
+    }
+
+    fn editor_top_row(&self, dock_prefix: usize, editor_rows: usize) -> usize {
+        let dock_total = dock_prefix.saturating_add(editor_rows).saturating_add(1);
+        self.term_rows
+            .saturating_sub(dock_total)
+            .saturating_add(dock_prefix)
+    }
+
     pub(super) fn render_loaded_resources_slot(&mut self, width: usize) -> Vec<String> {
         crate::widgets::render_loaded_resources(
             self.theme,
@@ -295,53 +344,16 @@ impl Component for UiRoot {
         let status = self.render_status_slot(width);
         self.apply_fixed_zone_footprint(todo.len());
         let mut editor = self.render_editor_slot(width);
-        let (border, chip_hits) = if self.slot.is_editor() {
-            self.append_border_chips("", width)
-        } else {
-            (String::new(), Vec::new())
-        };
-        let chip_line_width = xylitol_tui::visible_width(&border);
-        if !chip_hits.is_empty() && !editor.is_empty() {
-            editor[0] = border;
-        }
-        self.last_slot_close_hit = None;
-        if !self.slot.is_editor()
-            && let Some(first) = editor.first_mut()
-            && width > 12
-        {
-            let chip = self.theme.paint_chip("[关闭]", false);
-            let chip_w = xylitol_tui::visible_width("[关闭]");
-            let base = truncate_to_width(
-                &xylitol_tui::utils::strip_ansi_codes(first),
-                width.saturating_sub(chip_w + 1),
-                "…",
-                false,
-            );
-            let pad = width
-                .saturating_sub(chip_w)
-                .saturating_sub(xylitol_tui::visible_width(&base));
-            *first = format!("{base}{}{chip}", " ".repeat(pad));
-            self.last_slot_close_hit = Some((width - chip_w, width));
-        }
+        let has_chips = self.paint_editor_chips(&mut editor, width);
         let dock_prefix = queue
             .len()
             .saturating_add(todo.len())
             .saturating_add(mode.len())
             .saturating_add(toast.len())
             .saturating_add(status.len());
-        let dock_total = dock_prefix.saturating_add(editor.len()).saturating_add(1);
-        let editor_top = self
-            .term_rows
-            .saturating_sub(dock_total)
-            .saturating_add(dock_prefix);
+        let editor_top = self.editor_top_row(dock_prefix, editor.len());
         self.last_slot_top_row = Some(editor_top);
-        self.last_chip_row = if chip_hits.is_empty() {
-            None
-        } else {
-            Some(editor_top)
-        };
-        self.last_chip_width = chip_line_width;
-        self.last_footer_hits = chip_hits;
+        self.last_chip_row = has_chips.then_some(editor_top);
         let footer = if width == 0 {
             self.footer.text().to_string()
         } else {

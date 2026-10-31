@@ -540,21 +540,22 @@ pub fn apply_hover_tint(
     {
         let height = region.height.max(1);
         for offset in 0..height {
-            let vis_i = match region.space {
-                HitSpace::Content => {
-                    let content_row = region.content_row.saturating_add(offset);
-                    if content_row < scroll_top {
-                        continue;
-                    }
-                    content_row - scroll_top
-                }
-                HitSpace::Viewport | HitSpace::Chrome => region.content_row.saturating_add(offset),
-                HitSpace::Dock => continue,
+            let Some(vis_i) = visible_row_for(&region, offset, scroll_top) else {
+                continue;
             };
             if let Some(line) = visible.get_mut(vis_i) {
                 *line = emphasize_hover_columns(line, region.col_start, region.col_end);
             }
         }
+    }
+}
+
+fn visible_row_for(region: &HitRegion, offset: usize, scroll_top: usize) -> Option<usize> {
+    let content_row = region.content_row.saturating_add(offset);
+    match region.space {
+        HitSpace::Content => content_row.checked_sub(scroll_top),
+        HitSpace::Viewport | HitSpace::Chrome => Some(content_row),
+        HitSpace::Dock => None,
     }
 }
 
@@ -939,6 +940,70 @@ mod tests {
             visible[1], "dock",
             "dock rows must not receive hover paint; got {:?}",
             visible[1]
+        );
+    }
+
+    #[test]
+    fn region_at_resolves_dock_region_on_screen_absolute_row() {
+        let mut list = HitRegionList::new();
+        list.mark(Hit::at_screen(42, 2, 9).cols(0, 6));
+        let region = list
+            .region_at(3, 9, 0, 4)
+            .expect("dock hit must resolve with screen_row beyond transcript_rows");
+        assert_eq!((region.id, region.space), (42, HitSpace::Dock));
+        assert_eq!(
+            list.region_at(3, 9, 0, 0).map(|r| r.id),
+            Some(42),
+            "transcript_rows = 0 must not gate a dock hit"
+        );
+    }
+
+    #[test]
+    fn visible_row_for_covers_every_hit_space() {
+        let content = HitRegion::new(1, 6, 0, 4);
+        assert_eq!(visible_row_for(&content, 0, 4), Some(2));
+        assert_eq!(
+            visible_row_for(&content, 1, 4),
+            Some(3),
+            "tall content regions advance one visible row per offset"
+        );
+        assert_eq!(
+            visible_row_for(&content, 0, 7),
+            None,
+            "content scrolled above scroll_top has no visible row"
+        );
+        let viewport = Hit::at_cell(2, 0, 3).into_region();
+        assert_eq!(
+            visible_row_for(&viewport, 0, 40),
+            Some(3),
+            "viewport rows ignore scroll_top"
+        );
+        let chrome = Hit::at_cell(3, 0, 5).space(HitSpace::Chrome).into_region();
+        assert_eq!(visible_row_for(&chrome, 0, 40), Some(5));
+        let dock = Hit::at_screen(4, 0, 2).into_region();
+        assert_eq!(
+            visible_row_for(&dock, 0, 0),
+            None,
+            "dock rows never map into the visible transcript slice"
+        );
+    }
+
+    #[test]
+    fn hover_tint_skips_content_rows_scrolled_above_view() {
+        let mut list = HitRegionList::new();
+        list.push(HitRegion::new(1, 2, 0, 4).with_height(3));
+        let mut fully_scrolled = vec!["kept".to_string()];
+        apply_hover_tint(&mut fully_scrolled, 5, &list, 1);
+        assert_eq!(
+            fully_scrolled[0], "kept",
+            "a region fully above scroll_top must not tint anything"
+        );
+        let mut partially_visible = vec!["row0".to_string()];
+        apply_hover_tint(&mut partially_visible, 3, &list, 1);
+        assert!(
+            partially_visible[0].contains("\x1b[1m"),
+            "the visible tail of a tall region must still tint, got {:?}",
+            partially_visible[0]
         );
     }
 

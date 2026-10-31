@@ -20,19 +20,11 @@ impl UiRoot {
             return true;
         }
         if matches_binding(key, "app.session.popup") {
-            if self.session_popup_open {
-                self.close_session_popup();
-            } else {
-                self.request_session_popup();
-            }
+            self.click_footer_action(crate::layout::root::footer_chips::FooterAction::Details);
             return true;
         }
         if matches_binding(key, "app.session.sidebar") {
-            if self.session_sidebar_on {
-                self.close_session_sidebar();
-            } else {
-                self.request_session_sidebar();
-            }
+            self.click_footer_action(crate::layout::root::footer_chips::FooterAction::Sidebar);
             return true;
         }
         false
@@ -124,18 +116,12 @@ impl UiRoot {
         }
     }
 
-    fn handle_slot_row_click(&mut self, row: u16) -> bool {
+    fn slot_list_row(&self, row: u16) -> Option<u16> {
         if !self.slot.is_overlay() {
-            return false;
+            return None;
         }
-        let Some(top) = self.last_slot_top_row else {
-            return false;
-        };
-        let row = row as usize;
-        if row < top {
-            return false;
-        }
-        let local = row.saturating_sub(top);
+        let top = self.last_slot_top_row?;
+        let local = (row as usize).checked_sub(top)?;
         let header_rows = match &self.slot {
             EditorSlot::Models(_) | EditorSlot::Themes(_) | EditorSlot::Mcp(_) => 1,
             EditorSlot::Capabilities(_) => 1,
@@ -143,22 +129,28 @@ impl UiRoot {
             EditorSlot::SessionResume(panel) => panel.header_rows(self.term_cols),
             _ => 0,
         };
-        if local < header_rows {
+        let list_row = local.checked_sub(header_rows)?;
+        u16::try_from(list_row).ok()
+    }
+
+    fn toggle_capabilities_row(&mut self, list_row: u16) -> bool {
+        let action = match &mut self.slot {
+            EditorSlot::Capabilities(caps) => caps.toggle_row_at(list_row),
+            _ => None,
+        };
+        let Some(action) = action else {
             return false;
-        }
-        let list_row = (local - header_rows) as u16;
+        };
+        let _ = self.handle_capabilities_action(action);
+        true
+    }
+
+    fn handle_slot_row_click(&mut self, row: u16) -> bool {
+        let Some(list_row) = self.slot_list_row(row) else {
+            return false;
+        };
         if self.capabilities_open() {
-            let action = match &mut self.slot {
-                EditorSlot::Capabilities(caps) => caps.toggle_row_at(list_row),
-                _ => None,
-            };
-            return match action {
-                Some(action) => {
-                    let _ = self.handle_capabilities_action(action);
-                    true
-                }
-                None => false,
-            };
+            return self.toggle_capabilities_row(list_row);
         }
         if let EditorSlot::Tree(tree) = &mut self.slot {
             let previous = tree.selected_id();
@@ -232,23 +224,31 @@ impl UiRoot {
         true
     }
 
-    fn handle_pointer_input(&mut self, mouse: &crossterm::event::MouseEvent) -> bool {
-        if matches!(
+    fn handle_overlay_pointer(&mut self, mouse: &crossterm::event::MouseEvent) -> bool {
+        if !matches!(
             mouse.kind,
             crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
-        ) && let Some((start, end)) = self.last_slot_close_hit
-            && Some(mouse.row as usize) == self.last_slot_top_row
-            && (mouse.column as usize) >= start
-            && (mouse.column as usize) < end
-        {
+        ) {
+            return false;
+        }
+        if self.pointer_hits_slot_close_chip(mouse) {
             self.close_slot();
             return true;
         }
-        if matches!(
-            mouse.kind,
-            crossterm::event::MouseEventKind::Down(crossterm::event::MouseButton::Left)
-        ) && self.handle_slot_row_click(mouse.row)
-        {
+        self.handle_slot_row_click(mouse.row)
+    }
+
+    fn pointer_hits_slot_close_chip(&self, mouse: &crossterm::event::MouseEvent) -> bool {
+        let Some((start, end)) = self.last_slot_close_hit else {
+            return false;
+        };
+        Some(mouse.row as usize) == self.last_slot_top_row
+            && (mouse.column as usize) >= start
+            && (mouse.column as usize) < end
+    }
+
+    fn handle_pointer_input(&mut self, mouse: &crossterm::event::MouseEvent) -> bool {
+        if self.handle_overlay_pointer(mouse) {
             return true;
         }
         match mouse.kind {
@@ -320,30 +320,37 @@ impl UiRoot {
     }
 
     fn handle_editor_keys(&mut self, event: InputEvent) {
-        if let InputEvent::Key(ref key) = event {
-            if matches_binding(key, "app.thinking.toggle") {
-                self.toggle_thinking_default();
-                return;
-            }
-            if matches_binding(key, "app.tools.blocks") {
-                self.reset_tools_blocks();
-                return;
-            }
-            if matches_binding(key, "app.tools.expand") {
-                self.toggle_tools_output_default();
-                return;
-            }
-            if matches_binding(key, "app.activity.expandNearest") {
-                let _ = self.expand_nearest_activity();
-                return;
-            }
-            if matches_binding(key, "app.activity.collapseNearest") {
-                let _ = self.collapse_nearest_activity();
-                return;
-            }
+        if let InputEvent::Key(ref key) = event
+            && self.handle_fold_key(key)
+        {
+            return;
         }
         self.editor.handle_input(event);
         self.sync_editor_border();
+    }
+
+    fn handle_fold_key(&mut self, key: &KeyEvent) -> bool {
+        if matches_binding(key, "app.thinking.toggle") {
+            self.toggle_thinking_default();
+            return true;
+        }
+        if matches_binding(key, "app.tools.blocks") {
+            self.reset_tools_blocks();
+            return true;
+        }
+        if matches_binding(key, "app.tools.expand") {
+            self.toggle_tools_output_default();
+            return true;
+        }
+        if matches_binding(key, "app.activity.expandNearest") {
+            let _ = self.expand_nearest_activity();
+            return true;
+        }
+        if matches_binding(key, "app.activity.collapseNearest") {
+            let _ = self.collapse_nearest_activity();
+            return true;
+        }
+        false
     }
 
     fn handle_todo_bar_selection(&mut self, mouse: &crossterm::event::MouseEvent) -> bool {

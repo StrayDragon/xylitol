@@ -1623,4 +1623,47 @@ mod tests {
         );
         assert_eq!(sel.selected_id(), sel.filtered_ids().first().copied());
     }
+
+    #[test]
+    fn folded_children_rows_stop_hit_testing() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut sel = TreeSelector::new(
+            sample_branch(),
+            TreeSelectorTheme::default(),
+            TreeSelectorOptions::default(),
+        );
+        sel.set_screen_origin(0, 0);
+        assert!(sel.select_id("b"));
+        let _ = sel.render(80);
+        assert_eq!(sel.item_index_at_screen_row(3), Some(3), "parent b");
+        assert_eq!(sel.item_index_at_screen_row(4), Some(4), "child b1");
+        assert_eq!(sel.item_index_at_screen_row(5), Some(5), "child b2");
+        sel.handle_input(InputEvent::Key(KeyEvent::new(
+            KeyCode::Left,
+            KeyModifiers::CONTROL,
+        )));
+        assert!(sel.is_folded("b"));
+        assert_eq!(
+            sel.item_index_at_screen_row(4),
+            None,
+            "stale window guard keeps the folded child row from hitting"
+        );
+        let _ = sel.render(80);
+        assert_eq!(
+            sel.item_index_at_screen_row(3),
+            Some(3),
+            "folded parent row still hits"
+        );
+        assert_eq!(
+            sel.item_index_at_screen_row(4),
+            None,
+            "folded child row has no item"
+        );
+        assert_eq!(
+            sel.item_index_at_screen_row(5),
+            None,
+            "folded child row has no item"
+        );
+    }
 }
