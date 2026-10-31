@@ -129,6 +129,34 @@ impl ModelManager {
     pub fn registry(&self) -> &ModelRegistry {
         &self.registry
     }
+
+    pub fn replace_registry(&mut self, registry: ModelRegistry) {
+        let current_id = self.current_model().map(|meta| meta.id.clone());
+        let thinking = self.thinking_level.clone();
+        self.registry = registry;
+        let target = current_id
+            .filter(|id| self.registry.find(id).is_some())
+            .or_else(|| {
+                self.preferred_default
+                    .clone()
+                    .filter(|id| self.registry.find(id).is_some())
+            })
+            .or_else(|| self.registry.list().first().map(|meta| meta.id.clone()));
+        let Some(id) = target else {
+            self.current_index = None;
+            self.thinking_level = THINKING_OFF.into();
+            return;
+        };
+        if self.select_model(&id).is_err() {
+            return;
+        }
+        if self
+            .supported_levels()
+            .is_some_and(|levels| levels.iter().any(|level| level == &thinking))
+        {
+            self.thinking_level = thinking;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -187,6 +215,48 @@ mod tests {
             mm.select_model(&id).unwrap();
         }
         mm
+    }
+
+    fn registry_with(models: Vec<XyModelMeta>) -> ModelRegistry {
+        let mut registry = empty_registry();
+        for model in models {
+            registry.register(model);
+        }
+        registry
+    }
+
+    #[test]
+    fn replace_registry_keeps_current_model_and_thinking() {
+        let mut manager = manager_with(vec![
+            meta("m1", true, &["off", "high"]),
+            meta("m2", true, &["off", "high"]),
+        ]);
+        manager.select_model("m2").unwrap();
+        manager.set_thinking_level("high".into()).unwrap();
+        manager.replace_registry(registry_with(vec![
+            meta("m1", true, &["off", "high"]),
+            meta("m2", true, &["off", "high"]),
+        ]));
+        assert_eq!(manager.current_model().map(|m| m.id.as_str()), Some("m2"));
+        assert_eq!(manager.thinking_level(), "high");
+    }
+
+    #[test]
+    fn replace_registry_falls_back_to_first_model() {
+        let mut manager = manager_with(vec![meta("m1", true, &["off", "high"])]);
+        manager.select_model("m1").unwrap();
+        manager.set_thinking_level("high".into()).unwrap();
+        manager.replace_registry(registry_with(vec![meta("m9", false, &[])]));
+        assert_eq!(manager.current_model().map(|m| m.id.as_str()), Some("m9"));
+        assert_eq!(manager.thinking_level(), "off");
+    }
+
+    #[test]
+    fn replace_registry_clears_when_empty() {
+        let mut manager = manager_with(vec![meta("m1", true, &["off", "high"])]);
+        manager.replace_registry(empty_registry());
+        assert!(manager.current_model().is_none());
+        assert_eq!(manager.thinking_level(), "off");
     }
 
     #[test]

@@ -331,7 +331,7 @@ fn resolve_profile_assembly(
     })
 }
 
-fn build_model_registry(
+pub(crate) fn build_model_registry(
     app_config: Option<&xylitol_official_plugin_config::types::AppConfig>,
     warnings: &mut Vec<BootstrapWarning>,
 ) -> ModelRegistry {

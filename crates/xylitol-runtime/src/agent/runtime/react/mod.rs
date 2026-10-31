@@ -332,6 +332,13 @@ impl AgentRuntime {
         self.inner.model_registry()
     }
 
+    pub fn replace_model_registry(
+        &mut self,
+        registry: crate::agent::model::registry::ModelRegistry,
+    ) {
+        self.inner.replace_model_registry(registry);
+    }
+
     pub async fn select_model(&mut self, model_id: &str) -> Result<(), XyError> {
         self.inner.select_model(model_id).await
     }

@@ -2,6 +2,9 @@
 depends_on: []
 title: 模型热重载：/reload 重建模型注册表
 needs_specs_change: true
+branch: sdd/c3023-add-model-reload
+base_branch: main
+base_sha: 8af99e1b5ae3be49d386b025b23b193948875716
 ---
 
 # 模型热重载：/reload 重建模型注册表

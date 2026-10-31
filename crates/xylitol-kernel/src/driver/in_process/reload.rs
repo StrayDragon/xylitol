@@ -26,7 +26,10 @@ impl InProcessReloadHook for ProductReload {
         let cwd_str = cwd.display().to_string();
         let project_trusted = trust_mgr.is_trusted(&cwd_str);
 
-        let app_config = xylitol_official_plugin_config::loader::load_app_config(None).ok();
+        let app_config = xylitol_official_plugin_config::loader::load_app_config(
+            driver.reload_config_path().map(|path| path.as_path()),
+        )
+        .ok();
         let config_system_prompt = app_config
             .as_ref()
             .and_then(|cfg| cfg.resolve_default_profile().ok())
@@ -86,6 +89,51 @@ impl InProcessReloadHook for ProductReload {
                 ctx.context_file_count, ctx.has_system_prompt, ctx.append_count
             ),
         });
+
+        if cancel.is_cancelled() {
+            return Ok(RuntimeReloadReport {
+                steps,
+                cancelled: true,
+            });
+        }
+
+        match app_config.as_ref() {
+            Some(cfg) => {
+                let mut warnings = Vec::new();
+                let registry = crate::bootstrap::build_model_registry(Some(cfg), &mut warnings);
+                if registry.is_empty() {
+                    steps.push(ReloadStepReport {
+                        step: "models",
+                        ok: false,
+                        message: "config has no models; kept previous registry".into(),
+                    });
+                } else {
+                    let previous = driver.agent.model_registry().len();
+                    driver.agent.replace_model_registry(registry);
+                    let current = driver
+                        .agent
+                        .current_model()
+                        .map(|meta| meta.id.clone())
+                        .unwrap_or_else(|| "none".into());
+                    steps.push(ReloadStepReport {
+                        step: "models",
+                        ok: true,
+                        message: format!(
+                            "{} model(s) (was {}), current {current}",
+                            driver.agent.model_registry().len(),
+                            previous
+                        ),
+                    });
+                }
+            }
+            None => {
+                steps.push(ReloadStepReport {
+                    step: "models",
+                    ok: false,
+                    message: "config load failed; kept previous registry".into(),
+                });
+            }
+        }
 
         Ok(RuntimeReloadReport {
             steps,
