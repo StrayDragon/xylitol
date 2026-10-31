@@ -158,14 +158,49 @@ impl XyInProcessDriver {
         &self,
         name: &str,
     ) -> Option<Arc<dyn xylitol_plugin_sdk::XyPluginCommand>> {
-        if let Some((_, command)) = self.plugin_commands.iter().find(|(n, _)| n == name) {
-            return Some(Arc::clone(command));
-        }
+        self.plugin_commands
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, command)| Arc::clone(command))
+            .or_else(|| self.ctx_plugin_command(name))
+    }
+
+    fn ctx_plugin_command(
+        &self,
+        name: &str,
+    ) -> Option<Arc<dyn xylitol_plugin_sdk::XyPluginCommand>> {
         let registries = self
             .ctx
             .as_ref()?
             .get::<xylitol_plugin_sdk::HostRegistries>()?;
         registries.plugin_commands.get(name)
+    }
+
+    fn plugin_command_infos(&self) -> Vec<CommandInfo> {
+        let mut commands: Vec<CommandInfo> = self
+            .plugin_commands
+            .iter()
+            .map(|(name, command)| CommandInfo {
+                name: name.clone(),
+                description: command.description().to_string(),
+            })
+            .collect();
+        if let Some(registries) = self
+            .ctx
+            .as_ref()
+            .and_then(|ctx| ctx.get::<xylitol_plugin_sdk::HostRegistries>())
+        {
+            for (name, command) in registries.plugin_commands.snapshot() {
+                if commands.iter().any(|existing| existing.name == name) {
+                    continue;
+                }
+                commands.push(CommandInfo {
+                    name,
+                    description: command.description().to_string(),
+                });
+            }
+        }
+        commands
     }
 
     pub fn set_slash_commands(&mut self, commands: Vec<CommandInfo>) {
@@ -514,27 +549,7 @@ impl XyDriver for XyInProcessDriver {
 
     fn get_commands(&self) -> Vec<CommandInfo> {
         let mut commands = self.slash_commands.clone();
-        for (name, command) in &self.plugin_commands {
-            commands.push(CommandInfo {
-                name: name.clone(),
-                description: command.description().to_string(),
-            });
-        }
-        if let Some(registries) = self
-            .ctx
-            .as_ref()
-            .and_then(|ctx| ctx.get::<xylitol_plugin_sdk::HostRegistries>())
-        {
-            for (name, command) in registries.plugin_commands.snapshot() {
-                if commands.iter().any(|existing| existing.name == name) {
-                    continue;
-                }
-                commands.push(CommandInfo {
-                    name,
-                    description: command.description().to_string(),
-                });
-            }
-        }
+        commands.extend(self.plugin_command_infos());
         commands
     }
 
