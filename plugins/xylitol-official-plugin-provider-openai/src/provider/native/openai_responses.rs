@@ -192,7 +192,7 @@ pub(crate) fn assemble_responses_body_with_diagnostics(
     }
 
     apply_prompt_cache_key(&mut body, options, wire_policy);
-    apply_text_format(&mut body, options);
+    apply_text_format(&mut body, options, !tools.is_empty());
 
     apply_responses_wire_policy(&mut body, wire_policy);
     (body, replay_diagnostics)
@@ -220,7 +220,11 @@ fn apply_prompt_cache_key(
     }
 }
 
-fn apply_text_format(body: &mut Value, options: &crate::thinking::XyGenerateOptions) {
+fn apply_text_format(
+    body: &mut Value,
+    options: &crate::thinking::XyGenerateOptions,
+    has_tools: bool,
+) {
     let Some(output) = options.structured_output.as_ref() else {
         return;
     };
@@ -232,6 +236,9 @@ fn apply_text_format(body: &mut Value, options: &crate::thinking::XyGenerateOpti
             "strict": output.strict.unwrap_or(false),
         }
     });
+    if has_tools {
+        body["parallel_tool_calls"] = serde_json::json!(false);
+    }
 }
 
 pub(crate) fn apply_responses_wire_policy(body: &mut Value, wire_policy: &WirePolicy) {
@@ -1357,7 +1364,19 @@ mod tests {
 
     #[test]
     fn build_body_includes_prompt_cache_key_from_session() {
-        let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
+        let adapter = OpenAiResponsesAdapter::with_wire_policy(
+            "sk".into(),
+            "gpt".into(),
+            None,
+            None,
+            crate::wire_policy::WirePolicy {
+                compat: crate::wire_policy::Compat::Generic,
+                extra_policy: crate::wire_policy::ExtraPolicy {
+                    prompt_cache_key: true,
+                    ..Default::default()
+                },
+            },
+        );
         let body = adapter.build_body(
             vec![XyLlmMessage::user("hi")],
             &[],
@@ -1445,6 +1464,31 @@ mod tests {
         let none = crate::thinking::XyGenerateOptions::default();
         let body_none = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &none);
         assert!(body_none.get("text").is_none());
+    }
+
+    #[test]
+    fn structured_output_with_tools_disables_parallel_tool_calls() {
+        let adapter = OpenAiResponsesAdapter::new("sk".into(), "gpt".into(), None, None);
+        let opts = crate::thinking::XyGenerateOptions {
+            structured_output: Some(xylitol_plugin_sdk::XyStructuredOutput {
+                name: "answer".into(),
+                schema: serde_json::json!({"type": "object"}),
+                strict: None,
+                description: None,
+            }),
+            ..Default::default()
+        };
+        let tools = vec![xylitol_plugin_sdk::XyToolSchema {
+            name: "read".into(),
+            description: "read".into(),
+            parameters: serde_json::json!({"type": "object"}),
+        }];
+        let body = adapter.build_body(vec![XyLlmMessage::user("hi")], &tools, false, &opts);
+        assert_eq!(body["parallel_tool_calls"], false);
+        assert_eq!(body["text"]["format"]["type"], "json_schema");
+
+        let body_no_tools = adapter.build_body(vec![XyLlmMessage::user("hi")], &[], false, &opts);
+        assert!(body_no_tools.get("parallel_tool_calls").is_none());
     }
 
     #[test]

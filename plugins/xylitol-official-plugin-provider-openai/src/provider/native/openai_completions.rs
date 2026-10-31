@@ -270,11 +270,18 @@ mod tests {
             .mount(&server)
             .await;
 
-        let adapter = OpenAiCompletionsAdapter::new(
+        let adapter = OpenAiCompletionsAdapter::with_wire_policy(
             "sk-test".into(),
             "gpt-test".into(),
             Some(server.uri()),
             Some(Arc::new(NoopHooks)),
+            crate::wire_policy::WirePolicy {
+                compat: crate::wire_policy::Compat::Generic,
+                extra_policy: crate::wire_policy::ExtraPolicy {
+                    prompt_cache_key: true,
+                    ..Default::default()
+                },
+            },
         );
         let opts = crate::thinking::XyGenerateOptions {
             obs_session: xylitol_plugin_sdk::ObsSessionContext {
@@ -287,6 +294,95 @@ mod tests {
             .generate_stream(vec![XyLlmMessage::user("hi")], &[], false, opts)
             .await
             .expect("generate with session affinity");
+    }
+
+    struct CaptureBodyHooks {
+        body: std::sync::Arc<std::sync::Mutex<Option<Value>>>,
+    }
+
+    #[async_trait]
+    impl HttpHooks for CaptureBodyHooks {
+        async fn before_headers(&self, _headers: &mut HeaderBag) -> Result<(), XyError> {
+            Ok(())
+        }
+
+        async fn before_request(&self, _model: &str, body: &mut Value) -> Result<(), XyError> {
+            *self.body.lock().unwrap() = Some(body.clone());
+            Ok(())
+        }
+
+        async fn after_response(&self, _status: u16, _headers: &HeaderBag) {}
+    }
+
+    async fn capture_completions_body(
+        options: crate::thinking::XyGenerateOptions,
+        tools: &[crate::dto::XyToolSchema],
+    ) -> Value {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "id": "x",
+                "choices": [{
+                    "index": 0,
+                    "message": {"role": "assistant", "content": "ok"},
+                    "finish_reason": "stop"
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
+            })))
+            .mount(&server)
+            .await;
+        let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let adapter = OpenAiCompletionsAdapter::new(
+            "sk-test".into(),
+            "gpt-test".into(),
+            Some(server.uri()),
+            Some(Arc::new(CaptureBodyHooks {
+                body: captured.clone(),
+            })),
+        );
+        let _ = adapter
+            .generate_stream(vec![XyLlmMessage::user("hi")], tools, false, options)
+            .await
+            .expect("generate");
+        captured.lock().unwrap().clone().expect("body")
+    }
+
+    #[tokio::test]
+    async fn completions_default_policy_omits_prompt_cache_key() {
+        let options = crate::thinking::XyGenerateOptions {
+            obs_session: xylitol_plugin_sdk::ObsSessionContext {
+                session_id: Some("sess-1".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let body = capture_completions_body(options, &[]).await;
+        assert!(body.get("prompt_cache_key").is_none());
+    }
+
+    #[tokio::test]
+    async fn completions_structured_with_tools_disables_parallel_tool_calls() {
+        let options = crate::thinking::XyGenerateOptions {
+            structured_output: Some(xylitol_plugin_sdk::XyStructuredOutput {
+                name: "answer".into(),
+                schema: serde_json::json!({"type": "object"}),
+                strict: None,
+                description: None,
+            }),
+            ..Default::default()
+        };
+        let tools = vec![crate::dto::XyToolSchema {
+            name: "read".into(),
+            description: "read".into(),
+            parameters: serde_json::json!({"type": "object"}),
+        }];
+        let body = capture_completions_body(options.clone(), &tools).await;
+        assert_eq!(body["parallel_tool_calls"], false);
+        assert_eq!(body["response_format"]["type"], "json_schema");
+
+        let body_no_tools = capture_completions_body(options, &[]).await;
+        assert!(body_no_tools.get("parallel_tool_calls").is_none());
     }
 
     #[tokio::test]

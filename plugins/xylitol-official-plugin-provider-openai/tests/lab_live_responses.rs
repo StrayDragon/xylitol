@@ -11,14 +11,14 @@ fn env(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("{name} must be set"))
 }
 
-async fn run(label: &str, options: XyGenerateOptions) -> String {
+async fn run(label: &str, options: XyGenerateOptions, policy: WirePolicy) -> String {
     let adapter = build_adapter_with_wire_policy(
         env("XYLITOL_LAB_API_KEY"),
         env("XYLITOL_LAB_MODEL"),
         Some(env("XYLITOL_LAB_BASE_URL")),
         AdapterKind::OpenAiResponses,
         None,
-        WirePolicy::default(),
+        policy,
     );
     let stream = adapter
         .generate_stream(
@@ -46,7 +46,7 @@ async fn run(label: &str, options: XyGenerateOptions) -> String {
 #[tokio::test]
 #[ignore = "live network probe; set XYLITOL_LAB_* env vars"]
 async fn lab_live_basic() {
-    run("basic", XyGenerateOptions::default()).await;
+    run("basic", XyGenerateOptions::default(), WirePolicy::default()).await;
 }
 
 #[tokio::test]
@@ -64,7 +64,7 @@ async fn lab_live_structured_output() {
         strict: Some(true),
         description: None,
     });
-    let text = run("structured", options).await;
+    let text = run("structured", options, WirePolicy::default()).await;
     match serde_json::from_str::<serde_json::Value>(&text) {
         Ok(parsed) if parsed.get("answer").is_some() => println!("[structured] schema honored"),
         Ok(parsed) => println!("[structured] JSON but missing answer key: {parsed}"),
@@ -77,7 +77,7 @@ async fn lab_live_structured_output() {
 async fn lab_live_max_output_tokens() {
     let mut options = XyGenerateOptions::default();
     options.max_output_tokens = Some(32);
-    run("max-tokens", options).await;
+    run("max-tokens", options, WirePolicy::default()).await;
 }
 
 #[tokio::test]
@@ -85,7 +85,14 @@ async fn lab_live_max_output_tokens() {
 async fn lab_live_prompt_cache_key() {
     let mut options = XyGenerateOptions::default();
     options.obs_session.session_id = Some(format!("lab-probe-{}", std::process::id()));
-    run("prompt-cache-key", options).await;
+    let policy = WirePolicy {
+        compat: xylitol_official_plugin_provider_openai::wire_policy::Compat::Generic,
+        extra_policy: xylitol_official_plugin_provider_openai::wire_policy::ExtraPolicy {
+            prompt_cache_key: true,
+            ..Default::default()
+        },
+    };
+    run("prompt-cache-key", options, policy).await;
 }
 
 #[tokio::test]
