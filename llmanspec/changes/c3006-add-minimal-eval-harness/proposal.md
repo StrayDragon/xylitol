@@ -6,8 +6,8 @@ needs_specs_change: false
 
 # 最小 Agent Eval 底座（SWE-bench headless）
 
-> **purpose-draft**：记录调研与分阶段候选，未绑定分支、未落 live specs、不可 apply。
-> 落实时经 `llman-sdd-propose` 正式化并补 tasks。
+> **planned**：调研、设计与任务已收敛；按用户要求暂不建分支、不 push、不开 PR。
+> 落实时走 apply；确认后再开 PR。
 
 ## Why
 
@@ -17,19 +17,17 @@ needs_specs_change: false
 
 ## What Changes
 
-- 新增 Python eval driver（`tools/eval/` 或先落 `scripts/lab_eval_swebench.py`）：
+- 新增 `tools/eval/` Python 包（一步到位骨架，阶段验收）：
   - 固定 dataset revision + 显式 instance ids；
-  - 每实例独立 Docker 容器（官方/预构建 SWE-bench 镜像）；
+  - 每实例独立 Docker 容器（数据集自带 `image` 字段）；
   - 容器内 headless 运行 `xylitol print`；
   - 收集 `git add -A && git diff --cached` 为 unified diff；
   - 写 `preds.jsonl`（`instance_id` / `model_name_or_path` / `model_patch`）；
-  - 调官方 `python -m swebench.harness.run_evaluation` 出 `results.json`；
+  - 调官方 `python -m swebench.harness.run_evaluation` 出报告；
   - 产出 `run.json` / `summary.md`（binary hash、config hash、dataset revision、harness 版本）。
-- M0 只跑 **SWE-bench Verified 5 实例**；验收是 5/5 被 grade（不是 5/5 resolved）。
-- M1 补 eval profile：墙钟超时、`session.max_turns`、无 ask、config 锁定、成本/token 报告；
-  超限 autosubmit 交卷协议若需 runtime stop hook，另开 change。
-- M2 扩到固定 Verified 50 并跑 mini-SWE-agent 同口径 baseline；M3 再接 Harbor /
-  Terminal-Bench，单独提案。
+- 新增仅 `workflow_dispatch` 的 Linux binary CI（不做 nightly）；构建产物供本地评测下载。
+- 新增 `just eval-test` / `eval-dryrun` / `eval-smoke`（均非默认 `just qa`）。
+- 不新增 live spec；工具契约写在 `tools/eval/README.md` 与本 change 的 `design.md`。
 - 不改变产品默认行为；eval 是开发者/CI 后置能力，不进开箱体验。
 
 ## 决策
@@ -37,20 +35,44 @@ needs_specs_change: false
 - **官方 grader 为唯一分数源**；Langfuse 只作旁路元数据/失败实例回归，不作分数。
 - **只经 `print` / headless 驱动**；禁止 PTY / 自动按键驱动 TUI 作为 eval 前置。
 - **Python 编排**，不在 Rust runtime 引入 Docker/benchmark 依赖；Rust 侧只提供稳定 binary。
-- M0 用 **Verified 5** 冒烟；M2 再扩到固定 50 子集并跑 mini-SWE-agent 同口径基线。
-- Terminal-Bench 走 Harbor（当前 4.0，66 tasks）单独提案，不塞进 M0。
+- **一步到位设计 `tools/eval/`**；阶段验收，接口先定，后续适配器不预埋空壳。
+- **数据集 / harness 组合**：`SWE-bench/SWE-bench_Verified` + `swebench==5.0.2` + 数据集自带
+  `image` 字段；不再使用 `--cache_level` / `--namespace`（5.0.2 已移除）。
+- **CI 仅手动触发**：`workflow_dispatch` 构建 Linux binary；不做 nightly。
+- **模型与密钥不外露**：仓库只写占位符（`{{ secret.NAME }}`）；真实 key 只在本地 env / CI secrets。
+- **确认前不开 PR、不 push**；避免未审查代码与密钥泄露。
 
 ## Capabilities
 
 - 无 live spec 行为变更（`needs_specs_change: false`）；eval 是开发工具链。
-- 若 M1 新增 runtime 停止条件（cost/token），届时按 `agent-runtime` 走 SDD。
+- 若后续新增 runtime 停止条件（cost/token），届时按 `agent-runtime` / `runtime-config` 另开 SDD change。
 
 ## Impact
 
-- 新增 `tools/eval/`（或 `scripts/lab_eval_swebench.py`）+ 测试。
+- 新增 `tools/eval/`（Python 包 + 测试 + 示例配置）。
+- 新增 `.github/workflows/eval-bin.yaml`（仅手动触发）。
+- 新增 `just` 配方（非默认门禁）。
 - 不改线协议、不改产品 TUI / Print 行为。
-- 可能新增 `just qa-eval-smoke`（手动/夜间，非默认门禁）。
+
+## 阶段
+
+| 阶段 | 交付 | 验收 |
+|---|---|---|
+| M0 | `tools/eval` 骨架 + Docker + Verified 5 + 官方 grader | 5/5 被处理；error=0；报告可复现 |
+| M1 | eval profile：墙钟 / max_turns / 配置锁 / 无 ask | 超限仍收 patch；config hash 稳定 |
+| M2 | Verified 50 + mini-SWE-agent baseline | 同模型同数据对比 |
+| M3 | Harbor `BaseInstalledAgent` + Terminal-Bench 10–20 | reward 来自 verifier |
+| M4 | 失败实例 → Dataset；小集 CI | 回归集可跑 |
+| M5 | 云并行全量 / leaderboard 提交 | 全量可复现 |
+
+## 风险
+
+- 模型网关 key 只在本地 env；仓库不得出现真实 key。
+- Linux binary 与 SWE-bench 镜像 glibc 兼容性需实跑确认。
+- M2 50 实例镜像磁盘占用高，需逐实例清理或扩容。
+- 官方榜是 bash-only / mini-SWE-agent 口径，不能直接当 xylitol 分数。
 
 ## Further Notes
 
-一手调研与选型对照：[research/minimal-eval-harness.md](./research/minimal-eval-harness.md)。
+- 一手调研与选型对照：[research/minimal-eval-harness.md](./research/minimal-eval-harness.md)。
+- 2026-10-31 官方评分与候选模型复核：[research/benchmark-scores-2026-10.md](./research/benchmark-scores-2026-10.md)。
